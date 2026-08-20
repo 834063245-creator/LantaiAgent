@@ -12,8 +12,7 @@
 //
 // UI 回调通过 BuilderDeps 注入，不直接 import ui/ 模块。
 
-import { z } from 'zod';
-import { builtinToolRows } from '../../composition/tool-rows';
+import { builtinToolRows, type ToolRowContext } from '../../composition/tool-rows';
 import { typedRpc } from '../../rpc-contract';
 import type { Agent } from '../agent';
 import { createCompactionTools } from '../compaction-model';
@@ -30,16 +29,9 @@ import {
   PreflightHookRegistry,
 } from '../hooks';
 import { type McpClient, registerMcpTools } from '../mcp';
-import { createSkillTool } from '../skills';
-import { createTaskTools } from '../task';
 import type { Tool, ToolExecutor } from '../tool';
 import { agentInvoke, ToolRegistry } from '../tool';
-import type { CodingToolsUI } from '../tools/coding';
-import { createCodingTools } from '../tools/coding';
-import { defineTool } from '../tools/define-tool';
 import { convergeRegistry } from '../tools/domains';
-import { createAgentKillTool, createAgentStatusTool, createSubAgentTool } from '../tools/subagent';
-import { createWaitTool } from '../tools/wait';
 import { execStreamedShell } from './queued-shell';
 
 // ── Types ──
@@ -65,45 +57,8 @@ export interface BuilderDeps {
   };
 }
 
-// ── MCP Schema loading ──
-
-interface McpSchema {
-  name: string;
-  description: string;
-  readOnly?: boolean;
-  inputSchema: {
-    type: string;
-    properties: Record<string, { type: string; description: string }>;
-    required: string[];
-  };
-}
-
-export async function loadHologramSchemas(): Promise<McpSchema[]> {
-  try {
-    const raw = await typedRpc('hologram_tools_list', {});
-    return JSON.parse(raw) as McpSchema[];
-  } catch {
-    return [];
-  }
-}
-
-export function mcpSchemaToTool(schema: McpSchema, exec: ToolExecutor): Tool {
-  const required = schema.inputSchema.required || [];
-  return {
-    name: () => schema.name,
-    description: () => schema.description,
-    parameters: () => ({
-      type: 'object',
-      properties: schema.inputSchema.properties,
-      required,
-    }),
-    readOnly: () =>
-      // 优先用引擎 schema 的 readOnly 标志（领域收敛后 plan 门禁按动作判定，
-      // import_scip 等写工具不能再靠硬编码名单漏判）
-      schema.readOnly ?? !['analyze_project', 'validate_project', 'rename_symbol'].includes(schema.name),
-    execute: (args: Record<string, unknown>) => exec(schema.name, args),
-  };
-}
+// MCP Schema 加载与工具转换已迁至 agent/tools/hologram.ts（S1-3 机械迁出，
+// composition/tool-rows 的行 factory 复用；本地定义删除避免双源）。
 
 // ── Graph helpers ──
 
@@ -324,44 +279,6 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
   } = opts;
   const registry = new ToolRegistry();
 
-  // ── Hologram tools ──
-  if (graphData) {
-    const holoExec: ToolExecutor = async (name, args) => {
-      const result = await typedRpc('hologram_call', { tool: name, args });
-      return typeof result === 'string' ? result : JSON.stringify(result);
-    };
-    const schemas = await loadHologramSchemas();
-    for (const tool of schemas.map((s) => mcpSchemaToTool(s, holoExec))) registry.register(tool);
-
-    registry.register(
-      defineTool({
-        name: 'dataflow_save',
-        description: '保存数据流追踪结果到 .hologram/dataflow/，供面板查看和后续查询。',
-        schema: z.object({
-          query: z.string(),
-          content: z.string(),
-        }),
-        execute: async (args) => {
-          const r = await agentInvoke('dataflow_save', args);
-          deps.onDataflowSaved?.();
-          return r;
-        },
-      }),
-    );
-    registry.register(
-      defineTool({
-        name: 'dataflow_query',
-        description: '查询已保存的数据流追踪结果。',
-        schema: z.object({
-          traceId: z.string().optional(),
-          list: z.boolean().optional(),
-        }),
-        readOnly: true,
-        execute: (args) => agentInvoke('dataflow_query', args),
-      }),
-    );
-  }
-
   // ── Shell 执行（2026-08-10：队列退役，直连流式） ──
   // 多 Agent 构建锁互斥由 Rust 侧 BuildLock 承担（资源级原子检查 + 带路径打回，
   // 见 src-tauri/src/utils.rs）：冲突时 exec_command 返回错误，不排队不串行化。
@@ -435,43 +352,27 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
     const result = await agentInvoke<string>(name, args);
     return typeof result === 'string' ? result : JSON.stringify(result);
   };
-  // ── 内置工具行表装配（composition/tool-rows，S1-2 起逐族迁入；表序 = 组合序）──
-  // coding 面已全部迁完（fs/shell/git/search/web/agent-isolation/ask），
-  // 注册以行实例为准。createCodingTools 仍返回完整 coding 面供测试/直接
-  // 消费，此处按行内已注册名去重防双注册——S1-3 起装配末端整体改读
-  // 行表，此去重随 createCodingTools 兜底一起退役。
-  const codingUI: CodingToolsUI = { askUser: deps.onAskUser ?? (() => {}) };
-  const rowTools = builtinToolRows().flatMap((row) => row.factory({ codingExec, ui: codingUI }));
-  const rowToolNames = new Set(rowTools.map((t) => t.name()));
-  for (const tool of rowTools) registry.register(tool);
-  for (const tool of createCodingTools(codingExec, codingUI)) {
-    if (rowToolNames.has(tool.name())) continue; // 行表已注册（同 factory，定义等价）
-    registry.register(tool);
+  // ── 内置工具行表装配（composition/tool-rows，S1-3 起末端整体改读行表）──
+  // 全部内置族（hologram/fs/shell/git/search/web/agent-isolation/ask/
+  // skill/memory/task/agent/browser-desktop/wait）的工厂与组合序都在行表
+  // ——表序 = 组合序（前缀缓存语义的根基）。行内工具名冲突由
+  // ToolRegistry.register 装载期拒绝（duplicate throw）。
+  const rowCtx: ToolRowContext = {
+    graphData,
+    codingExec,
+    ui: { askUser: deps.onAskUser ?? (() => {}) },
+    onDataflowSaved: () => deps.onDataflowSaved?.(),
+    skillRegistry,
+    memoryManager: mm,
+    taskManager,
+    subAgentPool,
+    subAgentSpawner,
+  };
+  for (const row of builtinToolRows()) {
+    for (const tool of await row.factory(rowCtx)) registry.register(tool);
   }
+
   registry.alias('read_file', 'read_file_content');
-  if (skillRegistry) registry.register(createSkillTool(skillRegistry));
-  if (mm) for (const tool of (await import('../memory')).createMemoryTools(mm) as any) registry.register(tool);
-  for (const tool of createTaskTools(taskManager)) registry.register(tool);
-
-  // ── Sub-agent tools ──
-  if (subAgentSpawner) {
-    registry.register(createSubAgentTool(subAgentSpawner, subAgentPool));
-    registry.register(createAgentStatusTool(subAgentPool));
-  }
-
-  // ── Browser tools（Agent 观察/操作前端 — CDP 双通道）──
-  // 只注册细粒度 browser_* 工具；领域收敛（browser 领域）由 convergeRegistry
-  // 统一处理（DOMAIN_SPECS 已含 browser）。self 通道已统一走 Rust CDP
-  // （webview 调试端口惰性 attach，ADR 0003 D4），agent 层零浏览器 API。
-  {
-    const { createBrowserTools, createDesktopTools } = await import('../tools/browser');
-    for (const t of createBrowserTools()) registry.register(t);
-    for (const t of createDesktopTools()) registry.register(t);
-  }
-
-  // ── wait 工具 — 替代轮询循环（agent_status/bash_output 反复刷屏）。
-  // 事件驱动：传 agentId 阻塞到子 Agent 完成；无 pool 时退化为兜底 sleep ──
-  registry.register(createWaitTool(subAgentPool));
 
   // ── 外部 MCP server 工具（mcp__<server>__<name>）──
   // 由调用方（Runtime/UI）在构建时传入已连接好的 McpClient 列表；

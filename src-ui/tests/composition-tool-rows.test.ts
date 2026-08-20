@@ -1,17 +1,50 @@
 import { describe, expect, it } from 'vitest';
+import { SubAgentPool } from '../src/agent/coordinator';
+import { TaskManager } from '../src/agent/task';
 import type { ToolExecutor } from '../src/agent/tool';
-import { builtinToolRows } from '../src/composition/tool-rows';
+import type { SubAgentSpawner } from '../src/agent/tools/subagent';
+import { builtinToolRows, type ToolRowContext } from '../src/composition/tool-rows';
 
-// ── S1-2 行表自检：coding 面已全族迁入（fs/shell/git/search/web/agent-isolation/ask）──
+// ── 行表自检：S1-2 coding 面七族 + S1-3 装配末端七族（全部内置族）──
 // 行表是 standard preset 装配序的事实来源（表序 = 组合序）。这里钉住：
 //   1. 行 id 唯一且稳定（未来 preset 按 id 引用行）；
-//   2. fs 行产出 = 迁移前 createCodingTools 内的现行表序（机械重述）；
+//   2. 各族行产出 = 迁移前现行装配的表序（机械重述）；
 //   3. 行 factory 无共享可变状态（多次装配互不串扰）；
-//   4. 经 buildToolRegistry 真实装配后 fs 细粒度名全部在册
-//      （重名会被 ToolRegistry.register 装载期拒绝——双注册路径会直接炸）。
+//   4. 可选依赖族缺帐时产出空集（原 if 分支语义）；
+//   5. 经 buildToolRegistry 真实装配后无重名残留（名字冲突装载期拒绝）。
 // 可见面零漂移由 verify:convergence 守护（S1 设计件 §2.4），此处不重复。
 
 const exec: ToolExecutor = async () => '';
+
+/** 最小完整装配上下文（必填字段用真实空实例）。 */
+function minCtx(): ToolRowContext {
+  return { codingExec: exec, taskManager: new TaskManager(), subAgentPool: new SubAgentPool() };
+}
+
+/** 按 id 取行（表形状由表序测试钉住，缺行直接炸）。 */
+function row(id: string) {
+  const r = builtinToolRows().find((x) => x.id === id);
+  if (!r) throw new Error(`row not found: ${id}`);
+  return r;
+}
+
+/** 全部 14 行 id（表序 = 组合序）。 */
+const ALL_ROW_IDS = [
+  'builtin/hologram',
+  'builtin/fs',
+  'builtin/shell',
+  'builtin/git',
+  'builtin/search',
+  'builtin/web',
+  'builtin/agent-isolation',
+  'builtin/ask',
+  'builtin/skill',
+  'builtin/memory',
+  'builtin/task',
+  'builtin/agent',
+  'builtin/browser-desktop',
+  'builtin/wait',
+];
 
 /** fs 族现行表序 = 迁移前 createCodingTools 内的声明序（机械重述基准）。 */
 const FS_TOOL_ORDER = [
@@ -66,79 +99,75 @@ const AGENT_ISOLATION_TOOL_ORDER = [
 /** ask 族现行表序（单工具，常驻可见）。 */
 const ASK_TOOL_ORDER = ['ask_user'];
 
-describe('composition/tool-rows（S1-2 行表）', () => {
-  it('行 id 唯一且稳定，表序 = 组合序（fs → shell → git → search → web → agent-isolation → ask）', () => {
+/** task 族工具名前缀（createTaskTools 产出的 task_* 细粒度名）。 */
+const TASK_TOOL_PREFIX = 'task_';
+
+/** agent 族（subAgentSpawner 缺帐 → 空集；有 spawner → spawn/status 对）。 */
+const AGENT_TOOL_NAMES = ['agent_spawn', 'agent_status'];
+
+/** wait 族（单工具，常驻可见）。 */
+const WAIT_TOOL_NAMES = ['wait'];
+
+describe('composition/tool-rows（内置行表全族）', () => {
+  it('行 id 唯一且稳定，表序 = 组合序（14 行）', () => {
     const ids = builtinToolRows().map((r) => r.id);
-    expect(ids).toEqual([
-      'builtin/fs',
-      'builtin/shell',
-      'builtin/git',
-      'builtin/search',
-      'builtin/web',
-      'builtin/agent-isolation',
-      'builtin/ask',
-    ]);
+    expect(ids).toEqual(ALL_ROW_IDS);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('fs 行产出 11 个细粒度工具，序 = 迁移前现行表序', () => {
-    const [fsRow] = builtinToolRows(); // 表形状由上一测试钉住
-    expect(fsRow.id).toBe('builtin/fs');
-    const names = fsRow.factory({ codingExec: exec }).map((t) => t.name());
-    expect(names).toEqual(FS_TOOL_ORDER);
+  it('各 coding 族行产出工具名序 = 迁移前现行表序', async () => {
+    const expectOrder = async (id: string, order: string[]) => {
+      const names = (await row(id).factory(minCtx())).map((t) => t.name());
+      expect(names).toEqual(order);
+    };
+    await expectOrder('builtin/fs', FS_TOOL_ORDER);
+    await expectOrder('builtin/shell', SHELL_TOOL_ORDER);
+    await expectOrder('builtin/git', GIT_TOOL_ORDER);
+    await expectOrder('builtin/search', SEARCH_TOOL_ORDER);
+    await expectOrder('builtin/web', WEB_TOOL_ORDER);
+    await expectOrder('builtin/agent-isolation', AGENT_ISOLATION_TOOL_ORDER);
+    await expectOrder('builtin/ask', ASK_TOOL_ORDER);
   });
 
-  it('shell 行产出 4 个细粒度工具，序 = 迁移前现行表序', () => {
-    const [, shellRow] = builtinToolRows();
-    expect(shellRow.id).toBe('builtin/shell');
-    const names = shellRow.factory({ codingExec: exec }).map((t) => t.name());
-    expect(names).toEqual(SHELL_TOOL_ORDER);
+  it('hologram 行：graphData 缺帐时产出空集（原 if 分支语义）', async () => {
+    const tools = await row('builtin/hologram').factory(minCtx()); // 无 graphData
+    expect(tools).toEqual([]);
   });
 
-  it('git 行产出 13 个细粒度工具，序 = 迁移前现行表序', () => {
-    const [, , gitRow] = builtinToolRows();
-    expect(gitRow.id).toBe('builtin/git');
-    const names = gitRow.factory({ codingExec: exec }).map((t) => t.name());
-    expect(names).toEqual(GIT_TOOL_ORDER);
+  it('task / wait / browser-desktop 行：必填依赖下产出非空', async () => {
+    const ctx = minCtx();
+    const taskNames = (await row('builtin/task').factory(ctx)).map((t) => t.name());
+    expect(taskNames.length).toBeGreaterThan(0);
+    expect(taskNames.every((n) => n.startsWith(TASK_TOOL_PREFIX))).toBe(true);
+    const waitNames = (await row('builtin/wait').factory(ctx)).map((t) => t.name());
+    expect(waitNames).toEqual(WAIT_TOOL_NAMES);
+    const bdNames = (await row('builtin/browser-desktop').factory(ctx)).map((t) => t.name());
+    expect(bdNames.length).toBeGreaterThan(0);
+    expect(bdNames.some((n) => n.startsWith('browser_'))).toBe(true);
+    expect(bdNames.some((n) => n.startsWith('desktop_'))).toBe(true);
   });
 
-  it('search 行产出单工具 search_content', () => {
-    const [, , , searchRow] = builtinToolRows();
-    expect(searchRow.id).toBe('builtin/search');
-    const names = searchRow.factory({ codingExec: exec }).map((t) => t.name());
-    expect(names).toEqual(SEARCH_TOOL_ORDER);
+  it('agent 行：spawner 缺帐时空集；有 spawner 时产出 spawn/status 对', async () => {
+    expect(await row('builtin/agent').factory(minCtx())).toEqual([]);
+    const spawner = (async () => 'stub-spawn-result') as unknown as SubAgentSpawner;
+    const names = (await row('builtin/agent').factory({ ...minCtx(), subAgentSpawner: spawner })).map((t) => t.name());
+    expect(names).toEqual(AGENT_TOOL_NAMES);
   });
 
-  it('web 行产出单工具 web_fetch', () => {
-    const [, , , , webRow] = builtinToolRows();
-    expect(webRow.id).toBe('builtin/web');
-    const names = webRow.factory({ codingExec: exec }).map((t) => t.name());
-    expect(names).toEqual(WEB_TOOL_ORDER);
+  it('skill / memory 行：依赖缺帐时空集（原 if 分支语义）', async () => {
+    expect(await row('builtin/skill').factory(minCtx())).toEqual([]);
+    expect(await row('builtin/memory').factory(minCtx())).toEqual([]);
   });
 
-  it('agent-isolation 行产出 5 个工具，序 = 迁移前现行表序', () => {
-    const [, , , , , isoRow] = builtinToolRows();
-    expect(isoRow.id).toBe('builtin/agent-isolation');
-    const names = isoRow.factory({ codingExec: exec }).map((t) => t.name());
-    expect(names).toEqual(AGENT_ISOLATION_TOOL_ORDER);
-  });
-
-  it('ask 行产出单工具 ask_user（ui 缺帐仍可注册）', () => {
-    const [, , , , , , askRow] = builtinToolRows();
-    expect(askRow.id).toBe('builtin/ask');
-    const names = askRow.factory({}).map((t) => t.name());
-    expect(names).toEqual(ASK_TOOL_ORDER);
-  });
-
-  it('行 factory 每次调用产出独立实例（无共享可变状态）', () => {
-    const row = builtinToolRows()[0];
-    const a = row.factory({ codingExec: exec });
-    const b = row.factory({ codingExec: exec });
+  it('行 factory 每次调用产出独立实例（无共享可变状态）', async () => {
+    const fsRow = row('builtin/fs');
+    const a = await fsRow.factory(minCtx());
+    const b = await fsRow.factory(minCtx());
     expect(a).not.toBe(b);
     expect(a.map((t) => t.name())).toEqual(b.map((t) => t.name()));
   });
 
-  it('经 buildToolRegistry 真实装配：fs 细粒度名 + ask_user + read_file 别名全部在册', async () => {
+  it('经 buildToolRegistry 真实装配：全部族工具名 + ask_user + read_file 别名在册且无重名', async () => {
     const { buildStandardRegistry } = await import('./convergence/helpers/fixtures');
     const reg = await buildStandardRegistry();
     const names = reg.names();
@@ -150,12 +179,33 @@ describe('composition/tool-rows（S1-2 行表）', () => {
       ...WEB_TOOL_ORDER,
       ...AGENT_ISOLATION_TOOL_ORDER,
       ...ASK_TOOL_ORDER,
+      ...WAIT_TOOL_NAMES,
       'read_file',
     ]) {
       expect(names).toContain(n);
     }
-    // 行实例与 createCodingTools 去重后无重名残留（重名 register 会 throw，
-    // 能走到这里即证明去重守卫生效）
+    // task/browser/desktop/agent 族的产出也必须在册（行表装配端到端生效）
+    expect(names.some((n) => n.startsWith('task_'))).toBe(true);
+    expect(names.some((n) => n.startsWith('browser_'))).toBe(true);
+    expect(names.some((n) => n.startsWith('desktop_'))).toBe(true);
+    expect(names).toContain('agent_spawn');
+    // 名字冲突装载期拒绝：重名 register 直接 throw，能走到这里即证明
+    // 行表 + 别名 + 外部贡献全链路无重名
     expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('S1-3 冲突拒绝：外部贡献撞内置行工具名 → 装配期 throw（duplicate tool）', async () => {
+    const { buildStandardRegistry } = await import('./convergence/helpers/fixtures');
+    const conflicting = {
+      id: 'probe/conflict',
+      factory: () => ({
+        name: () => 'run_shell', // 撞 builtin/shell 行的 run_shell
+        description: () => 'conflict probe',
+        parameters: () => ({ type: 'object', properties: {} }),
+        readOnly: () => false,
+        execute: async () => 'ok',
+      }),
+    };
+    await expect(buildStandardRegistry([conflicting])).rejects.toThrow('duplicate tool "run_shell"');
   });
 });
