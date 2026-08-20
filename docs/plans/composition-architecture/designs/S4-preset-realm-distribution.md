@@ -1,8 +1,8 @@
 # S4 设计件 — preset realm + 热重载 + npm 分发 + 机器桥 + hello 闭环
 
-> 状态：**已复审（代理，2026-08-20）——待用户放行后交新窗口落地**（复审记录见 §7.1：三处设计错误已实证修正）
+> 状态：**已两轮复审（2026-08-20：代理自查 + 用户四处偏差指正全采纳，记录见 §7.1）——待用户放行后交新窗口落地**
 > 性质：组合架构计划 S4 段的全量设计。前置已完成：S0（装载通道）/ S1（注册表化 + preset 维度基建）/ S2（组合外化——四域行 + 用户层 patch + 12 壳行）。
-> 排程依据（计划 README 三次修订）：S4 提前到纸之前——preset realm 恰是 V5 壳切换要用的机器（观测台 preset / 纸壳 preset = 同一组合引擎的确定性双装配）；前端工程期间组合层「除 S3 外全部完工且经 hello 闭环验证」。
+> 排程依据（计划 README 三次修订）：S4 提前到纸之前——preset realm 恰是 V5 壳切换要用的机器（观测台 preset / 纸壳 preset = 同一组合引擎的确定性双装配）；前端工程期间组合层状态口径（二轮复审修正，初稿「静默」表述过强）：**无计划内施工，未决项（§6）均已显式归档且约定不在前端期间动**——不等于「零改动可能性」：若某未决项被提前翻出，先动排程再动代码，不制造「说好静默怎么又动了」的信任损耗。
 > DSH 实证对标：`packages/preset/agent-presets/**`（preset 词汇/发现/装载/会话记录四件套）+ `packages/bundle/web-app/cordis.patch.yml` §「agent plane moves behind presets」（host plane / preset plane 分界判据）；文件路径均给出供执行者直接查阅。
 
 ## 1. 问题陈述
@@ -31,7 +31,7 @@ S2 终态是「**应用级**组合一次解析，启动期生效」：compositio
 | 装载机制 | cordis scope realm（mount 进 agent 的 context 层，service 隔离） | **纯函数解析 + 显式传参**：`resolveRoster(factory, [userPatch, presetPatch])` → 装配面已有可选参数 | HoloGram 装配面是函数参数不是 ctx service；realm 的「per-session service 隔离」问题（DSH 泄漏守卫那套）在这里不存在——组合是值不是注册副作用 |
 | 生效面 | tools + systemPrompt sections + delegation | **tools + prompt + capabilities** 三域（shell 域对会话无意义——壳引导是应用级一次性的，preset 不碰） | 壳行禁用是应用级决策；会话级组合不含壳 |
 | 信任模型 | system（部署自带）/ user（`$DSH_HOME/.agent-presets`，等同 shell 信任） | 同款二分：system preset（应用内置，`src/composition/presets/`）+ user preset（`~/.hologram/presets/`） | 与 DSH 的 authoring 纪律一致：user root 可写、system 只读 |
-| 会话记录 | header 深冻 + `agent-preset/selected` 事件（newest wins，重建读 resolveSessionPreset） | 会话头 + 选择事件同构（复用现有 session-log 事件体系；**新增事件 kind 走 Phase 5 立规：spec AST 白名单 + gate 计数**） | 「模型可见 ⟺ 已记录」是 DSH 那条纪律的原样移植——preset 决定模型看到的 schema/段，必须可重建 |
+| 会话记录 | header 深冻 + `agent-preset/selected` 事件（newest wins，重建读 resolveSessionPreset） | 首事件方案（session/reset init 必发首条 `preset/selected`，newest-wins 重建；**新增事件 kind 走 Phase 5 立规：SESSION_EVENT_KINDS + DataMap + spec AST + gate 计数**——§2.4） | 「模型可见 ⟺ 已记录」是 DSH 那条纪律的原样移植——preset 决定模型看到的 schema/段，必须可重建（HoloGram 无 header 概念，首事件承担其语义位——复审修正） |
 
 **目录形态**（学 DSH：composition 是纯行列表，metadata 独立文件）：
 
@@ -41,7 +41,12 @@ S2 终态是「**应用级**组合一次解析，启动期生效」：compositio
 └── preset.yml         # 显示元数据（name/description/order——纯展示，装载失败降级为无元数据不拒载）
 ```
 
-**复审修正：preset 落在 composition 根的子目录**（初稿为 `~/.hologram/presets/` 平级目录）——理由：(a) **零 Rust 新路由成本**：`/composition/presets/<id>/roster.patch.yml` 在 S2 既有通道（resolve_asset 逐段校验 + 前缀约束）下今天就能取到；(b) `HOLOGRAM_COMPOSITION_ROOT` 测试隔离对 preset 同样生效；(c) 用户组合数据单根收口。代价是 Rust 加一条**目录索引路由**（`GET /composition/presets/` → JSON 数组，镜像插件索引的做法——约 30 行）。
+**复审修正：preset 落在 composition 根的子目录**（初稿为 `~/.hologram/presets/` 平级目录）——理由：(a) **零新文件路由成本**：`/composition/presets/<id>/roster.patch.yml` 在 S2 既有通道（resolve_asset 逐段校验 + 前缀约束）下机制上今天就能取到；(b) `HOLOGRAM_COMPOSITION_ROOT` 测试隔离对 preset 同样生效；(c) 用户组合数据单根收口。
+
+代价有两项（复审二轮修正——初稿只算了第一项）：
+
+1. **索引路由**：`GET /composition/presets/` → JSON 数组（过滤含 `roster.patch.yml` 的子目录，排序稳定）。参照插件索引完整做法（`plugin_assets.rs` 的 `serve_index` + `list_plugin_dirs` 纯函数 + spawn_blocking 包装 + 错误 JSON 分支），**量级 60-80 行**——初稿「约 30 行」低估：30 行只能做裸列目录，滤 preset 合法性（含 roster.patch.yml 才入列）参照插件「含 manifest.json 才入列」同款纪律。
+2. **既有注释契约的修订义务**：`serve_composition_path` 的 doc 注释（plugin_assets.rs:204）现文写「无目录索引——本通道只服务固定文件名（roster.patch.yml）」——S2-2 时写的真话，S4-0 落地后变谎言。**S4-0 批内容必须包含修订该注释**（通道语义扩为「根级固定文件 + presets/<id>/ 下 preset 文件」），否则违反「规则与代码现状同步」铁律，未来维护者读到旧注释会误判 preset 文件路由是 bug。根级空路径仍 404；`presets/` 路径 = 索引入口。
 
 - preset id 规则照抄 DSH `PRESET_ID`：`/^[a-z0-9][a-z0-9-]*$/`——id 是路径段，这是**围栏规则不是风格规则**（`..` / 分隔符 / 绝对名会把组合挪出授权根）。
 - **内置 system preset 表**（`src/composition/presets.ts`）：`standard`（零 patch = 出厂组合）+ `minimal`（禁 browser-desktop/web/graph-hooks…的精简面，V5 共居期的「纸壳 preset」原型）。system preset 不落盘——它是代码常量（与 S2「factory 层不出 yml」同一裁定）。system 优先：user preset 与内置同名 id 时内置胜（DSH「earlier root wins」同款——内置 id 是部署事实，用户不可影子化）。
@@ -126,7 +131,7 @@ S2 延期清单的兑现：**`composition-store` 加「重载」动作**，不�
 - **卸载/禁用**：卸载 = `plugin_uninstall` RPC（Rust 删目录 + TS 侧 reload 插件清单）；禁用 = `plugin_set_enabled` RPC（Rust 读改写 plugins.json 的 disabled 集——S0 已定文件形状 `{"disabled": [...]}`，webview 无盘权必须走 RPC；**初稿漏列此命令，复审补**）。两者均重启生效（装载是 boot 期一次性——与组合层「下次装配」语义对齐，UI 提示条如实声明）。
 - **更新**：同一 source 重装 = 先装 `.tmp` 校验后换名（卸载+安装的原子复合）——**第一版不做版本比较**（tarball 里 manifest.version 已有，比较逻辑属锦上添花，写进未决项）。
 
-**安装 UI**：SettingsPanel 新 tab「插件」（现有 5 tab 旁加第 6 个）：
+**安装 UI**：SettingsPanel 新 tab「插件」（现有 5 tab 旁加第 6 个——**施工注（二轮复审补）**：tab 清单是封闭 union，`SettingsPanel.tsx:23` 的 `type Tab = 'provider' | 'agent' | 'display' | 'languages' | 'about'` 需加 `'plugins'` 成员，加上 §304-319 sp-tabs 渲染数组的对应行——两处，文件级精度点名防执行者自己摸）：
 - 已装列表（plugin-store 现状渲染：name/version/status/error + 禁用开关 + 卸载按钮）；
 - 安装输入框（source 三形态：**(a)** registry 规格 `{ name, version?, registry? }`——缺省 `https://registry.npmjs.org`、registry 字段可覆写（镜像友好）；**(b)** tarball——URL 或本地文件路径（开发期 `npm pack` 产物），同一解包校验路径；**(c)** 本地目录——**复制**进 plugins 根后校验 manifest（loader 只扫自己根，指向外部目录无效——初稿「走既有目录扫描语义」表述错误，复审修正）；
 - 常驻供应链警告条。
@@ -167,17 +172,19 @@ S2 延期清单的兑现：**`composition-store` 加「重载」动作**，不�
 
 | 批 | 内容 | 验收 |
 |---|---|---|
-| S4-0 | **preset 数据模型（纯加法）**：`composition/presets.ts`（内置表 standard/minimal + PresetId 规则 + resolvePresetComposition 纯函数 = resolveRoster 叠 preset 层）+ Rust `/composition/presets/` 目录索引路由（约 30 行，镜像插件索引）+ discovery（fetch 注入面：索引 + 逐 preset 取 roster.patch.yml / preset.yml 元数据降级语义）+ preset-store | 纯函数测试：standard ≡ factoryComposition；minimal 的禁用面符合设计；用户 preset 叠加在用户层 patch 之上（同 id 后写胜）；坏 preset 目录 = roster 行报 broken 不炸发现（DSH discovery 同款：占 id 但拒绝装载）；cargo test（索引路由：列表/空目录/遍历拒绝） |
-| S4-1 | **装配穿线 + 会话绑定**：createAgentFromContext 读 ctx.presetId → preset 组合（cache：presetId + 用户层 hash）；会话构造必发首条 `preset/selected` 事件（**Phase 5 change request 先行**：SESSION_EVENT_KINDS + DataMap + spec AST 白名单 + gate 计数 + 差分矩阵）+ 重建 newest-wins；会话工厂的组合覆盖参数（会话作用域注册表路径）；子 Agent 透传组合；**minimal preset 的 convergence baseline 冻结**（S2 §6 遗留兑现：helpers/presets.ts 登记从 runtime preset 表派生的 minimal 定义 → `CONVERGENCE_PRESET=minimal` + record + change request + 独立 freeze commit → `baseline/preset-minimal/phase-N/`——per-preset 收敛协议的首次全流程实测） | 穿线单测：带 presetId 的装配工具面/prompt 反映 preset；不带 = S2 现状零漂移；会话重建对拍（首事件 + 后续改选 → 重建用后选）；会话作用域注册表路径（resolved ≠ 工作区默认时工厂自建注册表）；子 Agent 与父同面；minimal baseline freeze 走完全流程（record + CR + freeze commit 三步可审计） |
+| S4-0 | **preset 数据模型（纯加法）**：`composition/presets.ts`（内置表 standard/minimal + PresetId 规则 + resolvePresetComposition 纯函数 = resolveRoster 叠 preset 层）+ Rust `/composition/presets/` 目录索引路由（60-80 行：serve_preset_index + list_preset_dirs 纯函数 + spawn_blocking + 错误分支——镜像插件索引完整做法）+ **修订 serve_composition_path doc 注释**（「只服务固定文件名」→「根级固定文件 + presets/<id>/ preset 文件」，plugin_assets.rs:204——契约同步铁律）+ discovery（fetch 注入面：索引 + 逐 preset 取 roster.patch.yml / preset.yml 元数据降级语义）+ preset-store | 纯函数测试：standard ≡ factoryComposition；minimal 的禁用面符合设计；用户 preset 叠加在用户层 patch 之上（同 id 后写胜）；坏 preset 目录 = roster 行报 broken 不炸发现（DSH discovery 同款：占 id 但拒绝装载）；cargo test（索引路由：列表/过滤/空目录/遍历拒绝） |
+| S4-1a | **装配穿线 + 会话绑定（纯加法，无审批依赖可先跑）**：createAgentFromContext 读 ctx.presetId → preset 组合（cache：presetId + 用户层 hash）；会话工厂的组合覆盖参数（会话作用域注册表路径）；子 Agent 透传组合 | 穿线单测：带 presetId 的装配工具面/prompt 反映 preset；不带 = S2 现状零漂移；会话作用域注册表路径（resolved ≠ 工作区默认时工厂自建注册表）；子 Agent 与父同面 |
+| — | **⚠ 批间门：Phase 5 change request（用户唯一出场点）**——S4-1b 开工前必须获得批准（新 session 事件 kind + minimal baseline freeze 两项合一份 CR；`docs/plans/agent-core-convergence/baseline-change-request.md` 流程，record + 人类批准）。绿灯模式下用户默认不参与批内事务——此门是例外，独立暂停点，不与任何批内事务合并 | CR 文档齐备（SESSION_EVENT_KINDS + DataMap + spec AST 白名单 + gate 计数 + 差分矩阵五项变更清单 + minimal freeze 预期产物）；**用户放行记录** |
+| S4-1b | **会话记录 + baseline 冻结（CR 批准后）**：会话构造必发首条 `preset/selected` 事件（SESSION_EVENT_KINDS + DataMap + spec AST + gate 计数 + 差分矩阵——CR 已批的实施）+ 重建 newest-wins；**minimal preset 的 convergence baseline 冻结**（S2 §6 遗留兑现：helpers/presets.ts 登记从 runtime preset 表派生的 minimal 定义 → `CONVERGENCE_PRESET=minimal` record + 独立 freeze commit → `baseline/preset-minimal/phase-N/`——per-preset 收敛协议的首次全流程实测） | 会话重建对拍（首事件 + 后续改选 → 重建用后选）；minimal baseline freeze 走完全流程（record + CR + freeze commit 三步可审计）；不设 CONVERGENCE_PRESET 全绿零漂移 |
 | S4-1.5 | **消费闭环接线**（§2.3）：panels/commands 合流点 + bump 信号 store；tools 行表折算（`plugin/<name>/<id>` 前缀 + factory 缓存）；providers 留现状 | 单测：插件贡献面板/命令在信号后出现在清单；插件工具行折算正确、撞名走装载期拒绝、dispose 清缓存；hello 前身（mock 贡献）三通道机制全绿 |
 | S4-2 | **热重载**：Rust fs watcher → composition:changed 事件 → patch-loader reload() → store 更新；设置面板「组合」只读诊断节 | cargo test（watcher 事件语义）；vitest（loader 重载幂等 + 坏 patch 兜底）；手动验收：改 patch → 新会话即新面、在途会话不变 |
 | S4-3 | **npm 安装通道**：Rust `plugin_install`/`plugin_uninstall`/`plugin_set_enabled`（tar/flate2 依赖 + tar-slip 防护 + 原子落盘 + plugins.json 读改写）+ RPC 契约 + SettingsPanel「插件」tab（列表/禁用/卸载/安装框/警告条） | cargo test（解包安全：绝对路径/…/symlink 拒绝；重名拒绝；原子性；set_enabled 的 JSON 读改写）；vitest（store/UI 组件）；手动验收：tarball URL 装上 hello 的前身 |
 | S4-4 | **机器桥（可选，门控）**：manifest mcpServers 字段 + loader 折算 ToolRow（`plugin/<插件>/mcp/<server>`）+ 进程生命周期挂 fiber disposer | vitest（manifest 校验/行折算/failurePolicy 语义——ProcIO 注入 mock）；手动验收：示例 MCP server（用 engine.exe 自己当靶子——spawn hologram-engine serve mcp 挂进 hello 插件） |
 | S4-5 | **hello 闭环 + 文档全套**：examples/plugins/hello + docs/plugins/README.md + docs/composition/README.md 扩 preset 段 + AGENTS/CLAUDE/CONVENTIONS 纪律回写 + 计划 README 状态 | **「假装是外人」验收**：执行者只读 examples 文档完成装-用-卸三通道；全门禁终跑 |
 
-**批次依赖**：S4-0→S4-1 串行（模型→穿线）；**S4-1.5 是 hello 闭环的硬前提**（四 service 零消费者是复审实证——不接线则 hello 三通道全哑），可在 S4-1 后任何时点插入；S4-2/S4-3 可并行（互不触碰）；S4-4 依赖 S4-3（hello 需要 hello 前身先能装）且**可整体跳过**（可选批——若排程紧张，机器桥降级为未决项，不阻塞 hello 闭环：hello 的三通道不依赖 mcpServers）；S4-5 收尾必须最后（依赖 S4-1.5 + S4-3 全绿）。
+**批次依赖**：S4-0 → S4-1a 串行（模型→穿线）；**S4-1a 与 S4-1b 之间是批间审批门**（Phase 5 CR——唯一需要用户出场的环节，见批表 ⚠ 行；1a 纯加法不等审批先跑，排期不受用户档期影响，1b 持批准开工）；**S4-1.5 是 hello 闭环的硬前提**（四 service 零消费者是复审实证——不接线则 hello 三通道全哑），可在 S4-1a 后任何时点插入；S4-2/S4-3 可并行（互不触碰）；S4-4 依赖 S4-3（hello 需要 hello 前身先能装）且**可整体跳过**（可选批——若排程紧张，机器桥降级为未决项，不阻塞 hello 闭环：hello 的三通道不依赖 mcpServers）；S4-5 收尾必须最后（依赖 S4-1.5 + S4-1b + S4-3 全绿）。
 
-**S4-1 的 change request 时点**：session-log 冻结面变更（新事件 kind）必须在写码前先走 `docs/plans/agent-core-convergence/baseline-change-request.md` 审批——这是批序列里唯一的流程门，设计件不预支批准。
+**Change request 的门位（复审二轮修正）**：初稿把 CR 写成「S4-1 批内流程门」——错。绿灯模式下用户默认不参与批内事务，CR 的审批对象（用户）必须有一个**独立的批间暂停点**，不能是「写码时顺手走」。修正后：S4-1 拆 1a/1b，CR 卡在 1b 前；1a 先行使排期与用户档期解耦。
 
 ## 4. 回滚
 
@@ -186,13 +193,13 @@ S2 延期清单的兑现：**`composition-store` 加「重载」动作**，不�
 - S4-2 watcher 是加法：Rust 事件没人听 = 无操作；revert 无 TS 依赖残留（loader reload 动作保留无害）。
 - S4-3 安装通道独立：不点安装按钮 = 零行为变化；卸载插件目录 = 干净退出（plugins.json disabled 集是用户数据，保留）。
 - S4-4 mcpServers 是 manifest 可选字段：无字段 = 零变化；禁用插件 = 进程停 + 行消失（fiber disposer 链）。
-- **session-log 事件（S4-1）不可静默 revert**：事件已写入真实会话后，回滚需先确认无在途会话依赖——写进 S4-1 批的交付说明。
+- **session-log 事件（S4-1b）不可静默 revert**：事件已写入真实会话后，回滚需先确认无在途会话依赖——写进 S4-1b 批的交付说明。S4-1a（穿线）无此约束，纯加法可独立回滚。
 
 ## 5. 风险表（并入计划 README）
 
 | # | 风险 | 对策 |
 |---|---|---|
-| R12 | session-log 冻结面变更（preset/selected 事件）破会话重建 | Phase 5 change request 先行（批内流程门）；差分矩阵补场景；重建读 resolveSessionPreset 倒序扫描——与 DSH 同构的已验证语义 |
+| R12 | session-log 冻结面变更（preset/selected 事件）破会话重建 | Phase 5 change request 先行（**批间独立暂停点**，S4-1a/1b 之间——二轮复审修正门位）；差分矩阵补场景；重建读 resolveSessionPreset 倒序扫描——与 DSH 同构的已验证语义 |
 | R13 | preset 组合的缓存失效不彻底（用户层 patch 变了 preset 仍持旧引用） | cache 键 = presetId + 用户层内容 hash（2.2）；穿线单测钉「改用户层后新装配用新组合」 |
 | R14 | tar 解包路径逃逸（zip-slip 同构攻击面） | entry 逐条白名单校验（绝对/../symlink 拒绝）+ cargo test 全覆盖 + 原子 rename 落盘 |
 | R15 | 机器桥进程泄漏（插件卸载后 spawn 的 server 不死） | kill 挂 fiber disposer（cordis dispose 链）+ 卸载手动验收含进程清单检查；failurePolicy lazy 只影响装载不豁免清理 |
@@ -203,7 +210,7 @@ S2 延期清单的兑现：**`composition-store` 加「重载」动作**，不�
 ## 6. 未决项（S4 施工中/S5+ 定）
 
 - **插件 prompt-section 贡献通道**：设计候选两枚——(a) 第五个 ctx service（`ctx.systemPrompt`，DSH L2 插件同构，动态 render 全表达力）；(b) 插件目录 sidecar yml（静态段落，数据化零代码）。真实消费者出现时再定（S2 §2.9 同款纪律：先开通道只剩静默 no-op 或假旋钮两种坏结局）。hello 三通道不依赖它。
-- **preset 的 UI 选择面**：新会话屏的 preset chip / 会话头只读标签 / 设置默认值（DSH 四面：General 行 + 新会话 chip + 头标签 + 管理节）——S4-1 只做**装配与记录机制**，UI 三面照 DSH 形态砍到最小（设置面板「组合」节的 preset 默认值 + 新会话携带默认），完整四面留给 V5 壳（那才是 preset 的主消费场景）。
+- **preset 的 UI 选择面**：新会话屏的 preset chip / 会话头只读标签 / 设置默认值（DSH 四面：General 行 + 新会话 chip + 头标签 + 管理节）——S4-1a 只做**装配机制**（记录机制在 1b），UI 三面照 DSH 形态砍到最小（设置面板「组合」节的 preset 默认值 + 新会话携带默认），完整四面留给 V5 壳（那才是 preset 的主消费场景）。
 - **插件版本比较/更新提示**（2.5 延后）：manifest.version 已有，UI 显示之；比较与更新流程属增强。
 - **preset 导出/分享**：DSH authoring 的 copy 语义（preset 复制 = 全目录拷贝，无文本编辑面）——用户直接编辑文件即可，authoring 工具属 V5。
 - **overlay/项目层 patch**（S2 §6 遗留）：层序已定为 factory → 用户层 → preset；overlay 若来，插在用户层与 preset 之间——槽位语义先写进 docs/composition/README.md 层序说明，实现延期。
@@ -219,15 +226,22 @@ S2 延期清单的兑现：**`composition-store` 加「重载」动作**，不�
 2. **会话头不存在**（§2.4 修正注）：初稿照抄 DSH「header 深冻 + selected 事件」——实查 HoloGram SessionLog 仅 events 流无 header。修正 = 首事件方案（session/reset init 时必发首条 `preset/selected`）。
 3. **hello 超规格**（§2.8 修正注）：初稿给 hello 加了「1 prompt section」——计划 README 规格是三通道，且 prompt-section 贡献通道无 service 无消费者（S2 §2.9 纪律）。修正 = 裁掉，通道设计进 §6 未决项。
 
+**二轮复审（用户四处偏差指正，2026-08-20 同日）**：
+
+4. **索引路由量级误估 + 注释契约修订义务**（§2.1 修正）：「约 30 行」低估（参照 plugin_assets.rs 插件索引完整做法为 60-80 行——含 preset 合法性过滤）；且 serve_composition_path 现有 doc 注释明文「本通道只服务固定文件名（roster.patch.yml）」与设计冲突——S4-0 批补注释修订项，否则代码里留一句过期谎言（违反规则与代码同步铁律）。
+5. **change request 门位错置**（§3 修正）：初稿写「批内流程门」——CR 是唯一需要用户出场的环节，必须是独立批间暂停点。修正 = S4-1 拆 1a（穿线纯加法，先跑）/ 1b（事件 + freeze，持 CR 批准开工），排期与用户档期解耦。
+6. **「组合层静默」表述过强**（排程依据修正）：S4 后仍有显式未决项（prompt-section 通道 / preset UI 选择面 / 可能裁剪的机器桥）——「静默」改口径为「无计划内施工，未决项显式归档且不在前端期间动」。
+7. **SettingsPanel Tab union 未点名**（§2.6 修正）：加 tab 是改封闭 union（SettingsPanel.tsx:23 `type Tab = 'provider' | 'agent' | 'display' | 'languages' | 'about'`）+ sp-tabs 渲染两处——施工单补文件级精度。
+
 ### 7.2 复审要点自查（给后续复审者的阅读地图）
 
-1. §2.1 preset 模型对 S2 引擎的复用是否完整（应零新解析语义）；
-2. §2.4 动 session-log 冻结面的流程门是否足够（change request 先行）；
+1. §2.1 preset 模型对 S2 引擎的复用是否完整（应零新解析语义）；索引路由量级与注释契约修订义务是否进批（§2.1 代价两项）；
+2. §2.4 动 session-log 冻结面的流程门是否足够——CR 是否确为**批间独立暂停点**（S4-1a/1b 之间），不是批内事务；
 3. §3 批次依赖与可选批（S4-4）的裁剪边界是否自洽；S4-1.5 的插入位置是否正确（hello 硬前提）；
-4. §2.6 供应链立场是否与 v1 拍板一致（完全信任 + 如实警告，不加固）；
-5. 与 V5 排程的咬合：S4 终态是否恰为「纸壳 preset 可双装配」的地基（§1 G5）；
+4. §2.6 供应链立场是否与 v1 拍板一致（完全信任 + 如实警告，不加固）；Tab union 修改点是否已到文件级精度；
+5. 与 V5 排程的咬合：S4 终态是否恰为「纸壳 preset 可双装配」的地基（§1 G5）；「前端期间静默」口径是否为「无计划内施工 + 未决项归档」而非零改动承诺；
 6. §2.2 复审补充的装配粒度语义（工作区共享注册表 vs 会话作用域覆盖参数）是否与 workspace.ts 实现现实一致。
 
 ### 7.3 交接
 
-本设计件复审通过后交新窗口执行者落地（S4-0 即可开工——纯函数批风险最低）。执行者注意：§7.1 的三处修正均为设计期实证，落地的第一动作是复核 G0 结论仍成立（grep 四 service 消费者——若 S3 名义域已动则批次表需重排）。
+本设计件经两轮复审（§7.1 一轮：三处实证修正；§7.1 末二轮：用户四处偏差指正全采纳）。交新窗口执行者落地（S4-0 即可开工——纯函数批风险最低；S4-1a 不等审批先跑；**S4-1b 前停下等用户批准 Phase 5 CR——这是整个 S4 唯一的用户出场点**）。执行者注意：落地的第一动作是复核 G0 结论仍成立（grep 四 service 消费者——若 S3 名义域已动则批次表需重排）；第二动作是复核 §7.1-4 的注释契约修订项未被顺手跳过（plugin_assets.rs:204 的「只服务固定文件名」在 S4-0 必须同步改写）。
