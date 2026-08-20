@@ -12,8 +12,8 @@
 //
 // UI 回调通过 BuilderDeps 注入，不直接 import ui/ 模块。
 
-import { assembleSystemPrompt } from '../../composition/prompt-sections';
-import { builtinToolRows, type ToolRowContext } from '../../composition/tool-rows';
+import { assembleSystemPrompt, type PromptSection } from '../../composition/prompt-sections';
+import { type BuiltinToolRow, builtinToolRows, type ToolRowContext } from '../../composition/tool-rows';
 import { typedRpc } from '../../rpc-contract';
 import type { Agent } from '../agent';
 import { createCompactionTools } from '../compaction-model';
@@ -106,16 +106,20 @@ export function buildSystemPrompt(
   claudeMdSection = '',
   providerName?: string,
   shellEnvSection = '',
+  sections?: PromptSection[],
 ): string {
-  return assembleSystemPrompt({
-    graphData,
-    projectPath,
-    memorySection,
-    graphSnapshot,
-    claudeMdSection,
-    providerName,
-    shellEnvSection,
-  });
+  return assembleSystemPrompt(
+    {
+      graphData,
+      projectPath,
+      memorySection,
+      graphSnapshot,
+      claudeMdSection,
+      providerName,
+      shellEnvSection,
+    },
+    sections,
+  );
 }
 
 // ── Tool registry builder ──
@@ -131,6 +135,9 @@ export interface ToolRegistryOptions {
   subAgentSpawner?: SubAgentSpawner;
   /** 外部 MCP server client 列表 — 其工具以 mcp__<server>__<name> 注册进 registry */
   mcpClients?: McpClient[];
+  /** 工具行表（S2-1 组合外化穿线）——roster 解析产物（composition-store）。
+   *  缺省 = builtinToolRows() 出厂表（现行行为，零漂移保证）。 */
+  toolRows?: BuiltinToolRow[];
 }
 
 import type { SubAgentPool } from '../coordinator';
@@ -149,6 +156,7 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
     subAgentPool,
     subAgentSpawner,
     mcpClients,
+    toolRows,
   } = opts;
   const registry = new ToolRegistry();
 
@@ -230,6 +238,7 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
   // skill/memory/task/agent/browser-desktop/wait）的工厂与组合序都在行表
   // ——表序 = 组合序（前缀缓存语义的根基）。行内工具名冲突由
   // ToolRegistry.register 装载期拒绝（duplicate throw）。
+  // S2-1：行表可注入（roster 组合解析产物）；缺省 = 出厂表（零漂移）。
   const rowCtx: ToolRowContext = {
     graphData,
     codingExec,
@@ -241,7 +250,7 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
     subAgentPool,
     subAgentSpawner,
   };
-  for (const row of builtinToolRows()) {
+  for (const row of toolRows ?? builtinToolRows()) {
     for (const tool of await row.factory(rowCtx)) registry.register(tool);
   }
 

@@ -282,10 +282,12 @@ export function builtinPromptSections(): PromptSection[] {
   ];
 }
 
-/** 按表序拼装系统提示词（applicable=false 的段跳过，其余纯 concat）。 */
-export function assembleSystemPrompt(ctx: PromptSectionContext): string {
+/** 按表序拼装系统提示词（applicable=false 的段跳过，其余纯 concat）。
+ *  S2-1 起 sections 可选注入（roster 解析产物——composition-store 穿线）；
+ *  缺省 = builtinPromptSections() 出厂表（现行行为，零漂移保证）。 */
+export function assembleSystemPrompt(ctx: PromptSectionContext, sections?: PromptSection[]): string {
   let out = '';
-  for (const section of builtinPromptSections()) {
+  for (const section of sections ?? builtinPromptSections()) {
     if (section.applicable && !section.applicable(ctx)) continue;
     out += section.render(ctx);
   }

@@ -12,6 +12,7 @@
 //
 // UI 层通过 setNotifier() 注入通知器，Runtime 通过它路由事件。
 
+import { factoryComposition, type ResolvedComposition } from '../../composition/roster';
 import type { Context } from '../../cordis';
 import type { StoredThinking } from '../../provider/thinking';
 import type { Message, Provider } from '../../provider/types';
@@ -182,12 +183,17 @@ export class AgentRuntime implements RuntimePort {
   private _agentTaskManagers = new Map<string, TaskManager>();
   /** cordis 挂载父 ctx（cordis-migration P2）— AgentContext 身份 fiber 的挂载点。 */
   private _cordisParent?: Context;
+  /** 组合解析产物（S2-1 组合外化）— capability 表（蓝图默认来源）与
+   *  prompt 段表的运行时真源。缺省 = 出厂组合（factoryComposition，
+   *  现行装配，零漂移）；workspace 接线传 composition-store 的 resolved。 */
+  private _composition: ResolvedComposition;
 
-  constructor(projectPath?: string, cordisParent?: Context) {
+  constructor(projectPath?: string, cordisParent?: Context, composition?: ResolvedComposition) {
     this._projectPath = projectPath ?? '';
     // cordis-migration P2：Agent fiber 的挂载父（workspace 接线传工作区 fiber ctx）。
     // 缺省（单测/无内核）→ AgentContext 不建 fiber，行为零变化。
     this._cordisParent = cordisParent;
+    this._composition = composition ?? factoryComposition();
     if (projectPath) {
       const store = new JsonMessageStore(projectPath);
       this._bus = new MessageBus(undefined, store);
@@ -558,13 +564,17 @@ export class AgentRuntime implements RuntimePort {
   /** 装配本体 — 只消费 AgentContext + AgentAssemblyInputs + AgentBlueprint（config-free）。
    *  Phase 6：工具/hook/接线由 blueprint capability 表驱动（表序 = 注册序，
    *  与 Phase 5 前的手写注册序一一对应；phase-1 effective 快照钉字节）。
+   *  S2-1：缺省蓝图改由组合解析产物派生（fromRoster(this._composition.
+   *  capabilities)——不传 composition 时 ≡ standard()，零漂移）；显式
+   *  blueprint 参数仍最高优先（createAgentFromContext 的扩展面）。
    *  runtime 保留三块生命周期所有权：board-unregister / lifecycle-manager /
    *  runtime-maps 的 ctx.effect（Phase 4 语义，specs/phase-4 T0 钉住 ≥3 处）。 */
   private async _assembleAgent(
     ctx: AgentContext,
     inputs: AgentAssemblyInputs,
-    blueprint: AgentBlueprint = AgentBlueprint.standard(),
+    blueprint?: AgentBlueprint,
   ): Promise<AgentHandle> {
+    const effectiveBlueprint = blueprint ?? AgentBlueprint.fromRoster(this._composition.capabilities);
     this._materializeSessionServices(ctx);
     const agentId = ctx.agentId;
     const taskProxy = ctx.resolve('taskBoard');
@@ -622,6 +632,7 @@ export class AgentRuntime implements RuntimePort {
         claudeMd,
         ctx.resolve('provider').name(),
         shellEnvSection,
+        this._composition.prompt,
       );
     }
 
@@ -659,7 +670,7 @@ export class AgentRuntime implements RuntimePort {
         },
       },
     };
-    for (const cap of blueprint.capabilities('context')) {
+    for (const cap of effectiveBlueprint.capabilities('context')) {
       if (cap.when?.(scope) ?? true) cap.install(scope);
     }
 
@@ -678,7 +689,7 @@ export class AgentRuntime implements RuntimePort {
     // 5. agent 阶段 capability — 注册序 = 表序（通信/discovery/merge/request/
     //    spawn/task/compaction/converge + hooks + plan 接线 + pre-run + 自动调优）。
     const agentScope: BlueprintScope = { ...scope, agent: newAgent };
-    for (const cap of blueprint.capabilities('agent')) {
+    for (const cap of effectiveBlueprint.capabilities('agent')) {
       if (cap.when?.(agentScope) ?? true) cap.install(agentScope);
     }
     // hooks 统一接线 — capability 只往共享 registries 注册（setHooks 是整体替换语义）

@@ -131,11 +131,17 @@ describe('phase-6 T0 结构门禁 — 组合面收敛到 blueprint capability �
     expect(hits, `_assembleAgent 残留组合面直调：${hits.join(' | ')}——装配声明落在 blueprint.ts`).toEqual([]);
   });
 
-  it('缺省装配 = AgentBlueprint.standard()，两阶段表驱动', () => {
+  it('缺省装配 = 组合产物派生蓝图（S2-1 真源），两阶段表驱动', () => {
+    // S2-1 组合外化（设计件 §2.5，用户已批准）：缺省蓝图从手写 standard()
+    // 直连改为 AgentBlueprint.fromRoster(this._composition.capabilities)
+    // ——不穿 composition 时 ≡ standard()（fromRoster(factory) 即快捷方式），
+    // 行为等价由本套件其余快照测试守护（effective 零漂移）。
     const src = methodSource('AgentRuntime', '_assembleAgent');
-    expect(src, '缺省蓝图必须是 AgentBlueprint.standard()').toContain('AgentBlueprint.standard()');
-    expect(src, '装配必须按 capability 表驱动（context 阶段）').toContain("blueprint.capabilities('context')");
-    expect(src, '装配必须按 capability 表驱动（agent 阶段）').toContain("blueprint.capabilities('agent')");
+    expect(src, '缺省蓝图必须由组合产物派生（roster 真源）').toContain(
+      'AgentBlueprint.fromRoster(this._composition.capabilities)',
+    );
+    expect(src, '装配必须按 capability 表驱动（context 阶段）').toContain("effectiveBlueprint.capabilities('context')");
+    expect(src, '装配必须按 capability 表驱动（agent 阶段）').toContain("effectiveBlueprint.capabilities('agent')");
   });
 });
 

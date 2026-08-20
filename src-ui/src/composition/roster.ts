@@ -149,13 +149,15 @@ export class CompositionPatchError extends Error {
   }
 }
 
-/** 出厂组合派生器 — 每次聚合三张表（表对象是模块级常量，聚合廉价）。 */
-export function factoryComposition(): FactoryComposition {
+/** 出厂组合 — 恒等解析产物（零增量 + 空诊断）。既作 resolveRoster 的
+ *  FactoryComposition 入参，也作穿线的 ResolvedComposition 缺省值。 */
+export function factoryComposition(): ResolvedComposition {
   return {
     tools: builtinToolRows(),
     prompt: builtinPromptSections(),
     capabilities: builtinCapabilities(),
     shell: builtinShellRows(),
+    diagnostics: { disabled: [], overridden: [], inserted: [] },
   };
 }
 

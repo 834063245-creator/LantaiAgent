@@ -159,6 +159,14 @@ export class AgentBlueprint {
   static standard(): AgentBlueprint {
     return new AgentBlueprint(builtinCapabilities());
   }
+
+  /** 从 roster 行列表构造蓝图（S2-1 组合外化的装配入口）。
+   *  表序 = 行序（roster 解析产物保序）；standard() 即
+   *  fromRoster(builtinCapabilities()) 的快捷方式——Phase 6 铁律
+   *  「换真源不改语义」：表序契约与每次全新实例语义在此保持。 */
+  static fromRoster(capabilities: AgentCapability[]): AgentBlueprint {
+    return new AgentBlueprint([...capabilities]);
+  }
 }
 
 /** 内置 capability 表 — 表序 = 装配序 = standard preset 的事实来源。

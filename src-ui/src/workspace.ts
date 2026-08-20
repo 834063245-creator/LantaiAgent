@@ -52,6 +52,7 @@ import type { StarGraph } from './scene/graph';
 import type { CommunityData, GraphDiffJson, GraphEdge, GraphJSON, GraphNode } from './scene/graph-types';
 import { type AppSettings, defaultPricing, getActiveProvider, loadSettingsWithSecrets } from './settings';
 import type { AgentConfigChangeReason } from './state/agent-config-store';
+import { useCompositionStore } from './state/composition-store';
 import type { CheckResult } from './state/dock-store';
 import { useDockStore } from './state/dock-store';
 import { broadcastGoalRecord } from './state/goal-store';
@@ -800,7 +801,10 @@ export class Workspace {
     teardown.add(() => resetAgentCaches(), 'reset-agent-caches');
     // cordis-migration P2：runtime 挂在工作区 fiber 下 — 每个 Agent 在 cordis 树上
     // 获得身份 fiber（hologram/agent），生命周期随 AgentContext.dispose 摘除。
-    const runtime = new AgentRuntime(this.path, this._fiber.ctx);
+    // S2-1 组合外化：composition-store 的 resolved 穿进 runtime（capability
+    // 表 + prompt 段表的运行时真源；store 缺省 = 出厂组合 = 现行装配）。
+    const composition = useCompositionStore.getState().resolved;
+    const runtime = new AgentRuntime(this.path, this._fiber.ctx, composition);
     const adapter = createRuntimeAdapter(this._storeId);
     runtime.setNotifier(adapter);
     runtime.setDiagnosticsSource(getDiagnosticsForFile);
@@ -889,6 +893,8 @@ export class Workspace {
       subAgentSpawner: async (desc, prompt, prog, mode, al, sig, asyncMode, agentIdOverride, outputSchema) =>
         agentRef.current?.spawnSubAgent(desc, prompt, prog, mode, al, sig, asyncMode, agentIdOverride, outputSchema) ??
         Promise.resolve({ text: '', err: 'agent not available' }),
+      // S2-1 组合外化：工具行表穿线（roster 解析产物；缺省 = 出厂表 = 零漂移）
+      toolRows: composition.tools,
     });
     this.registry = registry;
 
