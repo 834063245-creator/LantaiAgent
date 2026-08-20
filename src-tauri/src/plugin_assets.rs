@@ -8,6 +8,10 @@
 //   GET /plugins/                → 插件目录索引（JSON 数组：含 manifest.json 的子目录）
 //   GET /plugins/<id>/<相对路径>  → ~/.hologram/plugins/<id>/<相对路径> 静态文件
 //   GET /plugins/plugins.json    → 启用态持久化文件（根目录下的普通文件，同一解析路径）
+//   GET /composition/<固定文件名>  → ~/.hologram/composition/<固定文件名>（用户层 patch）
+//   GET /composition/presets/    → preset 目录索引（JSON 数组：含 roster.patch.yml 的
+//                                  presets/ 子目录，S4-0）
+//   GET /composition/presets/<id>/<文件名> → preset 文件（组合本体 + 元数据）
 //
 // 安全三件套（composition-architecture 计划风险表 R5）：
 //   - 路径遍历拒绝：percent 解码后逐段校验（空/./.. 拒绝，含 %2e%2e 编码形态）
@@ -201,11 +205,21 @@ pub(crate) fn method_not_allowed() -> Response<BoxBody> {
 
 /// 组合 patch 路由主入口（S2-2，GET /composition/<path>）。
 /// 与插件通道同一套安全件（resolve_asset 遍历拒绝 + canonicalize 前缀 +
-/// 32MB 上限 + 错误 JSON 形状）；无目录索引——本通道只服务固定文件名
-/// （roster.patch.yml），空路径直接 404。文件 IO 走 spawn_blocking。
+/// 32MB 上限 + 错误 JSON 形状）。通道语义（S4-0 扩充）：
+///   - 根级固定文件：roster.patch.yml 等用户层 patch 文件；
+///   - presets/ 路径：preset 文件（presets/<id>/roster.patch.yml 等）与
+///     preset 目录索引（GET /composition/presets/ → JSON 数组，S4-0）。
+/// 根级空路径 404（根级无索引）；presets/ 空 = 索引入口。
+/// 文件 IO 走 spawn_blocking。
 pub(crate) async fn serve_composition_path(url_path: &str) -> Response<BoxBody> {
     if url_path.is_empty() {
         return json_error(StatusCode::NOT_FOUND, "not_found", "组合 patch 路径为空");
+    }
+    // preset 索引入口（GET /composition/presets/ → 目录索引）。
+    // 注意：此处收到的 url_path 已剥去前导 "/composition/"——索引请求
+    // 的完整路径是 "/composition/presets/"，剥前缀后剩 "presets/"。
+    if url_path == "presets/" || url_path == "presets" {
+        return serve_preset_index().await;
     }
     let root = composition_root();
     match resolve_asset(&root, url_path) {
@@ -279,6 +293,51 @@ fn list_plugin_dirs(root: &Path) -> Vec<String> {
             continue;
         }
         if !entry.path().join("manifest.json").is_file() {
+            continue;
+        }
+        let Ok(rel) = entry.path().strip_prefix(root) else { continue };
+        out.push(rel.to_string_lossy().replace('\\', "/"));
+    }
+    out.sort();
+    out
+}
+
+/// preset 目录索引（S4-0）：composition 根下 presets/ 内含 roster.patch.yml
+/// 的子目录 id 列表（JSON 数组，排序稳定）。镜像插件索引完整做法
+/// （serve_index + 纯函数 + spawn_blocking + 错误 JSON 分支）——preset
+/// 合法性过滤（含 roster.patch.yml 才入列）与插件「含 manifest.json 才入列」
+/// 同款纪律。preset 子目录只取一层（id 是单段，PRESET_ID 围栏在 TS 侧把关）。
+async fn serve_preset_index() -> Response<BoxBody> {
+    let root = composition_root().join("presets");
+    let listed = tokio::task::spawn_blocking(move || list_preset_dirs(&root)).await;
+    match listed {
+        Ok(dirs) => {
+            let body = serde_json::to_string(&dirs).unwrap_or_else(|e| {
+                eprintln!("[plugin_assets] preset 索引序列化失败: {e}");
+                "[]".to_string()
+            });
+            asset_response(StatusCode::OK, "application/json", Bytes::from(body))
+        }
+        Err(join_err) => {
+            eprintln!("[plugin_assets] preset 索引扫描任务失败: {join_err}");
+            json_error(StatusCode::INTERNAL_SERVER_ERROR, "internal", "preset 索引扫描失败")
+        }
+    }
+}
+
+/// 纯函数：列出 presets/ 根下含 roster.patch.yml 的一层子目录名。
+/// 目录不存在 = 空列表（无用户 preset 是常态，非错误）。
+fn list_preset_dirs(root: &Path) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    if !root.is_dir() {
+        return out;
+    }
+    for entry in walkdir::WalkDir::new(root).max_depth(1).min_depth(1) {
+        let Ok(entry) = entry else { continue };
+        if !entry.file_type().is_dir() {
+            continue;
+        }
+        if !entry.path().join("roster.patch.yml").is_file() {
             continue;
         }
         let Ok(rel) = entry.path().strip_prefix(root) else { continue };
@@ -507,6 +566,33 @@ mod tests {
         let _ = std::fs::remove_dir_all(root.parent().unwrap());
     }
 
+    // ── S4-0 preset 索引路由 ──
+    // 注意：HTTP 端到端用例并入 composition_http_end_to_end（env 变量
+    // HOLOGRAM_COMPOSITION_ROOT 只允许一个测试设置——并行测试会互相
+    // clobber；此处只留纯函数测试）。
+
+    /// S4-0 纯函数：preset 索引只列含 roster.patch.yml 的一层子目录；排序稳定；
+    /// 无 roster.patch.yml 的目录（杂物）不出现；深层目录不出现。
+    #[test]
+    fn preset_index_lists_roster_dirs_only() {
+        let root = make_composition_root("preset-index");
+        // 杂物目录（无 roster.patch.yml）不入列
+        std::fs::create_dir_all(root.join("presets").join("junk")).unwrap();
+        let dirs = list_preset_dirs(&root.join("presets"));
+        assert_eq!(dirs, vec!["focus".to_string(), "paper".to_string()]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// S4-0 纯函数：presets/ 目录不存在 = 空列表（无用户 preset 是常态）。
+    #[test]
+    fn preset_index_empty_when_no_dir() {
+        let tmp = std::env::temp_dir().join(format!("hologram_preset_empty_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        assert!(list_preset_dirs(&tmp).is_empty());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     // ── S2-2 组合 patch 通道 ──
 
     fn make_composition_root(tag: &str) -> std::path::PathBuf {
@@ -515,6 +601,22 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         std::fs::write(tmp.join("roster.patch.yml"), b"tools:\n  - id: builtin/shell\n    disabled: true\n").unwrap();
+        // S4-0：preset 子目录（paper 含本体+元数据；focus 只含本体；
+        // junk 无本体不入索引）
+        std::fs::create_dir_all(tmp.join("presets").join("paper")).unwrap();
+        std::fs::create_dir_all(tmp.join("presets").join("focus")).unwrap();
+        std::fs::create_dir_all(tmp.join("presets").join("junk")).unwrap();
+        std::fs::write(
+            tmp.join("presets").join("paper").join("roster.patch.yml"),
+            b"tools:\n  - id: builtin/web\n    disabled: true\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.join("presets").join("paper").join("preset.yml"), b"name: paper\n").unwrap();
+        std::fs::write(
+            tmp.join("presets").join("focus").join("roster.patch.yml"),
+            b"capabilities:\n  - id: auto-tune\n    disabled: true\n",
+        )
+        .unwrap();
         tmp
     }
 
@@ -567,6 +669,17 @@ mod tests {
                 ("/composition/missing.yml", 404, "application/json"),
                 ("/composition/%2e%2e/escape.yml", 403, "application/json"),
                 ("/composition/", 404, "application/json"),
+                // S4-0 preset 域：索引（JSON 数组，含 paper/focus 不含 junk）
+                ("/composition/presets/", 200, "application/json"),
+                // 无尾斜杠同义（剥前缀后剩 "presets"）
+                ("/composition/presets", 200, "application/json"),
+                // 逐 preset 文件取用
+                ("/composition/presets/paper/roster.patch.yml", 200, "text/plain; charset=utf-8"),
+                ("/composition/presets/paper/preset.yml", 200, "text/plain; charset=utf-8"),
+                // 未知 preset 文件 404
+                ("/composition/presets/ghost/roster.patch.yml", 404, "application/json"),
+                // 遍历拒绝（preset 路径攻击面——resolve_asset 逐段校验兜住）
+                ("/composition/presets/%2e%2e/roster.patch.yml", 403, "application/json"),
             ];
             for (path, want_status, want_mime) in cases {
                 let mut probe = std::net::TcpStream::connect(addr).unwrap();
@@ -599,6 +712,17 @@ mod tests {
             let mut buf = String::new();
             probe.read_to_string(&mut buf).unwrap();
             assert!(buf.starts_with("HTTP/1.1 405"), "POST 组合路径应 405: {buf}");
+
+            // S4-0：preset 索引内容断言——只列含 roster.patch.yml 的目录
+            let mut probe = std::net::TcpStream::connect(addr).unwrap();
+            probe.set_read_timeout(Some(std::time::Duration::from_secs(8))).unwrap();
+            probe.write_all(get("/composition/presets/").as_bytes()).unwrap();
+            probe.flush().unwrap();
+            let mut buf = String::new();
+            probe.read_to_string(&mut buf).unwrap();
+            assert!(buf.contains("focus"), "preset 索引应含 focus: {buf}");
+            assert!(buf.contains("paper"), "preset 索引应含 paper: {buf}");
+            assert!(!buf.contains("junk"), "preset 索引不应含 junk: {buf}");
 
             server_handle.abort();
         });

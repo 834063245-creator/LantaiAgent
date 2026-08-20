@@ -201,8 +201,9 @@ async fn handle_inner(client: reqwest::Client, req: Request<Incoming>) -> Respon
         }
         return crate::plugin_assets::method_not_allowed();
     }
-    // 组合 patch 通道（S2-2）：GET /composition/* 服务 ~/.hologram/composition/
-    // 下的用户层 roster.patch.yml——安全三件套与插件通道同一套（resolve_asset
+    // 组合 patch 通道（S2-2 + S4-0 preset 域扩展）：GET /composition/* 服务
+    // ~/.hologram/composition/ 下的用户层 roster.patch.yml、presets/ 目录
+    // 索引与 preset 文件——安全三件套与插件通道同一套（resolve_asset
     // 逐段拒绝 + canonicalize 前缀 + 仅 GET + loopback 绑定天然保证）。
     if let Some(path) = req.uri().path().strip_prefix("/composition/") {
         if req.method() == Method::GET {
