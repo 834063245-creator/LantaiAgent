@@ -838,6 +838,11 @@ export function mockInvoke(cmd: string, args?: Record<string, unknown>): string 
         inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
       },
       {
+        name: 'semantic_search',
+        description: 'Semantic symbol search over the vector index',
+        inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+      },
+      {
         name: 'get_neighbors',
         description: 'Get direct neighbors of a node',
         inputSchema: { type: 'object', properties: { nodeId: { type: 'string' } }, required: ['nodeId'] },
@@ -862,11 +867,6 @@ export function mockInvoke(cmd: string, args?: Record<string, unknown>): string 
         inputSchema: { type: 'object', properties: { nodeId: { type: 'string' } }, required: ['nodeId'] },
       },
       {
-        name: 'symbol_history',
-        description: 'Decision history for a node',
-        inputSchema: { type: 'object', properties: { nodeId: { type: 'string' } }, required: ['nodeId'] },
-      },
-      {
         name: 'get_community',
         description: 'Community info for a node',
         inputSchema: { type: 'object', properties: { nodeId: { type: 'string' } }, required: ['nodeId'] },
@@ -874,6 +874,11 @@ export function mockInvoke(cmd: string, args?: Record<string, unknown>): string 
       {
         name: 'cluster_report',
         description: 'Community structure report',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+      },
+      {
+        name: 'grpc_services',
+        description: 'gRPC service map from .proto files',
         inputSchema: { type: 'object', properties: {}, required: [] },
       },
       {
@@ -927,6 +932,11 @@ export function mockInvoke(cmd: string, args?: Record<string, unknown>): string 
         inputSchema: { type: 'object', properties: { beforePath: { type: 'string' } }, required: ['beforePath'] },
       },
       {
+        name: 'import_scip',
+        description: 'Import SCIP index for precise references',
+        inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+      },
+      {
         name: 'preflight_check',
         description: 'Change-impact rehearsal',
         inputSchema: { type: 'object', properties: { path: { type: 'array' } }, required: ['path'] },
@@ -969,6 +979,21 @@ export function mockInvoke(cmd: string, args?: Record<string, unknown>): string 
         name: 'trace_dataflow',
         description: 'Per-function variable tracing',
         inputSchema: { type: 'object', properties: { files: { type: 'array' } }, required: ['files'] },
+      },
+      {
+        name: 'list_flows',
+        description: 'List execution flows by criticality',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+      },
+      {
+        name: 'get_flow',
+        description: 'Full call path of one flow',
+        inputSchema: { type: 'object', properties: {}, required: [] },
+      },
+      {
+        name: 'get_affected_flows',
+        description: 'Flows impacted by changed files',
+        inputSchema: { type: 'object', properties: { files: { type: 'array' } }, required: [] },
       },
       {
         name: 'resolve_call',

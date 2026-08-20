@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { StreamingToolExecutor } from '../src/agent/streaming-executor';
 import { ToolRegistry } from '../src/agent/tool';
 import { createStableSchemaSelector, selectToolSchemas, userContext } from '../src/agent/tool-select';
-import { StreamingToolExecutor } from '../src/agent/streaming-executor';
 import { defineTool } from '../src/agent/tools/define-tool';
 import {
   collectHiddenToolNames,
   convergeRegistry,
   DOMAIN_SPECS,
   normalizeArgs,
-  retireRedirect,
   resolveGuardToolName,
+  retireRedirect,
 } from '../src/agent/tools/domains';
 
 function fakeTool(name: string, description: string, readOnly = false, schema = z.object({})) {
@@ -202,6 +202,10 @@ describe('retireRedirect 旧名淘汰重定向', () => {
     expect(retireRedirect('agent_message')).toBe('agent(message)');
     expect(retireRedirect('task_create')).toBe('task(create)');
     expect(retireRedirect('hologram_memory_save')).toBe('memory(save)');
+    expect(retireRedirect('dataflow_save')).toBe('graph(dataflow_save)');
+    expect(retireRedirect('dataflow_query')).toBe('graph(dataflow_query)');
+    expect(retireRedirect('write_constraints')).toBe('fs(write_constraints)');
+    expect(retireRedirect('semantic_search')).toBe('graph(semantic)');
   });
 
   it('read_file 别名经链解析到 fs(read)', () => {

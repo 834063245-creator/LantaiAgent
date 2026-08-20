@@ -166,6 +166,7 @@ describe('P3 reverse: 新加 coding 工具没加 hook 常量 → 炸', () => {
     'move_file', // 已有 preflight
     'create_directory', // 目录操作，无符号
     'read_constraints', // 配置文件
+    'write_constraints', // 配置文件写（YAML，无源码符号可富化；原子写在 Rust 侧）
     'bash_output', // 后台输出查询
     'bash_kill', // 后台管理
     'bash_wait', // 后台任务等待 — 只读，不碰文件
@@ -241,6 +242,7 @@ describe('P4: invoke pathway — 每个工具名都有对应 Tauri command', () 
     'edit_file',
     'list_directory',
     'read_constraints',
+    'write_constraints',
     'search_content',
     'glob',
     'run_shell',

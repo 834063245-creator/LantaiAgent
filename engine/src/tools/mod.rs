@@ -35,16 +35,22 @@ pub struct ParamDef {
     pub name: &'static str,
     pub ptype: &'static str,
     pub description: &'static str,
+    /// 枚举约束（可选）：非空时 inputSchema 附带 enum，把合法值从 description
+    /// 文本约定升级为机器可校验约束 —— 降低 LLM 猜错参数值的概率。
+    pub enum_values: &'static [&'static str],
 }
 
 impl ToolSchema {
     fn mcp_value(&self) -> Value {
         let mut properties = serde_json::Map::new();
         for p in self.params {
-            properties.insert(p.name.to_string(), json!({
-                "type": p.ptype,
-                "description": p.description,
-            }));
+            let mut prop = serde_json::Map::new();
+            prop.insert("type".to_string(), json!(p.ptype));
+            prop.insert("description".to_string(), json!(p.description));
+            if !p.enum_values.is_empty() {
+                prop.insert("enum".to_string(), json!(p.enum_values));
+            }
+            properties.insert(p.name.to_string(), Value::Object(prop));
         }
         let required: Vec<Value> = self.required.iter().map(|r| json!(r)).collect();
         json!({
@@ -77,6 +83,7 @@ impl ToolRegistry {
     const DEFAULT_MCP_TOOLS: &[&str] = &[
         "explore_deps",
         "search_symbols",
+        "semantic_search",
         "get_neighbors",
         "trace_impact",
         "find_dep_path",
@@ -154,6 +161,7 @@ impl ToolRegistry {
             "grpc_services" => handlers::handler_grpc_services(args),
             "preflight_check" => handlers::handler_preflight(args),
             "search_symbols" => handlers::handler_search(args),
+            "semantic_search" => handlers::handler_semantic_search(args),
             "explore_deps" => handlers::handler_explore(args),
             "graph_summary" => handlers::handler_graph_summary(args),
             "cluster_report" => handlers::handler_clusters(args),
@@ -193,7 +201,8 @@ impl ToolRegistry {
 fn suggestions_for(name: &str) -> &'static [&'static str] {
     match name {
         // ── 图导航 ──
-        "search_symbols" => &["get_neighbors", "inspect_symbol", "trace_impact"],
+        "search_symbols" => &["semantic_search", "get_neighbors", "inspect_symbol"],
+        "semantic_search" => &["search_symbols", "inspect_symbol", "get_neighbors"],
         "get_neighbors" => &["trace_impact", "find_dep_path", "inspect_symbol"],
         "trace_impact" => &["find_dep_path", "preflight_check", "coupling_report"],
         "find_dep_path" => &["trace_impact", "inspect_symbol", "get_neighbors"],
@@ -431,6 +440,19 @@ macro_rules! p {
             name: $name,
             ptype: $type,
             description: $desc,
+            enum_values: &[],
+        }
+    };
+}
+
+/// 带枚举约束的参数定义：合法值进 inputSchema.enum（如 detect_cycles 的 mode）。
+macro_rules! p_enum {
+    ($name:expr, $type:expr, $desc:expr, [$($v:expr),+ $(,)?]) => {
+        ParamDef {
+            name: $name,
+            ptype: $type,
+            description: $desc,
+            enum_values: &[$($v),+],
         }
     };
 }
@@ -450,6 +472,17 @@ fn all_schemas() -> &'static [ToolSchema] {
             name: "search_symbols",
             description: "Find symbols by name. Fuzzy search — type a partial name, get back matching nodes with IDs, types, locations. Your FIRST step when you know the function/class name but not its node ID. \"找一下 auth 相关的模块\" → this. After finding the ID, follow up with get_neighbors or inspect_symbol.",
             params: &[p!("query", "string", "Partial name or ID to search for"), p!("limit", "integer", "Max results (default 20)")],
+            required: &["query"],
+            read_only: true,
+            category: "graph",
+        },
+        ToolSchema {
+            name: "semantic_search",
+            description: "Semantic symbol search over the vector index (embeddings of source snippets). Finds symbols by MEANING when you don't know the exact name — 'where is memory freed' surfaces lifecycle functions even if named releaseTeardown. Returns full node info + similarity score. Complements search_symbols (exact/fuzzy name matching). Index is built during analyze and rebuilt on incremental updates; check engine_status (vector_index) for availability.",
+            params: &[
+                p!("query", "string", "Natural-language or code phrase describing WHAT you're looking for (not its name), e.g. 'memory lifecycle management'"),
+                p!("limit", "integer", "Max results (default 10, max 50)"),
+            ],
             required: &["query"],
             read_only: true,
             category: "graph",
@@ -532,7 +565,7 @@ fn all_schemas() -> &'static [ToolSchema] {
         ToolSchema {
             name: "detect_cycles",
             description: "Find all circular dependencies in the graph. Each cycle has a `category`: pure_code (normal coupling, harmless), data_persistent (involves storage/IO), or llm_involved (AI feedback loops). Use mode: all, data, or llm. Ignore pure_code cycles — they are natural mutual dependencies, not bugs. \"有没有循环依赖？\" → call this. Use before large refactors to understand what can't be untangled easily.",
-            params: &[p!("mode", "string", "Filter: all, data, or llm (default all)")],
+            params: &[p_enum!("mode", "string", "Filter: all, data, or llm (default all)", ["all", "data", "llm"])],
             required: &[],
             read_only: true,
             category: "analysis",
@@ -556,7 +589,7 @@ fn all_schemas() -> &'static [ToolSchema] {
         ToolSchema {
             name: "arch_blindspots",
             description: "Architecture blind-spot radar. Detects L4 encapsulation violations, unlocked concurrency, LLM feedback loops. Filter by type (all/L4/thread/cycle). Like a linter for architecture boundaries — catches what code review misses. \"项目有什么隐藏的架构问题？\" → this.",
-            params: &[p!("filter", "string", "Boundary type filter: all, L4, thread, cycle (default all)")],
+            params: &[p_enum!("filter", "string", "Boundary type filter: all, L4, thread, cycle (default all)", ["all", "L4", "thread", "cycle"])],
             required: &[],
             read_only: true,
             category: "analysis",
@@ -681,10 +714,10 @@ fn all_schemas() -> &'static [ToolSchema] {
             name: "list_flows",
             description: "List execution flows in the codebase, sorted by criticality. Each flow is a full call chain from an entry point (framework route, main function, CLI command) through all its callees. \"这个项目的核心业务流程是什么？\" \"哪些调用链最关键？\" → this. Follow up with get_flow to drill into a specific flow.",
             params: &[
-                p!("sort_by", "string", "Sort: criticality (default), depth, node_count, file_count, name"),
+                p_enum!("sort_by", "string", "Sort: criticality (default), depth, node_count, file_count, name", ["criticality", "depth", "node_count", "file_count", "name"]),
                 p!("limit", "integer", "Max flows (default 50, max 200)"),
-                p!("kind_filter", "string", "Entry kind filter: framework_route, naming_convention, orphan_entry"),
-                p!("detail_level", "string", "standard (default) or minimal (name + criticality only)"),
+                p_enum!("kind_filter", "string", "Entry kind filter: framework_route, naming_convention, orphan_entry", ["framework_route", "naming_convention", "orphan_entry"]),
+                p_enum!("detail_level", "string", "standard (default) or minimal (name + criticality only)", ["standard", "minimal"]),
             ],
             required: &[],
             read_only: true,

@@ -20,7 +20,7 @@
 
 ```
 HoloGram/
-├── engine/            Rust 分析引擎（27 静态 tree-sitter 语法；35 默认 MCP 工具 / 36 schema）
+├── engine/            Rust 分析引擎（27 静态 tree-sitter 语法；36 默认 MCP 工具 / 37 schema）
 ├── src-tauri/         Tauri 2 桌面壳（rpc.rs 单一 IPC 入口 + 权限沙箱 + 命令实现）
 ├── src-ui/            TypeScript 前端（React 19 + Three.js + Monaco + Zustand 5）
 │   ├── src/app/       新观测台壳（单 React 根；新 UI 落这里）
@@ -72,11 +72,12 @@ flowchart LR
 ## 4. 引擎能力与工具面（2026-08-17 实测）
 
 - **语言**：27 种 tree-sitter 语法静态链接；18 族适配器有专用结构查询（`.scm`，`engine/queries/` 共 38 个查询文件），其余静态语言走通用兜底；JSON 语法在代码中禁用（数据文件不解析）；Kotlin / Markdown / TOML 动态加载。
-- **引擎 MCP 工具**：36 个 schema，默认激活 35 个（`symbol_history` 为 legacy 不默认激活；`HOLOGRAM_MCP_TOOLS=*` 放开全量）。外部 MCP 客户端（Cursor/Claude Code）仍见细粒度工具名。
+- **引擎 MCP 工具**：37 个 schema，默认激活 36 个（`symbol_history` 为 legacy 不默认激活；`HOLOGRAM_MCP_TOOLS=*` 放开全量）。外部 MCP 客户端（Cursor/Claude Code）仍见细粒度工具名。
 - **内置 Agent 领域工具**（模型可见）：`fs / shell / git / search / web / agent / task / memory / browser / desktop / graph / ops / lsp` + 常驻 `ask_user / Skill / wait / enter_plan_mode / exit_plan_mode`。
-  - `graph`：symbols / neighbors / impact / preflight / cycles / coupling / fragile / flows / dataflow 等 24 个只读动作——**改代码前先问图**。
+  - `graph`：symbols / semantic（语义检索——向量索引按含义找符号，不知确切名字时用）/ neighbors / impact / preflight / cycles / coupling / fragile / flows / dataflow / dataflow_save / dataflow_query 等 27 个动作（dataflow_save 为写动作）——**改代码前先问图**。
   - `ops`：analyze / validate / health / status / timeline / rename / import_scip。
   - `lsp`：resolve_call / infer_type / implementations / references。
+  - `fs`：read / write / edit / list / glob / mkdir / move / rename / delete / constraints（读）/ write_constraints（写 hologram.constraints.yaml——补齐 check_boundaries 发现违规后的规则固化闭环）。
   - `browser` / `desktop`（2026-08 computer-use 改造）：desktop 为进程内 UIA COM（`src-tauri/src/uia/` 专用线程 + 树缓存），写动作返回 world-diff；权限分层=窗口接管 Ask 一次 + 敏感目标/物理输入单独 Ask + 全局输入租约（`INVARIANTS.md` 物理输入铁律）；`desktop(probe)` 每窗口带 cdp/uia/vision 通道路由建议；desktop 写动作全量审计（`desktop(audit)` 可查）；敏感词表在 `src-tauri/src/sensitive.rs`（browser/desktop 共享单一事实源）。
   - 旧细粒度名（`search_symbols`、`run_shell`、`write_file`、`git_*`、`agent_spawn` 等）保留但 `hide()`；模型调用会被 `retireRedirect` 拦截并给 `[已淘汰]` 重定向。内部代码/测试仍可直接用旧名。
 
@@ -107,7 +108,7 @@ flowchart LR
 - 前端一律 `typedRpc / typedListen`（`src-ui/src/rpc-contract.ts`），参数键 snake_case，返回 string（JSON 用 `parseJson`）。裸 `rpc` 只允许两个受权出口：`rpc-contract.ts` 与 `agent/tool.ts`，biome 禁新增。
 - 新增模型工具必须 `defineTool` + zod v4：一个 schema 产出 JSON Schema / 运行时校验 / 类型化参数。内部 `.passthrough()` 透传 meta key；`_forceGate` 要声明、`_callId/_agent_id` 不声明。
 - 工具 execute 必须全量透传 args——重建参数对象会丢掉 `_agent_id`，fork 子 Agent 会直写主仓（2026-08-13 事故）。
-- 新增领域动作同步 `tools/domains.ts` 的 `DOMAIN_SPECS` + `collectHiddenToolNames()` + 对应测试 + 本文件。
+- 新增领域动作同步 `tools/domains.ts` 的 `DOMAIN_SPECS` + `collectHiddenToolNames()` + 对应测试 + 本文件。引擎侧新增 MCP 工具必须同时接进 `DOMAIN_SPECS`（graph/ops/lsp）——`tests/engine-tool-surface.test.ts` 钉住「引擎默认清单 ↔ 领域映射 ↔ mock 清单」三层对齐，漏接会红。
 - Agent 装配（Phase 6 立规）：新增模型工具/hook 走 `agent/blueprint.ts` 的 capability 表，不改 `AgentConfig`（冻结 31 字段）；capability 表序 = 工具面字节契约（前缀缓存 + effective 快照依赖此序）；capability 只做组合，teardown 走 `ctx.effect`。
 - session 变异（Phase 5 立规）：只走 `_appendMessage / _replaceSession / _retractSessionRange` 三入口（spec AST 白名单 + gate 计数双层门禁）；改工具折叠逻辑必须同步 `session-log.ts` 的 `derivePayload`。
 - 改 `src-ui/src/agent/**` 必过 `npm run verify:convergence`（T0 静态 + 8 baseline 对拍）；record 永不上 CI，baseline 变更走 `docs/plans/agent-core-convergence/baseline-change-request.md` 审批。

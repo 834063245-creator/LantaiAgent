@@ -49,7 +49,9 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
         question: z
           .string()
           .optional()
-          .describe('The question to ask the user (single-question form). For 2+ questions use the questions array instead.'),
+          .describe(
+            'The question to ask the user (single-question form). For 2+ questions use the questions array instead.',
+          ),
         header: z
           .string()
           .optional()
@@ -183,7 +185,9 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
         _forceGate: z
           .boolean()
           .optional()
-          .describe('Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.'),
+          .describe(
+            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+          ),
       }),
       execute: (args, onProgress) => exec('write_file_content', args, onProgress),
     }),
@@ -207,7 +211,9 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
         _forceGate: z
           .boolean()
           .optional()
-          .describe('Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.'),
+          .describe(
+            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+          ),
       }),
       // 全量透传（含 executor 注入的 _agent_id）— fork 子 Agent 的
       // worktree 路由完全依赖该参数；重建参数对象会把 edit 静默导向主仓。
@@ -233,6 +239,16 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
       readOnly: true,
       execute: (args, onProgress) => exec('read_constraints', args, onProgress),
     }),
+    defineTool({
+      name: 'write_constraints',
+      description:
+        'Write the constraint configuration (hologram.constraints.yaml) for the project — replaces the whole file. Use after check_boundaries (graph domain) reveals violations worth encoding as standing rules: routing rules, thresholds, allowlist/denylist. Read the current config with fs(constraints) first so you extend existing rules rather than drop them.',
+      schema: z.object({
+        projectPath: z.string().describe('Project root directory path'),
+        content: z.string().describe('Full YAML content to write'),
+      }),
+      execute: (args, onProgress) => exec('write_constraints', args, onProgress),
+    }),
 
     // ── 代码搜索 ──
     defineTool({
@@ -246,8 +262,7 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
           .string()
           .optional()
           .describe('Optional comma-separated file extensions to filter (e.g. ".ts,.py,.rs")'),
-        maxResults: z
-          .coerce
+        maxResults: z.coerce
           .number()
           .int()
           .max(200)
@@ -261,8 +276,7 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
           .describe(
             'Set to true to interpret pattern as a regex (e.g. "function\\\\s+\\\\w+"). Default: false (literal substring)',
           ),
-        contextLines: z
-          .coerce
+        contextLines: z.coerce
           .number()
           .int()
           .optional()
@@ -280,15 +294,13 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
           .optional()
           .default(true)
           .describe('Include line numbers in output (default: true)'),
-        headLimit: z
-          .coerce
+        headLimit: z.coerce
           .number()
           .int()
           .optional()
           .default(250)
           .describe('Max results/files to return (default: 250, 0 = unlimited)'),
-        offset: z
-          .coerce
+        offset: z.coerce
           .number()
           .int()
           .optional()
@@ -329,8 +341,7 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
           .string()
           .optional()
           .describe('Optional working directory for the command. Defaults to the current workspace root.'),
-        timeoutMs: z
-          .coerce
+        timeoutMs: z.coerce
           .number()
           .int()
           .max(600000)
@@ -360,11 +371,7 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
       description:
         'Check the output of a background shell job. Returns accumulated stdout/stderr and whether the job is still running or has completed.',
       schema: z.object({
-        jobId: z
-          .coerce
-          .number()
-          .int()
-          .describe('The job ID returned by run_shell with runInBackground: true'),
+        jobId: z.coerce.number().int().describe('The job ID returned by run_shell with runInBackground: true'),
       }),
       readOnly: true,
       execute: (args, onProgress) => exec('bash_output', { jobId: args.jobId }, onProgress),
@@ -373,11 +380,7 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
       name: 'bash_kill',
       description: 'Kill a running background shell job and return any accumulated output.',
       schema: z.object({
-        jobId: z
-          .coerce
-          .number()
-          .int()
-          .describe('The job ID returned by run_shell with runInBackground: true'),
+        jobId: z.coerce.number().int().describe('The job ID returned by run_shell with runInBackground: true'),
       }),
       execute: (args, onProgress) =>
         exec('bash_kill', { jobId: args.jobId, agentId: (args as { _agent_id?: string })._agent_id }, onProgress),
@@ -387,21 +390,15 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
       description:
         'Block until a background shell job completes (or timeout), then return full output + exit code. Use after run_shell with runInBackground: true to wait for a long-running task.',
       schema: z.object({
-        jobId: z
-          .coerce
-          .number()
-          .int()
-          .describe('The job ID returned by run_shell with runInBackground: true'),
-        timeoutMs: z
-          .coerce
+        jobId: z.coerce.number().int().describe('The job ID returned by run_shell with runInBackground: true'),
+        timeoutMs: z.coerce
           .number()
           .int()
           .optional()
           .describe('Maximum wait time in milliseconds (default: 60000 = 60s, max: 600000 = 10min)'),
       }),
       readOnly: true,
-      execute: (args, onProgress) =>
-        exec('bash_wait', { jobId: args.jobId, timeoutMs: args.timeoutMs }, onProgress),
+      execute: (args, onProgress) => exec('bash_wait', { jobId: args.jobId, timeoutMs: args.timeoutMs }, onProgress),
     }),
 
     // ── Git ──
@@ -451,8 +448,8 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
         'Show recent git commit history. Returns structured JSON with commit hash, message, author, and date for each commit.',
       schema: z.object({
         path: z.string().describe('Absolute path to the git repository root'),
-        count: z
-          .coerce.number()
+        count: z.coerce
+          .number()
           .int()
           .optional()
           .default(10)
@@ -466,9 +463,7 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
       description: 'Stage files for commit. Use before git_commit to add changes to the staging area.',
       schema: z.object({
         path: z.string().describe('Absolute path to the git repository root'),
-        files: z
-          .string()
-          .describe('File path(s) to stage, separated by commas. Use "." to stage all.'),
+        files: z.string().describe('File path(s) to stage, separated by commas. Use "." to stage all.'),
       }),
       execute: async (args, onProgress) => {
         const files = args.files.trim();
@@ -495,7 +490,9 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
         _forceGate: z
           .boolean()
           .optional()
-          .describe('Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.'),
+          .describe(
+            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+          ),
       }),
       execute: (args, onProgress) => exec('git_commit', { path: args.path, message: args.message }, onProgress),
     }),
@@ -543,7 +540,9 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
         _forceGate: z
           .boolean()
           .optional()
-          .describe('Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.'),
+          .describe(
+            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+          ),
       }),
       execute: (args, onProgress) => exec('delete_file_or_dir', args, onProgress),
     }),
@@ -565,7 +564,9 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
         _forceGate: z
           .boolean()
           .optional()
-          .describe('Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.'),
+          .describe(
+            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+          ),
       }),
       execute: (args, onProgress) => exec('move_file', args, onProgress),
     }),
@@ -579,13 +580,15 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
         _forceGate: z
           .boolean()
           .optional()
-          .describe('Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.'),
+          .describe(
+            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+          ),
       }),
       // 键名映射（path→filePath、new_name→newName）并剥掉原始键，
       // 其余全量透传 — 必须保留 _agent_id（worktree 路由），否则 rename 静默落到主仓。
       execute: (args, onProgress) => {
-        const { path, new_name, ...rest } = args
-        return exec('rename_file_or_dir', { ...rest, filePath: path, newName: new_name }, onProgress)
+        const { path, new_name, ...rest } = args;
+        return exec('rename_file_or_dir', { ...rest, filePath: path, newName: new_name }, onProgress);
       },
     }),
 
@@ -607,14 +610,15 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
         _forceGate: z
           .boolean()
           .optional()
-          .describe('Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.'),
+          .describe(
+            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+          ),
       }),
       execute: (args, onProgress) => exec('git_checkout', args, onProgress),
     }),
     defineTool({
       name: 'git_create_branch',
-      description:
-        'Create a new git branch from the current HEAD. Does NOT switch to it — use git_checkout after.',
+      description: 'Create a new git branch from the current HEAD. Does NOT switch to it — use git_checkout after.',
       schema: z.object({
         path: z.string().describe('Absolute path to the git repository'),
         branch: z.string().describe('New branch name'),
@@ -623,15 +627,16 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
     }),
     defineTool({
       name: 'git_discard',
-      description:
-        'Discard unstaged changes to a file (git checkout -- <file>). Loses all uncommitted modifications.',
+      description: 'Discard unstaged changes to a file (git checkout -- <file>). Loses all uncommitted modifications.',
       schema: z.object({
         path: z.string().describe('Absolute path to the git repository'),
         file: z.string().describe('File path to discard changes for (relative to repo root)'),
         _forceGate: z
           .boolean()
           .optional()
-          .describe('Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.'),
+          .describe(
+            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+          ),
       }),
       execute: (args, onProgress) => exec('git_discard', args, onProgress),
     }),

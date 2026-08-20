@@ -103,8 +103,9 @@ export const DOMAIN_SPECS: DomainSpec[] = [
   {
     name: 'fs',
     description:
-      'File-system operations: read / write / edit / list / glob / mkdir / move / rename / delete / constraints. ' +
-      'Use fs(read) to inspect files, fs(write)/fs(edit) to modify them.',
+      'File-system operations: read / write / edit / list / glob / mkdir / move / rename / delete / constraints / write_constraints. ' +
+      'Use fs(read) to inspect files, fs(write)/fs(edit) to modify them. ' +
+      'fs(constraints) reads hologram.constraints.yaml; fs(write_constraints) replaces it (read first — extend existing rules rather than dropping them).',
     actions: {
       read: 'read_file_content',
       write: 'write_file',
@@ -116,6 +117,7 @@ export const DOMAIN_SPECS: DomainSpec[] = [
       rename: 'rename_file',
       delete: 'delete_file',
       constraints: 'read_constraints',
+      write_constraints: 'write_constraints',
     },
   },
   {
@@ -302,9 +304,10 @@ export const DOMAIN_SPECS: DomainSpec[] = [
     name: 'graph',
     description:
       '依赖图查询与分析（27 语言 AST + 符号级引用边）。**改代码前先问图**：定位符号、评估影响面、判断架构都走这里，grep 只能看到文本，图能看到结构。' +
-      'symbols 搜符号（「XX 在哪」）; neighbors 谁依赖谁(1跳)（「这个模块被谁依赖」）; impact 改某文件的影响面（改前必查）; path 两符号间依赖路径; inspect 单符号全景; explore 自然语言探索依赖; community 模块所属社区; clusters 全局社区地图; summary 图统计+解析率+SCIP 新鲜度; cycles 循环依赖; coupling 单模块耦合画像(L1-L4); fragile 脆弱模块排名; blindspots 架构盲点; boundaries 边界违规; conflicts 线程冲突; async 异步/时序边; unused 死代码; flows 数据流列表; flow 单条数据流; affected_flows 受影响数据流; dataflow 变量使用统计(语法级,非污点); preflight 改前预检(改文件前必须); grpc gRPC 服务映射; diff 与基线图对比。',
+      'symbols 搜符号（「XX 在哪」）; semantic 语义检索（向量索引，按含义找符号——不知道确切名字时用，如「内存在哪释放」）; neighbors 谁依赖谁(1跳)（「这个模块被谁依赖」）; impact 改某文件的影响面（改前必查）; path 两符号间依赖路径; inspect 单符号全景; explore 自然语言探索依赖; community 模块所属社区; clusters 全局社区地图; summary 图统计+解析率+SCIP 新鲜度; cycles 循环依赖; coupling 单模块耦合画像(L1-L4); fragile 脆弱模块排名; blindspots 架构盲点; boundaries 边界违规; conflicts 线程冲突; async 异步/时序边; unused 死代码; flows 数据流列表; flow 单条数据流; affected_flows 受影响数据流; dataflow 变量使用统计(语法级,非污点); preflight 改前预检(改文件前必须); grpc gRPC 服务映射; diff 与基线图对比; dataflow_save 保存数据流追踪结果（供面板查看，写动作）; dataflow_query 查询已保存的数据流。',
     actions: {
       symbols: 'search_symbols',
+      semantic: 'semantic_search',
       neighbors: 'get_neighbors',
       impact: 'trace_impact',
       path: 'find_dep_path',
@@ -328,6 +331,8 @@ export const DOMAIN_SPECS: DomainSpec[] = [
       preflight: 'preflight_check',
       grpc: 'grpc_services',
       diff: 'graph_diff',
+      dataflow_save: 'dataflow_save',
+      dataflow_query: 'dataflow_query',
     },
   },
   {
