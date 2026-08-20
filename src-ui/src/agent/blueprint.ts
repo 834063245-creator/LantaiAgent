@@ -152,188 +152,198 @@ export class AgentBlueprint {
   }
 
   /** 标准装配面 — 与 Phase 5 末 _assembleAgent 的注册序一一对应（表序 = 序真源）。
-   *  每次返回全新实例：调用方 add() 的扩展不得污染标准装配。 */
+   *  每次返回全新实例：调用方 add() 的扩展不得污染标准装配。
+   *  S2-0 起 capability 数组拆至 builtinCapabilities()（零改写机械搬移——
+   *  composition/roster.ts 组合引擎的出厂数据源；tests/blueprint.test.ts
+   *  的 keys 序断言守护零漂移）。 */
   static standard(): AgentBlueprint {
-    return new AgentBlueprint([
-      // ── context 阶段（Agent 构造前）──
-      {
-        key: 'plan-tools',
-        phase: 'context',
-        install: ({ ctx, tools }) => {
-          // readOnly: true → 两种模式都存活；planState 由 ctx 提供（翻译层或物化层创建）
-          tools.register(createEnterPlanModeTool(ctx.resolve('planState'), ctx.projectPath));
-          // exit_plan_mode 使用 eventSink 将 PlanReview 事件推入聊天流
-          tools.register(createExitPlanModeTool(ctx.resolve('planState'), ctx.get('eventSink')));
-        },
-      },
-      // ── agent 阶段（Agent 构造后 — 表序即工具面注册序）──
-      {
-        // 通信族 — bus 注册本身在 Agent 构造内经 ctx 完成，这里补模型可见工具面
-        key: 'communication-tools',
-        phase: 'agent',
-        install: (scope) => {
-          const agent = requireAgent(scope);
-          for (const tool of createCommunicationTools(scope.deps.messageBus, () => agent.id)) {
-            scope.tools.register(tool);
-          }
-        },
-      },
-      {
-        // discovery 族 — 同上；proxy 已由物化层静态绑定到该 Agent 的会话板
-        key: 'discovery-tools',
-        phase: 'agent',
-        install: (scope) => {
-          const agent = requireAgent(scope);
-          for (const tool of createDiscoveryTools(scope.ctx.resolve('discoveryBoard'), () => agent.id)) {
-            scope.tools.register(tool);
-          }
-        },
-      },
-      {
-        // 子 Agent 管理族（merge/board/kill）— 需要会话级 pool
-        key: 'merge-tools',
-        phase: 'agent',
-        when: ({ ctx }) => !!ctx.get('subAgentPool'),
-        install: (scope) => {
-          const agent = requireAgent(scope);
-          const subPool = scope.ctx.get('subAgentPool');
-          if (!subPool) return;
-          const taskProxy = scope.ctx.resolve('taskBoard');
-          scope.tools.register(
-            createMergeTool(taskProxy, () => agent.id, scope.deps.isolationExec, {
-              projectPath: scope.ctx.projectPath,
-            }),
-          );
-          scope.tools.register(createBoardStatusTool(taskProxy, () => agent.id));
-          scope.tools.register(createAgentKillTool(subPool, scope.deps.isolationExec));
-        },
-      },
-      {
-        // 同步请求工具 — agent_request
-        key: 'request-tool',
-        phase: 'agent',
-        install: (scope) => {
-          const agent = requireAgent(scope);
-          scope.tools.register(createRequestTool(scope.deps.messageBus, () => agent.id));
-        },
-      },
-      {
-        // 替换 agent_spawn 为绑定本 Agent 的版本 — 修复多会话下 spawn 路由错位
-        key: 'spawn-tool',
-        phase: 'agent',
-        when: ({ ctx, inputs }) => !!ctx.get('subAgentPool') && !!inputs.subAgentSpawner,
-        install: (scope) => {
-          const agent = requireAgent(scope);
-          const subPool = scope.ctx.get('subAgentPool');
-          const spawner = scope.inputs.subAgentSpawner;
-          if (!subPool || !spawner) return;
-          scope.tools.unregister('agent_spawn');
-          scope.tools.register(
-            createSubAgentTool(
-              (desc, prompt, prog, mode, al, sig, asyncMode, agentIdOverride, outputSchema) =>
-                agent.spawnSubAgent(desc, prompt, prog, mode, al, sig, asyncMode, agentIdOverride, outputSchema),
-              subPool,
-            ),
-          );
-        },
-      },
-      {
-        // 替换 task_* 为绑定本 Agent 实例的专属待办 — 每 Agent 一份清单
-        key: 'task-tools',
-        phase: 'agent',
-        install: (scope) => {
-          const perAgentTaskManager = new TaskManager();
-          for (const taskTool of createTaskTools(perAgentTaskManager)) {
-            scope.tools.unregister(taskTool.name());
-            scope.tools.register(taskTool);
-          }
-          scope.deps.registerTaskManager?.(perAgentTaskManager);
-        },
-      },
-      {
-        // 压缩工具 + tracker 持久化路径
-        key: 'compaction-tools',
-        phase: 'agent',
-        install: (scope) => {
-          const agent = requireAgent(scope);
-          agent.setCompactionConfigPath(scope.ctx.projectPath);
-          registerCompactionTools(agent, scope.tools);
-        },
-      },
-      {
-        // 工具层收敛：领域工具 + 隐藏旧名（必须在全部工具注册之后 — 表序保证）
-        key: 'converge-tools',
-        phase: 'agent',
-        install: ({ tools }) => {
-          convergeRegistry(tools);
-        },
-      },
-      {
-        // 图上下文 + 状态 + plan 增强 hooks（提示注入类 — 受 hooksEnabled 总开关）
-        key: 'graph-hooks',
-        phase: 'agent',
-        when: ({ inputs }) => !!inputs.graphContext,
-        install: ({ ctx, inputs, hooks, preflightHooks, deps }) => {
-          const graphContext = inputs.graphContext;
-          if (!graphContext) return;
-          // 引擎快照加载不受 hooksEnabled 门控（与旧装配一致 — 只有 hook 注册受控）
-          void loadEngineSnapshot(graphContext, ctx.projectPath).catch(() => {});
-          if (inputs.hooksEnabled === false) return;
-          hooks.register(createGraphContextHook(graphContext));
-          if (deps.diagnosticsSource) {
-            hooks.register(createStateReadHook(ctx.projectPath, deps.diagnosticsSource));
-          }
-          preflightHooks.register(createGraphPreflightHook(graphContext));
-          if (deps.diagnosticsSource) {
-            preflightHooks.register(createStatePreflightHook(deps.diagnosticsSource));
-          }
-          const planState = ctx.resolve('planState');
-          // Plan 模式图增强 hook — 探索时注入影响面，写计划时追加分析
-          hooks.register(createPlanExploreHook(graphContext, planState));
-          hooks.register(createPlanWriteHook(graphContext, planState));
-        },
-      },
-      {
-        // Board 追踪 hook — board 可用时始终注册（有实际副作用，不受 hooksEnabled 影响）
-        key: 'board-tracking-hook',
-        phase: 'agent',
-        install: ({ ctx, hooks }) => {
-          hooks.register(createBoardTrackingHook(ctx.agentId, ctx.resolve('taskBoard')));
-        },
-      },
-      {
-        // Plan 模式接线 — runLoop 提醒注入器 + 状态通知
-        key: 'plan-injector',
-        phase: 'agent',
-        install: (scope) => {
-          const agent = requireAgent(scope);
-          const planInjector = new PlanModeInjector();
-          agent.setPlanState(scope.ctx.resolve('planState'), planInjector, scope.ctx.projectPath);
-          scope.ctx.resolve('planState').onChange((s) => {
-            scope.deps.onPlanModeChange?.(s.active, s.planFilePath);
-          });
-        },
-      },
-      {
-        // pre-run hook（AuraSDK 语义检索）
-        key: 'pre-run-hook',
-        phase: 'agent',
-        when: ({ inputs }) => !!inputs.preRunHook,
-        install: (scope) => {
-          const agent = requireAgent(scope);
-          const hook = scope.inputs.preRunHook;
-          if (hook) agent.setPreRunHook(hook);
-        },
-      },
-      {
-        // 自动调优 — fire-and-forget
-        key: 'auto-tune',
-        phase: 'agent',
-        install: (scope) => {
-          const agent = requireAgent(scope);
-          void agent.applyAutoTuneConfig().catch(() => {});
-        },
-      },
-    ]);
+    return new AgentBlueprint(builtinCapabilities());
   }
+}
+
+/** 内置 capability 表 — 表序 = 装配序 = standard preset 的事实来源。
+ *  行 id = capability key（roster patch 用户组合文件在 capabilities 域的
+ *  寻址面）。S2-0 从 standard() 内联数组原样拆出，内容零改写。 */
+export function builtinCapabilities(): AgentCapability[] {
+  return [
+    // ── context 阶段（Agent 构造前）──
+    {
+      key: 'plan-tools',
+      phase: 'context',
+      install: ({ ctx, tools }) => {
+        // readOnly: true → 两种模式都存活；planState 由 ctx 提供（翻译层或物化层创建）
+        tools.register(createEnterPlanModeTool(ctx.resolve('planState'), ctx.projectPath));
+        // exit_plan_mode 使用 eventSink 将 PlanReview 事件推入聊天流
+        tools.register(createExitPlanModeTool(ctx.resolve('planState'), ctx.get('eventSink')));
+      },
+    },
+    // ── agent 阶段（Agent 构造后 — 表序即工具面注册序）──
+    {
+      // 通信族 — bus 注册本身在 Agent 构造内经 ctx 完成，这里补模型可见工具面
+      key: 'communication-tools',
+      phase: 'agent',
+      install: (scope) => {
+        const agent = requireAgent(scope);
+        for (const tool of createCommunicationTools(scope.deps.messageBus, () => agent.id)) {
+          scope.tools.register(tool);
+        }
+      },
+    },
+    {
+      // discovery 族 — 同上；proxy 已由物化层静态绑定到该 Agent 的会话板
+      key: 'discovery-tools',
+      phase: 'agent',
+      install: (scope) => {
+        const agent = requireAgent(scope);
+        for (const tool of createDiscoveryTools(scope.ctx.resolve('discoveryBoard'), () => agent.id)) {
+          scope.tools.register(tool);
+        }
+      },
+    },
+    {
+      // 子 Agent 管理族（merge/board/kill）— 需要会话级 pool
+      key: 'merge-tools',
+      phase: 'agent',
+      when: ({ ctx }) => !!ctx.get('subAgentPool'),
+      install: (scope) => {
+        const agent = requireAgent(scope);
+        const subPool = scope.ctx.get('subAgentPool');
+        if (!subPool) return;
+        const taskProxy = scope.ctx.resolve('taskBoard');
+        scope.tools.register(
+          createMergeTool(taskProxy, () => agent.id, scope.deps.isolationExec, {
+            projectPath: scope.ctx.projectPath,
+          }),
+        );
+        scope.tools.register(createBoardStatusTool(taskProxy, () => agent.id));
+        scope.tools.register(createAgentKillTool(subPool, scope.deps.isolationExec));
+      },
+    },
+    {
+      // 同步请求工具 — agent_request
+      key: 'request-tool',
+      phase: 'agent',
+      install: (scope) => {
+        const agent = requireAgent(scope);
+        scope.tools.register(createRequestTool(scope.deps.messageBus, () => agent.id));
+      },
+    },
+    {
+      // 替换 agent_spawn 为绑定本 Agent 的版本 — 修复多会话下 spawn 路由错位
+      key: 'spawn-tool',
+      phase: 'agent',
+      when: ({ ctx, inputs }) => !!ctx.get('subAgentPool') && !!inputs.subAgentSpawner,
+      install: (scope) => {
+        const agent = requireAgent(scope);
+        const subPool = scope.ctx.get('subAgentPool');
+        const spawner = scope.inputs.subAgentSpawner;
+        if (!subPool || !spawner) return;
+        scope.tools.unregister('agent_spawn');
+        scope.tools.register(
+          createSubAgentTool(
+            (desc, prompt, prog, mode, al, sig, asyncMode, agentIdOverride, outputSchema) =>
+              agent.spawnSubAgent(desc, prompt, prog, mode, al, sig, asyncMode, agentIdOverride, outputSchema),
+            subPool,
+          ),
+        );
+      },
+    },
+    {
+      // 替换 task_* 为绑定本 Agent 实例的专属待办 — 每 Agent 一份清单
+      key: 'task-tools',
+      phase: 'agent',
+      install: (scope) => {
+        const perAgentTaskManager = new TaskManager();
+        for (const taskTool of createTaskTools(perAgentTaskManager)) {
+          scope.tools.unregister(taskTool.name());
+          scope.tools.register(taskTool);
+        }
+        scope.deps.registerTaskManager?.(perAgentTaskManager);
+      },
+    },
+    {
+      // 压缩工具 + tracker 持久化路径
+      key: 'compaction-tools',
+      phase: 'agent',
+      install: (scope) => {
+        const agent = requireAgent(scope);
+        agent.setCompactionConfigPath(scope.ctx.projectPath);
+        registerCompactionTools(agent, scope.tools);
+      },
+    },
+    {
+      // 工具层收敛：领域工具 + 隐藏旧名（必须在全部工具注册之后 — 表序保证）
+      key: 'converge-tools',
+      phase: 'agent',
+      install: ({ tools }) => {
+        convergeRegistry(tools);
+      },
+    },
+    {
+      // 图上下文 + 状态 + plan 增强 hooks（提示注入类 — 受 hooksEnabled 总开关）
+      key: 'graph-hooks',
+      phase: 'agent',
+      when: ({ inputs }) => !!inputs.graphContext,
+      install: ({ ctx, inputs, hooks, preflightHooks, deps }) => {
+        const graphContext = inputs.graphContext;
+        if (!graphContext) return;
+        // 引擎快照加载不受 hooksEnabled 门控（与旧装配一致 — 只有 hook 注册受控）
+        void loadEngineSnapshot(graphContext, ctx.projectPath).catch(() => {});
+        if (inputs.hooksEnabled === false) return;
+        hooks.register(createGraphContextHook(graphContext));
+        if (deps.diagnosticsSource) {
+          hooks.register(createStateReadHook(ctx.projectPath, deps.diagnosticsSource));
+        }
+        preflightHooks.register(createGraphPreflightHook(graphContext));
+        if (deps.diagnosticsSource) {
+          preflightHooks.register(createStatePreflightHook(deps.diagnosticsSource));
+        }
+        const planState = ctx.resolve('planState');
+        // Plan 模式图增强 hook — 探索时注入影响面，写计划时追加分析
+        hooks.register(createPlanExploreHook(graphContext, planState));
+        hooks.register(createPlanWriteHook(graphContext, planState));
+      },
+    },
+    {
+      // Board 追踪 hook — board 可用时始终注册（有实际副作用，不受 hooksEnabled 影响）
+      key: 'board-tracking-hook',
+      phase: 'agent',
+      install: ({ ctx, hooks }) => {
+        hooks.register(createBoardTrackingHook(ctx.agentId, ctx.resolve('taskBoard')));
+      },
+    },
+    {
+      // Plan 模式接线 — runLoop 提醒注入器 + 状态通知
+      key: 'plan-injector',
+      phase: 'agent',
+      install: (scope) => {
+        const agent = requireAgent(scope);
+        const planInjector = new PlanModeInjector();
+        agent.setPlanState(scope.ctx.resolve('planState'), planInjector, scope.ctx.projectPath);
+        scope.ctx.resolve('planState').onChange((s) => {
+          scope.deps.onPlanModeChange?.(s.active, s.planFilePath);
+        });
+      },
+    },
+    {
+      // pre-run hook（AuraSDK 语义检索）
+      key: 'pre-run-hook',
+      phase: 'agent',
+      when: ({ inputs }) => !!inputs.preRunHook,
+      install: (scope) => {
+        const agent = requireAgent(scope);
+        const hook = scope.inputs.preRunHook;
+        if (hook) agent.setPreRunHook(hook);
+      },
+    },
+    {
+      // 自动调优 — fire-and-forget
+      key: 'auto-tune',
+      phase: 'agent',
+      install: (scope) => {
+        const agent = requireAgent(scope);
+        void agent.applyAutoTuneConfig().catch(() => {});
+      },
+    },
+  ];
 }
