@@ -3,20 +3,64 @@
 
 // P1：命令面板（Ctrl+K）— 动作注册表的统一入口。
 // 过滤 = 标签子串匹配；↑↓ 选择，↵ 执行，esc 关闭。
+// S4-1.5 消费闭环（设计件 §2.3）：清单 = listActions() + ctx.commands 贡献
+// （折算为 AppAction 形状：action.type 'local' + handler 调用贡献执行面）；
+// commandsTick 信号驱动贡献变更后的清单刷新（palette 每次打开本就重取——
+// tick 让打开态的长驻清单也跟上）。
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { activeCommandContributions, type CommandContribution } from '../composition/services';
+import { shellRefs } from '../shell/runtime';
+import { usePanelDefsStore } from '../state/panel-defs-store';
+import type { CommandDef } from '../ui/command-registry';
 import { type AppAction, listActions } from './actions';
 import { Icon } from './Icon';
 import { useShellStore } from './shell-store';
 
+/** 命令贡献 → AppAction 折算（'plugin/<id>' 命名空间防撞内置动作 id）。 */
+function commandContributionActions(): AppAction[] {
+  const out: AppAction[] = [];
+  for (const c of activeCommandContributions()) {
+    if (c == null || typeof c.id !== 'string' || c.id === '' || typeof c.label !== 'string') {
+      continue; // 无效贡献跳过（插件代码不受编译期类型约束）
+    }
+    const contribution: CommandContribution = c;
+    out.push({
+      id: 'plugin/' + c.id,
+      group: c.group || '插件',
+      label: c.label,
+      icon: undefined,
+      kbd: c.shortcut || undefined,
+      run: () => {
+        // 折算为 local handler 型 AppAction：run 调用贡献的执行面（§2.3）。
+        // local → 直接调 handler；send/fill/skill → 经聊天面板的命令执行面
+        //（executeCommand 四型全语义：清输入/聚焦/发文本）。
+        if (contribution.action.type === 'local') {
+          contribution.action.handler();
+          return;
+        }
+        const panel = shellRefs.chatPanel;
+        if (panel) {
+          panel.executeCommand(contribution as unknown as CommandDef);
+        } else {
+          console.warn('[palette] 无聊天面板承接命令贡献（send/fill/skill 型）:', contribution.id);
+        }
+      },
+    });
+  }
+  return out;
+}
+
 export function CommandPalette() {
   const open = useShellStore((s) => s.paletteOpen);
   const setOpen = useShellStore((s) => s.setPaletteOpen);
+  const commandsTick = usePanelDefsStore((s) => s.commandsTick);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const [tick, setTick] = useState(0); // 动作在 init 期间注入 — 打开时重取列表
   const inputRef = useRef<HTMLInputElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
+  void commandsTick; // 贡献变更信号——长驻打开态也重取清单（S4-1.5）
 
   useEffect(() => {
     if (open) {
@@ -39,9 +83,10 @@ export function CommandPalette() {
 
   const rows = useMemo(() => {
     void tick;
+    void commandsTick;
     const q = query.trim().toLowerCase();
-    return listActions().filter((a) => !q || a.label.toLowerCase().includes(q));
-  }, [query, tick]);
+    return [...listActions(), ...commandContributionActions()].filter((a) => !q || a.label.toLowerCase().includes(q));
+  }, [query, tick, commandsTick]);
 
   if (!open) return null;
 

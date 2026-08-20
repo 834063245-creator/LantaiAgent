@@ -12,6 +12,7 @@
 //
 // UI 回调通过 BuilderDeps 注入，不直接 import ui/ 模块。
 
+import { pluginToolRows } from '../../composition/plugin-tool-rows';
 import { assembleSystemPrompt, type PromptSection } from '../../composition/prompt-sections';
 import { type BuiltinToolRow, builtinToolRows, type ToolRowContext } from '../../composition/tool-rows';
 import { typedRpc } from '../../rpc-contract';
@@ -251,6 +252,17 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
     subAgentSpawner,
   };
   for (const row of toolRows ?? builtinToolRows()) {
+    for (const tool of await row.factory(rowCtx)) registry.register(tool);
+  }
+
+  // ── 插件工具行（S4-1.5 消费闭环，设计件 §2.3）──
+  // ctx.tools 贡献折算的行，叠加在行表源之后（行表源 = 出厂表或注入的组合
+  // 解析产物，两路都叠加）。行 id 前缀 plugin/<贡献 id>；factory 缓存实例
+  // （工具实例不随每次装配重建）；行内工具名冲突由 ToolRegistry.register
+  // 装载期拒绝（duplicate throw）。生效时机 = 下次装配（S1 既有语义）。
+  // 注：组合解析域目前只含 builtin 行——patch/preset 寻址插件行属 S4-4
+  // 机器桥批的扩展（届时 MCP 折算行进组合解析域，设计件 §2.7）。
+  for (const row of pluginToolRows()) {
     for (const tool of await row.factory(rowCtx)) registry.register(tool);
   }
 

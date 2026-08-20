@@ -3,8 +3,12 @@
 
 // P3：dock 面板注册表 — DockRail（轨道按钮）与 DockPanel（面板容器）的唯一清单。
 // 增删面板只改这里；开合状态在 state/dock-store，不在本表。
+// S4-1.5 消费闭环（设计件 §2.3）：清单源从「PANEL_DEFS 常量」扩为
+// panelDefs() = 常量 + ctx.panels 贡献（合流点不是改写点——常量面零改动；
+// 贡献变更经 state/panel-defs-store 的 tick 信号即时生效）。
 
 import type { ComponentType } from 'react';
+import { activePanelContributions } from '../../composition/services';
 import { AgentsPanel } from './AgentsPanel';
 import { CheckPanel } from './CheckPanel';
 import { ConstraintsPanel } from './ConstraintsPanel';
@@ -51,4 +55,29 @@ export const PANEL_DEFS: PanelDef[] = [
     }
     seen.add(def.id);
   }
+}
+
+// ── S4-1.5 消费闭环合流点（设计件 §2.3）──
+
+/**
+ * 有效面板清单：内置常量 + ctx.panels 贡献（即时生效——贡献 register/
+ * dispose 时 panel-defs-store bump，消费组件重取本函数）。
+ * 合流纪律：常量面零改写；贡献与内置同 id → 内置胜（console.warn 可见）；
+ * 缺 id/component 的贡献跳过（运行时形状守卫——插件代码不受编译期类型约束）。
+ */
+export function panelDefs(): PanelDef[] {
+  const out: PanelDef[] = [...PANEL_DEFS];
+  const builtinIds = new Set(PANEL_DEFS.map((d) => d.id));
+  for (const c of activePanelContributions()) {
+    if (c == null || typeof c.id !== 'string' || c.id === '' || !c.component) {
+      console.warn('[panel-def] 无效面板贡献被跳过（缺 id/component）');
+      continue;
+    }
+    if (builtinIds.has(c.id)) {
+      console.warn('[panel-def] 面板贡献 "' + c.id + '" 与内置面板同 id——内置胜（内置 id 是部署事实）');
+      continue;
+    }
+    out.push(c);
+  }
+  return out;
 }

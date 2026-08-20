@@ -23,6 +23,25 @@
 import type { ComponentType } from 'react';
 import type { Tool } from '../agent/tool';
 import { type Context, Service } from '../cordis';
+import { bumpCommands, bumpPanelDefs } from '../state/panel-defs-store';
+
+// ── 工具贡献变更监听（S4-1.5）──
+// ToolsService 的 onChange：不 bump 即时信号（下次装配语义），但触发
+// 「贡献变更」钩子——pluginToolRows() 的实例缓存按贡献生命周期管理
+// （register 时 factory 调用一次缓存实例；dispose 清缓存——工具实例
+// 不随每次装配重建，设计件 §2.3 ToolRow 折算规则）。
+type ContributionsChangedListener = () => void;
+const contributionListeners = new Set<ContributionsChangedListener>();
+
+/** 订阅工具贡献变更（register/dispose）。返回退订函数。 */
+export function onToolContributionsChanged(cb: ContributionsChangedListener): () => void {
+  contributionListeners.add(cb);
+  return () => contributionListeners.delete(cb);
+}
+
+function fireContributionsChanged(): void {
+  for (const cb of [...contributionListeners]) cb();
+}
 
 // ── def 形状（字段对齐既有消费面：PanelDef / CommandDef；tools 行对齐 S1-0 的
 //    ToolContribution 概念——S1-2 起行表统一到此形状）──
@@ -73,10 +92,21 @@ export interface ProviderContribution {
 
 // ── 通用注册表内核（四 service 共用：id 寻址 + Disposer + 重名拒绝 + 组合序）──
 
+/**
+ * 注册表变更信号（S4-1.5 消费闭环）——panels/commands 域贡献变更时 bump
+ * 对应信号 store（即时生效语义：DockRail/DockPanel/CommandPalette 重取
+ * 清单）。tools/providers 不 bump——它们的生效时机是「下次 Agent 装配」
+ * （S1 既有语义），无即时消费面。
+ */
+type ChangeSignal = () => void;
+
 class ContributionRegistry<T extends { id: string }> {
   private entries = new Map<string, { def: T; dispose: () => void }>();
 
-  constructor(private readonly kind: string) {}
+  constructor(
+    private readonly kind: string,
+    private readonly onChange: ChangeSignal | null = null,
+  ) {}
 
   register(def: T): () => void {
     if (this.entries.has(def.id)) {
@@ -92,10 +122,12 @@ class ContributionRegistry<T extends { id: string }> {
         done = true;
         if (this.entries.get(def.id)?.def === def) {
           this.entries.delete(def.id);
+          this.onChange?.(); // 贡献消失——即时面重取清单（S4-1.5）
         }
       },
     };
     this.entries.set(def.id, entry);
+    this.onChange?.(); // 贡献出现——即时面重取清单（S4-1.5）
     return entry.dispose;
   }
 
@@ -112,10 +144,11 @@ class ContributionRegistry<T extends { id: string }> {
 // ── 四 service 本体（结构同构，分立四个服务名：inject 面各自独立）──
 
 export class PanelsService extends Service {
-  private registry = new ContributionRegistry<PanelContribution>('panels');
+  private registry = new ContributionRegistry<PanelContribution>('panels', bumpPanelDefs);
 
   constructor(ctx: Context) {
     super(ctx, 'panels');
+    setActivePanels(this); // S4-1.5：消费闭环读取面（panelDefs() 合流点）
   }
 
   register(def: PanelContribution): () => void {
@@ -132,10 +165,11 @@ export class PanelsService extends Service {
 }
 
 export class CommandsService extends Service {
-  private registry = new ContributionRegistry<CommandContribution>('commands');
+  private registry = new ContributionRegistry<CommandContribution>('commands', bumpCommands);
 
   constructor(ctx: Context) {
     super(ctx, 'commands');
+    setActiveCommands(this); // S4-1.5：消费闭环读取面（effectiveActions() 合流点）
   }
 
   register(def: CommandContribution): () => void {
@@ -152,10 +186,11 @@ export class CommandsService extends Service {
 }
 
 export class ToolsService extends Service {
-  private registry = new ContributionRegistry<ToolContribution>('tools');
+  private registry = new ContributionRegistry<ToolContribution>('tools', fireContributionsChanged);
 
   constructor(ctx: Context) {
     super(ctx, 'tools');
+    setActiveTools(this); // S4-1.5：消费闭环读取面（pluginToolRows() 折算源）
   }
 
   register(def: ToolContribution): () => void {
@@ -191,7 +226,50 @@ export class ProvidersService extends Service {
   }
 }
 
-// ── Context 类型增强（消费面 ctx.panels / ctx.commands / ctx.tools / ctx.providers）──
+// ── S4-1.5 消费闭环读取面 ──
+//
+// React 消费面（DockRail/DockPanel/CommandPalette）与装配面（buildToolRegistry）
+// 不持根 Context 引用——经此模块级「活动服务」间接层读取贡献清单。服务的
+// set/bump 都发生在构造期（loadBuiltinPlugins 引导），fiber dispose 卸载
+// 时无消费者残留（app 生命周期 = 根 fiber 生命周期）。模块级可变态归属
+// CONVENTIONS §1.10 第 3 类（键控自清理：单一键，生命周期 = 进程）。
+
+let _activePanels: PanelsService | null = null;
+let _activeCommands: CommandsService | null = null;
+let _activeTools: ToolsService | null = null;
+
+/** 服务构造期登记（loadBuiltinPlugins 引导的唯一入口）。 */
+function setActivePanels(svc: PanelsService): void {
+  _activePanels = svc;
+}
+function setActiveCommands(svc: CommandsService): void {
+  _activeCommands = svc;
+}
+function setActiveTools(svc: ToolsService): void {
+  _activeTools = svc;
+}
+
+/** 当前面板贡献（无服务/无注册 = 空集——合流点读这个，常量面零改写）。 */
+export function activePanelContributions(): PanelContribution[] {
+  return _activePanels?.list() ?? [];
+}
+
+/** 当前面板贡献按 id 查找。 */
+export function getPanelContribution(id: string): PanelContribution | undefined {
+  return _activePanels?.get(id);
+}
+
+/** 当前命令贡献（无服务/无注册 = 空集）。 */
+export function activeCommandContributions(): CommandContribution[] {
+  return _activeCommands?.list() ?? [];
+}
+
+/** 当前工具贡献（无服务/无注册 = 空集——pluginToolRows 折算源）。 */
+export function activeToolContributions(): ToolContribution[] {
+  return _activeTools?.list() ?? [];
+}
+
+// ── 组合层挂载插件（根 Context 装配四 service；经 loadBuiltinPlugins 引导）──
 
 declare module '../cordis/context' {
   interface Context {
@@ -205,8 +283,6 @@ declare module '../cordis/context' {
     providers: ProvidersService;
   }
 }
-
-// ── 组合层挂载插件（根 Context 装配四 service；经 loadBuiltinPlugins 引导）──
 
 /** 内核线第 3 条的实体化：四注册表常驻根上下文，先于任何外部插件装载。 */
 export const compositionServicesPlugin = {

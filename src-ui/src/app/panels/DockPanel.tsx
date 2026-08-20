@@ -4,9 +4,12 @@
 // P3：dock 面板容器 — 按注册表挂载六个面板（全部活在单 React 树内）。
 // unmountOnClose 的面板（dataflow/settings）关闭即卸载（对齐旧 Controller 的
 // close=unmount 语义）；其余常驻挂载，组件内部用 class 切换保 CSS 过渡。
+// S4-1.5：清单源改读 panelDefs()（常量 + 插件贡献），panelDefsTick 驱动
+// 贡献变更后的即时重挂载（设计件 §2.3）。
 
 import { useDockStore } from '../../state/dock-store';
-import { PANEL_DEFS, type PanelDef } from './panel-def';
+import { usePanelDefsStore } from '../../state/panel-defs-store';
+import { type PanelDef, panelDefs } from './panel-def';
 
 function PanelSlot({ def }: { def: PanelDef }) {
   const open = useDockStore((s) => s.open[def.id]);
@@ -16,9 +19,12 @@ function PanelSlot({ def }: { def: PanelDef }) {
 }
 
 export function DockPanel() {
+  const panelDefsTick = usePanelDefsStore((s) => s.panelDefsTick);
+  const defs = panelDefs();
+  void panelDefsTick; // 信号驱动重渲染；清单在渲染期重取（合流点幂等）
   return (
     <>
-      {PANEL_DEFS.map((def) => (
+      {defs.map((def) => (
         <PanelSlot key={def.id} def={def} />
       ))}
     </>
