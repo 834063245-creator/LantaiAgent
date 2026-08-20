@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
+use tauri::Emitter;
+
 use crate::os_sandbox;
 use crate::utils::build_lock::{BUILD_LOCKS, LockKey};
 use crate::utils::ipc_guard::lock_or_recover;
@@ -80,9 +82,44 @@ pub(crate) fn next_job_id() -> u32 {
     NEXT_JOB_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
 }
 
-/// 通知队列 — 由 agent 在每次 stream() 调用前清空。
-pub(crate) static COMPLETED_NOTES: std::sync::LazyLock<Mutex<Vec<String>>> =
+/// 单条后台通知 — 携带发起者（job owner）实现按 agent 路由投递。
+/// 2026-08 修复：此前通知是无主全局队列，任何 agent 的 runLoop drain 都会把
+/// 别人 job 的完成/停滞通知吸进自己的上下文（父 Agent 起任务、并行子 Agent 误收，
+/// 且父 Agent 永远收不到自己的通知）。owner=None 表示用户/UI 直接发起，
+/// 不投给任何 agent（仅 drain_all 遗留路径可见）。
+pub(crate) struct BgNote {
+    pub(crate) owner: Option<String>,
+    pub(crate) text: String,
+}
+
+/// 通知队列 — 由 agent 在每次 stream() 调用前按自己的 agent_id 排干
+/// （drain_bg_notifications(Some(id))）。上限 MAX_COMPLETED_NOTES 条：
+/// owner 已消亡的通知永远不会被 drain，防无界增长（超限丢最旧）。
+pub(crate) static COMPLETED_NOTES: std::sync::LazyLock<Mutex<Vec<BgNote>>> =
     std::sync::LazyLock::new(|| Mutex::new(Vec::new()));
+
+const MAX_COMPLETED_NOTES: usize = 200;
+
+/// 追加通知（带容量护栏 — 超限丢最旧）。
+fn push_note(owner: Option<String>, msg: String) {
+    let mut notes = lock_or_recover(&COMPLETED_NOTES);
+    notes.push(BgNote { owner, text: msg });
+    let overflow = notes.len().saturating_sub(MAX_COMPLETED_NOTES);
+    if overflow > 0 {
+        notes.drain(..overflow);
+    }
+}
+
+/// 通知前端「该 owner 有新通知」— 前端监听（workspace setupAgent）后排干该
+/// owner 的通知并经 MessageBus systemNotify 投递，触发 idle agent 的 runLoop 唤醒。
+fn emit_bg_note(app: &Option<tauri::AppHandle>, job_id: u32, owner: Option<String>) {
+    if let Some(app) = app {
+        let _ = app.emit(
+            "bg:note",
+            serde_json::json!({ "jobId": job_id, "owner": owner }),
+        );
+    }
+}
 
 static NEXT_JOB_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
@@ -109,24 +146,37 @@ pub(crate) fn bg_jobs_snapshot() -> Vec<serde_json::Value> {
     out
 }
 
-/// 排空并返回所有待处理的后台通知（同时清空队列）。
-pub(crate) fn drain_bg_notifications() -> String {
+/// 排空并返回指定 agent 的待处理后台通知（只取 owner 匹配的，其余保留）。
+/// owner 不匹配的通知留在队列 — 每个 agent 只消费自己的（2026-08 修复：
+/// 此前任何 agent 都会吸走全部通知，包括并行子 Agent 抢走父 Agent 的）。
+pub(crate) fn drain_bg_notifications(agent_id: Option<&str>) -> String {
     let mut notes = crate::utils::lock_or_recover(&COMPLETED_NOTES);
     if notes.is_empty() {
         return String::new();
     }
-    let result = notes.join("\n");
-    notes.clear();
-    result
+    let mut mine = String::new();
+    notes.retain(|note| {
+        let owned = note.owner.as_deref() == agent_id;
+        if owned {
+            if !mine.is_empty() {
+                mine.push('\n');
+            }
+            mine.push_str(&note.text);
+        }
+        !owned
+    });
+    mine
 }
 
 /// 停滞检测阈值 — 超过此时长无输出则触发警告。
 const STALL_THRESHOLD: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// 启动监控线程，每秒轮询子进程状态。
-/// 进程退出时：向 COMPLETED_NOTES 推送完成通知。
+/// 进程退出时：向 COMPLETED_NOTES 推送完成通知（携带 owner，由对应 agent 排干）。
 /// 停滞时（超过 STALL_THRESHOLD 无输出）：推送停滞警告并重置计时器。
-fn spawn_monitor(id: u32, label: String) {
+/// app 用于发射 bg:note 事件 — 前端据此唤醒 idle agent（此前通知只能被动等待
+/// agent 下一次 stream，idle 时完成通知可能永远压在队列里）。
+fn spawn_monitor(id: u32, label: String, app: Option<tauri::AppHandle>) {
     std::thread::spawn(move || {
         loop {
             std::thread::sleep(std::time::Duration::from_secs(1));
@@ -145,22 +195,28 @@ fn spawn_monitor(id: u32, label: String) {
                     }
                     let elapsed = job.start_time.elapsed().as_secs();
                     let ec = status.code().unwrap_or(-1);
+                    let owner = job.owner.clone();
                     let msg = format!(
                         "后台任务已完成: {} (exit code: {}, 耗时: {}s)。使用 bash_output({}) 查看输出。",
                         label, ec, elapsed, id
                     );
-                    crate::utils::lock_or_recover(&COMPLETED_NOTES).push(msg);
+                    drop(jobs);
+                    push_note(owner.clone(), msg);
+                    emit_bg_note(&app, id, owner);
                     return; // 不移除 — read_bg_output 会在 agent 检查时清理
                 }
                 Ok(None) => {
                     let stall_elapsed = job.last_output_time.elapsed();
                     if stall_elapsed > STALL_THRESHOLD {
+                        let owner = job.owner.clone();
                         let msg = format!(
                             "⚠️ 后台任务可能已停滞: {} 已 {}s 无输出 (job_id: {})。考虑用 bash_output({}) 检查或 bash_kill({}) 终止。",
                             label, stall_elapsed.as_secs(), id, id, id
                         );
-                        crate::utils::lock_or_recover(&COMPLETED_NOTES).push(msg);
                         job.last_output_time = std::time::Instant::now(); // 重置以避免重复警告
+                        drop(jobs);
+                        push_note(owner.clone(), msg);
+                        emit_bg_note(&app, id, owner);
                     }
                 }
                 Err(_) => return,
@@ -170,12 +226,18 @@ fn spawn_monitor(id: u32, label: String) {
 }
 
 #[allow(dead_code)] // 当前仅测试消费；exec_command 后台路径已改走 spawn_bg_with（显式 job_id + 解释器）
-pub(crate) fn spawn_bg(cmd: &str, cwd: &str, owner: Option<String>, lock_key: Option<LockKey>) -> Result<u32, String> {
+pub(crate) fn spawn_bg(
+    cmd: &str,
+    cwd: &str,
+    owner: Option<String>,
+    lock_key: Option<LockKey>,
+    app: Option<tauri::AppHandle>,
+) -> Result<u32, String> {
     let child = os_sandbox::spawn_shell(cmd, cwd)
         .map_err(|e| format!("无法启动后台命令: {e}"))?;
     let label: String = cmd.chars().take(80).collect();
     let id = next_job_id();
-    spawn_bg_from_child(id, child, &label, owner, lock_key)
+    spawn_bg_from_child(id, child, &label, owner, lock_key, app)
 }
 
 /// 带调用方预留 job_id + 显式解释器的后台启动。
@@ -189,6 +251,7 @@ pub(crate) fn spawn_bg_with(
     interpreter: crate::os_sandbox::ShellInterpreter,
     owner: Option<String>,
     lock_key: Option<LockKey>,
+    app: Option<tauri::AppHandle>,
 ) -> Result<u32, String> {
     let child = match os_sandbox::spawn_shell_with(cmd, cwd, interpreter) {
         Ok(c) => c,
@@ -198,7 +261,7 @@ pub(crate) fn spawn_bg_with(
         }
     };
     let label: String = cmd.chars().take(80).collect();
-    spawn_bg_from_child(id, child, &label, owner, lock_key)
+    spawn_bg_from_child(id, child, &label, owner, lock_key, app)
 }
 
 /// 将已启动的 SandboxedChild 注册为后台任务。
@@ -216,6 +279,7 @@ pub(crate) fn spawn_bg_from_child(
     label: &str,
     owner: Option<String>,
     lock_key: Option<LockKey>,
+    app: Option<tauri::AppHandle>,
 ) -> Result<u32, String> {
     let now = std::time::Instant::now();
     let mut child = child;
@@ -285,7 +349,7 @@ pub(crate) fn spawn_bg_from_child(
         lock_key,
     };
     crate::utils::lock_or_recover(&BG_JOBS).insert(id, job);
-    spawn_monitor(id, label.to_string());
+    spawn_monitor(id, label.to_string(), app);
     Ok(id)
 }
 
@@ -527,6 +591,7 @@ mod tests {
             crate::os_sandbox::ShellInterpreter::Auto,
             None,
             Some(k.clone()),
+            None,
         );
         assert!(r.is_err(), "不存在的 cwd 应导致 spawn 失败: {r:?}");
         assert!(
@@ -541,11 +606,56 @@ mod tests {
     #[test]
     fn spawn_bg_with_uses_given_job_id() {
         let id = next_job_id();
-        let kid = spawn_bg_with(id, "echo bg-id-ok", ".", crate::os_sandbox::ShellInterpreter::Auto, None, None)
+        let kid = spawn_bg_with(id, "echo bg-id-ok", ".", crate::os_sandbox::ShellInterpreter::Auto, None, None, None)
             .expect("spawn_bg_with failed");
         assert_eq!(kid, id, "后台 job_id 应与调用方预留 id 一致");
         let out = wait_bg(id, 10_000).expect("wait_bg failed");
         assert!(out.contains("bg-id-ok"), "unexpected output: {out}");
+    }
+
+    // ── 通知按 owner 路由（2026-08 修复回归）──
+    // 修复前：通知是无主全局队列，任何 agent 的 drain 都会吸走全部通知 —
+    // 并行子 Agent 抢走父 Agent 的完成通知，且父 Agent 永远收不到。
+    // 两个通知测试都碰全局 COMPLETED_NOTES — 用互斥锁串行，防互相清队列。
+
+    static NOTE_TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn bg_notifications_route_by_owner() {
+        let _g = NOTE_TESTS.lock().expect("note tests lock");
+        let mut notes = lock_or_recover(&COMPLETED_NOTES);
+        notes.clear();
+        notes.push(BgNote { owner: Some("agent-a".into()), text: "A1".into() });
+        notes.push(BgNote { owner: Some("agent-b".into()), text: "B1".into() });
+        notes.push(BgNote { owner: None, text: "UI1".into() });
+        drop(notes);
+
+        // agent-a 只拿到自己的通知，别人的留在队列
+        let a = drain_bg_notifications(Some("agent-a"));
+        assert!(a.contains("A1") && !a.contains("B1") && !a.contains("UI1"), "a: {a}");
+        // agent-b 再拿，仍能拿到自己的
+        let b = drain_bg_notifications(Some("agent-b"));
+        assert!(b.contains("B1") && !b.contains("UI1"), "b: {b}");
+        // 用户发起（owner=None）不投给任何 agent
+        let a2 = drain_bg_notifications(Some("agent-a"));
+        assert!(a2.is_empty(), "a2: {a2}");
+    }
+
+    #[test]
+    fn bg_notification_queue_bounded() {
+        let _g = NOTE_TESTS.lock().expect("note tests lock");
+        lock_or_recover(&COMPLETED_NOTES).clear();
+        // 走 push_note — 容量护栏在 push_note 内（直接 push 会绕过护栏）
+        for i in 0..(MAX_COMPLETED_NOTES + 50) {
+            push_note(Some("dead-agent".into()), format!("n{i}"));
+        }
+        // 容量护栏生效：最旧被丢，最新仍在。
+        // 断言用行级匹配 — "n0" 是 "n100"/"n200" 的子串，contains 会误匹配。
+        let drained = drain_bg_notifications(Some("dead-agent"));
+        let lines: Vec<&str> = drained.split('\n').collect();
+        assert!(lines.contains(&"n249"), "最新通知丢失（共 {} 行）", lines.len());
+        assert!(!lines.contains(&"n0"), "最旧通知应已被丢弃");
+        assert_eq!(lines.len(), MAX_COMPLETED_NOTES, "保留数应恰为上限");
     }
 
 }

@@ -736,7 +736,7 @@ mod tests {
     // ── P1-17：bg 任务读方只碰 shared Arc，永不阻塞读管道 ──
     #[test]
     fn bg_job_roundtrip_via_shared_arc() {
-        let id = spawn_bg("echo bg-p117", ".", None, None).expect("spawn_bg failed");
+        let id = spawn_bg("echo bg-p117", ".", None, None, None).expect("spawn_bg failed");
         let out = wait_bg(id, 10_000).expect("wait_bg failed");
         assert!(out.contains("bg-p117"), "unexpected output: {out}");
         assert!(out.contains("exit code: 0"), "unexpected output: {out}");
@@ -747,7 +747,7 @@ mod tests {
     /// 该分支已从类型上移除，此测试锁定行为。
     #[test]
     fn bg_output_snapshot_quiet_task_returns_fast() {
-        let id = spawn_bg("sleep 5", ".", None, None).expect("spawn_bg failed");
+        let id = spawn_bg("sleep 5", ".", None, None, None).expect("spawn_bg failed");
         let start = std::time::Instant::now();
         let out = read_bg_output(id).expect("read_bg_output failed");
         assert!(

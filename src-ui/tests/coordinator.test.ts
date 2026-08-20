@@ -323,4 +323,30 @@ describe('SubAgentPool', () => {
     expect(ha?.status).toBe(SubAgentStatus.Stopped);
     expect(hb?.status).toBe(SubAgentStatus.Stopped);
   });
+
+  // ── 2026-08 修复回归：排队态的 callId 幂等 ──
+  // 修复前：同 callId 重发（stream retry）撞上排队态时 spawn 返回 null，
+  // 工具层误报「池已满且队列已满」，模型被诱导放弃一个实际已入队的任务。
+  it('returns the SAME queued view when spawn is retried with a duplicate callId (stream retry)', async () => {
+    const pool = new SubAgentPool(1, 60000); // 单槽
+    // 占满唯一槽位（永不完成）
+    pool.spawn('occupier', () => new Promise<{ text: string }>(() => {}));
+    // 排队（callId = call-1）
+    const first = pool.spawn('queued task', fakeRun('queued result', 10), 'call-1')!;
+    expect(pool.isQueued(first.id)).toBe(true);
+
+    // 同 callId 重发 — 必须返回同一排队视图（同 id/signal/done），而非 null
+    const retry = pool.spawn('queued task retry', fakeRun('dup', 10), 'call-1')!;
+    expect(retry).toBeTruthy();
+    expect(retry.id).toBe(first.id);
+    expect(retry.signal).toBe(first.signal);
+    expect(retry.done).toBe(first.done);
+    // 队列中只有一个排队项（重发没有入第二个）
+    expect(pool.summary()).not.toContain('queued task retry');
+
+    // 停止排队项 — 同一 done 结算 stopped
+    expect(pool.stop(first.id)).toBe(true);
+    const handle = await retry.done;
+    expect(handle.status).toBe(SubAgentStatus.Stopped);
+  });
 });

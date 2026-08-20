@@ -470,4 +470,33 @@ describe('T2 差分 — 持久化双写（P1-15 游标不受破坏）', () => {
     const replayed = SessionLog.replay(events.map((e) => e as Parameters<typeof SessionLog.replay>[0][number]));
     expect(JSON.stringify(replayed.deriveMessages())).toBe(JSON.stringify(agent.getSession()));
   });
+
+  it('run() 异常路径仍持久化会话（saveState 在 finally 中 — 2026-08 修复回归）', async () => {
+    // 修复前：saveState 在 await runLoop 之后 — runLoop 抛错（含 abort）时被跳过，
+    // 本轮注入的 inbox 消息（result/bg）只存在于内存 session，崩溃即静默丢失。
+    appendCalls.length = 0;
+    logAppends.length = 0;
+    const store = new AgentStore('/p');
+    // stream 第一轮直接抛错 → runLoop 冒泡 → run() 必须仍走 saveState
+    const prov: Provider = {
+      name: () => 'mock',
+      // biome-ignore lint/correctness/useYield: 故障注入 — provider 必须抛错而非产出
+      async *stream() {
+        throw new Error('provider exploded');
+      },
+      prewarm() {},
+      async fetchModels() {
+        return [];
+      },
+    };
+    const agent = new Agent(prov, new ToolRegistry(), 'sys-fixture', { contextWindow: 100000 });
+    agent.setAgentStore(store);
+    await expect(agent.run(SIG, 'boom turn')).rejects.toThrow('provider exploded');
+
+    // saveState 在 finally 中 fire-and-forget — 等它落地（修复前此断言永远失败：
+    // throw 路径完全绕过 saveState，内存 session 随崩溃丢失）
+    await vi.waitFor(() => expect(appendCalls.length).toBe(1), { timeout: 2000 });
+    const saved = def(appendCalls[0], 'appendCalls[0]').messages.map((m) => m.content);
+    expect(saved).toContain('boom turn');
+  });
 });

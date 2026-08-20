@@ -931,9 +931,11 @@ pub(crate) async fn rpc(
             let run_in_background = opt_bool(&params, "run_in_background");
             let is_agent = opt_bool(&params, "is_agent");
             let agent_id = opt_str(&params, "_agent_id").or_else(|| opt_str(&params, "agent_id"));
+            // 通知路由身份（bus agent id）— 与 _agent_id（worktree 隔离 id）分离
+            let owner_id = opt_str(&params, "_owner_id");
             let stream_tool_id = opt_str(&params, "stream_tool_id");
             let interpreter = opt_str(&params, "interpreter");
-            commands::shell::exec_command(command, cwd, timeout_ms, run_in_background, is_agent, stream_tool_id, agent_id, interpreter, state, app).await
+            commands::shell::exec_command(command, cwd, timeout_ms, run_in_background, is_agent, stream_tool_id, agent_id, interpreter, owner_id, state, app).await
         }
         "bash_output" => {
             let job_id = params.get("job_id").and_then(|v| v.as_u64()).map(|n| n as u32)
@@ -943,7 +945,8 @@ pub(crate) async fn rpc(
                 "bash_kill" => {
             let job_id = params.get("job_id").and_then(|v| v.as_u64()).map(|n| n as u32)
                 .ok_or_else(|| "bash_kill: missing 'job_id'".to_string())?;
-            let agent_id = opt_str(&params, "agent_id");
+            // kill 所有权身份优先 _owner_id（与 spawn 时 job owner 对齐），回退 agent_id
+            let agent_id = opt_str(&params, "_owner_id").or_else(|| opt_str(&params, "agent_id"));
             commands::shell::bash_kill(job_id, agent_id).await
         }
         "bash_wait" => {
@@ -961,7 +964,8 @@ pub(crate) async fn rpc(
             Ok(serde_json::json!({ "shells": shells, "browsers": browsers }).to_string())
         }
         "drain_bg_notifications" => {
-            commands::shell::drain_bg_notifications().await
+            let agent_id = opt_str(&params, "agent_id");
+            commands::shell::drain_bg_notifications(agent_id).await
         }
         "protocol_bridge_spawn" => {
             let id = req_str(&params, "id", "protocol_bridge_spawn")?;

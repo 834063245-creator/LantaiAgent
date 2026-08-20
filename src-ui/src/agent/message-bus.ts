@@ -13,6 +13,7 @@
 //   - 拓扑策略注入，默认 TreeTopology
 //   - 传输层可替换（InProcessTransport 默认，未来可换跨进程/跨机器）
 
+import { log } from './logger';
 import type {
   AgentAddress,
   AgentMessage,
@@ -29,8 +30,8 @@ const DEFAULT_INBOX_CAPACITY = 100;
 const DEFAULT_BACKPRESSURE: BackpressureStrategy = 'drop';
 
 const FREE_MSG_TTL_MS = 30 * 60 * 1000; // 30 min — 自由类型消息过期时间
-// 消息不会过期的类型（result/reply 消费后即删；request 需留在 inbox 供 agent_reply ack）
-const NON_EXPIRING_TYPES = ['result', 'request', 'reply'];
+// 消息不会过期的类型（result/reply/bg 消费后即删；request 需留在 inbox 供 agent_reply ack）
+const NON_EXPIRING_TYPES = ['result', 'request', 'reply', 'bg'];
 
 function generateId(): string {
   return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -65,9 +66,16 @@ class InProcessTransport implements MessageTransport {
         case 'reject':
           throw new InboxFullError(`inbox full for '${agentId}' (capacity ${capacity} exceeded)`, agentId);
         case 'drop': {
-          // 移除最旧消息
+          // 移除最旧消息 — 丢弃必须可见（错误不静默）：
+          // 被丢的可能是 result/bg 通知，无日志 = 无法排查"消息去哪了"
           const oldest = inbox.shift();
-          if (oldest) this.msgIndex.delete(oldest.id);
+          if (oldest) {
+            this.msgIndex.delete(oldest.id);
+            log.warn(
+              'agent',
+              `inbox 已满（capacity ${capacity}）— 丢弃最旧消息 ${oldest.id}（from:${oldest.from} type:${oldest.type}）`,
+            );
+          }
           break;
         }
         case 'block':
@@ -159,6 +167,11 @@ export class MessageBus {
     }
   }
 
+  /** agent 是否已注册 — systemNotify 等投递前的可投递性检查。 */
+  isRegistered(agentId: string): boolean {
+    return this.agents.has(agentId);
+  }
+
   // ── 通信原语（Phase 1: 仅异步） ──
 
   /** 投递消息到 inbox + 触发唤醒回调 */
@@ -167,6 +180,27 @@ export class MessageBus {
     this.transport.onDelivered?.(agentId);
     // 投递成功后触发唤醒 — agent idle 时用来启动 runLoop
     this.wakeCallbacks.get(agentId)?.();
+  }
+
+  /** 系统级通知 — 运行时（后台任务完成 / TTL 处置 / 重启收养）→ agent 的单向投递。
+   *  绕过拓扑检查：system / lifecycle-manager 不是注册 agent，树拓扑会直接拒绝
+   *  （此前这类发送全部被 TopologyDeniedError 静默吞掉 — 通知从未真正到达过）。
+   *  仍要求目标已注册；未注册返回 null，调用方自行降级（如 UI Notice 兜底）。
+   *  投递成功会触发该 agent 的 wake 回调（idle 时启动 runLoop）。 */
+  systemNotify(to: string, type: string, payload: unknown): string | null {
+    if (!this.agents.has(to)) return null;
+    const msg: AgentMessage = {
+      id: generateId(),
+      ts: Date.now(),
+      from: 'system',
+      to,
+      type,
+      payload,
+    };
+    this._deliver(to, msg);
+    this._notifySubscribers(msg);
+    this._scheduleFlush();
+    return msg.id;
   }
 
   /** 异步发送：发完即走，不等待回复。返回消息 ID */
@@ -406,18 +440,21 @@ export class MessageBus {
     }
   }
 
-    /** Purge ephemeral message types (result/reply) from ALL inboxes.
+  /** Purge ephemeral message types (result/reply/bg) from ALL inboxes.
    *  These are only meaningful within a live session — after a restart,
-   *  any pending results/replies are from dead sub-agents and must be discarded.
+   *  any pending results/replies are from dead sub-agents and must be discarded;
+   *  pending bg notes reference in-memory BG_JOBS which no longer exist.
    *  Called after restore() to prevent cross-session message leak. */
   purgeEphemeralTypes(): void {
+    let purged = 0;
     for (const [agentId, inbox] of this.inboxes) {
       let changed = false;
       const remaining: AgentMessage[] = [];
       for (const msg of inbox) {
-        if (msg.type === 'result' || msg.type === 'reply') {
+        if (msg.type === 'result' || msg.type === 'reply' || msg.type === 'bg') {
           this.msgIndex.delete(msg.id);
           changed = true;
+          purged++;
         } else {
           remaining.push(msg);
         }
@@ -429,6 +466,9 @@ export class MessageBus {
           this.msgIndex.set(inbox[i].id, { agentId, index: i });
         }
       }
+    }
+    if (purged > 0) {
+      log.info('agent', `重启恢复：清除 ${purged} 条跨会话失效的 result/reply/bg 消息`);
     }
   }
 

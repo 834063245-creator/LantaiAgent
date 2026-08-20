@@ -59,6 +59,9 @@ interface QueuedSpawn {
   callId?: string;
   timeoutMs?: number;
   queuedId: string;
+  /** 排队视图的 signal/done — spawn() 对同 callId 重发时返回同一视图（幂等） */
+  signal: AbortSignal;
+  done: Promise<SubAgentHandle>;
   resolve: (spawned: SpawnedAgent) => void;
 }
 
@@ -109,9 +112,12 @@ export class SubAgentPool {
           return { id, signal: pending.abortController.signal, done: pending.done };
         }
       }
-      // 也检查队列中的重复
-      if (this.queue.some((q) => q.callId === callId)) {
-        return null; // 已用此 callId 排队
+      // 也检查队列中的重复 — stream retry 撞上排队态时返回该排队 SpawnedAgent
+      //（其 done 会在真正生成时接上），而非 null（null 会被上层误报为
+      //「池已满且队列已满」，诱导模型放弃一个实际已入队的任务）。
+      const queued = this.queue.find((q) => q.callId === callId);
+      if (queued) {
+        return this._queuedView(queued);
       }
     }
     if (this.agents.size >= this.maxConcurrent) {
@@ -210,13 +216,16 @@ export class SubAgentPool {
       resolveDone = r;
     });
 
-    // 存储 resolve 函数，以便 _drainQueue 能接上真正的生成
+    // 存储 resolve 函数，以便 _drainQueue 能接上真正的生成。
+    // signal/done 一并存为字段 — 同 callId 重发（stream retry）时返回同一视图。
     this.queue.push({
       description,
       runFn,
       callId,
       timeoutMs,
       queuedId: id,
+      signal: abortController.signal,
+      done,
       resolve: (real: SpawnedAgent) => {
         // 真正的生成触发时，将其 done 连接到我们的延迟 promise
         real.done.then((h) => {
@@ -231,16 +240,23 @@ export class SubAgentPool {
     return { id, signal: abortController.signal, done };
   }
 
+  /** 排队项的调用方视图 — 与首次入队返回的 signal/done 是同一对象，
+   *  保证 spawn() 对同 callId 重发的幂等语义。 */
+  private _queuedView(item: QueuedSpawn): SpawnedAgent {
+    return { id: item.queuedId, signal: item.signal, done: item.done };
+  }
+
   /** 排空队列 — 在可用槽位范围内启动尽可能多的排队生成。 */
   private _drainQueue(): void {
     while (this.queue.length > 0 && this.agents.size < this.maxConcurrent) {
       const item = this.queue.shift()!;
       const spawned = this._doSpawn(item.description, item.runFn, item.callId, item.timeoutMs);
-      // 重新映射指向排队 id 的别名 → 真实内部 id
+      // 重新映射指向排队 id 的别名 → 真实内部 id。
+      // 不 break：同 callId 重试会注册多个别名指向同一排队项，全部重映射，
+      // 否则后注册的别名会悬空指向已出队的 queuedId（agent_kill 失效）。
       for (const [alias, internal] of this._aliasToInternal) {
         if (internal === item.queuedId) {
           this._aliasToInternal.set(alias, spawned.id);
-          break;
         }
       }
       // 删除排队的 id（不是 spawned.id，后者从未在集合中）

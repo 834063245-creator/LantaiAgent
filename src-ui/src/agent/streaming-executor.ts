@@ -60,6 +60,10 @@ export class StreamingToolExecutor {
   private dispatchedIds = new Set<string>();
 
   private agentId: string | null;
+  /** 通知路由身份（bus agent id）— 注入为 args._owner_id，Rust 侧用作后台任务
+   *  通知 owner 与 kill 所有权。与 agentId（worktree 隔离 id → _agent_id）分离：
+   *  主 Agent / 非隔离子 Agent 无 _agent_id，但同样需要认领自己的后台通知。 */
+  private ownerId: string | null;
   /** AbortSignal — 设置后，awaitRemaining 将每个 pending promise 与其竞速。 */
   private signal: AbortSignal | null;
   /** Plan 门禁 — plan 激活时在执行层拦截写操作；schema 跨模式恒定（缓存友好）。 */
@@ -79,12 +83,14 @@ export class StreamingToolExecutor {
     signal?: AbortSignal | null,
     planGate?: PlanGate | null,
     eventBus?: AgentEventBus | null,
+    ownerId?: string | null,
   ) {
     this.tools = tools;
     this.emit = emitEvent;
     this.hooks = hooks ?? null;
     this.preflightHooks = preflightHooks ?? null;
     this.agentId = agentId ?? null;
+    this.ownerId = ownerId ?? null;
     this.signal = signal ?? null;
     this.planGate = planGate ?? null;
     this.eventBus = eventBus ?? null;
@@ -348,6 +354,14 @@ export class StreamingToolExecutor {
     // 注入 _agent_id 用于隔离 — 告诉 Rust 后端使用哪个工作树
     if (this.agentId) {
       args._agent_id = this.agentId;
+    }
+
+    // 注入 _owner_id（bus agent id）— 后台任务通知路由身份（bg:note owner /
+    // bash_kill 所有权）。与 _agent_id（worktree 隔离 id）分离：主 Agent 与
+    // 非隔离子 Agent 无 _agent_id，但同样需要认领自己的后台任务通知 —
+    // 此前 owner 绑定 isolationId，与 bus 注册 id 永不匹配，通知永远无人认领。
+    if (this.ownerId) {
+      args._owner_id = this.ownerId;
     }
 
     try {

@@ -698,3 +698,63 @@ describe('Communication tools', () => {
     expect(result).toContain('no communicable agents');
   });
 });
+
+// ═══════════════════════════════════════════════════════
+// systemNotify — 运行时 → agent 的单向投递（绕拓扑）
+// 2026-08 修复回归：lifecycle-manager / runtime 以非注册 sender 走 bus.send
+// 会被树拓扑静默拒绝（TopologyDeniedError 被调用方 try/catch 吞掉），
+// TTL 处置 / 重启收养通知从未真正到达过模型上下文。
+// ═══════════════════════════════════════════════════════
+
+describe('MessageBus — systemNotify', () => {
+  it('delivers to a registered agent bypassing topology (system is not a registered agent)', () => {
+    const { bus, child1 } = setupTree();
+    const msgId = bus.systemNotify(child1, 'notification', '后台任务已完成: echo (job_id: 42)');
+    expect(msgId).toBeTruthy();
+
+    const inbox = bus.peekInbox(child1);
+    expect(inbox.length).toBe(1);
+    expect(inbox[0].from).toBe('system');
+    expect(inbox[0].to).toBe(child1);
+    expect(inbox[0].type).toBe('notification');
+    expect(inbox[0].payload).toContain('job_id: 42');
+    // 未读计数 — idle agent 的 wake 判定依赖它
+    expect(bus.unreadCount(child1)).toBe(1);
+  });
+
+  it('returns null (no throw) for an unregistered target — caller degrades gracefully', () => {
+    const { bus } = setupTree();
+    expect(bus.systemNotify('nonexistent', 'notification', 'x')).toBeNull();
+  });
+
+  it('fires the wake callback (idle-agent runLoop wakeup path)', () => {
+    const { bus, child1 } = setupTree();
+    let wakeCount = 0;
+    bus.register(addr(child1), () => {
+      wakeCount++;
+    });
+    bus.systemNotify(child1, 'bg', '后台任务已完成');
+    expect(wakeCount).toBe(1);
+  });
+
+  it('bg type survives the 30-min free-message TTL purge (jobId pointer must not expire)', () => {
+    const { bus, child1 } = setupTree();
+    bus.systemNotify(child1, 'bg', '后台任务已完成: cargo test (job_id: 7)');
+    // 伪造时间流逝：把消息 ts 拨回 1 小时前再 purgeExpired
+    const inbox = bus.peekInbox(child1);
+    (inbox[0] as AgentMessage).ts = Date.now() - 60 * 60 * 1000;
+    bus.purgeExpired(child1);
+    expect(bus.peekInbox(child1).length).toBe(1);
+  });
+
+  it('purgeEphemeralTypes discards bg messages on restart (jobs are in-memory and dead)', () => {
+    const { bus, parent, child1 } = setupTree();
+    bus.send({ from: parent, to: child1, type: 'question', payload: 'durable?' });
+    bus.systemNotify(child1, 'bg', '后台任务已完成 (job_id: 7)');
+    bus.systemNotify(child1, 'result', { summary: 'sub done' });
+    bus.purgeEphemeralTypes();
+    const inbox = bus.peekInbox(child1);
+    expect(inbox.length).toBe(1); // question 保留；bg/result 被清
+    expect(inbox[0].type).toBe('question');
+  });
+});

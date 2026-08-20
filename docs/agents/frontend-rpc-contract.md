@@ -1,7 +1,7 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-08-18T18:08:23.949Z
+> 生成时间：2026-08-20T03:53:30.855Z
 > 方法总数：149（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
@@ -140,13 +140,13 @@
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
-| `exec_command` | command | cwd, timeout_ms, run_in_background, is_agent, _agent_id, agent_id, stream_tool_id, interpreter | 字符串 |
+| `exec_command` | command | cwd, timeout_ms, run_in_background, is_agent, _agent_id, agent_id, _owner_id, stream_tool_id, interpreter | 字符串 |
 | `bash_output` | job_id | — | 字符串 |
-| `bash_kill` | job_id | agent_id | 字符串 |
+| `bash_kill` | job_id | _owner_id, agent_id | 字符串 |
 | `bash_wait` | job_id | timeout_ms | 字符串 |
 | `shell_env` | — | — | 字符串 |
 | `background_activity` | — | — | 字符串 |
-| `drain_bg_notifications` | — | — | 字符串 |
+| `drain_bg_notifications` | — | agent_id | 字符串 |
 | `protocol_bridge_spawn` | id, command, args | — | 字符串 |
 | `protocol_bridge_write` | id, line | — | 字符串 |
 | `protocol_bridge_kill` | id | — | 字符串 |

@@ -822,6 +822,29 @@ export class Workspace {
     teardown.add(() => {
       this.subAgentPool.stopAll();
     }, 'subagent-pool-stop');
+    // ── 后台任务通知路由（bg:note）──
+    // Rust 监视线程在 job 完成/停滞时发射（携带 owner）→ 这里排干该 owner 的
+    // 通知队列并经 bus systemNotify 投递：idle agent 被 wake 回调唤起新一轮 run，
+    // 运行中的 agent 则在下轮边界注入。owner = 发起 agent 的 bus id（executor
+    // 注入 _owner_id）— 排干幂等（同一通知只经 listener 或 runLoop drain 之一
+    // 到达）。owner 已消亡（子 Agent 结束注销）时不排干：通知留在 Rust 有界
+    // 队列（超限丢最旧）— 排干后无处投递才是真丢失；bash_output(jobId) 仍是
+    // 兜底拉取路径。
+    const bgNoteBus = runtime.getBus();
+    const unBgNote = await typedListen('bg:note', (payload) => {
+      const owner = payload.owner;
+      // 用户/UI 发起的任务（owner=null）不投给 agent；owner 已注销的直接跳过（见上）
+      if (!owner || !bgNoteBus.isRegistered(owner)) return;
+      void (async () => {
+        try {
+          const notes = await typedRpc('drain_bg_notifications', { agent_id: owner });
+          if (notes) bgNoteBus.systemNotify(owner, 'bg', notes);
+        } catch {
+          /* best-effort — 通知丢失时 bash_output(jobId) 仍可主动拉取 */
+        }
+      })();
+    });
+    teardown.add(unBgNote, 'listener:bg-note');
     teardown.add(() => {
       this.agent = null;
     }, 'agent-null');

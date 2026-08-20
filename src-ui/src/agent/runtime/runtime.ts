@@ -12,34 +12,36 @@
 //
 // UI 层通过 setNotifier() 注入通知器，Runtime 通过它路由事件。
 
-import { typedRpc } from '../../rpc-contract';
-import type { Message, Provider } from '../../provider/types';
+import type { Context } from '../../cordis';
 import type { StoredThinking } from '../../provider/thinking';
-import type { Pricing } from '../agent-types';
+import type { Message, Provider } from '../../provider/types';
+import { typedRpc } from '../../rpc-contract';
 import { Agent } from '../agent';
 import type { AgentStore } from '../agent-store';
-import type { AgentEvent, AgentUINotifier, EventSink } from '../agent-types';
+import type { AgentEvent, AgentUINotifier, EventSink, Pricing } from '../agent-types';
 import { EventKind } from '../agent-types';
 import { AgentBlueprint, type BlueprintScope } from '../blueprint';
-import type { Context } from '../../cordis';
+import { AgentContext } from '../context';
 import type { SubAgentPool } from '../coordinator';
+import { DiscoveryBoard, DiscoveryBoardProxy } from '../discovery-board';
 import { createExecState, type ExecStateInstance } from '../execution-state';
 import type { GoalManager } from '../goal-manager';
 import type { GraphContext } from '../hooks';
 import { buildGraphSnapshot, HookRegistry, PreflightHookRegistry } from '../hooks';
+import { enqueueIsolationOp } from '../isolation-queue';
+import { AgentLifecycleManager } from '../lifecycle-manager';
 import { log } from '../logger';
 import type { MemoryManager } from '../memory';
 import { memoryBundleIngest } from '../memory-bundle-client';
 import { MessageBus } from '../message-bus';
 import { JsonMessageStore } from '../message-store';
-import { TaskBoard, TaskBoardProxy } from '../task-board';
-import { DiscoveryBoard, DiscoveryBoardProxy } from '../discovery-board';
+import { PlanStateManager } from '../plan/plan-state';
+import { SessionLog } from '../session-log';
 import type { SkillRegistry } from '../skills';
 import type { DiagnosticsSource, LspDiagnostic } from '../state-inject';
 import type { TaskManager } from '../task';
-import { ToolRegistry, agentInvoke } from '../tool';
-import { AgentLifecycleManager } from '../lifecycle-manager';
-import { enqueueIsolationOp } from '../isolation-queue';
+import { TaskBoard, TaskBoardProxy } from '../task-board';
+import { agentInvoke, ToolRegistry } from '../tool';
 import type { SubAgentSpawner } from '../tools/subagent';
 import {
   type BuilderDeps,
@@ -48,9 +50,6 @@ import {
   buildToolRegistry,
   extractGraphNodeNames,
 } from './agent-builder';
-import { PlanStateManager } from '../plan/plan-state';
-import { AgentContext } from '../context';
-import { SessionLog } from '../session-log';
 
 import type {
   AgentAssemblyInputs,
@@ -323,7 +322,10 @@ export class AgentRuntime implements RuntimePort {
         isolations?: Array<{ agent_id: string; worktree_exists: boolean }>;
       };
       const known = new Set(
-        tb.getAllEntries().map((e) => e.isolationId).filter((v): v is string => !!v),
+        tb
+          .getAllEntries()
+          .map((e) => e.isolationId)
+          .filter((v): v is string => !!v),
       );
       for (const iso of status.isolations ?? []) {
         if (!iso.worktree_exists || known.has(iso.agent_id)) continue;
@@ -342,17 +344,14 @@ export class AgentRuntime implements RuntimePort {
       }
       if (adopted > 0) {
         console.warn(`[AgentRuntime] 收养 ${adopted} 个重启前遗留的子 Agent 条目到 ${rootAgentId}`);
-        // 通知模型上下文（bus），不只发 console — 收养结果必须可见
-        try {
-          this._bus.send({
-            from: 'system',
-            to: rootAgentId,
-            type: 'status',
-            payload: `已收养 ${adopted} 个重启前遗留的子 Agent 条目（agent_board 可见；completed 条目可直接 agent_merge）`,
-          });
-        } catch {
-          /* best-effort */
-        }
+        // 通知模型上下文（bus），不只发 console — 收养结果必须可见。
+        // systemNotify 绕过拓扑：system 不是注册 agent，树拓扑会拒绝
+        // （旧 bus.send 被静默吞掉，收养结果从未真正到达过模型上下文）。
+        this._bus.systemNotify(
+          rootAgentId,
+          'status',
+          `已收养 ${adopted} 个重启前遗留的子 Agent 条目（agent_board 可见；completed 条目可直接 agent_merge）`,
+        );
       }
     } catch {
       // best-effort — 收养失败不阻塞会话启动
@@ -391,7 +390,9 @@ export class AgentRuntime implements RuntimePort {
         if (orphan.isolationId) {
           try {
             await enqueueIsolationOp(async () => {
-              const diffText = await agentInvoke<string>('agent_isolation_diff', { agent_id: orphan.isolationId! }).catch(() => '');
+              const diffText = await agentInvoke<string>('agent_isolation_diff', {
+                agent_id: orphan.isolationId!,
+              }).catch(() => '');
               if (diffText) {
                 try {
                   const parsed = JSON.parse(diffText) as { has_changes?: boolean; diff?: string };
@@ -406,7 +407,9 @@ export class AgentRuntime implements RuntimePort {
             /* best-effort — Rust 注册表可能尚未收养（workspace_activate 顺序），保留现场即可 */
           }
         }
-        console.warn(`[AgentRuntime] 检测到孤儿 agent: ${orphan.agentId}, 已标记 stopped（worktree 保留，diff 已尽力保全）`);
+        console.warn(
+          `[AgentRuntime] 检测到孤儿 agent: ${orphan.agentId}, 已标记 stopped（worktree 保留，diff 已尽力保全）`,
+        );
       }
 
       // 5. 刷新持久化（把 stop 状态写回）
@@ -698,26 +701,17 @@ export class AgentRuntime implements RuntimePort {
           this.notifier?.onLifecycleAlert?.(agentId, ev.level ?? 'info', ev.text ?? '');
         }
       };
-      const lifecycle = new AgentLifecycleManager(
-        subPool,
-        taskProxy as any,
-        this._bus,
-        isolationExec,
-        wrappedSink,
-      );
+      const lifecycle = new AgentLifecycleManager(subPool, taskProxy as any, this._bus, isolationExec, wrappedSink);
       // Phase 4：巡检 timer（60s setInterval）所有权归 ctx —— startOwned 返回
       // 幂等清理器，_disposeAgent 经 ctx.dispose() 释放，不再分散 stop。
       this._lifecycleManagers.set(agentId, lifecycle);
-      ctx.effect(
-        () => {
-          const stopOwned = lifecycle.startOwned();
-          return () => {
-            stopOwned();
-            this._lifecycleManagers.delete(agentId);
-          };
-        },
-        'lifecycle-manager',
-      );
+      ctx.effect(() => {
+        const stopOwned = lifecycle.startOwned();
+        return () => {
+          stopOwned();
+          this._lifecycleManagers.delete(agentId);
+        };
+      }, 'lifecycle-manager');
 
       // 接线子 Agent 完成 → 归档 discoveries（会话级）
       if (!ctx.parentId) {
@@ -846,7 +840,7 @@ export class AgentRuntime implements RuntimePort {
           onProgress,
         });
       },
-            subAgentFinished: (id, sessionId, ok) => {
+      subAgentFinished: (id, sessionId, ok) => {
         this.notifier?.onSubAgentFinished(id, agentId, sessionId, ok);
       },
       onStatusChange: (running: boolean) => {

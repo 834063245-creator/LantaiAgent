@@ -383,7 +383,16 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
         jobId: z.coerce.number().int().describe('The job ID returned by run_shell with runInBackground: true'),
       }),
       execute: (args, onProgress) =>
-        exec('bash_kill', { jobId: args.jobId, agentId: (args as { _agent_id?: string })._agent_id }, onProgress),
+        // 所有权身份优先 _owner_id（bus id — 与 spawn 时的 job owner 对齐）；
+        // 回退 _agent_id（worktree id）兼容旧 job。
+        exec(
+          'bash_kill',
+          {
+            jobId: args.jobId,
+            agentId: (args as { _owner_id?: string })._owner_id ?? (args as { _agent_id?: string })._agent_id,
+          },
+          onProgress,
+        ),
     }),
     defineTool({
       name: 'bash_wait',

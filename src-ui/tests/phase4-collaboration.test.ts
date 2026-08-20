@@ -302,9 +302,13 @@ describe('SubAgentPool — queue', () => {
     const q1 = pool.spawn('queued', fakeRun('ok', 5), 'call-001');
     expect(q1).toBeTruthy();
 
-    // Duplicate callId in queue should return null
+    // Duplicate callId in queue returns the SAME queued view (2026-08 修复：
+    // 返回 null 会让工具层误报「池已满且队列已满」，诱导模型放弃实际已入队的任务；
+    // 与 running 态幂等语义对齐 — stream retry 拿到同一视图，done 最终只结算一次）
     const q2 = pool.spawn('dup', fakeRun('ignored', 5), 'call-001');
-    expect(q2).toBeNull();
+    expect(q2).toBeTruthy();
+    expect(q2!.id).toBe(q1!.id);
+    expect(q2!.done).toBe(q1!.done);
 
     pool.stopAll();
   });

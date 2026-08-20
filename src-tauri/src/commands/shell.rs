@@ -26,6 +26,7 @@ pub(crate) async fn exec_command(
     stream_tool_id: Option<String>,
     agent_id: Option<String>,
     interpreter: Option<String>,
+    owner_id: Option<String>,
     state: tauri::State<'_, crate::WorkspaceState>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
@@ -57,7 +58,10 @@ pub(crate) async fn exec_command(
     let lock_key = crate::utils::acquire_build_lock(&command, &physical_dir_str, job_id, agent_id.clone())?;
 
     if is_bg {
-        let id = crate::utils::spawn_bg_with(job_id, &command, &physical_dir_str, shell_kind, agent_id, lock_key)?;
+        // app 随 job 下传 — 监视线程完成/停滞时发射 bg:note 事件（owner 路由 + idle 唤醒）。
+        // owner 优先 _owner_id（bus agent id — 前端 executor 注入，通知路由 + kill
+        // 所有权）；回退 _agent_id（worktree 隔离 id）兼容旧前端 / 直连 RPC。
+        let id = crate::utils::spawn_bg_with(job_id, &command, &physical_dir_str, shell_kind, owner_id.or(agent_id), lock_key, Some(app))?;
         return Ok(format!("[后台任务已启动, ID: {}]\n使用 bash_output({}) 查看输出, bash_wait({}) 等待完成, bash_kill({}) 终止任务", id, id, id, id));
     }
 
@@ -189,7 +193,7 @@ pub(crate) async fn exec_command(
             stderr: Arc::clone(&shared_err),
             drain_done: Arc::clone(&drain_done),
         };
-        crate::utils::register_fg_child(job_id, child, &label, shared, agent_id, lock_key);
+        crate::utils::register_fg_child(job_id, child, &label, shared, owner_id.or(agent_id), lock_key);
 
         // 在后台等待子进程，发送完成事件 / 超时杀进程树
         let app_done = app.clone();
@@ -303,7 +307,7 @@ pub(crate) async fn exec_command(
         drain_done: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
     };
     let label: String = command.chars().take(80).collect();
-    crate::utils::register_fg_child(job_id, child, &label, shared, agent_id, lock_key);
+    crate::utils::register_fg_child(job_id, child, &label, shared, owner_id.or(agent_id), lock_key);
 
     // P1-16：try_wait+sleep 忙等是阻塞循环，移入 spawn_blocking——
     // 否则一条长命令（默认上限 300s）占住一个 tokio worker，并发命令叠加可耗尽线程池。
@@ -439,8 +443,8 @@ pub(crate) async fn bash_wait(job_id: u32, timeout_ms: Option<u64>) -> Result<St
 }
 
 #[tauri::command]
-pub(crate) async fn drain_bg_notifications() -> Result<String, String> {
-    Ok(crate::utils::drain_bg_notifications())
+pub(crate) async fn drain_bg_notifications(agent_id: Option<String>) -> Result<String, String> {
+    Ok(crate::utils::drain_bg_notifications(agent_id.as_deref()))
 }
 #[cfg(test)]
 mod tests {

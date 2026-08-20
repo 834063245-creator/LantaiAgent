@@ -167,17 +167,20 @@ export interface RpcContract {
       timeout_ms?: number;
       run_in_background?: boolean;
       is_agent?: boolean;
+      /** worktree 隔离 id（executor 注入 _agent_id 时的别名） */
       agent_id?: string;
+      /** 通知路由身份（bus agent id）— 后台任务通知 owner 与 kill 所有权，优先于 agent_id */
+      _owner_id?: string;
       stream_tool_id?: string;
       interpreter?: 'bash' | 'pwsh';
     };
     result: string; // text 或 JSON（流式 started 响应）
   };
   bash_output: { params: { job_id: number }; result: string }; // text
-  bash_kill: { params: { job_id: number; agent_id?: string }; result: string }; // text
+  bash_kill: { params: { job_id: number; agent_id?: string; _owner_id?: string }; result: string }; // text
   bash_wait: { params: { job_id: number; timeout_ms?: number }; result: string }; // text
   shell_env: { params: Record<string, never>; result: string }; // JSON
-  drain_bg_notifications: { params: Record<string, never>; result: string }; // JSON
+  drain_bg_notifications: { params: { agent_id: string }; result: string }; // JSON — 只排干该 agent 自己的后台任务通知
 
   // ── 编辑器 ───────────────────────────────────────────────
   edit_file: {
@@ -345,6 +348,10 @@ export interface EventContract {
   'protocol-bridge:output': { id: string; line: string };
   /** MCP/ACP stdio 桥子进程退出 */
   'protocol-bridge:exit': { id: string };
+  /** 后台任务有新通知（完成/停滞）— utils/bg_jobs.rs 监视线程发射；
+   *  owner = 发起该 job 的 agent id，null 表示用户/UI 发起（不投给任何 agent）。
+   *  前端监听后排干该 owner 的通知并经 MessageBus systemNotify 唤醒 idle agent。 */
+  'bg:note': { jobId: number; owner: string | null };
 }
 
 // ─────────────────────────────────────────────────────────────
