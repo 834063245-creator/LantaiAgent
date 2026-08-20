@@ -8,6 +8,7 @@
 
 export type MessageId = string;
 
+import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan-tools';
 // ⚡ _idSeq → chat-store.ts
 import { getChatStore } from './chat-store';
 
@@ -85,19 +86,14 @@ export interface PlanPart {
   planId: string;
   planFilePath: string;
   content: string;
-  options?: { label: string; description: string }[];
+  options?: { label: string; description: string; outcome?: PlanOptionOutcome }[];
   status: 'pending' | 'approved' | 'revise' | 'rejected';
   /** 用户从多种方案中选择时的选项标签。 */
   selectedLabel?: string;
   /** 用户请求修改时的反馈文本。 */
   feedback?: string;
   /** 解决审批的回调 — 创建时存储，用户点击按钮时调用。 */
-  _callback?: (
-    response:
-      | { decision: 'approved'; selectedLabel?: string }
-      | { decision: 'revise'; feedback: string }
-      | { decision: 'rejected' },
-  ) => void;
+  _callback?: (response: PlanApprovalResponse) => void;
 }
 
 export type AssistantPart = ReasonPart | TextPart | ToolCallPart | SubAgentPart | PlanPart;

@@ -7,8 +7,8 @@
 // exit_plan_mode 通过 EventSink 发 PlanReview 事件到聊天流，
 // 由 chat-stream 创建 PlanPart 卡片（不是弹窗），用户在卡片上审批。
 
-import { typedRpc } from '../../rpc-contract';
 import { z } from 'zod';
+import { typedRpc } from '../../rpc-contract';
 import type { EventSink } from '../agent-types';
 import { EventKind } from '../agent-types';
 import type { Tool } from '../tool';
@@ -17,24 +17,24 @@ import type { PlanStateManager } from './plan-state';
 
 // ── 审批接口 ──
 
+/** 方案选项的执行语义：execute=批准后立即执行（默认）；archive=批准但仅留档，用户说开工才动手。 */
+export type PlanOptionOutcome = 'execute' | 'archive';
+
 export interface PlanReviewRequest {
   planFilePath: string;
   planContent: string;
-  options?: { label: string; description: string }[];
+  options?: { label: string; description: string; outcome?: PlanOptionOutcome }[];
   callback: (response: PlanApprovalResponse) => void;
 }
 
 export type PlanApprovalResponse =
-  | { decision: 'approved'; selectedLabel?: string }
+  | { decision: 'approved'; selectedLabel?: string; outcome?: PlanOptionOutcome }
   | { decision: 'revise'; feedback: string }
   | { decision: 'rejected' };
 
 // ── enter_plan_mode ──
 
-export function createEnterPlanModeTool(
-  planState: PlanStateManager,
-  projectPath: string,
-): Tool {
+export function createEnterPlanModeTool(planState: PlanStateManager, projectPath: string): Tool {
   return defineTool({
     name: 'enter_plan_mode',
     description:
@@ -60,10 +60,7 @@ export function createEnterPlanModeTool(
 
 // ── exit_plan_mode ──
 
-export function createExitPlanModeTool(
-  planState: PlanStateManager,
-  eventSink?: EventSink,
-): Tool {
+export function createExitPlanModeTool(planState: PlanStateManager, eventSink?: EventSink): Tool {
   return defineTool({
     name: 'exit_plan_mode',
     description:
@@ -77,6 +74,12 @@ export function createExitPlanModeTool(
           z.object({
             label: z.string().describe('方案名称（1-8 个词）'),
             description: z.string().describe('方案概述和权衡'),
+            outcome: z
+              .enum(['execute', 'archive'])
+              .optional()
+              .describe(
+                '批准后语义：execute=立即执行该方案（默认）；archive=批准方案选择但仅留档，用户明确说开工才动手。含多个方案且只想让用户选一个先收着的用 archive。',
+              ),
           }),
         )
         .min(2)
@@ -115,14 +118,28 @@ export function createExitPlanModeTool(
               options,
               callback: (response) => {
                 switch (response.decision) {
-                  case 'approved':
-                    planState.exit();
-                    resolve(
-                      `计划已批准。${
-                        response.selectedLabel ? `选定方案：${response.selectedLabel}。只执行选中的方案。` : ''
-                      }\n已切换到执行模式，所有工具恢复可用。\n\n## 已批准计划：\n${planContent}`,
-                    );
+                  case 'approved': {
+                    // outcome 优先级：UI 显式覆盖 > 被选中 option 自带标记 > 默认 execute
+                    const selected = options?.find((o) => o.label === response.selectedLabel);
+                    const outcome: PlanOptionOutcome = response.outcome ?? selected?.outcome ?? 'execute';
+                    if (outcome === 'archive') {
+                      // 批准留档不执行：保持规划模式，写门禁继续拦截，等用户明确说开工
+                      resolve(
+                        `计划已批准并留档（方案：${response.selectedLabel ?? '(未指定)'}）。` +
+                          `用户暂不开工——保持规划模式，不要执行任何改动。` +
+                          `等用户明确说开工时再次调 exit_plan_mode 提交审批（或用户在界面直接切换到执行模式）。` +
+                          `计划文件：${planPath}`,
+                      );
+                    } else {
+                      planState.exit();
+                      resolve(
+                        `计划已批准。${
+                          response.selectedLabel ? `选定方案：${response.selectedLabel}。只执行选中的方案。` : ''
+                        }\n已切换到执行模式，所有工具恢复可用。\n\n## 已批准计划：\n${planContent}`,
+                      );
+                    }
                     break;
+                  }
                   case 'revise':
                     resolve(
                       `用户要求修改计划。反馈：${response.feedback}\n请根据反馈修改计划文件，然后重新调 exit_plan_mode。`,

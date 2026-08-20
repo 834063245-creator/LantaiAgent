@@ -3474,6 +3474,16 @@ button.chat-history-entry {
   flex-shrink: 0;
 }
 
+.msg-plan-card__option-tag {
+  font-size: calc(9px * var(--font-scale));
+  color: var(--obs-text-2);
+  padding: 1px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
 .msg-plan-card__option-desc {
   font-size: calc(10px * var(--font-scale));
   color: var(--obs-text-2);

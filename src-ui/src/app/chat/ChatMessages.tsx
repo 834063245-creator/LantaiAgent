@@ -647,6 +647,7 @@ const PlanCard: React.FC<{ part: PlanPart; storeId?: string }> = ({ part, storeI
               type="button"
             >
               <span className="msg-plan-card__option-label">{opt.label}</span>
+              {opt.outcome === 'archive' && <span className="msg-plan-card__option-tag">留档不执行</span>}
               {opt.description && <span className="msg-plan-card__option-desc">{opt.description}</span>}
             </button>
           ))}

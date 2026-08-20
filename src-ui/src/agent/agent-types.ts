@@ -46,7 +46,7 @@ export interface ToolPipelineContext {
 export interface PlanReviewEvent {
   planFilePath: string;
   planContent: string;
-  options?: { label: string; description: string }[];
+  options?: { label: string; description: string; outcome?: import('./plan/plan-tools').PlanOptionOutcome }[];
   callback: (response: import('./plan/plan-tools').PlanApprovalResponse) => void;
 }
 
