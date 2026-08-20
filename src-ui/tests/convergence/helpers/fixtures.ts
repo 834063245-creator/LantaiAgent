@@ -11,6 +11,7 @@ import type { Tool, ToolExecutor, ToolRegistry } from '../../../src/agent/tool';
 import type { SubAgentSpawner } from '../../../src/agent/tools/subagent';
 import type { Chunk, Provider, Usage } from '../../../src/provider/types';
 import { ChunkType } from '../../../src/provider/types';
+import type { ToolContribution } from './presets';
 
 // ── 录制型执行器：不触 Tauri，记录调用并返回空串 ──
 
@@ -49,15 +50,22 @@ export function fixedGraphSnapshot(): string {
 // 本快照覆盖静态注册面（coding/task/browser/desktop/wait + 领域收敛）。
 // memory/skill 为可选依赖，不传入（生产同样可缺省）。
 
-export async function buildStandardRegistry(): Promise<ToolRegistry> {
+export async function buildStandardRegistry(contributions: ToolContribution[] = []): Promise<ToolRegistry> {
   const stubSpawner = (async () => 'stub-spawn-result') as unknown as SubAgentSpawner;
-  return buildToolRegistry({
+  const reg = await buildToolRegistry({
     graphData: FIXED_GRAPH_DATA,
     deps: {},
     taskManager: new TaskManager(),
     subAgentPool: new SubAgentPool(),
     subAgentSpawner: stubSpawner,
   });
+  // 行贡献按组合序（数组序）注册到内置面之后（S1-0 设计件 §2.3：
+  // 显式参数，确定性按构造保证）。重名行由 ToolRegistry.register
+  // 装载期拒绝（duplicate throw）——S1-3 的冲突拒绝语义已在此就位。
+  for (const contribution of contributions) {
+    reg.register(contribution.factory());
+  }
+  return reg;
 }
 
 // ── 合成工具 — planGate / hook 管道快照用（形状对齐 tests/plan-gate.test.ts）──

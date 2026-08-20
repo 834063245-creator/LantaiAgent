@@ -19,6 +19,7 @@ const reportsDir = path.join(here, 'reports');
 
 const [command] = process.argv.slice(2);
 const phase = process.env.CONVERGENCE_PHASE || '';
+const preset = process.env.CONVERGENCE_PRESET || 'standard';
 const target = phase ? `tests/convergence/specs/phase-${phase}.test.ts` : 'tests/convergence/specs';
 
 // ── T0 静态检查（验证计划 §4 各 phase 的 T0 层）──
@@ -183,6 +184,7 @@ function writeReport(cmd, code, output) {
     '',
     `- 日期: ${new Date().toISOString()}`,
     `- 目标: ${target}`,
+    `- preset: ${preset}${preset === 'standard' ? '（缺省/显式 standard = 现行 baseline/phase-N/ 布局）' : `（快照路由到 baseline/preset-${preset}/）`}`,
     `- 退出码: ${code}`,
     '',
     '## 摘要',
@@ -207,6 +209,8 @@ function writeReport(cmd, code, output) {
 function usage() {
   console.log('用法: node tests/convergence/gate.mjs <check|record|report>');
   console.log('环境: CONVERGENCE_PHASE=<N>  只跑指定 phase 的 specs');
+  console.log('      CONVERGENCE_PRESET=<name>  preset 维度（S1-0 设计件 §2；缺省 standard = 现行行为零变化；');
+  console.log('      非 standard 快照路由到 baseline/preset-<name>/，行集合需先在 helpers/presets.ts 登记）');
   process.exit(64);
 }
 

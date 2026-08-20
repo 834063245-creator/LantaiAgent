@@ -1,6 +1,6 @@
 # S1 设计件 — convergence 体系 per-preset 重设计（S1 开工首日交付物，预写于 2026-08-20）
 
-> 状态：**Proposal——S1 开工前需用户过目批准**（baseline 协议要求变更走人类审批；本件即那份变更申请的预写稿）。
+> 状态：**已批准（2026-08-20）**——用户在对话中直接批准（"我直接批准，你来做好就行"，同时授权全程代理执行）；本件即 baseline 变更申请的预写稿，批准记录落此处。S1-0 起按 §3 批次序列推进，每批独立 commit、独立全绿，S1-2 起严格遵守 §2.4 零漂移规则。
 > 性质：这是组合架构计划 R1（最大风险段）的拆弹设计。S1 的每一批施工都在本件划定的安全网内进行。
 
 ## 1. 问题陈述
@@ -49,7 +49,7 @@ S1 要把装配来源从「`buildToolRegistry` 编译期硬编码」改为「ros
 
 | 批 | 内容 | 验收 |
 |---|---|---|
-| S1-0 | 纯基建：gate.mjs preset 维度 + specs `contributions` 参数 + `standard` 定义落地。**零行为变化** | 不设 `CONVERGENCE_PRESET` 全绿；设了 `=standard` 也全绿；两路径 diff 为空 |
+| S1-0 | ✅ 完成（2026-08-20）纯基建：gate.mjs preset 维度 + specs `contributions` 参数 + `standard` 定义落地。**零行为变化** | 不设 `CONVERGENCE_PRESET` 全绿；设了 `=standard` 也全绿；两路径 diff 为空 —— 三条均实测通过（baseline 零触碰 + 新增 3 条 preset 机制自检：resolvePreset 路由/未知 preset 显式报错/contributions 生效与重名装载期拒绝） |
 | S1-1 | 四 service 挂根 Context（commands/panels/tools/providers，注册 → disposer）；纯新增，内置装配不改读 | 全绿 + 新 service 各一条注册/卸载测试 |
 | S1-2 | 内置工具分族迁行（fs → shell → git → search → graph/ops/lsp → agent → 其余），每族一批 | 每批 standard 快照零漂移（§2.4 规则） |
 | S1-3 | `buildToolRegistry` 末端改读行表（含名字冲突装载期拒绝） | 同上 + 冲突拒绝测试 |

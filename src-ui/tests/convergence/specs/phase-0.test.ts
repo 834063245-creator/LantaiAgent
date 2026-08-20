@@ -20,13 +20,16 @@ import {
   throwingTool,
 } from '../helpers/fixtures';
 import { stableStringify } from '../helpers/normalize';
+import { presetBaselineDir, resolvePreset, type ToolContribution } from '../helpers/presets';
 import { compareText, snapshot } from '../helpers/snapshot';
 import { runTraceCase, traceCases } from '../helpers/trace-fixtures';
 import { extractRuntimeWiring, formatWiringReport } from '../helpers/wiring';
 
 describe('phase-0 契约快照', () => {
   it('tool-schemas.full — 标准 buildToolRegistry 的模型可见工具面', async () => {
-    const reg = await buildStandardRegistry();
+    // S1-0 §2.3：装配显式传 preset 贡献集（贡献集是参数不是环境）；
+    // standard → 空集 = 现行装配，快照零漂移即回滚保证成立的证据。
+    const reg = await buildStandardRegistry(resolvePreset().contributions);
     const schemas = reg.schemas();
     snapshot('phase-0/tool-schemas.full.json', {
       note: '引擎动态工具（hologram_tools_list）测试环境恒为空，不在本快照内；本快照钉住静态注册面',
@@ -36,7 +39,7 @@ describe('phase-0 契约快照', () => {
   });
 
   it('tool-schemas.plan — planRegistry 静态只读克隆工具面', async () => {
-    const base = await buildStandardRegistry();
+    const base = await buildStandardRegistry(resolvePreset().contributions);
     const ps = new PlanStateManager();
     ps.enter('/proj');
     const planReg = planRegistry(base, ps);
@@ -181,5 +184,38 @@ describe('snapshot 机制自检', () => {
     );
     expect(diff.ok).toBe(false);
     expect(diff.differences[0]).toContain('legacy');
+  });
+});
+// ── preset 维度机制自检（S1-0 设计件 §2——门禁新维度自身被测，防自证）──
+
+describe('preset 维度机制自检', () => {
+  it('resolvePreset：缺省/显式 standard → STANDARD_PRESET；未知 preset 显式报错不静默回退', () => {
+    expect(resolvePreset({}).name).toBe('standard');
+    expect(resolvePreset({}).contributions).toEqual([]);
+    expect(resolvePreset({ CONVERGENCE_PRESET: 'standard' }).name).toBe('standard');
+    expect(() => resolvePreset({ CONVERGENCE_PRESET: 'ghost' })).toThrow(/未知 preset: ghost/);
+  });
+
+  it('presetBaselineDir：standard（含缺省）→ 原地布局零迁移；其他 → preset-<name>/ 子目录', () => {
+    expect(presetBaselineDir({})).toBe('');
+    expect(presetBaselineDir({ CONVERGENCE_PRESET: 'standard' })).toBe('');
+    expect(presetBaselineDir({ CONVERGENCE_PRESET: 'minimal' })).toBe('preset-minimal/');
+  });
+
+  it('contributions 参数真实生效：注入行出现在注册面，重名行装载期拒绝', async () => {
+    const probe: ToolContribution = {
+      id: 'convergence/probe',
+      factory: () => ({
+        name: () => 'convergence_probe',
+        description: () => 'preset mechanism probe',
+        parameters: () => ({ type: 'object', properties: {} }),
+        readOnly: () => true,
+        execute: async () => 'ok',
+      }),
+    };
+    const withProbe = await buildStandardRegistry([probe]);
+    expect(withProbe.names()).toContain('convergence_probe');
+    // 重名行 → ToolRegistry.register 装载期 duplicate throw（S1-3 冲突拒绝语义的先声）
+    await expect(buildStandardRegistry([probe, probe])).rejects.toThrow(/duplicate tool/);
   });
 });

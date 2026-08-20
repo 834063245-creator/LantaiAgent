@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalizeVolatileText, stableStringify } from './normalize';
+import { presetBaselineDir } from './presets';
 
 /** 记录或比对一份契约快照。name 相对 tests/convergence/baseline/（如 'phase-0/xx.json'）。 */
 export function snapshot(name: string, actual: unknown): void {
@@ -39,15 +40,18 @@ export function snapshot(name: string, actual: unknown): void {
 }
 
 /** baseline 文件绝对路径解析。
+ *  preset 维度（S1-0 设计件 §2.2）：standard（含缺省）→ baseline/phase-N/ 原地布局；
+ *  其他 preset → baseline/preset-<name>/ 子目录。零迁移——8 个现有快照路径不变。
  *  注意：不能写 `new URL(字面量, import.meta.url)` — Vite 会对该模式做静态改写，
  *  把结果指到 dev server origin（http://localhost:3000）。经中间变量绕开改写后，
  *  运行时 import.meta.url 是正确的 file URL。cwd 候选兜底（vitest 以 src-ui 为 cwd）。 */
 function resolveBaselinePath(name: string): string {
   const baseUrl = import.meta.url;
+  const rel = `../baseline/${presetBaselineDir()}${name}`;
   try {
-    return fileURLToPath(new URL(`../baseline/${name}`, baseUrl));
+    return fileURLToPath(new URL(rel, baseUrl));
   } catch {
-    return path.resolve(process.cwd(), 'tests/convergence/baseline', name);
+    return path.resolve(process.cwd(), 'tests/convergence/baseline', presetBaselineDir() + name);
   }
 }
 
