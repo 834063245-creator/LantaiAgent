@@ -1,6 +1,6 @@
 # HoloGram — Agent 项目手册
 
-> 生成：2026-06-18 · 更新：2026-08-20（按 main HEAD 与实测基线校准；agent-core-convergence Phase 0-6 已并入 main；组合架构 S1 已落地——内置工具行表 + prompt section 表 + 四 service 注册表，见 `docs/plans/composition-architecture/README.md`）
+> 生成：2026-06-18 · 更新：2026-08-20（按 main HEAD 与实测基线校准；agent-core-convergence Phase 0-6 已并入 main；组合架构 S1+S2 已落地——S1 三张编译期行表 + 四 service 注册表；S2 组合外化：用户层 roster.patch.yml（`~/.hologram/composition/`）+ 12 壳行拆解 main.ts，见 `docs/plans/composition-architecture/README.md` 与 `docs/composition/README.md`）
 > 本文件是项目级静态注入文档：Codex 读 `AGENTS.md`，Claude Code 读 `CLAUDE.md`，内置 HoloGram Agent 把 `CLAUDE.md` 注入 system prompt。
 > **编码规则不是本文件的正文，而是 `CONVENTIONS.md` + `INVARIANTS.md`；本文件负责让规则真正被执行。**
 
@@ -110,7 +110,7 @@ flowchart LR
 - 新增模型工具必须 `defineTool` + zod v4：一个 schema 产出 JSON Schema / 运行时校验 / 类型化参数。内部 `.passthrough()` 透传 meta key；`_forceGate` 要声明、`_callId/_agent_id` 不声明。
 - 工具 execute 必须全量透传 args——重建参数对象会丢掉 `_agent_id`，fork 子 Agent 会直写主仓（2026-08-13 事故）。
 - 新增领域动作同步 `tools/domains.ts` 的 `DOMAIN_SPECS` + `collectHiddenToolNames()` + 对应测试 + 本文件。引擎侧新增 MCP 工具必须同时接进 `DOMAIN_SPECS`（graph/ops/lsp）——`tests/engine-tool-surface.test.ts` 钉住「引擎默认清单 ↔ 领域映射 ↔ mock 清单」三层对齐，漏接会红。
-- Agent 装配（组合架构 S1 三层，2026-08-20 起）：**内置工具族**（hologram/fs/shell/git/search/web/agent-isolation/ask/skill/memory/task/agent/browser-desktop/wait）加行到 `src/composition/tool-rows.ts` 行表（factory → Tool[]，行内重名装载期拒绝）；**system-prompt 段落**（persona/规则/记忆/运行环境）加段到 `src/composition/prompt-sections.ts` section 表（id + applicable + render，分隔符是字节契约禁规整）；**会话级工具/hook**（plan/通信/discovery/merge/board/kill/request/spawn/task/compaction/converge）加项到 `agent/blueprint.ts` capability 表，不改 `AgentConfig`（冻结 31 字段）。三层表序 = 字节契约（前缀缓存 + effective 快照依赖此序）；capability 只做组合，teardown 走 `ctx.effect`。面板/命令/工具/provider 四 service 注册表挂根 Context（`src/composition/services.ts`）。
+- Agent 装配（组合架构 S1 三层 + S2 外化，2026-08-20 起）：**内置工具族**（hologram/fs/shell/git/search/web/agent-isolation/ask/skill/memory/task/agent/browser-desktop/wait）加行到 `src/composition/tool-rows.ts` 行表（factory → Tool[]，行内重名装载期拒绝）；**system-prompt 段落**（persona/规则/记忆/运行环境）加段到 `src/composition/prompt-sections.ts` section 表（id + applicable + render，分隔符是字节契约禁规整）；**会话级工具/hook**（plan/通信/discovery/merge/board/kill/request/spawn/task/compaction/converge）加项到 `agent/blueprint.ts` capability 表，不改 `AgentConfig`（冻结 31 字段）。三层表序 = 字节契约（前缀缓存 + effective 快照依赖此序）；capability 只做组合，teardown 走 `ctx.effect`。面板/命令/工具/provider 四 service 注册表挂根 Context（`src/composition/services.ts`）。**S2 起用户层 patch**（`~/.hologram/composition/roster.patch.yml`，经 `composition/roster.ts` 的 `resolveRoster` 解析）可禁用/覆盖/插入四域行——改 roster 引擎/patch 语义必读 `docs/composition/README.md`；**12 壳行**（`composition/shell-rows.ts` 表 + `src/shell/rows/*` 实现 + `src/shell/boot.ts` 编排器）承载 main.ts 引导职责，新引导接线加壳行不是往 main.ts 堆代码。
 - session 变异（Phase 5 立规）：只走 `_appendMessage / _replaceSession / _retractSessionRange` 三入口（spec AST 白名单 + gate 计数双层门禁）；改工具折叠逻辑必须同步 `session-log.ts` 的 `derivePayload`。
 - 改 `src-ui/src/agent/**` 或 `src-ui/src/composition/**` 必过 `npm run verify:convergence`（T0 静态 + 8 baseline 对拍；不设 `CONVERGENCE_PRESET` 直接跑——standard 快照逐字节零漂移是组合层的硬门禁）；record 永不上 CI，baseline 变更走 `docs/plans/agent-core-convergence/baseline-change-request.md` 审批。
 - 新增 RPC：`src-tauri/src/rpc.rs` 分支 + 前端 `RpcContract`；`docs/agents/frontend-rpc-contract.md` 由 `scripts/gen-rpc-contract-md.cjs` 生成，勿手改。
@@ -135,7 +135,7 @@ flowchart LR
 |---|---|---|
 | 引擎 | `cd engine && cargo test` | 697 tests（lib 669 + bin 27 + doc 1；696 passed / 1 ignored） |
 | 壳 | `cd src-tauri && cargo test` | 343 tests（bin 全绿；UIA 真实窗口 e2e 需 `HOLOGRAM_UIA_E2E=1`——WinForms 靶子窗口全流程 tree/find/type/read/click；cdp 真实 Chrome e2e 偶发 1 失败单跑通过） |
-| 前端 | `cd src-ui && npx vitest run` | 1338 passed / 1 skipped（136 文件，2026-08-20 组合架构 S1 竣工实测；本机注意：父进程带 `NODE_ENV=production` 会使 npm omit=dev 剥掉 devDependencies → 收集阶段模块错误，装包/跑测试前清掉该变量） |
+| 前端 | `cd src-ui && npx vitest run` | 1388 passed / 1 skipped（138 文件，2026-08-20 组合架构 S2 竣工实测；本机注意：父进程带 `NODE_ENV=production` 会使 npm omit=dev 剥掉 devDependencies → 收集阶段模块错误，装包/跑测试前清掉该变量） |
 | 前端构建 | `cd src-ui && npm run build` | tsc --noEmit + vite build 全绿 |
 | Agent 运行时/组合层 | `cd src-ui && npm run verify:convergence` | exit 0（T0 静态 + 全部 phase specs 对拍 8 baseline + system-prompt.fixture；standard preset 零漂移）；baseline 变更走 `docs/plans/agent-core-convergence/baseline-change-request.md` 审批 |
 | 前端格式 | `cd src-ui && npx biome ci .` | 588 errors / 335 warnings 是存量基线，不要顺手清；改动文件零新增 |

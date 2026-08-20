@@ -160,6 +160,24 @@ session 事件溯源（双写期，this.session 是真源 + SessionLog 逐字节
 bus 事件与 legacy EventSink 双发（UI 零改动依赖此）。
 守护：改 src/agent/** 或 src/composition/** 必过 npm run verify:convergence（T0 静态 + 8 baseline 对拍；standard preset 零漂移规则——不设 CONVERGENCE_PRESET 直接跑，快照逐字节不变，漂了先修代码）；
 record 永不上 CI；baseline 变更走 docs/plans/agent-core-convergence/baseline-change-request.md 审批。
+
+组合外化（S2，2026-08-20 起生效）：
+✅ 用户层 patch：~/.hologram/composition/roster.patch.yml 经 composition/roster.ts
+   的 resolveRoster(factory, [patch]) 解析（禁用/覆盖/插入四域行；all-or-nothing，
+   失败回退出厂组合）——patch 语义与涟漪表见 docs/composition/README.md；
+   装配面（buildToolRegistry/assembleSystemPrompt/AgentBlueprint.fromRoster/
+   bootShell）全部带出厂缺省参数，测试永不依赖用户盘文件
+✅ 壳行通道分工：引导接线（无 ctx 生命周期诉求）= 壳行（composition/
+   shell-rows.ts 表 + src/shell/rows/* 实现 + src/shell/boot.ts 编排器，
+   表序=引导序，失败单行隔离）；有 ctx 生命周期/disposer 诉求的单元 =
+   cordis 插件通道（plugins/loader.ts，S1 四 service / S3 起域插件）——
+   两条通道不混用
+✅ 新引导接线（事件桥/快捷键/动作注册/持久化订阅/冷启动）加壳行，
+   不往 main.ts 堆代码（main.ts 终态 = 薄引导：CSS + 内核 + React + bootShell）
+✅ 壳行代码不假设前行必然成功（判空降级沿用 main.ts 原状）；
+   禁用行 = 接线不发生、调用一致地失败（涟漪表如实记录）
+❌ 禁止把 factory 层复述进 yml（出厂表是代码真源；patch 只表达增量）
+❌ 禁止 patch 语义引入 js 表达式（纯函数确定性；DSH !!js 是刻意偏离）
 ```
 
 ### 1.8 文件命名与 import
