@@ -3,7 +3,7 @@
 > **本目录阅读顺序**：① 本 README（宪法 + 阶段 + 排程）→ ② `work-orders/`（施工单，按编号即执行顺序）→ ③ `designs/`（设计件，S1 已批准竣工 / S2 待批准）。边界依据在 `docs/adr/composition-boundaries.md`。当前状态：**S0 Done（Landed）；S1 Done（2026-08-20，S1-0…S1-5 全批次完成，9 commits）；S2 设计件已写（`designs/S2-composition-externalization.md`，待批准）**。
 
 > 立项：2026-08-20 · 主导：Agent（设计/实现/验收），用户（拍板/审批/放行）
-> 状态：**In progress — S0 Done · S1 Done（2026-08-20 全批次落地，standard 快照零漂移贯穿）· S2 设计件待批准（已预写，批准后 S2-0 开工）**
+> 状态：**In progress — S0 Done · S1 Done（2026-08-20 全批次落地，standard 快照零漂移贯穿）· S2 Done（2026-08-20 全批次落地，用户授权代理复审设计件后执行；main.ts 919→37 行）· 下一步 S3 设计件**
 > 取代：`.hologram/plans/plan-1787199847398-bu20.md`（plugin-ecosystem v1「插件口子」计划——其 P0/P1 被吸收为本计划 S0/S1 零件，P2 降级为 S3 第一项，P3 后移至 S4）
 > 边界依据：`docs/adr/composition-boundaries.md`（为什么不做/做不到 DSH 式全体插件化——先读它，本计划在它划定的边界内施工）
 > 关联计划：`agent-plugin-architecture-plan.md`（执行原语 + 工具面收口——其 P3 cordis 收口与本计划 S1 汇流，P4 路线 B 自研插件边界由本计划承载，D8 观望决策继续有效）
@@ -65,8 +65,9 @@ v1 的问题不是零件错了（四通道原语、loader 设计都是对的）�
 
 - **本计划核心**：S0 → S1 → S2，绿灯模式推进（用户角色 = 批准 S1 设计件【已预写，约半小时】+ 看绿灯放行 commit，门禁替你看）。
 - **paper-shell（`../paper-shell/`）是独立创作工程**，由用户决定何时开工、做多久（月级共同创作，高频沟通-修改-测试循环是其本体）。它对本计划的唯一硬依赖：V3b 壳装配需 S1 完成——串行下自然满足，并行下也兼容。
-- **S3 排在纸方向定稿之后**：本计划自身纪律（「重构推到哪个域，行化跟到哪个域」）的推论——先迁行再定方向 = 给可能被纸废除的面做返工。S4（分发 / preset / hello 示例）无前置依赖，纯粹排后。**保留为收尾段**，触发条件 = 纸方向定稿。
-- 排程史（诚实记录）：上午稿 = 并行（被否，优化错了资源）；下午稿 = 三阶段串行把白纸当阶段 2（被否，把创作工程塞进机械工程模板，否认其主体工作量）；本稿 = 两独立工程 + 唯一硬依赖在 V3b↔S1。
+- **S4 提前到纸之前**（2026-08-20 三次修订，用户拍板：S2 完 → S4 → 前端工程 → S3）：S4（preset realm / npm 分发 / hello 示例）与纸无耦合，提前零返工风险；且 **preset realm 恰是 V5 壳切换要用的机器**（观测台 preset / 纸壳 preset = 同一组合引擎的确定性双装配，共居期直接踩在它上面）——纸开工时地基现成。附带心智收益：前端工程期间组合层「除 S3 外全部完工且经 hello 闭环验证」，不会中途爆雷打断创作。
+- **S3 是唯一有资格等的**：它等的不是时间，是纸做出来——「重构推到哪个域，行化跟到哪个域」，且图谱面板终局已定（workspace ADR：退役路径非行化路径），S3 名单只剩 Agent 产品域（settings / 命令面板等）+ workspace 翻转收尾（同窗协同）。
+- 排程史（诚实记录）：上午稿 = 并行（被否，优化错了资源）；下午稿 = 三阶段串行把白纸当阶段 2（被否，把创作工程塞进机械工程模板，否认其主体工作量）；二次稿 = 两独立工程 + S4 纯排后；本稿 = 用户主动序：**S0-S2 → S4 → 纸 → S3**（理由：流程简单化 + preset 提前造好 + 前端期间组合层静默）。
 
 白纸与组合层在架构上收敛而非竞争：其块协议（`docs/design/一张纸-Agent软件交互形态设计.md` §3.2 语义声明 + 可插拔渲染器）本身就是一个插件面——块渲染器 = ctx service 行，白纸壳 = 组合层的又一个消费者。纸成则长在组合层上，纸败则观测台仍在：**壳切换 = roster 变更，不是重写**。Agent 层将来动不动，也随之从「单体手术」降级为「行组合调整」。
 
@@ -97,13 +98,15 @@ v1 计划唯一未验证的硬前提：**生产 webview 从 `tauri.localhost` �
 
 **验收：** 四通道注册/卸载/冲突拒绝 vitest 全覆盖；内置工具经行管道装配后 effective 快照与现行对拍零漂移；`verify:convergence` 绿。
 
-### S2 — 组合外化（1-2 周量级）
+### S2 — 组合外化（1-2 周量级）— ✅ Done（2026-08-20）
 
 - roster 数据文件（yml，学 DSH 行语义：id 寻址 / config 覆盖 / disabled / insert）+ 分层 patch（出厂 → 用户 `~/.hologram/` → overlay）
 - `blueprint.standard()` 从手写 capability 表改为**由 roster 行生成**（表序 = 行序，Phase 6 铁律换真源不改语义）
 - `main.ts` 收缩为薄引导（现 904 行硬编码装配 → 目标 <100 行；学 DSH `apps/web/src/main.ts` 8 行 + 壳装配插件化）
 
 **验收：** 改一个用户层 patch 文件即可禁用一个内置工具/换一段 persona（无需重编译）；main.ts 净减行；全门禁绿。
+
+**落地记录（2026-08-20）：** 设计件经用户授权代理复审后 6 批全落地（`28f6612d` 设计件 → S2-0 `6d4667c4` → S2-1 `02a7f751` → S2-2 `39850ea9` → S2-3 `51267323` → S2-4 `0ff58774` → S2-5 文档收尾），每批独立全绿（build + vitest + biome 零新增 + verify:convergence 零漂移；S2-2 起 + cargo test）。核心交付：`composition/roster.ts` 解析引擎（四域行模型 + last-write-wins + all-or-nothing + 诊断）→ 装配面穿线（toolRows/sections/fromRoster 全带出厂缺省参数）→ 用户层通道（Rust `/composition/` 路由 + patch-loader + composition-store）→ 12 壳行拆解 main.ts（919 → 37 行，行实现 `src/shell/rows/*` + `src/shell/boot.ts` 编排器）→ 用户文档 `docs/composition/README.md`。已知涟漪（prompt 规则 #13/#14 静态枚举、热重载延期 S4）如实在设计件 §2.8 与用户文档记录。
 
 ### S3 — 第一方行化（逐域迁移纲领；与前端重构排程协作）
 
@@ -145,7 +148,7 @@ v1 计划唯一未验证的硬前提：**生产 webview 从 `tauri.localhost` �
 | [`work-orders/WO-S0A-spike.md`](work-orders/WO-S0A-spike.md) | **✅ 完成**（分支 1：假设证实） | 装载通道验证 spike（小时级，第一刀）——验证「webview 能从 14570 import ES module」这一物理前提 |
 | [`work-orders/WO-S0B-plugin-kernel.md`](work-orders/WO-S0B-plugin-kernel.md) | **✅ 完成**（含生产 origin 验证） | 插件内核：正式静态路由 + loader/manifest/plugin-store + main.ts 接线 + 测试 |
 | [`designs/S1-convergence-per-preset.md`](designs/S1-convergence-per-preset.md) | **已批准并竣工**（2026-08-20，用户授权代理执行） | S1 开工首日交付物已预写：preset 维度加法设计 + 批次推进安全网（standard 快照零漂移规则） |
-| [`designs/S2-composition-externalization.md`](designs/S2-composition-externalization.md) | **待批准**（2026-08-20 预写） | S2 全量设计：四域行模型 + roster patch schema/解析语义（DSH 实证对标 + 三处刻意偏离）+ 14570 `/composition/` 通道 + composition-store 穿线 + 12 壳行切分 + S2-0…S2-5 批次序列 |
+| [`designs/S2-composition-externalization.md`](designs/S2-composition-externalization.md) | **已批准并竣工**（2026-08-20，用户授权代理复审执行） | S2 全量设计：四域行模型 + roster patch schema/解析语义（DSH 实证对标 + 三处刻意偏离）+ 14570 `/composition/` 通道 + composition-store 穿线 + 12 壳行切分 + S2-0…S2-5 批次序列 |
 
 S2-S4 施工单在前序阶段落地后按需补写（S2 设计件已含批次序列 S2-0…S2-5，按 S1 先例设计件即施工纲领；S3 需白纸执行层外化；S4 需 S1/S2 全落）。执行顺序：WO-S0A → WO-S0B（均已完成）→ S1 设计件已批准并竣工（2026-08-20）→ **S2 设计件（待批准）→ S2-0…S2-5（批准后施工）→ …**
 
