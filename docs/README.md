@@ -26,6 +26,8 @@
 |---|---|---|
 | [`ARCHITECTURE.md`](../ARCHITECTURE.md) | 当前（2026-08-17 校准） | 系统架构、技术栈、关键决策、验证基线 |
 | [`CONTEXT.md`](../CONTEXT.md) | 当前 | 应用级统一词汇（`kind`/`status` 带簇前缀） |
+| [`docs/composition/README.md`](composition/README.md) | 当前（2026-08-20 S4 校准） | 组合层用户指南：patch 语法/preset/热重载/涟漪表 |
+| [`docs/plugins/README.md`](plugins/README.md) | 当前（2026-08-20 S4 落地） | 插件契约：manifest/三通道 API/宿主桥/安装/信任模型 |
 | [`docs/MULTI_AGENT_ROADMAP.md`](MULTI_AGENT_ROADMAP.md) | 工作台 | 多 Agent 路线图与已落地能力 |
 | [`docs/landmine-map.md`](landmine-map.md) | 当前 | 雷区地图、拆弹批次状态 |
 

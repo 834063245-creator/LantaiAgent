@@ -27,6 +27,7 @@ const SECTIONS = [
   'Shell',
   '编辑器',
   '身份认证 / 权限',
+  '插件安装通道',
   'Agent 隔离（worktree）',
   '外部服务',
   'Hologram 遗留命令',
@@ -155,8 +156,11 @@ function main() {
   const lines = readLines(RPC_RS);
   const src = fs.readFileSync(RPC_RS, 'utf8');
   let branchBlocks = [];
-  // 分支闭合行要求 `}` 后紧跟行尾（CRLF 容忍），避免被分支内 `};` 提前截断
-  const branchRe = /^\s*"([a-z0-9_]+)"\s*=>\s*\{([\s\S]*?)\n\s*\}\r?\n/gm;
+  // 分支闭合行要求恰好 8 空格缩进的 `}` 独占一行（顶层 match 分支的固定
+  // 缩进——分支体 12 空格、内层块 ≥16）：非贪婪匹配若接受任意缩进的 `}`
+  // 独行，含内层 match 的分支（如 plugin_install）会在内层闭合处提前截断，
+  // 且消费掉换行后让后续分支的 pos/分区判定连锁错位（S4-3 实测踩中）。
+  const branchRe = /^\s*"([a-z0-9_]+)"\s*=>\s*\{([\s\S]*?)\n {8}\}\r?\n/gm;
   let bm;
   while ((bm = branchRe.exec(src)) !== null) {
     branchBlocks.push({ name: bm[1], body: bm[2], pos: bm.index });
