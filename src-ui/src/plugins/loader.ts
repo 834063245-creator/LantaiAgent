@@ -14,6 +14,7 @@
 //   - 装载期不执行任何插件 UI 副作用（apply 只有注册动作；四 service 是 S1）。
 //   - 完全信任模型：不校验插件代码内容，只校验 manifest 形状（Rust 侧负责遍历防护）。
 
+import { compositionServicesPlugin } from '../composition/services';
 import type { Context } from '../cordis';
 import { getProxyPort } from '../provider/transport';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
@@ -37,13 +38,21 @@ export function pluginAssetsOrigin(port: number): string {
   return 'http://127.0.0.1:' + port + '/plugins';
 }
 
-/** 第一方插件表（编译期 bundle 内，不走磁盘通道；S3 起逐域填充，本阶段空占位）。 */
-const BUILTIN_PLUGINS: HologramPlugin[] = [];
+/** 第一方插件表（编译期 bundle 内，不走磁盘通道；S3 起逐域填充）。
+ * 表序 = 装配序。首项固定为组合层四 service（内核线第 3 条的实体化——
+ * panels/commands/tools/providers 注册表本身，常驻且先于外部插件，
+ * 保证外部插件 manifest 的 inject 依赖可解析）。 */
+const BUILTIN_PLUGINS: HologramPlugin[] = [compositionServicesPlugin];
 
-/** 装载第一方插件表。返回根 Context（main.ts 接线链式取用）。 */
+/** 装载第一方插件表。返回根 Context（main.ts 接线链式取用）。
+ * 同步装载（apply 内的 provide 同步生效——外部插件的 inject 依赖立即可解析）；
+ * fiber await 的 rejection 显式接住（内核装配失败必须可见，不留 unhandled）。 */
 export function loadBuiltinPlugins(root: Context): Context {
   for (const plugin of BUILTIN_PLUGINS) {
-    root.plugin(plugin);
+    const fiber = root.plugin(plugin);
+    void Promise.resolve(fiber).catch((err: unknown) => {
+      console.error('[plugins] 第一方插件装载失败:', plugin.name, err);
+    });
   }
   return root;
 }
