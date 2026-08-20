@@ -5,7 +5,6 @@
 // 增删面板只改这里；开合状态在 state/dock-store，不在本表。
 
 import type { ComponentType } from 'react';
-import type { DockPanelId } from '../../state/dock-store';
 import { AgentsPanel } from './AgentsPanel';
 import { CheckPanel } from './CheckPanel';
 import { ConstraintsPanel } from './ConstraintsPanel';
@@ -14,7 +13,8 @@ import { SettingsPanel } from './SettingsPanel';
 import { TasksPanel } from './TasksPanel';
 
 export interface PanelDef {
-  id: DockPanelId;
+  /** 面板 id——S1-5 起 string 开集（原 DockPanelId union 退役） */
+  id: string;
   /** 轨道侧；null = 不上轨道（命令面板 / 快捷键唤起） */
   side: 'left' | 'right' | null;
   title: string;
@@ -35,3 +35,20 @@ export const PANEL_DEFS: PanelDef[] = [
   { id: 'agents', side: 'right', title: '智能体', icon: 'agent', askAgent: false, component: AgentsPanel },
   { id: 'tasks', side: 'right', title: '待办', icon: 'task', askAgent: false, component: TasksPanel },
 ];
+
+// ── 装载期运行时校验（S1-5：id 从编译期 union 约束迁到运行时清单校验）──
+// union 退役后合法 id 的守门在这里：重复 id / 缺组件在模块加载时直接 throw
+// （错误不静默——对齐 composition/services ContributionRegistry 的装载期
+// 拒绝语义）。外部插件面板（S2/S4）将经 PanelsService 注册走同款校验。
+{
+  const seen = new Set<string>();
+  for (const def of PANEL_DEFS) {
+    if (seen.has(def.id)) {
+      throw new Error('[panel-def] duplicate panel id "' + def.id + '" —— 装载期拒绝');
+    }
+    if (!def.component) {
+      throw new Error('[panel-def] panel "' + def.id + '" 缺 component —— 装载期拒绝');
+    }
+    seen.add(def.id);
+  }
+}

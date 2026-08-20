@@ -28,7 +28,8 @@ import { type Context, Service } from '../cordis';
 //    ToolContribution 概念——S1-2 起行表统一到此形状）──
 
 export interface PanelContribution {
-  /** 面板 id——S1-5 前消费面仍受 DockPanelId union 约束（string 化在 S1-5 批）。 */
+  /** 面板 id——string 开集（S1-5 起 DockPanelId union 退役，合法清单由
+   *  panel-def 装载期校验守门；外部插件面板经本 service 注册走同款语义）。 */
   id: string;
   /** 轨道侧；null = 不上轨道（命令面板 / 快捷键唤起） */
   side: 'left' | 'right' | null;

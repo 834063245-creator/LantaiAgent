@@ -48,11 +48,16 @@ export interface CheckResult {
   persistent_violations?: number;
 }
 
-export type DockPanelId = 'check' | 'constraints' | 'dataflow' | 'settings' | 'agents' | 'tasks';
+/** 面板 id——S1-5 起从闭集 union 迁移为 string（composition 架构：外部插件
+ *  可贡献面板）；合法 id 清单的运行时校验在 app/panels/panel-def（装载期
+ *  自检 id 唯一 + 组件完备），本 store 保持纯状态层不依赖面板清单。 */
+export type DockPanelId = string;
 
 interface DockState {
-  /** 面板开合（dataflow/settings 由 DockPanel 条件挂载；其余常驻 + class 切换保过渡动画） */
-  open: Record<DockPanelId, boolean>;
+  /** 面板开合（dataflow/settings 由 DockPanel 条件挂载；其余常驻 + class 切换保过渡动画）。
+   *  key 面向 string 开集（S1-5）——未注册 id 的静默写入由 panel-def 装载期
+   *  校验 + 消费面字面量纪律守住，store 不做调用点校验。 */
+  open: Record<string, boolean>;
   /** 简报面板当前展示的结果（runCheck 推入；查看历史会临时替换，与旧行为一致） */
   checkResult: CheckResult | null;
 
