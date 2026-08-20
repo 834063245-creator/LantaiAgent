@@ -16,7 +16,7 @@
 import { useShellStore } from '../app/shell-store';
 import { loadCompositionPatch } from '../composition/patch-loader';
 import type { ResolvedComposition } from '../composition/roster';
-import { builtinShellRows, type ShellRow, type WorkspaceFlowDeps } from '../composition/shell-rows';
+import { builtinShellRows, type ShellRow, type WorkspaceFlowDeps, workspaceFlow } from '../composition/shell-rows';
 import { setLang } from '../i18n';
 import { loadSettings } from '../settings';
 import { shellRefs } from './runtime';
@@ -28,8 +28,12 @@ function ensureCompositionLoaded(): Promise<void> {
   return compositionLoading;
 }
 
-/** 壳引导主入口 — main.ts 调用（fire-and-forget；永不 reject）。 */
-export async function bootShell(flowDeps: WorkspaceFlowDeps, composition?: ResolvedComposition): Promise<void> {
+/** 壳引导主入口 — main.ts 调用（fire-and-forget；永不 reject）。
+ *  flowDeps 缺省 = 出厂 workspace 流（行 11 模块真源）。 */
+export async function bootShell(
+  flowDeps: WorkspaceFlowDeps = workspaceFlow,
+  composition?: ResolvedComposition,
+): Promise<void> {
   try {
     // 1) 引导三件套（原 init() 首段——先于一切 UI 行）
     document.addEventListener('contextmenu', (e) => e.preventDefault());

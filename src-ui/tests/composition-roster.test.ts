@@ -26,7 +26,7 @@ const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r
 const capKeys = (): string[] => builtinCapabilities().map((c) => c.key);
 
 describe('composition/roster（S2-0 组合引擎）', () => {
-  it('factoryComposition 聚合三张出厂表 + 壳行表（S2-3 行 1-10，序 = 引导序）', () => {
+  it('factoryComposition 聚合三张出厂表 + 壳行表（12 行全量，序 = 引导序）', () => {
     const f = factoryComposition();
     expect(ids(f.tools)).toEqual(ids(builtinToolRows()));
     expect(ids(f.prompt)).toEqual(ids(builtinPromptSections()));
@@ -43,6 +43,8 @@ describe('composition/roster（S2-0 组合引擎）', () => {
       'hologram/shell-nav',
       'hologram/shell-persistence',
       'hologram/shell-actions',
+      'hologram/shell-workspace',
+      'hologram/shell-cold-start',
     ]);
   });
 

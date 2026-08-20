@@ -22,6 +22,7 @@
 import { bootActions } from '../shell/rows/actions';
 import { bootBridges } from '../shell/rows/bridges';
 import { bootChat } from '../shell/rows/chat';
+import { bootColdStart } from '../shell/rows/cold-start';
 import { bootDataflowParser } from '../shell/rows/dataflow-parser';
 import { bootGraph } from '../shell/rows/graph';
 import { bootKeyguard } from '../shell/rows/keyguard';
@@ -29,6 +30,7 @@ import { bootNav } from '../shell/rows/nav';
 import { bootPersistence } from '../shell/rows/persistence';
 import { bootPlatform } from '../shell/rows/platform';
 import { bootSandboxProbe } from '../shell/rows/sandbox-probe';
+import { bootWorkspace, workspaceFlow } from '../shell/rows/workspace';
 import type { ShellRefs } from '../shell/runtime';
 
 /** 壳行：id 寻址 + boot 接线动作（flowDeps 由编排器转发，行内自取所需）。 */
@@ -70,5 +72,10 @@ export function builtinShellRows(): ShellRow[] {
         bootActions(refs, deps);
       },
     },
+    { id: 'hologram/shell-workspace', boot: (refs) => bootWorkspace(refs) },
+    { id: 'hologram/shell-cold-start', boot: (refs) => bootColdStart(refs) },
   ];
 }
+
+/** 出厂 workspace 流（main.ts 终态引导传给 bootShell 的 deps 真源）。 */
+export { workspaceFlow };
