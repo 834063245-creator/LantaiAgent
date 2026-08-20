@@ -480,6 +480,77 @@ export function createGitTools(exec: ToolExecutor): Tool[] {
   ];
 }
 
+/** search 域工具族（S1-2 从 createCodingTools 迁出）——纯机械移动，定义零改写。
+ *  迁出动机同 createFsTools。*/
+export function createSearchTools(exec: ToolExecutor): Tool[] {
+  return [
+    // ── 代码搜索 ──
+    defineTool({
+      name: 'search_content',
+      description:
+        'Search for a text pattern across all source files. Supports literal substring (default, case-insensitive) and regex. Returns matching lines with optional context lines, file lists, or counts. Skips binary files, hidden dirs, and build artifacts. Prefer this over run_shell grep — it is faster and respects .gitignore-style exclusions.',
+      schema: z.object({
+        directory: z.string().describe('Absolute path to the directory to search in'),
+        pattern: z.string().describe('Text or regex pattern to search for (case-insensitive)'),
+        fileTypes: z
+          .string()
+          .optional()
+          .describe('Optional comma-separated file extensions to filter (e.g. ".ts,.py,.rs")'),
+        maxResults: z.coerce
+          .number()
+          .int()
+          .max(200)
+          .optional()
+          .default(50)
+          .describe('Maximum number of results to return (default: 50, max: 200)'),
+        useRegex: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe(
+            'Set to true to interpret pattern as a regex (e.g. "function\\\\s+\\\\w+"). Default: false (literal substring)',
+          ),
+        contextLines: z.coerce
+          .number()
+          .int()
+          .optional()
+          .default(0)
+          .describe('Number of context lines before and after each match (like grep -C). Default: 0. Max: 10.'),
+        outputMode: z
+          .enum(['content', 'files_with_matches', 'count'])
+          .optional()
+          .default('content')
+          .describe(
+            'Output mode: "content" = matching lines with context, "files_with_matches" = just file paths, "count" = match counts per file. Default: content.',
+          ),
+        showLineNumbers: z
+          .boolean()
+          .optional()
+          .default(true)
+          .describe('Include line numbers in output (default: true)'),
+        headLimit: z.coerce
+          .number()
+          .int()
+          .optional()
+          .default(250)
+          .describe('Max results/files to return (default: 250, 0 = unlimited)'),
+        offset: z.coerce
+          .number()
+          .int()
+          .optional()
+          .default(0)
+          .describe('Skip first N results for pagination (default: 0)'),
+        globFilter: z
+          .string()
+          .optional()
+          .describe('Additional glob filter on file paths (e.g. "**/*.rs", "src/**/*.ts")'),
+      }),
+      readOnly: true,
+      execute: (args, onProgress) => exec('search_content', args, onProgress),
+    }),
+  ];
+}
+
 export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[] {
   return [
     // 文件操作（fs 域工具族，S1-2 迁出至 createFsTools）
@@ -488,6 +559,8 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
     ...createShellTools(exec),
     // Git 域工具族（S1-2 迁出至 createGitTools）
     ...createGitTools(exec),
+    // 代码搜索（search 域工具族，S1-2 迁出至 createSearchTools）
+    ...createSearchTools(exec),
     // ── 用户交互 ──
     defineTool({
       name: 'ask_user',
@@ -594,71 +667,6 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
         if (ans === null) return JSON.stringify({ answer: null });
         return JSON.stringify(multi ? { answers: ans } : { answer: ans[0] ?? null });
       },
-    }),
-
-    // ── 代码搜索 ──
-    defineTool({
-      name: 'search_content',
-      description:
-        'Search for a text pattern across all source files. Supports literal substring (default, case-insensitive) and regex. Returns matching lines with optional context lines, file lists, or counts. Skips binary files, hidden dirs, and build artifacts. Prefer this over run_shell grep — it is faster and respects .gitignore-style exclusions.',
-      schema: z.object({
-        directory: z.string().describe('Absolute path to the directory to search in'),
-        pattern: z.string().describe('Text or regex pattern to search for (case-insensitive)'),
-        fileTypes: z
-          .string()
-          .optional()
-          .describe('Optional comma-separated file extensions to filter (e.g. ".ts,.py,.rs")'),
-        maxResults: z.coerce
-          .number()
-          .int()
-          .max(200)
-          .optional()
-          .default(50)
-          .describe('Maximum number of results to return (default: 50, max: 200)'),
-        useRegex: z
-          .boolean()
-          .optional()
-          .default(false)
-          .describe(
-            'Set to true to interpret pattern as a regex (e.g. "function\\\\s+\\\\w+"). Default: false (literal substring)',
-          ),
-        contextLines: z.coerce
-          .number()
-          .int()
-          .optional()
-          .default(0)
-          .describe('Number of context lines before and after each match (like grep -C). Default: 0. Max: 10.'),
-        outputMode: z
-          .enum(['content', 'files_with_matches', 'count'])
-          .optional()
-          .default('content')
-          .describe(
-            'Output mode: "content" = matching lines with context, "files_with_matches" = just file paths, "count" = match counts per file. Default: content.',
-          ),
-        showLineNumbers: z
-          .boolean()
-          .optional()
-          .default(true)
-          .describe('Include line numbers in output (default: true)'),
-        headLimit: z.coerce
-          .number()
-          .int()
-          .optional()
-          .default(250)
-          .describe('Max results/files to return (default: 250, 0 = unlimited)'),
-        offset: z.coerce
-          .number()
-          .int()
-          .optional()
-          .default(0)
-          .describe('Skip first N results for pagination (default: 0)'),
-        globFilter: z
-          .string()
-          .optional()
-          .describe('Additional glob filter on file paths (e.g. "**/*.rs", "src/**/*.ts")'),
-      }),
-      readOnly: true,
-      execute: (args, onProgress) => exec('search_content', args, onProgress),
     }),
 
     // ── Web Search — 已禁用 (2026-07)
