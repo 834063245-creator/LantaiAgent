@@ -39,7 +39,7 @@
 | 壳 | `cd src-tauri && cargo check`；权限/锁/IPC/命令改动跑 `cargo test` |
 | 桌面打包 | `cd src-tauri && cargo tauri build`（会自动先跑前端构建；根目录 `build.cmd` 是 Windows 包装） |
 
-禁止用 `cargo build --release` 代替桌面发布验证。当前实测基线：engine 697 tests（696 passed / 1 ignored）· src-tauri 370+14 tests（bin 全绿；2026-08-20 S4 竣工实测）· 前端 1448 passed / 1 skipped（2026-08-20 组合架构 S4 竣工实测）。
+禁止用 `cargo build --release` 代替桌面发布验证。当前实测基线：engine 697 tests（696 passed / 1 ignored）· src-tauri 370+14 tests（bin 全绿；2026-08-20 S4 竣工实测）· 前端 1456 passed / 1 skipped（2026-08-20 S4-1b 竣工实测；convergence 双 preset：standard 零漂移 + minimal baseline 冻结均通过）。
 
 ## 项目快照
 

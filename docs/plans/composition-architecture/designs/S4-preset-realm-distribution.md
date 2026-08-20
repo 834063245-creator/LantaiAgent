@@ -1,6 +1,6 @@
 # S4 设计件 — preset realm + 热重载 + npm 分发 + 机器桥 + hello 闭环
 
-> 状态：**主体竣工（2026-08-20：S4-0 `c7e089ff` → S4-1a `01c035f8` → S4-1.5 `8f8b131e` → S4-2 `b366422d` → S4-3 `7913d266` → S4-5 收尾，六批每批独立全绿）。遗留两项：S4-1b（session `preset/selected` 首事件 + minimal baseline freeze）持 Phase 5 change request **批间审批门待用户放行**后另启；S4-4 机器桥按 §3 裁定可整体跳过（未决项，hello 三通道不依赖）。**
+> 状态：**竣工（2026-08-20：S4-0 `c7e089ff` → S4-1a `01c035f8` → S4-1.5 `8f8b131e` → S4-2 `b366422d` → S4-3 `7913d266` → S4-5 `50a1f532` → S4-1b `d4dcb5bf`+`2c4f4bf3`，七批每批独立全绿；S4-1b 经 Phase 5 CR 用户批准「批准全项」后实施——preset/selected 首事件五项同步 + 差分矩阵场景 + minimal baseline/preset-minimal/ 首次冻结。S4-4 机器桥按 §3 裁定整体跳过（未决项，hello 三通道不依赖）。**
 > 性质：组合架构计划 S4 段的全量设计。前置已完成：S0（装载通道）/ S1（注册表化 + preset 维度基建）/ S2（组合外化——四域行 + 用户层 patch + 12 壳行）。
 > 排程依据（计划 README 三次修订）：S4 提前到纸之前——preset realm 恰是 V5 壳切换要用的机器（观测台 preset / 纸壳 preset = 同一组合引擎的确定性双装配）；前端工程期间组合层状态口径（二轮复审修正，初稿「静默」表述过强）：**无计划内施工，未决项（§6）均已显式归档且约定不在前端期间动**——不等于「零改动可能性」：若某未决项被提前翻出，先动排程再动代码，不制造「说好静默怎么又动了」的信任损耗。
 > DSH 实证对标：`packages/preset/agent-presets/**`（preset 词汇/发现/装载/会话记录四件套）+ `packages/bundle/web-app/cordis.patch.yml` §「agent plane moves behind presets」（host plane / preset plane 分界判据）；文件路径均给出供执行者直接查阅。
