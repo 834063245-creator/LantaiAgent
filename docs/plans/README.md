@@ -16,8 +16,8 @@
 | [`ui-react-island-retirement-plan.md`](ui-react-island-retirement-plan.md) | **Done**（2026-08-19：ui/react/ 目录删除、5 总线事件退役迁 store、32 文件全量迁入 app/**；终态守护测试常驻） | — |
 | [`eventbus-zero-and-ui-split-plan.md`](eventbus-zero-and-ui-split-plan.md) | **Done**（2026-08-19 P0-P3 竣工：11 事件归零迁 store、events.ts 删除；11 store 迁 state/ + 23 scene 文件迁 scene/ + graph.ts shim；守护 COMPLETE=true + 全文档回写） | — |
 | [`agent-plugin-architecture-plan.md`](agent-plugin-architecture-plan.md) | Proposed（方向性立项：DSH 源码实证对标——执行原语 + 工具面单一真源 + cordis Service 收口 + 插件边界；**生态跟随观望中**：P4 门控于 DSH 官方接口稳定信号，P1-P3 纯自研独立成立，见 D8） | P1 工具面文档生成（半天，独立收益）随时可做；P2 执行原语建议在总线归零后开；P4a 契约调研（纯侦察）可先行 |
-| [`composition-architecture/`](composition-architecture/) | **In progress — S0 可开工**（2026-08-20 立项并备齐施工单：特权线左移取代 plugin-ecosystem v1；D0 四问访谈已定方向——世界 B 出局、自己的组合层、两产品形式化；宪法与边界见 [`docs/adr/composition-boundaries.md`](../adr/composition-boundaries.md)） | 第一刀 WO-S0A spike（小时级，已备单）→ WO-S0B 插件内核 → 批 S1 设计件 → S1-0…S1-5 → S2；**阶段 1（组合层核心）到 S2 为止**——之后转白纸全程（paper-shell），S3/S4 排阶段 3（2026-08-20 拍板三阶段串行，用户带宽优先，见计划 D0 排序节） |
-| [`paper-shell/`](paper-shell/) | Draft（2026-08-20 立项：白纸前端重构落地管线——核心方法论「视觉层=转录任务不是设计任务」；V0 访谈→V1 原型收敛→V2 视觉契约→V3a 壳无关骨架→V3b 装配→V4 打磨→V5 壳切换；设计地基 `docs/design/一张纸-Agent软件交互形态设计.md`；**排队于阶段 1（组合层核心）之后，三阶段串行**） | 阶段 1 期间 R1 访谈可选随时做（纯对话零工程）；正式开工第一件事 = R1 四问访谈 → V1 白纸 vs 深色并排看（两侧打样已在 prototype/） |
+| [`composition-architecture/`](composition-architecture/) | **In progress — S0 施工中**（2026-08-20 立项；特权线左移取代 plugin-ecosystem v1；D0 四问定向：世界 B 出局、自己的组合层、两产品形式化 G/A；**与 paper-shell 为两个独立工程**（2026-08-20 二次修订），无主从阶段；宪法与边界见 [`docs/adr/composition-boundaries.md`](../adr/composition-boundaries.md)） | 绿灯模式推进：WO-S0A spike → WO-S0B → 批 S1 设计件 → S1-0…S1-5 → S2；S3/S4 保留为收尾段（触发条件：纸方向定稿） |
+| [`paper-shell/`](paper-shell/) | Draft（2026-08-20 立项，**独立创作工程**——与组合层并列非阶段关系（同日二次修订）：前端重构 = 密集人机共同创作（沟通→修改→测试循环为主体工作量，月级）；方法论「转录不发明 + 共同创作循环为常态」+ V0-V5 管线 + V4 防发散协议 + 品味账本已立账；设计地基 `docs/design/一张纸-Agent软件交互形态设计.md`） | 开工时机由用户定（不急）；第一件事 = R1 四问访谈（纯对话随时可做）→ V1 白纸 vs 深色 vs 墨黄铜三向选型；唯一硬依赖：V3b 需组合层 S1（届时自然满足） |
 
 ## 已归档计划
 
