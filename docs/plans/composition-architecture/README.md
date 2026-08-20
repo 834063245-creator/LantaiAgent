@@ -1,9 +1,9 @@
 # 组合架构（composition-architecture）——特权线左移计划
 
-> **本目录阅读顺序**：① 本 README（宪法 + 阶段 + 排程）→ ② `work-orders/`（施工单，按编号即执行顺序）→ ③ `designs/`（S1 设计件，已批准）。边界依据在 `docs/adr/composition-boundaries.md`。当前状态：**S0 Done（Landed）；S1 施工中（S1-0…S1-5）**。
+> **本目录阅读顺序**：① 本 README（宪法 + 阶段 + 排程）→ ② `work-orders/`（施工单，按编号即执行顺序）→ ③ `designs/`（S1 设计件，已批准）。边界依据在 `docs/adr/composition-boundaries.md`。当前状态：**S0 Done（Landed）；S1 Done（2026-08-20，S1-0…S1-5 全批次完成，9 commits）；下一步 S2 设计件**。
 
 > 立项：2026-08-20 · 主导：Agent（设计/实现/验收），用户（拍板/审批/放行）
-> 状态：**In progress — S0 Done · S1 施工中（设计件已批准 2026-08-20，用户授权代理执行）**
+> 状态：**In progress — S0 Done · S1 Done（2026-08-20 全批次落地，standard 快照零漂移贯穿）· S2 待设计**
 > 取代：`.hologram/plans/plan-1787199847398-bu20.md`（plugin-ecosystem v1「插件口子」计划——其 P0/P1 被吸收为本计划 S0/S1 零件，P2 降级为 S3 第一项，P3 后移至 S4）
 > 边界依据：`docs/adr/composition-boundaries.md`（为什么不做/做不到 DSH 式全体插件化——先读它，本计划在它划定的边界内施工）
 > 关联计划：`agent-plugin-architecture-plan.md`（执行原语 + 工具面收口——其 P3 cordis 收口与本计划 S1 汇流，P4 路线 B 自研插件边界由本计划承载，D8 观望决策继续有效）
@@ -83,9 +83,11 @@ v1 计划唯一未验证的硬前提：**生产 webview 从 `tauri.localhost` �
 
 **落地记录（2026-08-20）：** S0A spike 取三分支之 ✅（假设证实：webview 从 14570 import ES module 可行，spike 代码已清）。S0B 落地 `plugin_assets.rs`（静态路由：遍历防护/仅 GET/仅 loopback/MIME 含 .wasm/JSON 错误/junction 测试）+ `plugins/types.ts`（zod manifest）+ `plugins/loader.ts`（失败隔离永不 reject/disabled 跳过/inject 装载期校验/端口经 llm_proxy_port RPC 解析）+ `state/plugin-store.ts` + main.ts 接线 7 行。手动验收全过（坏插件 error 状态不炸应用、hello 装载成功、disabled 实测、生产 origin `tauri.localhost` import 随 `cargo tauri build` 验证——console 捕获 `[plugin] loaded: hello`）。门禁：cargo test 356+14 全绿、vitest 1307 passed、build/biome/convergence 零新增。**加载协议纪律（import 白名单）顺延至 S1**：四 service 尚不存在，插件现阶段能 import 的只有通道本身，白名单强制随注册表化一起落。启用持久化（plugins.json disabled 集）已含。
 
-### S1 — 注册表化（决战；v1 P1 扩展 + agent-plugin-arch P3 汇流）
+### S1 — 注册表化（决战；v1 P1 扩展 + agent-plugin-arch P3 汇流）— ✅ Done（2026-08-20）
 
 四 service 挂根 Context + 内置面行化 + 字节契约重设计。**本计划最大工程债与最大风险段**（R1），可按域分批。
+
+**落地记录：** 按设计件批次序列 S1-0…S1-5 全部完成（9 commits，`cd9092fa`…`55c5177a`），每批独立全绿。核心交付：preset 维度基建（gate/快照路由/contributions 显式参数）→ 四 service（ContributionRegistry 内核：装载期重名拒绝 + disposer 双守卫）→ 工具行表 `composition/tool-rows.ts`（14 行全部内置族，表序=组合序，行 factory 支持 async）→ 装配末端整体改读行表（`createCodingTools` 兜底退役，名字冲突装载期拒绝测试就位）→ system-prompt section 注册表 `composition/prompt-sections.ts`（13 段，两装配面 applicable 分流）→ `DockPanelId` union 退役（string 开集 + panel-def 装载期校验 + panel.* id 对拍）。**§2.4 零漂移规则全程生效**：每批不设 CONVERGENCE_PRESET 跑 verify:convergence，三个 tool-schemas 快照 + system-prompt.fixture 逐字节零漂移，baseline 零触碰（S1-4 曾拦下一处 \n 分隔符漂移——安全网实战有效）。终态门禁：vitest 1338 passed / 1 skipped、build exit 0、biome 零新增。
 
 1. 四 service：`ctx.commands` / `ctx.panels` / `ctx.tools` / `ctx.providers`（注册 → disposer；panel-def 的 `DockPanelId` union → string + 装载期运行时校验；dock-store `open` 改 `Record<string, boolean>`）
 2. **内置 66 工具从编译期固化为默认 roster 行**：`buildToolRegistry` 末端的贡献并入改读行表；行 = `{ id, factory, config?, disabled? }`；id 寻址 + 名字冲突装载期拒绝
