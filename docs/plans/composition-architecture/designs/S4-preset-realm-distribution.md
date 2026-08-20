@@ -1,6 +1,6 @@
 # S4 设计件 — preset realm + 热重载 + npm 分发 + 机器桥 + hello 闭环
 
-> 状态：**已两轮复审（2026-08-20：代理自查 + 用户四处偏差指正全采纳，记录见 §7.1）——待用户放行后交新窗口落地**
+> 状态：**已三轮复审（2026-08-20：代理自查三处 + 用户四处偏差 + 三轮独立复审两处，记录见 §7.1）——待用户放行后交新窗口落地**
 > 性质：组合架构计划 S4 段的全量设计。前置已完成：S0（装载通道）/ S1（注册表化 + preset 维度基建）/ S2（组合外化——四域行 + 用户层 patch + 12 壳行）。
 > 排程依据（计划 README 三次修订）：S4 提前到纸之前——preset realm 恰是 V5 壳切换要用的机器（观测台 preset / 纸壳 preset = 同一组合引擎的确定性双装配）；前端工程期间组合层状态口径（二轮复审修正，初稿「静默」表述过强）：**无计划内施工，未决项（§6）均已显式归档且约定不在前端期间动**——不等于「零改动可能性」：若某未决项被提前翻出，先动排程再动代码，不制造「说好静默怎么又动了」的信任损耗。
 > DSH 实证对标：`packages/preset/agent-presets/**`（preset 词汇/发现/装载/会话记录四件套）+ `packages/bundle/web-app/cordis.patch.yml` §「agent plane moves behind presets」（host plane / preset plane 分界判据）；文件路径均给出供执行者直接查阅。
@@ -102,6 +102,7 @@ boot：ensureCompositionLoaded 后追加 preset 解析
 **复审修正（2026-08-20）：HoloGram 的 SessionLog 没有 header 概念**（实查 `agent/session-log.ts`：仅 `events[]` 流 + 序列化，无 SessionHeader 同构物）——DSH 的「header 深冻 + selected 事件」不能平移。改用**首事件方案**：
 
 - 会话构造（`session/reset` init）时**必发一条 `preset/selected`**——首条即创建时点事实（等价 DSH header 的语义位）；
+- **reset 语义（三轮复审补——初稿规格空缺）**：被 reset 的会话若中途改选过 preset（事件已追加在旧段内），reset 重开发出的是**当前生效选择**（重读默认值），**不继承**被清掉那个会话的改选——「reset 开启新逻辑段」与「首事件描述新段」是同一条纪律的两面。倒序扫描因此天然安全：reset 边界后最近的 `preset/selected` 就是新段自己的，旧段事件不可能跨 reset 边界泄漏（`session/reset` 事件本身就是段分界）。S4-1b 单测必须含此场景（改选 → reset → 重建用默认而非改选）；
 - 空白会话期改选 preset → 追加同名事件；重建时 newest-wins（照抄 `resolveSessionPreset` 的倒序扫描，只是无 header 兜底——首事件承担该位）；
 - **Phase 5 立规操作**：新事件 kind = `SESSION_EVENT_KINDS` + `SessionEventDataMap`（Record 关系编译期对齐）+ spec AST 白名单 + gate 计数同步 + 差分矩阵补场景。这动 session-log 冻结面——**必须走 baseline change request 流程**（record + 审批），设计件只立契约不预支快照。事件 data 形状：`{ presetId: string }`（无裸对象嵌套——投影面最小化，deriveMessages 不消费此 kind）。
 
@@ -209,6 +210,8 @@ S2 延期清单的兑现：**`composition-store` 加「重载」动作**，不�
 
 ## 6. 未决项（S4 施工中/S5+ 定）
 
+- **首事件 → `session/init` 的泛化触发条件**（三轮复审补，源于用户问「要不要建 SessionHeader 同构物」的裁定——不要，理由记录在案）：首事件方案对「单一创建时点事实」（presetId）优雅，但**不组合**——第二个这类事实出现时，逐个加独立事件 kind（`preset/selected` + `workspace/selected` + `shell/selected`…）会让倒序扫描面越摊越大。**触发条件**：第二个创建时点事实落地（最可能候选：工作区转向 ADR 的会话↔工作区绑定正式化、V5 壳 preset）时，将 `preset/selected` 泛化为 `session/init { presetId, ...后续字段 }`（可选字段、向后兼容、全在事件纪律内），**不是**引入 header 结构——reset 重初始化的日志流里任何「创建时冻结」的结构只能正确描述第一个会话，header 在此模型下根本不成立（birth certificate vs reset 流的生命周期差异，完整论证见对话记录 2026-08-20）。
+
 - **插件 prompt-section 贡献通道**：设计候选两枚——(a) 第五个 ctx service（`ctx.systemPrompt`，DSH L2 插件同构，动态 render 全表达力）；(b) 插件目录 sidecar yml（静态段落，数据化零代码）。真实消费者出现时再定（S2 §2.9 同款纪律：先开通道只剩静默 no-op 或假旋钮两种坏结局）。hello 三通道不依赖它。
 - **preset 的 UI 选择面**：新会话屏的 preset chip / 会话头只读标签 / 设置默认值（DSH 四面：General 行 + 新会话 chip + 头标签 + 管理节）——S4-1a 只做**装配机制**（记录机制在 1b），UI 三面照 DSH 形态砍到最小（设置面板「组合」节的 preset 默认值 + 新会话携带默认），完整四面留给 V5 壳（那才是 preset 的主消费场景）。
 - **插件版本比较/更新提示**（2.5 延后）：manifest.version 已有，UI 显示之；比较与更新流程属增强。
@@ -233,6 +236,11 @@ S2 延期清单的兑现：**`composition-store` 加「重载」动作**，不�
 6. **「组合层静默」表述过强**（排程依据修正）：S4 后仍有显式未决项（prompt-section 通道 / preset UI 选择面 / 可能裁剪的机器桥）——「静默」改口径为「无计划内施工，未决项显式归档且不在前端期间动」。
 7. **SettingsPanel Tab union 未点名**（§2.6 修正）：加 tab 是改封闭 union（SettingsPanel.tsx:23 `type Tab = 'provider' | 'agent' | 'display' | 'languages' | 'about'`）+ sp-tabs 渲染两处——施工单补文件级精度。
 
+**三轮复审（2026-08-20 同日，独立复审代理——断言逐条对码复核 §7.1 全部成立后补两处）**：
+
+8. **§2.4 reset 语义规格空缺**：初稿未定义「被 reset 的会话中途改选过 preset」时 reset 重开的事件取值——两种解读（继承改选 vs 重读默认）重建结果不同，属必须写明的规格而非实现细节。补 = §2.4 reset 语义条 + S4-1b 单测场景。
+9. **§6 补 session/init 泛化触发条件**：用户问「要不要建 SessionHeader 同构物」→ 裁定不要（reset 流 vs birth certificate 的生命周期差异：header 只能正确描述第一个会话，第一次 reset 后即陈旧；模型可见不变式也站在事件侧）。首事件的弱点是不组合——泛化路径（第二事实出现时 `preset/selected` → `session/init` 可选字段扩展）与触发条件写进 §6，替代任何 header 演化方向。
+
 ### 7.2 复审要点自查（给后续复审者的阅读地图）
 
 1. §2.1 preset 模型对 S2 引擎的复用是否完整（应零新解析语义）；索引路由量级与注释契约修订义务是否进批（§2.1 代价两项）；
@@ -244,4 +252,4 @@ S2 延期清单的兑现：**`composition-store` 加「重载」动作**，不�
 
 ### 7.3 交接
 
-本设计件经两轮复审（§7.1 一轮：三处实证修正；§7.1 末二轮：用户四处偏差指正全采纳）。交新窗口执行者落地（S4-0 即可开工——纯函数批风险最低；S4-1a 不等审批先跑；**S4-1b 前停下等用户批准 Phase 5 CR——这是整个 S4 唯一的用户出场点**）。执行者注意：落地的第一动作是复核 G0 结论仍成立（grep 四 service 消费者——若 S3 名义域已动则批次表需重排）；第二动作是复核 §7.1-4 的注释契约修订项未被顺手跳过（plugin_assets.rs:204 的「只服务固定文件名」在 S4-0 必须同步改写）。
+本设计件经三轮复审（§7.1 一轮：三处实证修正；§7.1 二轮：用户四处偏差指正全采纳；§7.1 三轮：独立复审对码复核 + reset 语义补句 + session/init 泛化触发）。交新窗口执行者落地（S4-0 即可开工——纯函数批风险最低；S4-1a 不等审批先跑；**S4-1b 前停下等用户批准 Phase 5 CR——这是整个 S4 唯一的用户出场点**）。执行者注意：落地的第一动作是复核 G0 结论仍成立（grep 四 service 消费者——若 S3 名义域已动则批次表需重排）；第二动作是复核 §7.1-4 的注释契约修订项未被顺手跳过（plugin_assets.rs:204 的「只服务固定文件名」在 S4-0 必须同步改写）。
