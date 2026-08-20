@@ -1,0 +1,7 @@
+{
+  "name": "hello",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HoloGram 插件三通道最小示例（面板 + 命令 + 工具）",
+  "files": ["manifest.json", "entry.js", "README.md"]
+}

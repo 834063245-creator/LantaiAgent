@@ -27,6 +27,9 @@ function parseInstallInput(raw: string): { source_kind: string; name?: string; l
   const t = raw.trim();
   if (t.startsWith('http://') || t.startsWith('https://')) return { source_kind: 'tarball', location: t };
   if (/\.t(ar\.)?gz$/i.test(t)) return { source_kind: 'tarball', location: t };
+  if (/^[a-zA-Z]:[\\/]/.test(t) || t.startsWith('/') || t.startsWith('\\')) {
+    return { source_kind: 'local_dir', location: t };
+  }
   return { source_kind: 'registry', name: t };
 }
 
@@ -139,8 +142,9 @@ describe('S4-3 PluginsPage（设置面板插件 tab）', () => {
     cleanup();
   });
 
-  it('输入三形态解析（registry 名 / tarball URL / 本地 .tgz 路径）', () => {
+  it('输入三形态解析（registry 名 / tarball URL / 本地 .tgz 路径 / 本地目录 / npm scope）', () => {
     expect(parseInstallInput('hologram-hello')).toEqual({ source_kind: 'registry', name: 'hologram-hello' });
+    expect(parseInstallInput('@acme/tools')).toEqual({ source_kind: 'registry', name: '@acme/tools' });
     expect(parseInstallInput('https://example.com/x.tgz')).toEqual({
       source_kind: 'tarball',
       location: 'https://example.com/x.tgz',
@@ -152,6 +156,19 @@ describe('S4-3 PluginsPage（设置面板插件 tab）', () => {
     expect(parseInstallInput('D:/x/hello.tar.gz')).toEqual({
       source_kind: 'tarball',
       location: 'D:/x/hello.tar.gz',
+    });
+    // 本地目录（盘符路径 / POSIX 绝对路径——设计件 §2.6 形态 c）
+    expect(parseInstallInput('D:/dev/examples/plugins/hello')).toEqual({
+      source_kind: 'local_dir',
+      location: 'D:/dev/examples/plugins/hello',
+    });
+    expect(parseInstallInput('D:\\dev\\hello')).toEqual({
+      source_kind: 'local_dir',
+      location: 'D:\\dev\\hello',
+    });
+    expect(parseInstallInput('/home/me/hello')).toEqual({
+      source_kind: 'local_dir',
+      location: '/home/me/hello',
     });
   });
 });

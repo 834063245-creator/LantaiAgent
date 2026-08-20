@@ -107,7 +107,8 @@ export function PluginsPage() {
     }
   }
 
-  /** 解析安装输入（三形态）：npm 名 / URL 或本地路径 / 本地目录。 */
+  /** 解析安装输入（三形态，设计件 §2.6）：npm 名 / tarball（URL 或本地
+   *  .tgz 路径）/ 本地目录（绝对/盘符路径形态——Rust 侧校验存在性）。 */
   function parseInstallParams(
     raw: string,
   ):
@@ -117,6 +118,11 @@ export function PluginsPage() {
     const t = raw.trim();
     if (t.startsWith('http://') || t.startsWith('https://')) return { source_kind: 'tarball', location: t };
     if (/\.t(ar\.)?gz$/i.test(t)) return { source_kind: 'tarball', location: t };
+    // 本地目录形态：Windows 盘符路径（D:\... 或 D:/...）或 POSIX 绝对路径
+    // （/...）——npm 包名不含这些形态（scope 名也没有盘符冒号/前导斜杠）
+    if (/^[a-zA-Z]:[\\/]/.test(t) || t.startsWith('/') || t.startsWith('\\')) {
+      return { source_kind: 'local_dir', location: t };
+    }
     return { source_kind: 'registry', name: t };
   }
 
@@ -143,7 +149,7 @@ export function PluginsPage() {
         <div className="sp-field" style={{ display: 'flex', gap: 8 }}>
           <input
             className="sp-input"
-            placeholder="npm 包名（如 hologram-hello）/ tarball URL / 本地 .tgz 路径"
+            placeholder="npm 包名 / tarball URL 或 .tgz 路径 / 本地插件目录"
             value={input}
             disabled={busy}
             onChange={(e) => setInput(e.target.value)}
@@ -168,8 +174,8 @@ export function PluginsPage() {
           </button>
         </div>
         <div className="sp-hint-sub">
-          支持三种源：npm 包名（缺省 registry.npmjs.org）、tarball URL 或本地路径（开发期 npm pack
-          产物）、本地插件目录。安装/卸载/禁用均重启后生效。
+          三种源：npm 包名（缺省 registry.npmjs.org）、tarball URL 或本地路径（npm pack 产物）、
+          本地插件目录（复制进插件根）。安装/卸载/禁用均重启后生效。
         </div>
         {message && (
           <div className="sp-hint-sub" style={{ color: message.kind === 'ok' ? 'var(--obs-pass)' : 'var(--obs-warn)' }}>

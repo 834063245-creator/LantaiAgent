@@ -14,6 +14,8 @@
 //   - 装载期不执行任何插件 UI 副作用（apply 只有注册动作；四 service 是 S1）。
 //   - 完全信任模型：不校验插件代码内容，只校验 manifest 形状（Rust 侧负责遍历防护）。
 
+import { createElement } from 'react';
+import { useShellStore } from '../app/shell-store';
 import { compositionServicesPlugin } from '../composition/services';
 import type { Context } from '../cordis';
 import { getProxyPort } from '../provider/transport';
@@ -44,10 +46,37 @@ export function pluginAssetsOrigin(port: number): string {
  * 保证外部插件 manifest 的 inject 依赖可解析）。 */
 const BUILTIN_PLUGINS: HologramPlugin[] = [compositionServicesPlugin];
 
+// ── 插件宿主桥（S4-5）──
+// 外部插件经 webview 动态 import 装载——模块语境没有裸 import 解析面
+// （无包管理器、无 import map，平台契约 = 插件自包含）。需要 React 或
+// 通知能力的插件经 window.__hologram_plugin_host__ 取宿主能力：
+//   - createElement：React.createElement（面板组件构造——无 JSX 插件的路由）；
+//   - notify：状态栏通知（命令动作的最小 UI 反馈面）。
+// 桥在装载第一方插件前注入（装载期红线：注入是平台动作不是插件副作用）。
+declare global {
+  interface Window {
+    __hologram_plugin_host__?: {
+      createElement: typeof createElement;
+      notify: (text: string) => void;
+    };
+  }
+}
+
+function installPluginHostBridge(): void {
+  if (typeof globalThis !== 'undefined') {
+    (globalThis as { __hologram_plugin_host__?: unknown }).__hologram_plugin_host__ = {
+      createElement,
+      notify: (text: string) => useShellStore.getState().pushStatus(text),
+    };
+  }
+}
+
 /** 装载第一方插件表。返回根 Context（main.ts 接线链式取用）。
  * 同步装载（apply 内的 provide 同步生效——外部插件的 inject 依赖立即可解析）；
- * fiber await 的 rejection 显式接住（内核装配失败必须可见，不留 unhandled）。 */
+ * fiber await 的 rejection 显式接住（内核装配失败必须可见，不留 unhandled）。
+ * S4-5：装载前先注入插件宿主桥（外部插件的 createElement/notify 来源）。 */
 export function loadBuiltinPlugins(root: Context): Context {
+  installPluginHostBridge();
   for (const plugin of BUILTIN_PLUGINS) {
     const fiber = root.plugin(plugin);
     void Promise.resolve(fiber).catch((err: unknown) => {

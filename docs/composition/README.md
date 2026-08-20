@@ -1,14 +1,16 @@
 # 组合层（Composition Layer）— 用户指南
 
-> S2 竣工（2026-08-20）。组合架构的「数据外化」段：工具行 / prompt 段 /
-> capability / 壳行的「禁哪些、换哪段文本、插哪些段」从编译期 TS 表外化为
-> 用户可改的 patch 数据文件。设计件：
-> `docs/plans/composition-architecture/designs/S2-composition-externalization.md`。
+> S2 竣工（2026-08-20）· S4 preset/热重载/安装通道竣工（2026-08-20）。
+> 组合架构的「数据外化」段：工具行 / prompt 段 / capability / 壳行的
+> 「禁哪些、换哪段文本、插哪些段」从编译期 TS 表外化为用户可改的 patch
+> 数据文件。设计件：
+> `docs/plans/composition-architecture/designs/S2-composition-externalization.md`
+> （S2）与 `.../S4-preset-realm-distribution.md`（S4）。
 
 ## 一分钟上手
 
 在 `~/.hologram/composition/roster.patch.yml`（Windows：
-`%USERPROFILE%\.hologram\composition\roster.patch.yml`）写 patch，重启应用生效：
+`%USERPROFILE%\.hologram\composition\roster.patch.yml`）写 patch：
 
 ```yaml
 # 禁用 shell 工具族 + 禁用沙箱探测壳行 + 覆盖行为规则段
@@ -26,13 +28,15 @@ prompt:
       2. 不改 docs/archive/ 下任何文件。
 ```
 
-没有这个文件（或文件为空）= 出厂组合，行为与未做组合层时完全一致。
+保存即生效（S4-2 热重载）：**新 Agent 装配（新会话）即用新组合；在途
+会话保持创建时点的组合不变**。没有这个文件（或文件为空）= 出厂组合。
 
 ## 四个行域
 
 | 域 | 行 id 举例 | 寻址对象 |
 |---|---|---|
 | `tools` | `builtin/fs`、`builtin/shell`、`builtin/graph`… | 内置工具族（真源 `src-ui/src/composition/tool-rows.ts`） |
+| `tools` | `plugin/<插件名>/<工具名>` | 插件工具行（贡献折算——`docs/plugins/README.md` §3） |
 | `prompt` | `behavior-rules`、`collaboration-mode`… | system prompt 段（真源 `prompt-sections.ts`；id 是裸名） |
 | `capabilities` | `plan-tools`、`converge-tools`、`graph-hooks`… | 会话级工具/hook（真源 `agent/blueprint.ts`；id = capability key） |
 | `shell` | `hologram/shell-graph`、`hologram/shell-cold-start`… | 壳引导行（真源 `composition/shell-rows.ts`；行实现 `src-ui/src/shell/rows/*`） |
@@ -82,13 +86,43 @@ prompt:
 
 ### 应用语义
 
-- **层序**：出厂表（代码）→ 用户层（本文件）。多层 overlay 是 S4。
+- **层序**：出厂表（代码）→ 用户层（本文件）→ preset 层（见 §「preset」）。
 - **跨层 last-write-wins**；禁用行只在最终一步过滤（锚可指向禁用段）。
 - **all-or-nothing**：patch 里任何一条非法（未知 id / insert 撞 id / 锚点
   不存在 / 域字段越界）→ **整个 patch 拒绝**，回退出厂组合，错误进
-  console（`[composition]` 前缀）——不会半应用。
-- **生效时机**：启动期解析一次（冷启动装配前）。**改 patch 需重启应用**；
-  热重载是 S4 计划。
+  console（`[composition]` 前缀）与设置面板「组合」节——不会半应用。
+- **生效时机（S4-2 热重载）**：保存文件 → watcher 检出 → 重载 → 新
+  Agent 装配即用新组合；在途会话不动（创建时点冻结——前缀缓存纪律）。
+  删除文件 → 显式回退出厂组合。坏 patch → 可见报错 + factory 兜底
+  （旧组合撤下不残留）。patch 文件被拒期间 preset 层不叠加（错误可见
+  优先）。
+
+## preset（命名的行组合叠加层——S4）
+
+Preset = 给组合起个名字，需要时一键切换。层序与语义：
+
+```
+factory（出厂表）
+  → 用户层 patch（roster.patch.yml——「这台机器的基线」）
+  → preset patch（「这个会话的裁剪」——叠加最上层）
+```
+
+- **内置 system preset**（代码常量，不落盘）：
+  - `standard`——零 patch = 出厂组合（缺省）；
+  - `minimal`——精简面：禁 `builtin/browser-desktop`、`builtin/web` 工具行
+    + `graph-hooks` capability（V5「纸壳 preset」的原型）。
+- **用户 preset**：`~/.hologram/composition/presets/<id>/`——`roster.patch.yml`
+  （组合本体，语法与本文件的 patch 完全相同）+ `preset.yml`（显示元数据：
+  name/description/order，纯展示）。
+- **id 围栏**：`/^[a-z0-9][a-z0-9-]*$/`（id 是路径段——防 `..`/分隔符/
+  绝对名把组合挪出授权根）。
+- **同 id 内置胜**（用户不可影子化内置 preset）。
+- **坏 preset**：发现层报 broken（设置面板可见），装配回退 factory——
+  不炸发现。
+- **选择**：设置 → Agent → 「组合」节的 preset 选择器（持久化）。生效：
+  装配作用域（tools/prompt/capabilities）下次装配生效；壳作用域（shell
+  域条目）重启生效（壳引导一次性的——「纸壳 preset」双装配的挂点在 V5）。
+- preset 文件变更不触发热重载（preset 切换是显式动作——下次解析即重扫）。
 
 ## 已知涟漪（行禁用的降级面——如实记录，不修复）
 
@@ -113,7 +147,12 @@ prompt:
   与插件资产同一监听）读取；端口被占时自动增位（`llm_proxy_port` RPC 解析）。
 - 通道安全件与插件通道同套：路径逐段拒绝（`..` / 编码形态 / 反斜杠 /
   绝对前缀）+ canonicalize 前缀校验 + 仅 GET + 32MB 上限。
+- 通道面（S4-0 扩充）：根级固定文件（roster.patch.yml）+ `presets/`
+  目录索引（GET `/composition/presets/` → JSON 数组——含 roster.patch.yml
+  的子目录）+ 逐 preset 文件取用。
 - `HOLOGRAM_COMPOSITION_ROOT` 环境变量可重定位根目录（测试隔离用）。
+- 热重载 watcher：监听根级 roster.patch.yml（mtime 轮询 + 去抖）→
+  `composition:changed` 事件 → 前端重载。preset 子树不触发（§ preset）。
 
 ## ⚠️ 完全信任模型
 

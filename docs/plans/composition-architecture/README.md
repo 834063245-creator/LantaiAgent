@@ -1,9 +1,9 @@
 # 组合架构（composition-architecture）——特权线左移计划
 
-> **本目录阅读顺序**：① 本 README（宪法 + 阶段 + 排程）→ ② `work-orders/`（施工单，按编号即执行顺序）→ ③ `designs/`（设计件，S1 已批准竣工 / S2 待批准）。边界依据在 `docs/adr/composition-boundaries.md`。当前状态：**S0 Done（Landed）；S1 Done（2026-08-20，S1-0…S1-5 全批次完成，9 commits）；S2 设计件已写（`designs/S2-composition-externalization.md`，待批准）**。
+> **本目录阅读顺序**：① 本 README（宪法 + 阶段 + 排程）→ ② `work-orders/`（施工单，按编号即执行顺序）→ ③ `designs/`（设计件，S1/S2/S4 已竣工）。边界依据在 `docs/adr/composition-boundaries.md`。当前状态：**S0 Done（Landed）；S1 Done（2026-08-20，9 commits）；S2 Done（2026-08-20 全批次落地）；S4 Done（2026-08-20 落地——S4-0/1a/1.5/2/3/5 六批全绿，S4-1b 持 Phase 5 change request 用户批准后另启，S4-4 机器桥按排程可降级未决项）**。
 
 > 立项：2026-08-20 · 主导：Agent（设计/实现/验收），用户（拍板/审批/放行）
-> 状态：**In progress — S0 Done · S1 Done（2026-08-20 全批次落地，standard 快照零漂移贯穿）· S2 Done（2026-08-20 全批次落地，用户授权代理复审设计件后执行；main.ts 919→37 行）· 下一步 S3 设计件**
+> 状态：**In progress — S0-S2 Done · S4 主体 Done（2026-08-20：preset realm + 热重载 + npm 安装通道 + 消费闭环 + hello 闭环 + 文档全套；唯一遗留 S4-1b 会话事件 + minimal baseline freeze——批间审批门待用户出场）· 下一步 S3 设计件（等纸工程）**
 > 取代：`.hologram/plans/plan-1787199847398-bu20.md`（plugin-ecosystem v1「插件口子」计划——其 P0/P1 被吸收为本计划 S0/S1 零件，P2 降级为 S3 第一项，P3 后移至 S4）
 > 边界依据：`docs/adr/composition-boundaries.md`（为什么不做/做不到 DSH 式全体插件化——先读它，本计划在它划定的边界内施工）
 > 关联计划：`agent-plugin-architecture-plan.md`（执行原语 + 工具面收口——其 P3 cordis 收口与本计划 S1 汇流，P4 路线 B 自研插件边界由本计划承载，D8 观望决策继续有效）
@@ -119,6 +119,9 @@ v1 计划唯一未验证的硬前提：**生产 webview 从 `tauri.localhost` �
 
 ### S4 — preset realm + 分发 + 机器桥
 
+**落地记录（2026-08-20）：** 设计件经三轮复审后 6 批落地（`c7e089ff` S4-0 → `01c035f8` S4-1a → `8f8b131e` S4-1.5 → `b366422d` S4-2 → `7913d266` S4-3 → S4-5 收尾），每批独立全绿（build + vitest + verify:convergence 零漂移 + biome 零新增；触 Rust 批 + cargo test）。核心交付：preset 数据模型（内置表 standard/minimal + `/composition/presets/` 索引路由 + 发现层 + preset-store）→ 装配穿线（createAgentFromContext/createAgent 可选 composition 覆盖参数 + ctx composition 服务子 Agent 继承 + 会话工厂会话作用域注册表机制位 + boot 组合链）→ 消费闭环接线（G0 修复：panelDefs()/命令面板/插件工具行折算——四 service 贡献首次流进渲染面与装配面）→ 热重载（composition_watcher → composition:changed → reloadCompositionPatch；patch 删除显式回退；设置面板「组合」诊断节 + preset 选择器）→ npm 安装通道（plugin_install 三形态源 + tar-slip 双重围栏 + 原子落盘 + plugins.json 读改写 + 设置「插件」tab + 供应链警告）→ hello 闭环（`examples/plugins/hello/` 三通道 + 宿主桥 + e2e 钉面）+ 文档全套（`docs/plugins/README.md` 新建 + `docs/composition/README.md` 扩 preset/热重载段 + AGENTS/CLAUDE/CONVENTIONS 纪律回写）。
+**遗留：S4-1b（会话 `preset/selected` 首事件 + minimal preset baseline freeze）**——动 session-log 冻结面，批间审批门（Phase 5 change request）待用户放行后另启批实施。S4-4 机器桥（manifest mcpServers）按设计件裁定可整体跳过（未决项——hello 三通道不依赖它）。
+
 - per-session / per-agent preset：每会话挂自己的行组合（DSH agent preset 同构；工具面随 preset 变化，前缀缓存按 preset 分组——S1 已铺）
 - npm tarball 源 + 安装 UI（v1 P3 原案：设置面板「插件」节 + Rust `plugin_install` 命令 + 供应链警告）
 - 可选：**通用外部进程桥**——`dsh-bundle/cordis.patch.yml` 模板产品化（spawn + stdio 透传，一条 RPC），让插件能挂任意外部机器进程
@@ -149,7 +152,7 @@ v1 计划唯一未验证的硬前提：**生产 webview 从 `tauri.localhost` �
 | [`work-orders/WO-S0B-plugin-kernel.md`](work-orders/WO-S0B-plugin-kernel.md) | **✅ 完成**（含生产 origin 验证） | 插件内核：正式静态路由 + loader/manifest/plugin-store + main.ts 接线 + 测试 |
 | [`designs/S1-convergence-per-preset.md`](designs/S1-convergence-per-preset.md) | **已批准并竣工**（2026-08-20，用户授权代理执行） | S1 开工首日交付物已预写：preset 维度加法设计 + 批次推进安全网（standard 快照零漂移规则） |
 | [`designs/S2-composition-externalization.md`](designs/S2-composition-externalization.md) | **已批准并竣工**（2026-08-20，用户授权代理复审执行） | S2 全量设计：四域行模型 + roster patch schema/解析语义（DSH 实证对标 + 三处刻意偏离）+ 14570 `/composition/` 通道 + composition-store 穿线 + 12 壳行切分 + S2-0…S2-5 批次序列 |
-| [`designs/S4-preset-realm-distribution.md`](designs/S4-preset-realm-distribution.md) | **已两轮复审（2026-08-20：代理自查三处实证修正 + 用户四处偏差指正全采纳——记录见设计件 §7.1），待用户放行后交新窗口落地** | S4 全量设计：preset realm（会话级组合 + 首事件会话记录）+ 热重载 + npm tarball 分发（tar-slip 防护）+ 机器桥（可选批）+ 消费闭环接线（G0：四 service 零消费者复审实证）+ hello 闭环 + 批次序列 S4-0 → 1a → ⚠CR 批间门 → 1b → 1.5 → 2/3 → (4) → 5 |
+| [`designs/S4-preset-realm-distribution.md`](designs/S4-preset-realm-distribution.md) | **主体竣工**（2026-08-20：S4-0/1a/1.5/2/3/5 六批落地——preset realm + 热重载 + npm 分发 + 消费闭环 + hello 闭环 + 文档全套；S4-1b 持 Phase 5 CR 用户批准后另启，S4-4 按裁定可跳过） | S4 全量设计：preset realm（会话级组合 + 首事件会话记录）+ 热重载 + npm tarball 分发（tar-slip 防护）+ 机器桥（可选批）+ 消费闭环接线（G0：四 service 零消费者复审实证）+ hello 闭环 + 批次序列 S4-0 → 1a → ⚠CR 批间门 → 1b → 1.5 → 2/3 → (4) → 5 |
 
 S2-S4 施工单在前序阶段落地后按需补写（S2 设计件已含批次序列 S2-0…S2-5，按 S1 先例设计件即施工纲领；S3 需白纸执行层外化；S4 需 S1/S2 全落）。执行顺序：WO-S0A → WO-S0B（均已完成）→ S1 设计件已批准并竣工（2026-08-20）→ **S2 设计件（待批准）→ S2-0…S2-5（批准后施工）→ …**
 

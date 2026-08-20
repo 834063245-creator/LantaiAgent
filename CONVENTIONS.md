@@ -178,6 +178,29 @@ record 永不上 CI；baseline 变更走 docs/plans/agent-core-convergence/basel
    禁用行 = 接线不发生、调用一致地失败（涟漪表如实记录）
 ❌ 禁止把 factory 层复述进 yml（出厂表是代码真源；patch 只表达增量）
 ❌ 禁止 patch 语义引入 js 表达式（纯函数确定性；DSH !!js 是刻意偏离）
+
+preset realm + 热重载 + 消费闭环（S4，2026-08-20 起生效）：
+✅ preset = 命名的行组合叠加层：composition/presets.ts 内置表（standard/
+   minimal）+ preset-discovery 用户目录（~/.hologram/composition/presets/
+   <id>/）+ preset-assembly（resolveCurrentComposition 引用稳定 cache +
+   settings↔store 选择同步）。层序 factory → 用户层 → preset；同 id 后写胜
+✅ 装配组合覆盖：createAgentFromContext/createAgent 第 4/2 参可选
+   composition（缺省 = runtime 组合 = S2 零漂移）；会话工厂在 resolved ≠
+   工作区默认时自建会话作用域注册表（V5 选择器的机制位）；子 Agent 经
+   ctx composition 服务 child() 继承（父子同面）
+✅ 消费闭环（G0 修复）：面板清单 = panelDefs()（常量 + ctx.panels 贡献）；
+   命令面板 = listActions() + ctx.commands 折算；工具行 = composition/
+   plugin-tool-rows.ts 折算（行 id 'plugin/<贡献 id>'，factory 缓存实例）。
+   面板/命令即时生效（panel-defs-store bump 信号）；工具下次装配生效
+✅ 热重载：Rust composition_watcher 监听根级 roster.patch.yml →
+   composition:changed → patch-loader reloadCompositionPatch（404=显式
+   回退 factory；坏 patch=可见+兜底；网络炸=旧组合保持）
+✅ 插件安装通道：plugin_install/uninstall/set_enabled RPC（Rust
+   commands/plugin_install.rs——tar-slip 双重围栏 + 原子落盘 + plugins.json
+   读改写）；插件必须自包含（无裸 import——宿主桥
+   window.__hologram_plugin_host__ 提供 createElement/notify）
+✅ 插件/组合面变更同步 docs/plugins/README.md（通道 API/生效语义/
+   信任模型的单一人类契约）
 ```
 
 ### 1.8 文件命名与 import

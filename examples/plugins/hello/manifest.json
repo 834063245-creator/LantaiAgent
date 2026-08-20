@@ -1,0 +1,6 @@
+{
+  "name": "hello",
+  "version": "1.0.0",
+  "description": "S4 hello 闭环示例插件——1 面板 + 1 工具 + 1 命令（三通道最小演示）",
+  "entry": "entry.js"
+}
