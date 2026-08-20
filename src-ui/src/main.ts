@@ -32,6 +32,7 @@ import { initCordisKernel } from './cordis/boot';
 import { setLang } from './i18n';
 import { WorkspaceStateMachine } from './lifecycle/state-machine';
 import { withTimeout } from './lifecycle/timeout';
+import { loadBuiltinPlugins, loadExternalPlugins } from './plugins/loader';
 import { streamWithIdleTimeout } from './provider/idle-stream';
 import { ChunkType } from './provider/types';
 import { typedListen, typedRpc } from './rpc-contract';
@@ -896,9 +897,13 @@ async function init(): Promise<void> {
 }
 
 // ── Cordis 内核引导（cordis-migration P0：根 Context 先于 React 壳与 init）──
-initCordisKernel();
+// ── 插件内核（WO-S0B）：第一方插件表装载（本阶段空占位，S3 起逐域填充）──
+const pluginKernelRoot = loadBuiltinPlugins(initCordisKernel());
 
 // ── React 壳引导（P1：CommandBar/DockRail/StatusBar/命令面板/快捷键浮层）──
 createRoot(document.getElementById('app-root')!).render(createElement(App));
+
+// ── 外部插件装载（WO-S0B）：异步不阻塞首帧；结果只进 plugin-store，不炸应用 ──
+void loadExternalPlugins(pluginKernelRoot);
 
 init();

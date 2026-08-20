@@ -17,7 +17,8 @@
 //
 // 安全：
 //   - 仅绑定 loopback；丢弃非 loopback 来源连接。
-//   - 只接受 POST / OPTIONS；目标 URL 必须是绝对 http/https（允许 localhost——
+//   - 只接受 POST / OPTIONS（另有 GET /plugins/* 走 plugin_assets 静态通道）；
+//     目标 URL 必须是绝对 http/https（允许 localhost——
 //     用户配置的本地端点如 Ollama `http://localhost:11434/v1` 是合法场景）。
 //   - 禁止 `file:`/`data:` 等非 http 协议。
 //   - 请求体有 64MB 上限；上游响应体无界但由调用方各自流式消费。
@@ -115,7 +116,7 @@ async fn run_server() -> u16 {
     // 依次尝试若干端口直到 bind 成功（多窗口/重复进程占端口容错）。
     for attempt in 0..8u16 {
         let port = PROXY_PORT + attempt;
-        let addr: SocketAddr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+        let addr: SocketAddr = loopback_bind_addr(port);
         match TcpListener::bind(addr).await {
             Ok(listener) => {
                 BOUND_PORT.store(port, Ordering::SeqCst);
@@ -141,9 +142,16 @@ async fn run_server() -> u16 {
     0
 }
 
+/// 构造仅 loopback 的监听地址——插件资产通道（plugin_assets）安全三件套之一：
+/// 绑定保证。测试钉住 loopback 语义（防有人改成 0.0.0.0 暴露插件通道）。
+fn loopback_bind_addr(port: u16) -> SocketAddr {
+    SocketAddr::from(([127, 0, 0, 1], port))
+}
+
 /// 服务监听器上的连接（常驻 accept 循环，200ms 间隔轮询停机标志）。
 /// 供生产 run_server 与集成测试复用；测试可传入私有标志避免全局串扰。
-async fn serve_listener(listener: &TcpListener, client: reqwest::Client, shutdown: &AtomicBool) {
+/// pub(crate)：plugin_assets 的 HTTP 端到端测试复用同一监听器。
+pub(crate) async fn serve_listener(listener: &TcpListener, client: reqwest::Client, shutdown: &AtomicBool) {
     loop {
         if shutdown.load(Ordering::SeqCst) {
             eprintln!("[llm_proxy] shutdown flag set, exiting accept loop");
@@ -174,7 +182,7 @@ async fn handle(client: reqwest::Client, req: Request<Incoming>) -> Result<Respo
     Ok(resp)
 }
 
-type BoxBody = http_body_util::combinators::BoxBody<Bytes, Box<dyn std::error::Error + Send + Sync>>;
+pub(crate) type BoxBody = http_body_util::combinators::BoxBody<Bytes, Box<dyn std::error::Error + Send + Sync>>;
 
 async fn handle_inner(client: reqwest::Client, req: Request<Incoming>) -> Response<BoxBody> {
     // CORS 预检
@@ -183,6 +191,15 @@ async fn handle_inner(client: reqwest::Client, req: Request<Incoming>) -> Respon
     }
     if req.method() != Method::POST && req.method() != Method::GET {
         return err_response(StatusCode::METHOD_NOT_ALLOWED, "proxy: 仅支持 GET / POST / OPTIONS");
+    }
+    // 插件静态资源通道（WO-S0B）：GET /plugins/* 由 plugin_assets 模块服务。
+    // 必须在 x-hologram-target 检查之前——静态请求不带该头（WO-S0A spike 立此规矩；
+    // 假设已证实：webview 可从此通道动态 import ES module）。
+    if let Some(path) = req.uri().path().strip_prefix("/plugins/") {
+        if req.method() == Method::GET {
+            return crate::plugin_assets::serve_plugin_path(path).await;
+        }
+        return crate::plugin_assets::method_not_allowed();
     }
     // 先在消费 body 前取出 method / target / 业务头（into_body 会 move req）
     let method = req.method().clone();
@@ -292,13 +309,15 @@ fn cors_response(status: StatusCode, body: Bytes) -> Response<BoxBody> {
 }
 
 /// 把 `Full<Bytes>`（Infallible 错误）装箱为统一 BoxBody。
-fn full_boxed(data: Bytes) -> BoxBody {
+/// pub(crate)：plugin_assets 模块复用同一响应类型。
+pub(crate) fn full_boxed(data: Bytes) -> BoxBody {
     Full::new(data)
         .map_err(|never| match never { /* Infallible —— 不可达 */ })
         .boxed()
 }
 
-fn err_response(status: StatusCode, msg: &str) -> Response<BoxBody> {
+/// pub(crate)：plugin_assets 模块作为响应构造失败时的兜底复用。
+pub(crate) fn err_response(status: StatusCode, msg: &str) -> Response<BoxBody> {
     Response::builder()
         .status(status)
         .header("access-control-allow-origin", "*")
@@ -447,5 +466,13 @@ mod tests {
                 "serve_listener 必须在停机标志置位后退出（防 exit(0) 撞网络线程）"
             );
         });
+    }
+
+    /// WO-S0B：插件资产通道的 loopback 绑定保证（安全三件套之一）。
+    #[test]
+    fn loopback_bind_addr_pins_plugin_channel_to_127_0_0_1() {
+        for port in [14570u16, 14571, 0] {
+            assert!(loopback_bind_addr(port).ip().is_loopback(), "插件资产通道必须只绑 loopback");
+        }
     }
 }

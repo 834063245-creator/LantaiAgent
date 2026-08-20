@@ -34,6 +34,7 @@ mod desktop;
 mod uia;
 mod sensitive;
 mod llm_proxy;
+mod plugin_assets;
 
 use std::sync::Arc;
 use std::sync::Mutex;

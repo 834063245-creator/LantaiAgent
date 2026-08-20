@@ -3,6 +3,7 @@
 > 施工单：自包含。前置：**WO-S0A spike 必须已通过**（装载通道假设已证实）。
 > 本单交付插件机制的内核；四条贡献通道（panels/commands/tools/providers）是 S1，不在本单。
 > 高 fan-in 提醒：动 `main.ts`（904 行入口）前先跑内置 `graph(preflight)`（AGENTS.md §0-4）。
+> **状态：✅ 完成（2026-08-20 Landed，验收 1-6 全过，含验收 5 生产 origin）**——`plugin_assets.rs` 静态路由 + `plugins/types.ts`/`loader.ts` + `state/plugin-store.ts` + main.ts 接线 7 行；cargo test 356+14 / vitest 1307 / build / biome / convergence 全绿；生产 `tauri.localhost` import 经 `cargo tauri build` 后 CDP 实证。落地细节见计划 README S0 节落地记录。
 
 ## 交付物
 

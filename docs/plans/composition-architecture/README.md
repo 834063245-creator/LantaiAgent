@@ -1,7 +1,7 @@
 # 组合架构（composition-architecture）——特权线左移计划
 
 > 立项：2026-08-20 · 主导：Agent（设计/实现/验收），用户（拍板/审批/放行）
-> 状态：**Draft（宪法定稿，施工窗口未定）**
+> 状态：**In progress — S0 Done（Landed，含生产 origin 验证）；下一步 S1 设计件待用户批准**
 > 取代：`.hologram/plans/plan-1787199847398-bu20.md`（plugin-ecosystem v1「插件口子」计划——其 P0/P1 被吸收为本计划 S0/S1 零件，P2 降级为 S3 第一项，P3 后移至 S4）
 > 边界依据：`docs/adr/composition-boundaries.md`（为什么不做/做不到 DSH 式全体插件化——先读它，本计划在它划定的边界内施工）
 > 关联计划：`agent-plugin-architecture-plan.md`（执行原语 + 工具面收口——其 P3 cordis 收口与本计划 S1 汇流，P4 路线 B 自研插件边界由本计划承载，D8 观望决策继续有效）
@@ -68,7 +68,7 @@ v1 的问题不是零件错了（四通道原语、loader 设计都是对的）�
 
 白纸与组合层在架构上收敛而非竞争：其块协议（`docs/design/一张纸-Agent软件交互形态设计.md` §3.2 语义声明 + 可插拔渲染器）本身就是一个插件面——块渲染器 = ctx service 行，白纸壳 = 组合层的又一个消费者。纸成则长在组合层上，纸败则观测台仍在：**壳切换 = roster 变更，不是重写**。Agent 层将来动不动，也随之从「单体手术」降级为「行组合调整」。
 
-### S0 — 装载通道 + 插件内核（v1 P0 扩展；1-2 天）
+### S0 — 装载通道 + 插件内核（v1 P0 扩展；1-2 天）— ✅ Done（2026-08-20 Landed）
 
 v1 计划唯一未验证的硬前提：**生产 webview 从 `tauri.localhost` 加载静态 dist，全部 import 是编译期 chunk**（asset protocol 未开、无自定义协议注册）——「扫目录 → dynamic import entry」今天不成立。解锁原语已有：`llm_proxy.rs`（127.0.0.1:14570，已无条件加 CORS 头）加静态文件路由即可，即 DSH webserver 服务 `/plugins/<id>/client.js` 的同构物。
 
@@ -78,6 +78,8 @@ v1 计划唯一未验证的硬前提：**生产 webview 从 `tauri.localhost` �
 - 测试：manifest 校验 / 失败隔离 / disabled 跳过 / fiber dispose 后注册表清理
 
 **验收：** 手放一个坏插件进目录，应用正常起、状态可见；一个示例插件从磁盘经 14570 通道装载成功。
+
+**落地记录（2026-08-20）：** S0A spike 取三分支之 ✅（假设证实：webview 从 14570 import ES module 可行，spike 代码已清）。S0B 落地 `plugin_assets.rs`（静态路由：遍历防护/仅 GET/仅 loopback/MIME 含 .wasm/JSON 错误/junction 测试）+ `plugins/types.ts`（zod manifest）+ `plugins/loader.ts`（失败隔离永不 reject/disabled 跳过/inject 装载期校验/端口经 llm_proxy_port RPC 解析）+ `state/plugin-store.ts` + main.ts 接线 7 行。手动验收全过（坏插件 error 状态不炸应用、hello 装载成功、disabled 实测、生产 origin `tauri.localhost` import 随 `cargo tauri build` 验证——console 捕获 `[plugin] loaded: hello`）。门禁：cargo test 356+14 全绿、vitest 1307 passed、build/biome/convergence 零新增。**加载协议纪律（import 白名单）顺延至 S1**：四 service 尚不存在，插件现阶段能 import 的只有通道本身，白名单强制随注册表化一起落。启用持久化（plugins.json disabled 集）已含。
 
 ### S1 — 注册表化（决战；v1 P1 扩展 + agent-plugin-arch P3 汇流）
 
@@ -136,11 +138,11 @@ v1 计划唯一未验证的硬前提：**生产 webview 从 `tauri.localhost` �
 
 | 文档 | 状态 | 说明 |
 |---|---|---|
-| [`work-orders/WO-S0A-spike.md`](work-orders/WO-S0A-spike.md) | **可开工** | 装载通道验证 spike（小时级，第一刀）——验证「webview 能从 14570 import ES module」这一物理前提 |
-| [`work-orders/WO-S0B-plugin-kernel.md`](work-orders/WO-S0B-plugin-kernel.md) | 就绪（gate 于 S0A 通过） | 插件内核：正式静态路由 + loader/manifest/plugin-store + main.ts 接线 + 测试 |
+| [`work-orders/WO-S0A-spike.md`](work-orders/WO-S0A-spike.md) | **✅ 完成**（分支 1：假设证实） | 装载通道验证 spike（小时级，第一刀）——验证「webview 能从 14570 import ES module」这一物理前提 |
+| [`work-orders/WO-S0B-plugin-kernel.md`](work-orders/WO-S0B-plugin-kernel.md) | **✅ 完成**（含生产 origin 验证） | 插件内核：正式静态路由 + loader/manifest/plugin-store + main.ts 接线 + 测试 |
 | [`designs/S1-convergence-per-preset.md`](designs/S1-convergence-per-preset.md) | **Proposal——待用户批准** | S1 开工首日交付物已预写：preset 维度加法设计 + 批次推进安全网（standard 快照零漂移规则） |
 
-S2-S4 施工单在前序阶段落地后按需补写（S2 需 S1-3 完成后的行表现状；S3 需白纸执行层外化；S4 需 S1/S2 全落）。执行顺序：**WO-S0A → WO-S0B →（用户批准 S1 设计件）→ S1-0…S1-5 → S2 设计件 → …**
+S2-S4 施工单在前序阶段落地后按需补写（S2 需 S1-3 完成后的行表现状；S3 需白纸执行层外化；S4 需 S1/S2 全落）。执行顺序：WO-S0A → WO-S0B（**均已完成**）→ **（用户批准 S1 设计件）→ S1-0…S1-5 → S2 设计件 → …**
 
 ## 验证命令（每阶段门禁）
 

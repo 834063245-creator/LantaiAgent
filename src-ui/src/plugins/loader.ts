@@ -1,0 +1,170 @@
+// Copyright (c) 2026 Wenbing Jing. MIT License.
+// SPDX-License-Identifier: MIT
+
+// 插件装载器（WO-S0B）——外部插件的发现/校验/导入/装配管道。
+//
+// 通道：插件资产由 src-tauri/src/plugin_assets.rs 服务（挂在 llm_proxy 的
+// 127.0.0.1:14570 hyper 监听上；WO-S0A spike 已证实 webview 可从此通道动态
+// import ES module）。端口经 llm_proxy_port RPC 运行时解析（14570 被占时自增），
+// 不在 TS 侧硬编码两处——复用 provider/transport 的 getProxyPort 现有导出。
+//
+// 铁律：
+//   - 失败隔离：单个插件任何一步失败 → plugin-store 记 error 并继续下一个；
+//     loader 本身永不 reject（main.ts 接线是 void 调用，错误不进 console.exception）。
+//   - 装载期不执行任何插件 UI 副作用（apply 只有注册动作；四 service 是 S1）。
+//   - 完全信任模型：不校验插件代码内容，只校验 manifest 形状（Rust 侧负责遍历防护）。
+
+import type { Context } from '../cordis';
+import { getProxyPort } from '../provider/transport';
+import { type PluginRecord, usePluginStore } from '../state/plugin-store';
+import { type HologramPlugin, type PluginManifest, validateManifest } from './types';
+
+/** loader 消费的最小 fetch 形状（测试可用普通对象实现，不依赖 Response 全局）。 */
+export type FetchLike = (url: string) => Promise<{ ok: boolean; json(): Promise<unknown> }>;
+
+/** 测试注入面：fetch 与 dynamic import 皆可替换（vitest 用 URL 注入 mock）。 */
+export interface LoadExternalPluginsOptions {
+  /** 资产 origin（缺省经 llm_proxy_port RPC 解析）。 */
+  origin?: string;
+  /** fetch 实现（缺省全局 fetch）。 */
+  fetchImpl?: FetchLike;
+  /** dynamic import 实现（缺省运行时 import + @vite-ignore 防 vite 编译期分析）。 */
+  importModule?: (url: string) => Promise<Record<string, unknown>>;
+}
+
+/** 插件静态资源 origin 构造（端口运行时解析；WO-S0A spike 验证过的通道）。 */
+export function pluginAssetsOrigin(port: number): string {
+  return 'http://127.0.0.1:' + port + '/plugins';
+}
+
+/** 第一方插件表（编译期 bundle 内，不走磁盘通道；S3 起逐域填充，本阶段空占位）。 */
+const BUILTIN_PLUGINS: HologramPlugin[] = [];
+
+/** 装载第一方插件表。返回根 Context（main.ts 接线链式取用）。 */
+export function loadBuiltinPlugins(root: Context): Context {
+  for (const plugin of BUILTIN_PLUGINS) {
+    root.plugin(plugin);
+  }
+  return root;
+}
+
+/** 惰性解析资产 origin；'' = 无通道（无后端/代理未起 → 静默跳过，非错误）。 */
+async function resolveOrigin(): Promise<string> {
+  const port = await getProxyPort();
+  if (!port) return '';
+  return pluginAssetsOrigin(port);
+}
+
+async function fetchJson(fetchImpl: FetchLike, url: string): Promise<unknown> {
+  try {
+    const res = await fetchImpl(url);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+/** 读启用态（plugins.json：{"disabled": [...]}；缺文件/坏形状 = 空集）。 */
+async function readDisabledSet(fetchImpl: FetchLike, origin: string): Promise<Set<string>> {
+  const raw = await fetchJson(fetchImpl, origin + '/plugins.json');
+  if (raw == null || typeof raw !== 'object') return new Set();
+  const disabled = (raw as { disabled?: unknown }).disabled;
+  if (!Array.isArray(disabled)) return new Set();
+  return new Set(disabled.filter((name): name is string => typeof name === 'string'));
+}
+
+function errorRecord(name: string, manifest: PluginManifest | null, error: string): PluginRecord {
+  return { name, manifest, status: 'error', error };
+}
+
+function errText(e: unknown): string {
+  return e instanceof Error ? e.name + ': ' + e.message : String(e);
+}
+
+/** 外部插件装载主入口（main.ts 引导期调用；永不 reject）。 */
+export async function loadExternalPlugins(root: Context, opts: LoadExternalPluginsOptions = {}): Promise<void> {
+  const fetchImpl: FetchLike = opts.fetchImpl ?? fetch;
+  const importModule = opts.importModule ?? ((url: string) => import(/* @vite-ignore */ url));
+  try {
+    const origin = opts.origin ?? (await resolveOrigin());
+    if (!origin) return; // 无后端通道（浏览器 mock / 代理未起）——非错误
+    const index = await fetchJson(fetchImpl, origin + '/');
+    if (!Array.isArray(index)) {
+      console.warn('[plugins] 装载通道索引不可用');
+      return;
+    }
+    const disabled = await readDisabledSet(fetchImpl, origin);
+    const records: PluginRecord[] = [];
+    for (const dirId of index) {
+      records.push(await loadOne(root, String(dirId), { origin, disabled, fetchImpl, importModule }));
+    }
+    usePluginStore.getState().setPlugins(records);
+  } catch (e) {
+    // 通道级失败（内部已全捕获，理论不可达；防御性兜底防未处理拒绝）
+    console.warn('[plugins] 装载通道失败:', e);
+  }
+}
+
+interface LoadOneDeps {
+  origin: string;
+  disabled: Set<string>;
+  fetchImpl: FetchLike;
+  importModule: (url: string) => Promise<Record<string, unknown>>;
+}
+
+/** 装载单个插件；任何一步失败 → error 记录（失败隔离，永不抛出）。 */
+async function loadOne(root: Context, dirId: string, deps: LoadOneDeps): Promise<PluginRecord> {
+  const { origin, fetchImpl, importModule } = deps;
+  // 1) manifest 获取 + 校验
+  const raw = await fetchJson(fetchImpl, origin + '/' + dirId + '/manifest.json');
+  if (raw == null) return errorRecord(dirId, null, 'manifest.json 缺失或不可解析');
+  const validated = validateManifest(raw);
+  if (!validated.ok) return errorRecord(dirId, null, 'manifest 校验失败: ' + validated.error);
+  const manifest = validated.manifest;
+  // 2) 名字与目录一致（URL 按名字寻址磁盘目录，不一致 = 装不上）
+  if (manifest.name !== dirId) {
+    return errorRecord(dirId, manifest, 'manifest.name (' + manifest.name + ') 与目录名 (' + dirId + ') 不一致');
+  }
+  // 3) inject 依赖存在性（缺 → error 状态，WO-S0B 装载期校验）
+  if (manifest.inject) {
+    const missing = manifest.inject.filter((name) => root.reflect.get(name) == null);
+    if (missing.length > 0) return errorRecord(manifest.name, manifest, '缺少依赖服务: ' + missing.join(', '));
+  }
+  // 4) disabled 跳过（不 import）
+  if (deps.disabled.has(manifest.name)) {
+    return { name: manifest.name, manifest, status: 'disabled' };
+  }
+  // 5) 导入 + 装配（cordis fiber 记录生命周期；apply 抛错 → await reject）
+  try {
+    const url = origin + '/' + manifest.name + '/' + manifest.entry;
+    const mod = await importModule(url);
+    const candidate = pickPluginObject(mod);
+    if (!isPluginShape(candidate)) {
+      return errorRecord(manifest.name, manifest, '插件入口未导出 { name, apply } 形状的对象');
+    }
+    if (candidate.name !== manifest.name) {
+      return errorRecord(manifest.name, manifest, '插件对象 name (' + candidate.name + ') 与 manifest.name 不一致');
+    }
+    await root.plugin(candidate);
+    return { name: manifest.name, manifest, status: 'active' };
+  } catch (e) {
+    return errorRecord(manifest.name, manifest, errText(e));
+  }
+}
+
+/** 取 default 或模块本身为 plugin 对象（WO-S0B 约定）。 */
+function pickPluginObject(mod: Record<string, unknown>): unknown {
+  if (mod != null && typeof mod === 'object' && 'default' in mod) {
+    return mod.default;
+  }
+  return mod;
+}
+
+/** 运行时形状守卫：插件入口必须是 { name, apply }（WO-S0B 契约）。
+ * 唯一的 as 在守卫边界——字段形状已逐项运行时验证，非静默数据解包。 */
+function isPluginShape(value: unknown): value is HologramPlugin {
+  if (value == null || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return typeof record.name === 'string' && record.name !== '' && typeof record.apply === 'function';
+}
