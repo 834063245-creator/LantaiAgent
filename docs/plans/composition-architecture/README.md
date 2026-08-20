@@ -1,9 +1,9 @@
 # 组合架构（composition-architecture）——特权线左移计划
 
-> **本目录阅读顺序**：① 本 README（宪法 + 阶段 + 排程）→ ② `work-orders/`（施工单，按编号即执行顺序）→ ③ `designs/`（S1 设计件，已批准）。边界依据在 `docs/adr/composition-boundaries.md`。当前状态：**S0 Done（Landed）；S1 Done（2026-08-20，S1-0…S1-5 全批次完成，9 commits）；下一步 S2 设计件**。
+> **本目录阅读顺序**：① 本 README（宪法 + 阶段 + 排程）→ ② `work-orders/`（施工单，按编号即执行顺序）→ ③ `designs/`（设计件，S1 已批准竣工 / S2 待批准）。边界依据在 `docs/adr/composition-boundaries.md`。当前状态：**S0 Done（Landed）；S1 Done（2026-08-20，S1-0…S1-5 全批次完成，9 commits）；S2 设计件已写（`designs/S2-composition-externalization.md`，待批准）**。
 
 > 立项：2026-08-20 · 主导：Agent（设计/实现/验收），用户（拍板/审批/放行）
-> 状态：**In progress — S0 Done · S1 Done（2026-08-20 全批次落地，standard 快照零漂移贯穿）· S2 待设计**
+> 状态：**In progress — S0 Done · S1 Done（2026-08-20 全批次落地，standard 快照零漂移贯穿）· S2 设计件待批准（已预写，批准后 S2-0 开工）**
 > 取代：`.hologram/plans/plan-1787199847398-bu20.md`（plugin-ecosystem v1「插件口子」计划——其 P0/P1 被吸收为本计划 S0/S1 零件，P2 降级为 S3 第一项，P3 后移至 S4）
 > 边界依据：`docs/adr/composition-boundaries.md`（为什么不做/做不到 DSH 式全体插件化——先读它，本计划在它划定的边界内施工）
 > 关联计划：`agent-plugin-architecture-plan.md`（执行原语 + 工具面收口——其 P3 cordis 收口与本计划 S1 汇流，P4 路线 B 自研插件边界由本计划承载，D8 观望决策继续有效）
@@ -144,9 +144,10 @@ v1 计划唯一未验证的硬前提：**生产 webview 从 `tauri.localhost` �
 |---|---|---|
 | [`work-orders/WO-S0A-spike.md`](work-orders/WO-S0A-spike.md) | **✅ 完成**（分支 1：假设证实） | 装载通道验证 spike（小时级，第一刀）——验证「webview 能从 14570 import ES module」这一物理前提 |
 | [`work-orders/WO-S0B-plugin-kernel.md`](work-orders/WO-S0B-plugin-kernel.md) | **✅ 完成**（含生产 origin 验证） | 插件内核：正式静态路由 + loader/manifest/plugin-store + main.ts 接线 + 测试 |
-| [`designs/S1-convergence-per-preset.md`](designs/S1-convergence-per-preset.md) | **已批准**（2026-08-20，用户授权代理执行） | S1 开工首日交付物已预写：preset 维度加法设计 + 批次推进安全网（standard 快照零漂移规则） |
+| [`designs/S1-convergence-per-preset.md`](designs/S1-convergence-per-preset.md) | **已批准并竣工**（2026-08-20，用户授权代理执行） | S1 开工首日交付物已预写：preset 维度加法设计 + 批次推进安全网（standard 快照零漂移规则） |
+| [`designs/S2-composition-externalization.md`](designs/S2-composition-externalization.md) | **待批准**（2026-08-20 预写） | S2 全量设计：四域行模型 + roster patch schema/解析语义（DSH 实证对标 + 三处刻意偏离）+ 14570 `/composition/` 通道 + composition-store 穿线 + 12 壳行切分 + S2-0…S2-5 批次序列 |
 
-S2-S4 施工单在前序阶段落地后按需补写（S2 需 S1-3 完成后的行表现状；S3 需白纸执行层外化；S4 需 S1/S2 全落）。执行顺序：WO-S0A → WO-S0B（均已完成）→ S1 设计件已批准（2026-08-20）→ **S1-0…S1-5（施工中）→ S2 设计件 → …**
+S2-S4 施工单在前序阶段落地后按需补写（S2 设计件已含批次序列 S2-0…S2-5，按 S1 先例设计件即施工纲领；S3 需白纸执行层外化；S4 需 S1/S2 全落）。执行顺序：WO-S0A → WO-S0B（均已完成）→ S1 设计件已批准并竣工（2026-08-20）→ **S2 设计件（待批准）→ S2-0…S2-5（批准后施工）→ …**
 
 ## 验证命令（每阶段门禁）
 
