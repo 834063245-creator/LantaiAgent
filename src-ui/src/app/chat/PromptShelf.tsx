@@ -12,6 +12,14 @@ import './prompt-shelf.css';
 
 // ── 类型 ──
 
+/** 批量多问的单条题目 */
+export interface AskQuestionItem {
+  question: string;
+  header?: string;
+  options?: { label: string; description: string }[];
+  multiSelect?: boolean;
+}
+
 export interface AskPrompt {
   type: 'ask';
   id: string;
@@ -19,10 +27,15 @@ export interface AskPrompt {
   header: string;
   options: { label: string; description: string }[];
   multiSelect: boolean;
-  /** 批量多问（questions 数组）时当前问题序号，1-based；单问时缺省 */
-  batchIndex?: number;
-  /** 批量多问总题数；单问时缺省 */
-  batchTotal?: number;
+}
+
+/** 批量多问：一次推全部 questions，UI 分页收集后一次性提交全部答案 */
+export interface AskBatchPrompt {
+  type: 'ask-batch';
+  id: string;
+  /** 批次标签（卡片 tag 显示；缺省"提问"） */
+  header?: string;
+  questions: AskQuestionItem[];
 }
 
 export interface PermissionPrompt {
@@ -35,7 +48,7 @@ export interface PermissionPrompt {
   danger?: string;
 }
 
-export type PromptData = AskPrompt | PermissionPrompt;
+export type PromptData = AskPrompt | AskBatchPrompt | PermissionPrompt;
 
 // ── 图标 ──
 
@@ -117,7 +130,7 @@ const AskCard: React.FC<{
       }
       // 焦点在输入框（自定义回答 / 聊天输入）时不触发数字快选，防误答
       const target = e.target as HTMLElement | null;
-      if (target && target.closest('input, textarea, [contenteditable="true"]')) return;
+      if (target?.closest('input, textarea, [contenteditable="true"]')) return;
       const idx = Number(e.key) - 1;
       if (Number.isInteger(idx) && idx >= 0 && idx < prompt.options.length) {
         e.preventDefault();
@@ -129,17 +142,12 @@ const AskCard: React.FC<{
   }, [prompt.options.length, toggle, cancel]);
 
   const hoveredOption = hoverIdx !== null ? prompt.options[hoverIdx] : null;
-  const batchTag =
-    prompt.batchTotal && prompt.batchTotal > 1 ? `问题 ${prompt.batchIndex ?? 1}/${prompt.batchTotal} · ` : '';
 
   return (
     <div className="prompt-shelf__card" role="dialog" aria-modal="false">
       {/* 头部 */}
       <div className="prompt-shelf__head">
-        <span className="prompt-shelf__tag">
-          {batchTag}
-          {prompt.header.slice(0, 12)}
-        </span>
+        <span className="prompt-shelf__tag">{prompt.header.slice(0, 12)}</span>
         <span className="prompt-shelf__question">{prompt.question}</span>
         <button className="prompt-shelf__dismiss" onClick={cancel} title="取消 (Esc)" type="button">
           <span dangerouslySetInnerHTML={{ __html: svgIcon('close', 14) }} />
@@ -200,7 +208,6 @@ const AskCard: React.FC<{
           ref={inputRef}
           className="prompt-shelf__custom-input"
           type="text"
-          autoFocus={!hasOptions}
           placeholder={hasOptions ? '或者直接输入自定义回答…' : '输入回答后回车提交…'}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.target as HTMLInputElement).value.trim()) {
@@ -228,6 +235,202 @@ const AskCard: React.FC<{
   );
 };
 
+// ── 批量多问分页卡 — 一次推全部 questions，分页收集，可回看改答，末页一次提交 ──
+
+const AskBatchCard: React.FC<{
+  prompt: AskBatchPrompt;
+  onResolve: (answers: (string[] | null)[] | null) => void;
+}> = ({ prompt, onResolve }) => {
+  const total = prompt.questions.length;
+  const [page, setPage] = useState(0); // 0-based 当前页
+  /** answers[i] = 第 i 题答案（string[]）；null = 未答 */
+  const [answers, setAnswers] = useState<(string[] | null)[]>(() => prompt.questions.map(() => null));
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const q = prompt.questions[page];
+  const options = q.options ?? [];
+  const hasOptions = options.length > 0;
+  const multi = hasOptions && !!q.multiSelect;
+  const answered = answers[page] !== null;
+  const isLast = page === total - 1;
+  /** 有任一题已答即可提前提交（后页未答题按 null 返回） */
+  const anyAnswered = answers.some((a) => a !== null);
+
+  /** 当前页答案写入（覆盖式） */
+  const setAnswer = useCallback(
+    (v: string[]) => {
+      setAnswers((prev) => {
+        const next = [...prev];
+        next[page] = v;
+        return next;
+      });
+    },
+    [page],
+  );
+
+  /** 单选点击：记录答案；非末页自动翻下一页（末页停留，等用户点提交） */
+  const pickSingle = useCallback(
+    (labels: string[]) => {
+      setAnswer(labels);
+      if (!isLast) setPage(page + 1);
+    },
+    [setAnswer, isLast, page],
+  );
+
+  const toggleMulti = useCallback(
+    (idx: number) => {
+      setAnswers((prev) => {
+        const next = [...prev];
+        const cur = new Set<number>(
+          (next[page] ?? [])
+            .map((label) => {
+              const i = options.findIndex((o) => o.label === label);
+              return i;
+            })
+            .filter((i): i is number => i >= 0),
+        );
+        cur.has(idx) ? cur.delete(idx) : cur.add(idx);
+        next[page] = cur.size > 0 ? options.filter((_, i) => cur.has(i)).map((o) => o.label) : null;
+        return next;
+      });
+    },
+    [page, options],
+  );
+
+  const cancel = useCallback(() => onResolve(null), [onResolve]);
+
+  /** 整批提交：未答题保持 null（模型侧对齐 questions 索引可见哪些没答） */
+  const submitAll = useCallback(() => onResolve(answers), [onResolve, answers]);
+
+  // Esc 取消整批；数字快选（焦点不在输入框时）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        cancel();
+        return;
+      }
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('input, textarea, [contenteditable="true"]')) return;
+      if (hasOptions) {
+        const idx = Number(e.key) - 1;
+        if (Number.isInteger(idx) && idx >= 0 && idx < options.length) {
+          e.preventDefault();
+          if (multi) toggleMulti(idx);
+          else pickSingle(options.filter((_, i) => i === idx).map((o) => o.label));
+        }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [hasOptions, options, multi, toggleMulti, pickSingle, cancel]);
+
+  // 翻页后开放式问题自动聚焦输入框
+  useEffect(() => {
+    if (!hasOptions) inputRef.current?.focus();
+  }, [hasOptions]);
+
+  const prev = page > 0;
+  const next = !isLast;
+
+  return (
+    <div className="prompt-shelf__card prompt-shelf__card--batch" role="dialog" aria-modal="false">
+      {/* 头部：进度 + 取消 */}
+      <div className="prompt-shelf__head">
+        <span className="prompt-shelf__tag">
+          {total > 1 ? `问题 ${page + 1}/${total}` : '提问'}
+          {prompt.header ? ` · ${prompt.header}` : ''}
+        </span>
+        <span className="prompt-shelf__question">{q.question}</span>
+        <button className="prompt-shelf__dismiss" onClick={cancel} title="取消整批 (Esc)" type="button">
+          <span dangerouslySetInnerHTML={{ __html: svgIcon('close', 14) }} />
+        </button>
+      </div>
+
+      {/* 选项（开放式无 options 隐藏） */}
+      {hasOptions && (
+        <div className="prompt-shelf__options">
+          {options.map((opt, i) => {
+            const cur = answers[page];
+            const on = multi ? (cur?.includes(opt.label) ?? false) : cur?.[0] === opt.label;
+            return (
+              <button
+                key={opt.label}
+                className={`prompt-shelf__option${on ? ' prompt-shelf__option--on' : ''}`}
+                onClick={() => (multi ? toggleMulti(i) : pickSingle([opt.label]))}
+                type="button"
+              >
+                <span className="prompt-shelf__num">{i + 1 <= 9 ? i + 1 : ''}</span>
+                <div className="prompt-shelf__opt-body">
+                  <span className="prompt-shelf__opt-label">{opt.label}</span>
+                  {opt.description && <span className="prompt-shelf__opt-desc">{opt.description}</span>}
+                </div>
+                {on && (
+                  <span
+                    className="prompt-shelf__check"
+                    dangerouslySetInnerHTML={{ __html: svgIcon('check-circle', 14) }}
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 开放式 / 自定义输入 */}
+      <div className="prompt-shelf__custom">
+        <input
+          ref={inputRef}
+          className="prompt-shelf__custom-input"
+          type="text"
+          placeholder={hasOptions ? '或输入自定义回答…' : '输入回答后回车…'}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              const v = (e.target as HTMLInputElement).value.trim();
+              if (v) {
+                e.preventDefault();
+                setAnswer([v]);
+                if (!isLast) setPage(page + 1);
+              }
+            }
+          }}
+        />
+      </div>
+
+      {/* 底部：分页导航 + 批量提交 */}
+      <div className="prompt-shelf__pagebar">
+        <div className="prompt-shelf__pager">
+          <button className="prompt-shelf__nav" disabled={!prev} onClick={() => setPage(page - 1)} type="button">
+            ← 上一题
+          </button>
+          <span className="prompt-shelf__dots">
+            {prompt.questions.map((_, i) => (
+              <span
+                key={i}
+                className={`prompt-shelf__dot${i === page ? ' prompt-shelf__dot--cur' : ''}${
+                  answers[i] !== null ? ' prompt-shelf__dot--done' : ''
+                }`}
+              />
+            ))}
+          </span>
+          <button className="prompt-shelf__nav" disabled={!next} onClick={() => setPage(page + 1)} type="button">
+            下一题 →
+          </button>
+        </div>
+        <button
+          className="prompt-shelf__confirm"
+          disabled={!anyAnswered}
+          onClick={submitAll}
+          title={anyAnswered ? '提交全部答案（未答题按空返回）' : '先作答至少一题'}
+          type="button"
+        >
+          {answered || !isLast ? `提交（已答 ${answers.filter((a) => a !== null).length}/${total}）` : '提交回答'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // ── 权限卡片 ──
 
 const PermCard: React.FC<{
@@ -238,7 +441,7 @@ const PermCard: React.FC<{
     const onKey = (e: KeyboardEvent) => {
       // 焦点在输入框（聊天输入等）时不触发快捷键，防打字误批准/误拒绝
       const target = e.target as HTMLElement | null;
-      if (target && target.closest('input, textarea, [contenteditable="true"]')) return;
+      if (target?.closest('input, textarea, [contenteditable="true"]')) return;
       if (e.key === 'Escape') {
         onResolve({ allow: false, remember: false });
         return;
@@ -300,6 +503,8 @@ export interface PromptShelfHandle {
   readonly active: PromptData | null;
   /** 显示询问提示。返回 Promise，解析为选中的标签或 null（取消时）。 */
   showAsk(prompt: AskPrompt): Promise<string[] | null>;
+  /** 显示批量多问（分页收集）。返回 Promise，解析为对齐 questions 的答案数组或 null（取消时）。 */
+  showAskBatch(prompt: AskBatchPrompt): Promise<(string[] | null)[] | null>;
   /** 显示权限提示。返回 Promise，解析为 allow/remember。 */
   showPermission(prompt: PermissionPrompt): Promise<{ allow: boolean; remember: boolean }>;
   /** 关闭当前提示（取消挂起的 Promise）。 */
@@ -364,6 +569,11 @@ export const PromptShelf = forwardRef<PromptShelfHandle>(function PromptShelf(_p
     [enqueue],
   );
 
+  const showAskBatch = useCallback(
+    (prompt: AskBatchPrompt) => enqueue({ ...prompt, type: 'ask-batch' }) as Promise<(string[] | null)[] | null>,
+    [enqueue],
+  );
+
   const showPermission = useCallback(
     (prompt: PermissionPrompt) =>
       enqueue({ ...prompt, type: 'permission' }) as Promise<{ allow: boolean; remember: boolean }>,
@@ -391,18 +601,21 @@ export const PromptShelf = forwardRef<PromptShelfHandle>(function PromptShelf(_p
         return queueRef.current[0]?.prompt ?? null;
       },
       showAsk,
+      showAskBatch,
       showPermission,
       dismiss: dismissAll,
     }),
-    [showAsk, showPermission, dismissAll],
+    [showAsk, showAskBatch, showPermission, dismissAll],
   );
 
   return (
     <div className="prompt-shelf">
       {active?.type === 'ask' ? (
-        <AskCard prompt={active} onResolve={resolveHead} />
+        <AskCard key={active.id} prompt={active} onResolve={resolveHead} />
+      ) : active?.type === 'ask-batch' ? (
+        <AskBatchCard key={active.id} prompt={active} onResolve={resolveHead} />
       ) : active?.type === 'permission' ? (
-        <PermCard prompt={active} onResolve={resolveHead} />
+        <PermCard key={active.id} prompt={active} onResolve={resolveHead} />
       ) : null}
     </div>
   );

@@ -343,3 +343,88 @@
 .prompt-shelf__perm-btn--once:hover {
   background: rgba(201, 162, 92, 0.22);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   批量多问分页卡（AskBatchCard）— 顶部进度点 + 底部分页导航/提交
+   ═══════════════════════════════════════════════════════════════════ */
+.prompt-shelf__card--batch {
+  border: 1px solid rgba(148, 166, 205, 0.16);
+  background: rgba(10, 20, 40, 0.45);
+  border-radius: 11px;
+  margin: 6px 8px 8px;
+}
+
+/* 底部分页条：左导航 + 右提交 */
+.prompt-shelf__pagebar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 166, 205, 0.1);
+}
+.prompt-shelf__pager {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.prompt-shelf__nav {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  font-family: var(--obs-font-mono);
+  font-size: calc(10.5px * var(--font-scale));
+  color: var(--obs-text-2);
+  background: transparent;
+  border: 1px solid var(--obs-line);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all var(--obs-snap);
+}
+.prompt-shelf__nav:hover:not(:disabled) {
+  color: var(--obs-text);
+  background: rgba(160, 180, 220, 0.08);
+}
+.prompt-shelf__nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* 进度点：已答 = 蓝实心，当前 = 描边放大，未答 = 暗灰 */
+.prompt-shelf__dots {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+}
+.prompt-shelf__dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(148, 166, 205, 0.22);
+}
+.prompt-shelf__dot--done {
+  background: var(--obs-blue);
+}
+.prompt-shelf__dot--cur {
+  background: rgba(125, 179, 232, 0.25);
+  box-shadow: 0 0 0 2px rgba(125, 179, 232, 0.3);
+}
+
+/* 批量提交按钮：不占满，右侧固定 */
+.prompt-shelf__card--batch .prompt-shelf__confirm {
+  flex: none;
+}
+.prompt-shelf__confirm:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.prompt-shelf__confirm:disabled:hover {
+  background: rgba(148, 166, 205, 0.07);
+  border-color: rgba(125, 179, 232, 0.3);
+}

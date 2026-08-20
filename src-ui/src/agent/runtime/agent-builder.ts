@@ -44,17 +44,8 @@ import { execStreamedShell } from './queued-shell';
 
 /** UI 依赖注入 — 由调用者（UI 层）提供，agent-builder 不直接 import ui/ */
 export interface BuilderDeps {
-  /** ask_user 工具的 UI 请求回调 */
-  onAskUser?: (req: {
-    id: string;
-    question: string;
-    header: string;
-    options: { label: string; description: string }[];
-    multiSelect: boolean;
-    batchIndex?: number;
-    batchTotal?: number;
-    callback: (answer: string[] | null) => void;
-  }) => void;
+  /** ask_user 工具的 UI 请求回调（单问 string[]；批量 questions + answers 数组） */
+  onAskUser?: (req: import('../tools/coding').AskUserRequest) => void;
   /** exit_plan_mode 工具的计划审批回调（UI 展示计划审批 banner） */
   onPlanReview?: (req: import('../plan/plan-tools').PlanReviewRequest) => void;
   /** dataflow_save 后的通知（UI 面板刷新） */

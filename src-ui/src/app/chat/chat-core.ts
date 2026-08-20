@@ -801,16 +801,26 @@ export class ChatCore {
       data.callback(null);
       return;
     }
+    // 批量多问（questions 数组）→ 一张分页卡收集；单问 → AskCard
+    if (data.questions && data.questions.length > 0) {
+      this._promptShelf
+        .showAskBatch({
+          type: 'ask-batch',
+          id: data.id,
+          questions: data.questions,
+          header: data.header ?? '提问',
+        })
+        .then((answers) => data.callback(answers));
+      return;
+    }
     this._promptShelf
       .showAsk({
         type: 'ask',
         id: data.id,
-        question: data.question,
-        header: data.header,
-        options: data.options,
-        multiSelect: data.multiSelect,
-        batchIndex: data.batchIndex,
-        batchTotal: data.batchTotal,
+        question: data.question ?? '',
+        header: data.header ?? '提问',
+        options: data.options ?? [],
+        multiSelect: !!data.multiSelect,
       })
       .then(data.callback);
   }

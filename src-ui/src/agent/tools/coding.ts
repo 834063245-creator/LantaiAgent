@@ -11,27 +11,27 @@ import { z } from 'zod';
 import type { Tool, ToolExecutor } from '../tool';
 import { defineTool } from './define-tool';
 
-/** ask_user 工具的 UI 请求 — 由 workspace 注入的回调转发到 UI 总线。
- *  保持 agent 层不 import ui/ 模块。 */
-export interface AskUserRequest {
-  id: string;
-  question: string;
-  header: string;
-  options: { label: string; description: string }[];
-  multiSelect: boolean;
-  /** 批量多问（questions 数组）时当前问题序号，1-based；单问时缺省 */
-  batchIndex?: number;
-  /** 批量多问总题数；单问时缺省 */
-  batchTotal?: number;
-  callback: (answer: string[] | null) => void;
-}
-
 /** ask_user 单条问题（单问表单或批量 questions 数组元素）。 */
-interface AskItem {
+export interface AskUserQuestionItem {
   question: string;
   header?: string;
   options?: { label: string; description: string }[];
   multiSelect?: boolean;
+}
+
+/** ask_user 工具的 UI 请求 — 由 workspace 注入的回调转发到 UI 总线。
+ *  保持 agent 层不 import ui/ 模块。
+ *  单问：question/options/multiSelect + callback(answer)；
+ *  批量：questions 一次推全部 + callback(answers)（与 questions 对齐，未答/跳过为 null）。 */
+export interface AskUserRequest {
+  id: string;
+  question?: string;
+  header?: string;
+  options?: { label: string; description: string }[];
+  multiSelect?: boolean;
+  /** 批量多问：完整题目列表，UI 分页收集后一次性返回 */
+  questions?: AskUserQuestionItem[];
+  callback: (answer: string[] | null | (string[] | null)[]) => void;
 }
 
 export interface CodingToolsUI {
@@ -108,57 +108,43 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
         if (!ui?.askUser) {
           return JSON.stringify({ answer: null, error: 'ask_user 不可用：UI 未接线' });
         }
-        const batch: AskItem[] | null =
-          Array.isArray(args.questions) && args.questions.length > 0 ? args.questions : null;
-        const items: AskItem[] =
-          batch ??
-          (args.question
-            ? [
-                {
-                  question: args.question,
-                  header: args.header,
-                  options: args.options,
-                  multiSelect: args.multiSelect,
-                },
-              ]
-            : []);
-        if (items.length === 0) {
+        const batch = Array.isArray(args.questions) && args.questions.length > 0 ? args.questions : null;
+        if (!batch && !args.question) {
           return JSON.stringify({ error: 'ask_user: 需要提供 question（单问）或 questions（多问）' });
         }
-        // 逐个提问 — PromptShelf 内部 FIFO 排队，前一个答完才出现下一个；
-        // 未提供 options 的问题降级为开放式（用户输入自由文本）。
-        const answers: (string[] | null)[] = [];
-        for (let i = 0; i < items.length; i++) {
-          const q = items[i];
-          const multi = (q.options?.length ?? 0) > 0 && !!q.multiSelect;
-          const ans = await new Promise<string[] | null>((resolve) => {
+        // 批量：一次推全部 questions，UI 渲成分页表单一次性收集；取消 → 整批 null
+        if (batch) {
+          const answers = await new Promise<(string[] | null)[] | null>((resolve) => {
             ui.askUser?.({
-              id: `ask-${Date.now()}-${Math.random().toString(36).slice(2, 6)}-${i}`,
-              question: q.question,
-              header: q.header || '提问',
-              options: q.options ?? [],
-              multiSelect: multi,
-              batchIndex: batch ? i + 1 : undefined,
-              batchTotal: batch ? items.length : undefined,
-              callback: resolve,
+              id: `ask-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              questions: batch,
+              callback: (res) => resolve(Array.isArray(res) ? (res as (string[] | null)[]) : null),
             });
           });
-          answers.push(ans);
+          if (answers === null) return JSON.stringify({ answer: null });
+          // 返回与 questions 对齐：多选 → label 数组；单选/开放式 → 字符串；未答 → null
+          return JSON.stringify({
+            answers: answers.map((a, i) => {
+              if (a === null) return null;
+              const multi = (batch[i].options?.length ?? 0) > 0 && !!batch[i].multiSelect;
+              return multi ? a : (a[0] ?? null);
+            }),
+          });
         }
-        if (!batch) {
-          const a = answers[0];
-          if (a === null) return JSON.stringify({ answer: null });
-          const multi = (items[0].options?.length ?? 0) > 0 && !!items[0].multiSelect;
-          return JSON.stringify(multi ? { answers: a } : { answer: a[0] ?? null });
-        }
-        // 批量返回与 questions 对齐：多选 → label 数组；单选/开放式 → 字符串；取消 → null
-        return JSON.stringify({
-          answers: answers.map((a, i) => {
-            if (a === null) return null;
-            const multi = (items[i].options?.length ?? 0) > 0 && !!items[i].multiSelect;
-            return multi ? a : (a[0] ?? null);
-          }),
+        // 单问（含开放式：options 省略）
+        const multi = (args.options?.length ?? 0) > 0 && !!args.multiSelect;
+        const ans = await new Promise<string[] | null>((resolve) => {
+          ui.askUser?.({
+            id: `ask-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            question: args.question,
+            header: args.header,
+            options: args.options ?? [],
+            multiSelect: multi,
+            callback: (res) => resolve(Array.isArray(res) ? (res as string[]) : null),
+          });
         });
+        if (ans === null) return JSON.stringify({ answer: null });
+        return JSON.stringify(multi ? { answers: ans } : { answer: ans[0] ?? null });
       },
     }),
 

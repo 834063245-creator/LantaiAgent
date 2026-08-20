@@ -10,18 +10,11 @@
 // 消费即清空：同一请求不会被第二个 chat-core 实例重复消费、callback 双答。
 
 import { create } from 'zustand';
+import type { AskUserRequest } from '../agent/tools/coding';
 
-/** ask_user 的一次提问请求（callback 由 agent 侧持有，答案经其回传） */
-export interface AskRequest {
-  id: string;
-  question: string;
-  header: string;
-  options: { label: string; description: string }[];
-  multiSelect: boolean;
-  batchIndex?: number;
-  batchTotal?: number;
-  callback: (answer: string[] | null) => void;
-}
+/** ask_user 的一次提问请求（callback 由 agent 侧持有，答案经其回传）。
+ *  单问 → string[] | null；批量 → (string[] | null)[] | null（对齐 questions）。 */
+export type AskRequest = AskUserRequest;
 
 interface AskState {
   /** 待处理的最近一次请求（消费即清空；seq 单调递增区分先后） */
