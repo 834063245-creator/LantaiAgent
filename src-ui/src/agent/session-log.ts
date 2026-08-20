@@ -34,7 +34,8 @@ import { foldToolResults, nextFoldBoundary } from './tool-fold';
 //    SessionEventDataMap，两者由 Record 关系在编译期强制对齐）──
 
 /** 事件种类。主计划 §6 Phase 5 规定 7 种；session/reset 与 session/retract
- *  是覆盖既有会话变异点（替换/撤回/goal 清场）的必要补充。 */
+ *  是覆盖既有会话变异点（替换/撤回/goal 清场）的必要补充；preset/selected
+ *  是 S4-1b 的创建时点事实（首事件方案——见 baseline-change-request.md）。 */
 export type SessionEventKind =
   | 'turn/start'
   | 'user/message'
@@ -44,7 +45,8 @@ export type SessionEventKind =
   | 'tool/result'
   | 'session/compaction'
   | 'session/reset'
-  | 'session/retract';
+  | 'session/retract'
+  | 'preset/selected';
 
 /** kind 封闭集合（运行时枚举，冻结）。 */
 export const SESSION_EVENT_KINDS: readonly SessionEventKind[] = Object.freeze([
@@ -57,6 +59,7 @@ export const SESSION_EVENT_KINDS: readonly SessionEventKind[] = Object.freeze([
   'session/compaction',
   'session/reset',
   'session/retract',
+  'preset/selected',
 ]);
 
 /** session/reset 的来源标注（审计用；不影响投影）。 */
@@ -84,6 +87,12 @@ export interface SessionEventDataMap {
   'session/reset': { messages: Message[]; reason: SessionResetReason };
   /** 区间撤回（splice 语义，[fromIndex, toIndex) — retractTurnAt / goal 暂停裁剪）。 */
   'session/retract': { fromIndex: number; toIndex: number };
+  /** preset 选择事实（S4-1b 首事件方案）：会话构造（session/reset init）时
+   *  必发首条——创建时点事实；空白会话期改选追加同名事件；重建 newest-wins
+   *  （倒序扫描——reset 边界后最近的即新段自己的）。reset 重开发出**当前
+   *  生效选择**（重读默认），不继承被清掉那个会话的改选。deriveMessages
+   *  不消费此 kind（模型可见面零变化）。 */
+  'preset/selected': { presetId: string };
 }
 
 /** 一条会话事件。seq 由日志分配、只增不减；ts 为 append 时刻。 */
@@ -274,10 +283,22 @@ export class SessionLog {
         case 'turn/start':
         case 'tool/call':
         case 'assistant/reasoning':
-          break; // 边界/审计记录，无消息投影
+        case 'preset/selected':
+          break; // 边界/审计/创建时点记录，无消息投影
       }
     }
     return state;
+  }
+
+  /** preset 选择重建（S4-1b newest-wins）：倒序扫描最近的 preset/selected。
+   *  无该事件 = undefined（调用方以 'standard' 缺省——与旧日志的兼容语义：
+   *  S4-1b 前的会话文件无此 kind，缺省即当时的实际行为）。 */
+  resolveSessionPreset(): string | undefined {
+    for (let i = this._events.length - 1; i >= 0; i--) {
+      const ev = this._events[i];
+      if (ev.kind === 'preset/selected') return (ev.data as { presetId: string }).presetId;
+    }
+    return undefined;
   }
 }
 

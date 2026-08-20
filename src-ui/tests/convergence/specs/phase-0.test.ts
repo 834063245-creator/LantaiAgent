@@ -29,7 +29,9 @@ describe('phase-0 契约快照', () => {
   it('tool-schemas.full — 标准 buildToolRegistry 的模型可见工具面', async () => {
     // S1-0 §2.3：装配显式传 preset 贡献集（贡献集是参数不是环境）；
     // standard → 空集 = 现行装配，快照零漂移即回滚保证成立的证据。
-    const reg = await buildStandardRegistry(resolvePreset().contributions);
+    // S4-1b：减法型 preset（minimal）经 toolRows 传行集合（helper 派生）。
+    const preset = resolvePreset();
+    const reg = await buildStandardRegistry(preset.contributions, preset.toolRows);
     const schemas = reg.schemas();
     snapshot('phase-0/tool-schemas.full.json', {
       note: '引擎动态工具（hologram_tools_list）测试环境恒为空，不在本快照内；本快照钉住静态注册面',
@@ -39,7 +41,8 @@ describe('phase-0 契约快照', () => {
   });
 
   it('tool-schemas.plan — planRegistry 静态只读克隆工具面', async () => {
-    const base = await buildStandardRegistry(resolvePreset().contributions);
+    const preset = resolvePreset();
+    const base = await buildStandardRegistry(preset.contributions, preset.toolRows);
     const ps = new PlanStateManager();
     ps.enter('/proj');
     const planReg = planRegistry(base, ps);

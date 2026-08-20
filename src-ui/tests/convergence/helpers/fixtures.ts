@@ -9,6 +9,7 @@ import { buildToolRegistry } from '../../../src/agent/runtime/agent-builder';
 import { TaskManager } from '../../../src/agent/task';
 import type { Tool, ToolExecutor, ToolRegistry } from '../../../src/agent/tool';
 import type { SubAgentSpawner } from '../../../src/agent/tools/subagent';
+import type { BuiltinToolRow } from '../../../src/composition/tool-rows';
 import type { Chunk, Provider, Usage } from '../../../src/provider/types';
 import { ChunkType } from '../../../src/provider/types';
 import type { ToolContribution } from './presets';
@@ -50,7 +51,10 @@ export function fixedGraphSnapshot(): string {
 // 本快照覆盖静态注册面（coding/task/browser/desktop/wait + 领域收敛）。
 // memory/skill 为可选依赖，不传入（生产同样可缺省）。
 
-export async function buildStandardRegistry(contributions: ToolContribution[] = []): Promise<ToolRegistry> {
+export async function buildStandardRegistry(
+  contributions: ToolContribution[] = [],
+  toolRows?: BuiltinToolRow[],
+): Promise<ToolRegistry> {
   const stubSpawner = (async () => 'stub-spawn-result') as unknown as SubAgentSpawner;
   const reg = await buildToolRegistry({
     graphData: FIXED_GRAPH_DATA,
@@ -58,6 +62,8 @@ export async function buildStandardRegistry(contributions: ToolContribution[] = 
     taskManager: new TaskManager(),
     subAgentPool: new SubAgentPool(),
     subAgentSpawner: stubSpawner,
+    // S4-1b：preset 的工具行（减法型 preset——minimal）；undefined = 出厂表
+    ...(toolRows ? { toolRows } : {}),
   });
   // 行贡献按组合序（数组序）注册到内置面之后（S1-0 设计件 §2.3：
   // 显式参数，确定性按构造保证）。重名行由 ToolRegistry.register

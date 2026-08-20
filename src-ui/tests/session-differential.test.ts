@@ -204,13 +204,15 @@ describe('T2 差分 — 基础对话与工具循环', () => {
     expectProjectionEquivalence(agent);
     expectRequestMatchesDerived(requests, 0);
     expectRequestMatchesDerived(requests, 1);
-    // 事件形状：reset(init) → run() 先落 user/message，runLoop 再发 turn/start
+    // 事件形状：reset(init) → preset/selected 首事件（S4-1b）→ run() 先落
+    // user/message，runLoop 再发 turn/start
     const kinds = agent
       .getSessionLog()
       .events()
       .map((e) => e.kind);
     expect(kinds).toEqual([
       'session/reset',
+      'preset/selected',
       'user/message',
       'turn/start',
       'assistant/text',
@@ -242,6 +244,7 @@ describe('T2 差分 — 基础对话与工具循环', () => {
       .map((e) => e.kind);
     expect(kinds).toEqual([
       'session/reset',
+      'preset/selected',
       'user/message',
       'turn/start',
       'assistant/text',
@@ -459,6 +462,7 @@ describe('T2 差分 — 持久化双写（P1-15 游标不受破坏）', () => {
     const events = lines.map((l) => JSON.parse(l) as { seq: number; kind: string });
     expect(events.map((e) => e.kind)).toEqual([
       'session/reset',
+      'preset/selected',
       'user/message',
       'turn/start',
       'assistant/text',

@@ -3,7 +3,7 @@
 - **日期**: 2026-08-20
 - **请求 Agent**: S4 执行 Agent（设计件 `docs/plans/composition-architecture/designs/S4-preset-realm-distribution.md` §2.4/§3 批间审批门）
 - **涉及快照**: 两项——(a) `session-log` 冻结面扩展（事件 kind 新增）；(b) 新增 `baseline/preset-minimal/`（per-preset 收敛协议首次 freeze）
-- **状态**: 待人类审批（S4 唯一用户出场点——绿灯模式下用户默认不参与批内事务，此门是例外）
+- **状态**: **已批准（2026-08-20 用户拍板「批准全项」——(a) + (b) 全部实施）**
 
 ## 变更内容（两项合一份 CR，按设计件 §3 批表）
 

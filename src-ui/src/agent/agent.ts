@@ -4,6 +4,7 @@
 // Agent 循环 — Run() → stream() → StreamingToolExecutor → 循环直到模型给出最终答案
 
 import { z } from 'zod';
+import { currentPresetId } from '../composition/preset-assembly';
 import { createProvider } from '../provider';
 import { getAllModels } from '../provider/catalog';
 import { STREAM_IDLE_TIMEOUT_MS, streamWithIdleTimeout } from '../provider/idle-stream';
@@ -173,6 +174,11 @@ export class Agent {
    *  child() 继承白名单成员，子 Agent 与父同一组合面）；legacy 路径为 null。
    *  消费面：spawnSubAgent 透传子 Agent（ctx 路径）、诊断/测试只读。 */
   private readonly _composition: import('../composition/roster').ResolvedComposition | null = null;
+
+  /** 会话创建时点生效的 preset id（S4-1b 首事件的事实源镜像——构造期读
+   *  currentPresetId()；空白会话期经 selectPreset() 改选并追加同名事件）。
+   *  子 Agent 经 ctx composition 继承组合面，但各 Agent 各自记首事件。 */
+  private _presetId: string = 'standard';
 
   /** 装配用组合产物（只读面；legacy 构造无组合时为 null）。 */
   get composition(): import('../composition/roster').ResolvedComposition | null {
@@ -368,6 +374,11 @@ export class Agent {
     if (systemPrompt) {
       this._replaceSession([{ role: 'system', content: systemPrompt }], 'init');
     }
+    // S4-1b 首事件：构造（init reset）后必发 preset/selected——创建时点事实
+    // （「模型可见 ⟺ 已记录」：preset 决定模型看到的 schema/段，必须可重建）。
+    // 读取当前生效 preset（preset-store 选择态；缺省 standard）。
+    this._presetId = currentPresetId();
+    this._sessionLog.append('preset/selected', { presetId: this._presetId });
 
     // ctx 路径：bus 注册与隔离接线在构造内完成。旧路径中构造与 runtime 的
     // setBus/_isolationId 接线之间无 await，时序等价；bus.register 为 Map.set
@@ -525,6 +536,21 @@ export class Agent {
     this._persistedMsgCount = 0;
     this._execState.bumpVersion();
     this._ui.sessionReplaced?.(this.session);
+  }
+
+  /** 空白会话期改选 preset（S4-1b）：追加 preset/selected 事件（newest-wins
+   *  重建的依据）+ 镜像字段更新。注意：**不重装配**——组合面在创建时点
+   *  冻结（前缀缓存纪律；真正生效的下一次装配在会话边界）。本方法只服务
+   *  「会话还没跑起来时改了默认 preset」的记录修正语义。 */
+  selectPreset(presetId: string): void {
+    this._presetId = presetId;
+    this._sessionLog.append('preset/selected', { presetId });
+  }
+
+  /** 会话的 preset 选择重建（newest-wins；无事件 = undefined——S4-1b 前
+   *  的旧会话文件兼容：调用方以 'standard' 缺省）。 */
+  get sessionPresetId(): string | undefined {
+    return this._sessionLog.resolveSessionPreset();
   }
 
   getLastUsage(): Usage | undefined {
@@ -944,6 +970,10 @@ export class Agent {
   newSession(): void {
     const sys = this.session.length > 0 && this.session[0].role === 'system' ? this.session[0] : null;
     this._replaceSession(sys ? [sys] : [], 'new-session');
+    // S4-1b reset 语义：reset 开启新逻辑段——重发**当前生效选择**（重读默认
+    // 值），不继承被清掉那个会话的改选（设计件 §2.4 三轮复审裁定：
+    // 「reset 开启新段」与「首事件描述新段」是同一条纪律的两面）。
+    this.selectPreset(currentPresetId());
     // 新会话 → 折叠状态失效
     this._compactSummary = null;
     this._compactTailStart = -1;

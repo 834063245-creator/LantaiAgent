@@ -12,13 +12,13 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ToolRegistry, type Tool } from '../../../src/agent/tool';
+import { SubAgentPool } from '../../../src/agent/coordinator';
 import { HookRegistry, PreflightHookRegistry } from '../../../src/agent/hooks';
 import { AgentRuntime } from '../../../src/agent/runtime/runtime';
-import { SubAgentPool } from '../../../src/agent/coordinator';
+import { type Tool, ToolRegistry } from '../../../src/agent/tool';
 import type { SubAgentSpawner } from '../../../src/agent/tools/subagent';
-import { snapshot } from '../helpers/snapshot';
 import { scriptedProvider } from '../helpers/fixtures';
+import { snapshot } from '../helpers/snapshot';
 
 /** T0 豁免清单：允许不返回 Disposer 的注册 API（格式：文件相对路径 + 方法名）。
  *  新增豁免必须在 progress.md 记录原因；当前为空。 */
@@ -84,14 +84,20 @@ describe('phase-1 T0 结构门禁 — 注册 API 返回 Disposer', () => {
     const rt = new AgentRuntime(); // 无 projectPath → 纯内存 bus/boards，零持久化副作用
     await rt.ready();
     const stubSpawner = (async () => 'stub-spawn-result') as unknown as SubAgentSpawner;
-    const handle = await rt.createAgent({
-      projectPath: '/projects/demo',
-      provider: scriptedProvider([]),
-      tools: new ToolRegistry(), // 空输入：只钉 createAgent 自己注册的面
-      subAgentPool: new SubAgentPool(),
-      subAgentSpawner: stubSpawner,
-      eventSink: () => {},
-    });
+    // S4-1b：preset 维度经 composition 覆盖参数穿进装配（standard →
+    // resolveCurrentComposition ≡ factory，零漂移；minimal → 减法组合）。
+    const { resolveCurrentComposition } = await import('../helpers/preset-composition');
+    const handle = await rt.createAgent(
+      {
+        projectPath: '/projects/demo',
+        provider: scriptedProvider([]),
+        tools: new ToolRegistry(), // 空输入：只钉 createAgent 自己注册的面
+        subAgentPool: new SubAgentPool(),
+        subAgentSpawner: stubSpawner,
+        eventSink: () => {},
+      },
+      resolveCurrentComposition(),
+    );
     const agent = (
       handle as unknown as {
         _getAgent(): unknown;

@@ -102,6 +102,13 @@ export function invalidatePresetCache(): void {
   lastUserHash = '';
 }
 
+/** 当前生效 preset id（S4-1b 会话记录消费）：preset-store 选择态的只读面。
+ *  值恒为字符串（store 缺省 'standard'）——调用方（Agent 构造首事件）
+ *  不需要 null 语义。 */
+export function currentPresetId(): string {
+  return usePresetStore.getState().selected;
+}
+
 // ── 选择同步 ──
 
 /** boot 期同步：settings.composition.preset → preset-store.selected。
