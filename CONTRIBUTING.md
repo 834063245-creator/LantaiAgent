@@ -101,8 +101,9 @@ src-ui/               TypeScript 前端（React 19 + Zustand 5 + Three.js + Mona
 │   ├── ui/           星图 scene + 领域 stores + React 组件
 │   ├── agent/        Agent 运行时、领域工具、多 Agent、goal/plan
 │   │                 （含 blueprint capability 表 / session-log 事件溯源 / DisposerBag+epoch 生命周期原语）
+│   ├── composition/  组合层（S1）：工具行表 tool-rows + prompt-sections + 四 service 注册表
 │   ├── provider/     LLM Provider 抽象 + 9 个模型目录（73 模型）+ thinking 档位适配
-└── tests/            vitest + jsdom（1201 用例 / 116 文件）
+└── tests/            vitest + jsdom（1339 用例 / 136 文件）
 ```
 
 ### 技术栈

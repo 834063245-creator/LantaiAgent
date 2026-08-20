@@ -209,7 +209,7 @@ Python · JavaScript/TypeScript/TSX · Rust · Go · Java · C/C++ · C# · Ruby
 
 ### Agent 运行时内核
 
-- **声明式装配（agent-core-convergence Phase 6）**：`AgentBlueprint` capability 表驱动装配——新增工具/hook 走 capability 组合，`AgentConfig` 冻结 31 字段不再扩张；capability 表序 = 工具面字节契约（保护 DeepSeek 前缀缓存与 effective 快照）
+- **声明式装配（Phase 6 + 组合架构 S1 三层，2026-08-20）**：内置工具族走 `src/composition/tool-rows.ts` 行表（14 行内置族，表序 = 组合序，行内重名装载期拒绝）；system-prompt 段落走 `src/composition/prompt-sections.ts` section 表（13 段两装配面）；会话级工具/hook 走 `AgentBlueprint` capability 表——`AgentConfig` 冻结 31 字段不再扩张；三层表序 = 字节契约（保护 DeepSeek 前缀缓存与 effective 快照）
 - **会话事件溯源（Phase 5）**：session 变异只走 `_appendMessage` / `_replaceSession` / `_retractSessionRange` 三个入口，`SessionLog` 事件日志支撑差分对拍、回放与审计
 - **生命周期内核（cordis-migration P0–P4）**：vendored cordis 内核（`src/cordis/`，Context/Fiber/Service）——工作区级资源以 `Workspace._fiber.ctx.effect()` 登记（顺序敏感拆除组打包 DisposerBag 作单个 effect 保串行逆序）；Agent 挂身份 fiber（`hologram/agent`，DisposerBag 同步快通道契约保留）；子系统以 Service 挂树（样板 `LspService`）；epoch 代际防护**永久保留**（管逃逸所有权的在途回调，fiber 管所有权，两者不重叠）。切换/退出只调 `fiber.dispose()` + epoch bump（事故记录见 `INVARIANTS.md` #12）
 - **流式执行**：tool_use 完成即 dispatch（不等整条 stream），同轮只读工具并发执行；工具输出 50KB/2000 行截断；可重试错误指数退避（最多 3 次）；AbortSignal 贯穿，卡死工具不挂死循环

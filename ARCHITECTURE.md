@@ -284,12 +284,13 @@ NetBenefit = |R|·c_in·(T-1) − |S|·c_out − L·avg_turn_cost
 - **旧细粒度名**（`search_symbols`、`run_shell`、`write_file`、`git_*`、`agent_spawn` 等）保留在 `ToolRegistry` 但 `hide()`；模型调用由 `retireRedirect` 拦截并返回 `[已淘汰] → 领域动作` 重定向。内部代码/测试仍可直调。
 - **新工具必须 `defineTool` + zod v4**：一个 schema 同时产出 JSON Schema、运行时校验和 `z.infer` 类型化参数；meta key（`_forceGate` / `_callId` / `_agent_id`）经 `.passthrough()` 透传。
 - 新增领域动作须同步 `DOMAIN_SPECS` + `collectHiddenToolNames()` + 测试 + `AGENTS.md`。
+- **内置族装配（组合架构 S1，2026-08-20）**：14 个内置工具族的工厂与组合序收敛在 `src/composition/tool-rows.ts` 行表（hologram/fs/shell/git/search/web/agent-isolation/ask/skill/memory/task/agent/browser-desktop/wait），`buildToolRegistry` 按表序装配——表序 = 组合序（前缀缓存语义的根基），行内工具名冲突由 `ToolRegistry.register` 装载期拒绝（duplicate throw）。
 
 ### 4.10 Agent 运行时收敛（agent-core-convergence Phase 0–6，已并入 main）
 
 2026-08 的收敛工程把自有运行时的生命周期/会话契约全部原语化并门禁化（详见 `docs/plans/agent-core-convergence/`）：
 
-- **声明式装配（Phase 6）**：`agent/blueprint.ts` 的 `AgentBlueprint` capability 表驱动装配——新增模型工具/hook 走 capability 组合，**`AgentConfig` 冻结 31 字段**不再扩张；capability 表序 = 工具面字节契约（DeepSeek 前缀缓存与 effective 快照依赖此序）；teardown 走 `ctx.effect`
+- **声明式装配（Phase 6 + 组合架构 S1 三层，2026-08-20）**：内置工具族由 `src/composition/tool-rows.ts` 行表装配（14 行内置族，factory → Tool[]，行内重名装载期拒绝）；system-prompt 段落由 `src/composition/prompt-sections.ts` section 表拼装（13 段，两装配面 applicable 分流）；会话级工具/hook 仍由 `agent/blueprint.ts` 的 `AgentBlueprint` capability 表驱动——**`AgentConfig` 冻结 31 字段**不再扩张；三层表序 = 字节契约（DeepSeek 前缀缓存与 effective 快照依赖此序）；teardown 走 `ctx.effect`；面板/命令/工具/provider 四 service 注册表挂根 Context（`src/composition/services.ts`，`ContributionRegistry` 内核：装载期重名拒绝 + disposer 双守卫）
 - **会话事件溯源（Phase 5）**：`session-log.ts` 事件日志 + session 变异三入口（`_appendMessage` / `_replaceSession` / `_retractSessionRange`）；工具折叠逻辑同步 `derivePayload`
 - **生命周期内核（cordis-migration P0–P4）**：vendored cordis（`src/cordis/`）+ workspace-scope epoch（`getWorkspaceEpoch()` / `bumpWorkspaceEpoch()`，**永久保留**——fiber 管所有权，epoch 管逃逸所有权的在途回调）。资源获取点就地 `fiber.ctx.effect()` 登记（顺序敏感拆除组打包 DisposerBag 单 effect 保串行），工作区切换/退出只调 `fiber.dispose()` + epoch bump，杜绝跨项目串台；Agent 挂身份 fiber（清理走 DisposerBag 同步快通道），子系统以 Service 挂树（`LspService` 样板）
 - **门禁**：`npm run verify:convergence`（T0 静态断言 + 8 个 frozen baseline 对拍）失败即返工；record 需显式 `CONVERGENCE_RECORD=1`，baseline 变更走审批
@@ -595,7 +596,7 @@ HoloGram/
 │   │   │   ├── lifecycle-manager.ts  # 泄漏检测 + TTL 清理
 │   │   │   ├── streaming-executor.ts  # 流式工具执行器 (AbortSignal)
 │   │   │   ├── tool.ts           # Tool 接口 + ToolRegistry
-│   │   │   ├── blueprint.ts      # AgentBlueprint capability 表驱动装配 (Phase 6)
+│   │   │   ├── blueprint.ts      # AgentBlueprint capability 表驱动装配 (Phase 6 + S1 会话层)
 │   │   │   ├── session-log.ts    # SessionLog 事件溯源日志 (Phase 5)
 │   │   │   ├── lifecycle.ts      # Disposer/DisposerBag 原语 (AgentContext 同步快通道清理 + 顺序敏感拆除组)
 │   │   │   ├── hooks.ts          # Hook/PreflightHook 系统
@@ -613,6 +614,7 @@ HoloGram/
 │   │   │   ├── events.ts        # EventBus (冻结——新 app 代码禁 import)
 │   │   │   └── *-store.ts       # Zustand stores (createScopedStore 注册表模式)
 │   │   ├── cordis/            # vendored cordis 内核 (Context/Fiber/Service; 禁就地改, 见目录 README)
+│   │   ├── composition/       # 组合层 (S1): tool-rows 行表 + prompt-sections + 四 service 注册表
 │   │   ├── workspace.ts        # Workspace 统一状态容器 (替代 18+ 全局变量; 工作区 fiber 宿主)
 │   │   ├── workspace-scope.ts  # workspace epoch 代际防护原语 (永久保留: 管在途回调, 与 fiber 所有权互补)
 │   │   ├── bridge.ts           # Tauri IPC 桥接
@@ -691,9 +693,9 @@ EventBus 只覆盖不到一半通信，存在 5 个孤儿 emit、三层通信混
 |----|------|------|
 | Engine | `cd engine && cargo test` | 697 用例（lib 669 + bin 27 + doc 1；696 passed / 1 ignored；状态机/取消/增量/向量/盲点合成/图合并） |
 | Tauri Shell | `cd src-tauri && cargo test` | 322 用例（bin 308 + 集成 14，全绿；pwsh 冒烟在无 pwsh 7 的环境自动跳过） |
-| 前端 | `cd src-ui && npx vitest run` | 1201 用例 / 116 文件（1200 passed / 1 skipped；首次全量在并行构建环境下偶发 1 失败，重跑通过） |
-| 前端契约 | `cd src-ui && npm run verify:convergence` | T0 静态 + 8 baseline 对拍 |
-| Agent 运行时 | 同上 + `agent/blueprint.ts` capability 表 | AgentConfig 冻结 31 字段，T0 断言 |
+| 前端 | `cd src-ui && npx vitest run` | 1339 用例 / 136 文件（1338 passed / 1 skipped，2026-08-20 组合架构 S1 竣工实测；首次全量在并行构建环境下偶发 1 失败，重跑通过） |
+| 前端契约 | `cd src-ui && npm run verify:convergence` | T0 静态 + 8 baseline 对拍 + system-prompt.fixture（standard preset 零漂移） |
+| Agent 运行时/组合层 | 同上 + `composition/tool-rows.ts` 行表 / `prompt-sections.ts` / `agent/blueprint.ts` capability 表 | AgentConfig 冻结 31 字段，T0 断言；行表/段落表表序 = 字节契约 |
 | 前端构建 | `cd src-ui && npm run build` | tsc --noEmit + vite build 零错误 |
 | 引擎构建 | `cd engine && cargo build` | CI 强制 -D warnings 零警告 |
 | 全量 | `cd src-tauri && cargo tauri build` | 发布构建 |

@@ -1,6 +1,6 @@
 # REGISTRY_OWNERSHIP — agent 注册点所有权清单
 
-> 生成：2026-08-16（agent-core-convergence Phase 1 任务，基线 commit `5ff78821`）
+> 生成：2026-08-16（agent-core-convergence Phase 1 任务，基线 commit `5ff78821`）· 更新：2026-08-20（组合架构 S1 竣工——内置族注册点迁行表，行号按 `55c5177a` 校准）
 > 规则：**新增注册 API 必须返回 Disposer 并登记到本清单**；不返回 disposer 的要写豁免原因。
 > Phase 4（生命周期所有权统一）将以本清单为迁移地图：每行最终都应指向 `AgentContext.effect()`。
 
@@ -13,11 +13,11 @@
 
 | 注册点 | owner | 清理点 | 自动清理 |
 |---|---|---|---|
-| `runtime/agent-builder.ts:328-456`（hologram/dataflow/coding/skill/memory/task/subagent/browser/desktop/wait 工具） | `buildToolRegistry` → 调用方（workspace/Runtime） | registry 本身无全局状态，随 Agent 实例 GC | ✅ 随实例 |
-| `runtime/agent-builder.ts:488`（compaction 工具） | createAgent | 同上 | ✅ 随实例 |
-| `mcp/registry.ts:57` `registerMcpTools` | builder/调用方；`unregisterMcpTools`（:67）已提供对称清理 | 当前调用方（builder:464）未调用——随 registry GC | ✅ 随实例（豁免：批量注册，整体释放） |
-| `runtime/runtime.ts:532`（registry 克隆循环） | createAgent → Agent 实例 | 随 Agent 实例 | ✅ 随实例 |
-| `runtime/runtime.ts:541-643`（plan 工具/通信/discovery/merge/board/kill/request/spawn 替换/task 替换） | createAgent → Agent 实例 | 随 Agent 实例 | ✅ 随实例 |
+| `composition/tool-rows.ts`（14 内置族行表，S1-3 起 builder:244 循环装配 hologram/fs/shell/git/search/web/agent-isolation/ask/skill/memory/task/agent/browser-desktop/wait；行内重名装载期拒绝） | `buildToolRegistry` → 调用方（workspace/Runtime） | registry 本身无全局状态，随 Agent 实例 GC | ✅ 随实例 |
+| `runtime/agent-builder.ts:269`（compaction 工具，`registerCompactionTools`） | createAgent | 同上 | ✅ 随实例 |
+| `mcp/registry.ts` `registerMcpTools` | builder/调用方；`unregisterMcpTools` 已提供对称清理 | 当前调用方（builder:256）未调用——随 registry GC | ✅ 随实例（豁免：批量注册，整体释放） |
+| `runtime/runtime.ts:632`（registry 克隆循环） | createAgent → Agent 实例 | 随 Agent 实例 | ✅ 随实例 |
+| `blueprint.ts` capability install 块（plan 工具/通信/discovery/merge/board/kill/request/spawn 替换/task 替换；`runtime.ts` 662-683 按表序执行） | createAgent → Agent 实例 | 随 Agent 实例 | ✅ 随实例 |
 | `agent.ts:68,2389-2430`（子 Agent 工具克隆，`convergeRegistry` 重建） | 子 Agent 实例 | 随子 Agent | ✅ 随实例 |
 | `agent.ts:983`（goal_report） | Agent goal loop | `agent.ts:923,951` unregister（对称存在） | ✅ 显式 |
 | `tool.ts:150`（subset 临时 registry） | 调用方作用域 | 作用域结束 GC | ✅ 随作用域 |

@@ -21,7 +21,7 @@
 - **前端**：React 19 + Zustand 5。跨组件业务状态走 zustand store（面板级走 `createScopedStore` 注册表）；事件总线已归零（`ui/events.ts` 已删除，禁复活——不要 window.dispatchEvent / CustomEvent / 自建 EventEmitter）。分层终态：store 一律 `src/state/`、星图一律 `src/scene/`、`src/ui/` 残余 = chat 编排域核心 + 旧层命令式基础设施（见 `src/ui/README.md`）；新组件落 `src/app/**`。聊天消息原地 mutate 后必须 `touchMessage` / `touchMessageContaining`。
 - **RPC**：前端调后端一律 `typedRpc` / `typedListen`（`src-ui/src/rpc-contract.ts`）；参数键 snake_case。新增后端方法同步 `src-tauri/src/rpc.rs` + `RpcContract`，生成文档用 `scripts/gen-rpc-contract-md.cjs`。受权文件之外裸 `rpc` 会被 biome 拦截。
 - **工具**：模型工具必须 `defineTool` + zod v4；领域动作变更同步 `DOMAIN_SPECS` / `collectHiddenToolNames()` / 测试。禁止手写 schema、execute 里 `as` 强拆、用 `.strict()`。
-- **Agent 运行时**（agent-core-convergence 立规）：新增模型工具/hook 走 `agent/blueprint.ts` capability 表，不改 `AgentConfig`（冻结 31 字段）；capability 表序 = 工具面字节契约（前缀缓存 + effective 快照依赖）；teardown 走 `ctx.effect`，不做进 capability。session 变异只走 `_appendMessage` / `_replaceSession` / `_retractSessionRange` 三入口；改工具折叠同步 `session-log.ts` 的 `derivePayload`。以上全部门禁化：`npm run verify:convergence` 失败即返工。
+- **Agent 运行时**（组合架构 S1 三层，2026-08-20 起）：内置工具族加行到 `src/composition/tool-rows.ts` 行表；system-prompt 段落加段到 `src/composition/prompt-sections.ts`（分隔符是字节契约禁规整）；会话级工具/hook 加项到 `agent/blueprint.ts` capability 表，不改 `AgentConfig`（冻结 31 字段）。三层表序 = 字节契约（前缀缓存 + effective 快照依赖）；teardown 走 `ctx.effect`，不做进 capability。session 变异只走 `_appendMessage` / `_replaceSession` / `_retractSessionRange` 三入口；改工具折叠同步 `session-log.ts` 的 `derivePayload`。以上全部门禁化：`npm run verify:convergence` 失败即返工（standard preset 快照零漂移）。
 - **Rust**：生产代码零裸 `.unwrap()`（测试模块除外）。锁中毒用 `lock_or_recover` / `read_or_recover` / `write_or_recover`（src-tauri），engine 用 `unwrap_or_else(|e| e.into_inner())`。失败必须可见，写入/持久化错误不得静默吞。
 - **Windows 路径**：拆 `location` 的 `文件:行` 只拆最后一个冒号（`rsplit_once(':')`），不要吃掉 drive letter。
 - **不改的**：`graph-layout.ts` / `gpu-layout.ts` 的布局参数、`.github/workflows/ci.yml`、Python 引擎路径（已退役，不要恢复）。
@@ -34,12 +34,12 @@
 | 前端 | `cd src-ui && npm run build`（tsc --noEmit + vite build） |
 | 前端逻辑 | `cd src-ui && npx vitest run` |
 | 前端格式 | `cd src-ui && npx biome check --write <改动文件>`（全仓 588 errors/335 warnings 是存量基线，只保证自己零新增） |
-| Agent 运行时 | `cd src-ui && npm run verify:convergence`（T0 静态 + 8 baseline 对拍；record 永不上 CI，baseline 变更走 change request 审批） |
+| Agent 运行时/组合层 | `cd src-ui && npm run verify:convergence`（T0 静态 + 8 baseline 对拍 + system-prompt.fixture；record 永不上 CI，baseline 变更走 change request 审批） |
 | 引擎 | `cd engine && cargo test`（快验 `cargo build`） |
 | 壳 | `cd src-tauri && cargo check`；权限/锁/IPC/命令改动跑 `cargo test` |
 | 桌面打包 | `cd src-tauri && cargo tauri build`（会自动先跑前端构建；根目录 `build.cmd` 是 Windows 包装） |
 
-禁止用 `cargo build --release` 代替桌面发布验证。当前实测基线：engine 697 tests（696 passed / 1 ignored）· src-tauri 343 tests（bin 全绿）· 前端 1254 passed / 1 skipped（共 1255，124 文件；2026-08-18 cordis-migration P0-P4 后）。
+禁止用 `cargo build --release` 代替桌面发布验证。当前实测基线：engine 697 tests（696 passed / 1 ignored）· src-tauri 343 tests（bin 全绿）· 前端 1338 passed / 1 skipped（共 1339，136 文件；2026-08-20 组合架构 S1 竣工后）。
 
 ## 项目快照
 
