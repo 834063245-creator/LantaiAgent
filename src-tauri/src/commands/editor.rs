@@ -64,6 +64,20 @@ fn record_edit_side_effects(state: &crate::WorkspaceState, file_path: &str) {
     };
 }
 
+/// old_string 未命中时错误消息里的键截断（≈60 字节预算）。
+/// 必须按字符边界回退：`&s[..60]` 在 CJK 混合行的第 60 字节落在
+/// 多字节字符中间时 panic（回归测试 truncate_err_key_cjk_mixed_line_no_panic）。
+fn truncate_err_key(first_line: &str) -> &str {
+    if first_line.len() <= 60 {
+        return first_line;
+    }
+    let mut end = 60;
+    while end > 0 && !first_line.is_char_boundary(end) {
+        end -= 1;
+    }
+    &first_line[..end]
+}
+
 #[tauri::command]
 pub(crate) async fn edit_file(
     file_path: String,
@@ -146,7 +160,7 @@ pub(crate) async fn edit_file(
                 None => format!("file starts: {}",
                     content.lines().take(3).collect::<Vec<_>>().join(" | ")),
             };
-            let key = if first_line.len() > 60 { &first_line[..60] } else { first_line };
+            let key = truncate_err_key(first_line);
             return Err(format!("not found: \"{}\" | {}", key, hint));
         }
         if c > 1 {
@@ -396,6 +410,29 @@ mod tests {
 
     fn diff_of(before: &str, after: &str) -> String {
         build_line_diff(before, after)
+    }
+
+    /// 回归（edit 偶发挂死根因）：old_string 未命中时的错误键截断必须
+    /// 容忍多字节字符。旧实现 `&first_line[..60]` 按字节切片，CJK 混合
+    /// 行第 60 字节落在字符中间会 panic——而 Tauri 异步命令 panic 不回包
+    /// （resolver 随 task 一起被丢弃），前端 edit_file invoke 永久挂起且
+    /// 无任何日志痕迹（panic 只进 stderr）。
+    #[test]
+    fn truncate_err_key_cjk_mixed_line_no_panic() {
+        // 4 字节 ASCII 前缀 + CJK（每字 3 字节）：字节 60 恰好落在
+        // 第 19 个 CJK 字符内部 → 旧实现在此 panic。
+        let line = format!("// ab{}", "中".repeat(30));
+        assert!(line.len() > 60, "测试前提：首行超过 60 字节");
+        let key = truncate_err_key(&line);
+        assert!(key.len() <= 60, "截断键不应超过 60 字节");
+        assert!(key.starts_with("// ab"));
+    }
+
+    #[test]
+    fn truncate_err_key_ascii_unchanged() {
+        let line = "fn short_call() {".repeat(10);
+        assert_eq!(truncate_err_key(&line), &line[..60]);
+        assert_eq!(truncate_err_key("short"), "short");
     }
 
     #[test]

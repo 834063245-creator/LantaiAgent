@@ -111,6 +111,43 @@ pub(crate) async fn rpc(
     state: tauri::State<'_, crate::WorkspaceState>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
+    // panic 容器：Tauri 2.x 命令 future panic 时 resolver 随 task 一起被
+    // 丢弃，invoke promise 永远不 resolve——前端工具调用永久挂起，且
+    // panic 只进 stderr、不进 bridge.log（2026-08 edit 偶发挂死即此症状，
+    // 根因见 editor.rs truncate_err_key 回归测试）。这里把 panic 就地转为
+    // Err 回包：错误可见、调用失败返回而不是挂死。与 INVARIANTS #11
+    // （响应丢失 → 前端 await 永久挂起）同症状家族的根治护栏。
+    guard_panic(dispatch_rpc(method, params, state, app)).await
+}
+
+/// 把命令体 panic 转为错误回包，防止 invoke promise 泄漏成永久挂起。
+async fn guard_panic(
+    fut: impl std::future::Future<Output = Result<String, String>>,
+) -> Result<String, String> {
+    use futures_util::FutureExt;
+    std::panic::AssertUnwindSafe(fut)
+        .catch_unwind()
+        .await
+        .unwrap_or_else(|payload| Err(panic_to_rpc_error(payload)))
+}
+
+/// panic payload → 人话错误消息（trace 落 bridge.log，不再无迹可寻）。
+fn panic_to_rpc_error(payload: Box<dyn std::any::Any + Send>) -> String {
+    let msg = payload
+        .downcast_ref::<&str>()
+        .map(|s| s.to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "未知 panic payload".to_string());
+    tracing::error!("[rpc] 命令内部 panic（已转为错误回包）: {}", msg);
+    format!("命令内部错误（panic）: {}", msg)
+}
+
+async fn dispatch_rpc(
+    method: String,
+    params: Value,
+    state: tauri::State<'_, crate::WorkspaceState>,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
     use crate::commands;
 
     match method.as_str() {
@@ -1580,7 +1617,42 @@ async fn desktop_uia_activate(
 #[cfg(test)]
 mod tests {
     use super::self_or_agent;
+    use super::{guard_panic, panic_to_rpc_error};
     use serde_json::json;
+
+    /// 回归（edit 偶发挂死家族）：命令体 panic 必须变成 Err 回包，
+    /// 而不是让 panic 逃逸——逃逸时 Tauri resolver 被丢弃，前端
+    /// invoke promise 永久挂起且无日志。
+    #[tokio::test]
+    async fn guard_panic_converts_panic_to_err_response() {
+        let out = guard_panic(async {
+            // 模拟命令体里的字节切片 panic（与 editor.rs 旧 bug 同型）：
+            // 4 字节 ASCII 前缀 + CJK，字节 60 落在字符中间。
+            // 注意纯 "中".repeat(30) 的字节 60 恰好对齐边界，不会 panic。
+            let s = format!("// ab{}", "中".repeat(30));
+            let _ = &s[..60];
+            Ok::<String, String>("unreachable".to_string())
+        })
+        .await;
+        let err = out.expect_err("panic 必须转为 Err 回包");
+        assert!(err.contains("panic"), "错误应说明是命令内部 panic: {err}");
+    }
+
+    #[tokio::test]
+    async fn guard_panic_passes_through_ok_and_err() {
+        assert_eq!(guard_panic(async { Ok("ok".to_string()) }).await.unwrap(), "ok");
+        assert_eq!(
+            guard_panic(async { Err("业务错误".to_string()) }).await.unwrap_err(),
+            "业务错误"
+        );
+    }
+
+    #[test]
+    fn panic_to_rpc_error_extracts_string_payload() {
+        let msg = panic_to_rpc_error(Box::new("byte index 60 is not a char boundary".to_string()));
+        assert!(msg.contains("命令内部错误"));
+        assert!(msg.contains("char boundary"));
+    }
 
     /// self 路由契约锁定：前端领域工具传 target="self" 字符串，
     /// 旧实现只认 self 布尔参数曾导致 self 通道全程静默失效。

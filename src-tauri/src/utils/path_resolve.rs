@@ -162,6 +162,12 @@ pub(crate) async fn check_permission(
         PermissionDecision::Allow => Ok(()),
         PermissionDecision::Deny { reason } => Err(reason),
         PermissionDecision::Ask { request_id, reason, suggestions, danger } => {
+            // 先注册 receiver 再 emit：yolo/auto 模式下前端收到事件会零延迟
+            // 自动回包，若回包先于 register_ask 到达，resolve_ask 查不到条目
+            // 会静默丢弃答案，命令只能等满 300s 超时——表现为工具
+            // 「挂起 5 分钟后报权限超时」。注册先行后该窗口结构性关闭
+            // （回包不可能早于事件本身到达）。
+            let rx = register_ask(request_id.clone());
             let _ = app.emit("permission-ask", serde_json::json!({
                 "requestId": request_id,
                 "tool": tool.name(),
@@ -174,7 +180,6 @@ pub(crate) async fn check_permission(
                     "behavior": s.behavior,
                 })).collect::<Vec<_>>(),
             }));
-            let rx = register_ask(request_id.clone());
             match tokio::time::timeout(std::time::Duration::from_secs(300), rx).await {
                 Ok(Ok(true)) => {
                     // 异步 Ask→Allow 路径此前完全静默（探索报告确认）——补审计
