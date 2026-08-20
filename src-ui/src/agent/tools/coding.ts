@@ -209,8 +209,96 @@ export function createFsTools(exec: ToolExecutor): Tool[] {
   ];
 }
 
+/** shell 域工具族（S1-2 从 createCodingTools 迁出）——纯机械移动，定义零改写。
+ *  迁出动机同 createFsTools：工具定义与装配分离，行化铺路。*/
+export function createShellTools(exec: ToolExecutor): Tool[] {
+  return [
+    // ── Shell ──
+    defineTool({
+      name: 'run_shell',
+      description:
+        'Execute a shell command and return stdout + stderr. Default timeout 5 min (max 10 min). For long-running commands (builds, servers, watch modes), set runInBackground: true and use bash_output to check progress, bash_wait to wait for completion, or bash_kill to stop. Commands run in the current workspace root by default. IMPORTANT: Do NOT use run_shell for file search, code search, or git operations — use glob (file patterns), search_content (text search), list_directory (directory listing), and the dedicated git_* tools (git_status, git_diff, git_stage, git_commit, git_push, git_pull, git_log, git_checkout, git_create_branch, etc.) instead. run_shell is ONLY for building and testing commands (npm test, cargo build, pytest, etc.).',
+      schema: z.object({
+        command: z.string().describe('The shell command to run (e.g. "npm test", "cargo build", "pytest -x")'),
+        cwd: z
+          .string()
+          .optional()
+          .describe('Optional working directory for the command. Defaults to the current workspace root.'),
+        timeoutMs: z.coerce
+          .number()
+          .int()
+          .max(600000)
+          .optional()
+          .default(300000)
+          .describe('Timeout in milliseconds (default: 300000 = 5 min, max: 600000 = 10 min)'),
+        runInBackground: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe(
+            'Set to true to run in background (returns job ID immediately). Use bash_output(id) to check progress, bash_wait(id) to wait for completion, bash_kill(id) to stop.',
+          ),
+        interpreter: z
+          .enum(['bash', 'pwsh'])
+          .optional()
+          .describe(
+            'Optional interpreter. Default/omit = bundled bash (Unix syntax). Set "pwsh" ONLY for Windows-native tasks bash cannot do (registry queries, ACL, MSI, COM, WMI) — PowerShell syntax required.',
+          ),
+      }),
+      execute: (args, onProgress, signal) => exec('exec_command', args, onProgress, signal),
+    }),
+
+    // ── Shell: 后台任务管理 ──
+    defineTool({
+      name: 'bash_output',
+      description:
+        'Check the output of a background shell job. Returns accumulated stdout/stderr and whether the job is still running or has completed.',
+      schema: z.object({
+        jobId: z.coerce.number().int().describe('The job ID returned by run_shell with runInBackground: true'),
+      }),
+      readOnly: true,
+      execute: (args, onProgress) => exec('bash_output', { jobId: args.jobId }, onProgress),
+    }),
+    defineTool({
+      name: 'bash_kill',
+      description: 'Kill a running background shell job and return any accumulated output.',
+      schema: z.object({
+        jobId: z.coerce.number().int().describe('The job ID returned by run_shell with runInBackground: true'),
+      }),
+      execute: (args, onProgress) =>
+        // 所有权身份优先 _owner_id（bus id — 与 spawn 时的 job owner 对齐）；
+        // 回退 _agent_id（worktree id）兼容旧 job。
+        exec(
+          'bash_kill',
+          {
+            jobId: args.jobId,
+            agentId: (args as { _owner_id?: string })._owner_id ?? (args as { _agent_id?: string })._agent_id,
+          },
+          onProgress,
+        ),
+    }),
+    defineTool({
+      name: 'bash_wait',
+      description:
+        'Block until a background shell job completes (or timeout), then return full output + exit code. Use after run_shell with runInBackground: true to wait for a long-running task.',
+      schema: z.object({
+        jobId: z.coerce.number().int().describe('The job ID returned by run_shell with runInBackground: true'),
+        timeoutMs: z.coerce
+          .number()
+          .int()
+          .optional()
+          .describe('Maximum wait time in milliseconds (default: 60000 = 60s, max: 600000 = 10min)'),
+      }),
+      readOnly: true,
+      execute: (args, onProgress) => exec('bash_wait', { jobId: args.jobId, timeoutMs: args.timeoutMs }, onProgress),
+    }),
+  ];
+}
+
 export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[] {
   return [
+    // Shell 域工具族（S1-2 迁出至 createShellTools）
+    ...createShellTools(exec),
     // 文件操作（fs 域工具族，S1-2 迁出至 createFsTools）
     ...createFsTools(exec),
     // ── 用户交互 ──
@@ -384,86 +472,6 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
       }),
       readOnly: true,
       execute: (args, onProgress) => exec('search_content', args, onProgress),
-    }),
-
-    // ── Shell ──
-    defineTool({
-      name: 'run_shell',
-      description:
-        'Execute a shell command and return stdout + stderr. Default timeout 5 min (max 10 min). For long-running commands (builds, servers, watch modes), set runInBackground: true and use bash_output to check progress, bash_wait to wait for completion, or bash_kill to stop. Commands run in the current workspace root by default. IMPORTANT: Do NOT use run_shell for file search, code search, or git operations — use glob (file patterns), search_content (text search), list_directory (directory listing), and the dedicated git_* tools (git_status, git_diff, git_stage, git_commit, git_push, git_pull, git_log, git_checkout, git_create_branch, etc.) instead. run_shell is ONLY for building and testing commands (npm test, cargo build, pytest, etc.).',
-      schema: z.object({
-        command: z.string().describe('The shell command to run (e.g. "npm test", "cargo build", "pytest -x")'),
-        cwd: z
-          .string()
-          .optional()
-          .describe('Optional working directory for the command. Defaults to the current workspace root.'),
-        timeoutMs: z.coerce
-          .number()
-          .int()
-          .max(600000)
-          .optional()
-          .default(300000)
-          .describe('Timeout in milliseconds (default: 300000 = 5 min, max: 600000 = 10 min)'),
-        runInBackground: z
-          .boolean()
-          .optional()
-          .default(false)
-          .describe(
-            'Set to true to run in background (returns job ID immediately). Use bash_output(id) to check progress, bash_wait(id) to wait for completion, bash_kill(id) to stop.',
-          ),
-        interpreter: z
-          .enum(['bash', 'pwsh'])
-          .optional()
-          .describe(
-            'Optional interpreter. Default/omit = bundled bash (Unix syntax). Set "pwsh" ONLY for Windows-native tasks bash cannot do (registry queries, ACL, MSI, COM, WMI) — PowerShell syntax required.',
-          ),
-      }),
-      execute: (args, onProgress, signal) => exec('exec_command', args, onProgress, signal),
-    }),
-
-    // ── Shell: 后台任务管理 ──
-    defineTool({
-      name: 'bash_output',
-      description:
-        'Check the output of a background shell job. Returns accumulated stdout/stderr and whether the job is still running or has completed.',
-      schema: z.object({
-        jobId: z.coerce.number().int().describe('The job ID returned by run_shell with runInBackground: true'),
-      }),
-      readOnly: true,
-      execute: (args, onProgress) => exec('bash_output', { jobId: args.jobId }, onProgress),
-    }),
-    defineTool({
-      name: 'bash_kill',
-      description: 'Kill a running background shell job and return any accumulated output.',
-      schema: z.object({
-        jobId: z.coerce.number().int().describe('The job ID returned by run_shell with runInBackground: true'),
-      }),
-      execute: (args, onProgress) =>
-        // 所有权身份优先 _owner_id（bus id — 与 spawn 时的 job owner 对齐）；
-        // 回退 _agent_id（worktree id）兼容旧 job。
-        exec(
-          'bash_kill',
-          {
-            jobId: args.jobId,
-            agentId: (args as { _owner_id?: string })._owner_id ?? (args as { _agent_id?: string })._agent_id,
-          },
-          onProgress,
-        ),
-    }),
-    defineTool({
-      name: 'bash_wait',
-      description:
-        'Block until a background shell job completes (or timeout), then return full output + exit code. Use after run_shell with runInBackground: true to wait for a long-running task.',
-      schema: z.object({
-        jobId: z.coerce.number().int().describe('The job ID returned by run_shell with runInBackground: true'),
-        timeoutMs: z.coerce
-          .number()
-          .int()
-          .optional()
-          .describe('Maximum wait time in milliseconds (default: 60000 = 60s, max: 600000 = 10min)'),
-      }),
-      readOnly: true,
-      execute: (args, onProgress) => exec('bash_wait', { jobId: args.jobId, timeoutMs: args.timeoutMs }, onProgress),
     }),
 
     // ── Git ──
