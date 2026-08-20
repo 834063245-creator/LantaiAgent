@@ -1,0 +1,121 @@
+// Copyright (c) 2026 Wenbing Jing. MIT License.
+// SPDX-License-Identifier: MIT.
+
+// S2-2 patch-loader 测试 — 设计件 §3 S2-2 验收的 TS 半边：
+//   合法 patch 生效 / 坏 yml / 未知 id / HTTP 异常 → store error + factory
+//   兜底 / 404 → factory 非错误。fetch 注入 mock（loader 同款测试面）；
+//   origin 显式传入绕过 RPC 解析。
+
+import { beforeEach, describe, expect, it } from 'vitest';
+import { compositionOrigin, type FetchTextLike, loadCompositionPatch } from '../src/composition/patch-loader';
+import { factoryComposition } from '../src/composition/roster';
+import { builtinToolRows } from '../src/composition/tool-rows';
+import { useCompositionStore } from '../src/state/composition-store';
+
+const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r.id);
+
+/** 文本响应 mock（404/500/200+yml 三形状）。 */
+function textResponse(status: number, body = ''): FetchTextLike {
+  return async () => ({ ok: status >= 200 && status < 300, status, text: async () => body });
+}
+
+const VALID_PATCH = [
+  '# 用户层组合 patch',
+  'tools:',
+  '  - id: builtin/shell',
+  '    disabled: true',
+  'prompt:',
+  '  - id: behavior-rules',
+  '    text: |',
+  '      【覆盖后的规则】',
+  '  - insert:',
+  '      - id: team-convention',
+  '        after: collaboration-mode',
+  '        text: |',
+  '          ## 团队约定',
+].join('\n');
+
+const ORIGIN = compositionOrigin(14570);
+
+describe('composition/patch-loader（S2-2 用户层通道）', () => {
+  beforeEach(() => {
+    useCompositionStore.setState({
+      status: 'factory',
+      patchOrigin: undefined,
+      error: undefined,
+      resolved: factoryComposition(),
+    });
+  });
+
+  it('compositionOrigin 构造', () => {
+    expect(compositionOrigin(14570)).toBe('http://127.0.0.1:14570/composition');
+  });
+
+  it('合法 patch：yml 文本 → 解析 → store ok + 诊断透出', async () => {
+    await loadCompositionPatch({ origin: ORIGIN, fetchImpl: textResponse(200, VALID_PATCH) });
+    const s = useCompositionStore.getState();
+    expect(s.status).toBe('ok');
+    expect(s.patchOrigin).toBe('roster.patch.yml');
+    expect(ids(s.resolved.tools)).not.toContain('builtin/shell');
+    expect(s.resolved.diagnostics.disabled).toContain('builtin/shell');
+    expect(s.resolved.diagnostics.overridden).toContain('behavior-rules');
+    expect(s.resolved.diagnostics.inserted).toContain('team-convention');
+    // 覆盖段生效（完整面 ctx 下 render 新文本）
+    const section = s.resolved.prompt.find((x) => x.id === 'behavior-rules');
+    expect(section?.render({ graphData: { nodes: [] }, projectPath: '' })).toContain('【覆盖后的规则】');
+  });
+
+  it('404：无用户层 = factory 非错误', async () => {
+    await loadCompositionPatch({ origin: ORIGIN, fetchImpl: textResponse(404) });
+    const s = useCompositionStore.getState();
+    expect(s.status).toBe('factory');
+    expect(s.error).toBeUndefined();
+    expect(ids(s.resolved.tools)).toEqual(ids(builtinToolRows()));
+  });
+
+  it('HTTP 异常（500）：error 可见 + factory 兜底', async () => {
+    await loadCompositionPatch({ origin: ORIGIN, fetchImpl: textResponse(500) });
+    const s = useCompositionStore.getState();
+    expect(s.status).toBe('error');
+    expect(s.error).toContain('500');
+    expect(ids(s.resolved.tools)).toEqual(ids(builtinToolRows()));
+  });
+
+  it('坏 yml（语法错误）：error 可见 + factory 兜底', async () => {
+    await loadCompositionPatch({
+      origin: ORIGIN,
+      fetchImpl: textResponse(200, 'tools: [unclosed'),
+    });
+    const s = useCompositionStore.getState();
+    expect(s.status).toBe('error');
+    expect(s.error).toContain('YAML');
+    expect(ids(s.resolved.tools)).toEqual(ids(builtinToolRows()));
+  });
+
+  it('校验失败（越域 text）：error 可见 + factory 兜底', async () => {
+    const badShape = ['tools:', '  - id: builtin/shell', '    disabled: true', '    text: 越域字段'].join('\n');
+    await loadCompositionPatch({ origin: ORIGIN, fetchImpl: textResponse(200, badShape) });
+    const s = useCompositionStore.getState();
+    expect(s.status).toBe('error');
+    expect(ids(s.resolved.tools)).toEqual(ids(builtinToolRows()));
+  });
+
+  it('解析失败（未知 id）：error 可见 + factory 兜底（all-or-nothing）', async () => {
+    const unknownId = ['tools:', '  - id: builtin/nope', '    disabled: true'].join('\n');
+    await loadCompositionPatch({ origin: ORIGIN, fetchImpl: textResponse(200, unknownId) });
+    const s = useCompositionStore.getState();
+    expect(s.status).toBe('error');
+    expect(s.error).toContain('builtin/nope');
+    expect(ids(s.resolved.tools)).toEqual(ids(builtinToolRows()));
+  });
+
+  it('永不 reject：fetch 网络错 → 捕获 + error 可见', async () => {
+    const boom: FetchTextLike = async () => {
+      throw new Error('network down');
+    };
+    await expect(loadCompositionPatch({ origin: ORIGIN, fetchImpl: boom })).resolves.toBeUndefined();
+    const s = useCompositionStore.getState();
+    expect(s.status).toBe('error');
+    expect(s.error).toContain('network down');
+  });
+});

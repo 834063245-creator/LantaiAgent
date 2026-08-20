@@ -28,6 +28,7 @@ import { ChatCore } from './app/chat/chat-core';
 import { useCoreStore } from './app/chat/core-instance';
 import { useShellStore } from './app/shell-store';
 import { isMockMode } from './bridge';
+import { loadCompositionPatch } from './composition/patch-loader';
 import { initCordisKernel } from './cordis/boot';
 import { setLang } from './i18n';
 import { WorkspaceStateMachine } from './lifecycle/state-machine';
@@ -413,9 +414,12 @@ async function setupPlaceholderAgent(): Promise<void> {
 
 // ── 初始化 ──
 
-async function init(): Promise<void> {
+async function init(compositionReady?: Promise<void>): Promise<void> {
   // 禁用浏览器原生右键菜单（自定义 ContextMenu 不受影响）
   document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  // 用户层组合 patch 必须先于冷启动装配解析完成（S2-2；永不 reject）
+  if (compositionReady) await compositionReady;
 
   setLang(loadSettings().display.language);
   document.documentElement.style.setProperty('--font-scale', String(loadSettings().display.fontScale));
@@ -906,4 +910,10 @@ createRoot(document.getElementById('app-root')!).render(createElement(App));
 // ── 外部插件装载（WO-S0B）：异步不阻塞首帧；结果只进 plugin-store，不炸应用 ──
 void loadExternalPlugins(pluginKernelRoot);
 
-init();
+// ── 用户层组合 patch 装载（S2-2）：启动期一次解析 → composition-store。
+// promise 交给 init()——冷启动 switchWorkspace（→ setupAgent 读 store）前
+// await，保证第一个 Agent 拿到最终组合；装载失败内部已兜底（factory +
+// 可见），此处 await 永不 reject。 ──
+const compositionReady = loadCompositionPatch();
+
+init(compositionReady);

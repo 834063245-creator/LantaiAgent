@@ -43,6 +43,21 @@ pub(crate) fn plugins_root() -> PathBuf {
     PathBuf::from(home).join(".hologram").join("plugins")
 }
 
+/// 组合 patch 根目录（S2-2）：用户主目录下 `.hologram/composition/`。
+/// 用户层 roster.patch.yml 的通道根；`HOLOGRAM_COMPOSITION_ROOT` 环境变量
+/// 可覆盖（镜像 HOLOGRAM_PLUGINS_ROOT 的测试隔离/重定位语义）。
+pub(crate) fn composition_root() -> PathBuf {
+    if let Some(custom) = std::env::var_os("HOLOGRAM_COMPOSITION_ROOT") {
+        if !custom.is_empty() {
+            return PathBuf::from(custom);
+        }
+    }
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_else(|_| ".".to_string());
+    PathBuf::from(home).join(".hologram").join("composition")
+}
+
 /// 最小 percent 解码（解码失败 → None，整条请求拒绝）。
 fn percent_decode(s: &str) -> Option<String> {
     let bytes = s.as_bytes();
@@ -119,6 +134,8 @@ fn plugin_mime(path: &Path) -> &'static str {
         Some("json") => "application/json",
         Some("css") => "text/css",
         Some("wasm") => "application/wasm",
+        // 组合 patch 文件（S2-2）：loader 自行 parse 文本，无严格 MIME 消费方
+        Some("yml") | Some("yaml") => "text/plain; charset=utf-8",
         _ => "application/octet-stream",
     }
 }
@@ -180,6 +197,54 @@ pub(crate) async fn serve_plugin_path(url_path: &str) -> Response<BoxBody> {
 /// 非 GET 的 /plugins/* → 405（JSON 错误体，CORS 头齐全）。
 pub(crate) fn method_not_allowed() -> Response<BoxBody> {
     json_error(StatusCode::METHOD_NOT_ALLOWED, "method_not_allowed", "插件资产通道仅支持 GET")
+}
+
+/// 组合 patch 路由主入口（S2-2，GET /composition/<path>）。
+/// 与插件通道同一套安全件（resolve_asset 遍历拒绝 + canonicalize 前缀 +
+/// 32MB 上限 + 错误 JSON 形状）；无目录索引——本通道只服务固定文件名
+/// （roster.patch.yml），空路径直接 404。文件 IO 走 spawn_blocking。
+pub(crate) async fn serve_composition_path(url_path: &str) -> Response<BoxBody> {
+    if url_path.is_empty() {
+        return json_error(StatusCode::NOT_FOUND, "not_found", "组合 patch 路径为空");
+    }
+    let root = composition_root();
+    match resolve_asset(&root, url_path) {
+        ResolveOutcome::Forbidden => {
+            json_error(StatusCode::FORBIDDEN, "forbidden", "路径遍历或非法路径被拒绝")
+        }
+        ResolveOutcome::Missing => json_error(StatusCode::NOT_FOUND, "not_found", "组合 patch 不存在"),
+        ResolveOutcome::Found(path) => {
+            let mime = plugin_mime(&path);
+            let read = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, AssetReadError> {
+                let meta = std::fs::metadata(&path).map_err(AssetReadError::Io)?;
+                if !meta.is_file() {
+                    return Err(AssetReadError::NotAFile);
+                }
+                if meta.len() > MAX_PLUGIN_FILE_BYTES {
+                    return Err(AssetReadError::TooLarge);
+                }
+                std::fs::read(&path).map_err(AssetReadError::Io)
+            })
+            .await;
+            match read {
+                Ok(Ok(bytes)) => asset_response(StatusCode::OK, mime, Bytes::from(bytes)),
+                Ok(Err(AssetReadError::NotAFile)) => {
+                    json_error(StatusCode::NOT_FOUND, "not_found", "不是常规文件")
+                }
+                Ok(Err(AssetReadError::TooLarge)) => {
+                    json_error(StatusCode::PAYLOAD_TOO_LARGE, "too_large", "组合 patch 超过 32MB 上限")
+                }
+                Ok(Err(AssetReadError::Io(e))) => {
+                    eprintln!("[plugin_assets] 组合 patch 读取失败: {e}");
+                    json_error(StatusCode::INTERNAL_SERVER_ERROR, "internal", "组合 patch 读取失败")
+                }
+                Err(join_err) => {
+                    eprintln!("[plugin_assets] 组合 patch 读取任务失败: {join_err}");
+                    json_error(StatusCode::INTERNAL_SERVER_ERROR, "internal", "组合 patch 读取任务失败")
+                }
+            }
+        }
+    }
 }
 
 /// 目录索引：含 manifest.json 的子目录相对路径（`/` 分隔，排序稳定）。
@@ -440,5 +505,104 @@ mod tests {
         });
         std::env::remove_var("HOLOGRAM_PLUGINS_ROOT");
         let _ = std::fs::remove_dir_all(root.parent().unwrap());
+    }
+
+    // ── S2-2 组合 patch 通道 ──
+
+    fn make_composition_root(tag: &str) -> std::path::PathBuf {
+        let tmp =
+            std::env::temp_dir().join(format!("hologram_composition_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("roster.patch.yml"), b"tools:\n  - id: builtin/shell\n    disabled: true\n").unwrap();
+        tmp
+    }
+
+    /// S2-2 语义：composition 根解析 + 遍历拒绝（含编码形态）+ yml MIME。
+    #[test]
+    fn composition_route_semantics() {
+        let root = make_composition_root("semantics");
+        assert!(matches!(resolve_asset(&root, "roster.patch.yml"), ResolveOutcome::Found(_)));
+        assert!(matches!(resolve_asset(&root, "missing.yml"), ResolveOutcome::Missing));
+        assert!(matches!(resolve_asset(&root, "../escape.yml"), ResolveOutcome::Forbidden));
+        assert!(matches!(resolve_asset(&root, "%2e%2e/escape.yml"), ResolveOutcome::Forbidden));
+        assert!(matches!(resolve_asset(&root, "roster.patch.yml/.."), ResolveOutcome::Forbidden));
+        assert_eq!(
+            plugin_mime(std::path::Path::new("c/roster.patch.yml")),
+            "text/plain; charset=utf-8"
+        );
+        assert_eq!(
+            plugin_mime(std::path::Path::new("c/roster.patch.yaml")),
+            "text/plain; charset=utf-8"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// S2-2 HTTP 端到端：/composition/* 经真实 hyper 栈（200+MIME / 404 /
+    /// 403 遍历 / 空路径 404 / 非 GET 405）。
+    #[test]
+    fn composition_http_end_to_end() {
+        use std::io::{Read, Write};
+        let root = make_composition_root("http");
+
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            std::env::set_var("HOLOGRAM_COMPOSITION_ROOT", &root);
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let client = reqwest::Client::builder().build().unwrap();
+            let shutdown = std::sync::atomic::AtomicBool::new(false);
+            let server_handle =
+                tokio::spawn(async move { crate::llm_proxy::serve_listener(&listener, client, &shutdown).await });
+
+            let get = |path: &str| {
+                format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nconnection: close\r\n\r\n")
+            };
+            let cases: Vec<(&str, u16, &str)> = vec![
+                ("/composition/roster.patch.yml", 200, "text/plain; charset=utf-8"),
+                ("/composition/missing.yml", 404, "application/json"),
+                ("/composition/%2e%2e/escape.yml", 403, "application/json"),
+                ("/composition/", 404, "application/json"),
+            ];
+            for (path, want_status, want_mime) in cases {
+                let mut probe = std::net::TcpStream::connect(addr).unwrap();
+                probe.set_read_timeout(Some(std::time::Duration::from_secs(8))).unwrap();
+                probe.write_all(get(path).as_bytes()).unwrap();
+                probe.flush().unwrap();
+                let mut buf = String::new();
+                let res = probe.read_to_string(&mut buf);
+                assert!(res.is_ok(), "{path} 读取超时/失败: {res:?} 已收: {buf}");
+                assert!(
+                    buf.starts_with(&format!("HTTP/1.1 {want_status}")),
+                    "{path} 期望 {want_status}: {buf}"
+                );
+                let lower = buf.to_ascii_lowercase();
+                assert!(lower.contains(&format!("content-type: {want_mime}")), "{path} MIME: {buf}");
+                if want_status >= 400 {
+                    assert!(buf.contains("\"error\":"), "{path} 错误体必须是 JSON: {buf}");
+                }
+            }
+
+            // 非 GET → 405 JSON（与插件通道同款纪律）
+            let mut probe = std::net::TcpStream::connect(addr).unwrap();
+            probe.set_read_timeout(Some(std::time::Duration::from_secs(8))).unwrap();
+            probe
+                .write_all(
+                    format!("POST /composition/roster.patch.yml HTTP/1.1\r\nHost: {addr}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n").as_bytes(),
+                )
+                .unwrap();
+            probe.flush().unwrap();
+            let mut buf = String::new();
+            probe.read_to_string(&mut buf).unwrap();
+            assert!(buf.starts_with("HTTP/1.1 405"), "POST 组合路径应 405: {buf}");
+
+            server_handle.abort();
+        });
+        std::env::remove_var("HOLOGRAM_COMPOSITION_ROOT");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
