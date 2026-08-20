@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ToolExecutor } from '../src/agent/tool';
 import { builtinToolRows } from '../src/composition/tool-rows';
 
-// ── S1-2 行表自检：已迁族（fs、shell、git、search）──
+// ── S1-2 行表自检：coding 面已全族迁入（fs/shell/git/search/web/agent-isolation/ask）──
 // 行表是 standard preset 装配序的事实来源（表序 = 组合序）。这里钉住：
 //   1. 行 id 唯一且稳定（未来 preset 按 id 引用行）；
 //   2. fs 行产出 = 迁移前 createCodingTools 内的现行表序（机械重述）；
@@ -51,10 +51,33 @@ const GIT_TOOL_ORDER = [
 /** search 族现行表序（单工具）。 */
 const SEARCH_TOOL_ORDER = ['search_content'];
 
+/** web 族现行表序（单工具）。 */
+const WEB_TOOL_ORDER = ['web_fetch'];
+
+/** agent-isolation 族现行表序（Phase 2c 段）。 */
+const AGENT_ISOLATION_TOOL_ORDER = [
+  'agent_isolation_create',
+  'agent_isolation_diff',
+  'agent_isolation_merge',
+  'agent_isolation_discard',
+  'agent_isolation_status',
+];
+
+/** ask 族现行表序（单工具，常驻可见）。 */
+const ASK_TOOL_ORDER = ['ask_user'];
+
 describe('composition/tool-rows（S1-2 行表）', () => {
-  it('行 id 唯一且稳定，表序 = 组合序（fs → shell → git → search）', () => {
+  it('行 id 唯一且稳定，表序 = 组合序（fs → shell → git → search → web → agent-isolation → ask）', () => {
     const ids = builtinToolRows().map((r) => r.id);
-    expect(ids).toEqual(['builtin/fs', 'builtin/shell', 'builtin/git', 'builtin/search']);
+    expect(ids).toEqual([
+      'builtin/fs',
+      'builtin/shell',
+      'builtin/git',
+      'builtin/search',
+      'builtin/web',
+      'builtin/agent-isolation',
+      'builtin/ask',
+    ]);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
@@ -86,6 +109,27 @@ describe('composition/tool-rows（S1-2 行表）', () => {
     expect(names).toEqual(SEARCH_TOOL_ORDER);
   });
 
+  it('web 行产出单工具 web_fetch', () => {
+    const [, , , , webRow] = builtinToolRows();
+    expect(webRow.id).toBe('builtin/web');
+    const names = webRow.factory({ codingExec: exec }).map((t) => t.name());
+    expect(names).toEqual(WEB_TOOL_ORDER);
+  });
+
+  it('agent-isolation 行产出 5 个工具，序 = 迁移前现行表序', () => {
+    const [, , , , , isoRow] = builtinToolRows();
+    expect(isoRow.id).toBe('builtin/agent-isolation');
+    const names = isoRow.factory({ codingExec: exec }).map((t) => t.name());
+    expect(names).toEqual(AGENT_ISOLATION_TOOL_ORDER);
+  });
+
+  it('ask 行产出单工具 ask_user（ui 缺帐仍可注册）', () => {
+    const [, , , , , , askRow] = builtinToolRows();
+    expect(askRow.id).toBe('builtin/ask');
+    const names = askRow.factory({}).map((t) => t.name());
+    expect(names).toEqual(ASK_TOOL_ORDER);
+  });
+
   it('行 factory 每次调用产出独立实例（无共享可变状态）', () => {
     const row = builtinToolRows()[0];
     const a = row.factory({ codingExec: exec });
@@ -103,7 +147,9 @@ describe('composition/tool-rows（S1-2 行表）', () => {
       ...SHELL_TOOL_ORDER,
       ...GIT_TOOL_ORDER,
       ...SEARCH_TOOL_ORDER,
-      'ask_user',
+      ...WEB_TOOL_ORDER,
+      ...AGENT_ISOLATION_TOOL_ORDER,
+      ...ASK_TOOL_ORDER,
       'read_file',
     ]) {
       expect(names).toContain(n);

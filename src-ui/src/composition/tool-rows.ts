@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 内置工具行表（S1-2）—— composition 架构的装配数据源。已迁入：fs、shell、git、search。
+// 内置工具行表（S1-2）—— composition 架构的装配数据源。
+// 已迁入：fs、shell、git、search、web、agent-isolation、ask（coding 面全部迁完）。
 //
 // 行（row）= 装配的最小单位：id 寻址 + factory 延迟实例化。
 // 表序 = 组合序（standard preset 装配序的事实来源）——前缀缓存语义的根基。
@@ -19,13 +20,25 @@
 // 与注册序无关）——fs 行迁不改变可见面，零漂移按构造成立。
 
 import type { Tool, ToolExecutor } from '../agent/tool';
-import { createFsTools, createGitTools, createSearchTools, createShellTools } from '../agent/tools/coding';
+import type { CodingToolsUI } from '../agent/tools/coding';
+import {
+  createAgentIsolationTools,
+  createAskUserTools,
+  createFsTools,
+  createGitTools,
+  createSearchTools,
+  createShellTools,
+  createWebTools,
+} from '../agent/tools/coding';
 
 /** 行装配上下文 — buildToolRegistry 提供的运行时依赖。
- *  S1-2 起随族迁入逐字段扩展（shell/git/search 复用 codingExec；
- *  task 族加 taskManager、agent 族加 pool/spawner……）。 */
+ *  S1-2 起随族迁入逐字段扩展（fs/shell/git/search/web/isolation 复用
+ *  codingExec；ask 族用 ui；S1-3 起 task 族加 taskManager、agent 族
+ *  加 pool/spawner……）。 */
 export interface ToolRowContext {
   codingExec: ToolExecutor;
+  /** ask_user 的 UI 回调（builder 从 BuilderDeps.onAskUser 注入）。 */
+  ui?: CodingToolsUI;
 }
 
 /** 内置工具行：id 寻址 + factory 延迟实例化。
@@ -68,9 +81,28 @@ const SEARCH_ROW: BuiltinToolRow = {
   factory: (ctx) => createSearchTools(ctx.codingExec),
 };
 
+/** web 族行（S1-2 第五批迁入）——单工具 web_fetch。 */
+const WEB_ROW: BuiltinToolRow = {
+  id: 'builtin/web',
+  factory: (ctx) => createWebTools(ctx.codingExec),
+};
+
+/** agent-isolation 族行（S1-2 第六批迁入）——worktree 隔离 5 工具。 */
+const AGENT_ISOLATION_ROW: BuiltinToolRow = {
+  id: 'builtin/agent-isolation',
+  factory: (ctx) => createAgentIsolationTools(ctx.codingExec),
+};
+
+/** ask 族行（S1-2 第七批迁入）——常驻 ask_user（唯一模型可见的细粒度名）。
+ *  ui 缺帐时工具仍注册，execute 返回「UI 未接线」错误（原行为保留）。 */
+const ASK_ROW: BuiltinToolRow = {
+  id: 'builtin/ask',
+  factory: (ctx) => createAskUserTools(ctx.ui),
+};
+
 /** 内置行表 — 表序 = 组合序。S1-2 起逐族迁入
  *  （fs → shell → git → search → graph/ops/lsp → agent → 其余）；
  *  S1-3 起 buildToolRegistry 末端整体改读本表并加名字冲突装载期拒绝。 */
 export function builtinToolRows(): BuiltinToolRow[] {
-  return [FS_ROW, SHELL_ROW, GIT_ROW, SEARCH_ROW];
+  return [FS_ROW, SHELL_ROW, GIT_ROW, SEARCH_ROW, WEB_ROW, AGENT_ISOLATION_ROW, ASK_ROW];
 }

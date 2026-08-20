@@ -34,6 +34,7 @@ import { createSkillTool } from '../skills';
 import { createTaskTools } from '../task';
 import type { Tool, ToolExecutor } from '../tool';
 import { agentInvoke, ToolRegistry } from '../tool';
+import type { CodingToolsUI } from '../tools/coding';
 import { createCodingTools } from '../tools/coding';
 import { defineTool } from '../tools/define-tool';
 import { convergeRegistry } from '../tools/domains';
@@ -435,14 +436,15 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
     return typeof result === 'string' ? result : JSON.stringify(result);
   };
   // ── 内置工具行表装配（composition/tool-rows，S1-2 起逐族迁入；表序 = 组合序）──
-  // 已迁族：fs、shell、git、search（行 factory 与 createCodingTools 内对应面同源），
+  // coding 面已全部迁完（fs/shell/git/search/web/agent-isolation/ask），
   // 注册以行实例为准。createCodingTools 仍返回完整 coding 面供测试/直接
-  // 消费，此处按行内已注册名去重防双注册——S1-3 全族迁完后此去重随
-  // 硬编码装配一起退役。
-  const rowTools = builtinToolRows().flatMap((row) => row.factory({ codingExec }));
+  // 消费，此处按行内已注册名去重防双注册——S1-3 起装配末端整体改读
+  // 行表，此去重随 createCodingTools 兜底一起退役。
+  const codingUI: CodingToolsUI = { askUser: deps.onAskUser ?? (() => {}) };
+  const rowTools = builtinToolRows().flatMap((row) => row.factory({ codingExec, ui: codingUI }));
   const rowToolNames = new Set(rowTools.map((t) => t.name()));
   for (const tool of rowTools) registry.register(tool);
-  for (const tool of createCodingTools(codingExec, { askUser: deps.onAskUser ?? (() => {}) })) {
+  for (const tool of createCodingTools(codingExec, codingUI)) {
     if (rowToolNames.has(tool.name())) continue; // 行表已注册（同 factory，定义等价）
     registry.register(tool);
   }

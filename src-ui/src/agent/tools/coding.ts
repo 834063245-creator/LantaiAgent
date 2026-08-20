@@ -551,16 +551,84 @@ export function createSearchTools(exec: ToolExecutor): Tool[] {
   ];
 }
 
-export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[] {
+/** web 域工具族（S1-2 从 createCodingTools 迁出）——纯机械移动，定义零改写。
+ *  含原位的 Web Search 已禁用历史注释；迁出动机同 createFsTools。*/
+export function createWebTools(exec: ToolExecutor): Tool[] {
   return [
-    // 文件操作（fs 域工具族，S1-2 迁出至 createFsTools）
-    ...createFsTools(exec),
-    // Shell 域工具族（S1-2 迁出至 createShellTools）
-    ...createShellTools(exec),
-    // Git 域工具族（S1-2 迁出至 createGitTools）
-    ...createGitTools(exec),
-    // 代码搜索（search 域工具族，S1-2 迁出至 createSearchTools）
-    ...createSearchTools(exec),
+    // ── Web Search — 已禁用 (2026-07)
+    // DDG HTML scrape 被反爬封锁，Bing 中文结果不可用，国内无免费搜索 API。
+    // 保留代码骨架，待有可用后端时恢复。
+    // 启用步骤: 1) 取消注释 2) Rust 端接 Brave/Tavily/SearXNG API
+
+    // ── Web 抓取 ──
+    defineTool({
+      name: 'web_fetch',
+      description:
+        'Fetch a URL and return its text content. HTML pages are reduced to readable text (scripts, styles, tags stripped). JSON / plain text / markdown pass through verbatim. Use to read documentation, API responses, or source files hosted on the web. 15s timeout, 1 MiB max.',
+      schema: z.object({
+        url: z.string().describe('The URL to fetch (HTTPS or HTTP only)'),
+      }),
+      readOnly: true,
+      execute: (args, onProgress) => exec('web_fetch', args, onProgress),
+    }),
+  ];
+}
+
+/** agent-isolation 工具族（S1-2 从 createCodingTools 迁出）——纯机械移动，定义零改写。*/
+export function createAgentIsolationTools(exec: ToolExecutor): Tool[] {
+  return [
+    // ── Phase 2c: Agent Worktree 隔离（Tauri 命令已存在） ──
+    defineTool({
+      name: 'agent_isolation_create',
+      description:
+        'Create an isolated git worktree for a sub-agent to work in. Returns the isolation path. Use before spawning a sub-agent that mutates files — prevents conflicts when multiple agents modify the same repo concurrently.',
+      schema: z.object({
+        agent_id: z.string().describe('Identifier for this isolation workspace'),
+      }),
+      execute: (args, onProgress) => exec('agent_isolation_create', args, onProgress),
+    }),
+    defineTool({
+      name: 'agent_isolation_diff',
+      description:
+        'Show the diff of changes made in an isolation workspace. ' +
+        'Diffs over ~8000 chars are spilled to .hologram/spill/ — the result then carries the file path; read it with read_file to get the full diff.',
+      schema: z.object({
+        agent_id: z.string().describe('Isolation workspace to diff'),
+      }),
+      readOnly: true,
+      execute: (args, onProgress) => exec('agent_isolation_diff', args, onProgress),
+    }),
+    defineTool({
+      name: 'agent_isolation_merge',
+      description: 'Merge changes from an isolation workspace back into the main repository.',
+      schema: z.object({
+        agent_id: z.string().describe('Isolation workspace to merge'),
+      }),
+      execute: (args, onProgress) => exec('agent_isolation_merge', args, onProgress),
+    }),
+    defineTool({
+      name: 'agent_isolation_discard',
+      description:
+        "Discard an isolation workspace and delete its worktree. Use when the sub-agent's changes are no longer needed.",
+      schema: z.object({
+        agent_id: z.string().describe('Isolation workspace to discard'),
+      }),
+      execute: (args, onProgress) => exec('agent_isolation_discard', args, onProgress),
+    }),
+    defineTool({
+      name: 'agent_isolation_status',
+      description: 'List all isolation workspaces and their current status.',
+      schema: z.object({}),
+      readOnly: true,
+      execute: (args, onProgress) => exec('agent_isolation_status', args, onProgress),
+    }),
+  ];
+}
+
+/** ask 工具族（S1-2 从 createCodingTools 迁出）——纯机械移动，定义零改写。
+ *  ui 缺帐时 execute 返回“UI 未接线”错误（原行为保留）。*/
+export function createAskUserTools(ui?: CodingToolsUI): Tool[] {
+  return [
     // ── 用户交互 ──
     defineTool({
       name: 'ask_user',
@@ -668,68 +736,24 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
         return JSON.stringify(multi ? { answers: ans } : { answer: ans[0] ?? null });
       },
     }),
+  ];
+}
 
-    // ── Web Search — 已禁用 (2026-07)
-    // DDG HTML scrape 被反爬封锁，Bing 中文结果不可用，国内无免费搜索 API。
-    // 保留代码骨架，待有可用后端时恢复。
-    // 启用步骤: 1) 取消注释 2) Rust 端接 Brave/Tavily/SearXNG API
-
-    // ── Web 抓取 ──
-    defineTool({
-      name: 'web_fetch',
-      description:
-        'Fetch a URL and return its text content. HTML pages are reduced to readable text (scripts, styles, tags stripped). JSON / plain text / markdown pass through verbatim. Use to read documentation, API responses, or source files hosted on the web. 15s timeout, 1 MiB max.',
-      schema: z.object({
-        url: z.string().describe('The URL to fetch (HTTPS or HTTP only)'),
-      }),
-      readOnly: true,
-      execute: (args, onProgress) => exec('web_fetch', args, onProgress),
-    }),
-
-    // ── Phase 2c: Agent Worktree 隔离（Tauri 命令已存在） ──
-    defineTool({
-      name: 'agent_isolation_create',
-      description:
-        'Create an isolated git worktree for a sub-agent to work in. Returns the isolation path. Use before spawning a sub-agent that mutates files — prevents conflicts when multiple agents modify the same repo concurrently.',
-      schema: z.object({
-        agent_id: z.string().describe('Identifier for this isolation workspace'),
-      }),
-      execute: (args, onProgress) => exec('agent_isolation_create', args, onProgress),
-    }),
-    defineTool({
-      name: 'agent_isolation_diff',
-      description:
-        'Show the diff of changes made in an isolation workspace. ' +
-        'Diffs over ~8000 chars are spilled to .hologram/spill/ — the result then carries the file path; read it with read_file to get the full diff.',
-      schema: z.object({
-        agent_id: z.string().describe('Isolation workspace to diff'),
-      }),
-      readOnly: true,
-      execute: (args, onProgress) => exec('agent_isolation_diff', args, onProgress),
-    }),
-    defineTool({
-      name: 'agent_isolation_merge',
-      description: 'Merge changes from an isolation workspace back into the main repository.',
-      schema: z.object({
-        agent_id: z.string().describe('Isolation workspace to merge'),
-      }),
-      execute: (args, onProgress) => exec('agent_isolation_merge', args, onProgress),
-    }),
-    defineTool({
-      name: 'agent_isolation_discard',
-      description:
-        "Discard an isolation workspace and delete its worktree. Use when the sub-agent's changes are no longer needed.",
-      schema: z.object({
-        agent_id: z.string().describe('Isolation workspace to discard'),
-      }),
-      execute: (args, onProgress) => exec('agent_isolation_discard', args, onProgress),
-    }),
-    defineTool({
-      name: 'agent_isolation_status',
-      description: 'List all isolation workspaces and their current status.',
-      schema: z.object({}),
-      readOnly: true,
-      execute: (args, onProgress) => exec('agent_isolation_status', args, onProgress),
-    }),
+export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[] {
+  return [
+    // 文件操作（fs 域工具族，S1-2 迁出至 createFsTools）
+    ...createFsTools(exec),
+    // Shell 域工具族（S1-2 迁出至 createShellTools）
+    ...createShellTools(exec),
+    // Git 域工具族（S1-2 迁出至 createGitTools）
+    ...createGitTools(exec),
+    // 代码搜索（search 域工具族，S1-2 迁出至 createSearchTools）
+    ...createSearchTools(exec),
+    // Web 抓取（web 域工具族，S1-2 迁出至 createWebTools）
+    ...createWebTools(exec),
+    // Agent Worktree 隔离（agent-isolation 族，S1-2 迁出至 createAgentIsolationTools）
+    ...createAgentIsolationTools(exec),
+    // 用户交互（ask 族，S1-2 迁出至 createAskUserTools）
+    ...createAskUserTools(ui),
   ];
 }
