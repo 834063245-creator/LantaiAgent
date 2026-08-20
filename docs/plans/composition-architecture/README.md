@@ -1,5 +1,7 @@
 # 组合架构（composition-architecture）——特权线左移计划
 
+> **本目录阅读顺序**：① 本 README（宪法 + 阶段 + 排程）→ ② `work-orders/`（施工单，按编号即执行顺序）→ ③ `designs/`（S1 设计件，**开工 S1 前用户必批**）。边界依据在 `docs/adr/composition-boundaries.md`。当前状态：**S0 Done（Landed）；S1 待批待开**。
+
 > 立项：2026-08-20 · 主导：Agent（设计/实现/验收），用户（拍板/审批/放行）
 > 状态：**In progress — S0 Done（Landed，含生产 origin 验证）；下一步 S1 设计件待用户批准**
 > 取代：`.hologram/plans/plan-1787199847398-bu20.md`（plugin-ecosystem v1「插件口子」计划——其 P0/P1 被吸收为本计划 S0/S1 零件，P2 降级为 S3 第一项，P3 后移至 S4）
