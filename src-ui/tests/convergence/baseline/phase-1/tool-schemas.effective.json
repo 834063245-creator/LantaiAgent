@@ -28,6 +28,14 @@
                 "label": {
                   "description": "方案名称（1-8 个词）",
                   "type": "string"
+                },
+                "outcome": {
+                  "description": "批准后语义：execute=立即执行该方案（默认）；archive=批准方案选择但仅留档，用户明确说开工才动手。含多个方案且只想让用户选一个先收着的用 archive。",
+                  "enum": [
+                    "execute",
+                    "archive"
+                  ],
+                  "type": "string"
                 }
               },
               "required": [
