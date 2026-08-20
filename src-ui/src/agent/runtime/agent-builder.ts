@@ -435,7 +435,7 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
     return typeof result === 'string' ? result : JSON.stringify(result);
   };
   // ── 内置工具行表装配（composition/tool-rows，S1-2 起逐族迁入；表序 = 组合序）──
-  // 已迁族：fs、shell（行 factory 与 createCodingTools 内对应面同源），
+  // 已迁族：fs、shell、git（行 factory 与 createCodingTools 内对应面同源），
   // 注册以行实例为准。createCodingTools 仍返回完整 coding 面供测试/直接
   // 消费，此处按行内已注册名去重防双注册——S1-3 全族迁完后此去重随
   // 硬编码装配一起退役。

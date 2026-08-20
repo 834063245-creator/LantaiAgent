@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ToolExecutor } from '../src/agent/tool';
 import { builtinToolRows } from '../src/composition/tool-rows';
 
-// ── S1-2 行表自检：已迁族（fs、shell）──
+// ── S1-2 行表自检：已迁族（fs、shell、git）──
 // 行表是 standard preset 装配序的事实来源（表序 = 组合序）。这里钉住：
 //   1. 行 id 唯一且稳定（未来 preset 按 id 引用行）；
 //   2. fs 行产出 = 迁移前 createCodingTools 内的现行表序（机械重述）；
@@ -31,10 +31,27 @@ const FS_TOOL_ORDER = [
 /** shell 族现行表序（run_shell → bash_output/kill/wait）。 */
 const SHELL_TOOL_ORDER = ['run_shell', 'bash_output', 'bash_kill', 'bash_wait'];
 
+/** git 族现行表序（主段 → Phase 2b 段）。 */
+const GIT_TOOL_ORDER = [
+  'git_status',
+  'git_diff',
+  'git_log',
+  'git_stage',
+  'git_commit',
+  'git_push',
+  'git_pull',
+  'git_init',
+  'git_checkout',
+  'git_create_branch',
+  'git_discard',
+  'git_stash_push',
+  'git_stash_pop',
+];
+
 describe('composition/tool-rows（S1-2 行表）', () => {
-  it('行 id 唯一且稳定，表序 = 组合序（fs → shell）', () => {
+  it('行 id 唯一且稳定，表序 = 组合序（fs → shell → git）', () => {
     const ids = builtinToolRows().map((r) => r.id);
-    expect(ids).toEqual(['builtin/fs', 'builtin/shell']);
+    expect(ids).toEqual(['builtin/fs', 'builtin/shell', 'builtin/git']);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
@@ -52,6 +69,13 @@ describe('composition/tool-rows（S1-2 行表）', () => {
     expect(names).toEqual(SHELL_TOOL_ORDER);
   });
 
+  it('git 行产出 13 个细粒度工具，序 = 迁移前现行表序', () => {
+    const [, , gitRow] = builtinToolRows();
+    expect(gitRow.id).toBe('builtin/git');
+    const names = gitRow.factory({ codingExec: exec }).map((t) => t.name());
+    expect(names).toEqual(GIT_TOOL_ORDER);
+  });
+
   it('行 factory 每次调用产出独立实例（无共享可变状态）', () => {
     const row = builtinToolRows()[0];
     const a = row.factory({ codingExec: exec });
@@ -64,7 +88,7 @@ describe('composition/tool-rows（S1-2 行表）', () => {
     const { buildStandardRegistry } = await import('./convergence/helpers/fixtures');
     const reg = await buildStandardRegistry();
     const names = reg.names();
-    for (const n of [...FS_TOOL_ORDER, ...SHELL_TOOL_ORDER, 'ask_user', 'read_file']) {
+    for (const n of [...FS_TOOL_ORDER, ...SHELL_TOOL_ORDER, ...GIT_TOOL_ORDER, 'ask_user', 'read_file']) {
       expect(names).toContain(n);
     }
     // 行实例与 createCodingTools 去重后无重名残留（重名 register 会 throw，

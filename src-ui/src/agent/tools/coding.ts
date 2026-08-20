@@ -295,12 +295,199 @@ export function createShellTools(exec: ToolExecutor): Tool[] {
   ];
 }
 
+/** git 域巧具族（S1-2 从 createCodingTools 迁出）——纯机械移动，定义零改写。
+ *  两段按原声明序拼接（主 Git 段 → Phase 2b 段）；迁出动机同 createFsTools。*/
+export function createGitTools(exec: ToolExecutor): Tool[] {
+  return [
+    // ── Git ──
+    defineTool({
+      name: 'git_status',
+      description:
+        'Get the current git status — branch name, ahead/behind count, and list of changed files with their status (modified, added, deleted, untracked).',
+      schema: z.object({
+        path: z.string().describe('Absolute path to the git repository root'),
+      }),
+      readOnly: true,
+      execute: (args, onProgress) => exec('git_status', args, onProgress),
+    }),
+    defineTool({
+      name: 'git_diff',
+      description:
+        'Show the git diff for changed files. Returns unified diff output. Use to review changes before committing.',
+      schema: z.object({
+        path: z.string().describe('Absolute path to the git repository root'),
+        file: z
+          .string()
+          .optional()
+          .default('.')
+          .describe('Optional: specific file to diff. If omitted, shows all unstaged changes.'),
+        staged: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe('Set to true to show staged changes instead of unstaged'),
+      }),
+      readOnly: true,
+      execute: async (args, onProgress) => {
+        const staged = args.staged;
+        return exec(
+          staged ? 'git_diff_staged' : 'git_diff_unstaged',
+          {
+            path: args.path,
+            file: args.file,
+          },
+          onProgress,
+        );
+      },
+    }),
+    defineTool({
+      name: 'git_log',
+      description:
+        'Show recent git commit history. Returns structured JSON with commit hash, message, author, and date for each commit.',
+      schema: z.object({
+        path: z.string().describe('Absolute path to the git repository root'),
+        count: z.coerce
+          .number()
+          .int()
+          .optional()
+          .default(10)
+          .describe('Number of recent commits to show (default: 10)'),
+      }),
+      readOnly: true,
+      execute: (args, onProgress) => exec('git_log', { path: args.path, count: args.count }, onProgress),
+    }),
+    defineTool({
+      name: 'git_stage',
+      description: 'Stage files for commit. Use before git_commit to add changes to the staging area.',
+      schema: z.object({
+        path: z.string().describe('Absolute path to the git repository root'),
+        files: z.string().describe('File path(s) to stage, separated by commas. Use "." to stage all.'),
+      }),
+      execute: async (args, onProgress) => {
+        const files = args.files.trim();
+        if (files === '.' || files === 'all') {
+          return exec('git_stage_all', { path: args.path }, onProgress);
+        }
+        // 暂存单个文件
+        const fileList = files.split(',').map((f) => f.trim());
+        const results: string[] = [];
+        for (const f of fileList) {
+          const r = await exec('git_stage', { path: args.path, files: [f] }, onProgress);
+          results.push(r);
+        }
+        return results.join('\n');
+      },
+    }),
+    defineTool({
+      name: 'git_commit',
+      description:
+        'Commit staged changes with a message. Files must be staged first with git_stage. Returns the commit hash.',
+      schema: z.object({
+        path: z.string().describe('Absolute path to the git repository root'),
+        message: z.string().describe('Commit message (conventional commits format recommended)'),
+        _forceGate: z
+          .boolean()
+          .optional()
+          .describe(
+            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+          ),
+      }),
+      execute: (args, onProgress) => exec('git_commit', { path: args.path, message: args.message }, onProgress),
+    }),
+    defineTool({
+      name: 'git_push',
+      description: 'Push committed changes to the remote repository.',
+      schema: z.object({
+        path: z.string().describe('Absolute path to the git repository root'),
+      }),
+      execute: (args, onProgress) => exec('git_push', { path: args.path }, onProgress),
+    }),
+    defineTool({
+      name: 'git_pull',
+      description: 'Pull latest changes from the remote repository (fast-forward only, no merge conflicts).',
+      schema: z.object({
+        path: z.string().describe('Absolute path to the git repository root'),
+      }),
+      execute: (args, onProgress) => exec('git_pull', { path: args.path }, onProgress),
+    }),
+
+    // ── Phase 2b: Git 操作（Tauri 命令已存在） ──
+    defineTool({
+      name: 'git_init',
+      description: 'Initialize a new git repository in the given directory.',
+      schema: z.object({
+        path: z.string().describe('Absolute path to the directory'),
+      }),
+      execute: (args, onProgress) => exec('git_init', args, onProgress),
+    }),
+    defineTool({
+      name: 'git_checkout',
+      description: 'Switch to a different branch. Use git_create_branch first if the branch does not exist.',
+      schema: z.object({
+        path: z.string().describe('Absolute path to the git repository'),
+        branch: z.string().describe('Branch name to switch to'),
+        _forceGate: z
+          .boolean()
+          .optional()
+          .describe(
+            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+          ),
+      }),
+      execute: (args, onProgress) => exec('git_checkout', args, onProgress),
+    }),
+    defineTool({
+      name: 'git_create_branch',
+      description: 'Create a new git branch from the current HEAD. Does NOT switch to it — use git_checkout after.',
+      schema: z.object({
+        path: z.string().describe('Absolute path to the git repository'),
+        branch: z.string().describe('New branch name'),
+      }),
+      execute: (args, onProgress) => exec('git_create_branch', args, onProgress),
+    }),
+    defineTool({
+      name: 'git_discard',
+      description: 'Discard unstaged changes to a file (git checkout -- <file>). Loses all uncommitted modifications.',
+      schema: z.object({
+        path: z.string().describe('Absolute path to the git repository'),
+        file: z.string().describe('File path to discard changes for (relative to repo root)'),
+        _forceGate: z
+          .boolean()
+          .optional()
+          .describe(
+            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+          ),
+      }),
+      execute: (args, onProgress) => exec('git_discard', args, onProgress),
+    }),
+    defineTool({
+      name: 'git_stash_push',
+      description: 'Stash current uncommitted changes. Use before switching branches with dirty working tree.',
+      schema: z.object({
+        path: z.string().describe('Absolute path to the git repository'),
+        message: z.string().optional().describe('Optional stash message for identification'),
+      }),
+      execute: (args, onProgress) => exec('git_stash_push', args, onProgress),
+    }),
+    defineTool({
+      name: 'git_stash_pop',
+      description:
+        'Restore the most recently stashed changes. Pops the stash — the changes are applied and the stash entry is removed.',
+      schema: z.object({
+        path: z.string().describe('Absolute path to the git repository'),
+      }),
+      execute: (args, onProgress) => exec('git_stash_pop', args, onProgress),
+    }),
+  ];
+}
+
 export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[] {
   return [
-    // Shell 域工具族（S1-2 迁出至 createShellTools）
-    ...createShellTools(exec),
     // 文件操作（fs 域工具族，S1-2 迁出至 createFsTools）
     ...createFsTools(exec),
+    // Shell 域工具族（S1-2 迁出至 createShellTools）
+    ...createShellTools(exec),
+    // Git 域工具族（S1-2 迁出至 createGitTools）
+    ...createGitTools(exec),
     // ── 用户交互 ──
     defineTool({
       name: 'ask_user',
@@ -474,118 +661,6 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
       execute: (args, onProgress) => exec('search_content', args, onProgress),
     }),
 
-    // ── Git ──
-    defineTool({
-      name: 'git_status',
-      description:
-        'Get the current git status — branch name, ahead/behind count, and list of changed files with their status (modified, added, deleted, untracked).',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository root'),
-      }),
-      readOnly: true,
-      execute: (args, onProgress) => exec('git_status', args, onProgress),
-    }),
-    defineTool({
-      name: 'git_diff',
-      description:
-        'Show the git diff for changed files. Returns unified diff output. Use to review changes before committing.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository root'),
-        file: z
-          .string()
-          .optional()
-          .default('.')
-          .describe('Optional: specific file to diff. If omitted, shows all unstaged changes.'),
-        staged: z
-          .boolean()
-          .optional()
-          .default(false)
-          .describe('Set to true to show staged changes instead of unstaged'),
-      }),
-      readOnly: true,
-      execute: async (args, onProgress) => {
-        const staged = args.staged;
-        return exec(
-          staged ? 'git_diff_staged' : 'git_diff_unstaged',
-          {
-            path: args.path,
-            file: args.file,
-          },
-          onProgress,
-        );
-      },
-    }),
-    defineTool({
-      name: 'git_log',
-      description:
-        'Show recent git commit history. Returns structured JSON with commit hash, message, author, and date for each commit.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository root'),
-        count: z.coerce
-          .number()
-          .int()
-          .optional()
-          .default(10)
-          .describe('Number of recent commits to show (default: 10)'),
-      }),
-      readOnly: true,
-      execute: (args, onProgress) => exec('git_log', { path: args.path, count: args.count }, onProgress),
-    }),
-    defineTool({
-      name: 'git_stage',
-      description: 'Stage files for commit. Use before git_commit to add changes to the staging area.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository root'),
-        files: z.string().describe('File path(s) to stage, separated by commas. Use "." to stage all.'),
-      }),
-      execute: async (args, onProgress) => {
-        const files = args.files.trim();
-        if (files === '.' || files === 'all') {
-          return exec('git_stage_all', { path: args.path }, onProgress);
-        }
-        // 暂存单个文件
-        const fileList = files.split(',').map((f) => f.trim());
-        const results: string[] = [];
-        for (const f of fileList) {
-          const r = await exec('git_stage', { path: args.path, files: [f] }, onProgress);
-          results.push(r);
-        }
-        return results.join('\n');
-      },
-    }),
-    defineTool({
-      name: 'git_commit',
-      description:
-        'Commit staged changes with a message. Files must be staged first with git_stage. Returns the commit hash.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository root'),
-        message: z.string().describe('Commit message (conventional commits format recommended)'),
-        _forceGate: z
-          .boolean()
-          .optional()
-          .describe(
-            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
-          ),
-      }),
-      execute: (args, onProgress) => exec('git_commit', { path: args.path, message: args.message }, onProgress),
-    }),
-    defineTool({
-      name: 'git_push',
-      description: 'Push committed changes to the remote repository.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository root'),
-      }),
-      execute: (args, onProgress) => exec('git_push', { path: args.path }, onProgress),
-    }),
-    defineTool({
-      name: 'git_pull',
-      description: 'Pull latest changes from the remote repository (fast-forward only, no merge conflicts).',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository root'),
-      }),
-      execute: (args, onProgress) => exec('git_pull', { path: args.path }, onProgress),
-    }),
-
     // ── Web Search — 已禁用 (2026-07)
     // DDG HTML scrape 被反爬封锁，Bing 中文结果不可用，国内无免费搜索 API。
     // 保留代码骨架，待有可用后端时恢复。
@@ -601,73 +676,6 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
       }),
       readOnly: true,
       execute: (args, onProgress) => exec('web_fetch', args, onProgress),
-    }),
-
-    // ── Phase 2b: Git 操作（Tauri 命令已存在） ──
-    defineTool({
-      name: 'git_init',
-      description: 'Initialize a new git repository in the given directory.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the directory'),
-      }),
-      execute: (args, onProgress) => exec('git_init', args, onProgress),
-    }),
-    defineTool({
-      name: 'git_checkout',
-      description: 'Switch to a different branch. Use git_create_branch first if the branch does not exist.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository'),
-        branch: z.string().describe('Branch name to switch to'),
-        _forceGate: z
-          .boolean()
-          .optional()
-          .describe(
-            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
-          ),
-      }),
-      execute: (args, onProgress) => exec('git_checkout', args, onProgress),
-    }),
-    defineTool({
-      name: 'git_create_branch',
-      description: 'Create a new git branch from the current HEAD. Does NOT switch to it — use git_checkout after.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository'),
-        branch: z.string().describe('New branch name'),
-      }),
-      execute: (args, onProgress) => exec('git_create_branch', args, onProgress),
-    }),
-    defineTool({
-      name: 'git_discard',
-      description: 'Discard unstaged changes to a file (git checkout -- <file>). Loses all uncommitted modifications.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository'),
-        file: z.string().describe('File path to discard changes for (relative to repo root)'),
-        _forceGate: z
-          .boolean()
-          .optional()
-          .describe(
-            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
-          ),
-      }),
-      execute: (args, onProgress) => exec('git_discard', args, onProgress),
-    }),
-    defineTool({
-      name: 'git_stash_push',
-      description: 'Stash current uncommitted changes. Use before switching branches with dirty working tree.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository'),
-        message: z.string().optional().describe('Optional stash message for identification'),
-      }),
-      execute: (args, onProgress) => exec('git_stash_push', args, onProgress),
-    }),
-    defineTool({
-      name: 'git_stash_pop',
-      description:
-        'Restore the most recently stashed changes. Pops the stash — the changes are applied and the stash entry is removed.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository'),
-      }),
-      execute: (args, onProgress) => exec('git_stash_pop', args, onProgress),
     }),
 
     // ── Phase 2c: Agent Worktree 隔离（Tauri 命令已存在） ──

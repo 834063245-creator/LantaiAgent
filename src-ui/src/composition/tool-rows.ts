@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 内置工具行表（S1-2）—— composition 架构的装配数据源。已迁入：fs、shell。
+// 内置工具行表（S1-2）—— composition 架构的装配数据源。已迁入：fs、shell、git。
 //
 // 行（row）= 装配的最小单位：id 寻址 + factory 延迟实例化。
 // 表序 = 组合序（standard preset 装配序的事实来源）——前缀缓存语义的根基。
@@ -19,7 +19,7 @@
 // 与注册序无关）——fs 行迁不改变可见面，零漂移按构造成立。
 
 import type { Tool, ToolExecutor } from '../agent/tool';
-import { createFsTools, createShellTools } from '../agent/tools/coding';
+import { createFsTools, createGitTools, createShellTools } from '../agent/tools/coding';
 
 /** 行装配上下文 — buildToolRegistry 提供的运行时依赖。
  *  S1-2 起随族迁入逐字段扩展（shell/git/search 复用 codingExec；
@@ -53,9 +53,18 @@ const SHELL_ROW: BuiltinToolRow = {
   factory: (ctx) => createShellTools(ctx.codingExec),
 };
 
+/** git 族行（S1-2 第三批迁入）。
+ *  factory 与 createCodingTools 内的 git 面同源（createGitTools，
+ *  主段 + Phase 2b 段按原声明序拼接）。
+ *  可见面：细粒度名收敛后全 hidden，零漂移按构造成立。 */
+const GIT_ROW: BuiltinToolRow = {
+  id: 'builtin/git',
+  factory: (ctx) => createGitTools(ctx.codingExec),
+};
+
 /** 内置行表 — 表序 = 组合序。S1-2 起逐族迁入
  *  （fs → shell → git → search → graph/ops/lsp → agent → 其余）；
  *  S1-3 起 buildToolRegistry 末端整体改读本表并加名字冲突装载期拒绝。 */
 export function builtinToolRows(): BuiltinToolRow[] {
-  return [FS_ROW, SHELL_ROW];
+  return [FS_ROW, SHELL_ROW, GIT_ROW];
 }
