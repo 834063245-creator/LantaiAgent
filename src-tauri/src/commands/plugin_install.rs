@@ -685,4 +685,97 @@ mod tests {
         let missing = serde_json::json!({});
         assert!(PluginSource::from_params(&missing).is_err());
     }
+
+    // ── fetch_source_bytes（网络/文件层分支——S4 测试补欠账）──
+
+    /// 本地 tarball 路径：读文件字节（合法 gz 直接透传——解包校验在 extract）。
+    #[tokio::test]
+    async fn fetch_source_bytes_local_tarball() {
+        let tmp = std::env::temp_dir().join(format!("hologram_fetch_src_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let tgz = tmp.join("probe.tgz");
+        let payload = gz(make_tarball("hello", &[]));
+        std::fs::write(&tgz, &payload).unwrap();
+        let bytes = fetch_source_bytes(&PluginSource::Tarball(tgz.to_string_lossy().to_string()))
+            .await
+            .unwrap();
+        assert_eq!(bytes, payload);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// 本地 tarball 不存在 → 显式错误（非静默空）。
+    #[tokio::test]
+    async fn fetch_source_bytes_missing_tarball_errors() {
+        let err = fetch_source_bytes(&PluginSource::Tarball("Z:/nope/missing.tgz".to_string()))
+            .await
+            .unwrap_err();
+        assert!(err.contains("不存在"), "缺失文件应显式报错: {err}");
+    }
+
+    /// LocalDir 源不走 fetch（内部错误——分发路由在 rpc.rs 的 match）。
+    #[tokio::test]
+    async fn fetch_source_bytes_local_dir_is_internal_error() {
+        let err = fetch_source_bytes(&PluginSource::LocalDir(PathBuf::from("."))).await.unwrap_err();
+        assert!(err.contains("内部错误"), "LocalDir 应被分发路由拦截: {err}");
+    }
+
+    /// registry 源错误面（不可达 registry → 显式错误可见，不 panic）。
+    #[tokio::test]
+    async fn fetch_source_bytes_registry_unreachable_errors() {
+        // 127.0.0.1:1 端口不可达（连接拒绝——不依赖外网）
+        let err = fetch_source_bytes(&PluginSource::Registry {
+            name: "hello".to_string(),
+            version: Some("1.0.0".to_string()),
+            registry: Some("http://127.0.0.1:1".to_string()),
+        })
+        .await
+        .unwrap_err();
+        assert!(!err.is_empty(), "不可达 registry 必须显式报错: {err}");
+    }
+
+    /// copy_dir_recursive：嵌套目录全量复制 + 符号链接拒绝。
+    #[test]
+    fn copy_dir_recursive_copies_and_rejects_symlink() {
+        let tmp = std::env::temp_dir().join(format!("hologram_copy_dir_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let src = tmp.join("src");
+        std::fs::create_dir_all(src.join("a/b")).unwrap();
+        std::fs::write(src.join("a/b/x.txt"), b"x").unwrap();
+        std::fs::write(src.join("root.txt"), b"r").unwrap();
+        let dst = tmp.join("dst");
+        copy_dir_recursive(&src, &dst).unwrap();
+        assert!(dst.join("a/b/x.txt").is_file());
+        assert!(dst.join("root.txt").is_file());
+        // 符号链接拒绝（tar-slip 同族攻击面：链接落盘指向外部）
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink("/etc", src.join("evil-link")).unwrap();
+            let err = copy_dir_recursive(&src, &tmp.join("dst2")).unwrap_err();
+            assert!(err.contains("符号链接"), "应拒绝符号链接: {err}");
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            // junction 无需特权（mklink /J）——junction_escape_rejected 同款先例
+            let outside = tmp.join("outside");
+            std::fs::create_dir_all(&outside).unwrap();
+            let link = src.join("evil-link");
+            let status = std::process::Command::new("cmd")
+                .args(["/C", "mklink", "/J"])
+                .arg(&link)
+                .arg(&outside)
+                .creation_flags(crate::utils::HIDDEN_CONSOLE)
+                .output();
+            if let Ok(st) = status {
+                if st.status.success() {
+                    let err = copy_dir_recursive(&src, &tmp.join("dst2")).unwrap_err();
+                    assert!(err.contains("符号链接") || err.contains("链接"), "应拒绝链接: {err}");
+                }
+                // 沙箱建不了 junction 时跳过（链接面已由 walkdir follow_links(false)
+                // + 显式 is_symlink 分支守护——plugin_assets 的 junction 测试同款处理）
+            }
+        }
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }

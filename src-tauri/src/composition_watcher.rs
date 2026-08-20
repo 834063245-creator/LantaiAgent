@@ -61,34 +61,66 @@ impl CompositionWatcher {
 }
 
 /// 监听循环：根级 roster.patch.yml 的 mtime 变化（1s 轮询 + 1s settle 去抖）。
+/// 决策逻辑在 WatchState（纯状态机——可单测；S4-2 验收条款「watcher 事件
+/// 语义」的测试面），AppHandle 发射半边留在本函数（Tauri 运行时之外不可测）。
 fn watch_loop(app_handle: AppHandle, running: std::sync::Arc<AtomicBool>) {
     let patch_path = root_patch_path();
-    let mut last_mtime = file_mtime(&patch_path);
-    let mut pending = false;
-    let mut last_change_at: Option<std::time::Instant> = None;
+    let mut state = WatchState::new(file_mtime(&patch_path));
+    let debounce = Duration::from_secs(1);
     while running.load(Ordering::SeqCst) {
         std::thread::sleep(Duration::from_secs(1));
         if !running.load(Ordering::SeqCst) {
             break;
         }
         let current = file_mtime(&patch_path);
-        if current != last_mtime {
-            last_mtime = current;
-            pending = true;
-            last_change_at = Some(std::time::Instant::now());
-        }
-        let settled = last_change_at
-            .map(|t| t.elapsed() >= Duration::from_secs(1))
-            .unwrap_or(false);
-        if pending && settled {
-            pending = false;
-            last_change_at = None;
-            // 事件载荷：触发原因（patch 出现/修改/删除）——前端 reload 幂等，
+        if let Some(reason) = state.poll(current, std::time::Instant::now(), debounce) {
+            // 事件载荷：触发原因（patch 修改/删除）——前端 reload 幂等，
             // 载荷仅作诊断呈现。
-            let reason = if current.is_some() { "modified" } else { "removed" };
             if let Err(e) = app_handle.emit("composition:changed", reason) {
                 eprintln!("[composition-watcher] emit composition:changed 失败: {e}");
             }
+        }
+    }
+}
+
+/// watcher 决策状态机（S4-2 事件语义，纯逻辑可单测）：
+/// mtime 变化 → 进入 pending；debounce 窗口静默后 → 发射一次（reason 按
+/// 当前存在性区分 modified/removed）；窗口内连续变化重置去抖（编辑器保存
+/// 常连发多次写——只在静默后发一次，避免 reload 风暴）；发射后回到静默，
+/// 无新变化不再重复发射。
+struct WatchState {
+    last_mtime: Option<u64>,
+    pending: bool,
+    last_change_at: Option<std::time::Instant>,
+}
+
+impl WatchState {
+    fn new(initial_mtime: Option<u64>) -> Self {
+        Self { last_mtime: initial_mtime, pending: false, last_change_at: None }
+    }
+
+    /// 一次轮询的转移。返回 Some(reason) = 本轮应发射 composition:changed。
+    fn poll(
+        &mut self,
+        current: Option<u64>,
+        now: std::time::Instant,
+        debounce: Duration,
+    ) -> Option<&'static str> {
+        if current != self.last_mtime {
+            self.last_mtime = current;
+            self.pending = true;
+            self.last_change_at = Some(now);
+        }
+        let settled = self
+            .last_change_at
+            .map(|t| now.duration_since(t) >= debounce)
+            .unwrap_or(false);
+        if self.pending && settled {
+            self.pending = false;
+            self.last_change_at = None;
+            Some(if current.is_some() { "modified" } else { "removed" })
+        } else {
+            None
         }
     }
 }
@@ -147,5 +179,83 @@ mod tests {
         assert_eq!(p, tmp.join("roster.patch.yml"));
         std::env::remove_var("HOLOGRAM_COMPOSITION_ROOT");
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ── WatchState 事件语义（S4-2 验收条款：watcher 事件语义——决策状态机
+    //     的完整钉面；AppHandle 发射半边在 Tauri 运行时之外不可测）──
+
+    /// 无变化 → 永不发射（静默轮询零噪声）。
+    #[test]
+    fn watch_state_no_change_never_fires() {
+        let mut s = WatchState::new(Some(100));
+        let t0 = std::time::Instant::now();
+        for tick in 0..5 {
+            assert_eq!(s.poll(Some(100), t0 + Duration::from_secs(tick), Duration::from_secs(1)), None);
+        }
+    }
+
+    /// 修改：变化 → 去抖窗口内不发射 → 静默满 1s 后发射一次（reason=modified）。
+    #[test]
+    fn watch_state_modified_fires_after_debounce() {
+        let mut s = WatchState::new(Some(100));
+        let t0 = std::time::Instant::now();
+        // t=0：变化发生
+        assert_eq!(s.poll(Some(200), t0, Duration::from_secs(1)), None, "变化当轮不发射");
+        // t=0.5s：窗口内（编辑器连发的第二次写——mtime 未再变）
+        assert_eq!(s.poll(Some(200), t0 + Duration::from_millis(500), Duration::from_secs(1)), None);
+        // t=1.1s：静默期满 → 发射 modified
+        assert_eq!(
+            s.poll(Some(200), t0 + Duration::from_millis(1100), Duration::from_secs(1)),
+            Some("modified")
+        );
+        // t=2s：无新变化 → 不再重复发射
+        assert_eq!(s.poll(Some(200), t0 + Duration::from_secs(2), Duration::from_secs(1)), None);
+    }
+
+    /// 删除：mtime → None 也是变化 → 静默后发射 removed。
+    #[test]
+    fn watch_state_removed_fires_after_debounce() {
+        let mut s = WatchState::new(Some(100));
+        let t0 = std::time::Instant::now();
+        assert_eq!(s.poll(None, t0, Duration::from_secs(1)), None);
+        assert_eq!(s.poll(None, t0 + Duration::from_millis(1100), Duration::from_secs(1)), Some("removed"));
+    }
+
+    /// 新建：None → Some 也是变化 → modified。
+    #[test]
+    fn watch_state_created_fires_modified() {
+        let mut s = WatchState::new(None);
+        let t0 = std::time::Instant::now();
+        assert_eq!(s.poll(Some(50), t0, Duration::from_secs(1)), None);
+        assert_eq!(s.poll(Some(50), t0 + Duration::from_millis(1100), Duration::from_secs(1)), Some("modified"));
+    }
+
+    /// 连续变化重置去抖窗口（编辑器保存风暴 → 只在最终静默后发一次）。
+    #[test]
+    fn watch_state_rapid_changes_reset_debounce() {
+        let mut s = WatchState::new(Some(100));
+        let t0 = std::time::Instant::now();
+        // t=0 变化 → t=0.9 再变（窗口重置）→ t=1.5 仍在扩展后的窗口内
+        assert_eq!(s.poll(Some(200), t0, Duration::from_secs(1)), None);
+        assert_eq!(s.poll(Some(300), t0 + Duration::from_millis(900), Duration::from_secs(1)), None);
+        assert_eq!(s.poll(Some(300), t0 + Duration::from_millis(1500), Duration::from_secs(1)), None, "窗口被重置——1.5s 仍不发射");
+        // t=2.0：距最后变化 1.1s → 发射
+        assert_eq!(s.poll(Some(300), t0 + Duration::from_millis(2000), Duration::from_secs(1)), Some("modified"));
+    }
+
+    /// 发射后回到静默：后续同 mtime 轮询零发射；再次变化重新走全流程。
+    #[test]
+    fn watch_state_rearms_after_fire() {
+        let mut s = WatchState::new(Some(100));
+        let t0 = std::time::Instant::now();
+        assert_eq!(s.poll(Some(200), t0, Duration::from_secs(1)), None);
+        assert_eq!(s.poll(Some(200), t0 + Duration::from_millis(1100), Duration::from_secs(1)), Some("modified"));
+        // 静默期：同 mtime 不发射
+        for tick in 2..4 {
+            assert_eq!(s.poll(Some(200), t0 + Duration::from_secs(tick), Duration::from_secs(1)), None);
+        }
+        // 新变化 → 全流程重走
+        assert_eq!(s.poll(Some(300), t0 + Duration::from_secs(4), Duration::from_secs(1)), None);
+        assert_eq!(s.poll(Some(300), t0 + Duration::from_millis(5100), Duration::from_secs(1)), Some("modified"));
     }
 }
