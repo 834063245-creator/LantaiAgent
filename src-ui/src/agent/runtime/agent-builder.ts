@@ -13,6 +13,7 @@
 // UI 回调通过 BuilderDeps 注入，不直接 import ui/ 模块。
 
 import { z } from 'zod';
+import { builtinToolRows } from '../../composition/tool-rows';
 import { typedRpc } from '../../rpc-contract';
 import type { Agent } from '../agent';
 import { createCompactionTools } from '../compaction-model';
@@ -433,7 +434,18 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
     const result = await agentInvoke<string>(name, args);
     return typeof result === 'string' ? result : JSON.stringify(result);
   };
-  for (const tool of createCodingTools(codingExec, { askUser: deps.onAskUser ?? (() => {}) })) registry.register(tool);
+  // ── 内置工具行表装配（composition/tool-rows，S1-2 起逐族迁入；表序 = 组合序）──
+  // fs 族第一批迁行：行 factory 与 createCodingTools 内的 fs 面同源
+  // （createFsTools），注册以行实例为准。createCodingTools 仍返回完整
+  // coding 面供测试/直接消费，此处按行内已注册名去重防双注册——
+  // S1-3 全族迁完后此去重随硬编码装配一起退役。
+  const rowTools = builtinToolRows().flatMap((row) => row.factory({ codingExec }));
+  const rowToolNames = new Set(rowTools.map((t) => t.name()));
+  for (const tool of rowTools) registry.register(tool);
+  for (const tool of createCodingTools(codingExec, { askUser: deps.onAskUser ?? (() => {}) })) {
+    if (rowToolNames.has(tool.name())) continue; // 行表已注册（同 factory，定义等价）
+    registry.register(tool);
+  }
   registry.alias('read_file', 'read_file_content');
   if (skillRegistry) registry.register(createSkillTool(skillRegistry));
   if (mm) for (const tool of (await import('../memory')).createMemoryTools(mm) as any) registry.register(tool);

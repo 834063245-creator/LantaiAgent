@@ -38,8 +38,181 @@ export interface CodingToolsUI {
   askUser?: (req: AskUserRequest) => void;
 }
 
+/** fs 域工具族（S1-2 从 createCodingTools 迁出）——纯机械移动，定义零改写。
+ *  行化铺路：工具定义与装配分离，S1-3 的行表装配将按族工厂对接。*/
+export function createFsTools(exec: ToolExecutor): Tool[] {
+  return [
+    // ── 文件操作 ──
+    defineTool({
+      name: 'read_file_content',
+      description:
+        'Read the content of a file on disk. Returns text in cat -n format (6-digit line number + tab + content). Use offset and limit to read a specific range of lines (0-indexed). Use to inspect source code files when analyzing dependencies or investigating violations.',
+      schema: z.object({
+        filePath: z.string().describe('Absolute path to the file to read'),
+        offset: z.number().int().optional().describe('Line number to start reading from (0-indexed, default: 0)'),
+        limit: z.number().int().optional().describe('Maximum number of lines to return (default: all lines)'),
+      }),
+      readOnly: true,
+      execute: (args, onProgress) => exec('read_file_content', args, onProgress),
+    }),
+    defineTool({
+      name: 'write_file',
+      description:
+        'Create or overwrite a file with the given content. Creates parent directories if needed. Use to write new files or modify existing ones.',
+      schema: z.object({
+        filePath: z.string().describe('Absolute path to the file to create or overwrite'),
+        content: z.string().describe('Full file content to write'),
+        _forceGate: z
+          .boolean()
+          .optional()
+          .describe(
+            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+          ),
+      }),
+      execute: (args, onProgress) => exec('write_file_content', args, onProgress),
+    }),
+    defineTool({
+      name: 'edit_file',
+      description:
+        'Perform exact string replacement in a file. The old_string must match exactly (including indentation and whitespace) and must be unique in the file (unless replace_all is true). This is the preferred way to modify code — safer and cheaper than rewriting the entire file.',
+      schema: z.object({
+        filePath: z.string().describe('Absolute path to the file to modify'),
+        oldString: z
+          .string()
+          .describe('The exact text to find and replace (must match the file exactly, including whitespace)'),
+        newString: z.string().describe('The text to replace it with (must be different from oldString)'),
+        replaceAll: z
+          .boolean()
+          .optional()
+          .default(false)
+          .describe(
+            'Replace all occurrences instead of just the first (default: false). Use when the old_string appears multiple times.',
+          ),
+        _forceGate: z
+          .boolean()
+          .optional()
+          .describe(
+            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+          ),
+      }),
+      // 全量透传（含 executor 注入的 _agent_id）— fork 子 Agent 的
+      // worktree 路由完全依赖该参数；重建参数对象会把 edit 静默导向主仓。
+      execute: (args, onProgress) => exec('edit_file', args, onProgress),
+    }),
+    defineTool({
+      name: 'list_directory',
+      description:
+        'List files and subdirectories in a directory (recursive up to 4 levels deep). Returns name, path, type (file/dir), and size for each entry.',
+      schema: z.object({
+        path: z.string().describe('Absolute path to the directory to list'),
+      }),
+      readOnly: true,
+      execute: (args, onProgress) => exec('list_directory', args, onProgress),
+    }),
+    defineTool({
+      name: 'read_constraints',
+      description:
+        'Read the current constraint configuration (hologram.constraints.yaml) for the project. Returns the YAML content. Use to check routing rules, thresholds, and allowlist/denylist settings.',
+      schema: z.object({
+        projectPath: z.string().describe('Project root directory path'),
+      }),
+      readOnly: true,
+      execute: (args, onProgress) => exec('read_constraints', args, onProgress),
+    }),
+    defineTool({
+      name: 'write_constraints',
+      description:
+        'Write the constraint configuration (hologram.constraints.yaml) for the project — replaces the whole file. Use after check_boundaries (graph domain) reveals violations worth encoding as standing rules: routing rules, thresholds, allowlist/denylist. Read the current config with fs(constraints) first so you extend existing rules rather than drop them.',
+      schema: z.object({
+        projectPath: z.string().describe('Project root directory path'),
+        content: z.string().describe('Full YAML content to write'),
+      }),
+      execute: (args, onProgress) => exec('write_constraints', args, onProgress),
+    }),
+
+    // ── Glob 文件匹配 ──
+    defineTool({
+      name: 'glob',
+      description:
+        'Fast file pattern matching using glob patterns. Returns matching file paths sorted by modification time. Supports ** for recursive matching (e.g. "**/*.rs", "src/**/*.ts", "*.json"). Use this instead of run_shell to find files by name pattern — it is faster and respects .gitignore-style exclusions.',
+      schema: z.object({
+        pattern: z
+          .string()
+          .describe('Glob pattern to match file paths against (e.g. "**/*.rs", "src/**/agent*.ts", "*.json")'),
+        path: z.string().optional().describe('Directory to search in. Defaults to the current workspace root.'),
+      }),
+      readOnly: true,
+      execute: (args, onProgress) => exec('glob', args, onProgress),
+    }),
+
+    // ── Phase 2a: 文件操作（Tauri 命令已存在） ──
+    defineTool({
+      name: 'delete_file',
+      description:
+        'Delete a file or directory at the specified path. Use to clean up temporary files or remove unwanted code. DANGEROUS — cannot be undone. Verify with user if deleting important files.',
+      schema: z.object({
+        path: z.string().describe('Absolute path to the file or directory to delete'),
+        _forceGate: z
+          .boolean()
+          .optional()
+          .describe(
+            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+          ),
+      }),
+      execute: (args, onProgress) => exec('delete_file_or_dir', args, onProgress),
+    }),
+    defineTool({
+      name: 'create_directory',
+      description:
+        'Create a new directory (and any missing parent directories). Use before writing new files into a directory that may not exist yet.',
+      schema: z.object({
+        path: z.string().describe('Absolute path to the directory to create'),
+      }),
+      execute: (args, onProgress) => exec('create_directory', args, onProgress),
+    }),
+    defineTool({
+      name: 'move_file',
+      description: 'Move or rename a file or directory. The destination path determines the new name/location.',
+      schema: z.object({
+        from: z.string().describe('Source path'),
+        to: z.string().describe('Destination path'),
+        _forceGate: z
+          .boolean()
+          .optional()
+          .describe(
+            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+          ),
+      }),
+      execute: (args, onProgress) => exec('move_file', args, onProgress),
+    }),
+    defineTool({
+      name: 'rename_file',
+      description:
+        'Rename a file or directory (keep it in the same parent directory). For moving to a different directory, use move_file instead.',
+      schema: z.object({
+        path: z.string().describe('Absolute path to the file/directory to rename'),
+        new_name: z.string().describe('New name (not path, just the name)'),
+        _forceGate: z
+          .boolean()
+          .optional()
+          .describe(
+            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+          ),
+      }),
+      // 键名映射（path→filePath、new_name→newName）并剥掉原始键，
+      // 其余全量透传 — 必须保留 _agent_id（worktree 路由），否则 rename 静默落到主仓。
+      execute: (args, onProgress) => {
+        const { path, new_name, ...rest } = args;
+        return exec('rename_file_or_dir', { ...rest, filePath: path, newName: new_name }, onProgress);
+      },
+    }),
+  ];
+}
+
 export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[] {
   return [
+    // 文件操作（fs 域工具族，S1-2 迁出至 createFsTools）
+    ...createFsTools(exec),
     // ── 用户交互 ──
     defineTool({
       name: 'ask_user',
@@ -148,94 +321,6 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
       },
     }),
 
-    // ── 文件操作 ──
-    defineTool({
-      name: 'read_file_content',
-      description:
-        'Read the content of a file on disk. Returns text in cat -n format (6-digit line number + tab + content). Use offset and limit to read a specific range of lines (0-indexed). Use to inspect source code files when analyzing dependencies or investigating violations.',
-      schema: z.object({
-        filePath: z.string().describe('Absolute path to the file to read'),
-        offset: z.number().int().optional().describe('Line number to start reading from (0-indexed, default: 0)'),
-        limit: z.number().int().optional().describe('Maximum number of lines to return (default: all lines)'),
-      }),
-      readOnly: true,
-      execute: (args, onProgress) => exec('read_file_content', args, onProgress),
-    }),
-    defineTool({
-      name: 'write_file',
-      description:
-        'Create or overwrite a file with the given content. Creates parent directories if needed. Use to write new files or modify existing ones.',
-      schema: z.object({
-        filePath: z.string().describe('Absolute path to the file to create or overwrite'),
-        content: z.string().describe('Full file content to write'),
-        _forceGate: z
-          .boolean()
-          .optional()
-          .describe(
-            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
-          ),
-      }),
-      execute: (args, onProgress) => exec('write_file_content', args, onProgress),
-    }),
-    defineTool({
-      name: 'edit_file',
-      description:
-        'Perform exact string replacement in a file. The old_string must match exactly (including indentation and whitespace) and must be unique in the file (unless replace_all is true). This is the preferred way to modify code — safer and cheaper than rewriting the entire file.',
-      schema: z.object({
-        filePath: z.string().describe('Absolute path to the file to modify'),
-        oldString: z
-          .string()
-          .describe('The exact text to find and replace (must match the file exactly, including whitespace)'),
-        newString: z.string().describe('The text to replace it with (must be different from oldString)'),
-        replaceAll: z
-          .boolean()
-          .optional()
-          .default(false)
-          .describe(
-            'Replace all occurrences instead of just the first (default: false). Use when the old_string appears multiple times.',
-          ),
-        _forceGate: z
-          .boolean()
-          .optional()
-          .describe(
-            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
-          ),
-      }),
-      // 全量透传（含 executor 注入的 _agent_id）— fork 子 Agent 的
-      // worktree 路由完全依赖该参数；重建参数对象会把 edit 静默导向主仓。
-      execute: (args, onProgress) => exec('edit_file', args, onProgress),
-    }),
-    defineTool({
-      name: 'list_directory',
-      description:
-        'List files and subdirectories in a directory (recursive up to 4 levels deep). Returns name, path, type (file/dir), and size for each entry.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the directory to list'),
-      }),
-      readOnly: true,
-      execute: (args, onProgress) => exec('list_directory', args, onProgress),
-    }),
-    defineTool({
-      name: 'read_constraints',
-      description:
-        'Read the current constraint configuration (hologram.constraints.yaml) for the project. Returns the YAML content. Use to check routing rules, thresholds, and allowlist/denylist settings.',
-      schema: z.object({
-        projectPath: z.string().describe('Project root directory path'),
-      }),
-      readOnly: true,
-      execute: (args, onProgress) => exec('read_constraints', args, onProgress),
-    }),
-    defineTool({
-      name: 'write_constraints',
-      description:
-        'Write the constraint configuration (hologram.constraints.yaml) for the project — replaces the whole file. Use after check_boundaries (graph domain) reveals violations worth encoding as standing rules: routing rules, thresholds, allowlist/denylist. Read the current config with fs(constraints) first so you extend existing rules rather than drop them.',
-      schema: z.object({
-        projectPath: z.string().describe('Project root directory path'),
-        content: z.string().describe('Full YAML content to write'),
-      }),
-      execute: (args, onProgress) => exec('write_constraints', args, onProgress),
-    }),
-
     // ── 代码搜索 ──
     defineTool({
       name: 'search_content',
@@ -299,21 +384,6 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
       }),
       readOnly: true,
       execute: (args, onProgress) => exec('search_content', args, onProgress),
-    }),
-
-    // ── Glob 文件匹配 ──
-    defineTool({
-      name: 'glob',
-      description:
-        'Fast file pattern matching using glob patterns. Returns matching file paths sorted by modification time. Supports ** for recursive matching (e.g. "**/*.rs", "src/**/*.ts", "*.json"). Use this instead of run_shell to find files by name pattern — it is faster and respects .gitignore-style exclusions.',
-      schema: z.object({
-        pattern: z
-          .string()
-          .describe('Glob pattern to match file paths against (e.g. "**/*.rs", "src/**/agent*.ts", "*.json")'),
-        path: z.string().optional().describe('Directory to search in. Defaults to the current workspace root.'),
-      }),
-      readOnly: true,
-      execute: (args, onProgress) => exec('glob', args, onProgress),
     }),
 
     // ── Shell ──
@@ -523,68 +593,6 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
       }),
       readOnly: true,
       execute: (args, onProgress) => exec('web_fetch', args, onProgress),
-    }),
-
-    // ── Phase 2a: 文件操作（Tauri 命令已存在） ──
-    defineTool({
-      name: 'delete_file',
-      description:
-        'Delete a file or directory at the specified path. Use to clean up temporary files or remove unwanted code. DANGEROUS — cannot be undone. Verify with user if deleting important files.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the file or directory to delete'),
-        _forceGate: z
-          .boolean()
-          .optional()
-          .describe(
-            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
-          ),
-      }),
-      execute: (args, onProgress) => exec('delete_file_or_dir', args, onProgress),
-    }),
-    defineTool({
-      name: 'create_directory',
-      description:
-        'Create a new directory (and any missing parent directories). Use before writing new files into a directory that may not exist yet.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the directory to create'),
-      }),
-      execute: (args, onProgress) => exec('create_directory', args, onProgress),
-    }),
-    defineTool({
-      name: 'move_file',
-      description: 'Move or rename a file or directory. The destination path determines the new name/location.',
-      schema: z.object({
-        from: z.string().describe('Source path'),
-        to: z.string().describe('Destination path'),
-        _forceGate: z
-          .boolean()
-          .optional()
-          .describe(
-            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
-          ),
-      }),
-      execute: (args, onProgress) => exec('move_file', args, onProgress),
-    }),
-    defineTool({
-      name: 'rename_file',
-      description:
-        'Rename a file or directory (keep it in the same parent directory). For moving to a different directory, use move_file instead.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the file/directory to rename'),
-        new_name: z.string().describe('New name (not path, just the name)'),
-        _forceGate: z
-          .boolean()
-          .optional()
-          .describe(
-            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
-          ),
-      }),
-      // 键名映射（path→filePath、new_name→newName）并剥掉原始键，
-      // 其余全量透传 — 必须保留 _agent_id（worktree 路由），否则 rename 静默落到主仓。
-      execute: (args, onProgress) => {
-        const { path, new_name, ...rest } = args;
-        return exec('rename_file_or_dir', { ...rest, filePath: path, newName: new_name }, onProgress);
-      },
     }),
 
     // ── Phase 2b: Git 操作（Tauri 命令已存在） ──
