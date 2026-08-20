@@ -149,6 +149,7 @@ v1 计划唯一未验证的硬前提：**生产 webview 从 `tauri.localhost` �
 | [`work-orders/WO-S0B-plugin-kernel.md`](work-orders/WO-S0B-plugin-kernel.md) | **✅ 完成**（含生产 origin 验证） | 插件内核：正式静态路由 + loader/manifest/plugin-store + main.ts 接线 + 测试 |
 | [`designs/S1-convergence-per-preset.md`](designs/S1-convergence-per-preset.md) | **已批准并竣工**（2026-08-20，用户授权代理执行） | S1 开工首日交付物已预写：preset 维度加法设计 + 批次推进安全网（standard 快照零漂移规则） |
 | [`designs/S2-composition-externalization.md`](designs/S2-composition-externalization.md) | **已批准并竣工**（2026-08-20，用户授权代理复审执行） | S2 全量设计：四域行模型 + roster patch schema/解析语义（DSH 实证对标 + 三处刻意偏离）+ 14570 `/composition/` 通道 + composition-store 穿线 + 12 壳行切分 + S2-0…S2-5 批次序列 |
+| [`designs/S4-preset-realm-distribution.md`](designs/S4-preset-realm-distribution.md) | **已代理复审，待用户放行**（2026-08-20 预写 + 同日复审——三处设计错误实证修正，见设计件 §7.1；批准后交新窗口落地） | S4 全量设计：preset realm（会话级组合 + 首事件会话记录）+ 热重载 + npm tarball 分发（tar-slip 防护）+ 机器桥（可选批）+ 消费闭环接线（G0：四 service 零消费者复审实证）+ hello 闭环 + S4-0…S4-5 批次序列 |
 
 S2-S4 施工单在前序阶段落地后按需补写（S2 设计件已含批次序列 S2-0…S2-5，按 S1 先例设计件即施工纲领；S3 需白纸执行层外化；S4 需 S1/S2 全落）。执行顺序：WO-S0A → WO-S0B（均已完成）→ S1 设计件已批准并竣工（2026-08-20）→ **S2 设计件（待批准）→ S2-0…S2-5（批准后施工）→ …**
 
