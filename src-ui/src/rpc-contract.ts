@@ -205,6 +205,27 @@ export interface RpcContract {
   credential_delete: { params: { provider: string }; result: string }; // "null"
   llm_proxy_port: { params: Record<string, never>; result: string }; // 端口号字符串（0=不可用）
 
+  // ── 插件安装通道（S4-3）─────────────────────────────────
+  /** 安装插件：source_kind = registry（name/version?/registry?）|
+   *  tarball（location = URL 或本地 .tgz 路径）| local_dir（location =
+   *  本地目录——复制进 plugins 根）。expect_name 可选校验 manifest.name。
+   *  返回安装的插件目录名。生效时机：重启。 */
+  plugin_install: {
+    params: {
+      source_kind: 'registry' | 'tarball' | 'local_dir';
+      name?: string;
+      version?: string;
+      registry?: string;
+      location?: string;
+      expect_name?: string;
+    };
+    result: string; // 插件名（JSON 字符串）
+  };
+  /** 卸载插件（删目录；幂等）。生效时机：重启。 */
+  plugin_uninstall: { params: { name: string }; result: string }; // "null"
+  /** 启用/禁用插件（plugins.json 读改写）。生效时机：重启。 */
+  plugin_set_enabled: { params: { name: string; enabled: boolean }; result: string }; // "null"
+
   // ── Agent 隔离（worktree）────────────────────────────────
   agent_isolation_create: { params: { agent_id: string }; result: string }; // JSON
   agent_isolation_diff: { params: { agent_id: string }; result: string }; // JSON

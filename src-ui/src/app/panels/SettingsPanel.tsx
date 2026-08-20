@@ -21,9 +21,10 @@ import { useDockStore } from '../../state/dock-store';
 import { usePresetStore } from '../../state/preset-store';
 import { iconHtml } from '../../ui/icons';
 import { ConfirmDialog } from './settings/ConfirmDialog';
+import { PluginsPage } from './settings/PluginsPage';
 import { ProviderPage } from './settings/ProviderPage';
 
-type Tab = 'provider' | 'agent' | 'display' | 'languages' | 'about';
+type Tab = 'provider' | 'agent' | 'display' | 'languages' | 'plugins' | 'about';
 
 interface LspServer {
   command: string;
@@ -317,6 +318,7 @@ const SettingsPanelApp: React.FC<{
               ['agent', 'code', 'Agent'],
               ['display', 'mode-standard', '显示'],
               ['languages', 'code', '语言依赖'],
+              ['plugins', 'agent', '插件'],
               ['about', 'info', '关于'],
             ] as const
           ).map(([id, icon, label]) => (
@@ -619,6 +621,11 @@ const SettingsPanelApp: React.FC<{
                 </div>
               </>
             )}
+          </div>
+
+          {/* ═══ 插件标签页（S4-3 安装通道）═══ */}
+          <div className="sp-tab-content" data-tab="plugins" style={{ display: activeTab === 'plugins' ? '' : 'none' }}>
+            <PluginsPage />
           </div>
 
           {/* ═══ 关于标签页 ═══ */}

@@ -1099,6 +1099,42 @@ async fn dispatch_rpc(
         "llm_proxy_port" => Ok(crate::llm_proxy::proxy_port().to_string()),
 
         // ═══════════════════════════════════════════════════════
+        // 插件安装通道（S4-3）：npm tarball 源 / 本地目录 → 下载/解包/
+        // tar-slip 防护/原子落盘；卸载/禁用走 plugins.json 读改写。
+        // 生效时机：重启（装载是 boot 期一次性——UI 提示条如实声明）。
+        // ═══════════════════════════════════════════════════════
+        "plugin_install" => {
+            let source = commands::plugin_install::PluginSource::from_params(&params)?;
+            let expect_name = opt_str(&params, "expect_name");
+            // 本地目录源走复制路径；registry/tarball 走下载+解包路径
+            let name = match source {
+                commands::plugin_install::PluginSource::LocalDir(dir) => {
+                    commands::plugin_install::plugin_install_local_dir(dir, expect_name).await?
+                }
+                other => commands::plugin_install::plugin_install(other, expect_name).await?,
+            };
+            ok_json(Ok(name))
+        }
+        "plugin_uninstall" => {
+            let name = req_str(&params, "name", "plugin_uninstall")?;
+            let r = tokio::task::spawn_blocking(move || commands::plugin_install::plugin_uninstall(&name))
+                .await
+                .map_err(|e| format!("plugin_uninstall 任务失败: {e}"))?;
+            ok_unit(r)
+        }
+        "plugin_set_enabled" => {
+            let name = req_str(&params, "name", "plugin_set_enabled")?;
+            let enabled = match params.get("enabled") {
+                Some(v) => v.as_bool().ok_or_else(|| format!("参数 'enabled' 必须是布尔值，收到: {v}"))?,
+                None => return Err("参数 'enabled' 缺失 — 必须明确指定启用或禁用".to_string()),
+            };
+            let r = tokio::task::spawn_blocking(move || commands::plugin_install::plugin_set_enabled(&name, enabled))
+                .await
+                .map_err(|e| format!("plugin_set_enabled 任务失败: {e}"))?;
+            ok_unit(r)
+        }
+
+        // ═══════════════════════════════════════════════════════
         // Agent 隔离（7 个命令）
         // P1-18：worktree 生命周期操作是阻塞进程等待（git worktree add/diff/
         // merge/prune 的 .output()），全部经 spawn_blocking 移出 async worker。

@@ -382,6 +382,12 @@ fn json_error(status: StatusCode, code: &str, message: &str) -> Response<BoxBody
         .unwrap_or_else(|_| err_response(StatusCode::INTERNAL_SERVER_ERROR, "proxy: 构造插件错误响应失败"))
 }
 
+/// HOLOGRAM_PLUGINS_ROOT 测试锁（S4-3）：env 变量进程级——设置它的测试
+/// （本模块 HTTP e2e + commands/plugin_install 的安装测试）必须串行，
+/// 否则并行 clobber 会让对方的 plugins_root() 解析到错误根（间歇红）。
+#[cfg(test)]
+pub(crate) static PLUGINS_ROOT_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -498,6 +504,9 @@ mod tests {
     #[test]
     fn http_status_and_json_errors() {
         use std::io::{Read, Write};
+        // S4-3：持 PLUGINS_ROOT 锁（plugin_install 的安装测试同锁串行——
+        // env 变量进程级，并行 clobber 会间歇红）
+        let _env_lock = super::PLUGINS_ROOT_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let root = make_root("http");
 
         let rt = tokio::runtime::Builder::new_multi_thread()
