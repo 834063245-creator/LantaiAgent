@@ -20,9 +20,9 @@
 // 未知量：L（信息丢失 → 额外轮次）。
 // 此追踪器监测 agent 循环来度量它。
 
+import { z } from 'zod';
 import type { Pricing } from './agent-types';
 import { log } from './logger';
-import { z } from 'zod';
 import type { Tool } from './tool';
 import { defineTool } from './tools/define-tool';
 

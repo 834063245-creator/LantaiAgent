@@ -18,7 +18,10 @@ export class FileOwnership {
    *  不做大小写归一（Linux 文件系统大小写敏感，小写化会把不同文件误判为同一）。
    *  不归一化时 `D:\p\a.ts` 与 `D:/p/a.ts` 是两个键，两个 Agent 会双双 claim 成功。 */
   private static key(filePath: string): string {
-    return filePath.replace(/\\/g, '/').replace(/\/{2,}/g, '/').replace(/\/+$/, '');
+    return filePath
+      .replace(/\\/g, '/')
+      .replace(/\/{2,}/g, '/')
+      .replace(/\/+$/, '');
   }
 
   /** 尝试为 Agent 声明一个文件。

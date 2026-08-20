@@ -181,7 +181,10 @@ export class GoalManager {
     const filtered = all.filter((r) => r.id !== id);
     if (filtered.length < all.length) {
       try {
-        await typedRpc('write_file_content', { file_path: this.indexPath(), content: JSON.stringify(filtered, null, 2) });
+        await typedRpc('write_file_content', {
+          file_path: this.indexPath(),
+          content: JSON.stringify(filtered, null, 2),
+        });
       } catch {
         /* index write is best-effort */
       }
