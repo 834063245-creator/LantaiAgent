@@ -38,15 +38,16 @@ describe('composition 面板注册（S1-5 string 开集 + 装载期校验）', (
     useDockStore.setState({ open: { ...useDockStore.getState().open, 'plugin-panel-x': undefined } });
   });
 
-  it('panel.* 命令 id 不变对拍：main.ts 四个面板命令 id 与绑定的 dock id 逐字保留', () => {
-    const mainSrc = readFileSync(join(SRC, 'main.ts'), 'utf8');
+  it('panel.* 命令 id 不变对拍：壳行 actions 四个面板命令 id 与绑定的 dock id 逐字保留', () => {
+    // S2-3 起真源在壳行 10（设计件 §2.6 行 10 迁移；不变式本身不变）
+    const actionsSrc = readFileSync(join(SRC, 'shell', 'rows', 'actions.ts'), 'utf8');
     for (const id of ['panel.check', 'panel.constraints', 'panel.dataflow', 'panel.agents']) {
-      expect(mainSrc).toContain(`id: '${id}',`);
+      expect(actionsSrc).toContain(`id: '${id}',`);
     }
     // 命令 run 体绑定到同名字面量 dock id（id 与动作一致，防改 id 漏改绑定）
-    expect(mainSrc).toContain("togglePanel('check')");
-    expect(mainSrc).toContain("togglePanel('constraints')");
-    expect(mainSrc).toContain("togglePanel('dataflow')");
-    expect(mainSrc).toContain("togglePanel('agents')");
+    expect(actionsSrc).toContain("togglePanel('check')");
+    expect(actionsSrc).toContain("togglePanel('constraints')");
+    expect(actionsSrc).toContain("togglePanel('dataflow')");
+    expect(actionsSrc).toContain("togglePanel('agents')");
   });
 });

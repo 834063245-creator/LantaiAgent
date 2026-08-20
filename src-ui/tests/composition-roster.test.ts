@@ -26,13 +26,24 @@ const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r
 const capKeys = (): string[] => builtinCapabilities().map((c) => c.key);
 
 describe('composition/roster（S2-0 组合引擎）', () => {
-  it('factoryComposition 聚合三张出厂表 + 空壳表', () => {
+  it('factoryComposition 聚合三张出厂表 + 壳行表（S2-3 行 1-10，序 = 引导序）', () => {
     const f = factoryComposition();
     expect(ids(f.tools)).toEqual(ids(builtinToolRows()));
     expect(ids(f.prompt)).toEqual(ids(builtinPromptSections()));
     expect(f.capabilities.map((c) => c.key)).toEqual(capKeys());
     expect(ids(f.shell)).toEqual(ids(builtinShellRows()));
-    expect(ids(f.shell)).toEqual([]);
+    expect(ids(f.shell)).toEqual([
+      'hologram/shell-platform',
+      'hologram/shell-graph',
+      'hologram/shell-chat',
+      'hologram/shell-bridges',
+      'hologram/shell-keyguard',
+      'hologram/shell-sandbox-probe',
+      'hologram/shell-dataflow-parser',
+      'hologram/shell-nav',
+      'hologram/shell-persistence',
+      'hologram/shell-actions',
+    ]);
   });
 
   it('空层列表 = 恒等（id + 序，零漂移的构造性保证）', () => {
@@ -40,7 +51,7 @@ describe('composition/roster（S2-0 组合引擎）', () => {
     expect(ids(r.tools)).toEqual(ids(builtinToolRows()));
     expect(ids(r.prompt)).toEqual(ids(builtinPromptSections()));
     expect(r.capabilities.map((c) => c.key)).toEqual(capKeys());
-    expect(ids(r.shell)).toEqual([]);
+    expect(ids(r.shell)).toEqual(ids(builtinShellRows()));
     expect(r.diagnostics).toEqual({ disabled: [], overridden: [], inserted: [] });
   });
 
