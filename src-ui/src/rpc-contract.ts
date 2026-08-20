@@ -352,6 +352,11 @@ export interface EventContract {
    *  owner = 发起该 job 的 agent id，null 表示用户/UI 发起（不投给任何 agent）。
    *  前端监听后排干该 owner 的通知并经 MessageBus systemNotify 唤醒 idle agent。 */
   'bg:note': { jobId: number; owner: string | null };
+  /** 组合层热重载（S4-2，src-tauri composition_watcher.rs 发射）：根级
+   *  roster.patch.yml 变更（"modified" | "removed"）→ 前端 patch-loader
+   *  重跑 reload → composition-store 更新（新 Agent 装配即用新组合；
+   *  在途会话不动——创建时点冻结语义）。 */
+  'composition:changed': string;
 }
 
 // ─────────────────────────────────────────────────────────────

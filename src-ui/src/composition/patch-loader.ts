@@ -19,10 +19,13 @@
 //
 // 生效时机（S2 设计件 §2.4）：启动期一次；main.ts 持有 promise，
 // init() 冷启动（switchWorkspace → setupAgent）前 await——保证第一个
-// Agent 就拿到最终组合。改 patch 重启生效；热重载延期至 S4。
+// Agent 就拿到最终组合。S4-2 起支持热重载：reloadCompositionPatch()
+// 经 composition:changed 事件触发重跑（幂等——纯函数解析 + store 持最终态，
+// 同输入同输出）；在途会话不动（创建时点冻结语义——preset-assembly cache
+// 的用户层内容 hash 变化自动失效，R13；新 Agent 装配即用新组合）。
 
 import { parse as parseYaml } from 'yaml';
-import { clearUserPatch, registerUserPatch } from '../composition/preset-assembly';
+import { applyDefaultPreset, clearUserPatch, registerUserPatch } from '../composition/preset-assembly';
 import { factoryComposition, parseCompositionPatch, resolveRoster } from '../composition/roster';
 import { getProxyPort } from '../provider/transport';
 import { useCompositionStore } from '../state/composition-store';
@@ -102,7 +105,8 @@ export async function loadCompositionPatch(opts: LoadCompositionPatchOptions = {
     // resolveRoster throw（未知 id / insert 撞 id / 锚点不存在）→ 整体拒绝
     const resolved = resolveRoster(factoryComposition(), [validated.patch]);
     // S4-1a：登记用户层 patch（preset 叠层解析的输入——composition-store 的
-    // resolved 是已叠加产物，不能回退当用户层用）。
+    // resolved 是已叠加产物，不能回退当用户层用）。preset 层的应用在
+    // boot/reload 的编排层（发现完成后）——本函数保持单一职责。
     registerUserPatch(validated.patch);
     store.setResolved(resolved, PATCH_FILENAME);
   } catch (e) {
@@ -110,5 +114,35 @@ export async function loadCompositionPatch(opts: LoadCompositionPatchOptions = {
     console.error('[composition] 用户层 patch 装载失败:', e);
     clearUserPatch();
     useCompositionStore.getState().setError(errText(e), PATCH_FILENAME);
+  }
+}
+
+/** 热重载入口（S4-2）—— composition:changed 事件后重跑装载 + preset 层重应用。
+ *  与 loadCompositionPatch 的差异：
+ *  - 404（patch 被删除）不是静默返回——显式回退 factory 态（用户可能刚删掉
+ *    patch：旧组合必须撤下，不能残留在 store 里继续生效）；
+ *  - 装载成功后重应用 preset 层（preset-assembly 的用户层 hash 变化自动
+ *    失效 cache——新组合即新引用，R13）。永不 reject；通道级失败保持现状
+ *  （旧组合继续生效——热重载失败不等于组合失效）。 */
+export async function reloadCompositionPatch(opts: LoadCompositionPatchOptions = {}): Promise<void> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  try {
+    const origin = opts.origin ?? (await resolveOrigin());
+    if (!origin) return; // 无通道（浏览器 mock / 代理未起）——非错误
+    const res = await fetchImpl(origin + '/' + PATCH_FILENAME);
+    if (res.status === 404) {
+      // patch 被删除：回退 factory（显式清理——热删除是合法编辑动作）；
+      // preset 层不保留（用户层没了，叠层产物一并撤下）
+      clearUserPatch();
+      useCompositionStore.getState().resetToFactory();
+      console.info('[composition] 用户层 patch 已删除——回退出厂组合');
+      return;
+    }
+    // 其余路径与初次装载同语义（含 registerUserPatch 登记面维护）
+    await loadCompositionPatch({ origin, fetchImpl });
+    // preset 层重应用（发现已完成——boot 期 discoverPresets 先于事件监听）
+    applyDefaultPreset();
+  } catch (e) {
+    console.error('[composition] 热重载失败:', e);
   }
 }

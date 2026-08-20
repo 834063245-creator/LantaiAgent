@@ -50,7 +50,14 @@ pub(crate) fn plugins_root() -> PathBuf {
 /// 组合 patch 根目录（S2-2）：用户主目录下 `.hologram/composition/`。
 /// 用户层 roster.patch.yml 的通道根；`HOLOGRAM_COMPOSITION_ROOT` 环境变量
 /// 可覆盖（镜像 HOLOGRAM_PLUGINS_ROOT 的测试隔离/重定位语义）。
+/// S4-2 起 composition_watcher 复用同一根（单一事实源——经
+/// composition_root_public 跨模块访问）。
 pub(crate) fn composition_root() -> PathBuf {
+    composition_root_public()
+}
+
+/// composition_root 的跨模块访问面（S4-2 watcher 消费）。
+pub(crate) fn composition_root_public() -> PathBuf {
     if let Some(custom) = std::env::var_os("HOLOGRAM_COMPOSITION_ROOT") {
         if !custom.is_empty() {
             return PathBuf::from(custom);

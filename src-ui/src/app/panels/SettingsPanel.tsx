@@ -8,6 +8,7 @@
 import { getVersion } from '@tauri-apps/api/app';
 import type React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { selectPreset } from '../../composition/preset-assembly';
 import type { Lang } from '../../i18n';
 import { setLang } from '../../i18n';
 import { DEEP_THINK_LABEL } from '../../provider/thinking';
@@ -15,7 +16,9 @@ import { typedRpc } from '../../rpc-contract';
 import type { AppSettings, ProviderId } from '../../settings';
 import { loadSettings, loadSettingsWithSecrets, persistSecrets, removeSecret, saveSettings } from '../../settings';
 import { notifyAgentConfigChanged } from '../../state/agent-config-store';
+import { useCompositionStore } from '../../state/composition-store';
 import { useDockStore } from '../../state/dock-store';
+import { usePresetStore } from '../../state/preset-store';
 import { iconHtml } from '../../ui/icons';
 import { ConfirmDialog } from './settings/ConfirmDialog';
 import { ProviderPage } from './settings/ProviderPage';
@@ -45,6 +48,13 @@ const SettingsPanelApp: React.FC<{
   const [settings, setSettings] = useState<AppSettings>(() => loadSettings());
   const [activeTab, setActiveTab] = useState<Tab>('provider');
   const [appVersion, setAppVersion] = useState('…');
+  // S4-2：组合诊断 + preset 选择（Agent tab「组合」节——只读诊断 + 缺省选择器）
+  const compositionStatus = useCompositionStore((s) => s.status);
+  const compositionPatchOrigin = useCompositionStore((s) => s.patchOrigin);
+  const compositionError = useCompositionStore((s) => s.error);
+  const compositionDiagnostics = useCompositionStore((s) => s.resolved.diagnostics);
+  const presetRoster = usePresetStore((s) => s.roster);
+  const presetSelected = usePresetStore((s) => s.selected);
   // ⚡ 2026-08-04 状态治理：apiKey 权威在系统加密凭据 —
   // localStorage 无明文，打开面板时异步回填密钥供表单展示。
   // ⚡ 2026-08-07 竞态修复：回填用函数式合并、只填充仍为空的 key——
@@ -343,6 +353,53 @@ const SettingsPanelApp: React.FC<{
 
           {/* ═══ Agent 标签页 ═══ */}
           <div className="sp-tab-content" data-tab="agent" style={{ display: activeTab === 'agent' ? '' : 'none' }}>
+            <div className="sp-section">
+              <div className="sp-section-title">组合 / Composition</div>
+              <div className="sp-field">
+                <label className="sp-label" htmlFor="sp-preset-select">
+                  Preset（行组合预设）
+                </label>
+                <select
+                  id="sp-preset-select"
+                  className="sp-input"
+                  value={presetSelected}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    // selectPreset：store 同步 + settings 持久化（S4-1a）。
+                    // 装配作用域下次装配生效（新会话即见）；壳作用域重启生效。
+                    selectPreset(id);
+                  }}
+                >
+                  {presetRoster.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.metadata?.name ?? p.id}
+                      {p.patch === null ? '（损坏）' : ''}
+                    </option>
+                  ))}
+                </select>
+                <div className="sp-hint-sub">
+                  生效时机：新 Agent 装配（新会话）即用新组合；在途会话保持创建时点的组合。
+                  {presetRoster.find((p) => p.id === presetSelected)?.error
+                    ? ` 当前 preset 装载失败: ${presetRoster.find((p) => p.id === presetSelected)?.error}`
+                    : ''}
+                </div>
+              </div>
+              <div className="sp-field">
+                <div className="sp-hint-sub">
+                  用户层 patch 状态：
+                  {compositionStatus === 'factory' && '出厂组合（无 patch 或被拒）'}
+                  {compositionStatus === 'ok' && `已应用（来源: ${compositionPatchOrigin ?? 'roster.patch.yml'}）`}
+                  {compositionStatus === 'error' && `被拒——回退出厂组合（${compositionError ?? '未知原因'}）`}
+                  ；热重载已启用（改 ~/.hologram/composition/roster.patch.yml 即时生效于新装配）。
+                </div>
+                {compositionDiagnostics.disabled.length > 0 && (
+                  <div className="sp-hint-sub">
+                    禁用行（{compositionDiagnostics.disabled.length}）：
+                    <code>{compositionDiagnostics.disabled.join(', ')}</code>
+                  </div>
+                )}
+              </div>
+            </div>
             <div className="sp-section">
               <div className="sp-section-title">模型参数</div>
               <div className="sp-field">

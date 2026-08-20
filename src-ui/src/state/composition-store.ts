@@ -34,6 +34,8 @@ interface CompositionState {
   setResolved(resolved: ResolvedComposition, patchOrigin?: string): void;
   /** 整体拒绝 → 回退出厂组合 + 错误可见（loader 失败路径）。 */
   setError(error: string, patchOrigin?: string): void;
+  /** 回退出厂态（S4-2 热重载：patch 被删除——显式撤下旧组合）。 */
+  resetToFactory(): void;
 }
 
 export const useCompositionStore = create<CompositionState>((set) => ({
@@ -41,4 +43,6 @@ export const useCompositionStore = create<CompositionState>((set) => ({
   resolved: factoryComposition(),
   setResolved: (resolved, patchOrigin) => set({ status: 'ok', resolved, patchOrigin, error: undefined }),
   setError: (error, patchOrigin) => set({ status: 'error', resolved: factoryComposition(), patchOrigin, error }),
+  resetToFactory: () =>
+    set({ status: 'factory', resolved: factoryComposition(), patchOrigin: undefined, error: undefined }),
 }));

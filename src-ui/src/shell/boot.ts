@@ -15,12 +15,13 @@
 // 函数（零漂移过渡），S2-4 起是 shell/workspace.ts 真源。
 
 import { useShellStore } from '../app/shell-store';
-import { loadCompositionPatch } from '../composition/patch-loader';
+import { loadCompositionPatch, reloadCompositionPatch } from '../composition/patch-loader';
 import { applyDefaultPreset, syncPresetSelectionFromSettings } from '../composition/preset-assembly';
 import { discoverPresets } from '../composition/preset-discovery';
 import type { ResolvedComposition } from '../composition/roster';
 import { builtinShellRows, type ShellRow, type WorkspaceFlowDeps, workspaceFlow } from '../composition/shell-rows';
 import { setLang } from '../i18n';
+import { typedListen } from '../rpc-contract';
 import { loadSettings } from '../settings';
 import { shellRefs } from './runtime';
 
@@ -38,6 +39,18 @@ function ensurePresetsDiscovered(): Promise<void> {
   return presetDiscovery;
 }
 
+/** 组合层热重载监听（S4-2）：Rust watcher emit composition:changed →
+ *  patch-loader reload → composition-store 更新（新 Agent 装配即用新组合；
+ *  在途会话不动）。监听器生命周期 = 应用生命周期（boot 期一次登记）。 */
+let compositionWatchArmed = false;
+function armCompositionWatcher(): void {
+  if (compositionWatchArmed) return;
+  compositionWatchArmed = true;
+  void typedListen('composition:changed', () => {
+    void reloadCompositionPatch();
+  });
+}
+
 /** 壳引导主入口 — main.ts 调用（fire-and-forget；永不 reject）。
  *  flowDeps 缺省 = 出厂 workspace 流（行 11 模块真源）。 */
 export async function bootShell(
@@ -51,13 +64,15 @@ export async function bootShell(
     document.documentElement.style.setProperty('--font-scale', String(loadSettings().display.fontScale));
     shellRefs.starGraph?.resize(); // CSS 自定义属性变化 → 容器缩小 → canvas 必须跟随
 
-    // 2) 组合链（S4-1a）：settings 的 preset 选择同步 → 用户层 patch →
-    //    preset 发现（用户目录）→ preset 层应用（写 composition-store）。
-    //    preset 选择先于装载（发现要用 selected 判定，应用在装载后）。
+    // 2) 组合链（S4-1a + S4-2）：settings 的 preset 选择同步 → 用户层
+    //    patch → preset 发现（用户目录）→ preset 层应用（写
+    //    composition-store）→ 热重载监听武装（composition:changed →
+    //    reload；Rust watcher 在壳进程常驻）。
     syncPresetSelectionFromSettings();
     await ensureCompositionLoaded();
     await ensurePresetsDiscovered();
     applyDefaultPreset();
+    armCompositionWatcher();
 
     // 3) 按表序逐行 boot（resolved.shell 组合后行表；缺省 = 出厂表）
     const rows: ShellRow[] = composition?.shell ?? builtinShellRows();

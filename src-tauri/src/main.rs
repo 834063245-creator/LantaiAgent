@@ -35,6 +35,7 @@ mod uia;
 mod sensitive;
 mod llm_proxy;
 mod plugin_assets;
+mod composition_watcher;
 
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -116,6 +117,11 @@ fn main() {
             commands::external::start_unity_event_server(app.handle().clone());
             // LLM 反向代理 — 绕开 WebView CORS，让 provider 调用走后端（2026-08-16）
             let _proxy_port = llm_proxy::spawn_llm_proxy();
+            // 组合层热重载 watcher（S4-2）：~/.hologram/composition/ 根级
+            // roster.patch.yml 变更 → composition:changed 事件 → 前端 reload。
+            // app 生命周期 = watcher 生命周期（Drop 停线程）。
+            let _composition_watcher = composition_watcher::CompositionWatcher::start(app.handle().clone());
+            app.manage(std::sync::Mutex::new(_composition_watcher));
             // Memory Bundle: 如果在 hologram 旁找到 exe 则启动
             if let Ok(exe_path) = std::env::current_exe() {
                 if let Some(exe_dir) = exe_path.parent() {
