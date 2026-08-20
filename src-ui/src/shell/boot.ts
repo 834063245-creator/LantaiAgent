@@ -5,7 +5,8 @@
 //
 // 职责（设计件 §2.6）：
 //   1. 引导三件套就地执行（右键抑制 / 语言 / 字号——原 init 418-422）；
-//   2. await compositionReady（S2-2 用户层 patch 先于一切装配）；
+//   2. 组合链（S2-2 用户层 patch + S4-1a preset：选择同步 → 装载 → 发现 →
+//      preset 层应用——全部先于一切装配，保证第一个 Agent 就拿到最终组合）；
 //   3. 按 resolved.shell 表序逐行 await boot（保序 = 现 init 的 await 语义）；
 //   4. 失败隔离：单行抛错 console.error + 继续（loader 同款纪律）。
 //
@@ -15,6 +16,8 @@
 
 import { useShellStore } from '../app/shell-store';
 import { loadCompositionPatch } from '../composition/patch-loader';
+import { applyDefaultPreset, syncPresetSelectionFromSettings } from '../composition/preset-assembly';
+import { discoverPresets } from '../composition/preset-discovery';
 import type { ResolvedComposition } from '../composition/roster';
 import { builtinShellRows, type ShellRow, type WorkspaceFlowDeps, workspaceFlow } from '../composition/shell-rows';
 import { setLang } from '../i18n';
@@ -26,6 +29,13 @@ let compositionLoading: Promise<void> | null = null;
 function ensureCompositionLoaded(): Promise<void> {
   compositionLoading ??= loadCompositionPatch();
   return compositionLoading;
+}
+
+/** 启动期一次 preset 发现（幂等；内置表 + 用户目录合并进 preset-store）。 */
+let presetDiscovery: Promise<void> | null = null;
+function ensurePresetsDiscovered(): Promise<void> {
+  presetDiscovery ??= discoverPresets();
+  return presetDiscovery;
 }
 
 /** 壳引导主入口 — main.ts 调用（fire-and-forget；永不 reject）。
@@ -41,8 +51,13 @@ export async function bootShell(
     document.documentElement.style.setProperty('--font-scale', String(loadSettings().display.fontScale));
     shellRefs.starGraph?.resize(); // CSS 自定义属性变化 → 容器缩小 → canvas 必须跟随
 
-    // 2) 用户层组合 patch（S2-2：先于冷启动装配；永不 reject）
+    // 2) 组合链（S4-1a）：settings 的 preset 选择同步 → 用户层 patch →
+    //    preset 发现（用户目录）→ preset 层应用（写 composition-store）。
+    //    preset 选择先于装载（发现要用 selected 判定，应用在装载后）。
+    syncPresetSelectionFromSettings();
     await ensureCompositionLoaded();
+    await ensurePresetsDiscovered();
+    applyDefaultPreset();
 
     // 3) 按表序逐行 boot（resolved.shell 组合后行表；缺省 = 出厂表）
     const rows: ShellRow[] = composition?.shell ?? builtinShellRows();

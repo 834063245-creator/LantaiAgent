@@ -169,6 +169,16 @@ export class Agent {
   // setGoalManager 经 write-through 把后续注入同步回 ctx（ctx 是服务真源）。
   private _ctx: AgentContext | null = null;
 
+  /** 装配用组合产物（S4-1a）— ctx 路径从服务表读（runtime 装配期写入；
+   *  child() 继承白名单成员，子 Agent 与父同一组合面）；legacy 路径为 null。
+   *  消费面：spawnSubAgent 透传子 Agent（ctx 路径）、诊断/测试只读。 */
+  private readonly _composition: import('../composition/roster').ResolvedComposition | null = null;
+
+  /** 装配用组合产物（只读面；legacy 构造无组合时为 null）。 */
+  get composition(): import('../composition/roster').ResolvedComposition | null {
+    return this._composition;
+  }
+
   // 上下文管理
   private contextWindow: number;
   private compactRatio: number;
@@ -346,6 +356,7 @@ export class Agent {
     this.agentStore = ctx?.get('agentStore') ?? null;
     this.goalManager = ctx?.get('goalManager') ?? null;
     this._subAgentPool = ctx?.get('subAgentPool') ?? null;
+    this._composition = ctx?.get('composition') ?? null;
 
     this.sessionId = opts.sessionId || `session-${Date.now()}`;
     this._onSessionPersisted = opts.onSessionPersisted;

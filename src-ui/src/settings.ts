@@ -4,8 +4,8 @@
 // Settings — API Key 管理、模型选择、provider 配置
 // 存储在 localStorage 中，在可用时由 Tauri store 插件支持
 
-import { getCatalogVendors, getDefaultModel, getModel } from './provider/catalog';
 import { ANTHROPIC_DEFAULT_BASE_URL } from './provider/anthropic';
+import { getCatalogVendors, getDefaultModel, getModel } from './provider/catalog';
 import type { StoredThinking } from './provider/thinking';
 import type { Protocol } from './provider/types';
 
@@ -58,12 +58,22 @@ interface DisplaySettings {
   fontScale: number;
 }
 
+/** 组合层设置（S4-1a）——preset 选择的持久化真源（缺省 standard；
+ *  运行时镜像在 state/preset-store.selected，boot 期经
+ *  composition/preset-assembly.syncPresetSelectionFromSettings 同步）。 */
+export interface CompositionSettings {
+  /** 选中的 preset id（内置表 id 或用户 preset 目录 id；未知 id 装配侧回退 factory）。 */
+  preset: string;
+}
+
 export interface AppSettings {
   activeProvider: ProviderId; // provider 身份（领域词见 CONTEXT.md「ProviderId」）
   providers: ProviderSettings[];
   projectPath: string;
   agent: AgentSettings;
   display: DisplaySettings;
+  /** 组合层设置（可选——旧存储无此字段，loadSettings 缺省容错补 standard）。 */
+  composition?: CompositionSettings;
 }
 
 const STORAGE_KEY = 'hologram_settings';
@@ -120,6 +130,9 @@ const DEFAULTS: AppSettings = {
   display: {
     language: 'zh',
     fontScale: 1.2,
+  },
+  composition: {
+    preset: 'standard',
   },
 };
 

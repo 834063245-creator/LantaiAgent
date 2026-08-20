@@ -6,20 +6,19 @@
 // agent/ 层只依赖这些接口，不 import 任何 ui/ 模块。
 // ui/ 层实现 RuntimeNotifier，通过 RuntimePort 驱动 Agent。
 
-import type { AgentEvent, EventSink } from '../agent-types';
-import type { ExecStateInstance } from '../execution-state';
 import type { Message, Provider } from '../../provider/types';
-import type { Pricing } from '../agent-types';
 import type { AgentStore } from '../agent-store';
+import type { AgentEvent, EventSink, Pricing } from '../agent-types';
+import type { SubAgentPool } from '../coordinator';
+import type { ExecStateInstance } from '../execution-state';
 import type { GoalManager } from '../goal-manager';
 import type { GraphContext } from '../hooks';
 import type { MemoryManager } from '../memory';
-import type { SkillRegistry } from '../skills';
-import type { SubAgentPool } from '../coordinator';
-import type { TaskManager } from '../task';
-import type { ToolRegistry } from '../tool';
 import type { MessageBus } from '../message-bus';
+import type { SkillRegistry } from '../skills';
+import type { TaskManager } from '../task';
 import type { TaskBoard } from '../task-board';
+import type { ToolRegistry } from '../tool';
 
 // ── Agent 状态 ──
 
@@ -40,7 +39,7 @@ export interface RuntimeNotifier {
   onSessionReplaced(agentId: string, messages: Message[]): void;
   /** 子 Agent 启动 — UI 构建渲染状态并返回 EventSink */
   onSubAgentSpawn(info: SubAgentSpawnInfo): EventSink | undefined;
-    /** 子 Agent 结束 — UI 收尾渲染状态 */
+  /** 子 Agent 结束 — UI 收尾渲染状态 */
   onSubAgentFinished(agentId: string, parentAgentId: string, sessionId: number, ok: boolean): void;
   /** 工具执行完成（面板自动刷新） */
   onToolDone(agentId: string, toolName: string, args: Record<string, unknown>, output: string): void;
@@ -197,13 +196,27 @@ export interface RuntimePort {
   /** 等待启动恢复完成 — createAgent 前必须 await */
   ready(): Promise<void>;
   /** 创建一个 Agent 实例。返回的句柄拥有该 Agent 的生命周期 —
-   *  调用者负责在生命周期结束时 handle.dispose()。 */
-  createAgent(config: AgentConfig): Promise<AgentHandle>;
+   *  调用者负责在生命周期结束时 handle.dispose()。
+   *  S4-1a：可选 compositionOverride — 会话级组合覆盖（缺省 = runtime
+   *  组合，S2 语义零变化）；AgentConfig 字段面冻结不受影响。 */
+  createAgent(
+    config: AgentConfig,
+    compositionOverride?: import('../../composition/roster').ResolvedComposition,
+  ): Promise<AgentHandle>;
   /** 从 AgentContext 创建 Agent — Phase 3 收敛入口（agent-core-convergence）。
    *  身份与服务来自 ctx；缺失的会话级基础设施（board proxies / planState /
    *  execState）由 runtime 物化并写回 ctx。与 AgentConfig 入口的等价性由
-   *  convergence specs/phase-3 差分钉住。 */
-  createAgentFromContext(ctx: AgentContext, inputs?: AgentAssemblyInputs): Promise<AgentHandle>;
+   *  convergence specs/phase-3 差分钉住。
+   *  S4-1a：可选 composition 覆盖——缺省 this._composition（S2 语义零变化）；
+   *  会话工厂为「resolved ≠ 工作区默认组合」的会话传会话作用域组合
+   *  （工具面/prompt/capability 三域整体换源，cache 引用稳定由
+   *  composition/preset-assembly 保证）。 */
+  createAgentFromContext(
+    ctx: AgentContext,
+    inputs?: AgentAssemblyInputs,
+    blueprint?: import('../blueprint').AgentBlueprint,
+    composition?: import('../../composition/roster').ResolvedComposition,
+  ): Promise<AgentHandle>;
   /** 获取 Agent */
   getAgent(agentId: string): AgentHandle | null;
   /** 销毁所有 Agent — 编排者（Workspace）整体停用时调用。

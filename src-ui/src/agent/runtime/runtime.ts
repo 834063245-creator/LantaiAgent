@@ -471,21 +471,26 @@ export class AgentRuntime implements RuntimePort {
   /** 创建 Agent — 接收完整配置，Runtime 不做 UI 依赖的事。
    *  Phase 3 起（agent-core-convergence）：本方法是 AgentConfig → AgentContext
    *  的翻译层 + 装配委托；装配本体 _assembleAgent 只消费 ctx + inputs，
-   *  不再接触 AgentConfig（specs/phase-3 T0 结构门禁钉住）。 */
-  async createAgent(config: AgentConfig): Promise<AgentHandle> {
+   *  不再接触 AgentConfig（specs/phase-3 T0 结构门禁钉住）。
+   *  S4-1a：可选 compositionOverride 整体换源（缺省 this._composition——
+   *  S2 零漂移）；AgentConfig 字段面冻结不受影响（覆盖走参数不走 config）。 */
+  async createAgent(config: AgentConfig, compositionOverride?: ResolvedComposition): Promise<AgentHandle> {
     const { ctx, inputs } = this._contextFromConfig(config);
-    return this._assembleAgent(ctx, inputs);
+    return this._assembleAgent(ctx, inputs, undefined, compositionOverride);
   }
 
   /** 从 AgentContext 创建 Agent — Phase 3 收敛入口（RuntimePort 契约见 types.ts）。
    *  Phase 6：第 3 参 blueprint 允许调用方以声明式 capability 扩展装配面 —
-   *  新增工具/hook 不再要求修改 AgentConfig。缺省 AgentBlueprint.standard()。 */
+   *  新增工具/hook 不再要求修改 AgentConfig。缺省 AgentBlueprint.standard()。
+   *  S4-1a：第 4 参 composition 覆盖 — 缺省 this._composition（S2 零漂移）；
+   *  会话工厂传会话作用域组合（工具面/prompt/capabilities 三域换源）。 */
   async createAgentFromContext(
     ctx: AgentContext,
     inputs: AgentAssemblyInputs = {},
     blueprint?: AgentBlueprint,
+    composition?: ResolvedComposition,
   ): Promise<AgentHandle> {
-    return this._assembleAgent(ctx, inputs, blueprint);
+    return this._assembleAgent(ctx, inputs, blueprint, composition);
   }
 
   /** AgentConfig → AgentContext 翻译层 — 身份与调用方供给的服务进 ctx，
@@ -567,14 +572,18 @@ export class AgentRuntime implements RuntimePort {
    *  S2-1：缺省蓝图改由组合解析产物派生（fromRoster(this._composition.
    *  capabilities)——不传 composition 时 ≡ standard()，零漂移）；显式
    *  blueprint 参数仍最高优先（createAgentFromContext 的扩展面）。
+   *  S4-1a：composition 参数整体换源（缺省 this._composition）——prompt 段表
+   *  与 capability 表读覆盖组合，缓存引用稳定由调用方（preset-assembly）保证。
    *  runtime 保留三块生命周期所有权：board-unregister / lifecycle-manager /
    *  runtime-maps 的 ctx.effect（Phase 4 语义，specs/phase-4 T0 钉住 ≥3 处）。 */
   private async _assembleAgent(
     ctx: AgentContext,
     inputs: AgentAssemblyInputs,
     blueprint?: AgentBlueprint,
+    compositionOverride?: ResolvedComposition,
   ): Promise<AgentHandle> {
-    const effectiveBlueprint = blueprint ?? AgentBlueprint.fromRoster(this._composition.capabilities);
+    const composition = compositionOverride ?? this._composition;
+    const effectiveBlueprint = blueprint ?? AgentBlueprint.fromRoster(composition.capabilities);
     this._materializeSessionServices(ctx);
     const agentId = ctx.agentId;
     const taskProxy = ctx.resolve('taskBoard');
@@ -632,7 +641,7 @@ export class AgentRuntime implements RuntimePort {
         claudeMd,
         ctx.resolve('provider').name(),
         shellEnvSection,
-        this._composition.prompt,
+        composition.prompt,
       );
     }
 
@@ -652,6 +661,9 @@ export class AgentRuntime implements RuntimePort {
 
     // 3. Phase 6 声明式装配 — capability 表驱动。context 阶段（Agent 构造前，
     //    可写 ctx 服务）→ 构造 → agent 阶段（表序即工具面注册序）。
+    //    S4-1a：组合产物写进 ctx 服务表（Agent.composition 读取 + child()
+    //    继承白名单——spawnSubAgent 的子 Agent 与父同一组合面）。
+    if (!ctx.get('composition')) ctx.set('composition', composition);
     const scope: BlueprintScope = {
       ctx,
       inputs,

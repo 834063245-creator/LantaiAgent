@@ -131,14 +131,20 @@ describe('phase-6 T0 结构门禁 — 组合面收敛到 blueprint capability �
     expect(hits, `_assembleAgent 残留组合面直调：${hits.join(' | ')}——装配声明落在 blueprint.ts`).toEqual([]);
   });
 
-  it('缺省装配 = 组合产物派生蓝图（S2-1 真源），两阶段表驱动', () => {
+  it('缺省装配 = 组合产物派生蓝图（S2-1 真源；S4-1a 覆盖参数缺省 this._composition），两阶段表驱动', () => {
     // S2-1 组合外化（设计件 §2.5，用户已批准）：缺省蓝图从手写 standard()
-    // 直连改为 AgentBlueprint.fromRoster(this._composition.capabilities)
-    // ——不穿 composition 时 ≡ standard()（fromRoster(factory) 即快捷方式），
-    // 行为等价由本套件其余快照测试守护（effective 零漂移）。
+    // 直连改为 AgentBlueprint.fromRoster(组合产物)——不穿 composition 时
+    // ≡ standard()（fromRoster(factory) 即快捷方式），行为等价由本套件其余
+    // 快照测试守护（effective 零漂移）。
+    // S4-1a 会话级组合覆盖（设计件 §2.2 复审补充）：推导式改为
+    // composition = compositionOverride ?? this._composition ——缺省语义
+    // 不变（快照零漂移继续守护），断言同步钉新形态。
     const src = methodSource('AgentRuntime', '_assembleAgent');
     expect(src, '缺省蓝图必须由组合产物派生（roster 真源）').toContain(
-      'AgentBlueprint.fromRoster(this._composition.capabilities)',
+      'AgentBlueprint.fromRoster(composition.capabilities)',
+    );
+    expect(src, '缺省组合 = runtime 组合（S4-1a 覆盖参数缺省语义）').toContain(
+      'compositionOverride ?? this._composition',
     );
     expect(src, '装配必须按 capability 表驱动（context 阶段）').toContain("effectiveBlueprint.capabilities('context')");
     expect(src, '装配必须按 capability 表驱动（agent 阶段）').toContain("effectiveBlueprint.capabilities('agent')");

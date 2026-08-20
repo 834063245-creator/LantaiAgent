@@ -40,6 +40,7 @@ import { TaskManager } from './agent/task';
 import type { Tool, ToolRegistry } from './agent/tool';
 import type { ChatCore } from './app/chat/chat-core';
 import { useShellStore } from './app/shell-store';
+import { resolveCurrentComposition } from './composition/preset-assembly';
 import type { Context, Fiber } from './cordis';
 import { initCordisKernel } from './cordis/boot';
 import { withTimeout } from './lifecycle/timeout';
@@ -909,6 +910,12 @@ export class Workspace {
     // 返回 runtime 句柄（含 dispose）— 所有权随句柄交给会话 state
     // （agentSessionState），会话关闭时由其负责销毁；
     // agentRef/this.agent 仅是借用 raw Agent 引用（spawn 闭包、notifyMemorySaved）。
+    // S4-1a 会话工厂组合覆盖（设计件 §2.2 复审补充的机制位——「无生产 UI
+    // 消费、机制完整、选择器留给 V5」）：当前生效组合 ≠ 工作区装配组合时，
+    // 工厂为该会话构建会话作用域注册表（deps 全部工作区级可复用）并把组合
+    // 覆盖传给 createAgent（prompt/capabilities 域随覆盖换源；工具域经会话
+    // 注册表换源）。无选择器时两值恒等 → 走共享注册表 + 无覆盖 = S2 现状
+    // 零漂移。子 Agent 经 ctx composition 服务继承 → 与父同面。
     const factory = async (): Promise<AgentHandle | null> => {
       // 单一新鲜快照 — apiKey 判定 / provider 构建 / 定价 / 窗口全部出自它。
       // （旧实现用外层 setup 时的 prov 配新鲜 settings 的 key/定价，
@@ -926,64 +933,98 @@ export class Workspace {
       // 唯一 agentId — 每会话一个 Agent 实例；'main' 硬编码会让所有会话的
       // Agent 在 runtime.agents/_agentSessions 里互相覆盖（多会话错位根因之一）
       const sessionAgentId = `main-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      const handle = await runtime.createAgent({
-        agentId: sessionAgentId,
-        parentId: null,
-        projectPath: this.path,
-        graphData: this.graphData,
-        provider: sessProv,
-        tools: registry,
-        memoryManager: this.memoryManager ?? undefined,
-        skillRegistry: this.skillRegistry ?? undefined,
-        goalManager: this.goalManager ?? undefined,
-        agentStore: this.agentStore ?? undefined,
-        subAgentPool: this.subAgentPool,
-        taskManager: this.taskManager,
-        graphContext: graphCtx,
-        eventSink: chatPanel.eventSink,
-        execState: chatPanel.execState,
-        collaborationMode: ms.collaborationMode,
-        pricing: defaultPricing(act.kind, act.model),
-        temperature: agentOpts.temperature ?? 0.7,
-        // 从模型目录动态解析窗口（deepseek-v4 标 1M），查不到才 fallback 200K。
-        // 0b3e5bf 曾加 Math.min(..., 200000) 硬封顶 — 把动态结果压成 200K，
-        // 导致压缩在 110K 就触发；压缩已根治为只影响发送载荷，cap 无必要。
-        contextWindow: this._effectiveContextWindow(s),
-        preRunHook: this.memoryManager
-          ? async (input: string) => {
-              if (!this.memoryManager!.auraReady) return null;
-              try {
-                const records = await this.memoryManager!.auraSemanticRecall(input, 5);
-                if (records.length === 0) return null;
-                const lines = records.map((r) => {
-                  const t = r.tags?.length ? `[${r.tags.join(', ')}] ` : '';
-                  return `- ${t}${r.content.slice(0, 250)}`;
-                });
-                return `AuraSDK 语义记忆召回：\n${lines.join('\n')}`;
-              } catch {
-                return null;
+
+      // 会话组合覆盖判定（S4-1a 机制位；V5 选择器接入后此处才会出现分歧）
+      const sessionComposition = resolveCurrentComposition();
+      const compositionOverride = sessionComposition !== composition ? sessionComposition : undefined;
+      // 会话作用域注册表：覆盖存在时按覆盖的 tools 域构建（deps 工作区级复用）
+      const sessionRegistry = compositionOverride
+        ? await buildToolRegistry({
+            graphData: this.graphData,
+            deps: builderDeps,
+            memoryManager: this.memoryManager ?? undefined,
+            skillRegistry: this.skillRegistry ?? undefined,
+            taskManager: this.taskManager,
+            subAgentPool: this.subAgentPool,
+            subAgentSpawner: async (desc, prompt, prog, mode, al, sig, asyncMode, agentIdOverride, outputSchema) =>
+              agentRef.current?.spawnSubAgent(
+                desc,
+                prompt,
+                prog,
+                mode,
+                al,
+                sig,
+                asyncMode,
+                agentIdOverride,
+                outputSchema,
+              ) ?? Promise.resolve({ text: '', err: 'agent not available' }),
+            toolRows: compositionOverride.tools,
+          })
+        : registry;
+
+      const handle = await runtime.createAgent(
+        {
+          agentId: sessionAgentId,
+          parentId: null,
+          projectPath: this.path,
+          graphData: this.graphData,
+          provider: sessProv,
+          tools: sessionRegistry,
+          memoryManager: this.memoryManager ?? undefined,
+          skillRegistry: this.skillRegistry ?? undefined,
+          goalManager: this.goalManager ?? undefined,
+          agentStore: this.agentStore ?? undefined,
+          subAgentPool: this.subAgentPool,
+          taskManager: this.taskManager,
+          graphContext: graphCtx,
+          eventSink: chatPanel.eventSink,
+          execState: chatPanel.execState,
+          collaborationMode: ms.collaborationMode,
+          pricing: defaultPricing(act.kind, act.model),
+          temperature: agentOpts.temperature ?? 0.7,
+          // 从模型目录动态解析窗口（deepseek-v4 标 1M），查不到才 fallback 200K。
+          // 0b3e5bf 曾加 Math.min(..., 200000) 硬封顶 — 把动态结果压成 200K，
+          // 导致压缩在 110K 就触发；压缩已根治为只影响发送载荷，cap 无必要。
+          contextWindow: this._effectiveContextWindow(s),
+          preRunHook: this.memoryManager
+            ? async (input: string) => {
+                if (!this.memoryManager!.auraReady) return null;
+                try {
+                  const records = await this.memoryManager!.auraSemanticRecall(input, 5);
+                  if (records.length === 0) return null;
+                  const lines = records.map((r) => {
+                    const t = r.tags?.length ? `[${r.tags.join(', ')}] ` : '';
+                    return `- ${t}${r.content.slice(0, 250)}`;
+                  });
+                  return `AuraSDK 语义记忆召回：\n${lines.join('\n')}`;
+                } catch {
+                  return null;
+                }
               }
-            }
-          : undefined,
-        onSessionPersisted: (_sid: string, messages: Array<{ role: string; content: unknown }>) => {
-          memoryBundleIngest(
-            messages.map((m) => ({
-              role: m.role,
-              content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-            })),
-            'holo',
-            _sid,
-          ).catch(() => {});
-          (async () => {
-            await refreshGitStatus(this.path);
-            await refreshTimeline(this.path);
-            // 只消费本 Agent 产生的构建结果（其他会话的留在槽位等本尊）
-            const block = buildTurnStartBlock(sessionAgentId);
-            if (block)
-              agentRef.current?.insertMessage(`<system-reminder>\n${block}\n</system-reminder>`, { silent: true });
-          })().catch(() => {});
+            : undefined,
+          onSessionPersisted: (_sid: string, messages: Array<{ role: string; content: unknown }>) => {
+            memoryBundleIngest(
+              messages.map((m) => ({
+                role: m.role,
+                content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+              })),
+              'holo',
+              _sid,
+            ).catch(() => {});
+            (async () => {
+              await refreshGitStatus(this.path);
+              await refreshTimeline(this.path);
+              // 只消费本 Agent 产生的构建结果（其他会话的留在槽位等本尊）
+              const block = buildTurnStartBlock(sessionAgentId);
+              if (block)
+                agentRef.current?.insertMessage(`<system-reminder>\n${block}\n</system-reminder>`, { silent: true });
+            })().catch(() => {});
+          },
         },
-      });
+        // S4-1a：会话组合覆盖（prompt/capabilities 域随会话换源；缺省 =
+        // runtime 组合 = 工作区装配组合，S2 零漂移）
+        compositionOverride,
+      );
 
       const agent = '_getAgent' in handle ? (handle as { _getAgent(): Agent })._getAgent() : null;
       if (!agent) return null;

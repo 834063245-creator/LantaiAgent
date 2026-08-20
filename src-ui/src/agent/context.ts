@@ -69,6 +69,11 @@ export interface AgentServices {
    *  （deriveMessages/derivePayload 见 session-log.ts）。缺省由 runtime 物化（每 Agent
    *  独立实例）；child() 白名单不继承 — 子 Agent 各自持有。 */
   sessionLog?: SessionLog;
+  /** 组合解析产物（S4-1a）— 该 Agent 装配用的 ResolvedComposition（prompt 段表
+   *  真源 + 子 Agent 透传载体）。缺省由 runtime 从自身组合写入；child() 白名单
+   *  **继承**（子 Agent 与父同一组合面——否则子 Agent 看到的工具面与父会话
+   *  记录不可对拍，设计件 §2.2「子 Agent 继承」）。 */
+  composition?: import('../composition/roster').ResolvedComposition;
 }
 
 /** 服务名 — AgentServices 的 key 全集。 */
@@ -206,6 +211,9 @@ export class AgentContext {
       provider: this._services.provider,
       messageBus: this._services.messageBus,
       agentStore: this._services.agentStore,
+      // S4-1a：组合面随 child 继承（子 Agent 与父同一组合面；spawnSubAgent
+      // 不再单独透传——ctx 是组合真源，见 Agent 构造的 composition 读取）。
+      composition: this._services.composition,
     };
     return new AgentContext(
       {

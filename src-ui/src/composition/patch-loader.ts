@@ -22,6 +22,7 @@
 // Agent 就拿到最终组合。改 patch 重启生效；热重载延期至 S4。
 
 import { parse as parseYaml } from 'yaml';
+import { clearUserPatch, registerUserPatch } from '../composition/preset-assembly';
 import { factoryComposition, parseCompositionPatch, resolveRoster } from '../composition/roster';
 import { getProxyPort } from '../provider/transport';
 import { useCompositionStore } from '../state/composition-store';
@@ -68,11 +69,15 @@ export async function loadCompositionPatch(opts: LoadCompositionPatchOptions = {
     const origin = opts.origin ?? (await resolveOrigin());
     if (!origin) return; // 无通道（浏览器 mock / 代理未起）——factory，非错误
     const res = await fetchImpl(origin + '/' + PATCH_FILENAME);
-    if (res.status === 404) return; // 无用户层 patch——factory，非错误
+    if (res.status === 404) {
+      clearUserPatch(); // 无用户层 patch——preset 叠层按恒等层解析（S4-1a）
+      return; // 无用户层 patch——factory，非错误
+    }
     if (!res.ok) {
       // 通道异常（403/500/…）：可见 + factory 兜底
       const msg = '组合 patch 通道异常: HTTP ' + res.status;
       console.error('[composition] ' + msg);
+      clearUserPatch(); // store 回退 factory——登记面同步清空（S4-1a）
       store.setError(msg, PATCH_FILENAME);
       return;
     }
@@ -83,21 +88,27 @@ export async function loadCompositionPatch(opts: LoadCompositionPatchOptions = {
     } catch (e) {
       const msg = 'YAML 语法错误: ' + errText(e);
       console.error('[composition] ' + msg);
+      clearUserPatch();
       store.setError(msg, PATCH_FILENAME);
       return;
     }
     const validated = parseCompositionPatch(parsed);
     if (!validated.ok) {
       console.error('[composition] patch 校验失败:', validated.error);
+      clearUserPatch();
       store.setError('patch 校验失败: ' + validated.error, PATCH_FILENAME);
       return;
     }
     // resolveRoster throw（未知 id / insert 撞 id / 锚点不存在）→ 整体拒绝
     const resolved = resolveRoster(factoryComposition(), [validated.patch]);
+    // S4-1a：登记用户层 patch（preset 叠层解析的输入——composition-store 的
+    // resolved 是已叠加产物，不能回退当用户层用）。
+    registerUserPatch(validated.patch);
     store.setResolved(resolved, PATCH_FILENAME);
   } catch (e) {
     // 通道级失败（fetch 网络错 / resolveRoster throw）：可见 + factory 兜底
     console.error('[composition] 用户层 patch 装载失败:', e);
+    clearUserPatch();
     useCompositionStore.getState().setError(errText(e), PATCH_FILENAME);
   }
 }
