@@ -23,6 +23,7 @@ workspace-flip ✅（批 1-5 竣工 2026-08-22）──→ S3 解锁 + 纸壳 pr
 
 | 日期 | 里程碑 | 工程 |
 |---|---|---|
+| 2026-08-22 | **兰台注疏设计定稿全量落地（handoff 当日施工）**——用户侧 Open Design 设计线交付定稿包（原型 `prototype/lantai.html` ＋ 契约 `docs/design/lantai-design-spec.md` ＋ token 表）。产品化：tokens.css 换矿物墨色＋`--obs-*` 过渡别名层（1338 处引用零断链）；fonts.ts 四体换代（EB Garamond Variable／Ma Shan Zheng／IBM Plex Mono；paper/measure ＋ ui/pretext-cache 测量栈同步）；PaperPanel 七类块注疏化转录（文类签页边注＋卷次序号＋diff 行着色＋拟策条目化，measure 常数逐字镜像重写）；案卷首页换皮（蘭臺印章品牌＋界栏案卷列表）；全局术语替换（会话→案卷／发送→拟文，新旧标签模式兼容）；favicon 亭台图标。风格源升级 lantai.html（direction-b 存档退位），打磨 C 段立账。门禁：build／vitest 1546 全绿／biome 改动文件零新增／convergence exit 0 | paper-shell / 总控 |
 | 2026-08-22 | **产品更名执行：兰台 / Lantai 全量落地**（同日拍板→当日施工，零外部用户 = 标识符窗口开放，推翻早前「冻结」预案）。**应用身份**：productName/窗口标题「全息观测站」→「兰台」；identifier `com.hologram.hg` → `com.lantai.app`（凭证目录 com.hologram.app 一并统一，本机 API Key 需重录一次）；updater endpoint 指 `834063245-creator/Lantai`（**repo 改名由用户在 GitHub 执行，改名前不打发布包**）；卸载清理脚本（wix EncodedCommand）同步重编码。**HoloGram 降级为图谱引擎专名保留**（用户定调「图谱是能力不是本体，可单独命名」）：工具域 `hologram(...)`、MCP 工具 `hologram_*`、`.hologram/` 数据目录、`HOLOGRAM_*` env、`hologram.db`、`hologram.constraints.yaml`、engine crate `hologram-engine`、dsh-bundle `@a834063245/hologram-dsh` 均不改。**应用层内部标识全换**：插件桥 `__lantai_plugin_host__`、scoped-store 键 `__lantai_*_stores__`、merge gate `__LANTAI_MERGE_GATE__`、类型 `LantaiPlugin`、src-tauri crate `lantai`、npm `lantai-ui`。system prompt persona「你是兰台的编码 Agent / 由兰台调度」+ browser 工具描述「兰台 webview」→ **convergence baseline 需重录**（standard + minimal 两套 record，change request 在案）。文档：README 头部/定位/badges、AGENTS/CLAUDE 命名架构注记、CONVENTIONS/ARCHITECTURE 标识符引用同步 | 总控 |
 | 2026-08-22 | ~~产品命名拍板：兰台 / Lantai~~（当日稍晚升级为上条「全量落地」，冻结预案作废） | 总控 |
 | 2026-08-22 | **V1-R3 全弃 → 止损 → 参照物板收敛：印刷品方向通过（首个正判定）**——三假说证伪后经参照物板（R1 iA × R5 Craft）定方向；材质暂定 R4 零纹理；风格源 direction-b 排印宪章 v3 转录为 r5 档；宪章 token 表 / 字形盘点 / 表面清单三件备料落地；打磨 A 段（转录缺口）清账，B 段队列待 vision 会话；用户疲劳态落账，人判项挂起 | paper-shell |
@@ -38,7 +39,7 @@ workspace-flip ✅（批 1-5 竣工 2026-08-22）──→ S3 解锁 + 纸壳 pr
 
 ### 下一步（就一条）
 
-**paper-shell R5 打磨环**——方向已定（印刷品，材质=R4 零纹理），A 段转录缺口已清账；建议开 **vision 会话**跑 B 段自检循环（agent 对着黄金样本 direction-b 自我迭代，用户只做终审）。队列与规则见 [`paper-shell/r5-polish-backlog.md`](paper-shell/r5-polish-backlog.md)，今日全部决定见 [`paper-shell/taste-ledger.md`](paper-shell/taste-ledger.md)（注意：用户疲劳态已落账，人判项挂起，勿批量索要判断）。
+**paper-shell R5 打磨环**——注疏定稿已全量落地（风格源升级为 `prototype/lantai.html`，契约 `docs/design/lantai-design-spec.md`）；建议开 **vision 会话**跑 B 段自检循环（agent 对着黄金样本 lantai.html 自我迭代，用户只做终审），C 段产品化涌出项（旧 chrome 去圆角 / SettingsPanel 重排 / --obs-* 别名层退役等）随做。队列与规则见 [`paper-shell/r5-polish-backlog.md`](paper-shell/r5-polish-backlog.md)（B 段＋C 段），今日全部决定见 [`paper-shell/taste-ledger.md`](paper-shell/taste-ledger.md)（注意：用户疲劳态已落账，人判项挂起，勿批量索要判断）。
 
 ### 编号系统对照（防绕晕）
 
@@ -59,7 +60,7 @@ workspace-flip ✅（批 1-5 竣工 2026-08-22）──→ S3 解锁 + 纸壳 pr
 | 计划 | 状态 | 下一步 |
 |---|---|---|
 | [`workspace-flip/`](workspace-flip/) | **Done**（2026-08-22 批 1-5 竣工——软件概念翻转：纯会话优先 / 零目录会话一等化 / 图谱后台预热 / bootShell 组合接线 / 纸壳 preset + 主视图落点。五 commit 见计划 README 竣工记录） | 维护态（行为边界与遗留见 README） |
-| [`paper-shell/`](paper-shell/) | In progress（2026-08-20 立项，独立创作工程。V0 ✅ → 走查弹 ✅ → V3a ✅ → V3b ✅ → V5 机制半 ✅；V1 三轮负结果后经参照物板收敛：**R5 印刷品方向通过（2026-08-22，首个正判定）**，材质暂定 R4 零纹理） | R5 打磨环 B 段（队列见 r5-polish-backlog.md）；R3 退役访谈等「纸能住人」 |
+| [`paper-shell/`](paper-shell/) | In progress（2026-08-20 立项，独立创作工程。V0 ✅ → 走查弹 ✅ → V3a ✅ → V3b ✅ → V5 机制半 ✅；V1 三轮负结果后经参照物板收敛：**R5 印刷品方向通过（2026-08-22，首个正判定）**，材质暂定 R4 零纹理；同日 **兰台注疏设计定稿 handoff 全量落地**（tokens/PaperPanel/首页/术语/favicon）） | R5 打磨环 B 段＋C 段（队列见 r5-polish-backlog.md）；R3 退役访谈等「纸能住人」 |
 | [`composition-architecture/`](composition-architecture/) | **S0-S2 Done · S4 Done**（装载通道 / 注册表化 / 组合外化 / preset realm + 分发；宪法见 [`docs/adr/composition-boundaries.md`](../adr/composition-boundaries.md)） | S3 逐域行化——**解锁条件已满足**（workspace-flip 批 5 交付纸壳 preset）；按纸推进按需迁 |
 | [`arch-action-plan.md`](arch-action-plan.md) | 批 1/2 完成；批 3 的 13/12/11a/11b 完成，14 部分完成，11c 搁置 | 11c 与 agent 区 any 清理 |
 | [`shell-stability-bundled-bash-plan.md`](shell-stability-bundled-bash-plan.md) | P0–P5 已落地 | Windows 真机验证（cfg(windows) 路径） |

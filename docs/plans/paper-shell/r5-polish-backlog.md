@@ -5,6 +5,20 @@
 > 用户补充的痛点随时插入清单并标来源。
 >
 > **A 段已全部清账（同日）**——截图 `prototype/preview/refs/ours-r5.png` 已刷新，JS 干净、书眉「纸」、原点/流锚带在位。
+>
+> **⚠️ 2026-08-22 风格源升级**：用户侧设计线定稿「兰台注疏」并交付 handoff 全量落地（见 taste-ledger 同日条目）。风格源自本日起以 **`prototype/lantai.html`**（＋契约 `docs/design/lantai-design-spec.md`）为准绳，direction-b 存档不再当判据；B 段各维对照对象随之切换。产品代码已换装（tokens/PaperPanel/首页/术语），产品化打磨项涌出为 C 段。
+
+## C 段 · 注疏落地涌出项（2026-08-22 handoff 落地新增）
+
+| # | 项 | 状态 |
+|---|---|---|
+| C1 | 旧观测台 chrome 去圆角（圆角恒 0 是兰台铁律；shell/sp/sh-* 等存量圆角待清） | ⬜ |
+| C2 | SettingsPanel 注疏化重排（本轮只继承 token 翻纸，版式未按 set-frame 重排） | ⬜ |
+| C3 | 夹注（reasoning）86% 收窄列宽（本轮块宽由世界坐标决定，未收窄） | ⬜ |
+| C4 | 应用图标 PNG/ICO 套件再生（favicon.svg 已就绪；缺栅格化工具链，`cargo tauri icon` 待跑） | ⬜ |
+| C5 | --obs-* 别名层退役：逐文件迁移到兰台 token 名后整体删除（含结构变量 bar-h/status-h/rail-w 决策） | ⬜ |
+| C6 | 主聊天输入条 placeholder 文案打磨（现「输入修改意见…」未按 §5 术语化） | ⬜ |
+| C7 | 来文圈点关键词（.circled 朱砂圈）：需 user 块关键词高亮数据面，渲染层已备样式钩子 | ⬜ |
 
 ## A 段 · 转录缺口（保真项）
 
