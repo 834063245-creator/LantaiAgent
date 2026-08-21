@@ -163,9 +163,10 @@ async function switchWorkspace(
 
 function escLayer(): void {
   const dock = useDockStore.getState();
-  // 纸面板：全屏覆盖层最先关（关 = 回案卷首页换卷/续开）
-  if (dock.isOpen('paper')) dock.closePanel('paper');
-  else if (dock.isOpen('settings')) dock.closePanel('settings');
+  // 视觉栈序（V5 拆除后）：settings 浮层（z:401）盖纸壳（z:280）——
+  // 高层先关；纸关 = 回案卷首页换卷/续开。
+  if (dock.isOpen('settings')) dock.closePanel('settings');
+  else if (dock.isOpen('paper')) dock.closePanel('paper');
 }
 
 // ── 辅助：用占位工作区设置 agent（未加载项目）──
