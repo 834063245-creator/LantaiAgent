@@ -23,6 +23,7 @@ import type { ToolSchema } from '../../provider/types';
 import type { StarGraph } from '../../scene/graph';
 import { useAskStore } from '../../state/ask-store';
 import { useChatContextStore } from '../../state/chat-context-store';
+import { useDockStore } from '../../state/dock-store';
 import { broadcastGoalRecord, useGoalStore } from '../../state/goal-store';
 import { useSceneSignalStore } from '../../state/scene-signal-store';
 import { bumpTurnDone } from '../../state/turn-done-store';
@@ -367,10 +368,13 @@ export class ChatCore {
     setTimeout(() => this._composer?.focus(), 60);
   }
 
-  /** 以编程方式向 Agent 提问。唤起面板并发送。 */
+  /** 以编程方式向 Agent 提问。唤起面板并发送。
+   *  纸视图（走查弹）打开时不唤起观测台聊天面板——纸自己就是输入面，
+   *  summon 会造成双层叠影。 */
   ask(question: string): void {
     const mode = getChatStore(this.panelId).panel.getState().panelMode;
-    const alreadyOpen = mode === 'panel' || mode === 'hud';
+    const paperOpen = useDockStore.getState().isOpen('paper');
+    const alreadyOpen = mode === 'panel' || mode === 'hud' || paperOpen;
     if (!alreadyOpen) this.summonPanel();
     getChatStore(this.panelId).input.getState().setInputText(question);
     // 延迟片刻，等面板出现后再发送
@@ -921,7 +925,9 @@ export class ChatCore {
       getChatStore(this.panelId).input.getState().setInputText('');
       getChatStore(this.panelId).input.getState().pushInputHistory(text);
       getChatStore(this.panelId).input.getState().setDraftText('');
-      if (getChatStore(this.panelId).panel.getState().panelMode === 'input') this.summonPanel();
+      // 纸视图（走查弹）打开时不唤起观测台面板——纸是当前输入面
+      if (getChatStore(this.panelId).panel.getState().panelMode === 'input' && !useDockStore.getState().isOpen('paper'))
+        this.summonPanel();
       Session.getTurnPairs(this.panelId).push({
         userText: text,
         userBubble: null,
@@ -949,8 +955,8 @@ export class ChatCore {
       }
     }
 
-    // 若当前在浮动输入栏中，发送前先唤起完整面板
-    if (getChatStore(this.panelId).panel.getState().panelMode === 'input') {
+    // 若当前在浮动输入栏中，发送前先唤起完整面板（纸视图打开时除外——纸是输入面）
+    if (getChatStore(this.panelId).panel.getState().panelMode === 'input' && !useDockStore.getState().isOpen('paper')) {
       this.summonPanel();
     }
 

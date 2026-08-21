@@ -179,6 +179,13 @@
   max-height: 260px;
   overflow: auto;
 }
+.pp-block .pp-lang {
+  font:
+    10px / 1 ui-monospace,
+    monospace;
+  color: #7a8a7a;
+  margin-bottom: 2px;
+}
 .pp-block .pp-out {
   margin-top: 6px;
   border-top: 1px dashed #444;

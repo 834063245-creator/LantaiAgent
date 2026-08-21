@@ -26,7 +26,7 @@ import {
   ZOOM_MIN,
   zoomAt,
 } from '../src/paper/canvas-math';
-import { translateMessages, USER_BLOCK_WIDTH } from '../src/paper/translate';
+import { splitFencedSegments, translateMessages, USER_BLOCK_WIDTH } from '../src/paper/translate';
 import type { AssistantMessage, ChatMessage, UserMessage } from '../src/ui/message-model';
 
 /* ── 测试数据构造（真实 message-model 形状，非 mock 接口——数据是本地产物） ── */
@@ -226,6 +226,67 @@ describe('paper/translate', () => {
 
   it('空消息流 → 空块集', () => {
     expect(translateMessages([])).toEqual([]);
+  });
+
+  it('围栏拆分：text part 含 ```diff 围栏 → markdown/diff 块序列（走查弹定义三件套补全）', () => {
+    resetBlockIdCounterForTests();
+    const msgs: ChatMessage[] = [
+      asstMsg('a1', [
+        {
+          type: 'text',
+          finalised: true,
+          text: '修复如下：\n\n```diff\n- old line\n+ new line\n```\n\n已跑测试。',
+        },
+      ]),
+    ];
+    const blocks = translateMessages(msgs);
+    expect(blocks.map((b) => b.kind)).toEqual(['markdown', 'diff', 'markdown']);
+    expect(blocks[1].payload).toEqual({ lang: 'diff', text: '- old line\n+ new line' });
+    // 拆分 id 稳定方案
+    expect(blocks[0].id).toBe('pb:a1:0t0');
+    expect(blocks[1].id).toBe('pb:a1:0f0');
+    expect(blocks[2].id).toBe('pb:a1:0t1');
+    // 活引用：同源 part
+    expect(blocks[1].source.part).toBe(msgs[0].parts[0]);
+  });
+
+  it('围栏拆分·流式生长：围栏未闭合（token 还在到达）照样产出 diff 块', () => {
+    const segs = splitFencedSegments('正在生成 diff：\n```diff\n+ 第一行');
+    expect(segs.map((s) => s.kind)).toEqual(['markdown', 'diff']);
+    expect(segs[1].text).toBe('+ 第一行');
+    // 闭合后内容不变（幂等）
+    const segs2 = splitFencedSegments('正在生成 diff：\n```diff\n+ 第一行\n```\n');
+    expect(segs2.map((s) => s.kind)).toEqual(['markdown', 'diff']);
+    expect(segs2[1].text).toBe('+ 第一行');
+  });
+
+  it('围栏拆分·纯文本保持 1:1 兼容（无围栏时 id 不变）', () => {
+    resetBlockIdCounterForTests();
+    const msgs: ChatMessage[] = [asstMsg('a1', [{ type: 'text', text: '普通文本', finalised: true }])];
+    const blocks = translateMessages(msgs);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].kind).toBe('markdown');
+    expect(blocks[0].id).toBe('pb:a1:0');
+  });
+
+  it('围栏拆分·流式中 diff 追加：块 id 稳定、diff 内容取新', () => {
+    resetBlockIdCounterForTests();
+    const part = { type: 'text' as const, finalised: false, text: '看这个改动：\n```diff\n+ first' };
+    const msg = asstMsg('a1', [part]);
+    const first = translateMessages([msg]);
+    expect(first.map((b) => b.kind)).toEqual(['markdown', 'diff']);
+    // 流式追加 diff 行
+    part.text += '\n+ second\n```\n\n完成。';
+    const second = translateMessages([msg]);
+    expect(second.map((b) => b.kind)).toEqual(['markdown', 'diff', 'markdown']);
+    expect(second[1].id).toBe(first[1].id); // diff 块 id 稳定
+    expect(second[1].payload).toEqual({ lang: 'diff', text: '+ first\n+ second' });
+    expect(second[2].payload).toEqual({ text: '完成。' });
+  });
+
+  it('围栏语言标记直映（```ts → lang=ts）', () => {
+    const segs = splitFencedSegments('```ts\nconst a = 1;\n```');
+    expect(segs).toEqual([{ kind: 'diff', text: 'const a = 1;', lang: 'ts' }]);
   });
 
   it('流式更新语义：part.text 原位追加后重转译，块 id 稳定、内容取新、钉住不丢（touchMessage 场景）', () => {

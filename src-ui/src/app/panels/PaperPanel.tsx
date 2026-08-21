@@ -83,7 +83,12 @@ function BlockView({ block, onUnpin }: { block: SourcedBlock; onUnpin: (id: stri
       {block.kind === 'markdown' && <div>{(p as { text: string }).text}</div>}
       {block.kind === 'reasoning' && <div>{(p as { text: string }).text}</div>}
       {block.kind === 'notice' && <div>{(p as { text: string }).text}</div>}
-      {block.kind === 'diff' && <pre>{(p as { text: string }).text}</pre>}
+      {block.kind === 'diff' && (
+        <>
+          {(p as { lang?: string }).lang && <div className="pp-lang">{(p as { lang?: string }).lang}</div>}
+          <pre>{(p as { text: string }).text}</pre>
+        </>
+      )}
       {block.kind === 'plan' && <pre>{(p as { content: string }).content}</pre>}
       {block.kind === 'tool' && (
         <>

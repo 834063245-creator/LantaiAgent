@@ -75,6 +75,101 @@ function translateUser(msg: UserMessage): SourcedBlock {
   };
 }
 
+/* ── 围栏拆分：text part → markdown / diff 块序列 ──
+ * 走查弹定义（R1）：灰框块 = markdown + diff + tool result。真实会话里 diff
+ * 以 markdown 围栏（```diff）出现在 text part 内——转译层把它拆出来。
+ * 流式友好：围栏未闭合（token 还在到达）时按已闭合处理（差分块持续生长）。
+ * id 方案：无围栏的纯文本保持 pb:{msg}:{i}（兼容）；拆分后 text 段
+ * pb:{msg}:{i}t{n}、围栏段 pb:{msg}:{i}f{n}——围栏标记位置稳定则 id 稳定。 */
+
+interface TextSegment {
+  kind: 'markdown' | 'diff';
+  text: string;
+  lang?: string;
+}
+
+export function splitFencedSegments(text: string): TextSegment[] {
+  const segments: TextSegment[] = [];
+  // 行首 ``` 开围栏；语言标记跟在后（如 ```diff / ```ts）
+  const fenceRe = /^```([^\n]*)$/;
+  const lines = text.split('\n');
+  let i = 0;
+  let buf: string[] = [];
+  const flushText = (): void => {
+    // 去掉围栏前后的空行（块边界干净）
+    while (buf.length > 0 && buf[0].trim() === '') buf.shift();
+    while (buf.length > 0 && buf[buf.length - 1].trim() === '') buf.pop();
+    if (buf.length > 0) segments.push({ kind: 'markdown', text: buf.join('\n') });
+    buf = [];
+  };
+  while (i < lines.length) {
+    const m = lines[i].match(fenceRe);
+    if (m) {
+      const lang = m[1].trim() || undefined;
+      const code: string[] = [];
+      i++;
+      let closed = false;
+      while (i < lines.length) {
+        if (fenceRe.test(lines[i])) {
+          closed = true;
+          i++;
+          break;
+        }
+        code.push(lines[i]);
+        i++;
+      }
+      void closed; // 未闭合 = 流式中：照常产出（块内容持续增长）
+      flushText();
+      segments.push({ kind: 'diff', text: code.join('\n'), lang });
+    } else {
+      buf.push(lines[i]);
+      i++;
+    }
+  }
+  flushText();
+  return segments;
+}
+
+function emitTextWithFences(
+  messageId: string,
+  text: string,
+  partIndex: number,
+  part: object,
+  out: SourcedBlock[],
+  pinned: ReadonlyMap<string, { x: number; y: number }> | undefined,
+): void {
+  const segs = splitFencedSegments(text);
+  if (segs.length === 1 && segs[0].kind === 'markdown') {
+    // 纯文本：保持 1:1 映射与稳定 id（兼容既有行为）
+    const id = partBlockId(messageId, partIndex);
+    const base = {
+      ...createBlock('markdown', { text: segs[0].text }, { messageId, part }),
+      id,
+      w: DEFAULT_BLOCK_WIDTH,
+    };
+    const pos = pinned?.get(id);
+    out.push(pos ? { ...base, state: 'pinned', x: pos.x, y: pos.y } : base);
+    return;
+  }
+  // 拆分序列：t{n} 文本段 / f{n} 围栏段
+  let tN = 0;
+  let fN = 0;
+  for (const seg of segs) {
+    const id =
+      seg.kind === 'markdown' ? `pb:${messageId}:${partIndex}t${tN++}` : `pb:${messageId}:${partIndex}f${fN++}`;
+    const base = {
+      ...createBlock(seg.kind, seg.kind === 'diff' ? { lang: seg.lang, text: seg.text } : { text: seg.text }, {
+        messageId,
+        part,
+      }),
+      id,
+      w: seg.kind === 'diff' ? 640 : DEFAULT_BLOCK_WIDTH,
+    };
+    const pos = pinned?.get(id);
+    out.push(pos ? { ...base, state: 'pinned', x: pos.x, y: pos.y } : base);
+  }
+}
+
 function translateAssistantParts(
   msg: AssistantMessage,
   out: SourcedBlock[],
@@ -103,7 +198,7 @@ function translateAssistantParts(
         emit('reasoning', { text: part.text }, idx, part);
         break;
       case 'text':
-        emit('markdown', { text: part.text }, idx, part);
+        emitTextWithFences(msg._id, part.text, idx, part, out, pinned);
         break;
       case 'tool': {
         emit(
