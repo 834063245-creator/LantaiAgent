@@ -86,7 +86,7 @@ describe('S4-5 hello 闭环：真实插件经真实管道', () => {
       type: 'object',
       properties: { name: { type: 'string' } },
     });
-    await expect(tool.execute({ name: 'HoloGram' }, undefined, undefined)).resolves.toContain('Hello, HoloGram!');
+    await expect(tool.execute({ name: '兰台' }, undefined, undefined)).resolves.toContain('Hello, 兰台!');
     await expect(tool.execute({}, undefined, undefined)).resolves.toContain('Hello, World!');
     // factory 缓存：两次装配同一实例
     const again = await rows[0].factory({} as never);
@@ -103,7 +103,7 @@ describe('S4-5 hello 闭环：真实插件经真实管道', () => {
   it('面板组件经宿主桥 createElement 渲染（React 19 函数组件形状）', async () => {
     // 注入宿主桥（生产由 loadBuiltinPlugins 装载前注入；测试就地注入同形状）
     const hostTarget = globalThis as Record<string, unknown>;
-    hostTarget.__hologram_plugin_host__ = {
+    hostTarget.__lantai_plugin_host__ = {
       createElement,
       notify: () => {},
     };
@@ -118,7 +118,7 @@ describe('S4-5 hello 闭环：真实插件经真实管道', () => {
     expect(vnode.type).toBe('div');
     await fiber.dispose();
     await root[Symbol.asyncDispose]?.();
-    delete hostTarget.__hologram_plugin_host__;
+    delete hostTarget.__lantai_plugin_host__;
   });
 
   it('loader 管道兼容 hello 形状（inject 声明 + default 导出）', async () => {

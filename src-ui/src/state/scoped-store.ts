@@ -14,7 +14,7 @@
 //   - getState(storeId?) 非响应式读取（组件外消费路径）
 //
 // 用法：
-//   const scoped = createScopedStore<MessagesStore>('__hologram_msg_stores__', createMessagesStoreImpl);
+//   const scoped = createScopedStore<MessagesStore>('__lantai_msg_stores__', createMessagesStoreImpl);
 //   export const getMessagesStore = scoped.getStore;
 
 import type { StoreApi } from 'zustand';
@@ -34,10 +34,7 @@ export interface ScopedStore<T extends { getState(): unknown }> {
   getState: (storeId?: string) => ReturnType<T['getState']>;
 }
 
-export function createScopedStore<T extends { getState(): unknown }>(
-  key: string,
-  createImpl: () => T,
-): ScopedStore<T> {
+export function createScopedStore<T extends { getState(): unknown }>(key: string, createImpl: () => T): ScopedStore<T> {
   const w = window as unknown as Record<string, unknown>;
   if (!w[key]) {
     const m = new Map<string, T>();

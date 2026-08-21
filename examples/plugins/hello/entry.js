@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT.
 //
-// hello — HoloGram 插件三通道最小示例（S4 hello 闭环）。
+// hello — 兰台插件三通道最小示例（S4 hello 闭环）。
 //
 // 一个文件、零依赖、零裸 import（bare import 如 'react' / 'zod' 在
 // webview 动态 import 语境不可解析——插件运行时没有包管理器也没有
@@ -25,7 +25,7 @@ export default {
     // ── 宿主桥（plugins/loader 装载期注入；无桥时降级）──
     // createElement：React.createElement 形状（面板组件用）；
     // notify：状态栏通知（命令动作用）。
-    const host = globalThis.__hologram_plugin_host__;
+    const host = globalThis.__lantai_plugin_host__;
     const ce = host?.createElement ?? ((type, props, ...children) => ({ type, props: { ...props, children } }));
 
     // ── 通道 1：面板（即时生效——panelDefs 合流点 + bump 信号）──

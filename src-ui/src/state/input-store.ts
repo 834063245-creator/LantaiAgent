@@ -117,7 +117,7 @@ function createInputStoreImpl() {
 
 // ── 每面板注册表 ──
 
-const scoped = createScopedStore('__hologram_input_stores__', createInputStoreImpl);
+const scoped = createScopedStore('__lantai_input_stores__', createInputStoreImpl);
 
 export const getInputStore = scoped.getStore;
 

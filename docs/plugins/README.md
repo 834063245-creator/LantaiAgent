@@ -167,7 +167,7 @@ ctx.effect(
 需要宿主能力时经全局桥：
 
 ```js
-const host = globalThis.__hologram_plugin_host__;
+const host = globalThis.__lantai_plugin_host__;
 // host.createElement —— React.createElement 形状（面板组件构造）
 // host.notify —— 状态栏通知（命令动作的最小 UI 反馈）
 ```

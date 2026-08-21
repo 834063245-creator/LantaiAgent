@@ -14,7 +14,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-(globalThis as any).__HOLOGRAM_MERGE_GATE__ = { graph: false };
+(globalThis as any).__LANTAI_MERGE_GATE__ = { graph: false };
 
 const mockRpc = vi.fn();
 vi.mock('../src/bridge', () => ({

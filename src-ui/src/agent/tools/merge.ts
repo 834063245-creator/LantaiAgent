@@ -16,20 +16,20 @@
 // - 同轮并发 agent_merge 串行化，消除「第二个 merge 撞假冲突」。
 
 import { z } from 'zod';
-import type { TaskBoard, BoardEntry } from '../task-board';
-import type { Tool, ToolExecutor } from '../tool';
 import { enqueueIsolationOp } from '../isolation-queue';
-import { runGraphGate, runCompileTest } from './merge-gate';
-import { defineTool } from './define-tool';
 import { parseIsolationDiff } from '../spill';
+import type { BoardEntry, TaskBoard } from '../task-board';
+import type { Tool, ToolExecutor } from '../tool';
+import { defineTool } from './define-tool';
+import { runCompileTest, runGraphGate } from './merge-gate';
 
 // ── Merge 门禁配置 ──
 // v1：图检查默认开（merge-then-verify，轮询 hologram_run_check）；
 // 编译测试默认关（worktree 冷构建可达分钟级，时间盒限制）。
-// 测试旁路：(window as any).__HOLOGRAM_MERGE_GATE__ = { graph: false } 可临时关闭。
+// 测试旁路：(window as any).__LANTAI_MERGE_GATE__ = { graph: false } 可临时关闭。
 const MERGE_GATE = { graph: true, compileTest: false, maxCheckWaitMs: 60_000, compileTimeoutMs: 600_000 };
 function effectiveGate(): typeof MERGE_GATE {
-  const override = (globalThis as any).__HOLOGRAM_MERGE_GATE__;
+  const override = (globalThis as any).__LANTAI_MERGE_GATE__;
   return override ? { ...MERGE_GATE, ...override } : MERGE_GATE;
 }
 
@@ -180,14 +180,18 @@ export function createMergeTool(
         for (const entry of mergedEntries) {
           board.markMerged(entry.agentId);
           merged++;
-          mergedDetails.push(`${entry.agentId} (${entry.description}) — ✅ ${mergedTexts.get(entry.agentId) ?? '已合并'}`);
+          mergedDetails.push(
+            `${entry.agentId} (${entry.description}) — ✅ ${mergedTexts.get(entry.agentId) ?? '已合并'}`,
+          );
         }
       }
     } else {
       for (const entry of mergedEntries) {
         board.markMerged(entry.agentId);
         merged++;
-        mergedDetails.push(`${entry.agentId} (${entry.description}) — ✅ ${mergedTexts.get(entry.agentId) ?? '已合并'}`);
+        mergedDetails.push(
+          `${entry.agentId} (${entry.description}) — ✅ ${mergedTexts.get(entry.agentId) ?? '已合并'}`,
+        );
       }
     }
 
@@ -224,7 +228,10 @@ export function createMergeTool(
         .describe('Sub-agent IDs to merge. If omitted, merges all completed sub-agents.'),
     }),
     execute: (args) => {
-      const p = mergeChain.then(() => doMerge(args), () => doMerge(args));
+      const p = mergeChain.then(
+        () => doMerge(args),
+        () => doMerge(args),
+      );
       mergeChain = p.catch(() => '');
       return p;
     },

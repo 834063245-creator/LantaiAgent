@@ -22,7 +22,7 @@ import type { Context } from '../cordis';
 import { paperPlugin } from '../paper/paper-plugin';
 import { getProxyPort } from '../provider/transport';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
-import { type HologramPlugin, type PluginManifest, validateManifest } from './types';
+import { type LantaiPlugin, type PluginManifest, validateManifest } from './types';
 
 /** loader 消费的最小 fetch 形状（测试可用普通对象实现，不依赖 Response 全局）。 */
 export type FetchLike = (url: string) => Promise<{ ok: boolean; json(): Promise<unknown> }>;
@@ -46,18 +46,18 @@ export function pluginAssetsOrigin(port: number): string {
  * 表序 = 装配序。首项固定为组合层四 service（内核线第 3 条的实体化——
  * panels/commands/tools/providers 注册表本身，常驻且先于外部插件，
  * 保证外部插件 manifest 的 inject 依赖可解析）。 */
-const BUILTIN_PLUGINS: HologramPlugin[] = [compositionServicesPlugin, rendererServicePlugin, paperPlugin];
+const BUILTIN_PLUGINS: LantaiPlugin[] = [compositionServicesPlugin, rendererServicePlugin, paperPlugin];
 
 // ── 插件宿主桥（S4-5）──
 // 外部插件经 webview 动态 import 装载——模块语境没有裸 import 解析面
 // （无包管理器、无 import map，平台契约 = 插件自包含）。需要 React 或
-// 通知能力的插件经 window.__hologram_plugin_host__ 取宿主能力：
+// 通知能力的插件经 window.__lantai_plugin_host__ 取宿主能力：
 //   - createElement：React.createElement（面板组件构造——无 JSX 插件的路由）；
 //   - notify：状态栏通知（命令动作的最小 UI 反馈面）。
 // 桥在装载第一方插件前注入（装载期红线：注入是平台动作不是插件副作用）。
 declare global {
   interface Window {
-    __hologram_plugin_host__?: {
+    __lantai_plugin_host__?: {
       createElement: typeof createElement;
       notify: (text: string) => void;
     };
@@ -66,7 +66,7 @@ declare global {
 
 function installPluginHostBridge(): void {
   if (typeof globalThis !== 'undefined') {
-    (globalThis as { __hologram_plugin_host__?: unknown }).__hologram_plugin_host__ = {
+    (globalThis as { __lantai_plugin_host__?: unknown }).__lantai_plugin_host__ = {
       createElement,
       notify: (text: string) => useShellStore.getState().pushStatus(text),
     };
@@ -203,7 +203,7 @@ function pickPluginObject(mod: Record<string, unknown>): unknown {
 
 /** 运行时形状守卫：插件入口必须是 { name, apply }（WO-S0B 契约）。
  * 唯一的 as 在守卫边界——字段形状已逐项运行时验证，非静默数据解包。 */
-function isPluginShape(value: unknown): value is HologramPlugin {
+function isPluginShape(value: unknown): value is LantaiPlugin {
   if (value == null || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
   return typeof record.name === 'string' && record.name !== '' && typeof record.apply === 'function';

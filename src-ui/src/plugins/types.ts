@@ -3,7 +3,7 @@
 
 // 插件规范层（WO-S0B）——manifest 与插件对象的宿主无关契约。
 // 设计边界（composition 计划 D0 拍板）：manifest 形状设计为将来可迁移的规范层，
-// 不耦合 HoloGram 的 UI/RPC 细节；宿主交互面（四 service：panels/commands/
+// 不耦合兰台的 UI/RPC 细节；宿主交互面（四 service：panels/commands/
 // tools/providers）是 S1 的事，本文件不预设。
 //
 // 纪律（CONVENTIONS §1.6 defineTool 同款）：一个 zod schema 同时产出运行时校验
@@ -44,7 +44,7 @@ export type PluginManifest = z.infer<typeof PluginManifestSchema>;
 
 /** 插件对象：apply 只做注册动作；本阶段可注册的只有 cordis 原生能力（effect 等），
  * 四 service 是 S1。装载期禁止任何 UI 副作用（WO-S0B 红线）。 */
-export interface HologramPlugin {
+export interface LantaiPlugin {
   name: string;
   apply(ctx: Context): void | Promise<void>;
 }

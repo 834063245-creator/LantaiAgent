@@ -99,7 +99,7 @@ registry.npmjs.org 下载。）
 **平台硬约束**：`entry.js` 经 webview 动态 import 装载——**不能有裸
 import**（`'react'`、`'zod'` 这类包名解析不了：插件运行时没有包管理器
 也没有 import map）。要么零依赖自包含，要么经宿主桥
-`globalThis.__hologram_plugin_host__`（`createElement` / `notify`）取宿主
+`globalThis.__lantai_plugin_host__`（`createElement` / `notify`）取宿主
 能力——本示例就是标准写法。工具 schema 在插件侧手写 JSON shape + 入参
 校验（`defineTool` 是编译期工具链，运行时模块用不了）。
 

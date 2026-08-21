@@ -5,9 +5,9 @@
 // 从 chat-store.ts 拆分（god store → 领域存储）。
 
 import { create } from 'zustand';
-import { createScopedStore } from './scoped-store';
 import type { GoalRecord } from '../agent/goal-manager';
 import type { ToolSchema } from '../provider/types';
+import { createScopedStore } from './scoped-store';
 
 export type PanelMode = 'pill' | 'input' | 'panel' | 'hud';
 export type AgentTab = 'chat' | 'tools' | 'context';
@@ -123,7 +123,7 @@ function createPanelStoreImpl() {
 
 // ── 每面板注册表 ──
 
-const scoped = createScopedStore('__hologram_panel_stores__', createPanelStoreImpl);
+const scoped = createScopedStore('__lantai_panel_stores__', createPanelStoreImpl);
 
 export const getPanelStore = scoped.getStore;
 

@@ -93,7 +93,7 @@ function createMessagesStoreImpl() {
 // 曾因此出问题：6+ 次提交（1f7fc04 → c927dd2）修复 agent 添加
 // 全局状态而非每面板状态导致的跨面板流式泄露。
 
-const scoped = createScopedStore('__hologram_msg_stores__', createMessagesStoreImpl);
+const scoped = createScopedStore('__lantai_msg_stores__', createMessagesStoreImpl);
 
 export const getMessagesStore = scoped.getStore;
 

@@ -52,7 +52,7 @@ function createSessionStoreImpl() {
 
 // ── 每面板注册表 ──
 
-const scoped = createScopedStore('__hologram_session_stores__', createSessionStoreImpl);
+const scoped = createScopedStore('__lantai_session_stores__', createSessionStoreImpl);
 
 export const getSessionStore = scoped.getStore;
 
