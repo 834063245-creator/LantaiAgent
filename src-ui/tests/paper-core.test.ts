@@ -227,4 +227,63 @@ describe('paper/translate', () => {
   it('空消息流 → 空块集', () => {
     expect(translateMessages([])).toEqual([]);
   });
+
+  it('流式更新语义：part.text 原位追加后重转译，块 id 稳定、内容取新、钉住不丢（touchMessage 场景）', () => {
+    resetBlockIdCounterForTests();
+    // 首帧：流式中的 assistant（text part 正在追加）
+    const part = { type: 'text' as const, text: '正在生成', finalised: false };
+    const msg = asstMsg('a1', [part]);
+    const first = translateMessages([msg]);
+    expect(first).toHaveLength(1);
+    expect(first[0].payload).toEqual({ text: '正在生成' });
+
+    // 用户在流式中钉住了这个块
+    const pinned = new Map([[first[0].id, { x: 300, y: -200 }]]);
+
+    // 流式追加（messages-store 的 in-place 语义：part.text += chunk，messages 引用不变）
+    part.text += '……很长的第二段内容，模拟 token 逐个到达';
+    const second = translateMessages([msg], { pinnedPositions: pinned });
+
+    // 块 id 稳定（React key 不变，DOM 原地更新）
+    expect(second[0].id).toBe(first[0].id);
+    // 内容取新（活引用：读的是同一 part 对象）
+    expect(second[0].payload).toEqual({ text: part.text });
+    // 钉住续命
+    expect(second[0].state).toBe('pinned');
+    expect(second[0].x).toBe(300);
+    // 源引用同一 part
+    expect(second[0].source.part).toBe(part);
+  });
+
+  it('流式中新增 part（工具调用插入）：块序列自然增长，既有块 id 不变', () => {
+    resetBlockIdCounterForTests();
+    const t1 = { type: 'text' as const, text: '先读文件', finalised: true };
+    const msg = asstMsg('a1', [t1]);
+    const first = translateMessages([msg]);
+    expect(first.map((b) => b.kind)).toEqual(['markdown']);
+
+    // 流式中插入 tool part（真实时序：text → tool → text）
+    msg.parts.push({
+      type: 'tool',
+      toolId: 't1',
+      name: 'read_file_content',
+      label: '读文件',
+      args: '{}',
+      readOnly: true,
+      status: 'running',
+    });
+    const second = translateMessages([msg]);
+    expect(second.map((b) => b.kind)).toEqual(['markdown', 'tool']);
+    // 既有块 id 稳定
+    expect(second[0].id).toBe(first[0].id);
+    // running 状态直映
+    expect(second[1].payload).toMatchObject({ status: 'running' });
+
+    // 工具完成（原位变更 status/output）
+    const toolPart = msg.parts[1] as { status: string; output: string };
+    toolPart.status = 'done';
+    toolPart.output = 'ok';
+    const third = translateMessages([msg]);
+    expect(third[1].payload).toMatchObject({ status: 'done', output: 'ok' });
+  });
 });

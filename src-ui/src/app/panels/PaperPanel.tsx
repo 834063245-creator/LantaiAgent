@@ -145,8 +145,9 @@ export function PaperPanel() {
   useEffect(() => {
     if (!core) return;
     syncMessages();
-    // 活跃会话切换 → 换 store 订阅；消息 store 的 version bump 也触发（经 sess 订阅链）。
-    // 走查弹简化：订阅活跃会话 store 本体（msgStoreForActive 在 sess 变化后重解析）。
+    // 订阅链：① 直订活跃会话的消息 store（流式 part.text += chunk + touchMessage →
+    // version bump → syncMessages 重转译）；② sess 变化（会话切换）→ 重解析活跃
+    // store 并重订（msgStoreForActive 换实例）。
     let unsub: (() => void) | undefined;
     const resub = () => {
       unsub?.();
