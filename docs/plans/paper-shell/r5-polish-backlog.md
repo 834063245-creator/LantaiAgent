@@ -7,6 +7,8 @@
 > **A 段已全部清账（同日）**——截图 `prototype/preview/refs/ours-r5.png` 已刷新，JS 干净、书眉「纸」、原点/流锚带在位。
 >
 > **⚠️ 2026-08-22 风格源升级**：用户侧设计线定稿「兰台注疏」并交付 handoff 全量落地（见 taste-ledger 同日条目）。风格源自本日起以 **`prototype/lantai.html`**（＋契约 `docs/design/lantai-design-spec.md`）为准绳，direction-b 存档不再当判据；B 段各维对照对象随之切换。产品代码已换装（tokens/PaperPanel/首页/术语），产品化打磨项涌出为 C 段。
+>
+> **2026-08-22 深夜 R5 首轮自检（V5 拆除后，DOM 计算样式对拍代偿）**：本会话模型无图片输入（read_image 拒绝）——vision 自检以 headless Edge 提取黄金样本与产品的计算样式逐项对拍代行。结论：书眉（56px/0 24px/ink-4 底线/纸色）、composer（66px/纸深底/同 placeholder）、纸面（#F6F1E7/EB Garamond Variable+Noto Serif SC/15px/27px 行高/ink-1）、文类块样式链（来文楷书朱砂批线/正文宋体/夹注石墨虚线/脚注石青注线）全部一致；两处合理差异：产品书眉多 WinControls+关卷（拆除新增）、发送键「拟文」是 §5 术语（原型「发送」为旧词）。**渲染面无回归**。B 段单维审美循环（真图片对照）留给 vision 能力会话。
 
 ## C 段 · 注疏落地涌出项（2026-08-22 handoff 落地新增；V5 拆除欠账 C8+ 同日立账）
 
