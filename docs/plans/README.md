@@ -3,22 +3,69 @@
 > 状态词：Proposed（待评审）· Draft（未执行）· In progress · Landed（代码已落地，剩真机验证）。
 > 已完成的施工规格/被取代的 plan 移入 `docs/archive/`。
 
+## 总控表 — 现在在哪，下一步是什么（唯一入口，先看这个）
+
+**当前主线**：HoloGram 正在从「图谱软件 + Agent 工作台」翻转为「纯粹的 Agent 软件」。三个正交工程并行承载：**workspace-flip**（概念翻转，结构）→ **paper-shell**（纸壳前端，视觉/交互）→ **composition S3**（组合层收尾，等纸解锁）。
+
+```
+workspace-flip（设计件待批准）──→ 施工六批 ──→ 解锁 S3 + 交付纸壳 preset
+        │
+        └─批 5 完成 ──→ paper-shell V2 视觉契约 ──→ V4 打磨环（用户主场）─┐
+                                                                        │
+                              纸壳「能住人」←──────────────────────────┘
+                                        │
+                                        ↓
+                          paper-shell R3 访谈 → V5 判断半（观测台退役）
+```
+
+### 里程碑时间轴（倒序 = 最新在上）
+
+| 日期 | 里程碑 | 工程 |
+|---|---|---|
+| 2026-08-22 | workspace-flip 设计件 D9 出稿（六批序列）+ W1 访谈四项粒度拍板；**待用户批准开工** | workspace-flip |
+| 2026-08-22 | 纸壳 V3b 壳装配竣工（纸面板迁组合层贡献 + 块渲染器第五通道 ctx.renderers） | paper-shell |
+| 2026-08-22 | 纸壳 V3a 骨架内核竣工（pretext 上游测量 / 虚拟化 / 抽纸条 / 方位感 / IME 谓词） | paper-shell |
+| 2026-08-22 | 顺序拍板：先结构（#9）后视觉——视觉打磨排后，避免「什么都没做完」陷阱 | 总控 |
+| 2026-08-21 | 走查弹毕业（用户判定「感觉是对的」）；块粒度定案（#10 抽纸条） | paper-shell |
+| 2026-08-20 | 组合层 S4 竣工（preset realm / 热重载 / npm 安装 / hello 闭环） | composition |
+| 2026-08-20 | 组合层 S0-S2 竣工；paper-shell 立项（R1/R2 访谈）；三阶段串行排程拍板 | composition / paper-shell |
+| 2026-08-19 | 前端总线归零 + ui/ 拆分竣工（事件系统退役，zustand 统一） | 已归档 |
+
+### 下一步（就一条）
+
+**批准或打回 workspace-flip 设计件**（`workspace-flip/designs/D9-workspace-flip-v5-mechanism.md`）——批准即开工批 1（会话首页 React 化）。
+
+### 编号系统对照（防绕晕）
+
+| 编号 | 含义 | 所属工程 |
+|---|---|---|
+| W1、D-W1-x | workspace-flip 访谈轮次/决定 | workspace-flip |
+| D9、批 1-6 | workspace-flip 设计件/施工批次 | workspace-flip |
+| R1、R2 | 纸的视觉/交互访谈（R1 五项 R2 四项） | paper-shell |
+| R3 | 纸的退役访谈（共居期/判据）——**未开**，等「纸能住人」 | paper-shell |
+| V0-V5 | 纸的管线阶段（V0 访谈 / V1 原型 / V2 契约 / V3a·V3b 骨架装配 / V4 打磨 / V5 壳切换） | paper-shell |
+| V5 机制半 | bootShell 接线 + 纸壳 preset——workspace-flip 批 4-5 承接 | 跨（见两 README） |
+| S0-S4 | 组合层阶段（S0 装载 / S1 注册表 / S2 外化 / S3 行化【等纸】/ S4 preset） | composition |
+| #1-#10 | paper-shell 待定清单编号（全部已定案/剥离，仅 #4 R3/#5 V2/#6 V4 参数开） | paper-shell |
+| D-R1-x … D-R4-x | 历史访谈决定编号（R4 = 现 W1，编号保留不改写） | 各访谈文件 |
+
 ## 活跃计划
 
 | 计划 | 状态 | 下一步 |
 |---|---|---|
+| [`workspace-flip/`](workspace-flip/) | **设计件待批准**（2026-08-22 从 paper-shell #9 剥离立独立工程——软件概念翻转：纯会话优先 / 一会话一目录 / 图谱后台预热；含 V5 机制半。纯结构零视觉） | 批准 D9 → 施工六批（每批全绿） |
+| [`paper-shell/`](paper-shell/) | In progress（2026-08-20 立项，独立创作工程。V0 ✅（R1/R2）→ 走查弹 ✅ → V3a ✅ → V3b ✅；61 无头测试 + convergence 零漂移） | V2 视觉契约 → V4 打磨环（用户节奏定开工）；R3/V5 判断半等「纸能住人」 |
+| [`composition-architecture/`](composition-architecture/) | **S0-S2 Done · S4 Done**（装载通道 / 注册表化 / 组合外化 / preset realm + 分发；宪法见 [`docs/adr/composition-boundaries.md`](../adr/composition-boundaries.md)） | S3 设计件——解锁条件 = workspace-flip 批 5（纸壳 preset 交付） |
 | [`arch-action-plan.md`](arch-action-plan.md) | 批 1/2 完成；批 3 的 13/12/11a/11b 完成，14 部分完成，11c 搁置 | 11c 与 agent 区 any 清理 |
 | [`shell-stability-bundled-bash-plan.md`](shell-stability-bundled-bash-plan.md) | P0–P5 已落地 | Windows 真机验证（cfg(windows) 路径） |
 | [`browser-cdp-suite-review-round2.md`](browser-cdp-suite-review-round2.md) | 第一至第五批已提交 | Windows 真机 E2E-1/2/3/4/5 |
-| [`agent-core-convergence/`](agent-core-convergence/) | **Done — Phase 0–6 + V0–V6 全部完成**（四原语全落地：Context / Effect 所有权 / 类型化事件 / 事件溯源日志 + blueprint 声明式装配；baseline 8 快照冻结） | 工程转入维护态：gate 与 baseline 长期守护（维护约束见 handoff-phase6） |
-| [`cordis-migration/`](cordis-migration/) | **Done — P0-P4 全部落地**（内核 vendor → Workspace fiber 化 → Agent 身份 fiber 桥接 → LSP Service 化 → 四件套评估收口：双范式残留清零、epoch 定案永久保留、8 baseline 零漂移） | 后续同模式候选（goal-manager / memory-bundle-client 等）按需逐个迁 |
+| [`agent-core-convergence/`](agent-core-convergence/) | **Done** — Phase 0–6 + V0–V6 全部完成；baseline 8 快照冻结 | 维护态：gate 与 baseline 长期守护 |
+| [`cordis-migration/`](cordis-migration/) | **Done** — P0-P4 全部落地 | 后续同模式候选按需逐个迁 |
 | [`v4-pro-minimal-ab-test-plan.md`](v4-pro-minimal-ab-test-plan.md) | Draft | Linux 环境执行 |
-| [`ui-react-island-retirement-plan.md`](ui-react-island-retirement-plan.md) | **Done**（2026-08-19：ui/react/ 目录删除、5 总线事件退役迁 store、32 文件全量迁入 app/**；终态守护测试常驻） | — |
-| [`eventbus-zero-and-ui-split-plan.md`](eventbus-zero-and-ui-split-plan.md) | **Done**（2026-08-19 P0-P3 竣工：11 事件归零迁 store、events.ts 删除；11 store 迁 state/ + 23 scene 文件迁 scene/ + graph.ts shim；守护 COMPLETE=true + 全文档回写） | — |
-| [`agent-plugin-architecture-plan.md`](agent-plugin-architecture-plan.md) | Proposed（方向性立项：DSH 源码实证对标——执行原语 + 工具面单一真源 + cordis Service 收口 + 插件边界；**生态跟随观望中**：P4 门控于 DSH 官方接口稳定信号，P1-P3 纯自研独立成立，见 D8） | P1 工具面文档生成（半天，独立收益）随时可做；P2 执行原语建议在总线归零后开；P4a 契约调研（纯侦察）可先行 |
-| [`composition-architecture/`](composition-architecture/) | **S0-S2 Done · S4 Done**（2026-08-20 立项当天全竣工。S0：装载通道（14570 静态路由 + loader/manifest/plugin-store）；S1：注册表化（三张行表 + 四 service + per-preset 收敛基建，9 commits 零漂移贯穿）；S2：组合外化（roster patch 引擎 + 用户层通道 + 12 壳行拆 main.ts 919→37 行，6 批）；S4：preset realm + 分发（7 批 + CR 审批门——preset 数据模型/发现/装配穿线/消费闭环 G0 修复/热重载/npm 安装通道（tar-slip 双重围栏）/hello 闭环三通道/文档全套；S4-1b 经 Phase 5 CR 用户批准：preset/selected 首事件 + `baseline/preset-minimal/` 首次冻结（双 preset convergence 通过）；S4-4 机器桥按裁定跳过为未决项）；宪法与边界见 [`docs/adr/composition-boundaries.md`](../adr/composition-boundaries.md)，用户指南 [`docs/composition/README.md`](../composition/README.md) + [`docs/plugins/README.md`](../plugins/README.md)） | S3 设计件（等纸工程——第一方行化纲领，与前端重构排程协作） |
-| [`paper-shell/`](paper-shell/) | In progress（2026-08-20 立项，**独立创作工程**——与组合层并列非阶段关系：前端重构 = 密集人机共同创作（沟通→修改→测试循环为主体工作量，月级）；V0 访谈完成（R1 五项 + R2 四项）；走查弹 2026-08-21 毕业（「感觉是对的」）；**V3a 骨架内核 + V3b 壳装配 2026-08-22 竣工**：V3a = 测量引擎切 `@chenglou/pretext`（内部快照退役）/ 视口虚拟化 / 抽纸条 / 方位感 / IME 谓词；V3b = 纸面板迁 PanelsService 贡献（paperPlugin）+ 块渲染器第五贡献通道 `ctx.renderers`——61 无头测试 + convergence 零漂移，`src-ui/src/paper/` + `composition/renderer-service.tsx`；**#9 workspace 翻转子题已拍板（2026-08-22 R4）+ 施工设计件已出**（`paper-shell/designs/D9-workspace-flip-v5-mechanism.md`，六批序列待批准）） | #9 + V5 机制半施工（agent 主场，解锁 S3）；随后 V2 视觉契约 → V4 打磨环（用户节奏）；R3/V5 判断半等「纸能住人」 |
+| [`agent-plugin-architecture-plan.md`](agent-plugin-architecture-plan.md) | Proposed（P4 门控于 DSH 官方接口稳定信号；P1-P3 纯自研独立成立） | P1 工具面文档生成（半天）随时可做 |
+| [`ui-react-island-retirement-plan.md`](ui-react-island-retirement-plan.md) | **Done**（2026-08-19） | — |
+| [`eventbus-zero-and-ui-split-plan.md`](eventbus-zero-and-ui-split-plan.md) | **Done**（2026-08-19） | — |
 
 ## 已归档计划
 
-见 [`docs/archive/README.md`](../archive/README.md)：graph-id-refactor-plan（R0–R10 竣工）、tool-convergence-browser-plan、browser-cdp-suite-plan-2026-08-13 等。
+见 [`docs/archive/README.md`](../archive/README.md）：graph-id-refactor-plan（R0–R10 竣工）、tool-convergence-browser-plan、browser-cdp-suite-plan-2026-08-13 等。

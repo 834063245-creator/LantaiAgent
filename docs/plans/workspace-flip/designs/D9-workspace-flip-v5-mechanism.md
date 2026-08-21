@@ -1,7 +1,7 @@
-# #9 Workspace 翻转 + V5 机制半 — 施工设计件
+# Workspace 翻转 + V5 机制半 — 施工设计件
 
 > 状态：**Draft（待用户批准后施工）** · 拟稿：agent（2026-08-22）
-> 依据：`docs/adr/workspace-concept-ownership.md`（方向 Accepted）+ `docs/plans/paper-shell/interviews/R4-2026-08-22.md`（粒度 D-R4-1…4）
+> 依据：`docs/adr/workspace-concept-ownership.md`（方向 Accepted）+ `interviews/W1-2026-08-22.md`（粒度 D-R4-1…4，历史编号保留）
 > 工程纪律：每批 commit 前全绿（build + vitest + biome 改动文件零新增；触 agent 装配面加 verify:convergence；本文档动 workspace.ts——INVARIANTS #12 高危区，每批前 preflight）
 
 ## 0. 一句话

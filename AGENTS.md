@@ -163,6 +163,6 @@ CI 只做编译 + 测试；`.github/workflows/ci.yml` 不可修改。
 | `ARCHITECTURE.md` / `README.md` | 架构总览 / 使用与构建 |
 | `CONTEXT.md` | 应用级词汇（`kind`/`status` 带簇前缀） |
 | `docs/MULTI_AGENT_ROADMAP.md` | 多 Agent 路线图与已落地能力 |
-| `docs/plans/README.md` | 进行中的计划/实验（状态表） |
+| `docs/plans/README.md` | 计划总控表（现在在哪/下一步/编号对照——先看这个）+ 活跃计划索引 |
 | `docs/agents/frontend-rpc-contract.md` | RPC 契约生成物（勿手改） |
 | `docs/archive/README.md` | 归档说明与历史目录 |
