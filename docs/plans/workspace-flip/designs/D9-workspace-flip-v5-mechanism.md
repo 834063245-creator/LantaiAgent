@@ -1,6 +1,6 @@
 # Workspace 翻转 + V5 机制半 — 施工设计件
 
-> 状态：**Draft（待用户批准后施工）** · 拟稿：agent（2026-08-22）
+> 状态：**Approved（2026-08-22 用户批准；agent 复审修正两处后开工）** · 拟稿：agent（2026-08-22）
 > 依据：`docs/adr/workspace-concept-ownership.md`（方向 Accepted）+ `interviews/W1-2026-08-22.md`（粒度 D-R4-1…4，历史编号保留）
 > 工程纪律：每批 commit 前全绿（build + vitest + biome 改动文件零新增；触 agent 装配面加 verify:convergence；本文档动 workspace.ts——INVARIANTS #12 高危区，每批前 preflight）
 
@@ -65,7 +65,7 @@
   graph-updated 事件 → graphData 就绪 → graph 工具解禁
 ```
 
-- graphData 未就绪时 graph 工具（agent-builder 的 graph hooks）：返回结构化提示「图谱分析中（后台预热），约 N 秒后可用」——**不静默失败**（宪法第 4 条）
+- graphData 未就绪时的 graph 工具面（复审补实现注：现状是 graphData 缺席 → hologram 行产出空集，工具根本不注册——「返回提示」需要**预热门**）：急段注册 graph 域工具但 execute 走「图谱预热中」结构化提示（或 capability 挂钩预热完成事件解禁）；缓段完成后 rebuild 或热替换为真工具。**不静默失败**（宪法第 4 条）
 - analyzing 状态已有（shell-store `AnalyzingKind`），补「图谱预热中」状态位供 UI 呈现
 - 冷启动缓存路径（F2 skipAnalysis 分支）收敛进同一两段模型（缓存 = 缓段的快路径）
 - **不动**：deactivate/forceClearState 的 fiber+epoch 语义（INVARIANTS #12 铁律）；星图渲染（缓段完成后照旧；观测台退役是 V5 判断半的事，本批不碰）
@@ -74,11 +74,12 @@
 
 ### 批 4（V5a）— bootShell 组合接线（断线接完，F5）
 
-**做什么**：`main.ts` 把 `useCompositionStore.getState().resolved` 喂给 `bootShell(_, composition)`。
+**做什么**：接线点在 **bootShell 内部**，不在 main.ts（复审修正：参数注入有时序悖论——参数在函数调用时求值，而组合链在函数体第 2 步才跑完）。
 
-- boot 时序调整：bootShell 第 2 步（组合链）完成后再取 resolved（此刻 patch+preset 已应用——现状 bootShell 内部就是先组合后 shell 行，只需把 resolved 传出喂给第 3 步，**改动 ~5 行**）
+- 第 3 步改为 `const rows = useCompositionStore.getState().resolved.shell ?? builtinShellRows()`（第 2 步 applyDefaultPreset 写 store 之后读——数据流闭环）
+- 函数签名：第二参 `composition?` 退役为**测试注入面**（生产路径一律走 store；mock composition 注入仅测试用）
 - shell 行禁用涟漪已在 S2 设计件 §2.8 声明——本批让它真实生效（preset 禁壳行 = boot 跳过该行接线）
-- 测试：mock composition 禁某壳行 → boot 后该行接线不发生
+- 测试：mock composition 禁某壳行 → boot 后该行接线不发生；无注入 → 读 store（factory 态 = 出厂表全等）
 
 ### 批 5（V5b）— 纸壳 preset + 主视图落点
 
