@@ -126,7 +126,7 @@ export function createBrowserTools(): Tool[] {
           .number()
           .int()
           .optional()
-          .describe('Debug port (default: auto-probe from 9223; 9222 is reserved for HoloGram webview)'),
+          .describe('Debug port (default: auto-probe from 9223; 9222 is reserved for 兰台 webview)'),
         headless: z.boolean().optional().describe('Run Chrome without a visible window (default false)'),
         windowSize: z
           .object({
@@ -154,7 +154,7 @@ export function createBrowserTools(): Tool[] {
         'Takes over that live instance with its real logins and data — requires user approval. ' +
         'After connect: targets → attach → snapshot/click as usual. ' +
         'session optionally registers the external instance as a named account slot for browser_switch_session. ' +
-        'kill only disconnects (never kills a browser this agent did not launch). 9222 is refused (HoloGram webview, read-only self channel).',
+        'kill only disconnects (never kills a browser this agent did not launch). 9222 is refused (兰台 webview, read-only self channel).',
       schema: z.object({
         port: z.number().int().describe('Debug port of the running browser instance (e.g. 9223)'),
         session: z
@@ -173,7 +173,7 @@ export function createBrowserTools(): Tool[] {
         'Returns {instances:[{browser, port, pages:[{id,title,url}]}]}. ' +
         'Use BEFORE browser_connect when the user says "operate my browser" without a port: ' +
         'list the instances to the user, let them pick, then connect(port). ' +
-        'HoloGram webview (9222) is filtered out.',
+        '兰台 webview (9222) is filtered out.',
       schema: z.object({}),
       readOnly: true,
       execute: () => run('discover', {}),
@@ -317,7 +317,7 @@ export function createBrowserTools(): Tool[] {
         scope: z.string().optional().describe('Optional CSS selector to limit the snapshot (default: whole page)'),
         maxResults: z.number().int().optional().describe('Max elements per page (default 80)'),
         offset: z.number().int().optional().describe('Skip this many interactive elements (for paging; default 0)'),
-        target: z.string().optional().describe('"self" = HoloGram webview（只读）；省略 = 已 attach 的外部页面'),
+        target: z.string().optional().describe('"self" = 兰台 webview（只读）；省略 = 已 attach 的外部页面'),
       }),
       readOnly: true,
       execute: (args) => run('snapshot', args),
@@ -346,7 +346,7 @@ export function createBrowserTools(): Tool[] {
           .min(0)
           .optional()
           .describe('Skip this many content characters (for paging; default 0)'),
-        target: z.string().optional().describe('"self" = HoloGram webview（只读）；省略 = 已 attach 的外部页面'),
+        target: z.string().optional().describe('"self" = 兰台 webview（只读）；省略 = 已 attach 的外部页面'),
       }),
       readOnly: true,
       execute: (args) => run('content', args),
@@ -362,7 +362,7 @@ export function createBrowserTools(): Tool[] {
         selector: z.string().describe('CSS selector (or ref number from snapshot) of element(s) to inspect'),
         props: z.array(z.string()).optional().describe('Optional subset: geometry/style/text/contrast'),
         maxResults: z.number().int().optional().describe('Max elements (default 20)'),
-        target: z.string().optional().describe('"self" = HoloGram webview（只读）；省略 = 已 attach 的外部页面'),
+        target: z.string().optional().describe('"self" = 兰台 webview（只读）；省略 = 已 attach 的外部页面'),
       }),
       readOnly: true,
       execute: (args) => run('inspect', args),
@@ -375,7 +375,7 @@ export function createBrowserTools(): Tool[] {
         'Use AFTER modifying UI code to self-review the rendered result.',
       schema: z.object({
         scope: z.string().optional().describe('Optional CSS selector to limit the scan (default: whole page)'),
-        target: z.string().optional().describe('"self" = HoloGram webview（只读）；省略 = 已 attach 的外部页面'),
+        target: z.string().optional().describe('"self" = 兰台 webview（只读）；省略 = 已 attach 的外部页面'),
       }),
       readOnly: true,
       execute: (args) => run('report', args),
@@ -387,7 +387,7 @@ export function createBrowserTools(): Tool[] {
         'Use after UI changes or operations to check for new errors. Returns {entries:[{type,text}]}.',
       schema: z.object({
         limit: z.number().int().optional().describe('Max entries (default 30)'),
-        target: z.string().optional().describe('"self" = HoloGram webview（只读）；省略 = 已 attach 的外部页面'),
+        target: z.string().optional().describe('"self" = 兰台 webview（只读）；省略 = 已 attach 的外部页面'),
       }),
       readOnly: true,
       execute: (args) => run('console', args),
@@ -401,7 +401,7 @@ export function createBrowserTools(): Tool[] {
         'Returns {entries:[{requestId,method,url,status,mimeType,resourceType,error}], paired:true}.',
       schema: z.object({
         limit: z.number().int().optional().describe('Max entries (default 30)'),
-        target: z.string().optional().describe('"self" = HoloGram webview（只读）；省略 = 已 attach 的外部页面'),
+        target: z.string().optional().describe('"self" = 兰台 webview（只读）；省略 = 已 attach 的外部页面'),
       }),
       readOnly: true,
       execute: (args) => run('network', args),
@@ -414,7 +414,7 @@ export function createBrowserTools(): Tool[] {
         'Only requests still inside the 200-entry event buffer are available. HAR export is not implemented yet.',
       schema: z.object({
         requestId: z.string().describe('requestId from browser(network) entries'),
-        target: z.string().optional().describe('"self" = HoloGram webview（只读）；省略 = 已 attach 的外部页面'),
+        target: z.string().optional().describe('"self" = 兰台 webview（只读）；省略 = 已 attach 的外部页面'),
       }),
       readOnly: true,
       execute: (args) => run('network_detail', args),
@@ -428,7 +428,7 @@ export function createBrowserTools(): Tool[] {
         'Use fs(read) or hand the path to the user when a full request archive is needed.',
       schema: z.object({
         limit: z.number().int().min(1).max(200).optional().describe('Max entries to export (default 100; max 200)'),
-        target: z.string().optional().describe('"self" = HoloGram webview（只读）；省略 = 已 attach 的外部页面'),
+        target: z.string().optional().describe('"self" = 兰台 webview（只读）；省略 = 已 attach 的外部页面'),
       }),
       readOnly: true,
       execute: (args) => run('network_har', args),
@@ -628,7 +628,7 @@ export function createBrowserTools(): Tool[] {
       schema: z.object({
         fullPage: z.boolean().optional().describe('Capture beyond the viewport (full scrollable page, default false)'),
         inline: z.boolean().optional().describe('Return a base64 data URL directly when <= 3MB (default false)'),
-        target: z.string().optional().describe('"self" = HoloGram webview（只读）；省略 = 已 attach 的外部页面'),
+        target: z.string().optional().describe('"self" = 兰台 webview（只读）；省略 = 已 attach 的外部页面'),
       }),
       readOnly: true,
       execute: (args) => run('screenshot', args),

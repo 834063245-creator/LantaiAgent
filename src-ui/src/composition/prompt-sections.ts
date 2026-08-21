@@ -51,11 +51,11 @@ const noGraph = (ctx: PromptSectionContext): boolean => ctx.graphData == null;
 function modelIdentityLines(providerName?: string): { negation: string; identity: string } {
   const identity =
     providerName === 'anthropic'
-      ? '你的后端 API 是 Anthropic (Claude)。任何关于模型品牌的问题，回答"Claude（由 HoloGram 调度）"。'
-      : `你的后端 API 是 ${providerName || 'DeepSeek'}。任何关于模型品牌的问题，回答"${providerName || 'DeepSeek'}（由 HoloGram 调度）"。`;
+      ? '你的后端 API 是 Anthropic (Claude)。任何关于模型品牌的问题，回答"Claude（由兰台调度）"。'
+      : `你的后端 API 是 ${providerName || 'DeepSeek'}。任何关于模型品牌的问题，回答"${providerName || 'DeepSeek'}（由兰台调度）"。`;
   const negation =
     providerName === 'anthropic'
-      ? '你可以承认自己是 Claude，但需说明你运行在 HoloGram 调度框架中。'
+      ? '你可以承认自己是 Claude，但需说明你运行在兰台调度框架中。'
       : '你不是 Claude、不是 Anthropic 模型，不要声称自己是 Claude 或 Anthropic 的产品。';
   return { negation, identity };
 }
@@ -77,7 +77,7 @@ const IDENTITY_BRIEF: PromptSection = {
   applicable: noGraph,
   render: (ctx) => {
     const { negation, identity } = modelIdentityLines(ctx.providerName);
-    return `你是 HoloGram 的 AI 编码助手。当前没有加载项目。
+    return `你是兰台的 AI 编码助手。当前没有加载项目。
 ## 模型身份
 - ${negation}
 - ${identity}`;
@@ -99,7 +99,7 @@ const ENV_BRIEF: PromptSection = {
 const BEHAVIOR_RULES: PromptSection = {
   id: 'behavior-rules',
   applicable: hasGraph,
-  render: () => `你是 HoloGram 的编码 Agent。
+  render: () => `你是兰台的编码 Agent。
 
 ## 行为规则
 1. **能动手就别只建议**。用户说"修"就去修，不要只说"建议修改"。

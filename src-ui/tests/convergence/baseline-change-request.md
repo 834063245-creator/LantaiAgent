@@ -1,3 +1,30 @@
+# baseline change request — 产品更名兰台：system prompt persona + browser 工具描述（2026-08-22）
+
+- **日期**: 2026-08-22
+- **请求 Agent**: 更名执行 Agent（用户直接指令「杀死旧名，一次做彻底」——本 CR 即审批记录，用户在场拍板）
+- **涉及快照**: `baseline/phase-0/system-prompt.fixture.json`、`baseline/preset-minimal/phase-0/system-prompt.fixture.json`、`baseline/phase-0/tool-schemas.plan.json`、`baseline/phase-0/tool-schemas.full.json`（及 minimal 对应物）——**全部为同一动因的字节漂移**
+- **状态**: **已批准（2026-08-22 用户指令执行更名，重录为本流程的落地动作）**
+
+## 变更内容
+
+产品更名 兰台 / Lantai（identifier `com.lantai.app`；HoloGram 降级为图谱引擎专名保留——工具域 `hologram(...)` 与 MCP 工具名 `hologram_*` **不在本次变更内**）。模型可见表面随之变化：
+
+1. persona：`你是 HoloGram 的编码 Agent。` → `你是兰台的编码 Agent。`；`你是 HoloGram 的 AI 编码助手` → `你是兰台的 AI 编码助手`
+2. 模型身份行：`由 HoloGram 调度` → `由兰台调度`；`运行在 HoloGram 调度框架中` → `运行在兰台调度框架中`
+3. browser/desktop 工具 schema 描述：`HoloGram webview` → `兰台 webview`、`HoloGram UI` → `兰台 UI`（语义不变——指应用自身 webview 的只读自检通道）
+
+## 为什么变
+
+旧产品名在全量更名后不得残留在任何模型可见面；persona 是每会话必发的最高频表面。工具域与引擎命名空间按用户决定保留 HoloGram（能力可单独命名），故 `hologram_*` 工具名、DOMAIN_SPECS、engine-tool-surface 三层对齐零变化。
+
+## 影响面
+
+- **漂移范围**：仅上述字符串替换及其长度字段（noGraphLength 163→147 等）；行为规则、图纪律段、多 Agent 协作段、工具清单全部逐字节不变
+- **前缀缓存**：一次性全量失效（预期内，零外部用户无在途成本）
+- **重录动作**：`npm run record:convergence`（standard）+ `CONVERGENCE_PRESET=minimal npm run record:convergence`（minimal），随后 `npm run verify:convergence` 必须 exit 0
+
+---
+
 # baseline change request — S4-1b：session `preset/selected` 首事件 + minimal preset baseline freeze
 
 - **日期**: 2026-08-20

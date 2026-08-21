@@ -94,7 +94,7 @@ describe('S2-1 穿线：buildSystemPrompt / assembleSystemPrompt(sections)', () 
     expect(out).toContain('【覆盖后的行为规则】');
     expect(out).toContain('【穿线探针段】');
     // 原文本被整段替换（不再出现）
-    expect(out).not.toContain('你是 HoloGram 的编码 Agent');
+    expect(out).not.toContain('你是兰台的编码 Agent');
     // 落位：探针段紧跟 collaboration-mode 之后
     const probeIdx = out.indexOf('【穿线探针段】');
     expect(probeIdx).toBeGreaterThan(0);
@@ -158,7 +158,7 @@ describe('S2-1 穿线：AgentRuntime(composition) 端到端', () => {
     const sys = sysOf(h);
     expect(sys).toContain('【覆盖后的行为规则】');
     expect(sys).toContain('【穿线探针段】');
-    expect(sys).not.toContain('你是 HoloGram 的编码 Agent');
+    expect(sys).not.toContain('你是兰台的编码 Agent');
     h.dispose();
   });
 
