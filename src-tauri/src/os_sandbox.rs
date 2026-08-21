@@ -529,22 +529,11 @@ pub mod imp {
         std::fs::create_dir_all(root.join("tmp"))
     }
 
-    /// 解析捆绑 bash：resource_dir 必须含 vendor/usr/bin/bash.exe。
-    /// 缺失时保留 None——resolve_shell 走回退阶梯并大声告警，不静默。
-    pub fn init_bundled(app: &tauri::AppHandle) {
-        // PATH 归一化（P3）：必须在首个 spawn 前完成
-        init_normalized_path();
-
-        let candidate = app
-            .path()
-            .resource_dir()
-            .ok()
-            .map(|d| d.join(BUNDLED_BASH_REL))
-            .filter(|p| p.is_file());
-        // 捆绑 bash 不能只看文件存在：损坏/被杀毒拦/缺 DLL 时若直接钉死，
-        // 所有 shell 命令会一直用坏解释器且不会回退到系统 Git Bash。
-        // 和系统 Git Bash 候选一样，先跑带超时的 `bash -c "exit 0"` 冒烟。
-        let resolved = match candidate {
+    /// 从候选根目录解析捆绑 bash：文件存在 + 冒烟通过才算数。
+    /// 存在但冒烟失败必须大声告警——把坏解释器钉死成全局比回退更危险。
+    fn resolve_bundled_bash(root: Option<&std::path::Path>) -> Option<std::path::PathBuf> {
+        let candidate = root.map(|d| d.join(BUNDLED_BASH_REL)).filter(|p| p.is_file());
+        match candidate {
             Some(path) => {
                 if smoke_test_bash(&path.to_string_lossy()) {
                     Some(path)
@@ -556,13 +545,32 @@ pub mod imp {
                     None
                 }
             }
-            None => {
-                eprintln!(
-                    "[hologram] bundled MSYS2 bash missing at resource {BUNDLED_BASH_REL} — falling back to system detection"
-                );
-                None
-            }
-        };
+            None => None,
+        }
+    }
+
+    /// 解析捆绑 bash：主候选 resource_dir；缺失时兜底仓库 vendor/
+    /// （cargo test 与纯 cargo 构建不拷贝 bundle.resources，钉死解释器在
+    /// 真机测试里从未被走到——shell-stability §4 实跑欠账补丁；打包态
+    /// resource 命中后不会触及该路径）。BUNDLED_BASH_REL 自带 "vendor/"
+    /// 前缀（对齐打包态 resource_dir 布局），故开发态 root = CARGO_MANIFEST_DIR。
+    /// 全部落空时保留 None——
+    /// resolve_shell 走回退阶梯并大声告警，不静默。
+    pub fn init_bundled(app: &tauri::AppHandle) {
+        // PATH 归一化（P3）：必须在首个 spawn 前完成
+        init_normalized_path();
+
+        let resource_root = app.path().resource_dir().ok();
+        let mut resolved = resolve_bundled_bash(resource_root.as_deref());
+        if resolved.is_none() {
+            let manifest_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            resolved = resolve_bundled_bash(Some(&manifest_root));
+        }
+        if resolved.is_none() {
+            eprintln!(
+                "[hologram] bundled MSYS2 bash missing at resource {BUNDLED_BASH_REL} — falling back to system detection"
+            );
+        }
         BUNDLED_BASH.get_or_init(|| resolved.clone());
         // 版本探针（带超时纪律，与 smoke_test_bash 同款）：
         // bash --version 可能卡住（杀毒/损坏），失败只影响 prompt 注入文本。
@@ -1533,6 +1541,28 @@ pub mod imp {
 
             eprintln!("[pipe-compare] handmade: {:?} bytes in {:?} (Err=超时卡住)", a_bytes, a_elapsed);
             eprintln!("[pipe-compare] std-piped: {:?} bytes in {:?} (Err=超时卡住)", b_bytes, b_elapsed);
+        }
+
+        /// shell-stability §4 真机实跑：cargo test 不经过 tauri 资源拷贝，
+        /// 直接以仓库 vendor 根验证捆绑解释器（布局 / 冒烟 / 真实执行三连）。
+        /// 不触碰 BUNDLED_BASH 全局——同进程其他测试的解释器环境保持原样。
+        #[test]
+        #[cfg(windows)]
+        fn bundled_bash_repo_vendor_smokes_and_executes() {
+            use std::os::windows::process::CommandExt;
+
+            // BUNDLED_BASH_REL 自带 "vendor/" 前缀，root = CARGO_MANIFEST_DIR。
+            let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let path = super::resolve_bundled_bash(Some(&root))
+                .expect("仓库 vendor/usr/bin/bash.exe 应存在且冒烟通过");
+            super::ensure_msys2_tmp(&path).expect("ensure_msys2_tmp 应建出 <root>/tmp");
+            let out = std::process::Command::new(&path)
+                .args(["-c", "printf msy2-ok"])
+                .creation_flags(crate::utils::DETACHED_PROCESS_FLAG)
+                .output()
+                .expect("捆绑 bash 真实执行");
+            assert!(out.status.success(), "bash -c 非零退出: {:?}", out.status);
+            assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "msy2-ok");
         }
 
         /// 完整后台链路复现：spawn_bg → drain 线程 → read_bg_output / wait_bg。
