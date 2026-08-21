@@ -8,17 +8,24 @@
 >
 > **⚠️ 2026-08-22 风格源升级**：用户侧设计线定稿「兰台注疏」并交付 handoff 全量落地（见 taste-ledger 同日条目）。风格源自本日起以 **`prototype/lantai.html`**（＋契约 `docs/design/lantai-design-spec.md`）为准绳，direction-b 存档不再当判据；B 段各维对照对象随之切换。产品代码已换装（tokens/PaperPanel/首页/术语），产品化打磨项涌出为 C 段。
 
-## C 段 · 注疏落地涌出项（2026-08-22 handoff 落地新增）
+## C 段 · 注疏落地涌出项（2026-08-22 handoff 落地新增；V5 拆除欠账 C8+ 同日立账）
 
 | # | 项 | 状态 |
 |---|---|---|
-| C1 | 旧观测台 chrome 去圆角（圆角恒 0 是兰台铁律；shell/sp/sh-* 等存量圆角待清） | ⬜ |
+| C1 | ~~旧观测台 chrome 去圆角~~ **随 V5 拆除消解**（chrome 全族已删；残余圆角清点并入 C13 休眠层 sweep） | ✅ 消解 |
 | C2 | SettingsPanel 注疏化重排（本轮只继承 token 翻纸，版式未按 set-frame 重排） | ⬜ |
 | C3 | 夹注（reasoning）86% 收窄列宽（本轮块宽由世界坐标决定，未收窄） | ⬜ |
 | C4 | 应用图标 PNG/ICO 套件再生（favicon.svg 已就绪；缺栅格化工具链，`cargo tauri icon` 待跑） | ⬜ |
-| C5 | --obs-* 别名层退役：逐文件迁移到兰台 token 名后整体删除（含结构变量 bar-h/status-h/rail-w 决策） | ⬜ |
-| C6 | 主聊天输入条 placeholder 文案打磨（现「输入修改意见…」未按 §5 术语化） | ⬜ |
+| C5 | --obs-* 别名层退役：逐文件迁移到兰台 token 名后整体删除（拆除后消费面大减——PromptShelf/Settings/命令面板；结构变量 bar-h/status-h/rail-w 决策一并清） | ⬜ |
+| C6 | 主聊天输入条 placeholder 文案打磨（纸壳 composer 现文案未按 §5 术语化） | ⬜ |
 | C7 | 来文圈点关键词（.circled 朱砂圈）：需 user 块关键词高亮数据面，渲染层已备样式钩子 | ⬜ |
+| C8 | **V5 拆除交互欠账：多卷切换 UI**（旧会话 tab 条随 ChatBeacon 退役；chat-core 的 switchSession/closeSession/createNewSession 面尚无纸壳入口——案卷首页可续开，卷内切换待设计） | ⬜ |
+| C9 | **V5 拆除交互欠账：权限/ask 卡纸面化**（PromptShelfHost 仍是旧观测台暗卡样式——纸面朱砂批红卡归本项；功能已接通） | ⬜ |
+| C10 | **V5 拆除交互欠账：附件入口**（旧 Composer 的文件选择/拖放接口在 chat-core.openFilePicker/handleFileDrop；纸壳 composer 未接） | ⬜ |
+| C11 | **V5 拆除交互欠账：模型/权限模式切换入口**（旧 ChatFooter 的 ModelSwitcher + ask/auto/yolo 模式条退役；设置面板可改 provider，权限模式切换无入口——影响 bridges 权限桥行为） | ⬜ |
+| C12 | **V5 拆除交互欠账：状态反馈面**（pushStatus 的 statusText/statusLog 无 UI 消费——图谱预热/分析进度对用户不可见；候选：书眉行或纸面贴黄块） | ⬜ |
+| C13 | **V5 拆除欠账：scene/ui 休眠层 sweep**（星图 23 文件 + file-viewer/file-translator 等仍被 workspace/chat-session 类型引用；完整删除需动冻结文件 import 图——独立小步施工） | ⬜ |
+| C14 | **V5 拆除欠账：dock-store 开合表收缩**（open 初始表仍是旧六面板 + paper；随 C8-C11 面收敛重定义） | ⬜ |
 
 ## A 段 · 转录缺口（保真项）
 
