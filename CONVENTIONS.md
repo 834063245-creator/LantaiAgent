@@ -54,20 +54,20 @@
 ```
 ✅ app/** 新代码：UI 状态走 zustand store（ui/events.ts 已于 2026-08-19 总线归零 P1 删除）
 ✅ Agent ↔ Agent：agent/message-bus.ts（有界 inbox + ack + 背压），不是事件总线
-✅ ui/react/ 岛层已退休（2026-08-19，docs/plans/ui-react-island-retirement-plan.md）：目录已删除，
+✅ ui/react/ 岛层已退休（2026-08-19，docs/archive/ui-react-island-retirement-plan.md）：目录已删除，
    组件全部迁入 src/app/**（聊天件 app/chat/、面板 app/panels/、chrome app/ 根级）；终态守护
    tests/ui-react-retirement.test.ts。总线缩编为 11 事件——lang/agent:config/agent:status/
    timeline/dataflow 五事件改为 zustand 信号 store（i18n.useLangStore /
    state/agent-config-store / agent-panel-store 的 statusTick/toolDoneTick /
    state/timeline-store / state/dataflow-store）
-✅ 事件总线已归零（2026-08-19，docs/plans/eventbus-zero-and-ui-split-plan.md P1）：
+✅ 事件总线已归零（2026-08-19，docs/archive/eventbus-zero-and-ui-split-plan.md P1）：
    src/ui/events.ts 整文件删除，11 个残余事件全部迁 zustand 信号 store——
    turn-done / goal / chat-context / scene-signal / ask / workspace-switch 六个新信号 store
    落 src/state/（该目录自此为状态层新家），agent:diag 与 agent:tool-done 落
    agent-panel-store（diag / lastToolDone 扩展）；旧事件的 payload 类型随 store 走。
    跨工作区 fire-and-forget 消费端照 INVARIANTS #12 epoch 守卫（样板：chat-core
    _refreshGoalRecord）
-🔒 总线归零 + ui/ 拆分已收口（2026-08-19，docs/plans/eventbus-zero-and-ui-split-plan.md
+🔒 总线归零 + ui/ 拆分已收口（2026-08-19，docs/archive/eventbus-zero-and-ui-split-plan.md
    P0-P3 全竣工）：P1 事件归零；P2 物理拆分——11 个领域 store 迁 src/state/（连同
    P1 六信号 store 共 17 文件）、23 个星图文件迁 src/scene/（ui/graph.ts 留 3 行
    re-export shim，冻结文件 chat-stream 的 type import 走此层）；ui/ 残余 25 文件 =
@@ -159,7 +159,7 @@ session 事件溯源（双写期，this.session 是真源 + SessionLog 逐字节
 工具管道裁决：guard/preflight/around 经 agent/events.ts 的 AgentEventBus 组合，
 bus 事件与 legacy EventSink 双发（UI 零改动依赖此）。
 守护：改 src/agent/** 或 src/composition/** 必过 npm run verify:convergence（T0 静态 + 8 baseline 对拍；standard preset 零漂移规则——不设 CONVERGENCE_PRESET 直接跑，快照逐字节不变，漂了先修代码）；
-record 永不上 CI；baseline 变更走 docs/plans/agent-core-convergence/baseline-change-request.md 审批。
+record 永不上 CI；baseline 变更走 docs/archive/agent-core-convergence/baseline-change-request.md 审批。
 
 组合外化（S2，2026-08-20 起生效）：
 ✅ 用户层 patch：~/.hologram/composition/roster.patch.yml 经 composition/roster.ts

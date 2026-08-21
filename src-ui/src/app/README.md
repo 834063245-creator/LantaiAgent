@@ -19,8 +19,8 @@
 
 ## 约定
 
-- 事件总线已归零（2026-08-19 `docs/plans/eventbus-zero-and-ui-split-plan.md` P0-P3 竣工）：`ui/events.ts` 与 `bridge-adapters.ts` 均已删除，原 11 事件全迁 zustand 信号 store（`src/state/` 六信号 store + agent-panel-store 扩展）；UI 状态一律走 zustand store，禁 window.dispatchEvent / CustomEvent / 自建 EventEmitter。
-- ✅ `ui/react/` 岛层已退休（2026-08-19，计划见 `docs/plans/ui-react-island-retirement-plan.md`）：原 32 文件全部迁入本目录（聊天件 `chat/`、面板+settings `panels/`、chrome TimelineHUD/BackgroundActivity/ContextMenu 根级）；终态守护 `tests/ui-react-retirement.test.ts`。
+- 事件总线已归零（2026-08-19 `docs/archive/eventbus-zero-and-ui-split-plan.md` P0-P3 竣工）：`ui/events.ts` 与 `bridge-adapters.ts` 均已删除，原 11 事件全迁 zustand 信号 store（`src/state/` 六信号 store + agent-panel-store 扩展）；UI 状态一律走 zustand store，禁 window.dispatchEvent / CustomEvent / 自建 EventEmitter。
+- ✅ `ui/react/` 岛层已退休（2026-08-19，计划见 `docs/archive/ui-react-island-retirement-plan.md`）：原 32 文件全部迁入本目录（聊天件 `chat/`、面板+settings `panels/`、chrome TimelineHUD/BackgroundActivity/ContextMenu 根级）；终态守护 `tests/ui-react-retirement.test.ts`。
 - 样式只使用 `tokens.css` 的 `--obs-*` 变量；`base.css`/`chat.css`/`panels.css` 已删除（P5），样式现分布：`foundation.css` / `shell.css` / `graph-chrome.css` / `chat/chat.css` / `panels/dock-panels/*.css`（按面板拆分，main.ts 按原级联顺序导入）。
 - 不碰 `scene/graph-layout.ts` / `scene/gpu-layout.ts` 的任何布局参数。
 - 门禁：`npm run build` + `npx vitest run`（2026-08-16 实测 1014 passed / 4 skipped）。

@@ -1,6 +1,6 @@
 # src/cordis — Cordis 内核（vendored）
 
-> cordis-migration 工程的内核落点。工程主文档：`docs/plans/cordis-migration/`。
+> cordis-migration 工程的内核落点。工程主文档：`docs/archive/cordis-migration/`。
 
 ## 文件构成
 

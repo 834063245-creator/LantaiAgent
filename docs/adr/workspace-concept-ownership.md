@@ -1,6 +1,6 @@
 # 工作区概念归属：从 engine 中心到 Agent 中心（方向已定）
 
-> 日期：2026-08-20 · 状态：**Implemented（2026-08-22 workspace-flip 批 1-5 竣工：纯会话优先启动 / 零目录会话一等化 / 图谱后台预热 / bootShell 组合接线 / 纸壳 preset——六批施工见 `docs/plans/workspace-flip/`；R3 共居判据仍开放）**
+> 日期：2026-08-20 · 状态：**Implemented（2026-08-22 workspace-flip 批 1-5 竣工：纯会话优先启动 / 零目录会话一等化 / 图谱后台预热 / bootShell 组合接线 / 纸壳 preset——六批施工见 `docs/archive/workspace-flip/`；R3 共居判据仍开放）**
 > 提出者：用户（2026-08-20 两次拍板：S2 落地期间首提「工作区从软件诞生第一天围绕 engine 设计，现在需要围绕 agent 设计；会话绑定工作区是正确方法」；同日定方向——见下节）
 > 关联：两产品形式化（composition-boundaries ADR §4.1）——本文是该分界在「工作区」概念上的收尾
 
@@ -32,7 +32,7 @@ Workspace 入口层今天是 engine 中心的：open(path) 的第一公民是图
 - **解耦前置已定**：R2 活引用（块挂文件源不挂工作区）+ 组合层 S1 行表（装配不依赖 Workspace 单例）——翻转的两块地基已铺。
 - **engine 侧本来无绑**：图谱机器（G）以 stdio MCP / TCP 服务外部消费者，本就不持有 Workspace 概念。
 
-## 剩余子题 — ✅ 已拍板（2026-08-22 W1 访谈，记录：`docs/plans/workspace-flip/interviews/W1-2026-08-22.md`）
+## 剩余子题 — ✅ 已拍板（2026-08-22 W1 访谈，记录：`docs/archive/workspace-flip/interviews/W1-2026-08-22.md`）
 
 1. 跨目录会话的形态 → **D-R4-2**：一会话一目录；跨目录对照用只读 fs 工具；
 2. 会话 ↔ 工作区绑定粒度 → **D-R4-2**：严格一对一（零目录通用会话为一等场景——D-R4-1）；

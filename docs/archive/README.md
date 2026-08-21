@@ -3,7 +3,7 @@
 > 归档原则：已竣工的施工稿、交接稿、被取代的 plan 放这里。**归档 = 历史记录，不是现状依据。**
 > 当前约定以根目录 `CONVENTIONS.md` / `INVARIANTS.md` 与 `docs/README.md` 索引为准。
 
-## 主要归档（2026-08-16 收敛）
+## 主要归档（2026-08-16 收敛；2026-08-22 深夜文档规整追加）
 
 - **前端重构**：`frontend-refactor-handoff.md`、`architecture-refactor-spec.md`、`visual-deepening-plan.md`、`main-view-layout-plan.md`、`icon-design-spec.md`
 - **拆弹交接**：`p0-demining-handoff.md`、`p1-demining-handoff.md`、`engine-p0-resolution-handoff-2026-08-15.md`
@@ -11,6 +11,8 @@
 - **被取代方案**：`agent-shell-hardening.md`（被 `docs/plans/shell-stability-bundled-bash-plan.md` 取代并落地）
 - **早期设计/性能史**：`COMMUNICATION_LAYER_DESIGN.md`、`DATA_FLOW_ARCHITECTURE.md`、`GRAPH_DRIVEN_SEARCH_DESIGN.md`、`MULTI_AGENT_STATUS.md`、perf 系列、star-map 系列、phase4 设计等
 - **清理记录**：audit-fix 系列、async-spawn 系列、framework-expansion-plan
+- **2026-08-22 深夜归档（竣工计划全文）**：`workspace-flip/`（目录）、`agent-core-convergence/`（目录，含活流程文件 baseline-change-request.md）、`cordis-migration/`（目录）、`ui-react-island-retirement-plan.md`、`eventbus-zero-and-ui-split-plan.md`
+- **2026-08-22 深夜归档（已消费交接稿）**：`design-handoff-lantai-2026-08-22.md`（兰台注疏设计定稿交接——全部落地后退役；产物为 `prototype/lantai.html` + `docs/design/lantai-design-spec.md`）
 
 ## 使用规则
 

@@ -1,6 +1,6 @@
 # tests/convergence — Agent Core Convergence 验证工程
 
-> 关联：`docs/plans/agent-core-convergence/`（主计划 + 验证计划）。
+> 关联：`docs/archive/agent-core-convergence/`（主计划 + 验证计划）。
 > 本目录是验证计划的落地：把"行为正确"固化成机器可读的 baseline，人类只审意图，不验行为。
 
 ## 命令（src-ui 下）

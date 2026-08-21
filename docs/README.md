@@ -38,7 +38,7 @@
 | [`adr/`](adr/) | 架构决策记录（编号 ADR + 主题 ADR） | 6 篇，见目录 |
 | [`agents/`](agents/) | Agent 操作/事故/对比文档 | 保留：dsh-harness-comparison、platform-bugs-2026-08-13、frontend-rpc-contract（生成物） |
 | [`design/`](design/) | 设计定稿与探索 | provider-system-spec、visual-language-ink-brass、mcp-acp-protocol-support、一张纸设计 |
-| [`plans/`](plans/) | 仍待执行/评审的计划与实验 | 入口 [`plans/README.md`](plans/README.md) |
+| [`plans/`](plans/) | 待执行/进行中的计划与实验；**竣工即归档** | 入口 [`plans/README.md`](plans/README.md)（现状全景）+ [`plans/HISTORY.md`](plans/HISTORY.md)（里程碑时间轴） |
 | [`research/`](research/) | 调研证据与决策 | 入口 [`research/README.md`](research/README.md) |
 | [`archive/`](archive/) | 已竣工施工稿、历史 handoff、被取代的 plan | 入口 [`archive/README.md`](archive/README.md) |
 | 散件 | 仍在使用的路线图/雷区/回归 runbook | `MULTI_AGENT_ROADMAP.md`、`landmine-map.md`、`p3-regression-runbook.md` |

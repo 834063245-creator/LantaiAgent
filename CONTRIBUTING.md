@@ -46,7 +46,7 @@ HoloGram 是一个 **Rust 分析引擎 + Tauri 2 桌面壳 + TypeScript/React �
    ```bash
    cd src-ui && npm run verify:convergence   # T0 静态 + 8 baseline 对拍；失败即返工
    ```
-   > baseline 变更走 `docs/plans/agent-core-convergence/baseline-change-request.md` 审批（record 永不上 CI）。
+   > baseline 变更走 `docs/archive/agent-core-convergence/baseline-change-request.md` 审批（record 永不上 CI）。
 7. **Tauri 壳改动**：
    ```bash
    cd src-tauri && cargo test        # 权限/生命周期/隔离等

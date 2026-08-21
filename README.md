@@ -249,7 +249,7 @@ Python · JavaScript/TypeScript/TSX · Rust · Go · Java · C/C++ · C# · Ruby
 
 ### 一致性门禁
 
-`npm run verify:convergence`（src-ui）：T0 静态断言（AgentConfig 冻结、session 变异入口、capability 序）+ 8 个 frozen baseline 对拍，任何变更破坏契约即失败。record 模式需显式 `CONVERGENCE_RECORD=1`，baseline 变更走审批（`docs/plans/agent-core-convergence/baseline-change-request.md`）。
+`npm run verify:convergence`（src-ui）：T0 静态断言（AgentConfig 冻结、session 变异入口、capability 序）+ 8 个 frozen baseline 对拍，任何变更破坏契约即失败。record 模式需显式 `CONVERGENCE_RECORD=1`，baseline 变更走审批（`docs/archive/agent-core-convergence/baseline-change-request.md`）。
 
 ---
 

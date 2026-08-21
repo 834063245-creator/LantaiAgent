@@ -1,6 +1,6 @@
 # 兰台（Lantai）— Agent 项目手册
 
-> 生成：2026-06-18 · 更新：2026-08-22（**产品更名**：应用名 兰台 / Lantai，identifier `com.lantai.app`；**HoloGram 降级为图谱引擎专名保留**——工具域 `hologram(...)`、MCP 工具 `hologram_*`、`.hologram/` 数据目录、`HOLOGRAM_*` env、`hologram.db` 均属引擎命名空间不改。更名史见 `docs/plans/README.md` 里程碑）
+> 生成：2026-06-18 · 更新：2026-08-22（**产品更名**：应用名 兰台 / Lantai，identifier `com.lantai.app`；**HoloGram 降级为图谱引擎专名保留**——工具域 `hologram(...)`、MCP 工具 `hologram_*`、`.hologram/` 数据目录、`HOLOGRAM_*` env、`hologram.db` 均属引擎命名空间不改。更名史见 `docs/plans/HISTORY.md`）
 > 本文件是项目级静态注入文档：Codex 读 `AGENTS.md`，Claude Code 读 `CLAUDE.md`，内置兰台 Agent 把 `CLAUDE.md` 注入 system prompt。
 > **编码规则不是本文件的正文，而是 `CONVENTIONS.md` + `INVARIANTS.md`；本文件负责让规则真正被执行。**
 
@@ -97,7 +97,7 @@ flowchart LR
 
 ## 6. 前端分层铁律（详情见 CONVENTIONS.md）
 
-- UI 状态走 zustand store，事件总线已归零（2026-08-19 `docs/plans/eventbus-zero-and-ui-split-plan.md` P0-P3 竣工）：`ui/events.ts` 整文件删除（EventBus/bus/BusEvents 不存在了，禁复活——不要 window.dispatchEvent / CustomEvent / 自建 EventEmitter）；原 11 事件全迁 zustand 信号 store。ui/ 拆分终态：store 一律 `src/state/`（领域 + 面板 + app 级 + 信号 store）、星图一律 `src/scene/`（graph.ts 本体 + graph-* + gpu-layout；`ui/graph.ts` 仅存 3 行 re-export shim，冻结文件 chat-stream 的 type import 走此层）、`ui/` 残余 25 文件 = chat 编排域核心 + 旧层命令式基础设施（见 `src/ui/README.md`）。终态守护 `tests/eventbus-zero-and-ui-split.test.ts` 与 `tests/ui-react-retirement.test.ts`。
+- UI 状态走 zustand store，事件总线已归零（2026-08-19 `docs/archive/eventbus-zero-and-ui-split-plan.md` P0-P3 竣工）：`ui/events.ts` 整文件删除（EventBus/bus/BusEvents 不存在了，禁复活——不要 window.dispatchEvent / CustomEvent / 自建 EventEmitter）；原 11 事件全迁 zustand 信号 store。ui/ 拆分终态：store 一律 `src/state/`（领域 + 面板 + app 级 + 信号 store）、星图一律 `src/scene/`（graph.ts 本体 + graph-* + gpu-layout；`ui/graph.ts` 仅存 3 行 re-export shim，冻结文件 chat-stream 的 type import 走此层）、`ui/` 残余 25 文件 = chat 编排域核心 + 旧层命令式基础设施（见 `src/ui/README.md`）。终态守护 `tests/eventbus-zero-and-ui-split.test.ts` 与 `tests/ui-react-retirement.test.ts`。
 - 面板级状态用 `createScopedStore` 注册表（`state/` 的 messages/session/panel/input 四件套，聚合入口 `ui/chat-store.ts`）；app 级单例用 `app/shell-store` / `state/dock-store` / `state/overlay-store`。
 - 聊天消息原地 mutate 后必须 `touchMessage / touchMessageContaining`——裸 `bump()` 或展开数组会静默卡 UI（`INVARIANTS #1/#2/#3`）。
 - 冻结文件：`ui/chat-session.ts`、`ui/chat-stream.ts`、`ui/part-mutator.ts`、`agent/execution-state.ts`。
@@ -112,7 +112,7 @@ flowchart LR
 - 新增领域动作同步 `tools/domains.ts` 的 `DOMAIN_SPECS` + `collectHiddenToolNames()` + 对应测试 + 本文件。引擎侧新增 MCP 工具必须同时接进 `DOMAIN_SPECS`（graph/ops/lsp）——`tests/engine-tool-surface.test.ts` 钉住「引擎默认清单 ↔ 领域映射 ↔ mock 清单」三层对齐，漏接会红。
 - Agent 装配（组合架构 S1 三层 + S2 外化 + S4 preset realm/热重载/安装通道，2026-08-20 起）：**内置工具族**（hologram/fs/shell/git/search/web/agent-isolation/ask/skill/memory/task/agent/browser-desktop/wait）加行到 `src/composition/tool-rows.ts` 行表（factory → Tool[]，行内重名装载期拒绝）；**system-prompt 段落**（persona/规则/记忆/运行环境）加段到 `src/composition/prompt-sections.ts` section 表（id + applicable + render，分隔符是字节契约禁规整）；**会话级工具/hook**（plan/通信/discovery/merge/board/kill/request/spawn/task/compaction/converge）加项到 `agent/blueprint.ts` capability 表，不改 `AgentConfig`（冻结 31 字段）。三层表序 = 字节契约（前缀缓存 + effective 快照依赖此序）；capability 只做组合，teardown 走 `ctx.effect`。面板/命令/工具/provider/块渲染器 五 service 注册表挂根 Context（`src/composition/services.ts` 四件 + V3b `renderer-service.tsx` 块渲染器——纸壳块体渲染经 `resolveRenderer(kind)` 解析，后注册胜）；**S4 起消费闭环已接线**——面板清单 = `panelDefs()`（常量 + ctx.panels 贡献）、命令面板合流 ctx.commands 折算、插件工具经 `composition/plugin-tool-rows.ts` 折算（行 id `plugin/<贡献 id>`）进 buildToolRegistry（面板/命令即时生效、工具下次装配生效）。**preset realm**：`composition/presets.ts` 内置表（standard/minimal）+ `preset-discovery.ts` 用户目录（`~/.hologram/composition/presets/<id>/`）+ `preset-assembly.ts`（resolveCurrentComposition 引用稳定 cache + settings↔store 选择同步）；层序 factory → 用户层 → preset；装配面可选 composition 覆盖参数（`createAgentFromContext` 第 4 参 / `createAgent` 第 2 参，缺省 = S2 零漂移）；子 Agent 经 ctx composition 服务继承。**热重载**：Rust composition_watcher → `composition:changed` → `reloadCompositionPatch`（根级 patch 保存即新装配生效；在途会话冻结）。**插件安装通道**：`plugin_install`/`plugin_uninstall`/`plugin_set_enabled` RPC + 设置面板「插件」tab；插件必须自包含（无裸 import——宿主桥 `window.__lantai_plugin_host__` 提供 createElement/notify；写法范本 `examples/plugins/hello/`；插件面人类契约 `docs/plugins/README.md`）。**S2 起用户层 patch**（`~/.hologram/composition/roster.patch.yml`，经 `composition/roster.ts` 的 `resolveRoster` 解析）可禁用/覆盖/插入四域行——改 roster 引擎/patch 语义必读 `docs/composition/README.md`；**12 壳行**（`composition/shell-rows.ts` 表 + `src/shell/rows/*` 实现 + `src/shell/boot.ts` 编排器）承载 main.ts 引导职责，新引导接线加壳行不是往 main.ts 堆代码。
 - session 变异（Phase 5 立规）：只走 `_appendMessage / _replaceSession / _retractSessionRange` 三入口（spec AST 白名单 + gate 计数双层门禁）；改工具折叠逻辑必须同步 `session-log.ts` 的 `derivePayload`。
-- 改 `src-ui/src/agent/**` 或 `src-ui/src/composition/**` 必过 `npm run verify:convergence`（T0 静态 + 8 baseline 对拍；不设 `CONVERGENCE_PRESET` 直接跑——standard 快照逐字节零漂移是组合层的硬门禁）；record 永不上 CI，baseline 变更走 `docs/plans/agent-core-convergence/baseline-change-request.md` 审批。
+- 改 `src-ui/src/agent/**` 或 `src-ui/src/composition/**` 必过 `npm run verify:convergence`（T0 静态 + 8 baseline 对拍；不设 `CONVERGENCE_PRESET` 直接跑——standard 快照逐字节零漂移是组合层的硬门禁）；record 永不上 CI，baseline 变更走 `docs/archive/agent-core-convergence/baseline-change-request.md` 审批。
 - 新增 RPC：`src-tauri/src/rpc.rs` 分支 + 前端 `RpcContract`；`docs/agents/frontend-rpc-contract.md` 由 `scripts/gen-rpc-contract-md.cjs` 生成，勿手改。
 
 ## 8. 多 Agent 并发纪律（事故报告：docs/agents/platform-bugs-2026-08-13.md）
@@ -137,7 +137,7 @@ flowchart LR
 | 壳 | `cd src-tauri && cargo test` | 343 tests（bin 全绿；UIA 真实窗口 e2e 需 `HOLOGRAM_UIA_E2E=1`——WinForms 靶子窗口全流程 tree/find/type/read/click；cdp 真实 Chrome e2e 偶发 1 失败单跑通过） |
 | 前端 | `cd src-ui && npx vitest run` | 1546 passed / 1 skipped（2026-08-22 workspace-flip 批 5 竣工实测；本机注意：父进程带 `NODE_ENV=production` 会使 npm omit=dev 剥掉 devDependencies → 收集阶段模块错误，装包/跑测试前清掉该变量） |
 | 前端构建 | `cd src-ui && npm run build` | tsc --noEmit + vite build 全绿 |
-| Agent 运行时/组合层 | `cd src-ui && npm run verify:convergence` | exit 0（T0 静态 + 全部 phase specs 对拍 8 baseline + system-prompt.fixture；standard preset 零漂移）；baseline 变更走 `docs/plans/agent-core-convergence/baseline-change-request.md` 审批 |
+| Agent 运行时/组合层 | `cd src-ui && npm run verify:convergence` | exit 0（T0 静态 + 全部 phase specs 对拍 8 baseline + system-prompt.fixture；standard preset 零漂移）；baseline 变更走 `docs/archive/agent-core-convergence/baseline-change-request.md` 审批 |
 | 前端格式 | `cd src-ui && npx biome ci .` | 588 errors / 335 warnings 是存量基线，不要顺手清；改动文件零新增 |
 | 打包 | `cd src-tauri && cargo tauri build` | 发布构建；不要用 `cargo build --release` 代替 |
 
@@ -163,6 +163,6 @@ CI 只做编译 + 测试；`.github/workflows/ci.yml` 不可修改。
 | `ARCHITECTURE.md` / `README.md` | 架构总览 / 使用与构建 |
 | `CONTEXT.md` | 应用级词汇（`kind`/`status` 带簇前缀） |
 | `docs/MULTI_AGENT_ROADMAP.md` | 多 Agent 路线图与已落地能力 |
-| `docs/plans/README.md` | 计划总控表（现在在哪/下一步/编号对照——先看这个）+ 活跃计划索引 |
+| `docs/plans/README.md` | 计划现状入口（现在在哪/还剩什么/谁判断——先看这个）；里程碑时间轴在 `docs/plans/HISTORY.md` |
 | `docs/agents/frontend-rpc-contract.md` | RPC 契约生成物（勿手改） |
 | `docs/archive/README.md` | 归档说明与历史目录 |

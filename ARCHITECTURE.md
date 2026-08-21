@@ -68,7 +68,7 @@ HoloGram 不是一个单纯的"代码图谱可视化工具"。它的本质是一
 - **Engine 全局实例**：`engine::ENGINE`（`LazyLock<RwLock<Option<Engine>>>`）持有全部图状态；`engine_init / engine_read / engine_write / engine_analyze` 是唯一入口。Engine 用状态机管理生命周期：`Uninitialized → Loading → Ready ↔ Analyzing → Error`。
 - **WorkspaceHandle（Rust）**：持有单个打开项目的所有后端状态（权限上下文、watcher、审计），替代分散的 `ACTIVE_PROJECT / SANDBOX / AUDIT_LOGGER` 全局变量。
 - **ResourceLedger**：统一生命周期管理。所有有生命周期需求的后端服务（UnityEvent、LlmProxy、BgJobs、Mcp、Unity、Pty、Lsp、UiaWorker、Aura、MemoryBundle、Logging 共 11 个）实现 `LifecycleService` trait 并注册，退出时按序 drain（总预算 2s + 3s 强退）。
-- **Workspace（前端）**：统一状态容器，替代 18+ 个模块级全局变量；原子化工作区切换（`old.deactivate()` → `Workspace.open()` → 注入）。生命周期原语已内核化为 vendored cordis（`src-ui/src/cordis/`，同 DSH 做法）：工作区级资源以 fiber effect 登记（获取点就地），Agent 挂身份 fiber（`hologram/agent`，清理仍走 DisposerBag 同步快通道），子系统以 Service 挂树（`LspService` 样板）；`deactivate()` = fiber dispose-to-quiescence + epoch 推进。epoch 代际防护永久保留——fiber 管所有权，epoch 管逃逸所有权的在途回调（详见 `docs/plans/cordis-migration/`）。
+- **Workspace（前端）**：统一状态容器，替代 18+ 个模块级全局变量；原子化工作区切换（`old.deactivate()` → `Workspace.open()` → 注入）。生命周期原语已内核化为 vendored cordis（`src-ui/src/cordis/`，同 DSH 做法）：工作区级资源以 fiber effect 登记（获取点就地），Agent 挂身份 fiber（`hologram/agent`，清理仍走 DisposerBag 同步快通道），子系统以 Service 挂树（`LspService` 样板）；`deactivate()` = fiber dispose-to-quiescence + epoch 推进。epoch 代际防护永久保留——fiber 管所有权，epoch 管逃逸所有权的在途回调（详见 `docs/archive/cordis-migration/`）。
 
 ---
 
@@ -288,7 +288,7 @@ NetBenefit = |R|·c_in·(T-1) − |S|·c_out − L·avg_turn_cost
 
 ### 4.10 Agent 运行时收敛（agent-core-convergence Phase 0–6，已并入 main）
 
-2026-08 的收敛工程把自有运行时的生命周期/会话契约全部原语化并门禁化（详见 `docs/plans/agent-core-convergence/`）：
+2026-08 的收敛工程把自有运行时的生命周期/会话契约全部原语化并门禁化（详见 `docs/archive/agent-core-convergence/`）：
 
 - **声明式装配（Phase 6 + 组合架构 S1 三层，2026-08-20）**：内置工具族由 `src/composition/tool-rows.ts` 行表装配（14 行内置族，factory → Tool[]，行内重名装载期拒绝）；system-prompt 段落由 `src/composition/prompt-sections.ts` section 表拼装（13 段，两装配面 applicable 分流）；会话级工具/hook 仍由 `agent/blueprint.ts` 的 `AgentBlueprint` capability 表驱动——**`AgentConfig` 冻结 31 字段**不再扩张；三层表序 = 字节契约（DeepSeek 前缀缓存与 effective 快照依赖此序）；teardown 走 `ctx.effect`；面板/命令/工具/provider 四 service 注册表挂根 Context（`src/composition/services.ts`，`ContributionRegistry` 内核：装载期重名拒绝 + disposer 双守卫）
 - **会话事件溯源（Phase 5）**：`session-log.ts` 事件日志 + session 变异三入口（`_appendMessage` / `_replaceSession` / `_retractSessionRange`）；工具折叠逻辑同步 `derivePayload`
@@ -679,7 +679,7 @@ app 级单例（shell/dock/overlay）用普通 `create()`。新状态必须走�
 
 ### 10.6 为什么 EventBus 已退役（终态）
 
-EventBus 只覆盖不到一半通信，存在 5 个孤儿 emit、三层通信混用——解耦价值归零、复杂度留存。2026-08-19 总线归零（docs/plans/eventbus-zero-and-ui-split-plan.md）后 `ui/events.ts` 整文件删除：UI 状态只走 Zustand store（信号 store 在 `src/state/`）；Agent 层内部用 MessageBus（多 Agent 通信，带背压）；禁 window.dispatchEvent / CustomEvent / 自建 EventEmitter（守护 tests/eventbus-zero-and-ui-split.test.ts）。
+EventBus 只覆盖不到一半通信，存在 5 个孤儿 emit、三层通信混用——解耦价值归零、复杂度留存。2026-08-19 总线归零（docs/archive/eventbus-zero-and-ui-split-plan.md）后 `ui/events.ts` 整文件删除：UI 状态只走 Zustand store（信号 store 在 `src/state/`）；Agent 层内部用 MessageBus（多 Agent 通信，带背压）；禁 window.dispatchEvent / CustomEvent / 自建 EventEmitter（守护 tests/eventbus-zero-and-ui-split.test.ts）。
 
 ### 10.7 为什么压缩只作用于发送载荷
 
