@@ -134,6 +134,15 @@ export function bootActions(refs: ShellRefs, deps: WorkspaceFlowDeps): void {
       run: () => useDockStore.getState().togglePanel('settings'),
     },
     {
+      // paper-shell 走查弹（2026-08-21）：纸视图开合。全屏覆盖，Esc/关闭退出。
+      id: 'toggle-paper',
+      group: '面板',
+      label: '纸视图（走查弹）',
+      icon: 'file',
+      kbd: 'ctrl P',
+      run: () => useDockStore.getState().togglePanel('paper'),
+    },
+    {
       id: 'toggle-shortcuts',
       group: '设置',
       label: '快捷键一览',

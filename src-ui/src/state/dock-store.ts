@@ -72,7 +72,15 @@ interface DockState {
 }
 
 export const useDockStore = create<DockState>((set, get) => ({
-  open: { check: false, constraints: false, dataflow: false, settings: false, agents: false, tasks: false },
+  open: {
+    check: false,
+    constraints: false,
+    dataflow: false,
+    settings: false,
+    agents: false,
+    tasks: false,
+    paper: false,
+  },
   checkResult: null,
 
   openPanel: (id) => set((st) => ({ open: { ...st.open, [id]: true } })),

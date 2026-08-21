@@ -19,8 +19,9 @@ describe('composition 面板注册（S1-5 string 开集 + 装载期校验）', (
     for (const def of PANEL_DEFS) {
       expect(def.component).toBeTruthy();
     }
-    // 内置六面齐全（S1-5 迁移前后清单不变）
-    expect(ids).toEqual(['check', 'constraints', 'dataflow', 'settings', 'agents', 'tasks']);
+    // 内置六面齐全（S1-5 迁移前后清单不变）+ paper 走查弹（2026-08-21 增，
+    // side:null 全屏覆盖；走查弹毕业后此行随退役清理）
+    expect(ids).toEqual(['check', 'constraints', 'dataflow', 'settings', 'agents', 'tasks', 'paper']);
   });
 
   it('dock-store open 面向 string 开集：未注册 key 的写入/读取不抛（校验在清单侧）', () => {

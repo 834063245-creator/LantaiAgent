@@ -38,7 +38,7 @@ describe('S4-1.5 panels 合流点：panelDefs() + bump 信号', () => {
   it('无贡献 = 内置清单全等（零漂移）', async () => {
     const root = await bootServices();
     const defs = panelDefs();
-    expect(defs.map((d) => d.id)).toEqual(['check', 'constraints', 'dataflow', 'settings', 'agents', 'tasks']);
+    expect(defs.map((d) => d.id)).toEqual(['check', 'constraints', 'dataflow', 'settings', 'agents', 'tasks', 'paper']);
     await root[Symbol.asyncDispose]?.();
   });
 

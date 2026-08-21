@@ -313,7 +313,10 @@ function escLayer(): void {
   if (sg?.handleEscape()) return;
   // 全局 UI 层
   const dock = useDockStore.getState();
-  if (sg?.isInsideGalaxy) sg.exitGalaxy();
+  // 走查弹纸视图：全屏覆盖层最先关（settings/dataflow 同层——按打开顺序覆盖关系，
+  // paper 是后开的覆盖层，置于本函数最前符合视觉栈序）
+  if (dock.isOpen('paper')) dock.closePanel('paper');
+  else if (sg?.isInsideGalaxy) sg.exitGalaxy();
   else if (dock.isOpen('check')) dock.closePanel('check');
   else if (dock.isOpen('constraints')) dock.closePanel('constraints');
   else if (shellRefs.chatPanel?.isOpen()) shellRefs.chatPanel.close();

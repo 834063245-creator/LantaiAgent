@@ -1,0 +1,276 @@
+/* paper-shell 走查弹 · 灰框样式（丑得理直气壮——结构对即可，视觉全不管）。
+ * 只有结构样式（定位/层级/布局），无任何视觉打磨：灰框/系统字/黑线。 */
+
+.pp-root {
+  position: fixed;
+  inset: 0;
+  z-index: 280;
+  background: #1a1a1a;
+  color: #ddd;
+  font:
+    13px / 1.6 system-ui,
+    sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── 顶栏（面板标题 + 关闭 + 缩放读数）── */
+.pp-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid #333;
+  background: #222;
+  flex-shrink: 0;
+}
+.pp-topbar .pp-title {
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+.pp-topbar .pp-tag {
+  font-size: 11px;
+  color: #888;
+}
+.pp-topbar .pp-zoom {
+  margin-left: auto;
+  font-size: 12px;
+  color: #aaa;
+  font-variant-numeric: tabular-nums;
+}
+.pp-close {
+  background: none;
+  border: 1px solid #444;
+  color: #ccc;
+  border-radius: 6px;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+.pp-close:hover {
+  background: #333;
+}
+
+/* ── 画布区（世界容器的宿主）── */
+.pp-canvas {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  cursor: grab;
+  /* 原点十字用背景线画在画布层（跟随 pan/zoom 的由世界层画，这里画屏幕栅格参照） */
+}
+.pp-canvas.pp-panning {
+  cursor: grabbing;
+}
+
+/* 世界层：transform 由 JS 设置（pan/zoom） */
+.pp-world {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+/* 原点十字（世界原点方位感 D-R1-1） */
+.pp-origin {
+  position: absolute;
+  pointer-events: none;
+}
+.pp-origin::before,
+.pp-origin::after {
+  content: "";
+  position: absolute;
+  background: #555;
+}
+.pp-origin::before {
+  left: -18px;
+  right: -18px;
+  top: 0;
+  height: 1px;
+}
+.pp-origin::after {
+  top: -18px;
+  bottom: -18px;
+  left: 0;
+  width: 1px;
+}
+.pp-origin-label {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  font-size: 10px;
+  color: #666;
+  white-space: nowrap;
+}
+
+/* ── 块（灰框——走查弹纪律）── */
+.pp-block {
+  position: absolute;
+  border: 1px solid #555;
+  background: #242424;
+  border-radius: 4px;
+  padding: 10px 12px;
+  color: #ccc;
+  cursor: grab;
+  user-select: none;
+}
+.pp-block.pp-pinned {
+  background: #2c2c2c;
+  border-color: #7a7a7a;
+  z-index: 30;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.pp-block.pp-dragging {
+  cursor: grabbing;
+  opacity: 0.9;
+  z-index: 50;
+}
+.pp-block.pp-user {
+  background: #26221c;
+}
+.pp-block.pp-notice {
+  background: #1e2226;
+}
+.pp-block.pp-tool {
+  background: #1e2622;
+}
+.pp-block.pp-plan {
+  background: #26201e;
+}
+.pp-block.pp-reasoning {
+  background: #202024;
+  color: #999;
+  font-size: 12px;
+}
+
+.pp-kind {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: #888;
+  margin-bottom: 4px;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.pp-kind .pp-status {
+  color: #aaa;
+}
+.pp-kind .pp-status.pp-done {
+  color: #7fbf8f;
+}
+.pp-kind .pp-status.pp-running {
+  color: #d8c26a;
+}
+.pp-kind .pp-status.pp-error {
+  color: #e08a84;
+}
+.pp-kind .pp-status.pp-pending {
+  color: #999;
+}
+
+.pp-block pre {
+  margin: 4px 0 0;
+  font:
+    11px / 1.5 ui-monospace,
+    monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: #bbb;
+  max-height: 260px;
+  overflow: auto;
+}
+.pp-block .pp-out {
+  margin-top: 6px;
+  border-top: 1px dashed #444;
+  padding-top: 6px;
+  font:
+    11px / 1.5 ui-monospace,
+    monospace;
+  color: #8a8a8a;
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* 收回按钮（D-R2-2：按钮 + 确认——走查弹用 confirm() 占位，够用） */
+.pp-unpin {
+  position: absolute;
+  top: -10px;
+  left: 10px;
+  font-size: 10px;
+  background: #333;
+  border: 1px solid #555;
+  color: #ccc;
+  border-radius: 10px;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+.pp-unpin:hover {
+  background: #444;
+}
+
+/* 流内占位（块被拖出后流里留洞——原生 button，点击恢复手势） */
+.pp-ghost {
+  position: absolute;
+  border: 1px dashed #444;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: #666;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+  text-align: center;
+}
+.pp-ghost:hover {
+  color: #999;
+  border-color: #666;
+}
+
+/* ── 底部输入条（固定视口底部 D-R1-3）── */
+.pp-composer {
+  display: flex;
+  gap: 10px;
+  padding: 10px 14px;
+  border-top: 1px solid #333;
+  background: #222;
+  flex-shrink: 0;
+}
+.pp-composer input {
+  flex: 1;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #ddd;
+  font: inherit;
+  outline: none;
+}
+.pp-composer input:focus {
+  border-color: #666;
+}
+.pp-composer button {
+  background: #333;
+  border: 1px solid #555;
+  color: #ddd;
+  border-radius: 8px;
+  padding: 6px 18px;
+  cursor: pointer;
+}
+.pp-composer button:hover {
+  background: #444;
+}
+
+/* 空态提示 */
+.pp-empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #777;
+  text-align: center;
+  pointer-events: none;
+}

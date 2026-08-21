@@ -40,6 +40,10 @@ export function useGlobalKeys(): void {
       } else if (mod && !e.shiftKey && !e.altKey && key === 'd') {
         e.preventDefault();
         runAction('toggle-diff');
+      } else if (mod && !e.shiftKey && !e.altKey && key === 'p') {
+        // 走查弹纸视图（拦截浏览器打印——本应用无打印场景）
+        e.preventDefault();
+        runAction('toggle-paper');
       } else if (mod && !e.shiftKey && !e.altKey && e.key === ',') {
         e.preventDefault();
         runAction('toggle-settings');
