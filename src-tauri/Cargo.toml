@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: MIT
 
 [package]
-name = "hologram"
+name = "lantai"
 version = "10.4.0"
-description = "全息观测站"
-authors = ["Hologram Team"]
+description = "兰台"
+authors = ["Lantai Team"]
 edition = "2021"
 
 [build-dependencies]

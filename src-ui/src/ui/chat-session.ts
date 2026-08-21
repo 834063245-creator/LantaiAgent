@@ -1191,7 +1191,7 @@ export async function exportSession(ctx: SessionContext): Promise<void> {
   const now = new Date();
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-  let md = `# HoloGram 会话 — ${dateStr}\n`;
+  let md = `# 兰台会话 — ${dateStr}\n`;
   md += `> 模型: ${active?.model || 'unknown'} · 总 token: ${ctx.getTotalTokensUsed().toLocaleString()}\n\n`;
 
   for (const m of msgs) {

@@ -631,9 +631,9 @@ const SettingsPanelApp: React.FC<{
           {/* ═══ 关于标签页 ═══ */}
           <div className="sp-tab-content" data-tab="about" style={{ display: activeTab === 'about' ? '' : 'none' }}>
             <div className="sp-section">
-              <div className="sp-section-title">HoloGram 全息观测站</div>
+              <div className="sp-section-title">兰台 Lantai</div>
               <div className="sp-hint" style={{ marginBottom: 16 }}>
-                深空代码拓扑 · AI 辅助分析
+                一张纸上的 Agent 工作台 · 图谱引擎 HoloGram
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '6px 12px', fontSize: 12 }}>
                 <span style={{ color: 'var(--obs-text-2)' }}>版本</span>

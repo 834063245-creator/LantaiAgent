@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// HoloGram Tauri 桥接层结构化日志 — NDJSON 输出到 .hologram/logs/bridge.log
+// 兰台 Tauri 桥接层结构化日志 — NDJSON 输出到 .hologram/logs/bridge.log
 use std::path::Path;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Registry};

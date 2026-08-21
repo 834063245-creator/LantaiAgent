@@ -118,7 +118,7 @@ export function SessionsHome() {
   return (
     <div className="sh-root">
       <div className="sh-mark">◈</div>
-      <h1>HoloGram</h1>
+      <h1>兰台</h1>
 
       <div className="sh-actions">
         <button type="button" className="sh-primary-btn" onClick={onNewSession}>

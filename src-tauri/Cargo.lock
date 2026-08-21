@@ -1560,44 +1560,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
-name = "hologram"
-version = "10.4.0"
-dependencies = [
- "base64 0.22.1",
- "chrono",
- "encoding_rs",
- "flate2",
- "futures-util",
- "glob",
- "hologram-engine",
- "http-body",
- "http-body-util",
- "hyper",
- "hyper-util",
- "libloading 0.9.0",
- "portable-pty",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "tar",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-updater",
- "tauri-plugin-window-state",
- "tokio",
- "tokio-tungstenite",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "ureq",
- "url",
- "walkdir",
- "windows",
-]
-
-[[package]]
 name = "hologram-engine"
 version = "10.4.0"
 dependencies = [
@@ -2147,6 +2109,44 @@ checksum = "07293a4e297ac234359b510362495713f75ea345d5307140414f20c69ffeb087"
 dependencies = [
  "bitflags 2.13.1",
  "libc",
+]
+
+[[package]]
+name = "lantai"
+version = "10.4.0"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "encoding_rs",
+ "flate2",
+ "futures-util",
+ "glob",
+ "hologram-engine",
+ "http-body",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "libloading 0.9.0",
+ "portable-pty",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tar",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-updater",
+ "tauri-plugin-window-state",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "ureq",
+ "url",
+ "walkdir",
+ "windows",
 ]
 
 [[package]]

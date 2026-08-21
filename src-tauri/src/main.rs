@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// HoloGram Tauri 后端
+// 兰台 Tauri 后端
 // 桥接层：Agent (TypeScript) → Tauri commands → Rust engine
 // 不做分析逻辑，只做进程管理和文本转发
 

@@ -26,7 +26,7 @@ struct TargetWindow {
     child: std::process::Child,
 }
 
-const TARGET_TITLE: &str = "HoloGram UIA e2e target";
+const TARGET_TITLE: &str = "Lantai UIA e2e target";
 
 impl TargetWindow {
     fn spawn() -> Option<Self> {

@@ -3,7 +3,7 @@
 
 // SessionLog — 模型可见事实的事件溯源日志（agent-core-convergence Phase 5）。
 //
-// Cordis 事件溯源原语的 HoloGram 落地（双写阶段）：
+// Cordis 事件溯源原语的兰台落地（双写阶段）：
 //   - Agent 的每一条模型可见会话变更先 append 为事件，同一消息对象再进
 //     this.session（旧数组路径保留为投影真源，restore/UI 零改动）；
 //   - deriveMessages() 从事件重放完整历史，必须与旧 session 数组逐字节等价；

@@ -22,7 +22,7 @@ use super::transport::{http_close_tab, http_new_tab, list_targets_raw, ws_comman
 // 常量
 // ═══════════════════════════════════════════════════════════
 
-/// HoloGram 自家 webview 的调试端口（tauri.conf.json additionalBrowserArgs）。
+/// 兰台自家 webview 的调试端口（tauri.conf.json additionalBrowserArgs）。
 /// 受控 Chrome 永远不许用这个端口；self 会话专用。
 pub(super) const WEBVIEW_DEBUG_PORT: u16 = 9222;
 
@@ -549,7 +549,7 @@ pub(super) fn start_observer(
             }
         }
         // 只拦截 Agent 操作的外部/受控页面 file chooser。self 会话是自家 webview
-        // 只读通道——若在这里也开启拦截，会把 HoloGram UI 自己的文件选择框改掉。
+        // 只读通道——若在这里也开启拦截，会把兰台 UI 自己的文件选择框改掉。
         if port != WEBVIEW_DEBUG_PORT {
             let intercept = json!({
                 "id": 1004u64,
@@ -1279,7 +1279,7 @@ pub(crate) async fn cdp_launch(
             return Err(err(
                 codes::PORT_CONFLICT,
                 format!(
-                    "端口 {WEBVIEW_DEBUG_PORT} 是 HoloGram 自家 webview 的调试端口，不能用于受控浏览器。\
+                    "端口 {WEBVIEW_DEBUG_PORT} 是兰台自家 webview 的调试端口，不能用于受控浏览器。\
                      请用默认端口（{DEFAULT_PORT_BASE} 起）或指定其他端口"
                 ),
             ));
@@ -1463,7 +1463,7 @@ pub(crate) fn cdp_connect(
         return Err(err(
             codes::PORT_CONFLICT,
             format!(
-                "端口 {WEBVIEW_DEBUG_PORT} 是 HoloGram 自家 webview 的调试端口，不能作为外部实例连接。\
+                "端口 {WEBVIEW_DEBUG_PORT} 是兰台自家 webview 的调试端口，不能作为外部实例连接。\
                  webview 只读通道用 target=\"self\""
             ),
         ));
@@ -1902,7 +1902,7 @@ pub(super) fn parse_discover_process_lines(text: &str) -> Vec<(String, u16)> {
             let parts: Vec<&str> = line.split('|').collect();
             if parts.len() >= 2 {
                 if let Ok(port) = parts[1].trim().parse::<u16>() {
-                    // 9222 是 HoloGram webview 调试端口，discover 契约明确过滤；
+                    // 9222 是兰台 webview 调试端口，discover 契约明确过滤；
                     // 在解析层直接跳过，避免 bash/cmd 等启动器行让单测/调用方
                     // 再各自实现一遍过滤。
                     if port != WEBVIEW_DEBUG_PORT {

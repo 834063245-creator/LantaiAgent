@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-//! ACP server — 让外部程序把 HoloGram 的 Agent 当驱动对象。
+//! ACP server — 让外部程序把兰台的 Agent 当驱动对象。
 //!
 //! 协议面（ACP）：initialize / session/new / session/prompt / session/cancel，
 //! 服务端主动推送 session/update（agent_message_chunk、agent_message、turn_finished）

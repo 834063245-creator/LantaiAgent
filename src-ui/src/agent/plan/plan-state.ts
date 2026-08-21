@@ -8,7 +8,7 @@
 //   - enter 时只确定 id 和路径，不创建文件（LLM 第一次 Write 时创建）
 //   - exit/cancel 都把 active 设为 false，plan 文件保留（可回溯）
 //
-// 不用事件溯源 / wire Op —— HoloGram 没有那套架构。
+// 不用事件溯源 / wire Op —— 兰台没有那套架构。
 // 简单状态 + 监听器 + save/restore 快照。
 
 export interface PlanState {

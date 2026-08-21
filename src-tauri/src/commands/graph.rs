@@ -69,14 +69,14 @@ pub(crate) async fn analyze_and_load(path: String, force: Option<bool>, app: tau
     let _ = std::fs::write(crate::utils::project_root().join(".last_project"), &path);
 
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.set_title("全息观测站 — 分析中...");
+        let _ = window.set_title("兰台 — 分析中...");
     }
 
     let analyze_future = crate::utils::run_analyze_with_progress(path.clone(), app.clone(), force);
     analyze_future.await.map_err(|e| format!("Rust 引擎分析失败: {e}"))?;
 
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.set_title("全息观测站");
+        let _ = window.set_title("兰台");
     }
 
     let files_path = format!("{}/hologram_graph_files.json", path);

@@ -3,7 +3,7 @@
 
 // Cordis 内核引导（cordis-migration P0）——应用根 Context 的唯一创建点。
 //
-// 定位：本文件是 HoloGram 自有代码（非 vendor）。src/cordis/ 其余 *.ts 是从
+// 定位：本文件是兰台自有代码（非 vendor）。src/cordis/ 其余 *.ts 是从
 // DSH vendor/cordis 原样拷贝的内核源码，溯源与升级纪律见 ./README.md。
 //
 // 为什么允许模块级单例：根 Context 是服务定位器根（app 级单例，层级等同

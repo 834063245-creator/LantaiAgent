@@ -3,7 +3,7 @@
 
 // 生命周期原语 — Disposer 契约（agent-core-convergence Phase 1）。
 //
-// 取自 Cordis 的 ownership 思想，以 HoloGram 自己的 TS runtime 落地：
+// 取自 Cordis 的 ownership 思想，以兰台自己的 TS runtime 落地：
 //   - 一切注册 API 返回 Disposer（清理器）——"谁注册，谁拿到所有权"；
 //   - DisposerBag 是清理器的单一 owner：逆序释放、单次执行、async 串行等待；
 //   - Phase 3 的 AgentContext.effect() 在此之上组装服务级 ownership。

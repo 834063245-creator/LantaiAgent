@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT.
 
-// HoloGram 主入口（S2-4 终态：薄引导）
+// 兰台（Lantai）主入口（S2-4 终态：薄引导）
 // 引导职责只剩装配：CSS → cordis 内核 → React 壳 → bootShell（壳行表
 // 化执行，12 行见 composition/shell-rows.ts；行实现落 src/shell/rows/*）。
 // 历史注：三模式星图 minimal/standard/full 独立实例切换重建（v3）；

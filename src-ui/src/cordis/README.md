@@ -9,7 +9,7 @@
 | `context/events/fiber/index/logger/reflect/registry/service/utils.ts` | **vendor**：DSH `vendor/cordis` 原样拷贝 |
 | `cosmokit.ts` | **vendor 子集**：仅收内核实际 import 的成员，函数体逐字拷贝 |
 | `standard-schema.ts` | **vendor**：`@standard-schema/spec@1.1.0` 的 `dist/index.d.ts` 拷贝 |
-| `boot.ts` | **HoloGram 自有**：根 Context 引导（initCordisKernel / getCordisRoot） |
+| `boot.ts` | **兰台自有**：根 Context 引导（initCordisKernel / getCordisRoot） |
 | `LICENSE` | 上游 cordis 的 MIT 许可证原文 |
 
 ## 溯源（provenance）
@@ -37,4 +37,4 @@
   （build / vitest / biome）。
 - biome 对 vendor 文件整体关闭 formatter / linter / assist（见 biome.json
   overrides 的显式文件清单）——frozen 拷贝保持上游原样，升级时好 diff。
-- HoloGram 侧的适配代码一律写在 `boot.ts` 或各消费方，不进 vendor 文件。
+- 兰台侧的适配代码一律写在 `boot.ts` 或各消费方，不进 vendor 文件。

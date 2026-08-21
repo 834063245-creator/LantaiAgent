@@ -36,7 +36,7 @@ pub(crate) async fn exec_command(
         _ => crate::os_sandbox::ShellInterpreter::Auto,
     };
     // 默认 cwd = 当前工作区根（而非应用安装目录 project_root()）——
-    // 否则切换工作区后 Agent 省略 cwd 时，命令会在 HoloGram 自身目录执行。
+    // 否则切换工作区后 Agent 省略 cwd 时，命令会在兰台自身目录执行。
     let dir = match cwd {
         Some(c) => c,
         None => crate::utils::workspace_path(&state)?,

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// Plan 模式图增强 Hook — HoloGram 独有差异化能力
+// Plan 模式图增强 Hook — 兰台独有差异化能力
 //
 // 两层增强：
 //   1. 探索阶段（post-tool）：LLM 读文件时注入更详细的影响面（比普通模式更全）

@@ -12,7 +12,7 @@ pub struct SafetyCheckResult {
 
 /// 检查路径是否可以安全读取。
 /// 类似 check_path_safety，但跳过 .hologram/ 配置检查 — 读取
-/// HoloGram 自身的数据文件（memory、sessions、logs）是安全且必要的，
+/// 兰台 自身的数据文件（memory、sessions、logs）是安全且必要的，
 /// 是正常操作的一部分。只有写入它们才是危险的。
 /// ponytail: 读路径不检查 dangerous_dir — 浏览 .vscode/.git/.idea 是正常操作,
 /// 只有写这些目录才需要保护. 之前读也拦导致文件树展开 .vscode 被 safety Ask 拦截.
@@ -62,11 +62,11 @@ pub fn check_path_safety(path: &Path) -> SafetyCheckResult {
         };
     }
 
-    // 2. HoloGram 配置文件 — 始终受保护
+    // 2. 兰台 配置文件 — 始终受保护
     if is_hologram_config_path(path) {
         return SafetyCheckResult {
             safe: false,
-            message: "HoloGram 配置文件受保护，不可修改".into(),
+            message: "兰台 配置文件受保护，不可修改".into(),
         };
     }
 
@@ -92,9 +92,9 @@ pub fn check_path_safety(path: &Path) -> SafetyCheckResult {
     }
 }
 
-/// HoloGram 配置路径 — `.hologram/` 目录内容。
+/// 兰台 配置路径 — `.hologram/` 目录内容。
 /// 运行时数据目录（memory、sessions、logs、worktrees）被豁免 —
-/// HoloGram UI 在正常运行时会写入这些目录。
+/// 兰台 UI 在正常运行时会写入这些目录。
 fn is_hologram_config_path(path: &Path) -> bool {
     let components: Vec<&str> = path
         .components()
@@ -102,7 +102,7 @@ fn is_hologram_config_path(path: &Path) -> bool {
         .collect();
     for i in 0..components.len() {
         if components[i] == ".hologram" {
-            // 运行时数据目录被豁免 — HoloGram UI 会写入这些目录
+            // 运行时数据目录被豁免 — 兰台 UI 会写入这些目录
             if let Some(sub) = components.get(i + 1) {
                 if *sub == "worktrees" || *sub == "memory" || *sub == "logs" || *sub == "sessions" {
                     return false;
@@ -282,7 +282,7 @@ fn is_suspicious_unix_path(path_str: &str) -> bool {
 /// 仅阻止 /proc/self/fd/* (可能泄露其他进程的文件描述符)。
 #[cfg(unix)]
 fn is_suspicious_unix_read_path(path_str: &str) -> bool {
-    // /proc/self/fd/* — 可能泄露 HoloGram 进程的文件描述符
+    // /proc/self/fd/* — 可能泄露 兰台 进程的文件描述符
     if path_str.starts_with("/proc/self/fd/") {
         return true;
     }
@@ -361,7 +361,7 @@ mod tests {
 
     #[test]
     fn test_read_safety_allows_hologram() {
-        // 读取 .hologram/ 文件是安全的 — 它们是 HoloGram 自身的数据
+        // 读取 .hologram/ 文件是安全的 — 它们是 兰台 自身的数据
         let r = check_path_safety_read(Path::new(".hologram/memory/MEMORY.md"));
         assert!(r.safe, "memory reads should be allowed");
         let r = check_path_safety_read(Path::new(".hologram/logs/bridge.log"));
@@ -390,7 +390,7 @@ mod tests {
     #[test]
     fn test_write_safety_exempts_runtime_dirs() {
         let r = check_path_safety(Path::new(".hologram/memory/fact.md"));
-        assert!(r.safe, "memory writes should be allowed for HoloGram UI");
+        assert!(r.safe, "memory writes should be allowed for 兰台 UI");
         let r = check_path_safety(Path::new(".hologram/logs/bridge.log"));
         assert!(r.safe, "log writes should be allowed");
         let r = check_path_safety(Path::new(".hologram/sessions/chat.json"));

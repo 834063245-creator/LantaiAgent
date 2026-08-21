@@ -66,7 +66,7 @@ pub fn parse_rule_value(raw: &str) -> RuleValue {
 /// 加载内置系统规则 (spec §4.9)。
 pub fn load_system_rules() -> Vec<PermissionRule> {
     let deny_patterns = &[
-        // 保护配置文件，而非运行时数据 — HoloGram UI 在正常运行时
+        // 保护配置文件，而非运行时数据 — 兰台 UI 在正常运行时
         // 写入 memory/、sessions/、logs/。
         "Edit(.hologram/permissions.json)",
         "Edit(.hologram/baseline.json)",

@@ -19,7 +19,7 @@
 //   - profile 按端口隔离（hologram-browser-profile-<port>），随会话回收
 //     一并删除；launch 时清扫上次进程强杀遗留的目录。具名 profile
 //     （hologram-browser-profiles-<slot>）持久保留，配合 slot 切换做多账号隔离。
-//   - self 会话：HoloGram 自家 webview 调试端口（9222）上的只读会话，
+//   - self 会话：兰台自家 webview 调试端口（9222）上的只读会话，
 //     Agent 自查渲染结果走这里；操作类动作在 rpc 层被拒。
 //   - 审计：全部写操作落盘（临时目录 jsonl），browser(audit) 可查。
 //   - 只连 127.0.0.1；launch 用独立 profile，不碰用户日常 Chrome。

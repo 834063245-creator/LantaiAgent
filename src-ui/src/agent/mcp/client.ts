@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-//! MCP client — 让 HoloGram 的 Agent 调用外部 MCP server 的工具。
+//! MCP client — 让兰台的 Agent 调用外部 MCP server 的工具。
 //!
 //! 职责：
 //! - 连接（initialize → notifications/initialized → tools/list）

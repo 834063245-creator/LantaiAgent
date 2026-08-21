@@ -212,10 +212,10 @@ mod windows_impl {
         let base = std::env::var("LOCALAPPDATA")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("."));
-        // 注意：目录名 com.hologram.app 与 tauri.conf.json 的 identifier
-        // (com.hologram.hg) 不一致是**有意保留**的 —— 存量用户的密文
-        // 都在旧路径下，迁移路径等于静默丢 key，因此不得更改。
-        base.join("com.hologram.app").join("credentials.enc")
+        // 目录名与 tauri.conf.json 的 identifier (com.lantai.app) 一致。
+        // 2026-08-22 产品更名兰台时统一：旧 com.hologram.app 下的密文不迁移
+        // （零外部用户，重录一次 API Key 即可）。
+        base.join("com.lantai.app").join("credentials.enc")
     }
 
     fn load_cred_map() -> Result<serde_json::Map<String, serde_json::Value>, String> {
@@ -470,7 +470,7 @@ mod linux_impl {
             return Err("secret-tool not installed (install gnome-keyring or kwallet)".into());
         }
 
-        let label = format!("HoloGram: {provider}");
+        let label = format!("兰台: {provider}");
         let mut cmd = std::process::Command::new("secret-tool");
         cmd.args(["store", "--label", &label, "service", SERVICE, "account", provider]);
 
@@ -674,7 +674,7 @@ mod tests {
         }
 
         fn cred_file(&self) -> std::path::PathBuf {
-            self.dir.join("com.hologram.app").join("credentials.enc")
+            self.dir.join("com.lantai.app").join("credentials.enc")
         }
 
         /// 目录下所有 credentials.enc.corrupt-* 备份文件

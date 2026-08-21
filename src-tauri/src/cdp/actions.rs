@@ -88,7 +88,7 @@ pub(crate) fn cdp_attach(target_id: &str, agent_id: Option<&str>) -> Result<Stri
 // self 会话 — 自家 webview 的只读通道
 // ═══════════════════════════════════════════════════════════
 
-/// 在 webview 调试端口上找 HoloGram 自家页面 target。
+/// 在 webview 调试端口上找兰台自家页面 target。
 /// WebView2 的 URL 前缀：tauri://localhost / http(s)://tauri.localhost。
 pub(super) fn find_webview_target() -> Result<String, String> {
     let raw = list_targets_raw(WEBVIEW_DEBUG_PORT)?;
@@ -763,7 +763,7 @@ pub(crate) fn cdp_network_har(
     let har = json!({
         "log": {
             "version": "1.2",
-            "creator": { "name": "HoloGram browser-cdp", "version": env!("CARGO_PKG_VERSION") },
+            "creator": { "name": "Lantai browser-cdp", "version": env!("CARGO_PKG_VERSION") },
             "entries": entries,
         }
     });

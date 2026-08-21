@@ -3,7 +3,7 @@
 
 // AgentContext — 身份 + 服务容器 + ownership（agent-core-convergence Phase 3）。
 //
-// Cordis Context 原语的 HoloGram 落地：Agent 的外部依赖收敛为显式服务表，
+// Cordis Context 原语的兰台落地：Agent 的外部依赖收敛为显式服务表，
 // createAgent 从"30 字段手工装配"变为"翻译层 → context + 装配输入"：
 //   - 身份字段只读（agentId/parentId/subagentDepth/isolationId/projectPath/sessionId）；
 //   - 服务经 get（可缺）/ resolve（必备显式报错）访问；

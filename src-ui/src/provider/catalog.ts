@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 模型目录 — 来自 Pi 的 provider 注册表的静态模型数据，已适配 HoloGram。
+// 模型目录 — 来自 Pi 的 provider 注册表的静态模型数据，已适配兰台。
 // 提供数据驱动的模型发现，用户无需手动输入模型名称。
 //
 // ⚡ 2026-08-07 定稿（docs/design/provider-system-spec.md 裁决 #15）：

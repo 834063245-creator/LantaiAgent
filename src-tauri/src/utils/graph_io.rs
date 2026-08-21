@@ -100,7 +100,7 @@ pub(crate) fn direct_analyze(path: &str, force: bool) -> Result<String, String> 
     // ponytail: 如果 SQLite 缓存已有图数据且未强制重新分析，
     // 则跳过完整流水线。冷启动约需 420s；热重载 <1s。
     // 但首先需验证缓存新鲜度 — 若任何源文件在上次分析后被修改，
-    // 缓存已过期，必须重建。否则在 HoloGram 外部所做的代码修改
+    // 缓存已过期，必须重建。否则在兰台外部所做的代码修改
     // （例如在 VS Code 中跨会话修改）将静默不可见，直到用户手动点击"重新分析"。
     if !force {
         let cached_node_count = engine_api::engine_read(|idx| idx.node_count())

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// HoloGram v4 Phase 0 — Unity 进程生命周期管理器
+// 兰台 v4 Phase 0 — Unity 进程生命周期管理器
 // 最小化桩：启动 Unity.exe，验证已启动，提供终止功能。
 
 use std::process::{Child, Command};
