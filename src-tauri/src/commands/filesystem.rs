@@ -170,6 +170,104 @@ pub(crate) fn get_global_memory_dir() -> String {
     format!("{}/.hologram/global_memory", home.replace("\\", "/"))
 }
 
+/// 用户级会话目录（workspace-flip 批 1）：~/.hologram/sessions/（零目录会话的落盘位）。
+/// HOLOGRAM_SESSIONS_ROOT 环境变量可覆盖（测试隔离与目录重定位——plugins_root 同款惯例）。
+pub(crate) fn user_sessions_root() -> std::path::PathBuf {
+    if let Some(custom) = std::env::var_os("HOLOGRAM_SESSIONS_ROOT") {
+        if !custom.is_empty() {
+            return std::path::PathBuf::from(custom);
+        }
+    }
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_else(|_| ".".to_string());
+    std::path::PathBuf::from(home).join(".hologram").join("sessions")
+}
+
+/// 会话摘要（home 列表行——TS SessionEntry 同形）。
+#[derive(serde::Serialize)]
+pub(crate) struct UserSessionEntry {
+    pub id: u64,
+    pub label: String,
+    pub msg_count: usize,
+    pub saved_at: String,
+}
+
+/// 扫描用户级会话目录（workspace-flip 批 1：零目录会话列表）。
+/// 读取容忍毒化（INVARIANTS #11.2）：坏 JSON / 超大文件（>4MB）跳过不炸列表；
+/// 目录不存在 = 空列表（首启常态）。
+#[tauri::command]
+pub(crate) async fn user_sessions_list() -> Result<Vec<UserSessionEntry>, String> {
+    let dir = user_sessions_root();
+    tokio::task::spawn_blocking(move || {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(it) => it,
+            Err(_) => return Ok(Vec::new()), // 目录不存在 = 空列表（非错误）
+        };
+        let mut out: Vec<UserSessionEntry> = Vec::new();
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !name.ends_with(".json") || name == "_active.json" {
+                continue;
+            }
+            let id: u64 = match name.trim_end_matches(".json").parse() {
+                Ok(v) => v,
+                Err(_) => continue, // 非数字文件名（毒化容忍）
+            };
+            let meta = match entry.metadata() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            // 长度护栏：>4MB 的会话文件跳过（毒化数据不拖垮列表）
+            if meta.len() > 4 * 1024 * 1024 {
+                continue;
+            }
+            let content = match std::fs::read_to_string(entry.path()) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            let parsed: serde_json::Value = match serde_json::from_str(&content) {
+                Ok(v) => v,
+                Err(_) => continue, // 坏 JSON 跳过
+            };
+            if parsed.get("deleted").and_then(|v| v.as_bool()).unwrap_or(false) {
+                continue; // 删除标记（listSavedSessions 同语义）
+            }
+            let label = parsed
+                .get("label")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .chars()
+                .take(120)
+                .collect::<String>(); // 标签长度护栏
+            let msg_count = parsed
+                .get("messages")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0);
+            let saved_at = parsed
+                .get("savedAt")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            out.push(UserSessionEntry { id, label, msg_count, saved_at });
+        }
+        // savedAt 倒序（最新在前）；无 savedAt 的排尾
+        out.sort_by(|a, b| b.saved_at.cmp(&a.saved_at));
+        out.truncate(50); // 列表上限 50（home 呈现预算）
+        Ok(out)
+    })
+    .await
+    .map_err(|e| format!("user_sessions_list: task failed: {e}"))?
+}
+
+/// 用户级会话目录路径（workspace-flip 批 1：TS 侧 sessionsDir('') 路由的真源——
+/// 与 user_sessions_root 同一解析，保持单一事实源）。
+#[tauri::command]
+pub(crate) fn get_user_sessions_dir() -> String {
+    user_sessions_root().to_string_lossy().replace('\\', "/")
+}
+
 #[tauri::command]
 pub(crate) async fn delete_file_or_dir(
     path: String,
@@ -247,4 +345,107 @@ pub(crate) async fn move_file(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 临时会话目录 + 环境变量隔离（composition_watcher 测试同款惯例：
+    /// std::env::temp_dir + 进程 id 命名，测试尾部自清）。
+    /// 注意：env var 是进程全局——用互斥锁串行化（cargo test 默认多线程）。
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn with_temp_sessions_root(f: impl FnOnce(&std::path::Path)) {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = std::env::temp_dir().join(format!("hologram_user_sessions_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("HOLOGRAM_SESSIONS_ROOT", &tmp);
+        f(&tmp);
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::env::remove_var("HOLOGRAM_SESSIONS_ROOT");
+    }
+
+    fn write_session(root: &std::path::Path, name: &str, body: &str) {
+        std::fs::write(root.join(name), body).unwrap();
+    }
+
+    #[tokio::test]
+    async fn user_sessions_list_empty_dir_is_empty_not_error() {
+        with_temp_sessions_root(|_| {
+            // 目录存在但空——空列表（同步内联验证异步函数用 spawn_blocking，直接调用）
+        });
+        let tmp = std::env::temp_dir().join(format!("hologram_user_sessions_empty_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("HOLOGRAM_SESSIONS_ROOT", &tmp);
+        let list = user_sessions_list().await.unwrap();
+        assert!(list.is_empty());
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::env::remove_var("HOLOGRAM_SESSIONS_ROOT");
+    }
+
+    #[tokio::test]
+    async fn user_sessions_list_missing_dir_is_empty_not_error() {
+        // 目录本身不存在（首启常态）——空列表，非错误
+        let missing = std::env::temp_dir().join(format!("hologram_user_sessions_missing_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&missing);
+        std::env::set_var("HOLOGRAM_SESSIONS_ROOT", &missing);
+        let list = user_sessions_list().await.unwrap();
+        assert!(list.is_empty());
+        std::env::remove_var("HOLOGRAM_SESSIONS_ROOT");
+    }
+
+    #[tokio::test]
+    async fn user_sessions_list_parses_sorts_and_filters() {
+        let tmp = std::env::temp_dir().join(format!("hologram_user_sessions_full_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        write_session(&tmp, "1.json", r#"{"label":"旧","messages":[1,2],"savedAt":"2026-08-01","deleted":false}"#);
+        write_session(&tmp, "2.json", r#"{"label":"新","messages":[1,2,3],"savedAt":"2026-08-22","deleted":false}"#);
+        // 删除标记过滤（listSavedSessions 同语义）
+        write_session(&tmp, "3.json", r#"{"label":"已删","messages":[],"savedAt":"2026-08-23","deleted":true}"#);
+        // 毒化容忍：坏 JSON / 非数字名 / _active.json 全跳过
+        write_session(&tmp, "4.json", "{not json");
+        write_session(&tmp, "junk.json", "{}");
+        write_session(&tmp, "_active.json", "{}");
+
+        std::env::set_var("HOLOGRAM_SESSIONS_ROOT", &tmp);
+        let list = user_sessions_list().await.unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].label, "新"); // savedAt 倒序
+        assert_eq!(list[0].msg_count, 3);
+        assert_eq!(list[1].label, "旧");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::env::remove_var("HOLOGRAM_SESSIONS_ROOT");
+    }
+
+    #[tokio::test]
+    async fn user_sessions_list_poisoned_oversize_skipped() {
+        let tmp = std::env::temp_dir().join(format!("hologram_user_sessions_big_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        // 超长文件跳过（>4MB 毒化护栏）
+        let big = "x".repeat(5 * 1024 * 1024);
+        write_session(&tmp, "9.json", &big);
+        std::env::set_var("HOLOGRAM_SESSIONS_ROOT", &tmp);
+        let list = user_sessions_list().await.unwrap();
+        assert!(list.is_empty());
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::env::remove_var("HOLOGRAM_SESSIONS_ROOT");
+    }
+
+    #[test]
+    fn get_user_sessions_dir_matches_root() {
+        let tmp = std::env::temp_dir().join(format!("hologram_user_sessions_dir_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::env::set_var("HOLOGRAM_SESSIONS_ROOT", &tmp);
+        let dir = get_user_sessions_dir();
+        assert!(dir.contains('/'), "路径分隔符统一为 /: {dir}");
+        assert!(!dir.contains('\\'), "无反斜杠: {dir}");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::env::remove_var("HOLOGRAM_SESSIONS_ROOT");
+    }
 }

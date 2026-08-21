@@ -317,6 +317,14 @@ async fn dispatch_rpc(
             let _agent_id = opt_str(&params, "_agent_id");
             commands::filesystem::read_file_content(file_path, offset, limit, is_agent, _agent_id, state, app).await
         }
+        "user_sessions_list" => {
+            // workspace-flip 批 1：零目录会话列表（用户级 ~/.hologram/sessions/）
+            ok_json(commands::filesystem::user_sessions_list().await)
+        }
+        "get_user_sessions_dir" => {
+            // workspace-flip 批 1：用户级会话目录路径（TS sessionsDir('') 路由真源）
+            Ok(commands::filesystem::get_user_sessions_dir())
+        }
         "read_memory_batch" => {
             let paths: Vec<String> = params.get("paths")
                 .and_then(|v| v.as_array())

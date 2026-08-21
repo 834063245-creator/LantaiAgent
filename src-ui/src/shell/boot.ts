@@ -87,6 +87,6 @@ export async function bootShell(
   } catch (err) {
     // 编排器级失败（引导三件套/patch await——理论不可达，防御性兜底）
     console.error('[shell] 壳引导失败:', err);
-    useShellStore.getState().setView('welcome');
+    useShellStore.getState().setView('home');
   }
 }

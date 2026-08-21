@@ -13,6 +13,7 @@ import { useCoreStore } from './chat/core-instance';
 import { DockRail } from './DockRail';
 import { DockPanel } from './panels/DockPanel';
 import { FileTranslatorPortal } from './panels/FileTranslatorPortal';
+import { SessionsHome } from './SessionsHome';
 import { ShortcutsOverlay } from './ShortcutsOverlay';
 import { StatusBar } from './StatusBar';
 import { useShellStore } from './shell-store';
@@ -25,13 +26,14 @@ export function App() {
   const view = useShellStore((s) => s.view);
 
   useEffect(() => {
-    const welcome = document.getElementById('welcome');
+    // 会话首页（workspace-flip 批 1）：React 渲染，替换原静态 welcome DOM。
+    // 星图 canvas 仍是 imperative-DOM 所有者（scene/graph.ts）——只做显隐。
     const graph = document.getElementById('graph');
-    if (welcome) welcome.classList.toggle('hidden', view === 'graph');
-    if (graph) graph.classList.toggle('hidden', view === 'welcome');
+    if (graph) graph.classList.toggle('hidden', view === 'home');
   }, [view]);
   return (
     <>
+      {view === 'home' && <SessionsHome />}
       <CommandBar />
       <TimelineHUD />
       <DockRail side="right" />

@@ -22,8 +22,8 @@ interface CachedGraphPayload {
 }
 
 export async function bootColdStart(_refs: ShellRefs): Promise<void> {
-  // 打开文件夹按钮（工具栏动作已入 actions 注册表，此处仅欢迎屏按钮）
-  document.getElementById('btn-welcome-open')?.addEventListener('click', () => workspaceFlow.switchWorkspace());
+  // 欢迎屏按钮已随静态 DOM 退役（workspace-flip 批 1：SessionsHome 接管入口）；
+  // 打开目录动作 = SessionsHome「新会话 · 绑定目录」/ 工具栏 actions（原注册表不变）
 
   // ponytail: 点 graph 画布时释放输入框焦点，Three.js canvas 不会自动抢焦点
   document.getElementById('graph')?.addEventListener('pointerdown', () => {
@@ -43,7 +43,7 @@ export async function bootColdStart(_refs: ShellRefs): Promise<void> {
       // 无缓存图谱
     }
     if (!graph) {
-      useShellStore.getState().setView('welcome');
+      useShellStore.getState().setView('home');
       setLoading(false);
       // 在无工作区上下文下设置 agent（仅通用聊天）
       await setupPlaceholderAgent();
@@ -85,8 +85,8 @@ export async function bootColdStart(_refs: ShellRefs): Promise<void> {
     /* 无缓存 */
   }
 
-  // 无缓存图谱 — 显示欢迎界面
-  useShellStore.getState().setView('welcome');
+  // 无缓存图谱 — 会话首页（workspace-flip 批 1：D-W1-1 纯会话优先）
+  useShellStore.getState().setView('home');
   setLoading(false);
   await setupPlaceholderAgent();
 }

@@ -100,6 +100,14 @@ export interface RpcContract {
     params: { paths?: string[] };
     result: string; // text
   };
+  user_sessions_list: {
+    params: Record<string, never>;
+    result: string; // JSON — 零目录会话列表（workspace-flip 批 1）
+  };
+  get_user_sessions_dir: {
+    params: Record<string, never>;
+    result: string; // text — ~/.hologram/sessions 路径（零目录会话存储位）
+  };
   read_file_base64: {
     params: { file_path: string } & AgentCtx;
     result: string; // text — base64

@@ -100,8 +100,9 @@ body {
   display: none !important;
 }
 
-/* ── Welcome 空状态（P5 原型重写：衬线大标题 + 黄铜按钮；main.ts 以 .hidden 切换）── */
-#welcome {
+/* ── 会话首页（workspace-flip 批 1：SessionsHome——D-W1-1 纯会话优先；
+ * 视觉基因承接原 welcome：衬线大标题 + 黄铜 + 观测台 token）── */
+.sh-root {
   position: fixed;
   top: var(--obs-bar-h);
   left: 0;
@@ -115,44 +116,43 @@ body {
   background: radial-gradient(ellipse at center, rgba(201, 162, 92, 0.05) 0%, transparent 65%);
 }
 
-#welcome > * {
+.sh-root > * {
   animation: welcome-rise 0.6s cubic-bezier(0.23, 1, 0.32, 1) both;
 }
-#welcome > *:nth-child(2) {
+.sh-root > *:nth-child(2) {
   animation-delay: 0.08s;
 }
-#welcome > *:nth-child(3) {
+.sh-root > *:nth-child(3) {
   animation-delay: 0.16s;
 }
-#welcome > *:nth-child(4) {
+.sh-root > *:nth-child(4) {
   animation-delay: 0.24s;
 }
 
-#welcome .w-mark {
+.sh-mark {
   color: var(--obs-brass);
   font-size: calc(26px * var(--font-scale));
   margin-bottom: 18px;
   text-shadow: 0 0 24px rgba(201, 162, 92, 0.45);
 }
 
-#welcome h1 {
+.sh-root h1 {
   font-family: var(--obs-font-serif);
   font-weight: 600;
   font-size: calc(44px * var(--font-scale));
   letter-spacing: 0.08em;
   color: var(--obs-text);
-  margin-bottom: 10px;
+  margin-bottom: 28px;
 }
 
-#welcome p {
-  font-family: var(--obs-font-mono);
-  font-size: calc(10.5px * var(--font-scale));
-  letter-spacing: 0.32em;
-  color: var(--obs-text-3);
-  margin-bottom: 40px;
+.sh-actions {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 36px;
 }
 
-#welcome .big-btn {
+.sh-primary-btn,
+.sh-secondary-btn {
   font-family: var(--obs-font-mono);
   font-size: calc(11px * var(--font-scale));
   letter-spacing: 0.22em;
@@ -165,10 +165,78 @@ body {
   transition: all var(--obs-snap);
 }
 
-#welcome .big-btn:hover {
+.sh-primary-btn {
   background: var(--obs-brass-dim);
+}
+
+.sh-primary-btn:hover,
+.sh-secondary-btn:hover {
   border-color: var(--obs-brass);
   box-shadow: 0 0 34px rgba(201, 162, 92, 0.18);
+}
+
+.sh-section {
+  width: min(560px, 80vw);
+  margin-bottom: 18px;
+}
+
+.sh-section-title {
+  font-family: var(--obs-font-mono);
+  font-size: calc(10px * var(--font-scale));
+  letter-spacing: 0.2em;
+  color: var(--obs-text-3);
+  margin-bottom: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sh-session-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 14px;
+  margin-bottom: 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--obs-text-2);
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--obs-snap);
+}
+
+.sh-session-row:hover {
+  border-color: rgba(201, 162, 92, 0.3);
+  background: rgba(201, 162, 92, 0.06);
+  color: var(--obs-text);
+}
+
+.sh-session-inert {
+  cursor: default;
+}
+
+.sh-session-label {
+  font-size: calc(12.5px * var(--font-scale));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sh-session-meta {
+  font-family: var(--obs-font-mono);
+  font-size: calc(10px * var(--font-scale));
+  color: var(--obs-text-3);
+  white-space: nowrap;
+}
+
+.sh-empty-hint {
+  font-family: var(--obs-font-mono);
+  font-size: calc(10.5px * var(--font-scale));
+  letter-spacing: 0.18em;
+  color: var(--obs-text-3);
 }
 
 @keyframes welcome-rise {
