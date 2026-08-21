@@ -117,15 +117,21 @@ export function SessionsHome() {
 
   return (
     <div className="sh-root">
-      <div className="sh-mark">◈</div>
-      <h1>兰台</h1>
+      <div className="sh-brand">
+        <span className="sh-seal" role="img" aria-label="印章：蘭臺">
+          <b>蘭</b>
+          <b>臺</b>
+        </span>
+        <h1>兰台</h1>
+        <span className="sh-tagline">档案 · 工作台</span>
+      </div>
 
       <div className="sh-actions">
         <button type="button" className="sh-primary-btn" onClick={onNewSession}>
-          新会话
+          新建案卷
         </button>
         <button type="button" className="sh-secondary-btn" onClick={onNewSessionWithDir}>
-          新会话 · 绑定目录
+          新建案卷 · 绑定目录
         </button>
       </div>
 
@@ -134,7 +140,7 @@ export function SessionsHome() {
           <div className="sh-section-title">{projectRoot}</div>
           {projectSessions.slice(0, 6).map((s) => (
             <button type="button" className="sh-session-row" key={s.id} onClick={() => onResumeProject(s)}>
-              <span className="sh-session-label">{s.label || `会话 ${s.id}`}</span>
+              <span className="sh-session-label">{s.label || `案卷 ${s.id}`}</span>
               <span className="sh-session-meta">
                 {s.msgCount} 条 · {s.savedAt}
               </span>
@@ -145,10 +151,10 @@ export function SessionsHome() {
 
       {userSessions.length > 0 && (
         <div className="sh-section">
-          <div className="sh-section-title">通用会话</div>
+          <div className="sh-section-title">通用案卷</div>
           {userSessions.slice(0, 6).map((s) => (
             <button type="button" className="sh-session-row" key={s.id} onClick={() => onResumeUser(s)}>
-              <span className="sh-session-label">{s.label || `会话 ${s.id}`}</span>
+              <span className="sh-session-label">{s.label || `案卷 ${s.id}`}</span>
               <span className="sh-session-meta">
                 {s.msg_count} 条 · {s.saved_at}
               </span>
@@ -158,7 +164,7 @@ export function SessionsHome() {
       )}
 
       {projectSessions.length === 0 && userSessions.length === 0 && (
-        <p className="sh-empty-hint">从一条新会话开始——需要 Agent 干活时再绑目录。</p>
+        <p className="sh-empty-hint">从一卷新案卷开始——需要 Agent 干活时再绑目录。</p>
       )}
     </div>
   );

@@ -107,7 +107,7 @@ export const BrowserActivityPanel: React.FC<{ agentId: string }> = ({ agentId })
         <div className="ap-browser-activity-list">
           {entries === null && <div className="ap-detail-text ap-detail-none">加载中…</div>}
           {entries !== null && entries.length === 0 && (
-            <div className="ap-detail-text ap-detail-none">本会话无浏览器操作记录</div>
+            <div className="ap-detail-text ap-detail-none">本案卷无浏览器操作记录</div>
           )}
           {entries?.map((e) => (
             <div className="ap-browser-activity-item" key={JSON.stringify(e)}>

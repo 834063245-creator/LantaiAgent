@@ -58,7 +58,7 @@ function SessionTabs({ core }: { core: ChatCore }) {
             <button
               type="button"
               className="chat-session-x"
-              title="关闭会话"
+              title="关闭案卷"
               onClick={(e) => {
                 e.stopPropagation();
                 core.closeSession(i);
@@ -240,7 +240,7 @@ function ContextView({ core }: { core: ChatCore }) {
         )}
       </div>
       <div className="chat-context-section">
-        <div className="chat-context-section-label">会话统计</div>
+        <div className="chat-context-section-label">案卷统计</div>
         <div
           style={{
             fontFamily: 'var(--obs-font-mono)',
@@ -589,7 +589,7 @@ export function ChatBeacon({ core }: { core: ChatCore }) {
               <button
                 type="button"
                 className="chat-session-add"
-                title="新建会话"
+                title="新建案卷"
                 onClick={() => core.createNewSession()}
               >
                 <Icon name="plus" size={12} />

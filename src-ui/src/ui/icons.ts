@@ -106,7 +106,7 @@ const icons: Record<string, IconDef> = {
 
   // ── Actions ──
   send: {
-    label: '发送',
+    label: '拟文',
     path: '<circle cx="5" cy="19" r="1.2" fill="currentColor"/><path d="M7.5 16.5 A5 5 0 0 1 7.5 6.5"/><path d="M10.5 13.5 A2 2 0 0 1 10.5 9.5"/><path d="M13 20 A10 10 0 0 1 3 10"/>',
   },
   stop: {

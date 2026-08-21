@@ -4,7 +4,7 @@
 // BackgroundActivity — 底部状态栏「后台活动」胶囊。
 // 只回答一个问题：Agent 现在在后台跑着什么？
 //   - Shell 后台任务（Rust BG_JOBS 快照）
-//   - 浏览器会话（受控 launch / 外部 connect，跨 agent slot）
+//   - 浏览器记录（受控 launch / 外部 connect，跨 agent slot）
 //   - 运行中的子 Agent（前端 runtime 列表 + subagent-activity 当前工具）
 // 无任何后台活动时不渲染；有活动时出现一个小胶囊，点开看明细。
 // 刻意不做操作按钮（kill/查看输出）——监控与审计面板各司其职，避免变成
@@ -206,7 +206,7 @@ export function BackgroundActivity() {
 
             {snapshot.browsers.length > 0 && (
               <div className="bg-act-section">
-                <div className="bg-act-section-title">浏览器会话</div>
+                <div className="bg-act-section-title">浏览器记录</div>
                 {snapshot.browsers.map((b) => (
                   <div className="bg-act-row" key={`br-${b.agent}-${b.slot}-${b.port}`}>
                     <span className="bg-act-row-dot" />

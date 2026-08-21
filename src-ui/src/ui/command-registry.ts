@@ -13,7 +13,7 @@ export interface CommandDef {
   label: string;
   /** 副标题 / 描述 */
   description?: string;
-  /** 分组: '会话' | '记忆' | '分析' | '技能' | '文件' */
+  /** 分组: '案卷' | '记忆' | '分析' | '技能' | '文件' */
   group: string;
   /** 快捷路径，如 '/memory'。用于输入匹配和提示 */
   shortcut: string;
@@ -100,12 +100,12 @@ export class CommandRegistry {
 // ── Default commands ──
 
 export const DEFAULT_COMMANDS: CommandDef[] = [
-  // ── 会话 ──
+  // ── 案卷 ──
   {
     id: 'new',
-    label: '重置当前会话',
+    label: '重置当前案卷',
     description: '清空对话历史，保留项目上下文',
-    group: '会话',
+    group: '案卷',
     shortcut: '/new',
     action: { type: 'local', handler: () => {} },
   },
@@ -113,7 +113,7 @@ export const DEFAULT_COMMANDS: CommandDef[] = [
     id: 'compact',
     label: '压缩上下文',
     description: '压缩对话历史以节省 token',
-    group: '会话',
+    group: '案卷',
     shortcut: '/compact',
     action: { type: 'local', handler: () => {} },
   },
@@ -121,7 +121,7 @@ export const DEFAULT_COMMANDS: CommandDef[] = [
     id: 'compact-stats',
     label: '压缩统计',
     description: '查看上下文压缩的运行数据',
-    group: '会话',
+    group: '案卷',
     shortcut: '/compact-stats',
     action: {
       type: 'send',
@@ -132,8 +132,8 @@ export const DEFAULT_COMMANDS: CommandDef[] = [
   {
     id: 'export',
     label: '导出对话',
-    description: '导出当前会话为 Markdown',
-    group: '会话',
+    description: '导出当前案卷为 Markdown',
+    group: '案卷',
     shortcut: '/export',
     action: { type: 'local', handler: () => {} },
   },
@@ -141,7 +141,7 @@ export const DEFAULT_COMMANDS: CommandDef[] = [
     id: 'trail',
     label: '显示探索轨迹',
     description: '切换依赖探索轨迹的可视化',
-    group: '会话',
+    group: '案卷',
     shortcut: '/trail',
     action: { type: 'local', handler: () => {} },
   },
@@ -200,7 +200,7 @@ export const DEFAULT_COMMANDS: CommandDef[] = [
     id: 'goal',
     label: '自主目标',
     description: 'Agent 自主循环直到完成目标;/goal · /goal resume · /goal status · /goal cancel',
-    group: '会话',
+    group: '案卷',
     shortcut: '/goal',
     action: { type: 'fill', text: '/goal ' },
   },

@@ -733,7 +733,7 @@ export class ChatCore {
   }): Promise<void> {
     if (!this.agent || this._activeExec().isRunning) return;
     if (Session.hasRunningBackgroundSession(this.panelId)) {
-      this.addNotice('有后台会话运行中，请等待完成', 'info');
+      this.addNotice('有后台任务运行中，请等待完成', 'info');
       return;
     }
     const signal = this._activeExec().start();
@@ -939,7 +939,7 @@ export class ChatCore {
     }
     // ⚡ 若有任何后台会话仍有 Agent 在运行，则阻止新轮次。
     if (Session.hasRunningBackgroundSession(this.panelId)) {
-      this.addNotice('有后台会话正在运行中，请等待完成', 'info');
+      this.addNotice('有后台任务正在运行中，请等待完成', 'info');
       return;
     }
 

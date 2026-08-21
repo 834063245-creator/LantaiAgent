@@ -125,7 +125,7 @@ export function clearPanelAgents(storeId: string): void {
 /** 全量重置 — 用于 ChatPanel 中切换工作区时的 setAgent。 */
 export function resetSessionState(storeId: string, ag: OwnedAgentHandle): void {
   const id = getChatStore(storeId).sess.getState().nextSessionId;
-  const label = '会话 1';
+  const label = '案卷 1';
   // 仅清除本面板的 agent 句柄和 exec 状态
   agentSessionState.clearPanelState(storeId);
   agentSessionState.setAgent(storeId, id, ag);
@@ -145,7 +145,7 @@ export function resetSessionState(storeId: string, ag: OwnedAgentHandle): void {
   setTurnPairs(storeId, []);
 }
 
-/** 若活跃会话仍为默认标签（"会话 N"），则从第一条用户消息自动命名。
+/** 若活跃会话仍为默认标签（"案卷 N"，兼容旧 "会话 N"），则从第一条用户消息自动命名。
  *  在每轮对话完成后调用。 */
 export function autoTitleSessionIfDefault(storeId: string): void {
   const st = getChatStore(storeId).sess.getState();
@@ -153,8 +153,8 @@ export function autoTitleSessionIfDefault(storeId: string): void {
   const s = sessions[activeIdx];
   if (!s) return;
 
-  // 仅在标签仍为默认的 "会话 N" 格式时自动命名
-  if (!/^会话 \d+$/.test(s.label)) return;
+  // 仅在标签仍为默认格式时自动命名（兰台术语：案卷；旧存档：会话）
+  if (!/^(?:会话|案卷) \d+$/.test(s.label)) return;
 
   const agent = agentSessionState.getAgent(storeId, s.id);
   if (!agent) return;
@@ -269,7 +269,7 @@ export function switchSession(ctx: SessionContext, idx: number): void {
 export function closeSession(ctx: SessionContext, idx: number): void {
   const st = getChatStore(ctx.storeId).sess.getState();
   if (st.sessions.length <= 1) {
-    ctx.addNotice('至少保留一个会话', 'info');
+    ctx.addNotice('至少保留一卷案卷', 'info');
     return;
   }
   const s = st.sessions[idx];
@@ -330,7 +330,7 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
   }
   const newAgent = await factory();
   if (!newAgent) {
-    ctx.addNotice('无法创建会话: Agent 工厂返回空', 'error');
+    ctx.addNotice('无法创建案卷: Agent 工厂返回空', 'error');
     return;
   }
   const st = getChatStore(ctx.storeId).sess.getState();
@@ -346,7 +346,7 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
   ctx.flushText();
   ctx.clearPendingToolCards();
   const id = st.nextSessionId;
-  const label = `会话 ${st.sessions.length + 1}`;
+  const label = `案卷 ${st.sessions.length + 1}`;
   agentSessionState.setAgent(ctx.storeId, id, newAgent);
   // 静态绑定该 Agent 的 board 到新会话（id 在 factory 之后才确定）
   newAgent.bindSession?.(String(id));
@@ -373,7 +373,7 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
     useAgentPanelStore.getState().setCurrentSessionId(String(id));
   }
 
-  ctx.addNotice(`新会话已创建 — 会话 ${st.sessions[st.activeIdx]?.label ?? ''} 仍在后台运行`, 'info');
+  ctx.addNotice(`新案卷已创建 — 案卷 ${st.sessions[st.activeIdx]?.label ?? ''} 仍在后台运行`, 'info');
   ctx.setLastUsageText('');
   ctx.updateFooter();
 }
@@ -643,7 +643,7 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
   }
   if (!lastId) {
     getChatStore(ctx.storeId).sess.setState({ nextSessionId: 1 });
-    ctx.addNotice('未找到历史会话，已创建新会话', 'info');
+    ctx.addNotice('未找到历史案卷，已新建案卷', 'info');
     return;
   }
 
@@ -674,7 +674,7 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
     }
   }
   if (!data?.messages || data.messages.length === 0) {
-    ctx.addNotice('历史会话数据为空，已创建新会话', 'info');
+    ctx.addNotice('历史案卷数据为空，已新建案卷', 'info');
     return;
   }
 
@@ -724,7 +724,7 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
 
   const newAgent = await getAgentFactory(ctx.storeId)?.();
   if (!newAgent) {
-    ctx.addNotice('Agent 未就绪（API Key 未配置？），历史会话暂未恢复', 'warn');
+    ctx.addNotice('Agent 未就绪（API Key 未配置？），历史案卷暂未恢复', 'warn');
     return;
   }
   // 代际防护（H5）：恢复在途期间已切换工作区 — 丢弃本次恢复，不写任何 store。
@@ -740,7 +740,7 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
   ctx.flushText();
   ctx.clearPendingToolCards();
 
-  const label = data.label || '已恢复的会话';
+  const label = data.label || '已恢复的案卷';
   agentSessionState.clearPanelState(ctx.storeId);
   agentSessionState.setAgent(ctx.storeId, data.id, newAgent);
   // 静态绑定该 Agent 的 board 到恢复的会话
@@ -804,7 +804,7 @@ export async function listSavedSessions(
       const sid = parseInt(e.name.replace('.json', ''), 10);
       return {
         id: d.id || sid,
-        label: d.label || `会话 ${sid}`,
+        label: d.label || `案卷 ${sid}`,
         msgCount: (d.messages ?? []).filter((m) => m.role !== 'system').length,
         savedAt: d.savedAt || '',
       };
@@ -857,7 +857,7 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
     }
   }
   if (!data) {
-    ctx.addNotice('会话文件读取失败', 'error');
+    ctx.addNotice('案卷文件读取失败', 'error');
     return;
   }
 
@@ -874,11 +874,11 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   const firstUser = conv.find((m: Message) => m.role === 'user' && !isInternalMessage(m.content));
   const st1 = getChatStore(ctx.storeId).sess.getState();
   const label =
-    data.label && !data.label.startsWith('会话 ') && data.label !== '已恢复的会话'
+    data.label && !/^(?:会话|案卷) /.test(data.label) && data.label !== '已恢复的会话' && data.label !== '已恢复的案卷'
       ? data.label
       : firstUser
         ? firstUser.content?.slice(0, 28) + (firstUser.content?.length > 28 ? '…' : '')
-        : `会话 ${st1.sessions.length + 1}`;
+        : `案卷 ${st1.sessions.length + 1}`;
 
   // ponytail: 消息在会话级 store 中 — 无需 saveCurrentMessages
   ctx.flushReasoning();
@@ -907,7 +907,7 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
     renderRestoredSession(ctx);
   } catch (e) {
     console.error('[chat] loadSessionFromDisk: render 崩溃', e);
-    ctx.addNotice(`会话已加载但渲染失败: ${label}`, 'error');
+    ctx.addNotice(`案卷已加载但渲染失败: ${label}`, 'error');
   }
 
   ctx.setLastUsageText('');
@@ -925,7 +925,7 @@ export async function deleteSessionFile(ctx: SessionContext, projectPath: string
     });
   } catch (e) {
     console.error('[chat] deleteSessionFile failed:', e);
-    ctx.addNotice('删除会话文件失败', 'error');
+    ctx.addNotice('删除案卷文件失败', 'error');
     return; // 写入失败则不关闭标签页
   }
   // 清理 localStorage 备份
@@ -1181,7 +1181,7 @@ export async function exportSession(ctx: SessionContext): Promise<void> {
   const { sessions, activeIdx } = getChatStore(ctx.storeId).sess.getState();
   const agent = agentSessionState.getAgent(ctx.storeId, sessions[activeIdx]?.id ?? -1);
   if (!agent) {
-    ctx.addNotice('没有可导出的会话', 'info');
+    ctx.addNotice('没有可导出的案卷', 'info');
     return;
   }
 
@@ -1191,7 +1191,7 @@ export async function exportSession(ctx: SessionContext): Promise<void> {
   const now = new Date();
   const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-  let md = `# 兰台会话 — ${dateStr}\n`;
+  let md = `# 兰台 · 案卷 — ${dateStr}\n`;
   md += `> 模型: ${active?.model || 'unknown'} · 总 token: ${ctx.getTotalTokensUsed().toLocaleString()}\n\n`;
 
   for (const m of msgs) {
@@ -1226,7 +1226,7 @@ export async function exportSession(ctx: SessionContext): Promise<void> {
     });
     if (filePath) {
       await typedRpc('write_file_content', { file_path: filePath, content: md });
-      ctx.addNotice(`会话已导出: ${filePath}`, 'info');
+      ctx.addNotice(`案卷已导出: ${filePath}`, 'info');
     }
   } catch {
     // 浏览器回退
@@ -1237,6 +1237,6 @@ export async function exportSession(ctx: SessionContext): Promise<void> {
     a.download = `hologram-session-${now.toISOString().slice(0, 10)}.md`;
     a.click();
     URL.revokeObjectURL(url);
-    ctx.addNotice('会话已下载', 'info');
+    ctx.addNotice('案卷已下载', 'info');
   }
 }

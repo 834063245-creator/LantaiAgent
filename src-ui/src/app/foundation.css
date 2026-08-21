@@ -1,6 +1,7 @@
 /* ═══════════════════════════════════════════════════════════════
-   HOLOGRAM · 地基样式（P5 — 自 base.css/panels.css 抽取，变量已映射 --obs-*）
-   内容：reset / body / 滚动条 / #graph 画布容器 / 全局 .hidden / Welcome（原型重写）
+   兰台 · 地基样式（P5 自 base.css/panels.css 抽取；2026-08-22 兰台注疏
+   换装——色彩/字体经 tokens.css 的 --obs-* 过渡别名层映射兰台 token）
+   内容：reset / body / 滚动条 / #graph 画布容器 / 全局 .hidden / 案卷首页
    ═══════════════════════════════════════════════════════════════ */
 
 *,
@@ -24,8 +25,7 @@ body {
   /* ponytail: auto = ClearType on Windows, subpixel on macOS — sharper than antialiased */
   -webkit-font-smoothing: auto;
   text-rendering: optimizeLegibility;
-  /* Global text backing — dark halo lifts text off starfield */
-  text-shadow: 0 0 1px rgba(0, 0, 0, 0.35);
+  /* 兰台纸面：星场暗晕退役（原 dark halo 服务星图底） */
 }
 
 ::-webkit-scrollbar {
@@ -38,12 +38,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(120, 140, 185, 0.25);
-  border-radius: 2px;
+  background: rgba(85, 80, 63, 0.35);
+  border-radius: 0;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(120, 140, 185, 0.4);
+  background: rgba(85, 80, 63, 0.55);
 }
 
 ::-webkit-scrollbar-corner {
@@ -51,7 +51,7 @@ body {
 }
 
 ::selection {
-  background: rgba(201, 162, 92, 0.3);
+  background: var(--seal-soft);
 }
 
 /* ── 氛围层（P6 原型同款：暗角 + 胶片颗粒）────────────────── */
@@ -100,8 +100,9 @@ body {
   display: none !important;
 }
 
-/* ── 会话首页（workspace-flip 批 1：SessionsHome——D-W1-1 纯会话优先；
- * 视觉基因承接原 welcome：衬线大标题 + 黄铜 + 观测台 token）── */
+/* ── 案卷首页（workspace-flip 批 1：SessionsHome——D-W1-1 纯会话优先；
+ * 2026-08-22 兰台换装：印章品牌 + 宋体标题 + 界栏案卷列表，
+ * 版式对齐 prototype/lantai.html 案卷首页）── */
 .sh-root {
   position: fixed;
   top: var(--obs-bar-h);
@@ -113,66 +114,89 @@ body {
   align-items: center;
   justify-content: center;
   z-index: 30;
-  background: radial-gradient(ellipse at center, rgba(201, 162, 92, 0.05) 0%, transparent 65%);
+  background: var(--paper);
 }
 
-.sh-root > * {
-  animation: welcome-rise 0.6s cubic-bezier(0.23, 1, 0.32, 1) both;
-}
-.sh-root > *:nth-child(2) {
-  animation-delay: 0.08s;
-}
-.sh-root > *:nth-child(3) {
-  animation-delay: 0.16s;
-}
-.sh-root > *:nth-child(4) {
-  animation-delay: 0.24s;
+.sh-brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 40px;
 }
 
-.sh-mark {
-  color: var(--obs-brass);
-  font-size: calc(26px * var(--font-scale));
-  margin-bottom: 18px;
-  text-shadow: 0 0 24px rgba(201, 162, 92, 0.45);
+/* 朱砂印章（蘭臺竖排，微倾——原型 .seal 同款） */
+.sh-seal {
+  width: 30px;
+  height: 50px;
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  border: 2px solid var(--seal);
+  color: var(--seal);
+  transform: rotate(-3deg);
+  border-radius: 3px;
+  padding: 2px 1px;
+}
+.sh-seal b {
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-family: var(--f-song);
+  font-size: 20px;
+  line-height: 1;
 }
 
 .sh-root h1 {
-  font-family: var(--obs-font-serif);
+  font-family: var(--f-song);
   font-weight: 600;
-  font-size: calc(44px * var(--font-scale));
-  letter-spacing: 0.08em;
-  color: var(--obs-text);
-  margin-bottom: 28px;
+  font-size: calc(26px * var(--font-scale));
+  letter-spacing: 0.02em;
+  color: var(--ink-1);
+}
+
+.sh-tagline {
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.18em;
+  color: var(--ink-3);
 }
 
 .sh-actions {
   display: flex;
   gap: 14px;
-  margin-bottom: 36px;
+  margin-bottom: 44px;
 }
 
 .sh-primary-btn,
 .sh-secondary-btn {
-  font-family: var(--obs-font-mono);
-  font-size: calc(11px * var(--font-scale));
-  letter-spacing: 0.22em;
-  padding: 14px 46px;
+  font-family: var(--f-song);
+  font-size: calc(13px * var(--font-scale));
+  letter-spacing: 0.16em;
+  padding: 8px 18px;
   background: transparent;
-  color: var(--obs-brass-hi);
-  border: 1px solid rgba(201, 162, 92, 0.45);
-  border-radius: 999px;
+  color: var(--ink-1);
+  border: var(--rule-strong);
+  border-radius: 0;
   cursor: pointer;
-  transition: all var(--obs-snap);
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 
 .sh-primary-btn {
-  background: var(--obs-brass-dim);
+  background: var(--ink-1);
+  color: var(--paper);
 }
 
-.sh-primary-btn:hover,
+.sh-primary-btn:hover {
+  background: var(--seal-deep);
+  border-color: var(--seal-deep);
+  color: var(--paper);
+}
+
 .sh-secondary-btn:hover {
-  border-color: var(--obs-brass);
-  box-shadow: 0 0 34px rgba(201, 162, 92, 0.18);
+  background: var(--ink-1);
+  color: var(--paper);
 }
 
 .sh-section {
@@ -181,11 +205,13 @@ body {
 }
 
 .sh-section-title {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(10px * var(--font-scale));
   letter-spacing: 0.2em;
-  color: var(--obs-text-3);
-  margin-bottom: 8px;
+  color: var(--ink-3);
+  margin-bottom: 4px;
+  padding-bottom: 6px;
+  border-bottom: var(--rule-strong);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -197,51 +223,43 @@ body {
   align-items: baseline;
   gap: 12px;
   width: 100%;
-  padding: 9px 14px;
-  margin-bottom: 4px;
+  padding: 10px 4px;
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  color: var(--obs-text-2);
+  border: none;
+  border-bottom: var(--rule-soft);
+  border-radius: 0;
+  color: var(--ink-2);
   cursor: pointer;
   text-align: left;
-  transition: all var(--obs-snap);
+  transition: background 0.12s ease;
 }
 
 .sh-session-row:hover {
-  border-color: rgba(201, 162, 92, 0.3);
-  background: rgba(201, 162, 92, 0.06);
-  color: var(--obs-text);
+  background: var(--paper-deep);
+  color: var(--ink-1);
 }
 
 .sh-session-label {
-  font-size: calc(12.5px * var(--font-scale));
+  font-family: var(--f-song);
+  font-size: calc(15px * var(--font-scale));
+  font-weight: 500;
+  color: var(--ink-1);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .sh-session-meta {
-  font-family: var(--obs-font-mono);
-  font-size: calc(10px * var(--font-scale));
-  color: var(--obs-text-3);
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
   white-space: nowrap;
 }
 
 .sh-empty-hint {
-  font-family: var(--obs-font-mono);
-  font-size: calc(10.5px * var(--font-scale));
-  letter-spacing: 0.18em;
-  color: var(--obs-text-3);
-}
-
-@keyframes welcome-rise {
-  from {
-    opacity: 0;
-    transform: translateY(14px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.14em;
+  color: var(--ink-3);
 }

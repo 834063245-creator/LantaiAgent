@@ -368,7 +368,7 @@ const SettingsPanelApp: React.FC<{
                   onChange={(e) => {
                     const id = e.target.value;
                     // selectPreset：store 同步 + settings 持久化（S4-1a）。
-                    // 装配作用域下次装配生效（新会话即见）；壳作用域重启生效。
+                    // 装配作用域下次装配生效（新案卷即见）；壳作用域重启生效。
                     selectPreset(id);
                   }}
                 >
@@ -380,7 +380,7 @@ const SettingsPanelApp: React.FC<{
                   ))}
                 </select>
                 <div className="sp-hint-sub">
-                  生效时机：新 Agent 装配（新会话）即用新组合；在途会话保持创建时点的组合。
+                  生效时机：新 Agent 装配（新案卷）即用新组合；在途案卷保持创建时点的组合。
                   {presetRoster.find((p) => p.id === presetSelected)?.error
                     ? ` 当前 preset 装载失败: ${presetRoster.find((p) => p.id === presetSelected)?.error}`
                     : ''}

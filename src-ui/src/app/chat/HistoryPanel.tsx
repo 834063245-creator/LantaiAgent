@@ -50,7 +50,7 @@ export function HistoryPanel({ core }: { core: ChatCore }) {
       <button type="button" className="chat-history-backdrop" aria-label="关闭历史面板" onClick={close} />
       <div className="chat-history-panel">
         <div className="chat-history-panel-header">
-          <span className="chat-history-panel-title">历史会话</span>
+          <span className="chat-history-panel-title">历史案卷</span>
           <button type="button" className="chat-history-panel-close" title="关闭" onClick={close}>
             ×
           </button>
@@ -107,7 +107,7 @@ export function HistoryPanel({ core }: { core: ChatCore }) {
                     <button
                       type="button"
                       className="chat-history-del"
-                      title="删除此会话"
+                      title="删除此案卷"
                       onClick={(e) => {
                         e.stopPropagation();
                         if (confirm(`删除会话 "${s.label}"？`)) {

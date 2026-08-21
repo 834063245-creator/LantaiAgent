@@ -143,7 +143,7 @@ export function TasksPanel() {
           </button>
         </div>
         {!manager ? (
-          <div className="tp-empty">当前会话暂无 Agent</div>
+          <div className="tp-empty">当前案卷暂无 Agent</div>
         ) : tasks.length === 0 ? (
           <div className="tp-empty">暂无待办</div>
         ) : (
