@@ -19,10 +19,11 @@ import { loadCompositionPatch, reloadCompositionPatch } from '../composition/pat
 import { applyDefaultPreset, syncPresetSelectionFromSettings } from '../composition/preset-assembly';
 import { discoverPresets } from '../composition/preset-discovery';
 import type { ResolvedComposition } from '../composition/roster';
-import { builtinShellRows, type ShellRow, type WorkspaceFlowDeps, workspaceFlow } from '../composition/shell-rows';
+import { type ShellRow, type WorkspaceFlowDeps, workspaceFlow } from '../composition/shell-rows';
 import { setLang } from '../i18n';
 import { typedListen } from '../rpc-contract';
 import { loadSettings } from '../settings';
+import { useCompositionStore } from '../state/composition-store';
 import { shellRefs } from './runtime';
 
 /** 启动期一次装载用户层 patch（幂等：composition-store 持结果）。 */
@@ -74,8 +75,12 @@ export async function bootShell(
     applyDefaultPreset();
     armCompositionWatcher();
 
-    // 3) 按表序逐行 boot（resolved.shell 组合后行表；缺省 = 出厂表）
-    const rows: ShellRow[] = composition?.shell ?? builtinShellRows();
+    // 3) 按表序逐行 boot（V5a 组合接线，workspace-flip 批 4）：行表真源 =
+    //    composition-store.resolved.shell（第 2 步组合链刚写入——参数注入有
+    //    时序悖论：参数在调用时求值，组合链在函数体内才跑完）；第二参保留为
+    //    测试注入面（生产一律走 store；factory 态 = 出厂表全等）。
+    const resolved = useCompositionStore.getState().resolved;
+    const rows: ShellRow[] = composition?.shell ?? resolved.shell;
     for (const row of rows) {
       try {
         await row.boot(shellRefs, flowDeps);
