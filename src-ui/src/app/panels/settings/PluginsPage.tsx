@@ -20,9 +20,9 @@ import { Icon } from '../../Icon';
 
 /** 状态标签（对应 PluginStatus）。 */
 function statusBadge(s: PluginRecord['status']): { text: string; color: string } {
-  if (s === 'active') return { text: '运行中', color: 'var(--obs-pass)' };
-  if (s === 'disabled') return { text: '已禁用', color: 'var(--obs-text-2)' };
-  return { text: '装载失败', color: 'var(--obs-warn)' };
+  if (s === 'active') return { text: '运行中', color: 'var(--pass)' };
+  if (s === 'disabled') return { text: '已禁用', color: 'var(--ink-2)' };
+  return { text: '装载失败', color: 'var(--warn)' };
 }
 
 /** 已装插件卡片。 */
@@ -133,11 +133,10 @@ export function PluginsPage() {
         style={{
           padding: '8px 10px',
           marginBottom: 12,
-          border: '1px solid var(--obs-warn)',
+          border: '1px solid var(--warn)',
           borderRadius: 6,
           fontSize: 11,
           lineHeight: 1.6,
-          color: 'var(--obs-text-1)',
         }}
       >
         ⚠ 插件是本机全信任代码：可读写文件、起子进程、调用全部 RPC。npm 上的包 ≠ 审核过的包——只安装你信任来源的插件。
@@ -178,7 +177,7 @@ export function PluginsPage() {
           本地插件目录（复制进插件根）。安装/卸载/禁用均重启后生效。
         </div>
         {message && (
-          <div className="sp-hint-sub" style={{ color: message.kind === 'ok' ? 'var(--obs-pass)' : 'var(--obs-warn)' }}>
+          <div className="sp-hint-sub" style={{ color: message.kind === 'ok' ? 'var(--pass)' : 'var(--warn)' }}>
             {message.text}
           </div>
         )}

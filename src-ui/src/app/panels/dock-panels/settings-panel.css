@@ -9,7 +9,7 @@
   -webkit-backdrop-filter: blur(6px);
   opacity: 0;
   pointer-events: none;
-  transition: opacity var(--obs-snap);
+  transition: opacity var(--snap);
 }
 
 #settings-panel-overlay.sp-open {
@@ -26,10 +26,10 @@
   height: 620px;
   max-height: 88vh;
   z-index: 401;
-  background: var(--obs-glass);
+  background: var(--glass);
   backdrop-filter: blur(16px) saturate(1.15);
   -webkit-backdrop-filter: blur(16px) saturate(1.15);
-  border: 1px solid var(--obs-line);
+  border: 1px solid var(--ink-4);
   border-radius: 12px;
   transform: translate(-50%, -50%) scale(0.95);
   opacity: 0;
@@ -57,12 +57,12 @@
 }
 
 .sp-title {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(11px * var(--font-scale));
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   display: flex;
   align-items: center;
   gap: 7px;
@@ -75,16 +75,16 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   border-radius: 3px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--obs-snap);
+  transition: all var(--snap);
 }
 
 .sp-close-btn:hover {
-  color: var(--obs-text);
+  color: var(--ink-1);
   background: rgba(30, 50, 80, 0.3);
 }
 
@@ -97,7 +97,7 @@
 }
 
 .sp-tab {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(8px * var(--font-scale));
   font-weight: 600;
   letter-spacing: 0.8px;
@@ -106,22 +106,22 @@
   border: none;
   cursor: pointer;
   background: transparent;
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
   display: flex;
   align-items: center;
   gap: 5px;
-  transition: all var(--obs-snap);
+  transition: all var(--snap);
 }
 
 .sp-tab:hover {
-  color: var(--obs-text-2);
+  color: var(--ink-2);
 }
 
 .sp-tab.active {
-  color: var(--obs-blue);
-  border-bottom-color: var(--obs-blue);
+  color: var(--indigo);
+  border-bottom-color: var(--indigo);
 }
 
 .sp-content {
@@ -153,12 +153,12 @@
 }
 
 .sp-section-title {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(8px * var(--font-scale));
   font-weight: 600;
   letter-spacing: 1px;
   text-transform: uppercase;
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   margin-bottom: 8px;
 }
 
@@ -176,15 +176,15 @@
 
 .sp-label {
   font-size: calc(10px * var(--font-scale));
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   white-space: nowrap;
   flex-shrink: 0;
 }
 
 .sp-val {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(9px * var(--font-scale));
-  color: var(--obs-blue);
+  color: var(--indigo);
   margin-left: 4px;
 }
 
@@ -201,14 +201,14 @@
   flex: 1;
   min-width: 0;
   padding: 5px 8px;
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(10px * var(--font-scale));
   background: rgba(8, 16, 30, 0.7);
-  color: var(--obs-text);
+  color: var(--ink-1);
   border: 1px solid rgba(148, 166, 205, 0.16);
   border-radius: 3px;
   outline: none;
-  transition: border-color var(--obs-snap);
+  transition: border-color var(--snap);
 }
 
 .sp-input:focus {
@@ -216,7 +216,7 @@
 }
 
 .sp-input::placeholder {
-  color: var(--obs-text-2);
+  color: var(--ink-2);
 }
 
 .sp-input-num {
@@ -229,15 +229,15 @@
   flex: 1;
   min-width: 0;
   padding: 5px 8px;
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(10px * var(--font-scale));
   background: rgba(8, 16, 30, 0.7);
-  color: var(--obs-text);
+  color: var(--ink-1);
   border: 1px solid rgba(148, 166, 205, 0.16);
   border-radius: 3px;
   outline: none;
   cursor: pointer;
-  transition: border-color var(--obs-snap);
+  transition: border-color var(--snap);
 }
 
 .sp-select:focus {
@@ -264,17 +264,17 @@
   border: 1px solid rgba(148, 166, 205, 0.12);
   border-radius: 3px;
   cursor: pointer;
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--obs-snap);
+  transition: all var(--snap);
   flex-shrink: 0;
 }
 
 .sp-key-toggle:hover {
   background: rgba(25, 38, 60, 0.6);
-  color: var(--obs-text);
+  color: var(--ink-1);
 }
 
 .sp-slider-row {
@@ -285,9 +285,9 @@
 }
 
 .sp-slider-end {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(9px * var(--font-scale));
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   flex-shrink: 0;
 }
 
@@ -298,8 +298,8 @@
   appearance: none;
   background: linear-gradient(
     to right,
-    var(--obs-blue) 0%,
-    var(--obs-blue) var(--pct, 35%),
+    var(--indigo) 0%,
+    var(--indigo) var(--pct, 35%),
     rgba(148, 166, 205, 0.16) var(--pct, 35%),
     rgba(148, 166, 205, 0.16) 100%
   );
@@ -314,11 +314,11 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--obs-blue);
+  background: var(--indigo);
   border: 2px solid rgba(10, 20, 38, 0.8);
   box-shadow: 0 0 8px rgba(148, 166, 205, 0.19);
   cursor: pointer;
-  transition: box-shadow var(--obs-snap);
+  transition: box-shadow var(--snap);
 }
 
 .sp-range::-webkit-slider-thumb:hover {
@@ -339,7 +339,7 @@
   cursor: pointer;
   border-radius: 4px;
   border: 1px solid transparent;
-  transition: all var(--obs-snap);
+  transition: all var(--snap);
 }
 
 .sp-radio:hover {
@@ -356,54 +356,54 @@
   border: 1.5px solid rgba(148, 166, 205, 0.22);
   background: rgba(8, 16, 30, 0.6);
   cursor: pointer;
-  transition: all var(--obs-snap);
+  transition: all var(--snap);
   position: relative;
 }
 
 .sp-radio input[type="radio"]:checked {
-  border-color: var(--obs-blue);
+  border-color: var(--indigo);
   background: rgba(148, 166, 205, 0.25);
   box-shadow:
-    inset 0 0 0 3px var(--obs-blue),
+    inset 0 0 0 3px var(--indigo),
     0 0 8px rgba(148, 166, 205, 0.12);
 }
 
 .sp-radio-label {
   font-size: calc(10px * var(--font-scale));
-  color: var(--obs-text);
+  color: var(--ink-1);
   font-weight: 500;
 }
 
 .sp-hint {
   font-size: calc(9px * var(--font-scale));
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   padding: 4px 0;
   line-height: 1.4;
 }
 
 .sp-hint a {
-  color: var(--obs-text-2);
-  transition: color var(--obs-snap);
+  color: var(--ink-2);
+  transition: color var(--snap);
 }
 
 .sp-hint a:hover {
-  color: var(--obs-blue);
+  color: var(--indigo);
 }
 
 .sp-hint-sub {
   font-weight: 400;
   font-size: calc(8px * var(--font-scale));
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   margin-left: 4px;
 }
 
 .sp-hint code {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(8px * var(--font-scale));
   background: rgba(15, 25, 42, 0.5);
   padding: 1px 4px;
   border-radius: 2px;
-  color: var(--obs-text-2);
+  color: var(--ink-2);
 }
 
 .sp-footer {
@@ -416,7 +416,7 @@
 }
 
 .sp-btn {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(8px * var(--font-scale));
   font-weight: 600;
   letter-spacing: 0.8px;
@@ -424,7 +424,7 @@
   padding: 7px 18px;
   border-radius: 3px;
   cursor: pointer;
-  transition: all var(--obs-snap);
+  transition: all var(--snap);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -432,18 +432,18 @@
 
 .sp-btn-cancel {
   background: rgba(15, 18, 28, 0.5);
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   border: 1px solid rgba(30, 45, 70, 0.3);
 }
 
 .sp-btn-cancel:hover {
   background: rgba(20, 25, 38, 0.6);
-  color: var(--obs-text);
+  color: var(--ink-1);
 }
 
 .sp-btn-save {
   background: rgba(25, 45, 80, 0.5);
-  color: var(--obs-blue);
+  color: var(--indigo);
   border: 1px solid rgba(148, 166, 205, 0.19);
 }
 
@@ -453,7 +453,7 @@
 }
 
 .sp-btn-ok {
-  color: var(--obs-pass) !important;
+  color: var(--pass) !important;
 }
 
 .sp-provider-row {
@@ -463,21 +463,21 @@
 }
 
 .sp-btn-sm {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(9px * var(--font-scale));
   padding: 4px 10px;
   border-radius: 3px;
   cursor: pointer;
   background: rgba(20, 30, 50, 0.4);
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   border: 1px solid rgba(148, 166, 205, 0.12);
-  transition: all var(--obs-snap);
+  transition: all var(--snap);
   white-space: nowrap;
 }
 
 .sp-btn-sm:hover {
   background: rgba(148, 166, 205, 0.31);
-  color: var(--obs-text);
+  color: var(--ink-1);
 }
 
 .sp-btn-rm-provider:hover {
@@ -541,7 +541,7 @@
 
 .sp-lsp-card-meta {
   font-size: 10px;
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   margin-top: 2px;
 }
 
@@ -551,7 +551,7 @@
 
 .sp-lsp-card-err {
   font-size: 10px;
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   margin-top: 4px;
   padding: 4px 8px;
   background: rgba(6, 14, 26, 0.5);
@@ -560,12 +560,12 @@
 }
 
 .sp-install-toggle {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(8px * var(--font-scale));
   font-weight: 600;
   letter-spacing: 0.8px;
   text-transform: uppercase;
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   background: none;
   border: none;
   cursor: pointer;
@@ -573,11 +573,11 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  transition: color var(--obs-snap);
+  transition: color var(--snap);
 }
 
 .sp-install-toggle:hover {
-  color: var(--obs-blue);
+  color: var(--indigo);
 }
 
 .sp-install-row {
@@ -599,10 +599,10 @@
 }
 
 .df-card {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(11px * var(--font-scale));
   line-height: 1.55;
-  color: var(--obs-text);
+  color: var(--ink-1);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -616,9 +616,9 @@
 .df-file-hdr {
   padding: 6px 12px;
   background: rgba(8, 18, 36, 0.7);
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(11px * var(--font-scale));
-  color: var(--obs-blue);
+  color: var(--indigo);
   border-bottom: 1px solid rgba(148, 166, 205, 0.09);
   display: flex;
   align-items: center;
@@ -645,7 +645,7 @@
 
 .df-scope-name {
   font-weight: 600;
-  color: var(--obs-text);
+  color: var(--ink-1);
   margin-bottom: 6px;
   font-size: calc(12px * var(--font-scale));
   display: flex;
@@ -696,7 +696,7 @@
   align-items: center;
   gap: 2px;
   padding: 2px 7px;
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(10px * var(--font-scale));
   letter-spacing: 0.2px;
   white-space: nowrap;
@@ -704,13 +704,13 @@
 
 .df-tag-read {
   background: rgba(148, 166, 205, 0.06);
-  color: var(--obs-blue);
+  color: var(--indigo);
   border-left: 2px solid rgba(148, 166, 205, 0.25);
 }
 
 .df-tag-write {
   background: rgba(240, 168, 72, 0.08);
-  color: var(--obs-brass-hi);
+  color: var(--seal-deep);
   border-left: 2px solid rgba(240, 168, 72, 0.4);
 }
 
@@ -727,18 +727,18 @@
 }
 
 .df-tag-none {
-  color: var(--obs-text-3);
+  color: var(--ink-3);
   font-style: italic;
   font-size: calc(10px * var(--font-scale));
 }
 
 .df-label {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(8.5px * var(--font-scale));
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   margin-right: 4px;
   display: inline-flex;
   align-items: center;
@@ -758,12 +758,12 @@
   padding: 2px 7px;
   background: rgba(148, 166, 205, 0.07);
   color: rgba(170, 200, 240, 0.75);
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(10px * var(--font-scale));
 }
 
 .df-flow-arrow {
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   font-size: calc(10px * var(--font-scale));
   margin: 0 2px;
 }
@@ -775,7 +775,7 @@
 }
 
 .df-shared-title {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(9px * var(--font-scale));
   font-weight: 600;
   color: #a088e0;
@@ -803,30 +803,29 @@
 }
 
 .df-shared-th {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(8.5px * var(--font-scale));
   text-transform: uppercase;
   letter-spacing: 0.6px;
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   border-bottom: 1px solid rgba(148, 166, 205, 0.06);
   padding-bottom: 4px;
   margin-bottom: 2px;
 }
 
 .df-shared-tr {
-  color: var(--obs-text-2);
+  color: var(--ink-2);
 }
 
 .df-shared-var {
   font-weight: 600;
-  color: var(--obs-text);
-  font-family: var(--obs-font-mono);
+  color: var(--ink-1);
+  font-family: var(--f-mono);
 }
 
 .df-empty {
-  color: var(--obs-text-3);
+  color: var(--ink-3);
   font-style: italic;
   padding: 10px 12px;
   font-size: calc(10.5px * var(--font-scale));
 }
-

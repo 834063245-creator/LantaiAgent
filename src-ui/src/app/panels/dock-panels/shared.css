@@ -3,7 +3,7 @@
    来源：P6-P9 观测台时代 shared.css 的 settings 活段逐字搬运
    （键值零变更——本文件只删死选择器：check/cs/df/th 族与
    #timeline-hud/#check-panel/#constraints-panel 已随旧面板退役）。
-   变量经 tokens.css 的 --obs-* 过渡别名层映射兰台 token（C5 退役中）。
+   变量直用 tokens.css 兰台 token（C5 --obs-* 别名层已退役）。
    ═══════════════════════════════════════════════════════════════ */
 
 /* ── keyframes（check-pulse/alert-pulse/df-* 随面板退役；本文件无消费） ── */
@@ -15,35 +15,35 @@
 .sp-input,
 .sp-select {
   background: rgba(0, 0, 0, 0.25);
-  border: 1px solid var(--obs-line);
+  border: 1px solid var(--ink-4);
   border-radius: 8px;
-  caret-color: var(--obs-brass);
+  caret-color: var(--seal);
 }
 .sp-input:focus,
 .sp-select:focus {
   border-color: rgba(201, 162, 92, 0.45);
 }
 .sp-tab:hover {
-  color: var(--obs-text);
+  color: var(--ink-1);
 }
 .sp-tab.active {
-  color: var(--obs-brass-hi);
-  border-bottom-color: var(--obs-brass);
+  color: var(--seal-deep);
+  border-bottom-color: var(--seal);
 }
 .sp-radio:hover {
   background: rgba(160, 180, 220, 0.045);
 }
 .sp-radio input[type="radio"] {
-  border-color: var(--obs-line);
+  border-color: var(--ink-4);
   background: rgba(0, 0, 0, 0.25);
 }
 .sp-radio input[type="radio"]:checked {
-  border-color: var(--obs-brass);
-  background: var(--obs-brass-dim);
-  box-shadow: inset 0 0 0 3px var(--obs-brass);
+  border-color: var(--seal);
+  background: var(--seal-soft);
+  box-shadow: inset 0 0 0 3px var(--seal);
 }
 .sp-checkbox-label {
-  color: var(--obs-text-2);
+  color: var(--ink-2);
 }
 .sp-checkbox-label input[type="checkbox"] {
   appearance: none;
@@ -52,16 +52,16 @@
   height: 14px;
   flex-shrink: 0;
   margin: 0;
-  border: 1px solid var(--obs-line);
+  border: 1px solid var(--ink-4);
   border-radius: 4px;
   background: rgba(0, 0, 0, 0.25);
   cursor: pointer;
   position: relative;
-  transition: all var(--obs-snap);
+  transition: all var(--snap);
 }
 .sp-checkbox-label input[type="checkbox"]:checked {
   border-color: rgba(201, 162, 92, 0.45);
-  background: var(--obs-brass-dim);
+  background: var(--seal-soft);
 }
 .sp-checkbox-label input[type="checkbox"]:checked::after {
   content: "";
@@ -70,21 +70,21 @@
   top: 0;
   width: 5px;
   height: 8px;
-  border: solid var(--obs-brass);
+  border: solid var(--seal);
   border-width: 0 1.5px 1.5px 0;
   transform: rotate(42deg);
 }
 .sp-range {
   background: linear-gradient(
     to right,
-    var(--obs-brass) 0%,
-    var(--obs-brass) var(--pct, 35%),
+    var(--seal) 0%,
+    var(--seal) var(--pct, 35%),
     rgba(255, 255, 255, 0.06) var(--pct, 35%),
     rgba(255, 255, 255, 0.06) 100%
   );
 }
 .sp-range::-webkit-slider-thumb {
-  background: var(--obs-brass);
+  background: var(--seal);
   border-color: rgba(5, 7, 13, 0.9);
   box-shadow: none;
 }
@@ -95,8 +95,8 @@
   border-radius: 7px;
 }
 .sp-btn-save {
-  color: var(--obs-brass-hi);
-  background: var(--obs-brass-dim);
+  color: var(--seal-deep);
+  background: var(--seal-soft);
   border: 1px solid rgba(201, 162, 92, 0.45);
 }
 .sp-btn-save:hover {
@@ -104,12 +104,12 @@
   box-shadow: none;
 }
 .sp-btn-cancel {
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   background: none;
-  border: 1px solid var(--obs-line);
+  border: 1px solid var(--ink-4);
 }
 .sp-btn-cancel:hover {
-  color: var(--obs-text);
+  color: var(--ink-1);
   background: rgba(160, 180, 220, 0.08);
 }
 
@@ -131,25 +131,25 @@
 /* ── 1. 面板头：统一 padding + 发丝线底边 ── */
 .sp-header {
   padding: 11px 13px 10px;
-  border-bottom: 1px solid var(--obs-line-soft);
+  border-bottom: 1px solid var(--line-soft);
 }
 
 /* ── 2. 面板标题：zh + EN 大写 ── */
 .sp-title {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(10px * var(--font-scale));
   font-weight: 600;
   letter-spacing: 0.24em;
   text-transform: uppercase;
-  color: var(--obs-text-2);
+  color: var(--ink-2);
 }
 .sp-title .zh {
-  font-family: var(--obs-font-body);
+  font-family: var(--f-song);
   font-size: calc(12.5px * var(--font-scale));
   font-weight: 500;
   letter-spacing: 0.1em;
   text-transform: none;
-  color: var(--obs-text);
+  color: var(--ink-1);
   margin-right: 7px;
 }
 
@@ -160,18 +160,18 @@
   padding: 0;
   background: none;
   border: none;
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   cursor: pointer;
   border-radius: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
   transition:
-    color var(--obs-snap),
-    background var(--obs-snap);
+    color var(--snap),
+    background var(--snap);
 }
 .sp-close-btn:hover {
-  color: var(--obs-text);
+  color: var(--ink-1);
   background: rgba(160, 180, 220, 0.08);
 }
 

@@ -493,7 +493,7 @@ const SettingsPanelApp: React.FC<{
                   max={2.0}
                   step={0.05}
                   value={settings.display.fontScale}
-                  style={{ flex: 1, height: 4, accentColor: 'var(--obs-blue)' }}
+                  style={{ flex: 1, height: 4, accentColor: 'var(--indigo)' }}
                   onChange={(e) => {
                     const v = parseFloat(e.target.value);
                     commit({ ...settings, display: { ...settings.display, fontScale: v } });
@@ -502,9 +502,9 @@ const SettingsPanelApp: React.FC<{
                 <span
                   className="sp-fs-value"
                   style={{
-                    fontFamily: 'var(--obs-font-mono)',
+                    fontFamily: 'var(--f-mono)',
                     fontSize: 'calc(11px * var(--font-scale))',
-                    color: 'var(--obs-blue)',
+                    color: 'var(--indigo)',
                     minWidth: 40,
                     textAlign: 'right',
                   }}
@@ -553,17 +553,17 @@ const SettingsPanelApp: React.FC<{
                     if (srv.available) {
                       icon = 'check-circle';
                       statusText = '运行中';
-                      color = 'var(--obs-pass)';
+                      color = 'var(--pass)';
                       rowClass = 'running';
                     } else if (installed) {
                       icon = 'alert-circle';
                       statusText = '已安装';
-                      color = 'var(--obs-warn)';
+                      color = 'var(--warn)';
                       rowClass = 'installed';
                     } else {
                       icon = 'close';
                       statusText = '未安装';
-                      color = 'var(--obs-text-2)';
+                      color = 'var(--ink-2)';
                       rowClass = '';
                     }
                     return (
@@ -636,11 +636,11 @@ const SettingsPanelApp: React.FC<{
                 一张纸上的 Agent 工作台 · 图谱引擎 HoloGram
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr', gap: '6px 12px', fontSize: 12 }}>
-                <span style={{ color: 'var(--obs-text-2)' }}>版本</span>
-                <span style={{ fontFamily: 'var(--obs-font-mono)' }}>{appVersion}</span>
-                <span style={{ color: 'var(--obs-text-2)' }}>许可</span>
+                <span style={{ color: 'var(--ink-2)' }}>版本</span>
+                <span style={{ fontFamily: 'var(--f-mono)' }}>{appVersion}</span>
+                <span style={{ color: 'var(--ink-2)' }}>许可</span>
                 <span>MIT</span>
-                <span style={{ color: 'var(--obs-text-2)' }}>作者</span>
+                <span style={{ color: 'var(--ink-2)' }}>作者</span>
                 <span>Wenbing Jing</span>
               </div>
             </div>
@@ -665,13 +665,13 @@ const SettingsPanelApp: React.FC<{
                 )}
                 {updateStatus === 'downloading' && <span className="sp-hint">{updateMsg}</span>}
                 {updateStatus === 'done' && (
-                  <span className="sp-hint" style={{ color: 'var(--obs-pass)' }}>
+                  <span className="sp-hint" style={{ color: 'var(--pass)' }}>
                     {updateMsg}
                   </span>
                 )}
                 {updateStatus === 'error' && (
                   <div>
-                    <span className="sp-hint" style={{ color: 'var(--obs-warn)' }}>
+                    <span className="sp-hint" style={{ color: 'var(--warn)' }}>
                       检查失败: {updateMsg}
                     </span>
                     <br />

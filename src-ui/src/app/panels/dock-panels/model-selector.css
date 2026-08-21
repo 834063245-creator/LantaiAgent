@@ -24,7 +24,7 @@
   left: 8px;
   display: flex;
   align-items: center;
-  color: var(--obs-text-3);
+  color: var(--ink-3);
   pointer-events: none;
   z-index: 1;
 }
@@ -44,13 +44,13 @@
   width: 16px;
   height: 16px;
   cursor: pointer;
-  color: var(--obs-text-3);
+  color: var(--ink-3);
   border-radius: 3px;
-  transition: all var(--obs-snap);
+  transition: all var(--snap);
 }
 
 .ms-input-clear:hover {
-  color: var(--obs-fail);
+  color: var(--fail);
   background: rgba(217, 99, 95, 0.12);
 }
 
@@ -66,20 +66,20 @@
   height: 28px;
   padding: 0;
   background: rgba(0, 0, 0, 0.2);
-  border: 1px solid var(--obs-line);
+  border: 1px solid var(--ink-4);
   border-radius: 7px;
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--obs-snap);
+  transition: all var(--snap);
 }
 
 .ms-refresh-btn:hover {
-  color: var(--obs-brass-hi);
+  color: var(--seal-deep);
   border-color: rgba(201, 162, 92, 0.45);
-  background: var(--obs-brass-dim);
+  background: var(--seal-soft);
 }
 
 .ms-refresh-btn.spinning svg {
@@ -93,9 +93,9 @@
 }
 
 .ms-refresh-msg {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(8px * var(--font-scale));
-  color: var(--obs-text-3);
+  color: var(--ink-3);
   padding: 2px 4px;
 }
 
@@ -123,7 +123,7 @@
 
 .ms-empty-text {
   font-size: calc(9px * var(--font-scale));
-  color: var(--obs-text-3);
+  color: var(--ink-3);
 }
 
 .ms-dropdown::-webkit-scrollbar {
@@ -143,7 +143,7 @@
   width: 100%;
   padding: 6px 10px;
   cursor: pointer;
-  transition: background var(--obs-snap);
+  transition: background var(--snap);
   border-bottom: 1px solid rgba(148, 166, 205, 0.04);
   background: none;
   border-left: none;
@@ -160,8 +160,8 @@
 
 .ms-item:hover,
 .ms-item.active {
-  background: var(--obs-brass-dim);
-  box-shadow: inset 2px 0 0 var(--obs-brass);
+  background: var(--seal-soft);
+  box-shadow: inset 2px 0 0 var(--seal);
 }
 
 .ms-item.selected {
@@ -183,9 +183,9 @@
 }
 
 .ms-item-id {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(10px * var(--font-scale));
-  color: var(--obs-text);
+  color: var(--ink-1);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -194,13 +194,13 @@
 .ms-item-check {
   display: flex;
   align-items: center;
-  color: var(--obs-brass);
+  color: var(--seal);
   flex-shrink: 0;
 }
 
 .ms-item-name {
   font-size: calc(8px * var(--font-scale));
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -214,7 +214,7 @@
 }
 
 .ms-badge {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(7px * var(--font-scale));
   padding: 1px 4px;
   border-radius: 3px;
@@ -222,12 +222,12 @@
 }
 
 .ms-badge-ctx {
-  color: var(--obs-blue);
+  color: var(--indigo);
   background: rgba(100, 150, 220, 0.1);
 }
 
 .ms-badge-cost {
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   background: rgba(148, 166, 205, 0.06);
 }
 
@@ -236,7 +236,7 @@
 }
 
 .ms-badge-live {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(6px * var(--font-scale));
   font-weight: 700;
   letter-spacing: 0.5px;
@@ -256,9 +256,9 @@
 }
 
 .ms-meta-tag {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(7px * var(--font-scale));
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   padding: 1px 5px;
   border-radius: 3px;
   background: rgba(148, 166, 205, 0.06);
@@ -266,8 +266,8 @@
 }
 
 .ms-meta-reason {
-  color: var(--obs-brass);
-  background: var(--obs-brass-dim);
+  color: var(--seal);
+  background: var(--seal-soft);
 }
 
 .ms-meta-live {
@@ -284,20 +284,19 @@
 }
 
 .ms-catalog-chip {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: calc(9px * var(--font-scale));
   padding: 3px 8px;
   border-radius: 6px;
-  border: 1px solid var(--obs-line);
+  border: 1px solid var(--ink-4);
   background: rgba(0, 0, 0, 0.25);
-  color: var(--obs-text-2);
+  color: var(--ink-2);
   cursor: pointer;
-  transition: all var(--obs-snap);
+  transition: all var(--snap);
 }
 
 .ms-catalog-chip:hover {
   border-color: rgba(201, 162, 92, 0.45);
-  color: var(--obs-brass-hi);
-  background: var(--obs-brass-dim);
+  color: var(--seal-deep);
+  background: var(--seal-soft);
 }
-

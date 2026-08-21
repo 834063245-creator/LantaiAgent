@@ -61,15 +61,15 @@ const ContextMenuApp: React.FC<Props> = ({ items, x: rawX, y: rawY, onDismiss })
         zIndex: 200,
         left: pos.x,
         top: pos.y,
-        background: 'var(--obs-glass-hi, rgba(4,12,28,0.96))',
+        background: 'var(--glass-hi, rgba(4,12,28,0.96))',
         backdropFilter: 'blur(16px)',
         WebkitBackdropFilter: 'blur(16px)',
-        border: '1px solid var(--obs-line)',
+        border: '1px solid var(--ink-4)',
         borderRadius: 10,
         padding: 4,
         minWidth: 160,
         boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
-        fontFamily: 'var(--obs-font-mono)',
+        fontFamily: 'var(--f-mono)',
         fontSize: 'calc(11px * var(--font-scale))',
         display: 'flex',
         flexDirection: 'column',
@@ -77,28 +77,28 @@ const ContextMenuApp: React.FC<Props> = ({ items, x: rawX, y: rawY, onDismiss })
     >
       {items.map((item, i) => (
         <React.Fragment key={i}>
-          {item.separator && <div style={{ height: 1, background: 'var(--obs-line-soft)', margin: '3px 6px' }} />}
+          {item.separator && <div style={{ height: 1, background: 'var(--line-soft)', margin: '3px 6px' }} />}
           <div
             className="ctx-menu-item"
             style={{
               padding: '5px 10px',
               borderRadius: 7,
               cursor: item.disabled ? 'default' : 'pointer',
-              color: item.disabled ? 'var(--obs-text-3)' : 'var(--obs-text, #c3daf8)',
+              color: item.disabled ? 'var(--ink-3)' : 'var(--ink-1, #c3daf8)',
               whiteSpace: 'nowrap',
               userSelect: 'none',
             }}
             onMouseEnter={(e) => {
               if (!item.disabled) {
                 (e.currentTarget as HTMLDivElement).style.background = 'rgba(160,180,220,0.08)';
-                (e.currentTarget as HTMLDivElement).style.color = 'var(--obs-text)';
+                (e.currentTarget as HTMLDivElement).style.color = 'var(--ink-1)';
               }
             }}
             onMouseLeave={(e) => {
               (e.currentTarget as HTMLDivElement).style.background = '';
               (e.currentTarget as HTMLDivElement).style.color = item.disabled
-                ? 'var(--obs-text-3)'
-                : 'var(--obs-text, #c3daf8)';
+                ? 'var(--ink-3)'
+                : 'var(--ink-1, #c3daf8)';
             }}
             onClick={
               item.disabled

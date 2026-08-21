@@ -3,7 +3,8 @@
    气质：注疏横排 · 分体字体（宋体/楷书/等宽）· 矿物墨色 · 圆角恒 0。
    来源：prototype/lantai.html 原型（:root 转录），铁律见
    docs/design/lantai-design-spec.md（朱砂=人，石青=机，石墨=草稿，墨=正文）。
-   旧观测台暗色留底于 tokens.obs.css（不再 import）。
+   C5 竣工（2026-08-22）：--obs-* 过渡别名层已退役，tokens.obs.css 已删除；
+   活跃样式全部直用兰台 token。
    ═══════════════════════════════════════════════════════════════ */
 
 :root {
@@ -48,45 +49,21 @@
   --bar-h: 56px;
   --composer-h: 66px;
 
+  /* ── 迁移收容（C5 --obs-* 退役时原值平移，待换皮归新结构 token）── */
+  --snap: 0.12s cubic-bezier(0.23, 1, 0.32, 1);
+  --glide: 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+  --glass: color-mix(in oklch, var(--paper) 78%, transparent);
+  --glass-hi: color-mix(in oklch, var(--paper) 92%, transparent);
+  --line-soft: color-mix(in oklch, var(--ink-4) 55%, transparent);
+
   /* 运行时字号缩放（settings.display.fontScale，main.ts 注入；默认 1）
      —— 旧 token 体系唯一保留的非色彩变量，勿删 */
   --font-scale: 1;
-
-  /* ══ --obs-* 过渡别名层（观测台旧 UI → 兰台）═════════════════
-     旧 UI（shell/foundation/graph-chrome/chat 等）1338 处引用未逐文件迁移前，
-     经此层映射到兰台值——整 app 一次切纸面浅色、零断链。
-     对照表见 docs/design/lantai-design-spec.md §8 / lantai-tokens 原件注释。
-     逐文件迁移完成后本层整体退役。结构/动效变量暂保旧值（bar-h/status-h/
-     rail-w/snap/glide），待对应屏换皮时改用新结构 token。 */
-  --obs-void: var(--paper-margin);
-  --obs-void-deep: var(--paper);
-  --obs-glass: color-mix(in oklch, var(--paper) 78%, transparent);
-  --obs-glass-hi: color-mix(in oklch, var(--paper) 92%, transparent);
-  --obs-line: var(--ink-4);
-  --obs-line-soft: color-mix(in oklch, var(--ink-4) 55%, transparent);
-  --obs-text: var(--ink-1);
-  --obs-text-2: var(--ink-2);
-  --obs-text-3: var(--ink-3);
-  --obs-brass: var(--seal);
-  --obs-brass-hi: var(--seal-deep);
-  --obs-brass-dim: var(--seal-soft);
-  --obs-blue: var(--indigo);
-  --obs-pass: var(--pass);
-  --obs-warn: var(--warn);
-  --obs-fail: var(--fail);
-  --obs-font-serif: var(--f-song);
-  --obs-font-body: var(--f-song);
-  --obs-font-mono: var(--f-mono);
-  --obs-snap: 0.12s cubic-bezier(0.23, 1, 0.32, 1);
-  --obs-glide: 0.3s cubic-bezier(0.23, 1, 0.32, 1);
-  --obs-bar-h: 46px;
-  --obs-status-h: 28px;
-  --obs-rail-w: 46px;
 }
 
 /* backdrop-filter 不可用（WebKitGTK <2.46 / 软件渲染）时的降级：
    玻璃整体提到近乎不透明，保住面板文字可读性。main.ts 检测后给 <html> 加 .no-bf */
 html.no-bf {
-  --obs-glass: color-mix(in oklch, var(--paper) 97%, transparent);
-  --obs-glass-hi: var(--paper);
+  --glass: color-mix(in oklch, var(--paper) 97%, transparent);
+  --glass-hi: var(--paper);
 }

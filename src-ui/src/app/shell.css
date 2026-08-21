@@ -3,7 +3,7 @@
    适用范围：src/app/** 幸存件——命令面板（CommandPalette）、
    提示卡浮层（PromptShelfHost）、窗口控制（WinControls）。
    旧 chrome（CommandBar/StatusBar/DockRail/ShortcutsOverlay）已随
-   观测台退役；样式变量经 tokens.css 的 --obs-* 过渡别名层映射兰台 token。
+   观测台退役；样式变量直用 tokens.css 兰台 token，C5 已完成 --obs-* 退役。
    z-index 约定：浮层 300（命令面板/提示卡）。
    ═══════════════════════════════════════════════════════════════ */
 
@@ -56,10 +56,10 @@
 
 /* ── 通用（命令面板 + 提示卡共用的 kbd 语言） ────────────────── */
 .pal-box kbd {
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: 10px;
-  color: var(--obs-text-3);
-  border: 1px solid var(--obs-line);
+  color: var(--ink-3);
+  border: 1px solid var(--ink-4);
   background: rgba(255, 255, 255, 0.02);
   border-radius: 4px;
   padding: 0.5px 5px;
@@ -81,41 +81,41 @@
   max-height: 60vh;
   display: flex;
   flex-direction: column;
-  font-family: var(--obs-font-body);
-  color: var(--obs-text);
-  background: var(--obs-glass-hi);
+  font-family: var(--f-song);
+  color: var(--ink-1);
+  background: var(--glass-hi);
   backdrop-filter: blur(16px) saturate(1.15);
   -webkit-backdrop-filter: blur(16px) saturate(1.15);
-  border: 1px solid var(--obs-line);
+  border: 1px solid var(--ink-4);
   border-radius: 10px;
   overflow: hidden;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
 }
 html.no-bf .pal-box {
-  background: var(--obs-void);
+  background: var(--paper-margin);
 }
 .pal-input {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--obs-line);
+  border-bottom: 1px solid var(--ink-4);
 }
 .pal-prompt {
-  color: var(--obs-brass);
-  font-family: var(--obs-font-mono);
+  color: var(--seal);
+  font-family: var(--f-mono);
 }
 .pal-input input {
   flex: 1;
   background: none;
   border: none;
   outline: none;
-  color: var(--obs-text);
-  font-family: var(--obs-font-body);
+  color: var(--ink-1);
+  font-family: var(--f-song);
   font-size: 13px;
 }
 .pal-input input::placeholder {
-  color: var(--obs-text-3);
+  color: var(--ink-3);
 }
 .pal-list {
   overflow-y: auto;
@@ -123,11 +123,11 @@ html.no-bf .pal-box {
 }
 .pal-group {
   padding: 8px 10px 4px;
-  font-family: var(--obs-font-mono);
+  font-family: var(--f-mono);
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--obs-text-3);
+  color: var(--ink-3);
 }
 .pal-row {
   display: flex;
@@ -137,8 +137,8 @@ html.no-bf .pal-box {
   padding: 8px 10px;
   border: none;
   background: none;
-  color: var(--obs-text-2);
-  font-family: var(--obs-font-body);
+  color: var(--ink-2);
+  font-family: var(--f-song);
   font-size: 12.5px;
   border-radius: 6px;
   cursor: pointer;
@@ -153,16 +153,16 @@ html.no-bf .pal-box {
 .pal-row:hover,
 .pal-row.active {
   background: rgba(148, 166, 205, 0.08);
-  color: var(--obs-text);
+  color: var(--ink-1);
 }
 .pal-foot {
   display: flex;
   gap: 14px;
   padding: 8px 14px;
-  border-top: 1px solid var(--obs-line);
-  font-family: var(--obs-font-mono);
+  border-top: 1px solid var(--ink-4);
+  font-family: var(--f-mono);
   font-size: 10px;
-  color: var(--obs-text-3);
+  color: var(--ink-3);
 }
 .pal-foot-right {
   margin-left: auto;
