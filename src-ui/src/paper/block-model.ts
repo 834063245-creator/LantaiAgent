@@ -114,6 +114,15 @@ export function createBlock<K extends BlockKind>(
 /** 流内默认块宽（世界单位；走查弹取观测台聊天列同族宽度） */
 export const DEFAULT_BLOCK_WIDTH = 720;
 
+/** 拟策内容 → 条目列表（渲染 PlanBody 与测量 measureBlockHeight 共用的单一解析：
+ * 逐行剥列表标记（- / * / 1. / 1)），剥后为空的行丢弃。 */
+export function parsePlanItems(content: string): string[] {
+  return content
+    .split('\n')
+    .map((s) => s.replace(/^[-*]\s+|^\d+[.)]\s*/, '').trim())
+    .filter(Boolean);
+}
+
 /* ── 纯函数操作（交互层只改坐标/状态，不碰渲染）── */
 
 /** 钉住：flow → pinned，落世界坐标。D-R2-1 基础手势的语义核心。 */

@@ -22,8 +22,9 @@
 //     贡献与内置同 id → 内置胜（对齐 panelDefs() 合流纪律）。
 
 import type { ComponentType } from 'react';
+import { Fragment } from 'react';
 import { type Context, Service } from '../cordis';
-import type { BlockKind, SourcedBlock } from '../paper/block-model';
+import { type BlockKind, parsePlanItems, type SourcedBlock } from '../paper/block-model';
 
 /** 渲染器组件入参——渲染器拿到块本体 + 纸壳递下的服务性回调。 */
 export interface BlockRendererProps {
@@ -118,26 +119,64 @@ export function resolveRenderer(kind: BlockKind): BlockRendererContribution | un
   return found ?? fallback;
 }
 
-// ── 内置灰框渲染器（默认行）──
-// 体渲染从 PaperPanel BlockView 的 kind 分支迁出（零改写——同 JSX）；
-// 壳件（头部/手柄/收回）留在 PaperPanel（结构件不进注册表）。
+// ── 内置注疏渲染器（默认行）──
+// 体渲染从 PaperPanel BlockView 的 kind 分支迁出（V3b）；兰台换装（2026-08-22）：
+// 视觉由 PaperPanel.css 的分体字体/墨色承载（.pp-body 钩子 + kind 作用域选择器），
+// 渲染器只补结构语义（diff 行着色 / 拟策条目化）。壳件（文类签/手柄/收回）留在
+// PaperPanel（结构件不进注册表）。
 
 function TextBody({ block }: BlockRendererProps) {
-  return <div>{(block.payload as { text: string }).text}</div>;
+  return <div className="pp-body">{(block.payload as { text: string }).text}</div>;
+}
+
+/** 统一 diff 行分类：+ 新增（石青）/ - 删除（石墨删除线）/ @@ hunk 头（注记）。 */
+function diffLineClass(line: string): string | undefined {
+  if (line.startsWith('+')) return 'pp-add';
+  if (line.startsWith('-')) return 'pp-del';
+  if (line.startsWith('@@')) return 'pp-hunk';
+  return undefined;
 }
 
 function DiffBody({ block }: BlockRendererProps) {
   const p = block.payload as { lang?: string; text: string };
+  const lines = p.text.split('\n');
   return (
     <>
       {p.lang && <div className="pp-lang">{p.lang}</div>}
-      <pre>{p.text}</pre>
+      <pre>
+        {lines.map((line, i) => {
+          const cls = diffLineClass(line);
+          return (
+            // biome-ignore lint/suspicious/noArrayIndexKey: diff 行按位置渲染，行序即身份
+            <Fragment key={i}>
+              {i > 0 && '\n'}
+              {cls ? <span className={cls}>{line}</span> : line}
+            </Fragment>
+          );
+        })}
+      </pre>
     </>
   );
 }
 
 function PlanBody({ block }: BlockRendererProps) {
-  return <pre>{(block.payload as { content: string }).content}</pre>;
+  const p = block.payload as { title: string; content: string };
+  const items = parsePlanItems(p.content ?? '');
+  return (
+    <div className="pp-pc">
+      <div className="pp-pc-head">
+        <span className="pp-pc-t">{p.title || '拟策'}</span>
+      </div>
+      {items.length > 0 && (
+        <ol>
+          {items.map((item, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 静态列表逐行渲染，序号即身份
+            <li key={i}>{item}</li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
 }
 
 function ToolBody({ block }: BlockRendererProps) {
@@ -147,7 +186,7 @@ function ToolBody({ block }: BlockRendererProps) {
       <pre>{p.args}</pre>
       {p.output && <div className="pp-out">{p.output}</div>}
       {p.err && (
-        <div className="pp-out" style={{ color: '#e08a84' }}>
+        <div className="pp-out" style={{ color: 'var(--fail)' }}>
           {p.err}
         </div>
       )}
@@ -155,7 +194,7 @@ function ToolBody({ block }: BlockRendererProps) {
   );
 }
 
-/** 内置渲染器行（灰框纪律：结构对即可，视觉是 V2 契约的事）。 */
+/** 内置渲染器行（默认行——视觉由纸壳 CSS 承载，渲染器只管体结构）。 */
 export function builtinRendererDefs(): BlockRendererContribution[] {
   return [
     { id: 'builtin/user', kind: 'user', component: TextBody },

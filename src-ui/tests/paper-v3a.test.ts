@@ -59,28 +59,28 @@ describe('paper/measure', () => {
     resetBlockIdCounterForTests();
   });
 
-  it('文本块高 = 头部 + 内边距 + 测量文本高（mock 常量 36）', () => {
+  it('文本块高 = 纯测量文本高（注疏版式：透明块无壳 chrome，mock 常量 36）', () => {
     const b = block('markdown', { text: '两行文本' });
-    // head 22 + pad 20 + 36
-    expect(measureBlockHeight(b)).toBe(22 + 20 + 36);
+    expect(measureBlockHeight(b)).toBe(36);
   });
 
-  it('空文本块高 = 头部 + 内边距（测量零成本路径）', () => {
+  it('空文本块高 = 0（测量零成本路径）', () => {
     const b = block('markdown', { text: '' });
-    expect(measureBlockHeight(b)).toBe(22 + 20);
+    expect(measureBlockHeight(b)).toBe(0);
   });
 
-  it('diff 块：lang 行计高，pre 封顶 PRE_MAX_H', () => {
+  it('diff 块：lang 行计高，图版 chrome（30）+ pre 封顶 PRE_MAX_H', () => {
     const withLang = block('diff', { lang: 'ts', text: 'code' });
     const noLang = block('diff', { text: 'code' });
-    expect(measureBlockHeight(withLang)).toBe(22 + 20 + 14 + 36 + 8);
-    expect(measureBlockHeight(noLang)).toBe(22 + 20 + 0 + 36 + 8);
+    // lang 16 + 图版 padding/border 30 + 36
+    expect(measureBlockHeight(withLang)).toBe(16 + 30 + 36);
+    expect(measureBlockHeight(noLang)).toBe(0 + 30 + 36);
   });
 
-  it('tool 块：args + output + err 各计一段，output/err 封顶 OUT_MAX_H', () => {
+  it('tool 块：注线顶距 + args + output + err 各计一段，output/err 封顶 OUT_MAX_H', () => {
     const b = block('tool', { toolId: 't', name: 'n', label: 'l', args: 'a', status: 'done', output: 'o', err: 'e' });
-    // args: 36+8；output: 36+12；err: 36+12；head+pad 42
-    expect(measureBlockHeight(b)).toBe(22 + 20 + 44 + 48 + 48);
+    // 顶距 10；args 36；output/err 各 13 chrome + 36
+    expect(measureBlockHeight(b)).toBe(10 + 36 + 49 + 49);
   });
 
   it('prepare 缓存：同文本同字体只 prepare 一次（FIFO 纪律）', () => {
@@ -92,20 +92,20 @@ describe('paper/measure', () => {
     expect(prepareMock).toHaveBeenCalledTimes(2);
   });
 
-  it('字体常量是具名栈（待定 #8：不用 system-ui）', () => {
+  it('字体常量是具名栈（兰台四体：不用 system-ui）', () => {
     expect(PAPER_BODY_FONT).not.toContain('system-ui');
     expect(PAPER_MONO_FONT).not.toContain('ui-monospace');
-    expect(PAPER_BODY_FONT).toContain('Fraunces');
-    expect(PAPER_MONO_FONT).toContain('JetBrains Mono');
+    expect(PAPER_BODY_FONT).toContain('Noto Serif SC');
+    expect(PAPER_MONO_FONT).toContain('IBM Plex Mono');
   });
 
   it('user/reasoning/notice/plan 四类分支各自计高（kinds 全谱）', () => {
-    // user/notice 走 body 字体共享路径；reasoning 走 12px 字体；plan 走 mono
-    expect(measureBlockHeight(block('user', { text: 'hi' }))).toBe(22 + 20 + 36);
-    expect(measureBlockHeight(block('reasoning', { text: 'think' }))).toBe(22 + 20 + 36);
-    expect(measureBlockHeight(block('notice', { text: 'n', level: 'info' }))).toBe(22 + 20 + 36);
+    // user/reasoning 走纯文本路径；notice 带贴黄 chrome 17；plan 带拟策 chrome 31+39
+    expect(measureBlockHeight(block('user', { text: 'hi' }))).toBe(36);
+    expect(measureBlockHeight(block('reasoning', { text: 'think' }))).toBe(36);
+    expect(measureBlockHeight(block('notice', { text: 'n', level: 'info' }))).toBe(17 + 36);
     expect(measureBlockHeight(block('plan', { planId: 'p', title: 't', content: 'c', status: 's' }))).toBe(
-      22 + 20 + 36 + 8,
+      31 + 39 + 36,
     );
   });
 
@@ -113,12 +113,19 @@ describe('paper/measure', () => {
     // 模拟超长 diff：layout 返回 9999 → 截断到 PRE_MAX_H
     layoutMock.mockReturnValueOnce({ height: 9999, lineCount: 999 });
     const diff = block('diff', { lang: 'ts', text: 'x'.repeat(1000) });
-    expect(measureBlockHeight(diff)).toBe(22 + 20 + 14 + PRE_MAX_H + 8);
+    expect(measureBlockHeight(diff)).toBe(16 + 30 + PRE_MAX_H);
     // 超长 tool output：截断到 OUT_MAX_H
     layoutMock.mockReturnValueOnce({ height: 9999, lineCount: 999 });
-    const tool = block('tool', { toolId: 't', name: 'n', label: 'l', args: '', status: 'done', output: 'y'.repeat(1000) });
-    // args 为空走零成本路径；output 截断后 +12 间距
-    expect(measureBlockHeight(tool)).toBe(22 + 20 + OUT_MAX_H + 12);
+    const tool = block('tool', {
+      toolId: 't',
+      name: 'n',
+      label: 'l',
+      args: '',
+      status: 'done',
+      output: 'y'.repeat(1000),
+    });
+    // args 为空走零成本路径；output 截断后 +13 chrome，加顶距 10
+    expect(measureBlockHeight(tool)).toBe(10 + OUT_MAX_H + 13);
     expect(layoutMock).toHaveBeenCalled();
   });
 

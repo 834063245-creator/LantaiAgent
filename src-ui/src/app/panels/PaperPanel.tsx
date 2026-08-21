@@ -46,21 +46,45 @@ import './PaperPanel.css';
 /* ── 块高测量（V3a：走查弹的估算+实测反馈环已拆，真测量走
  *    paper/measure——@chenglou/pretext Canvas measureText，不触发 DOM 重排）── */
 
-/* ── 灰框块渲染器（V3b：体渲染经第五贡献通道解析——ctx.renderers）── */
+/* ── 文类签（页边注 rubric）：BlockKind → 注疏文类（docs/design/lantai-design-spec.md §4）── */
+
+const KIND_ZH: Record<string, string> = {
+  user: '来文',
+  markdown: '正文',
+  reasoning: '夹注',
+  diff: '抄录',
+  tool: '脚注',
+  plan: '拟策',
+  notice: '贴黄',
+};
+const KIND_EN: Record<string, string> = {
+  user: 'USER',
+  markdown: 'AGENT',
+  reasoning: 'THINK',
+  diff: 'CODE',
+  tool: 'TOOL',
+  plan: 'PLAN',
+  notice: 'NOTE',
+};
+
+/** 灰框块渲染器（V3b：体渲染经第五贡献通道解析——ctx.renderers） */
 
 function BlockView({
   block,
+  seq,
   onUnpin,
   onDragHandleMouseDown,
 }: {
   block: SourcedBlock;
+  /** 文类签机读序号（卷内流水号，三位补零） */
+  seq: string;
   onUnpin: (id: string) => void;
-  /** 拖拽手柄（块头 .pp-kind）——V3a 手势分工：块头=整块拖出（D-R2-1），
+  /** 拖拽手柄（文类签 .pp-kind）——V3a 手势分工：签=整块拖出（D-R2-1），
    * 文本区=原生选择（待定 #10 抽纸条的前提：选中文字拖离流出纸条） */
   onDragHandleMouseDown: (e: React.MouseEvent) => void;
 }) {
   const p = block.payload;
-  // 体渲染器：注册表按 kind 解析（内置灰框行 + 插件贡献——后注册胜）；
+  // 体渲染器：注册表按 kind 解析（内置注疏行 + 插件贡献——后注册胜）；
   // 无服务/无行时直渲文本（纸壳永不裸奔的兜底）。
   const renderer = resolveRenderer(block.kind);
   const Body = renderer?.component;
@@ -68,13 +92,15 @@ function BlockView({
     <>
       {/* biome-ignore lint/a11y/noStaticElementInteractions: 拖拽手柄（D-R2-1 拖出钉住）；收回有原生按钮 */}
       <div className="pp-kind pp-drag-handle" onMouseDown={onDragHandleMouseDown}>
-        <span>{block.kind}</span>
+        <span className="pp-zh">{KIND_ZH[block.kind] ?? block.kind}</span>
+        <span className="pp-en">
+          {KIND_EN[block.kind] ?? 'NOTE'} · {seq}
+        </span>
         {block.kind === 'tool' && (
           <span className={`pp-status pp-${(p as { status: string }).status}`}>{(p as { status: string }).status}</span>
         )}
-        {block.state === 'pinned' && <span>📌</span>}
       </div>
-      {Body ? <Body block={block} /> : <div>{(p as { text?: string }).text ?? ''}</div>}
+      {Body ? <Body block={block} /> : <div className="pp-body">{(p as { text?: string }).text ?? ''}</div>}
       {block.state === 'pinned' && (
         <button
           type="button"
@@ -433,7 +459,7 @@ export function PaperPanel() {
 
   /* 收回（D-R2-2 按钮+确认主通道） */
   const onUnpin = useCallback((id: string) => {
-    if (window.confirm('收回该块到对话流原位？')) {
+    if (window.confirm('收回该块到卷中原位？')) {
       pinnedRef.current.delete(id);
       setMsgState((s) => ({ messages: s.messages, tick: s.tick + 1 }));
     }
@@ -572,14 +598,22 @@ export function PaperPanel() {
 
   const zoomLabel = Math.round(view.zoom * 100) + '%';
 
+  /* 文类签机读序号（卷内流水号——转译序即卷次，重转译稳定） */
+  const seqOf = useMemo(() => {
+    const m = new Map<string, string>();
+    blocks.forEach((b, i) => {
+      m.set(b.id, String(i + 1).padStart(3, '0'));
+    });
+    return m;
+  }, [blocks]);
+
   return (
     <div className="pp-root">
       <div className="pp-topbar">
-        <span className="pp-title">纸</span>
-        <span className="pp-tag">走查弹 tracer bullet · 灰框=结构验证，非视觉</span>
+        <span className="pp-title">案卷</span>
+        <span className="pp-tag">兰台 · DOSSIER</span>
         <span className="pp-zoom">
-          {zoomLabel} · {blocks.length} 块（钉 {pinnedRef.current.size} / 条 {strips.length}）· 渲染 {visibleIds.size}/
-          {blocks.length + strips.length}
+          {zoomLabel} · {blocks.length} 块 · 已钉 {pinnedRef.current.size}
         </span>
         <button type="button" className="pp-close" onClick={() => closePanel('paper')}>
           关闭
@@ -599,9 +633,9 @@ export function PaperPanel() {
       <div ref={canvasRef} className={`pp-canvas${panning ? ' pp-panning' : ''}`} onMouseDown={onCanvasMouseDown}>
         {blocks.length === 0 && (
           <div className="pp-empty">
-            当前会话还没有消息。
+            当前案卷还没有内容。
             <br />
-            在主聊天里发一条，或直接在下面输入。
+            直接在下面拟文，或回主聊天发一条消息。
           </div>
         )}
 
@@ -621,9 +655,7 @@ export function PaperPanel() {
               style={{ left: s.x, top: s.y, width: s.w }}
               onMouseDown={(e) => onStripMouseDown(e, s)}
             >
-              <div className="pp-kind">
-                <span>纸条</span>
-              </div>
+              <div className="pp-strip-tag">纸条</div>
               <div>{s.text}</div>
             </div>
           ))}
@@ -636,7 +668,12 @@ export function PaperPanel() {
             if (b.state === 'flow') {
               return (
                 <div key={b.id} className={`pp-block pp-${b.kind}`} style={{ left: slot.x, top: slot.y, width: b.w }}>
-                  <BlockView block={b} onUnpin={onUnpin} onDragHandleMouseDown={(e) => onBlockMouseDown(e, b)} />
+                  <BlockView
+                    block={b}
+                    seq={seqOf.get(b.id) ?? '000'}
+                    onUnpin={onUnpin}
+                    onDragHandleMouseDown={(e) => onBlockMouseDown(e, b)}
+                  />
                 </div>
               );
             }
@@ -657,7 +694,12 @@ export function PaperPanel() {
                   className={['pp-block', `pp-${b.kind}`, 'pp-pinned', isDragged ? 'pp-dragging' : ''].join(' ')}
                   style={{ left: pos.x, top: pos.y, width: b.w }}
                 >
-                  <BlockView block={b} onUnpin={onUnpin} onDragHandleMouseDown={(e) => onBlockMouseDown(e, b)} />
+                  <BlockView
+                    block={b}
+                    seq={seqOf.get(b.id) ?? '000'}
+                    onUnpin={onUnpin}
+                    onDragHandleMouseDown={(e) => onBlockMouseDown(e, b)}
+                  />
                 </div>
               </Fragment>
             );
@@ -672,7 +714,7 @@ export function PaperPanel() {
         <input
           type="text"
           value={inputText}
-          placeholder="向 Agent 写字（真实发送到当前会话）…"
+          placeholder="向 Agent 拟文…（拖住任意块可移出到纸上钉住）"
           onChange={(e) => setInputText(e.target.value)}
           onKeyDown={(e) => {
             // IME 安全谓词（paper/ime）：合成中的 Enter 是候选确认，不发送
@@ -680,7 +722,7 @@ export function PaperPanel() {
           }}
         />
         <button type="button" onClick={onSend}>
-          发送
+          拟文
         </button>
       </div>
     </div>
