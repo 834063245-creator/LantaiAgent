@@ -18,7 +18,7 @@
 | C2 | SettingsPanel 注疏化重排（本轮只继承 token 翻纸，版式未按 set-frame 重排） | ⬜ |
 | C3 | 夹注（reasoning）86% 收窄列宽（本轮块宽由世界坐标决定，未收窄） | ⬜ |
 | C4 | 应用图标 PNG/ICO 套件再生（favicon.svg 已就绪；缺栅格化工具链，`cargo tauri icon` 待跑） | ⬜ |
-| C5 | --obs-* 别名层退役：逐文件迁移到兰台 token 名后整体删除（拆除后消费面大减——PromptShelf/Settings/命令面板；结构变量 bar-h/status-h/rail-w 决策一并清） | ⬜ |
+| C5 | --obs-* 别名层退役：逐文件迁移到兰台 token 名后整体删除（**切片 1 已毕 2026-08-22 深夜**：shared.css 938→222 行死面板样式全删，计算样式对拍零变更；余量 = settings-panel/provider-settings/prompt-shelf/shell 四 css + SettingsPanel/PluginsPage/ContextMenu 内联——休眠层 scene/ui 的 --obs-* 引用不拦退役，它们不再渲染） | 🔶 |
 | C6 | 主聊天输入条 placeholder 文案打磨（纸壳 composer 现文案未按 §5 术语化） | ⬜ |
 | C7 | 来文圈点关键词（.circled 朱砂圈）：需 user 块关键词高亮数据面，渲染层已备样式钩子 | ⬜ |
 | C8 | **V5 拆除交互欠账：多卷切换 UI**（旧会话 tab 条随 ChatBeacon 退役；chat-core 的 switchSession/closeSession/createNewSession 面尚无纸壳入口——案卷首页可续开，卷内切换待设计） | ⬜ |
