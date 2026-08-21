@@ -14,7 +14,7 @@
 |---|---|
 | paper-shell（纸） | 本工程批 5 交付纸壳 preset——纸的装配通道；视觉/交互归纸 |
 | composition-architecture S3 | 本工程批 5 完成即解锁 S3（「白纸执行层外化」完成）；但 S3 逐域迁移等纸真的需要 |
-| paper-shell V5 判断半 | 共居期/观测台退役判据（R3 访谈）**不在本工程**——等「纸能住人」 |
+| paper-shell V5 判断半 | ~~共居期/观测台退役判据（R3 访谈）**不在本工程**——等「纸能住人」~~ **已作废（2026-08-22 深夜）：V5 提前拍板摘除旧观测台前端，拆除不等判据**（原话见 paper-shell/taste-ledger 同日条目） |
 
 ## 拍板记录（interviews/）
 
@@ -40,7 +40,7 @@
 | 4 bootShell 组合接线 | `b78b4ffc` | 行表真源 = composition-store.resolved.shell（时序悖论修正：接线在 bootShell 内部读 store）；preset/patch 禁壳行涟漪首次生效 |
 | 5 纸壳 preset + 落点 | `02836b79` | 内置 preset 表加 paper（保守空 patch）；selected=paper → boot 直落纸面板；**S3 解锁条件满足** |
 
-遗留（如实）：批 3 行为边界——预热期内创建的会话缺 graph 工具（会话工厂在创建时点读 graphData，预热完成后新会话自动获得）；纸壳 preset 未裁壳行（等 V5 判断半产品决策）；R3 共居判据（paper-shell 保留）。
+遗留（如实）：批 3 行为边界——预热期内创建的会话缺 graph 工具（会话工厂在创建时点读 graphData，预热完成后新会话自动获得）；纸壳 preset 未裁壳行（原等 V5 判断半产品决策——**2026-08-22 深夜 V5 提前拍板，拆除开工后随拆随裁**）；~~R3 共居判据（paper-shell 保留）~~ 已作废（拆除不等判据）。
 
 ## 门禁
 
