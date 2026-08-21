@@ -1,24 +1,27 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// SessionsHome — 会话首页（workspace-flip 批 1，D-W1-1 纯会话优先）。
+// SessionsHome — 案卷首页（workspace-flip 批 1，D-W1-1 纯会话优先；
+// V5 拆除 2026-08-22 后为纸壳关掉后的唯一去向——换卷/续开/绑定目录）。
 //
-// 启动一等入口：最近会话 + [新会话]（零目录通用会话）/ [新会话 + 绑定目录]。
-// 替换 index.html 静态欢迎页（INITIALIZE WORKSPACE 选目录前置的时代结束）。
-//
-// 数据源（批 1 范围）：
+// 入口三件：
+//   - 新建案卷（零目录通用会话）/ 新建案卷 · 绑定目录（图谱后台预热）
 //   - 项目会话：上次打开项目的 sessions（冷启动缓存图 source_root →
 //     listSavedSessions）；无缓存 = 空
-//   - 零目录会话：user_sessions_list RPC（~/.hologram/sessions/；批 2 起
-//     可续开——loadSessionFromDisk('') 经 sessionsDir 路由用户级目录）
-// 灰框纪律：结构对即可，视觉是 V2 契约的事。
+//   - 零目录会话：user_sessions_list RPC（~/.hologram/sessions/；
+//     loadSessionFromDisk('') 经 sessionsDir 路由用户级目录）
+//
+// V5 拆除语义：旧「唤起聊天面板（summonPanel）」交互退役——「新建/续开」
+// 直接开纸面板（纸壳是唯一主界面）；顶栏承载窗口拖拽与控制
+// （decorations:false 的自定义标题栏职责自 CommandBar 迁来）。
 
 import { useCallback, useEffect, useState } from 'react';
 import { parseJson, typedRpc } from '../rpc-contract';
 import { workspaceFlow } from '../shell/rows/workspace';
+import { useDockStore } from '../state/dock-store';
 import { ensureUserSessionsDir } from '../ui/chat-session';
 import { useCoreStore } from './chat/core-instance';
-import { useShellStore } from './shell-store';
+import { WinControls } from './WinControls';
 
 /** 零目录会话行（Rust UserSessionEntry 同形） */
 interface UserSession {
@@ -47,9 +50,39 @@ async function lastProjectRoot(): Promise<string | null> {
   }
 }
 
+/** 顶栏拖拽窗口 — CSS -webkit-app-region: drag 无效时（Linux WM）用
+ *  Tauri 原生拖拽兜底（与旧 CommandBar 同款策略）。 */
+interface TauriInternals {
+  metadata?: { currentWindow?: { label?: string } };
+  invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
+}
+function handleBarPointerDown(e: React.PointerEvent): void {
+  const target = e.target as HTMLElement;
+  if (target.closest('button, input, kbd, .wc-btns')) return;
+  if (document.documentElement.getAttribute('data-platform') !== 'linux') return;
+  const ta = (window as unknown as { __TAURI_INTERNALS__?: TauriInternals }).__TAURI_INTERNALS__;
+  if (ta?.invoke) {
+    ta.invoke('plugin:window|start_dragging', {
+      label: ta.metadata?.currentWindow?.label || 'main',
+    }).catch((err) => console.warn('start_dragging failed', err));
+  }
+}
+
+/** 标题栏双击最大化（点击区域不是按钮时） */
+function handleBarDoubleClick(e: React.MouseEvent): void {
+  const target = e.target as HTMLElement;
+  if (target.closest('button, input, kbd, .wc-btns')) return;
+  const ta = (window as unknown as { __TAURI_INTERNALS__?: TauriInternals }).__TAURI_INTERNALS__;
+  if (ta?.invoke) {
+    ta.invoke('plugin:window|toggle_maximize', {
+      label: ta.metadata?.currentWindow?.label || 'main',
+    }).catch((err) => console.warn('toggle_maximize failed', err));
+  }
+}
+
 export function SessionsHome() {
   const core = useCoreStore((s) => s.core);
-  const setView = useShellStore((s) => s.setView);
+  const openPanel = useDockStore((s) => s.openPanel);
   const [projectRoot, setProjectRoot] = useState<string | null>(null);
   const [projectSessions, setProjectSessions] = useState<ProjectSession[]>([]);
   const [userSessions, setUserSessions] = useState<UserSession[]>([]);
@@ -83,40 +116,45 @@ export function SessionsHome() {
     };
   }, [core]);
 
-  /** 新会话（零目录通用会话）：占位 Agent 已由冷启动装配——唤起聊天即聊 */
+  /** 新会话（零目录通用会话）：占位 Agent 已由冷启动装配——开纸即聊 */
   const onNewSession = useCallback(() => {
-    if (!core) return;
-    core.summonPanel();
-  }, [core]);
+    openPanel('paper');
+  }, [openPanel]);
 
-  /** 新会话 + 绑定目录：选目录 → switchWorkspace（图谱后台预热的入口） */
+  /** 新会话 + 绑定目录：选目录 → switchWorkspace（图谱后台预热的入口）
+   *  → 开纸面板。 */
   const onNewSessionWithDir = useCallback(() => {
-    setView('graph'); // 切工作区流程接管视图
+    openPanel('paper');
     void workspaceFlow.switchWorkspace();
-  }, [setView]);
+  }, [openPanel]);
 
-  /** 续开项目会话：载盘 + 唤起面板 */
+  /** 续开项目会话：载盘 + 开纸 */
   const onResumeProject = useCallback(
     (s: ProjectSession) => {
       if (!core || !projectRoot) return;
-      setView('graph');
-      void core.loadSessionFromDisk(projectRoot, s.id).then(() => core.summonPanel());
+      openPanel('paper');
+      void core.loadSessionFromDisk(projectRoot, s.id);
     },
-    [core, projectRoot, setView],
+    [core, projectRoot, openPanel],
   );
 
-  /** 续开零目录会话（批 2）：projectPath='' 路由用户级目录——载盘 + 唤起 */
+  /** 续开零目录会话（批 2）：projectPath='' 路由用户级目录——载盘 + 开纸 */
   const onResumeUser = useCallback(
     (s: UserSession) => {
       if (!core) return;
-      core.summonPanel();
+      openPanel('paper');
       void core.loadSessionFromDisk('', s.id);
     },
-    [core],
+    [core, openPanel],
   );
 
   return (
     <div className="sh-root">
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: 窗口拖拽热区（decorations:false 的标题栏——拖动/双击最大化是窗口语义非控件语义；实际可交互目标只有按钮） */}
+      <header className="sh-titlebar" onPointerDown={handleBarPointerDown} onDoubleClick={handleBarDoubleClick}>
+        <span className="sh-titlebar-drag" />
+        <WinControls />
+      </header>
       <div className="sh-brand">
         <span className="sh-seal" role="img" aria-label="印章：蘭臺">
           <b>蘭</b>

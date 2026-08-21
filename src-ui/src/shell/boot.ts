@@ -8,13 +8,13 @@
 //   2. 组合链（S2-2 用户层 patch + S4-1a preset：选择同步 → 装载 → 发现 →
 //      preset 层应用——全部先于一切装配，保证第一个 Agent 就拿到最终组合）；
 //   3. 按 resolved.shell 表序逐行 await boot（保序 = 现 init 的 await 语义）；
-//   4. 失败隔离：单行抛错 console.error + 继续（loader 同款纪律）。
+//   4. 主视图落点：纸面板直落（V5 拆除后唯一主界面）；
+//   5. 失败隔离：单行抛错 console.error + 继续（loader 同款纪律）。
 //
 // 行序即执行序——表序是字节契约（§2.6 表 = 现 init() 执行序的证据）。
-// workspace 流 deps（行 10 消费）由调用方注入：S2-3 阶段是 main.ts 侧
+// workspace 流 deps（actions 行消费）由调用方注入：S2-3 阶段是 main.ts 侧
 // 函数（零漂移过渡），S2-4 起是 shell/workspace.ts 真源。
 
-import { useShellStore } from '../app/shell-store';
 import { loadCompositionPatch, reloadCompositionPatch } from '../composition/patch-loader';
 import { applyDefaultPreset, syncPresetSelectionFromSettings } from '../composition/preset-assembly';
 import { discoverPresets } from '../composition/preset-discovery';
@@ -25,7 +25,6 @@ import { typedListen } from '../rpc-contract';
 import { loadSettings } from '../settings';
 import { useCompositionStore } from '../state/composition-store';
 import { useDockStore } from '../state/dock-store';
-import { usePresetStore } from '../state/preset-store';
 import { shellRefs } from './runtime';
 
 /** 启动期一次装载用户层 patch（幂等：composition-store 持结果）。 */
@@ -55,7 +54,7 @@ function armCompositionWatcher(): void {
 }
 
 /** 壳引导主入口 — main.ts 调用（fire-and-forget；永不 reject）。
- *  flowDeps 缺省 = 出厂 workspace 流（行 11 模块真源）。 */
+ *  flowDeps 缺省 = 出厂 workspace 流（workspace 行真源）。 */
 export async function bootShell(
   flowDeps: WorkspaceFlowDeps = workspaceFlow,
   composition?: ResolvedComposition,
@@ -65,7 +64,6 @@ export async function bootShell(
     document.addEventListener('contextmenu', (e) => e.preventDefault());
     setLang(loadSettings().display.language);
     document.documentElement.style.setProperty('--font-scale', String(loadSettings().display.fontScale));
-    shellRefs.starGraph?.resize(); // CSS 自定义属性变化 → 容器缩小 → canvas 必须跟随
 
     // 2) 组合链（S4-1a + S4-2）：settings 的 preset 选择同步 → 用户层
     //    patch → preset 发现（用户目录）→ preset 层应用（写
@@ -92,16 +90,12 @@ export async function bootShell(
       }
     }
 
-    // 4) 主视图落点（V5b，workspace-flip 批 5）：preset = paper → 纸视图直落。
-    //    共居不破坏：观测台面板照常注册，Ctrl+P / dock 随时切回；纸面板
-    //    unmountOnClose——关掉即回会话首页。冷启动缓存工作区照常恢复
-    //    （paper preset 不裁壳行——绑目录会话流需要完整接线）。
-    if (usePresetStore.getState().selected === 'paper') {
-      useDockStore.getState().openPanel('paper');
-    }
+    // 4) 主视图落点（V5 拆除，2026-08-22）：纸壳是唯一主界面——boot 收尾
+    //    无条件开纸面板（preset=paper 的分叉随共居期退役；纸面板
+    //    unmountOnClose——「关闭」即回案卷首页换卷/续开）。
+    useDockStore.getState().openPanel('paper');
   } catch (err) {
     // 编排器级失败（引导三件套/patch await——理论不可达，防御性兜底）
     console.error('[shell] 壳引导失败:', err);
-    useShellStore.getState().setView('home');
   }
 }

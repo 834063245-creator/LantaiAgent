@@ -45,7 +45,9 @@
   background: var(--paper);
 }
 
-/* ── 卷首行（书眉）── */
+/* ── 卷首行（书眉）──
+ * V5 拆除后：书眉兼任窗口标题栏（-webkit-app-region: drag——按钮区
+ * no-drag 由 .wc-btns 与按钮自身样式声明）；关卷 = 回案卷首页。 */
 .pp-topbar {
   display: flex;
   align-items: center;
@@ -57,6 +59,11 @@
   flex-shrink: 0;
   position: relative;
   z-index: 30;
+  -webkit-app-region: drag;
+}
+.pp-topbar button,
+.pp-topbar .wc-btns {
+  -webkit-app-region: no-drag;
 }
 .pp-topbar .pp-title {
   font-family: var(--f-song);
@@ -91,6 +98,24 @@
   cursor: pointer;
 }
 .pp-close:hover {
+  border-color: var(--ink-2);
+  color: var(--ink-1);
+  background: var(--paper-deep);
+}
+
+/* 设置入口（书眉——Agent 产品域唯一常驻面板的开关） */
+.pp-settings {
+  font-family: var(--f-song);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--ink-2);
+  background: none;
+  border: var(--rule-soft);
+  border-radius: 0;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.pp-settings:hover {
   border-color: var(--ink-2);
   color: var(--ink-1);
   background: var(--paper-deep);

@@ -1,20 +1,14 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// P3：dock 面板注册表 — DockRail（轨道按钮）与 DockPanel（面板容器）的唯一清单。
-// 增删面板只改这里；开合状态在 state/dock-store，不在本表。
+// P3：dock 面板注册表 — 面板容器（DockPanel）的唯一清单。
 // S4-1.5 消费闭环（设计件 §2.3）：清单源从「PANEL_DEFS 常量」扩为
-// panelDefs() = 常量 + ctx.panels 贡献（合流点不是改写点——常量面零改动；
-// 贡献变更经 state/panel-defs-store 的 tick 信号即时生效）。
+// panelDefs() = 常量 + ctx.panels 贡献（合流点不是改写点；贡献变更经
+// state/panel-defs-store 的 tick 信号即时生效）。
 
 import type { ComponentType } from 'react';
 import { activePanelContributions } from '../../composition/services';
-import { AgentsPanel } from './AgentsPanel';
-import { CheckPanel } from './CheckPanel';
-import { ConstraintsPanel } from './ConstraintsPanel';
-import { DataflowPanel } from './DataflowPanel';
 import { SettingsPanel } from './SettingsPanel';
-import { TasksPanel } from './TasksPanel';
 
 export interface PanelDef {
   /** 面板 id——S1-5 起 string 开集（原 DockPanelId union 退役） */
@@ -31,15 +25,12 @@ export interface PanelDef {
   component: ComponentType;
 }
 
+// V5 拆除（2026-08-22，纸壳唯一主界面）：旧观测台 dock 面板族（check/
+// constraints/dataflow/agents/tasks）随 chrome 退役；纸面板是组合层贡献
+// （paper/paper-plugin.ts）。常量面只剩 settings（Agent 产品域）——
+// S3 起按纸的需要逐域重迁（docs/adr/workspace-concept-ownership.md）。
 export const PANEL_DEFS: PanelDef[] = [
-  { id: 'check', side: 'right', title: '简报', icon: 'check', askAgent: true, component: CheckPanel },
-  { id: 'constraints', side: 'right', title: '约束', icon: 'constraints', askAgent: true, component: ConstraintsPanel },
-  { id: 'dataflow', side: null, title: '数据流', icon: 'dataflow', unmountOnClose: true, component: DataflowPanel },
   { id: 'settings', side: null, title: '设置', icon: 'settings', unmountOnClose: true, component: SettingsPanel },
-  { id: 'agents', side: 'right', title: '智能体', icon: 'agent', askAgent: false, component: AgentsPanel },
-  { id: 'tasks', side: 'right', title: '待办', icon: 'task', askAgent: false, component: TasksPanel },
-  // paper 面板已迁组合层贡献（V3b 壳装配：paper/paper-plugin.ts 经
-  // PanelsService 注册——「重构推到哪个域，行化跟到哪个域」第一行）。
 ];
 
 // ── 装载期运行时校验（S1-5：id 从编译期 union 约束迁到运行时清单校验）──

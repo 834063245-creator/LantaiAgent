@@ -5,7 +5,7 @@
 // 竣工时只有行实现各自的功能测试，表序/失败隔离/编排语义从未有专门钉面）。
 //
 // 覆盖（S2 设计件 §2.6 验收）：
-//   1. 表序 = 引导序（12 行硬序——字节契约）；
+//   1. 表序 = 引导序（V5 拆除后 9 行硬序——字节契约）；
 //   2. 行 id 唯一（roster shell 域寻址面）；
 //   3. workspace 流 deps：actions 行的涟漪语义（deps 缺席 → 跳过注册，warn 可见）；
 //   4. bootShell 失败隔离：单行 boot 抛错 → 后续行照常执行；
@@ -18,13 +18,10 @@ import { builtinShellRows, type ShellRow, type WorkspaceFlowDeps } from '../src/
 
 const EXPECTED_ROW_IDS = [
   'hologram/shell-platform',
-  'hologram/shell-graph',
   'hologram/shell-chat',
   'hologram/shell-bridges',
   'hologram/shell-keyguard',
   'hologram/shell-sandbox-probe',
-  'hologram/shell-dataflow-parser',
-  'hologram/shell-nav',
   'hologram/shell-persistence',
   'hologram/shell-actions',
   'hologram/shell-workspace',
@@ -35,16 +32,12 @@ const EXPECTED_ROW_IDS = [
 function stubFlowDeps(): WorkspaceFlowDeps {
   return {
     switchWorkspace: async () => {},
-    reanalyze: async () => {},
-    toggleDiff: async () => {},
-    doSearch: () => {},
     escLayer: () => {},
-    runCheck: async () => {},
   };
 }
 
 describe('S2-3/S2-4 壳行表（composition/shell-rows.ts）', () => {
-  it('表序 = 引导序（12 行硬序——字节契约，错位即返工）', () => {
+  it('表序 = 引导序（V5 拆除后 9 行硬序——字节契约，错位即返工）', () => {
     expect(builtinShellRows().map((r) => r.id)).toEqual(EXPECTED_ROW_IDS);
   });
 
@@ -88,7 +81,7 @@ describe('S2-3/S2-4 bootShell 编排器（shell/boot.ts）', () => {
       syncPresetSelectionFromSettings: vi.fn(),
       applyDefaultPreset: vi.fn(),
     }));
-    // 12 行全换探针（第 3 行抛错——验证第 4+ 行仍执行）
+    // 9 行全换探针（第 3 行抛错——验证第 4+ 行仍执行）
     const rows: ShellRow[] = EXPECTED_ROW_IDS.map((id, i) => ({
       id,
       boot: () => {
@@ -105,9 +98,9 @@ describe('S2-3/S2-4 bootShell 编排器（shell/boot.ts）', () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { bootShell } = await import('../src/shell/boot');
     await bootShell(stubFlowDeps());
-    // 12 行全部被调用（含抛错的第 3 行）
+    // 9 行全部被调用（含抛错的第 3 行）
     expect(calls).toEqual(EXPECTED_ROW_IDS);
-    expect(errSpy).toHaveBeenCalledWith('[shell] 壳行 boot 失败:', 'hologram/shell-chat', expect.any(Error));
+    expect(errSpy).toHaveBeenCalledWith('[shell] 壳行 boot 失败:', 'hologram/shell-bridges', expect.any(Error));
     errSpy.mockRestore();
   });
 
@@ -193,7 +186,7 @@ describe('S2-3/S2-4 bootShell 编排器（shell/boot.ts）', () => {
     });
     expect(executed).not.toContain('hologram/shell-keyguard');
     expect(executed).not.toContain('hologram/shell-sandbox-probe');
-    expect(executed).toHaveLength(10);
+    expect(executed).toHaveLength(7);
   });
 
   it('actions 行涟漪：workspace 流 deps 缺席 → 跳过注册 + warn（不炸）', () => {

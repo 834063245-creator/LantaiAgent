@@ -10,20 +10,11 @@
 <body>
 
   <!-- ═══════════════════════════════════════════════════════════════
-       APP ROOT — React 壳（CommandBar/DockRail/StatusBar/命令面板）
+       APP ROOT — React 壳（V5 拆除后：纸壳唯一主界面）
+       案卷首页（SessionsHome）常驻为基底层；纸面板（PaperPanel，组合层
+       贡献）全屏覆盖其上；星图 canvas 已随旧观测台退役（图谱后台预热）。
        ═══════════════════════════════════════════════════════════════ -->
   <div id="app-root"></div>
-
-  <!-- ═══════════════════════════════════════════════════════════════
-       GRAPH — Three.js canvas lives here
-       （会话首页 = React SessionsHome，workspace-flip 批 1——原静态
-       welcome DOM 已退役）
-       ═══════════════════════════════════════════════════════════════ -->
-  <div id="graph"></div>
-
-  <!-- 氛围层（原型同款：边缘暗角 + 胶片颗粒；pointer-events none） -->
-  <div id="vig"></div>
-  <div id="grain"></div>
 
   <script type="module" src="/src/main.ts"></script>
 </body>

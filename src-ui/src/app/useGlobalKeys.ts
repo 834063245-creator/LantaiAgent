@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// P1：全局快捷键 — 从 main.ts 的两个 window keydown 监听器平移而来。
-// 只分发动作；具体实现由 main.ts 注入 actions 注册表。
+// 全局快捷键 — 从 main.ts 的 window keydown 监听器平移而来（P1），
+// V5 拆除（2026-08-22）后收敛到纸壳时代快捷键面。
+// 只分发动作；具体实现由 actions 注册表（actions 壳行）注入。
 
 import { useEffect } from 'react';
 import { runAction } from './actions';
@@ -34,30 +35,15 @@ export function useGlobalKeys(): void {
       }
       if (isEditing()) return;
 
-      if (mod && !e.shiftKey && !e.altKey && key === 'l') {
-        e.preventDefault();
-        runAction('toggle-chat');
-      } else if (mod && !e.shiftKey && !e.altKey && key === 'd') {
-        e.preventDefault();
-        runAction('toggle-diff');
-      } else if (mod && !e.shiftKey && !e.altKey && key === 'p') {
-        // 走查弹纸视图（拦截浏览器打印——本应用无打印场景）
+      if (mod && !e.shiftKey && !e.altKey && key === 'p') {
+        // 纸视图开合（关 = 回案卷首页；拦截浏览器打印——本应用无打印场景）
         e.preventDefault();
         runAction('toggle-paper');
       } else if (mod && !e.shiftKey && !e.altKey && e.key === ',') {
         e.preventDefault();
         runAction('toggle-settings');
-      } else if (key === 'f') {
-        runAction('toggle-fold');
-      } else if (key === 'b') {
-        runAction('blast-toggle');
-      } else if (key === 'r') {
-        runAction('reset-cam');
-      } else if (e.key === '?') {
-        st.setShortcutsOpen(!st.shortcutsOpen);
       } else if (e.key === 'Escape') {
-        if (st.shortcutsOpen) st.setShortcutsOpen(false);
-        else runAction('esc-layer');
+        runAction('esc-layer');
       }
     };
     window.addEventListener('keydown', onKey);

@@ -20,8 +20,9 @@ describe('workspace-flip 批 3：打开流两段化（T0 结构钉）', () => {
     const segment = SRC.slice(anchor, anchor + 2400);
     // 结构断言：分支内不得出现 await loadGraphPages（fire-and-forget 契约）
     expect(segment).not.toMatch(/await loadGraphPages/);
-    // 结构断言：loadGraphPages(...).then 链存在（缓段登记）
-    expect(segment).toMatch(/loadGraphPages\(ws, starGraph, meta\)/);
+    // 结构断言：loadGraphPages(...).then 链存在（缓段登记；V5 拆除后
+    // starGraph 位传 null——渲染面退役，数据面照旧）
+    expect(segment).toMatch(/loadGraphPages\(ws, null, meta\)/);
     expect(segment).toMatch(/\.then\(/);
   });
 
@@ -43,7 +44,7 @@ describe('workspace-flip 批 3：打开流两段化（T0 结构钉）', () => {
     const anchor = SRC.indexOf('opts?.skipAnalysis');
     expect(anchor).toBeGreaterThan(0);
     const segment = SRC.slice(anchor, anchor + 1200);
-    expect(segment).toMatch(/loadGraphPages\(ws, starGraph, opts\.cachedGraph\)/);
+    expect(segment).toMatch(/loadGraphPages\(ws, null, opts\.cachedGraph\)/);
     expect(segment).not.toMatch(/await loadGraphPages/);
   });
 });

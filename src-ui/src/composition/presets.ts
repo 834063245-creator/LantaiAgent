@@ -20,8 +20,9 @@
 // shell 域说明：preset 对会话有意义的是 tools/prompt/capabilities 三域
 // （§2.1 生效面）。壳行禁用是应用级决策（壳引导一次性的）——user preset
 // 文件里写 shell 域条目照样会被 resolveRoster 解析（S2 引擎零新语义，
-// 域合法性由 schema 层保证），但「纸壳 preset」届时的 shell 域条目由
-// boot 壳解析消费（V5 双装配挂点，S4-1a 接线）。
+// 域合法性由 schema 层保证）。V5 拆除（2026-08-22）：paper preset 行
+// 退役——纸壳是唯一主界面，主视图落点不再经 preset 分叉（bootShell
+// 收尾无条件开纸面板）。
 //
 // 解析纯函数（本文件）不 fetch 不读盘——远端发现是 preset-discovery 的
 // 职责（与 roster.ts 不 parse yaml 同一分工纪律）。
@@ -76,7 +77,7 @@ const BUILTIN_PRESETS: Array<{
     id: 'minimal',
     metadata: {
       name: 'minimal',
-      description: '精简面：禁 browser/desktop、web、图 hooks 等重装备（V5 纸壳 preset 原型）',
+      description: '精简面：禁 browser/desktop、web、图 hooks 等重装备',
     },
     patch: {
       tools: [
@@ -85,17 +86,6 @@ const BUILTIN_PRESETS: Array<{
       ],
       capabilities: [{ id: 'graph-hooks', disabled: true }],
     },
-  },
-  {
-    id: 'paper',
-    metadata: {
-      name: 'paper',
-      description: '纸壳优先（workspace-flip 批 5）：启动直落纸视图；观测台面板仍可用（Ctrl+P 切换）',
-    },
-    // 保守 patch（空壳域）：仅主视图落点变化，不裁壳行——纸壳用户仍需
-    // graph/chat/workspace 壳行（绑目录会话流依赖 starGraph 接线）；
-    // 壳行级裁剪等 V5 判断半的产品决策。
-    patch: {},
   },
 ];
 

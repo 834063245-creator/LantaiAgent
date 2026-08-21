@@ -29,7 +29,6 @@ export function bootPersistence(refs: ShellRefs): void {
     if (state.seq === prev.seq || !state.reason) return;
     const reason = state.reason;
     document.documentElement.style.setProperty('--font-scale', String(loadSettings().display.fontScale));
-    refs.starGraph?.resize();
     const ws = refs.workspace;
     const chatPanel = refs.chatPanel;
     if (ws && chatPanel) {

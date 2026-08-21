@@ -1,18 +1,20 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// PaperPanel — paper-shell 走查弹（tracer bullet）· 纸视图壳。
+// PaperPanel — 纸视图壳（paper-shell 走查弹长成的主界面，V5 拆除后唯一视图）。
 //
-// 挂法：panel-def 常量注册（side:null 全屏覆盖，SettingsPanel/DataflowPanel 同款）。
+// 挂法：组合层贡献（paper/paper-plugin.ts：side:null 全屏，unmountOnClose）。
 // 数据：真实会话消息（msgStoreForActive(core.panelId)——不 mock，穿全层：
-//   ChatMessage[] → paper/translate 转译 → SourcedBlock[] → 灰框渲染）。
+//   ChatMessage[] → paper/translate 转译 → SourcedBlock[] → 注疏渲染）。
 // 流锚甲（D-R1-3）：流自视口下缘向上生长，输入条固定底部，最新块贴下缘。
 // 无限画布（D-R1-1）：平移/缩放 + 原点十字方位感。
-// 钉住（D-R2-1）：按住块拖出流外松手即钉；按钮收回（D-R2-2，confirm 占位）。
-// 丑得理直气壮：灰框系统字，零视觉打磨——结构对即可。
+// 钉住（D-R2-1）：按住块拖出流外松手即钉；按钮收回（D-R2-2）。
 //
-// 输入条：写 input-store（真实输入框同款真相源），提交走 core.sendMessage()
-// ——agent 层零改动，消息追加后走查弹经 version 订阅自动重转译。
+// 书眉（V5 拆除后）：卷名 + 缩放读数 + 设置入口 + 关卷（回案卷首页）+
+// 窗口控制（decorations:false 的标题栏职责自 CommandBar 迁来）。
+//
+// 输入条：写 input-store（真相源），提交走 core.sendMessage()
+// ——agent 层零改动，消息追加后经 version 订阅自动重转译。
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { resolveRenderer } from '../../composition/renderer-service';
@@ -41,6 +43,7 @@ import {
 import { useDockStore } from '../../state/dock-store';
 import { getChatStore, msgStoreForActive } from '../../ui/chat-store';
 import { useCoreStore } from '../chat/core-instance';
+import { WinControls } from '../WinControls';
 import './PaperPanel.css';
 
 /* ── 块高测量（V3a：走查弹的估算+实测反馈环已拆，真测量走
@@ -474,7 +477,7 @@ export function PaperPanel() {
   /* ── 输入条：真相走 input-store，提交走 core.sendMessage（agent 层零改动）── */
   const [inputText, setInputText] = useState('');
   /* 冷启动死路防护：无活跃会话时 chat-core 的 addNotice 会被
-   * _resolveSessionTarget 丢弃（返回 null）——纸面零反馈 = 走查假阴性。
+   * _resolveSessionTarget 丢弃（返回 null）——纸面零反馈 = 假阴性。
    * 发送前置检查：无会话 → 纸面本地提示块（不入消息 store，UI 层直示）。 */
   const [localNotice, setLocalNotice] = useState<string | null>(null);
   const onSend = useCallback(async () => {
@@ -482,7 +485,7 @@ export function PaperPanel() {
     if (!t || !core) return;
     const sess = getChatStore(core.panelId).sess.getState();
     if (sess.activeIdx < 0 || !sess.sessions[sess.activeIdx]) {
-      setLocalNotice('当前没有活跃会话——请先在主聊天（Ctrl+L）发一条消息建立会话，或在设置中配置 API Key 后重开项目。');
+      setLocalNotice('当前没有活跃会话——请在设置中配置 API Key（书眉「设置」→ Provider）后重开应用。');
       return;
     }
     setLocalNotice(null);
@@ -615,9 +618,18 @@ export function PaperPanel() {
         <span className="pp-zoom">
           {zoomLabel} · {blocks.length} 块 · 已钉 {pinnedRef.current.size}
         </span>
-        <button type="button" className="pp-close" onClick={() => closePanel('paper')}>
-          关闭
+        <button
+          type="button"
+          className="pp-settings"
+          title="设置 (Ctrl+,)"
+          onClick={() => useDockStore.getState().togglePanel('settings')}
+        >
+          设置
         </button>
+        <button type="button" className="pp-close" onClick={() => closePanel('paper')}>
+          关卷
+        </button>
+        <WinControls />
       </div>
 
       {localNotice && (
@@ -635,7 +647,7 @@ export function PaperPanel() {
           <div className="pp-empty">
             当前案卷还没有内容。
             <br />
-            直接在下面拟文，或回主聊天发一条消息。
+            直接在下面拟文开始。
           </div>
         )}
 

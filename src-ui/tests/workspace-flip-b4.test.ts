@@ -7,7 +7,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/app/shell-store', () => ({
-  useShellStore: { getState: () => ({ setView: vi.fn() }) },
+  useShellStore: { getState: () => ({ pushStatus: vi.fn() }) },
 }));
 vi.mock('../src/composition/patch-loader', () => ({
   loadCompositionPatch: vi.fn().mockResolvedValue(undefined),

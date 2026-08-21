@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════
    兰台 · 地基样式（P5 自 base.css/panels.css 抽取；2026-08-22 兰台注疏
    换装——色彩/字体经 tokens.css 的 --obs-* 过渡别名层映射兰台 token）
-   内容：reset / body / 滚动条 / #graph 画布容器 / 全局 .hidden / 案卷首页
+   内容：reset / body / 滚动条 / 全局 .hidden / 案卷首页
+   （V5 拆除 2026-08-22：#graph 画布容器与 #vig/#grain 氛围层随观测台退役）
    ═══════════════════════════════════════════════════════════════ */
 
 *,
@@ -17,15 +18,14 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--obs-void);
-  color: var(--obs-text);
-  font-family: var(--obs-font-body);
+  background: var(--paper);
+  color: var(--ink-1);
+  font-family: var(--f-song);
   font-size: calc(13px * var(--font-scale));
   line-height: 1.5;
   /* ponytail: auto = ClearType on Windows, subpixel on macOS — sharper than antialiased */
   -webkit-font-smoothing: auto;
   text-rendering: optimizeLegibility;
-  /* 兰台纸面：星场暗晕退役（原 dark halo 服务星图底） */
 }
 
 ::-webkit-scrollbar {
@@ -54,67 +54,45 @@ body {
   background: var(--seal-soft);
 }
 
-/* ── 氛围层（P6 原型同款：暗角 + 胶片颗粒）────────────────── */
-#vig {
-  position: fixed;
-  inset: 0;
-  z-index: 3;
-  pointer-events: none;
-  background: radial-gradient(120% 90% at 50% 42%, transparent 62%, rgba(2, 4, 8, 0.42) 100%);
-}
-
-#grain {
-  position: fixed;
-  inset: 0;
-  z-index: 150; /* shell(100) 之上、浮层(300) 之下 —— 原型层级 */
-  pointer-events: none;
-  opacity: 0.05;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
-}
-
-#graph {
-  position: fixed;
-  top: var(--obs-bar-h);
-  left: 0;
-  right: 0;
-  bottom: var(--obs-status-h);
-  z-index: 2;
-  user-select: none;
-}
-
-#graph canvas {
-  outline: none;
-  display: block;
-  user-select: none;
-}
-
-#graph-labels {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 4;
-}
-
 .hidden {
   display: none !important;
 }
 
 /* ── 案卷首页（workspace-flip 批 1：SessionsHome——D-W1-1 纯会话优先；
  * 2026-08-22 兰台换装：印章品牌 + 宋体标题 + 界栏案卷列表，
- * 版式对齐 prototype/lantai.html 案卷首页）── */
+ * 版式对齐 prototype/lantai.html 案卷首页；
+ * V5 拆除后：常驻为基底层（纸面板关闭后的去向），顶栏承接窗口拖拽/控制）── */
 .sh-root {
   position: fixed;
-  top: var(--obs-bar-h);
-  left: 0;
-  right: 0;
-  bottom: var(--obs-status-h);
+  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   z-index: 30;
   background: var(--paper);
+  padding-top: 28px; /* 顶栏让位 */
+}
+
+/* 顶栏（窗口拖拽区 + 窗口控制——decorations:false 的标题栏职责） */
+.sh-titlebar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 6px;
+  -webkit-app-region: drag;
+  z-index: 5;
+}
+.sh-titlebar button {
+  -webkit-app-region: no-drag;
+}
+.sh-titlebar-drag {
+  flex: 1;
 }
 
 .sh-brand {

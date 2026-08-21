@@ -42,15 +42,43 @@ import * as Stream from '../../ui/chat-stream';
 import { type CommandDef, CommandRegistry, DEFAULT_COMMANDS } from '../../ui/command-registry';
 import { type AssistantMessage, type ChatMessage, resetMsgIdCounter, type UserMessage } from '../../ui/message-model';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../../workspace-scope';
-import type { AtAutocompleteHandle } from './AtAutocomplete';
-import type { ChatFooterHandle } from './ChatFooter';
 import type { PromptShelfHandle } from './PromptShelf';
-import type { SlashPanelHandle } from './SlashPanel';
 
 /** 视图注册的输入框命令式接口（聚焦/全选），其余输入状态一律走 input-store */
 export interface ComposerApi {
   focus: () => void;
   selectEnd: () => void;
+}
+
+/** 视图注册的 @ 自动补全句柄（V5 拆除后无注册方——旧聊天视图退役；
+ *  注册槽保留：纸壳未来接块内 @ 引用时复用此契约）。 */
+export interface AtAutocompleteHandle {
+  /** 每次输入事件调用。textBefore = value.slice(0, cursorPos) */
+  update(textBefore: string, cursorPos: number): void;
+  /** 更新可用节点名（来自星图/图数据） */
+  setNodeNames(names: string[]): void;
+  /** 键盘上下导航 — 输入框 keydown 转发 */
+  navigate(delta: number): void;
+  /** 选中当前高亮项 */
+  select(): void;
+  /** 弹层是否有可选项（非加载/空态） */
+  readonly open: boolean;
+}
+
+/** 视图注册的底栏句柄（V5 拆除后无注册方——ChatFooter 退役；槽保留）。 */
+export interface ChatFooterHandle {
+  /** 手动催更（token 条等非 settings 内容） */
+  refresh(): void;
+}
+
+/** 视图注册的斜杠面板句柄（V5 拆除后无注册方——SlashPanel 退役；
+ *  斜杠命令本身仍由 sendMessage 的文本解析面承接，槽保留待纸壳 autocomplete）。 */
+export interface SlashPanelHandle {
+  show(query?: string): void;
+  hide(): void;
+  navigate(delta: number): boolean;
+  select(): CommandDef | null;
+  readonly visible: boolean;
 }
 
 /** 消息列表命令式句柄 —— /compact 重建会话后强制重拉（bump = bumpChat(panelId)） */

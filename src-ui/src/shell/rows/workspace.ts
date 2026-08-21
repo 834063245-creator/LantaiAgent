@@ -1,25 +1,26 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT.
 
-// 壳行 11（hologram/shell-workspace）：workspace 流函数族 —
-// switchWorkspace / reanalyze / toggleDiff / doSearch / escLayer /
-// setupPlaceholderAgent / pickFolder / notifyAllPanels / resetCheckPanelState。
-// 自 main.ts 机械迁移（S2-4）；模块级变量 → shellRefs 动态读（等价：
-// 原闭包读 main.ts 模块级单例，现读 refs 单例——同一对象）。
+// 壳行（hologram/shell-workspace）：workspace 流函数族 —
+// switchWorkspace / escLayer / setupPlaceholderAgent。
+// 自 main.ts 机械迁移（S2-4）；workspace-flip 批 3（打开流两段化）。
+//
+// V5 拆除（2026-08-22，纸壳唯一主界面）：星图渲染面退役——switchWorkspace
+// 不再构造/等待 StarGraph 渲染，图谱数据面（graphData 分页装载 + graph-
+// updated 监听 + runCheck）照旧服务 Agent 工具与简报注入；doSearch /
+// reanalyze / toggleDiff（星图交互族）随观测台退役。
 //
 // 行禁用涟漪（§2.8）：boot 不跑 = flowDeps 未产出 = actions 行跳过注册、
 // 冷启动行调 switchWorkspace 一致地失败（直接 import 本模块调用会炸——
 // 禁用即不可用，文档声明）。
 
 import { log } from '../../agent/logger';
-import { useShellStore } from '../../app/shell-store';
 import { withTimeout } from '../../lifecycle/timeout';
 import { typedRpc } from '../../rpc-contract';
-import type { CheckResult } from '../../state/dock-store';
 import { useDockStore } from '../../state/dock-store';
 import { bumpWorkspaceSwitched } from '../../state/workspace-switch-store';
 import type { CachedGraphMeta, Workspace } from '../../workspace';
-import { FV, loadFileViewer, pushStatus, type ShellRefs, setLoading, shellRefs } from '../runtime';
+import { pushStatus, type ShellRefs, setLoading, shellRefs } from '../runtime';
 
 // 惰性取 Workspace 模块（值面）——防组合层环：roster → shell-rows →
 // 本模块 → workspace.ts → composition-store/roster。类型 import 擦除无环；
@@ -50,15 +51,11 @@ async function switchWorkspace(
   path?: string,
   opts?: { skipAnalysis?: boolean; cachedGraph?: CachedGraphMeta },
 ): Promise<void> {
-  const { starGraph, workspace, wsMachine } = shellRefs;
+  const { workspace, wsMachine } = shellRefs;
   const chatPanel = shellRefs.chatPanel;
-  if (!starGraph) {
-    pushStatus('3D 渲染不可用（WebGL2 初始化失败），无法打开项目');
-    return;
-  }
   if (!chatPanel) {
     // chat 壳行被禁用的涟漪（设计件 §2.8）：无面板承接会话，无法开项目
-    pushStatus('对话面板未初始化，无法打开项目');
+    pushStatus('会话核心未初始化，无法绑定目录');
     return;
   }
   if (wsMachine.isBusy) {
@@ -80,7 +77,7 @@ async function switchWorkspace(
       return;
     }
 
-    // 在可能缓慢的 deactivate() await 之前禁用打开按钮。
+    // 在可能缓慢的 deactivate() await 之前标记加载态。
     setLoading(true, folder);
 
     // 停用旧工作区 — 设 5 秒超时以防卡死
@@ -97,9 +94,7 @@ async function switchWorkspace(
       shellRefs.workspace = null;
     }
 
-    resetCheckPanelState();
-
-    // 创建新工作区 — 立即传入回调，使 Workspace.open（分析 + 渲染）期间
+    // 创建新工作区 — 立即传入回调，使 Workspace.open（分析 + 数据装载）期间
     // 的进度事件推送可见的状态更新。
     const onStatusChange = (msg: string) => {
       pushStatus(msg);
@@ -110,7 +105,7 @@ async function switchWorkspace(
     let ws: Workspace;
     try {
       console.log('[switchWorkspace] calling Workspace.open...');
-      ws = await WorkspaceCls.open(folder, starGraph, chatPanel, opts, { onStatusChange, onLoadingChange });
+      ws = await WorkspaceCls.open(folder, null, chatPanel, opts, { onStatusChange, onLoadingChange });
       console.log('[switchWorkspace] Workspace.open returned');
     } catch (err) {
       console.error('[switchWorkspace] Workspace.open threw:', err);
@@ -125,12 +120,11 @@ async function switchWorkspace(
     // 接线分析失败回调，用于降级模式
     ws.onAnalysisFailed = (err) => {
       console.warn('[switchWorkspace] background analysis failed:', err);
-      pushStatus('⚠️ 后台分析未完成 — 缓存图谱可用，点击重新分析重试');
+      pushStatus('⚠️ 后台分析未完成 — 缓存图谱可用，重新绑定目录可重试');
     };
 
     shellRefs.workspace = ws;
     wsMachine.transition(ws._health === 'degraded' ? 'degraded' : 'active');
-    await notifyAllPanels(ws);
 
     const gd = ws.graphData;
     const nodeCount = gd ? (Array.isArray(gd.nodes) ? gd.nodes.length : Object.keys(gd.nodes || {}).length) : 0;
@@ -143,6 +137,7 @@ async function switchWorkspace(
       edges: gd ? (Array.isArray(gd.edges) ? gd.edges.length : Object.keys(gd.edges || {}).length) : 0,
     });
     setLoading(false);
+    bumpWorkspaceSwitched(); // P1 总线归零：workspace:switched → state/workspace-switch-store
 
     try {
       await ws.setupAgent(chatPanel);
@@ -164,164 +159,13 @@ async function switchWorkspace(
   }
 }
 
-function resetCheckPanelState(): void {
-  useDockStore.getState().setCheckResult({
-    passed: true,
-    timestamp: '',
-    changed_files: [],
-    total_changed_files: 0,
-    l5_violations: [],
-    l4_violations: [],
-    l3_violations: [],
-    l2_violations: [],
-    passed_checks: [],
-    blast_radius: 0,
-    cross_community_edges: 0,
-    new_cycles: 0,
-    new_thread_conflicts: 0,
-    api_signature_changes: 0,
-  } satisfies CheckResult);
-  useShellStore.getState().setViolations(0);
-}
-
-async function notifyAllPanels(ws: Workspace): Promise<void> {
-  useShellStore.getState().setProjectPath(ws.path);
-  useShellStore.getState().setView('graph');
-  shellRefs.chatPanel?.setProjectPath(ws.path);
-  await loadFileViewer();
-  FV()?.get().setProjectPath(ws.path);
-  bumpWorkspaceSwitched(); // P1 总线归零：workspace:switched → state/workspace-switch-store
-}
-
-// ── 简报 ──
-
-async function runCheck(): Promise<void> {
-  const ws = shellRefs.workspace;
-  if (ws) await ws.runCheck();
-}
-
-// ── 搜索 ──
-
-function doSearch(query: string): void {
-  const q = query.trim();
-  const sg = shellRefs.starGraph;
-  if (!q || !sg) return;
-  const found = sg.focusNode(q);
-  if (!found) {
-    pushStatus(`未找到 "${q}"`);
-    setTimeout(() => {
-      const st = useShellStore.getState();
-      if (st.statusText === `未找到 "${q}"`) st.setStatusText('就绪');
-    }, 2000);
-  }
-}
-
-// ── 变更对比 ──
-
-let _diffActive = false;
-async function toggleDiff(): Promise<void> {
-  const store = useShellStore.getState();
-  const sg = shellRefs.starGraph;
-  const ws = shellRefs.workspace;
-  if (!sg) return;
-  if (_diffActive) {
-    sg.clearDiff();
-    _diffActive = false;
-    store.setDiffActive(false);
-    pushStatus('已清除变更着色');
-    return;
-  }
-  if (!ws?.path) {
-    pushStatus('请先打开项目');
-    return;
-  }
-  try {
-    const beforePath = `${ws.path}/.hologram/baseline.json`;
-    const diffJson = await typedRpc('hologram_call', { tool: 'graph_diff', args: { before_path: beforePath } });
-    const diff = JSON.parse(diffJson);
-    if (diff.is_empty) {
-      pushStatus('已创建变更基线 · 再次分析后即可比较差异');
-    } else {
-      sg.showDiff(diff);
-      _diffActive = true;
-      store.setDiffActive(true);
-      pushStatus(
-        `+${diff.added_nodes?.length || 0} / -${diff.removed_nodes?.length || 0} / ~${diff.modified_nodes?.length || 0}`,
-      );
-    }
-  } catch (err) {
-    pushStatus(`变更分析失败: ${err}`);
-  }
-}
-
-// ── Re-analyze — 原地重分析，不切换工作区 ──
-
-async function reanalyze(): Promise<void> {
-  const sg = shellRefs.starGraph;
-  if (!sg) return;
-  if (shellRefs.wsMachine.isBusy) {
-    pushStatus('正在切换工作区，请稍候…');
-    return;
-  }
-  const ws = shellRefs.workspace;
-  if (!ws?.path) {
-    pushStatus('请先打开项目');
-    return;
-  }
-  useShellStore.getState().setAnalyzing('reanalyze');
-  pushStatus('重新分析中…');
-  try {
-    console.log('[reanalyze] step 1: calling analyze_and_load', ws.path);
-    const raw = await typedRpc('analyze_and_load', { path: ws.path, force: true });
-    console.log('[reanalyze] step 2: analyze_and_load returned meta, length:', raw?.length);
-    // 在漫长的 await 期间防止工作区切换。
-    if (shellRefs.workspace !== ws) {
-      console.log('[reanalyze] workspace switched during analysis — discarding result');
-      pushStatus('工作区已切换，重分析已取消');
-      return;
-    }
-    // P0-2 分页化：analyze_and_load 只回 meta，图数据逐页拉取重建。
-    const { loadGraphPages } = await wsMod();
-    const meta = JSON.parse(raw) as CachedGraphMeta;
-    ws.graphData = {
-      meta: meta.meta || {},
-      nodes: [],
-      edges: [],
-      communities: [],
-      hierarchical_communities: [],
-    };
-    await loadGraphPages(ws, sg, meta);
-    const nc = Array.isArray(ws.graphData.nodes)
-      ? ws.graphData.nodes.length
-      : Object.keys(ws.graphData.nodes || {}).length;
-    console.log('[reanalyze] step 3: pages loaded, nodes:', nc);
-    pushStatus(`✨ ${nc} 节点已就绪`);
-    console.log('[reanalyze] step 4: done');
-  } catch (e) {
-    console.error('[reanalyze] FAILED:', e);
-    pushStatus(`重分析失败: ${e}`);
-  } finally {
-    useShellStore.getState().setAnalyzing(null);
-  }
-}
-
 // ── Esc 逐层关闭（快捷键经 useGlobalKeys → actions 分发到此）──
 
 function escLayer(): void {
-  const sg = shellRefs.starGraph;
-  // 图内部 Escape 状态（原在 graph.ts keydown 中，现已统一）
-  if (sg?.handleEscape()) return;
-  // 全局 UI 层
   const dock = useDockStore.getState();
-  // 走查弹纸视图：全屏覆盖层最先关（settings/dataflow 同层——按打开顺序覆盖关系，
-  // paper 是后开的覆盖层，置于本函数最前符合视觉栈序）
+  // 纸面板：全屏覆盖层最先关（关 = 回案卷首页换卷/续开）
   if (dock.isOpen('paper')) dock.closePanel('paper');
-  else if (sg?.isInsideGalaxy) sg.exitGalaxy();
-  else if (dock.isOpen('check')) dock.closePanel('check');
-  else if (dock.isOpen('constraints')) dock.closePanel('constraints');
-  else if (shellRefs.chatPanel?.isOpen()) shellRefs.chatPanel.close();
-  else if (FV()?.get().isOpen) FV()?.get().close();
-  else sg?.clearAgentHighlight();
+  else if (dock.isOpen('settings')) dock.closePanel('settings');
 }
 
 // ── 辅助：用占位工作区设置 agent（未加载项目）──
@@ -354,17 +198,13 @@ async function setupPlaceholderAgent(): Promise<void> {
 /** 导出面：冷启动行 + actions 行消费的 workspace 流函数族。 */
 export const workspaceFlow = {
   switchWorkspace,
-  reanalyze,
-  toggleDiff,
-  doSearch,
   escLayer,
-  runCheck,
 };
 
 /** 占位 agent 装配（冷启动行消费——无缓存/无路径分支共用）。 */
 export { setupPlaceholderAgent };
 
-/** 壳行 11 boot：workspace 流本身就是模块级函数族——boot 无接线动作，
+/** 壳行 boot：workspace 流本身就是模块级函数族——boot 无接线动作，
  *  仅暴露 flow 导出（编排器经 deps 注入给 actions 行 / 冷启动行）。
  *  模块 import 即行生效（纯函数定义无副作用），boot 保留为空操作以
  *  占住表序（行禁用语义 = 模块仍被 import，flow 调用一致地失败）。 */

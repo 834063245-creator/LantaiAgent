@@ -22,9 +22,11 @@ import { builtinToolRows } from '../src/composition/tool-rows';
 const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r.id);
 
 describe('composition/presets（S4-0 preset 数据模型）', () => {
-  it('内置表含 standard/minimal/paper，standard 在首（表序 = 呈现序）', () => {
+  it('内置表含 standard/minimal，standard 在首（表序 = 呈现序）', () => {
     const table = builtinPresets();
-    expect(table.map((p) => p.id)).toEqual(['standard', 'minimal', 'paper']);
+    // V5 拆除（2026-08-22）：paper preset 行退役——纸壳是唯一主界面，
+    // 主视图落点不再经 preset 分叉。
+    expect(table.map((p) => p.id)).toEqual(['standard', 'minimal']);
     expect(table.every((p) => p.builtin)).toBe(true);
   });
 

@@ -1,49 +1,36 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// P1：应用壳 — 单 React 根。组合全部新 chrome，挂全局快捷键。
-// P3：六个 dock 面板收编进 DockPanel；ContextMenu / FileTranslator 经 portal 宿主渲染。
+// 应用壳 — 单 React 根（V5 拆除后，2026-08-22）。
+//
+// 纸壳（PaperPanel，组合层贡献）是唯一主界面；本树常驻：
+//   - SessionsHome：案卷首页（纸面板关闭后的去向——换卷/续开/绑定目录）
+//   - DockPanel：面板容器（paper 贡献 + settings 常量）
+//   - CommandPalette：命令面板（Ctrl+K；组合层命令贡献的合流消费面）
+//   - ContextMenuHost：右键菜单 portal 宿主（通用基础设施）
+//   - PromptShelfHost：ask_user / 权限卡独立浮层（会话编排域刚需）
+//
+// 旧观测台 chrome（CommandBar/DockRail/StatusBar/TimelineHUD/
+// ShortcutsOverlay/ChatBeacon）已随 V5 退役。
 
-import { useEffect } from 'react';
-import { CommandBar } from './CommandBar';
 import { CommandPalette } from './CommandPalette';
 import { ContextMenuHost } from './ContextMenu';
-import { ChatBeacon } from './chat/ChatBeacon';
 import { useCoreStore } from './chat/core-instance';
-import { DockRail } from './DockRail';
+import { PromptShelfHost } from './chat/PromptShelfHost';
 import { DockPanel } from './panels/DockPanel';
-import { FileTranslatorPortal } from './panels/FileTranslatorPortal';
 import { SessionsHome } from './SessionsHome';
-import { ShortcutsOverlay } from './ShortcutsOverlay';
-import { StatusBar } from './StatusBar';
-import { useShellStore } from './shell-store';
-import { TimelineHUD } from './TimelineHUD';
 import { useGlobalKeys } from './useGlobalKeys';
 
 export function App() {
   useGlobalKeys();
   const core = useCoreStore((s) => s.core);
-  const view = useShellStore((s) => s.view);
-
-  useEffect(() => {
-    // 会话首页（workspace-flip 批 1）：React 渲染，替换原静态 welcome DOM。
-    // 星图 canvas 仍是 imperative-DOM 所有者（scene/graph.ts）——只做显隐。
-    const graph = document.getElementById('graph');
-    if (graph) graph.classList.toggle('hidden', view === 'home');
-  }, [view]);
   return (
     <>
-      {view === 'home' && <SessionsHome />}
-      <CommandBar />
-      <TimelineHUD />
-      <DockRail side="right" />
-      <StatusBar />
-      <CommandPalette />
-      <ShortcutsOverlay />
-      {core ? <ChatBeacon core={core} /> : null}
+      <SessionsHome />
       <DockPanel />
+      <CommandPalette />
       <ContextMenuHost />
-      <FileTranslatorPortal />
+      {core ? <PromptShelfHost core={core} /> : null}
     </>
   );
 }

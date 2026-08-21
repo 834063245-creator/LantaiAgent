@@ -1,13 +1,13 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT.
 
-// workspace-flip 批 5 测试 — 纸壳 preset + 主视图落点（V5b）。
+// workspace-flip 批 5 测试 — 主视图落点。
+// V5 拆除（2026-08-22，用户深夜拍板「摘除旧观测台前端」）：paper preset
+// 行退役——纸壳是唯一主界面，bootShell 收尾无条件开纸面板（原「selected
+// = paper 才直落」的共居期分叉作废）。本文件改钉新语义。
 
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('../src/app/shell-store', () => ({
-  useShellStore: { getState: () => ({ setView: vi.fn() }) },
-}));
 vi.mock('../src/composition/patch-loader', () => ({
   loadCompositionPatch: vi.fn().mockResolvedValue(undefined),
   reloadCompositionPatch: vi.fn(),
@@ -27,36 +27,24 @@ vi.mock('../src/settings', () => ({
 }));
 vi.mock('../src/i18n', () => ({ setLang: vi.fn() }));
 vi.mock('../src/shell/runtime', () => ({
-  shellRefs: { starGraph: null },
+  shellRefs: { starGraph: null, chatPanel: null, workspace: null, wsMachine: {} },
 }));
 
-import { builtinPresetById, builtinPresets } from '../src/composition/presets';
+import { builtinPresetById } from '../src/composition/presets';
 import { bootShell } from '../src/shell/boot';
 import { usePresetStore } from '../src/state/preset-store';
 
-describe('workspace-flip 批 5：纸壳 preset（V5b）', () => {
-  it('内置表含 paper 行（保守 patch：空壳域——只落视图不裁壳行）', () => {
-    const paper = builtinPresetById('paper');
-    expect(paper).toBeDefined();
-    expect(paper?.builtin).toBe(true);
-    expect(paper?.patch).toEqual({});
-    expect(builtinPresets().map((p) => p.id)).toContain('paper');
+describe('V5 拆除：主视图落点（纸壳唯一主界面）', () => {
+  it('paper preset 行已退役（内置表只剩 standard/minimal）', () => {
+    expect(builtinPresetById('paper')).toBeUndefined();
   });
 
-  it('preset 选择器往返：standard ↔ paper（设置面板选择器同款语义）', () => {
-    usePresetStore.getState().select('paper');
-    expect(usePresetStore.getState().selected).toBe('paper');
-    usePresetStore.getState().select('standard');
-    expect(usePresetStore.getState().selected).toBe('standard');
-  });
-
-  it('主视图落点：selected = paper → bootShell 后纸面板打开', async () => {
+  it('主视图落点不再看 preset：selected = standard → bootShell 后纸面板仍打开', async () => {
     const { useDockStore } = await import('../src/state/dock-store');
-    usePresetStore.getState().select('paper');
+    usePresetStore.getState().select('standard');
     await bootShell();
     expect(useDockStore.getState().open.paper).toBe(true);
     // 收尾（不污染其他测试）
     useDockStore.getState().closePanel('paper');
-    usePresetStore.getState().select('standard');
   });
 });

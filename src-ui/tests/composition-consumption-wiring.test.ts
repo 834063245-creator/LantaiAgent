@@ -38,9 +38,9 @@ describe('S4-1.5 panels 合流点：panelDefs() + bump 信号', () => {
   it('无贡献 = 内置清单全等（零漂移）', async () => {
     const root = await bootServices();
     const defs = panelDefs();
-    // V3b 起 paper 面板是 paperPlugin 贡献（本用例只 boot 四 service，无 paper）——
-    // 内置常量面六项全等。
-    expect(defs.map((d) => d.id)).toEqual(['check', 'constraints', 'dataflow', 'settings', 'agents', 'tasks']);
+    // V3b 起 paper 面板是 paperPlugin 贡献（本用例只 boot 四 service，无 paper）；
+    // V5 拆除（2026-08-22）后内置常量面只剩 settings。
+    expect(defs.map((d) => d.id)).toEqual(['settings']);
     await root[Symbol.asyncDispose]?.();
   });
 
@@ -57,17 +57,17 @@ describe('S4-1.5 panels 合流点：panelDefs() + bump 信号', () => {
     // 注册 → 信号 bump（即时生效语义）
     expect(usePanelDefsStore.getState().panelDefsTick).toBe(tick0 + 1);
     expect(panelDefs().some((d) => d.id === 'probe-panel')).toBe(true);
-    // 与内置同 id → 内置胜（console.warn 可见，清单仍 6 项）
+    // 与内置同 id → 内置胜（console.warn 可见，清单仍 1 项）
     const tick1 = usePanelDefsStore.getState().panelDefsTick;
     const disposeShadow = root.panels.register({
-      id: 'check',
-      side: 'right',
+      id: 'settings',
+      side: null,
       title: '影子面板',
-      icon: 'check',
+      icon: 'settings',
       component: () => null,
     });
     expect(usePanelDefsStore.getState().panelDefsTick).toBe(tick1 + 1);
-    expect(panelDefs().filter((d) => d.id === 'check').length).toBe(1);
+    expect(panelDefs().filter((d) => d.id === 'settings').length).toBe(1);
     disposeShadow();
     dispose();
     // dispose → 信号 bump + 贡献消失

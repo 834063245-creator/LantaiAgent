@@ -1,16 +1,21 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT.
 
-// 壳行 12（hologram/shell-cold-start）：冷启动决策 + 欢迎屏按钮 +
-// 画布焦点释放。自 main.ts 机械迁移（S2-4）。
-// 行禁用涟漪（§2.8）：永远欢迎屏（开项目动作仍可用——actions 行独立）。
+// 壳行（hologram/shell-cold-start）：冷启动决策。
+// 自 main.ts 机械迁移（S2-4）；workspace-flip 批 1/3（纯会话优先 + 打开流
+// 两段化）；V5 拆除（2026-08-22）——星图渲染分支退役（旧「有缓存图→
+// 星图视图」不再成立：纸壳是唯一主界面，boot 收尾无条件开纸面板）。
+//
+// 现职责只剩两件：
+//   1. 有缓存项目 → switchWorkspace(skipAnalysis) 恢复工作区数据面
+//      （Agent 工具的图谱预热 + 会话续开）；
+//   2. 无缓存 → setupPlaceholderAgent（零目录通用会话）。
+// 视图不再由此行决定——主视图落点统一在 bootShell 收尾（开纸面板）。
 
-import { useShellStore } from '../../app/shell-store';
 import { isMockMode } from '../../bridge';
 import { typedRpc } from '../../rpc-contract';
-import type { GraphJSON } from '../../scene/graph-types';
 import type { CachedGraphMeta } from '../../workspace';
-import { pushStatus, type ShellRefs, setLoading, shellRefs } from '../runtime';
+import { pushStatus, type ShellRefs, setLoading } from '../runtime';
 import { setupPlaceholderAgent, workspaceFlow } from './workspace';
 
 /** 冷启动缓存载荷 — 分页 meta（P0-2）或旧格式全量图（兼容）。 */
@@ -22,18 +27,6 @@ interface CachedGraphPayload {
 }
 
 export async function bootColdStart(_refs: ShellRefs): Promise<void> {
-  // 欢迎屏按钮已随静态 DOM 退役（workspace-flip 批 1：SessionsHome 接管入口）；
-  // 打开目录动作 = SessionsHome「新会话 · 绑定目录」/ 工具栏 actions（原注册表不变）
-
-  // ponytail: 点 graph 画布时释放输入框焦点，Three.js canvas 不会自动抢焦点
-  document.getElementById('graph')?.addEventListener('pointerdown', () => {
-    const ae = document.activeElement as HTMLElement | null;
-    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) ae.blur();
-  });
-
-  // ═══════════════════════════════════════════════════════════════
-  // 冷启动 — 恢复缓存的项目或显示欢迎界面
-  // ═══════════════════════════════════════════════════════════════
   try {
     let graph: CachedGraphPayload | null = null;
     try {
@@ -43,7 +36,6 @@ export async function bootColdStart(_refs: ShellRefs): Promise<void> {
       // 无缓存图谱
     }
     if (!graph) {
-      useShellStore.getState().setView('home');
       setLoading(false);
       // 在无工作区上下文下设置 agent（仅通用聊天）
       await setupPlaceholderAgent();
@@ -60,23 +52,21 @@ export async function bootColdStart(_refs: ShellRefs): Promise<void> {
     if (nodeCount > 0) {
       const root: string = graph.meta?.source_root || '';
       if (!root) {
-        // 图谱存在但无路径 — 无工作区渲染
-        shellRefs.starGraph?.render(graph as GraphJSON);
-        pushStatus('⚠️ 缓存图谱已加载，但工作区路径丢失 — 请重新打开项目');
-        useShellStore.getState().setProjectPath('');
+        // 图谱存在但无路径 — 无工作区上下文，占位 agent 兜底
+        pushStatus('⚠️ 缓存图谱已加载，但工作区路径丢失 — 请重新绑定目录');
         setLoading(false);
         await setupPlaceholderAgent();
         return;
       }
 
-      // 使用统一的 switchWorkspace 加载缓存图谱
+      // 使用统一的 switchWorkspace 恢复缓存工作区（数据面：图谱预热 + 会话）
       console.log('[init] cold start: switching to cached workspace', root);
       await workspaceFlow.switchWorkspace(root, {
         skipAnalysis: true,
         cachedGraph: graph as CachedGraphMeta,
       });
       console.log('[init] cold start: switchWorkspace done');
-      pushStatus(isMockMode() ? '🎨 Mock 模式 — 所见即所得，秒级刷新' : '已加载缓存图谱');
+      pushStatus(isMockMode() ? '🎨 Mock 模式 — 所见即所得，秒级刷新' : '已恢复上次案卷');
       // 引擎预热通过 runCheck → engine_init（SQLite 缓存）完成。不要在此处触发
       // analyze_project — 它会与 runCheck 的分析回退竞争并阻塞工作区切换。
       return;
@@ -85,8 +75,7 @@ export async function bootColdStart(_refs: ShellRefs): Promise<void> {
     /* 无缓存 */
   }
 
-  // 无缓存图谱 — 会话首页（workspace-flip 批 1：D-W1-1 纯会话优先）
-  useShellStore.getState().setView('home');
+  // 无缓存图谱 — 占位 Agent（零目录通用会话；主视图由 bootShell 收尾直落纸）
   setLoading(false);
   await setupPlaceholderAgent();
 }

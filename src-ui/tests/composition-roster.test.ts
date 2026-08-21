@@ -26,21 +26,20 @@ const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r
 const capKeys = (): string[] => builtinCapabilities().map((c) => c.key);
 
 describe('composition/roster（S2-0 组合引擎）', () => {
-  it('factoryComposition 聚合三张出厂表 + 壳行表（12 行全量，序 = 引导序）', () => {
+  it('factoryComposition 聚合三张出厂表 + 壳行表（V5 拆除后 9 行全量，序 = 引导序）', () => {
     const f = factoryComposition();
     expect(ids(f.tools)).toEqual(ids(builtinToolRows()));
     expect(ids(f.prompt)).toEqual(ids(builtinPromptSections()));
     expect(f.capabilities.map((c) => c.key)).toEqual(capKeys());
     expect(ids(f.shell)).toEqual(ids(builtinShellRows()));
+    // V5 拆除（2026-08-22）：shell-graph / shell-dataflow-parser / shell-nav
+    // 三行随旧观测台退役（星图渲染/DataflowPanel/导航 wire）。
     expect(ids(f.shell)).toEqual([
       'hologram/shell-platform',
-      'hologram/shell-graph',
       'hologram/shell-chat',
       'hologram/shell-bridges',
       'hologram/shell-keyguard',
       'hologram/shell-sandbox-probe',
-      'hologram/shell-dataflow-parser',
-      'hologram/shell-nav',
       'hologram/shell-persistence',
       'hologram/shell-actions',
       'hologram/shell-workspace',

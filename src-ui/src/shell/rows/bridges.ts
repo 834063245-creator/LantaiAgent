@@ -1,10 +1,13 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT.
 
-// 壳行 4（hologram/shell-bridges）：Tauri 事件桥 — unity-event 双击导航 +
-// permission-ask 权限卡片。
-// 自 main.ts 426-511 机械迁移（原 try/catch 外壳保留——浏览器 mock 无
-// Tauri 事件总线，listen 抛错静默）。
+// 壳行（hologram/shell-bridges）：Tauri 事件桥 — permission-ask 权限卡片。
+// 自 main.ts 426-511 机械迁移（S2）；V5 拆除（2026-08-22）后 unity-event
+// 桥（星图双击/路径选择联动）随观测台退役，只保留权限请求桥——它服务
+// Agent 会话编排（与视图无关）。
+//
+// 权限卡承接面：chat-core.showPermissionCard → PromptShelf（V5 起经
+// App 根的 PromptShelfHost 独立挂载，不再依赖旧聊天面板）。
 
 import { typedListen, typedRpc } from '../../rpc-contract';
 import { getPanelStore } from '../../state/panel-store';
@@ -15,24 +18,7 @@ export async function bootBridges(refs: ShellRefs): Promise<void> {
   // Tauri 事件监听 — 纯浏览器 dev(mock) 环境无 __TAURI_INTERNALS__，
   // bridge.listen 返回空操作 unlisten（权限卡在 mock 下不会出现）
   try {
-    await typedListen('unity-event', ({ event: evt, payload }) => {
-      console.log('[Unity]', evt, payload);
-      if (evt === 'node_double_clicked') {
-        const parts = payload.split('|');
-        if (parts.length > 1 && parts[1]) shellNavigateToFile(parts[1]);
-      }
-      if (evt === 'path_selected') {
-        const parts = payload.split('|');
-        if (parts.length === 2) {
-          chatPanel?.open();
-          chatPanel?.ask(
-            `分析从 ${parts[0]} 到 ${parts[1]} 的依赖路径。请分析这条依赖链的架构合理性、风险点、以及如果修改起点的潜在影响范围。`,
-          );
-        }
-      }
-    });
-
-    // ── 后端权限请求 → 前端内联聊天卡片桥接 ──
+    // ── 后端权限请求 → 前端提示卡桥接 ──
     // 白名单按后端 Tool.name() 匹配（payload.tool）：
     // "Edit" = edit_file/write_file/delete_file/move_file/create_directory/log_append。
     // 注意与 src-tauri permissions::auto_mode_allows 保持同一份名单（两端镜像）。
@@ -101,11 +87,4 @@ export async function bootBridges(refs: ShellRefs): Promise<void> {
   } catch {
     /* 浏览器 mock：无 Tauri 事件总线 */
   }
-}
-
-// shell.wire 在 nav 行注册（行 8）——此处经动态 import 解耦模块级循环：
-// bridges 行先于 nav 行执行是表序事实，运行时 shell.wire 已就绪。
-async function shellNavigateToFile(path: string): Promise<void> {
-  const { shell } = await import('../../ui/app-shell');
-  shell.navigateToFile(path);
 }
