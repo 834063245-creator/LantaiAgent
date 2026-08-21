@@ -3,7 +3,7 @@
 > **本目录阅读顺序**：① 本 README（工程定位 + 管线 + 待定清单）→ ② `interviews/`（按日期，最新拍板为准）→ ③ `taste-ledger.md`（视觉决定账本，V2 起持续记账）→ ④ `walkthrough.md`（走查弹——已毕业，判定记录在档）。设计原理在 `docs/design/一张纸-Agent软件交互形态设计.md`（注意 §2.3 有界画布已被 R1 修订为无限画布+方位感，见 interviews/R1-2026-08-20.md D-R1-1）。
 > **代码入口**：`src-ui/src/paper/README.md`（走查弹交付的 V3a 首批真文件——块模型/转译/画布数学分层说明 + 拍板决定映射）。
 
-> 立项：2026-08-20 · 状态：**Active（2026-08-21 走查弹毕业——用户判定「感觉是对的」（判定记录见 walkthrough.md）；下一步 V3a 骨架内核开工。V1 视觉暂停于两轮负结果，见 taste-ledger。走查涌现新课题：块粒度与截取，见待定清单 #10）**
+> 立项：2026-08-20 · 状态：**Active（2026-08-22 V3a 骨架内核竣工——测量引擎切换 @chenglou/pretext / 视口虚拟化 / 抽纸条 / 方位感（Home+小地图）/ IME 谓词，51 无头测试全绿；走查弹 2026-08-21 毕业（判定记录见 walkthrough.md）。V1 视觉暂停于两轮负结果，见 taste-ledger。下一步 V3b 壳装配（gate：组合层 S1 已满足）**
 > 设计地基：`docs/design/一张纸-Agent软件交互形态设计.md`（§1-5 已定：卷轴隐喻 / 两层所有权 / 块协议 / 三层分离 / 视觉语言；§6 为待决清单）
 > 原型资产：`prototype/` 8 个 HTML 原型 + 4 张预览图（见 §资产盘点）
 > 组合层关系：`composition-architecture/`——纸壳最终装配在组合层上（V3b，gate 于其 S1），但那是**装配关系，不是排程关系**
@@ -34,8 +34,8 @@
 | `ink-brass-prototype.html` / `-scene-v2.html` | 墨与黄铜静物场景（观测日志美感：卷册/压纸/墨表） | V1 候选视觉方向 |
 | `layout-prototype` / `pill-demo` / `toolbar-demo` | 布局 / 胶囊 / 工具条局部探索 | V2 组件清单输入 |
 | `demo.html` / `observatory-concept.html` + 4 预览图 | 旧观测台方向 | 仅参考 |
-| `src-ui/src/paper/` | **走查弹交付的 V3a 首批真文件**（2026-08-21）：块模型 + 转译（含 diff 围栏拆分）+ 画布数学 + 流锚，23 无头测试；壳在 `app/panels/PaperPanel.tsx`（Ctrl+P 开合） | V3a 在其上展开 |
-| `src-ui/src/lib/pretext` | Canvas measureText 排版测量（内部快照，**V3a 时被上游 `@chenglou/pretext` 取代**，见待定 #8） | V3a 测量引擎（切换前暂由 `pretext-cache.ts` 服务观测台） |
+| `src-ui/src/paper/` | **V3a 骨架内核竣工**（2026-08-22）：块模型 + 转译（含 diff 围栏拆分）+ 画布数学 + 流锚 + 真测量（pretext 上游）+ 视口虚拟化 + 抽纸条 + IME 谓词，51 无头测试；壳在 `app/panels/PaperPanel.tsx`（Ctrl+P 开合） | V3b 壳装配在其上展开 |
+| `src-ui/src/lib/pretext` | ~~Canvas measureText 排版测量（内部快照）~~ **已退役（2026-08-22 V3a）**：目录删除，`pretext-cache.ts` 切上游 `@chenglou/pretext` | — |
 | 设计文档 §6 清单 | 7 个待验证/待决策 | §问题分配表 |
 
 ## 管线
@@ -70,9 +70,11 @@
 
 **这是视觉契约**：此后一切生产代码的视觉只从这里取。评审试金石：「这段视觉是契约里的吗？」——不是，退回。
 
-### V3a — 骨架内核（壳无关，可与组合层 S0-S2 并行；agent 主场）
+### V3a — 骨架内核（壳无关，可与组合层 S0-S2 并行；agent 主场）— ✅ 竣工（2026-08-22）
 
 > 走查弹（2026-08-21 毕业）已提前交付了 V3a 的第一批真文件：`src/paper/`（块模型/转译/画布数学/流锚）+ PaperPanel——V3a 在其上展开，不是从零开始。
+>
+> **竣工清单（2026-08-22）**：测量引擎切换（`paper/measure.ts`，上游 `@chenglou/pretext@0.0.8`；内部 `lib/pretext` 快照退役删除，`ui/pretext-cache.ts` 观测台侧同步切上游包零行为变更）；视口虚拟化（`paper/virtualize.ts`：flow 窗口二分 + pinned 矩形相交 + overscan 缓冲；PaperPanel 渲染窗口化——顶栏可见「渲染 k/总数」读数）；抽纸条（`paper/selection.ts`：拷贝语义纸条模型 + 壳层选区拖出手势，块头手柄/文本选择手势分工）；方位感（Home 回原点 + 小地图内容聚落/视口框）；IME spike（`paper/ime.ts` 谓词钉死：合成中 Enter 不提交；V3b 块内编辑候选窗错位风险记录在案）。字体栈全具名（Fraunces/Noto Serif SC/JetBrains Mono——测量/渲染两处对齐）。门禁：build + vitest 1520 passed + biome 零新增。测试：`tests/paper-v3a.test.ts` 28 例（kinds 全谱 / 截断路径 / FIFO 淘汰 / 虚拟化 / 抽纸条 / IME 谓词）。
 
 - 块数据模型：`{ id, 类型, 内容, state: flow|pinned, 世界坐标 x/y/w }`（设计文档 §3.1 真相层；state 默认 `flow`——D-R1-2；**钉住块 = 活引用非拷贝**，存储挂文件源、渲染层是视图——D-R2-3；**世界坐标唯一真相**——D-R2-4）
 - **块粒度与截取（已定案 2026-08-21，待定 #10）**：混合方案、重心选区拖出——块级为默认粒度；**选中一段文字拖离流 = 抽纸条**（与 D-R2-3「塞纸条」隐喻同构），选区块为拷贝语义（纸条本体），活引用仅块级保留；转译层不做段落预拆。施工依赖逐行布局原语（与测量引擎切换同批）
@@ -120,8 +122,8 @@ roster 级切换 → AB 共居期 → 观测台退役判据（R3 定）。星图
 | 5 | V2 契约内容：三源 token 合并 + 金样清单 + 组件清单 | agent 转录，用户验收 | V1 定向后 |
 | 6 | V4 止损参数：每维 3 环上限已定；总环数预算（建议 ≤20） | 用户拍板 | V4 开工时 |
 | 7 | ~~截图回路验证刺（cdp_screenshot 真跑通一次）~~ **✅ 已验（2026-08-21 提前钉刺，早于计划的 V4 开工首日）**：回路四段中三段实测打通——① 应用自身 webview 经 `tauri.conf.json` `--remote-debugging-port=9222` 应答 CDP（`/json/list` 可见 `tauri.localhost` page target，标题「全息观测站」）；② WS `Page.captureScreenshot` → PNG 落盘成功（1000×700，与窗口配置一致，591KB 非空）；③ PNG 结构合法（签名/IHDR 校验过）。**第四段 read_image 因当前会话模型（GLM-5.3-think-max）不支持图片输入未在本会话验证**——留给后续 vision 会话补一根刺即可，属模型能力问题非回路缺陷。spike 产物已清理。 | agent | 已完成 |
-| 8 | ~~IME spike、文本块排版纪律、虚拟化方案~~ **测量引擎选型已定（2026-08-21 用户发现上游）**：切 `@chenglou/pretext`（npm 正式包，49.9k★，MIT，2026-03 起活跃维护）——与仓内 `src-ui/src/lib/pretext` 同源同思想（都出 Sebastian Markbage 的 text-layout 研究线；内部版是其冻结快照），能力超集：手动逐行布局（`layoutNextLineRange`/`walkLineRanges`）、变宽流式、rich-inline、免字符串统计（虚拟化正好要用）。**内部版 V3a 时退役**（`pretext-cache.ts` 随观测台聊天虚拟化继续服役至退役）。已知边界：canvas font 简写外 CSS 特性不建模、`system-ui` 在 macOS 不准（有 PLATFORM_BUGS.md ledger）——纸壳字体栈全具名（Fraunces/Noto Serif SC/JetBrains Mono），正好避开。走查弹里的估算+实测反馈环是其过渡替身，V3a 换正式测量后拆。IME spike、文本块排版纪律、虚拟化方案仍归本项 | agent | 选型已定；施工 V3a |
-| 10 | ~~块粒度与截取~~ **已定（2026-08-21 用户拍板）：混合方案，重心在选区拖出（路 C）**——块级为默认粒度（流视觉密度不涨、id 稳定性不伤），**选中一段文字拖离流 = 抽纸条**（与 D-R2-3「塞纸条」隐喻同构），选区块为拷贝语义非活引用（纸条本体）。原设想「并排原型人判」取消——用户确认直觉与 agent 一致，直接定型。牵连落定：转译层不做段落预拆（块 id 续命机制保持现状）；选区 → 新块是纸条语义，活引用仅块级保留；施工依赖逐行布局原语（与 #8 测量引擎切换同批，V3a 落地） | 已拍板 | 施工 V3a |
+| 8 | ~~IME spike、文本块排版纪律、虚拟化方案~~ **✅ 施工已毕（2026-08-22 V3a）**：测量引擎切 `@chenglou/pretext@0.0.8`（`paper/measure.ts` 封装 + prepare 缓存纪律；内部 `lib/pretext` 快照退役删除；`ui/pretext-cache.ts` 观测台侧同步切上游，零行为变更——API 面逐字同形）；字体栈全具名（Fraunces/Noto Serif SC/JetBrains Mono，测量/渲染对齐，避开 system-ui 建模边界）；走查弹估算+实测反馈环已拆（真测量是唯一真相 + webfont ready 重测一轮收敛）；虚拟化 = `paper/virtualize.ts`（flow 二分窗口 + pinned 相交 + overscan）+ PaperPanel 渲染窗口化；IME spike = `paper/ime.ts` 谓词钉死（合成中 Enter 不提交；V3b 块内编辑候选窗错位风险记录在案——那时再 spike 编辑宿主浮出 transform 层）。文本块排版纪律（V2 契约侧）仍开放 | agent | ✅ 已完成 |
+| 10 | ~~块粒度与截取~~ **已定（2026-08-21 用户拍板）：混合方案，重心在选区拖出（路 C）**——块级为默认粒度（流视觉密度不涨、id 稳定性不伤），**选中一段文字拖离流 = 抽纸条**（与 D-R2-3「塞纸条」隐喻同构），选区块为拷贝语义非活引用（纸条本体）。原设想「并排原型人判」取消——用户确认直觉与 agent 一致，直接定型。牵连落定：转译层不做段落预拆（块 id 续命机制保持现状）；选区 → 新块是纸条语义，活引用仅块级保留。**✅ 施工已毕（2026-08-22 V3a）**：`paper/selection.ts`（PaperStrip 模型 + 抽取守卫）+ 壳层手势（块头手柄=整块拖出 / 文本区=原生选择，选区松手带外即成纸条） | 已拍板 | ✅ 已完成 |
 
 用户在本工程的全部出场：#1 访谈（一轮）、#2/#3 选择与访谈、#4 一次拍板、#6 一个数字、**V4 起进入长期共同创作模式（高频沟通-修改-测试循环，这是工程本体，直到你满意为止，没有预设上限）**。其余全部 agent + gate 承担。
 
@@ -132,10 +134,10 @@ roster 级切换 → AB 共居期 → 观测台退役判据（R3 定）。星图
 | ~~白纸 vs 深色~~ | **已拆题（D-R1-5 主题化，不选边）**；余下主题双套机制 → V2 契约 |
 | 写字段落格线 | V1（原型参数化已完成，变体即可） |
 | ~~横向维度角色~~ | **已定（D-R2-4 开放主权区 + 三条消极决定）**；走查弹只验「平移过去是一片可用空」 |
-| 文本块排版纪律 | V2 契约 + V3a 布局数学 |
-| 中文输入法兼容 | V3a IME spike（前置） |
+| 文本块排版纪律 | V2 契约 + ~~V3a 布局数学~~（V3a 已立测量基座：具名字体栈 + measure.ts；契约侧仍开放） |
+| 中文输入法兼容 | ~~V3a IME spike（前置）~~ **已毕**（`paper/ime.ts` 谓词钉死；V3b 块内编辑风险在案） |
 | ~~钉住/引用最小交互~~ | **访谈已毕（D-R2-1/2/3：拖出钉住/按钮确认收回/内推外拉）**；实现 → 走查弹 + V3b |
-| 长会话虚拟化 | V3a（Pretext + 窗口化渲染） |
+| 长会话虚拟化 | ~~V3a（Pretext + 窗口化渲染）~~ **已毕**（virtualize.ts + PaperPanel 窗口化渲染） |
 
 ## 与组合层计划的排程（2026-08-20 拍板：三阶段串行，用户带宽优先）
 

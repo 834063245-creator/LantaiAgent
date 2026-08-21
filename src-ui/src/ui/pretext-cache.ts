@@ -4,7 +4,9 @@
 // 惰性创建离屏 canvas（仅浏览器/Tauri WebView）。字体常量
 // 镜像 chat.css 中的 CSS，使 canvas 测量与 DOM 渲染一致。
 
-import { prepare, layout, clearCache, type PreparedText } from '../lib/pretext/layout.js';
+// V3a（paper-shell 待定 #8）：内部 lib/pretext 快照退役，切上游 @chenglou/pretext。
+// API 面逐字同形（同源快照），零行为变更。
+import { clearCache, layout, type PreparedText, prepare } from '@chenglou/pretext';
 
 // ── 字体常量（必须与 chat.css 匹配）──
 

@@ -20,6 +20,7 @@
     "report:convergence": "node tests/convergence/gate.mjs report"
   },
   "dependencies": {
+    "@chenglou/pretext": "^0.0.8",
     "@fontsource-variable/fraunces": "^5.2.9",
     "@fontsource/jetbrains-mono": "^5.3.0",
     "@fontsource/lxgw-wenkai": "^5.3.0",

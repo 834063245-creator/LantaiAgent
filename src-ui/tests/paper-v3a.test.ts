@@ -1,0 +1,317 @@
+// Copyright (c) 2026 Wenbing Jing. MIT License.
+// SPDX-License-Identifier: MIT
+
+// paper V3a 无头测试 — 测量封装（mock canvas）/ 虚拟化 / 抽纸条。
+// measure 依赖 Canvas 2D（jsdom 没有）→ vi.mock '@chenglou/pretext'，
+// 只测分派/缓存/常量面；真测量的数值精度属上游包自己的测试域。
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { prepareMock, layoutMock } = vi.hoisted(() => ({
+  prepareMock: vi.fn((text: string) => ({ _text: text, _mock: true })),
+  layoutMock: vi.fn(() => ({ height: 36, lineCount: 2 })),
+}));
+vi.mock('@chenglou/pretext', () => ({
+  prepare: prepareMock,
+  layout: layoutMock,
+  clearCache: vi.fn(),
+}));
+
+import { createBlock, DEFAULT_BLOCK_WIDTH, resetBlockIdCounterForTests } from '../src/paper/block-model';
+import { panBy, viewForAnchor, zoomAt } from '../src/paper/canvas-math';
+import { composerSubmitOnKey } from '../src/paper/ime';
+import {
+  clearPaperMeasureCache,
+  measureBlockHeight,
+  measureTextHeight,
+  OUT_MAX_H,
+  PAPER_BODY_FONT,
+  PAPER_MONO_FONT,
+  PRE_MAX_H,
+} from '../src/paper/measure';
+import {
+  makeStrip,
+  moveStrip,
+  resetStripIdCounterForTests,
+  sliceSelection,
+  tryMakeStripFromSelection,
+} from '../src/paper/selection';
+import {
+  type FlowGeom,
+  type PinnedGeom,
+  rectsIntersect,
+  viewportWorldRect,
+  visibleFlowWindow,
+  visiblePinnedIds,
+} from '../src/paper/virtualize';
+
+function block(kind: Parameters<typeof createBlock>[0], payload: object) {
+  return createBlock(kind, payload as never, { messageId: 'm', part: null });
+}
+
+/* ═══ 测量封装 ═══ */
+
+describe('paper/measure', () => {
+  beforeEach(() => {
+    prepareMock.mockClear();
+    layoutMock.mockClear();
+    clearPaperMeasureCache();
+    resetBlockIdCounterForTests();
+  });
+
+  it('文本块高 = 头部 + 内边距 + 测量文本高（mock 常量 36）', () => {
+    const b = block('markdown', { text: '两行文本' });
+    // head 22 + pad 20 + 36
+    expect(measureBlockHeight(b)).toBe(22 + 20 + 36);
+  });
+
+  it('空文本块高 = 头部 + 内边距（测量零成本路径）', () => {
+    const b = block('markdown', { text: '' });
+    expect(measureBlockHeight(b)).toBe(22 + 20);
+  });
+
+  it('diff 块：lang 行计高，pre 封顶 PRE_MAX_H', () => {
+    const withLang = block('diff', { lang: 'ts', text: 'code' });
+    const noLang = block('diff', { text: 'code' });
+    expect(measureBlockHeight(withLang)).toBe(22 + 20 + 14 + 36 + 8);
+    expect(measureBlockHeight(noLang)).toBe(22 + 20 + 0 + 36 + 8);
+  });
+
+  it('tool 块：args + output + err 各计一段，output/err 封顶 OUT_MAX_H', () => {
+    const b = block('tool', { toolId: 't', name: 'n', label: 'l', args: 'a', status: 'done', output: 'o', err: 'e' });
+    // args: 36+8；output: 36+12；err: 36+12；head+pad 42
+    expect(measureBlockHeight(b)).toBe(22 + 20 + 44 + 48 + 48);
+  });
+
+  it('prepare 缓存：同文本同字体只 prepare 一次（FIFO 纪律）', () => {
+    const t = '同一段文本测量两次';
+    measureTextHeight(t, 600);
+    measureTextHeight(t, 300); // 宽度变化只重 layout
+    expect(prepareMock).toHaveBeenCalledTimes(1);
+    measureTextHeight(t, 600, PAPER_MONO_FONT); // 字体变化 → 新条目
+    expect(prepareMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('字体常量是具名栈（待定 #8：不用 system-ui）', () => {
+    expect(PAPER_BODY_FONT).not.toContain('system-ui');
+    expect(PAPER_MONO_FONT).not.toContain('ui-monospace');
+    expect(PAPER_BODY_FONT).toContain('Fraunces');
+    expect(PAPER_MONO_FONT).toContain('JetBrains Mono');
+  });
+
+  it('user/reasoning/notice/plan 四类分支各自计高（kinds 全谱）', () => {
+    // user/notice 走 body 字体共享路径；reasoning 走 12px 字体；plan 走 mono
+    expect(measureBlockHeight(block('user', { text: 'hi' }))).toBe(22 + 20 + 36);
+    expect(measureBlockHeight(block('reasoning', { text: 'think' }))).toBe(22 + 20 + 36);
+    expect(measureBlockHeight(block('notice', { text: 'n', level: 'info' }))).toBe(22 + 20 + 36);
+    expect(measureBlockHeight(block('plan', { planId: 'p', title: 't', content: 'c', status: 's' }))).toBe(
+      22 + 20 + 36 + 8,
+    );
+  });
+
+  it('PRE_MAX_H/OUT_MAX_H 截断路径：mock 返超高时封顶生效（滚动不占高）', () => {
+    // 模拟超长 diff：layout 返回 9999 → 截断到 PRE_MAX_H
+    layoutMock.mockReturnValueOnce({ height: 9999, lineCount: 999 });
+    const diff = block('diff', { lang: 'ts', text: 'x'.repeat(1000) });
+    expect(measureBlockHeight(diff)).toBe(22 + 20 + 14 + PRE_MAX_H + 8);
+    // 超长 tool output：截断到 OUT_MAX_H
+    layoutMock.mockReturnValueOnce({ height: 9999, lineCount: 999 });
+    const tool = block('tool', { toolId: 't', name: 'n', label: 'l', args: '', status: 'done', output: 'y'.repeat(1000) });
+    // args 为空走零成本路径；output 截断后 +12 间距
+    expect(measureBlockHeight(tool)).toBe(22 + 20 + OUT_MAX_H + 12);
+    expect(layoutMock).toHaveBeenCalled();
+  });
+
+  it('FIFO 淘汰：缓存超 500 条目时最早的被逐出（重复测量重新 prepare）', () => {
+    // 填满 500 条（上限内，无淘汰），第 501 条插入触发最早条目逐出
+    for (let i = 0; i < 500; i++) {
+      measureTextHeight('fifo-' + i, 600);
+    }
+    const callsAfterFill = prepareMock.mock.calls.length;
+    measureTextHeight('fifo-overflow', 600); // 第 501 条：插入即逐出 fifo-0
+    expect(prepareMock.mock.calls.length).toBe(callsAfterFill + 1);
+    measureTextHeight('fifo-0', 600); // 已被逐出 → miss → 重新 prepare
+    expect(prepareMock.mock.calls.length).toBe(callsAfterFill + 2);
+    // 最新插入的仍在缓存：hit 不增 prepare
+    measureTextHeight('fifo-overflow', 600);
+    expect(prepareMock.mock.calls.length).toBe(callsAfterFill + 2);
+  });
+});
+
+/* ═══ 虚拟化 ═══ */
+
+describe('paper/virtualize', () => {
+  // 构造一个 10 块流：每块高 100，间距 0（简化），顶边 y = -1000 + i*100
+  const flow: FlowGeom[] = Array.from({ length: 10 }, (_, i) => ({
+    id: 'f' + i,
+    y: -1000 + i * 100,
+    h: 100,
+    x: -360,
+    w: 720,
+  }));
+
+  it('viewportWorldRect：屏幕 [0,w]×[0,h] → 世界矩形互逆', () => {
+    const v = { panX: 500, panY: 704, zoom: 2 };
+    const rect = viewportWorldRect(v, 1000, 800);
+    // 左上角世界坐标 = (0-500)/2 = -250, (0-704)/2 = -352
+    expect(rect.x0).toBe(-250);
+    expect(rect.y0).toBe(-352);
+    expect(rect.x1).toBe((1000 - 500) / 2);
+    expect(rect.y1).toBe((800 - 704) / 2);
+  });
+
+  it('visibleFlowWindow：视口中部 → 连续区间（含与上缘相接的块）', () => {
+    // 视口世界 y ∈ [-600, -100]：块 3 底边恰为 -600（相接可见）→ 块 3..9
+    const rect = { x0: -1e9, y0: -600, x1: 1e9, y1: -100 };
+    const w = visibleFlowWindow(flow, rect);
+    expect(w.first).toBe(3);
+    expect(w.lastExcl).toBe(10);
+  });
+
+  it('visibleFlowWindow：视口在流上方（全不可见）→ 空区间', () => {
+    const rect = { x0: 0, y0: -2000, x1: 100, y1: -1500 };
+    const w = visibleFlowWindow(flow, rect);
+    expect(w.first).toBe(0);
+    expect(w.lastExcl).toBe(0);
+  });
+
+  it('visibleFlowWindow：视口跨流尾（最新块在锚点 y=0）→ 含最后一块', () => {
+    const rect = { x0: -1e9, y0: -50, x1: 1e9, y1: 500 };
+    const w = visibleFlowWindow(flow, rect);
+    expect(w.first).toBe(9);
+    expect(w.lastExcl).toBe(10);
+  });
+
+  it('visibleFlowWindow：overscan 外扩吃进相邻块', () => {
+    // 紧贴块 5 顶边（y=-500）的视口上缘，overscan=150 吃进块 3/4
+    const rect = { x0: -1e9, y0: -500, x1: 1e9, y1: -400 };
+    const w = visibleFlowWindow(flow, rect, 150);
+    expect(w.first).toBe(3); // -500-150=-650 → 第一个底边≥-650 的是块 3
+  });
+
+  it('visibleFlowWindow：空流 → 空区间', () => {
+    const w = visibleFlowWindow([], { x0: 0, y0: 0, x1: 10, y1: 10 });
+    expect(w.first).toBe(0);
+    expect(w.lastExcl).toBe(0);
+  });
+
+  it('visiblePinnedIds：矩形相交保留，不相交剔除', () => {
+    const pinned: PinnedGeom[] = [
+      { id: 'p1', x: 1000, y: -500, w: 720, h: 300 },
+      { id: 'p2', x: -2000, y: -3000, w: 720, h: 300 },
+      { id: 'p3', x: 800, y: -400, w: 720, h: 300 }, // 右伸 x∈[800,1520] 与矩形 x1=1500 相交
+    ];
+    const rect = { x0: -500, y0: -1000, x1: 1500, y1: 0 };
+    expect(visiblePinnedIds(pinned, rect)).toEqual(['p1', 'p3']);
+  });
+
+  it('rectsIntersect 谓词（含边界相接）', () => {
+    const a = { x0: 0, y0: 0, x1: 10, y1: 10 };
+    expect(rectsIntersect(a, { x0: 10, y0: 10, x1: 20, y1: 20 })).toBe(true); // 边相接
+    expect(rectsIntersect(a, { x0: 10.1, y0: 0, x1: 20, y1: 10 })).toBe(false);
+  });
+
+  it('平移/缩放组合下窗口跟随（真实视口变换全链路）', () => {
+    // 初始视口（锚点几何）：1000×800，锚点 (500, 704)，zoom 1
+    const { panX, panY } = viewForAnchor(1000, 800);
+    let v = { panX, panY, zoom: 1 };
+    // 视口世界 y ∈ [-704, 96] → 可见块：底边 ≥ -704 的第一个 = 块 2（-800..-700）
+    let w = visibleFlowWindow(flow, viewportWorldRect(v, 1000, 800));
+    expect(w.first).toBe(2);
+    expect(w.lastExcl).toBe(10);
+    // 沿流向上看更旧内容：把纸往下拖 300px（panY 增大）→ y ∈ [-1004, -204]
+    v = panBy(v, 0, 300);
+    w = visibleFlowWindow(flow, viewportWorldRect(v, 1000, 800));
+    expect(w.first).toBe(0); // 块 0 顶 -1000 已进视口
+    expect(flow[w.lastExcl - 1].y).toBeLessThanOrEqual(-204 + 1);
+    // 放大 2 倍（围绕视口中心）：世界窗口减半 → 可见块更少
+    v = zoomAt(v, 500, 400, 2);
+    const rect = viewportWorldRect(v, 1000, 800);
+    const w2 = visibleFlowWindow(flow, rect);
+    expect(w2.lastExcl - w2.first).toBeLessThan(w.lastExcl - w.first);
+  });
+});
+
+/* ═══ 抽纸条（待定 #10 定案）═══ */
+
+describe('paper/selection', () => {
+  beforeEach(() => resetStripIdCounterForTests());
+
+  it('makeStrip：拷贝语义快照 + 世界坐标', () => {
+    const s = makeStrip('一段引用文字', 300, -200);
+    expect(s.id.startsWith('strip')).toBe(true);
+    expect(s.text).toBe('一段引用文字');
+    expect(s.x).toBe(300);
+    expect(s.y).toBe(-200);
+    expect(s.w).toBe(480);
+  });
+
+  it('strip id 单调唯一、与块 id 空间区分', () => {
+    const a = makeStrip('a', 0, 0);
+    const b = makeStrip('b', 0, 0);
+    expect(a.id).not.toBe(b.id);
+    expect(a.id.startsWith('pb')).toBe(false);
+  });
+
+  it('moveStrip 只改坐标', () => {
+    const s = moveStrip(makeStrip('t', 0, 0), 5, -5);
+    expect(s.x).toBe(5);
+    expect(s.y).toBe(-5);
+    expect(s.text).toBe('t');
+  });
+
+  it('sliceSelection：边界夹取 + 双向容错', () => {
+    expect(sliceSelection('0123456789', 2, 5)).toBe('234');
+    expect(sliceSelection('0123456789', 5, 2)).toBe('234'); // 反向选区
+    expect(sliceSelection('0123456789', -3, 99)).toBe('0123456789'); // 越界夹取
+  });
+
+  it('tryMakeStripFromSelection：纯空白选区不产生纸条（手势落空）', () => {
+    expect(tryMakeStripFromSelection('   \n  ', 0, 5, 0, 0)).toBeNull();
+    expect(tryMakeStripFromSelection('', 0, 0, 0, 0)).toBeNull();
+    const ok = tryMakeStripFromSelection('  有货  ', 0, 5, 10, -10);
+    expect(ok).not.toBeNull();
+    expect(ok?.text).toBe('有货'); // trim
+  });
+});
+
+/* ═══ IME 安全谓词（V3a spike·待定 #8 前置验证）═══ */
+
+describe('paper/ime', () => {
+  it('合成中的 Enter（候选确认）不提交', () => {
+    expect(composerSubmitOnKey('Enter', true)).toBe(false);
+  });
+  it('合成结束后的 Enter 正常提交', () => {
+    expect(composerSubmitOnKey('Enter', false)).toBe(true);
+  });
+  it('Safari 反序时序（compositionend 先于 keydown）也安全：keydown 时 isComposing 已 false → 提交', () => {
+    // 反序场景下用户意图就是换行/提交，谓词判据是 keydown 当刻标志——正确放行
+    expect(composerSubmitOnKey('Enter', false)).toBe(true);
+  });
+  it('非 Enter 键一律不提交（含 IME 导航键）', () => {
+    expect(composerSubmitOnKey('ArrowDown', false)).toBe(false);
+    expect(composerSubmitOnKey('Escape', false)).toBe(false);
+    expect(composerSubmitOnKey('Enter', true)).toBe(false);
+  });
+});
+
+/* ═══ 测量 × 布局链路（mock 测量与真实布局的接缝）═══ */
+
+describe('paper/measure → layoutFlow 接缝', () => {
+  it('测量高度喂 layoutFlow：最新块底边贴锚点不变（D-R1-3 几何不因测量来源漂移）', async () => {
+    const { layoutFlow, ANCHOR } = await import('../src/paper/canvas-math');
+    const blocks = [
+      block('markdown', { text: 'a' }),
+      block('markdown', { text: 'b' }),
+      block('markdown', { text: 'c' }),
+    ];
+    const laid = layoutFlow(blocks.map((b) => ({ id: b.id, h: measureBlockHeight(b), w: b.w })));
+    const last = blocks[blocks.length - 1];
+    // 最新块底边 = y + h = 0（锚点）
+    expect(laid.get(last.id)?.y).toBe(-measureBlockHeight(last));
+    // 块间 gap 语义：中块底 = 新块顶 - gap
+    const mid = blocks[1];
+    expect(laid.get(mid.id)?.y).toBe(-measureBlockHeight(last) - ANCHOR.blockGap - measureBlockHeight(mid));
+    void DEFAULT_BLOCK_WIDTH;
+  });
+});

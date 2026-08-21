@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock pretext — requires Canvas 2D which jsdom doesn't have
-vi.mock('../src/lib/pretext/layout.js', () => ({
+vi.mock('@chenglou/pretext', () => ({
   prepare: vi.fn((text: string) => ({ _text: text, _mock: true })),
   layout: vi.fn(() => ({ height: 36, lineCount: 2 })),
   clearCache: vi.fn(),
 }));
 
-import { estimateMessageHeight, clearHeightCache, getMessageGap } from '../src/ui/message-height';
+import { clearHeightCache, estimateMessageHeight, getMessageGap } from '../src/ui/message-height';
 import type { AssistantMessage, ChatMessage, NoticeMessage, UserMessage } from '../src/ui/message-model';
 
 function makeUserMessage(text: string): UserMessage {
@@ -40,9 +40,7 @@ describe('estimateMessageHeight', () => {
   });
 
   it('estimates assistant message with text part', () => {
-    const msg = makeAssistantMessage([
-      { type: 'text', text: 'hello world this is a test', finalised: false },
-    ]);
+    const msg = makeAssistantMessage([{ type: 'text', text: 'hello world this is a test', finalised: false }]);
     const h = estimateMessageHeight(msg, 300);
     expect(h).toBeGreaterThan(0);
   });
@@ -67,9 +65,7 @@ describe('estimateMessageHeight', () => {
   });
 
   it('estimates assistant message with reasoning part', () => {
-    const msg = makeAssistantMessage([
-      { type: 'reasoning', text: 'thinking about this...' },
-    ]);
+    const msg = makeAssistantMessage([{ type: 'reasoning', text: 'thinking about this...' }]);
     const h = estimateMessageHeight(msg, 300);
     expect(h).toBeGreaterThan(0);
   });
@@ -109,12 +105,8 @@ describe('estimateMessageHeight', () => {
 
   it('finalised text parts inflate height for markdown margins', () => {
     const text = 'some text that wraps';
-    const streamingMsg = makeAssistantMessage([
-      { type: 'text', text, finalised: false },
-    ]);
-    const finalisedMsg = makeAssistantMessage([
-      { type: 'text', text, finalised: true },
-    ]);
+    const streamingMsg = makeAssistantMessage([{ type: 'text', text, finalised: false }]);
+    const finalisedMsg = makeAssistantMessage([{ type: 'text', text, finalised: true }]);
     const hStreaming = estimateMessageHeight(streamingMsg, 300);
     const hFinalised = estimateMessageHeight(finalisedMsg, 300);
     // Finalised markdown has 1.15× inflation
@@ -150,9 +142,7 @@ describe('estimateMessageHeight', () => {
         description: 'sub task',
         status: 'done',
         version: 0,
-        parts: [
-          { type: 'text', text: 'sub text', finalised: true },
-        ],
+        parts: [{ type: 'text', text: 'sub text', finalised: true }],
       },
     ]);
     const h = estimateMessageHeight(msg, 300);

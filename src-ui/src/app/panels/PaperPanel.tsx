@@ -26,67 +26,43 @@ import {
   wheelFactor,
   zoomAt,
 } from '../../paper/canvas-math';
+import { composerSubmitOnKey } from '../../paper/ime';
+import { clearPaperMeasureCache, measureBlockHeight } from '../../paper/measure';
+import { moveStrip, type PaperStrip, tryMakeStripFromSelection } from '../../paper/selection';
 import { translateMessages } from '../../paper/translate';
+import {
+  type FlowGeom,
+  type PinnedGeom,
+  viewportWorldRect,
+  visibleFlowWindow,
+  visiblePinnedIds,
+} from '../../paper/virtualize';
 import { useDockStore } from '../../state/dock-store';
 import { getChatStore, msgStoreForActive } from '../../ui/chat-store';
 import { useCoreStore } from '../chat/core-instance';
 import './PaperPanel.css';
 
-/* ── 块高估算（走查弹不做真测量——Pretext 接入是 V3a 的事；
- *    估算=内容行数×行高+内边距，误差可接受：流内块是垂直排布，
- *    高估/低估只影响块间距，不影响「流的感觉」验证）── */
-/* ── 块高估算（走查弹不做真测量——Pretext 接入是 V3a 的事）──
- * 逐行计数（每行再按 60/90 字符折行），对齐渲染端的两条上限：
- * pre max-height 260px / 工具输出 max-height 160px（超出即滚动，不再占高）。
- * 误差只影响块间距（流锚几何不变），不产生块重叠——多行短行内容
- * （列表/步骤）曾按总长折行导致严重低估。 */
-function countRenderedLines(text: string, charsPerLine: number): number {
-  let n = 0;
-  for (const line of text.split('\n')) n += Math.max(1, Math.ceil(line.length / charsPerLine));
-  return n;
-}
-const PRE_MAX_H = 260;
-const OUT_MAX_H = 160;
-
-function estimateBlockHeight(b: SourcedBlock): number {
-  const lineH = 20;
-  const monoH = 17;
-  let textLines = 1;
-  let preH = 0;
-  let outH = 0;
-  switch (b.kind) {
-    case 'user':
-    case 'markdown':
-    case 'reasoning':
-    case 'notice':
-      textLines = countRenderedLines((b.payload as { text: string }).text, 60);
-      break;
-    case 'diff':
-      preH = Math.min(PRE_MAX_H, countRenderedLines((b.payload as { text: string }).text, 90) * monoH + 8);
-      break;
-    case 'tool': {
-      const p = b.payload as { args: string; output?: string; err?: string };
-      preH = Math.min(PRE_MAX_H, countRenderedLines(p.args, 90) * monoH + 8);
-      if (p.output) outH += Math.min(OUT_MAX_H, countRenderedLines(p.output, 90) * monoH + 8);
-      if (p.err) outH += Math.min(OUT_MAX_H, countRenderedLines(p.err, 90) * monoH + 8);
-      break;
-    }
-    case 'plan':
-      preH = Math.min(PRE_MAX_H, countRenderedLines((b.payload as { content: string }).content, 90) * monoH + 8);
-      break;
-  }
-  const head = 22;
-  const pad = 20;
-  return head + pad + textLines * lineH + preH + outH;
-}
+/* ── 块高测量（V3a：走查弹的估算+实测反馈环已拆，真测量走
+ *    paper/measure——@chenglou/pretext Canvas measureText，不触发 DOM 重排）── */
 
 /* ── 灰框块渲染器 ── */
 
-function BlockView({ block, onUnpin }: { block: SourcedBlock; onUnpin: (id: string) => void }) {
+function BlockView({
+  block,
+  onUnpin,
+  onDragHandleMouseDown,
+}: {
+  block: SourcedBlock;
+  onUnpin: (id: string) => void;
+  /** 拖拽手柄（块头 .pp-kind）——V3a 手势分工：块头=整块拖出（D-R2-1），
+   * 文本区=原生选择（待定 #10 抽纸条的前提：选中文字拖离流出纸条） */
+  onDragHandleMouseDown: (e: React.MouseEvent) => void;
+}) {
   const p = block.payload;
   return (
     <>
-      <div className="pp-kind">
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: 拖拽手柄（D-R2-1 拖出钉住）；收回有原生按钮 */}
+      <div className="pp-kind pp-drag-handle" onMouseDown={onDragHandleMouseDown}>
         <span>{block.kind}</span>
         {block.kind === 'tool' && (
           <span className={`pp-status pp-${(p as { status: string }).status}`}>{(p as { status: string }).status}</span>
@@ -133,10 +109,51 @@ function BlockView({ block, onUnpin }: { block: SourcedBlock; onUnpin: (id: stri
 
 /* ── 主组件 ── */
 
+/** 小地图（D-R1-1 方位感件——内容包围盒 + 视口框投影，点击跳转中心） */
+function MinimapView({
+  content,
+  viewport,
+}: {
+  content: { x0: number; y0: number; x1: number; y1: number };
+  viewport: { x0: number; y0: number; x1: number; y1: number };
+}) {
+  const W = 128;
+  const H = 96;
+  // 内容包围盒 → 缩略图坐标（等比缩放，居中，留 4px 边距）
+  const cw = Math.max(1, content.x1 - content.x0);
+  const ch = Math.max(1, content.y1 - content.y0);
+  const scale = Math.min((W - 8) / cw, (H - 8) / ch);
+  const toMap = (x: number, y: number) => ({
+    left: 4 + (x - content.x0) * scale + (W - 8 - cw * scale) / 2,
+    top: 4 + (y - content.y0) * scale + (H - 8 - ch * scale) / 2,
+  });
+  const vp = {
+    left: toMap(viewport.x0, viewport.y0).left,
+    top: toMap(viewport.x0, viewport.y0).top,
+    width: Math.max(2, (viewport.x1 - viewport.x0) * scale),
+    height: Math.max(2, (viewport.y1 - viewport.y0) * scale),
+  };
+  // 内容流带（窄带投影——聚落感）
+  const band = {
+    left: toMap(-ANCHOR.bandHalfWidth, content.y0).left,
+    top: toMap(0, content.y0).top,
+    width: Math.max(2, ANCHOR.bandHalfWidth * 2 * scale),
+    height: Math.max(2, (content.y1 - content.y0) * scale),
+  };
+  return (
+    <div className="pp-minimap" title="小地图 · Home 回原点">
+      <div className="pp-mm-band" style={band} />
+      <div className="pp-mm-viewport" style={vp} />
+    </div>
+  );
+}
+
 /** 拖动阈值（px）：超过即视为拖块（区分点击） */
 const DRAG_THRESHOLD = 6;
 /** 流内占位符高度（pinned 块在流原序位的洞——设计文档 §2.3） */
 const GHOST_H = 32;
+/** 纸条高度（抽纸条默认块高——同族灰框结构高度） */
+const STRIP_H = 96;
 
 export function PaperPanel() {
   const closePanel = useDockStore((s) => s.closePanel);
@@ -186,6 +203,9 @@ export function PaperPanel() {
   /* 钉住位置表（活引用续命：重转译时经 pinnedPositions 传回 translate） */
   const pinnedRef = useRef(new Map<string, { x: number; y: number }>());
 
+  /* 纸条（V3a 抽纸条·待定 #10：选区拖出 = 拷贝语义的用户层物件） */
+  const [strips, setStrips] = useState<PaperStrip[]>([]);
+
   /* 转译（穿全层第二段）——msgState.tick 驱动重算（pinnedRef 是可变 ref，
    * 位置表读取发生在 translate 内——ref 身份恒定，无需进依赖） */
   const blocks = useMemo(
@@ -219,45 +239,65 @@ export function PaperPanel() {
   }, [canvasSize.w, canvasSize.h]);
 
   /* 流布局（穿全层第三段：块 → 世界坐标）。
-   * 走完整序列栈：flow 块占实际高度，pinned 块在原序位留占位符（ghost）——
-   * 设计文档 §2.3「原位置留占位符」+ D-R2-2「收回回原位」的可验证基础。
-   * 高度 = 实测反馈环：渲染后量真实 DOM 高度回写 measuredH，
-   * 布局用 max(估算, 实测)——实测只在放大/缩小时短暂失真（除以 zoom 校正），
-   * 这是 V3a Pretext 测量的走查弹前身。 */
-  const measuredRef = useRef(new Map<string, number>());
-  const blockElsRef = useRef(new Map<string, HTMLDivElement | null>());
-
+   * 走完整序列栈：flow 块占真测量高度（paper/measure），pinned 块在原序位
+   * 留占位符（ghost）——设计文档 §2.3「原位置留占位符」+ D-R2-2 的可验证基础。
+   * V3a：实测反馈环已拆——测量是唯一真相（chrome 常量镜像 CSS，改样式两处同步）。 */
   const stack = useMemo(
-    () =>
-      blocks.map((b) => {
-        const est = b.state === 'flow' ? estimateBlockHeight(b) : GHOST_H;
-        const measured = measuredRef.current.get(b.id);
-        return { id: b.id, h: measured != null && measured > est ? measured : est, w: b.w };
-      }),
+    () => blocks.map((b) => ({ id: b.id, h: b.state === 'flow' ? measureBlockHeight(b) : GHOST_H, w: b.w })),
     [blocks],
   );
   const layout = useMemo(() => layoutFlow(stack), [stack]);
 
-  /* 实测反馈环：每轮渲染后量 flow 块真实高度回写。
-   * offsetHeight 不受祖先 transform 影响（已是世界单位，无需除 zoom）——
-   * 量的是布局高度，与视觉缩放无关。触发下一轮布局收敛（1-2 轮稳定）。 */
+  /* 字体加载后重测：webfont 到位前 canvas 量的是回退字体宽度，
+   * document.fonts.ready 时清测量缓存重转译一轮（一次性布局收敛）。 */
   useEffect(() => {
-    const id = requestAnimationFrame(() => {
-      let changed = false;
-      for (const b of blocks) {
-        const el = blockElsRef.current.get(b.id);
-        if (!el || b.state !== 'flow') continue;
-        const worldH = el.offsetHeight;
-        const prev = measuredRef.current.get(b.id);
-        if (worldH > 0 && Math.abs((prev ?? 0) - worldH) > 2) {
-          measuredRef.current.set(b.id, worldH);
-          changed = true;
-        }
-      }
-      if (changed) setMsgState((s) => ({ messages: s.messages, tick: s.tick + 1 }));
+    let alive = true;
+    const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
+    fonts?.ready.then(() => {
+      if (!alive) return;
+      clearPaperMeasureCache();
+      setMsgState((s) => ({ messages: s.messages, tick: s.tick + 1 }));
     });
-    return () => cancelAnimationFrame(id);
-  }, [blocks]);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  /* 视口虚拟化（V3a：数据全量、渲染窗口化——设计文档 §2.3）。
+   * flow 窗口二分 + pinned 矩形相交；overscan 缓冲一屏，平移不逐帧抖。 */
+  const OVERSCAN = 200;
+  const flowGeom = useMemo(
+    () =>
+      blocks.map((b) => ({
+        id: b.id,
+        y: layout.get(b.id)?.y ?? 0,
+        h: b.state === 'flow' ? measureBlockHeight(b) : GHOST_H,
+        x: layout.get(b.id)?.x ?? 0,
+        w: b.w,
+      })) satisfies FlowGeom[],
+    [blocks, layout],
+  );
+  const pinnedGeom = useMemo(
+    () =>
+      blocks
+        .filter((b) => b.state === 'pinned')
+        .map((b) => ({ id: b.id, x: b.x, y: b.y, w: b.w, h: measureBlockHeight(b) })) satisfies PinnedGeom[],
+    [blocks],
+  );
+  const viewRect = useMemo(
+    () => viewportWorldRect(view, canvasSize.w, canvasSize.h),
+    [view, canvasSize.w, canvasSize.h],
+  );
+  const flowWindow = useMemo(() => visibleFlowWindow(flowGeom, viewRect, OVERSCAN), [flowGeom, viewRect]);
+  const visiblePinned = useMemo(
+    () => new Set(visiblePinnedIds(pinnedGeom, viewRect, OVERSCAN)),
+    [pinnedGeom, viewRect],
+  );
+  const visibleIds = useMemo(() => {
+    const s = new Set(visiblePinned);
+    for (let i = flowWindow.first; i < flowWindow.lastExcl; i++) s.add(flowGeom[i].id);
+    return s;
+  }, [flowWindow, flowGeom, visiblePinned]);
 
   /* ── 交互：平移 / 缩放 / 拖块 ── */
   const panningRef = useRef<{ lastX: number; lastY: number } | null>(null);
@@ -275,6 +315,22 @@ export function PaperPanel() {
     el.addEventListener('wheel', onWheelNative, { passive: false });
     return () => el.removeEventListener('wheel', onWheelNative);
   }, []);
+
+  /* 回原点快捷键（D-R1-1 方位感：无限画布 + 回原点快捷键）。
+   * Home：视口回锚点几何（最新块贴下缘）。 */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Home' || e.defaultPrevented) return;
+      // 输入条聚焦时不抢 Home（文本编辑语义优先——IME/光标行为不受干扰）
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      e.preventDefault();
+      const { panX, panY } = viewForAnchor(canvasSize.w, canvasSize.h);
+      setView((v) => ({ ...v, panX, panY }));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [canvasSize.w, canvasSize.h]);
 
   const onCanvasMouseDown = useCallback((e: React.MouseEvent) => {
     // 空白处按下 → 开始平移（块/占位符有自己的处理，不落到这里）
@@ -324,6 +380,7 @@ export function PaperPanel() {
     (e: React.MouseEvent, block: SourcedBlock) => {
       if (e.button !== 0) return;
       e.stopPropagation(); // 不触发画布平移
+      e.preventDefault(); // 手柄拖拽不启动原生文本选择（文本区选择不经过这里）
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
       const w = screenToWorld(view, e.clientX - rect.left, e.clientY - rect.top);
@@ -424,6 +481,105 @@ export function PaperPanel() {
     await core.sendMessage();
   }, [inputText, core]);
 
+  /* 小地图（D-R1-1 方位感：内容聚落 + 视口框）——世界包围盒投影到 128×96 缩略。
+   * 全量块几何（不用可见窗口——地图的意义就是看见视口外）。 */
+  const minimap = useMemo(() => {
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (const g of flowGeom) {
+      x0 = Math.min(x0, g.x);
+      y0 = Math.min(y0, g.y);
+      x1 = Math.max(x1, g.x + g.w);
+      y1 = Math.max(y1, g.y + g.h);
+    }
+    for (const g of pinnedGeom) {
+      x0 = Math.min(x0, g.x);
+      y0 = Math.min(y0, g.y);
+      x1 = Math.max(x1, g.x + g.w);
+      y1 = Math.max(y1, g.y + g.h);
+    }
+    for (const s of strips) {
+      x0 = Math.min(x0, s.x);
+      y0 = Math.min(y0, s.y);
+      x1 = Math.max(x1, s.x + s.w);
+      y1 = Math.max(y1, s.y + STRIP_H);
+    }
+    if (!Number.isFinite(x0)) {
+      x0 = -400;
+      x1 = 400;
+      y0 = -200;
+      y1 = 0;
+    }
+    // 视口框
+    const vp = viewportWorldRect(view, canvasSize.w, canvasSize.h);
+    return { content: { x0, y0, x1, y1 }, viewport: vp };
+  }, [flowGeom, pinnedGeom, strips, view, canvasSize.w, canvasSize.h]);
+
+  /* ── 抽纸条手势（待定 #10：选中文字拖离流 = 拷贝语义纸条）──
+   * mouseup 时读 window.getSelection()：非空且落点在流锚窄带外 → 抽纸条；
+   * 落点在带内 = 普通选择（不抢）。拖纸条与拖块共用 dragRef 之外的独立通道。 */
+  const stripDragRef = useRef<{ id: string; offX: number; offY: number } | null>(null);
+  useEffect(() => {
+    const up = (e: MouseEvent) => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) return;
+      const text = sel.toString();
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      if (sx < 0 || sy < 0 || sx > rect.width || sy > rect.height) return; // 画布外松手不管
+      const w = screenToWorld(view, sx, sy);
+      // 带外落点才抽（带内 = 普通选择/阅读行为）
+      if (Math.abs(w.x) <= ANCHOR.bandHalfWidth) return;
+      const strip = tryMakeStripFromSelection(text, 0, text.length, w.x, w.y);
+      if (strip) {
+        sel.removeAllRanges(); // 手势完成，清选区
+        setStrips((arr) => [...arr, strip]);
+      }
+    };
+    window.addEventListener('mouseup', up);
+    return () => window.removeEventListener('mouseup', up);
+  }, [view]);
+
+  /* 拖纸条（世界坐标跟手） */
+  const [dragStripId, setDragStripId] = useState<string | null>(null);
+  const onStripMouseDown = useCallback(
+    (e: React.MouseEvent, s: PaperStrip) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const w = screenToWorld(view, e.clientX - rect.left, e.clientY - rect.top);
+      stripDragRef.current = { id: s.id, offX: w.x - s.x, offY: w.y - s.y };
+      setDragStripId(s.id);
+    },
+    [view],
+  );
+  useEffect(() => {
+    if (!dragStripId) return;
+    const move = (e: MouseEvent) => {
+      const d = stripDragRef.current;
+      if (!d) return;
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const w = screenToWorld(view, e.clientX - rect.left, e.clientY - rect.top);
+      setStrips((arr) => arr.map((s) => (s.id === d.id ? moveStrip(s, w.x - d.offX, w.y - d.offY) : s)));
+    };
+    const up = () => {
+      stripDragRef.current = null;
+      setDragStripId(null);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+  }, [dragStripId, view]);
+
   /* 世界层 transform */
   const worldStyle = useMemo(
     () => ({ transform: `translate(${view.panX}px, ${view.panY}px) scale(${view.zoom})` }),
@@ -438,7 +594,8 @@ export function PaperPanel() {
         <span className="pp-title">纸</span>
         <span className="pp-tag">走查弹 tracer bullet · 灰框=结构验证，非视觉</span>
         <span className="pp-zoom">
-          {zoomLabel} · {blocks.length} 块（钉 {pinnedRef.current.size}）
+          {zoomLabel} · {blocks.length} 块（钉 {pinnedRef.current.size} / 条 {strips.length}）· 渲染 {visibleIds.size}/
+          {blocks.length + strips.length}
         </span>
         <button type="button" className="pp-close" onClick={() => closePanel('paper')}>
           关闭
@@ -471,23 +628,31 @@ export function PaperPanel() {
             <span className="pp-origin-label">origin</span>
           </div>
 
-          {/* 流序列：flow 块按序渲染；pinned 块渲染占位符（原序位）+ 钉住实体 */}
+          {/* 纸条（V3a 抽纸条：拷贝语义快照，可拖动） */}
+          {strips.map((s) => (
+            // biome-ignore lint/a11y/noStaticElementInteractions: 纸条拖拽面（同块拖拽 D-R2-1 手势族）
+            <div
+              key={s.id}
+              className={`pp-strip${dragStripId === s.id ? ' pp-dragging' : ''}`}
+              style={{ left: s.x, top: s.y, width: s.w }}
+              onMouseDown={(e) => onStripMouseDown(e, s)}
+            >
+              <div className="pp-kind">
+                <span>纸条</span>
+              </div>
+              <div>{s.text}</div>
+            </div>
+          ))}
+
+          {/* 流序列：flow 块按序渲染（V3a 视口窗口化——视口外不进 DOM）；
+           * pinned 块渲染占位符（原序位，随窗口化）+ 钉住实体（矩形相交测试） */}
           {blocks.map((b) => {
             const slot = layout.get(b.id);
-            if (!slot) return null;
+            if (!slot || !visibleIds.has(b.id)) return null;
             if (b.state === 'flow') {
               return (
-                // biome-ignore lint/a11y/noStaticElementInteractions: 块拖拽面（拖出钉住手势 D-R2-1，无原生等价物）；收回/展开已有原生按钮
-                <div
-                  key={b.id}
-                  ref={(el) => {
-                    blockElsRef.current.set(b.id, el);
-                  }}
-                  className={`pp-block pp-${b.kind}`}
-                  style={{ left: slot.x, top: slot.y, width: b.w, minHeight: estimateBlockHeight(b) }}
-                  onMouseDown={(e) => onBlockMouseDown(e, b)}
-                >
-                  <BlockView block={b} onUnpin={onUnpin} />
+                <div key={b.id} className={`pp-block pp-${b.kind}`} style={{ left: slot.x, top: slot.y, width: b.w }}>
+                  <BlockView block={b} onUnpin={onUnpin} onDragHandleMouseDown={(e) => onBlockMouseDown(e, b)} />
                 </div>
               );
             }
@@ -504,19 +669,20 @@ export function PaperPanel() {
                 >
                   已移出 · 点击恢复
                 </button>
-                {/* biome-ignore lint/a11y/noStaticElementInteractions: 钉住块拖拽面（同 flow 块 D-R2-1 手势）；收回有原生按钮 */}
                 <div
                   className={['pp-block', `pp-${b.kind}`, 'pp-pinned', isDragged ? 'pp-dragging' : ''].join(' ')}
                   style={{ left: pos.x, top: pos.y, width: b.w }}
-                  onMouseDown={(e) => onBlockMouseDown(e, b)}
                 >
-                  <BlockView block={b} onUnpin={onUnpin} />
+                  <BlockView block={b} onUnpin={onUnpin} onDragHandleMouseDown={(e) => onBlockMouseDown(e, b)} />
                 </div>
               </Fragment>
             );
           })}
         </div>
       </div>
+
+      {/* 小地图（D-R1-1 方位感：内容聚落 + 视口框 + Home 回原点） */}
+      <MinimapView content={minimap.content} viewport={minimap.viewport} />
 
       <div className="pp-composer">
         <input
@@ -525,7 +691,8 @@ export function PaperPanel() {
           placeholder="向 Agent 写字（真实发送到当前会话）…"
           onChange={(e) => setInputText(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.nativeEvent.isComposing) onSend();
+            // IME 安全谓词（paper/ime）：合成中的 Enter 是候选确认，不发送
+            if (composerSubmitOnKey(e.key, e.nativeEvent.isComposing)) onSend();
           }}
         />
         <button type="button" onClick={onSend}>

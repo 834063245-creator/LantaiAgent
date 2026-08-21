@@ -1,5 +1,7 @@
-/* paper-shell 走查弹 · 灰框样式（丑得理直气壮——结构对即可，视觉全不管）。
- * 只有结构样式（定位/层级/布局），无任何视觉打磨：灰框/系统字/黑线。 */
+/* paper-shell · 灰框样式（丑得理直气壮——结构对即可，视觉全不管）。
+ * 只有结构样式（定位/层级/布局），无任何视觉打磨：灰框/黑线。
+ * V3a：字体栈全具名（Fraunces/Noto Serif SC/JetBrains Mono）——与 paper/measure
+ * 的 canvas 测量字体一致（待定 #8：不用 system-ui/ui-monospace）。 */
 
 .pp-root {
   position: fixed;
@@ -7,9 +9,9 @@
   z-index: 280;
   background: #1a1a1a;
   color: #ddd;
-  font:
-    13px / 1.6 system-ui,
-    sans-serif;
+  font-family: "Fraunces Variable", "Noto Serif SC", serif;
+  font-size: 13px;
+  line-height: 1.6;
   display: flex;
   flex-direction: column;
 }
@@ -103,7 +105,9 @@
   white-space: nowrap;
 }
 
-/* ── 块（灰框——走查弹纪律）── */
+/* ── 块（灰框——结构纪律）──
+ * V3a 手势分工（待定 #10）：块头=整块拖出手柄（grab），文本区=原生可选
+ * （选中拖离流 = 抽纸条）。user-select 解除是抽纸条的前提。 */
 .pp-block {
   position: absolute;
   border: 1px solid #555;
@@ -111,8 +115,20 @@
   border-radius: 4px;
   padding: 10px 12px;
   color: #ccc;
+  user-select: text;
+}
+.pp-drag-handle {
   cursor: grab;
-  user-select: none;
+  margin: -2px -6px 2px; /* 手柄热区略外扩（含 padding 外缘） */
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+.pp-drag-handle:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.pp-block.pp-dragging .pp-drag-handle,
+.pp-drag-handle:active {
+  cursor: grabbing;
 }
 .pp-block.pp-pinned {
   background: #2c2c2c;
@@ -170,9 +186,9 @@
 
 .pp-block pre {
   margin: 4px 0 0;
-  font:
-    11px / 1.5 ui-monospace,
-    monospace;
+  font-family: "JetBrains Mono", "Cascadia Code", monospace;
+  font-size: 11px;
+  line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-all;
   color: #bbb;
@@ -180,9 +196,9 @@
   overflow: auto;
 }
 .pp-block .pp-lang {
-  font:
-    10px / 1 ui-monospace,
-    monospace;
+  font-family: "JetBrains Mono", "Cascadia Code", monospace;
+  font-size: 10px;
+  line-height: 1;
   color: #7a8a7a;
   margin-bottom: 2px;
 }
@@ -190,9 +206,9 @@
   margin-top: 6px;
   border-top: 1px dashed #444;
   padding-top: 6px;
-  font:
-    11px / 1.5 ui-monospace,
-    monospace;
+  font-family: "JetBrains Mono", "Cascadia Code", monospace;
+  font-size: 11px;
+  line-height: 1.5;
   color: #8a8a8a;
   max-height: 160px;
   overflow: auto;
@@ -294,6 +310,49 @@
 }
 .pp-composer button:hover {
   background: #444;
+}
+
+/* ── 纸条（V3a 抽纸条：拷贝语义快照——用户层物件）── */
+.pp-strip {
+  position: absolute;
+  border: 1px dashed #8a7a5a;
+  background: #26221a;
+  border-radius: 4px;
+  padding: 10px 12px;
+  color: #d8c9a8;
+  cursor: grab;
+  user-select: none;
+  z-index: 40;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+.pp-strip.pp-dragging {
+  cursor: grabbing;
+  opacity: 0.9;
+  z-index: 50;
+}
+
+/* ── 小地图（D-R1-1 方位感件）── */
+.pp-minimap {
+  position: absolute;
+  right: 12px;
+  bottom: 86px; /* 输入条上方 */
+  width: 128px;
+  height: 96px;
+  background: rgba(20, 20, 20, 0.85);
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  pointer-events: none; /* 走查阶段只读方位感；点击跳转 V3b 接 */
+  z-index: 60;
+}
+.pp-mm-band {
+  position: absolute;
+  background: rgba(90, 90, 90, 0.35);
+  border-radius: 2px;
+}
+.pp-mm-viewport {
+  position: absolute;
+  border: 1px solid #c9a25c;
+  border-radius: 2px;
 }
 
 /* 空态提示 */
