@@ -3,7 +3,7 @@
 > **本目录阅读顺序**：① 本 README（宪法 + 阶段 + 排程）→ ② `work-orders/`（施工单，按编号即执行顺序）→ ③ `designs/`（设计件，S1/S2/S4 已竣工）。边界依据在 `docs/adr/composition-boundaries.md`。当前状态：**S0 Done（Landed）；S1 Done（2026-08-20，9 commits）；S2 Done（2026-08-20 全批次落地）；S4 Done（2026-08-20 七批竣工——S4-1b 经 Phase 5 CR 用户批准「批准全项」后实施：preset/selected 首事件 + minimal baseline 冻结；S4-4 机器桥按裁定跳过为未决项）**。
 
 > 立项：2026-08-20 · 主导：Agent（设计/实现/验收），用户（拍板/审批/放行）
-> 状态：**S0-S2 Done · S4 Done（2026-08-20 竣工：preset realm + 会话事件 + 热重载 + npm 安装通道 + 消费闭环 + hello 闭环 + 文档全套 + minimal baseline 冻结——`CONVERGENCE_PRESET=minimal` check 与 standard 零漂移双通过）· 下一步 S3 设计件（等纸工程）**
+> 状态：**S0-S2 Done · S4 Done · S3 已解锁（2026-08-22：workspace-flip 批 5 交付纸壳 preset——「白纸执行层外化」完成；S3 逐域行化按纸推进按需迁，图谱面板走退役路径【workspace ADR】）**
 > 取代：`.hologram/plans/plan-1787199847398-bu20.md`（plugin-ecosystem v1「插件口子」计划——其 P0/P1 被吸收为本计划 S0/S1 零件，P2 降级为 S3 第一项，P3 后移至 S4）
 > 边界依据：`docs/adr/composition-boundaries.md`（为什么不做/做不到 DSH 式全体插件化——先读它，本计划在它划定的边界内施工）
 > 关联计划：`agent-plugin-architecture-plan.md`（执行原语 + 工具面收口——其 P3 cordis 收口与本计划 S1 汇流，P4 路线 B 自研插件边界由本计划承载，D8 观望决策继续有效）

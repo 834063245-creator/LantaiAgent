@@ -5,23 +5,25 @@
 
 ## 总控表 — 现在在哪，下一步是什么（唯一入口，先看这个）
 
-**当前主线**：HoloGram 正在从「图谱软件 + Agent 工作台」翻转为「纯粹的 Agent 软件」。三个正交工程并行承载：**workspace-flip**（概念翻转，结构）→ **paper-shell**（纸壳前端，视觉/交互）→ **composition S3**（组合层收尾，等纸解锁）。
+**当前主线**：HoloGram 正在从「图谱软件 + Agent 工作台」翻转为「纯粹的 Agent 软件」。三个正交工程并行承载：**workspace-flip**（概念翻转，结构）→ **paper-shell**（纸壳前端，视觉/交互）→ **composition S3**（组合层收尾，已解锁）。
 
 ```
-workspace-flip（设计件待批准）──→ 施工六批 ──→ 解锁 S3 + 交付纸壳 preset
+workspace-flip ✅（批 1-5 竣工 2026-08-22）──→ S3 解锁 + 纸壳 preset 交付
         │
-        └─批 5 完成 ──→ paper-shell V2 视觉契约 ──→ V4 打磨环（用户主场）─┐
-                                                                        │
-                              纸壳「能住人」←──────────────────────────┘
-                                        │
-                                        ↓
-                          paper-shell R3 访谈 → V5 判断半（观测台退役）
+        └─→ paper-shell V2 视觉契约 ──→ V4 打磨环（用户主场）─┐
+                                                            │
+                          纸壳「能住人」←──────────────────┘
+                                    │
+                                    ↓
+                      paper-shell R3 访谈 → V5 判断半（观测台退役）
+                      composition S3 逐域行化（纸需要哪个域就迁哪个）
 ```
 
 ### 里程碑时间轴（倒序 = 最新在上）
 
 | 日期 | 里程碑 | 工程 |
 |---|---|---|
+| 2026-08-22 | **workspace-flip 竣工**（批 1-5 五 commit：会话首页 / 零目录会话 / 打开流两段化 / bootShell 接线 / 纸壳 preset——S3 解锁） | workspace-flip |
 | 2026-08-22 | workspace-flip 设计件 D9 出稿（六批序列）+ W1 访谈四项粒度拍板；**待用户批准开工** | workspace-flip |
 | 2026-08-22 | 纸壳 V3b 壳装配竣工（纸面板迁组合层贡献 + 块渲染器第五通道 ctx.renderers） | paper-shell |
 | 2026-08-22 | 纸壳 V3a 骨架内核竣工（pretext 上游测量 / 虚拟化 / 抽纸条 / 方位感 / IME 谓词） | paper-shell |
@@ -33,7 +35,7 @@ workspace-flip（设计件待批准）──→ 施工六批 ──→ 解锁 S3
 
 ### 下一步（就一条）
 
-**批准或打回 workspace-flip 设计件**（`workspace-flip/designs/D9-workspace-flip-v5-mechanism.md`）——批准即开工批 1（会话首页 React 化）。
+**paper-shell V2 视觉契约转录**（用户节奏定开工）——workspace-flip 结构工程已毕，纸壳进入视觉阶段；S3 逐域行化随纸推进按需跟。
 
 ### 编号系统对照（防绕晕）
 
@@ -53,9 +55,9 @@ workspace-flip（设计件待批准）──→ 施工六批 ──→ 解锁 S3
 
 | 计划 | 状态 | 下一步 |
 |---|---|---|
-| [`workspace-flip/`](workspace-flip/) | **设计件待批准**（2026-08-22 从 paper-shell #9 剥离立独立工程——软件概念翻转：纯会话优先 / 一会话一目录 / 图谱后台预热；含 V5 机制半。纯结构零视觉） | 批准 D9 → 施工六批（每批全绿） |
-| [`paper-shell/`](paper-shell/) | In progress（2026-08-20 立项，独立创作工程。V0 ✅（R1/R2）→ 走查弹 ✅ → V3a ✅ → V3b ✅；61 无头测试 + convergence 零漂移） | V2 视觉契约 → V4 打磨环（用户节奏定开工）；R3/V5 判断半等「纸能住人」 |
-| [`composition-architecture/`](composition-architecture/) | **S0-S2 Done · S4 Done**（装载通道 / 注册表化 / 组合外化 / preset realm + 分发；宪法见 [`docs/adr/composition-boundaries.md`](../adr/composition-boundaries.md)） | S3 设计件——解锁条件 = workspace-flip 批 5（纸壳 preset 交付） |
+| [`workspace-flip/`](workspace-flip/) | **Done**（2026-08-22 批 1-5 竣工——软件概念翻转：纯会话优先 / 零目录会话一等化 / 图谱后台预热 / bootShell 组合接线 / 纸壳 preset + 主视图落点。五 commit 见计划 README 竣工记录） | 维护态（行为边界与遗留见 README） |
+| [`paper-shell/`](paper-shell/) | In progress（2026-08-20 立项，独立创作工程。V0 ✅（R1/R2）→ 走查弹 ✅ → V3a ✅ → V3b ✅；**V5 机制半 ✅（workspace-flip 承接）**） | V2 视觉契约 → V4 打磨环（用户节奏定开工）；R3/V5 判断半等「纸能住人」 |
+| [`composition-architecture/`](composition-architecture/) | **S0-S2 Done · S4 Done**（装载通道 / 注册表化 / 组合外化 / preset realm + 分发；宪法见 [`docs/adr/composition-boundaries.md`](../adr/composition-boundaries.md)） | S3 逐域行化——**解锁条件已满足**（workspace-flip 批 5 交付纸壳 preset）；按纸推进按需迁 |
 | [`arch-action-plan.md`](arch-action-plan.md) | 批 1/2 完成；批 3 的 13/12/11a/11b 完成，14 部分完成，11c 搁置 | 11c 与 agent 区 any 清理 |
 | [`shell-stability-bundled-bash-plan.md`](shell-stability-bundled-bash-plan.md) | P0–P5 已落地 | Windows 真机验证（cfg(windows) 路径） |
 | [`browser-cdp-suite-review-round2.md`](browser-cdp-suite-review-round2.md) | 第一至第五批已提交 | Windows 真机 E2E-1/2/3/4/5 |

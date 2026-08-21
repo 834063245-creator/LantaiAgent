@@ -1,6 +1,6 @@
 # workspace-flip — 工作区概念翻转（engine 中心 → Agent 中心）
 
-> 立项：2026-08-22（从 paper-shell 待定 #9 剥离立独立工程）· 状态：**设计件待批准**
+> 立项：2026-08-22（从 paper-shell 待定 #9 剥离立独立工程）· 状态：**Done — 批 1-5 竣工（2026-08-22，五 commit：`bbfcbe85` 会话首页 / `cbf2d657` 零目录会话 / `c6606ea3` 打开流两段化 / `b78b4ffc` bootShell 接线 / `02836b79` 纸壳 preset）**
 > 方向依据：`docs/adr/workspace-concept-ownership.md`（Accepted——软件用户面 = 纯粹的 Agent 软件，图谱内化为后端支柱，Workspace 翻转为 Agent 的家）
 > 阅读顺序：① 本 README → ② `designs/D9-*.md`（施工设计件）→ ③ `interviews/W1-*.md`（粒度拍板记录）
 
@@ -28,7 +28,19 @@
 
 | 文档 | 状态 |
 |---|---|
-| `designs/D9-workspace-flip-v5-mechanism.md` | Draft 待批准——六批序列（W1 会话首页 React 化 → W2 零目录会话一等化 → W3 打开流两段化 → V5a bootShell 组合接线 → V5b 纸壳 preset + 主视图落点 → 文档回写） |
+| `designs/D9-workspace-flip-v5-mechanism.md` | **已批准并竣工**（2026-08-22 用户批准 + agent 复审两处修正后施工）——六批序列全落地 |
+
+## 竣工记录（2026-08-22）
+
+| 批 | commit | 交付 |
+|---|---|---|
+| 1 会话首页 React 化 | `bbfcbe85` | SessionsHome（最近会话 + 双入口）；view home\|graph 迁移；静态 welcome DOM 退役；user_sessions_list/get_user_sessions_dir RPC（毒化容忍五重护栏） |
+| 2 零目录会话一等化 | `cbf2d657` | sessionsDir('') 路由用户级目录（冻结文件 +33 行单 seam）；ensureUserSessionsDir 装配点接线；通用会话可持久化/续开 |
+| 3 打开流两段化 | `c6606ea3` | Workspace.open 急段秒回（analyze 拿 meta 即返回）+ 缓段后台拉页（_active 守卫）；_graphWarming 状态 + 诚实文案；T0 结构钉 4 例 |
+| 4 bootShell 组合接线 | `b78b4ffc` | 行表真源 = composition-store.resolved.shell（时序悖论修正：接线在 bootShell 内部读 store）；preset/patch 禁壳行涟漪首次生效 |
+| 5 纸壳 preset + 落点 | `02836b79` | 内置 preset 表加 paper（保守空 patch）；selected=paper → boot 直落纸面板；**S3 解锁条件满足** |
+
+遗留（如实）：批 3 行为边界——预热期内创建的会话缺 graph 工具（会话工厂在创建时点读 graphData，预热完成后新会话自动获得）；纸壳 preset 未裁壳行（等 V5 判断半产品决策）；R3 共居判据（paper-shell 保留）。
 
 ## 门禁
 
