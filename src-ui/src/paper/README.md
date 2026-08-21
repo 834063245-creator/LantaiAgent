@@ -1,8 +1,7 @@
-# src/paper — 白纸壳 headless 内核（V3a 骨架）
+# src/paper — 白纸壳 headless 内核（V3a 骨架 + V3b 装配）
 
-> paper-shell 计划（`docs/plans/paper-shell/README.md`）V3a：走查弹毕业后的骨架内核。
-> 纪律：**零 UI 依赖 + 无头测试**（对齐 `agent/` 运行时纪律）。
-> 壳层（React，不在本目录）：`src/app/panels/PaperPanel.tsx`。
+> paper-shell 计划（`docs/plans/paper-shell/README.md`）V3a/V3b。纪律：内核零 UI 依赖 + 无头测试（对齐 `agent/` 运行时纪律）。
+> 壳层（React，不在本目录）：`src/app/panels/PaperPanel.tsx`；装配（V3b）：`paper-plugin.ts`。
 
 ## 分层（设计文档 §3.1 三层分离的落地）
 
@@ -15,6 +14,7 @@
 | `virtualize.ts` | **V3a** 视口虚拟化：视口→世界矩形、flow 窗口二分（O(log n)）、pinned 矩形相交——数据全量、渲染窗口化 |
 | `selection.ts` | **V3a** 抽纸条（待定 #10）：`PaperStrip` 用户层物件——拷贝语义快照 + 世界坐标，与块级活引用区分 |
 | `ime.ts` | **V3a** IME 安全谓词：输入条提交守卫（合成中 Enter 不发送）；V3b 块内编辑的候选窗错位风险记录在案 |
+| `paper-plugin.ts` | **V3b** 壳装配：纸面板经 PanelsService 贡献挂载（第一方插件行——面板贡献走组合层通道，不自建旁路）；块体渲染器消费第五通道（`composition/renderer-service.tsx` 的 `resolveRenderer`） |
 
 ## 拍板决定的映射
 
@@ -31,8 +31,9 @@
 
 - `tests/paper-core.test.ts`（23）——走查弹三层纯逻辑
 - `tests/paper-v3a.test.ts`（28）——测量封装（mock canvas：kinds 全谱 / 截断路径 / FIFO 淘汰）/ 虚拟化 / 抽纸条 / IME 谓词
+- `tests/paper-v3b.test.ts`（10）——第五贡献通道（注册/覆盖/兜底/dispose）+ 纸壳面板贡献合流对拍
 
-## V3a 之后
+## V3b 之后
 
-V3b 壳装配（组合层 roster 挂载 + 块渲染器 ctx service 化）；V2 视觉契约（token 转录）。
+V4 视觉打磨环（防发散协议——一环一维/对照反馈/品味账本/机械 gate/止损）；V5 壳切换（preset 双装配）。
 已知记录在案：V3b 钉住块就地编辑的 IME 候选窗错位风险（`ime.ts` 头注）。

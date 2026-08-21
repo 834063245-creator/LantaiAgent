@@ -21,7 +21,7 @@
 | 概念 | 是什么 | 真源 |
 |---|---|---|
 | 插件 | 自包含 ESM 模块（`{ name, inject?, apply(ctx) }`） | 本文档 |
-| 贡献通道 | `ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.providers` | `src-ui/src/composition/services.ts` |
+| 贡献通道 | `ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.providers` / `ctx.renderers`（块渲染器，V3b） | `src-ui/src/composition/services.ts` + `renderer-service.tsx` |
 | 行（row） | 组合的最小单元——工具族/prompt 段/capability/壳行各有 id | `src-ui/src/composition/*` |
 | preset | 命名的行组合叠加层（standard/minimal 内置 + 用户目录） | §8 + `docs/composition/README.md` |
 | patch | 四域行的增量数据（禁用/覆盖/插入） | `docs/composition/README.md` |
@@ -132,6 +132,32 @@ ctx.effect(
 
 注册表现状可用，但当前无消费者（S4-1.5 复审裁定：无消费者不开通道——
 先接线只剩静默 no-op 一种坏结局）。真实消费者出现时再开。
+
+### ctx.renderers —— 块渲染器（纸壳，即时生效）
+
+第五贡献通道（paper-shell V3b，2026-08-22）：向纸视图注册块**体**渲染器——
+纸壳的块协议（语义声明 + 可插拔渲染器）的插件面。渲染器只渲染块体
+（kind 特定内容）；块壳（头部/拖拽手柄/收回按钮）是纸壳结构件，不开放。
+
+```js
+ctx.effect(
+  () =>
+    ctx.renderers.register({
+      id: 'acme/markdown',      // 惯例 '<源>/<kind>'；与内置同 kind 并存时后注册胜
+      kind: 'markdown',          // 块类型，或 '*'（兜底渲染器）
+      component: MyRenderer,     // React 组件，入参 { block }（block.payload 按 kind 取内容）
+    }),
+  'acme/markdown',
+);
+```
+
+关键语义：
+
+- 内置灰框渲染器 = 默认行（七 kind：user/markdown/reasoning/notice/diff/plan/tool，
+  id 形如 `builtin/<kind>`）；插件贡献同 kind 的行 → **后注册胜**（显式覆盖）。
+- `kind: '*'` 是兜底行——无专渲染器的 kind 落这里（专行优先，不劫持）。
+- 即时生效（渲染期消费，每帧重取）——与 panels 同族，无需信号 store。
+- 消费面：纸视图（PaperPanel）的 BlockView 经 `resolveRenderer(kind)` 解析。
 
 ## 4. 宿主桥（无裸 import 的平台契约）
 

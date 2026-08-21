@@ -16,8 +16,10 @@
 
 import { createElement } from 'react';
 import { useShellStore } from '../app/shell-store';
+import { rendererServicePlugin } from '../composition/renderer-service';
 import { compositionServicesPlugin } from '../composition/services';
 import type { Context } from '../cordis';
+import { paperPlugin } from '../paper/paper-plugin';
 import { getProxyPort } from '../provider/transport';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
 import { type HologramPlugin, type PluginManifest, validateManifest } from './types';
@@ -44,7 +46,7 @@ export function pluginAssetsOrigin(port: number): string {
  * 表序 = 装配序。首项固定为组合层四 service（内核线第 3 条的实体化——
  * panels/commands/tools/providers 注册表本身，常驻且先于外部插件，
  * 保证外部插件 manifest 的 inject 依赖可解析）。 */
-const BUILTIN_PLUGINS: HologramPlugin[] = [compositionServicesPlugin];
+const BUILTIN_PLUGINS: HologramPlugin[] = [compositionServicesPlugin, rendererServicePlugin, paperPlugin];
 
 // ── 插件宿主桥（S4-5）──
 // 外部插件经 webview 动态 import 装载——模块语境没有裸 import 解析面

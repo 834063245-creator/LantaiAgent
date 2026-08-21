@@ -15,6 +15,7 @@
 // ——agent 层零改动，消息追加后走查弹经 version 订阅自动重转译。
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { resolveRenderer } from '../../composition/renderer-service';
 import type { SourcedBlock } from '../../paper/block-model';
 import {
   ANCHOR,
@@ -45,7 +46,7 @@ import './PaperPanel.css';
 /* ── 块高测量（V3a：走查弹的估算+实测反馈环已拆，真测量走
  *    paper/measure——@chenglou/pretext Canvas measureText，不触发 DOM 重排）── */
 
-/* ── 灰框块渲染器 ── */
+/* ── 灰框块渲染器（V3b：体渲染经第五贡献通道解析——ctx.renderers）── */
 
 function BlockView({
   block,
@@ -59,6 +60,10 @@ function BlockView({
   onDragHandleMouseDown: (e: React.MouseEvent) => void;
 }) {
   const p = block.payload;
+  // 体渲染器：注册表按 kind 解析（内置灰框行 + 插件贡献——后注册胜）；
+  // 无服务/无行时直渲文本（纸壳永不裸奔的兜底）。
+  const renderer = resolveRenderer(block.kind);
+  const Body = renderer?.component;
   return (
     <>
       {/* biome-ignore lint/a11y/noStaticElementInteractions: 拖拽手柄（D-R2-1 拖出钉住）；收回有原生按钮 */}
@@ -69,28 +74,7 @@ function BlockView({
         )}
         {block.state === 'pinned' && <span>📌</span>}
       </div>
-      {block.kind === 'user' && <div>{(p as { text: string }).text}</div>}
-      {block.kind === 'markdown' && <div>{(p as { text: string }).text}</div>}
-      {block.kind === 'reasoning' && <div>{(p as { text: string }).text}</div>}
-      {block.kind === 'notice' && <div>{(p as { text: string }).text}</div>}
-      {block.kind === 'diff' && (
-        <>
-          {(p as { lang?: string }).lang && <div className="pp-lang">{(p as { lang?: string }).lang}</div>}
-          <pre>{(p as { text: string }).text}</pre>
-        </>
-      )}
-      {block.kind === 'plan' && <pre>{(p as { content: string }).content}</pre>}
-      {block.kind === 'tool' && (
-        <>
-          <pre>{(p as { args: string }).args}</pre>
-          {(p as { output?: string }).output && <div className="pp-out">{(p as { output?: string }).output}</div>}
-          {(p as { err?: string }).err && (
-            <div className="pp-out" style={{ color: '#e08a84' }}>
-              {(p as { err?: string }).err}
-            </div>
-          )}
-        </>
-      )}
+      {Body ? <Body block={block} /> : <div>{(p as { text?: string }).text ?? ''}</div>}
       {block.state === 'pinned' && (
         <button
           type="button"

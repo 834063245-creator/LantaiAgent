@@ -38,7 +38,9 @@ describe('S4-1.5 panels 合流点：panelDefs() + bump 信号', () => {
   it('无贡献 = 内置清单全等（零漂移）', async () => {
     const root = await bootServices();
     const defs = panelDefs();
-    expect(defs.map((d) => d.id)).toEqual(['check', 'constraints', 'dataflow', 'settings', 'agents', 'tasks', 'paper']);
+    // V3b 起 paper 面板是 paperPlugin 贡献（本用例只 boot 四 service，无 paper）——
+    // 内置常量面六项全等。
+    expect(defs.map((d) => d.id)).toEqual(['check', 'constraints', 'dataflow', 'settings', 'agents', 'tasks']);
     await root[Symbol.asyncDispose]?.();
   });
 

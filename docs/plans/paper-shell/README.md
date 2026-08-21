@@ -3,7 +3,7 @@
 > **本目录阅读顺序**：① 本 README（工程定位 + 管线 + 待定清单）→ ② `interviews/`（按日期，最新拍板为准）→ ③ `taste-ledger.md`（视觉决定账本，V2 起持续记账）→ ④ `walkthrough.md`（走查弹——已毕业，判定记录在档）。设计原理在 `docs/design/一张纸-Agent软件交互形态设计.md`（注意 §2.3 有界画布已被 R1 修订为无限画布+方位感，见 interviews/R1-2026-08-20.md D-R1-1）。
 > **代码入口**：`src-ui/src/paper/README.md`（走查弹交付的 V3a 首批真文件——块模型/转译/画布数学分层说明 + 拍板决定映射）。
 
-> 立项：2026-08-20 · 状态：**Active（2026-08-22 V3a 骨架内核竣工——测量引擎切换 @chenglou/pretext / 视口虚拟化 / 抽纸条 / 方位感（Home+小地图）/ IME 谓词，51 无头测试全绿；走查弹 2026-08-21 毕业（判定记录见 walkthrough.md）。V1 视觉暂停于两轮负结果，见 taste-ledger。下一步 V3b 壳装配（gate：组合层 S1 已满足）**
+> 立项：2026-08-20 · 状态：**Active（2026-08-22 V3a 骨架内核 + V3b 壳装配竣工——V3a：测量引擎切换 @chenglou/pretext / 视口虚拟化 / 抽纸条 / 方位感 / IME 谓词；V3b：纸壳经组合层挂载（paperPlugin 面板贡献）+ 块渲染器第五贡献通道 ctx.renderers。61 无头测试全绿 + convergence 零漂移；走查弹 2026-08-21 毕业。V1 视觉暂停于两轮负结果，见 taste-ledger。下一步：V4 视觉打磨环（用户节奏）或按需推进）**
 > 设计地基：`docs/design/一张纸-Agent软件交互形态设计.md`（§1-5 已定：卷轴隐喻 / 两层所有权 / 块协议 / 三层分离 / 视觉语言；§6 为待决清单）
 > 原型资产：`prototype/` 8 个 HTML 原型 + 4 张预览图（见 §资产盘点）
 > 组合层关系：`composition-architecture/`——纸壳最终装配在组合层上（V3b，gate 于其 S1），但那是**装配关系，不是排程关系**
@@ -86,11 +86,14 @@
 - 落 `src-ui/src/paper/`，零 UI 依赖 + 无头测试（对齐 `agent/` 运行时纪律）
 - 门禁：build + vitest + biome（不触 agent 面，无 convergence 义务）
 
-### V3b — 壳装配（gate 于组合层 S1——串行拓扑下阶段 1 已完成，自然满足）
+### V3b — 壳装配（gate 于组合层 S1——串行拓扑下阶段 1 已完成，自然满足）— ✅ 竣工（2026-08-22）
 
-- 纸壳视图经组合层挂载（roster 行）；**块渲染器 = ctx service**——组合层第五贡献通道（D0 已预留此接口形状）
-- 共居模式切换（先例：`v4-pro-minimal-ab-test-plan.md`）
-- 走查弹验收 = R1-2 定义的「这就是纸」时刻跑通
+- 纸壳视图经组合层挂载 ✅：`paper/paper-plugin.ts` 第一方插件——纸面板从 panel-def.ts 常量行迁为 PanelsService 贡献（`BUILTIN_PLUGINS` 表装载；panel-def 常量面迁出 paper 行——「重构推到哪个域，行化跟到哪个域」第一行）
+- **块渲染器 = ctx service** ✅：`composition/renderer-service.tsx` 第五贡献通道 `ctx.renderers`——`RenderersService`（register → disposer、重名装载期拒绝、陈旧性守卫，契约对齐四 service）；内置灰框体渲染器 = 默认行（七 kind 全谱）；PaperPanel BlockView 经 `resolveRenderer(kind)` 解析（后注册胜 + `*` 兜底 + 无服务直渲兜底——三重不裸奔）；渲染器只渲染块**体**，块壳（头部/手柄/收回）留在纸壳结构件
+- 共居模式 ✅（结构事实确认）：纸 = Ctrl+P 全屏覆盖面板 + 观测台在下方并存——共居即现状；面板开合态走 dock-store；V5 preset 双装配（standard/纸壳）踩在既有 preset 机器上，本阶段无新增结构
+- 走查弹验收 = R1-2 定义的「这就是纸」时刻 ✅：走查弹已毕业（2026-08-21 判定「感觉是对的」）
+
+**门禁**：build 绿 · vitest 1530 passed/1 skipped（新增 paper-v3b 10 例；既有两条面板清单断言随迁移同步——paper 从常量清单迁贡献的迁移证据）· **verify:convergence 零漂移**（触 composition 面）· biome 零新增。
 
 ### V4 — 视觉打磨环（短环 × N；**防发散协议**——本计划对「怎么都改不好」的结构性回答）
 

@@ -13,7 +13,6 @@ import { AgentsPanel } from './AgentsPanel';
 import { CheckPanel } from './CheckPanel';
 import { ConstraintsPanel } from './ConstraintsPanel';
 import { DataflowPanel } from './DataflowPanel';
-import { PaperPanel } from './PaperPanel';
 import { SettingsPanel } from './SettingsPanel';
 import { TasksPanel } from './TasksPanel';
 
@@ -39,9 +38,8 @@ export const PANEL_DEFS: PanelDef[] = [
   { id: 'settings', side: null, title: '设置', icon: 'settings', unmountOnClose: true, component: SettingsPanel },
   { id: 'agents', side: 'right', title: '智能体', icon: 'agent', askAgent: false, component: AgentsPanel },
   { id: 'tasks', side: 'right', title: '待办', icon: 'task', askAgent: false, component: TasksPanel },
-  // paper-shell 走查弹（2026-08-21）：side:null 全屏覆盖（用户拍板「可以遮主视图」）；
-  // unmountOnClose——关即卸载，重开重订真实会话。非走查弹消费面请勿依赖此面板。
-  { id: 'paper', side: null, title: '纸（走查弹）', icon: 'file', unmountOnClose: true, component: PaperPanel },
+  // paper 面板已迁组合层贡献（V3b 壳装配：paper/paper-plugin.ts 经
+  // PanelsService 注册——「重构推到哪个域，行化跟到哪个域」第一行）。
 ];
 
 // ── 装载期运行时校验（S1-5：id 从编译期 union 约束迁到运行时清单校验）──
