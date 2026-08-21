@@ -86,6 +86,17 @@ const BUILTIN_PRESETS: Array<{
       capabilities: [{ id: 'graph-hooks', disabled: true }],
     },
   },
+  {
+    id: 'paper',
+    metadata: {
+      name: 'paper',
+      description: '纸壳优先（workspace-flip 批 5）：启动直落纸视图；观测台面板仍可用（Ctrl+P 切换）',
+    },
+    // 保守 patch（空壳域）：仅主视图落点变化，不裁壳行——纸壳用户仍需
+    // graph/chat/workspace 壳行（绑目录会话流依赖 starGraph 接线）；
+    // 壳行级裁剪等 V5 判断半的产品决策。
+    patch: {},
+  },
 ];
 
 /** 内置 preset 清单（只读快照；每行返回同一 patch 对象——resolveRoster

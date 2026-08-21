@@ -37,20 +37,20 @@ describe('composition/preset-discovery（S4-0 用户层发现）', () => {
     await discoverPresets({
       origin: ORIGIN,
       fetchImpl: router({
-        [ORIGIN + '/']: { status: 200, body: '["paper", "alpha"]' },
-        [ORIGIN + '/paper/roster.patch.yml']: { status: 200, body: PAPER_PATCH },
-        [ORIGIN + '/paper/preset.yml']: { status: 200, body: 'name: 纸壳\norder: 2\n' },
+        [ORIGIN + '/']: { status: 200, body: '["paperx", "alpha"]' },
+        [ORIGIN + '/paperx/roster.patch.yml']: { status: 200, body: PAPER_PATCH },
+        [ORIGIN + '/paperx/preset.yml']: { status: 200, body: 'name: 纸壳\norder: 2\n' },
         [ORIGIN + '/alpha/roster.patch.yml']: { status: 200, body: '{}' },
         [ORIGIN + '/alpha/preset.yml']: { status: 404 },
       }),
     });
     const roster = usePresetStore.getState().roster;
-    expect(roster.map((p) => p.id)).toEqual(['standard', 'minimal', 'alpha', 'paper']);
-    const paper = roster.find((p) => p.id === 'paper');
-    expect(paper?.builtin).toBe(false);
-    expect(paper?.patch).toEqual({ tools: [{ id: 'builtin/web', disabled: true }] });
-    expect(paper?.metadata).toEqual({ name: '纸壳', order: 2 });
-    expect(paper?.error).toBeUndefined();
+    expect(roster.map((p) => p.id)).toEqual(['standard', 'minimal', 'paper', 'alpha', 'paperx']);
+    const paperx = roster.find((p) => p.id === 'paperx');
+    expect(paperx?.builtin).toBe(false);
+    expect(paperx?.patch).toEqual({ tools: [{ id: 'builtin/web', disabled: true }] });
+    expect(paperx?.metadata).toEqual({ name: '纸壳', order: 2 });
+    expect(paperx?.error).toBeUndefined();
   });
 
   it('坏 preset（yml 语法错）：roster 行 broken（error 可见，patch null），发现不炸', async () => {
@@ -65,7 +65,7 @@ describe('composition/preset-discovery（S4-0 用户层发现）', () => {
     const broken = roster.find((p) => p.id === 'broken');
     expect(broken?.patch).toBeNull();
     expect(broken?.error).toContain('YAML');
-    expect(roster.map((p) => p.id)).toEqual(['standard', 'minimal', 'broken']);
+    expect(roster.map((p) => p.id)).toEqual(['standard', 'minimal', 'paper', 'broken']);
   });
 
   it('坏 preset（校验失败——未知域形状）：broken 同款', async () => {
@@ -123,7 +123,7 @@ describe('composition/preset-discovery（S4-0 用户层发现）', () => {
       }),
     });
     const rosterIds = usePresetStore.getState().roster.map((p) => p.id);
-    expect(rosterIds).toEqual(['standard', 'minimal', 'ok']);
+    expect(rosterIds).toEqual(['standard', 'minimal', 'paper', 'ok']);
   });
 
   it('索引 404 / 非 JSON 数组 / 500 = 内置表终态（非错误，store 不动）', async () => {
@@ -132,7 +132,7 @@ describe('composition/preset-discovery（S4-0 用户层发现）', () => {
         origin: ORIGIN,
         fetchImpl: router({ [ORIGIN + '/']: { status: body === undefined ? 404 : 200, body } }),
       });
-      expect(usePresetStore.getState().roster.map((p) => p.id)).toEqual(['standard', 'minimal']);
+      expect(usePresetStore.getState().roster.map((p) => p.id)).toEqual(['standard', 'minimal', 'paper']);
     }
   });
 
@@ -141,11 +141,11 @@ describe('composition/preset-discovery（S4-0 用户层发现）', () => {
       throw new Error('network down');
     };
     await expect(discoverPresets({ origin: ORIGIN, fetchImpl: boom })).resolves.toBeUndefined();
-    expect(usePresetStore.getState().roster.map((p) => p.id)).toEqual(['standard', 'minimal']);
+    expect(usePresetStore.getState().roster.map((p) => p.id)).toEqual(['standard', 'minimal', 'paper']);
   });
 
   it('无通道（origin 空）→ 直接返回，内置表即终态', async () => {
     await expect(discoverPresets({ origin: '' })).resolves.toBeUndefined();
-    expect(usePresetStore.getState().roster.map((p) => p.id)).toEqual(['standard', 'minimal']);
+    expect(usePresetStore.getState().roster.map((p) => p.id)).toEqual(['standard', 'minimal', 'paper']);
   });
 });

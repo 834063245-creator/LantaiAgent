@@ -24,6 +24,8 @@ import { setLang } from '../i18n';
 import { typedListen } from '../rpc-contract';
 import { loadSettings } from '../settings';
 import { useCompositionStore } from '../state/composition-store';
+import { useDockStore } from '../state/dock-store';
+import { usePresetStore } from '../state/preset-store';
 import { shellRefs } from './runtime';
 
 /** 启动期一次装载用户层 patch（幂等：composition-store 持结果）。 */
@@ -88,6 +90,14 @@ export async function bootShell(
         // 失败隔离：单行失败不炸引导（行内代码不假设前行必然成功）
         console.error('[shell] 壳行 boot 失败:', row.id, err);
       }
+    }
+
+    // 4) 主视图落点（V5b，workspace-flip 批 5）：preset = paper → 纸视图直落。
+    //    共居不破坏：观测台面板照常注册，Ctrl+P / dock 随时切回；纸面板
+    //    unmountOnClose——关掉即回会话首页。冷启动缓存工作区照常恢复
+    //    （paper preset 不裁壳行——绑目录会话流需要完整接线）。
+    if (usePresetStore.getState().selected === 'paper') {
+      useDockStore.getState().openPanel('paper');
     }
   } catch (err) {
     // 编排器级失败（引导三件套/patch await——理论不可达，防御性兜底）

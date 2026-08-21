@@ -22,9 +22,9 @@ import { builtinToolRows } from '../src/composition/tool-rows';
 const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r.id);
 
 describe('composition/presets（S4-0 preset 数据模型）', () => {
-  it('内置表含 standard 与 minimal，standard 在首（表序 = 呈现序）', () => {
+  it('内置表含 standard/minimal/paper，standard 在首（表序 = 呈现序）', () => {
     const table = builtinPresets();
-    expect(table.map((p) => p.id)).toEqual(['standard', 'minimal']);
+    expect(table.map((p) => p.id)).toEqual(['standard', 'minimal', 'paper']);
     expect(table.every((p) => p.builtin)).toBe(true);
   });
 
@@ -73,12 +73,12 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
   it('用户 preset 表解析：userPresets 命中即用其 patch', () => {
     const userPresets = [
       {
-        id: 'paper',
+        id: 'custom',
         builtin: false,
         patch: { tools: [{ id: 'builtin/git', disabled: true }] } as CompositionPatch,
       },
     ];
-    const r = resolvePresetComposition('paper', { userPresets });
+    const r = resolvePresetComposition('custom', { userPresets });
     expect(ids(r.tools)).not.toContain('builtin/git');
     expect(ids(r.tools)).toEqual(ids(builtinToolRows()).filter((id) => id !== 'builtin/git'));
   });
