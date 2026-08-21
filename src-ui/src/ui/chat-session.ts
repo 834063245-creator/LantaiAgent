@@ -10,7 +10,8 @@ import type { ChatAgentHandle } from '../agent/chat-agent-handle';
 import { createExecState, type ExecStateInstance } from '../agent/execution-state';
 import type { Message } from '../provider/types';
 import { typedRpc } from '../rpc-contract';
-import { loadSettings, getActiveProvider } from '../settings';
+import { getActiveProvider, loadSettings } from '../settings';
+import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
 import { useAgentPanelStore } from './agent-panel-store';
 import { bumpSession, getChatStore, msgStoreFor } from './chat-store';
 import type { AssistantMessage, ChatMessage, MessageId, SubAgentPart, UserMessage } from './message-model';
@@ -22,7 +23,6 @@ import {
   resetMsgIdCounter,
 } from './message-model';
 import { isSubagentSpawnTool } from './tool-semantics';
-import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
 
 // ── 模块级会话状态 ──
 //
@@ -410,7 +410,34 @@ function lsKey(projectPath: string, id: number): string {
   return `hologram_session_${hashProjectPath(projectPath).toString(36)}_${id}`;
 }
 
+// ── 零目录会话路由（workspace-flip 批 2，D-W1-1/D-W1-2）─────────────
+// 占位工作区 projectPath='' 的会话落盘到用户级目录（~/.hologram/sessions/
+// ——get_user_sessions_dir RPC 真源）。缓存经 ensureUserSessionsDir()
+// 解析（setupPlaceholderAgent / SessionsHome 装配点调用）；未解析时的
+// 兜底路径 '/.hologram/sessions' 与旧行为一致（写入失败可见于 console）。
+let _userSessionsDir: string | null = null;
+
+/** 解析用户级会话目录（幂等；零目录会话装配点调用一次）。 */
+export async function ensureUserSessionsDir(): Promise<void> {
+  if (_userSessionsDir !== null) return;
+  try {
+    _userSessionsDir = await typedRpc('get_user_sessions_dir', {});
+  } catch (e) {
+    console.error('[chat] get_user_sessions_dir 解析失败（零目录会话不落盘）:', e);
+    _userSessionsDir = '/.hologram/sessions'; // 显式兜底（与旧行为一致——不静默改道）
+  }
+}
+
+/** 测试复位（生产不调用）。 */
+export function _resetUserSessionsDirForTests(): void {
+  _userSessionsDir = null;
+}
+
 function sessionsDir(projectPath: string): string {
+  if (projectPath === '') {
+    // 零目录会话：路由用户级目录（缓存未就绪 = 旧兜底路径，ensure 已在装配点调用）
+    return _userSessionsDir ?? '/.hologram/sessions';
+  }
   return `${projectPath.replace(/\\/g, '/')}/.hologram/sessions`;
 }
 
@@ -541,7 +568,10 @@ export async function appendLastMessage(ctx: SessionContext, projectPath: string
     await typedRpc('session_append', {
       path: projectPath,
       session_id: String(sMeta.id),
-      message: { role: last.role, content: typeof last.content === 'string' ? last.content : JSON.stringify(last.content) },
+      message: {
+        role: last.role,
+        content: typeof last.content === 'string' ? last.content : JSON.stringify(last.content),
+      },
     });
   } catch {
     /* best-effort — saveActiveSession 兜底 */
@@ -927,11 +957,7 @@ function renderRestoredSession(ctx: SessionContext): void {
 
 /** 从 agent 的 getSession() 原始消息填充活跃会话的会话级消息 store + turnPairs。
  *  纯数据重建 — 无 DOM 操作，无通知。 */
-export function rebuildMessagesFromMessages(
-  msgs: Message[],
-  storeId: string,
-  sessionId: number,
-): void {
+export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, sessionId: number): void {
   const rebuilt: ChatMessage[] = [];
 
   // 保留按助手消息序号索引的活跃 SubAgentPart 对象。

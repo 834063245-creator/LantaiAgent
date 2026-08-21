@@ -327,6 +327,9 @@ function escLayer(): void {
 // ── 辅助：用占位工作区设置 agent（未加载项目）──
 async function setupPlaceholderAgent(): Promise<void> {
   if (shellRefs.workspace) return;
+  // 零目录会话装配点（workspace-flip 批 2）：用户级会话目录先于任何会话操作解析
+  const { ensureUserSessionsDir } = await import('../../ui/chat-session');
+  await ensureUserSessionsDir();
   // 清除后端工作区绑定 — 防止上一个项目的 PermissionContext
   // 泄漏到占位工作区的 read_file / list_directory 调用中。
   await typedRpc('workspace_activate', { path: '' }).catch(() => {});

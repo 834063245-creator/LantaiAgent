@@ -9,13 +9,14 @@
 // 数据源（批 1 范围）：
 //   - 项目会话：上次打开项目的 sessions（冷启动缓存图 source_root →
 //     listSavedSessions）；无缓存 = 空
-//   - 零目录会话：user_sessions_list RPC（~/.hologram/sessions/；批 2 接
-//     持久化与续开前该列表恒空——空节隐藏，无死 UI）
+//   - 零目录会话：user_sessions_list RPC（~/.hologram/sessions/；批 2 起
+//     可续开——loadSessionFromDisk('') 经 sessionsDir 路由用户级目录）
 // 灰框纪律：结构对即可，视觉是 V2 契约的事。
 
 import { useCallback, useEffect, useState } from 'react';
 import { parseJson, typedRpc } from '../rpc-contract';
 import { workspaceFlow } from '../shell/rows/workspace';
+import { ensureUserSessionsDir } from '../ui/chat-session';
 import { useCoreStore } from './chat/core-instance';
 import { useShellStore } from './shell-store';
 
@@ -56,6 +57,8 @@ export function SessionsHome() {
   useEffect(() => {
     let alive = true;
     void (async () => {
+      // 零目录会话装配点（批 2）：目录缓存先于列表/续开解析
+      await ensureUserSessionsDir();
       const root = await lastProjectRoot();
       if (!alive) return;
       setProjectRoot(root);
@@ -102,6 +105,16 @@ export function SessionsHome() {
     [core, projectRoot, setView],
   );
 
+  /** 续开零目录会话（批 2）：projectPath='' 路由用户级目录——载盘 + 唤起 */
+  const onResumeUser = useCallback(
+    (s: UserSession) => {
+      if (!core) return;
+      core.summonPanel();
+      void core.loadSessionFromDisk('', s.id);
+    },
+    [core],
+  );
+
   return (
     <div className="sh-root">
       <div className="sh-mark">◈</div>
@@ -133,14 +146,13 @@ export function SessionsHome() {
       {userSessions.length > 0 && (
         <div className="sh-section">
           <div className="sh-section-title">通用会话</div>
-          {/* 批 2 接续开（持久化路由落地后）；批 1 只展示 */}
           {userSessions.slice(0, 6).map((s) => (
-            <div className="sh-session-row sh-session-inert" key={s.id}>
+            <button type="button" className="sh-session-row" key={s.id} onClick={() => onResumeUser(s)}>
               <span className="sh-session-label">{s.label || `会话 ${s.id}`}</span>
               <span className="sh-session-meta">
                 {s.msg_count} 条 · {s.saved_at}
               </span>
-            </div>
+            </button>
           ))}
         </div>
       )}
