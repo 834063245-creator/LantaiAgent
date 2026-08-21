@@ -1,16 +1,17 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// P0：字体自托管 — Tauri 离线运行必需，替代 index.html 的 Google Fonts CDN。
-// P5：Orbitron 退役 — 展示字体 Fraunces / 数据 JetBrains Mono / 正文 LXGW WenKai（霞鹜文楷，圆润中文）。
+// 兰台字体（P0 自托管）—— 宋体正文 / 楷书手迹 / 等宽机读。
+// 四体分工见 docs/design/lantai-design-spec.md §2：宋体（正文/标题，
+// Noto Serif SC + EB Garamond 旧书衬线对偶）、楷书（Ma Shan Zheng，只给人的来文）、
+// 等宽（IBM Plex Mono，代码/工具/编号）。英文思考链走宋体/Garamond，不是手写体。
 
-import '@fontsource-variable/fraunces/standard.css';
-import '@fontsource-variable/fraunces/standard-italic.css';
-import '@fontsource/jetbrains-mono/400.css';
-import '@fontsource/jetbrains-mono/500.css';
-import '@fontsource/jetbrains-mono/600.css';
-import '@fontsource/lxgw-wenkai/300.css';
-import '@fontsource/lxgw-wenkai/500.css';
-import '@fontsource/lxgw-wenkai/700.css';
+import '@fontsource-variable/eb-garamond/index.css';
+import '@fontsource-variable/eb-garamond/wght-italic.css';
+import '@fontsource/ma-shan-zheng/400.css';
+import '@fontsource/ibm-plex-mono/400.css';
+import '@fontsource/ibm-plex-mono/500.css';
+import '@fontsource/noto-serif-sc/400.css';
 import '@fontsource/noto-serif-sc/500.css';
 import '@fontsource/noto-serif-sc/600.css';
+import '@fontsource/noto-serif-sc/700.css';

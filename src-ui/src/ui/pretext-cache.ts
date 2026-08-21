@@ -26,8 +26,10 @@ export function fontScale(): number {
 // 用户 + 助手文本部分的正文字体。
 // 注意：无 Math.round — CSS 保留小数 px（如 scale 1.15 时 12.65px），
 // canvas 接受小数大小；取整会使每个测量宽度产生偏差。
+// 兰台换装（2026-08-22）：镜像 tokens.css 的 --f-song（chat.css 经
+// --obs-font-body 别名层渲染同栈）——测量栈必须随渲染栈同步换。
 export function bodyFont(): string {
-  return `${11 * fontScale()}px "LXGW WenKai", "Noto Sans SC", system-ui, sans-serif`;
+  return `${11 * fontScale()}px "EB Garamond Variable", "EB Garamond", "Noto Serif SC", "Songti SC", serif`;
 }
 
 // 正文行高：.msg-bubble 用 1.6，.msg-markdown（助手文本）用 1.7。
@@ -36,9 +38,9 @@ export function bodyLineHeight(mult = 1.6): number {
   return 11 * fontScale() * mult;
 }
 
-// 代码块的等宽字体（流式尾部 + 工具输出）
+// 代码块的等宽字体（流式尾部 + 工具输出）——镜像 tokens.css 的 --f-mono。
 export function monoFont(): string {
-  return `${9 * fontScale()}px "JetBrains Mono", "Cascadia Code", monospace`;
+  return `${9 * fontScale()}px "IBM Plex Mono", "Cascadia Code", "Consolas", monospace`;
 }
 
 export function monoLineHeight(mult = 1.5): number {
