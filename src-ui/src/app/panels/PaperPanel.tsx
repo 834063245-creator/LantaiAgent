@@ -363,9 +363,19 @@ export function PaperPanel() {
 
   /* ── 输入条：真相走 input-store，提交走 core.sendMessage（agent 层零改动）── */
   const [inputText, setInputText] = useState('');
+  /* 冷启动死路防护：无活跃会话时 chat-core 的 addNotice 会被
+   * _resolveSessionTarget 丢弃（返回 null）——纸面零反馈 = 走查假阴性。
+   * 发送前置检查：无会话 → 纸面本地提示块（不入消息 store，UI 层直示）。 */
+  const [localNotice, setLocalNotice] = useState<string | null>(null);
   const onSend = useCallback(async () => {
     const t = inputText.trim();
     if (!t || !core) return;
+    const sess = getChatStore(core.panelId).sess.getState();
+    if (sess.activeIdx < 0 || !sess.sessions[sess.activeIdx]) {
+      setLocalNotice('当前没有活跃会话——请先在主聊天（Ctrl+L）发一条消息建立会话，或在设置中配置 API Key 后重开项目。');
+      return;
+    }
+    setLocalNotice(null);
     getChatStore(core.panelId).input.getState().setInputText(t);
     setInputText('');
     await core.sendMessage();
@@ -391,6 +401,15 @@ export function PaperPanel() {
           关闭
         </button>
       </div>
+
+      {localNotice && (
+        <div className="pp-local-notice">
+          {localNotice}
+          <button type="button" onClick={() => setLocalNotice(null)}>
+            知道了
+          </button>
+        </div>
+      )}
 
       {/* biome-ignore lint/a11y/noStaticElementInteractions: 无限画布是鼠标平移/缩放交互面（缩放走原生非被动监听，平移在这里）；键盘可达性属走查弹范围外 */}
       <div ref={canvasRef} className={`pp-canvas${panning ? ' pp-panning' : ''}`} onMouseDown={onCanvasMouseDown}>

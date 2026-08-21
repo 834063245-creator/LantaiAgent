@@ -237,6 +237,31 @@
   border-color: #666;
 }
 
+/* 冷启动本地提示（无会话发送防护——UI 层直示，不入消息 store） */
+.pp-local-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: #2a2216;
+  border-bottom: 1px solid #4a3c22;
+  color: #d8c26a;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.pp-local-notice button {
+  margin-left: auto;
+  background: #3a3020;
+  border: 1px solid #5a4a2a;
+  color: #d8c26a;
+  border-radius: 6px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+.pp-local-notice button:hover {
+  background: #4a3c22;
+}
+
 /* ── 底部输入条（固定视口底部 D-R1-3）── */
 .pp-composer {
   display: flex;
