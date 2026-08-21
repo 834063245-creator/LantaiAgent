@@ -35,9 +35,12 @@ D:\HoloGramHG\src-tauri\target\debug\hologram.exe     ← 已含最新构建
 | diff 围栏拆分（``` 块独立成 diff 块 + lang） | CDP | ✓ |
 | 冷启动无会话发送 → 本地引导提示 | CDP | ✓ |
 | 多行内容块重叠回归 + 实测反馈环收敛 | CDP | ✓ |
+| **完整 agent 回路**（纸输入条 → sendMessage → 真 provider 流式 → 块在纸上生长，零注入） | CDP 实测（2026-08-21，本地 provider，回复含 reasoning/markdown 块，5-15s 响应窗） | ✓ |
 | 门禁 | build + vitest 1492 + biome 零新增 | ✓ |
 
 已知刻意粗糙（走查弹纪律，**不是 bug**）：灰框系统字零视觉、块高估算有 ±几像素容差、无 markdown 真渲染（纯文本）、reasoning 平铺不折叠、子 agent 拍平无嵌套组。
+
+已知环境事实（2026-08-21 实测）：本机已配置的 provider 响应窗 5-15 秒——走查第 5 步等回复时请耐心；无 API Key 时发送会有 notice 反馈或（无会话时）本地引导提示，不会静默。
 
 ## 判定记录（走查后填写）
 
