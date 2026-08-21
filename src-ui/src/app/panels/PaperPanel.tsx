@@ -35,35 +35,49 @@ import './PaperPanel.css';
 /* ── 块高估算（走查弹不做真测量——Pretext 接入是 V3a 的事；
  *    估算=内容行数×行高+内边距，误差可接受：流内块是垂直排布，
  *    高估/低估只影响块间距，不影响「流的感觉」验证）── */
+/* ── 块高估算（走查弹不做真测量——Pretext 接入是 V3a 的事）──
+ * 逐行计数（每行再按 60/90 字符折行），对齐渲染端的两条上限：
+ * pre max-height 260px / 工具输出 max-height 160px（超出即滚动，不再占高）。
+ * 误差只影响块间距（流锚几何不变），不产生块重叠——多行短行内容
+ * （列表/步骤）曾按总长折行导致严重低估。 */
+function countRenderedLines(text: string, charsPerLine: number): number {
+  let n = 0;
+  for (const line of text.split('\n')) n += Math.max(1, Math.ceil(line.length / charsPerLine));
+  return n;
+}
+const PRE_MAX_H = 260;
+const OUT_MAX_H = 160;
+
 function estimateBlockHeight(b: SourcedBlock): number {
   const lineH = 20;
   const monoH = 17;
-  let textLen = 0;
-  let monoLen = 0;
+  let textLines = 1;
+  let preH = 0;
+  let outH = 0;
   switch (b.kind) {
     case 'user':
     case 'markdown':
     case 'reasoning':
     case 'notice':
-      textLen = (b.payload as { text: string }).text.length;
+      textLines = countRenderedLines((b.payload as { text: string }).text, 60);
       break;
     case 'diff':
-      monoLen = (b.payload as { text: string }).text.length;
+      preH = Math.min(PRE_MAX_H, countRenderedLines((b.payload as { text: string }).text, 90) * monoH + 8);
       break;
     case 'tool': {
-      const p = b.payload as { args: string; output?: string };
-      monoLen = p.args.length + (p.output?.length ?? 0);
+      const p = b.payload as { args: string; output?: string; err?: string };
+      preH = Math.min(PRE_MAX_H, countRenderedLines(p.args, 90) * monoH + 8);
+      if (p.output) outH += Math.min(OUT_MAX_H, countRenderedLines(p.output, 90) * monoH + 8);
+      if (p.err) outH += Math.min(OUT_MAX_H, countRenderedLines(p.err, 90) * monoH + 8);
       break;
     }
     case 'plan':
-      textLen = (b.payload as { content: string }).content.length;
+      preH = Math.min(PRE_MAX_H, countRenderedLines((b.payload as { content: string }).content, 90) * monoH + 8);
       break;
   }
-  const textLines = Math.max(1, Math.ceil(textLen / 60)); // ~60 字符/行
-  const monoLines = Math.max(0, Math.ceil(monoLen / 90));
   const head = 22;
   const pad = 20;
-  return head + pad + textLines * lineH + monoLines * monoH;
+  return head + pad + textLines * lineH + preH + outH;
 }
 
 /* ── 灰框块渲染器 ── */
@@ -206,15 +220,44 @@ export function PaperPanel() {
 
   /* 流布局（穿全层第三段：块 → 世界坐标）。
    * 走完整序列栈：flow 块占实际高度，pinned 块在原序位留占位符（ghost）——
-   * 设计文档 §2.3「原位置留占位符」+ D-R2-2「收回回原位」的可验证基础。 */
+   * 设计文档 §2.3「原位置留占位符」+ D-R2-2「收回回原位」的可验证基础。
+   * 高度 = 实测反馈环：渲染后量真实 DOM 高度回写 measuredH，
+   * 布局用 max(估算, 实测)——实测只在放大/缩小时短暂失真（除以 zoom 校正），
+   * 这是 V3a Pretext 测量的走查弹前身。 */
+  const measuredRef = useRef(new Map<string, number>());
+  const blockElsRef = useRef(new Map<string, HTMLDivElement | null>());
+
   const stack = useMemo(
     () =>
-      blocks.map((b) =>
-        b.state === 'flow' ? { id: b.id, h: estimateBlockHeight(b), w: b.w } : { id: b.id, h: GHOST_H, w: b.w },
-      ),
+      blocks.map((b) => {
+        const est = b.state === 'flow' ? estimateBlockHeight(b) : GHOST_H;
+        const measured = measuredRef.current.get(b.id);
+        return { id: b.id, h: measured != null && measured > est ? measured : est, w: b.w };
+      }),
     [blocks],
   );
   const layout = useMemo(() => layoutFlow(stack), [stack]);
+
+  /* 实测反馈环：每轮渲染后量 flow 块真实高度回写。
+   * offsetHeight 不受祖先 transform 影响（已是世界单位，无需除 zoom）——
+   * 量的是布局高度，与视觉缩放无关。触发下一轮布局收敛（1-2 轮稳定）。 */
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      let changed = false;
+      for (const b of blocks) {
+        const el = blockElsRef.current.get(b.id);
+        if (!el || b.state !== 'flow') continue;
+        const worldH = el.offsetHeight;
+        const prev = measuredRef.current.get(b.id);
+        if (worldH > 0 && Math.abs((prev ?? 0) - worldH) > 2) {
+          measuredRef.current.set(b.id, worldH);
+          changed = true;
+        }
+      }
+      if (changed) setMsgState((s) => ({ messages: s.messages, tick: s.tick + 1 }));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [blocks]);
 
   /* ── 交互：平移 / 缩放 / 拖块 ── */
   const panningRef = useRef<{ lastX: number; lastY: number } | null>(null);
@@ -437,6 +480,9 @@ export function PaperPanel() {
                 // biome-ignore lint/a11y/noStaticElementInteractions: 块拖拽面（拖出钉住手势 D-R2-1，无原生等价物）；收回/展开已有原生按钮
                 <div
                   key={b.id}
+                  ref={(el) => {
+                    blockElsRef.current.set(b.id, el);
+                  }}
                   className={`pp-block pp-${b.kind}`}
                   style={{ left: slot.x, top: slot.y, width: b.w, minHeight: estimateBlockHeight(b) }}
                   onMouseDown={(e) => onBlockMouseDown(e, b)}
