@@ -23,6 +23,7 @@ workspace-flip ✅（批 1-5 竣工 2026-08-22）──→ S3 解锁 + 纸壳 pr
 
 | 日期 | 里程碑 | 工程 |
 |---|---|---|
+| 2026-08-22 | **V1-R3 全弃 → 止损 → 参照物板收敛：印刷品方向通过（首个正判定）**——三假说证伪后经参照物板（R1 iA × R5 Craft）定方向；材质暂定 R4 零纹理；风格源 direction-b 排印宪章 v3 转录为 r5 档；宪章 token 表 / 字形盘点 / 表面清单三件备料落地；打磨 A 段（转录缺口）清账，B 段队列待 vision 会话；用户疲劳态落账，人判项挂起 | paper-shell |
 | 2026-08-22 | **workspace-flip 竣工**（批 1-5 五 commit：会话首页 / 零目录会话 / 打开流两段化 / bootShell 接线 / 纸壳 preset——S3 解锁） | workspace-flip |
 | 2026-08-22 | workspace-flip 设计件 D9 出稿（六批序列）+ W1 访谈四项粒度拍板；**待用户批准开工** | workspace-flip |
 | 2026-08-22 | 纸壳 V3b 壳装配竣工（纸面板迁组合层贡献 + 块渲染器第五通道 ctx.renderers） | paper-shell |
@@ -35,7 +36,7 @@ workspace-flip ✅（批 1-5 竣工 2026-08-22）──→ S3 解锁 + 纸壳 pr
 
 ### 下一步（就一条）
 
-**paper-shell V2 视觉契约转录**（用户节奏定开工）——workspace-flip 结构工程已毕，纸壳进入视觉阶段；S3 逐域行化随纸推进按需跟。
+**paper-shell R5 打磨环**——方向已定（印刷品，材质=R4 零纹理），A 段转录缺口已清账；建议开 **vision 会话**跑 B 段自检循环（agent 对着黄金样本 direction-b 自我迭代，用户只做终审）。队列与规则见 [`paper-shell/r5-polish-backlog.md`](paper-shell/r5-polish-backlog.md)，今日全部决定见 [`paper-shell/taste-ledger.md`](paper-shell/taste-ledger.md)（注意：用户疲劳态已落账，人判项挂起，勿批量索要判断）。
 
 ### 编号系统对照（防绕晕）
 
@@ -56,7 +57,7 @@ workspace-flip ✅（批 1-5 竣工 2026-08-22）──→ S3 解锁 + 纸壳 pr
 | 计划 | 状态 | 下一步 |
 |---|---|---|
 | [`workspace-flip/`](workspace-flip/) | **Done**（2026-08-22 批 1-5 竣工——软件概念翻转：纯会话优先 / 零目录会话一等化 / 图谱后台预热 / bootShell 组合接线 / 纸壳 preset + 主视图落点。五 commit 见计划 README 竣工记录） | 维护态（行为边界与遗留见 README） |
-| [`paper-shell/`](paper-shell/) | In progress（2026-08-20 立项，独立创作工程。V0 ✅（R1/R2）→ 走查弹 ✅ → V3a ✅ → V3b ✅；**V5 机制半 ✅（workspace-flip 承接）**） | V2 视觉契约 → V4 打磨环（用户节奏定开工）；R3/V5 判断半等「纸能住人」 |
+| [`paper-shell/`](paper-shell/) | In progress（2026-08-20 立项，独立创作工程。V0 ✅ → 走查弹 ✅ → V3a ✅ → V3b ✅ → V5 机制半 ✅；V1 三轮负结果后经参照物板收敛：**R5 印刷品方向通过（2026-08-22，首个正判定）**，材质暂定 R4 零纹理） | R5 打磨环 B 段（队列见 r5-polish-backlog.md）；R3 退役访谈等「纸能住人」 |
 | [`composition-architecture/`](composition-architecture/) | **S0-S2 Done · S4 Done**（装载通道 / 注册表化 / 组合外化 / preset realm + 分发；宪法见 [`docs/adr/composition-boundaries.md`](../adr/composition-boundaries.md)） | S3 逐域行化——**解锁条件已满足**（workspace-flip 批 5 交付纸壳 preset）；按纸推进按需迁 |
 | [`arch-action-plan.md`](arch-action-plan.md) | 批 1/2 完成；批 3 的 13/12/11a/11b 完成，14 部分完成，11c 搁置 | 11c 与 agent 区 any 清理 |
 | [`shell-stability-bundled-bash-plan.md`](shell-stability-bundled-bash-plan.md) | P0–P5 已落地 | Windows 真机验证（cfg(windows) 路径） |
