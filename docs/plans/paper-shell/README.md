@@ -1,6 +1,7 @@
 # 白纸壳（paper-shell）——前端重构主计划（独立工程）
 
-> **本目录阅读顺序**：① 本 README（工程定位 + 管线 + 待定清单）→ ② `interviews/`（按日期，最新拍板为准）→ ③ `taste-ledger.md`（视觉决定账本，V2 起持续记账）→ ④ `walkthrough.md`（走查弹走查指南——待用户判定）。设计原理在 `docs/design/一张纸-Agent软件交互形态设计.md`（注意 §2.3 有界画布已被 R1 修订为无限画布+方位感，见 interviews/R1-2026-08-20.md D-R1-1）。
+> **本目录阅读顺序**：① 本 README（工程定位 + 管线 + 待定清单）→ ② `interviews/`（按日期，最新拍板为准）→ ③ `taste-ledger.md`（视觉决定账本，V2 起持续记账）→ ④ `walkthrough.md`（走查弹——已毕业，判定记录在档）。设计原理在 `docs/design/一张纸-Agent软件交互形态设计.md`（注意 §2.3 有界画布已被 R1 修订为无限画布+方位感，见 interviews/R1-2026-08-20.md D-R1-1）。
+> **代码入口**：`src-ui/src/paper/README.md`（走查弹交付的 V3a 首批真文件——块模型/转译/画布数学分层说明 + 拍板决定映射）。
 
 > 立项：2026-08-20 · 状态：**Active（2026-08-21 走查弹毕业——用户判定「感觉是对的」（判定记录见 walkthrough.md）；下一步 V3a 骨架内核开工。V1 视觉暂停于两轮负结果，见 taste-ledger。走查涌现新课题：块粒度与截取，见待定清单 #10）**
 > 设计地基：`docs/design/一张纸-Agent软件交互形态设计.md`（§1-5 已定：卷轴隐喻 / 两层所有权 / 块协议 / 三层分离 / 视觉语言；§6 为待决清单）
@@ -33,7 +34,8 @@
 | `ink-brass-prototype.html` / `-scene-v2.html` | 墨与黄铜静物场景（观测日志美感：卷册/压纸/墨表） | V1 候选视觉方向 |
 | `layout-prototype` / `pill-demo` / `toolbar-demo` | 布局 / 胶囊 / 工具条局部探索 | V2 组件清单输入 |
 | `demo.html` / `observatory-concept.html` + 4 预览图 | 旧观测台方向 | 仅参考 |
-| `src-ui/src/lib/pretext` | Canvas measureText 排版测量（设计文档 §3.3 引用，**仍在**） | V3a 测量引擎 |
+| `src-ui/src/paper/` | **走查弹交付的 V3a 首批真文件**（2026-08-21）：块模型 + 转译（含 diff 围栏拆分）+ 画布数学 + 流锚，23 无头测试；壳在 `app/panels/PaperPanel.tsx`（Ctrl+P 开合） | V3a 在其上展开 |
+| `src-ui/src/lib/pretext` | Canvas measureText 排版测量（内部快照，**V3a 时被上游 `@chenglou/pretext` 取代**，见待定 #8） | V3a 测量引擎（切换前暂由 `pretext-cache.ts` 服务观测台） |
 | 设计文档 §6 清单 | 7 个待验证/待决策 | §问题分配表 |
 
 ## 管线
