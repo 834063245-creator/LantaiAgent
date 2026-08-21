@@ -30,6 +30,7 @@ D:\HoloGramHG\src-tauri\target\debug\hologram.exe     ← 已含最新构建
 | headless 内核（块模型/转译/画布数学/围栏拆分） | 23 无头测试 | ✓ |
 | 转译→布局→渲染全层（真实形状消息） | CDP | ✓ |
 | 拖出钉住 + 占位符 + 点击恢复 | CDP 真鼠标 | ✓ |
+| 收回按钮 + confirm 确认通道（D-R2-2 主通道：hover 出按钮 → 点击 → 确认提示「收回该块到对话流原位？」→ 回流） | CDP（行为学观测：confirm 覆写记录调用 + 文案 + 终态） | ✓ |
 | 锚点缩放 / 拖空白平移 / 流锚几何 | CDP | ✓ |
 | 流式逐 token 跟新（10 帧模拟） | CDP | ✓ |
 | diff 围栏拆分（``` 块独立成 diff 块 + lang） | CDP | ✓ |
