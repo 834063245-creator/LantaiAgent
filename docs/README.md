@@ -57,7 +57,9 @@
 ## 维护规则
 
 1. **完成即归档**：施工稿、交接稿、被取代的 plan 完成后移入 `docs/archive/`，并更新本索引与相关链接。
-2. **生成物勿手改**：`docs/agents/frontend-rpc-contract.md` 由 `scripts/gen-rpc-contract-md.cjs` 生成。
+2. **生成物勿手改**：`docs/agents/frontend-rpc-contract.md` 由 `scripts/gen-rpc-contract-md.cjs` 生成；
+   `docs/agents/model-tool-contract.md` 由 `scripts/gen-tool-contract-md.cjs`（经 tsx 运行
+   `src-ui/scripts/gen-tool-contract-md.ts`）生成，工具面变更后重新生成并同 commit。
 3. **数字必须实测**：README / ARCHITECTURE / AGENTS / CONVENTIONS 中的用例数、方法数、语言数等，改动后要重测并标注日期。
 4. **工具/RPC/领域动作变更**：同步 `tools/domains.ts` → 根规则文档 → 本索引 → 生成物。
 5. 归档文件保留 commit 历史，不删除；历史文件顶部应有「已归档/被取代」说明。

@@ -334,6 +334,6 @@ DOM 所有权按层划分，不要跨层抢 DOM：
 
 ## 4. 文档维护
 
-- 工具/RPC/领域动作清单变化时：更新 `tools/domains.ts` → 本文件 → `AGENTS.md` → `docs/README.md` 索引 → 生成类文档（如 frontend-rpc-contract.md）。
+- 工具/RPC/领域动作清单变化时：更新 `tools/domains.ts` → 本文件 → `AGENTS.md` → `docs/README.md` 索引 → 生成类文档（frontend-rpc-contract.md；模型可见工具面另跑 `npm run gen:tool-contract` 重生成 model-tool-contract.md，vitest 守护测试会拦漂移）。
 - 已竣工的 plan/handoff 应移入 `docs/archive/` 或加「历史」横幅，不要继续以现状口吻保留过期数字。
 - 规则与代码现状冲突时：停下来确认，以代码为准，并更新规则文档；不确定就问用户。

@@ -74,7 +74,11 @@ flowchart LR
 
 - **语言**：27 种 tree-sitter 语法静态链接；18 族适配器有专用结构查询（`.scm`，`engine/queries/` 共 38 个查询文件），其余静态语言走通用兜底；JSON 语法在代码中禁用（数据文件不解析）；Kotlin / Markdown / TOML 动态加载。
 - **引擎 MCP 工具**：37 个 schema，默认激活 36 个（`symbol_history` 为 legacy 不默认激活；`HOLOGRAM_MCP_TOOLS=*` 放开全量）。外部 MCP 客户端（Cursor/Claude Code）仍见细粒度工具名。
-- **内置 Agent 领域工具**（模型可见）：`fs / shell / git / search / web / agent / task / memory / browser / desktop / graph / ops / lsp` + 常驻 `ask_user / Skill / wait / enter_plan_mode / exit_plan_mode`。
+- **内置 Agent 领域工具**：模型可见工具面清单/枚举/参数以生成物为唯一事实源——
+  `docs/agents/model-tool-contract.md`（`scripts/gen-tool-contract-md.cjs` 从 ToolRegistry
+  装配产物生成，勿手改；变更后重新生成并同 commit，vitest 守护测试对拍漂移）。
+  常驻 `ask_user / Skill / wait / enter_plan_mode / exit_plan_mode` 中 ask_user/wait 在注册表面内，
+  其余为 blueprint 会话级装配。
   - `graph`：symbols / semantic（语义检索——向量索引按含义找符号，不知确切名字时用）/ neighbors / impact / preflight / cycles / coupling / fragile / flows / dataflow / dataflow_save / dataflow_query 等 27 个动作（dataflow_save 为写动作）——**改代码前先问图**。
   - `ops`：analyze / validate / health / status / timeline / rename / import_scip。
   - `lsp`：resolve_call / infer_type / implementations / references。

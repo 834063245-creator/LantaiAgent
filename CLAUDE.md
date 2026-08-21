@@ -45,6 +45,6 @@
 ## 项目快照
 
 - **定位**：把代码库解析成可对话的依赖星图，并内置多 Agent 编码工作台。桌面应用 = Tauri 2 + Rust 引擎 + TypeScript/React 19 + Three.js + Monaco。
-- **工具层**：内置 Agent 可见领域工具 `fs / shell / git / search / web / agent / task / memory / browser / desktop / graph / ops / lsp` + `ask_user / Skill / wait / plan`。旧工具名（`run_shell`、`write_file`、`git_*`、`search_symbols` 等）已淘汰，模型调用会被重定向。
+- **工具层**：模型可见工具面以生成物为准：`docs/agents/model-tool-contract.md`（由 `npm run gen:tool-contract` 从 ToolRegistry 装配产物生成，勿手改；域折叠形态 + action 枚举 + 参数说明 + 隐藏旧名附录）。会话级 capability 工具（`Skill` / plan / 通信族）经 blueprint 装配，契约由 convergence 快照钉住。旧工具名（`run_shell`、`write_file`、`git_*`、`search_symbols` 等）已淘汰，模型调用会被重定向。
 - **图优先**：`graph(symbols/impact/preflight/...)` 是改代码前的工作流入口，grep 只做兜底。
 - **现状文档**：先查 `docs/plans/README.md`（计划现状入口——现在在哪/还剩什么/谁判断；里程碑史在 `docs/plans/HISTORY.md`）；项目手册 `AGENTS.md`、架构 `ARCHITECTURE.md`、词汇 `CONTEXT.md`、多 Agent 工作台 `docs/MULTI_AGENT_ROADMAP.md`。`docs/archive/` 是历史，勿作现状。
