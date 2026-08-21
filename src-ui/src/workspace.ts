@@ -176,6 +176,9 @@ export class Workspace {
 
   /** 冷启动后台分析的健康状态。 */
   _health: 'unknown' | 'ready' | 'degraded' = 'unknown';
+  /** 图谱后台预热中（workspace-flip 批 3，D-W1-3）：缓段拉页进行时为 true——
+   *  UI 呈现「预热中」+ graph 工具缺席的诚实提示判定位。 */
+  _graphWarming = false;
 
   /** 后台分析失败时的回调（冷启动降级模式）。 */
   onAnalysisFailed: ((err: unknown) => void) | null = null;
@@ -328,7 +331,13 @@ export class Workspace {
           /* 拉页路径已降级处理，此处静默 */
         });
       } else {
-        // 完整分析：analyze_and_load 只回 meta + 分页信息，图数据逐页拉取。
+        // 完整分析（workspace-flip 批 3 两段化，D-W1-3）：分析出关键路径——
+        // 急段（本分支现在）：analyze_and_load 拿 meta + 分页信息即返回，会话
+        // 立即可用（setupAgent 在 open 返回后即跑，对话秒进）；
+        // 缓段（fire-and-forget，_active 守卫 + 既有降级路径）：逐页拉图、
+        // 渲染、graph-updated 事件驱动后续增量。图谱预热完成前 graph 工具
+        // 按既有语义缺席（hologram 行空集）——会话工厂在会话创建时点读
+        // this.graphData，预热完成后新会话自动获得完整图工具面。
         ws.onLoadingChange?.(true);
         const raw = await typedRpc('analyze_and_load', { path, force: false });
         const meta = JSON.parse(raw) as CachedGraphMeta;
@@ -339,7 +348,24 @@ export class Workspace {
           communities: [],
           hierarchical_communities: [],
         };
-        await loadGraphPages(ws, starGraph, meta);
+        // 图谱预热状态（D-W1-3 优雅降级的 UI 呈现位）
+        ws._graphWarming = true;
+        ws.onStatusChange?.('图谱后台预热中——对话已就绪，图工具将在分析完成后可用');
+        loadGraphPages(ws, starGraph, meta)
+          .then(() => {
+            if (!ws._active) return;
+            ws._graphWarming = false;
+            ws._health = 'ready';
+            ws.onLoadingChange?.(false);
+            ws.onStatusChange?.('图谱预热完成——图工具已可用（新会话生效）');
+            ws.runCheck();
+          })
+          .catch((err) => {
+            if (!ws._active) return;
+            ws._graphWarming = false;
+            ws._health = 'degraded';
+            ws.onAnalysisFailed?.(err);
+          });
       }
 
       // 3. 加载文件级图谱 — 5 秒超时，不阻塞工作区打开。
