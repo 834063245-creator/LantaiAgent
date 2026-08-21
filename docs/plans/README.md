@@ -23,6 +23,8 @@ workspace-flip ✅（批 1-5 竣工 2026-08-22）──→ S3 解锁 + 纸壳 pr
 
 | 日期 | 里程碑 | 工程 |
 |---|---|---|
+| 2026-08-22 | **产品更名执行：兰台 / Lantai 全量落地**（同日拍板→当日施工，零外部用户 = 标识符窗口开放，推翻早前「冻结」预案）。**应用身份**：productName/窗口标题「全息观测站」→「兰台」；identifier `com.hologram.hg` → `com.lantai.app`（凭证目录 com.hologram.app 一并统一，本机 API Key 需重录一次）；updater endpoint 指 `834063245-creator/Lantai`（**repo 改名由用户在 GitHub 执行，改名前不打发布包**）；卸载清理脚本（wix EncodedCommand）同步重编码。**HoloGram 降级为图谱引擎专名保留**（用户定调「图谱是能力不是本体，可单独命名」）：工具域 `hologram(...)`、MCP 工具 `hologram_*`、`.hologram/` 数据目录、`HOLOGRAM_*` env、`hologram.db`、`hologram.constraints.yaml`、engine crate `hologram-engine`、dsh-bundle `@a834063245/hologram-dsh` 均不改。**应用层内部标识全换**：插件桥 `__lantai_plugin_host__`、scoped-store 键 `__lantai_*_stores__`、merge gate `__LANTAI_MERGE_GATE__`、类型 `LantaiPlugin`、src-tauri crate `lantai`、npm `lantai-ui`。system prompt persona「你是兰台的编码 Agent / 由兰台调度」+ browser 工具描述「兰台 webview」→ **convergence baseline 需重录**（standard + minimal 两套 record，change request 在案）。文档：README 头部/定位/badges、AGENTS/CLAUDE 命名架构注记、CONVENTIONS/ARCHITECTURE 标识符引用同步 | 总控 |
+| 2026-08-22 | ~~产品命名拍板：兰台 / Lantai~~（当日稍晚升级为上条「全量落地」，冻结预案作废） | 总控 |
 | 2026-08-22 | **V1-R3 全弃 → 止损 → 参照物板收敛：印刷品方向通过（首个正判定）**——三假说证伪后经参照物板（R1 iA × R5 Craft）定方向；材质暂定 R4 零纹理；风格源 direction-b 排印宪章 v3 转录为 r5 档；宪章 token 表 / 字形盘点 / 表面清单三件备料落地；打磨 A 段（转录缺口）清账，B 段队列待 vision 会话；用户疲劳态落账，人判项挂起 | paper-shell |
 | 2026-08-22 | **workspace-flip 竣工**（批 1-5 五 commit：会话首页 / 零目录会话 / 打开流两段化 / bootShell 接线 / 纸壳 preset——S3 解锁） | workspace-flip |
 | 2026-08-22 | workspace-flip 设计件 D9 出稿（六批序列）+ W1 访谈四项粒度拍板；**待用户批准开工** | workspace-flip |

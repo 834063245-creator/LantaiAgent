@@ -1,28 +1,28 @@
 <p align="center">
-  <img src="assets/banner.png" alt="HoloGram" />
+  <img src="assets/banner.png" alt="兰台 Lantai" />
 </p>
 
 <p align="center">
-  <strong>HoloGram — 深空代码拓扑观测站</strong>：把代码库编译成可对话的 3D 依赖星图，并内置多 Agent 编码工作台
+  <strong>兰台（Lantai）— 一张纸上的 Agent 工作台</strong>：内置多 Agent 编码工作台，图谱引擎 HoloGram 把代码库编译成可对话的 3D 依赖星图
 </p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" /></a>
   <a href="https://whyihaveyou.github.io/dsh-suite/"><img src="https://img.shields.io/badge/featured%20on-dsh--suite-4d6bfe" /></a>
-  <a href="https://github.com/834063245-creator/HoloGram/releases"><img src="https://img.shields.io/github/v/release/834063245-creator/HoloGram?color=orange&style=flat-square" /></a>
-  <a href="https://github.com/834063245-creator/HoloGram/actions"><img src="https://img.shields.io/badge/tests-2200%2B-brightgreen?style=flat-square" /></a>
-  <a href="https://github.com/834063245-creator/HoloGram/releases"><img src="https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux-blue?style=flat-square" /></a>
+  <a href="https://github.com/834063245-creator/Lantai/releases"><img src="https://img.shields.io/github/v/release/834063245-creator/Lantai?color=orange&style=flat-square" /></a>
+  <a href="https://github.com/834063245-creator/Lantai/actions"><img src="https://img.shields.io/badge/tests-2200%2B-brightgreen?style=flat-square" /></a>
+  <a href="https://github.com/834063245-creator/Lantai/releases"><img src="https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux-blue?style=flat-square" /></a>
 </p>
 
 ---
 
 ## 定位
 
-HoloGram 把代码库解析成一张**统一 IR 依赖图**（节点 = 符号/函数/类/模块，边 = 调用/继承/读写/时序/数据流），通过 MCP 协议向 AI Agent 暴露 **35 个默认图查询工具**（注册表共 36 个 schema），并提供 Tauri 2 桌面应用（3D 星图 + 内置多 Agent 编码工作台）与 DeepSeek Harness（DSH）插件集成。
+兰台把代码库解析成一张**统一 IR 依赖图**（节点 = 符号/函数/类/模块，边 = 调用/继承/读写/时序/数据流），通过 MCP 协议向 AI Agent 暴露 **35 个默认图查询工具**（注册表共 36 个 schema），并提供 Tauri 2 桌面应用（纸面 Agent 工作台 + 3D 星图）与 DeepSeek Harness（DSH）插件集成。
 
 **核心主张：依赖推理应当是确定性的，而不是猜的。**
 
-LLM 分析"改 A 会炸什么"时，靠逐文件读源码推测依赖——弱模型会漏，大项目会翻不动。HoloGram 用 tree-sitter 静态分析预先算好整张依赖图：Agent 一次工具调用拿到结构化事实（影响面、循环、脆弱模块、数据流路径），而不是源文件文本。单点查询省 ~70% token，全局分析省 90%+；省 token 是次要的，**可靠性**是主要的。
+LLM 分析"改 A 会炸什么"时，靠逐文件读源码推测依赖——弱模型会漏，大项目会翻不动。兰台的图谱引擎（HoloGram）用 tree-sitter 静态分析预先算好整张依赖图：Agent 一次工具调用拿到结构化事实（影响面、循环、脆弱模块、数据流路径），而不是源文件文本。单点查询省 ~70% token，全局分析省 90%+；省 token 是次要的，**可靠性**是主要的。
 
 引擎是单文件二进制，本地运行、零配置、代码不出机器。它同时服务三种形态，共享同一份内存图与 watcher 增量更新：
 
@@ -45,7 +45,7 @@ LLM 分析"改 A 会炸什么"时，靠逐文件读源码推测依赖——弱�
 | **多厂商 LLM** | 9 个静态模型目录共 73 个模型 + 运行时动态发现，Anthropic / OpenAI 兼容 / DeepSeek / GLM / Qwen / MiniMax / Moonshot / Ollama / opencode；thinking 档位按厂商适配；本地反向代理绕 CORS |
 | **Harness 工程模式** | 约束治理（constraints.yaml）、权限引擎（Allow / Deny / Ask / Passthrough）、三层沙箱、git worktree 隔离、审计日志、系统级加密凭证 |
 | **3D 星图可视化** | Three.js WebGL + WebGPU 布局 + 星系折叠导航，万节点秒开；Monaco 编辑器点节点即开源码 |
-| **增量与自举** | watcher 驱动增量更新（保存即刷新）；HoloGram 用自己的引擎分析自己的代码库 |
+| **增量与自举** | watcher 驱动增量更新（保存即刷新）；兰台用自己的引擎分析自己的代码库 |
 
 ---
 
@@ -53,12 +53,12 @@ LLM 分析"改 A 会炸什么"时，靠逐文件读源码推测依赖——弱�
 
 ### MCP 模式（推荐，1 分钟）
 
-引擎随 [Releases](https://github.com/834063245-creator/HoloGram/releases) 发布（Windows / Linux），安装脚本一键完成。也可以把下面这段话直接发给你的 AI 编程工具，让它自己装：
+引擎随 [Releases](https://github.com/834063245-creator/Lantai/releases) 发布（Windows / Linux），安装脚本一键完成。也可以把下面这段话直接发给你的 AI 编程工具，让它自己装：
 
 ```text
 请帮我安装 HoloGram MCP 服务。步骤：
 
-1. 从 https://github.com/834063245-creator/HoloGram/releases 下载：
+1. 从 https://github.com/834063245-creator/Lantai/releases 下载：
    - Windows: hologram-engine-windows-x64.zip
    - Linux:   hologram-engine-linux-x64.tar.gz
 2. 解压后运行安装脚本：
@@ -109,7 +109,7 @@ hologram --stress <path> <iters>             # 压力测试 / 基准
 
 ### 桌面应用
 
-[Releases](https://github.com/834063245-creator/HoloGram/releases) → 下载 `.msi`（Windows）→ 选项目 → 自动出图。桌面端与 MCP 模式共用同一个引擎进程与数据。
+[Releases](https://github.com/834063245-creator/Lantai/releases) → 下载 `.msi`（Windows）→ 选项目 → 自动出图。桌面端与 MCP 模式共用同一个引擎进程与数据。
 
 ### DeepSeek Harness 集成（hologram-dsh）
 
@@ -351,7 +351,7 @@ Python · JavaScript/TypeScript/TSX · Rust · Go · Java · C/C++ · C# · Ruby
 ## 工程事实
 
 - **测试**（2026-08-17 实测）：引擎 **697 用例**（lib 669 + bin 27 + doc 1，696 passed / 1 ignored）· 壳 **322 用例**（bin 308 + 集成 14，全绿；pwsh 冒烟在无 pwsh 7 的环境自动跳过）· 前端 **1201 用例 / 116 文件**（1200 passed / 1 skipped；首次全量在并行构建环境下偶发 1 失败，重跑通过）
-- **自举**：HoloGram 用自己的引擎分析自己的代码库——当前图快照 **18,119 节点 / 65,508 边**（2026-08-17）
+- **自举**：兰台用自己的引擎分析自己的代码库——当前图快照 **18,119 节点 / 65,508 边**（2026-08-17）
 - 实测（Linux kernel 全量，历史基准）：全量分析 1,770s 全程跑完，RSS 646MB；快照写入 2.44GB / 56.3s
 - 并行解析 200 文件/批，边去重 625×；增量更新由 watcher 驱动（保存即刷新）
 - 三端独立验证：`engine cargo test` · `src-tauri cargo test` · `src-ui vitest run`；前端另有 `npm run verify:convergence` 契约门禁
@@ -389,4 +389,4 @@ cd src-ui && npx biome check --write <改动文件>   # 格式（全仓存量基
 
 ## 许可
 
-HoloGram © 2026 Wenbing Jing — [MIT](LICENSE)。第三方组件（tree-sitter 语法库、SQLite、USearch、onnxruntime、mimalloc 等）版权声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)；安全策略见 [SECURITY.md](SECURITY.md)。
+兰台（Lantai）© 2026 Wenbing Jing — [MIT](LICENSE)。第三方组件（tree-sitter 语法库、SQLite、USearch、onnxruntime、mimalloc 等）版权声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)；安全策略见 [SECURITY.md](SECURITY.md)。

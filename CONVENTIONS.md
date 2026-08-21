@@ -33,7 +33,7 @@
 ```
 ✅ 面板级（多面板/多会话）store：
    1. create<S>(() => ({ ... })) 定义 store
-   2. createScopedStore('__hologram_xxx_stores__', createImpl) 建注册表（src-ui/src/state/scoped-store.ts）
+   2. createScopedStore('__lantai_xxx_stores__', createImpl) 建注册表（src-ui/src/state/scoped-store.ts）
    3. export const getXxxStore = scoped.getStore — 按 storeId 取实例
    4. 非响应式读走 getXxxStore(id).getState()
    参考：state/messages-store.ts / state/session-store.ts / state/panel-store.ts /
@@ -198,7 +198,7 @@ preset realm + 热重载 + 消费闭环（S4，2026-08-20 起生效）：
 ✅ 插件安装通道：plugin_install/uninstall/set_enabled RPC（Rust
    commands/plugin_install.rs——tar-slip 双重围栏 + 原子落盘 + plugins.json
    读改写）；插件必须自包含（无裸 import——宿主桥
-   window.__hologram_plugin_host__ 提供 createElement/notify）
+   window.__lantai_plugin_host__ 提供 createElement/notify）
 ✅ 插件/组合面变更同步 docs/plugins/README.md（通道 API/生效语义/
    信任模型的单一人类契约）
 ```

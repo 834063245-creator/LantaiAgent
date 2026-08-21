@@ -671,7 +671,7 @@ Agent 循环在 TypeScript 中运行（而非 Rust），因为：
 （INVARIANTS.md #1）模块顶层全局变量 = 跨面板串流。面板级 store（messages/session/panel/input）统一走 `createScopedStore`（`src-ui/src/state/scoped-store.ts`）：
 
 ```
-const scoped = createScopedStore('__hologram_xxx_stores__', createImpl);
+const scoped = createScopedStore('__lantai_xxx_stores__', createImpl);
 export const getXxxStore = scoped.getStore; // 按 storeId 取实例
 ```
 
