@@ -181,7 +181,8 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
 
         // ── 身份认证/权限 ──
         // credential_get：Option<String> serde 序列化，恒 "key"/null JSON。
-        "credential_get" => RpcResultShape::JsonValue,
+        // get_last_project：同款 Option<String> serde 序列化，恒 "path"/null。
+        "credential_get" | "get_last_project" => RpcResultShape::JsonValue,
 
         // ── Agent 隔离 ──
         // create（json!）/status（json!）/force_purge（format! 文本）。
@@ -1376,7 +1377,7 @@ async fn dispatch_rpc(
         "get_full_graph" => commands::hologram::get_full_graph(state).await,
 
         // ═══════════════════════════════════════════════════════
-        // 工作区（3 个命令）
+        // 工作区（4 个命令）
         // ═══════════════════════════════════════════════════════
         "workspace_activate" => {
             let path = req_str(&params, "path", "workspace_activate")?;
@@ -1387,6 +1388,14 @@ async fn dispatch_rpc(
         }
         "workspace_start_watcher" => {
             ok_unit(commands::workspace::workspace_start_watcher(app, state).await)
+        }
+        // get_last_project：Option<String> serde 序列化，恒 "path"/null JSON
+        //（credential_get 同款）；图谱引擎停用时冷启动的唯一恢复信号。
+        "get_last_project" => {
+            let r = tokio::task::spawn_blocking(commands::workspace::get_last_project)
+                .await
+                .map_err(|e| format!("get_last_project 任务失败: {e}"))?;
+            ok_json(r)
         }
 
         // ═══════════════════════════════════════════════════════

@@ -77,3 +77,15 @@ pub(crate) async fn workspace_start_watcher(
         Err("没有活跃的工作区".into())
     }
 }
+
+/// 读取最近工作区路径（.last_project——workspace_activate 每次绑定都写，
+/// 与图谱引擎无关）。冷启动恢复信号之一；图谱引擎停用时是**唯一**信号
+/// （load_graph_json 的引擎路径会顺手 engine_init，关图冷启动不可走）。
+#[tauri::command]
+pub(crate) fn get_last_project() -> Result<Option<String>, String> {
+    let last = std::fs::read_to_string(crate::utils::project_root().join(".last_project"))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    Ok(last)
+}

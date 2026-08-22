@@ -108,6 +108,10 @@ export interface RpcContract {
     params: Record<string, never>;
     result: string; // JSON — 零目录会话列表（workspace-flip 批 1）
   };
+  get_last_project: {
+    params: Record<string, never>;
+    result: string; // JSON — 最近工作区路径 "path"/null（引擎开关关态的冷启动恢复信号）
+  };
   get_user_sessions_dir: {
     params: Record<string, never>;
     result: string; // text — ~/.hologram/sessions 路径（零目录会话存储位）

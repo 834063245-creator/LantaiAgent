@@ -147,8 +147,14 @@ async function switchWorkspace(
 
     chatPanel.setProjectPath(folder);
     chatPanel.autoRestoreLastSession(folder).catch(() => {});
-    ws.runCheck();
-    await typedRpc('workspace_start_watcher', {}).catch(() => {});
+    if (ws._graphEngineOn) {
+      ws.runCheck();
+      await typedRpc('workspace_start_watcher', {}).catch(() => {});
+    } else {
+      // 引擎开关关闭（2026-08-22）：不跑初始简报、不启文件 watcher——
+      // watcher 的增量分析链（engine_try_incremental）会在后台把引擎拉起来。
+      pushStatus('图谱引擎已停用——跳过简报与文件监视');
+    }
   } finally {
     // 确保状态机未卡在 'switching' 状态
     if (wsMachine.state === 'switching') {

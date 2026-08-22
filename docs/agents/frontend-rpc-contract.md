@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-08-22T05:50:54.096Z
-> 方法总数：154（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-08-22T09:45:06.295Z
+> 方法总数：155（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -215,6 +215,7 @@
 |------|----------|----------|------|
 | `workspace_deactivate` | — | — | `null`（unit） |
 | `workspace_start_watcher` | — | — | `null`（unit） |
+| `get_last_project` | — | — | JSON 字符串 |
 | `session_append` | path, session_id, message | — | `null`（unit） |
 
 ## 会话持久化

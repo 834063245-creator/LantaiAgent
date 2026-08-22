@@ -184,6 +184,31 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
+    /// get_last_project（引擎开关关态的冷启动恢复信号）：读 .last_project，
+    /// 缺文件/空内容 = None（trim 后过滤——写入侧带换行也读得回）。
+    #[test]
+    fn get_last_project_reads_last_project_file() {
+        let tmp = std::env::temp_dir().join("hologram_test_get_last_project");
+        let _ = std::fs::create_dir_all(&tmp);
+        // project_root() 在测试态 = CARGO_MANIFEST_DIR 的上级（仓库根）——
+        // 与 activate 写入同源：借 handle.activate 写，再读回验证往返。
+        let handle = workspace::WorkspaceHandle::new(&tmp.to_string_lossy());
+        handle.activate(&utils::project_root());
+        let r = commands::workspace::get_last_project().expect("get_last_project should not fail");
+        assert_eq!(r.as_deref(), Some(tmp.to_string_lossy().as_ref()));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn get_last_project_missing_file_is_none() {
+        let root = utils::project_root();
+        let last = root.join(".last_project");
+        if !last.exists() {
+            assert_eq!(commands::workspace::get_last_project().unwrap(), None);
+        }
+        // 文件存在时无法构造缺失态（并行测试共享仓库根）——已由上一测试覆盖读取面。
+    }
+
     #[test]
     fn workspace_handle_deactivate_stops_watcher() {
         let tmp = std::env::temp_dir().join("hologram_test_deactivate");

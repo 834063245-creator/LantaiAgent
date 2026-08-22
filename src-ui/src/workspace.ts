@@ -50,7 +50,14 @@ import { withThinkingDisabled } from './provider/thinking';
 import type { Provider } from './provider/types';
 import { parseJson, typedJsonRpc, typedListen, typedRpc } from './rpc-contract';
 import type { CommunityData, GraphDiffJson, GraphEdge, GraphJSON, GraphNode } from './scene/graph-types';
-import { type AppSettings, defaultPricing, getActiveProvider, loadSettingsWithSecrets } from './settings';
+import {
+  type AppSettings,
+  defaultPricing,
+  getActiveProvider,
+  graphEngineEnabled,
+  loadSettings,
+  loadSettingsWithSecrets,
+} from './settings';
 import type { AgentConfigChangeReason } from './state/agent-config-store';
 import { useCompositionStore } from './state/composition-store';
 import type { CheckResult } from './state/dock-store';
@@ -173,6 +180,11 @@ export class Workspace {
    *  UI 呈现「预热中」+ graph 工具缺席的诚实提示判定位。 */
   _graphWarming = false;
 
+  /** 图谱引擎开关快照（引擎开关，2026-08-22）：open() 时从 settings 读取。
+   *  false = 本工作区不触图谱（graphData 恒 null / 不跑简报 / 不拉文件图谱）；
+   *  生效语义 = 绑定期一次（在途工作区不活拆——下次绑定目录即见）。 */
+  _graphEngineOn = true;
+
   /** 后台分析失败时的回调（冷启动降级模式）。 */
   onAnalysisFailed: ((err: unknown) => void) | null = null;
 
@@ -204,6 +216,9 @@ export class Workspace {
 
   private constructor(path: string) {
     this.path = path;
+    // 引擎开关快照（2026-08-22）：构造期读一次 settings——绑定期语义
+    // （在途工作区不活拆，重新绑定/重启即见新值）。
+    this._graphEngineOn = graphEngineEnabled(loadSettings());
     // 工作区 scope fiber — 挂在根 Context 上（initCordisKernel 幂等：生产路径
     // main.ts 已引导，复用既有根；测试路径首次调用自动建根）。
     this._fiber = initCordisKernel().plugin(workspaceScopePlugin);
@@ -281,7 +296,15 @@ export class Workspace {
     });
 
     try {
-      if (opts?.skipAnalysis && opts.cachedGraph) {
+      if (!ws._graphEngineOn) {
+        // 引擎开关关闭（2026-08-22）：绑目录 ≠ 开图谱。graphData 留 null——
+        // 走零目录会话的既有无图路径（hologram 工具行产出空集 + noGraph
+        // prompt 段），fs/shell/git/权限全套保留。跳过：分析/拉页（含缓存
+        // 快路径——ensure_engine_graph 会顺手 engine_init）、文件级图谱、
+        // 初始简报（runCheck 的隐藏回退会强分析，见 runCheck 门禁注释）。
+        // _health 保持 unknown——健康语义只对图谱数据面有意义。
+        ws.onStatusChange?.('图谱引擎已停用——纯 Agent 工作区（图工具缺席，fs/shell/git 照常）');
+      } else if (opts?.skipAnalysis && opts.cachedGraph) {
         if (opts.cachedGraph.paged) {
           // 冷启动（分页 meta）：先放空壳，后台逐页拉取、到齐后合并为全量图 —
           // ensure_engine_graph 顺带完成引擎预热（等价旧 fire-and-track
@@ -367,34 +390,44 @@ export class Workspace {
       // ponytail: read_file_content 的 async require_read 运行在 Tokio 运行时上，
       // 可能被 fire-and-forget 的 analyze_and_load 在异步线程上序列化 11669 节点
       // 的 JSON 占满。这是一个内部文件；若超时，文件级图谱为 null — 非致命。
-      console.log('[Workspace.open] step 3: read_file_content...');
-      try {
-        const filesPath = path.replace(/\\/g, '/').replace(/\/$/, '') + '/hologram_graph_files.json';
-        const raw = await Promise.race([
-          typedRpc('read_file_content', { file_path: filesPath }),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
-        ]);
-        ws.fileGraphData = JSON.parse(stripLineNumbers(raw));
-        console.log('[Workspace.open] step 3: done');
-      } catch (e) {
-        console.log('[Workspace.open] step 3: failed', e);
-        ws.fileGraphData = null;
+      // 引擎开关关闭时跳过（无分析 = 无文件图谱产物）。
+      if (ws._graphEngineOn) {
+        console.log('[Workspace.open] step 3: read_file_content...');
+        try {
+          const filesPath = path.replace(/\\/g, '/').replace(/\/$/, '') + '/hologram_graph_files.json';
+          const raw = await Promise.race([
+            typedRpc('read_file_content', { file_path: filesPath }),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+          ]);
+          ws.fileGraphData = JSON.parse(stripLineNumbers(raw));
+          console.log('[Workspace.open] step 3: done');
+        } catch (e) {
+          console.log('[Workspace.open] step 3: failed', e);
+          ws.fileGraphData = null;
+        }
       }
 
       // 4. 初始基线检查 — 渲染段已随 V5 拆除（星图退役），runCheck 保留
       //    （简报注入 cacheCheckResult 服务 Agent 状态注入面）。
-      console.log('[Workspace.open] step 4: scheduling initial check...');
-      ws._initialRenderActive = true;
-      setTimeout(() => {
-        ws._initialRenderActive = false;
-        // 运行初始检查以建立基线
-        ws.runCheck();
-      }, 0);
+      //    引擎开关关闭时跳过（runCheck 的 engine_init→direct_analyze(force)
+      //    隐藏回退会击穿开关，见 runCheck 门禁注释）。
+      if (ws._graphEngineOn) {
+        console.log('[Workspace.open] step 4: scheduling initial check...');
+        ws._initialRenderActive = true;
+        setTimeout(() => {
+          ws._initialRenderActive = false;
+          // 运行初始检查以建立基线
+          ws.runCheck();
+        }, 0);
+      }
 
       // 5. 连接持久事件监听器（graph-updated）
       console.log('[Workspace.open] step 5: wiring listeners...');
       const unlistenGraphUpdated = await typedListen('graph-updated', async (rawSummary) => {
         if (!ws._active) return;
+        // 引擎开关关闭：本工作区无图数据面——事件兜底拉页/简报一律不触
+        //（防御性守卫：正常路径下 watcher 未启动，事件本不该来）。
+        if (!ws._graphEngineOn) return;
         try {
           const summary = JSON.parse(rawSummary) as GraphUpdatedSummary;
           const eventRoot = summary.meta?.source_root || '';
@@ -468,10 +501,12 @@ export class Workspace {
         // 工具收敛后模型调用领域工具（fs/git/shell）— 归一化回旧语义名匹配
         const sem = resolveSemanticToolName(evt.toolName, JSON.stringify(evt.args || {}));
         if (FILE_MODIFY_TOOLS.has(sem)) {
-          ws.scheduleCheck();
+          if (ws._graphEngineOn) {
+            ws.scheduleCheck();
+            // 刷新引擎快照 — 跟踪累积结构漂移
+            if (ws._preflightCtx) scheduleEngineSnapshotRefresh(ws._preflightCtx, ws.path);
+          }
           bumpTimelineRefresh();
-          // 刷新引擎快照 — 跟踪累积结构漂移
-          if (ws._preflightCtx) scheduleEngineSnapshotRefresh(ws._preflightCtx, ws.path);
         }
       };
       // P1 总线归零：agent:tool-done → agent-panel-store.lastToolDone（tick+payload 原子更新）
@@ -888,9 +923,10 @@ export class Workspace {
     // 将工具 schema 连接到 UI 面板
     chatPanel.setToolSchemas(registry.schemas());
 
-    // 冷启动：预热状态缓存
+    // 冷启动：预热状态缓存（引擎关态跳过 timeline——它走引擎读取，
+    // 关态必然 Err，不浪费一次注定失败的 IPC；git 状态与引擎无关照刷）
     refreshGitStatus(this.path).catch(() => {});
-    refreshTimeline(this.path).catch(() => {});
+    if (this._graphEngineOn) refreshTimeline(this.path).catch(() => {});
 
     // ── 工厂：每次调用通过 runtime 创建全新 Agent ──
     // 返回 runtime 句柄（含 dispose）— 所有权随句柄交给会话 state
@@ -999,7 +1035,7 @@ export class Workspace {
             ).catch(() => {});
             (async () => {
               await refreshGitStatus(this.path);
-              await refreshTimeline(this.path);
+              if (this._graphEngineOn) await refreshTimeline(this.path);
               // 只消费本 Agent 产生的构建结果（其他会话的留在槽位等本尊）
               const block = buildTurnStartBlock(sessionAgentId);
               if (block)
@@ -1037,6 +1073,11 @@ export class Workspace {
     // 工作区已停用（切换中/后）不跑 — 否则在途 RPC resolve 会把旧项目
     // 结果写进新项目的 dock store 并弹开 check 面板（landmine-map H4）
     if (!this._active || !this.path) return;
+    // 引擎开关关闭（2026-08-22）：简报是图数据面的一部分，一并停用。
+    // 关键防御：hologram_run_check 的 Rust 侧有隐藏回退链（引擎空 →
+    // engine_init → 仍空 → direct_analyze(force=true) 全量强分析），
+    // 不 gate 这里，开关会被静默击穿——用户关了图谱却后台跑 420s 分析。
+    if (!this._graphEngineOn) return;
     if (this.checkRunning) {
       this.checkPending = true;
       return;
@@ -1097,6 +1138,8 @@ export class Workspace {
     // 工作区已停用（切换中/后）不再排程 — 否则 timer 触发会走 runCheck 把
     // 旧项目结果写进新项目面板（landmine-map H4）
     if (!this._active || !this.path) return;
+    // 引擎开关关闭：不排程（runCheck 已 gate，这里拦 timer 空转——同族防御）
+    if (!this._graphEngineOn) return;
     if (this.checkTimer) clearTimeout(this.checkTimer);
     this.checkTimer = setTimeout(() => {
       this.checkTimer = null;

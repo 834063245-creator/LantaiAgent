@@ -17,6 +17,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { typedJsonRpc } from '../rpc-contract';
+import { graphEngineEnabled, loadSettings } from '../settings';
 import { workspaceFlow } from '../shell/rows/workspace';
 import { useDockStore } from '../state/dock-store';
 import { ensureUserSessionsDir } from '../ui/chat-session';
@@ -39,8 +40,17 @@ interface ProjectSession {
   savedAt: string;
 }
 
-/** 冷启动缓存图 meta 的 source_root（上次打开项目）——读一次，失败 = null */
+/** 冷启动缓存图 meta 的 source_root（上次打开项目）——读一次，失败 = null。
+ *  引擎开关关态（2026-08-22）不走 load_graph_json（其引擎路径会顺手
+ *  engine_init），改读 .last_project（get_last_project——绑定期恒写）。 */
 async function lastProjectRoot(): Promise<string | null> {
+  if (!graphEngineEnabled(loadSettings())) {
+    try {
+      return await typedJsonRpc<string | null>('get_last_project', {});
+    } catch {
+      return null;
+    }
+  }
   try {
     const meta = await typedJsonRpc<{ meta?: { source_root?: string } }>('load_graph_json', {});
     return meta?.meta?.source_root || null;

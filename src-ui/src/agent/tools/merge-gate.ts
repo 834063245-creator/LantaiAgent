@@ -15,10 +15,11 @@
 //   - run_check 每次调用都会 save_baseline（hologram.rs:79），quiet 轮询推进基线无害
 //   - 60s 超时 fail-closed：watcher 可能暂停，未验证视为失败并回滚
 
+import { graphEngineEnabled, loadSettings } from '../../settings';
 import { errText } from '../loop-helpers';
+import { execStreamedShell } from '../runtime/queued-shell';
 import type { BoardEntry } from '../task-board';
 import type { ToolExecutor } from '../tool';
-import { execStreamedShell } from '../runtime/queued-shell';
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -55,6 +56,12 @@ export interface GateResult {
  */
 export async function runGraphGate(_entry: BoardEntry, opts: MergeGateOptions): Promise<GateResult> {
   const { exec, projectPath } = opts;
+  // 图谱引擎停用（2026-08-22 引擎开关）：图检查整体跳过——hologram_run_check
+  // 的 Rust 侧有 engine_init→direct_analyze(force) 强分析回退，引擎关着时
+  // 轮询 60s 只会反复触发它（还会把引擎拉起来）。诚实报告，不静默。
+  if (!graphEngineEnabled(loadSettings())) {
+    return { passed: true, quiet: true, report: '图谱引擎已停用（设置 → Agent），跳过图检查门禁' };
+  }
   const maxWait = opts.maxCheckWaitMs ?? 60_000;
   const interval = opts.pollIntervalMs ?? 1_500;
 
@@ -83,17 +90,17 @@ export async function runGraphGate(_entry: BoardEntry, opts: MergeGateOptions): 
   }
 
   const passed = last.passed === true;
-  const violations = Array.isArray(last.violations) ? last.violations as unknown[] : [];
-  const changed = Array.isArray(last.changed_files)
-    ? (last.changed_files as unknown[]).slice(0, 10).join(', ')
-    : '';
+  const violations = Array.isArray(last.violations) ? (last.violations as unknown[]) : [];
+  const changed = Array.isArray(last.changed_files) ? (last.changed_files as unknown[]).slice(0, 10).join(', ') : '';
   const report = [
     passed ? '✅ 图检查通过' : '⚠️ 门禁未通过',
     `违规数: ${String(last.violation_count ?? 0)}${violations.length > 0 ? `（${violations.map((v) => String((v as { rule?: string }).rule ?? v)).join('; ')}）` : ''}`,
     last.new_violations ? `新增违规: ${String(last.new_violations)}` : '',
     last.blast_radius ? `波及半径: ${JSON.stringify(last.blast_radius)}` : '',
     changed ? `变更文件: ${changed}` : '',
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   return { passed, quiet: false, report };
 }

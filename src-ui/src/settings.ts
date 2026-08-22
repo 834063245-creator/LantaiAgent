@@ -64,6 +64,21 @@ interface DisplaySettings {
   fontScale: number;
 }
 
+/** 图谱引擎设置（引擎开关，2026-08-22）——「绑目录 ≠ 开图谱」：
+ *  关 = 绑定目录的工作区跳过分析/预热/简报/watcher，graphData 留 null
+ *  （零目录会话既有语义），fs/shell/git/权限全套保留。生效时机 =
+ *  下次绑定目录（在途工作区不活拆）。 */
+export interface GraphEngineSettings {
+  /** 引擎总开关（缺省 true = 旧行为零漂移；false 时读取点见
+   *  workspace.ts / shell/rows/workspace.ts / shell/rows/cold-start.ts）。 */
+  enabled: boolean;
+}
+
+/** 读取图谱引擎开关（缺省容错：旧存储无此节 = 开）。 */
+export function graphEngineEnabled(s: AppSettings): boolean {
+  return s.graphEngine?.enabled !== false;
+}
+
 /** 组合层设置（S4-1a）——preset 选择的持久化真源（缺省 standard；
  *  运行时镜像在 state/preset-store.selected，boot 期经
  *  composition/preset-assembly.syncPresetSelectionFromSettings 同步）。 */
@@ -80,6 +95,8 @@ export interface AppSettings {
   display: DisplaySettings;
   /** 组合层设置（可选——旧存储无此字段，loadSettings 缺省容错补 standard）。 */
   composition?: CompositionSettings;
+  /** 图谱引擎设置（可选——旧存储无此节 = 引擎开，graphEngineEnabled 容错读取）。 */
+  graphEngine?: GraphEngineSettings;
 }
 
 const STORAGE_KEY = 'hologram_settings';
@@ -139,6 +156,9 @@ const DEFAULTS: AppSettings = {
   },
   composition: {
     preset: 'standard',
+  },
+  graphEngine: {
+    enabled: true,
   },
 };
 

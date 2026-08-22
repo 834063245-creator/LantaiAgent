@@ -14,7 +14,14 @@ import { setLang } from '../../i18n';
 import { DEEP_THINK_LABEL } from '../../provider/thinking';
 import { typedJsonRpc } from '../../rpc-contract';
 import type { AppSettings, ProviderId } from '../../settings';
-import { loadSettings, loadSettingsWithSecrets, persistSecrets, removeSecret, saveSettings } from '../../settings';
+import {
+  graphEngineEnabled,
+  loadSettings,
+  loadSettingsWithSecrets,
+  persistSecrets,
+  removeSecret,
+  saveSettings,
+} from '../../settings';
 import { notifyAgentConfigChanged } from '../../state/agent-config-store';
 import { useCompositionStore } from '../../state/composition-store';
 import { useDockStore } from '../../state/dock-store';
@@ -435,6 +442,25 @@ const SettingsPanelApp: React.FC<{
                   }}
                   placeholder="0 = 不限制"
                 />
+              </div>
+            </div>
+            <div className="sp-section">
+              <div className="sp-section-title">图谱引擎</div>
+              <div className="sp-field">
+                <label className="sp-label sp-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={graphEngineEnabled(settings)}
+                    onChange={(e) => {
+                      commit({ ...settings, graphEngine: { enabled: e.target.checked } });
+                    }}
+                  />
+                  绑定目录时启用图谱引擎
+                </label>
+                <div className="sp-hint-sub">
+                  关闭 = 绑定目录只做纯 Agent 工作区：不分析、无图/简报工具、不监视文件（fs/shell/git
+                  照常，内存占用更低）。 生效时机：重新绑定目录或重启后；在途工作区不活拆。
+                </div>
               </div>
             </div>
             <div className="sp-section">

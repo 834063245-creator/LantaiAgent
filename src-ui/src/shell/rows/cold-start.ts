@@ -7,13 +7,15 @@
 // 星图视图」不再成立：纸壳是唯一主界面，boot 收尾无条件开纸面板）。
 //
 // 现职责只剩两件：
-//   1. 有缓存项目 → switchWorkspace(skipAnalysis) 恢复工作区数据面
-//      （Agent 工具的图谱预热 + 会话续开）；
-//   2. 无缓存 → setupPlaceholderAgent（零目录通用会话）。
+//   1. 引擎开关开 + 有缓存项目 → switchWorkspace(skipAnalysis) 恢复工作区
+//      数据面（Agent 工具的图谱预热 + 会话续开）；
+//      引擎开关关 → get_last_project（.last_project）恢复纯 Agent 工作区；
+//   2. 无恢复信号 → setupPlaceholderAgent（零目录通用会话）。
 // 视图不再由此行决定——主视图落点统一在 bootShell 收尾（开纸面板）。
 
 import { isMockMode } from '../../bridge';
 import { typedJsonRpc } from '../../rpc-contract';
+import { graphEngineEnabled, loadSettings } from '../../settings';
 import type { CachedGraphMeta } from '../../workspace';
 import { pushStatus, type ShellRefs, setLoading } from '../runtime';
 import { setupPlaceholderAgent, workspaceFlow } from './workspace';
@@ -28,6 +30,27 @@ interface CachedGraphPayload {
 
 export async function bootColdStart(_refs: ShellRefs): Promise<void> {
   try {
+    // 引擎开关（2026-08-22）：关闭时恢复信号不依赖缓存图——load_graph_json
+    // 的引擎路径会顺手 engine_init（ensure_engine_graph），关图冷启动绝不能碰。
+    // 「最近工作区」记忆 = .last_project（workspace_activate 每次绑定都写，
+    // 与图谱引擎无关）——经 get_last_project RPC 读取。
+    if (!graphEngineEnabled(loadSettings())) {
+      setLoading(false);
+      let lastDir: string | null = null;
+      try {
+        lastDir = await typedJsonRpc<string | null>('get_last_project', {});
+      } catch {
+        /* 无后端通道（浏览器 mock）→ 占位会话兜底 */
+      }
+      if (lastDir) {
+        console.log('[init] cold start (engine off): restoring last workspace', lastDir);
+        await workspaceFlow.switchWorkspace(lastDir, { skipAnalysis: true });
+        pushStatus('已恢复上次案卷（图谱引擎已停用）');
+      } else {
+        await setupPlaceholderAgent();
+      }
+      return;
+    }
     let graph: CachedGraphPayload | null = null;
     try {
       graph = await typedJsonRpc<CachedGraphPayload>('load_graph_json', {});

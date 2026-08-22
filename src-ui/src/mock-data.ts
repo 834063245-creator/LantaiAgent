@@ -812,6 +812,11 @@ export function mockInvoke(cmd: string, args?: Record<string, unknown>): string 
     return '(mock: watcher not available in browser)';
   }
 
+  // 最近工作区（引擎开关关态的冷启动恢复信号）：mock 无持久化 → null（占位会话）
+  if (cmd === 'get_last_project') {
+    return 'null';
+  }
+
   // hologram_call — 所有 hologram 引擎工具的统一分发
   if (cmd === 'hologram_call') {
     const toolName = args?.tool as string;
