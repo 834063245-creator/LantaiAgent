@@ -632,14 +632,16 @@ export class Workspace {
     }
   }
 
-  /** 从 panel store 读取模式状态。回退到 normal/ask。 */
-  private _modeState(): { collaborationMode: 'normal' | 'plan'; permissionMode: 'ask' | 'auto' | 'yolo' } {
+  /** 从 panel store 读取协作模式。回退到 normal。
+   * （权限模式已迁 mode-store 单源真相，C11 重设计 2026-08-22——
+   * 不再从 panel-store 读，agent 会话工厂亦不消费。） */
+  private _modeState(): { collaborationMode: 'normal' | 'plan' } {
     try {
       const ps = getPanelStore(this._storeId).getState();
-      return { collaborationMode: ps.collaborationMode, permissionMode: ps.permissionMode };
+      return { collaborationMode: ps.collaborationMode };
     } catch (e) {
-      console.warn('[Workspace] _modeState failed, falling back to normal/ask:', e);
-      return { collaborationMode: 'normal', permissionMode: 'ask' };
+      console.warn('[Workspace] _modeState failed, falling back to normal:', e);
+      return { collaborationMode: 'normal' };
     }
   }
 
@@ -664,16 +666,14 @@ export class Workspace {
     const settings = await loadSettingsWithSecrets();
 
     // 从保存的偏好初始化模式状态
+    // 权限模式（C11 重设计）：mode-store 已在 boot 期水合并镜像 Rust
+    // （hydratePermissionMode），此处不再从 settings 套用——单向陷阱退役。
+    // 协作模式仍走 panel-store（会话级状态，与权限模式不同生命周期）。
     const sAgent = settings.agent || {};
     const ps = getPanelStore(this._storeId).getState();
     if (sAgent.collaborationMode && ps.collaborationMode === 'normal') {
       ps.setCollaborationMode(sAgent.collaborationMode);
     }
-    if (sAgent.permissionMode && ps.permissionMode === 'ask') {
-      ps.setPermissionMode(sAgent.permissionMode);
-    }
-    // 模式镜像到后端 — 后台任务（同步权限路径）靠它决定是否旁路 Ask
-    typedRpc('set_permission_mode', { mode: ps.permissionMode }).catch(() => {});
 
     const active = getActiveProvider(settings);
 

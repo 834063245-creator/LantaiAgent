@@ -1,13 +1,19 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT.
 
-// 壳行 1（hologram/shell-platform）：平台标记 + no-bf 降级 + resize 热区。
+// 壳行 1（hologram/shell-platform）：平台标记 + no-bf 降级 + resize 热区
+// + 权限模式水合（C11：mode-store 从 settings 水合并镜像 Rust——
+// 必须先于任何权限请求发生；放首行保证 bridges/工作区接管前就位）。
 // 自 main.ts 885-901 机械迁移（零逻辑变更；原模块级块改为 boot 函数体，
 // 由编排器按表序调用——执行时机与「React render 前后」无耦合依赖）。
 
+import { hydratePermissionMode } from '../../state/mode-store';
 import { installResizeZones } from '../../ui/resize-zones';
 
 export function bootPlatform(): void {
+  // 权限模式水合（C11）：settings 落盘值 → mode-store，并推 Rust 镜像。
+  // 失败安全：读不到回退 ask（最严模式）。
+  hydratePermissionMode();
   // ── 平台标记 + 渲染能力检测：方便 CSS 针对平台/引擎能力做差异化处理 ──
   const ua = navigator.userAgent;
   const plat = ua.includes('Linux')

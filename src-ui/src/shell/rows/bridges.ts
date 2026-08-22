@@ -10,7 +10,7 @@
 // App 根的 PromptShelfHost 独立挂载，不再依赖旧聊天面板）。
 
 import { typedListen, typedRpc } from '../../rpc-contract';
-import { getPanelStore } from '../../state/panel-store';
+import { useModeStore } from '../../state/mode-store';
 import type { ShellRefs } from '../runtime';
 
 export async function bootBridges(refs: ShellRefs): Promise<void> {
@@ -26,8 +26,10 @@ export async function bootBridges(refs: ShellRefs): Promise<void> {
     const timedOutRequests = new Set<string>();
     await typedListen('permission-ask', (p) => {
       if (!chatPanel) return;
-      // 权限模式旁路：yolo → 全部自动，auto → 仅安全编辑
-      const permMode = getPanelStore(chatPanel.panelId).getState().permissionMode;
+      // 权限模式旁路：yolo → 全部自动，auto → 仅安全编辑。
+      // 单一真相 = mode-store（C11 重设计，2026-08-22）：app 级单例，
+      // 切换时已同步镜像 Rust + 落盘；不再读 per-panel 的旧字段。
+      const permMode = useModeStore.getState().permissionMode;
       if (permMode === 'yolo' || (permMode === 'auto' && AUTO_WHITELIST.has(p.tool))) {
         void typedRpc('permission_ask_response', {
           request_id: p.requestId,

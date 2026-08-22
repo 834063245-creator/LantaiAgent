@@ -13,7 +13,8 @@ export type PanelMode = 'pill' | 'input' | 'panel' | 'hud';
 export type AgentTab = 'chat' | 'tools' | 'context';
 export type AgentState = 'idle' | 'thinking' | 'running' | 'error';
 export type CollaborationMode = 'normal' | 'plan';
-export type PermissionMode = 'ask' | 'auto' | 'yolo';
+// PermissionMode 已迁 state/mode-store（C11 重设计 2026-08-22）：
+// app 级单例 + Rust 镜像同步 + 落盘，不再 per-panel。此处不再导出。
 
 interface ToolHistoryEntry {
   name: string;
@@ -38,7 +39,6 @@ interface PanelStore {
   toolFilter: string;
   contextFilter: string;
   collaborationMode: CollaborationMode;
-  permissionMode: PermissionMode;
   /** P2′：goal 状态条记录（GoalStrip 组件数据源；active/paused 时有值） */
   goalRecord: GoalRecord | null;
   /** P2′：Agent 状态详情文本（如 '分析中…'；null 用默认标签） */
@@ -46,7 +46,6 @@ interface PanelStore {
 
   setPanelMode: (mode: PanelMode) => void;
   setCollaborationMode: (mode: CollaborationMode) => void;
-  setPermissionMode: (mode: PermissionMode) => void;
   setActiveTab: (tab: AgentTab) => void;
   setToolSchemas: (schemas: ToolSchema[]) => void;
   setTotalTokensUsed: (n: number) => void;
@@ -87,13 +86,11 @@ function createPanelStoreImpl() {
     toolFilter: '',
     contextFilter: '',
     collaborationMode: 'normal' as CollaborationMode,
-    permissionMode: 'ask' as PermissionMode,
     goalRecord: null,
     lastAgentDetail: null,
 
     setPanelMode: (panelMode) => set({ panelMode }),
     setCollaborationMode: (collaborationMode) => set({ collaborationMode }),
-    setPermissionMode: (permissionMode) => set({ permissionMode }),
     setActiveTab: (activeTab) => set({ activeTab }),
     setToolSchemas: (toolSchemas) => set({ toolSchemas }),
     setTotalTokensUsed: (totalTokensUsed) => set({ totalTokensUsed }),
