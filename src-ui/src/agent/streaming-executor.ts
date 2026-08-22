@@ -202,9 +202,9 @@ export class StreamingToolExecutor {
       try {
         const result = this.signal ? await this._raceWithAbort(promise) : await promise;
         remaining.push(result);
-      } catch (e: any) {
+      } catch (e) {
         // 中止 — 剩余未完成工具同样以取消结果落地，再停止收集
-        if (e?.name === 'AbortError' || this.signal?.aborted) {
+        if ((e as { name?: string })?.name === 'AbortError' || this.signal?.aborted) {
           remaining.push(...(await this._settleCancelled()));
           break;
         }
@@ -322,7 +322,7 @@ export class StreamingToolExecutor {
     } else if (this.preflightHooks) {
       try {
         preflightWarning = this.preflightHooks.check(guardName, args);
-      } catch (_e: any) {
+      } catch {
         // 静默降级 — 不阻止执行
       }
     }
@@ -391,7 +391,7 @@ export class StreamingToolExecutor {
       } else if (this.hooks) {
         try {
           output = await this.hooks.apply(guardName, args, output);
-        } catch (_e: any) {
+        } catch {
           // 静默降级 — 不破坏结果
         }
       }
@@ -411,11 +411,13 @@ export class StreamingToolExecutor {
       };
       this.emitPipelineResult(call, tool, result, guardName, false, args);
       return result;
-    } catch (e: any) {
-      if (e?.name === 'AbortError' || e?.message?.includes('aborted')) {
+    } catch (e) {
+      const eName = (e as { name?: string })?.name;
+      const eMsg = (e as { message?: string })?.message;
+      if (eName === 'AbortError' || eMsg?.includes('aborted')) {
         throw e; // 不捕获中止 — 交给调用方处理
       }
-      const errMsg = e.message ? e.message.split('\n')[0] : String(e);
+      const errMsg = eMsg ? eMsg.split('\n')[0] : String(e);
       const result: PendingResult = {
         call,
         output: `error: ${errMsg}`,

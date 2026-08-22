@@ -23,6 +23,7 @@
 import { z } from 'zod';
 import type { Tool } from '../tool';
 import { agentInvoke } from '../tool';
+import { errText } from '../loop-helpers';
 import { defineTool } from './define-tool';
 import { parseStructuredError } from './structured-error';
 
@@ -98,8 +99,8 @@ async function runBrowserAction(action: string, args: Record<string, unknown>): 
   try {
     const result = await agentInvoke<string>(cmd, args);
     return truncate(result ?? '', pageHint);
-  } catch (e: any) {
-    const raw = e?.message || String(e);
+  } catch (e) {
+    const raw = errText(e);
     const parsed = parseBrowserError(raw);
     // 结构化错误：模型读人话 message，code 保留在方括号内供测试/路由。
     return parsed ? `[browser] ${action} 失败 [${parsed.code}]: ${parsed.message}` : `[browser] ${action} 失败: ${raw}`;
@@ -691,8 +692,8 @@ async function runDesktopAction(action: string, args: Record<string, unknown>): 
   try {
     const result = await agentInvoke<string>(cmd, { ...args, isAgent: true });
     return truncate(result ?? '', pageHint);
-  } catch (e: any) {
-    const raw = e?.message || String(e);
+  } catch (e) {
+    const raw = errText(e);
     const parsed = parseBrowserError(raw);
     return parsed
       ? `[desktop] ${action} 失败 [${parsed.code}]: ${parsed.message}`

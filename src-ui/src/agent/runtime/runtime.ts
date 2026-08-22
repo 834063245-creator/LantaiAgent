@@ -729,7 +729,13 @@ export class AgentRuntime implements RuntimePort {
           this.notifier?.onLifecycleAlert?.(agentId, ev.level ?? 'info', ev.text ?? '');
         }
       };
-      const lifecycle = new AgentLifecycleManager(subPool, taskProxy as any, this._bus, isolationExec, wrappedSink);
+      const lifecycle = new AgentLifecycleManager(
+        subPool,
+        taskProxy as unknown as TaskBoard,
+        this._bus,
+        isolationExec,
+        wrappedSink,
+      );
       // Phase 4：巡检 timer（60s setInterval）所有权归 ctx —— startOwned 返回
       // 幂等清理器，_disposeAgent 经 ctx.dispose() 释放，不再分散 stop。
       this._lifecycleManagers.set(agentId, lifecycle);

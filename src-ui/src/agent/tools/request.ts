@@ -16,6 +16,7 @@
 // 不做死锁检测 — timeout 兜底是工业标准（Erlang gen_server 40 年验证）。
 
 import { z } from 'zod';
+import { errText } from '../loop-helpers';
 import type { MessageBus } from '../message-bus';
 import type { Tool } from '../tool';
 import { defineTool } from './define-tool';
@@ -62,8 +63,8 @@ export function createRequestTool(bus: MessageBus, getAgentId: () => string): To
           payload: content,
           meta: { requestType: type },
         });
-      } catch (e: any) {
-        return `Failed to send request: ${e?.message || String(e)}`;
+      } catch (e) {
+        return `Failed to send request: ${errText(e)}`;
       }
 
       // 等待回复 — subscribe 匹配 replyTo = msgId

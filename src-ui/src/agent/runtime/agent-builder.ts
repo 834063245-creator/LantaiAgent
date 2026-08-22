@@ -18,7 +18,8 @@ import { type BuiltinToolRow, builtinToolRows, type ToolRowContext } from '../..
 import { typedJsonRpc } from '../../rpc-contract';
 import type { Agent } from '../agent';
 import { createCompactionTools } from '../compaction-model';
-import type { GraphContext } from '../hooks';
+import type { GraphContext, GraphDataShape } from '../hooks';
+import { errText } from '../loop-helpers';
 import {
   buildFileNodeIndex,
   buildGraphSnapshot,
@@ -87,7 +88,7 @@ export function extractGraphNodeNames(graphData: unknown): string[] | undefined 
   return undefined;
 }
 
-export function buildGraphContextFromData(graphData: any): GraphContext | null {
+export function buildGraphContextFromData(graphData: GraphDataShape | null | undefined): GraphContext | null {
   if (!graphData) return null;
   const { fileIndex, fanIn, fanOut } = buildFileNodeIndex(graphData);
   return createGraphContext(fileIndex, fanIn, fanOut);
@@ -100,7 +101,7 @@ export function buildGraphContextFromData(graphData: any): GraphContext | null {
 // 逐字节不变（system-prompt.fixture 快照守护）。
 
 export function buildSystemPrompt(
-  graphData: any,
+  graphData: GraphDataShape | null | undefined,
   projectPath: string,
   memorySection = '',
   graphSnapshot = '',
@@ -126,7 +127,7 @@ export function buildSystemPrompt(
 // ── Tool registry builder ──
 
 export interface ToolRegistryOptions {
-  graphData: any;
+  graphData: GraphDataShape | null;
   deps: BuilderDeps;
   memoryManager?: MemoryManager;
   skillRegistry?: SkillRegistry;
@@ -182,8 +183,8 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
       for (;;) {
         try {
           last = await agentInvoke<string>('bash_wait', { job_id: jobId, timeout_ms: 60_000 });
-        } catch (e: any) {
-          const msg = String(e?.message || e);
+        } catch (e) {
+          const msg = errText(e);
           if (msg.includes('等待超时')) {
             // 任务仍在跑 — 检查总超时,超时则放弃等待并把控制权交还 Agent
             if (Date.now() >= bgDeadline) {
@@ -222,11 +223,11 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
             clearTimeout(timer);
             resolve(typeof result === 'string' ? result : JSON.stringify(result));
           })
-          .catch((e: any) => {
+          .catch((e) => {
             if (settled) return;
             settled = true;
             clearTimeout(timer);
-            resolve(`错误: ${e?.message || e}`);
+            resolve(`错误: ${errText(e)}`);
           });
       });
     }
@@ -309,6 +310,8 @@ export async function loadEngineSnapshot(ctx: GraphContext, projectPath: string,
     // 引擎快照四路数据的宽松形态（引擎字段名跨版本有别名，保持宽容读取）
     // biome-ignore lint/suspicious/noExplicitAny: 引擎响应宽容读取别名字段，与旧 JSON.parse 返回 any 同宽
     type EngineJson = Record<string, any>;
+    const asSymbols = (v: unknown): Array<{ name?: string; location?: string; file?: string }> =>
+      Array.isArray(v) ? (v as Array<{ name?: string; location?: string; file?: string }>) : [];
     const [fragileData, cycleData, healthData, blindspotsData] = await Promise.all([
       typedJsonRpc<EngineJson>('hologram_call', { tool: 'fragile_modules', args: { limit: 15 } }),
       typedJsonRpc<EngineJson>('hologram_call', { tool: 'detect_cycles', args: { mode: 'all' } }),
@@ -383,11 +386,11 @@ export async function loadEngineSnapshot(ctx: GraphContext, projectPath: string,
           tool: 'search_symbols',
           args: { query: symbol, limit: 5 },
         }).catch((): EngineJson => ({ results: [] }));
-        const results = searchData.results || [];
+        const results = asSymbols(searchData.results);
         const neighbors = results
-          .filter((s: any) => (s.name || '').toLowerCase() !== symbol.toLowerCase())
+          .filter((s) => (s.name || '').toLowerCase() !== symbol.toLowerCase())
           .slice(0, 3)
-          .map((s: any) => ({ name: s.name || '', file: s.location || s.file || '' }));
+          .map((s) => ({ name: s.name || '', file: s.location || s.file || '' }));
         if (neighbors.length > 0) semanticNeighbors.set(r.file, neighbors);
       } catch {}
     }

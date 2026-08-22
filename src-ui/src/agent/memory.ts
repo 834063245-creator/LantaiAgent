@@ -565,11 +565,11 @@ function parseFrontmatter(raw: string): MemoryFile {
   const desc = (fm.match(/^description:\s*(.+)$/m) || [])[1]?.trim() || '';
   // ponytail: 同时接受缩进格式（在 metadata: 下）和顶层格式
   const typeRaw = (fm.match(/^\s*type:\s*(.+)$/m) || [])[1]?.trim() || 'reference';
-  const type = (['user', 'feedback', 'project', 'reference'] as const).includes(typeRaw as any)
+  const type = (['user', 'feedback', 'project', 'reference'] as const).includes(typeRaw as MemoryFile['type'])
     ? (typeRaw as MemoryFile['type'])
     : 'reference';
   const confRaw = (fm.match(/^\s*confidence:\s*(.+)$/m) || [])[1]?.trim() || 'reference';
-  const confidence = (['fact', 'reference', 'background', 'suppressed'] as const).includes(confRaw as any)
+  const confidence = (['fact', 'reference', 'background', 'suppressed'] as const).includes(confRaw as Confidence)
     ? (confRaw as Confidence)
     : 'reference';
   const hitCountRaw = (fm.match(/^\s*hit_count:\s*(\d+)$/m) || [])[1];

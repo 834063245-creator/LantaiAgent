@@ -15,6 +15,7 @@
 //   - run_check 每次调用都会 save_baseline（hologram.rs:79），quiet 轮询推进基线无害
 //   - 60s 超时 fail-closed：watcher 可能暂停，未验证视为失败并回滚
 
+import { errText } from '../loop-helpers';
 import type { BoardEntry } from '../task-board';
 import type { ToolExecutor } from '../tool';
 import { execStreamedShell } from '../runtime/queued-shell';
@@ -115,7 +116,7 @@ export async function runCompileTest(entry: BoardEntry, opts: MergeGateOptions):
     const out = await execStreamedShell({ command, cwd, timeoutMs: opts.compileTimeoutMs ?? 600_000 });
     const passed = !/^\[exit [^0]\]/m.test(out.trimStart());
     return { passed, quiet: false, report: passed ? '✅ 编译测试通过' : `⚠️ 编译测试失败:\n${out.slice(0, 2000)}` };
-  } catch (e: any) {
-    return { passed: false, quiet: false, report: `⚠️ 编译测试异常: ${e?.message ?? String(e)}` };
+  } catch (e) {
+    return { passed: false, quiet: false, report: `⚠️ 编译测试异常: ${errText(e)}` };
   }
 }

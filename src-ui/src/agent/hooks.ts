@@ -144,9 +144,39 @@ export interface NodeBrief {
   fanOut: number;
 }
 
+/** 图数据的宽松形状（11c any 清零）：引擎/缓存跨版本字段名有别名，
+ *  入参面保持 unknown 兼容任意来源（GraphJSON/引擎 JSON），
+ *  消费方经 asArray 单点断言收窄到 Node/Edge 形状。 */
+export interface GraphNodeShape {
+  id: string;
+  name?: string;
+  kind?: string;
+  location?: string;
+  community_id?: number;
+  communityId?: number;
+}
+
+export interface GraphEdgeShape {
+  source?: string;
+  target?: string;
+  kind?: string;
+  edge_type?: string;
+}
+
+export interface GraphDataShape {
+  nodes?: unknown;
+  edges?: unknown;
+}
+
+function asArray<T>(v: unknown): T[] {
+  if (Array.isArray(v)) return v as T[];
+  if (v && typeof v === 'object') return Object.values(v as Record<string, T>);
+  return [];
+}
+
 // ── 构建 file→nodes 索引 + degree map ──
 
-export function buildFileNodeIndex(graphData: any): {
+export function buildFileNodeIndex(graphData: GraphDataShape): {
   fileIndex: Map<string, NodeBrief[]>;
   fanIn: Map<string, number>;
   fanOut: Map<string, number>;
@@ -155,13 +185,13 @@ export function buildFileNodeIndex(graphData: any): {
   const fanIn = new Map<string, number>();
   const fanOut = new Map<string, number>();
 
-  const nodes = Array.isArray(graphData.nodes) ? graphData.nodes : Object.values(graphData.nodes || {});
-  const edges = Array.isArray(graphData.edges) ? graphData.edges : Object.values(graphData.edges || {});
+  const nodes = asArray<GraphNodeShape>(graphData.nodes);
+  const edges = asArray<GraphEdgeShape>(graphData.edges);
 
   // 第一遍：计算度数
   for (const e of edges) {
-    const src = (e as any).source,
-      tgt = (e as any).target;
+    const src = e.source,
+      tgt = e.target;
     if (src && tgt) {
       fanOut.set(src, (fanOut.get(src) || 0) + 1);
       fanIn.set(tgt, (fanIn.get(tgt) || 0) + 1);
@@ -170,7 +200,7 @@ export function buildFileNodeIndex(graphData: any): {
 
   // 第二遍：构建文件索引
   for (const n of nodes) {
-    const loc: string = (n as any).location || '';
+    const loc: string = n.location || '';
     let fp = loc;
     const colonIdx = loc.lastIndexOf(':');
     if (colonIdx > 1) {
@@ -186,11 +216,11 @@ export function buildFileNodeIndex(graphData: any): {
       fileIndex.set(norm, arr);
     }
     arr.push({
-      id: (n as any).id,
-      name: (n as any).name,
-      kind: (n as any).kind || '',
-      fanIn: fanIn.get((n as any).id) || 0,
-      fanOut: fanOut.get((n as any).id) || 0,
+      id: n.id,
+      name: n.name ?? '',
+      kind: n.kind || '',
+      fanIn: fanIn.get(n.id) || 0,
+      fanOut: fanOut.get(n.id) || 0,
     });
   }
 
@@ -199,9 +229,9 @@ export function buildFileNodeIndex(graphData: any): {
 
 // ── buildGraphSnapshot —— 从 graphData 计算架构快照，注入 system prompt ──
 
-export function buildGraphSnapshot(graphData: any): string {
-  const nodes: any[] = Array.isArray(graphData.nodes) ? graphData.nodes : Object.values(graphData.nodes || {});
-  const edges: any[] = Array.isArray(graphData.edges) ? graphData.edges : Object.values(graphData.edges || {});
+export function buildGraphSnapshot(graphData: GraphDataShape): string {
+  const nodes = asArray<GraphNodeShape>(graphData.nodes);
+  const edges = asArray<GraphEdgeShape>(graphData.edges);
 
   // 社区分布
   const communityMap = new Map<number, number>();

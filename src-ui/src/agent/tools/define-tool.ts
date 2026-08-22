@@ -17,6 +17,7 @@
 //   由 streaming-executor 在 execute 前注入, 必须透传, 否则子 Agent 关联/架构门禁静默失效。
 
 import { z } from 'zod';
+import { errText } from '../loop-helpers';
 import type { Tool } from '../tool';
 
 /** zod schema → JSON Schema(draft-07, input 视图)。带 WeakMap 缓存 — parameters() 每轮被调用。 */
@@ -68,11 +69,11 @@ export function defineTool<S extends z.ZodObject<z.ZodRawShape>>(opts: DefineToo
         // passthrough 的 TS 输出是 Record<string, unknown>（含未知 key），
         // 但运行时值一定满足 z.output<S> —— 此处收窄一次，execute 拿到类型化参数
         parsed = passthroughSchema.parse(args) as z.output<S>;
-      } catch (e: any) {
-        const issues = (e?.issues ?? [])
-          .map((i: { path: (string | number)[]; message: string }) => `${i.path.join('.')}: ${i.message}`)
+      } catch (e) {
+        const issues = ((e as { issues?: Array<{ path: (string | number)[]; message: string }> })?.issues ?? [])
+          .map((i) => `${i.path.join('.')}: ${i.message}`)
           .join('; ');
-        throw new Error(`参数校验失败: ${issues || e?.message || String(e)}`);
+        throw new Error(`参数校验失败: ${issues || errText(e)}`);
       }
       return execute(parsed, onProgress, signal);
     },

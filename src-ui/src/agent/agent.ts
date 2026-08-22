@@ -1468,7 +1468,7 @@ export class Agent {
 
         if (err) break;
       }
-    } catch (e: any) {
+    } catch (e) {
       if (stream.idleTimedOut) {
         err = new Error(`模型响应超时（${STREAM_IDLE_TIMEOUT_MS / 1000} 秒无输出），已自动中止`);
       } else {

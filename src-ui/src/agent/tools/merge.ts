@@ -17,6 +17,7 @@
 
 import { z } from 'zod';
 import { enqueueIsolationOp } from '../isolation-queue';
+import { errText } from '../loop-helpers';
 import { parseIsolationDiff } from '../spill';
 import type { BoardEntry, TaskBoard } from '../task-board';
 import type { Tool, ToolExecutor } from '../tool';
@@ -26,10 +27,13 @@ import { runCompileTest, runGraphGate } from './merge-gate';
 // ── Merge 门禁配置 ──
 // v1：图检查默认开（merge-then-verify，轮询 hologram_run_check）；
 // 编译测试默认关（worktree 冷构建可达分钟级，时间盒限制）。
-// 测试旁路：(window as any).__LANTAI_MERGE_GATE__ = { graph: false } 可临时关闭。
+// 测试旁路：(window as TestMergeGateOverride).__LANTAI_MERGE_GATE__ = { graph: false } 可临时关闭。
+interface TestMergeGateOverride {
+  __LANTAI_MERGE_GATE__?: Partial<typeof MERGE_GATE>;
+}
 const MERGE_GATE = { graph: true, compileTest: false, maxCheckWaitMs: 60_000, compileTimeoutMs: 600_000 };
 function effectiveGate(): typeof MERGE_GATE {
-  const override = (globalThis as any).__LANTAI_MERGE_GATE__;
+  const override = (globalThis as TestMergeGateOverride).__LANTAI_MERGE_GATE__;
   return override ? { ...MERGE_GATE, ...override } : MERGE_GATE;
 }
 
@@ -126,9 +130,9 @@ export function createMergeTool(
           mergedEntries.push(entry);
           mergedTexts.set(entry.agentId, mergeText);
         }
-      } catch (mergeErr: any) {
+      } catch (mergeErr) {
         conflicts++;
-        const errMsg = mergeErr?.message || String(mergeErr);
+        const errMsg = errText(mergeErr);
 
         // 检查降级合并（worktree 元数据损坏但 diff 已保全）
         if (errMsg.startsWith('DEGRADED:')) {
