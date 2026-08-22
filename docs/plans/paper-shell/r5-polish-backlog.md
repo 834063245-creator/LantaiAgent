@@ -22,9 +22,9 @@
 | C6 | 主聊天输入条 placeholder 文案打磨——**已毕 2026-08-22**：「向 Agent 拟文…」去冗余映射为「拟文…」（§5：发送→拟文一词足矣）；真机截图确认生效 | ✅ |
 | C7 | 来文圈点关键词（.circled 朱砂圈）：——**已毕 2026-08-22**：定案「【词】书写语法 + 渲染层解析」零数据契约方案（用户拍板）。落地：marks.ts 解析器（≤8 字不含换行才圈，超长/未闭合/跨行/空按字面）+ inline-block 圈永不拆行 + measure 原文测高零镜像；10 单测全绿。**真机用户验证通过（2026-08-22，填 key 实发来文实测）**；原型 .circled 只在来文生效，AI 回文中的【】不受影响 | ✅ |
 | C8 | **V5 拆除交互欠账：多卷切换 UI**（旧会话 tab 条随 ChatBeacon 退役；chat-core 的 switchSession/closeSession/createNewSession 面尚无纸壳入口——案卷首页可续开，卷内切换待设计） | ⬜ |
-| C9 | **V5 拆除交互欠账：权限/ask 卡纸面化**（PromptShelfHost 仍是旧观测台暗卡样式——纸面朱砂批红卡归本项；功能已接通） | ⬜ |
+| C9 | **V5 拆除交互欠账：权限/ask 卡纸面化**——**已毕 2026-08-22（牒卡）**：位置不变（输入条上方递出），暗卡皮退役→纸面牒卡：权限卡=请示·PERMIT（朱砂 tag/subject 抄录图版/落印准此=纸面唯一实色按钮/本卷均准/驳回石墨）、问卡=问询·ASK（石青系）、递出动画 160ms；逻辑层零改动；真机 DOM 断言过 | ✅ |
 | C10 | **V5 拆除交互欠账：附件入口**（旧 Composer 的文件选择/拖放接口在 chat-core.openFilePicker/handleFileDrop；纸壳 composer 未接） | ⬜ |
-| C11 | **V5 拆除交互欠账：模型/权限模式切换入口**（旧 ChatFooter 的 ModelSwitcher + ask/auto/yolo 模式条退役；设置面板可改 provider，权限模式切换无入口——影响 bridges 权限桥行为） | ⬜ |
+| C11 | **V5 拆除交互欠账：模型/权限模式切换入口**——**已毕 2026-08-22（重设计）**：旧链路三病灶（切换不镜像 Rust/双源单向陷阱/per-panel 作用域错位）根治——mode-store 单源真相（切换=写 store+镜像 Rust+落盘；boot 水合）；书眉 ModeIndicator（模型纸面菜单按 provider 分组+恒 swap 热切换；模式常询/半放/全放三档轮转，yolo 须朱砂确认条）；panel-store permissionMode 退役。真机 CDP 闭环验证（含重启水合）；切回 ask 模式即可高频见 C9 新卡 | ✅ |
 | C12 | **V5 拆除交互欠账：状态反馈面**（pushStatus 的 statusText/statusLog 无 UI 消费——图谱预热/分析进度对用户不可见；候选：书眉行或纸面贴黄块） | ⬜ |
 | C13 | **V5 拆除欠账：scene/ui 休眠层 sweep**——**已毕 2026-08-22 两切片**：切片 A 删 ui/ 死件九文件（agent-visualizer/chat-utils/context-menu/file-translator+css/file-viewer/markdown-file-preview/message-height/pretext-cache，可达性闭包实测零活引用）+ 死测试三件；切片 B 删 scene/ Three.js 渲染面 22 文件（活代码全 type-only，bundle 实测无 three），scene/ 收窄为 graph-types.ts 类型模块 + README；StarGraph 降级兼容形状 interface；ui/graph.ts shim 重指向类型模块（冻结文件 import 面不动）；eventbus-zero 终态守护更新为新事实。合计 -12,700 行 | ✅ |
 | C14 | **V5 拆除欠账：dock-store 开合表收缩**（open 初始表仍是旧六面板 + paper；随 C8-C11 面收敛重定义） | ⬜ |
