@@ -50,8 +50,7 @@
 }
 .psh-host > .prompt-shelf {
   pointer-events: auto;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
-  border: var(--rule-soft);
+  /* 牒卡自带纸面投影（prompt-shelf.css 卡片层）— 宿主不再叠加暗色大阴影 */
 }
 
 /* ── 通用（命令面板 + 提示卡共用的 kbd 语言） ────────────────── */

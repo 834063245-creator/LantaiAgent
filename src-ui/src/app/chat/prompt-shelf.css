@@ -1,46 +1,86 @@
 /* ═══════════════════════════════════════════════════════════════
-       PROMPT SHELF — ask_user + permission cards (above input)
-       ═══════════════════════════════════════════════════════════════ */
+   PROMPT SHELF — 牒卡（C9 纸面化，2026-08-22）
+   隐喻：agent 是当值吏员，写文件/跑命令先递牒请示；人持朱笔。
+   权限卡 = 递上来待批的牒（朱砂系，tag「请示 · PERMIT」）；
+   问卡 = 吏员问话（石青系，tag「问询 · ASK」——石青=机）。
+   位置：输入条上方固定浮层（psh-host，bottom:96px），递出动画在
+   .prompt-shelf 上（translateY 12px→0 + 淡入，160ms）。
+   铁律遵守：朱砂=人的批改动作（落印按钮），石青=机器，墨=正文。
+   ═══════════════════════════════════════════════════════════════ */
+
+@keyframes ps-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .prompt-shelf {
-  flex-shrink: 0;
-  border-top: 1px solid rgba(148, 166, 205, 0.11);
-  background: rgba(6, 14, 30, 0.72);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  animation: ps-rise 160ms ease-out;
 }
+
+/* ── 牒卡骨架（纸叠纸）── */
 .prompt-shelf__card {
-  padding: calc(12px * var(--font-scale)) calc(14px * var(--font-scale));
+  background: var(--paper);
+  border: var(--rule-soft);
+  border-top: 2px solid var(--seal);
+  box-shadow: 0 6px 24px rgba(38, 34, 28, 0.16);
+  padding: calc(13px * var(--font-scale)) calc(16px * var(--font-scale));
 }
+
 .prompt-shelf__head {
   display: flex;
   align-items: flex-start;
   gap: 10px;
   margin-bottom: 10px;
 }
+
+/* tag：机读码行（mono 小字 + 分隔点） */
 .prompt-shelf__tag {
   flex-shrink: 0;
-  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
   font-family: var(--f-mono);
-  font-size: calc(8px * var(--font-scale));
-  letter-spacing: 1.2px;
+  font-size: calc(8.5px * var(--font-scale));
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--indigo);
-  background: rgba(148, 166, 205, 0.05);
-  border: 1px solid rgba(148, 166, 205, 0.09);
+  color: var(--seal-deep);
+  border: 1px solid color-mix(in oklch, var(--seal) 36%, transparent);
+  background: var(--seal-soft);
 }
+.prompt-shelf__tag--danger {
+  color: var(--paper);
+  background: var(--seal-deep);
+  border-color: var(--seal-deep);
+}
+/* 问卡 tag = 石青系（机器在问人，铁律：石青=机） */
+.prompt-shelf__tag--ask {
+  color: var(--indigo);
+  border-color: color-mix(in oklch, var(--indigo) 36%, transparent);
+  background: color-mix(in oklch, var(--indigo) 8%, transparent);
+}
+
 .prompt-shelf__question {
   flex: 1;
-  font-size: calc(12px * var(--font-scale));
+  font-family: var(--f-song);
+  font-size: calc(13px * var(--font-scale));
   color: var(--ink-1);
-  line-height: 1.5;
+  line-height: 1.55;
 }
+
 .prompt-shelf__dismiss {
   flex-shrink: 0;
   width: 26px;
   height: 26px;
   padding: 0;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: var(--rule-soft);
   color: var(--ink-3);
   cursor: pointer;
   display: flex;
@@ -49,10 +89,12 @@
   transition: all var(--snap);
 }
 .prompt-shelf__dismiss:hover {
-  border-color: rgba(255, 255, 255, 0.15);
+  border-color: var(--ink-2);
   color: var(--ink-1);
+  background: var(--paper-deep);
 }
 
+/* ── 问卡选项列表（文件条式）── */
 .prompt-shelf__options {
   display: flex;
   flex-direction: column;
@@ -66,29 +108,32 @@
   padding: 8px 10px;
   text-align: left;
   font-family: var(--f-song);
-  font-size: calc(12px * var(--font-scale));
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: calc(12.5px * var(--font-scale));
+  background: transparent;
+  border: var(--rule-soft);
   color: var(--ink-1);
   cursor: pointer;
   transition: all var(--snap);
 }
 .prompt-shelf__option:hover {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.1);
+  background: var(--paper-deep);
+  border-color: var(--ink-3);
 }
 .prompt-shelf__option--on {
-  background: rgba(148, 166, 205, 0.05);
-  border-color: rgba(125, 179, 232, 0.3);
-  color: var(--indigo);
+  background: var(--seal-soft);
+  border-color: color-mix(in oklch, var(--seal) 40%, transparent);
+  color: var(--seal-deep);
 }
 .prompt-shelf__num {
   flex-shrink: 0;
   width: 18px;
   text-align: center;
   font-family: var(--f-mono);
-  font-size: calc(9px * var(--font-scale));
+  font-size: calc(9.5px * var(--font-scale));
   color: var(--ink-3);
+}
+.prompt-shelf__option--on .prompt-shelf__num {
+  color: var(--seal-deep);
 }
 .prompt-shelf__opt-body {
   flex: 1;
@@ -100,14 +145,16 @@
 .prompt-shelf__opt-desc {
   display: block;
   margin-top: 2px;
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(10.5px * var(--font-scale));
   color: var(--ink-2);
 }
 .prompt-shelf__check {
   flex-shrink: 0;
-  color: var(--pass);
+  color: var(--seal);
   margin-top: 1px;
 }
+
+/* 悬停详情（抄录小图版样式） */
 .prompt-shelf__detail {
   margin-top: 6px;
   /* 固定两行高度（不是 min-height）— 悬停切换选项时描述行数变化
@@ -119,8 +166,8 @@
   font-family: var(--f-mono);
   font-size: calc(10px * var(--font-scale));
   color: var(--ink-2);
-  background: rgba(10, 20, 40, 0.4);
-  border-left: 2px solid rgba(148, 166, 205, 0.12);
+  background: var(--paper-deep);
+  border-left: 2px solid var(--indigo);
   line-height: 1.5;
 }
 .prompt-shelf__detail-label {
@@ -130,6 +177,35 @@
 .prompt-shelf__detail-text {
   color: var(--ink-2);
 }
+
+/* ── 自由作答输入（纸面底线式）── */
+.prompt-shelf__custom {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+}
+.prompt-shelf__custom-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  font-family: var(--f-song);
+  font-size: calc(12px * var(--font-scale));
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--ink-4);
+  border-radius: 0;
+  color: var(--ink-1);
+  outline: none;
+  transition: border-color var(--snap);
+}
+.prompt-shelf__custom-input:focus {
+  border-bottom-color: var(--seal);
+}
+.prompt-shelf__custom-input::placeholder {
+  color: var(--ink-3);
+}
+
+/* 多选确认 / 开放问提交 */
 .prompt-shelf__actions {
   margin-top: 8px;
   display: flex;
@@ -141,227 +217,136 @@
   font-size: calc(12px * var(--font-scale));
   font-weight: 600;
   font-family: var(--f-song);
-  background: rgba(148, 166, 205, 0.07);
-  border: 1px solid rgba(125, 179, 232, 0.3);
-  color: var(--indigo);
+  background: transparent;
+  border: 1px solid color-mix(in oklch, var(--seal) 40%, transparent);
+  color: var(--seal-deep);
   cursor: pointer;
   transition: all var(--snap);
 }
 .prompt-shelf__confirm:hover {
-  background: rgba(148, 166, 205, 0.14);
-  border-color: var(--indigo);
+  background: var(--seal-soft);
+  border-color: var(--seal);
+}
+.prompt-shelf__confirm:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.prompt-shelf__confirm:disabled:hover {
+  background: transparent;
+  border-color: color-mix(in oklch, var(--seal) 40%, transparent);
+}
+.prompt-shelf__submit {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  font-size: calc(12px * var(--font-scale));
+  font-weight: 600;
+  font-family: var(--f-song);
+  background: transparent;
+  border: 1px solid color-mix(in oklch, var(--seal) 40%, transparent);
+  color: var(--seal-deep);
+  cursor: pointer;
+  transition: all var(--snap);
+}
+.prompt-shelf__submit:hover {
+  background: var(--seal-soft);
+  border-color: var(--seal);
 }
 
-/* Permission card inside shelf */
-.prompt-shelf__perm-subject {
-  font-family: var(--f-mono);
-  font-size: calc(10px * var(--font-scale));
-  color: rgba(160, 190, 220, 0.55);
-  background: rgba(0, 0, 0, 0.25);
-  padding: 3px 8px;
-  margin-bottom: 8px;
-  word-break: break-all;
-}
+/* ═══════════════════════════════════════════════════════════════
+   权限牒卡（PermCard 专属区）
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 事由行 */
 .prompt-shelf__perm-reason {
-  font-size: calc(11px * var(--font-scale));
+  font-size: calc(11.5px * var(--font-scale));
+  font-family: var(--f-song);
   color: var(--ink-2);
   margin-bottom: 8px;
   line-height: 1.5;
 }
+
+/* subject 命令块：抄录图版语言（米黄底 mono + 硬左线） */
+.prompt-shelf__perm-subject {
+  font-family: var(--f-mono);
+  font-size: calc(10.5px * var(--font-scale));
+  color: var(--ink-1);
+  background: var(--paper-deep);
+  border-left: 3px solid var(--indigo);
+  padding: 7px 10px;
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+
+/* 按钮组：落印（允许）= 纸面唯一实色动作；其余描边 */
 .prompt-shelf__perm-btns {
   display: flex;
   gap: 8px;
 }
 .prompt-shelf__perm-btn {
   flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 7px 12px;
   font-size: calc(12px * var(--font-scale));
   font-weight: 600;
   font-family: var(--f-song);
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: all var(--snap);
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
-}
-.prompt-shelf__perm-btn--session {
-  background: rgba(61, 165, 93, 0.12);
-  border-color: rgba(61, 165, 93, 0.25);
-  color: var(--pass);
-}
-.prompt-shelf__perm-btn--session:hover {
-  background: rgba(61, 165, 93, 0.2);
-  border-color: rgba(61, 165, 93, 0.4);
-}
-.prompt-shelf__perm-btn--once {
-  background: rgba(148, 166, 205, 0.07);
-  border-color: rgba(148, 166, 205, 0.12);
-  color: var(--indigo);
-}
-.prompt-shelf__perm-btn--once:hover {
-  background: rgba(148, 166, 205, 0.12);
-  border-color: rgba(148, 166, 205, 0.22);
-}
-.prompt-shelf__perm-btn--deny {
-  background: rgba(217, 68, 68, 0.08);
-  border-color: rgba(217, 68, 68, 0.15);
-  color: var(--fail);
-}
-.prompt-shelf__perm-btn--deny:hover {
-  background: rgba(217, 68, 68, 0.15);
-  border-color: rgba(217, 68, 68, 0.3);
-}
-
-/* Free-form custom input */
-.prompt-shelf__custom {
-  margin-top: 6px;
-}
-.prompt-shelf__custom-input {
-  width: 100%;
-  padding: 6px 10px;
-  font-family: var(--f-song);
-  font-size: calc(11px * var(--font-scale));
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 0;
-  color: var(--ink-1);
-  outline: none;
-  transition: border-color var(--snap);
-}
-.prompt-shelf__custom-input:focus {
-  border-color: rgba(125, 179, 232, 0.3);
-}
-.prompt-shelf__custom-input::placeholder {
-  color: var(--ink-3);
-}
-/* 开放式问题的提交按钮 */
-.prompt-shelf__submit {
-  margin-top: 6px;
-  width: 100%;
-  padding: 7px 12px;
-  font-size: calc(11px * var(--font-scale));
-  font-weight: 600;
-  font-family: var(--f-song);
-  background: rgba(148, 166, 205, 0.07);
-  border: 1px solid rgba(125, 179, 232, 0.3);
-  color: var(--indigo);
-  cursor: pointer;
-  transition: all var(--snap);
-}
-.prompt-shelf__submit:hover {
-  background: rgba(148, 166, 205, 0.14);
-  border-color: var(--indigo);
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   P7a · 权限卡（原型 .perm-card 配方：warn 色调卡片 + mini-btn 组）
-   ═══════════════════════════════════════════════════════════════ */
-
-/* 卡片：warn 淡边淡底 + radius 11（权限卡 = 含 perm-btns 的 card） */
-.prompt-shelf__card:has(.prompt-shelf__perm-btns) {
-  border: 1px solid rgba(216, 162, 74, 0.35);
-  background: rgba(216, 162, 74, 0.06);
-  border-radius: 11px;
-  margin: 6px 8px 8px;
-  padding: 11px 12px;
-}
-.prompt-shelf__card--danger:has(.prompt-shelf__perm-btns) {
-  border-color: rgba(217, 99, 95, 0.4);
-  background: rgba(217, 99, 95, 0.06);
-}
-
-/* 标签/工具名：warn 色（danger 用 fail） */
-.prompt-shelf__card:has(.prompt-shelf__perm-btns) .prompt-shelf__tag {
-  color: #ecd2a0;
-  border-color: rgba(216, 162, 74, 0.4);
-  background: rgba(216, 162, 74, 0.1);
-}
-.prompt-shelf__card:has(.prompt-shelf__perm-btns) .prompt-shelf__question {
-  font-family: var(--f-mono);
-  color: var(--warn);
-}
-.prompt-shelf__card--danger:has(.prompt-shelf__perm-btns) .prompt-shelf__tag {
-  color: #f0a8a4;
-  border-color: rgba(217, 99, 95, 0.4);
-  background: rgba(217, 99, 95, 0.1);
-}
-.prompt-shelf__card--danger:has(.prompt-shelf__perm-btns) .prompt-shelf__question {
-  color: var(--fail);
-}
-
-/* 命令块：mono + rgba(0,0,0,0.3) 底 + radius 6 */
-.prompt-shelf__perm-subject {
-  font-family: var(--f-mono);
-  font-size: calc(10.5px * var(--font-scale));
-  color: var(--ink-1);
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 6px;
-  padding: 7px 9px;
-}
-
-/* 按钮组：mini-btn（mono 10.5 + 1px line + radius 7；允许本次 = primary 黄铜） */
-.prompt-shelf__perm-btns {
-  gap: 7px;
-}
-.prompt-shelf__perm-btn {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--f-mono);
-  font-size: calc(10.5px * var(--font-scale));
-  font-weight: 400;
-  color: var(--ink-2);
   border: 1px solid var(--ink-4);
-  border-radius: 7px;
-  padding: 5px 10px;
-  backdrop-filter: none;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: all var(--snap);
 }
 .prompt-shelf__perm-btn:hover {
   color: var(--ink-1);
-  background: rgba(160, 180, 220, 0.08);
+  border-color: var(--ink-2);
+  background: var(--paper-deep);
 }
-.prompt-shelf__perm-btn--session,
-.prompt-shelf__perm-btn--session:hover,
-.prompt-shelf__perm-btn--deny,
-.prompt-shelf__perm-btn--deny:hover {
-  border-color: var(--ink-4);
-  background: none;
-  color: var(--ink-2);
-}
-.prompt-shelf__perm-btn--session:hover,
-.prompt-shelf__perm-btn--deny:hover {
-  color: var(--ink-1);
-  background: rgba(160, 180, 220, 0.08);
-}
+
+/* 允许（Enter）= 落印 — 朱砂实底 */
 .prompt-shelf__perm-btn--once,
 .prompt-shelf__perm-btn--once:hover {
-  color: var(--seal-deep);
-  border-color: rgba(201, 162, 92, 0.45);
-  background: var(--seal-soft);
+  background: var(--seal-deep);
+  border-color: var(--seal-deep);
+  color: var(--paper);
 }
 .prompt-shelf__perm-btn--once:hover {
-  background: rgba(201, 162, 92, 0.22);
+  background: var(--seal);
+}
+
+/* 本次会话允许 = 朱砂描边次级 */
+.prompt-shelf__perm-btn--session {
+  color: var(--seal-deep);
+  border-color: color-mix(in oklch, var(--seal) 40%, transparent);
+}
+.prompt-shelf__perm-btn--session:hover {
+  color: var(--seal-deep);
+  background: var(--seal-soft);
+  border-color: var(--seal);
+}
+
+/* 拒绝 = 石墨（擦掉不批） */
+.prompt-shelf__perm-btn--deny {
+  color: var(--graphite);
+  border-color: color-mix(in oklch, var(--graphite) 40%, transparent);
+}
+.prompt-shelf__perm-btn--deny:hover {
+  color: var(--ink-1);
+  background: var(--paper-deep);
+  border-color: var(--graphite);
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   批量多问分页卡（AskBatchCard）— 顶部进度点 + 底部分页导航/提交
-   ═══════════════════════════════════════════════════════════════════ */
-.prompt-shelf__card--batch {
-  border: 1px solid rgba(148, 166, 205, 0.16);
-  background: rgba(10, 20, 40, 0.45);
-  border-radius: 11px;
-  margin: 6px 8px 8px;
-}
-
-/* 底部分页条：左导航 + 右提交 */
+   批量多问分页卡（AskBatchCard）
+   ═══════════════════════════════════════════════════════════════ */
 .prompt-shelf__pagebar {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-top: 10px;
   padding-top: 8px;
-  border-top: 1px solid rgba(148, 166, 205, 0.1);
+  border-top: var(--rule-soft);
 }
 .prompt-shelf__pager {
   flex: 1;
@@ -377,21 +362,21 @@
   font-size: calc(10.5px * var(--font-scale));
   color: var(--ink-2);
   background: transparent;
-  border: 1px solid var(--ink-4);
-  border-radius: 7px;
+  border: var(--rule-soft);
   cursor: pointer;
   transition: all var(--snap);
 }
 .prompt-shelf__nav:hover:not(:disabled) {
   color: var(--ink-1);
-  background: rgba(160, 180, 220, 0.08);
+  background: var(--paper-deep);
+  border-color: var(--ink-3);
 }
 .prompt-shelf__nav:disabled {
   opacity: 0.35;
   cursor: default;
 }
 
-/* 进度点：已答 = 蓝实心，当前 = 描边放大，未答 = 暗灰 */
+/* 进度点：石青实心 = 已答（机器在问），朱砂描边放大 = 当前 */
 .prompt-shelf__dots {
   flex: 1;
   display: flex;
@@ -406,25 +391,17 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: rgba(148, 166, 205, 0.22);
+  background: var(--ink-4);
 }
 .prompt-shelf__dot--done {
   background: var(--indigo);
 }
 .prompt-shelf__dot--cur {
-  background: rgba(125, 179, 232, 0.25);
-  box-shadow: 0 0 0 2px rgba(125, 179, 232, 0.3);
+  background: var(--seal-soft);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--seal) 30%, transparent);
 }
 
 /* 批量提交按钮：不占满，右侧固定 */
 .prompt-shelf__card--batch .prompt-shelf__confirm {
   flex: none;
-}
-.prompt-shelf__confirm:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-.prompt-shelf__confirm:disabled:hover {
-  background: rgba(148, 166, 205, 0.07);
-  border-color: rgba(125, 179, 232, 0.3);
 }

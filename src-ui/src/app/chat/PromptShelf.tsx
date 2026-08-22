@@ -12,6 +12,13 @@ import './prompt-shelf.css';
 
 // ── 类型 ──
 
+/** 内联 SVG 图标 — 单点色 dangerousHTML（iconSvg 返回自有静态图标库字符串，
+ *  非用户输入，无 XSS 面）；全部使用点经此组件，豁免只留这一处。 */
+function Icon({ name, size = 12 }: { name: string; size?: number }): React.ReactElement {
+  // biome-ignore lint/security/noDangerouslySetInnerHtml: 自有静态图标库字符串（ui/icons.ts），非用户输入
+  return <span dangerouslySetInnerHTML={{ __html: iconSvg(name, size) }} />;
+}
+
 /** 批量多问的单条题目 */
 export interface AskQuestionItem {
   question: string;
@@ -50,11 +57,7 @@ export interface PermissionPrompt {
 
 export type PromptData = AskPrompt | AskBatchPrompt | PermissionPrompt;
 
-// ── 图标 ──
-
-function svgIcon(name: string, size: number = 12): string {
-  return iconSvg(name, size);
-}
+// ── 图标 ──（svgIcon 包装已删 — Icon 组件直用 iconSvg）
 
 // ── 询问卡片（受 Reasonix 启发：键盘导航、悬停预览、多选） ──
 
@@ -147,10 +150,10 @@ const AskCard: React.FC<{
     <div className="prompt-shelf__card" role="dialog" aria-modal="false">
       {/* 头部 */}
       <div className="prompt-shelf__head">
-        <span className="prompt-shelf__tag">{prompt.header.slice(0, 12)}</span>
+        <span className="prompt-shelf__tag prompt-shelf__tag--ask">{prompt.header.slice(0, 12)}</span>
         <span className="prompt-shelf__question">{prompt.question}</span>
         <button className="prompt-shelf__dismiss" onClick={cancel} title="取消 (Esc)" type="button">
-          <span dangerouslySetInnerHTML={{ __html: svgIcon('close', 14) }} />
+          <Icon name="close" size={14} />
         </button>
       </div>
 
@@ -162,6 +165,7 @@ const AskCard: React.FC<{
             const num = i + 1;
             return (
               <button
+                // biome-ignore lint/suspicious/noArrayIndexKey: 选项允许重复 label（自定义回答场景），index 是唯一稳定键
                 key={i}
                 className={`prompt-shelf__option${on ? ' prompt-shelf__option--on' : ''}`}
                 onClick={() => toggle(i)}
@@ -175,10 +179,9 @@ const AskCard: React.FC<{
                   {opt.description && <span className="prompt-shelf__opt-desc">{opt.description}</span>}
                 </div>
                 {on && (
-                  <span
-                    className="prompt-shelf__check"
-                    dangerouslySetInnerHTML={{ __html: svgIcon('check-circle', 14) }}
-                  />
+                  <span className="prompt-shelf__check">
+                    <Icon name="check-circle" size={14} />
+                  </span>
                 )}
               </button>
             );
@@ -337,13 +340,13 @@ const AskBatchCard: React.FC<{
     <div className="prompt-shelf__card prompt-shelf__card--batch" role="dialog" aria-modal="false">
       {/* 头部：进度 + 取消 */}
       <div className="prompt-shelf__head">
-        <span className="prompt-shelf__tag">
-          {total > 1 ? `问题 ${page + 1}/${total}` : '提问'}
+        <span className="prompt-shelf__tag prompt-shelf__tag--ask">
+          {total > 1 ? `问 ${page + 1}/${total}` : '问询'}
           {prompt.header ? ` · ${prompt.header}` : ''}
         </span>
         <span className="prompt-shelf__question">{q.question}</span>
         <button className="prompt-shelf__dismiss" onClick={cancel} title="取消整批 (Esc)" type="button">
-          <span dangerouslySetInnerHTML={{ __html: svgIcon('close', 14) }} />
+          <Icon name="close" size={14} />
         </button>
       </div>
 
@@ -366,10 +369,9 @@ const AskBatchCard: React.FC<{
                   {opt.description && <span className="prompt-shelf__opt-desc">{opt.description}</span>}
                 </div>
                 {on && (
-                  <span
-                    className="prompt-shelf__check"
-                    dangerouslySetInnerHTML={{ __html: svgIcon('check-circle', 14) }}
-                  />
+                  <span className="prompt-shelf__check">
+                    <Icon name="check-circle" size={14} />
+                  </span>
                 )}
               </button>
             );
@@ -406,6 +408,7 @@ const AskBatchCard: React.FC<{
           <span className="prompt-shelf__dots">
             {prompt.questions.map((_, i) => (
               <span
+                // biome-ignore lint/suspicious/noArrayIndexKey: 进度点无稳定 id（questions 仅题目文本），index 与页码同构
                 key={i}
                 className={`prompt-shelf__dot${i === page ? ' prompt-shelf__dot--cur' : ''}${
                   answers[i] !== null ? ' prompt-shelf__dot--done' : ''
@@ -463,8 +466,7 @@ const PermCard: React.FC<{
     >
       <div className="prompt-shelf__head">
         <span className={`prompt-shelf__tag${prompt.danger ? ' prompt-shelf__tag--danger' : ''}`}>
-          <span dangerouslySetInnerHTML={{ __html: svgIcon('lock', 10) }} />
-          {prompt.danger ? ` 危险操作 · ${prompt.danger}` : ' 权限'}
+          {prompt.danger ? `危 · ${prompt.danger}` : '请示 · PERMIT'}
         </span>
         <span className="prompt-shelf__question">{prompt.toolName}</span>
       </div>
@@ -476,21 +478,21 @@ const PermCard: React.FC<{
           onClick={() => onResolve({ allow: true, remember: true })}
           type="button"
         >
-          <span dangerouslySetInnerHTML={{ __html: svgIcon('shield', 12) }} /> 本次会话允许
+          本卷均准
         </button>
         <button
           className="prompt-shelf__perm-btn prompt-shelf__perm-btn--once"
           onClick={() => onResolve({ allow: true, remember: false })}
           type="button"
         >
-          <span dangerouslySetInnerHTML={{ __html: svgIcon('check-circle', 12) }} /> 允许 Enter
+          落印准此 · Enter
         </button>
         <button
           className="prompt-shelf__perm-btn prompt-shelf__perm-btn--deny"
           onClick={() => onResolve({ allow: false, remember: false })}
           type="button"
         >
-          <span dangerouslySetInnerHTML={{ __html: svgIcon('close', 12) }} /> 拒绝 Esc
+          驳回 · Esc
         </button>
       </div>
     </div>

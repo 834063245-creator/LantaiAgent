@@ -140,14 +140,14 @@ const questions2: AskQuestionItem[] = [
 ];
 
 describe('PromptShelf — 批量分页卡（AskBatchCard）', () => {
-  it('显示进度标签 问题 1/2；单选自动翻页；末页整批提交', async () => {
+  it('显示进度标签 问 1/2；单选自动翻页；末页整批提交', async () => {
     const p = showAskBatch(bq(questions2));
-    expect(container!.textContent).toContain('问题 1/2');
+    expect(container!.textContent).toContain('问 1/2');
     expect(container!.textContent).toContain('选一个方案');
 
     // 第 1 题选 A → 自动翻第 2 页
     await click('.prompt-shelf__option', 0);
-    expect(container!.textContent).toContain('问题 2/2');
+    expect(container!.textContent).toContain('问 2/2');
     expect(container!.textContent).toContain('第二个问题');
 
     // 第 2 题选乙（末页停留，不自动提交）
@@ -171,10 +171,10 @@ describe('PromptShelf — 批量分页卡（AskBatchCard）', () => {
     await act(async () => {
       prevBtn.click();
     });
-    expect(container!.textContent).toContain('问题 1/2');
+    expect(container!.textContent).toContain('问 1/2');
     // 改选 B
     await click('.prompt-shelf__option', 1);
-    expect(container!.textContent).toContain('问题 2/2');
+    expect(container!.textContent).toContain('问 2/2');
     // 提交
     const submit = Array.from(container!.querySelectorAll('button')).find((b) => b.textContent?.includes('提交'))!;
     await act(async () => {
@@ -221,7 +221,7 @@ describe('PromptShelf — 批量分页卡（AskBatchCard）', () => {
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
     });
     // 自动翻到第 2 题
-    expect(container!.textContent).toContain('问题 2/2');
+    expect(container!.textContent).toContain('问 2/2');
     const submit = Array.from(container!.querySelectorAll('button')).find((b) => b.textContent?.includes('提交'))!;
     await act(async () => {
       submit.click();
