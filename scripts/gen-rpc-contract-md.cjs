@@ -166,10 +166,15 @@ function main() {
     branchBlocks.push({ name: bm[1], body: bm[2], pos: bm.index });
   }
   // 单行分支（如 "stop_mcp_server" => commands::external::stop_mcp_server().await,）
+  // 扫描起点限制在 match method.as_str() 之后：rpc_result_shape 表里的
+  // `"cmd" => RpcResultShape::JsonValue,` 单行形态同形，不能被当成 RPC 方法分支
+  // （2026-08-22 Value 化第二步实测踩中——shape 表行被误列进契约表）。
+  const matchIdx = src.indexOf('match method.as_str() {');
   const singleRe = /^\s*"([a-z0-9_]+)"\s*=>\s*([^\n]+),\s*$/gm;
   singleRe.lastIndex = 0;
   let sm;
   while ((sm = singleRe.exec(src)) !== null) {
+    if (sm.index < matchIdx) continue;
     if (!branchBlocks.some((b) => b.name === sm[1])) {
       branchBlocks.push({ name: sm[1], body: sm[2], pos: sm.index });
     }

@@ -112,6 +112,147 @@ fn str_to_value(s: String) -> Value {
     Value::String(s)
 }
 
+// ── rpc 返回值 Value 化第二步：命令→形态分派表（B 路线，2026-08-22）──
+//
+// JsonValue 表示「命令 Ok 输出恒为合法 JSON」：出口把字符串 parse 成真结构化
+// Value 传递（serde_json 默认 BTreeMap 序，parse 消费方无感）。Text 表示字节
+// 精确直通 Value::String。判定依据 = 前端同源答案卷（typedJsonRpc 调用点 +
+// RpcContract 注释 + 命令实现逐一核对）；read_file_content 是刻意的文本铁律样板。
+//
+// 铁律：
+// 1) 贴错标签 = 字节级破坏——Text 命令误标 JsonValue 会在出口 parse「长得像
+//    JSON 的文本」上炸（read_file_content 读 .json 文件的回归测试钉死）；
+//    JsonValue 命令误标 Text 只会让前端 typedJsonRpc 走兜底 parse string（慢
+//    路径），不破坏正确性——错误方向只有一侧致命，分类偏保守。
+// 2) 本表只认命令不认内容——同一命令返回形态必须恒定；动态形态命令
+//    （exec_command 流式 started 响应等）一律 Text 由消费方自行 parse。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum RpcResultShape {
+    JsonValue,
+    Text,
+}
+
+fn rpc_result_shape(method: &str) -> RpcResultShape {
+    match method {
+        // ── Engine 调度 ──
+        // hologram_call 是元命令（37 个底层工具），输出形态由工具决定，无法在
+        // 出口层保证恒定——保持 Text，由前端 holoExec 双形态守卫兜。
+        // hologram_tools_list：Ok 恒为 schema 数组 JSON（serde 序列化，空时为 "[]"）。
+        "hologram_tools_list" => RpcResultShape::JsonValue,
+
+        // ── Graph ──
+        // load_graph_json/analyze_and_load：引擎图 meta JSON；但磁盘兑底路径返回
+        // hologram_graph.json 原文（合法 JSON，字段不同）——两种路径都是合法 JSON，
+        // 前端 parse 后宽容读 meta。保守起见 load_graph_json 保持 Text（磁盘全文
+        // 可能很大，出口 parse 再重新序列化的开销不划算；analyze_and_load 只回 meta
+        // 恒定小 JSON）。get_graph_meta：graph_meta_json 产物恒定。get_graph_page/
+        // get_full_graph：同 load_graph_json 的磁盘兑底风险 + 体积，保持 Text。
+        // engine_impact：with_index 产物恒定。
+        "analyze_and_load" | "get_graph_meta" | "engine_impact" => RpcResultShape::JsonValue,
+
+        // ── Git ──
+        // status（json! 构造）/log（commits 数组）恒 JSON；
+        // diff/stage/commit/push/pull/init/checkout/branch/stash/discard/blame
+        // 是 git 子进程 stdout 文本（run_git 直通），保持 Text。
+        "git_status" | "git_log" => RpcResultShape::JsonValue,
+
+        // ── 文件系统 ──
+        // list_directory/list_directory_flat：ok_json(DirEntry 数组) 恒 JSON。
+        // read_file_content/read_file_base64/read_memory_batch：字节精确/内容
+        // 不可控，Text 铁律。user_sessions_list：ok_json(Vec) 恒 JSON。
+        "list_directory" | "list_directory_flat" | "user_sessions_list" => RpcResultShape::JsonValue,
+
+        // ── 搜索 ──
+        // search_content（含 search_code）/glob：output_val/json! 构造恒 JSON。
+        "search_content" | "glob" => RpcResultShape::JsonValue,
+
+        // ── Web ──
+        // web_search：json! 构造恒 JSON（空结果也是 {query,results,error}）。
+        // web_fetch：网页文本，Text 铁律。
+        "web_search" => RpcResultShape::JsonValue,
+
+        // ── Shell ──
+        // shell_env：serde 序列化恒 JSON（兑底也是合法 JSON 字面量）。
+        // exec_command：前台=命令 stdout 文本 / 流式=started JSON，动态形态，Text。
+        // bash_output/bash_kill/bash_wait：输出文本，Text。
+        // drain_bg_notifications：无通知返回空串（非 JSON），Text。
+        // background_activity：json! 构造恒 JSON。
+        "shell_env" | "background_activity" => RpcResultShape::JsonValue,
+
+        // ── 身份认证/权限 ──
+        // credential_get：Option<String> serde 序列化，恒 "key"/null JSON。
+        "credential_get" => RpcResultShape::JsonValue,
+
+        // ── Agent 隔离 ──
+        // create（json!）/status（json!）/force_purge（format! 文本）。
+        // diff：三种分支都是 json! 构造，但 diff 内容含任意文本——json! 的
+        // 字符串值保证转义安全，恒合法 JSON，JsonValue。
+        // merge：merge_to_main 返回 git stdout 文本，Text。
+        // discard：文案文本，Text。
+        "agent_isolation_create" | "agent_isolation_status" | "agent_isolation_diff" => RpcResultShape::JsonValue,
+
+        // ── 外部服务 ──
+        // sandbox_status：json! 构造恒 JSON。其余 MCP/Unity 文案文本，Text。
+        "sandbox_status" => RpcResultShape::JsonValue,
+
+        // ── Hologram 遗留 ──
+        // hologram_run_check：serde 序列化（to_string(&result)，空时 unwrap_or_default
+        // 返回空串——空串非合法 JSON！保守 Text，前端 merge-gate 自行 parse。
+        // （run_check 正常路径永不为空，但 unwrap_or_default 的类型要求意味着
+        // 可能，不赌。）
+
+        // ── 插件安装 ──
+        // plugin_install：ok_json(String) 恒 JSON 字符串。uninstall/set_enabled：
+        // ok_unit "null"，ok_unit 家族统一 Text（见下）。
+        "plugin_install" => RpcResultShape::JsonValue,
+
+        // ── 数据流 ──
+        // dataflow_query 的 trace_id 路径直通磁盘 .json 文件原文——磁盘文件
+        // 可能被写坏，出口 parse 会把业务错变成协议错，保持 Text（前端
+        // agentInvoke 兜底链自处理）。save/delete 同域同待遇，不单独展开。
+        // dataflow_save | dataflow_query | dataflow_delete → Text
+
+        // ── Aura ──
+        // aura_init：json! 构造恒 JSON。aura_recall：DLL 返回 json_str，空可能——
+        // 前端有 || '[]' 业务兑底，保守 Text。其余 recall_text/store/count 文本，Text。
+        "aura_init" => RpcResultShape::JsonValue,
+
+        // ── LSP ──
+        // lsp_request：ok_json(serde 序列化)，恒 JSON。
+        "lsp_request" => RpcResultShape::JsonValue,
+
+        // ── 桌面 UIA ──
+        // desktop_status：json! 构造恒 JSON。desktop_audit：查询产物 JSON。
+        // 其余 desktop_uia_*：树/快照/结果文本，Text（probe 是诊断文案）。
+        "desktop_status" | "desktop_audit" => RpcResultShape::JsonValue,
+
+        // ── 其余（含 ok_unit "null" 家族、read_file_content、edit_file、
+        // exec_command、浏览器命令、PTY、会话持久化、约束、workspace、
+        // protocol_bridge、get_user_sessions_dir、llm_proxy_port 等）──
+        // 默认 Text：字节精确优先，形态不恒定或体量不可控的一律不展开。
+        _ => RpcResultShape::Text,
+    }
+}
+
+/// 第二步出口分派：JsonValue 命令的 Ok 路径 parse 成真 Value（parse 失败属
+/// 命令违反「Ok 恒为合法 JSON」契约——错误不静默，转错误文案可见）；Text
+/// 命令字节精确包 Value::String。Err 路径两种形态统一包 Value::String
+/// （错误信息是人读文本，前端 catch 语义不变）。
+fn dispatch_result_to_value(method: &str, r: Result<String, String>) -> Result<Value, String> {
+    match (rpc_result_shape(method), r) {
+        (RpcResultShape::JsonValue, Ok(s)) => serde_json::from_str(&s).map_err(|e| {
+            tracing::error!(
+                "[rpc] JsonValue 命令 {} 返回非合法 JSON（违反契约，转错误回包）: {}",
+                method,
+                e
+            );
+            format!("rpc: {}: 输出非合法 JSON: {}", method, e)
+        }),
+        (_, Ok(s)) => Ok(str_to_value(s)),
+        (_, Err(e)) => Err(e),
+    }
+}
+
 // ── 单一 RPC 命令 ──
 
 #[tauri::command]
@@ -127,9 +268,9 @@ pub(crate) async fn rpc(
     // 根因见 editor.rs truncate_err_key 回归测试）。这里把 panic 就地转为
     // Err 回包：错误可见、调用失败返回而不是挂死。与 INVARIANTS #11
     // （响应丢失 → 前端 await 永久挂起）同症状家族的根治护栏。
-    guard_panic(dispatch_rpc(method, params, state, app))
-        .await
-        .map(str_to_value)
+    // 出口分派（Value 化第二步）：method 移入闭包供形态分派。
+    let result = guard_panic(dispatch_rpc(method.clone(), params, state, app)).await;
+    dispatch_result_to_value(&method, result)
 }
 
 /// 把命令体 panic 转为错误回包，防止 invoke promise 泄漏成永久挂起。
@@ -1673,7 +1814,7 @@ async fn desktop_uia_activate(
 #[cfg(test)]
 mod tests {
     use super::self_or_agent;
-    use super::{guard_panic, panic_to_rpc_error, str_to_value};
+    use super::{dispatch_result_to_value, guard_panic, panic_to_rpc_error, rpc_result_shape, str_to_value, RpcResultShape};
     use serde_json::json;
 
     /// 回归（edit 偶发挂死家族）：命令体 panic 必须变成 Err 回包，
@@ -1727,6 +1868,41 @@ mod tests {
         assert_eq!(str_to_value(String::new()), serde_json::Value::String(String::new()));
         let cjk = "中文内容\n第二行";
         assert_eq!(str_to_value(cjk.to_string()), serde_json::Value::String(cjk.to_string()));
+    }
+
+    /// Value 化第二步（B 路线，2026-08-22）：出口分派——JsonValue 命令 Ok
+    /// 路径 parse 成真结构化 Value；Text 命令字节精确包 Value::String；
+    /// Err 路径拒绝展开、原样传播（前端 catch 语义不变）。
+    /// 贴错标签的两个方向都在这里钉死：Text 命令误标 JsonValue 会把字节
+    /// 精确的文本当成 JSON 展开（错误）；JsonValue 命令误标 Text 只会
+    /// 退化为慢路径（正确性不受影响）——分类偏保守的依据。
+    #[test]
+    fn dispatch_result_to_value_shapes() {
+        use serde_json::json;
+        // 形态表钉死：小样命令 = JsonValue，未列命令默认 Text
+        assert_eq!(rpc_result_shape("shell_env"), RpcResultShape::JsonValue);
+        assert_eq!(rpc_result_shape("get_graph_meta"), RpcResultShape::JsonValue);
+        assert_eq!(rpc_result_shape("read_file_content"), RpcResultShape::Text);
+        assert_eq!(rpc_result_shape("anything_else"), RpcResultShape::Text);
+        // JsonValue 命令：真结构化展开（小样 shell_env / get_graph_meta）
+        let v = dispatch_result_to_value("shell_env", Ok(r#"{"bundled":true}"#.into())).unwrap();
+        assert_eq!(v, json!({"bundled": true}));
+        let v = dispatch_result_to_value("get_graph_meta", Ok(r#"{"total_nodes":42}"#.into())).unwrap();
+        assert_eq!(v, json!({"total_nodes": 42}));
+        // JsonValue 命令返回非合法 JSON：违反契约转 Err（错误可见，不静默）
+        let bad = dispatch_result_to_value("shell_env", Ok("not json".into()));
+        assert!(bad.is_err(), "JsonValue 命令 Ok 输出非合法 JSON 必须转 Err");
+        // Text 命令（含默认路径）：字节精确，JSON 形状的文本也不展开
+        let raw = r#"{"looks":"like json"}"#;
+        let v = dispatch_result_to_value("read_file_content", Ok(raw.into())).unwrap();
+        assert_eq!(v, serde_json::Value::String(raw.to_string()));
+        let v = dispatch_result_to_value("unlisted_unknown_cmd", Ok(raw.into())).unwrap();
+        assert_eq!(v, serde_json::Value::String(raw.to_string()));
+        // Err 路径：原样传播，不包 Ok（前端 catch 语义不变）
+        let e = dispatch_result_to_value("shell_env", Err("boom".into()));
+        assert_eq!(e, Err("boom".to_string()));
+        let e = dispatch_result_to_value("read_file_content", Err("boom".into()));
+        assert_eq!(e, Err("boom".to_string()));
     }
 
     /// self 路由契约锁定：前端领域工具传 target="self" 字符串，
