@@ -188,7 +188,8 @@ ${violations.join('\n')}`,
     expect(existsSync(join(process.cwd(), 'src', 'app', 'bridge-adapters.ts'))).toBe(false);
     expect(findEventsImports(join(process.cwd(), 'src'))).toEqual([]);
     const scene = listFiles(join(process.cwd(), 'src', 'scene'));
-    expect(scene.length, 'scene/ 应 ≥23 文件').toBeGreaterThanOrEqual(23);
+    // C13 sweep（2026-08-22）：Three.js 渲染面 22 文件删除，scene/ 收窄为类型模块 + README。
+    expect(scene, 'C13 后 scene/ 应仅存类型模块与 README').toEqual(['graph-types.ts', 'README.md']);
     const state = listFiles(join(process.cwd(), 'src', 'state'));
     expect(state.length, 'state/ 应 ≥11 文件').toBeGreaterThanOrEqual(11);
     const shim = readFileSync(join(uiDir, 'graph.ts'), 'utf-8');

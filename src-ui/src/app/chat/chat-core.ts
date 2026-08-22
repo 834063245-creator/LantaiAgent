@@ -20,7 +20,7 @@ import { GoalManager, type GoalRecord } from '../../agent/goal-manager';
 import type { RuntimePort } from '../../agent/runtime/types';
 import { useShellStore } from '../../app/shell-store';
 import type { ToolSchema } from '../../provider/types';
-import type { StarGraph } from '../../scene/graph';
+import type { StarGraph } from '../../scene/graph-types';
 import { useAskStore } from '../../state/ask-store';
 import { useChatContextStore } from '../../state/chat-context-store';
 import { useDockStore } from '../../state/dock-store';

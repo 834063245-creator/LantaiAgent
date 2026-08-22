@@ -61,3 +61,14 @@ export interface GraphDiffJson {
   added_edges: GraphEdge[];
   removed_edges: Array<{ id: string; source: string; target: string }>;
 }
+
+/** V5 拆除（2026-08-22）后星图渲染面退役（C13 sweep）：本类型降级为兼容形状。
+ *  运行时恒持 null（shell/runtime.ts、workspace.ts、chat-core），保留历史调用成员
+ *  签名使活代码的守卫分支（if (starGraph) ...）类型面继续成立。
+ *  若未来重建渲染层，应在新模块重新定义完整类并替换本形状，勿在本体上堆方法。 */
+export interface StarGraph {
+  /** 自动补全 / 搜索的可见节点名来源。 */
+  getNodeNames(): string[];
+  /** 图谱定位符号；返回是否命中。 */
+  focusNode(query: string): boolean;
+}
