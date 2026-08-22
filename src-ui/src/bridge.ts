@@ -60,7 +60,8 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
       throw e;
     }
   }
-  // 浏览器 mock 模式
+  // 浏览器 mock 模式：mock 返回与 Rust 出口同形（JSON 命令返 JSON 字符串、
+  // 文本命令返原文），零转换直通。
   return (await loadMock())(cmd, args) as T;
 }
 
@@ -87,6 +88,13 @@ export function isMockMode(): boolean {
  * RPC — 所有应用命令的统一入口。
  * 替代单独的 invoke('cmd_name', params) 调用。
  * 自动将 camelCase 参数键转换为 snake_case 以适配 Rust 后端。
+ *
+ * 返回值语义（rpc Value 化，2026-08-22，landmine 根治级）：
+ * Rust 出口对返回包 Value::String——ipc 通道结构化，但内容字节精确、
+ * 故意不 parse（read_file_content 读 .json 文件不能被误展开）。
+ * JSON 展开的分派在前端 typedRpc 按契约进行（JSON 命令清单由
+ * gen-rpc-contract-md.cjs 同源生成，见 rpc-contract.ts）；agentInvoke
+ * 直通 string（工具链 string 世界零改动）。
  */
 export async function rpc<T>(method: string, params?: Record<string, unknown>): Promise<T> {
   const normalized: Record<string, unknown> = {};

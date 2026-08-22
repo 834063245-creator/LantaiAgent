@@ -6,8 +6,8 @@
 // Hot-loading: skills are reloaded on every Skill tool call — install a skill
 // mid-session and it's immediately available, no restart needed.
 
-import { typedRpc } from '../rpc-contract';
 import { z } from 'zod';
+import { typedJsonRpc, typedRpc } from '../rpc-contract';
 import type { Tool } from './tool';
 import { defineTool } from './tools/define-tool';
 
@@ -52,8 +52,7 @@ async function loadSkills(projectPath: string): Promise<SkillDef[]> {
   const dir = `${root}/.hologram/skills`;
   let entries: Array<{ name: string; type: string; path: string }>;
   try {
-    const raw = await typedRpc('list_directory_flat', { path: dir, is_agent: false });
-    entries = JSON.parse(raw);
+    entries = await typedJsonRpc('list_directory_flat', { path: dir, is_agent: false });
   } catch {
     return [];
   }

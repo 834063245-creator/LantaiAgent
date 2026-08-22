@@ -406,6 +406,20 @@ export function parseJson<T>(raw: string): T {
   return JSON.parse(raw) as T;
 }
 
+/** JSON 返回命令的类型化调用（rpc Value 化第一步，2026-08-22）：
+ *  typedRpc + parseJson 的组合形态——parse 收进本函数，调用点不再手写
+ *  双重编码。契约里 result 标 `// JSON` 或 `// "null"` 的方法用这个；
+ *  文本命令（`// text`）继续 typedRpc 直通；read_file_content 读 JSON
+ *  文件后自行 parse 的属业务语义，不经此。
+ *  method 参数与 agentInvoke 同哲学（动态名无编译期校验）——方法面守护
+ *  由 gen-rpc-contract-md 生成物与 Rust 测试承担。
+ *  当 Rust 侧真把 JSON 命令升级为结构化 Value 时，只需改本函数一处
+ *  （去掉 parse、透传真值），所有调用点零改动。 */
+export async function typedJsonRpc<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T> {
+  const raw = await rpc<string>(method, params ?? {});
+  return parseJson<T>(raw);
+}
+
 export type EventName = keyof EventContract;
 
 /** 事件名/payload 受 EventContract 约束的 listen。 */

@@ -16,7 +16,7 @@ import { factoryComposition, type ResolvedComposition } from '../../composition/
 import type { Context } from '../../cordis';
 import type { StoredThinking } from '../../provider/thinking';
 import type { Message, Provider } from '../../provider/types';
-import { typedRpc } from '../../rpc-contract';
+import { typedJsonRpc, typedRpc } from '../../rpc-contract';
 import { Agent } from '../agent';
 import type { AgentStore } from '../agent-store';
 import type { AgentEvent, AgentUINotifier, EventSink, Pricing } from '../agent-types';
@@ -615,8 +615,13 @@ export class AgentRuntime implements RuntimePort {
       // Agent 第一轮就知道命令跑在哪个解释器上，避免"猜语法"反复踩坑。
       let shellEnvSection = '';
       try {
-        const raw = await typedRpc('shell_env', {});
-        const env = raw ? JSON.parse(raw) : null;
+        const env = await typedJsonRpc<{
+          shell?: string;
+          bash_version?: string;
+          interpreter_path?: string;
+          os?: string;
+          notes?: string;
+        }>('shell_env', {});
         if (env && typeof env === 'object' && env.shell) {
           if (env.shell === 'bash') {
             shellEnvSection =

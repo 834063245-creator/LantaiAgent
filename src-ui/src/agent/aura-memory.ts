@@ -4,7 +4,7 @@
 // AuraSDK TypeScript bindings — SDR semantic recall via Tauri FFI bridge.
 // Underlying engine: aura.dll (https://github.com/teolex2020/AuraSDK, MIT)
 
-import { typedRpc } from '../rpc-contract';
+import { typedJsonRpc, typedRpc } from '../rpc-contract';
 
 // ── Types ──
 
@@ -23,8 +23,7 @@ export interface AuraRecord {
 
 /** Initialize the Aura brain. Call once at app startup. */
 export async function auraInit(brainPath: string): Promise<{ status: string; path: string; record_count: number }> {
-  const raw = await typedRpc('aura_init', { brain_path: brainPath });
-  return JSON.parse(raw);
+  return typedJsonRpc('aura_init', { brain_path: brainPath });
 }
 
 /** Recall relevant memories as structured JSON. */

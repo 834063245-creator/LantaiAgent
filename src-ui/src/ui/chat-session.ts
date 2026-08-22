@@ -9,7 +9,7 @@ import { agentSessionState, type OwnedAgentHandle, type TurnPair } from '../agen
 import type { ChatAgentHandle } from '../agent/chat-agent-handle';
 import { createExecState, type ExecStateInstance } from '../agent/execution-state';
 import type { Message } from '../provider/types';
-import { typedRpc } from '../rpc-contract';
+import { typedJsonRpc, typedRpc } from '../rpc-contract';
 import { getActiveProvider, loadSettings } from '../settings';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
 import { useAgentPanelStore } from './agent-panel-store';
@@ -452,8 +452,10 @@ function trackerFile(projectPath: string): string {
 /** 扫描会话目录，查找最大的数字会话 ID。无会话时返回 0。 */
 export async function scanMaxSessionId(projectPath: string): Promise<number> {
   try {
-    const raw = await typedRpc('list_directory', { path: sessionsDir(projectPath), filter_ignored: false });
-    const parsed: unknown = JSON.parse(raw);
+    const parsed: unknown = await typedJsonRpc('list_directory', {
+      path: sessionsDir(projectPath),
+      filter_ignored: false,
+    });
     if (!Array.isArray(parsed)) return 0;
     const entries = parsed as DirectoryEntry[];
     let maxId = 0;
@@ -773,8 +775,7 @@ export async function listSavedSessions(
   const dirPath = sessionsDir(projectPath);
   let entries: DirectoryEntry[];
   try {
-    const raw = await typedRpc('list_directory', { path: dirPath, filter_ignored: false });
-    entries = JSON.parse(raw) as DirectoryEntry[];
+    entries = await typedJsonRpc<DirectoryEntry[]>('list_directory', { path: dirPath, filter_ignored: false });
   } catch (e) {
     console.error('[chat] listSavedSessions: list_directory failed', e);
     return [];

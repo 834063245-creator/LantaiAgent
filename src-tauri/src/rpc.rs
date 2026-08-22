@@ -102,6 +102,16 @@ fn ok_unit(r: Result<(), String>) -> Result<String, String> {
     r.map(|_| "null".into())
 }
 
+/// rpc 返回值 Value 化（landmine 根治级，2026-08-22）：commands 层保持
+/// Result<String, String> 零改动，出口单点包 Value::String。
+/// **故意不 parse**：出口无法区分「JSON 命令输出」和「恰好长得像 JSON 的
+/// 文本」（read_file_content 读 .json 文件必须字节精确），智能留给前端
+/// typedRpc 按契约分派（JSON 命令清单由 gen-rpc-contract-md.cjs 同源生成）。
+/// agentInvoke 出口直通 string（工具链 string 世界零改动）。
+fn str_to_value(s: String) -> Value {
+    Value::String(s)
+}
+
 // ── 单一 RPC 命令 ──
 
 #[tauri::command]
@@ -110,14 +120,16 @@ pub(crate) async fn rpc(
     params: Value,
     state: tauri::State<'_, crate::WorkspaceState>,
     app: tauri::AppHandle,
-) -> Result<String, String> {
+) -> Result<Value, String> {
     // panic 容器：Tauri 2.x 命令 future panic 时 resolver 随 task 一起被
     // 丢弃，invoke promise 永远不 resolve——前端工具调用永久挂起，且
     // panic 只进 stderr、不进 bridge.log（2026-08 edit 偶发挂死即此症状，
     // 根因见 editor.rs truncate_err_key 回归测试）。这里把 panic 就地转为
     // Err 回包：错误可见、调用失败返回而不是挂死。与 INVARIANTS #11
     // （响应丢失 → 前端 await 永久挂起）同症状家族的根治护栏。
-    guard_panic(dispatch_rpc(method, params, state, app)).await
+    guard_panic(dispatch_rpc(method, params, state, app))
+        .await
+        .map(str_to_value)
 }
 
 /// 把命令体 panic 转为错误回包，防止 invoke promise 泄漏成永久挂起。
@@ -1661,7 +1673,7 @@ async fn desktop_uia_activate(
 #[cfg(test)]
 mod tests {
     use super::self_or_agent;
-    use super::{guard_panic, panic_to_rpc_error};
+    use super::{guard_panic, panic_to_rpc_error, str_to_value};
     use serde_json::json;
 
     /// 回归（edit 偶发挂死家族）：命令体 panic 必须变成 Err 回包，
@@ -1696,6 +1708,25 @@ mod tests {
         let msg = panic_to_rpc_error(Box::new("byte index 60 is not a char boundary".to_string()));
         assert!(msg.contains("命令内部错误"));
         assert!(msg.contains("char boundary"));
+    }
+
+    /// rpc 返回值 Value 化回归（landmine 根治级，2026-08-22）：
+    /// 出口包装契约——纯包 Value::String，零 parse。字节精确是铁律：
+    /// read_file_content 读 JSON 文件时前端必须拿到原文，不能被出口
+    /// 误展开成结构化值；JSON 展开分派在前端 typedRpc 按契约进行。
+    #[test]
+    fn str_to_value_wraps_verbatim_never_parses() {
+        // JSON 对象形状的文本也必须原样保留（字节精确）
+        assert_eq!(
+            str_to_value(r#"{"ok":true,"n":3}"#.to_string()),
+            serde_json::Value::String(r#"{"ok":true,"n":3}"#.to_string())
+        );
+        // ok_unit 的 "null" 同样原样（前端 typedRpc 负责解）
+        assert_eq!(str_to_value("null".to_string()), serde_json::Value::String("null".to_string()));
+        // 空串、多行文本、带 BOM/控制字符的文本一律字节精确
+        assert_eq!(str_to_value(String::new()), serde_json::Value::String(String::new()));
+        let cjk = "中文内容\n第二行";
+        assert_eq!(str_to_value(cjk.to_string()), serde_json::Value::String(cjk.to_string()));
     }
 
     /// self 路由契约锁定：前端领域工具传 target="self" 字符串，

@@ -16,7 +16,7 @@
 // （decorations:false 的自定义标题栏职责自 CommandBar 迁来）。
 
 import { useCallback, useEffect, useState } from 'react';
-import { parseJson, typedRpc } from '../rpc-contract';
+import { typedJsonRpc } from '../rpc-contract';
 import { workspaceFlow } from '../shell/rows/workspace';
 import { useDockStore } from '../state/dock-store';
 import { ensureUserSessionsDir } from '../ui/chat-session';
@@ -42,8 +42,7 @@ interface ProjectSession {
 /** 冷启动缓存图 meta 的 source_root（上次打开项目）——读一次，失败 = null */
 async function lastProjectRoot(): Promise<string | null> {
   try {
-    const raw = await typedRpc('load_graph_json', {});
-    const meta = JSON.parse(raw) as { meta?: { source_root?: string } };
+    const meta = await typedJsonRpc<{ meta?: { source_root?: string } }>('load_graph_json', {});
     return meta?.meta?.source_root || null;
   } catch {
     return null;
@@ -104,8 +103,7 @@ export function SessionsHome() {
         }
       }
       try {
-        const raw = await typedRpc('user_sessions_list', {});
-        const parsed = parseJson<UserSession[]>(raw);
+        const parsed = await typedJsonRpc<UserSession[]>('user_sessions_list', {});
         if (alive) setUserSessions(Array.isArray(parsed) ? parsed : []);
       } catch {
         /* 用户级目录不存在 = 空（首启常态） */

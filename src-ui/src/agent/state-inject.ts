@@ -11,7 +11,7 @@
 //
 // 所有调用都能优雅降级 — 数据不可用时不注入任何内容。
 
-import { typedRpc } from '../rpc-contract';
+import { typedJsonRpc, typedRpc } from '../rpc-contract';
 import type { BuildResult, CheckStatusSummary } from './cache-store';
 import {
   getBlameCache,
@@ -60,10 +60,14 @@ export async function refreshGitStatus(projectPath: string): Promise<void> {
   if (cached && now - getGitCacheTs() < GIT_CACHE_MS) return;
   const epoch = getCacheEpoch();
   try {
-    const json = await typedRpc('git_status', { path: projectPath });
+    const raw = await typedJsonRpc<{
+      branch?: string;
+      ahead?: number;
+      behind?: number;
+      files?: Array<{ file: string; status: string }>;
+    }>('git_status', { path: projectPath });
     // 工作区已切换（缓存被 reset）— 旧项目的在途结果直接丢弃
     if (getCacheEpoch() !== epoch) return;
-    const raw = JSON.parse(json);
     setGitCache(
       {
         branch: raw.branch || '',

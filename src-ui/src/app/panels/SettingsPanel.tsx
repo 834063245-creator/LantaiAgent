@@ -12,7 +12,7 @@ import { selectPreset } from '../../composition/preset-assembly';
 import type { Lang } from '../../i18n';
 import { setLang } from '../../i18n';
 import { DEEP_THINK_LABEL } from '../../provider/thinking';
-import { typedRpc } from '../../rpc-contract';
+import { typedJsonRpc } from '../../rpc-contract';
 import type { AppSettings, ProviderId } from '../../settings';
 import { loadSettings, loadSettingsWithSecrets, persistSecrets, removeSecret, saveSettings } from '../../settings';
 import { notifyAgentConfigChanged } from '../../state/agent-config-store';
@@ -165,9 +165,8 @@ const SettingsPanelApp: React.FC<{
     setLspLoading(true);
 
     const fetchStatus = () => {
-      typedRpc('hologram_call', { tool: 'engine_status', args: {} })
-        .then((raw) => {
-          const parsed = JSON.parse(raw) as { lsp?: LspData };
+      typedJsonRpc<{ lsp?: LspData }>('hologram_call', { tool: 'engine_status', args: {} })
+        .then((parsed) => {
           if (parsed?.lsp?.servers) {
             setLspStatus(parsed.lsp);
             // 当所有已安装服务器都已确定状态（运行或错误）时停止，

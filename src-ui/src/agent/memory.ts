@@ -14,7 +14,7 @@
 //   Agent 自己主动存的记忆最高只能给 reference。fact 级别只有用户通过 /remember 明确要求时才能使用。
 
 import { z } from 'zod';
-import { typedRpc } from '../rpc-contract';
+import { typedJsonRpc, typedRpc } from '../rpc-contract';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
 import type { AuraRecord } from './aura-memory';
 import { auraCount, auraInit, auraRecall, auraShutdown, auraStore } from './aura-memory';
@@ -317,8 +317,7 @@ export class MemoryManager {
 
       if (filePaths.length > 1) {
         try {
-          const raw = await typedRpc('read_memory_batch', { paths: filePaths });
-          batchResults = JSON.parse(raw);
+          batchResults = await typedJsonRpc('read_memory_batch', { paths: filePaths });
         } catch {
           // 降级为逐个读取
         }

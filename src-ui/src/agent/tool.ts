@@ -5,8 +5,8 @@
 
 // biome-ignore lint/style/noRestrictedImports: agentInvoke 动态方法名分发（工具名运行时确定），无法走 typedRpc
 import { rpc } from '../bridge';
-import type { Disposer } from './lifecycle';
 import type { ToolSchema } from '../provider/types';
+import type { Disposer } from './lifecycle';
 
 // ---- Tool 接口 ----
 
@@ -172,7 +172,10 @@ export type ToolExecutor = (
  *  (require_read/require_write/git_dispatch) 而非沙箱化的 user-UI 路径。
  *  camelCase 契约: Rust 参数 `is_agent` ↔ JS key `isAgent`。
  *  旧名 `_agent` 因 Tauri 默认 camelCase 重命名永远匹配不上 → is_agent 恒 false
- *  → agent 文件操作被沙箱静默硬拒且不弹 Ask（见 tests/agent-exec.test.ts 守护）。 */
+ *  → agent 文件操作被沙箱静默硬拒且不弹 Ask（见 tests/agent-exec.test.ts 守护）。
+ *
+ * rpc Value 化（2026-08-22）：ipc 通道已是结构化值，但 Rust 出口对返回包
+ * Value::String（字节精确，故意不 parse），agent 工具链的 string 世界零改动 */
 export async function agentInvoke<T = string>(name: string, args: Record<string, unknown>): Promise<T> {
   return rpc<T>(name, { ...args, isAgent: true });
 }

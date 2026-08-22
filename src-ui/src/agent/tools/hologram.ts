@@ -6,7 +6,7 @@
 // 留在 agent-builder 会造成 composition ↔ runtime 循环 import。
 // 定义零改写——loadHologramSchemas / mcpSchemaToTool 与迁移前逐字一致。
 
-import { typedRpc } from '../../rpc-contract';
+import { typedJsonRpc } from '../../rpc-contract';
 import type { Tool, ToolExecutor } from '../tool';
 
 export interface McpSchema {
@@ -22,8 +22,7 @@ export interface McpSchema {
 
 export async function loadHologramSchemas(): Promise<McpSchema[]> {
   try {
-    const raw = await typedRpc('hologram_tools_list', {});
-    return JSON.parse(raw) as McpSchema[];
+    return await typedJsonRpc<McpSchema[]>('hologram_tools_list', {});
   } catch {
     return [];
   }

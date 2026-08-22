@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-08-20T16:28:01.493Z
-> 方法总数：152（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-08-22T02:53:54.549Z
+> 方法总数：154（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -53,6 +53,8 @@
 |------|----------|----------|------|
 | `list_directory_flat` | path | is_agent, _agent_id | JSON 字符串 |
 | `read_file_content` | file_path | offset, limit, is_agent, _agent_id | 字符串 |
+| `user_sessions_list` | — | — | JSON 字符串 |
+| `get_user_sessions_dir` | — | — | 字符串 |
 | `read_memory_batch` | — | paths | 字符串 |
 | `read_file_base64` | file_path | is_agent, _agent_id | 字符串 |
 | `write_file_content` | file_path, content | is_agent, _agent_id | 字符串 |

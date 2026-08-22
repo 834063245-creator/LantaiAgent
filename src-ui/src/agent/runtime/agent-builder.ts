@@ -15,7 +15,7 @@
 import { pluginToolRows } from '../../composition/plugin-tool-rows';
 import { assembleSystemPrompt, type PromptSection } from '../../composition/prompt-sections';
 import { type BuiltinToolRow, builtinToolRows, type ToolRowContext } from '../../composition/tool-rows';
-import { typedRpc } from '../../rpc-contract';
+import { typedJsonRpc } from '../../rpc-contract';
 import type { Agent } from '../agent';
 import { createCompactionTools } from '../compaction-model';
 import type { GraphContext } from '../hooks';
@@ -306,24 +306,27 @@ export function registerCompactionTools(agent: Agent, reg: ToolRegistry): void {
 
 export async function loadEngineSnapshot(ctx: GraphContext, projectPath: string, isRefresh = false): Promise<void> {
   try {
-    const [fragileRaw, cycleRaw, healthRaw, blindspotsRaw] = await Promise.all([
-      typedRpc('hologram_call', { tool: 'fragile_modules', args: { limit: 15 } }),
-      typedRpc('hologram_call', { tool: 'detect_cycles', args: { mode: 'all' } }),
-      typedRpc('hologram_call', { tool: 'project_health', args: { path: projectPath, days: 30 } }),
-      typedRpc('hologram_call', { tool: 'arch_blindspots', args: { filter: 'all' } }).catch(() => '{"blindspots":[]}'),
+    // 引擎快照四路数据的宽松形态（引擎字段名跨版本有别名，保持宽容读取）
+    // biome-ignore lint/suspicious/noExplicitAny: 引擎响应宽容读取别名字段，与旧 JSON.parse 返回 any 同宽
+    type EngineJson = Record<string, any>;
+    const [fragileData, cycleData, healthData, blindspotsData] = await Promise.all([
+      typedJsonRpc<EngineJson>('hologram_call', { tool: 'fragile_modules', args: { limit: 15 } }),
+      typedJsonRpc<EngineJson>('hologram_call', { tool: 'detect_cycles', args: { mode: 'all' } }),
+      typedJsonRpc<EngineJson>('hologram_call', { tool: 'project_health', args: { path: projectPath, days: 30 } }),
+      typedJsonRpc<EngineJson>('hologram_call', { tool: 'arch_blindspots', args: { filter: 'all' } }).catch(
+        (): EngineJson => ({
+          blindspots: [],
+        }),
+      ),
     ]);
-    const fragileData = JSON.parse(fragileRaw);
     const fragilityRanks: Array<{ file: string; score: number }> = [];
     if (fragileData.fragile_modules || fragileData.modules) {
       const list = fragileData.fragile_modules || fragileData.modules;
       for (const m of list)
         fragilityRanks.push({ file: m.file || m.module || '', score: m.fragility_score || m.score || 0 });
     }
-    const cycleData = JSON.parse(cycleRaw);
     const cycleCount = cycleData.total_cycles || cycleData.cycles?.length || 0;
-    const healthData = JSON.parse(healthRaw);
     const healthScore = healthData.coupling_density_score || healthData.score || 0;
-    const blindspotsData = JSON.parse(blindspotsRaw);
     const synthesisAlerts: Array<{ type: string; count: number; detail: string }> = [];
     const rawBlindspots = blindspotsData.blindspots || blindspotsData.alerts || [];
     const typeCounts = new Map<string, number>();
@@ -349,10 +352,10 @@ export async function loadEngineSnapshot(ctx: GraphContext, projectPath: string,
     const lspCallers = new Map<string, Array<{ symbol: string; count: number }>>();
     for (const r of fragilityRanks.slice(0, 3)) {
       try {
-        const resolveRaw = await typedRpc('hologram_call', { tool: 'resolve_call', args: { file: r.file } }).catch(
-          () => '{}',
-        );
-        const resolveData = JSON.parse(resolveRaw);
+        const resolveData = await typedJsonRpc<EngineJson>('hologram_call', {
+          tool: 'resolve_call',
+          args: { file: r.file },
+        }).catch((): EngineJson => ({}));
         if (resolveData.calls && Array.isArray(resolveData.calls)) {
           const fc = new Map<string, number>();
           for (const c of resolveData.calls) {
@@ -376,11 +379,10 @@ export async function loadEngineSnapshot(ctx: GraphContext, projectPath: string,
           ?.replace(/\.[^.]+$/, '') || '';
       if (!symbol) continue;
       try {
-        const searchRaw = await typedRpc('hologram_call', {
+        const searchData = await typedJsonRpc<EngineJson>('hologram_call', {
           tool: 'search_symbols',
           args: { query: symbol, limit: 5 },
-        }).catch(() => '{"results":[]}');
-        const searchData = JSON.parse(searchRaw);
+        }).catch((): EngineJson => ({ results: [] }));
         const results = searchData.results || [];
         const neighbors = results
           .filter((s: any) => (s.name || '').toLowerCase() !== symbol.toLowerCase())

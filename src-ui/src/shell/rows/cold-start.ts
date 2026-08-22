@@ -13,7 +13,7 @@
 // 视图不再由此行决定——主视图落点统一在 bootShell 收尾（开纸面板）。
 
 import { isMockMode } from '../../bridge';
-import { typedRpc } from '../../rpc-contract';
+import { typedJsonRpc } from '../../rpc-contract';
 import type { CachedGraphMeta } from '../../workspace';
 import { pushStatus, type ShellRefs, setLoading } from '../runtime';
 import { setupPlaceholderAgent, workspaceFlow } from './workspace';
@@ -30,8 +30,7 @@ export async function bootColdStart(_refs: ShellRefs): Promise<void> {
   try {
     let graph: CachedGraphPayload | null = null;
     try {
-      const json = await typedRpc('load_graph_json', {});
-      graph = JSON.parse(json) as CachedGraphPayload;
+      graph = await typedJsonRpc<CachedGraphPayload>('load_graph_json', {});
     } catch {
       // 无缓存图谱
     }

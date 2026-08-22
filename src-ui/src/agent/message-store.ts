@@ -7,47 +7,47 @@
 // 模式参照 agent-store.ts：rpc 文件 I/O、ensureDir、stripNums。
 // 所有操作 best-effort — 永不抛异常阻塞主流程。
 
-import { typedRpc } from '../rpc-contract'
-import type { AgentMessage, MessageStore } from './message-types'
-import { stripNums } from './board-persistence'
+import { typedJsonRpc, typedRpc } from '../rpc-contract';
+import { stripNums } from './board-persistence';
+import type { AgentMessage, MessageStore } from './message-types';
 
 // ── JsonMessageStore ──
 
 export class JsonMessageStore implements MessageStore {
-  private dirReady = false
+  private dirReady = false;
 
   constructor(private projectPath: string) {}
 
   private get baseDir(): string {
-    return this.projectPath.replace(/\\/g, '/').replace(/\/$/, '') + '/.hologram/agents'
+    return this.projectPath.replace(/\\/g, '/').replace(/\/$/, '') + '/.hologram/agents';
   }
 
   private inboxPath(agentId: string): string {
-    return `${this.baseDir}/${agentId}/inbox.json`
+    return `${this.baseDir}/${agentId}/inbox.json`;
   }
 
   private async ensureDir(): Promise<void> {
-    if (this.dirReady) return
+    if (this.dirReady) return;
     try {
-      await typedRpc('create_directory', { path: this.baseDir })
+      await typedRpc('create_directory', { path: this.baseDir });
     } catch {
       /* already exists */
     }
-    this.dirReady = true
+    this.dirReady = true;
   }
 
   /** 遍历所有 inbox，每个写一个 JSON 文件。空 inbox 跳过。 */
   async flush(inboxes: Map<string, AgentMessage[]>): Promise<void> {
-    await this.ensureDir()
+    await this.ensureDir();
     for (const [agentId, msgs] of inboxes) {
       try {
         // 空 inbox 不写文件
-        if (msgs.length === 0) continue
-        await typedRpc('create_directory', { path: `${this.baseDir}/${agentId}` })
+        if (msgs.length === 0) continue;
+        await typedRpc('create_directory', { path: `${this.baseDir}/${agentId}` });
         await typedRpc('write_file_content', {
           file_path: this.inboxPath(agentId),
           content: JSON.stringify(msgs, null, 2),
-        })
+        });
       } catch {
         /* best-effort — 单个 inbox 写失败不影响其他 */
       }
@@ -57,56 +57,57 @@ export class JsonMessageStore implements MessageStore {
   /** 读取所有 agent 目录下的 inbox.json，组装成 Map 返回。
    *  空 inbox.json 或不可解析的目录会被当作孤儿清理。 */
   async restore(): Promise<Map<string, AgentMessage[]>> {
-    const result = new Map<string, AgentMessage[]>()
+    const result = new Map<string, AgentMessage[]>();
     try {
-      const raw = await typedRpc('list_directory', { path: this.baseDir, filter_ignored: false })
-      const entries = JSON.parse(raw) as Array<{ name: string; is_dir: boolean }>
-      if (!Array.isArray(entries)) return result
+      const entries = await typedJsonRpc<Array<{ name: string; is_dir: boolean }>>('list_directory', {
+        path: this.baseDir,
+        filter_ignored: false,
+      });
+      if (!Array.isArray(entries)) return result;
 
       for (const entry of entries) {
-        if (!entry.is_dir) continue
-        const agentId = entry.name
+        if (!entry.is_dir) continue;
+        const agentId = entry.name;
         try {
           const rawInbox = await typedRpc('read_file_content', {
             file_path: this.inboxPath(agentId),
-          })
-          const msgs = JSON.parse(stripNums(rawInbox)) as AgentMessage[]
+          });
+          const msgs = JSON.parse(stripNums(rawInbox)) as AgentMessage[];
           if (Array.isArray(msgs) && msgs.length > 0) {
-            result.set(agentId, msgs)
+            result.set(agentId, msgs);
           } else {
             // 空 inbox.json — 清理孤儿
-            await this.delete(agentId)
+            await this.delete(agentId);
           }
         } catch (e) {
           // 雷区地图 P0-6：只有「文件不存在」才清理孤儿；
           // 瞬时读错误（IPC 抖动、权限、磁盘）删 inbox = 静默丢未投递消息
-          const msg = e instanceof Error ? e.message : String(e)
+          const msg = e instanceof Error ? e.message : String(e);
           if (msg.includes('路径不存在') || msg.includes('not found') || msg.includes('NotFound')) {
-            await this.delete(agentId)
+            await this.delete(agentId);
           } else {
-            console.warn(`[message-store] ${agentId} 的 inbox.json 读取/解析失败，已保留待下次恢复:`, msg)
+            console.warn(`[message-store] ${agentId} 的 inbox.json 读取/解析失败，已保留待下次恢复:`, msg);
           }
         }
       }
     } catch {
       /* baseDir 不存在 — 无可恢复数据 */
     }
-    return result
+    return result;
   }
 
   /** 删除指定 agent 的 inbox 持久化文件和目录。
    *  在 bus.unregister() 时调用，清理磁盘残留。best-effort。 */
   async delete(agentId: string): Promise<void> {
     try {
-      const dirPath = `${this.baseDir}/${agentId}`
+      const dirPath = `${this.baseDir}/${agentId}`;
       // 删 inbox.json
-      await typedRpc('delete_file_or_dir', { path: this.inboxPath(agentId) })
+      await typedRpc('delete_file_or_dir', { path: this.inboxPath(agentId) });
       // 尝试删 agent 目录（如果为空）
       try {
-        const raw = await typedRpc('list_directory', { path: dirPath, filter_ignored: false })
-        const entries = JSON.parse(raw)
+        const entries = await typedJsonRpc<unknown[]>('list_directory', { path: dirPath, filter_ignored: false });
         if (Array.isArray(entries) && entries.length === 0) {
-          await typedRpc('delete_file_or_dir', { path: dirPath })
+          await typedRpc('delete_file_or_dir', { path: dirPath });
         }
       } catch {
         // 目录已不存在或不可访问 — 无需处理
