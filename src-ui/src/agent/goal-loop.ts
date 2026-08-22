@@ -9,6 +9,7 @@ import { z } from 'zod';
 import type { Message } from '../provider/types';
 import { type AgentEvent, type AgentUINotifier, EventKind } from './agent-types';
 import type { ExecStateInstance } from './execution-state';
+import { errText } from './loop-helpers';
 import type { GoalManager, GoalRecord } from './goal-manager';
 import type { SessionResetReason } from './session-log';
 import type { Tool, ToolRegistry } from './tool';
@@ -302,13 +303,6 @@ function lastAssistantContent(ag: GoalLoopHost): string {
     }
   }
   return '';
-}
-
-/** catch(e) 的 unknown 取消息 — 覆盖 Error/DOMException/裸字符串三种冒泡形态。 */
-function errText(e: unknown): string {
-  if (e instanceof Error) return e.message;
-  if (typeof e === 'object' && e !== null && 'message' in e) return String((e as { message: unknown }).message);
-  return String(e);
 }
 
 /** 检查最后一条 assistant 消息是否包含 tool_calls（而非纯文本）。 */

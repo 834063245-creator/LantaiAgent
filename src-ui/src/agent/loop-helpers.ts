@@ -48,3 +48,15 @@ export function finishReasonMessage(u?: Usage): string | undefined {
       return undefined;
   }
 }
+
+/** catch(e) 的 unknown 取消息 — 覆盖 Error/DOMException/裸字符串三种冒泡形态。
+ *  语义对齐旧 catch(e:any) 时代的 e?.message || String(e)。 */
+export function errText(e: unknown): string {
+  if (e instanceof Error) return e.message || String(e);
+  if (typeof e === 'object' && e !== null && 'message' in e) {
+    const m = (e as { message: unknown }).message;
+    if (typeof m === 'string' && m) return m;
+    return String(e);
+  }
+  return String(e);
+}
