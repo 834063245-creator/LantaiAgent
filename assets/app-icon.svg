@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- 兰台 · 应用图标源图（C4）：纸底 + 墨线亭台（favicon.svg 同源转录）。
+       栅格化：headless Edge 截图 1024×1024 → cargo tauri icon。 -->
+  <rect width="1024" height="1024" fill="#f6f1e7" />
+  <g transform="translate(128 128) scale(32)" fill="none" stroke="#26221c"
+     stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 9.2 L12 3.4 L20 9.2" />
+    <path d="M4 9.2 C3.2 8.8 2.7 7.7 3.3 7" />
+    <path d="M20 9.2 C20.8 8.8 21.3 7.7 20.7 7" />
+    <path d="M7.6 9.2 V16.2" />
+    <path d="M16.4 9.2 V16.2" />
+    <path d="M4.4 16.2 H19.6" />
+    <path d="M6.2 18.8 H17.8" />
+  </g>
+</svg>
