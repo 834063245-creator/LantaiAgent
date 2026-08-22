@@ -45,6 +45,8 @@
 - 2026-08-22 · **V5 提前拍板：摘除旧观测台前端（显式翻案，最高优先级）** · 用户深夜原话「这个狗日的旧前端就不能摘了吗，就非得挂在这」· 选：**提前执行 V5——纸壳（注疏案卷工作台）成为唯一主界面，旧观测台前端整体拆除**；弃「纸能住人 + R3 访谈后再定」的共居期排序 · 这是对共居期排序的**显式翻案**（原排序：R5 打磨环 → 纸能住人 → R3 访谈 → V5 判断半；新排序：V5 拆除并入当下主线，R3 共居判据随之作废）。当日背景：兰台注疏定稿已全量落地 main（7 commit 门禁全绿），「纸面板即聊天」已成立（composer 接 core.sendMessage，消息流经 translate.ts 转译为块）——拆除的可用性前提与审美前提同日齐备，用户据此不再愿意为旧前端续命。拆除范围与顺序见 plans/README 总控表 2026-08-22（深夜）条目；「关纸面板回哪」按原型 home 全量转录重设计（现状半档重排欠账一并清）
 - 2026-08-22 · **V5 拆除施工毕（commit a621b1e6，-16843 行，四件套门禁全绿）** · 拆除面：App 树 chrome（CommandBar/DockRail/StatusBar/TimelineHUD/ShortcutsOverlay/BackgroundActivity）＋ ChatBeacon 聊天视图族 ＋ 图谱 dock 面板族 ＋ 壳行 12→9（graph/nav/dataflow-parser 退役）＋ workspace.ts 渲染面（starGraph 恒 null，**数据面保留**——graphData 分页装载/graph-updated/runCheck 简报注入照旧服务 Agent 工具）＋ shell-store.view 退役 ＋ index.html 星图画布/氛围层（three.js 出 bundle）＋ paper preset 行 · **四个关键承接决定**：① PromptShelf 独立挂载（PromptShelfHost）——权限卡/ask_user 是会话编排域刚需而非观测台装饰，无承接 = Agent 写操作被静默否决（违「错误不静默」宪法）；② 窗口控制自 CommandBar 抽出（WinControls）迁纸壳书眉＋首页顶栏——decorations:false 必须有标题栏承接；③ 「关卷」回案卷首页（SessionsHome 常驻基底层）——「关纸回哪」的答案，首页按原型全量转录进 R5 队列；④ scene/ 与 ui/ 大部保留为**休眠层**（chat-stream 冻结 import 走 ui/graph shim；星图/文件查看器的彻底删除是独立 sweep——一次动冻结文件依赖图风险不成比例）· 交互欠账如实入 r5-polish-backlog C 段（C8+：多卷切换/权限卡纸面化/附件入口/模型与权限模式切换入口/状态反馈面）
 
+- 2026-08-22 · **vision 自检管线验证可用** · 自主段 C2 设置面板重排自检 · 出 headless Edge 截图 + harness 对拍管线（`prototype/c2-settings-harness.html` 留作回归工具，三轮收敛）· 此前账本记录的「结构性瓶颈：agent 无图片输入」已解除——多模态会话可自行眼判转录保真度；注意：harness 截图字体走系统回退（fontsource 不加载），判断字形需真机截图；B 段审美循环的「vision 会话 + 用户终审」前置不变
+
 ### 待办（从判定中涌出）
 
 - ~~paper 态是否降级为"从简"路线~~ **已拍板（2026-08-22 用户）：不降级，V1 第三轮再攻质感**——V2 推迟一轮，质感根源查清并拍板后再录契约

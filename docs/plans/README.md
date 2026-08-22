@@ -19,9 +19,9 @@
 
 | 层 | 项 | 谁判断 |
 |---|---|---|
-| **纯转录**（agent 可自主推进） | C2 设置面板注疏化重排 · C5 余量（4 个 CSS 迁兰台 token 后删 `--obs-*` 别名层；切片 1 已毕）· C3 夹注列宽 · C4 应用图标（`cargo tauri icon`）· C6 文案 · C7 圈点 · C13 scene/ui 休眠层 sweep | Agent |
-| **产品判断**（需用户拍板形态） | C8 多卷切换 UI · C10 附件入口 · C11 模型/权限模式切换入口 · C12 状态反馈面（预热进度不可见） | 用户 |
-| **审美循环**（需 vision 模型会话） | B 段 5 维单维循环（垂直节奏/页边注光学/墨阶/问批音量/代码块印刷化） | vision 会话 + 用户终审 |
+| **纯转录**（agent 可自主推进） | ~~C2~~✅ · ~~C5 余量~~✅ · ~~C3 夹注列宽~~✅ · ~~C4 应用图标~~✅ · ~~C6 文案~~✅ · C7 圈点（边界探明，触数据契约待裁决）· ~~C13 scene/ui 休眠层 sweep~~✅ —— **以上除 C7 外均已毕（2026-08-22 自主段）** | Agent |
+| **产品判断**（需用户拍板形态） | C8 多卷切换 UI · C10 附件入口 · C11 模型/权限模式切换入口 · C12 状态反馈面（预热进度不可见）· **C7 圈点关键词来源**（新契约 UserMessage.marks / 零契约引号启发式 / Agent 端标注，三选一） | 用户 |
+| **审美循环**（需 vision 模型会话） | B 段 5 维单维循环（垂直节奏/页边注光学/墨阶/问批音量/代码块印刷化）——vision 解锁已验证：headless Edge 截图 + harness 对拍管线可用（C2 自检先例，`prototype/c2-settings-harness.html` 留作回归工具） | vision 会话 + 用户终审 |
 
 ### 2. composition-architecture — 只剩 S3（样板工程）
 
@@ -31,7 +31,7 @@ S0/S1/S2/S4 全竣工。S3 = 把 settings 面板域迁成第一方插件（面�
 
 | 项 | 成本 | 说明 |
 |---|---|---|
-| agent-plugin **P1** 工具面文档生成 | 半天 | 从 ToolRegistry 生成模型可见工具面文档，消灭手写双源。独立收益，随时可做 → [`agent-plugin-architecture-plan.md`](agent-plugin-architecture-plan.md) |
+| agent-plugin **P1** 工具面文档生成 | ~~半天~~ ✅ 已毕（2026-08-22）：gen-tool-contract-md.cjs + model-tool-contract.md 落地；C2 判据如实偏差（ci.yml 冻结 → vitest 守护 + check:tool-contract）；AGENTS/CLAUDE 手写清单段已指向生成物 |
 | arch-action-plan **14** any 渐进清理 | 渐进 | 211 处，先清 workspace.ts / lsp-client / chat-session 密集区 → [`arch-action-plan.md`](arch-action-plan.md) |
 | rpc 返回值 Value 化 | L（独立项目） | 根治「双重编码」bug 家族；typedRpc 前置已就位 → [`landmine-map.md`](../landmine-map.md) 根治级段 |
 | agent-plugin **P2** code_execution 执行原语 | 2-4 天 | 产品决策级；**P3** cordis 收口 1-2 天（前置已满足） |
@@ -50,9 +50,9 @@ S0/S1/S2/S4 全竣工。S3 = 把 settings 面板域迁成第一方插件（面�
 
 | 项 | 欠什么 |
 |---|---|
-| V5 拆除后的 Tauri 真机 | 浏览器 mock 已验证；窗口控制 IPC / 权限卡桥 / 冷启动恢复缓存图未跑 |
-| shell 捆绑 bash（P0-P5） | cfg(windows) 路径从未实跑（基线命令清单在计划 §4）→ [`shell-stability-bundled-bash-plan.md`](shell-stability-bundled-bash-plan.md) |
-| browser CDP E2E-1/2/3/4/5 | 重点 E2E-5 多账号 cookie 隔离 |
+| ~~V5 拆除后的 Tauri 真机~~ | **大部分已跑（2026-08-22 自主段）**：真机启动 + 纸壳渲染截图取证 ✓；窗口控制 IPC 最大化/还原往返 ✓；冷启动缓存过期→重分析全链路（louvain/LSP×3/向量嵌入）✓；优雅关闭 lifecycle 全清 ✓。未覆盖：权限卡桥需真实 agent 写动作触发（需 provider 配置），留给下次带 API key 的会话 |
+| ~~shell 捆绑 bash（P0-P5）~~ | **已实跑（2026-08-22）**：os_sandbox:: 17/17 绿（含新增 repo vendor 三连测试）；init_bundled 开发态兑底路径修正一处布局雷（BUNDLED_BASH_REL 自带 vendor/ 前缀，root 应为 CARGO_MANIFEST_DIR 本身）；src-ui tsc 绿 → [`shell-stability-bundled-bash-plan.md`](shell-stability-bundled-bash-plan.md) §4 已更新 |
+| ~~browser CDP E2E-1/2/3/4/5~~ | **已实跑（2026-08-22）**：cargo test cdp:: 35/35 全绿，含重点 E2E-5 多账号 cookie 隔离（上会话偶发失败本轮未复现） |
 | workspace-flip 批 3 边界 | 预热期内创建的会话缺 graph 工具（已知边界，非 bug） |
 
 ## 已完成并归档（点名即可，详情勿读）

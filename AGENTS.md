@@ -25,7 +25,7 @@ HoloGram/
 ├── src-ui/            TypeScript 前端（React 19 + Three.js + Monaco + Zustand 5）
 │   ├── src/app/       新观测台壳（单 React 根；新 UI 落这里）
 │   ├── src/state/     zustand 状态层（领域 store + 面板/app 级 store + 信号 store）
-│   ├── src/scene/     星图 Three.js scene（graph.ts + graph-* + gpu-layout）
+│   ├── src/scene/     星图类型层（C13 sweep 后仅存 graph-types.ts；渲染面已退役）
 │   ├── src/ui/        chat 编排域核心 + 旧层命令式基础设施（终态 25 文件，见目录 README）
 │   ├── src/cordis/    vendored cordis 内核（Context/Fiber/Service；禁就地改，见目录 README）
 │   ├── src/composition/ 组合层（S1+V3b）：工具行表 tool-rows + prompt section 表 + 五 service 注册表（四 service + V3b 块渲染器 renderer-service）
@@ -101,7 +101,7 @@ flowchart LR
 
 ## 6. 前端分层铁律（详情见 CONVENTIONS.md）
 
-- UI 状态走 zustand store，事件总线已归零（2026-08-19 `docs/archive/eventbus-zero-and-ui-split-plan.md` P0-P3 竣工）：`ui/events.ts` 整文件删除（EventBus/bus/BusEvents 不存在了，禁复活——不要 window.dispatchEvent / CustomEvent / 自建 EventEmitter）；原 11 事件全迁 zustand 信号 store。ui/ 拆分终态：store 一律 `src/state/`（领域 + 面板 + app 级 + 信号 store）、星图一律 `src/scene/`（graph.ts 本体 + graph-* + gpu-layout；`ui/graph.ts` 仅存 3 行 re-export shim，冻结文件 chat-stream 的 type import 走此层）、`ui/` 残余 25 文件 = chat 编排域核心 + 旧层命令式基础设施（见 `src/ui/README.md`）。终态守护 `tests/eventbus-zero-and-ui-split.test.ts` 与 `tests/ui-react-retirement.test.ts`。
+- UI 状态走 zustand store，事件总线已归零（2026-08-19 `docs/archive/eventbus-zero-and-ui-split-plan.md` P0-P3 竣工）：`ui/events.ts` 整文件删除（EventBus/bus/BusEvents 不存在了，禁复活——不要 window.dispatchEvent / CustomEvent / 自建 EventEmitter）；原 11 事件全迁 zustand 信号 store。ui/ 拆分终态：store 一律 `src/state/`（领域 + 面板 + app 级 + 信号 store）、`src/scene/` 仅存星图类型模块 graph-types.ts（C13 sweep 2026-08-22：Three.js 渲染面 22 文件删除，`ui/graph.ts` shim 重指向类型模块，冻结文件 chat-stream 的 type import 走此层不变）、`ui/` 残余 = chat 编排域核心 + 旧层命令式基础设施（见 `src/ui/README.md`）。终态守护 `tests/eventbus-zero-and-ui-split.test.ts` 与 `tests/ui-react-retirement.test.ts`。
 - 面板级状态用 `createScopedStore` 注册表（`state/` 的 messages/session/panel/input 四件套，聚合入口 `ui/chat-store.ts`）；app 级单例用 `app/shell-store` / `state/dock-store` / `state/overlay-store`。
 - 聊天消息原地 mutate 后必须 `touchMessage / touchMessageContaining`——裸 `bump()` 或展开数组会静默卡 UI（`INVARIANTS #1/#2/#3`）。
 - 冻结文件：`ui/chat-session.ts`、`ui/chat-stream.ts`、`ui/part-mutator.ts`、`agent/execution-state.ts`。

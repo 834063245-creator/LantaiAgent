@@ -15,18 +15,18 @@
 | # | 项 | 状态 |
 |---|---|---|
 | C1 | ~~旧观测台 chrome 去圆角~~ **随 V5 拆除消解**（chrome 全族已删；残余圆角清点并入 C13 休眠层 sweep） | ✅ 消解 |
-| C2 | SettingsPanel 注疏化重排（本轮只继承 token 翻纸，版式未按 set-frame 重排） | ⬜ |
-| C3 | 夹注（reasoning）86% 收窄列宽（本轮块宽由世界坐标决定，未收窄） | ⬜ |
-| C4 | 应用图标 PNG/ICO 套件再生（favicon.svg 已就绪；缺栅格化工具链，`cargo tauri icon` 待跑） | ⬜ |
-| C5 | --obs-* 别名层退役：逐文件迁移到兰台 token 名后整体删除（**切片 1 已毕 2026-08-22 深夜**：shared.css 938→222 行死面板样式全删，计算样式对拍零变更；余量 = settings-panel/provider-settings/prompt-shelf/shell 四 css + SettingsPanel/PluginsPage/ContextMenu 内联——休眠层 scene/ui 的 --obs-* 引用不拦退役，它们不再渲染） | 🔶 |
-| C6 | 主聊天输入条 placeholder 文案打磨（纸壳 composer 现文案未按 §5 术语化） | ⬜ |
-| C7 | 来文圈点关键词（.circled 朱砂圈）：需 user 块关键词高亮数据面，渲染层已备样式钩子 | ⬜ |
+| C2 | SettingsPanel 注疏化重排（本轮只继承 token 翻纸，版式未按 set-frame 重排）——**已毕 2026-08-22 自主段**：settings-panel.css 整卷按 .set-frame 语法转录（序号分节/双列注疏行/下划线输入件/seg 标签组/圆角恒 0/硬偏移投影）；vision 会话 headless Edge 截图与原型三轮对拍收敛；biome 存量 1e1w→0 | ✅ |
+| C3 | 夹注（reasoning）86% 收窄列宽（本轮块宽由世界坐标决定，未收窄）——**已毕 2026-08-22**：REASONING_BLOCK_WIDTH = 720×0.86≈619，主流与走查弹两出口同步 | ✅ |
+| C4 | 应用图标 PNG/ICO 套件再生——**已毕 2026-08-22**：栅格化以 headless Edge 截图代偿（免引 resvg/sharp），cargo tauri icon 全套落地，android/ios 目录移除；128px vision 复核通过 | ✅ |
+| C5 | --obs-* 别名层退役：逐文件迁移到兰台 token 名后整体删除——**已毕 2026-08-22 自主段**：余量十文件全迁 + tokens.css 别名块删 + 收容块（--snap/--glide/--glass/--glass-hi/--line-soft）+ tokens.obs.css 删；死引用按定案处理（blue-hi→indigo、warn-dim/text-1 删）；休眠层引用随 C13 sweep 一并消失 | ✅ |
+| C6 | 主聊天输入条 placeholder 文案打磨——**已毕 2026-08-22**：「向 Agent 拟文…」去冗余映射为「拟文…」（§5：发送→拟文一词足矣）；真机截图确认生效 | ✅ |
+| C7 | 来文圈点关键词（.circled 朱砂圈）：需 user 块关键词高亮数据面，渲染层已备样式钩子——🔶 **边界探明 2026-08-22，触契约红线待用户裁决**：① backlog 原表述不准——.circled 钩子只在 prototype/lantai.html（CSS L202 + marks 替换 L663），产品代码无此钩子，渲染侧需新增 CSS + user 体渲染器分支；② 数据面关键词来源是产品决策：(a) 新契约 UserMessage.marks/block-model 加字段（输入端选词或 composer 语法约定如【词】）、(b) 零契约渲染约定（转译层启发式圈引号内「」“”内容）、(c) Agent 端标注。选 (a) 即动数据契约，按边界规则停下问用户；选 (b) 无契约但语义需人判 | 🔶 待裁决 |
 | C8 | **V5 拆除交互欠账：多卷切换 UI**（旧会话 tab 条随 ChatBeacon 退役；chat-core 的 switchSession/closeSession/createNewSession 面尚无纸壳入口——案卷首页可续开，卷内切换待设计） | ⬜ |
 | C9 | **V5 拆除交互欠账：权限/ask 卡纸面化**（PromptShelfHost 仍是旧观测台暗卡样式——纸面朱砂批红卡归本项；功能已接通） | ⬜ |
 | C10 | **V5 拆除交互欠账：附件入口**（旧 Composer 的文件选择/拖放接口在 chat-core.openFilePicker/handleFileDrop；纸壳 composer 未接） | ⬜ |
 | C11 | **V5 拆除交互欠账：模型/权限模式切换入口**（旧 ChatFooter 的 ModelSwitcher + ask/auto/yolo 模式条退役；设置面板可改 provider，权限模式切换无入口——影响 bridges 权限桥行为） | ⬜ |
 | C12 | **V5 拆除交互欠账：状态反馈面**（pushStatus 的 statusText/statusLog 无 UI 消费——图谱预热/分析进度对用户不可见；候选：书眉行或纸面贴黄块） | ⬜ |
-| C13 | **V5 拆除欠账：scene/ui 休眠层 sweep**（星图 23 文件 + file-viewer/file-translator 等仍被 workspace/chat-session 类型引用；完整删除需动冻结文件 import 图——独立小步施工） | ⬜ |
+| C13 | **V5 拆除欠账：scene/ui 休眠层 sweep**——**已毕 2026-08-22 两切片**：切片 A 删 ui/ 死件九文件（agent-visualizer/chat-utils/context-menu/file-translator+css/file-viewer/markdown-file-preview/message-height/pretext-cache，可达性闭包实测零活引用）+ 死测试三件；切片 B 删 scene/ Three.js 渲染面 22 文件（活代码全 type-only，bundle 实测无 three），scene/ 收窄为 graph-types.ts 类型模块 + README；StarGraph 降级兼容形状 interface；ui/graph.ts shim 重指向类型模块（冻结文件 import 面不动）；eventbus-zero 终态守护更新为新事实。合计 -12,700 行 | ✅ |
 | C14 | **V5 拆除欠账：dock-store 开合表收缩**（open 初始表仍是旧六面板 + paper；随 C8-C11 面收敛重定义） | ⬜ |
 
 ## A 段 · 转录缺口（保真项）

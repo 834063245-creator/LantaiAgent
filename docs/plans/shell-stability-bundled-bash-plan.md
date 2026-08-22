@@ -1,7 +1,7 @@
 # Shell 稳定性收口：捆绑 MSYS2 bash + dsh 式执行纪律
 
 > 状态：2026-08-15 **P0-P5 全部落地**（`0f843f0` / `03468b0` / `1a16ea1` / `e9e62bb` / P5 提交见 shell 系列 commit）；P5 形态 = `shell(run, interpreter:"pwsh")` 参数而非新动作
-> **待办：Windows 真机实跑验证（§4 基线命令）——本批代码的 cfg(windows) 路径未在 Windows 编译/实跑过**
+> **✅ Windows 真机实跑已毕（2026-08-22 自主段）**：§4 基线全绿——`cargo test os_sandbox::` 17/17（含新增 repo vendor 三连测试，捆绑解释器主路径首次被真机验证）、`cargo test commands::shell` 绿、src-ui `npx tsc --noEmit` 绿。实跑暴露并修正一处布局雷：init_bundled 开发态兑底与测试的 root 原写 `CARGO_MANIFEST_DIR/vendor`，但 `BUNDLED_BASH_REL = "vendor/usr/bin/bash.exe"` 自带 vendor/ 前缀（对齐打包态 resource_dir 布局），再拼一层指向不存在的 `vendor/vendor/`——已改为 root = CARGO_MANIFEST_DIR 本身（commit c9b1d490）。其它测试打「using system Git Bash」告警属预期（不经 init_bundled）
 > 动机：shell 能力不稳定（解释器探测分叉 / PATH 继承随机 / 编码无契约 / taskkill 杀树不可靠）
 > 参照：deepseek-harness `packages/shell/`（pwsh 钉死 + 编码前置 + 单 argv + env 归一 + spill）与现有 `os_sandbox.rs`
 > 决策：**捆绑钉死版 MSYS2 bash 为主解释器**（用户无商用顾虑，GPL 聚合可接受），照抄 dsh 四条执行纪律，Job Object 杀树升级为每命令独立 Job + `TerminateJobObject`（超过 dsh 与现状双方）
@@ -49,11 +49,15 @@ Agent shell(run) ──> Rust spawn_shell ──> 捆绑的 bash.exe -c <cmd>（
 
 ```powershell
 cd D:\HoloGramHG\src-tauri
-cargo test os_sandbox:: -- --nocapture   # P1/P2 杀树与钉死解释器实跑
-cargo test commands::shell               # 现有 shell 套件回归
+cargo test os_sandbox:: -- --nocapture   # P1/P2 杀树与钉死解释器实跑 → 2026-08-22 实测 17/17 绿
+cargo test commands::shell               # 现有 shell 套件回归 → 2026-08-22 实测绿
 cd D:\HoloGramHG\src-ui
-npx tsc --noEmit
+npx tsc --noEmit                          # 2026-08-22 实测绿（需先补装 devDeps）
 ```
+
+补充（2026-08-22）：新增测试 `bundled_bash_repo_vendor_smokes_and_executes`
+直接以仓库 vendor 根验证捆绑解释器（布局/冒烟/真实执行三连），cargo test 不经
+init_bundled、钉死主路径从此有真机覆盖；不碰 BUNDLED_BASH 全局避免污染同进程其他测试。
 
 Linux 本机：`cargo check` + `cargo test utils::`（纯函数）+ 确认 `commands::shell` 仍只有 4 个历史 bwrap 失败。
 
