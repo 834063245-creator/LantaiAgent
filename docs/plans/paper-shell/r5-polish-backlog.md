@@ -27,7 +27,7 @@
 | C11 | **V5 拆除交互欠账：模型/权限模式切换入口**——**已毕 2026-08-22（重设计）**：旧链路三病灶（切换不镜像 Rust/双源单向陷阱/per-panel 作用域错位）根治——mode-store 单源真相（切换=写 store+镜像 Rust+落盘；boot 水合）；书眉 ModeIndicator（模型纸面菜单按 provider 分组+恒 swap 热切换；模式常询/半放/全放三档轮转，yolo 须朱砂确认条）；panel-store permissionMode 退役。真机 CDP 闭环验证（含重启水合）；切回 ask 模式即可高频见 C9 新卡 | ✅ |
 | C12 | **V5 拆除交互欠账：状态反馈面**——**已毕 2026-08-22（书眉状态字）**：StatusLine 接回 pushStatus 承接面（statusText 常显 + analyzing 石青呼吸徽标 + 点击展开 statusLog 环 15 条）；真机 CDP 验真实链路（cold-start 推的「已恢复上次案卷」直显）| ✅ |
 | C13 | **V5 拆除欠账：scene/ui 休眠层 sweep**——**已毕 2026-08-22 两切片**：切片 A 删 ui/ 死件九文件（agent-visualizer/chat-utils/context-menu/file-translator+css/file-viewer/markdown-file-preview/message-height/pretext-cache，可达性闭包实测零活引用）+ 死测试三件；切片 B 删 scene/ Three.js 渲染面 22 文件（活代码全 type-only，bundle 实测无 three），scene/ 收窄为 graph-types.ts 类型模块 + README；StarGraph 降级兼容形状 interface；ui/graph.ts shim 重指向类型模块（冻结文件 import 面不动）；eventbus-zero 终态守护更新为新事实。合计 -12,700 行 | ✅ |
-| C14 | **V5 拆除欠账：dock-store 开合表收缩**（open 初始表仍是旧六面板 + paper；随 C8-C11 面收敛重定义） | ⬜ |
+| C14 | **V5 拆除欠账：dock-store 开合表收缩**——**已毕 2026-08-22**：open 初始表从旧观测台七键（check/constraints/dataflow/settings/agents/tasks/paper）收缩为两个活键（settings 常量面 + paper 组合贡献）；三处 check 死写入清除（runCheck 后 openPanel('check') / setCheckResult 失败自动展开 / showCheckHistory 死 action 删）；setCheckResult 保留真价值（喂 agent 状态注入缓存 cacheCheckResult + 结果入库），简报可见性走 statusText + 违规徽章（原有链路不动）；守护 2 用例（初始表对拍 + setCheckResult 新语义）。插件面板键动态写入不进初始表（S1-5 string 开集语义不变）| ✅ |
 
 ## A 段 · 转录缺口（保真项）
 

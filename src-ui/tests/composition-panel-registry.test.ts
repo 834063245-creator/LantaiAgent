@@ -38,8 +38,42 @@ describe('composition 面板注册（S1-5 string 开集 + 装载期校验）', (
     expect(() => dock.togglePanel('plugin-panel-x')).not.toThrow();
     useDockStore.getState().openPanel('plugin-panel-x');
     expect(useDockStore.getState().open['plugin-panel-x']).toBe(true);
-    // 清理（不污染其他测试）
-    useDockStore.setState({ open: { ...useDockStore.getState().open, 'plugin-panel-x': undefined } });
+    // 清理（不污染其他测试——删除键而非置 undefined，Object.keys 才看不见）
+    const { 'plugin-panel-x': _drop, ...rest } = useDockStore.getState().open;
+    useDockStore.setState({ open: rest });
+  });
+
+  it('C14：open 初始表收缩为两个活键（settings + paper）——旧观测台五键退役', () => {
+    const keys = Object.keys(useDockStore.getState().open);
+    expect(keys.sort()).toEqual(['paper', 'settings']);
+  });
+
+  it('C14：setCheckResult 喂状态注入缓存 + 不再动 open（check 面板已退役）', async () => {
+    const { getCheckStatusCached } = await import('../src/agent/state-inject');
+    const before = useDockStore.getState().open;
+    const r = {
+      passed: false,
+      timestamp: '2026-08-22T00:00:00.000Z',
+      changed_files: [],
+      total_changed_files: 0,
+      l5_violations: [{ message: 'v5' }],
+      l4_violations: [],
+      l3_violations: [{ message: 'v3' }],
+      l2_violations: [],
+      passed_checks: [],
+      blast_radius: 0,
+      cross_community_edges: 0,
+      new_cycles: 0,
+      new_thread_conflicts: 0,
+      api_signature_changes: 0,
+    };
+    useDockStore.getState().setCheckResult(r as never);
+    // 结果入库
+    expect(useDockStore.getState().checkResult).toBe(r);
+    // open 未被触碰（失败简报不再自动展开死面板）
+    expect(useDockStore.getState().open).toBe(before);
+    // Agent 状态注入缓存被喂过（violationCount = 1+1 = 2）
+    expect(getCheckStatusCached()?.violationCount).toBe(2);
   });
 
   it('面板命令 id 不变对拍：壳行 actions 的面板命令 id 与绑定的 dock id 逐字保留', () => {

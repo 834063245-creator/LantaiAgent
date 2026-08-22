@@ -1,9 +1,14 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// dock-store — 六个 dock 面板的开合状态 + 数据推送的单一事实源（P3）。
+// dock-store — dock 面板开合状态 + 简报数据推送的单一事实源（P3）。
 // 替代旧 AppShell 的 isOpen 探针 + syncPanels 快照链，以及各 Controller 的私有 _open。
 // 面板组件订阅本 store 渲染；main.ts / workspace.ts 经 getState() 写入。
+//
+// C14 收缩（2026-08-22）：初始表从旧观测台七键收缩为两个活键——
+// settings（常量面）+ paper（组合层贡献）。check/constraints/dataflow/
+// agents/tasks 五键随 V5 拆除退役（面板组件已删，写入无挂载面）。
+// open 面向 string 开集（S1-5），插件面板键动态写入不进初始表。
 
 import { create } from 'zustand';
 import { cacheCheckResult } from '../agent/state-inject';
@@ -65,20 +70,15 @@ interface DockState {
   closePanel: (id: DockPanelId) => void;
   togglePanel: (id: DockPanelId) => void;
   isOpen: (id: DockPanelId) => boolean;
-  /** 旧 CheckPanel.update() 语义：喂 agent 状态注入缓存 + 失败时自动展开面板 */
+  /** 旧 CheckPanel.update() 语义（C14 收缩后）：喂 agent 状态注入缓存；
+   *  「失败时自动展开面板」已死——check 面板随 V5 退役无挂载面，简报
+   *  的可见性走 statusText（shell-store）与违规徽章（setViolations）。 */
   setCheckResult: (r: CheckResult) => void;
-  /** 旧 CheckPanel.showHistory() 实际行为：展示该历史结果并展开面板（时间戳从未被消费） */
-  showCheckHistory: (r: CheckResult) => void;
 }
 
 export const useDockStore = create<DockState>((set, get) => ({
   open: {
-    check: false,
-    constraints: false,
-    dataflow: false,
     settings: false,
-    agents: false,
-    tasks: false,
     paper: false,
   },
   checkResult: null,
@@ -101,8 +101,7 @@ export const useDockStore = create<DockState>((set, get) => ({
       resolvedCount: r.resolved_violations || 0,
       persistentCount: r.persistent_violations || 0,
     });
-    set((st) => ({ checkResult: r, open: r.passed ? st.open : { ...st.open, check: true } }));
+    // C14：不再动 open.check（面板已退役）——仅存结果供未来消费面
+    set({ checkResult: r });
   },
-
-  showCheckHistory: (r) => set((st) => ({ checkResult: r, open: { ...st.open, check: true } })),
 }));

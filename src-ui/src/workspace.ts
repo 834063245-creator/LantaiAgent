@@ -1056,8 +1056,8 @@ export class Workspace {
         const result: CheckResult = JSON.parse(json);
         const dock = useDockStore.getState();
         dock.setCheckResult(result);
-        // 旧 loadAndRenderGate 实际等价于 open() — 每次简报后展开面板
-        dock.openPanel('check');
+        // C14：check 面板已随 V5 退役——不再 openPanel('check')；
+        // 简报对用户的可见性走下方 statusText + 违规徽章
         bumpTimelineRefresh();
         // 通知工具栏以显示违规徽章
         const cnt =
