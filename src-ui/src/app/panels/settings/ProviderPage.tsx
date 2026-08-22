@@ -10,20 +10,20 @@ import { createProvider } from '../../../provider';
 import { mergeDynamicModels } from '../../../provider/catalog';
 import { ChunkType, type ModelDescriptor } from '../../../provider/types';
 import {
+  type AppSettings,
   addProvider,
+  type ConnectionProbe,
   defaultBaseUrl,
   getActiveProvider,
   isFactoryBaseUrl,
   type ProviderId,
-  removeProvider,
-  type AppSettings,
-  type ConnectionProbe,
   type ProviderSettings,
+  removeProvider,
   updateProvider,
 } from '../../../settings';
-import { AddProviderSheet, type AddProviderEntry } from './AddProviderSheet';
+import { type AddProviderEntry, AddProviderSheet } from './AddProviderSheet';
 import { ConfirmDialog } from './ConfirmDialog';
-import { ProviderDetail, type ProbeUiState, type ProviderField } from './ProviderDetail';
+import { type ProbeUiState, ProviderDetail, type ProviderField } from './ProviderDetail';
 import { ProviderList } from './ProviderList';
 import { formatLatency } from './status';
 
@@ -103,8 +103,12 @@ export function ProviderPage({
         }
         setKeyDirtyMap((m) => new Map(m).set(name, true));
       }
-      const patch = { [field]: value } as Partial<ProviderSettings>;
-      onCommitProvider(updateProvider(settings, name, patch));
+      // P14 覆盖字段：数字语义（空串/0 = 用目录值），存储 number | undefined
+      const patch =
+        field === 'contextWindow' || field === 'maxTokens'
+          ? { [field]: Math.max(0, Number.parseInt(value, 10) || 0) }
+          : { [field]: value };
+      onCommitProvider(updateProvider(settings, name, patch as Partial<ProviderSettings>));
     },
     [settings, onCommitProvider, onStageClear, onUnstageClear],
   );
@@ -135,11 +139,11 @@ export function ProviderPage({
   const handleTest = useCallback(async () => {
     const name = selectedProvider.name;
     if (!selectedProvider.apiKey?.trim()) {
-    setTests((t) => new Map(t).set(name, { phase: 'fail', msg: '请先填写 API Key' }));
+      setTests((t) => new Map(t).set(name, { phase: 'fail', msg: '请先填写 API Key' }));
       return;
     }
     if (!selectedProvider.model?.trim()) {
-    setTests((t) => new Map(t).set(name, { phase: 'fail', msg: '请先填写模型名称' }));
+      setTests((t) => new Map(t).set(name, { phase: 'fail', msg: '请先填写模型名称' }));
       return;
     }
     setTests((t) => new Map(t).set(name, { phase: 'testing', msg: '' }));

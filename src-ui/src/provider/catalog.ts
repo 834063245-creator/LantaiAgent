@@ -112,9 +112,11 @@ export function getModel(modelId: string): ModelDescriptor | undefined {
 /** 将请求的 max_tokens 限制在模型目录的输出上限内。
  *  超出范围的 max_tokens 会导致严格的 provider 在生成任何 token 之前
  *  就以 400 拒绝每次请求（DeepSeek：有效范围 [1, 393216]）。
+ *  用户设置覆盖（maxTokensOverride，P14）优先于目录值——目录数据 stale
+ *  或厂商临时调整时无需发版，改设置即可纠正。
  *  未知模型（无目录条目）不做限制直接通过。 */
-export function clampMaxTokens(modelId: string, requested: number): number {
-  const cap = getModel(modelId)?.maxTokens;
+export function clampMaxTokens(modelId: string, requested: number, maxTokensOverride?: number): number {
+  const cap = maxTokensOverride ?? getModel(modelId)?.maxTokens;
   return cap && cap > 0 ? Math.min(requested, cap) : requested;
 }
 

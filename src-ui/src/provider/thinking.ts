@@ -4,36 +4,59 @@
 // ThinkingPolicy — CONTEXT.md「ThinkingPolicy」：用户对「模型作答前推理多少」的配置。
 // 存储字段名保持 `thinking`（遗留名）；领域词 ThinkingPolicy。
 // 数字字符串是历史遗留（Anthropic 支持直接写 token 预算），UI 仅提供命名档位。
+//
+// ⚡ P14（2026-08-22）能力协商定稿：档位支持与否是 per-model 数据（ModelDescriptor
+// .thinkingEfforts / .thinkingOff / .deepseekThinking），不是厂商嗅探。本模块只保留：
+// 词表 + 标签、Anthropic budget 映射、全局开关语义、声明驱动的 UI 选项构造。
+// 退役：effortVendor / toOpenAIEffort / thinkingModesFor（name/baseUrl/model 字符串
+// 嗅探 + low→high 静默归一——选了低实际发高，用户无从得知）。
 
-import type { Protocol } from './types';
+import type { ModelDescriptor, Protocol } from './types';
 
-export type ThinkingEffort = 'low' | 'medium' | 'high' | 'max';
+/** 思考档位 canonical 词表——各厂商声明子集（pi-ai canonical 集对齐）。
+ *  minimal = 最浅；xhigh = 介于 high 与 max（OpenAI gpt-5.2+）；
+ *  存储值即此词表成员，新增档位向后兼容（旧存储子集不受影响）。 */
+export type ThinkingEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export type ThinkingMode = '' | 'off' | ThinkingEffort;
 
 /** ProviderSettings.thinking 的完整存储形态：命名档位 + 历史遗留数字预算。 */
 export type StoredThinking = ThinkingMode | `${number}`;
 
-/** 思考策略的 UI 档位（顺序即展示顺序；'' = 自动，存储值即 select value）。 */
+/** 词表标签（顺序即展示顺序；'' = 自动，存储值即 select value）。 */
+const EFFORT_LABELS: Record<ThinkingEffort, string> = {
+  minimal: '最浅 (minimal)',
+  low: '低 (low)',
+  medium: '中 (medium)',
+  high: '高 (high)',
+  xhigh: '较深 (xhigh)',
+  max: '极限 (max)',
+};
+
+/** 词表展示顺序（含自动/关闭两端的完整 UI 档位表）。 */
 export const THINKING_MODES: readonly { value: ThinkingMode; label: string }[] = [
   { value: '', label: '自动（模型自定）' },
-  { value: 'low', label: '低 (low)' },
-  { value: 'medium', label: '中 (medium)' },
-  { value: 'high', label: '高 (high)' },
-  { value: 'max', label: '极限 (max)' },
+  ...Object.entries(EFFORT_LABELS).map(([value, label]) => ({
+    value: value as ThinkingEffort,
+    label,
+  })),
   { value: 'off', label: '关闭' },
 ];
 
-/** 命名档位 → Anthropic budget_tokens（唯一事实源，原 anthropic.ts 内联映射收口于此）。 */
+/** 命名档位 → Anthropic budget_tokens（唯一事实源，原 anthropic.ts 内联映射收口于此）。
+ *  budget 钮是 Anthropic 协议 uniform 能力（1024 ≤ budget < max_tokens），
+ *  六档预设是我们自己的刻度，非厂商档位。 */
 export const THINKING_EFFORT_BUDGETS: Record<ThinkingEffort, number> = {
+  minimal: 2048,
   low: 4000,
   medium: 8000,
   high: 16000,
+  xhigh: 24000,
   max: 32000,
 };
 
-/** 全局「深度思考」开关的展示文案（SettingsPanel / ModelSwitcher 共用）。 */
-export const DEEP_THINK_LABEL = '深度思考（DeepSeek Think 模式）';
+/** 全局「深度思考」开关的展示文案（SettingsPanel 共用）。 */
+export const DEEP_THINK_LABEL = '深度思考（推理模型思考开关）';
 
 export function isThinkingMode(v: string): v is ThinkingMode {
   return THINKING_MODES.some((o) => o.value === v);
@@ -52,70 +75,64 @@ export function withThinkingDisabled(
   return disableThinking ? 'off' : thinking || undefined;
 }
 
-/** OpenAI 兼容协议的 reasoning_effort 线上取值（DeepSeek / OpenAI 各自子集）。 */
-export type OpenAIWireEffort = 'low' | 'medium' | 'high' | 'max';
+// ── 能力协商（P14）────────────────────────────────────────────
 
-/** ThinkingPolicy 的 wire 适配档案：统一档位 → 各家线上参数由谁翻译。 */
-export type EffortVendor = 'anthropic' | 'deepseek' | 'openai' | 'unknown';
-
-/** 识别一个 Provider 的 effort 档案：Anthropic 走 budget_tokens；
- *  DeepSeek / OpenAI 官方走 reasoning_effort（取值不同）；其余 OpenAI 兼容
- *  厂商（MiMo / GLM 等）无 effort 证据 → unknown，不编造参数。 */
-export function effortVendor(
-  name: string,
-  kind: Protocol,
-  baseUrl?: string,
-  model?: string,
-): EffortVendor {
-  if (kind === 'anthropic') return 'anthropic';
-  const id = name.toLowerCase();
-  const url = (baseUrl || '').toLowerCase();
-  const mid = (model || '').toLowerCase();
-  if (id === 'deepseek' || url.includes('deepseek') || mid.includes('deepseek')) return 'deepseek';
-  if (id === 'openai' || url.includes('api.openai.com') || /^(gpt-|o3|o4)/.test(mid)) return 'openai';
-  return 'unknown';
+/** 一个模型的思考能力声明（从 ModelDescriptor 提炼，openai/anthropic 共用查询面）。 */
+export interface ThinkingCapability {
+  /** 声明支持的档位（canonical 子集；空/缺省 = 无档位证据，UI 不显示选择器）。 */
+  efforts: readonly ThinkingEffort[];
+  /** 「关闭」是否可表达。 */
+  off: boolean;
+  /** DeepSeek 思考方言：effort 参数需 thinking:{type} 包裹（仅 openai 协议消费）。 */
+  deepseekWrap: boolean;
 }
 
-/** 统一档位 → OpenAI 兼容协议 reasoning_effort 的 wire 映射：
- *  DeepSeek 只认 high/max（low/medium 服务端按 high，本地一并归一）；
- *  OpenAI 官方只认 low/medium/high（max 降级 high）；unknown 不发送。 */
-export function toOpenAIEffort(
-  vendor: EffortVendor,
-  level: ThinkingMode,
-): OpenAIWireEffort | undefined {
-  if (vendor === 'deepseek') {
-    if (level === 'low' || level === 'medium' || level === 'high') return 'high';
-    if (level === 'max') return 'max';
-    return undefined;
-  }
-  if (vendor === 'openai') {
-    if (level === 'low' || level === 'medium' || level === 'high') return level;
-    if (level === 'max') return 'high';
-    return undefined;
-  }
-  return undefined;
+/** 从模型描述符提炼思考能力声明。
+ *  描述符缺省（目录外/动态模型）= 无声明：不编造档位、不编造关闭语义。 */
+export function thinkingCapability(desc: ModelDescriptor | undefined): ThinkingCapability {
+  return {
+    efforts: desc?.thinkingEfforts ? [...desc.thinkingEfforts] : [],
+    off: desc?.thinkingOff === true,
+    deepseekWrap: desc?.deepseekThinking === true,
+  };
 }
 
-/** 按厂商过滤「思考强度」UI 档位（ProviderDetail / ModelSwitcher 共用）：
- *  Anthropic 全档；DeepSeek 只给 high/max；OpenAI 全档但 max 标注降级；
- *  其余厂商无 effort 证据 → 空列表，UI 回退「深度思考」开关。 */
-export function thinkingModesFor(
-  kind: Protocol,
-  name: string,
-  baseUrl?: string,
-  model?: string,
+/** 声明驱动的 UI 档位表（替代退役的 thinkingModesFor 嗅探）：
+ *  自动档恒有；声明档位按词表序给出；声明 off 才有关闭。
+ *  无声明（目录外模型）→ 仅回退全局「深度思考」开关，不显示档位选择器。 */
+export function thinkingOptionsFor(
+  desc: ModelDescriptor | undefined,
 ): readonly { value: ThinkingMode; label: string }[] {
-  const vendor = effortVendor(name, kind, baseUrl, model);
-  if (vendor === 'anthropic') return THINKING_MODES;
-  if (vendor === 'deepseek') {
-    return THINKING_MODES.filter(
-      (o) => o.value === '' || o.value === 'high' || o.value === 'max' || o.value === 'off',
+  const cap = thinkingCapability(desc);
+  if (cap.efforts.length === 0) return [];
+  const tiers = THINKING_MODES.filter(
+    (o): o is { value: ThinkingEffort; label: string } =>
+      o.value !== '' && o.value !== 'off' && cap.efforts.includes(o.value as ThinkingEffort),
+  );
+  return [
+    { value: '', label: THINKING_MODES[0].label },
+    ...tiers,
+    ...(cap.off ? [{ value: 'off' as const, label: '关闭' }] : []),
+  ];
+}
+
+/** 校验已存储的思考策略是否在声明清单内（发请求前的响亮门禁）。
+ *  - 自动（''/遗留数字）与「关闭」：协议层各自处理，此函数不拦（关闭未声明时
+ *    openai 协议降级为不发参数——全局开关/翻译路径不能因未知模型而炸）。
+ *  - 命名档位：模型未声明或不在清单内 → 抛错（用户改选，绝不静默替换）。
+ *  协议差异（budget vs effort）由调用方在捕获后自行组织文案。 */
+export function assertEffortDeclared(
+  stored: StoredThinking | undefined,
+  cap: ThinkingCapability,
+  protocol: Protocol,
+): void {
+  const v = stored || '';
+  if (!isThinkingMode(v) || v === '' || v === 'off') return; // 数字遗留/自动/关闭不在此拦
+  if (cap.efforts.length > 0 && !cap.efforts.includes(v)) {
+    throw new Error(
+      `[思考档位不支持] 当前模型不支持「${thinkingModeLabel(v)}」。` +
+        `可用档位：${cap.efforts.map((e) => EFFORT_LABELS[e]).join('、')}${cap.off ? '、关闭' : ''}。` +
+        `请到 设置 → Provider 重新选择（${protocol === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容'}协议）。`,
     );
   }
-  if (vendor === 'openai') {
-    return THINKING_MODES.map((o) =>
-      o.value === 'max' ? { value: o.value as ThinkingMode, label: '极限 (max → high)' } : o,
-    );
-  }
-  return [];
 }

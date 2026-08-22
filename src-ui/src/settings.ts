@@ -39,6 +39,12 @@ export interface ProviderSettings {
   model: string;
   thinking?: StoredThinking; // 领域词 ThinkingPolicy；存储字段名保持 thinking（遗留名）
   lastTest?: ConnectionProbe; // 存储字段名保持 lastTest（遗留名）；领域词 ConnectionProbe
+  /** 用户覆盖：上下文窗口（P14）——目录数据 stale 时无需发版即可纠正；
+   *  0/缺省 = 用目录值。workspace._effectiveContextWindow 消费。 */
+  contextWindow?: number;
+  /** 用户覆盖：最大输出 token（P14）——目录数据 stale 时无需发版即可纠正；
+   *  0/缺省 = 用目录值。createProvider → buildRequest → clampMaxTokens 消费。 */
+  maxTokens?: number;
 }
 
 export interface AgentSettings {

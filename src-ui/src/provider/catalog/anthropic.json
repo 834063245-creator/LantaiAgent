@@ -15,7 +15,16 @@
       "cacheRead": 1
     },
     "contextWindow": 1000000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "thinkingOff": true
   },
   "claude-haiku-4-5": {
     "id": "claude-haiku-4-5",
@@ -33,7 +42,16 @@
       "cacheRead": 0.1
     },
     "contextWindow": 200000,
-    "maxTokens": 64000
+    "maxTokens": 64000,
+    "thinkingEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "thinkingOff": true
   },
   "claude-haiku-4-5-20251001": {
     "id": "claude-haiku-4-5-20251001",
@@ -51,7 +69,16 @@
       "cacheRead": 0.1
     },
     "contextWindow": 200000,
-    "maxTokens": 64000
+    "maxTokens": 64000,
+    "thinkingEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "thinkingOff": true
   },
   "claude-opus-4-1": {
     "id": "claude-opus-4-1",
@@ -69,7 +96,16 @@
       "cacheRead": 1.5
     },
     "contextWindow": 200000,
-    "maxTokens": 32000
+    "maxTokens": 32000,
+    "thinkingEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "thinkingOff": true
   },
   "claude-opus-4-1-20250805": {
     "id": "claude-opus-4-1-20250805",
@@ -87,7 +123,16 @@
       "cacheRead": 1.5
     },
     "contextWindow": 200000,
-    "maxTokens": 32000
+    "maxTokens": 32000,
+    "thinkingEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "thinkingOff": true
   },
   "claude-opus-4-5": {
     "id": "claude-opus-4-5",
@@ -105,7 +150,16 @@
       "cacheRead": 0.5
     },
     "contextWindow": 200000,
-    "maxTokens": 64000
+    "maxTokens": 64000,
+    "thinkingEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "thinkingOff": true
   },
   "claude-opus-4-5-20251101": {
     "id": "claude-opus-4-5-20251101",
@@ -123,7 +177,16 @@
       "cacheRead": 0.5
     },
     "contextWindow": 200000,
-    "maxTokens": 64000
+    "maxTokens": 64000,
+    "thinkingEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "thinkingOff": true
   },
   "claude-opus-4-6": {
     "id": "claude-opus-4-6",
@@ -141,7 +204,16 @@
       "cacheRead": 0.5
     },
     "contextWindow": 1000000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "thinkingOff": true
   },
   "claude-opus-4-7": {
     "id": "claude-opus-4-7",
@@ -159,7 +231,16 @@
       "cacheRead": 0.5
     },
     "contextWindow": 1000000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "thinkingOff": true
   },
   "claude-opus-4-8": {
     "id": "claude-opus-4-8",
@@ -177,7 +258,16 @@
       "cacheRead": 0.5
     },
     "contextWindow": 1000000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "thinkingOff": true
   },
   "claude-sonnet-4-5": {
     "id": "claude-sonnet-4-5",
@@ -195,7 +285,16 @@
       "cacheRead": 0.3
     },
     "contextWindow": 1000000,
-    "maxTokens": 64000
+    "maxTokens": 64000,
+    "thinkingEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "thinkingOff": true
   },
   "claude-sonnet-4-5-20250929": {
     "id": "claude-sonnet-4-5-20250929",
@@ -213,7 +312,16 @@
       "cacheRead": 0.3
     },
     "contextWindow": 1000000,
-    "maxTokens": 64000
+    "maxTokens": 64000,
+    "thinkingEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "thinkingOff": true
   },
   "claude-sonnet-4-6": {
     "id": "claude-sonnet-4-6",
@@ -231,7 +339,16 @@
       "cacheRead": 0.3
     },
     "contextWindow": 1000000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "thinkingOff": true
   },
   "claude-sonnet-5": {
     "id": "claude-sonnet-5",
@@ -249,6 +366,15 @@
       "cacheRead": 0.2
     },
     "contextWindow": 1000000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "thinkingOff": true
   }
 }

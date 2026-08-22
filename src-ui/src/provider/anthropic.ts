@@ -3,10 +3,10 @@
 
 // Anthropic Messages API provider — 手写 fetch() + SSE 解析，零第三方 SDK
 
-import { clampMaxTokens } from './catalog';
+import { clampMaxTokens, getModel } from './catalog';
 import { sendWithRetry } from './retry';
-import { extractWritePreview, fetchJsonWithTimeout, prewarmEndpoint, sseEvents, type SseEvent } from './shared';
-import { THINKING_EFFORT_BUDGETS, type StoredThinking } from './thinking';
+import { extractWritePreview, fetchJsonWithTimeout, prewarmEndpoint, type SseEvent, sseEvents } from './shared';
+import { assertEffortDeclared, type StoredThinking, THINKING_EFFORT_BUDGETS, thinkingCapability } from './thinking';
 import {
   type Chunk,
   ChunkType,
@@ -54,6 +54,8 @@ interface AnthropicConfig {
   model: string;
   /** "adaptive" 启用扩展思考 */
   thinking?: StoredThinking;
+  /** 用户设置的最大输出覆盖（ProviderSettings.maxTokens，优先于目录值）。 */
+  maxTokensOverride?: number;
 }
 
 export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
@@ -71,7 +73,18 @@ export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
     },
 
     async *stream(signal: AbortSignal, req: Request): AsyncGenerator<Chunk> {
-      const body = buildRequest(sanitizeToolPairing(req.messages), req.tools, model, thinking || '', req.max_tokens);
+      // P14 能力协商：目录声明了档位清单的模型，选中清单外档位在 I/O 前响亮报错。
+      // 目录外模型（自定义 Anthropic 端点）不拦——budget 钮是协议 uniform 能力。
+      const desc = getModel(model);
+      if (desc?.thinkingEfforts) assertEffortDeclared(thinking, thinkingCapability(desc), 'anthropic');
+      const body = buildRequest(
+        sanitizeToolPairing(req.messages),
+        req.tools,
+        model,
+        thinking || '',
+        req.max_tokens,
+        cfg.maxTokensOverride,
+      );
       const response = await sendWithRetry({
         url: `${baseUrl}/v1/messages`,
         headers: {
@@ -107,7 +120,8 @@ export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
         10000,
       );
       if (!json) return [];
-      const data: Array<{ id: string; display_name?: string }> = (json as { data?: Array<{ id: string; display_name?: string }> }).data || [];
+      const data: Array<{ id: string; display_name?: string }> =
+        (json as { data?: Array<{ id: string; display_name?: string }> }).data || [];
       return data
         .filter((m) => m.id)
         .map((m) => ({
@@ -119,6 +133,7 @@ export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
           reasoning: m.id.includes('sonnet') || m.id.includes('opus') || m.id.includes('haiku'),
           // 定稿（P0）：只声明 text——Message 是纯字符串，请求构建器无图像块；
           // 多模态等真实传图入口出现后再做（breaking change，单独立项）。
+          // P14：/v1/models 不披露思考档位——thinkingEfforts 留空，不编造。
           input: ['text'] as ('text' | 'image')[],
           cost: { input: 0, output: 0, cacheRead: 0 },
           contextWindow: 0,
@@ -195,6 +210,7 @@ function buildRequest(
   model: string,
   thinkingCfg: string,
   maxTok: number,
+  maxTokensOverride?: number,
 ): AnthRequest {
   const system: TextBlock[] = [];
   const anthMsgs: AnthMessage[] = [];
@@ -304,7 +320,7 @@ function buildRequest(
 
   const r: AnthRequest = {
     model,
-    max_tokens: clampMaxTokens(model, maxTok > 0 ? maxTok : DEFAULT_MAX_TOKENS),
+    max_tokens: clampMaxTokens(model, maxTok > 0 ? maxTok : DEFAULT_MAX_TOKENS, maxTokensOverride),
     system: system.length > 0 ? system : undefined,
     messages: anthMsgs,
     tools: anthTools.length > 0 ? anthTools : undefined,
@@ -313,8 +329,7 @@ function buildRequest(
 
   if (thinkingCfg && thinkingCfg !== 'off') {
     // 努力等级 → budget tokens 映射（唯一事实源在 provider/thinking.ts）
-    const effortBudget =
-      THINKING_EFFORT_BUDGETS[thinkingCfg.toLowerCase() as keyof typeof THINKING_EFFORT_BUDGETS];
+    const effortBudget = THINKING_EFFORT_BUDGETS[thinkingCfg.toLowerCase() as keyof typeof THINKING_EFFORT_BUDGETS];
     if (effortBudget) {
       r.thinking = { type: 'enabled', budget_tokens: Math.min(effortBudget, 32000) };
     } else {

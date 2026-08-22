@@ -3,7 +3,7 @@
 
 // Provider 抽象层 — 统一 Message / Chunk / ToolCall，抹平 Anthropic 和 OpenAI 的 API 差异
 
-import type { StoredThinking } from './thinking';
+import type { StoredThinking, ThinkingEffort } from './thinking';
 
 /** 模型 API 的线上方言（CONTEXT.md「Protocol」）。
  *  注意：ProviderSettings/ModelDescriptor 上的持久化字段名仍叫 `kind`（存储遗留名），
@@ -121,6 +121,20 @@ export interface ModelDescriptor {
   cost: ModelCost;
   contextWindow: number;
   maxTokens: number;
+  // ── 思考能力声明（P14 能力协商，2026-08-22）──
+  // 档位支持是 per-model 数据，不是厂商嗅探；无声明 = 无证据 = 不编造参数。
+  // 数据来源：厂商官方文档核实（用户 2026-08-22 核实 DeepSeek V4 low 档成立）+
+  // pi-ai thinkingLevelMap（仅取 wire=canonical 的恒等条目；glm-5.2 式 low→high
+  // 替换映射不采纳——静默替换是 P14 要杀的东西）。
+  /** 声明支持的思考档位（canonical 词表子集）。缺省 = 档位未知，UI 不显示选择器，
+   *  请求永不发送 effort 参数。 */
+  thinkingEfforts?: readonly ThinkingEffort[];
+  /** 「关闭」档是否可表达（openai 协议：DeepSeek 方言发 thinking:{type:'disabled'}，
+   *  OpenAI 官方 5.1+ 发 reasoning_effort:'none'；anthropic 协议不发 thinking 块）。 */
+  thinkingOff?: boolean;
+  /** DeepSeek 思考方言：effort 需 thinking:{type:'enabled'|'disabled'} 包裹
+   *  （api.deepseek.com 及透传该方言的网关）。仅 openai 协议消费。 */
+  deepseekThinking?: boolean;
 }
 
 // ---- 错误分类 ----

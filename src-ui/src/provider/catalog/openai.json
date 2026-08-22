@@ -15,7 +15,13 @@
       "cacheRead": 0.125
     },
     "contextWindow": 400000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high"
+    ]
   },
   "gpt-5-codex": {
     "id": "gpt-5-codex",
@@ -33,7 +39,12 @@
       "cacheRead": 0.125
     },
     "contextWindow": 400000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high"
+    ]
   },
   "gpt-5-mini": {
     "id": "gpt-5-mini",
@@ -51,7 +62,13 @@
       "cacheRead": 0.025
     },
     "contextWindow": 400000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high"
+    ]
   },
   "gpt-5-nano": {
     "id": "gpt-5-nano",
@@ -69,7 +86,13 @@
       "cacheRead": 0.005
     },
     "contextWindow": 400000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high"
+    ]
   },
   "gpt-5-pro": {
     "id": "gpt-5-pro",
@@ -87,7 +110,10 @@
       "cacheRead": 0
     },
     "contextWindow": 400000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "high"
+    ]
   },
   "gpt-5.1": {
     "id": "gpt-5.1",
@@ -105,7 +131,13 @@
       "cacheRead": 0.125
     },
     "contextWindow": 400000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "thinkingOff": true
   },
   "gpt-5.1-codex": {
     "id": "gpt-5.1-codex",
@@ -123,7 +155,13 @@
       "cacheRead": 0.125
     },
     "contextWindow": 400000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "thinkingOff": true
   },
   "gpt-5.1-codex-max": {
     "id": "gpt-5.1-codex-max",
@@ -141,7 +179,14 @@
       "cacheRead": 0.125
     },
     "contextWindow": 400000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "thinkingOff": true
   },
   "gpt-5.1-codex-mini": {
     "id": "gpt-5.1-codex-mini",
@@ -159,7 +204,13 @@
       "cacheRead": 0.025
     },
     "contextWindow": 400000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high"
+    ],
+    "thinkingOff": true
   },
   "gpt-5.2": {
     "id": "gpt-5.2",
@@ -177,7 +228,14 @@
       "cacheRead": 0.175
     },
     "contextWindow": 400000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "thinkingOff": true
   },
   "gpt-5.2-codex": {
     "id": "gpt-5.2-codex",
@@ -195,7 +253,14 @@
       "cacheRead": 0.175
     },
     "contextWindow": 400000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "thinkingOff": true
   },
   "gpt-5.2-pro": {
     "id": "gpt-5.2-pro",
@@ -213,7 +278,12 @@
       "cacheRead": 0
     },
     "contextWindow": 400000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "medium",
+      "high",
+      "xhigh"
+    ]
   },
   "gpt-5.3-codex": {
     "id": "gpt-5.3-codex",
@@ -231,7 +301,14 @@
       "cacheRead": 0.175
     },
     "contextWindow": 400000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "thinkingOff": true
   },
   "gpt-5.3-codex-spark": {
     "id": "gpt-5.3-codex-spark",
@@ -249,7 +326,13 @@
       "cacheRead": 0.175
     },
     "contextWindow": 128000,
-    "maxTokens": 32000
+    "maxTokens": 32000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ]
   },
   "gpt-5.4": {
     "id": "gpt-5.4",
@@ -267,7 +350,14 @@
       "cacheRead": 0.25
     },
     "contextWindow": 272000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "thinkingOff": true
   },
   "gpt-5.4-mini": {
     "id": "gpt-5.4-mini",
@@ -285,7 +375,14 @@
       "cacheRead": 0.075
     },
     "contextWindow": 400000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "thinkingOff": true
   },
   "gpt-5.4-nano": {
     "id": "gpt-5.4-nano",
@@ -303,7 +400,14 @@
       "cacheRead": 0.02
     },
     "contextWindow": 400000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "thinkingOff": true
   },
   "gpt-5.4-pro": {
     "id": "gpt-5.4-pro",
@@ -321,7 +425,12 @@
       "cacheRead": 0
     },
     "contextWindow": 1050000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "medium",
+      "high",
+      "xhigh"
+    ]
   },
   "gpt-5.5": {
     "id": "gpt-5.5",
@@ -339,7 +448,14 @@
       "cacheRead": 0.5
     },
     "contextWindow": 272000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ],
+    "thinkingOff": true
   },
   "gpt-5.5-pro": {
     "id": "gpt-5.5-pro",
@@ -357,7 +473,12 @@
       "cacheRead": 0
     },
     "contextWindow": 1050000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "medium",
+      "high",
+      "xhigh"
+    ]
   },
   "gpt-5.6-luna": {
     "id": "gpt-5.6-luna",
@@ -375,7 +496,15 @@
       "cacheRead": 0.1
     },
     "contextWindow": 272000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "thinkingOff": true
   },
   "gpt-5.6-sol": {
     "id": "gpt-5.6-sol",
@@ -393,7 +522,15 @@
       "cacheRead": 0.5
     },
     "contextWindow": 272000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "thinkingOff": true
   },
   "gpt-5.6-terra": {
     "id": "gpt-5.6-terra",
@@ -411,7 +548,15 @@
       "cacheRead": 0.25
     },
     "contextWindow": 272000,
-    "maxTokens": 128000
+    "maxTokens": 128000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "thinkingOff": true
   },
   "o3": {
     "id": "o3",
@@ -429,7 +574,12 @@
       "cacheRead": 0.5
     },
     "contextWindow": 200000,
-    "maxTokens": 100000
+    "maxTokens": 100000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high"
+    ]
   },
   "o3-deep-research": {
     "id": "o3-deep-research",
@@ -465,7 +615,12 @@
       "cacheRead": 0.55
     },
     "contextWindow": 200000,
-    "maxTokens": 100000
+    "maxTokens": 100000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high"
+    ]
   },
   "o3-pro": {
     "id": "o3-pro",
@@ -483,7 +638,12 @@
       "cacheRead": 0
     },
     "contextWindow": 200000,
-    "maxTokens": 100000
+    "maxTokens": 100000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high"
+    ]
   },
   "o4-mini": {
     "id": "o4-mini",
@@ -501,7 +661,12 @@
       "cacheRead": 0.275
     },
     "contextWindow": 200000,
-    "maxTokens": 100000
+    "maxTokens": 100000,
+    "thinkingEfforts": [
+      "low",
+      "medium",
+      "high"
+    ]
   },
   "o4-mini-deep-research": {
     "id": "o4-mini-deep-research",

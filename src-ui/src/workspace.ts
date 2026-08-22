@@ -48,7 +48,7 @@ import { createProvider } from './provider';
 import { getModel, mergeDynamicModels } from './provider/catalog';
 import { withThinkingDisabled } from './provider/thinking';
 import type { Provider } from './provider/types';
-import { typedListen, typedRpc } from './rpc-contract';
+import { parseJson, typedJsonRpc, typedListen, typedRpc } from './rpc-contract';
 import type { CommunityData, GraphDiffJson, GraphEdge, GraphJSON, GraphNode } from './scene/graph-types';
 import { type AppSettings, defaultPricing, getActiveProvider, loadSettingsWithSecrets } from './settings';
 import type { AgentConfigChangeReason } from './state/agent-config-store';
@@ -131,9 +131,6 @@ export class Workspace {
   // ── Agent 与记忆 ──
   agent: Agent | null = null;
   prov: Provider | null = null;
-  /** 上次 setupAgent 时的构造级字段摘要 — settings-saved 到达时对比，
-   *  只有构造级字段变化才重建 Agent（运行时级/无关字段走热切换/no-op）。 */
-  private _lastAgentCfgKey: string | null = null;
   registry: ToolRegistry | null = null;
   memoryManager: MemoryManager | null = null;
   taskManager: TaskManager = new TaskManager();
@@ -338,8 +335,7 @@ export class Workspace {
         // 空集）——会话工厂在会话创建时点读 this.graphData，预热完成后
         // 新会话自动获得完整图工具面。
         ws.onLoadingChange?.(true);
-        const raw = await typedRpc('analyze_and_load', { path, force: false });
-        const meta = JSON.parse(raw) as CachedGraphMeta;
+        const meta = await typedJsonRpc<CachedGraphMeta>('analyze_and_load', { path, force: false });
         ws.graphData = {
           meta: meta.meta || {},
           nodes: [],
@@ -559,25 +555,22 @@ export class Workspace {
 
   // ── Agent 配置变更统一入口 ──
 
-  /** provider 配置摘要键 — 用于判定 provider 是否真的变了。
-   *  provider 变化走 setProvider 热切换；thinking/contextWindow 等行为参数
-   *  总是热同步；无关字段（display/lastTest/temperature 遗留）直接 no-op。 */
-  private static _agentRebuildKey(s: AppSettings): string {
-    const provs = s.providers
-      .map((p) => `${p.name}:${p.kind}:${p.apiKey}:${p.baseUrl}:${p.model}`)
-      .sort()
-      .join('|');
-    return `${s.activeProvider}#${provs}`;
-  }
-
   /**
    * Agent 配置变更统一入口（由 state/agent-config-store 信号驱动）。
    * 所有变更一律热切换，不重建 Agent：
-   *  - provider（模型/信号源/协议）变了 → 换 provider 引用 + 定价（setProvider）
+   *  - provider → 无条件从新快照重建并换引用（setProvider 恒 swap）
    *  - thinking / contextWindow → 热同步（setThinking / setContextWindow）
    *  - 协作模式 → 运行时切换（setPlanMode）
    * 上下文、压缩缓存、hook、正在运行的执行、所有会话全部保留。
    * 组件不得绕过此方法直接调 setupAgent。
+   *
+   * ⚡ P14（2026-08-22）退役 _agentRebuildKey 手工 diff：此前用「手写字段枚举
+   * 字符串摘要」判定 provider 是否变化——temperature 历史上漏过、maxTokens 覆盖
+   * 本次差点漏（已进键一天即修）、拆除路径忘重置键炸过（P13 #2）。三个 bug 同根：
+   * 枚举必然漂移。恒 swap 语义：每次配置信号都从同一份新鲜快照重建 provider 并
+   * 原子换引用——在途请求持旧引用跑完、下一轮起用新 provider（DSH 快照语义的
+   * 单活跃 provider 形态）。setProvider 本身廉价（引用 swap + ctx 写穿 + 清摘要
+   * 缓存），信号频率 = 用户保存/切换动作，非热路径。
    */
   async applyAgentConfig(chatPanel: ChatCore, reason: AgentConfigChangeReason): Promise<void> {
     // 规划模式切换 — 运行时状态切换
@@ -595,25 +588,17 @@ export class Workspace {
       this.agent = null;
       this.prov = null;
       chatPanel.setAgent(null);
-      // ⚡ 2026-08-16 断链修复：拆除后必须清空重建键——否则用户随后重新填入
-      // 相同 name/kind/key/baseUrl/model 时，_agentRebuildKey 与残留的
-      // _lastAgentCfgKey 相同，重建被跳过，provider/agent 永远起不来。
-      this._lastAgentCfgKey = null;
       useAgentPanelStore.getState().setDiag({ text: `❌ API Key 已清空 — provider="${act.name}"。`, ready: false });
       return;
     }
 
-    // provider 配置变化 → 换引用（热切换），否则跳过
-    const key = Workspace._agentRebuildKey(s);
-    if (this._lastAgentCfgKey === null || key !== this._lastAgentCfgKey) {
-      const prov = this._buildProvider(s);
-      prov.prewarm?.(); // 廉价预热（fire-and-forget）
-      const pricing = defaultPricing(act.kind, act.model);
-      this.prov = prov;
-      this.agent?.setProvider(prov, pricing);
-      agentSessionState.forEachAgent((h) => h.setProvider(prov, pricing));
-      this._lastAgentCfgKey = key;
-    }
+    // 恒 swap：无条件重建 + 换引用（见上 P14 注释）
+    const prov = this._buildProvider(s);
+    prov.prewarm?.(); // 廉价预热（fire-and-forget，3s 自灭）
+    const pricing = defaultPricing(act.kind, act.model);
+    this.prov = prov;
+    this.agent?.setProvider(prov, pricing);
+    agentSessionState.forEachAgent((h) => h.setProvider(prov, pricing));
 
     // 行为参数总是热同步（幂等）
     const thinkingCfg = withThinkingDisabled(act.thinking, s.agent?.disableThinking);
@@ -666,11 +651,11 @@ export class Workspace {
     });
   }
 
-  /** 生效上下文窗口 — 设置值优先，其次活跃模型目录窗口，最后 200K。
-   *  factory 与 settings-saved 热切换共用，保证两处计算不分叉。 */
+  /** 生效上下文窗口 — Agent 全局设置优先，其次 Provider 覆盖（P14），
+   *  再其次目录值，最后 200K。factory 与 settings-saved 热切换共用，保证两处计算不分叉。 */
   private _effectiveContextWindow(s: AppSettings): number {
     const act = getActiveProvider(s);
-    return s.agent?.contextWindow || getModel(act.model)?.contextWindow || 200000;
+    return s.agent?.contextWindow || act.contextWindow || getModel(act.model)?.contextWindow || 200000;
   }
 
   private async _setupAgentInner(chatPanel: ChatCore): Promise<void> {
@@ -1221,7 +1206,7 @@ export async function loadGraphPages(
     if (!ws.active) return false;
     const raw = await typedRpc('get_graph_page', { page, page_size: pageSize });
     if (!ws.active) return false;
-    const p = JSON.parse(raw) as GraphPage;
+    const p = parseJson<GraphPage>(raw);
     const root = p.meta?.source_root || '';
     if (root && !isSamePath(root, ws.path)) continue; // 引擎已被切走，丢弃错页
     mergePageIntoGraph(merged, p);
@@ -1237,8 +1222,7 @@ export async function loadGraphPages(
 
 /** 分页全量重载：get_graph_meta → 逐页重建（事件兜底/重分析用）。失败时旧图保留。 */
 async function reloadGraphPaged(ws: Workspace, _starGraph: null): Promise<void> {
-  const raw = await typedRpc('get_graph_meta', {});
-  const meta = JSON.parse(raw) as CachedGraphMeta;
+  const meta = await typedJsonRpc<CachedGraphMeta>('get_graph_meta', {});
   if (!meta.paged) throw new Error('引擎未返回分页信息');
   await loadGraphPages(ws, null, meta);
 }

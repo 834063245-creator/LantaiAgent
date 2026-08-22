@@ -177,6 +177,11 @@
       "cacheRead": 0.3
     },
     "contextWindow": 1048576,
-    "maxTokens": 131072
+    "maxTokens": 131072,
+    "thinkingEfforts": [
+      "low",
+      "high",
+      "max"
+    ]
   }
 }

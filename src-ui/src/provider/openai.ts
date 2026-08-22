@@ -4,17 +4,15 @@
 // OpenAI 兼容 provider — DeepSeek、MiMo 及任何 OpenAI 兼容端点
 // 手写 fetch() + SSE 解析，零第三方 SDK
 
-import { clampMaxTokens } from './catalog';
+import { clampMaxTokens, getModel } from './catalog';
 import { sendWithRetry } from './retry';
-import { extractWritePreview, fetchJsonWithTimeout, prewarmEndpoint, sseEvents, type SseEvent } from './shared';
+import { extractWritePreview, fetchJsonWithTimeout, prewarmEndpoint, type SseEvent, sseEvents } from './shared';
 import {
-  effortVendor,
+  assertEffortDeclared,
   isThinkingMode,
-  toOpenAIEffort,
-  type EffortVendor,
-  type OpenAIWireEffort,
   type StoredThinking,
-  type ThinkingMode,
+  type ThinkingEffort,
+  thinkingCapability,
 } from './thinking';
 import {
   type Chunk,
@@ -57,8 +55,10 @@ interface OpenAIConfig {
   apiKey: string;
   baseUrl: string; // 例如 "https://api.deepseek.com/v1" 或 "https://api.openai.com/v1"
   model: string;
-  /** 思考档位（ThinkingPolicy）。'off' = 关闭；命名档位按 EffortVendor 映射。 */
+  /** 思考档位（ThinkingPolicy）。'off' = 关闭；命名档位须在模型声明清单内。 */
   thinking?: StoredThinking;
+  /** 用户设置的最大输出覆盖（ProviderSettings.maxTokens，优先于目录值）。 */
+  maxTokensOverride?: number;
 }
 
 /** 动态模型 reasoning 启发式（P0 定稿）：
@@ -73,7 +73,6 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
   const baseUrl = cfg.baseUrl.replace(/\/$/, ''); // 用户在 baseUrl 中控制 v1 前缀
   const { model, apiKey } = cfg;
   let thinking: StoredThinking | undefined = cfg.thinking; // setThinking 运行时更新
-  const effortProfile = effortVendor(name, 'openai', baseUrl, model);
 
   return {
     name() {
@@ -83,13 +82,16 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
       thinking = cfg;
     },
     async *stream(signal: AbortSignal, req: Request): AsyncGenerator<Chunk> {
+      // P14 能力协商：模型目录声明是档位合法性的唯一裁决。选中声明外档位
+      // 在任何网络 I/O 之前响亮报错（绝不静默替换成别的档位）。
+      assertEffortDeclared(thinking, thinkingCapability(getModel(model)), 'openai');
       const body = buildChatRequest(
         sanitizeToolPairing(req.messages),
         req.tools,
         model,
         req.max_tokens,
         thinking,
-        effortProfile,
+        cfg.maxTokensOverride,
       );
       const response = await sendWithRetry({
         url: `${baseUrl}/chat/completions`,
@@ -137,6 +139,8 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
           cost: { input: 0, output: 0, cacheRead: 0 },
           contextWindow: 0,
           maxTokens: 0,
+          // P14：/models 端点只报 id，不披露档位能力——thinkingEfforts 留空
+          // （无声明 = UI 不显示档位选择器 + 请求不发 effort 参数），不编造。
         }));
     },
   };
@@ -178,7 +182,7 @@ interface ChatRequest {
   stream: true;
   stream_options?: { include_usage: true };
   thinking?: { type: 'enabled' | 'disabled' };
-  reasoning_effort?: OpenAIWireEffort;
+  reasoning_effort?: ThinkingEffort | 'none';
 }
 
 export function buildChatRequest(
@@ -187,14 +191,34 @@ export function buildChatRequest(
   model: string,
   maxTok: number,
   thinking: StoredThinking | undefined,
-  effortProfile: EffortVendor,
+  maxTokensOverride?: number,
 ): ChatRequest {
-  // 数字预算串是 Anthropic 遗留存储形态，对 OpenAI 兼容协议无 effort 语义 → 按自动处理。
+  // P14 能力协商：档位合法性由模型目录声明裁决（deepseek.json 等声明 thinkingEfforts）。
+  // 直连 DeepSeek 声明 low/high/max（2026-08-22 用户官方文档核实 low 成立）。
+  const cap = thinkingCapability(getModel(model));
+  assertEffortDeclared(thinking, cap, 'openai');
+
+  // wire 翻译（声明驱动，零静默替换）：
+  //  - 自动（''/数字遗留）→ 不发参数（模型自定）。
+  //  - 命名档位 → reasoning_effort 原值发送；DeepSeek 方言（deepseekThinking 声明）
+  //    需 thinking:{type:'enabled'} 包裹——api.deepseek.com 扩展，OpenAI 官方是
+  //    400 雷区（P12 曾对 OpenAI 官方发包裹，从未真机验证，P14 移除）。
+  //  - 关闭 → 声明可关才发：DeepSeek 方言 thinking:{type:'disabled'}；
+  //    OpenAI 官方 5.1+ reasoning_effort:'none'；未声明关闭的模型不发参数
+  //    （全局 disableThinking 对未知模型降级为模型默认，不编造）。
   const stored = thinking || '';
-  const level: ThinkingMode = isThinkingMode(stored) ? stored : '';
-  const effort = toOpenAIEffort(effortProfile, level);
-  const thinkingBlock =
-    thinking === 'off' ? { type: 'disabled' as const } : effort ? { type: 'enabled' as const } : undefined;
+  const level = isThinkingMode(stored) ? stored : '';
+  let thinkingBlock: ChatRequest['thinking'];
+  let effort: ChatRequest['reasoning_effort'];
+  if (level === 'off') {
+    if (cap.off) {
+      if (cap.deepseekWrap) thinkingBlock = { type: 'disabled' };
+      else effort = 'none';
+    }
+  } else if (level !== '') {
+    if (cap.deepseekWrap) thinkingBlock = { type: 'enabled' };
+    effort = level;
+  }
   const chatMsgs: ChatMessage[] = [];
 
   for (const m of msgs) {
@@ -251,7 +275,7 @@ export function buildChatRequest(
     model,
     messages: chatMsgs,
     tools: chatTools,
-    max_tokens: clampMaxTokens(model, maxTok > 0 ? maxTok : DEFAULT_MAX_TOKENS),
+    max_tokens: clampMaxTokens(model, maxTok > 0 ? maxTok : DEFAULT_MAX_TOKENS, maxTokensOverride),
     stream: true,
     stream_options: { include_usage: true },
     thinking: thinkingBlock,
@@ -278,16 +302,13 @@ async function* readSSE(body: ReadableStream<Uint8Array>, name: string, signal?:
     // 处理它但不要 continue — 同一个 chunk 可能还携带带 finish_reason 的 choices，
     // 我们需要它来检测工具调用是否完成。
     if (ev.usage) {
-      const cached =
-        ev.usage.prompt_cache_hit_tokens ??
-        ev.usage.prompt_tokens_details?.cached_tokens ??
-        0;
+      const cached = ev.usage.prompt_cache_hit_tokens ?? ev.usage.prompt_tokens_details?.cached_tokens ?? 0;
       usage = {
         prompt_tokens: ev.usage.prompt_tokens,
         completion_tokens: ev.usage.completion_tokens,
         total_tokens: ev.usage.total_tokens,
         cache_hit_tokens: cached,
-        cache_miss_tokens: ev.usage.prompt_cache_miss_tokens ?? (ev.usage.prompt_tokens - cached),
+        cache_miss_tokens: ev.usage.prompt_cache_miss_tokens ?? ev.usage.prompt_tokens - cached,
         // OpenAI 兼容协议不提供缓存创建(写缓存)拆解;DeepSeek 同样只给 read 侧的 hit/miss。
         cache_creation_tokens: 0,
         reasoning_tokens: ev.usage.completion_tokens_details?.reasoning_tokens || 0,

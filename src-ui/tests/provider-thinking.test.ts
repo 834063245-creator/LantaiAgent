@@ -1,75 +1,113 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT.
 
 import { describe, expect, it } from 'vitest';
-import { effortVendor, thinkingModesFor, toOpenAIEffort } from '../src/provider/thinking';
+import { getModel } from '../src/provider/catalog';
+import {
+  assertEffortDeclared,
+  type ThinkingCapability,
+  thinkingCapability,
+  thinkingOptionsFor,
+} from '../src/provider/thinking';
+import type { ModelDescriptor } from '../src/provider/types';
 
-describe('effortVendor', () => {
-  it('anthropic kind always maps to anthropic', () => {
-    expect(effortVendor('anything', 'anthropic')).toBe('anthropic');
+function desc(partial: Partial<ModelDescriptor>): ModelDescriptor {
+  return {
+    id: 'test-model',
+    name: 'Test',
+    kind: 'openai',
+    vendor: 'test',
+    baseUrl: 'https://api.test/v1',
+    reasoning: true,
+    input: ['text'],
+    cost: { input: 0, output: 0, cacheRead: 0 },
+    contextWindow: 100000,
+    maxTokens: 32000,
+    ...partial,
+  };
+}
+
+describe('thinkingCapability — 声明提炼（P14）', () => {
+  it('目录声明照单提炼', () => {
+    const cap = thinkingCapability(
+      desc({ thinkingEfforts: ['low', 'high', 'max'], thinkingOff: true, deepseekThinking: true }),
+    );
+    expect(cap.efforts).toEqual(['low', 'high', 'max']);
+    expect(cap.off).toBe(true);
+    expect(cap.deepseekWrap).toBe(true);
   });
 
-  it('recognizes deepseek by name, baseUrl, or model', () => {
-    expect(effortVendor('deepseek', 'openai')).toBe('deepseek');
-    expect(effortVendor('my-ds', 'openai', 'https://api.deepseek.com/v1')).toBe('deepseek');
-    expect(effortVendor('my-ds', 'openai', '', 'deepseek-v4-pro')).toBe('deepseek');
+  it('无描述符 = 无声明（不编造档位/关闭/方言）', () => {
+    const cap = thinkingCapability(undefined);
+    expect(cap.efforts).toEqual([]);
+    expect(cap.off).toBe(false);
+    expect(cap.deepseekWrap).toBe(false);
   });
 
-  it('recognizes openai by name, baseUrl, or model prefix', () => {
-    expect(effortVendor('openai', 'openai')).toBe('openai');
-    expect(effortVendor('gpt-box', 'openai', 'https://api.openai.com/v1')).toBe('openai');
-    expect(effortVendor('gpt-box', 'openai', '', 'gpt-5.4')).toBe('openai');
-  });
-
-  it('unknown for vendors without effort evidence', () => {
-    expect(effortVendor('glm', 'openai')).toBe('unknown');
-    expect(effortVendor('mimo', 'openai', 'https://api.mimo.com/v1')).toBe('unknown');
-    expect(effortVendor('', 'openai')).toBe('unknown');
+  it('目录条目缺省字段 = 无声明', () => {
+    const cap = thinkingCapability(desc({}));
+    expect(cap.efforts).toEqual([]);
+    expect(cap.off).toBe(false);
+    expect(cap.deepseekWrap).toBe(false);
   });
 });
 
-describe('toOpenAIEffort', () => {
-  it('deepseek: only high/max on the wire; low/medium normalize to high', () => {
-    expect(toOpenAIEffort('deepseek', 'low')).toBe('high');
-    expect(toOpenAIEffort('deepseek', 'medium')).toBe('high');
-    expect(toOpenAIEffort('deepseek', 'high')).toBe('high');
-    expect(toOpenAIEffort('deepseek', 'max')).toBe('max');
-    expect(toOpenAIEffort('deepseek', '')).toBeUndefined();
-    expect(toOpenAIEffort('deepseek', 'off')).toBeUndefined();
+describe('thinkingOptionsFor — UI 档位表（声明驱动）', () => {
+  it('自动档恒有；声明档位按词表序；声明 off 才有关闭', () => {
+    const opts = thinkingOptionsFor(desc({ thinkingEfforts: ['max', 'low'], thinkingOff: true }));
+    expect(opts.map((o) => o.value)).toEqual(['', 'low', 'max', 'off']);
   });
 
-  it('openai: low/medium/high pass through; max degrades to high', () => {
-    expect(toOpenAIEffort('openai', 'low')).toBe('low');
-    expect(toOpenAIEffort('openai', 'medium')).toBe('medium');
-    expect(toOpenAIEffort('openai', 'high')).toBe('high');
-    expect(toOpenAIEffort('openai', 'max')).toBe('high');
-    expect(toOpenAIEffort('openai', '')).toBeUndefined();
+  it('未声明 off → 不出现关闭档', () => {
+    const opts = thinkingOptionsFor(desc({ thinkingEfforts: ['high'] }));
+    expect(opts.map((o) => o.value)).toEqual(['', 'high']);
   });
 
-  it('unknown: never fabricates effort', () => {
-    expect(toOpenAIEffort('unknown', 'high')).toBeUndefined();
-    expect(toOpenAIEffort('unknown', 'max')).toBeUndefined();
+  it('无声明 = 空表（UI 回退全局开关）', () => {
+    expect(thinkingOptionsFor(undefined)).toEqual([]);
+    expect(thinkingOptionsFor(desc({}))).toEqual([]);
+  });
+
+  it('静态目录条目（deepseek-v4-pro）：low/high/max + off', () => {
+    const opts = thinkingOptionsFor(getModel('deepseek-v4-pro'));
+    expect(opts.map((o) => o.value)).toEqual(['', 'low', 'high', 'max', 'off']);
+  });
+
+  it('静态目录条目（gpt-5.4）：low..xhigh + off，无 max', () => {
+    const opts = thinkingOptionsFor(getModel('gpt-5.4'));
+    expect(opts.map((o) => o.value)).toEqual(['', 'low', 'medium', 'high', 'xhigh', 'off']);
+  });
+
+  it('静态目录条目（glm-4.5 无声明）：空表', () => {
+    expect(thinkingOptionsFor(getModel('glm-4.5'))).toEqual([]);
   });
 });
 
-describe('thinkingModesFor', () => {
-  it('anthropic keeps all six modes', () => {
-    const modes = thinkingModesFor('anthropic', 'anthropic');
-    expect(modes.map((o) => o.value)).toEqual(['', 'low', 'medium', 'high', 'max', 'off']);
+describe('assertEffortDeclared — 发请求前的响亮门禁（P14）', () => {
+  const cap: ThinkingCapability = { efforts: ['low', 'high', 'max'], off: true, deepseekWrap: false };
+
+  it('声明内档位放行', () => {
+    expect(() => assertEffortDeclared('low', cap, 'openai')).not.toThrow();
+    expect(() => assertEffortDeclared('max', cap, 'openai')).not.toThrow();
   });
 
-  it('deepseek hides low/medium', () => {
-    const modes = thinkingModesFor('openai', 'deepseek');
-    expect(modes.map((o) => o.value)).toEqual(['', 'high', 'max', 'off']);
+  it('自动/关闭/数字遗留不拦（协议层各管各的降级）', () => {
+    expect(() => assertEffortDeclared('', cap, 'openai')).not.toThrow();
+    expect(() => assertEffortDeclared('off', cap, 'openai')).not.toThrow();
+    expect(() => assertEffortDeclared('16000', cap, 'openai')).not.toThrow();
+    expect(() => assertEffortDeclared(undefined, cap, 'openai')).not.toThrow();
   });
 
-  it('openai keeps all modes and annotates max degradation', () => {
-    const modes = thinkingModesFor('openai', 'openai');
-    expect(modes.map((o) => o.value)).toEqual(['', 'low', 'medium', 'high', 'max', 'off']);
-    expect(modes.find((o) => o.value === 'max')?.label).toContain('high');
+  it('声明外档位响亮报错，绝不静默替换（medium 不在 DeepSeek 声明内）', () => {
+    expect(() => assertEffortDeclared('medium', cap, 'openai')).toThrow(/不支持.*medium/);
   });
 
-  it('unknown vendors get no effort UI (fallback to deep-think switch)', () => {
-    expect(thinkingModesFor('openai', 'glm')).toEqual([]);
+  it('错误文案点名协议与设置入口', () => {
+    expect(() => assertEffortDeclared('minimal', cap, 'anthropic')).toThrow(/Anthropic/);
+  });
+
+  it('无声明模型不拦（目录外端点不能因未知档位而炸）', () => {
+    const unknown: ThinkingCapability = { efforts: [], off: false, deepseekWrap: false };
+    expect(() => assertEffortDeclared('high', unknown, 'openai')).not.toThrow();
   });
 });

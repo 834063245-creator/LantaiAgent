@@ -5,14 +5,15 @@
 // 状态展示与测试结果均按 provider 独立，切换信号源不会串台。
 
 import type React from 'react';
-import { isFactoryBaseUrl, type ConnectionProbe, type ProbeOutcome } from '../../../settings';
-import { effortVendor, thinkingModesFor, type StoredThinking } from '../../../provider/thinking';
+import { getModel } from '../../../provider/catalog';
+import { type StoredThinking, thinkingOptionsFor } from '../../../provider/thinking';
 import type { ModelDescriptor, Protocol } from '../../../provider/types';
+import { type ConnectionProbe, isFactoryBaseUrl, type ProbeOutcome } from '../../../settings';
 import { ModelSelector } from '../ModelSelector';
-import { formatLatency, formatTestAt, providerStatus, STATUS_LABEL } from './status';
 import { protocolLabel } from './protocol';
+import { formatLatency, formatTestAt, providerStatus, STATUS_LABEL } from './status';
 
-export type ProviderField = 'apiKey' | 'baseUrl' | 'model' | 'thinking';
+export type ProviderField = 'apiKey' | 'baseUrl' | 'model' | 'thinking' | 'contextWindow' | 'maxTokens';
 
 /** 连接探针的 UI 阶段（瞬时态，不持久化）；结果本体见 ConnectionProbe。 */
 export type ProbeUiPhase = 'idle' | 'testing' | ProbeOutcome;
@@ -31,6 +32,9 @@ interface ProviderDetailProps {
     model: string;
     thinking?: StoredThinking;
     lastTest?: ConnectionProbe;
+    /** P14 用户覆盖：0/缺省 = 用目录值。 */
+    contextWindow?: number;
+    maxTokens?: number;
   };
   isCurrent: boolean;
   canDelete: boolean;
@@ -65,20 +69,8 @@ export interface ProviderDetailActions {
   onDelete: () => void;
 }
 
-export function ProviderDetail({
-  provider,
-  isCurrent,
-  canDelete,
-  test,
-  keyState,
-  actions,
-}: ProviderDetailProps) {
-  const {
-    saved: keySaved,
-    pendingClear,
-    visible: keyVisible,
-    inputRef: keyInputRef,
-  } = keyState;
+export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState, actions }: ProviderDetailProps) {
+  const { saved: keySaved, pendingClear, visible: keyVisible, inputRef: keyInputRef } = keyState;
   const {
     onFieldChange,
     onModelChange,
@@ -93,14 +85,14 @@ export function ProviderDetail({
   const st = providerStatus(provider);
   const statusCls = test.phase === 'testing' ? 'testing' : st;
   const statusLabel = test.phase === 'testing' ? '测试中…' : STATUS_LABEL[st];
-  const thinkingModes = thinkingModesFor(provider.kind, provider.name, provider.baseUrl, provider.model);
-  const effortProfile = effortVendor(provider.name, provider.kind, provider.baseUrl, provider.model);
+  // P14 能力协商：档位表来自当前模型的目录声明（thinkingEfforts/thinkingOff），
+  // 目录外模型 = 无声明 = 不显示选择器（回退全局「深度思考」开关），不编造档位。
+  const modelDesc = getModel(provider.model);
+  const thinkingModes = thinkingOptionsFor(modelDesc);
   const thinkingHint =
-    effortProfile === 'deepseek'
-      ? 'DeepSeek V4 支持 高/极限 两档；低/中 服务端会按高处理，故不提供。'
-      : effortProfile === 'openai'
-        ? 'OpenAI 官方支持 低/中/高；「极限」将按 高 发送。'
-        : '等级越高思考越深，也更费 token。与 Agent 页的「深度思考」开关互为补充。';
+    thinkingModes.length > 0
+      ? '档位由该模型的目录声明提供；目录外的档位不可选（不会静默替换为其他档位）。'
+      : '该模型暂无思考档位数据（目录外或厂商未披露）。可用「深度思考」开关控制推理开关。';
   const isFactoryUrl = isFactoryBaseUrl(provider.baseUrl);
 
   const keyChip = provider.apiKey?.trim()
@@ -173,11 +165,21 @@ export function ProviderDetail({
               placeholder="sk-… 粘贴后保存写入系统凭据"
               autoComplete="off"
             />
-            <button type="button" className="sp-btn-sm" title={keyVisible ? '隐藏' : '显示'} onClick={onToggleKeyVisible}>
+            <button
+              type="button"
+              className="sp-btn-sm"
+              title={keyVisible ? '隐藏' : '显示'}
+              onClick={onToggleKeyVisible}
+            >
               {keyVisible ? '隐藏' : '显示'}
             </button>
             {provider.apiKey?.trim() && keySaved && (
-              <button type="button" className="sp-btn-sm pp-btn-danger" title="从系统凭据中删除该 Key" onClick={onClearKey}>
+              <button
+                type="button"
+                className="sp-btn-sm pp-btn-danger"
+                title="从系统凭据中删除该 Key"
+                onClick={onClearKey}
+              >
                 清除
               </button>
             )}
@@ -223,6 +225,40 @@ export function ProviderDetail({
           />
         </div>
 
+        <div className="pp-field">
+          <div className="pp-f-label-row">
+            <label className="pp-f-label">上下文窗口</label>
+            <span className="pp-chip">{provider.contextWindow || modelDesc?.contextWindow || '默认 200K'}</span>
+          </div>
+          <input
+            className="sp-input"
+            type="number"
+            min={0}
+            value={provider.contextWindow || ''}
+            placeholder={String(modelDesc?.contextWindow || 200000)}
+            onChange={(e) => onFieldChange('contextWindow', e.target.value)}
+            autoComplete="off"
+          />
+          <div className="pp-f-hint">目录数据过时时手动覆盖（token 数，0 = 用目录值）。</div>
+        </div>
+
+        <div className="pp-field">
+          <div className="pp-f-label-row">
+            <label className="pp-f-label">最大输出 token</label>
+            <span className="pp-chip">{provider.maxTokens || modelDesc?.maxTokens || '模型自定'}</span>
+          </div>
+          <input
+            className="sp-input"
+            type="number"
+            min={0}
+            value={provider.maxTokens || ''}
+            placeholder={String(modelDesc?.maxTokens || 0)}
+            onChange={(e) => onFieldChange('maxTokens', e.target.value)}
+            autoComplete="off"
+          />
+          <div className="pp-f-hint">目录数据过时时手动覆盖（token 数，0 = 用目录值钳制）。</div>
+        </div>
+
         {thinkingModes.length > 0 && (
           <div className="pp-field">
             <div className="pp-f-label-row">
@@ -230,11 +266,7 @@ export function ProviderDetail({
             </div>
             <select
               className="sp-select"
-              value={
-                thinkingModes.some((o) => o.value === (provider.thinking || ''))
-                  ? provider.thinking || ''
-                  : ''
-              }
+              value={thinkingModes.some((o) => o.value === (provider.thinking || '')) ? provider.thinking || '' : ''}
               onChange={(e) => onFieldChange('thinking', e.target.value)}
             >
               {thinkingModes.map((o) => (
@@ -264,14 +296,15 @@ export function ProviderDetail({
           </button>
           {testBlock}
         </div>
-        <div className="pp-f-hint">发送一次最小请求（1 token），验证 Key / Base URL / 模型三者可用。结果按信号源保存。</div>
+        <div className="pp-f-hint">
+          发送一次最小请求（1 token），验证 Key / Base URL / 模型三者可用。结果按信号源保存。
+        </div>
         {provider.lastTest && (
           <div className="pp-test-last">
             上次测试：
             {provider.lastTest.status === 'ok'
               ? `成功 · ${formatLatency(provider.lastTest.latencyMs)}`
-              : `失败${provider.lastTest.message ? ` · ${provider.lastTest.message}` : ''}`}
-            {' '}
+              : `失败${provider.lastTest.message ? ` · ${provider.lastTest.message}` : ''}`}{' '}
             · {formatTestAt(provider.lastTest.at)}
           </div>
         )}

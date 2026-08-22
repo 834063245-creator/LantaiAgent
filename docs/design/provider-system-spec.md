@@ -564,3 +564,113 @@ SettingsPanel.tsx（外壳：tab / dirty / 保存 / 凭据暂存）
 > 遗留：P3 的「带工具真实对话 / Claude thinking / 翻译器 / 摘要」仍应在 Tauri 真机各跑一轮
 > 才算完整验收（此前的审计只到代码层）。
 
+## P14 — 能力协商：per-model 档位声明 + 真 socket 测试层 + 用户覆盖（2026-08-22）
+
+> 动机：用户反馈「各家的思考强度、最大输入输出、上下文窗口全都不一致，中间还有
+> 各种各样的问题」。P12 的 vendor fan-out 表（effortVendor 按 name/baseUrl/model
+> 字符串嗅探 + low→high 静默归一）正是这类不一致的温床——每来一个新厂商就要改
+> thinking.ts 的代码，且「选了低实际发高」这种静默替换让问题无从诊断。
+> 解法参照 DSH 的 adapter-owned capability 架构（决策记录
+> `2026-07-24-adapter-owned-reasoning-effort-capabilities.md`）：**模型支持什么
+> 是数据，不是代码**——per-model 声明、seam 层验证、UI 照单渲染、清单外档位
+> 在任何网络 I/O 之前响亮报错、永不静默钳制或替换。
+
+### 数据模型（ModelDescriptor，provider/types.ts）
+
+- `thinkingEfforts?: readonly ThinkingEffort[]` — 声明支持的档位（canonical 词表
+  子集）。缺省 = 无证据 = UI 不显示档位选择器 + 请求永不发送 effort 参数。
+- `thinkingOff?: boolean` — 「关闭」是否可表达。
+- `deepseekThinking?: boolean` — DeepSeek 思考方言（reasoning_effort 需
+  `thinking:{type}` 包裹；api.deepseek.com 及透传该方言的网关声明）。
+- canonical 词表扩为六档：`minimal/low/medium/high/xhigh/max`（对齐 pi-ai canonical 集；
+  存储值向后兼容，旧存量子集不受影响）。
+- `ProviderSettings.contextWindow?/maxTokens?` — 用户覆盖（见下）。
+
+### 数据来源与裁决纪律
+
+- **信源**：厂商官方文档核实（2026-08-22 用户核实 DeepSeek V4 `low` 档成立——
+  该修正推翻了 pi-ai thinkingLevelMap 的 `low=null` 声明，也证明单一信源会 stale）；
+  pi-ai `thinkingLevelMap` 仅取 **wire=canonical 恒等条目**（glm-5.2 的 `low=high`
+  替换映射**不采纳**——静默替换正是本 Phase 要杀的东西）。
+- **per-route 语义**：同一模型 id 经不同路由的声明可以不同（DSH 同款裁决）——
+  直连 deepseek 条目声明 `low/high/max + off + 方言包裹`；opencode zen 网关条目
+  按 pi-ai 网关证据声明 `high/max`（bare，无包裹）；qwen-token-plan 网关的
+  deepseek 条目声明 `high/max` + 包裹。目录外/动态模型一律零声明。
+
+### wire 翻译（openai.ts buildChatRequest，声明驱动）
+
+| 存储档位 | 声明内行为 | 声明外/无声明行为 |
+|---|---|---|
+| 自动 `''`/数字遗留 | 不发参数 | 不发参数 |
+| 命名档位 | `reasoning_effort` 原值；DeepSeek 方言加 `thinking:{type:'enabled'}` 包裹 | **抛错**（`assertEffortDeclared`，发请求前；无声明模型放行——目录外端点兼容） |
+| 关闭 `off` | DeepSeek 方言 `thinking:{type:'disabled'}`；OpenAI 官方 5.1+ `reasoning_effort:'none'` | 不发参数（全局 disableThinking 对未知模型降级为模型默认，不编造） |
+
+- **修复 P12 潜伏 bug**：P12 曾对 OpenAI 官方端点发送 `thinking:{type:'enabled'}`
+  包裹（DeepSeek 扩展字段，OpenAI 严格校验会 400，从未真机验证）。P14 起包裹
+  仅由 `deepseekThinking` 声明驱动。
+- anthropic.ts：budget 方言 uniform（`THINKING_EFFORT_BUDGETS` 六档 2048→32000），
+  目录声明了清单的模型过同一 `assertEffortDeclared` 门禁；目录外不拦。
+
+### UI（ProviderDetail / ProviderPage）
+
+- 档位表 = `thinkingOptionsFor(getModel(model))`：自动档恒有、声明档位按词表序、
+  声明 off 才有关闭。无声明 → 不显示选择器（回退全局「深度思考」开关）。
+- 新增「上下文窗口 / 最大输出 token」覆盖字段（存 `ProviderSettings
+  .contextWindow/.maxTokens`，0=用目录值）——目录数据 stale 时无需发版即可纠正。
+- 生效优先级：Agent 全局设置 > Provider 覆盖 > 目录值 > 200K 默认
+  （`workspace._effectiveContextWindow`）；maxTokens：Provider 覆盖 > 目录值
+  （`clampMaxTokens` 三参形态，`createProvider` 收口传参）。
+
+### 真 socket 测试层（tests/provider-realsocket.test.ts）
+
+本地 `node:http` SSE server 走完整链路：`createProvider → stream → proxyFetch`
+（测试环境无 Tauri → `llm_proxy_port` mock 回退 → 端口 0 → 自动直连）→
+`sendWithRetry → sseEvents → Chunk`。覆盖：
+
+- OpenAI 兼容全链路（文本/推理/工具流/usage/cache 拆解/粘连帧 TCP 语义）
+- Anthropic 全链路（message_start/工具流/thinking 签名/usage/粘连帧）
+- wire 断言：DeepSeek thinking 包裹 + `reasoning_effort:low` 原值；Anthropic
+  budget 16000 + `x-api-key`/`anthropic-version` 头；maxTokensOverride 真钳制
+- 流内 error → Error chunk；**声明外档位 → 服务器零请求**（I/O 前拦截实证）
+- 空闲超时（`streamWithIdleTimeout` 短超时 + 挂死流）
+
+这一层补的是 P13 审计的「全仓库测试 mock 了 fetch、真实链路从未打通」在协议栈
+维度的缺口（真机对厂商端点的回归仍是 P3 人工项）。
+
+### 退役清单（本 Phase 删除）
+
+`effortVendor` / `toOpenAIEffort` / `thinkingModesFor`（name/baseUrl/model 嗅探链）
+/ `EffortVendor` / `OpenAIWireEffort` 类型 / P12 的 low→high、max→high 静默归一。
+
+### seam 收口：退役 _agentRebuildKey 手工 diff（恒 swap，2026-08-22）
+
+P13 #2 修复的「拆除路径忘重置 diff 键」、历史遗漏的 temperature、本次差点漏掉的
+maxTokens 覆盖——三个 bug 同根：**手写字段枚举必然漂移**。P14 退役整条链：
+
+- 删除 `Workspace._agentRebuildKey` / `_lastAgentCfgKey`（摘要键 + 跳过分支）。
+- `applyAgentConfig` 改**恒 swap**：每次配置信号都从同一份新鲜快照
+  `_buildProvider(s)` 重建 provider 并原子换引用（`setProvider` + 
+  `forEachAgent` + ctx 写穿）。在途请求持旧引用跑完、下一轮起用新 provider——
+  DSH 快照语义的单活跃 provider 形态。
+- 成本论证：`setProvider` = 引用 swap + ctx map 写 + 清摘要缓存（廉价）；
+  信号频率 = 用户保存/切换动作（非热路径，`applyAgentConfig` 本就每次做
+  `loadSettingsWithSecrets` RPC）；prewarm fire-and-forget 3s 自灭。
+- 守护测试：`tests/provider-hotswap.test.ts`（注释剥离后的静态扫描 + 拆除路径
+  行为断言）。
+
+**为何不做 DSH 式完整注册表**（ProvidersService 多路由 + 原子 replace）：DSH 的
+registry 服务「多 provider 路由并发在册」的场景（每请求按 route 选 adapter、
+waterfall 拦截、配置面声明路由）；兰台是**单活跃 provider** 形态——`_buildProvider`
+单一创建收口（P4 已建）+ `setProvider` 写穿（P13 已建）+ 恒 swap（本次）即为
+兰台的正确 seam。把 DSH 的注册表照搬过来服务一个永远只有一个 active provider 的
+系统是架构空转；`composition/services.ts` 的 ProvidersService 空壳（S1 注册语义）
+保留给未来真正的多路由需求。
+
+### 已知边界（如实记录）
+
+- opencode/qwen 网关对 `low` 档的透传行为未核实（pi-ai 网关条目 `low=null`），
+  按网关证据保守声明；厂商侧变化时改 JSON 即可，代码零改动。
+- glm/mimo/qwen 自有思考方言（`enable_thinking` 等）未接入——无恒等 wire 证据，
+  零声明处理，待官方文档核实后加条目。
+- o3-deep-research / o4-mini-deep-research 零声明（pi-ai 无该模型 tlm 数据）。
+

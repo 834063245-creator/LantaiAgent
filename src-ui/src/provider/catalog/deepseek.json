@@ -15,7 +15,14 @@
       "cacheRead": 0.0028
     },
     "contextWindow": 1000000,
-    "maxTokens": 384000
+    "maxTokens": 384000,
+    "thinkingEfforts": [
+      "low",
+      "high",
+      "max"
+    ],
+    "thinkingOff": true,
+    "deepseekThinking": true
   },
   "deepseek-v4-pro": {
     "id": "deepseek-v4-pro",
@@ -33,7 +40,14 @@
       "cacheRead": 0.003625
     },
     "contextWindow": 1000000,
-    "maxTokens": 384000
+    "maxTokens": 384000,
+    "thinkingEfforts": [
+      "low",
+      "high",
+      "max"
+    ],
+    "thinkingOff": true,
+    "deepseekThinking": true
   },
   "deepseek-v4-pro-beta": {
     "id": "deepseek-v4-pro-beta",
@@ -51,7 +65,16 @@
       "cacheRead": 0.003625
     },
     "contextWindow": 1000000,
-    "maxTokens": 384000
+    "maxTokens": 384000,
+    "thinkingEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "thinkingOff": true
   },
   "deepseek-v4-flash-beta": {
     "id": "deepseek-v4-flash-beta",
@@ -69,6 +92,15 @@
       "cacheRead": 0.0028
     },
     "contextWindow": 1000000,
-    "maxTokens": 384000
+    "maxTokens": 384000,
+    "thinkingEfforts": [
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max"
+    ],
+    "thinkingOff": true
   }
 }

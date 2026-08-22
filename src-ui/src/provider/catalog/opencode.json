@@ -15,7 +15,11 @@
       "cacheRead": 0
     },
     "contextWindow": 1000000,
-    "maxTokens": 384000
+    "maxTokens": 384000,
+    "thinkingEfforts": [
+      "high",
+      "max"
+    ]
   },
   "deepseek-v4-pro": {
     "id": "deepseek-v4-pro",
@@ -33,6 +37,10 @@
       "cacheRead": 0
     },
     "contextWindow": 1000000,
-    "maxTokens": 384000
+    "maxTokens": 384000,
+    "thinkingEfforts": [
+      "high",
+      "max"
+    ]
   }
 }

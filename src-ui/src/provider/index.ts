@@ -6,8 +6,8 @@
 import type { ProviderSettings } from '../settings';
 import { createAnthropicProvider } from './anthropic';
 import { createOpenAIProvider } from './openai';
-import type { Provider } from './types';
 import { withThinkingDisabled } from './thinking';
+import type { Provider } from './types';
 
 export interface CreateProviderOptions {
   /** Disable reasoning/thinking on OpenAI-compatible providers (e.g. for translation). */
@@ -16,6 +16,7 @@ export interface CreateProviderOptions {
 
 /** Create a Provider from ProviderSettings, dispatching to the correct implementation. */
 export function createProvider(settings: ProviderSettings, options?: CreateProviderOptions): Provider {
+  const maxTokensOverride = settings.maxTokens && settings.maxTokens > 0 ? settings.maxTokens : undefined;
   if (settings.kind === 'anthropic') {
     return createAnthropicProvider({
       name: settings.name,
@@ -25,6 +26,7 @@ export function createProvider(settings: ProviderSettings, options?: CreateProvi
       // disableThinking 语义统一到两种协议：true → 强制关闭扩展思考。
       // 翻译器/摘要路径都传 disableThinking: true，anthropic 在此同样关闭。
       thinking: withThinkingDisabled(settings.thinking, options?.disableThinking),
+      maxTokensOverride,
     });
   }
   return createOpenAIProvider({
@@ -33,5 +35,6 @@ export function createProvider(settings: ProviderSettings, options?: CreateProvi
     baseUrl: settings.baseUrl,
     model: settings.model,
     thinking: withThinkingDisabled(settings.thinking, options?.disableThinking),
+    maxTokensOverride,
   });
 }
