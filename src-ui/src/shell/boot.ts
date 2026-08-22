@@ -8,7 +8,8 @@
 //   2. 组合链（S2-2 用户层 patch + S4-1a preset：选择同步 → 装载 → 发现 →
 //      preset 层应用——全部先于一切装配，保证第一个 Agent 就拿到最终组合）；
 //   3. 按 resolved.shell 表序逐行 await boot（保序 = 现 init 的 await 语义）；
-//   4. 主视图落点：纸面板直落（V5 拆除后唯一主界面）；
+//   4. 主视图落点：启动落点恒为案卷首页（2026-08-22 用户拍板——不再
+//      固定直落纸面板；纸面板由用户动作唤起）；
 //   5. 失败隔离：单行抛错 console.error + 继续（loader 同款纪律）。
 //
 // 行序即执行序——表序是字节契约（§2.6 表 = 现 init() 执行序的证据）。
@@ -24,7 +25,6 @@ import { setLang } from '../i18n';
 import { typedListen } from '../rpc-contract';
 import { loadSettings } from '../settings';
 import { useCompositionStore } from '../state/composition-store';
-import { useDockStore } from '../state/dock-store';
 import { shellRefs } from './runtime';
 
 /** 启动期一次装载用户层 patch（幂等：composition-store 持结果）。 */
@@ -90,10 +90,9 @@ export async function bootShell(
       }
     }
 
-    // 4) 主视图落点（V5 拆除，2026-08-22）：纸壳是唯一主界面——boot 收尾
-    //    无条件开纸面板（preset=paper 的分叉随共居期退役；纸面板
-    //    unmountOnClose——「关闭」即回案卷首页换卷/续开）。
-    useDockStore.getState().openPanel('paper');
+    // 4) 主视图落点（2026-08-22 用户拍板）：启动落点恒为案卷首页——
+    //    不再固定为最后一卷/新卷。纸面板由用户动作唤起（新建/续开/换卷）；
+    //    「关卷」回首页的既有语义不变（纸面板 unmountOnClose）。
   } catch (err) {
     // 编排器级失败（引导三件套/patch await——理论不可达，防御性兜底）
     console.error('[shell] 壳引导失败:', err);

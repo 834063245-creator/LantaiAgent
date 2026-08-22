@@ -21,8 +21,8 @@
 // （§2.1 生效面）。壳行禁用是应用级决策（壳引导一次性的）——user preset
 // 文件里写 shell 域条目照样会被 resolveRoster 解析（S2 引擎零新语义，
 // 域合法性由 schema 层保证）。V5 拆除（2026-08-22）：paper preset 行
-// 退役——纸壳是唯一主界面，主视图落点不再经 preset 分叉（bootShell
-// 收尾无条件开纸面板）。
+// 退役——纸壳是唯一主界面，主视图落点不再经 preset 分叉（启动落点
+// 恒为案卷首页，2026-08-22 用户拍板）。
 //
 // 解析纯函数（本文件）不 fetch 不读盘——远端发现是 preset-discovery 的
 // 职责（与 roster.ts 不 parse yaml 同一分工纪律）。

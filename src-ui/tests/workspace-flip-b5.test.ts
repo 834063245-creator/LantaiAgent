@@ -3,8 +3,9 @@
 
 // workspace-flip 批 5 测试 — 主视图落点。
 // V5 拆除（2026-08-22，用户深夜拍板「摘除旧观测台前端」）：paper preset
-// 行退役——纸壳是唯一主界面，bootShell 收尾无条件开纸面板（原「selected
-// = paper 才直落」的共居期分叉作废）。本文件改钉新语义。
+// 行退役。2026-08-22 深夜二次拍板：启动落点恒为案卷首页——不再固定为
+// 最后一卷/新卷（boot 收尾无条件开纸面板作废；纸面板由用户动作唤起）。
+// 本文件改钉新语义。
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -39,11 +40,11 @@ describe('V5 拆除：主视图落点（纸壳唯一主界面）', () => {
     expect(builtinPresetById('paper')).toBeUndefined();
   });
 
-  it('主视图落点不再看 preset：selected = standard → bootShell 后纸面板仍打开', async () => {
+  it('主视图落点不再看 preset：selected = standard → bootShell 后停在案卷首页（纸面板不开）', async () => {
     const { useDockStore } = await import('../src/state/dock-store');
     usePresetStore.getState().select('standard');
     await bootShell();
-    expect(useDockStore.getState().open.paper).toBe(true);
+    expect(useDockStore.getState().open.paper).toBe(false);
     // 收尾（不污染其他测试）
     useDockStore.getState().closePanel('paper');
   });

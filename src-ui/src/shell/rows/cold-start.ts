@@ -4,14 +4,15 @@
 // 壳行（hologram/shell-cold-start）：冷启动决策。
 // 自 main.ts 机械迁移（S2-4）；workspace-flip 批 1/3（纯会话优先 + 打开流
 // 两段化）；V5 拆除（2026-08-22）——星图渲染分支退役（旧「有缓存图→
-// 星图视图」不再成立：纸壳是唯一主界面，boot 收尾无条件开纸面板）。
+// 星图视图」不再成立）。
 //
 // 现职责只剩两件：
 //   1. 引擎开关开 + 有缓存项目 → switchWorkspace(skipAnalysis) 恢复工作区
 //      数据面（Agent 工具的图谱预热 + 会话续开）；
 //      引擎开关关 → get_last_project（.last_project）恢复纯 Agent 工作区；
 //   2. 无恢复信号 → setupPlaceholderAgent（零目录通用会话）。
-// 视图不再由此行决定——主视图落点统一在 bootShell 收尾（开纸面板）。
+// 视图不再由此行决定——启动落点恒为案卷首页（bootShell 不再开纸面板，
+// 2026-08-22 用户拍板；纸面板由用户的新建/续开动作唤起）。
 
 import { isMockMode } from '../../bridge';
 import { typedJsonRpc } from '../../rpc-contract';
@@ -97,7 +98,7 @@ export async function bootColdStart(_refs: ShellRefs): Promise<void> {
     /* 无缓存 */
   }
 
-  // 无缓存图谱 — 占位 Agent（零目录通用会话；主视图由 bootShell 收尾直落纸）
+  // 无缓存图谱 — 占位 Agent（零目录通用会话；视图落点 = 案卷首页）
   setLoading(false);
   await setupPlaceholderAgent();
 }

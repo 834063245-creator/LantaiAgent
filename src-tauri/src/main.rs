@@ -184,6 +184,24 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
+    /// 回归：占位工作区（path=''）activate 不清空 .last_project——
+    /// 「最近工作区」记忆只记真实绑定（引擎关态冷启动的唯一恢复信号，
+    /// 2026-08-22 实测踩中：占位启动把记忆抹了）。
+    #[test]
+    fn placeholder_activate_does_not_clear_last_project() {
+        let tmp = std::env::temp_dir().join("hologram_test_placeholder_activate");
+        let _ = std::fs::create_dir_all(&tmp);
+        let root = utils::project_root();
+        let last = root.join(".last_project");
+        // 先写一个非空记忆，再让占位句柄 activate，验证不被清空
+        let _ = std::fs::write(&last, "D:/some/real/project");
+        let handle = workspace::WorkspaceHandle::new("");
+        handle.activate(&root);
+        let content = std::fs::read_to_string(&last).unwrap_or_default();
+        assert_eq!(content, "D:/some/real/project", "占位 activate 不得清空 .last_project");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     /// get_last_project（引擎开关关态的冷启动恢复信号）：读 .last_project，
     /// 缺文件/空内容 = None（trim 后过滤——写入侧带换行也读得回）。
     #[test]

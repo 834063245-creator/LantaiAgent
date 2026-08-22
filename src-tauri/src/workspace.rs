@@ -69,7 +69,13 @@ impl WorkspaceHandle {
     }
 
     /// 激活此工作区: 持久化到 .last_project 以便冷启动恢复。
+    /// 空路径（占位工作区解绑）不写——「最近工作区」记忆只记真实绑定，
+    /// 占位启动清空 .last_project 会摧毁引擎关态冷启动的唯一恢复信号
+    ///（get_last_project——2026-08-22 引擎开关配套，实测踩中）。
     pub fn activate(&self, project_root: &Path) {
+        if self.path.trim().is_empty() {
+            return;
+        }
         let last_path = project_root.join(".last_project");
         let _ = fs::write(&last_path, &self.path);
     }
