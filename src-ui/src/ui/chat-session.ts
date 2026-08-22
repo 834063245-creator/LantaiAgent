@@ -273,6 +273,26 @@ export function closeSession(ctx: SessionContext, idx: number): void {
     return;
   }
   const s = st.sessions[idx];
+  // C8 合卷自动存：被合卷在 agent dispose 前同步捕获快照、异步落盘（用户拍板）。
+  // 数据捕获必须在 removeAgent 之前（句柄消亡后 getSession 不可再得）；
+  // 写入目标路径在捕获时固定，无跨工作区串写风险（与 scheduleAutoSave 的
+  // epoch 守卫防护面不同——那是延迟重读 store 的风险，这里快照即定局）。
+  {
+    const agent = agentSessionState.getAgent(ctx.storeId, s.id);
+    const messages = agent?.getSession();
+    const hasContent = !!messages?.some((m) => m.role !== 'system');
+    if (agent && messages && hasContent) {
+      const projectPath = ctx.getProjectPath();
+      const tokensUsed = idx === st.activeIdx ? ctx.getTotalTokensUsed() : (st.sessionTokens[s.id] ?? 0);
+      writeSessionSnapshot(projectPath, {
+        id: s.id,
+        label: s.label,
+        savedAt: new Date().toISOString(),
+        messages,
+        tokensUsed,
+      }).catch(() => ctx.addNotice(`合卷落盘失败：${s.label}`, 'error'));
+    }
+  }
   removeSessionExecState(ctx.storeId, s.id);
   agentSessionState.removeAgent(ctx.storeId, s.id);
   // 若关闭的是活跃会话，先把它未发送的文字存入其槽再清空，稍后换入新活跃会话的草稿
@@ -470,6 +490,46 @@ export async function scanMaxSessionId(projectPath: string): Promise<number> {
   }
 }
 
+/** 会话快照的磁盘形状（C8：saveActiveSession 与合卷落盘共用）。 */
+interface SessionSnapshotData {
+  id: number;
+  label: string;
+  savedAt: string;
+  messages: Message[];
+  tokensUsed: number;
+}
+
+/** 将已捕获的会话快照写入盘（localStorage 同步备份 + 原子磁盘写）。
+ *  C8 合卷自动存从 saveActiveSession 离体出来的共享写盘函数——调用方负责
+ *  在 agent 句柄消亡前完成数据捕获（messages 属引用，序列化在首次 await 前）。
+ *  失败：console.error 后上抛——调用方决定可见等级（autosave 容忍、合卷告警）。 */
+async function writeSessionSnapshot(projectPath: string, data: SessionSnapshotData): Promise<void> {
+  const json = JSON.stringify(data);
+  // 1) 同步 localStorage 备份 — 可在 beforeunload 超时/进程被杀时存活
+  try {
+    if (typeof localStorage !== 'undefined') {
+      // P0-9：配额共 5~10MB 且与设置等键共享——超大会话备份直接跳过，
+      // 磁盘写入（下一步）才是真正的兜底，localStorage 只是加速器
+      if (json.length < 1024 * 1024) {
+        localStorage.setItem(lsKey(projectPath, data.id), json);
+      }
+    }
+  } catch {
+    /* 超出配额 — 磁盘写入作为兜底 */
+  }
+
+  // 2) 异步磁盘写入（原子操作：tmp → rename）
+  try {
+    await typedRpc('write_file_content', {
+      file_path: sessionFile(projectPath, data.id),
+      content: json,
+    });
+  } catch (e) {
+    console.error('[chat] 会话落盘失败:', e);
+    throw e;
+  }
+}
+
 /** 将活跃会话保存到其独立文件。更新 _active.json 跟踪器。
  *  同时写入同步 localStorage 备份，确保会话在应用崩溃/强制关闭后仍可恢复。 */
 export async function saveActiveSession(ctx: SessionContext, projectPath: string): Promise<void> {
@@ -487,7 +547,7 @@ export async function saveActiveSession(ctx: SessionContext, projectPath: string
   // ponytail: 消息已在会话级 store 中 — 无需 saveCurrentMessages
   getChatStore(ctx.storeId).sess.getState().setSessionTokens(sMeta.id, ctx.getTotalTokensUsed());
 
-  const data = {
+  const data: SessionSnapshotData = {
     id: sMeta.id,
     label: sMeta.label,
     savedAt: new Date().toISOString(),
@@ -495,28 +555,10 @@ export async function saveActiveSession(ctx: SessionContext, projectPath: string
     tokensUsed: ctx.getTotalTokensUsed(),
   };
 
-  // 1) 同步 localStorage 备份 — 可在 beforeunload 超时/进程被杀时存活
-  const json = JSON.stringify(data);
   try {
-    if (typeof localStorage !== 'undefined') {
-      // P0-9：配额共 5~10MB 且与设置等键共享——超大会话备份直接跳过，
-      // 磁盘写入（下一步）才是真正的兜底，localStorage 只是加速器
-      if (json.length < 1024 * 1024) {
-        localStorage.setItem(lsKey(projectPath, sMeta.id), json);
-      }
-    }
+    await writeSessionSnapshot(projectPath, data);
   } catch {
-    /* 超出配额 — 磁盘写入作为兜底 */
-  }
-
-  // 2) 异步磁盘写入（原子操作：tmp → rename）
-  try {
-    await typedRpc('write_file_content', {
-      file_path: sessionFile(projectPath, sMeta.id),
-      content: json,
-    });
-  } catch (e) {
-    console.error('[chat] saveActiveSession 失败:', e);
+    /* 落盘失败已由 writeSessionSnapshot 记日志——autosave 链容忍（原行为） */
   }
 
   try {
@@ -526,6 +568,33 @@ export async function saveActiveSession(ctx: SessionContext, projectPath: string
     });
   } catch {
     /* 非关键 */
+  }
+}
+
+/** 按 id 落盘指定会话（C8 改名即存）：不要求是活跃卷，不动 _active.json
+ *  （跟踪器只记「冷启动恢复谁」，与单卷落盘无关）。projectPath='' 零目录
+ *  会话路由用户级目录（sessionsDir 真源）。空卷跳过（与 saveActiveSession 同规）。 */
+export async function saveSessionById(ctx: SessionContext, projectPath: string, sid: number): Promise<void> {
+  const st = getChatStore(ctx.storeId).sess.getState();
+  const sMeta = st.sessions.find((x) => x.id === sid);
+  if (!sMeta) return;
+  const agent = agentSessionState.getAgent(ctx.storeId, sid);
+  if (!agent) return;
+  const messages = agent.getSession();
+  if (!messages.some((m) => m.role !== 'system')) return;
+
+  const isActive = st.sessions[st.activeIdx]?.id === sid;
+  const tokensUsed = isActive ? ctx.getTotalTokensUsed() : (st.sessionTokens[sid] ?? 0);
+  try {
+    await writeSessionSnapshot(projectPath, {
+      id: sMeta.id,
+      label: sMeta.label,
+      savedAt: new Date().toISOString(),
+      messages,
+      tokensUsed,
+    });
+  } catch {
+    /* 已记日志——改名即存是尽力而为（合卷路径另有告警） */
   }
 }
 

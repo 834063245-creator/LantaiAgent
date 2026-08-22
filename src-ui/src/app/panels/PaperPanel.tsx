@@ -45,6 +45,7 @@ import { getChatStore, msgStoreForActive } from '../../ui/chat-store';
 import { useCoreStore } from '../chat/core-instance';
 import { WinControls } from '../WinControls';
 import { ModeIndicator } from './ModeIndicator';
+import { SpineRack } from './SpineRack';
 import { StatusLine } from './StatusLine';
 import './PaperPanel.css';
 
@@ -667,6 +668,9 @@ export function PaperPanel() {
           </button>
         </div>
       )}
+
+      {/* 书脊列（C8 多卷切换）：左缘恒显——点脊换卷/列尾另起一卷/双击题签改名 */}
+      <SpineRack core={core} />
 
       {/* biome-ignore lint/a11y/noStaticElementInteractions: 无限画布是鼠标平移/缩放交互面（缩放走原生非被动监听，平移在这里）；键盘可达性属走查弹范围外 */}
       <div ref={canvasRef} className={`pp-canvas${panning ? ' pp-panning' : ''}`} onMouseDown={onCanvasMouseDown}>

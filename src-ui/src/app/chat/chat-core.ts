@@ -623,6 +623,12 @@ export class ChatCore {
   async createNewSession(): Promise<void> {
     return Session.createNewSession(this._sessionCtx());
   }
+  /** 改名（C8 书脊题签）：sess store 单写入口 + 立即落盘（改名即存）。 */
+  renameSession(id: number, label: string): void {
+    getChatStore(this.panelId).sess.getState().renameSession(id, label);
+    const pp = useShellStore.getState().projectPath;
+    if (pp) void Session.saveSessionById(this._sessionCtx(), pp, id);
+  }
 
   // ── 会话持久化（委托给 chat-session.ts）──
 

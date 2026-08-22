@@ -21,6 +21,8 @@ interface SessionStore {
 
   setSessions: (sessions: ChatSessionMeta[]) => void;
   setActiveIdx: (idx: number) => void;
+  /** 改名（C8 书脊题签）：id 定位改 label——仅改内存，落盘走会话保存链。 */
+  renameSession: (id: number, label: string) => void;
   setSessionTokens: (id: number, count: number) => void;
   removeSession: (id: number) => void;
   setNextSessionId: (id: number) => void;
@@ -39,6 +41,8 @@ function createSessionStoreImpl() {
 
     setSessions: (sessions) => set({ sessions }),
     setActiveIdx: (activeIdx) => set({ activeIdx }),
+    renameSession: (id, label) =>
+      set((s) => ({ sessions: s.sessions.map((x) => (x.id === id ? { ...x, label } : x)) })),
     setSessionTokens: (id, count) => set((s) => ({ sessionTokens: { ...s.sessionTokens, [id]: count } })),
     removeSession: (id) =>
       set((s) => {

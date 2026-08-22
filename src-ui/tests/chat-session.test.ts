@@ -911,4 +911,101 @@ describe('ChatPanel session persistence', () => {
       expect(restored.some((m) => m.content === 'localStorage 更新消息')).toBe(true);
     });
   });
+
+  // ═══════════════════════════════════════════════════════════
+  // C8 合卷自动存：closeSession 被合卷先落盘（含背景卷）再 dispose
+  // ═════════════════════════════════════════════════════════
+
+  describe('C8 closeSession auto-archive', () => {
+    const PROJ = 'D:/c8-proj';
+
+    function makeAgent(content: string) {
+      return {
+        getSession: () => [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content },
+        ],
+        setSession: vi.fn(),
+        dispose: vi.fn(),
+        cascadeAbort: vi.fn(), // removeExec 级联中止面（真实 Agent 自带，桩补齐）
+      };
+    }
+
+    /** 两卷现场：卷 1（背景，有内容）+ 卷 2（活跃）。返回捕获的写入调用。 */
+    function setupTwoVolumes() {
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      const agent1 = makeAgent('卷一的内容');
+      panel.setAgent(agent1 as any);
+      const agent2 = makeAgent('卷二的内容');
+      panel.setAgentFactory(async () => agent2 as any);
+
+      const writes: Array<{ file_path: string; content: string }> = [];
+      mockInvoke.mockReset();
+      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
+        const { method, params } = payload;
+        if (method === 'write_file_content') {
+          writes.push({ file_path: params.file_path as string, content: params.content as string });
+        }
+        return Promise.resolve('ok');
+      });
+      return { agent1, agent2, writes, seed: async () => void (await panel.createNewSession()) };
+    }
+
+    it('合背景卷：先落盘该卷内容再移除（写 /1.json 带该卷消息）', async () => {
+      const { agent1, writes, seed } = setupTwoVolumes();
+      await seed();
+
+      panel.closeSession(0); // 合背景卷 1
+
+      expect(agent1.dispose).toHaveBeenCalled();
+      const write1 = writes.find((w) => w.file_path.endsWith('/1.json'));
+      expect(write1).toBeTruthy();
+      const parsed = JSON.parse(write1!.content);
+      expect(parsed.id).toBe(1);
+      expect(parsed.messages.some((m: any) => m.content === '卷一的内容')).toBe(true);
+      // 卷 1 已从会话列表移除
+      const sessions = Session.getSessions(panel.panelId);
+      expect(sessions.some((s) => s.id === 1)).toBe(false);
+    });
+
+    it('合活跃卷：同样先落盘（写 /2.json 带活跃卷消息）', async () => {
+      const { writes, seed } = setupTwoVolumes();
+      await seed();
+
+      panel.closeSession(1); // 合活跃卷 2
+
+      const write2 = writes.find((w) => w.file_path.endsWith('/2.json'));
+      expect(write2).toBeTruthy();
+      const parsed = JSON.parse(write2!.content);
+      expect(parsed.messages.some((m: any) => m.content === '卷二的内容')).toBe(true);
+    });
+
+    it('空卷（仅 system）合卷不落盘', async () => {
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      panel.setAgent({
+        getSession: () => [{ role: 'system', content: 'sys' }],
+        setSession: vi.fn(),
+        dispose: vi.fn(),
+        cascadeAbort: vi.fn(),
+      } as any);
+      const agent2 = makeAgent('有内容');
+      panel.setAgentFactory(async () => agent2 as any);
+      const writes: Array<{ file_path: string; content: string }> = [];
+      mockInvoke.mockReset();
+      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
+        const { method, params } = payload;
+        if (method === 'write_file_content') {
+          writes.push({ file_path: params.file_path as string, content: params.content as string });
+        }
+        return Promise.resolve('ok');
+      });
+      await panel.createNewSession();
+
+      panel.closeSession(0); // 合空卷 1
+
+      expect(writes.find((w) => w.file_path.endsWith('/1.json'))).toBeUndefined();
+    });
+  });
 });

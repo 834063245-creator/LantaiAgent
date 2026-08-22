@@ -1,0 +1,240 @@
+/* SpineRack — 书脊列（C8 多卷切换）。
+ * 视觉契约同 PaperPanel.css：兰台 token（paper / ink / seal 系）、圆角恒 0、
+ * 无软投影（硬偏移可用 --elev-raise）。书脊 = 函套立视图抽象：
+ * 宽 36px 常态、hover 展宽露出全文（题签竖排，writing-mode 竖排）。 */
+
+.sr-rack {
+  position: absolute;
+  left: 0;
+  top: var(--bar-h);
+  bottom: var(--composer-h);
+  width: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 14px 0 14px 6px;
+  z-index: 45; /* 画布之上、小地图(60)/纸条(40)之下——书脊是结构层 */
+  pointer-events: none; /* 列容器不挡画布，热区在书脊自身 */
+}
+
+/* 本地提示条（冷启动死路防护——同 pp-local-notice 语言） */
+.sr-notice {
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 12px;
+  width: 232px;
+  background: var(--paper);
+  border: var(--rule-strong);
+  border-left: 3px solid var(--warn);
+  box-shadow: var(--elev-raise);
+  padding: 10px 12px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  pointer-events: auto;
+  z-index: 5;
+}
+.sr-notice button {
+  margin-top: 6px;
+  font-family: var(--f-song);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--ink-1);
+  background: none;
+  border: var(--rule-soft);
+  border-radius: 0;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.sr-notice button:hover {
+  background: var(--ink-1);
+  color: var(--paper);
+}
+
+.sr-spine {
+  position: relative;
+  pointer-events: auto;
+}
+
+/* 书脊本体：竖排题签。当前卷 = 抽出一半（朱砂左条 + 位移 + 深墨） */
+.sr-spine-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 36px;
+  min-height: 84px;
+  padding: 12px 0 10px;
+  background: var(--paper-deep);
+  border: var(--rule-soft);
+  border-left: 3px solid var(--ink-4);
+  border-radius: 0;
+  cursor: pointer;
+  transition:
+    background var(--snap),
+    border-color var(--snap),
+    transform var(--snap);
+  position: relative;
+}
+.sr-spine-main:hover {
+  background: var(--paper);
+  border-left-color: var(--ink-2);
+}
+.sr-spine.sr-active .sr-spine-main {
+  background: var(--paper);
+  border: var(--rule-strong);
+  border-left: 3px solid var(--seal);
+  transform: translateX(4px); /* 抽出一半 */
+  box-shadow: var(--elev-raise);
+}
+
+/* 题签：竖排（从右往左读——线装书脊惯例；mixed=拉丁侧躺，汉字直立） */
+.sr-label {
+  writing-mode: vertical-rl;
+  font-family: var(--f-song);
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  color: var(--ink-2);
+  max-height: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.sr-spine.sr-active .sr-label {
+  color: var(--ink-1);
+  font-weight: 600;
+}
+
+/* 运行点：石青呼吸（机=石青，语义铁律） */
+.sr-run-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--indigo);
+  border-radius: 50%;
+  animation: sr-breathe 1.6s ease-in-out infinite;
+  flex: 0 0 auto;
+}
+@keyframes sr-breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* 改名输入：绝对定位在脊右侧纸面（题签位置替换；竖排容器内横排输入） */
+.sr-rename-input {
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 6px;
+  width: 148px;
+  writing-mode: horizontal-tb;
+  font-family: var(--f-song);
+  font-size: 13px;
+  color: var(--ink-1);
+  background: var(--paper);
+  border: none;
+  border-bottom: 2px solid var(--seal);
+  padding: 4px 2px;
+  outline: none;
+  z-index: 3;
+}
+
+/* hover 小卡：卷名全文 + 运行态 + 合卷钮 */
+.sr-hover-card {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 0;
+  width: 168px;
+  background: var(--paper);
+  border: var(--rule-strong);
+  border-radius: 0;
+  box-shadow: var(--elev-raise);
+  padding: 12px 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--snap);
+  z-index: 2;
+}
+.sr-spine:hover .sr-hover-card {
+  opacity: 1;
+  pointer-events: auto;
+}
+.sr-hover-title {
+  font-family: var(--f-song);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sr-hover-meta {
+  font-family: var(--f-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  margin: 6px 0 10px;
+}
+.sr-close-btn {
+  width: 100%;
+  font-family: var(--f-song);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--ink-2);
+  background: none;
+  border: var(--rule-soft);
+  border-radius: 0;
+  padding: 6px 0;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.sr-close-btn:hover:not(:disabled) {
+  background: var(--ink-1);
+  color: var(--paper);
+  border-color: var(--ink-1);
+}
+.sr-close-btn:disabled {
+  color: var(--ink-4);
+  border-color: var(--rule-soft);
+  cursor: not-allowed;
+  background: none;
+}
+
+/* 另起一卷：列尾虚脊（dashed 勾边 = 占位/草稿语义 token --rule-dashed） */
+.sr-new {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  min-height: 64px;
+  background: transparent;
+  border: var(--rule-dashed);
+  border-radius: 0;
+  cursor: pointer;
+  transition:
+    background var(--snap),
+    border-color var(--snap);
+}
+.sr-new:hover {
+  background: var(--seal-soft);
+  border-color: var(--seal);
+}
+.sr-new-label {
+  writing-mode: vertical-rl;
+  font-family: var(--f-song);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.sr-new:hover .sr-new-label {
+  color: var(--seal-deep);
+}
