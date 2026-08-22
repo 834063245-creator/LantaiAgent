@@ -138,8 +138,8 @@ flowchart LR
 | 层 | 命令 | 基线 |
 |---|---|---|
 | 引擎 | `cd engine && cargo test` | 697 tests（lib 669 + bin 27 + doc 1；696 passed / 1 ignored） |
-| 壳 | `cd src-tauri && cargo test` | 343 tests（bin 全绿；UIA 真实窗口 e2e 需 `HOLOGRAM_UIA_E2E=1`——WinForms 靶子窗口全流程 tree/find/type/read/click；cdp 真实 Chrome e2e 偶发 1 失败单跑通过） |
-| 前端 | `cd src-ui && npx vitest run` | 1546 passed / 1 skipped（2026-08-22 workspace-flip 批 5 竣工实测；本机注意：父进程带 `NODE_ENV=production` 会使 npm omit=dev 剥掉 devDependencies → 收集阶段模块错误，装包/跑测试前清掉该变量） |
+| 壳 | `cd src-tauri && cargo test` | bin 387 + 集成 14（2026-08-22 自主段实跑全绿；UIA 真实窗口 e2e 需 `HOLOGRAM_UIA_E2E=1`——WinForms 靶子窗口全流程 tree/find/type/read/click；cdp 真实 Chrome e2e 偶发 1 失败单跑通过） |
+| 前端 | `cd src-ui && npx vitest run` | 1431 passed / 1 skipped（2026-08-22 自主段实跑；C13 休眠层 sweep 删死测试后计数下降，见 r5-polish-backlog C13；convergence 零漂移；本机注意：父进程带 `NODE_ENV=production` 会使 npm omit=dev 剥掉 devDependencies → 收集阶段模块错误，装包/跑测试前清掉该变量） |
 | 前端构建 | `cd src-ui && npm run build` | tsc --noEmit + vite build 全绿 |
 | Agent 运行时/组合层 | `cd src-ui && npm run verify:convergence` | exit 0（T0 静态 + 全部 phase specs 对拍 8 baseline + system-prompt.fixture；standard preset 零漂移）；baseline 变更走 `docs/archive/agent-core-convergence/baseline-change-request.md` 审批 |
 | 前端格式 | `cd src-ui && npx biome ci .` | 588 errors / 335 warnings 是存量基线，不要顺手清；改动文件零新增 |
