@@ -301,7 +301,7 @@ const SettingsPanelApp: React.FC<{
         <div className="sp-header">
           <span
             className="sp-title"
-            dangerouslySetInnerHTML={{ __html: iconHtml('settings', 13) + ' <span class="zh">设置</span>SETTINGS' }}
+            dangerouslySetInnerHTML={{ __html: iconHtml('settings', 14) + ' <span class="zh">设置</span>' }}
           />
           <button
             className="sp-close-btn"
@@ -722,12 +722,6 @@ const SettingsPanelApp: React.FC<{
           onConfirm={onClose}
           onCancel={() => setCloseConfirm(false)}
         />
-
-        {/* 角标 */}
-        <div className="corner-brackets">
-          <span className="cb-bottom left" />
-          <span className="cb-bottom right" />
-        </div>
       </div>
     </>
   );

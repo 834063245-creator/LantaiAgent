@@ -726,7 +726,7 @@ export function PaperPanel() {
         <input
           type="text"
           value={inputText}
-          placeholder="向 Agent 拟文…（拖住任意块可移出到纸上钉住）"
+          placeholder="拟文…（拖住任意块可移出到纸上钉住）"
           onChange={(e) => setInputText(e.target.value)}
           onKeyDown={(e) => {
             // IME 安全谓词（paper/ime）：合成中的 Enter 是候选确认，不发送

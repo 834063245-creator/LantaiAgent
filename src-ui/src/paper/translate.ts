@@ -34,6 +34,9 @@ function partBlockId(messageId: string, partIndex: number): string {
 /** 用户块稍窄（视觉语义：对话流里用户话轮占次要宽度——布局层消费） */
 export const USER_BLOCK_WIDTH = 560;
 
+/** 夹注收窄至正文列宽约 86%（spec §1：夹注缩进列边——布局层居中消费） */
+export const REASONING_BLOCK_WIDTH = Math.round(DEFAULT_BLOCK_WIDTH * 0.86);
+
 interface TranslateOpts {
   /** 钉住状态续命表：id → pinned 坐标（重转译时保持已钉块不回flow） */
   pinnedPositions?: ReadonlyMap<string, { x: number; y: number }>;
@@ -195,7 +198,7 @@ function translateAssistantParts(
   msg.parts.forEach((part, idx) => {
     switch (part.type) {
       case 'reasoning':
-        emit('reasoning', { text: part.text }, idx, part);
+        emit('reasoning', { text: part.text }, idx, part, REASONING_BLOCK_WIDTH);
         break;
       case 'text':
         emitTextWithFences(msg._id, part.text, idx, part, out, pinned);
@@ -229,7 +232,11 @@ function translateAssistantParts(
           const make = (): SourcedBlock => {
             switch (sp.type) {
               case 'reasoning':
-                return { ...createBlock('reasoning', { text: sp.text }, { messageId: msg._id, part: sp }), id: subId };
+                return {
+                  ...createBlock('reasoning', { text: sp.text }, { messageId: msg._id, part: sp }),
+                  id: subId,
+                  w: REASONING_BLOCK_WIDTH,
+                };
               case 'text':
                 return { ...createBlock('markdown', { text: sp.text }, { messageId: msg._id, part: sp }), id: subId };
               case 'tool':
