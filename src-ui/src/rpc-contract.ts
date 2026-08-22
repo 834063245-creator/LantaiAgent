@@ -13,10 +13,14 @@
 // 约定：
 // - 参数键一律写 snake_case（与 Rust 端一致）；bridge.rpc() 对已是
 //   snake_case 的键是直通，对 camelCase 键会自动转换，但契约内统一 snake_case。
-// - result 一律是 string（Rust 侧 Result<String, String>）：
-//     `// JSON`  = JSON 序列化字符串（含 ok_unit 的 "null"），用 parseJson 解析；
-//     `// text`  = 纯文本（文件内容、base64、错误信息等）。
-// - 新增前端一律用 typedRpc / typedListen，接线错误在编译期暴露。
+// - result（rpc Value 化第二步，2026-08-22）：
+//     `// JSON`  = JSON 形态。Rust 出口（rpc.rs rpc_result_shape 表）已把表内
+//                 命令展开为真结构化 Value，typedJsonRpc 直接透传；表外 JSON
+//                 命令（hologram_call/get_graph_page 等，形态不恒定或体量不可控）
+//                 仍返 JSON 字符串，typedJsonRpc 双形态兼容（string 走 parse）。
+//     `// text`  = 纯文本（文件内容、base64、git stdout、错误信息等）。
+// - 新增前端一律用 typedRpc / typedListen，接线错误在编译期暴露；JSON 命令
+//   用 typedJsonRpc（双形态 shim 在那里）。
 
 // biome-ignore lint/style/noRestrictedImports: 唯二受权的裸 rpc/listen 出口之一（另一个是 tool.ts 的 agentInvoke 动态分发豁免）
 import { listen, rpc } from './bridge';
@@ -67,8 +71,8 @@ export interface RpcContract {
 
   // ── Git ──────────────────────────────────────────────────
   git_status: { params: { path: string } & AgentCtx; result: string }; // JSON
-  git_diff_unstaged: { params: { path: string; file: string } & AgentCtx; result: string }; // JSON
-  git_diff_staged: { params: { path: string; file: string } & AgentCtx; result: string }; // JSON
+  git_diff_unstaged: { params: { path: string; file: string } & AgentCtx; result: string }; // text — git stdout（truncate 截断）
+  git_diff_staged: { params: { path: string; file: string } & AgentCtx; result: string }; // text — git stdout（truncate 截断）
   git_stage: { params: { path: string; files: string[] } & AgentCtx; result: string }; // JSON
   git_stage_all: { params: { path: string } & AgentCtx; result: string }; // JSON
   git_commit: { params: { path: string; message: string } & AgentCtx; result: string }; // JSON
@@ -98,7 +102,7 @@ export interface RpcContract {
   };
   read_memory_batch: {
     params: { paths?: string[] };
-    result: string; // text
+    result: string; // JSON — {path: content|null} 映射（Value 化：Rust 出口已展开）
   };
   user_sessions_list: {
     params: Record<string, never>;
@@ -248,7 +252,7 @@ export interface RpcContract {
   start_unity: { params: Record<string, never>; result: string }; // text
   stop_unity: { params: Record<string, never>; result: string }; // text
   unity_status: { params: Record<string, never>; result: string }; // text
-  sandbox_status: { params: Record<string, never>; result: string }; // text
+  sandbox_status: { params: Record<string, never>; result: string }; // JSON — {degraded,reason}（Value 化：Rust 出口已展开）
 
   // ── Hologram 遗留命令 ────────────────────────────────────
   hologram_run_check: { params: { path?: string }; result: string }; // JSON
@@ -286,7 +290,7 @@ export interface RpcContract {
   dataflow_delete: { params: { trace_id: string }; result: string }; // text
 
   // ── Aura 记忆 ────────────────────────────────────────────
-  aura_init: { params: { brain_path: string }; result: string }; // text
+  aura_init: { params: { brain_path: string }; result: string }; // JSON — {status,path,record_count}（Value 化：Rust 出口已展开）
   aura_recall: { params: { query: string; top_k?: number }; result: string }; // JSON
   aura_recall_text: { params: { query: string; token_budget?: number }; result: string }; // text
   aura_store: {
@@ -413,11 +417,12 @@ export function parseJson<T>(raw: string): T {
  *  文件后自行 parse 的属业务语义，不经此。
  *  method 参数与 agentInvoke 同哲学（动态名无编译期校验）——方法面守护
  *  由 gen-rpc-contract-md 生成物与 Rust 测试承担。
- *  当 Rust 侧真把 JSON 命令升级为结构化 Value 时，只需改本函数一处
- *  （去掉 parse、透传真值），所有调用点零改动。 */
+ *  第二步（2026-08-22，rpc.rs rpc_result_shape 出口分派）：JsonValue 形态
+ *  命令在 Rust 出口已展开为真结构化 Value，此处直接透传；浏览器 mock 模式
+ *  仍返 JSON 字符串，双形态兼容（string 走 parse 慢路径，与真机旧形态同）。 */
 export async function typedJsonRpc<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T> {
-  const raw = await rpc<string>(method, params ?? {});
-  return parseJson<T>(raw);
+  const raw = await rpc<unknown>(method, params ?? {});
+  return (typeof raw === 'string' ? parseJson<T>(raw) : raw) as T;
 }
 
 export type EventName = keyof EventContract;

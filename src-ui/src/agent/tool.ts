@@ -174,10 +174,13 @@ export type ToolExecutor = (
  *  旧名 `_agent` 因 Tauri 默认 camelCase 重命名永远匹配不上 → is_agent 恒 false
  *  → agent 文件操作被沙箱静默硬拒且不弹 Ask（见 tests/agent-exec.test.ts 守护）。
  *
- * rpc Value 化（2026-08-22）：ipc 通道已是结构化值，但 Rust 出口对返回包
- * Value::String（字节精确，故意不 parse），agent 工具链的 string 世界零改动 */
+ * rpc Value 化第二步（2026-08-22）：Rust 出口对 JsonValue 形态命令返回真结构化
+ * Value（与 rpc.rs rpc_result_shape 表同源）；agentInvoke 是 agent 工具链的
+ * string 世界入口，此处对结构化返回回卷 JSON 字符串，全链路（tool execute 返回
+ * string 契约 / JSON.parse 消费点 / session 折叠 derivePayload）零改动。 */
 export async function agentInvoke<T = string>(name: string, args: Record<string, unknown>): Promise<T> {
-  return rpc<T>(name, { ...args, isAgent: true });
+  const out = await rpc<unknown>(name, { ...args, isAgent: true });
+  return (typeof out === 'string' ? out : JSON.stringify(out)) as T;
 }
 
 // ═══════════════════════════════════════════════════════

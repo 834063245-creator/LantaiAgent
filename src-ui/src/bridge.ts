@@ -89,12 +89,12 @@ export function isMockMode(): boolean {
  * 替代单独的 invoke('cmd_name', params) 调用。
  * 自动将 camelCase 参数键转换为 snake_case 以适配 Rust 后端。
  *
- * 返回值语义（rpc Value 化，2026-08-22，landmine 根治级）：
- * Rust 出口对返回包 Value::String——ipc 通道结构化，但内容字节精确、
- * 故意不 parse（read_file_content 读 .json 文件不能被误展开）。
- * JSON 展开的分派在前端 typedRpc 按契约进行（JSON 命令清单由
- * gen-rpc-contract-md.cjs 同源生成，见 rpc-contract.ts）；agentInvoke
- * 直通 string（工具链 string 世界零改动）。
+ * 返回值语义（rpc Value 化第二步，2026-08-22，landmine 根治级）：
+ * Rust 出口（rpc.rs rpc_result_shape 表）对 JsonValue 形态命令返回真结构化
+ * Value（JSON 命令已展开）；Text 形态命令包 Value::String 字节精确直通
+ * （read_file_content 读 .json 文件不能被误展开）。消费面：typedJsonRpc
+ * 双形态兼容（结构化透传 / 字符串 parse 慢路径——浏览器 mock 返字符串）；
+ * agentInvoke 对结构化返回回卷 JSON 字符串（agent 工具链 string 世界零改动）。
  */
 export async function rpc<T>(method: string, params?: Record<string, unknown>): Promise<T> {
   const normalized: Record<string, unknown> = {};
