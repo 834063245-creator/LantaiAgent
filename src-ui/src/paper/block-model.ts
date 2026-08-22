@@ -29,7 +29,12 @@ export type BlockKind =
 
 /** 块内容判别联合：kind 决定 payload 形状（块协议 §3.2 语义声明的走查弹子集） */
 export interface BlockPayloads {
-  user: { text: string };
+  user: {
+    text: string;
+    /** 附件行（C10 结构化：真机拾遗的真路径文件；渲染层独立小行展示，
+     *  不再拼进入文楷书正文） */
+    files?: Array<{ path: string; name: string }>;
+  };
   markdown: { text: string };
   reasoning: { text: string };
   diff: { lang?: string; text: string };

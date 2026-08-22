@@ -536,6 +536,73 @@
   border-color: var(--seal);
 }
 
+/* ── 来文附件行（C10 拾遗）：石青 mono 小行，与楷书正文分家 ── */
+.pp-user-files {
+  margin-top: 8px;
+  padding-top: 0;
+  border-top: 1px solid var(--rule-soft);
+}
+.pp-user-file {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0.04em;
+  color: var(--indigo);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 拾遗（C10 附件入口）：夹按钮 + 待发附件条 ──
+ *  ⚠ 不用 !important：用更精确的复合选择器压过 .pp-composer button 通配。 */
+.pp-composer .pp-attach {
+  flex: 0 0 auto;
+  margin-right: 12px;
+  font-family: var(--f-song);
+  font-size: 13px;
+  letter-spacing: 0;
+  padding: 8px 12px;
+  color: var(--ink-2);
+  border: var(--rule-soft);
+  background: transparent;
+}
+.pp-composer .pp-attach:hover {
+  color: var(--ink-1);
+  border-color: var(--ink-3);
+  background: var(--paper);
+}
+.pp-attach-list {
+  flex: 0 1 auto;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  max-width: 40%;
+  scrollbar-width: none;
+}
+.pp-attach-list::-webkit-scrollbar {
+  display: none;
+}
+.pp-attach-chip {
+  flex-shrink: 0;
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  color: var(--indigo);
+  border: 1px solid color-mix(in oklch, var(--indigo) 32%, transparent);
+  background: transparent;
+  padding: 4px 8px;
+  cursor: pointer;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: all var(--snap);
+}
+.pp-attach-chip:hover {
+  color: var(--seal-deep);
+  border-color: color-mix(in oklch, var(--seal) 40%, transparent);
+  background: var(--seal-soft);
+}
+
 /* ── 底部输入条（题签输入 D-R1-3）── */
 .pp-composer {
   height: var(--composer-h);

@@ -1120,46 +1120,34 @@ export class ChatCore {
 
   // ── 文件附件 ──
 
+  /** 附件拾遗（C10 修缮，2026-08-22）：真机走 Tauri dialog 拿真路径。
+   * 旧实现两病灶：①浏览器回退用 f.name 冒充 path（空头支票——agent
+   * 拿假路径 read_file 必报错）；②size 恒 0 写死，来文渲染「0 B」误导。
+   * 修法：回退分支只往 input-store 存能兑现的（路径拿不到就不入附件面，
+   * 打日志可见）；size 不再伪造（渲染层不显示，agent 只需路径）。 */
   async openFilePicker(): Promise<void> {
     const input = getChatStore(this.panelId).input.getState();
     try {
       const { open } = await import('@tauri-apps/plugin-dialog');
-      const result = await open({ multiple: true, title: '选择文件', filters: [] });
+      const result = await open({ multiple: true, title: '拾遗——选择要附入案卷的文件', filters: [] });
       if (!result) return;
       const paths = Array.isArray(result) ? result : [result];
       for (const p of paths) {
         const name = p.replace(/\\/g, '/').split('/').pop() || p;
         if (!input.attachedFiles.some((f) => f.path === p)) input.addAttachedFile({ path: p, name, size: 0 });
       }
-    } catch {
-      // 浏览器开发模式下的回退方案
-      const el = document.createElement('input');
-      el.type = 'file';
-      el.multiple = true;
-      el.addEventListener('change', () => {
-        if (!el.files) return;
-        for (let i = 0; i < el.files.length; i++) {
-          const f = el.files[i];
-          const path = (f as File & { path?: string }).path || f.name;
-          if (!input.attachedFiles.some((x) => x.path === path))
-            input.addAttachedFile({ path, name: f.name, size: f.size });
-        }
-      });
-      el.click();
+    } catch (e) {
+      // 浏览器 dev（mock）环境：File 无真路径——不再用 name 冒充（旧病灶）。
+      // 附件链在真机才有意义；dev 下静默提示不可用，错误可见不炸。
+      console.warn('[chat] 附件拾遗仅在真机可用（Tauri dialog 缺席）:', e);
     }
   }
 
-  /** 视图拖放转发 */
-  handleFileDrop(e: DragEvent): void {
-    const files = e.dataTransfer?.files;
-    if (!files) return;
-    const input = getChatStore(this.panelId).input.getState();
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i];
-      const path = (f as File & { path?: string }).path || f.name;
-      if (!input.attachedFiles.some((x) => x.path === path))
-        input.addAttachedFile({ path, name: f.name, size: f.size });
-    }
+  /** 视图拖放转发 — T2 WebView 默认接管 dragDrop，网页层收不到 HTML5 drop
+   * 事件，本方法自旧 Composer 迁来但从未在真机触发；纸壳不接（要做须走
+   * Tauri onDragDropEvent 原生通道，另立任务）。保留给潜在消费方。 */
+  handleFileDrop(_e: DragEvent): void {
+    // no-op（见注释）
   }
 
   removeAttachedFile(idx: number): void {

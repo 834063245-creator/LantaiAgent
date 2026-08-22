@@ -477,6 +477,29 @@ export function PaperPanel() {
 
   /* ── 输入条：真相走 input-store，提交走 core.sendMessage（agent 层零改动）── */
   const [inputText, setInputText] = useState('');
+  /* 待发附件（C10 拾遗）：订阅 input-store.attachedFiles——拾遗按钮拾取、
+   * 发送时随来文入卷，可逐个移除。 */
+  const [attachedFiles, setAttachedFiles] = useState<Array<{ path: string; name: string; size: number }>>([]);
+  useEffect(() => {
+    if (!core) {
+      setAttachedFiles([]);
+      return;
+    }
+    const input = getChatStore(core.panelId).input;
+    setAttachedFiles(input.getState().attachedFiles);
+    const unsub = input.subscribe((s) => setAttachedFiles(s.attachedFiles));
+    return () => unsub();
+  }, [core]);
+  const onAttach = useCallback(() => {
+    void core?.openFilePicker();
+  }, [core]);
+  const onRemoveAttached = useCallback(
+    (idx: number) => {
+      if (!core) return;
+      getChatStore(core.panelId).input.getState().removeAttachedFile(idx);
+    },
+    [core],
+  );
   /* 冷启动死路防护：无活跃会话时 chat-core 的 addNotice 会被
    * _resolveSessionTarget 丢弃（返回 null）——纸面零反馈 = 假阴性。
    * 发送前置检查：无会话 → 纸面本地提示块（不入消息 store，UI 层直示）。 */
@@ -725,6 +748,30 @@ export function PaperPanel() {
       <MinimapView content={minimap.content} viewport={minimap.viewport} />
 
       <div className="pp-composer">
+        <button
+          type="button"
+          className="pp-attach"
+          title="拾遗——附文件入卷"
+          aria-label="拾遗：附加文件"
+          onClick={onAttach}
+        >
+          夹
+        </button>
+        {attachedFiles.length > 0 && (
+          <div className="pp-attach-list">
+            {attachedFiles.map((f, i) => (
+              <button
+                key={f.path}
+                type="button"
+                className="pp-attach-chip"
+                title={`${f.path}（点击移除）`}
+                onClick={() => onRemoveAttached(i)}
+              >
+                {f.name} ✕
+              </button>
+            ))}
+          </div>
+        )}
         <input
           type="text"
           value={inputText}

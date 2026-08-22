@@ -66,6 +66,10 @@ export const OUT_MAX_H = 160;
 
 /* ── per-kind chrome 常量（逐字镜像 PaperPanel.css 的 padding/border/margin）── */
 const USER_TEXT_INSET = 20; // padding-left 18 + border-left 2
+/** 来文附件行（C10）：每行 mono 11px / 行高 16 + 上间距 8 + 弱规线 1。
+ *  逐字镜像 .pp-user-files / .pp-user-file 的 margin/line-height。 */
+const USER_FILE_LINE_H = 16;
+const USER_FILES_MARGIN_TOP = 9; // margin-top 8 + 规线 1
 const REASONING_TEXT_INSET = 20; // padding-left 18 + border-left 2（虚线）
 const TOOL_PAD_TOP = 10; // .pp-block.pp-tool padding-top（注线 ::before 不占高）
 const OUT_CHROME_H = 13; // .pp-out margin-top 6 + padding-top 6 + border-top 1
@@ -136,11 +140,18 @@ function cappedH(text: string, width: number, font: string, lineHeight: number, 
 export function measureBlockHeight(b: SourcedBlock): number {
   const p = b.payload as PayloadLike;
   switch (b.kind) {
-    case 'user':
+    case 'user': {
       // 圈点（C7）：测高用原文不去【】括号——括号被渲染消费但宽度预算
-      // 保守覆盖了圈 padding/border（每关键词净差约一个全角字符，方向是
+      // 保守覆盖了圈的 padding/border（每关键词净差约一个全角字符，方向是
       // 测多不测少 → 只会偏高不会截字），零镜像成本。
-      return p.text ? measureTextHeight(p.text, b.w - USER_TEXT_INSET, PAPER_USER_FONT, PAPER_USER_LINE_HEIGHT) : 0;
+      const textH = p.text
+        ? measureTextHeight(p.text, b.w - USER_TEXT_INSET, PAPER_USER_FONT, PAPER_USER_LINE_HEIGHT)
+        : 0;
+      // 附件行（C10）：每文件一行 mono 小字，高度线性叠加
+      const files = (b.payload as { files?: Array<{ path: string; name: string }> }).files;
+      const filesH = files?.length ? USER_FILES_MARGIN_TOP + files.length * USER_FILE_LINE_H : 0;
+      return textH + filesH;
+    }
     case 'markdown':
       return p.text ? measureTextHeight(p.text, b.w, PAPER_BODY_FONT, PAPER_BODY_LINE_HEIGHT) : 0;
     case 'reasoning':

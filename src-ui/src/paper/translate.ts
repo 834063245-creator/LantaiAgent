@@ -70,9 +70,11 @@ export function translateMessages(messages: readonly ChatMessage[], opts?: Trans
 }
 
 function translateUser(msg: UserMessage): SourcedBlock {
-  const files = msg.files?.length ? '\n\n' + msg.files.map((f) => `📎 ${f.name} (${f.path})`).join('\n') : '';
+  // 附件不再拼进入文正文（旧病灶：等宽路径挤进楷书朱砂批注体，字体语义全乱）。
+  // 结构化进 payload.files，渲染层独立小行（石青 mono）展示。
+  const files = msg.files?.length ? msg.files.map((f) => ({ path: f.path, name: f.name })) : undefined;
   return {
-    ...createBlock('user', { text: msg.text + files }, { messageId: msg._id, part: null }),
+    ...createBlock('user', { text: msg.text, ...(files ? { files } : {}) }, { messageId: msg._id, part: null }),
     id: `pb:${msg._id}`, // 用户消息 1:1，id 直接挂消息 id
     w: USER_BLOCK_WIDTH,
   };

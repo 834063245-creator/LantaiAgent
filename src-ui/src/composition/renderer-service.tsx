@@ -131,9 +131,11 @@ function TextBody({ block }: BlockRendererProps) {
 }
 
 /** 来文体：圈点解析（C7）——【词】→ 朱砂圈，其余字面。
- *  圈永不拆行由 .pp-circled 的 inline-block 保证（CSS 侧纪律）。 */
+ *  圈永不拆行由 .pp-circled 的 inline-block 保证（CSS 侧纪律）。
+ *  附件行（C10）：payload.files 独立渲染——石青 mono 小行，不混楷书正文。 */
 function UserBody({ block }: BlockRendererProps) {
   const text = (block.payload as { text: string }).text;
+  const files = (block.payload as { files?: Array<{ path: string; name: string }> }).files;
   const segs = parseCircledSegments(text);
   return (
     <div className="pp-body">
@@ -147,6 +149,15 @@ function UserBody({ block }: BlockRendererProps) {
           // biome-ignore lint/suspicious/noArrayIndexKey: 同上
           <Fragment key={i}>{s.text}</Fragment>
         ),
+      )}
+      {files && files.length > 0 && (
+        <div className="pp-user-files">
+          {files.map((f) => (
+            <div key={f.path} className="pp-user-file" title={f.path}>
+              附 · {f.name}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
