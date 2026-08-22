@@ -10,7 +10,7 @@
 |---|---|---|---|
 | 第一批 | 误导性死代码大扫除 | P0 | ✅ 已完成（commit 0c65b81，2026-08-12） |
 | 第二批 | 契约与文档诚实化 | P0 | ✅ 已完成（commit d473d3d，2026-08-12；执行记录见下方阻塞项小节） |
-| 第三批 | 整洁度（文件拆分/收敛） | P2 | ⏳ 进行中（13/12/11a 已完成；11b 中断待重做；11c/14 未动；执行记录见下方阻塞项小节） |
+| 第三批 | 整洁度（文件拆分/收敛） | P2 | ✅ 收官（2026-08-22：13/12/11a/11b/11c/14 全部完成——11c 由第 4 棒自主段五批落账，见下方执行记录） |
 
 执行顺序：批 1 → 批 2 → 批 3。批 1+2 完成后，代码库对 Agent 的"误导面"基本清零。
 
@@ -44,10 +44,10 @@
 
 | # | 任务 | 动作 | 状态 |
 |---|---|---|---|
-| 11 | 文件级拆分（纯搬移，不重构逻辑） | `src-tauri/src/utils.rs`（~2000 行/79 fn/8+ 关注点）按 bg_jobs / build_lock / ipc_guard / path_resolve 拆模块；`engine/src/tools/handlers.rs`（~2400 行）按工具域拆文件；`src-ui/src/agent/agent.ts`（2963 行）按流式循环/上下文压缩/子 Agent 拆类 | **11a ✅；11b ✅（重做完成）；11c ⏸️ 搁置（用户决定，见执行记录）** |
+| 11 | 文件级拆分（纯搬移，不重构逻辑） | `src-tauri/src/utils.rs`（~2000 行/79 fn/8+ 关注点）按 bg_jobs / build_lock / ipc_guard / path_resolve 拆模块；`engine/src/tools/handlers.rs`（~2400 行）按工具域拆文件；`src-ui/src/agent/agent.ts`（2963 行）按流式循环/上下文压缩/子 Agent 拆类 | **11a ✅；11b ✅（重做完成）；11c ✅（2026-08-22 五批落账，见执行记录）** |
 | 12 | 两套 markdown 渲染收敛 | 统一 react-markdown 新路径，删除 marked+DOMPurify 旧路径（src-ui/src/ui/chat-utils.ts:360、file-viewer.ts:1240） | ✅ 已完成（见阻塞项执行记录） |
 | 13 | `src-ui/src/ui/graph-fold.ts` 类型分叉 | 改为 import `graph-types.ts` 的 GraphNode/EdgeData/CommunityData，删除文件内手写类型 | ✅ 已完成 |
-| 14 | `any` 渐进清理（211 处） | 先清密集区：`workspace.ts`（graphData）、`ui/lsp-client.ts`、`ui/chat-session.ts`、`graph-scene-lifecycle.ts`；`noExplicitAny` 从 warn 提为 error 放在清理完成之后 | ⬜ 待执行 |
+| 14 | `any` 渐进清理（211 处） | 先清密集区：`workspace.ts`（graphData）、`ui/lsp-client.ts`、`ui/chat-session.ts`、`graph-scene-lifecycle.ts`；`noExplicitAny` 从 warn 提为 error 放在清理完成之后 | ✅ 已收官（非 agent 区 2026-08-13 + agent 区 2026-08-22 随 11c 第五批） |
 
 ---
 
@@ -85,6 +85,14 @@
   - 验证：tsc ✓、vitest 78 passed + 1 skipped ✓、biome 无新增 error（存量 any/a11y warn 归任务 14）
 - **任务 11a（已完成）**：utils.rs 2001 行 → `utils/` 目录 + 主体 606 行 + `pub use` 转发（`crate::utils::*` 调用点零改动）。子模块：bg_jobs / build_lock / ipc_guard / path_resolve / graph_io。附带修正：LOG_GUARD 留主体；BUILD_LOCK_TESTS 移 build_lock.rs 并 `#[cfg(test)] pub(crate)`（跨 tests mod 共享串行锁，避免私有项/死代码告警）；`build_lock_released_on_remove_job` 测试移入 bg_jobs.rs tests（BgJob 私有字段跨模块不可访问）。验证：`cargo build -D warnings` ✓、cargo test 245+14 全绿 ✓。
 - **任务 11b（已完成，2026-08-13 重做）**：handlers.rs（2417 行）按工具域切成 9 文件 + mod.rs 转发（graph / analysis / preflight / search / overview / rename / audit / resolve / flows）。切分由子 Agent 按已验证行号区间机械执行（逐字搬移 + 首行/末行回读验证），use 块由主 Agent 按 `cargo build` 警告逐文件修剪。跨文件可见性：graph::strip_loc_suffix、resolve::LspCheck / lsp_has_real_reference → `pub(crate)`（audit/flows 引用）；flows 测试模块补 `handler_explore` 显式导入；lsp_manager.rs 测试内未使用的 `Write` 导入顺手清理。验证：`cargo build -D warnings` ✓、cargo test 629+27+1 全绿 ✓（commit 8b7e9cc）。附 Windows/PowerShell 切片经验（不再重做，仅存档）：Set-Content/`>` 会写坏 UTF-8（用 .NET WriteAllText + UTF8Encoding）；负索引数组切片回绕（用 ArrayList 并验证首行）；`git show` 经 PS 重定向行数失真（用 checkout 恢复 + 字节数对比）。
-- **任务 14（部分完成，2026-08-13）**：子 Agent 完成非 agent 区 any 清零（36 文件：workspace 15 / lsp-client 13 / chat-session 11 / graph-scene-lifecycle 10 / DataflowPanel 15 / main 7 / bridge 3 及 19 个 graph/react/provider 文件），`biome.json` 的 noExplicitAny 已翻 `error`（tests override 保持 off）；主 Agent 修复其遗留的 20 处 tsc 错误（含补删 file-viewer.ts 残留旧文件——上批 git mv 只进了 create，delete 从未入 commit）。验证：tsc 零错误 ✓、vitest 927+1 全绿 ✓（commit 0feb956）。**未完成**：`src/agent/` 52 处 any（11c 范围）；`biome lint src` 剩余 259 errors 为存量基线（a11y 系 ~100 / dangerouslySetInnerHtml 65 / noArrayIndexKey 12 / noConstantCondition 8 等），其中 agent 区 54 处 any 随 11c 清零，其余 a11y 系为新工程不在本批范围。
-- **任务 11c（⏸️ 搁置，2026-08-13 用户决定）**：agent.ts（2963 行）拆分未执行。执行受平台缺陷阻碍（详见 docs/agents/platform-bugs-2026-08-13.md）；用户决定先修 14 遗留、11c 搁置待后续。
+- **任务 14（部分完成，2026-08-13）**：子 Agent 完成非 agent 区 any 清零（36 文件：workspace 15 / lsp-client 13 / chat-session 11 / graph-scene-lifecycle 10 / DataflowPanel 15 / main 7 / bridge 3 及 19 个 graph/react/provider 文件），`biome.json` 的 noExplicitAny 已翻 `error`（tests override 保持 off）；主 Agent 修复其遗留的 20 处 tsc 错误（含补删 file-viewer.ts 残留旧文件——上批 git mv 只进了 create，delete 从未入 commit）。验证：tsc 零错误 ✓、vitest 927+1 全绿 ✓（commit 0feb956）。**未完成 → 已于 2026-08-22 收尾**：`src/agent/` 剩余 any 随 11c 第五批清零（见下方 11c/任务 14 收尾记录）；`biome lint src` 其余存量（a11y 系等）为新工程不在本批范围。
+- **任务 11c（✅ 已完成，2026-08-22）**：agent.ts（3295 行）按域拆分五批落账（用户已在 2026-08-21 点头方向）：
+  1. loop-helpers.ts + compaction-summarize.ts（风暴断路器/机械摘要纯函数层）
+  2. goal-loop.ts（Goal 循环域，宿主接口 GoalLoopHost）
+  3. subagent-spawn.ts（子 Agent 派生域，SubAgentSpawnHost；spawnSubAgent 留薄委托 + re-export）
+  4. agent-compaction.ts（上下文压缩域，CompactionHost；E5 持久化 + 折叠状态机 + 摘要管线）
+  5. agent 区 any 清零（见任务 14）
+  机制：每域声明最小宿主接口，Agent 类经受控转换（as unknown as HostX）传入；session 双写入口与 session 字段留在 agent.ts（phase-5 AST 门禁语义不变）；convergence 零漂移。agent.ts 终态 1758 行（-47%）。
+  注：流式循环域（runLoop/stream/streamOnce/_stormNudge）仍在 agent.ts——它是唯一与全字段交织的方法，拆它需要全量宿主接口，收益/风险比不划算，留待后续需要时再切。
+- **任务 14（✅ 收尾，2026-08-22）**：agent 区 any 清零随 11c 第五批完成：hooks 图数据×12 → GraphDataShape 宽松形状；catch(e:any)×11 → errText/结构化取值；zod includes 断言、merge 测试旁路、taskProxy 同步类型化。EngineJson 单处保留 biome-ignore 豁免（引擎别名宽容读取，刻意决策）。agent 区代码 noExplicitAny 报错清零（全目录扫描确认；cordis vendored 不在范围）。
 - **第三批验收现状（2026-08-13）**：13/12/11a/11b 完成 ✅；14 部分完成 ⏳；11c 搁置 ⏸️。总验收（cargo 双绿 + vitest + tsc + biome 全绿）未达成，卡点 = 11c 的 agent 区 any + biome 存量基线（a11y 系）。执行期间发现的平台缺陷另行登记：docs/agents/platform-bugs-2026-08-13.md。

@@ -32,10 +32,10 @@ S0/S1/S2/S4 全竣工。S3 = 把 settings 面板域迁成第一方插件（面�
 | 项 | 成本 | 说明 |
 |---|---|---|
 | agent-plugin **P1** 工具面文档生成 | ~~半天~~ ✅ 已毕（2026-08-22）：gen-tool-contract-md.cjs + model-tool-contract.md 落地；C2 判据如实偏差（ci.yml 冻结 → vitest 守护 + check:tool-contract）；AGENTS/CLAUDE 手写清单段已指向生成物 |
-| arch-action-plan **14** any 渐进清理 | 渐进 | 211 处，先清 workspace.ts / lsp-client / chat-session 密集区 → [`arch-action-plan.md`](arch-action-plan.md) |
+| arch-action-plan **14** any 渐进清理 | ~~渐进~~ ✅ 已收官（2026-08-22）：非 agent 区 2026-08-13 清完；agent 区随 11c 第五批清零（GraphDataShape 宽松形状 + errText 收口；EngineJson 单处豁免为刻意决策）→ [`arch-action-plan.md`](arch-action-plan.md) |
 | rpc 返回值 Value 化 | L（独立项目） | 根治「双重编码」bug 家族；typedRpc 前置已就位 → [`landmine-map.md`](../landmine-map.md) 根治级段 |
 | agent-plugin **P2** code_execution 执行原语 | 2-4 天 | 产品决策级；**P3** cordis 收口 1-2 天（前置已满足） |
-| arch-action-plan **11c** agent.ts 拆分 | 1 天 | 用户此前搁置，恢复需用户点头 |
+| arch-action-plan **11c** agent.ts 拆分 | ~~1 天~~ ✅ 已毕（2026-08-22）：五批落账，3295 → 1758 行（-47%），四域出仓（loop-helpers / compaction-summarize / goal-loop / subagent-spawn / agent-compaction），宿主接口模式，convergence 零漂移；流式循环域留在 agent.ts（全字段交织，收益/风险比不划算） |
 | browser CDP 功能面扩展 | 中 | 现状 4/10 功能覆盖（缺导航/正文提取/表单全动作等）→ [`browser-cdp-suite-review-round2.md`](browser-cdp-suite-review-round2.md) |
 
 ## 等外部条件（挂着不动）
