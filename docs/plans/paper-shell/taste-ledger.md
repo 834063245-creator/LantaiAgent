@@ -51,6 +51,8 @@
 
 - 2026-08-22 · **C9+C11 联动落地：牒卡 + 单源模式入口** · 用户实测后拍板「暗卡确实不行、权限卡得从下方递出」（位置现状已对，病灶在皮）+ 指出旧模型/模式入口逻辑「明知有问题当时没管，不宜复用」→ 尸检旧链路发现三处实病：切换不镜像 Rust（后台任务半切）/双源单向陷阱（手动切换不落盘，重启回默认）/per-panel 作用域与全局 Rust 镜像错位 · 选：mode-store 单源真相（app 级单例，切换=写 store+镜像 Rust+落盘三件事一体）+ 书眉 ModeIndicator（模型菜单+模式轮转+yolo 落印确认）+ 牒卡换皮（请示/问询双 tag，落印=纸面唯一实色按钮）；弃：复用旧 ModelSwitcher/per-panel 模式字段 · 术语定案：常询/半放/全放、请示·PERMIT/问询·ASK、落印准此/本卷均准/驳回 · 真机 CDP 闭环验证含重启水合（auto 落盘→重启直接半放实锤）· 经验：debug exe 的 custom protocol 资源是编译期嵌入——裸跑 target/debug/lantai.exe 不读磁盘 dist，前端变更后必须 cargo build 重编 exe（tauri.localhost 不接 1420 devUrl，此前误诊两轮）
 
+- 2026-08-22 · **C10 拾遗落地：附件链田病灶根治** · 用户预警「C10 工程量最小但是之前有 bug 的功能」→ 尸检实揍四病灶：拖放 HTML5 drop 在 T2 WebView 从未触发（原生接管，API 方向选错）/浏览器回退 f.name 冒充 path（空头支票）/size 恒 0/📎行拼楷书正文 · 选：夹按钮（拾遗）+ Tauri dialog 真路径 + translate 结构化 + 石青 mono 附件行；弃：接旧拖放（接了也是假功能，要真做须 Tauri onDragDropEvent 原生通道另立） · 经验：无 key 验证机发不出真消息（keyguard 冷启动防护正确拦下），端到端发送链验证待用户机器；vitest include 补 tsx 后缀（首个 tsx 测试落地）
+
 ### 待办（从判定中涌出）
 
 - ~~paper 态是否降级为"从简"路线~~ **已拍板（2026-08-22 用户）：不降级，V1 第三轮再攻质感**——V2 推迟一轮，质感根源查清并拍板后再录契约
