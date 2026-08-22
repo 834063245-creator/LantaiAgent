@@ -62,7 +62,8 @@
   -webkit-app-region: drag;
 }
 .pp-topbar button,
-.pp-topbar .wc-btns {
+.pp-topbar .wc-btns,
+.pp-topbar .mi-root {
   -webkit-app-region: no-drag;
 }
 .pp-topbar .pp-title {
