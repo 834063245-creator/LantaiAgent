@@ -53,6 +53,8 @@
 
 - 2026-08-22 · **C10 拾遗落地：附件链田病灶根治** · 用户预警「C10 工程量最小但是之前有 bug 的功能」→ 尸检实揍四病灶：拖放 HTML5 drop 在 T2 WebView 从未触发（原生接管，API 方向选错）/浏览器回退 f.name 冒充 path（空头支票）/size 恒 0/📎行拼楷书正文 · 选：夹按钮（拾遗）+ Tauri dialog 真路径 + translate 结构化 + 石青 mono 附件行；弃：接旧拖放（接了也是假功能，要真做须 Tauri onDragDropEvent 原生通道另立） · 经验：无 key 验证机发不出真消息（keyguard 冷启动防护正确拦下），端到端发送链验证待用户机器；vitest include 补 tsx 后缀（首个 tsx 测试落地）
 
+- 2026-08-22 · **C12 状态字落地：pushStatus 承接面接回** · 用户判「应该没啥大问题」→ 实测确实最顺：承接面（shell-store statusText/statusLog）与样式语言（书眉 HUD mono 小字）都是现成的，纯接线 · StatusLine：statusText 常显 + analyzing 石青呼吸徽标优先 + 点击展开日志环；真机 CDP 验到 cold-start 推的「已恢复上次案卷」直显（真实链路端到端） · **C 段至此 C1-C12 全绿，仅余 C8（多卷切换）单独立项 + C14（dock-store 收缩）挂其后**
+
 ### 待办（从判定中涌出）
 
 - ~~paper 态是否降级为"从简"路线~~ **已拍板（2026-08-22 用户）：不降级，V1 第三轮再攻质感**——V2 推迟一轮，质感根源查清并拍板后再录契约

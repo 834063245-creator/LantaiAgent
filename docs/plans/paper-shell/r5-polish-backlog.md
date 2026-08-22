@@ -25,7 +25,7 @@
 | C9 | **V5 拆除交互欠账：权限/ask 卡纸面化**——**已毕 2026-08-22（牒卡）**：位置不变（输入条上方递出），暗卡皮退役→纸面牒卡：权限卡=请示·PERMIT（朱砂 tag/subject 抄录图版/落印准此=纸面唯一实色按钮/本卷均准/驳回石墨）、问卡=问询·ASK（石青系）、递出动画 160ms；逻辑层零改动；真机 DOM 断言过 | ✅ |
 | C10 | **V5 拆除交互欠账：附件入口**——**已毕 2026-08-22（拾遗）**：旧链四病灶根治（拖放 HTML5 drop 在 T2 WebView 从未触发/浏览器回退 f.name 冒充 path/size 恒 0 伪造/📎行拼楷书正文）；composer 夹按钮走 Tauri dialog 真路径；translate 结构化 payload.files；来文附件行（石青 mono「附 · name」+悬停真路径）；拖放明确 no-op（要做须走 Tauri onDragDropEvent 原生通道，另立任务）；守护 6 用例 + 真机 CDP（按钮/chip/keyguard）| ✅ |
 | C11 | **V5 拆除交互欠账：模型/权限模式切换入口**——**已毕 2026-08-22（重设计）**：旧链路三病灶（切换不镜像 Rust/双源单向陷阱/per-panel 作用域错位）根治——mode-store 单源真相（切换=写 store+镜像 Rust+落盘；boot 水合）；书眉 ModeIndicator（模型纸面菜单按 provider 分组+恒 swap 热切换；模式常询/半放/全放三档轮转，yolo 须朱砂确认条）；panel-store permissionMode 退役。真机 CDP 闭环验证（含重启水合）；切回 ask 模式即可高频见 C9 新卡 | ✅ |
-| C12 | **V5 拆除交互欠账：状态反馈面**（pushStatus 的 statusText/statusLog 无 UI 消费——图谱预热/分析进度对用户不可见；候选：书眉行或纸面贴黄块） | ⬜ |
+| C12 | **V5 拆除交互欠账：状态反馈面**——**已毕 2026-08-22（书眉状态字）**：StatusLine 接回 pushStatus 承接面（statusText 常显 + analyzing 石青呼吸徽标 + 点击展开 statusLog 环 15 条）；真机 CDP 验真实链路（cold-start 推的「已恢复上次案卷」直显）| ✅ |
 | C13 | **V5 拆除欠账：scene/ui 休眠层 sweep**——**已毕 2026-08-22 两切片**：切片 A 删 ui/ 死件九文件（agent-visualizer/chat-utils/context-menu/file-translator+css/file-viewer/markdown-file-preview/message-height/pretext-cache，可达性闭包实测零活引用）+ 死测试三件；切片 B 删 scene/ Three.js 渲染面 22 文件（活代码全 type-only，bundle 实测无 three），scene/ 收窄为 graph-types.ts 类型模块 + README；StarGraph 降级兼容形状 interface；ui/graph.ts shim 重指向类型模块（冻结文件 import 面不动）；eventbus-zero 终态守护更新为新事实。合计 -12,700 行 | ✅ |
 | C14 | **V5 拆除欠账：dock-store 开合表收缩**（open 初始表仍是旧六面板 + paper；随 C8-C11 面收敛重定义） | ⬜ |
 
