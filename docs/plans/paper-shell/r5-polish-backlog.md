@@ -20,7 +20,7 @@
 | C4 | 应用图标 PNG/ICO 套件再生——**已毕 2026-08-22**：栅格化以 headless Edge 截图代偿（免引 resvg/sharp），cargo tauri icon 全套落地，android/ios 目录移除；128px vision 复核通过 | ✅ |
 | C5 | --obs-* 别名层退役：逐文件迁移到兰台 token 名后整体删除——**已毕 2026-08-22 自主段**：余量十文件全迁 + tokens.css 别名块删 + 收容块（--snap/--glide/--glass/--glass-hi/--line-soft）+ tokens.obs.css 删；死引用按定案处理（blue-hi→indigo、warn-dim/text-1 删）；休眠层引用随 C13 sweep 一并消失 | ✅ |
 | C6 | 主聊天输入条 placeholder 文案打磨——**已毕 2026-08-22**：「向 Agent 拟文…」去冗余映射为「拟文…」（§5：发送→拟文一词足矣）；真机截图确认生效 | ✅ |
-| C7 | 来文圈点关键词（.circled 朱砂圈）：——**已毕 2026-08-22**：定案「【词】书写语法 + 渲染层解析」零数据契约方案（用户拍板）。落地：marks.ts 解析器（≤8 字不含换行才圈，超长/未闭合/跨行/空按字面）+ inline-block 圈永不拆行 + measure 原文测高零镜像；10 单测全绿。**视觉真机待用户验证**（无 key 消息发不出，手动测一块来文看圈即可）；原型 .circled 只在来文生效，AI 回文中的【】不受影响 | 🔶 待人测 |
+| C7 | 来文圈点关键词（.circled 朱砂圈）：——**已毕 2026-08-22**：定案「【词】书写语法 + 渲染层解析」零数据契约方案（用户拍板）。落地：marks.ts 解析器（≤8 字不含换行才圈，超长/未闭合/跨行/空按字面）+ inline-block 圈永不拆行 + measure 原文测高零镜像；10 单测全绿。**真机用户验证通过（2026-08-22，填 key 实发来文实测）**；原型 .circled 只在来文生效，AI 回文中的【】不受影响 | ✅ |
 | C8 | **V5 拆除交互欠账：多卷切换 UI**（旧会话 tab 条随 ChatBeacon 退役；chat-core 的 switchSession/closeSession/createNewSession 面尚无纸壳入口——案卷首页可续开，卷内切换待设计） | ⬜ |
 | C9 | **V5 拆除交互欠账：权限/ask 卡纸面化**（PromptShelfHost 仍是旧观测台暗卡样式——纸面朱砂批红卡归本项；功能已接通） | ⬜ |
 | C10 | **V5 拆除交互欠账：附件入口**（旧 Composer 的文件选择/拖放接口在 chat-core.openFilePicker/handleFileDrop；纸壳 composer 未接） | ⬜ |
