@@ -62,19 +62,31 @@ export function panBy(v: Viewport, dx: number, dy: number): Viewport {
  * 视口内「最新块贴下缘」= 布局器保证最底块底边距锚点 line 处，
  * 壳层把锚点行对到屏幕 (视口宽/2, 视口高 - 输入条高 - 底距)。 */
 
-/** 流锚几何常量（世界单位 / 屏幕像素按需混用，走查弹不纠结） */
+/** 流锚几何常量（世界单位 / 屏幕像素按需混用，走查弹不纠结）。
+ *  B1 垂直节奏（2026-08-22 用户拍板）：基础块距 48（原型 .block margin-bottom），
+ *  来文前 72（用户轮次切分——头顶放宽才能把「用户发言」和前一轮 LLM 输出
+ *  分开）、来文后 8（asterism 自带 30px 尾距，机械间距只补零头）。 */
 export const ANCHOR = {
   /** 流锚窄带半宽（D-R2-4 消极决定 2：流锚独占窄带，对话流纵向轨道不横向蔓延） */
   bandHalfWidth: 400,
-  /** 块间垂直间距 */
-  blockGap: 18,
+  /** 块间垂直间距（B1：原型节奏 48） */
+  blockGap: 48,
+  /** 来文块上方额外间距（B1 用户拍板：用户轮次从头顶切分） */
+  userLeadGap: 24,
+  /** 来文块下方间距（B1：asterism 尾距 30 为主，机械间距零头） */
+  userTailGap: 8,
   /** 锚点行距屏幕底部的留白（输入条上方） */
   screenBottomMargin: 96,
 } as const;
 
-/** 流布局输出：给每个 flow 块算出世界坐标（x 居中窄带，y 自锚点向上累积）。 */
+/** 流布局输出：给每个 flow 块算出世界坐标（x 居中窄带，y 自锚点向上累积）。
+ *  B1 垂直节奏：间距看「上面那块是否来文」——
+ *    user 头顶（即下方是 user）：blockGap + userLeadGap（用户轮次切分，头顶宽）
+ *    user 尾部（即上方是 user）：userTailGap（asterism 已带 30px 视觉尾距，零头）
+ *    其余：blockGap（原型 48）。
+ *  自底向上遍历：游标减去的间距属于「上方那块」的头部空间。 */
 export function layoutFlow(
-  flowBlocks: Array<{ id: string; h: number; w?: number }>,
+  flowBlocks: Array<{ id: string; h: number; w?: number; kind?: string }>,
 ): Map<string, { x: number; y: number }> {
   const out = new Map<string, { x: number; y: number }>();
   // 从锚点 (0, 0) 向上：第一个（最旧）块在最上，最新的贴锚点。
@@ -82,13 +94,23 @@ export function layoutFlow(
   let cursor = 0;
   for (let i = flowBlocks.length - 1; i >= 0; i--) {
     const b = flowBlocks[i];
+    const upper = flowBlocks[i - 1]; // 上方（更旧）相邻块
     const w = b.w ?? 720;
     const x = -w / 2; // 窄带居中（原点在窄带中轴）
     const y = cursor - b.h; // 块顶 = 游标 - 高度
     out.set(b.id, { x, y });
-    cursor = y - ANCHOR.blockGap;
+    // b 头顶的间距：上方块是 user → 它的尾距规则；否则看 b 自己是不是 user（头部加宽）
+    const gap =
+      upper?.kind === 'user' ? ANCHOR.userTailGap : ANCHOR.blockGap + (b.kind === 'user' ? ANCHOR.userLeadGap : 0);
+    cursor = y - gap;
   }
   return out;
+}
+
+/** 相邻块间距查询（B1：虚拟化窗口/测高复用同一套节奏规则）。
+ *  返回块 b 与其上方（更旧）相邻块之间的总间距。 */
+export function gapAbove(b: { kind?: string }, upper: { kind?: string } | undefined): number {
+  return upper?.kind === 'user' ? ANCHOR.userTailGap : ANCHOR.blockGap + (b.kind === 'user' ? ANCHOR.userLeadGap : 0);
 }
 
 /** 原点十字方位感（D-R1-1：无限画布 + 方位感——原点标记）。 */

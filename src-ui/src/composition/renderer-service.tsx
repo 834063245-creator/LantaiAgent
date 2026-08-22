@@ -126,8 +126,27 @@ export function resolveRenderer(kind: BlockKind): BlockRendererContribution | un
 // 渲染器只补结构语义（diff 行着色 / 拟策条目化）。壳件（文类签/手柄/收回）留在
 // PaperPanel（结构件不进注册表）。
 
+/** 正文段落拆分（B1）：双换行分段，段间 10px（原型 .block.agent .body p 语义）。
+ *  只在正文（markdown）用——夹注/贴黄保持单段流。 */
+function splitParagraphs(text: string): string[] {
+  return text.split(/\n{2,}/).filter((s) => s.trim().length > 0);
+}
+
 function TextBody({ block }: BlockRendererProps) {
-  return <div className="pp-body">{(block.payload as { text: string }).text}</div>;
+  const text = (block.payload as { text: string }).text;
+  if (block.kind !== 'markdown') return <div className="pp-body">{text}</div>;
+  const paras = splitParagraphs(text);
+  if (paras.length <= 1) return <div className="pp-body">{text}</div>;
+  return (
+    <div className="pp-body">
+      {paras.map((p, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: 段落按位置渲染，静态内容无重排身份
+        <p key={i} className="pp-para">
+          {p}
+        </p>
+      ))}
+    </div>
+  );
 }
 
 /** 来文体：圈点解析（C7）——【词】→ 朱砂圈，其余字面。
@@ -159,6 +178,11 @@ function UserBody({ block }: BlockRendererProps) {
           ))}
         </div>
       )}
+      {/* asterism（B1）：来文收尾三星——古代卷子每卷末的花押句号。
+       * 视觉尾距 30px 在 .pp-user-asterism（margin-top），测量镜像 measure.ts。 */}
+      <span className="pp-user-asterism" aria-hidden="true">
+        ⁂
+      </span>
     </div>
   );
 }

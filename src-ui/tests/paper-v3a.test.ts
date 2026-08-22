@@ -18,7 +18,7 @@ vi.mock('@chenglou/pretext', () => ({
 }));
 
 import { createBlock, DEFAULT_BLOCK_WIDTH, resetBlockIdCounterForTests } from '../src/paper/block-model';
-import { panBy, viewForAnchor, zoomAt } from '../src/paper/canvas-math';
+import { layoutFlow, panBy, viewForAnchor, zoomAt } from '../src/paper/canvas-math';
 import { composerSubmitOnKey } from '../src/paper/ime';
 import {
   clearPaperMeasureCache,
@@ -100,13 +100,33 @@ describe('paper/measure', () => {
   });
 
   it('user/reasoning/notice/plan 四类分支各自计高（kinds 全谱）', () => {
-    // user/reasoning 走纯文本路径；notice 带贴黄 chrome 17；plan 带拟策 chrome 31+39
-    expect(measureBlockHeight(block('user', { text: 'hi' }))).toBe(36);
+    // user 纯文本 36 + asterism 44（B1：margin 30 + 字行 14）；reasoning 纯文本路径；
+    // notice 带贴黄 chrome 17；plan 带拟策 chrome 31+39
+    expect(measureBlockHeight(block('user', { text: 'hi' }))).toBe(36 + 44);
     expect(measureBlockHeight(block('reasoning', { text: 'think' }))).toBe(36);
     expect(measureBlockHeight(block('notice', { text: 'n', level: 'info' }))).toBe(17 + 36);
     expect(measureBlockHeight(block('plan', { planId: 'p', title: 't', content: 'c', status: 's' }))).toBe(
       31 + 39 + 36,
     );
+  });
+
+  it('B1 垂直节奏：块距 48；user 头顶 48+24、尾部 8（asterism 让位）；markdown 段距 10', () => {
+    // 三块栈（旧→新）：a(markdown) → u(user) → b(markdown)，自底向上累积。
+    // 几何：u 的头顶 = u 与上方 a 的间距；u 的尾距 = u 与下方 b 的间距。
+    const stack = [
+      { id: 'a', h: 100, kind: 'markdown' },
+      { id: 'u', h: 50, kind: 'user' },
+      { id: 'b', h: 100, kind: 'markdown' },
+    ];
+    const lay = layoutFlow(stack);
+    // 最新块 b 底边贴锚 y=0 → b 顶 -100
+    expect(lay.get('b')?.y).toBe(-100);
+    // u 尾距（u 底到 b 顶）：userTailGap 8 → u 顶 = -100 - 8 - 50 = -158
+    expect(lay.get('u')?.y).toBe(-100 - 8 - 50);
+    // u 头顶（u 顶到 a 底）：blockGap 48 + userLeadGap 24 = 72 → a 顶 = -158 - 72 - 100 = -330
+    expect(lay.get('a')?.y).toBe(-100 - 8 - 50 - 48 - 24 - 100);
+    // 双换行分段：两段各 36 + 段距 10
+    expect(measureBlockHeight(block('markdown', { text: 'p1\n\np2' }))).toBe(36 + 10 + 36);
   });
 
   it('PRE_MAX_H/OUT_MAX_H 截断路径：mock 返超高时封顶生效（滚动不占高）', () => {

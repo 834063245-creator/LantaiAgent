@@ -60,12 +60,17 @@ export const PAPER_OUT_LINE_HEIGHT = 11 * 1.5;
 export const PAPER_PLAN_ITEM_FONT = `13.5px ${SONG_STACK}`;
 export const PAPER_PLAN_ITEM_LINE_HEIGHT = 13.5 * 1.8;
 
+/** 正文段距（B1）：双换行分段后段间 10px（.pp-para margin-bottom，末段无）。 */
+export const PARAGRAPH_GAP = 10;
+
 /** 渲染端滚动上限（PaperPanel.css pre/输出 max-height——超限部分滚动不占高） */
 export const PRE_MAX_H = 260;
 export const OUT_MAX_H = 160;
 
 /* ── per-kind chrome 常量（逐字镜像 PaperPanel.css 的 padding/border/margin）── */
 const USER_TEXT_INSET = 20; // padding-left 18 + border-left 2
+/** asterism（B1）：来文尾三星高度 = margin-top 30 + 字行 14（line-height 1）。 */
+const USER_ASTERISM_H = 30 + 14;
 /** 来文附件行（C10）：每行 mono 11px / 行高 16 + 上间距 8 + 弱规线 1。
  *  逐字镜像 .pp-user-files / .pp-user-file 的 margin/line-height。 */
 const USER_FILE_LINE_H = 16;
@@ -150,10 +155,21 @@ export function measureBlockHeight(b: SourcedBlock): number {
       // 附件行（C10）：每文件一行 mono 小字，高度线性叠加
       const files = (b.payload as { files?: Array<{ path: string; name: string }> }).files;
       const filesH = files?.length ? USER_FILES_MARGIN_TOP + files.length * USER_FILE_LINE_H : 0;
-      return textH + filesH;
+      // asterism（B1）：来文恒有尾三星，高度恒加
+      return textH + filesH + USER_ASTERISM_H;
     }
-    case 'markdown':
-      return p.text ? measureTextHeight(p.text, b.w, PAPER_BODY_FONT, PAPER_BODY_LINE_HEIGHT) : 0;
+    case 'markdown': {
+      // B1 段距：双换行分段测高（段间 10px，末段无；单段不进分段路径）
+      if (!p.text) return 0;
+      const paras = p.text.split(/\n{2,}/).filter((s) => s.trim().length > 0);
+      if (paras.length <= 1) return measureTextHeight(p.text, b.w, PAPER_BODY_FONT, PAPER_BODY_LINE_HEIGHT);
+      return (
+        paras.reduce(
+          (sum, para) => sum + measureTextHeight(para, b.w, PAPER_BODY_FONT, PAPER_BODY_LINE_HEIGHT) + PARAGRAPH_GAP,
+          0,
+        ) - PARAGRAPH_GAP
+      );
+    }
     case 'reasoning':
       return p.text
         ? measureTextHeight(p.text, b.w - REASONING_TEXT_INSET, PAPER_REASONING_FONT, PAPER_REASONING_LINE_HEIGHT)

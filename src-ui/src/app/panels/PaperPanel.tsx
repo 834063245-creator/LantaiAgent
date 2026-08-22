@@ -259,7 +259,8 @@ export function PaperPanel() {
    * 留占位符（ghost）——设计文档 §2.3「原位置留占位符」+ D-R2-2 的可验证基础。
    * V3a：实测反馈环已拆——测量是唯一真相（chrome 常量镜像 CSS，改样式两处同步）。 */
   const stack = useMemo(
-    () => blocks.map((b) => ({ id: b.id, h: b.state === 'flow' ? measureBlockHeight(b) : GHOST_H, w: b.w })),
+    () =>
+      blocks.map((b) => ({ id: b.id, h: b.state === 'flow' ? measureBlockHeight(b) : GHOST_H, w: b.w, kind: b.kind })),
     [blocks],
   );
   const layout = useMemo(() => layoutFlow(stack), [stack]);

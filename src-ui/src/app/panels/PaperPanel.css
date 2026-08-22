@@ -272,6 +272,19 @@
   color: var(--seal-deep);
 }
 
+/* asterism（B1）：来文收尾三星——卷末花押句号。原型 lantai.html 同款
+ * （margin 30px 0 0 / 14px / 字距 .6em / ink-3）。测量镜像 measure.ts。 */
+.pp-user-asterism {
+  display: block;
+  text-align: center;
+  color: var(--ink-3);
+  font-size: 14px;
+  line-height: 1;
+  letter-spacing: 0.6em;
+  margin: 30px 0 0;
+  user-select: none;
+}
+
 /* 圈点（C7）：来文【词】→ 朱砂椭圆圈。
    border-radius 50% 是圈点的字形本体（手绘批注手势），不违「圆角恒 0」——
    那条铁律管的是面板/卡片结构件，不管字形级注记。
@@ -283,6 +296,15 @@
   border: 1.5px solid var(--seal);
   border-radius: 50%;
   font-weight: 600;
+}
+
+/* 正文段落（B1）：双换行分段，段间 10px（原型 .block.agent .body p margin-bottom）。
+ *  测量镜像 measure.ts PARAGRAPH_GAP。 */
+.pp-para {
+  margin: 0 0 10px;
+}
+.pp-para:last-child {
+  margin-bottom: 0;
 }
 
 /* ── 正文（markdown）：宋体主角 ── */
