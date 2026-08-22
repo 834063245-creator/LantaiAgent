@@ -152,12 +152,14 @@ describe('S4-1a 子 Agent 继承：ctx composition 服务 child() 白名单', ()
     // child() 继承已在上一用例钉住；此处钉 spawnSubAgent 的派生路径本身
     // 走 this._ctx.child（子 Agent 组合面 = 父的 ctx 服务表——不经环境变量
     // 或全局 store，透传是显式的）。
-    const src = readFileSync(path.resolve(process.cwd(), 'src/agent/agent.ts'), 'utf8');
-    const spawnIdx = src.indexOf('async spawnSubAgent(');
+    // 11c 拆分：spawnSubAgent 原体迁 subagent-spawn.ts（agent.ts 留薄委托），
+    // 断言定位点随迁，钉住的不变量不变（this._ctx → .child() 调用链）。
+    const src = readFileSync(path.resolve(process.cwd(), 'src/agent/subagent-spawn.ts'), 'utf8');
+    const spawnIdx = src.indexOf('export async function spawnSubAgentImpl(');
     expect(spawnIdx).toBeGreaterThan(0);
-    // child() 调用在 spawnSubAgent 函数体内（isolation/所有权包装之后）
-    const window = src.slice(spawnIdx, spawnIdx + 12000);
-    const childIdx = window.indexOf('this._ctx');
+    // child() 调用在 spawnSubAgentImpl 函数体内（isolation/所有权包装之后）
+    const window = src.slice(spawnIdx, spawnIdx + 14000);
+    const childIdx = window.indexOf('ag._ctx');
     expect(childIdx).toBeGreaterThan(0);
     expect(window.slice(childIdx, childIdx + 600)).toContain('.child(');
   });
