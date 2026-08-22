@@ -237,12 +237,5 @@ describe('#10 scheduleAutoSave per-panel isolation', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════
-// #15 — computeCostStr removed (dead code cleanup)
-// ═══════════════════════════════════════════════════════════════════
-
-describe('#15 computeCostStr removed', () => {
-  it('is no longer exported from chat-utils', async () => {
-    const chatUtils = await import('../src/ui/chat-utils');
-    expect((chatUtils as any).computeCostStr).toBeUndefined();
-  });
-});
+// #15 — computeCostStr removed（dead code cleanup）：chat-utils 已随 C13 休眠层
+// sweep 整体退役，本负向测试随之失去对象，删除（2026-08-22）。

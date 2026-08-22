@@ -3,7 +3,8 @@
 
 // 工具收敛回归测试 — 模型调用领域工具（fs/shell/search/...）后，
 // UI 流式渲染（diff 视图 / bash 代码块 / 写入预览 / 替换语义）必须继续工作。
-// 覆盖 tool-semantics / formatToolResult / extractWritePreview / part-mutator。
+// 覆盖 tool-semantics / extractWritePreview / part-mutator。
+// （formatToolResult 段随 C13 休眠层 sweep 删除——chat-utils 已退役）
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -78,85 +79,6 @@ describe('displayToolName — 领域调用显示名', () => {
     expect(displayToolName('trace_impact', '{}')).toBe('trace_impact');
     expect(displayToolName('fs', '{}')).toBe('fs');
     expect(displayToolName('glob', undefined)).toBe('glob');
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════════
-// formatToolResult — 领域工具结果的特殊渲染
-// ═══════════════════════════════════════════════════════════════════
-
-describe('formatToolResult — 领域工具结果特殊渲染', () => {
-  it('fs(write) 走 diff 视图（含 filePath 头部）', async () => {
-    const { formatToolResult } = await import('../src/ui/chat-utils');
-    // write 结果无 old/new 参数 — 走兜底：显示 filePath 头部 + 代码块（body 需过短文本分支）
-    const args = JSON.stringify({ action: 'write', filePath: '/tmp/a.ts', content: 'x\n'.repeat(30) });
-    const r = formatToolResult('fs', 'file saved\n' + 'log line\n'.repeat(10), false, args);
-    const html = r.kind === 'html' ? r.html : '';
-    expect(html).toContain('diff-header');
-    expect(html).toContain('/tmp/a.ts');
-  });
-
-  it('fs(edit) 带 old/new 参数走行级 diff', async () => {
-    const { formatToolResult } = await import('../src/ui/chat-utils');
-    const body = 'file edited\nsecond line to pass the short body check\n';
-    const args = JSON.stringify({
-      action: 'edit',
-      filePath: '/tmp/a.ts',
-      oldString: 'a\nb',
-      newString: 'a\nX',
-    });
-    const r = formatToolResult('fs', body, false, args);
-    const html = r.kind === 'html' ? r.html : '';
-    expect(html).toContain('diff-lines');
-    expect(html).toContain('diff-added');
-    expect(html).toContain('diff-removed');
-    expect(html).toContain('/tmp/a.ts');
-  });
-
-  it('shell(run) 走 bash 代码块', async () => {
-    const { formatToolResult } = await import('../src/ui/chat-utils');
-    const r = formatToolResult('shell', 'npm test\n\n PASS tests/unit\n', false, '{"action":"run"}');
-    const html = r.kind === 'html' ? r.html : '';
-    expect(html).toContain('language-bash');
-  });
-
-  it('search(content) 走代码块（非 markdown 误渲染）', async () => {
-    const { formatToolResult } = await import('../src/ui/chat-utils');
-    const r = formatToolResult(
-      'search',
-      'foo.ts:12: const x = 1\nbar.ts:34: const x = 2\n',
-      false,
-      '{"action":"content"}',
-    );
-    const html = r.kind === 'html' ? r.html : '';
-    expect(html).toContain('<pre><code>');
-  });
-
-  it('fs(glob) JSON 输出走紧凑列表（glob 分支位于 JSON 美化之前）', async () => {
-    const { formatToolResult } = await import('../src/ui/chat-utils');
-    const r = formatToolResult(
-      'fs',
-      JSON.stringify({ count: 1, results: [{ path: 'a.ts' }] }),
-      false,
-      '{"action":"glob"}',
-    );
-    const html = r.kind === 'html' ? r.html : '';
-    expect(html).toContain('glob-summary');
-    expect(html).toContain('a.ts');
-    expect(html).toContain('1 个文件');
-  });
-
-  it('旧工具名行为不回归', async () => {
-    const { formatToolResult } = await import('../src/ui/chat-utils');
-    const shellR = formatToolResult('run_shell', 'out\n', false);
-    expect(shellR.kind === 'html' ? shellR.html : '').toContain('language-bash');
-    const editR = formatToolResult(
-      'edit_file',
-      'body\n',
-      false,
-      JSON.stringify({ file_path: '/a.ts', oldString: 'a', newString: 'b' }),
-    );
-    expect(editR.kind === 'html' ? editR.html : '').toContain('diff-lines');
   });
 });
 
