@@ -45,6 +45,7 @@ import { getChatStore, msgStoreForActive } from '../../ui/chat-store';
 import { useCoreStore } from '../chat/core-instance';
 import { WinControls } from '../WinControls';
 import { ModeIndicator } from './ModeIndicator';
+import { StatusLine } from './StatusLine';
 import './PaperPanel.css';
 
 /* ── 块高测量（V3a：走查弹的估算+实测反馈环已拆，真测量走
@@ -642,6 +643,7 @@ export function PaperPanel() {
         <span className="pp-zoom">
           {zoomLabel} · {blocks.length} 块 · 已钉 {pinnedRef.current.size}
         </span>
+        <StatusLine />
         <ModeIndicator />
         <button
           type="button"

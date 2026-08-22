@@ -63,7 +63,8 @@
 }
 .pp-topbar button,
 .pp-topbar .wc-btns,
-.pp-topbar .mi-root {
+.pp-topbar .mi-root,
+.pp-topbar .sl-root {
   -webkit-app-region: no-drag;
 }
 .pp-topbar .pp-title {

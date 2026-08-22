@@ -1,0 +1,91 @@
+/* ═══════════════════════════════════════════════════════════════
+   StatusLine — 书眉状态字（C12，2026-08-22）
+   语言：mono 小字 + 墨三级（与 .pp-zoom HUD 同语言）；
+   分析中 = 石青呼吸点（机器在干活——铁律：石青=机）。
+   ═══════════════════════════════════════════════════════════════ */
+
+.sl-root {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.sl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 320px;
+  padding: 5px 9px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  overflow: hidden;
+  transition: color var(--snap);
+}
+.sl-chip:hover {
+  color: var(--ink-1);
+}
+.sl-chip:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 1px;
+}
+
+.sl-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 分析中：石青呼吸点 + 石青文字 */
+.sl-chip--busy {
+  color: var(--indigo);
+}
+.sl-dot {
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--indigo) 30%, transparent);
+  transition: background 0.5s ease;
+}
+.sl-dot--on {
+  background: var(--indigo);
+}
+
+/* 状态记录（纸面小菜单，与模型菜单同语言） */
+.sl-log {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  width: 340px;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--paper);
+  border: var(--rule-soft);
+  border-top: 2px solid var(--ink-2);
+  box-shadow: 0 8px 28px rgba(38, 34, 28, 0.16);
+  padding: 6px 0;
+}
+.sl-log-line {
+  padding: 5px 12px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  line-height: 1.6;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+  word-break: break-all;
+}
+.sl-log-line:first-child {
+  color: var(--ink-1);
+}
+.sl-log-empty {
+  padding: 12px;
+  font-family: var(--f-song);
+  font-size: 12px;
+  color: var(--ink-3);
+}
