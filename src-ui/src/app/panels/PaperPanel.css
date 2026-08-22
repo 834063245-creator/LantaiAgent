@@ -270,6 +270,19 @@
   color: var(--seal-deep);
 }
 
+/* 圈点（C7）：来文【词】→ 朱砂椭圆圈。
+   border-radius 50% 是圈点的字形本体（手绘批注手势），不违「圆角恒 0」——
+   那条铁律管的是面板/卡片结构件，不管字形级注记。
+   inline-block = 圈永不拆行：整词挪行，一词一圈永远成立（跨行 slice 会把
+   椭圆腰斩、clone 会一词两圈，均否）；软上限超长不圈在 paper/marks.ts。 */
+.pp-circled {
+  display: inline-block;
+  padding: 0 4px 1px;
+  border: 1.5px solid var(--seal);
+  border-radius: 50%;
+  font-weight: 600;
+}
+
 /* ── 正文（markdown）：宋体主角 ── */
 .pp-block.pp-markdown .pp-body {
   font-size: 17px;

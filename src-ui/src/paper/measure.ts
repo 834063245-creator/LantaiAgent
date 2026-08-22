@@ -137,6 +137,9 @@ export function measureBlockHeight(b: SourcedBlock): number {
   const p = b.payload as PayloadLike;
   switch (b.kind) {
     case 'user':
+      // 圈点（C7）：测高用原文不去【】括号——括号被渲染消费但宽度预算
+      // 保守覆盖了圈 padding/border（每关键词净差约一个全角字符，方向是
+      // 测多不测少 → 只会偏高不会截字），零镜像成本。
       return p.text ? measureTextHeight(p.text, b.w - USER_TEXT_INSET, PAPER_USER_FONT, PAPER_USER_LINE_HEIGHT) : 0;
     case 'markdown':
       return p.text ? measureTextHeight(p.text, b.w, PAPER_BODY_FONT, PAPER_BODY_LINE_HEIGHT) : 0;

@@ -25,6 +25,7 @@ import type { ComponentType } from 'react';
 import { Fragment } from 'react';
 import { type Context, Service } from '../cordis';
 import { type BlockKind, parsePlanItems, type SourcedBlock } from '../paper/block-model';
+import { parseCircledSegments } from '../paper/marks';
 
 /** 渲染器组件入参——渲染器拿到块本体 + 纸壳递下的服务性回调。 */
 export interface BlockRendererProps {
@@ -129,6 +130,28 @@ function TextBody({ block }: BlockRendererProps) {
   return <div className="pp-body">{(block.payload as { text: string }).text}</div>;
 }
 
+/** 来文体：圈点解析（C7）——【词】→ 朱砂圈，其余字面。
+ *  圈永不拆行由 .pp-circled 的 inline-block 保证（CSS 侧纪律）。 */
+function UserBody({ block }: BlockRendererProps) {
+  const text = (block.payload as { text: string }).text;
+  const segs = parseCircledSegments(text);
+  return (
+    <div className="pp-body">
+      {segs.map((s, i) =>
+        s.circled ? (
+          // biome-ignore lint/suspicious/noArrayIndexKey: 解析段按位置渲染，静态内容无重排身份
+          <span key={i} className="pp-circled">
+            {s.text}
+          </span>
+        ) : (
+          // biome-ignore lint/suspicious/noArrayIndexKey: 同上
+          <Fragment key={i}>{s.text}</Fragment>
+        ),
+      )}
+    </div>
+  );
+}
+
 /** 统一 diff 行分类：+ 新增（石青）/ - 删除（石墨删除线）/ @@ hunk 头（注记）。 */
 function diffLineClass(line: string): string | undefined {
   if (line.startsWith('+')) return 'pp-add';
@@ -197,7 +220,7 @@ function ToolBody({ block }: BlockRendererProps) {
 /** 内置渲染器行（默认行——视觉由纸壳 CSS 承载，渲染器只管体结构）。 */
 export function builtinRendererDefs(): BlockRendererContribution[] {
   return [
-    { id: 'builtin/user', kind: 'user', component: TextBody },
+    { id: 'builtin/user', kind: 'user', component: UserBody },
     { id: 'builtin/markdown', kind: 'markdown', component: TextBody },
     { id: 'builtin/reasoning', kind: 'reasoning', component: TextBody },
     { id: 'builtin/notice', kind: 'notice', component: TextBody },
