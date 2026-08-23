@@ -39,6 +39,10 @@
 **落地记录：** 设计件经三轮复审后 7 批落地（`c7e089ff` S4-0 → `01c035f8` S4-1a → `8f8b131e` S4-1.5 → `b366422d` S4-2 → `7913d266` S4-3 → `50a1f532` S4-5 → `d4dcb5bf`+`2c4f4bf3` S4-1b），每批独立全绿。核心交付：preset 数据模型（内置表 + `/composition/presets/` 索引路由 + 发现层 + preset-store）→ 装配穿线（createAgentFromContext/createAgent 可选 composition 覆盖参数 + 子 Agent 继承 + 会话工厂会话作用域注册表机制位 + boot 组合链）→ 消费闭环接线（G0 修复：panelDefs()/命令面板/插件工具行折算——四 service 贡献首次流进渲染面与装配面）→ 热重载（composition_watcher → composition:changed → reloadCompositionPatch）→ npm 安装通道（plugin_install 三形态源 + tar-slip 双重围栏 + 原子落盘）→ hello 闭环（`examples/plugins/hello/` 三通道 + 宿主桥 + e2e 钉面）→ 文档全套 → S4-1b（Phase 5 CR 用户批准后实施）：会话 `preset/selected` 首事件 + `baseline/preset-minimal/` 首次冻结（8 快照；per-preset 收敛协议全流程实测）。
 S4-4 机器桥（manifest mcpServers）按设计件裁定整体跳过（未决项——hello 三通道不依赖它）。
 
+## S3 — 第一方行化（settings 域样板）— ✅ Done（2026-08-22）
+
+**落地记录：** 触发条件（纸壳交互欠账 C8-C12 落定）满足后立项，设计件裁决六点（tab 型零扩展 / 三层 id 桥接 / runAction 别名翻译层 / 组件 import 面零变化 / 插件落位 src/plugins/ / loader 维持表驱动；config 通道按 S2 纪律继续延期），B1+B2 两批代码落地（每批独立全绿）+ B3 文档收尾。核心交付：`app/actions.ts` 别名翻译层（`ACTION_CONTRIBUTION_ALIASES`：快捷键字面量 → 域贡献 id，静态注册优先、缺席静默、非 local 型显式 warn——快捷键链路 useGlobalKeys 字面量字节级不变）→ `plugins/settings-plugin.ts`（面板 + 命令双贡献，面板字段逐字等值迁移）→ paper 域补齐 V3b 漏的半步（`paper/toggle` 命令贡献）→ `PANEL_DEFS` 常量面清空（全仓唯一 SettingsPanel import 随之归零——S3 比立项时预想更小：组件 import 面仅 1 处，非 briefing 转述的 29 处）→ 壳行 actions 收缩至 open / esc-layer。门禁：全量 vitest 152 文件 1515 passed / 1 skipped（+12 用例 `tests/s3-settings-domain.test.ts`）；convergence 零漂移；biome 改动文件零新增。无头冒烟（vite dev + 浏览器）：ctrl+, 开合往返 ✓ / Ctrl+K 搜「设置」贡献折算行唯一出现且可执行 ✓ / ctrl+P paper 往返 ✓ / 六 tab 渲染完整（截图取证）✓。已知限制如实入档：palette 命令贡献无图标（折算面既定约定，不扩）；「与内置同 id → 内置胜」路径随常量面清空不可达（合流语义保留潜伏，测试改为钉同 id 撞贡献装载期拒绝）。
+
 ## 宪法差异（v1 → v2 为什么必须换版）
 
 | 维度 | v1（plugin-ecosystem） | v2（本计划） |
@@ -65,3 +69,4 @@ R1 convergence 重设计（S1 动 baseline 地基——已安全度过的最大�
 - `designs/S1-convergence-per-preset.md` — preset 维度加法设计 ✅（2026-08-20 用户授权代理执行）
 - `designs/S2-composition-externalization.md` — S2 全量设计 ✅（用户授权代理复审执行）
 - `designs/S4-preset-realm-distribution.md` — S4 全量设计 ✅（七批落地；S4-1b 经 Phase 5 CR 用户批准）
+- `designs/S3-settings-domain-externalization.md` — S3 settings 域行化设计 ✅（2026-08-22）

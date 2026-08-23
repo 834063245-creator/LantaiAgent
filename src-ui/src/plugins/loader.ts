@@ -23,6 +23,7 @@ import type { Context } from '../cordis';
 import { paperPlugin } from '../paper/paper-plugin';
 import { getProxyPort } from '../provider/transport';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
+import { settingsPlugin } from './settings-plugin';
 import { type LantaiPlugin, type PluginManifest, validateManifest } from './types';
 
 /** loader 消费的最小 fetch 形状（测试可用普通对象实现，不依赖 Response 全局）。 */
@@ -43,16 +44,18 @@ export function pluginAssetsOrigin(port: number): string {
   return 'http://127.0.0.1:' + port + '/plugins';
 }
 
-/** 第一方插件表（编译期 bundle 内，不走磁盘通道）。
+/** 第一方插件表（编译期 bundle 内，不走磁盘通道；S3 起逐域填充）。
  * 表序 = 装配序。首项固定为组合层四 service（内核线第 3 条的实体化——
  * panels/commands/tools/providers 注册表本身，常驻且先于外部插件，
  * 保证外部插件 manifest 的 inject 依赖可解析）。P3：codeRuntime 服务行
- * （agent/code-run——执行腰，四 service 之后）。 */
+ * （agent/code-run——执行腰，四 service 之后）。S3：settings 域行化
+ * （面板 + 命令双贡献，设计件 S3-settings-domain-externalization.md）。 */
 const BUILTIN_PLUGINS: LantaiPlugin[] = [
   compositionServicesPlugin,
   codeRuntimePlugin,
   rendererServicePlugin,
   paperPlugin,
+  settingsPlugin,
 ];
 
 // ── 插件宿主桥（S4-5）──

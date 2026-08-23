@@ -12,6 +12,8 @@ import { useDockStore } from '../src/state/dock-store';
 //      对齐仓库 T0 模式）。
 // V5 拆除（2026-08-22）：旧观测台面板族退役，常量面只剩 settings；
 // paper 面板是组合层贡献（paper/paper-plugin.ts）。
+// S3（2026-08-22）：settings 亦迁贡献（plugins/settings-plugin.ts），
+// 常量面清空——面板命令迁址对拍移入 tests/s3-settings-domain.test.ts。
 
 const SRC = join(__dirname, '..', 'src');
 
@@ -22,9 +24,9 @@ describe('composition 面板注册（S1-5 string 开集 + 装载期校验）', (
     for (const def of PANEL_DEFS) {
       expect(def.component).toBeTruthy();
     }
-    // V5 拆除后常量面只剩 settings（paper 在组合层贡献——
-    // 见 tests/paper-v3b.test.ts 的合流对拍）。
-    expect(ids).toEqual(['settings']);
+    // S3（2026-08-22）：常量面清空——settings 迁 plugins/settings-plugin.ts
+    // 贡献（paper 先例 V3b）。合流对拍见 tests/s3-settings-domain.test.ts。
+    expect(ids).toEqual([]);
   });
 
   it('dock-store open 面向 string 开集：未注册 key 的写入/读取不抛（校验在清单侧）', () => {
@@ -76,15 +78,21 @@ describe('composition 面板注册（S1-5 string 开集 + 装载期校验）', (
     expect(getCheckStatusCached()?.violationCount).toBe(2);
   });
 
-  it('面板命令 id 不变对拍：壳行 actions 的面板命令 id 与绑定的 dock id 逐字保留', () => {
+  it('面板命令 id 不变对拍：壳行留守动作 = open / esc-layer（面板切换动作已 S3 行化）', () => {
     // S2-3 起真源在壳行 actions（设计件 §2.6；不变式本身不变）。
-    // V5 拆除后幸存面板命令 = toggle-paper / toggle-settings。
+    // S3（2026-08-22）：toggle-settings → settings-plugin 的 settings/toggle
+    // 贡献；toggle-paper → paper-plugin 的 paper/toggle 贡献——迁址后的
+    // 常量面对拍（含贡献 id 桥接断言）见 tests/s3-settings-domain.test.ts。
     const actionsSrc = readFileSync(join(SRC, 'shell', 'rows', 'actions.ts'), 'utf8');
-    for (const id of ['toggle-paper', 'toggle-settings']) {
+    for (const id of ['open', 'esc-layer']) {
       expect(actionsSrc).toContain(`id: '${id}',`);
     }
-    // 命令 run 体绑定到同名字面量 dock id（id 与动作一致，防改 id 漏改绑定）
-    expect(actionsSrc).toContain("togglePanel('paper')");
-    expect(actionsSrc).toContain("togglePanel('settings')");
+    // 面板动作不再在壳行注册（已行化迁出）
+    expect(actionsSrc).not.toContain("togglePanel('paper')");
+    expect(actionsSrc).not.toContain("togglePanel('settings')");
+    // 别名桥接真源存在（快捷键字面量 → 域贡献 id）
+    const actionsModuleSrc = readFileSync(join(SRC, 'app', 'actions.ts'), 'utf8');
+    expect(actionsModuleSrc).toContain("'toggle-settings': 'settings/toggle'");
+    expect(actionsModuleSrc).toContain("'toggle-paper': 'paper/toggle'");
   });
 });

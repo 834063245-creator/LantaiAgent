@@ -39,8 +39,8 @@ describe('S4-1.5 panels 合流点：panelDefs() + bump 信号', () => {
     const root = await bootServices();
     const defs = panelDefs();
     // V3b 起 paper 面板是 paperPlugin 贡献（本用例只 boot 四 service，无 paper）；
-    // V5 拆除（2026-08-22）后内置常量面只剩 settings。
-    expect(defs.map((d) => d.id)).toEqual(['settings']);
+    // S3（2026-08-22）起常量面清空——settings 也走贡献（plugins/settings-plugin.ts）。
+    expect(defs.map((d) => d.id)).toEqual([]);
     await root[Symbol.asyncDispose]?.();
   });
 
@@ -57,18 +57,21 @@ describe('S4-1.5 panels 合流点：panelDefs() + bump 信号', () => {
     // 注册 → 信号 bump（即时生效语义）
     expect(usePanelDefsStore.getState().panelDefsTick).toBe(tick0 + 1);
     expect(panelDefs().some((d) => d.id === 'probe-panel')).toBe(true);
-    // 与内置同 id → 内置胜（console.warn 可见，清单仍 1 项）
+    // S3（2026-08-22）：常量面已清空，「与内置同 id → 内置胜」路径不再可达
+    // （settings/paper 均为贡献）；同 id 撞贡献 → 装载期拒绝（重复注册 throw）。
+    // 内置胜语义在常量面重新有行之前保持潜伏，见 panel-def.ts 合流纪律注。
     const tick1 = usePanelDefsStore.getState().panelDefsTick;
-    const disposeShadow = root.panels.register({
-      id: 'settings',
-      side: null,
-      title: '影子面板',
-      icon: 'settings',
-      component: () => null,
-    });
-    expect(usePanelDefsStore.getState().panelDefsTick).toBe(tick1 + 1);
-    expect(panelDefs().filter((d) => d.id === 'settings').length).toBe(1);
-    disposeShadow();
+    expect(() =>
+      root.panels.register({
+        id: 'probe-panel',
+        side: 'right',
+        title: '探针面板二',
+        icon: 'probe',
+        component: () => null,
+      }),
+    ).toThrow(/duplicate/);
+    expect(usePanelDefsStore.getState().panelDefsTick).toBe(tick1); // 拒绝不 bump
+    expect(panelDefs().filter((d) => d.id === 'probe-panel').length).toBe(1);
     dispose();
     // dispose → 信号 bump + 贡献消失
     expect(panelDefs().some((d) => d.id === 'probe-panel')).toBe(false);

@@ -5,10 +5,13 @@
 // S4-1.5 消费闭环（设计件 §2.3）：清单源从「PANEL_DEFS 常量」扩为
 // panelDefs() = 常量 + ctx.panels 贡献（合流点不是改写点；贡献变更经
 // state/panel-defs-store 的 tick 信号即时生效）。
+// S3（2026-08-22）：常量面清空——最后一行 settings 迁为第一方插件贡献
+// （plugins/settings-plugin.ts，面板 + 命令双通道）。常量表保留：内置
+// id 是部署事实（同名贡献内置胜的合流语义仍需要它作权威），未来第一方
+// 面板域继续走贡献通道。
 
 import type { ComponentType } from 'react';
 import { activePanelContributions } from '../../composition/services';
-import { SettingsPanel } from './SettingsPanel';
 
 export interface PanelDef {
   /** 面板 id——S1-5 起 string 开集（原 DockPanelId union 退役） */
@@ -27,11 +30,10 @@ export interface PanelDef {
 
 // V5 拆除（2026-08-22，纸壳唯一主界面）：旧观测台 dock 面板族（check/
 // constraints/dataflow/agents/tasks）随 chrome 退役；纸面板是组合层贡献
-// （paper/paper-plugin.ts）。常量面只剩 settings（Agent 产品域）——
-// S3 起按纸的需要逐域重迁（docs/adr/workspace-concept-ownership.md）。
-export const PANEL_DEFS: PanelDef[] = [
-  { id: 'settings', side: null, title: '设置', icon: 'settings', unmountOnClose: true, component: SettingsPanel },
-];
+// （paper/paper-plugin.ts）。S3（2026-08-22）：settings 亦迁贡献
+// （plugins/settings-plugin.ts）——常量面自此为空，全量面板走贡献通道
+// （docs/adr/workspace-concept-ownership.md）。
+export const PANEL_DEFS: PanelDef[] = [];
 
 // ── 装载期运行时校验（S1-5：id 从编译期 union 约束迁到运行时清单校验）──
 // union 退役后合法 id 的守门在这里：重复 id / 缺组件在模块加载时直接 throw

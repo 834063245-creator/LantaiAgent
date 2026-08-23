@@ -5,7 +5,7 @@
 //
 // 纸壳（PaperPanel，组合层贡献）是唯一主界面；本树常驻：
 //   - SessionsHome：案卷首页（纸面板关闭后的去向——换卷/续开/绑定目录）
-//   - DockPanel：面板容器（paper 贡献 + settings 常量）
+//   - DockPanel：面板容器（paper / settings 均为组合层贡献——S3 后常量面为空）
 //   - CommandPalette：命令面板（Ctrl+K；组合层命令贡献的合流消费面）
 //   - PromptShelfHost：ask_user / 权限卡独立浮层（会话编排域刚需）
 //

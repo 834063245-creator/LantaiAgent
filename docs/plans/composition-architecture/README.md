@@ -1,7 +1,7 @@
 # 组合架构（composition-architecture）——特权线左移计划
 
 > **本目录阅读顺序**：① 本 README（宪法 + 现状）→ ② [`HISTORY.md`](HISTORY.md)（S0-S2/S4 施工史与批次记录）→ ③ `designs/`（设计件全文）。边界依据 [`docs/adr/composition-boundaries.md`](../../adr/composition-boundaries.md)。
-> 立项：2026-08-20 · 状态：**S0/S1/S2/S4 Done · S3 剩余（触发条件：纸壳交互欠账落定后）**
+> 立项：2026-08-20 · 状态：**S0-S4 全竣工（S3 于 2026-08-22 收官——全段竣工）**
 
 ## 一句话
 
@@ -21,11 +21,11 @@
 **线外一切皆行**：面板 / 命令 / 工具 / provider / system-prompt section / 第一方功能域。
 **试金石**：独占进程级单例资源或有顺序契约 → 宿主；功能面 → 行。
 
-## 现状（就剩一件事）
+## 现状（全段竣工）
 
-**S3 — 第一方行化**：把 settings 面板域迁成第一方插件（面板 + 命令 + `toggle-settings` 动作走组合层贡献），一个域的样板量级。图谱面板域原在名单上，已随 V5 拆除走退役路径消解。
+**S3 — 第一方行化**已收官（2026-08-22）：settings 面板域迁成第一方插件（`plugins/settings-plugin.ts` 面板 + 命令双贡献；paper 域同步补齐 `paper/toggle` 命令；`PANEL_DEFS` 常量面清空；快捷键链路经 `app/actions.ts` 别名翻译层桥接，useGlobalKeys 字面量不变）。施工史与裁决记录见 [`HISTORY.md`](HISTORY.md) S3 段。
 
-协作纪律：**重构推到哪个域，行化跟到哪个域**——不抢跑未动的域。新增功能的审查试金石：是行还是特权代码堆积？
+协作纪律延续：**重构推到哪个域，行化跟到哪个域**——不抢跑未动的域。新增功能的审查试金石：是行还是特权代码堆积？
 
 ## 活的运维入口
 

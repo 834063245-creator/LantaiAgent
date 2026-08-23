@@ -37,6 +37,7 @@ prompt:
 |---|---|---|
 | `tools` | `builtin/fs`、`builtin/shell`、`builtin/graph`… | 内置工具族（真源 `src-ui/src/composition/tool-rows.ts`） |
 | `tools` | `plugin/<插件名>/<工具名>` | 插件工具行（贡献折算——`docs/plugins/README.md` §3） |
+| `commands` | `settings/toggle`、`paper/toggle` | 命令贡献（第一方行化先例——settings/paper 域插件，S3 起；折算后 palette 行 id = `plugin/<贡献 id>`） |
 | `prompt` | `behavior-rules`、`collaboration-mode`… | system prompt 段（真源 `prompt-sections.ts`；id 是裸名） |
 | `capabilities` | `plan-tools`、`converge-tools`、`graph-hooks`… | 会话级工具/hook（真源 `agent/blueprint.ts`；id = capability key） |
 | `shell` | `hologram/shell-graph`、`hologram/shell-cold-start`… | 壳引导行（真源 `composition/shell-rows.ts`；行实现 `src-ui/src/shell/rows/*`） |

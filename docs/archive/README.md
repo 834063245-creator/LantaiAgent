@@ -13,6 +13,7 @@
 - **清理记录**：audit-fix 系列、async-spawn 系列、framework-expansion-plan
 - **2026-08-22 深夜归档（竣工计划全文）**：`workspace-flip/`（目录）、`agent-core-convergence/`（目录，含活流程文件 baseline-change-request.md）、`cordis-migration/`（目录）、`ui-react-island-retirement-plan.md`、`eventbus-zero-and-ui-split-plan.md`
 - **2026-08-22 深夜归档（已消费交接稿）**：`design-handoff-lantai-2026-08-22.md`（兰台注疏设计定稿交接——全部落地后退役；产物为 `prototype/lantai.html` + `docs/design/lantai-design-spec.md`）
+- **2026-08-22 S3 竣工归档**：`composition-architecture-S3-settings-domain-externalization.md`（S3 settings 域行化设计件——六裁决两批落地后随段竣工归档；施工史与落地记录在 `docs/plans/composition-architecture/HISTORY.md` S3 段）
 
 ## 使用规则
 

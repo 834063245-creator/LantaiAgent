@@ -1,8 +1,11 @@
 # HoloGram 插件指南（docs/plugins/README.md）
 
-> S4 竣工（2026-08-20）。插件 = 经 webview 动态 import 装载的自包含 ES
-> 模块，向宿主注册**面板 / 命令 / 工具**贡献。完全信任模型——安装前必读
-> §6。从零到跑通的最短路径：`examples/plugins/hello/README.md`。
+> S4 竣工（2026-08-20）；S3 第一方行化（2026-08-22）。插件 = 经 webview
+> 动态 import 装载的自包含 ES 模块，向宿主注册**面板 / 命令 / 工具**贡献。
+> 完全信任模型——安装前必读 §6。从零到跑通的最短路径：
+> `examples/plugins/hello/README.md`。
+> 第一方插件先例（编译期 bundle 内，不走磁盘通道）：`paper/paper-plugin.ts`
+> （面板 + 命令）、`plugins/settings-plugin.ts`（面板 + 命令，S3 样板）。
 
 ## 目录
 

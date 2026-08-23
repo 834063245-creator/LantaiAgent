@@ -82,7 +82,10 @@ flowchart LR
   capability `code-execution-tool`；经 ctx.codeRuntime 服务运行——vendored cordis Service，
   agent/code-run/ 四件：protocol 腰线 / bootstrap worker 源 / host 敌意校验+预算 / 工具本体；
   程序内 `await tools.<name>(args)` 嵌套调全部可见工具，子分发逐条落 session-log
-  `tool/code-dispatch-start|code-dispatch` 审计对，门禁不豁免）。
+  `tool/code-dispatch-start|code-dispatch` 审计对，门禁不豁免）。S3（2026-08-22）：settings 面板域经第一方插件贡献
+  （`plugins/settings-plugin.ts` 面板 + 命令双通道；paper 同步补齐 `paper/toggle`）——
+  `PANEL_DEFS` 常量面清空，快捷键链路经 `app/actions.ts` 别名翻译层
+  （`ACTION_CONTRIBUTION_ALIASES`）桥接到域贡献 id，useGlobalKeys 字面量不变。
   - `graph`：symbols / semantic（语义检索——向量索引按含义找符号，不知确切名字时用）/ neighbors / impact / preflight / cycles / coupling / fragile / flows / dataflow / dataflow_save / dataflow_query 等 27 个动作（dataflow_save 为写动作）——**改代码前先问图**。
   - `ops`：analyze / validate / health / status / timeline / rename / import_scip。
   - `lsp`：resolve_call / infer_type / implementations / references。
