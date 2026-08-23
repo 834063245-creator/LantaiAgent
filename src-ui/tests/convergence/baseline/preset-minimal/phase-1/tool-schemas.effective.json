@@ -1,5 +1,5 @@
 {
-  "count": 5,
+  "count": 6,
   "note": "空输入注册表跑真实 createAgent 后的 schemas()——钉 runtime 侧注册的工具面；引擎动态工具豁免同 phase-0 决策#1；不含 _schemaSelector 限额裁剪",
   "schemas": [
     {
@@ -57,6 +57,28 @@
       "parameters": {
         "additionalProperties": {},
         "properties": {},
+        "type": "object"
+      }
+    },
+    {
+      "description": "Execute a JavaScript program body against the available tools. `code` is the BODY of an async function: top-level `await` and `return` work. Call tools as `await tools.<name>(args)` — e.g. `const r = await tools.fs({action:\"read\", filePath:\"x.ts\"}); return r.length;`. Use this for loops, fan-out reads, try/catch retries, and multi-step compositions instead of repeated single tool calls. Concurrency: read-only tools run in parallel; write tools are serialized. Only what you console.log or return is program output — curate it (output budget is capped). Nested tool calls are audited exactly like direct calls (permissions/plan-mode rules apply).",
+      "name": "code_execution",
+      "parameters": {
+        "additionalProperties": {},
+        "properties": {
+          "code": {
+            "description": "The program: body of an async JavaScript function (plain JS, no imports; top-level await/return work).",
+            "type": "string"
+          },
+          "description": {
+            "description": "Clear, concise description of what this program does in active voice, 5-10 words (shown in the UI). Examples: \"Count TODO markers across packages\"; \"Read failing test and its fixture\".",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "description"
+        ],
         "type": "object"
       }
     },
