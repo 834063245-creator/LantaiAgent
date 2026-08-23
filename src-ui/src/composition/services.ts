@@ -82,11 +82,14 @@ export interface CommandContribution {
 export interface ToolContribution {
   /** 行 id（S1-2 起由行表寻址；与 Tool.name 可不同——行 id 稳定寻址，name 是模型可见名）。 */
   id: string;
-  /** 工具工厂。可选收装配上下文（B① 放宽，2026-08-23）：外部插件无参 factory
-   *  仍合法（实例缓存契约不变）；第一方域插件可收 rowCtx 取装配期依赖（如
-   *  codingExec）——收 ctx 的贡献自担「跨装配复用首装配实例」的语义等价责任
-   *  （依赖装配期真值的族如 ask/wait 不适用，见 agent-plugin-architecture-plan §5）。 */
-  factory: (ctx?: ToolRowContext) => Tool;
+  /** 工具工厂。三种形态：
+   *  - 无参 factory → Tool（外部插件经典形态，S4-1.5 契约）；
+   *  - factory(rowCtx) → Tool（B① 放宽：第一方域插件收装配上下文取 codingExec
+   *    等装配期依赖——收 ctx 的贡献自担「首装配实例跨装配复用」的语义等价责任）；
+   *  - factory → Tool[]（S4-4 乙放宽：MCP 机器桥行——一个 server 贡献整组
+   *    远端工具，惰性连接后动态产出；空集不缓存，下次装配重试）。
+   *  实例缓存对非空结果跨装配复用（工具可能持状态/连接）；dispose 清缓存。 */
+  factory: (ctx?: ToolRowContext) => Tool | Tool[] | Promise<Tool | Tool[]>;
 }
 
 export interface ProviderContribution {

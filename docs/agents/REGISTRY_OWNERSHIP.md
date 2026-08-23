@@ -45,6 +45,7 @@
 | 注册点 | owner | 清理点 | 自动清理 |
 |---|---|---|---|
 | `runtime/agent-builder.ts`（client 工具注册进 registry） | Runtime/UI（MCP 会话管理） | `disconnect()` 幂等；`ownedDisposer()` 已备 | ⚠️ Phase 4 决策：**保持 workspace 所有权**——client 是跨 Agent 共享连接，挂单个 Agent 的 context 会在该 Agent dispose 时掐断兄弟 Agent 的工具面；owner 停用 MCP 会话时消费 `ownedDisposer()`（待 workspace 侧接线，非本工程范围） |
+| `plugins/mcp-bridge.ts`（S4-4 乙机器桥：manifest mcpServers 折算的贡献——factory 惰性建连，贡献注销 → client disconnect → ProcIO kill 链） | 插件 fiber `ctx.effect`（loader 包装 apply 注册） | fiber dispose → 链式停（R15 对策——卸载含进程清单检查） | ✅ 显式 |
 
 ## MessageBus.register（订阅型）
 

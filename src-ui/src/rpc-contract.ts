@@ -241,6 +241,9 @@ export interface RpcContract {
   plugin_uninstall: { params: { name: string }; result: string }; // "null"
   /** 启用/禁用插件（plugins.json 读改写）。生效时机：重启。 */
   plugin_set_enabled: { params: { name: string; enabled: boolean }; result: string }; // "null"
+  /** 插件目录绝对路径（S4-4 乙机器桥：manifest mcpServers 的 stdio command
+   *  相对插件目录解析）。名字围栏同 uninstall；目录不存在 = 错误。 */
+  plugin_dir: { params: { name: string }; result: string }; // 绝对路径
 
   // ── Agent 隔离（worktree）────────────────────────────────
   agent_isolation_create: { params: { agent_id: string }; result: string }; // JSON

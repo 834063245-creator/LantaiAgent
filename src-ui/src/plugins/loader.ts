@@ -26,6 +26,7 @@ import type { Context } from '../cordis';
 import { paperPlugin } from '../paper/paper-plugin';
 import { getProxyPort } from '../provider/transport';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
+import { type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
 import { settingsPlugin } from './settings-plugin';
 import { type LantaiPlugin, type PluginManifest, validateManifest } from './types';
 
@@ -40,6 +41,8 @@ export interface LoadExternalPluginsOptions {
   fetchImpl?: FetchLike;
   /** dynamic import 实现（缺省运行时 import + @vite-ignore 防 vite 编译期分析）。 */
   importModule?: (url: string) => Promise<Record<string, unknown>>;
+  /** MCP 机器桥宿主 IO（S4-4 乙；缺省 Rust protocol_bridge / plugin_dir RPC）。 */
+  mcpBridgeIO?: McpBridgeIO;
 }
 
 /** 插件静态资源 origin 构造（端口运行时解析；WO-S0A spike 验证过的通道）。 */
@@ -151,6 +154,7 @@ function errText(e: unknown): string {
 export async function loadExternalPlugins(root: Context, opts: LoadExternalPluginsOptions = {}): Promise<void> {
   const fetchImpl: FetchLike = opts.fetchImpl ?? fetch;
   const importModule = opts.importModule ?? ((url: string) => import(/* @vite-ignore */ url));
+  const mcpBridgeIO = opts.mcpBridgeIO;
   try {
     const origin = opts.origin ?? (await resolveOrigin());
     if (!origin) return; // 无后端通道（浏览器 mock / 代理未起）——非错误
@@ -162,7 +166,7 @@ export async function loadExternalPlugins(root: Context, opts: LoadExternalPlugi
     const disabled = await readDisabledSet(fetchImpl, origin);
     const records: PluginRecord[] = [];
     for (const dirId of index) {
-      records.push(await loadOne(root, String(dirId), { origin, disabled, fetchImpl, importModule }));
+      records.push(await loadOne(root, String(dirId), { origin, disabled, fetchImpl, importModule, mcpBridgeIO }));
     }
     usePluginStore.getState().setPlugins(records);
   } catch (e) {
@@ -176,6 +180,7 @@ interface LoadOneDeps {
   disabled: Set<string>;
   fetchImpl: FetchLike;
   importModule: (url: string) => Promise<Record<string, unknown>>;
+  mcpBridgeIO?: McpBridgeIO;
 }
 
 /** 装载单个插件；任何一步失败 → error 记录（失败隔离，永不抛出）。 */
@@ -211,7 +216,23 @@ async function loadOne(root: Context, dirId: string, deps: LoadOneDeps): Promise
     if (candidate.name !== manifest.name) {
       return errorRecord(manifest.name, manifest, '插件对象 name (' + candidate.name + ') 与 manifest.name 不一致');
     }
-    await root.plugin(candidate);
+    // S4-4 乙（机器桥）：manifest 声明 mcpServers 时包装插件——entry.apply
+    // 之后注册 MCP server 工具贡献（进程 kill 与贡献注销挂同一 fiber 的
+    // ctx.effect——插件 fiber dispose → spawn 的进程链式停）。startup-error
+    // 的 server 急连接失败 → 包装 apply reject → 插件 error 记录（既有失败
+    // 隔离路径）。inject 并集补 'tools'（桥注册经 ctx.tools——cordis 注入
+    // 纪律；与 entry 自身 inject 合并声明）。
+    const target = manifest.mcpServers?.length
+      ? {
+          name: candidate.name,
+          inject: [...new Set([...((candidate as { inject?: string[] }).inject ?? []), 'tools'])],
+          async apply(ctx: Context) {
+            await candidate.apply(ctx);
+            await registerMcpServerTools(ctx, manifest.name, manifest.mcpServers ?? [], deps.mcpBridgeIO);
+          },
+        }
+      : candidate;
+    await root.plugin(target);
     return { name: manifest.name, manifest, status: 'active' };
   } catch (e) {
     return errorRecord(manifest.name, manifest, errText(e));

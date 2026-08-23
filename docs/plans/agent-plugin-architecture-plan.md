@@ -13,7 +13,12 @@
 > 组合解析域：factoryComposition() 快照收编 pluginToolRows 行 + ctx.prompts 段贡献，
 > patch/preset 可寻址 plugin/<贡献 id> 行与贡献段 id（B①/②/B④ 的寻址拒绝与两条临时
 > 位序消灭），buildToolRegistry 单循环统一装配，贡献变更经 cache 代数 + reapplyComposition
-> 重取，双 preset 零漂移实测）。**五项拍板
+> 重取，双 preset 零漂移实测；**S4-4 乙已毕（2026-08-23）**——manifest mcpServers
+> 声明式挂接外部 MCP server：stdio（command 相对插件目录解析经 plugin_dir RPC）/
+> http 双传输，一个 server = 一条工具贡献（行 id plugin/<插件名>/mcp/<server名>，
+> factory 惰性连接整组产出——ToolContribution 放宽 Tool | Tool[]），lazy 空集不缓存
+> （装配期重试）/ startup-error 装载期急连接，kill 挂插件 fiber disposer；行折算/
+> failurePolicy/生命周期 ProcIO 注入 mock 全绿）。**五项拍板
 > （2026-08-23 晚，用户逐项拍定）**：S4-4 机器桥复活
 > 整批做（甲+乙）、①c 拍路线一（无缓存行）、B④ 收官 = 纯插件面（段表退役）、A-3 与 C11
 > 两基建全部排进当前工程——「推迟不是减负」，唯一合法挂起 = 外部信号依赖型（C12 观望

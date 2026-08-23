@@ -1284,6 +1284,13 @@ async fn dispatch_rpc(
                 .map_err(|e| format!("plugin_uninstall 任务失败: {e}"))?;
             ok_unit(r)
         }
+        "plugin_dir" => {
+            let name = req_str(&params, "name", "plugin_dir")?;
+            let r = tokio::task::spawn_blocking(move || commands::plugin_install::plugin_dir(&name))
+                .await
+                .map_err(|e| format!("plugin_dir 任务失败: {e}"))?;
+            ok_json(r)
+        }
         "plugin_set_enabled" => {
             let name = req_str(&params, "name", "plugin_set_enabled")?;
             let enabled = match params.get("enabled") {

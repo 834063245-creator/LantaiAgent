@@ -2,10 +2,12 @@
 
 > S4 竣工（2026-08-20）；S3 第一方行化（2026-08-22）；P4 A-1 prompt 段贡献
 > 通道（2026-08-23）；P4 B④ 第一方 prompt 段迁移收官（2026-08-23，13 段全量
-> 经 ctx.prompts 贡献）；S4-4 甲：贡献行/段进组合解析域（2026-08-23）。
+> 经 ctx.prompts 贡献）；S4-4 甲：贡献行/段进组合解析域（2026-08-23）；
+> S4-4 乙：MCP 机器桥——manifest.mcpServers 声明式挂接（2026-08-23）。
 > 插件 = 经
 > webview 动态 import 装载的自包含 ES 模块，
-> 向宿主注册**面板 / 命令 / 工具 / 块渲染器 / prompt 段**贡献。
+> 向宿主注册**面板 / 命令 / 工具 / 块渲染器 / prompt 段**贡献；
+> 也可经 manifest 声明式挂接**外部 MCP server**（§3 机器桥）。
 > 完全信任模型——安装前必读 §6。从零到跑通的最短路径：
 > `examples/plugins/hello/README.md`。
 > 第一方插件先例（编译期 bundle 内，不走磁盘通道）：`paper/paper-plugin.ts`
@@ -52,13 +54,31 @@
   "version": "1.0.0",                 // 必需。semver
   "description": "一句话描述",          // 可选。设置面板展示
   "entry": "entry.js",                // 必需。相对路径，.js/.mjs，禁绝对路径/回溯段
-  "inject": ["panels", "commands", "tools"]  // 可选。依赖的 ctx 服务——装载期校验存在性
+  "inject": ["panels", "commands", "tools"],  // 可选。依赖的 ctx 服务——装载期校验存在性
+  "mcpServers": [                     // 可选。S4-4 乙机器桥：声明式挂接外部 MCP server
+    {
+      "name": "my-engine",            // server 名——工具名前缀 mcp__my-engine__* + 行 id 尾段
+      "transport": "stdio",           // stdio | http
+      "command": "./bin/engine",      // stdio：相对路径相对插件目录解析；裸名走 PATH
+      "args": ["--serve"],            // stdio：命令参数（原样透传——相对路径不解析，用绝对路径）
+      "failurePolicy": "lazy"         // 缺省 lazy：首装配连接，失败 = 空集 + warn（下次装配重试）；
+                                      // startup-error：装载期急连接验证，失败 → 插件 error 记录
+    },
+    {
+      "name": "remote",               // http 形态：
+      "transport": "http",
+      "url": "http://127.0.0.1:9000/mcp",
+      "headers": { "Authorization": "Bearer xxx" }  // 可选。明文进 manifest——插件目录是全信任区
+    }
+  ]
 }
 ```
 
 装载管道（`src-ui/src/plugins/loader.ts`）：扫描目录 → manifest 校验 →
 inject 依赖存在性 → webview 动态 import → `root.plugin(obj)`。任何一步
 失败 → 插件状态 `error`（设置面板可见），**不炸应用**（失败隔离）。
+声明 `mcpServers` 时装载器包装插件（entry.apply 之后注册桥贡献；进程
+kill 与贡献注销挂同一 fiber——插件卸载即链式停，见 §3「MCP 机器桥」）。
 
 ## 3. 通道 API
 
@@ -150,6 +170,31 @@ ctx.effect(
 
 注册表现状可用，但当前无消费者（S4-1.5 复审裁定：无消费者不开通道——
 先接线只剩静默 no-op 一种坏结局）。真实消费者出现时再开。
+
+### MCP 机器桥 —— manifest.mcpServers 声明式挂接（S4-4 乙，2026-08-23）
+
+manifest 声明 `mcpServers`（§2）→ 装载器把每个 server 折算成**一条工具
+贡献**（行 id `plugin/<插件名>/mcp/<server名>`）——进组合解析域，
+patch/preset 可寻址禁用单个 server（组合均匀性不破）。**不需要写任何
+插件代码**——机器桥是纯声明面（entry.js 仍需存在，可与桥并存）。
+
+关键语义：
+
+- **工具命名**：远端工具以 `mcp__<server名>__<工具名>` 注册进 Agent
+  工具面（与宿主自带的外部 MCP server 同一命名规则）。
+- **惰性连接（lazy，缺省）**：首个 Agent 装配时连接（stdio 经 Rust
+  `protocol_bridge_spawn` 起子进程；http 直连）+ `tools/list` 拉远端清单。
+  连接失败 = 该 server 空集 + console warn——**不炸装载不炸装配**；空集
+  不缓存，下次装配重试（服务器恢复后新会话即得工具面）。
+- **startup-error**：装载期急连接验证——失败 → 插件 error 记录
+  （设置面板可见）。
+- **进程生命周期**：kill 归插件 fiber disposer——插件卸载/禁用（重启
+  生效）→ spawn 的进程链式停。断线后的自动重连监督（DSH reconnect
+  loop 同构）是未决项——v1 以装配期重试承担。
+- **stdio command 解析**：相对路径（含分隔符）相对插件目录（`plugin_dir`
+  RPC 解析锚点）；裸名走 PATH。`args` 原样透传（相对路径不解析）。
+- **边界**（ADR §5 维持）：这是「插件挂外部机器」，不是「进程内宿主
+  插件」——后者永久关闭。
 
 ### ctx.renderers —— 块渲染器（纸壳，即时生效）
 
@@ -315,14 +360,19 @@ factory（出厂表，代码真源）
   `plugin/…` 工具行与 prompt 贡献段（含 13 第一方段）全量进寻址域
   ——patch/preset 可禁用/覆盖/锚定（快照语义 + cache 代数失效，
   `composition/roster.ts` `factoryComposition()`）。
+- ~~**机器桥（manifest mcpServers）**~~ ✅ 已落地（S4-4 乙，2026-08-23）：
+  声明式挂接外部 MCP server——stdio（Rust 进程桥 + command 相对插件目录
+  解析）/ http 双传输；lazy/startup-error 失败策略；行 id
+  `plugin/<插件名>/mcp/<server名>` 进寻址域；kill 挂插件 fiber disposer；
+  §3「MCP 机器桥」。
 - **版本比较/更新提示**：manifest.version 有、UI 显示之；比较逻辑与更新
   流程属增强。
 - **preset 的 UI 选择面**：当前只有设置面板默认值 + 新会话携带默认
   （DSH 四面砍到最小——新会话 chip / 会话头标签 / 管理节留给 V5 壳）。
-- **机器桥（manifest mcpServers）**：S4-4 可选批——排程紧张时降级未决项
-  （外部 MCP server 的声明式挂接；hello 三通道不依赖它）。
-- **mcpServers http 传输鉴权**：headers 明文进 manifest——插件目录是
-  全信任区，与 command 同级，不做加密仪式。
+- **机器桥断线重连监督**：lazy 的装配期重试已落地；DSH reconnect loop
+  同构的定时退避重连 + 工具面动态重注册属增强（v1 未做，如实声明）。
+- ~~**mcpServers http 传输鉴权**~~：headers 明文进 manifest——插件目录是
+  全信任区，与 command 同级，不做加密仪式（既定立场维持）。
 
 ---
 

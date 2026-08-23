@@ -379,6 +379,23 @@ pub(crate) fn plugin_uninstall(name: &str) -> Result<(), String> {
     std::fs::remove_dir_all(&dir).map_err(|e| format!("删除 {dir:?} 失败: {e}"))
 }
 
+/// 插件目录绝对路径（S4-4 乙机器桥）：manifest.mcpServers 的 stdio command
+/// 相对插件目录解析——webview 无盘权，路径解析锚点经本 RPC 暴露。
+/// 名字围栏同 uninstall；目录不存在 = 错误（声明 mcpServers 的插件必须已安装）。
+pub(crate) fn plugin_dir(name: &str) -> Result<String, String> {
+    if name.trim().is_empty() {
+        return Err("插件名不能为空".to_string());
+    }
+    if name.contains("..") || name.contains('/') || name.contains('\\') || name.contains(':') {
+        return Err(format!("非法插件名（含路径段/回溯）: {name}"));
+    }
+    let dir = crate::plugin_assets::plugins_root().join(name);
+    if !dir.is_dir() {
+        return Err(format!("插件目录不存在: {name}"));
+    }
+    Ok(dir.to_string_lossy().into_owned())
+}
+
 /// 启用/禁用：plugins.json 读改写（{"disabled": [...]}——S0 文件形状）。
 pub(crate) fn plugin_set_enabled(name: &str, enabled: bool) -> Result<(), String> {
     if name.trim().is_empty() {
@@ -619,6 +636,35 @@ mod tests {
         // 非法名拒绝（路径逃逸防护）
         assert!(plugin_uninstall("../evil").is_err());
         assert!(plugin_uninstall("a/b").is_err());
+
+        std::env::remove_var("HOLOGRAM_PLUGINS_ROOT");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// plugin_dir（S4-4 乙机器桥）：存在目录返回绝对路径；不存在/非法名拒绝。
+    #[test]
+    fn plugin_dir_resolves_and_fences() {
+        let (_guard, tmp) = with_plugins_root("plugindir");
+        let src = tmp.join("src/hello");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(
+            src.join("manifest.json"),
+            br#"{"name":"hello","version":"1.0.0","entry":"entry.js"}"#,
+        )
+        .unwrap();
+        let name = install_from_local_dir(&src, Some("hello".to_string())).unwrap();
+
+        // 存在 → 绝对路径（含插件名尾段）
+        let dir = plugin_dir(&name).unwrap();
+        assert!(dir.replace('\\', "/").ends_with("/hello"), "意外路径: {dir}");
+        assert!(std::path::Path::new(&dir).is_dir());
+
+        // 不存在 → 错误（声明 mcpServers 的插件必须已安装）
+        assert!(plugin_dir("ghost").is_err());
+        // 名字围栏（路径逃逸防护——同 uninstall）
+        assert!(plugin_dir("../evil").is_err());
+        assert!(plugin_dir("a/b").is_err());
+        assert!(plugin_dir("").is_err());
 
         std::env::remove_var("HOLOGRAM_PLUGINS_ROOT");
         let _ = std::fs::remove_dir_all(&tmp);

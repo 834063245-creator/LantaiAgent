@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-08-22T09:45:06.295Z
-> 方法总数：155（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-08-23T14:27:18.214Z
+> 方法总数：153（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -176,6 +176,7 @@
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
 | `plugin_uninstall` | name | — | `null`（unit） |
+| `plugin_dir` | name | — | JSON 字符串 |
 | `plugin_set_enabled` | name, enabled | — | `null`（unit） |
 | `agent_isolation_create` | agent_id | — | 字符串 |
 
