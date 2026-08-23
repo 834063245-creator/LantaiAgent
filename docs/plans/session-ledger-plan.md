@@ -1,6 +1,6 @@
 # 案卷总目（Session Ledger）— 会话管理收敛计划
 
-> 立项：2026-08-23 · 状态：Proposed·Draft（已拍板收敛方向，未开工）
+> 立项：2026-08-23 · 状态：✅ 全段竣工（L0-L3，2026-08-23；六 commit：7345e885/572df12e/86d011bd/94baef8b/bdf6abb1 + 立项 3822ed92）
 > 触发：用户实机反馈「新开一卷没什么用」→ 链路排查 → 用户定调「会话管理要做收敛，复杂度降下来，别堆成屎山」。
 > 前置事实源：`src-ui/src/ui/chat-session.ts`（会话 CRUD/持久化）、`src/state/session-store.ts`（摊开集真相）、`app/panels/SpineRack.tsx`（C8 书脊列）、`app/SessionsHome.tsx`（档案首页）、`shell/rows/cold-start.ts` / `shell/rows/persistence.ts`（冷启动与落盘接线）。
 
@@ -91,9 +91,9 @@
 | 段 | 内容 | 判据（测试钉死） | 成本 |
 |---|---|---|---|
 | **L0 立账** | 总目文件 + 迁移 + 发号对账 + 工作集恢复（内容恢复/句柄惰性水合） | ① 总目读写 roundtrip + 迁移用例；② 重启恢复摊开全集（多卷全回、活跃指针正确）；③ 发号 = max(总目, scan)+1，构造撞号场景不覆盖旧档；④ 惰性水合：切卷/拟文时句柄按需补建 | ~~≈1 天~~ ✅ 已毕（2026-08-23，commit 7345e885 + 572df12e）：模块 state/session-ledger.ts（v2 总目/毒化容忍/发号对账/自然迁移——旧路径恢复成功后首写总目，不显式吸 _active.json）；四动词记账 + restoreFromLedger 多卷恢复（活跃卷真句柄 + 惰性卷 msgStore 预填/纸面恢复）+ ensureSessionAgent 两唤起点（切卷内联/拟文同步兑底）；17 用例全绿 |
-| **L1 视图对齐** | 首页「＋ 新建案卷」真建（调 `createNewSession`，空壳死掉；无 key 走 sr-notice 同款守卫）；续开查重（已摊开 → 换卷不克隆）；首页卡片「已摊开」标记（点它 = 换卷进纸面） | ① 新建后 sess store 多一卷且卷文件号正确；② 已开卷续开 = switchSession（书脊不增条、无句柄泄漏）；③ 首页标记 = `isOpen` 投影 | ~半天 |
-| **L2 落盘收编** | 两动词收口（save/append）；turn-done 信号携带会话 id，存**跑完的那卷**；beforeunload 存**全部有内容卷**（非仅活跃卷） | ① 后台卷 A 跑完一轮：A 的卷文件更新、活跃卷 B 的文件不动（时间戳断言）；② 关应用前全部有内容卷均已落盘（构造 A 后台/B 前台双卷场景）；③ 现存三保存路径全部改调两动词、旧行为对拍 | ~1 天 |
-| **L3 清账守护** | 死代码清点（`scanMaxSessionId` 转正、空壳入口删、无条件 append 改守卫）；一致性守护测试常驻；localStorage 降级评估（观察项，不强制本批） | ① 守护测试：书脊列表 ≡ 总目 open 集；首页摊开标记 ≡ open 集；无重复 open id；② biome 改动文件零新增；③ chat-session 全量既有用例不红 | ~半天 |
+| **L1 视图对齐** | 首页「＋ 新建案卷」真建（调 `createNewSession`，空壳死掉；无 key 走 sr-notice 同款守卫）；续开查重（已摊开 → 换卷不克隆）；首页卡片「已摊开」标记（点它 = 换卷进纸面） | ① 新建后 sess store 多一卷且卷文件号正确；② 已开卷续开 = switchSession（书脊不增条、无句柄泄漏）；③ 首页标记 = `isOpen` 投影 | ~~≈半天~~ ✅ 已毕（2026-08-23，commit 86d011bd）：F1/F2 闭合——loadSessionFromDisk 头部查重（已摊开 → switchSession 不克隆）；首页真新建 + 死路防护；「已摊开」石青小标（机=石青铁律）+ sess store 订阅 |
+| **L2 落盘收编** | 两动词收口（save/append）；turn-done 信号携带会话 id，存**跑完的那卷**；beforeunload 存**全部有内容卷**（非仅活跃卷） | ① 后台卷 A 跑完一轮：A 的卷文件更新、活跃卷 B 的文件不动（时间戳断言）；② 关应用前全部有内容卷均已落盘（构造 A 后台/B 前台双卷场景）；③ 现存三保存路径全部改调两动词、旧行为对拍 | ~~≈1 天~~ ✅ 已毕（2026-08-23，commit 94baef8b）：turn-done 携带 lastDoneSid（两发射点头部捕获）；persistence 壳行分流（后台卷 → saveSessionById 立即落盘；活跃卷/缺席 → 现行链零漂移）；beforeunload saveAllSessions 全卷落盘；ChatCore 新面 activeSessionId/saveSessionById/saveAllSessions |
+| **L3 清账守护** | 死代码清点（`scanMaxSessionId` 转正、空壳入口删、无条件 append 改守卫）；一致性守护测试常驻；localStorage 降级评估（观察项，不强制本批） | ① 守护测试：书脊列表 ≡ 总目 open 集；首页摊开标记 ≡ open 集；无重复 open id；② biome 改动文件零新增；③ chat-session 全量既有用例不红 | ~~≈半天~~ ✅ 已毕（2026-08-23，commit bdf6abb1）：tracker 写入退役（总目接任，旧文件仅作迁移源被读）；一致性守护常驻（open ≡ 书脊 / 无重复 / 活跃指针在集内 / tracker 退役断言）；audit-fixes #10 断言随 tracker 退役更新 |
 
 ## 5. 风险与纪律
 
@@ -109,10 +109,17 @@
 
 标准前端门禁全适用：`cd src-ui && npm run build` + `npx vitest run` + biome 改动文件零新增。本计划**不触** `src-ui/src/agent/**` 与 `src-ui/src/composition/**`，convergence 基线不动。真机验证项：重启工作集恢复（多卷摊开 → 关 → 开，摊法全回）、后台卷落盘（双卷并发跑一轮后检查卷文件）、续开查重（同卷两次续开只有一条脊）。
 
-## 7. 交付物清单
+## 7. 交付物清单（全部已交付）
 
-- `src-ui/src/state/session-ledger.ts`（新模块：总目读写/发号/成员查询/两动词）
-- `_ledger.json` 形状 + `_active.json` 一次性迁移
-- SessionsHome / SpineRack / loadSessionFromDisk / persistence.ts 壳行 四处消费点改读账
-- `tests/session-ledger.test.ts`（新）+ `tests/chat-session.test.ts` 增补（工作集恢复/查重/按卷落盘）
-- 本文件随 L 段逐段落 ✅，竣工即归档
+- ✅ `src-ui/src/state/session-ledger.ts`（新模块：总目读写/发号/成员查询）
+- ✅ `_ledger.json` 形状 + 自然迁移（旧路径恢复后首写总目，_active.json 写入退役）
+- ✅ SessionsHome / SpineRack（视图对齐：真新建 + 摊开标记）/ loadSessionFromDisk（查重）/ persistence.ts（turn-done 分流 + 全卷保存）
+- ✅ `tests/session-ledger.test.ts`（26 用例，四段判据全钉）+ `tests/chat-session.test.ts`（零漂移适配）+ `tests/audit-fixes.test.ts`（tracker 退役断言更新）
+- 真机验证欠账：重启工作集恢复（多卷摊开 → 关 → 开，摊法全回）、后台卷落盘（双卷并发跑一轮后检查卷文件）、续开查重（同卷两次续开只有一条脊）——留给下次带 key 的真机会话
+
+## 8. 竣工注记（2026-08-23）
+
+- 四段当日连推完成；每段独立 commit + 判据测试先行
+- 迁移采「自然升级」而非显式吸收：旧项目首启走旧路径 → 恢复成功即首写总目 → 下次启动走总目路径；无迁移代码、无回滚分支
+- 惰性水合双唤起点：切卷内联（不拦交互）+ 拟文同步兑底（水合失败才报错）
+- 施工事故一则：git stash 共享栈与另一窗口交错 pop 出 14 文件残留（已 checkout HEAD 恢复）——多 worktree 并发期禁用 stash，已记入 commit message
