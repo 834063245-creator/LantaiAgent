@@ -17,6 +17,7 @@
 import { createElement } from 'react';
 import { codeRuntimePlugin } from '../agent/code-run/runtime-service';
 import { useShellStore } from '../app/shell-store';
+import { capabilitiesServicePlugin } from '../composition/capability-service';
 import { firstPartyPromptPlugins } from '../composition/first-party-prompts';
 import { firstPartyToolPlugins } from '../composition/first-party-tools';
 import { hooksServicePlugin } from '../composition/hook-service';
@@ -68,13 +69,17 @@ export function pluginAssetsOrigin(port: number): string {
  * 出厂段表 builtinPromptSections() 已退役，本通道是出厂段唯一来源）。
  * P4 A-2（2026-08-24）：hooks 第七 service（工具管道钩子贡献注册表——
  * ctx.hooks，enrich/preflight 两类；runtime 装配折叠消费，见
- * composition/hook-service.ts）。 */
+ * composition/hook-service.ts）。P4 A-3（2026-08-24）：capabilities 第八
+ * service（capability 贡献注册表——ctx.capabilities，会话级能力的插件
+ * 装载；贡献经 factoryComposition 快照进 capabilities 域表尾，runtime
+ * fromRoster 穿线零改动，见 composition/capability-service.ts）。 */
 const BUILTIN_PLUGINS: LantaiPlugin[] = [
   compositionServicesPlugin,
   codeRuntimePlugin,
   rendererServicePlugin,
   promptsServicePlugin,
   hooksServicePlugin,
+  capabilitiesServicePlugin,
   paperPlugin,
   settingsPlugin,
   ...firstPartyToolPlugins(),

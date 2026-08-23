@@ -5,10 +5,13 @@
 > 经 ctx.prompts 贡献）；S4-4 甲：贡献行/段进组合解析域（2026-08-23）；
 > S4-4 乙：MCP 机器桥——manifest.mcpServers 声明式挂接（2026-08-23）；
 > ①b：builtin 工具行表退役——十四族全量经 ctx.tools 贡献（2026-08-23）；
-> P4 A-2：hooks/preflight 贡献通道（2026-08-24，ctx.hooks）。
+> P4 A-2：hooks/preflight 贡献通道（2026-08-24，ctx.hooks）；
+> P4 A-3：capability 贡献通道（2026-08-24，ctx.capabilities——会话级
+> 能力的插件装载，B⑤ 批前置）。
 > 插件 = 经
 > webview 动态 import 装载的自包含 ES 模块，
-> 向宿主注册**面板 / 命令 / 工具 / 块渲染器 / prompt 段 / 管道钩子**贡献；
+> 向宿主注册**面板 / 命令 / 工具 / 块渲染器 / prompt 段 / 管道钩子 /
+> capability**贡献；
 > 也可经 manifest 声明式挂接**外部 MCP server**（§3 机器桥）。
 > 完全信任模型——安装前必读 §6。从零到跑通的最短路径：
 > `examples/plugins/hello/README.md`。
@@ -35,7 +38,7 @@
 | 概念 | 是什么 | 真源 |
 |---|---|---|
 | 插件 | 自包含 ESM 模块（`{ name, inject?, apply(ctx) }`） | 本文档 |
-| 贡献通道 | `ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.providers` / `ctx.renderers`（块渲染器，V3b）/ `ctx.prompts`（prompt 段，P4 A-1）/ `ctx.hooks`（管道钩子，P4 A-2） | `src-ui/src/composition/services.ts` + `renderer-service.tsx` + `prompt-service.ts` + `hook-service.ts` |
+| 贡献通道 | `ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.providers` / `ctx.renderers`（块渲染器，V3b）/ `ctx.prompts`（prompt 段，P4 A-1）/ `ctx.hooks`（管道钩子，P4 A-2）/ `ctx.capabilities`（capability，P4 A-3） | `src-ui/src/composition/services.ts` + `renderer-service.tsx` + `prompt-service.ts` + `hook-service.ts` + `capability-service.ts` |
 | 行（row） | 组合的最小单元——工具族/prompt 段/capability/壳行各有 id | `src-ui/src/composition/*` |
 | preset | 命名的行组合叠加层（standard/minimal 内置 + 用户目录） | §8 + `docs/composition/README.md` |
 | patch | 四域行的增量数据（禁用/覆盖/插入） | `docs/composition/README.md` |
@@ -304,6 +307,53 @@ ctx.effect(
 - **子 Agent 不自动继承**（spawnSubAgent 手工建 registry 只挂 board-tracking
   ——与 graph hooks 不下放子 Agent 的既有语义一致）。
 - 重名 id 装载期拒绝（throw）；disposer 经 ctx.effect 登记（同全部通道）。
+
+### ctx.capabilities —— capability 贡献（下次 Agent 装配生效）
+
+第八贡献通道（P4 A-3，2026-08-24）：向 Agent 装配表贡献 **capability**——
+会话级能力的组合单元（工具 + hooks + ctx 服务 + Agent 接线一把抓）。这是
+**深集成通道**：install 拿到与宿主内置 capability 完全同一的装配视图
+（BlueprintScope——ctx/inputs/tools/hooks/preflightHooks/deps/agent），与
+`builtinCapabilities()` 十五项在同一张 blueprint 表上竞争。设计件：
+`docs/plans/composition-architecture/designs/A3-capability-contribution-channel.md`。
+
+```js
+ctx.effect(
+  () =>
+    ctx.capabilities.register({
+      key: 'acme/secret-scanner',   // key 即寻址 id；推荐 '<插件名>/<能力名>'
+      phase: 'agent',                // 'context'（Agent 构造前，可写 ctx 服务）| 'agent'（构造后）
+      install: (scope) => {
+        // 与内置 capability 同一视图：scope.tools / scope.hooks /
+        // scope.preflightHooks / scope.ctx / scope.deps / scope.agent
+        scope.tools.register(mySecretScanTool);
+      },
+    }),
+  'acme/secret-scanner',
+);
+```
+
+关键语义：
+
+- **表尾追加序**：贡献按注册序接在 builtin 表尾（`[...builtinCapabilities(),
+  ...贡献]`）——builtin 前缀不动（字节契约/前缀缓存纪律），无贡献环境零漂移
+  按构造。
+- **key 即寻址 id**：patch/preset 可按 key disable 贡献行
+  （`capabilities: [{ id: 'acme/secret-scanner', disabled: true }]`）——插件
+  开关与能力粒度裁剪两层正交。**注意**：插件卸载后 patch 里残留的 key 会变
+  未知 id → 整个用户层 patch 被拒（all-or-nothing 既有语义，处置 = 删失效
+  条目）。
+- **重名/撞名装载期拒绝**：撞注册表现有 key 或撞 builtin 表任一 key（如
+  `auto-tune`）都在装载期 throw；畸形形状（key 空 / phase 非法 / install 缺
+  函数）同样装载期拒绝（外部插件是纯 JS——fail-fast，不潜伏到会话装配期）。
+- **生效时机是下次 Agent 装配**（新会话）；在途会话不动（KV-cache 纪律，
+  §7）。贡献 register/dispose = 组合输入变更（preset 缓存代数失效）。
+- **普通工具加面走 ctx.tools**——本通道 install 里 `scope.tools.register`
+  的工具落全表尾（converge-tools 之后，不进域折叠：DOMAIN_SPECS 是第一方
+  收敛机制，外部插件不参与）。
+- install 每装配重调（无实例缓存判断）；install 外的实例状态性由插件自担。
+- **子 Agent 不自动继承**（spawnSubAgent 手工装配不经 blueprint——既有语义）。
+- disposer 经 ctx.effect 登记（同全部通道）；服务 dispose 守卫式清空读取面。
 
 关键语义：
 

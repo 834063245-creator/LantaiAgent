@@ -29,6 +29,7 @@
 import { loadSettings, saveSettings } from '../settings';
 import { useCompositionStore } from '../state/composition-store';
 import { usePresetStore } from '../state/preset-store';
+import { onCapabilityContributionsChanged } from './capability-service';
 import { builtinPresetById, resolvePresetComposition } from './presets';
 import { onPromptContributionsChanged } from './prompt-service';
 import type { CompositionPatch, ResolvedComposition } from './roster';
@@ -72,7 +73,8 @@ function hashJson(value: unknown): string {
 /** preset 解析缓存：key → ResolvedComposition。用户层 hash 变化 → 整表
  *  失效；键含 preset patch 内容 hash → discovery 重扫（内容变）自动失效；
  *  S4-4 甲起键含贡献代数——插件行/段进组合解析域后，贡献 register/dispose
- *  = 组合输入变更（代数递增 → 新键 → 新解析）。 */
+ *  = 组合输入变更（代数递增 → 新键 → 新解析）。A-3（2026-08-24）：capability
+ *  贡献是第三条代数挂点（capabilities 域同属解析域快照）。 */
 const cache = new Map<string, ResolvedComposition>();
 let lastUserHash = '';
 
@@ -85,6 +87,7 @@ let lastUserHash = '';
 let contributionsGeneration = 0;
 onToolContributionsChanged(() => contributionsGeneration++);
 onPromptContributionsChanged(() => contributionsGeneration++);
+onCapabilityContributionsChanged(() => contributionsGeneration++);
 
 /** 当前生效组合解析入口（§2.2 装配粒度：workspace Agent 装配 / 占位 Agent /
  *  子 Agent 三处读同一默认 preset）。

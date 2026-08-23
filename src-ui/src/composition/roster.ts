@@ -5,7 +5,8 @@
 // docs/plans/composition-architecture/designs/S2-composition-externalization.md §2.1-2.3）。
 //
 // 四域行模型：tools（插件贡献行——①b 后 builtin 行表退役）/ prompt（通道段
-// 贡献快照——S4-4 甲）/ capabilities（builtinCapabilities）/ shell（builtinShellRows）。
+// 贡献快照——S4-4 甲）/ capabilities（builtinCapabilities + ctx.capabilities
+// 贡献——A-3 表尾追加）/ shell（builtinShellRows）。
 // 出厂层是代码——行实现留代码、patch 只写增量，杜绝「yml 复述全量清单」的
 // 双真源漂移（对 DSH 的第一处刻意偏离：学它的 patch 语义——id 寻址 /
 // disabled / insert / last-write-wins——不学它的文件形态，它的行是 npm 包
@@ -49,6 +50,7 @@
 
 import { z } from 'zod';
 import { type AgentCapability, builtinCapabilities } from '../agent/blueprint';
+import { activeCapabilityContributions } from './capability-service';
 import { pluginToolRows } from './plugin-tool-rows';
 import type { PromptSection } from './prompt-sections';
 import { activePromptContributions } from './prompt-service';
@@ -166,12 +168,15 @@ export class CompositionPatchError extends Error {
  *  序 = 通道注册序）；prompt 域收编 ctx.prompts 段贡献（注册序）。快照
  *  读取时点的通道装载态——贡献 register/dispose 后须重取（preset-assembly
  *  的 cache 代数 + bootShell 贡献监听负责重解析）。①b（2026-08-23）：
- *  builtin 行表全量迁毕退役——tools 域唯一行源 = pluginToolRows()。 */
+ *  builtin 行表全量迁毕退役——tools 域唯一行源 = pluginToolRows()。
+ *  A-3（2026-08-24）：capabilities 域收编 ctx.capabilities 贡献（注册序，
+ *  表尾追加——builtin 前缀不动，无贡献环境 keys ≡ builtinCapabilities()
+ *  零漂移按构造；贡献 register/dispose 同为组合输入变更，第三条代数挂点）。 */
 export function factoryComposition(): ResolvedComposition {
   return {
     tools: pluginToolRows(),
     prompt: activePromptContributions(),
-    capabilities: builtinCapabilities(),
+    capabilities: [...builtinCapabilities(), ...activeCapabilityContributions()],
     shell: builtinShellRows(),
     diagnostics: { disabled: [], overridden: [], inserted: [] },
   };

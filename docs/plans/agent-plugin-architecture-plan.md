@@ -216,7 +216,7 @@ runViaRuntime 门面消费，无服务时惰性游离实例。convergence 零漂
 |---|---|---|
 | ~~prompt-sections 贡献通道~~ | ✅ 已毕（2026-08-23 A-1） | 第六通道 `ctx.prompts`（`composition/prompt-service.ts`，renderer-service 先例）：PromptContribution 形状即 PromptSection（id + applicable? + render）；合流点 = assembleSystemPrompt 末端追加（无贡献 = 空集 = 零漂移按构造，双 preset 实测）；生效 = 下次装配；服务 dispose 守卫式清空读取面（prompt 是字节敏感面，比四 service 的既有宽松面收紧）。B④ 迁存量段落时经此通道 |
 | ~~hooks/preflight 暴露面~~ | ✅ 已毕（2026-08-24，A-2） | 第七通道 `ctx.hooks`（`composition/hook-service.ts`，prompt-service 同款先例）：HookContribution 两类——`kind: 'enrich'`（Hook 形状零改写，post-tool 富化链）/ `kind: 'preflight'`（PreflightHook 形状零改写，pre-tool 警告聚合 + HIGH 门禁语义沿用）。装配折叠在 `runtime._assembleAgent`（capability 钩子先、通道贡献随后——tools 域 builtin-先/贡献-后同序）；executor 直调与 eventBus 双路径自动生效（同一 registry）；子 Agent 不自动继承（graph-hooks 同款不下放）；贡献不进 roster 寻址域（四域行模型不含 hooks 域，无既定需求不预防性扩展） |
-| blueprint capability 贡献面 | **排进当前工程**（2026-08-23 拍板 #4） | 会话级能力的插件装载；设计件穿插机械批推进，产出过用户审批 |
+| ~~blueprint capability 贡献面~~ | ✅ 已毕（2026-08-24，A-3） | 第八通道 `ctx.capabilities`（`composition/capability-service.ts`，设计件 designs/A3-capability-contribution-channel.md——自查模式首件：用户失去设计件审批能力，agent 自查六断言 + 两缺陷修订后实施）：CapabilityContribution = AgentCapability 形状零改写（phase/when/install 原样）；表尾追加序（builtin 前缀不动，零漂移按构造）；贡献 key 进 capabilities 域寻址（patch 可禁用插件能力行）；撞 builtin key + 畸形形状装载期拒绝（fail-fast）；runtime 零改动（fromRoster 穿线既有）；贡献变更 = 组合输入变更（第三条代数挂点）；子 Agent 不继承；深集成通道（全量 BlueprintScope——C12 compat 不暴露，L3 放弃） |
 | 工具声明可序列化（zod↔manifest） | ~2 天，**已拍板排进工程**（2026-08-23 #5） | 第三方工具免编译挂载前提；自家工具清单数据化同样受益 |
 | permissions.json 接插件声明 | ~2 天，**已拍板排进工程**（2026-08-23 #5） | 对外开放前的一票否决项 |
 
@@ -255,8 +255,8 @@ runViaRuntime 门面消费，无服务时惰性游离实例。convergence 零漂
 | ② | 工具大域 | 分族：**fs / shell / agent-isolation 已毕**（P4 ②，2026-08-23：同 ①a——无状态 codingExec，通道现成；plugins/coding-domain-plugins.ts 五族合并文件 + first-party-tools.ts 清单扩展，行表 12→9，convergence 双 preset 零漂移实测；行 id builtin/fs・shell・agent-isolation 退役——S4-4 甲已落地：贡献行 plugin/hologram/<域>-domain/<工具名> 全量可寻址）；**browser-desktop 已毕**（随 ①b 批 2026-08-23 收官：整组缓存行 `plugin/hologram/browser-desktop-domain/tools`，minimal 寻址 plugin 行）；memory / skill / task / agent **已毕**（随 ①c 批 2026-08-23） |
 | ③ | hologram 族（graph/ops/lsp） | **已毕**（2026-08-23，随 ①c 批）：整组形态贡献（`plugin/hologram/engine-domain/tools` 一行承载动态名面）+ noCache——graphData 开关每装配现判、loadHologramSchemas 动态面每装配刷新；jsdom mock 通道（bridge→mockInvoke）下 schema 面非空，graph/ops/lsp 域工具零漂移（convergence 实测） |
 | ④ | prompt 段落（persona/规则/记忆/运行环境） | **已毕——收官（2026-08-23）**：13 段全量经 ctx.prompts 第一方插件通道贡献（试点 memory/claude-md → 续批 graph-snapshot → 收官批一次性迁完剩余 10 段）；`plugins/prompt-segments-plugin.ts` 装载 `firstPartyPromptSections()`（序 = 迁移前出厂表序，单批零漂移按构造、双 preset 实测）。收官落地三件：①`builtinPromptSections()` 退役、段表空壳删除、`assembleSystemPrompt` 缺省 = 空表（出厂面 = 解析产物 + 通道贡献）；②roster prompt 域寻址面 = 仅已插入段——~~寻址第一方段 id 报「未知段 id」整体拒绝，insert id 与第一方段同名不拒（两条临时语义，S4-4 甲恢复全寻址后消灭）~~ **S4-4 甲已落地（2026-08-23）：全寻址恢复——第一方段可 disable/text 覆盖/锚定，insert 撞名恢复拒绝，两条临时位序消灭**；③注册面依赖面扩大——无通道环境缺省拼装 = 空提示词，convergence 夹具经 withFirstPartyPromptChannel 复现生产装配面（obstacle ③）。动态插值段无 ①c 缓存障碍（prompt 通道无实例缓存，render 每装配重调直收 PromptSectionContext）；roster 的 text 覆盖丢失动态插值语义由通道继承（贡献段脱离寻址域，S4-4 扩展点） |
-| ⑤ | 会话级能力（plan/通信/discovery/merge/board/compaction） | 需通道 A-3——**已拍板排进当前工程**（2026-08-23 #4），设计件穿插机械批推进 |
-| ⑥ | 管道参与（graph hooks/board tracking/preflight） | 需通道 A-2 |
+| ⑤ | 会话级能力（plan/通信/discovery/merge/board/compaction） | **通道已就位**（A-3 ✅ 2026-08-24，ctx.capabilities）——迁移路线见设计件 §2.8：非工具五件（graph-hooks/board-tracking/plan-injector/pre-run-hook/auto-tune，表尾后缀）可分批先行；工具注册十件（plan-tools…converge-tools，converge-tools 与 code-execution-tool 双双 install 期快照 visibleTools()——序依赖）**单批收官**（builtinCapabilities() 届时退役，清单序 = 迁移前表序） |
+| ⑥ | 管道参与（graph hooks/board tracking/preflight） | 需通道 A-2——**已毕**（2026-08-24，graph-hooks/board-tracking 等第一方钩子仍在 builtin capability 表；外部插件钩子通道 A-2 落地） |
 
 拆解纪律：第一方插件仍编译期打包（VSCode 内置扩展同款）；收益是解耦/可禁用/
 多窗口并行/契约固化，不是物理分包。特权区清单见 D9，只减不增，可用 git 度量。
