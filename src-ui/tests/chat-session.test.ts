@@ -437,6 +437,7 @@ describe('ChatPanel session persistence', () => {
 
       // Tracker points to session 1
       mockInvoke
+        .mockRejectedValueOnce(new Error('no ledger'))
         .mockResolvedValueOnce(JSON.stringify({ lastId: 1, nextId: 1 }))
         // Session 1 has only system prompt — no user messages
         .mockResolvedValueOnce(
@@ -477,12 +478,15 @@ describe('ChatPanel session persistence', () => {
       panel.setProjectPath('D:/test');
 
       // Tracker exists, session file exists with valid conversation
-      mockInvoke.mockResolvedValueOnce(JSON.stringify({ lastId: 46, nextId: 77 })).mockResolvedValueOnce(
-        mockSessionFile(46, [
-          { role: 'system', content: 'sys' },
-          { role: 'user', content: 'hello' },
-        ]),
-      );
+      mockInvoke
+        .mockRejectedValueOnce(new Error('no ledger'))
+        .mockResolvedValueOnce(JSON.stringify({ lastId: 46, nextId: 77 }))
+        .mockResolvedValueOnce(
+          mockSessionFile(46, [
+            { role: 'system', content: 'sys' },
+            { role: 'user', content: 'hello' },
+          ]),
+        );
 
       await panel.autoRestoreLastSession('D:/test');
 
@@ -621,20 +625,24 @@ describe('ChatPanel session persistence', () => {
       // ── Step 4: autoRestoreLastSession should recover the saved conversation ──
       // Mock read_file_content: tracker + session file
       mockInvoke.mockReset();
+      // L0 总目占位：链头补「无总目」响应（走旧单卷路径，后续链原位）
       // Tracker points to session that was saved
       const savedId = lsKeys.length > 0 ? parseInt(lsKeys[0].replace(`hologram_session_${hash}_`, ''), 10) : 1;
-      mockInvoke.mockResolvedValueOnce(JSON.stringify({ lastId: savedId, nextId: savedId + 1 })).mockResolvedValueOnce(
-        JSON.stringify({
-          id: savedId,
-          label: '已保存',
-          savedAt: new Date().toISOString(),
-          messages: [
-            { role: 'system', content: 'sys' },
-            { role: 'user', content: '帮我分析' },
-            { role: 'assistant', content: '好的，正在分析…' },
-          ],
-        }),
-      );
+      mockInvoke
+        .mockRejectedValueOnce(new Error('no ledger'))
+        .mockResolvedValueOnce(JSON.stringify({ lastId: savedId, nextId: savedId + 1 }))
+        .mockResolvedValueOnce(
+          JSON.stringify({
+            id: savedId,
+            label: '已保存',
+            savedAt: new Date().toISOString(),
+            messages: [
+              { role: 'system', content: 'sys' },
+              { role: 'user', content: '帮我分析' },
+              { role: 'assistant', content: '好的，正在分析…' },
+            ],
+          }),
+        );
 
       // Set fresh agent factory for autoRestoreLastSession
       panel.setAgentFactory(
@@ -744,7 +752,10 @@ describe('ChatPanel session persistence', () => {
           }) as any,
       );
 
+      // L0 总目占位：autoRestore 先读 _ledger.json——链头补一次「无总目」响应，
+      // 后续链恢复原位（走旧单卷路径，行为不变）
       mockInvoke
+        .mockRejectedValueOnce(new Error('no ledger'))
         .mockResolvedValueOnce(JSON.stringify({ lastId: 1, nextId: 2 }))
         .mockResolvedValueOnce(mockSessionFile(1, mockSessionMessages, '测试会话'));
 
