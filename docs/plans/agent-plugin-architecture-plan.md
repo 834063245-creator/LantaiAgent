@@ -219,8 +219,10 @@ runViaRuntime 门面消费，无服务时惰性游离实例。convergence 零漂
 > 产物末尾（A-1 已定型语义）；段迁入通道后其拼装位 = 贡献末位。零漂移迁移
 > 因此仅限出厂段表**表尾后缀**：迁中段段（如 behavior-rules）会把该段挪到
 > 输出尾部 = 拼装序变化 = 击穿 system-prompt.fixture 与前缀缓存。B④ 只能
-> 按表尾逆序逐批推进（已迁 memory/claude-md；下一批 graph-snapshot，再后
-> multi-agent → env/model-identity → … → 静态五段收尾）。
+> 按表尾逆序逐批推进（已迁 graph-snapshot/memory/claude-md；下一批
+> multi-agent，再后 env/model-identity → … → 静态五段收尾；迁出段序保真
+> = 新迁段插 migratedPromptSections 数组**头部**——表尾逆序批次下先迁段
+> 在原表中更靠后，尾部追加会翻转贡献序）。
 
 | 批 | 内容 | 障碍 |
 |---|---|---|
@@ -229,7 +231,7 @@ runViaRuntime 门面消费，无服务时惰性游离实例。convergence 零漂
 | ①c | wait / ask | 需通道 ②：依赖装配期真值（wait 的 subAgentPool 按装配变化、ask 的 ui 回调每次装配换）——实例缓存会锁存首装配真值；需贡献按装配传参的另行设计（无缓存行或代理间接层） |
 | ② | 工具大域 | 分族：fs / shell / agent-isolation 同 ①a（codingExec 无状态，通道现成可搬）；browser-desktop 同 ①b（minimal 寻址 `builtin/browser-desktop`）；memory / skill / task / agent 同 ①c（可选 registry / taskManager / spawner 按装配给值） |
 | ③ | hologram 族（graph/ops/lsp） | 同 ①c 变体：graphData 是装配期开关（缺帐行产出空集）——实例缓存会把首装配的 graphData 有无锁死；且 loadHologramSchemas 动态面需每装配刷新。异步 factory 已支持但缓存语义需另行设计 |
-| ④ | prompt 段落（persona/规则/记忆/运行环境） | **试点已毕**（2026-08-23：memory/claude-md 表尾两段迁 ctx.prompts——`plugins/prompt-segments-plugin.ts` + `composition/first-party-prompts.ts` 通道腰 + phase-0 夹具包腰，双 preset 零漂移实测；定义留 prompt-sections.ts 单一真源）。勘定修正两处：动态插值段**无** ①c 缓存障碍——prompt 通道无实例缓存，render 每装配重调直收 PromptSectionContext（试点即迁动态段验证）；真障碍是④拼装序约束——零漂移仅限表尾后缀，静态段（behavior-rules 等）反而须最后迁。剩余批次按表尾逆序（graph-snapshot → multi-agent → …）；roster 的 text 覆盖丢失动态插值语义由通道继承（贡献段脱离寻址域，S4-4 扩展点） |
+| ④ | prompt 段落（persona/规则/记忆/运行环境） | **试点 + 首续批已毕**（2026-08-23：memory/claude-md 试点 + graph-snapshot 续批迁 ctx.prompts——`plugins/prompt-segments-plugin.ts` + `composition/first-party-prompts.ts` 通道腰 + phase-0 夹具包腰，双 preset 零漂移实测；定义留 prompt-sections.ts 单一真源）。勘定修正两处：动态插值段**无** ①c 缓存障碍——prompt 通道无实例缓存，render 每装配重调直收 PromptSectionContext（试点即迁动态段验证）；真障碍是④拼装序约束——零漂移仅限表尾后缀，静态段（behavior-rules 等）反而须最后迁。剩余批次按表尾逆序（multi-agent → env/model-identity → …，新迁段插 migratedPromptSections 头部保序）；roster 的 text 覆盖丢失动态插值语义由通道继承（贡献段脱离寻址域，S4-4 扩展点） |
 | ⑤ | 会话级能力（plan/通信/discovery/merge/board/compaction） | 需通道 A-3 |
 | ⑥ | 管道参与（graph hooks/board tracking/preflight） | 需通道 A-2 |
 

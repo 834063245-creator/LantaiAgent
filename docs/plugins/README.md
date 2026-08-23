@@ -170,10 +170,12 @@ ctx.effect(
 第六贡献通道（P4 A-1，2026-08-23）：向 Agent 系统提示词追加段落——工具指导、
 领域约定、团队规范等静态文本面。
 
-第一方同走此通道（P4 B④ 试点，2026-08-23）：出厂段 memory/claude-md 已迁
-`src-ui/src/plugins/prompt-segments-plugin.ts` 经 `ctx.prompts` 贡献（贡献位 =
-表尾原位，拼装字节零漂移；定义留 `prompt-sections.ts` 单一真源）——迁移后
-这两段脱离组合 patch 寻址域（寻址它们的旧 patch 整体拒绝，错误可见）。
+第一方同走此通道（P4 B④，2026-08-23）：出厂段 graph-snapshot/memory/
+claude-md（试点 + 首续批）已迁
+`src-ui/src/plugins/prompt-segments-plugin.ts` 经 `ctx.prompts` 贡献（贡献
+位 = 表尾原位，拼装字节零漂移；定义留 `prompt-sections.ts` 单一真源）
+——迁移后这些段脱离组合 patch 寻址域（寻址它们的旧 patch 整体拒绝，
+错误可见）。
 
 ```js
 ctx.effect(

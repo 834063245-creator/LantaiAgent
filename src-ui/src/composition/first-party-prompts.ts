@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT.
 
-// 第一方 prompt 段插件通道（P4 存量拆解 B④，agent-plugin-architecture-plan §5）。
+// 第一方 prompt 段插件通道（P4 存量拆解 B④ 试点 + 续批，
+// agent-plugin-architecture-plan §5）。
 //
 // 两个职责（镜像 B① composition/first-party-tools.ts）：
 //   1. 插件清单单一真源：经 ctx.prompts 贡献段的第一方插件列表——
@@ -15,7 +16,7 @@
 //
 // 语义提醒：prompt 通道无实例缓存（每次拼装重调 render，贡献直收
 // PromptSectionContext 装配期真值）——与 tools 通道的 rowCtx 锁存不同，
-// 收动态插值的段（memory/claude-md）无跨装配串扰面。
+// 收动态插值的段（graph-snapshot/memory/claude-md）无跨装配串扰面。
 
 import { Context } from '../cordis';
 import { promptSegmentsPlugin } from '../plugins/prompt-segments-plugin';

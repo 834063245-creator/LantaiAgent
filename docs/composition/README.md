@@ -36,14 +36,15 @@ prompt:
 | 域 | 行 id 举例 | 寻址对象 |
 |---|---|---|
 | `tools` | `builtin/fs`、`builtin/shell`、`builtin/graph`… | 内置工具族（真源 `src-ui/src/composition/tool-rows.ts`；git/search 已迁 ctx.tools 插件通道——P4 B①） |
-| `prompt` | `behavior-rules`、`collaboration-mode`… | system prompt 段（真源 `prompt-sections.ts`；id 是裸名；memory/claude-md 已迁 `ctx.prompts` 插件通道——P4 B④，脱离 patch 寻址域） |
+| `prompt` | `behavior-rules`、`collaboration-mode`… | system prompt 段（真源 `prompt-sections.ts`；id 是裸名；graph-snapshot/memory/claude-md 已迁 `ctx.prompts` 插件通道——P4 B④，脱离 patch 寻址域） |
 | `capabilities` | `plan-tools`、`converge-tools`、`graph-hooks`… | 会话级工具/hook（真源 `agent/blueprint.ts`；id = capability key） |
 | `shell` | `hologram/shell-graph`、`hologram/shell-cold-start`… | 壳引导行（真源 `composition/shell-rows.ts`；行实现 `src-ui/src/shell/rows/*`） |
 
 > **寻址域边界（2026-08-23 勘正）**：patch/preset 的组合解析域当前只含
 > builtin 行——插件贡献的工具行（`plugin/<插件名>/<工具名>`）与 prompt
 > 段贡献（`ctx.prompts`，P4 A-1）**不在寻址域内**，写进 patch 会报「未知
-> 行 id」整体拒绝（含 B④ 迁出的出厂段 memory/claude-md——寻址它们的
+> 行 id」整体拒绝（含 B④ 迁出的出厂段 graph-snapshot/memory/claude-md
+> ——寻址它们的
 > 旧 patch 会整体拒绝，错误可见，S4-4 机器桥批的扩展点）。贡献行/段
 > 纳入寻址域属 S4-4 机器桥批；当前卸载/禁用插件走插件开关（设置 → 插件），
 > 不走组合 patch。

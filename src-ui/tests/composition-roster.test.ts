@@ -196,8 +196,9 @@ describe('composition/roster（S2-0 组合引擎）', () => {
     const idx = r.prompt.findIndex((s) => s.id === 'replacement');
     expect(idx).toBeGreaterThanOrEqual(0);
     expect(r.prompt.some((s) => s.id === 'multi-agent')).toBe(false);
-    // replacement 的后一段 = multi-agent 原本的后继段 graph-snapshot
-    expect(r.prompt[idx + 1]?.id).toBe('graph-snapshot');
+    // B④ 后 multi-agent 是表尾（graph-snapshot 已迁出）——replacement
+    // 落 multi-agent 原位 = 表尾，无后继段
+    expect(idx).toBe(r.prompt.length - 1);
   });
 
   it('insert 同层链式：先插段可作后插段锚', () => {
@@ -248,10 +249,10 @@ describe('composition/roster（S2-0 组合引擎）', () => {
   });
 
   it('拒绝：insert 撞已有 id（出厂段 / 已插段）', () => {
-    // B④ 起 memory/claude-md 迁出出厂表（ctx.prompts 通道贡献）——撞出厂段
-    // 探针改用表内段 graph-snapshot（现表尾）
+    // B④ 起 graph-snapshot/memory/claude-md 迁出出厂表（ctx.prompts 通道
+    // 贡献）——撞出厂段探针改用表内段 multi-agent（现表尾）
     expect(() =>
-      resolveRoster(factoryComposition(), [{ prompt: [{ insert: [{ id: 'graph-snapshot', text: '撞出厂段' }] }] }]),
+      resolveRoster(factoryComposition(), [{ prompt: [{ insert: [{ id: 'multi-agent', text: '撞出厂段' }] }] }]),
     ).toThrow(CompositionPatchError);
     expect(() =>
       resolveRoster(factoryComposition(), [

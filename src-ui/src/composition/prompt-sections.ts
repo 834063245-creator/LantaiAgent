@@ -22,16 +22,19 @@
 // 机械重述——standard 下 persona 拼装结果逐字节不变，由
 // verify:convergence 的 system-prompt.fixture 快照守护。
 //
-// P4 B④ 试点（2026-08-23）：memory / claude-md 两段（表尾后缀）迁出本表，
-// 经 ctx.prompts 第一方插件通道贡献（plugins/prompt-segments-plugin.ts，
-// 装配腰 composition/first-party-prompts.ts——B① first-party-tools 同款）。
+// P4 B④（2026-08-23）：memory / claude-md（试点）+ graph-snapshot（续批）
+// 三段（表尾后缀）迁出本表，经 ctx.prompts 第一方插件通道贡献
+// （plugins/prompt-segments-plugin.ts，装配腰
+// composition/first-party-prompts.ts——B① first-party-tools 同款）。
 // 装配面不变：贡献恒在解析产物末尾 = 迁出段的表尾原位，字节零漂移按构造
 // 成立（双 preset 快照实测）。**零漂移迁移因此只可能是表尾后缀**——迁
 // 中段段（如 behavior-rules）会把该段挪到输出尾部 = 拼装序变化 = 击穿
-// 快照与前缀缓存；后续批次按表尾逐段推进。段定义仍留本文件（prompt 段
-// 单一真源），migratedPromptSections() 供插件装载。roster 寻址域随之
-// 收窄：patch 寻址 memory/claude-md 报「未知段 id」整体拒绝（错误可见，
-// 纳入寻址域属 S4-4 机器桥批，同 B① git/search 先例）。
+// 快照与前缀缓存；后续批次按表尾逐段推进（迁出段集合见表尾
+// migratedPromptSections——批次按表尾逆序，新迁段插其数组头部保序）。
+// 段定义仍留本文件（prompt 段单一真源），migratedPromptSections() 供
+// 插件装载。roster 寻址域随之收窄：patch 寻址 graph-snapshot/memory/
+// claude-md 报「未知段 id」整体拒绝（错误可见，纳入寻址域属 S4-4 机器
+// 桥批，同 B① git/search 先例）。
 //
 // 过渡形态：S1 期间 section 在 TS 常量表；S2 起随 preset 体系数据文件化。
 
@@ -252,6 +255,9 @@ const MULTI_AGENT: PromptSection = {
 - **不自己包揽主活**：拆分清楚后，把各子任务交给子 Agent，别在主 Agent 里重复做。`,
 };
 
+// ── B④ 迁出段（经 ctx.prompts 第一方插件通道贡献——plugins/
+//    prompt-segments-plugin.ts；定义留本文件 = prompt 段单一真源）──
+
 const GRAPH_SNAPSHOT: PromptSection = {
   id: 'graph-snapshot',
   applicable: (ctx) => hasGraph(ctx) && !!ctx.graphSnapshot,
@@ -262,9 +268,6 @@ const GRAPH_SNAPSHOT: PromptSection = {
 ${ctx.graphSnapshot}
 \`\`\``,
 };
-
-// ── B④ 迁出段（经 ctx.prompts 第一方插件通道贡献——plugins/
-//    prompt-segments-plugin.ts；定义留本文件 = prompt 段单一真源）──
 
 const MEMORY: PromptSection = {
   id: 'memory',
@@ -283,8 +286,9 @@ ${ctx.claudeMdSection}`,
 
 /** section 注册表 — 表序 = 拼装序（standard preset 的事实来源）。
  *  简短面段（*-brief）与完整面段（其余）经 applicable 互斥分流。
- *  B④ 起本表是「表内段」（11 段）——memory/claude-md 迁插件通道（见
- *  migratedPromptSections），出厂装配面 = 本表 + 通道贡献，序不变。 */
+ *  B④ 起本表是「表内段」（10 段）——graph-snapshot/memory/claude-md 迁
+ *  插件通道（见 migratedPromptSections），出厂装配面 = 本表 + 通道贡献，
+ *  序不变。 */
 export function builtinPromptSections(): PromptSection[] {
   return [
     IDENTITY_BRIEF,
@@ -297,15 +301,16 @@ export function builtinPromptSections(): PromptSection[] {
     ENV,
     MODEL_IDENTITY,
     MULTI_AGENT,
-    GRAPH_SNAPSHOT,
   ];
 }
 
-/** B④ 迁出段（表尾后缀序）：经 ctx.prompts 第一方插件通道贡献——
- *  组合序 = 本函数序（贡献注册序）；迁出前后拼装字节全等（迁出段即
- *  表尾原位）。后续批次迁段在此追加并同步从上表移除。 */
+/** B④ 迁出段（序 = 迁出前出厂表尾序）：经 ctx.prompts 第一方插件通道贡献
+ *  ——组合序 = 本函数序（贡献注册序）；迁出前后拼装字节全等（迁出段即
+ *  表尾原位）。批次按表尾逆序推进，**新迁段在原表中先于已迁段，故必须
+ *  插本数组头部**（尾部追加会翻转贡献序 = 拼装序漂移）；每批迁段在此
+ *  插头并同步从上表移除。 */
 export function migratedPromptSections(): PromptSection[] {
-  return [MEMORY, CLAUDE_MD];
+  return [GRAPH_SNAPSHOT, MEMORY, CLAUDE_MD];
 }
 
 /** 按表序拼装系统提示词（applicable=false 的段跳过，其余纯 concat）。
@@ -313,9 +318,9 @@ export function migratedPromptSections(): PromptSection[] {
  *  缺省 = builtinPromptSections() 出厂表（现行行为，零漂移保证）。
  *  A-1（2026-08-23）起第六通道贡献（ctx.prompts，prompt-service.ts）追加在
  *  解析产物之后——无服务/无贡献 = 空集，拼装结果零漂移按构造成立；
- *  B④（2026-08-23）起 memory/claude-md 出厂段即经此通道贡献（表尾原位，
- *  字节零漂移）；生效时机 = 下次 Agent 装配（在途会话段落面不变，前缀
- *  缓存纪律）。 */
+ *  B④（2026-08-23）起 graph-snapshot/memory/claude-md 出厂段即经此通道
+ *  贡献（表尾原位，字节零漂移）；生效时机 = 下次 Agent 装配（在途会话段
+ *  面不变，前缀缓存纪律）。 */
 export function assembleSystemPrompt(ctx: PromptSectionContext, sections?: PromptSection[]): string {
   const list = [...(sections ?? builtinPromptSections()), ...activePromptContributions()];
   let out = '';

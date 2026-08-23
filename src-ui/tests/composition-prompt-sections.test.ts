@@ -11,9 +11,10 @@ import {
 // 表序 = 拼装序（standard preset 的事实来源）。逐字节零漂移由
 // verify:convergence 的 system-prompt.fixture 快照守护（设计件 §2.4），
 // 此处钉注册表自身的结构语义。
-// P4 B④（2026-08-23）：memory/claude-md 迁出表入 ctx.prompts 插件通道
-// ——出厂装配面 = 表内段 + 通道贡献段；涉及装配输出的断言经
-// withFirstPartyPromptChannel 复现生产装配面（与表内段逐字一致）。
+// P4 B④（2026-08-23）：memory/claude-md（试点）+ graph-snapshot（续批）
+// 迁出表入 ctx.prompts 插件通道——出厂装配面 = 表内段 + 通道贡献段；
+// 涉及装配输出的断言经 withFirstPartyPromptChannel 复现生产装配面
+// （与表内段逐字一致）。
 
 const GRAPH_DATA = { nodes: [{ id: 'a.ts', name: 'a', community_id: 0 }], edges: [] };
 
@@ -29,11 +30,11 @@ const TABLE_SECTION_IDS = [
   'env',
   'model-identity',
   'multi-agent',
-  'graph-snapshot',
 ];
 
-/** B④ 迁出段（ctx.prompts 第一方插件通道贡献——表尾原位）。 */
-const MIGRATED_SECTION_IDS = ['memory', 'claude-md'];
+/** B④ 迁出段（ctx.prompts 第一方插件通道贡献——序 = 迁出前表尾序，
+ *  新迁段插头部保序：表尾逆序批次下先迁段在原表中更靠后）。 */
+const MIGRATED_SECTION_IDS = ['graph-snapshot', 'memory', 'claude-md'];
 
 /** 出厂装配面（表 + 迁出段，序 = 拼装序）。 */
 const ALL_SECTION_IDS = [...TABLE_SECTION_IDS, ...MIGRATED_SECTION_IDS];
@@ -42,7 +43,7 @@ const ALL_SECTION_IDS = [...TABLE_SECTION_IDS, ...MIGRATED_SECTION_IDS];
 const factorySections = () => [...builtinPromptSections(), ...migratedPromptSections()];
 
 describe('composition/prompt-sections（S1-4 section 注册表）', () => {
-  it('section id 唯一且稳定：表内 11 段 + B④ 迁出 2 段，出厂装配面 13 段', () => {
+  it('section id 唯一且稳定：表内 10 段 + B④ 迁出 3 段，出厂装配面 13 段', () => {
     expect(builtinPromptSections().map((s) => s.id)).toEqual(TABLE_SECTION_IDS);
     expect(migratedPromptSections().map((s) => s.id)).toEqual(MIGRATED_SECTION_IDS);
     const ids = factorySections().map((s) => s.id);
@@ -78,8 +79,8 @@ describe('composition/prompt-sections（S1-4 section 注册表）', () => {
       expect(withAll).toContain('## 记忆库\nmem');
       expect(withAll).toContain('## 项目架构快照');
       expect(withAll).toContain('## 项目规范\nmd');
-      // 尾部三段顺序：snapshot → memory → claude-md（B④ 后两段经通道贡献，
-      // 贡献恒在末尾 = 迁出前表尾原位——字节零漂移的序面证据）
+      // 尾部三段顺序：snapshot → memory → claude-md（B④ 三段经通道贡献，
+      // 贡献序 = 迁出前表尾序 = 迁出前表尾原位——字节零漂移的序面证据）
       const snapIdx = withAll.indexOf('## 项目架构快照');
       const memIdx = withAll.indexOf('## 记忆库');
       const mdIdx = withAll.indexOf('## 项目规范');
@@ -91,6 +92,7 @@ describe('composition/prompt-sections（S1-4 section 注册表）', () => {
         projectPath: '/p',
       });
       expect(withoutOptional).not.toContain('## 运行环境');
+      expect(withoutOptional).not.toContain('## 项目架构快照');
       expect(withoutOptional).not.toContain('## 记忆库');
       expect(withoutOptional).not.toContain('## 项目规范');
     });
