@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // 内置工具行表（S1-2/S1-3）—— composition 架构的装配数据源。
-// 现存 12 族：hologram(graph/ops/lsp)、fs、shell、web、agent-isolation、
-// ask、skill、memory、task、agent、browser-desktop、wait。
-// git/search 两族已于 P4 B①（2026-08-23）迁入 ctx.tools 第一方插件通道
-// （plugins/git-search-plugin.ts，经 composition/first-party-tools.ts 装载）。
+// 现存 9 族：hologram(graph/ops/lsp)、web、ask、skill、memory、task、
+// agent、browser-desktop、wait。
+// git/search 两族已于 P4 B①（2026-08-23）、fs/shell/agent-isolation 三族
+// 已于 P4 ②（2026-08-23）迁入 ctx.tools 第一方插件通道
+// （plugins/coding-domain-plugins.ts，经 composition/first-party-tools.ts
+// 装载——五族均只依赖无状态 codingExec，实例缓存语义等价勘定见该文件头）。
 // 表序 = 组合序（standard preset 装配序的事实来源）——前缀缓存语义的根基。
 //
 // 迁入纪律（S1 设计件 §2.4）：每迁一族，不设 CONVERGENCE_PRESET 跑
@@ -33,13 +35,7 @@ import { createTaskTools } from '../agent/task';
 import type { Tool, ToolExecutor } from '../agent/tool';
 import { agentInvoke } from '../agent/tool';
 import type { CodingToolsUI } from '../agent/tools/coding';
-import {
-  createAgentIsolationTools,
-  createAskUserTools,
-  createFsTools,
-  createShellTools,
-  createWebTools,
-} from '../agent/tools/coding';
+import { createAskUserTools, createWebTools } from '../agent/tools/coding';
 import { defineTool } from '../agent/tools/define-tool';
 import { loadHologramSchemas, mcpSchemaToTool } from '../agent/tools/hologram';
 import type { SubAgentSpawner } from '../agent/tools/subagent';
@@ -118,38 +114,17 @@ const HOLOGRAM_ROW: BuiltinToolRow = {
   },
 };
 
-/** fs 族行（S1-2 第一批迁入）。
- *  factory 与 createCodingTools 内的 fs 面同源（createFsTools），
- *  序 = 迁移前 createCodingTools 内的现行表序（机械重述）。 */
-const FS_ROW: BuiltinToolRow = {
-  id: 'builtin/fs',
-  factory: (ctx) => createFsTools(ctx.codingExec),
-};
-
-/** shell 族行（S1-2 第二批迁入）。
- *  factory 与 createCodingTools 内的 shell 面同源（createShellTools），
- *  序 = 迁移前现行表序（run_shell → bash_output/kill/wait）。 */
-const SHELL_ROW: BuiltinToolRow = {
-  id: 'builtin/shell',
-  factory: (ctx) => createShellTools(ctx.codingExec),
-};
-
-/** git 族行与 search 族行已迁出（P4 B①，2026-08-23）——两族改经 ctx.tools
- *  贡献通道注册（plugins/git-search-plugin.ts）；行 id 'builtin/git' /
- *  'builtin/search' 退役，贡献行 id 形如 'plugin/hologram/git-domain/<工具名>'。
- *  迁出依据（baton7 §1 勘定）：两族只依赖无状态 codingExec，实例缓存语义
- *  等价；可见域工具面由 DOMAIN_SPECS 驱动，与注册通道无关（零漂移）。 */
+/** fs / shell / agent-isolation 三族行已迁出（P4 ②，2026-08-23）——三族
+ *  改经 ctx.tools 贡献通道注册（plugins/coding-domain-plugins.ts）；行 id
+ *  'builtin/fs' / 'builtin/shell' / 'builtin/agent-isolation' 退役，贡献行
+ *  id 形如 'plugin/hologram/<域>-domain/<工具名>'。迁出依据（baton7 §1
+ *  勘定 + ② 批沿用）：三族只依赖无状态 codingExec，实例缓存语义等价；
+ *  可见域工具面由 DOMAIN_SPECS 驱动，与注册通道无关（零漂移）。 */
 
 /** web 族行（S1-2 第五批迁入）——单工具 web_fetch。 */
 const WEB_ROW: BuiltinToolRow = {
   id: 'builtin/web',
   factory: (ctx) => createWebTools(ctx.codingExec),
-};
-
-/** agent-isolation 族行（S1-2 第六批迁入）——worktree 隔离 5 工具。 */
-const AGENT_ISOLATION_ROW: BuiltinToolRow = {
-  id: 'builtin/agent-isolation',
-  factory: (ctx) => createAgentIsolationTools(ctx.codingExec),
 };
 
 /** ask 族行（S1-2 第七批迁入）——常驻 ask_user（模型可见的细粒度名）。
@@ -206,18 +181,5 @@ const WAIT_ROW: BuiltinToolRow = {
  *  buildToolRegistry 末端整体读本表（S1-3 起）；行内工具名冲突由
  *  ToolRegistry.register 装载期拒绝（duplicate throw）。 */
 export function builtinToolRows(): BuiltinToolRow[] {
-  return [
-    HOLOGRAM_ROW,
-    FS_ROW,
-    SHELL_ROW,
-    WEB_ROW,
-    AGENT_ISOLATION_ROW,
-    ASK_ROW,
-    SKILL_ROW,
-    MEMORY_ROW,
-    TASK_ROW,
-    AGENT_ROW,
-    BROWSER_DESKTOP_ROW,
-    WAIT_ROW,
-  ];
+  return [HOLOGRAM_ROW, WEB_ROW, ASK_ROW, SKILL_ROW, MEMORY_ROW, TASK_ROW, AGENT_ROW, BROWSER_DESKTOP_ROW, WAIT_ROW];
 }

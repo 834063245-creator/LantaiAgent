@@ -53,11 +53,11 @@ export function pluginAssetsOrigin(port: number): string {
  * 保证外部插件 manifest 的 inject 依赖可解析）。P3：codeRuntime 服务行
  * （agent/code-run——执行腰，四 service 之后）。V3b：块渲染器第五 service。
  * S3：settings 域行化（面板 + 命令双贡献）。P4 A-1（2026-08-23）：
- * prompts 第六 service（system-prompt 段贡献注册表）。P4 B①（2026-08-23）：
- * 表尾接第一方工具域插件清单（git/search 两域经 ctx.tools 贡献工具，
- * 单一真源 composition/first-party-tools.ts——贡献行序 = 清单序，且必须
- * 列于四 service 之后使 inject ['tools'] 可解析）。P4 B④ 收官
- * （2026-08-23）：表尾接第一方 prompt 段插件清单（13 段全量经
+ * prompts 第六 service（system-prompt 段贡献注册表）。P4 B①+②（2026-08-23）：
+ * 表尾接第一方工具域插件清单（git/search 两域 B① + fs/shell/agent-isolation
+ * 三域 ②，经 ctx.tools 贡献工具，单一真源 composition/first-party-tools.ts
+ * ——贡献行序 = 清单序，且必须列于四 service 之后使 inject ['tools'] 可解析
+ * ）。P4 B④ 收官（2026-08-23）：表尾接第一方 prompt 段插件清单（13 段全量经
  * ctx.prompts 贡献——试点 memory/claude-md + 续批 graph-snapshot +
  * 收官批 10 段；单一真源 composition/first-party-prompts.ts——贡献序 =
  * 清单序，列于 promptsServicePlugin 之后使 inject ['prompts'] 可解析；

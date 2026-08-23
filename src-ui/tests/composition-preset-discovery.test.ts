@@ -75,7 +75,7 @@ describe('composition/preset-discovery（S4-0 用户层发现）', () => {
         [ORIGIN + '/']: { status: 200, body: '["weird"]' },
         [ORIGIN + '/weird/roster.patch.yml']: {
           status: 200,
-          body: 'tools:\n  - id: builtin/shell\n    disabled: true\n    text: 越域\n',
+          body: 'tools:\n  - id: builtin/web\n    disabled: true\n    text: 越域\n',
         },
       }),
     });

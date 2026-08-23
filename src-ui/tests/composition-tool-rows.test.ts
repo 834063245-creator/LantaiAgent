@@ -5,7 +5,7 @@ import type { ToolExecutor } from '../src/agent/tool';
 import type { SubAgentSpawner } from '../src/agent/tools/subagent';
 import { builtinToolRows, type ToolRowContext } from '../src/composition/tool-rows';
 
-// ── 行表自检：S1-2 coding 面 + S1-3 装配末端（现存 12 内置族）──
+// ── 行表自检：S1-2 coding 面 + S1-3 装配末端（现存 9 内置族）──
 // 行表是 standard preset 装配序的事实来源（表序 = 组合序）。这里钉住：
 //   1. 行 id 唯一且稳定（未来 preset 按 id 引用行）；
 //   2. 各族行产出 = 迁移前现行装配的表序（机械重述）；
@@ -13,8 +13,8 @@ import { builtinToolRows, type ToolRowContext } from '../src/composition/tool-ro
 //   4. 可选依赖族缺帐时产出空集（原 if 分支语义）；
 //   5. 经 buildToolRegistry 真实装配后无重名残留（名字冲突装载期拒绝）。
 // 可见面零漂移由 verify:convergence 守护（S1 设计件 §2.4），此处不重复。
-// git/search 两族已于 P4 B①（2026-08-23）迁出至 ctx.tools 第一方插件通道
-// （钉住面移 tests/git-search-plugin.test.ts）。
+// git/search（B①）+ fs/shell/agent-isolation（②，均 2026-08-23）五族已迁出
+// 至 ctx.tools 第一方插件通道（钉住面在 tests/coding-domain-plugins.test.ts）。
 
 const exec: ToolExecutor = async () => '';
 
@@ -30,13 +30,11 @@ function row(id: string) {
   return r;
 }
 
-/** 全部 12 行 id（表序 = 组合序；git/search 已迁第一方插件通道）。 */
+/** 全部 9 行 id（表序 = 组合序；git/search/fs/shell/agent-isolation 已迁
+ *  第一方插件通道——五族序钉在 tests/coding-domain-plugins.test.ts）。 */
 const ALL_ROW_IDS = [
   'builtin/hologram',
-  'builtin/fs',
-  'builtin/shell',
   'builtin/web',
-  'builtin/agent-isolation',
   'builtin/ask',
   'builtin/skill',
   'builtin/memory',
@@ -46,7 +44,22 @@ const ALL_ROW_IDS = [
   'builtin/wait',
 ];
 
-/** fs 族现行表序 = 迁移前 createCodingTools 内的声明序（机械重述基准）。 */
+/** web 族现行表序（单工具）。 */
+const WEB_TOOL_ORDER = ['web_fetch'];
+
+/** ask 族现行表序（单工具，常驻可见）。 */
+const ASK_TOOL_ORDER = ['ask_user'];
+
+/** task 族工具名前缀（createTaskTools 产出的 task_* 细粒度名）。 */
+const TASK_TOOL_PREFIX = 'task_';
+
+/** agent 族（subAgentSpawner 缺帐 → 空集；有 spawner → spawn/status 对）。 */
+const AGENT_TOOL_NAMES = ['agent_spawn', 'agent_status'];
+
+/** wait 族（单工具，常驻可见）。 */
+const WAIT_TOOL_NAMES = ['wait'];
+
+/** ② 批迁出族的工具名序（经插件通道注册——端到端在册断言仍覆盖）。 */
 const FS_TOOL_ORDER = [
   'read_file_content',
   'write_file',
@@ -60,11 +73,7 @@ const FS_TOOL_ORDER = [
   'move_file',
   'rename_file',
 ];
-
-/** shell 族现行表序（run_shell → bash_output/kill/wait）。 */
 const SHELL_TOOL_ORDER = ['run_shell', 'bash_output', 'bash_kill', 'bash_wait'];
-
-/** git 族现行表序（P4 B① 迁插件通道，序钉移交 git-search-plugin 测试）。 */
 const GIT_TOOL_ORDER = [
   'git_status',
   'git_diff',
@@ -80,14 +89,7 @@ const GIT_TOOL_ORDER = [
   'git_stash_push',
   'git_stash_pop',
 ];
-
-/** search 族现行表序（单工具；P4 B① 迁插件通道）。 */
 const SEARCH_TOOL_ORDER = ['search_content'];
-
-/** web 族现行表序（单工具）。 */
-const WEB_TOOL_ORDER = ['web_fetch'];
-
-/** agent-isolation 族现行表序（Phase 2c 段）。 */
 const AGENT_ISOLATION_TOOL_ORDER = [
   'agent_isolation_create',
   'agent_isolation_diff',
@@ -96,20 +98,8 @@ const AGENT_ISOLATION_TOOL_ORDER = [
   'agent_isolation_status',
 ];
 
-/** ask 族现行表序（单工具，常驻可见）。 */
-const ASK_TOOL_ORDER = ['ask_user'];
-
-/** task 族工具名前缀（createTaskTools 产出的 task_* 细粒度名）。 */
-const TASK_TOOL_PREFIX = 'task_';
-
-/** agent 族（subAgentSpawner 缺帐 → 空集；有 spawner → spawn/status 对）。 */
-const AGENT_TOOL_NAMES = ['agent_spawn', 'agent_status'];
-
-/** wait 族（单工具，常驻可见）。 */
-const WAIT_TOOL_NAMES = ['wait'];
-
 describe('composition/tool-rows（内置行表全族）', () => {
-  it('行 id 唯一且稳定，表序 = 组合序（12 行）', () => {
+  it('行 id 唯一且稳定，表序 = 组合序（9 行）', () => {
     const ids = builtinToolRows().map((r) => r.id);
     expect(ids).toEqual(ALL_ROW_IDS);
     expect(new Set(ids).size).toBe(ids.length);
@@ -120,10 +110,7 @@ describe('composition/tool-rows（内置行表全族）', () => {
       const names = (await row(id).factory(minCtx())).map((t) => t.name());
       expect(names).toEqual(order);
     };
-    await expectOrder('builtin/fs', FS_TOOL_ORDER);
-    await expectOrder('builtin/shell', SHELL_TOOL_ORDER);
     await expectOrder('builtin/web', WEB_TOOL_ORDER);
-    await expectOrder('builtin/agent-isolation', AGENT_ISOLATION_TOOL_ORDER);
     await expectOrder('builtin/ask', ASK_TOOL_ORDER);
   });
 
@@ -158,9 +145,9 @@ describe('composition/tool-rows（内置行表全族）', () => {
   });
 
   it('行 factory 每次调用产出独立实例（无共享可变状态）', async () => {
-    const fsRow = row('builtin/fs');
-    const a = await fsRow.factory(minCtx());
-    const b = await fsRow.factory(minCtx());
+    const webRow = row('builtin/web');
+    const a = await webRow.factory(minCtx());
+    const b = await webRow.factory(minCtx());
     expect(a).not.toBe(b);
     expect(a.map((t) => t.name())).toEqual(b.map((t) => t.name()));
   });
@@ -169,6 +156,7 @@ describe('composition/tool-rows（内置行表全族）', () => {
     const { buildStandardRegistry } = await import('./convergence/helpers/fixtures');
     const reg = await buildStandardRegistry();
     const names = reg.names();
+    // 表内族 + ②/B① 迁出族（经插件通道注册——夹具已包 withFirstPartyToolChannel）
     for (const n of [
       ...FS_TOOL_ORDER,
       ...SHELL_TOOL_ORDER,
@@ -192,12 +180,12 @@ describe('composition/tool-rows（内置行表全族）', () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it('S1-3 冲突拒绝：外部贡献撞内置行工具名 → 装配期 throw（duplicate tool）', async () => {
+  it('S1-3 冲突拒绝：外部贡献撞插件通道工具名 → 装配期 throw（duplicate tool）', async () => {
     const { buildStandardRegistry } = await import('./convergence/helpers/fixtures');
     const conflicting = {
       id: 'probe/conflict',
       factory: () => ({
-        name: () => 'run_shell', // 撞 builtin/shell 行的 run_shell
+        name: () => 'run_shell', // 撞 shell 域插件的 run_shell（② 批迁出后撞通道贡献）
         description: () => 'conflict probe',
         parameters: () => ({ type: 'object', properties: {} }),
         readOnly: () => false,

@@ -25,11 +25,13 @@ const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r
 
 /** 禁用若干工具行 + 插入/覆盖段的 resolved（穿线效果样本）。
  *  B④ 收官（2026-08-23）：prompt 域寻址面 = 仅已插入段——样本改为
- *  「插入两段 + 覆盖已插入段」（第一方段寻址会被整体拒绝）。 */
+ *  「插入两段 + 覆盖已插入段」（第一方段寻址会被整体拒绝）。
+ *  ② 批（2026-08-23）：builtin/shell 迁插件通道——工具禁用探针改
+ *  builtin/wait（存活的 builtin 行）。 */
 function sampleComposition(): ResolvedComposition {
   return resolveRoster(factoryComposition(), [
     {
-      tools: [{ id: 'builtin/shell', disabled: true }],
+      tools: [{ id: 'builtin/wait', disabled: true }],
       prompt: [
         { insert: [{ id: 'wiring-probe', text: '【穿线探针一】' }] },
         { insert: [{ id: 'wiring-probe-2', after: 'wiring-probe', text: '【穿线探针二】' }] },
@@ -47,16 +49,16 @@ describe('S2-1 穿线：buildToolRegistry(toolRows)', () => {
     expect(reg.names()).toContain('run_shell');
   });
 
-  it('传禁用后的行表 → shell 族工具不在册、shell 域工具不生成', async () => {
+  it('传禁用后的行表 → wait 不在册；插件通道族不受组合解析影响（② 临时语义）', async () => {
     const composition = sampleComposition();
     const { buildToolRegistry } = await import('../src/agent/runtime/agent-builder');
     const { SubAgentPool } = await import('../src/agent/coordinator');
     const { TaskManager } = await import('../src/agent/task');
     const { withFirstPartyToolChannel } = await import('../src/composition/first-party-tools');
     const { FIXED_GRAPH_DATA } = await import('./convergence/helpers/fixtures');
-    // P4 B① 起 git/search 经 ctx.tools 插件通道贡献——直调 buildToolRegistry
-    // 的装配模拟须包通道腰（生产装配恒有通道；roster 禁 builtin/shell 行
-    // 与插件贡献通道正交，互不影响）
+    // P4 B①/② 起 git/search/fs/shell/agent-isolation 经 ctx.tools 插件通道
+    // 贡献——直调 buildToolRegistry 的装配模拟须包通道腰（生产装配恒有通道；
+    // roster 只解析 builtin 行表，与插件贡献通道正交，互不影响）
     const reg = await withFirstPartyToolChannel(() =>
       buildToolRegistry({
         graphData: FIXED_GRAPH_DATA,
@@ -67,13 +69,11 @@ describe('S2-1 穿线：buildToolRegistry(toolRows)', () => {
       }),
     );
     const names = reg.names();
-    // shell 族细粒度名不在册
-    for (const n of ['run_shell', 'bash_output', 'bash_kill', 'bash_wait']) {
-      expect(names).not.toContain(n);
-    }
-    // 领域收敛优雅降级：shell 域工具不生成（该域动作全缺席）
-    expect(names).not.toContain('shell');
-    // 其余族不受影响
+    // wait 行被禁 → wait 工具不在册（roster 穿线生效）
+    expect(names).not.toContain('wait');
+    // ② 批临时语义：fs/shell/git 族已迁插件通道——不在组合解析域，
+    // roster 禁 builtin/wait 不影响它们（S4-4 甲把插件行纳入解析域后可禁）
+    expect(names).toContain('run_shell');
     expect(names).toContain('fs');
     expect(names.some((n) => n.startsWith('git_'))).toBe(true);
   });
@@ -219,7 +219,7 @@ describe('S2-1 穿线：composition-store', () => {
     const s = useCompositionStore.getState();
     expect(s.status).toBe('ok');
     expect(s.patchOrigin).toBe('roster.patch.yml');
-    expect(s.resolved.diagnostics.disabled).toContain('builtin/shell');
+    expect(s.resolved.diagnostics.disabled).toContain('builtin/wait');
     expect(s.resolved.diagnostics.overridden).toContain('wiring-probe');
     expect(s.resolved.diagnostics.inserted).toContain('wiring-probe');
     expect(s.resolved.diagnostics.inserted).toContain('wiring-probe-2');

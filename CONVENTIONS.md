@@ -130,21 +130,25 @@ React 靠引用比较观察变化。store 是唯一提交口：
 ### 1.7 Agent 运行时：装配组合与会话事件（agent-core-convergence 立规）
 
 ```
-装配组合（三层，2026-08-20 组合架构 S1 起生效；P4 B① 2026-08-23 增第一方插件通道）：
-✅ 内置工具族（hologram/fs/shell/web/agent-isolation/ask/skill/
-   memory/task/agent/browser-desktop/wait，12 族）：在 composition/tool-rows.ts 行表
+装配组合（三层，2026-08-20 组合架构 S1 起生效；P4 B①/②/A-1/B④ 2026-08-23 增第一方插件通道）：
+✅ 内置工具族（hologram/web/ask/skill/memory/task/agent/browser-desktop/wait，
+   9 族）：在 composition/tool-rows.ts 行表
    加一行（factory(ctx) → Tool[]，可 async）——buildToolRegistry 按表序装配全部
    内置族，行内工具名冲突由 ToolRegistry.register 装载期拒绝
-✅ 第一方工具域插件（P4 B① 起）：只依赖无状态装配依赖（codingExec 类）的族走
-   ctx.tools 贡献通道——plugins/git-search-plugin.ts 域插件形状（一域一插件，
+✅ 第一方工具域插件（P4 B① git/search + ② fs/shell/agent-isolation）：
+   只依赖无状态装配依赖（codingExec 类）的族走
+   ctx.tools 贡献通道——plugins/coding-domain-plugins.ts 域插件形状（一域一插件，
    贡献 factory 可选收 ToolRowContext 取装配依赖；缺 rowCtx 显式 throw）+ 
    composition/first-party-tools.ts 清单单一真源（loader 表尾装载 + 测试/文档
    生成经 withFirstPartyToolChannel 复现生产装配）。依赖装配期真值的族（ask 的
-   ui 回调 / wait 的 subAgentPool）不走此通道（实例缓存会锁存首装配真值）
+   ui 回调 / wait 的 subAgentPool）不走此通道（实例缓存会锁存首装配真值——
+   ①c 路线一无缓存行落地后此约束解除）
 ✅ system-prompt 段落（persona/规则/记忆/运行环境）：在
-   composition/prompt-sections.ts 的 section 表加一段（id + applicable + render；
+   composition/prompt-sections.ts 段清单加一段（id + applicable + render；
    render 产出含自身前导分隔符的完整文本——\n/\n\n 混用是现行拼装的机械事实，
-   禁"顺手规整分隔符"，会击穿 fixture 快照与前缀缓存）
+   禁"顺手规整分隔符"，会击穿 fixture 快照与前缀缓存）。P4 B④ 收官：13 段
+   全量经 plugins/prompt-segments-plugin.ts（装载 firstPartyPromptSections()）
+   走 ctx.prompts 通道贡献——出厂段表退役，新段直接进清单
 ✅ 插件 prompt 段贡献（P4 A-1 起）：ctx.prompts 通道（composition/
    prompt-service.ts，第六 service）——PromptContribution 形状即 PromptSection
    （id + applicable? + render，render 产出含自身前导分隔符的完整文本）；

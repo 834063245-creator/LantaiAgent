@@ -9,7 +9,8 @@
 > `examples/plugins/hello/README.md`。
 > 第一方插件先例（编译期 bundle 内，不走磁盘通道）：`paper/paper-plugin.ts`
 > （面板 + 命令）、`plugins/settings-plugin.ts`（面板 + 命令，S3 样板）、
-> `plugins/git-search-plugin.ts`（工具域，P4 B① 样板）、
+> `plugins/coding-domain-plugins.ts`（工具域，P4 B①+② 五族样板：
+> git/search/fs/shell/agent-isolation）、
 > `plugins/prompt-segments-plugin.ts`（prompt 段，P4 B④ 样板）。
 
 ## 目录

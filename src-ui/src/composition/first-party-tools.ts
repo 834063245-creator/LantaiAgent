@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT.
 
-// 第一方工具插件通道（P4 存量拆解 B①，agent-plugin-architecture-plan §5）。
+// 第一方工具插件通道（P4 存量拆解 B① + ②，agent-plugin-architecture-plan §5）。
 //
 // 两个职责：
 //   1. 插件清单单一真源：经 ctx.tools 贡献工具的第一方域插件列表——
@@ -14,16 +14,25 @@
 //      引导入口，本腰只服务测试/工具环境（它们不跑 main.ts）。
 //
 // 语义提醒：通道内的贡献经 pluginToolRows 实例缓存（首装配实例跨装配
-// 复用）；收 rowCtx 的贡献必须自担语义等价（见 services.ts ToolContribution）。
+// 复用）；收 rowCtx 的贡献必须自担语义等价（见 services.ts ToolContribution
+// ——清单内五族均为无状态 codingExec 族，语义等价勘定见
+// plugins/coding-domain-plugins.ts 文件头）。
 
 import { Context } from '../cordis';
-import { gitDomainPlugin, searchDomainPlugin } from '../plugins/git-search-plugin';
+import {
+  agentIsolationDomainPlugin,
+  fsDomainPlugin,
+  gitDomainPlugin,
+  searchDomainPlugin,
+  shellDomainPlugin,
+} from '../plugins/coding-domain-plugins';
 import type { LantaiPlugin } from '../plugins/types';
 import { compositionServicesPlugin } from './services';
 
-/** 经 ctx.tools 贡献工具的第一方域插件（表序 = 贡献注册序）。 */
+/** 经 ctx.tools 贡献工具的第一方域插件（表序 = 贡献注册序；B① git/search
+ *  + ② fs/shell/agent-isolation，均为无状态 codingExec 族）。 */
 export function firstPartyToolPlugins(): LantaiPlugin[] {
-  return [gitDomainPlugin, searchDomainPlugin];
+  return [gitDomainPlugin, searchDomainPlugin, fsDomainPlugin, shellDomainPlugin, agentIsolationDomainPlugin];
 }
 
 /** 在第一方工具插件通道激活期间执行 run（通道随调用拆卸）。

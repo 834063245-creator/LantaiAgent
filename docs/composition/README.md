@@ -39,7 +39,7 @@ prompt:
 
 | 域 | 行 id 举例 | 寻址对象 |
 |---|---|---|
-| `tools` | `builtin/fs`、`builtin/shell`、`builtin/graph`… | 内置工具族（真源 `src-ui/src/composition/tool-rows.ts`；git/search 已迁 ctx.tools 插件通道——P4 B①） |
+| `tools` | `builtin/hologram`、`builtin/web`、`builtin/wait`… | 内置工具族（真源 `src-ui/src/composition/tool-rows.ts`，现存 9 行；git/search（B①）+ fs/shell/agent-isolation（②）五族已迁 ctx.tools 插件通道，2026-08-23） |
 | `prompt` | 已插入段 id（`insert` 条目声明的 id） | system prompt 段（真源 `prompt-sections.ts` `firstPartyPromptSections()`；P4 B④ 收官：13 段全经 `ctx.prompts` 插件通道贡献，**全部脱离 patch 寻址域**——仅 insert 的段可被 disable/覆盖/锚定） |
 | `capabilities` | `plan-tools`、`converge-tools`、`graph-hooks`… | 会话级工具/hook（真源 `agent/blueprint.ts`；id = capability key） |
 | `shell` | `hologram/shell-graph`、`hologram/shell-cold-start`… | 壳引导行（真源 `composition/shell-rows.ts`；行实现 `src-ui/src/shell/rows/*`） |

@@ -78,18 +78,20 @@ describe('composition/roster（S2-0 组合引擎）', () => {
   // ── disable 语义 ──
 
   it('disable：tools 行移除、其余保序、diagnostics 记录', () => {
+    // ② 批（2026-08-23）：builtin/fs・builtin/shell 迁插件通道——禁用探针
+    // 改用存活的 builtin/web + builtin/wait
     const r = resolveRoster(factoryComposition(), [
       {
         tools: [
-          { id: 'builtin/shell', disabled: true },
-          { id: 'builtin/fs', disabled: true },
+          { id: 'builtin/web', disabled: true },
+          { id: 'builtin/wait', disabled: true },
         ],
       },
     ]);
-    const expected = ids(builtinToolRows()).filter((id) => id !== 'builtin/shell' && id !== 'builtin/fs');
+    const expected = ids(builtinToolRows()).filter((id) => id !== 'builtin/web' && id !== 'builtin/wait');
     expect(ids(r.tools)).toEqual(expected);
     // 诊断按表序收集（描述终态组合，与 patch 声明序无关）
-    expect(r.diagnostics.disabled).toEqual(['builtin/fs', 'builtin/shell']);
+    expect(r.diagnostics.disabled).toEqual(['builtin/web', 'builtin/wait']);
   });
 
   it('disable：已插入段可禁用（prompt 域现存寻址面）/ capability 同语义', () => {
@@ -122,10 +124,10 @@ describe('composition/roster（S2-0 组合引擎）', () => {
 
   it('disable(false) = 显式启用：后层覆盖先层禁用（last-write-wins）', () => {
     const r = resolveRoster(factoryComposition(), [
-      { tools: [{ id: 'builtin/fs', disabled: true }] },
-      { tools: [{ id: 'builtin/fs', disabled: false }] },
+      { tools: [{ id: 'builtin/wait', disabled: true }] },
+      { tools: [{ id: 'builtin/wait', disabled: false }] },
     ]);
-    expect(ids(r.tools)).toEqual(ids(builtinToolRows())); // 全量（fs 被重新启用）
+    expect(ids(r.tools)).toEqual(ids(builtinToolRows())); // 全量（wait 被重新启用）
     expect(r.diagnostics.disabled).toEqual([]);
   });
 
@@ -318,13 +320,13 @@ describe('composition/roster（S2-0 组合引擎）', () => {
     // 纯函数 throw = 无输出（不存在「前几条已应用」的中间态可泄漏）；
     // 本条钉住该契约防回归（一旦改成收集错误继续跑，这里立刻红）。
     const layers = [
-      { tools: [{ id: 'builtin/fs', disabled: true }] },
+      { tools: [{ id: 'builtin/wait', disabled: true }] },
       { tools: [{ id: 'builtin/nope', disabled: true }] },
     ];
     expect(() => resolveRoster(factoryComposition(), layers)).toThrow(CompositionPatchError);
     // 同输入去掉坏条目后正常应用（失败不污染调用方状态——每次调用全新工作列表）
     const ok = resolveRoster(factoryComposition(), [layers[0]]);
-    expect(ids(ok.tools)).not.toContain('builtin/fs');
+    expect(ids(ok.tools)).not.toContain('builtin/wait');
   });
 
   // ── parseCompositionPatch（zod 校验层）──
@@ -332,7 +334,7 @@ describe('composition/roster（S2-0 组合引擎）', () => {
   describe('parseCompositionPatch', () => {
     it('合法全形状（四域 + insert + 覆盖 + 禁用）', () => {
       const raw = {
-        tools: [{ id: 'builtin/shell', disabled: true }],
+        tools: [{ id: 'builtin/web', disabled: true }],
         prompt: [
           // B④ 收官：prompt 域寻址面 = 已插入段——条目按「先插后寻址」链式排列
           { insert: [{ id: 'user-seg', text: '用户段' }] },
@@ -345,7 +347,7 @@ describe('composition/roster（S2-0 组合引擎）', () => {
       const r = parseCompositionPatch(raw);
       expect(r.ok).toBe(true);
       if (r.ok) {
-        expect(r.patch.tools).toEqual([{ id: 'builtin/shell', disabled: true }]);
+        expect(r.patch.tools).toEqual([{ id: 'builtin/web', disabled: true }]);
         expect(r.patch.capabilities).toEqual([{ id: 'auto-tune', disabled: false }]);
       }
     });

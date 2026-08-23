@@ -22,7 +22,7 @@ function textResponse(status: number, body = ''): FetchTextLike {
 const VALID_PATCH = [
   '# 用户层组合 patch',
   'tools:',
-  '  - id: builtin/shell',
+  '  - id: builtin/web',
   '    disabled: true',
   'prompt:',
   '  - insert:',
@@ -59,8 +59,8 @@ describe('composition/patch-loader（S2-2 用户层通道）', () => {
     const s = useCompositionStore.getState();
     expect(s.status).toBe('ok');
     expect(s.patchOrigin).toBe('roster.patch.yml');
-    expect(ids(s.resolved.tools)).not.toContain('builtin/shell');
-    expect(s.resolved.diagnostics.disabled).toContain('builtin/shell');
+    expect(ids(s.resolved.tools)).not.toContain('builtin/web');
+    expect(s.resolved.diagnostics.disabled).toContain('builtin/web');
     expect(s.resolved.diagnostics.overridden).toContain('team-convention');
     expect(s.resolved.diagnostics.inserted).toContain('team-convention');
     expect(s.resolved.diagnostics.inserted).toContain('team-convention-2');
@@ -97,7 +97,7 @@ describe('composition/patch-loader（S2-2 用户层通道）', () => {
   });
 
   it('校验失败（越域 text）：error 可见 + factory 兜底', async () => {
-    const badShape = ['tools:', '  - id: builtin/shell', '    disabled: true', '    text: 越域字段'].join('\n');
+    const badShape = ['tools:', '  - id: builtin/web', '    disabled: true', '    text: 越域字段'].join('\n');
     await loadCompositionPatch({ origin: ORIGIN, fetchImpl: textResponse(200, badShape) });
     const s = useCompositionStore.getState();
     expect(s.status).toBe('error');

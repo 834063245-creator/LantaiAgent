@@ -56,20 +56,21 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
   });
 
   it('用户 preset 叠加在用户层 patch 之上：同 id 后写胜前写（preset 层最上）', () => {
+    // ② 批（2026-08-23）：builtin/fs 迁插件通道——用户层禁用探针改 builtin/wait
     const userPatch: CompositionPatch = {
       tools: [
-        { id: 'builtin/fs', disabled: true },
+        { id: 'builtin/wait', disabled: true },
         { id: 'builtin/web', disabled: false }, // 用户层启用 web
       ],
     };
     // minimal 的 preset 层禁 web → 后写胜 → web 最终被禁
     const r = resolvePresetComposition('minimal', { userPatch });
     expect(ids(r.tools)).not.toContain('builtin/web');
-    expect(ids(r.tools)).not.toContain('builtin/fs'); // 用户层禁用仍生效
+    expect(ids(r.tools)).not.toContain('builtin/wait'); // 用户层禁用仍生效
     // 反向：standard 无 preset 增量 → 用户层启用 web 生效
     const std = resolvePresetComposition('standard', { userPatch });
     expect(ids(std.tools)).toContain('builtin/web');
-    expect(ids(std.tools)).not.toContain('builtin/fs');
+    expect(ids(std.tools)).not.toContain('builtin/wait');
   });
 
   it('用户 preset 表解析：userPresets 命中即用其 patch', () => {
@@ -91,12 +92,12 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
     const shadow = {
       id: 'minimal',
       builtin: false,
-      patch: { tools: [{ id: 'builtin/fs', disabled: true }] } as CompositionPatch,
+      patch: { tools: [{ id: 'builtin/wait', disabled: true }] } as CompositionPatch,
     };
     const r = resolvePresetComposition('minimal', { userPresets: [shadow] });
-    // 内置 minimal 生效（禁 browser-desktop/web），影子补丁的 fs 禁用不出现
+    // 内置 minimal 生效（禁 browser-desktop/web），影子补丁的 wait 禁用不出现
     expect(ids(r.tools)).not.toContain('builtin/browser-desktop');
-    expect(ids(r.tools)).toContain('builtin/fs');
+    expect(ids(r.tools)).toContain('builtin/wait');
   });
 
   it('未知 id → factory 兜底（用户层仍叠）', () => {
