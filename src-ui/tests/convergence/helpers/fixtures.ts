@@ -9,6 +9,7 @@ import { buildToolRegistry } from '../../../src/agent/runtime/agent-builder';
 import { TaskManager } from '../../../src/agent/task';
 import type { Tool, ToolExecutor, ToolRegistry } from '../../../src/agent/tool';
 import type { SubAgentSpawner } from '../../../src/agent/tools/subagent';
+import { withFirstPartyToolChannel } from '../../../src/composition/first-party-tools';
 import type { BuiltinToolRow } from '../../../src/composition/tool-rows';
 import type { Chunk, Provider, Usage } from '../../../src/provider/types';
 import { ChunkType } from '../../../src/provider/types';
@@ -50,28 +51,33 @@ export function fixedGraphSnapshot(): string {
 // 测试环境（无 Tauri bridge）恒返回 []——引擎侧工具面由 Rust 测试与 RPC 契约守护，
 // 本快照覆盖静态注册面（coding/task/browser/desktop/wait + 领域收敛）。
 // memory/skill 为可选依赖，不传入（生产同样可缺省）。
+// P4 B①（2026-08-23）起 git/search 两族经 ctx.tools 第一方插件通道贡献——
+// 夹具以 withFirstPartyToolChannel 复现生产装配（标准 = 内置行 + 第一方
+// 插件贡献；测试环境不跑 main.ts 引导，通道腰在此补挂）。
 
 export async function buildStandardRegistry(
   contributions: ToolContribution[] = [],
   toolRows?: BuiltinToolRow[],
 ): Promise<ToolRegistry> {
   const stubSpawner = (async () => 'stub-spawn-result') as unknown as SubAgentSpawner;
-  const reg = await buildToolRegistry({
-    graphData: FIXED_GRAPH_DATA,
-    deps: {},
-    taskManager: new TaskManager(),
-    subAgentPool: new SubAgentPool(),
-    subAgentSpawner: stubSpawner,
-    // S4-1b：preset 的工具行（减法型 preset——minimal）；undefined = 出厂表
-    ...(toolRows ? { toolRows } : {}),
+  return withFirstPartyToolChannel(async () => {
+    const reg = await buildToolRegistry({
+      graphData: FIXED_GRAPH_DATA,
+      deps: {},
+      taskManager: new TaskManager(),
+      subAgentPool: new SubAgentPool(),
+      subAgentSpawner: stubSpawner,
+      // S4-1b：preset 的工具行（减法型 preset——minimal）；undefined = 出厂表
+      ...(toolRows ? { toolRows } : {}),
+    });
+    // 行贡献按组合序（数组序）注册到内置面之后（S1-0 设计件 §2.3：
+    // 显式参数，确定性按构造保证）。重名行由 ToolRegistry.register
+    // 装载期拒绝（duplicate throw）——S1-3 的冲突拒绝语义已在此就位。
+    for (const contribution of contributions) {
+      reg.register(contribution.factory());
+    }
+    return reg;
   });
-  // 行贡献按组合序（数组序）注册到内置面之后（S1-0 设计件 §2.3：
-  // 显式参数，确定性按构造保证）。重名行由 ToolRegistry.register
-  // 装载期拒绝（duplicate throw）——S1-3 的冲突拒绝语义已在此就位。
-  for (const contribution of contributions) {
-    reg.register(contribution.factory());
-  }
-  return reg;
 }
 
 // ── 合成工具 — planGate / hook 管道快照用（形状对齐 tests/plan-gate.test.ts）──

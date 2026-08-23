@@ -24,6 +24,7 @@ import type { ComponentType } from 'react';
 import type { Tool } from '../agent/tool';
 import { type Context, Service } from '../cordis';
 import { bumpCommands, bumpPanelDefs } from '../state/panel-defs-store';
+import type { ToolRowContext } from './tool-rows';
 
 // ── 工具贡献变更监听（S4-1.5）──
 // ToolsService 的 onChange：不 bump 即时信号（下次装配语义），但触发
@@ -81,7 +82,11 @@ export interface CommandContribution {
 export interface ToolContribution {
   /** 行 id（S1-2 起由行表寻址；与 Tool.name 可不同——行 id 稳定寻址，name 是模型可见名）。 */
   id: string;
-  factory: () => Tool;
+  /** 工具工厂。可选收装配上下文（B① 放宽，2026-08-23）：外部插件无参 factory
+   *  仍合法（实例缓存契约不变）；第一方域插件可收 rowCtx 取装配期依赖（如
+   *  codingExec）——收 ctx 的贡献自担「跨装配复用首装配实例」的语义等价责任
+   *  （依赖装配期真值的族如 ask/wait 不适用，见 agent-plugin-architecture-plan §5）。 */
+  factory: (ctx?: ToolRowContext) => Tool;
 }
 
 export interface ProviderContribution {

@@ -5,7 +5,7 @@ import type { ToolExecutor } from '../src/agent/tool';
 import type { SubAgentSpawner } from '../src/agent/tools/subagent';
 import { builtinToolRows, type ToolRowContext } from '../src/composition/tool-rows';
 
-// ── 行表自检：S1-2 coding 面七族 + S1-3 装配末端七族（全部内置族）──
+// ── 行表自检：S1-2 coding 面 + S1-3 装配末端（现存 12 内置族）──
 // 行表是 standard preset 装配序的事实来源（表序 = 组合序）。这里钉住：
 //   1. 行 id 唯一且稳定（未来 preset 按 id 引用行）；
 //   2. 各族行产出 = 迁移前现行装配的表序（机械重述）；
@@ -13,6 +13,8 @@ import { builtinToolRows, type ToolRowContext } from '../src/composition/tool-ro
 //   4. 可选依赖族缺帐时产出空集（原 if 分支语义）；
 //   5. 经 buildToolRegistry 真实装配后无重名残留（名字冲突装载期拒绝）。
 // 可见面零漂移由 verify:convergence 守护（S1 设计件 §2.4），此处不重复。
+// git/search 两族已于 P4 B①（2026-08-23）迁出至 ctx.tools 第一方插件通道
+// （钉住面移 tests/git-search-plugin.test.ts）。
 
 const exec: ToolExecutor = async () => '';
 
@@ -28,13 +30,11 @@ function row(id: string) {
   return r;
 }
 
-/** 全部 14 行 id（表序 = 组合序）。 */
+/** 全部 12 行 id（表序 = 组合序；git/search 已迁第一方插件通道）。 */
 const ALL_ROW_IDS = [
   'builtin/hologram',
   'builtin/fs',
   'builtin/shell',
-  'builtin/git',
-  'builtin/search',
   'builtin/web',
   'builtin/agent-isolation',
   'builtin/ask',
@@ -64,7 +64,7 @@ const FS_TOOL_ORDER = [
 /** shell 族现行表序（run_shell → bash_output/kill/wait）。 */
 const SHELL_TOOL_ORDER = ['run_shell', 'bash_output', 'bash_kill', 'bash_wait'];
 
-/** git 族现行表序（主段 → Phase 2b 段）。 */
+/** git 族现行表序（P4 B① 迁插件通道，序钉移交 git-search-plugin 测试）。 */
 const GIT_TOOL_ORDER = [
   'git_status',
   'git_diff',
@@ -81,7 +81,7 @@ const GIT_TOOL_ORDER = [
   'git_stash_pop',
 ];
 
-/** search 族现行表序（单工具）。 */
+/** search 族现行表序（单工具；P4 B① 迁插件通道）。 */
 const SEARCH_TOOL_ORDER = ['search_content'];
 
 /** web 族现行表序（单工具）。 */
@@ -109,7 +109,7 @@ const AGENT_TOOL_NAMES = ['agent_spawn', 'agent_status'];
 const WAIT_TOOL_NAMES = ['wait'];
 
 describe('composition/tool-rows（内置行表全族）', () => {
-  it('行 id 唯一且稳定，表序 = 组合序（14 行）', () => {
+  it('行 id 唯一且稳定，表序 = 组合序（12 行）', () => {
     const ids = builtinToolRows().map((r) => r.id);
     expect(ids).toEqual(ALL_ROW_IDS);
     expect(new Set(ids).size).toBe(ids.length);
@@ -122,8 +122,6 @@ describe('composition/tool-rows（内置行表全族）', () => {
     };
     await expectOrder('builtin/fs', FS_TOOL_ORDER);
     await expectOrder('builtin/shell', SHELL_TOOL_ORDER);
-    await expectOrder('builtin/git', GIT_TOOL_ORDER);
-    await expectOrder('builtin/search', SEARCH_TOOL_ORDER);
     await expectOrder('builtin/web', WEB_TOOL_ORDER);
     await expectOrder('builtin/agent-isolation', AGENT_ISOLATION_TOOL_ORDER);
     await expectOrder('builtin/ask', ASK_TOOL_ORDER);

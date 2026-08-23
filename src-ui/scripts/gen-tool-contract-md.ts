@@ -42,19 +42,27 @@ interface JsonSchema {
   required?: string[];
 }
 
-/** 与 convergence fixtures 的 buildStandardRegistry 相同的确定性依赖。 */
+/** 与 convergence fixtures 的 buildStandardRegistry 相同的确定性依赖。
+ *  P4 B①（2026-08-23）起 git/search 经 ctx.tools 第一方插件通道贡献——
+ *  本脚本以 withFirstPartyToolChannel 复现生产装配（无 main.ts 引导的
+ *  环境由通道腰补挂四 service + 第一方工具插件）。 */
 async function buildStandardRegistry() {
-  const [{ SubAgentPool }] = await Promise.all([import('../src/agent/coordinator')]);
+  const [{ SubAgentPool }, { TaskManager }, { withFirstPartyToolChannel }] = await Promise.all([
+    import('../src/agent/coordinator'),
+    import('../src/agent/task'),
+    import('../src/composition/first-party-tools'),
+  ]);
   const { buildToolRegistry } = await import('../src/agent/runtime/agent-builder');
-  const { TaskManager } = await import('../src/agent/task');
   const stubSpawner = (async () => 'stub-spawn-result') as unknown as SubAgentSpawner;
-  return buildToolRegistry({
-    graphData: { nodes: [], edges: [] },
-    deps: {},
-    taskManager: new TaskManager(),
-    subAgentPool: new SubAgentPool(),
-    subAgentSpawner: stubSpawner,
-  });
+  return withFirstPartyToolChannel(() =>
+    buildToolRegistry({
+      graphData: { nodes: [], edges: [] },
+      deps: {},
+      taskManager: new TaskManager(),
+      subAgentPool: new SubAgentPool(),
+      subAgentSpawner: stubSpawner,
+    }),
+  );
 }
 
 function esc(s: string): string {

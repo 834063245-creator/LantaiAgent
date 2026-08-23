@@ -48,14 +48,20 @@ describe('S2-1 穿线：buildToolRegistry(toolRows)', () => {
     const { buildToolRegistry } = await import('../src/agent/runtime/agent-builder');
     const { SubAgentPool } = await import('../src/agent/coordinator');
     const { TaskManager } = await import('../src/agent/task');
+    const { withFirstPartyToolChannel } = await import('../src/composition/first-party-tools');
     const { FIXED_GRAPH_DATA } = await import('./convergence/helpers/fixtures');
-    const reg = await buildToolRegistry({
-      graphData: FIXED_GRAPH_DATA,
-      deps: {},
-      taskManager: new TaskManager(),
-      subAgentPool: new SubAgentPool(),
-      toolRows: composition.tools,
-    });
+    // P4 B① 起 git/search 经 ctx.tools 插件通道贡献——直调 buildToolRegistry
+    // 的装配模拟须包通道腰（生产装配恒有通道；roster 禁 builtin/shell 行
+    // 与插件贡献通道正交，互不影响）
+    const reg = await withFirstPartyToolChannel(() =>
+      buildToolRegistry({
+        graphData: FIXED_GRAPH_DATA,
+        deps: {},
+        taskManager: new TaskManager(),
+        subAgentPool: new SubAgentPool(),
+        toolRows: composition.tools,
+      }),
+    );
     const names = reg.names();
     // shell 族细粒度名不在册
     for (const n of ['run_shell', 'bash_output', 'bash_kill', 'bash_wait']) {

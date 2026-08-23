@@ -1,6 +1,6 @@
 # REGISTRY_OWNERSHIP — agent 注册点所有权清单
 
-> 生成：2026-08-16（agent-core-convergence Phase 1 任务，基线 commit `5ff78821`）· 更新：2026-08-20（组合架构 S1 竣工——内置族注册点迁行表，行号按 `55c5177a` 校准）
+> 生成：2026-08-16（agent-core-convergence Phase 1 任务，基线 commit `5ff78821`）· 更新：2026-08-23（P4 B①——git/search 族迁 ctx.tools 第一方插件通道，行表 14→12 族）
 > 规则：**新增注册 API 必须返回 Disposer 并登记到本清单**；不返回 disposer 的要写豁免原因。
 > Phase 4（生命周期所有权统一）将以本清单为迁移地图：每行最终都应指向 `AgentContext.effect()`。
 
@@ -13,7 +13,8 @@
 
 | 注册点 | owner | 清理点 | 自动清理 |
 |---|---|---|---|
-| `composition/tool-rows.ts`（14 内置族行表，S1-3 起 builder:244 循环装配 hologram/fs/shell/git/search/web/agent-isolation/ask/skill/memory/task/agent/browser-desktop/wait；行内重名装载期拒绝） | `buildToolRegistry` → 调用方（workspace/Runtime） | registry 本身无全局状态，随 Agent 实例 GC | ✅ 随实例 |
+| `composition/tool-rows.ts`（12 内置族行表，S1-3 起 builder 循环装配 hologram/fs/shell/web/agent-isolation/ask/skill/memory/task/agent/browser-desktop/wait；行内重名装载期拒绝） | `buildToolRegistry` → 调用方（workspace/Runtime） | registry 本身无全局状态，随 Agent 实例 GC | ✅ 随实例 |
+| `plugins/git-search-plugin.ts`（P4 B① 起 git/search 13+1 工具经 ctx.tools 贡献；`composition/plugin-tool-rows.ts` 折算进装配，实例缓存跨装配） | 插件 fiber `ctx.effect`（loader 装载期注册） | fiber dispose → 贡献注销 + 实例缓存清空 | ✅ 显式 |
 | `runtime/agent-builder.ts:269`（compaction 工具，`registerCompactionTools`） | createAgent | 同上 | ✅ 随实例 |
 | `mcp/registry.ts` `registerMcpTools` | builder/调用方；`unregisterMcpTools` 已提供对称清理 | 当前调用方（builder:256）未调用——随 registry GC | ✅ 随实例（豁免：批量注册，整体释放） |
 | `runtime/runtime.ts:632`（registry 克隆循环） | createAgent → Agent 实例 | 随 Agent 实例 | ✅ 随实例 |

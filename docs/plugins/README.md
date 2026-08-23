@@ -128,6 +128,11 @@ ctx.effect(
 - 行 id 折算：贡献 id → `plugin/<贡献 id>`——preset/patch 可按此行 id 寻址
   禁用（组合均匀性）。
 - 工具实例缓存：dispose 清缓存（被卸载的工具实例不再进装配）。
+- **factory 可选收装配上下文**（2026-08-23 P4 B① 放宽）：折算装配时以
+  `factory(rowCtx)` 传入（`ToolRowContext`——`codingExec` 等装配期依赖）。
+  外部插件无参 factory 仍完全合法；收 ctx 的贡献自担「首装配实例跨装配
+  复用」的语义等价责任（依赖装配期真值的能力不适用——实例缓存会锁存
+  首装配真值）。
 - 撞名语义：两个插件贡献同名 id → 前缀不同不撞；**真正的撞名**是两个
   工具 `Tool.name()` 相同 → 行表装载期拒绝（duplicate throw）。
 

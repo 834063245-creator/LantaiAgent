@@ -18,8 +18,11 @@ import type { Tool } from '../agent/tool';
 import { activeToolContributions, onToolContributionsChanged } from './services';
 import type { BuiltinToolRow } from './tool-rows';
 
-/** 贡献 id → 实例缓存（模块级可变态归属 CONVENTIONS §1.10 第 3 类：
- *  键控自清理——贡献 dispose 即全表失效，生命周期 = 进程）。 */
+// ── 贡献 id → 实例缓存（模块级可变态归属 CONVENTIONS §1.10 第 3 类：
+//  键控自清理——贡献 dispose 即全表失效，生命周期 = 进程）。──
+// B①（2026-08-23）起贡献 factory 可选收装配上下文（rowCtx.codingExec 等）；
+// 缓存语义不变：首装配的 ctx 被锁存进实例——收 ctx 的贡献必须自担跨装配
+// 语义等价（无状态 exec 可搬；装配期真值族如 ask/wait 不经此通道）。
 const instanceCache = new Map<string, Tool[]>();
 
 // 贡献变更（register/dispose）→ 清缓存（register 的清空是幂等无害：新贡献
@@ -30,10 +33,10 @@ onToolContributionsChanged(() => instanceCache.clear());
 export function pluginToolRows(): BuiltinToolRow[] {
   return activeToolContributions().map((c) => ({
     id: 'plugin/' + c.id,
-    factory: () => {
+    factory: (ctx) => {
       let cached = instanceCache.get(c.id);
       if (!cached) {
-        cached = [c.factory()];
+        cached = [c.factory(ctx)];
         instanceCache.set(c.id, cached);
       }
       return cached;

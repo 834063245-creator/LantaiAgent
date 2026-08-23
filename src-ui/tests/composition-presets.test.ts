@@ -73,16 +73,18 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
   });
 
   it('用户 preset 表解析：userPresets 命中即用其 patch', () => {
+    // P4 B①（2026-08-23）：builtin/git 行已退役（迁 ctx.tools 插件通道），
+    // 禁用目标改用行表中的 builtin/web——未知 id 会被 all-or-nothing 拒绝
     const userPresets = [
       {
         id: 'custom',
         builtin: false,
-        patch: { tools: [{ id: 'builtin/git', disabled: true }] } as CompositionPatch,
+        patch: { tools: [{ id: 'builtin/web', disabled: true }] } as CompositionPatch,
       },
     ];
     const r = resolvePresetComposition('custom', { userPresets });
-    expect(ids(r.tools)).not.toContain('builtin/git');
-    expect(ids(r.tools)).toEqual(ids(builtinToolRows()).filter((id) => id !== 'builtin/git'));
+    expect(ids(r.tools)).not.toContain('builtin/web');
+    expect(ids(r.tools)).toEqual(ids(builtinToolRows()).filter((id) => id !== 'builtin/web'));
   });
 
   it('内置与用户同 id → 内置胜（earlier root wins）', () => {

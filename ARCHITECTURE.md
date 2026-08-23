@@ -284,13 +284,13 @@ NetBenefit = |R|·c_in·(T-1) − |S|·c_out − L·avg_turn_cost
 - **旧细粒度名**（`search_symbols`、`run_shell`、`write_file`、`git_*`、`agent_spawn` 等）保留在 `ToolRegistry` 但 `hide()`；模型调用由 `retireRedirect` 拦截并返回 `[已淘汰] → 领域动作` 重定向。内部代码/测试仍可直调。
 - **新工具必须 `defineTool` + zod v4**：一个 schema 同时产出 JSON Schema、运行时校验和 `z.infer` 类型化参数；meta key（`_forceGate` / `_callId` / `_agent_id`）经 `.passthrough()` 透传。
 - 新增领域动作须同步 `DOMAIN_SPECS` + `collectHiddenToolNames()` + 测试 + `AGENTS.md`。
-- **内置族装配（组合架构 S1，2026-08-20）**：14 个内置工具族的工厂与组合序收敛在 `src/composition/tool-rows.ts` 行表（hologram/fs/shell/git/search/web/agent-isolation/ask/skill/memory/task/agent/browser-desktop/wait），`buildToolRegistry` 按表序装配——表序 = 组合序（前缀缓存语义的根基），行内工具名冲突由 `ToolRegistry.register` 装载期拒绝（duplicate throw）。
+- **内置族装配（组合架构 S1，2026-08-20；P4 B① 修订 2026-08-23）**：12 个内置工具族的工厂与组合序收敛在 `src/composition/tool-rows.ts` 行表（hologram/fs/shell/web/agent-isolation/ask/skill/memory/task/agent/browser-desktop/wait），`buildToolRegistry` 按表序装配——表序 = 组合序（前缀缓存语义的根基），行内工具名冲突由 `ToolRegistry.register` 装载期拒绝（duplicate throw）。git/search 两族已迁 ctx.tools 第一方插件通道（`plugins/git-search-plugin.ts`，P4 存量拆解 B①）——贡献叠加在行表之后（`composition/plugin-tool-rows.ts` 折算），可见面由 DOMAIN_SPECS 驱动不受通道影响。
 
 ### 4.10 Agent 运行时收敛（agent-core-convergence Phase 0–6，已并入 main）
 
 2026-08 的收敛工程把自有运行时的生命周期/会话契约全部原语化并门禁化（详见 `docs/archive/agent-core-convergence/`）：
 
-- **声明式装配（Phase 6 + 组合架构 S1 三层，2026-08-20）**：内置工具族由 `src/composition/tool-rows.ts` 行表装配（14 行内置族，factory → Tool[]，行内重名装载期拒绝）；system-prompt 段落由 `src/composition/prompt-sections.ts` section 表拼装（13 段，两装配面 applicable 分流）；会话级工具/hook 仍由 `agent/blueprint.ts` 的 `AgentBlueprint` capability 表驱动——**`AgentConfig` 冻结 31 字段**不再扩张；三层表序 = 字节契约（DeepSeek 前缀缓存与 effective 快照依赖此序）；teardown 走 `ctx.effect`；面板/命令/工具/provider 四 service 注册表挂根 Context（`src/composition/services.ts`，`ContributionRegistry` 内核：装载期重名拒绝 + disposer 双守卫）
+- **声明式装配（Phase 6 + 组合架构 S1 三层，2026-08-20；P4 B① 修订 2026-08-23）**：内置工具族由 `src/composition/tool-rows.ts` 行表装配（12 行内置族，factory → Tool[]，行内重名装载期拒绝；git/search 已迁 ctx.tools 第一方插件通道）；system-prompt 段落由 `src/composition/prompt-sections.ts` section 表拼装（13 段，两装配面 applicable 分流）；会话级工具/hook 仍由 `agent/blueprint.ts` 的 `AgentBlueprint` capability 表驱动——**`AgentConfig` 冻结 31 字段**不再扩张；三层表序 = 字节契约（DeepSeek 前缀缓存与 effective 快照依赖此序）；teardown 走 `ctx.effect`；面板/命令/工具/provider 四 service 注册表挂根 Context（`src/composition/services.ts`，`ContributionRegistry` 内核：装载期重名拒绝 + disposer 双守卫）
 - **会话事件溯源（Phase 5）**：`session-log.ts` 事件日志 + session 变异三入口（`_appendMessage` / `_replaceSession` / `_retractSessionRange`）；工具折叠逻辑同步 `derivePayload`
 - **生命周期内核（cordis-migration P0–P4）**：vendored cordis（`src/cordis/`）+ workspace-scope epoch（`getWorkspaceEpoch()` / `bumpWorkspaceEpoch()`，**永久保留**——fiber 管所有权，epoch 管逃逸所有权的在途回调）。资源获取点就地 `fiber.ctx.effect()` 登记（顺序敏感拆除组打包 DisposerBag 单 effect 保串行），工作区切换/退出只调 `fiber.dispose()` + epoch bump，杜绝跨项目串台；Agent 挂身份 fiber（清理走 DisposerBag 同步快通道），子系统以 Service 挂树（`LspService` 样板）
 - **门禁**：`npm run verify:convergence`（T0 静态断言 + 8 个 frozen baseline 对拍）失败即返工；record 需显式 `CONVERGENCE_RECORD=1`，baseline 变更走审批
