@@ -241,3 +241,31 @@ body {
   letter-spacing: 0.14em;
   color: var(--ink-3);
 }
+
+/* ── 可访问性（2026-08 UI 大清扫）── */
+
+/* 键盘焦点可见（朱砂细框）：按钮/输入等可交互件统一兜底——
+   各组件可细化覆盖（如 StatusLine/ModeIndicator 已有同款自定义）。 */
+button:focus-visible,
+[role='button']:focus-visible,
+[role='tab']:focus-visible,
+[role='menuitemradio']:focus-visible,
+[role='menuitem']:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 1px;
+}
+
+/* 动效敏感用户豁免：呼吸点/旋转/浮入等装饰动画全停（功能过渡保留瞬时切换） */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

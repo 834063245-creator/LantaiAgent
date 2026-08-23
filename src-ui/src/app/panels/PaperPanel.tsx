@@ -157,7 +157,7 @@ function MinimapView({
     height: Math.max(2, (content.y1 - content.y0) * scale),
   };
   return (
-    <div className="pp-minimap" title="小地图 · Home 回原点">
+    <div className="pp-minimap" title="小地图 · Home 键回原点">
       <div className="pp-mm-band" style={band} />
       <div className="pp-mm-viewport" style={vp} />
     </div>
@@ -464,12 +464,12 @@ export function PaperPanel() {
     };
   }, [view]);
 
-  /* 收回（D-R2-2 按钮+确认主通道） */
+  /* 收回（D-R2-2）：直接收回——占位符点击恢复已是即时手势（双向对称），
+   * 原生 confirm 与纸面语言断层（2026-08 UI 大清扫移除；收回非破坏性，
+   * 再拖出即可复钉）。 */
   const onUnpin = useCallback((id: string) => {
-    if (window.confirm('收回该块到卷中原位？')) {
-      pinnedRef.current.delete(id);
-      setMsgState((s) => ({ messages: s.messages, tick: s.tick + 1 }));
-    }
+    pinnedRef.current.delete(id);
+    setMsgState((s) => ({ messages: s.messages, tick: s.tick + 1 }));
   }, []);
 
   /* 占位符点击恢复（原型同款等价手势，即时——R2 注记「走查弹验证哪种顺手」） */
@@ -478,8 +478,22 @@ export function PaperPanel() {
     setMsgState((s) => ({ messages: s.messages, tick: s.tick + 1 }));
   }, []);
 
-  /* ── 输入条：真相走 input-store，提交走 core.sendMessage（agent 层零改动）── */
+  /* ── 输入条：真相走 input-store，提交走 core.sendMessage（agent 层零改动）──
+   * 多行 textarea + 输入历史（↑ 取上一条——input-store 的 inputHistory 由
+   * chat-core sendMessage 落账，此处只读；光标在首行且非多行编辑态才拦）。 */
   const [inputText, setInputText] = useState('');
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  /* textarea 自适应高（min 1 行 max ~6 行）；发送清空后回 1 行 */
+  const autoGrow = useCallback(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 144) + 'px';
+  }, []);
+  useEffect(() => {
+    void inputText; // 触发依赖（输入变化即重算高度——CommandPalette void tick 同款惯例）
+    autoGrow();
+  }, [inputText, autoGrow]);
   /* 待发附件（C10 拾遗）：订阅 input-store.attachedFiles——拾遗按钮拾取、
    * 发送时随来文入卷，可逐个移除。 */
   const [attachedFiles, setAttachedFiles] = useState<Array<{ path: string; name: string; size: number }>>([]);
@@ -777,16 +791,37 @@ export function PaperPanel() {
                 {f.name} ✕
               </button>
             ))}
+            {attachedFiles.length > 3 && <span className="pp-attach-count">共 {attachedFiles.length} 件</span>}
           </div>
         )}
-        <input
-          type="text"
+        <textarea
+          ref={composerRef}
+          rows={1}
           value={inputText}
-          placeholder="拟文…（拖住任意块可移出到纸上钉住）"
-          onChange={(e) => setInputText(e.target.value)}
+          placeholder="拟文…（Enter 发送 · Shift+Enter 换行 · ↑ 取历史；拖住任意块可移出钉住）"
+          onChange={(e) => {
+            setInputText(e.target.value);
+          }}
           onKeyDown={(e) => {
             // IME 安全谓词（paper/ime）：合成中的 Enter 是候选确认，不发送
-            if (composerSubmitOnKey(e.key, e.nativeEvent.isComposing)) onSend();
+            if (composerSubmitOnKey(e.key, e.nativeEvent.isComposing)) {
+              e.preventDefault();
+              onSend();
+              return;
+            }
+            // ↑ 取上一条历史（光标在首行时；正在浏览历史或输入为空即可触发）
+            if (e.key === 'ArrowUp' && !e.nativeEvent.isComposing) {
+              const el = e.currentTarget;
+              const atFirstLine = el.selectionStart === 0 || !el.value.includes('\n');
+              const history = core ? getChatStore(core.panelId).input.getState().inputHistory : [];
+              if (atFirstLine && history.length > 0) {
+                e.preventDefault();
+                const next = history[history.length - 1] ?? '';
+                setInputText(next);
+                // 光标落末尾（单步回溯最后一条——多步翻页交互留待走查弹反馈）
+                requestAnimationFrame(() => el.setSelectionRange(next.length, next.length));
+              }
+            }
           }}
         />
         <button type="button" onClick={onSend}>

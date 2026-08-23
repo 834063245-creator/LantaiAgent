@@ -64,9 +64,14 @@ describe('C12 StatusLine — 承接面渲染链', () => {
     act(() => {
       chip.click();
     });
-    const lines = [...container!.querySelectorAll('.sl-log-line')].map((e) => e.textContent);
+    // 2026-08 UI 大清扫：日志行带 HH:mm 时间前缀（.sl-log-time）——断言剥前缀后比对正文
+    const stripTime = (s: string | null): string => (s ?? '').replace(/^\d{2}:\d{2}/, '');
+    const lines = [...container!.querySelectorAll('.sl-log-line')].map((e) => stripTime(e.textContent));
     expect(lines[0]).toBe('第二条'); // 最新在上
     expect(lines).toContain('第一条');
+    // 时间戳确在渲染（非空 HH:mm 前缀）
+    const raw = container!.querySelector('.sl-log-line')?.textContent ?? '';
+    expect(raw).toMatch(/^\d{2}:\d{2}第二条$/);
   });
 
   it('日志环上限 15（pushStatus 截断）', () => {

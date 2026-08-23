@@ -68,7 +68,7 @@
   background: var(--paper);
   border: var(--rule-soft);
   border-top: 2px solid var(--ink-2);
-  box-shadow: 0 8px 28px rgba(38, 34, 28, 0.16);
+  box-shadow: var(--elev-menu);
   padding: 6px 0;
 }
 .sl-log-line {
@@ -79,6 +79,11 @@
   letter-spacing: 0.04em;
   color: var(--ink-2);
   word-break: break-all;
+}
+.sl-log-time {
+  color: var(--ink-3);
+  margin-right: 8px;
+  font-variant-numeric: tabular-nums;
 }
 .sl-log-line:first-child {
   color: var(--ink-1);

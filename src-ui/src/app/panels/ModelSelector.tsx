@@ -110,9 +110,18 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setActiveIdx((i) => Math.max(i - 1, 0));
-    } else if (e.key === 'Enter' && open && results[activeIdx]) {
+    } else if (e.key === 'Enter' && open) {
       e.preventDefault();
-      handleSelect(results[activeIdx]);
+      if (results[activeIdx]) {
+        handleSelect(results[activeIdx]);
+      } else {
+        // 无匹配：把输入当自定义模型名提交（回车即确认，不必失焦）
+        const q = query.trim();
+        if (q && q !== value) {
+          onChange(q);
+          setOpen(false);
+        }
+      }
     } else if (e.key === 'Escape') {
       close();
     }
@@ -136,7 +145,14 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
               setQuery(e.target.value);
               if (!open) setOpen(true);
               setActiveIdx(0);
-              onChange(e.target.value);
+              /* 不在每次击键提交 onChange（会级联 onCommitProvider 全量落
+               * settings + 标 dirty——输入 "gpt" 3 次触发 3 次保存条）。
+               * 自定义模型名经 Enter（下方 handleKeyDown）/失焦提交。 */
+            }}
+            onBlur={() => {
+              // 失焦提交：用户手动输入了完整自定义名（未从下拉选中）的场景
+              const q = query.trim();
+              if (q && q !== value) onChange(q);
             }}
             onKeyDown={handleKeyDown}
           />

@@ -6,6 +6,7 @@
 // 只分发动作；具体实现由 actions 注册表（actions 壳行）注入。
 
 import { useEffect } from 'react';
+import { useDockStore } from '../state/dock-store';
 import { runAction } from './actions';
 import { useShellStore } from './shell-store';
 
@@ -19,11 +20,15 @@ export function useGlobalKeys(): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const st = useShellStore.getState();
+      const dock = useDockStore.getState();
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
 
-      // Ctrl+K 命令面板 — 编辑中也可用
+      // Ctrl+K 命令面板 — 编辑中也可用。
+      // settings 面板开着时不开（z:400 会把面板整个盖住 = 按了没反应的假死观感）；
+      // settings 自己的弹层（cd-overlay）有 Esc 处理，这里不抢。
       if (mod && !e.shiftKey && !e.altKey && key === 'k') {
+        if (dock.isOpen('settings')) return;
         e.preventDefault();
         st.setPaletteOpen(!st.paletteOpen);
         return;

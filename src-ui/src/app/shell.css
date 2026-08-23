@@ -38,14 +38,17 @@
 }
 
 /* ── 提示卡浮层宿主（ask_user / 权限卡——独立于纸面板层级，
- *    浮于一切之上；卡片本体样式在 prompt-shelf.css） ─────────── */
+ *    浮于一切之上；卡片本体样式在 prompt-shelf.css） ───────────
+ *    2026-08 UI 大清扫：z 300 → 500（settings 面板 400 之上——Agent 递牒
+ *    请示是全应用最紧急交互，任何面板开着都必须可见；bottom 对齐
+ *    composer（--composer-h 66px + 30px 呼吸），不再用旧 ChatBeacon 的 96px）。 */
 .psh-host {
   position: fixed;
   left: 50%;
-  bottom: 96px;
+  bottom: calc(var(--composer-h, 66px) + 30px);
   width: min(680px, 92vw);
   transform: translateX(-50%);
-  z-index: 300;
+  z-index: var(--z-shelf, 500);
   pointer-events: none;
 }
 .psh-host > .prompt-shelf {
@@ -59,8 +62,8 @@
   font-size: 10px;
   color: var(--ink-3);
   border: 1px solid var(--ink-4);
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 4px;
+  background: var(--paper-deep);
+  border-radius: 0; /* 印刷品无圆角 */
   padding: 0.5px 5px;
 }
 
@@ -68,12 +71,12 @@
 .pal-veil {
   position: fixed;
   inset: 0;
-  z-index: 300;
+  z-index: var(--z-palette, 510);
   display: flex;
   align-items: flex-start;
   justify-content: center;
   padding-top: 12vh;
-  background: rgba(2, 6, 14, 0.44);
+  background: rgba(38, 34, 28, 0.38); /* 墨色遮罩（与 settings-panel 遮罩同语言） */
 }
 .pal-box {
   width: min(640px, 92vw);
@@ -85,10 +88,10 @@
   background: var(--glass-hi);
   backdrop-filter: blur(16px) saturate(1.15);
   -webkit-backdrop-filter: blur(16px) saturate(1.15);
-  border: 1px solid var(--ink-4);
-  border-radius: 10px;
+  border: 1px solid var(--ink-2);
+  border-radius: 0; /* 印刷品无圆角（2026-08 UI 大清扫） */
   overflow: hidden;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--elev-raise);
 }
 html.no-bf .pal-box {
   background: var(--paper-margin);
@@ -151,7 +154,8 @@ html.no-bf .pal-box {
 }
 .pal-row:hover,
 .pal-row.active {
-  background: rgba(148, 166, 205, 0.08);
+  background: var(--paper-deep);
+  box-shadow: inset 2px 0 0 var(--seal);
   color: var(--ink-1);
 }
 .pal-foot {
@@ -162,6 +166,9 @@ html.no-bf .pal-box {
   font-family: var(--f-mono);
   font-size: 10px;
   color: var(--ink-3);
+}
+.pal-foot kbd {
+  margin-right: 3px;
 }
 .pal-foot-right {
   margin-left: auto;

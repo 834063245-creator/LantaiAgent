@@ -1,51 +1,20 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT.
 
-// overlay-store — 收编进单 React 树的覆盖层渲染目标（P3）：
-// ContextMenu（原懒 root）与 FileTranslator（原 FileViewer 内独立 root）经 portal 渲染。
+// overlay-store — 单 React 树的覆盖层渲染目标（P3 收编；2026-08 UI 大清扫收缩）。
+//
+// 历史：曾承载 ContextMenu（右键菜单 portal）与 FileTranslator（文件翻译
+// portal）两块覆盖层。C13 sweep 删除 file-translator 后 translator 字段
+// 失去消费方；2026-08 UI 大清扫确认 contextMenu 面同样零调用方
+// （boot.ts 只 preventDefault 右键、showContextMenu 无调用点、ContextMenu.tsx
+// 组件已删）——双死面清除，store 收缩为空态注册点。
+//
+// 保留文件原因：它是「覆盖层经 store + portal 进单 React 树」的模式锚点
+// （tests/eventbus-zero-and-ui-split.test.ts 终态清单钉住文件名）；未来
+// 浮层（通知中心 / toast 宿主等）仍应落这里，而不是自建游离 DOM。
 
 import { create } from 'zustand';
 
-// ── ContextMenuItem（P2：随岛层退休从 ContextMenu.tsx 下沉——它是 ContextMenuRequest
-//    的字段类型，类型跟着状态走；app/ContextMenu.tsx 与 ui/context-menu.ts 从这里 import）──
+type OverlayState = {};
 
-export interface ContextMenuItem {
-  label: string;
-  action: () => void;
-  disabled?: boolean;
-  separator?: boolean; // 在此项前渲染分隔线
-}
-
-export interface ContextMenuRequest {
-  x: number;
-  y: number;
-  items: ContextMenuItem[];
-}
-
-/** FileTranslator 的一次渲染会话（file-translator wrapper 写入，App 侧 portal 消费） */
-export interface TranslatorSession {
-  /** portal 挂载点（FileViewer 内、.fv-grip 之前的面板元素） */
-  el: HTMLElement;
-  /** React key（旧 Controller 语义：filePath || Date.now()） */
-  key: string | number;
-  filePath: string | null;
-  getEditorContent: () => string | null;
-  onClose: () => void;
-  onLayoutChange: () => void;
-}
-
-interface OverlayState {
-  contextMenu: ContextMenuRequest | null;
-  translator: TranslatorSession | null;
-  showContextMenu: (req: ContextMenuRequest) => void;
-  dismissContextMenu: () => void;
-  setTranslator: (s: TranslatorSession | null) => void;
-}
-
-export const useOverlayStore = create<OverlayState>((set) => ({
-  contextMenu: null,
-  translator: null,
-  showContextMenu: (req) => set({ contextMenu: req }),
-  dismissContextMenu: () => set({ contextMenu: null }),
-  setTranslator: (s) => set({ translator: s }),
-}));
+export const useOverlayStore = create<OverlayState>(() => ({}));

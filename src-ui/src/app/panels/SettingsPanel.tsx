@@ -9,7 +9,6 @@ import { getVersion } from '@tauri-apps/api/app';
 import type React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { selectPreset } from '../../composition/preset-assembly';
-import type { Lang } from '../../i18n';
 import { setLang } from '../../i18n';
 import { DEEP_THINK_LABEL } from '../../provider/thinking';
 import { typedJsonRpc } from '../../rpc-contract';
@@ -153,13 +152,11 @@ const SettingsPanelApp: React.FC<{
   const [pendingClears, setPendingClears] = useState<ProviderId[]>([]);
   const [saveVersion, setSaveVersion] = useState(0);
 
-  // LSP 状态
+  // LSP 状态（pollCount 供进度展示——30s 黑盒等待可感知）
   const [lspStatus, setLspStatus] = useState<LspData | null>(null);
   const [lspLoading, setLspLoading] = useState(false);
+  const [lspPollShown, setLspPollShown] = useState(0);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
-
-  // 工具搜索
-  const [toolFilter, setToolFilter] = useState('');
 
   // ── 语言依赖标签页打开时加载 LSP 状态 ──
   const lspLoaded = useRef(false);
@@ -179,6 +176,7 @@ const SettingsPanelApp: React.FC<{
             // 当所有已安装服务器都已确定状态（运行或错误）时停止，
             // 或轮询次数足够时停止。
             lspPollCount.current += 1;
+            setLspPollShown(lspPollCount.current);
             const allResolved = parsed.lsp.servers.every((s) => s.available || s.error || !s.installed);
             if ((allResolved || lspPollCount.current >= MAX_LSP_POLLS) && lspPollTimer.current) {
               clearInterval(lspPollTimer.current);
@@ -236,13 +234,39 @@ const SettingsPanelApp: React.FC<{
   );
   const unstageClear = useCallback((name: ProviderId) => setPendingClears((c) => c.filter((x) => x !== name)), []);
 
+  /* ── 关闭守卫（2026-08 UI 大清扫）────────────────────────────
+   * 修复：Esc（useGlobalKeys → esc-layer）/ Ctrl+,（settings/toggle 贡献）此前
+   * 直连 dock.closePanel——绕过 dirty 确认，未保存更改静默丢失。守卫注册进
+   * dock-store：任何关闭路径（closePanel/togglePanel）先问守卫；dirty 时弹
+   * 确认并拦截。确认后的真关闭走 forceClose（先摘守卫再关）。 */
+  const dirtyRef = useRef(0); // 1 = 全局 dirty，2 = providerDirty，3 = 双
+  dirtyRef.current = (dirty ? 1 : 0) | (providerDirty ? 2 : 0);
+  const forceClose = useCallback(() => {
+    useDockStore.getState().unregisterCloseGuard('settings');
+    onClose();
+  }, [onClose]);
+  useEffect(() => {
+    useDockStore.getState().registerCloseGuard('settings', () => {
+      if (dirtyRef.current !== 0) {
+        setCloseConfirm(true);
+        return false; // 拦截：确认弹层已在路上
+      }
+      return true;
+    });
+    return () => {
+      // 卸载兜底：确认弹层开着时面板被外力强关（如 escLayer 直调 closePanel 的
+      // 历史路径已不存在，防御性保留）——守卫随面板摘除
+      useDockStore.getState().unregisterCloseGuard('settings');
+    };
+  }, []);
+
   const handleClose = useCallback(() => {
     if (dirty || providerDirty) {
       setCloseConfirm(true);
       return;
     }
-    onClose();
-  }, [dirty, providerDirty, onClose]);
+    forceClose();
+  }, [dirty, providerDirty, forceClose]);
 
   /** 保存管道：落盘 + 删暂存凭据 + 写新 Key + 重建 Agent。返回是否成功。 */
   const runSavePipeline = useCallback(async (): Promise<boolean> => {
@@ -463,51 +487,13 @@ const SettingsPanelApp: React.FC<{
                 </div>
               </div>
             </div>
-            <div className="sp-section">
-              <div className="sp-section-title">工具管理</div>
-              <div className="sp-field">
-                <input
-                  className="sp-input"
-                  placeholder="搜索工具…"
-                  autoComplete="off"
-                  value={toolFilter}
-                  onChange={(e) => setToolFilter(e.target.value)}
-                />
-              </div>
-              <div className="sp-tool-list">
-                <div className="sp-hint" style={{ padding: 8 }}>
-                  工具列表在 Agent 初始化后可用
-                </div>
-              </div>
-            </div>
             <div className="sp-hint">小窗口意味着旧消息会被压缩。</div>
           </div>
 
           {/* ═══ 显示标签页 ═══ */}
           <div className="sp-tab-content" data-tab="display" style={{ display: activeTab === 'display' ? '' : 'none' }}>
-            <div className="sp-section">
-              <div className="sp-section-title">语言 / Language</div>
-              <div className="sp-radio-group">
-                {[
-                  { id: 'zh', label: '中文' },
-                  { id: 'en', label: 'English' },
-                ].map((l) => (
-                  <label key={l.id} className="sp-radio">
-                    <input
-                      type="radio"
-                      name="language"
-                      value={l.id}
-                      checked={settings.display.language === l.id}
-                      onChange={() => {
-                        commit({ ...settings, display: { ...settings.display, language: l.id as Lang } });
-                      }}
-                    />
-                    <span className="sp-radio-label">{l.label}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="sp-hint">图例、聚焦横幅、工具栏提示的语言。其他界面不受影响。</div>
+            {/* 语言选项已摘除（2026-08 UI 大清扫：i18n 只覆盖已退役的观测台图例，
+                纸面全硬编码中文——假选项误导用户。真有多语言需求时再恢复）。 */}
             <div className="sp-section" style={{ marginTop: 18 }}>
               <div className="sp-section-title">字体缩放 / Font Scale</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -549,7 +535,7 @@ const SettingsPanelApp: React.FC<{
           >
             {lspLoading ? (
               <div className="sp-hint" style={{ padding: 24, textAlign: 'center' }}>
-                检测中...
+                检测中…（{lspPollShown}/{MAX_LSP_POLLS}）
               </div>
             ) : !lspStatus ? (
               <div className="sp-hint" style={{ padding: 24, textAlign: 'center' }}>
@@ -744,7 +730,7 @@ const SettingsPanelApp: React.FC<{
           message={closeMsg}
           confirmLabel="放弃并关闭"
           tone="danger"
-          onConfirm={onClose}
+          onConfirm={forceClose}
           onCancel={() => setCloseConfirm(false)}
         />
       </div>

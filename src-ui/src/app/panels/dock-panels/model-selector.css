@@ -1,4 +1,6 @@
-/* ── 11. ModelSelector — 模型目录搜索下拉 ── */
+/* ── ModelSelector — 模型目录搜索下拉（兰台注疏化重涂，2026-08 UI 大清扫）
+   原 P10 暗色观测台样式换装：纸面 / 圆角恒 0 / 兰台 token。
+   下拉 = 纸面小菜单（对齐 ModeIndicator 的 mi-model-menu 语言）。 ── */
 
 .ms-container {
   position: relative;
@@ -45,19 +47,17 @@
   height: 16px;
   cursor: pointer;
   color: var(--ink-3);
-  border-radius: 3px;
+  border-radius: 0;
   transition: all var(--snap);
 }
 
 .ms-input-clear:hover {
   color: var(--fail);
-  background: rgba(217, 99, 95, 0.12);
+  background: color-mix(in oklch, var(--fail) 10%, transparent);
 }
 
 .ms-container.ms-open .ms-input {
-  border-color: rgba(201, 162, 92, 0.45);
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
+  border-bottom-color: var(--seal);
 }
 
 .ms-refresh-btn {
@@ -65,9 +65,9 @@
   width: 28px;
   height: 28px;
   padding: 0;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid var(--ink-4);
-  border-radius: 7px;
+  background: transparent;
+  border: var(--rule-soft);
+  border-radius: 0;
   color: var(--ink-2);
   cursor: pointer;
   display: flex;
@@ -78,8 +78,8 @@
 
 .ms-refresh-btn:hover {
   color: var(--seal-deep);
-  border-color: rgba(201, 162, 92, 0.45);
-  background: var(--seal-soft);
+  border-color: var(--ink-3);
+  background: var(--paper-deep);
 }
 
 .ms-refresh-btn.spinning svg {
@@ -99,6 +99,7 @@
   padding: 2px 4px;
 }
 
+/* 下拉：纸面小菜单（无玻璃——印刷品方向） */
 .ms-dropdown {
   position: absolute;
   top: 100%;
@@ -107,13 +108,11 @@
   z-index: 60;
   max-height: 280px;
   overflow-y: auto;
-  border: 1px solid rgba(201, 162, 92, 0.45);
-  border-top: none;
-  border-radius: 0 0 8px 8px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
-  background: rgba(12, 17, 28, 0.97);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  border: var(--rule-soft);
+  border-top: 2px solid var(--ink-2);
+  border-radius: 0;
+  box-shadow: var(--elev-menu);
+  background: var(--paper);
 }
 
 .ms-dropdown.ms-empty {
@@ -131,8 +130,8 @@
 }
 
 .ms-dropdown::-webkit-scrollbar-thumb {
-  background: rgba(120, 140, 185, 0.2);
-  border-radius: 2px;
+  background: rgba(85, 80, 63, 0.35);
+  border-radius: 0;
 }
 
 .ms-item {
@@ -144,28 +143,26 @@
   padding: 6px 10px;
   cursor: pointer;
   transition: background var(--snap);
-  border-bottom: 1px solid rgba(148, 166, 205, 0.04);
-  background: none;
+  border-bottom: 1px solid var(--line-soft);
   border-left: none;
   border-right: none;
   border-top: none;
+  background: none;
   text-align: left;
 }
 
 .ms-item:last-child {
   border-bottom: none;
-  border-bottom-left-radius: 8px;
-  border-bottom-right-radius: 8px;
 }
 
 .ms-item:hover,
 .ms-item.active {
-  background: var(--seal-soft);
+  background: var(--paper-deep);
   box-shadow: inset 2px 0 0 var(--seal);
 }
 
 .ms-item.selected {
-  background: rgba(201, 162, 92, 0.08);
+  background: var(--seal-soft);
 }
 
 .ms-item-main {
@@ -217,33 +214,34 @@
   font-family: var(--f-mono);
   font-size: calc(7px * var(--font-scale));
   padding: 1px 4px;
-  border-radius: 3px;
+  border-radius: 0;
   white-space: nowrap;
 }
 
 .ms-badge-ctx {
   color: var(--indigo);
-  background: rgba(100, 150, 220, 0.1);
+  background: color-mix(in oklch, var(--indigo) 8%, transparent);
 }
 
 .ms-badge-cost {
   color: var(--ink-2);
-  background: rgba(148, 166, 205, 0.06);
+  background: var(--paper-deep);
 }
 
 .ms-badge-reason {
   font-size: calc(9px * var(--font-scale));
 }
 
+/* LIVE 徽章：石青语义（机=石青——来自 API 动态发现） */
 .ms-badge-live {
   font-family: var(--f-mono);
   font-size: calc(6px * var(--font-scale));
   font-weight: 700;
   letter-spacing: 0.5px;
-  color: #6ec8a0;
-  background: rgba(99, 178, 125, 0.12);
-  border: 1px solid rgba(99, 178, 125, 0.25);
-  border-radius: 3px;
+  color: var(--indigo);
+  background: color-mix(in oklch, var(--indigo) 10%, transparent);
+  border: 1px solid color-mix(in oklch, var(--indigo) 30%, transparent);
+  border-radius: 0;
   padding: 0 3px;
   flex-shrink: 0;
 }
@@ -260,19 +258,19 @@
   font-size: calc(7px * var(--font-scale));
   color: var(--ink-2);
   padding: 1px 5px;
-  border-radius: 3px;
-  background: rgba(148, 166, 205, 0.06);
+  border-radius: 0;
+  background: var(--paper-deep);
   white-space: nowrap;
 }
 
 .ms-meta-reason {
-  color: var(--seal);
+  color: var(--seal-deep);
   background: var(--seal-soft);
 }
 
 .ms-meta-live {
-  color: #6ec8a0;
-  background: rgba(99, 178, 125, 0.1);
+  color: var(--indigo);
+  background: color-mix(in oklch, var(--indigo) 10%, transparent);
 }
 
 /* Catalog quick-pick in add-provider form */
@@ -287,16 +285,16 @@
   font-family: var(--f-mono);
   font-size: calc(9px * var(--font-scale));
   padding: 3px 8px;
-  border-radius: 6px;
-  border: 1px solid var(--ink-4);
-  background: rgba(0, 0, 0, 0.25);
+  border-radius: 0;
+  border: var(--rule-soft);
+  background: transparent;
   color: var(--ink-2);
   cursor: pointer;
   transition: all var(--snap);
 }
 
 .ms-catalog-chip:hover {
-  border-color: rgba(201, 162, 92, 0.45);
+  border-color: var(--seal);
   color: var(--seal-deep);
   background: var(--seal-soft);
 }

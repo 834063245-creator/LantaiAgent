@@ -7,7 +7,7 @@
   position: absolute;
   left: 0;
   top: var(--bar-h);
-  bottom: var(--composer-h);
+  bottom: var(--composer-h); /* 多行输入撑高 composer 时最下书脊被盖（走查弹已知取舍；多卷时列可滚） */
   width: 44px;
   display: flex;
   flex-direction: column;
@@ -126,12 +126,14 @@
   }
 }
 
-/* 改名输入：绝对定位在脊右侧纸面（题签位置替换；竖排容器内横排输入） */
+/* 改名输入：绝对定位在脊右侧纸面（题签位置替换；竖排容器内横排输入）。
+ * 2026-08 UI 大清扫：max-width 视口保护——窄窗口下 148px 定宽会右溢出屏幕。 */
 .sr-rename-input {
   position: absolute;
   left: calc(100% + 12px);
   top: 6px;
   width: 148px;
+  max-width: calc(100vw - 120px);
   writing-mode: horizontal-tb;
   font-family: var(--f-song);
   font-size: 13px;

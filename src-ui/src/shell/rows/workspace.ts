@@ -171,6 +171,8 @@ function escLayer(): void {
   const dock = useDockStore.getState();
   // 视觉栈序（V5 拆除后）：settings 浮层（z:401）盖纸壳（z:280）——
   // 高层先关；纸关 = 回案卷首页换卷/续开。
+  // closePanel 自带关闭守卫（dock-store 2026-08 UI 大清扫）：settings 有未保存
+  // 改动时守卫弹确认并拦截本次 Esc——Esc 不再静默丢设置。
   if (dock.isOpen('settings')) dock.closePanel('settings');
   else if (dock.isOpen('paper')) dock.closePanel('paper');
 }

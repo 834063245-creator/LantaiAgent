@@ -21,6 +21,14 @@ import './status-line.css';
 
 const ACTIVITY_PULSE_MS = 900;
 
+/** 日志时刻 HH:mm（跨天记录少见——状态日志是会话级短周期，不做日期展开） */
+function formatLogTime(at: number): string {
+  const d = new Date(at);
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
+  return h + ':' + m;
+}
+
 export function StatusLine() {
   const statusText = useShellStore((s) => s.statusText);
   const statusLog = useShellStore((s) => s.statusLog);
@@ -39,14 +47,21 @@ export function StatusLine() {
     return () => window.clearInterval(t);
   }, [analyzing]);
 
-  // 外点收起日志
+  // 外点收起日志 + Esc 关闭（弹层键盘一致性，2026-08 UI 大清扫）
   useEffect(() => {
     if (!logOpen) return;
     const onDown = (e: MouseEvent) => {
       if (hostRef.current && !hostRef.current.contains(e.target as Node)) setLogOpen(false);
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setLogOpen(false);
+    };
     document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [logOpen]);
 
   const busy = analyzing !== null;
@@ -71,6 +86,7 @@ export function StatusLine() {
           ) : (
             [...statusLog].reverse().map((e) => (
               <div key={e.id} className="sl-log-line">
+                {e.at != null && <span className="sl-log-time">{formatLogTime(e.at)}</span>}
                 {e.msg}
               </div>
             ))

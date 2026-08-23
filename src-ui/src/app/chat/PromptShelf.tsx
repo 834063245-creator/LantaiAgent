@@ -86,16 +86,22 @@ const AskCard: React.FC<{
         return next;
       });
 
-      // 单选：短暂延迟后自动确认
+      // 单选：短暂延迟后自动确认（240ms——140ms 对误触零宽容，2026-08 UI 大清扫放宽；
+      // 延迟窗内再点同一项 = 取消反悔，点其他项 = 改选）
       if (!prompt.multiSelect) {
         if (advanceTimer.current !== null) window.clearTimeout(advanceTimer.current);
+        if (selected.has(idx)) {
+          // 反悔：取消选中并放弃本次自动确认
+          setSelected(new Set());
+          return;
+        }
         advanceTimer.current = window.setTimeout(() => {
           const labels = prompt.options.filter((_, i) => i === idx).map((o) => o.label);
           onResolve(labels);
-        }, 140);
+        }, 240);
       }
     },
-    [prompt, onResolve],
+    [prompt, onResolve, selected],
   );
 
   const confirm = useCallback(() => {
@@ -446,10 +452,14 @@ const PermCard: React.FC<{
       const target = e.target as HTMLElement | null;
       if (target?.closest('input, textarea, [contenteditable="true"]')) return;
       if (e.key === 'Escape') {
+        e.preventDefault();
         onResolve({ allow: false, remember: false });
         return;
       }
       if (e.key === 'Enter') {
+        // 焦点已在弹层按钮上时让原生 click 走（避免 Enter 双发：监听 + 按钮激活各一次）
+        if (target?.closest('button')) return;
+        e.preventDefault();
         onResolve({ allow: true, remember: false });
         return;
       }
@@ -461,8 +471,9 @@ const PermCard: React.FC<{
   return (
     <div
       className={`prompt-shelf__card${prompt.danger ? ' prompt-shelf__card--danger' : ''}`}
-      role="dialog"
-      aria-modal="false"
+      role="alertdialog"
+      aria-modal="true"
+      aria-label="权限请示"
     >
       <div className="prompt-shelf__head">
         <span className={`prompt-shelf__tag${prompt.danger ? ' prompt-shelf__tag--danger' : ''}`}>

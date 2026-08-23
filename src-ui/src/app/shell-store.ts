@@ -35,8 +35,9 @@ interface ShellState {
   projectPath: string;
   /** 状态栏左侧文本 */
   statusText: string;
-  /** 状态日志（环形，上限 15；id 单调递增供 React key 使用） */
-  statusLog: Array<{ id: number; msg: string }>;
+  /** 状态日志（环形，上限 15；id 单调递增供 React key 使用；at 记录时刻——
+   *  2026-08 UI 大清扫补：翻查「什么时候说的」，向后兼容新增字段） */
+  statusLog: Array<{ id: number; msg: string; at?: number }>;
   /** 星图统计（V5 后无写入方，恒 null） */
   graphStats: GraphStats | null;
   /** 简报违规徽标数（0 = 无） */
@@ -71,7 +72,7 @@ export const useShellStore = create<ShellState>((set) => ({
   pushStatus: (msg) =>
     set((st) => ({
       statusText: msg,
-      statusLog: [...st.statusLog, { id: ++_logSeq, msg }].slice(-STATUS_LOG_MAX),
+      statusLog: [...st.statusLog, { id: ++_logSeq, msg, at: Date.now() }].slice(-STATUS_LOG_MAX),
     })),
   setStatusText: (msg) => set({ statusText: msg }),
   setProjectPath: (p) => set({ projectPath: p }),

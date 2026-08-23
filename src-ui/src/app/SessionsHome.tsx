@@ -59,6 +59,22 @@ async function lastProjectRoot(): Promise<string | null> {
   }
 }
 
+/** 案卷时间戳展示：相对时间（1 小时内）/ 今天 HH:mm / M月d日 HH:mm。
+ *  ISO 串直接上屏不可读（2026-08 UI 大清扫）；解析失败原样返回。 */
+function formatSessionTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const now = Date.now();
+  const diffMs = now - d.getTime();
+  if (diffMs >= 0 && diffMs < 60_000) return '刚刚';
+  if (diffMs >= 0 && diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)} 分钟前`;
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  if (d.toDateString() === new Date(now).toDateString()) return `今天 ${hm}`;
+  const yest = new Date(now);
+  yest.setDate(yest.getDate() - 1);
+  if (d.toDateString() === yest.toDateString()) return `昨天 ${hm}`;
+  return `${d.getMonth() + 1}月${d.getDate()}日 ${hm}`;
+}
 /** 顶栏拖拽窗口 — CSS -webkit-app-region: drag 无效时（Linux WM）用
  *  Tauri 原生拖拽兜底（与旧 CommandBar 同款策略）。 */
 interface TauriInternals {
@@ -188,7 +204,7 @@ export function SessionsHome() {
             <button type="button" className="sh-session-row" key={s.id} onClick={() => onResumeProject(s)}>
               <span className="sh-session-label">{s.label || `案卷 ${s.id}`}</span>
               <span className="sh-session-meta">
-                {s.msgCount} 条 · {s.savedAt}
+                {s.msgCount} 条 · {formatSessionTime(s.savedAt)}
               </span>
             </button>
           ))}
@@ -202,7 +218,7 @@ export function SessionsHome() {
             <button type="button" className="sh-session-row" key={s.id} onClick={() => onResumeUser(s)}>
               <span className="sh-session-label">{s.label || `案卷 ${s.id}`}</span>
               <span className="sh-session-meta">
-                {s.msg_count} 条 · {s.saved_at}
+                {s.msg_count} 条 · {formatSessionTime(s.saved_at)}
               </span>
             </button>
           ))}

@@ -9,8 +9,8 @@
   position: fixed;
   inset: 0;
   /* V5 拆除（2026-08-22）：设置面板的浮层层级必须盖过纸壳书眉
-     （.pp-root z:280）——settings 从书眉/命令面板唤起，纸在底下。 */
-  z-index: 400;
+     （--z-paper-base）——settings 从书眉/命令面板唤起，纸在底下。 */
+  z-index: var(--z-panel-veil);
   /* 印刷品方向：平色暗化，无玻璃模糊 */
   background: rgba(38, 34, 28, 0.38);
   opacity: 0;
@@ -31,7 +31,7 @@
   max-width: 94vw;
   height: 640px;
   max-height: 90vh;
-  z-index: 401;
+  z-index: var(--z-panel);
   background: var(--paper);
   border: 1px solid var(--ink-2);
   border-radius: 0; /* 印刷品无圆角 */
@@ -900,3 +900,28 @@ button.sp-btn.sp-btn-ok {
   padding: 10px 12px;
   font-size: calc(11px * var(--font-scale));
 }
+
+
+/* ═══════════════════════════════════════════════════════════════
+   自 shared.css 收编段（2026-08 UI 大清扫：shared.css 暗色残留整文件
+   删除——P7f/P9 时代补丁与 C2 注疏化重涂冲突，此处只收编仍有消费方
+   的两条：混排标题 .zh + mono 小标签字距规范）。
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 混排标题（iconHtml 注入 <span class="zh">设置</span>） */
+.sp-title .zh {
+  font-family: var(--f-song);
+  font-size: calc(12.5px * var(--font-scale));
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: none;
+  color: var(--ink-1);
+  margin-right: 7px;
+}
+
+/* mono 大写小标签统一字距（P7f §2.2） */
+.sp-section-title,
+.sp-install-toggle {
+  letter-spacing: 0.24em;
+}
+

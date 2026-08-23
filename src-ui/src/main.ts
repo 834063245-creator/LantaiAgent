@@ -17,7 +17,6 @@ import './app/chat/prompt-shelf.css';
 import './app/panels/dock-panels/settings-panel.css';
 import './app/panels/dock-panels/model-selector.css';
 import './app/panels/dock-panels/provider-settings.css';
-import './app/panels/dock-panels/shared.css';
 import './app/panels/PaperPanel.css';
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';

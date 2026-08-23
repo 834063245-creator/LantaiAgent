@@ -28,17 +28,19 @@ function statusBadge(s: PluginRecord['status']): { text: string; color: string }
 /** 已装插件卡片。 */
 function PluginCard({
   plugin,
-  busy,
+  busyName,
   onToggle,
   onUninstall,
 }: {
   plugin: PluginRecord;
-  busy: boolean;
+  /** 操作中的插件名（按插件粒度禁用——全局 busy 会锁住无关插件，2026-08 UI 大清扫） */
+  busyName: string | null;
   onToggle: (name: string, enabled: boolean) => void;
   onUninstall: (name: string) => void;
 }) {
   const badge = statusBadge(plugin.status);
   const enabled = plugin.status !== 'disabled';
+  const busy = busyName === plugin.name;
   return (
     <div className="sp-lsp-card">
       <span className="sp-lsp-card-icon" style={{ color: badge.color }}>
@@ -63,19 +65,12 @@ function PluginCard({
         </div>
         {plugin.error && <div className="sp-lsp-card-err">{plugin.error}</div>}
         <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-          <button
-            type="button"
-            className="sp-btn sp-btn-cancel"
-            style={{ padding: '2px 10px', fontSize: 11 }}
-            disabled={busy}
-            onClick={() => onToggle(plugin.name, !enabled)}
-          >
+          <button type="button" className="sp-btn-sm" disabled={busy} onClick={() => onToggle(plugin.name, !enabled)}>
             {enabled ? '禁用' : '启用'}
           </button>
           <button
             type="button"
-            className="sp-btn sp-btn-cancel"
-            style={{ padding: '2px 10px', fontSize: 11 }}
+            className="sp-btn-sm pp-btn-danger"
             disabled={busy}
             onClick={() => onUninstall(plugin.name)}
           >
@@ -90,12 +85,13 @@ function PluginCard({
 /** 插件标签页（S4-3）。 */
 export function PluginsPage() {
   const plugins = usePluginStore((s) => s.plugins);
-  const [busy, setBusy] = useState(false);
+  /** 操作目标（插件名或 'install' 哨兵）——按目标粒度锁按钮，无关插件不受牵连 */
+  const [busyKey, setBusyKey] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
-  async function run(action: () => Promise<string>): Promise<void> {
-    setBusy(true);
+  async function run(key: string, action: () => Promise<string>): Promise<void> {
+    setBusyKey(key);
     setMessage(null);
     try {
       const name = await action();
@@ -103,7 +99,7 @@ export function PluginsPage() {
     } catch (e) {
       setMessage({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     } finally {
-      setBusy(false);
+      setBusyKey(null);
     }
   }
 
@@ -150,12 +146,12 @@ export function PluginsPage() {
             className="sp-input"
             placeholder="npm 包名 / tarball URL 或 .tgz 路径 / 本地插件目录"
             value={input}
-            disabled={busy}
+            disabled={busyKey === 'install'}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && input.trim() && !busy) {
+              if (e.key === 'Enter' && input.trim() && busyKey === null) {
                 const p = parseInstallParams(input);
-                void run(() => typedRpc('plugin_install', p));
+                void run('install', () => typedRpc('plugin_install', p));
               }
             }}
           />
@@ -163,10 +159,10 @@ export function PluginsPage() {
             type="button"
             className="sp-btn sp-btn-save"
             style={{ whiteSpace: 'nowrap' }}
-            disabled={busy || !input.trim()}
+            disabled={busyKey === 'install' || !input.trim()}
             onClick={() => {
               const p = parseInstallParams(input);
-              void run(() => typedRpc('plugin_install', p));
+              void run('install', () => typedRpc('plugin_install', p));
             }}
           >
             安装
@@ -195,12 +191,12 @@ export function PluginsPage() {
             <PluginCard
               key={p.name}
               plugin={p}
-              busy={busy}
+              busyName={busyKey}
               onToggle={(name, enabled) => {
-                void run(() => typedRpc('plugin_set_enabled', { name, enabled }));
+                void run(name, () => typedRpc('plugin_set_enabled', { name, enabled }));
               }}
               onUninstall={(name) => {
-                void run(() => typedRpc('plugin_uninstall', { name }));
+                void run(name, () => typedRpc('plugin_uninstall', { name }));
               }}
             />
           ))

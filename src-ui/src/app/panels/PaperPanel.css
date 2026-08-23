@@ -69,13 +69,13 @@
 }
 .pp-topbar .pp-title {
   font-family: var(--f-song);
-  font-size: 16px;
+  font-size: calc(16px * var(--font-scale));
   font-weight: 600;
   letter-spacing: 0.02em;
 }
 .pp-topbar .pp-tag {
   font-family: var(--f-mono);
-  font-size: 9px;
+  font-size: calc(9px * var(--font-scale));
   letter-spacing: 0.24em;
   color: var(--ink-3);
   text-transform: uppercase;
@@ -83,14 +83,14 @@
 .pp-topbar .pp-zoom {
   margin-left: auto;
   font-family: var(--f-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale));
   letter-spacing: 0.1em;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
 .pp-close {
   font-family: var(--f-song);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   letter-spacing: 0.1em;
   color: var(--ink-2);
   background: none;
@@ -108,7 +108,7 @@
 /* 设置入口（书眉——Agent 产品域唯一常驻面板的开关） */
 .pp-settings {
   font-family: var(--f-song);
-  font-size: 12px;
+  font-size: calc(12px * var(--font-scale));
   letter-spacing: 0.1em;
   color: var(--ink-2);
   background: none;
@@ -217,7 +217,7 @@
 }
 .pp-kind .pp-zh {
   font-family: var(--f-song);
-  font-size: 15px;
+  font-size: 15px; /* 块内件不吃 font-scale（测量镜像） */
   font-weight: 600;
   color: var(--ink-2);
 }
@@ -230,6 +230,13 @@
 }
 .pp-kind:hover .pp-zh {
   color: var(--seal-deep);
+}
+/* 手柄可发现性（2026-08 UI 大清扫）：hover 时连线与热区底色同时示意「可拖」 */
+.pp-kind:hover::after {
+  background: var(--seal);
+}
+.pp-kind:hover {
+  background: var(--seal-soft);
 }
 .pp-block.pp-dragging .pp-kind,
 .pp-kind:active {
@@ -245,8 +252,10 @@
 .pp-status.pp-done {
   color: var(--pass);
 }
+/* 运行中 = 机器在干活——石青（铁律：石青=机；与书脊运行点/StatusLine 分析点同语义，
+   2026-08 UI 大清扫从 warn 矫正）。 */
 .pp-status.pp-running {
-  color: var(--warn);
+  color: var(--indigo);
 }
 .pp-status.pp-error {
   color: var(--fail);
@@ -597,13 +606,25 @@
 .pp-attach-list {
   flex: 0 1 auto;
   display: flex;
+  align-items: center;
   gap: 6px;
   overflow-x: auto;
   max-width: 40%;
   scrollbar-width: none;
+  /* 右缘渐隐提示可滚（2026-08 UI 大清扫：隐藏滚动条后用户不知道右边还有） */
+  mask-image: linear-gradient(to right, #000 85%, transparent);
+  -webkit-mask-image: linear-gradient(to right, #000 85%, transparent);
 }
 .pp-attach-list::-webkit-scrollbar {
   display: none;
+}
+.pp-attach-count {
+  flex-shrink: 0;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  letter-spacing: 0.06em;
+  padding-left: 2px;
 }
 .pp-attach-chip {
   flex-shrink: 0;
@@ -628,7 +649,7 @@
 
 /* ── 底部输入条（题签输入 D-R1-3）── */
 .pp-composer {
-  height: var(--composer-h);
+  min-height: var(--composer-h);
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -637,28 +658,41 @@
   background: var(--paper-deep);
   border-top: var(--rule-strong);
 }
-.pp-composer input {
+.pp-composer input,
+.pp-composer textarea {
   flex: 1;
+  min-height: 34px;
   background: transparent;
   border: none;
   border-bottom: var(--rule-soft);
   border-radius: 0;
   padding: 8px 2px;
   font-family: var(--f-song);
-  font-size: 15px;
+  /* 块体不吃 font-scale（measure.ts 镜像纪律），但输入条是壳件——吃 */
+  font-size: calc(15px * var(--font-scale));
   color: var(--ink-1);
   outline: none;
   caret-color: var(--seal-deep);
 }
-.pp-composer input:focus {
+.pp-composer textarea {
+  resize: none;
+  line-height: 1.6;
+  overflow-y: auto;
+  max-height: 144px;
+  /* 多行时把 composer 撑高——容器是 flex 恒高，改由内容推 */
+  align-self: center;
+}
+.pp-composer input:focus,
+.pp-composer textarea:focus {
   border-bottom-color: var(--seal);
 }
-.pp-composer input::placeholder {
+.pp-composer input::placeholder,
+.pp-composer textarea::placeholder {
   color: var(--ink-3);
 }
 .pp-composer button {
   font-family: var(--f-song);
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
   letter-spacing: 0.18em;
   padding: 10px 26px;
   border: var(--rule-strong);
@@ -735,4 +769,5 @@
   color: var(--ink-3);
   text-align: center;
   pointer-events: none;
+  font-size: calc(13px * var(--font-scale));
 }

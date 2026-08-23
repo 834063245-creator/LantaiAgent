@@ -34,6 +34,7 @@ export function WinControls() {
     }
   }, []);
   useEffect(() => {
+    void sync(); // 初始状态（最大化启动/Snap 布局下按钮图标正确）
     let timer = 0;
     const onResize = () => {
       clearTimeout(timer);

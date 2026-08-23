@@ -66,6 +66,13 @@ interface DockState {
   /** 简报面板当前展示的结果（runCheck 推入；查看历史会临时替换，与旧行为一致） */
   checkResult: CheckResult | null;
 
+  /** 关闭守卫（2026-08 UI 大清扫）：面板注册（典型：SettingsPanel 的 dirty 拦截）。
+   *  closePanel/togglePanel 的关闭路径先问守卫——false = 拦截（面板自弹确认）。
+   *  面板确认后的强关 = 先 unregisterCloseGuard 再 closePanel（守卫已摘，直通）。 */
+  closeGuards: Record<string, (() => boolean) | undefined>;
+  registerCloseGuard: (id: DockPanelId, guard: () => boolean) => void;
+  unregisterCloseGuard: (id: DockPanelId) => void;
+
   openPanel: (id: DockPanelId) => void;
   closePanel: (id: DockPanelId) => void;
   togglePanel: (id: DockPanelId) => void;
@@ -82,10 +89,32 @@ export const useDockStore = create<DockState>((set, get) => ({
     paper: false,
   },
   checkResult: null,
+  closeGuards: {},
+
+  registerCloseGuard: (id, guard) => set((st) => ({ closeGuards: { ...st.closeGuards, [id]: guard } })),
+  unregisterCloseGuard: (id) =>
+    set((st) => {
+      if (!(id in st.closeGuards)) return {};
+      const { [id]: _dropped, ...rest } = st.closeGuards;
+      return { closeGuards: rest };
+    }),
 
   openPanel: (id) => set((st) => ({ open: { ...st.open, [id]: true } })),
-  closePanel: (id) => set((st) => ({ open: { ...st.open, [id]: false } })),
-  togglePanel: (id) => set((st) => ({ open: { ...st.open, [id]: !st.open[id] } })),
+  closePanel: (id) => {
+    // 关闭守卫：面板注册了守卫且守卫拒绝（自证弹确认中）→ 拦截本次关闭。
+    // 强关路径 = 面板先 unregisterCloseGuard 再 closePanel。
+    const guard = get().closeGuards[id];
+    if (guard && !guard()) return;
+    set((st) => ({ open: { ...st.open, [id]: false } }));
+  },
+  togglePanel: (id) => {
+    const st = get();
+    if (st.open[id]) {
+      st.closePanel(id); // 关闭路径走守卫
+    } else {
+      st.openPanel(id);
+    }
+  },
   isOpen: (id) => get().open[id],
 
   setCheckResult: (r) => {

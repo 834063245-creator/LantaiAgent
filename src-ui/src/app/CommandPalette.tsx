@@ -95,15 +95,15 @@ export function CommandPalette() {
     a?.run();
   };
 
-  const groups: Array<{ g: string; items: Array<{ a: AppAction; idx: number }> }> = [];
+  /* 分组：同名组跨来源合并（内置动作 + 插件贡献可能同组名——
+   * 2026-08 UI 大清扫：原先相邻分组会导致「操作」组出现两次） */
+  const groupMap = new Map<string, Array<{ a: AppAction; idx: number }>>();
   rows.forEach((a, idx) => {
-    let g = groups[groups.length - 1];
-    if (!g || g.g !== a.group) {
-      g = { g: a.group, items: [] };
-      groups.push(g);
-    }
-    g.items.push({ a, idx });
+    const list = groupMap.get(a.group) ?? [];
+    list.push({ a, idx });
+    groupMap.set(a.group, list);
   });
+  const groups = [...groupMap.entries()].map(([g, items]) => ({ g, items }));
 
   return (
     <div className="pal-veil" role="presentation">
@@ -160,8 +160,10 @@ export function CommandPalette() {
         <div className="pal-foot">
           <span>↑↓ 选择</span>
           <span>↵ 执行</span>
-          <span>esc 关闭</span>
-          <span className="pal-foot-right">HOLOGRAM COMMAND</span>
+          <span>
+            <kbd>ctrl</kbd>+<kbd>k</kbd> 或 esc 关闭
+          </span>
+          <span className="pal-foot-right">LANTAI COMMAND</span>
         </div>
       </div>
     </div>

@@ -139,7 +139,7 @@
   background: var(--paper);
   border: var(--rule-soft);
   border-top: 2px solid var(--ink-2);
-  box-shadow: 0 8px 28px rgba(38, 34, 28, 0.16);
+  box-shadow: var(--elev-menu);
   padding: 4px 0;
 }
 .mi-model-group + .mi-model-group {

@@ -4,10 +4,10 @@
 // 添加信号源弹层：目录 chips 一键添加（name/kind/baseUrl/model 全带出），
 // 或展开自定义表单手动配置。校验在本地完成，父组件只负责落 state。
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getCatalogVendors, getDefaultModel } from '../../../provider/catalog';
 import type { Protocol } from '../../../provider/types';
-import { providerId, type ProviderId } from '../../../settings';
+import { type ProviderId, providerId } from '../../../settings';
 import { protocolLabel } from './protocol';
 
 export interface AddProviderEntry {
@@ -34,6 +34,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
   const [model, setModel] = useState('');
   const [key, setKey] = useState('');
   const [error, setError] = useState('');
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -43,8 +44,24 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       setModel('');
       setKey('');
       setError('');
+      // 打开即聚焦名称输入（键盘用户主路径）
+      setTimeout(() => nameInputRef.current?.focus(), 0);
     }
   }, [open]);
+
+  // Esc = 关闭（capture 先于 useGlobalKeys，防穿透关掉整个 settings 面板）
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -55,11 +72,13 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       return;
     }
     if (!NAME_RE.test(n)) {
-      setError('名称只能包含字母、数字、下划线和连字符');
+      setError('名称只能包含字母、数字、下划线和连字符（中文名暂不支持，可用拼音）');
+      nameInputRef.current?.focus();
       return;
     }
     if (existingNames.includes(n)) {
       setError(`Provider「${n}」已存在`);
+      nameInputRef.current?.focus();
       return;
     }
     onAdd({
@@ -100,11 +119,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
                 type="button"
                 key={provName}
                 className={`pp-cat-chip${used ? ' used' : ''}`}
-                title={
-                  used
-                    ? `${provName} 已存在`
-                    : `${defaultModel.name} · ${defaultModel.baseUrl}`
-                }
+                title={used ? `${provName} 已存在` : `${defaultModel.name} · ${defaultModel.baseUrl}`}
                 disabled={used}
                 onClick={() =>
                   onAdd({
@@ -131,9 +146,20 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
           <div className="pp-fg">
             <label>名称（唯一标识，创建后不可修改）</label>
             <input
+              ref={nameInputRef}
               className="sp-input"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              aria-invalid={error !== ''}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (error) setError(''); // 输入即清错（反馈即时性）
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleCustomAdd();
+                }
+              }}
               placeholder="如 my-gateway"
               autoComplete="off"
             />
