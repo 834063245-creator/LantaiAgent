@@ -17,6 +17,7 @@
 import { createElement } from 'react';
 import { codeRuntimePlugin } from '../agent/code-run/runtime-service';
 import { useShellStore } from '../app/shell-store';
+import { firstPartyPromptPlugins } from '../composition/first-party-prompts';
 import { firstPartyToolPlugins } from '../composition/first-party-tools';
 import { promptsServicePlugin } from '../composition/prompt-service';
 import { rendererServicePlugin } from '../composition/renderer-service';
@@ -55,7 +56,10 @@ export function pluginAssetsOrigin(port: number): string {
  * prompts 第六 service（system-prompt 段贡献注册表）。P4 B①（2026-08-23）：
  * 表尾接第一方工具域插件清单（git/search 两域经 ctx.tools 贡献工具，
  * 单一真源 composition/first-party-tools.ts——贡献行序 = 清单序，且必须
- * 列于四 service 之后使 inject ['tools'] 可解析）。 */
+ * 列于四 service 之后使 inject ['tools'] 可解析）。P4 B④ 试点（2026-08-23）：
+ * 表尾接第一方 prompt 段插件清单（memory/claude-md 经 ctx.prompts 贡献，
+ * 单一真源 composition/first-party-prompts.ts——贡献序 = 清单序，列于
+ * promptsServicePlugin 之后使 inject ['prompts'] 可解析）。 */
 const BUILTIN_PLUGINS: LantaiPlugin[] = [
   compositionServicesPlugin,
   codeRuntimePlugin,
@@ -64,6 +68,7 @@ const BUILTIN_PLUGINS: LantaiPlugin[] = [
   paperPlugin,
   settingsPlugin,
   ...firstPartyToolPlugins(),
+  ...firstPartyPromptPlugins(),
 ];
 
 // ── 插件宿主桥（S4-5）──

@@ -248,8 +248,10 @@ describe('composition/roster（S2-0 组合引擎）', () => {
   });
 
   it('拒绝：insert 撞已有 id（出厂段 / 已插段）', () => {
+    // B④ 起 memory/claude-md 迁出出厂表（ctx.prompts 通道贡献）——撞出厂段
+    // 探针改用表内段 graph-snapshot（现表尾）
     expect(() =>
-      resolveRoster(factoryComposition(), [{ prompt: [{ insert: [{ id: 'memory', text: '撞出厂段' }] }] }]),
+      resolveRoster(factoryComposition(), [{ prompt: [{ insert: [{ id: 'graph-snapshot', text: '撞出厂段' }] }] }]),
     ).toThrow(CompositionPatchError);
     expect(() =>
       resolveRoster(factoryComposition(), [

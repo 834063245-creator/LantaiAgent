@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { planGateCheck, planRegistry } from '../../../src/agent/plan/plan-registry';
 import { PlanStateManager } from '../../../src/agent/plan/plan-state';
 import { buildSystemPrompt } from '../../../src/agent/runtime/agent-builder';
+import { withFirstPartyPromptChannel } from '../../../src/composition/first-party-prompts';
 import { runDifferential } from '../helpers/differential';
 import {
   agentDomainTool,
@@ -53,22 +54,28 @@ describe('phase-0 契约快照', () => {
     });
   });
 
-  it('system-prompt.fixture — 固定输入的 buildSystemPrompt', () => {
-    const withGraph = buildSystemPrompt(
-      FIXED_GRAPH_DATA,
-      '/projects/demo',
-      '### 固定记忆段落\n- 记忆条目 A',
-      fixedGraphSnapshot(),
-      '### CLAUDE.md 固定内容\n- 规范条目 A',
-      'deepseek',
-      '- OS: win32\n- Shell: bash (Git Bash)',
-    );
-    const noGraph = buildSystemPrompt(null, '/projects/demo', '', '', '', undefined, '');
-    snapshot('phase-0/system-prompt.fixture.json', {
-      withGraphLength: withGraph.length,
-      withGraph,
-      noGraphLength: noGraph.length,
-      noGraph,
+  it('system-prompt.fixture — 固定输入的 buildSystemPrompt', async () => {
+    // P4 B④（2026-08-23）起 memory/claude-md 段经 ctx.prompts 第一方插件
+    // 通道贡献——测试环境不跑 main.ts 引导，通道腰在此复现生产装配面
+    // （同 B① 工具面 buildStandardRegistry 先例；迁出段 = 表尾原位，
+    // 快照零漂移按构造，双 preset 实测）。
+    await withFirstPartyPromptChannel(async () => {
+      const withGraph = buildSystemPrompt(
+        FIXED_GRAPH_DATA,
+        '/projects/demo',
+        '### 固定记忆段落\n- 记忆条目 A',
+        fixedGraphSnapshot(),
+        '### CLAUDE.md 固定内容\n- 规范条目 A',
+        'deepseek',
+        '- OS: win32\n- Shell: bash (Git Bash)',
+      );
+      const noGraph = buildSystemPrompt(null, '/projects/demo', '', '', '', undefined, '');
+      snapshot('phase-0/system-prompt.fixture.json', {
+        withGraphLength: withGraph.length,
+        withGraph,
+        noGraphLength: noGraph.length,
+        noGraph,
+      });
     });
   });
 

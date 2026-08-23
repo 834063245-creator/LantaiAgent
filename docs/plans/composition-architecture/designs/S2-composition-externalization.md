@@ -25,7 +25,7 @@ S1 竣工后组合「机制」全就位，但三件事仍钉死在编译期：
 | 域 | 出厂行表（真源） | 行 id 现状/惯例 | 消费面 |
 |---|---|---|---|
 | tools | `composition/tool-rows.ts` `builtinToolRows()`（14 行） | `builtin/<family>`（S1 事实） | `buildToolRegistry` 末端行装配 |
-| prompt | `composition/prompt-sections.ts` `builtinPromptSections()`（13 段） | 裸 id（`behavior-rules`…，S1 事实） | `assembleSystemPrompt` 表序 concat |
+| prompt | `composition/prompt-sections.ts` `builtinPromptSections()`（S1 时 13 段；P4 B④ 试点起 11 段——memory/claude-md 迁 ctx.prompts 第一方插件通道，出厂装配面仍 13 段且序不变，双 preset 快照零漂移） | 裸 id（`behavior-rules`…，S1 事实） | `assembleSystemPrompt` 表序 concat + 通道贡献末端追加 |
 | capabilities | `agent/blueprint.ts` 新拆 `builtinCapabilities()`（14 项，即现 `standard()` 数组原样搬家，id = 现 key） | key 即 id（`plan-tools`…） | `AgentBlueprint.fromRoster()`（新） |
 | shell | `composition/shell-rows.ts`（新，§2.6） | `hologram/shell-<block>`（插件名风格） | `src/shell/boot.ts` 启动编排 |
 

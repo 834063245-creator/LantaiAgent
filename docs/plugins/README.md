@@ -1,13 +1,15 @@
 # HoloGram 插件指南（docs/plugins/README.md）
 
 > S4 竣工（2026-08-20）；S3 第一方行化（2026-08-22）；P4 A-1 prompt 段贡献
-> 通道（2026-08-23）。插件 = 经 webview 动态 import 装载的自包含 ES 模块，
+> 通道（2026-08-23）；P4 B④ 第一方 prompt 段迁移试点（2026-08-23）。插件 = 经
+> webview 动态 import 装载的自包含 ES 模块，
 > 向宿主注册**面板 / 命令 / 工具 / 块渲染器 / prompt 段**贡献。
 > 完全信任模型——安装前必读 §6。从零到跑通的最短路径：
 > `examples/plugins/hello/README.md`。
 > 第一方插件先例（编译期 bundle 内，不走磁盘通道）：`paper/paper-plugin.ts`
 > （面板 + 命令）、`plugins/settings-plugin.ts`（面板 + 命令，S3 样板）、
-> `plugins/git-search-plugin.ts`（工具域，P4 B① 样板）。
+> `plugins/git-search-plugin.ts`（工具域，P4 B① 样板）、
+> `plugins/prompt-segments-plugin.ts`（prompt 段，P4 B④ 样板）。
 
 ## 目录
 
@@ -167,6 +169,11 @@ ctx.effect(
 
 第六贡献通道（P4 A-1，2026-08-23）：向 Agent 系统提示词追加段落——工具指导、
 领域约定、团队规范等静态文本面。
+
+第一方同走此通道（P4 B④ 试点，2026-08-23）：出厂段 memory/claude-md 已迁
+`src-ui/src/plugins/prompt-segments-plugin.ts` 经 `ctx.prompts` 贡献（贡献位 =
+表尾原位，拼装字节零漂移；定义留 `prompt-sections.ts` 单一真源）——迁移后
+这两段脱离组合 patch 寻址域（寻址它们的旧 patch 整体拒绝，错误可见）。
 
 ```js
 ctx.effect(
