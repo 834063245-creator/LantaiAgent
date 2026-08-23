@@ -131,7 +131,7 @@ cordis ctx inject 纪律 / root asyncDispose 非清理面）。
 
 ## 4. 本棒提交清单
 
-- `<hash>` — refactor(composition): P4 B⑤——十五项第一方 capability 迁
+- `3dca1925` — refactor(composition): P4 B⑤——十五项第一方 capability 迁
   ctx.capabilities，builtinCapabilities() 退役（含 B⑥ 标毕 + baton15 交接）
 
 提交文件面（staging 复核清单——多窗口纪律）：
