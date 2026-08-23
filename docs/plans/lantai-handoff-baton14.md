@@ -70,10 +70,12 @@
 
 - A-3：新增 11 例钉面；convergence 双 preset 零漂移；tsc/biome 零错；
   tool-contract 文档零变化；全量 163 文件 1627 passed / 1 skipped。
-- C11-1 + C11-2：新增/扩展 15+5 例（plugin-tool-declarations 7 例 +
-  plugin-loader 扩 8 例）；tsc 零错；convergence 双 preset 零漂移；Rust
-  roundtrip 测试 1 passed（granted 保留断言）；全量 vitest 见 §0.1 末
-  （终验后台跑完记录在案——163 文件全绿基线上 +2 文件）。
+- C11-1 + C11-2：新增/扩展 22 例（plugin-tool-declarations 7 例 +
+  plugin-loader 扩 15 例）；tsc 零错；convergence 双 preset 零漂移；Rust
+  roundtrip 测试 1 passed（granted 保留断言）；全量终态 165 文件
+  1637 passed / 1 skipped / 0 failed（含并行窗口在途的
+  mode-indicator-model-menu.test.ts 4 例）。
+- 全量假红复盘见 §4.1（根因 = 冷导入计入 5s 超时预算；已修）。
 - biome：改动文件 --write 归一。
 
 ### 0.2 流程变更：设计件审批 → agent 自查（本棒起）
@@ -152,4 +154,16 @@ P4 计划的通道/基建面**全部清空**（A-1/A-2/A-3/B①②④/①b/①c/
 
 - `869bf82c` — feat(composition): P4 A-3——ctx.capabilities 会话级能力
   贡献通道（9 文件）
-- （本棒第二/三批 C11-1 + C11-2 提交 hash 见 git log——写棒时待填）
+- `6536266f` — feat(plugins): P4 C11 两基建——工具声明可序列化 +
+  permissions 接插件声明（15 文件，含测试超时基建修 + baton14 交接）
+
+### 4.1 全量假红复盘（下一窗口防再踩）
+
+全量 vitest 三轮假红（graph-engine-toggle 2 例 + hook-service 1 例超时）
+——根因：**测试内冷导入巨型模块图计入 5s 默认测试超时**，套件组成变化
+（本批 +1 测试文件、并行窗口 +1 未跟踪测试文件）改变 worker 分配 → 冷
+导入负载击穿预算 → 超时用例泄漏 Workspace fiber → 下用例 lsp 服务双
+注册连锁假红。产品代码零回归（两文件单跑恒绿 × 3、convergence 双 preset
+零漂移）。修法 = 超时预算对齐 20s（graph-engine-toggle 两用例 +
+hook-service 装配折叠用例，注释写明缘由）。**下一窗口写新测试若在测试
+体内动态 import 大模块图，直接给 20s 预算**。
