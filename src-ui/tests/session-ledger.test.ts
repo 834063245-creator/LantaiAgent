@@ -594,6 +594,108 @@ describe('惰性水合（判据④補：ensureSessionAgent）', () => {
   });
 });
 
+describe('L1 视图对齐', () => {
+  it('续开查重（F2）：已摊开的卷 loadSessionFromDisk = 换卷不克隆（书脊不增条、句柄不重建）', async () => {
+    const panel = createChatPanel();
+    panel.setProjectPath(PROJ);
+    let factoryCalls = 0;
+    panel.setAgentFactory(async () => {
+      factoryCalls++;
+      return {
+        getSession: () => [{ role: 'system', content: 'sys' }],
+        setSession: vi.fn(),
+        dispose: vi.fn(),
+        bindSession: vi.fn(),
+      } as any;
+    });
+
+    // 恢复两卷：3 活跃 + 9 惰性
+    mockDiskWith(
+      ledgerDisk([3, 9], 3, 10),
+      {
+        3: volumeFile(3, '卷三', '卷三内容'),
+        9: volumeFile(9, '卷九', '卷九内容'),
+      },
+      9,
+    );
+    await panel.autoRestoreLastSession(PROJ);
+    const callsAfterRestore = factoryCalls;
+
+    // 续开已摊开的卷 9（当前非活跃）→ 应换卷而非克隆
+    await panel.loadSessionFromDisk(PROJ, 9);
+
+    const st = getChatStore(panel.panelId).sess.getState();
+    // 书脊不增条（仍两卷，无双 9）——查重主判据
+    expect(st.sessions.filter((s) => s.id === 9)).toHaveLength(1);
+    expect(st.sessions.map((s) => s.id)).toEqual([3, 9]);
+    // 换卷到位
+    expect(st.sessions[st.activeIdx]?.id).toBe(9);
+    // 工厂增量 ≤ 1（仅切卷内联惰性水合一次；克隆路径会伴随书脊增条已被上方排除）
+    expect(factoryCalls - callsAfterRestore).toBeLessThanOrEqual(1);
+  });
+
+  it('续开未摊开的卷 → 正常 clone 路径（查重不误伤）', async () => {
+    const panel = createChatPanel();
+    panel.setProjectPath(PROJ);
+    panel.setAgentFactory(
+      async () =>
+        ({
+          getSession: () => [{ role: 'system', content: 'sys' }],
+          setSession: vi.fn(),
+          dispose: vi.fn(),
+          bindSession: vi.fn(),
+        }) as any,
+    );
+
+    mockDiskWith(
+      ledgerDisk([3], 3, 10),
+      {
+        3: volumeFile(3, '卷三', '卷三内容'),
+        5: volumeFile(5, '新卷', '卷五内容'),
+      },
+      5,
+    );
+    await panel.autoRestoreLastSession(PROJ);
+
+    // 续开未摊开的卷 5 → 正常追加
+    await panel.loadSessionFromDisk(PROJ, 5);
+    const st = getChatStore(panel.panelId).sess.getState();
+    expect(st.sessions.map((s) => s.id)).toEqual([3, 5]);
+    expect(st.sessions[st.activeIdx]?.id).toBe(5);
+  });
+
+  it('isOpen 投影：sess store 是唯一真相（首页标记查账不查磁盘）', async () => {
+    const panel = createChatPanel();
+    panel.setProjectPath(PROJ);
+    panel.setAgentFactory(
+      async () =>
+        ({
+          getSession: () => [{ role: 'system', content: 'sys' }],
+          setSession: vi.fn(),
+          dispose: vi.fn(),
+          bindSession: vi.fn(),
+        }) as any,
+    );
+
+    mockDiskWith(
+      ledgerDisk([3, 9], 9, 10),
+      {
+        3: volumeFile(3, '卷三', '卷三内容'),
+        9: volumeFile(9, '卷九', '卷九内容'),
+      },
+      9,
+    );
+    await panel.autoRestoreLastSession(PROJ);
+
+    // 磁盘上有 3 和 9，摊开集也有 3 和 9 → isOpen 均真
+    const { isOpen } = await import('../src/state/session-ledger');
+    expect(isOpen(panel.panelId, 3)).toBe(true);
+    expect(isOpen(panel.panelId, 9)).toBe(true);
+    // 未摊开档号（磁盘在但在案头没有）→ 假
+    expect(isOpen(panel.panelId, 5)).toBe(false);
+  });
+});
+
 // ponytail: stubFactory 目前只在多卷用例内联使用——保留导出面供后续 L 段扩展
 void stubFactory;
 void Session;

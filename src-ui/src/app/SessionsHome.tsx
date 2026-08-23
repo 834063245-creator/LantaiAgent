@@ -17,6 +17,7 @@ import { graphEngineEnabled, loadSettings } from '../settings';
 import { workspaceFlow } from '../shell/rows/workspace';
 import { useDockStore } from '../state/dock-store';
 import { ensureUserSessionsDir } from '../ui/chat-session';
+import { getChatStore } from '../ui/chat-store';
 import { useCoreStore } from './chat/core-instance';
 import { WinControls } from './WinControls';
 
@@ -106,6 +107,19 @@ export function SessionsHome() {
   const [projectRoot, setProjectRoot] = useState<string | null>(null);
   const [projectSessions, setProjectSessions] = useState<ProjectSession[]>([]);
   const [userSessions, setUserSessions] = useState<UserSession[]>([]);
+  // L1 摊开标记：sess store 订阅（谁已摊开——首页卡片直示，点已开卷 = 换卷）
+  const panelId = core?.panelId ?? null;
+  const [openSet, setOpenSet] = useState<Set<number>>(new Set());
+  useEffect(() => {
+    if (!panelId) return;
+    const sess = getChatStore(panelId).sess;
+    const sync = () => {
+      setOpenSet(new Set(sess.getState().sessions.map((s) => s.id)));
+    };
+    sync();
+    const un = sess.subscribe(sync);
+    return () => un();
+  }, [panelId]);
 
   useEffect(() => {
     let alive = true;
@@ -136,7 +150,18 @@ export function SessionsHome() {
 
   const onNewSession = useCallback(() => {
     openPanel('paper');
-  }, [openPanel]);
+    // L1 真新建（F1 空壳根治）：旧版只 openPanel——冷启动已恢复旧卷时，
+    // 用户点「新建」看到的仍是旧对话。现直调 createNewSession（真建新卷）。
+    // 无 key 冷启动死路防护同 SpineRack onNewVolume：无活跃会话时
+    // createNewSession 的 addNotice 会被丢弃——前置检查给纸面直示。
+    if (!core) return;
+    const st = getChatStore(core.panelId).sess.getState();
+    if (st.activeIdx < 0 || !st.sessions[st.activeIdx]) {
+      window.console.warn('[SessionsHome] 无活跃会话（API Key 未配置？）——新建未执行');
+      return;
+    }
+    void core.createNewSession();
+  }, [core, openPanel]);
 
   const onNewSessionWithDir = useCallback(() => {
     openPanel('paper');
@@ -225,26 +250,29 @@ export function SessionsHome() {
 
         {merged.length > 0 ? (
           <div className="sh-sessions">
-            {merged.slice(0, 8).map((s) => (
-              <button
-                type="button"
-                key={s.key}
-                className={`sh-session-row${s.key === activeKey ? ' active' : ''}`}
-                onClick={() =>
-                  s.kind === 'project'
-                    ? onResumeProject({ id: s.id, label: s.label, msgCount: s.msgCount, savedAt: s.savedAt })
-                    : onResumeUser({ id: s.id, label: s.label, msg_count: s.msgCount, saved_at: s.savedAt })
-                }
-                aria-label={`打开案卷：${s.label || `案卷 ${s.id}`}`}
-              >
-                <span className="date">{formatSessionDate(s.savedAt)}</span>
-                <span className="title">{s.label || `案卷 ${s.id}`}</span>
-                <span className="leader" aria-hidden="true" />
-                <span className="meta">
-                  #{s.id} · <b>{s.msgCount}</b> 块
-                </span>
-              </button>
-            ))}
+            {merged.slice(0, 8).map((s) => {
+              const opened = openSet.has(s.id);
+              return (
+                <button
+                  type="button"
+                  key={s.key}
+                  className={`sh-session-row${s.key === activeKey ? ' active' : ''}${opened ? ' open' : ''}`}
+                  onClick={() =>
+                    s.kind === 'project'
+                      ? onResumeProject({ id: s.id, label: s.label, msgCount: s.msgCount, savedAt: s.savedAt })
+                      : onResumeUser({ id: s.id, label: s.label, msg_count: s.msgCount, saved_at: s.savedAt })
+                  }
+                  aria-label={`打开案卷：${s.label || `案卷 ${s.id}`}${opened ? '（已在案头）' : ''}`}
+                >
+                  <span className="date">{formatSessionDate(s.savedAt)}</span>
+                  <span className="title">{s.label || `案卷 ${s.id}`}</span>
+                  <span className="leader" aria-hidden="true" />
+                  <span className="meta">
+                    {opened && <span className="open-mark">已摊开</span>}#{s.id} · <b>{s.msgCount}</b> 块
+                  </span>
+                </button>
+              );
+            })}
           </div>
         ) : (
           <p className="sh-empty-hint">从一卷新案卷开始——需要 Agent 干活时再绑目录。</p>

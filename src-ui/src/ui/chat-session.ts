@@ -1175,6 +1175,17 @@ export async function listSavedSessions(
 
 /** 从磁盘加载已保存的会话到新标签页。回退到 localStorage。 */
 export async function loadSessionFromDisk(ctx: SessionContext, projectPath: string, sessionId: number): Promise<void> {
+  // 续开查重（L1/F2）：该卷已在案头摊开 → 直接换卷不克隆（旧行为：无条件
+  // append → 同号双脊，旧句柄被顶掉未 dispose，合卷即变死卷）。
+  {
+    const st0 = getChatStore(ctx.storeId).sess.getState();
+    const openIdx = st0.sessions.findIndex((s) => s.id === sessionId);
+    if (openIdx >= 0) {
+      if (openIdx !== st0.activeIdx) switchSession(ctx, openIdx);
+      ctx.addNotice(`案卷 ${sessionId} 已在案头——已换卷`, 'info');
+      return;
+    }
+  }
   if (!getAgentFactory(ctx.storeId)) {
     const extra = ctx.getLastAgentDiag() ? `\n诊断: ${ctx.getLastAgentDiag()}` : '';
     ctx.addNotice(`请先配置 API Key${extra}`, 'error');
