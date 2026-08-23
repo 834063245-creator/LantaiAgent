@@ -144,6 +144,9 @@ warnings.txt
 CODELY.md
 mem-log/
 
+# Vision-loop screenshot scratch (R5 B 段对拍临时产物)
+.shots/
+
 # Windows reserved device name — accidental creation by tools redirecting output
 nul
 

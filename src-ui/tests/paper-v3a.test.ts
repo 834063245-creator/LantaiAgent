@@ -27,6 +27,8 @@ import {
   OUT_MAX_H,
   PAPER_BODY_FONT,
   PAPER_MONO_FONT,
+  PAPER_USER_FONT,
+  PAPER_USER_LINE_HEIGHT,
   PRE_MAX_H,
 } from '../src/paper/measure';
 import {
@@ -98,6 +100,15 @@ describe('paper/measure', () => {
     expect(PAPER_BODY_FONT).toContain('Noto Serif SC');
     expect(PAPER_MONO_FONT).toContain('IBM Plex Mono');
   });
+
+  it('B4 环1 钉值：来文 16px 楷书 / 行高 16×1.9=30.4（seal-deep 不变，收到正文 17 之下）', () => {
+    expect(PAPER_USER_FONT).toContain('16px');
+    expect(PAPER_USER_FONT).toContain('Ma Shan Zheng');
+    expect(PAPER_USER_LINE_HEIGHT).toBeCloseTo(30.4, 5);
+  });
+
+  // CSS 字面量钉值在 tests/paper-visual-decisions.test.ts（node 环境 readFileSync；
+  // jsdom 下 node: 模块 baseline 不可用、?raw 被 vitest css 管线吞空——两条路试过）。
 
   it('user/reasoning/notice/plan 四类分支各自计高（kinds 全谱）', () => {
     // user 纯文本 36 + asterism 44（B1：margin 30 + 字行 14）；reasoning 纯文本路径；

@@ -280,7 +280,7 @@ body {
 .sh-session-row .date {
   font-family: var(--f-mono);
   font-size: calc(11px * var(--font-scale));
-  color: var(--ink-3);
+  color: var(--ink-2); /* B3 环1 拍板：卷日期=信息承载，提墨 ink-3→ink-2 */
   letter-spacing: 0.06em;
   flex: 0 0 52px;
 }
@@ -301,7 +301,7 @@ body {
   flex: 0 0 auto;
   font-family: var(--f-mono);
   font-size: calc(11px * var(--font-scale));
-  color: var(--ink-3);
+  color: var(--ink-2); /* B3 环1 拍板：卷号·块数=信息承载，提墨 ink-3→ink-2 */
 }
 .sh-session-row .meta b {
   color: var(--ink-2);
@@ -339,7 +339,7 @@ body {
   padding: 18px 48px;
   display: flex;
   justify-content: space-between;
-  color: var(--ink-3);
+  color: var(--ink-2); /* B3 环1 拍板：页脚档号=信息承载，提墨 ink-3→ink-2 */
   font-family: var(--f-mono);
   font-size: calc(11px * var(--font-scale));
   letter-spacing: 0.06em;

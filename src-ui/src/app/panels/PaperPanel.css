@@ -276,8 +276,8 @@
 .pp-block.pp-user .pp-body {
   font-family: var(--f-kai);
   font-weight: 400;
-  font-size: 18px;
-  line-height: 2;
+  font-size: 16px; /* B4 环1 拍板 C：seal-deep 保持，字号 18→16（收正文 17 之下） */
+  line-height: 1.9;
   color: var(--seal-deep);
 }
 
@@ -371,7 +371,7 @@
   font-family: var(--f-mono);
   font-size: 11px;
   line-height: 1.5;
-  color: var(--ink-3);
+  color: var(--ink-2); /* B3 环1 拍板：工具输出=信息承载，提墨 ink-3→ink-2 */
   max-height: 160px;
   overflow: auto;
   white-space: pre-wrap;
@@ -416,7 +416,7 @@
   font-family: var(--f-mono);
   font-size: 11px;
   line-height: 1.5;
-  color: var(--ink-3);
+  color: var(--ink-2); /* B3 环1 拍板：程文输出=信息承载，提墨 ink-3→ink-2 */
   max-height: 200px;
   overflow: auto;
   white-space: pre-wrap;
@@ -447,11 +447,13 @@
   max-height: 260px;
   overflow: auto;
 }
+/* B5 环2 拍板（红绿墨色化）：add 松绿（--pass 矿物绿）/ del 朱砂深+删除线。
+ * 铁律「朱砂=人」在 diff 语境豁免：删行读作擦改/勘误，非人的声音。 */
 .pp-diff .pp-add {
-  color: var(--indigo);
+  color: var(--pass);
 }
 .pp-diff .pp-del {
-  color: var(--graphite);
+  color: var(--seal-deep);
   text-decoration: line-through;
 }
 .pp-diff .pp-hunk {

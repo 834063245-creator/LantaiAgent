@@ -187,7 +187,8 @@ function UserBody({ block }: BlockRendererProps) {
   );
 }
 
-/** 统一 diff 行分类：+ 新增（石青）/ - 删除（石墨删除线）/ @@ hunk 头（注记）。 */
+/** 统一 diff 行分类：+ 新增（松绿 --pass）/ - 删除（朱砂深 --seal-deep 删除线）/ @@ hunk 头（注记）。
+ *  B5 环2 红绿墨色化定稿——颜色落点在 PaperPanel.css .pp-add/.pp-del。 */
 function diffLineClass(line: string): string | undefined {
   if (line.startsWith('+')) return 'pp-add';
   if (line.startsWith('-')) return 'pp-del';

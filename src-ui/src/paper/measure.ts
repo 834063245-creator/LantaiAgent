@@ -28,9 +28,10 @@ const SONG_STACK = '"EB Garamond Variable", "EB Garamond", "Noto Serif SC", "Son
 const KAI_STACK = '"Ma Shan Zheng", "EB Garamond Variable", "Kaiti SC", "STKaiti", serif';
 const MONO_STACK = '"IBM Plex Mono", "Cascadia Code", "Consolas", monospace';
 
-/** 来文（user）：楷书 18px/2.0 朱砂深（.pp-block.pp-user .pp-body） */
-export const PAPER_USER_FONT = `18px ${KAI_STACK}`;
-export const PAPER_USER_LINE_HEIGHT = 18 * 2;
+/** 来文（user）：楷书 16px/1.9 朱砂深（.pp-block.pp-user .pp-body）
+ *  B4 环1 拍板 C：字号 18→16 收到正文 17 之下，行高同 C 变体 1.9 */
+export const PAPER_USER_FONT = `16px ${KAI_STACK}`;
+export const PAPER_USER_LINE_HEIGHT = 16 * 1.9;
 
 /** 正文（markdown）：宋体 17px/2.0（.pp-block.pp-markdown .pp-body） */
 export const PAPER_BODY_FONT = `17px ${SONG_STACK}`;

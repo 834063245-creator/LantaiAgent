@@ -57,6 +57,14 @@
 
 - 2026-08-22 · **C12 状态字落地：pushStatus 承接面接回** · 用户判「应该没啥大问题」→ 实测确实最顺：承接面（shell-store statusText/statusLog）与样式语言（书眉 HUD mono 小字）都是现成的，纯接线 · StatusLine：statusText 常显 + analyzing 石青呼吸徽标优先 + 点击展开日志环；真机 CDP 验到 cold-start 推的「已恢复上次案卷」直显（真实链路端到端） · **C 段至此 C1-C12 全绿，仅余 C8（多卷切换）单独立项 + C14（dock-store 收缩）挂其后**
 
+- 2026-08-23 · **B2 页边注光学 环1：授权 agent 定（视觉差异不显著）→ 维持顶挂收维** · vision 会话首轮单维循环：数值账（签基线 vs 首行基线落差 来文+9.6/正文+5.8/夹注−0.3/脚注+6.0/抄录+27.8/拟策+28.0）+ 三列对照页 `prototype/b2-margin-optics-ab.html`（A 顶挂现状 / B 全量基线对齐 / C 分组：散文对齐·框架顶挂）· 用户文字判：「横向对比下来看着区别其实不大，你来定就好」→ agent 定 **A 维持顶挂**（top:2/tick:10 原型转录值，零改动收维；理由：差异不显著时守原型最小改动，基线对齐方案判死不入册） · 工具链留档：`D:\tmp\r5-vision\measure-b2.mjs`（黄金样本逐块基线测量）+ `shot-b2.mjs`（对照页截图）· B 段循环模式实证：vision 自检（agent 截图自判增补候选）+ 用户终审拍板的组合成立
+
+- 2026-08-23 · **B3 墨阶配比 环1：拍板 B 提墨（落地）** · 数值账：黄金样本 ink-3×21/ink-2×15/ink-4×6，产品全界面 ink-3×77 分布 9 个 CSS · 对照法：B 变体=黄金样本直拷 + 覆盖层（`prototype/b3-ink-b.html`），「信息承载文本 ink-3→ink-2」一刀切 · **用户文字拍板 B**：信息承载处提墨，饰件（HUD/卷次序号/眉批/placeholder）留 ink-3 · 落地五处：`.pp-block.pp-tool .pp-out` / `.pp-block.pp-code .pp-out` / `.sh-session-row .date` / `.sh-session-row .meta` / `.sh-foot`（folio-sub 原型专属，产品无对应面） · 钉值 tests/paper-visual-decisions.test.ts · 方法注记：变体直拷黄金样本+尾部覆盖层（cascade 后置）比手工 harness 更保真
+
+- 2026-08-23 · **B4 问批音量 环1：拍板 C 折中（落地）** · 前置发现：规格书块映射表锁来文身 `--seal-deep`，但黄金样本 lantai.html 实演是 ink-1（computed rgb(38,34,28) 实锤）——规格书与原型在此处分叉，产品跟随的是规格书 · 三变体对照（截图 `D:\tmp\r5-vision\shots\b4-{a,b,c}.png`）：A=规格书现状（朱砂深 18 楷书）/ B=原型实演（墨身，朱砂只留签+批线+圈点）/ C=折中（朱砂深 16px）· **用户文字拍板 C**：来文身 seal-deep 保持（问仍是唯一彩色声音），字号 18→16 收到正文 17 之下 · 落地：PaperPanel.css `.pp-user .pp-body` 16px/1.9 + measure.ts PAPER_USER_FONT/LINE_HEIGHT 镜像 + 规格书 §2/§4 同步 · 钉值 paper-v3a（measure 常量）+ paper-visual-decisions（CSS 字面量） · 含义：黄金样本 lantai.html 的来文身 ink-1 判定为**原型自身偏离规格书**（非产品转录错），原型此点不再当判据
+
+- 2026-08-23 · **B5 代码块印刷化 环2：拍板红绿墨色化（落地）** · 环1 三变体（A 石青/石墨矿物现状 / B 全墨 / C 单墨 ink-2）用户文字判：「颜色不太符合代码块的视觉直觉，直觉上还是红-绿+比较正常，当然颜色选型不要完全用纯红纯绿，不然又丢失墨色的感觉」· 环2 出 D 变体（`prototype/b5-d-cinnabar-jade.html` + 截图 `D:\tmp\r5-vision\shots\b5-d.png`）：add 松绿（--pass #5E7A55 矿物绿）/ del 朱砂深（--seal-deep #8C2F26）+删除线 · **用户拍板 D** · 落地：PaperPanel.css .pp-add/.pp-del + renderer-service diffLineClass 注释 + 规格书 §3 铁律补唯一豁免注记（diff 加删走红绿墨色化，del 朱砂深读作擦改/勘误红笔非人语）+ §4 块映射表同步 · 钉值 paper-visual-decisions · **语义注**：pass 绿在工具行完成态同用，diff 新增复用同绿在版内出现两次绿色——用户认可此共用
+
 ### 待办（从判定中涌出）
 
 - ~~paper 态是否降级为"从简"路线~~ **已拍板（2026-08-22 用户）：不降级，V1 第三轮再攻质感**——V2 推迟一轮，质感根源查清并拍板后再录契约
