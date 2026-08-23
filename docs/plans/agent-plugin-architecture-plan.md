@@ -5,7 +5,11 @@
 > convergence 零漂移）· P4 自研路线推进中（D9 拍板：不等 DSH，自己当第一用户——通道补齐 /
 > 存量拆解 / P4a 调研三股交替；批次表见 §5 P4；**B① 已毕**——git/search 两族迁 ctx.tools
 > 第一方插件通道，贡献 factory 放宽收 ToolRowContext，双 preset 零漂移；**A-1 已毕**——
-> prompts 第六 service，段贡献经 ctx.prompts 追加进系统提示词）**。战略底牌：形状与 DSH 契约兼容、零依赖；
+> prompts 第六 service，段贡献经 ctx.prompts 追加进系统提示词；**B④ 推进中**——三段已迁，
+> 收官形态已拍板纯插件面）。**五项拍板（2026-08-23 晚，用户逐项拍定）**：S4-4 机器桥复活
+> 整批做（甲+乙）、①c 拍路线一（无缓存行）、B④ 收官 = 纯插件面（段表退役）、A-3 与 C11
+> 两基建全部排进当前工程——「推迟不是减负」，唯一合法挂起 = 外部信号依赖型（C12 观望
+> DSH）。**。战略底牌：形状与 DSH 契约兼容、零依赖；
 > DSH 信号点亮只追加 compat 装载层，不阻塞任何施工。
 > 战略决策（2026-08-19 定）：**生态跟随走「观望 DSH」路线**——P4 的前提是 DSH 官方把服务接口
 > 当公开契约维护；在此之前只做自研（P1-P3 全部独立于 DSH 生态成立）。见 §4 D8。
@@ -97,7 +101,7 @@ HoloGram 单进程内暂不需要，P4 插件边界时再评估。
 ### P4 插件边界（远期，判据到时再细化）
 | # | 判据 |
 |---|---|
-| C11 | 路线 B：第三方插件 = manifest + 工具声明（zod schema 可序列化形态）+ capability 表项，运行时挂载无需重编译；权限声明接入 permissions.json 体系；声明形状与 DSH L1 契约同构 |
+| C11 | 路线 B：第三方插件 = manifest + 工具声明（zod schema 可序列化形态）+ capability 表项，运行时挂载无需重编译；权限声明接入 permissions.json 体系；声明形状与 DSH L1 契约同构——**两块硬基建已拍板排进当前工程（2026-08-23 #5）**；自举论证（用户拍板理由）：自家也是「一个用户」——完成后加 feature / 移植外部插件均不碰源码 |
 | C12 | 路线 A：dsh-compat 装载层能加载一个真实 L1 工具类 DSH 插件（e2e），含 peer 版本协商与漂移检测 |
 | C13 | ~~P4a 契约调研笔记存在且覆盖最小子集 + 依赖面分布（两条路线共用输入）~~ ✅ 已毕（2026-08-23，[`docs/research/p4a-dsh-contract-notes.md`](../research/p4a-dsh-contract-notes.md)：模型面三字段同构、JSON Schema 公共分母实锤、226 包 peer 全量分布、路线 A 启动信号改为「peer 出现非 workspace 版本」） |
 
@@ -197,9 +201,9 @@ runViaRuntime 门面消费，无服务时惰性游离实例。convergence 零漂
 |---|---|---|
 | ~~prompt-sections 贡献通道~~ | ✅ 已毕（2026-08-23 A-1） | 第六通道 `ctx.prompts`（`composition/prompt-service.ts`，renderer-service 先例）：PromptContribution 形状即 PromptSection（id + applicable? + render）；合流点 = assembleSystemPrompt 末端追加（无贡献 = 空集 = 零漂移按构造，双 preset 实测）；生效 = 下次装配；服务 dispose 守卫式清空读取面（prompt 是字节敏感面，比四 service 的既有宽松面收紧）。B④ 迁存量段落时经此通道 |
 | hooks/preflight 暴露面 | ~1-2 天 | 插件参与工具管道（富化/门禁） |
-| blueprint capability 贡献面 | 拆到⑤自然定形 | 会话级能力的插件装载 |
-| 工具声明可序列化（zod↔manifest） | ~2 天 | 第三方工具免编译挂载前提 |
-| permissions.json 接插件声明 | ~2 天 | 对外开放前的一票否决项 |
+| blueprint capability 贡献面 | **排进当前工程**（2026-08-23 拍板 #4） | 会话级能力的插件装载；设计件穿插机械批推进，产出过用户审批 |
+| 工具声明可序列化（zod↔manifest） | ~2 天，**已拍板排进工程**（2026-08-23 #5） | 第三方工具免编译挂载前提；自家工具清单数据化同样受益 |
+| permissions.json 接插件声明 | ~2 天，**已拍板排进工程**（2026-08-23 #5） | 对外开放前的一票否决项 |
 
 **B. 存量拆解（批次表；障碍勘定 2026-08-23 baton7 §1 逐族实证，「无障碍纯搬运」的乐观表述已修正）**：
 
@@ -209,8 +213,11 @@ runViaRuntime 门面消费，无服务时惰性游离实例。convergence 零漂
 > 行迁入插件通道即脱离 preset 禁用面——被 preset/patch 寻址的族搬运前需先扩通道。
 > ② **实例缓存锁存**——pluginToolRows 的贡献实例缓存跨装配复用首装配实例；
 > 依赖装配期真值的族（每装配换 ui 回调 / subAgentPool / 可选 registry）直接搬 =
-> 跨面板串扰（INVARIANTS #1 同族雷）。B① 落地的缓解：贡献 factory 已放宽可选收
+> 跨装配串扰（INVARIANTS #1 同族雷）。B① 落地的缓解：贡献 factory 已放宽可选收
 > ToolRowContext（services.ts），但收 ctx 的贡献仍自担跨装配语义等价责任。
+> **2026-08-23 拍板 #2：①c 族走路线一「无缓存行」**——依赖装配期真值的贡献
+> 不做实例缓存，每装配重创实例（不做代理间接层）；「收 ctx 的贡献自担等价
+> 责任」的坑就此绕开。
 > ③ **域收敛依赖注册面**——buildDomainTool 按注册表现存旧工具过滤 action
 > （缺席 = 该 action 静默从域工具消失）；无引导环境（convergence 夹具 /
 > gen-tool-contract）须经 composition/first-party-tools.ts 的
@@ -227,12 +234,12 @@ runViaRuntime 门面消费，无服务时惰性游离实例。convergence 零漂
 | 批 | 内容 | 障碍 |
 |---|---|---|
 | ①a | git / search | ~~无~~ **已毕**（P4 B①，2026-08-23：只依赖无状态 codingExec，factory 收 ToolRowContext + 实例缓存语义等价；plugins/git-search-plugin.ts + first-party-tools.ts 通道腰；convergence 双 preset 零漂移实测） |
-| ①b | web | 需通道 ①：minimal preset 寻址 `builtin/web` 禁用它——行搬走后脱离组合解析域，preset 禁用静默失效；需 S4-4「插件行纳入组合解析域」先行 |
-| ①c | wait / ask | 需通道 ②：依赖装配期真值（wait 的 subAgentPool 按装配变化、ask 的 ui 回调每次装配换）——实例缓存会锁存首装配真值；需贡献按装配传参的另行设计（无缓存行或代理间接层） |
-| ② | 工具大域 | 分族：fs / shell / agent-isolation 同 ①a（codingExec 无状态，通道现成可搬）；browser-desktop 同 ①b（minimal 寻址 `builtin/browser-desktop`）；memory / skill / task / agent 同 ①c（可选 registry / taskManager / spawner 按装配给值） |
+| ①b | web | 需通道 ①：minimal preset 寻址 `builtin/web` 禁用它——行搬走后脱离组合解析域，preset 禁用静默失效；需 S4-4「插件行纳入组合解析域」先行（**2026-08-23 拍板 #1：S4-4 复活整批做——甲寻址域扩展 + 乙进程桥同批，~2-3 天；迁移批排甲之后**） |
+| ①c | wait / ask | 需通道 ②：依赖装配期真值（wait 的 subAgentPool 按装配变化、ask 的 ui 回调每次装配换）——实例缓存会锁存首装配真值；**2026-08-23 拍板 #2：路线一无缓存行——每装配重创实例** |
+| ② | 工具大域 | 分族：fs / shell / agent-isolation 同 ①a（codingExec 无状态，通道现成可搬）；browser-desktop 同 ①b（minimal 寻址 `builtin/browser-desktop`）；memory / skill / task / agent 同 ①c（可选 registry / taskManager / spawner 按装配给值——①c 路线一已拍板） |
 | ③ | hologram 族（graph/ops/lsp） | 同 ①c 变体：graphData 是装配期开关（缺帐行产出空集）——实例缓存会把首装配的 graphData 有无锁死；且 loadHologramSchemas 动态面需每装配刷新。异步 factory 已支持但缓存语义需另行设计 |
 | ④ | prompt 段落（persona/规则/记忆/运行环境） | **试点 + 首续批已毕**（2026-08-23：memory/claude-md 试点 + graph-snapshot 续批迁 ctx.prompts——`plugins/prompt-segments-plugin.ts` + `composition/first-party-prompts.ts` 通道腰 + phase-0 夹具包腰，双 preset 零漂移实测；定义留 prompt-sections.ts 单一真源）。勘定修正两处：动态插值段**无** ①c 缓存障碍——prompt 通道无实例缓存，render 每装配重调直收 PromptSectionContext（试点即迁动态段验证）；真障碍是④拼装序约束——零漂移仅限表尾后缀，静态段（behavior-rules 等）反而须最后迁。剩余批次按表尾逆序（multi-agent → env/model-identity → …，新迁段插 migratedPromptSections 头部保序）；roster 的 text 覆盖丢失动态插值语义由通道继承（贡献段脱离寻址域，S4-4 扩展点） |
-| ⑤ | 会话级能力（plan/通信/discovery/merge/board/compaction） | 需通道 A-3 |
+| ⑤ | 会话级能力（plan/通信/discovery/merge/board/compaction） | 需通道 A-3——**已拍板排进当前工程**（2026-08-23 #4），设计件穿插机械批推进 |
 | ⑥ | 管道参与（graph hooks/board tracking/preflight） | 需通道 A-2 |
 
 拆解纪律：第一方插件仍编译期打包（VSCode 内置扩展同款）；收益是解耦/可禁用/
