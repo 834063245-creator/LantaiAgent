@@ -116,7 +116,7 @@ HoloGram 单进程内暂不需要，P4 插件边界时再评估。
 ### P4 插件边界（远期，判据到时再细化）
 | # | 判据 |
 |---|---|
-| C11 | 路线 B：第三方插件 = manifest + 工具声明（zod schema 可序列化形态）+ capability 表项，运行时挂载无需重编译；权限声明接入 permissions.json 体系；声明形状与 DSH L1 契约同构——**两块硬基建已拍板排进当前工程（2026-08-23 #5）**；自举论证（用户拍板理由）：自家也是「一个用户」——完成后加 feature / 移植外部插件均不碰源码 |
+| C11 | 路线 B：第三方插件 = manifest + 工具声明（zod schema 可序列化形态）+ capability 表项，运行时挂载无需重编译；权限声明接入 permissions.json 体系；声明形状与 DSH L1 契约同构——**两块硬基建已毕（2026-08-24，C11-1 + C11-2）**：工具声明可序列化（manifest.tools + toolHandlers 执行映射 + declarationToTool/declarationOf 双向桥）+ 权限声明（manifest.permissions + plugins.json granted + 装载期一票否决）；自举论证（用户拍板理由）已兑现——加 feature / 移植外部插件均不碰源码 |
 | C12 | 路线 A：dsh-compat 装载层能加载一个真实 L1 工具类 DSH 插件（e2e），含 peer 版本协商与漂移检测 |
 | C13 | ~~P4a 契约调研笔记存在且覆盖最小子集 + 依赖面分布（两条路线共用输入）~~ ✅ 已毕（2026-08-23，[`docs/research/p4a-dsh-contract-notes.md`](../research/p4a-dsh-contract-notes.md)：模型面三字段同构、JSON Schema 公共分母实锤、226 包 peer 全量分布、路线 A 启动信号改为「peer 出现非 workspace 版本」） |
 
@@ -217,8 +217,8 @@ runViaRuntime 门面消费，无服务时惰性游离实例。convergence 零漂
 | ~~prompt-sections 贡献通道~~ | ✅ 已毕（2026-08-23 A-1） | 第六通道 `ctx.prompts`（`composition/prompt-service.ts`，renderer-service 先例）：PromptContribution 形状即 PromptSection（id + applicable? + render）；合流点 = assembleSystemPrompt 末端追加（无贡献 = 空集 = 零漂移按构造，双 preset 实测）；生效 = 下次装配；服务 dispose 守卫式清空读取面（prompt 是字节敏感面，比四 service 的既有宽松面收紧）。B④ 迁存量段落时经此通道 |
 | ~~hooks/preflight 暴露面~~ | ✅ 已毕（2026-08-24，A-2） | 第七通道 `ctx.hooks`（`composition/hook-service.ts`，prompt-service 同款先例）：HookContribution 两类——`kind: 'enrich'`（Hook 形状零改写，post-tool 富化链）/ `kind: 'preflight'`（PreflightHook 形状零改写，pre-tool 警告聚合 + HIGH 门禁语义沿用）。装配折叠在 `runtime._assembleAgent`（capability 钩子先、通道贡献随后——tools 域 builtin-先/贡献-后同序）；executor 直调与 eventBus 双路径自动生效（同一 registry）；子 Agent 不自动继承（graph-hooks 同款不下放）；贡献不进 roster 寻址域（四域行模型不含 hooks 域，无既定需求不预防性扩展） |
 | ~~blueprint capability 贡献面~~ | ✅ 已毕（2026-08-24，A-3） | 第八通道 `ctx.capabilities`（`composition/capability-service.ts`，设计件 designs/A3-capability-contribution-channel.md——自查模式首件：用户失去设计件审批能力，agent 自查六断言 + 两缺陷修订后实施）：CapabilityContribution = AgentCapability 形状零改写（phase/when/install 原样）；表尾追加序（builtin 前缀不动，零漂移按构造）；贡献 key 进 capabilities 域寻址（patch 可禁用插件能力行）；撞 builtin key + 畸形形状装载期拒绝（fail-fast）；runtime 零改动（fromRoster 穿线既有）；贡献变更 = 组合输入变更（第三条代数挂点）；子 Agent 不继承；深集成通道（全量 BlueprintScope——C12 compat 不暴露，L3 放弃） |
-| 工具声明可序列化（zod↔manifest） | ~2 天，**已拍板排进工程**（2026-08-23 #5） | 第三方工具免编译挂载前提；自家工具清单数据化同样受益 |
-| permissions.json 接插件声明 | ~2 天，**已拍板排进工程**（2026-08-23 #5） | 对外开放前的一票否决项 |
+| ~~工具声明可序列化（zod↔manifest）~~ | ✅ 已毕（2026-08-24，C11-1） | manifest `tools` 声明式挂接：声明是数据（name/description/parameters JSON Schema（type:"object" 必填）/readOnly——DSH L1 同构三字段）+ entry `toolHandlers` 命名导出执行映射（`plugins/tool-declarations.ts`——declarationToTool/declarationOf 双向桥 + mountToolDeclarations 挂接）；装载器包装挂载（插件不触碰 ctx.tools），行 id `plugin/<插件名>/<工具名>` 可寻址；声明/实现一一对应失配 → 插件 error（失败隔离）；hello 示例换代四通道（+hello_status 声明通道） |
+| ~~permissions.json 接插件声明~~ | ✅ 已毕（2026-08-24，C11-2） | manifest `permissions` 声明（枚举闭集 read/edit/bash/git/web——Rust 权限咽喉五域）+ plugins.json `granted` 段授予面 + 装载期一票否决（声明未覆盖 → blocked 不 import，设置面板「待授权」可见缺哪些）；`plugin_set_enabled` 读改写保留 granted 段（Rust 测试钉住）；三层安全叙事如实入档（授予门禁/声明面/逐调用强制在 Rust 命令层照常生效——与声明无关） |
 
 **B. 存量拆解（批次表；障碍勘定 2026-08-23 baton7 §1 逐族实证，「无障碍纯搬运」的乐观表述已修正）**：
 

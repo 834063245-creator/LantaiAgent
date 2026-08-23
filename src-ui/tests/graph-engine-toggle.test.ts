@@ -58,6 +58,10 @@ describe('图谱引擎开关：settings 容错面', () => {
 });
 
 describe('图谱引擎开关：Workspace.open 门禁', () => {
+  // 超时预算 20s：测试内冷导入 ../src/workspace 巨型模块图（agent 装配链）
+  // ——全量套件下 worker 冷启动时导入本身可超 5s（2026-08-24 实测击穿，
+  // 超时泄漏 fiber → 下用例 lsp 服务双注册连锁假红）。逻辑面全 mock，
+  // 亚秒完成；预算只吸收导入成本。
   it('关态：不触分析/拉页/简报/watcher，graphData 留 null', async () => {
     rpcCalls.length = 0;
     settingsState.graphEngine = { enabled: false };
@@ -82,7 +86,7 @@ describe('图谱引擎开关：Workspace.open 门禁', () => {
     expect(rpcCalls).not.toContain('workspace_start_watcher');
     expect(rpcCalls).not.toContain('read_file_content');
     await ws.deactivate(chatPanel); // 释放 fiber（LspService 注册不泄漏到下一个用例）
-  });
+  }, 20_000);
 
   it('开态（缺省）：照旧触发分析链（零漂移）', async () => {
     rpcCalls.length = 0;
@@ -101,7 +105,7 @@ describe('图谱引擎开关：Workspace.open 门禁', () => {
     expect(ws._graphEngineOn).toBe(true);
     expect(rpcCalls).toContain('analyze_and_load');
     await ws.deactivate(chatPanel);
-  });
+  }, 20_000);
 });
 
 describe('图谱引擎开关：merge-gate 跳过', () => {

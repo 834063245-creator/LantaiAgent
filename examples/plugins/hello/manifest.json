@@ -1,6 +1,14 @@
 {
   "name": "hello",
-  "version": "1.0.0",
-  "description": "S4 hello 闭环示例插件——1 面板 + 1 工具 + 1 命令（三通道最小演示）",
-  "entry": "entry.js"
+  "version": "1.1.0",
+  "description": "S4 hello 闭环示例插件——1 面板 + 1 命令 + 2 工具（ctx.tools 代码通道 + manifest.tools 声明通道，C11-1）",
+  "entry": "entry.js",
+  "tools": [
+    {
+      "name": "hello_status",
+      "description": "hello 插件示例工具（manifest.tools 声明通道，C11-1）：返回插件装载状态一句话。声明是本文件数据，执行函数在 entry.js 的 toolHandlers 命名导出。",
+      "parameters": { "type": "object", "properties": {}, "required": [] },
+      "readOnly": true
+    }
+  ]
 }

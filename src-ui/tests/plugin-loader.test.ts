@@ -211,7 +211,162 @@ describe('loadExternalPlugins（失败隔离铁律）', () => {
     expect(usePluginStore.getState().plugins).toEqual([]);
   });
 
-  it('S4-4 乙：manifest.mcpServers → 包装装载（entry.apply 后桥贡献注册）', async () => {
+  it('C11-1：manifest.tools + entry toolHandlers → 声明通道工具挂接；缺 handler → error 记录', async () => {
+    const root = new Context();
+    const { compositionServicesPlugin } = await import('../src/composition/services');
+    await root.plugin(compositionServicesPlugin);
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['acme/todo'],
+        [ORIGIN + '/plugins.json']: { disabled: [] },
+        [ORIGIN + '/acme/todo/manifest.json']: {
+          name: 'acme/todo',
+          version: '1.0.0',
+          entry: 'entry.js',
+          tools: [
+            {
+              name: 'todo_read',
+              description: '读待办',
+              parameters: { type: 'object', properties: { q: { type: 'string' } } },
+              readOnly: true,
+            },
+          ],
+        },
+      }),
+      importModule: async () => ({
+        default: { name: 'acme/todo', apply() {} },
+        toolHandlers: { todo_read: async (args: { q?: string }) => 'todo:' + String(args.q ?? '') },
+      }),
+    });
+    expect(usePluginStore.getState().plugins[0]?.status).toBe('active');
+    // 声明通道贡献在册（行 id 折算 plugin/<插件名>/<工具名>）
+    const { pluginToolRows } = await import('../src/composition/plugin-tool-rows');
+    expect(pluginToolRows().map((r) => r.id)).toEqual(['plugin/acme/todo/todo_read']);
+    const row = pluginToolRows()[0];
+    if (!row) throw new Error('声明通道贡献行未注册');
+    const tools = await row.factory({} as never);
+    expect(tools[0]?.name()).toBe('todo_read');
+    expect(tools[0]?.readOnly()).toBe(true);
+    await expect(tools[0]?.execute({ q: 'x' })).resolves.toBe('todo:x');
+
+    // 缺 handler → 插件 error（失败隔离；all-or-nothing：一条不挂，全部不挂）
+    const root2 = new Context();
+    await root2.plugin(compositionServicesPlugin);
+    await loadExternalPlugins(root2, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['acme/broken'],
+        [ORIGIN + '/plugins.json']: { disabled: [] },
+        [ORIGIN + '/acme/broken/manifest.json']: {
+          name: 'acme/broken',
+          version: '1.0.0',
+          entry: 'entry.js',
+          tools: [{ name: 'todo_read', description: '读', parameters: { type: 'object' } }],
+        },
+      }),
+      importModule: async () => ({
+        default: { name: 'acme/broken', apply() {} },
+        // toolHandlers 导出但缺 todo_read
+        toolHandlers: { other: async () => 'x' },
+      }),
+    });
+    expect(usePluginStore.getState().plugins[0]?.status).toBe('error');
+    expect(usePluginStore.getState().plugins[0]?.error).toContain('未声明的工具');
+    expect(pluginToolRows()).toEqual([]); // 失败不残留贡献
+  });
+
+  it('C11-2：permissions 声明形状校验（枚举闭集）', () => {
+    expect(validateManifest({ ...HELLO_MANIFEST, permissions: ['read', 'bash'] }).ok).toBe(true);
+    expect(validateManifest({ ...HELLO_MANIFEST, permissions: [] }).ok).toBe(true);
+    // 未知权限类拒绝（枚举闭集——「写了但不生效」的类名是手误）
+    expect(validateManifest({ ...HELLO_MANIFEST, permissions: ['root'] }).ok).toBe(false);
+    expect(validateManifest({ ...HELLO_MANIFEST, permissions: ['bash', 'ssh'] }).ok).toBe(false);
+    expect(validateManifest({ ...HELLO_MANIFEST, permissions: 'bash' }).ok).toBe(false);
+  });
+
+  it('C11-2：权限门禁——声明未被 granted 覆盖 → blocked（不 import）；覆盖/无声明 → 装载', async () => {
+    const importCalls: string[] = [];
+    const importModule = async (url: string): Promise<Record<string, unknown>> => {
+      importCalls.push(url);
+      return { default: { name: 'acme/power', apply() {} } };
+    };
+    const manifest = {
+      name: 'acme/power',
+      version: '1.0.0',
+      entry: 'entry.js',
+      permissions: ['bash', 'edit'],
+    };
+    // 未授予（granted 缺该插件）→ blocked + 缺哪些授权可见 + 不 import
+    const root = new Context();
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['acme/power'],
+        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
+        [ORIGIN + '/acme/power/manifest.json']: manifest,
+      }),
+      importModule,
+    });
+    let rec = usePluginStore.getState().plugins[0];
+    expect(rec?.status).toBe('blocked');
+    expect(rec?.missingPermissions).toEqual(['bash', 'edit']);
+    expect(importCalls).toEqual([]);
+
+    // 部分授予 → 仍 blocked（缺的部分可见）
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['acme/power'],
+        [ORIGIN + '/plugins.json']: { disabled: [], granted: { 'acme/power': ['bash'] } },
+        [ORIGIN + '/acme/power/manifest.json']: manifest,
+      }),
+      importModule,
+    });
+    rec = usePluginStore.getState().plugins[0];
+    expect(rec?.status).toBe('blocked');
+    expect(rec?.missingPermissions).toEqual(['edit']);
+    expect(importCalls).toEqual([]);
+
+    // 全覆盖 → active（import + apply）
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['acme/power'],
+        [ORIGIN + '/plugins.json']: { disabled: [], granted: { 'acme/power': ['bash', 'edit', 'web'] } },
+        [ORIGIN + '/acme/power/manifest.json']: manifest,
+      }),
+      importModule,
+    });
+    expect(usePluginStore.getState().plugins[0]?.status).toBe('active');
+    expect(importCalls).toHaveLength(1);
+
+    // 无声明 = 零摩擦直接装载（hello 形态）
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['acme/pure'],
+        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
+        [ORIGIN + '/acme/pure/manifest.json']: { name: 'acme/pure', version: '1.0.0', entry: 'entry.js' },
+      }),
+      importModule: async () => ({ default: { name: 'acme/pure', apply() {} } }),
+    });
+    expect(usePluginStore.getState().plugins[0]?.status).toBe('active');
+
+    // plugins.json 缺失/坏形状 → granted 空表（按无授权处理，声明插件 blocked）
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['acme/power'],
+        // plugins.json 不可达（404 → fetchJson null → 空态）
+        [ORIGIN + '/acme/power/manifest.json']: manifest,
+      }),
+      importModule,
+    });
+    expect(usePluginStore.getState().plugins[0]?.status).toBe('blocked');
+  });
+
+  it('S4-4 乙：mcpServers → 包装装载（entry.apply 后桥贡献注册）', async () => {
     // 内存 MCP server 行协议 fake（mcp-bridge.test 同款——loader 集成只验
     // 包装接线，协议细节与 dispose 链在桥测试钉）
     const kills: string[] = [];

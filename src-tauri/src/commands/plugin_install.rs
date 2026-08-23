@@ -396,33 +396,42 @@ pub(crate) fn plugin_dir(name: &str) -> Result<String, String> {
     Ok(dir.to_string_lossy().into_owned())
 }
 
-/// 启用/禁用：plugins.json 读改写（{"disabled": [...]}——S0 文件形状）。
+/// 启用/禁用：plugins.json 读改写（{"disabled": [...]}——S0 文件形状；
+/// C11-2 起同文件可含 {"granted": {...}} 授权段——读改写必须保留该段，
+/// 否则一次开关就把用户授权静默抹掉 = 安全回退）。
 pub(crate) fn plugin_set_enabled(name: &str, enabled: bool) -> Result<(), String> {
     if name.trim().is_empty() {
         return Err("插件名不能为空".to_string());
     }
     let plugins_root = crate::plugin_assets::plugins_root();
     let file = plugins_root.join("plugins.json");
-    // 读（容忍毒化数据：坏 JSON = 空集重建——INVARIANTS #11.2 纪律）
-    let mut disabled: Vec<String> = Vec::new();
+    // 读（容忍毒化数据：坏 JSON = 空集重建——INVARIANTS #11.2 纪律；
+    // 其余顶层键（如 granted）原样保留——只改 disabled 段）
+    let mut root: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
     if let Ok(text) = std::fs::read_to_string(&file) {
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
-            if let Some(arr) = v.get("disabled").and_then(|d| d.as_array()) {
-                disabled = arr
-                    .iter()
-                    .filter_map(|x| x.as_str().map(String::from))
-                    .filter(|s| !s.is_empty())
-                    .collect();
-            }
+        if let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(&text) {
+            root = map;
         }
     }
+    let mut disabled: Vec<String> = root
+        .get("disabled")
+        .and_then(|d| d.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|x| x.as_str().map(String::from))
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
     // 改（去重保序）
     disabled.retain(|n| n != name);
     if !enabled {
         disabled.push(name.to_string());
     }
+    root.insert("disabled".into(), serde_json::json!(disabled));
     // 写（读改写原子性：先写临时文件再 rename）
-    let payload = serde_json::json!({ "disabled": disabled }).to_string();
+    let payload = serde_json::to_string(&serde_json::Value::Object(root))
+        .map_err(|e| format!("序列化 plugins.json 失败: {e}"))?;
     let tmp = plugins_root.join(format!(".plugins.json.tmp-{}", rand_suffix()));
     std::fs::write(&tmp, &payload).map_err(|e| format!("写 plugins.json 临时文件失败: {e}"))?;
     std::fs::rename(&tmp, &file).map_err(|e| format!("plugins.json 原子替换失败: {e}"))?;
@@ -628,6 +637,19 @@ mod tests {
         let v2: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(root.join("plugins.json")).unwrap()).unwrap();
         assert!(v2["disabled"].as_array().unwrap().is_empty());
+
+        // C11-2：granted 授权段在开关读改写中原样保留（抹掉 = 安全回退）
+        let granted_json = r#"{"disabled":["hello"],"granted":{"hello":["bash","edit"],"other":["web"]}}"#;
+        std::fs::write(root.join("plugins.json"), granted_json).unwrap();
+        plugin_set_enabled("hello", false).unwrap();
+        let v3: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(root.join("plugins.json")).unwrap()).unwrap();
+        assert_eq!(v3["granted"]["hello"], serde_json::json!(["bash", "edit"]));
+        assert_eq!(v3["granted"]["other"], serde_json::json!(["web"]));
+        assert!(
+            v3["disabled"].as_array().unwrap().iter().any(|x| x.as_str() == Some("hello")),
+            "disabled 段仍应按开关语义更新"
+        );
 
         // 卸载：目录消失 + 幂等
         plugin_uninstall("hello").unwrap();

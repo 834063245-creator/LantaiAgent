@@ -14,9 +14,24 @@
 //   1. ctx.panels  —— 右侧轨道面板「Hello」：三通道状态卡片；
 //   2. ctx.commands —— 命令面板（Ctrl+K）「Hello：打个招呼」；
 //   3. ctx.tools   —— 模型工具 hello_greet（下次 Agent 装配进工具面）。
+// + 第四通道（C11-1 工具声明可序列化）：manifest.tools 声明 hello_status
+//   ——声明是 manifest.json 数据（name/description/parameters JSON
+//   Schema/readOnly），执行函数是本文件的 toolHandlers 命名导出。装载器
+//   挂接（插件不触碰 ctx.tools——信任面更小，装载期即知工具面）。
 //
 // disposer 纪律：三注册的 disposer 全部经 ctx.effect 登记进本插件的
 // fiber（装载期红线：注册动作之外零 UI 副作用；fiber dispose 即干净退出）。
+// 声明通道的生命周期归装载器包装层（同样挂本插件 fiber）——本文件零清理代码。
+
+// ── 通道 4：声明式工具（C11-1 manifest.tools + toolHandlers 映射）──
+// hello_status 的声明在 manifest.json（纯数据）；此处只出执行函数。
+// 行 id = plugin/hello/hello_status（patch/preset 可寻址禁用）；
+// 下次 Agent 装配进工具面（与代码通道同时效）。
+export const toolHandlers = {
+  hello_status: async () =>
+    'hello 插件四通道已装载（面板 / 命令 / 代码通道工具 / 声明通道工具）——' +
+    '来自 manifest.tools 声明通道（C11-1 工具声明可序列化）',
+};
 
 export default {
   name: 'hello',
@@ -45,10 +60,11 @@ export default {
           },
         },
         ce('div', { style: { letterSpacing: '0.1em', marginBottom: 8 } }, '◈ HELLO PLUGIN'),
-        '三通道示例已装载：',
+        '四通道示例已装载：',
         ce('div', { style: { opacity: 0.75 } }, '· 面板（本卡片）——即时生效'),
         ce('div', { style: { opacity: 0.75 } }, '· 命令面板（Ctrl+K）搜「Hello」——即时生效'),
-        ce('div', { style: { opacity: 0.75 } }, '· 工具 hello_greet——下次 Agent 装配生效'),
+        ce('div', { style: { opacity: 0.75 } }, '· 工具 hello_greet（ctx.tools 代码通道）——下次 Agent 装配生效'),
+        ce('div', { style: { opacity: 0.75 } }, '· 工具 hello_status（manifest.tools 声明通道）——下次 Agent 装配生效'),
       );
     };
     ctx.effect(

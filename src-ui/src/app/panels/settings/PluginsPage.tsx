@@ -22,6 +22,7 @@ import { Icon } from '../../Icon';
 function statusBadge(s: PluginRecord['status']): { text: string; color: string } {
   if (s === 'active') return { text: '运行中', color: 'var(--pass)' };
   if (s === 'disabled') return { text: '已禁用', color: 'var(--ink-2)' };
+  if (s === 'blocked') return { text: '待授权', color: 'var(--warn)' };
   return { text: '装载失败', color: 'var(--warn)' };
 }
 
@@ -44,7 +45,11 @@ function PluginCard({
   return (
     <div className="sp-lsp-card">
       <span className="sp-lsp-card-icon" style={{ color: badge.color }}>
-        <Icon name={plugin.status === 'error' ? 'alert-circle' : 'agent'} />
+        <Icon
+          name={
+            plugin.status === 'error' || plugin.status === 'blocked' ? 'alert-circle' : 'agent'
+          }
+        />
       </span>
       <div className="sp-lsp-card-body">
         <div className="sp-lsp-card-header">
@@ -64,6 +69,14 @@ function PluginCard({
           )}
         </div>
         {plugin.error && <div className="sp-lsp-card-err">{plugin.error}</div>}
+        {plugin.status === 'blocked' && plugin.missingPermissions && (
+          <div className="sp-lsp-card-err">
+            待授权权限类：{plugin.missingPermissions.join(' / ')}——在
+            <code> ~/.lantai/plugins/plugins.json</code> 的 <code>granted</code> 段写入
+            <code> {'{ "' + plugin.name + '": [' + plugin.missingPermissions.map((p) => `'${p}'`).join(', ') + '] }'}</code>
+            后重启。
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
           <button type="button" className="sp-btn-sm" disabled={busy} onClick={() => onToggle(plugin.name, !enabled)}>
             {enabled ? '禁用' : '启用'}

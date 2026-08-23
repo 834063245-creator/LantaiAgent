@@ -9,7 +9,7 @@
 import { create } from 'zustand';
 import type { PluginManifest } from '../plugins/types';
 
-export type PluginStatus = 'active' | 'error' | 'disabled';
+export type PluginStatus = 'active' | 'error' | 'disabled' | 'blocked';
 
 export interface PluginRecord {
   name: string;
@@ -18,6 +18,9 @@ export interface PluginRecord {
   status: PluginStatus;
   /** 失败原因（status = error 时必填）。 */
   error?: string;
+  /** 待授权的权限类（status = blocked 时必填——C11-2 装载期一票否决：
+   *  manifest.permissions 声明未被 plugins.json granted 段覆盖的部分）。 */
+  missingPermissions?: string[];
 }
 
 interface PluginStoreState {

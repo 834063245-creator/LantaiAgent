@@ -30,6 +30,7 @@ import { getProxyPort } from '../provider/transport';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
 import { type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
 import { settingsPlugin } from './settings-plugin';
+import { mountToolDeclarations } from './tool-declarations';
 import { type LantaiPlugin, type PluginManifest, validateManifest } from './types';
 
 /** loader 消费的最小 fetch 形状（测试可用普通对象实现，不依赖 Response 全局）。 */
@@ -143,13 +144,32 @@ async function fetchJson(fetchImpl: FetchLike, url: string): Promise<unknown> {
   }
 }
 
-/** 读启用态（plugins.json：{"disabled": [...]}；缺文件/坏形状 = 空集）。 */
-async function readDisabledSet(fetchImpl: FetchLike, origin: string): Promise<Set<string>> {
+/** 读 plugins.json 启用态与授权态（{"disabled": [...], "granted":
+ *  {"<插件名>": ["bash", ...]}}；缺文件/坏形状 = 空集/空表——INVARIANTS
+ *  #11.2 毒化容忍：坏文件不炸装载，按无声明处理）。 */
+async function readPluginsState(
+  fetchImpl: FetchLike,
+  origin: string,
+): Promise<{ disabled: Set<string>; granted: Map<string, Set<string>> }> {
   const raw = await fetchJson(fetchImpl, origin + '/plugins.json');
-  if (raw == null || typeof raw !== 'object') return new Set();
-  const disabled = (raw as { disabled?: unknown }).disabled;
-  if (!Array.isArray(disabled)) return new Set();
-  return new Set(disabled.filter((name): name is string => typeof name === 'string'));
+  const empty = { disabled: new Set<string>(), granted: new Map<string, Set<string>>() };
+  if (raw == null || typeof raw !== 'object') return empty;
+  const record = raw as { disabled?: unknown; granted?: unknown };
+  const disabled = new Set<string>();
+  if (Array.isArray(record.disabled)) {
+    for (const name of record.disabled) {
+      if (typeof name === 'string') disabled.add(name);
+    }
+  }
+  const granted = new Map<string, Set<string>>();
+  if (record.granted != null && typeof record.granted === 'object' && !Array.isArray(record.granted)) {
+    for (const [name, classes] of Object.entries(record.granted as Record<string, unknown>)) {
+      if (Array.isArray(classes)) {
+        granted.set(name, new Set(classes.filter((c): c is string => typeof c === 'string')));
+      }
+    }
+  }
+  return { disabled, granted };
 }
 
 function errorRecord(name: string, manifest: PluginManifest | null, error: string): PluginRecord {
@@ -173,10 +193,12 @@ export async function loadExternalPlugins(root: Context, opts: LoadExternalPlugi
       console.warn('[plugins] 装载通道索引不可用');
       return;
     }
-    const disabled = await readDisabledSet(fetchImpl, origin);
+    const { disabled, granted } = await readPluginsState(fetchImpl, origin);
     const records: PluginRecord[] = [];
     for (const dirId of index) {
-      records.push(await loadOne(root, String(dirId), { origin, disabled, fetchImpl, importModule, mcpBridgeIO }));
+      records.push(
+        await loadOne(root, String(dirId), { origin, disabled, granted, fetchImpl, importModule, mcpBridgeIO }),
+      );
     }
     usePluginStore.getState().setPlugins(records);
   } catch (e) {
@@ -188,6 +210,8 @@ export async function loadExternalPlugins(root: Context, opts: LoadExternalPlugi
 interface LoadOneDeps {
   origin: string;
   disabled: Set<string>;
+  /** plugins.json granted 段（C11-2 授权态：插件名 → 已授予权限类集）。 */
+  granted: Map<string, Set<string>>;
   fetchImpl: FetchLike;
   importModule: (url: string) => Promise<Record<string, unknown>>;
   mcpBridgeIO?: McpBridgeIO;
@@ -215,6 +239,23 @@ async function loadOne(root: Context, dirId: string, deps: LoadOneDeps): Promise
   if (deps.disabled.has(manifest.name)) {
     return { name: manifest.name, manifest, status: 'disabled' };
   }
+  // 4b) 权限门禁（C11-2 装载期一票否决）：manifest.permissions 声明的
+  //     权限类未被 plugins.json granted 段全覆盖 → 不装载（blocked 状态
+  //     ——不 import 插件代码，缺哪些授权对设置面板可见）。无声明 = 零
+  //     摩擦直接装载（纯 JS 插件）。
+  const declaredPerms = manifest.permissions ?? [];
+  if (declaredPerms.length > 0) {
+    const grantedFor = deps.granted.get(manifest.name) ?? new Set<string>();
+    const missing = declaredPerms.filter((p) => !grantedFor.has(p));
+    if (missing.length > 0) {
+      return {
+        name: manifest.name,
+        manifest,
+        status: 'blocked',
+        missingPermissions: missing,
+      };
+    }
+  }
   // 5) 导入 + 装配（cordis fiber 记录生命周期；apply 抛错 → await reject）
   try {
     const url = origin + '/' + manifest.name + '/' + manifest.entry;
@@ -226,22 +267,31 @@ async function loadOne(root: Context, dirId: string, deps: LoadOneDeps): Promise
     if (candidate.name !== manifest.name) {
       return errorRecord(manifest.name, manifest, '插件对象 name (' + candidate.name + ') 与 manifest.name 不一致');
     }
-    // S4-4 乙（机器桥）：manifest 声明 mcpServers 时包装插件——entry.apply
-    // 之后注册 MCP server 工具贡献（进程 kill 与贡献注销挂同一 fiber 的
-    // ctx.effect——插件 fiber dispose → spawn 的进程链式停）。startup-error
-    // 的 server 急连接失败 → 包装 apply reject → 插件 error 记录（既有失败
-    // 隔离路径）。inject 并集补 'tools'（桥注册经 ctx.tools——cordis 注入
-    // 纪律；与 entry 自身 inject 合并声明）。
-    const target = manifest.mcpServers?.length
-      ? {
-          name: candidate.name,
-          inject: [...new Set([...((candidate as { inject?: string[] }).inject ?? []), 'tools'])],
-          async apply(ctx: Context) {
-            await candidate.apply(ctx);
-            await registerMcpServerTools(ctx, manifest.name, manifest.mcpServers ?? [], deps.mcpBridgeIO);
-          },
-        }
-      : candidate;
+    // 声明式挂接（S4-4 乙机器桥 + C11-1 工具声明）：manifest 声明
+    // mcpServers/tools 时包装插件——entry.apply 之后挂接（注册动作归包装
+    // 层，kill/贡献注销挂同一 fiber 的 ctx.effect——插件 fiber dispose 链式
+    // 停）。inject 并集补 'tools'（cordis 注入纪律；与 entry 自身 inject
+    // 合并声明）。C11-1：manifest.tools 的执行函数 = entry 模块的
+    // toolHandlers 命名导出（声明数据 + 执行映射一一对应，失配 → 插件
+    // error 记录，失败隔离）。
+    const needsToolDecls = (manifest.tools?.length ?? 0) > 0;
+    const needsMcp = (manifest.mcpServers?.length ?? 0) > 0;
+    const target =
+      needsToolDecls || needsMcp
+        ? {
+            name: candidate.name,
+            inject: [...new Set([...((candidate as { inject?: string[] }).inject ?? []), 'tools'])],
+            async apply(ctx: Context) {
+              await candidate.apply(ctx);
+              if (needsToolDecls) {
+                mountToolDeclarations(ctx, manifest.name, manifest.tools ?? [], mod.toolHandlers);
+              }
+              if (needsMcp) {
+                await registerMcpServerTools(ctx, manifest.name, manifest.mcpServers ?? [], deps.mcpBridgeIO);
+              }
+            },
+          }
+        : candidate;
     await root.plugin(target);
     return { name: manifest.name, manifest, status: 'active' };
   } catch (e) {

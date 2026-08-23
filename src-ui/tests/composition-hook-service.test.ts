@@ -91,6 +91,9 @@ describe('composition/hook-service（A-2 管道钩子贡献通道）', () => {
   });
 
   it('装配折叠：runtime.createAgent 把贡献按 kind 注册进 per-Agent registries', async () => {
+    // 超时预算 20s：用例内冷导入 runtime/tool/fixtures 模块图 + 两次完整
+    // AgentRuntime 装配——全量套件并发下 5s 默认预算曾被打穿（2026-08-24
+    // 全量实测 5023ms 假红，单跑亚秒）。预算吸收冷导入成本，逻辑面无慢操作。
     const root = new Context();
     const fiber = await root.plugin(hooksServicePlugin);
     const enrichLog: string[] = [];
@@ -147,7 +150,7 @@ describe('composition/hook-service（A-2 管道钩子贡献通道）', () => {
     const enriched2 = await agent2Inner.hooks!.apply('edit_file', {}, '原始结果');
     expect(enriched2).toBe('原始结果'); // 无贡献 = 不富化
     handle2.dispose();
-  });
+  }, 20_000);
 
   it('端到端：preflight 贡献警告进工具结果顶部（executor 管道真实消费）', async () => {
     const root = new Context();

@@ -60,6 +60,20 @@
   "description": "一句话描述",          // 可选。设置面板展示
   "entry": "entry.js",                // 必需。相对路径，.js/.mjs，禁绝对路径/回溯段
   "inject": ["panels", "commands", "tools"],  // 可选。依赖的 ctx 服务——装载期校验存在性
+  "permissions": ["read", "bash"],     // 可选。C11-2 权限声明（枚举：read/edit/bash/git/web）——
+                                      // 声明未被 plugins.json granted 段覆盖 → 插件不装载（待授权）
+  "tools": [                          // 可选。C11-1 声明式工具（见 §3「manifest.tools」）：
+    {
+      "name": "todo_read",            // 模型可见工具名（全局唯一）
+      "description": "读待办清单",      // 面向模型的描述
+      "parameters": {                 // 参数 JSON Schema（draft-7，必须 type:"object"）
+        "type": "object",
+        "properties": { "q": { "type": "string", "description": "过滤词" } },
+        "required": ["q"]
+      },
+      "readOnly": true                // 可选。只读（可安全并行）；缺省 false
+    }
+  ],
   "mcpServers": [                     // 可选。S4-4 乙机器桥：声明式挂接外部 MCP server
     {
       "name": "my-engine",            // server 名——工具名前缀 mcp__my-engine__* + 行 id 尾段
@@ -82,8 +96,9 @@
 装载管道（`src-ui/src/plugins/loader.ts`）：扫描目录 → manifest 校验 →
 inject 依赖存在性 → webview 动态 import → `root.plugin(obj)`。任何一步
 失败 → 插件状态 `error`（设置面板可见），**不炸应用**（失败隔离）。
-声明 `mcpServers` 时装载器包装插件（entry.apply 之后注册桥贡献；进程
-kill 与贡献注销挂同一 fiber——插件卸载即链式停，见 §3「MCP 机器桥」）。
+声明 `tools` / `mcpServers` 时装载器包装插件（entry.apply 之后挂接声明
+面——工具贡献注册 / 桥进程启动；贡献注销与进程 kill 挂同一 fiber——插件
+卸载即链式停，见 §3「manifest.tools」与「MCP 机器桥」）。
 
 ## 3. 通道 API
 
@@ -176,9 +191,55 @@ ctx.effect(
 注册表现状可用，但当前无消费者（S4-1.5 复审裁定：无消费者不开通道——
 先接线只剩静默 no-op 一种坏结局）。真实消费者出现时再开。
 
-### MCP 机器桥 —— manifest.mcpServers 声明式挂接（S4-4 乙，2026-08-23）
+### manifest.tools —— 声明式工具挂接（C11-1，2026-08-24）
 
-manifest 声明 `mcpServers`（§2）→ 装载器把每个 server 折算成**一条工具
+工具声明可序列化（zod↔manifest 双向桥）：**声明是 manifest 数据**
+（name/description/parameters JSON Schema/readOnly——与 DSH L1 契约同构的
+模型面三字段 + readOnly），**执行是 entry 模块的 `toolHandlers` 命名导出**
+（工具名 → 函数）。装载器挂接——插件不触碰 `ctx.tools`（信任面更小，
+装载期即知工具面），每条声明折算一条工具贡献（行 id
+`plugin/<插件名>/<工具名>`，patch/preset 可寻址禁用）。
+
+```js
+// manifest.json（声明——数据）
+{
+  "name": "acme/todo",
+  "version": "1.0.0",
+  "entry": "entry.js",
+  "tools": [
+    {
+      "name": "todo_read",
+      "description": "读待办清单",
+      "parameters": { "type": "object", "properties": { "q": { "type": "string" } } },
+      "readOnly": true
+    }
+  ]
+}
+
+// entry.js（执行——映射；apply 可省成空函数或完全不需要其它注册）
+export const toolHandlers = {
+  todo_read: async (args) => JSON.stringify(await loadTodos(args.q)),
+};
+export default { name: 'acme/todo', inject: ['tools'], apply() {} };
+```
+
+关键语义：
+
+- **声明与实现一一对应**（all-or-nothing）：声明缺 handler / handler 未
+  声明 / handler 非函数 / 无 `toolHandlers` 导出 → 插件 error 记录（失败
+  隔离，一条不挂全部不挂）——「写了但什么都不发生」的字段是手误。
+- **参数 schema 是纯数据**（draft-7 JSON Schema，`type:"object"` 必填）
+  ——与宿主 `defineTool` 的 zod→JSON Schema 输出（`toInputJsonSchema`）
+  同一规范；宿主侧反向桥 `declarationOf(tool)` 把任意第一方工具序列化为
+  同一数据形状（自家工具清单数据化，DSH L1 compat 映射零成本）。
+- **生效时机是下次 Agent 装配**（新会话）——与 ctx.tools 代码通道同时效；
+  实例缓存语义同无状态族（声明 + 函数闭包无装配期依赖；handler 自担
+  实例状态性）。
+- 声明工具的 `Tool.name()` 撞名（与其它工具同名）→ 行装载期拒绝（既有
+  duplicate 纪律）。
+- 与 `mcpServers` 可并存（同一插件既有声明工具又挂 MCP server）。
+
+### MCP 机器桥 —— manifest.mcpServers 声明式挂接（S4-4 乙，2026-08-23）manifest 声明 `mcpServers`（§2）→ 装载器把每个 server 折算成**一条工具
 贡献**（行 id `plugin/<插件名>/mcp/<server名>`）——进组合解析域，
 patch/preset 可寻址禁用单个 server（组合均匀性不破）。**不需要写任何
 插件代码**——机器桥是纯声明面（entry.js 仍需存在，可与桥并存）。
@@ -382,18 +443,53 @@ const host = globalThis.__lantai_plugin_host__;
 工具 schema 的对应纪律：`defineTool` + zod 是**编译期**工具链，运行时
 模块用不了——插件侧手写 JSON shape + 入参校验（`execute` 里自己做）。
 
-## 5. 安装 / 卸载 / 禁用
+## 5. 安装 / 卸载 / 禁用 / 授权
 
-三个 RPC（设置面板「插件」tab 是 UI 面）：
+四个 RPC / 文件通道（设置面板「插件」tab 是 UI 面）：
 
 | 动作 | 入口 | 语义 |
 |---|---|---|
 | 安装 | `plugin_install`（registry 名 / tarball URL·路径 / 本地目录） | 下载→解包→**tar-slip 防护**（绝对路径/`..`/空段/盘符/符号链接逐条拒绝）→`.tmp` 原子落盘→重名拒绝 |
 | 卸载 | `plugin_uninstall`（name） | 删目录（幂等；名字围栏防路径逃逸） |
-| 禁用 | `plugin_set_enabled`（name, enabled） | plugins.json 读改写（`{"disabled": [...]}`）——不动目录 |
+| 禁用 | `plugin_set_enabled`（name, enabled） | plugins.json 读改写（只改 `disabled` 段——**granted 授权段原样保留**） |
+| 授权 | `plugins.json` 手编 granted 段 | C11-2 权限声明门禁的授予面（见下） |
 
-**三者均重启生效**（装载是 boot 期一次性）。更新 = 同名重装（先卸载或
+**四者中安装/卸载/禁用均重启生效**（装载是 boot 期一次性）。更新 = 同名重装（先卸载或
 走「卸载 + 安装」的原子复合；版本比较是未决项——§9）。
+
+### 权限声明与授权（C11-2，2026-08-24）
+
+插件在 manifest 声明所需权限类（`permissions: ["read", "bash", ...]`——
+枚举闭集 `read` / `edit` / `bash` / `git` / `web`，对应 Rust 权限咽喉的五个域）。
+**装载期一票否决**：声明的类未被 `~/.lantai/plugins/plugins.json` 的 granted 段
+全覆盖 → 插件不装载（设置面板「待授权」状态，缺哪些授权可见，不 import 插件代码）：
+
+```json
+{
+  "disabled": ["old-thing"],
+  "granted": {
+    "acme/power": ["read", "bash", "edit"]
+  }
+}
+```
+
+无声明 = 零摩擦直接装载（纯 JS 插件，如 hello 示例）。
+
+三层安全叙事（如实声明边界）：
+
+1. **授予门禁（装载期）**——上面的 granted 段。不授予 = 代码不进进程。
+2. **声明面（安装期）**——manifest.permissions 是插件的主张，安装前可审。
+   主张是诚实约束不是强制约束：插件是任意 JS，声明「read」却调 bash RPC
+   在语言层面拦不住（完全信任模型，§6）。
+3. **逐调用强制（运行期）**——真正的强制层在 Rust 命令咽喉：插件工具调
+   `exec_command`/`edit_file`/… 时，Bash/Edit/Git/WebFetch 权限规则
+   （`.lantai/permissions.json` 的 deny/ask/allow + ask/auto/yolo 模式）
+   **照常逐调用生效**——与声明与否无关。即：授予了 `bash` 不等于放行——
+   具体命令仍受项目权限规则与模式门禁。
+
+已知的边界（未决项如实列出）：`mcpServers` 挂接的子进程不在权限类闭集内
+（进程 spawn 的信任面由 §6 完全信任模型 + 安装期审阅 manifest 承担）；
+browser/desktop 命令域尚未接入 Rust 权限检查。
 
 registry 缺省 `https://registry.npmjs.org`；镜像经 manifest 外的安装参数
 `registry` 覆写（安装输入框暂只收包名——镜像参数走 RPC 直接调用）。
