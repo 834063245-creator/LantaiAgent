@@ -4,16 +4,12 @@
 // SessionsHome — 案卷首页（workspace-flip 批 1，D-W1-1 纯会话优先；
 // V5 拆除 2026-08-22 后为纸壳关掉后的唯一去向——换卷/续开/绑定目录）。
 //
-// 入口三件：
-//   - 新建案卷（零目录通用会话）/ 新建案卷 · 绑定目录（图谱后台预热）
-//   - 项目会话：上次打开项目的 sessions（冷启动缓存图 source_root →
-//     listSavedSessions）；无缓存 = 空
-//   - 零目录会话：user_sessions_list RPC（~/.hologram/sessions/；
-//     loadSessionFromDisk('') 经 sessionsDir 路由用户级目录）
+// 版式对齐 prototype/lantai.html 案卷首页（2026-08-23 视觉迭代）：
+// 顶部书眉（印章+兰台+设置入口）+ kicker + 大标题 + 描述 + 案卷列表
+// （日期/标题/leader 点线/#编号·N 块）+ 新建按钮 + 底部 footer。
 //
-// V5 拆除语义：旧「唤起聊天面板（summonPanel）」交互退役——「新建/续开」
-// 直接开纸面板（纸壳是唯一主界面）；顶栏承载窗口拖拽与控制
-// （decorations:false 的自定义标题栏职责自 CommandBar 迁来）。
+// 数据：真实会话消息（项目会话 listSavedSessions + 零目录 user_sessions_list）。
+// 视觉契约：docs/design/lantai-design-spec.md（注疏横排 / 朱砂=人 / 圆角恒 0）。
 
 import { useCallback, useEffect, useState } from 'react';
 import { typedJsonRpc } from '../rpc-contract';
@@ -40,9 +36,7 @@ interface ProjectSession {
   savedAt: string;
 }
 
-/** 冷启动缓存图 meta 的 source_root（上次打开项目）——读一次，失败 = null。
- *  引擎开关关态（2026-08-22）不走 load_graph_json（其引擎路径会顺手
- *  engine_init），改读 .last_project（get_last_project——绑定期恒写）。 */
+/** 冷启动缓存图 meta 的 source_root（上次打开项目）——读一次，失败 = null。 */
 async function lastProjectRoot(): Promise<string | null> {
   if (!graphEngineEnabled(loadSettings())) {
     try {
@@ -59,24 +53,15 @@ async function lastProjectRoot(): Promise<string | null> {
   }
 }
 
-/** 案卷时间戳展示：相对时间（1 小时内）/ 今天 HH:mm / M月d日 HH:mm。
- *  ISO 串直接上屏不可读（2026-08 UI 大清扫）；解析失败原样返回。 */
-function formatSessionTime(iso: string): string {
+/** 案卷日期列：MM-DD（原型 .session-row .date 同款） */
+function formatSessionDate(iso: string): string {
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  const now = Date.now();
-  const diffMs = now - d.getTime();
-  if (diffMs >= 0 && diffMs < 60_000) return '刚刚';
-  if (diffMs >= 0 && diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)} 分钟前`;
-  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  if (d.toDateString() === new Date(now).toDateString()) return `今天 ${hm}`;
-  const yest = new Date(now);
-  yest.setDate(yest.getDate() - 1);
-  if (d.toDateString() === yest.toDateString()) return `昨天 ${hm}`;
-  return `${d.getMonth() + 1}月${d.getDate()}日 ${hm}`;
+  if (Number.isNaN(d.getTime())) return '——';
+  return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
+
 /** 顶栏拖拽窗口 — CSS -webkit-app-region: drag 无效时（Linux WM）用
- *  Tauri 原生拖拽兜底（与旧 CommandBar 同款策略）。 */
+ *  Tauri 原生拖拽兜底。 */
 interface TauriInternals {
   metadata?: { currentWindow?: { label?: string } };
   invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -93,7 +78,7 @@ function handleBarPointerDown(e: React.PointerEvent): void {
   }
 }
 
-/** 标题栏双击最大化（点击区域不是按钮时） */
+/** 标题栏双击最大化 */
 function handleBarDoubleClick(e: React.MouseEvent): void {
   const target = e.target as HTMLElement;
   if (target.closest('button, input, kbd, .wc-btns')) return;
@@ -103,6 +88,16 @@ function handleBarDoubleClick(e: React.MouseEvent): void {
       label: ta.metadata?.currentWindow?.label || 'main',
     }).catch((err) => console.warn('toggle_maximize failed', err));
   }
+}
+
+/** 合并两组会话并按 savedAt 降序；项目会话在前（原型「案卷」单一时间序） */
+interface MergedSession {
+  key: string;
+  kind: 'project' | 'user';
+  id: number;
+  label: string;
+  msgCount: number;
+  savedAt: string;
 }
 
 export function SessionsHome() {
@@ -115,7 +110,6 @@ export function SessionsHome() {
   useEffect(() => {
     let alive = true;
     void (async () => {
-      // 零目录会话装配点（批 2）：目录缓存先于列表/续开解析
       await ensureUserSessionsDir();
       const root = await lastProjectRoot();
       if (!alive) return;
@@ -140,19 +134,15 @@ export function SessionsHome() {
     };
   }, [core]);
 
-  /** 新会话（零目录通用会话）：占位 Agent 已由冷启动装配——开纸即聊 */
   const onNewSession = useCallback(() => {
     openPanel('paper');
   }, [openPanel]);
 
-  /** 新会话 + 绑定目录：选目录 → switchWorkspace（图谱后台预热的入口）
-   *  → 开纸面板。 */
   const onNewSessionWithDir = useCallback(() => {
     openPanel('paper');
     void workspaceFlow.switchWorkspace();
   }, [openPanel]);
 
-  /** 续开项目会话：载盘 + 开纸 */
   const onResumeProject = useCallback(
     (s: ProjectSession) => {
       if (!core || !projectRoot) return;
@@ -162,7 +152,6 @@ export function SessionsHome() {
     [core, projectRoot, openPanel],
   );
 
-  /** 续开零目录会话（批 2）：projectPath='' 路由用户级目录——载盘 + 开纸 */
   const onResumeUser = useCallback(
     (s: UserSession) => {
       if (!core) return;
@@ -172,62 +161,110 @@ export function SessionsHome() {
     [core, openPanel],
   );
 
+  /** 合并 + 按 savedAt 降序，最新在最上（原型「案卷 Nº 12」在前） */
+  const merged: MergedSession[] = [
+    ...projectSessions.map(
+      (s): MergedSession => ({
+        key: `p-${s.id}`,
+        kind: 'project',
+        id: s.id,
+        label: s.label,
+        msgCount: s.msgCount,
+        savedAt: s.savedAt,
+      }),
+    ),
+    ...userSessions.map(
+      (s): MergedSession => ({
+        key: `u-${s.id}`,
+        kind: 'user',
+        id: s.id,
+        label: s.label,
+        msgCount: s.msg_count,
+        savedAt: s.saved_at,
+      }),
+    ),
+  ].sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
+
+  const activeKey = merged.length > 0 ? merged[0].key : null;
+  const onOpenSettings = useCallback(() => openPanel('settings'), [openPanel]);
+
   return (
     <div className="sh-root">
+      {/* 顶部书眉：印章 + 兰台 wordmark + tagline · 右侧设置入口 + 窗口控制 */}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: 窗口拖拽热区（decorations:false 的标题栏——拖动/双击最大化是窗口语义非控件语义；实际可交互目标只有按钮） */}
-      <header className="sh-titlebar" onPointerDown={handleBarPointerDown} onDoubleClick={handleBarDoubleClick}>
-        <span className="sh-titlebar-drag" />
-        <WinControls />
+      <header className="sh-head" onPointerDown={handleBarPointerDown} onDoubleClick={handleBarDoubleClick}>
+        <div className="sh-brand">
+          <span className="sh-seal" role="img" aria-label="印章：蘭臺">
+            <b>蘭</b>
+            <b>臺</b>
+          </span>
+          <span className="sh-wordmark">兰台</span>
+          <span className="sh-tagline">档案 · 工作台</span>
+        </div>
+        <div className="sh-head-right">
+          <button type="button" className="sh-btn-text" onClick={onOpenSettings}>
+            设置
+          </button>
+          <WinControls />
+        </div>
       </header>
-      <div className="sh-brand">
-        <span className="sh-seal" role="img" aria-label="印章：蘭臺">
-          <b>蘭</b>
-          <b>臺</b>
-        </span>
-        <h1>兰台</h1>
-        <span className="sh-tagline">档案 · 工作台</span>
-      </div>
 
-      <div className="sh-actions">
-        <button type="button" className="sh-primary-btn" onClick={onNewSession}>
-          新建案卷
-        </button>
-        <button type="button" className="sh-secondary-btn" onClick={onNewSessionWithDir}>
-          新建案卷 · 绑定目录
-        </button>
-      </div>
+      {/* 主区：kicker + 大标题 + 描述 + 案卷列表 + 新建按钮 */}
+      <main className="sh-main">
+        <p className="sh-kicker">兰台 · 档案</p>
+        <h1 className="sh-h1">与 Agent 协作，应当像在纸上书写。</h1>
+        <p className="sh-lead">
+          在纸面上向 Agent
+          拟文，它的每一次思考、读码与计划，都作为注疏落进同一卷案卷——可对照、可钉住、可追溯。没有喧闹的界面，只有一部装得下你全部工作的案卷。
+        </p>
 
-      {projectSessions.length > 0 && (
-        <div className="sh-section">
-          <div className="sh-section-title">{projectRoot}</div>
-          {projectSessions.slice(0, 6).map((s) => (
-            <button type="button" className="sh-session-row" key={s.id} onClick={() => onResumeProject(s)}>
-              <span className="sh-session-label">{s.label || `案卷 ${s.id}`}</span>
-              <span className="sh-session-meta">
-                {s.msgCount} 条 · {formatSessionTime(s.savedAt)}
-              </span>
-            </button>
-          ))}
+        <div className="sh-section-title">
+          <span className="t">案卷</span>
+          <span className="n">DOSSIERS · {merged.length}</span>
         </div>
-      )}
 
-      {userSessions.length > 0 && (
-        <div className="sh-section">
-          <div className="sh-section-title">通用案卷</div>
-          {userSessions.slice(0, 6).map((s) => (
-            <button type="button" className="sh-session-row" key={s.id} onClick={() => onResumeUser(s)}>
-              <span className="sh-session-label">{s.label || `案卷 ${s.id}`}</span>
-              <span className="sh-session-meta">
-                {s.msg_count} 条 · {formatSessionTime(s.saved_at)}
-              </span>
-            </button>
-          ))}
+        {merged.length > 0 ? (
+          <div className="sh-sessions">
+            {merged.slice(0, 8).map((s) => (
+              <button
+                type="button"
+                key={s.key}
+                className={`sh-session-row${s.key === activeKey ? ' active' : ''}`}
+                onClick={() =>
+                  s.kind === 'project'
+                    ? onResumeProject({ id: s.id, label: s.label, msgCount: s.msgCount, savedAt: s.savedAt })
+                    : onResumeUser({ id: s.id, label: s.label, msg_count: s.msgCount, saved_at: s.savedAt })
+                }
+                aria-label={`打开案卷：${s.label || `案卷 ${s.id}`}`}
+              >
+                <span className="date">{formatSessionDate(s.savedAt)}</span>
+                <span className="title">{s.label || `案卷 ${s.id}`}</span>
+                <span className="leader" aria-hidden="true" />
+                <span className="meta">
+                  #{s.id} · <b>{s.msgCount}</b> 块
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="sh-empty-hint">从一卷新案卷开始——需要 Agent 干活时再绑目录。</p>
+        )}
+
+        <div className="sh-actions">
+          <button type="button" className="sh-btn-primary" onClick={onNewSession}>
+            ＋ 新建案卷
+          </button>
+          <button type="button" className="sh-btn-text" onClick={onNewSessionWithDir}>
+            新建案卷 · 绑定目录
+          </button>
         </div>
-      )}
+      </main>
 
-      {projectSessions.length === 0 && userSessions.length === 0 && (
-        <p className="sh-empty-hint">从一卷新案卷开始——需要 Agent 干活时再绑目录。</p>
-      )}
+      {/* 底部 footer：左 brand 右当前案卷状态 */}
+      <footer className="sh-foot">
+        <span>兰台 · 档案</span>
+        <span>{merged.length > 0 ? `案卷 Nº ${merged[0].id} · 进行中` : '尚无案卷'}</span>
+      </footer>
     </div>
   );
 }

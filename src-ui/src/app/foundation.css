@@ -29,21 +29,22 @@ body {
 }
 
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--paper);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(85, 80, 63, 0.35);
+  background: var(--ink-4);
+  border: 3px solid var(--paper);
   border-radius: 0;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(85, 80, 63, 0.55);
+  background: var(--ink-3);
 }
 
 ::-webkit-scrollbar-corner {
@@ -59,49 +60,49 @@ body {
 }
 
 /* ── 案卷首页（workspace-flip 批 1：SessionsHome——D-W1-1 纯会话优先；
- * 2026-08-22 兰台换装：印章品牌 + 宋体标题 + 界栏案卷列表，
- * 版式对齐 prototype/lantai.html 案卷首页；
- * V5 拆除后：常驻为基底层（纸面板关闭后的去向），顶栏承接窗口拖拽/控制）── */
+ * 2026-08-23 视觉迭代：完全对齐 prototype/lantai.html 案卷首页版式——
+ * 顶部书眉 / kicker / 大标题 / 描述 / 案卷列表（日期+标题+leader 点线+
+ * #编号·N 块）/ 新建按钮 / 底部 footer）── */
 .sh-root {
   position: fixed;
   inset: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
   z-index: 30;
   background: var(--paper);
-  padding-top: 28px; /* 顶栏让位 */
+  overflow: auto;
+}
+/* 纸张颗粒（原型 body::after 同款 SVG turbulence） */
+.sh-root::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.05;
+  mix-blend-mode: multiply;
 }
 
-/* 顶栏（窗口拖拽区 + 窗口控制——decorations:false 的标题栏职责） */
-.sh-titlebar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 28px;
+/* ── 顶部书眉（窗口拖拽区 + 品牌 + 设置入口 + 窗口控制）── */
+.sh-head {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  padding: 0 6px;
+  justify-content: space-between;
+  padding: 20px 48px 16px;
+  border-bottom: var(--rule-soft);
   -webkit-app-region: drag;
-  z-index: 5;
+  flex-shrink: 0;
 }
-.sh-titlebar button {
+.sh-head button,
+.sh-head .wc-btns {
   -webkit-app-region: no-drag;
 }
-.sh-titlebar-drag {
-  flex: 1;
-}
-
 .sh-brand {
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-bottom: 40px;
 }
-
 /* 朱砂印章（蘭臺竖排，微倾——原型 .seal 同款） */
 .sh-seal {
   width: 30px;
@@ -123,116 +124,198 @@ body {
   font-size: 20px;
   line-height: 1;
 }
-
-.sh-root h1 {
+.sh-wordmark {
   font-family: var(--f-song);
+  font-size: calc(22px * var(--font-scale));
   font-weight: 600;
-  font-size: calc(26px * var(--font-scale));
-  letter-spacing: 0.02em;
+  letter-spacing: -0.01em;
   color: var(--ink-1);
 }
-
 .sh-tagline {
   font-family: var(--f-mono);
   font-size: calc(11px * var(--font-scale));
   letter-spacing: 0.18em;
   color: var(--ink-3);
 }
-
-.sh-actions {
+.sh-head-right {
   display: flex;
-  gap: 14px;
-  margin-bottom: 44px;
+  align-items: center;
+  gap: 16px;
 }
 
-.sh-primary-btn,
-.sh-secondary-btn {
+/* ── 通用文字按钮（墨底反白 hover）── */
+.sh-btn-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--f-song);
   font-size: calc(13px * var(--font-scale));
   letter-spacing: 0.16em;
   padding: 8px 18px;
-  background: transparent;
-  color: var(--ink-1);
   border: var(--rule-strong);
+  color: var(--ink-1);
+  background: transparent;
   border-radius: 0;
   cursor: pointer;
   transition:
     background 0.12s ease,
     color 0.12s ease;
 }
-
-.sh-primary-btn {
+.sh-btn-text:hover {
   background: var(--ink-1);
   color: var(--paper);
 }
+.sh-btn-text:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
 
-.sh-primary-btn:hover {
+.sh-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--f-song);
+  font-size: calc(13px * var(--font-scale));
+  letter-spacing: 0.16em;
+  padding: 8px 18px;
+  border: 1px solid var(--ink-1);
+  background: var(--ink-1);
+  color: var(--paper);
+  border-radius: 0;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+.sh-btn-primary:hover {
   background: var(--seal-deep);
   border-color: var(--seal-deep);
   color: var(--paper);
 }
-
-.sh-secondary-btn:hover {
-  background: var(--ink-1);
-  color: var(--paper);
+.sh-btn-primary:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
 }
 
-.sh-section {
-  width: min(560px, 80vw);
-  margin-bottom: 18px;
+/* ── 主区：kicker + 大标题 + 描述 + 案卷列表 + 新建按钮 ── */
+.sh-main {
+  flex: 1;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 72px 48px 96px;
+  width: 100%;
+}
+.sh-kicker {
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.28em;
+  color: var(--ink-3);
+  text-transform: uppercase;
+}
+.sh-h1 {
+  font-family: var(--f-song);
+  font-weight: 600;
+  font-size: clamp(40px, 5.4vw, calc(66px * var(--font-scale)));
+  line-height: 1.14;
+  letter-spacing: -0.015em;
+  margin: 22px 0 24px;
+  max-width: 18ch;
+  color: var(--ink-1);
+}
+.sh-lead {
+  color: var(--ink-2);
+  font-size: calc(16px * var(--font-scale));
+  line-height: 1.8;
+  max-width: 52ch;
+  margin-bottom: 60px;
+  font-family: var(--f-song);
 }
 
 .sh-section-title {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 6px;
+}
+.sh-section-title .t {
+  font-family: var(--f-song);
+  font-size: calc(19px * var(--font-scale));
+  font-weight: 600;
+  color: var(--ink-1);
+}
+.sh-section-title .n {
   font-family: var(--f-mono);
-  font-size: calc(10px * var(--font-scale));
-  letter-spacing: 0.2em;
+  font-size: calc(11px * var(--font-scale));
   color: var(--ink-3);
-  margin-bottom: 4px;
-  padding-bottom: 6px;
-  border-bottom: var(--rule-strong);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  letter-spacing: 0.1em;
 }
 
+/* ── 案卷列表（原型 .sessions / .session-row 同款）── */
+.sh-sessions {
+  border-top: var(--rule-strong);
+}
 .sh-session-row {
   display: flex;
-  justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
+  gap: 20px;
   width: 100%;
-  padding: 10px 4px;
+  padding: 22px 4px;
   background: transparent;
   border: none;
   border-bottom: var(--rule-soft);
   border-radius: 0;
-  color: var(--ink-2);
   cursor: pointer;
+  position: relative;
   text-align: left;
   transition: background 0.12s ease;
 }
-
 .sh-session-row:hover {
   background: var(--paper-deep);
-  color: var(--ink-1);
 }
-
-.sh-session-label {
-  font-family: var(--f-song);
-  font-size: calc(15px * var(--font-scale));
-  font-weight: 500;
-  color: var(--ink-1);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.sh-session-row:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: -2px;
 }
-
-.sh-session-meta {
+.sh-session-row .date {
   font-family: var(--f-mono);
   font-size: calc(11px * var(--font-scale));
-  letter-spacing: 0.06em;
   color: var(--ink-3);
-  white-space: nowrap;
+  letter-spacing: 0.06em;
+  flex: 0 0 52px;
+}
+.sh-session-row .title {
+  font-family: var(--f-song);
+  font-size: calc(18px * var(--font-scale));
+  font-weight: 500;
+  color: var(--ink-1);
+  flex: 0 0 auto;
+}
+.sh-session-row .leader {
+  flex: 1 1 auto;
+  border-bottom: 1px dotted var(--ink-4);
+  transform: translateY(-4px);
+  min-width: 24px;
+}
+.sh-session-row .meta {
+  flex: 0 0 auto;
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  color: var(--ink-3);
+}
+.sh-session-row .meta b {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+/* 活动案卷左缘朱砂竖条（原型 .session-row.active::before） */
+.sh-session-row.active::before {
+  content: "";
+  position: absolute;
+  left: -16px;
+  top: 22px;
+  bottom: 22px;
+  width: 3px;
+  background: var(--seal);
 }
 
 .sh-empty-hint {
@@ -240,6 +323,27 @@ body {
   font-size: calc(11px * var(--font-scale));
   letter-spacing: 0.14em;
   color: var(--ink-3);
+  padding: 22px 4px;
+  border-bottom: var(--rule-soft);
+}
+
+.sh-actions {
+  display: flex;
+  gap: 14px;
+  margin-top: 28px;
+}
+
+/* ── 底部 footer ── */
+.sh-foot {
+  border-top: var(--rule-soft);
+  padding: 18px 48px;
+  display: flex;
+  justify-content: space-between;
+  color: var(--ink-3);
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
 }
 
 /* ── 可访问性（2026-08 UI 大清扫）── */
@@ -247,10 +351,10 @@ body {
 /* 键盘焦点可见（朱砂细框）：按钮/输入等可交互件统一兜底——
    各组件可细化覆盖（如 StatusLine/ModeIndicator 已有同款自定义）。 */
 button:focus-visible,
-[role='button']:focus-visible,
-[role='tab']:focus-visible,
-[role='menuitemradio']:focus-visible,
-[role='menuitem']:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible,
+[role="menuitemradio"]:focus-visible,
+[role="menuitem"]:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,
