@@ -19,6 +19,7 @@ import { codeRuntimePlugin } from '../agent/code-run/runtime-service';
 import { useShellStore } from '../app/shell-store';
 import { firstPartyPromptPlugins } from '../composition/first-party-prompts';
 import { firstPartyToolPlugins } from '../composition/first-party-tools';
+import { hooksServicePlugin } from '../composition/hook-service';
 import { promptsServicePlugin } from '../composition/prompt-service';
 import { rendererServicePlugin } from '../composition/renderer-service';
 import { compositionServicesPlugin } from '../composition/services';
@@ -64,12 +65,16 @@ export function pluginAssetsOrigin(port: number): string {
  * ctx.prompts 贡献——试点 memory/claude-md + 续批 graph-snapshot +
  * 收官批 10 段；单一真源 composition/first-party-prompts.ts——贡献序 =
  * 清单序，列于 promptsServicePlugin 之后使 inject ['prompts'] 可解析；
- * 出厂段表 builtinPromptSections() 已退役，本通道是出厂段唯一来源）。 */
+ * 出厂段表 builtinPromptSections() 已退役，本通道是出厂段唯一来源）。
+ * P4 A-2（2026-08-24）：hooks 第七 service（工具管道钩子贡献注册表——
+ * ctx.hooks，enrich/preflight 两类；runtime 装配折叠消费，见
+ * composition/hook-service.ts）。 */
 const BUILTIN_PLUGINS: LantaiPlugin[] = [
   compositionServicesPlugin,
   codeRuntimePlugin,
   rendererServicePlugin,
   promptsServicePlugin,
+  hooksServicePlugin,
   paperPlugin,
   settingsPlugin,
   ...firstPartyToolPlugins(),

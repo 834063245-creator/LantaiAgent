@@ -12,6 +12,7 @@
 //
 // UI 层通过 setNotifier() 注入通知器，Runtime 通过它路由事件。
 
+import { activeHookContributions } from '../../composition/hook-service';
 import { factoryComposition, type ResolvedComposition } from '../../composition/roster';
 import type { Context } from '../../cordis';
 import type { StoredThinking } from '../../provider/thinking';
@@ -712,6 +713,17 @@ export class AgentRuntime implements RuntimePort {
     // hooks 统一接线 — capability 只往共享 registries 注册（setHooks 是整体替换语义）
     newAgent.setHooks(scope.hooks);
     newAgent.setPreflightHooks(scope.preflightHooks);
+
+    // 5b. 管道钩子贡献折叠（A-2 通道）——ctx.hooks 贡献（enrich/preflight）
+    // 注册进本 Agent 的共享 registries。序：capability 钩子先（graph-hooks/
+    // board-tracking 等第一方面），通道贡献随后——与 tools 域「builtin 行
+    // 在前、贡献行随后」同序约定。贡献实例跨装配复用（无 factory 面）；
+    // 生效时机 = 装配时点（在途会话不动，新会话折叠最新清单）。子 Agent
+    // 不经本路径（spawnSubAgent 手工建 registry——graph-hooks 同款不下放）。
+    for (const contribution of activeHookContributions()) {
+      if (contribution.kind === 'enrich') scope.hooks.register(contribution.hook);
+      else scope.preflightHooks.register(contribution.hook);
+    }
 
     // 6. 接线 LifecycleManager — 全局空闲判定 + 泄漏检测 + worktree TTL 清理
     //    （生命周期所有权留 runtime，不进 capability — Phase 4 语义）

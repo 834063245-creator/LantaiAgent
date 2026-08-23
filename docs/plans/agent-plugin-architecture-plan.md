@@ -215,7 +215,7 @@ runViaRuntime 门面消费，无服务时惰性游离实例。convergence 零漂
 | 缺口 | 量级 | 说明 |
 |---|---|---|
 | ~~prompt-sections 贡献通道~~ | ✅ 已毕（2026-08-23 A-1） | 第六通道 `ctx.prompts`（`composition/prompt-service.ts`，renderer-service 先例）：PromptContribution 形状即 PromptSection（id + applicable? + render）；合流点 = assembleSystemPrompt 末端追加（无贡献 = 空集 = 零漂移按构造，双 preset 实测）；生效 = 下次装配；服务 dispose 守卫式清空读取面（prompt 是字节敏感面，比四 service 的既有宽松面收紧）。B④ 迁存量段落时经此通道 |
-| hooks/preflight 暴露面 | ~1-2 天 | 插件参与工具管道（富化/门禁） |
+| ~~hooks/preflight 暴露面~~ | ✅ 已毕（2026-08-24，A-2） | 第七通道 `ctx.hooks`（`composition/hook-service.ts`，prompt-service 同款先例）：HookContribution 两类——`kind: 'enrich'`（Hook 形状零改写，post-tool 富化链）/ `kind: 'preflight'`（PreflightHook 形状零改写，pre-tool 警告聚合 + HIGH 门禁语义沿用）。装配折叠在 `runtime._assembleAgent`（capability 钩子先、通道贡献随后——tools 域 builtin-先/贡献-后同序）；executor 直调与 eventBus 双路径自动生效（同一 registry）；子 Agent 不自动继承（graph-hooks 同款不下放）；贡献不进 roster 寻址域（四域行模型不含 hooks 域，无既定需求不预防性扩展） |
 | blueprint capability 贡献面 | **排进当前工程**（2026-08-23 拍板 #4） | 会话级能力的插件装载；设计件穿插机械批推进，产出过用户审批 |
 | 工具声明可序列化（zod↔manifest） | ~2 天，**已拍板排进工程**（2026-08-23 #5） | 第三方工具免编译挂载前提；自家工具清单数据化同样受益 |
 | permissions.json 接插件声明 | ~2 天，**已拍板排进工程**（2026-08-23 #5） | 对外开放前的一票否决项 |

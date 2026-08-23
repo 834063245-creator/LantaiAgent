@@ -3,10 +3,12 @@
 > S4 竣工（2026-08-20）；S3 第一方行化（2026-08-22）；P4 A-1 prompt 段贡献
 > 通道（2026-08-23）；P4 B④ 第一方 prompt 段迁移收官（2026-08-23，13 段全量
 > 经 ctx.prompts 贡献）；S4-4 甲：贡献行/段进组合解析域（2026-08-23）；
-> S4-4 乙：MCP 机器桥——manifest.mcpServers 声明式挂接（2026-08-23）。
+> S4-4 乙：MCP 机器桥——manifest.mcpServers 声明式挂接（2026-08-23）；
+> ①b：builtin 工具行表退役——十四族全量经 ctx.tools 贡献（2026-08-23）；
+> P4 A-2：hooks/preflight 贡献通道（2026-08-24，ctx.hooks）。
 > 插件 = 经
 > webview 动态 import 装载的自包含 ES 模块，
-> 向宿主注册**面板 / 命令 / 工具 / 块渲染器 / prompt 段**贡献；
+> 向宿主注册**面板 / 命令 / 工具 / 块渲染器 / prompt 段 / 管道钩子**贡献；
 > 也可经 manifest 声明式挂接**外部 MCP server**（§3 机器桥）。
 > 完全信任模型——安装前必读 §6。从零到跑通的最短路径：
 > `examples/plugins/hello/README.md`。
@@ -33,7 +35,7 @@
 | 概念 | 是什么 | 真源 |
 |---|---|---|
 | 插件 | 自包含 ESM 模块（`{ name, inject?, apply(ctx) }`） | 本文档 |
-| 贡献通道 | `ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.providers` / `ctx.renderers`（块渲染器，V3b）/ `ctx.prompts`（prompt 段，P4 A-1） | `src-ui/src/composition/services.ts` + `renderer-service.tsx` + `prompt-service.ts` |
+| 贡献通道 | `ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.providers` / `ctx.renderers`（块渲染器，V3b）/ `ctx.prompts`（prompt 段，P4 A-1）/ `ctx.hooks`（管道钩子，P4 A-2） | `src-ui/src/composition/services.ts` + `renderer-service.tsx` + `prompt-service.ts` + `hook-service.ts` |
 | 行（row） | 组合的最小单元——工具族/prompt 段/capability/壳行各有 id | `src-ui/src/composition/*` |
 | preset | 命名的行组合叠加层（standard/minimal 内置 + 用户目录） | §8 + `docs/composition/README.md` |
 | patch | 四域行的增量数据（禁用/覆盖/插入） | `docs/composition/README.md` |
@@ -257,6 +259,52 @@ ctx.effect(
   memorySection 等）——可按装配环境条件参与。
 - 重名 id 装载期拒绝（throw）；disposer 经 ctx.effect 登记（同全部通道）。
 
+### ctx.hooks —— 工具管道钩子（下次 Agent 装配生效）
+
+第七贡献通道（P4 A-2，2026-08-24）：向 Agent 工具管道注册钩子——
+**富化**（工具结果进模型历史前改写/追加）或**预检**（写操作前注入警告，
+含 HIGH 风险等级的架构门禁语义）。钩子形状与宿主内置钩子（graph hooks /
+state hooks）完全同一接口——插件与第一方在同一管道上竞争。
+
+```js
+ctx.effect(
+  () =>
+    ctx.hooks.register({
+      id: 'acme/lint-preflight',     // 约定 '<插件名>/<钩子名>'
+      kind: 'preflight',              // 'preflight'（pre-tool 预检）| 'enrich'（post-tool 富化）
+      hook: {
+        name: 'acme-lint',
+        shouldCheck: (toolName) => toolName === 'edit_file',  // 哪些工具触发
+        check: (toolName, args) => {
+          // 返回警告字符串（注入结果顶部），或 null 表示无风险
+          return isLintDirty(args.filePath) ? '⚠️ [ACME] 该文件有未修复 lint 项' : null;
+        },
+      },
+    }),
+  'acme/lint-preflight',
+);
+```
+
+关键语义：
+
+- **两类钩子**：`kind: 'enrich'` 注册进 Agent 的 HookRegistry（`shouldEnrich`/
+  `enrich`——输出流过各钩子，可异步）；`kind: 'preflight'` 注册进
+  PreflightHookRegistry（`shouldCheck`/`check`——同步聚合警告）。警告文案
+  含 `风险等级: HIGH` 时沿用架构门禁语义（无 `_forceGate` 的直接调用被
+  拦截，code_execution 嵌套调用一律打回）。
+- **生效时机是下次 Agent 装配**（新会话）——装配创建全新 registry 折叠
+  当前清单；在途会话保持创建时点的钩子面不变（§7）。
+- **装配序**：第一方 capability 钩子（graph-hooks/board-tracking）先注册，
+  通道贡献随后——enrich 链中插件钩子看到的是已富化的输出，preflight
+  聚合序同理。
+- **消费面**：StreamingToolExecutor 直调路径与 eventBus 管道路径（Phase 2
+  attach* 适配器）都消费同一 registry——插件钩子自动对两路径生效。
+- 钩子崩溃静默降级（HookRegistry 既有语义——不破坏工具结果）；贡献实例
+  跨装配复用（插件自担实例状态性）。
+- **子 Agent 不自动继承**（spawnSubAgent 手工建 registry 只挂 board-tracking
+  ——与 graph hooks 不下放子 Agent 的既有语义一致）。
+- 重名 id 装载期拒绝（throw）；disposer 经 ctx.effect 登记（同全部通道）。
+
 关键语义：
 
 - 内置灰框渲染器 = 默认行（七 kind：user/markdown/reasoning/notice/diff/plan/tool，
@@ -382,4 +430,5 @@ factory（出厂表，代码真源）
 `src-ui/src/composition/services.ts`（四 service）、
 `src-ui/src/composition/renderer-service.tsx`（块渲染器）、
 `src-ui/src/composition/prompt-service.ts`（prompt 段）、
+`src-ui/src/composition/hook-service.ts`（管道钩子）、
 `src-ui/src/composition/plugin-tool-rows.ts`（工具行折算）。
