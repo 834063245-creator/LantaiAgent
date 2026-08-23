@@ -12,12 +12,12 @@ use std::path::{Path, PathBuf};
 
 /// 每项目 graph 快照路径，用作简报基线。
 pub fn baseline_path(project_root: &Path) -> PathBuf {
-    project_root.join(".hologram").join("baseline.json")
+    project_root.join(".lantai").join("baseline.json")
 }
 
 /// 违规 ID 快照路径 — 来自上次非静默检查的 ID。
 fn baseline_violations_path(project_root: &Path) -> PathBuf {
-    project_root.join(".hologram").join("baseline_violations.json")
+    project_root.join(".lantai").join("baseline_violations.json")
 }
 
 pub fn load_baseline(project_root: &Path) -> Graph {
@@ -45,7 +45,7 @@ fn load_previous_violation_ids(project_root: &Path) -> Vec<String> {
 }
 
 fn save_violation_ids(project_root: &Path, ids: &[String]) {
-    let dir = project_root.join(".hologram");
+    let dir = project_root.join(".lantai");
     let _ = std::fs::create_dir_all(&dir);
     if let Ok(json) = serde_json::to_string_pretty(ids) {
         let _ = std::fs::write(baseline_violations_path(project_root), json);
@@ -60,7 +60,7 @@ fn extract_violation_ids(violations: &[Value]) -> Vec<String> {
 }
 
 pub fn save_baseline(project_root: &Path, graph: &Graph) {
-    let dir = project_root.join(".hologram");
+    let dir = project_root.join(".lantai");
     let _ = std::fs::create_dir_all(&dir);
     if let Ok(json) = serde_json::to_string_pretty(graph) {
         let _ = std::fs::write(baseline_path(project_root), json);
@@ -122,7 +122,7 @@ fn quiet_check_result(changed_files: &[String], one_line: &str, baseline_seed: b
 
 /// run_full_check — 等价于 Python preflight.py 的 run_full_check()
 pub fn run_full_check(before: &Graph, after: &Graph, changed_files: &[String], _project_root: &str) -> Value {
-    // 过滤掉被忽略目录（.hologram、.git、node_modules 等）的变更
+    // 过滤掉被忽略目录（.lantai、.git、node_modules 等）的变更
     // 这些是工具/运行时产物 — 非用户源码 — 不应在简报中
     // 产生约束违规。
     let changed_files: Vec<String> = changed_files.iter()
@@ -467,8 +467,8 @@ mod tests {
         assert!(r["new_cycles"].as_u64().unwrap() > 0, "should detect new cycles");
     }
 
-    /// 回归测试：对 `.hologram/` 或其他被忽略目录的变更不得
-    /// 产生违规。此前，`.hologram/baseline.json` 匹配了
+    /// 回归测试：对 `.lantai/` 或其他被忽略目录的变更不得
+    /// 产生违规。此前，`.lantai/baseline.json` 匹配了
     /// 配置文件模式（`.json$`）并触发了误报的 L5 违规。
     #[test]
     fn test_preflight_filters_ignored_paths() {
@@ -477,8 +477,8 @@ mod tests {
 
         // 仅被忽略路径 → 应为静默（无违规）
         let r = run_full_check(&g, &g, &[
-            ".hologram/baseline.json".into(),
-            ".hologram/memory/context.json".into(),
+            ".lantai/baseline.json".into(),
+            ".lantai/memory/context.json".into(),
             ".git/HEAD".into(),
             "node_modules/express/index.js".into(),
         ], ".");
@@ -494,12 +494,12 @@ mod tests {
         g.add_node(Node::new("a", "fn_a", NodeKind::Symbol));
 
         let r = run_full_check(&g, &g, &[
-            ".hologram/baseline.json".into(),  // 被忽略 — 否则会误报 L5
+            ".lantai/baseline.json".into(),  // 被忽略 — 否则会误报 L5
             "migrations/0001_init.py".into(),   // 真实文件 — 应为 L5
         ], ".");
         // 仅迁移文件应产生违规
         assert!(!r["passed"].as_bool().unwrap(), "migration file should produce violation");
-        assert_eq!(r["violation_count"], 1, "only 1 violation from migration, not from .hologram");
+        assert_eq!(r["violation_count"], 1, "only 1 violation from migration, not from .lantai");
         assert_eq!(r["total_changed_files"], 1, "only 1 real changed file");
     }
 }

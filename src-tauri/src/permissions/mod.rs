@@ -148,7 +148,7 @@ impl PermissionContext {
         // 加载系统规则（始终生效）
         rules.add_rules(rule::load_system_rules());
 
-        // 从 .hologram/permissions.json 加载项目规则
+        // 从 .lantai/permissions.json 加载项目规则
         rules.add_rules(rule::load_project_rules(project_root));
 
         let sandbox = Sandbox::new(project_root);
@@ -461,7 +461,7 @@ mod smoke {
 
     static COUNTER: AtomicU64 = AtomicU64::new(0);
 
-    /// 构造隔离临时项目（src/main.rs + 空 .hologram/），返回项目根路径。
+    /// 构造隔离临时项目（src/main.rs + 空 .lantai/），返回项目根路径。
     /// 复用 bash.rs/filesystem.rs 已有测试模式：temp_dir + atomic ID，不清理。
     fn tmp_project() -> PathBuf {
         let id = COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -546,13 +546,13 @@ mod smoke {
         );
     }
 
-    /// 场景 6: "始终允许 Bash(npm test:*)" → 规则写入 .hologram/permissions.json
+    /// 场景 6: "始终允许 Bash(npm test:*)" → 规则写入 .lantai/permissions.json
     /// 验证 append_project_rule 真的落盘且格式可被 load_project_rules 读回
     #[test]
     fn s6_remember_writes_project_file() {
         let root = tmp_project();
         rule::append_project_rule(&root, "Bash(npm test:*)", "allow");
-        let path = root.join(".hologram").join("permissions.json");
+        let path = root.join(".lantai").join("permissions.json");
         let content = std::fs::read_to_string(&path).expect("permissions.json should exist");
         assert!(
             content.contains("Bash(npm test:*)"),
@@ -587,7 +587,7 @@ mod smoke {
         );
     }
 
-    /// 场景 8: .hologram/permissions.json 加 "deny": ["hologram_explore"] → 拒绝
+    /// 场景 8: .lantai/permissions.json 加 "deny": ["hologram_explore"] → 拒绝
     /// 验证 MCP deny 规则的完整往返：append → reload → find_deny 命中
     #[test]
     fn s8_mcp_deny_rule_blocks() {
@@ -652,20 +652,20 @@ mod regression {
     /// 回归 c303272 #1 — edit_file 缺 write check
     /// 修前: edit_file 只调 require_read，Edit(.git/**) Deny 规则和 safetyCheck 在写路径被绕过。
     /// 修后: require_read + require_write 双 check。
-    /// 盯: EditTool 必须走 check_write_permission，系统 Edit(.hologram/**) Deny 规则不能被绕过。
+    /// 盯: EditTool 必须走 check_write_permission，系统 Edit(.lantai/**) Deny 规则不能被绕过。
     #[test]
     fn r1_edit_file_runs_write_check() {
         let root = tmp_project();
         let ctx = PermissionContext::new(&root);
-        // .hologram/settings.json 有系统 Deny 规则（load_system_rules）
+        // .lantai/settings.json 有系统 Deny 规则（load_system_rules）
         // 修前 EditTool 不跑 write check → Allow；修后 → Deny
         let tool = EditTool {
-            path: root.join(".hologram/settings.json").to_string_lossy().to_string(),
+            path: root.join(".lantai/settings.json").to_string_lossy().to_string(),
             agent_id: None,
         };
         assert!(
             matches!(has_permission_to_use_tool(&tool, &ctx), PermissionDecision::Deny { .. }),
-            "edit must run write check — .hologram/settings.json has system Deny rule"
+            "edit must run write check — .lantai/settings.json has system Deny rule"
         );
     }
 
@@ -780,7 +780,7 @@ mod regression {
     fn r7_forward_map_path_with_worktree_isolation() {
         let root = tmp_project();
         let ctx = PermissionContext::new(&root);
-        let wt = root.join(".hologram/worktrees/agent-x");
+        let wt = root.join(".lantai/worktrees/agent-x");
         ctx.set_isolation(
             "agent-x",
             crate::agent_isolation::AgentIsolation {
@@ -943,9 +943,9 @@ mod regression {
         let _mode_guard = PERMISSION_MODE_LOCK.lock().unwrap();
         let root = tmp_project();
         let ctx = PermissionContext::new(&root);
-        // .hologram/settings.json 有系统 Deny 规则（与 r1 同源）
+        // .lantai/settings.json 有系统 Deny 规则（与 r1 同源）
         let tool = crate::tools::EditTool {
-            path: root.join(".hologram/settings.json").to_string_lossy().to_string(),
+            path: root.join(".lantai/settings.json").to_string_lossy().to_string(),
             agent_id: None,
         };
         // Deny 无论模式

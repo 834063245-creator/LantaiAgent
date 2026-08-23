@@ -61,7 +61,7 @@ vi.mock('../src/bridge', () => ({
 
 import { AgentStore } from '../src/agent/agent-store';
 
-const INDEX_PATH = '/test/project/.hologram/agents/index.json';
+const INDEX_PATH = '/test/project/.lantai/agents/index.json';
 
 beforeEach(() => {
   fs.clear();

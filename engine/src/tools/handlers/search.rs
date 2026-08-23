@@ -243,7 +243,7 @@ mod tests {
     fn tmp_root(tag: &str) -> std::path::PathBuf {
         let tmp = std::env::temp_dir().join(format!("hologram_semantic_{}_{}", tag, std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
-        std::fs::create_dir_all(tmp.join(".hologram")).unwrap();
+        std::fs::create_dir_all(tmp.join(".lantai")).unwrap();
         tmp
     }
 
@@ -275,7 +275,7 @@ mod tests {
         n2.snippet = Some("send email notification via smtp to the end user".into());
         let nodes = vec![n1, n2];
 
-        let vi = crate::vector::CodeVectorIndex::new(root.join(".hologram").join("vectors.usearch"));
+        let vi = crate::vector::CodeVectorIndex::new(root.join(".lantai").join("vectors.usearch"));
         vi.build(&nodes).expect("build index");
         vi.save().expect("save index");
 

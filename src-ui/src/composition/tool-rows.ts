@@ -90,7 +90,7 @@ const HOLOGRAM_ROW: BuiltinToolRow = {
     tools.push(
       defineTool({
         name: 'dataflow_save',
-        description: '保存数据流追踪结果到 .hologram/dataflow/，供面板查看和后续查询。',
+        description: '保存数据流追踪结果到 .lantai/dataflow/，供面板查看和后续查询。',
         schema: z.object({
           query: z.string(),
           content: z.string(),

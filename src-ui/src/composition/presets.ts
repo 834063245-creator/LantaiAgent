@@ -6,7 +6,7 @@
 //
 // Preset = 命名的行组合：同一份 S2 patch schema（roster.patch.yml）+ 显示
 // 元数据（preset.yml，纯展示）。与用户层 patch 的差别只在层序：
-//   factory → 用户层 patch（~/.hologram/composition/roster.patch.yml）
+//   factory → 用户层 patch（~/.lantai/composition/roster.patch.yml）
 //          → preset patch（composition/presets/<id>/roster.patch.yml）
 // preset 是最上层——用户层表达「这台机器的基线」，preset 表达「这个会话的
 // 裁剪」，裁剪叠加在基线之上（同 id 后写胜前写，S2 语义零改动）。
@@ -14,7 +14,7 @@
 // 信任模型二分（DSH 同构）：
 //   - system preset：代码常量（本文件内置表），不落盘——「factory 层不出
 //     yml」同一裁定；内置 id 是部署事实，用户不可影子化（同 id 内置胜）；
-//   - user preset：~/.hologram/composition/presets/<id>/ 目录，经 discovery
+//   - user preset：~/.lantai/composition/presets/<id>/ 目录，经 discovery
 //     （preset-discovery.ts）发现后进 preset-store。
 //
 // shell 域说明：preset 对会话有意义的是 tools/prompt/capabilities 三域

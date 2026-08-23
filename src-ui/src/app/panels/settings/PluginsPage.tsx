@@ -184,7 +184,7 @@ export function PluginsPage() {
         <div className="sp-section-title">已安装（{plugins.length}）</div>
         {plugins.length === 0 ? (
           <div className="sp-hint" style={{ padding: 8 }}>
-            暂无插件。手动放置：~/.hologram/plugins/&lt;name&gt;/（含 manifest.json）。
+            暂无插件。手动放置：~/.lantai/plugins/&lt;name&gt;/（含 manifest.json）。
           </div>
         ) : (
           plugins.map((p) => (

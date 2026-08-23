@@ -3,7 +3,7 @@
 
 // JsonMessageStore — MessageStore 的 JSON 文件实现
 //
-// 将每个 agent 的 inbox 持久化到 .hologram/agents/{agentId}/inbox.json
+// 将每个 agent 的 inbox 持久化到 .lantai/agents/{agentId}/inbox.json
 // 模式参照 agent-store.ts：rpc 文件 I/O、ensureDir、stripNums。
 // 所有操作 best-effort — 永不抛异常阻塞主流程。
 
@@ -19,7 +19,7 @@ export class JsonMessageStore implements MessageStore {
   constructor(private projectPath: string) {}
 
   private get baseDir(): string {
-    return this.projectPath.replace(/\\/g, '/').replace(/\/$/, '') + '/.hologram/agents';
+    return this.projectPath.replace(/\\/g, '/').replace(/\/$/, '') + '/.lantai/agents';
   }
 
   private inboxPath(agentId: string): string {

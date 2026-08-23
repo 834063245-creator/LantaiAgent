@@ -67,7 +67,7 @@ HoloGram 不是一个单纯的"代码图谱可视化工具"。它的本质是一
 
 - **Engine 全局实例**：`engine::ENGINE`（`LazyLock<RwLock<Option<Engine>>>`）持有全部图状态；`engine_init / engine_read / engine_write / engine_analyze` 是唯一入口。Engine 用状态机管理生命周期：`Uninitialized → Loading → Ready ↔ Analyzing → Error`。
 - **WorkspaceHandle（Rust）**：持有单个打开项目的所有后端状态（权限上下文、watcher、审计），替代分散的 `ACTIVE_PROJECT / SANDBOX / AUDIT_LOGGER` 全局变量。
-- **ResourceLedger**：统一生命周期管理。所有有生命周期需求的后端服务（UnityEvent、LlmProxy、BgJobs、Mcp、Unity、Pty、Lsp、UiaWorker、Aura、MemoryBundle、Logging 共 11 个）实现 `LifecycleService` trait 并注册，退出时按序 drain（总预算 2s + 3s 强退）。
+- **ResourceLedger**：统一生命周期管理。所有有生命周期需求的后端服务（LlmProxy、BgJobs、Mcp、Pty、Lsp、UiaWorker、Aura、MemoryBundle、Logging 共 9 个）实现 `LifecycleService` trait 并注册，退出时按序 drain（总预算 2s + 3s 强退）。
 - **Workspace（前端）**：统一状态容器，替代 18+ 个模块级全局变量；原子化工作区切换（`old.deactivate()` → `Workspace.open()` → 注入）。生命周期原语已内核化为 vendored cordis（`src-ui/src/cordis/`，同 DSH 做法）：工作区级资源以 fiber effect 登记（获取点就地），Agent 挂身份 fiber（`hologram/agent`，清理仍走 DisposerBag 同步快通道），子系统以 Service 挂树（`LspService` 样板）；`deactivate()` = fiber dispose-to-quiescence + epoch 推进。epoch 代际防护永久保留——fiber 管所有权，epoch 管逃逸所有权的在途回调（详见 `docs/archive/cordis-migration/`）。
 
 ---
@@ -146,11 +146,11 @@ has_permission_to_use_tool(ctx, agent_id) → PermissionResult
 
 ### 3.5 审计日志 (Audit Trail)
 
-`AuditLogger` 记录所有 Agent 工具调用的完整审计轨迹（allowed / denied 条目），配合 `project_timeline` 工具提供按时间线回溯的分析历史。会话消息以 NDJSON 增量持久化（`session_append` → `.hologram/sessions/{id}.ndjson`）。
+`AuditLogger` 记录所有 Agent 工具调用的完整审计轨迹（allowed / denied 条目），配合 `project_timeline` 工具提供按时间线回溯的分析历史。会话消息以 NDJSON 增量持久化（`session_append` → `.lantai/sessions/{id}.ndjson`）。
 
 ### 3.6 技能系统 (Hot-Loading Skills)
 
-Agent 支持从 `.hologram/skills/<name>/SKILL.md` 热加载技能。技能格式为 YAML frontmatter + Markdown body，每次调用时重新加载（零依赖 frontmatter 解析器），无需重启即可新增技能。
+Agent 支持从 `.lantai/skills/<name>/SKILL.md` 热加载技能。技能格式为 YAML frontmatter + Markdown body，每次调用时重新加载（零依赖 frontmatter 解析器），无需重启即可新增技能。
 
 ### 3.7 Computer-Use（CDP 浏览器 + UIA 桌面，2026-08 Agent 优先改造）
 
@@ -208,12 +208,12 @@ Tool Results → 注入会话 → 下一轮 LLM Stream
 - 有界 inbox + 背压控制（满了 drop，防 OOM）；peek + ack 模型；msgIndex O(1) 查找
 - 拓扑策略注入（TreeTopology 默认 / Mesh / Star）；传输层可替换（当前 InProcess）
 - 5 个通信工具：`agent_message / agent_reply / agent_ack / agent_inbox / agent_list`
-- 消息持久化到 `.hologram/agents/{id}/inbox.json`（debounced flush 2 秒批量写）
+- 消息持久化到 `.lantai/agents/{id}/inbox.json`（debounced flush 2 秒批量写）
 
 **共享状态板**：
 - `TaskBoard`：子 Agent 任务状态（status / filesTouched / diff），`BoardFileTrackingHook` 自动追踪写文件；合并后转 `merged`
 - `DiscoveryBoard`：探索发现共享（TTL 2h，同 key 覆盖）
-- 两者均**按 session 隔离**（`.hologram/{taskboard,discoveries}/{sessionId}.json`），防跨会话串扰
+- 两者均**按 session 隔离**（`.lantai/{taskboard,discoveries}/{sessionId}.json`），防跨会话串扰
 
 **生命周期管理**（`lifecycle-manager.ts`）：全局空闲判定 + worktree 泄漏检测（60s 巡检）+ TTL 清理 + 启动恢复（restore inbox/board + 孤儿检测 + 崩溃孤儿 worktree 清理）。
 
@@ -228,14 +228,14 @@ Tool Results → 注入会话 → 下一轮 LLM Stream
 
 `GoalManager` 将 Agent 从"一轮轮循环 + 正则标记"提升为显式生命周期对象：
 - 目标状态：active → paused → completed / failed / cancelled
-- 迭代计数与停滞检测；存储隔离于 `.hologram/goals/{id}/`，不与会话历史混淆；旧 GoalState 自动迁移
+- 迭代计数与停滞检测；存储隔离于 `.lantai/goals/{id}/`，不与会话历史混淆；旧 GoalState 自动迁移
 
 ### 4.5 上下文记忆
 
 | 层 | 实现 | 用途 |
 |----|------|------|
-| **会话记忆** | Agent session JSON（`.hologram/agents/{id}/`） | 当前对话上下文，支持压缩 |
-| **项目记忆** | `MemoryManager` → `.hologram/memory/*.md` + 全局 `~/.hologram/global_memory/`，MEMORY.md 索引 + confidence 分级（fact/reference/background/suppressed） | 跨会话项目知识 |
+| **会话记忆** | Agent session JSON（`.lantai/agents/{id}/`） | 当前对话上下文，支持压缩 |
+| **项目记忆** | `MemoryManager` → `.lantai/memory/*.md` + 全局 `~/.lantai/global_memory/`，MEMORY.md 索引 + confidence 分级（fact/reference/background/suppressed） | 跨会话项目知识 |
 | **Aura 记忆** | `aura_memory.rs` FFI 到 `aura.dll`（SDR + MinHash 语义召回） | 跨会话语义记忆，稀疏分布式表征 |
 | **Memory Bundle** | 外部进程 `memory-bundle.exe` + 前端 HTTP 客户端（127.0.0.1:9600，Dockerized FirstBeat 记忆服务） | 进程隔离的记忆服务（ingest 已接线，health/analyze/recall/portrait 待集成） |
 
@@ -351,7 +351,7 @@ NetBenefit = |R|·c_in·(T-1) − |S|·c_out − L·avg_turn_cost
 - **索引存储**：usearch HNSW（Cos 度量），`slots.json` 记录节点 id 列表
 - **一致性保障**：slots.json 带嵌入后端标识，后端不匹配的旧索引自动判废（防跨嵌入空间垃圾结果）；slots 数与索引向量数必须一致；原子落盘（tmp + rename）
 - **进程级缓存**：mtime 变化自动失效重载；重建并发守卫 `BUILD_RUNNING`
-- 索引位置：`.hologram/vectors.usearch`；后台线程构建（流水线 7.5 阶段）
+- 索引位置：`.lantai/vectors.usearch`；后台线程构建（流水线 7.5 阶段）
 - **暴露方式**：挂在前端 `search_code` 工具的 `vector_hits` 字段（与文本/FTS 命中合并返回），并带 `vector_backend` 标识
 
 ### 5.5 分析能力
@@ -452,14 +452,13 @@ Engine 作为独立 MCP Server 运行，通过 JSON-RPC over stdin/stdout 对外
 
 ### 7.2 ResourceLedger（统一生命周期）
 
-`lifecycle.rs`：`LifecycleService` trait + `ResourceLedger` 中央注册表。注册的服务：UnityEvent、LlmProxy、BgJobs、Mcp、Unity、Pty、Lsp、UiaWorker、Aura、MemoryBundle、Logging 共 11 个。退出时按注册顺序 drain，每服务带截止时间（Clean / Forced / Failed / NotApplicable 状态）。替代 main.rs Destroyed 里分散的清理逻辑 + `process::exit(0)`。
+`lifecycle.rs`：`LifecycleService` trait + `ResourceLedger` 中央注册表。注册的服务：LlmProxy、BgJobs、Mcp、Pty、Lsp、UiaWorker、Aura、MemoryBundle、Logging 共 9 个。退出时按注册顺序 drain，每服务带截止时间（Clean / Forced / Failed / NotApplicable 状态）。替代 main.rs Destroyed 里分散的清理逻辑 + `process::exit(0)`。
 
 ### 7.3 凭证与外部进程
 
 - **credential.rs**：加密凭证存储（libloading FFI 模式，同 aura_memory），`credential_store/get/delete/clear` + `permission_ask_response` 校验 allow/remember/rule_to_add/rule_behavior
 - **McpManager**：Engine 子进程管理——ready 信号等待（最长 600s，大项目布局计算）、崩溃追踪（60s 内 3 次 → 永久降级 CLI）、Job Object 随父退出
 - **memory-bundle.exe**：独立进程，主进程 setup 时 spawn，ResourceLedger 关停
-- **Unity（可选）**：3D 可视化后端（事件服务器），`unity_manager.rs` 管理
 
 ---
 
@@ -531,7 +530,6 @@ Engine 作为独立 MCP Server 运行，通过 JSON-RPC over stdin/stdout 对外
 | `aura.dll` (AuraSDK) | SDR + MinHash 语义记忆（FFI 加载） |
 | `memory-bundle.exe` | 进程隔离的记忆服务（FirstBeat） |
 | `onnxruntime.dll` + MiniLM 模型 | 本地语义嵌入（384 维） |
-| Unity (可选) | 3D 可视化后端（事件服务器） |
 | LSP 服务器 | 原生类型解析（rust-analyzer / gopls / pyright 等） |
 
 ---
@@ -578,7 +576,6 @@ HoloGram/
 │   │   ├── aura_memory.rs       # Aura SDK FFI 桥接
 │   │   ├── credential.rs        # 加密凭证存储
 │   │   ├── pty_manager.rs       # PTY 终端管理
-│   │   ├── unity_manager.rs     # Unity 集成
 │   │   ├── llm_proxy.rs         # LLM 本地反向代理 (绕 CORS, SSE 透传)
 │   │   ├── audit.rs             # 审计日志
 │   │   ├── rpc.rs               # 单一 RPC 入口 (134 个方法)

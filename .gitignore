@@ -57,7 +57,7 @@ src-tauri/models/**/*.onnx
 test_projects/
 
 # Project-local runtime data (generated per project)
-.hologram/
+.lantai/
 .zcode/
 *.db
 .last_project

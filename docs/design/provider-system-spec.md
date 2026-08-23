@@ -277,7 +277,7 @@ interface Provider {
 - **进程级写锁**：store/delete 串行化，8 线程并发测试不丢 key；get 无锁（原子 rename 保证一致读）
 - **不堵 executor**：rpc 三个 credential 分支改 `spawn_blocking`
 - **错误不再混淆**：macOS get 区分「未找到(44)」与真错误；macOS/Linux delete 幂等但真错误上抛
-- `com.hologram.app`（cred_path）vs `com.hologram.hg`（tauri identifier）不一致**故意保留**——路径迁移 = 现存用户丢 key，已注释钉死
+- `com.lantai.app`（cred_path）vs `com.lantai.hg`（tauri identifier）不一致**故意保留**——路径迁移 = 现存用户丢 key，已注释钉死
 
 ### 行为变化（有意为之）
 

@@ -97,7 +97,7 @@ export class PlanStateManager {
 
   private _derivePlanPath(id: string, projectPath: string): string {
     const base = projectPath.replace(/\\/g, '/').replace(/\/$/, '');
-    return `${base}/.hologram/plans/${id}.md`;
+    return `${base}/.lantai/plans/${id}.md`;
   }
 
   private _notify(): void {

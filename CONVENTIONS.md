@@ -170,7 +170,7 @@ codeRuntimePlugin 挂根 Context）运行程序体——绑定面 = CodeBindingS
 record 永不上 CI；baseline 变更走 docs/archive/agent-core-convergence/baseline-change-request.md 审批。
 
 组合外化（S2，2026-08-20 起生效）：
-✅ 用户层 patch：~/.hologram/composition/roster.patch.yml 经 composition/roster.ts
+✅ 用户层 patch：~/.lantai/composition/roster.patch.yml 经 composition/roster.ts
    的 resolveRoster(factory, [patch]) 解析（禁用/覆盖/插入四域行；all-or-nothing，
    失败回退出厂组合）——patch 语义与涟漪表见 docs/composition/README.md；
    装配面（buildToolRegistry/assembleSystemPrompt/AgentBlueprint.fromRoster/
@@ -189,7 +189,7 @@ record 永不上 CI；baseline 变更走 docs/archive/agent-core-convergence/bas
 
 preset realm + 热重载 + 消费闭环（S4，2026-08-20 起生效）：
 ✅ preset = 命名的行组合叠加层：composition/presets.ts 内置表（standard/
-   minimal）+ preset-discovery 用户目录（~/.hologram/composition/presets/
+   minimal）+ preset-discovery 用户目录（~/.lantai/composition/presets/
    <id>/）+ preset-assembly（resolveCurrentComposition 引用稳定 cache +
    settings↔store 选择同步）。层序 factory → 用户层 → preset；同 id 后写胜
 ✅ 装配组合覆盖：createAgentFromContext/createAgent 第 4/2 参可选

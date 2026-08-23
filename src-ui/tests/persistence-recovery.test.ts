@@ -142,17 +142,17 @@ describe('MessageBus — flush/restore 往返一致性', () => {
     // 手动 flush
     await bus.flush();
 
-    // 验证 mockRpc 被调了 write_file_content，路径含 .hologram/agents/{agentId}/inbox.json
+    // 验证 mockRpc 被调了 write_file_content，路径含 .lantai/agents/{agentId}/inbox.json
     const writeCalls = mockRpc.mock.calls.filter((c: any[]) => c[0] === 'write_file_content');
     expect(writeCalls.length).toBeGreaterThanOrEqual(1);
 
     const writtenPaths = writeCalls.map((c: any[]) => (c[1] as Record<string, unknown>).file_path as string);
     // agent-a 和 agent-b 的 inbox 都应该被写入
-    expect(writtenPaths.some((p) => p.includes('.hologram/agents/agent-a/inbox.json'))).toBe(true);
-    expect(writtenPaths.some((p) => p.includes('.hologram/agents/agent-b/inbox.json'))).toBe(true);
+    expect(writtenPaths.some((p) => p.includes('.lantai/agents/agent-a/inbox.json'))).toBe(true);
+    expect(writtenPaths.some((p) => p.includes('.lantai/agents/agent-b/inbox.json'))).toBe(true);
 
     // 验证写入的内容是合法 JSON 数组
-    const inboxAFile = fs.files.get('/fake/project/.hologram/agents/agent-a/inbox.json');
+    const inboxAFile = fs.files.get('/fake/project/.lantai/agents/agent-a/inbox.json');
     expect(inboxAFile).toBeDefined();
     const inboxAMsgs = JSON.parse(inboxAFile!);
     expect(Array.isArray(inboxAMsgs)).toBe(true);
@@ -226,18 +226,18 @@ describe('TaskBoard — flush/restore 往返一致性', () => {
     // flush
     await board.flush();
 
-    // 验证 mockRpc 被调了 write_file_content，路径含 .hologram/taskboard/default.json
+    // 验证 mockRpc 被调了 write_file_content，路径含 .lantai/taskboard/default.json
     const writeCalls = mockRpc.mock.calls.filter((c: any[]) => c[0] === 'write_file_content');
     expect(writeCalls.length).toBeGreaterThanOrEqual(1);
     const boardWrite = writeCalls.find((c: any[]) =>
-      ((c[1] as Record<string, unknown>).file_path as string).includes('.hologram/taskboard/default.json'),
+      ((c[1] as Record<string, unknown>).file_path as string).includes('.lantai/taskboard/default.json'),
     );
     expect(boardWrite).toBeDefined();
     const boardPath = (boardWrite![1] as Record<string, unknown>).file_path as string;
-    expect(boardPath).toContain('.hologram/taskboard/default.json');
+    expect(boardPath).toContain('.lantai/taskboard/default.json');
 
     // 验证内容是合法 JSON 数组
-    const raw = fs.files.get('/fake/project/.hologram/taskboard/default.json');
+    const raw = fs.files.get('/fake/project/.lantai/taskboard/default.json');
     expect(raw).toBeDefined();
     const arr = JSON.parse(raw!);
     expect(Array.isArray(arr)).toBe(true);
@@ -307,7 +307,7 @@ describe('debounced flush — 定时器 pending 时 flush 不丢数据', () => {
     expect(writeCallsBefore.length).toBeGreaterThanOrEqual(1);
 
     // 验证 JSON 内容包含该条目
-    const raw = fs.files.get('/fake/project/.hologram/taskboard/default.json');
+    const raw = fs.files.get('/fake/project/.lantai/taskboard/default.json');
     expect(raw).toBeDefined();
     const arr = JSON.parse(raw!);
     expect(arr.some((e: [string, unknown]) => e[0] === 'sub-1')).toBe(true);
@@ -322,7 +322,7 @@ describe('debounced flush — 定时器 pending 时 flush 不丢数据', () => {
     expect(writeCallsAfter.length).toBeGreaterThanOrEqual(2);
 
     // 两次内容一致（不丢数据）
-    const secondWriteContent = fs.files.get('/fake/project/.hologram/taskboard/default.json');
+    const secondWriteContent = fs.files.get('/fake/project/.lantai/taskboard/default.json');
     expect(secondWriteContent).toBe(firstWriteContent);
 
     // clearFlushTimer() 后不再有额外 flush

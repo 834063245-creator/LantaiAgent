@@ -43,7 +43,7 @@ const MAX_STALL_ROUNDS = 3;
 /** 自主运行目标: 规划 → 执行 → 验证 → 循环直到 goal_report。
  *  始终开启新目标 — 单槽语义会取消任何活跃目标
  *  （恢复是独立路径: resumeGoal）。状态存储在 GoalManager
- *  （.hologram/goals/{id}/），与聊天会话槽完全隔离 —
+ *  （.lantai/goals/{id}/），与聊天会话槽完全隔离 —
  *  日常聊天不再能覆盖目标检查点。 */
 export async function runGoalImpl(ag: GoalLoopHost, signal: AbortSignal, goal: string): Promise<GoalRunResult> {
   if (!ag.goalManager) {

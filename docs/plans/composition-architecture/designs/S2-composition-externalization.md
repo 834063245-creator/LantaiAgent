@@ -36,7 +36,7 @@ S1 竣工后组合「机制」全就位，但三件事仍钉死在编译期：
 一个文件、固定名、四个域键（缺哪个域 = 该域无增量）：
 
 ```yaml
-# ~/.hologram/composition/roster.patch.yml
+# ~/.lantai/composition/roster.patch.yml
 tools:
   - id: builtin/shell        # 禁整个 shell 族（run_shell/bash_* + shell 域工具）
     disabled: true
@@ -85,14 +85,14 @@ shell:
 
 ```
 层 0 出厂组合 = 三张 TS 表 + 壳行表（代码真源，永不出 yml）
-层 1 用户层   = ~/.hologram/composition/roster.patch.yml（本段交付）
+层 1 用户层   = ~/.lantai/composition/roster.patch.yml（本段交付）
 层 2 overlay  = 引擎 API 槽位（`layers: CompositionPatch[]` 数组天然支持多层）；
-               S2 无用户面来源——S4 preset realm / 项目级 .hologram/composition/ 落这里
+               S2 无用户面来源——S4 preset realm / 项目级 .lantai/composition/ 落这里
 ```
 
 **文件通道（S0 同构）**：`plugin_assets.rs` 旁新增 composition 静态路由（复用其 `resolve_asset`/`asset_response`，提取为 pub(crate)）：
 
-- `GET /composition/<相对路径>` → `~/.hologram/composition/<相对路径>`（`HOLOGRAM_COMPOSITION_ROOT` 环境变量覆盖，测试隔离，镜像 `HOLOGRAM_PLUGINS_ROOT`）
+- `GET /composition/<相对路径>` → `~/.lantai/composition/<相对路径>`（`HOLOGRAM_COMPOSITION_ROOT` 环境变量覆盖，测试隔离，镜像 `HOLOGRAM_PLUGINS_ROOT`）
 - 安全三件套原样继承：percent 解码逐段拒绝 `. `/`..`（含编码形态）+ canonicalize 前缀双保险（junction 逃逸）+ 仅 GET（405）+ 仅 loopback（挂在 llm_proxy 14570 监听，绑定即保证）；32MB 单文件上限同款
 - MIME：`.yml`/`.yaml` → `text/plain`（loader 自己 parse 文本，无严格 MIME 消费方）
 - `llm_proxy.rs` 分支点加 `strip_prefix("/composition/")` 一行派发（与 "/plugins/" 并列）
@@ -192,7 +192,7 @@ S2 各批全是「换真源/搬迁」类机械改动：无 patch 层时 resolved
 ## 4. 回滚
 
 - S2-0/S2-1 纯加法 + 默认参数：revert 单批即回（不传参 = S1 末行为）。
-- S2-2 通道是加法：删掉 `~/.hologram/composition/` 文件即回出厂组合；Rust 路由 revert 无 TS 侧依赖残留。
+- S2-2 通道是加法：删掉 `~/.lantai/composition/` 文件即回出厂组合；Rust 路由 revert 无 TS 侧依赖残留。
 - S2-3/S2-4 大搬迁：每批独立 commit，revert 恢复 main.ts 原状；壳模块群随批删除。
 - baseline 全程零触碰（§2.7），任何一批出问题不需要动 convergence 资产。
 
@@ -209,7 +209,7 @@ S2 各批全是「换真源/搬迁」类机械改动：无 patch 层时 resolved
 ## 6. 未决项（后续批次/阶段定）
 
 - **热重载**（改 patch 即时重组工具面）：agent-config-store 信号 + workspace.applyAgentConfig 现成，S4 随 preset realm 一并设计（那才是「组合随会话变」的正题）。
-- **overlay/项目层**：引擎 `layers[]` 槽位已留；S4 落地（项目级 `.hologram/composition/` 或 per-session preset 二选一或都要，届时定）。
+- **overlay/项目层**：引擎 `layers[]` 槽位已留；S4 落地（项目级 `.lantai/composition/` 或 per-session preset 二选一或都要，届时定）。
 - **规则文本动态化**：behavior-rules #13/#14 的工具名清单随 resolved roster 生成——standard 下必须逐字节复现现文本（含 ask_user/Skill/wait/plan 特例序），有真实需求再做。
 - **通用 config 通道**：§2.9，S3 第一批 config 消费者落地时加。
 - **preset 的 baseline 协议**：首个非 standard preset（S4）出现时，走 helpers/presets.ts 已登记的 freeze 流程；S2 期间只有 standard + 显式参数。

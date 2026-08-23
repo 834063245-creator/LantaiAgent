@@ -114,7 +114,7 @@ export interface RpcContract {
   };
   get_user_sessions_dir: {
     params: Record<string, never>;
-    result: string; // text — ~/.hologram/sessions 路径（零目录会话存储位）
+    result: string; // text — ~/.lantai/sessions 路径（零目录会话存储位）
   };
   read_file_base64: {
     params: { file_path: string } & AgentCtx;
@@ -253,9 +253,6 @@ export interface RpcContract {
   // ── 外部服务 ─────────────────────────────────────────────
   start_mcp_server: { params: { project_root: string }; result: string }; // text
   stop_mcp_server: { params: Record<string, never>; result: string }; // text
-  start_unity: { params: Record<string, never>; result: string }; // text
-  stop_unity: { params: Record<string, never>; result: string }; // text
-  unity_status: { params: Record<string, never>; result: string }; // text
   sandbox_status: { params: Record<string, never>; result: string }; // JSON — {degraded,reason}（Value 化：Rust 出口已展开）
 
   // ── Hologram 遗留命令 ────────────────────────────────────
@@ -363,8 +360,6 @@ export interface EventContract {
     agentId: string;
     suggestions: { rule: string; behavior: 'allow' | 'deny' | 'ask' }[];
   };
-  /** Unity 外部进程事件 */
-  'unity-event': { event: string; payload: string };
   /** analyze_and_load 进度 */
   'analyze-progress': { current: number; total: number; file: string };
   /** analyze_and_load 心跳 */

@@ -27,7 +27,7 @@ const ENGINE_DOMAINS = new Set(['graph', 'ops', 'lsp']);
 /** 桥接白名单：注册进引擎域、但由 TS 侧提供（非引擎 schema）的工具。
  *  新增条目必须在此登记并写明缘由 —— 白名单的存在本身就是防漂移的一部分。 */
 const TS_BRIDGE_IN_ENGINE_DOMAINS = new Set([
-  'dataflow_save', // Tauri RPC（保存追踪到 .hologram/dataflow/），2026-08 收敛进 graph 域
+  'dataflow_save', // Tauri RPC（保存追踪到 .lantai/dataflow/），2026-08 收敛进 graph 域
   'dataflow_query', // 同上
 ]);
 

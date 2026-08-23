@@ -6,9 +6,9 @@
 // 背景：WO-S0A spike（2026-08-20）已证实 Tauri webview 能从
 // http://127.0.0.1:14570 动态 import ES module；本模块把验证过的路由正式化：
 //   GET /plugins/                → 插件目录索引（JSON 数组：含 manifest.json 的子目录）
-//   GET /plugins/<id>/<相对路径>  → ~/.hologram/plugins/<id>/<相对路径> 静态文件
+//   GET /plugins/<id>/<相对路径>  → ~/.lantai/plugins/<id>/<相对路径> 静态文件
 //   GET /plugins/plugins.json    → 启用态持久化文件（根目录下的普通文件，同一解析路径）
-//   GET /composition/<固定文件名>  → ~/.hologram/composition/<固定文件名>（用户层 patch）
+//   GET /composition/<固定文件名>  → ~/.lantai/composition/<固定文件名>（用户层 patch）
 //   GET /composition/presets/    → preset 目录索引（JSON 数组：含 roster.patch.yml 的
 //                                  presets/ 子目录，S4-0）
 //   GET /composition/presets/<id>/<文件名> → preset 文件（组合本体 + 元数据）
@@ -31,7 +31,7 @@ use std::path::{Path, PathBuf};
 /// 单文件读取上限——防无界读入内存（正式实现如需大资产再走流式）。
 const MAX_PLUGIN_FILE_BYTES: u64 = 32 * 1024 * 1024;
 
-/// 插件根目录：用户主目录下 `.hologram/plugins/`。
+/// 插件根目录：用户主目录下 `.lantai/plugins/`。
 /// 与启用态持久化（plugins.json，同目录普通文件）共用同一解析函数（WO-S0B 要求）。
 /// `HOLOGRAM_PLUGINS_ROOT` 环境变量可覆盖（测试隔离与目录重定位）。
 pub(crate) fn plugins_root() -> PathBuf {
@@ -44,10 +44,10 @@ pub(crate) fn plugins_root() -> PathBuf {
     let home = std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
         .unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".hologram").join("plugins")
+    PathBuf::from(home).join(".lantai").join("plugins")
 }
 
-/// 组合 patch 根目录（S2-2）：用户主目录下 `.hologram/composition/`。
+/// 组合 patch 根目录（S2-2）：用户主目录下 `.lantai/composition/`。
 /// 用户层 roster.patch.yml 的通道根；`HOLOGRAM_COMPOSITION_ROOT` 环境变量
 /// 可覆盖（镜像 HOLOGRAM_PLUGINS_ROOT 的测试隔离/重定位语义）。
 /// S4-2 起 composition_watcher 复用同一根（单一事实源——经
@@ -66,7 +66,7 @@ pub(crate) fn composition_root_public() -> PathBuf {
     let home = std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
         .unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".hologram").join("composition")
+    PathBuf::from(home).join(".lantai").join("composition")
 }
 
 /// 最小 percent 解码（解码失败 → None，整条请求拒绝）。

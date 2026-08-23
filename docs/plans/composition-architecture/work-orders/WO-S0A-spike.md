@@ -25,7 +25,7 @@ if req.method() == Method::GET {
 ```
 
 `serve_spike_static` 要求：
-- 根目录：用户主目录下 `.hologram/plugins-spike/`（`dirs` crate 或读环境变量；spike 期间硬编码亦可，S0B 正式化）
+- 根目录：用户主目录下 `.lantai/plugins-spike/`（`dirs` crate 或读环境变量；spike 期间硬编码亦可，S0B 正式化）
 - **路径遍历防护**：拒绝含 `..` 的段；resolve 后必须仍以根目录为前缀
 - **MIME 映射**（ES module import 对 MIME 严格）：`.js`/`.mjs` → `application/javascript`，`.json` → `application/json`，`.css` → `text/css`，其余 → `application/octet-stream`
 - 响应带与代理一致的 CORS 头（`access-control-allow-origin: *`；确认 `cors_response` 是否含 `access-control-allow-private-network: true`，不含则手动加——WebView2 的 PNA 预检需要）
@@ -33,7 +33,7 @@ if req.method() == Method::GET {
 
 ### 2. 磁盘：放一个 spike 模块
 
-`~/.hologram/plugins-spike/hello/entry.js`：
+`~/.lantai/plugins-spike/hello/entry.js`：
 ```js
 export const spike = { ok: true, from: 'disk-es-module' }
 console.log('[spike] disk plugin module executed')

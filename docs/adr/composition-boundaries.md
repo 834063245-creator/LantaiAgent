@@ -2,7 +2,7 @@
 
 > 日期：2026-08-20 · 状态：Accepted
 > 关联：`docs/plans/composition-architecture/README.md`（本 ADR 划边界，该计划在边界内施工）
-> 取代叙事：`.hologram/plans/plan-1787199847398-bu20.md`（plugin-ecosystem v1）中「宿主壳永不插件化」的宪法表述——本 ADR 给出更精确的边界定义
+> 取代叙事：`.lantai/plans/plan-1787199847398-bu20.md`（plugin-ecosystem v1）中「宿主壳永不插件化」的宪法表述——本 ADR 给出更精确的边界定义
 > 性质：对 2026-08-19/20 两日 DSH 源码实证对标讨论的定案总结
 
 ## 1. 参照系澄清：DSH 的真实形态

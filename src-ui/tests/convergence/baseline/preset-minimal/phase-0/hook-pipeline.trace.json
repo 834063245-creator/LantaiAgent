@@ -92,7 +92,7 @@
           "err": null,
           "id": "c1",
           "name": "fs",
-          "output": "[已拦截] 规划模式下 fs 仅允许只读动作: read, list。把修改方案写入计划文件（/proj/.hologram/plans/plan-<id>.md），或退出规划模式后再执行。",
+          "output": "[已拦截] 规划模式下 fs 仅允许只读动作: read, list。把修改方案写入计划文件（/proj/.lantai/plans/plan-<id>.md），或退出规划模式后再执行。",
           "truncated": false
         }
       ]

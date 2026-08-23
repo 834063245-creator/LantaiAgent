@@ -98,10 +98,10 @@ export function payloadMessagesImpl(host: CompactionHost): Message[] {
 /** 设置自动调优压缩配置的持久化路径。 */
 export function setCompactionConfigPathImpl(host: CompactionHost, projectPath: string): void {
   const base = projectPath.replace(/\\/g, '/');
-  host._compactionConfigPath = base + '/.hologram/compaction-config.json';
+  host._compactionConfigPath = base + '/.lantai/compaction-config.json';
   // E5: tracker 状态（事件 + filesRead）单独持久化，使
   // 压缩调优在重启后不从零开始。
-  host._compactionTrackerPath = base + '/.hologram/compaction-tracker.json';
+  host._compactionTrackerPath = base + '/.lantai/compaction-tracker.json';
 }
 
 /** E5: 从磁盘加载持久化的 tracker 状态（事件 + filesRead）。

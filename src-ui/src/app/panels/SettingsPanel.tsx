@@ -422,7 +422,7 @@ const SettingsPanelApp: React.FC<{
                   {compositionStatus === 'factory' && '出厂组合（无 patch 或被拒）'}
                   {compositionStatus === 'ok' && `已应用（来源: ${compositionPatchOrigin ?? 'roster.patch.yml'}）`}
                   {compositionStatus === 'error' && `被拒——回退出厂组合（${compositionError ?? '未知原因'}）`}
-                  ；热重载已启用（改 ~/.hologram/composition/roster.patch.yml 即时生效于新装配）。
+                  ；热重载已启用（改 ~/.lantai/composition/roster.patch.yml 即时生效于新装配）。
                 </div>
                 {compositionDiagnostics.disabled.length > 0 && (
                   <div className="sp-hint-sub">

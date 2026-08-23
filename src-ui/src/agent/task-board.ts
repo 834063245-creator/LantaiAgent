@@ -13,7 +13,7 @@
 //
 // 父 Agent 收到 bus 消息后从 TaskBoard 读结构化状态。
 //
-// 持久化：flush() / restore() 将 entries 序列化到 .hologram/taskboard.json。
+// 持久化：flush() / restore() 将 entries 序列化到 .lantai/taskboard.json。
 // 状态变更后通过 debounced flush 延迟批量写入，避免频繁 I/O。
 
 import { BoardPersistence } from './board-persistence';

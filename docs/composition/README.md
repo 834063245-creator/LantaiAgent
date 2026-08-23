@@ -9,8 +9,8 @@
 
 ## 一分钟上手
 
-在 `~/.hologram/composition/roster.patch.yml`（Windows：
-`%USERPROFILE%\.hologram\composition\roster.patch.yml`）写 patch：
+在 `~/.lantai/composition/roster.patch.yml`（Windows：
+`%USERPROFILE%\.lantai\composition\roster.patch.yml`）写 patch：
 
 ```yaml
 # 禁用 shell 工具族 + 禁用沙箱探测壳行 + 覆盖行为规则段
@@ -112,7 +112,7 @@ factory（出厂表）
   - `standard`——零 patch = 出厂组合（缺省）；
   - `minimal`——精简面：禁 `builtin/browser-desktop`、`builtin/web` 工具行
     + `graph-hooks` capability（V5「纸壳 preset」的原型）。
-- **用户 preset**：`~/.hologram/composition/presets/<id>/`——`roster.patch.yml`
+- **用户 preset**：`~/.lantai/composition/presets/<id>/`——`roster.patch.yml`
   （组合本体，语法与本文件的 patch 完全相同）+ `preset.yml`（显示元数据：
   name/description/order，纯展示）。
 - **id 围栏**：`/^[a-z0-9][a-z0-9-]*$/`（id 是路径段——防 `..`/分隔符/

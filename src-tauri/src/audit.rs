@@ -26,7 +26,7 @@ pub struct AuditLogger {
 
 impl AuditLogger {
     pub fn new(project_root: &std::path::Path) -> Self {
-        let log_dir = project_root.join(".hologram");
+        let log_dir = project_root.join(".lantai");
         if let Err(e) = fs::create_dir_all(&log_dir) {
             eprintln!("[audit] 无法创建审计日志目录 {}: {}", log_dir.display(), e);
         }
@@ -88,10 +88,10 @@ mod tests {
     // P1-23 回归：写失败必须计数 + 告警，不得静默
     #[test]
     fn test_log_write_failure_counted() {
-        // .hologram 占位为普通文件 → create_dir_all 与 open 都失败
+        // .lantai 占位为普通文件 → create_dir_all 与 open 都失败
         let dir = std::env::temp_dir().join(format!("audit-fail-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join(".hologram"), "not a dir").unwrap();
+        fs::write(dir.join(".lantai"), "not a dir").unwrap();
 
         let logger = AuditLogger::new(&dir);
         logger.log(&entry());
@@ -108,7 +108,7 @@ mod tests {
         logger.log(&entry());
         assert_eq!(logger.write_failure_count(), 0);
 
-        let content = fs::read_to_string(dir.join(".hologram").join("audit.jsonl")).unwrap();
+        let content = fs::read_to_string(dir.join(".lantai").join("audit.jsonl")).unwrap();
         assert!(content.contains("\"action\":\"denied\""));
 
         let _ = fs::remove_dir_all(&dir);

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Agent 持久化记忆系统 — 对标 Claude Code MEMORY.md
-// 项目记忆: .hologram/memory/*.md + MEMORY.md 索引
-// 全局记忆: ~/.hologram/global_memory/*.md + MEMORY.md 索引
+// 项目记忆: .lantai/memory/*.md + MEMORY.md 索引
+// 全局记忆: ~/.lantai/global_memory/*.md + MEMORY.md 索引
 // 跨会话、跨 session tab 共享。全局记忆跨所有项目共享。
 //
 // 记忆置信度体系 (inspired by 初痕 MemoryDirective):
@@ -87,7 +87,7 @@ export class MemoryManager {
   }
 
   /** 初始化 AuraSDK 语义检索引擎。
-   *  在项目根目录的 .hologram/aura-brain/ 下创建或打开 brain。
+   *  在项目根目录的 .lantai/aura-brain/ 下创建或打开 brain。
    *  可安全多次调用 — 后续调用为空操作。 */
   async initAura(): Promise<void> {
     if (this._auraReady) return;
@@ -100,7 +100,7 @@ export class MemoryManager {
         } catch {
           /* 尚未初始化，无妨 */
         }
-        const brainPath = this.projectPath.replace(/\\/g, '/') + '/.hologram/aura-brain';
+        const brainPath = this.projectPath.replace(/\\/g, '/') + '/.lantai/aura-brain';
         // 代际防护：initAura 在途期间可能已切换工作区 —
         // 过期后这个 brain 属于旧项目，初始化结果直接丢弃并关闭，防跨项目串味。
         const epoch = getWorkspaceEpoch();
@@ -180,7 +180,7 @@ export class MemoryManager {
   }
 
   private get projectDir(): string {
-    return this.projectPath.replace(/\\/g, '/') + '/.hologram/memory';
+    return this.projectPath.replace(/\\/g, '/') + '/.lantai/memory';
   }
 
   /** 解析指定范围的工作目录。 */
@@ -208,7 +208,7 @@ export class MemoryManager {
     return this.dirFor(scope) + '/' + name + '.md';
   }
 
-  /** 确保读取前 .hologram/memory/ 存在。修复冷启动时
+  /** 确保读取前 .lantai/memory/ 存在。修复冷启动时
    *  sandbox 拒绝从不存在的父目录读取的问题。 */
   private async ensureDir(scope: 'project' | 'global' = 'project'): Promise<void> {
     if (scope === 'project' && this._projectDirReady) return;

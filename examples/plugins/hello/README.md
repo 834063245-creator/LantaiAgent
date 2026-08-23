@@ -26,15 +26,15 @@
 ## 前置
 
 - HoloGram 桌面应用已构建并运行（`cargo tauri build` 产物或 `cargo tauri dev`）。
-- 知道你的插件目录：`~/.hologram/plugins/`（Windows：
-  `%USERPROFILE%\.hologram\plugins\`）。
+- 知道你的插件目录：`~/.lantai/plugins/`（Windows：
+  `%USERPROFILE%\.lantai\plugins\`）。
 
 ## 安装（三选一）
 
 ### 方式 A：本地目录安装（开发期最常用）
 
 把本目录（`examples/plugins/hello/`，含 `manifest.json` + `entry.js`）整个
-复制或克隆到 `~/.hologram/plugins/hello/`，重启应用。
+复制或克隆到 `~/.lantai/plugins/hello/`，重启应用。
 
 或用设置面板：设置（Ctrl+,）→「插件」→ 安装框填本目录的绝对路径
 （`.../examples/plugins/hello`）→ 点「安装」→ 重启应用。
@@ -54,7 +54,7 @@ registry.npmjs.org 下载。）
 
 ### 方式 C：手动放置
 
-直接把 `hello/` 目录放进 `~/.hologram/plugins/`，重启应用。（= 方式 A
+直接把 `hello/` 目录放进 `~/.lantai/plugins/`，重启应用。（= 方式 A
 的手动版。）
 
 ## 验证三通道
@@ -71,7 +71,7 @@ registry.npmjs.org 下载。）
 ## 卸载
 
 设置面板 →「插件」→ hello 卡片 →「卸载」→ 重启应用。
-（或手动删 `~/.hologram/plugins/hello/` 目录。）
+（或手动删 `~/.lantai/plugins/hello/` 目录。）
 
 卸载后：面板图标消失、命令从命令面板消失、`hello_greet` 不再进新会话的
 工具面——三通道干净退出（disposer 链经插件 fiber 释放）。
@@ -87,7 +87,7 @@ registry.npmjs.org 下载。）
 最小形状就两个文件：
 
 ```
-~/.hologram/plugins/<你的插件名>/
+~/.lantai/plugins/<你的插件名>/
 ├── manifest.json   # {"name": "<插件名>", "version": "1.0.0", "entry": "entry.js"}
 └── entry.js        # export default { name, inject, apply(ctx) }
 ```

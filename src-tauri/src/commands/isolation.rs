@@ -6,13 +6,13 @@ use std::path::PathBuf;
 
 use crate::agent_isolation::{AgentIsolation, IsolationKind};
 
-/// diff 溢写阈值 — 超过则落盘 .hologram/spill/，只回传 locator。
+/// diff 溢写阈值 — 超过则落盘 .lantai/spill/，只回传 locator。
 /// 远低于 IPC 32KB 截断上限：大 diff 截断即信息丢失，且烧模型上下文。
 const DIFF_SPILL_THRESHOLD_CHARS: usize = 8_000;
 
-/// 把超长 diff 写到 .hologram/spill/ 并返回文件路径（spill 目录即创建）。
+/// 把超长 diff 写到 .lantai/spill/ 并返回文件路径（spill 目录即创建）。
 fn spill_diff_file(project_path: &str, agent_id: &str, diff: &str) -> Result<PathBuf, String> {
-    let spill_dir = PathBuf::from(project_path).join(".hologram").join("spill");
+    let spill_dir = PathBuf::from(project_path).join(".lantai").join("spill");
     std::fs::create_dir_all(&spill_dir).map_err(|e| format!("spill 目录创建失败: {e}"))?;
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -77,7 +77,7 @@ pub(crate) fn agent_isolation_diff(
     // 纯只读检查（diff_readonly 从不删除 worktree）。
     // 修复：cleanup() 用 git diff HEAD 判断变更，untracked 新文件不可见 →
     // 子 Agent 只新建文件时误判"无变更"并移除 worktree → 后续 merge 失败。
-    // 大 diff 溢写：截断即丢信息 — 落盘 .hologram/spill/ 回传 locator，
+    // 大 diff 溢写：截断即丢信息 — 落盘 .lantai/spill/ 回传 locator，
     // 模型用 read_file 读全量；落盘失败退回截断（带明确标记，不静默）。
     match isolation.diff_readonly()? {
         crate::agent_isolation::CleanupResult::NoChanges => Ok(
@@ -235,7 +235,7 @@ mod tests {
         assert!(r.is_err());
     }
 
-    /// spill 回归：大 diff 必须完整落盘、位于 .hologram/spill 下、内容无损。
+    /// spill 回归：大 diff 必须完整落盘、位于 .lantai/spill 下、内容无损。
     #[test]
     fn spill_diff_file_writes_full_content() {
         let tmp = std::env::temp_dir().join("hologram_test_spill_diff");
@@ -244,7 +244,7 @@ mod tests {
         std::fs::create_dir_all(&project).unwrap();
 
         let diff = "diff-line\n".repeat(2_000); // ~20KB > 8KB 阈值
-        let spill_dir = project.join(".hologram").join("spill");
+        let spill_dir = project.join(".lantai").join("spill");
         let path = spill_diff_file(&project.to_string_lossy(), "agent-test-spill", &diff).unwrap();
         assert!(path.exists(), "spill 文件必须存在");
         assert!(

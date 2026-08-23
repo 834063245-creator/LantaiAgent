@@ -432,7 +432,7 @@ export class AgentRuntime implements RuntimePort {
     if (!this._projectPath) return;
     const base = this._projectPath.replace(/\\/g, '/').replace(/\/$/, '');
     // 迁移全局 discoveries.json
-    const oldDiscPath = `${base}/.hologram/discoveries.json`;
+    const oldDiscPath = `${base}/.lantai/discoveries.json`;
     try {
       const raw = await typedRpc('read_file_content', { file_path: oldDiscPath });
       const arr = JSON.parse(raw.replace(/^\s*\d+\t/gm, ''));
@@ -449,7 +449,7 @@ export class AgentRuntime implements RuntimePort {
       /* 文件不存在 — 无需迁移 */
     }
     // 迁移全局 taskboard.json
-    const oldTaskPath = `${base}/.hologram/taskboard.json`;
+    const oldTaskPath = `${base}/.lantai/taskboard.json`;
     try {
       const raw = await typedRpc('read_file_content', { file_path: oldTaskPath });
       const arr = JSON.parse(raw.replace(/^\s*\d+\t/gm, ''));
@@ -457,7 +457,7 @@ export class AgentRuntime implements RuntimePort {
         const tb = this._getOrCreateTaskBoard('default');
         // 直接将迁移的条目写入新路径
         await typedRpc('write_file_content', {
-          file_path: `${base}/.hologram/taskboard/default.json`,
+          file_path: `${base}/.lantai/taskboard/default.json`,
           content: JSON.stringify(arr, null, 2),
         });
       }

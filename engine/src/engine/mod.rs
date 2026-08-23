@@ -727,7 +727,7 @@ mod tests {
     #[test]
     fn test_engine_init_empty_project() {
         let tmp = std::env::temp_dir().join("hologram_test_engine_init_empty");
-        // 使用一个没有 .hologram/ 的子目录
+        // 使用一个没有 .lantai/ 的子目录
         let test_dir = tmp.join("empty_project");
         let _ = std::fs::create_dir_all(&test_dir);
 

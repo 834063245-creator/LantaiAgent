@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// Agent Store — 持久化 agent 状态 + 会话到 .hologram/agents/{id}/
+// Agent Store — 持久化 agent 状态 + 会话到 .lantai/agents/{id}/
 // 实现 agent 身份追踪、会话恢复和子 Agent 血缘关系
 // 模式参照 MemoryManager：rpc 文件 I/O、ensureDir、stripLineNumbers。
 
@@ -43,7 +43,7 @@ export class AgentStore {
   constructor(private projectPath: string) {}
 
   private get baseDir(): string {
-    return this.projectPath.replace(/\\/g, '/').replace(/\/$/, '') + '/.hologram/agents';
+    return this.projectPath.replace(/\\/g, '/').replace(/\/$/, '') + '/.lantai/agents';
   }
 
   private statePath(id: string): string {

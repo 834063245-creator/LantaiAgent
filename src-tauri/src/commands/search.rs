@@ -399,7 +399,7 @@ pub(crate) async fn glob(
                 || eps.contains("/target/") || eps.contains("\\target\\")
                 || eps.contains("/dist/") || eps.contains("\\dist\\")
                 || eps.contains("/build/") || eps.contains("\\build\\")
-                || eps.contains("/.hologram/") || eps.contains("\\.hologram\\")
+                || eps.contains("/.lantai/") || eps.contains("\\.lantai\\")
             { continue; }
 
             let rel = entry_path.strip_prefix(&root).unwrap_or(entry_path);

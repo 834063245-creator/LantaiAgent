@@ -3,7 +3,7 @@
 
 //! # HoloGram 结构化日志模块
 //!
-//! 基于 `tracing` 框架，以 NDJSON 格式写入 `.hologram/logs/engine.log`。
+//! 基于 `tracing` 框架，以 NDJSON 格式写入 `.lantai/logs/engine.log`。
 //! 在 MCP stdio 模式下故意不输出到 stderr，避免干扰客户端的 stdout 读取器。
 
 use std::path::Path;
@@ -14,16 +14,16 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, Layer, EnvFilter, Registry};
 /// ——丢弃它会触发 flush 并关闭写入器。
 ///
 /// 如果提供了 `project_root`，则将 JSON 日志写入
-/// `<project_root>/.hologram/logs/engine.log`（不额外输出到 stderr）。
+/// `<project_root>/.lantai/logs/engine.log`（不额外输出到 stderr）。
 pub fn init_logging(project_root: Option<&Path>) -> WorkerGuard {
     let mut layers = Vec::new();
 
     // JSON 文件层——主要日志输出。有项目根目录时，日志写入
-    // .hologram/logs/engine.log。故意不添加 stderr 层：
+    // .lantai/logs/engine.log。故意不添加 stderr 层：
     // 在 MCP stdio 模式下 stderr 可能干扰 Windows 上客户端的 stdout 读取器，
     // 导致响应解析失败。
     let guard = if let Some(root) = project_root {
-        let log_dir = root.join(".hologram").join("logs");
+        let log_dir = root.join(".lantai").join("logs");
         let _ = std::fs::create_dir_all(&log_dir);
 
         let file_appender = tracing_appender::rolling::Builder::new()

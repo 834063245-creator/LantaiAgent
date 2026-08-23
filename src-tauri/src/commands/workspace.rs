@@ -9,15 +9,22 @@ pub(crate) async fn workspace_activate(
     path: String,
     state: tauri::State<'_, crate::WorkspaceState>,
 ) -> Result<(), String> {
-    // 在首次打开项目时初始化结构化日志
+    // .hologram → .lantai 迁移（2026-08-23 改名）：每个打开的工作区根
+    // 各自迁移。先于日志初始化与 watcher 启动，避免新目录还没就位就写新数据。
     let project_path = std::path::Path::new(&path);
+    if !path.trim().is_empty() {
+        if let Err(e) = crate::utils::migrate_hologram_to_lantai(project_path) {
+            eprintln!("[lantai] 工作区数据目录迁移失败 {path}: {e}");
+        }
+    }
+    // 在首次打开项目时初始化结构化日志
     let _ = crate::utils::LOG_GUARD.get_or_init(|| crate::logging::init_logging(project_path));
 
     let handle = crate::workspace::WorkspaceHandle::new(&path);
     handle.activate(&crate::utils::project_root());
 
     // 孤儿 worktree 收养（2026-08-15 收口）：isolation 注册表是内存态，
-    // 重启后 .hologram/worktrees/ 里未合并的 worktree 会变成无法
+    // 重启后 .lantai/worktrees/ 里未合并的 worktree 会变成无法
     // diff/merge/discard 的死账。启动时扫描并重建记录，前端再把它
     // 重挂到新主 Agent 的 TaskBoard，agent_merge 即恢复可用。
     let adopted = crate::agent_isolation::AgentIsolation::scan_orphan_worktrees(std::path::Path::new(&path));

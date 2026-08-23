@@ -103,7 +103,7 @@ describe('CompactionTracker deserializeState replaces not appends', () => {
 
 // ── R1: inbox restore must bypass is_ignored_path filtering ──
 describe('R1: JsonMessageStore restore passes filter_ignored: false', () => {
-  it('restore lists .hologram/agents with filter_ignored: false and recovers messages', async () => {
+  it('restore lists .lantai/agents with filter_ignored: false and recovers messages', async () => {
     const store = new JsonMessageStore('D:/test');
     mockRpc.mockImplementation((cmd: string) => {
       if (cmd === 'list_directory') {
@@ -118,7 +118,7 @@ describe('R1: JsonMessageStore restore passes filter_ignored: false', () => {
     const restored = await store.restore();
 
     // Every list_directory call must carry filter_ignored: false — otherwise
-    // .hologram is filtered by is_ignored_path and inbox recovery silently dies.
+    // .lantai is filtered by is_ignored_path and inbox recovery silently dies.
     const listCalls = mockRpc.mock.calls.filter((c) => c[0] === 'list_directory');
     expect(listCalls.length).toBeGreaterThan(0);
     for (const c of listCalls) {
@@ -143,8 +143,8 @@ describe('A6: two sessions flush to separate board files', () => {
 
     const writes = mockRpc.mock.calls.filter((c) => c[0] === 'write_file_content');
     const paths = writes.map((c) => (c[1] as { file_path: string }).file_path);
-    expect(paths.some((p) => p.endsWith('.hologram/taskboard/session-a.json'))).toBe(true);
-    expect(paths.some((p) => p.endsWith('.hologram/taskboard/session-b.json'))).toBe(true);
+    expect(paths.some((p) => p.endsWith('.lantai/taskboard/session-a.json'))).toBe(true);
+    expect(paths.some((p) => p.endsWith('.lantai/taskboard/session-b.json'))).toBe(true);
     // No cross-contamination: session-a's board never written to session-b's path
     const aWrites = writes.filter((c) => (c[1] as { file_path: string }).file_path.includes('session-a'));
     expect(aWrites.every((c) => !(c[1] as { file_path: string }).file_path.includes('session-b'))).toBe(true);

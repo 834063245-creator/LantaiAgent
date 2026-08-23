@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 兰台 Tauri 桥接层结构化日志 — NDJSON 输出到 .hologram/logs/bridge.log
+// 兰台 Tauri 桥接层结构化日志 — NDJSON 输出到 .lantai/logs/bridge.log
 use std::path::Path;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Registry};
@@ -9,7 +9,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, EnvFilter, Registry};
 /// 初始化桥接层日志。返回一个 `WorkerGuard`，必须在
 /// 进程生命周期内持有。
 pub fn init_logging(project_root: &Path) -> WorkerGuard {
-    let log_dir = project_root.join(".hologram").join("logs");
+    let log_dir = project_root.join(".lantai").join("logs");
     let _ = std::fs::create_dir_all(&log_dir);
 
     let file_appender = tracing_appender::rolling::Builder::new()

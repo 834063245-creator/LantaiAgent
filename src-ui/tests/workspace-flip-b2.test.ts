@@ -31,7 +31,7 @@ describe('workspace-flip 批 2：零目录会话路由', () => {
   it('ensureUserSessionsDir：解析一次并缓存（幂等）', async () => {
     _resetUserSessionsDirForTests();
     mockInvoke.mockImplementation(async (_: string, req: any) => {
-      if (req.method === 'get_user_sessions_dir') return 'C:/Users/test/.hologram/sessions';
+      if (req.method === 'get_user_sessions_dir') return 'C:/Users/test/.lantai/sessions';
       return '[]';
     });
     await ensureUserSessionsDir();
@@ -52,10 +52,10 @@ describe('workspace-flip 批 2：零目录会话路由', () => {
   it("scanMaxSessionId('')：list_directory 打到用户级目录（路由生效）", async () => {
     _resetUserSessionsDirForTests();
     mockInvoke.mockImplementation(async (_: string, req: any) => {
-      if (req.method === 'get_user_sessions_dir') return 'C:/U/.hologram/sessions';
+      if (req.method === 'get_user_sessions_dir') return 'C:/U/.lantai/sessions';
       if (req.method === 'list_directory') {
-        // 钉路由：path 必须是用户级目录（不是 '/.hologram/sessions' 旧兜底）
-        expect(req.params.path).toBe('C:/U/.hologram/sessions');
+        // 钉路由：path 必须是用户级目录（不是 '/.lantai/sessions' 旧兜底）
+        expect(req.params.path).toBe('C:/U/.lantai/sessions');
         return JSON.stringify([
           { name: '1.json', path: 'x', is_dir: false },
           { name: '2.json', path: 'y', is_dir: false },
@@ -72,7 +72,7 @@ describe('workspace-flip 批 2：零目录会话路由', () => {
     _resetUserSessionsDirForTests();
     mockInvoke.mockImplementation(async (_: string, req: any) => {
       if (req.method === 'list_directory') {
-        expect(req.params.path).toBe('/.hologram/sessions'); // 旧兜底路径
+        expect(req.params.path).toBe('/.lantai/sessions'); // 旧兜底路径
         return '[]';
       }
       return '[]';

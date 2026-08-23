@@ -30,7 +30,7 @@
       config:
         transport: stdio
         serverName: hologram
-        command: !!js ctx.hologramEngine.bin
-        args: !!js ctx.hologramEngine.serveArgs
-        env: !!js Object.assign({}, ctx.hologramEngine.env)
+        command: !!js ctx.lantaiEngine.bin
+        args: !!js ctx.lantaiEngine.serveArgs
+        env: !!js Object.assign({}, ctx.lantaiEngine.env)
         failOnStartupError: false

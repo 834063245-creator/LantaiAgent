@@ -46,9 +46,9 @@ pub fn check_read_permission(
     }
 
     // 3. 安全检查（不可绕过）— 仅对项目边界内的路径。
-    // 读取 .hologram/ 文件不做安全检查 — 它们是兰台自身的
+    // 读取 .lantai/ 文件不做安全检查 — 它们是兰台自身的
     // 数据（记忆、会话、日志）。拦截它们会破坏记忆系统和
-    // 日志器。对于写入，下方的共享安全检查会保护 .hologram/。
+    // 日志器。对于写入，下方的共享安全检查会保护 .lantai/。
     if let Some(ref resolved_path) = resolved {
         let safety = safety::check_path_safety_read(resolved_path);
         if !safety.safe {
@@ -152,7 +152,7 @@ pub fn check_write_permission(
         };
     }
 
-    // 3. 安全检查（不可绕过）— .git、.hologram、.ssh 等
+    // 3. 安全检查（不可绕过）— .git、.lantai、.ssh 等
     let safety = safety::check_path_safety(&resolved);
     if !safety.safe {
         let path_str = path_to_match_str(&resolved);
@@ -316,11 +316,11 @@ mod tests {
         rules.add_rule(PermissionRule {
             source: RuleSource::System,
             behavior: Behavior::Deny,
-            value: parse_rule_value("Edit(.hologram/**)"),
+            value: parse_rule_value("Edit(.lantai/**)"),
             danger: None,
         });
         let r = check_write_permission(
-            &root.join(".hologram/settings.json").to_string_lossy(),
+            &root.join(".lantai/settings.json").to_string_lossy(),
             &s,
             &rules,
             None,

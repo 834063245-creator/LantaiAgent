@@ -99,7 +99,7 @@ function mockLiveFs(initial: Record<string, string> = {}): Map<string, string> {
     if (method === 'agent_session_append') {
       // P1-15: 模拟后端 — rewrite → truncate 重建；否则 append-only
       const p = params as any;
-      const nds = `${p.project_path}/.hologram/agents/${p.agent_id}/session.ndjson`;
+      const nds = `${p.project_path}/.lantai/agents/${p.agent_id}/session.ndjson`;
       const block = (p.messages as any[]).map((m) => JSON.stringify(m)).join('\n') + '\n';
       files.set(nds, p.rewrite ? block : (files.get(nds) ?? '') + block);
       return null;

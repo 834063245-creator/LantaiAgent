@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 兰台 UI 日志器 — 结构化 NDJSON 写入 .hologram/logs/ui.log
+// 兰台 UI 日志器 — 结构化 NDJSON 写入 .lantai/logs/ui.log
 // 零外部依赖。通过 rpc('log_append') 写入。
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -29,7 +29,7 @@ export async function initLogger(projectPath: string): Promise<void> {
   await flush();
 
   try {
-    logPath = `${projectPath}/.hologram/logs/ui.log`;
+    logPath = `${projectPath}/.lantai/logs/ui.log`;
   } catch {
     logPath = null;
   }

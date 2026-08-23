@@ -4,7 +4,7 @@
 // Goal Manager — 目标模式的一等状态管理
 // 把 goal 从 "agent.ts 里一段循环 + 正则标记" 提升为显式生命周期对象。
 //
-// 存储隔离: .hologram/goals/{id}/ — 与普通聊天的 .hologram/agents/main/ 槽
+// 存储隔离: .lantai/goals/{id}/ — 与普通聊天的 .lantai/agents/main/ 槽
 // 完全分离。普通对话每轮的 saveState 永远碰不到 goal 现场,这是断点续传
 // 五个已确诊 Bug 的根治基础(见重构计划 M1)。
 //
@@ -58,7 +58,7 @@ export class GoalManager {
   ) {}
 
   private get baseDir(): string {
-    return this.projectPath.replace(/\\/g, '/').replace(/\/$/, '') + '/.hologram/goals';
+    return this.projectPath.replace(/\\/g, '/').replace(/\/$/, '') + '/.lantai/goals';
   }
 
   private recordPath(id: string): string {
@@ -236,7 +236,7 @@ export class GoalManager {
     // 已有活体目标时不迁移(避免覆盖启动后立刻新建的目标;旧档留到下次启动)
     if (await this.getActive()) return null;
 
-    const legacyGoalPath = this.projectPath.replace(/\\/g, '/').replace(/\/$/, '') + '/.hologram/agents/main/goal.json';
+    const legacyGoalPath = this.projectPath.replace(/\\/g, '/').replace(/\/$/, '') + '/.lantai/agents/main/goal.json';
     let legacy: LegacyGoalState;
     try {
       const raw = await typedRpc('read_file_content', { file_path: legacyGoalPath });
@@ -255,7 +255,7 @@ export class GoalManager {
     // 旧 session 现场复制到新槽(best-effort — 丢了也能靠重注目标提示词继续)
     try {
       const legacySessionPath =
-        this.projectPath.replace(/\\/g, '/').replace(/\/$/, '') + '/.hologram/agents/main/session.json';
+        this.projectPath.replace(/\\/g, '/').replace(/\/$/, '') + '/.lantai/agents/main/session.json';
       const rawSession = await typedRpc('read_file_content', { file_path: legacySessionPath });
       await this.saveSession(record.id, JSON.parse(stripNums(rawSession)) as Message[]);
     } catch {

@@ -55,7 +55,7 @@ describe('S4-3 PluginsPage（设置面板插件 tab）', () => {
     await vi.waitFor(() => {
       expect(container.textContent).toContain('暂无插件');
     });
-    expect(container.textContent).toContain('~/.hologram/plugins/');
+    expect(container.textContent).toContain('~/.lantai/plugins/');
     // 供应链警告（完全信任模型原文——不做「已审核」标记）
     expect(container.textContent).toContain('本机全信任代码');
     expect(container.textContent).toContain('npm 上的包 ≠');

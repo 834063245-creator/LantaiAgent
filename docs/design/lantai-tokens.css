@@ -1,0 +1,60 @@
+/* ═══════════════════════════════════════════════════════════════
+   Lantai · 兰台设计 token（v1）
+   落地目标：src/app/tokens.css —— 替换原 --obs-* 观测台暗色 token。
+   气质：注疏横排 · 分体字体（宋体/楷书/等宽）· 矿物墨色 · 圆角恒 0。
+   来源：holo-paper.html 原型（:root 转录），铁律见 lantai-design-spec.md。
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── 纸阶（两档 + 页边）── */
+  --paper: #F6F1E7;        /* 纸面：画布 / 页面底 */
+  --paper-deep: #EFE8DA;   /* 深纸：输入条 / 图版底 */
+  --paper-margin: #EDE5D5; /* 页边：舞台底色 */
+
+  /* ── 墨阶（四档，松烟墨）── */
+  --ink-1: #26221C;        /* 正文 */
+  --ink-2: #55503F;        /* 次级：规线 / 次级文字 */
+  --ink-3: #8A8172;        /* 三级：注记 / 页码 */
+  --ink-4: #B5AC9A;        /* 弱规线 / 最弱信号 */
+
+  /* ── 矿物颜料（语义铁律：朱砂=人，石青=机，石墨=草稿，墨=正文）── */
+  --seal: #A63A2E;         /* 朱砂：印章 / 来文 / 圈点 / 朱批 */
+  --seal-deep: #8C2F26;    /* 朱砂深：来文文字 */
+  --seal-soft: color-mix(in oklch, var(--seal) 16%, transparent);
+  --indigo: #3A5B7A;       /* 石青：脚注 / 拟策序号 / diff 新增 */
+  --graphite: #6F6E68;     /* 赭石：夹注 / 擦改 / diff 删除 */
+
+  /* ── 语义状态（降饱和到矿物色）── */
+  --pass: #5E7A55;
+  --warn: #B0782E;
+  --fail: #A9443F;
+
+  /* ── 字体四体 ── */
+  --f-song: "EB Garamond", "Noto Serif SC", "Songti SC", serif;  /* 宋体正文 + 旧书衬线英文 */
+  --f-kai:  "Ma Shan Zheng", "EB Garamond", "Kaiti SC", "STKaiti", serif; /* 楷书手迹 */
+  --f-mono: "IBM Plex Mono", "Cascadia Code", "Consolas", monospace;       /* 等宽机读 */
+
+  /* ── 规线三式（圆角恒 0，印刷品无圆角）── */
+  --rule-hard: 2px solid var(--ink-1);   /* 硬线：卷首下划线 / 代码左线 / 计划顶线 */
+  --rule-strong: 1px solid var(--ink-2); /* 强线：界栏 / 分隔 */
+  --rule-soft: 1px solid var(--ink-4);   /* 弱线：细分隔 */
+  --rule-dashed: 1px dashed var(--ink-4);/* 虚线：草稿勾边 / 占位 */
+
+  /* ── 海拔（硬偏移 letterpress，禁软模糊大投影）── */
+  --elev-raise: 2px 3px 0 rgba(38, 34, 28, 0.06), 3px 6px 16px rgba(38, 34, 28, 0.10);
+
+  /* ── 结构 ── */
+  --bar-h: 56px;
+  --composer-h: 66px;
+}
+
+/* ── 迁移对照（--obs-* → 兰台）──────────────────────────────────
+   --obs-void / --obs-void-deep  →  --paper-margin / --paper
+   --obs-text                   →  --ink-1
+   --obs-text-2 / --obs-text-3  →  --ink-2 / --ink-3
+   --obs-line / --obs-line-soft →  --ink-4
+   --obs-brass / --obs-brass-hi →  --seal / --seal-deep
+   --obs-blue                   →  --indigo
+   --obs-font-serif / --obs-font-body / --obs-font-mono
+                                →  --f-song / --f-song / --f-mono（楷书 --f-kai 新增）
+   ──────────────────────────────────────────────────────────────── */

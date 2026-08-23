@@ -112,7 +112,7 @@ def main() -> int:
         sys.exit(f"scip-typescript index 失败:\n{r.stderr[-2000:]}")
 
     # 2) 干净 analyze（绝对路径）→ tree-sitter 基线
-    hologram = os.path.join(fixture, ".hologram")
+    hologram = os.path.join(fixture, ".lantai")
     if os.path.exists(hologram):
         shutil.rmtree(hologram)
     run([binary, "run", "analyze_project", fixture], timeout=900)

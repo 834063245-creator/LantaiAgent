@@ -13,7 +13,7 @@ use chrono::Utc;
 // ═══════════════════════════════════════════════════════════════
 // dataflow_save — 将 Agent 产生的追踪内容持久化为 JSON
 // ═══════════════════════════════════════════════════════════════
-// ponytail: .hologram/dataflow/ 中的 JSON 文件 — 无 SQLite schema，无迁移。
+// ponytail: .lantai/dataflow/ 中的 JSON 文件 — 无 SQLite schema，无迁移。
 // `content` 是 Agent 的自由格式追踪（markdown 或结构化文本）。
 // `exploreResult` / `dataflowResult` 是遗留引擎转储；仍然接受。
 
@@ -26,7 +26,7 @@ pub(crate) async fn dataflow_save(
     state: tauri::State<'_, crate::WorkspaceState>,
 ) -> Result<String, String> {
     let root = crate::utils::workspace_path(&state)?;
-    let dir = PathBuf::from(&root).join(".hologram").join("dataflow");
+    let dir = PathBuf::from(&root).join(".lantai").join("dataflow");
     fs::create_dir_all(&dir).map_err(|e| format!("创建目录失败: {e}"))?;
 
     let now = Utc::now();
@@ -62,7 +62,7 @@ pub(crate) async fn dataflow_query(
     state: tauri::State<'_, crate::WorkspaceState>,
 ) -> Result<String, String> {
     let root = crate::utils::workspace_path(&state)?;
-    let dir = PathBuf::from(&root).join(".hologram").join("dataflow");
+    let dir = PathBuf::from(&root).join(".lantai").join("dataflow");
 
     if !dir.exists() {
         return Ok(serde_json::json!({ "traces": [] }).to_string());
@@ -127,7 +127,7 @@ pub(crate) async fn dataflow_delete(
     crate::utils::sanitize_path_id(&trace_id, "trace_id")?;
     let root = crate::utils::workspace_path(&state)?;
     let path = PathBuf::from(&root)
-        .join(".hologram")
+        .join(".lantai")
         .join("dataflow")
         .join(format!("{trace_id}.json"));
 

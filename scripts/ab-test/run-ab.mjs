@@ -8,7 +8,7 @@ const UI_DIR = path.join(ROOT, 'src-ui');
 const TASKS_FILE = path.join(ROOT, 'scripts', 'ab-test', 'tasks.json');
 const WT_BASE = process.env.AB_WT_BASE || path.join('D:', 'tmp', 'opencode', 'abwt');
 const REPS = Number(process.env.AB_REPS || 2);
-const GRAPH_DB = path.join(ROOT, '.hologram', 'hologram.db');
+const GRAPH_DB = path.join(ROOT, '.lantai', 'hologram.db');
 
 const apiKey = process.env.AB_API_KEY || '';
 const baseUrl = process.env.AB_BASE_URL || 'https://api.deepseek.com';
@@ -122,6 +122,6 @@ for (const r of results) {
 
 const report = lines.join('\n');
 console.log('\n' + report);
-const outDir = path.join(ROOT, '.hologram', 'docs');
+const outDir = path.join(ROOT, '.lantai', 'docs');
 fs.mkdirSync(outDir, { recursive: true });
 fs.writeFileSync(path.join(outDir, 'ab-test-report.md'), `# Hook A/B 测试报告\n\n\`\`\`\n${report}\n\`\`\`\n`, 'utf8');

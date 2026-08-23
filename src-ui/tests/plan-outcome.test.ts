@@ -4,12 +4,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // mock typedRpc：exit_plan_mode 通过它读计划文件
-// 计划文件路径格式：{project}/.hologram/plans/plan-<ts>-<rand>.md
+// 计划文件路径格式：{project}/.lantai/plans/plan-<ts>-<rand>.md
 vi.mock('../src/rpc-contract', () => ({
   typedRpc: vi.fn(async (method: string, args: { file_path: string }) => {
     if (
       method === 'read_file_content' &&
-      args.file_path.includes('.hologram/plans/') &&
+      args.file_path.includes('.lantai/plans/') &&
       args.file_path.endsWith('.md')
     ) {
       return '1\t# 计划\n2\t正文';

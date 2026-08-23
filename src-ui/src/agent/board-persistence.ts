@@ -19,7 +19,7 @@ function normalizePath(p: string): string {
 export interface BoardPersistenceOptions {
   projectPath: string;
   sessionId: string;
-  /** .hologram/ 下的子目录名（如 "taskboard"、"discoveries"） */
+  /** .lantai/ 下的子目录名（如 "taskboard"、"discoveries"） */
   dirName: string;
 }
 
@@ -52,7 +52,7 @@ export class BoardPersistence {
   }
 
   private get _boardPath(): string {
-    return normalizePath(this._projectPath) + '/.hologram/' + this._dirName + '/' + this._sessionId + '.json';
+    return normalizePath(this._projectPath) + '/.lantai/' + this._dirName + '/' + this._sessionId + '.json';
   }
 
   private async _ensureDir(): Promise<void> {
@@ -60,7 +60,7 @@ export class BoardPersistence {
     // 后端 create_dir_all 幂等——目录已存在不会报错，任何抛错都是真实失败。
     // 失败时不置 _dirReady：下次 flush 会重试，而不是永久静默丢盘。
     await typedRpc('create_directory', {
-      path: normalizePath(this._projectPath) + '/.hologram/' + this._dirName,
+      path: normalizePath(this._projectPath) + '/.lantai/' + this._dirName,
     });
     this._dirReady = true;
   }

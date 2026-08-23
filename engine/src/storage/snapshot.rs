@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::graph::{EdgeKind, Node, NodeKind};
 
-/// 快照文件名（位于 `<project_root>/.hologram/` 下）。
+/// 快照文件名（位于 `<project_root>/.lantai/` 下）。
 pub const SNAPSHOT_FILE: &str = "graph.snapshot";
 /// 快照临时文件名 —— 先写它再原子 rename 为 SNAPSHOT_FILE。
 pub const SNAPSHOT_TMP_FILE: &str = "graph.snapshot.tmp";
@@ -33,12 +33,12 @@ const DEFAULT_SNAPSHOT_MIN_EDGES: usize = 5_000_000;
 
 /// 项目根下的快照文件路径。
 pub fn snapshot_path(project_root: &Path) -> PathBuf {
-    project_root.join(".hologram").join(SNAPSHOT_FILE)
+    project_root.join(".lantai").join(SNAPSHOT_FILE)
 }
 
 /// 项目根下的快照临时文件路径（原子 rename 的源）。
 pub fn snapshot_tmp_path(project_root: &Path) -> PathBuf {
-    project_root.join(".hologram").join(SNAPSHOT_TMP_FILE)
+    project_root.join(".lantai").join(SNAPSHOT_TMP_FILE)
 }
 
 /// 进入快照模式的最小边数。env `HOLOGRAM_SNAPSHOT_MIN_EDGES` 覆盖；
@@ -358,7 +358,7 @@ mod tests {
     fn test_load_snapshot_corrupted() {
         let tmp = unique_tmp("corrupted");
         let _ = std::fs::remove_dir_all(&tmp);
-        std::fs::create_dir_all(tmp.join(".hologram")).unwrap();
+        std::fs::create_dir_all(tmp.join(".lantai")).unwrap();
         // 垃圾字节 —— bincode 反序列化必须失败
         std::fs::write(snapshot_path(&tmp), b"\xde\xad\xbe\xef garbage not bincode \x00\x01").unwrap();
         let result = MemoryIndex::load_snapshot(&tmp);

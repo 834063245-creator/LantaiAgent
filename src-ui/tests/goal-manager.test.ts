@@ -57,7 +57,7 @@ function makeRecord(partial: Partial<GoalRecord> = {}): GoalRecord {
   };
 }
 
-const GOALS = '/proj/.hologram/goals';
+const GOALS = '/proj/.lantai/goals';
 
 // ── CRUD ──
 
@@ -241,8 +241,8 @@ describe('GoalManager migrateLegacy', () => {
       { role: 'user', content: '<goal>legacy goal</goal>' },
     ];
     const files = mockLiveFs({
-      '/proj/.hologram/agents/main/goal.json': JSON.stringify(legacy),
-      '/proj/.hologram/agents/main/session.json': JSON.stringify(legacySession),
+      '/proj/.lantai/agents/main/goal.json': JSON.stringify(legacy),
+      '/proj/.lantai/agents/main/session.json': JSON.stringify(legacySession),
     });
     const gm = new GoalManager('/proj');
 
@@ -259,7 +259,7 @@ describe('GoalManager migrateLegacy', () => {
     expect(session?.length).toBe(2);
 
     // 旧 goal.json 已删除(防止重复迁移)
-    expect(files.has('/proj/.hologram/agents/main/goal.json')).toBe(false);
+    expect(files.has('/proj/.lantai/agents/main/goal.json')).toBe(false);
     // 再次迁移 → null
     expect(await gm.migrateLegacy()).toBeNull();
   });

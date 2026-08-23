@@ -30,7 +30,7 @@ postinstall 会按平台从 GitHub Releases 下载引擎二进制（当前：**W
 
 引擎以 `serve --project-root <root> --tcp` 单进程运行，MCP 工具与 3D 星图共享同一份内存图：
 
-- **存量优先**：打开项目时从 `.hologram/`（SQLite/快照）读回已有图，源码未变即秒回
+- **存量优先**：打开项目时从 `.lantai/`（SQLite/快照）读回已有图，源码未变即秒回
 - **watcher 增量**：文件变更走增量更新，图始终新鲜
 - **显式全量**：`?refresh=1`（星图地址栏）或 MCP `analyze_project` 触发全量重扫
 

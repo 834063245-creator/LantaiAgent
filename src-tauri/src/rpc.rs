@@ -193,7 +193,7 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         "agent_isolation_create" | "agent_isolation_status" | "agent_isolation_diff" => RpcResultShape::JsonValue,
 
         // ── 外部服务 ──
-        // sandbox_status：json! 构造恒 JSON。其余 MCP/Unity 文案文本，Text。
+        // sandbox_status：json! 构造恒 JSON。其余 MCP 文案文本，Text。
         "sandbox_status" => RpcResultShape::JsonValue,
 
         // ── Hologram 遗留 ──
@@ -472,7 +472,7 @@ async fn dispatch_rpc(
             commands::filesystem::read_file_content(file_path, offset, limit, is_agent, _agent_id, state, app).await
         }
         "user_sessions_list" => {
-            // workspace-flip 批 1：零目录会话列表（用户级 ~/.hologram/sessions/）
+            // workspace-flip 批 1：零目录会话列表（用户级 ~/.lantai/sessions/）
             ok_json(commands::filesystem::user_sessions_list().await)
         }
         "get_user_sessions_dir" => {
@@ -1351,9 +1351,6 @@ async fn dispatch_rpc(
             commands::external::start_mcp_server(project_root).await
         }
         "stop_mcp_server" => commands::external::stop_mcp_server().await,
-        "start_unity" => commands::external::start_unity(),
-        "stop_unity" => commands::external::stop_unity(),
-        "unity_status" => commands::external::unity_status(),
         "sandbox_status" => commands::external::sandbox_status(),
 
         // ═══════════════════════════════════════════════════════
@@ -1408,7 +1405,7 @@ async fn dispatch_rpc(
             let message = params.get("message")
                 .ok_or("session_append: missing 'message'")?;
             let file = std::path::Path::new(&path)
-                .join(".hologram/sessions")
+                .join(".lantai/sessions")
                 .join(format!("{session_id}.ndjson"));
             if let Some(parent) = file.parent() {
                 std::fs::create_dir_all(parent)
@@ -1432,7 +1429,7 @@ async fn dispatch_rpc(
         }
 
         // P1-15: agent 会话增量追加（NDJSON）— 与 session_append 同构，但写到
-        // .hologram/agents/{agent_id}/session.ndjson。rewrite=true 时 truncate 重写
+        // .lantai/agents/{agent_id}/session.ndjson。rewrite=true 时 truncate 重写
         // （会话被撤回/替换后全量重建），否则 append-only（每轮对话只写增量，
         // 消除旧 saveState 全量重写 session.json 的 O(全量) 写放大）。
         "agent_session_append" => {
@@ -1445,7 +1442,7 @@ async fn dispatch_rpc(
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
             let file = std::path::Path::new(&project_path)
-                .join(".hologram/agents")
+                .join(".lantai/agents")
                 .join(&agent_id)
                 .join("session.ndjson");
             if let Some(parent) = file.parent() {

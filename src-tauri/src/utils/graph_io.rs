@@ -44,7 +44,9 @@ pub(crate) fn cache_is_stale(root: &std::path::Path) -> bool {
     ];
     const SKIP: &[&str] = &[
         ".git", "node_modules", "target", "build", "dist", "out", ".venv", "venv",
-        ".hologram", "release-bin", "__pycache__", ".pytest_cache", ".ruff_cache",
+        // .hologram 与 .lantai 双名共存（2026-08-23 改名）：用户硬盘上的老项目可能
+        // 永远存在未迁移的 .hologram，必须继续忽略防止被吃进图。
+        ".hologram", ".lantai", "release-bin", "__pycache__", ".pytest_cache", ".ruff_cache",
         ".mypy_cache", ".next", ".nuxt", ".svelte-kit", ".turbo", ".cursor",
         ".idea", ".vscode", ".coverage",
     ];

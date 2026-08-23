@@ -11,8 +11,8 @@
 
 `src-tauri/src/llm_proxy.rs` 的 spike 分支正式化（建议抽 `plugin_assets.rs` 模块保持文件专注）：
 
-- 路由：`GET /plugins/<id>/<相对路径>` → `~/.hologram/plugins/<id>/<相对路径>`
-- 根目录常量与启用态持久化共用同一解析函数（`dirs::home_dir()` + `.hologram/plugins`）
+- 路由：`GET /plugins/<id>/<相对路径>` → `~/.lantai/plugins/<id>/<相对路径>`
+- 根目录常量与启用态持久化共用同一解析函数（`dirs::home_dir()` + `.lantai/plugins`）
 - 安全三件套：路径遍历拒绝（resolve + 前缀校验，含符号链接逃逸测试）、仅 GET、仅 loopback（绑定保证 + 测试钉住）
 - MIME 映射同 spike；加 `.wasm` → `application/wasm`（前瞻，本阶段无消费者）
 - 错误语义：404（缺文件）/ 403（遍历）/ 405（非 GET），JSON body 带原因
@@ -38,7 +38,7 @@ zod v4 校验 manifest（`defineTool` 同款纪律：一个 schema 产出校验 
 
 **`loader.ts`**：
 - 入口 `loadExternalPlugins(root: Context): Promise<void>`
-- 流程：读 `~/.hologram/plugins/` 子目录 → 各自 `manifest.json` 校验 → 读 `plugins.json` disabled 集 → 跳过 disabled → `await import(/* @vite-ignore */ `http://127.0.0.1:14570/plugins/${name}/${entry}`)` → 取 `default` 或模块本身为 plugin 对象 → `root.plugin(obj)`（cordis fiber 记录生命周期）
+- 流程：读 `~/.lantai/plugins/` 子目录 → 各自 `manifest.json` 校验 → 读 `plugins.json` disabled 集 → 跳过 disabled → `await import(/* @vite-ignore */ `http://127.0.0.1:14570/plugins/${name}/${entry}`)` → 取 `default` 或模块本身为 plugin 对象 → `root.plugin(obj)`（cordis fiber 记录生命周期）
 - **失败隔离**：单个插件任何一步抛错 → 记入 plugin-store `{ status: 'error', error }`，继续下一个；loader 本身永不 reject
 - **端口来源**：从 `llm_proxy` 现有导出/共享常量取 14570，不硬编码两处
 - 导出 `PLUGIN_ASSETS_ORIGIN` 常量供测试与将来 preset 文档引用
@@ -59,7 +59,7 @@ zod v4 校验 manifest（`defineTool` 同款纪律：一个 schema 产出校验 
 
 ## 验收（全部满足才算完）
 
-1. 手动：往 `~/.hologram/plugins/` 放一个 manifest 合法但 entry 抛错的坏插件 → `cargo tauri dev` 应用正常起，plugin-store 里 status=error 可见
+1. 手动：往 `~/.lantai/plugins/` 放一个 manifest 合法但 entry 抛错的坏插件 → `cargo tauri dev` 应用正常起，plugin-store 里 status=error 可见
 2. 手动：放一个合法插件（console.log 即可）→ devtools 看到」[plugin] loaded」
 3. `cd src-tauri && cargo test` 全绿；`cd src-ui && npm run build && npx vitest run` 全绿
 4. `npx biome check` 改动文件零新增

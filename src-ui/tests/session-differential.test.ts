@@ -457,7 +457,7 @@ describe('T2 差分 — 持久化双写（P1-15 游标不受破坏）', () => {
     expect(def(appendCalls[1], 'appendCalls[1]').messages.map((m) => m.content)).toEqual(['第二句', '再答']);
     expect(appendCalls.every((c) => !c.rewrite)).toBe(true);
     // 事件日志双写：全部经 log_append 追加到 session-log.ndjson
-    const logFile = logAppends.filter((l) => l.path === '/p/.hologram/agents/diff-agent/session-log.ndjson');
+    const logFile = logAppends.filter((l) => l.path === '/p/.lantai/agents/diff-agent/session-log.ndjson');
     const lines = logFile.flatMap((l) => l.content.split('\n').filter((s) => s.trim().length > 0));
     const events = lines.map((l) => JSON.parse(l) as { seq: number; kind: string });
     expect(events.map((e) => e.kind)).toEqual([

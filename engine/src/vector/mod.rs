@@ -283,7 +283,7 @@ fn index_mtime(path: &std::path::Path) -> Option<std::time::SystemTime> {
 /// 获取或创建给定项目根目录的缓存 CodeVectorIndex。
 /// 首次访问时从磁盘加载；项目路径或索引文件 mtime 变化时自动重载。
 pub fn get_or_load_index(project_root: &std::path::Path) -> Result<(Arc<RwLock<Option<usearch::Index>>>, Arc<RwLock<Vec<String>>>), String> {
-    let path = project_root.join(".hologram").join("vectors.usearch");
+    let path = project_root.join(".lantai").join("vectors.usearch");
     let current_mtime = index_mtime(&path);
     let mut cache = CACHED_INDEX.lock().map_err(|e| format!("vector cache lock: {e}"))?;
 
@@ -429,7 +429,7 @@ mod tests {
     #[test]
     fn test_cache_invalidates_on_index_update() {
         let root = std::env::temp_dir().join(format!("hologram_vi_cache_{}", std::process::id()));
-        let dir = root.join(".hologram");
+        let dir = root.join(".lantai");
         std::fs::create_dir_all(&dir).unwrap();
         let idx_path = dir.join("vectors.usearch");
 
@@ -487,7 +487,7 @@ mod tests {
     #[test]
     fn test_real_generated_index() {
         // 验证 tauri dev 期间构建的向量索引确实可用
-        let path = "D:/HoloGramHG/.hologram/vectors.usearch";
+        let path = "D:/HoloGramHG/.lantai/vectors.usearch";
         if !std::path::Path::new(path).exists() {
             eprintln!("跳过: 未找到 {path} —— 请先运行 analyze");
             return;

@@ -100,7 +100,7 @@ impl Sandbox {
             .or_else(|_| std::env::var("HOME"))
             .unwrap_or_default();
         if home.is_empty() { return false; }
-        let gm = PathBuf::from(&home).join(".hologram").join("global_memory");
+        let gm = PathBuf::from(&home).join(".lantai").join("global_memory");
         // 检查原始路径和规范化版本
         path.starts_with(&gm) || {
             std::fs::canonicalize(path)
@@ -112,7 +112,7 @@ impl Sandbox {
     /// 验证写入操作。锁定到项目目录，
     /// 全局记忆目录除外（agent 管理）。
     pub fn resolve_write(&self, path: &Path) -> SandboxResult {
-        // 全局记忆绕过：agent 写入 ~/.hologram/global_memory/
+        // 全局记忆绕过：agent 写入 ~/.lantai/global_memory/
         // 无论项目沙箱边界如何都始终允许。
         if Self::is_global_memory_path(path) {
             let real = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
@@ -237,9 +237,9 @@ mod tests {
     fn test_logical_path_strips_verbatim_prefix() {
         #[cfg(windows)]
         {
-            let verbatim = Path::new(r"\\?\D:\FirstBeat Ultimate\.hologram\worktrees\agent-abc");
+            let verbatim = Path::new(r"\\?\D:\FirstBeat Ultimate\.lantai\worktrees\agent-abc");
             let logical = logical_path(verbatim);
-            assert_eq!(logical, PathBuf::from(r"D:\FirstBeat Ultimate\.hologram\worktrees\agent-abc"));
+            assert_eq!(logical, PathBuf::from(r"D:\FirstBeat Ultimate\.lantai\worktrees\agent-abc"));
             // 无前缀路径原样返回
             assert_eq!(logical_path(Path::new(r"D:\proj")), PathBuf::from(r"D:\proj"));
         }

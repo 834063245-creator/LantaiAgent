@@ -7,7 +7,7 @@ import { defineTool } from '../../src/agent/tools/define-tool';
 import { z } from 'zod';
 import type { TrialGraphData } from './ab-graph';
 
-const SKIP_DIRS = new Set(['node_modules', '.git', 'target', '.hologram', 'dist', '.cache', 'build', 'out']);
+const SKIP_DIRS = new Set(['node_modules', '.git', 'target', '.lantai', 'dist', '.cache', 'build', 'out']);
 const SRC_EXT = new Set(['.ts', '.rs', '.py', '.js', '.tsx', '.jsx', '.go', '.java', '.cpp', '.c', '.h', '.hpp']);
 
 function walk(root: string, depth: number, limit: number): string[] {

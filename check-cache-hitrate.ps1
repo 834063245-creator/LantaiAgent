@@ -1,5 +1,5 @@
 # check-cache-hitrate.ps1
-# Cache hit-rate health check. Reads "llm response" records from .hologram/logs/ui.log
+# Cache hit-rate health check. Reads "llm response" records from .lantai/logs/ui.log
 # and reports the LLM cache hit rate per day, flagging abnormally low days.
 #
 # Two metrics:
@@ -28,7 +28,7 @@ param(
     [int]$Days = 0,          # 0 = all; >0 = only the last N days
     [switch]$DetailToday,    # also print per-request detail for the latest day
     [switch]$OnlyA,          # only the A metric
-    [string]$LogPath = ""    # default resolves to repo .hologram/logs/ui.log
+    [string]$LogPath = ""    # default resolves to repo .lantai/logs/ui.log
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,8 +37,8 @@ $ErrorActionPreference = 'Stop'
 if (-not $LogPath) {
     $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
     $candidates = @(
-        (Join-Path $scriptDir '.hologram\logs\ui.log'),
-        (Join-Path (Split-Path -Parent $scriptDir) '.hologram\logs\ui.log')
+        (Join-Path $scriptDir '.lantai\logs\ui.log'),
+        (Join-Path (Split-Path -Parent $scriptDir) '.lantai\logs\ui.log')
     )
     $LogPath = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 }

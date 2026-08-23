@@ -117,7 +117,7 @@ export async function runCompileTest(entry: BoardEntry, opts: MergeGateOptions):
   const command = opts.compileCommand ?? 'cargo check --message-format short';
   // isolationId 已含 agent- 前缀（agent.ts spawn 生成 agent-{ts}-{rand}），
   // Rust 侧 slug 也不重复拼接 — cwd 直接用 isolationId。
-  const cwd = `${opts.projectPath}/.hologram/worktrees/${entry.isolationId}`;
+  const cwd = `${opts.projectPath}/.lantai/worktrees/${entry.isolationId}`;
   try {
     // 直连流式执行（队列已退役，2026-08-10）— 构建锁冲突由 Rust BuildLock 打回。
     const out = await execStreamedShell({ command, cwd, timeoutMs: opts.compileTimeoutMs ?? 600_000 });

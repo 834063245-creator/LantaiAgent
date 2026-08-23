@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// spill — 大输出溢写：超过内联阈值的内容落盘 .hologram/spill/，
+// spill — 大输出溢写：超过内联阈值的内容落盘 .lantai/spill/，
 // 模型拿到 locator + 预览，用 read_file 读全量。对标 DSH spill 的
 // 「bounded preview + retrieval locator」语义 — 截断即丢信息，溢写不丢。
 
@@ -15,7 +15,7 @@ export interface SpillOutcome {
   path?: string;
 }
 
-/** 超长文本溢写：超过 maxInline 时写入 .hologram/spill/，
+/** 超长文本溢写：超过 maxInline 时写入 .lantai/spill/，
  *  返回预览 + locator；落盘失败退回截断（带标记，不静默）。 */
 export async function spillToFile(opts: {
   projectPath: string;
@@ -32,7 +32,7 @@ export async function spillToFile(opts: {
     return { display: fallbackTruncate(text, maxInline), spilled: false };
   }
   const base = projectPath.replace(/\\/g, '/').replace(/\/$/, '');
-  const dir = `${base}/.hologram/spill`;
+  const dir = `${base}/.lantai/spill`;
   const ts = Date.now();
   const path = `${dir}/${name}-${ts}.${extension ?? 'txt'}`;
   try {

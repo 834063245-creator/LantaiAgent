@@ -47,7 +47,7 @@ export function createBoardStatusTool(board: TaskBoard, getParentId: () => strin
       'Query the TaskBoard: all sub-agent entries (agentId, status, files touched, summary, diff). ' +
       'Use this to check which sub-agents have completed and what they changed — ' +
       'instead of guessing from agent_status or waiting for agent_inbox messages. ' +
-      'Large diffs are spilled to .hologram/spill/ — read the referenced file to get the full diff. ' +
+      'Large diffs are spilled to .lantai/spill/ — read the referenced file to get the full diff. ' +
       'This is NOT task_list (that is your own task tracker).',
     schema: z.object({}),
     readOnly: true,

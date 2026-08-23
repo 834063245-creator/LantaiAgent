@@ -29,10 +29,10 @@ HoloGram 的 Agent 在「单仓库多工人协同」垂直场景比 DSH 更深�
 | Commit | 项 | 内容 |
 |---|---|---|
 | `94618f8` | P0-3 深度上限 | `AgentConfig.subagentDepth` 曾被 runtime 丢弃、`listAgents()` 恒报 0、守卫只拦 fork；现在 fork/fresh 统一守卫 + 只读 getter 真实深度 |
-| `f136e36` | P0-1 worktree 孤儿收养 | Rust `workspace_activate` 扫描 `.hologram/worktrees/` 重建隔离注册表（`adopt_worktree` 用 `merge-base --is-ancestor` 回溯诞生基——worktree 与主仓共享对象库，`cat-file -e` 会把不可达孤儿 commit 误当基）；前端根 Agent 绑定会话时重挂旧父 id 条目 + 注册磁盘孤儿为可合并条目；running 孤儿改「先保全 diff 再保留现场」 |
+| `f136e36` | P0-1 worktree 孤儿收养 | Rust `workspace_activate` 扫描 `.lantai/worktrees/` 重建隔离注册表（`adopt_worktree` 用 `merge-base --is-ancestor` 回溯诞生基——worktree 与主仓共享对象库，`cat-file -e` 会把不可达孤儿 commit 误当基）；前端根 Agent 绑定会话时重挂旧父 id 条目 + 注册磁盘孤儿为可合并条目；running 孤儿改「先保全 diff 再保留现场」 |
 | `6fcb5f0` | P1-4 output_schema | `agent_spawn` 支持 object-rooted JSON Schema 结构化返回（DSH 同款子集：type/properties/required/additionalProperties/items/enum/const/oneOf），不支持的 schema 派发前拒绝、校验失败原文带回不静默、异步组合明确拒绝 |
 | `bde599f` | P1-6 Goal blocked | `goal_report(status="blocked", summary=强制原因)`，blocked 是可恢复态（占单目标槽、`/goal resume` 继续）；生命周期动作只由人类 /goal 命令进入（权威分离以注释固化） |
-| `929a76e` | P2-7 spill 溢写 | 大 diff（>8KB）由 Rust 侧落盘 `.hologram/spill/` 回传 locator（落盘失败退回截断并标记）；`agent_board`/merge 冲突保全展示 locator 而非截断体 |
+| `929a76e` | P2-7 spill 溢写 | 大 diff（>8KB）由 Rust 侧落盘 `.lantai/spill/` 回传 locator（落盘失败退回截断并标记）；`agent_board`/merge 冲突保全展示 locator 而非截断体 |
 | `df6d828` | P2-10 委派不可扩权 | 子 Agent 工具集剥离 `ask_user`（子 Agent 不得直连人类）与 `enter/exit_plan_mode`（闭包绑定父 planState——调用即翻父模式）；剥离面抽成纯函数 `buildSubAgentTools` 可测；子 Agent 系统提示追加委派边界段 |
 
 ## 4. 未落地项与理由（按需再开）

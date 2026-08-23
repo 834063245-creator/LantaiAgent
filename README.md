@@ -218,7 +218,7 @@ Python · JavaScript/TypeScript/TSX · Rust · Go · Java · C/C++ · C# · Ruby
 ### 多 Agent 协作
 
 - `SubAgentPool`：并发上限 5、队列 20、**默认超时 30 分钟**；`fork`（继承上下文）/ `fresh`（干净启动）两种模式；async spawn 完成后经 MessageBus 通知父 Agent
-- **通信层**：有界 inbox（100 条，满了 drop 防背压）、peek + ack、主题拓扑（Tree/Mesh/Star），消息持久化 `.hologram/agents/{id}/inbox.json`
+- **通信层**：有界 inbox（100 条，满了 drop 防背压）、peek + ack、主题拓扑（Tree/Mesh/Star），消息持久化 `.lantai/agents/{id}/inbox.json`
 - **共享状态板**：TaskBoard（任务状态 / filesTouched / diff）与 DiscoveryBoard（探索发现，TTL 2h）——均按会话隔离，防跨会话串扰
 - **隔离执行**：子 Agent 的编辑在独立 git worktree 中运行（见下文"隔离"），`agent_merge` 进程内串行合并
 - 模型可见的子 Agent ID：`sub-{timestamp}-{random}`；worktree ID：`agent-{timestamp}-{random}`
@@ -226,17 +226,17 @@ Python · JavaScript/TypeScript/TSX · Rust · Go · Java · C/C++ · C# · Ruby
 ### Plan 与 Goal 模式
 
 - **Plan 模式**：只读探索 + 写计划文件，`exit_plan_mode` 提交方案（可带多选项）给用户审批；写约束由 `planGate` 在执行层拦截，工具 schema 跨模式恒定（保护前缀缓存）
-- **Goal 模式**：持久化目标状态（`.hologram/goals/{id}/`，goal/session/index 三文件），跨会话恢复，与普通对话完全隔离；完成靠 `goal_report` 工具
+- **Goal 模式**：持久化目标状态（`.lantai/goals/{id}/`，goal/session/index 三文件），跨会话恢复，与普通对话完全隔离；完成靠 `goal_report` 工具
 
 ### 记忆体系
 
 | 层 | 实现 |
 |---|---|
-| 会话记忆 | Agent session JSON（`.hologram/agents/{id}/`） |
-| 项目记忆 | `MemoryManager` → `.hologram/memory/*.md`，MEMORY.md 索引 + confidence 四档分级（fact / reference / background / suppressed） |
+| 会话记忆 | Agent session JSON（`.lantai/agents/{id}/`） |
+| 项目记忆 | `MemoryManager` → `.lantai/memory/*.md`，MEMORY.md 索引 + confidence 四档分级（fact / reference / background / suppressed） |
 | Aura 记忆 | `aura.dll` FFI（SDR + MinHash 语义召回），跨会话语义记忆 |
 | Memory Bundle | 独立进程 `memory-bundle.exe` + HTTP 客户端（127.0.0.1:9600），进程隔离的记忆服务 |
-| 技能系统 | `.hologram/skills/<name>/SKILL.md` 热加载，无需重启 |
+| 技能系统 | `.lantai/skills/<name>/SKILL.md` 热加载，无需重启 |
 
 ### LLM Provider 体系
 
@@ -261,7 +261,7 @@ Python · JavaScript/TypeScript/TSX · Rust · Go · Java · C/C++ · C# · Ruby
 
 ### 权限引擎
 
-- 规则三来源合并：系统 / 项目（`.hologram/permissions.json`）/ 会话，裁决结果四态：`Allow` / `Deny` / `Ask`（danger 红卡）/ `Passthrough`；模式 Ask / Auto / Yolo（Yolo 不旁路 Deny，auto 白名单只放行编辑类工具）
+- 规则三来源合并：系统 / 项目（`.lantai/permissions.json`）/ 会话，裁决结果四态：`Allow` / `Deny` / `Ask`（danger 红卡）/ `Passthrough`；模式 Ask / Auto / Yolo（Yolo 不旁路 Deny，auto 白名单只放行编辑类工具）
 - **Bash 危险命令引擎**：13 类危险模式（rm -rf /、curl|sh、eval/exec/source、sudo/su、写 /dev/*、git push -f main、mkfs、shutdown …）+ PowerShell 特判（Invoke-Expression、iwr|iex、FromBase64String）+ 管道解码检测与可疑命令启发式
 - 路径规则对 worktree 自动 reverse-map 回主仓库逻辑路径；`_agent_id` 每次调用显式传递，杜绝并行子 Agent 身份串扰
 
@@ -273,11 +273,11 @@ Python · JavaScript/TypeScript/TSX · Rust · Go · Java · C/C++ · C# · Ruby
 
 ### 隔离（git worktree）
 
-每个子 Agent 一个 `git worktree add --detach` 独立工作区：正反向路径映射、范围 cherry-pick 串行合并（清失败≠合并失败）、重启后孤儿 worktree 收养、大 diff（>8K 字符）溢写 `.hologram/spill/` 回传；TTL 清理与合并队列由前端 agent 层纪律保证（见 AGENTS.md）。
+每个子 Agent 一个 `git worktree add --detach` 独立工作区：正反向路径映射、范围 cherry-pick 串行合并（清失败≠合并失败）、重启后孤儿 worktree 收养、大 diff（>8K 字符）溢写 `.lantai/spill/` 回传；TTL 清理与合并队列由前端 agent 层纪律保证（见 AGENTS.md）。
 
 ### 审计
 
-全部工具调用落 `.hologram/audit.jsonl`（allowed / denied / user_approved / user_denied），配合 `project_timeline` 工具按时间线回溯分析历史。
+全部工具调用落 `.lantai/audit.jsonl`（allowed / denied / user_approved / user_denied），配合 `project_timeline` 工具按时间线回溯分析历史。
 
 ---
 

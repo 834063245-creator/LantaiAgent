@@ -14,7 +14,7 @@ S2 终态是「**应用级**组合一次解析，启动期生效」：compositio
 | G0 | **四 service 零消费者**：插件经 ctx.panels/commands/tools 注册的贡献没有任何渲染面/装配面读取——S1 建了注册表但消费闭环从未接线 | 实查：`ctx.tools.list` / `ctx.panels.list` / `ctx.commands.list` 全仓零调用（仅 services.ts 自身）；面板渲染读 `PANEL_DEFS` 常量、命令面板读 `listActions()`、工具装配读行表 | §2.3 消费闭环批（panels/commands 即时生效 + tools 下次装配生效），hello 闭环的硬前提 |
 | G1 | **组合不随会话变**：每个 Agent 拿同一个 resolved；「这个会话要精简工具面 / 那个会话要全量」不可表达 | `workspace.setupAgent` 只读 `useCompositionStore.getState().resolved`（启动期快照） | per-session preset：会话挂自己的行组合（DSH agent preset 同构）；preset 选择落会话日志可重建 |
 | G2 | **改 patch 必须重启**：S2 明确声明「热重载延期至 S4」 | `docs/composition/README.md` 生效时机段 | patch 热重载：改 `roster.patch.yml` → 触发在途会话外的新装配即时生效（在途会话保序不变——字节契约纪律） |
-| G3 | **插件只有手放**：`~/.hologram/plugins/` 纯手工；无安装/卸载/更新通道，无示例工程 | 插件目录现状为空；plugin-store 只有装载状态 | npm tarball 源安装（Rust `plugin_install` + 设置面板「插件」节）+ `examples/plugins/hello/` 从零到跑通 |
+| G3 | **插件只有手放**：`~/.lantai/plugins/` 纯手工；无安装/卸载/更新通道，无示例工程 | 插件目录现状为空；plugin-store 只有装载状态 | npm tarball 源安装（Rust `plugin_install` + 设置面板「插件」节）+ `examples/plugins/hello/` 从零到跑通 |
 | G4 | **机器桥无产品化通道**：外部进程桥的零件齐全（Rust `protocol_bridge_spawn` + `createTauriProcIO` + `McpClient` stdio/url 双传输 + `mcpClients` 装配入口），但无声明式挂接面——外部插件只能用宿主编译期 MCP 面，不能自带「spawn 一个机器进程」的行 | `agent/mcp/tauri-io.ts`（桥适配已组装但零消费者）；dsh-bundle `cordis.patch.yml`（模板已写过一次：hologram-mcp 行 + failOnStartupError） | 可选组件：插件 manifest 声明 mcp server → loader 经机器桥装配 `mcp__<server>__*` 工具族 |
 
 另有一个排程特有的硬需求（G5）：**V5 壳切换的地基**。纸壳开工时「观测台 preset / 纸壳 preset」需要 preset realm 已就位——S4 是它唯一的前置窗口（前端工程后不再有组合层施工窗口）。
@@ -30,18 +30,18 @@ S2 终态是「**应用级**组合一次解析，启动期生效」：compositio
 | preset 本体 | 一个目录 = 一份 cordis.yml（**插件行**组合） | 一个目录 = 一份 `roster.patch.yml`（**四域行**组合） | HoloGram 的行是数据不是插件包；复用 S2 的 patch schema/解析引擎零新语义 |
 | 装载机制 | cordis scope realm（mount 进 agent 的 context 层，service 隔离） | **纯函数解析 + 显式传参**：`resolveRoster(factory, [userPatch, presetPatch])` → 装配面已有可选参数 | HoloGram 装配面是函数参数不是 ctx service；realm 的「per-session service 隔离」问题（DSH 泄漏守卫那套）在这里不存在——组合是值不是注册副作用 |
 | 生效面 | tools + systemPrompt sections + delegation | **tools + prompt + capabilities** 三域（shell 域对会话无意义——壳引导是应用级一次性的，preset 不碰） | 壳行禁用是应用级决策；会话级组合不含壳 |
-| 信任模型 | system（部署自带）/ user（`$DSH_HOME/.agent-presets`，等同 shell 信任） | 同款二分：system preset（应用内置，`src/composition/presets/`）+ user preset（`~/.hologram/presets/`） | 与 DSH 的 authoring 纪律一致：user root 可写、system 只读 |
+| 信任模型 | system（部署自带）/ user（`$DSH_HOME/.agent-presets`，等同 shell 信任） | 同款二分：system preset（应用内置，`src/composition/presets/`）+ user preset（`~/.lantai/presets/`） | 与 DSH 的 authoring 纪律一致：user root 可写、system 只读 |
 | 会话记录 | header 深冻 + `agent-preset/selected` 事件（newest wins，重建读 resolveSessionPreset） | 首事件方案（session/reset init 必发首条 `preset/selected`，newest-wins 重建；**新增事件 kind 走 Phase 5 立规：SESSION_EVENT_KINDS + DataMap + spec AST + gate 计数**——§2.4） | 「模型可见 ⟺ 已记录」是 DSH 那条纪律的原样移植——preset 决定模型看到的 schema/段，必须可重建（HoloGram 无 header 概念，首事件承担其语义位——复审修正） |
 
 **目录形态**（学 DSH：composition 是纯行列表，metadata 独立文件）：
 
 ```
-~/.hologram/composition/presets/<preset-id>/
+~/.lantai/composition/presets/<preset-id>/
 ├── roster.patch.yml   # 组合本体（S2 patch schema 原样复用：四域 + 禁/覆/插）
 └── preset.yml         # 显示元数据（name/description/order——纯展示，装载失败降级为无元数据不拒载）
 ```
 
-**复审修正：preset 落在 composition 根的子目录**（初稿为 `~/.hologram/presets/` 平级目录）——理由：(a) **零新文件路由成本**：`/composition/presets/<id>/roster.patch.yml` 在 S2 既有通道（resolve_asset 逐段校验 + 前缀约束）下机制上今天就能取到；(b) `HOLOGRAM_COMPOSITION_ROOT` 测试隔离对 preset 同样生效；(c) 用户组合数据单根收口。
+**复审修正：preset 落在 composition 根的子目录**（初稿为 `~/.lantai/presets/` 平级目录）——理由：(a) **零新文件路由成本**：`/composition/presets/<id>/roster.patch.yml` 在 S2 既有通道（resolve_asset 逐段校验 + 前缀约束）下机制上今天就能取到；(b) `HOLOGRAM_COMPOSITION_ROOT` 测试隔离对 preset 同样生效；(c) 用户组合数据单根收口。
 
 代价有两项（复审二轮修正——初稿只算了第一项）：
 
@@ -50,7 +50,7 @@ S2 终态是「**应用级**组合一次解析，启动期生效」：compositio
 
 - preset id 规则照抄 DSH `PRESET_ID`：`/^[a-z0-9][a-z0-9-]*$/`——id 是路径段，这是**围栏规则不是风格规则**（`..` / 分隔符 / 绝对名会把组合挪出授权根）。
 - **内置 system preset 表**（`src/composition/presets.ts`）：`standard`（零 patch = 出厂组合）+ `minimal`（禁 browser-desktop/web/graph-hooks…的精简面，V5 共居期的「纸壳 preset」原型）。system preset 不落盘——它是代码常量（与 S2「factory 层不出 yml」同一裁定）。system 优先：user preset 与内置同名 id 时内置胜（DSH「earlier root wins」同款——内置 id 是部署事实，用户不可影子化）。
-- **层序**：`factory → 用户层 patch（~/.hologram/composition/roster.patch.yml）→ preset patch`。preset 是最上层——用户层表达「这台机器的基线」，preset 表达「这个会话的裁剪」，裁剪叠加在基线之上（同 id 后写胜前写，S2 语义零改动）。
+- **层序**：`factory → 用户层 patch（~/.lantai/composition/roster.patch.yml）→ preset patch`。preset 是最上层——用户层表达「这台机器的基线」，preset 表达「这个会话的裁剪」，裁剪叠加在基线之上（同 id 后写胜前写，S2 语义零改动）。
 - **选择持久化**：`AppSettings` 加 `composition: { preset: string }`（缺省 `'standard'`；settings 读取的缺省容错走既有 AppSettings 扩展先例）。**一个字段、两个消费作用域**：boot 壳解析读它（shell 域条目 → 引导哪套壳行——V5 双装配的挂点）+ Agent 装配读它（tools/prompt/capabilities 域条目）。preset 文件自己决定说哪些域——「minimal」只说 agent 三域，「纸壳 preset」届时会带 shell 域条目。改 preset：壳作用域重启生效（壳行无 dispose 语义，S2 裁定不变），装配作用域下次装配生效。
 
 ### 2.2 穿线：会话怎么拿到自己的组合
@@ -111,14 +111,14 @@ boot：ensureCompositionLoaded 后追加 preset 解析
 S2 延期清单的兑现：**`composition-store` 加「重载」动作**，不是新通道。
 
 ```
-文件监听：Rust 侧 fs watcher（既有 workspace watcher 同款）监听 ~/.hologram/composition/
+文件监听：Rust 侧 fs watcher（既有 workspace watcher 同款）监听 ~/.lantai/composition/
   → Tauri 事件 composition:changed
   → patch-loader 重跑（幂等：同一 ensureCompositionLoaded 已有，抽出 reload() ）
   → composition-store.setResolved / setError（all-or-nothing 语义原样）
   → 新 Agent 装配即用新组合；在途会话不动（2.2 冻结语义）
 ```
 
-- **作用域**：监听根 = `~/.hologram/composition/` 整树（preset 子目录在树内），但事件处理**只对根级 `roster.patch.yml` 触发 reload**——preset 文件变更不自动重解析（在途会话组合本就冻结；preset 切换是显式动作 = 下次解析即重扫）。文档如实声明。
+- **作用域**：监听根 = `~/.lantai/composition/` 整树（preset 子目录在树内），但事件处理**只对根级 `roster.patch.yml` 触发 reload**——preset 文件变更不自动重解析（在途会话组合本就冻结；preset 切换是显式动作 = 下次解析即重扫）。文档如实声明。
 - **失败面**：坏 patch 重载 → store error + factory 兜底 + console 可见（S2 语义原样），UI 不弹窗（错误不静默 ≠ 打扰）。
 - **诊断呈现**：composition-store 的 status/error/patchOrigin 进设置面板「组合」只读节（顺手交付——plugin-store 同款可见性纪律）。
 
@@ -126,7 +126,7 @@ S2 延期清单的兑现：**`composition-store` 加「重载」动作**，不�
 
 **安装 = 下载 + 校验 + 解包到插件目录**，全在 Rust 侧（webview 无 fs；复用既有零件）：
 
-- **新 RPC `plugin_install`**：`{ source, expectName? }` → 下载（reqwest 已在依赖树）→ 校验 manifest（name 匹配 expectName / entry 白名单——复用 TS 侧同款规则的 Rust 镜像？**不**——manifest 校验留在 TS loader 既有单一入口，Rust 只做「tar 解包 + 路径安全」）→ 解包（**新依赖 `tar` + `flate2`** crate，纯解包无传递风险）→ 落 `~/.hologram/plugins/<name>/`（原子：先解到 `.tmp-<rand>` 再 rename；重名拒绝）。
+- **新 RPC `plugin_install`**：`{ source, expectName? }` → 下载（reqwest 已在依赖树）→ 校验 manifest（name 匹配 expectName / entry 白名单——复用 TS 侧同款规则的 Rust 镜像？**不**——manifest 校验留在 TS loader 既有单一入口，Rust 只做「tar 解包 + 路径安全」）→ 解包（**新依赖 `tar` + `flate2`** crate，纯解包无传递风险）→ 落 `~/.lantai/plugins/<name>/`（原子：先解到 `.tmp-<rand>` 再 rename；重名拒绝）。
 - **路径安全**（tar slip 防护）：解包条目逐条校验——拒绝绝对路径 / `..` 段 / 符号链接条目（tar crate unpack 不带内置防护，必须手写 entry 检查；这是 v1 P3 原案 + DSH 供应链警告的合并）。
 - **供应链警告（用户已拍板的完全信任模型，如实声明不加固）**：安装 UI 顶部常驻警告文本「插件是本机全信任代码：可读写文件、起子进程、调 133 个 RPC。npm 上的包 ≠ 审核过的包」。不做签名/校验和（v1 已拍板，ADR §5 信任模型维持）。
 - **卸载/禁用**：卸载 = `plugin_uninstall` RPC（Rust 删目录 + TS 侧 reload 插件清单）；禁用 = `plugin_set_enabled` RPC（Rust 读改写 plugins.json 的 disabled 集——S0 已定文件形状 `{"disabled": [...]}`，webview 无盘权必须走 RPC；**初稿漏列此命令，复审补**）。两者均重启生效（装载是 boot 期一次性——与组合层「下次装配」语义对齐，UI 提示条如实声明）。

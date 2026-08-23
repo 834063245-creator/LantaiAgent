@@ -11,7 +11,7 @@ pub struct SafetyCheckResult {
 }
 
 /// 检查路径是否可以安全读取。
-/// 类似 check_path_safety，但跳过 .hologram/ 配置检查 — 读取
+/// 类似 check_path_safety，但跳过 .lantai/ 配置检查 — 读取
 /// 兰台 自身的数据文件（memory、sessions、logs）是安全且必要的，
 /// 是正常操作的一部分。只有写入它们才是危险的。
 /// ponytail: 读路径不检查 dangerous_dir — 浏览 .vscode/.git/.idea 是正常操作,
@@ -92,7 +92,7 @@ pub fn check_path_safety(path: &Path) -> SafetyCheckResult {
     }
 }
 
-/// 兰台 配置路径 — `.hologram/` 目录内容。
+/// 兰台 配置路径 — `.lantai/` 目录内容。
 /// 运行时数据目录（memory、sessions、logs、worktrees）被豁免 —
 /// 兰台 UI 在正常运行时会写入这些目录。
 fn is_hologram_config_path(path: &Path) -> bool {
@@ -101,7 +101,7 @@ fn is_hologram_config_path(path: &Path) -> bool {
         .filter_map(|c| c.as_os_str().to_str())
         .collect();
     for i in 0..components.len() {
-        if components[i] == ".hologram" {
+        if components[i] == ".lantai" {
             // 运行时数据目录被豁免 — 兰台 UI 会写入这些目录
             if let Some(sub) = components.get(i + 1) {
                 if *sub == "worktrees" || *sub == "memory" || *sub == "logs" || *sub == "sessions" {
@@ -160,7 +160,7 @@ fn is_dangerous_file(path: &Path) -> bool {
     false
 }
 
-/// 危险目录 — .git, .vscode, .idea, .hologram (非 worktree)
+/// 危险目录 — .git, .vscode, .idea, .lantai (非 worktree)
 fn is_dangerous_dir(path: &Path) -> bool {
     // 检查路径中是否有任何组件是危险目录
     for component in path.components() {
@@ -329,13 +329,13 @@ mod tests {
 
     #[test]
     fn test_safety_hologram_config() {
-        let r = check_path_safety(Path::new(".hologram/settings.json"));
+        let r = check_path_safety(Path::new(".lantai/settings.json"));
         assert!(!r.safe);
     }
 
     #[test]
     fn test_safety_worktree_exempt() {
-        let r = check_path_safety(Path::new(".hologram/worktrees/agent-abc/src/main.rs"));
+        let r = check_path_safety(Path::new(".lantai/worktrees/agent-abc/src/main.rs"));
         assert!(r.safe);
     }
 
@@ -357,16 +357,16 @@ mod tests {
         assert!(!r.safe);
     }
 
-    // ── 读取安全检查 (check_path_safety_read) 豁免 .hologram/ ──
+    // ── 读取安全检查 (check_path_safety_read) 豁免 .lantai/ ──
 
     #[test]
     fn test_read_safety_allows_hologram() {
-        // 读取 .hologram/ 文件是安全的 — 它们是 兰台 自身的数据
-        let r = check_path_safety_read(Path::new(".hologram/memory/MEMORY.md"));
+        // 读取 .lantai/ 文件是安全的 — 它们是 兰台 自身的数据
+        let r = check_path_safety_read(Path::new(".lantai/memory/MEMORY.md"));
         assert!(r.safe, "memory reads should be allowed");
-        let r = check_path_safety_read(Path::new(".hologram/logs/bridge.log"));
+        let r = check_path_safety_read(Path::new(".lantai/logs/bridge.log"));
         assert!(r.safe, "log reads should be allowed");
-        let r = check_path_safety_read(Path::new(".hologram/sessions/chat.json"));
+        let r = check_path_safety_read(Path::new(".lantai/sessions/chat.json"));
         assert!(r.safe, "session reads should be allowed");
     }
 
@@ -389,24 +389,24 @@ mod tests {
 
     #[test]
     fn test_write_safety_exempts_runtime_dirs() {
-        let r = check_path_safety(Path::new(".hologram/memory/fact.md"));
+        let r = check_path_safety(Path::new(".lantai/memory/fact.md"));
         assert!(r.safe, "memory writes should be allowed for 兰台 UI");
-        let r = check_path_safety(Path::new(".hologram/logs/bridge.log"));
+        let r = check_path_safety(Path::new(".lantai/logs/bridge.log"));
         assert!(r.safe, "log writes should be allowed");
-        let r = check_path_safety(Path::new(".hologram/sessions/chat.json"));
+        let r = check_path_safety(Path::new(".lantai/sessions/chat.json"));
         assert!(r.safe, "session writes should be allowed");
-        let r = check_path_safety(Path::new(".hologram/worktrees/abc/src/main.rs"));
+        let r = check_path_safety(Path::new(".lantai/worktrees/abc/src/main.rs"));
         assert!(r.safe, "worktree writes should be allowed");
     }
 
     #[test]
     fn test_write_safety_blocks_config() {
         // 实际配置文件仍受保护
-        let r = check_path_safety(Path::new(".hologram/permissions.json"));
+        let r = check_path_safety(Path::new(".lantai/permissions.json"));
         assert!(!r.safe, "permissions.json writes should be blocked");
-        let r = check_path_safety(Path::new(".hologram/baseline.json"));
+        let r = check_path_safety(Path::new(".lantai/baseline.json"));
         assert!(!r.safe, "baseline.json writes should be blocked");
-        let r = check_path_safety(Path::new(".hologram/settings.json"));
+        let r = check_path_safety(Path::new(".lantai/settings.json"));
         assert!(!r.safe, "settings.json writes should be blocked");
         let r = check_path_safety(Path::new(".git/config"));
         assert!(!r.safe, ".git/config writes should be blocked");

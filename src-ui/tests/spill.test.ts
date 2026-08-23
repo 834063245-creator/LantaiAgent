@@ -41,12 +41,12 @@ describe('spillToFile', () => {
     expect(rpcMock).not.toHaveBeenCalled();
   });
 
-  it('writes large text to .hologram/spill and returns a locator + preview', async () => {
+  it('writes large text to .lantai/spill and returns a locator + preview', async () => {
     const files = mockFsWrite();
     const big = 'x'.repeat(5000);
     const out = await spillToFile({ projectPath: '/proj', name: 'd', text: big, maxInline: 100, extension: 'diff' });
     expect(out.spilled).toBe(true);
-    expect(out.path).toContain('/proj/.hologram/spill/');
+    expect(out.path).toContain('/proj/.lantai/spill/');
     expect(out.path).toMatch(/\.diff$/);
     expect(out.display).toContain('已溢写 5000 字符');
     expect(out.display).toContain('read_file 读取全量');

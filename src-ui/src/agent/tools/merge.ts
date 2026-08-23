@@ -143,7 +143,7 @@ export function createMergeTool(
 
         // R3 冲突保全：重抓 diff 并**写回 board**（此前返回值直接丢弃，
         // 「diff 已保存在 TaskBoard」名存实亡）；worktree 保留不删 ——
-        // 大 diff 由 Rust 侧溢写落盘 .hologram/spill/，board 存 locator。
+        // 大 diff 由 Rust 侧溢写落盘 .lantai/spill/，board 存 locator。
         try {
           const freshDiff = await enqueueIsolationOp(async () => {
             return await exec('agent_isolation_diff', { agent_id: entry.isolationId });

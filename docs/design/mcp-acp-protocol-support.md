@@ -60,7 +60,7 @@ HoloGram 要承担三个**标准角色**（不是发明双向协议，是照范�
 ### 1.3 关键既有资产（补全要复用的）
 
 - **工具执行**：src-ui/src/agent/tool.ts 的 ToolExecutor + ToolRegistry —— MCP client 把外部工具注册进来后，直接走这套
-- **会话实体**：src-ui/src/agent/agent.ts 的 Agent(run/runLoop/stream)，持久化到 .hologram/agents/{id}/（NDJSON）—— ACP 驱动它
+- **会话实体**：src-ui/src/agent/agent.ts 的 Agent(run/runLoop/stream)，持久化到 .lantai/agents/{id}/（NDJSON）—— ACP 驱动它
 - **流式输出**：src-ui/src/provider/stream 已有流式 chunk —— ACP 的流式从这里来
 - **取消**：Agent 的 run(signal) 已支持 AbortSignal —— ACP 的 session/cancel 从这里来
 - **权限/确认**：src-tauri 有 permission-ask 事件 —— ACP 的 permission 从这里来

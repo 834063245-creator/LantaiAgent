@@ -1659,7 +1659,7 @@ export class Agent {
   }
 
   /** 诊断: 按组件分解 token 消耗。
-   *  每轮后以结构化 NDJSON 记录到 .hologram/logs/ui.log。
+   *  每轮后以结构化 NDJSON 记录到 .lantai/logs/ui.log。
    *  过滤: jq 'select(.module=="agent" and .message=="token breakdown") | .ctx' */
   private _diagTokenBreakdown(apiUsage: Usage | undefined): void {
     try {

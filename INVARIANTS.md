@@ -211,7 +211,7 @@ io: 'input' 视图必须保留：让 defaulted 字段不进 required，
    → tauri 回退 postMessage → 响应丢失 → 前端 await 永久挂起 → 页面假死
    → GPU 进程重启即死 → ~150s browser 致命退出 → 白屏。
 
-⚠️ 2. 写入用户级数据文件（%APPDATA% 等，非项目 .hologram）的输入必须校验长度/类型
+⚠️ 2. 写入用户级数据文件（%APPDATA% 等，非项目 .lantai）的输入必须校验长度/类型
    （store 拒绝 >4096 字符 key），防毒化源头；读路径必须容忍毒化数据
    （丢弃超长条目 + 自动隔离备份重建），不能把"文件已毒化"变成"每次启动必崩"。
 

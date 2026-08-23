@@ -167,10 +167,10 @@ pub(crate) fn get_global_memory_dir() -> String {
     let home = std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
         .unwrap_or_else(|_| ".".to_string());
-    format!("{}/.hologram/global_memory", home.replace("\\", "/"))
+    format!("{}/.lantai/global_memory", home.replace("\\", "/"))
 }
 
-/// 用户级会话目录（workspace-flip 批 1）：~/.hologram/sessions/（零目录会话的落盘位）。
+/// 用户级会话目录（workspace-flip 批 1）：~/.lantai/sessions/（零目录会话的落盘位）。
 /// HOLOGRAM_SESSIONS_ROOT 环境变量可覆盖（测试隔离与目录重定位——plugins_root 同款惯例）。
 pub(crate) fn user_sessions_root() -> std::path::PathBuf {
     if let Some(custom) = std::env::var_os("HOLOGRAM_SESSIONS_ROOT") {
@@ -181,7 +181,7 @@ pub(crate) fn user_sessions_root() -> std::path::PathBuf {
     let home = std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
         .unwrap_or_else(|_| ".".to_string());
-    std::path::PathBuf::from(home).join(".hologram").join("sessions")
+    std::path::PathBuf::from(home).join(".lantai").join("sessions")
 }
 
 /// 会话摘要（home 列表行——TS SessionEntry 同形）。

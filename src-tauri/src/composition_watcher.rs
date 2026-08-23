@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT.
 //
-// 组合层热重载 watcher（S4-2）—— 监听 ~/.hologram/composition/ 根级
+// 组合层热重载 watcher（S4-2）—— 监听 ~/.lantai/composition/ 根级
 // roster.patch.yml 变更 → emit composition:changed 事件（前端 patch-loader
 // 重跑 reload，设计件 §2.5）。
 //

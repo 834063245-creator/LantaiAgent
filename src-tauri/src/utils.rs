@@ -70,7 +70,7 @@ pub(crate) struct DirEntry {
 /// 递归列出目录内容（深度受限以避免过大的树）。
 /// 最大深度：4 层，最大条目数：2000。当 `filter_ignored` 为 true 时，
 /// 通过引擎的 is_ignored_path 排除被忽略的路径（用于面向 Agent 的工具调用）。
-/// 内部调用者（消息存储、会话扫描器）传 false 以列出 .hologram 内容。
+/// 内部调用者（消息存储、会话扫描器）传 false 以列出 .lantai 内容。
 pub(crate) fn list_dir_recursive(root: &std::path::Path, filter_ignored: bool) -> Vec<DirEntry> {
     fn recurse(
         dir: &std::path::Path,
@@ -510,6 +510,63 @@ pub(crate) fn merge_path_entries(existing: &[String], extras: &[String]) -> Vec<
     }
     out
 }
+
+// ═══════════════════════════════════════════════════════════════
+// `.hologram` → `.lantai` 目录改名迁移（2026-08-23）
+//
+// 背景：产品更名兰台后，用户数据目录从 `.hologram` 切换到 `.lantai`。
+// 迁移策略 = 启动时自动重命名；两目录并存时告警不迁移（防误删用户数据）。
+// 幂等：可反复调。
+//
+// 调用点：
+//   - main.rs setup（开发/安装目录的 `.hologram`）
+//   - workspace_activate（每次打开项目时对该工作区根）
+// 引擎侧（engine/src/main.rs）另有同款调用以覆盖 MCP/CLI 直跑场景。
+// ═══════════════════════════════════════════════════════════════
+
+/// 迁移结果。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MigrateStatus {
+    /// 老目录不存在——无事可做。
+    NoOldData,
+    /// 已重命名 .hologram → .lantai。
+    Migrated,
+    /// 两目录并存——告警不迁移（防误删用户数据），由用户手动决。
+    ConflictSkipped,
+}
+
+/// 把 `root/.hologram` 重命名为 `root/.lantai`（原子，同文件系统内）。
+///
+/// 要求调用方保证没有进程占用 `.hologram` 内的文件（SQLite WAL 打开、
+/// 日志 appender 写入等）——本函数自身不检测，失败由 `fs::rename` 上报。
+///
+/// 调用前应清理孤儿 worktree（`.hologram/worktrees/agent-*` 在 git 内部
+/// 元数据 `.git/worktrees/<name>/gitdir` 中记的是绝对路径，重命名后断链；
+/// 先 `git worktree prune` 清孤儿，仍活跃的由调用方后续 `git worktree repair`）。
+pub(crate) fn migrate_hologram_to_lantai(root: &std::path::Path) -> Result<MigrateStatus, String> {
+    let old = root.join(".hologram");
+    let new = root.join(".lantai");
+    if !old.exists() {
+        return Ok(MigrateStatus::NoOldData);
+    }
+    if new.exists() {
+        eprintln!(
+            "[lantai] 警告：{} 同时存在 .hologram 与 .lantai，未迁移。请手动合并后删除 .hologram。",
+            root.display()
+        );
+        return Ok(MigrateStatus::ConflictSkipped);
+    }
+    std::fs::rename(&old, &new).map_err(|e| {
+        format!(
+            "迁移 {} → {} 失败: {e}（可能有进程占用 .hologram 内的文件——SQLite/日志/watcher 需先关闭）",
+            old.display(),
+            new.display()
+        )
+    })?;
+    eprintln!("[lantai] 已迁移 {} → {}", old.display(), new.display());
+    Ok(MigrateStatus::Migrated)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

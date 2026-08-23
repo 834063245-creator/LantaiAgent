@@ -9,7 +9,7 @@
 
 匹配规则:
   gold 里的 src/tgt 是点分后缀；入库边的节点 id 形如
-  ".home.user.HoloGram.engine.fixtures.gap_probe.app.controllers.user_ctl.py"，
+  ".home.user.lantai.engine.fixtures.gap_probe.app.controllers.user_ctl.py"，
   以 "." + gold 路径结尾即命中。external 条目用包含匹配（tgt 名出现在目标 id 中）。
 """
 import argparse
@@ -88,7 +88,7 @@ def bench_one(binary: str, fixture: str, gold_path: str, skip_analyze: bool) -> 
 
     fixture_abs = os.path.abspath(fixture)
     diag = [] if skip_analyze else run_analyze(binary, fixture_abs)
-    db = os.path.join(fixture_abs, ".hologram", "hologram.db")
+    db = os.path.join(fixture_abs, ".lantai", "hologram.db")
     edges = load_edges(db)
 
     tp = tp3 = 0

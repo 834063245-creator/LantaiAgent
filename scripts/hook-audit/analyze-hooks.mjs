@@ -3,8 +3,8 @@ import path from 'node:path';
 
 const ROOT = process.cwd();
 const DIRS = [
-  path.join(ROOT, '.hologram', 'sessions'),
-  path.join(ROOT, '.hologram', 'agents'),
+  path.join(ROOT, '.lantai', 'sessions'),
+  path.join(ROOT, '.lantai', 'agents'),
 ];
 const LOOKAHEAD = Number(process.env.LOOKAHEAD) || 5;
 
@@ -193,7 +193,7 @@ for (const s of sessionStats.filter((s) => s.injections >= 5).sort((a, b) => b.i
 const report = lines.join('\n');
 console.log(report);
 
-const outDir = path.join(ROOT, '.hologram', 'docs');
+const outDir = path.join(ROOT, '.lantai', 'docs');
 fs.mkdirSync(outDir, { recursive: true });
 fs.writeFileSync(path.join(outDir, 'hook-adoption-report.md'), `# Hook 引导采纳率报告\n\n\`\`\`\n${report}\n\`\`\`\n`, 'utf8');
-console.log(`\n报告已保存: .hologram/docs/hook-adoption-report.md`);
+console.log(`\n报告已保存: .lantai/docs/hook-adoption-report.md`);

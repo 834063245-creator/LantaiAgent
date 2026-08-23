@@ -10,7 +10,7 @@
 // 子 Agent 继承父会话的 board（会话内共享是板的本职）。
 // 不提供任何跨会话查询 API。
 //
-// 持久化：flush() / restore() 将 entries 序列化到 .hologram/discoveries/{sessionId}.json。
+// 持久化：flush() / restore() 将 entries 序列化到 .lantai/discoveries/{sessionId}.json。
 // 会话删除时删文件。启动时迁移旧全局 discoveries.json（一次性）。
 
 import { BoardPersistence } from './board-persistence';

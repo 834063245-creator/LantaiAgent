@@ -32,7 +32,7 @@
 ## 2. 插件目录与 manifest
 
 ```
-~/.hologram/plugins/<插件名>/
+~/.lantai/plugins/<插件名>/
 ├── manifest.json    # 必需——装载期校验
 └── entry.js         # manifest.entry 指定的 ESM 入口
 ```
@@ -226,17 +226,17 @@ Preset = 命名的行组合叠加层（S4-1a）。层序：
 
 ```
 factory（出厂表，代码真源）
-  → 用户层 patch（~/.hologram/composition/roster.patch.yml）
+  → 用户层 patch（~/.lantai/composition/roster.patch.yml）
   → preset patch（叠加最上层——「这个会话的裁剪」叠在「这台机器的基线」之上）
 ```
 
 - **内置 system preset**（代码常量，不落盘）：`standard`（零 patch =
   出厂组合）、`minimal`（禁 browser-desktop/web 工具行 + graph-hooks
   capability 的精简面）。
-- **用户 preset**：`~/.hologram/composition/presets/<id>/`：
+- **用户 preset**：`~/.lantai/composition/presets/<id>/`：
 
   ```
-  ~/.hologram/composition/presets/my-preset/
+  ~/.lantai/composition/presets/my-preset/
   ├── roster.patch.yml   # 组合本体（语法同用户层 patch——docs/composition/README.md）
   └── preset.yml         # 显示元数据（name/description/order——纯展示，坏文件降级不拒载）
   ```

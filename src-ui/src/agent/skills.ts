@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// Skill system — loads markdown files from .hologram/skills/<name>/SKILL.md
+// Skill system — loads markdown files from .lantai/skills/<name>/SKILL.md
 // Format: YAML frontmatter (name, description) + markdown body.
 // Hot-loading: skills are reloaded on every Skill tool call — install a skill
 // mid-session and it's immediately available, no restart needed.
@@ -49,7 +49,7 @@ function parseSkillMd(raw: string): { meta: Record<string, string>; body: string
 
 async function loadSkills(projectPath: string): Promise<SkillDef[]> {
   const root = projectPath.replace(/\\/g, '/');
-  const dir = `${root}/.hologram/skills`;
+  const dir = `${root}/.lantai/skills`;
   let entries: Array<{ name: string; type: string; path: string }>;
   try {
     entries = await typedJsonRpc('list_directory_flat', { path: dir, is_agent: false });
@@ -115,7 +115,7 @@ export function createSkillTool(registry: SkillRegistry): Tool {
       'Call without a skill name to list all available skills. ' +
       'User slash commands like /skill-name are automatically routed here.',
     schema: z.object({
-      skill: z.string().trim().describe('Skill name (directory name under .hologram/skills/).'),
+      skill: z.string().trim().describe('Skill name (directory name under .lantai/skills/).'),
       args: z.string().optional().describe('Optional argument string ($ARGUMENTS in skill body).'),
     }),
     readOnly: true,
@@ -127,7 +127,7 @@ export function createSkillTool(registry: SkillRegistry): Tool {
 
       if (!name) {
         return skills.length === 0
-          ? 'No skills installed. Create .hologram/skills/<name>/SKILL.md to add one.'
+          ? 'No skills installed. Create .lantai/skills/<name>/SKILL.md to add one.'
           : `Available skills:\n${skills.map((s) => `- **${s.name}**: ${s.description}`).join('\n')}`;
       }
 

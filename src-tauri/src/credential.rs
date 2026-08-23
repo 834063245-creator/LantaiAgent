@@ -213,7 +213,7 @@ mod windows_impl {
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("."));
         // 目录名与 tauri.conf.json 的 identifier (com.lantai.app) 一致。
-        // 2026-08-22 产品更名兰台时统一：旧 com.hologram.app 下的密文不迁移
+        // 2026-08-22 产品更名兰台时统一：旧 com.lantai.app 下的密文不迁移
         // （零外部用户，重录一次 API Key 即可）。
         base.join("com.lantai.app").join("credentials.enc")
     }

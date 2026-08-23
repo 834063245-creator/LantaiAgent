@@ -14,7 +14,6 @@ mod aura_memory;
 mod mcp_manager;
 mod pty_manager;
 mod lsp_manager;
-mod unity_manager;
 
 mod permissions;
 mod tools;
@@ -106,6 +105,10 @@ fn main() {
             get_active_project,
         ])
         .setup(|app| {
+            // .hologram → .lantai 数据目录迁移（2026-08-23 改名）：
+            // 开发/安装目录下的老 .hologram 在 setup 期一次性重命名。
+            // 工作区级 .hologram 在 workspace_activate 时各自迁移。
+            let _ = utils::migrate_hologram_to_lantai(&utils::project_root());
             // Phase 4a: OS 沙箱 — Job Object 实现 die-with-parent + 捆绑 MSYS2 bash 解析
             os_sandbox::init(app.handle());
             // 如果 OS 沙箱降级则警告 — 权限引擎作为回退
@@ -113,11 +116,9 @@ fn main() {
             if !matches!(s, os_sandbox::SandboxStatus::Available) {
                 eprintln!("[hologram] OS sandbox 不可用 — 仅权限引擎生效");
             }
-            // v4 Phase 4: Unity 事件服务器
-            commands::external::start_unity_event_server(app.handle().clone());
             // LLM 反向代理 — 绕开 WebView CORS，让 provider 调用走后端（2026-08-16）
             let _proxy_port = llm_proxy::spawn_llm_proxy();
-            // 组合层热重载 watcher（S4-2）：~/.hologram/composition/ 根级
+            // 组合层热重载 watcher（S4-2）：~/.lantai/composition/ 根级
             // roster.patch.yml 变更 → composition:changed 事件 → 前端 reload。
             // app 生命周期 = watcher 生命周期（Drop 停线程）。
             let _composition_watcher = composition_watcher::CompositionWatcher::start(app.handle().clone());
@@ -143,11 +144,9 @@ fn main() {
 
             // 将所有服务注册到 ResourceLedger
             let mut ledger = lifecycle::ResourceLedger::new();
-            ledger.register(Box::new(lifecycle::UnityEventService));
             ledger.register(Box::new(lifecycle::LlmProxyService));
             ledger.register(Box::new(lifecycle::BgJobsService));
             ledger.register(Box::new(lifecycle::McpService));
-            ledger.register(Box::new(lifecycle::UnityService));
             ledger.register(Box::new(lifecycle::PtyService));
             ledger.register(Box::new(lifecycle::LspService));
             ledger.register(Box::new(lifecycle::UiaService));
@@ -186,17 +185,22 @@ mod tests {
 
     /// 回归：占位工作区（path=''）activate 不清空 .last_project——
     /// 「最近工作区」记忆只记真实绑定（引擎关态冷启动的唯一恢复信号，
-    /// 2026-08-22 实测踩中：占位启动把记忆抹了）。
+    /// 2026-08-22 引擎开关配套，实测踩中：占位启动把记忆抹了）。
+    ///
+    /// ⚠ 测试纪律：activate 的参数 root 必须指向临时目录，不得用
+    /// utils::project_root()（仓库根）——后者会把假数据写进真实
+    /// .last_project，污染用户工作区指针（2026-08-23 实测踩中：
+    /// D:/some/real/project 残留在仓库根，新前端 listSavedSessions 全空）。
     #[test]
     fn placeholder_activate_does_not_clear_last_project() {
         let tmp = std::env::temp_dir().join("hologram_test_placeholder_activate");
+        let _ = std::fs::remove_dir_all(&tmp);
         let _ = std::fs::create_dir_all(&tmp);
-        let root = utils::project_root();
-        let last = root.join(".last_project");
+        let last = tmp.join(".last_project");
         // 先写一个非空记忆，再让占位句柄 activate，验证不被清空
         let _ = std::fs::write(&last, "D:/some/real/project");
         let handle = workspace::WorkspaceHandle::new("");
-        handle.activate(&root);
+        handle.activate(&tmp);
         let content = std::fs::read_to_string(&last).unwrap_or_default();
         assert_eq!(content, "D:/some/real/project", "占位 activate 不得清空 .last_project");
         let _ = std::fs::remove_dir_all(&tmp);
@@ -204,16 +208,35 @@ mod tests {
 
     /// get_last_project（引擎开关关态的冷启动恢复信号）：读 .last_project，
     /// 缺文件/空内容 = None（trim 后过滤——写入侧带换行也读得回）。
+    ///
+    /// ⚠ 此测试借 handle.activate 写真实 .last_project（仓库根）后读回——
+    /// 验证「写入路径与读取路径同 source」的契约。由于读写两侧都走
+    /// utils::project_root()，并无伪造风险；但测试尾声必须把仓库根的
+    /// .last_project 清掉，避免污染真实「最近项目」指针（2026-08-23 教训）。
     #[test]
     fn get_last_project_reads_last_project_file() {
         let tmp = std::env::temp_dir().join("hologram_test_get_last_project");
+        let _ = std::fs::remove_dir_all(&tmp);
         let _ = std::fs::create_dir_all(&tmp);
         // project_root() 在测试态 = CARGO_MANIFEST_DIR 的上级（仓库根）——
         // 与 activate 写入同源：借 handle.activate 写，再读回验证往返。
+        let root = utils::project_root();
+        let last_at_root = root.join(".last_project");
+        // 快照原值，测试尾声还原——避免覆盖真实「上次打开的项目」指针
+        let prior = std::fs::read_to_string(&last_at_root).ok();
         let handle = workspace::WorkspaceHandle::new(&tmp.to_string_lossy());
-        handle.activate(&utils::project_root());
+        handle.activate(&root);
         let r = commands::workspace::get_last_project().expect("get_last_project should not fail");
         assert_eq!(r.as_deref(), Some(tmp.to_string_lossy().as_ref()));
+        // 还原仓库根的 .last_project 到测试前状态（有则写回，无则删除）
+        match prior {
+            Some(content) => {
+                let _ = std::fs::write(&last_at_root, content);
+            }
+            None => {
+                let _ = std::fs::remove_file(&last_at_root);
+            }
+        }
         let _ = std::fs::remove_dir_all(&tmp);
     }
 

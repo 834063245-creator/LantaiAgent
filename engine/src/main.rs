@@ -147,7 +147,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             eprintln!("[stress] Project path not found: {}", path_str);
             std::process::exit(1);
         }
-        // 真实项目基准写文件日志（<project>/.hologram/logs/engine.log），
+        // 真实项目基准写文件日志（<project>/.lantai/logs/engine.log），
         // 否则 tracing 落到 no-op subscriber，[parser] warn（超时/跳过大文件）全丢。
         let _log_guard = logging::init_logging(Some(&root));
         stress::run_stress_real(&root, iterations);
@@ -223,6 +223,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if !root.exists() {
                     eprintln!("[engine] 错误: 项目根目录不存在: {}", project_root);
                     std::process::exit(1);
+                }
+                // .hologram → .lantai 迁移（2026-08-23 改名）：MCP/CLI 直跑时
+                // 由引擎兜底迁移（桌面端由壳在 workspace_activate 已迁过——幂等）。
+                if let Err(e) = hologram_engine::path_utils::migrate_hologram_to_lantai(&root) {
+                    eprintln!("[lantai] 引擎侧迁移失败 {project_root}: {e}");
                 }
                 info!(project_root = %project_root, "engine starting in MCP serve mode (with project)");
 
@@ -584,11 +589,11 @@ fn full_analyze_impl(root: &std::path::Path) -> Vec<u8> {
     serde_json::to_vec(&resp).unwrap_or_default()
 }
 
-/// 缓存是否过期：基线 = <root>/.hologram/hologram.db 的 mtime；
+/// 缓存是否过期：基线 = <root>/.lantai/hologram.db 的 mtime；
 /// 遍历源码文件，任一文件 mtime 晚于基线 → 过期（源码在上次落盘后被改过）。
 /// 跳过依赖/构建/虚拟环境等目录（与 discovery.rs / 原版 Tauri cache_is_stale 一致）。
 fn cache_is_stale(root: &std::path::Path) -> bool {
-    let db_path = root.join(".hologram").join("hologram.db");
+    let db_path = root.join(".lantai").join("hologram.db");
     let baseline = match std::fs::metadata(&db_path).and_then(|m| m.modified()) {
         Ok(t) => t,
         Err(_) => return true, // 无 DB → 无存量 → 视为过期（会走全量分析）
@@ -601,7 +606,8 @@ fn cache_is_stale(root: &std::path::Path) -> bool {
     ];
     const SKIP: &[&str] = &[
         ".git", "node_modules", "target", "build", "dist", "out", ".venv", "venv",
-        ".hologram", "release-bin", "__pycache__", ".pytest_cache", ".ruff_cache",
+        // .hologram 与 .lantai 双名共存（2026-08-23 改名）：老项目目录仍存在
+        ".hologram", ".lantai", "release-bin", "__pycache__", ".pytest_cache", ".ruff_cache",
         ".mypy_cache", ".next", ".nuxt", ".svelte-kit", ".turbo", ".cursor",
         ".idea", ".vscode", ".coverage",
     ];
@@ -742,9 +748,9 @@ fn handle_diff(baseline_path: &str) -> Vec<u8> {
         _ => return b"{\"error\":\"no graph loaded, run analyze first\"}".to_vec(),
     };
 
-    // 基线路径默认为 .hologram/baseline.json
+    // 基线路径默认为 .lantai/baseline.json
     let baseline_path = if baseline_path.is_empty() {
-        ".hologram/baseline.json".to_string()
+        ".lantai/baseline.json".to_string()
     } else {
         baseline_path.to_string()
     };

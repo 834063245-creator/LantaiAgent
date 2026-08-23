@@ -27,7 +27,7 @@ Workspace 入口层今天是 engine 中心的：open(path) 的第一公民是图
 
 ## 现状证据（2026-08-20 实查）
 
-- **数据层已是身份中心**：`.hologram/agents/{agentId}/`、`taskboard/{sessionId}.json`、`goals/{id}/`——Agent 持久化按身份组织，不按工作区。
+- **数据层已是身份中心**：`.lantai/agents/{agentId}/`、`taskboard/{sessionId}.json`、`goals/{id}/`——Agent 持久化按身份组织，不按工作区。
 - **无图谱路径已有雏形**：`createAgentOnlyWorkspace`（仅 Agent 模式占位工作区，永不激活）+ `createPlaceholderAgent`。
 - **解耦前置已定**：R2 活引用（块挂文件源不挂工作区）+ 组合层 S1 行表（装配不依赖 Workspace 单例）——翻转的两块地基已铺。
 - **engine 侧本来无绑**：图谱机器（G）以 stdio MCP / TCP 服务外部消费者，本就不持有 Workspace 概念。

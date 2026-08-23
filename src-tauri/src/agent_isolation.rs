@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Agent 隔离 — 沙箱化 agent 运行的 git worktree 生命周期管理 (spec §5)
-// - create_worktree: git worktree add --detach .hologram/worktrees/agent-{id}
+// - create_worktree: git worktree add --detach .lantai/worktrees/agent-{id}
 // - map_path: 双向映射（正向用于文件操作，反向用于权限规则）
 // - cleanup: diff 检查 → 移除或保留
 
@@ -54,7 +54,7 @@ impl AgentIsolation {
     }
 
     /// 为 agent 隔离创建一个 git worktree。
-    /// 使用 `agent-{id}` 作为 `.hologram/worktrees/` 下的 worktree 名称。
+    /// 使用 `agent-{id}` 作为 `.lantai/worktrees/` 下的 worktree 名称。
     /// 验证 id 以防止路径穿越 (spec §5.5)。
     pub fn create_worktree(main_repo_path: &Path, agent_id: &str) -> Result<Self, String> {
         validate_agent_id(agent_id)?;
@@ -67,7 +67,7 @@ impl AgentIsolation {
             format!("agent-{}", agent_id)
         };
         let worktree_dir = main_repo_path
-            .join(".hologram")
+            .join(".lantai")
             .join("worktrees")
             .join(&slug);
 
@@ -119,11 +119,11 @@ impl AgentIsolation {
         })
     }
 
-    /// 扫描 `.hologram/worktrees/` 下仍注册在 git 中的孤儿 worktree。
+    /// 扫描 `.lantai/worktrees/` 下仍注册在 git 中的孤儿 worktree。
     /// 返回 (slug, worktree 绝对路径)。只认 git worktree list 里的真实
     /// 注册项，不收养垃圾目录。
     pub(crate) fn scan_orphan_worktrees(main_repo_path: &Path) -> Vec<(String, PathBuf)> {
-        let wt_root = main_repo_path.join(".hologram").join("worktrees");
+        let wt_root = main_repo_path.join(".lantai").join("worktrees");
         let Ok(dir_entries) = std::fs::read_dir(&wt_root) else {
             return Vec::new();
         };
@@ -153,7 +153,7 @@ impl AgentIsolation {
                 continue;
             };
             let path = PathBuf::from(p);
-            // 路径父目录必须就是 .hologram/worktrees（防主 worktree 或外部目录误收养）
+            // 路径父目录必须就是 .lantai/worktrees（防主 worktree 或外部目录误收养）
             let parent_ok = path
                 .parent()
                 .map(|par| normalize(par) == normalize(&wt_root))
@@ -172,7 +172,7 @@ impl AgentIsolation {
 
     /// 反向映射：worktree 物理路径 → 主仓库逻辑路径。
     /// 用于权限规则匹配，使用户规则如 `Edit("src/**")` 能匹配
-    /// worktree 路径如 `.hologram/worktrees/agent-abc/src/main.rs` (spec §5.6)。
+    /// worktree 路径如 `.lantai/worktrees/agent-abc/src/main.rs` (spec §5.6)。
     pub fn reverse_map(&self, path: &Path) -> PathBuf {
         if self.kind == IsolationKind::None {
             return path.to_path_buf();
@@ -520,7 +520,7 @@ mod tests {
     #[test]
     fn test_reverse_map_worktree() {
         let main = PathBuf::from("D:/project");
-        let wt = main.join(".hologram/worktrees/agent-abc");
+        let wt = main.join(".lantai/worktrees/agent-abc");
         let iso = AgentIsolation {
             kind: IsolationKind::Worktree,
             worktree_path: Some(wt),
@@ -528,7 +528,7 @@ mod tests {
             main_repo_path: main.clone(),
         };
         let result = iso.reverse_map(Path::new(
-            "D:/project/.hologram/worktrees/agent-abc/src/main.rs",
+            "D:/project/.lantai/worktrees/agent-abc/src/main.rs",
         ));
         assert_eq!(result, PathBuf::from("D:/project/src/main.rs"));
     }
@@ -543,7 +543,7 @@ mod tests {
     #[test]
     fn test_forward_map_worktree() {
         let main = PathBuf::from("D:/project");
-        let wt = main.join(".hologram/worktrees/agent-abc");
+        let wt = main.join(".lantai/worktrees/agent-abc");
         let iso = AgentIsolation {
             kind: IsolationKind::Worktree,
             worktree_path: Some(wt.clone()),
@@ -557,7 +557,7 @@ mod tests {
     #[test]
     fn test_forward_map_relative_path() {
         let main = PathBuf::from("D:/project");
-        let wt = main.join(".hologram/worktrees/agent-abc");
+        let wt = main.join(".lantai/worktrees/agent-abc");
         let iso = AgentIsolation {
             kind: IsolationKind::Worktree,
             worktree_path: Some(wt.clone()),
@@ -571,7 +571,7 @@ mod tests {
     #[test]
     fn test_forward_map_worktree_idempotent() {
         let main = PathBuf::from("D:/project");
-        let wt = main.join(".hologram/worktrees/agent-abc");
+        let wt = main.join(".lantai/worktrees/agent-abc");
         let iso = AgentIsolation {
             kind: IsolationKind::Worktree,
             worktree_path: Some(wt.clone()),
@@ -899,7 +899,7 @@ mod tests {
         wt_git(&wt, &["commit", "-m", "orphan commit", "--quiet"]);
 
         // 垃圾目录（非 git worktree）不得被收养
-        let junk = tmp.join(".hologram/worktrees/agent-junk-x");
+        let junk = tmp.join(".lantai/worktrees/agent-junk-x");
         std::fs::create_dir_all(&junk).unwrap();
         std::fs::write(junk.join("noise.txt"), "noise").unwrap();
 

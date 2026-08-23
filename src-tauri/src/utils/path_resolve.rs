@@ -83,7 +83,7 @@ pub(crate) fn sanitize_path_id(id: &str, label: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// 验证路径是否在某个项目根目录的 `.hologram` 目录内。
+/// 验证路径是否在某个项目根目录的 `.lantai` 目录内。
 /// 拒绝 `..` 穿越和 hologram 工作区之外的路径。
 pub(crate) fn validate_hologram_path(path: &str) -> Result<(), String> {
     if path.contains('\0') {
@@ -94,8 +94,8 @@ pub(crate) fn validate_hologram_path(path: &str) -> Result<(), String> {
     if normalized.contains("/../") || normalized.starts_with("../") || normalized.ends_with("/..") {
         return Err("路径包含目录穿越序列".into());
     }
-    if !normalized.contains(".hologram") {
-        return Err("路径不在 .hologram 目录范围内".into());
+    if !normalized.contains(".lantai") {
+        return Err("路径不在 .lantai 目录范围内".into());
     }
     Ok(())
 }
@@ -117,7 +117,7 @@ pub(crate) fn check_mcp_permission(
     tool_name: &str,
     state: &tauri::State<'_, WorkspaceState>,
 ) -> Result<(), String> {
-    // ponytail: 无工作区 = 无 .hologram/permissions.json = 无自定义规则，放行。
+    // ponytail: 无工作区 = 无 .lantai/permissions.json = 无自定义规则，放行。
     let ctx = match get_ctx(state) {
         Ok(ctx) => ctx,
         Err(_) => return Ok(()),
@@ -239,7 +239,7 @@ pub(crate) fn check_permission_sync(
             }
             ctx.audit_deny(tool.name(), &target, &format!("后台任务无法交互，自动拒绝: {}", reason));
             let hint = match suggestions.first() {
-                Some(s) => format!("\n建议在 .hologram/permissions.json 添加: \"allow\": [\"{}\"]", s.rule),
+                Some(s) => format!("\n建议在 .lantai/permissions.json 添加: \"allow\": [\"{}\"]", s.rule),
                 None => String::new(),
             };
             Err(format!("后台任务需要用户确认但无法交互: {}。请将对应操作加入 allow 规则或使用前台 Agent 执行。{}", reason, hint))

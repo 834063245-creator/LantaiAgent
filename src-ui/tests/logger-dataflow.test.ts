@@ -191,7 +191,7 @@ describe('Logger 工作区切换', () => {
     expect(mockRpc).toHaveBeenCalledTimes(callCountAfterA + 1);
     const lastCall = mockRpc.mock.calls[callCountAfterA];
     expect(lastCall[0]).toBe('log_append');
-    expect(lastCall[1].path).toContain('/project-a/.hologram/logs/ui.log');
+    expect(lastCall[1].path).toContain('/project-a/.lantai/logs/ui.log');
     expect(lastCall[1].content).toContain('msg from A');
   });
 
@@ -226,6 +226,6 @@ describe('Logger 工作区切换', () => {
     const calls = mockRpc.mock.calls.filter((c: any) => c[0] === 'log_append');
     expect(calls.length).toBeGreaterThanOrEqual(1);
     const lastLogCall = calls[calls.length - 1];
-    expect(lastLogCall[1].path).toContain('/project-b/.hologram/logs/ui.log');
+    expect(lastLogCall[1].path).toContain('/project-b/.lantai/logs/ui.log');
   });
 });

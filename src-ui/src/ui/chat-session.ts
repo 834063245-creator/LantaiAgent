@@ -431,10 +431,10 @@ function lsKey(projectPath: string, id: number): string {
 }
 
 // ── 零目录会话路由（workspace-flip 批 2，D-W1-1/D-W1-2）─────────────
-// 占位工作区 projectPath='' 的会话落盘到用户级目录（~/.hologram/sessions/
+// 占位工作区 projectPath='' 的会话落盘到用户级目录（~/.lantai/sessions/
 // ——get_user_sessions_dir RPC 真源）。缓存经 ensureUserSessionsDir()
 // 解析（setupPlaceholderAgent / SessionsHome 装配点调用）；未解析时的
-// 兜底路径 '/.hologram/sessions' 与旧行为一致（写入失败可见于 console）。
+// 兜底路径 '/.lantai/sessions' 与旧行为一致（写入失败可见于 console）。
 let _userSessionsDir: string | null = null;
 
 /** 解析用户级会话目录（幂等；零目录会话装配点调用一次）。 */
@@ -444,7 +444,7 @@ export async function ensureUserSessionsDir(): Promise<void> {
     _userSessionsDir = await typedRpc('get_user_sessions_dir', {});
   } catch (e) {
     console.error('[chat] get_user_sessions_dir 解析失败（零目录会话不落盘）:', e);
-    _userSessionsDir = '/.hologram/sessions'; // 显式兜底（与旧行为一致——不静默改道）
+    _userSessionsDir = '/.lantai/sessions'; // 显式兜底（与旧行为一致——不静默改道）
   }
 }
 
@@ -456,9 +456,9 @@ export function _resetUserSessionsDirForTests(): void {
 function sessionsDir(projectPath: string): string {
   if (projectPath === '') {
     // 零目录会话：路由用户级目录（缓存未就绪 = 旧兜底路径，ensure 已在装配点调用）
-    return _userSessionsDir ?? '/.hologram/sessions';
+    return _userSessionsDir ?? '/.lantai/sessions';
   }
-  return `${projectPath.replace(/\\/g, '/')}/.hologram/sessions`;
+  return `${projectPath.replace(/\\/g, '/')}/.lantai/sessions`;
 }
 
 function sessionFile(projectPath: string, id: number): string {

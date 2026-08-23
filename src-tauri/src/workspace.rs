@@ -257,7 +257,7 @@ fn collect_file_mtimes(root: &str) -> std::collections::HashMap<String, u64> {
         "out",
         ".venv",
         "venv",
-        ".hologram",
+        ".lantai",
         "release-bin",
         "__pycache__",
         ".pytest_cache",

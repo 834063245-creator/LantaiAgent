@@ -36,14 +36,14 @@
         "action": "write",
         "filePath": "/proj/a.ts"
       },
-      "decision": "[已拦截] 规划模式下 fs 仅允许只读动作: read, list。把修改方案写入计划文件（/proj/.hologram/plans/plan-<id>.md），或退出规划模式后再执行。",
+      "decision": "[已拦截] 规划模式下 fs 仅允许只读动作: read, list。把修改方案写入计划文件（/proj/.lantai/plans/plan-<id>.md），或退出规划模式后再执行。",
       "label": "激活-领域写动作拦截",
       "name": "fs"
     },
     {
       "args": {
         "action": "write",
-        "filePath": "/proj/.hologram/plans/plan-<id>.md"
+        "filePath": "/proj/.lantai/plans/plan-<id>.md"
       },
       "decision": "allow",
       "label": "激活-fs写命中计划文件豁免",
@@ -52,7 +52,7 @@
     {
       "args": {
         "action": "edit",
-        "path": "/proj/.hologram/plans/plan-<id>.md"
+        "path": "/proj/.lantai/plans/plan-<id>.md"
       },
       "decision": "allow",
       "label": "激活-fs编辑path别名命中计划文件豁免",
@@ -72,13 +72,13 @@
         "action": "kill",
         "id": "sub-1"
       },
-      "decision": "[已拦截] 规划模式下 agent 仅允许只读动作: inbox, list。把修改方案写入计划文件（/proj/.hologram/plans/plan-<id>.md），或退出规划模式后再执行。",
+      "decision": "[已拦截] 规划模式下 agent 仅允许只读动作: inbox, list。把修改方案写入计划文件（/proj/.lantai/plans/plan-<id>.md），或退出规划模式后再执行。",
       "label": "激活-agent kill拦截",
       "name": "agent"
     },
     {
       "args": {},
-      "decision": "[已拦截] 规划模式下不允许调用 analyze_project。请只做只读探索，把修改方案写入计划文件（/proj/.hologram/plans/plan-<id>.md）。",
+      "decision": "[已拦截] 规划模式下不允许调用 analyze_project。请只做只读探索，把修改方案写入计划文件（/proj/.lantai/plans/plan-<id>.md）。",
       "label": "激活-非领域非只读拦截",
       "name": "analyze_project"
     }

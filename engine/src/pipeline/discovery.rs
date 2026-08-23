@@ -205,7 +205,9 @@ pub const IGNORED_DIRS: &[&str] = &[
     ".git", "__pycache__", "node_modules", "venv", ".venv", "env",
     ".tox", ".mypy_cache", ".pytest_cache", ".hg", ".svn",
     "dist", "build", "target", ".eggs", "*.egg-info",
-    ".hologram", "htmlcov", ".reasonix", ".codegraph", ".ruff_cache",
+    // .hologram 与 .lantai 双名共存（2026-08-23 改名）：用户硬盘上的老项目
+    // 可能永远存在未迁移的 .hologram，必须继续忽略防止被吃进图。
+    ".hologram", ".lantai", "htmlcov", ".reasonix", ".codegraph", ".ruff_cache",
     ".next", ".nuxt", "out", ".angular", ".cache", "coverage",
     "vendored", "generated", "tests",
     ".vscode", ".idea", ".fleet", ".cursor",  // 编辑器

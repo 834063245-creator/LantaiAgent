@@ -68,9 +68,9 @@ pub fn load_system_rules() -> Vec<PermissionRule> {
     let deny_patterns = &[
         // 保护配置文件，而非运行时数据 — 兰台 UI 在正常运行时
         // 写入 memory/、sessions/、logs/。
-        "Edit(.hologram/permissions.json)",
-        "Edit(.hologram/baseline.json)",
-        "Edit(.hologram/settings.json)",
+        "Edit(.lantai/permissions.json)",
+        "Edit(.lantai/baseline.json)",
+        "Edit(.lantai/settings.json)",
         "Edit(.git/config)",
         "Edit(.git/hooks/**)",
         "Edit(~/.ssh/authorized_keys)",
@@ -137,11 +137,11 @@ pub fn load_system_rules() -> Vec<PermissionRule> {
     rules
 }
 
-/// 从 .hologram/permissions.json 加载项目专属规则。
+/// 从 .lantai/permissions.json 加载项目专属规则。
 /// 文件不存在 = 无规则（正常）；读取/解析失败 = 按无规则运行但必须告警——
 /// 否则用户自定义 deny 规则静默丢失即成安全 fail-open（雷区地图 P0-5）。
 pub fn load_project_rules(project_root: &Path) -> Vec<PermissionRule> {
-    let path = project_root.join(".hologram").join("permissions.json");
+    let path = project_root.join(".lantai").join("permissions.json");
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
@@ -186,7 +186,7 @@ pub fn load_project_rules(project_root: &Path) -> Vec<PermissionRule> {
 /// 去重：同一 section 中相同的规则字符串不会被重复添加。
 #[allow(dead_code)] // API ready, not yet called from UI
 pub fn append_project_rule(project_root: &Path, rule_str: &str, behavior: &str) {
-    let path = project_root.join(".hologram").join("permissions.json");
+    let path = project_root.join(".lantai").join("permissions.json");
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -480,11 +480,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         append_project_rule(&dir, "Bash(npm test:*)", "allow");
-        let content = std::fs::read_to_string(dir.join(".hologram").join("permissions.json")).unwrap();
+        let content = std::fs::read_to_string(dir.join(".lantai").join("permissions.json")).unwrap();
         assert!(content.contains("npm test:*"));
         // 原子写不得留下 tmp/bak 残渣
-        assert!(!dir.join(".hologram").join("permissions.json.tmp").exists());
-        assert!(!dir.join(".hologram").join("permissions.json.bak").exists());
+        assert!(!dir.join(".lantai").join("permissions.json.tmp").exists());
+        assert!(!dir.join(".lantai").join("permissions.json.bak").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -492,8 +492,8 @@ mod tests {
     fn append_project_rule_refuses_to_clobber_corrupt_file() {
         let dir = std::env::temp_dir().join("hologram_test_perm_corrupt");
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join(".hologram")).unwrap();
-        let f = dir.join(".hologram").join("permissions.json");
+        std::fs::create_dir_all(dir.join(".lantai")).unwrap();
+        let f = dir.join(".lantai").join("permissions.json");
         std::fs::write(&f, "not json{{").unwrap();
         append_project_rule(&dir, "Bash(npm test:*)", "allow");
         // 损坏文件必须原样保留，等人工处理——而不是被静默清空
@@ -505,8 +505,8 @@ mod tests {
     fn load_project_rules_corrupt_returns_empty_but_does_not_panic() {
         let dir = std::env::temp_dir().join("hologram_test_perm_load_corrupt");
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join(".hologram")).unwrap();
-        std::fs::write(dir.join(".hologram").join("permissions.json"), "{{bad").unwrap();
+        std::fs::create_dir_all(dir.join(".lantai")).unwrap();
+        std::fs::write(dir.join(".lantai").join("permissions.json"), "{{bad").unwrap();
         assert!(load_project_rules(&dir).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }

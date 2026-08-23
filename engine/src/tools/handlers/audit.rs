@@ -80,7 +80,7 @@ pub(crate) fn handler_status(_args: &Value) -> ToolResponse {
                 engine::EngineState::Error(_) => "error",
             };
             let is_watching = engine::with_engine(|eng| eng.is_watching()).unwrap_or(false);
-            let vi_path = project_root().join(".hologram").join("vectors.usearch");
+            let vi_path = project_root().join(".lantai").join("vectors.usearch");
             let vi_exists = vi_path.exists();
             // 走进程级缓存（mtime 失效）——不再每次 status 调用都从磁盘全量加载索引
             let vi_count = if vi_exists {
