@@ -805,6 +805,90 @@ describe('L2 落盘收编（谁跑完存谁）', () => {
   });
 });
 
+describe('L3 一致性守护（常驻）', () => {
+  it('总目 open 集投影 ≡ sess store：recordOpenSetChange 落盘即对账', async () => {
+    const panel = createChatPanel();
+    panel.setProjectPath(PROJ);
+    panel.setAgent({
+      getSession: () => [
+        { role: 'system', content: 'sys' },
+        { role: 'user', content: '卷一' },
+      ],
+      setSession: vi.fn(),
+      dispose: vi.fn(),
+      cascadeAbort: vi.fn(),
+    } as any);
+    panel.setAgentFactory(
+      async () =>
+        ({
+          getSession: () => [
+            { role: 'system', content: 'sys' },
+            { role: 'user', content: '卷二' },
+          ],
+          setSession: vi.fn(),
+          dispose: vi.fn(),
+          bindSession: vi.fn(),
+        }) as any,
+    );
+
+    const writes: Record<string, string> = {};
+    mockInvoke.mockReset();
+    mockInvoke.mockImplementation((_cmd: string, payload: any) => {
+      const { method, params } = payload;
+      if (method === 'write_file_content') {
+        writes[params.file_path as string] = params.content as string;
+      }
+      return Promise.resolve('ok');
+    });
+
+    // 另起一卷（推两卷进摊开集）+ 等记账链排干
+    await panel.createNewSession();
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 10));
+
+    const ledgerWrite = Object.entries(writes).find(([p]) => p.endsWith('_ledger.json'));
+    expect(ledgerWrite).toBeTruthy();
+    const ledger = JSON.parse(ledgerWrite?.[1]);
+    const sessIds = getChatStore(panel.panelId)
+      .sess.getState()
+      .sessions.map((s) => s.id);
+    // 判据①：总目 open ≡ 书脊列表（sess store）
+    expect(ledger.open.map((o: any) => o.id)).toEqual(sessIds);
+    // 判据②：无重复 open id
+    expect(new Set(ledger.open.map((o: any) => o.id)).size).toBe(ledger.open.length);
+    // 活跃指针在 open 集内
+    expect(ledger.open.some((o: any) => o.id === ledger.activeId)).toBe(true);
+  });
+
+  it('tracker 写入退役：saveActiveSession 不再写 _active.json（总目接任）', async () => {
+    const panel = createChatPanel();
+    panel.setProjectPath(PROJ);
+    panel.setAgent({
+      getSession: () => [
+        { role: 'system', content: 'sys' },
+        { role: 'user', content: '内容' },
+      ],
+      setSession: vi.fn(),
+      dispose: vi.fn(),
+      cascadeAbort: vi.fn(),
+    } as any);
+
+    const writes: Array<string> = [];
+    mockInvoke.mockReset();
+    mockInvoke.mockImplementation((_cmd: string, payload: any) => {
+      const { method, params } = payload;
+      if (method === 'write_file_content') {
+        writes.push(params.file_path as string);
+      }
+      return Promise.resolve('ok');
+    });
+
+    await panel.saveActiveSession(PROJ);
+
+    expect(writes.some((p) => p.endsWith('_active.json'))).toBe(false);
+    expect(writes.some((p) => p.endsWith('/1.json'))).toBe(true);
+  });
+});
+
 // ponytail: stubFactory 目前只在多卷用例内联使用——保留导出面供后续 L 段扩展
 void stubFactory;
 void Session;

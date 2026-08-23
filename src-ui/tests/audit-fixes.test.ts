@@ -224,8 +224,9 @@ describe('#10 scheduleAutoSave per-panel isolation', () => {
 
     // Both panels should have written to disk (at least the session file)
     const writeCalls = mockInvoke.mock.calls.filter((c: any[]) => c[1]?.method === 'write_file_content');
-    // Each panel writes at least 2 files (session + tracker) = 4 total
-    expect(writeCalls.length).toBeGreaterThanOrEqual(4);
+    // L3（session-ledger）：_active.json tracker 写入退役（总目接任）——
+    // 每面板至少 1 份卷文件，两面板合计 ≥ 2
+    expect(writeCalls.length).toBeGreaterThanOrEqual(2);
 
     // Verify both panels' paths appear in the calls
     const allParams = writeCalls.map((c: any[]) => c[1].params?.file_path || '');

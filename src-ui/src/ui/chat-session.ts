@@ -631,8 +631,11 @@ async function writeSessionSnapshot(projectPath: string, data: SessionSnapshotDa
   }
 }
 
-/** 将活跃会话保存到其独立文件。更新 _active.json 跟踪器。
- *  同时写入同步 localStorage 备份，确保会话在应用崩溃/强制关闭后仍可恢复。 */
+/** 将活跃会话保存到其独立文件。
+ *  同时写入同步 localStorage 备份，确保会话在应用崩溃/强制关闭后仍可恢复。
+ *  L3（session-ledger）：_active.json 跟踪器写入退役——总目 _ledger.json
+ *  已接任（四动词 recordOpenSetChange 维护；发号对账 max(mem, ledger, scan)）。
+ *  旧 tracker 仅作无总目冷启动的迁移源读一次，不再更新。 */
 export async function saveActiveSession(ctx: SessionContext, projectPath: string): Promise<void> {
   const { sessions, activeIdx } = getChatStore(ctx.storeId).sess.getState();
   if (!projectPath || activeIdx < 0) return;
@@ -664,14 +667,7 @@ export async function saveActiveSession(ctx: SessionContext, projectPath: string
     /* 落盘失败已由 writeSessionSnapshot 记日志——autosave 链容忍（原行为） */
   }
 
-  try {
-    await typedRpc('write_file_content', {
-      file_path: trackerFile(projectPath),
-      content: JSON.stringify({ lastId: sMeta.id, nextId: getChatStore(ctx.storeId).sess.getState().nextSessionId }),
-    });
-  } catch {
-    /* 非关键 */
-  }
+  // L3：tracker 写入退役（见函数头注释）——开合与发号归总目
 }
 
 /** 按 id 落盘指定会话（C8 改名即存）：不要求是活跃卷，不动 _active.json
