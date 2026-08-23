@@ -96,7 +96,7 @@ describe('phase-1 T0 结构门禁 — 注册 API 返回 Disposer', () => {
         subAgentSpawner: stubSpawner,
         eventSink: () => {},
       },
-      resolveCurrentComposition(),
+      await resolveCurrentComposition(),
     );
     const agent = (
       handle as unknown as {

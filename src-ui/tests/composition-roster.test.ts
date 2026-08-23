@@ -12,8 +12,10 @@
 // P4 B④ 收官（2026-08-23）：prompt 域出厂表空（13 第一方段经 ctx.prompts
 // 通道贡献）——prompt 域语义探针全部改用「已插入段」。
 // S4-4 甲（2026-08-23）：解析域收编通道贡献——factoryComposition() 是
-// 通道装载态快照（无通道环境 = builtin 行 + 空段表，本文件多数探针在该面
+// 通道装载态快照（无通道环境 = 空行表 + 空段表，本文件多数探针在该面
 // 跑；通道内快照/第一方段寻址恢复另有专测）。
+// ①b（2026-08-23）：builtin 行表退役——tools 域寻址探针全量改 plugin 行
+// id（解析须在 withFirstPartyToolChannel 腰内）。
 
 import { describe, expect, it } from 'vitest';
 import { builtinCapabilities } from '../src/agent/blueprint';
@@ -28,15 +30,21 @@ import {
   resolveRoster,
 } from '../src/composition/roster';
 import { builtinShellRows } from '../src/composition/shell-rows';
-import { builtinToolRows } from '../src/composition/tool-rows';
 
 const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r.id);
 const capKeys = (): string[] => builtinCapabilities().map((c) => c.key);
 
+/** ①b 后 tools 域唯一可寻址行：plugin 贡献行（web/browser-desktop 是
+ *  行序前两行——①b 前插保装配序，零漂移按构造）。 */
+const WEB_ROW = 'plugin/hologram/web-domain/web_fetch';
+const BROWSER_DESKTOP_ROW = 'plugin/hologram/browser-desktop-domain/tools';
+
 describe('composition/roster（S2-0 组合引擎）', () => {
-  it('factoryComposition 聚合三张出厂表 + 壳行表（V5 拆除后 9 行全量，序 = 引导序）', () => {
+  it('factoryComposition 聚合三张出厂表 + 壳行表（无通道 = 空行表 + 空段表）', () => {
     const f = factoryComposition();
-    expect(ids(f.tools)).toEqual(ids(builtinToolRows()));
+    // ①b 后 builtin 行表退役——无通道环境 tools 域 = 空行表（行真源全在
+    // 插件通道贡献，通道内快照见下一用例）
+    expect(f.tools).toEqual([]);
     // 无通道环境 = 空贡献快照（B④ 收官的注册面依赖语义——S4-4 甲不变）
     expect(f.prompt).toEqual([]);
     expect(f.capabilities.map((c) => c.key)).toEqual(capKeys());
@@ -56,12 +64,15 @@ describe('composition/roster（S2-0 组合引擎）', () => {
     ]);
   });
 
-  it('S4-4 甲：工厂基座快照收编通道贡献（通道内 = builtin 行 + plugin 行 + 段贡献）', async () => {
+  it('S4-4 甲：工厂基座快照收编通道贡献（通道内 = plugin 行 + 段贡献）', async () => {
     await withFirstPartyToolChannel(() =>
       withFirstPartyPromptChannel(async () => {
         const f = factoryComposition();
-        // tools 域：builtin 行在前、插件贡献行随后（序 = 装配序）
-        expect(ids(f.tools)).toEqual([...ids(builtinToolRows()), ...pluginToolRows().map((r) => r.id)]);
+        // tools 域：插件贡献行（序 = 通道注册序 = 装配序；web/browser-desktop
+        // 前插保迁移前行表序——①b 零漂移按构造）
+        expect(ids(f.tools)).toEqual(pluginToolRows().map((r) => r.id));
+        expect(f.tools[0]?.id).toBe(WEB_ROW);
+        expect(f.tools[1]?.id).toBe(BROWSER_DESKTOP_ROW);
         expect(f.tools.some((r) => r.id === 'plugin/hologram/git-domain/git_status')).toBe(true);
         // prompt 域：通道段贡献快照（注册序）
         expect(f.prompt.map((s) => s.id)).toEqual(activePromptContributions().map((s) => s.id));
@@ -74,49 +85,50 @@ describe('composition/roster（S2-0 组合引擎）', () => {
     );
   });
 
-  it('空层列表 = 恒等（id + 序，零漂移的构造性保证；无通道 = 空贡献面）', () => {
+  it('空层列表 = 恒等（id + 序，零漂移的构造性保证；无通道 = 空行表）', () => {
     const r = resolveRoster(factoryComposition(), []);
-    expect(ids(r.tools)).toEqual(ids(builtinToolRows()));
+    expect(r.tools).toEqual([]);
     expect(r.prompt).toEqual([]);
     expect(r.capabilities.map((c) => c.key)).toEqual(capKeys());
     expect(ids(r.shell)).toEqual(ids(builtinShellRows()));
     expect(r.diagnostics).toEqual({ disabled: [], overridden: [], inserted: [] });
   });
 
-  it('确定性：同输入两次解析 id 序全等（纯函数）', () => {
-    const layers = [
-      {
-        tools: [{ id: 'builtin/web', disabled: true }],
-        prompt: [{ insert: [{ id: 'det-probe', text: 'X' }] }],
-      },
-    ];
-    const a = resolveRoster(factoryComposition(), layers);
-    const b = resolveRoster(factoryComposition(), layers);
-    expect(ids(a.tools)).toEqual(ids(b.tools));
-    expect(ids(a.prompt)).toEqual(ids(b.prompt));
-    expect(a.prompt.map((s) => s.render({ projectPath: '' }))).toEqual(
-      b.prompt.map((s) => s.render({ projectPath: '' })),
-    );
+  it('确定性：同输入两次解析 id 序全等（纯函数）', async () => {
+    await withFirstPartyToolChannel(async () => {
+      const layers = [
+        {
+          tools: [{ id: WEB_ROW, disabled: true }],
+          prompt: [{ insert: [{ id: 'det-probe', text: 'X' }] }],
+        },
+      ];
+      const a = resolveRoster(factoryComposition(), layers);
+      const b = resolveRoster(factoryComposition(), layers);
+      expect(ids(a.tools)).toEqual(ids(b.tools));
+      expect(ids(a.prompt)).toEqual(ids(b.prompt));
+      expect(a.prompt.map((s) => s.render({ projectPath: '' }))).toEqual(
+        b.prompt.map((s) => s.render({ projectPath: '' })),
+      );
+    });
   });
 
   // ── disable 语义 ──
 
-  it('disable：tools 行移除、其余保序、diagnostics 记录', () => {
-    // ①c（2026-08-23）：builtin/wait 迁插件通道——禁用探针改 builtin/web
-    // （builtin 行表）+ plugin/hologram/wait-domain/wait（贡献行，无通道
-    // 环境不在解析域——改 builtin/browser-desktop 作第二行）
-    const r = resolveRoster(factoryComposition(), [
-      {
-        tools: [
-          { id: 'builtin/web', disabled: true },
-          { id: 'builtin/browser-desktop', disabled: true },
-        ],
-      },
-    ]);
-    const expected = ids(builtinToolRows()).filter((id) => id !== 'builtin/web' && id !== 'builtin/browser-desktop');
-    expect(ids(r.tools)).toEqual(expected);
-    // 诊断按表序收集（描述终态组合，与 patch 声明序无关）
-    expect(r.diagnostics.disabled).toEqual(['builtin/web', 'builtin/browser-desktop']);
+  it('disable：tools 行移除、其余保序、diagnostics 记录', async () => {
+    await withFirstPartyToolChannel(async () => {
+      const r = resolveRoster(factoryComposition(), [
+        {
+          tools: [
+            { id: WEB_ROW, disabled: true },
+            { id: BROWSER_DESKTOP_ROW, disabled: true },
+          ],
+        },
+      ]);
+      const expected = ids(pluginToolRows()).filter((id) => id !== WEB_ROW && id !== BROWSER_DESKTOP_ROW);
+      expect(ids(r.tools)).toEqual(expected);
+      // 诊断按表序收集（描述终态组合，与 patch 声明序无关——web 行居表首）
+      expect(r.diagnostics.disabled).toEqual([WEB_ROW, BROWSER_DESKTOP_ROW]);
+    });
   });
 
   it('disable：已插入段可禁用（prompt 域现存寻址面）/ capability 同语义', () => {
@@ -156,13 +168,15 @@ describe('composition/roster（S2-0 组合引擎）', () => {
     });
   });
 
-  it('disable(false) = 显式启用：后层覆盖先层禁用（last-write-wins）', () => {
-    const r = resolveRoster(factoryComposition(), [
-      { tools: [{ id: 'builtin/web', disabled: true }] },
-      { tools: [{ id: 'builtin/web', disabled: false }] },
-    ]);
-    expect(ids(r.tools)).toEqual(ids(builtinToolRows())); // 全量（wait 被重新启用）
-    expect(r.diagnostics.disabled).toEqual([]);
+  it('disable(false) = 显式启用：后层覆盖先层禁用（last-write-wins）', async () => {
+    await withFirstPartyToolChannel(async () => {
+      const r = resolveRoster(factoryComposition(), [
+        { tools: [{ id: WEB_ROW, disabled: true }] },
+        { tools: [{ id: WEB_ROW, disabled: false }] },
+      ]);
+      expect(ids(r.tools)).toEqual(ids(pluginToolRows())); // 全量（web 被重新启用）
+      expect(r.diagnostics.disabled).toEqual([]);
+    });
   });
 
   it('同层同 id 重复 = 后条覆盖前条（已插入段上）', () => {
@@ -352,17 +366,16 @@ describe('composition/roster（S2-0 组合引擎）', () => {
     ).toThrow(CompositionPatchError);
   });
 
-  it('all-or-nothing：任一条失败 → 整体 throw，无部分应用产出', () => {
+  it('all-or-nothing：任一条失败 → 整体 throw，无部分应用产出', async () => {
     // 纯函数 throw = 无输出（不存在「前几条已应用」的中间态可泄漏）；
     // 本条钉住该契约防回归（一旦改成收集错误继续跑，这里立刻红）。
-    const layers = [
-      { tools: [{ id: 'builtin/web', disabled: true }] },
-      { tools: [{ id: 'builtin/nope', disabled: true }] },
-    ];
-    expect(() => resolveRoster(factoryComposition(), layers)).toThrow(CompositionPatchError);
-    // 同输入去掉坏条目后正常应用（失败不污染调用方状态——每次调用全新工作列表）
-    const ok = resolveRoster(factoryComposition(), [layers[0]]);
-    expect(ids(ok.tools)).not.toContain('builtin/web');
+    await withFirstPartyToolChannel(async () => {
+      const layers = [{ tools: [{ id: WEB_ROW, disabled: true }] }, { tools: [{ id: 'plugin/nope', disabled: true }] }];
+      expect(() => resolveRoster(factoryComposition(), layers)).toThrow(CompositionPatchError);
+      // 同输入去掉坏条目后正常应用（失败不污染调用方状态——每次调用全新工作列表）
+      const ok = resolveRoster(factoryComposition(), [layers[0]]);
+      expect(ids(ok.tools)).not.toContain(WEB_ROW);
+    });
   });
 
   // ── parseCompositionPatch（zod 校验层）──
@@ -370,7 +383,7 @@ describe('composition/roster（S2-0 组合引擎）', () => {
   describe('parseCompositionPatch', () => {
     it('合法全形状（四域 + insert + 覆盖 + 禁用）', () => {
       const raw = {
-        tools: [{ id: 'builtin/web', disabled: true }],
+        tools: [{ id: WEB_ROW, disabled: true }],
         prompt: [
           // B④ 收官：prompt 域寻址面 = 已插入段——条目按「先插后寻址」链式排列
           { insert: [{ id: 'user-seg', text: '用户段' }] },
@@ -383,7 +396,7 @@ describe('composition/roster（S2-0 组合引擎）', () => {
       const r = parseCompositionPatch(raw);
       expect(r.ok).toBe(true);
       if (r.ok) {
-        expect(r.patch.tools).toEqual([{ id: 'builtin/web', disabled: true }]);
+        expect(r.patch.tools).toEqual([{ id: WEB_ROW, disabled: true }]);
         expect(r.patch.capabilities).toEqual([{ id: 'auto-tune', disabled: false }]);
       }
     });
@@ -436,16 +449,19 @@ describe('composition/roster（S2-0 组合引擎）', () => {
       expect(parseCompositionPatch(42).ok).toBe(false);
     });
 
-    it('合法 patch 全链路：parse → resolve 生效', () => {
+    it('合法 patch 全链路：parse → resolve 生效', async () => {
       const parsed = parseCompositionPatch({
-        tools: [{ id: 'builtin/web', disabled: true }],
+        tools: [{ id: WEB_ROW, disabled: true }],
         prompt: [{ insert: [{ id: 'tail', text: '尾段' }] }],
       });
       expect(parsed.ok).toBe(true);
       if (!parsed.ok) return;
-      const r = resolveRoster(factoryComposition(), [parsed.patch]);
-      expect(ids(r.tools)).not.toContain('builtin/web');
-      expect(r.prompt[r.prompt.length - 1].id).toBe('tail');
+      // tools 条目寻址 plugin 行——解析须在通道腰内（贡献行在册）
+      await withFirstPartyToolChannel(async () => {
+        const r = resolveRoster(factoryComposition(), [parsed.patch]);
+        expect(ids(r.tools)).not.toContain(WEB_ROW);
+        expect(r.prompt[r.prompt.length - 1].id).toBe('tail');
+      });
     });
   });
 });

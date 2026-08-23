@@ -10,6 +10,9 @@
 //   4. 子 Agent 与父同面（ctx composition 服务 child() 继承）；
 //   5. preset-assembly：cache 引用稳定 + 用户层 hash 变更失效（R13）+
 //      applyDefaultPreset 跳过语义。
+// ①b（2026-08-23）：minimal/用户层 patch 寻址 plugin 行——解析须在
+// withFirstPartyToolChannel 腰内（贡献行在册才可寻址）。已解析组合的
+// 行对象自带 factory，装配期（AgentRuntime/buildToolRegistry）不需要通道。
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -19,6 +22,7 @@ import { AgentRuntime } from '../src/agent/runtime/runtime';
 import type { AgentHandle } from '../src/agent/runtime/types';
 import { ToolRegistry } from '../src/agent/tool';
 import { withFirstPartyPromptChannel } from '../src/composition/first-party-prompts';
+import { withFirstPartyToolChannel } from '../src/composition/first-party-tools';
 import {
   clearUserPatch,
   invalidatePresetCache,
@@ -27,24 +31,32 @@ import {
   syncPresetSelectionFromSettings,
 } from '../src/composition/preset-assembly';
 import { factoryComposition, type ResolvedComposition, resolveRoster } from '../src/composition/roster';
-import { builtinToolRows } from '../src/composition/tool-rows';
 import { useCompositionStore } from '../src/state/composition-store';
 import { usePresetStore } from '../src/state/preset-store';
 import { readOnlyTool, scriptedProvider } from './convergence/helpers/fixtures';
 
 const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r.id);
 
-/** minimal preset 的解析产物（穿线效果样本）。 */
-function minimalComposition(): ResolvedComposition {
-  return resolveRoster(factoryComposition(), [
-    {
-      tools: [
-        { id: 'builtin/browser-desktop', disabled: true },
-        { id: 'builtin/web', disabled: true },
-      ],
-      capabilities: [{ id: 'graph-hooks', disabled: true }],
-    },
-  ]);
+/** ①b 后 minimal 的寻址行（web/browser-desktop 迁插件通道）。 */
+const WEB_ROW = 'plugin/hologram/web-domain/web_fetch';
+const BROWSER_DESKTOP_ROW = 'plugin/hologram/browser-desktop-domain/tools';
+
+/** minimal preset 的解析产物（穿线效果样本）——plugin 行寻址，解析在
+ *  通道腰内做（贡献行在册）。 */
+async function minimalComposition(): Promise<ResolvedComposition> {
+  return withFirstPartyToolChannel(() =>
+    Promise.resolve(
+      resolveRoster(factoryComposition(), [
+        {
+          tools: [
+            { id: BROWSER_DESKTOP_ROW, disabled: true },
+            { id: WEB_ROW, disabled: true },
+          ],
+          capabilities: [{ id: 'graph-hooks', disabled: true }],
+        },
+      ]),
+    ),
+  );
 }
 
 /** phase-6 同款手工 ctx（纯内存 bus/boards，零持久化副作用）。 */
@@ -80,7 +92,7 @@ describe('S4-1a 装配穿线：createAgentFromContext/createAgent 组合覆盖',
     expect(tools.all().length).toBeGreaterThan(0);
     // 缺省路径：ctx composition 服务 = runtime 组合（Agent 可见自己的装配真源）
     expect(composition).not.toBeNull();
-    expect(ids(composition ? composition.tools : [])).toEqual(ids(builtinToolRows())); // factory 组合
+    expect(ids(composition ? composition.tools : [])).toEqual(ids(factoryComposition().tools)); // factory 组合
     h.dispose();
   });
 
@@ -90,7 +102,7 @@ describe('S4-1a 装配穿线：createAgentFromContext/createAgent 组合覆盖',
     await withFirstPartyPromptChannel(async () => {
       const rt = new AgentRuntime();
       await rt.ready();
-      const minimal = minimalComposition();
+      const minimal = await minimalComposition();
       // graphData 在场 → 完整面（多 Agent 段/图纪律段参与——minimal 未禁它们）
       const h = await rt.createAgentFromContext(
         makeCtx('s41a-minimal', rt),
@@ -109,7 +121,7 @@ describe('S4-1a 装配穿线：createAgentFromContext/createAgent 组合覆盖',
   it('带覆盖 + capability 禁用：graph-hooks 不装（graphContext 存在时 hooks 不注册）', async () => {
     const rt = new AgentRuntime();
     await rt.ready();
-    const minimal = minimalComposition();
+    const minimal = await minimalComposition();
     // graph-hooks 禁用 → loadEngineSnapshot 等 capability 不跑；结构断言：
     // 装配成功 + plan 工具面（context 阶段 capability）不受影响
     const h = await rt.createAgentFromContext(
@@ -127,7 +139,7 @@ describe('S4-1a 装配穿线：createAgentFromContext/createAgent 组合覆盖',
   it('createAgent(config, compositionOverride)：覆盖经翻译层到达装配本体', async () => {
     const rt = new AgentRuntime();
     await rt.ready();
-    const minimal = minimalComposition();
+    const minimal = await minimalComposition();
     const h = await rt.createAgent(
       {
         agentId: 's41a-config',
@@ -144,8 +156,8 @@ describe('S4-1a 装配穿线：createAgentFromContext/createAgent 组合覆盖',
 });
 
 describe('S4-1a 子 Agent 继承：ctx composition 服务 child() 白名单', () => {
-  it('child() 继承 composition（子 Agent 与父同一组合面）', () => {
-    const minimal = minimalComposition();
+  it('child() 继承 composition（子 Agent 与父同一组合面）', async () => {
+    const minimal = await minimalComposition();
     const parent = new AgentContext(
       { agentId: 'parent-1', parentId: null, subagentDepth: 0, projectPath: '/p' },
       { composition: minimal },
@@ -185,27 +197,34 @@ describe('S4-1a preset-assembly：cache + 选择同步 + boot 应用', () => {
     });
   });
 
-  it('resolveCurrentComposition：standard ≡ factory（无用户层）', () => {
-    const r = resolveCurrentComposition('standard');
-    expect(ids(r.tools)).toEqual(ids(builtinToolRows()));
+  it('resolveCurrentComposition：standard ≡ factory（无用户层；通道腰内 = 全量行）', async () => {
+    await withFirstPartyToolChannel(async () => {
+      const r = resolveCurrentComposition('standard');
+      expect(ids(r.tools)).toEqual(ids(factoryComposition().tools));
+      expect(ids(r.tools).length).toBeGreaterThan(0); // 通道内 factory = 十四族贡献行
+    });
   });
 
-  it('引用稳定：同 (presetId, 用户层) 多次调用返回同一对象', () => {
-    const a = resolveCurrentComposition('minimal');
-    const b = resolveCurrentComposition('minimal');
-    expect(b).toBe(a);
+  it('引用稳定：同 (presetId, 用户层) 多次调用返回同一对象', async () => {
+    await withFirstPartyToolChannel(async () => {
+      const a = resolveCurrentComposition('minimal');
+      const b = resolveCurrentComposition('minimal');
+      expect(b).toBe(a);
+    });
   });
 
-  it('用户层 hash 变更 → cache 失效（R13：改用户层后新装配用新组合）', () => {
-    const before = resolveCurrentComposition('standard');
-    registerUserPatch({ tools: [{ id: 'builtin/web', disabled: true }] });
-    const after = resolveCurrentComposition('standard');
-    expect(after).not.toBe(before);
-    expect(ids(after.tools)).not.toContain('builtin/web');
-    // preset 层叠加：minimal 在用户层之上再禁（同 id 后写胜）
-    const stacked = resolveCurrentComposition('minimal');
-    expect(ids(stacked.tools)).not.toContain('builtin/web');
-    expect(ids(stacked.tools)).not.toContain('builtin/web');
+  it('用户层 hash 变更 → cache 失效（R13：改用户层后新装配用新组合）', async () => {
+    await withFirstPartyToolChannel(async () => {
+      const before = resolveCurrentComposition('standard');
+      registerUserPatch({ tools: [{ id: WEB_ROW, disabled: true }] });
+      const after = resolveCurrentComposition('standard');
+      expect(after).not.toBe(before);
+      expect(ids(after.tools)).not.toContain(WEB_ROW);
+      // preset 层叠加：minimal 在用户层之上再禁（同 id 后写胜）
+      const stacked = resolveCurrentComposition('minimal');
+      expect(ids(stacked.tools)).not.toContain(WEB_ROW);
+      expect(ids(stacked.tools)).not.toContain(BROWSER_DESKTOP_ROW);
+    });
   });
 
   it('S4-4 甲：贡献变更 → cache 代数失效 + reapplyComposition 回写 store', async () => {
@@ -213,8 +232,10 @@ describe('S4-1a preset-assembly：cache + 选择同步 + boot 应用', () => {
     const { Context } = await import('../src/cordis');
     const root = new Context();
     await root.plugin(compositionServicesPlugin);
-    // 用户层在册 + store ok 态（reapply 的 ok 路径样本）
-    registerUserPatch({ tools: [{ id: 'builtin/web', disabled: true }] });
+    // 用户层在册 + store ok 态（reapply 的 ok 路径样本）。用户层探针改
+    // capabilities 域（①b 后 tools 域行全在插件通道——本测试的裸 root
+    // 只挂四 service 无域插件，tools 域无行可寻址）。
+    registerUserPatch({ capabilities: [{ id: 'auto-tune', disabled: true }] });
     useCompositionStore.getState().setResolved(resolveCurrentComposition('standard'), 'roster.patch.yml');
     const before = resolveCurrentComposition('standard');
     expect(before.tools.some((r) => r.id === 'plugin/acme/probe')).toBe(false);
@@ -240,7 +261,7 @@ describe('S4-1a preset-assembly：cache + 选择同步 + boot 应用', () => {
     const s = useCompositionStore.getState();
     expect(s.status).toBe('ok');
     expect(ids(s.resolved.tools)).toContain('plugin/acme/probe');
-    expect(ids(s.resolved.tools)).not.toContain('builtin/web');
+    expect(s.resolved.capabilities.map((c) => c.key)).not.toContain('auto-tune');
 
     // 贡献 dispose → 代数再变 → 解析产物不含该行；reapply（factory 路径重新快照）
     dispose();
@@ -260,13 +281,15 @@ describe('S4-1a preset-assembly：cache + 选择同步 + boot 应用', () => {
     expect(s.status).toBe('error');
     expect(s.error).toBe('bad patch');
     // factory 兜底未被动（不被贡献变更悄悄改写）
-    expect(ids(s.resolved.tools)).toEqual(ids(builtinToolRows()));
+    expect(ids(s.resolved.tools)).toEqual(ids(factoryComposition().tools));
   });
 
-  it('selected 缺省 = preset-store.selected（无参调用读运行时真源）', () => {
-    usePresetStore.getState().select('minimal');
-    const r = resolveCurrentComposition();
-    expect(ids(r.tools)).not.toContain('builtin/browser-desktop');
+  it('selected 缺省 = preset-store.selected（无参调用读运行时真源）', async () => {
+    await withFirstPartyToolChannel(async () => {
+      usePresetStore.getState().select('minimal');
+      const r = resolveCurrentComposition();
+      expect(ids(r.tools)).not.toContain(BROWSER_DESKTOP_ROW);
+    });
   });
 
   it('syncPresetSelectionFromSettings：缺省容错（无 composition 字段 → standard）', () => {
@@ -288,12 +311,15 @@ describe('S4-1a preset-assembly：cache + 选择同步 + boot 应用', () => {
 
   it('applyDefaultPreset：minimal → setResolved（preset 层写进 S2 store）', async () => {
     const { applyDefaultPreset } = await import('../src/composition/preset-assembly');
-    usePresetStore.getState().select('minimal');
-    applyDefaultPreset();
-    const s = useCompositionStore.getState();
-    expect(s.status).toBe('ok');
-    expect(s.patchOrigin).toContain('preset:minimal');
-    expect(ids(s.resolved.tools)).not.toContain('builtin/browser-desktop');
+    await withFirstPartyToolChannel(async () => {
+      usePresetStore.getState().select('minimal');
+      applyDefaultPreset();
+      const s = useCompositionStore.getState();
+      expect(s.status).toBe('ok');
+      expect(s.patchOrigin).toContain('preset:minimal');
+      expect(ids(s.resolved.tools)).not.toContain(BROWSER_DESKTOP_ROW);
+      expect(ids(s.resolved.tools)).not.toContain(WEB_ROW);
+    });
   });
 
   it('applyDefaultPreset：error 态跳过（S2 可见面保持，不被 preset 改写）', async () => {
@@ -304,7 +330,7 @@ describe('S4-1a preset-assembly：cache + 选择同步 + boot 应用', () => {
     const s = useCompositionStore.getState();
     expect(s.status).toBe('error'); // 仍是 error 态
     expect(s.error).toBe('bad patch');
-    expect(ids(s.resolved.tools)).toEqual(ids(builtinToolRows())); // factory 兜底未被动
+    expect(ids(s.resolved.tools)).toEqual(ids(factoryComposition().tools)); // factory 兜底未被动
   });
 });
 

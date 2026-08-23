@@ -1,7 +1,8 @@
 # 组合层（Composition Layer）— 用户指南
 
 > S2 竣工（2026-08-20）· S4 preset/热重载/安装通道竣工（2026-08-20）·
-> S4-4 甲：插件贡献行/段进组合解析域（2026-08-23）。
+> S4-4 甲：插件贡献行/段进组合解析域（2026-08-23）·
+> ①b：builtin 行表退役，tools 域全量走插件贡献行（2026-08-23）。
 > 组合架构的「数据外化」段：工具行 / prompt 段 / capability / 壳行的
 > 「禁哪些、换哪段文本、插哪些段」从编译期 TS 表外化为用户可改的 patch
 > 数据文件。设计件：
@@ -14,9 +15,9 @@
 `%USERPROFILE%\.lantai\composition\roster.patch.yml`）写 patch：
 
 ```yaml
-# 禁用 web 工具族 + 禁用某个插件工具行 + 在行为规则段后插入团队定制段
+# 禁用 web 工具行 + 禁用某个插件工具行 + 在行为规则段后插入团队定制段
 tools:
-  - id: builtin/web
+  - id: plugin/hologram/web-domain/web_fetch
     disabled: true
   - id: plugin/hologram/shell-domain/run_shell
     disabled: true
@@ -33,10 +34,9 @@ prompt:
           2. 不改 docs/archive/ 下任何文件。
 ```
 
-（S4-4 甲起插件工具行 `plugin/<插件名>/<工具名>` 与第一方 prompt 段
-id 均可寻址；①c 后 builtin 行表仅剩 web/browser-desktop 两行，其余族
-全部走 `plugin/hologram/<域>-domain/…` 贡献行寻址。完整寻址域见
-§「四个行域」。）
+（①b 起 builtin 行表退役——全部十四族工具行均走
+`plugin/hologram/<域>-domain/<工具名>` 贡献行寻址；第一方 prompt 段 id
+亦可寻址。完整寻址域见 §「四个行域」。）
 
 保存即生效（S4-2 热重载）：**新 Agent 装配（新会话）即用新组合；在途
 会话保持创建时点的组合不变**。没有这个文件（或文件为空）= 出厂组合。
@@ -45,21 +45,22 @@ id 均可寻址；①c 后 builtin 行表仅剩 web/browser-desktop 两行，其
 
 | 域 | 行 id 举例 | 寻址对象 |
 |---|---|---|
-| `tools` | `builtin/web`、`builtin/browser-desktop`；`plugin/hologram/<域>-domain/<工具名>`… | 内置工具族（真源 `src-ui/src/composition/tool-rows.ts`，现存 2 行）+ 插件贡献行（`ctx.tools` 通道折算，S4-4 甲起进寻址域——git/search/fs/shell/agent-isolation + wait/ask/memory/skill/task/agent/hologram 十二族；粒度 = 单工具行或 hologram 整族行） |
+| `tools` | `plugin/hologram/web-domain/web_fetch`、`plugin/hologram/shell-domain/run_shell`、`plugin/hologram/engine-domain/tools`… | 插件贡献行（`ctx.tools` 通道折算，①b 起为唯一行源——git/search/fs/shell/agent-isolation/web + wait/ask/memory/skill/task/agent/hologram/browser-desktop 十四族；粒度 = 单工具行或 hologram/browser-desktop 整族行） |
 | `prompt` | 第一方段 id（`behavior-rules`、`multi-agent`…）、已插入段 id、插件段贡献 id | system prompt 段（真源 `prompt-sections.ts` `firstPartyPromptSections()`——13 段经 `ctx.prompts` 通道贡献；S4-4 甲起全量进寻址域：disable/text 覆盖/insert 锚定第一方段 id 均合法） |
 | `capabilities` | `plan-tools`、`converge-tools`、`graph-hooks`… | 会话级工具/hook（真源 `agent/blueprint.ts`；id = capability key） |
 | `shell` | `hologram/shell-graph`、`hologram/shell-cold-start`… | 壳引导行（真源 `composition/shell-rows.ts`；行实现 `src-ui/src/shell/rows/*`） |
 
-> **寻址域（S4-4 甲，2026-08-23）**：patch/preset 的组合解析域 = builtin
-> 行表 + **当前通道贡献快照**（`factoryComposition()` 读取时点收编——插件
-> 工具行 `plugin/<插件名>/<工具名>` 与 prompt 段贡献都在寻址面内）。
-> 寻址粒度：插件工具行 = 单工具（原 `builtin/<族>` 整族行 id 已随十二族
-> 迁移退役；hologram 是整族行 `plugin/hologram/engine-domain/tools`——
-> 名字面装配期才知，整族一行寻址）；prompt 段 = 段 id 直寻。无通道贡献
-> 装载的环境（理论态——生产 boot 必有第一方插件）解析域退化为 builtin 行
-> + 空段表。贡献的 register/dispose = 组合输入变更：下次解析自动重取
-> （cache 代数失效），在途会话不动（创建时点冻结）。卸载/禁用整个插件
-> 仍走插件开关（设置 → 插件），不走组合 patch。
+> **寻址域（S4-4 甲 + ①b，2026-08-23）**：patch/preset 的组合解析域 =
+> **当前通道贡献快照**（`factoryComposition()` 读取时点收编——插件工具行
+> `plugin/<插件名>/<工具名>` 与 prompt 段贡献都在寻址面内；①b 起 builtin
+> 行表退役，插件贡献行是 tools 域唯一行源）。
+> 寻址粒度：插件工具行 = 单工具；整族行 = `plugin/hologram/engine-domain/tools`
+>（hologram——名字面装配期才知）与 `plugin/hologram/browser-desktop-domain/tools`
+>（browser/desktop 53 工具——族内新增工具自动覆盖，名面不被清单锁死），
+> 整族一行寻址。无通道贡献装载的环境（理论态——生产 boot 必有第一方
+> 插件）解析域退化为空行表 + 空段表。贡献的 register/dispose = 组合输入
+> 变更：下次解析自动重取（cache 代数失效），在途会话不动（创建时点冻结）。
+> 卸载/禁用整个插件仍走插件开关（设置 → 插件），不走组合 patch。
 
 完整 id 清单以各真源文件为准——它们是唯一权威源。
 
@@ -69,7 +70,7 @@ id 均可寻址；①c 后 builtin 行表仅剩 web/browser-desktop 两行，其
 
 ```yaml
 tools:
-  - id: builtin/browser-desktop
+  - id: plugin/hologram/browser-desktop-domain/tools
     disabled: true
 ```
 
@@ -133,8 +134,10 @@ factory（出厂表）
 
 - **内置 system preset**（代码常量，不落盘）：
   - `standard`——零 patch = 出厂组合（缺省）；
-  - `minimal`——精简面：禁 `builtin/browser-desktop`、`builtin/web` 工具行
-    + `graph-hooks` capability（V5「纸壳 preset」的原型）。
+  - `minimal`——精简面：禁 `plugin/hologram/browser-desktop-domain/tools`、
+    `plugin/hologram/web-domain/web_fetch` 工具行 + `graph-hooks`
+    capability（V5「纸壳 preset」的原型；①b 起 builtin 行 id 退役改
+    枚举 plugin 行）。
 - **用户 preset**：`~/.lantai/composition/presets/<id>/`——`roster.patch.yml`
   （组合本体，语法与本文件的 patch 完全相同）+ `preset.yml`（显示元数据：
   name/description/order，纯展示）。
@@ -152,7 +155,7 @@ factory（出厂表）
 
 | 禁用 | 后果 | 定性 |
 |---|---|---|
-| `builtin/<族>` 工具行 | 该族工具不注册；领域收敛优雅降级（该域动作缺席则域工具不生成） | 机制安全 |
+| 工具贡献行（单工具行或整族行） | 该工具/族工具不注册；领域收敛优雅降级（该域动作缺席则域工具不生成） | 机制安全 |
 | 任一工具行 | system prompt 规则 #13/#14 仍静态枚举全量域工具名 → 模型可能调到不存在的工具，报 unknown tool 后自适 | 已知限制（动态生成延期） |
 | `converge-tools` | 旧细粒度名全可见（66 工具面替 14 域工具）；功能等价，前缀缓存按新面重算 | 文档声明 |
 | `task-tools` / `spawn-tool` | 回退行表版 task_* / agent_spawn | 文档声明 |

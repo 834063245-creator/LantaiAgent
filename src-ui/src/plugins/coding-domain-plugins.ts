@@ -1,12 +1,14 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT.
 
-// 第一方工具域插件（P4 存量拆解 B① + ② + ①c，
+// 第一方工具域插件（P4 存量拆解 B① + ② + ①c + ①b，
 // agent-plugin-architecture-plan §5）——从 composition/tool-rows 行表
-// 迁入 ctx.tools 贡献通道，两批语义分家：
-//  - **无状态族**（B① git/search + ② fs/shell/agent-isolation，五族）：
-//    只依赖 codingExec——实例缓存语义等价（闭包只引用模块级
+// 迁入 ctx.tools 贡献通道，四批语义分家：
+//  - **无状态族**（B① git/search + ② fs/shell/agent-isolation + ①b web，
+//    六族）：只依赖 codingExec——实例缓存语义等价（闭包只引用模块级
 //    agentInvoke/execStreamedShell，不捕获装配 opts）；
+//  - **整组缓存行**（①b browser-desktop）：动态 import 族，一行贡献承载
+//    整族（53 工具）——不收 rowCtx（无装配期依赖），实例缓存跨装配复用；
 //  - **装配期真值族**（①c，2026-08-23 拍板 #2 路线一无缓存行）：
 //    wait/ask + memory/skill/task/agent + hologram 七族——贡献声明 noCache
 //    （pluginToolRows 每装配重调 factory，实例缓存不生效），工厂直收
@@ -19,10 +21,10 @@
 // 走行表还是插件通道注册不改变模型可见面（phase-0 快照守护，双 preset
 // 实测）。ask_user 与 wait 是常驻可见名（不受域收敛影响）。
 //
-// 寻址域（S4-4 甲恢复全量，2026-08-23）：贡献行经 factoryComposition()
-// 快照进组合解析域——patch/preset 可寻址 'plugin/hologram/<域>-domain/
-// <工具名>' 行禁用单个工具（粒度 = 贡献行 = 单工具；原 builtin/<族>
-// 整族行 id 退役不复活）。
+// 寻址域（S4-4 甲恢复全量 + ①b 行表清空，2026-08-23）：贡献行经
+// factoryComposition() 快照进组合解析域——patch/preset 可寻址
+// 'plugin/hologram/<域>-domain/<工具名>' 行禁用单个工具（粒度 = 贡献行 =
+// 单工具；browser-desktop/hologram 整族行 = 单行禁整族）。
 //
 // 一文件多插件：familyContributions（无状态族）/ noCacheContributions
 // （装配期真值族）两个贡献清单 helper 由各域共享（族注册形状相同，拆文件
@@ -41,6 +43,7 @@ import {
   createGitTools,
   createSearchTools,
   createShellTools,
+  createWebTools,
 } from '../agent/tools/coding';
 import { defineTool } from '../agent/tools/define-tool';
 import { loadHologramSchemas, mcpSchemaToTool } from '../agent/tools/hologram';
@@ -125,7 +128,16 @@ function noCacheContributions(
   }));
 }
 
-// ── 无状态族（B① + ②）──
+// ── 无状态族（B① + ② + ①b web）──
+
+/** web 域插件（①b 迁入，2026-08-23）——贡献 web_fetch 单工具。 */
+export const webDomainPlugin = {
+  name: 'hologram/web-domain',
+  inject: ['tools'],
+  apply(ctx: Context) {
+    registerFamily(ctx, 'web-domain-tools', familyContributions('hologram/web-domain', createWebTools));
+  },
+};
 
 /** git 域插件——贡献 13 工具（序 = createGitTools 声明序）。 */
 export const gitDomainPlugin = {
@@ -173,6 +185,32 @@ export const agentIsolationDomainPlugin = {
       'agent-isolation-domain-tools',
       familyContributions('hologram/agent-isolation-domain', createAgentIsolationTools),
     );
+  },
+};
+
+// ── 整组缓存行（①b browser-desktop，2026-08-23）──
+
+/** browser-desktop 域插件（①b 迁入）——动态 import 族（原装配同款），
+ *  一行贡献承载整族（createBrowserTools + createDesktopTools，53 工具）。
+ *  **为何整组形态而非 per-tool 名清单**：族大（53 名手抄清单必漂移）+
+ *  名面被清单锁死（新增 browser_ / desktop_ 前缀工具不会自动进寻址域——
+ *  hologram 动态面同款教训）；整族一行寻址（minimal preset 禁整族的
+ *  原语义）恰是 preset 的使用形态。不收 rowCtx（无装配期依赖）→
+ *  实例缓存跨装配复用（无状态闭包，语义等价）。 */
+export const browserDesktopDomainPlugin = {
+  name: 'hologram/browser-desktop-domain',
+  inject: ['tools'],
+  apply(ctx: Context) {
+    ctx.effect(() => {
+      const dispose = ctx.tools.register({
+        id: 'hologram/browser-desktop-domain/tools',
+        factory: async () => {
+          const { createBrowserTools, createDesktopTools } = await import('../agent/tools/browser');
+          return [...createBrowserTools(), ...createDesktopTools()];
+        },
+      });
+      return () => dispose();
+    }, 'browser-desktop-domain-tools');
   },
 };
 

@@ -5,14 +5,15 @@
 //
 // 折算规则（设计件 §2.3）：
 //   - 行 id = 'plugin/' + 贡献 id（贡献 id 约定 '<插件名>/<工具名>'——npm
-//     scope 风格；插件名段防跨插件撞名，'plugin/' 前缀防撞 builtin 行
-//     （'builtin/<family>'））；
+//     scope 风格；插件名段防跨插件撞名，'plugin/' 前缀分立行命名空间；
+//     ①b（2026-08-23）后本清单是 tools 域唯一行源——'builtin/<family>'
+//     行 id 随 builtin 行表退役终结）；
 //   - factory 缓存实例：注册期调用一次贡献 factory，之后装配复用同一 Tool
 //     实例（工具可能持状态/连接——不随每次装配重建）；dispose 时清缓存
 //     （onToolContributionsChanged 订阅，见 services.ts 的 fire 点）。
 //
 // S4-4 甲（2026-08-23）：折算行进组合解析域——factoryComposition() 的
-// tools 域快照本清单（builtin 行在前、贡献行随后），patch/preset 可寻址
+// tools 域快照本清单（序 = 通道注册序），patch/preset 可寻址
 // 'plugin/<贡献 id>' 行禁用单个插件工具（组合均匀性达成）。快照语义：
 // 贡献 register/dispose 后须重取组合（preset-assembly cache 代数失效 +
 // bootShell 贡献监听重应用——行对象与贡献闭包是快照时点的）。
@@ -41,8 +42,9 @@ const instanceCache = new Map<string, Tool[]>();
 onToolContributionsChanged(() => instanceCache.clear());
 
 /** 插件工具行（无贡献/无服务 = 空集）——factoryComposition() 的 tools 域
- *  快照收编本清单（S4-4 甲：builtin 行在前、贡献行随后进组合解析域）；
- *  buildToolRegistry 经组合解析产物统一装配（单一循环）。 */
+ *  快照收编本清单（S4-4 甲：序 = 通道注册序进组合解析域；①b 后 builtin 行
+ *  表退役，本清单是 tools 域唯一行源）；buildToolRegistry 经组合解析产物
+ *  统一装配（单一循环）。 */
 export function pluginToolRows(): BuiltinToolRow[] {
   return activeToolContributions().map((c) => ({
     id: 'plugin/' + c.id,

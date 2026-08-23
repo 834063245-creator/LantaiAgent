@@ -79,10 +79,16 @@ const BUILTIN_PRESETS: Array<{
       name: 'minimal',
       description: '精简面：禁 browser/desktop、web、图 hooks 等重装备',
     },
+    // ①b（2026-08-23）：web/browser-desktop 迁插件通道——寻址行改枚举
+    // plugin 行 id（原 builtin/<族> 行 id 随行表退役）。整族禁用：web 单
+    // 工具行 = 单贡献行；browser-desktop 整组贡献行 = 一行禁整族（族内
+    // 新增工具自动覆盖，名面不被清单锁死）。寻址 plugin 行的解析须在
+    // 贡献在册的环境（生产 = loadBuiltinPlugins 启动期装载先于 bootShell
+    // 组合链；测试 = withFirstPartyToolChannel 通道腰）。
     patch: {
       tools: [
-        { id: 'builtin/browser-desktop', disabled: true },
-        { id: 'builtin/web', disabled: true },
+        { id: 'plugin/hologram/browser-desktop-domain/tools', disabled: true },
+        { id: 'plugin/hologram/web-domain/web_fetch', disabled: true },
       ],
       capabilities: [{ id: 'graph-hooks', disabled: true }],
     },

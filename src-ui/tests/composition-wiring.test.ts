@@ -15,34 +15,46 @@ import { AgentRuntime } from '../src/agent/runtime/runtime';
 import type { AgentHandle } from '../src/agent/runtime/types';
 import { ToolRegistry } from '../src/agent/tool';
 import { withFirstPartyPromptChannel } from '../src/composition/first-party-prompts';
+import { withFirstPartyToolChannel } from '../src/composition/first-party-tools';
 import { assembleSystemPrompt, firstPartyPromptSections } from '../src/composition/prompt-sections';
 import { factoryComposition, type ResolvedComposition, resolveRoster } from '../src/composition/roster';
-import { builtinToolRows } from '../src/composition/tool-rows';
 import { useCompositionStore } from '../src/state/composition-store';
 import { buildStandardRegistry, readOnlyTool, scriptedProvider } from './convergence/helpers/fixtures';
 
 const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r.id);
 
+/** ①b 后 tools 域禁用探针（plugin 行——解析须在通道腰内）。 */
+const WEB_ROW = 'plugin/hologram/web-domain/web_fetch';
+
 /** 禁用若干工具行 + 插入/覆盖段的 resolved（穿线效果样本）。
- *  ①c（2026-08-23）：builtin/wait 迁插件通道——store 组测试的样本在通道外
- *  解析（无贡献行），工具禁用探针用存活的 builtin/web。
+ *  ①b（2026-08-23）：builtin 行表退役——工具禁用探针改 plugin 行
+ *  （plugin/hologram/web-domain/web_fetch），样本解析在工具通道腰内
+ *  （贡献行在册才可寻址）；prompt 通道腰同时激活（第一方 13 段进样本
+ *  段表——AgentRuntime 端到端断言「第一方面也在」依赖它）。
  *  S4-4 甲（2026-08-23）：组合解析域含通道贡献快照——样本在通道外解析
- *  = builtin 行 + 已插入段（无贡献行/段）；在通道内解析则另含全部贡献行
- *  + 13 第一方段（贡献段寻址恢复，见 roster 测试）。 */
-function sampleComposition(): ResolvedComposition {
-  return resolveRoster(factoryComposition(), [
-    {
-      tools: [{ id: 'builtin/web', disabled: true }],
-      prompt: [
-        { insert: [{ id: 'wiring-probe', text: '【穿线探针一】' }] },
-        { insert: [{ id: 'wiring-probe-2', after: 'wiring-probe', text: '【穿线探针二】' }] },
-        { id: 'wiring-probe', text: '【覆盖后的探针】' },
-      ],
-    },
-  ]);
+ *  = 空行表 + 空段表 + 已插入段；在双通道内解析则含全部贡献行/段
+ *  （贡献寻址恢复，见 roster 测试）。 */
+async function sampleComposition(): Promise<ResolvedComposition> {
+  return withFirstPartyToolChannel(() =>
+    withFirstPartyPromptChannel(() =>
+      Promise.resolve(
+        resolveRoster(factoryComposition(), [
+          {
+            tools: [{ id: WEB_ROW, disabled: true }],
+            prompt: [
+              { insert: [{ id: 'wiring-probe', text: '【穿线探针一】' }] },
+              { insert: [{ id: 'wiring-probe-2', after: 'wiring-probe', text: '【穿线探针二】' }] },
+              { id: 'wiring-probe', text: '【覆盖后的探针】' },
+            ],
+          },
+        ]),
+      ),
+    ),
+  );
 }
 
-/** 通道内样本（S4-4 甲 + ①c）：解析域含贡献行——plugin 行可寻址禁用。 */
+/** 通道内样本（S4-4 甲 + ①c）：解析域含贡献行——plugin 行可寻址禁用。
+ *  调用点已处 withFirstPartyToolChannel 腰内（贡献行在册）。 */
 function sampleCompositionInChannel(): ResolvedComposition {
   return resolveRoster(factoryComposition(), [
     {
@@ -146,8 +158,8 @@ describe('S2-1 穿线：buildSystemPrompt / assembleSystemPrompt(sections)', () 
     });
   });
 
-  it('传插入 + 覆盖的 resolved.prompt → 新文本在、被覆盖文本不在、插入段落位', () => {
-    const composition = sampleComposition();
+  it('传插入 + 覆盖的 resolved.prompt → 新文本在、被覆盖文本不在、插入段落位', async () => {
+    const composition = await sampleComposition();
     const out = assembleSystemPrompt(ctxArgs, composition.prompt);
     expect(out).toContain('【覆盖后的探针】');
     expect(out).toContain('【穿线探针二】');
@@ -210,8 +222,9 @@ describe('S2-1 穿线：AgentRuntime(composition) 端到端', () => {
 
   it('传 composition：插入/覆盖段进入 system prompt（通道腰内复现生产装配面）', async () => {
     // B④ 收官：第一方面全经通道贡献——通道腰内 runtime 装配与生产同路
+    const composition = await sampleComposition();
     await withFirstPartyPromptChannel(async () => {
-      const rt = new AgentRuntime(undefined, undefined, sampleComposition());
+      const rt = new AgentRuntime(undefined, undefined, composition);
       await rt.ready();
       // graphData 在场 → 完整面（第一方 13 段中 applicable 的全参与）
       const h = await rt.createAgentFromContext(makeCtx('s21-composed', rt), { graphData: { nodes: [] } });
@@ -255,26 +268,26 @@ describe('S2-1 穿线：composition-store', () => {
   it('初始态 = factory，resolved ≡ 出厂组合', () => {
     const s = useCompositionStore.getState();
     expect(s.status).toBe('factory');
-    expect(ids(s.resolved.tools)).toEqual(ids(builtinToolRows()));
+    expect(ids(s.resolved.tools)).toEqual(ids(factoryComposition().tools));
   });
 
-  it('setResolved → ok 态，diagnostics 透出', () => {
-    useCompositionStore.getState().setResolved(sampleComposition(), 'roster.patch.yml');
+  it('setResolved → ok 态，diagnostics 透出', async () => {
+    useCompositionStore.getState().setResolved(await sampleComposition(), 'roster.patch.yml');
     const s = useCompositionStore.getState();
     expect(s.status).toBe('ok');
     expect(s.patchOrigin).toBe('roster.patch.yml');
-    expect(s.resolved.diagnostics.disabled).toContain('builtin/web');
+    expect(s.resolved.diagnostics.disabled).toContain(WEB_ROW);
     expect(s.resolved.diagnostics.overridden).toContain('wiring-probe');
     expect(s.resolved.diagnostics.inserted).toContain('wiring-probe');
     expect(s.resolved.diagnostics.inserted).toContain('wiring-probe-2');
   });
 
-  it('setError → error 态 + 回退出厂组合（all-or-nothing 兜底）', () => {
-    useCompositionStore.getState().setResolved(sampleComposition(), 'roster.patch.yml');
+  it('setError → error 态 + 回退出厂组合（all-or-nothing 兜底）', async () => {
+    useCompositionStore.getState().setResolved(await sampleComposition(), 'roster.patch.yml');
     useCompositionStore.getState().setError('未知行 id: "nope"', 'roster.patch.yml');
     const s = useCompositionStore.getState();
     expect(s.status).toBe('error');
     expect(s.error).toContain('nope');
-    expect(ids(s.resolved.tools)).toEqual(ids(builtinToolRows())); // factory 回退
+    expect(ids(s.resolved.tools)).toEqual(ids(factoryComposition().tools)); // factory 回退
   });
 });

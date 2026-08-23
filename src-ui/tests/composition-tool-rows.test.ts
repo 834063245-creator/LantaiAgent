@@ -3,17 +3,18 @@ import { SubAgentPool } from '../src/agent/coordinator';
 import { TaskManager } from '../src/agent/task';
 import type { ToolExecutor } from '../src/agent/tool';
 import type { SubAgentSpawner } from '../src/agent/tools/subagent';
-import { builtinToolRows, type ToolRowContext } from '../src/composition/tool-rows';
+import { factoryComposition } from '../src/composition/roster';
+import type { ToolRowContext } from '../src/composition/tool-rows';
 
-// ── 行表自检：S1-2 coding 面 + S1-3 装配末端 ──
-// 行表是 standard preset 装配序的事实来源（表序 = 组合序）。这里钉住：
-//   1. 行 id 唯一且稳定（未来 preset 按 id 引用行）；
-//   2. web 族行产出 = 迁移前现行装配的表序（机械重述）；
-//   3. 经 buildToolRegistry 真实装配后无重名残留（名字冲突装载期拒绝）。
+// ── 行装配自检（S1-3 装配末端；①b 收官 2026-08-23：builtin 行表退役）──
+// 行真源 = factoryComposition().tools = pluginToolRows()（十四族全量经
+// ctx.tools 第一方插件通道贡献）。这里钉住：
+//   1. 经 buildToolRegistry 真实装配后无重名残留（名字冲突装载期拒绝）；
+//   2. 冲突拒绝（外部贡献撞通道工具名 → 装配期 throw）；
+//   3. noCache 行每装配重创实例（①c 语义钉面）；
+//   4. 条件族缺帐空集（原行 if 分支语义）。
 // 可见面零漂移由 verify:convergence 守护（S1 设计件 §2.4），此处不重复。
-// 迁出史：git/search（B①）+ fs/shell/agent-isolation（②）+ wait/ask/
-// memory/skill/task/agent/hologram（①c 无缓存行，2026-08-23）十二族已迁
-// ctx.tools 第一方插件通道（钉住面在 tests/coding-domain-plugins.test.ts）。
+// 各族贡献清单/名序/生命周期钉面在 tests/coding-domain-plugins.test.ts。
 
 const exec: ToolExecutor = async () => '';
 
@@ -22,43 +23,9 @@ function minCtx(): ToolRowContext {
   return { codingExec: exec, taskManager: new TaskManager(), subAgentPool: new SubAgentPool() };
 }
 
-/** 全部 2 行 id（表序 = 组合序；十二族已迁第一方插件通道——序钉在
- *  tests/coding-domain-plugins.test.ts）。 */
-const ALL_ROW_IDS = ['builtin/web', 'builtin/browser-desktop'];
-
-/** web 族现行表序（单工具）。 */
-const WEB_TOOL_ORDER = ['web_fetch'];
-
-describe('composition/tool-rows（内置行表）', () => {
-  it('行 id 唯一且稳定，表序 = 组合序（①c 后 2 行）', () => {
-    const ids = builtinToolRows().map((r) => r.id);
-    expect(ids).toEqual(ALL_ROW_IDS);
-    expect(new Set(ids).size).toBe(ids.length);
-  });
-
-  it('web 族行产出工具名序 = 迁移前现行表序', async () => {
-    const row = builtinToolRows().find((r) => r.id === 'builtin/web');
-    if (!row) throw new Error('builtin/web 行缺失');
-    const names = (await row.factory(minCtx())).map((t) => t.name());
-    expect(names).toEqual(WEB_TOOL_ORDER);
-  });
-
-  it('browser-desktop 行：必填依赖下产出非空', async () => {
-    const row = builtinToolRows().find((r) => r.id === 'builtin/browser-desktop');
-    if (!row) throw new Error('builtin/browser-desktop 行缺失');
-    const names = (await row.factory(minCtx())).map((t) => t.name());
-    expect(names.length).toBeGreaterThan(0);
-    expect(names.some((n) => n.startsWith('browser_'))).toBe(true);
-    expect(names.some((n) => n.startsWith('desktop_'))).toBe(true);
-  });
-
-  it('行 factory 每次调用产出独立实例（无共享可变状态）', async () => {
-    const row = builtinToolRows().find((r) => r.id === 'builtin/web');
-    if (!row) throw new Error('builtin/web 行缺失');
-    const a = await row.factory(minCtx());
-    const b = await row.factory(minCtx());
-    expect(a).not.toBe(b);
-    expect(a.map((t) => t.name())).toEqual(b.map((t) => t.name()));
+describe('composition/tool-rows（行装配，builtin 行表已退役）', () => {
+  it('无通道环境：factoryComposition().tools = 空行表（行真源全在插件通道）', () => {
+    expect(factoryComposition().tools).toEqual([]);
   });
 
   it('经 buildToolRegistry 真实装配：全部族工具名 + ask_user + wait + read_file 别名在册且无重名', {
@@ -67,10 +34,10 @@ describe('composition/tool-rows（内置行表）', () => {
     const { buildStandardRegistry } = await import('./convergence/helpers/fixtures');
     const reg = await buildStandardRegistry();
     const names = reg.names();
-    // ①c 迁出族（wait/ask/memory/skill/task/agent/hologram）经插件通道注册
-    // ——夹具已包 withFirstPartyToolChannel（noCache 族每装配重创）。
+    // 十四族经插件通道注册——夹具已包 withFirstPartyToolChannel
+    // （noCache 族每装配重创；browser-desktop 整组动态 import 在册）。
     // skill/memory 为可选依赖（夹具不注入——原行 if 分支空集语义）
-    for (const n of ['ask_user', 'wait', 'web_fetch', 'read_file']) {
+    for (const n of ['ask_user', 'wait', 'web_fetch', 'read_file', 'browser_launch', 'desktop_probe']) {
       expect(names).toContain(n);
     }
     expect(names.some((n) => n.startsWith('task_'))).toBe(true);

@@ -21,7 +21,10 @@ function router(routes: Record<string, { status: number; body?: string }>): Fetc
 
 const ORIGIN = presetsIndexOrigin(14570);
 
-const PAPER_PATCH = ['tools:', '  - id: builtin/web', '    disabled: true'].join('\n');
+// ①b（2026-08-23）：patch 内容探针改 plugin 行 id（builtin 行表退役）——
+// 发现层只 parse/校验不解析（resolveRoster 在 preset-assembly 侧），id
+// 形状任意但沿用现行寻址面保持测试语义真实。
+const PAPER_PATCH = ['tools:', '  - id: plugin/hologram/web-domain/web_fetch', '    disabled: true'].join('\n');
 
 describe('composition/preset-discovery（S4-0 用户层发现）', () => {
   beforeEach(() => {
@@ -48,7 +51,7 @@ describe('composition/preset-discovery（S4-0 用户层发现）', () => {
     expect(roster.map((p) => p.id)).toEqual(['standard', 'minimal', 'alpha', 'paperx']);
     const paperx = roster.find((p) => p.id === 'paperx');
     expect(paperx?.builtin).toBe(false);
-    expect(paperx?.patch).toEqual({ tools: [{ id: 'builtin/web', disabled: true }] });
+    expect(paperx?.patch).toEqual({ tools: [{ id: 'plugin/hologram/web-domain/web_fetch', disabled: true }] });
     expect(paperx?.metadata).toEqual({ name: '纸壳', order: 2 });
     expect(paperx?.error).toBeUndefined();
   });
@@ -75,7 +78,7 @@ describe('composition/preset-discovery（S4-0 用户层发现）', () => {
         [ORIGIN + '/']: { status: 200, body: '["weird"]' },
         [ORIGIN + '/weird/roster.patch.yml']: {
           status: 200,
-          body: 'tools:\n  - id: builtin/web\n    disabled: true\n    text: 越域\n',
+          body: 'tools:\n  - id: plugin/hologram/web-domain/web_fetch\n    disabled: true\n    text: 越域\n',
         },
       }),
     });

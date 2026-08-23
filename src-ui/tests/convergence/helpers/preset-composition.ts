@@ -8,14 +8,23 @@
 // phase-1 effective 快照经 createAgent 第 2 参（compositionOverride）消费；
 // phase-0 full/plan 快照经 buildStandardRegistry(toolRows) 消费——两条
 // 路径的行集合一致性由 preset 真源（composition/presets.ts）保证。
+//
+// ①b（2026-08-23）：minimal 寻址 plugin 行——解析须在 withFirstPartyToolChannel
+// 腰内做（贡献行在册才可寻址；phase-0 路径经 buildStandardRegistry 的腰
+// 内惰性求值天然满足，本 helper 的调用方须腰内求值——standard 路径零
+// 依赖不受影响）。
 
+import { withFirstPartyToolChannel } from '../../../src/composition/first-party-tools';
 import { resolvePresetComposition } from '../../../src/composition/presets';
 import { factoryComposition, type ResolvedComposition } from '../../../src/composition/roster';
 
-/** 当前 preset 的组合解析产物（CONVERGENCE_PRESET 路由）。 */
-export function resolveCurrentComposition(): ResolvedComposition {
+/** 当前 preset 的组合解析产物（CONVERGENCE_PRESET 路由）。
+ *  异步：preset 寻址 plugin 行的解析在工具通道腰内执行（贡献行在册）。 */
+export async function resolveCurrentComposition(): Promise<ResolvedComposition> {
   const name = process.env.CONVERGENCE_PRESET || 'standard';
   if (name === 'standard') return factoryComposition();
-  if (name === 'minimal') return resolvePresetComposition('minimal');
+  if (name === 'minimal') {
+    return withFirstPartyToolChannel(() => Promise.resolve(resolvePresetComposition('minimal')));
+  }
   throw new Error('[convergence] 未知 preset: ' + name + '（helpers/preset-composition 只路由 standard/minimal）');
 }
