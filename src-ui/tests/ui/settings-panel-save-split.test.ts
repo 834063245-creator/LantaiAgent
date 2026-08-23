@@ -124,8 +124,12 @@ describe('SettingsPanel — 保存拆域', () => {
     const save = document.querySelector<HTMLButtonElement>('.sp-footer .sp-btn-save')!;
     expect(save.disabled).toBe(true);
 
-    const ctxInput = document.querySelector<HTMLInputElement>('.sp-input-num')!;
-    setInputValue(ctxInput, '8000');
+    // 模型参数区（全局上下文窗口/深度思考）已拆除——用 Agent 页
+    // 图谱引擎开关触发非 Provider tab 的 dirty。
+    const engineToggle = [...document.querySelectorAll<HTMLInputElement>('.sp-checkbox-label input')].find((i) =>
+      i.closest('.sp-section')?.textContent?.includes('图谱引擎'),
+    )!;
+    engineToggle.click();
     await tick();
     expect(save.disabled).toBe(false);
 

@@ -7,9 +7,11 @@
 //
 // ⚡ P14（2026-08-22）能力协商定稿：档位支持与否是 per-model 数据（ModelDescriptor
 // .thinkingEfforts / .thinkingOff / .deepseekThinking），不是厂商嗅探。本模块只保留：
-// 词表 + 标签、Anthropic budget 映射、全局开关语义、声明驱动的 UI 选项构造。
+// 词表 + 标签、Anthropic budget 映射、内部强制关闭语义、声明驱动的 UI 选项构造。
 // 退役：effortVendor / toOpenAIEffort / thinkingModesFor（name/baseUrl/model 字符串
-// 嗅探 + low→high 静默归一——选了低实际发高，用户无从得知）。
+// 嗅探 + low→high 静默归一——选了低实际发高，用户无从得知）；
+// 全局「深度思考」开关（SettingsPanel Agent 页，2026-08-24 拆除——Provider 页
+// 档位含「关闭」，其目录外兜底在 OpenAI 兼容协议下本就不发参数、实际空转）。
 
 import type { ModelDescriptor, Protocol } from './types';
 
@@ -55,9 +57,6 @@ export const THINKING_EFFORT_BUDGETS: Record<ThinkingEffort, number> = {
   max: 32000,
 };
 
-/** 全局「深度思考」开关的展示文案（SettingsPanel 共用）。 */
-export const DEEP_THINK_LABEL = '深度思考（推理模型思考开关）';
-
 export function isThinkingMode(v: string): v is ThinkingMode {
   return THINKING_MODES.some((o) => o.value === v);
 }
@@ -67,7 +66,8 @@ export function thinkingModeLabel(v: string | undefined): string {
   return THINKING_MODES.find((o) => o.value === v)?.label ?? `自定义 (${v})`;
 }
 
-/** 全局 disableThinking 对单 Provider 思考策略的生效结果（provider/index.ts 使用）。 */
+/** 调用方强制关闭思考（翻译器/摘要路径的 options.disableThinking，非用户设置）
+ *  对单 Provider 思考策略的生效结果（provider/index.ts 使用）。 */
 export function withThinkingDisabled(
   thinking: StoredThinking | undefined,
   disableThinking: boolean | undefined,
@@ -99,7 +99,7 @@ export function thinkingCapability(desc: ModelDescriptor | undefined): ThinkingC
 
 /** 声明驱动的 UI 档位表（替代退役的 thinkingModesFor 嗅探）：
  *  自动档恒有；声明档位按词表序给出；声明 off 才有关闭。
- *  无声明（目录外模型）→ 仅回退全局「深度思考」开关，不显示档位选择器。 */
+ *  无声明（目录外模型）→ 不显示档位选择器——思考走模型默认，无法控制。 */
 export function thinkingOptionsFor(
   desc: ModelDescriptor | undefined,
 ): readonly { value: ThinkingMode; label: string }[] {
@@ -118,7 +118,7 @@ export function thinkingOptionsFor(
 
 /** 校验已存储的思考策略是否在声明清单内（发请求前的响亮门禁）。
  *  - 自动（''/遗留数字）与「关闭」：协议层各自处理，此函数不拦（关闭未声明时
- *    openai 协议降级为不发参数——全局开关/翻译路径不能因未知模型而炸）。
+ *    openai 协议降级为不发参数——翻译路径的强制关闭不能因未知模型而炸）。
  *  - 命名档位：模型未声明或不在清单内 → 抛错（用户改选，绝不静默替换）。
  *  协议差异（budget vs effort）由调用方在捕获后自行组织文案。 */
 export function assertEffortDeclared(

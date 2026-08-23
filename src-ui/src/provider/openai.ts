@@ -205,7 +205,7 @@ export function buildChatRequest(
   //    400 雷区（P12 曾对 OpenAI 官方发包裹，从未真机验证，P14 移除）。
   //  - 关闭 → 声明可关才发：DeepSeek 方言 thinking:{type:'disabled'}；
   //    OpenAI 官方 5.1+ reasoning_effort:'none'；未声明关闭的模型不发参数
-  //    （全局 disableThinking 对未知模型降级为模型默认，不编造）。
+  //    （目录外模型无从关闭——不编造，模型默认即最终行为）。
   const stored = thinking || '';
   const level = isThinkingMode(stored) ? stored : '';
   let thinkingBlock: ChatRequest['thinking'];

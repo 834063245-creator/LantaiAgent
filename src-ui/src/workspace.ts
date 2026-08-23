@@ -46,7 +46,6 @@ import { initCordisKernel } from './cordis/boot';
 import { withTimeout } from './lifecycle/timeout';
 import { createProvider } from './provider';
 import { getModel, mergeDynamicModels } from './provider/catalog';
-import { withThinkingDisabled } from './provider/thinking';
 import type { Provider } from './provider/types';
 import { parseJson, typedJsonRpc, typedListen, typedRpc } from './rpc-contract';
 import type { CommunityData, GraphDiffJson, GraphEdge, GraphJSON, GraphNode } from './scene/graph-types';
@@ -636,7 +635,7 @@ export class Workspace {
     agentSessionState.forEachAgent((h) => h.setProvider(prov, pricing));
 
     // 行为参数总是热同步（幂等）
-    const thinkingCfg = withThinkingDisabled(act.thinking, s.agent?.disableThinking);
+    const thinkingCfg = act.thinking;
     const win = this._effectiveContextWindow(s);
     this.agent?.setThinking(thinkingCfg);
     this.agent?.setContextWindow(win);
@@ -681,18 +680,20 @@ export class Workspace {
   }
 
   /** 从同一份 settings 快照构建 active provider — createProvider 选项唯一收口处，
-   *  _setupAgentInner 与会话工厂共用，保证两处构建永不分叉。 */
+   *  _setupAgentInner 与会话工厂共用，保证两处构建永不分叉。
+   *  思考策略只来自 provider.thinking（Provider 页档位）；全局 disableThinking
+   *  是遗留字段，UI 已拆除，此处不再读取（翻译器/摘要的强制关闭走各自的
+   *  createProvider options，与此无关）。 */
   private _buildProvider(settings: AppSettings): Provider {
-    return createProvider(getActiveProvider(settings), {
-      disableThinking: settings.agent?.disableThinking,
-    });
+    return createProvider(getActiveProvider(settings));
   }
 
-  /** 生效上下文窗口 — Agent 全局设置优先，其次 Provider 覆盖（P14），
-   *  再其次目录值，最后 200K。factory 与 settings-saved 热切换共用，保证两处计算不分叉。 */
+  /** 生效上下文窗口 — Provider 覆盖（P14）优先，其次目录值，最后 200K。
+   *  factory 与 settings-saved 热切换共用，保证两处计算不分叉。
+   *  agent.contextWindow（全局窗口）是遗留字段，UI 已拆除，此处不再读取。 */
   private _effectiveContextWindow(s: AppSettings): number {
     const act = getActiveProvider(s);
-    return s.agent?.contextWindow || act.contextWindow || getModel(act.model)?.contextWindow || 200000;
+    return act.contextWindow || getModel(act.model)?.contextWindow || 200000;
   }
 
   private async _setupAgentInner(chatPanel: ChatCore): Promise<void> {

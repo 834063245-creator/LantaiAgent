@@ -86,13 +86,13 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
   const statusCls = test.phase === 'testing' ? 'testing' : st;
   const statusLabel = test.phase === 'testing' ? '测试中…' : STATUS_LABEL[st];
   // P14 能力协商：档位表来自当前模型的目录声明（thinkingEfforts/thinkingOff），
-  // 目录外模型 = 无声明 = 不显示选择器（回退全局「深度思考」开关），不编造档位。
+  // 目录外模型 = 无声明 = 不显示选择器（思考走模型默认，无法控制），不编造档位。
   const modelDesc = getModel(provider.model);
   const thinkingModes = thinkingOptionsFor(modelDesc);
   const thinkingHint =
     thinkingModes.length > 0
       ? '档位由该模型的目录声明提供；目录外的档位不可选（不会静默替换为其他档位）。'
-      : '该模型暂无思考档位数据（目录外或厂商未披露）。可用「深度思考」开关控制推理开关。';
+      : '该模型暂无思考档位数据（目录外或厂商未披露）——思考行为由模型默认决定，无法在此控制。';
   const isFactoryUrl = isFactoryBaseUrl(provider.baseUrl);
 
   const keyChip = provider.apiKey?.trim()

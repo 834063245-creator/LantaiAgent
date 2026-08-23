@@ -10,7 +10,6 @@ import type React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { selectPreset } from '../../composition/preset-assembly';
 import { setLang } from '../../i18n';
-import { DEEP_THINK_LABEL } from '../../provider/thinking';
 import { typedJsonRpc } from '../../rpc-contract';
 import type { AppSettings, ProviderId } from '../../settings';
 import {
@@ -433,42 +432,6 @@ const SettingsPanelApp: React.FC<{
               </div>
             </div>
             <div className="sp-section">
-              <div className="sp-section-title">模型参数</div>
-              <div className="sp-field">
-                <label className="sp-label sp-checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={!settings.agent.disableThinking}
-                    onChange={(e) => {
-                      commit({ ...settings, agent: { ...settings.agent, disableThinking: !e.target.checked } });
-                    }}
-                  />
-                  {DEEP_THINK_LABEL}
-                </label>
-                <div className="sp-hint-sub">
-                  关闭 = 强制直出（Anthropic / OpenAI 兼容两种协议都生效）。思考强度档位在 Provider
-                  页或聊天面板模型切换器设置（DeepSeek：高/极限；OpenAI 官方：低/中/高）。
-                </div>
-              </div>
-              <div className="sp-field">
-                <label className="sp-label">上下文窗口（0=不限制）</label>
-                <input
-                  type="number"
-                  className="sp-input sp-input-num"
-                  value={settings.agent.contextWindow || 0}
-                  min={0}
-                  step={1000}
-                  onChange={(e) => {
-                    commit({
-                      ...settings,
-                      agent: { ...settings.agent, contextWindow: parseInt(e.target.value, 10) || 0 },
-                    });
-                  }}
-                  placeholder="0 = 不限制"
-                />
-              </div>
-            </div>
-            <div className="sp-section">
               <div className="sp-section-title">图谱引擎</div>
               <div className="sp-field">
                 <label className="sp-label sp-checkbox-label">
@@ -487,7 +450,6 @@ const SettingsPanelApp: React.FC<{
                 </div>
               </div>
             </div>
-            <div className="sp-hint">小窗口意味着旧消息会被压缩。</div>
           </div>
 
           {/* ═══ 显示标签页 ═══ */}
