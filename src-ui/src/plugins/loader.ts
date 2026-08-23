@@ -56,11 +56,12 @@ export function pluginAssetsOrigin(port: number): string {
  * prompts 第六 service（system-prompt 段贡献注册表）。P4 B①（2026-08-23）：
  * 表尾接第一方工具域插件清单（git/search 两域经 ctx.tools 贡献工具，
  * 单一真源 composition/first-party-tools.ts——贡献行序 = 清单序，且必须
- * 列于四 service 之后使 inject ['tools'] 可解析）。P4 B④（2026-08-23）：
- * 表尾接第一方 prompt 段插件清单（memory/claude-md 试点 + graph-snapshot
- * 续批经 ctx.prompts 贡献，单一真源 composition/first-party-prompts.ts
- * ——贡献序 = 清单序，列于 promptsServicePlugin 之后使 inject ['prompts']
- * 可解析）。 */
+ * 列于四 service 之后使 inject ['tools'] 可解析）。P4 B④ 收官
+ * （2026-08-23）：表尾接第一方 prompt 段插件清单（13 段全量经
+ * ctx.prompts 贡献——试点 memory/claude-md + 续批 graph-snapshot +
+ * 收官批 10 段；单一真源 composition/first-party-prompts.ts——贡献序 =
+ * 清单序，列于 promptsServicePlugin 之后使 inject ['prompts'] 可解析；
+ * 出厂段表 builtinPromptSections() 已退役，本通道是出厂段唯一来源）。 */
 const BUILTIN_PLUGINS: LantaiPlugin[] = [
   compositionServicesPlugin,
   codeRuntimePlugin,

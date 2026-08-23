@@ -11,7 +11,7 @@
 //      PromptSectionContext；追加序 = 注册序。
 
 import { describe, expect, it } from 'vitest';
-import { assembleSystemPrompt, builtinPromptSections } from '../src/composition/prompt-sections';
+import { assembleSystemPrompt } from '../src/composition/prompt-sections';
 import {
   activePromptContributions,
   type PromptContribution,
@@ -96,10 +96,13 @@ describe('注册契约（disposer 幂等 + 陈旧性守卫 + 重名拒绝）', (
 });
 
 describe('合流点：assembleSystemPrompt 末端追加贡献', () => {
-  it('无服务/无贡献 = 出厂拼装逐字节零漂移（构造性保证）', () => {
+  it('无服务/无贡献 = 解析产物纯拼装（缺省空表 → 空输出；构造性保证）', () => {
+    // B④ 收官：出厂面 = 空解析产物 + 通道贡献——无服务/无贡献时输出为空
+    // （出厂段的复现需通道，见 prompt-segments-plugin.test 注册面依赖）
     const a = assembleSystemPrompt(CTX);
-    const b = assembleSystemPrompt(CTX, builtinPromptSections());
-    expect(a).toBe(b); // sections 注入出厂表 = 缺省路径，两路恒等
+    const b = assembleSystemPrompt(CTX, []);
+    expect(a).toBe(b); // sections 缺省 = 空表，两路恒等
+    expect(a).toBe('');
     expect(a).not.toContain('probe-marker');
   });
 

@@ -1,13 +1,13 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
-// SPDX-License-Identifier: MIT.
+// SPDX-License-Identifier: MIT
 
-// 第一方 prompt 段插件（P4 B④ 试点 + 续批）钉住面：
-//   1. 贡献清单：插件装载后注册 graph-snapshot/memory/claude-md 三段
-//      （序 = 迁出前表尾序——续批新迁段插头部保序，见 migratedPromptSections）；
-//   2. 零漂移：通道内缺省拼装（表 10 段 + 贡献 3 段）≡ 迁移前出厂面重述
-//      （sections 注入 13 段）——逐字节全等（B④ 搬运的核心承诺）；
-//   3. 注册面依赖：无通道环境缺省拼装缺迁移段——convergence 夹具必须经
-//      withFirstPartyPromptChannel 复现生产装配面的机制原因（obstacle ③）；
+// 第一方 prompt 段插件（P4 B④ 收官）钉住面：
+//   1. 贡献清单：插件装载后注册全部 13 段（序 = 迁移前出厂表序）；
+//   2. 零漂移：通道内缺省拼装（空解析产物 + 13 贡献）≡ 出厂面重述
+//      （sections 注入 13 段，无通道）——逐字节全等（B④ 收官的核心承诺）；
+//   3. 注册面依赖：无通道环境缺省拼装 = 空提示词——收官后出厂面全依赖
+//      通道（obstacle ③），convergence 夹具必须经 withFirstPartyPromptChannel
+//      复现生产装配面；
 //   4. 段语义保留：applicable 直收 PromptSectionContext——空 graphSnapshot/
 //      memorySection/claudeMdSection 时迁移段跳过（与表内时代逐字同行为，
 //      无实例缓存障碍）；
@@ -16,11 +16,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { withFirstPartyPromptChannel } from '../src/composition/first-party-prompts';
-import {
-  assembleSystemPrompt,
-  builtinPromptSections,
-  migratedPromptSections,
-} from '../src/composition/prompt-sections';
+import { assembleSystemPrompt, firstPartyPromptSections } from '../src/composition/prompt-sections';
 import { activePromptContributions, promptsServicePlugin } from '../src/composition/prompt-service';
 import { Context } from '../src/cordis';
 import { promptSegmentsPlugin } from '../src/plugins/prompt-segments-plugin';
@@ -35,32 +31,31 @@ const FULL_CTX = {
   shellEnvSection: 'env-line',
 };
 
-describe('第一方 prompt 段插件（P4 B④ 试点 + 续批）', () => {
-  it('贡献清单：插件装载注册 graph-snapshot/memory/claude-md（序 = 迁出前表尾序）', async () => {
+/** 13 段 id（序 = 迁移前出厂表序 = firstPartyPromptSections 数组序）。 */
+const ALL_SECTION_IDS = firstPartyPromptSections().map((s) => s.id);
+
+describe('第一方 prompt 段插件（P4 B④ 收官）', () => {
+  it('贡献清单：插件装载注册全部 13 段（序 = 迁移前出厂表序）', async () => {
     const root = new Context();
     const svcFiber = await root.plugin(promptsServicePlugin);
     const segFiber = await root.plugin(promptSegmentsPlugin);
-    expect(activePromptContributions().map((s) => s.id)).toEqual(['graph-snapshot', 'memory', 'claude-md']);
+    expect(activePromptContributions().map((s) => s.id)).toEqual(ALL_SECTION_IDS);
     await segFiber.dispose();
     await svcFiber.dispose();
   });
 
-  it('零漂移：通道内缺省拼装 ≡ 迁移前出厂面重述（sections 注入 13 段）', async () => {
-    // 迁移前出厂面重述：表 + 迁出段一并注入（无通道 = 无贡献追加）
-    const preMigrationFace = assembleSystemPrompt(FULL_CTX, [...builtinPromptSections(), ...migratedPromptSections()]);
+  it('零漂移：通道内缺省拼装 ≡ 出厂面重述（sections 注入 13 段，无通道）', async () => {
+    // 出厂面重述：13 段一并注入（无通道 = 无贡献追加）——通道内缺省
+    // 拼装（空解析产物 + 13 贡献）与之逐字节全等
+    const preMigrationFace = assembleSystemPrompt(FULL_CTX, firstPartyPromptSections());
     await withFirstPartyPromptChannel(async () => {
       expect(assembleSystemPrompt(FULL_CTX)).toBe(preMigrationFace);
     });
   });
 
-  it('注册面依赖：无通道环境缺省拼装缺迁移段（夹具须包腰的机制原因）', () => {
+  it('注册面依赖：无通道环境缺省拼装 = 空提示词（收官后出厂面全依赖通道）', () => {
     const out = assembleSystemPrompt(FULL_CTX);
-    expect(out).not.toContain('## 记忆库');
-    expect(out).not.toContain('## 项目架构快照');
-    expect(out).not.toContain('## 项目规范');
-    // 表内段不受影响
-    expect(out).toContain('## 行为规则');
-    expect(out).toContain('## 多 Agent 协作');
+    expect(out).toBe('');
   });
 
   it('段语义保留：applicable 收装配期真值——空白 snapshot/memory/claudeMd 跳过', async () => {
@@ -89,7 +84,7 @@ describe('第一方 prompt 段插件（P4 B④ 试点 + 续批）', () => {
   it('通道腰生命周期：run 期间贡献在册，run 返回后读取面归零', async () => {
     expect(activePromptContributions()).toEqual([]);
     const result = await withFirstPartyPromptChannel(async () => {
-      expect(activePromptContributions().map((s) => s.id)).toEqual(['graph-snapshot', 'memory', 'claude-md']);
+      expect(activePromptContributions().map((s) => s.id)).toEqual(ALL_SECTION_IDS);
       return 'ok';
     });
     expect(result).toBe('ok');

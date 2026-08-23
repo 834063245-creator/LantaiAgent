@@ -25,14 +25,17 @@ const VALID_PATCH = [
   '  - id: builtin/shell',
   '    disabled: true',
   'prompt:',
-  '  - id: behavior-rules',
-  '    text: |',
-  '      【覆盖后的规则】',
   '  - insert:',
   '      - id: team-convention',
-  '        after: collaboration-mode',
   '        text: |',
   '          ## 团队约定',
+  '      - id: team-convention-2',
+  '        after: team-convention',
+  '        text: |',
+  '          ## 团队约定二',
+  '  - id: team-convention',
+  '    text: |',
+  '      【覆盖后的约定】',
 ].join('\n');
 
 const ORIGIN = compositionOrigin(14570);
@@ -58,11 +61,12 @@ describe('composition/patch-loader（S2-2 用户层通道）', () => {
     expect(s.patchOrigin).toBe('roster.patch.yml');
     expect(ids(s.resolved.tools)).not.toContain('builtin/shell');
     expect(s.resolved.diagnostics.disabled).toContain('builtin/shell');
-    expect(s.resolved.diagnostics.overridden).toContain('behavior-rules');
+    expect(s.resolved.diagnostics.overridden).toContain('team-convention');
     expect(s.resolved.diagnostics.inserted).toContain('team-convention');
-    // 覆盖段生效（完整面 ctx 下 render 新文本）
-    const section = s.resolved.prompt.find((x) => x.id === 'behavior-rules');
-    expect(section?.render({ graphData: { nodes: [] }, projectPath: '' })).toContain('【覆盖后的规则】');
+    expect(s.resolved.diagnostics.inserted).toContain('team-convention-2');
+    // 覆盖段生效（已插入段的 text 覆盖——B④ 收官后 prompt 寻址面 = 已插段）
+    const section = s.resolved.prompt.find((x) => x.id === 'team-convention');
+    expect(section?.render({ projectPath: '' })).toContain('【覆盖后的约定】');
   });
 
   it('404：无用户层 = factory 非错误', async () => {

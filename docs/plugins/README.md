@@ -1,7 +1,8 @@
 # HoloGram 插件指南（docs/plugins/README.md）
 
 > S4 竣工（2026-08-20）；S3 第一方行化（2026-08-22）；P4 A-1 prompt 段贡献
-> 通道（2026-08-23）；P4 B④ 第一方 prompt 段迁移试点（2026-08-23）。插件 = 经
+> 通道（2026-08-23）；P4 B④ 第一方 prompt 段迁移收官（2026-08-23，13 段全量
+> 经 ctx.prompts 贡献）。插件 = 经
 > webview 动态 import 装载的自包含 ES 模块，
 > 向宿主注册**面板 / 命令 / 工具 / 块渲染器 / prompt 段**贡献。
 > 完全信任模型——安装前必读 §6。从零到跑通的最短路径：
@@ -170,12 +171,13 @@ ctx.effect(
 第六贡献通道（P4 A-1，2026-08-23）：向 Agent 系统提示词追加段落——工具指导、
 领域约定、团队规范等静态文本面。
 
-第一方同走此通道（P4 B④，2026-08-23）：出厂段 graph-snapshot/memory/
-claude-md（试点 + 首续批）已迁
-`src-ui/src/plugins/prompt-segments-plugin.ts` 经 `ctx.prompts` 贡献（贡献
-位 = 表尾原位，拼装字节零漂移；定义留 `prompt-sections.ts` 单一真源）
-——迁移后这些段脱离组合 patch 寻址域（寻址它们的旧 patch 整体拒绝，
-错误可见）。
+第一方同走此通道（P4 B④ 收官，2026-08-23）：**全部 13 段**出厂段（试点
+memory/claude-md → 续批 graph-snapshot → 收官批剩余 10 段）已迁
+`src-ui/src/plugins/prompt-segments-plugin.ts` 经 `ctx.prompts` 贡献
+（装载 `firstPartyPromptSections()`，贡献序 = 迁移前出厂表序，拼装字节
+零漂移；定义留 `prompt-sections.ts` 单一真源；出厂段表
+`builtinPromptSections()` 已退役，本通道是出厂段唯一来源）——全部
+第一方段脱离组合 patch 寻址域（寻址它们的旧 patch 整体拒绝，错误可见）。
 
 ```js
 ctx.effect(
@@ -306,7 +308,8 @@ factory（出厂表，代码真源）
   `ctx.prompts`（`composition/prompt-service.ts`）——段贡献追加在解析产物
   末尾，下次装配生效；§3。
 - **贡献段/行的组合解析域**：patch/preset 当前只寻址 builtin 行——
-  `plugin/…` 工具行与 prompt 贡献段纳入寻址域属 S4-4 机器桥批。
+  `plugin/…` 工具行与 prompt 贡献段（含 B④ 收官后全部 13 第一方段）
+  纳入寻址域属 S4-4 机器桥批（已拍板排进当前工程，2026-08-23 拍板 #1）。
 - **版本比较/更新提示**：manifest.version 有、UI 显示之；比较逻辑与更新
   流程属增强。
 - **preset 的 UI 选择面**：当前只有设置面板默认值 + 新会话携带默认

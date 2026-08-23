@@ -35,6 +35,7 @@ import { type ToolExecutor, ToolRegistry } from '../src/agent/tool';
 import { createMergeTool } from '../src/agent/tools/merge';
 import { createSubAgentTool, type SubAgentSpawner } from '../src/agent/tools/subagent';
 import { MeshTopology } from '../src/agent/topology';
+import { withFirstPartyPromptChannel } from '../src/composition/first-party-prompts';
 import type { Chunk, Provider, Usage } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
 import { useAgentPanelStore } from '../src/ui/agent-panel-store';
@@ -193,7 +194,7 @@ describe('端到端：bus 唤醒 idle agent', () => {
       (m) => m.role === 'user' && typeof m.content === 'string' && m.content.includes('📬 消息'),
     );
     expect(reminder).toBeDefined();
-    expect(reminder!.content).toContain('hello-wakeup');
+    expect(reminder?.content).toContain('hello-wakeup');
 
     // 验证：agent 产生了输出（被唤醒后跑了一轮 provider）
     const assistantMsg = session.find(
@@ -208,26 +209,32 @@ describe('端到端：bus 唤醒 idle agent', () => {
 // ═══════════════════════════════════════════════════════
 
 describe('端到端：系统提示词验证', () => {
-  it('系统提示词包含多 Agent 协作段落', () => {
-    const prompt = buildSystemPrompt({ nodes: [], edges: [] }, '/fake/project', '', '', '', 'deepseek');
+  // P4 B④ 收官（2026-08-23）：出厂面 13 段全经 ctx.prompts 通道贡献——
+  // 出厂拼装断言须在通道腰内复现生产装配面（无通道 = 空提示词）。
+  it('系统提示词包含多 Agent 协作段落', async () => {
+    await withFirstPartyPromptChannel(async () => {
+      const prompt = buildSystemPrompt({ nodes: [], edges: [] }, '/fake/project', '', '', '', 'deepseek');
 
-    expect(prompt).toContain('多 Agent 协作');
-    expect(prompt).toContain('异步子 Agent');
-    expect(prompt).toContain('async=true');
-    expect(prompt).toContain('agent(merge)');
-    expect(prompt).toContain('agent(message)');
-    expect(prompt).toContain('决策指南');
+      expect(prompt).toContain('多 Agent 协作');
+      expect(prompt).toContain('异步子 Agent');
+      expect(prompt).toContain('async=true');
+      expect(prompt).toContain('agent(merge)');
+      expect(prompt).toContain('agent(message)');
+      expect(prompt).toContain('决策指南');
+    });
   });
 
-  it('系统提示词模式无关：多 Agent 段落在规划/执行模式下一致', () => {
-    // 协作模式不再影响系统提示词（footer 热切换不重建，避免击穿前缀缓存）；
-    // 规划模式约束由 PlanModeInjector 的运行时提醒下发。
-    const prompt = buildSystemPrompt({ nodes: [], edges: [] }, '/fake/project', '', '', '', 'deepseek');
+  it('系统提示词模式无关：多 Agent 段落在规划/执行模式下一致', async () => {
+    await withFirstPartyPromptChannel(async () => {
+      // 协作模式不再影响系统提示词（footer 热切换不重建，避免击穿前缀缓存）；
+      // 规划模式约束由 PlanModeInjector 的运行时提醒下发。
+      const prompt = buildSystemPrompt({ nodes: [], edges: [] }, '/fake/project', '', '', '', 'deepseek');
 
-    expect(prompt).toContain('多 Agent 协作');
-    expect(prompt).toContain('## 协作模式');
-    expect(prompt).toContain('规划模式');
-    expect(prompt).not.toContain('当前激活');
+      expect(prompt).toContain('多 Agent 协作');
+      expect(prompt).toContain('## 协作模式');
+      expect(prompt).toContain('规划模式');
+      expect(prompt).not.toContain('当前激活');
+    });
   });
 });
 

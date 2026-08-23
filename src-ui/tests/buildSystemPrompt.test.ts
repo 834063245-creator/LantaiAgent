@@ -65,33 +65,44 @@ vi.mock('../src/ui/subagent-sink', () => ({ createSubAgentSink: vi.fn() }));
 vi.mock('../src/ui/message-model', () => ({}));
 
 import { buildSystemPrompt } from '../src/agent/runtime/agent-builder';
+import { withFirstPartyPromptChannel } from '../src/composition/first-party-prompts';
 
+// P4 B④ 收官（2026-08-23）：出厂面 13 段全经 ctx.prompts 通道贡献——
+// 出厂拼装的断言须在通道腰内复现生产装配面（无通道 = 空提示词）。
 describe('buildSystemPrompt', () => {
-  it('empty graph prompt contains model identity disclaimer', () => {
-    const prompt = buildSystemPrompt(null, '');
-    expect(prompt).toContain('没有加载项目');
-    expect(prompt).toContain('DeepSeek');
+  it('empty graph prompt contains model identity disclaimer', async () => {
+    await withFirstPartyPromptChannel(async () => {
+      const prompt = buildSystemPrompt(null, '');
+      expect(prompt).toContain('没有加载项目');
+      expect(prompt).toContain('DeepSeek');
+    });
   });
 
-  it('loaded graph prompt contains model identity disclaimer', () => {
-    const prompt = buildSystemPrompt({ nodes: [1, 2, 3], edges: [1, 2] }, 'D:\\test-project');
-    expect(prompt).toContain('D:\\test-project');
-    expect(prompt).toContain('DeepSeek');
+  it('loaded graph prompt contains model identity disclaimer', async () => {
+    await withFirstPartyPromptChannel(async () => {
+      const prompt = buildSystemPrompt({ nodes: [1, 2, 3], edges: [1, 2] }, 'D:\\test-project');
+      expect(prompt).toContain('D:\\test-project');
+      expect(prompt).toContain('DeepSeek');
+    });
   });
 
-  it('memory section is appended when provided', () => {
-    const prompt = buildSystemPrompt(null, '', '## 记忆库\n- 测试记忆');
-    expect(prompt).toContain('## 记忆库');
-    expect(prompt).toContain('- 测试记忆');
+  it('memory section is appended when provided', async () => {
+    await withFirstPartyPromptChannel(async () => {
+      const prompt = buildSystemPrompt(null, '', '## 记忆库\n- 测试记忆');
+      expect(prompt).toContain('## 记忆库');
+      expect(prompt).toContain('- 测试记忆');
+    });
   });
 
-  it('loaded graph prompt has a mode-neutral collaboration block', () => {
-    // 系统提示词不随协作模式变化（热切换不重建，前缀缓存不击穿）——
-    // 规划模式的完整工作流由 PlanModeInjector 的运行时提醒携带。
-    const prompt = buildSystemPrompt({ nodes: [1], edges: [1] }, 'D:\\proj');
-    expect(prompt).toContain('## 协作模式');
-    expect(prompt).toContain('规划模式');
-    expect(prompt).toContain('执行模式');
-    expect(prompt).not.toContain('当前激活');
+  it('loaded graph prompt has a mode-neutral collaboration block', async () => {
+    await withFirstPartyPromptChannel(async () => {
+      // 系统提示词不随协作模式变化（热切换不重建，前缀缓存不击穿）——
+      // 规划模式的完整工作流由 PlanModeInjector 的运行时提醒携带。
+      const prompt = buildSystemPrompt({ nodes: [1], edges: [1] }, 'D:\\proj');
+      expect(prompt).toContain('## 协作模式');
+      expect(prompt).toContain('规划模式');
+      expect(prompt).toContain('执行模式');
+      expect(prompt).not.toContain('当前激活');
+    });
   });
 });

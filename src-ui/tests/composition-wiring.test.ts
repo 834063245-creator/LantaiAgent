@@ -14,7 +14,8 @@ import { AgentContext } from '../src/agent/context';
 import { AgentRuntime } from '../src/agent/runtime/runtime';
 import type { AgentHandle } from '../src/agent/runtime/types';
 import { ToolRegistry } from '../src/agent/tool';
-import { assembleSystemPrompt, builtinPromptSections } from '../src/composition/prompt-sections';
+import { withFirstPartyPromptChannel } from '../src/composition/first-party-prompts';
+import { assembleSystemPrompt, firstPartyPromptSections } from '../src/composition/prompt-sections';
 import { factoryComposition, type ResolvedComposition, resolveRoster } from '../src/composition/roster';
 import { builtinToolRows } from '../src/composition/tool-rows';
 import { useCompositionStore } from '../src/state/composition-store';
@@ -22,14 +23,17 @@ import { buildStandardRegistry, readOnlyTool, scriptedProvider } from './converg
 
 const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r.id);
 
-/** 禁用若干工具行 + 覆盖一段 + 插一段的 resolved（穿线效果样本）。 */
+/** 禁用若干工具行 + 插入/覆盖段的 resolved（穿线效果样本）。
+ *  B④ 收官（2026-08-23）：prompt 域寻址面 = 仅已插入段——样本改为
+ *  「插入两段 + 覆盖已插入段」（第一方段寻址会被整体拒绝）。 */
 function sampleComposition(): ResolvedComposition {
   return resolveRoster(factoryComposition(), [
     {
       tools: [{ id: 'builtin/shell', disabled: true }],
       prompt: [
-        { id: 'behavior-rules', text: '【覆盖后的行为规则】' },
-        { insert: [{ id: 'wiring-probe', after: 'collaboration-mode', text: '【穿线探针段】' }] },
+        { insert: [{ id: 'wiring-probe', text: '【穿线探针一】' }] },
+        { insert: [{ id: 'wiring-probe-2', after: 'wiring-probe', text: '【穿线探针二】' }] },
+        { id: 'wiring-probe', text: '【覆盖后的探针】' },
       ],
     },
   ]);
@@ -86,24 +90,28 @@ describe('S2-1 穿线：buildSystemPrompt / assembleSystemPrompt(sections)', () 
     shellEnvSection: '- OS: test',
   };
 
-  it('不传 sections = 出厂段表全等', () => {
-    const direct = builtinPromptSections()
-      .filter((s) => !s.applicable || s.applicable(ctxArgs))
-      .map((s) => s.render(ctxArgs))
-      .join('');
-    expect(assembleSystemPrompt(ctxArgs)).toBe(direct);
+  it('不传 sections = 出厂面全等（空解析产物 + 通道贡献 13 段——经通道腰）', async () => {
+    // B④ 收官：出厂面全经 ctx.prompts 通道贡献——等价断言须在通道内做
+    // （无通道环境缺省拼装 = 空提示词，注册面依赖）
+    await withFirstPartyPromptChannel(async () => {
+      const direct = firstPartyPromptSections()
+        .filter((s) => !s.applicable || s.applicable(ctxArgs))
+        .map((s) => s.render(ctxArgs))
+        .join('');
+      expect(assembleSystemPrompt(ctxArgs)).toBe(direct);
+    });
   });
 
-  it('传覆盖 + 插段的 resolved.prompt → 新文本在、被覆盖文本不在、插入段落位', () => {
+  it('传插入 + 覆盖的 resolved.prompt → 新文本在、被覆盖文本不在、插入段落位', () => {
     const composition = sampleComposition();
     const out = assembleSystemPrompt(ctxArgs, composition.prompt);
-    expect(out).toContain('【覆盖后的行为规则】');
-    expect(out).toContain('【穿线探针段】');
+    expect(out).toContain('【覆盖后的探针】');
+    expect(out).toContain('【穿线探针二】');
     // 原文本被整段替换（不再出现）
-    expect(out).not.toContain('你是兰台的编码 Agent');
-    // 落位：探针段紧跟 collaboration-mode 之后
-    const probeIdx = out.indexOf('【穿线探针段】');
-    expect(probeIdx).toBeGreaterThan(0);
+    expect(out).not.toContain('【穿线探针一】');
+    // 落位：探针二紧跟覆盖段之后（after 锚保序）
+    const probe2Idx = out.indexOf('【穿线探针二】');
+    expect(probe2Idx).toBeGreaterThan(0);
   });
 });
 
@@ -156,16 +164,20 @@ describe('S2-1 穿线：AgentRuntime(composition) 端到端', () => {
     h.dispose();
   });
 
-  it('传 composition：prompt 覆盖段 + 插入段进入 system prompt', async () => {
-    const rt = new AgentRuntime(undefined, undefined, sampleComposition());
-    await rt.ready();
-    // graphData 在场 → 完整面（behavior-rules 覆盖段 applicable hasGraph 参与）
-    const h = await rt.createAgentFromContext(makeCtx('s21-composed', rt), { graphData: { nodes: [] } });
-    const sys = sysOf(h);
-    expect(sys).toContain('【覆盖后的行为规则】');
-    expect(sys).toContain('【穿线探针段】');
-    expect(sys).not.toContain('你是兰台的编码 Agent');
-    h.dispose();
+  it('传 composition：插入/覆盖段进入 system prompt（通道腰内复现生产装配面）', async () => {
+    // B④ 收官：第一方面全经通道贡献——通道腰内 runtime 装配与生产同路
+    await withFirstPartyPromptChannel(async () => {
+      const rt = new AgentRuntime(undefined, undefined, sampleComposition());
+      await rt.ready();
+      // graphData 在场 → 完整面（第一方 13 段中 applicable 的全参与）
+      const h = await rt.createAgentFromContext(makeCtx('s21-composed', rt), { graphData: { nodes: [] } });
+      const sys = sysOf(h);
+      expect(sys).toContain('【覆盖后的探针】');
+      expect(sys).toContain('【穿线探针二】');
+      expect(sys).not.toContain('【穿线探针一】');
+      expect(sys).toContain('## 多 Agent 协作'); // 第一方面（通道贡献）也在
+      h.dispose();
+    });
   });
 
   it('传 composition：capability 禁用生效（auto-tune 不装）', async () => {
@@ -208,8 +220,9 @@ describe('S2-1 穿线：composition-store', () => {
     expect(s.status).toBe('ok');
     expect(s.patchOrigin).toBe('roster.patch.yml');
     expect(s.resolved.diagnostics.disabled).toContain('builtin/shell');
-    expect(s.resolved.diagnostics.overridden).toContain('behavior-rules');
+    expect(s.resolved.diagnostics.overridden).toContain('wiring-probe');
     expect(s.resolved.diagnostics.inserted).toContain('wiring-probe');
+    expect(s.resolved.diagnostics.inserted).toContain('wiring-probe-2');
   });
 
   it('setError → error 态 + 回退出厂组合（all-or-nothing 兜底）', () => {

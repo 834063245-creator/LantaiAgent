@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT.
 
-// 第一方 prompt 段插件通道（P4 存量拆解 B④ 试点 + 续批，
+// 第一方 prompt 段插件通道（P4 存量拆解 B④ 收官，
 // agent-plugin-architecture-plan §5）。
 //
 // 两个职责（镜像 B① composition/first-party-tools.ts）：
@@ -14,16 +14,21 @@
 //      取贡献。生产路径（main.ts → loadBuiltinPlugins）不经这里——装载器
 //      是唯一引导入口，本腰只服务测试/工具环境（它们不跑 main.ts）。
 //
+// B④ 收官（2026-08-23）：13 第一方段全量经本通道贡献（promptSegmentsPlugin
+// 装载 firstPartyPromptSections()）——无通道环境缺省拼装 = 空提示词，
+// 出厂面的复现必须经本腰（obstacle ③ 注册面依赖）。
+//
 // 语义提醒：prompt 通道无实例缓存（每次拼装重调 render，贡献直收
 // PromptSectionContext 装配期真值）——与 tools 通道的 rowCtx 锁存不同，
-// 收动态插值的段（graph-snapshot/memory/claude-md）无跨装配串扰面。
+// 动态插值段（graph-snapshot/memory/claude-md）无跨装配串扰面。
 
 import { Context } from '../cordis';
 import { promptSegmentsPlugin } from '../plugins/prompt-segments-plugin';
 import type { LantaiPlugin } from '../plugins/types';
 import { promptsServicePlugin } from './prompt-service';
 
-/** 经 ctx.prompts 贡献段的第一方插件（表序 = 贡献注册序）。 */
+/** 经 ctx.prompts 贡献段的第一方插件（表序 = 贡献注册序）。
+ *  B④ 收官：promptSegmentsPlugin 装载全部 13 第一方段。 */
 export function firstPartyPromptPlugins(): LantaiPlugin[] {
   return [promptSegmentsPlugin];
 }

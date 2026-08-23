@@ -4,8 +4,9 @@
 // roster 组合引擎（S2-0）—— 组合外化的解析层（设计件
 // docs/plans/composition-architecture/designs/S2-composition-externalization.md §2.1-2.3）。
 //
-// 四域行模型：tools（builtinToolRows）/ prompt（builtinPromptSections）/
-// capabilities（builtinCapabilities）/ shell（builtinShellRows）。出厂层是
+// 四域行模型：tools（builtinToolRows）/ prompt（出厂表空——B④ 收官，
+// 13 第一方段经 ctx.prompts 插件通道贡献）/ capabilities
+// （builtinCapabilities）/ shell（builtinShellRows）。出厂层是
 // 代码——行实现留代码、patch 只写增量，杜绝「yml 复述全量清单」的双真源
 // 漂移（对 DSH 的第一处刻意偏离：学它的 patch 语义——id 寻址 / disabled /
 // insert / last-write-wins——不学它的文件形态，它的行是 npm 包所以必须
@@ -41,7 +42,7 @@
 
 import { z } from 'zod';
 import { type AgentCapability, builtinCapabilities } from '../agent/blueprint';
-import { builtinPromptSections, type PromptSection } from './prompt-sections';
+import type { PromptSection } from './prompt-sections';
 import { builtinShellRows, type ShellRow } from './shell-rows';
 import { type BuiltinToolRow, builtinToolRows } from './tool-rows';
 
@@ -150,11 +151,14 @@ export class CompositionPatchError extends Error {
 }
 
 /** 出厂组合 — 恒等解析产物（零增量 + 空诊断）。既作 resolveRoster 的
- *  FactoryComposition 入参，也作穿线的 ResolvedComposition 缺省值。 */
+ *  FactoryComposition 入参，也作穿线的 ResolvedComposition 缺省值。
+ *  B④ 收官（2026-08-23）：prompt 域出厂表为空——13 第一方段经
+ *  ctx.prompts 插件通道贡献（不在解析域），prompt 寻址面 = 仅已插入段
+ *  （寻址第一方段 id 报「未知段 id」整体拒绝；全寻址恢复属 S4-4 甲）。 */
 export function factoryComposition(): ResolvedComposition {
   return {
     tools: builtinToolRows(),
-    prompt: builtinPromptSections(),
+    prompt: [],
     capabilities: builtinCapabilities(),
     shell: builtinShellRows(),
     diagnostics: { disabled: [], overridden: [], inserted: [] },

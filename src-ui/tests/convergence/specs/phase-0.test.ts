@@ -55,10 +55,10 @@ describe('phase-0 契约快照', () => {
   });
 
   it('system-prompt.fixture — 固定输入的 buildSystemPrompt', async () => {
-    // P4 B④（2026-08-23）起 graph-snapshot/memory/claude-md 段经 ctx.prompts
-    // 第一方插件通道贡献（试点 + 续批）——测试环境不跑 main.ts 引导，
-    // 通道腰在此复现生产装配面
-    // （同 B① 工具面 buildStandardRegistry 先例；迁出段 = 表尾原位，
+    // P4 B④ 收官（2026-08-23）：13 段全量经 ctx.prompts 第一方插件通道
+    // 贡献（试点 memory/claude-md + 续批 graph-snapshot + 收官批 10 段）
+    // ——测试环境不跑 main.ts 引导，通道腰在此复现生产装配面
+    // （同 B① 工具面 buildStandardRegistry 先例；贡献序 = 迁移前出厂表序，
     // 快照零漂移按构造，双 preset 实测）。
     await withFirstPartyPromptChannel(async () => {
       const withGraph = buildSystemPrompt(

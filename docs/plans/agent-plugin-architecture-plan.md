@@ -5,8 +5,10 @@
 > convergence 零漂移）· P4 自研路线推进中（D9 拍板：不等 DSH，自己当第一用户——通道补齐 /
 > 存量拆解 / P4a 调研三股交替；批次表见 §5 P4；**B① 已毕**——git/search 两族迁 ctx.tools
 > 第一方插件通道，贡献 factory 放宽收 ToolRowContext，双 preset 零漂移；**A-1 已毕**——
-> prompts 第六 service，段贡献经 ctx.prompts 追加进系统提示词；**B④ 推进中**——三段已迁，
-> 收官形态已拍板纯插件面）。**五项拍板（2026-08-23 晚，用户逐项拍定）**：S4-4 机器桥复活
+> prompts 第六 service，段贡献经 ctx.prompts 追加进系统提示词；**B④ 已毕**——13 段全迁
+> ctx.prompts 通道，纯插件面收官：builtinPromptSections() 退役、段表空壳删除、roster
+> prompt 域寻址面 = 仅已插段（全寻址恢复属 S4-4 甲），双 preset 零漂移实测）。**五项拍板
+> （2026-08-23 晚，用户逐项拍定）**：S4-4 机器桥复活
 > 整批做（甲+乙）、①c 拍路线一（无缓存行）、B④ 收官 = 纯插件面（段表退役）、A-3 与 C11
 > 两基建全部排进当前工程——「推迟不是减负」，唯一合法挂起 = 外部信号依赖型（C12 观望
 > DSH）。**。战略底牌：形状与 DSH 契约兼容、零依赖；
@@ -225,11 +227,10 @@ runViaRuntime 门面消费，无服务时惰性游离实例。convergence 零漂
 > ④ **拼装序约束（prompt 域特有，B④ 试点勘定 2026-08-23）**——贡献恒在解析
 > 产物末尾（A-1 已定型语义）；段迁入通道后其拼装位 = 贡献末位。零漂移迁移
 > 因此仅限出厂段表**表尾后缀**：迁中段段（如 behavior-rules）会把该段挪到
-> 输出尾部 = 拼装序变化 = 击穿 system-prompt.fixture 与前缀缓存。B④ 只能
-> 按表尾逆序逐批推进（已迁 graph-snapshot/memory/claude-md；下一批
-> multi-agent，再后 env/model-identity → … → 静态五段收尾；迁出段序保真
-> = 新迁段插 migratedPromptSections 数组**头部**——表尾逆序批次下先迁段
-> 在原表中更靠后，尾部追加会翻转贡献序）。
+> 输出尾部 = 拼装序变化 = 击穿 system-prompt.fixture 与前缀缓存。B④ 按
+> 表尾逆序推进（试点/续批迁表尾 3 段，收官批一次性迁完剩余 10 段——末态
+> 全量经通道后单批零漂移按构造成立，中间表尾序由头插保序；收官落地见
+> B 表 ④ 行）。
 
 | 批 | 内容 | 障碍 |
 |---|---|---|
@@ -238,7 +239,7 @@ runViaRuntime 门面消费，无服务时惰性游离实例。convergence 零漂
 | ①c | wait / ask | 需通道 ②：依赖装配期真值（wait 的 subAgentPool 按装配变化、ask 的 ui 回调每次装配换）——实例缓存会锁存首装配真值；**2026-08-23 拍板 #2：路线一无缓存行——每装配重创实例** |
 | ② | 工具大域 | 分族：fs / shell / agent-isolation 同 ①a（codingExec 无状态，通道现成可搬）；browser-desktop 同 ①b（minimal 寻址 `builtin/browser-desktop`）；memory / skill / task / agent 同 ①c（可选 registry / taskManager / spawner 按装配给值——①c 路线一已拍板） |
 | ③ | hologram 族（graph/ops/lsp） | 同 ①c 变体：graphData 是装配期开关（缺帐行产出空集）——实例缓存会把首装配的 graphData 有无锁死；且 loadHologramSchemas 动态面需每装配刷新。异步 factory 已支持但缓存语义需另行设计 |
-| ④ | prompt 段落（persona/规则/记忆/运行环境） | **试点 + 首续批已毕**（2026-08-23：memory/claude-md 试点 + graph-snapshot 续批迁 ctx.prompts——`plugins/prompt-segments-plugin.ts` + `composition/first-party-prompts.ts` 通道腰 + phase-0 夹具包腰，双 preset 零漂移实测；定义留 prompt-sections.ts 单一真源）。勘定修正两处：动态插值段**无** ①c 缓存障碍——prompt 通道无实例缓存，render 每装配重调直收 PromptSectionContext（试点即迁动态段验证）；真障碍是④拼装序约束——零漂移仅限表尾后缀，静态段（behavior-rules 等）反而须最后迁。剩余批次按表尾逆序（multi-agent → env/model-identity → …，新迁段插 migratedPromptSections 头部保序）；roster 的 text 覆盖丢失动态插值语义由通道继承（贡献段脱离寻址域，S4-4 扩展点） |
+| ④ | prompt 段落（persona/规则/记忆/运行环境） | **已毕——收官（2026-08-23）**：13 段全量经 ctx.prompts 第一方插件通道贡献（试点 memory/claude-md → 续批 graph-snapshot → 收官批一次性迁完剩余 10 段）；`plugins/prompt-segments-plugin.ts` 装载 `firstPartyPromptSections()`（序 = 迁移前出厂表序，单批零漂移按构造、双 preset 实测）。收官落地三件：①`builtinPromptSections()` 退役、段表空壳删除、`assembleSystemPrompt` 缺省 = 空表（出厂面 = 解析产物 + 通道贡献）；②roster prompt 域寻址面 = 仅已插入段——寻址第一方段 id（disable/text/锚）报「未知段 id」整体拒绝，insert id 与第一方段同名不拒（两条临时语义，S4-4 甲恢复全寻址后消灭）；③注册面依赖面扩大——无通道环境缺省拼装 = 空提示词，convergence 夹具经 withFirstPartyPromptChannel 复现生产装配面（obstacle ③）。动态插值段无 ①c 缓存障碍（prompt 通道无实例缓存，render 每装配重调直收 PromptSectionContext）；roster 的 text 覆盖丢失动态插值语义由通道继承（贡献段脱离寻址域，S4-4 扩展点） |
 | ⑤ | 会话级能力（plan/通信/discovery/merge/board/compaction） | 需通道 A-3——**已拍板排进当前工程**（2026-08-23 #4），设计件穿插机械批推进 |
 | ⑥ | 管道参与（graph hooks/board tracking/preflight） | 需通道 A-2 |
 

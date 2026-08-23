@@ -18,6 +18,7 @@ import { AgentContext } from '../src/agent/context';
 import { AgentRuntime } from '../src/agent/runtime/runtime';
 import type { AgentHandle } from '../src/agent/runtime/types';
 import { ToolRegistry } from '../src/agent/tool';
+import { withFirstPartyPromptChannel } from '../src/composition/first-party-prompts';
 import {
   clearUserPatch,
   invalidatePresetCache,
@@ -84,21 +85,25 @@ describe('S4-1a 装配穿线：createAgentFromContext/createAgent 组合覆盖',
   });
 
   it('带 minimal 覆盖：Agent.composition = 覆盖组合；prompt 段表反映 preset', async () => {
-    const rt = new AgentRuntime();
-    await rt.ready();
-    const minimal = minimalComposition();
-    // graphData 在场 → 完整面（多 Agent 段/图纪律段参与——minimal 未禁它们）
-    const h = await rt.createAgentFromContext(
-      makeCtx('s41a-minimal', rt),
-      { graphData: { nodes: [] } },
-      undefined,
-      minimal,
-    );
-    const { composition } = agentOf(h);
-    expect(composition).toBe(minimal); // ctx 服务写入的就是覆盖对象（引用透传）
-    const sys = sysOf(h);
-    expect(sys).toContain('多 Agent 协作'); // 未被禁的段仍在
-    h.dispose();
+    // B④ 收官（2026-08-23）：第一方面 13 段全经 ctx.prompts 通道贡献——
+    // 系统提示词内容断言须在通道腰内复现生产装配面
+    await withFirstPartyPromptChannel(async () => {
+      const rt = new AgentRuntime();
+      await rt.ready();
+      const minimal = minimalComposition();
+      // graphData 在场 → 完整面（多 Agent 段/图纪律段参与——minimal 未禁它们）
+      const h = await rt.createAgentFromContext(
+        makeCtx('s41a-minimal', rt),
+        { graphData: { nodes: [] } },
+        undefined,
+        minimal,
+      );
+      const { composition } = agentOf(h);
+      expect(composition).toBe(minimal); // ctx 服务写入的就是覆盖对象（引用透传）
+      const sys = sysOf(h);
+      expect(sys).toContain('多 Agent 协作'); // 未被禁的段仍在
+      h.dispose();
+    });
   });
 
   it('带覆盖 + capability 禁用：graph-hooks 不装（graphContext 存在时 hooks 不注册）', async () => {

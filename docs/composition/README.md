@@ -13,7 +13,7 @@
 `%USERPROFILE%\.lantai\composition\roster.patch.yml`）写 patch：
 
 ```yaml
-# 禁用 shell 工具族 + 禁用沙箱探测壳行 + 覆盖行为规则段
+# 禁用 shell 工具族 + 禁用沙箱探测壳行 + 插入团队定制段（在出厂段之前）
 tools:
   - id: builtin/shell
     disabled: true
@@ -21,12 +21,16 @@ shell:
   - id: hologram/shell-sandbox-probe
     disabled: true
 prompt:
-  - id: behavior-rules
-    text: |
-      【团队定制规则】
-      1. 提交信息用中文。
-      2. 不改 docs/archive/ 下任何文件。
+  - insert:
+      - id: team-rules
+        text: |
+          【团队定制规则】
+          1. 提交信息用中文。
+          2. 不改 docs/archive/ 下任何文件。
 ```
+
+（P4 B④ 收官后 prompt 域只能 insert——覆盖/禁用第一方段待 S4-4 甲
+恢复；插入段可被同 patch 后续条目 disable/text 覆盖。）
 
 保存即生效（S4-2 热重载）：**新 Agent 装配（新会话）即用新组合；在途
 会话保持创建时点的组合不变**。没有这个文件（或文件为空）= 出厂组合。
@@ -36,18 +40,16 @@ prompt:
 | 域 | 行 id 举例 | 寻址对象 |
 |---|---|---|
 | `tools` | `builtin/fs`、`builtin/shell`、`builtin/graph`… | 内置工具族（真源 `src-ui/src/composition/tool-rows.ts`；git/search 已迁 ctx.tools 插件通道——P4 B①） |
-| `prompt` | `behavior-rules`、`collaboration-mode`… | system prompt 段（真源 `prompt-sections.ts`；id 是裸名；graph-snapshot/memory/claude-md 已迁 `ctx.prompts` 插件通道——P4 B④，脱离 patch 寻址域） |
+| `prompt` | 已插入段 id（`insert` 条目声明的 id） | system prompt 段（真源 `prompt-sections.ts` `firstPartyPromptSections()`；P4 B④ 收官：13 段全经 `ctx.prompts` 插件通道贡献，**全部脱离 patch 寻址域**——仅 insert 的段可被 disable/覆盖/锚定） |
 | `capabilities` | `plan-tools`、`converge-tools`、`graph-hooks`… | 会话级工具/hook（真源 `agent/blueprint.ts`；id = capability key） |
 | `shell` | `hologram/shell-graph`、`hologram/shell-cold-start`… | 壳引导行（真源 `composition/shell-rows.ts`；行实现 `src-ui/src/shell/rows/*`） |
 
-> **寻址域边界（2026-08-23 勘正）**：patch/preset 的组合解析域当前只含
-> builtin 行——插件贡献的工具行（`plugin/<插件名>/<工具名>`）与 prompt
-> 段贡献（`ctx.prompts`，P4 A-1）**不在寻址域内**，写进 patch 会报「未知
-> 行 id」整体拒绝（含 B④ 迁出的出厂段 graph-snapshot/memory/claude-md
-> ——寻址它们的
-> 旧 patch 会整体拒绝，错误可见，S4-4 机器桥批的扩展点）。贡献行/段
-> 纳入寻址域属 S4-4 机器桥批；当前卸载/禁用插件走插件开关（设置 → 插件），
-> 不走组合 patch。
+> **寻址域边界（2026-08-23 勘正；B④ 收官后为终态）**：patch/preset 的组合
+> 解析域当前只含 builtin 行——插件贡献的工具行（`plugin/<插件名>/<工具名>`）
+> 与全部 13 个第一方 prompt 段（`ctx.prompts`，P4 B④ 收官）**不在寻址域内**，
+> 写进 patch 会报「未知行 id」整体拒绝（寻址第一方段的旧 patch 会整体拒绝，
+> 错误可见，S4-4 机器桥批的扩展点）。贡献行/段纳入寻址域属 S4-4 机器桥批；
+> 当前卸载/禁用插件走插件开关（设置 → 插件），不走组合 patch。
 
 完整 id 清单以各真源文件为准——它们是唯一权威源。
 
