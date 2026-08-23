@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT.
 
 // roster 组合引擎测试（S2-0）—— 设计件 §3 S2-0 验收的完整钉面：
-//   1. 恒等性：resolveRoster(factory, []) 与三张出厂表 id+序 全等（零漂移的构造性保证）；
+//   1. 恒等性：resolveRoster(factory, []) 与出厂表 id+序 全等（零漂移的构造性保证）；
 //   2. 语义：disable（四域）/ text 覆盖（保位保 applicable）/ insert（三种锚，
 //      锚可指禁用行，同层链式）/ last-write-wins（跨层 + 同层）；
 //   3. 确定性：同输入两次解析 id 序全等；
@@ -10,11 +10,17 @@
 //      （all-or-nothing：throw 即整体拒绝，无部分应用产出）；
 //   5. parseCompositionPatch：合法全形状 / 各类形状违规（strict + refine）。
 // P4 B④ 收官（2026-08-23）：prompt 域出厂表空（13 第一方段经 ctx.prompts
-// 通道贡献，不在解析域）——prompt 域语义探针全部改用「已插入段」，
-// 寻址第一方段 id（disable/text/锚）另立「寻址拒绝」钉面（S4-4 甲恢复全寻址）。
+// 通道贡献）——prompt 域语义探针全部改用「已插入段」。
+// S4-4 甲（2026-08-23）：解析域收编通道贡献——factoryComposition() 是
+// 通道装载态快照（无通道环境 = builtin 行 + 空段表，本文件多数探针在该面
+// 跑；通道内快照/第一方段寻址恢复另有专测）。
 
 import { describe, expect, it } from 'vitest';
 import { builtinCapabilities } from '../src/agent/blueprint';
+import { withFirstPartyPromptChannel } from '../src/composition/first-party-prompts';
+import { withFirstPartyToolChannel } from '../src/composition/first-party-tools';
+import { pluginToolRows } from '../src/composition/plugin-tool-rows';
+import { activePromptContributions } from '../src/composition/prompt-service';
 import {
   CompositionPatchError,
   factoryComposition,
@@ -31,7 +37,7 @@ describe('composition/roster（S2-0 组合引擎）', () => {
   it('factoryComposition 聚合三张出厂表 + 壳行表（V5 拆除后 9 行全量，序 = 引导序）', () => {
     const f = factoryComposition();
     expect(ids(f.tools)).toEqual(ids(builtinToolRows()));
-    // B④ 收官：prompt 出厂表空——13 第一方段经 ctx.prompts 通道贡献
+    // 无通道环境 = 空贡献快照（B④ 收官的注册面依赖语义——S4-4 甲不变）
     expect(f.prompt).toEqual([]);
     expect(f.capabilities.map((c) => c.key)).toEqual(capKeys());
     expect(ids(f.shell)).toEqual(ids(builtinShellRows()));
@@ -50,7 +56,25 @@ describe('composition/roster（S2-0 组合引擎）', () => {
     ]);
   });
 
-  it('空层列表 = 恒等（id + 序，零漂移的构造性保证）', () => {
+  it('S4-4 甲：工厂基座快照收编通道贡献（通道内 = builtin 行 + plugin 行 + 段贡献）', async () => {
+    await withFirstPartyToolChannel(() =>
+      withFirstPartyPromptChannel(async () => {
+        const f = factoryComposition();
+        // tools 域：builtin 行在前、插件贡献行随后（序 = 装配序）
+        expect(ids(f.tools)).toEqual([...ids(builtinToolRows()), ...pluginToolRows().map((r) => r.id)]);
+        expect(f.tools.some((r) => r.id === 'plugin/hologram/git-domain/git_status')).toBe(true);
+        // prompt 域：通道段贡献快照（注册序）
+        expect(f.prompt.map((s) => s.id)).toEqual(activePromptContributions().map((s) => s.id));
+        expect(f.prompt.map((s) => s.id)).toContain('multi-agent');
+        // 恒等解析在快照面同样成立（空层列表 = 快照全等）
+        const r = resolveRoster(f, []);
+        expect(ids(r.tools)).toEqual(ids(f.tools));
+        expect(r.prompt.map((s) => s.id)).toEqual(f.prompt.map((s) => s.id));
+      }),
+    );
+  });
+
+  it('空层列表 = 恒等（id + 序，零漂移的构造性保证；无通道 = 空贡献面）', () => {
     const r = resolveRoster(factoryComposition(), []);
     expect(ids(r.tools)).toEqual(ids(builtinToolRows()));
     expect(r.prompt).toEqual([]);
@@ -106,20 +130,29 @@ describe('composition/roster（S2-0 组合引擎）', () => {
     expect(r.capabilities.map((c) => c.key)).toEqual(capKeys().filter((k) => k !== 'auto-tune'));
   });
 
-  it('B④ 收官寻址拒绝：第一方段 id 不在解析域（disable/text/锚全拒绝，S4-4 甲恢复）', () => {
-    // 13 第一方段（multi-agent/identity-brief/behavior-rules 等）经
-    // ctx.prompts 通道贡献——寻址报「未知段 id」整体拒绝（错误可见）
-    expect(() => resolveRoster(factoryComposition(), [{ prompt: [{ id: 'multi-agent', disabled: true }] }])).toThrow(
-      CompositionPatchError,
-    );
-    expect(() => resolveRoster(factoryComposition(), [{ prompt: [{ id: 'identity-brief', text: 'X' }] }])).toThrow(
-      CompositionPatchError,
-    );
-    expect(() =>
-      resolveRoster(factoryComposition(), [
-        { prompt: [{ insert: [{ id: 'x', after: 'behavior-rules', text: 'X' }] }] },
-      ]),
-    ).toThrow(CompositionPatchError);
+  it('S4-4 甲：第一方段寻址恢复（disable/text/锚定/insert 撞名拒绝——通道内）', async () => {
+    // 13 第一方段经 ctx.prompts 通道贡献——通道内快照进解析域，
+    // 寻址/锚定/撞名语义与出厂段表时代一致（B④ 收官临时语义消灭）
+    await withFirstPartyPromptChannel(async () => {
+      const f = factoryComposition();
+      // disable 第一方段
+      const r1 = resolveRoster(f, [{ prompt: [{ id: 'multi-agent', disabled: true }] }]);
+      expect(r1.prompt.map((s) => s.id)).not.toContain('multi-agent');
+      expect(r1.diagnostics.disabled).toContain('multi-agent');
+      // text 覆盖第一方段：保位 + 保 applicable、render 换固定文本
+      const r2 = resolveRoster(f, [{ prompt: [{ id: 'identity-brief', text: '【替换段】' }] }]);
+      const seg = r2.prompt.find((s) => s.id === 'identity-brief');
+      expect(seg?.render({ projectPath: '' })).toBe('【替换段】');
+      expect(r2.diagnostics.overridden).toContain('identity-brief');
+      // insert 锚定第一方段（after：紧随其后）
+      const r3 = resolveRoster(f, [{ prompt: [{ insert: [{ id: 'probe', after: 'behavior-rules', text: 'P' }] }] }]);
+      const idx = r3.prompt.findIndex((s) => s.id === 'behavior-rules');
+      expect(r3.prompt[idx + 1].id).toBe('probe');
+      // insert id 与第一方段同名 → 撞名拒绝（B④ 收官「不拒」临时语义消灭）
+      expect(() =>
+        resolveRoster(f, [{ prompt: [{ insert: [{ id: 'multi-agent', text: '自定义多 Agent 段' }] }] }]),
+      ).toThrow(CompositionPatchError);
+    });
   });
 
   it('disable(false) = 显式启用：后层覆盖先层禁用（last-write-wins）', () => {
@@ -286,14 +319,8 @@ describe('composition/roster（S2-0 组合引擎）', () => {
     );
   });
 
-  it('拒绝：insert 撞已有 id（已插段）+ 同名第一方段不撞（B④ 收官临时语义）', () => {
-    // B④ 收官：第一方 13 段不在工作列表——insert id 与其同名不拒绝
-    //（同名插入段照常进入解析产物；S4-4 甲把插件行纳入解析域后恢复撞名拒绝）
-    const shadow = resolveRoster(factoryComposition(), [
-      { prompt: [{ insert: [{ id: 'multi-agent', text: '自定义多 Agent 段' }] }] },
-    ]);
-    expect(ids(shadow.prompt)).toEqual(['multi-agent']);
-    // 撞已插段仍然拒绝
+  it('拒绝：insert 撞已有 id（已插段 / 通道贡献段——S4-4 甲统一撞名拒绝）', async () => {
+    // 撞已插段（无通道也成立）
     expect(() =>
       resolveRoster(factoryComposition(), [
         {
@@ -301,6 +328,14 @@ describe('composition/roster（S2-0 组合引擎）', () => {
         },
       ]),
     ).toThrow(CompositionPatchError);
+    // 撞通道贡献段（通道内——第一方段进解析域后恢复拒绝）
+    await withFirstPartyPromptChannel(async () => {
+      expect(() =>
+        resolveRoster(factoryComposition(), [
+          { prompt: [{ insert: [{ id: 'multi-agent', text: '自定义多 Agent 段' }] }] },
+        ]),
+      ).toThrow(CompositionPatchError);
+    });
   });
 
   it('拒绝：insert 锚点不存在', () => {

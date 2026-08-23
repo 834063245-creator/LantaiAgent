@@ -12,14 +12,13 @@
 //
 // UI 回调通过 BuilderDeps 注入，不直接 import ui/ 模块。
 
-import { pluginToolRows } from '../../composition/plugin-tool-rows';
 import { assembleSystemPrompt, type PromptSection } from '../../composition/prompt-sections';
-import { type BuiltinToolRow, builtinToolRows, type ToolRowContext } from '../../composition/tool-rows';
+import { factoryComposition } from '../../composition/roster';
+import type { BuiltinToolRow, ToolRowContext } from '../../composition/tool-rows';
 import { typedJsonRpc } from '../../rpc-contract';
 import type { Agent } from '../agent';
 import { createCompactionTools } from '../compaction-model';
 import type { GraphContext, GraphDataShape } from '../hooks';
-import { errText } from '../loop-helpers';
 import {
   buildFileNodeIndex,
   buildGraphSnapshot,
@@ -31,6 +30,7 @@ import {
   HookRegistry,
   PreflightHookRegistry,
 } from '../hooks';
+import { errText } from '../loop-helpers';
 import { type McpClient, registerMcpTools } from '../mcp';
 import type { Tool, ToolExecutor } from '../tool';
 import { agentInvoke, ToolRegistry } from '../tool';
@@ -138,7 +138,8 @@ export interface ToolRegistryOptions {
   /** 外部 MCP server client 列表 — 其工具以 mcp__<server>__<name> 注册进 registry */
   mcpClients?: McpClient[];
   /** 工具行表（S2-1 组合外化穿线）——roster 解析产物（composition-store）。
-   *  缺省 = builtinToolRows() 出厂表（现行行为，零漂移保证）。 */
+   *  缺省 = factoryComposition().tools 出厂组合快照（builtin 行 + 当前通道
+   *  贡献行，S4-4 甲统一解析域；现行行为零漂移保证）。 */
   toolRows?: BuiltinToolRow[];
 }
 
@@ -252,18 +253,15 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
     subAgentPool,
     subAgentSpawner,
   };
-  for (const row of toolRows ?? builtinToolRows()) {
-    for (const tool of await row.factory(rowCtx)) registry.register(tool);
-  }
-
-  // ── 插件工具行（S4-1.5 消费闭环，设计件 §2.3）──
-  // ctx.tools 贡献折算的行，叠加在行表源之后（行表源 = 出厂表或注入的组合
-  // 解析产物，两路都叠加）。行 id 前缀 plugin/<贡献 id>；factory 缓存实例
-  // （工具实例不随每次装配重建）；行内工具名冲突由 ToolRegistry.register
-  // 装载期拒绝（duplicate throw）。生效时机 = 下次装配（S1 既有语义）。
-  // 注：组合解析域目前只含 builtin 行——patch/preset 寻址插件行属 S4-4
-  // 机器桥批的扩展（届时 MCP 折算行进组合解析域，设计件 §2.7）。
-  for (const row of pluginToolRows()) {
+  // ── 行表装配（S4-4 甲：builtin 行 + 插件贡献行统一进组合解析域）──
+  // 全部内置族（hologram/web/ask/skill/memory/task/agent/browser-desktop/
+  // wait）的工厂与组合序在行表；插件贡献行（plugin/<贡献 id>，composition/
+  // plugin-tool-rows 折算）由组合解析产物一并携带（factoryComposition 快照
+  // 收编两类行，序 = builtin 在前、贡献行随后）。单一循环装配，行表源 =
+  // 注入的组合解析产物；缺省 = 出厂组合（当前通道装载态的完整基座）。
+  // 表序 = 组合序（前缀缓存语义的根基）；行内工具名冲突由
+  // ToolRegistry.register 装载期拒绝（duplicate throw）。
+  for (const row of toolRows ?? factoryComposition().tools) {
     for (const tool of await row.factory(rowCtx)) registry.register(tool);
   }
 

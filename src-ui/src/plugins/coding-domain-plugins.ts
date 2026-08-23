@@ -19,10 +19,10 @@
 // 走行表还是插件通道注册不改变模型可见面（phase-0 快照守护，双 preset
 // 实测）。
 //
-// 寻址域收窄（② 批三族同 B① 先例）：行迁出后 'builtin/fs'・'builtin/shell'
-// ・'builtin/agent-isolation' 脱离 roster 组合解析域——patch/preset 寻址
-// 报「未知行 id」整体拒绝（错误可见）；全寻址恢复属 S4-4 甲机器桥批
-// （已拍板排进当前工程，2026-08-23 拍板 #1）。
+// 寻址域（② 批临时收窄 → S4-4 甲恢复全量，2026-08-23）：五族贡献行经
+// factoryComposition() 快照进组合解析域——patch/preset 可寻址
+// 'plugin/hologram/<域>-domain/<工具名>' 行禁用单个工具（粒度 = 贡献行
+// = 单工具；原 builtin/<族> 整族行 id 退役不复活）。
 //
 // 一文件五插件：familyContributions 族贡献清单 helper 由各域共享（族注册
 // 形状相同，拆文件只会复制 helper——B① 落文件时已定此形）。

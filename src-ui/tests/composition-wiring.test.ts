@@ -27,7 +27,10 @@ const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r
  *  B④ 收官（2026-08-23）：prompt 域寻址面 = 仅已插入段——样本改为
  *  「插入两段 + 覆盖已插入段」（第一方段寻址会被整体拒绝）。
  *  ② 批（2026-08-23）：builtin/shell 迁插件通道——工具禁用探针改
- *  builtin/wait（存活的 builtin 行）。 */
+ *  builtin/wait（存活的 builtin 行）。
+ *  S4-4 甲（2026-08-23）：组合解析域含通道贡献快照——样本在通道外解析
+ *  = builtin 行 + 已插入段（无贡献行/段）；在通道内解析则另含 34 贡献行
+ *  + 13 第一方段（贡献段寻址恢复，见 roster 测试）。 */
 function sampleComposition(): ResolvedComposition {
   return resolveRoster(factoryComposition(), [
     {
@@ -49,33 +52,62 @@ describe('S2-1 穿线：buildToolRegistry(toolRows)', () => {
     expect(reg.names()).toContain('run_shell');
   });
 
-  it('传禁用后的行表 → wait 不在册；插件通道族不受组合解析影响（② 临时语义）', async () => {
-    const composition = sampleComposition();
+  it('传禁用后的行表 → wait 不在册；通道贡献行随组合面装配（解析须在通道内）', async () => {
     const { buildToolRegistry } = await import('../src/agent/runtime/agent-builder');
     const { SubAgentPool } = await import('../src/agent/coordinator');
     const { TaskManager } = await import('../src/agent/task');
     const { withFirstPartyToolChannel } = await import('../src/composition/first-party-tools');
     const { FIXED_GRAPH_DATA } = await import('./convergence/helpers/fixtures');
-    // P4 B①/② 起 git/search/fs/shell/agent-isolation 经 ctx.tools 插件通道
-    // 贡献——直调 buildToolRegistry 的装配模拟须包通道腰（生产装配恒有通道；
-    // roster 只解析 builtin 行表，与插件贡献通道正交，互不影响）
-    const reg = await withFirstPartyToolChannel(() =>
-      buildToolRegistry({
+    // S4-4 甲：组合解析域含通道贡献快照——sampleComposition 须在通道腰内
+    // 解析（factoryComposition 收编 34 贡献行）；解析产物经单一循环装配
+    // （buildToolRegistry 不再旁路追加 pluginToolRows）。
+    const reg = await withFirstPartyToolChannel(async () => {
+      const composition = sampleComposition();
+      return buildToolRegistry({
         graphData: FIXED_GRAPH_DATA,
         deps: {},
         taskManager: new TaskManager(),
         subAgentPool: new SubAgentPool(),
         toolRows: composition.tools,
-      }),
-    );
+      });
+    });
     const names = reg.names();
     // wait 行被禁 → wait 工具不在册（roster 穿线生效）
     expect(names).not.toContain('wait');
-    // ② 批临时语义：fs/shell/git 族已迁插件通道——不在组合解析域，
-    // roster 禁 builtin/wait 不影响它们（S4-4 甲把插件行纳入解析域后可禁）
+    // 通道贡献行随组合面装配（五族插件工具在册）
     expect(names).toContain('run_shell');
     expect(names).toContain('fs');
     expect(names.some((n) => n.startsWith('git_'))).toBe(true);
+  });
+
+  it('S4-4 甲：plugin/<贡献 id> 行可被 patch 寻址禁用（寻址域恢复）', async () => {
+    const { buildToolRegistry } = await import('../src/agent/runtime/agent-builder');
+    const { SubAgentPool } = await import('../src/agent/coordinator');
+    const { TaskManager } = await import('../src/agent/task');
+    const { withFirstPartyToolChannel } = await import('../src/composition/first-party-tools');
+    const { factoryComposition, resolveRoster } = await import('../src/composition/roster');
+    const { FIXED_GRAPH_DATA } = await import('./convergence/helpers/fixtures');
+    const reg = await withFirstPartyToolChannel(async () => {
+      // 通道内快照：工厂基座含插件贡献行（patch 可寻址）
+      const resolved = resolveRoster(factoryComposition(), [
+        { tools: [{ id: 'plugin/hologram/shell-domain/run_shell', disabled: true }] },
+      ]);
+      expect(resolved.tools.some((r) => r.id === 'plugin/hologram/shell-domain/run_shell')).toBe(false);
+      expect(resolved.diagnostics.disabled).toContain('plugin/hologram/shell-domain/run_shell');
+      return buildToolRegistry({
+        graphData: FIXED_GRAPH_DATA,
+        deps: {},
+        taskManager: new TaskManager(),
+        subAgentPool: new SubAgentPool(),
+        toolRows: resolved.tools,
+      });
+    });
+    const names = reg.names();
+    // 被禁贡献行不注册（run_shell 消失）
+    expect(names).not.toContain('run_shell');
+    // 同族其余贡献行仍在册（单行粒度寻址）
+    expect(names).toContain('bash_output');
+    expect(names).toContain('bash_kill');
   });
 });
 

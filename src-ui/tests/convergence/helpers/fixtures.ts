@@ -54,21 +54,27 @@ export function fixedGraphSnapshot(): string {
 // P4 B①（2026-08-23）起 git/search 两族经 ctx.tools 第一方插件通道贡献——
 // 夹具以 withFirstPartyToolChannel 复现生产装配（标准 = 内置行 + 第一方
 // 插件贡献；测试环境不跑 main.ts 引导，通道腰在此补挂）。
+// S4-4 甲（2026-08-23）：通道贡献行进组合解析域（factoryComposition 快照）
+// ——buildToolRegistry 缺省装配 = 出厂组合（内置行 + 贡献行），toolRows
+// 注入 = preset 解析产物（惰性 thunk 在通道腰内求值）。
 
 export async function buildStandardRegistry(
   contributions: ToolContribution[] = [],
-  toolRows?: BuiltinToolRow[],
+  toolRows?: BuiltinToolRow[] | (() => BuiltinToolRow[]),
 ): Promise<ToolRegistry> {
   const stubSpawner = (async () => 'stub-spawn-result') as unknown as SubAgentSpawner;
   return withFirstPartyToolChannel(async () => {
+    // S4-4 甲：toolRows 支持惰性 thunk——在通道腰内求值使解析域纳入
+    // 当前第一方贡献行（minimal 的减法解析含 34 贡献行；数组直传兼容）。
+    const rows = typeof toolRows === 'function' ? toolRows() : toolRows;
     const reg = await buildToolRegistry({
       graphData: FIXED_GRAPH_DATA,
       deps: {},
       taskManager: new TaskManager(),
       subAgentPool: new SubAgentPool(),
       subAgentSpawner: stubSpawner,
-      // S4-1b：preset 的工具行（减法型 preset——minimal）；undefined = 出厂表
-      ...(toolRows ? { toolRows } : {}),
+      // S4-1b：preset 的工具行（减法型 preset——minimal）；undefined = 出厂组合
+      ...(rows ? { toolRows: rows } : {}),
     });
     // 行贡献按组合序（数组序）注册到内置面之后（S1-0 设计件 §2.3：
     // 显式参数，确定性按构造保证）。重名行由 ToolRegistry.register

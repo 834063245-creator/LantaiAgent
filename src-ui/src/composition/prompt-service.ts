@@ -8,15 +8,20 @@
 //   - register(def) → Disposer：调用方挂 ctx.effect（所有权登记是调用方纪律）；
 //   - 重名 id 装载期拒绝（throw，不静默覆盖）；
 //   - disposer 幂等 + 陈旧性守卫（同 def 重注册后旧 disposer 不误删新行）；
-//   - 无即时信号：prompt 只在 Agent 装配期消费（assembleSystemPrompt 末端
-//     追加），没有 React 常驻清单缓存，不需要 bump 信号 store。
+//   - 无即时信号：prompt 只在 Agent 装配期消费（assembleSystemPrompt），没有
+//     React 常驻清单缓存，不需要 bump 信号 store。
 //
 // 生效时机 = 下次 Agent 装配（新会话）——system prompt 在会话创建时点拼装，
 // 在途会话保持创建时点的段落面不变（KV-cache 纪律，同 tools 通道 §7）。
 //
-// 组合解析域边界（同 tools 通道现状）：贡献段追加在解析产物（出厂表或
-// roster 解析表）之后，不进 roster 寻址域——patch/preset 不能禁用/覆盖
-// 贡献段（S4-4 机器桥批的扩展点，届时再纳入）。
+// 组合解析域（S4-4 甲，2026-08-23）：贡献段进 roster 寻址域——
+// factoryComposition() 的 prompt 域快照当前贡献清单（同 tools 通道的
+// pluginToolRows 折算行）；patch/preset 可 disable/text 覆盖/锚定贡献段
+// id（A-1 时代「贡献恒追加在解析产物末尾、不进寻址域」的合流语义退役
+// ——assembleSystemPrompt 见 prompt-sections.ts）。贡献 register/dispose
+// 因此成为组合输入变更——onPromptContributionsChanged 供 preset-assembly
+// 的组合 cache 代数失效 + bootShell 的贡献监听重应用（无即时信号面：
+// prompt 无 React 常驻清单，不需要 bump 信号 store）。
 
 import { type Context, Service } from '../cordis';
 import type { PromptSection } from './prompt-sections';
@@ -25,12 +30,30 @@ import type { PromptSection } from './prompt-sections';
  *  render 产出含自身前导分隔符的完整文本，与内置段同一契约）。 */
 export type PromptContribution = PromptSection;
 
+// ── 贡献变更监听（S4-4 甲）──
+// 与 tools 通道的 onToolContributionsChanged（services.ts）同款：register/
+// dispose 时触发——贡献进组合解析域后，贡献变更 = 组合输入变更。
+type PromptContributionsChangedListener = () => void;
+const promptContributionListeners = new Set<PromptContributionsChangedListener>();
+
+/** 订阅 prompt 段贡献变更（register/dispose）。返回退订函数。 */
+export function onPromptContributionsChanged(cb: PromptContributionsChangedListener): () => void {
+  promptContributionListeners.add(cb);
+  return () => promptContributionListeners.delete(cb);
+}
+
+function firePromptContributionsChanged(): void {
+  for (const cb of [...promptContributionListeners]) cb();
+}
+
 // ── 注册表内核（renderer-service 同款单文件自持；不导出公共类——
 //    各 service 的通用内核是内核线内部复用，跨文件再抽公共会耦合两处
 //    内核，简单复制更诚实）──
 
 class PromptRegistry {
   private entries = new Map<string, { def: PromptContribution; dispose: () => void }>();
+
+  constructor(private readonly onChange: (() => void) | null = null) {}
 
   register(def: PromptContribution): () => void {
     if (this.entries.has(def.id)) {
@@ -44,10 +67,12 @@ class PromptRegistry {
         done = true;
         if (this.entries.get(def.id)?.def === def) {
           this.entries.delete(def.id);
+          this.onChange?.(); // 贡献消失（陈旧性守卫内——实际删除才触发）
         }
       },
     };
     this.entries.set(def.id, entry);
+    this.onChange?.(); // 贡献出现
     return entry.dispose;
   }
 
@@ -64,7 +89,7 @@ class PromptRegistry {
 // ── service 本体 ──
 
 export class PromptsService extends Service {
-  private registry = new PromptRegistry();
+  private registry = new PromptRegistry(firePromptContributionsChanged);
 
   constructor(ctx: Context) {
     super(ctx, 'prompts');

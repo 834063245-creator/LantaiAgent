@@ -16,6 +16,7 @@ vi.mock('../src/composition/patch-loader', () => ({
 vi.mock('../src/composition/preset-assembly', () => ({
   applyDefaultPreset: vi.fn(),
   syncPresetSelectionFromSettings: vi.fn(),
+  reapplyComposition: vi.fn(), // S4-4 甲：bootShell 贡献监听消费（mock 面补齐）
 }));
 vi.mock('../src/composition/preset-discovery', () => ({
   discoverPresets: vi.fn().mockResolvedValue(undefined),

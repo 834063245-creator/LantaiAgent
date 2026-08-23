@@ -17,9 +17,15 @@
 // 函数（零漂移过渡），S2-4 起是 shell/workspace.ts 真源。
 
 import { loadCompositionPatch, reloadCompositionPatch } from '../composition/patch-loader';
-import { applyDefaultPreset, syncPresetSelectionFromSettings } from '../composition/preset-assembly';
+import {
+  applyDefaultPreset,
+  reapplyComposition,
+  syncPresetSelectionFromSettings,
+} from '../composition/preset-assembly';
 import { discoverPresets } from '../composition/preset-discovery';
+import { onPromptContributionsChanged } from '../composition/prompt-service';
 import type { ResolvedComposition } from '../composition/roster';
+import { onToolContributionsChanged } from '../composition/services';
 import { type ShellRow, type WorkspaceFlowDeps, workspaceFlow } from '../composition/shell-rows';
 import { setLang } from '../i18n';
 import { typedListen } from '../rpc-contract';
@@ -53,6 +59,19 @@ function armCompositionWatcher(): void {
   });
 }
 
+/** 贡献变更监听（S4-4 甲）：插件工具行/prompt 段贡献 register/dispose →
+ *  reapplyComposition——组合解析域含通道贡献快照，贡献变更后按当前选择
+ *  重解析并回写 composition-store（共享注册表/诊断面读它；error 态跳过、
+ *  factory 态重新快照）。监听器生命周期 = 应用生命周期（boot 期一次登记，
+ *  与 composition watcher 同款）。 */
+let contributionsWatchArmed = false;
+function armContributionsWatcher(): void {
+  if (contributionsWatchArmed) return;
+  contributionsWatchArmed = true;
+  onToolContributionsChanged(reapplyComposition);
+  onPromptContributionsChanged(reapplyComposition);
+}
+
 /** 壳引导主入口 — main.ts 调用（fire-and-forget；永不 reject）。
  *  flowDeps 缺省 = 出厂 workspace 流（workspace 行真源）。 */
 export async function bootShell(
@@ -65,15 +84,18 @@ export async function bootShell(
     setLang(loadSettings().display.language);
     document.documentElement.style.setProperty('--font-scale', String(loadSettings().display.fontScale));
 
-    // 2) 组合链（S4-1a + S4-2）：settings 的 preset 选择同步 → 用户层
-    //    patch → preset 发现（用户目录）→ preset 层应用（写
+    // 2) 组合链（S4-1a + S4-2 + S4-4 甲）：settings 的 preset 选择同步 →
+    //    用户层 patch → preset 发现（用户目录）→ preset 层应用（写
     //    composition-store）→ 热重载监听武装（composition:changed →
-    //    reload；Rust watcher 在壳进程常驻）。
+    //    reload；Rust watcher 在壳进程常驻）→ 贡献变更监听武装（插件
+    //    行/段 register/dispose → reapplyComposition——第一方贡献在
+    //    loadBuiltinPlugins 已注册完毕，此监听主要服务外部插件晚装载）。
     syncPresetSelectionFromSettings();
     await ensureCompositionLoaded();
     await ensurePresetsDiscovered();
     applyDefaultPreset();
     armCompositionWatcher();
+    armContributionsWatcher();
 
     // 3) 按表序逐行 boot（V5a 组合接线，workspace-flip 批 4）：行表真源 =
     //    composition-store.resolved.shell（第 2 步组合链刚写入——参数注入有

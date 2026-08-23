@@ -80,6 +80,7 @@ describe('S2-3/S2-4 bootShell 编排器（shell/boot.ts）', () => {
     vi.doMock('../src/composition/preset-assembly', () => ({
       syncPresetSelectionFromSettings: vi.fn(),
       applyDefaultPreset: vi.fn(),
+      reapplyComposition: vi.fn(),
     }));
     // 9 行全换探针（第 3 行抛错——验证第 4+ 行仍执行）
     const rows: ShellRow[] = EXPECTED_ROW_IDS.map((id, i) => ({
@@ -134,6 +135,7 @@ describe('S2-3/S2-4 bootShell 编排器（shell/boot.ts）', () => {
       applyDefaultPreset: vi.fn(() => {
         order.push('preset-apply');
       }),
+      reapplyComposition: vi.fn(),
     }));
     vi.doMock('../src/composition/shell-rows', () => ({
       builtinShellRows: () => [],
@@ -166,6 +168,7 @@ describe('S2-3/S2-4 bootShell 编排器（shell/boot.ts）', () => {
     vi.doMock('../src/composition/preset-assembly', () => ({
       syncPresetSelectionFromSettings: vi.fn(),
       applyDefaultPreset: vi.fn(),
+      reapplyComposition: vi.fn(),
     }));
     vi.doMock('../src/composition/shell-rows', () => ({
       builtinShellRows: () => [],

@@ -1,6 +1,7 @@
 # 组合层（Composition Layer）— 用户指南
 
-> S2 竣工（2026-08-20）· S4 preset/热重载/安装通道竣工（2026-08-20）。
+> S2 竣工（2026-08-20）· S4 preset/热重载/安装通道竣工（2026-08-20）·
+> S4-4 甲：插件贡献行/段进组合解析域（2026-08-23）。
 > 组合架构的「数据外化」段：工具行 / prompt 段 / capability / 壳行的
 > 「禁哪些、换哪段文本、插哪些段」从编译期 TS 表外化为用户可改的 patch
 > 数据文件。设计件：
@@ -13,9 +14,11 @@
 `%USERPROFILE%\.lantai\composition\roster.patch.yml`）写 patch：
 
 ```yaml
-# 禁用 shell 工具族 + 禁用沙箱探测壳行 + 插入团队定制段（在出厂段之前）
+# 禁用 web 工具族 + 禁用某个插件工具行 + 在行为规则段后插入团队定制段
 tools:
-  - id: builtin/shell
+  - id: builtin/web
+    disabled: true
+  - id: plugin/hologram/shell-domain/run_shell
     disabled: true
 shell:
   - id: hologram/shell-sandbox-probe
@@ -23,14 +26,15 @@ shell:
 prompt:
   - insert:
       - id: team-rules
+        after: behavior-rules
         text: |
           【团队定制规则】
           1. 提交信息用中文。
           2. 不改 docs/archive/ 下任何文件。
 ```
 
-（P4 B④ 收官后 prompt 域只能 insert——覆盖/禁用第一方段待 S4-4 甲
-恢复；插入段可被同 patch 后续条目 disable/text 覆盖。）
+（S4-4 甲起插件工具行 `plugin/<插件名>/<工具名>` 与第一方 prompt 段
+id 均可寻址；完整寻址域见 §「四个行域」。）
 
 保存即生效（S4-2 热重载）：**新 Agent 装配（新会话）即用新组合；在途
 会话保持创建时点的组合不变**。没有这个文件（或文件为空）= 出厂组合。
@@ -39,17 +43,20 @@ prompt:
 
 | 域 | 行 id 举例 | 寻址对象 |
 |---|---|---|
-| `tools` | `builtin/hologram`、`builtin/web`、`builtin/wait`… | 内置工具族（真源 `src-ui/src/composition/tool-rows.ts`，现存 9 行；git/search（B①）+ fs/shell/agent-isolation（②）五族已迁 ctx.tools 插件通道，2026-08-23） |
-| `prompt` | 已插入段 id（`insert` 条目声明的 id） | system prompt 段（真源 `prompt-sections.ts` `firstPartyPromptSections()`；P4 B④ 收官：13 段全经 `ctx.prompts` 插件通道贡献，**全部脱离 patch 寻址域**——仅 insert 的段可被 disable/覆盖/锚定） |
+| `tools` | `builtin/hologram`、`builtin/web`、`builtin/wait`…；`plugin/hologram/git-domain/git_status`… | 内置工具族（真源 `src-ui/src/composition/tool-rows.ts`，现存 9 行）+ 插件贡献行（`ctx.tools` 通道折算，S4-4 甲起进寻址域——git/search/fs/shell/agent-isolation 五族共 34 行，粒度 = 单工具） |
+| `prompt` | 第一方段 id（`behavior-rules`、`multi-agent`…）、已插入段 id、插件段贡献 id | system prompt 段（真源 `prompt-sections.ts` `firstPartyPromptSections()`——13 段经 `ctx.prompts` 通道贡献；S4-4 甲起全量进寻址域：disable/text 覆盖/insert 锚定第一方段 id 均合法） |
 | `capabilities` | `plan-tools`、`converge-tools`、`graph-hooks`… | 会话级工具/hook（真源 `agent/blueprint.ts`；id = capability key） |
 | `shell` | `hologram/shell-graph`、`hologram/shell-cold-start`… | 壳引导行（真源 `composition/shell-rows.ts`；行实现 `src-ui/src/shell/rows/*`） |
 
-> **寻址域边界（2026-08-23 勘正；B④ 收官后为终态）**：patch/preset 的组合
-> 解析域当前只含 builtin 行——插件贡献的工具行（`plugin/<插件名>/<工具名>`）
-> 与全部 13 个第一方 prompt 段（`ctx.prompts`，P4 B④ 收官）**不在寻址域内**，
-> 写进 patch 会报「未知行 id」整体拒绝（寻址第一方段的旧 patch 会整体拒绝，
-> 错误可见，S4-4 机器桥批的扩展点）。贡献行/段纳入寻址域属 S4-4 机器桥批；
-> 当前卸载/禁用插件走插件开关（设置 → 插件），不走组合 patch。
+> **寻址域（S4-4 甲，2026-08-23）**：patch/preset 的组合解析域 = builtin
+> 行表 + **当前通道贡献快照**（`factoryComposition()` 读取时点收编——插件
+> 工具行 `plugin/<插件名>/<工具名>` 与 prompt 段贡献都在寻址面内）。
+> 寻址粒度：插件工具行 = 单工具（原 `builtin/<族>` 整族行 id 已随五族迁移
+> 退役）；prompt 段 = 段 id 直寻。无通道贡献装载的环境（理论态——生产
+> boot 必有第一方插件）解析域退化为 builtin 行 + 空段表。贡献的
+> register/dispose = 组合输入变更：下次解析自动重取（cache 代数失效），
+> 在途会话不动（创建时点冻结）。卸载/禁用整个插件仍走插件开关
+> （设置 → 插件），不走组合 patch。
 
 完整 id 清单以各真源文件为准——它们是唯一权威源。
 
@@ -76,6 +83,8 @@ prompt:
 ```
 
 `text` 整段替换渲染输出；段的 id / 位置 / applicable 条件保持不变。
+S4-4 甲起可覆盖第一方段与插件贡献段（动态插值段被覆盖后丢失插值
+语义——用户换整段就接管整段）。
 
 ### 插入新段（仅 `prompt` 域）
 
@@ -89,8 +98,10 @@ prompt:
           …
 ```
 
-- `before` / `after` 互斥，锚点是现有段的 id（被禁用的段也可作锚）。
-- 插入段的 id 不得与任何现有段 / 已插入段撞名。
+- `before` / `after` 互斥，锚点是现有段的 id（被禁用的段也可作锚；S4-4 甲
+  起可锚定第一方段/插件贡献段）。
+- 插入段的 id 不得与任何现有段 / 已插入段撞名（含通道贡献段——S4-4 甲
+  统一撞名拒绝）。
 - prompt 段是纯数据（id + applicable + render）；factory 层的 render 逻辑
   永不出 yml——插入段的 `text` 是静态文本。
 

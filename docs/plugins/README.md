@@ -2,7 +2,8 @@
 
 > S4 竣工（2026-08-20）；S3 第一方行化（2026-08-22）；P4 A-1 prompt 段贡献
 > 通道（2026-08-23）；P4 B④ 第一方 prompt 段迁移收官（2026-08-23，13 段全量
-> 经 ctx.prompts 贡献）。插件 = 经
+> 经 ctx.prompts 贡献）；S4-4 甲：贡献行/段进组合解析域（2026-08-23）。
+> 插件 = 经
 > webview 动态 import 装载的自包含 ES 模块，
 > 向宿主注册**面板 / 命令 / 工具 / 块渲染器 / prompt 段**贡献。
 > 完全信任模型——安装前必读 §6。从零到跑通的最短路径：
@@ -131,10 +132,11 @@ ctx.effect(
 
 - **生效时机是下次 Agent 装配**（新会话）——工具面变更 = 前缀缓存边界，
   只发生在会话边界（§7）。
-- 行 id 折算：贡献 id → `plugin/<贡献 id>`。**注意（2026-08-23 勘正）**：
-  patch/preset 的组合解析域当前只含 builtin 行——`plugin/…` 行 id 尚不能
-  被 roster.patch.yml 寻址禁用（「组合均匀性」是 S4-4 机器桥批的扩展点，
-  届时纳入；当前卸载/禁用插件走 §5 的插件开关，不走红组合）。
+- 行 id 折算：贡献 id → `plugin/<贡献 id>`。**S4-4 甲（2026-08-23）起
+  贡献行进组合解析域**：`plugin/…` 行 id 可被 roster.patch.yml / preset
+  寻址禁用（单工具粒度——`factoryComposition()` 快照收编当前贡献，
+  贡献 register/dispose 后下次解析自动重取）。卸载/禁用整个插件仍走
+  §5 的插件开关。
 - 工具实例缓存：dispose 清缓存（被卸载的工具实例不再进装配）。
 - **factory 可选收装配上下文**（2026-08-23 P4 B① 放宽）：折算装配时以
   `factory(rowCtx)` 传入（`ToolRowContext`——`codingExec` 等装配期依赖）。
@@ -200,9 +202,10 @@ ctx.effect(
 
 - **生效时机是下次 Agent 装配**（新会话）——system prompt 在会话创建时点
   拼装，在途会话保持创建时点的段落面不变（前缀缓存纪律，§7）。
-- 拼装位置恒在**解析产物末尾**（出厂表或 roster 解析表之后）——贡献段
-  不进组合解析域，patch/preset 不能覆盖/禁用/锚定它（同 tools 通道的
-  `plugin/…` 行现状；S4-4 机器桥批的扩展点）。
+- **S4-4 甲（2026-08-23）起贡献段进组合解析域**：patch/preset 可
+  disable/text 覆盖/insert 锚定贡献段 id（含全部 13 第一方段——第一方
+  同走此通道）；拼装位序由组合解析产物统一决定（insert 锚定可落在
+  贡献段之间，缺省锚 = 全表尾）。
 - 段形状与内置段同一契约：`render` 产出**含自身前导分隔符**的完整文本
   （首段用 `\n\n## 标题` 开头；缺前导换行会与上一段粘连——字节面纪律）。
 - `applicable` 收全量 `PromptSectionContext`（graphData/projectPath/providerName/
@@ -306,11 +309,12 @@ factory（出厂表，代码真源）
 ## 9. 未决项（如实声明）
 
 - ~~**插件 prompt-section 贡献通道**~~ ✅ 已落地（P4 A-1，2026-08-23）：
-  `ctx.prompts`（`composition/prompt-service.ts`）——段贡献追加在解析产物
-  末尾，下次装配生效；§3。
-- **贡献段/行的组合解析域**：patch/preset 当前只寻址 builtin 行——
-  `plugin/…` 工具行与 prompt 贡献段（含 B④ 收官后全部 13 第一方段）
-  纳入寻址域属 S4-4 机器桥批（已拍板排进当前工程，2026-08-23 拍板 #1）。
+  `ctx.prompts`（`composition/prompt-service.ts`）——段贡献经
+  factoryComposition 快照进组合解析域，下次装配生效；§3。
+- ~~**贡献段/行的组合解析域**~~ ✅ 已落地（S4-4 甲，2026-08-23）：
+  `plugin/…` 工具行与 prompt 贡献段（含 13 第一方段）全量进寻址域
+  ——patch/preset 可禁用/覆盖/锚定（快照语义 + cache 代数失效，
+  `composition/roster.ts` `factoryComposition()`）。
 - **版本比较/更新提示**：manifest.version 有、UI 显示之；比较逻辑与更新
   流程属增强。
 - **preset 的 UI 选择面**：当前只有设置面板默认值 + 新会话携带默认

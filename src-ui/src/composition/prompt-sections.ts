@@ -28,18 +28,17 @@
 // claude-md 试点 → graph-snapshot 续批 → 收官批一次性迁完剩余 10 段，
 // 中间批次按表尾逆序头插保序）。
 //
-// 「解析产物」语义重审（收官批勘定，2026-08-23）：
-//   1. 出厂装配面 = 解析产物（缺省空表）+ 通道贡献（13 第一方段）——
-//      通道是出厂段唯一来源；无通道环境（不经 main.ts 引导 /
-//      withFirstPartyPromptChannel 腰）缺省拼装 = 空提示词（obstacle ③
-//      注册面依赖——convergence 夹具经腰复现生产装配面）。
-//   2. roster prompt 域寻址面 = 仅已插入段：第一方 13 段脱离组合解析域
-//      ——patch/preset 寻址任一第一方段 id 报「未知段 id」整体拒绝
-//      （错误可见）；disable/text 覆盖/锚定的全寻址恢复属 S4-4 甲机器
-//      桥批（同 B① git/search 先例）。
-//   3. 临时位序两条：插入段（解析产物）恒在第一方贡献之前；insert id
-//      与第一方段同名不拒绝（不在工作列表）——S4-4 甲把插件行纳入
-//      解析域后消灭。
+// 解析域语义（S4-4 甲，2026-08-23 勘定——B④ 收官四条重审随之修订）：
+//   1. 出厂装配面 = 组合解析产物：factoryComposition() 的 prompt 域快照
+//      当前通道贡献（roster.ts）——无通道环境（不经 main.ts 引导 /
+//      通道腰）= 空贡献 → 缺省拼装 = 空提示词（B④ 收官的注册面依赖
+//      语义不变——convergence 夹具经腰复现生产装配面）。
+//   2. 全寻址恢复：13 第一方段与插件贡献段都在 roster prompt 域寻址面
+//      ——patch/preset 的 disable/text 覆盖/insert 锚定寻址第一方段 id
+//      均合法（B④ 收官的两条临时语义消灭：寻址拒绝退役；insert id 与
+//      第一方段同名恢复撞名拒绝）。
+//   3. 拼装位序统一：insert 经锚定与贡献段统一排序（缺省锚 = 快照表尾
+//      ——贡献之后；B④ 收官「插入段恒在贡献之前」的临时位序消灭）。
 //   4. prompt 通道无实例缓存（每次拼装重调 render，贡献直收
 //      PromptSectionContext 装配期真值）——动态插值段（graphSnapshot/
 //      memorySection/claudeMdSection）每装配现算，无 ①c 跨装配串扰面。
@@ -294,7 +293,9 @@ ${ctx.claudeMdSection}`,
  *  装配腰 composition/first-party-prompts.ts）。
  *  B④ 收官（2026-08-23）：出厂段表 builtinPromptSections() 退役，本清单
  *  即出厂装配面的全部段落来源（简短/完整两面经 applicable 互斥分流，
- *  序不变——13 段 = 试点/续批迁出 3 段 + 收官批迁出 10 段）。 */
+ *  序不变——13 段 = 试点/续批迁出 3 段 + 收官批迁出 10 段）。
+ *  S4-4 甲：清单段经通道进 roster 解析域（factoryComposition prompt 域
+ *  快照）——patch/preset 可寻址段 id（disable/text/锚定）。 */
 export function firstPartyPromptSections(): PromptSection[] {
   return [
     IDENTITY_BRIEF,
@@ -314,14 +315,15 @@ export function firstPartyPromptSections(): PromptSection[] {
 }
 
 /** 按序拼装系统提示词（applicable=false 的段跳过，其余纯 concat）。
- *  S2-1 起 sections 可选注入（roster 解析产物——composition-store 穿线），
- *  缺省 = 空表（B④ 收官：出厂段表退役，出厂面 = 空解析产物 + 通道贡献）。
- *  A-1（2026-08-23）起第六通道贡献（ctx.prompts，prompt-service.ts）追加在
- *  解析产物之后（贡献序 = 注册序）；B④ 收官起 13 第一方段全经此通道贡献
- *  （拼装字节零漂移按构造，双 preset 快照实测）；生效时机 = 下次 Agent
- *  装配（在途会话段面不变，前缀缓存纪律）。 */
+ *  S2-1 起 sections 可选注入（roster 解析产物——composition-store 穿线）。
+ *  S4-4 甲：sections = 解析域全量清单（通道贡献段快照已收编进解析产物
+ *  ——factoryComposition 的 prompt 域）——**提供即精确清单**，不再末端
+ *  追加通道贡献；缺省 = 出厂基座（当前通道贡献——无通道环境 = 空表 =
+ *  空提示词，B④ 收官的注册面依赖）。A-1 时代「贡献恒追加在解析产物
+ *  末尾」的合流语义退役（两条临时位序随之消灭——见文件头）。生效时机
+ *  = 下次 Agent 装配（在途会话段面不变，前缀缓存纪律）。 */
 export function assembleSystemPrompt(ctx: PromptSectionContext, sections?: PromptSection[]): string {
-  const list = [...(sections ?? []), ...activePromptContributions()];
+  const list = sections ?? activePromptContributions();
   let out = '';
   for (const section of list) {
     if (section.applicable && !section.applicable(ctx)) continue;

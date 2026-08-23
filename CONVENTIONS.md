@@ -152,9 +152,12 @@ React 靠引用比较观察变化。store 是唯一提交口：
 ✅ 插件 prompt 段贡献（P4 A-1 起）：ctx.prompts 通道（composition/
    prompt-service.ts，第六 service）——PromptContribution 形状即 PromptSection
    （id + applicable? + render，render 产出含自身前导分隔符的完整文本）；
-   合流点 = assembleSystemPrompt 末端追加（出厂表 / roster 解析表两路之后，
-   不进 roster 寻址域——patch 不能禁用/覆盖贡献段）；生效 = 下次 Agent 装配；
-   无贡献 = 空集 = 拼装零漂移按构造
+   S4-4 甲（2026-08-23）起贡献段进组合解析域：factoryComposition() 的
+   prompt 域快照通道贡献（同 tools 域收编 pluginToolRows 行）——patch/
+   preset 可 disable/text 覆盖/锚定贡献段 id（含 13 第一方段）；合流点 =
+   assembleSystemPrompt——sections（解析产物）提供即精确清单、缺省 =
+   当前通道贡献；贡献 register/dispose = 组合输入变更（preset-assembly
+   cache 代数失效 + bootShell 贡献监听 reapplyComposition 重应用）
 ✅ 会话级工具/hook（plan/通信/discovery/merge/board/kill/request/spawn/task
    替换/compaction/converge/code-execution）：在 agent/blueprint.ts 的 standard() capability 表
    加一项（或 createAgentFromContext 第 3 参注入扩展蓝图）——不改 AgentConfig
@@ -189,8 +192,11 @@ record 永不上 CI；baseline 变更走 docs/archive/agent-core-convergence/bas
 ✅ 用户层 patch：~/.lantai/composition/roster.patch.yml 经 composition/roster.ts
    的 resolveRoster(factory, [patch]) 解析（禁用/覆盖/插入四域行；all-or-nothing，
    失败回退出厂组合）——patch 语义与涟漪表见 docs/composition/README.md；
-   装配面（buildToolRegistry/assembleSystemPrompt/AgentBlueprint.fromRoster/
-   bootShell）全部带出厂缺省参数，测试永不依赖用户盘文件
+   解析域 = builtin 行表 + 通道贡献快照（S4-4 甲——factoryComposition()
+   收编 pluginToolRows 行 + ctx.prompts 段贡献，patch/preset 可寻址两类行；
+   快照语义：同装载态同输出，贡献变更经 cache 代数 + reapplyComposition
+   重取）；装配面（buildToolRegistry/assembleSystemPrompt/AgentBlueprint.
+   fromRoster/bootShell）全部带出厂缺省参数，测试永不依赖用户盘文件
 ✅ 壳行通道分工：引导接线（无 ctx 生命周期诉求）= 壳行（composition/
    shell-rows.ts 表 + src/shell/rows/* 实现 + src/shell/boot.ts 编排器，
    表序=引导序，失败单行隔离）；有 ctx 生命周期/disposer 诉求的单元 =
@@ -215,6 +221,9 @@ preset realm + 热重载 + 消费闭环（S4，2026-08-20 起生效）：
 ✅ 消费闭环（G0 修复）：面板清单 = panelDefs()（常量 + ctx.panels 贡献）；
    命令面板 = listActions() + ctx.commands 折算；工具行 = composition/
    plugin-tool-rows.ts 折算（行 id 'plugin/<贡献 id>'，factory 缓存实例）。
+   S4-4 甲（2026-08-23）：折算行进组合解析域（factoryComposition 快照，
+   patch/preset 可寻址 plugin/<贡献 id> 行）——buildToolRegistry 单一循环
+   经组合解析产物装配，不再旁路追加 pluginToolRows。
    面板/命令即时生效（panel-defs-store bump 信号）；工具下次装配生效
 ✅ 热重载：Rust composition_watcher 监听根级 roster.patch.yml →
    composition:changed → patch-loader reloadCompositionPatch（404=显式

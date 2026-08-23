@@ -4,13 +4,20 @@
 // roster 组合引擎（S2-0）—— 组合外化的解析层（设计件
 // docs/plans/composition-architecture/designs/S2-composition-externalization.md §2.1-2.3）。
 //
-// 四域行模型：tools（builtinToolRows）/ prompt（出厂表空——B④ 收官，
-// 13 第一方段经 ctx.prompts 插件通道贡献）/ capabilities
-// （builtinCapabilities）/ shell（builtinShellRows）。出厂层是
-// 代码——行实现留代码、patch 只写增量，杜绝「yml 复述全量清单」的双真源
-// 漂移（对 DSH 的第一处刻意偏离：学它的 patch 语义——id 寻址 / disabled /
-// insert / last-write-wins——不学它的文件形态，它的行是 npm 包所以必须
-// 全量 yml，兰台的行是编译期 factory）。
+// 四域行模型：tools（builtin 行表 + 插件贡献行）/ prompt（通道段贡献快照
+// ——S4-4 甲）/ capabilities（builtinCapabilities）/ shell（builtinShellRows）。
+// 出厂层是代码——行实现留代码、patch 只写增量，杜绝「yml 复述全量清单」的
+// 双真源漂移（对 DSH 的第一处刻意偏离：学它的 patch 语义——id 寻址 /
+// disabled / insert / last-write-wins——不学它的文件形态，它的行是 npm 包
+// 所以必须全量 yml，兰台的行是编译期 factory）。
+//
+// 解析域（S4-4 甲，2026-08-23）：factoryComposition() 是「出厂组合快照」
+// ——builtin 行表/段清单之外收编当前通道贡献（tools 域 = plugin/<贡献 id>
+// 折算行，prompt 域 = ctx.prompts 段贡献），patch/preset 因此可寻址两类行
+// （B①/②/B④ 收官后「只认 builtin 行」的临时收窄解除）。快照语义：读取
+// 时点的通道装载态决定解析域——同装载态同输出；resolveRoster 本身仍是
+// 纯函数（factory 是输入不是环境读取）。无通道环境 = builtin 行 + 空段表
+// （B④ 收官的注册面依赖语义不变——convergence 夹具经通道腰复现生产装配）。
 //
 // 解析语义（§2.3）：
 //   - 纯函数：同输入同输出（不读环境/时钟/盘）——确定性按构造保证，
@@ -42,7 +49,9 @@
 
 import { z } from 'zod';
 import { type AgentCapability, builtinCapabilities } from '../agent/blueprint';
+import { pluginToolRows } from './plugin-tool-rows';
 import type { PromptSection } from './prompt-sections';
+import { activePromptContributions } from './prompt-service';
 import { builtinShellRows, type ShellRow } from './shell-rows';
 import { type BuiltinToolRow, builtinToolRows } from './tool-rows';
 
@@ -150,15 +159,17 @@ export class CompositionPatchError extends Error {
   }
 }
 
-/** 出厂组合 — 恒等解析产物（零增量 + 空诊断）。既作 resolveRoster 的
- *  FactoryComposition 入参，也作穿线的 ResolvedComposition 缺省值。
- *  B④ 收官（2026-08-23）：prompt 域出厂表为空——13 第一方段经
- *  ctx.prompts 插件通道贡献（不在解析域），prompt 寻址面 = 仅已插入段
- *  （寻址第一方段 id 报「未知段 id」整体拒绝；全寻址恢复属 S4-4 甲）。 */
+/** 出厂组合 — builtin 行表/段清单 + 当前通道贡献的快照（恒等解析产物：
+ *  零增量 + 空诊断）。既作 resolveRoster 的 FactoryComposition 入参，也作
+ *  穿线的 ResolvedComposition 缺省值。
+ *  S4-4 甲（2026-08-23）：tools 域收编插件贡献折算行（plugin/<贡献 id>，
+ *  builtin 行在前、贡献行随后——序 = 装配序）；prompt 域收编 ctx.prompts
+ *  段贡献（注册序）。快照读取时点的通道装载态——贡献 register/dispose 后
+ *  须重取（preset-assembly 的 cache 代数 + bootShell 贡献监听负责重解析）。 */
 export function factoryComposition(): ResolvedComposition {
   return {
-    tools: builtinToolRows(),
-    prompt: [],
+    tools: [...builtinToolRows(), ...pluginToolRows()],
+    prompt: activePromptContributions(),
     capabilities: builtinCapabilities(),
     shell: builtinShellRows(),
     diagnostics: { disabled: [], overridden: [], inserted: [] },
@@ -196,7 +207,8 @@ function toPromptWorkRows(sections: PromptSection[]): PromptWorkRow[] {
 /** disable 应用：id 寻址 + last-write-wins（重复条目后写覆盖先写）。 */
 function applyDisable<T>(list: WorkRow<T>[], id: string, disabled: boolean, domain: string): void {
   const entry = list.find((e) => e.id === id);
-  if (!entry) throw new CompositionPatchError(`未知行 id: "${id}"（${domain} 域——不在出厂行表 nor 已插入行）`);
+  if (!entry)
+    throw new CompositionPatchError(`未知行 id: "${id}"（${domain} 域——不在出厂行表/插件贡献行 nor 已插入行）`);
   entry.disabled = disabled;
 }
 
@@ -260,7 +272,8 @@ export function resolveRoster(factory: FactoryComposition, layers: CompositionPa
       }
       // 普通条目（schema refine 已保证 disabled XOR text，此处再 narrowing）
       const idx = prompt.findIndex((e) => e.id === entry.id);
-      if (idx < 0) throw new CompositionPatchError(`未知段 id: "${entry.id}"（prompt 域——不在出厂段表 nor 已插入段）`);
+      if (idx < 0)
+        throw new CompositionPatchError(`未知段 id: "${entry.id}"（prompt 域——不在段贡献/出厂段表 nor 已插入段）`);
       if (entry.disabled !== undefined) {
         prompt[idx].disabled = entry.disabled;
       } else {

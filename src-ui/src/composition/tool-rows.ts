@@ -9,6 +9,8 @@
 // （plugins/coding-domain-plugins.ts，经 composition/first-party-tools.ts
 // 装载——五族均只依赖无状态 codingExec，实例缓存语义等价勘定见该文件头）。
 // 表序 = 组合序（standard preset 装配序的事实来源）——前缀缓存语义的根基。
+// S4-4 甲（2026-08-23）：插件贡献行与本表同进组合解析域
+// （factoryComposition().tools = builtin 行在前 + 贡献行随后）。
 //
 // 迁入纪律（S1 设计件 §2.4）：每迁一族，不设 CONVERGENCE_PRESET 跑
 // verify:convergence，三个 tool-schemas 快照必须逐字节零漂移——迁行是
@@ -24,6 +26,8 @@
 //
 // 不属于行表的装配步骤（保留在 buildToolRegistry 末端）：read_file 别名
 // （注册表操作非工具定义）、外部 mcpClients 贡献、convergeRegistry。
+// S4-4 甲后行表源含插件贡献行（经 factoryComposition 快照）；行 id 惯例
+// 'builtin/<family>' 与贡献行 'plugin/<插件名>/<工具名>' 分立命名空间。
 
 import { z } from 'zod';
 import type { SubAgentPool } from '../agent/coordinator';
@@ -117,9 +121,11 @@ const HOLOGRAM_ROW: BuiltinToolRow = {
 /** fs / shell / agent-isolation 三族行已迁出（P4 ②，2026-08-23）——三族
  *  改经 ctx.tools 贡献通道注册（plugins/coding-domain-plugins.ts）；行 id
  *  'builtin/fs' / 'builtin/shell' / 'builtin/agent-isolation' 退役，贡献行
- *  id 形如 'plugin/hologram/<域>-domain/<工具名>'。迁出依据（baton7 §1
- *  勘定 + ② 批沿用）：三族只依赖无状态 codingExec，实例缓存语义等价；
- *  可见域工具面由 DOMAIN_SPECS 驱动，与注册通道无关（零漂移）。 */
+ *  id 形如 'plugin/hologram/<域>-domain/<工具名>'（S4-4 甲起经
+ *  factoryComposition 快照进组合解析域——patch/preset 可寻址贡献行）。
+ *  迁出依据（baton7 §1 勘定 + ② 批沿用）：三族只依赖无状态 codingExec，
+ *  实例缓存语义等价；可见域工具面由 DOMAIN_SPECS 驱动，与注册通道无关
+ *  （零漂移）。 */
 
 /** web 族行（S1-2 第五批迁入）——单工具 web_fetch。 */
 const WEB_ROW: BuiltinToolRow = {

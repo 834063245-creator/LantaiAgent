@@ -30,7 +30,9 @@ import { loadSettings, saveSettings } from '../settings';
 import { useCompositionStore } from '../state/composition-store';
 import { usePresetStore } from '../state/preset-store';
 import { builtinPresetById, resolvePresetComposition } from './presets';
+import { onPromptContributionsChanged } from './prompt-service';
 import type { CompositionPatch, ResolvedComposition } from './roster';
+import { onToolContributionsChanged } from './services';
 
 // ── 用户层 patch 登记 ──
 
@@ -68,15 +70,28 @@ function hashJson(value: unknown): string {
 }
 
 /** preset 解析缓存：key → ResolvedComposition。用户层 hash 变化 → 整表
- *  失效；键含 preset patch 内容 hash → discovery 重扫（内容变）自动失效。 */
+ *  失效；键含 preset patch 内容 hash → discovery 重扫（内容变）自动失效；
+ *  S4-4 甲起键含贡献代数——插件行/段进组合解析域后，贡献 register/dispose
+ *  = 组合输入变更（代数递增 → 新键 → 新解析）。 */
 const cache = new Map<string, ResolvedComposition>();
 let lastUserHash = '';
+
+// ── 贡献变更代数（S4-4 甲）──
+// factoryComposition() 快照通道装载态进解析域——贡献 register/dispose 即
+// 组合输入变更。模块级单键订阅（CONVENTIONS §1.10 第 3 类——plugin-
+// tool-rows 的 instanceCache 清理同款先例）：代数递增使 cache 全键失效
+// （同用户层 hash 变化的整表失效语义）。bootShell 另经 reapplyComposition
+// 把重解析结果回写 composition-store（共享注册表/诊断面读它）。
+let contributionsGeneration = 0;
+onToolContributionsChanged(() => contributionsGeneration++);
+onPromptContributionsChanged(() => contributionsGeneration++);
 
 /** 当前生效组合解析入口（§2.2 装配粒度：workspace Agent 装配 / 占位 Agent /
  *  子 Agent 三处读同一默认 preset）。
  *
  *  presetId 缺省 = preset-store.selected（boot 经 settings 同步的运行时真源）。
- *  返回引用稳定：同 (presetId, 用户层内容, preset 内容) 的多次调用返回同一对象。 */
+ *  返回引用稳定：同 (presetId, 用户层内容, preset 内容, 贡献代数) 的多次
+ *  调用返回同一对象。 */
 export function resolveCurrentComposition(presetId?: string): ResolvedComposition {
   const id = presetId ?? usePresetStore.getState().selected;
   const userPatch = userPatchRegistry.patch;
@@ -87,7 +102,7 @@ export function resolveCurrentComposition(presetId?: string): ResolvedCompositio
   }
   const roster = usePresetStore.getState().roster.filter((p) => !p.builtin);
   const preset = builtinPresetById(id) ?? roster.find((p) => p.id === id);
-  const key = id + ':' + userHash + ':' + hashJson(preset?.patch ?? null);
+  const key = id + ':' + userHash + ':' + hashJson(preset?.patch ?? null) + ':' + contributionsGeneration;
   const hit = cache.get(key);
   if (hit) return hit;
   const resolved = resolvePresetComposition(id, { userPatch, userPresets: roster });
@@ -96,10 +111,29 @@ export function resolveCurrentComposition(presetId?: string): ResolvedCompositio
   return resolved;
 }
 
-/** cache 失效入口（测试用——生产路径经内容 hash 变化自然失效）。 */
+/** cache 失效入口（测试用——生产路径经内容 hash/贡献代数变化自然失效）。 */
 export function invalidatePresetCache(): void {
   cache.clear();
   lastUserHash = '';
+}
+
+/** 贡献变更后的组合重应用（S4-4 甲——bootShell 的贡献监听调用）。
+ *  解析域含通道贡献快照：贡献 register/dispose 后 composition-store 的
+ *  resolved 已过时（workspace 共享注册表/UI 诊断面仍读它）——按当前
+ *  选择重解析回写。error 态跳过（错误可见优先，不被贡献变更悄悄改写）；
+ *  factory 态重新快照（resetToFactory 内的 factoryComposition() 收当前
+ *  贡献）。会话级新鲜度不依赖本函数：session factory 每会话经
+ *  resolveCurrentComposition 现解析（cache 代数失效），贡献变后新会话
+ *  必然拿到新面。 */
+export function reapplyComposition(): void {
+  const store = useCompositionStore.getState();
+  if (store.status === 'error') return;
+  if (store.status === 'factory') {
+    store.resetToFactory(); // 重新快照 factory（含当前通道贡献）
+    return;
+  }
+  const selected = usePresetStore.getState().selected;
+  useCompositionStore.getState().setResolved(resolveCurrentComposition(selected), store.patchOrigin);
 }
 
 /** 当前生效 preset id（S4-1b 会话记录消费）：preset-store 选择态的只读面。

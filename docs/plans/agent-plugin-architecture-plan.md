@@ -9,7 +9,11 @@
 > ctx.prompts 通道，纯插件面收官：builtinPromptSections() 退役、段表空壳删除、roster
 > prompt 域寻址面 = 仅已插段（全寻址恢复属 S4-4 甲），双 preset 零漂移实测；**② 首三族
 > 已毕**——fs/shell/agent-isolation 迁 ctx.tools（coding-domain-plugins 五族合并文件，
-> 行表 12→9，双 preset 零漂移实测））。**五项拍板
+> 行表 12→9，双 preset 零漂移实测）；**S4-4 甲已毕（2026-08-23）**——插件贡献行/段进
+> 组合解析域：factoryComposition() 快照收编 pluginToolRows 行 + ctx.prompts 段贡献，
+> patch/preset 可寻址 plugin/<贡献 id> 行与贡献段 id（B①/②/B④ 的寻址拒绝与两条临时
+> 位序消灭），buildToolRegistry 单循环统一装配，贡献变更经 cache 代数 + reapplyComposition
+> 重取，双 preset 零漂移实测）。**五项拍板
 > （2026-08-23 晚，用户逐项拍定）**：S4-4 机器桥复活
 > 整批做（甲+乙）、①c 拍路线一（无缓存行）、B④ 收官 = 纯插件面（段表退役）、A-3 与 C11
 > 两基建全部排进当前工程——「推迟不是减负」，唯一合法挂起 = 外部信号依赖型（C12 观望
@@ -211,9 +215,11 @@ runViaRuntime 门面消费，无服务时惰性游离实例。convergence 零漂
 **B. 存量拆解（批次表；障碍勘定 2026-08-23 baton7 §1 逐族实证，「无障碍纯搬运」的乐观表述已修正）**：
 
 > 勘定依据（四条机制约束，改代码前先对照）：
-> ① **组合解析域边界**——roster/preset 只寻址 builtin 行（agent-builder 注释明示
-> 「组合解析域目前只含 builtin 行——patch/preset 寻址插件行属 S4-4 机器桥批扩展」）；
-> 行迁入插件通道即脱离 preset 禁用面——被 preset/patch 寻址的族搬运前需先扩通道。
+> ① **组合解析域边界**——~~roster/preset 只寻址 builtin 行~~ **已解除（S4-4 甲落地，
+> 2026-08-23）**：factoryComposition() 快照收编 pluginToolRows 行 + ctx.prompts 段贡献
+> ——patch/preset 可寻址 plugin/<贡献 id> 行与贡献段 id（含 13 第一方段）；寻址粒度
+> = 单工具行（原 builtin/<族> 整族行 id 退役不复活）。①b web/browser-desktop 迁移
+> 的寻址前置就此就位（minimal preset 寻址改为枚举 plugin 行 id，迁移批执行）。
 > ② **实例缓存锁存**——pluginToolRows 的贡献实例缓存跨装配复用首装配实例；
 > 依赖装配期真值的族（每装配换 ui 回调 / subAgentPool / 可选 registry）直接搬 =
 > 跨装配串扰（INVARIANTS #1 同族雷）。B① 落地的缓解：贡献 factory 已放宽可选收
@@ -236,11 +242,11 @@ runViaRuntime 门面消费，无服务时惰性游离实例。convergence 零漂
 | 批 | 内容 | 障碍 |
 |---|---|---|
 | ①a | git / search | ~~无~~ **已毕**（P4 B①，2026-08-23：只依赖无状态 codingExec，factory 收 ToolRowContext + 实例缓存语义等价；plugins/git-search-plugin.ts + first-party-tools.ts 通道腰；convergence 双 preset 零漂移实测） |
-| ①b | web | 需通道 ①：minimal preset 寻址 `builtin/web` 禁用它——行搬走后脱离组合解析域，preset 禁用静默失效；需 S4-4「插件行纳入组合解析域」先行（**2026-08-23 拍板 #1：S4-4 复活整批做——甲寻址域扩展 + 乙进程桥同批，~2-3 天；迁移批排甲之后**） |
+| ①b | web | 寻址前置已就位（S4-4 甲落地，2026-08-23）：minimal preset 寻址 `builtin/web` → 迁移时改为枚举 plugin 行 id（`plugin/hologram/web-domain/web_fetch` 形态）；迁移批排甲之后（**2026-08-23 拍板 #1：S4-4 复活整批做——甲寻址域扩展 ✅ + 乙进程桥，~2-3 天；迁移批排甲之后**） |
 | ①c | wait / ask | 需通道 ②：依赖装配期真值（wait 的 subAgentPool 按装配变化、ask 的 ui 回调每次装配换）——实例缓存会锁存首装配真值；**2026-08-23 拍板 #2：路线一无缓存行——每装配重创实例** |
-| ② | 工具大域 | 分族：**fs / shell / agent-isolation 已毕**（P4 ②，2026-08-23：同 ①a——无状态 codingExec，通道现成；plugins/coding-domain-plugins.ts 五族合并文件 + first-party-tools.ts 清单扩展，行表 12→9，convergence 双 preset 零漂移实测；行 id builtin/fs・shell・agent-isolation 退役，寻址它们报「未知行 id」——S4-4 甲恢复）；browser-desktop 同 ①b（minimal 寻址 `builtin/browser-desktop`）；memory / skill / task / agent 同 ①c（可选 registry / taskManager / spawner 按装配给值——①c 路线一已拍板） |
+| ② | 工具大域 | 分族：**fs / shell / agent-isolation 已毕**（P4 ②，2026-08-23：同 ①a——无状态 codingExec，通道现成；plugins/coding-domain-plugins.ts 五族合并文件 + first-party-tools.ts 清单扩展，行表 12→9，convergence 双 preset 零漂移实测；行 id builtin/fs・shell・agent-isolation 退役——S4-4 甲已落地：贡献行 plugin/hologram/<域>-domain/<工具名> 全量可寻址）；browser-desktop 同 ①b（寻址前置就位——迁移时 minimal 枚举 plugin 行 id）；memory / skill / task / agent 同 ①c（可选 registry / taskManager / spawner 按装配给值——①c 路线一已拍板） |
 | ③ | hologram 族（graph/ops/lsp） | 同 ①c 变体：graphData 是装配期开关（缺帐行产出空集）——实例缓存会把首装配的 graphData 有无锁死；且 loadHologramSchemas 动态面需每装配刷新。异步 factory 已支持但缓存语义需另行设计 |
-| ④ | prompt 段落（persona/规则/记忆/运行环境） | **已毕——收官（2026-08-23）**：13 段全量经 ctx.prompts 第一方插件通道贡献（试点 memory/claude-md → 续批 graph-snapshot → 收官批一次性迁完剩余 10 段）；`plugins/prompt-segments-plugin.ts` 装载 `firstPartyPromptSections()`（序 = 迁移前出厂表序，单批零漂移按构造、双 preset 实测）。收官落地三件：①`builtinPromptSections()` 退役、段表空壳删除、`assembleSystemPrompt` 缺省 = 空表（出厂面 = 解析产物 + 通道贡献）；②roster prompt 域寻址面 = 仅已插入段——寻址第一方段 id（disable/text/锚）报「未知段 id」整体拒绝，insert id 与第一方段同名不拒（两条临时语义，S4-4 甲恢复全寻址后消灭）；③注册面依赖面扩大——无通道环境缺省拼装 = 空提示词，convergence 夹具经 withFirstPartyPromptChannel 复现生产装配面（obstacle ③）。动态插值段无 ①c 缓存障碍（prompt 通道无实例缓存，render 每装配重调直收 PromptSectionContext）；roster 的 text 覆盖丢失动态插值语义由通道继承（贡献段脱离寻址域，S4-4 扩展点） |
+| ④ | prompt 段落（persona/规则/记忆/运行环境） | **已毕——收官（2026-08-23）**：13 段全量经 ctx.prompts 第一方插件通道贡献（试点 memory/claude-md → 续批 graph-snapshot → 收官批一次性迁完剩余 10 段）；`plugins/prompt-segments-plugin.ts` 装载 `firstPartyPromptSections()`（序 = 迁移前出厂表序，单批零漂移按构造、双 preset 实测）。收官落地三件：①`builtinPromptSections()` 退役、段表空壳删除、`assembleSystemPrompt` 缺省 = 空表（出厂面 = 解析产物 + 通道贡献）；②roster prompt 域寻址面 = 仅已插入段——~~寻址第一方段 id 报「未知段 id」整体拒绝，insert id 与第一方段同名不拒（两条临时语义，S4-4 甲恢复全寻址后消灭）~~ **S4-4 甲已落地（2026-08-23）：全寻址恢复——第一方段可 disable/text 覆盖/锚定，insert 撞名恢复拒绝，两条临时位序消灭**；③注册面依赖面扩大——无通道环境缺省拼装 = 空提示词，convergence 夹具经 withFirstPartyPromptChannel 复现生产装配面（obstacle ③）。动态插值段无 ①c 缓存障碍（prompt 通道无实例缓存，render 每装配重调直收 PromptSectionContext）；roster 的 text 覆盖丢失动态插值语义由通道继承（贡献段脱离寻址域，S4-4 扩展点） |
 | ⑤ | 会话级能力（plan/通信/discovery/merge/board/compaction） | 需通道 A-3——**已拍板排进当前工程**（2026-08-23 #4），设计件穿插机械批推进 |
 | ⑥ | 管道参与（graph hooks/board tracking/preflight） | 需通道 A-2 |
 

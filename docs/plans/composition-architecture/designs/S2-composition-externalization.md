@@ -25,7 +25,7 @@ S1 竣工后组合「机制」全就位，但三件事仍钉死在编译期：
 | 域 | 出厂行表（真源） | 行 id 现状/惯例 | 消费面 |
 |---|---|---|---|
 | tools | `composition/tool-rows.ts` `builtinToolRows()`（14 行） | `builtin/<family>`（S1 事实） | `buildToolRegistry` 末端行装配 |
-| prompt | `composition/prompt-sections.ts` `firstPartyPromptSections()`（P4 B④ 收官 2026-08-23：出厂段表空——13 段全经 ctx.prompts 第一方插件通道贡献，序 = 迁移前出厂表序，双 preset 快照零漂移） | 裸 id（已插入段；第一方 13 段脱离寻址域——寻址报「未知段 id」整体拒绝，S4-4 甲恢复） | `assembleSystemPrompt` 解析产物（缺省空表）concat + 通道贡献末端追加 |
+| prompt | `composition/prompt-sections.ts` `firstPartyPromptSections()`（P4 B④ 收官 2026-08-23：出厂段表空——13 段全经 ctx.prompts 第一方插件通道贡献，序 = 迁移前出厂表序，双 preset 快照零漂移） | 裸 id（S4-4 甲 2026-08-23：贡献段经 factoryComposition 快照进寻址域——disable/text 覆盖/锚定第一方段 id 均合法，insert 撞贡献段 id 恢复拒绝） | `assembleSystemPrompt` 解析产物（提供即精确清单；缺省 = 当前通道贡献） |
 | capabilities | `agent/blueprint.ts` 新拆 `builtinCapabilities()`（14 项，即现 `standard()` 数组原样搬家，id = 现 key） | key 即 id（`plan-tools`…） | `AgentBlueprint.fromRoster()`（新） |
 | shell | `composition/shell-rows.ts`（新，§2.6） | `hologram/shell-<block>`（插件名风格） | `src/shell/boot.ts` 启动编排 |
 

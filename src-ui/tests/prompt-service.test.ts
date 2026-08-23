@@ -5,8 +5,9 @@
 //   1. 装载：promptsServicePlugin 挂根 Context → ctx.prompts 可解析；
 //      fiber dispose → 服务注销（读取面回空集）；
 //   2. 注册契约：register → disposer（幂等 + 陈旧性守卫）；重名 id 装载期拒绝；
-//   3. 合流点：assembleSystemPrompt 末端追加贡献（出厂表 / sections 注入
-//      两路都追加）；无服务/无贡献 = 空集 = 输出逐字节零漂移（构造性保证）；
+//   3. 合流点（S4-4 甲）：sections（roster 解析产物）提供即精确清单——
+//      贡献段经 factoryComposition 快照已收编进解析域，不再末端追加；缺省
+//      = 当前通道贡献（无服务/无贡献 = 空集 = 空输出，构造性保证）；
 //   4. 段语义与内置同契约：applicable=false 跳过；render 收全量
 //      PromptSectionContext；追加序 = 注册序。
 
@@ -95,18 +96,18 @@ describe('注册契约（disposer 幂等 + 陈旧性守卫 + 重名拒绝）', (
   });
 });
 
-describe('合流点：assembleSystemPrompt 末端追加贡献', () => {
+describe('合流点：assembleSystemPrompt 解析域合流（S4-4 甲）', () => {
   it('无服务/无贡献 = 解析产物纯拼装（缺省空表 → 空输出；构造性保证）', () => {
     // B④ 收官：出厂面 = 空解析产物 + 通道贡献——无服务/无贡献时输出为空
     // （出厂段的复现需通道，见 prompt-segments-plugin.test 注册面依赖）
     const a = assembleSystemPrompt(CTX);
     const b = assembleSystemPrompt(CTX, []);
-    expect(a).toBe(b); // sections 缺省 = 空表，两路恒等
+    expect(a).toBe(b); // sections 缺省 = 空贡献，两路恒等
     expect(a).toBe('');
     expect(a).not.toContain('probe-marker');
   });
 
-  it('贡献追加在出厂表之后（尾部可见，注册序）', async () => {
+  it('缺省拼装 = 当前通道贡献（注册序，尾部可见）', async () => {
     const root = new Context();
     const fiber = await root.plugin(promptsServicePlugin);
     const d1 = root.prompts.register(probeSection('probe/one', '\n\n## 一段'));
@@ -115,20 +116,22 @@ describe('合流点：assembleSystemPrompt 末端追加贡献', () => {
     const i1 = out.indexOf('\n\n## 一段');
     const i2 = out.indexOf('\n\n## 二段');
     expect(i1).toBeGreaterThan(-1);
-    expect(i2).toBeGreaterThan(i1); // 注册序 = 追加序
+    expect(i2).toBeGreaterThan(i1); // 注册序 = 拼装序
     d1();
     d2();
     await fiber.dispose();
   });
 
-  it('sections 注入（roster 解析产物）时贡献同样追加在解析表之后', async () => {
+  it('sections 注入（roster 解析产物）= 精确清单（S4-4 甲：贡献已收编进解析域）', async () => {
     const root = new Context();
     const fiber = await root.plugin(promptsServicePlugin);
-    const rosterSections = [probeSection('resolved-only', '\n\n## 解析段')];
-    const dispose = root.prompts.register(probeSection('probe/after-resolved', '\n\n## 贡献段'));
-    const out = assembleSystemPrompt(CTX, rosterSections);
-    expect(out).toBe('\n\n## 解析段\n\n## 贡献段'); // 解析表不被出厂表混入，贡献恒在末
-    dispose();
+    // 解析产物样本：贡献段经 factoryComposition 快照进解析域（此处手工重述
+    // 该形态——resolved 段表 + 贡献段同列，roster 解析时已合并）
+    const d1 = root.prompts.register(probeSection('probe/merged', '\n\n## 合并段'));
+    const resolvedSections = [probeSection('resolved-only', '\n\n## 解析段'), ...(await activePromptContributions())];
+    const out = assembleSystemPrompt(CTX, resolvedSections);
+    expect(out).toBe('\n\n## 解析段\n\n## 合并段'); // 提供即精确清单——不再末端追加
+    d1();
     await fiber.dispose();
   });
 

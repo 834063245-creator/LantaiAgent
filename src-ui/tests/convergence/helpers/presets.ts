@@ -30,19 +30,23 @@ export interface PresetDefinition {
   name: string;
   /** 组合序 = 数组序（前缀缓存语义依赖此序，S1-3 起由行表固化）。 */
   contributions: ToolContribution[];
-  /** preset 解析产物的工具行（S4-1b minimal——减法型 preset 的行集合；
-   *  undefined = 加法型 preset（standard——出厂行表 + contributions）。 */
-  toolRows?: BuiltinToolRow[];
+  /** preset 解析产物的工具行（S4-1b minimal——减法型 preset 的行集合）；
+   *  **惰性求值**（S4-4 甲）：解析域含通道贡献快照——必须在通道腰内
+   *  （withFirstPartyToolChannel）调用才纳入第一方贡献行；undefined =
+   *  加法型 preset（standard——出厂基座 = 行表 + 通道贡献）。 */
+  toolRows?: () => BuiltinToolRow[];
 }
 
 /** standard preset：内置行 + 空贡献 = 现行装配（零漂移的参照系）。 */
 export const STANDARD_PRESET: PresetDefinition = { name: 'standard', contributions: [] };
 
-/** minimal preset（S4-1b freeze）：从运行时 preset 表派生（真源单一）。 */
+/** minimal preset（S4-1b freeze）：从运行时 preset 表派生（真源单一）。
+ *  toolRows 惰性求值——fixtures/buildStandardRegistry 在通道腰内调用本
+ *  thunk，解析域含当前第一方贡献行（S4-4 甲；模块装载期求值会丢贡献）。 */
 export const MINIMAL_PRESET: PresetDefinition = {
   name: 'minimal',
   contributions: [],
-  toolRows: resolvePresetComposition('minimal').tools,
+  toolRows: () => resolvePresetComposition('minimal').tools,
 };
 
 /** 从环境解析 preset。

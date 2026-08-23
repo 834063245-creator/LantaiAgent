@@ -208,6 +208,61 @@ describe('S4-1a preset-assembly：cache + 选择同步 + boot 应用', () => {
     expect(ids(stacked.tools)).not.toContain('builtin/wait');
   });
 
+  it('S4-4 甲：贡献变更 → cache 代数失效 + reapplyComposition 回写 store', async () => {
+    const { compositionServicesPlugin } = await import('../src/composition/services');
+    const { Context } = await import('../src/cordis');
+    const root = new Context();
+    await root.plugin(compositionServicesPlugin);
+    // 用户层在册 + store ok 态（reapply 的 ok 路径样本）
+    registerUserPatch({ tools: [{ id: 'builtin/wait', disabled: true }] });
+    useCompositionStore.getState().setResolved(resolveCurrentComposition('standard'), 'roster.patch.yml');
+    const before = resolveCurrentComposition('standard');
+    expect(before.tools.some((r) => r.id === 'plugin/acme/probe')).toBe(false);
+
+    // 贡献 register → 代数递增 → cache 失效 → 新解析含贡献行
+    const dispose = root.tools.register({
+      id: 'acme/probe',
+      factory: () => ({
+        name: () => 'acme_probe',
+        description: () => 'probe',
+        parameters: () => ({ type: 'object', properties: {} }),
+        readOnly: () => true,
+        execute: async () => 'ok',
+      }),
+    });
+    const after = resolveCurrentComposition('standard');
+    expect(after).not.toBe(before);
+    expect(after.tools.some((r) => r.id === 'plugin/acme/probe')).toBe(true);
+
+    // reapply（ok 路径）：store resolved 重解析回写（贡献行 + 用户层禁用并存）
+    const { reapplyComposition } = await import('../src/composition/preset-assembly');
+    reapplyComposition();
+    const s = useCompositionStore.getState();
+    expect(s.status).toBe('ok');
+    expect(ids(s.resolved.tools)).toContain('plugin/acme/probe');
+    expect(ids(s.resolved.tools)).not.toContain('builtin/wait');
+
+    // 贡献 dispose → 代数再变 → 解析产物不含该行；reapply（factory 路径重新快照）
+    dispose();
+    const { clearUserPatch } = await import('../src/composition/preset-assembly');
+    clearUserPatch();
+    useCompositionStore.getState().resetToFactory();
+    reapplyComposition();
+    expect(ids(useCompositionStore.getState().resolved.tools)).not.toContain('plugin/acme/probe');
+    await root[Symbol.asyncDispose]?.();
+  });
+
+  it('S4-4 甲：reapplyComposition error 态跳过（错误可见优先）', async () => {
+    const { reapplyComposition } = await import('../src/composition/preset-assembly');
+    useCompositionStore.getState().setError('bad patch', 'roster.patch.yml');
+    reapplyComposition();
+    const s = useCompositionStore.getState();
+    expect(s.status).toBe('error');
+    expect(s.error).toBe('bad patch');
+    // factory 兜底未被动（不被贡献变更悄悄改写）
+    expect(ids(s.resolved.tools)).toEqual(ids(builtinToolRows()));
+  });
+
   it('selected 缺省 = preset-store.selected（无参调用读运行时真源）', () => {
     usePresetStore.getState().select('minimal');
     const r = resolveCurrentComposition();
