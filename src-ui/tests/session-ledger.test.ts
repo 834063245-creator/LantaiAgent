@@ -515,6 +515,85 @@ describe('发号对账（判据③）', () => {
   });
 });
 
+describe('惰性水合（判据④補：ensureSessionAgent）', () => {
+  it('切到惰性卷 → 句柄补建 + 磁盘内容回填到 agent session', async () => {
+    const panel = createChatPanel();
+    panel.setProjectPath(PROJ);
+    const setSessionCalls: any[][] = [];
+    panel.setAgentFactory(
+      async () =>
+        ({
+          getSession: () => [{ role: 'system', content: 'sys' }],
+          setSession: (msgs: any[]) => setSessionCalls.push(msgs),
+          dispose: vi.fn(),
+          bindSession: vi.fn(),
+        }) as any,
+    );
+
+    // 恢复两卷：3 活跃（真句柄）+ 9 惰性
+    mockDiskWith(
+      ledgerDisk([3, 9], 3, 10),
+      {
+        3: volumeFile(3, '活跃卷', '卷三内容'),
+        9: volumeFile(9, '惰性卷', '卷九内容'),
+      },
+      9,
+    );
+    await panel.autoRestoreLastSession(PROJ);
+
+    // 切到惰性卷 9（switchSession 内联 fire-and-forget 唤起）
+    panel.switchSession(1);
+    // 等水合链排干（factory + readSessionJSON + setSession 全异步）
+    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 10));
+
+    // 句柄已建，会话内容从磁盘回填（含卷九的 user 消息）
+    expect(setSessionCalls.length).toBeGreaterThanOrEqual(2);
+    const last = setSessionCalls[setSessionCalls.length - 1];
+    expect(last.some((m: any) => m.role === 'user' && m.content === '卷九内容')).toBe(true);
+    // 活跃指针已切
+    expect(getChatStore(panel.panelId).sess.getState().sessions[1].id).toBe(9);
+  });
+
+  it('sendMessage 同步唤起兑底：拟文时无句柄 → 补建后继续（不再报 Agent 未就绪）', async () => {
+    const panel = createChatPanel();
+    panel.setProjectPath(PROJ);
+    panel.setAgentFactory(
+      async () =>
+        ({
+          getSession: () => [{ role: 'system', content: 'sys' }],
+          setSession: vi.fn(),
+          dispose: vi.fn(),
+          bindSession: vi.fn(),
+          run: vi.fn(async () => 'ok'),
+          nextInsertIndex: 1,
+          setUiSessionId: vi.fn(),
+          insertMessage: vi.fn(),
+        }) as any,
+    );
+
+    // 恢复一卷活跃（真句柄）+ 惰性卷 9；注意 run 桩最小面即可
+    mockDiskWith(
+      ledgerDisk([3, 9], 3, 10),
+      {
+        3: volumeFile(3, '活跃卷', '卷三内容'),
+        9: volumeFile(9, '惰性卷', '卷九内容'),
+      },
+      9,
+    );
+    await panel.autoRestoreLastSession(PROJ);
+    // 直接把活跃指针拨到惰性卷（不经 switchSession，模拟「句柄缺席的活跃卷」）
+    getChatStore(panel.panelId).sess.getState().setActiveIdx(1);
+
+    getChatStore(panel.panelId).input.getState().setInputText('问一句');
+    // sendMessage 链路长（斜杠/命令/焦点等）——不 await 完成，只验证不因句柄缺席早退。
+    // 早退会写入 error notice；水合成功则 notice 不含「Agent 未就绪」。
+    await panel.sendMessage();
+    const msgs = msgStoreFor(panel.panelId, 9).getState().messages;
+    const notReady = msgs.filter((m: any) => m.role === 'notice' && String(m.text).includes('Agent 未就绪'));
+    expect(notReady).toHaveLength(0);
+  });
+});
+
 // ponytail: stubFactory 目前只在多卷用例内联使用——保留导出面供后续 L 段扩展
 void stubFactory;
 void Session;

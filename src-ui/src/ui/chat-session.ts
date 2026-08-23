@@ -283,6 +283,65 @@ export function switchSession(ctx: SessionContext, idx: number): void {
   ctx.updateFooter();
   // 账本记账（L0）：活跃指针变更 → 总目投影落盘
   recordOpenSetChange(ctx.storeId, ctx.getProjectPath(), ledgerIo);
+  // L0 惰性水合：切到无句柄的卷 → 按需补建（fire-and-forget；失败留
+  // sendMessage 的同步唤起兜底，这里不拦换卷交互）
+  const switchedSid = sessions[idx].id;
+  if (!agentSessionState.getAgent(ctx.storeId, switchedSid)) {
+    void ensureSessionAgent(ctx).then((ok) => {
+      if (!ok) ctx.addNotice('卷的 Agent 未就绪（API Key 未配置？）——拟文时会再试', 'warn');
+    });
+  }
+}
+
+/** L0 惰性水合（session-ledger）：重启恢复后惰性卷的 Agent 句柄缺席。
+ *  本卷被切到/拟文时按需补建：factory 现调 + 会话内容从会话级 msgStore
+ *  回填 + exec/board 绑定。已有句柄 = no-op（返回 true）。
+ *  返回 false = 无法补建（无工厂/工厂返回空——调用方走「Agent 未就绪」提示）。
+ *  代际防护（H5）：补建在途切工作区 → 丢弃不写 store。 */
+export async function ensureSessionAgent(ctx: SessionContext): Promise<boolean> {
+  const st = getChatStore(ctx.storeId).sess.getState();
+  const sid = st.sessions[st.activeIdx]?.id;
+  if (sid == null) return false;
+  if (agentSessionState.getAgent(ctx.storeId, sid)) return true;
+
+  const factory = getAgentFactory(ctx.storeId);
+  if (!factory) return false;
+  const epoch = getWorkspaceEpoch();
+  const agent = await factory();
+  if (!agent) return false;
+  if (!isCurrentEpoch(epoch)) return false;
+
+  // 会话内容回填：msgStore 的 ChatMessage 不是 provider 消息——从重建
+  // 源（磁盘卷文件）取原始会话最可靠，但这里避免一次磁盘往返：msgStore
+  // 重建时未保留原始消息，改从磁盘读卷文件（与 restoreFromLedger 同源）。
+  let conv: Message[] = [];
+  const projectPath = ctx.getProjectPath();
+  if (projectPath) {
+    try {
+      const data = await readSessionJSON(sessionFile(projectPath, sid));
+      if (data && !data.deleted) {
+        conv = ((data.messages as Message[]) ?? []).filter((m) => m.role !== 'system');
+      }
+    } catch {
+      /* 卷文件缺失/读失败 → 空会话起步（新卷语义） */
+    }
+  }
+  if (!isCurrentEpoch(epoch)) return false;
+
+  const freshSys = agent.getSession().filter((m: Message) => m.role === 'system');
+  agent.setSession([...freshSys, ...conv]);
+
+  // 二次校验句柄仍缺席（在途期间可能被并行的另一路径补建/移除）
+  if (agentSessionState.getAgent(ctx.storeId, sid)) {
+    agent.dispose();
+    return true;
+  }
+  agentSessionState.setAgent(ctx.storeId, sid, agent);
+  agent.bindSession?.(String(sid));
+  agentSessionState.setExec(ctx.storeId, sid, createExecState());
+  // turnPairs 与 UI 消息已由 restoreFromLedger 的 rebuildMessagesFromMessages
+  // 预填——无需重建（惰性卷内容层恢复时已做）。
+  return true;
 }
 
 export function closeSession(ctx: SessionContext, idx: number): void {
@@ -679,7 +738,7 @@ export async function appendLastMessage(ctx: SessionContext, projectPath: string
   const messages = agent.getSession();
   // 查找最后一条非系统消息
   const last = [...messages].reverse().find((m) => m.role !== 'system');
-  if (!last || !last.content) return;
+  if (!last?.content) return;
   if (isInternalMessage(last.content)) return;
   try {
     await typedRpc('session_append', {
@@ -922,7 +981,7 @@ async function readVolumeData(projectPath: string, id: number): Promise<StoredSe
   if (!data || data.deleted) return null;
   // 空卷（无任何非系统消息）不进摊开集——与「空卷不落盘」同规，
   // 避免重启后摊开集里出现只有系统提示的尸体卷。
-  if (!data.messages || !data.messages.some((m) => m.role !== 'system')) return null;
+  if (!data.messages?.some((m) => m.role !== 'system')) return null;
   return data;
 }
 

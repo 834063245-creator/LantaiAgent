@@ -897,11 +897,16 @@ export class ChatCore {
     if (!text) return;
 
     if (!this.agent) {
-      const detail = getChatStore(this.panelId).panel.getState().lastAgentDiag
-        ? `${getChatStore(this.panelId).panel.getState().lastAgentDiag} (factory:${Session.getAgentFactory(this.panelId) ? 'yes' : 'NO'})`
-        : '请先配置 API Key 或等待项目加载';
-      this.addNotice(`Agent 未就绪 — ${detail}`, 'error');
-      return;
+      // L0 惰性水合（session-ledger）：重启后惰性卷切到/拟文时句柄缺席——
+      // 按需补建（factory 现调 + msgStore 内容回填），摊开集大时避免全量起 Agent
+      const hydrated = await Session.ensureSessionAgent(this._sessionCtx());
+      if (!this.agent) {
+        const detail = getChatStore(this.panelId).panel.getState().lastAgentDiag
+          ? `${getChatStore(this.panelId).panel.getState().lastAgentDiag} (factory:${Session.getAgentFactory(this.panelId) ? 'yes' : 'NO'})`
+          : '请先配置 API Key 或等待项目加载';
+        this.addNotice(`Agent 未就绪 — ${detail}${hydrated ? '（水合后句柄仍缺席）' : ''}`, 'error');
+        return;
+      }
     }
 
     // ── 注册表驱动的斜杠命令 ──
