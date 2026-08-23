@@ -482,7 +482,9 @@ export class AgentRuntime implements RuntimePort {
 
   /** 从 AgentContext 创建 Agent — Phase 3 收敛入口（RuntimePort 契约见 types.ts）。
    *  Phase 6：第 3 参 blueprint 允许调用方以声明式 capability 扩展装配面 —
-   *  新增工具/hook 不再要求修改 AgentConfig。缺省 AgentBlueprint.standard()。
+   *  新增工具/hook 不再要求修改 AgentConfig。缺省蓝图 = 组合产物派生
+   *  （fromRoster(composition.capabilities)——B⑤ 起出厂 capability 面经
+   *  ctx.capabilities 通道贡献，standard() 快捷方式退役）。
    *  S4-1a：第 4 参 composition 覆盖 — 缺省 this._composition（S2 零漂移）；
    *  会话工厂传会话作用域组合（工具面/prompt/capabilities 三域换源）。 */
   async createAgentFromContext(
@@ -571,7 +573,8 @@ export class AgentRuntime implements RuntimePort {
    *  Phase 6：工具/hook/接线由 blueprint capability 表驱动（表序 = 注册序，
    *  与 Phase 5 前的手写注册序一一对应；phase-1 effective 快照钉字节）。
    *  S2-1：缺省蓝图改由组合解析产物派生（fromRoster(this._composition.
-   *  capabilities)——不传 composition 时 ≡ standard()，零漂移）；显式
+   *  capabilities)——零漂移；B⑤ 起出厂 capability 面经 ctx.capabilities
+   *  通道贡献，通道在册的组合快照即标准面）；显式
    *  blueprint 参数仍最高优先（createAgentFromContext 的扩展面）。
    *  S4-1a：composition 参数整体换源（缺省 this._composition）——prompt 段表
    *  与 capability 表读覆盖组合，缓存引用稳定由调用方（preset-assembly）保证。

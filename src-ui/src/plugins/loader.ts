@@ -18,6 +18,7 @@ import { createElement } from 'react';
 import { codeRuntimePlugin } from '../agent/code-run/runtime-service';
 import { useShellStore } from '../app/shell-store';
 import { capabilitiesServicePlugin } from '../composition/capability-service';
+import { firstPartyCapabilityPlugins } from '../composition/first-party-capabilities';
 import { firstPartyPromptPlugins } from '../composition/first-party-prompts';
 import { firstPartyToolPlugins } from '../composition/first-party-tools';
 import { hooksServicePlugin } from '../composition/hook-service';
@@ -72,8 +73,12 @@ export function pluginAssetsOrigin(port: number): string {
  * ctx.hooks，enrich/preflight 两类；runtime 装配折叠消费，见
  * composition/hook-service.ts）。P4 A-3（2026-08-24）：capabilities 第八
  * service（capability 贡献注册表——ctx.capabilities，会话级能力的插件
- * 装载；贡献经 factoryComposition 快照进 capabilities 域表尾，runtime
- * fromRoster 穿线零改动，见 composition/capability-service.ts）。 */
+ * 装载；贡献经 factoryComposition 快照进 capabilities 域，runtime
+ * fromRoster 穿线零改动，见 composition/capability-service.ts）。P4 B⑤
+ * 收官（2026-08-24）：表尾接第一方 capability 插件清单（十五项会话级
+ * 能力全量经 ctx.capabilities 贡献——单一真源 composition/first-party-
+ * capabilities.ts，贡献序 = 清单序 = 迁移前出厂表序；出厂
+ * builtinCapabilities() 退役，本通道是出厂 capability 面唯一来源）。 */
 const BUILTIN_PLUGINS: LantaiPlugin[] = [
   compositionServicesPlugin,
   codeRuntimePlugin,
@@ -85,6 +90,7 @@ const BUILTIN_PLUGINS: LantaiPlugin[] = [
   settingsPlugin,
   ...firstPartyToolPlugins(),
   ...firstPartyPromptPlugins(),
+  ...firstPartyCapabilityPlugins(),
 ];
 
 // ── 插件宿主桥（S4-5）──

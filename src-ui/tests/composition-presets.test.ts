@@ -11,8 +11,11 @@
 // ①b（2026-08-23）：minimal/用户层 patch 寻址 plugin 行——寻址 plugin 行的
 // 解析须在 withFirstPartyToolChannel 腰内（贡献行在册才可解析；无通道
 // 环境 tools 域 = 空行表，plugin id 全部未知会被 all-or-nothing 拒绝）。
+// B⑤（2026-08-24）：minimal 的 graph-hooks capability 行经 ctx.capabilities
+// 通道注册——寻址该 key 的解析须在 withFirstPartyCapabilityChannel 腰内。
 
 import { describe, expect, it } from 'vitest';
+import { withFirstPartyCapabilityChannel } from '../src/composition/first-party-capabilities';
 import { withFirstPartyToolChannel } from '../src/composition/first-party-tools';
 import { pluginToolRows } from '../src/composition/plugin-tool-rows';
 import {
@@ -49,38 +52,42 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
   });
 
   it('minimal：browser-desktop/web 工具行 + graph-hooks capability 被禁', async () => {
-    await withFirstPartyToolChannel(async () => {
-      const r = resolvePresetComposition('minimal');
-      const toolIds = ids(r.tools);
-      expect(toolIds).not.toContain(BROWSER_DESKTOP_ROW);
-      expect(toolIds).not.toContain(WEB_ROW);
-      // 其余行保序保留（标准解析产物减去 minimal 禁用行）
-      expect(toolIds).toEqual(
-        ids(resolvePresetComposition('standard').tools).filter((id) => id !== BROWSER_DESKTOP_ROW && id !== WEB_ROW),
-      );
-      expect(r.capabilities.map((c) => c.key)).not.toContain('graph-hooks');
-      // 诊断按表序收集（web 行居表首——与 patch 声明序无关）
-      expect(r.diagnostics.disabled).toEqual([WEB_ROW, BROWSER_DESKTOP_ROW, 'graph-hooks']);
-    });
+    await withFirstPartyToolChannel(() =>
+      withFirstPartyCapabilityChannel(async () => {
+        const r = resolvePresetComposition('minimal');
+        const toolIds = ids(r.tools);
+        expect(toolIds).not.toContain(BROWSER_DESKTOP_ROW);
+        expect(toolIds).not.toContain(WEB_ROW);
+        // 其余行保序保留（标准解析产物减去 minimal 禁用行）
+        expect(toolIds).toEqual(
+          ids(resolvePresetComposition('standard').tools).filter((id) => id !== BROWSER_DESKTOP_ROW && id !== WEB_ROW),
+        );
+        expect(r.capabilities.map((c) => c.key)).not.toContain('graph-hooks');
+        // 诊断按表序收集（web 行居表首——与 patch 声明序无关）
+        expect(r.diagnostics.disabled).toEqual([WEB_ROW, BROWSER_DESKTOP_ROW, 'graph-hooks']);
+      }),
+    );
   });
 
   it('用户 preset 叠加在用户层 patch 之上：同 id 后写胜前写（preset 层最上）', async () => {
-    await withFirstPartyToolChannel(async () => {
-      // ①b：探针改 plugin 行（用户层先禁后启 + minimal preset 层禁——
-      // 三层同 id 的后写胜链）
-      const userPatch: CompositionPatch = {
-        tools: [
-          { id: WEB_ROW, disabled: true },
-          { id: WEB_ROW, disabled: false }, // 用户层启用 web
-        ],
-      };
-      // minimal 的 preset 层禁 web → 后写胜 → web 最终被禁
-      const r = resolvePresetComposition('minimal', { userPatch });
-      expect(ids(r.tools)).not.toContain(WEB_ROW);
-      // 反向：standard 无 preset 增量 → 用户层启用 web 生效
-      const std = resolvePresetComposition('standard', { userPatch });
-      expect(ids(std.tools)).toContain(WEB_ROW);
-    });
+    await withFirstPartyToolChannel(() =>
+      withFirstPartyCapabilityChannel(async () => {
+        // ①b：探针改 plugin 行（用户层先禁后启 + minimal preset 层禁——
+        // 三层同 id 的后写胜链）
+        const userPatch: CompositionPatch = {
+          tools: [
+            { id: WEB_ROW, disabled: true },
+            { id: WEB_ROW, disabled: false }, // 用户层启用 web
+          ],
+        };
+        // minimal 的 preset 层禁 web → 后写胜 → web 最终被禁
+        const r = resolvePresetComposition('minimal', { userPatch });
+        expect(ids(r.tools)).not.toContain(WEB_ROW);
+        // 反向：standard 无 preset 增量 → 用户层启用 web 生效
+        const std = resolvePresetComposition('standard', { userPatch });
+        expect(ids(std.tools)).toContain(WEB_ROW);
+      }),
+    );
   });
 
   it('用户 preset 表解析：userPresets 命中即用其 patch', async () => {
@@ -101,18 +108,20 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
   });
 
   it('内置与用户同 id → 内置胜（earlier root wins）', async () => {
-    await withFirstPartyToolChannel(async () => {
-      // 影子补丁禁 plugin 行（wait 贡献行）——内置 minimal 胜出后影子不生效
-      const shadow = {
-        id: 'minimal',
-        builtin: false,
-        patch: { tools: [{ id: 'plugin/hologram/wait-domain/wait', disabled: true }] } as CompositionPatch,
-      };
-      const r = resolvePresetComposition('minimal', { userPresets: [shadow] });
-      // 内置 minimal 生效（禁 browser-desktop/web），影子补丁的 wait 禁用不出现
-      expect(ids(r.tools)).not.toContain(BROWSER_DESKTOP_ROW);
-      expect(ids(r.tools)).toContain('plugin/hologram/wait-domain/wait');
-    });
+    await withFirstPartyToolChannel(() =>
+      withFirstPartyCapabilityChannel(async () => {
+        // 影子补丁禁 plugin 行（wait 贡献行）——内置 minimal 胜出后影子不生效
+        const shadow = {
+          id: 'minimal',
+          builtin: false,
+          patch: { tools: [{ id: 'plugin/hologram/wait-domain/wait', disabled: true }] } as CompositionPatch,
+        };
+        const r = resolvePresetComposition('minimal', { userPresets: [shadow] });
+        // 内置 minimal 生效（禁 browser-desktop/web），影子补丁的 wait 禁用不出现
+        expect(ids(r.tools)).not.toContain(BROWSER_DESKTOP_ROW);
+        expect(ids(r.tools)).toContain('plugin/hologram/wait-domain/wait');
+      }),
+    );
   });
 
   it('未知 id → factory 兜底（用户层仍叠）', async () => {

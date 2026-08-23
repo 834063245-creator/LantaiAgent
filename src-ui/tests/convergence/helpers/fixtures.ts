@@ -9,6 +9,7 @@ import { buildToolRegistry } from '../../../src/agent/runtime/agent-builder';
 import { TaskManager } from '../../../src/agent/task';
 import type { Tool, ToolExecutor, ToolRegistry } from '../../../src/agent/tool';
 import type { SubAgentSpawner } from '../../../src/agent/tools/subagent';
+import { withFirstPartyCapabilityChannel } from '../../../src/composition/first-party-capabilities';
 import { withFirstPartyToolChannel } from '../../../src/composition/first-party-tools';
 import type { BuiltinToolRow } from '../../../src/composition/tool-rows';
 import type { Chunk, Provider, Usage } from '../../../src/provider/types';
@@ -57,33 +58,39 @@ export function fixedGraphSnapshot(): string {
 // S4-4 甲（2026-08-23）：通道贡献行进组合解析域（factoryComposition 快照）
 // ——buildToolRegistry 缺省装配 = 出厂组合（内置行 + 贡献行），toolRows
 // 注入 = preset 解析产物（惰性 thunk 在通道腰内求值）。
+// B⑤（2026-08-24）：minimal 的 graph-hooks capability 行经 ctx.capabilities
+// 通道注册——preset 解析（减法组合含 capabilities 域寻址）须在 capability
+// 通道腰内求值，与工具通道腰同挂（withFirstPartyCapabilityChannel）。
 
 export async function buildStandardRegistry(
   contributions: ToolContribution[] = [],
   toolRows?: BuiltinToolRow[] | (() => BuiltinToolRow[]),
 ): Promise<ToolRegistry> {
   const stubSpawner = (async () => 'stub-spawn-result') as unknown as SubAgentSpawner;
-  return withFirstPartyToolChannel(async () => {
-    // S4-4 甲：toolRows 支持惰性 thunk——在通道腰内求值使解析域纳入
-    // 当前第一方贡献行（minimal 的减法解析含 34 贡献行；数组直传兼容）。
-    const rows = typeof toolRows === 'function' ? toolRows() : toolRows;
-    const reg = await buildToolRegistry({
-      graphData: FIXED_GRAPH_DATA,
-      deps: {},
-      taskManager: new TaskManager(),
-      subAgentPool: new SubAgentPool(),
-      subAgentSpawner: stubSpawner,
-      // S4-1b：preset 的工具行（减法型 preset——minimal）；undefined = 出厂组合
-      ...(rows ? { toolRows: rows } : {}),
-    });
-    // 行贡献按组合序（数组序）注册到内置面之后（S1-0 设计件 §2.3：
-    // 显式参数，确定性按构造保证）。重名行由 ToolRegistry.register
-    // 装载期拒绝（duplicate throw）——S1-3 的冲突拒绝语义已在此就位。
-    for (const contribution of contributions) {
-      reg.register(contribution.factory());
-    }
-    return reg;
-  });
+  return withFirstPartyToolChannel(() =>
+    withFirstPartyCapabilityChannel(async () => {
+      // S4-4 甲：toolRows 支持惰性 thunk——在通道腰内求值使解析域纳入
+      // 当前第一方贡献行（minimal 的减法解析含 34 贡献行 + graph-hooks
+      // capability 行；数组直传兼容）。
+      const rows = typeof toolRows === 'function' ? toolRows() : toolRows;
+      const reg = await buildToolRegistry({
+        graphData: FIXED_GRAPH_DATA,
+        deps: {},
+        taskManager: new TaskManager(),
+        subAgentPool: new SubAgentPool(),
+        subAgentSpawner: stubSpawner,
+        // S4-1b：preset 的工具行（减法型 preset——minimal）；undefined = 出厂组合
+        ...(rows ? { toolRows: rows } : {}),
+      });
+      // 行贡献按组合序（数组序）注册到内置面之后（S1-0 设计件 §2.3：
+      // 显式参数，确定性按构造保证）。重名行由 ToolRegistry.register
+      // 装载期拒绝（duplicate throw）——S1-3 的冲突拒绝语义已在此就位。
+      for (const contribution of contributions) {
+        reg.register(contribution.factory());
+      }
+      return reg;
+    }),
+  );
 }
 
 // ── 合成工具 — planGate / hook 管道快照用（形状对齐 tests/plan-gate.test.ts）──

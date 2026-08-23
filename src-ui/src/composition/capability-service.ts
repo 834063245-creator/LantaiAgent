@@ -13,20 +13,23 @@
 //
 // 契约对齐 prompt-service（贡献进解析域的先例）与 hook-service（A-2 先例）：
 //   - register(def) → Disposer：调用方挂 ctx.effect（所有权登记是调用方纪律）；
-//   - 重名 id 装载期拒绝（throw，不静默覆盖）+ **撞 builtinCapabilities() 任一
-//     key 同样装载期拒绝**（本通道特有——寻址空间与 builtin 表共享，不预检则
-//     dup 潜伏到装配期 fromRoster 构造器 throw，炸整个会话装配）；
+//   - 重名 key 装载期拒绝（throw，不静默覆盖）——B⑤ 收官（2026-08-24）后
+//     第一方十五项本身经通道注册（装载序 = capabilitiesServicePlugin →
+//     第一方 capability 插件 → 外部插件），外部贡献撞第一方 key 同样走
+//     注册表重名拒绝（装载期可见）；A-3 时代的「撞 builtinCapabilities()
+//     key 拒绝」随出厂表退役而退役（B④ prompt-service 同款终态——无第一
+//     方通道的环境里第一方 key 可注册，撞名防线在装载序上）；
 //   - 运行时形状守卫（外部插件是纯 JS 无 tsc——畸形贡献须在装载期拒绝，不
 //     潜伏到会话装配期 TypeError；loader 的 isPluginShape 同款先例）；
 //   - disposer 幂等 + 陈旧性守卫（同 def 重注册后旧 disposer 不误删新行）；
 //   - 无即时 React 信号（capability 无常驻清单消费面）。
 //
-// 组合解析域（设计件 §2.2/§2.5，S4-4 甲第三挂点）：贡献 key 经
-// factoryComposition() 快照进 capabilities 域表尾（builtin 前缀不动——无贡献
-// 环境 keys ≡ builtinCapabilities()，零漂移按构造）；patch/preset 可按 key
-// disable 贡献行（插件开关与能力粒度裁剪两层正交）。贡献 register/dispose
-// 因此成为组合输入变更——onCapabilityContributionsChanged 供 preset-assembly
-// 的组合 cache 代数失效 + bootShell 的贡献监听重应用。
+// 组合解析域（设计件 §2.2/§2.5，S4-4 甲第三挂点；B⑤ 收官修订见文件头）：
+// 贡献 key 经 factoryComposition() 快照进 capabilities 域（B⑤ 后唯一行源
+// ——第一方十五项经通道注册，贡献序 = 注册序；无通道环境 = 空表）；patch/
+// preset 可按 key disable 贡献行（插件开关与能力粒度裁剪两层正交）。贡献
+// register/dispose 因此成为组合输入变更——onCapabilityContributionsChanged
+// 供 preset-assembly 的组合 cache 代数失效 + bootShell 的贡献监听重应用。
 //
 // 生效时机 = 下次 Agent 装配（新会话）——runtime._assembleAgent 既有穿线
 // AgentBlueprint.fromRoster(composition.capabilities) 消费整张表（A-3 零
@@ -34,7 +37,7 @@
 // tools/prompts/hooks 三通道）。子 Agent 不自动继承（spawnSubAgent 手工装配
 // 不经 blueprint——既有语义不下放）。
 
-import { type AgentCapability, builtinCapabilities } from '../agent/blueprint';
+import type { AgentCapability } from '../agent/blueprint';
 import { type Context, Service } from '../cordis';
 
 /** capability 贡献：形状即 AgentCapability（key 寻址 + 阶段 + 条件 + 安装动作）。 */
@@ -82,10 +85,6 @@ class CapabilityContributionRegistry {
     assertContributionShape(def);
     if (this.entries.has(def.key)) {
       throw new Error('[capabilities] duplicate contribution key "' + def.key + '" —— 装载期拒绝，不静默覆盖');
-    }
-    // 撞 builtin 表 key：寻址空间共享（fast-at-load——dup 潜伏到装配期会炸整个会话）
-    if (builtinCapabilities().some((c) => c.key === def.key)) {
-      throw new Error('[capabilities] 贡献 key "' + def.key + '" 与 builtin capability 撞名 —— 装载期拒绝');
     }
     let done = false;
     const entry = {

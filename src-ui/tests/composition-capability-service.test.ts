@@ -2,25 +2,30 @@
 // SPDX-License-Identifier: MIT.
 
 // A-3 capability 贡献通道（composition/capability-service.ts）钉住面
-// （设计件 A3-capability-contribution-channel.md §3 验收）：
+// （设计件 A3-capability-contribution-channel.md §3 验收；B⑤ 收官修订）：
 //   1. 注册语义：贡献经 ctx.capabilities 注册、注册序读取、disposer
 //      幂等 + 陈旧性守卫；
-//   2. 装载期拒绝三径：撞注册表 key / 撞 builtinCapabilities() key /
-//      畸形形状（外部插件纯 JS 无 tsc——形状守卫 fail-fast）；
+//   2. 装载期拒绝两径：撞注册表 key / 畸形形状（外部插件纯 JS 无
+//      tsc——形状守卫 fail-fast）。B⑤ 后撞第一方 key（如 auto-tune）走
+//      注册表重名径——第一方十五项本身经 capabilitySegmentsPlugin 通道
+//      注册（装载序在先），出厂 builtinCapabilities() 撞名检查随出厂表
+//      退役（B④ prompt-service 同款终态）；
 //   3. 消费闭环：activeCapabilityContributions()（无服务 = 空集）+
 //      dispose 守卫式清空（拆卸后新装配不残留）；
-//   4. 解析域：factoryComposition() 快照收编贡献（表尾注册序，builtin
-//      前缀不动）；patch 可按 key disable 贡献行（diagnostics 记录）；
-//      贡献 dispose → 快照行消失；
+//   4. 解析域：factoryComposition() 快照收编贡献（注册序；无第一方通道
+//      环境 = 贡献即全表；通道在册 = 第一方十五项前缀 + 贡献表尾追加，
+//      序 = 清单序 = 迁移前表序）；patch 可按 key disable 贡献行
+//      （diagnostics 记录）；贡献 dispose → 快照行消失；
 //   5. 装配消费：fromRoster 按表序装配贡献 capability（context/agent 两
 //      阶段 + when() 门控）——runtime 穿线零改动的构造性验证；
-//   6. 端到端：贡献 install 的工具注册在 builtin 表尾之后（Agent 装配后
+//   6. 端到端：贡献 install 的工具注册在第一方面表尾之后（Agent 装配后
 //      模型可见面含贡献工具）。
-// 零漂移守护：无贡献环境（convergence 夹具/生产初态）capabilities ≡
-// builtinCapabilities()（roster 测试钉面 + convergence 双 preset 实测）。
+// 零漂移守护：无贡献环境（convergence 夹具/生产初态）capabilities 域 ≡
+// 通道贡献快照（B⑤ 后第一方也经通道——roster 测试钉通道面 + convergence
+// 双 preset 实测）。
 
 import { describe, expect, it } from 'vitest';
-import { AgentBlueprint, type AgentCapability, builtinCapabilities } from '../src/agent/blueprint';
+import { AgentBlueprint, type AgentCapability, firstPartyCapabilities } from '../src/agent/blueprint';
 import {
   activeCapabilityContributions,
   type CapabilityContribution,
@@ -28,6 +33,9 @@ import {
 } from '../src/composition/capability-service';
 import { factoryComposition, resolveRoster } from '../src/composition/roster';
 import { Context } from '../src/cordis';
+import { capabilitySegmentsPlugin } from '../src/plugins/capability-segments-plugin';
+
+const firstPartyKeys = (): string[] => firstPartyCapabilities().map((c) => c.key);
 
 /** 记录调用序的探针贡献。 */
 function probeCapability(
@@ -87,16 +95,18 @@ describe('composition/capability-service（A-3 capability 贡献通道）', () =
     await fiber.dispose();
   });
 
-  it('撞 builtinCapabilities() key 装载期拒绝（寻址空间共享——防装配期 fail-late）', async () => {
+  it('撞第一方 key 装载期拒绝（通道在册后走注册表重名径——B⑤ 后唯一防线）', async () => {
     const root = new Context();
-    const fiber = await root.plugin(capabilitiesServicePlugin);
+    const f1 = await root.plugin(capabilitiesServicePlugin);
+    const f2 = await root.plugin(capabilitySegmentsPlugin); // 第一方十五项在册
     expect(() => root.capabilities.register(probeCapability('auto-tune', 'agent', []))).toThrow(
-      /与 builtin capability 撞名/,
+      /duplicate contribution key/,
     );
     expect(() => root.capabilities.register(probeCapability('graph-hooks', 'agent', []))).toThrow(
-      /与 builtin capability 撞名/,
+      /duplicate contribution key/,
     );
-    await fiber.dispose();
+    await f2.dispose();
+    await f1.dispose();
   });
 
   it('形状守卫：畸形贡献装载期拒绝（key 空 / phase 非法 / install 缺失）', async () => {
@@ -139,24 +149,36 @@ describe('composition/capability-service（A-3 capability 贡献通道）', () =
     expect(activeCapabilityContributions()).toEqual([]);
   });
 
-  it('解析域：factoryComposition 快照收编贡献（表尾注册序，builtin 前缀不动）', async () => {
+  it('解析域：factoryComposition 快照收编贡献（通道内第一方前缀 + 贡献表尾；无通道 = 贡献即全表）', async () => {
+    // 无第一方通道：贡献即全表（B⑤ 后无 builtin 前缀——B④ prompt 域同款）
     const root = new Context();
     const fiber = await root.plugin(capabilitiesServicePlugin);
     const d1 = root.capabilities.register(probeCapability('acme/one', 'agent', []));
     const d2 = root.capabilities.register(probeCapability('acme/two', 'context', []));
-    const builtinKeys = builtinCapabilities().map((c) => c.key);
-    expect(factoryComposition().capabilities.map((c) => c.key)).toEqual([...builtinKeys, 'acme/one', 'acme/two']);
+    expect(factoryComposition().capabilities.map((c) => c.key)).toEqual(['acme/one', 'acme/two']);
     // 贡献 dispose → 快照行消失（快照读取时点的通道装载态）
     d1();
-    expect(factoryComposition().capabilities.map((c) => c.key)).toEqual([...builtinKeys, 'acme/two']);
+    expect(factoryComposition().capabilities.map((c) => c.key)).toEqual(['acme/two']);
     d2();
-    expect(factoryComposition().capabilities.map((c) => c.key)).toEqual(builtinKeys);
+    expect(factoryComposition().capabilities).toEqual([]);
     await fiber.dispose();
+
+    // 第一方通道在册：十五项前缀 + 贡献表尾（序 = 清单序 = 迁移前表序）
+    const root2 = new Context();
+    const f1 = await root2.plugin(capabilitiesServicePlugin);
+    const f2 = await root2.plugin(capabilitySegmentsPlugin);
+    const d3 = root2.capabilities.register(probeCapability('acme/one', 'agent', []));
+    expect(factoryComposition().capabilities.map((c) => c.key)).toEqual([...firstPartyKeys(), 'acme/one']);
+    d3();
+    expect(factoryComposition().capabilities.map((c) => c.key)).toEqual(firstPartyKeys());
+    await f2.dispose();
+    await f1.dispose();
   });
 
-  it('解析域：patch 按 key disable 贡献行（diagnostics 记录，builtin 行不动）', async () => {
+  it('解析域：patch 按 key disable 贡献行（diagnostics 记录，第一方行同寻址面）', async () => {
     const root = new Context();
-    const fiber = await root.plugin(capabilitiesServicePlugin);
+    const f1 = await root.plugin(capabilitiesServicePlugin);
+    const f2 = await root.plugin(capabilitySegmentsPlugin);
     const d1 = root.capabilities.register(probeCapability('acme/one', 'agent', []));
     const d2 = root.capabilities.register(probeCapability('acme/two', 'agent', []));
     const r = resolveRoster(factoryComposition(), [{ capabilities: [{ id: 'acme/one', disabled: true }] }]);
@@ -164,35 +186,37 @@ describe('composition/capability-service（A-3 capability 贡献通道）', () =
     expect(keys).not.toContain('acme/one');
     expect(keys).toContain('acme/two');
     expect(r.diagnostics.disabled).toEqual(['acme/one']);
-    // builtin 行仍可禁用（既有寻址面不受贡献收编影响）
+    // 第一方行仍可禁用（key 寻址面不受 B⑤ 迁移影响——贡献与第一方同表）
     const r2 = resolveRoster(factoryComposition(), [{ capabilities: [{ id: 'auto-tune', disabled: true }] }]);
     expect(r2.capabilities.map((c) => c.key)).not.toContain('auto-tune');
     d1();
     d2();
-    await fiber.dispose();
+    await f2.dispose();
+    await f1.dispose();
   });
 
   it('装配消费：fromRoster 按表序装配贡献（context/agent 两阶段 + when() 门控）', async () => {
     const root = new Context();
-    const fiber = await root.plugin(capabilitiesServicePlugin);
+    const f1 = await root.plugin(capabilitiesServicePlugin);
+    const f2 = await root.plugin(capabilitySegmentsPlugin); // 第一方十五项在册——贡献钉表尾位
     const order: string[] = [];
     root.capabilities.register(probeCapability('acme/ctx-late', 'context', order));
     root.capabilities.register(probeCapability('acme/agent-gated', 'agent', order, () => false));
     root.capabilities.register(probeCapability('acme/agent-live', 'agent', order));
 
     // 复刻 _assembleAgent 的 capability 循环（runtime 穿线零改动的构造性
-    // 验证：fromRoster 消费整张表，贡献随表序进两阶段循环）。builtin 项的
-    // install 需要真实 scope——只执行贡献项，builtin 项验证表位与门控求值。
+    // 验证：fromRoster 消费整张表，贡献随表序进两阶段循环）。第一方项的
+    // install 需要真实 scope——只执行贡献项，第一方项验证表位与门控求值。
     const bp = AgentBlueprint.fromRoster(factoryComposition().capabilities);
-    // context 阶段：贡献项是表尾（builtin 前缀不动）
+    // context 阶段：贡献项在表尾（第一方前缀 = plan-tools 等既有序）
     const contextKeys = bp.capabilities('context').map((c) => c.key);
     expect(contextKeys).toEqual([
-      ...builtinCapabilities()
+      ...firstPartyCapabilities()
         .filter((c) => c.phase === 'context')
         .map((c) => c.key),
       'acme/ctx-late',
     ]);
-    // 贡献 context 项按表序执行（when 缺省恒装；builtin 项不执行 install）
+    // 贡献 context 项按表序执行（when 缺省恒装；第一方项不执行 install）
     for (const cap of bp.capabilities('context')) {
       if (cap.key.startsWith('acme/') && (cap.when?.({} as never) ?? true)) cap.install({} as never);
     }
@@ -201,7 +225,7 @@ describe('composition/capability-service（A-3 capability 贡献通道）', () =
     // agent 阶段：贡献项在表尾（gated 项在 live 项之前——注册序）
     const agentKeys = bp.capabilities('agent').map((c) => c.key);
     expect(agentKeys.slice(-2)).toEqual(['acme/agent-gated', 'acme/agent-live']);
-    // when() 门控：agent 阶段循环跳过 gated 项（builtin 项的 when/install
+    // when() 门控：agent 阶段循环跳过 gated 项（第一方项的 when/install
     // 需要真实 scope——只对贡献项求值执行，表位已由 keys 断言钉住）
     const executed: string[] = [];
     for (const cap of bp.capabilities('agent')) {
@@ -216,18 +240,20 @@ describe('composition/capability-service（A-3 capability 贡献通道）', () =
     }
     expect(executed).not.toContain('acme/agent-gated'); // 门控生效
     expect(executed.at(-1)).toBe('acme/agent-live'); // 表尾贡献存活且最后执行
-    await fiber.dispose();
+    await f2.dispose();
+    await f1.dispose();
   });
 
-  it('端到端：贡献 install 的工具注册进 Agent 装配面（builtin 表尾之后）', async () => {
+  it('端到端：贡献 install 的工具注册进 Agent 装配面（第一方面表尾之后）', async () => {
     const root = new Context();
-    const fiber = await root.plugin(capabilitiesServicePlugin);
+    const f1 = await root.plugin(capabilitiesServicePlugin);
+    const f2 = await root.plugin(capabilitySegmentsPlugin); // 第一方面在册（read_file 由 converge-tools 注册）
     root.capabilities.register(toolRegisteringCapability('acme/tool-probe', 'acme_probe_tool'));
 
     const { AgentRuntime } = await import('../src/agent/runtime/runtime');
     const { ToolRegistry } = await import('../src/agent/tool');
     const { readOnlyTool, scriptedProvider } = await import('./convergence/helpers/fixtures');
-    const rt = new AgentRuntime(); // 无 projectPath → 纯内存；composition 缺省
+    const rt = new AgentRuntime(); // 无 projectPath → 纯内存；组合缺省 = 通道快照
     await rt.ready();
     const tools = new ToolRegistry();
     tools.register(readOnlyTool());
@@ -242,12 +268,13 @@ describe('composition/capability-service（A-3 capability 贡献通道）', () =
       .tools.all()
       .map((t) => t.name());
     expect(names).toContain('acme_probe_tool'); // 贡献工具进模型可见面
-    // builtin 表尾之后（converge-tools 折叠面之后——表尾追加序）
+    // 第一方面表尾之后（converge-tools 折叠面之后——表尾追加序）
     expect(names.indexOf('acme_probe_tool')).toBeGreaterThan(names.indexOf('read_file'));
     handle.dispose();
 
     // 通道拆卸后守卫式清空——新装配不再折叠贡献
-    await fiber.dispose();
+    await f2.dispose();
+    await f1.dispose();
     expect(activeCapabilityContributions()).toEqual([]);
     const rt2 = new AgentRuntime();
     await rt2.ready();
@@ -264,8 +291,9 @@ describe('composition/capability-service（A-3 capability 贡献通道）', () =
       .tools.all()
       .map((t) => t.name());
     expect(names2).not.toContain('acme_probe_tool'); // 拆卸后不残留
+    expect(names2).not.toContain('read_file'); // 第一方面也不在（无通道 = 空能力表）
     handle2.dispose();
-  });
+  }, 20_000);
 
   it('贡献变更 = 组合输入变更（代数钩子可订阅——preset-assembly/bootShell 消费面）', async () => {
     const root = new Context();

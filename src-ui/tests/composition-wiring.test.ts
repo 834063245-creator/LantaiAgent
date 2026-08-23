@@ -9,11 +9,12 @@
 // AgentBlueprint.fromRoster / AgentRuntime(composition) + composition-store。
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { AgentBlueprint, builtinCapabilities } from '../src/agent/blueprint';
+import { AgentBlueprint, firstPartyCapabilities } from '../src/agent/blueprint';
 import { AgentContext } from '../src/agent/context';
 import { AgentRuntime } from '../src/agent/runtime/runtime';
 import type { AgentHandle } from '../src/agent/runtime/types';
 import { ToolRegistry } from '../src/agent/tool';
+import { withFirstPartyCapabilityChannel } from '../src/composition/first-party-capabilities';
 import { withFirstPartyPromptChannel } from '../src/composition/first-party-prompts';
 import { withFirstPartyToolChannel } from '../src/composition/first-party-tools';
 import { assembleSystemPrompt, firstPartyPromptSections } from '../src/composition/prompt-sections';
@@ -30,30 +31,34 @@ const WEB_ROW = 'plugin/hologram/web-domain/web_fetch';
  *  ①b（2026-08-23）：builtin 行表退役——工具禁用探针改 plugin 行
  *  （plugin/hologram/web-domain/web_fetch），样本解析在工具通道腰内
  *  （贡献行在册才可寻址）；prompt 通道腰同时激活（第一方 13 段进样本
- *  段表——AgentRuntime 端到端断言「第一方面也在」依赖它）。
+ *  段表——AgentRuntime 端到端断言「第一方面也在」依赖它）；capability
+ *  通道腰同样激活（B⑤ 后第一方十五项 capability 经通道注册——样本
+ *  组合的 capabilities 域与生产同路）。
  *  S4-4 甲（2026-08-23）：组合解析域含通道贡献快照——样本在通道外解析
- *  = 空行表 + 空段表 + 已插入段；在双通道内解析则含全部贡献行/段
+ *  = 空行表 + 空段表 + 已插入段；在三通道内解析则含全部贡献行/段
  *  （贡献寻址恢复，见 roster 测试）。 */
 async function sampleComposition(): Promise<ResolvedComposition> {
   return withFirstPartyToolChannel(() =>
-    withFirstPartyPromptChannel(() =>
-      Promise.resolve(
-        resolveRoster(factoryComposition(), [
-          {
-            tools: [{ id: WEB_ROW, disabled: true }],
-            prompt: [
-              { insert: [{ id: 'wiring-probe', text: '【穿线探针一】' }] },
-              { insert: [{ id: 'wiring-probe-2', after: 'wiring-probe', text: '【穿线探针二】' }] },
-              { id: 'wiring-probe', text: '【覆盖后的探针】' },
-            ],
-          },
-        ]),
+    withFirstPartyCapabilityChannel(() =>
+      withFirstPartyPromptChannel(() =>
+        Promise.resolve(
+          resolveRoster(factoryComposition(), [
+            {
+              tools: [{ id: WEB_ROW, disabled: true }],
+              prompt: [
+                { insert: [{ id: 'wiring-probe', text: '【穿线探针一】' }] },
+                { insert: [{ id: 'wiring-probe-2', after: 'wiring-probe', text: '【穿线探针二】' }] },
+                { id: 'wiring-probe', text: '【覆盖后的探针】' },
+              ],
+            },
+          ]),
+        ),
       ),
     ),
   );
 }
 
-/** 通道内样本（S4-4 甲 + ①c）：解析域含贡献行——plugin 行可寻址禁用。
+/** 通道内样本（S4-4 甲 + ①c + B⑤）：解析域含贡献行——plugin 行可寻址禁用。
  *  调用点已处 withFirstPartyToolChannel 腰内（贡献行在册）。 */
 function sampleCompositionInChannel(): ResolvedComposition {
   return resolveRoster(factoryComposition(), [
@@ -172,21 +177,29 @@ describe('S2-1 穿线：buildSystemPrompt / assembleSystemPrompt(sections)', () 
 });
 
 describe('S2-1 穿线：AgentBlueprint.fromRoster', () => {
-  it('fromRoster(出厂表) ≡ standard()（keys 序全等——换真源不改语义）', () => {
-    const a = AgentBlueprint.fromRoster(builtinCapabilities()).keys();
-    const b = AgentBlueprint.standard().keys();
-    expect(a).toEqual(b);
+  it('通道内 factoryComposition().capabilities ≡ firstPartyCapabilities()（清单序 = 迁移前表序——换真源不改语义）', async () => {
+    // B⑤ 收官：standard() 与 builtinCapabilities() 退役——不变式改钉新
+    // 真源：通道快照 ≡ 清单（fromRoster 的缺省输入与清单同一张表）
+    await withFirstPartyCapabilityChannel(async () => {
+      const a = AgentBlueprint.fromRoster(factoryComposition().capabilities).keys();
+      const b = firstPartyCapabilities().map((c) => c.key);
+      expect(a).toEqual(b);
+    });
   });
 
-  it('禁用 capability 后 keys 少一项且序保持', () => {
-    const composition = resolveRoster(factoryComposition(), [{ capabilities: [{ id: 'auto-tune', disabled: true }] }]);
-    const keys = AgentBlueprint.fromRoster(composition.capabilities).keys();
-    expect(keys).not.toContain('auto-tune');
-    expect(keys).toEqual(
-      builtinCapabilities()
-        .map((c) => c.key)
-        .filter((k) => k !== 'auto-tune'),
-    );
+  it('禁用 capability 后 keys 少一项且序保持', async () => {
+    await withFirstPartyCapabilityChannel(async () => {
+      const composition = resolveRoster(factoryComposition(), [
+        { capabilities: [{ id: 'auto-tune', disabled: true }] },
+      ]);
+      const keys = AgentBlueprint.fromRoster(composition.capabilities).keys();
+      expect(keys).not.toContain('auto-tune');
+      expect(keys).toEqual(
+        firstPartyCapabilities()
+          .map((c) => c.key)
+          .filter((k) => k !== 'auto-tune'),
+      );
+    });
   });
 });
 
@@ -208,16 +221,22 @@ describe('S2-1 穿线：AgentRuntime(composition) 端到端', () => {
     return String(agent.getSession()[0]?.content ?? '');
   };
 
-  it('不传 composition = 现行装配（与 phase-6 缺省面同源）', async () => {
-    const rt = new AgentRuntime();
-    await rt.ready();
-    const h = await rt.createAgentFromContext(makeCtx('s21-default', rt), {});
-    const names = (h as unknown as { _getAgent(): { tools: ToolRegistry } })
-      ._getAgent()
-      .tools.all()
-      .map((t) => t.name());
-    expect(names.length).toBeGreaterThan(0);
-    h.dispose();
+  it('不传 composition = 现行装配（通道腰内复现生产缺省面——第一方 capability 在册）', async () => {
+    // B⑤：出厂 capability 面经通道贡献——缺省装配的「现行面」须在 capability
+    // 通道腰内复现（生产 = loadBuiltinPlugins 先于一切组合链；无通道 = 空
+    // 能力表，缺省面只剩输入注册表）
+    await withFirstPartyCapabilityChannel(async () => {
+      const rt = new AgentRuntime();
+      await rt.ready();
+      const h = await rt.createAgentFromContext(makeCtx('s21-default', rt), {});
+      const names = (h as unknown as { _getAgent(): { tools: ToolRegistry } })
+        ._getAgent()
+        .tools.all()
+        .map((t) => t.name());
+      expect(names.length).toBeGreaterThan(0);
+      expect(names).toContain('enter_plan_mode'); // 第一方面在（plan-tools 经通道在册）
+      h.dispose();
+    });
   });
 
   it('传 composition：插入/覆盖段进入 system prompt（通道腰内复现生产装配面）', async () => {
@@ -238,7 +257,11 @@ describe('S2-1 穿线：AgentRuntime(composition) 端到端', () => {
   });
 
   it('传 composition：capability 禁用生效（auto-tune 不装）', async () => {
-    const composition = resolveRoster(factoryComposition(), [{ capabilities: [{ id: 'auto-tune', disabled: true }] }]);
+    // B⑤：capability 行经通道在册——寻址 auto-tune 的解析在通道腰内做
+    //（组合是值——解析产物可带出通道使用）
+    const composition = await withFirstPartyCapabilityChannel(() =>
+      Promise.resolve(resolveRoster(factoryComposition(), [{ capabilities: [{ id: 'auto-tune', disabled: true }] }])),
+    );
     const rt = new AgentRuntime(undefined, undefined, composition);
     await rt.ready();
     const h = await rt.createAgentFromContext(makeCtx('s21-notune', rt), {});

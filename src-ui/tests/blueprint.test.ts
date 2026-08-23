@@ -2,10 +2,22 @@
 // SPDX-License-Identifier: MIT.
 
 // Phase 6 T1 — AgentBlueprint 声明式组合原语行为规约。
-// 重复 key 拒绝 / 表序保持 / when() 门控 / standard() 实例隔离与表审计。
+// 重复 key 拒绝 / 表序保持 / when() 门控 / fromRoster 实例隔离与表审计。
+// B⑤（2026-08-24）：standard() 与 builtinCapabilities() 退役——出厂
+// capability 面经 ctx.capabilities 通道贡献（firstPartyCapabilities() 是
+// 十五项定义真源，plugins/capability-segments-plugin.ts 装载）。表序冻结
+// 断言换代为「钉通道面」：通道在册的 factoryComposition().capabilities
+// keys ≡ firstPartyCapabilities() 清单序 ≡ 迁移前出厂表序。
 
 import { describe, expect, it } from 'vitest';
-import { AgentBlueprint, type AgentCapability, type BlueprintScope } from '../src/agent/blueprint';
+import {
+  AgentBlueprint,
+  type AgentCapability,
+  type BlueprintScope,
+  firstPartyCapabilities,
+} from '../src/agent/blueprint';
+import { withFirstPartyCapabilityChannel } from '../src/composition/first-party-capabilities';
+import { factoryComposition } from '../src/composition/roster';
 
 /** 最小 capability 构造（install 记录调用序）。 */
 function cap(
@@ -72,18 +84,20 @@ describe('AgentBlueprint T1 — 原语行为', () => {
     expect(order).toEqual(['a', 'kept']);
   });
 
-  it('standard() 每次返回全新实例 — 扩展不污染标准装配', () => {
-    const a = AgentBlueprint.standard();
+  it('fromRoster 每次返回全新实例 — 扩展不污染源表', () => {
+    const a = AgentBlueprint.fromRoster(firstPartyCapabilities());
     const before = a.keys().length;
     a.add(cap('custom-x', 'agent', []));
     expect(a.keys()).toContain('custom-x');
-    const b = AgentBlueprint.standard();
+    const b = AgentBlueprint.fromRoster(firstPartyCapabilities());
     expect(b.keys()).not.toContain('custom-x');
     expect(b.keys()).toHaveLength(before);
   });
 
-  it('standard() 装配面封闭 — 表序冻结（新增 capability 必须显式改此断言）', () => {
-    expect(AgentBlueprint.standard().keys()).toEqual([
+  it('第一方 capability 表序冻结（钉通道面——新增 capability 必须显式改此断言）', async () => {
+    // B⑤：出厂面经 ctx.capabilities 通道贡献——表序断言钉「通道快照 =
+    // 清单序 = 迁移前出厂表序」三重等价（快照序由注册序保住）
+    const expected = [
       // context 阶段
       'plan-tools',
       // agent 阶段（注册序 = 工具面序 — phase-1 effective 快照钉字节）
@@ -101,11 +115,15 @@ describe('AgentBlueprint T1 — 原语行为', () => {
       'plan-injector',
       'pre-run-hook',
       'auto-tune',
-    ]);
+    ];
+    expect(firstPartyCapabilities().map((c) => c.key)).toEqual(expected);
+    await withFirstPartyCapabilityChannel(async () => {
+      expect(factoryComposition().capabilities.map((c) => c.key)).toEqual(expected);
+    });
   });
 
-  it('standard() 的 capability 均声明 key/phase/install', () => {
-    for (const c of AgentBlueprint.standard().capabilities()) {
+  it('第一方 capability 均声明 key/phase/install', () => {
+    for (const c of firstPartyCapabilities()) {
       expect(c.key, 'key 必须非空').toMatch(/^[a-z][a-z0-9-]*$/);
       expect(['context', 'agent']).toContain(c.phase);
       expect(typeof c.install).toBe('function');

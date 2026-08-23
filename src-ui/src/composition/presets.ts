@@ -85,6 +85,9 @@ const BUILTIN_PRESETS: Array<{
     // 新增工具自动覆盖，名面不被清单锁死）。寻址 plugin 行的解析须在
     // 贡献在册的环境（生产 = loadBuiltinPlugins 启动期装载先于 bootShell
     // 组合链；测试 = withFirstPartyToolChannel 通道腰）。
+    // B⑤（2026-08-24）：graph-hooks 迁 ctx.capabilities 通道（第一方
+    // capability 插件注册）——寻址该 key 的解析同样须在 capability 通道
+    // 在册环境（测试 = withFirstPartyCapabilityChannel 通道腰）。
     patch: {
       tools: [
         { id: 'plugin/hologram/browser-desktop-domain/tools', disabled: true },

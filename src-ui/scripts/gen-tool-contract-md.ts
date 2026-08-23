@@ -45,23 +45,31 @@ interface JsonSchema {
 /** 与 convergence fixtures 的 buildStandardRegistry 相同的确定性依赖。
  *  P4 B①（2026-08-23）起 git/search 经 ctx.tools 第一方插件通道贡献——
  *  本脚本以 withFirstPartyToolChannel 复现生产装配（无 main.ts 引导的
- *  环境由通道腰补挂四 service + 第一方工具插件）。 */
+ *  环境由通道腰补挂四 service + 第一方工具插件）。P4 B⑤（2026-08-24）
+ *  起再叠 withFirstPartyCapabilityChannel——十五项第一方 capability 也
+ *  经通道贡献（出厂 builtinCapabilities() 退役），无引导环境复现生产
+ *  capability 面（tools 域虽不消费 capability，通道腰对齐生产装配态——
+ *  与 convergence 夹具同款纪律）。 */
 async function buildStandardRegistry() {
-  const [{ SubAgentPool }, { TaskManager }, { withFirstPartyToolChannel }] = await Promise.all([
-    import('../src/agent/coordinator'),
-    import('../src/agent/task'),
-    import('../src/composition/first-party-tools'),
-  ]);
+  const [{ SubAgentPool }, { TaskManager }, { withFirstPartyToolChannel }, { withFirstPartyCapabilityChannel }] =
+    await Promise.all([
+      import('../src/agent/coordinator'),
+      import('../src/agent/task'),
+      import('../src/composition/first-party-tools'),
+      import('../src/composition/first-party-capabilities'),
+    ]);
   const { buildToolRegistry } = await import('../src/agent/runtime/agent-builder');
   const stubSpawner = (async () => 'stub-spawn-result') as unknown as SubAgentSpawner;
   return withFirstPartyToolChannel(() =>
-    buildToolRegistry({
-      graphData: { nodes: [], edges: [] },
-      deps: {},
-      taskManager: new TaskManager(),
-      subAgentPool: new SubAgentPool(),
-      subAgentSpawner: stubSpawner,
-    }),
+    withFirstPartyCapabilityChannel(() =>
+      buildToolRegistry({
+        graphData: { nodes: [], edges: [] },
+        deps: {},
+        taskManager: new TaskManager(),
+        subAgentPool: new SubAgentPool(),
+        subAgentSpawner: stubSpawner,
+      }),
+    ),
   );
 }
 

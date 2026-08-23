@@ -10,8 +10,12 @@
 // withFirstPartyToolChannel 腰内跑（resolveRoster 对 factoryComposition
 // 快照解析，plugin 行在册才可寻址；生产等价时序 = loadBuiltinPlugins
 // 先于 bootShell 组合链）。
+// B⑤（2026-08-24）：minimal preset 的 graph-hooks capability 行经通道注册
+// ——preset 层重应用（minimal 解析）须在 withFirstPartyCapabilityChannel
+// 腰内跑。
 
 import { beforeEach, describe, expect, it } from 'vitest';
+import { withFirstPartyCapabilityChannel } from '../src/composition/first-party-capabilities';
 import { withFirstPartyToolChannel } from '../src/composition/first-party-tools';
 import {
   compositionOrigin,
@@ -119,17 +123,19 @@ describe('composition/patch-loader 热重载（S4-2）', () => {
   });
 
   it('reload 成功后 preset 层重应用（minimal 叠在新用户层之上）', async () => {
-    await withFirstPartyToolChannel(async () => {
-      usePresetStore.getState().select('minimal');
-      const { impl } = mutableFetch({ [PATCH_URL]: { status: 200, body: PATCH_V1 } });
-      await loadCompositionPatch({ origin: ORIGIN, fetchImpl: impl });
-      await reloadCompositionPatch({ origin: ORIGIN, fetchImpl: impl });
-      const s = useCompositionStore.getState();
-      // 双层叠加：用户层禁 web + preset 层禁 web/browser-desktop（同 id 后写胜）
-      expect(ids(s.resolved.tools)).not.toContain(WEB_ROW);
-      expect(ids(s.resolved.tools)).not.toContain(BROWSER_DESKTOP_ROW);
-      expect(s.patchOrigin).toContain('preset:minimal');
-    });
+    await withFirstPartyToolChannel(() =>
+      withFirstPartyCapabilityChannel(async () => {
+        usePresetStore.getState().select('minimal');
+        const { impl } = mutableFetch({ [PATCH_URL]: { status: 200, body: PATCH_V1 } });
+        await loadCompositionPatch({ origin: ORIGIN, fetchImpl: impl });
+        await reloadCompositionPatch({ origin: ORIGIN, fetchImpl: impl });
+        const s = useCompositionStore.getState();
+        // 双层叠加：用户层禁 web + preset 层禁 web/browser-desktop（同 id 后写胜）
+        expect(ids(s.resolved.tools)).not.toContain(WEB_ROW);
+        expect(ids(s.resolved.tools)).not.toContain(BROWSER_DESKTOP_ROW);
+        expect(s.patchOrigin).toContain('preset:minimal');
+      }),
+    );
   });
 
   it('reload 通道网络炸 → 永不 reject + 旧组合保持（热重载失败 ≠ 组合失效）', async () => {

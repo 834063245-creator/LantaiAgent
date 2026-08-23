@@ -4,9 +4,11 @@
 //   - AgentConfig 字段面冻结（31 字段，AST 取 PropertySignature）——组合扩展走
 //     blueprint capability，新增 config 字段必须显式改此断言并登记 progress.md；
 //   - _assembleAgent 零组合面直调——工具/hook 工厂、plan 接线、自动调优只出现在
-//     blueprint.ts 的 capability 表；runtime 保留构造与生命周期所有权（Phase 4）；
-//   - 缺省装配 = AgentBlueprint.standard()，表驱动（capabilities('context'|'agent')）。
-// T1 原语行为：tests/blueprint.test.ts（6 例，随全量 vitest）。
+//     blueprint.ts capability 表；runtime 保留构造与生命周期所有权（Phase 4）；
+//   - 缺省装配 = 组合产物派生蓝图（fromRoster(composition.capabilities)——
+//     S2-1 真源；B⑤ 起出厂 capability 面经 ctx.capabilities 通道贡献，standard()
+//     快捷方式退役），表驱动（capabilities('context'|'agent')）。
+// T1 原语行为：tests/blueprint.test.ts（随全量 vitest）。
 // T2 验收实证（主计划验收"新增一个工具或 hook 不再要求修改 AgentConfig"）：
 //   - 扩展蓝图注入新工具 → 出现在 Agent 工具面且标准面序不变（全程未碰 AgentConfig）；
 //   - 空蓝图 → 工具面只剩输入注册表（装配面完全由 blueprint 决定）。
@@ -22,6 +24,8 @@ import { AgentContext } from '../../../src/agent/context';
 import type { Hook } from '../../../src/agent/hooks';
 import { AgentRuntime } from '../../../src/agent/runtime/runtime';
 import { type Tool, ToolRegistry } from '../../../src/agent/tool';
+import { withFirstPartyCapabilityChannel } from '../../../src/composition/first-party-capabilities';
+import { factoryComposition } from '../../../src/composition/roster';
 import { readOnlyTool, scriptedProvider } from '../helpers/fixtures';
 
 // ── T0 静态门禁 ──
@@ -187,43 +191,48 @@ function agentToolNames(h: unknown): string[] {
 
 describe('phase-6 T2 验收实证 — 新增工具/hook 不要求修改 AgentConfig', () => {
   it('扩展蓝图注入新工具 → 出现在 Agent 工具面，标准面序不变', async () => {
-    const rt = new AgentRuntime();
-    await rt.ready();
+    // B⑤：出厂 capability 面经通道贡献——标准面（缺省装配 + fromRoster
+    // 基座）须在 capability 通道腰内复现（生产 = loadBuiltinPlugins 先于
+    // 一切组合链；无通道 = 空能力表）
+    await withFirstPartyCapabilityChannel(async () => {
+      const rt = new AgentRuntime();
+      await rt.ready();
 
-    // 基准：缺省（标准蓝图）装配的工具面
-    const hStd = await rt.createAgentFromContext(makeCtx('p6-std', rt), {});
-    const stdNames = agentToolNames(hStd);
-    expect(stdNames.length).toBeGreaterThan(0);
-    hStd.dispose();
+      // 基准：缺省（标准面）装配的工具面
+      const hStd = await rt.createAgentFromContext(makeCtx('p6-std', rt), {});
+      const stdNames = agentToolNames(hStd);
+      expect(stdNames.length).toBeGreaterThan(0);
+      hStd.dispose();
 
-    // 扩展：标准表尾部追加一个 capability（同时验证 hook 面可写）——AgentConfig 零改动
-    let hookInstalled = false;
-    const ext = AgentBlueprint.standard().add(
-      {
-        key: 'acme-probe-tool',
-        phase: 'agent',
-        install: (scope) => scope.tools.register(probeTool()),
-      },
-      {
-        key: 'acme-probe-hook',
-        phase: 'agent',
-        install: (scope) => {
-          const hook: Hook = {
-            name: 'acme-probe-hook',
-            shouldEnrich: () => false,
-            enrich: async (_t, _a, result) => result,
-          };
-          scope.hooks.register(hook);
-          hookInstalled = true;
+      // 扩展：标准表尾部追加一个 capability（同时验证 hook 面可写）——AgentConfig 零改动
+      let hookInstalled = false;
+      const ext = AgentBlueprint.fromRoster(factoryComposition().capabilities).add(
+        {
+          key: 'acme-probe-tool',
+          phase: 'agent',
+          install: (scope) => scope.tools.register(probeTool()),
         },
-      },
-    );
-    const hExt = await rt.createAgentFromContext(makeCtx('p6-ext', rt), {}, ext);
-    const extNames = agentToolNames(hExt);
-    hExt.dispose();
+        {
+          key: 'acme-probe-hook',
+          phase: 'agent',
+          install: (scope) => {
+            const hook: Hook = {
+              name: 'acme-probe-hook',
+              shouldEnrich: () => false,
+              enrich: async (_t, _a, result) => result,
+            };
+            scope.hooks.register(hook);
+            hookInstalled = true;
+          },
+        },
+      );
+      const hExt = await rt.createAgentFromContext(makeCtx('p6-ext', rt), {}, ext);
+      const extNames = agentToolNames(hExt);
+      hExt.dispose();
 
-    expect(extNames).toEqual([...stdNames, 'acme_probe']);
-    expect(hookInstalled, 'hook capability 应经共享 registry 接线').toBe(true);
+      expect(extNames).toEqual([...stdNames, 'acme_probe']);
+      expect(hookInstalled, 'hook capability 应经共享 registry 接线').toBe(true);
+    });
   });
 
   it('装配面完全由 blueprint 决定 — 空蓝图 → 工具面只剩输入注册表', async () => {

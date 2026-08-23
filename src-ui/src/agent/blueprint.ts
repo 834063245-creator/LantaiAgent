@@ -11,8 +11,10 @@
 // 铁律（Phase 6 重写 _assembleAgent 的等价性基础）：
 //   1. 注册顺序 = capability 表声明顺序。工具 schema 面的字节稳定性
 //      （DeepSeek 前缀缓存 + phase-1 effective 快照）依赖此序——
-//      standard() 的表序与 Phase 5 末 _assembleAgent 的手写注册序一一对应，
-//      插入新 capability 必须显式选择位置（表是唯一的序真源）；
+//      第一方 capability 表（firstPartyCapabilities()，B⑤ 起经
+//      ctx.capabilities 通道贡献）的表序与 Phase 5 末 _assembleAgent
+//      的手写注册序一一对应，插入新 capability 必须显式选择位置
+//      （表是唯一的序真源）；
 //   2. capability 分两个阶段执行：'context'（Agent 构造前，可写 ctx 服务）与
 //      'agent'（Agent 构造后）。阶段内按表序，阶段间先 context 后 agent；
 //   3. 生命周期所有权（board/lifecycle/runtime-maps 的 ctx.effect）留在
@@ -22,8 +24,17 @@
 //      整体替换语义，capability 各自 set 会互相覆盖）。
 //
 // 行为规约（tests/blueprint.test.ts 钉住）：重复 key 拒绝；capabilities()
-// 保持声明序；when() 缺省恒装；standard() 每次返回全新实例（调用方扩展
-// 不得污染标准装配）。
+// 保持声明序；when() 缺省恒装；fromRoster 每次返回全新实例（调用方扩展
+// 不得污染标准装配——标准面经组合解析产物派生，B⑤ 后 = 通道快照）。
+//
+// P4 B⑤（2026-08-24，agent-plugin-architecture-plan §5 B 表 ⑤ 收官）：
+// 出厂 builtinCapabilities() 退役（B④ builtinPromptSections 退役同款终态）
+// ——十五项定义仍留本文件（capability 单一真源），改名
+// firstPartyCapabilities() 供第一方 capability 插件（plugins/
+// capability-segments-plugin.ts）经 ctx.capabilities 通道注册装载；
+// 装配缺省蓝图 = fromRoster(组合解析产物)（S2-1 既有穿线，零 runtime
+// 改动），standard() 快捷方式随之退役（生产标准面 = 通道快照，测试钉面
+// 经 composition/first-party-capabilities.ts 的 withFirstPartyCapabilityChannel）。
 
 import type { Agent } from './agent';
 import { createCodeExecutionTool } from './code-run/code-execution-tool';
@@ -153,28 +164,22 @@ export class AgentBlueprint {
     return phase ? this._caps.filter((c) => c.phase === phase) : [...this._caps];
   }
 
-  /** 标准装配面 — 与 Phase 5 末 _assembleAgent 的注册序一一对应（表序 = 序真源）。
-   *  每次返回全新实例：调用方 add() 的扩展不得污染标准装配。
-   *  S2-0 起 capability 数组拆至 builtinCapabilities()（零改写机械搬移——
-   *  composition/roster.ts 组合引擎的出厂数据源；tests/blueprint.test.ts
-   *  的 keys 序断言守护零漂移）。 */
-  static standard(): AgentBlueprint {
-    return new AgentBlueprint(builtinCapabilities());
-  }
-
-  /** 从 roster 行列表构造蓝图（S2-1 组合外化的装配入口）。
-   *  表序 = 行序（roster 解析产物保序）；standard() 即
-   *  fromRoster(builtinCapabilities()) 的快捷方式——Phase 6 铁律
-   *  「换真源不改语义」：表序契约与每次全新实例语义在此保持。 */
+  /** 从 roster 行列表构造蓝图（S2-1 组合外化的装配入口；B⑤ 后唯一构造
+   *  入口——standard() 快捷方式已退役）。表序 = 行序（roster 解析产物
+   *  保序）；每次返回全新实例：调用方 add() 的扩展不得污染标准装配
+   *  ——Phase 6 铁律「换真源不改语义」的表序契约在此保持。 */
   static fromRoster(capabilities: AgentCapability[]): AgentBlueprint {
     return new AgentBlueprint([...capabilities]);
   }
 }
 
-/** 内置 capability 表 — 表序 = 装配序 = standard preset 的事实来源。
- *  行 id = capability key（roster patch 用户组合文件在 capabilities 域的
- *  寻址面）。S2-0 从 standard() 内联数组原样拆出，内容零改写。 */
-export function builtinCapabilities(): AgentCapability[] {
+/** 第一方 capability 清单（序 = 迁移前出厂表序，十五项）——B⑤（2026-08-24）
+ *  起经 ctx.capabilities 第一方插件通道贡献（plugins/capability-segments-
+ *  plugin.ts 装载本清单，装配腰 composition/first-party-capabilities.ts）。
+ *  出厂 builtinCapabilities() 退役，本清单即出厂装配面的全部 capability
+ *  来源。行 id = capability key（roster patch 用户组合文件在 capabilities
+ *  域的寻址面）。S2-0 从 standard() 内联数组原样拆出，内容零改写。 */
+export function firstPartyCapabilities(): AgentCapability[] {
   return [
     // ── context 阶段（Agent 构造前）──
     {

@@ -243,3 +243,15 @@ deps、Agent 实例）——深集成通道，等价 DSH 的 L3。护栏立场�
 > ctx.capabilities 服务名空闲 / B⑤ 单批论证强化（converge-tools 与
 > code-execution-tool 双双 install 期快照 visibleTools()）/ 无环依赖）。裁决维持
 > 原设计 + 两处修订。据此按 §3 单批实施。
+
+> **B⑤ 收官修订（2026-08-24，通道消费面兑现）**：本件 §2.8 预告的迁移已单批落地
+> （十五项全量经 capabilitySegmentsPlugin 贡献，序 = 迁移前出厂表序）。两处随迁
+> 修订：① §2.5「撞 builtinCapabilities() key 拒绝」随出厂表退役而退役——第一方
+> 十五项本身经通道注册（生产装载序 = capabilitiesServicePlugin → 第一方插件 →
+> 外部插件），撞第一方 key 由注册表重名拒绝承担（B④ prompt-service 同款终态；
+> 无第一方通道的环境里第一方 key 可注册，撞名防线在装载序上）；② §2.2 的
+> 「builtin 前缀不动，无贡献环境 keys ≡ builtinCapabilities()」语义翻页为
+> 「capabilities 域唯一行源 = 通道贡献（第一方经通道注册），无通道环境 = 空表」
+> ——B④ prompt 域同款注册面依赖。§2.8 预告的三件配套（blueprint.test 表序断言
+> 换代钉通道面 / gen:tool-contract 通道腰 / composition-wiring 不变式改钉新真源）
+> 均已落地，convergence 双 preset 零漂移 + tool-contract 文档字节零变化实测。

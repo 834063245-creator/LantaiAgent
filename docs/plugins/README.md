@@ -7,7 +7,10 @@
 > ①b：builtin 工具行表退役——十四族全量经 ctx.tools 贡献（2026-08-23）；
 > P4 A-2：hooks/preflight 贡献通道（2026-08-24，ctx.hooks）；
 > P4 A-3：capability 贡献通道（2026-08-24，ctx.capabilities——会话级
-> 能力的插件装载，B⑤ 批前置）。
+> 能力的插件装载）；P4 B⑤ 收官：十五项第一方 capability 迁经
+> ctx.capabilities 贡献，出厂 builtinCapabilities() 退役（2026-08-24，
+> plugins/capability-segments-plugin.ts + composition/first-party-
+> capabilities.ts 装配腰）。
 > 插件 = 经
 > webview 动态 import 装载的自包含 ES 模块，
 > 向宿主注册**面板 / 命令 / 工具 / 块渲染器 / prompt 段 / 管道钩子 /
@@ -19,7 +22,8 @@
 > （面板 + 命令）、`plugins/settings-plugin.ts`（面板 + 命令，S3 样板）、
 > `plugins/coding-domain-plugins.ts`（工具域，P4 B①+② 五族样板：
 > git/search/fs/shell/agent-isolation）、
-> `plugins/prompt-segments-plugin.ts`（prompt 段，P4 B④ 样板）。
+> `plugins/prompt-segments-plugin.ts`（prompt 段，P4 B④ 样板）、
+> `plugins/capability-segments-plugin.ts`（capability，P4 B⑤ 样板）。
 
 ## 目录
 
@@ -371,11 +375,13 @@ ctx.effect(
 
 ### ctx.capabilities —— capability 贡献（下次 Agent 装配生效）
 
-第八贡献通道（P4 A-3，2026-08-24）：向 Agent 装配表贡献 **capability**——
-会话级能力的组合单元（工具 + hooks + ctx 服务 + Agent 接线一把抓）。这是
-**深集成通道**：install 拿到与宿主内置 capability 完全同一的装配视图
+第八贡献通道（P4 A-3，2026-08-24；B⑤ 收官同日——十五项第一方 capability 也
+经本通道贡献，出厂 builtinCapabilities() 退役）：向 Agent 装配表贡献
+**capability**——会话级能力的组合单元（工具 + hooks + ctx 服务 + Agent 接线一把抓）。
+这是**深集成通道**：install 拿到与第一方 capability 完全同一的装配视图
 （BlueprintScope——ctx/inputs/tools/hooks/preflightHooks/deps/agent），与
-`builtinCapabilities()` 十五项在同一张 blueprint 表上竞争。设计件：
+`firstPartyCapabilities()` 十五项（B⑤ 起同样经通道注册——plugins/
+capability-segments-plugin.ts 装载）在同一张 blueprint 表上竞争。设计件：
 `docs/plans/composition-architecture/designs/A3-capability-contribution-channel.md`。
 
 ```js
@@ -396,17 +402,23 @@ ctx.effect(
 
 关键语义：
 
-- **表尾追加序**：贡献按注册序接在 builtin 表尾（`[...builtinCapabilities(),
-  ...贡献]`）——builtin 前缀不动（字节契约/前缀缓存纪律），无贡献环境零漂移
-  按构造。
+- **贡献序 = 注册序（B⑤ 后唯一行源）**：capabilities 域 = ctx.capabilities
+  贡献快照——第一方十五项经 `hologram/capability-segments` 插件注册（注册序 =
+  firstPartyCapabilities() 清单序 = 迁移前出厂表序，字节契约/前缀缓存纪律由
+  清单序保住）；外部贡献接在第一方之后（装载序 = BUILTIN_PLUGINS 表尾在
+  外部插件之前）。无通道环境 = 空能力表（B④ prompt 域同款注册面依赖——
+  出厂面复现须经 withFirstPartyCapabilityChannel 腰，见
+  `src/composition/first-party-capabilities.ts`）。
 - **key 即寻址 id**：patch/preset 可按 key disable 贡献行
   （`capabilities: [{ id: 'acme/secret-scanner', disabled: true }]`）——插件
-  开关与能力粒度裁剪两层正交。**注意**：插件卸载后 patch 里残留的 key 会变
+  开关与能力粒度裁剪两层正交（第一方 key 同寻址面——minimal 禁 graph-hooks
+  既有消费者零变化）。**注意**：插件卸载后 patch 里残留的 key 会变
   未知 id → 整个用户层 patch 被拒（all-or-nothing 既有语义，处置 = 删失效
   条目）。
-- **重名/撞名装载期拒绝**：撞注册表现有 key 或撞 builtin 表任一 key（如
-  `auto-tune`）都在装载期 throw；畸形形状（key 空 / phase 非法 / install 缺
-  函数）同样装载期拒绝（外部插件是纯 JS——fail-fast，不潜伏到会话装配期）。
+- **重名装载期拒绝**：撞注册表现有 key 即 throw——B⑤ 后第一方十五项本身在
+  注册表里（装载序在先），撞第一方 key（如 `auto-tune`）同样走此径；畸形
+  形状（key 空 / phase 非法 / install 缺函数）同样装载期拒绝（外部插件是纯
+  JS——fail-fast，不潜伏到会话装配期）。
 - **生效时机是下次 Agent 装配**（新会话）；在途会话不动（KV-cache 纪律，
   §7）。贡献 register/dispose = 组合输入变更（preset 缓存代数失效）。
 - **普通工具加面走 ctx.tools**——本通道 install 里 `scope.tools.register`
