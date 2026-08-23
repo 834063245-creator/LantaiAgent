@@ -696,6 +696,115 @@ describe('L1 视图对齐', () => {
   });
 });
 
+describe('L2 落盘收编（谁跑完存谁）', () => {
+  it('bumpTurnDone 携带 doneSid——store 断言', async () => {
+    const { useTurnDoneStore, bumpTurnDone } = await import('../src/state/turn-done-store');
+    bumpTurnDone(7);
+    const st = useTurnDoneStore.getState();
+    expect(st.lastDoneSid).toBe(7);
+    bumpTurnDone();
+    expect(useTurnDoneStore.getState().lastDoneSid).toBeNull();
+  });
+
+  it('saveSessionById：后台卷（非活跃）跑完轮次即落盘自己的卷，活跃卷文件不动', async () => {
+    const panel = createChatPanel();
+    panel.setProjectPath(PROJ);
+    // 卷 1（后台，有内容）+ 卷 2（活跃）
+    panel.setAgent({
+      getSession: () => [
+        { role: 'system', content: 'sys' },
+        { role: 'user', content: '后台卷内容' },
+      ],
+      setSession: vi.fn(),
+      dispose: vi.fn(),
+      cascadeAbort: vi.fn(),
+    } as any);
+    const agent2 = {
+      getSession: () => [
+        { role: 'system', content: 'sys' },
+        { role: 'user', content: '活跃卷内容' },
+      ],
+      setSession: vi.fn(),
+      dispose: vi.fn(),
+      cascadeAbort: vi.fn(),
+    };
+    panel.setAgentFactory(async () => agent2 as any);
+    await panel.createNewSession();
+
+    const writes: Array<{ file_path: string; content: string }> = [];
+    mockInvoke.mockReset();
+    mockInvoke.mockImplementation((_cmd: string, payload: any) => {
+      const { method, params } = payload;
+      if (method === 'write_file_content') {
+        writes.push({ file_path: params.file_path as string, content: params.content as string });
+      }
+      return Promise.resolve('ok');
+    });
+
+    // 后台卷 1 跑完（L2：直接调 save 动词——turn-done 分流的终端动作）
+    await panel.saveSessionById(1);
+
+    // 卷 1 落盘（带后台卷内容），卷 2 不动（无 write /2.json）
+    const write1 = writes.find((w) => w.file_path.endsWith('/1.json'));
+    expect(write1).toBeTruthy();
+    expect(JSON.parse(write1?.content).messages.some((m: any) => m.content === '后台卷内容')).toBe(true);
+    expect(writes.find((w) => w.file_path.endsWith('/2.json'))).toBeUndefined();
+  });
+
+  it('saveAllSessions：全部有内容卷落盘（空卷跳过）——beforeunload 收尾', async () => {
+    const panel = createChatPanel();
+    panel.setProjectPath(PROJ);
+    // 卷 1 有内容 + 卷 2 空（仅 system）
+    panel.setAgent({
+      getSession: () => [
+        { role: 'system', content: 'sys' },
+        { role: 'user', content: '卷一' },
+      ],
+      setSession: vi.fn(),
+      dispose: vi.fn(),
+      cascadeAbort: vi.fn(),
+    } as any);
+    const agent2 = {
+      getSession: () => [{ role: 'system', content: 'sys' }],
+      setSession: vi.fn(),
+      dispose: vi.fn(),
+      cascadeAbort: vi.fn(),
+    };
+    panel.setAgentFactory(async () => agent2 as any);
+    await panel.createNewSession();
+
+    const writes: Array<{ file_path: string; content: string }> = [];
+    mockInvoke.mockReset();
+    mockInvoke.mockImplementation((_cmd: string, payload: any) => {
+      const { method, params } = payload;
+      if (method === 'write_file_content') {
+        writes.push({ file_path: params.file_path as string, content: params.content as string });
+      }
+      return Promise.resolve('ok');
+    });
+
+    await panel.saveAllSessions();
+
+    expect(writes.find((w) => w.file_path.endsWith('/1.json'))).toBeTruthy();
+    expect(writes.find((w) => w.file_path.endsWith('/2.json'))).toBeUndefined();
+  });
+
+  it('activeSessionId getter：活跃卷 id 投影（turn-done 分流判据）', async () => {
+    const panel = createChatPanel();
+    panel.setProjectPath(PROJ);
+    panel.setAgent({
+      getSession: () => [{ role: 'system', content: 'sys' }],
+      setSession: vi.fn(),
+      dispose: vi.fn(),
+      cascadeAbort: vi.fn(),
+    } as any);
+    const sid = panel.activeSessionId;
+    expect(sid).toBe(1);
+    panel.setAgent(null as any);
+    expect(panel.activeSessionId).toBeNull();
+  });
+});
+
 // ponytail: stubFactory 目前只在多卷用例内联使用——保留导出面供后续 L 段扩展
 void stubFactory;
 void Session;

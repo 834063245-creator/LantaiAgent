@@ -1,16 +1,29 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT.
 
 // turn-done-store — 聊天轮次完成信号（P1 事件归零：替代 bus 'chat:turn-done' 事件；
 // 见 docs/plans/eventbus-zero-and-ui-split-plan.md）。
 // 发射点：chat-core（_runAgentTurn / sendMessage 的 finally）。
-// 唯一消费者：main.ts（订阅 tick — 增量持久化 appendLastMessage + scheduleAutoSave）。
+// 消费者：shell/rows/persistence（订阅 tick — 增量持久化 appendLastMessage +
+// scheduleAutoSave）。
+// L2（session-ledger）：tick 携带 doneSid（本轮跑完的会话 id）——持久化
+// 「谁跑完存谁」，后台卷跑完立即落盘自己的卷，不再只存当前翻开的卷。
 
 import { create } from 'zustand';
 
-export const useTurnDoneStore = create<{ turnDoneTick: number }>(() => ({ turnDoneTick: 0 }));
+interface TurnDoneState {
+  turnDoneTick: number;
+  /** 最近一次完成轮次的会话 id（F3：后台卷落盘窗口期的闭合依据）。 */
+  lastDoneSid: number | null;
+}
 
-/** 通知聊天轮次已结束（成功/失败/中止皆算）。 */
-export function bumpTurnDone(): void {
-  useTurnDoneStore.setState((s) => ({ turnDoneTick: s.turnDoneTick + 1 }));
+export const useTurnDoneStore = create<TurnDoneState>(() => ({
+  turnDoneTick: 0,
+  lastDoneSid: null,
+}));
+
+/** 通知聊天轮次已结束（成功/失败/中止皆算）。
+ *  sid = 本轮运行的会话 id（「跑完的那卷」——流式目标卷，非当前翻开卷）。 */
+export function bumpTurnDone(sid?: number): void {
+  useTurnDoneStore.setState((s) => ({ turnDoneTick: s.turnDoneTick + 1, lastDoneSid: sid ?? null }));
 }
