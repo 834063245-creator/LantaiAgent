@@ -31,7 +31,7 @@ import {
 } from '../../paper/canvas-math';
 import { composerSubmitOnKey } from '../../paper/ime';
 import { clearPaperMeasureCache, measureBlockHeight } from '../../paper/measure';
-import { makeStrip, type PaperStrip } from '../../paper/selection';
+import { classifyDropZone, makeStrip, type PaperStrip, stashStripPosition } from '../../paper/selection';
 import { translateMessages } from '../../paper/translate';
 import {
   type FlowGeom,
@@ -180,6 +180,19 @@ const STRIP_H = 96;
 /** 稳定空引用——无会话/无钉住时避免无谓重渲染 */
 const EMPTY_PINNED: Record<string, { x: number; y: number }> = {};
 const EMPTY_STRIPS: PaperStrip[] = [];
+
+/** 按点是否落在选区几何矩形内（±4px 容差盖住行间边缘）。
+ *  A2「拎起」命中判据——旧 isPointInRange(target, 0) 对单元素选区恒 false
+ *  （元素 offset 0 边界点在 range 之前），主设计路径大面积失效；按点在
+ *  选区矩形内才是「按在选区上」的本义。 */
+function pointInSelectionRects(range: Range, x: number, y: number): boolean {
+  const rects = range.getClientRects();
+  for (let i = 0; i < rects.length; i++) {
+    const r = rects[i];
+    if (x >= r.left - 4 && x <= r.right + 4 && y >= r.top - 4 && y <= r.bottom + 4) return true;
+  }
+  return false;
+}
 
 export function PaperPanel() {
   const closePanel = useDockStore((s) => s.closePanel);
@@ -359,6 +372,10 @@ export function PaperPanel() {
     const el = canvasRef.current;
     if (!el) return;
     const onWheelNative = (e: WheelEvent) => {
+      // 块内滚动区让路（工具输出/程文/抄录 overflow:auto）：普通滚轮先滚内容，
+      // 不劫持成缩放；Ctrl+滚轮（触控板捏合同款信号）仍是全局缩放——平台惯例分流。
+      const t = e.target instanceof Element ? e.target : null;
+      if (!e.ctrlKey && t?.closest('pre, .pp-out')) return;
       e.preventDefault();
       const rect = el.getBoundingClientRect();
       setView((v) => zoomAt(v, e.clientX - rect.left, e.clientY - rect.top, wheelFactor(e.deltaY)));
@@ -386,6 +403,10 @@ export function PaperPanel() {
   const onCanvasMouseDown = useCallback((e: React.MouseEvent) => {
     // 空白处按下 → 开始平移（块/占位符有自己的处理，不落到这里）
     if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('pp-world')) {
+      if (e.button !== 0) return; // 平移专属左键——右键留上下文菜单、中键留 autoscroll
+      // 不启动原生扫选（画布 user-select:none 是第一道，这里掐掉默认动作：
+      // 幻影扫选曾把平移手势喂进抽纸条通道——平移与选择从此分家）
+      e.preventDefault();
       panningRef.current = { lastX: e.clientX, lastY: e.clientY };
       setPanning(true);
     }
@@ -619,61 +640,257 @@ export function PaperPanel() {
     return { content: { x0, y0, x1, y1 }, viewport: vp };
   }, [flowGeom, pinnedGeom, strips, view, canvasSize.w, canvasSize.h]);
 
-  /* ── 抽纸条手势（待定 #10：选中文字拖离流 = 拷贝语义纸条）──
-   * 手势判据（收尾 2026-08-24 重写）：
-   *   ① 选区锚点在 .pp-block 内（选区来自纸面文本，书眉/composer 等不抢）
-   *   ② mousedown→mouseup 位移 ≥ DRAG_THRESHOLD（判「拖」，普通选中抬手不误触）
-   *   ③ mouseup 落点在画布内且流锚窄带外（带内 = 普通选择/阅读行为）
-   *   ④ 拖块/拖纸条通道让路（它们的 mouseup 各自处理，不抽条）
-   * 来源元信息：块 DOM 带 data-message-id（仅溯源，拷贝语义不变）。 */
-  const stripDragRef = useRef<{ id: string; offX: number; offY: number } | null>(null);
-  const stripGestureRef = useRef<{ sx: number; sy: number } | null>(null);
+  /* ── 抽纸条交互（收尾批 II 2026-08-24：A 拖拽做正 + B 选中浮钮）──
+   * 三条成条路径，共用「带外判据 + 幽灵预览」：
+   *   A1 一步拖：按下→拖选文字→继续拖出流带→带外松手成条。
+   *      拖选中途光标出带即幽灵亮起（隐形悬崖消除——带边界可视）。
+   *   A2 两步拎起：按住已有选区拖动 = 拎起（拦截原生文字拖放，
+   *      选区高亮暂清、幽灵跟光标）；带外松手成条，带内松手恢复选区无感。
+   *   B 浮钮：块内有选区时选区旁浮「抽纸条」钮，点击落流带右侧空地
+   *      （stashStripPosition 自动找空档，不压已有纸条）。
+   * 通道纪律：拖块/拖纸条/画布平移让路；书眉/composer 选区不抢。 */
+  const stripDragRef = useRef<{
+    id: string;
+    sx: number;
+    sy: number;
+    moved: boolean;
+    offX: number;
+    offY: number;
+  } | null>(null);
+  /* 拎起态快照：A2 清选区高亮前存住文本+来源，松手据此成条/恢复 */
+  const liftRef = useRef<{ text: string; messageId: string | undefined; rect: DOMRect | null } | null>(null);
+  /* 幽灵预览：{ 世界坐标, 分区 }——null = 不显示 */
+  const [ghost, setGhost] = useState<{ x: number; y: number; zone: 'flow' | 'strip' } | null>(null);
+  /* A1 拖选路径的按下起点（判拖 + 出带时机 + 起点归属守卫：blockEl 非空才许进成条判定） */
+  const pressStartRef = useRef<{ sx: number; sy: number; blockEl: Element | null } | null>(null);
+
+  /** 成条动作（三路径共用）：文本 + 来源 + 世界落点 → paper-store。 */
+  const spawnStrip = useCallback(
+    (text: string, messageId: string | undefined, x: number, y: number) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      if (!core || sessionKey == null) return;
+      const strip = makeStrip(trimmed, x, y, 480, messageId ? { messageId } : undefined);
+      getPaperStore(core.panelId).getState().addStrip(sessionKey, strip);
+    },
+    [core, sessionKey],
+  );
+
+  /** 屏幕坐标 → 世界坐标（画布 rect 内换算；画布外返回 null）。 */
+  const toWorldInCanvas = useCallback(
+    (clientX: number, clientY: number): { x: number; y: number } | null => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return null;
+      const sx = clientX - rect.left;
+      const sy = clientY - rect.top;
+      if (sx < 0 || sy < 0 || sx > rect.width || sy > rect.height) return null;
+      return screenToWorld(view, sx, sy);
+    },
+    [view],
+  );
+
+  /** 选区快照（块内才认）：{ 文本, 来源块 messageId } | null。 */
+  const snapshotBlockSelection = useCallback((): {
+    text: string;
+    messageId: string | undefined;
+  } | null => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) return null;
+    const anchorNode = sel.anchorNode;
+    const anchorEl = anchorNode instanceof Element ? anchorNode : (anchorNode?.parentElement ?? null);
+    const blockEl = anchorEl?.closest('.pp-block') ?? null;
+    if (!blockEl) return null;
+    const text = sel.toString();
+    if (!text.trim()) return null;
+    return { text, messageId: blockEl.getAttribute('data-message-id') ?? undefined };
+  }, []);
+
+  /* ghost 的 ref 镜像（mouseup 闭包读最新值，不依赖 effect 重挂） */
+  const ghostRef = useRef<{ x: number; y: number; zone: 'flow' | 'strip' } | null>(null);
+  useEffect(() => {
+    ghostRef.current = ghost;
+  }, [ghost]);
+
+  /* 带内松手恢复选区（A2）：原选区包围盒首末行端点做 caret 探测重建近似 range。
+   * 旧实现「probe 找节点后整节全选」会把一句话恢复成整段高亮；端点定位更贴近
+   * 原选区。探测失败/端点非法即放弃——无感路径，用户预期本就是「没拎起来」。 */
+  const restoreSelectionByRect = useCallback((rect: DOMRect) => {
+    if (rect.width === 0 || rect.height === 0) return;
+    const lineProbe = Math.min(rect.height, 22) / 2;
+    const a = document.caretRangeFromPoint(rect.left + 1, rect.top + lineProbe);
+    const b = document.caretRangeFromPoint(rect.right - 1, rect.bottom - lineProbe);
+    if (!a || !b) return;
+    const range = document.createRange();
+    try {
+      if (a.compareBoundaryPoints(Range.START_TO_START, b) <= 0) {
+        range.setStart(a.startContainer, a.startOffset);
+        range.setEnd(b.startContainer, b.startOffset);
+      } else {
+        range.setStart(b.startContainer, b.startOffset);
+        range.setEnd(a.startContainer, a.startOffset);
+      }
+    } catch {
+      return; // 端点不可连成 range（跨树等）——放弃恢复
+    }
+    if (range.collapsed) return;
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  }, []);
+
+  /* ── A：拖拽路径（mousedown/mousemove/mouseup 全局通道）──
+   * 起点归属守卫：只有按下起点落在 .pp-block 内的手势才可进入成条判定——
+   * 否则书脊/topbar/画布平移起手的拖拽会借道活选区误成条（通道串台）。 */
   useEffect(() => {
     const down = (e: MouseEvent) => {
       if (e.button !== 0) return;
-      stripGestureRef.current = { sx: e.clientX, sy: e.clientY };
-    };
-    const up = (e: MouseEvent) => {
-      const start = stripGestureRef.current;
-      stripGestureRef.current = null;
-      // ④ 拖块/拖纸条通道让路
-      if (dragRef.current || stripDragRef.current) return;
+      pressStartRef.current = {
+        sx: e.clientX,
+        sy: e.clientY,
+        blockEl: e.target instanceof Element ? e.target.closest('.pp-block') : null,
+      };
+      // 拖块/拖纸条通道让路
+      if (dragRef.current || stripDragRef.current) {
+        liftRef.current = null;
+        return;
+      }
+      // A2 拎起判定：已有块内选区 + 按点落在选区几何矩形内
       const sel = window.getSelection();
-      if (!sel || sel.isCollapsed) return;
-      // ① 选区锚点必须在纸面块内
-      const anchorNode = sel.anchorNode;
-      const anchorEl = anchorNode instanceof Element ? anchorNode : (anchorNode?.parentElement ?? null);
-      const blockEl = anchorEl?.closest('.pp-block') ?? null;
-      if (!blockEl) return;
-      // ② 必须有拖动位移（防「选中后原地抬手」误触）
-      if (!start || Math.hypot(e.clientX - start.sx, e.clientY - start.sy) < DRAG_THRESHOLD) return;
-      const text = sel.toString();
-      if (!text.trim()) return;
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const sx = e.clientX - rect.left;
-      const sy = e.clientY - rect.top;
-      if (sx < 0 || sy < 0 || sx > rect.width || sy > rect.height) return; // 画布外松手不管
-      const w = screenToWorld(view, sx, sy);
-      // ③ 带外落点才抽
-      if (Math.abs(w.x) <= ANCHOR.bandHalfWidth) return;
-      // 来源元信息（仅溯源展示，拷贝语义不变）
-      const msgId = blockEl.getAttribute('data-message-id') ?? undefined;
-      const strip = makeStrip(text, w.x, w.y, 480, msgId ? { messageId: msgId } : undefined);
-      sel.removeAllRanges(); // 手势完成，清选区
-      if (!core || sessionKey == null) return;
-      getPaperStore(core.panelId).getState().addStrip(sessionKey, strip);
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+      const snap = snapshotBlockSelection();
+      if (!snap) return;
+      const range = sel.getRangeAt(0);
+      if (!pointInSelectionRects(range, e.clientX, e.clientY)) return;
+      // 拎起：清视觉高亮（存快照），进入幽灵预览态
+      liftRef.current = {
+        text: snap.text,
+        messageId: snap.messageId,
+        rect: range.getBoundingClientRect(),
+      };
+      sel.removeAllRanges();
+      e.preventDefault(); // 拦截原生文字拖放/再选
     };
+
+    const move = (e: MouseEvent) => {
+      const w = toWorldInCanvas(e.clientX, e.clientY);
+      if (!w) {
+        setGhost(null);
+        return;
+      }
+      const zone = classifyDropZone(w.x, ANCHOR.bandHalfWidth);
+      // A2 拎起中：幽灵全程跟光标（带内灰/带外亮）
+      if (liftRef.current) {
+        setGhost({ x: w.x, y: w.y, zone });
+        return;
+      }
+      // A1 拖选中：起点须在块内（守卫见上）+ 位移过阈值 + 当前有块内选区 +
+      // 光标已出带 → 幽灵亮起；回带即灭（与 up 的二次校验对称，不留假「松手成条」）
+      const start = pressStartRef.current;
+      if (!start?.blockEl || Math.hypot(e.clientX - start.sx, e.clientY - start.sy) < DRAG_THRESHOLD) return;
+      if (zone === 'flow') {
+        setGhost(null);
+        return;
+      }
+      const snap = snapshotBlockSelection();
+      if (!snap) return;
+      setGhost({ x: w.x, y: w.y, zone });
+    };
+
+    const up = (e: MouseEvent) => {
+      const start = pressStartRef.current;
+      pressStartRef.current = null;
+      const g = ghostRef.current;
+      setGhost(null);
+      // A2 拎起松手：带外成条；带内恢复选区（无感）
+      const lift = liftRef.current;
+      liftRef.current = null;
+      if (lift) {
+        const w = toWorldInCanvas(e.clientX, e.clientY);
+        if (w && classifyDropZone(w.x, ANCHOR.bandHalfWidth) === 'strip') {
+          spawnStrip(lift.text, lift.messageId, w.x, w.y);
+        } else if (lift.rect) {
+          restoreSelectionByRect(lift.rect);
+        }
+        return;
+      }
+      // A1 拖选松手（起点在块内 + 幽灵曾亮起 = 光标曾出带）：带外成条
+      if (g?.zone !== 'strip' || !start?.blockEl) return;
+      const snap = snapshotBlockSelection();
+      if (!snap) return;
+      const w = toWorldInCanvas(e.clientX, e.clientY);
+      if (!w || classifyDropZone(w.x, ANCHOR.bandHalfWidth) !== 'strip') return;
+      window.getSelection()?.removeAllRanges();
+      spawnStrip(snap.text, snap.messageId, w.x, w.y);
+    };
+
     window.addEventListener('mousedown', down);
+    window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
     return () => {
       window.removeEventListener('mousedown', down);
+      window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
     };
-  }, [view, core, sessionKey]);
+  }, [spawnStrip, snapshotBlockSelection, toWorldInCanvas, restoreSelectionByRect]);
 
-  /* 拖纸条（世界坐标跟手——写 paper-store，切卷/持久化由此承接） */
+  /* ── B：选中浮钮（selectionchange 监听——选区出现在块内时浮钮现身）──
+   * 存 live Range 快照而非屏幕坐标：平移/缩放/流布局变化都会触发本组件重渲染，
+   * 浮钮锚点每次渲染现算（旧实现坐标钉死，视口一动钮就与选区脱节）。 */
+  const [selAnchor, setSelAnchor] = useState<{
+    range: Range;
+    text: string;
+    messageId: string | undefined;
+  } | null>(null);
+  useEffect(() => {
+    const onSelChange = () => {
+      const snap = snapshotBlockSelection();
+      if (!snap) {
+        setSelAnchor(null);
+        return;
+      }
+      const sel = window.getSelection();
+      const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+      const rect = range?.getBoundingClientRect();
+      if (!range || !rect || rect.width === 0) {
+        setSelAnchor(null);
+        return;
+      }
+      setSelAnchor({ range: range.cloneRange(), text: snap.text, messageId: snap.messageId });
+    };
+    document.addEventListener('selectionchange', onSelChange);
+    return () => document.removeEventListener('selectionchange', onSelChange);
+  }, [snapshotBlockSelection]);
+
+  /* 浮钮锚点（渲染期现算）：Range 已随源节点卸载失效（虚拟化出窗/重转译替换）
+   * 时 rect 归零 → 收钮。 */
+  let fabPos: { left: number; top: number } | null = null;
+  if (selAnchor) {
+    const fr = selAnchor.range.getBoundingClientRect();
+    if (fr.width > 0) fabPos = { left: fr.right + 8, top: fr.top - 30 };
+  }
+
+  /* 浮钮点击：落流带右侧空地（stashStripPosition 找空档），清选区 */
+  const onStripButton = useCallback(() => {
+    if (!selAnchor) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const selRect = selAnchor.range.getBoundingClientRect();
+    if (!rect || selRect.width === 0) {
+      setSelAnchor(null);
+      return;
+    }
+    // 选区中点的世界 y（x 固定 0——只用纵坐标换算）
+    const worldMidY = screenToWorld(view, 0, selRect.top + selRect.height / 2 - rect.top).y;
+    const pos = stashStripPosition(worldMidY, strips, ANCHOR.bandHalfWidth);
+    spawnStrip(selAnchor.text, selAnchor.messageId, pos.x, pos.y);
+    window.getSelection()?.removeAllRanges();
+    setSelAnchor(null);
+  }, [selAnchor, view, strips, spawnStrip]);
+
+  /* 拖纸条：与拖块同款阈值手势（DRAG_THRESHOLD）——超阈才跟动，过程渲染走本地
+   * stripDragPos，松手一次性写 paper-store（切卷/持久化由此承接）。旧实现逐帧
+   * 写 store：点击即落账 + autosave 抖动 + 每帧全量重渲染；两套拖拽模式自此对齐。 */
   const [dragStripId, setDragStripId] = useState<string | null>(null);
+  const [stripDragPos, setStripDragPos] = useState<{ x: number; y: number } | null>(null);
   const onStripMouseDown = useCallback(
     (e: React.MouseEvent, s: PaperStrip) => {
       if (e.button !== 0) return;
@@ -681,27 +898,43 @@ export function PaperPanel() {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
       const w = screenToWorld(view, e.clientX - rect.left, e.clientY - rect.top);
-      stripDragRef.current = { id: s.id, offX: w.x - s.x, offY: w.y - s.y };
-      setDragStripId(s.id);
+      stripDragRef.current = {
+        id: s.id,
+        sx: e.clientX,
+        sy: e.clientY,
+        moved: false,
+        offX: w.x - s.x,
+        offY: w.y - s.y,
+      };
     },
     [view],
   );
   useEffect(() => {
-    if (!dragStripId) return;
     const move = (e: MouseEvent) => {
       const d = stripDragRef.current;
       if (!d) return;
+      if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < DRAG_THRESHOLD) return;
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
       const w = screenToWorld(view, e.clientX - rect.left, e.clientY - rect.top);
-      if (!core || sessionKey == null) return;
+      if (!d.moved) {
+        d.moved = true;
+        setDragStripId(d.id);
+      }
+      setStripDragPos({ x: w.x - d.offX, y: w.y - d.offY });
+    };
+    const up = (e: MouseEvent) => {
+      const d = stripDragRef.current;
+      stripDragRef.current = null;
+      setDragStripId(null);
+      setStripDragPos(null);
+      if (!d?.moved) return;
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect || !core || sessionKey == null) return;
+      const w = screenToWorld(view, e.clientX - rect.left, e.clientY - rect.top);
       getPaperStore(core.panelId)
         .getState()
         .moveStrip(sessionKey, d.id, w.x - d.offX, w.y - d.offY);
-    };
-    const up = () => {
-      stripDragRef.current = null;
-      setDragStripId(null);
     };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
@@ -709,7 +942,7 @@ export function PaperPanel() {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
     };
-  }, [dragStripId, view, core, sessionKey]);
+  }, [view, core, sessionKey]);
 
   /* 纸条销毁（收尾 2026-08-24：纸条可移除——用户层物件的完整生命周期） */
   const onRemoveStrip = useCallback(
@@ -770,6 +1003,13 @@ export function PaperPanel() {
         </div>
       )}
 
+      {/* B 选中浮钮：块内有选区时现身（锚点随视口现算），点击成条（落流带右侧空地） */}
+      {selAnchor && !ghost && fabPos && (
+        <button type="button" className="pp-strip-fab" style={fabPos} onClick={onStripButton}>
+          抽纸条
+        </button>
+      )}
+
       {/* 书脊列（C8 多卷切换）：左缘恒显——点脊换卷/列尾另起一卷/双击题签改名 */}
       <SpineRack core={core} />
 
@@ -790,34 +1030,49 @@ export function PaperPanel() {
             <span className="pp-origin-label">origin</span>
           </div>
 
-          {/* 纸条（V3a 抽纸条：拷贝语义快照，可拖动、可销毁——收尾 2026-08-24） */}
-          {strips.map((s) => (
-            // biome-ignore lint/a11y/noStaticElementInteractions: 纸条拖拽面（同块拖拽 D-R2-1 手势族）
+          {/* 幽灵预览（抽纸条拖拽过程反馈）：带内灰（不成条）/ 带外亮朱砂（松手成条） */}
+          {ghost && (
             <div
-              key={s.id}
-              className={`pp-strip${dragStripId === s.id ? ' pp-dragging' : ''}`}
-              style={{ left: s.x, top: s.y, width: s.w }}
-              onMouseDown={(e) => onStripMouseDown(e, s)}
+              className={`pp-strip-ghost${ghost.zone === 'strip' ? ' pp-strip-ghost--ok' : ''}`}
+              style={{ left: ghost.x + 12, top: ghost.y + 12 }}
             >
-              <div className="pp-strip-head">
-                <span className="pp-strip-tag">纸条</span>
-                <button
-                  type="button"
-                  className="pp-strip-remove"
-                  title="销毁纸条"
-                  aria-label="销毁纸条"
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRemoveStrip(s.id);
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="pp-strip-body">{s.text}</div>
+              <span className="pp-strip-ghost-tag">纸条</span>
+              <span className="pp-strip-ghost-text">{ghost.zone === 'strip' ? '松手成条' : '拖出流带成条'}</span>
             </div>
-          ))}
+          )}
+
+          {/* 纸条（V3a 抽纸条：拷贝语义快照，可拖动、可销毁——收尾 2026-08-24） */}
+          {strips.map((s) => {
+            const stripDragged = dragStripId === s.id;
+            const stripPos = stripDragged && stripDragPos ? stripDragPos : { x: s.x, y: s.y };
+            return (
+              // biome-ignore lint/a11y/noStaticElementInteractions: 纸条拖拽面（同块拖拽 D-R2-1 手势族）
+              <div
+                key={s.id}
+                className={`pp-strip${stripDragged ? ' pp-dragging' : ''}`}
+                style={{ left: stripPos.x, top: stripPos.y, width: s.w }}
+                onMouseDown={(e) => onStripMouseDown(e, s)}
+              >
+                <div className="pp-strip-head">
+                  <span className="pp-strip-tag">纸条</span>
+                  <button
+                    type="button"
+                    className="pp-strip-remove"
+                    title="销毁纸条"
+                    aria-label="销毁纸条"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemoveStrip(s.id);
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="pp-strip-body">{s.text}</div>
+              </div>
+            );
+          })}
 
           {/* 流序列：flow 块按序渲染（V3a 视口窗口化——视口外不进 DOM）；
            * pinned 块渲染占位符（原序位，随窗口化）+ 钉住实体（矩形相交测试） */}
@@ -831,6 +1086,7 @@ export function PaperPanel() {
                   className={`pp-block pp-${b.kind}`}
                   style={{ left: slot.x, top: slot.y, width: b.w }}
                   data-message-id={b.source.messageId}
+                  onDragStart={(e) => e.preventDefault()}
                 >
                   <BlockView
                     block={b}
@@ -858,6 +1114,7 @@ export function PaperPanel() {
                   className={['pp-block', `pp-${b.kind}`, 'pp-pinned', isDragged ? 'pp-dragging' : ''].join(' ')}
                   style={{ left: pos.x, top: pos.y, width: b.w }}
                   data-message-id={b.source.messageId}
+                  onDragStart={(e) => e.preventDefault()}
                 >
                   <BlockView
                     block={b}

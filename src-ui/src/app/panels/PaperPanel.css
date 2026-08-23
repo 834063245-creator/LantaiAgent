@@ -123,12 +123,15 @@
   background: var(--paper-deep);
 }
 
-/* ── 画布区（世界容器的宿主）── */
+/* ── 画布区（世界容器的宿主）──
+ * user-select:none：空白画布不参与原生扫选——平移手势与文字选择分家
+ * （幻影扫选曾借道活选区把平移喂进抽纸条通道）；可选性由 .pp-block 自持。 */
 .pp-canvas {
   position: relative;
   flex: 1;
   overflow: hidden;
   cursor: grab;
+  user-select: none;
 }
 .pp-canvas.pp-panning {
   cursor: grabbing;
@@ -187,7 +190,17 @@
   border-radius: 0;
   padding: 0;
   color: var(--ink-1);
+  cursor: auto; /* 文本区 I-beam（画布 grab 不再继承进来——「看着能拖实际是选」的观感纠偏） */
   user-select: text;
+}
+
+/* 结构件不进选区：文类签/状态签/收回钮/占位钮是界面注记不是正文——
+ * 跨块扫选与 Ctrl+A 曾把它们卷进 sel.toString()（抽出的纸条带签名）。 */
+.pp-kind,
+.pp-status,
+.pp-unpin,
+.pp-ghost {
+  user-select: none;
 }
 
 /* 文类签（页边注 rubric）：挂块左缘外，右对齐双行 + hairline 连线 */
@@ -754,6 +767,55 @@
 .pp-composer button:hover {
   background: var(--ink-1);
   color: var(--paper);
+}
+
+/* ── 抽纸条交互件（收尾批 II：B 浮钮 + A 幽灵预览）── */
+/* 浮钮：块内选区旁浮现——发现性入口（不依赖手势知识） */
+.pp-strip-fab {
+  position: fixed;
+  z-index: 300;
+  font-family: var(--f-song);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  padding: 4px 10px;
+  border: 1px solid var(--seal);
+  background: var(--paper);
+  color: var(--seal-deep);
+  cursor: pointer;
+  box-shadow: var(--elev-raise);
+  border-radius: 0;
+}
+.pp-strip-fab:hover {
+  background: var(--seal);
+  color: var(--paper);
+}
+/* 幽灵预览：拖拽过程反馈——带内灰（不成条）/ 带外朱砂（松手成条） */
+.pp-strip-ghost {
+  position: absolute;
+  z-index: 55;
+  pointer-events: none;
+  border: 1px dashed var(--ink-4);
+  background: color-mix(in oklch, var(--paper) 88%, transparent);
+  padding: 6px 10px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.pp-strip-ghost--ok {
+  border-color: var(--seal);
+  color: var(--seal-deep);
+  background: color-mix(in oklch, var(--paper) 94%, var(--seal) 6%);
+}
+.pp-strip-ghost-tag {
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.24em;
+}
+.pp-strip-ghost-text {
+  font-family: var(--f-song);
+  letter-spacing: 0.1em;
 }
 
 /* ── 纸条（V3a 抽纸条：拷贝语义快照——用户层物件；收尾 2026-08-24 完整化）── */
