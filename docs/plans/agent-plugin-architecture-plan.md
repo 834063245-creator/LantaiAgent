@@ -97,7 +97,7 @@ HoloGram 单进程内暂不需要，P4 插件边界时再评估。
 |---|---|
 | C11 | 路线 B：第三方插件 = manifest + 工具声明（zod schema 可序列化形态）+ capability 表项，运行时挂载无需重编译；权限声明接入 permissions.json 体系；声明形状与 DSH L1 契约同构 |
 | C12 | 路线 A：dsh-compat 装载层能加载一个真实 L1 工具类 DSH 插件（e2e），含 peer 版本协商与漂移检测 |
-| C13 | P4a 契约调研笔记存在且覆盖最小子集 + 依赖面分布（两条路线共用输入） |
+| C13 | ~~P4a 契约调研笔记存在且覆盖最小子集 + 依赖面分布（两条路线共用输入）~~ ✅ 已毕（2026-08-23，[`docs/research/p4a-dsh-contract-notes.md`](../research/p4a-dsh-contract-notes.md)：模型面三字段同构、JSON Schema 公共分母实锤、226 包 peer 全量分布、路线 A 启动信号改为「peer 出现非 workspace 版本」） |
 
 ## 4. 设计决策
 
