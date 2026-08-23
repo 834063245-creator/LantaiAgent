@@ -56,21 +56,20 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
   });
 
   it('用户 preset 叠加在用户层 patch 之上：同 id 后写胜前写（preset 层最上）', () => {
-    // ② 批（2026-08-23）：builtin/fs 迁插件通道——用户层禁用探针改 builtin/wait
+    // ①c（2026-08-23）：builtin/wait 迁插件通道——探针改 builtin/web 单行
+    // （用户层先禁后启 + minimal preset 层禁——三层同 id 的后写胜链）
     const userPatch: CompositionPatch = {
       tools: [
-        { id: 'builtin/wait', disabled: true },
+        { id: 'builtin/web', disabled: true },
         { id: 'builtin/web', disabled: false }, // 用户层启用 web
       ],
     };
     // minimal 的 preset 层禁 web → 后写胜 → web 最终被禁
     const r = resolvePresetComposition('minimal', { userPatch });
     expect(ids(r.tools)).not.toContain('builtin/web');
-    expect(ids(r.tools)).not.toContain('builtin/wait'); // 用户层禁用仍生效
     // 反向：standard 无 preset 增量 → 用户层启用 web 生效
     const std = resolvePresetComposition('standard', { userPatch });
     expect(ids(std.tools)).toContain('builtin/web');
-    expect(ids(std.tools)).not.toContain('builtin/wait');
   });
 
   it('用户 preset 表解析：userPresets 命中即用其 patch', () => {
@@ -89,22 +88,23 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
   });
 
   it('内置与用户同 id → 内置胜（earlier root wins）', () => {
+    // 影子补丁禁 plugin 行（wait 贡献行）——内置 minimal 胜出后影子不生效
     const shadow = {
       id: 'minimal',
       builtin: false,
-      patch: { tools: [{ id: 'builtin/wait', disabled: true }] } as CompositionPatch,
+      patch: { tools: [{ id: 'plugin/hologram/wait-domain/wait', disabled: true }] } as CompositionPatch,
     };
     const r = resolvePresetComposition('minimal', { userPresets: [shadow] });
     // 内置 minimal 生效（禁 browser-desktop/web），影子补丁的 wait 禁用不出现
     expect(ids(r.tools)).not.toContain('builtin/browser-desktop');
-    expect(ids(r.tools)).toContain('builtin/wait');
+    expect(ids(r.tools)).not.toContain('plugin/hologram/wait-domain/wait');
   });
 
   it('未知 id → factory 兜底（用户层仍叠）', () => {
     const r = resolvePresetComposition('ghost', {
-      userPatch: { tools: [{ id: 'builtin/wait', disabled: true }] },
+      userPatch: { tools: [{ id: 'builtin/web', disabled: true }] },
     });
-    expect(ids(r.tools)).toEqual(ids(builtinToolRows()).filter((id) => id !== 'builtin/wait'));
+    expect(ids(r.tools)).toEqual(ids(builtinToolRows()).filter((id) => id !== 'builtin/web'));
   });
 
   it('broken preset（patch = null）→ factory 兜底不炸', () => {

@@ -86,7 +86,7 @@ describe('composition/roster（S2-0 组合引擎）', () => {
   it('确定性：同输入两次解析 id 序全等（纯函数）', () => {
     const layers = [
       {
-        tools: [{ id: 'builtin/wait', disabled: true }],
+        tools: [{ id: 'builtin/web', disabled: true }],
         prompt: [{ insert: [{ id: 'det-probe', text: 'X' }] }],
       },
     ];
@@ -102,20 +102,21 @@ describe('composition/roster（S2-0 组合引擎）', () => {
   // ── disable 语义 ──
 
   it('disable：tools 行移除、其余保序、diagnostics 记录', () => {
-    // ② 批（2026-08-23）：builtin/fs・builtin/shell 迁插件通道——禁用探针
-    // 改用存活的 builtin/web + builtin/wait
+    // ①c（2026-08-23）：builtin/wait 迁插件通道——禁用探针改 builtin/web
+    // （builtin 行表）+ plugin/hologram/wait-domain/wait（贡献行，无通道
+    // 环境不在解析域——改 builtin/browser-desktop 作第二行）
     const r = resolveRoster(factoryComposition(), [
       {
         tools: [
           { id: 'builtin/web', disabled: true },
-          { id: 'builtin/wait', disabled: true },
+          { id: 'builtin/browser-desktop', disabled: true },
         ],
       },
     ]);
-    const expected = ids(builtinToolRows()).filter((id) => id !== 'builtin/web' && id !== 'builtin/wait');
+    const expected = ids(builtinToolRows()).filter((id) => id !== 'builtin/web' && id !== 'builtin/browser-desktop');
     expect(ids(r.tools)).toEqual(expected);
     // 诊断按表序收集（描述终态组合，与 patch 声明序无关）
-    expect(r.diagnostics.disabled).toEqual(['builtin/web', 'builtin/wait']);
+    expect(r.diagnostics.disabled).toEqual(['builtin/web', 'builtin/browser-desktop']);
   });
 
   it('disable：已插入段可禁用（prompt 域现存寻址面）/ capability 同语义', () => {
@@ -157,8 +158,8 @@ describe('composition/roster（S2-0 组合引擎）', () => {
 
   it('disable(false) = 显式启用：后层覆盖先层禁用（last-write-wins）', () => {
     const r = resolveRoster(factoryComposition(), [
-      { tools: [{ id: 'builtin/wait', disabled: true }] },
-      { tools: [{ id: 'builtin/wait', disabled: false }] },
+      { tools: [{ id: 'builtin/web', disabled: true }] },
+      { tools: [{ id: 'builtin/web', disabled: false }] },
     ]);
     expect(ids(r.tools)).toEqual(ids(builtinToolRows())); // 全量（wait 被重新启用）
     expect(r.diagnostics.disabled).toEqual([]);
@@ -355,13 +356,13 @@ describe('composition/roster（S2-0 组合引擎）', () => {
     // 纯函数 throw = 无输出（不存在「前几条已应用」的中间态可泄漏）；
     // 本条钉住该契约防回归（一旦改成收集错误继续跑，这里立刻红）。
     const layers = [
-      { tools: [{ id: 'builtin/wait', disabled: true }] },
+      { tools: [{ id: 'builtin/web', disabled: true }] },
       { tools: [{ id: 'builtin/nope', disabled: true }] },
     ];
     expect(() => resolveRoster(factoryComposition(), layers)).toThrow(CompositionPatchError);
     // 同输入去掉坏条目后正常应用（失败不污染调用方状态——每次调用全新工作列表）
     const ok = resolveRoster(factoryComposition(), [layers[0]]);
-    expect(ids(ok.tools)).not.toContain('builtin/wait');
+    expect(ids(ok.tools)).not.toContain('builtin/web');
   });
 
   // ── parseCompositionPatch（zod 校验层）──
@@ -437,13 +438,13 @@ describe('composition/roster（S2-0 组合引擎）', () => {
 
     it('合法 patch 全链路：parse → resolve 生效', () => {
       const parsed = parseCompositionPatch({
-        tools: [{ id: 'builtin/wait', disabled: true }],
+        tools: [{ id: 'builtin/web', disabled: true }],
         prompt: [{ insert: [{ id: 'tail', text: '尾段' }] }],
       });
       expect(parsed.ok).toBe(true);
       if (!parsed.ok) return;
       const r = resolveRoster(factoryComposition(), [parsed.patch]);
-      expect(ids(r.tools)).not.toContain('builtin/wait');
+      expect(ids(r.tools)).not.toContain('builtin/web');
       expect(r.prompt[r.prompt.length - 1].id).toBe('tail');
     });
   });

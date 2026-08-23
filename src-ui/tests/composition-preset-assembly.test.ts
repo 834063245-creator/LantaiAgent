@@ -198,14 +198,14 @@ describe('S4-1a preset-assembly：cache + 选择同步 + boot 应用', () => {
 
   it('用户层 hash 变更 → cache 失效（R13：改用户层后新装配用新组合）', () => {
     const before = resolveCurrentComposition('standard');
-    registerUserPatch({ tools: [{ id: 'builtin/wait', disabled: true }] });
+    registerUserPatch({ tools: [{ id: 'builtin/web', disabled: true }] });
     const after = resolveCurrentComposition('standard');
     expect(after).not.toBe(before);
-    expect(ids(after.tools)).not.toContain('builtin/wait');
+    expect(ids(after.tools)).not.toContain('builtin/web');
     // preset 层叠加：minimal 在用户层之上再禁（同 id 后写胜）
     const stacked = resolveCurrentComposition('minimal');
     expect(ids(stacked.tools)).not.toContain('builtin/web');
-    expect(ids(stacked.tools)).not.toContain('builtin/wait');
+    expect(ids(stacked.tools)).not.toContain('builtin/web');
   });
 
   it('S4-4 甲：贡献变更 → cache 代数失效 + reapplyComposition 回写 store', async () => {
@@ -214,7 +214,7 @@ describe('S4-1a preset-assembly：cache + 选择同步 + boot 应用', () => {
     const root = new Context();
     await root.plugin(compositionServicesPlugin);
     // 用户层在册 + store ok 态（reapply 的 ok 路径样本）
-    registerUserPatch({ tools: [{ id: 'builtin/wait', disabled: true }] });
+    registerUserPatch({ tools: [{ id: 'builtin/web', disabled: true }] });
     useCompositionStore.getState().setResolved(resolveCurrentComposition('standard'), 'roster.patch.yml');
     const before = resolveCurrentComposition('standard');
     expect(before.tools.some((r) => r.id === 'plugin/acme/probe')).toBe(false);
@@ -240,7 +240,7 @@ describe('S4-1a preset-assembly：cache + 选择同步 + boot 应用', () => {
     const s = useCompositionStore.getState();
     expect(s.status).toBe('ok');
     expect(ids(s.resolved.tools)).toContain('plugin/acme/probe');
-    expect(ids(s.resolved.tools)).not.toContain('builtin/wait');
+    expect(ids(s.resolved.tools)).not.toContain('builtin/web');
 
     // 贡献 dispose → 代数再变 → 解析产物不含该行；reapply（factory 路径重新快照）
     dispose();

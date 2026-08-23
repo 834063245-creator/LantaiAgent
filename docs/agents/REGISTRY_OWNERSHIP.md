@@ -13,8 +13,8 @@
 
 | 注册点 | owner | 清理点 | 自动清理 |
 |---|---|---|---|
-| `composition/tool-rows.ts`（9 内置族行表，S1-3 起 builder 循环装配 hologram/web/ask/skill/memory/task/agent/browser-desktop/wait；行内重名装载期拒绝。S4-4 甲：行表与插件贡献行同经 factoryComposition 快照进组合解析域——单循环装配） | `buildToolRegistry` → 调用方（workspace/Runtime） | registry 本身无全局状态，随 Agent 实例 GC | ✅ 随实例 |
-| `plugins/coding-domain-plugins.ts`（P4 B①+② 起 git/search/fs/shell/agent-isolation 五族工具经 ctx.tools 贡献；`composition/plugin-tool-rows.ts` 折算——S4-4 甲起经 factoryComposition 快照进组合解析域，buildToolRegistry 单循环统一装配，实例缓存跨装配） | 插件 fiber `ctx.effect`（loader 装载期注册） | fiber dispose → 贡献注销 + 实例缓存清空 | ✅ 显式 |
+| `composition/tool-rows.ts`（①c 后 2 内置族行表 web/browser-desktop，S1-3 起 builder 循环装配；行内重名装载期拒绝。S4-4 甲：行表与插件贡献行同经 factoryComposition 快照进组合解析域——单循环装配） | `buildToolRegistry` → 调用方（workspace/Runtime） | registry 本身无全局状态，随 Agent 实例 GC | ✅ 随实例 |
+| `plugins/coding-domain-plugins.ts`（P4 B①+②+①c 起十二族工具经 ctx.tools 贡献——无状态五族实例缓存跨装配，①c 七族 noCache 每装配重创；`composition/plugin-tool-rows.ts` 折算——S4-4 甲起经 factoryComposition 快照进组合解析域，buildToolRegistry 单循环统一装配） | 插件 fiber `ctx.effect`（loader 装载期注册） | fiber dispose → 贡献注销 + 实例缓存清空 | ✅ 显式 |
 | `runtime/agent-builder.ts:269`（compaction 工具，`registerCompactionTools`） | createAgent | 同上 | ✅ 随实例 |
 | `mcp/registry.ts` `registerMcpTools` | builder/调用方；`unregisterMcpTools` 已提供对称清理 | 当前调用方（builder:256）未调用——随 registry GC | ✅ 随实例（豁免：批量注册，整体释放） |
 | `runtime/runtime.ts:632`（registry 克隆循环） | createAgent → Agent 实例 | 随 Agent 实例 | ✅ 随实例 |

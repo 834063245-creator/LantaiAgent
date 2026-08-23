@@ -34,7 +34,9 @@ prompt:
 ```
 
 （S4-4 甲起插件工具行 `plugin/<插件名>/<工具名>` 与第一方 prompt 段
-id 均可寻址；完整寻址域见 §「四个行域」。）
+id 均可寻址；①c 后 builtin 行表仅剩 web/browser-desktop 两行，其余族
+全部走 `plugin/hologram/<域>-domain/…` 贡献行寻址。完整寻址域见
+§「四个行域」。）
 
 保存即生效（S4-2 热重载）：**新 Agent 装配（新会话）即用新组合；在途
 会话保持创建时点的组合不变**。没有这个文件（或文件为空）= 出厂组合。
@@ -43,7 +45,7 @@ id 均可寻址；完整寻址域见 §「四个行域」。）
 
 | 域 | 行 id 举例 | 寻址对象 |
 |---|---|---|
-| `tools` | `builtin/hologram`、`builtin/web`、`builtin/wait`…；`plugin/hologram/git-domain/git_status`… | 内置工具族（真源 `src-ui/src/composition/tool-rows.ts`，现存 9 行）+ 插件贡献行（`ctx.tools` 通道折算，S4-4 甲起进寻址域——git/search/fs/shell/agent-isolation 五族共 34 行，粒度 = 单工具） |
+| `tools` | `builtin/web`、`builtin/browser-desktop`；`plugin/hologram/<域>-domain/<工具名>`… | 内置工具族（真源 `src-ui/src/composition/tool-rows.ts`，现存 2 行）+ 插件贡献行（`ctx.tools` 通道折算，S4-4 甲起进寻址域——git/search/fs/shell/agent-isolation + wait/ask/memory/skill/task/agent/hologram 十二族；粒度 = 单工具行或 hologram 整族行） |
 | `prompt` | 第一方段 id（`behavior-rules`、`multi-agent`…）、已插入段 id、插件段贡献 id | system prompt 段（真源 `prompt-sections.ts` `firstPartyPromptSections()`——13 段经 `ctx.prompts` 通道贡献；S4-4 甲起全量进寻址域：disable/text 覆盖/insert 锚定第一方段 id 均合法） |
 | `capabilities` | `plan-tools`、`converge-tools`、`graph-hooks`… | 会话级工具/hook（真源 `agent/blueprint.ts`；id = capability key） |
 | `shell` | `hologram/shell-graph`、`hologram/shell-cold-start`… | 壳引导行（真源 `composition/shell-rows.ts`；行实现 `src-ui/src/shell/rows/*`） |
@@ -51,12 +53,13 @@ id 均可寻址；完整寻址域见 §「四个行域」。）
 > **寻址域（S4-4 甲，2026-08-23）**：patch/preset 的组合解析域 = builtin
 > 行表 + **当前通道贡献快照**（`factoryComposition()` 读取时点收编——插件
 > 工具行 `plugin/<插件名>/<工具名>` 与 prompt 段贡献都在寻址面内）。
-> 寻址粒度：插件工具行 = 单工具（原 `builtin/<族>` 整族行 id 已随五族迁移
-> 退役）；prompt 段 = 段 id 直寻。无通道贡献装载的环境（理论态——生产
-> boot 必有第一方插件）解析域退化为 builtin 行 + 空段表。贡献的
-> register/dispose = 组合输入变更：下次解析自动重取（cache 代数失效），
-> 在途会话不动（创建时点冻结）。卸载/禁用整个插件仍走插件开关
-> （设置 → 插件），不走组合 patch。
+> 寻址粒度：插件工具行 = 单工具（原 `builtin/<族>` 整族行 id 已随十二族
+> 迁移退役；hologram 是整族行 `plugin/hologram/engine-domain/tools`——
+> 名字面装配期才知，整族一行寻址）；prompt 段 = 段 id 直寻。无通道贡献
+> 装载的环境（理论态——生产 boot 必有第一方插件）解析域退化为 builtin 行
+> + 空段表。贡献的 register/dispose = 组合输入变更：下次解析自动重取
+> （cache 代数失效），在途会话不动（创建时点冻结）。卸载/禁用整个插件
+> 仍走插件开关（设置 → 插件），不走组合 patch。
 
 完整 id 清单以各真源文件为准——它们是唯一权威源。
 

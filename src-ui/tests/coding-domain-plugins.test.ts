@@ -2,16 +2,18 @@
 // SPDX-License-Identifier: MIT
 
 // codingExec 无状态族域第一方插件（P4 B① git/search + ② fs/shell/
-// agent-isolation）钉住面：
+// agent-isolation + ①c wait/ask/memory/skill/task/agent/hologram）钉住面：
 //   1. 贡献清单：一工具一贡献，id = '<插件名>/<工具名>'，注册序 = 族声明序；
 //   2. factory 装配语义：需要 rowCtx.codingExec（缺则显式 throw）；工具 execute
 //      经 rowCtx.codingExec 穿透执行；同族贡献共享首装配建族（族内 exec 锁存）；
 //   3. 生命周期：贡献注册经 ctx.effect——fiber dispose 后贡献消失；
 //   4. 折算面：pluginToolRows() 行 id = 'plugin/<贡献 id>'，装配真实可用；
-//   5. 端到端：经 buildToolRegistry 真实装配后五族旧名与域工具在册
-//      （可见面零漂移由 verify:convergence 的 tool-schemas 快照守护）。
-// 五族名序钉（手写清单对拍声明序）在本文件——git/search 搬自
-// composition-tool-rows.test.ts（B①），fs/shell/agent-isolation 搬自同处（②）。
+//   5. 端到端：经 buildToolRegistry 真实装配后全部族旧名与域工具在册
+//      （可见面零漂移由 verify:convergence 的 tool-schemas 快照守护）；
+//   6. ①c 无缓存行：七族贡献声明 noCache——每装配重创实例（装配期真值
+//      直收 rowCtx，无跨装配串扰）；hologram 是整组形态（一行贡献承载
+//      动态 schema 面 + dataflow 对——名字面装配期才知）。
+// 无状态五族名序钉（手写清单对拍声明序）在本文件；①c 族名序同此。
 
 import { describe, expect, it } from 'vitest';
 import { SubAgentPool } from '../src/agent/coordinator';
@@ -28,11 +30,18 @@ import { pluginToolRows } from '../src/composition/plugin-tool-rows';
 import { activeToolContributions, compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
 import {
+  agentDomainPlugin,
   agentIsolationDomainPlugin,
+  askDomainPlugin,
   fsDomainPlugin,
   gitDomainPlugin,
+  hologramDomainPlugin,
+  memoryDomainPlugin,
   searchDomainPlugin,
   shellDomainPlugin,
+  skillDomainPlugin,
+  taskDomainPlugin,
+  waitDomainPlugin,
 } from '../src/plugins/coding-domain-plugins';
 
 /** git 族工具名序（手写清单——对拍插件贡献序，防声明序漂移无人知）。 */
@@ -112,6 +121,25 @@ async function applyPlugins(root: Context) {
   const shellFiber = await root.plugin(shellDomainPlugin);
   const isolationFiber = await root.plugin(agentIsolationDomainPlugin);
   return { gitFiber, searchFiber, fsFiber, shellFiber, isolationFiber };
+}
+
+/** 应用全部十二域插件（含 ①c 七族——生产清单序同 firstPartyToolPlugins）。 */
+async function applyAllPlugins(root: Context) {
+  await root.plugin(compositionServicesPlugin);
+  const fibers = [];
+  fibers.push(await root.plugin(hologramDomainPlugin));
+  fibers.push(await root.plugin(gitDomainPlugin));
+  fibers.push(await root.plugin(searchDomainPlugin));
+  fibers.push(await root.plugin(fsDomainPlugin));
+  fibers.push(await root.plugin(shellDomainPlugin));
+  fibers.push(await root.plugin(agentIsolationDomainPlugin));
+  fibers.push(await root.plugin(askDomainPlugin));
+  fibers.push(await root.plugin(skillDomainPlugin));
+  fibers.push(await root.plugin(memoryDomainPlugin));
+  fibers.push(await root.plugin(taskDomainPlugin));
+  fibers.push(await root.plugin(agentDomainPlugin));
+  fibers.push(await root.plugin(waitDomainPlugin));
+  return fibers;
 }
 
 /** 全部 fiber 逆序拆卸。 */
@@ -255,5 +283,96 @@ describe('插件贡献与族工厂真源对拍', () => {
     const ids = activeToolContributions().map((c) => c.id.split('/').slice(2).join('/'));
     expect(ids.sort()).toEqual([...expected].sort());
     await disposeAll(fibers);
+  });
+});
+
+// ── ①c 无缓存行（装配期真值族，2026-08-23 拍板 #2 路线一）──
+
+describe('①c 无缓存行：wait/ask + memory/skill/task/agent + hologram 七族', () => {
+  it('七族贡献声明 noCache（每装配重创——pluginToolRows 缓存对其不生效）', async () => {
+    const root = new Context();
+    const fibers = await applyAllPlugins(root);
+    const noCacheIds = activeToolContributions()
+      .filter((c) => c.noCache)
+      .map((c) => c.id);
+    // 等价断言：noCache 贡献两装配产出不同实例（缓存族是同实例）
+    const waitRow = pluginToolRows().find((r) => r.id === 'plugin/hologram/wait-domain/wait');
+    if (!waitRow) throw new Error('wait 贡献行未注册');
+    const ctxA = makeRowCtx(recordingExec([]));
+    const ctxB = makeRowCtx(recordingExec([]));
+    const toolA = await waitRow.factory(ctxA);
+    const toolB = await waitRow.factory(ctxB);
+    expect(toolB[0]).not.toBe(toolA[0]); // 无缓存：每装配新实例
+    expect(toolB[0]!.name()).toBe('wait');
+    // 对照：无状态族（缓存行）两装配同实例
+    const shellRow = pluginToolRows().find((r) => r.id === 'plugin/hologram/shell-domain/run_shell');
+    if (!shellRow) throw new Error('run_shell 贡献行未注册');
+    const shellA = await shellRow.factory(ctxA);
+    const shellB = await shellRow.factory(ctxB);
+    expect(shellB[0]).toBe(shellA[0]);
+    expect(noCacheIds.length).toBeGreaterThan(0);
+    for (const fiber of [...fibers].reverse()) await fiber.dispose();
+    await root[Symbol.asyncDispose]?.();
+  });
+
+  it('装配期真值直收 rowCtx：ui 回调每次装配换新（ask 域）', async () => {
+    const root = new Context();
+    const fibers = await applyAllPlugins(root);
+    const askRow = pluginToolRows().find((r) => r.id === 'plugin/hologram/ask-domain/ask_user');
+    if (!askRow) throw new Error('ask_user 贡献行未注册');
+    const callsA: string[] = [];
+    const ctxA = {
+      ...makeRowCtx(recordingExec([])),
+      ui: {
+        askUser: (req: { id: string; callback: (res: string[]) => void }) => {
+          callsA.push(req.id);
+          req.callback(['ok']);
+        },
+      },
+    };
+    const toolA = await askRow.factory(ctxA);
+    const out = await toolA[0]!.execute({ question: 'q' });
+    expect(callsA).toHaveLength(1); // 装配 A 的 ui 回调被调用
+    expect(out).toContain('ok');
+    for (const fiber of [...fibers].reverse()) await fiber.dispose();
+    await root[Symbol.asyncDispose]?.();
+  });
+
+  it('hologram 整组贡献：graphData 缺帐空集；有图时 mock schema + dataflow 对产出', async () => {
+    const root = new Context();
+    const fibers = await applyAllPlugins(root);
+    const row = pluginToolRows().find((r) => r.id === 'plugin/hologram/engine-domain/tools');
+    if (!row) throw new Error('hologram 整组贡献行未注册');
+    // 缺帐 = 空集（原 if (graphData) 分支）
+    const empty = await row.factory({ ...makeRowCtx(recordingExec([])), graphData: undefined });
+    expect(empty).toEqual([]);
+    // 有图（jsdom mock 通道：loadHologramSchemas 走 mockInvoke 返回 36 schema）
+    const tools = await row.factory({ ...makeRowCtx(recordingExec([])), graphData: { nodes: [] } });
+    const names = tools.map((t) => t.name());
+    expect(names).toContain('dataflow_save');
+    expect(names).toContain('dataflow_query');
+    expect(names).toContain('search_symbols'); // mock schema 面（graph/ops/lsp 域的旧名）
+    expect(names.some((n) => n === 'explore_deps' || n === 'resolve_call')).toBe(true);
+    // 无缓存：两次装配重创
+    const again = await row.factory({ ...makeRowCtx(recordingExec([])), graphData: { nodes: [] } });
+    expect(again[0]).not.toBe(tools[0]);
+    for (const fiber of [...fibers].reverse()) await fiber.dispose();
+    await root[Symbol.asyncDispose]?.();
+  });
+
+  it('条件族缺帐 = 空集（memory/skill/agent 域——原行 if 分支语义）', async () => {
+    const root = new Context();
+    const fibers = await applyAllPlugins(root);
+    const rows = pluginToolRows();
+    const base = makeRowCtx(recordingExec([]));
+    const memoryRow = rows.find((r) => r.id === 'plugin/hologram/memory-domain/hologram_memory_list');
+    const skillRow = rows.find((r) => r.id === 'plugin/hologram/skill-domain/Skill');
+    const agentRow = rows.find((r) => r.id === 'plugin/hologram/agent-domain/agent_spawn');
+    if (!memoryRow || !skillRow || !agentRow) throw new Error('①c 条件族贡献行未注册');
+    expect(await memoryRow.factory(base)).toEqual([]); // memoryManager 缺帐
+    expect(await skillRow.factory(base)).toEqual([]); // skillRegistry 缺帐
+    expect(await agentRow.factory(base)).toEqual([]); // subAgentSpawner 缺帐
+    for (const fiber of [...fibers].reverse()) await fiber.dispose();
+    await root[Symbol.asyncDispose]?.();
   });
 });

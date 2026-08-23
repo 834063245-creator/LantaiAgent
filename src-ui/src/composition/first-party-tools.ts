@@ -14,25 +14,47 @@
 //      引导入口，本腰只服务测试/工具环境（它们不跑 main.ts）。
 //
 // 语义提醒：通道内的贡献经 pluginToolRows 实例缓存（首装配实例跨装配
-// 复用）；收 rowCtx 的贡献必须自担语义等价（见 services.ts ToolContribution
-// ——清单内五族均为无状态 codingExec 族，语义等价勘定见
-// plugins/coding-domain-plugins.ts 文件头）。
+// 复用）——无状态五族缓存语义等价；①c 七族声明 noCache（每装配重创，
+// 装配期真值直收 rowCtx），缓存对其不生效。
 
 import { Context } from '../cordis';
 import {
+  agentDomainPlugin,
   agentIsolationDomainPlugin,
+  askDomainPlugin,
   fsDomainPlugin,
   gitDomainPlugin,
+  hologramDomainPlugin,
+  memoryDomainPlugin,
   searchDomainPlugin,
   shellDomainPlugin,
+  skillDomainPlugin,
+  taskDomainPlugin,
+  waitDomainPlugin,
 } from '../plugins/coding-domain-plugins';
 import type { LantaiPlugin } from '../plugins/types';
 import { compositionServicesPlugin } from './services';
 
-/** 经 ctx.tools 贡献工具的第一方域插件（表序 = 贡献注册序；B① git/search
- *  + ② fs/shell/agent-isolation，均为无状态 codingExec 族）。 */
+/** 经 ctx.tools 贡献工具的第一方域插件（表序 = 贡献注册序；B① git/search +
+ *  ② fs/shell/agent-isolation 无状态五族 + ①c wait/ask/memory/skill/task/
+ *  agent/hologram 装配期真值七族——noCache 贡献每装配重创）。 */
 export function firstPartyToolPlugins(): LantaiPlugin[] {
-  return [gitDomainPlugin, searchDomainPlugin, fsDomainPlugin, shellDomainPlugin, agentIsolationDomainPlugin];
+  return [
+    // 无状态族（序 = 迁移前行表序：hologram 位次的 engine-domain 在此）
+    hologramDomainPlugin,
+    gitDomainPlugin,
+    searchDomainPlugin,
+    fsDomainPlugin,
+    shellDomainPlugin,
+    agentIsolationDomainPlugin,
+    // 装配期真值族（序 = 迁移前行表序：ask/skill/memory/task/agent/wait）
+    askDomainPlugin,
+    skillDomainPlugin,
+    memoryDomainPlugin,
+    taskDomainPlugin,
+    agentDomainPlugin,
+    waitDomainPlugin,
+  ];
 }
 
 /** 在第一方工具插件通道激活期间执行 run（通道随调用拆卸）。

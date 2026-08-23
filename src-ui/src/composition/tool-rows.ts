@@ -1,13 +1,13 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT.
 
 // 内置工具行表（S1-2/S1-3）—— composition 架构的装配数据源。
-// 现存 9 族：hologram(graph/ops/lsp)、web、ask、skill、memory、task、
-// agent、browser-desktop、wait。
-// git/search 两族已于 P4 B①（2026-08-23）、fs/shell/agent-isolation 三族
-// 已于 P4 ②（2026-08-23）迁入 ctx.tools 第一方插件通道
+// 现存 2 族：web、browser-desktop（①b 迁移的后续候选——寻址前置已就位）。
+// 迁出史：git/search（B①）+ fs/shell/agent-isolation（②）无状态五族 +
+// wait/ask + memory/skill/task/agent + hologram（①c 装配期真值七族，
+// 2026-08-23）全部迁入 ctx.tools 第一方插件通道
 // （plugins/coding-domain-plugins.ts，经 composition/first-party-tools.ts
-// 装载——五族均只依赖无状态 codingExec，实例缓存语义等价勘定见该文件头）。
+// 装载——①c 七族经 noCache 贡献每装配重创实例，装配期真值无跨装配串扰）。
 // 表序 = 组合序（standard preset 装配序的事实来源）——前缀缓存语义的根基。
 // S4-4 甲（2026-08-23）：插件贡献行与本表同进组合解析域
 // （factoryComposition().tools = builtin 行在前 + 贡献行随后）。
@@ -29,29 +29,20 @@
 // S4-4 甲后行表源含插件贡献行（经 factoryComposition 快照）；行 id 惯例
 // 'builtin/<family>' 与贡献行 'plugin/<插件名>/<工具名>' 分立命名空间。
 
-import { z } from 'zod';
 import type { SubAgentPool } from '../agent/coordinator';
 import type { MemoryManager } from '../agent/memory';
 import type { SkillRegistry } from '../agent/skills';
-import { createSkillTool } from '../agent/skills';
 import type { TaskManager } from '../agent/task';
-import { createTaskTools } from '../agent/task';
 import type { Tool, ToolExecutor } from '../agent/tool';
-import { agentInvoke } from '../agent/tool';
 import type { CodingToolsUI } from '../agent/tools/coding';
-import { createAskUserTools, createWebTools } from '../agent/tools/coding';
-import { defineTool } from '../agent/tools/define-tool';
-import { loadHologramSchemas, mcpSchemaToTool } from '../agent/tools/hologram';
+import { createWebTools } from '../agent/tools/coding';
 import type { SubAgentSpawner } from '../agent/tools/subagent';
-import { createAgentStatusTool, createSubAgentTool } from '../agent/tools/subagent';
-import { createWaitTool } from '../agent/tools/wait';
-import { typedRpc } from '../rpc-contract';
 
 /** 行装配上下文 — buildToolRegistry 提供的全部运行时依赖。
- *  可选字段的缺席 = 该行产出空集（族内工具按依赖存在性条件注册，
+ *  可选字段的缺席 = 该行/贡献产出空集（族内工具按依赖存在性条件注册，
  *  与迁移前 builder 的 if 分支语义一致）。 */
 export interface ToolRowContext {
-  /** graph/ops/lsp 族的开关：缺帐时该行产出空集（原 if (graphData) 分支）。 */
+  /** graph/ops/lsp 族的开关：缺帐时该贡献产出空集（原 if (graphData) 分支）。 */
   graphData?: unknown;
   codingExec: ToolExecutor;
   /** ask_user 的 UI 回调（builder 从 BuilderDeps.onAskUser 注入）。 */
@@ -65,8 +56,8 @@ export interface ToolRowContext {
   subAgentSpawner?: SubAgentSpawner;
 }
 
-/** 内置工具行：id 寻址 + factory 延迟实例化（支持异步族，如 hologram
- *  动态 schema 加载与 browser/desktop 动态 import）。
+/** 内置工具行：id 寻址 + factory 延迟实例化（支持异步族，如
+ *  browser/desktop 动态 import）。
  *  id 惯例 `builtin/<family>`——与外部贡献（services.ts 的
  *  ToolContribution，id 形如 `<plugin>/<tool>`）区分命名空间。 */
 export interface BuiltinToolRow {
@@ -74,98 +65,10 @@ export interface BuiltinToolRow {
   factory: (ctx: ToolRowContext) => Tool[] | Promise<Tool[]>;
 }
 
-/** hologram 族行（graph/ops/lsp 动态工具 + dataflow 对）。
- *  graphData 缺帐时产出空集；holoExec 与 dataflow 定义从
- *  agent-builder 机械迁出（零改写）。 */
-const HOLOGRAM_ROW: BuiltinToolRow = {
-  id: 'builtin/hologram',
-  factory: async (ctx) => {
-    if (!ctx.graphData) return [];
-    const holoExec: ToolExecutor = async (name, args) => {
-      const result = await typedRpc('hologram_call', { tool: name, args });
-      return typeof result === 'string' ? result : JSON.stringify(result);
-    };
-    const schemas = await loadHologramSchemas();
-    const tools = schemas.map((s) => mcpSchemaToTool(s, holoExec));
-    tools.push(
-      defineTool({
-        name: 'dataflow_save',
-        description: '保存数据流追踪结果到 .lantai/dataflow/，供面板查看和后续查询。',
-        schema: z.object({
-          query: z.string(),
-          content: z.string(),
-        }),
-        execute: async (args) => {
-          const r = await agentInvoke('dataflow_save', args);
-          ctx.onDataflowSaved?.();
-          return r;
-        },
-      }),
-    );
-    tools.push(
-      defineTool({
-        name: 'dataflow_query',
-        description: '查询已保存的数据流追踪结果。',
-        schema: z.object({
-          traceId: z.string().optional(),
-          list: z.boolean().optional(),
-        }),
-        readOnly: true,
-        execute: (args) => agentInvoke('dataflow_query', args),
-      }),
-    );
-    return tools;
-  },
-};
-
-/** fs / shell / agent-isolation 三族行已迁出（P4 ②，2026-08-23）——三族
- *  改经 ctx.tools 贡献通道注册（plugins/coding-domain-plugins.ts）；行 id
- *  'builtin/fs' / 'builtin/shell' / 'builtin/agent-isolation' 退役，贡献行
- *  id 形如 'plugin/hologram/<域>-domain/<工具名>'（S4-4 甲起经
- *  factoryComposition 快照进组合解析域——patch/preset 可寻址贡献行）。
- *  迁出依据（baton7 §1 勘定 + ② 批沿用）：三族只依赖无状态 codingExec，
- *  实例缓存语义等价；可见域工具面由 DOMAIN_SPECS 驱动，与注册通道无关
- *  （零漂移）。 */
-
 /** web 族行（S1-2 第五批迁入）——单工具 web_fetch。 */
 const WEB_ROW: BuiltinToolRow = {
   id: 'builtin/web',
   factory: (ctx) => createWebTools(ctx.codingExec),
-};
-
-/** ask 族行（S1-2 第七批迁入）——常驻 ask_user（模型可见的细粒度名）。
- *  ui 缺帐时工具仍注册，execute 返回「UI 未接线」错误（原行为保留）。 */
-const ASK_ROW: BuiltinToolRow = {
-  id: 'builtin/ask',
-  factory: (ctx) => createAskUserTools(ctx.ui),
-};
-
-/** skill 族行——skillRegistry 缺帐时空集（原 if 分支）。 */
-const SKILL_ROW: BuiltinToolRow = {
-  id: 'builtin/skill',
-  factory: (ctx) => (ctx.skillRegistry ? [createSkillTool(ctx.skillRegistry)] : []),
-};
-
-/** memory 族行——memoryManager 缺帐时空集（原 if 分支 + 动态 import）。 */
-const MEMORY_ROW: BuiltinToolRow = {
-  id: 'builtin/memory',
-  factory: async (ctx) =>
-    ctx.memoryManager ? ((await import('../agent/memory')).createMemoryTools(ctx.memoryManager) as Tool[]) : [],
-};
-
-/** task 族行——TaskManager 是必填依赖（原装配无条件注册）。 */
-const TASK_ROW: BuiltinToolRow = {
-  id: 'builtin/task',
-  factory: (ctx) => createTaskTools(ctx.taskManager),
-};
-
-/** agent 族行（子 Agent 工具对）——subAgentSpawner 缺帐时空集（原 if 分支）。 */
-const AGENT_ROW: BuiltinToolRow = {
-  id: 'builtin/agent',
-  factory: (ctx) =>
-    ctx.subAgentSpawner
-      ? [createSubAgentTool(ctx.subAgentSpawner, ctx.subAgentPool), createAgentStatusTool(ctx.subAgentPool)]
-      : [],
 };
 
 /** browser/desktop 族行——动态 import（原装配同款）。 */
@@ -177,15 +80,9 @@ const BROWSER_DESKTOP_ROW: BuiltinToolRow = {
   },
 };
 
-/** wait 族行——常驻 wait（模型可见名，替代轮询循环）。 */
-const WAIT_ROW: BuiltinToolRow = {
-  id: 'builtin/wait',
-  factory: (ctx) => [createWaitTool(ctx.subAgentPool)],
-};
-
 /** 内置行表 — 表序 = 组合序 = standard preset 装配序。
  *  buildToolRegistry 末端整体读本表（S1-3 起）；行内工具名冲突由
  *  ToolRegistry.register 装载期拒绝（duplicate throw）。 */
 export function builtinToolRows(): BuiltinToolRow[] {
-  return [HOLOGRAM_ROW, WEB_ROW, ASK_ROW, SKILL_ROW, MEMORY_ROW, TASK_ROW, AGENT_ROW, BROWSER_DESKTOP_ROW, WAIT_ROW];
+  return [WEB_ROW, BROWSER_DESKTOP_ROW];
 }

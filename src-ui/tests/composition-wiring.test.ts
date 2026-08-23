@@ -24,17 +24,29 @@ import { buildStandardRegistry, readOnlyTool, scriptedProvider } from './converg
 const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r.id);
 
 /** 禁用若干工具行 + 插入/覆盖段的 resolved（穿线效果样本）。
- *  B④ 收官（2026-08-23）：prompt 域寻址面 = 仅已插入段——样本改为
- *  「插入两段 + 覆盖已插入段」（第一方段寻址会被整体拒绝）。
- *  ② 批（2026-08-23）：builtin/shell 迁插件通道——工具禁用探针改
- *  builtin/wait（存活的 builtin 行）。
+ *  ①c（2026-08-23）：builtin/wait 迁插件通道——store 组测试的样本在通道外
+ *  解析（无贡献行），工具禁用探针用存活的 builtin/web。
  *  S4-4 甲（2026-08-23）：组合解析域含通道贡献快照——样本在通道外解析
- *  = builtin 行 + 已插入段（无贡献行/段）；在通道内解析则另含 34 贡献行
+ *  = builtin 行 + 已插入段（无贡献行/段）；在通道内解析则另含全部贡献行
  *  + 13 第一方段（贡献段寻址恢复，见 roster 测试）。 */
 function sampleComposition(): ResolvedComposition {
   return resolveRoster(factoryComposition(), [
     {
-      tools: [{ id: 'builtin/wait', disabled: true }],
+      tools: [{ id: 'builtin/web', disabled: true }],
+      prompt: [
+        { insert: [{ id: 'wiring-probe', text: '【穿线探针一】' }] },
+        { insert: [{ id: 'wiring-probe-2', after: 'wiring-probe', text: '【穿线探针二】' }] },
+        { id: 'wiring-probe', text: '【覆盖后的探针】' },
+      ],
+    },
+  ]);
+}
+
+/** 通道内样本（S4-4 甲 + ①c）：解析域含贡献行——plugin 行可寻址禁用。 */
+function sampleCompositionInChannel(): ResolvedComposition {
+  return resolveRoster(factoryComposition(), [
+    {
+      tools: [{ id: 'plugin/hologram/wait-domain/wait', disabled: true }],
       prompt: [
         { insert: [{ id: 'wiring-probe', text: '【穿线探针一】' }] },
         { insert: [{ id: 'wiring-probe-2', after: 'wiring-probe', text: '【穿线探针二】' }] },
@@ -58,11 +70,11 @@ describe('S2-1 穿线：buildToolRegistry(toolRows)', () => {
     const { TaskManager } = await import('../src/agent/task');
     const { withFirstPartyToolChannel } = await import('../src/composition/first-party-tools');
     const { FIXED_GRAPH_DATA } = await import('./convergence/helpers/fixtures');
-    // S4-4 甲：组合解析域含通道贡献快照——sampleComposition 须在通道腰内
-    // 解析（factoryComposition 收编 34 贡献行）；解析产物经单一循环装配
-    // （buildToolRegistry 不再旁路追加 pluginToolRows）。
+    // S4-4 甲 + ①c：组合解析域含通道贡献快照——样本须在通道腰内解析
+    // （factoryComposition 收编全部贡献行，含 wait 贡献行）；解析产物经
+    // 单一循环装配（buildToolRegistry 不再旁路追加 pluginToolRows）。
     const reg = await withFirstPartyToolChannel(async () => {
-      const composition = sampleComposition();
+      const composition = sampleCompositionInChannel();
       return buildToolRegistry({
         graphData: FIXED_GRAPH_DATA,
         deps: {},
@@ -251,7 +263,7 @@ describe('S2-1 穿线：composition-store', () => {
     const s = useCompositionStore.getState();
     expect(s.status).toBe('ok');
     expect(s.patchOrigin).toBe('roster.patch.yml');
-    expect(s.resolved.diagnostics.disabled).toContain('builtin/wait');
+    expect(s.resolved.diagnostics.disabled).toContain('builtin/web');
     expect(s.resolved.diagnostics.overridden).toContain('wiring-probe');
     expect(s.resolved.diagnostics.inserted).toContain('wiring-probe');
     expect(s.resolved.diagnostics.inserted).toContain('wiring-probe-2');

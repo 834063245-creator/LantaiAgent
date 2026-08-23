@@ -90,6 +90,11 @@ export interface ToolContribution {
    *    远端工具，惰性连接后动态产出；空集不缓存，下次装配重试）。
    *  实例缓存对非空结果跨装配复用（工具可能持状态/连接）；dispose 清缓存。 */
   factory: (ctx?: ToolRowContext) => Tool | Tool[] | Promise<Tool | Tool[]>;
+  /** 无缓存行（①c 路线一，2026-08-23 拍板 #2）：factory 每装配重调、产物不进
+   *  实例缓存——依赖装配期真值的族（wait 的 subAgentPool / ask 的 ui 回调 /
+   *  hologram 的 graphData 开关）经此标记跨装配取新真值。缓存行为等价于
+   *  「永远 miss」：每装配新实例（无跨装配串扰面）。 */
+  noCache?: boolean;
 }
 
 export interface ProviderContribution {

@@ -26,11 +26,14 @@ import type { BuiltinToolRow } from './tool-rows';
 // ── 贡献 id → 实例缓存（模块级可变态归属 CONVENTIONS §1.10 第 3 类：
 //  键控自清理——贡献 dispose 即全表失效，生命周期 = 进程）。──
 // B①（2026-08-23）起贡献 factory 可选收装配上下文（rowCtx.codingExec 等）
-// ——收 ctx 的贡献自担跨装配语义等价（无状态 exec 可搬；装配期真值族如
-// ask/wait 不经此通道）。S4-4 乙（2026-08-23）起 factory 可产出 Tool[]
-// （MCP 机器桥行——一个 server 一条贡献整组远端工具）。缓存语义：非空结果
-// 首装配锁存、跨装配复用；**空集不缓存**——下次装配重跑 factory（lazy
-// MCP server 断线/未起时的瞬态重试面：服务器恢复后新装配即得工具面）。
+// ——收 ctx 的贡献自担跨装配语义等价（无状态 exec 可搬；装配期真值族见
+// noCache）。S4-4 乙（2026-08-23）起 factory 可产出 Tool[]（MCP 机器桥行
+// ——一个 server 一条贡献整组远端工具）。缓存语义：
+//   - 非空结果首装配锁存、跨装配复用（工具可能持状态/连接）；
+//   - **空集不缓存**——下次装配重跑 factory（lazy MCP server 断线/未起时
+//     的瞬态重试面：服务器恢复后新装配即得工具面）；
+//   - **noCache 行不缓存**（①c 路线一，拍板 #2）——依赖装配期真值的族
+//     （wait/ask/hologram 等）每装配重创实例，无跨装配串扰面。
 const instanceCache = new Map<string, Tool[]>();
 
 // 贡献变更（register/dispose）→ 清缓存（register 的清空是幂等无害：新贡献
@@ -43,14 +46,20 @@ onToolContributionsChanged(() => instanceCache.clear());
 export function pluginToolRows(): BuiltinToolRow[] {
   return activeToolContributions().map((c) => ({
     id: 'plugin/' + c.id,
-    factory: async (ctx) => {
+    factory: async (ctx): Promise<Tool[]> => {
+      if (c.noCache) return normalize(await c.factory(ctx)); // 无缓存行：每装配重创
       let cached = instanceCache.get(c.id);
       if (cached === undefined) {
-        const out = await c.factory(ctx);
-        cached = Array.isArray(out) ? out : [out];
-        if (cached.length > 0) instanceCache.set(c.id, cached); // 空集不缓存——下装配重试
+        const out = normalize(await c.factory(ctx));
+        if (out.length > 0) instanceCache.set(c.id, out); // 空集不缓存——下装配重试
+        cached = out;
       }
       return cached;
     },
   }));
+}
+
+/** 贡献 factory 产物归一：单工具包成数组（单工具 / 整组形态统一）。 */
+function normalize(out: Tool | Tool[]): Tool[] {
+  return Array.isArray(out) ? out : [out];
 }
