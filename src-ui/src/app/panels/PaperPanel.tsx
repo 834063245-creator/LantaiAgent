@@ -31,7 +31,7 @@ import {
 } from '../../paper/canvas-math';
 import { composerSubmitOnKey } from '../../paper/ime';
 import { clearPaperMeasureCache, measureBlockHeight } from '../../paper/measure';
-import { moveStrip, type PaperStrip, tryMakeStripFromSelection } from '../../paper/selection';
+import { makeStrip, type PaperStrip } from '../../paper/selection';
 import { translateMessages } from '../../paper/translate';
 import {
   type FlowGeom,
@@ -41,8 +41,10 @@ import {
   visiblePinnedIds,
 } from '../../paper/virtualize';
 import { useDockStore } from '../../state/dock-store';
+import { getPaperStore } from '../../state/paper-store';
 import { getChatStore, msgStoreForActive } from '../../ui/chat-store';
 import { useCoreStore } from '../chat/core-instance';
+import { useShellStore } from '../shell-store';
 import { WinControls } from '../WinControls';
 import { ModeIndicator } from './ModeIndicator';
 import { SpineRack } from './SpineRack';
@@ -175,6 +177,9 @@ const DRAG_THRESHOLD = 6;
 const GHOST_H = 32;
 /** 纸条高度（抽纸条默认块高——同族灰框结构高度） */
 const STRIP_H = 96;
+/** 稳定空引用——无会话/无钉住时避免无谓重渲染 */
+const EMPTY_PINNED: Record<string, { x: number; y: number }> = {};
+const EMPTY_STRIPS: PaperStrip[] = [];
 
 export function PaperPanel() {
   const closePanel = useDockStore((s) => s.closePanel);
@@ -188,8 +193,16 @@ export function PaperPanel() {
     tick: number;
   }>({ messages: [], tick: 0 });
 
+  /* 活跃会话 id（paper-store 按会话隔离钉住/纸条） */
+  const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+  /* paper-store 订阅 tick：钉住/纸条变更触发本组件重渲染 */
+  const [paperTick, setPaperTick] = useState(0);
+
   const syncMessages = useCallback(() => {
     if (!core) return;
+    const sess = getChatStore(core.panelId).sess.getState();
+    const sid = sess.sessions[sess.activeIdx]?.id ?? null;
+    setActiveSessionId((prev) => (prev === sid ? prev : sid));
     const store = msgStoreForActive(core.panelId);
     if (!store) {
       setMsgState((s) => (s.messages.length === 0 ? s : { messages: [], tick: s.tick + 1 }));
@@ -221,17 +234,33 @@ export function PaperPanel() {
     };
   }, [core, syncMessages]);
 
-  /* 钉住位置表（活引用续命：重转译时经 pinnedPositions 传回 translate） */
-  const pinnedRef = useRef(new Map<string, { x: number; y: number }>());
+  /* paper-store 响应式订阅：钉住/纸条变化不再需要手动 bump 消息 tick；
+   * 纸面状态变化同时触发会话防抖自动保存（摆放落盘不依赖「恰好来了条新消息」） */
+  useEffect(() => {
+    if (!core) return;
+    const paper = getPaperStore(core.panelId);
+    return paper.subscribe(() => {
+      setPaperTick((t) => t + 1);
+      const pp = useShellStore.getState().projectPath;
+      if (pp) core.scheduleAutoSave(pp);
+    });
+  }, [core]);
 
-  /* 纸条（V3a 抽纸条·待定 #10：选区拖出 = 拷贝语义的用户层物件） */
-  const [strips, setStrips] = useState<PaperStrip[]>([]);
+  const paperStore = core ? getPaperStore(core.panelId) : null;
+  const sessionKey = activeSessionId != null ? String(activeSessionId) : null;
+  // paperTick 显式消费：订阅 tick 变化 = store 变化 = 本组件重渲染重读
+  void paperTick;
+  const pinnedRecord = paperStore && sessionKey ? paperStore.getState().getPinned(sessionKey) : EMPTY_PINNED;
+  const strips = paperStore && sessionKey ? paperStore.getState().getStrips(sessionKey) : EMPTY_STRIPS;
 
-  /* 转译（穿全层第二段）——msgState.tick 驱动重算（pinnedRef 是可变 ref，
-   * 位置表读取发生在 translate 内——ref 身份恒定，无需进依赖） */
+  /* 转译（穿全层第二段）——msgState.tick 驱动重算；
+   * pinnedRecord 来自 paper-store，钉住变化经订阅触发重转译 */
   const blocks = useMemo(
-    () => translateMessages(msgState.messages, { pinnedPositions: pinnedRef.current }),
-    [msgState],
+    () =>
+      translateMessages(msgState.messages, {
+        pinnedPositions: new Map(Object.entries(pinnedRecord)),
+      }),
+    [msgState, pinnedRecord],
   );
 
   /* 视口状态 */
@@ -423,6 +452,16 @@ export function PaperPanel() {
     [view, layout],
   );
 
+  /* 钉住/收回写入 paper-store（辅助函数——必须先于拖块 effect 定义，
+   * 并进其依赖：sessionKey 切卷变化时拖拽监听需重建闭包，否则写错卷） */
+  const commitPinned = useCallback(
+    (blockId: string, pos: { x: number; y: number } | null) => {
+      if (!core || sessionKey == null) return;
+      getPaperStore(core.panelId).getState().setPinned(sessionKey, blockId, pos);
+    },
+    [core, sessionKey],
+  );
+
   useEffect(() => {
     const move = (e: MouseEvent) => {
       const d = dragRef.current;
@@ -436,8 +475,7 @@ export function PaperPanel() {
         setDraggingId(d.id);
         if (d.wasFlow) {
           // 脱流：钉在当前渲染位（视觉无跳变），流内该序位出现占位符
-          pinnedRef.current.set(d.id, { x: w.x - d.offX, y: w.y - d.offY });
-          setMsgState((s) => ({ messages: s.messages, tick: s.tick + 1 }));
+          commitPinned(d.id, { x: w.x - d.offX, y: w.y - d.offY });
         }
       }
       setDragPos({ x: w.x - d.offX, y: w.y - d.offY });
@@ -454,12 +492,11 @@ export function PaperPanel() {
       const fy = w.y - d.offY;
       // 松手判位：流锚窄带外 → 钉住落位；带内且原为 flow → 回流（不钉）
       if (d.wasFlow && Math.abs(fx + d.bw / 2) <= ANCHOR.bandHalfWidth) {
-        pinnedRef.current.delete(d.id);
+        commitPinned(d.id, null);
       } else {
-        pinnedRef.current.set(d.id, { x: fx, y: fy });
+        commitPinned(d.id, { x: fx, y: fy });
       }
       setDragPos(null);
-      setMsgState((s) => ({ messages: s.messages, tick: s.tick + 1 }));
     };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
@@ -467,21 +504,27 @@ export function PaperPanel() {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
     };
-  }, [view]);
+  }, [view, commitPinned]);
 
   /* 收回（D-R2-2）：直接收回——占位符点击恢复已是即时手势（双向对称），
    * 原生 confirm 与纸面语言断层（2026-08 UI 大清扫移除；收回非破坏性，
    * 再拖出即可复钉）。 */
-  const onUnpin = useCallback((id: string) => {
-    pinnedRef.current.delete(id);
-    setMsgState((s) => ({ messages: s.messages, tick: s.tick + 1 }));
-  }, []);
+  const onUnpin = useCallback(
+    (id: string) => {
+      if (!core || sessionKey == null) return;
+      getPaperStore(core.panelId).getState().setPinned(sessionKey, id, null);
+    },
+    [core, sessionKey],
+  );
 
   /* 占位符点击恢复（原型同款等价手势，即时——R2 注记「走查弹验证哪种顺手」） */
-  const onGhostClick = useCallback((id: string) => {
-    pinnedRef.current.delete(id);
-    setMsgState((s) => ({ messages: s.messages, tick: s.tick + 1 }));
-  }, []);
+  const onGhostClick = useCallback(
+    (id: string) => {
+      if (!core || sessionKey == null) return;
+      getPaperStore(core.panelId).getState().setPinned(sessionKey, id, null);
+    },
+    [core, sessionKey],
+  );
 
   /* ── 输入条：真相走 input-store，提交走 core.sendMessage（agent 层零改动）──
    * 多行 textarea + 输入历史（↑ 取上一条——input-store 的 inputHistory 由
@@ -577,33 +620,59 @@ export function PaperPanel() {
   }, [flowGeom, pinnedGeom, strips, view, canvasSize.w, canvasSize.h]);
 
   /* ── 抽纸条手势（待定 #10：选中文字拖离流 = 拷贝语义纸条）──
-   * mouseup 时读 window.getSelection()：非空且落点在流锚窄带外 → 抽纸条；
-   * 落点在带内 = 普通选择（不抢）。拖纸条与拖块共用 dragRef 之外的独立通道。 */
+   * 手势判据（收尾 2026-08-24 重写）：
+   *   ① 选区锚点在 .pp-block 内（选区来自纸面文本，书眉/composer 等不抢）
+   *   ② mousedown→mouseup 位移 ≥ DRAG_THRESHOLD（判「拖」，普通选中抬手不误触）
+   *   ③ mouseup 落点在画布内且流锚窄带外（带内 = 普通选择/阅读行为）
+   *   ④ 拖块/拖纸条通道让路（它们的 mouseup 各自处理，不抽条）
+   * 来源元信息：块 DOM 带 data-message-id（仅溯源，拷贝语义不变）。 */
   const stripDragRef = useRef<{ id: string; offX: number; offY: number } | null>(null);
+  const stripGestureRef = useRef<{ sx: number; sy: number } | null>(null);
   useEffect(() => {
+    const down = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      stripGestureRef.current = { sx: e.clientX, sy: e.clientY };
+    };
     const up = (e: MouseEvent) => {
+      const start = stripGestureRef.current;
+      stripGestureRef.current = null;
+      // ④ 拖块/拖纸条通道让路
+      if (dragRef.current || stripDragRef.current) return;
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed) return;
+      // ① 选区锚点必须在纸面块内
+      const anchorNode = sel.anchorNode;
+      const anchorEl = anchorNode instanceof Element ? anchorNode : (anchorNode?.parentElement ?? null);
+      const blockEl = anchorEl?.closest('.pp-block') ?? null;
+      if (!blockEl) return;
+      // ② 必须有拖动位移（防「选中后原地抬手」误触）
+      if (!start || Math.hypot(e.clientX - start.sx, e.clientY - start.sy) < DRAG_THRESHOLD) return;
       const text = sel.toString();
+      if (!text.trim()) return;
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
       if (sx < 0 || sy < 0 || sx > rect.width || sy > rect.height) return; // 画布外松手不管
       const w = screenToWorld(view, sx, sy);
-      // 带外落点才抽（带内 = 普通选择/阅读行为）
+      // ③ 带外落点才抽
       if (Math.abs(w.x) <= ANCHOR.bandHalfWidth) return;
-      const strip = tryMakeStripFromSelection(text, 0, text.length, w.x, w.y);
-      if (strip) {
-        sel.removeAllRanges(); // 手势完成，清选区
-        setStrips((arr) => [...arr, strip]);
-      }
+      // 来源元信息（仅溯源展示，拷贝语义不变）
+      const msgId = blockEl.getAttribute('data-message-id') ?? undefined;
+      const strip = makeStrip(text, w.x, w.y, 480, msgId ? { messageId: msgId } : undefined);
+      sel.removeAllRanges(); // 手势完成，清选区
+      if (!core || sessionKey == null) return;
+      getPaperStore(core.panelId).getState().addStrip(sessionKey, strip);
     };
+    window.addEventListener('mousedown', down);
     window.addEventListener('mouseup', up);
-    return () => window.removeEventListener('mouseup', up);
-  }, [view]);
+    return () => {
+      window.removeEventListener('mousedown', down);
+      window.removeEventListener('mouseup', up);
+    };
+  }, [view, core, sessionKey]);
 
-  /* 拖纸条（世界坐标跟手） */
+  /* 拖纸条（世界坐标跟手——写 paper-store，切卷/持久化由此承接） */
   const [dragStripId, setDragStripId] = useState<string | null>(null);
   const onStripMouseDown = useCallback(
     (e: React.MouseEvent, s: PaperStrip) => {
@@ -625,7 +694,10 @@ export function PaperPanel() {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
       const w = screenToWorld(view, e.clientX - rect.left, e.clientY - rect.top);
-      setStrips((arr) => arr.map((s) => (s.id === d.id ? moveStrip(s, w.x - d.offX, w.y - d.offY) : s)));
+      if (!core || sessionKey == null) return;
+      getPaperStore(core.panelId)
+        .getState()
+        .moveStrip(sessionKey, d.id, w.x - d.offX, w.y - d.offY);
     };
     const up = () => {
       stripDragRef.current = null;
@@ -637,7 +709,16 @@ export function PaperPanel() {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
     };
-  }, [dragStripId, view]);
+  }, [dragStripId, view, core, sessionKey]);
+
+  /* 纸条销毁（收尾 2026-08-24：纸条可移除——用户层物件的完整生命周期） */
+  const onRemoveStrip = useCallback(
+    (id: string) => {
+      if (!core || sessionKey == null) return;
+      getPaperStore(core.panelId).getState().removeStrip(sessionKey, id);
+    },
+    [core, sessionKey],
+  );
 
   /* 世界层 transform */
   const worldStyle = useMemo(
@@ -662,7 +743,7 @@ export function PaperPanel() {
         <span className="pp-title">案卷</span>
         <span className="pp-tag">兰台 · DOSSIER</span>
         <span className="pp-zoom">
-          {zoomLabel} · {blocks.length} 块 · 已钉 {pinnedRef.current.size}
+          {zoomLabel} · {blocks.length} 块 · 已钉 {Object.keys(pinnedRecord).length} · 纸条 {strips.length}
         </span>
         <StatusLine />
         <ModeIndicator />
@@ -709,7 +790,7 @@ export function PaperPanel() {
             <span className="pp-origin-label">origin</span>
           </div>
 
-          {/* 纸条（V3a 抽纸条：拷贝语义快照，可拖动） */}
+          {/* 纸条（V3a 抽纸条：拷贝语义快照，可拖动、可销毁——收尾 2026-08-24） */}
           {strips.map((s) => (
             // biome-ignore lint/a11y/noStaticElementInteractions: 纸条拖拽面（同块拖拽 D-R2-1 手势族）
             <div
@@ -718,8 +799,23 @@ export function PaperPanel() {
               style={{ left: s.x, top: s.y, width: s.w }}
               onMouseDown={(e) => onStripMouseDown(e, s)}
             >
-              <div className="pp-strip-tag">纸条</div>
-              <div>{s.text}</div>
+              <div className="pp-strip-head">
+                <span className="pp-strip-tag">纸条</span>
+                <button
+                  type="button"
+                  className="pp-strip-remove"
+                  title="销毁纸条"
+                  aria-label="销毁纸条"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveStrip(s.id);
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="pp-strip-body">{s.text}</div>
             </div>
           ))}
 
@@ -730,7 +826,12 @@ export function PaperPanel() {
             if (!slot || !visibleIds.has(b.id)) return null;
             if (b.state === 'flow') {
               return (
-                <div key={b.id} className={`pp-block pp-${b.kind}`} style={{ left: slot.x, top: slot.y, width: b.w }}>
+                <div
+                  key={b.id}
+                  className={`pp-block pp-${b.kind}`}
+                  style={{ left: slot.x, top: slot.y, width: b.w }}
+                  data-message-id={b.source.messageId}
+                >
                   <BlockView
                     block={b}
                     seq={seqOf.get(b.id) ?? '000'}
@@ -756,6 +857,7 @@ export function PaperPanel() {
                 <div
                   className={['pp-block', `pp-${b.kind}`, 'pp-pinned', isDragged ? 'pp-dragging' : ''].join(' ')}
                   style={{ left: pos.x, top: pos.y, width: b.w }}
+                  data-message-id={b.source.messageId}
                 >
                   <BlockView
                     block={b}

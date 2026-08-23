@@ -756,7 +756,7 @@
   color: var(--paper);
 }
 
-/* ── 纸条（V3a 抽纸条：拷贝语义快照——用户层物件）── */
+/* ── 纸条（V3a 抽纸条：拷贝语义快照——用户层物件；收尾 2026-08-24 完整化）── */
 .pp-strip {
   position: absolute;
   border: var(--rule-dashed);
@@ -776,12 +776,41 @@
   opacity: 0.92;
   z-index: 50;
 }
+/* 头部：题签 + 销毁钮（两端对齐——销毁钮只在 hover 时显形，不搅纸面） */
+.pp-strip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
 .pp-strip-tag {
   font-family: var(--f-mono);
   font-size: 9px;
   letter-spacing: 0.24em;
   color: var(--seal-deep);
-  margin-bottom: 6px;
+}
+.pp-strip-remove {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 4px;
+  margin: 0;
+  border: none;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.pp-strip:hover .pp-strip-remove {
+  opacity: 1;
+}
+.pp-strip-remove:hover {
+  color: var(--seal-deep);
+}
+.pp-strip-body {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* ── 小地图（D-R1-1 方位感件）── */

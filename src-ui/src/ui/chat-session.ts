@@ -11,6 +11,13 @@ import { createExecState, type ExecStateInstance } from '../agent/execution-stat
 import type { Message } from '../provider/types';
 import { typedJsonRpc, typedRpc } from '../rpc-contract';
 import { getActiveProvider, loadSettings } from '../settings';
+import {
+  clearPaperSessions,
+  getPaperSessionData,
+  loadPaperSessionData,
+  type PaperSessionData,
+  removePaperSessionData,
+} from '../state/paper-store';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
 import { useAgentPanelStore } from './agent-panel-store';
 import { bumpSession, getChatStore, msgStoreFor } from './chat-store';
@@ -128,6 +135,8 @@ export function resetSessionState(storeId: string, ag: OwnedAgentHandle): void {
   const label = '案卷 1';
   // 仅清除本面板的 agent 句柄和 exec 状态
   agentSessionState.clearPanelState(storeId);
+  // 工作区全量重置：纸面用户层（钉住块/纸条）一并清空——旧工作区摆放不得串入新工作区
+  clearPaperSessions(storeId);
   agentSessionState.setAgent(storeId, id, ag);
   // 静态绑定该 Agent 的 board 到此会话 — 此后不再随会话切换重定向
   ag.bindSession?.(String(id));
@@ -284,17 +293,22 @@ export function closeSession(ctx: SessionContext, idx: number): void {
     if (agent && messages && hasContent) {
       const projectPath = ctx.getProjectPath();
       const tokensUsed = idx === st.activeIdx ? ctx.getTotalTokensUsed() : (st.sessionTokens[s.id] ?? 0);
+      // 纸面用户层快照与消息同点捕获（合卷后 paper store 该卷数据随即清除）
+      const paper = getPaperSessionData(ctx.storeId, s.id);
       writeSessionSnapshot(projectPath, {
         id: s.id,
         label: s.label,
         savedAt: new Date().toISOString(),
         messages,
         tokensUsed,
+        paper,
       }).catch(() => ctx.addNotice(`合卷落盘失败：${s.label}`, 'error'));
     }
   }
   removeSessionExecState(ctx.storeId, s.id);
   agentSessionState.removeAgent(ctx.storeId, s.id);
+  // 合卷 = 卷消亡：paper store 该卷数据随之清除（快照已在上方捕获落盘）
+  removePaperSessionData(ctx.storeId, s.id);
   // 若关闭的是活跃会话，先把它未发送的文字存入其槽再清空，稍后换入新活跃会话的草稿
   const closingActive = idx === st.activeIdx;
   if (closingActive) {
@@ -400,13 +414,15 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
 
 // ── 会话持久化 — 每个会话一个文件，localStorage 备份 ──
 
-/** 会话文件的持久化形状（磁盘 JSON / localStorage 备份）。 */
+/** 会话文件的持久化形状（磁盘 JSON / localStorage 备份）。
+ *  paper（钉住块坐标 + 纸条，2026-08-24 收尾）：可选字段，旧存档无此字段 = 空纸面。 */
 interface StoredSession {
   id: number;
   label?: string;
   savedAt?: string;
   messages?: Message[];
   tokensUsed?: number;
+  paper?: PaperSessionData;
   deleted?: boolean;
   /** _active.json 跟踪文件字段（与单个会话文件形状不同） */
   lastId?: number;
@@ -490,13 +506,15 @@ export async function scanMaxSessionId(projectPath: string): Promise<number> {
   }
 }
 
-/** 会话快照的磁盘形状（C8：saveActiveSession 与合卷落盘共用）。 */
+/** 会话快照的磁盘形状（C8：saveActiveSession 与合卷落盘共用）。
+ *  paper：纸面用户层状态（钉住块 + 纸条）——2026-08-24 收尾接入持久化。 */
 interface SessionSnapshotData {
   id: number;
   label: string;
   savedAt: string;
   messages: Message[];
   tokensUsed: number;
+  paper?: PaperSessionData;
 }
 
 /** 将已捕获的会话快照写入盘（localStorage 同步备份 + 原子磁盘写）。
@@ -553,6 +571,8 @@ export async function saveActiveSession(ctx: SessionContext, projectPath: string
     savedAt: new Date().toISOString(),
     messages,
     tokensUsed: ctx.getTotalTokensUsed(),
+    // 纸面用户层（钉住块 + 纸条）随卷落盘——快照捕获与 messages 同步时点
+    paper: getPaperSessionData(ctx.storeId, sMeta.id),
   };
 
   try {
@@ -592,6 +612,8 @@ export async function saveSessionById(ctx: SessionContext, projectPath: string, 
       savedAt: new Date().toISOString(),
       messages,
       tokensUsed,
+      // 纸面用户层随卷落盘（改名即存路径与活跃卷同构）
+      paper: getPaperSessionData(ctx.storeId, sid),
     });
   } catch {
     /* 已记日志——改名即存是尽力而为（合卷路径另有告警） */
@@ -825,6 +847,8 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
   getChatStore(ctx.storeId).input.getState().clearSessionDrafts();
   // ponytail: 创建会话级消息 store + 从恢复数据填充
   msgStoreFor(ctx.storeId, data.id).getState().setMessages([]);
+  // 纸面用户层（钉住块 + 纸条）随卷恢复——旧存档无 paper 字段 = 空纸面
+  loadPaperSessionData(ctx.storeId, data.id, data.paper ?? null);
 
   try {
     renderRestoredSession(ctx);
@@ -965,6 +989,8 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   });
   // ponytail: 创建会话级消息 store
   msgStoreFor(ctx.storeId, sid).getState().setMessages([]);
+  // 纸面用户层（钉住块 + 纸条）随卷恢复——旧存档无 paper 字段 = 空纸面
+  loadPaperSessionData(ctx.storeId, sid, data.paper ?? null);
   if (typeof data.tokensUsed === 'number') {
     ctx.setTotalTokensUsed(data.tokensUsed);
     getChatStore(ctx.storeId).sess.getState().setSessionTokens(sid, data.tokensUsed);
@@ -1004,6 +1030,8 @@ export async function deleteSessionFile(ctx: SessionContext, projectPath: string
   } catch {
     /* 忽略 */
   }
+  // 清理内存中的纸面用户层（卷已删，摆放数据无主）
+  removePaperSessionData(ctx.storeId, sessionId);
   // 若该会话在标签页中打开，则关闭该标签页
   const idx = getChatStore(ctx.storeId)
     .sess.getState()

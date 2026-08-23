@@ -39,7 +39,7 @@
 | A4 | 缺 flow-band 流锚带（黄铜竖线 + FLOW 竖排字） | ✅ 已清 |
 | A5 | plan-card 序号用浏览器默认 ol 样式 → 印刷品编号（mono leading-zero） | ✅ 已清 |
 | A6 | 滚动条样式未接（3px ink-4 细杆） | ✅ 已清 |
-| A7 | 抽纸条 strip 样式未移植（交互本身后接） | ⬜ 待办 |
+| A7 | 抽纸条 strip 样式未移植（交互本身后接）——**已毕 2026-08-24（收尾批）**：strip 样式完整化（题签头 + hover 显形销毁钮 + pre-wrap 正文）；交互同步重写（判拖防误触/选区锚点块校验/source 溯源）；钉住块 + 纸条持久化接入（`state/paper-store.ts` 按会话管理，随会话快照落盘/恢复，切卷/合卷/删卷/切工作区各路径清理）；守护 `tests/paper-store.test.ts` + `chat-session.test.ts` paper 持久化 4 用例 | ✅ |
 | A8 | 产品化去机器味：调试读数（主题/格线/材质）与快捷键提示不外露，书眉只留 ZOOM·BLOCKS·RENDERED 印刷品行 | ✅ 已清 |
 | A9 | 思（reasoning/校对批语）块型补全——风格源六文类对齐 | ✅ 已清 |
 | A10 | 内容手工化重写：占位货 → 打磨过的自指会话（measure.ts 块高估算故事，含思块） | ✅ 已清 |

@@ -14,6 +14,20 @@
 //   纸条 = 用户层物件（设计文档 §2.2 用户自定义层），文字快照自选区抽出，
 //   世界坐标唯一真相（D-R2-4 同款纪律），不挂消息源（拷贝非活引用——
 //   源消息更新不追纸条，源消息删除纸条照活）。
+//
+// 【持久化收尾 2026-08-24】扩展 PaperStrip 增加 source 可选元信息
+// （仅用于溯源展示，不用于同步——拷贝语义不变）。
+
+/** 纸条来源元信息（只记录，不追踪同步——拷贝语义不变） */
+export interface PaperStripSource {
+  /** 源消息 _id */
+  messageId: string;
+  /** 消息内的 part 索引 */
+  partIndex?: number;
+  /** 选区在该块文本中的起止偏移 */
+  startOffset?: number;
+  endOffset?: number;
+}
 
 /** 纸条物件（用户层——与块级 SourcedBlock 区分：无 source，拷贝语义） */
 export interface PaperStrip {
@@ -25,6 +39,8 @@ export interface PaperStrip {
   y: number;
   /** 纸条宽（世界单位） */
   w: number;
+  /** 来源元信息（仅溯源，活引用仅块级保留） */
+  source?: PaperStripSource;
 }
 
 /** 纸条 id 前缀（与块 id 空间区分） */
@@ -43,8 +59,8 @@ export function resetStripIdCounterForTests(): void {
 }
 
 /** 从文本选区抽纸条（纯函数——壳层负责拿到选区文本与世界落点）。 */
-export function makeStrip(text: string, x: number, y: number, w = 480): PaperStrip {
-  return { id: nextStripId(), text: text.trim(), x, y, w };
+export function makeStrip(text: string, x: number, y: number, w = 480, source?: PaperStripSource): PaperStrip {
+  return { id: nextStripId(), text: text.trim(), x, y, w, ...(source ? { source } : {}) };
 }
 
 /** 纸条拖动（每 move 一帧——与块级 movePinned 同款语义）。 */
@@ -73,8 +89,9 @@ export function tryMakeStripFromSelection(
   end: number,
   x: number,
   y: number,
+  source?: PaperStripSource,
 ): PaperStrip | null {
   const sel = sliceSelection(text, start, end);
   if (sel.trim().length === 0) return null;
-  return makeStrip(sel, x, y);
+  return makeStrip(sel, x, y, 480, source);
 }

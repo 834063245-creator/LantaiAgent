@@ -78,6 +78,8 @@ vi.mock('gsap', () => {
 vi.mock('highlight.js', () => ({ default: { highlightElement: vi.fn() } }));
 
 import { ChatCore } from '../src/app/chat/chat-core';
+import { makeStrip } from '../src/paper/selection';
+import { getPaperStore } from '../src/state/paper-store';
 import * as Session from '../src/ui/chat-session';
 import { hashProjectPath, scanMaxSessionId, stripLineNumbers } from '../src/ui/chat-session';
 
@@ -1006,6 +1008,150 @@ describe('ChatPanel session persistence', () => {
       panel.closeSession(0); // 合空卷 1
 
       expect(writes.find((w) => w.file_path.endsWith('/1.json'))).toBeUndefined();
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // 纸面用户层持久化（2026-08-24 收尾）：钉住块 + 纸条随卷落盘/恢复
+  // ═══════════════════════════════════════════════════════════════
+
+  describe('paper state persistence', () => {
+    const PROJ = 'D:/paper-test';
+
+    /** 起一卷有内容的案卷，返回捕获的 write 记录数组。 */
+    function setupVolumeWithContent(writes: Array<{ file_path: string; content: string }>) {
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      panel.setAgent({
+        getSession: () => [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content: '钉住我' },
+        ],
+        setSession: vi.fn(),
+        dispose: vi.fn(),
+        cascadeAbort: vi.fn(),
+      } as any);
+      mockInvoke.mockReset();
+      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
+        const { method, params } = payload;
+        if (method === 'write_file_content') {
+          writes.push({ file_path: params.file_path as string, content: params.content as string });
+        }
+        return Promise.resolve('ok');
+      });
+      return panel;
+    }
+
+    it('saveActiveSession 落盘 JSON 携带 paper（钉住 + 纸条）', async () => {
+      const writes: Array<{ file_path: string; content: string }> = [];
+      setupVolumeWithContent(writes);
+
+      // 模拟用户钉块 + 抽纸条（写 paper-store）
+      const paperStore = getPaperStore(panel.panelId).getState();
+      const sid = Session.getSessions(panel.panelId)[0].id;
+      paperStore.setPinned(String(sid), 'pb:m1:0', { x: 800, y: -600 });
+      paperStore.addStrip(String(sid), makeStrip('引用片段', 900, -300, 480, { messageId: 'm1' }));
+
+      await panel.saveActiveSession(PROJ);
+
+      const write = writes.find((w) => w.file_path.endsWith(`/${sid}.json`));
+      expect(write).toBeTruthy();
+      const parsed = JSON.parse(write!.content);
+      expect(parsed.paper).toBeDefined();
+      expect(parsed.paper.pinned).toEqual({ 'pb:m1:0': { x: 800, y: -600 } });
+      expect(parsed.paper.strips).toHaveLength(1);
+      expect(parsed.paper.strips[0].text).toBe('引用片段');
+      expect(parsed.paper.strips[0].source).toEqual({ messageId: 'm1' });
+    });
+
+    it('纸面空（无钉住无纸条）落盘仍带空 paper 字段（恢复路径零特判）', async () => {
+      const writes: Array<{ file_path: string; content: string }> = [];
+      setupVolumeWithContent(writes);
+      await panel.saveActiveSession(PROJ);
+
+      const sid = Session.getSessions(panel.panelId)[0].id;
+      const write = writes.find((w) => w.file_path.endsWith(`/${sid}.json`));
+      const parsed = JSON.parse(write!.content);
+      expect(parsed.paper).toEqual({ pinned: {}, strips: [] });
+    });
+
+    it('合卷（closeSession）落盘快照携带该卷纸面数据，且内存中该卷纸面被清除', async () => {
+      const writes: Array<{ file_path: string; content: string }> = [];
+      setupVolumeWithContent(writes);
+      // 起第二卷，让第一卷可被合掉
+      const agent2 = {
+        getSession: () => [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content: '卷二' },
+        ],
+        setSession: vi.fn(),
+        dispose: vi.fn(),
+        cascadeAbort: vi.fn(),
+      };
+      panel.setAgentFactory(async () => agent2 as any);
+      await panel.createNewSession();
+
+      // 钉卷一（背景卷）的块
+      const paperStore = getPaperStore(panel.panelId).getState();
+      paperStore.setPinned('1', 'pb:m1:0', { x: 100, y: -100 });
+
+      panel.closeSession(0); // 合卷一
+
+      const write1 = writes.find((w) => w.file_path.endsWith('/1.json'));
+      expect(write1).toBeTruthy();
+      const parsed = JSON.parse(write1!.content);
+      expect(parsed.paper?.pinned).toEqual({ 'pb:m1:0': { x: 100, y: -100 } });
+      // 内存中卷一纸面已清（getPinned 回到稳定空引用）
+      expect(paperStore.getPinned('1')).toEqual({});
+    });
+
+    it('loadSessionFromDisk 恢复 paper 到 paper-store（旧存档无字段 = 空纸面）', async () => {
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      panel.setAgent({
+        getSession: () => [{ role: 'system', content: 'sys' }],
+        setSession: vi.fn(),
+        dispose: vi.fn(),
+        cascadeAbort: vi.fn(),
+      } as any);
+      const agent2 = {
+        getSession: () => [{ role: 'system', content: 'sys' }],
+        setSession: vi.fn(),
+        dispose: vi.fn(),
+        cascadeAbort: vi.fn(),
+      };
+      panel.setAgentFactory(async () => agent2 as any);
+      mockInvoke.mockReset();
+      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
+        const { method, params } = payload;
+        if (method === 'read_file_content') {
+          // 模拟磁盘上的会话文件（带 paper 字段）
+          return Promise.resolve(
+            JSON.stringify({
+              id: 5,
+              label: '带纸面的卷',
+              savedAt: new Date().toISOString(),
+              messages: [
+                { role: 'system', content: 'sys' },
+                { role: 'user', content: '旧消息' },
+              ],
+              paper: {
+                pinned: { 'pb:m9:0': { x: 42, y: -42 } },
+                strips: [{ id: 'strip1', text: '旧纸条', x: 10, y: -10, w: 480 }],
+              },
+            }),
+          );
+        }
+        void params;
+        return Promise.resolve('ok');
+      });
+
+      await panel.loadSessionFromDisk(PROJ, 5);
+
+      const paperStore = getPaperStore(panel.panelId).getState();
+      expect(paperStore.getPinned('5')).toEqual({ 'pb:m9:0': { x: 42, y: -42 } });
+      expect(paperStore.getStrips('5')).toHaveLength(1);
+      expect(paperStore.getStrips('5')[0].text).toBe('旧纸条');
     });
   });
 });
