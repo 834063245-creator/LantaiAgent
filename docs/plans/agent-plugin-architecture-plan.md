@@ -1,7 +1,10 @@
 # Agent 插件化：执行原语 + 工具面单一真源（DSH 对标）计划
 
 > 立项：2026-08-19（岛层退休 + 总线归零立项当日）
-> 状态（2026-08-23 更新）：**P1 ✅ · P2 ✅ 已毕（2026-08-22/23：code_execution 执行原语全段落地——R5 spike 全绿、产品拍板方案 A 程文块、C4-C8 全判据达成、baseline 变更已审批 `baseline-change-request-code-execution.md`）· P3 ✅ 已毕（2026-08-23：codeRuntime 收口为 vendored cordis Service（ctx.codeRuntime，codeRuntimePlugin 挂根 Context，agent/code-run/runtime-service.ts）；绑定面归一 CodeBindingSpec（invoke 闭包持有 executor 等价体+审计）；工具经 runViaRuntime 门面消费，无服务时惰性游离实例。P4 仍门控于 DSH 观望信号（D8）**
+> 状态（2026-08-23 更新）：**P1 ✅ · P2 ✅（C4-C8 全判据；方案 A 程文块）· P3 ✅（ctx.codeRuntime cordis 收口，
+> convergence 零漂移）· P4 自研路线已启动（D9 拍板：不等 DSH，自己当第一用户——通道补齐 /
+> 存量拆解 / P4a 调研三股交替；批次表见 §5 P4）**。战略底牌：形状与 DSH 契约兼容、零依赖；
+> DSH 信号点亮只追加 compat 装载层，不阻塞任何施工。
 > 战略决策（2026-08-19 定）：**生态跟随走「观望 DSH」路线**——P4 的前提是 DSH 官方把服务接口
 > 当公开契约维护；在此之前只做自研（P1-P3 全部独立于 DSH 生态成立）。见 §4 D8。
 > 性质：本计划是能力建设（capability plan），不是还债（debt plan）——每阶段独立可停，
@@ -120,13 +123,21 @@ HoloGram 单进程内暂不需要，P4 插件边界时再评估。
   最好在 ui/ 拆分尘埃落定后做（避免两场大迁移叠 diff）。P1/P2 无此约束，随时可做。
 - **D7 蓝图序即字节契约**：code_execution capability 插入位置显式选定（Phase 6 铁律），
   生效快照与缓存依赖表序，不追加到表尾了事。
-- **D8 生态观望，不预支跟随（2026-08-19 拍板）**：P1-P3 是纯自研收益（执行腰 + 文档
-  发电机 + cordis 收口），**无论 DSH 生态走向如何都成立**；P4 的 DSH 契约跟随**仅在
-  观望信号点亮后启动**：① DSH 对服务包（dsh-tools 等）开始 semver；② 出现官方插件
-  开发文档/插件市场；③ 承诺接口稳定性。在此之前 P4 若做，走**自研插件边界**（自有
-  manifest + 权限体系），设计与 DSH 服务契约**形状兼容但零依赖**——将来 DSH 真开放时
-  写 compat 装载层即可衔接，现在不为一厢情愿的生态付追跑成本。战略底牌：cordis 化
-  已完成，两条路（跟随/自研）的装配层同一套，赌注最小化。
+- **D8 生态观望，不预支跟随（2026-08-19 拍板；D9 起修正）**：P1-P3 是纯自研收益（执行腰 + 文档
+  发电机 + cordis 收口），**无论 DSH 生态走向如何都成立**。观望信号三条件（semver /
+  官方插件文档 / 接口稳定性承诺）保留，但其管辖范围收窄为「是否写 compat 装载层」
+  ——见 D9。
+- **D9 自研插件边界，自己当第一用户（2026-08-23 拍板，修正 D8 的跟随默认）**：用户定调
+  「以后不管是重构还是新功能，所有能拆出来的全部插件化，特权区尽可能小；最终方便
+  自己开发，第三方开放是顺手的事」——触发条件从「DSH 信号」改为「用户想要」，
+  **现已触发**。战略含义：①兰台自建 DSH 式服务契约集（五 service + 待建通道），
+  第一用户是自己的域功能开发（多窗口并行 / 可禁用域 / 贡献面即契约）；②**形状与
+  DSH 契约兼容、零依赖**原则保留——将来 DSH 信号点亮只需补 compat 层即可吃其生态；
+  ③存量拆解与通道建设交替推进（拆到哪疼了通道就知道该长什么样），不存在大工程
+  开工时刻。特权区（永不插件化）清单同步定案：cordis 内核 / 五 service 壳 / RPC
+  边界 / agent 流式循环核心 / Workspace 原语（fiber·epoch·scoped store）/ Rust 壳
+  （权限沙箱·IPC·Tauri）——**只减不增**。Rust 侧插件化的标准形态 = 外部 MCP
+  server（新能力优先做成进程外 MCP，不是往 src-tauri 加命令）。
 
 ## 5. 阶段
 
@@ -141,11 +152,15 @@ HoloGram 单进程内暂不需要，P4 插件边界时再评估。
 3. CI 漂移检查 + AGENTS/CLAUDE 文档段替换
 4. 门禁：build + vitest + 生成物 diff 检查
 
-### P2 执行原语（2-4 天，产品决策级）
-0. **产品拍板项（开工时问用户）**：code run 在纸壳的展示形态——新增块 kind（经
-   `ctx.renderers` 第五贡献通道，V3b 已就位）还是复用既有 tool 块？DSH 参照是专属
-   code run 卡片（`packages/core/tools/src/code-mode.ts`）。本计划立项时（2026-08-19）
-   尚无纸壳；V5 后纸壳是唯一主界面——展示形态是立项后新增的产品决策面。
+### P2 执行原语 — ✅ 已毕（2026-08-22/23）
+
+落地记录：R5 spike 全绿（`docs/research/_r5-web-worker-csp-spike.md`）→ 用户拍板方案 A
+（程文块）→ C4-C8 全判据达成（交付物 `agent/code-run/` 四件 + blueprint capability +
+session-log 审计对 + 纸壳程文块；baseline 变更
+`baseline-change-request-code-execution.md` 随 commit 生效；测试 22+ 用例全绿）。
+下列原始施工序仅存档：
+
+0. ~~产品拍板项~~ ✅（2026-08-22 拍板方案 A：新增 code 块 kind + ctx.renderers 专属渲染器）
 1. 协议层：correlation-id 腰线（照抄 protocol.ts 语义：一次性应答、敌意校验、无损 JSON、
    输出预算、日志先行）
 2. Worker 侧：Web Worker bootstrap——类型剥离（HoloGram 无 ts 转译链，直接收 JS 程序体，
@@ -157,29 +172,60 @@ HoloGram 单进程内暂不需要，P4 插件边界时再评估。
 6. 权限：程序内工具调用过现行 gate（plan 模式白名单同样生效于嵌套调用）
 7. 门禁：全量 + verify:convergence（动了 agent/** 必过）
 
-### P3 cordis 收口（1-2 天，建议在总线归零+ui拆分后）
+### P3 cordis 收口 — ✅ 已毕（2026-08-23）
+
+落地记录：`CodeRuntimeService extends Service`（`ctx.codeRuntime`，agent/code-run/
+runtime-service.ts；codeRuntimePlugin 挂根 Context，BUILTIN_PLUGINS 四 service 之后）；
+绑定面归一 CodeBindingSpec（invoke 闭包持有 executor 等价体 + 审计）；工具经
+runViaRuntime 门面消费，无服务时惰性游离实例。convergence 零漂移（C10 语义：装配面
+= 既有 capability，AgentConfig 冻结未破）。原始施工序存档：
+
 1. `CodeRuntimeService extends Service`（vendored cordis），P2 实现挂到 `ctx.codeRuntime`
 2. 领域工具装配改 ctx 查询；blueprint 加 capability 项
 3. 文档回写：CONVENTIONS/AGENTS/ARCHITECTURE 插件化叙事
 
-### P4 插件边界（远期，**门控于 DSH 观望信号**，见 D8）
+### P4 插件化全集（**自研为主**，D9 拍板 2026-08-23 起）
 
-**前置 P4a 契约调研（不写码，纯侦察，可随时做）**：把 DSH 那圈服务契约清单化——
-最小子集（ctx.tools 的 ToolDefinition 形状 + ctx.systemPrompt 的 section 注册表）、
-L1/L2 插件的真实依赖面分布、peer deps 版本策略。产出一页 dsh-contract-notes 进本仓库，
+战略换轨（D8→D9）：不再等 DSH 信号才启动——自研插件边界自己当第一用户，DSH 信号
+只决定将来要不要写 compat 装载层。本阶段由三股交替推进的活组成：
+
+**A. 通道补齐（基础设施集，按疼的顺序）**：
+
+| 缺口 | 量级 | 说明 |
+|---|---|---|
+| prompt-sections 贡献通道 | ~1 天 | 第六通道：插件注系统提示段落 |
+| hooks/preflight 暴露面 | ~1-2 天 | 插件参与工具管道（富化/门禁） |
+| blueprint capability 贡献面 | 拆到⑤自然定形 | 会话级能力的插件装载 |
+| 工具声明可序列化（zod↔manifest） | ~2 天 | 第三方工具免编译挂载前提 |
+| permissions.json 接插件声明 | ~2 天 | 对外开放前的一票否决项 |
+
+**B. 存量拆解（批次表，①②③通道现成可随时动）**：
+
+| 批 | 内容 | 障碍 |
+|---|---|---|
+| ① | 叶子工具族（wait/search/web/git/ask） | 无，纯搬运 |
+| ② | 工具大域（fs/shell/browser-desktop/memory/skill/task） | 无，依赖注入已示范 |
+| ③ | hologram 族（graph/ops/lsp） | 无，异步 factory 已支持 |
+| ④ | prompt 段落（persona/规则/记忆/运行环境） | 需通道 A-1 |
+| ⑤ | 会话级能力（plan/通信/discovery/merge/board/compaction） | 需通道 A-3 |
+| ⑥ | 管道参与（graph hooks/board tracking/preflight） | 需通道 A-2 |
+
+拆解纪律：第一方插件仍编译期打包（VSCode 内置扩展同款）；收益是解耦/可禁用/
+多窗口并行/契约固化，不是物理分包。特权区清单见 D9，只减不增，可用 git 度量。
+
+**C. P4a 契约调研（不写码，半天）**：把 DSH 那圈服务契约清单化——最小子集
+（ctx.tools 的 ToolDefinition 形状 + ctx.systemPrompt 的 section 注册表）、L1/L2
+插件的真实依赖面分布、peer deps 版本策略。产出一页 dsh-contract-notes 进本仓库，
 后续无论走哪条路都用得上。
 
-**路线 A（DSH 信号点亮后）**：在自有 cordis 容器实现最小服务契约子集 + dsh-compat
-装载层（npm 包加载 + peer 版本协商 + 契约漂移检测），吃 L1/L2 工具类插件生态；
-L3 深集成插件明确放弃（=重实现半个 DSH，不现实）。
+**DSH 信号点亮后（可选追加）**：在自有 cordis 容器实现最小服务契约子集 +
+dsh-compat 装载层（npm 包加载 + peer 版本协商 + 契约漂移检测），吃 L1/L2 工具类
+插件生态；L3 深集成插件明确放弃（=重实现半个 DSH，不现实）。
 
-**路线 B（信号始终不亮 / DSH 停止维护接口）**：自研插件边界——自有 manifest + zod
-schema 可序列化 + capability 表项 + permissions.json 接入；**形状与 DSH 契约兼容**
-（ToolDefinition 同构、prompt section 同构），保留将来写 compat 层衔接的可能。
-
-**并行开放路径**：MCP 客户端——HoloGram 引擎已是 MCP server；反向消费外部 MCP 工具
-并入 registry 是比任何自造插件格式更标准的开放路径，与 A/B 均可并存，且不受 DSH
-态度影响。
+**并行开放路径**：MCP 客户端——兰台引擎已是 MCP server；反向消费外部 MCP 工具
+并入 registry 是比任何自造插件格式更标准的开放路径（也是 Rust 侧插件化的标准
+形态：新能力优先做成进程外 MCP，不是往 src-tauri 加命令），与自研/compat 均可
+并存，且不受 DSH 态度影响。
 
 ## 6. 风险表
 

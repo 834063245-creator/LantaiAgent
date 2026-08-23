@@ -5,9 +5,11 @@
 > 状态词：In progress（干着）/ Proposed·Draft（立项未开工）/ 阻塞（等条件）。
 > 维护纪律：**竣工即归档**（CONVENTIONS §4）——这页只保留活的工作。
 
-## 一句话现状（2026-08-22 深夜）
+## 一句话现状（2026-08-23）
 
-**兰台（Lantai）= 纸壳（注疏案卷工作台）为唯一主界面的 Agent 软件**。旧观测台前端已于昨夜整体拆除（-16843 行）；工程主体架构全部落地，剩余的是收尾与少数立项未开工项——没有拦路的硬依赖。
+**兰台（Lantai）= 纸壳（注疏案卷工作台）为唯一主界面的 Agent 软件**。执行原语已落地
+（code_execution + ctx.codeRuntime，模型可在程序体内循环/并发/试错调全部工具）；插件化
+战略已换轨（D9：自研为主，存量逐步拆为域插件，特权区只减不增）。没有拦路的硬依赖。
 
 ## 活跃工程（就一个半）
 
@@ -31,18 +33,16 @@ S0/S1/S2/S4 竣工后，S3（settings 域第一方行化：面板/命令双贡�
 
 | 项 | 成本 | 说明 |
 |---|---|---|
-| agent-plugin **P1** 工具面文档生成 | ~~半天~~ ✅ 已毕（2026-08-22）：gen-tool-contract-md.cjs + model-tool-contract.md 落地；C2 判据如实偏差（ci.yml 冻结 → vitest 守护 + check:tool-contract）；AGENTS/CLAUDE 手写清单段已指向生成物 |
-| arch-action-plan **14** any 渐进清理 | ~~渐进~~ ✅ 已收官（2026-08-22）：非 agent 区 2026-08-13 清完；agent 区随 11c 第五批清零（GraphDataShape 宽松形状 + errText 收口；EngineJson 单处豁免为刻意决策）→ [`arch-action-plan.md`](arch-action-plan.md) |
 | rpc 返回值 Value 化 | L（独立项目） | 根治「双重编码」bug 家族；typedRpc 前置已就位 → [`landmine-map.md`](../landmine-map.md) 根治级段 |
-| agent-plugin **P2** code_execution 执行原语 | 2-4 天 | 产品决策级；**P3** cordis 收口 1-2 天（前置已满足） |
-| arch-action-plan **11c** agent.ts 拆分 | ~~1 天~~ ✅ 已毕（2026-08-22）：五批落账，3295 → 1758 行（-47%），四域出仓（loop-helpers / compaction-summarize / goal-loop / subagent-spawn / agent-compaction），宿主接口模式，convergence 零漂移；流式循环域留在 agent.ts（全字段交织，收益/风险比不划算） |
+| agent-plugin **P2+P3** 执行原语 | ~~2-4 天 + 1-2 天~~ ✅ 已毕（2026-08-22/23）：code_execution（Web Worker 沙箱 + 协议腰线 + 嵌套审计 + 程文块）+ ctx.codeRuntime cordis 收口；C4-C10 全判据；commit d772af37/15930f65 → [`agent-plugin-architecture-plan.md`](agent-plugin-architecture-plan.md) |
+| agent-plugin **P4** 插件化全集 | 持续 | **D9 换轨（2026-08-23）：不等 DSH，自研为主自己当第一用户**——通道补齐 + 存量拆解①-⑥ + P4a 调研交替推进；批次表见计划 §5 P4 |
 | browser CDP 功能面扩展 | 中 | 现状 4/10 功能覆盖（缺导航/正文提取/表单全动作等）→ [`browser-cdp-suite-review-round2.md`](browser-cdp-suite-review-round2.md) |
 
 ## 等外部条件（挂着不动）
 
 | 项 | 等什么 |
 |---|---|
-| agent-plugin **P4** 插件边界/DSH 跟随 | DSH 官方接口稳定信号（semver/插件文档/稳定性承诺） |
+| ~~agent-plugin **P4** 插件边界/DSH 跟随~~ | **D9 换轨（2026-08-23）：移出等待表**——自研为主不等信号（见上表）；DSH 信号点亮只追加 compat 装载层 |
 | v4-pro-minimal AB 实验 | Linux 环境（Windows 不可用） |
 | repo 改名 GitHub 侧执行 | 用户操作；改名前不打发布包 |
 
@@ -67,7 +67,8 @@ workspace-flip · 总线归零+ui/拆分 · 岛层退休 · cordis-migration · 
 |---|---|---|
 | R1、R2 | 纸的视觉/交互访谈 | paper-shell |
 | R3 | 纸的退役访谈——**作废**（V5 提前拆除，无对象） | — |
-| R5 | 打磨环（A 转录段✅ / B 审美段 / C 产品化段） | paper-shell |
+| R5 | 打磨环（A 转录段✅ / B 审美段 / C 产品化段）；另：agent-plugin 计划的风险编号 R5（Worker CSP spike，已毕）同名不同物 | paper-shell / agent-plugin |
+| P1-P4 | agent-plugin 阶段（P1 工具文档✅ / P2 执行原语✅ / P3 cordis 收口✅ / P4 插件化全集·自研为主） | agent-plugin |
 | V0-V5 | 纸的管线阶段（全部完成，V5=拆除旧前端） | paper-shell |
 | C1-C14 | r5-polish-backlog 产品化项编号 | paper-shell |
 | S0-S4 | 组合层阶段（S3 剩余） | composition |
