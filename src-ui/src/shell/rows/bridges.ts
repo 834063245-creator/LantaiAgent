@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: MIT.
 
 // 壳行（hologram/shell-bridges）：Tauri 事件桥 — permission-ask 权限卡片。
-// 自 main.ts 426-511 机械迁移（S2）；V5 拆除（2026-08-22）后 unity-event
-// 桥（星图双击/路径选择联动）随观测台退役，只保留权限请求桥——它服务
+// 自 main.ts 426-511 机械迁移（S2）；只保留权限请求桥——它服务
 // Agent 会话编排（与视图无关）。
 //
 // 权限卡承接面：chat-core.showPermissionCard → PromptShelf（V5 起经

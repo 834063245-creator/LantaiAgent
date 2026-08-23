@@ -137,20 +137,6 @@ impl LifecycleService for McpService {
     }
 }
 
-/// Unity 编辑器进程。
-pub struct UnityService;
-
-impl LifecycleService for UnityService {
-    fn name(&self) -> &'static str { "unity_manager" }
-
-    fn shutdown(&self, _deadline: Instant) -> ShutdownStatus {
-        match crate::commands::external::UNITY_MANAGER.stop() {
-            Ok(()) => ShutdownStatus::Clean,
-            Err(e) => ShutdownStatus::Failed(e),
-        }
-    }
-}
-
 /// PTY 会话 — 终止所有 shell。
 pub struct PtyService;
 
@@ -232,19 +218,6 @@ impl LifecycleService for LlmProxyService {
 
     fn shutdown(&self, _deadline: Instant) -> ShutdownStatus {
         crate::llm_proxy::stop_llm_proxy();
-        ShutdownStatus::Clean
-    }
-}
-
-/// Unity 事件 TCP 服务器 — 设置关闭标志使监听线程退出。
-pub struct UnityEventService;
-
-impl LifecycleService for UnityEventService {
-    fn name(&self) -> &'static str { "unity_event_server" }
-
-    fn shutdown(&self, _deadline: Instant) -> ShutdownStatus {
-        crate::commands::external::UNITY_EVENT_SHUTDOWN
-            .store(true, std::sync::atomic::Ordering::SeqCst);
         ShutdownStatus::Clean
     }
 }

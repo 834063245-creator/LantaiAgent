@@ -37,7 +37,7 @@ use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::OnceLock;
 use tokio::net::TcpListener;
 
-/// 代理监听端口（相对稳定，避免与引擎 9777 / Unity 9776 / memory 9600 冲突）。
+/// 代理监听端口（相对稳定，避免与引擎 9777 / memory 9600 冲突）。
 const PROXY_PORT: u16 = 14570;
 
 /// 全局端口分配器冲突时自增兜底；导出端口用 OnceLock 缓存。
@@ -52,7 +52,7 @@ static BOUND_PORT: AtomicU16 = AtomicU16::new(0);
 /// 进程级停机标志 — 窗口关闭 drain 阶段由 LlmProxyService 置位，accept 循环
 /// 每 200ms 轮询一次后退出。否则 std::process::exit(0) 会撞上仍在跑的
 /// hyper/reqwest 网络线程（Winsock I/O 与 ExitProcess 竞争 → 0x40000015
-/// unknown software exception 弹窗，2026-08-17 修复，模式同 unity_event_server）。
+/// unknown software exception 弹窗，2026-08-17 修复）。
 static PROXY_SHUTDOWN: AtomicBool = AtomicBool::new(false);
 
 /// 请求代理优雅停机：置位标志后服务线程 ≤200ms 内退出 accept 循环，
@@ -79,7 +79,7 @@ pub fn spawn_llm_proxy() -> u16 {
     let done = std::sync::Arc::new(AtomicBool::new(false));
     let done_flag = std::sync::Arc::clone(&done);
     let _rt_thread = std::thread::spawn(move || {
-        // 启动即复位停机标志（模式同 start_unity_event_server）。
+        // 启动即复位停机标志。
         PROXY_SHUTDOWN.store(false, Ordering::SeqCst);
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
@@ -157,7 +157,7 @@ pub(crate) async fn serve_listener(listener: &TcpListener, client: reqwest::Clie
             eprintln!("[llm_proxy] shutdown flag set, exiting accept loop");
             break;
         }
-        // 200ms 超时轮询：无连接时也要醒来检查停机标志（模式同 unity event server）。
+        // 200ms 超时轮询：无连接时也要醒来检查停机标志。
         match tokio::time::timeout(std::time::Duration::from_millis(200), listener.accept()).await {
             Ok(Ok((stream, _peer))) => {
                 let io = TokioIo::new(stream);
@@ -202,7 +202,7 @@ async fn handle_inner(client: reqwest::Client, req: Request<Incoming>) -> Respon
         return crate::plugin_assets::method_not_allowed();
     }
     // 组合 patch 通道（S2-2 + S4-0 preset 域扩展）：GET /composition/* 服务
-    // ~/.hologram/composition/ 下的用户层 roster.patch.yml、presets/ 目录
+    // ~/.lantai/composition/ 下的用户层 roster.patch.yml、presets/ 目录
     // 索引与 preset 文件——安全三件套与插件通道同一套（resolve_asset
     // 逐段拒绝 + canonicalize 前缀 + 仅 GET + loopback 绑定天然保证）。
     if let Some(path) = req.uri().path().strip_prefix("/composition/") {

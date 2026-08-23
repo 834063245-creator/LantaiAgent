@@ -390,7 +390,7 @@ fn spawn_plain(command: &str, cwd: &str) -> io::Result<SandboxedChild> {
 }
 
 /// 将已启动的 std::process::Child 分配到 Job Object。
-/// 非沙箱化基础设施启动（LSP、MCP、Unity）使用此方法。
+/// 非沙箱化基础设施启动（LSP、MCP）使用此方法。
 /// 成功返回 true，Job Object 不可用时返回 false。
 pub fn assign_to_job(child: &std::process::Child) -> bool {
     #[cfg(windows)]

@@ -195,9 +195,6 @@
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
 | `stop_mcp_server` | — | — | 字符串 |
-| `start_unity` | — | — | 字符串 |
-| `stop_unity` | — | — | 字符串 |
-| `unity_status` | — | — | 字符串 |
 | `sandbox_status` | — | — | 字符串 |
 | `hologram_run_check` | — | path | 字符串 |
 
@@ -285,6 +282,5 @@ payload 类型见 `src-ui/src/rpc-contract.ts` 的 `EventContract`（前端类�
 | `pty-output` | src-tauri/src/pty_manager.rs |
 | `shell:done` | src-tauri/src/commands/shell.rs |
 | `shell:output` | src-tauri/src/commands/shell.rs |
-| `unity-event` | src-tauri/src/commands/external.rs |
 
 > `goal:state` 等事件为前端内部 EventBus（非 IPC），不走 listen。
