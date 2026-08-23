@@ -22,11 +22,21 @@ const STREAM_OUTPUT_CAP = 64 * 1024;
 /** streamId → 事件解绑函数 — resolveOnce 时统一清理 */
 const _shellCleanups = new Map<string, Array<() => void>>();
 
-/** Rust started 响应（shell.rs）：{"streamId","status","job_id"} */
+/** Rust started 响应（shell.rs）：{"streamId","status","job_id","resolvedCwd"} */
 function parseStartedJobId(raw: string): number | null {
   try {
     const parsed = JSON.parse(raw) as { job_id?: unknown };
     return typeof parsed.job_id === 'number' ? parsed.job_id : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 从 started 响应取生效起始目录（粘性 cwd 可见性回显）。 */
+function parseResolvedCwd(raw: string): string | null {
+  try {
+    const parsed = JSON.parse(raw) as { resolvedCwd?: unknown };
+    return typeof parsed.resolvedCwd === 'string' ? parsed.resolvedCwd : null;
   } catch {
     return null;
   }
@@ -61,6 +71,7 @@ export async function execStreamedShell(
     void (async () => {
       let fullOutput = '';
       let streamTruncated = false;
+      let resolvedCwd: string | null = null;
       let timer: ReturnType<typeof setTimeout> | null = null;
       let settled = false;
       const cleanup = () => {
@@ -89,6 +100,12 @@ export async function execStreamedShell(
       };
       const withTruncationNote = (body: string) =>
         streamTruncated ? `[流式输出过长，只保留末尾 ${STREAM_OUTPUT_CAP} 字符]\n${body}` : body;
+      /** 结果尾部追加 cwd 回显（粘性 cwd 可见性；started 响应携带生效起始目录）。 */
+      const withCwdEcho = (body: string) => {
+        if (!resolvedCwd) return body;
+        const trimmed = body.replace(/\n+$/, '');
+        return trimmed.length === 0 ? `[cwd: ${resolvedCwd}]` : `${trimmed}\n[cwd: ${resolvedCwd}]`;
+      };
 
       const unOut = await listen<{ streamId: string; chunk: string }>('shell:output', (e) => {
         if (e.payload.streamId !== streamId) return;
@@ -98,14 +115,14 @@ export async function execStreamedShell(
       const unDone = await listen<{ streamId: string; exitCode: number; error?: string }>('shell:done', (e) => {
         if (e.payload.streamId !== streamId) return;
         if (e.payload.error)
-          resolveOnce(withTruncationNote(`[exit ${e.payload.exitCode}]\n${fullOutput}\n${e.payload.error}`));
+          resolveOnce(withCwdEcho(withTruncationNote(`[exit ${e.payload.exitCode}]\n${fullOutput}\n${e.payload.error}`)));
         else if (e.payload.exitCode !== 0)
-          resolveOnce(withTruncationNote(`[exit ${e.payload.exitCode}]\n${fullOutput}`));
-        else resolveOnce(withTruncationNote(fullOutput || '(无输出)'));
+          resolveOnce(withCwdEcho(withTruncationNote(`[exit ${e.payload.exitCode}]\n${fullOutput}`)));
+        else resolveOnce(withCwdEcho(withTruncationNote(fullOutput || '(无输出)')));
       });
       _shellCleanups.set(streamId, [unOut, unDone]);
       timer = setTimeout(
-        () => resolveOnce(withTruncationNote(`[exit -1] shell 超时 (${SHELL_TIMEOUT / 1000}s)\n${fullOutput}`)),
+        () => resolveOnce(withCwdEcho(withTruncationNote(`[exit -1] shell 超时 (${SHELL_TIMEOUT / 1000}s)\n${fullOutput}`))),
         SHELL_TIMEOUT,
       );
       // 中止语义（2026-08-17 修复，会话 223 事故）：
@@ -127,6 +144,7 @@ export async function execStreamedShell(
       try {
         const startedRaw = await agentInvoke<string>('exec_command', { ...args, streamToolId: streamId });
         jobId = parseStartedJobId(startedRaw);
+        resolvedCwd = parseResolvedCwd(startedRaw);
         // started 响应已返回：若此刻已 aborted（invoke 期间被中止），补一次 kill 并立即 resolve。
         if (signal?.aborted && jobId != null) {
           void agentInvoke('bash_kill', { jobId, agentId }).catch(() => {});

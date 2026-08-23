@@ -47,6 +47,7 @@ pub(crate) mod encoding;
 pub(crate) mod graph_io;
 pub(crate) mod ipc_guard;
 pub(crate) mod path_resolve;
+pub(crate) mod sticky_cwd;
 pub(crate) use bg_jobs::*;
 pub(crate) use build_lock::*;
 pub(crate) use encoding::*;

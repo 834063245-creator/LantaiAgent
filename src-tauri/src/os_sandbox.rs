@@ -399,6 +399,16 @@ pub fn assign_to_job(child: &std::process::Child) -> bool {
     { let _ = child; true }
 }
 
+/// bash 方言解释器是否可用（捆绑/系统 bash；cmd 回退时为 false）。
+/// 粘性 cwd 的 printf 包装只在 bash 可用时注入（cmd 无 printf，注入只会
+/// 污染每条命令的输出尾部）。
+pub fn bash_interpreter_available() -> bool {
+    #[cfg(windows)]
+    { !matches!(imp::resolve_shell(), imp::Shell::Cmd) }
+    #[cfg(not(windows))]
+    { true }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // 辅助函数
 // ═══════════════════════════════════════════════════════════════

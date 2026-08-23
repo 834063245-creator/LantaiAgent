@@ -20,7 +20,7 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 | [`ask_user`](#ask_user) | ✓ | — | Ask the user one or more questions when you need clarification or confirmation before proceeding. Use when the request is ambiguous, you need to choose between approaches, or you need approval for a destructive action. Supports: single question (question/header/options/multiSelect), multiple questions in one call (questions array — recommended for 2+, asked one at a time), and open-ended questions (omit options — the user types a free-text answer). Returns the user's answer(s). |
 | [`wait`](#wait) | ✓ | — | Block until a target completes, then return immediately — event-driven, NOT a fixed sleep. Pass agentId to wait for that sub-agent to finish: returns its final status the moment it completes (no polling loops, no guessing durations). For background shell jobs use bash_wait (dedicated tool). Omit agentId and pass durationMs ONLY as a fallback for non-event waits (watcher re-analysis, file appearance). Max 10 minutes per call. |
 | [`fs`](#fs) | — | 11 | File-system operations: read / write / edit / list / glob / mkdir / move / rename / delete / constraints / write_constraints. Use fs(read) to inspect files, fs(write)/fs(edit) to modify them. fs(constraints) reads hologram.constraints.yaml; fs(write_constraints) replaces it (read first — extend existing rules rather than dropping them). |
-| [`shell`](#shell) | — | 4 | Shell execution: run (build/test commands only, bundled bash by default; interpreter:"pwsh" ONLY for Windows-native tasks like registry/ACL/MSI/COM/WMI), plus output / wait / kill for background jobs. Do NOT use shell(run) for file search, code search, or git — use fs/search/git instead. |
+| [`shell`](#shell) | — | 4 | Shell execution: run (build/test commands only, bundled bash by default; interpreter:"pwsh" ONLY for Windows-native tasks like registry/ACL/MSI/COM/WMI), plus output / wait / kill for background jobs. Working directory is sticky per agent (a successful cd persists across calls; results end with a [cwd: ...] line). bash_output returns only NEW bytes since your last read — polling watch modes/dev servers is cheap. Do NOT use shell(run) for file search, code search, or git — use fs/search/git instead. |
 | [`git`](#git) | — | 13 | Git operations: status / diff / log / stage / commit / push / pull / checkout / branch / stash / unstash / discard / init / blame. |
 | [`search`](#search) | ✓ | 1 | Search source text across files: content matches, file lists, or match counts. |
 | [`web`](#web) | ✓ | 1 | Fetch a URL and return readable text (documentation, API responses, raw files). |
@@ -89,7 +89,7 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 
 ### `shell`
 
-> Shell execution: run (build/test commands only, bundled bash by default; interpreter:"pwsh" ONLY for Windows-native tasks like registry/ACL/MSI/COM/WMI), plus output / wait / kill for background jobs. Do NOT use shell(run) for file search, code search, or git — use fs/search/git instead.
+> Shell execution: run (build/test commands only, bundled bash by default; interpreter:"pwsh" ONLY for Windows-native tasks like registry/ACL/MSI/COM/WMI), plus output / wait / kill for background jobs. Working directory is sticky per agent (a successful cd persists across calls; results end with a [cwd: ...] line). bash_output returns only NEW bytes since your last read — polling watch modes/dev servers is cheap. Do NOT use shell(run) for file search, code search, or git — use fs/search/git instead.
 
 - 只读：否
 - 域：`shell`

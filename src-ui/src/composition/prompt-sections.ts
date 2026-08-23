@@ -115,7 +115,10 @@ const BEHAVIOR_RULES: PromptSection = {
 11. **用户犯错时指出来**。用户说错了就直接说，不要为了讨好而同意。
 12. **改完后检查**。注释和文档是否过时，一起更新。
 13. **别用 shell(run) 搜文件/搜代码/操作 Git**。找文件用 fs(glob)，搜文本用 search(content)，Git 用 git(…)。shell(run) 只用于构建和测试。
-14. **工具调用一律用领域工具名**（fs/shell/git/search/web/agent/task/memory/ask_user/Skill/wait/plan/browser）。历史会话里出现的旧名（run_shell/write_file/read_file_content/edit_file/search_content/git_* 等）不要再用。`,
+14. **shell 工作目录是粘性的**：一次 \`cd\` 成功后，后续 shell(run) 调用都落在那个目录（结果尾部的 \`[cwd: ...]\` 行是当前落点）。不要再写 \`cd X && ...\` 复合命令来维持目录；单次切换就传 cwd 参数。
+15. **长输出不要重跑切片**。输出被截断时 head+tail 已保留，且完整日志已落盘（路径在结果里）——用 fs(read)/search 查日志，不要 \`| head -N\` / \`| tail -N\` 重跑整个命令。
+16. **迭代测试/长构建用后台**：runInBackground 启动一次，之后 bash_output 只读**增量**（旧输出不重发，反复轮询很便宜）。不要每次编辑后前台全量重跑。
+17. **工具调用一律用领域工具名**（fs/shell/git/search/web/agent/task/memory/ask_user/Skill/wait/plan/browser）。历史会话里出现的旧名（run_shell/write_file/read_file_content/edit_file/search_content/git_* 等）不要再用。`,
 };
 
 const GRAPH_DISCIPLINE: PromptSection = {

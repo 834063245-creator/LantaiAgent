@@ -66,6 +66,9 @@ pub(crate) async fn workspace_deactivate(
         crate::pty_manager::kill_all();
         crate::lsp_manager::stop_all();
         crate::commands::external::stop_mcp();
+        // 粘性 cwd 全清 — 旧项目的目录状态不得带进新工作区（代际递增使
+        // 在途捕获不落新账）。
+        crate::utils::sticky_cwd::clear_all();
     }
     Ok(())
 }

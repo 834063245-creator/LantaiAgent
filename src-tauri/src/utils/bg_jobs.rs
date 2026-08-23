@@ -43,8 +43,18 @@ pub(crate) fn append_shared_bounded(buf: &mut Vec<u8>, data: &[u8]) {
 
 pub(crate) struct BgJob {
     pub(crate) child: os_sandbox::SandboxedChild,
-    stdout_buf: Vec<u8>,
-    stderr_buf: Vec<u8>,
+    /// 每流"已交付给 bash_output 的字节数"游标（增量读语义）。
+    /// 旧字段 stdout_buf/stderr_buf 原为全量快照比对，2026-08-18 起改为
+    /// 增量游标 + 常驻解码器：bash_output 只返回上次读取之后的新增字节，
+    /// 消灭 watch/长任务场景下每次轮询全量重发旧输出的 O(n²) token 浪费。
+    /// 环形丢弃（游标越界）时读取处直接报 lost 行并对齐缓冲头，无独立标志位。
+    stdout_cursor: usize,
+    stderr_cursor: usize,
+    /// 常驻增量解码器 — 跨 read 边界保持 UTF-8/GBK 解码状态，增量字节
+    /// 不再需要完整重解码（也不复吃旧账）。
+    stdout_decoder: crate::utils::StreamDecoder,
+    stderr_decoder: crate::utils::StreamDecoder,
+    /// 解码器残余（finish 后一次性清出）。
     start_time: std::time::Instant,
     #[allow(dead_code)] // 存储供未来任务列表功能使用
     label: String,
@@ -339,8 +349,10 @@ pub(crate) fn spawn_bg_from_child(
 
     let job = BgJob {
         child,
-        stdout_buf: Vec::new(),
-        stderr_buf: Vec::new(),
+        stdout_cursor: 0,
+        stderr_cursor: 0,
+        stdout_decoder: crate::utils::StreamDecoder::new(),
+        stderr_decoder: crate::utils::StreamDecoder::new(),
         start_time: now,
         label: label.to_string(),
         last_output_time: now,
@@ -368,8 +380,10 @@ pub(crate) fn register_fg_child(
     let now = std::time::Instant::now();
     let job = BgJob {
         child,
-        stdout_buf: Vec::new(),
-        stderr_buf: Vec::new(),
+        stdout_cursor: 0,
+        stderr_cursor: 0,
+        stdout_decoder: crate::utils::StreamDecoder::new(),
+        stderr_decoder: crate::utils::StreamDecoder::new(),
         start_time: now,
         label: label.to_string(),
         last_output_time: now,
@@ -407,26 +421,56 @@ pub(crate) fn read_bg_output(id: u32) -> Result<String, String> {
     let mut jobs = crate::utils::lock_or_recover(&BG_JOBS);
     let job = jobs.get_mut(&id).ok_or("后台任务不存在或已完成")?;
 
-    // ── 只从共享 Arc 读取（drain 线程已排空管道）——不碰 child 管道，永不阻塞 ──
-    let (stdout_str, stderr_str, new_output) = {
+    // ── 增量读取（2026-08-18）：只返回上次读取之后的新增字节 ──
+    // 常驻 StreamDecoder 保持跨 read 的解码状态；环形丢弃导致游标越界时
+    // 报一行 lost 提示并对齐到缓冲头。全量终读语义保留在 wait_bg。
+    let (mut stdout_inc, mut stderr_inc, lost_notes) = {
         let shared = &job.shared;
         let so = crate::utils::lock_or_recover(&shared.stdout);
         let se = crate::utils::lock_or_recover(&shared.stderr);
-        let has_new = so.len() > job.stdout_buf.len() || se.len() > job.stderr_buf.len();
-        let s = crate::utils::decode_shell_bytes(&so);
-        let t = crate::utils::decode_shell_bytes(&se);
-        job.stdout_buf = so.clone();
-        job.stderr_buf = se.clone();
-        (s, t, has_new)
+        let mut notes = Vec::new();
+        // stdout
+        let so_len = so.len();
+        let stdout_new: &[u8] = if job.stdout_cursor > so_len {
+            notes.push("[stdout 输出有丢失：超出滚动缓冲被丢弃]".to_string());
+            job.stdout_cursor = 0;
+            job.stdout_decoder = crate::utils::StreamDecoder::new();
+            &so
+        } else {
+            &so[job.stdout_cursor..]
+        };
+        let out_text = job.stdout_decoder.push(stdout_new);
+        job.stdout_cursor = so_len;
+        // stderr
+        let se_len = se.len();
+        let stderr_new: &[u8] = if job.stderr_cursor > se_len {
+            notes.push("[stderr 输出有丢失：超出滚动缓冲被丢弃]".to_string());
+            job.stderr_cursor = 0;
+            job.stderr_decoder = crate::utils::StreamDecoder::new();
+            &se
+        } else {
+            &se[job.stderr_cursor..]
+        };
+        let err_text = job.stderr_decoder.push(stderr_new);
+        job.stderr_cursor = se_len;
+        (out_text, err_text, notes)
     };
-
-    if new_output {
+    let has_new = !stdout_inc.is_empty() || !stderr_inc.is_empty();
+    if has_new {
         job.last_output_time = std::time::Instant::now();
     }
     let elapsed = job.start_time.elapsed().as_secs();
     let status = job.child.try_wait().map_err(|e| format!("检查进程状态失败: {e}"))?;
     let info = if let Some(ec) = status {
-        let msg = format!("[任务已完成, exit code: {}, 耗时: {}s]\n", ec, elapsed);
+        // 终态：解码器残余一并清出（EOF 后 finish 语义）
+        let tail_o = std::mem::replace(&mut job.stdout_decoder, crate::utils::StreamDecoder::new()).finish();
+        let tail_e = std::mem::replace(&mut job.stderr_decoder, crate::utils::StreamDecoder::new()).finish();
+        stdout_inc.push_str(&tail_o);
+        stderr_inc.push_str(&tail_e);
+        let msg = format!(
+            "[任务已完成, exit code: {}, 耗时: {}s]\n",
+            ec, elapsed
+        );
         let lock_key = job.lock_key.clone();
         jobs.remove(&id);
         drop(jobs);
@@ -437,7 +481,15 @@ pub(crate) fn read_bg_output(id: u32) -> Result<String, String> {
     } else {
         format!("[任务运行中, 已运行: {}s]\n", elapsed)
     };
-    Ok(format!("{info}{stdout_str}{stderr_str}"))
+    let mut result = String::new();
+    for n in &lost_notes {
+        result.push_str(n);
+        result.push('\n');
+    }
+    result.push_str(&info);
+    result.push_str(&stdout_inc);
+    result.push_str(&stderr_inc);
+    Ok(result)
 }
 
 /// 阻塞等待后台任务完成（或超时）。返回完整输出和退出码。
@@ -556,8 +608,10 @@ mod tests {
                     let c = crate::os_sandbox::spawn_shell("echo x", ".").expect("spawn_shell failed");
                     c
                 },
-                stdout_buf: Vec::new(),
-                stderr_buf: Vec::new(),
+                stdout_cursor: 0,
+                stderr_cursor: 0,
+                stdout_decoder: crate::utils::StreamDecoder::new(),
+                stderr_decoder: crate::utils::StreamDecoder::new(),
                 start_time: std::time::Instant::now(),
                 label: "test".into(),
                 last_output_time: std::time::Instant::now(),
@@ -611,6 +665,90 @@ mod tests {
         assert_eq!(kid, id, "后台 job_id 应与调用方预留 id 一致");
         let out = wait_bg(id, 10_000).expect("wait_bg failed");
         assert!(out.contains("bg-id-ok"), "unexpected output: {out}");
+    }
+
+    // ── 增量读（2026-08-18）：bash_output 只返回上次读取之后的新增字节 ──
+
+    /// 手工构造 job（无真实进程）：直接操作 shared Arc 模拟 drain 线程写入。
+    fn make_idle_job(tag: &str) -> u32 {
+        let id = next_job_id();
+        let child = crate::os_sandbox::spawn_shell(
+            &format!("sleep 30 # {tag}"),
+            ".",
+        )
+        .expect("spawn_shell failed");
+        register_fg_child(
+            id,
+            child,
+            tag,
+            BgSharedOutput {
+                stdout: Default::default(),
+                stderr: Default::default(),
+                drain_done: Default::default(),
+            },
+            None,
+            None,
+        );
+        id
+    }
+
+    fn push_shared(id: u32, stream: &str, bytes: &[u8]) {
+        let mut jobs = lock_or_recover(&BG_JOBS);
+        let job = jobs.get_mut(&id).expect("job exists");
+        let target = if stream == "out" { &job.shared.stdout } else { &job.shared.stderr };
+        append_shared_bounded(&mut *lock_or_recover(target), bytes);
+    }
+
+    #[test]
+    fn read_bg_output_returns_only_increment() {
+        let id = make_idle_job("inc");
+        push_shared(id, "out", b"first chunk\n");
+        let r1 = read_bg_output(id).expect("read 1");
+        assert!(r1.contains("first chunk"), "r1: {r1}");
+        assert!(r1.contains("任务运行中"), "r1: {r1}");
+
+        // 第二次读：无新字节 → 头部在、旧正文不在
+        let r2 = read_bg_output(id).expect("read 2");
+        assert!(!r2.contains("first chunk"), "旧输出不得重复下发: {r2}");
+
+        // 新字节 → 只含新增
+        push_shared(id, "out", b"second chunk\n");
+        let r3 = read_bg_output(id).expect("read 3");
+        assert!(r3.contains("second chunk"), "r3: {r3}");
+        assert!(!r3.contains("first chunk"), "r3 不得重发旧输出: {r3}");
+
+        kill_bg(id, None).ok();
+    }
+
+    #[test]
+    fn read_bg_output_incremental_multibyte_across_reads() {
+        let id = make_idle_job("mb");
+        // "中" = E4 B8 AD；第一块给前 2 字节，第二块补尾字节 + 换行
+        push_shared(id, "out", &b"\xe4\xb8"[..]);
+        let r1 = read_bg_output(id).expect("read 1");
+        // 常驻解码器挂起不完整序列：r1 不产出半个字
+        assert!(!r1.contains('\u{fffd}'), "跨块不得出 U+FFFD: {r1}");
+        push_shared(id, "out", b"\xad ok\n");
+        let r2 = read_bg_output(id).expect("read 2");
+        assert!(r2.contains("中 ok"), "补齐后应产出完整字: {r2}");
+        kill_bg(id, None).ok();
+    }
+
+    #[test]
+    fn read_bg_output_reports_lost_on_ring_overwrite() {
+        let id = make_idle_job("lost");
+        // 写超过 MAX_SHARED_OUTPUT_BYTES（1MB），环形丢弃后缓冲从头重来
+        let big = vec![b'x'; MAX_SHARED_OUTPUT_BYTES + 4096];
+        push_shared(id, "out", &big);
+        // 模拟"先读过 1MB+，之后被环形丢弃对齐"：直接把游标推过当前缓冲长度
+        {
+            let mut jobs = lock_or_recover(&BG_JOBS);
+            let job = jobs.get_mut(&id).expect("job");
+            job.stdout_cursor = MAX_SHARED_OUTPUT_BYTES + 100; // 越界
+        }
+        let r = read_bg_output(id).expect("read");
+        assert!(r.contains("输出有丢失"), "环形丢弃必须报 lost: {r}");
+        kill_bg(id, None).ok();
     }
 
     // ── 通知按 owner 路由（2026-08 修复回归）──
