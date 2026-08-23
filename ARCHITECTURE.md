@@ -290,7 +290,7 @@ NetBenefit = |R|·c_in·(T-1) − |S|·c_out − L·avg_turn_cost
 
 2026-08 的收敛工程把自有运行时的生命周期/会话契约全部原语化并门禁化（详见 `docs/archive/agent-core-convergence/`）：
 
-- **声明式装配（Phase 6 + 组合架构 S1 三层，2026-08-20；P4 B① 修订 2026-08-23）**：内置工具族由 `src/composition/tool-rows.ts` 行表装配（12 行内置族，factory → Tool[]，行内重名装载期拒绝；git/search 已迁 ctx.tools 第一方插件通道）；system-prompt 段落由 `src/composition/prompt-sections.ts` section 表拼装（13 段，两装配面 applicable 分流）；会话级工具/hook 仍由 `agent/blueprint.ts` 的 `AgentBlueprint` capability 表驱动——**`AgentConfig` 冻结 31 字段**不再扩张；三层表序 = 字节契约（DeepSeek 前缀缓存与 effective 快照依赖此序）；teardown 走 `ctx.effect`；面板/命令/工具/provider 四 service 注册表挂根 Context（`src/composition/services.ts`，`ContributionRegistry` 内核：装载期重名拒绝 + disposer 双守卫）
+- **声明式装配（Phase 6 + 组合架构 S1 三层，2026-08-20；P4 B①/A-1 修订 2026-08-23）**：内置工具族由 `src/composition/tool-rows.ts` 行表装配（12 行内置族，factory → Tool[]，行内重名装载期拒绝；git/search 已迁 ctx.tools 第一方插件通道）；system-prompt 段落由 `src/composition/prompt-sections.ts` section 表拼装（13 段，两装配面 applicable 分流；插件段贡献经 `ctx.prompts` 第六通道追加在解析产物末尾，下次装配生效）；会话级工具/hook 仍由 `agent/blueprint.ts` 的 `AgentBlueprint` capability 表驱动——**`AgentConfig` 冻结 31 字段**不再扩张；三层表序 = 字节契约（DeepSeek 前缀缓存与 effective 快照依赖此序）；teardown 走 `ctx.effect`；面板/命令/工具/provider 四 service 注册表挂根 Context（`src/composition/services.ts`，`ContributionRegistry` 内核：装载期重名拒绝 + disposer 双守卫）+ 块渲染器第五（`renderer-service.tsx`）+ prompt 段第六（`prompt-service.ts`）
 - **会话事件溯源（Phase 5）**：`session-log.ts` 事件日志 + session 变异三入口（`_appendMessage` / `_replaceSession` / `_retractSessionRange`）；工具折叠逻辑同步 `derivePayload`
 - **生命周期内核（cordis-migration P0–P4）**：vendored cordis（`src/cordis/`）+ workspace-scope epoch（`getWorkspaceEpoch()` / `bumpWorkspaceEpoch()`，**永久保留**——fiber 管所有权，epoch 管逃逸所有权的在途回调）。资源获取点就地 `fiber.ctx.effect()` 登记（顺序敏感拆除组打包 DisposerBag 单 effect 保串行），工作区切换/退出只调 `fiber.dispose()` + epoch bump，杜绝跨项目串台；Agent 挂身份 fiber（清理走 DisposerBag 同步快通道），子系统以 Service 挂树（`LspService` 样板）
 - **门禁**：`npm run verify:convergence`（T0 静态断言 + 8 个 frozen baseline 对拍）失败即返工；record 需显式 `CONVERGENCE_RECORD=1`，baseline 变更走审批
@@ -611,7 +611,7 @@ HoloGram/
 │   │   │   ├── events.ts        # EventBus (冻结——新 app 代码禁 import)
 │   │   │   └── *-store.ts       # Zustand stores (createScopedStore 注册表模式)
 │   │   ├── cordis/            # vendored cordis 内核 (Context/Fiber/Service; 禁就地改, 见目录 README)
-│   │   ├── composition/       # 组合层 (S1): tool-rows 行表 + prompt-sections + 四 service 注册表
+│   │   ├── composition/       # 组合层 (S1+P4): tool-rows 行表 + prompt-sections + 六 service 注册表
 │   │   ├── workspace.ts        # Workspace 统一状态容器 (替代 18+ 全局变量; 工作区 fiber 宿主)
 │   │   ├── workspace-scope.ts  # workspace epoch 代际防护原语 (永久保留: 管在途回调, 与 fiber 所有权互补)
 │   │   ├── bridge.ts           # Tauri IPC 桥接

@@ -145,6 +145,12 @@ React 靠引用比较观察变化。store 是唯一提交口：
    composition/prompt-sections.ts 的 section 表加一段（id + applicable + render；
    render 产出含自身前导分隔符的完整文本——\n/\n\n 混用是现行拼装的机械事实，
    禁"顺手规整分隔符"，会击穿 fixture 快照与前缀缓存）
+✅ 插件 prompt 段贡献（P4 A-1 起）：ctx.prompts 通道（composition/
+   prompt-service.ts，第六 service）——PromptContribution 形状即 PromptSection
+   （id + applicable? + render，render 产出含自身前导分隔符的完整文本）；
+   合流点 = assembleSystemPrompt 末端追加（出厂表 / roster 解析表两路之后，
+   不进 roster 寻址域——patch 不能禁用/覆盖贡献段）；生效 = 下次 Agent 装配；
+   无贡献 = 空集 = 拼装零漂移按构造
 ✅ 会话级工具/hook（plan/通信/discovery/merge/board/kill/request/spawn/task
    替换/compaction/converge/code-execution）：在 agent/blueprint.ts 的 standard() capability 表
    加一项（或 createAgentFromContext 第 3 参注入扩展蓝图）——不改 AgentConfig

@@ -24,6 +24,8 @@
 //
 // 过渡形态：S1 期间 section 在 TS 常量表；S2 起随 preset 体系数据文件化。
 
+import { activePromptContributions } from './prompt-service';
+
 /** section 渲染上下文 — buildSystemPrompt 的全部入参。 */
 export interface PromptSectionContext {
   graphData?: unknown;
@@ -287,10 +289,14 @@ export function builtinPromptSections(): PromptSection[] {
 
 /** 按表序拼装系统提示词（applicable=false 的段跳过，其余纯 concat）。
  *  S2-1 起 sections 可选注入（roster 解析产物——composition-store 穿线）；
- *  缺省 = builtinPromptSections() 出厂表（现行行为，零漂移保证）。 */
+ *  缺省 = builtinPromptSections() 出厂表（现行行为，零漂移保证）。
+ *  A-1（2026-08-23）起第六通道贡献（ctx.prompts，prompt-service.ts）追加在
+ *  解析产物之后——无服务/无贡献 = 空集，拼装结果零漂移按构造成立；
+ *  生效时机 = 下次 Agent 装配（在途会话段落面不变，前缀缓存纪律）。 */
 export function assembleSystemPrompt(ctx: PromptSectionContext, sections?: PromptSection[]): string {
+  const list = [...(sections ?? builtinPromptSections()), ...activePromptContributions()];
   let out = '';
-  for (const section of sections ?? builtinPromptSections()) {
+  for (const section of list) {
     if (section.applicable && !section.applicable(ctx)) continue;
     out += section.render(ctx);
   }

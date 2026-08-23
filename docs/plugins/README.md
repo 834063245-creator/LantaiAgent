@@ -1,17 +1,19 @@
 # HoloGram 插件指南（docs/plugins/README.md）
 
-> S4 竣工（2026-08-20）；S3 第一方行化（2026-08-22）。插件 = 经 webview
-> 动态 import 装载的自包含 ES 模块，向宿主注册**面板 / 命令 / 工具**贡献。
+> S4 竣工（2026-08-20）；S3 第一方行化（2026-08-22）；P4 A-1 prompt 段贡献
+> 通道（2026-08-23）。插件 = 经 webview 动态 import 装载的自包含 ES 模块，
+> 向宿主注册**面板 / 命令 / 工具 / 块渲染器 / prompt 段**贡献。
 > 完全信任模型——安装前必读 §6。从零到跑通的最短路径：
 > `examples/plugins/hello/README.md`。
 > 第一方插件先例（编译期 bundle 内，不走磁盘通道）：`paper/paper-plugin.ts`
-> （面板 + 命令）、`plugins/settings-plugin.ts`（面板 + 命令，S3 样板）。
+> （面板 + 命令）、`plugins/settings-plugin.ts`（面板 + 命令，S3 样板）、
+> `plugins/git-search-plugin.ts`（工具域，P4 B① 样板）。
 
 ## 目录
 
 1. [五个概念](#1-五个概念)
 2. [插件目录与 manifest](#2-插件目录与-manifest)
-3. [三通道 API](#3-三通道-api)
+3. [通道 API](#3-通道-api)
 4. [宿主桥（无裸 import 的平台契约）](#4-宿主桥无裸-import-的平台契约)
 5. [安装 / 卸载 / 禁用](#5-安装--卸载--禁用)
 6. [⚠️ 完全信任模型（安装前必读）](#6-️-完全信任模型安装前必读)
@@ -24,7 +26,7 @@
 | 概念 | 是什么 | 真源 |
 |---|---|---|
 | 插件 | 自包含 ESM 模块（`{ name, inject?, apply(ctx) }`） | 本文档 |
-| 贡献通道 | `ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.providers` / `ctx.renderers`（块渲染器，V3b） | `src-ui/src/composition/services.ts` + `renderer-service.tsx` |
+| 贡献通道 | `ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.providers` / `ctx.renderers`（块渲染器，V3b）/ `ctx.prompts`（prompt 段，P4 A-1） | `src-ui/src/composition/services.ts` + `renderer-service.tsx` + `prompt-service.ts` |
 | 行（row） | 组合的最小单元——工具族/prompt 段/capability/壳行各有 id | `src-ui/src/composition/*` |
 | preset | 命名的行组合叠加层（standard/minimal 内置 + 用户目录） | §8 + `docs/composition/README.md` |
 | patch | 四域行的增量数据（禁用/覆盖/插入） | `docs/composition/README.md` |
@@ -53,9 +55,9 @@
 inject 依赖存在性 → webview 动态 import → `root.plugin(obj)`。任何一步
 失败 → 插件状态 `error`（设置面板可见），**不炸应用**（失败隔离）。
 
-## 3. 三通道 API
+## 3. 通道 API
 
-三通道在 `apply(ctx)` 里注册；**每个注册的返回值（disposer）必须经
+通道在 `apply(ctx)` 里注册；**每个注册的返回值（disposer）必须经
 `ctx.effect(() => disposer, '标签')` 登记**——这是插件生命周期纪律的全部
 （fiber dispose 即干净退出）。
 
@@ -125,8 +127,10 @@ ctx.effect(
 
 - **生效时机是下次 Agent 装配**（新会话）——工具面变更 = 前缀缓存边界，
   只发生在会话边界（§7）。
-- 行 id 折算：贡献 id → `plugin/<贡献 id>`——preset/patch 可按此行 id 寻址
-  禁用（组合均匀性）。
+- 行 id 折算：贡献 id → `plugin/<贡献 id>`。**注意（2026-08-23 勘正）**：
+  patch/preset 的组合解析域当前只含 builtin 行——`plugin/…` 行 id 尚不能
+  被 roster.patch.yml 寻址禁用（「组合均匀性」是 S4-4 机器桥批的扩展点，
+  届时纳入；当前卸载/禁用插件走 §5 的插件开关，不走红组合）。
 - 工具实例缓存：dispose 清缓存（被卸载的工具实例不再进装配）。
 - **factory 可选收装配上下文**（2026-08-23 P4 B① 放宽）：折算装配时以
   `factory(rowCtx)` 传入（`ToolRowContext`——`codingExec` 等装配期依赖）。
@@ -158,6 +162,40 @@ ctx.effect(
   'acme/markdown',
 );
 ```
+
+### ctx.prompts —— system-prompt 段落（下次 Agent 装配生效）
+
+第六贡献通道（P4 A-1，2026-08-23）：向 Agent 系统提示词追加段落——工具指导、
+领域约定、团队规范等静态文本面。
+
+```js
+ctx.effect(
+  () =>
+    ctx.prompts.register({
+      id: 'acme/conventions',       // 约定 '<插件名>/<段名>'
+      applicable: (ctx) => true,     // 可选。返回 false 时本段跳过（如按有无图分流）
+      render: (ctx) => `
+
+## 团队约定
+- 提交信息用中文
+- 不改 docs/archive/ 下任何文件`,   // 产出含自身前导分隔符的完整文本（与内置段同契约）
+    }),
+  'acme/conventions',
+);
+```
+
+关键语义：
+
+- **生效时机是下次 Agent 装配**（新会话）——system prompt 在会话创建时点
+  拼装，在途会话保持创建时点的段落面不变（前缀缓存纪律，§7）。
+- 拼装位置恒在**解析产物末尾**（出厂表或 roster 解析表之后）——贡献段
+  不进组合解析域，patch/preset 不能覆盖/禁用/锚定它（同 tools 通道的
+  `plugin/…` 行现状；S4-4 机器桥批的扩展点）。
+- 段形状与内置段同一契约：`render` 产出**含自身前导分隔符**的完整文本
+  （首段用 `\n\n## 标题` 开头；缺前导换行会与上一段粘连——字节面纪律）。
+- `applicable` 收全量 `PromptSectionContext`（graphData/projectPath/providerName/
+  memorySection 等）——可按装配环境条件参与。
+- 重名 id 装载期拒绝（throw）；disposer 经 ctx.effect 登记（同全部通道）。
 
 关键语义：
 
@@ -255,8 +293,11 @@ factory（出厂表，代码真源）
 
 ## 9. 未决项（如实声明）
 
-- **插件 prompt-section 贡献通道**：尚无（第五 service vs sidecar yml 两个
-  候选——真实消费者出现时再定；hello 三通道不含它）。
+- ~~**插件 prompt-section 贡献通道**~~ ✅ 已落地（P4 A-1，2026-08-23）：
+  `ctx.prompts`（`composition/prompt-service.ts`）——段贡献追加在解析产物
+  末尾，下次装配生效；§3。
+- **贡献段/行的组合解析域**：patch/preset 当前只寻址 builtin 行——
+  `plugin/…` 工具行与 prompt 贡献段纳入寻址域属 S4-4 机器桥批。
 - **版本比较/更新提示**：manifest.version 有、UI 显示之；比较逻辑与更新
   流程属增强。
 - **preset 的 UI 选择面**：当前只有设置面板默认值 + 新会话携带默认
@@ -272,4 +313,6 @@ factory（出厂表，代码真源）
 变更时必须同步更新（规则与代码现状同步铁律）。机器可读的真源：
 `src-ui/src/plugins/types.ts`（manifest schema）、
 `src-ui/src/composition/services.ts`（四 service）、
+`src-ui/src/composition/renderer-service.tsx`（块渲染器）、
+`src-ui/src/composition/prompt-service.ts`（prompt 段）、
 `src-ui/src/composition/plugin-tool-rows.ts`（工具行折算）。

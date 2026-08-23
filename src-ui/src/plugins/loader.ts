@@ -18,6 +18,7 @@ import { createElement } from 'react';
 import { codeRuntimePlugin } from '../agent/code-run/runtime-service';
 import { useShellStore } from '../app/shell-store';
 import { firstPartyToolPlugins } from '../composition/first-party-tools';
+import { promptsServicePlugin } from '../composition/prompt-service';
 import { rendererServicePlugin } from '../composition/renderer-service';
 import { compositionServicesPlugin } from '../composition/services';
 import type { Context } from '../cordis';
@@ -49,15 +50,17 @@ export function pluginAssetsOrigin(port: number): string {
  * 表序 = 装配序。首项固定为组合层四 service（内核线第 3 条的实体化——
  * panels/commands/tools/providers 注册表本身，常驻且先于外部插件，
  * 保证外部插件 manifest 的 inject 依赖可解析）。P3：codeRuntime 服务行
- * （agent/code-run——执行腰，四 service 之后）。S3：settings 域行化
- * （面板 + 命令双贡献，设计件 S3-settings-domain-externalization.md）。
- * P4 B①（2026-08-23）：表尾接第一方工具域插件清单（git/search 两域经
- * ctx.tools 贡献工具，单一真源 composition/first-party-tools.ts——贡献
- * 行序 = 清单序，且必须列于四 service 之后使 inject ['tools'] 可解析）。 */
+ * （agent/code-run——执行腰，四 service 之后）。V3b：块渲染器第五 service。
+ * S3：settings 域行化（面板 + 命令双贡献）。P4 A-1（2026-08-23）：
+ * prompts 第六 service（system-prompt 段贡献注册表）。P4 B①（2026-08-23）：
+ * 表尾接第一方工具域插件清单（git/search 两域经 ctx.tools 贡献工具，
+ * 单一真源 composition/first-party-tools.ts——贡献行序 = 清单序，且必须
+ * 列于四 service 之后使 inject ['tools'] 可解析）。 */
 const BUILTIN_PLUGINS: LantaiPlugin[] = [
   compositionServicesPlugin,
   codeRuntimePlugin,
   rendererServicePlugin,
+  promptsServicePlugin,
   paperPlugin,
   settingsPlugin,
   ...firstPartyToolPlugins(),

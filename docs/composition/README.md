@@ -35,12 +35,16 @@ prompt:
 
 | 域 | 行 id 举例 | 寻址对象 |
 |---|---|---|
-| `tools` | `builtin/fs`、`builtin/shell`、`builtin/graph`… | 内置工具族（真源 `src-ui/src/composition/tool-rows.ts`） |
-| `tools` | `plugin/<插件名>/<工具名>` | 插件工具行（贡献折算——`docs/plugins/README.md` §3） |
-| `commands` | `settings/toggle`、`paper/toggle` | 命令贡献（第一方行化先例——settings/paper 域插件，S3 起；折算后 palette 行 id = `plugin/<贡献 id>`） |
+| `tools` | `builtin/fs`、`builtin/shell`、`builtin/graph`… | 内置工具族（真源 `src-ui/src/composition/tool-rows.ts`；git/search 已迁 ctx.tools 插件通道——P4 B①） |
 | `prompt` | `behavior-rules`、`collaboration-mode`… | system prompt 段（真源 `prompt-sections.ts`；id 是裸名） |
 | `capabilities` | `plan-tools`、`converge-tools`、`graph-hooks`… | 会话级工具/hook（真源 `agent/blueprint.ts`；id = capability key） |
 | `shell` | `hologram/shell-graph`、`hologram/shell-cold-start`… | 壳引导行（真源 `composition/shell-rows.ts`；行实现 `src-ui/src/shell/rows/*`） |
+
+> **寻址域边界（2026-08-23 勘正）**：patch/preset 的组合解析域当前只含
+> builtin 行——插件贡献的工具行（`plugin/<插件名>/<工具名>`）与 prompt
+> 段贡献（`ctx.prompts`，P4 A-1）**不在寻址域内**，写进 patch 会报「未知
+> 行 id」整体拒绝。贡献行/段纳入寻址域属 S4-4 机器桥批；当前卸载/禁用
+> 插件走插件开关（设置 → 插件），不走组合 patch。
 
 完整 id 清单以各真源文件为准——它们是唯一权威源。
 
