@@ -140,7 +140,7 @@ React 靠引用比较观察变化。store 是唯一提交口：
    render 产出含自身前导分隔符的完整文本——\n/\n\n 混用是现行拼装的机械事实，
    禁"顺手规整分隔符"，会击穿 fixture 快照与前缀缓存）
 ✅ 会话级工具/hook（plan/通信/discovery/merge/board/kill/request/spawn/task
-   替换/compaction/converge）：在 agent/blueprint.ts 的 standard() capability 表
+   替换/compaction/converge/code-execution）：在 agent/blueprint.ts 的 standard() capability 表
    加一项（或 createAgentFromContext 第 3 参注入扩展蓝图）——不改 AgentConfig
    （字段面冻结 31：specs/phase-6 AST 断言 + gate.mjs 计数扫描双层门禁）
 ✅ 注册顺序 = 表序（行表序 / section 表序 / capability 表序）：表序是字节契约
@@ -158,6 +158,14 @@ session 事件溯源（双写期，this.session 是真源 + SessionLog 逐字节
 
 工具管道裁决：guard/preflight/around 经 agent/events.ts 的 AgentEventBus 组合，
 bus 事件与 legacy EventSink 双发（UI 零改动依赖此）。
+
+执行原语（P2/P3，agent-plugin-architecture-plan）：code_execution 工具经
+ctx.codeRuntime 服务（vendored cordis Service，agent/code-run/runtime-service.ts，
+codeRuntimePlugin 挂根 Context）运行程序体——绑定面 = CodeBindingSpec（invoke
+闭包持有 executor 等价体 + session-log 审计），runtime 不知道工具和会话
+（DSH 接缝纪律）；嵌套分发走 Agent.dispatchNestedTool（门禁/hooks/截断全套
+不豁免，读并行写串行）；无服务挂载时惰性游离实例（行为 = 直接 runCode）。
+守护：tests/code-execution.test.ts。
 守护：改 src/agent/** 或 src/composition/** 必过 npm run verify:convergence（T0 静态 + 8 baseline 对拍；standard preset 零漂移规则——不设 CONVERGENCE_PRESET 直接跑，快照逐字节不变，漂了先修代码）；
 record 永不上 CI；baseline 变更走 docs/archive/agent-core-convergence/baseline-change-request.md 审批。
 

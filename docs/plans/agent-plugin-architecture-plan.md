@@ -1,7 +1,7 @@
 # Agent 插件化：执行原语 + 工具面单一真源（DSH 对标）计划
 
 > 立项：2026-08-19（岛层退休 + 总线归零立项当日）
-> 状态：**Proposed（方向性立项，执行窗口未定——建议在 eventbus-zero-and-ui-split 完成后开）**
+> 状态（2026-08-23 更新）：**P1 ✅ · P2 ✅ 已毕（2026-08-22/23：code_execution 执行原语全段落地——R5 spike 全绿、产品拍板方案 A 程文块、C4-C8 全判据达成、baseline 变更已审批 `baseline-change-request-code-execution.md`）· P3 ✅ 已毕（2026-08-23：codeRuntime 收口为 vendored cordis Service（ctx.codeRuntime，codeRuntimePlugin 挂根 Context，agent/code-run/runtime-service.ts）；绑定面归一 CodeBindingSpec（invoke 闭包持有 executor 等价体+审计）；工具经 runViaRuntime 门面消费，无服务时惰性游离实例。P4 仍门控于 DSH 观望信号（D8）**
 > 战略决策（2026-08-19 定）：**生态跟随走「观望 DSH」路线**——P4 的前提是 DSH 官方把服务接口
 > 当公开契约维护；在此之前只做自研（P1-P3 全部独立于 DSH 生态成立）。见 §4 D8。
 > 性质：本计划是能力建设（capability plan），不是还债（debt plan）——每阶段独立可停，
@@ -130,13 +130,22 @@ HoloGram 单进程内暂不需要，P4 插件边界时再评估。
 
 ## 5. 阶段
 
-### P1 工具面文档生成（半天，独立收益，随时可做）
+### P1 工具面文档生成 — ✅ 已毕（2026-08-22）
+
+落地记录：`scripts/gen-tool-contract-md.cjs` + `docs/agents/model-tool-contract.md`；C2
+判据如实偏差（ci.yml 冻结 → vitest 守护测试 + `check:tool-contract`）；AGENTS/CLAUDE
+手写清单段已指向生成物（见 plans/README.md P1 行）。下列原始施工序仅存档：
+
 1. `ToolRegistry` 增加 catalog 导出（或复用 domains 装配现场）
 2. `scripts/gen-tool-contract-md.cjs`：zod→JSON Schema→markdown 表（参照 rpc 版脚本）
 3. CI 漂移检查 + AGENTS/CLAUDE 文档段替换
 4. 门禁：build + vitest + 生成物 diff 检查
 
 ### P2 执行原语（2-4 天，产品决策级）
+0. **产品拍板项（开工时问用户）**：code run 在纸壳的展示形态——新增块 kind（经
+   `ctx.renderers` 第五贡献通道，V3b 已就位）还是复用既有 tool 块？DSH 参照是专属
+   code run 卡片（`packages/core/tools/src/code-mode.ts`）。本计划立项时（2026-08-19）
+   尚无纸壳；V5 后纸壳是唯一主界面——展示形态是立项后新增的产品决策面。
 1. 协议层：correlation-id 腰线（照抄 protocol.ts 语义：一次性应答、敌意校验、无损 JSON、
    输出预算、日志先行）
 2. Worker 侧：Web Worker bootstrap——类型剥离（HoloGram 无 ts 转译链，直接收 JS 程序体，
@@ -180,7 +189,7 @@ schema 可序列化 + capability 表项 + permissions.json 接入；**形状与 
 | R2 | 嵌套执行的 session-log 语义（derivePayload 冻结面） | P2 第 5 步强制；先读 agent-core-convergence Phase 5 立规，变更走 baseline change request |
 | R3 | schema 面变动破前缀缓存 | D2/D7：增量=1 工具；capability 表序显式插入；上线前后对拍 effective 快照 |
 | R4 | 模型滥用 code_execution 绕过工具粒度审计 | 子分发全记录（D5）——审计粒度不变，只是换了调用者 |
-| R5 | webview Worker 的 CSP/eval 限制（Tauri 配置） | P2 开工首日做 spike 验证（blob import vs Function 构造），失败即转 sidecar 方案，协议层不白做 |
+| R5 | webview Worker 的 CSP/eval 限制（Tauri 配置） | ✅ 已验证不成立（2026-08-22 spike：无 CSP，blob module worker + worker 内 eval/Function/import(blob:) 全通；笔记 `docs/research/_r5-web-worker-csp-spike.md`）。未来加 CSP 时需预留 `worker-src blob:` + `script-src blob: 'unsafe-eval'`（或改走 import(blob:) 免 eval） |
 | R6 | 并发契约不清晰（程序内 Promise.all 撞写工具） | C7：文档显式声明；readOnly 并行规则沿用，写工具串行 |
 
 ## 7. 明确不做（Non-goals）
@@ -193,6 +202,6 @@ schema 可序列化 + capability 表项 + permissions.json 接入；**形状与 
 
 ## 8. 与既有计划的关系
 
-- 前置完成：ui-react-island-retirement（Done）；**建议先做**：eventbus-zero-and-ui-split
-  （P0 已立项）——P3 之前完成即可，P1/P2 无依赖
+- 前置完成：ui-react-island-retirement（Done）+ eventbus-zero-and-ui-split（Done，
+  2026-08-19 竣工归档）——P3 前置已满足；P1/P2 无依赖（2026-08-22 校准）
 - 本计划不动 ui/events.ts、不迁文件、不碰冻结四文件——与总线归零计划零冲突

@@ -24,6 +24,7 @@ export type BlockKind =
   | 'reasoning' // 推理段（可折叠语义，走查弹平铺）
   | 'diff' // 代码/diff（等宽渲染）
   | 'tool' // 工具调用卡（name/args/status/output）
+  | 'code' // 程序执行卡（code_execution 专属：程序体+日志+完成值，P2-A）
   | 'plan' // 计划卡
   | 'notice'; // 系统通知
 
@@ -44,6 +45,19 @@ export interface BlockPayloads {
     label: string;
     args: string;
     status: 'pending' | 'running' | 'done' | 'error';
+    output?: string;
+    err?: string;
+  };
+  /** 程序执行卡（P2-A）：code_execution 调用的专属形态——三段式
+   *  （程序体 / 日志流 / 完成值），与 tool 块的单进单出语义分离。 */
+  code: {
+    toolId: string;
+    /** 模型给的 description（UI 标题语义，对齐 DSH run_code 的卡片标题）。 */
+    description: string;
+    /** 程序体（async function body）。 */
+    code: string;
+    status: 'pending' | 'running' | 'done' | 'error';
+    /** 合并输出（logs + 完成值 / 错误）——终态一次性写入（code run 无流式进度）。 */
     output?: string;
     err?: string;
   };

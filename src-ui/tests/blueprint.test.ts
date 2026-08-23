@@ -94,6 +94,7 @@ describe('AgentBlueprint T1 — 原语行为', () => {
       'spawn-tool',
       'task-tools',
       'compaction-tools',
+      'code-execution-tool',
       'converge-tools',
       'graph-hooks',
       'board-tracking-hook',

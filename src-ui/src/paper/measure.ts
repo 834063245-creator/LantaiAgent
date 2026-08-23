@@ -130,6 +130,7 @@ interface PayloadLike {
   args?: string;
   output?: string;
   err?: string;
+  code?: string;
 }
 
 /** 封顶测量：真实行高 × 行数，超 maxH 截断（滚动部分不占高）。 */
@@ -193,6 +194,21 @@ export function measureBlockHeight(b: SourcedBlock): number {
         : 0;
       const errH = p.err ? OUT_CHROME_H + cappedH(p.err, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, OUT_MAX_H) : 0;
       return TOOL_PAD_TOP + argsH + outH + errH;
+    }
+    case 'code': {
+      // 与 tool 同构的封顶测量（P2-A）：程序体 + 输出 + 错误三段
+      const codeH = cappedH(
+        (b.payload as { code?: string }).code ?? p.args ?? '',
+        b.w,
+        PAPER_TOOL_FONT,
+        PAPER_TOOL_LINE_HEIGHT,
+        PRE_MAX_H,
+      );
+      const outH = p.output
+        ? OUT_CHROME_H + cappedH(p.output, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, OUT_MAX_H)
+        : 0;
+      const errH = p.err ? OUT_CHROME_H + cappedH(p.err, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, OUT_MAX_H) : 0;
+      return TOOL_PAD_TOP + codeH + outH + errH;
     }
     case 'plan': {
       const items = parsePlanItems(p.content ?? '');

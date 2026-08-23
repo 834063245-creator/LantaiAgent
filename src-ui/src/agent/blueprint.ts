@@ -26,6 +26,8 @@
 // 不得污染标准装配）。
 
 import type { Agent } from './agent';
+import { createCodeExecutionTool } from './code-run/code-execution-tool';
+import type { CodeBindingSpec } from './code-run/host';
 import type { AgentContext } from './context';
 import {
   createGraphContextHook,
@@ -277,6 +279,48 @@ export function builtinCapabilities(): AgentCapability[] {
         const agent = requireAgent(scope);
         agent.setCompactionConfigPath(scope.ctx.projectPath);
         registerCompactionTools(agent, scope.tools);
+      },
+    },
+    {
+      // code_execution 执行原语（P2 建立，P3 起经 ctx.codeRuntime 服务运行）：
+      // 绑定面 = CodeBindingSpec（invoke 闭包持有 executor 等价体 + 审计），
+      // runtime 不知道工具和会话（DSH 接缝纪律）。审计序在闭包内自持
+      // （dispatchCounter——装配期局部，不落模块态）。
+      // 位置：compaction-tools 之后、converge-tools 之前——常驻名不进
+      // DOMAIN_SPECS（与 ask_user/wait 同类的会话级原语），注册序在此
+      // 显式选定（D7：表序 = 字节契约）。
+      key: 'code-execution-tool',
+      phase: 'agent',
+      install: (scope) => {
+        const agent = requireAgent(scope);
+        const sessionLog = agent.sessionLog;
+        let dispatchCounter = 0;
+        // 绑定集：注册表可见面快照（排除自身——防程序内自递归撞 worker 上限）；
+        // invoke 闭包 = dispatchNestedTool（executor 等价体）+ 逐条审计落账
+        //（与旧 onDispatch 语义一致：start/end 各一条，seq 单调递增）。
+        const bindings: CodeBindingSpec[] = scope.tools
+          .visibleTools()
+          .filter((t) => t.name() !== 'code_execution')
+          .map(
+            (t): CodeBindingSpec => ({
+              name: t.name(),
+              readOnly: t.readOnly(),
+              invoke: async (args) => {
+                const seq = ++dispatchCounter;
+                sessionLog.append('tool/code-dispatch-start', { seq, name: t.name(), args });
+                const outcome = await agent.dispatchNestedTool(t.name(), args);
+                sessionLog.append('tool/code-dispatch', {
+                  seq,
+                  name: t.name(),
+                  isError: outcome.isError,
+                  output: outcome.output,
+                });
+                return outcome;
+              },
+            }),
+          );
+        scope.tools.register(createCodeExecutionTool({ bindings }));
+        agent.setCodeDispatch((name, args) => agent.dispatchNestedTool(name, args));
       },
     },
     {

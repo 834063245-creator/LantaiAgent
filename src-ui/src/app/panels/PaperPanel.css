@@ -378,6 +378,51 @@
   word-break: break-all;
 }
 
+/* ── 程文（code，P2-A）：程序执行卡——石青注线同源（脚注族），
+ *  程序体带浅底色块与 tool 块的参数行区分（程序语义 vs 调用语义） ── */
+.pp-block.pp-code {
+  padding-top: 10px;
+}
+.pp-block.pp-code::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 44px;
+  height: 1.5px;
+  background: var(--indigo);
+}
+.pp-block.pp-code .pp-kind .pp-zh {
+  color: var(--indigo);
+}
+.pp-block.pp-code .pp-code-src {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--ink-1);
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border-left: 3px solid var(--indigo);
+  background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
+  padding: 10px 0 10px 14px;
+}
+.pp-block.pp-code .pp-out {
+  margin-top: 6px;
+  border-top: var(--rule-soft);
+  padding-top: 6px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 /* ── 抄录（diff）：栏内图版，3px 硬左线 + 上下规线 + 米黄底 ── */
 .pp-block.pp-diff .pp-lang {
   font-family: var(--f-mono);

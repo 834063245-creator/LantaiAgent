@@ -76,6 +76,7 @@ import type { ToolRegistry } from './tool';
 import { foldToolResults, nextFoldBoundary } from './tool-fold';
 import { createStableSchemaSelector, type StableSchemaSelector, userContext } from './tool-select';
 import { resolveGuardToolName } from './tools/domains';
+import { truncateToolOutput } from './truncate';
 
 // 11c 拆分：wrapTool / buildSubAgentTools 原体已迁 subagent-spawn.ts，
 // 此处 re-export 保外部导入面不变（tests/subagent-tool-strip.test.ts 等消费）。
@@ -239,6 +240,99 @@ export class Agent {
   /** UI 会话 ID — 由 ChatCore 在运行前设置，使子 Agent 通知
    *  能更新正确的会话存储（而非仅活跃的）。子 Agent 派生域经宿主接口读取。 */
   _uiSessionId: number = 0;
+
+  // code_execution 嵌套分发面（P2 执行原语）：blueprint capability 装配时
+  // 写入（工具创建需要）；getter 供 capability 读取 agent 的门禁/hook/审计上下文。
+  // 形状对齐 code-run/host.ts 的 ToolDispatchFn（输出 {output, isError}）。
+  _codeDispatch: ((name: string, args: Record<string, unknown>) => Promise<{ output: string; isError: boolean }>) | null =
+    null;
+
+  /** code_execution 的嵌套分发面 — 工具装配（blueprint）注入。null = 未接线
+   * （工具注册面照常，运行时报「未接线」错误，不留静默死路）。 */
+  setCodeDispatch(fn: ((name: string, args: Record<string, unknown>) => Promise<{ output: string; isError: boolean }>) | null): void {
+    this._codeDispatch = fn;
+  }
+  getCodeDispatch(): ((name: string, args: Record<string, unknown>) => Promise<{ output: string; isError: boolean }>) | null {
+    return this._codeDispatch;
+  }
+
+  /** 会话事件日志只读访问（P2：code_execution 子分发审计追加面）。 */
+  get sessionLog(): SessionLog {
+    return this._sessionLog;
+  }
+
+  /** code_execution 的嵌套分发器 — executor 语义等价体（P2 C5/C6）。
+   *
+   *  复刻 streaming-executor.executeTool 的语义链（不 new executor：那套是
+   *  流式边界专用，带 pending 管理与 UI 事件；这里只要单次调用的语义）。
+   *  顺序：领域名解析（guardName）→ planGate → preflight HIGH → 元信息注入
+   *  （_agent_id/_owner_id）→ execute → hooks 富化 → 预检警告前置 → 截断。
+   *  嵌套调用不豁免任何门禁（P2 施工序 6）；isError 语义靠返回值区分
+   *  （false = 成功 output；true = output 即错误文本）。 */
+  dispatchNestedTool(
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<{ output: string; isError: boolean }> {
+    const tool = this.tools.get(name);
+    if (!tool) {
+      return Promise.resolve({ output: `error: unknown tool "${name}"`, isError: true });
+    }
+    if (this.tools.isHidden(name)) {
+      return Promise.resolve({ output: `[已淘汰] ${name} — 请用领域工具动作。`, isError: true });
+    }
+    const guardName = resolveGuardToolName(this.tools, name, args);
+
+    // Plan 门禁（嵌套不豁免——与 executor 同规则）
+    const blocked = this._planGate(guardName, args, tool);
+    if (blocked) return Promise.resolve({ output: blocked, isError: true });
+
+    // 预检钩子（HIGH 风险拦截至 _forceGate 语义——嵌套调用无 _forceGate 通道，
+    // 高危写入在 code run 内一律打回：用户应直接调用工具走显式确认）
+    let preflightWarning: string | null = null;
+    if (this.preflightHooks) {
+      try {
+        preflightWarning = this.preflightHooks.check(guardName, args);
+      } catch {
+        preflightWarning = null; // 钩子异常不阻断（与 executor 同降级）
+      }
+    }
+    if (preflightWarning?.includes('风险等级: HIGH')) {
+      return Promise.resolve({
+        output: `${preflightWarning}\n\n🚫 高风险写入不允许经 code_execution 嵌套执行——请直接调用工具并带 _forceGate: true。`,
+        isError: true,
+      });
+    }
+
+    // 元信息注入（与 executor 同序）：隔离 id + owner id（嵌套调用与直接调用
+    // 同权限面——_agent_id 缺失会直写主仓，2026-08-13 事故防御）
+    const enriched: Record<string, unknown> = { ...args };
+    if (this._isolationId) enriched._agent_id = this._isolationId;
+    if (this.id) enriched._owner_id = this.id;
+
+    return tool
+      .execute(enriched, undefined, this._currentRunSignal ?? undefined)
+      .then(async (raw) => {
+        let output = raw;
+        // 工具后钩子富化（与 executor 同降级语义）
+        if (this.hooks) {
+          try {
+            output = await this.hooks.apply(guardName, enriched, output);
+          } catch {
+            /* 富化失败不破坏结果 */
+          }
+        }
+        if (preflightWarning) {
+          output = `${preflightWarning}\n\n${'─'.repeat(40)}\n\n${output}`;
+        }
+        const trunc = truncateToolOutput(guardName, output);
+        return { output: trunc.content, isError: false };
+      })
+      .catch((e: unknown) => {
+        const eMsg = (e as { message?: string })?.message;
+        const errMsg = eMsg ? eMsg.split('\n')[0] : String(e);
+        return { output: `error: ${errMsg}`, isError: true };
+      });
+  }
 
   // 最近一次用量（用于状态显示）
   private lastUsage: Usage | undefined;

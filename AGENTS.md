@@ -78,7 +78,11 @@ flowchart LR
   `docs/agents/model-tool-contract.md`（`scripts/gen-tool-contract-md.cjs` 从 ToolRegistry
   装配产物生成，勿手改；变更后重新生成并同 commit，vitest 守护测试对拍漂移）。
   常驻 `ask_user / Skill / wait / enter_plan_mode / exit_plan_mode` 中 ask_user/wait 在注册表面内，
-  其余为 blueprint 会话级装配。
+  其余为 blueprint 会话级装配。P2/P3（2026-08-23）：执行原语 `code_execution` 落地（blueprint
+  capability `code-execution-tool`；经 ctx.codeRuntime 服务运行——vendored cordis Service，
+  agent/code-run/ 四件：protocol 腰线 / bootstrap worker 源 / host 敌意校验+预算 / 工具本体；
+  程序内 `await tools.<name>(args)` 嵌套调全部可见工具，子分发逐条落 session-log
+  `tool/code-dispatch-start|code-dispatch` 审计对，门禁不豁免）。
   - `graph`：symbols / semantic（语义检索——向量索引按含义找符号，不知确切名字时用）/ neighbors / impact / preflight / cycles / coupling / fragile / flows / dataflow / dataflow_save / dataflow_query 等 27 个动作（dataflow_save 为写动作）——**改代码前先问图**。
   - `ops`：analyze / validate / health / status / timeline / rename / import_scip。
   - `lsp`：resolve_call / infer_type / implementations / references。

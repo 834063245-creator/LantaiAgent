@@ -206,6 +206,34 @@ function translateAssistantParts(
         emitTextWithFences(msg._id, part.text, idx, part, out, pinned);
         break;
       case 'tool': {
+        // code_execution 专属块（P2-A 拍板）：三段式形态与 tool 单进单出分离；
+        // 判据 name === 'code_execution'（常驻名，不进 DOMAIN_SPECS）。
+        if (part.name === 'code_execution') {
+          let code = '';
+          let description = part.label;
+          try {
+            const parsed = JSON.parse(part.args || '{}') as { code?: string; description?: string };
+            if (typeof parsed.code === 'string') code = parsed.code;
+            if (typeof parsed.description === 'string') description = parsed.description;
+          } catch {
+            /* args 未流完/非 JSON：保持空程序体（终态会被 ToolResult 覆盖） */
+          }
+          emit(
+            'code',
+            {
+              toolId: part.toolId,
+              description,
+              code,
+              status: part.status,
+              output: part.output,
+              err: part.err,
+            },
+            idx,
+            part,
+            640,
+          );
+          break;
+        }
         emit(
           'tool',
           {
@@ -242,6 +270,34 @@ function translateAssistantParts(
               case 'text':
                 return { ...createBlock('markdown', { text: sp.text }, { messageId: msg._id, part: sp }), id: subId };
               case 'tool':
+                // code_execution 专属块同父路径（子 Agent parts 同构）
+                if (sp.name === 'code_execution') {
+                  let subCode = '';
+                  let subDesc = sp.label;
+                  try {
+                    const pp = JSON.parse(sp.args || '{}') as { code?: string; description?: string };
+                    if (typeof pp.code === 'string') subCode = pp.code;
+                    if (typeof pp.description === 'string') subDesc = pp.description;
+                  } catch {
+                    /* 未流完 */
+                  }
+                  return {
+                    ...createBlock(
+                      'code',
+                      {
+                        toolId: sp.toolId,
+                        description: `[子] ${subDesc}`,
+                        code: subCode,
+                        status: sp.status,
+                        output: sp.output,
+                        err: sp.err,
+                      },
+                      { messageId: msg._id, part: sp },
+                    ),
+                    id: subId,
+                    w: 640,
+                  };
+                }
                 return {
                   ...createBlock(
                     'tool',

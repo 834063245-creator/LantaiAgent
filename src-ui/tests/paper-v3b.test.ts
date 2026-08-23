@@ -30,16 +30,16 @@ async function withRenderers(fn: (svc: RenderersService) => void | Promise<void>
 /* ═══ 第五贡献通道：RenderersService ═══ */
 
 describe('composition/renderer-service（V3b 第五通道）', () => {
-  it('内置灰框渲染器行齐备（七 kind 全谱，id 惯例 builtin/）', () => {
+  it('内置灰框渲染器行齐备（八 kind 全谱，id 惯例 builtin/）', () => {
     const defs = builtinRendererDefs();
-    expect(defs.map((d) => d.kind)).toEqual(['user', 'markdown', 'reasoning', 'notice', 'diff', 'plan', 'tool']);
+    expect(defs.map((d) => d.kind)).toEqual(['user', 'markdown', 'reasoning', 'notice', 'diff', 'plan', 'tool', 'code']);
     expect(defs.every((d) => d.id.startsWith('builtin/'))).toBe(true);
     expect(defs.every((d) => d.component != null)).toBe(true);
   });
 
-  it('服务装载期注册内置行：七个 kind 全可解析到 builtin/<kind>', async () => {
+  it('服务装载期注册内置行：八个 kind 全可解析到 builtin/<kind>', async () => {
     await withRenderers(() => {
-      for (const kind of ['user', 'markdown', 'diff', 'tool', 'plan', 'reasoning', 'notice'] as BlockKind[]) {
+      for (const kind of ['user', 'markdown', 'diff', 'tool', 'plan', 'reasoning', 'notice', 'code'] as BlockKind[]) {
         const r = resolveRenderer(kind);
         expect(r, kind + ' 应有内置渲染器').toBeDefined();
         expect(r?.id).toBe('builtin/' + kind);

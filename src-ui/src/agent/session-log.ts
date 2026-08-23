@@ -35,7 +35,9 @@ import { foldToolResults, nextFoldBoundary } from './tool-fold';
 
 /** 事件种类。主计划 §6 Phase 5 规定 7 种；session/reset 与 session/retract
  *  是覆盖既有会话变异点（替换/撤回/goal 清场）的必要补充；preset/selected
- *  是 S4-1b 的创建时点事实（首事件方案——见 baseline-change-request.md）。 */
+ *  是 S4-1b 的创建时点事实（首事件方案——见 baseline-change-request.md）；
+ *  tool/code-dispatch-start 与 tool/code-dispatch 是 P2 执行原语（code_execution）
+ *  的子分发审计对（D5：子分发全记录、外层结果才进历史——两 kind 均无消息投影）。 */
 export type SessionEventKind =
   | 'turn/start'
   | 'user/message'
@@ -46,7 +48,9 @@ export type SessionEventKind =
   | 'session/compaction'
   | 'session/reset'
   | 'session/retract'
-  | 'preset/selected';
+  | 'preset/selected'
+  | 'tool/code-dispatch-start'
+  | 'tool/code-dispatch';
 
 /** kind 封闭集合（运行时枚举，冻结）。 */
 export const SESSION_EVENT_KINDS: readonly SessionEventKind[] = Object.freeze([
@@ -60,6 +64,8 @@ export const SESSION_EVENT_KINDS: readonly SessionEventKind[] = Object.freeze([
   'session/reset',
   'session/retract',
   'preset/selected',
+  'tool/code-dispatch-start',
+  'tool/code-dispatch',
 ]);
 
 /** session/reset 的来源标注（审计用；不影响投影）。 */
@@ -93,6 +99,17 @@ export interface SessionEventDataMap {
    *  生效选择**（重读默认），不继承被清掉那个会话的改选。deriveMessages
    *  不消费此 kind（模型可见面零变化）。 */
   'preset/selected': { presetId: string };
+  /** code_execution 子分发开始（P2/D5）：每次程序内嵌套工具调用开始时一条。
+   *  无消息投影（审计流）；args 为宿主侧归一后的无损 JSON 参数。 */
+  'tool/code-dispatch-start': { seq: number; name: string; args: Record<string, unknown> };
+  /** code_execution 子分发落定（P2/D5）：与 dispatch-start 的 seq 一一配对。
+   *  output 已过截断；isError=true 时 output 即错误文本。无消息投影。 */
+  'tool/code-dispatch': {
+    seq: number;
+    name: string;
+    isError: boolean;
+    output: string;
+  };
 }
 
 /** 一条会话事件。seq 由日志分配、只增不减；ts 为 append 时刻。 */
@@ -284,6 +301,8 @@ export class SessionLog {
         case 'tool/call':
         case 'assistant/reasoning':
         case 'preset/selected':
+        case 'tool/code-dispatch-start':
+        case 'tool/code-dispatch':
           break; // 边界/审计/创建时点记录，无消息投影
       }
     }

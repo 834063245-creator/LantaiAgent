@@ -252,6 +252,23 @@ function ToolBody({ block }: BlockRendererProps) {
   );
 }
 
+/** 程序执行卡（P2-A）：三段式——程序体（等宽）→ 日志/完成值（终态写入）。
+ *  与 ToolBody 的分离点：code 是程序语义（体/出）而非调用语义（参/果）。 */
+function CodeBody({ block }: BlockRendererProps) {
+  const p = block.payload as { code: string; output?: string; err?: string };
+  return (
+    <>
+      <pre className="pp-code-src">{p.code}</pre>
+      {p.output && <div className="pp-out">{p.output}</div>}
+      {p.err && (
+        <div className="pp-out" style={{ color: 'var(--fail)' }}>
+          {p.err}
+        </div>
+      )}
+    </>
+  );
+}
+
 /** 内置渲染器行（默认行——视觉由纸壳 CSS 承载，渲染器只管体结构）。 */
 export function builtinRendererDefs(): BlockRendererContribution[] {
   return [
@@ -262,6 +279,7 @@ export function builtinRendererDefs(): BlockRendererContribution[] {
     { id: 'builtin/diff', kind: 'diff', component: DiffBody },
     { id: 'builtin/plan', kind: 'plan', component: PlanBody },
     { id: 'builtin/tool', kind: 'tool', component: ToolBody },
+    { id: 'builtin/code', kind: 'code', component: CodeBody },
   ];
 }
 

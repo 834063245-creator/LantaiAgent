@@ -15,6 +15,7 @@
 //   - 完全信任模型：不校验插件代码内容，只校验 manifest 形状（Rust 侧负责遍历防护）。
 
 import { createElement } from 'react';
+import { codeRuntimePlugin } from '../agent/code-run/runtime-service';
 import { useShellStore } from '../app/shell-store';
 import { rendererServicePlugin } from '../composition/renderer-service';
 import { compositionServicesPlugin } from '../composition/services';
@@ -42,11 +43,17 @@ export function pluginAssetsOrigin(port: number): string {
   return 'http://127.0.0.1:' + port + '/plugins';
 }
 
-/** 第一方插件表（编译期 bundle 内，不走磁盘通道；S3 起逐域填充）。
+/** 第一方插件表（编译期 bundle 内，不走磁盘通道）。
  * 表序 = 装配序。首项固定为组合层四 service（内核线第 3 条的实体化——
  * panels/commands/tools/providers 注册表本身，常驻且先于外部插件，
- * 保证外部插件 manifest 的 inject 依赖可解析）。 */
-const BUILTIN_PLUGINS: LantaiPlugin[] = [compositionServicesPlugin, rendererServicePlugin, paperPlugin];
+ * 保证外部插件 manifest 的 inject 依赖可解析）。P3：codeRuntime 服务行
+ * （agent/code-run——执行腰，四 service 之后）。 */
+const BUILTIN_PLUGINS: LantaiPlugin[] = [
+  compositionServicesPlugin,
+  codeRuntimePlugin,
+  rendererServicePlugin,
+  paperPlugin,
+];
 
 // ── 插件宿主桥（S4-5）──
 // 外部插件经 webview 动态 import 装载——模块语境没有裸 import 解析面

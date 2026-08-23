@@ -60,6 +60,7 @@ const KIND_ZH: Record<string, string> = {
   reasoning: '夹注',
   diff: '抄录',
   tool: '脚注',
+  code: '程文',
   plan: '拟策',
   notice: '贴黄',
 };
@@ -69,6 +70,7 @@ const KIND_EN: Record<string, string> = {
   reasoning: 'THINK',
   diff: 'CODE',
   tool: 'TOOL',
+  code: 'CODE',
   plan: 'PLAN',
   notice: 'NOTE',
 };
@@ -103,6 +105,9 @@ function BlockView({
           {KIND_EN[block.kind] ?? 'NOTE'} · {seq}
         </span>
         {block.kind === 'tool' && (
+          <span className={`pp-status pp-${(p as { status: string }).status}`}>{(p as { status: string }).status}</span>
+        )}
+        {block.kind === 'code' && (
           <span className={`pp-status pp-${(p as { status: string }).status}`}>{(p as { status: string }).status}</span>
         )}
       </div>
