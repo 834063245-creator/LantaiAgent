@@ -317,6 +317,22 @@ body {
   width: 3px;
   background: var(--seal);
 }
+/* L1 摊开标记（session-ledger）：已摊开卷的石青小标（机=石青铁律）+
+ * 已开卷行整体提一档底色（与 hover 区分：静态的「在案头」状态非悬停） */
+.sh-session-row .open-mark {
+  font-family: var(--f-mono);
+  font-size: calc(10px * var(--font-scale));
+  letter-spacing: 0.08em;
+  color: var(--indigo);
+  margin-right: 10px;
+  border: 1px solid var(--indigo);
+  padding: 1px 6px;
+  border-radius: 0;
+}
+.sh-session-row.open .date,
+.sh-session-row.open .title {
+  color: var(--ink-1);
+}
 
 .sh-empty-hint {
   font-family: var(--f-mono);

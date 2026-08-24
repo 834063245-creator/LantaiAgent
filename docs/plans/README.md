@@ -33,6 +33,7 @@ S0/S1/S2/S4 竣工后，S3（settings 域第一方行化：面板/命令双贡�
 
 | 项 | 成本 | 说明 |
 |---|---|---|
+| **session-ledger 案卷总目**（L0-L3） | ~3 天 | **2026-08-23 立项**：会话管理收敛——立账本（档案号=卷号/开合有册/落盘两动词），书脊列与首页退化为两个视图 → [`session-ledger-plan.md`](session-ledger-plan.md)。paper-shell C8 之后积欠的会话层结构债，四段 L0-L3 按成本排 |
 | ~~rpc 返回值 Value 化~~ | ✅ 已毕 | 两步全落地（2026-08-22）：第一步出口结构化 + typedJsonRpc 单点收敛（be8bba85）；第二步 B 路线命令→形态分派表 + 前端双形态 shim（63e0fd77/a59fc086）。真机双轮验证过（CDP 形态断言 + 真实会话全工具链）→ [`landmine-map.md`](../landmine-map.md) 根治级段；残留仅 DataflowPanel.tsx 启发式一处（P2 段在册） |
 | agent-plugin **P2+P3** 执行原语 | ~~2-4 天 + 1-2 天~~ ✅ 已毕（2026-08-22/23）：code_execution（Web Worker 沙箱 + 协议腰线 + 嵌套审计 + 程文块）+ ctx.codeRuntime cordis 收口；C4-C10 全判据；commit d772af37/15930f65 → [`agent-plugin-architecture-plan.md`](agent-plugin-architecture-plan.md) |
 | agent-plugin **P4** 插件化全集 | 持续 | **D9 换轨（2026-08-23）：不等 DSH，自研为主自己当第一用户**——通道补齐 + 存量拆解①-⑥ + P4a 调研交替推进；批次表见计划 §5 P4 |

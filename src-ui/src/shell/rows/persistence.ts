@@ -12,14 +12,26 @@ import type { ShellRefs } from '../runtime';
 
 export function bootPersistence(refs: ShellRefs): void {
   // ── 轮次完成通知（P1 总线归零：chat:turn-done → state/turn-done-store 信号）──
+  // L2（session-ledger）：谁跑完存谁——doneSid = 后台卷 → 该卷全量快照
+  // （saveSessionById，F3 窗口期闭合）；doneSid = 活跃卷/缺席 → 现行链
+  // （NDJSON 增量 + 防抖全量）不变。
   useTurnDoneStore.subscribe((s, prev) => {
     if (s.turnDoneTick === prev.turnDoneTick) return;
     const ws = refs.workspace;
-    if (ws?.path) {
-      // 增量持久化 — 将最后一条消息追加到后端 NDJSON
-      refs.chatPanel?.appendLastMessage(ws.path);
-      refs.chatPanel?.scheduleAutoSave(ws.path);
+    const chatPanel = refs.chatPanel;
+    if (!ws?.path || !chatPanel) return;
+    const doneSid = s.lastDoneSid;
+    if (doneSid != null) {
+      const activeSid = chatPanel.activeSessionId;
+      if (doneSid !== activeSid) {
+        // 后台卷跑完：立即全量落盘自己的卷（不等切回）
+        chatPanel.saveSessionById(doneSid).catch(() => {});
+        return;
+      }
     }
+    // 增量持久化 — 将最后一条消息追加到后端 NDJSON
+    chatPanel.appendLastMessage(ws.path);
+    chatPanel.scheduleAutoSave(ws.path);
   });
 
   // Agent 配置变更统一入口：设置面板/模型切换/模式按钮只发信号
@@ -52,11 +64,14 @@ export function bootPersistence(refs: ShellRefs): void {
   // 同时同步停止子 Agent（AbortController.abort 是同步的）。
   // E6：刷新会话级 boards（DiscoveryBoard + TaskBoard）— 清除
   // debounce 定时器（同步）并触发刷新（尽力异步）。
+  // L2（session-ledger）：不再只存活跃卷——全部有内容卷都落盘
+  // （F3 收尾：后台卷即使从未被切回也不丢）。
   window.addEventListener('beforeunload', () => {
     const ws = refs.workspace;
     if (ws?.path) {
       try {
         refs.chatPanel?.scheduleAutoSave(ws.path);
+        refs.chatPanel?.saveAllSessions().catch(() => {});
       } catch {
         /* 静默 */
       }

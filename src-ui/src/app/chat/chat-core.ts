@@ -632,6 +632,24 @@ export class ChatCore {
 
   // ── 会话持久化（委托给 chat-session.ts）──
 
+  /** 当前活跃会话 id（L2 持久化分流：turn-done 判后台卷用）。 */
+  get activeSessionId(): number | null {
+    const st = getChatStore(this.panelId).sess.getState();
+    return st.sessions[st.activeIdx]?.id ?? null;
+  }
+
+  /** 按 id 落盘指定卷（L2 两动词之 save：不要求活跃；空卷跳过）。 */
+  async saveSessionById(sid: number): Promise<void> {
+    const pp = useShellStore.getState().projectPath;
+    return Session.saveSessionById(this._sessionCtx(), pp, sid);
+  }
+
+  /** 全部有内容卷落盘（L2 beforeunload 收尾：F3 后台卷不丢）。 */
+  async saveAllSessions(): Promise<void> {
+    const st = getChatStore(this.panelId).sess.getState();
+    await Promise.all(st.sessions.map((s) => this.saveSessionById(s.id)));
+  }
+
   async saveActiveSession(projectPath: string): Promise<void> {
     return Session.saveActiveSession(this._sessionCtx(), projectPath);
   }
@@ -771,6 +789,13 @@ export class ChatCore {
       return;
     }
     const signal = this._activeExec().start();
+    // L2（session-ledger）：本轮跑的是哪卷——头部捕获，finally 随 turn-done
+    // 信号发出（后台卷跑完存它自己，不再只存当前翻开的卷）。
+    let turnSid: number | null = null;
+    {
+      const sessStore = getChatStore(this.panelId).sess.getState();
+      turnSid = sessStore.sessions[sessStore.activeIdx]?.id ?? null;
+    }
 
     // 为新轮次重置自动滚动
     getChatStore(this.panelId).msg.getState().setUserScrolledUp(false);
@@ -813,7 +838,7 @@ export class ChatCore {
       this._streamingTargetSid = null;
       this._activeExec().done();
       this.finishTurn();
-      bumpTurnDone();
+      bumpTurnDone(turnSid ?? undefined);
     }
   }
 
@@ -897,11 +922,16 @@ export class ChatCore {
     if (!text) return;
 
     if (!this.agent) {
-      const detail = getChatStore(this.panelId).panel.getState().lastAgentDiag
-        ? `${getChatStore(this.panelId).panel.getState().lastAgentDiag} (factory:${Session.getAgentFactory(this.panelId) ? 'yes' : 'NO'})`
-        : '请先配置 API Key 或等待项目加载';
-      this.addNotice(`Agent 未就绪 — ${detail}`, 'error');
-      return;
+      // L0 惰性水合（session-ledger）：重启后惰性卷切到/拟文时句柄缺席——
+      // 按需补建（factory 现调 + msgStore 内容回填），摊开集大时避免全量起 Agent
+      const hydrated = await Session.ensureSessionAgent(this._sessionCtx());
+      if (!this.agent) {
+        const detail = getChatStore(this.panelId).panel.getState().lastAgentDiag
+          ? `${getChatStore(this.panelId).panel.getState().lastAgentDiag} (factory:${Session.getAgentFactory(this.panelId) ? 'yes' : 'NO'})`
+          : '请先配置 API Key 或等待项目加载';
+        this.addNotice(`Agent 未就绪 — ${detail}${hydrated ? '（水合后句柄仍缺席）' : ''}`, 'error');
+        return;
+      }
     }
 
     // ── 注册表驱动的斜杠命令 ──
@@ -1049,9 +1079,11 @@ export class ChatCore {
     }
 
     // 追踪启动本次运行的会话 — 切换标签页时流式仍能正确路由
+    let turnSid: number | null = null;
     {
       const sessStore = getChatStore(this.panelId).sess.getState();
       const activeSid = sessStore.sessions[sessStore.activeIdx]?.id;
+      turnSid = activeSid ?? null;
       if (activeSid != null) {
         this._streamingTargetSid = activeSid;
         this.agent?.setUiSessionId(activeSid);
@@ -1075,8 +1107,9 @@ export class ChatCore {
       this._activeExec().done();
       this.finishTurn();
     }
-    // 通知 main.ts 持久化会话（P1 总线归零：chat:turn-done → state/turn-done-store 信号）
-    bumpTurnDone();
+    // 通知持久化链（P1 总线归零：chat:turn-done → state/turn-done-store 信号；
+    // L2：携带跑完的会话 id——谁跑完存谁）
+    bumpTurnDone(turnSid ?? undefined);
   }
 
   abort(): void {
