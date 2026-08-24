@@ -1,11 +1,11 @@
-# HoloGram — 核心能力与技术架构
+# 兰台（Lantai）— 核心能力与技术架构
 
 > © 2026 Wenbing Jing. MIT License.
-> 最后更新：2026-08-17（按当前 HEAD 与实测基线校准）
+> 最后更新：2026-08-24（P4 插件化收官 · V5 纸壳唯一主界面 · session-ledger 竣工校准；图谱引擎专名 HoloGram 不变）
 
-HoloGram 不是一个单纯的"代码图谱可视化工具"。它的本质是一个 **Harness Engineering 平台**——将多种成熟软件工程模式（依赖分析、约束治理、变更预演、沙箱隔离、Agent 自主执行等）编排为统一 Harness，并通过内置 Agent 与对外 MCP 服务将这些能力开放给人和 AI。
+兰台（Lantai）不是一个单纯的"代码图谱可视化工具"。它的本质是一个 **Harness Engineering 平台**——将多种成熟软件工程模式（依赖分析、约束治理、变更预演、沙箱隔离、Agent 自主执行等）编排为统一 Harness，并通过内置 Agent 与对外 MCP 服务将这些能力开放给人和 AI。桌面主界面是**注疏案卷**（纸壳）；工作台本体经八条贡献通道**完全插件化**——出厂态零硬编码特权行，第一方能力与第三方插件在同一注册表上竞争。
 
-代码图谱分析引擎是目前体量最大、最核心的组件，但它是 Harness 体系的一个支柱，而非全部。
+代码图谱分析引擎（HoloGram）是目前体量最大、最核心的组件，但它是 Harness 体系的一个支柱，而非全部。
 
 ---
 
@@ -17,7 +17,9 @@ HoloGram 不是一个单纯的"代码图谱可视化工具"。它的本质是一
 | **Agent 自主执行系统** | LLM 驱动的多轮工具调用循环，含多 Agent 协作、上下文压缩、Plan 模式、目标管理 | ★★★★☆ |
 | **Harness Engineering 模式** | 约束治理、变更预演、沙箱隔离、权限引擎、审计日志 | ★★★★☆ |
 | **MCP 对外服务** | 36 个 schema、默认暴露 35 个工具，通过 JSON-RPC 服务任意 MCP 客户端 | ★★★★★ |
-| **3D 图谱可视化** | GPU 加速的交互式依赖星图（Three.js / WebGL） | ★★★★☆ |
+| **注疏案卷工作台（纸壳）** | 古籍注疏范式主界面：七类文类块（来文/正文/夹注/脚注/抄录/拟策/贴黄）+ 矿物墨色语义 + 无限画布纸条 | ★★★★☆ |
+| **插件化架构（八通道）** | 面板/命令/工具/渲染器/prompt 段/管道钩子/capability 全经贡献通道装配 + manifest 声明挂接（工具声明/MCP 机器桥），出厂表退役 | ★★★★★ |
+| **3D 星图（DSH bundle）** | GPU 加速的交互式依赖星图——已从桌面端拆出（V5），随 DSH 插件分发（`dsh-bundle/`） | ★★★☆☆ |
 
 ---
 
@@ -43,16 +45,16 @@ HoloGram 不是一个单纯的"代码图谱可视化工具"。它的本质是一
 │              Tauri 桌面 Shell (Rust)                  │
 │  ┌──────────┐ ┌─────────┐ ┌────────┐ ┌───────────┐  │
 │  │ 权限引擎  │ │ 沙箱    │ │ 隔离   │ │ 生命周期   │  │
-│  │Permission│ │ 双层沙箱 │ │worktree │ │Ledger     │  │
+│  │Permission│ │ 三层沙箱 │ │worktree │ │Ledger     │  │
 │  └──────────┘ └─────────┘ └────────┘ └───────────┘  │
-│         单一 RPC 入口 (rpc.rs 134 个方法)              │
+│         单一 RPC 入口 (rpc.rs 153 个方法)              │
 └──────────────────────┬──────────────────────────────┘
                        │ Tauri IPC (invoke)
 ┌──────────────────────┴──────────────────────────────┐
 │              前端 (TypeScript / React 19)             │
 │  ┌──────────┐ ┌──────────┐ ┌────────┐ ┌───────────┐  │
-│  │ Agent 循环│ │ 工具注册表 │ │多Agent池│ │ 3D 星图   │  │
-│  │ streaming│ │ ToolReg  │ │Coord.  │ │ Three.js  │  │
+│  │ Agent 循环│ │ 组合层/   │ │多Agent池│ │ 注疏案卷   │  │
+│  │ streaming│ │ 插件通道  │ │Coord.  │ │ 纸壳 UI   │  │
 │  └──────────┘ └──────────┘ └────────┘ └───────────┘  │
 │   Workspace (cordis fiber 宿主) + Zustand + React     │
 └─────────────────────────────────────────────────────┘
@@ -60,8 +62,8 @@ HoloGram 不是一个单纯的"代码图谱可视化工具"。它的本质是一
 
 三层各自独立编译，通过明确边界通信：
 - **Engine** 是纯 Rust 库 + CLI 二进制，零外部运行时进程，可独立 `serve` 作为 MCP 服务器
-- **Tauri Shell** 是进程管理者和权限守卫，不做分析逻辑
-- **前端** 是 Agent 运行时和用户界面，通过 `typedRpc()` / `typedListen()`（`rpc-contract.ts`）与后端通信
+- **Tauri Shell** 是进程管理者和权限守卫，不做分析逻辑；插件安装/授权通道也在此层
+- **前端** 是 Agent 运行时和用户界面（注疏案卷纸壳 + 组合层/插件系统），通过 `typedRpc()` / `typedListen()`（`rpc-contract.ts`）与后端通信
 
 ### 2.1 关键运行时事实
 
@@ -146,7 +148,7 @@ has_permission_to_use_tool(ctx, agent_id) → PermissionResult
 
 ### 3.5 审计日志 (Audit Trail)
 
-`AuditLogger` 记录所有 Agent 工具调用的完整审计轨迹（allowed / denied 条目），配合 `project_timeline` 工具提供按时间线回溯的分析历史。会话消息以 NDJSON 增量持久化（`session_append` → `.lantai/sessions/{id}.ndjson`）。
+`AuditLogger` 记录所有 Agent 工具调用的完整审计轨迹（allowed / denied 条目），配合 `project_timeline` 工具提供按时间线回溯的分析历史。会话消息以 NDJSON 增量持久化（`session_append`）。会话以「案卷」管理（session-ledger L0-L3，2026-08-23）：卷脊总目、摊开工作集重启恢复、双卷并发落盘、续开查重（判据 26 用例钉死）。
 
 ### 3.6 技能系统 (Hot-Loading Skills)
 
@@ -279,12 +281,12 @@ NetBenefit = |R|·c_in·(T-1) − |S|·c_out − L·avg_turn_cost
 
 模型可见工具已收敛为领域工具（`src-ui/src/agent/tools/domains.ts` 的 `DOMAIN_SPECS`）：
 
-- **领域工具**：`fs / shell / git / search / web / agent / task / memory / browser / desktop / graph / ops / lsp`，加常驻 `ask_user / Skill / wait / enter_plan_mode / exit_plan_mode`。
+- **领域工具**：`fs / shell / git / search / web / agent / task / browser / desktop / graph / ops / lsp`，加常驻 `ask_user / wait`；`memory` 族（记忆工具）与 `Skill`、plan 双入口、通信族、`code_execution` 执行原语经会话级 capability 装配。
 - **图谱三域**：`graph`（24 个只读动作：symbols/neighbors/impact/preflight/cycles/…）、`ops`（analyze/validate/health/status/timeline/rename/import_scip）、`lsp`（resolve_call/infer_type/implementations/references）。底层仍是引擎 36 schema / 默认 35 的 MCP 工具。
 - **旧细粒度名**（`search_symbols`、`run_shell`、`write_file`、`git_*`、`agent_spawn` 等）保留在 `ToolRegistry` 但 `hide()`；模型调用由 `retireRedirect` 拦截并返回 `[已淘汰] → 领域动作` 重定向。内部代码/测试仍可直调。
 - **新工具必须 `defineTool` + zod v4**：一个 schema 同时产出 JSON Schema、运行时校验和 `z.infer` 类型化参数；meta key（`_forceGate` / `_callId` / `_agent_id`）经 `.passthrough()` 透传。
 - 新增领域动作须同步 `DOMAIN_SPECS` + `collectHiddenToolNames()` + 测试 + `AGENTS.md`。
-- **内置族装配（组合架构 S1，2026-08-20；P4 B①/② 修订 2026-08-23）**：内置工具族的工厂与组合序收敛在 `src/composition/tool-rows.ts` 行表（hologram/web/ask/skill/memory/task/agent/browser-desktop/wait，9 行），`buildToolRegistry` 按表序装配——表序 = 组合序（前缀缓存语义的根基），行内工具名冲突由 `ToolRegistry.register` 装载期拒绝（duplicate throw）。git/search（B①）+ fs/shell/agent-isolation（②）五族已迁 ctx.tools 第一方插件通道（`plugins/coding-domain-plugins.ts`）——贡献叠加在行表之后（`composition/plugin-tool-rows.ts` 折算），可见面由 DOMAIN_SPECS 驱动不受通道影响。
+- **行源全量插件化（P4 收官 2026-08-24）**：出厂 builtin 工具行表退役——十四族工具全部经 ctx.tools 第一方插件通道贡献（`plugins/coding-domain-plugins.ts` + `composition/first-party-tools.ts` 清单），tools 域唯一行源 = `pluginToolRows()`；`buildToolRegistry` 按行表序装配——表序 = 组合序（前缀缓存语义的根基），行内工具名冲突由 `ToolRegistry.register` 装载期拒绝（duplicate throw）。可见面由 DOMAIN_SPECS 驱动不受通道影响；无状态族实例缓存，装配期真值族（wait/ask/memory/skill/task/agent/hologram）声明 noCache 每装配重创。
 
 ### 4.10 Agent 运行时收敛（agent-core-convergence Phase 0–6，已并入 main）
 
@@ -294,6 +296,17 @@ NetBenefit = |R|·c_in·(T-1) − |S|·c_out − L·avg_turn_cost
 - **会话事件溯源（Phase 5）**：`session-log.ts` 事件日志 + session 变异三入口（`_appendMessage` / `_replaceSession` / `_retractSessionRange`）；工具折叠逻辑同步 `derivePayload`
 - **生命周期内核（cordis-migration P0–P4）**：vendored cordis（`src/cordis/`）+ workspace-scope epoch（`getWorkspaceEpoch()` / `bumpWorkspaceEpoch()`，**永久保留**——fiber 管所有权，epoch 管逃逸所有权的在途回调）。资源获取点就地 `fiber.ctx.effect()` 登记（顺序敏感拆除组打包 DisposerBag 单 effect 保串行），工作区切换/退出只调 `fiber.dispose()` + epoch bump，杜绝跨项目串台；Agent 挂身份 fiber（清理走 DisposerBag 同步快通道），子系统以 Service 挂树（`LspService` 样板）
 - **门禁**：`npm run verify:convergence`（T0 静态断言 + 8 个 frozen baseline 对拍）失败即返工；record 需显式 `CONVERGENCE_RECORD=1`，baseline 变更走审批
+
+### 4.11 组合层与插件化（S0-S4 + P4，2026-08-24 收官）
+
+Agent 的装配面（工具行 / prompt 段 / capability 三类行源）全部经插件通道贡献，出厂 builtin 三张表退役——特权区只减不增，第一方与第三方在同一注册表上竞争：
+
+- **八条贡献通道**：`ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.providers`（预留不接线）/ `ctx.renderers`（纸壳块体）/ `ctx.prompts`（system-prompt 段）/ `ctx.hooks`（工具管道钩子：enrich 富化 / preflight 预检）/ `ctx.capabilities`（会话级能力）——service 注册表挂根 Context（`composition/services.ts` 等：装载期重名拒绝 + disposer 双守卫）
+- **第一方即插件**：十五项 capability（`plugins/capability-segments-plugin.ts`）、十三段 system-prompt（`plugins/prompt-segments-plugin.ts`）、十四族工具（`plugins/coding-domain-plugins.ts` 等）全部经通道贡献；无引导环境（convergence 夹具/gen-tool-contract）经 `composition/first-party-*.ts` 装配腰复现生产面
+- **插件装载**：`~/.lantai/plugins/<name>/` 自包含 ESM，webview 动态 import（无包管理器/无 import map，宿主桥 `window.__lantai_plugin_host__`）；manifest 声明式挂接——`tools`（声明是数据 + entry `toolHandlers` 命名导出执行，装载器包装挂载）与 `mcpServers`（MCP 机器桥：stdio 经 Rust protocol_bridge / http 直连，工具名 `mcp__<server>__*`，lazy 首装配连接失败空集重试 | startup-error 装载期急连接；kill 挂插件 fiber disposer）
+- **行组合层**：roster.patch.yml（用户层，可寻址禁用/覆盖/锚定全部贡献行含第一方）→ preset（standard/minimal 内置 + `~/.lantai/composition/presets/` 用户目录）→ 热重载（Rust composition_watcher → `composition:changed` → reloadCompositionPatch，在途会话冻结）
+- **权限三层**：manifest `permissions` 声明（read/edit/bash/git/web 五域闭集）→ plugins.json granted 段授予门禁（装载期一票否决，未授权不 import 插件代码）→ Rust 命令咽喉逐调用强制（与声明无关，照常生效）
+- **契约文档**：`docs/plugins/README.md`（插件面人类契约）+ `docs/composition/README.md`（roster 语法）+ convergence 门禁（三层表序 = 字节契约，standard preset 零漂移）
 
 ---
 
@@ -448,7 +461,7 @@ Engine 作为独立 MCP Server 运行，通过 JSON-RPC over stdin/stdout 对外
 
 ### 7.1 RPC 单一入口
 
-`rpc.rs` 一个 `#[tauri::command] rpc(method, params)` + 149 个方法分支是全部前端能力的单一 IPC 入口。分类（由生成物 `docs/agents/frontend-rpc-contract.md` 实测为准，`scripts/gen-rpc-contract-md.cjs` 再生）：Engine 调度(3)、Graph(5)、Git(16)、文件系统(12)、搜索(2)、Web(2)、CDP 浏览器控制(39，含 desktop 2)、Shell(10，含协议桥 3)、编辑器(1)、身份认证/权限(6)、Agent 隔离(6)、外部服务(6)、Hologram 遗留(3)、工作区(3)、会话持久化(2)、约束(2)、数据流(3)、Aura 记忆(7)、PTY(4)、LSP(2)、desktop/UIA(17：probe/screenshot/tree/find/read/wait/click/right_click/type/select/expand/scroll/keys/activate/window_shot/audit/status)。
+`rpc.rs` 一个 `#[tauri::command] rpc(method, params)` + 153 个方法分支是全部前端能力的单一 IPC 入口。分类（由生成物 `docs/agents/frontend-rpc-contract.md` 实测为准，`scripts/gen-rpc-contract-md.cjs` 再生）：Engine 调度、Graph、Git、文件系统、搜索、Web、CDP 浏览器控制、Shell（含协议桥）、编辑器、身份认证/权限、**插件安装通道**（plugin_install/uninstall/set_enabled/dir）、Agent 隔离（worktree）、外部服务、Hologram 遗留、工作区、会话持久化、约束、数据流、Aura 记忆、PTY、LSP、desktop/UIA（进程内 COM：probe/screenshot/tree/find/read/wait/click/…/audit）。
 
 ### 7.2 ResourceLedger（统一生命周期）
 
@@ -501,11 +514,8 @@ Engine 作为独立 MCP Server 运行，通过 JSON-RPC over stdin/stdout 对外
 |------|------|
 | `react` 19.x + `react-dom` | UI 框架（React 迁移完成，`src/app/` 单根） |
 | `zustand` 5.x | 状态管理（react-hook stores + vanilla stores） |
-| `three` / `@types/three` | 3D 图谱渲染（WebGL） |
-| `@webgpu/types` | WebGPU 类型定义（布局计算） |
-| `monaco-editor` | 代码编辑器（lazy-loaded） |
-| `@fontsource/*` | 自托管字体（Fraunces / JetBrains Mono / Noto / LXGW） |
-| `react-markdown` + `remark-gfm` | Markdown 渲染（marked/DOMPurify 路径已删除） |
+| `@fontsource-variable/eb-garamond` + `@fontsource/ma-shan-zheng` + `@fontsource/ibm-plex-mono` + `@fontsource/noto-serif-sc` | 自托管字体（宋体/楷书/等宽——注疏范式三栈；Fraunces / LXGW / JetBrains Mono 已退役） |
+| `react-markdown` + `remark-gfm` | Markdown 渲染（正文块） |
 | `highlight.js` | 代码高亮 |
 | `zod` 4.x | 工具 schema 单一事实源（`defineTool`） |
 | `gpt-tokenizer` | token 计数（压缩成本模型） |
@@ -514,6 +524,8 @@ Engine 作为独立 MCP Server 运行，通过 JSON-RPC over stdin/stdout 对外
 | `vitest` + `jsdom` | 测试框架 |
 | `biome` | 代码格式化 + lint |
 | `typescript` 6.x | 类型系统 |
+
+> `three` / `@types/three` / `@webgpu/types` / `monaco-editor` 已从运行时依赖面退役（V5 拆除 + C13 sweep）：桌面端不再渲染 3D 星图、不再内嵌 Monaco；依赖清单里的残留条目是待清理项。3D 星图随 DSH bundle 分发（`dsh-bundle/`）。
 
 ### Provider 抽象
 
@@ -563,29 +575,29 @@ HoloGram/
 │
 ├── src-tauri/                   # Tauri 桌面 Shell (Rust)
 │   ├── src/
-│   │   ├── commands/            # 16 个命令模块 (engine_dispatch/graph/shell/filesystem/git/isolation/…)
+│   │   ├── commands/            # 18 个命令模块 (engine_dispatch/graph/shell/filesystem/git/isolation/plugins/…)
 │   │   ├── permissions/         # 权限引擎 (mod: PermissionContext + rule + bash/filesystem/git/web/safety)
 │   │   ├── tools/               # Tool trait 实现 (Read/Edit/Bash/Git/WebFetch/Browser/Desktop)
-│   │   ├── lifecycle.rs         # ResourceLedger + LifecycleService (11 个服务)
+│   │   ├── lifecycle.rs         # ResourceLedger + LifecycleService (9 个服务)
 │   │   ├── workspace.rs         # WorkspaceHandle (权限上下文 + watcher + 审计)
 │   │   ├── agent_isolation.rs   # git worktree 生命周期管理
 │   │   ├── mcp_manager.rs       # MCP 子进程管理
 │   │   ├── sandbox.rs           # 路径沙箱 (resolve_read/write)
 │   │   ├── confined_fs.rs       # 统一受限文件系统 (读写上限/超时/重试/原子写)
-│   │   ├── os_sandbox.rs        # OS 层沙箱 (Job Object/sandbox-exec/bubblewrap)
+│   │   ├── os_sandbox.rs        # OS 层沙箱 (Job Object/sandbox-exec/bubblewrap + 捆绑 MSYS2 bash vendor)
 │   │   ├── aura_memory.rs       # Aura SDK FFI 桥接
 │   │   ├── credential.rs        # 加密凭证存储
 │   │   ├── pty_manager.rs       # PTY 终端管理
 │   │   ├── llm_proxy.rs         # LLM 本地反向代理 (绕 CORS, SSE 透传)
 │   │   ├── audit.rs             # 审计日志
-│   │   ├── rpc.rs               # 单一 RPC 入口 (134 个方法)
+│   │   ├── rpc.rs               # 单一 RPC 入口 (153 个方法)
 │   │   └── main.rs              # Tauri 应用入口 (模块声明权威清单)
 │   └── Cargo.toml
 │
 ├── src-ui/                      # 前端 (TypeScript / React 19)
 │   ├── src/
-│   │   ├── app/                 # React 根 (App.tsx + CommandBar/Palette + DockRail + StatusBar + chat/)
-│   │   ├── agent/               # Agent 系统 (50 文件)
+│   │   ├── app/                 # React 根 (App.tsx + SessionsHome + CommandPalette + panels/ + chat/)
+│   │   ├── agent/               # Agent 系统 (85 文件)
 │   │   │   ├── agent.ts          # Agent 主循环
 │   │   │   ├── coordinator.ts    # SubAgentPool (并发/超时/中断)
 │   │   │   ├── message-bus.ts    # 多 Agent 通信层 (inbox/ack/背压)
@@ -593,25 +605,27 @@ HoloGram/
 │   │   │   ├── lifecycle-manager.ts  # 泄漏检测 + TTL 清理
 │   │   │   ├── streaming-executor.ts  # 流式工具执行器 (AbortSignal)
 │   │   │   ├── tool.ts           # Tool 接口 + ToolRegistry
-│   │   │   ├── blueprint.ts      # AgentBlueprint capability 表驱动装配 (Phase 6 + S1 会话层)
+│   │   │   ├── blueprint.ts      # AgentBlueprint capability 表驱动装配 (Phase 6 + S1 会话层; firstPartyCapabilities)
 │   │   │   ├── session-log.ts    # SessionLog 事件溯源日志 (Phase 5)
-│   │   │   ├── lifecycle.ts      # Disposer/DisposerBag 原语 (AgentContext 同步快通道清理 + 顺序敏感拆除组)
+│   │   │   ├── lifecycle.ts      # Disposer/DisposerBag 原语
 │   │   │   ├── hooks.ts          # Hook/PreflightHook 系统
 │   │   │   ├── goal-manager.ts   # 目标生命周期管理
 │   │   │   ├── skills.ts         # 技能热加载
 │   │   │   ├── memory.ts / aura-memory.ts / memory-bundle-client.ts  # 记忆三层
+│   │   │   ├── code-run/          # code_execution 执行原语 (P2/P3: 协议腰线 + Worker 沙箱 + 预算)
 │   │   │   ├── compaction-model.ts  # 上下文压缩成本模型
 │   │   │   ├── runtime/          # AgentRuntime + AgentBuilder (零 UI 依赖)
 │   │   │   ├── plan/             # Plan 模式
-│   │   │   └── tools/            # coding/communication/discovery/merge/request/subagent
+│   │   │   └── tools/            # coding/communication/discovery/merge/request/subagent/domains
+│   │   ├── paper/               # 纸壳内核 (block-model/canvas-math/measure/translate/virtualize + paper-plugin)
+│   │   ├── plugins/             # 插件层 (loader/types/tool-declarations/mcp-bridge + 第一方域插件)
+│   │   ├── composition/         # 组合层 (S1+P4): 行表 + 八 service 注册表 + preset/roster + first-party-* 清单
+│   │   ├── shell/               # 12 壳行引导 (boot.ts + rows/: persistence/chat/keyguard/…)
+│   │   ├── state/               # zustand 状态层 (领域 + 面板 + app 级 + 信号 store)
 │   │   ├── provider/           # LLM Provider 抽象 + catalog (9 模型目录/73 模型 + 动态发现) + thinking 档位适配
-│   │   ├── ui/                 # UI 层 (~75 文件: 图渲染/聊天/zustand stores/EventBus)
-│   │   │   ├── react/           # React 组件 (16 文件: AgentsPanel/ChatMessages/…)
-│   │   │   ├── graph*.ts        # Three.js 星图渲染管线 (scene/renderers/shaders/layout)
-│   │   │   ├── events.ts        # EventBus (冻结——新 app 代码禁 import)
-│   │   │   └── *-store.ts       # Zustand stores (createScopedStore 注册表模式)
 │   │   ├── cordis/            # vendored cordis 内核 (Context/Fiber/Service; 禁就地改, 见目录 README)
-│   │   ├── composition/       # 组合层 (S1+P4): tool-rows 行表 + prompt-sections + 六 service 注册表
+│   │   ├── ui/                 # chat 编排域核心 + 旧层命令式基础设施 (终态 16 文件, 见目录 README)
+│   │   ├── scene/              # 星图类型层 (graph-types.ts; Three.js 渲染面已退役)
 │   │   ├── workspace.ts        # Workspace 统一状态容器 (替代 18+ 全局变量; 工作区 fiber 宿主)
 │   │   ├── workspace-scope.ts  # workspace epoch 代际防护原语 (永久保留: 管在途回调, 与 fiber 所有权互补)
 │   │   ├── bridge.ts           # Tauri IPC 桥接
@@ -619,6 +633,8 @@ HoloGram/
 │   │   └── settings.ts         # 设置与凭证
 │   └── package.json
 │
+├── dsh-bundle/                  # DSH 插件包 (引擎 + 3D 星图; npm @a834063245/hologram-dsh)
+├── examples/plugins/            # 插件示例 (hello: 三通道最小示例)
 ├── docs/                        # 活动文档（入口 docs/README.md；agents/adr/design/plans/research）
 ├── docs/archive/                # 已竣工施工稿与历史设计，勿作现状依据
 ├── hologram.constraints.yaml   # 约束配置
@@ -641,7 +657,7 @@ Engine 编译为独立的 `hologram-engine.exe`，既可作为 Tauri 的子进�
 
 ### 10.2 为什么 Tauri 只做转发
 
-Tauri Shell 的 `rpc.rs` 有 134 个方法但几乎不含分析逻辑。所有图谱操作转发给 Engine，Shell 专注于进程管理、权限削决、沙箱隔离。这种分离使得：
+Tauri Shell 的 `rpc.rs` 有 153 个方法但几乎不含分析逻辑。所有图谱操作转发给 Engine，Shell 专注于进程管理、权限裁决、沙箱隔离、插件安装通道。这种分离使得：
 - 权限引擎在 Engine 不可用时仍然生效
 - Engine 的测试可以完全不涉及 Tauri
 - 非 Tauri 的 Engine 消费者（纯 MCP 客户端）也能获得完整图谱能力
@@ -653,7 +669,7 @@ Agent 循环在 TypeScript 中运行（而非 Rust），因为：
 - UI 更新与 Agent 循环同线程，避免跨语言状态同步
 - 工具调用的 UI 反馈（权限卡片、进度条）天然低延迟
 
-后端通过 `typedRpc()` 单一契约入口提供所有能力，前端通过 `ToolRegistry` 动态组装工具列表（图谱工具从 MCP `tools/list` 动态加载，编码/领域工具静态注册）。
+后端通过 `typedRpc()` 单一契约入口提供所有能力，前端通过 `buildToolRegistry` 按组合层行表序组装工具列表（行源 = 插件通道贡献快照，图谱动态族从 MCP `tools/list` 动态加载）。
 
 ### 10.4 为什么用 git worktree 做 Agent 隔离
 
@@ -682,6 +698,15 @@ EventBus 只覆盖不到一半通信，存在 5 个孤儿 emit、三层通信混
 
 （commit eadd2e0）session 永为完整历史，压缩只在发往 LLM 前对载荷执行。这保证 UI 显示、恢复、重放永远基于完整上下文，压缩决策可逆且可度量（成本模型），避免"压缩后上下文永久丢失"的不可逆破坏。
 
+### 10.8 为什么出厂态零特权行（P4 完全插件化，2026-08-24）
+
+D9 拍板不等 DSH，自己当第一用户。工具行、prompt 段、capability 三类行源全量经插件通道贡献，出厂表三张退役：
+- **特权区只减不增**：出厂态没有任何一行硬编码特权，可度量（git 可验）——"能拆尽拆、特权区最小"从愿景变成约束
+- **同一张注册表竞争**：第一方与第三方走同一贡献通道、同一装载序、同一重名拒绝防线——不存在"内置的旁路"，契约漂移在装配层不可藏
+- **解耦收益真实可取**：禁用/裁剪/preset 寻址对内外一律均匀（patch 可禁用第一方行）；多窗口并行、契约固化随通道免费获得
+- **字节契约由清单序保住**：第一方贡献序 = 迁移前出厂表序（convergence 双 preset 零漂移按构造钉死，前缀缓存不受迁移影响）
+- **边界如实**：第一方插件仍编译期打包（VSCode 内置扩展同款），收益是解耦与可禁用，不是物理分包
+
 ---
 
 ## 11. 测试与验证基线
@@ -689,10 +714,10 @@ EventBus 只覆盖不到一半通信，存在 5 个孤儿 emit、三层通信混
 | 层 | 命令 | 规模 |
 |----|------|------|
 | Engine | `cd engine && cargo test` | 697 用例（lib 669 + bin 27 + doc 1；696 passed / 1 ignored；状态机/取消/增量/向量/盲点合成/图合并） |
-| Tauri Shell | `cd src-tauri && cargo test` | 322 用例（bin 308 + 集成 14，全绿；pwsh 冒烟在无 pwsh 7 的环境自动跳过） |
-| 前端 | `cd src-ui && npx vitest run` | 1339 用例 / 136 文件（1338 passed / 1 skipped，2026-08-20 组合架构 S1 竣工实测；首次全量在并行构建环境下偶发 1 失败，重跑通过） |
+| Tauri Shell | `cd src-tauri && cargo test` | bin 389 + 集成 14（全绿，2026-08-22 第 5 棒实测；cdp e2e 按环境偶现 ±1，UIA 真实窗口 e2e 需 `HOLOGRAM_UIA_E2E=1`） |
+| 前端 | `cd src-ui && npx vitest run` | 162 文件 1610 passed / 1 skipped（2026-08-23 实测；convergence 双 preset 零漂移；本机跑测试前清 `NODE_ENV=production`，否则 specs 收集报错） |
 | 前端契约 | `cd src-ui && npm run verify:convergence` | T0 静态 + 8 baseline 对拍 + system-prompt.fixture（standard preset 零漂移） |
-| Agent 运行时/组合层 | 同上 + `composition/tool-rows.ts` 行表 / `prompt-sections.ts` / `agent/blueprint.ts` capability 表 | AgentConfig 冻结 31 字段，T0 断言；行表/段落表表序 = 字节契约 |
+| Agent 运行时/组合层 | 同上 + `composition/first-party-tools.ts` / `first-party-capabilities.ts` 清单 + `agent/blueprint.ts` capability 表 | AgentConfig 冻结 31 字段，T0 断言；行表/段落表/capability 三层表序 = 字节契约（行源 = 插件通道贡献快照） |
 | 前端构建 | `cd src-ui && npm run build` | tsc --noEmit + vite build 零错误 |
 | 引擎构建 | `cd engine && cargo build` | CI 强制 -D warnings 零警告 |
 | 全量 | `cd src-tauri && cargo tauri build` | 发布构建 |
