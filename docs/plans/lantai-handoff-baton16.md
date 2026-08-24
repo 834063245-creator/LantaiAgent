@@ -108,7 +108,7 @@ cordis ctx inject 纪律 / root asyncDispose 非清理面 / NODE_ENV=production
 
 ## 4. 本棒提交清单
 
-- `<HASH>` — fix(chat): 雷区 M4 拆除——会话级 messages store 三死亡路径接线 dispose + 竣工落账（session-ledger/P4/browser CDP 现状页刷新 + M6 消解收账 + baton16 交接）
+- `2abf25ba` — fix(chat): 雷区 M4 拆除——会话级 messages store 三死亡路径接线 dispose + 全清竣工落账（含 M6 收账 + 现状页刷新 + baton16 交接）
 
 提交文件面（staging 复核清单——多窗口纪律）：
 - src：src-ui/src/state/messages-store.ts（新增 disposeSessionMessagesStore）、
