@@ -51,6 +51,9 @@ impl Engine {
 
         let running = Arc::clone(&self.watcher_running);
         let root = project_root.clone();
+        // Weak 自引用：变更到达时升级拿回本实例，把增量更新落在本实例的
+        // store 上（L1 多实例化——不再吃全局 ENGINE，跨工作区不串写）。
+        let self_weak = self.self_arc().map(|this| Arc::downgrade(&this));
 
         let handle = std::thread::spawn(move || {
             let (tx, rx) = mpsc::channel();
@@ -148,8 +151,19 @@ impl Engine {
                                 std::mem::take(&mut changed_paths);
                             seen_paths.clear();
                             if !paths.is_empty() {
+                                let Some(self_weak) = &self_weak else {
+                                    // 裸实例（无自引用）不应走到这里 ——
+                                    // maybe_autostart_watcher 已拦；防御退出。
+                                    running.store(false, Ordering::SeqCst);
+                                    return;
+                                };
+                                let Some(engine) = self_weak.upgrade() else {
+                                    // 引擎已释放 —— 停止监听。
+                                    running.store(false, Ordering::SeqCst);
+                                    return;
+                                };
                                 // 先尝试增量更新，失败则回退到全量重新分析
-                                let _ = Self::handle_watcher_changes(&root, &paths, &on_change);
+                                let _ = engine.handle_watcher_changes(&root, &paths, &on_change);
                             }
                         }
                     }
@@ -165,13 +179,10 @@ impl Engine {
     /// 停止文件 watcher。轮询最多 2s 等待线程退出，超时则分离
     /// （丢弃 JoinHandle — 线程会在下次检查 `running` 时自行退出）。
     ///
-    /// 不得裸 `join()`：调用方可能正持有全局 `ENGINE` 写锁
-    /// （`engine_init` 的工作区切换路径），而 watcher 线程退出前需要
-    /// `ENGINE.read()`（`handle_watcher_changes`）——裸 join 在此构成
-    /// 「写锁等 join → join 等线程 → 线程等读锁 → 读锁等写锁」的
-    /// 永久死锁，并把全局引擎锁一起拖死（所有 `ENGINE.read()` 调用方
-    /// 永久阻塞，如 edit_file 写盘后的 timeline 记录）。
-    /// 2s 轮询先例见 src-tauri `WorkspaceHandle::deactivate`。
+    /// 不得裸 `join()`：历史死锁（写锁等 join → join 等线程 →
+    /// 线程等读锁）发生在 handle_watcher_changes 还吃全局 ENGINE 的
+    /// 年代；L1 实例化后线程只碰本实例，但裸 join 仍可能在
+    /// store 锁上与调用方互等——2s 轮询 + 超时分离的纪律保留。
     pub fn stop_watcher(&self) {
         self.watcher_running.store(false, Ordering::SeqCst);
         if let Ok(mut guard) = self.watcher_handle.lock() {
@@ -407,20 +418,23 @@ impl Engine {
             "[engine watcher] drift {} >= threshold {}, triggering full re-analysis to refresh derived results",
             drift, threshold
         );
-        let _ = super::engine_record_timeline_with_props(
+        let _ = engine.record_timeline_with_props(
             "drift_full_reanalyze",
             None,
             &format!("增量漂移 {} 达阈值 {}，自动全量重分析", drift, threshold),
             &serde_json::json!({"drift": drift, "threshold": threshold}),
         );
         // 与增量失败回退同一路径：同步全量重分析（成功后漂移归零）。
-        let _ = super::engine_analyze(root);
+        let _ = engine.analyze(root);
     }
 
     /// 处理来自 watcher 的文件变更。先尝试增量更新，
-    /// 失败则回退到全量重新分析。设为静态方法，以便 watcher 线程
-    /// 通过全局 ENGINE 函数调用。
+    /// 失败则回退到全量重新分析。
+    /// L1 起为实例方法：增量/回退/时间线全部落在**本实例**的
+    /// store 与 timeline 连接上（多工作区各持实例互不串写）；
+    /// 全局 `engine_try_incremental` 只是全局实例上的转发。
     pub(super) fn handle_watcher_changes(
+        &self,
         root: &Path,
         changed_files: &[(PathBuf, String)],
         on_change: &Option<Box<dyn Fn(String) + Send + 'static>>,
@@ -436,22 +450,15 @@ impl Engine {
             .unwrap_or_default()
             .as_millis() as u64;
         {
-            let engine_guard = super::ENGINE.read();
-            if let Some(engine) = engine_guard.as_ref() {
-                let mut pending = engine.pending_changes.lock().unwrap_or_else(|e| e.into_inner());
-                for (path, _action) in changed_files {
-                    pending.push((path.to_string_lossy().to_string(), now_ms, true));
-                }
+            let mut pending = self.pending_changes.lock().unwrap_or_else(|e| e.into_inner());
+            for (path, _action) in changed_files {
+                pending.push((path.to_string_lossy().to_string(), now_ms, true));
             }
         }
 
         // 通过 IncrementalUpdater 尝试增量更新（直接访问 store）
         let inc_result = (|| -> Result<(), String> {
-            let engine_guard = super::ENGINE.read();
-            let engine = engine_guard
-                .as_ref()
-                .ok_or_else(|| "Engine not initialized".to_string())?;
-            let store_guard = engine
+            let store_guard = self
                 .store
                 .lock()
                 .map_err(|e| format!("store lock: {}", e))?;
@@ -521,7 +528,7 @@ impl Engine {
                 } else {
                     format!("{} … +{} more", file_entries[..5].join("  "), file_entries.len() - 5)
                 };
-                let _ = super::engine_record_timeline_with_props(
+                let _ = self.record_timeline_with_props(
                     "incremental_update",
                     None,
                     &summary,
@@ -532,15 +539,12 @@ impl Engine {
                 }
                 // 清除 pending_changes — 索引已更新
                 {
-                    let engine_guard = super::ENGINE.read();
-                    if let Some(engine) = engine_guard.as_ref() {
-                        engine.clear_pending_files();
-                        // 漂移计数 +1：社区/聚类等派生结果自此标记为近似（P1-4）。
-                        engine.record_incremental_success();
-                        // 漂移阈值：增量次数达标 → 自动全量重分析，
-                        // 社区/合成边/框架路由等派生结果整体刷新（P1-4 重算臂）。
-                        Self::maybe_full_reanalyze(engine, root);
-                    }
+                    self.clear_pending_files();
+                    // 漂移计数 +1：社区/聚类等派生结果自此标记为近似（P1-4）。
+                    self.record_incremental_success();
+                    // 漂移阈值：增量次数达标 → 自动全量重分析，
+                    // 社区/合成边/框架路由等派生结果整体刷新（P1-4 重算臂）。
+                    Self::maybe_full_reanalyze(self, root);
                 }
                 return Ok(());
             }
@@ -549,7 +553,7 @@ impl Engine {
                     "[engine watcher] incremental failed ({}), falling back to full re-analysis",
                     e
                 );
-                let _ = super::engine_record_timeline_with_props(
+                let _ = self.record_timeline_with_props(
                     "incremental_fallback",
                     None,
                     &format!("增量失败（{}），回退全量分析", e),
@@ -560,7 +564,7 @@ impl Engine {
 
         // 回退：通过 Engine::analyze() 进行全量重新分析
         info!("[engine watcher] falling back to full re-analysis");
-        match super::engine_analyze(root) {
+        match self.analyze(root) {
             Ok(result) => {
                 let summary = serde_json::json!({
                     "status": "ok",
@@ -572,7 +576,7 @@ impl Engine {
                     "[engine watcher] full re-analysis done: {} nodes, {} edges in {:.1}s",
                     result.node_count, result.edge_count, result.elapsed_secs
                 );
-                let _ = super::engine_record_timeline_with_props(
+                let _ = self.record_timeline_with_props(
                     "watcher_full_reanalyze",
                     None,
                     &format!("增量回退后全量完成：{} 节点 {} 边 {:.1}s", result.node_count, result.edge_count, result.elapsed_secs),
@@ -582,17 +586,12 @@ impl Engine {
                     cb(summary);
                 }
                 // 清除 pending_changes — 全量重新分析成功
-                {
-                    let engine_guard = super::ENGINE.read();
-                    if let Some(engine) = engine_guard.as_ref() {
-                        engine.clear_pending_files();
-                    }
-                }
+                self.clear_pending_files();
                 Ok(())
             }
             Err(e) => {
                 warn!("[engine watcher] full re-analysis failed: {}", e);
-                let _ = super::engine_record_timeline(
+                let _ = self.record_timeline(
                     "watcher_reanalyze_failed",
                     None,
                     &format!("回退全量也失败：{}", e),

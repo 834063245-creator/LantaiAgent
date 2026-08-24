@@ -631,7 +631,7 @@ HelloReply resp = stub.sayHello(req);
         // 实现/调用匹配走真实 location 与名称）
         let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("fixtures/grpc_services");
-        let mut engine = crate::engine::Engine::new();
+        let engine = crate::engine::Engine::new();
         engine.init(&fixture).unwrap();
         let result = engine.analyze(&fixture);
         assert!(result.is_ok(), "analyze failed: {:?}", result.err());

@@ -1,6 +1,6 @@
 # 分层重构（Layering Rework）— engine 纯化 + 壳层瘦身 + 应用层新生 施工计划
 
-> 立项：2026-08-24 · 状态：**Proposed·Draft（计划已立，等待开工窗口）** · 版本：v1
+> 立项：2026-08-24 · 状态：**施工中（L1 进行中，2026-08-24 晚开工）** · 版本：v1.1
 > 触发：用户架构判断「图谱分析 engine 成了实施意义上的后端，但它本身不是后端」「壳层也塞了太多东西」「多会话并行两个工作区时 engine 全局单例必撞」。用户要求**彻底方案，无远期，一路推到底**。
 > 本文档自包含：接手会话读完本文 + `AGENTS.md` + `CONVENTIONS.md` + `INVARIANTS.md` 即可开工。
 > 前置依赖：`session-unify-plan.md`（会话统一，施工中）——本计划**等 session-unify 收尾后开工**（两者都动存储层，避免两线作战）。
@@ -173,6 +173,26 @@
 - 用户数据完整迁移（原图/索引/向量可查）。
 - `cd engine && cargo test`、`cd src-tauri && cargo test`、`cd src-ui && npm run build` + `npx vitest run` + `npx biome ci .`（0/0）全绿。
 - 真机验收：单工作区功能不回归 + 双工作区并行正常。
+
+## 4.1 L1 施工设计定稿（2026-08-24 晚，施工中）
+
+> 前置依赖 session-unify 已竣工（真机验收通过），Q4 开工条件成立。
+
+**施工序（每步独立 commit）**：
+
+- **C1 引擎侧地基（engine crate）**：
+  1. `ENGINE` 全局 `RwLock<Option<Engine>>` → `RwLock<Option<Arc<Engine>>>`；`Engine::init(&mut self)` → `(&self)`（字段本就全内部可变）；新增 `Engine::new_shared(root) -> Arc<Engine>`（Arc 包裹 + `self_ref: Weak` 自引用，供 watcher 线程升级）。
+  2. **线程局部当前引擎（TLS）**：`engine::current_engine() / with_current(arc, f)`——所有 `engine_*` 全局自由函数入口先查 TLS 再落全局。壳层 `hologram_call` 在 spawn_blocking 线程上 `with_current(会话引擎, dispatch)`，工具处理器（tools/mod.rs `with_store/with_graph/project_root`）自动吃到正确引擎。**纪律：TLS 只允许在同步闭包内存在（Drop 清理），禁跨 .await**（R7 教训：异步共享态归因必串；本处单线程闭包限定无此问题）。跨工作区并行 dispatch 零锁串行、零换绑竞态。
+  3. **watcher 实例化**：`Engine::handle_watcher_changes` 由静态（吃全局 ENGINE）改 `(&self)` 实例方法——这是多实例化的**必改洞**：否则各 context 的 watcher 会互相串写全局引擎的 store。`maybe_full_reanalyze` 内全局调用改实例调用。非共享实例（`Engine::new()` 直建，测试用）不自动起 watcher。
+- **C2 壳层应用层（src-tauri/src/app/）**：
+  - `WorkspaceDataContext { root: PathBuf(canonical), engine: Arc<Engine>, sessions: Mutex<HashSet<u64>> }` + `AppContexts { contexts, sessions: HashMap<u64, SessionBinding>, focus: Option<u64> }`（Tauri managed state）。
+  - **会话 attach = 事实校验**：`session_attach { session_id, legacy_root? }` 读卷快照（全局位优先 → legacy 目录回退）取 `workspace` 字段为事实；目录在 → canonical → ensure context → 绑定；卷缺/字段空/目录不在 → **Ungrouped**（最小上下文，会话照常可用）。新生会话（卷未落盘）可用 `workspace` 声明绑定（DSH 规则 4：出生与绑定分离），卷落盘后以卷为事实。
+  - `session_focus`（UI 投影驱动）/ `session_detach`（GC：无会话绑定且非焦点且非单槽活跃的 context 释放）/ `context_list`。
+  - `workspace_activate` 兼容腰：确保对应 context（单槽时代与 context 时代同引擎实例，杜绝双实例漂移）；`WorkspaceHandle` 持 `engine: Option<Arc<Engine>>`，壳层 mtime watcher 改调实例 `try_incremental`（修掉它吃全局引擎的串写风险）。
+- **C3 壳层路由（命令族）**：解析链 **显式 path 参数 → `_session_id` → 焦点会话 → 单槽工作区 → 全局兜底**；`utils/graph_io.rs` 全家族签名改收 `&Engine`；`hologram_call` 解析引擎后 TLS 绑定 dispatch；filesystem/editor 的 timeline 记录路由到解析引擎。
+- **C4 前端接线**：rpc-contract 增 `session_attach/focus/detach/context_list` + `AgentCtx._session_id`；`agentInvoke` 注入活跃会话 id（session-scope store）；SessionsHome 开卷 → attach+focus；switchSession → focus；shell-store `projectPath` 语义改为「焦点会话工作区的投影」；`gen:rpc-contract` 再生成。
+
+**L1 明确边界（后续阶段消化）**：权限沙箱仍单槽（跨工作区并行 fs 写在 L1 仍聚焦区失败关闭——不损坏，只拒绝；per-context 权限在 L3/L4）；多工作区并行 UI（画布模型，session-unify §3.4 挂起项）不做，L1 交付的是 Rust 侧架构就绪 + 并发守卫测试。
 
 ## 5. 关键文件地图（改动面汇总）
 
