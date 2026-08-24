@@ -265,7 +265,7 @@
 - **storage 物理 crate 化欠账**（L2 §4.3 已记录）：StoreHost 物理家在 engine crate、shell 直接 import——收窄 `pub mod storage` 导出的前置是 storage 独立 crate 化（机械搬家，语义已定）。**本窗口不动**：收益纯组织性、风险纯机械性，留给后续窗口或 L5b；不阻塞任何验收。
   **→ 已于 L5b（2026-08-25 同日）满偿**：见 §4.3 欠账满偿记录（三 crate 拆出 + workspace + 守卫测试 + CI 全量）。
 - **全量门禁（2026-08-25 实测）**：engine 705（677+27+1）、src-tauri bin 421 + 集成 14、src-ui build + vitest + biome 0/0 全绿。
-  **→ L5b 后新基线（2026-08-25 实测）**：workspace 五 crate——hologram-graph 44+doc 1、hologram-vector 16+1 ignored、hologram-storage 46、engine lib 571 + bin 待重验、src-tauri bin 422（含新守卫）+ 集成 14；总数对账 = 原 705 - 搬走 62 - merge 迁入重复计数 ≈ 守恒。
+  **→ L5b 后新基线（2026-08-25 实测）**：workspace 五 crate——hologram-graph 44+doc 1、hologram-vector 16+1 ignored、hologram-storage 46、engine lib 571 + bin 27（单线程）、src-tauri bin 422（含新守卫）+ 集成 14（单线程）；总数对账守恒（lib 677 = 571 + 46 + 17 + 43）。⚠️ 已知环境坑：engine bin 与 src-tauri 集成测试**并行模式本机偶发 hang**（单线程必绿、逻辑零回归；全局 ENGINE + watcher 线程时序，同 L3 hologram_dispatch_test 先例）——跑这两处加 `-- --test-threads=1`。
 - **真机验收四项（用户项）**：① 单工作区零回归（开卷/切卷/图查询/工具调用如常）；② 双工作区并行（两会话两项目同时图查询无错乱）；③ 跨工作区续开（首页点他工作区卷 → 图上下文正确）；④ Ungrouped 会话可用（零目录卷打开不报图错误）。
 
 ## 6. 拍板点（用户终审；**已全部拍板，2026-08-24**）
