@@ -12,12 +12,19 @@ fn parse(v: &str) -> Value {
     serde_json::from_str(v).unwrap()
 }
 
+/// 进程内串行锁：本文件 14 个测试共享全局 ENGINE 单例，init_test_engine
+/// 的 clear+write 与兄弟测试的 dispatch 交错会把刚写入的节点清掉
+/// （2026-08-25 L2 时序变化后实测撞上；单跑恒绿）。engine 侧
+/// global_engine_test_guard 同款先例。
+static ENGINE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 // ═══════════════════════════════════════════════════════
 // hologram_tools_list
 // ═══════════════════════════════════════════════════════
 
 #[test]
 fn test_tools_list_returns_tools() {
+    let _guard = ENGINE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let schemas: Vec<Value> =
         serde_json::from_str(&hologram_tools_list_impl()).unwrap();
     assert!(!schemas.is_empty(), "must return at least one tool");
@@ -25,6 +32,7 @@ fn test_tools_list_returns_tools() {
 
 #[test]
 fn test_tools_list_each_tool_has_input_schema() {
+    let _guard = ENGINE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let schemas: Vec<Value> =
         serde_json::from_str(&hologram_tools_list_impl()).unwrap();
     for s in &schemas {
@@ -38,6 +46,7 @@ fn test_tools_list_each_tool_has_input_schema() {
 
 #[test]
 fn test_tools_list_includes_key_explore() {
+    let _guard = ENGINE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let schemas: Vec<Value> =
         serde_json::from_str(&hologram_tools_list_impl()).unwrap();
     let names: Vec<&str> = schemas.iter()
@@ -53,6 +62,7 @@ fn test_tools_list_includes_key_explore() {
 
 #[test]
 fn test_call_unknown_tool_returns_error() {
+    let _guard = ENGINE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let result = hologram_call_impl("nonexistent", &json!({}));
     let v = parse(&result);
     assert!(is_errorish(&v), "unknown tool must return error/degraded");
@@ -60,6 +70,7 @@ fn test_call_unknown_tool_returns_error() {
 
 #[test]
 fn test_call_search_missing_query() {
+    let _guard = ENGINE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let result = hologram_call_impl("search_symbols", &json!({}));
     let v = parse(&result);
     assert!(is_errorish(&v), "search without query must error/degraded");
@@ -67,6 +78,7 @@ fn test_call_search_missing_query() {
 
 #[test]
 fn test_call_neighbors_missing_node_id() {
+    let _guard = ENGINE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let result = hologram_call_impl("get_neighbors", &json!({}));
     let v = parse(&result);
     assert!(is_errorish(&v), "neighbors without node_id must error/degraded");
@@ -74,6 +86,7 @@ fn test_call_neighbors_missing_node_id() {
 
 #[test]
 fn test_call_preflight_missing_files() {
+    let _guard = ENGINE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let result = hologram_call_impl("preflight_check", &json!({}));
     let v = parse(&result);
     assert!(is_errorish(&v), "preflight without files must error/degraded");
@@ -81,6 +94,7 @@ fn test_call_preflight_missing_files() {
 
 #[test]
 fn test_call_status_works_without_engine() {
+    let _guard = ENGINE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     // status returns empty state even without engine initialized
     let result = hologram_call_impl("engine_status", &json!({}));
     let v = parse(&result);
@@ -89,6 +103,7 @@ fn test_call_status_works_without_engine() {
 
 #[test]
 fn test_call_graph_summary_errors_without_engine() {
+    let _guard = ENGINE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let result = hologram_call_impl("graph_summary", &json!({}));
     let v = parse(&result);
     // graph_summary needs engine data — should error gracefully。
@@ -133,6 +148,7 @@ fn clear_test_engine() {
 
 #[test]
 fn test_call_neighbors_with_data() {
+    let _guard = ENGINE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     init_test_engine();
     let result = hologram_call_impl("get_neighbors", &json!({"nodeId": "a"}));
     let v = parse(&result);
@@ -142,6 +158,7 @@ fn test_call_neighbors_with_data() {
 
 #[test]
 fn test_call_impact_with_data() {
+    let _guard = ENGINE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     init_test_engine();
     let result = hologram_call_impl("trace_impact", &json!({"nodeId": "a", "depth": 3}));
     let v = parse(&result);
@@ -150,6 +167,7 @@ fn test_call_impact_with_data() {
 
 #[test]
 fn test_call_search_finds_nodes() {
+    let _guard = ENGINE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     init_test_engine();
     let result = hologram_call_impl("search_symbols", &json!({"query": "mod", "limit": 10}));
     let v = parse(&result);
@@ -159,6 +177,7 @@ fn test_call_search_finds_nodes() {
 
 #[test]
 fn test_call_node_returns_full_info() {
+    let _guard = ENGINE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     init_test_engine();
     let result = hologram_call_impl("inspect_symbol", &json!({"nodeId": "a"}));
     let v = parse(&result);
@@ -169,6 +188,7 @@ fn test_call_node_returns_full_info() {
 
 #[test]
 fn test_call_graph_summary_with_data() {
+    let _guard = ENGINE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     init_test_engine();
     let result = hologram_call_impl("graph_summary", &json!({}));
     let v = parse(&result);

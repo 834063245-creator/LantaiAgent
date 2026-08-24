@@ -26,6 +26,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use hologram_engine::engine::{Engine, engine_bind_global_shared};
 
 pub(crate) mod commands;
+pub(crate) mod services;
 
 /// 锁中毒恢复（std RwLock 惯例）。
 fn read_or_recover<T>(lock: &RwLock<T>) -> std::sync::RwLockReadGuard<'_, T> {

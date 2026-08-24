@@ -228,7 +228,13 @@
 
 **明确不动**：`src-ui/src/composition/**`、`src-ui/src/agent/**` 装配层、`.github/workflows/ci.yml`、`graph-layout`/`gpu-layout`。前端 RPC 契约若变化（携带工作区上下文）走 `docs/agents/frontend-rpc-contract.md` 重新生成流程。
 
+## 4.4 L3 施工进度（2026-08-25 凌晨）
+
+- ✅ **C6 壳层瘦身**（本 commit）：`commands/{graph,hologram,engine_dispatch,workspace,dataflow}.rs` 五文件薄壳化——参数提取 + State 转换 + 横切（权限检查/changed_files 快取/窗口标题）留壳，业务实现迁入 `app/services/`（graph_service / hologram_service / dispatch_service / workspace_service / dataflow_service，零语义改写）。rpc.rs 分派面不变（仍调 commands 薄壳）。验收：cargo test 全绿（bin 420 + 集成 14）；commands/ 五文件均 <100 行薄壳，职责一句话=「通道参数 ↔ 应用层服务」。
+- 顺修既有 flaky：`tests/hologram_dispatch_test.rs` 14 用例共享全局 ENGINE 的 clear+write 并行竞态（L2 时序变化后实测撞上，单跑恒绿）——进程内串行锁钉死（engine 侧 global_engine_test_guard 同款先例）。
+
 ## 6. 拍板点（用户终审；**已全部拍板，2026-08-24**）
+
 
 - **Q1 DataContext 的实现形态**：**✅ A（壳内模块）**——`src-tauri` 内新增 `app/` 层，同进程，每工作区一个实例。进程级隔离不拆（A 是可演进形态，未来需要时再拆，不冲突）。
 - **Q2 merge gate/hooks 数据源改造范围**：**✅ A（只改消费路径）**——数据从 DataContext 拿，gate 逻辑不动。本计划拆分层，不重写算法。

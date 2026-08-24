@@ -1,42 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
-// 引擎工具分发 — hologram_call + hologram_tools_list。
-// L1：hologram_call 按决议链（workspace/_session_id → 焦点 → 单槽）绑定
-// 会话引擎后经线程局部当前引擎（with_current）dispatch——工具处理器
-// （with_store/with_graph/project_root）自动吃到正确实例；跨工作区并行
-// dispatch 零锁串行、零换绑竞态。全空回落全局（MCP 时代语义）。
+// 引擎工具分发薄壳（L3）：validate_project 的 changed_files 注入（单槽横切）
+// + 调应用层服务（app/services/dispatch_service）。
 
 use serde_json;
-use hologram_engine::tools::ToolRegistry;
-
-/// 引擎调用的同步核心 —— 大图上单次 dispatch 可达秒级，
-/// 必须经 spawn_blocking 调用，绝不能在 async worker 上内联执行
-/// （见 docs/adr/project-constitution.md 异步纪律）。
-fn dispatch_engine(tool: &str, args: &serde_json::Value) -> Result<String, String> {
-    let dummy_id = serde_json::json!(null);
-    let result = ToolRegistry::dispatch(tool, args, &dummy_id);
-    // 解包 MCP JSON-RPC 信封 → 返回原始工具输出文本。
-    // ToolResponse 迁移后，dispatch() 将所有内容包装在
-    // {"jsonrpc":"2.0","id":...,"result":{"content":[{"type":"text","text":"..."}]}} 中。
-    // 所有 Tauri 调用者（timeline、check、dataflow、graph-partitioner、Agent）
-    // 期望原始工具 JSON，而非信封。
-    let text = result
-        .get("result")
-        .and_then(|r| r.get("content"))
-        .and_then(|c| c.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|item| item.get("text"))
-        .and_then(|t| t.as_str())
-        .unwrap_or("");
-    if text.is_empty() {
-        // 回退：可能是 Degraded 响应或错误
-        if let Some(err) = result.get("error") {
-            return Err(format!("Engine error: {:?}", err));
-        }
-        return Err("Engine returned empty result".to_string());
-    }
-    Ok(text.to_string())
-}
 
 #[tauri::command]
 pub(crate) async fn hologram_call(
@@ -60,23 +27,17 @@ pub(crate) async fn hologram_call(
             map.insert("changed_files".to_string(), serde_json::json!(changed_files));
         }
     }
-    // L1 决议链：显式 workspace → 会话 → 焦点 → 单槽；全空 → 全局引擎
-    // （决议在 spawn_blocking 外只做非阻塞读；ensure 路径的 SQLite 打开
-    // 在 spawn_blocking 内完成）。
     let app_ctx = app_ctx.inner().clone();
     let ws_state: crate::WorkspaceState = state.inner().clone();
-    let ws_clone = workspace.clone();
     tokio::task::spawn_blocking(move || {
-        let engine = {
-            let fallback = crate::utils::workspace_path(&ws_state).ok();
-            app_ctx.resolve_engine(ws_clone.as_deref(), session_id, fallback.as_deref())
-        };
-        match engine {
-            Some(engine) => hologram_engine::engine::with_current(engine, || {
-                dispatch_engine(&tool, &args)
-            }),
-            None => dispatch_engine(&tool, &args),
-        }
+        crate::app::services::dispatch_service::call_dispatched(
+            &app_ctx,
+            &ws_state,
+            tool,
+            args,
+            session_id,
+            workspace,
+        )
     })
     .await
     .map_err(|e| format!("引擎调用任务失败: {e}"))?
@@ -84,8 +45,7 @@ pub(crate) async fn hologram_call(
 
 #[tauri::command]
 pub(crate) fn hologram_tools_list() -> Result<String, String> {
-    let schemas = ToolRegistry::global().tools_list();
-    Ok(serde_json::to_string(&schemas).unwrap_or_default())
+    crate::app::services::dispatch_service::tools_list()
 }
 
 #[cfg(test)]
@@ -114,8 +74,8 @@ mod tests {
         let dummy_id = serde_json::json!(null);
         for tool in &tools {
             let name = tool["name"].as_str().unwrap();
-            let result = ToolRegistry::dispatch(name, &serde_json::json!({}), &dummy_id);
-            // ToolResponse 迁移后，未知工具返回 Degraded（带 _isDegraded 的成功响应）
+            let result = hologram_engine::tools::ToolRegistry::dispatch(name, &serde_json::json!({}), &dummy_id);
+            // 未知工具返回 Degraded（带 _isDegraded 的成功响应）
             if let Some(err) = result.get("error").and_then(|e| e.as_str()) {
                 if err.starts_with("Tool not found") {
                     panic!(
@@ -140,7 +100,7 @@ mod tests {
             let heavy = tokio::task::spawn_blocking(move || {
                 // Ok/Err 都是合法完成（空 args 对多数工具是参数错误）；
                 // JoinError（panic）才是致命。
-                dispatch_engine(&any_tool, &serde_json::json!({}))
+                crate::app::services::dispatch_service::dispatch_engine(&any_tool, &serde_json::json!({}))
             });
             let light = tokio::spawn(async { 42 });
             let (heavy, light) = tokio::join!(heavy, light);
