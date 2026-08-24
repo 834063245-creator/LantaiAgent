@@ -268,11 +268,14 @@ fn snippet_hash(s: &str) -> u64 {
 
 // ── 进程级缓存：加载的向量索引在搜索间复用 ──
 // 缓存条目附带加载时索引文件的 mtime；mtime 变化（重新分析/增量重建）→ 自动失效重载。
-static CACHED_INDEX: LazyLock<Mutex<Option<CachedIndex>>> = LazyLock::new(|| Mutex::new(None));
+// L4：**按根键控**——旧单槽 Option 在双工作区并行下互踩（A 加载后 B 覆盖，
+// A 的后续语义搜索用 B 的索引+错位 id 表）。VECTOR_CACHE（snippet 哈希→向量）
+// 本就跨根安全（内容键），保持进程级共享。
+static CACHED_INDEX: LazyLock<Mutex<std::collections::HashMap<PathBuf, CachedIndex>>> =
+    LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 
 struct CachedIndex {
     vi: CodeVectorIndex,
-    path: PathBuf,
     mtime: Option<std::time::SystemTime>,
 }
 
@@ -280,46 +283,55 @@ fn index_mtime(path: &std::path::Path) -> Option<std::time::SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
 }
 
-/// 获取或创建给定项目根目录的缓存 CodeVectorIndex。
-/// 首次访问时从磁盘加载；项目路径或索引文件 mtime 变化时自动重载。
+/// 获取或创建给定项目根目录的缓存 CodeVectorIndex（按根键控）。
+/// 首次访问时从磁盘加载；索引文件 mtime 变化时自动重载。
 pub fn get_or_load_index(project_root: &std::path::Path) -> Result<(Arc<RwLock<Option<usearch::Index>>>, Arc<RwLock<Vec<String>>>), String> {
     let path = project_root.join(".lantai").join("vectors.usearch");
     let current_mtime = index_mtime(&path);
     let mut cache = CACHED_INDEX.lock().map_err(|e| format!("vector cache lock: {e}"))?;
 
-    let stale = match cache.as_ref() {
+    let stale = match cache.get(&path) {
         None => true,
-        Some(c) => c.path != path || c.mtime != current_mtime,
+        Some(c) => c.mtime != current_mtime,
     };
     if stale {
         let vi = CodeVectorIndex::new(&path);
         if vi.exists_on_disk() {
             vi.load()?;
         }
-        *cache = Some(CachedIndex { vi, path, mtime: current_mtime });
+        cache.insert(path.clone(), CachedIndex { vi, mtime: current_mtime });
     }
-    let c = cache.as_ref().expect("索引缓存必已填充");
+    let c = cache.get(&path).expect("索引缓存必已填充");
     Ok((c.vi.index.clone(), c.vi.slots.clone()))
 }
 
-/// 重建完成后显式失效缓存（下次搜索重新加载磁盘上的新索引）。
-pub fn invalidate_cache() {
+/// 重建完成后显式失效该根的缓存（下次搜索重新加载磁盘上的新索引）。
+/// L4 起按根失效——B 工作区重建不得误伤 A 的热缓存。
+pub fn invalidate_cache(project_root: &std::path::Path) {
     if let Ok(mut cache) = CACHED_INDEX.lock() {
-        *cache = None;
+        cache.remove(&project_root.join(".lantai").join("vectors.usearch"));
     }
 }
 
 // ── 重建并发守卫：全量/增量重建共用，防止两个线程同时写同一索引文件 ──
-static BUILD_RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+// L4：按根防重入（全局布尔会让并行双工作区的重建互相跳过）。
+static BUILD_RUNNING: LazyLock<Mutex<std::collections::HashSet<PathBuf>>> =
+    LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
 
-/// 尝试开始一次向量索引重建；已有重建在进行时返回 false（调用方应跳过本轮）。
-pub fn try_begin_build() -> bool {
-    !BUILD_RUNNING.swap(true, std::sync::atomic::Ordering::AcqRel)
+/// 尝试开始一次向量索引重建（按索引文件路径防重入）；
+/// 该索引已有重建在进行时返回 false（调用方应跳过本轮）。
+pub fn try_begin_build(index_path: &std::path::Path) -> bool {
+    match BUILD_RUNNING.lock() {
+        Ok(mut set) => set.insert(index_path.to_path_buf()),
+        Err(_) => false, // 锁中毒 = 保守拒绝
+    }
 }
 
 /// 结束重建（必须与 try_begin_build 配对）。
-pub fn end_build() {
-    BUILD_RUNNING.store(false, std::sync::atomic::Ordering::Release);
+pub fn end_build(index_path: &std::path::Path) {
+    if let Ok(mut set) = BUILD_RUNNING.lock() {
+        set.remove(index_path);
+    }
 }
 
 /// 过滤向量命中：输入须按相似度降序。

@@ -974,6 +974,72 @@ mod tests {
         assert!(Engine::open(std::path::Path::new("Z:/definitely/not/here")).is_err());
     }
 
+    /// L4 并行 e2e：双工作区**同时**全量分析 + 同时简报检查（merge gate
+    /// 数据源 = 实例 store），断言无串写、无错位——正确性由架构保证
+    /// （每工作区一实例一 store），非调用方自觉。
+    #[test]
+    fn two_workspaces_parallel_analyze_and_check() {
+        let tmp = std::env::temp_dir().join("hologram_test_l4_parallel");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let ws_a = tmp.join("ws_a");
+        let ws_b = tmp.join("ws_b");
+        std::fs::create_dir_all(ws_a.join("src")).unwrap();
+        std::fs::create_dir_all(ws_b.join("src")).unwrap();
+        // 各写判别标记函数（名字互斥，串写即露馅）
+        std::fs::write(ws_a.join("src/main.py"), "def marker_alpha(): pass\n").unwrap();
+        std::fs::write(ws_b.join("src/main.py"), "def marker_beta(): pass\n").unwrap();
+
+        let ea = Engine::new_shared(&ws_a).unwrap();
+        let eb = Engine::new_shared(&ws_b).unwrap();
+
+        // 同时分析（并行线程）
+        let ea2 = ea.clone();
+        let eb2 = eb.clone();
+        let wa = ws_a.clone();
+        let wb = ws_b.clone();
+        let h1 = std::thread::spawn(move || ea2.analyze(&wa));
+        let h2 = std::thread::spawn(move || eb2.analyze(&wb));
+        let r1 = h1.join().unwrap();
+        let r2 = h2.join().unwrap();
+        assert!(r1.is_ok(), "A 分析失败: {:?}", r1.err());
+        assert!(r2.is_ok(), "B 分析失败: {:?}", r2.err());
+
+        // 互验：各见其标、不见他标
+        for (engine, own, other) in [(&ea, "marker_alpha", "marker_beta"), (&eb, "marker_beta", "marker_alpha")] {
+            let (own_seen, other_seen) = engine
+                .read(|idx| {
+                    (
+                        idx.get_nodes_by_name(own).len() > 0,
+                        idx.get_nodes_by_name(other).len() > 0,
+                    )
+                })
+                .unwrap();
+            assert!(own_seen, "实例必须见到自己的标记节点");
+            assert!(!other_seen, "实例不得见到他工作区的节点（串写！）");
+        }
+
+        // 同时简报（merge gate 消费实例图数据；双线程并发不 panic、结果可用）
+        let check = |engine: Arc<Engine>, root: std::path::PathBuf| {
+            move || {
+                let after = engine.read_graph(|g| g.clone()).unwrap();
+                let before = crate::routing::preflight::load_baseline(&root);
+                let result = crate::routing::preflight::run_full_check(
+                    &before,
+                    &after,
+                    &[],
+                    &root.to_string_lossy(),
+                );
+                result.get("passed").is_some()
+            }
+        };
+        let h3 = std::thread::spawn(check(ea.clone(), ws_a.clone()));
+        let h4 = std::thread::spawn(check(eb.clone(), ws_b.clone()));
+        assert!(h3.join().unwrap(), "A 简报必须产出可用结果");
+        assert!(h4.join().unwrap(), "B 简报必须产出可用结果");
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     /// L1 守卫：with_current（线程局部当前引擎）让 engine_* 全局函数
     /// 按线程路由到绑定实例——跨工作区并行 dispatch 互不可见、互不串写；
     /// 闭包退出后 TLS 清空（回落全局）。

@@ -423,9 +423,10 @@ impl Engine {
         // 在后台线程运行 — 不阻塞流水线完成。
         let vector_nodes: Vec<crate::graph::Node> = result.graph.nodes_iter().map(|(_, n)| n.clone()).collect();
         let vector_path = project_root.join(".lantai").join("vectors.usearch");
+        let vector_root = project_root.to_path_buf();
         std::thread::spawn(move || {
-            // 并发守卫：与增量重建互斥，避免两个线程同时写同一索引文件
-            if !crate::vector::try_begin_build() {
+            // 并发守卫：与增量重建互斥（按索引文件路径键控），避免两个线程同时写同一索引文件
+            if !crate::vector::try_begin_build(&vector_path) {
                 tracing::info!("[vector] 已有重建在进行，跳过本轮全量重建");
                 return;
             }
@@ -434,15 +435,15 @@ impl Engine {
                 Ok(n) if n > 0 => match vi.save() {
                     Ok(()) => {
                         tracing::info!("[vector] index built: {} vectors saved to {}", n, vector_path.display());
-                        // 让搜索侧缓存失效，下次搜索加载新索引
-                        crate::vector::invalidate_cache();
+                        // 让搜索侧缓存失效（按根），下次搜索加载新索引
+                        crate::vector::invalidate_cache(&vector_root);
                     }
                     Err(e) => tracing::warn!("[vector] save failed: {e}"),
                 },
                 Ok(_) => {}
                 Err(e) => tracing::warn!("[vector] build skipped: {e}"),
             }
-            crate::vector::end_build();
+            crate::vector::end_build(&vector_path);
         });
 
         // 8. 写入 GraphStore（MemoryIndex + SQLite）

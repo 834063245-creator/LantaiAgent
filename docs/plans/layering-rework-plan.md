@@ -233,7 +233,18 @@
 - ✅ **C6 壳层瘦身**（本 commit）：`commands/{graph,hologram,engine_dispatch,workspace,dataflow}.rs` 五文件薄壳化——参数提取 + State 转换 + 横切（权限检查/changed_files 快取/窗口标题）留壳，业务实现迁入 `app/services/`（graph_service / hologram_service / dispatch_service / workspace_service / dataflow_service，零语义改写）。rpc.rs 分派面不变（仍调 commands 薄壳）。验收：cargo test 全绿（bin 420 + 集成 14）；commands/ 五文件均 <100 行薄壳，职责一句话=「通道参数 ↔ 应用层服务」。
 - 顺修既有 flaky：`tests/hologram_dispatch_test.rs` 14 用例共享全局 ENGINE 的 clear+write 并行竞态（L2 时序变化后实测撞上，单跑恒绿）——进程内串行锁钉死（engine 侧 global_engine_test_guard 同款先例）。
 
+## 4.5 L4 施工进度（2026-08-25 凌晨）
+
+- ✅ **C7 并行语义落地**（本 commit）：
+  - merge gate / hooks 数据源：L1-C3 决议链已实质完成（run_check 经 graph_service::resolve 吃实例 store；graph-updated 消费走已决议的 get_graph_page；preRunHook 是记忆召回不吃图数据）——本批落钉验证。
+  - **vector 并行洞修复（L2 欠账项 2 清账）**：`CACHED_INDEX` 单槽静态 → **按根键控 HashMap**（旧形态双工作区互踩——A 的语义搜索用 B 的索引+错位 id 表）；`invalidate_cache`/`try_begin_build`/`end_build` 全部改按根/按索引路径（B 重建不误伤 A 热缓存；双工作区重建不再互相跳过）。
+  - **双工作区并发 e2e**：`two_workspaces_parallel_analyze_and_check`——双线程同时全量分析 + 同时简报（run_full_check 吃实例图），各见其标、不见他标（无串写），简报产出可用。
+  - **grep 守卫**：`engine_global_direct_calls_are_whitelisted`——壳层 engine 全局函数直连点白名单钉死（4 处 = 决议链 None 兜底臂），新增直连即红；白名单条目反查存在（防腐烂）。
+  - 门禁：engine 677+27+1、src-tauri bin 421 + 集成 14 全绿。
+- 剩余：真机双工作区并行验收（用户项，见 §7）。
+
 ## 6. 拍板点（用户终审；**已全部拍板，2026-08-24**）
+
 
 
 - **Q1 DataContext 的实现形态**：**✅ A（壳内模块）**——`src-tauri` 内新增 `app/` 层，同进程，每工作区一个实例。进程级隔离不拆（A 是可演进形态，未来需要时再拆，不冲突）。

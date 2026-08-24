@@ -321,8 +321,8 @@ impl GraphStore {
         let vector_path = project_root.join(".lantai").join("vectors.usearch");
 
         let handle = std::thread::spawn(move || {
-            // 并发守卫：与全量重建互斥，避免同时写同一索引文件
-            if !crate::vector::try_begin_build() {
+            // 并发守卫：与全量重建互斥（按索引文件路径键控），避免同时写同一索引文件
+            if !crate::vector::try_begin_build(&vector_path) {
                 tracing::info!("[vector] 已有重建在进行，跳过本轮增量重建");
                 return;
             }
@@ -349,15 +349,15 @@ impl GraphStore {
                 Ok(n) if n > 0 => match vi.save() {
                     Ok(()) => {
                         tracing::info!("[vector] 增量重建: {} 个向量", n);
-                        // 让搜索侧缓存失效，下次搜索加载新索引
-                        crate::vector::invalidate_cache();
+                        // 让搜索侧缓存失效（按根），下次搜索加载新索引
+                        crate::vector::invalidate_cache(&project_root);
                     }
                     Err(e) => tracing::warn!("[vector] 增量重建保存失败: {e}"),
                 },
                 Ok(_) => {}
                 Err(e) => tracing::warn!("[vector] 增量重建失败: {e}"),
             }
-            crate::vector::end_build();
+            crate::vector::end_build(&vector_path);
         });
 
         *guard = Some(handle);

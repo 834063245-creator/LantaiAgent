@@ -659,4 +659,110 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&ws);
     }
+
+    /// L4 守卫：壳层对 engine 全局函数（隐式单例存储访问）的直连点必须
+    /// 全部在白名单内——白名单 = 决议链的 None 兜底臂（MCP 时代语义），
+    /// 新增直连即红（应走 app::services 决议链 / 实例方法）。
+    /// 白名单条目同时要求真实存在（防腐烂）。
+    #[test]
+    fn engine_global_direct_calls_are_whitelisted() {
+        // 扫描模式：全局 engine_ 函数的直连调用形态（含 engine_api 前缀），即
+        // 「:: 函数名 (」连续序列；本注释刻意断开书写避免自匹配。
+        // 拼接构造避免本测试文件自匹配（模式串不出现连续的 "::engine_read" 字面）。
+        let fns = [
+            "engine_" , "read", "|engine_read_graph", "|engine_write", "|engine_init",
+            "|engine_state", "|with_engine", "|engine_record_timeline",
+            "|engine_record_timeline_with_props", "|engine_save", "|engine_analyze",
+            "|engine_try_incremental", "|engine_fts_search", "|engine_query_timeline",
+            "|engine_graph_generated_at",
+        ].concat();
+        let pattern = format!("::({fns})\\s*\\(");
+        let re = regex_lite(&pattern);
+
+        // 白名单：文件（相对 src-tauri/src）→ 允许的全局函数直连
+        let whitelist: &[(&str, &[&str])] = &[
+            // engine_impact 的决议链 None 兜底（MCP 时代语义）
+            (r"app\services\graph_service.rs", &["engine_read"]),
+            // record_event 的决议链 None 兜底
+            (r"app\services\hologram_service.rs", &["engine_record_timeline"]),
+            // fs 命令时间线：单槽实例缺席时的全局兜底
+            (r"commands\filesystem.rs", &["engine_record_timeline"]),
+            // edit 副作用时间线：同上兜底
+            (r"commands\editor.rs", &["engine_record_timeline"]),
+        ];
+
+        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut violations: Vec<String> = Vec::new();
+        let mut hits: Vec<(String, String)> = Vec::new();
+        for entry in walkdir::WalkDir::new(&src_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().is_some_and(|x| x == "rs"))
+        {
+            let rel = entry
+                .path()
+                .strip_prefix(&src_dir)
+                .unwrap()
+                .to_string_lossy()
+                .replace('/', r"\");
+            let content = std::fs::read_to_string(entry.path()).unwrap_or_default();
+            for (_pos, fname) in re.captures_iter(&content) {
+                hits.push((rel.clone(), fname.clone()));
+                let allowed = whitelist
+                    .iter()
+                    .find(|(f, _)| *f == rel)
+                    .map(|(_, fns)| fns.contains(&fname.as_str()))
+                    .unwrap_or(false);
+                if !allowed {
+                    violations.push(format!("{rel} :: {}", fname));
+                }
+            }
+        }
+        assert!(
+            violations.is_empty(),
+            "壳层出现未白名单的 engine 全局直连（应走 app::services 决议链/实例方法）: {violations:?}"
+        );
+        // 白名单条目必须真实存在（防腐烂）
+        for (file, fns) in whitelist {
+            for f in *fns {
+                assert!(
+                    hits.iter().any(|(rf, rfn)| rf == *file && rfn == *f),
+                    "白名单条目未命中（已过期？）: {file} :: {f}"
+                );
+            }
+        }
+    }
+}
+
+/// 极简正则（守卫测试专用）：只支持 `::name(` 交替字面量形态，
+/// 无第三方 regex 依赖（src-tauri 无 regex crate——守卫测试不得引入新依赖）。
+fn regex_lite(pattern: &str) -> LiteRe {
+    // pattern 形如 "::(a|b|c)\s*\(" → 提取交替名集合
+    let names: Vec<String> = pattern
+        .trim_start_matches("::(")
+        .trim_end_matches(r"\s*\(")
+        .split('|')
+        .map(|s| s.to_string())
+        .collect();
+    LiteRe { names }
+}
+
+struct LiteRe {
+    names: Vec<String>,
+}
+
+impl LiteRe {
+    fn captures_iter<'a>(&self, text: &'a str) -> Vec<(usize, String)> {
+        let mut out = Vec::new();
+        for name in &self.names {
+            let needle = format!("::{name}(");
+            let mut start = 0;
+            while let Some(pos) = text[start..].find(&needle) {
+                out.push((start + pos, name.clone()));
+                start += pos + needle.len();
+            }
+        }
+        out.sort_by_key(|(pos, _)| *pos);
+        out
+    }
 }
