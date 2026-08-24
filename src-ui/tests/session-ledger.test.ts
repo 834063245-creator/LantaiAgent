@@ -70,7 +70,7 @@ import { ChatCore } from '../src/app/chat/chat-core';
 import { useShellStore } from '../src/app/shell-store';
 import { reconcileNextSessionId, type SessionLedgerDisk } from '../src/state/session-ledger';
 import * as Session from '../src/ui/chat-session';
-import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
+import { getChatStore } from '../src/ui/chat-store';
 
 // ── Helpers ──
 
@@ -190,48 +190,32 @@ describe('reconcileNextSessionId（发号对账）', () => {
 // ①④ 摊开集扫描推导（autoRestoreLastSession — Q1-B 后唯一恢复引擎）
 // ═══════════════════════════════════════════════════════════════
 
-describe('autoRestoreLastSession — 扫描推导恢复', () => {
-  it('本工作区卷全回：最近 N 卷摊开（savedAt 序），最新为活跃，惰性卷消息预填', async () => {
+describe('autoRestoreLastSession — Q-B 不自动摊开（只发号对账）', () => {
+  it('不摊开任何卷：重启落案卷首页，sess store 保持空，发号对账到磁盘最大档号+1', async () => {
     const panel = createChatPanel();
     panel.setProjectPath(PROJ);
-    let factoryCalls = 0;
-    panel.setAgentFactory(async () => {
-      factoryCalls++;
-      return {
-        getSession: () => [{ role: 'system', content: 'sys' }],
-        setSession: vi.fn(),
-        dispose: vi.fn(),
-        bindSession: vi.fn(),
-      } as any;
-    });
+    panel.setAgentFactory(stubAgentFactory());
 
-    // 全局位三卷（归属本工作区），savedAt 9 > 7 > 3；另有一卷归属别的工作区（不进恢复集）
+    // 全局位三卷（归属本工作区），savedAt 9 > 7 > 3；另有一卷归属别的工作区
     mockScanDisk({
       9: volumeFile(9, '最新卷', '卷九内容', '2026-08-24T09:00:00Z', PROJ),
       7: volumeFile(7, '中间卷', '卷七内容', '2026-08-24T07:00:00Z', PROJ),
       3: volumeFile(3, '旧卷', '卷三内容', '2026-08-24T03:00:00Z', PROJ),
-      5: volumeFile(5, '他区卷', '不该恢复', '2026-08-24T08:00:00Z', 'D:/other'),
+      5: volumeFile(5, '他区卷', '不该进', '2026-08-24T08:00:00Z', 'D:/other'),
     });
 
     await panel.autoRestoreLastSession(PROJ);
 
     const st = getChatStore(panel.panelId).sess.getState();
-    // 最近 3 卷（上限内）摊开，最新活跃；他区卷不进
-    expect(st.sessions.map((s) => s.id)).toEqual([9, 7, 3]);
-    expect(st.sessions[st.activeIdx]?.id).toBe(9);
-    // 惰性卷消息预填（内容层恢复）
-    const lazyMsgs = msgStoreFor(panel.panelId, 7).getState().messages;
-    expect(lazyMsgs.some((m: any) => m.text === '卷七内容')).toBe(true);
-    // 发号对账：scan 最大 9 → next = 10
+    // Q-B：不自动摊开任何卷（用户从案卷首页自选），sess store 空态常态
+    expect(st.sessions).toHaveLength(0);
+    // 发号对账：scan 最大 9 → next = 10（新建不撞号）
     expect(st.nextSessionId).toBe(10);
-    // 活跃卷句柄后台补建恰 1 次（惰性卷不建句柄）
-    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 10));
-    expect(factoryCalls).toBe(1);
-    // 恢复全程零写盘（摊开集推导不落任何账）
+    // 全程零写盘（对账不落任何账）
     expect(mockInvoke.mock.calls.some((c: any[]) => c[1]?.method === 'write_file_content')).toBe(false);
   });
 
-  it('摊开集上限（RESTORE_OPEN_MAX=3）：第 4 新的卷不摊开', async () => {
+  it('摊开不再按 savedAt 截取——卷只参与发号对账，无上限语义', async () => {
     const panel = createChatPanel();
     panel.setProjectPath(PROJ);
     panel.setAgentFactory(stubAgentFactory());
@@ -245,12 +229,11 @@ describe('autoRestoreLastSession — 扫描推导恢复', () => {
     await panel.autoRestoreLastSession(PROJ);
 
     const st = getChatStore(panel.panelId).sess.getState();
-    expect(st.sessions.map((s) => s.id)).toEqual([4, 3, 2]); // 最新 3 卷
-    // 发号仍对账到最大档号：next = 5
-    expect(st.nextSessionId).toBe(5);
+    expect(st.sessions).toHaveLength(0); // 不摊开
+    expect(st.nextSessionId).toBe(5); // 发号对账到最大档号 + 1
   });
 
-  it('项目旧目录未吸收卷（legacy 无 ws 字段）按位置归属进恢复集', async () => {
+  it('项目旧目录未吸收卷参与发号对账（legacy 无 ws 字段按位置归属）', async () => {
     const panel = createChatPanel();
     panel.setProjectPath(PROJ);
     panel.setAgentFactory(stubAgentFactory());
@@ -260,12 +243,11 @@ describe('autoRestoreLastSession — 扫描推导恢复', () => {
     await panel.autoRestoreLastSession(PROJ);
 
     const st = getChatStore(panel.panelId).sess.getState();
-    expect(st.sessions.map((s) => s.id)).toEqual([230]);
-    const msgs = msgStoreFor(panel.panelId, 230).getState().messages;
-    expect(msgs.some((m: any) => m.text === '旧目录内容')).toBe(true);
+    expect(st.sessions).toHaveLength(0); // 不摊开
+    expect(st.nextSessionId).toBe(231); // 对账到 230 + 1
   });
 
-  it('死卷跳过：墓碑卷不进恢复集；全灭 → 新建兜底', async () => {
+  it('墓碑被列表过滤；无有效卷 → 空态 + 发号保持默认（不建兜底卷）', async () => {
     const panel = createChatPanel();
     panel.setProjectPath(PROJ);
     panel.setAgentFactory(stubAgentFactory());
@@ -275,13 +257,13 @@ describe('autoRestoreLastSession — 扫描推导恢复', () => {
 
     await panel.autoRestoreLastSession(PROJ);
 
-    // 墓碑被 listSavedSessions 过滤 → 无卷 → baseline 新建
+    // Q-B：空态是常态，不新建兜底卷（用户落案卷首页自选）
     const st = getChatStore(panel.panelId).sess.getState();
-    expect(st.sessions).toHaveLength(1);
-    expect(st.sessions[0].id).toBeGreaterThanOrEqual(1);
+    expect(st.sessions).toHaveLength(0);
+    expect(st.nextSessionId).toBe(1); // 无有效卷 → 内存默认 1
   });
 
-  it('零目录恢复（projectPath=""）：只取零目录卷，带 ws 的卷不进', async () => {
+  it('零目录：跨工作区卷也参与发号对账', async () => {
     const panel = createChatPanel();
     panel.setProjectPath('');
     panel.setAgentFactory(stubAgentFactory());
@@ -293,12 +275,8 @@ describe('autoRestoreLastSession — 扫描推导恢复', () => {
     await panel.autoRestoreLastSession('');
 
     const st = getChatStore(panel.panelId).sess.getState();
-    expect(st.sessions.map((s) => s.id)).toEqual([6]);
-    expect(
-      msgStoreFor(panel.panelId, 6)
-        .getState()
-        .messages.some((m: any) => m.text === '零目录内容'),
-    ).toBe(true);
+    expect(st.sessions).toHaveLength(0); // 不摊开
+    expect(st.nextSessionId).toBe(8); // 对账到 7 + 1（跨工作区卷也防撞号）
   });
 });
 

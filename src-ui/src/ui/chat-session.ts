@@ -19,7 +19,6 @@ import {
   type PaperSessionData,
   removePaperSessionData,
 } from '../state/paper-store';
-import { openMetaOf, reconcileNextSessionId, type SessionLedgerDisk } from '../state/session-ledger';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
 import { useAgentPanelStore } from './agent-panel-store';
 import { bumpSession, getChatStore, msgStoreFor } from './chat-store';
@@ -813,52 +812,22 @@ export async function appendLastMessage(ctx: SessionContext, projectPath: string
   }
 }
 
-/** 内容层兜底卷（Phase B，2026-08-24 工作区归属根治）：无历史可恢复时建一卷
- *  无句柄的「案卷 N」——会话列表恒非空（会话存在性脱离 Agent 装配），句柄由
- *  ensureSessionAgent 在拟文时补建。已有卷在案则 no-op（不清用户现场）。 */
-function ensureBaselineSession(ctx: SessionContext): void {
-  const st = getChatStore(ctx.storeId).sess.getState();
-  if (st.sessions.length > 0) return;
-  const id = Math.max(1, st.nextSessionId);
-  getChatStore(ctx.storeId).sess.setState({
-    sessions: [{ id, label: `案卷 ${id}` }],
-    activeIdx: 0,
-    sessionTokens: {},
-    nextSessionId: id + 1,
-  });
-  msgStoreFor(ctx.storeId, id).getState().setMessages([]);
-  setTurnPairs(ctx.storeId, []);
-}
-
-/** 摊开集扫描推导的上限（Q1-B：重启不摊开历史大集——最近 N 卷，最新活跃）。 */
-const RESTORE_OPEN_MAX = 3;
-
-/** 恢复打开时最近活跃的会话集（Q1-B 总目退役：摊开集由磁盘现场推导）。
- *  扫描全局位 + 项目旧目录（listSavedSessions 双目录 + workspace 消解），
- *  取本工作区最近 RESTORE_OPEN_MAX 卷（savedAt 序）合成恢复集，最新者为
- *  活跃卷——不再读/写 _ledger.json 总目与 _active.json tracker（在盘旧文件
- *  自然荒废，无人读即无害）。崩溃加速语义保留：readVolumeData 的 localStorage
- *  较新覆盖（磁盘权威背书，P1-14 复活守卫同规）。
- *  Phase B（工作区归属根治）：所有卷只恢复内容层，句柄由 ensureSessionAgent
- *  在拟文/换卷时按需补建；projectPath=''（零目录）同样适用。 */
+/** Q-B（2026-08-24 用户拍板）：重启/装配不自动摊开任何卷，落点为案卷首页
+ *  （用户从全局列表自选要开的卷；“最近 3 卷”是总目退役后无语义的猜测，弃）。
+ *  本函数退化为发号对账：扫描全局位 + 旧目录推导 nextSessionId（避免新建撞号），
+ *  不写 sess store 摊开集、不建兜底卷。崩溃加速语义不受影响：
+ *  loadSessionFromDisk 打开时仍走 readVolumeData 的 localStorage 较新覆盖。 */
 export async function autoRestoreLastSession(ctx: SessionContext, projectPath: string): Promise<void> {
-  // 代际防护（H5）：恢复在途期间可能切换工作区 — 写入前校验，过期整段放弃，
-  // 防把旧项目的会话状态写进新项目面板。
+  // 代际防护（H5）：对账在途期间可能切换工作区 — 写入前校验，过期丢弃。
   const epoch = getWorkspaceEpoch();
 
-  const norm = normWs(projectPath);
-  const recent = (await listSavedSessions(ctx, projectPath)).filter((r) => r.workspace === norm);
-  if (recent.length > 0) {
-    const open = recent.slice(0, RESTORE_OPEN_MAX).map((r) => ({ id: r.id }));
-    const restoreSet: SessionLedgerDisk = { version: 2, open, activeId: recent[0].id, nextSessionId: 1 };
-    await restoreOpenSet(ctx, projectPath, restoreSet, epoch);
-    return;
-  }
-
-  getChatStore(ctx.storeId).sess.setState({ nextSessionId: 1 });
-  ctx.addNotice('未找到历史案卷，已新建案卷', 'info');
-  // Phase B：真的建卷（内容层兜底，句柄拟文时补建）
-  ensureBaselineSession(ctx);
+  const sessions = await listSavedSessions(ctx, projectPath);
+  // 发号对账：next = max(内存, 磁盘最大档号 + 1)——撞号裂缝闭合（F5 语义承继）
+  const scanMax = sessions.reduce((m, r) => Math.max(m, r.id), 0);
+  const memNext = getChatStore(ctx.storeId).sess.getState().nextSessionId;
+  const next = Math.max(memNext, scanMax + 1);
+  if (!isCurrentEpoch(epoch)) return;
+  getChatStore(ctx.storeId).sess.setState({ nextSessionId: next });
 }
 
 // ── 摊开集多卷恢复（扫描推导；session-ledger L0 语义承继面）─────────────
@@ -885,118 +854,6 @@ async function readVolumeData(projectPath: string, id: number): Promise<StoredSe
   // 避免重启后摊开集里出现只有系统提示的尸体卷。
   if (!data.messages?.some((m) => m.role !== 'system')) return null;
   return data;
-}
-
-/** 卷名候选：卷文件 label 优先，恢复集 label 兜底，都无 → 案卷 N。 */
-function restoredLabel(data: StoredSession, fallback: string | undefined, ordinal: number): string {
-  if (
-    data.label &&
-    !/^(?:会话|案卷) \d+$/.test(data.label) &&
-    data.label !== '已恢复的会话' &&
-    data.label !== '已恢复的案卷'
-  ) {
-    return data.label;
-  }
-  if (fallback) return fallback;
-  return `案卷 ${ordinal}`;
-}
-
-/**
- * 摊开集多卷恢复（Q1-B 后唯一恢复引擎）：恢复集整回，全部卷惰性。
- * 恢复集来源 = autoRestoreLastSession 的磁盘扫描推导（最近 N 卷）——磁盘是
- * 唯一真相源，无账本层。
- *
- * Phase B（2026-08-24 工作区归属根治）：**所有卷（含活跃卷）只恢复「内容层」**
- * （messages 重建到会话级 msgStore + 纸面摆放 + 元数据入 sess store），不建
- * Agent 句柄——恢复不再依赖工厂在场/工厂成功。活跃卷句柄在内容恢复后由
- * ensureSessionAgent 后台补建（保持「活跃卷有句柄」的既有 UX）；其余卷在
- * 该卷被切到/拟文时按需补建（factory 现调，会话内容从磁盘回填）。
- * 摊开集大时避免「摊 20 卷 = 起 20 个 Agent」。
- *
- * 失败容忍：单个卷文件损坏 → 跳过该卷（console.error 可见），不炸整个恢复；
- * 全部卷都读不出来 → 清空摊开集回退新建（与旧行为同构）。
- */
-async function restoreOpenSet(
-  ctx: SessionContext,
-  projectPath: string,
-  ledger: SessionLedgerDisk,
-  epoch: number,
-): Promise<void> {
-  // 逐卷读数据（活跃卷优先不必要——顺序即恢复集 open 序）
-  const metas = openMetaOf(ledger);
-  const volumes: Array<{ id: number; label: string; data: StoredSession }> = [];
-  for (const meta of metas) {
-    const data = await readVolumeData(projectPath, meta.id);
-    if (!data) {
-      console.error(`[chat] 恢复集卷 ${meta.id} 恢复失败（缺失/已删/空卷）——跳过`);
-      continue;
-    }
-    volumes.push({ id: meta.id, label: restoredLabel(data, meta.label, volumes.length + 1), data });
-  }
-
-  if (volumes.length === 0) {
-    // 恢复集里全是死卷 → 清账新建（与「未找到历史案卷」同构）
-    getChatStore(ctx.storeId).sess.setState({ nextSessionId: 1 });
-    ctx.addNotice('摊开集已无可用案卷，已新建案卷', 'info');
-    // Phase B：真的建卷（内容层兜底）
-    ensureBaselineSession(ctx);
-    return;
-  }
-
-  // 代际防护（H5）：恢复在途期间已切换工作区 — 丢弃本次恢复，不写任何 store。
-  if (!isCurrentEpoch(epoch)) return;
-
-  // 活跃卷定位（Phase B：真句柄创建退役——活跃卷也只恢复内容层）
-  const activeId = volumes.some((v) => v.id === ledger.activeId) ? (ledger.activeId as number) : volumes[0].id;
-  const activeVol = volumes.find((v) => v.id === activeId) ?? volumes[0];
-
-  ctx.flushReasoning();
-  ctx.flushText();
-  ctx.clearPendingToolCards();
-
-  // 全量重建摊开集（清面板旧态——与旧路径 clearPanelState 同构）
-  agentSessionState.clearPanelState(ctx.storeId);
-  const curSt = getChatStore(ctx.storeId).sess.getState();
-  const activeIdx = volumes.findIndex((v) => v.id === activeVol.id);
-  // 发号对账（F5）：max(内存, 恢复集, 磁盘最大档号+1)——撞号裂缝在此闭合
-  const scanMax = await scanMaxSessionId(projectPath);
-  const nextId = reconcileNextSessionId(ctx.storeId, ledger, scanMax);
-
-  agentSessionState.setExec(ctx.storeId, activeVol.id, createExecState());
-
-  getChatStore(ctx.storeId).sess.setState({
-    sessions: volumes.map((v) => ({ id: v.id, label: v.label })),
-    activeIdx,
-    sessionTokens: Object.fromEntries(volumes.map((v) => [v.id, v.data.tokensUsed ?? 0])),
-    nextSessionId: Math.max(nextId, curSt.nextSessionId),
-  });
-  getChatStore(ctx.storeId).input.getState().clearSessionDrafts();
-
-  // 逐卷恢复内容层（rebuildMessagesFromMessages 是纯数据函数）+ 纸面恢复。
-  // 活跃卷最后重建——rebuild 会重置 turnPairs，活跃卷的 turnPairs 必须是终态。
-  for (const v of volumes) {
-    if (v.id === activeVol.id) continue;
-    const convs = (v.data.messages as Message[]).filter((m) => m.role !== 'system');
-    rebuildMessagesFromMessages(convs, ctx.storeId, v.id);
-    loadPaperSessionData(ctx.storeId, v.id, v.data.paper ?? null);
-  }
-  rebuildMessagesFromMessages(
-    (activeVol.data.messages as Message[]).filter((m) => m.role !== 'system'),
-    ctx.storeId,
-    activeVol.id,
-  );
-  loadPaperSessionData(ctx.storeId, activeVol.id, activeVol.data.paper ?? null);
-
-  ctx.setLastUsageText('');
-  ctx.updateFooter();
-  // 活跃卷句柄后台补建（「活跃卷有句柄」的既有 UX——导出/改名即存等消费路径
-  // 需要；失败可见但不清会话，拟文时 sendMessage 兜底再试）
-  hydrateSessionAgentVisible(ctx);
-  ctx.addNotice(
-    `已恢复案卷工作集：${volumes.length} 卷（活跃：${activeVol.label}${volumes.length > 1 ? '，其余惰性待唤' : ''}）`,
-    'info',
-  );
-  // U4/Q1-B：无记账尾巴——摊开集运行时真相 = sess store，重启由扫描重推导
 }
 
 /** 扫描会话目录 — 无需 Agent。U1：全局位 + 项目内旧目录两处扫描，同号
@@ -1094,41 +951,28 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
       return;
     }
   }
-  if (!getAgentFactory(ctx.storeId)) {
-    const extra = ctx.getLastAgentDiag() ? `\n诊断: ${ctx.getLastAgentDiag()}` : '';
-    ctx.addNotice(`请先配置 API Key${extra}`, 'error');
-    return;
-  }
-
   let data: StoredSession | null = null;
-  // 1) 磁盘双读（U1：全局位优先 + 项目内旧目录回退）
-  data = await readVolumeJSON(projectPath, sessionId);
-
-  // 2) localStorage 回退
-  if (!data && typeof localStorage !== 'undefined') {
-    const lsRaw = localStorage.getItem(lsKey(projectPath, sessionId));
-    if (lsRaw) {
-      try {
-        data = JSON.parse(lsRaw) as StoredSession;
-      } catch {
-        /* 损坏 */
-      }
-    }
-  }
+  // 崩溃加速语义（P1-14）：readVolumeData = 磁盘双读 + localStorage 较新覆盖 + 墓碑/空卷过滤。
+  // Q-B 后 autoRestore 不再恢复内容，本契约由打开路径（首页点卷）承担。
+  data = await readVolumeData(projectPath, sessionId);
   if (!data) {
     ctx.addNotice('案卷文件读取失败', 'error');
     return;
   }
 
-  const newAgent = await getAgentFactory(ctx.storeId)?.();
-  if (!newAgent) {
-    ctx.addNotice('无法创建 Agent', 'error');
-    return;
+  // Phase B 对齐（Q-B 后「从首页点开历史卷」即此入口）：句柄是惰性资源——
+  // 工厂在场但无 Key（返 null）时，摊开内容层照常（历史卷可见不依赖装配），
+  // 句柄留由 ensureSessionAgent 在拟文时补建；无工厂同样摊开（拟文时提示配 Key）。
+  let newAgent: OwnedAgentHandle | null = null;
+  try {
+    newAgent = (await getAgentFactory(ctx.storeId)?.()) ?? null;
+  } catch {
+    /* 装配失败 = 句柄缺席，内容层照常（错误由拟文路径可见） */
   }
 
-  const freshSys = newAgent.getSession().filter((m: Message) => m.role === 'system');
   const conv = (data.messages as Message[]).filter((m) => m.role !== 'system');
-  newAgent.setSession([...freshSys, ...conv]);
+  const freshSys = newAgent?.getSession().filter((m: Message) => m.role === 'system') ?? [];
+  if (newAgent) newAgent.setSession([...freshSys, ...conv]);
 
   const firstUser = conv.find((m: Message) => m.role === 'user' && !isInternalMessage(m.content));
   const st1 = getChatStore(ctx.storeId).sess.getState();
@@ -1145,9 +989,12 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   ctx.clearPendingToolCards();
 
   const sid = data.id || sessionId;
-  agentSessionState.setAgent(ctx.storeId, sid, newAgent);
-  // 静态绑定该 Agent 的 board 到加载的会话
-  newAgent.bindSession?.(String(sid));
+  if (newAgent) {
+    agentSessionState.setAgent(ctx.storeId, sid, newAgent);
+    // 静态绑定该 Agent 的 board 到加载的会话
+    newAgent.bindSession?.(String(sid));
+    agentSessionState.setExec(ctx.storeId, sid, createExecState());
+  }
   getChatStore(ctx.storeId).sess.setState({
     sessions: [...st1.sessions, { id: sid, label }],
     activeIdx: st1.sessions.length,
@@ -1166,11 +1013,20 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
     getChatStore(ctx.storeId).sess.getState().setSessionTokens(sid, 0);
   }
 
-  try {
-    renderRestoredSession(ctx);
-  } catch (e) {
-    console.error('[chat] loadSessionFromDisk: render 崩溃', e);
-    ctx.addNotice(`案卷已加载但渲染失败: ${label}`, 'error');
+  if (newAgent) {
+    try {
+      renderRestoredSession(ctx);
+    } catch (e) {
+      console.error('[chat] loadSessionFromDisk: render 崩溃', e);
+      ctx.addNotice(`案卷已加载但渲染失败: ${label}`, 'error');
+    }
+  } else {
+    // 无句柄：纯数据重建内容层（历史卷可见；句柄拟文时补建）
+    rebuildMessagesFromMessages(conv, ctx.storeId, sid);
+    bumpSession(ctx.storeId, sid);
+    // 后台补建句柄：无 Key → 可见 warn（契约②：缺 Key = 提示不是会话消失）；
+    // 配 Key → 拟文时 ensureSessionAgent 直接可用
+    hydrateSessionAgentVisible(ctx);
   }
 
   ctx.setLastUsageText('');

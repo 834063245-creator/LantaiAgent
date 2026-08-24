@@ -124,7 +124,7 @@ beforeEach(() => {
 });
 
 describe('无 Key 冷启动 → 会话恢复 → 配 Key 不重启可发（死路形态守护）', () => {
-  it('恢复不依赖工厂：工厂返 null（无 Key）时零目录历史卷照常显示', async () => {
+  it('恢复不依赖工厂：工厂返 null（无 Key）时历史卷照常打开显示', async () => {
     // 用户级目录的 localStorage 备份（磁盘 7.json 背书——mockZeroDirDisk 提供）
     const lsKey = `hologram_session_${hashProjectPath('').toString(36)}_7`;
     localStorage.setItem(
@@ -139,9 +139,12 @@ describe('无 Key 冷启动 → 会话恢复 → 配 Key 不重启可发（死�
     // 零目录会话目录解析（真实链路由 setupPlaceholderAgent 调用；测试直调）
     await Session.ensureUserSessionsDir();
 
+    // Q-B（2026-08-24）：不自动摊开——autoRestoreLastSession 只做发号对账
     await panel.autoRestoreLastSession('');
+    expect(Session.getSessions(panel.panelId)).toHaveLength(0);
 
-    // ① 历史案卷照常恢复显示（会话存在性 ≠ Agent 装配）
+    // 历史卷可见 = 从案卷首页打开（内容层恢复不依赖工厂，Phase B 契约）
+    await panel.loadSessionFromDisk('', 7);
     const sess = Session.getSessions(panel.panelId);
     expect(sess).toHaveLength(1);
     expect(sess[0].id).toBe(7);
@@ -168,6 +171,7 @@ describe('无 Key 冷启动 → 会话恢复 → 配 Key 不重启可发（死�
     panel.setAgentFactory(async () => null); // 无 Key 冷启动阶段
     await Session.ensureUserSessionsDir();
     await panel.autoRestoreLastSession('');
+    await panel.loadSessionFromDisk('', 7); // Q-B：从案卷首页点开历史卷
     await drain(); // 排干补建失败 warn
 
     // 用户在设置中配置 Key 保存（不重启）：工厂从「返 null」变为可用

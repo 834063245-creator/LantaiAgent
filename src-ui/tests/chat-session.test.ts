@@ -356,7 +356,7 @@ describe('ChatPanel session persistence', () => {
   // autoRestoreLastSession — U4/Q1-B 扫描推导（恢复 = 磁盘扫描取最近卷）
   // ═══════════════════════════════════════════════════════════════
 
-  describe('autoRestoreLastSession', () => {
+  describe('autoRestoreLastSession（Q-B：不自动摊开，只发号对账）', () => {
     it('completes fast when scan rejects（回归：后端不可用不挂起）', async () => {
       panel = createChatPanel();
       panel.setAgentFactory(
@@ -369,7 +369,7 @@ describe('ChatPanel session persistence', () => {
       );
       panel.setProjectPath('D:/test');
 
-      // 扫描全拒 → 无卷 → baseline 新建（不挂起）
+      // 扫描全拒 → 空列表 → 空态（不挂起、不建兜底卷）
       mockInvoke.mockRejectedValue(new Error('backend down'));
 
       const start = Date.now();
@@ -377,135 +377,28 @@ describe('ChatPanel session persistence', () => {
       const elapsed = Date.now() - start;
 
       expect(elapsed).toBeLessThan(1000);
-      // 无卷兜底：面板仍有 baseline 卷
-      expect(Session.getSessions(panel.panelId).length).toBeGreaterThan(0);
+      // Q-B：不摊开不建卷，sess 空态常态（落案卷首页自选）
+      expect(Session.getSessions(panel.panelId)).toHaveLength(0);
     });
 
-    it('shows notice when no volumes found and localStorage is empty', async () => {
+    it('扫描全拒/空：无 notice、无兜底卷（Q-B 空态常态）', async () => {
       panel = createChatPanel();
       panel.setProjectPath('D:/test');
 
-      // Create an active session first — addNotice needs a target session
-      const fakeAgent = {
-        getSession: () => [{ role: 'system', content: 'sys' }],
-        setSession: vi.fn(),
-      } as any;
-      panel.setAgent(fakeAgent);
-      panel.setAgentFactory(async () => fakeAgent);
+      panel.setAgentFactory(
+        async () =>
+          ({
+            getSession: () => [{ role: 'system', content: 'sys' }],
+            setSession: vi.fn(),
+          }) as any,
+      );
 
       mockInvoke.mockRejectedValue(new Error('no volumes'));
 
       await panel.autoRestoreLastSession('D:/test');
 
-      // autoRestoreLastSession should have completed without errors.
-      // The notice "未找到历史会话，已创建新会话" is intended but may not
-      // appear if _addNoticeMessage silently drops it (no active session at
-      // time of call or session state was modified).
-      // Verify that at minimum the setAgent notice was added to the store.
-      const storeId = panel.panelId;
-      const { msgStoreForActive } = await import('../src/ui/chat-store');
-      const msgs = msgStoreForActive(storeId)?.getState().messages ?? [];
-      const noticeMsgs = msgs.filter((m: any) => m.role === 'notice');
-      // At least the setAgent notice "已连接到当前项目" should be present
-      expect(noticeMsgs.length).toBeGreaterThan(0);
-      // Check that autoRestoreLastSession didn't break anything —
-      // panel is still functional with an active session
-      const { getChatStore } = await import('../src/ui/chat-store');
-      const sessions = getChatStore(storeId).sess.getState().sessions;
-      expect(sessions.length).toBeGreaterThan(0);
-    });
-
-    it('adopts newer localStorage content when disk volume is stale（崩溃加速语义保留）', async () => {
-      panel = createChatPanel();
-
-      // localStorage 有较新内容（同 id 71；磁盘背书由下方 listing+read 提供）
-      const goodSession = {
-        id: 71,
-        label: '有内容的会话',
-        savedAt: '2026-06-30T10:00:00Z',
-        messages: [
-          { role: 'system', content: 'prompt' },
-          { role: 'user', content: '帮我分析项目' },
-          { role: 'assistant', content: '好的' },
-        ],
-      };
-      const hash = hashProjectPath('D:/test').toString(36);
-      localStorage.setItem(`hologram_session_${hash}_71`, JSON.stringify(goodSession));
-
-      panel.setAgentFactory(
-        async () =>
-          ({
-            getSession: () => [{ role: 'system', content: 'sys' }],
-            setSession: vi.fn(),
-          }) as any,
-      );
-      panel.setProjectPath('D:/test');
-
-      // U4 扫描推导调用序：list(全局) → 读卷(listing 层) → list(旧目录) →
-      // restoreOpenSet 经 readVolumeJSON 再读一次卷（全局位命中）
-      const staleVolume = JSON.stringify({
-        id: 71,
-        label: '有内容的会话',
-        savedAt: '2026-06-29T00:00:00Z',
-        messages: [{ role: 'system', content: 'prompt' }],
-        workspace: 'D:/test',
-      });
-      mockInvoke
-        .mockResolvedValueOnce(JSON.stringify([{ name: '71.json', path: '/s/71.json', is_dir: false, children: null }]))
-        .mockResolvedValueOnce(staleVolume)
-        .mockResolvedValueOnce(JSON.stringify([])) // 项目旧目录 listing（第二目录）
-        .mockResolvedValueOnce(staleVolume); // readVolumeJSON 全局位重读
-
-      await panel.autoRestoreLastSession('D:/test');
-
-      // 扫描列出 71 → readVolumeData 采纳 localStorage 较新内容 → 用户消息进 msgStore
-      const sess = Session.getSessions(panel.panelId);
-      expect(sess).toHaveLength(1);
-      expect(sess[0].id).toBe(71);
-      const msgs = msgStoreFor(panel.panelId, 71).getState().messages;
-      const userMsgs = msgs.filter((m: any) => m.role === 'user');
-      expect(userMsgs).toHaveLength(1);
-      expect(userMsgs[0].text).toBe('帮我分析项目');
-    });
-
-    it('restores the scanned newest volume（恢复 = 扫描取最近卷）', async () => {
-      panel = createChatPanel();
-      panel.setAgentFactory(
-        async () =>
-          ({
-            getSession: () => [{ role: 'system', content: 'sys' }],
-            setSession: vi.fn(),
-          }) as any,
-      );
-      panel.setProjectPath('D:/test');
-
-      // 扫描列出 46（ws 匹配本工作区）→ 恢复其内容（卷响应两次：listing 层 + readVolumeJSON）
-      const vol46 = mockSessionFile(
-        46,
-        [
-          { role: 'system', content: 'sys' },
-          { role: 'user', content: 'hello' },
-        ],
-        undefined,
-        undefined,
-        'D:/test',
-      );
-      mockInvoke
-        .mockResolvedValueOnce(JSON.stringify([{ name: '46.json', path: '/s/46.json', is_dir: false, children: null }]))
-        .mockResolvedValueOnce(vol46)
-        .mockResolvedValueOnce(JSON.stringify([])) // 项目旧目录 listing（第二目录）
-        .mockResolvedValueOnce(vol46); // readVolumeJSON 全局位重读
-
-      await panel.autoRestoreLastSession('D:/test');
-
-      const sess = Session.getSessions(panel.panelId);
-      expect(sess).toHaveLength(1);
-      expect(sess[0].id).toBe(46);
-      expect(
-        msgStoreFor(panel.panelId, 46)
-          .getState()
-          .messages.some((m: any) => m.text === 'hello'),
-      ).toBe(true);
+      const sessions = Session.getSessions(panel.panelId);
+      expect(sessions).toHaveLength(0); // 不摊开、不建兜底
     });
   });
 
@@ -598,99 +491,6 @@ describe('ChatPanel session persistence', () => {
   // saveActiveSession → setAgent → autoRestoreLastSession race
   // ═══════════════════════════════════════════════════════════════
 
-  describe('save-active-then-rebuild race prevention', () => {
-    it('autoRestoreLastSession succeeds when session was saved before setAgent reset', async () => {
-      panel = createChatPanel();
-      panel.setProjectPath('D:/test');
-
-      // ── Step 1: Set up a live session with conversation ──
-      const savedMessages: any[] = [];
-      const fakeAgent = {
-        getSession: () => [
-          { role: 'system', content: 'sys' },
-          { role: 'user', content: '帮我分析' },
-          { role: 'assistant', content: '好的，正在分析…' },
-        ],
-        setSession: vi.fn(),
-        dispose: vi.fn(),
-      };
-      panel.setAgent(fakeAgent as any);
-
-      // ── Step 2: Save the active session (simulates finishTurn) ──
-      // Mock write_file_content for both session file + tracker
-      mockInvoke.mockResolvedValue('ok');
-      await panel.saveActiveSession('D:/test');
-
-      // Verify localStorage was written (saveActiveSession writes there first)
-      const hash = hashProjectPath('D:/test').toString(36);
-      const _sessionId = (Session as any).getSessions?.()?.[0]?.id;
-      // Just verify SOMETHING was written to localStorage
-      const lsKeys = Object.keys(localStorage).filter((k) => k.startsWith('hologram_session_'));
-      expect(lsKeys.length).toBeGreaterThan(0);
-
-      // ── Step 3: Simulate mode change → setupAgent → setAgent (resets all) ──
-      const newFakeAgent = {
-        getSession: () => [{ role: 'system', content: 'fresh sys' }],
-        setSession: vi.fn(),
-        dispose: vi.fn(),
-      };
-      panel.setAgent(newFakeAgent as any);
-
-      // After setAgent, sessions should be reset
-      const sessions = Session.getSessions(panel.panelId);
-      expect(sessions?.length).toBe(1);
-      expect(sessions?.[0]?.agent).toBe(newFakeAgent);
-
-      // ── Step 4: autoRestoreLastSession should recover the saved conversation ──
-      mockInvoke.mockReset();
-      mockInvoke.mockResolvedValue(null);
-      // U4 扫描调用序：list(全局) → 读卷 → list(旧目录) → readVolumeJSON 重读（卷响应两次）
-      const savedId = lsKeys.length > 0 ? parseInt(lsKeys[0].replace(`hologram_session_${hash}_`, ''), 10) : 1;
-      const savedVolume = JSON.stringify({
-        id: savedId,
-        label: '已保存',
-        savedAt: new Date().toISOString(),
-        messages: [
-          { role: 'system', content: 'sys' },
-          { role: 'user', content: '帮我分析' },
-          { role: 'assistant', content: '好的，正在分析…' },
-        ],
-        workspace: 'D:/test',
-      });
-      mockInvoke
-        .mockResolvedValueOnce(
-          JSON.stringify([{ name: `${savedId}.json`, path: `/s/${savedId}.json`, is_dir: false, children: null }]),
-        )
-        .mockResolvedValueOnce(savedVolume)
-        .mockResolvedValueOnce(JSON.stringify([])) // 项目旧目录 listing（第二目录）
-        .mockResolvedValueOnce(savedVolume); // readVolumeJSON 全局位重读
-
-      // Set fresh agent factory for autoRestoreLastSession
-      panel.setAgentFactory(
-        async () =>
-          ({
-            getSession: () => [{ role: 'system', content: 'fresh sys' }],
-            setSession: (msgs: any[]) => {
-              savedMessages.push(...msgs);
-            },
-          }) as any,
-      );
-
-      await panel.autoRestoreLastSession('D:/test');
-
-      // Phase B（工作区归属根治）：恢复走内容层——msgStore 重建，不再依赖工厂
-      // 装载 agent.setSession（工厂仅在后台补建活跃卷句柄时使用）。
-      // 会话已恢复且内容在 msgStore。
-      const sess = Session.getSessions(panel.panelId);
-      expect(sess).toHaveLength(1);
-      expect(sess[0].id).toBe(savedId);
-      const msgs = msgStoreFor(panel.panelId, savedId).getState().messages;
-      const userMsgs = msgs.filter((m: any) => m.role === 'user');
-      expect(userMsgs).toHaveLength(1);
-      expect(userMsgs[0].text).toBe('帮我分析');
-    });
-  });
-
   describe('localStorage key isolation', () => {
     it('different projects produce different key prefixes', () => {
       const h1 = hashProjectPath('D:/HoloGramHG').toString(36);
@@ -779,17 +579,19 @@ describe('ChatPanel session persistence', () => {
           }) as any,
       );
 
-      // L0 总目占位：autoRestore 先读 _ledger.json——链头补一次「无总目」响应，
-      // 后续链恢复原位（走旧单卷路径，行为不变）
-      // U4 扫描调用序：list(全局) → 读卷 → list(旧目录) → readVolumeJSON 重读（卷响应两次）
+      // Q-B 后从首页打开历史卷：loadSessionFromDisk 双读（全局位优先回退旧目录）
       const vol1 = mockSessionFile(1, mockSessionMessages, '测试会话', undefined, 'D:/test');
-      mockInvoke
-        .mockResolvedValueOnce(JSON.stringify([{ name: '1.json', path: '/s/1.json', is_dir: false, children: null }]))
-        .mockResolvedValueOnce(vol1)
-        .mockResolvedValueOnce(JSON.stringify([])) // 项目旧目录 listing（第二目录）
-        .mockResolvedValueOnce(vol1); // readVolumeJSON 全局位重读
+      mockInvoke.mockImplementation((_cmd: string, payload: { method: string; params: Record<string, unknown> }) => {
+        const { method, params } = payload;
+        if (method === 'read_file_content') {
+          const fp = params.file_path as string;
+          if (fp === 'D:/test/.lantai/sessions/1.json') return Promise.resolve(vol1);
+          return Promise.reject(new Error('文件不存在'));
+        }
+        return Promise.resolve(null);
+      });
 
-      return panel.autoRestoreLastSession('D:/test');
+      return panel.loadSessionFromDisk('D:/test', 1);
     }
 
     it('does not render internal messages as user bubbles', async () => {
@@ -962,10 +764,10 @@ describe('ChatPanel session persistence', () => {
           : null,
       );
 
-      await panel.autoRestoreLastSession(PROJ);
+      await panel.loadSessionFromDisk(PROJ, 7);
 
       // 采纳了 localStorage 的更新消息（readVolumeData 磁盘权威 + ls 较新覆盖；
-      // 后台补建链排干后 setSession 收到它）
+      // Q-B 后崩溃加速契约由打开路径承担）
       for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 10));
       expect(restored.some((m) => m.content === 'localStorage 更新消息')).toBe(true);
     });
@@ -1503,7 +1305,9 @@ describe('ChatPanel session persistence', () => {
       panel.setProjectPath('');
       panel.setAgentFactory(async () => null);
 
-      await panel.autoRestoreLastSession('');
+      // Q-B：不自动摊开——路由匹配契约由打开路径（readVolumeJSON 的
+      // volumeWorkspaceMatches）承担：零目录请求只匹配无 ws 字段卷
+      await panel.loadSessionFromDisk('', 7);
 
       const sess = Session.getSessions(panel.panelId);
       expect(sess).toHaveLength(1);

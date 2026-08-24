@@ -114,13 +114,9 @@ export function SpineRack({ core }: { core: ChatCore | null }) {
 
   const onNewVolume = useCallback(() => {
     if (!core) return;
-    // 冷启动死路防护：无 agent 工厂时 createNewSession 静默失败（addNotice 被
-    // 丢弃）——前置检查给纸面直示（同 onSend 守卫）。
-    const st = getChatStore(core.panelId).sess.getState();
-    if (st.activeIdx < 0 || !st.sessions[st.activeIdx]) {
-      setLocalNotice('当前没有活跃会话——请在设置中配置 API Key（书眉「设置」→ 提供方）后保存，保存后即可另起一卷。');
-      return;
-    }
+    // Q-B（2026-08-24）：重启不自动摊开 → 空态是常态，另起一卷不再要求
+    // 已有活跃会话（旧守卫会拦截冷启动后空态的新建）。无 Key 提示由
+    // createNewSession 内部 factory 检查承担。
     void core.createNewSession();
   }, [core]);
 

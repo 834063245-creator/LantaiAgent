@@ -13,7 +13,7 @@
 // 视觉契约：docs/design/lantai-design-spec.md（注疏横排 / 朱砂=人 / 圆角恒 0）。
 
 import { useCallback, useEffect, useState } from 'react';
-import { typedJsonRpc } from '../rpc-contract';
+import { typedJsonRpc, typedRpc } from '../rpc-contract';
 import { workspaceFlow } from '../shell/rows/workspace';
 import { useDockStore } from '../state/dock-store';
 import { useUpdateStore } from '../state/update-store';
@@ -103,7 +103,11 @@ export function SessionsHome() {
       await ensureUserSessionsDir();
       let legacyRoot: string | null = null;
       try {
-        legacyRoot = await typedJsonRpc<string | null>('get_last_project', {});
+        // get_last_project 是单值字符串命令：RPC Value 化后出口已展开为
+        // 真结构化值（JS string / null），invoke 拿到的就是纯文本路径——
+        // 不能再走 typedJsonRpc（会对裸路径二次 JSON.parse 抛 SyntaxError，
+        // 导致 legacy_root 恒为 null → 项目旧卷整列隐形）。用 typedRpc 取原值。
+        legacyRoot = await typedRpc('get_last_project', {});
       } catch {
         /* 指针缺失 = 只列全局位（新卷世界自足） */
       }
@@ -124,16 +128,11 @@ export function SessionsHome() {
 
   const onNewSession = useCallback(() => {
     openPanel('paper');
-    // L1 真新建（F1 空壳根治）：旧版只 openPanel——冷启动已恢复旧卷时，
-    // 用户点「新建」看到的仍是旧对话。现直调 createNewSession（真建新卷）。
-    // 无 key 冷启动死路防护同 SpineRack onNewVolume：无活跃会话时
-    // createNewSession 的 addNotice 会被丢弃——前置检查给纸面直示。
+    // L1 真新建（F1 空壳根治）：直调 createNewSession（真建新卷）。
+    // Q-B（2026-08-24）：重启不自动摊开 → 空态是常态（落案卷首页），
+    // 新建不再要求已有活跃会话；无 Key 的提示由 createNewSession 内部
+    // factory 检查承担（Phase C 后 factory 恒可构造，缺 Key 请求期报错）。
     if (!core) return;
-    const st = getChatStore(core.panelId).sess.getState();
-    if (st.activeIdx < 0 || !st.sessions[st.activeIdx]) {
-      window.console.warn('[SessionsHome] 无活跃会话（API Key 未配置？）——新建未执行');
-      return;
-    }
     void core.createNewSession();
   }, [core, openPanel]);
 
