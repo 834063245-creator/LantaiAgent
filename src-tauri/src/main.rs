@@ -27,6 +27,7 @@ mod utils;
 mod commands;
 mod confined_fs;
 mod rpc;
+mod app;
 mod lifecycle;
 mod cdp;
 mod desktop;
@@ -67,6 +68,8 @@ fn get_active_project(
 
 fn main() {
     let workspace_state: WorkspaceState = Arc::new(Mutex::new(None));
+    // L1 应用层：按工作区实例化的数据上下文注册表（会话 attach 的家）。
+    let app_contexts: std::sync::Arc<app::AppContexts> = std::sync::Arc::new(app::AppContexts::new());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -74,6 +77,7 @@ fn main() {
         // 窗口位置/尺寸持久化 — Linux 无边框窗口每次启动不再回退到居中 1000x700
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .manage(workspace_state)
+        .manage(app_contexts)
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 // Phase 1: Drain — 后台线程执行，3s 超时保护避免 shutdown 阻塞导致僵尸进程
@@ -284,7 +288,6 @@ mod tests {
     /// 并发的轻量任务仍能继续执行。
     #[test]
     fn serialize_cached_graph_in_spawn_blocking_does_not_starve_runtime() {
-        let _guard = ENGINE_TEST_LOCK.lock().unwrap();
         let tmp = std::env::temp_dir().join("hologram_test_serialize_async");
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(tmp.join("src")).unwrap();
@@ -294,15 +297,16 @@ mod tests {
         )
         .unwrap();
 
-        // 初始化引擎并运行分析以填充图存储
+        // L1：显式引擎实例（不再碰全局 ENGINE——测试可并行）
+        let engine = engine::engine::Engine::new_shared(&tmp).unwrap();
         let tmp_s = tmp.to_string_lossy().to_string();
-        utils::direct_analyze(&tmp_s, true).unwrap();
+        utils::direct_analyze(&engine, &tmp_s, true).unwrap();
 
         // 构建 tokio runtime 以测试 spawn_blocking 行为
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let tmp_c = tmp_s.clone();
+        let engine_c = engine.clone();
         let serialized = rt.block_on(async {
-            tokio::task::spawn_blocking(move || utils::serialize_cached_graph(&tmp_c))
+            tokio::task::spawn_blocking(move || utils::serialize_cached_graph(&engine_c, &tmp_s))
                 .await
                 .unwrap()
                 .unwrap()
@@ -314,10 +318,11 @@ mod tests {
         assert!(!nodes.is_empty(), "should have at least one node");
 
         // 验证运行时未被饿死：序列化运行时定时器能触发
-        let tmp_c2 = tmp_s.clone();
+        let engine_c2 = engine.clone();
+        let tmp_c2 = tmp.to_string_lossy().to_string();
         let (tx, rx) = std::sync::mpsc::channel();
         let handle = std::thread::spawn(move || {
-            let _ = utils::serialize_cached_graph(&tmp_c2);
+            let _ = utils::serialize_cached_graph(&engine_c2, &tmp_c2);
             tx.send(()).unwrap();
         });
         // serialize_cached_graph 在阻塞线程上应快速完成
@@ -516,10 +521,8 @@ mod tests {
 
     // ── 图分页测试（P0-2 分页化）─────────────────────────────
     // 逐页拉取必须与全量序列化等价：节点集合一致、边集合收敛到全图。
-    // ⚠️ direct_analyze 操作进程级全局引擎，多个此类测试并行会互相
-    //    取消分析（"分析已被新的重分析请求取消"）→ 用全局锁串行化。
-
-    static ENGINE_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    // L1：显式引擎实例（Engine::new_shared），不再碰全局 ENGINE——
+    // 各测试各持实例，可并行，无需全局锁串行化。
 
     fn make_pageable_repo(tmp: &std::path::Path) {
         std::fs::create_dir_all(tmp.join("src").join("mod_a")).unwrap();
@@ -540,17 +543,17 @@ mod tests {
 
     #[test]
     fn graph_pages_reassemble_to_full_graph() {
-        let _guard = ENGINE_TEST_LOCK.lock().unwrap();
         let tmp = std::env::temp_dir().join("hologram_test_paging");
         let _ = std::fs::remove_dir_all(&tmp);
         make_pageable_repo(&tmp);
+        let engine = engine::engine::Engine::new_shared(&tmp).unwrap();
         let tmp_s = tmp.to_string_lossy().to_string();
-        utils::direct_analyze(&tmp_s, true).unwrap();
+        utils::direct_analyze(&engine, &tmp_s, true).unwrap();
 
         let page_size = 3usize;
         // meta：分页信息正确
         let meta: serde_json::Value = serde_json::from_str(
-            &utils::graph_meta_json(&tmp_s, page_size).unwrap(),
+            &utils::graph_meta_json(&engine, &tmp_s, page_size).unwrap(),
         ).unwrap();
         assert_eq!(meta["paged"].as_bool(), Some(true));
         let total_pages = meta["total_pages"].as_u64().expect("total_pages") as usize;
@@ -560,7 +563,7 @@ mod tests {
 
         // 逐页合并
         let full: serde_json::Value =
-            serde_json::from_str(&utils::serialize_cached_graph(&tmp_s).unwrap()).unwrap();
+            serde_json::from_str(&utils::serialize_cached_graph(&engine, &tmp_s).unwrap()).unwrap();
         let full_nodes: std::collections::BTreeSet<String> = full["nodes"]
             .as_array().unwrap().iter()
             .map(|n| n["id"].as_str().unwrap().to_string())
@@ -575,7 +578,7 @@ mod tests {
         let mut saw_hierarchical = false;
         for page in 0..total_pages {
             let p: serde_json::Value = serde_json::from_str(
-                &utils::serialize_graph_page(&tmp_s, page, page_size).unwrap(),
+                &utils::serialize_graph_page(&engine, &tmp_s, page, page_size).unwrap(),
             ).unwrap();
             assert_eq!(p["page"].as_u64().unwrap(), page as u64);
             assert_eq!(p["total_pages"].as_u64().unwrap(), total_pages as u64);
@@ -602,14 +605,14 @@ mod tests {
         let mut redelivered_total = 0usize;
         for page in 0..total_pages {
             let p: serde_json::Value = serde_json::from_str(
-                &utils::serialize_graph_page(&tmp_s, page, page_size).unwrap(),
+                &utils::serialize_graph_page(&engine, &tmp_s, page, page_size).unwrap(),
             ).unwrap();
             redelivered_total += p["edges"].as_array().unwrap().len();
         }
         assert_eq!(redelivered_total, full_edges.len(), "增量规则：每条边必须恰好下发一次");
 
         // 越界页报错
-        let err = utils::serialize_graph_page(&tmp_s, total_pages, page_size).unwrap_err();
+        let err = utils::serialize_graph_page(&engine, &tmp_s, total_pages, page_size).unwrap_err();
         assert!(err.contains("分页越界"), "越界页必须明确报错: {err}");
 
         let _ = std::fs::remove_dir_all(&tmp);
@@ -617,24 +620,24 @@ mod tests {
 
     #[test]
     fn graph_page_index_cache_invalidates_on_graph_change() {
-        let _guard = ENGINE_TEST_LOCK.lock().unwrap();
         let tmp = std::env::temp_dir().join("hologram_test_paging_cache");
         let _ = std::fs::remove_dir_all(&tmp);
         make_pageable_repo(&tmp);
+        let engine = engine::engine::Engine::new_shared(&tmp).unwrap();
         let tmp_s = tmp.to_string_lossy().to_string();
-        utils::direct_analyze(&tmp_s, true).unwrap();
+        utils::direct_analyze(&engine, &tmp_s, true).unwrap();
 
         let page_size = 3usize;
         let before: serde_json::Value = serde_json::from_str(
-            &utils::graph_meta_json(&tmp_s, page_size).unwrap(),
+            &utils::graph_meta_json(&engine, &tmp_s, page_size).unwrap(),
         ).unwrap();
         let before_pages = before["total_pages"].as_u64().unwrap();
 
         // 加一个文件 → 节点数变化 → 缓存键失效 → 页数变化
         std::fs::write(tmp.join("src").join("mod_b").join("b99.py"), "def fb99():\n    pass\n").unwrap();
-        utils::direct_analyze(&tmp_s, true).unwrap();
+        utils::direct_analyze(&engine, &tmp_s, true).unwrap();
         let after: serde_json::Value = serde_json::from_str(
-            &utils::graph_meta_json(&tmp_s, page_size).unwrap(),
+            &utils::graph_meta_json(&engine, &tmp_s, page_size).unwrap(),
         ).unwrap();
         assert_ne!(after["total_pages"].as_u64().unwrap(), before_pages, "图变更后页数必须重算");
 

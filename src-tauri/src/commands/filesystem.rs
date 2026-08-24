@@ -97,6 +97,28 @@ pub(crate) async fn read_file_base64(
     Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
 }
 
+/// fs 命令的 timeline 记录（L1）：优先落单槽工作区绑定的引擎实例
+/// （workspace_activate 时确保的数据上下文），无实例回落全局。
+/// (event, 路径, 短名) → 事件文案约定与既有完全一致。
+fn record_fs_timeline(state: &crate::WorkspaceState, event: &str, path: &str, short: &str) -> Result<(), String> {
+    let verb = match event {
+        "agent_write" => "写入",
+        "agent_delete" => "删除",
+        "agent_rename" => "重命名",
+        "agent_move" => "移动",
+        _ => "操作",
+    };
+    let summary = format!("Agent {}: {}", verb, short);
+    let handle = crate::utils::lock_or_recover(state);
+    if let Some(ref h) = *handle {
+        if let Some(ref engine) = h.engine {
+            return engine.record_timeline(event, Some(path), &summary);
+        }
+    }
+    drop(handle);
+    engine_api::engine_record_timeline(event, Some(path), &summary)
+}
+
 #[tauri::command]
 pub(crate) async fn write_file_content(
     file_path: String,
@@ -112,7 +134,7 @@ pub(crate) async fn write_file_content(
     if let Some(ref handle) = *crate::utils::lock_or_recover(&state) {
         if !is_ignored_path(&rp) {
             let short = rp.rsplit(['/', '\\']).next().unwrap_or(&rp);
-            let _ = engine_api::engine_record_timeline("agent_write", Some(&rp), &format!("Agent 写入: {}", short));
+            let _ = record_fs_timeline(&state, "agent_write", &rp, &short);
             if let Ok(mut changed) = handle.changed_files.lock() {
                 if !changed.contains(&rp) { changed.push(rp.clone()); }
             }
@@ -321,7 +343,7 @@ pub(crate) async fn delete_file_or_dir(
     if let Some(ref handle) = *crate::utils::lock_or_recover(&state) {
         if !is_ignored_path(&rp) {
             let short = rp.rsplit('/').next().unwrap_or(&rp);
-            let _ = engine_api::engine_record_timeline("agent_delete", Some(&rp), &format!("Agent 删除: {}", short));
+            let _ = record_fs_timeline(&state, "agent_delete", &rp, &short);
             if let Ok(mut changed) = handle.changed_files.lock() {
                 if !changed.contains(&rp) { changed.push(rp.clone()); }
             }
@@ -354,7 +376,7 @@ pub(crate) async fn rename_file_or_dir(
     if let Some(ref handle) = *crate::utils::lock_or_recover(&state) {
         if !is_ignored_path(&rp) {
             let short = rp.rsplit('/').next().unwrap_or(&rp);
-            let _ = engine_api::engine_record_timeline("agent_rename", Some(&rp), &format!("Agent 重命名: {}", short));
+            let _ = record_fs_timeline(&state, "agent_rename", &rp, &short);
             if let Ok(mut changed) = handle.changed_files.lock() {
                 if !changed.contains(&rp) { changed.push(rp.clone()); }
             }
@@ -378,7 +400,7 @@ pub(crate) async fn move_file(
     if let Some(ref handle) = *crate::utils::lock_or_recover(&state) {
         if !is_ignored_path(&rp) {
             let short = rp.rsplit('/').next().unwrap_or(&rp);
-            let _ = engine_api::engine_record_timeline("agent_move", Some(&rp), &format!("Agent 移动: {}", short));
+            let _ = record_fs_timeline(&state, "agent_move", &rp, &short);
             if let Ok(mut changed) = handle.changed_files.lock() {
                 if !changed.contains(&rp) { changed.push(rp.clone()); }
             }
@@ -395,17 +417,6 @@ mod tests {
     /// std::env::temp_dir + 进程 id 命名，测试尾部自清）。
     /// 注意：env var 是进程全局——用互斥锁串行化（cargo test 默认多线程）。
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    fn with_temp_sessions_root(f: impl FnOnce(&std::path::Path)) {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!("hologram_user_sessions_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&tmp);
-        std::fs::create_dir_all(&tmp).unwrap();
-        std::env::set_var("HOLOGRAM_SESSIONS_ROOT", &tmp);
-        f(&tmp);
-        let _ = std::fs::remove_dir_all(&tmp);
-        std::env::remove_var("HOLOGRAM_SESSIONS_ROOT");
-    }
 
     fn write_session(root: &std::path::Path, name: &str, body: &str) {
         std::fs::write(root.join(name), body).unwrap();

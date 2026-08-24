@@ -1,13 +1,41 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 // 图谱加载、分析、后台分析和引擎查询命令。
+// L1：引擎一律经 AppContexts 决议（显式 path → _session_id → 焦点会话 →
+// 单槽工作区），不再以「当前工作区」为隐式全局锚。
 
 use tauri::Manager;
+
+/// 命令层引擎决议：显式根优先，其后会话/焦点/单槽回退。
+/// 返回 (引擎, 根路径展示形)——引擎必属该根（ensure_context 语义）。
+fn resolve(
+    app_ctx: &tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
+    state: &tauri::State<'_, crate::WorkspaceState>,
+    explicit: Option<&str>,
+    session_id: Option<u64>,
+) -> Result<(std::sync::Arc<hologram_engine::engine::Engine>, String), String> {
+    let fallback = crate::utils::workspace_path(state).ok();
+    let root = explicit
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| fallback.clone());
+    let engine = app_ctx
+        .resolve_engine(explicit, session_id, fallback.as_deref())
+        .ok_or_else(|| "未打开工作区，请先打开项目".to_string())?;
+    let root = root.unwrap_or_else(|| {
+        hologram_engine::path_utils::normalize_path(
+            &engine.project_root().to_string_lossy(),
+        )
+    });
+    Ok((engine, root))
+}
 
 #[tauri::command]
 pub(crate) async fn load_graph_json(
     path: Option<String>,
     state: tauri::State<'_, crate::WorkspaceState>,
+    app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
 ) -> Result<String, String> {
     // P0-2 分页化（landmine-map.md 雷 2）：冷启动优先返回引擎图 meta + 分页信息，
     // 不再一次性回传全量 JSON（大仓库 267MB 级会击穿 128MB IPC 护栏）。
@@ -31,21 +59,26 @@ pub(crate) async fn load_graph_json(
         if root.contains("..") || root.contains('\0') {
             return Err("路径包含非法字符".into());
         }
-        // 引擎图（内存/SQLite 缓存）优先 — ensure_engine_graph 只加载缓存不分析。
-        if let Ok(()) = crate::utils::ensure_engine_graph(&root) {
-            // 冷启动新鲜度门禁（2026-08-18 修复）：SQLite 缓存可能过期
-            // （源文件在上次分析后被修改）。过期时不阻断渲染，但必须留痕，
-            // 由前端紧随其后的 analyze_and_load(force=false) 触发重分析，
-            // graph-updated 事件随后把 UI 换到最新图。
-            if crate::utils::cache_is_stale(std::path::Path::new(&root)) {
-                eprintln!(
-                    "[hologram] ⚠ 冷启动：SQLite 缓存的图已过期（源文件在上次分析后被修改），将触发重新分析"
-                );
+        // 引擎图（内存/SQLite 缓存）优先 — ensure_context 只加载缓存不分析。
+        if let Ok((engine, root_disp)) = resolve(&app_ctx, &state, Some(&root), None) {
+            if crate::utils::ensure_engine_ready(&engine, &root_disp).is_ok() {
+                // 冷启动新鲜度门禁（2026-08-18 修复）：SQLite 缓存可能过期
+                // （源文件在上次分析后被修改）。过期时不阻断渲染，但必须留痕，
+                // 由前端紧随其后的 analyze_and_load(force=false) 触发重分析，
+                // graph-updated 事件随后把 UI 换到最新图。
+                if crate::utils::cache_is_stale(&engine, std::path::Path::new(&root)) {
+                    eprintln!(
+                        "[hologram] ⚠ 冷启动：SQLite 缓存的图已过期（源文件在上次分析后被修改），将触发重新分析"
+                    );
+                }
+                let page_default = crate::utils::GRAPH_PAGE_DEFAULT_NODES;
+                let meta = tokio::task::spawn_blocking(move || {
+                    crate::utils::graph_meta_json(&engine, &root_disp, page_default)
+                })
+                .await
+                .map_err(|e| format!("任务失败: {e}"))??;
+                return Ok(meta);
             }
-            return crate::utils::graph_meta_json(
-                &root,
-                crate::utils::GRAPH_PAGE_DEFAULT_NODES,
-            );
         }
         // 磁盘兜底：小图走旧路径全量返回；大文件（>64MB）不白读，直接放弃。
         let p = std::path::PathBuf::from(&root).join("hologram_graph.json");
@@ -64,7 +97,13 @@ pub(crate) async fn load_graph_json(
 }
 
 #[tauri::command]
-pub(crate) async fn analyze_and_load(path: String, force: Option<bool>, app: tauri::AppHandle) -> Result<String, String> {
+pub(crate) async fn analyze_and_load(
+    path: String,
+    force: Option<bool>,
+    app: tauri::AppHandle,
+    state: tauri::State<'_, crate::WorkspaceState>,
+    app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
+) -> Result<String, String> {
     let force = force.unwrap_or(false);
     let _ = std::fs::write(crate::utils::project_root().join(".last_project"), &path);
 
@@ -72,7 +111,14 @@ pub(crate) async fn analyze_and_load(path: String, force: Option<bool>, app: tau
         let _ = window.set_title("兰台 — 分析中...");
     }
 
-    let analyze_future = crate::utils::run_analyze_with_progress(path.clone(), app.clone(), force);
+    // L1：目标根显式 → 数据上下文（不存在则创建，引擎 init 落在 spawn_blocking 内）
+    let (engine, root_disp) = resolve(&app_ctx, &state, Some(&path), None)?;
+    let analyze_future = crate::utils::run_analyze_with_progress(
+        engine.clone(),
+        path.clone(),
+        app.clone(),
+        force,
+    );
     analyze_future.await.map_err(|e| format!("Rust 引擎分析失败: {e}"))?;
 
     if let Some(window) = app.get_webview_window("main") {
@@ -85,21 +131,28 @@ pub(crate) async fn analyze_and_load(path: String, force: Option<bool>, app: tau
     }
 
     // P0-2 分页化：只回 meta + 分页信息，全量图由 get_graph_page 逐页拉取。
-    let path_clone = path.clone();
-    let meta = tokio::task::spawn_blocking(move || crate::utils::graph_meta_json(&path_clone, crate::utils::GRAPH_PAGE_DEFAULT_NODES))
-        .await
-        .map_err(|e| format!("序列化任务失败: {e}"))??;
+    let page_default = crate::utils::GRAPH_PAGE_DEFAULT_NODES;
+    let meta = tokio::task::spawn_blocking(move || {
+        crate::utils::graph_meta_json(&engine, &root_disp, page_default)
+    })
+    .await
+    .map_err(|e| format!("序列化任务失败: {e}"))??;
     Ok(meta)
 }
 
 /// 当前工作区图的 meta + 分页信息（重新分析/事件兜底时获取新图分页信息）。
+/// L1：决议链 _session_id → 焦点会话 → 单槽工作区。
 #[tauri::command]
-pub(crate) async fn get_graph_meta(state: tauri::State<'_, crate::WorkspaceState>) -> Result<String, String> {
-    let root = crate::utils::workspace_path(&state)?;
-    let root_c = root.clone();
+pub(crate) async fn get_graph_meta(
+    session_id: Option<u64>,
+    state: tauri::State<'_, crate::WorkspaceState>,
+    app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
+) -> Result<String, String> {
+    let (engine, root) = resolve(&app_ctx, &state, None, session_id)?;
+    let page_default = crate::utils::GRAPH_PAGE_DEFAULT_NODES;
     tokio::task::spawn_blocking(move || {
-        crate::utils::ensure_engine_graph(&root_c)?;
-        crate::utils::graph_meta_json(&root_c, crate::utils::GRAPH_PAGE_DEFAULT_NODES)
+        crate::utils::ensure_engine_ready(&engine, &root)?;
+        crate::utils::graph_meta_json(&engine, &root, page_default)
     })
     .await
     .map_err(|e| format!("任务失败: {e}"))?
@@ -111,14 +164,15 @@ pub(crate) async fn get_graph_meta(state: tauri::State<'_, crate::WorkspaceState
 pub(crate) async fn get_graph_page(
     page: usize,
     page_size: Option<usize>,
+    session_id: Option<u64>,
     state: tauri::State<'_, crate::WorkspaceState>,
+    app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
 ) -> Result<String, String> {
-    let root = crate::utils::workspace_path(&state)?;
+    let (engine, root) = resolve(&app_ctx, &state, None, session_id)?;
     let size = page_size.unwrap_or(crate::utils::GRAPH_PAGE_DEFAULT_NODES).clamp(500, 60_000);
-    let root_c = root.clone();
     let serialized = tokio::task::spawn_blocking(move || {
-        crate::utils::ensure_engine_graph(&root_c)?;
-        crate::utils::serialize_graph_page(&root_c, page, size)
+        crate::utils::ensure_engine_ready(&engine, &root)?;
+        crate::utils::serialize_graph_page(&engine, &root, page, size)
     })
     .await
     .map_err(|e| format!("任务失败: {e}"))??;
@@ -130,9 +184,34 @@ pub(crate) async fn get_graph_page(
 // ═══════════════════════════════════════════════════════
 
 #[tauri::command]
-pub(crate) fn engine_impact(node_id: String, max_depth: usize) -> Result<String, String> {
-    crate::utils::with_index(move |idx| {
-        let layers = idx.impact(&node_id, max_depth);
-        serde_json::json!({"layers": layers})
-    })
+pub(crate) async fn engine_impact(
+    node_id: String,
+    max_depth: usize,
+    state: tauri::State<'_, crate::WorkspaceState>,
+    app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
+) -> Result<String, String> {
+    // 决议链命中最左：显式/会话/焦点/单槽；全空回落全局（MCP 时代语义）。
+    let fallback = crate::utils::workspace_path(&state).ok();
+    match app_ctx.resolve_engine(None, None, fallback.as_deref()) {
+        Some(engine) => {
+            tokio::task::spawn_blocking(move || {
+                crate::utils::with_index(&engine, move |idx| {
+                    let layers = idx.impact(&node_id, max_depth);
+                    serde_json::json!({"layers": layers})
+                })
+            })
+            .await
+            .map_err(|e| format!("任务失败: {e}"))?
+        }
+        None => tokio::task::spawn_blocking(move || {
+            hologram_engine::engine::engine_read(|idx| {
+                let layers = idx.impact(&node_id, max_depth);
+                serde_json::to_string(&serde_json::json!({"layers": layers}))
+                    .unwrap_or_default()
+            })
+            .map_err(|e| format!("Engine error: {e}"))
+        })
+        .await
+        .map_err(|e| format!("任务失败: {e}"))?,
+    }
 }

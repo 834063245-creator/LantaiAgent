@@ -51,11 +51,23 @@ fn record_edit_side_effects(state: &crate::WorkspaceState, file_path: &str) {
         return;
     }
     let short = file_path.rsplit(['/', '\\']).next().unwrap_or(file_path);
-    let _ = engine_api::engine_record_timeline(
-        "agent_edit",
-        Some(file_path),
-        &format!("Agent 编辑: {}", short),
-    );
+    // L1：timeline 落单槽工作区绑定的引擎实例（无实例回落全局）。
+    let engine = {
+        let guard = crate::utils::lock_or_recover(state);
+        guard.as_ref().and_then(|h| h.engine.clone())
+    };
+    let _ = match engine {
+        Some(ref e) => e.record_timeline(
+            "agent_edit",
+            Some(file_path),
+            &format!("Agent 编辑: {}", short),
+        ),
+        None => engine_api::engine_record_timeline(
+            "agent_edit",
+            Some(file_path),
+            &format!("Agent 编辑: {}", short),
+        ),
+    };
     if let Ok(mut changed) = changed_files.lock() {
         let owned = file_path.to_string();
         if !changed.contains(&owned) {

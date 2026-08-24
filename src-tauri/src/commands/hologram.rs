@@ -1,19 +1,47 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 // Hologram 图谱查询与分析 Tauri 命令。
+// L1：引擎经 AppContexts 决议（显式 path → 会话 → 焦点 → 单槽），
+// 时间线/简报落点跟随会话绑定的引擎实例，不再吃全局。
 
 use tauri;
 use serde_json;
 use hologram_engine as engine;
-use engine::engine as engine_api;
+use engine::engine::Engine;
 use engine::routing::preflight::{check_timeline_props, load_baseline, save_baseline};
+
+use std::sync::Arc;
+
+/// 命令层引擎决议（同 commands::graph::resolve 的本地版）。
+fn resolve(
+    app_ctx: &tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
+    state: &tauri::State<'_, crate::WorkspaceState>,
+    explicit: Option<&str>,
+    session_id: Option<u64>,
+) -> Result<(Arc<Engine>, String), String> {
+    let fallback = crate::utils::workspace_path(state).ok();
+    let root = explicit
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| fallback.clone());
+    let engine = app_ctx
+        .resolve_engine(explicit, session_id, fallback.as_deref())
+        .ok_or_else(|| "未打开工作区，请先打开项目".to_string())?;
+    let root = root.unwrap_or_else(|| {
+        hologram_engine::path_utils::normalize_path(&engine.project_root().to_string_lossy())
+    });
+    Ok((engine, root))
+}
 
 #[tauri::command]
 pub(crate) async fn get_full_graph(
+    session_id: Option<u64>,
     state: tauri::State<'_, crate::WorkspaceState>,
+    app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
 ) -> Result<String, String> {
-    let source_root = crate::utils::workspace_path(&state)?;
-    let serialized = tokio::task::spawn_blocking(move || crate::utils::serialize_cached_graph(&source_root))
+    let (engine, root) = resolve(&app_ctx, &state, None, session_id)?;
+    let serialized = tokio::task::spawn_blocking(move || crate::utils::serialize_cached_graph(&engine, &root))
         .await.map_err(|e| format!("任务失败: {e}"))??;
     crate::utils::guard_ipc_size(serialized, "序列化图")
 }
@@ -22,14 +50,14 @@ pub(crate) async fn get_full_graph(
 #[tauri::command]
 pub(crate) async fn hologram_run_check(
     path: Option<String>,
+    session_id: Option<u64>,
     state: tauri::State<'_, crate::WorkspaceState>,
+    app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
 ) -> Result<String, String> {
     crate::utils::check_mcp_permission("hologram_run_check", &state)?;
     // 默认 target = 当前工作区根（而非应用安装目录 project_root()），理由同 exec_command。
-    let target = match path {
-        Some(p) => p,
-        None => crate::utils::workspace_path(&state)?,
-    };
+    // L1：显式 path → 会话/焦点/单槽决议；引擎实例与根天然绑定，无「全局是否已切到该根」问题。
+    let (engine, target) = resolve(&app_ctx, &state, path.as_deref(), session_id)?;
     // 在派生阻塞任务前提取并清除 changed_files。
     // 提前清除可防止检查期间新变更到达时的竞态。
     let changed_files: Vec<String> = crate::utils::lock_or_recover(&state).as_ref()
@@ -45,33 +73,20 @@ pub(crate) async fn hologram_run_check(
         let root = std::path::PathBuf::from(&target);
         let before = load_baseline(&root);
         // 优先使用内存/SQLite 缓存；仅在真正为空时才运行完整分析。
-        let after = if let Ok(g) = engine_api::engine_read_graph(|g| g.clone()) {
-            if g.node_count() > 0 || g.edge_count() > 0 {
-                Some(g)
-            } else {
-                None
+        let after = {
+            let g = engine.read_graph(|g| g.clone()).ok();
+            match g {
+                Some(g) if g.node_count() > 0 || g.edge_count() > 0 => Some(g),
+                _ => None,
             }
-        } else {
-            None
         };
         let after = match after {
             Some(g) => g,
             None => {
-                engine_api::engine_init(&root)
-                    .map_err(|e| format!("引擎初始化失败: {}", e))?;
-                if let Ok(g) = engine_api::engine_read_graph(|g| g.clone()) {
-                    if g.node_count() > 0 || g.edge_count() > 0 {
-                        g
-                    } else {
-                        crate::utils::direct_analyze(&target, true)?;
-                        engine_api::engine_read_graph(|g| g.clone())
-                            .map_err(|e| format!("分析后无图谱: {}", e))?
-                    }
-                } else {
-                    crate::utils::direct_analyze(&target, true)?;
-                    engine_api::engine_read_graph(|g| g.clone())
-                        .map_err(|e| format!("分析后无图谱: {}", e))?
-                }
+                crate::utils::direct_analyze(&engine, &target, true)?;
+                engine
+                    .read_graph(|g| g.clone())
+                    .map_err(|e| format!("分析后无图谱: {}", e))?
             }
         };
         let result = run_full_check(&before, &after, &changed_files, &target);
@@ -94,10 +109,7 @@ pub(crate) async fn hologram_run_check(
                 format!("简报未通过：{} 条违规", violation_count)
             };
             let props = check_timeline_props(&result);
-            if engine_api::engine_record_timeline_with_props(event_type, None::<&str>, &summary, &props).is_err() {
-                let _ = engine_api::engine_init(&root);
-                let _ = engine_api::engine_record_timeline_with_props(event_type, None::<&str>, &summary, &props);
-            }
+            let _ = engine.record_timeline_with_props(event_type, None::<&str>, &summary, &props);
         }
 
         Ok(serde_json::to_string(&result).unwrap_or_default())
@@ -109,18 +121,40 @@ pub(crate) async fn hologram_record_event(
     event_type: String,
     file: Option<String>,
     summary: String,
+    session_id: Option<u64>,
     state: tauri::State<'_, crate::WorkspaceState>,
+    app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
 ) -> Result<String, String> {
     crate::utils::check_mcp_permission("hologram_record_event", &state)?;
+    let app_ctx = app_ctx.inner().clone();
+    let ws_state: crate::WorkspaceState = state.inner().clone();
     tokio::task::spawn_blocking(move || {
-        engine_api::engine_record_timeline(&event_type, file.as_deref(), &summary)
-            .map_err(|e| format!("时间轴写入失败: {}", e))
-    }).await.map_err(|e| format!("时间轴写入失败: {}", e))??;
+        // 决议链：会话/焦点/单槽；全空回落全局（MCP 时代语义）。
+        match resolve_engine_or_global(&app_ctx, &ws_state, session_id) {
+            Some(engine) => engine
+                .record_timeline(&event_type, file.as_deref(), &summary)
+                .map_err(|e| format!("时间轴写入失败: {}", e)),
+            None => hologram_engine::engine::engine_record_timeline(
+                &event_type,
+                file.as_deref(),
+                &summary,
+            )
+            .map_err(|e| format!("时间轴写入失败: {}", e)),
+        }
+    }).await.map_err(|e| format!("时间轴写入失败: {e}"))??;
     Ok("ok".into())
 }
 
+/// record_event 的决议（无显式根；会话/焦点优先，全局兜底）。
+fn resolve_engine_or_global(
+    app_ctx: &std::sync::Arc<crate::app::AppContexts>,
+    state: &crate::WorkspaceState,
+    session_id: Option<u64>,
+) -> Option<Arc<Engine>> {
+    let fallback = crate::utils::workspace_path(state).ok();
+    app_ctx.resolve_engine(None, session_id, fallback.as_deref())
+}
 
 // ═══════════════════════════════════════════════════════
 // （2026-08-04 清理：hologram_hotspots / hologram_gate_check 前端零调用，已删）
 // ═══════════════════════════════════════════════════════
-

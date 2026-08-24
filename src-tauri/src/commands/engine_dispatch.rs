@@ -1,6 +1,10 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 // 引擎工具分发 — hologram_call + hologram_tools_list。
+// L1：hologram_call 按决议链（workspace/_session_id → 焦点 → 单槽）绑定
+// 会话引擎后经线程局部当前引擎（with_current）dispatch——工具处理器
+// （with_store/with_graph/project_root）自动吃到正确实例；跨工作区并行
+// dispatch 零锁串行、零换绑竞态。全空回落全局（MCP 时代语义）。
 
 use serde_json;
 use hologram_engine::tools::ToolRegistry;
@@ -35,7 +39,14 @@ fn dispatch_engine(tool: &str, args: &serde_json::Value) -> Result<String, Strin
 }
 
 #[tauri::command]
-pub(crate) async fn hologram_call(tool: String, mut args: serde_json::Value, state: tauri::State<'_, crate::WorkspaceState>) -> Result<String, String> {
+pub(crate) async fn hologram_call(
+    tool: String,
+    mut args: serde_json::Value,
+    session_id: Option<u64>,
+    workspace: Option<String>,
+    state: tauri::State<'_, crate::WorkspaceState>,
+    app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
+) -> Result<String, String> {
     if tool == "validate_project" {
         let changed_files: Vec<String> = crate::utils::lock_or_recover(&state).as_ref()
             .and_then(|h| {
@@ -49,9 +60,26 @@ pub(crate) async fn hologram_call(tool: String, mut args: serde_json::Value, sta
             map.insert("changed_files".to_string(), serde_json::json!(changed_files));
         }
     }
-    tokio::task::spawn_blocking(move || dispatch_engine(&tool, &args))
-        .await
-        .map_err(|e| format!("引擎调用任务失败: {e}"))?
+    // L1 决议链：显式 workspace → 会话 → 焦点 → 单槽；全空 → 全局引擎
+    // （决议在 spawn_blocking 外只做非阻塞读；ensure 路径的 SQLite 打开
+    // 在 spawn_blocking 内完成）。
+    let app_ctx = app_ctx.inner().clone();
+    let ws_state: crate::WorkspaceState = state.inner().clone();
+    let ws_clone = workspace.clone();
+    tokio::task::spawn_blocking(move || {
+        let engine = {
+            let fallback = crate::utils::workspace_path(&ws_state).ok();
+            app_ctx.resolve_engine(ws_clone.as_deref(), session_id, fallback.as_deref())
+        };
+        match engine {
+            Some(engine) => hologram_engine::engine::with_current(engine, || {
+                dispatch_engine(&tool, &args)
+            }),
+            None => dispatch_engine(&tool, &args),
+        }
+    })
+    .await
+    .map_err(|e| format!("引擎调用任务失败: {e}"))?
 }
 
 #[tauri::command]

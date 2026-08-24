@@ -3,7 +3,6 @@
 // 引擎图 IO — 分析/序列化/分页（从 utils.rs 拆出）
 
 use hologram_engine as engine;
-use engine::engine as engine_api;
 use engine::community::detect_hierarchical_communities_with_base;
 use engine::graph::Graph;
 use engine::routing::preflight::save_baseline;
@@ -14,12 +13,13 @@ use tauri::Emitter;
 use crate::utils::ipc_guard::lock_or_recover;
 use crate::utils::{regenerate_file_graph, write_atomic};
 
-pub(crate) fn cache_is_stale(root: &std::path::Path) -> bool {
+pub(crate) fn cache_is_stale(engine: &engine::engine::Engine, root: &std::path::Path) -> bool {
     // 新鲜度基准 = SQLite 里最近一次图持久化的时刻（冷启动实际读取的产物）。
     // 旧实现用 root/hologram_graph.json 的 mtime —— 该文件只在 direct_analyze 里
     // 写，而 SQLite 由 engine_analyze / watcher 增量也会写，两者可能分歧：
     // SQLite 旧、json 新时会把旧图误判为“新鲜”，冷启动就永远停在旧图上。
-    let cache_mtime = engine_api::engine_graph_generated_at()
+    let cache_mtime = engine
+        .graph_generated_at()
         .ok()
         .flatten()
         .and_then(|s| {
@@ -89,15 +89,17 @@ pub(crate) fn cache_is_stale(root: &std::path::Path) -> bool {
     false
 }
 
-pub(crate) fn direct_analyze(path: &str, force: bool) -> Result<String, String> {
+/// 全量/缓存分析（L1 起显式引擎版）：engine 必须已 init 到 path
+/// （数据上下文 ensure 时完成）。返回值契约不变。
+pub(crate) fn direct_analyze(
+    engine: &engine::engine::Engine,
+    path: &str,
+    force: bool,
+) -> Result<String, String> {
     let root = std::path::PathBuf::from(path);
     if !root.exists() {
         return Err(format!("路径不存在: {path}"));
     }
-
-    // 初始化引擎（幂等操作 — 加载 SQLite 缓存到内存）
-    engine_api::engine_init(&root)
-        .map_err(|e| format!("Engine init failed: {e}"))?;
 
     // ponytail: 如果 SQLite 缓存已有图数据且未强制重新分析，
     // 则跳过完整流水线。冷启动约需 420s；热重载 <1s。
@@ -105,12 +107,11 @@ pub(crate) fn direct_analyze(path: &str, force: bool) -> Result<String, String> 
     // 缓存已过期，必须重建。否则在兰台外部所做的代码修改
     // （例如在 VS Code 中跨会话修改）将静默不可见，直到用户手动点击"重新分析"。
     if !force {
-        let cached_node_count = engine_api::engine_read(|idx| idx.node_count())
-            .unwrap_or(0);
-        if cached_node_count > 0 && !cache_is_stale(&root) {
+        let cached_node_count = engine.read(|idx| idx.node_count()).unwrap_or(0);
+        if cached_node_count > 0 && !cache_is_stale(engine, &root) {
             eprintln!("[direct_analyze] 使用缓存图 ({cached_node_count} 个节点)，跳过完整分析");
         // 在回调内从缓存序列化 — 避免克隆整个 Graph
-        return engine_api::engine_read_graph(|graph| {
+        return engine.read_graph(|graph| {
             let nc = graph.node_count();
             let ec = graph.edge_count();
             let nodes: Vec<serde_json::Value> = graph.nodes_map().values().map(|n| serde_json::json!({
@@ -148,7 +149,8 @@ pub(crate) fn direct_analyze(path: &str, force: bool) -> Result<String, String> 
     }
     } // if !force 结束
 
-    let result = engine_api::engine_analyze(&root)
+    let result = engine
+        .analyze(&root)
         .map_err(|e| format!("Analyze failed: {e}"))?;
 
     // result.graph 已被引擎消费（节点/边已移至 MemoryIndex/store）。
@@ -158,7 +160,7 @@ pub(crate) fn direct_analyze(path: &str, force: bool) -> Result<String, String> 
     let ec = result.edge_count;
 
     // 从图 store 序列化（数据已由 engine_analyze 交换入）
-    let serialized = serialize_cached_graph(path)?;
+    let serialized = serialize_cached_graph(engine, path)?;
     let wrapped: serde_json::Value = serde_json::from_str(&serialized)
         .unwrap_or(serde_json::json!({"nodes":[],"edges":[],"communities":[]}));
     let nodes = wrapped.get("nodes").cloned().unwrap_or(serde_json::json!([]));
@@ -192,13 +194,13 @@ pub(crate) fn direct_analyze(path: &str, force: bool) -> Result<String, String> 
     // 每次全量分析后都更新基线，使后续检查
     // 与最新快照进行对比 — 防止基线过期导致的误报
     // （例如图结构在两次分析间演化时出现"53 个新循环"）。
-    let _ = engine_api::engine_read_graph(|g| save_baseline(&root, g));
+    let _ = engine.read_graph(|g| save_baseline(&root, g));
     // .hologram MsgPack 已废弃 — CACHED_GRAPH 是唯一的运行时真相，JSON 仅用于冷启动归档
     let _ = std::fs::remove_file(format!("{}/hologram_graph.hologram", path));
     let _ = regenerate_file_graph(path);
 
     // 记录时间线事件（与引擎二进制的 handle_analyze 对应）
-    let _ = engine_api::engine_record_timeline(
+    let _ = engine.record_timeline(
         "analyze",
         None::<&str>,
         &format!("全量分析完成：{} 节点, {} 边, {:.1}s", nc, ec, result.elapsed_secs),
@@ -212,18 +214,23 @@ pub(crate) fn direct_analyze(path: &str, force: bool) -> Result<String, String> 
 }
 // （2026-08-04 清理：with_graph 全库零调用，已删 — 查询统一走 with_index/MemoryIndex）
 
-/// 在 MemoryIndex（基于 CSR，O(1) 邻接查询）上运行查询。
-pub(crate) fn with_index<F: FnOnce(&MemoryIndex) -> serde_json::Value>(f: F) -> Result<String, String> {
-    engine_api::engine_read(|idx| {
-        serde_json::to_string(&f(idx)).unwrap_or_default()
-    })
-    .map_err(|e| format!("Engine error: {}", e))
+/// 在 MemoryIndex（基于 CSR，O(1) 邻接查询）上运行查询（显式引擎版）。
+pub(crate) fn with_index<F: FnOnce(&MemoryIndex) -> serde_json::Value>(
+    engine: &engine::engine::Engine,
+    f: F,
+) -> Result<String, String> {
+    engine
+        .read(|idx| serde_json::to_string(&f(idx)).unwrap_or_default())
+        .map_err(|e| format!("Engine error: {}", e))
 }
 
 /// 序列化完整图 JSON — 前端和 analyze_and_load 共用。
 /// 仅从 Engine 读取。
-pub(crate) fn serialize_cached_graph(source_root: &str) -> Result<String, String> {
-    engine_api::engine_read_graph(|g| {
+pub(crate) fn serialize_cached_graph(
+    engine: &engine::engine::Engine,
+    source_root: &str,
+) -> Result<String, String> {
+    engine.read_graph(|g| {
         let nodes: Vec<serde_json::Value> = g.nodes_map().values().map(|n| serde_json::json!({
             "id": n.id, "name": n.name, "type": n.kind.as_str(),
             "location": n.location, "in_degree": n.in_degree,
@@ -316,8 +323,13 @@ static PAGE_INDEX_CACHE: std::sync::LazyLock<std::sync::Mutex<Option<PageIndexCa
 
 /// 构建/复用分页索引，返回 (页边界 id 列表, 节点总数)。
 /// 边界 = 每页第一个 id（字典序）；page_of(id) = 二分定位。
-fn graph_page_index(source_root: &str, page_size: usize) -> Result<(Vec<String>, usize), String> {
-    let (node_count, edge_count) = engine_api::engine_read_graph(|g| (g.node_count(), g.edge_count()))
+fn graph_page_index(
+    engine: &engine::engine::Engine,
+    source_root: &str,
+    page_size: usize,
+) -> Result<(Vec<String>, usize), String> {
+    let (node_count, edge_count) = engine
+        .read_graph(|g| (g.node_count(), g.edge_count()))
         .map_err(|e| format!("Engine error: {e}"))?;
     let key = (source_root.to_owned(), node_count, edge_count, page_size);
     {
@@ -328,7 +340,7 @@ fn graph_page_index(source_root: &str, page_size: usize) -> Result<(Vec<String>,
             }
         }
     }
-    let boundaries: Vec<String> = engine_api::engine_read_graph(|g| {
+    let boundaries: Vec<String> = engine.read_graph(|g| {
         let mut ids: Vec<String> = g.nodes_map().values().map(|n| n.id.to_string()).collect();
         ids.sort_unstable();
         let total_pages = if ids.is_empty() { 0 } else { (ids.len() + page_size - 1) / page_size };
@@ -340,10 +352,15 @@ fn graph_page_index(source_root: &str, page_size: usize) -> Result<(Vec<String>,
 }
 
 /// 图谱 meta + 分页信息 — 工作区切换/冷启动的轻量响应（替代全量图 JSON）。
-pub(crate) fn graph_meta_json(source_root: &str, page_size: usize) -> Result<String, String> {
-    let (boundaries, node_count) = graph_page_index(source_root, page_size)?;
+pub(crate) fn graph_meta_json(
+    engine: &engine::engine::Engine,
+    source_root: &str,
+    page_size: usize,
+) -> Result<String, String> {
+    let (boundaries, node_count) = graph_page_index(engine, source_root, page_size)?;
     let total_pages = boundaries.len();
-    let edge_count = engine_api::engine_read_graph(|g| g.edge_count())
+    let edge_count = engine
+        .read_graph(|g| g.edge_count())
         .map_err(|e| format!("Engine error: {e}"))?;
     Ok(serde_json::json!({
         "meta": {"source_root": source_root, "node_count": node_count, "edge_count": edge_count},
@@ -356,8 +373,13 @@ pub(crate) fn graph_meta_json(source_root: &str, page_size: usize) -> Result<Str
 
 /// 序列化第 page 页（0 基）。边只含 max(两端点页号) == page 的边（每边恰好一次）。
 /// 最后一页附带完整 communities + hierarchical_communities。
-pub(crate) fn serialize_graph_page(source_root: &str, page: usize, page_size: usize) -> Result<String, String> {
-    let (boundaries, node_count) = graph_page_index(source_root, page_size)?;
+pub(crate) fn serialize_graph_page(
+    engine: &engine::engine::Engine,
+    source_root: &str,
+    page: usize,
+    page_size: usize,
+) -> Result<String, String> {
+    let (boundaries, node_count) = graph_page_index(engine, source_root, page_size)?;
     let total_pages = boundaries.len();
     if total_pages == 0 {
         return Err(format!("图谱为空，无法分页: {source_root}"));
@@ -369,7 +391,7 @@ pub(crate) fn serialize_graph_page(source_root: &str, page: usize, page_size: us
         boundaries.partition_point(|b| b.as_str() <= id).saturating_sub(1)
     };
     let last_page = page + 1 == total_pages;
-    let (nodes, edges, edge_count, communities, hcommunities) = engine_api::engine_read_graph(|g| {
+    let (nodes, edges, edge_count, communities, hcommunities) = engine.read_graph(|g| {
         let nodes: Vec<serde_json::Value> = g.nodes_map().values()
             .filter(|n| page_of(&n.id) == page)
             .map(|n| serde_json::json!({
@@ -412,18 +434,11 @@ pub(crate) fn serialize_graph_page(source_root: &str, page: usize, page_size: us
     Ok(payload.to_string())
 }
 
-/// 确保引擎内存图属于 source_root 且非空（仅加载 SQLite 缓存，不触发分析）。
-/// 工作区切换后引擎图可能是上一个仓库的 — 必须切回来，否则分页会错乱。
-pub(crate) fn ensure_engine_graph(source_root: &str) -> Result<(), String> {
-    let same_root = engine_api::with_engine(|e| {
-        e.project_root() == std::path::Path::new(source_root) && e.is_ready()
-    })
-    .unwrap_or(false);
-    if !same_root {
-        engine_api::engine_init(std::path::Path::new(source_root))
-            .map_err(|e| format!("Engine init failed: {e}"))?;
-    }
-    let node_count = engine_api::engine_read(|idx| idx.node_count()).unwrap_or(0);
+/// （L1 起退役）原 ensure_engine_graph —— 引擎按根绑定与就绪检查
+/// 已上收到 `AppContexts::ensure_context`（每根一实例，无「切回来」概念）；
+/// 非空校验保留为薄断言供命令层使用。
+pub(crate) fn ensure_engine_ready(engine: &engine::engine::Engine, source_root: &str) -> Result<(), String> {
+    let node_count = engine.read(|idx| idx.node_count()).unwrap_or(0);
     if node_count == 0 {
         return Err(format!("引擎中无图谱数据: {source_root}（请先执行分析）"));
     }
@@ -481,14 +496,20 @@ pub(crate) fn diff_to_json(before: &Graph, after: &Graph) -> serde_json::Value {
     })
 }
 
-pub(crate) async fn run_analyze_with_progress(target: String, app: tauri::AppHandle, force: bool) -> Result<String, String> {
+pub(crate) async fn run_analyze_with_progress(
+    engine: std::sync::Arc<engine::engine::Engine>,
+    target: String,
+    app: tauri::AppHandle,
+    force: bool,
+) -> Result<String, String> {
     let target_clone = target.clone();
     let app_clone = app.clone();
     let scheduled = std::time::Instant::now();
 
     // 在阻塞线程中启动分析
+    let engine_for_task = engine.clone();
     let mut analyze_handle = tokio::task::spawn_blocking(move || {
-        direct_analyze(&target_clone, force)
+        direct_analyze(&engine_for_task, &target_clone, force)
     });
 
     // 轮询进度直到阻塞任务完成（不要在 Ready 时提前退出 —
@@ -502,9 +523,9 @@ pub(crate) async fn run_analyze_with_progress(target: String, app: tauri::AppHan
                 }
             }
             _ = tokio::time::sleep(std::time::Duration::from_millis(300)) => {
-                let state = engine_api::engine_state();
+                let state = engine.state();
                 match state {
-                    engine_api::EngineState::Analyzing { phase, current, total, file, started_at_ms, .. } => {
+                    engine::engine::EngineState::Analyzing { phase, current, total, file, started_at_ms, .. } => {
                         let _ = app_clone.emit("analyze-phase", serde_json::json!({
                             "phase": phase.clone(),
                             "message": phase,

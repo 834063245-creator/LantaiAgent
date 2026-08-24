@@ -25,7 +25,7 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Emitter};
 
-use hologram_engine::engine as engine_api;
+use hologram_engine::engine::{self as engine_api, Engine};
 use hologram_engine::graph::Graph;
 
 use crate::permissions::PermissionContext;
@@ -42,6 +42,11 @@ pub struct WorkspaceHandle {
 
     /// 自上次检查以来的变更文件（原 LAST_CHANGED_FILES 全局变量）。
     pub changed_files: Arc<Mutex<Vec<String>>>,
+
+    /// 该工作区专属引擎实例（L1 数据上下文）：壳层 watcher 的增量更新
+    /// 落在此实例上，不再吃全局 ENGINE（跨工作区不串写）。
+    /// 占位工作区（path=''）为 None。
+    pub(crate) engine: Option<Arc<Engine>>,
 
     // 监控器内部状态
     watcher_running: Arc<AtomicBool>,
@@ -63,6 +68,7 @@ impl WorkspaceHandle {
             path: path.to_string(),
             permission_ctx: Arc::new(PermissionContext::new(project_path)),
             changed_files: Arc::new(Mutex::new(Vec::new())),
+            engine: None,
             watcher_running: Arc::new(AtomicBool::new(false)),
             watcher_thread: None,
         }
@@ -111,6 +117,9 @@ impl WorkspaceHandle {
         let path = self.path.clone();
         let running = self.watcher_running.clone();
         let changed_files = self.changed_files.clone();
+        // L1：增量更新落在本工作区专属引擎实例上（engine_try_incremental 的
+        // 全局版会让壳层 watcher 串写「最后绑定的全局引擎」——跨工作区即错库）。
+        let engine = self.engine.clone();
 
         self.watcher_running.store(true, Ordering::SeqCst);
 
@@ -163,7 +172,16 @@ impl WorkspaceHandle {
                     continue;
                 }
 
-                if engine_api::engine_state().is_analyzing() {
+                // L1：增量更新落在本工作区专属引擎实例上（engine_try_incremental
+                // 的全局版会让壳层 watcher 串写「最后绑定的全局引擎」——
+                // 跨工作区即错库）。占位工作区（无实例）只清账不动引擎。
+                let Some(ref engine) = engine else {
+                    pending_changed.clear();
+                    last_change_at = None;
+                    continue;
+                };
+
+                if engine.state().is_analyzing() {
                     continue;
                 }
 
@@ -174,7 +192,7 @@ impl WorkspaceHandle {
                 let changed_paths: Vec<String> = changed.iter().map(|(p, _)| p.clone()).collect();
 
                 // ponytail: 在重新分析前快照旧图以便做 diff
-                let before_graph = engine_api::engine_read_graph(|g| g.clone()).ok();
+                let before_graph = engine.read_graph(|g| g.clone()).ok();
 
                 // 首先尝试增量更新 (Phase 1-3: 重新解析变更文件,
                 // 文件内 diff, 跨文件边修复)。如果增量失败或验证
@@ -183,7 +201,7 @@ impl WorkspaceHandle {
                     .map(|(p, a)| (PathBuf::from(p), a.clone()))
                     .collect();
                 let root = Path::new(&path);
-                let analysis_ok = engine_api::engine_try_incremental(root, &changed_for_engine).is_ok();
+                let analysis_ok = engine.try_incremental(root, &changed_for_engine).is_ok();
 
                 if analysis_ok {
                     last_mtimes = current_mtimes;
@@ -194,14 +212,14 @@ impl WorkspaceHandle {
                     }
 
                     // ponytail: 计算旧图与新图之间的 diff 以供增量更新
-                    let diff_json = compute_watcher_diff(before_graph.as_ref());
+                    let diff_json = compute_watcher_diff(before_graph.as_ref(), engine);
 
                     // 从引擎存储中读取实际节点/边数量，使前端的
                     // `nc > 0` 守卫通过并获取最新图。
                     // 之前这里硬编码为 0，导致每个 graph-updated
                     // 事件被静默忽略 — 后端存储已更新但
                     // 前端一直显示旧数据，直到用户手动点击"重新分析"。
-                    let (nc, ec) = engine_api::engine_read(|idx| (idx.node_count(), idx.edge_count()))
+                    let (nc, ec) = engine.read(|idx| (idx.node_count(), idx.edge_count()))
                         .unwrap_or((0, 0));
 
                     let mut summary = serde_json::json!({
@@ -310,9 +328,9 @@ fn collect_file_mtimes(root: &str) -> std::collections::HashMap<String, u64> {
 
 /// 计算前一次图与当前引擎图之间的 diff 以供增量更新。
 /// 如果没有前一次图或引擎读取失败则返回 None。
-pub(crate) fn compute_watcher_diff(before: Option<&Graph>) -> Option<serde_json::Value> {
+pub(crate) fn compute_watcher_diff(before: Option<&Graph>, engine: &Engine) -> Option<serde_json::Value> {
     let before = before?;
-    let after = engine_api::engine_read_graph(|g| g.clone()).ok()?;
+    let after = engine.read_graph(|g| g.clone()).ok()?;
     let d = before.diff(&after);
     let added_nodes: Vec<_> = d.added_nodes.iter().map(|n| serde_json::json!({
         "id": n.id, "name": n.name, "type": n.kind.as_str(),
