@@ -648,12 +648,14 @@ async function writeSessionSnapshot(projectPath: string, data: SessionSnapshotDa
 
 /** 将活跃会话保存到其独立文件。
  *  同时写入同步 localStorage 备份，确保会话在应用崩溃/强制关闭后仍可恢复。
+ *  projectPath=''（零目录会话，单槽统一 2026-08-24）合法——sessionsDir('')
+ *  路由用户级目录，与 loadSessionFromDisk(projectPath='') 的读取侧同构。
  *  L3（session-ledger）：_active.json 跟踪器写入退役——总目 _ledger.json
  *  已接任（四动词 recordOpenSetChange 维护；发号对账 max(mem, ledger, scan)）。
  *  旧 tracker 仅作无总目冷启动的迁移源读一次，不再更新。 */
 export async function saveActiveSession(ctx: SessionContext, projectPath: string): Promise<void> {
   const { sessions, activeIdx } = getChatStore(ctx.storeId).sess.getState();
-  if (!projectPath || activeIdx < 0) return;
+  if (activeIdx < 0) return;
   const sMeta = sessions[activeIdx];
   if (!sMeta) return;
   const agent = agentSessionState.getAgent(ctx.storeId, sMeta.id);
@@ -738,7 +740,10 @@ export function scheduleAutoSave(ctx: SessionContext, projectPath: string): void
 
 /** 增量追加最后一条用户/助手消息到后端 NDJSON。
  *  在 chat:turn-done 时调用 — 确保大部分消息在 beforeunload 触发前
- *  已写入磁盘，减少对同步 localStorage 保存的依赖。 */
+ *  已写入磁盘，减少对同步 localStorage 保存的依赖。
+ *  projectPath=''（零目录会话）在此早退——Rust session_append 对空路径会
+ *  写出相对路径（.lantai/sessions 落到进程 CWD），零目录会话的增量链由
+ *  scheduleAutoSave → saveActiveSession 的全量快照承担。 */
 export async function appendLastMessage(ctx: SessionContext, projectPath: string): Promise<void> {
   const { sessions, activeIdx } = getChatStore(ctx.storeId).sess.getState();
   if (!projectPath || activeIdx < 0) return;

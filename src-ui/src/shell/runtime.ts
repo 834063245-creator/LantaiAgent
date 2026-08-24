@@ -12,9 +12,11 @@
 // （后台预热）服务 Agent 工具。starGraph 字段保留为恒 null 的兼容面：
 // workspace 流与 chat-core 的类型/判空消费点先收敛，后续 C 段清理。
 //
-// 可空性契约：chatPanel 构造于 chat 行、其后恒非空；workspace 在无活动
-// 工作区时为 null。壳行代码沿用判空纪律——不假设前行必然成功（失败隔离：
-// 单行 boot 抛错不炸整个引导，后续行对缺帐句柄优雅降级）。
+// 可空性契约：chatPanel 构造于 chat 行、其后恒非空；workspace 在无工作区时
+// 为 null——零目录会话的占位工作区（path=''）同样进此槽（单槽统一
+// 2026-08-24：槽即唯一工作区注册表，占位 = 槽内普通条目）。壳行代码沿用
+// 判空纪律——不假设前行必然成功（失败隔离：单行 boot 抛错不炸整个引导，
+// 后续行对缺帐句柄优雅降级）。
 
 import type { ChatCore } from '../app/chat/chat-core';
 import { useShellStore } from '../app/shell-store';

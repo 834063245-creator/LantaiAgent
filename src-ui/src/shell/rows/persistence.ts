@@ -9,18 +9,19 @@ import { loadSettings } from '../../settings';
 import { useAgentConfigStore } from '../../state/agent-config-store';
 import { useTurnDoneStore } from '../../state/turn-done-store';
 import type { ShellRefs } from '../runtime';
-import { getPlaceholderWorkspace } from './workspace';
 
 export function bootPersistence(refs: ShellRefs): void {
   // ── 轮次完成通知（P1 总线归零：chat:turn-done → state/turn-done-store 信号）──
   // L2（session-ledger）：谁跑完存谁——doneSid = 后台卷 → 该卷全量快照
   // （saveSessionById，F3 窗口期闭合）；doneSid = 活跃卷/缺席 → 现行链
-  // （NDJSON 增量 + 防抖全量）不变。
+  // （NDJSON 增量 + 防抖全量）不变。占位工作区（path=''，单槽统一后进槽）
+  // 同样参与：saveActiveSession('') 路由用户级目录（appendLastMessage 对
+  // path='' 自行跳过——Rust session_append 不支持空路径）。
   useTurnDoneStore.subscribe((s, prev) => {
     if (s.turnDoneTick === prev.turnDoneTick) return;
     const ws = refs.workspace;
     const chatPanel = refs.chatPanel;
-    if (!ws?.path || !chatPanel) return;
+    if (!ws || !chatPanel) return;
     const doneSid = s.lastDoneSid;
     if (doneSid != null) {
       const activeSid = chatPanel.activeSessionId;
@@ -38,6 +39,9 @@ export function bootPersistence(refs: ShellRefs): void {
   // Agent 配置变更统一入口：设置面板/模型切换/模式按钮只发信号
   // （P1b：agent-config-store 订阅，替代 bus 'agent:config-changed' 事件），
   // workspace.applyAgentConfig 热切换处理（不重建，会话/上下文全保留）。
+  // 单槽统一（2026-08-24）：refs.workspace 是唯一工作区注册表（占位工作区
+  // path='' 也是槽内普通条目）——路由坍缩为单分支，占位影子实例的三分支
+  // 猜测退役。
   useAgentConfigStore.subscribe((state, prev) => {
     if (state.seq === prev.seq || !state.reason) return;
     const reason = state.reason;
@@ -48,22 +52,9 @@ export function bootPersistence(refs: ShellRefs): void {
       void ws
         .applyAgentConfig(chatPanel, reason)
         .catch((err) => console.error('[agent-config] hot-switch failed:', err));
-    } else if (ws) {
-      // chat 行被禁用的涟漪：无面板可热切换（设计件 §2.8 降级面）
-      console.warn('[agent-config] chatPanel 缺席，跳过热切换:', reason);
     } else {
-      // refs.workspace 缺席 = 零目录占位会话（setupPlaceholderAgent 的
-      // Workspace.placeholder 不进 shellRefs——「打开流」语义）。旧版在此静默
-      // 丢弃信号：首次配置 API Key 后占位会话永远读不到（死路 A 的另一半）。
-      // 占位装配行记忆化持有实例（rows/workspace.ts），直接热切换。
-      const ph = getPlaceholderWorkspace();
-      if (ph && chatPanel) {
-        void ph
-          .applyAgentConfig(chatPanel, reason)
-          .catch((err) => console.error('[agent-config] placeholder hot-switch failed:', err));
-      } else {
-        console.warn('[agent-config] workspace 与占位装配均缺席，丢弃信号:', reason);
-      }
+      // chat 行被禁用的涟漪（设计件 §2.8 降级面）+ 错误不静默
+      console.warn('[agent-config] workspace/chatPanel 缺席，丢弃信号:', reason);
     }
   });
   refs.chatPanel?.setOnOpenSettings(() => {
@@ -80,9 +71,11 @@ export function bootPersistence(refs: ShellRefs): void {
   // debounce 定时器（同步）并触发刷新（尽力异步）。
   // L2（session-ledger）：不再只存活跃卷——全部有内容卷都落盘
   // （F3 收尾：后台卷即使从未被切回也不丢）。
+  // 单槽统一：占位工作区（path=''）同样收尾——saveAllSessions 对空路径
+  // 卷照常落盘（sessionsDir('') = 用户级目录）。
   window.addEventListener('beforeunload', () => {
     const ws = refs.workspace;
-    if (ws?.path) {
+    if (ws) {
       try {
         refs.chatPanel?.scheduleAutoSave(ws.path);
         refs.chatPanel?.saveAllSessions().catch(() => {});

@@ -179,14 +179,12 @@ function escLayer(): void {
 
 // ── 辅助：用占位工作区设置 agent（未加载项目）──
 
-/** 占位工作区（模块级记忆）：零目录会话的唯一 Workspace 实例。
- *  不进 shellRefs.workspace（占位永不激活——switchWorkspace 的 deactivate
- *  链不适用）；记忆化使重复装配（冷启动 + 设置保存触发的重装配）复用同一
- *  实例，不再每次 new Workspace 累积孤儿 fiber。persistence 行经
- *  getPlaceholderWorkspace() 取句柄投递 agent-config 信号——占位会话的
- *  设置保存（含首次配置 API Key）由此生效，不再要求重启应用。 */
-let _placeholderWs: Workspace | null = null;
-
+/** 占位工作区装配（单槽统一，2026-08-24 工作区归属根治 Phase A）：
+ *  零目录会话的 Workspace 实例直接进 shellRefs.workspace 槽（path='' 的
+ *  普通条目）——模块级影子实例（_placeholderWs）退役。persistence 行的
+ *  agent-config 信号路由因此坍缩为单分支（查槽即得，不再三分支猜测）；
+ *  切真目录时 switchWorkspace 的 deactivate 链照常适用（saveActiveSession('')
+ *  路由用户级目录）。槽里已有工作区（真目录或此前装配的占位）→ 复用不重建。 */
 async function setupPlaceholderAgent(): Promise<void> {
   if (shellRefs.workspace) return;
   // 零目录会话装配点（workspace-flip 批 2）：用户级会话目录先于任何会话操作解析
@@ -196,15 +194,13 @@ async function setupPlaceholderAgent(): Promise<void> {
   // 泄漏到占位工作区的 read_file / list_directory 调用中。
   await typedRpc('workspace_activate', { path: '' }).catch(() => {});
   const { Workspace: WorkspaceCls } = await wsMod();
-  // 同步检查-赋值（无 await 间隔）：并发调用不重复建实例。
-  let ws = _placeholderWs;
-  if (!ws) {
-    ws = WorkspaceCls.placeholder();
-    ws.onStatusChange = (msg) => {
-      pushStatus(msg);
-    };
-    _placeholderWs = ws;
-  }
+  // 并发防御：上面有 await 间隔，槽在此期间被占（如另一路冷启动已装配）则复用
+  if (shellRefs.workspace) return;
+  const ws = WorkspaceCls.placeholder();
+  ws.onStatusChange = (msg) => {
+    pushStatus(msg);
+  };
+  shellRefs.workspace = ws;
   const chatPanel = shellRefs.chatPanel;
   if (!chatPanel) {
     // chat 壳行被禁用的涟漪（设计件 §2.8）：无面板承接，占位 agent 不装配
@@ -216,12 +212,6 @@ async function setupPlaceholderAgent(): Promise<void> {
   } catch (e) {
     console.error('[init] setupAgent failed:', e);
   }
-}
-
-/** 占位工作区句柄 — persistence 行投递 agent-config 信号（热切换/装配）用。
- *  未装配过（冷启动未走占位路径，或 chat 行禁用）返回 null。 */
-export function getPlaceholderWorkspace(): Workspace | null {
-  return _placeholderWs;
 }
 
 /** 导出面：冷启动行 + actions 行消费的 workspace 流函数族。 */

@@ -238,7 +238,10 @@ export class Workspace {
     this._fiber.ctx.effect(() => () => cancelEngineSnapshotRefresh(), 'engine-snapshot-refresh-cancel');
   }
 
-  /** 创建仅 Agent 模式的占位工作区（未加载项目）。永不激活。 */
+  /** 创建仅 Agent 模式的占位工作区（未加载项目，path=''）。永不 _active——
+   *  单槽统一（2026-08-24）：占位实例进 shellRefs.workspace 槽（见
+   *  shell/rows/workspace.ts），switchWorkspace 的 deactivate 链对它照常适用
+   *  （saveActiveSession('') 路由用户级目录）。 */
   static placeholder(): Workspace {
     return new Workspace('');
   }
