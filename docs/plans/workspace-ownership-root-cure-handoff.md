@@ -134,6 +134,16 @@ DSH 形态：会话记录（持久化，恒在）＋ 配置在使用点解析（
       fire-and-forget 补建收敛 `hydrateSessionAgentVisible`）
 - [x] Phase E — 测试收口（`provider-hotswap`/`persistence-signal-routing`/`chat-epoch-guard`
       重写 + 新增 `provider-live.test.ts` / `no-key-cold-start.test.ts` 端到端守护）
+- [x] 真根因修复（commit `fb8d57a0`，Phase D 可见化照亮断点④真身）——真机报错
+      「Agent 装配失败 — ToolRegistry: cannot alias unknown tool "read_file_content"」。
+      病根是 ①b（builtin 行表退役，2026-08-23）引入的 boot 序洞：composition-store
+      初始 resolved 在模块加载期快照（彼时 loadBuiltinPlugins 未执行、tools 通道为
+      空 → 空表）；第一方贡献注册早于 bootShell 贡献监听武装（事件不倒放）；「无
+      用户 patch（404 不动 store）+ standard preset（空 patch 跳过）」路径下 store
+      永持空表 → buildToolRegistry 空行表 → fs 族缺席 → alias 抛错。**这是用户
+      原始症状一直存在的直接原因**——五 Phase 解决存在性架构倒挂，本修复打通装配
+      链本身。修复 = bootShell 在 armContributionsWatcher 后无条件
+      reapplyComposition()；回归钉 `composition-boot-refresh.test.ts`。
 - [ ] 用户验收：真机配 Key → 不重启 → 会话在 → 能发消息（待用户实测回报）
 
 > 五 Phase 全部落地后的行为形态（与 §4 终态定义逐条对应）：
