@@ -1,6 +1,13 @@
 # 会话统一（Session Unify）— 全局会话池施工计划（交接版）
 
-> 立项：2026-08-24 · 状态：**已开工（U1 起）** · 版本：v2（施工级，2026-08-24 升级；§6 四项拍板已落定）
+> 立项：2026-08-24 · 状态：**竣工（U1-U4 全部落地，待真机验收）** · 版本：v2（施工级，2026-08-24 升级；§6 四项拍板已落定）
+>
+> **竣工记录（2026-08-24）**：
+> - U1 全局存储位 `504e9bc7`：workspace 字段 + 全局位统一落盘 + 双读 + 同号撞卷消解 + 发号扫两目录
+> - U2 全局目录索引 `868e2512`：user_sessions_list 全局化（legacy_root 兼容源）+ 首页砍 lastProjectRoot + 跨区续开 switch(skipAnalysis) + 会话行显示工作区
+> - U3 视图定型 `05d32fe8`：SpineRack 收窄 + 验收钉 ×3
+> - U4 总目退役 `a6cce933`：_ledger.json/_active.json 全链拆除，恢复 = 扫描推导最近 3 卷（RESTORE_OPEN_MAX）
+> - **待真机验收四项**：重启首页全量列表（169 旧卷经 legacy_root 可见）/ 跨工作区开卷内容正确 / 新建落全局位 / 重启摊开最近 3 卷
 > 触发：用户实机反馈「会话管理复杂、侧边栏无法统管、首页/恢复乱」→ 产品定调「会话全局化，工作区降级为元数据」。
 > 本文档自包含：接手会话读完本文 + `AGENTS.md` + `CONVENTIONS.md` + `INVARIANTS.md` 即可开工，无需重读会话历史。
 > 前置事实源：`src-ui/src/ui/chat-session.ts`、`src-ui/src/state/session-ledger.ts`、`src-ui/src/app/SessionsHome.tsx`、`src-ui/src/app/panels/SpineRack.tsx`、`src-tauri/src/commands/filesystem.rs`、`src-ui/src/shell/rows/cold-start.ts`、`src-ui/src/shell/rows/persistence.ts`。
