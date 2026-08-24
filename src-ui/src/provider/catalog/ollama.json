@@ -6,9 +6,7 @@
     "vendor": "ollama",
     "baseUrl": "http://localhost:11434/v1",
     "reasoning": false,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0,
       "output": 0,
@@ -24,9 +22,7 @@
     "vendor": "ollama",
     "baseUrl": "http://localhost:11434/v1",
     "reasoning": false,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0,
       "output": 0,
@@ -42,9 +38,7 @@
     "vendor": "ollama",
     "baseUrl": "http://localhost:11434/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0,
       "output": 0,

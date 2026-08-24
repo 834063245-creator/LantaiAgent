@@ -11,13 +11,7 @@
  *   degraded     — workspace open but background analysis failed
  */
 
-export type WorkspaceState =
-  | 'idle'
-  | 'opening'
-  | 'active'
-  | 'deactivating'
-  | 'switching'
-  | 'degraded';
+export type WorkspaceState = 'idle' | 'opening' | 'active' | 'deactivating' | 'switching' | 'degraded';
 
 const VALID_TRANSITIONS: Record<WorkspaceState, WorkspaceState[]> = {
   idle: ['opening', 'switching'],
@@ -59,21 +53,23 @@ export class WorkspaceStateMachine {
 
   /** Check if currently in a state that blocks new workspace operations. */
   get isBusy(): boolean {
-    return this._state === 'opening'
-      || this._state === 'deactivating'
-      || this._state === 'switching';
+    return this._state === 'opening' || this._state === 'deactivating' || this._state === 'switching';
   }
 
   onStateChange(fn: (s: WorkspaceState) => void): () => void {
     this._listeners.push(fn);
     return () => {
-      this._listeners = this._listeners.filter(f => f !== fn);
+      this._listeners = this._listeners.filter((f) => f !== fn);
     };
   }
 
   private _notify(): void {
     for (const fn of this._listeners) {
-      try { fn(this._state); } catch { /* listener error should not block */ }
+      try {
+        fn(this._state);
+      } catch {
+        /* listener error should not block */
+      }
     }
   }
 }

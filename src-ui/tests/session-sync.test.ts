@@ -94,11 +94,7 @@ describe('rebuildMessagesFromMessages — DOM-free reconstruction', () => {
     // Simulate what bootstrap.ts's sessionReplaced callback does
     rebuildMessagesFromMessages(CONVERSATION, 'sync-panel', 1);
 
-    expect(rebuildMessagesFromMessages).toHaveBeenCalledWith(
-      CONVERSATION,
-      'sync-panel',
-      1,
-    );
+    expect(rebuildMessagesFromMessages).toHaveBeenCalledWith(CONVERSATION, 'sync-panel', 1);
   });
 
   it('sessionReplaced + rebuildMessagesFromMessages integration (mocked store)', async () => {
@@ -122,10 +118,6 @@ describe('rebuildMessagesFromMessages — DOM-free reconstruction', () => {
     const sid = mockSessionStore.sessions[mockSessionStore.activeIdx].id;
     rebuildMessagesFromMessages(newSession, 'compact-panel', sid);
 
-    expect(rebuildMessagesFromMessages).toHaveBeenCalledWith(
-      newSession,
-      'compact-panel',
-      sid,
-    );
+    expect(rebuildMessagesFromMessages).toHaveBeenCalledWith(newSession, 'compact-panel', sid);
   });
 });

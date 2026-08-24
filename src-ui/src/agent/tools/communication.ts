@@ -127,21 +127,17 @@ export function createCommunicationTools(bus: MessageBus, agentId: () => string)
           if (result.length === 0) return '(no matching messages)';
           // 完整内容 — 每条 payload 截断到 2000 字符
           return result
-            .map(
-              (m) => {
-                const payload = typeof m.payload === 'string' ? m.payload : JSON.stringify(m.payload);
-                const truncated = payload.length > 2000 ? payload.slice(0, 2000) + '…[截断]' : payload;
-                return `[msg_id:${m.id}] from:${m.from} type:${m.type}\n${truncated}`;
-              },
-            )
+            .map((m) => {
+              const payload = typeof m.payload === 'string' ? m.payload : JSON.stringify(m.payload);
+              const truncated = payload.length > 2000 ? payload.slice(0, 2000) + '…[截断]' : payload;
+              return `[msg_id:${m.id}] from:${m.from} type:${m.type}\n${truncated}`;
+            })
             .join('\n\n');
         }
 
         // 摘要模式
         if (result.messages.length === 0) return '(inbox empty)';
-        const lines = result.messages
-          .map((m) => `- [msg_id:${m.id}] from:${m.from} type:${m.type}`)
-          .join('\n');
+        const lines = result.messages.map((m) => `- [msg_id:${m.id}] from:${m.from} type:${m.type}`).join('\n');
         return `Inbox: ${result.count} 条消息\n${lines}\n\n用 message_id 参数查看具体消息内容。`;
       },
     }),

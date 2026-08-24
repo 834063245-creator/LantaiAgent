@@ -97,16 +97,10 @@ describe('P1-15 Agent 会话增量写', () => {
     const a = makeAgent(store);
 
     // 第一轮：2 条新消息
-    a.getSession().push(
-      { role: 'user', content: '你好' },
-      { role: 'assistant', content: 'hi' },
-    );
+    a.getSession().push({ role: 'user', content: '你好' }, { role: 'assistant', content: 'hi' });
     await a.saveState('running');
     // 第二轮：再 2 条新消息
-    a.getSession().push(
-      { role: 'user', content: '第二轮' },
-      { role: 'assistant', content: 'ok' },
-    );
+    a.getSession().push({ role: 'user', content: '第二轮' }, { role: 'assistant', content: 'ok' });
     await a.saveState('done');
 
     // session = [sys] + 新消息 — 首轮 append [sys, 你好, hi]
@@ -150,7 +144,10 @@ describe('P1-15 Agent 会话增量写', () => {
     expect(appendCalls).toHaveLength(1);
 
     // 外部恢复：替换会话
-    a.setSession([{ role: 'system', content: 'sys' }, { role: 'user', content: '恢复的消息' }]);
+    a.setSession([
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: '恢复的消息' },
+    ]);
     await a.saveState();
 
     expect(appendCalls).toHaveLength(2);
@@ -161,10 +158,7 @@ describe('P1-15 Agent 会话增量写', () => {
 
 describe('P1-15 AgentStore.load NDJSON 读取', () => {
   it('读 session.ndjson 逐行解析', async () => {
-    fs.set(
-      '/p/.lantai/agents/main/state.json',
-      stateJson(),
-    );
+    fs.set('/p/.lantai/agents/main/state.json', stateJson());
     fs.set(
       '/p/.lantai/agents/main/session.ndjson',
       '{"role":"user","content":"a"}\n{"role":"assistant","content":"b"}\n',
@@ -176,10 +170,7 @@ describe('P1-15 AgentStore.load NDJSON 读取', () => {
 
   it('无 ndjson 时回退旧 session.json（JSON 数组）', async () => {
     fs.set('/p/.lantai/agents/main/state.json', stateJson());
-    fs.set(
-      '/p/.lantai/agents/main/session.json',
-      JSON.stringify([{ role: 'user', content: '旧格式' }]),
-    );
+    fs.set('/p/.lantai/agents/main/session.json', JSON.stringify([{ role: 'user', content: '旧格式' }]));
     const store = new AgentStore('/p');
     const r = await store.load('main');
     expect(r!.messages.map((m) => m.content)).toEqual(['旧格式']);

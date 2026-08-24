@@ -220,7 +220,7 @@ export function createShellTools(exec: ToolExecutor): Tool[] {
         'Execute a shell command in the bundled bash (Unix syntax) and return stdout + stderr. ' +
         'The working directory is STICKY per agent: a successful `cd` in one call carries over to later calls, and every result ends with a `[cwd: ...]` line showing where you landed. ' +
         'Pass the `cwd` parameter to set the directory explicitly for one call. ' +
-        'Do NOT write `cd /d X:\\...` (cmd syntax — fails in bash); write `cd /x/path` or `cd \'X:/path\'`. ' +
+        "Do NOT write `cd /d X:\\...` (cmd syntax — fails in bash); write `cd /x/path` or `cd 'X:/path'`. " +
         'Default timeout 5 min (max 10 min). Long output is truncated head+tail but the FULL log is spilled to a file whose path is printed — read it with fs(read)/search instead of re-running the command with `| head`/`| tail`. ' +
         'For long or iterative work (builds, test loops, watch modes) set runInBackground: true and poll with bash_output — it returns ONLY output produced since your last read, so repeated polls cost no extra tokens. ' +
         'Commands run from the current sticky cwd by default. IMPORTANT: Do NOT use run_shell for file search, code search, or git operations — use glob (file patterns), search_content (text search), list_directory (directory listing), and the dedicated git_* tools instead. run_shell is ONLY for building and testing commands (npm test, cargo build, pytest, etc.).',

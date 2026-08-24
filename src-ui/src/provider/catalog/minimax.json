@@ -6,9 +6,7 @@
     "vendor": "minimax",
     "baseUrl": "https://api.minimax.io/anthropic",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.3,
       "output": 1.2,
@@ -16,14 +14,7 @@
     },
     "contextWindow": 204800,
     "maxTokens": 131072,
-    "thinkingEfforts": [
-      "minimal",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max"
-    ],
+    "thinkingEfforts": ["minimal", "low", "medium", "high", "xhigh", "max"],
     "thinkingOff": true
   },
   "MiniMax-M2.7-highspeed": {
@@ -33,9 +24,7 @@
     "vendor": "minimax",
     "baseUrl": "https://api.minimax.io/anthropic",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.6,
       "output": 2.4,
@@ -43,14 +32,7 @@
     },
     "contextWindow": 204800,
     "maxTokens": 131072,
-    "thinkingEfforts": [
-      "minimal",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max"
-    ],
+    "thinkingEfforts": ["minimal", "low", "medium", "high", "xhigh", "max"],
     "thinkingOff": true
   },
   "MiniMax-M3": {
@@ -60,9 +42,7 @@
     "vendor": "minimax",
     "baseUrl": "https://api.minimax.io/anthropic",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.3,
       "output": 1.2,
@@ -70,14 +50,7 @@
     },
     "contextWindow": 1000000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "minimal",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max"
-    ],
+    "thinkingEfforts": ["minimal", "low", "medium", "high", "xhigh", "max"],
     "thinkingOff": true
   }
 }

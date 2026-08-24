@@ -45,11 +45,7 @@ function PluginCard({
   return (
     <div className="sp-lsp-card">
       <span className="sp-lsp-card-icon" style={{ color: badge.color }}>
-        <Icon
-          name={
-            plugin.status === 'error' || plugin.status === 'blocked' ? 'alert-circle' : 'agent'
-          }
-        />
+        <Icon name={plugin.status === 'error' || plugin.status === 'blocked' ? 'alert-circle' : 'agent'} />
       </span>
       <div className="sp-lsp-card-body">
         <div className="sp-lsp-card-header">
@@ -73,7 +69,10 @@ function PluginCard({
           <div className="sp-lsp-card-err">
             待授权权限类：{plugin.missingPermissions.join(' / ')}——在
             <code> ~/.lantai/plugins/plugins.json</code> 的 <code>granted</code> 段写入
-            <code> {'{ "' + plugin.name + '": [' + plugin.missingPermissions.map((p) => `'${p}'`).join(', ') + '] }'}</code>
+            <code>
+              {' '}
+              {'{ "' + plugin.name + '": [' + plugin.missingPermissions.map((p) => `'${p}'`).join(', ') + '] }'}
+            </code>
             后重启。
           </div>
         )}

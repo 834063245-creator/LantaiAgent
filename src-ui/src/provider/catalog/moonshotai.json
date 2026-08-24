@@ -6,9 +6,7 @@
     "vendor": "moonshotai",
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": false,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.6,
       "output": 2.5,
@@ -24,9 +22,7 @@
     "vendor": "moonshotai",
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": false,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.6,
       "output": 2.5,
@@ -42,9 +38,7 @@
     "vendor": "moonshotai",
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.6,
       "output": 2.5,
@@ -60,9 +54,7 @@
     "vendor": "moonshotai",
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 1.15,
       "output": 8,
@@ -78,9 +70,7 @@
     "vendor": "moonshotai",
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": false,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 2.4,
       "output": 10,
@@ -96,9 +86,7 @@
     "vendor": "moonshotai",
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.6,
       "output": 3,
@@ -114,9 +102,7 @@
     "vendor": "moonshotai",
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.95,
       "output": 4,
@@ -132,9 +118,7 @@
     "vendor": "moonshotai",
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.95,
       "output": 4,
@@ -150,9 +134,7 @@
     "vendor": "moonshotai",
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 1.9,
       "output": 8,
@@ -168,9 +150,7 @@
     "vendor": "moonshotai",
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 3,
       "output": 15,
@@ -178,10 +158,6 @@
     },
     "contextWindow": 1048576,
     "maxTokens": 131072,
-    "thinkingEfforts": [
-      "low",
-      "high",
-      "max"
-    ]
+    "thinkingEfforts": ["low", "high", "max"]
   }
 }

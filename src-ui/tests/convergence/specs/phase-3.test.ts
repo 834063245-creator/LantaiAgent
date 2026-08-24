@@ -60,11 +60,32 @@ describe('phase-3 T0 结构门禁 — 装配收敛', () => {
     const w = extractRuntimeMethodWiring(['_contextFromConfig']);
     const translated = new Set(w.configReads);
     const expected = [
-      'agentId', 'sessionId', 'parentId', 'systemPrompt', 'memoryManager', 'graphData',
-      'projectPath', 'provider', 'tools', 'collaborationMode', 'eventSink', 'execState',
-      'onSessionPersisted', 'pricing', 'temperature', 'contextWindow', 'subagentDepth',
-      'toolResultWindow', 'isolationId', 'agentStore', 'goalManager', 'subAgentPool',
-      'subAgentSpawner', 'graphContext', 'hooksEnabled', 'preRunHook',
+      'agentId',
+      'sessionId',
+      'parentId',
+      'systemPrompt',
+      'memoryManager',
+      'graphData',
+      'projectPath',
+      'provider',
+      'tools',
+      'collaborationMode',
+      'eventSink',
+      'execState',
+      'onSessionPersisted',
+      'pricing',
+      'temperature',
+      'contextWindow',
+      'subagentDepth',
+      'toolResultWindow',
+      'isolationId',
+      'agentStore',
+      'goalManager',
+      'subAgentPool',
+      'subAgentSpawner',
+      'graphContext',
+      'hooksEnabled',
+      'preRunHook',
     ];
     const missing = expected.filter((f) => !translated.has(f));
     expect(missing, `翻译层漏掉了 config 字段：${missing.join(', ')}`).toEqual([]);

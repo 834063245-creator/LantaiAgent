@@ -170,7 +170,10 @@ describe('phase-5 T3 — session-projection 契约快照', () => {
     let callIdx = 0;
     const scripts: Chunk[][] = [
       [{ type: ChunkType.Text, text: '回复一' }, { type: ChunkType.Done }],
-      [{ type: ChunkType.ToolCall, tool_call: { id: 't1', name: 'echo_tool', arguments: '{"v":"v1"}' } }, { type: ChunkType.Done }],
+      [
+        { type: ChunkType.ToolCall, tool_call: { id: 't1', name: 'echo_tool', arguments: '{"v":"v1"}' } },
+        { type: ChunkType.Done },
+      ],
       [{ type: ChunkType.Text, text: '工具完成' }, { type: ChunkType.Done }],
       [{ type: ChunkType.Text, text: 'trace-summary' }, { type: ChunkType.Done }],
       [{ type: ChunkType.Text, text: '压缩后回复' }, { type: ChunkType.Done }],
@@ -220,12 +223,18 @@ describe('phase-5 T3 — session-projection 契约快照', () => {
     agent.retractTurnAt(7);
 
     const log = agent.getSessionLog();
-    const a = agent as unknown as { payloadMessages(): Message[]; _toolFoldBoundary: number; _toolResultWindow: number };
+    const a = agent as unknown as {
+      payloadMessages(): Message[];
+      _toolFoldBoundary: number;
+      _toolResultWindow: number;
+    };
     expect(summary).not.toBe('stuck');
     // 快照前自证等价（差分矩阵的收敛级复检）
     expect(JSON.stringify(log.deriveMessages())).toBe(JSON.stringify(agent.getSession()));
     expect(
-      JSON.stringify(log.derivePayload({ toolResultWindow: a._toolResultWindow, toolFoldBoundary: a._toolFoldBoundary })),
+      JSON.stringify(
+        log.derivePayload({ toolResultWindow: a._toolResultWindow, toolFoldBoundary: a._toolFoldBoundary }),
+      ),
     ).toBe(JSON.stringify(a.payloadMessages()));
 
     const trace = {

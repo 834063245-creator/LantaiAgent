@@ -91,12 +91,7 @@ describe('GraphContext', () => {
 describe('GraphContextHook.shouldEnrich', () => {
   const hook = createGraphContextHook(makeCtx());
 
-  const shouldTrigger = [
-    'read_file_content',
-    'read_file',
-    'git_diff',
-    'run_shell',
-  ];
+  const shouldTrigger = ['read_file_content', 'read_file', 'git_diff', 'run_shell'];
 
   const shouldNotTrigger = [
     'edit_file',

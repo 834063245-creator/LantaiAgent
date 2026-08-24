@@ -11,10 +11,7 @@ import type { DiscoveryBoard } from '../discovery-board';
 import type { Tool } from '../tool';
 import { defineTool } from './define-tool';
 
-export function createDiscoveryTools(
-  board: DiscoveryBoard,
-  getAgentId: () => string,
-): Tool[] {
+export function createDiscoveryTools(board: DiscoveryBoard, getAgentId: () => string): Tool[] {
   return [
     // ── agent_discover — 发布发现 ──
     defineTool({
@@ -59,17 +56,12 @@ export function createDiscoveryTools(
           since: args.since,
           limit: args.limit,
         });
-                const key = args.key;
+        const key = args.key;
         if (key) {
           entries = entries.filter((e) => e.key.includes(key));
         }
         if (entries.length === 0) return '(没有匹配的发现)';
-        return entries
-          .map(
-            (e) =>
-              `[${e.category}] ${e.key}: ${e.value} (by ${e.agentId})`,
-          )
-          .join('\n');
+        return entries.map((e) => `[${e.category}] ${e.key}: ${e.value} (by ${e.agentId})`).join('\n');
       },
     }),
   ];

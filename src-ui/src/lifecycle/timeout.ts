@@ -4,11 +4,7 @@
  * The original promise is NOT cancelled (no cancellation in JS promises),
  * but the caller can use AbortController for actual cancellation.
  */
-export function withTimeout<T>(
-  promise: Promise<T>,
-  ms: number,
-  onTimeout?: () => void,
-): Promise<T> {
+export function withTimeout<T>(promise: Promise<T>, ms: number, onTimeout?: () => void): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeoutP = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {

@@ -130,11 +130,7 @@ export function validateObjectJsonSchema(value: unknown, schema: JsonSchema, pat
           return `${path}.${key}: 不允许的额外属性`;
         }
         if (isPlainObject(schema.additionalProperties)) {
-          const err = validateObjectJsonSchema(
-            value[key],
-            schema.additionalProperties as JsonSchema,
-            `${path}.${key}`,
-          );
+          const err = validateObjectJsonSchema(value[key], schema.additionalProperties as JsonSchema, `${path}.${key}`);
           if (err) return err;
         }
       }
@@ -177,7 +173,10 @@ export function extractJsonObject(text: string): unknown {
       /* fallthrough */
     }
   }
-  const fenced = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  const fenced = trimmed
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/```\s*$/, '')
+    .trim();
   if (fenced.startsWith('{')) {
     try {
       return JSON.parse(fenced);

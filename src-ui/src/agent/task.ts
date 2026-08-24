@@ -36,7 +36,9 @@ export class TaskManager {
   /** 订阅变更（UI 面板响应式）。返回退订函数。 */
   subscribe(cb: () => void): () => void {
     this.listeners.add(cb);
-    return () => { this.listeners.delete(cb); };
+    return () => {
+      this.listeners.delete(cb);
+    };
   }
 
   /** 供 useSyncExternalStore 的 getSnapshot —— 返回稳定引用（变更时重建）。 */
@@ -102,8 +104,7 @@ export function createTaskTools(mgr: TaskManager): Tool[] {
     }),
     defineTool({
       name: 'task_update',
-      description:
-        "Update a task's status or details. Status can be: pending, in_progress, completed, cancelled.",
+      description: "Update a task's status or details. Status can be: pending, in_progress, completed, cancelled.",
       schema: z.object({
         id: z.coerce.number().int().describe('Task ID to update'),
         status: z

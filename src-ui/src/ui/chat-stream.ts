@@ -432,7 +432,7 @@ export function appendUserBubble(
   const activeSid = st.sessions[st.activeIdx]?.id;
   if (activeSid != null) {
     ctx.setSessionMessages(activeSid, [...msgs]);
-  // ponytail: 通过 bumpSession 递增，使 React（订阅会话级 store）重新渲染
+    // ponytail: 通过 bumpSession 递增，使 React（订阅会话级 store）重新渲染
     if (ctx.bumpSessionMessages) ctx.bumpSessionMessages(activeSid);
   }
 

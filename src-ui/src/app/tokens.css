@@ -56,11 +56,11 @@
    * 全局面板：280（纸壳）→ 400/401（settings 遮罩/面板）；
    * 全局浮层：500（牒卡——最紧急交互，必须盖过一切面板）；
    * 命令面板：510。新浮层一律在此取值，禁散写 magic number。 */
-  --z-paper-base: 280;      /* 纸壳 */
-  --z-panel-veil: 400;      /* settings 遮罩 */
-  --z-panel: 401;           /* settings 面板体 */
-  --z-shelf: 500;           /* 牒卡浮层（ask/权限） */
-  --z-palette: 510;         /* 命令面板 */
+  --z-paper-base: 280; /* 纸壳 */
+  --z-panel-veil: 400; /* settings 遮罩 */
+  --z-panel: 401; /* settings 面板体 */
+  --z-shelf: 500; /* 牒卡浮层（ask/权限） */
+  --z-palette: 510; /* 命令面板 */
 
   /* ── 迁移收容（C5 --obs-* 退役时原值平移，待换皮归新结构 token）── */
   --snap: 0.12s cubic-bezier(0.23, 1, 0.32, 1);

@@ -6,9 +6,7 @@
     "vendor": "glm",
     "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.8,
       "output": 2.4,
@@ -24,9 +22,7 @@
     "vendor": "glm",
     "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.3,
       "output": 0.9,
@@ -42,9 +38,7 @@
     "vendor": "glm",
     "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
     "reasoning": false,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0,
       "output": 0,

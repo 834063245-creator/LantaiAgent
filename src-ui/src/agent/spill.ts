@@ -56,9 +56,7 @@ export async function spillToFile(opts: {
 
 function fallbackTruncate(text: string, max: number): string {
   const half = Math.floor(max / 2);
-  return `${text.slice(0, half)}…[truncated: ${text.length - max} chars omitted]…${text.slice(
-    text.length - half,
-  )}`;
+  return `${text.slice(0, half)}…[truncated: ${text.length - max} chars omitted]…${text.slice(text.length - half)}`;
 }
 
 /** 解析 agent_isolation_diff 命令返回的 JSON（小 diff 原文 / 大 diff 溢写标记）。 */

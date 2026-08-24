@@ -6,9 +6,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 1.25,
       "output": 10,
@@ -16,12 +14,7 @@
     },
     "contextWindow": 400000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "minimal",
-      "low",
-      "medium",
-      "high"
-    ]
+    "thinkingEfforts": ["minimal", "low", "medium", "high"]
   },
   "gpt-5-codex": {
     "id": "gpt-5-codex",
@@ -30,9 +23,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 1.25,
       "output": 10,
@@ -40,11 +31,7 @@
     },
     "contextWindow": 400000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high"
-    ]
+    "thinkingEfforts": ["low", "medium", "high"]
   },
   "gpt-5-mini": {
     "id": "gpt-5-mini",
@@ -53,9 +40,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.25,
       "output": 2,
@@ -63,12 +48,7 @@
     },
     "contextWindow": 400000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "minimal",
-      "low",
-      "medium",
-      "high"
-    ]
+    "thinkingEfforts": ["minimal", "low", "medium", "high"]
   },
   "gpt-5-nano": {
     "id": "gpt-5-nano",
@@ -77,9 +57,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.05,
       "output": 0.4,
@@ -87,12 +65,7 @@
     },
     "contextWindow": 400000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "minimal",
-      "low",
-      "medium",
-      "high"
-    ]
+    "thinkingEfforts": ["minimal", "low", "medium", "high"]
   },
   "gpt-5-pro": {
     "id": "gpt-5-pro",
@@ -101,9 +74,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 15,
       "output": 120,
@@ -111,9 +82,7 @@
     },
     "contextWindow": 400000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "high"
-    ]
+    "thinkingEfforts": ["high"]
   },
   "gpt-5.1": {
     "id": "gpt-5.1",
@@ -122,9 +91,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 1.25,
       "output": 10,
@@ -132,11 +99,7 @@
     },
     "contextWindow": 400000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high"
-    ],
+    "thinkingEfforts": ["low", "medium", "high"],
     "thinkingOff": true
   },
   "gpt-5.1-codex": {
@@ -146,9 +109,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 1.25,
       "output": 10,
@@ -156,11 +117,7 @@
     },
     "contextWindow": 400000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high"
-    ],
+    "thinkingEfforts": ["low", "medium", "high"],
     "thinkingOff": true
   },
   "gpt-5.1-codex-max": {
@@ -170,9 +127,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 1.25,
       "output": 10,
@@ -180,12 +135,7 @@
     },
     "contextWindow": 400000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high",
-      "xhigh"
-    ],
+    "thinkingEfforts": ["low", "medium", "high", "xhigh"],
     "thinkingOff": true
   },
   "gpt-5.1-codex-mini": {
@@ -195,9 +145,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.25,
       "output": 2,
@@ -205,11 +153,7 @@
     },
     "contextWindow": 400000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high"
-    ],
+    "thinkingEfforts": ["low", "medium", "high"],
     "thinkingOff": true
   },
   "gpt-5.2": {
@@ -219,9 +163,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 1.75,
       "output": 14,
@@ -229,12 +171,7 @@
     },
     "contextWindow": 400000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high",
-      "xhigh"
-    ],
+    "thinkingEfforts": ["low", "medium", "high", "xhigh"],
     "thinkingOff": true
   },
   "gpt-5.2-codex": {
@@ -244,9 +181,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 1.75,
       "output": 14,
@@ -254,12 +189,7 @@
     },
     "contextWindow": 400000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high",
-      "xhigh"
-    ],
+    "thinkingEfforts": ["low", "medium", "high", "xhigh"],
     "thinkingOff": true
   },
   "gpt-5.2-pro": {
@@ -269,9 +199,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 21,
       "output": 168,
@@ -279,11 +207,7 @@
     },
     "contextWindow": 400000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "medium",
-      "high",
-      "xhigh"
-    ]
+    "thinkingEfforts": ["medium", "high", "xhigh"]
   },
   "gpt-5.3-codex": {
     "id": "gpt-5.3-codex",
@@ -292,9 +216,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 1.75,
       "output": 14,
@@ -302,12 +224,7 @@
     },
     "contextWindow": 400000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high",
-      "xhigh"
-    ],
+    "thinkingEfforts": ["low", "medium", "high", "xhigh"],
     "thinkingOff": true
   },
   "gpt-5.3-codex-spark": {
@@ -317,9 +234,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 1.75,
       "output": 14,
@@ -327,12 +242,7 @@
     },
     "contextWindow": 128000,
     "maxTokens": 32000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high",
-      "xhigh"
-    ]
+    "thinkingEfforts": ["low", "medium", "high", "xhigh"]
   },
   "gpt-5.4": {
     "id": "gpt-5.4",
@@ -341,9 +251,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 2.5,
       "output": 15,
@@ -351,12 +259,7 @@
     },
     "contextWindow": 272000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high",
-      "xhigh"
-    ],
+    "thinkingEfforts": ["low", "medium", "high", "xhigh"],
     "thinkingOff": true
   },
   "gpt-5.4-mini": {
@@ -366,9 +269,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.75,
       "output": 4.5,
@@ -376,12 +277,7 @@
     },
     "contextWindow": 400000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high",
-      "xhigh"
-    ],
+    "thinkingEfforts": ["low", "medium", "high", "xhigh"],
     "thinkingOff": true
   },
   "gpt-5.4-nano": {
@@ -391,9 +287,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.2,
       "output": 1.25,
@@ -401,12 +295,7 @@
     },
     "contextWindow": 400000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high",
-      "xhigh"
-    ],
+    "thinkingEfforts": ["low", "medium", "high", "xhigh"],
     "thinkingOff": true
   },
   "gpt-5.4-pro": {
@@ -416,9 +305,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 30,
       "output": 180,
@@ -426,11 +313,7 @@
     },
     "contextWindow": 1050000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "medium",
-      "high",
-      "xhigh"
-    ]
+    "thinkingEfforts": ["medium", "high", "xhigh"]
   },
   "gpt-5.5": {
     "id": "gpt-5.5",
@@ -439,9 +322,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 5,
       "output": 30,
@@ -449,12 +330,7 @@
     },
     "contextWindow": 272000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high",
-      "xhigh"
-    ],
+    "thinkingEfforts": ["low", "medium", "high", "xhigh"],
     "thinkingOff": true
   },
   "gpt-5.5-pro": {
@@ -464,9 +340,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 30,
       "output": 180,
@@ -474,11 +348,7 @@
     },
     "contextWindow": 1050000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "medium",
-      "high",
-      "xhigh"
-    ]
+    "thinkingEfforts": ["medium", "high", "xhigh"]
   },
   "gpt-5.6-luna": {
     "id": "gpt-5.6-luna",
@@ -487,9 +357,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 1,
       "output": 6,
@@ -497,13 +365,7 @@
     },
     "contextWindow": 272000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max"
-    ],
+    "thinkingEfforts": ["low", "medium", "high", "xhigh", "max"],
     "thinkingOff": true
   },
   "gpt-5.6-sol": {
@@ -513,9 +375,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 5,
       "output": 30,
@@ -523,13 +383,7 @@
     },
     "contextWindow": 272000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max"
-    ],
+    "thinkingEfforts": ["low", "medium", "high", "xhigh", "max"],
     "thinkingOff": true
   },
   "gpt-5.6-terra": {
@@ -539,9 +393,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 2.5,
       "output": 15,
@@ -549,13 +401,7 @@
     },
     "contextWindow": 272000,
     "maxTokens": 128000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max"
-    ],
+    "thinkingEfforts": ["low", "medium", "high", "xhigh", "max"],
     "thinkingOff": true
   },
   "o3": {
@@ -565,9 +411,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 2,
       "output": 8,
@@ -575,11 +419,7 @@
     },
     "contextWindow": 200000,
     "maxTokens": 100000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high"
-    ]
+    "thinkingEfforts": ["low", "medium", "high"]
   },
   "o3-deep-research": {
     "id": "o3-deep-research",
@@ -588,9 +428,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 10,
       "output": 40,
@@ -606,9 +444,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 1.1,
       "output": 4.4,
@@ -616,11 +452,7 @@
     },
     "contextWindow": 200000,
     "maxTokens": 100000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high"
-    ]
+    "thinkingEfforts": ["low", "medium", "high"]
   },
   "o3-pro": {
     "id": "o3-pro",
@@ -629,9 +461,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 20,
       "output": 80,
@@ -639,11 +469,7 @@
     },
     "contextWindow": 200000,
     "maxTokens": 100000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high"
-    ]
+    "thinkingEfforts": ["low", "medium", "high"]
   },
   "o4-mini": {
     "id": "o4-mini",
@@ -652,9 +478,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 1.1,
       "output": 4.4,
@@ -662,11 +486,7 @@
     },
     "contextWindow": 200000,
     "maxTokens": 100000,
-    "thinkingEfforts": [
-      "low",
-      "medium",
-      "high"
-    ]
+    "thinkingEfforts": ["low", "medium", "high"]
   },
   "o4-mini-deep-research": {
     "id": "o4-mini-deep-research",
@@ -675,9 +495,7 @@
     "vendor": "openai",
     "baseUrl": "https://api.openai.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 2,
       "output": 8,

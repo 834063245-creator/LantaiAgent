@@ -6,9 +6,7 @@
     "vendor": "deepseek",
     "baseUrl": "https://api.deepseek.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.14,
       "output": 0.28,
@@ -16,11 +14,7 @@
     },
     "contextWindow": 1000000,
     "maxTokens": 384000,
-    "thinkingEfforts": [
-      "low",
-      "high",
-      "max"
-    ],
+    "thinkingEfforts": ["low", "high", "max"],
     "thinkingOff": true,
     "deepseekThinking": true
   },
@@ -31,9 +25,7 @@
     "vendor": "deepseek",
     "baseUrl": "https://api.deepseek.com/v1",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.435,
       "output": 0.87,
@@ -41,11 +33,7 @@
     },
     "contextWindow": 1000000,
     "maxTokens": 384000,
-    "thinkingEfforts": [
-      "low",
-      "high",
-      "max"
-    ],
+    "thinkingEfforts": ["low", "high", "max"],
     "thinkingOff": true,
     "deepseekThinking": true
   },
@@ -56,9 +44,7 @@
     "vendor": "deepseek",
     "baseUrl": "https://api.deepseek.com/anthropic",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.435,
       "output": 0.87,
@@ -66,14 +52,7 @@
     },
     "contextWindow": 1000000,
     "maxTokens": 384000,
-    "thinkingEfforts": [
-      "minimal",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max"
-    ],
+    "thinkingEfforts": ["minimal", "low", "medium", "high", "xhigh", "max"],
     "thinkingOff": true
   },
   "deepseek-v4-flash-beta": {
@@ -83,9 +62,7 @@
     "vendor": "deepseek",
     "baseUrl": "https://api.deepseek.com/anthropic",
     "reasoning": true,
-    "input": [
-      "text"
-    ],
+    "input": ["text"],
     "cost": {
       "input": 0.14,
       "output": 0.28,
@@ -93,14 +70,7 @@
     },
     "contextWindow": 1000000,
     "maxTokens": 384000,
-    "thinkingEfforts": [
-      "minimal",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-      "max"
-    ],
+    "thinkingEfforts": ["minimal", "low", "medium", "high", "xhigh", "max"],
     "thinkingOff": true
   }
 }

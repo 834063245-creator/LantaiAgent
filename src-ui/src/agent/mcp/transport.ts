@@ -38,7 +38,11 @@ interface NodeChildLike {
   kill(): void;
 }
 interface NodeChildProcessModule {
-  spawn(command: string, args: string[], opts: { stdio: Array<'pipe' | 'inherit'>; windowsHide?: boolean }): NodeChildLike;
+  spawn(
+    command: string,
+    args: string[],
+    opts: { stdio: Array<'pipe' | 'inherit'>; windowsHide?: boolean },
+  ): NodeChildLike;
 }
 
 /** 解析 child_process 模块（Node）。webview / 非 Node 宿主 → null，调用方应注入 ProcIO。 */

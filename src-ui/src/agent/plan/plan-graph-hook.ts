@@ -42,19 +42,21 @@ export function createPlanExploreHook(ctx: GraphContext, planState: PlanStateMan
         // plan 模式下给更详细的分析
         if (nodes.length > 0) {
           const parts: string[] = [];
-          const downstream = [...nodes].filter((n) => n.fanIn > 0).sort((a, b) => b.fanIn - a.fanIn).slice(0, 8);
-          const upstream = [...nodes].filter((n) => n.fanOut > 0).sort((a, b) => b.fanOut - a.fanOut).slice(0, 5);
+          const downstream = [...nodes]
+            .filter((n) => n.fanIn > 0)
+            .sort((a, b) => b.fanIn - a.fanIn)
+            .slice(0, 8);
+          const upstream = [...nodes]
+            .filter((n) => n.fanOut > 0)
+            .sort((a, b) => b.fanOut - a.fanOut)
+            .slice(0, 5);
 
           parts.push(`此文件 ${nodes.length} 个符号。`);
           if (downstream.length > 0) {
-            parts.push(
-              `下游依赖（被谁调用）: ${downstream.map((n) => `\`${n.name}\`(${n.fanIn}↓)`).join(', ')}`,
-            );
+            parts.push(`下游依赖（被谁调用）: ${downstream.map((n) => `\`${n.name}\`(${n.fanIn}↓)`).join(', ')}`);
           }
           if (upstream.length > 0) {
-            parts.push(
-              `上游依赖（调了谁）: ${upstream.map((n) => `\`${n.name}\`(${n.fanOut}↑)`).join(', ')}`,
-            );
+            parts.push(`上游依赖（调了谁）: ${upstream.map((n) => `\`${n.name}\`(${n.fanOut}↑)`).join(', ')}`);
           }
 
           // 引擎层数据

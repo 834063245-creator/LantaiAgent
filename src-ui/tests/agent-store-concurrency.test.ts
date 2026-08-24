@@ -95,10 +95,7 @@ describe('P1-13 AgentStore index.json 写链串行化', () => {
   it('并发 save + delete 交错 → delete 生效且不复活（修复前可能把已删记录写回）', async () => {
     const store = new AgentStore('/test/project');
     await store.save('agent-c', { description: 'C', status: 'idle' });
-    await Promise.all([
-      store.delete('agent-c'),
-      store.save('agent-d', { description: 'D', status: 'idle' }),
-    ]);
+    await Promise.all([store.delete('agent-c'), store.save('agent-d', { description: 'D', status: 'idle' })]);
     const all = await store.list();
     const ids = all.map((r) => r.id);
     expect(ids).toContain('agent-d');

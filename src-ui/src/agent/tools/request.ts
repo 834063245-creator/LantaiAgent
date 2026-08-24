@@ -33,8 +33,8 @@ export function createRequestTool(bus: MessageBus, getAgentId: () => string): To
       target: z.string().describe('Target agent ID to send the request to'),
       type: z.string().describe('Request type (e.g. "question", "lookup", "verify")'),
       content: z.string().describe('Request content — what you want the other agent to do or answer'),
-      timeout_seconds: z
-        .coerce.number()
+      timeout_seconds: z.coerce
+        .number()
         .max(120)
         .optional()
         .default(30)
@@ -71,7 +71,9 @@ export function createRequestTool(bus: MessageBus, getAgentId: () => string): To
       return new Promise<string>((resolve) => {
         const timer = setTimeout(() => {
           unsub();
-          resolve(`请求超时（${timeoutSec}s）— ${target} 未在时限内回复。消息仍在对方 inbox 中，你可用 agent_message 跟进。`);
+          resolve(
+            `请求超时（${timeoutSec}s）— ${target} 未在时限内回复。消息仍在对方 inbox 中，你可用 agent_message 跟进。`,
+          );
         }, timeoutSec * 1000);
 
         const unsub = bus.subscribe(
@@ -82,10 +84,7 @@ export function createRequestTool(bus: MessageBus, getAgentId: () => string): To
           (reply) => {
             clearTimeout(timer);
             unsub();
-            const payload =
-              typeof reply.payload === 'string'
-                ? reply.payload
-                : JSON.stringify(reply.payload);
+            const payload = typeof reply.payload === 'string' ? reply.payload : JSON.stringify(reply.payload);
             resolve(`回复来自 ${reply.from}:\n${payload}`);
           },
         );

@@ -10,7 +10,8 @@ function withPlanFileFooter(body: string, planFilePath: string | null): string {
 
 /** 首次进入 / 每 5 轮刷新 — 完整工作流提醒 */
 export function PLAN_FULL_REMINDER(planFilePath: string | null): string {
-  return withPlanFileFooter(`## 规划模式已激活
+  return withPlanFileFooter(
+    `## 规划模式已激活
 
 你只有只读权限 + 写计划文件的权限。写文件、跑命令、Git 操作会在执行层被拦截（[已拦截]），不要尝试。
 
@@ -32,19 +33,27 @@ export function PLAN_FULL_REMINDER(planFilePath: string | null): string {
 - 主动调 trace_impact / explore_deps / fragile_modules 查依赖关系
 
 ### 结束条件
-每轮必须以 exit_plan_mode（提交计划）或 ask_user（澄清需求）结束。`, planFilePath);
+每轮必须以 exit_plan_mode（提交计划）或 ask_user（澄清需求）结束。`,
+    planFilePath,
+  );
 }
 
 /** 2-4 轮后 — 稀疏提醒，避免刷屏 */
 export function PLAN_SPARSE_REMINDER(planFilePath: string | null): string {
-  return withPlanFileFooter(`## 规划模式
-只读探索中。写好计划后调 exit_plan_mode 提交。`, planFilePath);
+  return withPlanFileFooter(
+    `## 规划模式
+只读探索中。写好计划后调 exit_plan_mode 提交。`,
+    planFilePath,
+  );
 }
 
 /** 恢复进入（计划已有内容，如会话恢复） */
 export function PLAN_REENTRY_REMINDER(planFilePath: string | null): string {
-  return withPlanFileFooter(`## 规划模式已恢复
-计划文件已有内容。检查并修改后调 exit_plan_mode 提交。`, planFilePath);
+  return withPlanFileFooter(
+    `## 规划模式已恢复
+计划文件已有内容。检查并修改后调 exit_plan_mode 提交。`,
+    planFilePath,
+  );
 }
 
 /** plan 模式退出后的一次性提醒 */
