@@ -83,7 +83,9 @@ cordis ctx inject 纪律 / root asyncDispose 非清理面 / NODE_ENV=production
 
 1. **C12 dsh-compat** 唯一合法挂起（外部信号依赖：DSH peer 出非
    workspace 版本即启动——p4a 调研已备好契约地图）。
-2. 并行窗口 agent/provider 线（§3 清单）——其收口由该窗口自管。
+2. ~~并行窗口 agent/provider 线~~已由本窗口验证收口（§3 四组 commit）；
+   v11 计划为草案未开工——若启动，从 v11-analysis-engine-master-plan.md
+   读起（先过用户拍板排期）。
 3. **真机验证欠账**（需用户带 API key 会话）：session-ledger 三项（重启
    工作集恢复/后台卷落盘/续开查重）+ workspace-flip 批 3 边界观察项。
 4. 新能力加面走通道（事实非待办）：docs/plugins/README.md §3。
@@ -92,14 +94,19 @@ cordis ctx inject 纪律 / root asyncDispose 非清理面 / NODE_ENV=production
 
 ## 3. 环境与雷区备忘
 
-- **并行窗口 agent/provider 线仍在途**（baton15 §3 同清单——agent.ts /
-  chat-agent-handle.ts / ModeIndicator / ModelSelector / SettingsPanel /
-  SpineRack / 各 css / AddProviderSheet / ProviderDetail / ProviderList /
-  ProviderPage / status.ts / selection.ts / thinking.ts / settings.ts /
-  paper-store.test / provider-page-staging.test / mode-indicator-model-menu.test /
-  CONTEXT.md / lantai-design-spec.md + 两个未跟踪 plan 文档
-  dynamic-edge-detection-plan.md / v11-analysis-engine-master-plan.md）——
-  提交时继续排除，staging 前重新核对。本批改动面与其零交集。
+- ~~并行窗口 agent/provider 线仍在途~~ **已收口（2026-08-24 下午，本窗口
+  验证后代提四组 commit）**：①`0b97f164` 术语换血（信号源→提供方，
+  CONTEXT.md 词条为锚）②`d5237c16` 模型菜单复合选择（跨 provider 选模型
+  联动切 activeProvider + 新测试 26 例）③`ffb9250e` 纸条拖拽语义几何
+  （classifyDropZone/stashStripPosition 纯函数）④`68331b4f` v11 分析引擎
+  总 plan 立项（草案未开工，dynamic-edge 原案 superseded）。验证：tsc 零错
+  + biome 对 HEAD worktree 基线精确对差零新增（顺带消存量三条）+ 全量
+  vitest 1667+1 skip 零失败 + build ✓。工作区就此干净，无在途排除清单。
+- **biome 对 HEAD 基线的正确比法**（本棒实锤）：项目外路径跑 biome 用
+  默认配置（a11y/security 域规则漏报，结论无效）——合法基线 = git
+  worktree 挂 HEAD 后用主仓 node_modules 的 biome.cmd 在 worktree 内跑；
+  纯 CRLF 文件报 format 错误是全仓存量条件（formatter LF vs checkout
+  CRLF），不算新增。
 - **M4 后会话 store 生命周期语义**：卷消亡（合卷）→ 拆单卷；工作区消亡
   （切换/拆除）→ 整批拆；摊开集内存活（换卷/切回）→ 保留。续开已合卷
   走磁盘恢复（loadSessionFromDisk 重建空 store 后灌入）。
