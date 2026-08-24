@@ -9,6 +9,7 @@ import { loadSettings } from '../../settings';
 import { useAgentConfigStore } from '../../state/agent-config-store';
 import { useTurnDoneStore } from '../../state/turn-done-store';
 import type { ShellRefs } from '../runtime';
+import { getPlaceholderWorkspace } from './workspace';
 
 export function bootPersistence(refs: ShellRefs): void {
   // ── 轮次完成通知（P1 总线归零：chat:turn-done → state/turn-done-store 信号）──
@@ -50,6 +51,19 @@ export function bootPersistence(refs: ShellRefs): void {
     } else if (ws) {
       // chat 行被禁用的涟漪：无面板可热切换（设计件 §2.8 降级面）
       console.warn('[agent-config] chatPanel 缺席，跳过热切换:', reason);
+    } else {
+      // refs.workspace 缺席 = 零目录占位会话（setupPlaceholderAgent 的
+      // Workspace.placeholder 不进 shellRefs——「打开流」语义）。旧版在此静默
+      // 丢弃信号：首次配置 API Key 后占位会话永远读不到（死路 A 的另一半）。
+      // 占位装配行记忆化持有实例（rows/workspace.ts），直接热切换。
+      const ph = getPlaceholderWorkspace();
+      if (ph && chatPanel) {
+        void ph
+          .applyAgentConfig(chatPanel, reason)
+          .catch((err) => console.error('[agent-config] placeholder hot-switch failed:', err));
+      } else {
+        console.warn('[agent-config] workspace 与占位装配均缺席，丢弃信号:', reason);
+      }
     }
   });
   refs.chatPanel?.setOnOpenSettings(() => {

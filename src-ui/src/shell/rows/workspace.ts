@@ -178,6 +178,15 @@ function escLayer(): void {
 }
 
 // ── 辅助：用占位工作区设置 agent（未加载项目）──
+
+/** 占位工作区（模块级记忆）：零目录会话的唯一 Workspace 实例。
+ *  不进 shellRefs.workspace（占位永不激活——switchWorkspace 的 deactivate
+ *  链不适用）；记忆化使重复装配（冷启动 + 设置保存触发的重装配）复用同一
+ *  实例，不再每次 new Workspace 累积孤儿 fiber。persistence 行经
+ *  getPlaceholderWorkspace() 取句柄投递 agent-config 信号——占位会话的
+ *  设置保存（含首次配置 API Key）由此生效，不再要求重启应用。 */
+let _placeholderWs: Workspace | null = null;
+
 async function setupPlaceholderAgent(): Promise<void> {
   if (shellRefs.workspace) return;
   // 零目录会话装配点（workspace-flip 批 2）：用户级会话目录先于任何会话操作解析
@@ -187,10 +196,15 @@ async function setupPlaceholderAgent(): Promise<void> {
   // 泄漏到占位工作区的 read_file / list_directory 调用中。
   await typedRpc('workspace_activate', { path: '' }).catch(() => {});
   const { Workspace: WorkspaceCls } = await wsMod();
-  const ws = WorkspaceCls.placeholder();
-  ws.onStatusChange = (msg) => {
-    pushStatus(msg);
-  };
+  // 同步检查-赋值（无 await 间隔）：并发调用不重复建实例。
+  let ws = _placeholderWs;
+  if (!ws) {
+    ws = WorkspaceCls.placeholder();
+    ws.onStatusChange = (msg) => {
+      pushStatus(msg);
+    };
+    _placeholderWs = ws;
+  }
   const chatPanel = shellRefs.chatPanel;
   if (!chatPanel) {
     // chat 壳行被禁用的涟漪（设计件 §2.8）：无面板承接，占位 agent 不装配
@@ -202,6 +216,12 @@ async function setupPlaceholderAgent(): Promise<void> {
   } catch (e) {
     console.error('[init] setupAgent failed:', e);
   }
+}
+
+/** 占位工作区句柄 — persistence 行投递 agent-config 信号（热切换/装配）用。
+ *  未装配过（冷启动未走占位路径，或 chat 行禁用）返回 null。 */
+export function getPlaceholderWorkspace(): Workspace | null {
+  return _placeholderWs;
 }
 
 /** 导出面：冷启动行 + actions 行消费的 workspace 流函数族。 */

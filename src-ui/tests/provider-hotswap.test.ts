@@ -29,7 +29,7 @@ describe('workspace provider 热切换 — 恒 swap（P14）', () => {
   it('applyAgentConfig 无条件重建 provider（恒 swap，无 diff 跳过分支）', () => {
     const start = codeOnly.indexOf('async applyAgentConfig(');
     expect(start).toBeGreaterThan(-1);
-    const body = codeOnly.slice(start, codeOnly.indexOf('setupAgent', start));
+    const body = codeOnly.slice(start, codeOnly.indexOf('async setupAgent(', start));
     expect(body).toContain('this._buildProvider(s)');
     expect(body).toContain('this.agent?.setProvider(prov, pricing)');
     expect(body).toContain('agentSessionState.forEachAgent((h) => h.setProvider(prov, pricing))');
@@ -37,9 +37,22 @@ describe('workspace provider 热切换 — 恒 swap（P14）', () => {
     expect(body).not.toMatch(/if\s*\([^)]*_lastAgentCfgKey/);
   });
 
+  it('Agent 缺席（无 Key 冷启动拆除后首次配置）→ 全量装配 + 恢复历史案卷（2026-08-24 死路根治）', () => {
+    const start = codeOnly.indexOf('async applyAgentConfig(');
+    const body = codeOnly.slice(start, codeOnly.indexOf('async setupAgent(', start));
+    // 装配分支存在且在恒 swap 之前（无引用可换时 setupAgent 是唯一出路）
+    expect(body).toContain('if (!this.agent)');
+    expect(body).toContain('await this.setupAgent(chatPanel)');
+    expect(body).toContain('autoRestoreLastSession');
+    const bootstrap = body.indexOf('if (!this.agent)');
+    const swap = body.indexOf('this._buildProvider(s)');
+    expect(bootstrap).toBeGreaterThan(-1);
+    expect(swap).toBeGreaterThan(bootstrap);
+  });
+
   it('key 清空拆除路径存在且不再依赖键重置（P13 #2 语义保留）', () => {
     const start = codeOnly.indexOf('async applyAgentConfig(');
-    const body = codeOnly.slice(start, codeOnly.indexOf('setupAgent', start));
+    const body = codeOnly.slice(start, codeOnly.indexOf('async setupAgent(', start));
     expect(body).toContain("act.apiKey.trim() === ''");
     expect(body).toContain('chatPanel.setAgent(null)');
   });

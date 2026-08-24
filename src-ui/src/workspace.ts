@@ -593,7 +593,9 @@ export class Workspace {
    *  - thinking / contextWindow → 热同步（setThinking / setContextWindow）
    *  - 协作模式 → 运行时切换（setPlanMode）
    * 上下文、压缩缓存、hook、正在运行的执行、所有会话全部保留。
-   * 组件不得绕过此方法直接调 setupAgent。
+   * 唯一例外：Agent 缺席（无 Key 冷启动被拆除后首次配置成功）——没有
+   * 引用可热切换，走全量装配（setupAgent + autoRestoreLastSession，
+   * 与冷启动同序列）。组件不得绕过此方法直接调 setupAgent。
    *
    * ⚡ P14（2026-08-22）退役 _agentRebuildKey 手工 diff：此前用「手写字段枚举
    * 字符串摘要」判定 provider 是否变化——temperature 历史上漏过、maxTokens 覆盖
@@ -620,6 +622,22 @@ export class Workspace {
       this.prov = null;
       chatPanel.setAgent(null);
       useAgentPanelStore.getState().setDiag({ text: `❌ API Key 已清空 — provider="${act.name}"。`, ready: false });
+      return;
+    }
+
+    // Agent 缺席（无 Key 冷启动拆除后首次配置成功）：工厂未注册、会话列表为空
+    // ——「当前没有活跃会话」死路的根源（2026-08-24 事故）。热切换无从谈起
+    // （没有引用可换）：走全量装配 + 恢复历史案卷，与冷启动同一序列
+    // （switchWorkspace：setupAgent → autoRestoreLastSession），保存 Key 即刻
+    // 生效、无需重启。setupAgent 自带并发合并守卫；装配成功后 this.agent 非空，
+    // 后续信号回归恒 swap 热切换。
+    if (!this.agent) {
+      await this.setupAgent(chatPanel);
+      if (this.agent && this.path) {
+        await chatPanel
+          .autoRestoreLastSession(this.path)
+          .catch((e) => console.error('[agent-config] autoRestoreLastSession failed:', e));
+      }
       return;
     }
 

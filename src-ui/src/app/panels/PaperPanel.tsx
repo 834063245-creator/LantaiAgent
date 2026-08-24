@@ -599,7 +599,7 @@ export function PaperPanel() {
     if (!t || !core) return;
     const sess = getChatStore(core.panelId).sess.getState();
     if (sess.activeIdx < 0 || !sess.sessions[sess.activeIdx]) {
-      setLocalNotice('当前没有活跃会话——请在设置中配置 API Key（书眉「设置」→ Provider）后重开应用。');
+      setLocalNotice('当前没有活跃会话——请在设置中配置 API Key（书眉「设置」→ Provider）后保存，保存后即可直接使用。');
       return;
     }
     setLocalNotice(null);
