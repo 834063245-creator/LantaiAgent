@@ -6,6 +6,7 @@
 // biome-ignore lint/style/noRestrictedImports: agentInvoke 动态方法名分发（工具名运行时确定），无法走 typedRpc
 import { rpc } from '../bridge';
 import type { ToolSchema } from '../provider/types';
+import { currentSessionId } from '../state/session-scope';
 import type { Disposer } from './lifecycle';
 
 // ---- Tool 接口 ----
@@ -174,12 +175,22 @@ export type ToolExecutor = (
  *  旧名 `_agent` 因 Tauri 默认 camelCase 重命名永远匹配不上 → is_agent 恒 false
  *  → agent 文件操作被沙箱静默硬拒且不弹 Ask（见 tests/agent-exec.test.ts 守护）。
  *
+ * L1 数据上下文：同时注入活跃会话 id（_session_id）——引擎命令
+ * （hologram_call/图查询/时间线）据此决议到会话 attach 的工作区引擎实例；
+ * 无活跃会话时省略（Rust 侧回落焦点/单槽/全局）。调用方显式传 _session_id
+ * 时不覆盖（子 Agent 等显式归属优先）。
+ *
  * rpc Value 化第二步（2026-08-22）：Rust 出口对 JsonValue 形态命令返回真结构化
  * Value（与 rpc.rs rpc_result_shape 表同源）；agentInvoke 是 agent 工具链的
  * string 世界入口，此处对结构化返回回卷 JSON 字符串，全链路（tool execute 返回
  * string 契约 / JSON.parse 消费点 / session 折叠 derivePayload）零改动。 */
 export async function agentInvoke<T = string>(name: string, args: Record<string, unknown>): Promise<T> {
-  const out = await rpc<unknown>(name, { ...args, isAgent: true });
+  const session = args._session_id ?? currentSessionId();
+  const payload =
+    session !== null && session !== undefined && args._session_id === undefined
+      ? { ...args, isAgent: true, _session_id: session }
+      : { ...args, isAgent: true };
+  const out = await rpc<unknown>(name, payload);
   return (typeof out === 'string' ? out : JSON.stringify(out)) as T;
 }
 

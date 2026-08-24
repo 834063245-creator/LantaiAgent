@@ -142,7 +142,8 @@ export function SessionsHome() {
   }, [openPanel]);
 
   /** 续开入口（会话统一 U2）：跨工作区卷先切到卷的工作区（skipAnalysis——
-   *  引擎只加载缓存不分析，秒级），再摊开该卷；同工作区/零目录卷直接摊开。 */
+   *  引擎只加载缓存不分析，秒级），再摊开该卷；同工作区/零目录卷直接摊开。
+   *  L1 attach/focus 在 loadSessionFromDisk 内统一接线（唯一开卷路径）。 */
   const onResume = useCallback(
     (s: UserSession) => {
       if (!core) return;

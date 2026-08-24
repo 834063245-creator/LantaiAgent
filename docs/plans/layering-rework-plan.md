@@ -194,7 +194,14 @@
 
 **L1 明确边界（后续阶段消化）**：权限沙箱仍单槽（跨工作区并行 fs 写在 L1 仍聚焦区失败关闭——不损坏，只拒绝；per-context 权限在 L3/L4）；多工作区并行 UI（画布模型，session-unify §3.4 挂起项）不做，L1 交付的是 Rust 侧架构就绪 + 并发守卫测试。
 
-## 5. 关键文件地图（改动面汇总）
+## 4.2 L1 施工进度（2026-08-25 凌晨）
+
+- ✅ **C1 引擎侧地基**（commit `2771a430`）：Arc 化 + `Engine::new_shared` + TLS 当前引擎（`with_current`，全部 `engine_*` 自由函数前置检查）+ watcher 实例化（`handle_watcher_changes(&self)`——多实例串写洞修复）+ `engine_bind_global_shared`。engine 测试全绿（675+27+1）。
+- ✅ **C2/C3 壳层应用层 + 命令族路由**（commit `9a0edfa6`）：`app/`（WorkspaceDataContext/AppContexts/attach 事实校验/GC/决议链）+ 四命令（session_attach/detach/focus/context_list）+ workspace_activate 兼容腰（同根同实例）+ 壳层 watcher 实例化 + graph/hologram/engine_dispatch 全族决议路由 + hologram_call TLS 绑定 dispatch + filesystem/editor 时间线路由 + 图分页测试实例化（全局锁退役）。cargo test 全绿（bin 419 + 集成 14）。
+- 🔄 **C4 前端接线**（本 commit）：rpc-contract 四命令 + `AgentCtx._session_id`；`state/session-scope.ts`（活跃会话 store）；`agentInvoke` 恒注入 `_session_id`；`chat-session.ts` 三入口接线（switchSession→focus；loadSessionFromDisk→attach+focus[legacy_root=projectPath]；createNewSession→新生声明绑定）；gen-rpc-contract 再生成（顺修脚本分区 off-by-one：`^\s*` 吞换行致首分支归上区——存量 bug）。
+- **mcp.rs 上下文参数项**的落地形态说明：Q3 拍板 MCP 面留 engine（stdio serve 是独立进程，其全局 ENGINE 天然单实例正确）；进程内工具面（hologram_call）的「上下文参数」= 分派入口 `with_current` 绑定——不逐 handler 穿线而以线程局部路由达成同构语义（L2/L4 engine 纯化时再评估是否需要显式参数化）。
+
+
 
 | 文件/目录 | 阶段 | 角色 |
 |---|---|---|

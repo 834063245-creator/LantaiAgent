@@ -19,6 +19,7 @@ import {
   type PaperSessionData,
   removePaperSessionData,
 } from '../state/paper-store';
+import { sessionScopeStore } from '../state/session-scope';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
 import { useAgentPanelStore } from './agent-panel-store';
 import { bumpSession, getChatStore, msgStoreFor } from './chat-store';
@@ -281,6 +282,14 @@ export function switchSession(ctx: SessionContext, idx: number): void {
     useAgentPanelStore.getState().setCurrentSessionId(newSessionId);
   }
 
+  // L1 数据上下文：焦点会话切换（UI 投影锚 + 引擎决议链「会话→焦点」源头）。
+  // sessionScope 供 agentInvoke 注入 _session_id；session_focus 供 Rust 侧
+  // 焦点回退。fire-and-forget——换卷交互不被 RPC 阻塞。
+  sessionScopeStore.getState().setCurrentSessionId(sessions[idx].id);
+  void typedRpc('session_focus', { session_id: sessions[idx].id }).catch(() => {
+    /* 后端未就绪/占位工作区：投影推导回退，不阻断换卷 */
+  });
+
   // 恢复目标会话的 token 计数
   ctx.setTotalTokensUsed(st.sessionTokens[sessions[idx].id] || 0);
   ctx.setLastUsageText('');
@@ -497,6 +506,21 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
   ctx.setLastUsageText('');
   ctx.updateFooter();
   // U4/Q1-B：总目记账退役（摊开集重启由磁盘扫描推导）
+  // L1 数据上下文：新生会话声明绑定（DSH 出生与绑定分离——卷未落盘，
+  // workspace 事实源暂为当前工作区；首笔落盘后重开以卷为准）。
+  const claimWs = ctx.getProjectPath();
+  sessionScopeStore.getState().setCurrentSessionId(id);
+  void (async () => {
+    try {
+      await typedRpc('session_attach', {
+        session_id: id,
+        workspace: claimWs || undefined,
+      });
+      await typedRpc('session_focus', { session_id: id });
+    } catch (e) {
+      console.warn('[chat] 新生会话 attach 失败（Ungrouped 继续）:', e);
+    }
+  })();
 }
 
 // ── 会话持久化 — 每个会话一个文件，localStorage 备份 ──
@@ -1033,6 +1057,22 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   ctx.updateFooter();
   ctx.addNotice(`已加载: ${label}`, 'info');
   // U4/Q1-B：总目记账退役（摊开集重启由磁盘扫描推导）
+  // L1 数据上下文：开卷 = attach（事实校验——Rust 读卷快照 workspace 字段，
+  // legacy_root 即本函数的 projectPath 形参：全局位无此卷时回退项目旧目录，
+  // 与 readVolumeData 双读同源）+ 焦点。fire-and-forget：attach 失败 =
+  // Ungrouped（会话照常可用），不阻断开卷交互。
+  sessionScopeStore.getState().setCurrentSessionId(sid);
+  void (async () => {
+    try {
+      await typedRpc('session_attach', {
+        session_id: sid,
+        legacy_root: projectPath || undefined,
+      });
+      await typedRpc('session_focus', { session_id: sid });
+    } catch (e) {
+      console.warn('[chat] session_attach/focus 失败（Ungrouped 继续）:', e);
+    }
+  })();
 }
 
 /** 将磁盘上的会话文件标记为已删除。U1：墓碑写入卷实际所在位（全局位/

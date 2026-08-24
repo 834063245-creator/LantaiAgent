@@ -17,6 +17,7 @@ const OUT_MD = path.join(ROOT, 'docs', 'agents', 'frontend-rpc-contract.md');
 
 // 与 rpc.rs 中分区注释顺序一致（仅用于 md 标题；序号与文件行序绑定）
 const SECTIONS = [
+  '应用层：数据上下文 / 会话 attach',
   'Engine 调度',
   'Graph',
   'Git',
@@ -163,7 +164,10 @@ function main() {
   const branchRe = /^\s*"([a-z0-9_]+)"\s*=>\s*\{([\s\S]*?)\n {8}\}\r?\n/gm;
   let bm;
   while ((bm = branchRe.exec(src)) !== null) {
-    branchBlocks.push({ name: bm[1], body: bm[2], pos: bm.index });
+    // pos 校正到分支本体所在行（`"` 处）：`^\s*` 的 \s 会吞前导换行，
+    // bm.index 落在前一行（常是分区箱线行）→ 分区归属系统性 off-by-one
+    // （首分支恒归上一区——2026-08-24 L1 实测踩中，此前一直存在）。
+    branchBlocks.push({ name: bm[1], body: bm[2], pos: bm.index + bm[0].indexOf('"') });
   }
   // 单行分支（如 "stop_mcp_server" => commands::external::stop_mcp_server().await,）
   // 扫描起点限制在 match method.as_str() 之后：rpc_result_shape 表里的
@@ -176,7 +180,7 @@ function main() {
   while ((sm = singleRe.exec(src)) !== null) {
     if (sm.index < matchIdx) continue;
     if (!branchBlocks.some((b) => b.name === sm[1])) {
-      branchBlocks.push({ name: sm[1], body: sm[2], pos: sm.index });
+      branchBlocks.push({ name: sm[1], body: sm[2], pos: sm.index + sm[0].indexOf('"') });
     }
   }
   // 只保留外层 match method.as_str() 的直接分支：按大括号深度解析。
@@ -247,7 +251,7 @@ function main() {
       return;
     }
     if (section !== sectionIdx) {
-      if (sectionIdx !== 0) md += '\n';
+      md += '\n';
       md += '## ' + SECTIONS[section] + '\n\n';
       md += '| 方法 | 必选参数 | 可选参数 | 返回 |\n|------|----------|----------|------|\n';
       sectionIdx = section;

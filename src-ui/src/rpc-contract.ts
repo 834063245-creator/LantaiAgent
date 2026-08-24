@@ -29,17 +29,43 @@ import { listen, rpc } from './bridge';
 // 方法契约
 // ─────────────────────────────────────────────────────────────
 
-/** Agent 上下文的公共可选参数（写操作需 is_agent + _agent_id 走权限路径）。 */
+/** Agent 上下文的公共可选参数（写操作需 is_agent + _agent_id 走权限路径）。
+ *  L1 数据上下文：`_session_id` 让引擎命令（hologram_call / 图查询 / 时间线）
+ *  决议到会话 attach 的工作区引擎实例——agentInvoke 恒注入活跃会话 id。 */
 interface AgentCtx {
   is_agent?: boolean;
   _agent_id?: string;
+  _session_id?: number;
   [key: string]: unknown;
 }
 
 export interface RpcContract {
+  // ── 应用层：数据上下文 / 会话 attach（L1）────────────────
+  /** 会话 attach（事实校验）：卷快照 workspace 字段为准；新生会话（卷未
+   *  落盘）可用 workspace 声明绑定。返回 {session_id, workspace, attached}。 */
+  session_attach: {
+    params: { session_id: number; legacy_root?: string; workspace?: string };
+    result: string; // JSON
+  };
+  /** 会话解绑（空闲上下文 GC）。 */
+  session_detach: {
+    params: { session_id: number };
+    result: string; // "null"
+  };
+  /** 焦点会话（UI 投影锚）——返回该会话工作区 "path"/null。 */
+  session_focus: {
+    params: { session_id: number };
+    result: string; // JSON
+  };
+  /** 数据上下文清单（诊断）。 */
+  context_list: {
+    params: Record<string, never>;
+    result: string; // JSON
+  };
+
   // ── Engine 调度 ──────────────────────────────────────────
   hologram_call: {
-    params: { tool: string; args?: Record<string, unknown> };
+    params: { tool: string; args?: Record<string, unknown> } & AgentCtx;
     result: string; // JSON
   };
   hologram_tools_list: {
@@ -57,11 +83,11 @@ export interface RpcContract {
     result: string; // JSON
   };
   get_graph_meta: {
-    params: Record<string, never>;
+    params: { _session_id?: number };
     result: string; // JSON
   };
   get_graph_page: {
-    params: { page?: number; page_size?: number };
+    params: { page?: number; page_size?: number; _session_id?: number };
     result: string; // JSON
   };
   engine_impact: {
@@ -259,12 +285,12 @@ export interface RpcContract {
   sandbox_status: { params: Record<string, never>; result: string }; // JSON — {degraded,reason}（Value 化：Rust 出口已展开）
 
   // ── Hologram 遗留命令 ────────────────────────────────────
-  hologram_run_check: { params: { path?: string }; result: string }; // JSON
+  hologram_run_check: { params: { path?: string; _session_id?: number }; result: string }; // JSON
   hologram_record_event: {
-    params: { event_type: string; file?: string; summary: string };
+    params: { event_type: string; file?: string; summary: string; _session_id?: number };
     result: string; // "null"（fire-and-forget）
   };
-  get_full_graph: { params: Record<string, never>; result: string }; // JSON — 大图慎用，优先分页
+  get_full_graph: { params: { _session_id?: number }; result: string }; // JSON — 大图慎用，优先分页
 
   // ── 工作区 ───────────────────────────────────────────────
   workspace_activate: { params: { path: string }; result: string }; // "null"

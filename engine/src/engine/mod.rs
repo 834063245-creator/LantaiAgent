@@ -1055,6 +1055,56 @@ mod tests {
             .contains("Engine not initialized"));
     }
 
+    /// L1 守卫：with_current（线程局部当前引擎）让 engine_* 全局函数
+    /// 按线程路由到绑定实例——跨工作区并行 dispatch 互不可见、互不串写；
+    /// 闭包退出后 TLS 清空（回落全局）。
+    #[test]
+    fn with_current_routes_global_helpers_per_thread() {
+        let _global_guard = global_engine_test_guard();
+        let tmp1 = std::env::temp_dir().join("hologram_test_tls_global");
+        let tmp2 = std::env::temp_dir().join("hologram_test_tls_bound");
+        for t in [&tmp1, &tmp2] {
+            let _ = std::fs::remove_dir_all(t);
+            std::fs::create_dir_all(t).unwrap();
+        }
+
+        // 全局引擎 = tmp1（空 store）
+        engine_init(&tmp1).unwrap();
+        // 绑定引擎 = tmp2（写入一个节点作判别标记）
+        let bound = Engine::new_shared(&tmp2).unwrap();
+        use crate::graph::{Node, NodeKind};
+        bound
+            .write(|idx| idx.insert_node(Node::new("tls_marker", "M", NodeKind::Function)))
+            .unwrap();
+
+        // with_current 内：engine_read（全局函数）读到绑定实例的数据
+        let seen_in_closure = with_current(bound.clone(), || {
+            engine_read(|idx| idx.get_node("tls_marker").is_some()).unwrap()
+        });
+        assert!(seen_in_closure, "闭包内全局函数必须路由到绑定实例");
+
+        // 闭包外：TLS 已清空——engine_read 回落全局（tmp1，无标记节点）
+        let global_has_marker = engine_read(|idx| idx.get_node("tls_marker").is_some()).unwrap_or(false);
+        assert!(!global_has_marker, "闭包退出后必须回落全局引擎");
+
+        // 并行守卫：两线程各绑各的实例，互不可见对方数据（无串写）
+        let other = Engine::new_shared(&tmp1).unwrap();
+        other
+            .write(|idx| idx.insert_node(Node::new("other_marker", "O", NodeKind::Function)))
+            .unwrap();
+        let h1 = std::thread::spawn(move || {
+            with_current(bound, || engine_read(|idx| idx.get_node("other_marker").is_some()).unwrap())
+        });
+        let h2 = std::thread::spawn(move || {
+            with_current(other, || engine_read(|idx| idx.get_node("tls_marker").is_some()).unwrap())
+        });
+        assert!(!h1.join().unwrap(), "bound 实例不得看到 other 的写入");
+        assert!(!h2.join().unwrap(), "other 实例不得看到 bound 的写入");
+
+        let _ = std::fs::remove_dir_all(&tmp1);
+        let _ = std::fs::remove_dir_all(&tmp2);
+    }
+
     /// F1 回归：增量更新路径不能总是返回 Err。
     /// 创建项目、分析、修改文件，然后验证
     /// IncrementalUpdater::update() 成功（不回退到全量分析）。
