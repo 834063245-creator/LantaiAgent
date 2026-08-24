@@ -299,10 +299,22 @@ export function switchSession(ctx: SessionContext, idx: number): void {
   // sendMessage 的同步唤起兜底，这里不拦换卷交互）
   const switchedSid = sessions[idx].id;
   if (!agentSessionState.getAgent(ctx.storeId, switchedSid)) {
-    void ensureSessionAgent(ctx).then((ok) => {
-      if (!ok) ctx.addNotice('卷的 Agent 未就绪（API Key 未配置？）——拟文时会再试', 'warn');
-    });
+    hydrateSessionAgentVisible(ctx);
   }
+}
+
+/** 卷句柄的 fire-and-forget 补建——失败可见（Phase D，2026-08-24 工作区归属
+ *  根治）：工厂返 null → warn 提示拟文再试；工厂抛错（装配失败）→ console +
+ *  error 通知，不静默吞（宪法「错误不静默」）。 */
+function hydrateSessionAgentVisible(ctx: SessionContext): void {
+  void ensureSessionAgent(ctx)
+    .then((ok) => {
+      if (!ok) ctx.addNotice('卷的 Agent 未就绪（API Key 未配置？）——拟文时会再试', 'warn');
+    })
+    .catch((e) => {
+      console.error('[chat] 卷句柄补建失败:', e);
+      ctx.addNotice(`卷的 Agent 补建失败: ${e instanceof Error ? e.message : String(e)}`, 'error');
+    });
 }
 
 /** L0 惰性水合（session-ledger）：重启恢复后惰性卷的 Agent 句柄缺席。
@@ -978,9 +990,7 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
   ctx.updateFooter();
   // 活跃卷句柄后台补建（保持「活跃卷有句柄」的既有 UX——导出/改名即存等
   // 消费路径需要；失败可见但不清会话，拟文时 sendMessage 兜底再试）
-  void ensureSessionAgent(ctx).then((ok) => {
-    if (!ok) ctx.addNotice('卷的 Agent 未就绪（API Key 未配置？）——拟文时会再试', 'warn');
-  });
+  hydrateSessionAgentVisible(ctx);
   // 自然迁移收尾（L0）：旧单卷路径恢复成功 → 首次写总目（此后 _active.json 退休）
   recordOpenSetChange(ctx.storeId, projectPath, ledgerIo);
 }
@@ -1118,9 +1128,7 @@ async function restoreFromLedger(
   ctx.updateFooter();
   // 活跃卷句柄后台补建（「活跃卷有句柄」的既有 UX——导出/改名即存等消费路径
   // 需要；失败可见但不清会话，拟文时 sendMessage 兜底再试）
-  void ensureSessionAgent(ctx).then((ok) => {
-    if (!ok) ctx.addNotice('卷的 Agent 未就绪（API Key 未配置？）——拟文时会再试', 'warn');
-  });
+  hydrateSessionAgentVisible(ctx);
   ctx.addNotice(
     `已恢复案卷工作集：${volumes.length} 卷（活跃：${activeVol.label}${volumes.length > 1 ? '，其余惰性待唤' : ''}）`,
     'info',

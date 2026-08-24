@@ -1081,7 +1081,14 @@ export class Workspace {
       );
 
       const agent = '_getAgent' in handle ? (handle as { _getAgent(): Agent })._getAgent() : null;
-      if (!agent) return null;
+      if (!agent) {
+        // Phase D（错误不静默）：句柄建了但 raw Agent 取不到——可见诊断，不只进
+        // console（会话层只会看到「工厂返回空」，这里补上根因）
+        const msg = '会话 Agent 创建失败（运行时句柄无 raw Agent）';
+        useAgentPanelStore.getState().setDiag({ text: `❌ ${msg}`, ready: false });
+        this.onStatusChange?.(`⚠️ ${msg}`);
+        return null;
+      }
       agentRef.current = agent;
       this.memoryManager?.prewarmAura();
       return handle;

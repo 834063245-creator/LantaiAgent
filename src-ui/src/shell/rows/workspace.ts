@@ -19,6 +19,7 @@ import { withTimeout } from '../../lifecycle/timeout';
 import { typedRpc } from '../../rpc-contract';
 import { useDockStore } from '../../state/dock-store';
 import { bumpWorkspaceSwitched } from '../../state/workspace-switch-store';
+import { useAgentPanelStore } from '../../ui/agent-panel-store';
 import type { CachedGraphMeta, Workspace } from '../../workspace';
 import { pushStatus, type ShellRefs, setLoading, shellRefs } from '../runtime';
 
@@ -142,11 +143,19 @@ async function switchWorkspace(
     try {
       await ws.setupAgent(chatPanel);
     } catch (e) {
+      // Phase D（错误不静默）：装配失败必须可见——不只进 console（用户 DevTools
+      // 常被屏蔽，状态条 + 诊断面板是唯一通道）
       console.error('[switchWorkspace] setupAgent failed:', e);
+      const msg = e instanceof Error ? e.message : String(e);
+      pushStatus(`⚠️ Agent 装配失败: ${msg}`);
+      useAgentPanelStore.getState().setDiag({ text: `❌ Agent 装配失败 — ${msg}`, ready: false });
     }
 
     chatPanel.setProjectPath(folder);
-    chatPanel.autoRestoreLastSession(folder).catch(() => {});
+    chatPanel.autoRestoreLastSession(folder).catch((e) => {
+      console.error('[switchWorkspace] autoRestoreLastSession failed:', e);
+      pushStatus(`⚠️ 会话恢复失败: ${e instanceof Error ? e.message : String(e)}`);
+    });
     if (ws._graphEngineOn) {
       ws.runCheck();
       await typedRpc('workspace_start_watcher', {}).catch(() => {});
@@ -209,14 +218,19 @@ async function setupPlaceholderAgent(): Promise<void> {
   }
   try {
     await ws.setupAgent(chatPanel);
-    // Phase B（2026-08-24）：会话存在性脱离装配——零目录会话照常从用户级目录
-    // 恢复历史案卷（sessionsDir('') 路由 ~/.lantai/sessions/）。
-    await chatPanel.autoRestoreLastSession('').catch((e) => {
-      console.error('[init] zero-dir session restore failed:', e);
-    });
   } catch (e) {
+    // Phase D（错误不静默）：占位装配失败同样可见
     console.error('[init] setupAgent failed:', e);
+    const msg = e instanceof Error ? e.message : String(e);
+    pushStatus(`⚠️ Agent 装配失败: ${msg}`);
+    useAgentPanelStore.getState().setDiag({ text: `❌ Agent 装配失败 — ${msg}`, ready: false });
   }
+  // Phase B（2026-08-24）：会话存在性脱离装配——零目录会话照常从用户级目录
+  // 恢复历史案卷（sessionsDir('') 路由 ~/.lantai/sessions/）。
+  await chatPanel.autoRestoreLastSession('').catch((e) => {
+    console.error('[init] zero-dir session restore failed:', e);
+    pushStatus(`⚠️ 会话恢复失败: ${e instanceof Error ? e.message : String(e)}`);
+  });
 }
 
 /** 导出面：冷启动行 + actions 行消费的 workspace 流函数族。 */
