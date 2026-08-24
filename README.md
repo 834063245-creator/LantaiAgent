@@ -3,14 +3,14 @@
 </p>
 
 <p align="center">
-  <strong>兰台（Lantai）— 一张纸上的 Agent 工作台</strong>：内置多 Agent 编码工作台，图谱引擎 HoloGram 把代码库编译成可对话的 3D 依赖星图
+  <strong>兰台（Lantai）— 一张纸上的 Agent 工作台</strong>：图谱引擎 HoloGram 把代码库编译成可查询的依赖图，桌面端以「注疏案卷」为唯一主界面
 </p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" /></a>
   <a href="https://whyihaveyou.github.io/dsh-suite/"><img src="https://img.shields.io/badge/featured%20on-dsh--suite-4d6bfe" /></a>
   <a href="https://github.com/834063245-creator/Lantai/releases"><img src="https://img.shields.io/github/v/release/834063245-creator/Lantai?color=orange&style=flat-square" /></a>
-  <a href="https://github.com/834063245-creator/Lantai/actions"><img src="https://img.shields.io/badge/tests-2200%2B-brightgreen?style=flat-square" /></a>
+  <a href="https://github.com/834063245-creator/Lantai/actions"><img src="https://img.shields.io/badge/tests-2700%2B-brightgreen?style=flat-square" /></a>
   <a href="https://github.com/834063245-creator/Lantai/releases"><img src="https://img.shields.io/badge/platform-Windows%20%C2%B7%20Linux-blue?style=flat-square" /></a>
 </p>
 
@@ -18,7 +18,7 @@
 
 ## 定位
 
-兰台把代码库解析成一张**统一 IR 依赖图**（节点 = 符号/函数/类/模块，边 = 调用/继承/读写/时序/数据流），通过 MCP 协议向 AI Agent 暴露 **35 个默认图查询工具**（注册表共 36 个 schema），并提供 Tauri 2 桌面应用（纸面 Agent 工作台 + 3D 星图）与 DeepSeek Harness（DSH）插件集成。
+兰台把代码库解析成一张**统一 IR 依赖图**（节点 = 符号/函数/类/模块，边 = 调用/继承/读写/时序/数据流），让依赖推理变成**确定性的图查询**而不是 LLM 逐文件猜源码；同时内置完整的多 Agent 编码工作台——工作台本体经八条贡献通道**完全插件化**，出厂态零硬编码特权行。
 
 **核心主张：依赖推理应当是确定性的，而不是猜的。**
 
@@ -27,8 +27,8 @@ LLM 分析"改 A 会炸什么"时，靠逐文件读源码推测依赖——弱�
 引擎是单文件二进制，本地运行、零配置、代码不出机器。它同时服务三种形态，共享同一份内存图与 watcher 增量更新：
 
 - **MCP 服务**（`hologram-engine serve`）—— 接入 Claude Code / Cursor 等任意 MCP 客户端；
-- **桌面应用**（Tauri 2 壳）—— 3D 星图 + Monaco 编辑器 + 内置 Agent 工作台；
-- **DSH 插件**（`@a834063245/hologram-dsh`）—— 引擎 + 星图打包进 DeepSeek Harness。
+- **桌面应用**（Tauri 2 壳）—— 注疏案卷工作台（详见「桌面端」一节）；
+- **DSH 插件**（`@a834063245/hologram-dsh`）—— 引擎 + 3D 星图打包进 DeepSeek Harness。
 
 ---
 
@@ -36,15 +36,16 @@ LLM 分析"改 A 会炸什么"时，靠逐文件读源码推测依赖——弱�
 
 | 能力域 | 说明 |
 |---|---|
-| **多语言静态分析** | 27 种 tree-sitter 语法静态链接，18 族/19 种语言有手工调校的结构与数据流查询（`engine/queries/` 共 38 个 .scm），Kotlin / Markdown / TOML 动态加载 |
+| **多语言静态分析** | 27 种 tree-sitter 语法静态链接，18 族有手工调校的结构与数据流查询（`engine/queries/` 共 38 个 .scm），Kotlin / Markdown / TOML 动态加载 |
 | **确定性依赖图** | 9 种节点 / 12 种边，边带 L1–L4 耦合深度、跨文件、时序延迟、LSP 已解析等属性 |
 | **深度分析** | 耦合 / 循环依赖 / 脆弱模块 / 架构盲点 / 边界违规 / 执行流 / 语法级数据流 / 社区检测（Leiden + Louvain）/ 24 个框架路由 / gRPC 服务映射 |
-| **35 个分析工具** | 影响面、改前预检、死代码、线程冲突、语义向量搜索、SCIP 导入、符号重命名……全部以结构化 JSON 返回 |
+| **35 个图查询工具** | 影响面、改前预检、死代码、线程冲突、语义向量搜索、SCIP 导入、符号重命名……全部以结构化 JSON 返回 |
 | **精确解析** | 按需启动原生 LSP（rust-analyzer / gopls / pyright 等 9 个），`resolve_call` / `infer_type` / `find_implementations` / `find_references` |
-| **内置 Agent 编码工作台** | 13 个领域工具（fs / shell / git / search / web / agent / task / memory / browser / desktop / graph / ops / lsp），多 Agent 协作、Plan / Goal 模式、事件溯源会话日志、token 治理 |
+| **内置 Agent 编码工作台** | 12 个领域工具（fs / shell / git / search / web / agent / task / browser / desktop / graph / ops / lsp）+ ask_user/wait 常驻件 + code_execution 执行原语，多 Agent 协作、Plan / Goal 模式、事件溯源会话日志、token 治理 |
 | **多厂商 LLM** | 9 个静态模型目录共 73 个模型 + 运行时动态发现，Anthropic / OpenAI 兼容 / DeepSeek / GLM / Qwen / MiniMax / Moonshot / Ollama / opencode；thinking 档位按厂商适配；本地反向代理绕 CORS |
+| **完全插件化** | 面板/命令/工具/块渲染器/prompt 段/管道钩子/capability 八条贡献通道 + MCP 机器桥；第一方与第三方走同一注册表（详见「插件系统」） |
 | **Harness 工程模式** | 约束治理（constraints.yaml）、权限引擎（Allow / Deny / Ask / Passthrough）、三层沙箱、git worktree 隔离、审计日志、系统级加密凭证 |
-| **3D 星图可视化** | Three.js WebGL + WebGPU 布局 + 星系折叠导航，万节点秒开；Monaco 编辑器点节点即开源码 |
+| **注疏案卷主界面** | 古籍注疏范式：来文/正文/夹注/脚注/抄录/拟策/贴黄七类文类块，矿物墨色语义（朱砂=人、石青=机、石墨=草稿），无限画布纸条交互（详见「桌面端」） |
 | **增量与自举** | watcher 驱动增量更新（保存即刷新）；兰台用自己的引擎分析自己的代码库 |
 
 ---
@@ -109,7 +110,7 @@ hologram --stress <path> <iters>             # 压力测试 / 基准
 
 ### 桌面应用
 
-[Releases](https://github.com/834063245-creator/Lantai/releases) → 下载 `.msi`（Windows）→ 选项目 → 自动出图。桌面端与 MCP 模式共用同一个引擎进程与数据。
+[Releases](https://github.com/834063245-creator/Lantai/releases) → 下载 `.msi`（Windows）→ 选项目 → 打开案卷。桌面端与 MCP 模式共用同一个引擎进程与数据。
 
 ### DeepSeek Harness 集成（hologram-dsh）
 
@@ -147,7 +148,7 @@ dsh web
 
 - **Engine 状态机**：`Uninitialized → Loading → Ready ↔ Analyzing → Error`，panic 守卫，重新分析可抢占在途任务
 - **增量更新**：watcher（2s 防抖）只重解析变更文件并增量合图，失败自动回退全量；桌面端"保存即刷新"
-- **存储**：内存 CSR 索引（高并发读）+ SQLite WAL 持久化 + FTS5 全文 + usearch HNSW 语义向量（MiniLM ONNX 384 维 与 n-gram 双后端自动选择）
+- **存储**：内存 CSR 索引（高并发读）+ SQLite WAL 持久化 + FTS5 全文 + usearch HNSW 语义向量（MiniLM ONNX 384 维与 n-gram 双后端自动选择）
 - **诚实标记**：eval/动态代码标为不可达，动态 import 标为动态站点，跨语言调用（子进程/HTTP/FFI）以合成边标记运行时桥接点——不假装知道运行时才知道的事
 
 ### 语言支持
@@ -185,23 +186,22 @@ Python · JavaScript/TypeScript/TSX · Rust · Go · Java · C/C++ · C# · Ruby
 
 桌面应用内置完整的多 Agent 运行时（与 DSH 集成共用引擎数据）。改代码前先问图：`graph(symbols → impact → preflight)` 是工作流入口。
 
-### 领域工具（13 个，旧细粒度名已淘汰）
+### 领域工具（12 个，旧细粒度名已淘汰）
 
-模型可见面上只有 13 个高内聚领域工具，每个工具内部是 `action` 判别联合：
+模型可见面上只有 12 个高内聚领域工具（另加 ask_user / wait 两个常驻件），每个工具内部是 `action` 判别联合（全部动作与参数以生成物 [`docs/agents/model-tool-contract.md`](docs/agents/model-tool-contract.md) 为唯一事实源；code_execution 执行原语与记忆族经会话级 capability 装配）：
 
 | 领域 | 动作（示例） |
 |---|---|
-| `fs` | read / write / edit / list / glob / mkdir / move / rename / delete / constraints |
+| `fs` | read / write / edit / list / glob / mkdir / move / rename / delete / constraints / write_constraints |
 | `shell` | run（bundled bash，构建/测试命令；Windows 原生任务用 pwsh）/ output / wait / kill |
 | `git` | status / diff / log / stage / commit / push / pull / checkout / branch / stash / unstash / discard / init / blame |
 | `search` | content（源码文本搜索） |
 | `web` | fetch（URL 抓取转可读文本） |
 | `agent` | spawn / status / kill / message / request / reply / inbox / ack / list / merge / discover / lookup / isolate_*（worktree 隔离全流程） |
 | `task` | create / get / list / update / stop / board（TaskBoard） |
-| `memory` | save / read / search / list / delete（项目记忆） |
 | `browser` | 37 个动作：launch / connect / navigate / snapshot / content / click / type / eval / network / HAR / screenshot / audit …（CDP 控制，多账号会话隔离） |
-| `desktop` | probe（进程/窗口探测）· screenshot（需审批） |
-| `graph` | 24 个只读动作：symbols / neighbors / impact / path / inspect / explore / community / clusters / summary / cycles / coupling / fragile / blindspots / boundaries / conflicts / async / unused / flows / flow / affected_flows / dataflow / preflight / grpc / diff |
+| `desktop` | probe（进程/窗口探测）· screenshot · uia_tree / uia_find /…（进程内 UIA COM 树） |
+| `graph` | 27 个动作：symbols / neighbors / impact / path / inspect / explore / community / clusters / summary / cycles / coupling / fragile / blindspots / boundaries / conflicts / async / unused / flows / dataflow / preflight / grpc / diff … |
 | `ops` | analyze / validate / health / status / timeline / rename / import_scip |
 | `lsp` | resolve_call / infer_type / implementations / references |
 
@@ -209,47 +209,101 @@ Python · JavaScript/TypeScript/TSX · Rust · Go · Java · C/C++ · C# · Ruby
 
 ### Agent 运行时内核
 
-- **声明式装配（Phase 6 + 组合架构 S1 三层，2026-08-20；P4 插件化 2026-08-24）**：工具族全量经 ctx.tools 第一方插件通道贡献（行表序 = 组合序，行内重名装载期拒绝）；system-prompt 段落走 `src/composition/prompt-sections.ts` section 表（13 段两装配面，经 ctx.prompts 通道贡献）；会话级工具/hook 走 `AgentBlueprint` capability 表（十五项第一方 capability 经 ctx.capabilities 通道贡献，清单序 = 迁移前出厂表序）——`AgentConfig` 冻结 31 字段不再扩张；三层表序 = 字节契约（保护 DeepSeek 前缀缓存与 effective 快照）
-- **会话事件溯源（Phase 5）**：session 变异只走 `_appendMessage` / `_replaceSession` / `_retractSessionRange` 三个入口，`SessionLog` 事件日志支撑差分对拍、回放与审计
-- **生命周期内核（cordis-migration P0–P4）**：vendored cordis 内核（`src/cordis/`，Context/Fiber/Service）——工作区级资源以 `Workspace._fiber.ctx.effect()` 登记（顺序敏感拆除组打包 DisposerBag 作单个 effect 保串行逆序）；Agent 挂身份 fiber（`hologram/agent`，DisposerBag 同步快通道契约保留）；子系统以 Service 挂树（样板 `LspService`）；epoch 代际防护**永久保留**（管逃逸所有权的在途回调，fiber 管所有权，两者不重叠）。切换/退出只调 `fiber.dispose()` + epoch bump（事故记录见 `INVARIANTS.md` #12）
+- **声明式装配 + 完全插件化（2026-08-24 P4 收官）**：工具族 / system-prompt 段 / 会话级 capability 三类行源**全量经插件通道贡献**，出厂表三张退役——兰台的出厂态里没有任何一行硬编码特权。第一方能力与第三方插件在同一注册表上竞争，装载序即防线；`AgentConfig` 冻结 31 字段不再扩张；三层表序 = 字节契约（保护 DeepSeek 前缀缓存与 effective 快照）
+- **会话事件溯源**：session 变异只走 `_appendMessage` / `_replaceSession` / `_retractSessionRange` 三个入口，`SessionLog` 事件日志支撑差分对拍、回放与审计
+- **生命周期内核（cordis）**：vendored cordis 内核（Context/Fiber/Service）承载全部资源生命周期——工作区级资源以 fiber effect 登记、顺序敏感拆除组打包逆序执行；Agent 挂身份 fiber；子系统以 Service 挂树；epoch 代际防护管逃逸所有权的在途回调
 - **流式执行**：tool_use 完成即 dispatch（不等整条 stream），同轮只读工具并发执行；工具输出 50KB/2000 行截断；可重试错误指数退避（最多 3 次）；AbortSignal 贯穿，卡死工具不挂死循环
-- **token 治理**：工具结果滚动折叠、成本模型驱动的 auto-compact（`compactRatio` 默认 0.55，压缩只作用于发送载荷，session 永为完整历史）
+- **token 治理**：工具结果滚动折叠、成本模型驱动的 auto-compact（压缩只作用于发送载荷，session 永为完整历史）
+- **一致性门禁**：`npm run verify:convergence`（T0 静态 + frozen baseline 对拍 + system-prompt fixture），任何变更破坏契约即失败；baseline 变更走审批
 
 ### 多 Agent 协作
 
-- `SubAgentPool`：并发上限 5、队列 20、**默认超时 30 分钟**；`fork`（继承上下文）/ `fresh`（干净启动）两种模式；async spawn 完成后经 MessageBus 通知父 Agent
-- **通信层**：有界 inbox（100 条，满了 drop 防背压）、peek + ack、主题拓扑（Tree/Mesh/Star），消息持久化 `.lantai/agents/{id}/inbox.json`
+- `SubAgentPool`：并发上限 5、队列 20、默认超时 30 分钟；`fork`（继承上下文）/ `fresh`（干净启动）两种模式
+- **通信层**：有界 inbox（100 条，满了 drop 防背压）、peek + ack、主题拓扑（Tree/Mesh/Star），消息持久化
 - **共享状态板**：TaskBoard（任务状态 / filesTouched / diff）与 DiscoveryBoard（探索发现，TTL 2h）——均按会话隔离，防跨会话串扰
-- **隔离执行**：子 Agent 的编辑在独立 git worktree 中运行（见下文"隔离"），`agent_merge` 进程内串行合并
+- **隔离执行**：子 Agent 的编辑在独立 git worktree 中运行，`agent(merge)` 进程内串行合并；重启后孤儿 worktree 收养；大 diff 溢写 `.lantai/spill/` 回传
 - 模型可见的子 Agent ID：`sub-{timestamp}-{random}`；worktree ID：`agent-{timestamp}-{random}`
 
 ### Plan 与 Goal 模式
 
-- **Plan 模式**：只读探索 + 写计划文件，`exit_plan_mode` 提交方案（可带多选项）给用户审批；写约束由 `planGate` 在执行层拦截，工具 schema 跨模式恒定（保护前缀缓存）
-- **Goal 模式**：持久化目标状态（`.lantai/goals/{id}/`，goal/session/index 三文件），跨会话恢复，与普通对话完全隔离；完成靠 `goal_report` 工具
+- **Plan 模式**：只读探索 + 写计划文件，`exit_plan_mode` 提交方案给用户审批；写约束由 `planGate` 在执行层拦截，工具 schema 跨模式恒定（保护前缀缓存）
+- **Goal 模式**：持久化目标状态（`.lantai/goals/{id}/`），跨会话恢复，与普通对话完全隔离；完成靠 `goal_report` 工具
 
 ### 记忆体系
 
 | 层 | 实现 |
 |---|---|
-| 会话记忆 | Agent session JSON（`.lantai/agents/{id}/`） |
-| 项目记忆 | `MemoryManager` → `.lantai/memory/*.md`，MEMORY.md 索引 + confidence 四档分级（fact / reference / background / suppressed） |
+| 会话记忆 | Agent session JSON（事件溯源） |
+| 项目记忆 | `MemoryManager` → `.lantai/memory/*.md`，MEMORY.md 索引 + confidence 四档分级 |
 | Aura 记忆 | `aura.dll` FFI（SDR + MinHash 语义召回），跨会话语义记忆 |
-| Memory Bundle | 独立进程 `memory-bundle.exe` + HTTP 客户端（127.0.0.1:9600），进程隔离的记忆服务 |
+| Memory Bundle | 独立进程 + HTTP 客户端，进程隔离的记忆服务 |
 | 技能系统 | `.lantai/skills/<name>/SKILL.md` 热加载，无需重启 |
 
 ### LLM Provider 体系
 
-- **模型目录**：9 个静态 catalog JSON（anthropic 14 / openai 29 / moonshotai 10 / qwen 5 / deepseek 4 / glm 3 / minimax 3 / ollama 3 / opencode 2，共 73 个模型）+ 运行时 `fetchModels()` 拉取 `/models` 动态合并（静态目录同 ID 优先）
+- **模型目录**：9 个静态 catalog JSON（anthropic / openai / moonshotai / qwen / deepseek / glm / minimax / ollama / opencode，共 73 个模型）+ 运行时 `fetchModels()` 动态合并（静态目录同 ID 优先）
 - **协议适配**：统一 `Provider` trait 抹平 Anthropic Messages 与 OpenAI 兼容两大协议；流式 chunk 类型 Text / Reasoning / ToolCallStart / ToolCall / Usage / Done / Error
-- **thinking 档位**：自动 / low / medium / high / max / off，wire 参数按厂商适配（Anthropic budget_tokens：4k/8k/16k/32k；DeepSeek reasoning_effort：high/max；OpenAI 官方 low/medium/high）
-- **本地反向代理**：壳侧起 loopback-only 的 HTTP 代理（127.0.0.1:14570）转发 LLM 请求并强加 CORS 头，绕开浏览器直连 API 的跨域限制，SSE 逐块透传
+- **thinking 档位**：自动 / low / medium / high / max / off，wire 参数按厂商适配
+- **本地反向代理**：壳侧起 loopback-only 的 HTTP 代理转发 LLM 请求并强加 CORS 头，绕开浏览器直连 API 的跨域限制
 - **连接探针**：ConnectionProbe 最小连通性验证（成功/失败/耗时），结果持久化
 - **凭据**：系统级加密存储（Windows DPAPI / macOS Keychain / Linux secret-tool），本地永不明文
 
-### 一致性门禁
+---
 
-`npm run verify:convergence`（src-ui）：T0 静态断言（AgentConfig 冻结、session 变异入口、capability 序）+ 8 个 frozen baseline 对拍，任何变更破坏契约即失败。record 模式需显式 `CONVERGENCE_RECORD=1`，baseline 变更走审批（`docs/archive/agent-core-convergence/baseline-change-request.md`）。
+## 插件系统（八通道全开）
+
+> **2026-08-24 P4 收官**：出厂态零硬编码特权行。面板/命令/工具/块渲染器/prompt 段/管道钩子/capability 全部经插件通道贡献——兰台自己就是自己插件架构的第一用户（十五项第一方 capability、十三段 system-prompt、全部领域工具行都走同一套通道），与第三方插件在同一注册表上竞争。
+
+| 通道 | 挂什么 | 生效时机 |
+|---|---|---|
+| `ctx.panels` | 桌面端面板 | 装载后即时 |
+| `ctx.commands` | 命令面板命令 | 装载后即时 |
+| `ctx.tools` | 模型可见工具 | 下次 Agent 装配（新会话） |
+| `ctx.renderers` | 纸壳块体渲染器 | 即时（渲染期消费） |
+| `ctx.prompts` | system-prompt 段落 | 下次 Agent 装配 |
+| `ctx.hooks` | 工具管道钩子（enrich 富化 / preflight 预检） | 下次 Agent 装配 |
+| `ctx.capabilities` | 会话级能力（工具+钩子+ctx 服务一把抓） | 下次 Agent 装配 |
+| manifest `mcpServers` | 外部 MCP server 桥接（零插件代码） | lazy 首装配 / startup-error 装载期 |
+
+- **写一个插件的最短路径**：一个 `manifest.json` + 一个自包含 ESM 模块（webview 动态 import 装载，无包管理器、无 import map）。从零到跑通的最小示例见 [`examples/plugins/hello/`](examples/plugins/hello/README.md)
+- **manifest 声明式工具**（`tools` 字段）：声明是数据（name/description/parameters JSON Schema/readOnly），执行是 entry 模块的 `toolHandlers` 命名导出——插件不触碰 `ctx.tools`，装载期即知工具面
+- **权限三层**：manifest `permissions` 声明（read/edit/bash/git/web 五域闭集）→ `plugins.json` granted 段授予门禁（装载期一票否决）→ Rust 命令咽喉逐调用强制（与声明无关，照常生效）
+- **信任模型（如实声明）**：插件是本机全信任代码——不做签名、不做沙箱；真正的强制层在 Rust 命令咽喉的权限规则与模式门禁
+- **MCP 机器桥**：manifest `mcpServers` 声明式挂接外部 MCP server——stdio（Rust 进程桥）与 http 双传输，工具以 `mcp__<server>__<工具名>` 注册；这是比自造插件格式更标准的开放路径
+- **preset/patch 寻址**：全部贡献行（含第一方）可被 roster patch / preset 禁用、覆盖、锚定——组合解析域对内外一律均匀
+- **完整契约**：[`docs/plugins/README.md`](docs/plugins/README.md)（manifest 字段 / 八通道 API / 宿主桥 / 安装与授权 / 信任模型 / KV-cache 注意事项）
+
+---
+
+## 桌面端（注疏案卷）
+
+> 兰台＝汉代皇家档案典籍库。产品不是「聊天窗」，而是**一部正在被编纂的案卷**——人在纸边批注、AI 居中撰文、机器贴底注记。把「等权消息流」换成「注疏层级」。
+
+### 注疏范式
+
+| 块类型 | 文类签 | 语义 |
+|---|---|---|
+| `user` | 来文 | 人的问话——楷书 + 朱砂深，左 2px 红批线 |
+| `markdown` | 正文 | AI 的答——宋体大字号居中主角 |
+| `reasoning` | 夹注 | 模型思考链——缩进列边，石墨铅笔，虚线勾边 |
+| `tool` | 脚注 | 工具调用记录——贴底小字，石青注线 |
+| `diff` | 抄录 | 代码图版——硬左线 + 米黄底，add 松绿 / del 朱砂深加删除线 |
+| `plan` | 拟策 | 方案审批——顶硬线 + 石青序号 |
+| `notice` | 贴黄 | 系统通知——古代奏章上贴的黄纸条 |
+
+**墨色铁律**：朱砂 = 人，石青 = 机，石墨 = 草稿，墨 = 正文。字体三栈——宋体（正文，Noto Serif SC + EB Garamond）/ 楷书（手迹，Ma Shan Zheng，只给「人的来文」）/ 等宽（机读，IBM Plex Mono）。
+
+### 画布交互
+
+无限画布 + 纸条（块）钉住/收回 + 小地图 + 拖拽落点分区；多卷并行（左缘书脊列 SpineRack，恒显/卷首名双击改名/合卷自动存）；会话即案卷，摊开的工作集重启全恢复。
+
+### 视觉系统
+
+矿物颜料墨色 token（松烟墨/朱砂/石青/赭石石墨/纸面）全 UI 统一；设计契约 [`docs/design/lantai-design-spec.md`](docs/design/lantai-design-spec.md)，视觉决定账本 [`docs/plans/paper-shell/taste-ledger.md`](docs/plans/paper-shell/taste-ledger.md)。
+
+### 状态管理
+
+React 19 + Zustand 5：面板级状态走 `createScopedStore` 注册表，app 级单例走 shell/dock/overlay store；事件总线已归零（禁复活）；Workspace 统一状态容器（vendored cordis fiber 树）原子化切换，DisposerBag + epoch 防旧项目串台。
 
 ---
 
@@ -257,63 +311,27 @@ Python · JavaScript/TypeScript/TSX · Rust · Go · Java · C/C++ · C# · Ruby
 
 ### 约束治理
 
-`hologram.constraints.yaml` 定义不可逾越的架构边界（L5 永远路由、L4 静默破溃默认路由、波及半径阈值、跨社区边容忍、黑白名单）；Agent 编辑文件前必须过 `preflight_check`，引擎按图拓扑计算波及半径/跨社区影响/L4 穿透决定放行或路由人工确认。前端另有内存 fileIndex 的 preflight hook（<0.1ms 零延迟），编辑前把 ⚠️ 警告注入工具结果顶部。
+`hologram.constraints.yaml` 定义不可逾越的架构边界（L5 永远路由、L4 静默破溃默认路由、波及半径阈值、跨社区边容忍、黑白名单）；Agent 编辑文件前必须过 `preflight_check`，引擎按图拓扑计算波及半径/跨社区影响/L4 穿透决定放行或路由人工确认。
 
 ### 权限引擎
 
-- 规则三来源合并：系统 / 项目（`.lantai/permissions.json`）/ 会话，裁决结果四态：`Allow` / `Deny` / `Ask`（danger 红卡）/ `Passthrough`；模式 Ask / Auto / Yolo（Yolo 不旁路 Deny，auto 白名单只放行编辑类工具）
-- **Bash 危险命令引擎**：13 类危险模式（rm -rf /、curl|sh、eval/exec/source、sudo/su、写 /dev/*、git push -f main、mkfs、shutdown …）+ PowerShell 特判（Invoke-Expression、iwr|iex、FromBase64String）+ 管道解码检测与可疑命令启发式
+- 规则三来源合并：系统 / 项目（`.lantai/permissions.json`）/ 会话，裁决四态：`Allow` / `Deny` / `Ask`（danger 红卡）/ `Passthrough`；模式 Ask / Auto / Yolo（Yolo 不旁路 Deny）
+- **Bash 危险命令引擎**：13 类危险模式（rm -rf /、curl|sh、eval/exec/source、sudo/su、写 /dev/*、git push -f main、mkfs、shutdown …）+ PowerShell 特判（Invoke-Expression、iwr|iex、FromBase64String）+ 管道解码检测
 - 路径规则对 worktree 自动 reverse-map 回主仓库逻辑路径；`_agent_id` 每次调用显式传递，杜绝并行子 Agent 身份串扰
 
 ### 沙箱（三层）
 
-- **OS 层**：Windows Job Object（进程树随父死亡、64 进程 / 1 GiB 上限）；macOS sandbox-exec；Linux bubblewrap；shell 走捆绑 MSYS2 bash（vendor，标准 MSYS2 根布局 `usr/bin` + `tmp`），Windows 原生任务才用 pwsh
+- **OS 层**：Windows Job Object（进程树随父死亡、64 进程 / 1 GiB 上限）；macOS sandbox-exec；Linux bubblewrap；shell 走捆绑 MSYS2 bash（vendor），Windows 原生任务才用 pwsh
 - **路径层**：canonicalize + 符号链接/junction 检测，读写边界校验；边界外不静默拒绝，升级为 Ask 弹窗
 - **受限文件系统**：统一 I/O 包装（100 MiB 读写上限、30s 超时、3 次瞬态重试、原子写）
 
 ### 隔离（git worktree）
 
-每个子 Agent 一个 `git worktree add --detach` 独立工作区：正反向路径映射、范围 cherry-pick 串行合并（清失败≠合并失败）、重启后孤儿 worktree 收养、大 diff（>8K 字符）溢写 `.lantai/spill/` 回传；TTL 清理与合并队列由前端 agent 层纪律保证（见 AGENTS.md）。
+每个子 Agent 一个 `git worktree add --detach` 独立工作区：正反向路径映射、范围 cherry-pick 串行合并（清失败≠合并失败）、重启后孤儿 worktree 收养、大 diff 溢写回传；TTL 清理不销毁无记录工作。
 
 ### 审计
 
-全部工具调用落 `.lantai/audit.jsonl`（allowed / denied / user_approved / user_denied），配合 `project_timeline` 工具按时间线回溯分析历史。
-
----
-
-## 桌面端
-
-<p align="center">
-  <img src="assets/screenshots/01.png" width="32%" />&nbsp;
-  <img src="assets/screenshots/02.png" width="32%" />&nbsp;
-  <img src="assets/screenshots/03.png" width="32%" />
-</p>
-
-### 3D 星图
-
-- Three.js WebGL 渲染（ACES 色调映射 + UnrealBloom 辉光），每节点 3 个 draw call（Fresnel 内核 + 双层辉光），万节点级瞬时渲染
-- **GPU 布局**：WebGPU WGSL 三趟力导向计算，设备不可用时优雅降级 CPU（布局参数锁定，勿改）
-- **星系折叠导航**：社区 → 星系 → 星座 → 子星团无限下钻，跨星系边流
-- **图数据分页**：`get_graph_page` 逐页拉取（12000/页），全量到齐原子换入单次渲染；watcher diff 增量渲染（无重布局、无相机重置）
-- **交互**：hover 屏幕空间拾取、点击详情、Alt 框选、B 键 Blast 波及半径、路径查找、Agent 工具执行透镜/轨迹/热点高亮、diff 绿红覆盖、legend 可点击过滤、聚焦相机飞行
-
-### 编辑器
-
-点节点即开源码：Monaco（懒加载，~5MB 不入初始 bundle）+ 原生 LSP（补全 / 悬停 / 定义 / 引用 / 诊断，诊断缓存按工作区隔离）；浮动标签页、拖拽缩放、Ctrl+S 保存、并排 Diff。
-
-### 聊天与面板
-
-- 虚拟列表聊天（万条消息流畅）：流式渲染、reasoning 块自动折叠、工具调用卡片、子 Agent 消息、Plan 审批卡、权限卡（PromptShelf）
-- 工作台面板：简报（Check）/ 约束 / 数据流 / 设置（Provider/Agent/Display/Languages/About）/ 智能体 / 待办；左缘时间轴 HUD（commit/违规/简报脉冲点阵）
-- 顶栏 CommandBar + Ctrl+K 命令面板、左右 DockRail 停靠轨、状态栏遥测（节点/边/星座统计）
-
-### 视觉系统
-
-全 UI 统一 `--obs-*` 设计 token（24 个，唯一定义于 `src/app/tokens.css`）：void/glass/line/brass/pass/warn/fail + 字体栈；自托管字体（Fraunces 展示 / JetBrains Mono 数据 / LXGW 文楷正文 / Noto Serif SC）；"墨与黄铜"视觉语言：铅笔=未定稿、墨水=已定稿、烫金=完成、朱砂=风险，全 UI 仅金/朱砂/墨绿三有彩色（见 [`docs/design/visual-language-ink-brass.md`](docs/design/visual-language-ink-brass.md)）。
-
-### 状态管理
-
-面板级状态走 `createScopedStore` 注册表（messages / session / panel / input 四件套 + chat-store 聚合），app 级单例走 shell/dock/overlay store；`ui/events.ts` 旧总线已冻结（存量 ~20 个 import，新代码禁 import）。Workspace 统一状态容器原子化切换（deactivate → open → 注入），`DisposerBag` + epoch 防旧项目串台。
+全部工具调用落 `.lantai/audit.jsonl`（allowed / denied / user_approved / user_denied），配合 `project_timeline` 工具按时间线回溯。
 
 ---
 
@@ -321,28 +339,28 @@ Python · JavaScript/TypeScript/TSX · Rust · Go · Java · C/C++ · C# · Ruby
 
 ```
 ┌─────────────── src-ui (TypeScript) ─────────────────┐
-│  React 19 · Three.js 星图 · Monaco · Agent 运行时    │
+│  React 19 · 注疏案卷纸壳 · Agent 运行时 · 组合层       │
 │  zustand stores · Workspace（vendored cordis fiber 树）│
-└───────────────────────┬─────────────────────────────┘
-                        │ typedRpc / typedListen（134 个方法，单一契约）
+└───────────────────────┬────────────────────────────┘
+                        │ typedRpc / typedListen（153 个方法，单一契约）
 ┌─────────────── src-tauri (Rust / Tauri 2) ──────────┐
 │  权限引擎 · 三层沙箱 · worktree 隔离 · ResourceLedger │
 │  LLM 反向代理 · 加密凭证 · 审计 · PTY · CDP 浏览器     │
-└───────────────────────┬─────────────────────────────┘
+└───────────────────────┬────────────────────────────┘
                         │ TCP 127.0.0.1:9777
-┌───────────────────────▼─────────────────────────────┐
+┌───────────────────────▼────────────────────────────┐
 │  engine (Rust，单二进制 hologram-engine)             │
 │  tree-sitter AST → 并行管线 → 9 节点/12 边依赖图      │
 │  MemoryIndex (CSR) + SQLite/FTS5 + 语义向量          │
 │  36 MCP schema（默认 35）· stdio / CLI / TCP 三入口   │
-└─────────────────────────────────────────────────────┘
+└────────────────────────────────────────────────────┘
 ```
 
 | 层 | 目录 | 职责 |
 |:--|:--|:--|
 | 引擎 | `engine/` | 解析 · 图构建 · 耦合/数据流/社区/脆弱性分析 · 存储 · MCP/CLI/TCP |
-| 壳 | `src-tauri/` | Tauri 2 · 权限裁决 · 沙箱 · 隔离 · 生命周期（ResourceLedger 10 服务）· 凭证 · 代理 |
-| 前端 | `src-ui/` | 星图渲染 · Agent 运行时 · 多 Agent 编排 · Provider 体系 |
+| 壳 | `src-tauri/` | Tauri 2 · 权限裁决 · 沙箱 · 隔离 · 生命周期 · 凭证 · 代理 |
+| 前端 | `src-ui/` | 注疏案卷纸壳 · Agent 运行时 · 多 Agent 编排 · 组合层/插件系统 · Provider 体系 |
 
 架构决策（为什么引擎独立二进制、为什么权限在壳层、为什么 Agent 在前端、为什么用 worktree 隔离）见 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
 
@@ -350,10 +368,10 @@ Python · JavaScript/TypeScript/TSX · Rust · Go · Java · C/C++ · C# · Ruby
 
 ## 工程事实
 
-- **测试**（2026-08-17 实测）：引擎 **697 用例**（lib 669 + bin 27 + doc 1，696 passed / 1 ignored）· 壳 **322 用例**（bin 308 + 集成 14，全绿；pwsh 冒烟在无 pwsh 7 的环境自动跳过）· 前端 **1201 用例 / 116 文件**（1200 passed / 1 skipped；首次全量在并行构建环境下偶发 1 失败，重跑通过）
-- **自举**：兰台用自己的引擎分析自己的代码库——当前图快照 **18,119 节点 / 65,508 边**（2026-08-17）
-- 实测（Linux kernel 全量，历史基准）：全量分析 1,770s 全程跑完，RSS 646MB；快照写入 2.44GB / 56.3s
-- 并行解析 200 文件/批，边去重 625×；增量更新由 watcher 驱动（保存即刷新）
+- **测试基线**（2026-08-23/24 实测，数字会漂移，以重新实测为准）：引擎 **697 用例**（696 passed / 1 ignored）· 壳 **bin 389 + 集成 14**（全绿）· 前端 **162 文件 1610 passed / 1 skipped**（convergence 双 preset 零漂移）
+- **自举**：兰台用自己的引擎分析自己的代码库
+- 实测（Linux kernel 全量，历史基准）：全量分析 1,770s 全程跑完，RSS 646MB
+- 并行解析 200 文件/批；增量更新由 watcher 驱动（保存即刷新）
 - 三端独立验证：`engine cargo test` · `src-tauri cargo test` · `src-ui vitest run`；前端另有 `npm run verify:convergence` 契约门禁
 - 已知盲区以"诚实标记"处理：eval/动态代码标记不可达、动态 import 标记动态站点，不假装知道运行时才知道的事
 
@@ -382,6 +400,8 @@ cd src-ui && npm run build     # tsc --noEmit + vite build
 cd src-ui && npm run verify:convergence   # Agent 运行时契约门禁
 cd src-ui && npx biome check --write <改动文件>   # 格式（全仓存量基线勿顺手清）
 ```
+
+**写插件**：契约见 [`docs/plugins/README.md`](docs/plugins/README.md)，最小示例 [`examples/plugins/hello/`](examples/plugins/hello/README.md)——不改 Rust 引擎也能贡献面板/命令/工具/渲染器。
 
 项目理解与工作纪律见 [`AGENTS.md`](AGENTS.md)（Codex）与 [`CLAUDE.md`](CLAUDE.md)（内置 Agent）；提交流程见 [`CONTRIBUTING.md`](CONTRIBUTING.md)；文档总索引见 [`docs/README.md`](docs/README.md)（`docs/archive/` 为已竣工施工稿，勿作现状依据）。
 
