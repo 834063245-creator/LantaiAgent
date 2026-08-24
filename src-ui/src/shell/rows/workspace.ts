@@ -157,7 +157,10 @@ async function switchWorkspace(
     }
 
     chatPanel.setProjectPath(folder);
-    chatPanel.autoRestoreLastSession(folder).catch((e) => {
+    // 会话统一 U2：恢复改为 await——跨工作区续开（首页点他区卷 → switch →
+    // loadSessionFromDisk）需要恢复落定后再摊开目标卷，否则恢复的整表 setState
+    // 会与续开的 append 交错（续开的卷被恢复态覆写）。
+    await chatPanel.autoRestoreLastSession(folder).catch((e) => {
       console.error('[switchWorkspace] autoRestoreLastSession failed:', e);
       pushStatus(`⚠️ 会话恢复失败: ${e instanceof Error ? e.message : String(e)}`);
     });

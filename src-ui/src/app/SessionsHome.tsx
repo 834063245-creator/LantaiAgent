@@ -8,51 +8,36 @@
 // 顶部书眉（印章+兰台+设置入口）+ kicker + 大标题 + 描述 + 案卷列表
 // （日期/标题/leader 点线/#编号·N 块）+ 新建按钮 + 底部 footer。
 //
-// 数据：真实会话消息（项目会话 listSavedSessions + 零目录 user_sessions_list）。
+// 数据：全局会话列表（会话统一 U2：user_sessions_list 单一来源——全局位
+// 恒扫 + legacy_root 项目旧目录兼容源加扫；不再读图 meta / listSavedSessions）。
 // 视觉契约：docs/design/lantai-design-spec.md（注疏横排 / 朱砂=人 / 圆角恒 0）。
 
 import { useCallback, useEffect, useState } from 'react';
 import { typedJsonRpc } from '../rpc-contract';
-import { graphEngineEnabled, loadSettings } from '../settings';
 import { workspaceFlow } from '../shell/rows/workspace';
 import { useDockStore } from '../state/dock-store';
 import { useUpdateStore } from '../state/update-store';
 import { ensureUserSessionsDir } from '../ui/chat-session';
 import { getChatStore } from '../ui/chat-store';
 import { useCoreStore } from './chat/core-instance';
+import { useShellStore } from './shell-store';
 import { WinControls } from './WinControls';
 
-/** 零目录会话行（Rust UserSessionEntry 同形） */
+/** 全局会话行（Rust UserSessionEntry 同形）——workspace：卷归属工作区（可空 = 零目录卷）。 */
 interface UserSession {
   id: number;
   label: string;
   msg_count: number;
   saved_at: string;
+  workspace?: string | null;
 }
 
-/** 项目会话行（listSavedSessions 产物同形） */
-interface ProjectSession {
-  id: number;
-  label: string;
-  msgCount: number;
-  savedAt: string;
-}
-
-/** 冷启动缓存图 meta 的 source_root（上次打开项目）——读一次，失败 = null。 */
-async function lastProjectRoot(): Promise<string | null> {
-  if (!graphEngineEnabled(loadSettings())) {
-    try {
-      return await typedJsonRpc<string | null>('get_last_project', {});
-    } catch {
-      return null;
-    }
-  }
-  try {
-    const meta = await typedJsonRpc<{ meta?: { source_root?: string } }>('load_graph_json', {});
-    return meta?.meta?.source_root || null;
-  } catch {
-    return null;
-  }
+/** 卷所属工作区的短名（路径末段；零目录卷 = null 不显示）。 */
+function workspaceShortName(ws: string | null | undefined): string {
+  if (!ws) return '';
+  const norm = ws.replace(/\\/g, '/').replace(/\/+$/, '');
+  const last = norm.split('/').filter(Boolean).pop();
+  return last ?? norm;
 }
 
 /** 案卷日期列：MM-DD（原型 .session-row .date 同款） */
@@ -92,22 +77,10 @@ function handleBarDoubleClick(e: React.MouseEvent): void {
   }
 }
 
-/** 合并两组会话并按 savedAt 降序；项目会话在前（原型「案卷」单一时间序） */
-interface MergedSession {
-  key: string;
-  kind: 'project' | 'user';
-  id: number;
-  label: string;
-  msgCount: number;
-  savedAt: string;
-}
-
 export function SessionsHome() {
   const core = useCoreStore((s) => s.core);
   const openPanel = useDockStore((s) => s.openPanel);
-  const [projectRoot, setProjectRoot] = useState<string | null>(null);
-  const [projectSessions, setProjectSessions] = useState<ProjectSession[]>([]);
-  const [userSessions, setUserSessions] = useState<UserSession[]>([]);
+  const [sessions, setSessions] = useState<UserSession[]>([]);
   // L1 摊开标记：sess store 订阅（谁已摊开——首页卡片直示，点已开卷 = 换卷）
   const panelId = core?.panelId ?? null;
   const [openSet, setOpenSet] = useState<Set<number>>(new Set());
@@ -122,32 +95,32 @@ export function SessionsHome() {
     return () => un();
   }, [panelId]);
 
+  // 单一全局列表（会话统一 U2）：user_sessions_list 一个来源——全局位 +
+  // legacy_root（get_last_project 文件直读，与图 meta 无关）兼容源加扫。
   useEffect(() => {
     let alive = true;
     void (async () => {
       await ensureUserSessionsDir();
-      const root = await lastProjectRoot();
-      if (!alive) return;
-      setProjectRoot(root);
-      if (root && core) {
-        try {
-          const list = await core.listSavedSessions(root);
-          if (alive) setProjectSessions(list);
-        } catch {
-          /* 列表失败容忍（目录缺失 = 空列表常态） */
-        }
+      let legacyRoot: string | null = null;
+      try {
+        legacyRoot = await typedJsonRpc<string | null>('get_last_project', {});
+      } catch {
+        /* 指针缺失 = 只列全局位（新卷世界自足） */
       }
       try {
-        const parsed = await typedJsonRpc<UserSession[]>('user_sessions_list', {});
-        if (alive) setUserSessions(Array.isArray(parsed) ? parsed : []);
+        const parsed = await typedJsonRpc<UserSession[]>('user_sessions_list', {
+          legacy_root: legacyRoot ?? undefined,
+        });
+        if (alive) setSessions(Array.isArray(parsed) ? parsed : []);
       } catch {
-        /* 用户级目录不存在 = 空（首启常态） */
+        /* 目录不存在 = 空（首启常态） */
       }
     })();
     return () => {
       alive = false;
     };
-  }, [core]);
+    // 挂载期取一次全局列表（user_sessions_list 是全局位，不依赖面板实例）
+  }, []);
 
   const onNewSession = useCallback(() => {
     openPanel('paper');
@@ -169,49 +142,33 @@ export function SessionsHome() {
     void workspaceFlow.switchWorkspace();
   }, [openPanel]);
 
-  const onResumeProject = useCallback(
-    (s: ProjectSession) => {
-      if (!core || !projectRoot) return;
-      openPanel('paper');
-      void core.loadSessionFromDisk(projectRoot, s.id);
-    },
-    [core, projectRoot, openPanel],
-  );
-
-  const onResumeUser = useCallback(
+  /** 续开入口（会话统一 U2）：跨工作区卷先切到卷的工作区（skipAnalysis——
+   *  引擎只加载缓存不分析，秒级），再摊开该卷；同工作区/零目录卷直接摊开。 */
+  const onResume = useCallback(
     (s: UserSession) => {
       if (!core) return;
       openPanel('paper');
-      void core.loadSessionFromDisk('', s.id);
+      const ws = s.workspace ?? '';
+      const current = useShellStore.getState().projectPath;
+      if (ws && ws !== current) {
+        void (async () => {
+          try {
+            await workspaceFlow.switchWorkspace(ws, { skipAnalysis: true });
+            await core.loadSessionFromDisk(ws, s.id);
+          } catch (e) {
+            window.console.error('[SessionsHome] 跨工作区续开失败:', e);
+          }
+        })();
+        return;
+      }
+      void core.loadSessionFromDisk(ws, s.id);
     },
     [core, openPanel],
   );
 
-  /** 合并 + 按 savedAt 降序，最新在最上（原型「案卷 Nº 12」在前） */
-  const merged: MergedSession[] = [
-    ...projectSessions.map(
-      (s): MergedSession => ({
-        key: `p-${s.id}`,
-        kind: 'project',
-        id: s.id,
-        label: s.label,
-        msgCount: s.msgCount,
-        savedAt: s.savedAt,
-      }),
-    ),
-    ...userSessions.map(
-      (s): MergedSession => ({
-        key: `u-${s.id}`,
-        kind: 'user',
-        id: s.id,
-        label: s.label,
-        msgCount: s.msg_count,
-        savedAt: s.saved_at,
-      }),
-    ),
-  ].sort((a, b) => new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
+  /** 按 savedAt 降序，最新在最上（原型「案卷 Nº 12」在前；Rust 侧已排序，此处稳定化） */
+  const merged = [...sessions].sort((a, b) => new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime());
 
-  const activeKey = merged.length > 0 ? merged[0].key : null;
   const onOpenSettings = useCallback(() => openPanel('settings'), [openPanel]);
   // 更新角标（update-store）：启动自动检查发现新版本且用户未看过 → 朱砂点
   const updateAvailable = useUpdateStore((s) => s.status === 'available' && !s.badgeDismissed);
@@ -261,23 +218,21 @@ export function SessionsHome() {
           <div className="sh-sessions">
             {merged.slice(0, 8).map((s) => {
               const opened = openSet.has(s.id);
+              const wsName = workspaceShortName(s.workspace);
               return (
                 <button
                   type="button"
-                  key={s.key}
-                  className={`sh-session-row${s.key === activeKey ? ' active' : ''}${opened ? ' open' : ''}`}
-                  onClick={() =>
-                    s.kind === 'project'
-                      ? onResumeProject({ id: s.id, label: s.label, msgCount: s.msgCount, savedAt: s.savedAt })
-                      : onResumeUser({ id: s.id, label: s.label, msg_count: s.msgCount, saved_at: s.savedAt })
-                  }
+                  key={`${s.id}@${s.workspace ?? ''}`}
+                  className={`sh-session-row${opened ? ' open' : ''}`}
+                  onClick={() => onResume(s)}
                   aria-label={`打开案卷：${s.label || `案卷 ${s.id}`}${opened ? '（已在案头）' : ''}`}
                 >
-                  <span className="date">{formatSessionDate(s.savedAt)}</span>
+                  <span className="date">{formatSessionDate(s.saved_at)}</span>
                   <span className="title">{s.label || `案卷 ${s.id}`}</span>
                   <span className="leader" aria-hidden="true" />
                   <span className="meta">
-                    {opened && <span className="open-mark">已摊开</span>}#{s.id} · <b>{s.msgCount}</b> 块
+                    {opened && <span className="open-mark">已摊开</span>}#{s.id} · <b>{s.msg_count}</b> 块
+                    {wsName ? ` · ${wsName}` : ''}
                   </span>
                 </button>
               );

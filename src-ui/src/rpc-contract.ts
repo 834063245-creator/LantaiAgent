@@ -105,8 +105,8 @@ export interface RpcContract {
     result: string; // JSON — {path: content|null} 映射（Value 化：Rust 出口已展开）
   };
   user_sessions_list: {
-    params: Record<string, never>;
-    result: string; // JSON — 零目录会话列表（workspace-flip 批 1）
+    params: { legacy_root?: string };
+    result: string; // JSON — 全局会话列表（会话统一 U2：条目含 workspace；legacy_root = 项目旧目录兼容源加扫）
   };
   get_last_project: {
     params: Record<string, never>;
