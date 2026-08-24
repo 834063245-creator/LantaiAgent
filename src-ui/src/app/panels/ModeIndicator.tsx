@@ -4,8 +4,10 @@
 // ModeIndicator — 书眉右区的模型/权限模式两枚小控件（C11，2026-08-22）。
 //
 // 模型字样：mono 小字显示当前模型，点击展开纸面小菜单——按已配置
-// provider 分组的模型列表，选中即写 settings 并发 model-switched 信号
-// （Workspace.applyAgentConfig 恒 swap 热切换，会话/上下文全保留）。
+// provider 分组的模型列表。选择是复合的（provider + model）：跨 provider
+// 选模型会联动切换 activeProvider，杜绝「分组只是视觉、模型名写进别家
+// 配置」的错配；写入后发 model-switched 信号（Workspace.applyAgentConfig
+// 恒 swap 热切换，会话/上下文全保留）。
 // 模式字样：常询/半放/全放三档点击轮转；切往 yolo 需二次确认
 // （朱砂确认条，防无脑点到）——权限模式单源真相在 state/mode-store
 // （切换 = 写 store + 镜像 Rust + 落盘，见该文件头注释）。
@@ -20,8 +22,15 @@ import { notifyAgentConfigChanged } from '../../state/agent-config-store';
 import { MODE_DESCRIPTIONS, MODE_LABELS, type PermissionMode, useModeStore } from '../../state/mode-store';
 import './mode-indicator.css';
 
-/** 模型菜单：已配置 provider 的模型并集（目录序），每 provider 一组。 */
-function ModelMenu({ onSelect, onClose }: { onSelect: (model: string) => void; onClose: () => void }) {
+/** 模型菜单：已配置 provider 的模型并集（目录序），每 provider 一组。
+ *  空分组不丢弃——渲染组头 + 引导文案，避免「点了菜单一片空白」。 */
+function ModelMenu({
+  onSelect,
+  onClose,
+}: {
+  onSelect: (providerName: string, model: string) => void;
+  onClose: () => void;
+}) {
   const providers = useMemo<ProviderSettings[]>(() => {
     try {
       return loadSettings().providers;
@@ -29,11 +38,11 @@ function ModelMenu({ onSelect, onClose }: { onSelect: (model: string) => void; o
       return [];
     }
   }, []);
-  const activeModel = useMemo(() => {
+  const active = useMemo(() => {
     try {
-      return getActiveProvider(loadSettings()).model;
+      return getActiveProvider(loadSettings());
     } catch {
-      return '';
+      return null;
     }
   }, []);
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -57,18 +66,17 @@ function ModelMenu({ onSelect, onClose }: { onSelect: (model: string) => void; o
     <div ref={boxRef} className="mi-model-menu" role="menu" aria-label="切换模型">
       {providers.map((p) => {
         const models = findModels(p.name);
-        if (models.length === 0) return null;
         return (
           <div key={p.name} className="mi-model-group">
             <div className="mi-model-vendor">{p.name}</div>
             {models.map((m) => (
               <button
-                key={m.id}
+                key={`${p.name}/${m.id}`}
                 type="button"
                 role="menuitemradio"
-                aria-checked={m.id === activeModel}
-                className={`mi-model-item${m.id === activeModel ? ' mi-model-item--on' : ''}`}
-                onClick={() => onSelect(m.id)}
+                aria-checked={p.name === active?.name && m.id === active.model}
+                className={`mi-model-item${p.name === active?.name && m.id === active.model ? ' mi-model-item--on' : ''}`}
+                onClick={() => onSelect(p.name, m.id)}
               >
                 <span className="mi-model-name">{m.name}</span>
                 <span className="mi-model-meta">
@@ -76,10 +84,13 @@ function ModelMenu({ onSelect, onClose }: { onSelect: (model: string) => void; o
                 </span>
               </button>
             ))}
+            {models.length === 0 && (
+              <div className="mi-model-empty">该提供方暂无目录模型——到 设置 → 提供方 填写或从 API 获取</div>
+            )}
           </div>
         );
       })}
-      {providers.length === 0 && <div className="mi-model-empty">尚未配置 provider（设置 → 模型与接口）</div>}
+      {providers.length === 0 && <div className="mi-model-empty">尚未配置提供方（设置 → 提供方）</div>}
     </div>
   );
 }
@@ -120,15 +131,22 @@ export function ModeIndicator() {
     };
   }, []);
 
-  const pickModel = (model: string) => {
+  /** 复合选择：模型归属哪个 provider 就切到哪——model 写进归属 provider 的
+   *  配置，跨 provider 选择同时切换 activeProvider（对齐 P6「其他提供方
+   *  一键切换」语义）。两次 saveSettings 是同一快照的累积写，顺序无依赖。 */
+  const pickModel = (providerName: string, model: string) => {
     try {
       const s = loadSettings();
       const act = getActiveProvider(s);
-      if (act.model === model) {
+      if (act.name === providerName && act.model === model) {
         setMenuOpen(false);
         return;
       }
-      saveSettings(updateProvider(s, act.name, { model }));
+      let next = updateProvider(s, providerName, { model });
+      if (act.name !== providerName) {
+        next = { ...next, activeProvider: providerName as ProviderSettings['name'] };
+      }
+      saveSettings(next);
       setMenuOpen(false);
       notifyAgentConfigChanged('model-switched');
     } catch (e) {
@@ -178,7 +196,7 @@ export function ModeIndicator() {
         type="button"
         className={`mi-mode mi-mode--${permissionMode}`}
         title={`${MODE_LABELS[permissionMode]} · ${MODE_DESCRIPTIONS[permissionMode]}（点击切换）`}
-        aria-label={`权限模式：${MODE_LABELS[permissionMode]}，点击切换`}
+        aria-label={`权限模式：${MODE_LABELS[permissionMode]}，${MODE_DESCRIPTIONS[permissionMode]}（点击切换）`}
         onClick={cycleMode}
       >
         {MODE_LABELS[permissionMode]}

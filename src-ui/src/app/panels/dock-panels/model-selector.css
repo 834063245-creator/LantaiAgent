@@ -195,6 +195,14 @@
   flex-shrink: 0;
 }
 
+/* 选中态的厂商提示：跨家同 ID（deepseek/opencode 共享 v4 条目）时标明归属 */
+.ms-vendor-hint {
+  font-family: var(--f-mono);
+  font-size: calc(8px * var(--font-scale));
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+
 .ms-item-name {
   font-size: calc(8px * var(--font-scale));
   color: var(--ink-2);

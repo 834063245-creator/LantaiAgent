@@ -6,14 +6,14 @@
 // 从 API 动态获取的模型会标记 "live" 徽章。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getDynamicModelCount, getModel, searchModels } from '../../provider/catalog';
+import { findModels, getModel, searchModels } from '../../provider/catalog';
 import type { ModelDescriptor, Protocol } from '../../provider/types';
 import { iconHtml } from '../../ui/icons';
 
 interface ModelSelectorProps {
   value: string;
   onChange: (modelId: string, desc?: ModelDescriptor) => void;
-  /** 当前 provider 名称 — 来自该 provider 的模型优先排序。 */
+  /** 当前 provider 名称 — 默认列表只显示该 vendor 的模型。 */
   providerName: string;
   /** Provider 类型 — 按匹配的 API 协议过滤目录。 */
   kind: Protocol;
@@ -31,22 +31,19 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
   const [activeIdx, setActiveIdx] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMsg, setRefreshMsg] = useState('');
-  const [dynamicCount, setDynamicCount] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   const results = useMemo(() => {
     if (!open) return [];
     const q = query.toLowerCase().trim();
-    const all = q ? searchModels(q) : searchModels('');
-    return all
+    // 空查询 = 默认列表只看本家 vendor 的模型（其他提供方的模型混排
+    // 会让「选错端点」变得容易——跨家选择走设置页左侧切换 provider）。
+    // 有查询词 = 全目录搜索（含动态模型），再按协议过滤。
+    const base = q ? searchModels(q) : findModels(providerName);
+    return base
       .filter((m) => m.kind === kind)
-      .sort((a, b) => {
-        const aMatch = a.vendor === providerName ? 0 : 1;
-        const bMatch = b.vendor === providerName ? 0 : 1;
-        if (aMatch !== bMatch) return aMatch - bMatch;
-        return a.id.localeCompare(b.id);
-      })
+      .sort((a, b) => a.id.localeCompare(b.id))
       .slice(0, 30);
   }, [open, query, kind, providerName]);
 
@@ -58,7 +55,6 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
     setRefreshMsg('');
     try {
       const count = await onRefreshModels();
-      setDynamicCount(getDynamicModelCount(providerName));
       setRefreshMsg(count > 0 ? `已发现 ${count} 个模型` : '未获取到新模型');
     } catch (e) {
       // 无 Key / 网络失败等真实原因透出，避免「未获取到新模型」误导
@@ -67,7 +63,7 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
       setRefreshing(false);
       setTimeout(() => setRefreshMsg(''), 3000);
     }
-  }, [onRefreshModels, refreshing, providerName]);
+  }, [onRefreshModels, refreshing]);
 
   const close = useCallback(() => {
     setOpen(false);
@@ -185,7 +181,7 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
             return (
               <button
                 type="button"
-                key={m.id}
+                key={`${m.vendor}/${m.id}`}
                 className={`ms-item${i === activeIdx ? ' active' : ''}${m.id === value ? ' selected' : ''}`}
                 onMouseEnter={() => setActiveIdx(i)}
                 onClick={() => handleSelect(m)}
@@ -194,9 +190,7 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
                   <div className="ms-item-id-row">
                     <span className="ms-item-id">{m.id}</span>
                     {isDynamic && <span className="ms-badge-live">LIVE</span>}
-                    {m.id === value && (
-                      <span className="ms-item-check" dangerouslySetInnerHTML={{ __html: iconHtml('check', 11) }} />
-                    )}
+                    {m.id === value && <span className="ms-vendor-hint">{m.vendor}</span>}
                   </div>
                   {m.name !== m.id && <span className="ms-item-name">{m.name}</span>}
                 </div>
