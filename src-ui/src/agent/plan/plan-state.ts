@@ -28,7 +28,6 @@ export interface PlanStateSnapshot {
 export class PlanStateManager {
   private _state: PlanState = { active: false, id: null, planFilePath: null };
   private _listeners = new Set<(s: PlanState) => void>();
-  private _projectPath: string = '';
 
   get state(): PlanState {
     return this._state;
@@ -36,7 +35,6 @@ export class PlanStateManager {
 
   /** 进入 plan 模式。返回计划文件路径。 */
   enter(projectPath: string): string {
-    this._projectPath = projectPath;
     const id = `plan-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const planFilePath = this._derivePlanPath(id, projectPath);
     this._state = { active: true, id, planFilePath };
@@ -80,8 +78,7 @@ export class PlanStateManager {
   /** 从快照恢复 — 用于 session 恢复。
    *  planFilePath 从 id 重新派生（不持久化路径）。 */
   fromSnapshot(snapshot: PlanStateSnapshot | null, projectPath: string): void {
-    this._projectPath = projectPath;
-    if (snapshot && snapshot.active && snapshot.id) {
+    if (snapshot?.active && snapshot.id) {
       this._state = {
         active: true,
         id: snapshot.id,

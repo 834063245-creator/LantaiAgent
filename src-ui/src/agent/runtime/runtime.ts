@@ -19,39 +19,25 @@ import type { StoredThinking } from '../../provider/thinking';
 import type { Message, Provider } from '../../provider/types';
 import { typedJsonRpc, typedRpc } from '../../rpc-contract';
 import { Agent } from '../agent';
-import type { AgentStore } from '../agent-store';
-import type { AgentEvent, AgentUINotifier, EventSink, Pricing } from '../agent-types';
+import type { AgentUINotifier, EventSink, Pricing } from '../agent-types';
 import { EventKind } from '../agent-types';
 import { AgentBlueprint, type BlueprintScope } from '../blueprint';
 import { AgentContext } from '../context';
-import type { SubAgentPool } from '../coordinator';
 import { DiscoveryBoard, DiscoveryBoardProxy } from '../discovery-board';
-import { createExecState, type ExecStateInstance } from '../execution-state';
-import type { GoalManager } from '../goal-manager';
-import type { GraphContext } from '../hooks';
+import { createExecState } from '../execution-state';
 import { buildGraphSnapshot, HookRegistry, PreflightHookRegistry } from '../hooks';
 import { enqueueIsolationOp } from '../isolation-queue';
 import { AgentLifecycleManager } from '../lifecycle-manager';
 import { log } from '../logger';
-import type { MemoryManager } from '../memory';
-import { memoryBundleIngest } from '../memory-bundle-client';
 import { MessageBus } from '../message-bus';
 import { JsonMessageStore } from '../message-store';
 import { PlanStateManager } from '../plan/plan-state';
 import { SessionLog } from '../session-log';
-import type { SkillRegistry } from '../skills';
-import type { DiagnosticsSource, LspDiagnostic } from '../state-inject';
+import type { DiagnosticsSource } from '../state-inject';
 import type { TaskManager } from '../task';
 import { TaskBoard, TaskBoardProxy } from '../task-board';
 import { agentInvoke, ToolRegistry } from '../tool';
-import type { SubAgentSpawner } from '../tools/subagent';
-import {
-  type BuilderDeps,
-  buildGraphContextFromData,
-  buildSystemPrompt,
-  buildToolRegistry,
-  extractGraphNodeNames,
-} from './agent-builder';
+import { buildSystemPrompt, extractGraphNodeNames } from './agent-builder';
 
 import type {
   AgentAssemblyInputs,
@@ -160,8 +146,6 @@ class AgentHandleImpl implements AgentHandle {
 export class AgentRuntime implements RuntimePort {
   private agents = new Map<string, AgentHandleImpl>();
   private notifier: RuntimeNotifier | null = null;
-  /** BuilderDeps — UI 层注入的回调（askUser, onPlanReview 等） */
-  private _deps: BuilderDeps | null = null;
   /** 全局 MessageBus 实例 */
   private _bus: MessageBus;
   /** 会话级 TaskBoard 实例 — 按 sessionId 隔离 */
@@ -213,11 +197,6 @@ export class AgentRuntime implements RuntimePort {
   /** 注入 UI 通知器 — 由 UI 层在启动时设置 */
   setNotifier(n: RuntimeNotifier): void {
     this.notifier = n;
-  }
-
-  /** 注入 BuilderDeps — UI 层在启动时设置（askUser, onPlanReview 等回调） */
-  setDeps(deps: BuilderDeps): void {
-    this._deps = deps;
   }
 
   /** 获取全局 MessageBus 实例 */
@@ -455,7 +434,7 @@ export class AgentRuntime implements RuntimePort {
       const raw = await typedRpc('read_file_content', { file_path: oldTaskPath });
       const arr = JSON.parse(raw.replace(/^\s*\d+\t/gm, ''));
       if (Array.isArray(arr) && arr.length > 0) {
-        const tb = this._getOrCreateTaskBoard('default');
+        const _tb = this._getOrCreateTaskBoard('default');
         // 直接将迁移的条目写入新路径
         await typedRpc('write_file_content', {
           file_path: `${base}/.lantai/taskboard/default.json`,
@@ -907,9 +886,5 @@ export class AgentRuntime implements RuntimePort {
 
   setDiagnosticsSource(fn: DiagnosticsSource): void {
     this._diagSource = fn;
-  }
-
-  private _getDiagnosticsSource(): DiagnosticsSource | null {
-    return this._diagSource;
   }
 }

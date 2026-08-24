@@ -6,7 +6,7 @@
 // 互不可见 → 每会话独立托盘；且必须通过 subscribe/getSnapshot 让 UI 即时反映。
 
 import { describe, expect, it } from 'vitest';
-import { TaskManager, createTaskTools } from '../src/agent/task';
+import { createTaskTools, TaskManager } from '../src/agent/task';
 
 describe('TaskManager per-agent isolation', () => {
   it('两个 Agent 实例的待办互不可见', () => {
@@ -51,7 +51,9 @@ describe('TaskManager per-agent isolation', () => {
   it('subscribe / getSnapshot 让 UI 感知变更', () => {
     const mgr = new TaskManager();
     let snapshots = 0;
-    const unsub = mgr.subscribe(() => { snapshots++; });
+    const unsub = mgr.subscribe(() => {
+      snapshots++;
+    });
 
     mgr.create('A', '');
     expect(snapshots).toBe(1);

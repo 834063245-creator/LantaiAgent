@@ -15,9 +15,9 @@
 // 复合键（storeId:sid）防止跨面板冲突，因为会话
 // ID 是每面板的（都从 1 开始）。
 
+import { createStore } from 'zustand/vanilla';
 import type { ChatAgentHandle } from './chat-agent-handle';
 import { createExecState, type ExecStateInstance } from './execution-state';
-import { createStore } from 'zustand/vanilla';
 
 // ── 类型 ──
 

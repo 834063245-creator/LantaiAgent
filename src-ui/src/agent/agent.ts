@@ -4,14 +4,11 @@
 // Agent 循环 — Run() → stream() → StreamingToolExecutor → 循环直到模型给出最终答案
 
 import { currentPresetId } from '../composition/preset-assembly';
-import { createProvider } from '../provider';
-import { getAllModels } from '../provider/catalog';
 import { STREAM_IDLE_TIMEOUT_MS, streamWithIdleTimeout } from '../provider/idle-stream';
 import type { StoredThinking } from '../provider/thinking';
 import type { Message, Provider, ToolCall, ToolSchema, Usage } from '../provider/types';
 import { ChunkType } from '../provider/types';
 import { typedRpc } from '../rpc-contract';
-import { loadSettingsWithSecrets } from '../settings';
 import {
   applyAutoTuneConfigImpl,
   type CompactionHost,
@@ -40,25 +37,7 @@ import {
   type Pricing,
   type ToolEvent,
 } from './agent-types';
-import {
-  type CompactionConfig,
-  type CompactionEvent,
-  type CompactionSessionStats,
-  CompactionTracker,
-  maybeTune,
-} from './compaction-model';
-import {
-  buildMergePrompt,
-  buildSummaryPrompt,
-  chunkMessages,
-  digestMessages,
-  renderTranscript,
-  SUMMARY_MAX_LLM_CHUNKS,
-  SUMMARY_MIN_INPUT,
-  SUMMARY_MIN_WINDOW,
-  SUMMARY_OUTPUT_BUDGET,
-  SUMMARY_PROMPT_BUDGET,
-} from './compaction-summarize';
+import { type CompactionConfig, type CompactionSessionStats, CompactionTracker } from './compaction-model';
 import { AgentContext } from './context';
 import { type ExecStateInstance, execState } from './execution-state';
 import { type GoalLoopHost, type GoalRunResult, resumeGoalImpl, runGoalImpl } from './goal-loop';
@@ -68,12 +47,11 @@ import { log } from './logger';
 import { batchStormSignature, finishReasonMessage, parseFilePathArg, type ToolOutcome } from './loop-helpers';
 import { type PlanGate, planGateCheck } from './plan/plan-registry';
 import { backoffDelay, isRetryable, MAX_RETRIES, sleepWithAbort } from './retry';
-import { buildCompactedSummaryMessage, SessionLog, type SessionResetReason } from './session-log';
+import { SessionLog, type SessionResetReason } from './session-log';
 import { StreamingToolExecutor } from './streaming-executor';
 import { type SubAgentSpawnHost, spawnSubAgentImpl } from './subagent-spawn';
-import { countMessage, countMessages, countText, countTexts, countToolSchemas } from './token-counter';
+import { countMessage, countMessages, countTexts, countToolSchemas } from './token-counter';
 import type { ToolRegistry } from './tool';
-import { foldToolResults, nextFoldBoundary } from './tool-fold';
 import { createStableSchemaSelector, type StableSchemaSelector, userContext } from './tool-select';
 import { resolveGuardToolName } from './tools/domains';
 import { truncateToolOutput } from './truncate';

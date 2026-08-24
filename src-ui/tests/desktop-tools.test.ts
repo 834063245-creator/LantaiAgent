@@ -7,9 +7,9 @@ vi.mock('../src/agent/tool', async (importOriginal) => {
   return { ...actual, agentInvoke: vi.fn(async () => '{"process_count":0,"processes":[]}') };
 });
 
-import { ToolRegistry, agentInvoke } from '../src/agent/tool';
-import { convergeRegistry } from '../src/agent/tools/domains';
+import { agentInvoke, ToolRegistry } from '../src/agent/tool';
 import { createBrowserTools, createDesktopTools } from '../src/agent/tools/browser';
+import { convergeRegistry } from '../src/agent/tools/domains';
 
 function buildRegistry(): ToolRegistry {
   const registry = new ToolRegistry();
@@ -45,7 +45,13 @@ describe('desktop 领域工具注册', () => {
 
   it('desktop 领域读动作（probe/screenshot/uia_tree/uia_find/uia_window_shot）细粒度工具只读', () => {
     const registry = buildRegistry();
-    for (const name of ['desktop_probe', 'desktop_screenshot', 'desktop_uia_tree', 'desktop_uia_find', 'desktop_uia_window_shot']) {
+    for (const name of [
+      'desktop_probe',
+      'desktop_screenshot',
+      'desktop_uia_tree',
+      'desktop_uia_find',
+      'desktop_uia_window_shot',
+    ]) {
       expect(registry.get(name)!.readOnly(), `${name} 应只读`).toBe(true);
     }
   });
@@ -113,13 +119,19 @@ describe('desktop UIA 动作参数校验', () => {
     const bad = await t.execute({ action: 'uia_type', text: 'hello' });
     expect(bad).toContain('至少要给一个定位条件');
     await t.execute({ action: 'uia_type', text: 'hello', name: '输入框' });
-    expect(invokeMock).toHaveBeenCalledWith('desktop_uia_type', expect.objectContaining({ text: 'hello', name: '输入框' }));
+    expect(invokeMock).toHaveBeenCalledWith(
+      'desktop_uia_type',
+      expect.objectContaining({ text: 'hello', name: '输入框' }),
+    );
   });
 
   it('uia_tree 支持 depth 参数透传', async () => {
     const registry = buildRegistry();
     const t = registry.get('desktop')!;
     await t.execute({ action: 'uia_tree', depth: 2, title: 'Notepad' });
-    expect(invokeMock).toHaveBeenCalledWith('desktop_uia_tree', expect.objectContaining({ depth: 2, title: 'Notepad' }));
+    expect(invokeMock).toHaveBeenCalledWith(
+      'desktop_uia_tree',
+      expect.objectContaining({ depth: 2, title: 'Notepad' }),
+    );
   });
 });

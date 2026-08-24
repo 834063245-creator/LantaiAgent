@@ -46,7 +46,7 @@ import { Agent } from '../src/agent/agent';
 import { createExecState } from '../src/agent/execution-state';
 import { countMessages, countText } from '../src/agent/token-counter';
 import { ToolRegistry } from '../src/agent/tool';
-import type { Message, Provider } from '../src/provider/types';
+import type { Provider } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
 
 // ── Helpers ──
@@ -312,7 +312,7 @@ describe('compaction pipeline E2E', () => {
     const prov: Provider = {
       name: () => 'mock',
       prewarm() {},
-      async *stream(_signal: AbortSignal, req: any) {
+      async *stream(_signal: AbortSignal, _req: any) {
         n++;
         if (n === 1) {
           calls.push('main-tool');

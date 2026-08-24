@@ -7,9 +7,9 @@ vi.mock('../src/agent/tool', async (importOriginal) => {
   return { ...actual, agentInvoke: vi.fn(async () => '{"ok":true}') };
 });
 
-import { ToolRegistry, agentInvoke } from '../src/agent/tool';
-import { convergeRegistry } from '../src/agent/tools/domains';
+import { agentInvoke, ToolRegistry } from '../src/agent/tool';
 import { createBrowserTools, parseBrowserError } from '../src/agent/tools/browser';
+import { convergeRegistry } from '../src/agent/tools/domains';
 
 function buildBrowserRegistry(): ToolRegistry {
   const registry = new ToolRegistry();
@@ -36,10 +36,41 @@ describe('browser 领域工具注册', () => {
     const t = registry.get('browser')!;
     const actions = t.actions?.() ?? [];
     for (const a of [
-      'launch', 'kill', 'sessions', 'switch_session', 'targets', 'attach', 'new_tab', 'close_tab',
-      'navigate', 'back', 'forward', 'reload',
-      'snapshot', 'content', 'inspect', 'report', 'console', 'network', 'network_detail', 'network_har', 'screenshot', 'audit', 'cookies',
-      'click', 'hover', 'type', 'select', 'upload', 'dialog', 'press', 'scroll', 'viewport', 'eval', 'status', 'wait',
+      'launch',
+      'kill',
+      'sessions',
+      'switch_session',
+      'targets',
+      'attach',
+      'new_tab',
+      'close_tab',
+      'navigate',
+      'back',
+      'forward',
+      'reload',
+      'snapshot',
+      'content',
+      'inspect',
+      'report',
+      'console',
+      'network',
+      'network_detail',
+      'network_har',
+      'screenshot',
+      'audit',
+      'cookies',
+      'click',
+      'hover',
+      'type',
+      'select',
+      'upload',
+      'dialog',
+      'press',
+      'scroll',
+      'viewport',
+      'eval',
+      'status',
+      'wait',
     ]) {
       expect(actions).toContain(a);
     }
@@ -49,10 +80,7 @@ describe('browser 领域工具注册', () => {
     const registry = buildBrowserRegistry();
     const t = registry.get('browser')!;
     await t.execute({ action: 'wait', selector: '#done', ms: 5000 });
-    expect(invokeMock).toHaveBeenCalledWith(
-      'browser_wait',
-      expect.objectContaining({ selector: '#done', ms: 5000 }),
-    );
+    expect(invokeMock).toHaveBeenCalledWith('browser_wait', expect.objectContaining({ selector: '#done', ms: 5000 }));
   });
 
   it('未知 action 返回错误提示', async () => {
@@ -121,7 +149,10 @@ describe('browser 动作路由（统一走 Rust CDP）', () => {
     await t.execute({ action: 'click', selector: '37' });
     await t.execute({ action: 'type', selector: '12', text: 'hello', replace: true });
     expect(invokeMock).toHaveBeenCalledWith('browser_click', expect.objectContaining({ selector: '37' }));
-    expect(invokeMock).toHaveBeenCalledWith('browser_type', expect.objectContaining({ selector: '12', text: 'hello', replace: true }));
+    expect(invokeMock).toHaveBeenCalledWith(
+      'browser_type',
+      expect.objectContaining({ selector: '12', text: 'hello', replace: true }),
+    );
   });
 
   it('navigate/content/select 路由到新增 RPC', async () => {
@@ -130,9 +161,18 @@ describe('browser 动作路由（统一走 Rust CDP）', () => {
     await t.execute({ action: 'navigate', url: 'https://example.com' });
     await t.execute({ action: 'content', scope: '#main', format: 'markdown', maxChars: 2000 });
     await t.execute({ action: 'select', selector: '42', value: 'option-a' });
-    expect(invokeMock).toHaveBeenCalledWith('browser_navigate', expect.objectContaining({ url: 'https://example.com' }));
-    expect(invokeMock).toHaveBeenCalledWith('browser_content', expect.objectContaining({ scope: '#main', format: 'markdown', maxChars: 2000 }));
-    expect(invokeMock).toHaveBeenCalledWith('browser_select', expect.objectContaining({ selector: '42', value: 'option-a' }));
+    expect(invokeMock).toHaveBeenCalledWith(
+      'browser_navigate',
+      expect.objectContaining({ url: 'https://example.com' }),
+    );
+    expect(invokeMock).toHaveBeenCalledWith(
+      'browser_content',
+      expect.objectContaining({ scope: '#main', format: 'markdown', maxChars: 2000 }),
+    );
+    expect(invokeMock).toHaveBeenCalledWith(
+      'browser_select',
+      expect.objectContaining({ selector: '42', value: 'option-a' }),
+    );
   });
 
   it('profile/proxy 与 sessions/switch_session/cookies 路由到第五批 RPC', async () => {
@@ -145,13 +185,28 @@ describe('browser 动作路由（统一走 Rust CDP）', () => {
     await t.execute({ action: 'cookies', op: 'list', urls: ['https://example.com'] });
     await t.execute({ action: 'cookies', op: 'set', name: 'sid', value: 'x', domain: '.example.com' });
     await t.execute({ action: 'cookies', op: 'delete', name: 'sid', url: 'https://example.com' });
-    expect(invokeMock).toHaveBeenCalledWith('browser_launch', expect.objectContaining({ profile: 'work', proxy: 'socks5://127.0.0.1:1080', proxyBypass: 'localhost' }));
-    expect(invokeMock).toHaveBeenCalledWith('browser_connect', expect.objectContaining({ port: 9223, session: 'work' }));
+    expect(invokeMock).toHaveBeenCalledWith(
+      'browser_launch',
+      expect.objectContaining({ profile: 'work', proxy: 'socks5://127.0.0.1:1080', proxyBypass: 'localhost' }),
+    );
+    expect(invokeMock).toHaveBeenCalledWith(
+      'browser_connect',
+      expect.objectContaining({ port: 9223, session: 'work' }),
+    );
     expect(invokeMock).toHaveBeenCalledWith('browser_sessions', expect.any(Object));
     expect(invokeMock).toHaveBeenCalledWith('browser_switch_session', expect.objectContaining({ session: 'personal' }));
-    expect(invokeMock).toHaveBeenCalledWith('browser_cookies', expect.objectContaining({ op: 'list', urls: ['https://example.com'] }));
-    expect(invokeMock).toHaveBeenCalledWith('browser_cookies', expect.objectContaining({ op: 'set', name: 'sid', value: 'x', domain: '.example.com' }));
-    expect(invokeMock).toHaveBeenCalledWith('browser_cookies', expect.objectContaining({ op: 'delete', name: 'sid', url: 'https://example.com' }));
+    expect(invokeMock).toHaveBeenCalledWith(
+      'browser_cookies',
+      expect.objectContaining({ op: 'list', urls: ['https://example.com'] }),
+    );
+    expect(invokeMock).toHaveBeenCalledWith(
+      'browser_cookies',
+      expect.objectContaining({ op: 'set', name: 'sid', value: 'x', domain: '.example.com' }),
+    );
+    expect(invokeMock).toHaveBeenCalledWith(
+      'browser_cookies',
+      expect.objectContaining({ op: 'delete', name: 'sid', url: 'https://example.com' }),
+    );
   });
 
   it('launch headless/windowSize 与 network_detail 路由到新增 RPC', async () => {
@@ -189,16 +244,30 @@ describe('browser 动作路由（统一走 Rust CDP）', () => {
     expect(invokeMock).toHaveBeenCalledWith('browser_new_tab', expect.objectContaining({ url: 'https://example.com' }));
     expect(invokeMock).toHaveBeenCalledWith('browser_close_tab', expect.objectContaining({ targetId: 'tab-1' }));
     expect(invokeMock).toHaveBeenCalledWith('browser_hover', expect.objectContaining({ selector: '17' }));
-    expect(invokeMock).toHaveBeenCalledWith('browser_dialog', expect.objectContaining({ accept: true, promptText: 'ok' }));
-    expect(invokeMock).toHaveBeenCalledWith('browser_upload', expect.objectContaining({ files: ['C:/tmp/a.txt'], selector: '#file' }));
-    expect(invokeMock).toHaveBeenCalledWith('browser_press', expect.objectContaining({ key: 'a', modifiers: ['ctrl'] }));
-    expect(invokeMock).toHaveBeenCalledWith('browser_screenshot', expect.objectContaining({ fullPage: true, inline: true }));
+    expect(invokeMock).toHaveBeenCalledWith(
+      'browser_dialog',
+      expect.objectContaining({ accept: true, promptText: 'ok' }),
+    );
+    expect(invokeMock).toHaveBeenCalledWith(
+      'browser_upload',
+      expect.objectContaining({ files: ['C:/tmp/a.txt'], selector: '#file' }),
+    );
+    expect(invokeMock).toHaveBeenCalledWith(
+      'browser_press',
+      expect.objectContaining({ key: 'a', modifiers: ['ctrl'] }),
+    );
+    expect(invokeMock).toHaveBeenCalledWith(
+      'browser_screenshot',
+      expect.objectContaining({ fullPage: true, inline: true }),
+    );
   });
 });
 
 describe('结构化错误 code（2026-08-15 收口）', () => {
   it('parseBrowserError 解析 [CODE] 前缀，无前缀返回 null', () => {
-    const parsed = parseBrowserError('[CDP_REF_STALE] 目标不存在或已失效（37）——页面可能已变化，请重新 browser(snapshot)');
+    const parsed = parseBrowserError(
+      '[CDP_REF_STALE] 目标不存在或已失效（37）——页面可能已变化，请重新 browser(snapshot)',
+    );
     expect(parsed).toEqual({
       code: 'CDP_REF_STALE',
       message: '目标不存在或已失效（37）——页面可能已变化，请重新 browser(snapshot)',

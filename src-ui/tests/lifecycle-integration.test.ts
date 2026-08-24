@@ -29,7 +29,7 @@ import { SubAgentPool } from '../src/agent/coordinator';
 import { AgentLifecycleManager } from '../src/agent/lifecycle-manager';
 import { MessageBus } from '../src/agent/message-bus';
 import { TaskBoard } from '../src/agent/task-board';
-import { type ToolExecutor, ToolRegistry } from '../src/agent/tool';
+import { type ToolExecutor } from '../src/agent/tool';
 import { createMergeTool } from '../src/agent/tools/merge';
 import { createSubAgentTool, type SubAgentSpawner } from '../src/agent/tools/subagent';
 import { MeshTopology } from '../src/agent/topology';
@@ -214,12 +214,12 @@ describe('集成：sync + async 混合 spawn', () => {
     bus.setTopology(new MeshTopology());
     bus.register(addr('main'));
 
-    let asyncAgentId: string | null = null;
+    let _asyncAgentId: string | null = null;
 
     const spawner: SubAgentSpawner = async (desc, _prompt, _prog, _mode, _al, _sig, asyncMode, agentIdOverride) => {
       if (asyncMode) {
         const agentId = agentIdOverride ?? `sub-async-${Date.now()}`;
-        asyncAgentId = agentId;
+        _asyncAgentId = agentId;
         board.register({
           agentId,
           parentAgentId: 'main',

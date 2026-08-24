@@ -115,14 +115,19 @@ export async function execStreamedShell(
       const unDone = await listen<{ streamId: string; exitCode: number; error?: string }>('shell:done', (e) => {
         if (e.payload.streamId !== streamId) return;
         if (e.payload.error)
-          resolveOnce(withCwdEcho(withTruncationNote(`[exit ${e.payload.exitCode}]\n${fullOutput}\n${e.payload.error}`)));
+          resolveOnce(
+            withCwdEcho(withTruncationNote(`[exit ${e.payload.exitCode}]\n${fullOutput}\n${e.payload.error}`)),
+          );
         else if (e.payload.exitCode !== 0)
           resolveOnce(withCwdEcho(withTruncationNote(`[exit ${e.payload.exitCode}]\n${fullOutput}`)));
         else resolveOnce(withCwdEcho(withTruncationNote(fullOutput || '(无输出)')));
       });
       _shellCleanups.set(streamId, [unOut, unDone]);
       timer = setTimeout(
-        () => resolveOnce(withCwdEcho(withTruncationNote(`[exit -1] shell 超时 (${SHELL_TIMEOUT / 1000}s)\n${fullOutput}`))),
+        () =>
+          resolveOnce(
+            withCwdEcho(withTruncationNote(`[exit -1] shell 超时 (${SHELL_TIMEOUT / 1000}s)\n${fullOutput}`)),
+          ),
         SHELL_TIMEOUT,
       );
       // 中止语义（2026-08-17 修复，会话 223 事故）：

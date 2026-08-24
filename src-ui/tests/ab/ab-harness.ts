@@ -1,6 +1,4 @@
 import { Agent } from '../../src/agent/agent';
-import type { Provider, Usage } from '../../src/provider/types';
-import { ChunkType } from '../../src/provider/types';
 import {
   buildFileNodeIndex,
   createGraphContext,
@@ -10,8 +8,10 @@ import {
   PreflightHookRegistry,
 } from '../../src/agent/hooks';
 import { buildSystemPrompt } from '../../src/agent/runtime/agent-builder';
-import { buildTrialRegistry } from './ab-tools';
+import type { Provider } from '../../src/provider/types';
+import { ChunkType } from '../../src/provider/types';
 import type { TrialGraphData } from './ab-graph';
+import { buildTrialRegistry } from './ab-tools';
 
 export interface TrialAgent {
   agent: Agent;

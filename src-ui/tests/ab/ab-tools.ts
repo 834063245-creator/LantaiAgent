@@ -1,10 +1,10 @@
+import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
-import { ToolRegistry, type ToolExecutor } from '../../src/agent/tool';
+import { z } from 'zod';
+import { type ToolExecutor, ToolRegistry } from '../../src/agent/tool';
 import { createCodingTools } from '../../src/agent/tools/coding';
 import { defineTool } from '../../src/agent/tools/define-tool';
-import { z } from 'zod';
 import type { TrialGraphData } from './ab-graph';
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'target', '.lantai', 'dist', '.cache', 'build', 'out']);
@@ -33,7 +33,11 @@ function walk(root: string, depth: number, limit: number): string[] {
   return out;
 }
 
-function searchFiles(root: string, pattern: string, limit: number): Array<{ file: string; line: number; match_content: string }> {
+function searchFiles(
+  root: string,
+  pattern: string,
+  limit: number,
+): Array<{ file: string; line: number; match_content: string }> {
   const out: Array<{ file: string; line: number; match_content: string }> = [];
   const lower = pattern.toLowerCase();
   const files = walk(root, 6, 2000);
@@ -62,19 +66,19 @@ function resolveInWorktree(wt: string, p: string): string {
 
 function applyUnifiedDiff(content: string, diff: string): string | null {
   let updated = content;
-  const hunkRe = /@@[^@]*@@\n((?:[ \-\+].*\n?)+)/g;
+  const hunkRe = /@@[^@]*@@\n((?:[ \-+].*\n?)+)/g;
   let m: RegExpExecArray | null;
   let applied = 0;
   while ((m = hunkRe.exec(diff)) !== null) {
     const lines = m[1].split('\n');
     const removed: string[] = [];
     const added: string[] = [];
-    let contextStart = '';
+    let _contextStart = '';
     for (const raw of lines) {
       const line = raw.replace(/\r$/, '');
       if (line.startsWith('-')) removed.push(line.slice(1));
       else if (line.startsWith('+')) added.push(line.slice(1));
-      else if (line.startsWith(' ') || line === '') contextStart = line.slice(1);
+      else if (line.startsWith(' ') || line === '') _contextStart = line.slice(1);
     }
     const removedJoined = removed.join('\n');
     const idx = updated.indexOf(removedJoined);
@@ -122,7 +126,12 @@ export function buildTrialRegistry(wt: string, graph: TrialGraphData): ToolRegis
         const pattern = fp('pattern') || fp('path') || '**/*';
         const dir = resolveInWorktree(wt, fp('directory') || fp('dir') || '.');
         const files = walk(dir, 6, 200);
-        const filtered = files.filter((f) => pattern.split('*').filter(Boolean).every((seg) => f.includes(seg)));
+        const filtered = files.filter((f) =>
+          pattern
+            .split('*')
+            .filter(Boolean)
+            .every((seg) => f.includes(seg)),
+        );
         return filtered.join('\n');
       }
       case 'list_directory': {
@@ -226,21 +235,35 @@ export function buildTrialRegistry(wt: string, graph: TrialGraphData): ToolRegis
       case 'git_push':
       case 'git_pull': {
         const gitArgs =
-          name === 'git_status' ? ['status', '--short']
-          : name === 'git_diff' ? ['diff', '--stat']
-          : name === 'git_log' ? ['log', '--oneline', '-10']
-          : name === 'git_branch' ? ['branch', '-a']
-          : name === 'git_commit' ? ['commit', '-m', fp('message') || 'wip']
-          : name === 'git_checkout' ? ['checkout', fp('branch') || 'HEAD']
-          : name === 'git_discard' ? ['checkout', '--', fp('file') || '.']
-          : name === 'git_stash_push' ? ['stash', 'push', '-u']
-          : name === 'git_stash_pop' ? ['stash', 'pop']
-          : name === 'git_stage' ? ['add', fp('file') || fp('path') || '.']
-          : name === 'git_stage_all' ? ['add', '-A']
-          : name === 'git_init' ? ['init']
-          : name === 'git_create_branch' ? ['checkout', '-b', fp('branch') || 'wip']
-          : name === 'git_push' ? ['push', fp('remote') || 'origin', fp('branch') || 'HEAD']
-          : ['pull'];
+          name === 'git_status'
+            ? ['status', '--short']
+            : name === 'git_diff'
+              ? ['diff', '--stat']
+              : name === 'git_log'
+                ? ['log', '--oneline', '-10']
+                : name === 'git_branch'
+                  ? ['branch', '-a']
+                  : name === 'git_commit'
+                    ? ['commit', '-m', fp('message') || 'wip']
+                    : name === 'git_checkout'
+                      ? ['checkout', fp('branch') || 'HEAD']
+                      : name === 'git_discard'
+                        ? ['checkout', '--', fp('file') || '.']
+                        : name === 'git_stash_push'
+                          ? ['stash', 'push', '-u']
+                          : name === 'git_stash_pop'
+                            ? ['stash', 'pop']
+                            : name === 'git_stage'
+                              ? ['add', fp('file') || fp('path') || '.']
+                              : name === 'git_stage_all'
+                                ? ['add', '-A']
+                                : name === 'git_init'
+                                  ? ['init']
+                                  : name === 'git_create_branch'
+                                    ? ['checkout', '-b', fp('branch') || 'wip']
+                                    : name === 'git_push'
+                                      ? ['push', fp('remote') || 'origin', fp('branch') || 'HEAD']
+                                      : ['pull'];
         return new Promise<string>((resolve) => {
           execFile('git', gitArgs, { cwd: wt, timeout: 30_000 }, (err, stdout, stderr) => {
             resolve(err ? `错误: ${stderr}` : stdout || '(无输出)');
@@ -295,7 +318,9 @@ function buildMiniGraphTools(graph: TrialGraphData) {
 
   const findNodes = (q: string) => {
     const lower = q.toLowerCase();
-    return graph.nodes.filter((n) => n.name.toLowerCase().includes(lower) || (n.location ?? '').toLowerCase().includes(lower)).slice(0, 10);
+    return graph.nodes
+      .filter((n) => n.name.toLowerCase().includes(lower) || (n.location ?? '').toLowerCase().includes(lower))
+      .slice(0, 10);
   };
 
   const impactOf = (symbol: string) => {
@@ -326,7 +351,9 @@ function buildMiniGraphTools(graph: TrialGraphData) {
       execute: async (args) => {
         const f = String(args.filePath ?? '');
         const norm = f.replace(/\\/g, '/');
-        const nodes = [...nodeByFile.entries()].filter(([file]) => file.includes(norm.replace(/:\d+$/, ''))).flatMap(([, ns]) => ns);
+        const nodes = [...nodeByFile.entries()]
+          .filter(([file]) => file.includes(norm.replace(/:\d+$/, '')))
+          .flatMap(([, ns]) => ns);
         const ids = new Set(nodes.map((n) => n.id));
         const deps = graph.edges.filter((e) => ids.has(e.source));
         return JSON.stringify({ nodes: nodes.length, deps: deps.slice(0, 50) });
@@ -341,7 +368,9 @@ function buildMiniGraphTools(graph: TrialGraphData) {
         const q = String(args.node ?? '');
         const hit = findNodes(q)[0];
         if (!hit) return JSON.stringify({ neighbors: [] });
-        const neighbors = graph.edges.filter((e) => e.source === hit.id || e.target === hit.id).map((e) => ({ other: e.source === hit.id ? e.target : e.source, kind: e.kind }));
+        const neighbors = graph.edges
+          .filter((e) => e.source === hit.id || e.target === hit.id)
+          .map((e) => ({ other: e.source === hit.id ? e.target : e.source, kind: e.kind }));
         return JSON.stringify({ neighbors: neighbors.slice(0, 50) });
       },
     }),

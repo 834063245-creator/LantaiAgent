@@ -1,14 +1,14 @@
 // startOwned / ownedDisposer 所有权包装测试（agent-core-convergence Phase 1）。
 // 现有 start/stop、disconnect 语义不变；包装器只加"返回清理器"这一层。
 import { describe, expect, it } from 'vitest';
-import { AgentLifecycleManager } from '../src/agent/lifecycle-manager';
 import { SubAgentPool } from '../src/agent/coordinator';
-import { TaskBoard } from '../src/agent/task-board';
-import { MessageBus } from '../src/agent/message-bus';
-import { MeshTopology } from '../src/agent/topology';
-import type { ToolExecutor } from '../src/agent/tool';
+import { AgentLifecycleManager } from '../src/agent/lifecycle-manager';
 import { McpClient } from '../src/agent/mcp/client';
 import { createLoopbackTransport } from '../src/agent/mcp/transport';
+import { MessageBus } from '../src/agent/message-bus';
+import { TaskBoard } from '../src/agent/task-board';
+import type { ToolExecutor } from '../src/agent/tool';
+import { MeshTopology } from '../src/agent/topology';
 
 function makeManager(): AgentLifecycleManager {
   const pool = new SubAgentPool();
@@ -48,7 +48,11 @@ describe('McpClient.ownedDisposer', () => {
         JSON.stringify({
           jsonrpc: '2.0',
           id: req.id,
-          result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'f', version: '1' } },
+          result: {
+            protocolVersion: '2024-11-05',
+            capabilities: { tools: {} },
+            serverInfo: { name: 'f', version: '1' },
+          },
         }),
       ];
     }

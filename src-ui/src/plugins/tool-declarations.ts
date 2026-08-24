@@ -109,16 +109,13 @@ export function mountToolDeclarations(
   }
   const missing = decls.filter((d) => typeof map[d.name] !== 'function').map((d) => d.name);
   if (missing.length > 0) {
-    throw new Error(
-      `[${pluginName}] 声明的工具缺 handler：${missing.join(', ')}——entry 模块 toolHandlers 映射补齐`,
-    );
+    throw new Error(`[${pluginName}] 声明的工具缺 handler：${missing.join(', ')}——entry 模块 toolHandlers 映射补齐`);
   }
   ctx.effect(() => {
     const disposers = decls.map((d) =>
       ctx.tools.register({
         id: `${pluginName}/${d.name}`,
-        factory: () =>
-          declarationToTool({ ...d, execute: map[d.name] as ToolDeclaration['execute'] }),
+        factory: () => declarationToTool({ ...d, execute: map[d.name] as ToolDeclaration['execute'] }),
       }),
     );
     return () => {

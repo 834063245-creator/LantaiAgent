@@ -3,8 +3,8 @@
 // 返回的 disposer 删除指定项、重复调用 no-op、陈旧 disposer 不误删后来者、
 // 100 次注册/释放循环后注册表归零（泄漏检测）。
 import { describe, expect, it } from 'vitest';
-import { ToolRegistry, type Tool } from '../src/agent/tool';
 import { HookRegistry, PreflightHookRegistry } from '../src/agent/hooks';
+import { type Tool, ToolRegistry } from '../src/agent/tool';
 
 function toyTool(name: string): Tool {
   return {

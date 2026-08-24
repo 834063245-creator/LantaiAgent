@@ -8,9 +8,9 @@
 
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { buildSubAgentTools } from '../src/agent/agent';
 import { ToolRegistry } from '../src/agent/tool';
 import { defineTool } from '../src/agent/tools/define-tool';
-import { buildSubAgentTools } from '../src/agent/agent';
 
 function fake(name: string) {
   return defineTool({
@@ -40,7 +40,14 @@ describe('buildSubAgentTools — delegation boundary', () => {
     const names = sub.all().map((t) => t.name());
     expect(names).toContain('read_file');
     expect(names).toContain('edit_file');
-    for (const stripped of ['agent_spawn', 'agent_kill', 'agent_status', 'ask_user', 'enter_plan_mode', 'exit_plan_mode']) {
+    for (const stripped of [
+      'agent_spawn',
+      'agent_kill',
+      'agent_status',
+      'ask_user',
+      'enter_plan_mode',
+      'exit_plan_mode',
+    ]) {
       expect(names).not.toContain(stripped);
     }
   });
@@ -49,7 +56,12 @@ describe('buildSubAgentTools — delegation boundary', () => {
     const source = new ToolRegistry();
     for (const n of ['read_file', 'edit_file', 'grep']) source.register(fake(n));
     const sub = buildSubAgentTools(source, ['read_file', 'grep']);
-    expect(sub.all().map((t) => t.name()).sort()).toEqual(['grep', 'read_file']);
+    expect(
+      sub
+        .all()
+        .map((t) => t.name())
+        .sort(),
+    ).toEqual(['grep', 'read_file']);
   });
 
   it('does not mutate the source registry', () => {

@@ -9,8 +9,8 @@
 // 退出后 → 一次性退出提醒
 // 用户输入后的下一轮 → 刷新全量
 
-import type { PlanState } from './plan-state';
 import { PLAN_EXIT_REMINDER, PLAN_FULL_REMINDER, PLAN_REENTRY_REMINDER, PLAN_SPARSE_REMINDER } from './plan-prompts';
+import type { PlanState } from './plan-state';
 
 const DEDUP_MIN_TURNS = 2;
 const FULL_REFRESH_TURNS = 5;

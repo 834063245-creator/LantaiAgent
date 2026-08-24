@@ -3,8 +3,8 @@
 
 // HTTP 请求的共享重试逻辑 — 从 openai.ts 和 anthropic.ts 中提取
 
-import { classifyError } from './types';
 import { proxyFetch } from './transport';
+import { classifyError } from './types';
 
 export interface RetryConfig {
   url: string;

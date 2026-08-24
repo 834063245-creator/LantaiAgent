@@ -3,17 +3,15 @@
 
 import { z } from 'zod';
 import type { SubAgentPool } from '../coordinator';
-import { getSubAgentActivity, STUCK_THRESHOLD_S } from '../subagent-activity';
-import type { Tool, ToolExecutor } from '../tool';
-import { agentInvoke } from '../tool';
-import { defineTool } from './define-tool';
 import {
   assertSupportedSchema,
-  buildOutputSchemaInstruction,
   extractJsonObject,
-  validateObjectJsonSchema,
   type JsonSchema,
+  validateObjectJsonSchema,
 } from '../schema-validate';
+import { getSubAgentActivity, STUCK_THRESHOLD_S } from '../subagent-activity';
+import type { Tool, ToolExecutor } from '../tool';
+import { defineTool } from './define-tool';
 
 // ═══════════════════════════════════════════════════════════════
 // Sub-Agent 工具 — 派发子 Agent 执行并行/委派任务
@@ -49,29 +47,27 @@ export function createSubAgentTool(spawner: SubAgentSpawner, pool: SubAgentPool)
       'Fork mode (default — omit subagent_type) injects your recent context so the sub-agent knows what you already did; set subagent_type="fresh" for a clean-slate agent. ' +
       'In fork mode, file edits run in an isolated git worktree and are auto-merged back on success; on merge conflict the diff is returned to you for manual application. In fresh mode, the sub-agent edits files directly in the working tree — ensure parallel fresh sub-agents have non-overlapping file scopes. ' +
       'Set async=true to spawn non-blocking — returns immediately with the sub-agent ID, and the result arrives via agent_message (type: "result"). Use agent_merge to merge all completed async sub-agents. ' +
-      'Set output_schema to require a structured JSON result: the sub-agent is instructed to reply with a single JSON object matching the schema (supported keywords: type/properties/required/additionalProperties/items/enum/const/oneOf), and the validated JSON is returned as this tool\'s result. output_schema is supported in blocking mode only. ' +
+      "Set output_schema to require a structured JSON result: the sub-agent is instructed to reply with a single JSON object matching the schema (supported keywords: type/properties/required/additionalProperties/items/enum/const/oneOf), and the validated JSON is returned as this tool's result. output_schema is supported in blocking mode only. " +
       'Note: async sub-agents still occupy pool slots (max 5 concurrent). If the pool is full, spawn requests are queued (up to 20) and started as slots free up.',
     schema: z.object({
       description: z.string().describe('Short label for the sub-agent task (3-5 words, used in progress display)'),
       prompt: z
         .string()
         .describe(
-          'Complete, self-contained task directive for the sub-agent. Must include: what to do, which files to modify, and the expected outcome. Do NOT instruct the sub-agent to run builds or tests — it cannot do so (parallel build tools cause file-lock deadlocks). Verification is the parent agent\'s responsibility after all sub-agents finish. When spawning multiple sub-agents in parallel, give each a distinct, non-overlapping set of files to avoid write conflicts.',
+          "Complete, self-contained task directive for the sub-agent. Must include: what to do, which files to modify, and the expected outcome. Do NOT instruct the sub-agent to run builds or tests — it cannot do so (parallel build tools cause file-lock deadlocks). Verification is the parent agent's responsibility after all sub-agents finish. When spawning multiple sub-agents in parallel, give each a distinct, non-overlapping set of files to avoid write conflicts.",
         ),
       subagent_type: z
         .enum(['fresh', 'fork'])
         .optional()
-        .describe(
-          'Omit to fork (inherits your recent context — DEFAULT). Set to "fresh" for a clean-slate sub-agent.',
-        ),
+        .describe('Omit to fork (inherits your recent context — DEFAULT). Set to "fresh" for a clean-slate sub-agent.'),
       tool_allowlist: z
         .array(z.string())
         .optional()
         .describe(
           'Optional list of tool names the sub-agent is allowed to use. If omitted, all tools are available. Example: ["read_file", "search_content", "inspect_symbol"] for a read-only research agent.',
         ),
-      timeout_minutes: z
-        .coerce.number()
+      timeout_minutes: z.coerce
+        .number()
         .max(60)
         .optional()
         .describe('Optional timeout override (default 30 minutes). The sub-agent is aborted when it exceeds this.'),
@@ -175,7 +171,7 @@ export function createSubAgentTool(spawner: SubAgentSpawner, pool: SubAgentPool)
 /** agent_kill — 按 ID 停止运行中的子 Agent。
  *  幂等：若已结束或未找到，返回当前状态。
  *  只有父 Agent 能停止自己的子 Agent（pool 是 per-agent 的）。 */
-export function createAgentKillTool(pool: SubAgentPool, isolationExec?: ToolExecutor): Tool {
+export function createAgentKillTool(pool: SubAgentPool, _isolationExec?: ToolExecutor): Tool {
   return defineTool({
     name: 'agent_kill',
     description:

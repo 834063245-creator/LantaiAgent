@@ -62,11 +62,9 @@ const ToolManifestDeclSchema = z.strictObject({
   description: z.string().min(1),
   /** 参数 JSON Schema（与 defineTool 的 toInputJsonSchema 输出同一规范，
    *  draft-7 object 形态）。 */
-  parameters: z
-    .record(z.string(), z.unknown())
-    .refine((v) => (v as { type?: unknown }).type === 'object', {
-      message: 'parameters 必须是 type:"object" 的 JSON Schema（工具参数是对象形态）',
-    }),
+  parameters: z.record(z.string(), z.unknown()).refine((v) => (v as { type?: unknown }).type === 'object', {
+    message: 'parameters 必须是 type:"object" 的 JSON Schema（工具参数是对象形态）',
+  }),
   /** 是否只读（可安全并行）；缺省 false。 */
   readOnly: z.boolean().optional(),
 });

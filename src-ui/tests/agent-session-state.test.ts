@@ -6,7 +6,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createAgentSessionState, type AgentSessionStateApi } from '../src/agent/agent-session-state';
+import { type AgentSessionStateApi, createAgentSessionState } from '../src/agent/agent-session-state';
 
 // ── Mock OwnedAgentHandle — minimal shape for testing ──
 function mockAgent(cascadeAbort: () => void = () => {}): any {
@@ -18,7 +18,9 @@ function mockExec(running = false): any {
   return {
     isRunning: _running,
     isBusy: _running,
-    stop: () => { _running = false; },
+    stop: () => {
+      _running = false;
+    },
   };
 }
 
@@ -84,7 +86,9 @@ describe('AgentSessionState', () => {
 
     it('removeExec cascade-aborts agent and stops exec', () => {
       let aborted = false;
-      const agent = mockAgent(() => { aborted = true; });
+      const agent = mockAgent(() => {
+        aborted = true;
+      });
       state.setAgent('panel-1', 1, agent);
       state.setExec('panel-1', 1, mockExec(true) as any);
       state.removeExec('panel-1', 1);
@@ -132,9 +136,7 @@ describe('AgentSessionState', () => {
     });
 
     it('setTurnPairs replaces the array', () => {
-      const pairs = [
-        { userText: 'test', userBubble: null, assistantBubble: null, sessionIndex: 5 },
-      ];
+      const pairs = [{ userText: 'test', userBubble: null, assistantBubble: null, sessionIndex: 5 }];
       state.setTurnPairs('panel-1', pairs);
       expect(state.getTurnPairs('panel-1')).toBe(pairs);
     });
@@ -209,9 +211,12 @@ describe('AgentSessionState', () => {
     });
 
     it('clearPanelState disposes all handles of that panel only', () => {
-      const a1 = mockAgent(); a1.dispose = vi.fn();
-      const a2 = mockAgent(); a2.dispose = vi.fn();
-      const b1 = mockAgent(); b1.dispose = vi.fn();
+      const a1 = mockAgent();
+      a1.dispose = vi.fn();
+      const a2 = mockAgent();
+      a2.dispose = vi.fn();
+      const b1 = mockAgent();
+      b1.dispose = vi.fn();
       state.setAgent('panel-1', 1, a1);
       state.setAgent('panel-1', 2, a2);
       state.setAgent('panel-2', 1, b1);
@@ -233,7 +238,9 @@ describe('AgentSessionState', () => {
   describe('subscription', () => {
     it('subscribe fires on state mutation', () => {
       let fired = 0;
-      state.subscribe(() => { fired++; });
+      state.subscribe(() => {
+        fired++;
+      });
       state.setAgent('panel-1', 1, mockAgent());
       expect(fired).toBe(1);
     });
@@ -246,7 +253,9 @@ describe('AgentSessionState', () => {
 
     it('unsubscribe stops notifications', () => {
       let fired = 0;
-      const unsub = state.subscribe(() => { fired++; });
+      const unsub = state.subscribe(() => {
+        fired++;
+      });
       state.setAgent('panel-1', 1, mockAgent());
       const firedAfterFirst = fired;
       unsub();

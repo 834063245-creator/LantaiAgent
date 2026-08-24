@@ -37,13 +37,12 @@ import type { AgentHandle } from './agent/runtime/types';
 import { SkillRegistry } from './agent/skills';
 import { buildTurnStartBlock, refreshGitStatus, refreshTimeline } from './agent/state-inject';
 import { TaskManager } from './agent/task';
-import type { Tool, ToolRegistry } from './agent/tool';
+import type { ToolRegistry } from './agent/tool';
 import type { ChatCore } from './app/chat/chat-core';
 import { useShellStore } from './app/shell-store';
 import { resolveCurrentComposition } from './composition/preset-assembly';
 import type { Context, Fiber } from './cordis';
 import { initCordisKernel } from './cordis/boot';
-import { withTimeout } from './lifecycle/timeout';
 import { createProvider } from './provider';
 import { getModel, mergeDynamicModels } from './provider/catalog';
 import type { Provider } from './provider/types';
@@ -74,8 +73,6 @@ import { bumpWorkspaceEpoch } from './workspace-scope';
 // ═══════════════════════════════════════════════════════
 // 从引擎注册表动态加载工具
 // ═══════════════════════════════════════════════════════
-
-import { dbg } from './ui/debug';
 
 // ── 路径工具 ──────────────────────────────────────────────────────
 
@@ -903,7 +900,6 @@ export class Workspace {
 
     // ── 构建工具注册表（通过 agent-builder，零 UI 导入）──
     const builderDeps: BuilderDeps = createBuilderDeps(this._storeId);
-    runtime.setDeps(builderDeps);
     const agentRef = { current: null as Agent | null };
 
     const registry = await buildToolRegistry({

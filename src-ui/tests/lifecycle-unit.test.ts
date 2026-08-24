@@ -28,11 +28,10 @@ vi.mock('../src/bridge', () => ({
 import { Agent } from '../src/agent/agent';
 import { EventKind } from '../src/agent/agent-types';
 import { SubAgentPool } from '../src/agent/coordinator';
-import { createExecState } from '../src/agent/execution-state';
 import { MessageBus } from '../src/agent/message-bus';
 import type { AgentAddress } from '../src/agent/message-types';
 import { TaskBoard } from '../src/agent/task-board';
-import { type Tool, type ToolExecutor, ToolRegistry } from '../src/agent/tool';
+import { type ToolExecutor, ToolRegistry } from '../src/agent/tool';
 import { createMergeTool } from '../src/agent/tools/merge';
 import { createSubAgentTool, type SubAgentSpawner } from '../src/agent/tools/subagent';
 import { MeshTopology } from '../src/agent/topology';

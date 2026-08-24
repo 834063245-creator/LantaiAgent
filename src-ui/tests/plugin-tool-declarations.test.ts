@@ -16,9 +16,9 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { defineTool } from '../src/agent/tools/define-tool';
-import { Context } from '../src/cordis';
-import { compositionServicesPlugin } from '../src/composition/services';
 import { pluginToolRows } from '../src/composition/plugin-tool-rows';
+import { compositionServicesPlugin } from '../src/composition/services';
+import { Context } from '../src/cordis';
 import { declarationOf, declarationToTool, mountToolDeclarations } from '../src/plugins/tool-declarations';
 import { validateManifest } from '../src/plugins/types';
 
@@ -56,9 +56,9 @@ describe('manifest.tools 声明形状（C11-1 schema）', () => {
       }).ok,
     ).toBe(false);
     // 缺 description / 缺 name
-    expect(
-      validateManifest({ ...BASE_MANIFEST, tools: [{ name: 't', parameters: { type: 'object' } }] }).ok,
-    ).toBe(false);
+    expect(validateManifest({ ...BASE_MANIFEST, tools: [{ name: 't', parameters: { type: 'object' } }] }).ok).toBe(
+      false,
+    );
     expect(
       validateManifest({ ...BASE_MANIFEST, tools: [{ description: 'd', parameters: { type: 'object' } }] }).ok,
     ).toBe(false);
@@ -97,7 +97,14 @@ describe('declarationToTool（manifest→工具方向）', () => {
     expect(tool.parameters()).toEqual({ type: 'object', properties: { a: { type: 'string' } } });
     expect(tool.readOnly()).toBe(true);
     // 缺省 false
-    expect(declarationToTool({ name: 'x', description: 'y', parameters: { type: 'object' }, execute: async () => '' }).readOnly()).toBe(false);
+    expect(
+      declarationToTool({
+        name: 'x',
+        description: 'y',
+        parameters: { type: 'object' },
+        execute: async () => '',
+      }).readOnly(),
+    ).toBe(false);
     // execute 透传三参
     const ctrl = new AbortController();
     const out = await tool.execute({ a: 'Q' }, () => {}, ctrl.signal);
@@ -158,10 +165,7 @@ describe('mountToolDeclarations（装载器挂接面）', () => {
       },
     });
     // 行 id 折算（plugin/<插件名>/<工具名>——patch/preset 可寻址）
-    expect(pluginToolRows().map((r) => r.id)).toEqual([
-      'plugin/acme/todo/todo_read',
-      'plugin/acme/todo/todo_write',
-    ]);
+    expect(pluginToolRows().map((r) => r.id)).toEqual(['plugin/acme/todo/todo_read', 'plugin/acme/todo/todo_write']);
     // factory 产出可执行工具（实例缓存：数据 + 函数闭包，无 noCache 语义）
     const row = pluginToolRows()[0];
     if (!row) throw new Error('贡献行未注册');
@@ -177,31 +181,23 @@ describe('mountToolDeclarations（装载器挂接面）', () => {
 
   it('缺 handler → throw（声明与实现一一对应；多余 handler 同理拒绝）', () => {
     const root = new Context();
-    expect(() =>
-      mountToolDeclarations(root, 'acme/todo', [], { todo_read: async () => 'x' }),
-    ).toThrow(/未声明的工具 "todo_read"/);
+    expect(() => mountToolDeclarations(root, 'acme/todo', [], { todo_read: async () => 'x' })).toThrow(
+      /未声明的工具 "todo_read"/,
+    );
   });
 
   it('handler 未声明 / 非函数 / 无 toolHandlers 导出 → throw', () => {
     const root = new Context();
+    expect(() => mountToolDeclarations(root, 'acme/todo', [], { ghost: async () => 'x' })).toThrow(
+      /未声明的工具 "ghost"/,
+    );
     expect(() =>
-      mountToolDeclarations(root, 'acme/todo', [], { ghost: async () => 'x' }),
-    ).toThrow(/未声明的工具 "ghost"/);
-    expect(() =>
-      mountToolDeclarations(
-        root,
-        'acme/todo',
-        [{ name: 't', description: 'd', parameters: { type: 'object' } }],
-        {},
-      ),
+      mountToolDeclarations(root, 'acme/todo', [{ name: 't', description: 'd', parameters: { type: 'object' } }], {}),
     ).toThrow(/缺 handler：t/);
     expect(() =>
-      mountToolDeclarations(
-        root,
-        'acme/todo',
-        [{ name: 't', description: 'd', parameters: { type: 'object' } }],
-        { t: 'not-a-function' },
-      ),
+      mountToolDeclarations(root, 'acme/todo', [{ name: 't', description: 'd', parameters: { type: 'object' } }], {
+        t: 'not-a-function',
+      }),
     ).toThrow(/必须是函数/);
     expect(() =>
       mountToolDeclarations(
@@ -212,9 +208,12 @@ describe('mountToolDeclarations（装载器挂接面）', () => {
       ),
     ).toThrow(/未导出 toolHandlers/);
     expect(() =>
-      mountToolDeclarations(root, 'acme/todo', [{ name: 't', description: 'd', parameters: { type: 'object' } }], [
-        'array',
-      ]),
+      mountToolDeclarations(
+        root,
+        'acme/todo',
+        [{ name: 't', description: 'd', parameters: { type: 'object' } }],
+        ['array'],
+      ),
     ).toThrow(/未导出 toolHandlers/);
   });
 });

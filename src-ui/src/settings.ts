@@ -301,7 +301,7 @@ export async function restoreSecrets(s: AppSettings): Promise<AppSettings> {
           const key = parseRpcString(stored);
           // 长度护栏：>4096 的「key」必是编码 bug 毒值（2026-08-08 事故：128MiB 毒值
           // 经 IPC 回传 256MB 响应击毁 WebView2）——拒收，按无 key 处理
-          if (key && key.trim() && key.length <= 4096) {
+          if (key?.trim() && key.length <= 4096) {
             p.apiKey = key.trim();
           }
         } catch {
@@ -371,7 +371,7 @@ export function removeProvider(s: AppSettings, name: string): AppSettings {
 /** 解析显示定价：优先模型目录（权威 USD 数据），读不到才回退硬编码。 */
 export function defaultPricing(kind: Protocol, model: string) {
   const m = getModel(model);
-  if (m && m.cost && m.cost.input > 0) {
+  if (m?.cost && m.cost.input > 0) {
     return { cache_hit: m.cost.cacheRead, input: m.cost.input, output: m.cost.output, currency: '$' };
   }
   if (kind === 'anthropic') {

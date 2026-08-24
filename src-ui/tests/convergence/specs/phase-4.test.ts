@@ -11,10 +11,10 @@
 //   在同一次 gate check 比对；dispose_steps 变化走 baseline-change-request 审批。
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as ts from 'typescript';
-import { AgentRuntime } from '../../../src/agent/runtime/runtime';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SubAgentPool } from '../../../src/agent/coordinator';
+import { AgentRuntime } from '../../../src/agent/runtime/runtime';
 import { ToolRegistry } from '../../../src/agent/tool';
 import { scriptedProvider } from '../helpers/fixtures';
 import { extractRuntimeWiring } from '../helpers/wiring';
@@ -57,7 +57,10 @@ describe('phase-4 T0 结构门禁 — 清理分支收敛到 context 所有权', 
   it('装配本体以 ctx.effect 登记所有权（board/lifecycle/runtime-maps ≥ 3 处）', () => {
     const src = methodSource('AgentRuntime', '_assembleAgent');
     const count = src.split('ctx.effect(').length - 1;
-    expect(count, `_assembleAgent 仅 ${count} 处 ctx.effect——board-unregister/lifecycle-manager/runtime-maps 三类所有权必须登记`).toBeGreaterThanOrEqual(3);
+    expect(
+      count,
+      `_assembleAgent 仅 ${count} 处 ctx.effect——board-unregister/lifecycle-manager/runtime-maps 三类所有权必须登记`,
+    ).toBeGreaterThanOrEqual(3);
   });
 
   it('dispose 步骤数 ≤ 16（Phase 0 基线 21）', () => {

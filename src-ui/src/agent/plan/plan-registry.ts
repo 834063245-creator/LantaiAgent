@@ -13,8 +13,8 @@
 //     只读克隆——子 Agent 生命周期可能跨越 plan 退出，
 //     保持"并行只读探索"语义不依赖父 Agent 的运行时状态。
 
-import { ToolRegistry } from '../tool';
 import type { Tool } from '../tool';
+import { ToolRegistry } from '../tool';
 import type { PlanStateManager } from './plan-state';
 
 /** plan 门禁判定：返回 null = 放行；返回字符串 = 拦截（作为工具结果返回给模型）。
@@ -47,12 +47,16 @@ export function planGateCheck(
     // plan 模式保留 spawn（原 planRegistry 对 agent_spawn 的显式保留，
     // 收敛后走 agent 领域动作）；spawn 出的子 Agent 静态只读。
     if (tool.domain?.() === 'agent' && action === 'spawn') return null;
-    return `[已拦截] 规划模式下 ${name} 仅允许只读动作: ${ro.join(', ')}。` +
-      `把修改方案写入计划文件（${planState.state.planFilePath ?? '未知'}），或退出规划模式后再执行。`;
+    return (
+      `[已拦截] 规划模式下 ${name} 仅允许只读动作: ${ro.join(', ')}。` +
+      `把修改方案写入计划文件（${planState.state.planFilePath ?? '未知'}），或退出规划模式后再执行。`
+    );
   }
 
-  return `[已拦截] 规划模式下不允许调用 ${name}。` +
-    `请只做只读探索，把修改方案写入计划文件（${planState.state.planFilePath ?? '未知'}）。`;
+  return (
+    `[已拦截] 规划模式下不允许调用 ${name}。` +
+    `请只做只读探索，把修改方案写入计划文件（${planState.state.planFilePath ?? '未知'}）。`
+  );
 }
 
 // ── Plan 模式静态只读克隆（子 Agent 用） ──
@@ -87,7 +91,7 @@ export function planRegistry(base: ToolRegistry, planState?: PlanStateManager): 
       readOnly: () => false,
       execute: async (args, onProgress) => {
         const fp = String(args.filePath || '');
-        if (planState && planState.isPlanFile(fp)) {
+        if (planState?.isPlanFile(fp)) {
           return writeFile.execute(args, onProgress);
         }
         return `[已拦截] 规划模式下只能写计划文件 (${planState?.state.planFilePath ?? '未知'})。`;
@@ -102,7 +106,7 @@ export function planRegistry(base: ToolRegistry, planState?: PlanStateManager): 
       readOnly: () => false,
       execute: async (args, onProgress) => {
         const fp = String(args.filePath || '');
-        if (planState && planState.isPlanFile(fp)) {
+        if (planState?.isPlanFile(fp)) {
           return editFile.execute(args, onProgress);
         }
         return `[已拦截] 规划模式下只能编辑计划文件 (${planState?.state.planFilePath ?? '未知'})。`;
@@ -115,11 +119,7 @@ export function planRegistry(base: ToolRegistry, planState?: PlanStateManager): 
 /** plan 模式守卫：领域工具只放行只读动作；fs 的 write/edit 在命中计划文件时豁免
  *  （与 write_file/edit_file 的计划文件特判一致，见上方）。
  *  未激活规划模式时 planFilePath 为 null → isPlanFile 恒 false → 写操作仍全拦（安全兜底）。 */
-function guardDomainForPlan(
-  t: Tool,
-  readOnlyActions: string[],
-  planState?: PlanStateManager,
-): Tool {
+function guardDomainForPlan(t: Tool, readOnlyActions: string[], planState?: PlanStateManager): Tool {
   return {
     name: () => t.name(),
     description: () => t.description(),
@@ -136,11 +136,7 @@ function guardDomainForPlan(
         }
         // fs(write)/fs(edit) 计划文件豁免 — 兼容 filePath/path/file_path 别名
         // （与 domains.ts normalizeArgs 的别名表一致）。
-        if (
-          t.domain?.() === 'fs' &&
-          (action === 'write' || action === 'edit') &&
-          planState
-        ) {
+        if (t.domain?.() === 'fs' && (action === 'write' || action === 'edit') && planState) {
           const fp = String(args.filePath ?? args.path ?? args.file_path ?? '');
           if (planState.isPlanFile(fp)) {
             return t.execute(args, onProgress, signal);

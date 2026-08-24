@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createProvider } from '../../src/provider';
-import { buildTrialAgent, countTokens } from './ab-harness';
 import { resolveGraphData } from './ab-graph';
+import { buildTrialAgent, countTokens } from './ab-harness';
 
 const enabled = Boolean(process.env.AB_ARM);
 

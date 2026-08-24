@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 export interface TrialGraphData {
@@ -11,12 +10,17 @@ export function loadGraphFromDb(dbPath: string): TrialGraphData | null {
   try {
     if (!fs.existsSync(dbPath)) return null;
     const db = new DatabaseSync(dbPath, { readOnly: true });
-    const nodes = db
-      .prepare('SELECT id, name, kind, location FROM nodes LIMIT 200000')
-      .all() as Array<{ id: string; name: string; kind: string; location: string }>;
-    const edges = db
-      .prepare('SELECT source, target, kind FROM edges LIMIT 400000')
-      .all() as Array<{ source: string; target: string; kind: string }>;
+    const nodes = db.prepare('SELECT id, name, kind, location FROM nodes LIMIT 200000').all() as Array<{
+      id: string;
+      name: string;
+      kind: string;
+      location: string;
+    }>;
+    const edges = db.prepare('SELECT source, target, kind FROM edges LIMIT 400000').all() as Array<{
+      source: string;
+      target: string;
+      kind: string;
+    }>;
     db.close();
     if (nodes.length === 0) return null;
     return { nodes, edges };
@@ -39,7 +43,10 @@ export function buildFixtureGraph(worktree: string): TrialGraphData {
   const edges: TrialGraphData['edges'] = [];
   let id = 0;
   for (const f of files) {
-    const base = f.split('/').pop()!.replace(/\.[^.]+$/, '');
+    const base = f
+      .split('/')
+      .pop()!
+      .replace(/\.[^.]+$/, '');
     for (const sym of [base, base + 'Impl', base + 'Helper']) {
       nodes.push({ id: `f${id}`, name: sym, kind: 'function', location: `${worktree}/${f}:10` });
       id++;

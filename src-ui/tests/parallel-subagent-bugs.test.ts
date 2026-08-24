@@ -35,7 +35,7 @@ import { createCodingTools } from '../src/agent/tools/coding';
 import { convergeRegistry, createDomainTools } from '../src/agent/tools/domains';
 import { createMergeTool } from '../src/agent/tools/merge';
 import { MeshTopology } from '../src/agent/topology';
-import type { Chunk, Provider, Usage } from '../src/provider/types';
+import type { Provider, Usage } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
 
 // ═══════════════════════════════════════════════════════

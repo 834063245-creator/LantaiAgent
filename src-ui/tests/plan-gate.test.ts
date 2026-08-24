@@ -2,10 +2,10 @@
 // plan 模式不再切换工具注册表（schema 跨模式恒定保 DeepSeek 前缀缓存），
 // 写约束在执行层按 planState 运行时拦截。
 import { describe, expect, it } from 'vitest';
-import { StreamingToolExecutor } from '../src/agent/streaming-executor';
-import { planGateCheck, planRegistry, type PlanGate } from '../src/agent/plan/plan-registry';
+import { type PlanGate, planGateCheck, planRegistry } from '../src/agent/plan/plan-registry';
 import { PlanStateManager } from '../src/agent/plan/plan-state';
-import { ToolRegistry, type Tool } from '../src/agent/tool';
+import { StreamingToolExecutor } from '../src/agent/streaming-executor';
+import { type Tool, ToolRegistry } from '../src/agent/tool';
 
 function fsDomainTool(executed: string[]): Tool {
   return {

@@ -32,7 +32,16 @@ async function withRenderers(fn: (svc: RenderersService) => void | Promise<void>
 describe('composition/renderer-service（V3b 第五通道）', () => {
   it('内置灰框渲染器行齐备（八 kind 全谱，id 惯例 builtin/）', () => {
     const defs = builtinRendererDefs();
-    expect(defs.map((d) => d.kind)).toEqual(['user', 'markdown', 'reasoning', 'notice', 'diff', 'plan', 'tool', 'code']);
+    expect(defs.map((d) => d.kind)).toEqual([
+      'user',
+      'markdown',
+      'reasoning',
+      'notice',
+      'diff',
+      'plan',
+      'tool',
+      'code',
+    ]);
     expect(defs.every((d) => d.id.startsWith('builtin/'))).toBe(true);
     expect(defs.every((d) => d.component != null)).toBe(true);
   });

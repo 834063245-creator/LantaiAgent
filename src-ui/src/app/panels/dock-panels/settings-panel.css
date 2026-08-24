@@ -901,7 +901,6 @@ button.sp-btn.sp-btn-ok {
   font-size: calc(11px * var(--font-scale));
 }
 
-
 /* ═══════════════════════════════════════════════════════════════
    自 shared.css 收编段（2026-08 UI 大清扫：shared.css 暗色残留整文件
    删除——P7f/P9 时代补丁与 C2 注疏化重涂冲突，此处只收编仍有消费方
@@ -924,4 +923,3 @@ button.sp-btn.sp-btn-ok {
 .sp-install-toggle {
   letter-spacing: 0.24em;
 }
-

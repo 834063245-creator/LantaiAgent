@@ -10,6 +10,7 @@
 //!
 //! 不依赖 Tauri/UI；传输由外部注入，测试可在内存回环上跑通。
 
+import { type Disposer, once } from '../lifecycle';
 import {
   createNodeStdioProc,
   createStdioTransport,
@@ -17,7 +18,6 @@ import {
   type McpTransport,
   type ProcIO,
 } from './transport';
-import { once, type Disposer } from '../lifecycle';
 
 /** 远端工具 schema（MCP tools/list 项）。 */
 export interface McpToolSchema {

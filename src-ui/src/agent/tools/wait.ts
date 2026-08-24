@@ -14,9 +14,9 @@
 // 事件驱动 + 超时兜底才是"等"，bash_wait 已验证这个模式。
 
 import { z } from 'zod';
-import type { Tool } from '../tool';
 import type { SubAgentPool } from '../coordinator';
 import { SubAgentStatus } from '../coordinator';
+import type { Tool } from '../tool';
 import { defineTool } from './define-tool';
 
 const MAX_WAIT_MS = 600_000; // 10 分钟上限，对齐 SHELL_TIMEOUT
@@ -26,10 +26,14 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 
 function statusLabel(status: SubAgentStatus): string {
   switch (status) {
-    case SubAgentStatus.Completed: return '✅ 已完成';
-    case SubAgentStatus.Failed: return '❌ 失败';
-    case SubAgentStatus.Stopped: return '⏹️ 已停止';
-    default: return '运行中';
+    case SubAgentStatus.Completed:
+      return '✅ 已完成';
+    case SubAgentStatus.Failed:
+      return '❌ 失败';
+    case SubAgentStatus.Stopped:
+      return '⏹️ 已停止';
+    default:
+      return '运行中';
   }
 }
 
@@ -46,17 +50,19 @@ export function createWaitTool(pool?: SubAgentPool): Tool {
       agentId: z
         .string()
         .optional()
-        .describe('Sub-agent ID to wait for (from agent_spawn result or agent_status). Waits until it completes/fails/stops.'),
+        .describe(
+          'Sub-agent ID to wait for (from agent_spawn result or agent_status). Waits until it completes/fails/stops.',
+        ),
       // zod: coerce + default(10000) + max(600000) 替代手写 Number(args.durationMs) || 10_000 静默兜底
-      durationMs: z
-        .coerce.number()
+      durationMs: z.coerce
+        .number()
         .max(MAX_WAIT_MS)
         .optional()
         .default(10_000)
         .describe('Fallback sleep when agentId is omitted (1000 = 1s, max 600000). Prefer agentId/bash_wait.'),
       // timeoutMs 缺省 = MAX_WAIT_MS（对齐 description "default 600000 = 10 min"）— 替代 Number(args.timeoutMs) 的 NaN 静默 bug
-      timeoutMs: z
-        .coerce.number()
+      timeoutMs: z.coerce
+        .number()
         .max(MAX_WAIT_MS)
         .optional()
         .default(MAX_WAIT_MS)

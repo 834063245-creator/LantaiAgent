@@ -17,8 +17,6 @@
 //   const scoped = createScopedStore<MessagesStore>('__lantai_msg_stores__', createMessagesStoreImpl);
 //   export const getMessagesStore = scoped.getStore;
 
-import type { StoreApi } from 'zustand';
-
 const DEFAULT_ID = '__default__';
 
 // T = store 实例类型：既可是 React 绑定（UseBoundStore<StoreApi<S>>，可调用），

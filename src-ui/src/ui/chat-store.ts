@@ -21,7 +21,7 @@ import {
   type MessagesStoreApi,
 } from '../state/messages-store';
 import { disposePanelStore, getPanelStore, type PanelStoreApi } from '../state/panel-store';
-import { disposeSessionStore, getSessionStore, nextMsgId, type SessionStoreApi } from '../state/session-store';
+import { disposeSessionStore, getSessionStore, type SessionStoreApi } from '../state/session-store';
 
 // ── ChatStore 句柄 — 直接访问子 store ──
 

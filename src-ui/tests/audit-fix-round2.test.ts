@@ -8,9 +8,9 @@
 // R8 (forceClearState flush) — covered by flushAllBoards being awaited in deactivate()
 
 import { describe, expect, it, vi } from 'vitest';
-import { TaskBoard } from '../src/agent/task-board';
 import { DiscoveryBoard } from '../src/agent/discovery-board';
 import { JsonMessageStore } from '../src/agent/message-store';
+import { TaskBoard } from '../src/agent/task-board';
 
 // ── Mock RPC ──
 const mockRpc = vi.fn();

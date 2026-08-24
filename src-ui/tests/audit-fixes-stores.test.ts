@@ -4,7 +4,7 @@
 // Tests for audit fixes #3 (message ID collision), #8 (store disposal),
 // #11 (ToolResult clears output on error).
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 // ── Mocks (minimal — these tests touch store-level logic) ──
 vi.mock('../src/ui/graph', () => ({ StarGraph: class {} }));

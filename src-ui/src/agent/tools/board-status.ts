@@ -12,10 +12,10 @@
 // 与子 Agent 共享状态板无关。
 
 import { z } from 'zod';
-import type { TaskBoard, BoardEntry } from '../task-board';
+import { parseIsolationDiff, spillToFile } from '../spill';
+import type { BoardEntry, TaskBoard } from '../task-board';
 import type { Tool } from '../tool';
 import { defineTool } from './define-tool';
-import { parseIsolationDiff, spillToFile } from '../spill';
 
 const DIFF_LIMIT = 500;
 const SUMMARY_LIMIT = 200;
@@ -63,9 +63,7 @@ export function createBoardStatusTool(board: TaskBoard, getParentId: () => strin
           const parts = [
             `${e.agentId} [${e.status}]`,
             `描述: ${e.description}`,
-            e.filesTouched && e.filesTouched.length > 0
-              ? `改动文件: ${e.filesTouched.join(', ')}`
-              : '',
+            e.filesTouched && e.filesTouched.length > 0 ? `改动文件: ${e.filesTouched.join(', ')}` : '',
             e.summary
               ? `摘要: ${e.summary.slice(0, SUMMARY_LIMIT)}${e.summary.length > SUMMARY_LIMIT ? '…(截断)' : ''}`
               : '',

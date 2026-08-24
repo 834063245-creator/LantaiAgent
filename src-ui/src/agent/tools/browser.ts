@@ -21,9 +21,9 @@
 // 结果截断（防上下文爆炸）、语义化（不给裸坐标）。
 
 import { z } from 'zod';
+import { errText } from '../loop-helpers';
 import type { Tool } from '../tool';
 import { agentInvoke } from '../tool';
-import { errText } from '../loop-helpers';
 import { defineTool } from './define-tool';
 import { parseStructuredError } from './structured-error';
 

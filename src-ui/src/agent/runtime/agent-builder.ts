@@ -19,20 +19,10 @@ import { typedJsonRpc } from '../../rpc-contract';
 import type { Agent } from '../agent';
 import { createCompactionTools } from '../compaction-model';
 import type { GraphContext, GraphDataShape } from '../hooks';
-import {
-  buildFileNodeIndex,
-  buildGraphSnapshot,
-  createGraphContext,
-  createGraphContextHook,
-  createGraphPreflightHook,
-  createStatePreflightHook,
-  createStateReadHook,
-  HookRegistry,
-  PreflightHookRegistry,
-} from '../hooks';
+import { buildFileNodeIndex, createGraphContext } from '../hooks';
 import { errText } from '../loop-helpers';
 import { type McpClient, registerMcpTools } from '../mcp';
-import type { Tool, ToolExecutor } from '../tool';
+import type { ToolExecutor } from '../tool';
 import { agentInvoke, ToolRegistry } from '../tool';
 import { convergeRegistry } from '../tools/domains';
 import { execStreamedShell } from './queued-shell';

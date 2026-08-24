@@ -3,9 +3,9 @@
 // 子 Agent 大批量迁移后, 这组测试保证工厂语义不漂移。
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { defineTool, toInputJsonSchema } from '../src/agent/tools/define-tool';
 import type { ToolExecutor } from '../src/agent/tool';
 import { createCodingTools } from '../src/agent/tool';
+import { defineTool, toInputJsonSchema } from '../src/agent/tools/define-tool';
 
 describe('toInputJsonSchema', () => {
   it('输出 JSON Schema 形状: properties + required, 无 $schema 元字段', () => {
@@ -13,7 +13,10 @@ describe('toInputJsonSchema', () => {
     const out = toInputJsonSchema(s);
     expect(out).toEqual({
       type: 'object',
-      properties: { path: { type: 'string', description: 'repo root' }, count: { type: 'integer', minimum: -9007199254740991, maximum: 9007199254740991 } },
+      properties: {
+        path: { type: 'string', description: 'repo root' },
+        count: { type: 'integer', minimum: -9007199254740991, maximum: 9007199254740991 },
+      },
       required: ['path'],
     });
     expect(out).not.toHaveProperty('$schema');
@@ -72,8 +75,18 @@ describe('defineTool execute 行为', () => {
   });
 
   it('readOnly 默认 false, 显式 true 生效', () => {
-    expect(defineTool({ name: 'a', description: 'a', schema: z.object({}), execute: async () => 'x' }).readOnly()).toBe(false);
-    expect(defineTool({ name: 'b', description: 'b', schema: z.object({}), readOnly: true, execute: async () => 'x' }).readOnly()).toBe(true);
+    expect(defineTool({ name: 'a', description: 'a', schema: z.object({}), execute: async () => 'x' }).readOnly()).toBe(
+      false,
+    );
+    expect(
+      defineTool({
+        name: 'b',
+        description: 'b',
+        schema: z.object({}),
+        readOnly: true,
+        execute: async () => 'x',
+      }).readOnly(),
+    ).toBe(true);
   });
 
   it('parameters() 输出稳定（WeakMap 缓存, 多次调用同一对象引用）', () => {

@@ -6,15 +6,15 @@
 
 import { describe, expect, it } from 'vitest';
 import { SubAgentPool } from '../src/agent/coordinator';
-import { createSubAgentTool, type SubAgentSpawner } from '../src/agent/tools/subagent';
 import {
   assertSupportedSchema,
   buildOutputSchemaInstruction,
   extractJsonObject,
   validateObjectJsonSchema,
 } from '../src/agent/schema-validate';
+import { createSubAgentTool, type SubAgentSpawner } from '../src/agent/tools/subagent';
 
-function makeSpawner(result: { text: string; err?: string }): SubAgentSpawner {
+function _makeSpawner(result: { text: string; err?: string }): SubAgentSpawner {
   return async () => result;
 }
 
@@ -54,12 +54,7 @@ describe('schema-validate — value validation', () => {
   };
 
   it('passes a fully valid object', () => {
-    expect(
-      validateObjectJsonSchema(
-        { name: 'x', count: 1, mode: 'a', tags: ['t'], exact: 7 },
-        schema,
-      ),
-    ).toBeNull();
+    expect(validateObjectJsonSchema({ name: 'x', count: 1, mode: 'a', tags: ['t'], exact: 7 }, schema)).toBeNull();
   });
 
   it('fails on missing required, extra properties, wrong type, enum miss', () => {
@@ -116,10 +111,7 @@ describe('agent_spawn — output_schema wiring', () => {
 
   it('does not silently degrade on invalid result — returns the failure wrapper', async () => {
     const pool = new SubAgentPool();
-    const tool = createSubAgentTool(
-      (async () => ({ text: '{"verdict": 5}' })) as SubAgentSpawner,
-      pool,
-    );
+    const tool = createSubAgentTool((async () => ({ text: '{"verdict": 5}' })) as SubAgentSpawner, pool);
     const out = await tool.execute({ description: 't', prompt: 'do it', output_schema: schema });
     expect(String(out)).toContain('output_schema 校验失败');
     expect(String(out)).toContain('原文');

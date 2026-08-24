@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { foldToolResults, nextFoldBoundary, DEFAULT_TOOL_FOLD_BATCH } from '../src/agent/tool-fold';
+import { DEFAULT_TOOL_FOLD_BATCH, foldToolResults, nextFoldBoundary } from '../src/agent/tool-fold';
 import type { Message } from '../src/provider/types';
 
 function toolMsg(i: number, content = `tool output ${i} `.repeat(50)): Message {
@@ -69,7 +69,7 @@ describe('foldToolResults', () => {
 
 describe('nextFoldBoundary（缓存纪律：批量前移，不逐轮滚动）', () => {
   it('未跨阈值时边界不变 — 相邻轮次折叠集合稳定', () => {
-    let b = nextFoldBoundary(40, 0, DEFAULT_TOOL_FOLD_BATCH);
+    const b = nextFoldBoundary(40, 0, DEFAULT_TOOL_FOLD_BATCH);
     expect(b).toBe(0); // 前 40 条全部保留
     for (let total = 1; total <= 79; total++) {
       expect(nextFoldBoundary(total, 0, DEFAULT_TOOL_FOLD_BATCH)).toBe(0);
