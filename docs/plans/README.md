@@ -13,6 +13,14 @@
 2026-08-24 全清**（工具行/prompt 段/capability 三类行源全量经插件通道贡献，出厂表三张
 退役），会话层收敛 session-ledger 同日竣工合入。没有拦路的硬依赖。
 
+## 会话 / 分层 / 画布三线（2026-08-24 立项）
+
+| 线 | 文档 | 状态 | 说明 |
+|---|---|---|---|
+| 会话统一 | [`session-unify-plan.md`](session-unify-plan.md) | 已施工完，收尾修正中 | U1-U4 落地；验收修正：首页 legacy_root 修复 ✅ / 重启不自动摊开（Q-B）待施工 |
+| 分层重构 | [`layering-rework-plan.md`](layering-rework-plan.md) | Proposed·Draft（等开工） | engine 纯化 + 壳瘦身 + DataContext（DSH 五铁律参照）；拍板四问全 A；等会话收尾 |
+| 画布空间模型 | [`canvas-space-model-notes.md`](canvas-space-model-notes.md) | 设计挂起 | 卡片 = 画布最小单元 / 同画布同工作区 / 侧边栏监控 vs SpineRack 空间导航（摄像机复位）；SpineRack 改造挂此线 |
+
 ## 活跃工程（就一个半）
 
 ### 1. paper-shell — 收尾中
@@ -56,12 +64,12 @@ S0/S1/S2/S4 竣工后，S3（settings 域第一方行化：面板/命令双贡�
 | ~~V5 拆除后的 Tauri 真机~~ | **大部分已跑（2026-08-22 自主段）**：真机启动 + 纸壳渲染截图取证 ✓；窗口控制 IPC 最大化/还原往返 ✓；冷启动缓存过期→重分析全链路（louvain/LSP×3/向量嵌入）✓；优雅关闭 lifecycle 全清 ✓。未覆盖：权限卡桥需真实 agent 写动作触发（需 provider 配置），留给下次带 API key 的会话 |
 | ~~shell 捆绑 bash（P0-P5）~~ | **已实跑（2026-08-22）**：os_sandbox:: 17/17 绿（含新增 repo vendor 三连测试）；init_bundled 开发态兑底路径修正一处布局雷（BUNDLED_BASH_REL 自带 vendor/ 前缀，root 应为 CARGO_MANIFEST_DIR 本身）；src-ui tsc 绿 → [`shell-stability-bundled-bash-plan.md`](shell-stability-bundled-bash-plan.md) §4 已更新 |
 | ~~browser CDP E2E-1/2/3/4/5~~ | **已实跑（2026-08-22）**：cargo test cdp:: 35/35 全绿，含重点 E2E-5 多账号 cookie 隔离（上会话偶发失败本轮未复现） |
-| session-ledger 真机三项 | 代码判据已测试钉死，真机未实跑（需带 API key 会话）：① 重启工作集恢复（多卷摊开 → 关 → 开，摊法全回）；② 后台卷落盘（双卷并发跑一轮后检查卷文件）；③ 续开查重（同卷两次续开只有一条脊）——见 [`session-ledger-plan.md`](session-ledger-plan.md) §7 |
+| session-ledger 真机三项 | 代码判据已测试钉死，真机未实跑（需带 API key 会话）：① 重启工作集恢复（多卷摊开 → 关 → 开，摊法全回）；② 后台卷落盘（双卷并发跑一轮后检查卷文件）；③ 续开查重（同卷两次续开只有一条脊）——见 [`../archive/session-ledger-plan.md`](../archive/session-ledger-plan.md) §7（⚠️ ①已被 session-unify Q-B 取代：重启不自动摊开） |
 | workspace-flip 批 3 边界 | 预热期内创建的会话缺 graph 工具（已知边界，非 bug） |
 
 ## 已完成并归档（点名即可，详情勿读）
 
-workspace-flip · 总线归零+ui/拆分 · 岛层退休 · cordis-migration · agent-core-convergence（baseline 冻结维护态）· 组合层 S0-S2/S4 · 雷区地图 P0/P1 全拆 · V5 旧前端拆除 · **session-ledger L0-L3（2026-08-23 四段当日连推，2026-08-24 merge `e677c5c8` 合入；判据 26 用例钉死，真机三项见上表）**。索引见 [`../archive/README.md`](../archive/README.md)。
+workspace-flip · 总线归零+ui/拆分 · 岛层退休 · cordis-migration · agent-core-convergence（baseline 冻结维护态）· 组合层 S0-S2/S4 · 雷区地图 P0/P1 全拆 · V5 旧前端拆除 · **session-ledger L0-L3（2026-08-23 四段当日连推，2026-08-24 merge `e677c5c8` 合入；判据 26 用例钉死，真机三项见上表）** · **workspace-ownership-root-cure（工作区归属根治五 Phase + boot 序洞真根因，2026-08-24 实机验收通过）**。索引见 [`../archive/README.md`](../archive/README.md)。
 
 **注意两个活的例外**：`landmine-map.md`（技术债清单，P2 残留与根治级在册）与 convergence 的 baseline change request 流程（`agent-core-convergence/baseline-change-request.md`——baseline 变更审批仍走此文件）虽已归档目录，仍是活流程入口。
 

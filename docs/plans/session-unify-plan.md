@@ -8,10 +8,15 @@
 > - U3 视图定型 `05d32fe8`：SpineRack 收窄 + 验收钉 ×3
 > - U4 总目退役 `a6cce933`：_ledger.json/_active.json 全链拆除，恢复 = 扫描推导最近 3 卷（RESTORE_OPEN_MAX）
 > - **待真机验收四项**：重启首页全量列表（169 旧卷经 legacy_root 可见）/ 跨工作区开卷内容正确 / 新建落全局位 / 重启摊开最近 3 卷
+>
+> **验收修正（2026-08-24 用户实机 + 本轮施工）**：
+> - ✅ 首页全量列表（legacy_root 可见）——修复真 bug：SessionsHome 调 `get_last_project` 误用 typedJsonRpc，对裸路径二次 JSON.parse 抛错致 legacy_root 恒空；改 typedRpc 后 50 条可见。
+> - ✅ **重启不自动摊开（Q-B，用户拍板）**：autoRestoreLastSession 重写为只发号对账；loadSessionFromDisk 句柄惰性化（无 Key 也摊开内容层）+ readVolumeData 承崩溃加速契约；首页/书脊新建守卫去活跃会话依赖；死代码（restoreOpenSet/ensureBaselineSession/restoredLabel）删除。门禁全绿：vitest 1690 / build / biome 0。用户实机验证通过。
+> - ✅ 会话统一整线竣工（2026-08-24 晚）：U1-U4 + 验收修正全部落地，真机验收通过。
 > 触发：用户实机反馈「会话管理复杂、侧边栏无法统管、首页/恢复乱」→ 产品定调「会话全局化，工作区降级为元数据」。
 > 本文档自包含：接手会话读完本文 + `AGENTS.md` + `CONVENTIONS.md` + `INVARIANTS.md` 即可开工，无需重读会话历史。
 > 前置事实源：`src-ui/src/ui/chat-session.ts`、`src-ui/src/state/session-ledger.ts`、`src-ui/src/app/SessionsHome.tsx`、`src-ui/src/app/panels/SpineRack.tsx`、`src-tauri/src/commands/filesystem.rs`、`src-ui/src/shell/rows/cold-start.ts`、`src-ui/src/shell/rows/persistence.ts`。
-> 上游已验收：`workspace-ownership-root-cure-handoff.md`（工作区归属根治 Phase A-E + boot 序洞真根因修复，用户实机验收通过，2026-08-24）。
+> 上游已验收：`docs/archive/workspace-ownership-root-cure-handoff.md`（工作区归属根治 Phase A-E + boot 序洞真根因修复，用户实机验收通过，2026-08-24）。
 
 ## 0. 一句话
 
@@ -244,7 +249,7 @@
 
 ## 11. 相关
 
-- 前置：`workspace-ownership-root-cure-handoff.md`（工作区归属根治，上游已验收）
-- 上游：`session-ledger-plan.md`（案卷总目，本计划继承其身份/发号机制）
+- 前置：`docs/archive/workspace-ownership-root-cure-handoff.md`（工作区归属根治，上游已验收）
+- 上游：`docs/archive/session-ledger-plan.md`（案卷总目，本计划继承其身份/发号机制）
 - 挂起：画布空间模型（独立议题，会话以卡片进视图后另行设计）
 - 现状总览：`docs/plans/README.md`（竣工按惯例归档）

@@ -15,6 +15,7 @@
 - **2026-08-22 深夜归档（已消费交接稿）**：`design-handoff-lantai-2026-08-22.md`（兰台注疏设计定稿交接——全部落地后退役；产物为 `prototype/lantai.html` + `docs/design/lantai-design-spec.md`）
 - **2026-08-22 S3 竣工归档**：`composition-architecture-S3-settings-domain-externalization.md`（S3 settings 域行化设计件——六裁决两批落地后随段竣工归档；施工史与落地记录在 `docs/plans/composition-architecture/HISTORY.md` S3 段）
 - **2026-08-23 归档**：`arch-action-plan.md`（any 清理 + agent.ts 拆分等架构行动全集——11c/14 全收官后退役；现状叙事由 CONVENTIONS/AGENTS 承接）
+- **2026-08-24 归档（会话线连续三棒）**：`session-ledger-plan.md`（案卷总目 L0-L3 竣工，2026-08-24 merge `e677c5c8`；后续由 session-unify 继承身份/发号机制）、`workspace-ownership-root-cure-handoff.md`（工作区归属根治五 Phase + boot 序洞真根因，实机验收通过；DSH 对标事实源清单）。活线见 `docs/plans/README.md`「会话 / 分层 / 画布三线」。
 
 ## 使用规则
 
