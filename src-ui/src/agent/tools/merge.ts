@@ -44,7 +44,7 @@ export function createMergeTool(
   board: TaskBoard,
   getAgentId: () => string,
   exec: ToolExecutor,
-  opts: { projectPath: string },
+  opts: { projectPath: string; graphEngineOn?: boolean },
 ): Tool {
   // R10：同轮并发 agent_merge 串行化。两个 merge 同时读 completed 条目会
   // 一个成功、另一个撞「没有活跃的隔离环境」报假冲突；串行后第二个看到
@@ -74,7 +74,7 @@ export function createMergeTool(
     const noArtifactDetails: string[] = [];
 
     const gate = effectiveGate();
-    const gateOpts = { projectPath: opts.projectPath, exec };
+    const gateOpts = { projectPath: opts.projectPath, exec, graphEngineOn: opts.graphEngineOn };
 
     // 批量 merge：成功合并的条目先收集，图检查在循环后统一跑一次 —
     // runGraphGate 是整图分析（不依赖单个 entry），逐条跑 N 次 = N 次全图扫描 + N 次轮询，

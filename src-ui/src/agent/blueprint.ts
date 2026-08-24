@@ -228,6 +228,9 @@ export function firstPartyCapabilities(): AgentCapability[] {
         scope.tools.register(
           createMergeTool(taskProxy, () => agent.id, scope.deps.isolationExec, {
             projectPath: scope.ctx.projectPath,
+            // 图门禁真值 = 本装配面 graphContext 是否在场（绑定期引擎开关的下游
+            // 快照）——不读实时 settings，防中途拨开关与绑定态错位（#1/#2）
+            graphEngineOn: scope.inputs.graphContext != null,
           }),
         );
         scope.tools.register(createBoardStatusTool(taskProxy, () => agent.id));
@@ -337,28 +340,34 @@ export function firstPartyCapabilities(): AgentCapability[] {
       },
     },
     {
-      // 图上下文 + 状态 + plan 增强 hooks（提示注入类 — 受 hooksEnabled 总开关）
+      // 图上下文 + 状态 + plan 增强 hooks（提示注入类 — 受 hooksEnabled 总开关）。
+      // 2026-08-24 解耦（#3）：state-read/state-preflight 的数据源是 LSP 诊断
+      //（与图谱引擎无关），不再被「无 graphContext」一票否决——when 放宽为
+      // 图或诊断源任一在场；图系 hooks（graph-context/graph-preflight/plan×2
+      //+ 快照加载）仍各自以 graphContext 为准（键不拆：minimal 按 graph-hooks
+      // 整键禁用是字节契约面）。
       key: 'graph-hooks',
       phase: 'agent',
-      when: ({ inputs }) => !!inputs.graphContext,
+      when: ({ inputs, deps }) => !!inputs.graphContext || !!deps.diagnosticsSource,
       install: ({ ctx, inputs, hooks, preflightHooks, deps }) => {
         const graphContext = inputs.graphContext;
-        if (!graphContext) return;
         // 引擎快照加载不受 hooksEnabled 门控（与旧装配一致 — 只有 hook 注册受控）
-        void loadEngineSnapshot(graphContext, ctx.projectPath).catch(() => {});
+        if (graphContext) void loadEngineSnapshot(graphContext, ctx.projectPath).catch(() => {});
         if (inputs.hooksEnabled === false) return;
-        hooks.register(createGraphContextHook(graphContext));
+        if (graphContext) hooks.register(createGraphContextHook(graphContext));
         if (deps.diagnosticsSource) {
           hooks.register(createStateReadHook(ctx.projectPath, deps.diagnosticsSource));
         }
-        preflightHooks.register(createGraphPreflightHook(graphContext));
+        if (graphContext) preflightHooks.register(createGraphPreflightHook(graphContext));
         if (deps.diagnosticsSource) {
           preflightHooks.register(createStatePreflightHook(deps.diagnosticsSource));
         }
-        const planState = ctx.resolve('planState');
-        // Plan 模式图增强 hook — 探索时注入影响面，写计划时追加分析
-        hooks.register(createPlanExploreHook(graphContext, planState));
-        hooks.register(createPlanWriteHook(graphContext, planState));
+        if (graphContext) {
+          const planState = ctx.resolve('planState');
+          // Plan 模式图增强 hook — 探索时注入影响面，写计划时追加分析
+          hooks.register(createPlanExploreHook(graphContext, planState));
+          hooks.register(createPlanWriteHook(graphContext, planState));
+        }
       },
     },
     {

@@ -15,7 +15,6 @@
 //   - run_check 每次调用都会 save_baseline（hologram.rs:79），quiet 轮询推进基线无害
 //   - 60s 超时 fail-closed：watcher 可能暂停，未验证视为失败并回滚
 
-import { graphEngineEnabled, loadSettings } from '../../settings';
 import { errText } from '../loop-helpers';
 import { execStreamedShell } from '../runtime/queued-shell';
 import type { BoardEntry } from '../task-board';
@@ -28,6 +27,8 @@ export interface MergeGateOptions {
   projectPath: string;
   /** 工具执行器（同 merge.ts 的 exec） */
   exec: ToolExecutor;
+  /** 图谱数据面在场（装配期注入 = graphContext != null；缺省 false = 跳过） */
+  graphEngineOn?: boolean;
   /** 图检查轮询总超时（默认 60s） */
   maxCheckWaitMs?: number;
   /** 轮询间隔（默认 1.5s，对齐 watcher 增量分析节奏） */
@@ -56,11 +57,19 @@ export interface GateResult {
  */
 export async function runGraphGate(_entry: BoardEntry, opts: MergeGateOptions): Promise<GateResult> {
   const { exec, projectPath } = opts;
-  // 图谱引擎停用（2026-08-22 引擎开关）：图检查整体跳过——hologram_run_check
-  // 的 Rust 侧有 engine_init→direct_analyze(force) 强分析回退，引擎关着时
-  // 轮询 60s 只会反复触发它（还会把引擎拉起来）。诚实报告，不静默。
-  if (!graphEngineEnabled(loadSettings())) {
-    return { passed: true, quiet: true, report: '图谱引擎已停用（设置 → Agent），跳过图检查门禁' };
+  // 图谱数据面不在场（2026-08-24 真值源改注入）：真值 = 装配期注入的
+  // graphEngineOn（= 本工作区 graphContext 是否在场），**不再实时读全局
+  // settings**——两套真值会错位：关态绑定后中途开开关 → 轮询击穿开关；
+  // 开态绑定后中途关开关 → 图还活着却误报「引擎已停用」。无图时
+  // hologram_run_check 的 Rust 侧有 engine_init→direct_analyze(force) 强分析
+  // 回退，轮询 60s 只会反复触发它（还会把引擎拉起来）。缺省 false（未声明
+  // 即跳过）—— fail-safe 方向：宁可跳过检查，绝不拉起引擎。诚实报告，不静默。
+  if (opts.graphEngineOn !== true) {
+    return {
+      passed: true,
+      quiet: true,
+      report: '本工作区未启用图谱数据面（绑定目录时引擎关闭或图未加载），跳过图检查门禁',
+    };
   }
   const maxWait = opts.maxCheckWaitMs ?? 60_000;
   const interval = opts.pollIntervalMs ?? 1_500;

@@ -73,8 +73,9 @@ interface DisplaySettings {
  *  （零目录会话既有语义），fs/shell/git/权限全套保留。生效时机 =
  *  下次绑定目录（在途工作区不活拆）。 */
 export interface GraphEngineSettings {
-  /** 引擎总开关（缺省 true = 旧行为零漂移；false 时读取点见
-   *  workspace.ts / shell/rows/workspace.ts / shell/rows/cold-start.ts）。 */
+  /** 引擎总开关（缺省 true = 旧行为零漂移；false 时读取点见 workspace.ts
+   *  （绑定期快照——装配面经 graphContext 间接消费，见 blueprint.ts）/
+   *  shell/rows/cold-start.ts / app/SessionsHome.tsx）。 */
   enabled: boolean;
 }
 

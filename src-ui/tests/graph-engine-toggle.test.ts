@@ -7,7 +7,8 @@
 //   2. Workspace 门禁：关态 open() 不触 analyze_and_load/load_graph_page/
 //      hologram_run_check/workspace_start_watcher（防强分析回退击穿开关），
 //      graphData 留 null；
-//   3. merge-gate：关态 runGraphGate 直接跳过（不轮询 run_check）。
+//   3. merge-gate：注入真值语义（2026-08-24 真值源改注入）——graphEngineOn
+//      未声明即跳过（不轮询 run_check）；注入 true 时与实时 settings 解耦照跑。
 //   4. cold-start：关态走 get_last_project 信号（不碰 load_graph_json）。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -108,18 +109,37 @@ describe('图谱引擎开关：Workspace.open 门禁', () => {
   }, 20_000);
 });
 
-describe('图谱引擎开关：merge-gate 跳过', () => {
-  it('关态：runGraphGate 不轮询 hologram_run_check，诚实报告跳过', async () => {
+describe('图谱引擎开关：merge-gate 注入真值', () => {
+  it('未注入 graphEngineOn：跳过图检查门禁，不轮询 hologram_run_check（settings 开态也拦不住——真值只在注入）', async () => {
     rpcCalls.length = 0;
-    settingsState.graphEngine = { enabled: false };
+    settingsState.graphEngine = { enabled: true };
     const { runGraphGate } = await import('../src/agent/tools/merge-gate');
     const entry = { agentId: 'sub-1' } as never;
     const exec = vi.fn(async () => '{}');
     const r = await runGraphGate(entry, { projectPath: 'D:/proj/demo', exec });
     expect(r.passed).toBe(true);
-    expect(r.report).toContain('图谱引擎已停用');
-    expect(rpcCalls).not.toContain('hologram_run_check');
+    expect(r.quiet).toBe(true);
+    expect(r.report).toContain('跳过图检查门禁');
     expect(exec).not.toHaveBeenCalled();
+  });
+
+  it('注入真值与实时 settings 解耦：settings 关态但 graphEngineOn: true → 照跑轮询', async () => {
+    rpcCalls.length = 0;
+    settingsState.graphEngine = { enabled: false };
+    const { runGraphGate } = await import('../src/agent/tools/merge-gate');
+    const entry = { agentId: 'sub-1' } as never;
+    const exec = vi.fn(async () => '{"quiet":true}');
+    const r = await runGraphGate(entry, {
+      projectPath: 'D:/proj/demo',
+      exec,
+      graphEngineOn: true,
+      maxCheckWaitMs: 80,
+      pollIntervalMs: 20,
+    });
+    // 真值来自注入：settings 关态不再拦得住轮询（旧实现在此直接跳过）
+    expect(exec.mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect(exec.mock.calls[0]?.[0]).toBe('hologram_run_check');
+    expect(r.quiet).toBe(true);
   });
 });
 
