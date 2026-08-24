@@ -1,7 +1,7 @@
 # 兰台（Lantai）— 核心能力与技术架构
 
 > © 2026 Wenbing Jing. MIT License.
-> 最后更新：2026-08-24（P4 插件化收官 · V5 纸壳唯一主界面 · session-ledger 竣工校准；图谱引擎专名 HoloGram 不变）
+> 最后更新：2026-08-25（分层重构 L1-L4：应用层（数据上下文）新生 + Engine 纯化（StoreHost 注入/单根实例）+ 壳层瘦身；图谱引擎专名 HoloGram 不变）
 
 兰台（Lantai）不是一个单纯的"代码图谱可视化工具"。它的本质是一个 **Harness Engineering 平台**——将多种成熟软件工程模式（依赖分析、约束治理、变更预演、沙箱隔离、Agent 自主执行等）编排为统一 Harness，并通过内置 Agent 与对外 MCP 服务将这些能力开放给人和 AI。桌面主界面是**注疏案卷**（纸壳）；工作台本体经八条贡献通道**完全插件化**——出厂态零硬编码特权行，第一方能力与第三方插件在同一注册表上竞争。
 
@@ -36,18 +36,28 @@
 │  ┌──────────┐  ┌──────────┐  ┌───────────────────┐  │
 │  │ 统一 API  │  │ MCP 服务  │  │ 36 schema/35 默认    │  │
 │  │ Engine.rs │  │ JSON-RPC │  │  ToolRegistry     │  │
-│  └────┬─────┘  └────┬─────┘  └────────┬──────────┘  │
-│       └─────────────┴─────────────────┘              │
-│   全局实例 ENGINE (LazyLock<RwLock<Option<Engine>>>)  │
+│  └────┬─────┘  └────┬─────┘  └───────┬───────────┘  │
+│       └─────────────┴────────────────┘              │
+│  全局槽 ENGINE（Arc<Engine>——回退锚点，非唯一实例）      │
+│  Engine 单根实例 × N（每工作区一个，StoreHost 注入）      │
 └──────────────────────┬──────────────────────────────┘
                        │ 进程管理 (McpManager) + IPC
 ┌──────────────────────┴──────────────────────────────┐
 │              Tauri 桌面 Shell (Rust)                  │
 │  ┌──────────┐ ┌─────────┐ ┌────────┐ ┌───────────┐  │
 │  │ 权限引擎  │ │ 沙箱    │ │ 隔离   │ │ 生命周期   │  │
-│  │Permission│ │ 三层沙箱 │ │worktree │ │Ledger     │  │
+│  │Permission│ │ 三层沙箱 │ │worktree│ │Ledger     │  │
 │  └──────────┘ └─────────┘ └────────┘ └───────────┘  │
-│         单一 RPC 入口 (rpc.rs 153 个方法)              │
+│  ┌──────────────────────────────────────────────┐   │
+│  │ 应用层 app/（L1 新生）：WorkspaceDataContext    │   │
+│  │ 按工作区实例化——每工作区一个专属 Engine +         │   │
+│  │ StoreHost（图库/索引/时间线所有权单元）；          │   │
+│  │ 会话 attach 事实校验（卷快照 workspace 字段）；    │   │
+│  │ 命令族业务（services/：graph/hologram/dispatch/  │   │
+│  │ workspace/dataflow）+ 决议链（显式 path →        │   │
+│  │ _session_id → 焦点会话 → 单槽 → 全局兜底）        │   │
+│  └──────────────────────────────────────────────┘   │
+│         单一 RPC 入口 (rpc.rs 157 个方法薄壳)          │
 └──────────────────────┬──────────────────────────────┘
                        │ Tauri IPC (invoke)
 ┌──────────────────────┴──────────────────────────────┐
@@ -56,19 +66,23 @@
 │  │ Agent 循环│ │ 组合层/   │ │多Agent池│ │ 注疏案卷   │  │
 │  │ streaming│ │ 插件通道  │ │Coord.  │ │ 纸壳 UI   │  │
 │  └──────────┘ └──────────┘ └────────┘ └───────────┘  │
+│  会话作用域（session-scope）＝「当前工作区」UI 投影锚；   │
+│  agentInvoke 恒注入 _session_id（引擎决议到会话上下文）  │
 │   Workspace (cordis fiber 宿主) + Zustand + React     │
 └─────────────────────────────────────────────────────┘
 ```
 
 三层各自独立编译，通过明确边界通信：
-- **Engine** 是纯 Rust 库 + CLI 二进制，零外部运行时进程，可独立 `serve` 作为 MCP 服务器
-- **Tauri Shell** 是进程管理者和权限守卫，不做分析逻辑；插件安装/授权通道也在此层
+- **Engine** 是纯 Rust 库 + CLI 二进制，零外部运行时进程，可独立 `serve` 作为 MCP 服务器；**数据文件（hologram.db/FTS5/快照/向量）的所有权在 StoreHost**，由宿主创建注入——Engine 是计算与访问的执行方，不是数据的唯一拥有者
+- **Tauri Shell** 是通道（rpc.rs 薄壳）、权限守卫与进程管理者；**业务编排在应用层 `src-tauri/src/app/`**（数据上下文 + services），插件安装/授权通道也在此层
 - **前端** 是 Agent 运行时和用户界面（注疏案卷纸壳 + 组合层/插件系统），通过 `typedRpc()` / `typedListen()`（`rpc-contract.ts`）与后端通信
 
 ### 2.1 关键运行时事实
 
-- **Engine 全局实例**：`engine::ENGINE`（`LazyLock<RwLock<Option<Engine>>>`）持有全部图状态；`engine_init / engine_read / engine_write / engine_analyze` 是唯一入口。Engine 用状态机管理生命周期：`Uninitialized → Loading → Ready ↔ Analyzing → Error`。
-- **WorkspaceHandle（Rust）**：持有单个打开项目的所有后端状态（权限上下文、watcher、审计），替代分散的 `ACTIVE_PROJECT / SANDBOX / AUDIT_LOGGER` 全局变量。
+- **数据上下文（L1 应用层）**：`AppContexts`（Tauri state）持有「canonical 根 → WorkspaceDataContext」注册表与会话绑定表。每个上下文 = 该工作区专属 `Arc<Engine>` + StoreHost 共享句柄；**会话 attach = 事实校验**（卷快照 `workspace` 字段为准、目录在才绑定；卷缺/字段空/坏卷 → Ungrouped 会话照常可用）；「当前工作区」退化为 UI 投影（焦点会话推导）。空闲上下文 GC（无会话绑定且非焦点且非单槽活跃）。
+- **Engine 多实例（L1/L2）**：`Engine::open(root)` 绑定单根终身不变（宿主开 StoreHost 注入，返回即 Ready）；`new_shared` = open + Arc + Weak 自引用 + 自动 watcher。全局槽 `ENGINE: RwLock<Option<Arc<Engine>>>` 仅作无决议信息调用（engine 二进制 / MCP serve）的回退锚点；壳层每次 ensure 上下文都把全局槽指向同一 Arc（杜绝同根双实例漂移）。
+- **引擎决议链（L1）**：图命令族（hologram_call / get_graph_* / engine_impact / run_check / 时间线）按「显式 path → `_session_id`（agentInvoke 恒注入活跃会话）→ 焦点会话 → 单槽工作区 → 全局兜底」决议引擎实例；hologram_call 在 spawn_blocking 线程经 `with_current`（线程局部当前引擎）绑定 dispatch——ToolRegistry 处理器自动吃到正确实例，跨工作区并行零锁串行零换绑竞态。壳层全局函数直连点由白名单守卫测试钉死。
+- **WorkspaceHandle（Rust）**：持有单个打开项目的壳层状态（权限上下文、watcher、审计、上下文引擎句柄）；壳层 watcher 增量落本实例（不吃全局）。
 - **ResourceLedger**：统一生命周期管理。所有有生命周期需求的后端服务（LlmProxy、BgJobs、Mcp、Pty、Lsp、UiaWorker、Aura、MemoryBundle、Logging 共 9 个）实现 `LifecycleService` trait 并注册，退出时按序 drain（总预算 2s + 3s 强退）。
 - **Workspace（前端）**：统一状态容器，替代 18+ 个模块级全局变量；原子化工作区切换（`old.deactivate()` → `Workspace.open()` → 注入）。生命周期原语已内核化为 vendored cordis（`src-ui/src/cordis/`，同 DSH 做法）：工作区级资源以 fiber effect 登记（获取点就地），Agent 挂身份 fiber（`hologram/agent`，清理仍走 DisposerBag 同步快通道），子系统以 Service 挂树（`LspService` 样板）；`deactivate()` = fiber dispose-to-quiescence + epoch 推进。epoch 代际防护永久保留——fiber 管所有权，epoch 管逃逸所有权的在途回调（详见 `docs/archive/cordis-migration/`）。
 
@@ -316,14 +330,15 @@ Agent 的装配面（工具行 / prompt 段 / capability 三类行源）全部�
 
 ### 5.1 统一 Engine API
 
-`engine/src/engine/mod.rs` 用单一 `Engine` 结构体替换了分散全局变量（CACHED_GRAPH / GRAPH_STORE / ANALYZE_LOCK）：
+`engine/src/engine/mod.rs` 用单一 `Engine` 结构体替换了分散全局变量（CACHED_GRAPH / GRAPH_STORE / ANALYZE_LOCK）；L2 起**存储外置**——图库与时间线连接住在 `storage::StoreHost`（所有权单元），由宿主（壳层数据上下文 / engine 二进制）创建并注入共享句柄：
 
-- **状态机**：`Uninitialized → Loading → Ready ↔ Analyzing → Error`，UI 据此渲染
+- **构造即绑根**：`Engine::open(root)`（宿主开 StoreHost 注入，返回即 Ready）；`new_shared(root)` = open + Arc + Weak 自引用 + 自动 watcher（生产共享形态）。**单根终身不变**——切换工作区 = 新建实例（`engine_init` 全局路径自行换整个实例，旧实例 watcher 经 Weak 自灭）。
+- **状态机**：`Ready ↔ Analyzing → Error`（Loading 收敛进 StoreHost::open；Uninitialized 仅全局槽空态）
 - **并发**：`RwLock` 读写分离；timeline 用专用 SQLite 连接（永不阻塞图锁）
 - **取消令牌**：新 analyze() 抢占旧运行（阶段边界中止），"重新分析"按钮秒响应
 - **panic 守卫**：`catch_unwind` 包裹流水线，任何 panic 都重置状态 + 释放锁，杜绝卡死在 Analyzing
-- **工作区切换**：旧 watcher 停止 → 新 store 打开 → watcher 重启
-- **增量更新**：`engine_try_incremental` 先试增量（IncrementalUpdater），失败回退全量
+- **增量更新**：实例方法 `try_incremental`（先试增量 IncrementalUpdater，失败回退全量）；全局 `engine_try_incremental` 仅引擎二进制自用
+- **线程局部当前引擎**：`with_current(arc, f)` 在分派线程绑定当前实例——engine_* 全局函数先查 TLS 再落全局，MCP 工具处理器无需逐个穿线即吃到正确实例（纪律：只存在于同步闭包内，禁跨 .await）
 
 ### 5.2 分析流水线
 
@@ -363,7 +378,7 @@ Agent 的装配面（工具行 / prompt 段 / capability 三类行源）全部�
   2. **n-gram 哈希**—— 零依赖兜底，词法相似性
 - **索引存储**：usearch HNSW（Cos 度量），`slots.json` 记录节点 id 列表
 - **一致性保障**：slots.json 带嵌入后端标识，后端不匹配的旧索引自动判废（防跨嵌入空间垃圾结果）；slots 数与索引向量数必须一致；原子落盘（tmp + rename）
-- **进程级缓存**：mtime 变化自动失效重载；重建并发守卫 `BUILD_RUNNING`
+- **进程级缓存**：mtime 变化自动失效重载（**按根键控**——双工作区互不踩，L4）；重建并发守卫按索引文件路径防重入
 - 索引位置：`.lantai/vectors.usearch`；后台线程构建（流水线 7.5 阶段）
 - **暴露方式**：挂在前端 `search_code` 工具的 `vector_hits` 字段（与文本/FTS 命中合并返回），并带 `vector_backend` 标识
 
@@ -461,7 +476,7 @@ Engine 作为独立 MCP Server 运行，通过 JSON-RPC over stdin/stdout 对外
 
 ### 7.1 RPC 单一入口
 
-`rpc.rs` 一个 `#[tauri::command] rpc(method, params)` + 153 个方法分支是全部前端能力的单一 IPC 入口。分类（由生成物 `docs/agents/frontend-rpc-contract.md` 实测为准，`scripts/gen-rpc-contract-md.cjs` 再生）：Engine 调度、Graph、Git、文件系统、搜索、Web、CDP 浏览器控制、Shell（含协议桥）、编辑器、身份认证/权限、**插件安装通道**（plugin_install/uninstall/set_enabled/dir）、Agent 隔离（worktree）、外部服务、Hologram 遗留、工作区、会话持久化、约束、数据流、Aura 记忆、PTY、LSP、desktop/UIA（进程内 COM：probe/screenshot/tree/find/read/wait/click/…/audit）。
+`rpc.rs` 一个 `#[tauri::command] rpc(method, params)` + 157 个方法分支是全部前端能力的单一 IPC 入口；**命令实现是薄壳**（参数提取 + State 转换 + 横切），业务编排在应用层 `app/services/`。分类（由生成物 `docs/agents/frontend-rpc-contract.md` 实测为准，`scripts/gen-rpc-contract-md.cjs` 再生）：应用层（数据上下文/会话 attach）、Engine 调度、Graph、Git、文件系统、搜索、Web、CDP 浏览器控制、Shell（含协议桥）、编辑器、身份认证/权限、**插件安装通道**（plugin_install/uninstall/set_enabled/dir）、Agent 隔离（worktree）、外部服务、Hologram 遗留、工作区、会话持久化、约束、数据流、Aura 记忆、PTY、LSP、desktop/UIA（进程内 COM：probe/screenshot/tree/find/read/wait/click/…/audit）。
 
 ### 7.2 ResourceLedger（统一生命周期）
 
@@ -575,7 +590,10 @@ HoloGram/
 │
 ├── src-tauri/                   # Tauri 桌面 Shell (Rust)
 │   ├── src/
-│   │   ├── commands/            # 18 个命令模块 (engine_dispatch/graph/shell/filesystem/git/isolation/plugins/…)
+│   │   ├── app/                 # 应用层 (L1 新生): AppContexts 数据上下文注册表 +
+│   │   │   │                    # 会话 attach 事实校验 + services/ 命令族业务
+│   │   │   └── services/        # graph/hologram/dispatch/workspace/dataflow 服务
+│   │   ├── commands/            # 命令薄壳 (engine_dispatch/graph/hologram/workspace/dataflow <100 行/文件)
 │   │   ├── permissions/         # 权限引擎 (mod: PermissionContext + rule + bash/filesystem/git/web/safety)
 │   │   ├── tools/               # Tool trait 实现 (Read/Edit/Bash/Git/WebFetch/Browser/Desktop)
 │   │   ├── lifecycle.rs         # ResourceLedger + LifecycleService (9 个服务)
@@ -655,12 +673,13 @@ Engine 编译为独立的 `hologram-engine.exe`，既可作为 Tauri 的子进�
 - Engine 崩溃不影响 Tauri Shell，Shell 可重启 Engine
 - Engine 的性能不受 Tauri 的 WebView 开销影响
 
-### 10.2 为什么 Tauri 只做转发
+### 10.2 为什么 Tauri 壳只做通道
 
-Tauri Shell 的 `rpc.rs` 有 153 个方法但几乎不含分析逻辑。所有图谱操作转发给 Engine，Shell 专注于进程管理、权限裁决、沙箱隔离、插件安装通道。这种分离使得：
+Tauri Shell 的 `rpc.rs` 有 157 个方法但均为薄壳（L3 起业务编排在 `app/services/` 应用层）。所有图谱操作经数据上下文决议到工作区专属 Engine 实例，Shell 专注于通道、权限裁决、沙箱隔离、插件安装通道。这种分离使得：
 - 权限引擎在 Engine 不可用时仍然生效
 - Engine 的测试可以完全不涉及 Tauri
 - 非 Tauri 的 Engine 消费者（纯 MCP 客户端）也能获得完整图谱能力
+- 多会话多工作区并行的正确性由架构保证（每工作区一实例一 store），非调用方自觉
 
 ### 10.3 为什么 Agent 在前端
 
@@ -713,9 +732,9 @@ D9 拍板不等 DSH，自己当第一用户。工具行、prompt 段、capabilit
 
 | 层 | 命令 | 规模 |
 |----|------|------|
-| Engine | `cd engine && cargo test` | 697 用例（lib 669 + bin 27 + doc 1；696 passed / 1 ignored；状态机/取消/增量/向量/盲点合成/图合并） |
-| Tauri Shell | `cd src-tauri && cargo test` | bin 389 + 集成 14（全绿，2026-08-22 第 5 棒实测；cdp e2e 按环境偶现 ±1，UIA 真实窗口 e2e 需 `HOLOGRAM_UIA_E2E=1`） |
-| 前端 | `cd src-ui && npx vitest run` | 162 文件 1610 passed / 1 skipped（2026-08-23 实测；convergence 双 preset 零漂移；本机跑测试前清 `NODE_ENV=production`，否则 specs 收集报错） |
+| Engine | `cd engine && cargo test` | 705 用例（lib 677 + bin 27 + doc 1；含 TLS 路由守卫/双工作区并发 e2e/StoreHost 闭环） |
+| Tauri Shell | `cd src-tauri && cargo test` | bin 421 + 集成 14（全绿，2026-08-25 分层重构后实测；含 attach 事实校验/决议链优先级/GC/直连白名单守卫） |
+| 前端 | `cd src-ui && npx vitest run` | 172 文件 / 1692 passed / 1 skipped（2026-08-25 分层重构后实测；本机跑测试前清 `NODE_ENV=production`，否则 specs 收集报错） |
 | 前端契约 | `cd src-ui && npm run verify:convergence` | T0 静态 + 8 baseline 对拍 + system-prompt.fixture（standard preset 零漂移） |
 | Agent 运行时/组合层 | 同上 + `composition/first-party-tools.ts` / `first-party-capabilities.ts` 清单 + `agent/blueprint.ts` capability 表 | AgentConfig 冻结 31 字段，T0 断言；行表/段落表/capability 三层表序 = 字节契约（行源 = 插件通道贡献快照） |
 | 前端构建 | `cd src-ui && npm run build` | tsc --noEmit + vite build 零错误 |

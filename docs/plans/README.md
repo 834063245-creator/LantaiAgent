@@ -5,20 +5,19 @@
 > 状态词：In progress（干着）/ Proposed·Draft（立项未开工）/ 阻塞（等条件）。
 > 维护纪律：**竣工即归档**（CONVENTIONS §4）——这页只保留活的工作。
 
-## 一句话现状（2026-08-24）
+## 一句话现状（2026-08-25）
 
 **兰台（Lantai）= 纸壳（注疏案卷工作台）为唯一主界面的 Agent 软件**。执行原语已落地
-（code_execution + ctx.codeRuntime，模型可在程序体内循环/并发/试错调全部工具）；插件化
-战略已换轨（D9：自研为主，存量逐步拆为域插件，特权区只减不增）——**P4 存量拆解
-2026-08-24 全清**（工具行/prompt 段/capability 三类行源全量经插件通道贡献，出厂表三张
-退役），会话层收敛 session-ledger 同日竣工合入。没有拦路的硬依赖。
+（code_execution + ctx.codeRuntime）；插件化出厂面全量通道化（P4 存量拆解 2026-08-24 全清）；
+**分层重构 L1-L4 已于 2026-08-25 落地**（应用层 app/ 数据上下文 + Engine 纯化单根多实例 +
+壳层薄壳化 + 双工作区并行守卫，六 commit），剩 L5 真机验收。没有拦路的硬依赖。
 
 ## 会话 / 分层 / 画布三线（2026-08-24 立项）
 
 | 线 | 文档 | 状态 | 说明 |
 |---|---|---|---|
-| 会话统一 | [`session-unify-plan.md`](session-unify-plan.md) | 已施工完，收尾修正中 | U1-U4 落地；验收修正：首页 legacy_root 修复 ✅ / 重启不自动摊开（Q-B）待施工 |
-| 分层重构 | [`layering-rework-plan.md`](layering-rework-plan.md) | Proposed·Draft（等开工） | engine 纯化 + 壳瘦身 + DataContext（DSH 五铁律参照）；拍板四问全 A；等会话收尾 |
+| 会话统一 | [`session-unify-plan.md`](session-unify-plan.md) | ✅ 竣工（真机验收通过） | U1-U4 + 验收修正全落地（2026-08-24 晚收口） |
+| 分层重构 | [`layering-rework-plan.md`](layering-rework-plan.md) | **L1-L4 已落地，L5 收尾**（2026-08-25） | engine 纯化（StoreHost 注入/单根/Arc+TLS）+ 壳瘦身（app/services）+ 数据上下文（会话 attach 事实校验）+ 双工作区并发守卫；真机验收四项待跑（见计划 §4.6） |
 | 画布空间模型 | [`canvas-space-model-notes.md`](canvas-space-model-notes.md) | 设计挂起 | 卡片 = 画布最小单元 / 同画布同工作区 / 侧边栏监控 vs SpineRack 空间导航（摄像机复位）；SpineRack 改造挂此线 |
 
 ## 活跃工程（就一个半）
@@ -66,6 +65,7 @@ S0/S1/S2/S4 竣工后，S3（settings 域第一方行化：面板/命令双贡�
 | ~~browser CDP E2E-1/2/3/4/5~~ | **已实跑（2026-08-22）**：cargo test cdp:: 35/35 全绿，含重点 E2E-5 多账号 cookie 隔离（上会话偶发失败本轮未复现） |
 | session-ledger 真机三项 | 代码判据已测试钉死，真机未实跑（需带 API key 会话）：① 重启工作集恢复（多卷摊开 → 关 → 开，摊法全回）；② 后台卷落盘（双卷并发跑一轮后检查卷文件）；③ 续开查重（同卷两次续开只有一条脊）——见 [`../archive/session-ledger-plan.md`](../archive/session-ledger-plan.md) §7（⚠️ ①已被 session-unify Q-B 取代：重启不自动摊开） |
 | workspace-flip 批 3 边界 | 预热期内创建的会话缺 graph 工具（已知边界，非 bug） |
+| **分层重构真机验收四项** | L1-L4 代码已落地（2026-08-25，六 commit 全绿），真机待跑：① 单工作区零回归（开卷/切卷/图查询/工具调用如常）；② 双工作区并行（两会话两项目同时跑图查询无错乱）；③ 跨工作区续开（首页点他工作区卷 → 图上下文正确）；④ Ungrouped 会话可用（零目录卷打开不报图错误）——见 [`layering-rework-plan.md`](layering-rework-plan.md) §4.6 |
 
 ## 已完成并归档（点名即可，详情勿读）
 
