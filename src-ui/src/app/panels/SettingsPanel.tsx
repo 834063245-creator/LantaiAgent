@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Settings 面板 — Provider | Agent | Display | Languages | About 五个标签页。
-// Provider 页已拆为 settings/ProviderPage（信号源控制台），本文件只保留
+// Provider 页已拆为 settings/ProviderPage（提供方控制台），本文件只保留
 // 外壳：tab 切换、dirty 状态、保存/取消、凭据暂存（删除/清除）统一落盘。
 
 import { getVersion } from '@tauri-apps/api/app';
@@ -315,10 +315,10 @@ const SettingsPanelApp: React.FC<{
 
   const closeMsg =
     dirty && providerDirty
-      ? '有未保存的设置与信号源更改，关闭后将全部丢失。确定关闭？'
+      ? '有未保存的设置与提供方更改，关闭后将全部丢失。确定关闭？'
       : dirty
         ? '有未保存的设置更改，关闭后将丢失。确定关闭？'
-        : '有未保存的信号源更改，关闭后将丢失。确定关闭？';
+        : '有未保存的提供方更改，关闭后将丢失。确定关闭？';
 
   // ── 渲染 ──
 
@@ -343,7 +343,7 @@ const SettingsPanelApp: React.FC<{
         <div className="sp-tabs">
           {(
             [
-              ['provider', 'agent', 'Provider'],
+              ['provider', 'agent', '提供方'],
               ['agent', 'code', 'Agent'],
               ['display', 'mode-standard', '显示'],
               ['languages', 'code', '语言依赖'],
@@ -362,7 +362,7 @@ const SettingsPanelApp: React.FC<{
 
         {/* 内容 */}
         <div className="sp-content">
-          {/* ═══ Provider 标签页（信号源控制台）═══ */}
+          {/* ═══ Provider 标签页（提供方控制台）═══ */}
           <div
             className="sp-tab-content"
             data-tab="provider"

@@ -113,7 +113,7 @@ export function SpineRack({ core }: { core: ChatCore | null }) {
     // 丢弃）——前置检查给纸面直示（同 onSend 守卫）。
     const st = getChatStore(core.panelId).sess.getState();
     if (st.activeIdx < 0 || !st.sessions[st.activeIdx]) {
-      setLocalNotice('当前没有活跃会话——请在设置中配置 API Key（书眉「设置」→ Provider）后另起一卷。');
+      setLocalNotice('当前没有活跃会话——请在设置中配置 API Key（书眉「设置」→ 提供方）后另起一卷。');
       return;
     }
     void core.createNewSession();

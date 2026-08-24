@@ -337,7 +337,7 @@ export function updateProvider(s: AppSettings, name: string, patch: Partial<Prov
 
 export function addProvider(s: AppSettings, name: ProviderId, kind: Protocol): AppSettings {
   if (s.providers.find((p) => p.name === name)) {
-    throw new Error(`Provider "${name}" 已存在`);
+    throw new Error(`提供方 "${name}" 已存在`);
   }
   const baseUrl = defaultBaseUrl(name, kind);
   return {
@@ -358,8 +358,8 @@ export function addProvider(s: AppSettings, name: ProviderId, kind: Protocol): A
 
 export function removeProvider(s: AppSettings, name: string): AppSettings {
   const idx = s.providers.findIndex((p) => p.name === name);
-  if (idx < 0) throw new Error(`Provider "${name}" 不存在`);
-  if (s.providers.length <= 1) throw new Error('至少保留一个 Provider');
+  if (idx < 0) throw new Error(`提供方 "${name}" 不存在`);
+  if (s.providers.length <= 1) throw new Error('至少保留一个提供方');
   const next = s.providers.filter((p) => p.name !== name);
   const active = s.activeProvider === name ? next[0].name : s.activeProvider;
   return { ...s, activeProvider: active, providers: next };

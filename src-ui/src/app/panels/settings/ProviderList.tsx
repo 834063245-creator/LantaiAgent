@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// Provider 页左侧「信号源列表」：一行一个 provider，
+// Provider 页左侧「提供方列表」：一行一个 provider，
 // 状态点 = 未配置 / 已配置 / 正常 / 异常，当前使用中带「当前」角标。
 
 import type { ProviderId, ProviderSettings } from '../../../settings';
-import { providerStatus, STATUS_LABEL } from './status';
 import { protocolLabel } from './protocol';
+import { providerStatus, STATUS_LABEL } from './status';
 
 interface ProviderListProps {
   providers: ProviderSettings[];
@@ -20,7 +20,7 @@ export function ProviderList({ providers, selected, current, onSelect, onAdd }: 
   return (
     <aside className="pp-rail">
       <div className="pp-rail-hd">
-        <span>信号源</span>
+        <span>提供方</span>
         <span className="pp-cnt">{providers.length}</span>
       </div>
       <div className="pp-rail-list">
@@ -51,7 +51,7 @@ export function ProviderList({ providers, selected, current, onSelect, onAdd }: 
         })}
       </div>
       <button type="button" className="pp-rail-add" onClick={onAdd}>
-        ＋ 添加信号源
+        ＋ 添加提供方
       </button>
       <div className="pp-legend">
         <span>

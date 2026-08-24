@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// Provider 标签页（信号源控制台）：
-// 左侧 ProviderList 选信号源，右侧 ProviderDetail 编辑；
+// Provider 标签页（提供方控制台）：
+// 左侧 ProviderList 选提供方，右侧 ProviderDetail 编辑；
 // 添加/删除/清除 Key 均为「暂存」，保存时统一落盘 + 写/删凭据 + 重建 Agent。
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -305,7 +305,7 @@ export function ProviderPage({
       {providerDirty && (
         <div className="pp-save-bar">
           <span className="pp-save-bar-dot" />
-          <span className="pp-save-bar-text">有未保存的信号源更改</span>
+          <span className="pp-save-bar-text">有未保存的提供方更改</span>
           <button type="button" className="pp-save-btn" onClick={onSaveProviders}>
             保存 Provider
           </button>
@@ -321,7 +321,7 @@ export function ProviderPage({
 
       <ConfirmDialog
         open={delTarget !== null}
-        title="删除信号源"
+        title="删除提供方"
         message={
           <>
             确定删除 <b>{delTarget}</b>？其<strong>系统凭据 Key 将一并删除</strong>（保存后生效），此操作不可撤销。
@@ -338,7 +338,7 @@ export function ProviderPage({
         title="清除已保存 Key"
         message={
           <>
-            将从系统凭据中删除 <b>{clearTarget}</b> 的 API Key（保存后生效）。删除后该信号源将处于未配置状态。
+            将从系统凭据中删除 <b>{clearTarget}</b> 的 API Key（保存后生效）。删除后该提供方将处于未配置状态。
           </>
         }
         confirmLabel="清除"

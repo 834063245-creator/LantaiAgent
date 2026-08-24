@@ -7,8 +7,8 @@ HoloGram 是深空代码拓扑观测站：把代码库解析成可对话的依�
 ### 模型接入（Provider 域）
 
 **Provider**:
-Agent 可用来与模型对话的接入点，由端点、凭据与默认模型构成。代码标识符统一用 Provider；界面中文展示词为「信号源」。
-_Avoid_: 信号源（代码标识符）、服务商、backend
+Agent 可用来与模型对话的接入点，由端点、凭据与默认模型构成。代码标识符统一用 Provider；界面中文展示词为「提供方」（2026-08-24 起，「信号源」为观测站时代旧词退役——对齐 DeepSeek Harness 官方中文定译；设置页是技术配置域，用平实词）。
+_Avoid_: 信号源（旧展示词，已退役；任何语境）、服务商、backend
 
 **ProviderId**:
 Provider 的身份标识，唯一且不可变；同时是系统凭据键与动态模型合并键（三合一）。它是身份，不是显示名。
@@ -128,7 +128,7 @@ ConnectionProbe 的结果：ok / fail。它是检查动作的产物，不是 Pro
 _Avoid_: status（裸用）、testStatus
 
 **ProviderStatus**:
-信号源列表/控制台展示的派生状态：unconfigured（无 Key）/ configured（有 Key 未测或结果丢失）/ ok（最近测试通过）/ fail（最近测试失败）。唯一事实源是 status.ts 的 providerStatus()。
+提供方列表/控制台展示的派生状态：unconfigured（无 Key）/ configured（有 Key 未测或结果丢失）/ ok（最近测试通过）/ fail（最近测试失败）。唯一事实源是 status.ts 的 providerStatus()。
 _Avoid_: 状态点、status（裸用）
 
 **ToolRunStatus**:

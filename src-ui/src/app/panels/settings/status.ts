@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// Provider 页「信号源状态」推导 — 唯一事实源：
+// Provider 页「提供方状态」推导 — 唯一事实源：
 // 无 Key = 未配置；有 Key 且最近测试通过 = 正常；有 Key 且最近测试失败 = 异常；
 // 有 Key 但从未测试（或测试结果丢失）= 已配置。
 

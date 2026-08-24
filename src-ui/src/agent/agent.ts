@@ -244,15 +244,20 @@ export class Agent {
   // code_execution 嵌套分发面（P2 执行原语）：blueprint capability 装配时
   // 写入（工具创建需要）；getter 供 capability 读取 agent 的门禁/hook/审计上下文。
   // 形状对齐 code-run/host.ts 的 ToolDispatchFn（输出 {output, isError}）。
-  _codeDispatch: ((name: string, args: Record<string, unknown>) => Promise<{ output: string; isError: boolean }>) | null =
-    null;
+  _codeDispatch:
+    | ((name: string, args: Record<string, unknown>) => Promise<{ output: string; isError: boolean }>)
+    | null = null;
 
   /** code_execution 的嵌套分发面 — 工具装配（blueprint）注入。null = 未接线
    * （工具注册面照常，运行时报「未接线」错误，不留静默死路）。 */
-  setCodeDispatch(fn: ((name: string, args: Record<string, unknown>) => Promise<{ output: string; isError: boolean }>) | null): void {
+  setCodeDispatch(
+    fn: ((name: string, args: Record<string, unknown>) => Promise<{ output: string; isError: boolean }>) | null,
+  ): void {
     this._codeDispatch = fn;
   }
-  getCodeDispatch(): ((name: string, args: Record<string, unknown>) => Promise<{ output: string; isError: boolean }>) | null {
+  getCodeDispatch():
+    | ((name: string, args: Record<string, unknown>) => Promise<{ output: string; isError: boolean }>)
+    | null {
     return this._codeDispatch;
   }
 
@@ -269,10 +274,7 @@ export class Agent {
    *  （_agent_id/_owner_id）→ execute → hooks 富化 → 预检警告前置 → 截断。
    *  嵌套调用不豁免任何门禁（P2 施工序 6）；isError 语义靠返回值区分
    *  （false = 成功 output；true = output 即错误文本）。 */
-  dispatchNestedTool(
-    name: string,
-    args: Record<string, unknown>,
-  ): Promise<{ output: string; isError: boolean }> {
+  dispatchNestedTool(name: string, args: Record<string, unknown>): Promise<{ output: string; isError: boolean }> {
     const tool = this.tools.get(name);
     if (!tool) {
       return Promise.resolve({ output: `error: unknown tool "${name}"`, isError: true });
@@ -534,7 +536,7 @@ export class Agent {
     this.prov.setThinking?.(cfg);
   }
 
-  /** UI 路径 — 运行时切换 provider（模型/信号源/协议），不重建 Agent。
+  /** UI 路径 — 运行时切换 provider（模型/提供方/协议），不重建 Agent。
    *  正在进行的请求已持有旧引用，继续完成后下一轮起用新 provider；
    *  子 Agent 共享 this.prov，自动一并生效。
    *  同时更新定价并清空摘要模型缓存，避免压缩摘要仍走旧模型。 */

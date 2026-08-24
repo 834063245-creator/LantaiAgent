@@ -116,7 +116,7 @@ describe('ProviderPage — 暂存流程', () => {
     root?.unmount();
   });
 
-  it('添加信号源（catalog chip）→ 暂存提交、列表更新、保存条点亮', async () => {
+  it('添加提供方（catalog chip）→ 暂存提交、列表更新、保存条点亮', async () => {
     await render(makeSettings({ providers: [makeSettings().providers[1]] }));
 
     await click(document.querySelector('.pp-rail-add'));
@@ -128,7 +128,7 @@ describe('ProviderPage — 暂存流程', () => {
     expect(deepseekChip.disabled).toBe(false);
     await click(deepseekChip);
 
-    // 弹层关闭，列表出现新信号源，保存条点亮
+    // 弹层关闭，列表出现新提供方，保存条点亮
     expect(document.querySelector('.pp-add-sheet')).toBeNull();
     expect([...document.querySelectorAll('.pp-src-name')].some((n) => n.textContent?.startsWith('deepseek'))).toBe(
       true,
@@ -172,10 +172,10 @@ describe('ProviderPage — 暂存流程', () => {
     )!;
     await click(anthropicRow);
     const delBtn = [...document.querySelectorAll<HTMLButtonElement>('.pp-btn-danger')].find((b) =>
-      b.textContent?.includes('删除信号源'),
+      b.textContent?.includes('删除提供方'),
     )!;
     await click(delBtn);
-    expect(document.querySelector('.cd-sheet')?.textContent).toContain('删除信号源');
+    expect(document.querySelector('.cd-sheet')?.textContent).toContain('删除提供方');
 
     await click(document.querySelector('.cd-btn-danger'));
     expect(mockStageDelete).toHaveBeenCalledWith('anthropic');

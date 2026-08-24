@@ -132,7 +132,7 @@ export function assertEffortDeclared(
     throw new Error(
       `[思考档位不支持] 当前模型不支持「${thinkingModeLabel(v)}」。` +
         `可用档位：${cap.efforts.map((e) => EFFORT_LABELS[e]).join('、')}${cap.off ? '、关闭' : ''}。` +
-        `请到 设置 → Provider 重新选择（${protocol === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容'}协议）。`,
+        `请到 设置 → 提供方 重新选择（${protocol === 'anthropic' ? 'Anthropic' : 'OpenAI 兼容'}协议）。`,
     );
   }
 }

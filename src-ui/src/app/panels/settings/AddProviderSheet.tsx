@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 添加信号源弹层：目录 chips 一键添加（name/kind/baseUrl/model 全带出），
+// 添加提供方弹层：目录 chips 一键添加（name/kind/baseUrl/model 全带出），
 // 或展开自定义表单手动配置。校验在本地完成，父组件只负责落 state。
 
 import { useEffect, useRef, useState } from 'react';
@@ -99,7 +99,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
     >
       <div className="cd-sheet pp-add-sheet" role="dialog" aria-modal="true">
         <div className="cd-hd">
-          <span className="cd-title">添加信号源</span>
+          <span className="cd-title">添加提供方</span>
           <button type="button" className="cd-close" onClick={onClose} title="关闭">
             ✕
           </button>

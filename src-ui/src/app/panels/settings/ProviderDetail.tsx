@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// Provider 页右侧「调谐控制台」：编辑选中信号源的连接配置 / 诊断 / 危险区。
-// 状态展示与测试结果均按 provider 独立，切换信号源不会串台。
+// Provider 页右侧「调谐控制台」：编辑选中提供方的连接配置 / 诊断 / 危险区。
+// 状态展示与测试结果均按 provider 独立，切换提供方不会串台。
 
 import type React from 'react';
 import { getModel } from '../../../provider/catalog';
@@ -134,7 +134,7 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
           type="button"
           className="pp-btn-set-current"
           disabled={isCurrent}
-          title={isCurrent ? '该信号源正在被 Agent 使用' : '切换为当前使用中的 Provider'}
+          title={isCurrent ? '该提供方正在被 Agent 使用' : '切换为当前使用中的 Provider'}
           onClick={onSetCurrent}
         >
           {isCurrent ? '已在用' : '设为当前'}
@@ -297,7 +297,7 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
           {testBlock}
         </div>
         <div className="pp-f-hint">
-          发送一次最小请求（1 token），验证 Key / Base URL / 模型三者可用。结果按信号源保存。
+          发送一次最小请求（1 token），验证 Key / Base URL / 模型三者可用。结果按提供方保存。
         </div>
         {provider.lastTest && (
           <div className="pp-test-last">
@@ -317,7 +317,7 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
             <span className="pp-rule" />
           </div>
           <button type="button" className="sp-btn-sm pp-btn-danger" onClick={onDelete}>
-            删除信号源 {provider.name}…
+            删除提供方 {provider.name}…
           </button>
           <div className="pp-f-hint">删除后系统凭据一并移除（保存后生效），不可恢复。</div>
         </div>
