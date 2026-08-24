@@ -336,9 +336,9 @@ export async function ensureSessionAgent(ctx: SessionContext): Promise<boolean> 
   if (!isCurrentEpoch(epoch)) return false;
 
   // 会话内容回填：msgStore 的 ChatMessage 不是 provider 消息——从磁盘卷文件
-  // 取原始会话（readVolumeData 与恢复路径同源：磁盘权威 + localStorage 较新
-  // 回退 + 已删/空卷过滤）。projectPath=''（零目录会话）同样回填——
-  // sessionFile('') 路由用户级目录（Phase B）。
+  // 取原始会话（readVolumeData 与恢复路径同源：U1 双读磁盘权威 + localStorage
+  // 较新回退 + 已删/空卷过滤）。projectPath=''（零目录会话）同样回填——
+  // 全局位即用户级目录（U1 起所有卷统一全局位）。
   let conv: Message[] = [];
   try {
     const data = await readVolumeData(ctx.getProjectPath(), sid);
@@ -514,7 +514,9 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
 // ── 会话持久化 — 每个会话一个文件，localStorage 备份 ──
 
 /** 会话文件的持久化形状（磁盘 JSON / localStorage 备份）。
- *  paper（钉住块坐标 + 纸条，2026-08-24 收尾）：可选字段，旧存档无此字段 = 空纸面。 */
+ *  paper（钉住块坐标 + 纸条，2026-08-24 收尾）：可选字段，旧存档无此字段 = 空纸面。
+ *  workspace（会话统一 U1，2026-08-24）：卷归属的工作区（正斜杠归一）或
+ *  null（零目录卷）。全局位同号跨工作区卷靠它消解；旧存档无字段 = 零目录卷。 */
 interface StoredSession {
   id: number;
   label?: string;
@@ -522,6 +524,7 @@ interface StoredSession {
   messages?: Message[];
   tokensUsed?: number;
   paper?: PaperSessionData;
+  workspace?: string | null;
   deleted?: boolean;
   /** _active.json 跟踪文件字段（与单个会话文件形状不同） */
   lastId?: number;
@@ -576,12 +579,63 @@ function sessionsDir(projectPath: string): string {
   return `${projectPath.replace(/\\/g, '/')}/.lantai/sessions`;
 }
 
-function sessionFile(projectPath: string, id: number): string {
-  return `${sessionsDir(projectPath)}/${id}.json`;
-}
-
 function trackerFile(projectPath: string): string {
   return `${sessionsDir(projectPath)}/_active.json`;
+}
+
+// ── 会话统一 U1（2026-08-24）：全局存储位路由 ─────────────────────
+// 所有新卷统一落全局位 ~/.lantai/sessions/{id}.json（唯一权威存储位）；
+// 项目内 <项目>/.lantai/sessions/ 降级为只读兼容源（打开即吸收——无撞号时
+// 落盘即迁入全局位）。同号跨工作区卷用 workspace 字段消解，不全局重号。
+
+/** 路径归一：反斜杠 → 正斜杠，去尾斜杠（workspace 字段写入与匹配统一此规）。 */
+function normWs(p: string): string {
+  return p.replace(/\\/g, '/').replace(/\/+$/, '');
+}
+
+/** 全局会话目录（U1 起唯一权威存储位；缓存未就绪时的兜底路径与旧行为一致）。 */
+function globalSessionsDir(): string {
+  return _userSessionsDir ?? '/.lantai/sessions';
+}
+
+/** 卷的 workspace 归属判定：快照 workspace 字段与请求工作区一致才算「本工作区
+ *  的卷」（缺字段/空 = 零目录卷，只匹配零目录请求）。分隔符归一后比较。 */
+function volumeWorkspaceMatches(vol: StoredSession, projectPath: string): boolean {
+  const vw = typeof vol.workspace === 'string' && vol.workspace ? normWs(vol.workspace) : '';
+  return vw === normWs(projectPath);
+}
+
+/** 读卷文件，缺失/坏文件返回 null（不抛——双读与存在性探测共用）。 */
+async function readSessionJSONOrNull(filePath: string): Promise<StoredSession | null> {
+  try {
+    return await readSessionJSON(filePath);
+  } catch {
+    return null;
+  }
+}
+
+/** 卷读取路由（U1 双读）：全局位优先（workspace 字段须匹配请求工作区——
+ *  全局位同号卷若归属别的工作区则跳过），回退项目内旧目录（只读兼容源）。
+ *  零目录请求无回退面。返回 null = 两处均无/均不归属。 */
+async function readVolumeJSON(projectPath: string, id: number): Promise<StoredSession | null> {
+  const global = await readSessionJSONOrNull(`${globalSessionsDir()}/${id}.json`);
+  if (global && volumeWorkspaceMatches(global, projectPath)) return global;
+  if (normWs(projectPath) === '') return null; // 零目录：全局位无归属卷即无
+  return readSessionJSONOrNull(`${normWs(projectPath)}/.lantai/sessions/${id}.json`);
+}
+
+/** 卷写入路由（U1）：目标 = 全局位；全局位同号卷若归属别的工作区则回退
+ *  项目内旧目录写（撞号消解：不覆盖他区卷、不全局重号——撞号旧卷迁移期
+ *  保持原位，吸收发生在无撞号时）。 */
+async function resolveVolumeWriteTarget(projectPath: string, id: number): Promise<string> {
+  const norm = normWs(projectPath);
+  if (norm !== '') {
+    const global = await readSessionJSONOrNull(`${globalSessionsDir()}/${id}.json`);
+    if (global && !volumeWorkspaceMatches(global, norm)) {
+      return `${norm}/.lantai/sessions/${id}.json`;
+    }
+  }
+  return `${globalSessionsDir()}/${id}.json`;
 }
 
 /** 账本 IO 适配器：把 typedRpc 通道装进 session-ledger（依赖注入——
@@ -593,29 +647,37 @@ const ledgerIo: LedgerIo = {
   },
 };
 
-/** 扫描会话目录，查找最大的数字会话 ID。无会话时返回 0。 */
+/** 扫描会话目录，查找最大的数字会话 ID。无会话时返回 0。
+ *  U1：全局位 + 项目内旧目录两处扫描取总最大——发号对账需同时避开
+ *  全局位（含其他工作区卷）与本工作区旧档的撞号。 */
 export async function scanMaxSessionId(projectPath: string): Promise<number> {
-  try {
-    const parsed: unknown = await typedJsonRpc('list_directory', {
-      path: sessionsDir(projectPath),
-      filter_ignored: false,
-    });
-    if (!Array.isArray(parsed)) return 0;
-    const entries = parsed as DirectoryEntry[];
-    let maxId = 0;
-    for (const e of entries) {
-      if (e.is_dir || !e.name || e.name === '_active.json') continue;
-      const sid = parseInt(String(e.name).replace(/\.json$/, ''), 10);
-      if (!Number.isNaN(sid) && sid > maxId) maxId = sid;
+  const dirs = [globalSessionsDir()];
+  const norm = normWs(projectPath);
+  if (norm !== '') dirs.push(`${norm}/.lantai/sessions`);
+  let maxId = 0;
+  for (const dirPath of dirs) {
+    try {
+      const parsed: unknown = await typedJsonRpc('list_directory', {
+        path: dirPath,
+        filter_ignored: false,
+      });
+      if (!Array.isArray(parsed)) continue;
+      const entries = parsed as DirectoryEntry[];
+      for (const e of entries) {
+        if (e.is_dir || !e.name || e.name === '_active.json') continue;
+        const sid = parseInt(String(e.name).replace(/\.json$/, ''), 10);
+        if (!Number.isNaN(sid) && sid > maxId) maxId = sid;
+      }
+    } catch {
+      /* 单目录缺席/读失败不影响其他目录扫描 */
     }
-    return maxId;
-  } catch {
-    return 0;
   }
+  return maxId;
 }
 
 /** 会话快照的磁盘形状（C8：saveActiveSession 与合卷落盘共用）。
- *  paper：纸面用户层状态（钉住块 + 纸条）——2026-08-24 收尾接入持久化。 */
+ *  paper：纸面用户层状态（钉住块 + 纸条）——2026-08-24 收尾接入持久化。
+ *  workspace：卷归属工作区（U1 起写入；正斜杠归一，零目录卷 = null）。 */
 interface SessionSnapshotData {
   id: number;
   label: string;
@@ -623,14 +685,18 @@ interface SessionSnapshotData {
   messages: Message[];
   tokensUsed: number;
   paper?: PaperSessionData;
+  workspace?: string | null;
 }
 
 /** 将已捕获的会话快照写入盘（localStorage 同步备份 + 原子磁盘写）。
  *  C8 合卷自动存从 saveActiveSession 离体出来的共享写盘函数——调用方负责
  *  在 agent 句柄消亡前完成数据捕获（messages 属引用，序列化在首次 await 前）。
+ *  U1（会话统一）：落盘目标统一全局位（workspace 字段随卷写入；全局位同号
+ *  卷归属别的工作区时回退项目内旧目录——撞号不覆盖）。
  *  失败：console.error 后上抛——调用方决定可见等级（autosave 容忍、合卷告警）。 */
 async function writeSessionSnapshot(projectPath: string, data: SessionSnapshotData): Promise<void> {
-  const json = JSON.stringify(data);
+  const payload: SessionSnapshotData = { ...data, workspace: normWs(projectPath) || null };
+  const json = JSON.stringify(payload);
   // 1) 同步 localStorage 备份 — 可在 beforeunload 超时/进程被杀时存活
   try {
     if (typeof localStorage !== 'undefined') {
@@ -644,10 +710,10 @@ async function writeSessionSnapshot(projectPath: string, data: SessionSnapshotDa
     /* 超出配额 — 磁盘写入作为兜底 */
   }
 
-  // 2) 异步磁盘写入（原子操作：tmp → rename）
+  // 2) 异步磁盘写入（原子操作：tmp → rename；目标 = 全局位/撞号回退旧目录）
   try {
     await typedRpc('write_file_content', {
-      file_path: sessionFile(projectPath, data.id),
+      file_path: await resolveVolumeWriteTarget(projectPath, data.id),
       content: json,
     });
   } catch (e) {
@@ -658,7 +724,7 @@ async function writeSessionSnapshot(projectPath: string, data: SessionSnapshotDa
 
 /** 将活跃会话保存到其独立文件。
  *  同时写入同步 localStorage 备份，确保会话在应用崩溃/强制关闭后仍可恢复。
- *  projectPath=''（零目录会话，单槽统一 2026-08-24）合法——sessionsDir('')
+ *  projectPath=''（零目录会话，单槽统一 2026-08-24）合法——全局位即用户级
  *  路由用户级目录，与 loadSessionFromDisk(projectPath='') 的读取侧同构。
  *  L3（session-ledger）：_active.json 跟踪器写入退役——总目 _ledger.json
  *  已接任（四动词 recordOpenSetChange 维护；发号对账 max(mem, ledger, scan)）。
@@ -699,7 +765,8 @@ export async function saveActiveSession(ctx: SessionContext, projectPath: string
 
 /** 按 id 落盘指定会话（C8 改名即存）：不要求是活跃卷，不动 _active.json
  *  （跟踪器只记「冷启动恢复谁」，与单卷落盘无关）。projectPath='' 零目录
- *  会话路由用户级目录（sessionsDir 真源）。空卷跳过（与 saveActiveSession 同规）。 */
+ *  会话路由全局位（U1 起所有卷统一落全局位；workspace 字段随卷写入）。
+ *  空卷跳过（与 saveActiveSession 同规）。 */
 export async function saveSessionById(ctx: SessionContext, projectPath: string, sid: number): Promise<void> {
   const st = getChatStore(ctx.storeId).sess.getState();
   const sMeta = st.sessions.find((x) => x.id === sid);
@@ -802,7 +869,7 @@ function ensureBaselineSession(ctx: SessionContext): void {
  *  无总目时回退旧单卷逻辑（_active.json / localStorage，行为不变）。
  *  Phase B（2026-08-24 工作区归属根治）：会话存在性脱离 Agent 装配——不再以
  *  工厂在场为前置（恢复内容层不需要 Agent），projectPath=''（零目录会话）
- *  同样恢复（sessionsDir('') 路由用户级目录）。所有卷只恢复内容层，句柄由
+ *  同样恢复（全局位即用户级目录，U1 起所有卷统一全局位）。所有卷只恢复内容层，句柄由
  *  ensureSessionAgent 在拟文/换卷时按需补建。 */
 export async function autoRestoreLastSession(ctx: SessionContext, projectPath: string): Promise<void> {
   // 代际防护（H5）：恢复在途期间可能切换工作区 — 写入前校验，过期整段放弃，
@@ -854,13 +921,9 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
       // 已删会话的磁盘文件是 {deleted:true, savedAt:''}，仅剩 localStorage 残留时
       // 旧代码会选中它 → 已删会话「复活」。磁盘是权威，localStorage 只是加速器。
       const candidateId = lastId;
-      let diskValid = false;
-      try {
-        const disk = await readSessionJSON(sessionFile(projectPath, candidateId));
-        diskValid = !!disk && !disk.deleted;
-      } catch {
-        /* 磁盘文件不存在 */
-      }
+      // U1 双读：磁盘卷可能在全局位或项目内旧目录
+      const disk = await readVolumeJSON(projectPath, candidateId);
+      const diskValid = !!disk && !disk.deleted;
       if (!diskValid) {
         lastId = 0;
         // 顺手清理残留备份，避免下次打开再次选中
@@ -882,14 +945,9 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
     return;
   }
 
-  // ── 加载会话数据（优先文件，回退 localStorage）──
   let data: StoredSession | null = null;
-  // 1) 尝试磁盘文件
-  try {
-    data = await readSessionJSON(sessionFile(projectPath, lastId));
-  } catch {
-    /* 文件缺失 — 尝试 localStorage */
-  }
+  // 1) 磁盘双读（U1：全局位优先 + 项目内旧目录回退）
+  data = await readVolumeJSON(projectPath, lastId);
 
   // 2) localStorage 回退（若 beforeunload 保存未完成，可能比文件更新）
   if (typeof localStorage !== 'undefined') {
@@ -944,17 +1002,14 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
       if (bestId > 0 && bestId !== lastId) {
         // P1-14: 复活守卫 — localStorage 中的会话必须对应磁盘上的未删除文件，
         // 否则已删会话（仅剩 localStorage 残留）会在此复活。
-        try {
-          const disk = await readSessionJSON(sessionFile(projectPath, bestId));
-          if (disk && !disk.deleted) {
-            const lsRaw = localStorage.getItem(lsKey(projectPath, bestId));
-            if (lsRaw) {
-              data = JSON.parse(lsRaw) as StoredSession;
-              lastId = bestId;
-            }
+        // U1 双读：候选卷可能在全局位或项目内旧目录。
+        const disk = await readVolumeJSON(projectPath, bestId);
+        if (disk && !disk.deleted) {
+          const lsRaw = localStorage.getItem(lsKey(projectPath, bestId));
+          if (lsRaw) {
+            data = JSON.parse(lsRaw) as StoredSession;
+            lastId = bestId;
           }
-        } catch {
-          /* 磁盘文件不存在 → 不采纳 */
         }
       }
     }
@@ -997,14 +1052,9 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
 
 // ── L0 总目多卷恢复（session-ledger-plan §3.3）─────────────────────
 
-/** 恢复路径的卷数据（磁盘优先，localStorage 回退——与旧单卷路径同规）。 */
+/** 恢复路径的卷数据（U1 双读：全局位优先+旧目录回退；localStorage 较新覆盖——与旧单卷路径同规）。 */
 async function readVolumeData(projectPath: string, id: number): Promise<StoredSession | null> {
-  let data: StoredSession | null = null;
-  try {
-    data = await readSessionJSON(sessionFile(projectPath, id));
-  } catch {
-    /* 文件缺失 — 尝试 localStorage */
-  }
+  let data = await readVolumeJSON(projectPath, id);
   if (typeof localStorage !== 'undefined') {
     const lsRaw = localStorage.getItem(lsKey(projectPath, id));
     if (lsRaw) {
@@ -1137,65 +1187,84 @@ async function restoreFromLedger(
   recordOpenSetChange(ctx.storeId, projectPath, ledgerIo);
 }
 
-/** 扫描会话目录 — 无需 Agent。 */
+/** 扫描会话目录 — 无需 Agent。U1：全局位 + 项目内旧目录两处扫描，同号
+ *  同归属卷（吸收后新旧两份）按 savedAt 取新，同号异归属卷（撞号）各自
+ *  保留——workspace 消解，不在列表层重号。 */
 export async function listSavedSessions(
   _ctx: SessionContext,
   projectPath: string,
 ): Promise<Array<{ id: number; label: string; msgCount: number; savedAt: string }>> {
-  const dirPath = sessionsDir(projectPath);
-  let entries: DirectoryEntry[];
-  try {
-    entries = await typedJsonRpc<DirectoryEntry[]>('list_directory', { path: dirPath, filter_ignored: false });
-  } catch (e) {
-    console.error('[chat] listSavedSessions: list_directory failed', e);
-    return [];
-  }
+  // 两目录：全局位（所有归属的卷）+ 项目内旧目录（未吸收旧卷）
+  const dirs = [globalSessionsDir()];
+  const norm = normWs(projectPath);
+  if (norm !== '') dirs.push(`${norm}/.lantai/sessions`);
 
-  if (!Array.isArray(entries)) {
-    console.error('[chat] listSavedSessions: unexpected result', typeof entries);
-    return [];
-  }
+  type SessionEntry = { id: number; label: string; msgCount: number; savedAt: string; workspace: string };
+  const collected: SessionEntry[] = [];
 
-  // 过滤有效的 JSON 会话文件（跳过目录、_active.json、非 json）
-  const targets = entries.filter(
-    (e) =>
-      !e.is_dir &&
-      e.name.endsWith('.json') &&
-      e.name !== '_active.json' &&
-      !Number.isNaN(parseInt(e.name.replace('.json', ''), 10)),
-  );
-
-  // ── 并行读取所有会话文件，超时 10 秒 ──
-  const TIMEOUT_MS = 10_000;
-  type SessionEntry = { id: number; label: string; msgCount: number; savedAt: string };
-  const readPromises: Promise<SessionEntry | null>[] = targets.map(async (e) => {
+  for (const dirPath of dirs) {
+    let entries: DirectoryEntry[];
     try {
-      const d = await readSessionJSON(e.path);
-      if (d.deleted) return null;
-      const sid = parseInt(e.name.replace('.json', ''), 10);
-      return {
-        id: d.id || sid,
-        label: d.label || `案卷 ${sid}`,
-        msgCount: (d.messages ?? []).filter((m) => m.role !== 'system').length,
-        savedAt: d.savedAt || '',
-      };
-    } catch (err) {
-      console.error(`[chat] listSavedSessions: failed to read ${e.name}`, err);
-      return null;
+      entries = await typedJsonRpc<DirectoryEntry[]>('list_directory', { path: dirPath, filter_ignored: false });
+    } catch (e) {
+      console.error('[chat] listSavedSessions: list_directory failed', e);
+      continue; // 单目录失败不拖垮整个列表
     }
-  });
+    if (!Array.isArray(entries)) {
+      console.error('[chat] listSavedSessions: unexpected result', typeof entries);
+      continue;
+    }
 
-  const timeout: Promise<null[]> = new Promise((resolve) =>
-    setTimeout(() => {
-      console.warn('[chat] listSavedSessions: timed out after 10s');
-      resolve([]);
-    }, TIMEOUT_MS),
-  );
+    // 过滤有效的 JSON 会话文件（跳过目录、_active.json、非 json、_ledger.json）
+    const targets = entries.filter(
+      (e) =>
+        !e.is_dir &&
+        e.name.endsWith('.json') &&
+        e.name !== '_active.json' &&
+        e.name !== '_ledger.json' &&
+        !Number.isNaN(parseInt(e.name.replace('.json', ''), 10)),
+    );
 
-  const results = await Promise.race([Promise.all(readPromises), timeout]);
-  if (!Array.isArray(results)) return [];
+    // ── 并行读取所有会话文件，超时 10 秒（单目录挂起不拖垮列表）──
+    const TIMEOUT_MS = 10_000;
+    const readPromises: Promise<SessionEntry | null>[] = targets.map(async (e) => {
+      try {
+        const d = await readSessionJSON(e.path);
+        if (d.deleted) return null;
+        const sid = parseInt(e.name.replace('.json', ''), 10);
+        // 归属：卷文件 workspace 字段优先；旧目录里无字段的卷归属 = 本工作区
+        const ws = typeof d.workspace === 'string' && d.workspace ? normWs(d.workspace) : '';
+        return {
+          id: d.id || sid,
+          label: d.label || `案卷 ${sid}`,
+          msgCount: (d.messages ?? []).filter((m) => m.role !== 'system').length,
+          savedAt: d.savedAt || '',
+          workspace: dirPath === globalSessionsDir() ? ws : ws || norm,
+        };
+      } catch (err) {
+        console.error(`[chat] listSavedSessions: failed to read ${e.name}`, err);
+        return null;
+      }
+    });
+    const timeout: Promise<null[]> = new Promise((resolve) =>
+      setTimeout(() => {
+        console.warn('[chat] listSavedSessions: timed out after 10s');
+        resolve([]);
+      }, TIMEOUT_MS),
+    );
+    const settled = await Promise.race([Promise.all(readPromises), timeout]);
+    if (!Array.isArray(settled)) continue;
+    collected.push(...(settled.filter((r) => r !== null) as SessionEntry[]));
+  }
 
-  const result = results.filter((r) => r !== null) as SessionEntry[];
+  // 同号同归属去重（吸收后全局位与旧目录两份）：保留 savedAt 较新者
+  const byKey = new Map<string, SessionEntry>();
+  for (const r of collected) {
+    const key = `${r.id}@${r.workspace}`;
+    const prev = byKey.get(key);
+    if (!prev || r.savedAt > prev.savedAt) byKey.set(key, r);
+  }
+  const result = [...byKey.values()];
   result.sort((a, b) => b.savedAt.localeCompare(a.savedAt));
   return result;
 }
@@ -1220,12 +1289,8 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   }
 
   let data: StoredSession | null = null;
-  // 1) 尝试磁盘文件
-  try {
-    data = await readSessionJSON(sessionFile(projectPath, sessionId));
-  } catch {
-    /* 尝试 localStorage */
-  }
+  // 1) 磁盘双读（U1：全局位优先 + 项目内旧目录回退）
+  data = await readVolumeJSON(projectPath, sessionId);
 
   // 2) localStorage 回退
   if (!data && typeof localStorage !== 'undefined') {
@@ -1303,13 +1368,22 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   recordOpenSetChange(ctx.storeId, projectPath, ledgerIo);
 }
 
-/** 将磁盘上的会话文件标记为已删除。 */
+/** 将磁盘上的会话文件标记为已删除。U1：墓碑写入卷实际所在位（全局位/
+ *  旧目录路由同写路径），并携带 workspace 归属——缺字段的墓碑会被双读当
+ *  零目录卷，他工作区读取时错配回退旧目录导致卷「复活」。 */
 export async function deleteSessionFile(ctx: SessionContext, projectPath: string, sessionId: number): Promise<void> {
   // 用删除标记覆盖 — listSavedSessions 会过滤掉这些
   try {
     await typedRpc('write_file_content', {
-      file_path: sessionFile(projectPath, sessionId),
-      content: JSON.stringify({ id: sessionId, deleted: true, label: '', messages: [], savedAt: '' }),
+      file_path: await resolveVolumeWriteTarget(projectPath, sessionId),
+      content: JSON.stringify({
+        id: sessionId,
+        deleted: true,
+        label: '',
+        messages: [],
+        savedAt: '',
+        workspace: normWs(projectPath) || null,
+      }),
     });
   } catch (e) {
     console.error('[chat] deleteSessionFile failed:', e);

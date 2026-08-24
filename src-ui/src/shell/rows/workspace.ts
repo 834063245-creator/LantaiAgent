@@ -78,6 +78,11 @@ async function switchWorkspace(
       return;
     }
 
+    // 会话统一 U1：项目会话卷文件统一落全局位——切工作区时先解析用户级
+    // 会话目录（幂等缓存；与 setupPlaceholderAgent / SessionsHome 同一装配点惯例）
+    const { ensureUserSessionsDir } = await import('../../ui/chat-session');
+    await ensureUserSessionsDir();
+
     // 在可能缓慢的 deactivate() await 之前标记加载态。
     setLoading(true, folder);
 

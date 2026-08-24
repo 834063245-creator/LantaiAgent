@@ -93,13 +93,15 @@ function createChatPanel(): ChatCore {
   return new ChatCore();
 }
 
-/** Mock invoke to return session data on disk for read_file_content calls. */
-function mockSessionFile(id: number, messages: any[], label = `会话 ${id}`, savedAt?: string) {
+/** Mock invoke to return session data on disk for read_file_content calls.
+ *  workspace（U1）：卷归属工作区——带字段的桩模拟「已吸收进全局位的卷」。 */
+function mockSessionFile(id: number, messages: any[], label = `会话 ${id}`, savedAt?: string, workspace?: string) {
   return JSON.stringify({
     id,
     label,
     savedAt: savedAt || new Date().toISOString(),
     messages,
+    ...(workspace ? { workspace } : {}),
   });
 }
 
@@ -249,7 +251,8 @@ describe('ChatPanel session persistence', () => {
 
     it('filters out _active.json and deleted sessions', async () => {
       panel = createChatPanel();
-      // list_directory returns file entries
+      // U1：listSavedSessions 先扫全局位（listing + 文件读），再扫项目旧目录
+      // （第二次 list_directory）——空列表响应在文件读之后
       mockInvoke
         .mockResolvedValueOnce(
           JSON.stringify([
@@ -266,7 +269,9 @@ describe('ChatPanel session persistence', () => {
           ]),
         )
         // read_file_content for 40.json (deleted marker)
-        .mockResolvedValueOnce(JSON.stringify({ id: 40, deleted: true }));
+        .mockResolvedValueOnce(JSON.stringify({ id: 40, deleted: true }))
+        // 项目旧目录 listing（U1 第二目录）
+        .mockResolvedValueOnce(JSON.stringify([]));
 
       const result = await panel.listSavedSessions('D:/test');
       expect(result).toHaveLength(1);
@@ -284,7 +289,9 @@ describe('ChatPanel session persistence', () => {
           ]),
         )
         .mockResolvedValueOnce(mockSessionFile(1, [{ role: 'user', content: 'old' }], 'Old', '2026-01-01T00:00:00Z'))
-        .mockResolvedValueOnce(mockSessionFile(2, [{ role: 'user', content: 'new' }], 'New', '2026-06-30T00:00:00Z'));
+        .mockResolvedValueOnce(mockSessionFile(2, [{ role: 'user', content: 'new' }], 'New', '2026-06-30T00:00:00Z'))
+        // 项目旧目录 listing（U1 第二目录）
+        .mockResolvedValueOnce(JSON.stringify([]));
 
       const result = await panel.listSavedSessions('D:/test');
       expect(result).toHaveLength(2);
@@ -312,7 +319,9 @@ describe('ChatPanel session persistence', () => {
             .split('\n')
             .map((l, i) => `${String(i + 1).padStart(6)}\t${l}`)
             .join('\n'),
-        );
+        )
+        // 项目旧目录 listing（U1 第二目录）
+        .mockResolvedValueOnce(JSON.stringify([]));
 
       const result = await panel.listSavedSessions('D:/test');
       expect(result).toHaveLength(1);
@@ -333,7 +342,9 @@ describe('ChatPanel session persistence', () => {
         // First read fails
         .mockRejectedValueOnce(new Error('permission denied'))
         // Second succeeds
-        .mockResolvedValueOnce(mockSessionFile(2, [{ role: 'user', content: 'ok' }]));
+        .mockResolvedValueOnce(mockSessionFile(2, [{ role: 'user', content: 'ok' }]))
+        // 项目旧目录 listing（U1 第二目录）
+        .mockResolvedValueOnce(JSON.stringify([]));
 
       const result = await panel.listSavedSessions('D:/test');
       expect(result).toHaveLength(1);
@@ -440,12 +451,14 @@ describe('ChatPanel session persistence', () => {
         .mockRejectedValueOnce(new Error('no ledger'))
         .mockResolvedValueOnce(JSON.stringify({ lastId: 1, nextId: 1 }))
         // Session 1 has only system prompt — no user messages
+        // U1 双读：卷桩带 workspace 字段 = 已吸收卷，全局位探测一次即命中
         .mockResolvedValueOnce(
           JSON.stringify({
             id: 1,
             label: '空会话',
             savedAt: '2026-06-29T00:00:00Z',
             messages: [{ role: 'system', content: '你是助手' }],
+            workspace: 'D:/test',
           }),
         )
         // P1-14: localStorage 回退需要磁盘文件背书 — 71.json 必须存在且未删除
@@ -455,6 +468,7 @@ describe('ChatPanel session persistence', () => {
             label: '有内容的会话',
             savedAt: '2026-06-29T00:00:00Z',
             messages: [{ role: 'system', content: 'prompt' }],
+            workspace: 'D:/test',
           }),
         );
 
@@ -487,10 +501,16 @@ describe('ChatPanel session persistence', () => {
         .mockRejectedValueOnce(new Error('no ledger'))
         .mockResolvedValueOnce(JSON.stringify({ lastId: 46, nextId: 77 }))
         .mockResolvedValueOnce(
-          mockSessionFile(46, [
-            { role: 'system', content: 'sys' },
-            { role: 'user', content: 'hello' },
-          ]),
+          mockSessionFile(
+            46,
+            [
+              { role: 'system', content: 'sys' },
+              { role: 'user', content: 'hello' },
+            ],
+            undefined,
+            undefined,
+            'D:/test',
+          ),
         );
 
       await panel.autoRestoreLastSession('D:/test');
@@ -523,6 +543,8 @@ describe('ChatPanel session persistence', () => {
       for (const id of [1, 2, 3, 4, 5]) {
         mockInvoke.mockResolvedValueOnce(mockSessionFile(id, [{ role: 'user', content: `msg-${id}` }]));
       }
+      // 项目旧目录 listing（U1 第二目录）
+      mockInvoke.mockResolvedValueOnce(JSON.stringify([]));
 
       const start = Date.now();
       const result = await panel.listSavedSessions('D:/test');
@@ -545,6 +567,8 @@ describe('ChatPanel session persistence', () => {
       // First file hangs forever, second resolves
       mockInvoke.mockReturnValueOnce(new Promise(() => {})); // never resolves
       mockInvoke.mockResolvedValueOnce(mockSessionFile(2, [{ role: 'user', content: 'ok' }]));
+      // 项目旧目录 listing（U1 第二目录——全局位读竞速超时后才发出）
+      mockInvoke.mockResolvedValueOnce(JSON.stringify([]));
 
       vi.useFakeTimers();
       const promise = panel.listSavedSessions('D:/test');
@@ -572,6 +596,8 @@ describe('ChatPanel session persistence', () => {
       mockInvoke.mockRejectedValueOnce(new Error('corrupt file'));
       // File 3: success
       mockInvoke.mockResolvedValueOnce(mockSessionFile(3, [{ role: 'user', content: 'world' }]));
+      // 项目旧目录 listing（U1 第二目录）
+      mockInvoke.mockResolvedValueOnce(JSON.stringify([]));
 
       const result = await panel.listSavedSessions('D:/test');
 
@@ -646,6 +672,7 @@ describe('ChatPanel session persistence', () => {
               { role: 'user', content: '帮我分析' },
               { role: 'assistant', content: '好的，正在分析…' },
             ],
+            workspace: 'D:/test',
           }),
         );
 
@@ -768,7 +795,7 @@ describe('ChatPanel session persistence', () => {
       mockInvoke
         .mockRejectedValueOnce(new Error('no ledger'))
         .mockResolvedValueOnce(JSON.stringify({ lastId: 1, nextId: 2 }))
-        .mockResolvedValueOnce(mockSessionFile(1, mockSessionMessages, '测试会话'));
+        .mockResolvedValueOnce(mockSessionFile(1, mockSessionMessages, '测试会话', undefined, 'D:/test'));
 
       return panel.autoRestoreLastSession('D:/test');
     }
@@ -984,6 +1011,9 @@ describe('ChatPanel session persistence', () => {
 
       panel.closeSession(0); // 合背景卷 1
 
+      // U1：落盘目标经 resolveVolumeWriteTarget 异步消解（预读全局位）——
+      // fire-and-forget 写链需排干微任务后再断言
+      await new Promise((r) => setTimeout(r, 0));
       expect(agent1.dispose).toHaveBeenCalled();
       const write1 = writes.find((w) => w.file_path.endsWith('/1.json'));
       expect(write1).toBeTruthy();
@@ -1001,6 +1031,8 @@ describe('ChatPanel session persistence', () => {
 
       panel.closeSession(1); // 合活跃卷 2
 
+      // U1：写目标异步消解——排干微任务（见合背景卷用例注释）
+      await new Promise((r) => setTimeout(r, 0));
       const write2 = writes.find((w) => w.file_path.endsWith('/2.json'));
       expect(write2).toBeTruthy();
       const parsed = JSON.parse(write2!.content);
@@ -1121,6 +1153,8 @@ describe('ChatPanel session persistence', () => {
 
       panel.closeSession(0); // 合卷一
 
+      // U1：写目标异步消解——排干微任务（见 C8 用例注释）
+      await new Promise((r) => setTimeout(r, 0));
       const write1 = writes.find((w) => w.file_path.endsWith('/1.json'));
       expect(write1).toBeTruthy();
       const parsed = JSON.parse(write1!.content);
@@ -1274,6 +1308,221 @@ describe('ChatPanel session persistence', () => {
       expect(Session.getSessions(panel.panelId)).toHaveLength(2);
       expect(isStoreFresh(panel.panelId, 1)).toBe(false);
       expect(isStoreFresh(panel.panelId, 2)).toBe(false);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // 会话统一 U1（2026-08-24）：全局存储位路由
+  //   · 新卷统一落全局位，workspace 字段随卷写入
+  //   · 双读：全局位优先 → 项目内旧目录回退
+  //   · 同号撞卷：workspace 消解——读不串卷、写不覆盖
+  // ═══════════════════════════════════════════════════════════════
+
+  describe('U1 全局存储位路由', () => {
+    const PROJ = 'D:/u1-proj';
+    const GLOBAL = '/.lantai/sessions'; // _userSessionsDir 未解析时的兜底路径（测试态）
+
+    /** 实现式磁盘 mock：按路径精确路由（global / project 两目录）。 */
+    function mockDualDirDisk(files: Record<string, string>) {
+      mockInvoke.mockReset();
+      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
+        const { method, params } = payload;
+        if (method === 'read_file_content') {
+          const fp = params.file_path as string;
+          if (fp in files) return Promise.resolve(files[fp]);
+          return Promise.reject(new Error('文件不存在'));
+        }
+        if (method === 'write_file_content') {
+          files[params.file_path as string] = params.content as string;
+          return Promise.resolve('ok');
+        }
+        if (method === 'list_directory') return Promise.resolve(JSON.stringify([]));
+        return Promise.resolve(null);
+      });
+      return files;
+    }
+
+    function setupVolumePanel() {
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      panel.setAgent({
+        getSession: () => [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content: 'U1 内容' },
+        ],
+        setSession: vi.fn(),
+        dispose: vi.fn(),
+        cascadeAbort: vi.fn(),
+      } as any);
+      return panel;
+    }
+
+    it('saveActiveSession 统一落全局位，卷 JSON 携带 workspace 字段', async () => {
+      const files = mockDualDirDisk({});
+      setupVolumePanel();
+
+      await panel.saveActiveSession(PROJ);
+
+      const write = Object.entries(files).find(([p]) => p.endsWith('/1.json'));
+      expect(write?.[0]).toBe(`${GLOBAL}/1.json`); // 全局位，非项目旧目录
+      const parsed = JSON.parse(write![1]);
+      expect(parsed.workspace).toBe(PROJ); // workspace 字段（正斜杠）
+      expect(parsed.messages.some((m: any) => m.content === 'U1 内容')).toBe(true);
+    });
+
+    /** 工厂桩：setSession 真正落进闭包（loadSessionFromDisk 重建消息依赖 agent 持有会话）。 */
+    function storingFactory() {
+      let agentSession: any[] = [{ role: 'system', content: 'sys' }];
+      const factory = async () => ({
+        getSession: () => agentSession,
+        setSession: (msgs: any[]) => {
+          agentSession = msgs;
+        },
+        dispose: vi.fn(),
+        bindSession: vi.fn(),
+      });
+      return factory;
+    }
+
+    it('双读回退：全局位缺席 → 项目内旧目录卷可打开（兼容源）', async () => {
+      mockDualDirDisk({
+        [`${PROJ}/.lantai/sessions/5.json`]: mockSessionFile(
+          5,
+          [
+            { role: 'system', content: 'sys' },
+            { role: 'user', content: '旧目录的卷' },
+          ],
+          '旧卷',
+          undefined,
+        ), // 旧目录卷：无 workspace 字段（legacy）
+      });
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      panel.setAgent({
+        getSession: () => [{ role: 'system', content: 'sys' }],
+        setSession: vi.fn(),
+        dispose: vi.fn(),
+        cascadeAbort: vi.fn(),
+      } as any);
+      panel.setAgentFactory(storingFactory());
+
+      await panel.loadSessionFromDisk(PROJ, 5);
+
+      const sess = Session.getSessions(panel.panelId);
+      expect(sess.some((s) => s.id === 5)).toBe(true);
+      const msgs = msgStoreFor(panel.panelId, 5).getState().messages;
+      expect(msgs.some((m: any) => m.text === '旧目录的卷')).toBe(true);
+    });
+
+    it('同号撞卷：全局位同号卷归属别的工作区 → 读走旧目录、写回退旧目录不覆盖', async () => {
+      const files = mockDualDirDisk({
+        // 全局位 1.json 归属另一个工作区（撞号卷）
+        [`${GLOBAL}/1.json`]: JSON.stringify({
+          id: 1,
+          label: '别的工作区的卷',
+          savedAt: '2026-08-24T00:00:00Z',
+          messages: [{ role: 'user', content: '他区内容' }],
+          workspace: 'D:/other-ws',
+        }),
+        // 本工作区旧目录 1.json（legacy，无 workspace 字段）
+        [`${PROJ}/.lantai/sessions/1.json`]: mockSessionFile(
+          1,
+          [
+            { role: 'system', content: 'sys' },
+            { role: 'user', content: '本区内容' },
+          ],
+          '本区卷',
+        ),
+      });
+
+      // 读：loadSessionFromDisk(PROJ, 1) 必须拿到本区卷，不是他区卷
+      //（不预置 setAgent 卷——默认卷号 1 会撞本测试的目标卷号，触发续开查重早退）
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      panel.setAgentFactory(storingFactory());
+      await panel.loadSessionFromDisk(PROJ, 1);
+      const msgs = msgStoreFor(panel.panelId, 1).getState().messages;
+      expect(msgs.some((m: any) => m.text === '本区内容')).toBe(true);
+      expect(msgs.some((m: any) => m.text === '他区内容')).toBe(false);
+
+      // 写：saveActiveSession(PROJ) 落回旧目录，全局位他区卷原封不动
+      //（发号器拨回 1 → setAgent 重置出活跃卷 id=1，与撞号卷同号）
+      Session.setNextSessionId(panel.panelId, 1);
+      panel.setAgent({
+        getSession: () => [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content: '本区新内容' },
+        ],
+        setSession: vi.fn(),
+        dispose: vi.fn(),
+        cascadeAbort: vi.fn(),
+      } as any);
+      await panel.saveActiveSession(PROJ);
+
+      expect(JSON.parse(files[`${GLOBAL}/1.json`]).workspace).toBe('D:/other-ws'); // 未被覆盖
+      const projectWrite = JSON.parse(files[`${PROJ}/.lantai/sessions/1.json`]);
+      expect(projectWrite.workspace).toBe(PROJ);
+      expect(projectWrite.messages.some((m: any) => m.content === '本区新内容')).toBe(true);
+    });
+
+    it('零目录卷：全局位无 workspace 字段卷匹配零目录请求，带 workspace 卷不匹配', async () => {
+      mockDualDirDisk({
+        [`${GLOBAL}/7.json`]: JSON.stringify({
+          id: 7,
+          label: '零目录卷',
+          savedAt: '2026-08-24T00:00:00Z',
+          messages: [
+            { role: 'system', content: 'sys' },
+            { role: 'user', content: '零目录内容' },
+          ],
+        }),
+      });
+      // 恢复候选来自 localStorage 扫描（磁盘背书 = 全局位 7.json）——
+      // 与 no-key-cold-start 真实链路同构
+      localStorage.setItem(
+        `hologram_session_${hashProjectPath('').toString(36)}_7`,
+        JSON.stringify({ id: 7, savedAt: '2026-08-24T00:00:00Z', messages: [{ role: 'user', content: '零目录内容' }] }),
+      );
+      panel = createChatPanel();
+      panel.setProjectPath('');
+      panel.setAgentFactory(async () => null);
+
+      await panel.autoRestoreLastSession('');
+
+      const sess = Session.getSessions(panel.panelId);
+      expect(sess).toHaveLength(1);
+      expect(sess[0].id).toBe(7);
+      expect(
+        msgStoreFor(panel.panelId, 7)
+          .getState()
+          .messages.some((m: any) => m.text === '零目录内容'),
+      ).toBe(true);
+    });
+
+    it('deleteSessionFile 墓碑路由到卷所在位并携带 workspace 归属', async () => {
+      const files = mockDualDirDisk({
+        [`${GLOBAL}/3.json`]: JSON.stringify({
+          id: 3,
+          label: '已吸收卷',
+          savedAt: '2026-08-24T00:00:00Z',
+          messages: [{ role: 'user', content: 'x' }],
+          workspace: PROJ,
+        }),
+      });
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      panel.setAgent({
+        getSession: () => [{ role: 'system', content: 'sys' }],
+        setSession: vi.fn(),
+        dispose: vi.fn(),
+        cascadeAbort: vi.fn(),
+      } as any);
+
+      await panel.deleteSessionFile(PROJ, 3);
+
+      const tomb = JSON.parse(files[`${GLOBAL}/3.json`]);
+      expect(tomb.deleted).toBe(true);
+      expect(tomb.workspace).toBe(PROJ); // 墓碑带归属——双读匹配依赖
     });
   });
 });
