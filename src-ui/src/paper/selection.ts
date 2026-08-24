@@ -95,3 +95,46 @@ export function tryMakeStripFromSelection(
   if (sel.trim().length === 0) return null;
   return makeStrip(sel, x, y, 480, source);
 }
+
+/* ── 拖拽语义几何（收尾批 II 2026-08-24：A+B 交互重做）── */
+
+/** 拖拽落点分类——幽灵预览/成条判据的单一真源。
+ *  flow：流锚窄带内（普通选择/阅读行为，不抽条）；
+ *  strip：带外画布内（松手成条）。 */
+export type StripDropZone = 'flow' | 'strip';
+
+/** 判落点分区：输入是光标的世界坐标 + 画布屏幕尺寸（画布外由调用方先排除）。
+ *  与壳层手势共用同一判据——带边界 = ANCHOR.bandHalfWidth 语义（调用方传入，
+ *  纯函数不 import canvas-math，保持 selection.ts 零依赖纪律）。 */
+export function classifyDropZone(worldX: number, bandHalfWidth: number): StripDropZone {
+  return Math.abs(worldX) <= bandHalfWidth ? 'flow' : 'strip';
+}
+
+/** 浮钮路径的纸条落点：流带右侧空地第一档（x = bandHalfWidth + 边距），
+ *  y 跟选区几何（选区中点的世界 y）；同档已有纸条则向下叠放（+STRIP_STACK_GAP，
+ *  逐条探测直到空档）——「点了就落在看得见的旁边，不压已有纸条」。
+ *  纯函数：occupied 传当前纸条矩形列表。 */
+export const STRIP_STASH_GAP = 48;
+export const STRIP_STACK_GAP = 24;
+/** 纸条渲染高的近似值（浮钮叠放探测用——真高度由 CSS 内容决定，
+ *  这里取结构高度近似，叠放宁可多留空不重叠）。 */
+export const STRIP_H_APPROX = 120;
+
+export function stashStripPosition(
+  selectionMidY: number,
+  occupied: Array<{ x: number; y: number; w: number }>,
+  bandHalfWidth: number,
+): { x: number; y: number } {
+  const x = bandHalfWidth + STRIP_STASH_GAP;
+  const w = 480; // 纸条默认宽（makeStrip 缺省）
+  let y = selectionMidY;
+  // 同档向下探测：与任一已有纸条 y 区间重叠则再降一档
+  const overlaps = (yy: number): boolean =>
+    occupied.some((o) => Math.abs(o.x - x) < w && yy < o.y + STRIP_H_APPROX && o.y < yy + STRIP_H_APPROX);
+  let guard = 0;
+  while (overlaps(y) && guard < 200) {
+    y += STRIP_H_APPROX + STRIP_STACK_GAP;
+    guard += 1;
+  }
+  return { x, y };
+}

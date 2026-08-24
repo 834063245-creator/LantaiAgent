@@ -6,7 +6,14 @@
 // ③ 清理路径（合卷/删卷/切工作区）④ selection 扩展（source 元信息）。
 
 import { beforeEach, describe, expect, it } from 'vitest';
-import { makeStrip, resetStripIdCounterForTests } from '../src/paper/selection';
+import {
+  classifyDropZone,
+  makeStrip,
+  resetStripIdCounterForTests,
+  STRIP_H_APPROX,
+  STRIP_STASH_GAP,
+  stashStripPosition,
+} from '../src/paper/selection';
 import {
   clearPaperSessions,
   getPaperSessionData,
@@ -137,5 +144,40 @@ describe('makeStrip source 元信息（收尾 2026-08-24）', () => {
     // JSON 往返（会话快照走 JSON.stringify）
     const back = JSON.parse(JSON.stringify(s)) as typeof s;
     expect(back.source).toEqual({ messageId: 'm42' });
+  });
+});
+
+/* ═══ 拖拽语义几何（收尾批 II：A+B 交互）═══ */
+
+describe('classifyDropZone / stashStripPosition', () => {
+  const BAND = 400; // 与 ANCHOR.bandHalfWidth 同值（纯函数测试字面量钉住）
+
+  it('classifyDropZone：带内 flow / 带外 strip（含边界值）', () => {
+    expect(classifyDropZone(0, BAND)).toBe('flow');
+    expect(classifyDropZone(-400, BAND)).toBe('flow'); // 边界 = 带内
+    expect(classifyDropZone(400.1, BAND)).toBe('strip');
+    expect(classifyDropZone(-800, BAND)).toBe('strip');
+  });
+
+  it('stashStripPosition：空场落第一档（带右 + 边距），y 跟选区', () => {
+    const pos = stashStripPosition(-500, [], BAND);
+    expect(pos.x).toBe(BAND + STRIP_STASH_GAP);
+    expect(pos.y).toBe(-500);
+  });
+
+  it('stashStripPosition：同档已占 → 向下叠放一档', () => {
+    const first = stashStripPosition(-500, [], BAND);
+    const second = stashStripPosition(-500, [{ x: first.x, y: first.y, w: 480 }], BAND);
+    expect(second.x).toBe(first.x); // 同列
+    expect(second.y).toBeGreaterThan(first.y); // 向下错开
+    expect(second.y).toBeGreaterThanOrEqual(first.y + STRIP_H_APPROX); // 不重叠
+  });
+
+  it('stashStripPosition：异列纸条不挡（x 距离超纸条宽不算占用）', () => {
+    const pos = stashStripPosition(-500, [{ x: firstStashX() + 600, y: -500, w: 480 }], BAND);
+    expect(pos.y).toBe(-500); // 不叠放
+    function firstStashX(): number {
+      return BAND + STRIP_STASH_GAP;
+    }
   });
 });
