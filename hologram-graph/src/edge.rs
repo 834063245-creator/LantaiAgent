@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{EdgeId, NodeId};
+use crate::id::{EdgeId, NodeId};
 
 /// Edge 类型 — 对依赖的性质进行分类。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

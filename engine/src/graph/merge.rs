@@ -100,8 +100,7 @@ impl GraphMerger {
 
     pub fn with_capacity(estimated_nodes: usize, estimated_edges: usize) -> Self {
         let mut graph = Graph::new();
-        graph.nodes.reserve(estimated_nodes);
-        graph.edges.reserve(estimated_edges);
+        graph.reserve(estimated_nodes, estimated_edges);
         Self {
             graph,
             arena: LocalIntern::new(),
@@ -242,6 +241,28 @@ mod tests {
         let m = GraphMerger::new();
         assert_eq!(m.node_count(), 0);
         assert_eq!(m.graph().node_count(), 0);
+    }
+
+    /// 随 L2 crate 化从 hologram-graph/src/graph.rs 迁入
+    /// （GraphMerger 留在 engine；纯类型 crate 不得反向依赖）。
+    #[test]
+    fn test_merge_incremental_index() {
+        let mut merger = GraphMerger::new();
+
+        let mut g1 = Graph::new();
+        let mut n1 = Node::new("n1", "handle_request", NodeKind::Symbol);
+        n1.location = Some("src/main.py".into());
+        g1.add_node(n1);
+
+        let mut g2 = Graph::new();
+        let mut n1_dup = Node::new("n1_dup", "handle_request", NodeKind::Symbol);
+        n1_dup.location = Some("src/main.py".into());
+        g2.add_node(n1_dup);
+
+        merger.merge(g1);
+        assert_eq!(merger.node_count(), 1);
+        merger.merge(g2);
+        assert_eq!(merger.node_count(), 1, "重复项应被跳过");
     }
 
     #[test]

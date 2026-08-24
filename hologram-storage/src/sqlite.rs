@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, Connection};
 use tracing::info;
 
-use crate::graph::{EdgeKind, Node, NodeKind};
+use hologram_graph::{EdgeKind, Node, NodeKind};
 
 /// bulk 写边元组：(source, target, kind, coupling, delay, cross_file, metadata, lsp_resolved)。
 pub type EdgeRow<'a> = (
@@ -947,7 +947,7 @@ fn edge_kind_from_str(s: &str) -> Result<EdgeKind, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{Node, NodeKind, EdgeKind};
+    use hologram_graph::{Node, NodeKind, EdgeKind};
 
     fn make_test_node(id: &str, kind: NodeKind) -> Node {
         let mut n = Node::new(id, id, kind);

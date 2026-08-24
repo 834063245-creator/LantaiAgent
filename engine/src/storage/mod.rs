@@ -1,40 +1,16 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-pub mod memory;
-pub mod sqlite;
-pub mod store;
-pub mod incremental;
-pub mod snapshot;
-pub mod string_arena;
+//! 存储门面：数据家层（GraphStore / MemoryIndex / SqliteDb / 快照 / StoreHost）
+//! 自 L2 存储外置（layering-rework-plan §4.3 欠账项 1）起物理拆出为独立 crate
+//! `hologram-storage`，此处再导出保持 `crate::storage::*` 消费路径零改动。
+//! engine 不再物理拥有存储实现——数据文件的所有权单元（StoreHost）由宿主
+//! （壳层数据上下文 / engine 二进制）创建并注入。
 
-pub use memory::{LoadProgress, MemoryIndex};
-pub use sqlite::SqliteDb;
-pub use rusqlite::Connection;
-pub use store::GraphStore;
-pub use incremental::IncrementalUpdater;
+pub use hologram_storage::{MemoryIndex, LoadProgress, SqliteDb, GraphStore, Connection, StoreHost};
 
-use std::path::Path;
-
-/// 数据宿主（L2 存储外置）——图库 + 专用时间线连接的**所有权单元**。
-///
-/// 归属语义：数据文件（hologram.db / FTS5 / 快照）按工作区打开，由宿主
-/// （壳层数据上下文 / engine 二进制的进程级宿主）创建并**注入** Engine——
-/// Engine 是使用方不是唯一拥有方，分析与查询经共享句柄（`Arc<Mutex<StoreHost>>`）
-/// 落库。timeline 用独立连接，永不阻塞图库锁（原 Engine 内两把锁的语义原样保留）。
-pub struct StoreHost {
-    /// 图存储（MemoryIndex + SQLite + 快照路径）。
-    pub store: GraphStore,
-    /// timeline 专用 SQLite 连接（与图库互不阻塞）。
-    pub timeline_conn: Connection,
-}
-
-impl StoreHost {
-    /// 为工作区根打开宿主：GraphStore::open（SQLite + 快照/JSON 加载）
-    /// + timeline 辅助连接。
-    pub fn open(project_root: &Path) -> Result<Self, String> {
-        let store = GraphStore::open(project_root)?;
-        let timeline_conn = SqliteDb::open_aux_connection(store.db.path())?;
-        Ok(Self { store, timeline_conn })
-    }
-}
+/// 增量更新器（原 storage/incremental.rs）——依赖 adapter::registry 做
+/// 单文件 tree-sitter 重解析，属「分析行为」而非「数据持有」，随 L2 crate 化
+/// 迁入 pipeline 域（管线的一部分）。路径兼容：`crate::storage::IncrementalUpdater`
+/// 仍可用（engine 内部消费方 watcher.rs / engine/mod.rs 零改动）。
+pub use crate::pipeline::incremental::IncrementalUpdater;

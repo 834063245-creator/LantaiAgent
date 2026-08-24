@@ -18,10 +18,10 @@ use serde::Serialize;
 
 use rayon::prelude::*;
 
-use crate::graph::{EdgeKind, Node};
-use crate::storage::snapshot::MemoryIndexSnapshot;
-use crate::storage::sqlite::SqliteDb;
-use crate::storage::string_arena::StringArena;
+use hologram_graph::{EdgeKind, Node};
+use crate::snapshot::MemoryIndexSnapshot;
+use crate::sqlite::SqliteDb;
+use crate::string_arena::StringArena;
 
 /// engine_status MCP 工具的进度信息。
 #[derive(Debug, Clone, Serialize)]
@@ -544,8 +544,8 @@ impl MemoryIndex {
     /// 因此峰值内存约为旧的全量克隆方案的一半。
     /// 6.1M 边 → into_iter() 在处理时逐条释放 Edge。
     pub fn from_existing_graph(
-        nodes: HashMap<crate::graph::NodeId, Node>,
-        edges: HashMap<crate::graph::EdgeId, crate::graph::Edge>,
+        nodes: HashMap<hologram_graph::NodeId, Node>,
+        edges: HashMap<hologram_graph::EdgeId, hologram_graph::Edge>,
     ) -> Self {
         let _t0 = std::time::Instant::now();
         let _edge_total = edges.len();
@@ -787,12 +787,12 @@ impl MemoryIndex {
         let snap = to_snapshot(self);
         let payload = bincode::serialize(&snap)
             .map_err(|e| format!("snapshot serialize: {}", e))?;
-        let mut bytes = crate::storage::snapshot::encode_snapshot_header(token);
+        let mut bytes = crate::snapshot::encode_snapshot_header(token);
         bytes.extend_from_slice(&payload);
         let dir = project_root.join(".lantai");
         std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir .lantai: {}", e))?;
-        let path = crate::storage::snapshot::snapshot_path(project_root);
-        let tmp = crate::storage::snapshot::snapshot_tmp_path(project_root);
+        let path = crate::snapshot::snapshot_path(project_root);
+        let tmp = crate::snapshot::snapshot_tmp_path(project_root);
         if let Err(e) = std::fs::write(&tmp, &bytes) {
             let _ = std::fs::remove_file(&tmp);
             return Err(format!("snapshot write: {}", e));
@@ -814,10 +814,10 @@ impl MemoryIndex {
     /// 调用方负责删除快照并回退 SQLite 路径。
     pub fn load_snapshot(project_root: &Path) -> Result<MemoryIndex, String> {
         let t = std::time::Instant::now();
-        let path = crate::storage::snapshot::snapshot_path(project_root);
+        let path = crate::snapshot::snapshot_path(project_root);
         let bytes = std::fs::read(&path)
             .map_err(|e| format!("snapshot read {}: {}", path.display(), e))?;
-        let (_token, offset) = crate::storage::snapshot::parse_snapshot_header(&bytes)?;
+        let (_token, offset) = crate::snapshot::parse_snapshot_header(&bytes)?;
         let snap: MemoryIndexSnapshot = bincode::deserialize(&bytes[offset..])
             .map_err(|e| format!("snapshot deserialize: {}", e))?;
         let idx = from_snapshot(snap);
@@ -913,7 +913,7 @@ impl MemoryIndex {
     // ── 兼容性：从邻接表重建 Edge 对象 ──
 
     /// 重建出边 Edge 对象。缺失字段使用默认值。
-    pub fn get_outgoing_edges(&self, node_id: &str) -> Vec<crate::graph::Edge> {
+    pub fn get_outgoing_edges(&self, node_id: &str) -> Vec<hologram_graph::Edge> {
         let mut edges = Vec::new();
         let Some(handle) = self.handle_of(node_id) else {
             return edges;
@@ -923,7 +923,7 @@ impl MemoryIndex {
             let tgt_str = self.get_str(tgt);
             let kind = EdgeKind::from_u8(kind_u8);
             let id = format!("{}::{}::{}", node_id, tgt_str, kind.as_str());
-            let mut edge = crate::graph::Edge::new(id, node_id, tgt_str, kind);
+            let mut edge = hologram_graph::Edge::new(id, node_id, tgt_str, kind);
             edge.coupling_depth = coupling;
             edge.temporal_delay_sec = unpack_delay(delay);
             edge.cross_file = unpack_cross_file(cross_file);
@@ -934,7 +934,7 @@ impl MemoryIndex {
     }
 
     /// 重建入边 Edge 对象。
-    pub fn get_incoming_edges(&self, node_id: &str) -> Vec<crate::graph::Edge> {
+    pub fn get_incoming_edges(&self, node_id: &str) -> Vec<hologram_graph::Edge> {
         let mut edges = Vec::new();
         let Some(handle) = self.handle_of(node_id) else {
             return edges;
@@ -944,7 +944,7 @@ impl MemoryIndex {
             let src_str = self.get_str(src);
             let kind = EdgeKind::from_u8(kind_u8);
             let id = format!("{}::{}::{}", src_str, node_id, kind.as_str());
-            let mut edge = crate::graph::Edge::new(id, src_str, node_id, kind);
+            let mut edge = hologram_graph::Edge::new(id, src_str, node_id, kind);
             edge.coupling_depth = coupling;
             edge.temporal_delay_sec = unpack_delay(delay);
             edge.cross_file = unpack_cross_file(cross_file);
@@ -1410,8 +1410,8 @@ impl MemoryIndex {
     /// 边 ID 从 (source, target, kind) 派生，因为 CSR 数组不存储边 ID。
     // ponytail：O(N+E) 转换。MemoryIndex 保存规范数据；
     // Graph 是合成阶段的临时格式。
-    pub fn to_graph(&self) -> crate::graph::Graph {
-        use crate::graph::{Edge, Graph};
+    pub fn to_graph(&self) -> hologram_graph::Graph {
+        use hologram_graph::{Edge, Graph};
 
         let mut graph = Graph::new();
         for node in self.nodes_iter() {
@@ -1627,7 +1627,7 @@ impl MemoryIndex {
 
     /// 继承另一索引的 LSP 标记层（增量更新克隆路径用，
     /// 增量器逐边 upsert 不携带该标志）。
-    pub(crate) fn inherit_lsp_resolved(&mut self, other: &MemoryIndex) {
+    pub fn inherit_lsp_resolved(&mut self, other: &MemoryIndex) {
         self.lsp_resolved_edges = other.lsp_resolved_edges.clone();
     }
 
@@ -1712,7 +1712,7 @@ pub(crate) fn to_snapshot(idx: &MemoryIndex) -> MemoryIndexSnapshot {
         nodes: idx
             .nodes
             .par_iter()
-            .map(|(&h, n)| (h, crate::storage::snapshot::SnapshotNode::from_node(n)))
+            .map(|(&h, n)| (h, crate::snapshot::SnapshotNode::from_node(n)))
             .collect(),
         node_by_idx: idx.node_by_idx.clone(),
         handle_to_idx: idx.handle_to_idx.clone(),
@@ -1815,8 +1815,8 @@ pub(crate) fn from_snapshot(snap: MemoryIndexSnapshot) -> MemoryIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::Graph;
-    use crate::graph::{Edge, EdgeKind, Node, NodeId, NodeKind};
+    use hologram_graph::Graph;
+    use hologram_graph::{Edge, EdgeKind, Node, NodeId, NodeKind};
 
     fn test_node(id: &str, name: &str, location: Option<&str>) -> Node {
         let mut n = Node::new(id, name, NodeKind::Symbol);

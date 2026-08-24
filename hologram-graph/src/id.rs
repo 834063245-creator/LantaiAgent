@@ -190,13 +190,13 @@ macro_rules! impl_id_handle {
             /// 构造:将字符串驻留进全局表,返回稳定句柄。
             #[inline]
             pub fn new(s: impl Into<String>) -> Self {
-                Self(crate::graph::id::intern(&s.into()))
+                Self(crate::id::intern(&s.into()))
             }
 
             /// 解析回字符串(进程生命周期内稳定)。
             #[inline]
             pub fn as_str(&self) -> &str {
-                crate::graph::id::resolve(self.0)
+                crate::id::resolve(self.0)
             }
 
             /// 字符串所有权版本。
@@ -214,7 +214,7 @@ macro_rules! impl_id_handle {
             /// 查询已驻留字符串的句柄(不含驻留副作用)—— 字符串查找的入口。
             #[inline]
             pub fn lookup(s: &str) -> Option<Self> {
-                crate::graph::id::handle_of(s).map(Self::from_handle)
+                crate::id::handle_of(s).map(Self::from_handle)
             }
 
             /// 构造句柄(不经驻留)—— 仅用于已驻留句柄的透传。

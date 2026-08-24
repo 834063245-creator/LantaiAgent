@@ -21,7 +21,7 @@ use tracing::info;
 
 use crate::graph::Graph;
 use crate::storage::MemoryIndex;
-use crate::storage::sqlite::{timeline_query, timeline_record, timeline_record_with_props};
+use hologram_storage::sqlite::{timeline_query, timeline_record, timeline_record_with_props};
 
 // ═══════════════════════════════════════════════════════════════
 // EngineState — 生命周期状态机
@@ -1095,7 +1095,7 @@ mod tests {
     /// IncrementalUpdater::update() 成功（不回退到全量分析）。
     #[test]
     fn test_incremental_update_path_is_reachable() {
-        use crate::storage::incremental::IncrementalUpdater;
+        use crate::storage::IncrementalUpdater;
         
 
         let tmp = std::env::temp_dir().join("hologram_test_f1_incr");
@@ -1304,7 +1304,7 @@ mod tests {
     #[test]
     fn test_graph_from_index_cross_file() {
         use crate::graph::{EdgeKind, Node, NodeKind};
-        use crate::storage::memory::MemoryIndex;
+        use crate::storage::MemoryIndex;
 
         let mut idx = MemoryIndex::new();
 
@@ -1343,7 +1343,7 @@ mod tests {
     #[test]
     fn test_graph_from_index_no_location() {
         use crate::graph::{EdgeKind, Node, NodeKind};
-        use crate::storage::memory::MemoryIndex;
+        use crate::storage::MemoryIndex;
 
         let mut idx = MemoryIndex::new();
         idx.insert_node(Node::new("a", "A", NodeKind::Symbol));

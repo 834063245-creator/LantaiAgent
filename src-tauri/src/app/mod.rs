@@ -79,16 +79,17 @@ pub(crate) fn display_path(p: &Path) -> String {
 
 /// 按工作区实例化的数据上下文。L2 起显式持**数据宿主共享句柄**——
 /// 图库（hologram.db/FTS5/快照）与 timeline 连接的归属单元在
-/// [`hologram_engine::storage::StoreHost`]，宿主（本上下文）创建并注入
-/// Engine；应用层可直接经 `store_host` 持久化/检查库，Engine 是计算与
-/// 访问的执行方。
+/// [`hologram_storage::StoreHost`]（L2 crate 化：engine/src/storage 物理拆出
+/// 为独立 crate），宿主（本上下文）创建并注入 Engine；应用层可直接经
+/// `store_host` 持久化/检查库，Engine 是计算与访问的执行方。
 pub(crate) struct WorkspaceDataContext {
     /// canonical 工作区根（注册表键）。
     pub root: PathBuf,
     /// 该工作区专属引擎实例。
     pub engine: Arc<Engine>,
     /// 数据宿主共享句柄（L2 存储外置）——与 Engine 内部持同一 Arc。
-    pub(crate) store_host: Arc<Mutex<hologram_engine::storage::StoreHost>>,
+    /// L2 crate 化后物理来源为 hologram-storage crate（经 engine 门面再导出）。
+    pub(crate) store_host: Arc<Mutex<hologram_storage::StoreHost>>,
     /// 绑定到本上下文的会话 id 集（GC 判据）。
     pub(crate) sessions: Mutex<HashSet<u64>>,
     pub created_at_ms: u64,
@@ -731,6 +732,48 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// L2 crate 化守卫：storage/vector 类型引用必须直连独立 crate
+    /// （`hologram_storage::` / `hologram_vector::`），不得再经
+    /// `hologram_engine::storage::` / `hologram_engine::vector::`
+    /// 路径引用——engine 的 `pub mod storage/vector` 是兼容门面，
+    /// 新代码不得扩充门面消费面（layering-rework-plan §4.3 欠账项 1 验收钉）。
+    #[test]
+    fn shell_storage_vector_refs_use_dedicated_crates() {
+        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut violations: Vec<String> = Vec::new();
+        for entry in walkdir::WalkDir::new(&src_dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().is_some_and(|x| x == "rs"))
+        {
+            let rel = entry
+                .path()
+                .strip_prefix(&src_dir)
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
+            // 本守卫测试自身写着这些字面量（注释/断言消息），跳过防自匹配。
+            if rel.replace('\\', "/").starts_with("app/mod.rs") {
+                continue;
+            }
+            let content = std::fs::read_to_string(entry.path()).unwrap_or_default();
+            for bad in [
+                "hologram_engine::storage::",
+                "hologram_engine::vector::",
+                "engine::storage::",
+                "engine::vector::",
+            ] {
+                if content.contains(bad) {
+                    violations.push(format!("{rel} 含 {bad} —— 应直连 hologram_storage/hologram_vector crate"));
+                }
+            }
+        }
+        assert!(
+            violations.is_empty(),
+            "壳层存在经 engine 门面引用存储/向量类型的代码（应直连独立 crate）: {violations:?}"
+        );
     }
 }
 

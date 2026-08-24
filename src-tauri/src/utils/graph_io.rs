@@ -6,7 +6,9 @@ use hologram_engine as engine;
 use engine::community::detect_hierarchical_communities_with_base;
 use engine::graph::Graph;
 use engine::routing::preflight::save_baseline;
-use engine::storage::MemoryIndex;
+// L2 crate 化：MemoryIndex 物理来源改为 hologram-storage 独立 crate
+// （engine 门面仍可解析，但壳层直连数据家——导出面收窄后的正确姿势）。
+use hologram_storage::MemoryIndex;
 
 use tauri::Emitter;
 

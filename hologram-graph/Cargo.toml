@@ -1,0 +1,14 @@
+# Copyright (c) 2026 Wenbing Jing. MIT License.
+# SPDX-License-Identifier: MIT
+
+[package]
+name = "hologram-graph"
+version = "10.4.0"
+edition = "2021"
+
+# 图类型层：Node/Edge/Graph/ID 驻留器——全仓库最底层纯类型 crate，
+# 无任何项目内依赖（serde 仅用于线格式派生）。
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

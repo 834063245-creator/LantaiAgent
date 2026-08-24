@@ -293,7 +293,8 @@ pub(crate) async fn search_code(
 /// 走引擎的进程级缓存索引（mtime 失效自动重载），不再每次从磁盘全量加载 8.8MB。
 /// 与引擎 search_symbols 同一套过滤策略：低于后端阈值丢弃、最多 5 条。
 fn append_vector_hits(output_val: &mut serde_json::Value, root: &std::path::Path, pattern: &str) {
-    use hologram_engine::vector;
+    // L2 crate 化：直连 hologram-vector 独立 crate（不经 engine 门面）。
+    use hologram_vector as vector;
     let (index, slots) = match vector::get_or_load_index(root) {
         Ok(pair) => pair,
         Err(_) => return,

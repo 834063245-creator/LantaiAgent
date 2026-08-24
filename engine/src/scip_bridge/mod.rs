@@ -392,7 +392,7 @@ mod tests {
         let tmp = std::env::temp_dir().join("hologram_test_scip_sqlite");
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
-        let db = crate::storage::sqlite::SqliteDb::open(&tmp).unwrap();
+        let db = hologram_storage::sqlite::SqliteDb::open(&tmp).unwrap();
 
         let mut idx = MemoryIndex::new();
         let index = make_index();

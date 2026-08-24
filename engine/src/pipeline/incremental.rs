@@ -34,8 +34,8 @@ use tracing::{info, warn};
 
 use crate::adapter::registry;
 use crate::graph::{Edge, Node};
-use crate::storage::memory::MemoryIndex;
-use crate::storage::sqlite::SqliteDb;
+use crate::storage::MemoryIndex;
+use crate::storage::SqliteDb;
 
 /// 用 tree-sitter 分析单个文件的结果。
 struct FileAnalysis {

@@ -19,9 +19,18 @@
 ## 2. 目录结构（当前实际）
 
 ```
-HoloGram/
+HoloGram/（根 Cargo.toml = workspace，五成员）
+├── hologram-graph/    图类型层独立 crate（L5b）：Node/Edge/Graph + ID 全局驻留器；
+│                      零项目内依赖；engine 的 code_extension_set 后缀表经
+│                      set_code_extensions 注入（未注入退化通用默认表）
+├── hologram-vector/   向量检索层独立 crate（L5b）：usearch 索引 + MiniLM ONNX 嵌入；
+│                      纯计算，依赖 graph；vectors.usearch 数据文件归属仍在宿主
+├── hologram-storage/  数据家层独立 crate（L5b）：GraphStore/MemoryIndex/SqliteDb/
+│                      快照 + StoreHost 所有权单元；依赖 graph+vector，不依赖 engine
 ├── engine/            Rust 分析引擎（27 静态 tree-sitter 语法；36 默认 MCP 工具 / 37 schema；
-│                      L2 存储外置：StoreHost 所有权单元由宿主注入，Engine 单根实例可多开）
+│                      L2 存储外置 + L5b crate 化：storage/vector/graph 三门面再导出
+│                      保持 crate::storage::vector:: 内部路径零改动；StoreHost 由宿主注入，
+│                      Engine 单根实例可多开；incremental.rs 归 pipeline/）
 ├── src-tauri/         Tauri 2 桌面壳（rpc.rs 单一 IPC 入口 + 权限沙箱 + app/ 应用层 + 命令薄壳）
 │   ├── src/app/       应用层（L1 分层重构）：WorkspaceDataContext 按工作区实例化 + 会话 attach
 │   │                  事实校验 + services/ 命令族业务（决议链：显式 path → _session_id → 焦点 → 单槽）
@@ -44,6 +53,10 @@ HoloGram/
 ├── CONTEXT.md         应用级统一词汇（kind/status 重载字段带簇前缀）
 └── ARCHITECTURE.md    系统架构总览
 ```
+
+> 壳层引用 storage/vector 类型一律直连 `hologram_storage::` / `hologram_vector::`，
+> 禁止经 `engine::storage::` / `engine::vector::` 门面（守卫测试
+> `shell_storage_vector_refs_use_dedicated_crates` 钉死，src-tauri/src/app/mod.rs）。
 
 > `tests/` 根目录已不存在（旧 Python 测试已随引擎 Rust 化移除），不要以旧文档里的 `tests/` 路径为准。
 
@@ -148,15 +161,18 @@ flowchart LR
 
 | 层 | 命令 | 基线 |
 |---|---|---|
-| 引擎 | `cd engine && cargo test` | 705 tests（lib 677 + bin 27 + doc 1；2026-08-25 分层重构后实测全绿；含 TLS 路由守卫/双工作区并发 e2e/StoreHost 闭环） |
-| 壳 | `cd src-tauri && cargo test` | bin 421 + 集成 14（2026-08-25 实测全绿；含 attach 事实校验/决议链优先级/直连白名单守卫；cdp e2e 按环境偶现 ±1，UIA 真实窗口 e2e 需 `HOLOGRAM_UIA_E2E=1`） |
+| 图类型层 | `cd hologram-graph && cargo test` | 44 + doc 1（2026-08-25 L5b crate 化实测；含扩展名感知默认表退化语义） |
+| 向量层 | `cd hologram-vector && cargo test` | 16 passed + 1 ignored（2026-08-25 L5b 实测；真实索引测试无文件自动跳过） |
+| 存储层 | `cd hologram-storage && cargo test` | 46 passed（2026-08-25 L5b 实测；memory/store/snapshot/sqlite 全套随 crate 迁入） |
+| 引擎 | `cd engine && cargo test` | lib 571 + bin 27 + doc 1（2026-08-25 L5b crate 化实测；storage/vector/graph 测试已随 crate 拆出，总数对账见 layering-rework-plan §4.6；含 TLS 路由守卫/双工作区并发 e2e/StoreHost 闭环） |
+| 壳 | `cd src-tauri && cargo test` | bin 422 + 集成 14（2026-08-25 L5b 实测全绿；含 attach 事实校验/决议链优先级/直连白名单守卫 + 新增 storage/vector 引用守卫；集成测试本机建议 `-- --test-threads=1`；cdp e2e 按环境偶现 ±1，UIA 真实窗口 e2e 需 `HOLOGRAM_UIA_E2E=1`） |
 | 前端 | `cd src-ui && npx vitest run` | 172 文件 1692 passed / 1 skipped（2026-08-25 实测；convergence 双 preset 零漂移；本机注意：父进程带 `NODE_ENV=production` 会使 convergence specs 收集阶段报 `No such built-in module: node:` 并剥 devDependencies——跑测试前清掉该变量） |
 | 前端构建 | `cd src-ui && npm run build` | tsc --noEmit + vite build 全绿 |
 | Agent 运行时/组合层 | `cd src-ui && npm run verify:convergence` | exit 0（T0 静态 + 全部 phase specs 对拍 8 baseline + system-prompt.fixture；standard preset 零漂移）；baseline 变更走 `docs/archive/agent-core-convergence/baseline-change-request.md` 审批 |
 | 前端格式 | `cd src-ui && npx biome ci .` | **0 errors / 0 warnings（2026-08-24 存量清零，保持归零）**；行尾政策见根 `.gitattributes`（默认 LF，cmd/bat/ps1 除外）——新 clone 后 `npx biome check --write <改动文件>` 即可，勿引入 CRLF |
 | 打包 | `cd src-tauri && cargo tauri build` | 发布构建；不要用 `cargo build --release` 代替 |
 
-CI 只做编译 + 测试；`.github/workflows/ci.yml` 不可修改。
+CI 只做编译 + 测试；`.github/workflows/ci.yml` 仅经用户拍板可改（2026-08-25 用户授权：engine job 改 workspace 全量测试 `cargo test --release --workspace --exclude lantai`，覆盖三个新拆 crate）。
 
 ## 11. 不要做的事
 
@@ -164,7 +180,7 @@ CI 只做编译 + 测试；`.github/workflows/ci.yml` 不可修改。
 - 不要改 `graph-layout.ts` / `gpu-layout.ts` 的布局参数（除非用户明确要求）。
 - 不要在应用程序层「推断 bug 根源 / 解释因果」——产品只呈现图数据；编码 Agent 的排查推理不受此限制。
 - 不要用 `cargo build --release` 代替 `cargo tauri build`。
-- 不要动 `.github/workflows/ci.yml`。
+- 壳层不要经 `engine::storage::` / `engine::vector::` 门面引存储/向量类型——直连 `hologram_storage::` / `hologram_vector::`（守卫测试钉死）。
 - 不要把与任务无关的未提交改动混进 commit；用户工作区改动要单独确认。
 
 ## 12. 文档地图（只信这些是现状）

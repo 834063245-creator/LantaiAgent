@@ -14,7 +14,7 @@
 // 快照的字符串表导出/重建改由 memory.rs 按「引用句柄收集」完成,
 // strings()/from_strings() 不再属于本类型。
 
-use crate::graph::id;
+use hologram_graph::id;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct StringArena;

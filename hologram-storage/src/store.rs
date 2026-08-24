@@ -11,9 +11,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use parking_lot::{Mutex, RwLock};
 use tracing::{info, warn};
 
-use crate::graph::Graph;
-use crate::storage::memory::{LoadProgress, MemoryIndex};
-use crate::storage::sqlite::SqliteDb;
+use hologram_graph::Graph;
+use crate::memory::{LoadProgress, MemoryIndex};
+use crate::sqlite::SqliteDb;
 
 /// 核心图存储。所有 MCP 工具通过此层读取。
 pub struct GraphStore {
@@ -61,9 +61,9 @@ impl GraphStore {
         // 快照快速路径（超大图）：代际 token 判定 —— 快照头部 token 与
         // db meta 的 snapshot_token 一致，说明快照落盘后 db 未写入更新的
         // 全量图（to_sqlite 会清空 token；FTS 惰性重建/timeline 不影响）。
-        let snap_path = crate::storage::snapshot::snapshot_path(project_root);
+        let snap_path = crate::snapshot::snapshot_path(project_root);
         if snap_path.exists() {
-            match crate::storage::snapshot::peek_snapshot_token(&snap_path) {
+            match crate::snapshot::peek_snapshot_token(&snap_path) {
                 Err(e) => {
                     // 无头部旧格式 / 截断 / 损坏 → 按损坏处理
                     warn!("[store] 快照头部无效（{}），删除快照并回退 SQLite", e);
@@ -207,7 +207,7 @@ impl GraphStore {
     /// open 时两者一致才认快照（FTS 惰性重建/timeline 写 db 不影响）。
     pub fn save(&self) -> Result<(), String> {
         let idx = self.index.read();
-        if idx.edge_count() >= crate::storage::snapshot::snapshot_min_edges() {
+        if idx.edge_count() >= crate::snapshot::snapshot_min_edges() {
             let token = format!(
                 "{}:{}:{}",
                 idx.node_count(),
@@ -258,7 +258,7 @@ impl GraphStore {
     /// 否则走 SQLite 全量重写。快照路径的代际 token 写入失败视为落盘失败并向上
     /// 传播（上一版吞错会让下次启动因 token 不匹配回退读旧 SQLite）。
     pub fn save_index(&self, idx: &MemoryIndex) -> Result<(), String> {
-        let stored = if idx.edge_count() >= crate::storage::snapshot::snapshot_min_edges() {
+        let stored = if idx.edge_count() >= crate::snapshot::snapshot_min_edges() {
             let token = format!(
                 "{}:{}:{}",
                 idx.node_count(),
@@ -314,7 +314,7 @@ impl GraphStore {
         }
 
         let idx = self.index.read();
-        let nodes: Vec<crate::graph::Node> = idx.nodes_iter().cloned().collect();
+        let nodes: Vec<hologram_graph::Node> = idx.nodes_iter().cloned().collect();
         drop(idx);
 
         let project_root = self.project_root.clone();
@@ -322,7 +322,7 @@ impl GraphStore {
 
         let handle = std::thread::spawn(move || {
             // 并发守卫：与全量重建互斥（按索引文件路径键控），避免同时写同一索引文件
-            if !crate::vector::try_begin_build(&vector_path) {
+            if !hologram_vector::try_begin_build(&vector_path) {
                 tracing::info!("[vector] 已有重建在进行，跳过本轮增量重建");
                 return;
             }
@@ -334,7 +334,7 @@ impl GraphStore {
                     if let Some((file_path, _line)) = loc.split_once(':') {
                         let full_path = project_root.join(file_path);
                         if let Ok(source) = std::fs::read_to_string(&full_path) {
-                            if let Some(snippet) = crate::vector::extract_snippet(
+                            if let Some(snippet) = hologram_vector::extract_snippet(
                                 &source, &node.name, &node.kind,
                             ) {
                                 node.snippet = Some(snippet);
@@ -344,20 +344,20 @@ impl GraphStore {
                 }
             }
 
-            let vi = crate::vector::CodeVectorIndex::new(&vector_path);
+            let vi = hologram_vector::CodeVectorIndex::new(&vector_path);
             match vi.build(&nodes) {
                 Ok(n) if n > 0 => match vi.save() {
                     Ok(()) => {
                         tracing::info!("[vector] 增量重建: {} 个向量", n);
                         // 让搜索侧缓存失效（按根），下次搜索加载新索引
-                        crate::vector::invalidate_cache(&project_root);
+                        hologram_vector::invalidate_cache(&project_root);
                     }
                     Err(e) => tracing::warn!("[vector] 增量重建保存失败: {e}"),
                 },
                 Ok(_) => {}
                 Err(e) => tracing::warn!("[vector] 增量重建失败: {e}"),
             }
-            crate::vector::end_build(&vector_path);
+            hologram_vector::end_build(&vector_path);
         });
 
         *guard = Some(handle);
@@ -390,8 +390,8 @@ impl GraphStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{Edge, EdgeKind, Node, NodeKind};
-    use crate::storage::snapshot::{snapshot_path, SNAPSHOT_ENV_LOCK};
+    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
+    use crate::snapshot::{snapshot_path, SNAPSHOT_ENV_LOCK};
     use std::collections::HashMap;
 
     fn tmp_project(name: &str) -> PathBuf {
@@ -473,7 +473,7 @@ mod tests {
             assert!(snapshot_path(&tmp).exists(), "阈值 0 → 应生成 graph.snapshot");
             // 代际 token 同时写入文件头部与 db meta
             let snap_token =
-                crate::storage::snapshot::peek_snapshot_token(&snapshot_path(&tmp)).unwrap();
+                crate::snapshot::peek_snapshot_token(&snapshot_path(&tmp)).unwrap();
             assert_eq!(
                 store1.db.get_meta("snapshot_token").unwrap(),
                 Some(snap_token)
@@ -585,7 +585,7 @@ mod tests {
             store.save().unwrap(); // 小图 < 默认阈值 → SQLite 路径，db 有数据
             // 手写 R9 初版格式：裸 bincode payload（无 token 头部）
             let legacy = store
-                .read(|idx| bincode::serialize(&crate::storage::memory::to_snapshot(idx)).unwrap());
+                .read(|idx| bincode::serialize(&crate::memory::to_snapshot(idx)).unwrap());
             std::fs::write(snapshot_path(&tmp), &legacy).unwrap();
         }
 

@@ -1,0 +1,28 @@
+# Copyright (c) 2026 Wenbing Jing. MIT License.
+# SPDX-License-Identifier: MIT
+
+[package]
+name = "hologram-storage"
+version = "10.4.0"
+edition = "2021"
+
+# 数据家层（L2 存储外置 · layering-rework-plan §4.3 欠账项 1）：
+# GraphStore + SQLite 持久化 + 快照 + StoreHost 所有权单元。
+# engine 退化为无状态分析器；宿主（壳层数据上下文 / engine 二进制）经
+# StoreHost 拥有数据文件。依赖方向：storage → graph（类型词汇）+
+# hologram-vector（增量向量重建，纯计算）——不依赖 engine（避免循环）。
+
+[dependencies]
+hologram-graph = { path = "../hologram-graph" }
+hologram-vector = { path = "../hologram-vector" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bincode = "1.3"
+rusqlite = { version = "0.31", features = ["bundled"] }
+parking_lot = "0.12"
+chrono = "0.4"
+rayon = "1.10"
+tracing = "0.1"
+
+[dev-dependencies]
+walkdir = "2"

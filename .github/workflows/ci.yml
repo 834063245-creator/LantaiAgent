@@ -86,12 +86,14 @@ jobs:
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y build-essential g++ pkg-config
 
-      - run: cargo test --release
-        working-directory: engine
+      # L2 crate 化（layering-rework-plan §4.3 欠账项 1）：storage/vector/graph
+      # 已拆为独立 crate，测试必须 workspace 全量跑；lantai 除外
+      # （desktop job 单独 check，且需要前端资源/model.onnx）。
+      # working-directory 改根目录：根 Cargo.toml 是 workspace 入口。
+      - run: cargo test --release --workspace --exclude lantai
         env:
           RUSTFLAGS: ''
-      - run: cargo build --release
-        working-directory: engine
+      - run: cargo build --release -p hologram-engine
         env:
           RUSTFLAGS: ''
 

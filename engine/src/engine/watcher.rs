@@ -13,8 +13,8 @@ use tracing::{info, warn};
 use super::Engine;
 use crate::analysis::coupling::compute_coupling;
 use crate::engine::GRAMMAR_LOADER;
-use crate::storage::incremental::IncrementalUpdater;
-use crate::storage::memory::MemoryIndex;
+use crate::pipeline::incremental::IncrementalUpdater;
+use crate::storage::MemoryIndex;
 
 impl Engine {
     /// 文件 watcher 是否正在运行。

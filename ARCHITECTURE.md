@@ -1,7 +1,7 @@
 # 兰台（Lantai）— 核心能力与技术架构
 
 > © 2026 Wenbing Jing. MIT License.
-> 最后更新：2026-08-25（分层重构 L1-L4：应用层（数据上下文）新生 + Engine 纯化（StoreHost 注入/单根实例）+ 壳层瘦身；图谱引擎专名 HoloGram 不变）
+> 最后更新：2026-08-25（分层重构 L1-L4 + L5b crate 化：应用层（数据上下文）新生 + Engine 纯化（StoreHost 注入/单根实例）+ 壳层瘦身 + storage/vector/graph 三 crate 物理拆出；图谱引擎专名 HoloGram 不变）
 
 兰台（Lantai）不是一个单纯的"代码图谱可视化工具"。它的本质是一个 **Harness Engineering 平台**——将多种成熟软件工程模式（依赖分析、约束治理、变更预演、沙箱隔离、Agent 自主执行等）编排为统一 Harness，并通过内置 Agent 与对外 MCP 服务将这些能力开放给人和 AI。桌面主界面是**注疏案卷**（纸壳）；工作台本体经八条贡献通道**完全插件化**——出厂态零硬编码特权行，第一方能力与第三方插件在同一注册表上竞争。
 
@@ -40,6 +40,12 @@
 │       └─────────────┴────────────────┘              │
 │  全局槽 ENGINE（Arc<Engine>——回退锚点，非唯一实例）      │
 │  Engine 单根实例 × N（每工作区一个，StoreHost 注入）      │
+│  ── L5b crate 化：四层 crate，引擎只留「分析器」──       │
+│  hologram-graph（纯类型：Node/Edge/Graph/ID 驻留器）    │
+│  hologram-vector（纯计算：usearch 索引 + MiniLM 嵌入）   │
+│  hologram-storage（数据家：GraphStore/SQLite/快照/     │
+│    StoreHost 所有权单元；依赖 graph+vector，不依赖 engine）│
+│  engine（分析器 + 三门面再导出，内部路径零改动）          │
 └──────────────────────┬──────────────────────────────┘
                        │ 进程管理 (McpManager) + IPC
 ┌──────────────────────┴──────────────────────────────┐
@@ -73,7 +79,7 @@
 ```
 
 三层各自独立编译，通过明确边界通信：
-- **Engine** 是纯 Rust 库 + CLI 二进制，零外部运行时进程，可独立 `serve` 作为 MCP 服务器；**数据文件（hologram.db/FTS5/快照/向量）的所有权在 StoreHost**，由宿主创建注入——Engine 是计算与访问的执行方，不是数据的唯一拥有者
+- **Engine** 是纯 Rust 库 + CLI 二进制，零外部运行时进程，可独立 `serve` 作为 MCP 服务器；**数据文件（hologram.db/FTS5/快照/向量）的所有权在 StoreHost**，由宿主创建注入——Engine 是计算与访问的执行方，不是数据的唯一拥有者。**L5b crate 化后 Rust 侧为四层 crate**（根 workspace）：`hologram-graph`（纯类型）← `hologram-vector`（纯计算）← `hologram-storage`（数据家，不依赖 engine）← `hologram-engine`（分析器；graph/storage/vector 三门面再导出，内部 `crate::storage::*` 路径零改动；壳层直连独立 crate，守卫测试钉死）
 - **Tauri Shell** 是通道（rpc.rs 薄壳）、权限守卫与进程管理者；**业务编排在应用层 `src-tauri/src/app/`**（数据上下文 + services），插件安装/授权通道也在此层
 - **前端** 是 Agent 运行时和用户界面（注疏案卷纸壳 + 组合层/插件系统），通过 `typedRpc()` / `typedListen()`（`rpc-contract.ts`）与后端通信
 

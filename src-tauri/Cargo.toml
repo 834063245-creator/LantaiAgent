@@ -41,6 +41,9 @@ base64 = "0.22"
 tar = "0.4"
 flate2 = "1"
 hologram-engine = { path = "../engine" }
+hologram-graph = { path = "../hologram-graph" }
+hologram-storage = { path = "../hologram-storage" }
+hologram-vector = { path = "../hologram-vector" }
 tauri-plugin-updater = "2.10.1"
 tauri-plugin-window-state = "2"
 

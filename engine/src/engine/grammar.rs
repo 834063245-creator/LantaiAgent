@@ -43,5 +43,8 @@ pub static GRAMMAR_LOADER: std::sync::LazyLock<GrammarLoader> =
         loader.register_static(tree_sitter_zig::LANGUAGE.into(), "zig", &["zig"]);
         loader.register_static(tree_sitter_elixir::LANGUAGE.into(), "elixir", &["ex","exs"]);
         loader.register_static(tree_sitter_erlang::LANGUAGE.into(), "erlang", &["erl","hrl"]);
+        // L2 crate 化：hologram-graph 纯类型层不再反向依赖 engine，语法后缀表
+        // 经注入接口提供（Node::is_common_extension 的 R0 语义访问器消费）。
+        let _ = hologram_graph::set_code_extensions(&loader.supported_extensions());
         loader
     });

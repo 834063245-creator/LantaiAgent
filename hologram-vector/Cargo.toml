@@ -1,0 +1,26 @@
+# Copyright (c) 2026 Wenbing Jing. MIT License.
+# SPDX-License-Identifier: MIT
+
+[package]
+name = "hologram-vector"
+version = "10.4.0"
+edition = "2021"
+
+# 向量检索层（纯计算）：CodeVectorIndex（usearch）+ MiniLM ONNX 嵌入 +
+# 词元切分。L2 语义拍板「向量化计算留在 engine（纯计算）」；本次物理拆出
+# 是为切断 hologram-storage → engine 的循环依赖（storage 的
+# GraphStore::reindex_vectors 消费 vector；vector 只依赖 graph 类型层，
+# 语义不变，只是物理分家——layering-rework-plan §4.3 欠账项 1 收尾）。
+
+[dependencies]
+hologram-graph = { path = "../hologram-graph" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+usearch = "2"
+tracing = "0.1"
+# ONNX Runtime 绑定（动态加载项目自带 DLL，不下载二进制）——全平台，Windows 也需要
+ort = { version = "=2.0.0-rc.12", default-features = false, features = ["load-dynamic", "api-21"] }
+parking_lot = "0.12"
+
+[dev-dependencies]
+bincode = "1.3"

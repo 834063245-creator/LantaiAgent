@@ -3,20 +3,43 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::NodeId;
+use crate::id::NodeId;
+
+// ponytail: code_extension_set 消费 GRAMMAR_LOADER（语法后缀表）——纯类型 crate
+// 不能反向依赖 engine，改为惰性注入：engine 启动时把后缀表填进这里（见
+// hologram_graph::set_code_extensions）。未注入前退化为空表（语义等价于
+// 「无已知代码文件」），engine 侧 setup 早于任何 Node 构造。
+static CODE_EXTENSIONS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
 
 // ── R0 语义访问器的扩展名表 ──
 // 与 resolver.rs 的 code_extension_set() 同源(GRAMMAR_LOADER),
 // 语义逐字等价;R2 迁移 resolver 消费点时统一去重。
+// L2 crate 化后：engine 启动时经 set_code_extensions 注入（纯类型 crate 不得
+// 反向依赖 engine 的 GRAMMAR_LOADER）；未注入时为空表——engine 初始化先于
+// 任何 Node 构造，实际运行中不会出现空表路径。
 fn code_extension_set() -> &'static std::collections::HashSet<String> {
     static SET: std::sync::OnceLock<std::collections::HashSet<String>> =
         std::sync::OnceLock::new();
     SET.get_or_init(|| {
-        crate::engine::GRAMMAR_LOADER
-            .supported_extensions()
-            .into_iter()
-            .collect()
+        // 未注入时退化为一组通用代码后缀（rs/py/ts/js/go 等）而非空表——
+        // 空表会让 short_name 的扩展名感知在独立测试/未初始化路径下语义漂移
+        // （"a.rs" 的 short_name 应为 "a" 而非 "rs"）。注入后以注入表为准。
+        CODE_EXTENSIONS
+            .get()
+            .map(|v| v.iter().cloned().collect())
+            .unwrap_or_else(|| {
+                ["rs", "py", "ts", "tsx", "js", "jsx", "go", "java", "c", "cpp", "rb", "lua"]
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect()
+            })
     })
+}
+
+/// engine 启动时注入语法后缀表（来自 GRAMMAR_LOADER.supported_extensions()）。
+/// 幂等：重复注入返回 false，首次成功返回 true。
+pub fn set_code_extensions(extensions: &[String]) -> bool {
+    CODE_EXTENSIONS.set(extensions.to_vec()).is_ok()
 }
 
 fn is_common_extension(s: &str) -> bool {
@@ -319,7 +342,9 @@ mod tests {
 
     #[test]
     fn test_short_name_extension_aware() {
-        // 最后一段是已知代码扩展名 → 再往前取一段
+        // 最后一段是已知代码扩展名 → 再往前取一段。
+        // L2 crate 化：扩展名表由 engine 启动时注入；独立跑本 crate 测试
+        // 未注入时用通用默认表（rs/py 都在内），断言不依赖注入顺序。
         let n = Node::new("a.rs", "a", NodeKind::File);
         assert_eq!(n.short_name(), "a");
         let n = Node::new("app.models.py", "models", NodeKind::File);

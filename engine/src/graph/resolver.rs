@@ -93,8 +93,8 @@ fn build_indexes(graph: &Graph) -> ResolverIndexes {
         idx.name.entry(short.clone()).or_default().push(id.to_string());
 
         // File / Module 节点：也按主干索引以支持 import 边
-        if node.kind == super::node::NodeKind::File
-            || node.kind == super::node::NodeKind::Module
+        if node.kind == crate::graph::NodeKind::File
+            || node.kind == crate::graph::NodeKind::Module
         {
             let stem = file_stem(&node.name);
             if stem != short {
@@ -653,7 +653,7 @@ fn best_bare_match(
     source_lang: Option<&str>,
     lang_map: &HashMap<String, Option<&'static str>>,
 ) -> Option<String> {
-    use super::node::NodeKind;
+    use crate::graph::NodeKind;
 
     // 评分：lang_match * 100000 + kind_prio * 1000 + 路径深度
     // 同语言候选项始终优先于跨语言候选项。

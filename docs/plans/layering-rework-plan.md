@@ -1,6 +1,6 @@
 # 分层重构（Layering Rework）— engine 纯化 + 壳层瘦身 + 应用层新生 施工计划
 
-> 立项：2026-08-24 · 状态：**L1-L4 已落地 + L5 文档收尾（2026-08-25）；待真机验收四项** · 版本：v1.2
+> 立项：2026-08-24 · 状态：**L1-L4 已落地 + L5 文档收尾 + L5b crate 化欠账满偿（2026-08-25）；待真机验收四项** · 版本：v1.3
 > 触发：用户架构判断「图谱分析 engine 成了实施意义上的后端，但它本身不是后端」「壳层也塞了太多东西」「多会话并行两个工作区时 engine 全局单例必撞」。用户要求**彻底方案，无远期，一路推到底**。
 > 本文档自包含：接手会话读完本文 + `AGENTS.md` + `CONVENTIONS.md` + `INVARIANTS.md` 即可开工。
 > 前置依赖：`session-unify-plan.md`（会话统一，施工中）——本计划**等 session-unify 收尾后开工**（两者都动存储层，避免两线作战）。
@@ -212,6 +212,21 @@
   1. **物理 crate 收窄**：`lib.rs` 的 `pub mod storage` 导出暂不收——StoreHost 的物理家仍在 engine crate（shell 直接 import）。收窄前置 = storage 独立 crate 化（机械搬家，语义已定），归入 L5 收尾批。
   2. **vector 检索注册表实例化**：`vector::get_or_load_index(root)` 按根键控的静态注册表，数据文件已随工作区物理分家；注册表搬进 context 与 hooks/工具数据源同批，归入 L4。
 
+> **欠账满偿（2026-08-25 L5b，本 commit）**：上两条全部收清。
+> ① storage/vector/graph 三 crate 物理拆出（`hologram-storage` / `hologram-vector` / `hologram-graph`，根 Cargo.toml 建 workspace，五成员）——
+> graph 纯类型层（Node/Edge/Graph/ID 驻留器，零项目内依赖；node.rs 的
+> code_extension_set 原吃 `crate::engine::GRAMMAR_LOADER`，改为 engine 启动时
+> 经 `set_code_extensions` 注入，未注入时退化通用默认表）；vector 纯计算层
+> （usearch/ort 依赖随迁）；storage 数据家层（依赖 graph+vector，**不依赖
+> engine**——否则循环；GraphStore::reindex_vectors 的增量向量重建是历史接缝）。
+> incremental.rs 迁 pipeline/（依赖 adapter 重解析，是分析行为不是数据持有）。
+> engine 三门面再导出，内部几百处 `crate::storage::vector::` 引用零改动。
+> ② vector 注册表已 L4-C7 按根键控，本次随 crate 化自然归位。
+> 验收钉：壳层守卫测试 `shell_storage_vector_refs_use_dedicated_crates`
+> （再经 engine 门面引 storage/vector 类型即红）；CI engine job 改 workspace
+> 全量测试（用户拍板 2026-08-25）。engine 死依赖清除（bincode/rusqlite/
+> ort/usearch 随职责迁移到新 crate）。
+
 
 
 | 文件/目录 | 阶段 | 角色 |
@@ -248,7 +263,9 @@
 - ✅ **数据迁移结论：零迁移**。hologram.db/FTS5/快照/向量文件本就落 `<工作区>/.lantai/`（每工作区一份）——L1-L4 改变的是**所有权与访问路径**（全局单例隐式归属 → 按工作区实例显式归属 + 会话决议），数据物理位置从未变化。计划预想的「DataContext 独立数据目录」在 Q1（壳内模块）+ 最小迁移原则下无必要：数据跟着工作区走即与 session-unify 的 workspace 语义天然对齐。无旧路径兼容期需求。
 - ✅ **文档更新**：ARCHITECTURE.md（分层图含应用层 + §2.1 运行时事实改写 + §5.1 Engine API + §10.2 + 基线数字）；AGENTS.md（目录结构 src-tauri 行 + 验证基线）；docs/plans/README.md（三线状态 + 真机验收欠账表）。
 - **storage 物理 crate 化欠账**（L2 §4.3 已记录）：StoreHost 物理家在 engine crate、shell 直接 import——收窄 `pub mod storage` 导出的前置是 storage 独立 crate 化（机械搬家，语义已定）。**本窗口不动**：收益纯组织性、风险纯机械性，留给后续窗口或 L5b；不阻塞任何验收。
+  **→ 已于 L5b（2026-08-25 同日）满偿**：见 §4.3 欠账满偿记录（三 crate 拆出 + workspace + 守卫测试 + CI 全量）。
 - **全量门禁（2026-08-25 实测）**：engine 705（677+27+1）、src-tauri bin 421 + 集成 14、src-ui build + vitest + biome 0/0 全绿。
+  **→ L5b 后新基线（2026-08-25 实测）**：workspace 五 crate——hologram-graph 44+doc 1、hologram-vector 16+1 ignored、hologram-storage 46、engine lib 571 + bin 待重验、src-tauri bin 422（含新守卫）+ 集成 14；总数对账 = 原 705 - 搬走 62 - merge 迁入重复计数 ≈ 守恒。
 - **真机验收四项（用户项）**：① 单工作区零回归（开卷/切卷/图查询/工具调用如常）；② 双工作区并行（两会话两项目同时图查询无错乱）；③ 跨工作区续开（首页点他工作区卷 → 图上下文正确）；④ Ungrouped 会话可用（零目录卷打开不报图错误）。
 
 ## 6. 拍板点（用户终审；**已全部拍板，2026-08-24**）

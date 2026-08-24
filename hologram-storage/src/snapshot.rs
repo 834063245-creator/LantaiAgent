@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::graph::{EdgeKind, Node, NodeKind};
+use hologram_graph::{EdgeKind, Node, NodeKind};
 
 /// 快照文件名（位于 `<project_root>/.lantai/` 下）。
 pub const SNAPSHOT_FILE: &str = "graph.snapshot";
@@ -228,8 +228,8 @@ pub(crate) static SNAPSHOT_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::ne
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{Edge, Graph, Node, NodeKind};
-    use crate::storage::memory::MemoryIndex;
+    use hologram_graph::{Edge, Graph, Node, NodeKind};
+    use crate::memory::MemoryIndex;
 
     fn unique_tmp(name: &str) -> PathBuf {
         std::env::temp_dir().join(format!("hologram_test_snap_{}_{}", name, std::process::id()))
@@ -389,7 +389,7 @@ mod tests {
         // 无头部旧格式（R9 初版：裸 bincode，开头是 arena 长度 u64）→ Err。
         // 旧文件前 8 字节被当成 token 长度时偶可读出 NUL 串，
         // 形状校验必须把它挡在「损坏」一侧。
-        let legacy = bincode::serialize(&crate::storage::memory::to_snapshot(&idx)).unwrap();
+        let legacy = bincode::serialize(&crate::memory::to_snapshot(&idx)).unwrap();
         std::fs::write(snapshot_path(&tmp), &legacy).unwrap();
         assert!(
             peek_snapshot_token(&snapshot_path(&tmp)).is_err(),

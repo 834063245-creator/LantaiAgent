@@ -9,15 +9,15 @@
 
 **兰台（Lantai）= 纸壳（注疏案卷工作台）为唯一主界面的 Agent 软件**。执行原语已落地
 （code_execution + ctx.codeRuntime）；插件化出厂面全量通道化（P4 存量拆解 2026-08-24 全清）；
-**分层重构 L1-L4 已于 2026-08-25 落地**（应用层 app/ 数据上下文 + Engine 纯化单根多实例 +
-壳层薄壳化 + 双工作区并行守卫，六 commit），剩 L5 真机验收。没有拦路的硬依赖。
+**分层重构 L1-L4 + L5b crate 化已于 2026-08-25 落地**（应用层 app/ 数据上下文 + Engine 纯化单根多实例 +
+壳层薄壳化 + 双工作区并行守卫 + storage/vector/graph 三 crate 物理拆出，七 commit），剩真机验收。没有拦路的硬依赖。
 
 ## 会话 / 分层 / 画布三线（2026-08-24 立项）
 
 | 线 | 文档 | 状态 | 说明 |
 |---|---|---|---|
 | 会话统一 | [`session-unify-plan.md`](session-unify-plan.md) | ✅ 竣工（真机验收通过） | U1-U4 + 验收修正全落地（2026-08-24 晚收口） |
-| 分层重构 | [`layering-rework-plan.md`](layering-rework-plan.md) | **L1-L4 已落地，L5 收尾**（2026-08-25） | engine 纯化（StoreHost 注入/单根/Arc+TLS）+ 壳瘦身（app/services）+ 数据上下文（会话 attach 事实校验）+ 双工作区并发守卫；真机验收四项待跑（见计划 §4.6） |
+| 分层重构 | [`layering-rework-plan.md`](layering-rework-plan.md) | **L1-L4 + L5b crate 化已落地**（2026-08-25） | engine 纯化（StoreHost 注入/单根/Arc+TLS）+ 壳瘦身（app/services）+ 数据上下文（会话 attach 事实校验）+ 双工作区并发守卫 + L5b 三 crate 拆出（hologram-graph/vector/storage，workspace 五成员，CI 全量）；真机验收四项待跑（见计划 §4.6） |
 | 画布空间模型 | [`canvas-space-model-notes.md`](canvas-space-model-notes.md) | 设计挂起 | 卡片 = 画布最小单元 / 同画布同工作区 / 侧边栏监控 vs SpineRack 空间导航（摄像机复位）；SpineRack 改造挂此线 |
 
 ## 活跃工程（就一个半）
@@ -65,7 +65,7 @@ S0/S1/S2/S4 竣工后，S3（settings 域第一方行化：面板/命令双贡�
 | ~~browser CDP E2E-1/2/3/4/5~~ | **已实跑（2026-08-22）**：cargo test cdp:: 35/35 全绿，含重点 E2E-5 多账号 cookie 隔离（上会话偶发失败本轮未复现） |
 | session-ledger 真机三项 | 代码判据已测试钉死，真机未实跑（需带 API key 会话）：① 重启工作集恢复（多卷摊开 → 关 → 开，摊法全回）；② 后台卷落盘（双卷并发跑一轮后检查卷文件）；③ 续开查重（同卷两次续开只有一条脊）——见 [`../archive/session-ledger-plan.md`](../archive/session-ledger-plan.md) §7（⚠️ ①已被 session-unify Q-B 取代：重启不自动摊开） |
 | workspace-flip 批 3 边界 | 预热期内创建的会话缺 graph 工具（已知边界，非 bug） |
-| **分层重构真机验收四项** | L1-L4 代码已落地（2026-08-25，六 commit 全绿），真机待跑：① 单工作区零回归（开卷/切卷/图查询/工具调用如常）；② 双工作区并行（两会话两项目同时跑图查询无错乱）；③ 跨工作区续开（首页点他工作区卷 → 图上下文正确）；④ Ungrouped 会话可用（零目录卷打开不报图错误）——见 [`layering-rework-plan.md`](layering-rework-plan.md) §4.6 |
+| **分层重构真机验收四项** | L1-L4 + L5b crate 化代码已落地（2026-08-25，七 commit 全绿；L5b 三 crate 拆出后 workspace 全量测试对账守恒），真机待跑：① 单工作区零回归（开卷/切卷/图查询/工具调用如常）；② 双工作区并行（两会话两项目同时跑图查询无错乱）；③ 跨工作区续开（首页点他工作区卷 → 图上下文正确）；④ Ungrouped 会话可用（零目录卷打开不报图错误）——见 [`layering-rework-plan.md`](layering-rework-plan.md) §4.6 |
 
 ## 已完成并归档（点名即可，详情勿读）
 

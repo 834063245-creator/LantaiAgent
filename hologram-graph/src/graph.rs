@@ -5,7 +5,8 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::{Edge, EdgeId, Node, NodeId};
+use crate::{Edge, Node};
+use crate::id::{EdgeId, NodeId};
 
 /// 依赖图 — 核心数据结构。
 /// 对应 Python 的 `Graph` 类，修复了 O(V×E) 性能问题。
@@ -17,7 +18,7 @@ use super::{Edge, EdgeId, Node, NodeId};
 /// (驻留器非插入查询)→ 句柄 → 容器 get,签名全程稳定。
 ///
 /// ```
-/// use hologram_engine::graph::{Edge, EdgeKind, Graph, Node, NodeKind};
+/// use hologram_graph::{Edge, EdgeKind, Graph, Node, NodeKind};
 ///
 /// let mut g = Graph::new();
 /// g.add_node(Node::new("a", "main", NodeKind::Symbol));
@@ -35,15 +36,23 @@ pub struct Graph {
     // R8: 字段私有化第一步 —— pub(crate),跨 crate 访问一律走访问器。
     // R10-deep: 键为全局驻留句柄;NodeId/EdgeId serde 序列化为纯字符串,
     // 故磁盘/线格式(HashMap 字符串键)零漂移。
+    // L2 crate 化：nodes/edges 升 pub——engine 侧 GraphMerger 的容量预估
+    // （with_capacity reserve）仍直接访问；跨 crate 后 pub(crate) 不可见。
+    // 升级为 pub 是最小侵入（访问器化是更大的机械改写，不在本次搬迁范围）。
     #[serde(default)]
-    pub(crate) nodes: HashMap<NodeId, Node>,
+    pub nodes: HashMap<NodeId, Node>,
     #[serde(default)]
-    pub(crate) edges: HashMap<EdgeId, Edge>,
+    pub edges: HashMap<EdgeId, Edge>,
     #[serde(default)]
     pub meta: serde_json::Value,
 }
 
 impl Graph {
+    /// 容量预分配（engine 侧 GraphMerger::with_capacity 用）。
+    pub fn reserve(&mut self, nodes: usize, edges: usize) {
+        self.nodes.reserve(nodes);
+        self.edges.reserve(edges);
+    }
     pub fn new() -> Self {
         Self {
             nodes: HashMap::new(),
@@ -407,27 +416,9 @@ mod tests {
         assert_eq!(g.edge_count(), 0); // 边被移除
     }
 
-    #[test]
-    fn test_merge_incremental_index() {
-        use super::super::merge::GraphMerger;
-
-        let mut merger = GraphMerger::new();
-
-        let mut g1 = Graph::new();
-        let mut n1 = Node::new("n1", "handle_request", NodeKind::Symbol);
-        n1.location = Some("src/main.py".into());
-        g1.add_node(n1);
-
-        let mut g2 = Graph::new();
-        let mut n1_dup = Node::new("n1_dup", "handle_request", NodeKind::Symbol);
-        n1_dup.location = Some("src/main.py".into());
-        g2.add_node(n1_dup);
-
-        merger.merge(g1);
-        assert_eq!(merger.node_count(), 1);
-        merger.merge(g2);
-        assert_eq!(merger.node_count(), 1, "重复项应被跳过");
-    }
+    // test_merge_incremental_index 随 L2 crate 化迁往 engine 的
+    // graph/merge.rs 测试模块（GraphMerger 是分析行为，留在 engine；
+    // 纯类型 crate 不得反向依赖）。
 
     #[test]
     fn test_diff_detects_additions() {

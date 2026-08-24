@@ -317,12 +317,20 @@ DOM 所有权按层划分，不要跨层抢 DOM：
 ### 2.1 模块组织
 
 ```
+✅ 根 Cargo.toml 是 workspace（五成员：engine / src-tauri / hologram-graph /
+         hologram-storage / hologram-vector）——L5b crate 化（layering-rework-plan
+         §4.3 欠账满偿）后 Rust 侧分四层 crate：
+         hologram-graph（纯类型，零项目内依赖）→ hologram-vector（纯计算，依赖 graph）
+         → hologram-storage（数据家，依赖 graph+vector，不依赖 engine）
+         → engine（分析器，三门面再导出保持 crate::storage::vector:: 内部路径零改动）
+✅ 壳层（src-tauri）引 storage/vector 类型一律直连独立 crate，
+         禁经 engine 门面（守卫测试 shell_storage_vector_refs_use_dedicated_crates）
 ✅ 多文件领域：engine/src/{domain}/mod.rs + snake_case 子模块，领域公开 API 优先从 mod.rs 重导出
-   现状：graph / adapter / analysis / community / pipeline / routing / storage /
-         engine / tools / scip_bridge / vector
+   现状：graph / adapter / analysis / community / pipeline / routing /
+         storage（门面）/ engine / tools / scip_bridge / vector（门面）
 ✅ 单文件横切模块：engine/src/mcp.rs、lsp_manager.rs、logging.rs、path_utils.rs、stress.rs
 ✅ src-tauri 侧：RPC 单一入口 src-tauri/src/rpc.rs；命令实现在 src-tauri/src/commands/；
-   锁/护栏等共享代码在 src-tauri/src/utils/ 子模块
+   锁/护栏等共享代码在 src-tauri/src/utils/ 子模块；应用层业务在 src-tauri/src/app/services/
 ✅ 文件命名 snake_case.rs
 ```
 
