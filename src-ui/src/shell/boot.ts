@@ -99,6 +99,18 @@ export async function bootShell(
     applyDefaultPreset();
     armCompositionWatcher();
     armContributionsWatcher();
+    // ①b boot 序洞修复（2026-08-24 工作区归属根治）：composition-store 的
+    // 初始 resolved 是模块加载期快照（静态 import 阶段，彼时 loadBuiltinPlugins
+    // 尚未执行、tools 通道为空——tools 域快照 = 空表）。第一方工具贡献在
+    // main.ts 引导体注册，早于上方 armContributionsWatcher 武装——注册事件
+    // 不会倒放，且「无用户 patch（404 不动 store）+ standard preset（空 patch
+    // 跳过）」路径下 store 无人刷新 → setupAgent 的 buildToolRegistry 拿到
+    // 空行表 → alias('read_file','read_file_content') 抛「unknown tool」
+    // ——Agent 装配整链失败（此前静默，2026-08-24 Phase D 起可见）。
+    // 修复：贡献监听武装后无条件重应用一次——factory 态重快照 / ok 态重解析
+    // / error 态保持可见（reapplyComposition 的既有语义），后续外部插件
+    // 装载仍经监听器增量重应用。
+    reapplyComposition();
 
     // 3) 按表序逐行 boot（V5a 组合接线，workspace-flip 批 4）：行表真源 =
     //    composition-store.resolved.shell（第 2 步组合链刚写入——参数注入有
