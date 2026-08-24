@@ -116,6 +116,9 @@ class AgentHandleImpl implements AgentHandle {
   setProvider(prov: Provider, pricing?: Pricing) {
     return this._agent.setProvider(prov, pricing);
   }
+  setPricing(p: Pricing) {
+    return this._agent.setPricing(p);
+  }
   setContextWindow(n: number) {
     return this._agent.setContextWindow(n);
   }

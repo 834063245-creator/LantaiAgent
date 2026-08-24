@@ -43,8 +43,8 @@ import { useShellStore } from './app/shell-store';
 import { resolveCurrentComposition } from './composition/preset-assembly';
 import type { Context, Fiber } from './cordis';
 import { initCordisKernel } from './cordis/boot';
-import { createProvider } from './provider';
 import { getModel, mergeDynamicModels } from './provider/catalog';
+import { createLiveProvider } from './provider/live';
 import type { Provider } from './provider/types';
 import { parseJson, typedJsonRpc, typedListen, typedRpc } from './rpc-contract';
 import type { CommunityData, GraphDiffJson, GraphEdge, GraphJSON, GraphNode } from './scene/graph-types';
@@ -591,22 +591,24 @@ export class Workspace {
 
   /**
    * Agent 配置变更统一入口（由 state/agent-config-store 信号驱动）。
-   * 所有变更一律热切换，不重建 Agent：
-   *  - provider → 无条件从新快照重建并换引用（setProvider 恒 swap）
-   *  - thinking / contextWindow → 热同步（setThinking / setContextWindow）
+   * 所有变更热切换，不重建 Agent：
    *  - 协作模式 → 运行时切换（setPlanMode）
+   *  - 提供方身份变更 → 换 live provider 引用（唯一需要换引用的场景）
+   *  - 同提供方内的 baseUrl/model/apiKey/thinking/maxTokens 变更 → 无需任何
+   *    换引用——live provider（Phase C，2026-08-24）在每次使用点按名现解析，
+   *    保存即生效
+   *  - 定价 / contextWindow → 热同步（setPricing / setContextWindow）
    * 上下文、压缩缓存、hook、正在运行的执行、所有会话全部保留。
-   * 唯一例外：Agent 缺席（无 Key 冷启动被拆除后首次配置成功）——没有
-   * 引用可热切换，走全量装配（setupAgent + autoRestoreLastSession，
+   * 例外：Agent 缺席（装配失败/异常路径的恢复——Phase C 后无 Key 冷启动不再
+   * 走此分支，Agent 恒装配）→ 走全量装配（setupAgent + autoRestoreLastSession，
    * 与冷启动同序列）。组件不得绕过此方法直接调 setupAgent。
    *
-   * ⚡ P14（2026-08-22）退役 _agentRebuildKey 手工 diff：此前用「手写字段枚举
-   * 字符串摘要」判定 provider 是否变化——temperature 历史上漏过、maxTokens 覆盖
-   * 本次差点漏（已进键一天即修）、拆除路径忘重置键炸过（P13 #2）。三个 bug 同根：
-   * 枚举必然漂移。恒 swap 语义：每次配置信号都从同一份新鲜快照重建 provider 并
-   * 原子换引用——在途请求持旧引用跑完、下一轮起用新 provider（DSH 快照语义的
-   * 单活跃 provider 形态）。setProvider 本身廉价（引用 swap + ctx 写穿 + 清摘要
-   * 缓存），信号频率 = 用户保存/切换动作，非热路径。
+   * ⚡ P14（2026-08-22）恒 swap 退役（Phase C，2026-08-24）：恒 swap 时代靠
+   * 「每次信号重建 provider 换引用」把新配置带进在用 Agent——枚举漂移的旧雷
+   * （_agentRebuildKey 手工 diff）曾靠它根治。live provider 把配置面整体移到
+   * 使用点后，换引用只剩「提供方换人」一个场景；Key 清空不再拆除 Agent/会话
+   * （下一次请求经 live 现解析出空 Key → MISSING_CREDENTIAL 响亮报错，会话
+   * 照常显示）——DSH 形态的「配置断了 → 会话在，发送时报错」。
    */
   async applyAgentConfig(chatPanel: ChatCore, reason: AgentConfigChangeReason): Promise<void> {
     // 规划模式切换 — 运行时状态切换
@@ -619,21 +621,20 @@ export class Workspace {
     const s = await loadSettingsWithSecrets();
     const act = getActiveProvider(s);
 
-    // API Key 被清空 → 显式拆除（旧 provider 不得继续服务会话）
+    // Key 状态仅作诊断呈现（不拆 Agent/会话——请求期由 live provider 报错）
     if (!act.apiKey || act.apiKey.trim() === '') {
-      this.agent = null;
-      this.prov = null;
-      chatPanel.setAgent(null);
-      useAgentPanelStore.getState().setDiag({ text: `❌ API Key 已清空 — provider="${act.name}"。`, ready: false });
-      return;
+      useAgentPanelStore.getState().setDiag({
+        text: `⚠️ API Key 未配置 — provider="${act.name}"。会话保留，发送请求将报错。`,
+        ready: false,
+      });
+    } else {
+      useAgentPanelStore.getState().setDiag({ text: `[Agent] provider=${act.name}`, ready: true });
     }
 
-    // Agent 缺席（无 Key 冷启动拆除后首次配置成功）：工厂未注册、会话列表为空
-    // ——「当前没有活跃会话」死路的根源（2026-08-24 事故）。热切换无从谈起
-    // （没有引用可换）：走全量装配 + 恢复历史案卷，与冷启动同一序列
-    // （switchWorkspace：setupAgent → autoRestoreLastSession），保存 Key 即刻
-    // 生效、无需重启。setupAgent 自带并发合并守卫；装配成功后 this.agent 非空，
-    // 后续信号回归恒 swap 热切换。
+    // Agent 缺席（装配失败/异常路径的恢复）：没有引用可热切换——走全量装配 +
+    // 恢复历史案卷，与冷启动同一序列（switchWorkspace：setupAgent →
+    // autoRestoreLastSession）。setupAgent 自带并发合并守卫；装配成功后
+    // this.agent 非空，后续信号走热切换。
     if (!this.agent) {
       await this.setupAgent(chatPanel);
       if (this.agent && this.path) {
@@ -644,15 +645,23 @@ export class Workspace {
       return;
     }
 
-    // 恒 swap：无条件重建 + 换引用（见上 P14 注释）
-    const prov = this._buildProvider(s);
-    prov.prewarm?.(); // 廉价预热（fire-and-forget，3s 自灭）
+    // 提供方身份变更 → 换 live provider 引用（baseUrl/model/key/thinking 经它
+    // 按名现解析；同身份无需重建——这是 P14 恒 swap 退役后的唯一换引用场景）
     const pricing = defaultPricing(act.kind, act.model);
-    this.prov = prov;
-    this.agent?.setProvider(prov, pricing);
-    agentSessionState.forEachAgent((h) => h.setProvider(prov, pricing));
+    if (this.prov?.name() !== act.name) {
+      const prov = this._buildProvider(s);
+      prov.prewarm?.(); // 廉价预热（fire-and-forget，3s 自灭）
+      this.prov = prov;
+      this.agent?.setProvider(prov, pricing);
+      agentSessionState.forEachAgent((h) => h.setProvider(prov, pricing));
+    } else {
+      // 同身份：定价随模型热同步（模型可能同提供方内被切换）
+      this.agent?.setPricing(pricing);
+      agentSessionState.forEachAgent((h) => h.setPricing(pricing));
+    }
 
-    // 行为参数总是热同步（幂等）
+    // 行为参数总是热同步（幂等；live provider 的 setThinking 为 no-op——档位
+    // 随 settings 每请求现解析，此处保持调用链以覆盖非 live 形态）
     const thinkingCfg = act.thinking;
     const win = this._effectiveContextWindow(s);
     this.agent?.setThinking(thinkingCfg);
@@ -697,13 +706,15 @@ export class Workspace {
     }
   }
 
-  /** 从同一份 settings 快照构建 active provider — createProvider 选项唯一收口处，
-   *  _setupAgentInner 与会话工厂共用，保证两处构建永不分叉。
-   *  思考策略只来自 provider.thinking（Provider 页档位）；全局 disableThinking
-   *  是遗留字段，UI 已拆除，此处不再读取（翻译器/摘要的强制关闭走各自的
-   *  createProvider options，与此无关）。 */
+  /** 构建 active provider 的 live 形态（Phase C，2026-08-24 工作区归属根治）：
+   *  provider 对象 = 无状态协议适配器——baseUrl/model/apiKey/thinking/maxTokens
+   *  每次使用点按提供方名现解析（createLiveProvider → provider/credentials.ts
+   *  凭据缓存 + 写穿失效）。_setupAgentInner 与会话工厂共用此入口，保证两处
+   *  构建永不分叉。Agent 的构造与存在性因此与 Key 无关（缺 Key = 请求期
+   *  MISSING_CREDENTIAL 报错）；「强制关闭思考」的旁路（翻译/压缩）仍用
+   *  显式构造的 createProvider，不经此入口。 */
   private _buildProvider(settings: AppSettings): Provider {
-    return createProvider(getActiveProvider(settings));
+    return createLiveProvider(getActiveProvider(settings).name);
   }
 
   /** 生效上下文窗口 — Provider 覆盖（P14）优先，其次目录值，最后 200K。
@@ -959,12 +970,12 @@ export class Workspace {
     // 注册表换源）。无选择器时两值恒等 → 走共享注册表 + 无覆盖 = S2 现状
     // 零漂移。子 Agent 经 ctx composition 服务继承 → 与父同面。
     const factory = async (): Promise<AgentHandle | null> => {
-      // 单一新鲜快照 — apiKey 判定 / provider 构建 / 定价 / 窗口全部出自它。
-      // （旧实现用外层 setup 时的 prov 配新鲜 settings 的 key/定价，
-      //  两份快照只靠 agent-config-store 信号重跑 setupAgent 才不分叉。）
-      const s = await loadSettingsWithSecrets();
+      // Phase C（2026-08-24 工作区归属根治）：Agent 恒可构造——Key 缺失不再拒绝
+      // 装配。凭据/baseUrl/model/thinking 全部在使用点经 live provider 按名现
+      // 解析（缺 Key = 请求期 MISSING_CREDENTIAL 报错，会话不动）。定价/窗口
+      // 出自同步 settings 快照（零 IPC），后续变更由 applyAgentConfig 热同步。
+      const s = loadSettings();
       const act = getActiveProvider(s);
-      if (!act.apiKey || act.apiKey.trim() === '') return null;
       const sessProv = this._buildProvider(s);
       sessProv.prewarm?.(); // 廉价预热（fire-and-forget）；fetchModels 合目录只在 setupAgent 做
 

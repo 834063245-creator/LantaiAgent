@@ -46,6 +46,9 @@ export interface ChatAgentHandle {
   /** 运行时切换 provider（模型/提供方/协议），不重建 Agent。 */
   setProvider(prov: Provider, pricing?: Pricing): void;
 
+  /** 运行时更新定价表（同提供方内切模型后计费跟随），不重建 Agent。 */
+  setPricing(p: Pricing): void;
+
   /** 运行时更新上下文窗口（压缩阈值），不重建 Agent。 */
   setContextWindow(n: number): void;
 

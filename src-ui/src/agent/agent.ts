@@ -655,6 +655,12 @@ export class Agent {
     this.contextWindow = n > 0 ? n : 1000000; // 与构造兜底同语义
   }
 
+  /** 运行时更新定价表（Phase C，2026-08-24）：同提供方内切换模型后 token
+   *  计费跟随，不换 provider 引用（live 形态按名现解析，无需重建）。 */
+  setPricing(p: Pricing): void {
+    this.pricing = p;
+  }
+
   /** 设置自动调优压缩配置的持久化路径（委托 agent-compaction.ts）。 */
   setCompactionConfigPath(projectPath: string): void {
     setCompactionConfigPathImpl(this as unknown as CompactionHost, projectPath);

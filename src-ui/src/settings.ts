@@ -268,6 +268,11 @@ export async function persistSecrets(s: AppSettings): Promise<string[]> {
         failed.push(p.name);
       }
     }
+    // Phase C（2026-08-24）：写穿失效凭据内存缓存——live provider 每请求按名
+    // 现解析（provider/credentials.ts），不失效则保存后仍读到旧值。动态 import
+    // 防环（credentials → settings 静态依赖，此处反向只可运行时引）。
+    const { invalidateCredentialCache } = await import('./provider/credentials');
+    for (const p of withKey) invalidateCredentialCache(p.name);
   } catch (e) {
     console.warn('[settings] bridge 不可用，凭据未落盘:', e);
     failed.push(...withKey.map((p) => p.name));
@@ -281,6 +286,9 @@ export async function removeSecret(providerName: ProviderId): Promise<void> {
   try {
     const { typedRpc } = await import('./rpc-contract');
     await typedRpc('credential_delete', { provider: providerName });
+    // Phase C：写穿失效凭据缓存（同 persistSecrets——见上注释）
+    const { invalidateCredentialCache } = await import('./provider/credentials');
+    invalidateCredentialCache(providerName);
   } catch {
     /* 无加密存储或 Key 未找到 — 非关键 */
   }
