@@ -72,6 +72,7 @@ export function ConfirmDialog({
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onCancel();
       }}
+      aria-hidden="true"
     >
       <div
         ref={sheetRef}

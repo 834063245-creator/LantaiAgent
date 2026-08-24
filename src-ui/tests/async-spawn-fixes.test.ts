@@ -66,7 +66,7 @@ function textProvider(text: string): Provider {
 }
 
 /** Provider 延迟后发文本 — 用于测试"run 期间发消息不重入" */
-function slowTextProvider(text: string, delayMs: number): Provider {
+function _slowTextProvider(text: string, delayMs: number): Provider {
   return {
     name: () => 'mock',
     stream: () =>

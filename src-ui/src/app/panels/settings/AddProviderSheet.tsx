@@ -96,6 +96,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
+      aria-hidden="true"
     >
       <div className="cd-sheet pp-add-sheet" role="dialog" aria-modal="true">
         <div className="cd-hd">
@@ -144,8 +145,9 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
 
         <div className="pp-form-grid">
           <div className="pp-fg">
-            <label>名称（唯一标识，创建后不可修改）</label>
+            <label htmlFor="aps-name">名称（唯一标识，创建后不可修改）</label>
             <input
+              id="aps-name"
               ref={nameInputRef}
               className="sp-input"
               value={name}
@@ -165,15 +167,21 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
             />
           </div>
           <div className="pp-fg">
-            <label>协议</label>
-            <select className="sp-select" value={kind} onChange={(e) => setKind(e.target.value as Protocol)}>
+            <label htmlFor="aps-kind">协议</label>
+            <select
+              id="aps-kind"
+              className="sp-select"
+              value={kind}
+              onChange={(e) => setKind(e.target.value as Protocol)}
+            >
               <option value="openai">OpenAI 兼容</option>
               <option value="anthropic">Anthropic</option>
             </select>
           </div>
           <div className="pp-fg">
-            <label>Base URL</label>
+            <label htmlFor="aps-baseurl">Base URL</label>
             <input
+              id="aps-baseurl"
               className="sp-input"
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
@@ -182,8 +190,9 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
             />
           </div>
           <div className="pp-fg">
-            <label>默认模型（可选）</label>
+            <label htmlFor="aps-model">默认模型（可选）</label>
             <input
+              id="aps-model"
               className="sp-input"
               value={model}
               onChange={(e) => setModel(e.target.value)}
@@ -192,8 +201,9 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
             />
           </div>
           <div className="pp-fg">
-            <label>API Key（可选）</label>
+            <label htmlFor="aps-key">API Key（可选）</label>
             <input
+              id="aps-key"
               type="password"
               className="sp-input"
               value={key}

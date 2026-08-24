@@ -57,6 +57,7 @@ vi.mock('gsap', () => {
     resume: () => {},
     restart: () => {},
     seek: () => {},
+    // biome-ignore lint/suspicious/noThenProperty: GSAP tween 接口形状（thenable mock）
     then: () => {},
     eventCallback: () => {},
     timeScale: () => {},

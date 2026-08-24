@@ -163,7 +163,7 @@ describe('#10 scheduleAutoSave per-panel isolation', () => {
   });
 
   it('panel A timer is NOT cleared when panel B schedules', async () => {
-    const { scheduleAutoSave, saveActiveSession } = await import('../src/ui/chat-session');
+    const { scheduleAutoSave } = await import('../src/ui/chat-session');
     const { getChatStore } = await import('../src/ui/chat-store');
     const { agentSessionState } = await import('../src/agent/agent-session-state');
 

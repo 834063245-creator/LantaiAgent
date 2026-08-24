@@ -149,17 +149,22 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
 
         <div className="pp-field">
           <div className="pp-f-label-row">
-            <label className="pp-f-label">API Key</label>
+            <label className="pp-f-label" htmlFor="pd-api-key">
+              API Key
+            </label>
             <span className={`pp-chip${keyChipCls}`}>{keyChip}</span>
           </div>
           <div className="pp-key-row">
             <input
+              id="pd-api-key"
               ref={keyInputRef}
               type={keyVisible ? 'text' : 'password'}
               className="sp-input"
               value={provider.apiKey || ''}
               onChange={(e) => onFieldChange('apiKey', e.target.value)}
               onBlur={(e) => {
+                // 剥离非 ASCII（Key 只允许 ASCII）
+                // biome-ignore lint/suspicious/noControlCharactersInRegex: ASCII 范围判定必需
                 e.target.value = e.target.value.replace(/[^\x00-\x7F]/g, '');
               }}
               placeholder="sk-… 粘贴后保存写入系统凭据"
@@ -189,7 +194,8 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
 
         <div className="pp-field">
           <div className="pp-f-label-row">
-            <label className="pp-f-label">模型</label>
+            {/* 模型：ModelSelector 为复合控件（内含输入+下拉），无单一可关联原生控件——视觉标签用 span */}
+            <span className="pp-f-label">模型</span>
           </div>
           <ModelSelector
             value={provider.model}
@@ -202,7 +208,9 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
 
         <div className="pp-field">
           <div className="pp-f-label-row">
-            <label className="pp-f-label">Base URL</label>
+            <label className="pp-f-label" htmlFor="pd-baseurl">
+              Base URL
+            </label>
             <button
               type="button"
               className="sp-btn-sm"
@@ -214,10 +222,13 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
             </button>
           </div>
           <input
+            id="pd-baseurl"
             className="sp-input"
             value={provider.baseUrl}
             onChange={(e) => onFieldChange('baseUrl', e.target.value)}
             onBlur={(e) => {
+              // 剥离非 ASCII（URL 只允许 ASCII）
+              // biome-ignore lint/suspicious/noControlCharactersInRegex: ASCII 范围判定必需
               e.target.value = e.target.value.replace(/[^\x00-\x7F]/g, '');
             }}
             placeholder="https://…/v1"
@@ -227,10 +238,13 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
 
         <div className="pp-field">
           <div className="pp-f-label-row">
-            <label className="pp-f-label">上下文窗口</label>
+            <label className="pp-f-label" htmlFor="pd-ctx">
+              上下文窗口
+            </label>
             <span className="pp-chip">{provider.contextWindow || modelDesc?.contextWindow || '默认 200K'}</span>
           </div>
           <input
+            id="pd-ctx"
             className="sp-input"
             type="number"
             min={0}
@@ -244,10 +258,13 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
 
         <div className="pp-field">
           <div className="pp-f-label-row">
-            <label className="pp-f-label">最大输出 token</label>
+            <label className="pp-f-label" htmlFor="pd-maxtok">
+              最大输出 token
+            </label>
             <span className="pp-chip">{provider.maxTokens || modelDesc?.maxTokens || '模型自定'}</span>
           </div>
           <input
+            id="pd-maxtok"
             className="sp-input"
             type="number"
             min={0}
@@ -262,9 +279,12 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
         {thinkingModes.length > 0 && (
           <div className="pp-field">
             <div className="pp-f-label-row">
-              <label className="pp-f-label">思考努力等级</label>
+              <label className="pp-f-label" htmlFor="pd-thinking">
+                思考努力等级
+              </label>
             </div>
             <select
+              id="pd-thinking"
               className="sp-select"
               value={thinkingModes.some((o) => o.value === (provider.thinking || '')) ? provider.thinking || '' : ''}
               onChange={(e) => onFieldChange('thinking', e.target.value)}

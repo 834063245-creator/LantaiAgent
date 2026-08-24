@@ -1008,7 +1008,7 @@ export class Workspace {
           preRunHook: this.memoryManager
             ? async (input: string) => {
                 const mm = this.memoryManager;
-                if (!mm || !mm.auraReady) return null;
+                if (!mm?.auraReady) return null;
                 try {
                   const records = await mm.auraSemanticRecall(input, 5);
                   if (records.length === 0) return null;

@@ -84,15 +84,17 @@ async function fetchJson<T>(path: string, body?: unknown): Promise<T | null> {
   }
 }
 
-// ── 未集成 API（尚未接入 agent 逻辑）──
+// ── 未集成 API（尚未接入 agent 逻辑，文件头已注明——接入后移除 ignore）──
 
 /** 检查记忆 bundle 服务是否存活。 */
+// biome-ignore lint/correctness/noUnusedVariables: 预留 API——接入 agent 逻辑后导出使用
 async function memoryBundleHealth(): Promise<boolean> {
   const result = await fetchJson<{ status: string }>('/health');
   return result?.status === 'ok';
 }
 
 /** 分析单条消息：提取情感、意图、实体、标签、关系。 */
+// biome-ignore lint/correctness/noUnusedVariables: 预留 API——接入 agent 逻辑后导出使用
 async function memoryBundleAnalyze(
   text: string,
   userId: string = 'default',
@@ -102,6 +104,7 @@ async function memoryBundleAnalyze(
 }
 
 /** 为查询召回事实和记忆场残差。 */
+// biome-ignore lint/correctness/noUnusedVariables: 预留 API——接入 agent 逻辑后导出使用
 async function memoryBundleRecall(
   query: string,
   topK: number = 10,
@@ -125,6 +128,7 @@ export async function memoryBundleIngest(
 }
 
 /** 获取当前用户画像。 */
+// biome-ignore lint/correctness/noUnusedVariables: 预留 API——接入 agent 逻辑后导出使用
 async function memoryBundlePortrait(): Promise<PortraitResult | null> {
   return await fetchJson<PortraitResult>('/portrait');
 }

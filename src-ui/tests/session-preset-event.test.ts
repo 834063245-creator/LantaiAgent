@@ -30,14 +30,14 @@ describe('S4-1b preset/selected 首事件（CR 批准实施）', () => {
     const events = agent.getSessionLog().events();
     expect(events[0]?.kind).toBe('session/reset'); // init
     expect(events[1]?.kind).toBe('preset/selected'); // 首事件紧随 init
-    expect((events[1]?.data as { presetId: string }).presetId).toBe('standard');
+    expect((events[1]?.data as { presetId: string } | undefined)?.presetId).toBe('standard');
   });
 
   it('minimal 选择下的构造 → 首事件记 minimal', () => {
     usePresetStore.getState().select('minimal');
     const agent = makeAgent();
     const events = agent.getSessionLog().events();
-    expect((events[1]?.data as { presetId: string }).presetId).toBe('minimal');
+    expect((events[1]?.data as { presetId: string } | undefined)?.presetId).toBe('minimal');
     usePresetStore.getState().select('standard'); // 还原
   });
 
@@ -48,7 +48,7 @@ describe('S4-1b preset/selected 首事件（CR 批准实施）', () => {
     const events = agent.getSessionLog().events();
     const presetEvents = events.filter((e) => e.kind === 'preset/selected');
     expect(presetEvents.length).toBe(2); // 首事件 + 改选
-    expect((presetEvents[1]?.data as { presetId: string }).presetId).toBe('minimal');
+    expect((presetEvents[1]?.data as { presetId: string } | undefined)?.presetId).toBe('minimal');
   });
 
   it('reset 语义：改选 → newSession → 重建用当前默认（不继承改选）', () => {
@@ -67,7 +67,9 @@ describe('S4-1b preset/selected 首事件（CR 批准实施）', () => {
     const lastPresetIdx = kinds.lastIndexOf('preset/selected');
     const lastResetIdx = kinds.lastIndexOf('session/reset');
     expect(lastPresetIdx).toBeGreaterThan(lastResetIdx); // reset 后有新 preset 事件
-    expect((agent.getSessionLog().events()[lastPresetIdx]?.data as { presetId: string }).presetId).toBe('standard');
+    expect((agent.getSessionLog().events()[lastPresetIdx]?.data as { presetId: string } | undefined)?.presetId).toBe(
+      'standard',
+    );
   });
 
   it('deriveMessages 不消费此 kind（模型可见面零变化）', () => {

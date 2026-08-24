@@ -108,7 +108,7 @@ function createInputStoreImpl() {
         return { sessionDrafts: rest };
       }),
     clearSessionDrafts: () =>
-      set((s) => ({
+      set(() => ({
         ...emptyDraft(),
         sessionDrafts: {},
       })),

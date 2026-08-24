@@ -89,6 +89,7 @@ export function ProviderPage({
   }, [focusNonce]);
 
   // 保存成功后：所有 Key 均视为已落凭据库
+  // biome-ignore lint/correctness/useExhaustiveDependencies: saveVersion 是刻意的「保存代数」触发器——正是要响应它的变化清 dirty
   useEffect(() => {
     setKeyDirtyMap(new Map());
   }, [saveVersion]);

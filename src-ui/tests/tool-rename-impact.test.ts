@@ -288,6 +288,7 @@ describe('P4: invoke pathway — 每个工具名都有对应 Tauri command', () 
   ]);
 
   const { registry } = buildFullRegistry();
+  void registry;
 
   it('coding/hologram 工具的 invoke 路径存在', () => {
     // All hologram_* tools route through 'hologram_call' (agentInvoke in workspace.ts)
@@ -420,6 +421,7 @@ describe('P1: MCP 通路 — frontend dispatch names match engine', () => {
     // 引擎: 根据 tool 参数路由到对应实现
     // 如果 hologram_call 挂了，所有 hologram_* 工具全挂
     const { registry } = buildFullRegistry();
+    void registry;
     // hologram_call 本身不是 Agent 工具 — 它是 invoke 级基础设施
     // This test documents the dependency: all hologram_* tools depend on hologram_call
   });

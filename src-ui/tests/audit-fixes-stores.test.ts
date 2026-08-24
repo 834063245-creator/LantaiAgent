@@ -31,7 +31,6 @@ vi.mock('highlight.js', () => ({ default: { highlightElement: vi.fn() } }));
 describe('#3 message ID uniqueness across sessions', () => {
   it('resetMsgIdCounter does NOT reset the counter (no-op)', async () => {
     const { nextMsgId, resetMsgIdCounter } = await import('../src/ui/message-model');
-    const { getChatStore } = await import('../src/ui/chat-store');
 
     const storeId = 'id-test-panel';
     // Generate a few IDs

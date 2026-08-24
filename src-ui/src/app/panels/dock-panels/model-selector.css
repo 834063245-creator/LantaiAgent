@@ -45,8 +45,11 @@
   justify-content: center;
   width: 16px;
   height: 16px;
+  padding: 0;
   cursor: pointer;
   color: var(--ink-3);
+  background: none;
+  border: none;
   border-radius: 0;
   transition: all var(--snap);
 }

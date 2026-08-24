@@ -63,7 +63,7 @@ describe('ModeIndicator — 模型菜单复合选择', () => {
   let root: Root;
   let saved: AppSettings | null;
 
-  const render = async (initial: AppSettings) => {
+  const render = async (_initial: AppSettings) => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);

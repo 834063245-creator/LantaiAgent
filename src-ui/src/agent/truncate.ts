@@ -47,6 +47,8 @@ export interface TruncationOptions {
 
 // ── 不使用 Node Buffer 的 UTF-8 字节长度计算 ──
 
+// \x00-\x7f 显式列出控制字符区间——非 ASCII 检测的正则事实标准写法
+// biome-ignore lint/suspicious/noControlCharactersInRegex: ASCII 范围判定必需，语义即「非 ASCII」
 const nonAsciiPattern = /[^\x00-\x7f]/;
 
 function utf8ByteLength(content: string): number {
@@ -339,9 +341,7 @@ export function truncateToolOutput(
     notice = `[Output truncated: first line exceeds ${formatSize(result.maxBytes)} limit.]`;
   } else {
     const limitInfo =
-      result.truncatedBy === 'lines'
-        ? `${result.maxLines} line limit`
-        : `${formatSize(result.maxBytes)} limit`;
+      result.truncatedBy === 'lines' ? `${result.maxLines} line limit` : `${formatSize(result.maxBytes)} limit`;
     notice = `[Output truncated: showing ${direction} ${result.outputLines} of ${result.totalLines} lines (${limitInfo}).]`;
   }
 

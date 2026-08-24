@@ -97,7 +97,8 @@ const SettingsPanelApp: React.FC<{
     'idle' | 'checking' | 'available' | 'downloading' | 'done' | 'error'
   >('idle');
   const [updateMsg, setUpdateMsg] = useState('');
-  const [updateVersion, setUpdateVersion] = useState('');
+  // 更新版本号内联进 updateMsg 展示；state 值暂无消费面，空位解构只留 setter
+  const [, setUpdateVersion] = useState('');
   const checkUpdate = useCallback(async () => {
     setUpdateStatus('checking');
     setUpdateMsg('');
@@ -324,17 +325,21 @@ const SettingsPanelApp: React.FC<{
 
   return (
     <>
-      <div id="settings-panel-overlay" className="sp-open" onClick={handleClose} />
+      {/* 背板点击关闭（a11y：背板非交互元素本体，键盘路径走面板内按钮/Esc） */}
+      <div id="settings-panel-overlay" className="sp-open" onMouseDown={handleClose} aria-hidden="true" />
       <div id="settings-panel" className="sp-open">
         {/* 头部 */}
         <div className="sp-header">
           <span
             className="sp-title"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: 内容为 icons.ts 常量表静态 SVG + 字面量，无外部输入
             dangerouslySetInnerHTML={{ __html: iconHtml('settings', 14) + ' <span class="zh">设置</span>' }}
           />
           <button
+            type="button"
             className="sp-close-btn"
             onClick={handleClose}
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG，无外部输入
             dangerouslySetInnerHTML={{ __html: iconHtml('close', 14) }}
           />
         </div>
@@ -352,9 +357,11 @@ const SettingsPanelApp: React.FC<{
             ] as const
           ).map(([id, icon, label]) => (
             <button
+              type="button"
               key={id}
               className={`sp-tab${activeTab === id ? ' active' : ''}`}
               onClick={() => setActiveTab(id)}
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG + 字面量，无外部输入
               dangerouslySetInnerHTML={{ __html: iconHtml(icon, 11) + ' ' + label }}
             />
           ))}
@@ -544,6 +551,7 @@ const SettingsPanelApp: React.FC<{
                         <span
                           className="sp-lsp-card-icon"
                           style={{ color }}
+                          // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG，无外部输入
                           dangerouslySetInnerHTML={{ __html: iconHtml(icon, 13) }}
                         />
                         <div className="sp-lsp-card-body">
@@ -565,8 +573,10 @@ const SettingsPanelApp: React.FC<{
                 </div>
                 <div className="sp-section">
                   <button
+                    type="button"
                     className="sp-install-toggle"
                     onClick={() => setShowInstallGuide((v) => !v)}
+                    // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG + 字面量，无外部输入
                     dangerouslySetInnerHTML={{
                       __html: iconHtml(showInstallGuide ? 'chevron-down' : 'chevron-right', 9) + ' 安装指南',
                     }}
@@ -621,7 +631,7 @@ const SettingsPanelApp: React.FC<{
               <div className="sp-section-title">更新</div>
               <div style={{ marginTop: 8 }}>
                 {updateStatus === 'idle' && (
-                  <button className="sp-btn sp-btn-save" onClick={checkUpdate}>
+                  <button type="button" className="sp-btn sp-btn-save" onClick={checkUpdate}>
                     检查更新
                   </button>
                 )}
@@ -631,7 +641,7 @@ const SettingsPanelApp: React.FC<{
                     <div className="sp-hint" style={{ marginBottom: 8 }}>
                       {updateMsg}
                     </div>
-                    <button className="sp-btn sp-btn-save" onClick={doUpdate}>
+                    <button type="button" className="sp-btn sp-btn-save" onClick={doUpdate}>
                       下载并安装
                     </button>
                   </div>
@@ -648,7 +658,12 @@ const SettingsPanelApp: React.FC<{
                       检查失败: {updateMsg}
                     </span>
                     <br />
-                    <button className="sp-btn sp-btn-cancel" style={{ marginTop: 8 }} onClick={checkUpdate}>
+                    <button
+                      type="button"
+                      className="sp-btn sp-btn-cancel"
+                      style={{ marginTop: 8 }}
+                      onClick={checkUpdate}
+                    >
                       重试
                     </button>
                   </div>
@@ -669,15 +684,17 @@ const SettingsPanelApp: React.FC<{
 
         {/* 底部 */}
         <div className="sp-footer">
-          <button className="sp-btn sp-btn-cancel" onClick={handleClose}>
+          <button type="button" className="sp-btn sp-btn-cancel" onClick={handleClose}>
             取消
           </button>
           {/* Provider tab 用页内「保存 Provider」按钮，全局保存只负责其他 tab */}
           {activeTab !== 'provider' && (
             <button
+              type="button"
               className={`sp-btn sp-btn-save${saved ? ' sp-btn-ok' : ''}`}
               disabled={!dirty}
               onClick={handleSave}
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG + 字面量，无外部输入
               dangerouslySetInnerHTML={{
                 __html: saved ? iconHtml('check-circle', 11) + ' 已保存' : iconHtml('save', 11) + ' 保存',
               }}

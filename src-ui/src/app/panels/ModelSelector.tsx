@@ -90,6 +90,7 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
     return () => document.removeEventListener('mousedown', handler);
   }, [open, close]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activeIdx 是刻意的「触发器」依赖——仅用于滚动跟随，非响应值
   useEffect(() => {
     const el = listRef.current?.querySelector('.ms-item.active') as HTMLElement;
     el?.scrollIntoView({ block: 'nearest' });
@@ -127,7 +128,11 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
     <div className={`ms-container${open ? ' ms-open' : ''}`} ref={containerRef}>
       <div className="ms-input-row">
         <div className="ms-input-wrap">
-          <span className="ms-input-icon" dangerouslySetInnerHTML={{ __html: iconHtml('search', 12) }} />
+          <span
+            className="ms-input-icon"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG，无外部输入
+            dangerouslySetInnerHTML={{ __html: iconHtml('search', 12) }}
+          />
           <input
             type="text"
             className="sp-input ms-input"
@@ -153,10 +158,12 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
             onKeyDown={handleKeyDown}
           />
           {value && !open && (
-            <span
+            <button
+              type="button"
               className="ms-input-clear"
               title="清除"
               onClick={() => onChange('')}
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG，无外部输入
               dangerouslySetInnerHTML={{ __html: iconHtml('close', 10) }}
             />
           )}
@@ -167,6 +174,7 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
             className={`ms-refresh-btn${refreshing ? ' spinning' : ''}`}
             title="从 API 获取模型列表"
             onClick={handleRefresh}
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG，无外部输入
             dangerouslySetInnerHTML={{
               __html: iconHtml(refreshing ? 'loading' : 'refresh', 13),
             }}

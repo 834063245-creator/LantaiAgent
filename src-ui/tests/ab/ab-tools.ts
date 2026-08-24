@@ -67,9 +67,11 @@ function resolveInWorktree(wt: string, p: string): string {
 function applyUnifiedDiff(content: string, diff: string): string | null {
   let updated = content;
   const hunkRe = /@@[^@]*@@\n((?:[ \-+].*\n?)+)/g;
-  let m: RegExpExecArray | null;
+  let m: RegExpExecArray | null = null;
   let applied = 0;
-  while ((m = hunkRe.exec(diff)) !== null) {
+  hunkRe.lastIndex = 0;
+  m = hunkRe.exec(diff);
+  while (m !== null) {
     const lines = m[1].split('\n');
     const removed: string[] = [];
     const added: string[] = [];
@@ -82,9 +84,11 @@ function applyUnifiedDiff(content: string, diff: string): string | null {
     }
     const removedJoined = removed.join('\n');
     const idx = updated.indexOf(removedJoined);
-    if (idx < 0) continue;
-    updated = updated.slice(0, idx) + added.join('\n') + updated.slice(idx + removedJoined.length);
-    applied++;
+    if (idx >= 0) {
+      updated = updated.slice(0, idx) + added.join('\n') + updated.slice(idx + removedJoined.length);
+      applied++;
+    }
+    m = hunkRe.exec(diff);
   }
   return applied > 0 ? updated : null;
 }

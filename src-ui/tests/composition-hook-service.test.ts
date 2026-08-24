@@ -124,7 +124,6 @@ describe('composition/hook-service（A-2 管道钩子贡献通道）', () => {
         };
       }
     )._getAgent();
-    // biome-ignore lint/style/noNonNullAssertion: 测试内已知贡献折叠后 hooks 必在册（与 ①c 测试同款钉面手法）
     const enriched = await agentInner.hooks!.apply('edit_file', { filePath: '/p/a.ts' }, '原始结果');
     expect(enriched).toContain('[ACME]'); // enrich 贡献参与富化链
     expect(enrichLog).toEqual(['ACME']);

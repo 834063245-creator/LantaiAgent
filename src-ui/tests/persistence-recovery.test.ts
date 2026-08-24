@@ -134,7 +134,7 @@ describe('MessageBus — flush/restore 往返一致性', () => {
     const msgId1 = bus.send({ from: 'agent-a', to: 'agent-b', type: 'task', payload: 'hello-b' });
 
     // reply: agent-b 回复 agent-a
-    const msgId2 = bus.reply('agent-b', msgId1, 'reply-payload');
+    const _msgId2 = bus.reply('agent-b', msgId1, 'reply-payload');
 
     // broadcast: agent-a 广播
     bus.broadcast('agent-a', 'notification', { text: 'broadcast-msg' });

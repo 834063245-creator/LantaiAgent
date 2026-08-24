@@ -1081,6 +1081,7 @@ export function PaperPanel() {
             if (!slot || !visibleIds.has(b.id)) return null;
             if (b.state === 'flow') {
               return (
+                // biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler，非交互入口
                 <div
                   key={b.id}
                   className={`pp-block pp-${b.kind}`}
@@ -1110,6 +1111,7 @@ export function PaperPanel() {
                 >
                   已移出 · 点击恢复
                 </button>
+                {/* biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler，非交互入口 */}
                 <div
                   className={['pp-block', `pp-${b.kind}`, 'pp-pinned', isDragged ? 'pp-dragging' : ''].join(' ')}
                   style={{ left: pos.x, top: pos.y, width: b.w }}

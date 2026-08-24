@@ -29,7 +29,7 @@ import { SubAgentPool } from '../src/agent/coordinator';
 import { AgentLifecycleManager } from '../src/agent/lifecycle-manager';
 import { MessageBus } from '../src/agent/message-bus';
 import { TaskBoard } from '../src/agent/task-board';
-import { type ToolExecutor } from '../src/agent/tool';
+import type { ToolExecutor } from '../src/agent/tool';
 import { createMergeTool } from '../src/agent/tools/merge';
 import { createSubAgentTool, type SubAgentSpawner } from '../src/agent/tools/subagent';
 import { MeshTopology } from '../src/agent/topology';

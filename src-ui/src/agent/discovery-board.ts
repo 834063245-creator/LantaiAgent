@@ -58,7 +58,9 @@ export class DiscoveryBoard {
       if (Array.isArray(arr)) {
         // 淘汰前去重 — 以 agentId+key 为准，最后一条生效（与 post() 语义一致）
         const seen = new Map<string, number>();
-        arr.forEach((e, i) => seen.set(`${e.agentId}:${e.key}`, i));
+        arr.forEach((e, i) => {
+          seen.set(`${e.agentId}:${e.key}`, i);
+        });
         this.entries = arr.filter((e, i) => seen.get(`${e.agentId}:${e.key}`) === i);
         this._evict();
       }
@@ -87,9 +89,7 @@ export class DiscoveryBoard {
   post(agentId: string, key: string, value: string, category: string): string {
     const id = `disc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     // 移除同 agentId + key 的已有条目（覆盖而非累积）
-    this.entries = this.entries.filter(
-      (e) => !(e.agentId === agentId && e.key === key),
-    );
+    this.entries = this.entries.filter((e) => !(e.agentId === agentId && e.key === key));
     this.entries.push({ id, agentId, key, value, category, ts: Date.now(), status: 'active' });
     this._evict();
     this._scheduleFlush();

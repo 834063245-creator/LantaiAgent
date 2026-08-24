@@ -178,6 +178,8 @@ function hashStr(s: string): string {
  * 创建 BuilderDeps — UI 依赖注入给 agent-builder。
  * 让 agent-builder 的 buildToolRegistry 不直接 import ui/ 模块。
  */
+// storeId 参数为接口对称保留（BuilderDeps 上下文标识；实现未消费）
+// biome-ignore lint/correctness/noUnusedFunctionParameters: 接口形状对称保留
 export function createBuilderDeps(storeId: string): import('../agent/runtime/agent-builder').BuilderDeps {
   return {
     onAskUser: (req) => {

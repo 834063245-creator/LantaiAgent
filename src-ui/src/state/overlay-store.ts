@@ -15,6 +15,6 @@
 
 import { create } from 'zustand';
 
-type OverlayState = {};
+type OverlayState = Record<string, never>;
 
 export const useOverlayStore = create<OverlayState>(() => ({}));

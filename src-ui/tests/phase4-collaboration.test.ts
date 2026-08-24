@@ -174,7 +174,7 @@ describe('agent_request', () => {
     const msgId = inbox[0].id;
 
     // B replies
-    const replyId = bus.reply('agent-b', msgId, '在 src/auth.ts:42');
+    const _replyId = bus.reply('agent-b', msgId, '在 src/auth.ts:42');
 
     // A should receive the reply
     const result = await requestPromise;
@@ -246,7 +246,7 @@ describe('SubAgentPool — queue', () => {
 
     // Fill the pool with 2 never-resolving agents
     const s1 = pool.spawn('task-1', fakeRunNever())!;
-    const s2 = pool.spawn('task-2', fakeRunNever())!;
+    const _s2 = pool.spawn('task-2', fakeRunNever())!;
     expect(pool.runningCount).toBe(2);
 
     // Third spawn should queue (not return null)

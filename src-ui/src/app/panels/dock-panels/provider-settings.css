@@ -532,11 +532,15 @@
 .pp-danger-card .pp-card-title {
   color: var(--fail);
 }
+/* 危险钮 !important：覆盖 .sp-btn-sm 基类的中性配色（同源面板样式，迁移自既有写法） */
 .pp-btn-danger {
+  /* biome-ignore lint/complexity/noImportantStyles: 既有降级特异性豁免——覆盖基类配色 */
   color: var(--fail) !important;
 }
 .pp-btn-danger:hover {
+  /* biome-ignore lint/complexity/noImportantStyles: 既有降级特异性豁免——覆盖基类配色 */
   background: color-mix(in oklch, var(--fail) 10%, transparent) !important;
+  /* biome-ignore lint/complexity/noImportantStyles: 既有降级特异性豁免——覆盖基类配色 */
   border-color: color-mix(in oklch, var(--fail) 40%, transparent) !important;
 }
 
