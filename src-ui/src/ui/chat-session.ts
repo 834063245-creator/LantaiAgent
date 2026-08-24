@@ -323,20 +323,18 @@ export async function ensureSessionAgent(ctx: SessionContext): Promise<boolean> 
   if (!agent) return false;
   if (!isCurrentEpoch(epoch)) return false;
 
-  // 会话内容回填：msgStore 的 ChatMessage 不是 provider 消息——从重建
-  // 源（磁盘卷文件）取原始会话最可靠，但这里避免一次磁盘往返：msgStore
-  // 重建时未保留原始消息，改从磁盘读卷文件（与 restoreFromLedger 同源）。
+  // 会话内容回填：msgStore 的 ChatMessage 不是 provider 消息——从磁盘卷文件
+  // 取原始会话（readVolumeData 与恢复路径同源：磁盘权威 + localStorage 较新
+  // 回退 + 已删/空卷过滤）。projectPath=''（零目录会话）同样回填——
+  // sessionFile('') 路由用户级目录（Phase B）。
   let conv: Message[] = [];
-  const projectPath = ctx.getProjectPath();
-  if (projectPath) {
-    try {
-      const data = await readSessionJSON(sessionFile(projectPath, sid));
-      if (data && !data.deleted) {
-        conv = ((data.messages as Message[]) ?? []).filter((m) => m.role !== 'system');
-      }
-    } catch {
-      /* 卷文件缺失/读失败 → 空会话起步（新卷语义） */
+  try {
+    const data = await readVolumeData(ctx.getProjectPath(), sid);
+    if (data) {
+      conv = (data.messages as Message[])?.filter((m) => m.role !== 'system') ?? [];
     }
+  } catch {
+    /* 卷文件缺失/读失败 → 空会话起步（新卷语义） */
   }
   if (!isCurrentEpoch(epoch)) return false;
 
@@ -770,11 +768,31 @@ export async function appendLastMessage(ctx: SessionContext, projectPath: string
   }
 }
 
+/** 内容层兜底卷（Phase B，2026-08-24 工作区归属根治）：无历史可恢复时建一卷
+ *  无句柄的「案卷 N」——会话列表恒非空（会话存在性脱离 Agent 装配），句柄由
+ *  ensureSessionAgent 在拟文时补建。已有卷在案则 no-op（不清用户现场）。 */
+function ensureBaselineSession(ctx: SessionContext): void {
+  const st = getChatStore(ctx.storeId).sess.getState();
+  if (st.sessions.length > 0) return;
+  const id = Math.max(1, st.nextSessionId);
+  getChatStore(ctx.storeId).sess.setState({
+    sessions: [{ id, label: `案卷 ${id}` }],
+    activeIdx: 0,
+    sessionTokens: {},
+    nextSessionId: id + 1,
+  });
+  msgStoreFor(ctx.storeId, id).getState().setMessages([]);
+  setTurnPairs(ctx.storeId, []);
+}
+
 /** 恢复项目打开时最后活跃的会话。
  *  优先读总目（L0：多卷工作集恢复——摊开集整回，活跃卷按总目指针），
- *  无总目时回退旧单卷逻辑（_active.json / localStorage，行为不变）。 */
+ *  无总目时回退旧单卷逻辑（_active.json / localStorage，行为不变）。
+ *  Phase B（2026-08-24 工作区归属根治）：会话存在性脱离 Agent 装配——不再以
+ *  工厂在场为前置（恢复内容层不需要 Agent），projectPath=''（零目录会话）
+ *  同样恢复（sessionsDir('') 路由用户级目录）。所有卷只恢复内容层，句柄由
+ *  ensureSessionAgent 在拟文/换卷时按需补建。 */
 export async function autoRestoreLastSession(ctx: SessionContext, projectPath: string): Promise<void> {
-  if (!getAgentFactory(ctx.storeId) || !projectPath) return;
   // 代际防护（H5）：恢复在途期间可能切换工作区 — 写入前校验，过期整段放弃，
   // 防把旧项目的会话状态写进新项目面板。
   const epoch = getWorkspaceEpoch();
@@ -846,6 +864,9 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
   if (!lastId) {
     getChatStore(ctx.storeId).sess.setState({ nextSessionId: 1 });
     ctx.addNotice('未找到历史案卷，已新建案卷', 'info');
+    // Phase B：真的建卷（旧版只提示——它依赖 setAgent 已预建「案卷 1」的前提，
+    // 该前提随会话存在性解耦退役）
+    ensureBaselineSession(ctx);
     return;
   }
 
@@ -877,6 +898,8 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
   }
   if (!data?.messages || data.messages.length === 0) {
     ctx.addNotice('历史案卷数据为空，已新建案卷', 'info');
+    // Phase B：真的建卷（同上——内容层兜底，句柄拟文时补建）
+    ensureBaselineSession(ctx);
     return;
   }
 
@@ -925,18 +948,10 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
     }
   }
 
-  const newAgent = await getAgentFactory(ctx.storeId)?.();
-  if (!newAgent) {
-    ctx.addNotice('Agent 未就绪（API Key 未配置？），历史案卷暂未恢复', 'warn');
-    return;
-  }
   // 代际防护（H5）：恢复在途期间已切换工作区 — 丢弃本次恢复，不写任何 store。
   if (!isCurrentEpoch(epoch)) return;
 
-  const freshSys = newAgent.getSession().filter((m: Message) => m.role === 'system');
   const conv = (data.messages as Message[]).filter((m) => m.role !== 'system');
-  newAgent.setSession([...freshSys, ...conv]);
-
   const curSt = getChatStore(ctx.storeId).sess.getState();
   // ponytail: 消息在会话级 store 中 — 无需 saveCurrentMessages
   ctx.flushReasoning();
@@ -945,29 +960,27 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
 
   const label = data.label || '已恢复的案卷';
   agentSessionState.clearPanelState(ctx.storeId);
-  agentSessionState.setAgent(ctx.storeId, data.id, newAgent);
-  // 静态绑定该 Agent 的 board 到恢复的会话
-  newAgent.bindSession?.(String(data.id));
   getChatStore(ctx.storeId).sess.setState({
     sessions: [{ id: data.id, label }],
     activeIdx: 0,
+    sessionTokens: { [data.id]: data.tokensUsed ?? 0 },
     nextSessionId: Math.max(curNextId, curSt.nextSessionId),
   });
   // 恢复会话是全新会话树 —— 清空残留草稿与 live 输入（未发送文字不跨重启保留）
   getChatStore(ctx.storeId).input.getState().clearSessionDrafts();
-  // ponytail: 创建会话级消息 store + 从恢复数据填充
-  msgStoreFor(ctx.storeId, data.id).getState().setMessages([]);
+  // Phase B：内容层直接从恢复数据重建（msgStore + turnPairs）——恢复不依赖
+  // Agent 句柄；句柄留给 ensureSessionAgent 按需补建（拟文/换卷时）
+  rebuildMessagesFromMessages(conv, ctx.storeId, data.id);
   // 纸面用户层（钉住块 + 纸条）随卷恢复——旧存档无 paper 字段 = 空纸面
   loadPaperSessionData(ctx.storeId, data.id, data.paper ?? null);
 
-  try {
-    renderRestoredSession(ctx);
-  } catch (e) {
-    console.error('[chat] render 崩溃', e);
-  }
-
   ctx.setLastUsageText('');
   ctx.updateFooter();
+  // 活跃卷句柄后台补建（保持「活跃卷有句柄」的既有 UX——导出/改名即存等
+  // 消费路径需要；失败可见但不清会话，拟文时 sendMessage 兜底再试）
+  void ensureSessionAgent(ctx).then((ok) => {
+    if (!ok) ctx.addNotice('卷的 Agent 未就绪（API Key 未配置？）——拟文时会再试', 'warn');
+  });
   // 自然迁移收尾（L0）：旧单卷路径恢复成功 → 首次写总目（此后 _active.json 退休）
   recordOpenSetChange(ctx.storeId, projectPath, ledgerIo);
 }
@@ -1018,12 +1031,14 @@ function restoredLabel(data: StoredSession, fallback: string | undefined, ordina
 }
 
 /**
- * 总目多卷恢复（L0 核心）：摊开集整回，活跃卷真句柄，其余卷惰性水合。
+ * 总目多卷恢复（L0 核心）：摊开集整回，全部卷惰性。
  *
- * 惰性水合契约：非活跃卷只恢复「内容层」（messages 重建到会话级 msgStore +
- * 纸面摆放 + 元数据入 sess store），不建 Agent 句柄。句柄在该卷被切到/
- * 拟文时由 ensureSessionAgent 按需补建（factory 现调，会话内容从 msgStore
- * 回填）。摊开集大时避免「摊 20 卷 = 起 20 个 Agent」。
+ * Phase B（2026-08-24 工作区归属根治）：**所有卷（含活跃卷）只恢复「内容层」**
+ * （messages 重建到会话级 msgStore + 纸面摆放 + 元数据入 sess store），不建
+ * Agent 句柄——恢复不再依赖工厂在场/工厂成功。活跃卷句柄在内容恢复后由
+ * ensureSessionAgent 后台补建（保持「活跃卷有句柄」的既有 UX）；其余卷在
+ * 该卷被切到/拟文时按需补建（factory 现调，会话内容从磁盘回填）。
+ * 摊开集大时避免「摊 20 卷 = 起 20 个 Agent」。
  *
  * 失败容忍：单个卷文件损坏 → 跳过该卷（console.error 可见），不炸整个恢复；
  * 全部卷都读不出来 → 清空摊开集回退新建（与旧行为同构）。
@@ -1050,29 +1065,17 @@ async function restoreFromLedger(
     // 总目里全是死卷 → 清账新建（与旧路径「未找到历史案卷」同构）
     getChatStore(ctx.storeId).sess.setState({ nextSessionId: 1 });
     ctx.addNotice('总目摊开集已无可用案卷，已新建案卷', 'info');
+    // Phase B：真的建卷（内容层兜底）
+    ensureBaselineSession(ctx);
     return;
   }
 
-  const factory = getAgentFactory(ctx.storeId);
-  if (!factory) {
-    ctx.addNotice('Agent 未就绪（API Key 未配置？），历史案卷暂未恢复', 'warn');
-    return;
-  }
-
-  // 活跃卷真句柄（发号前先建——factory 失败/epoch 过期的守卫与旧路径同构）
-  const activeId = volumes.some((v) => v.id === ledger.activeId) ? (ledger.activeId as number) : volumes[0].id;
-  const activeVol = volumes.find((v) => v.id === activeId) ?? volumes[0];
-  const newAgent = await factory();
-  if (!newAgent) {
-    ctx.addNotice('无法创建 Agent，历史案卷暂未恢复', 'warn');
-    return;
-  }
   // 代际防护（H5）：恢复在途期间已切换工作区 — 丢弃本次恢复，不写任何 store。
   if (!isCurrentEpoch(epoch)) return;
 
-  const freshSys = newAgent.getSession().filter((m: Message) => m.role === 'system');
-  const conv = (activeVol.data.messages as Message[]).filter((m) => m.role !== 'system');
-  newAgent.setSession([...freshSys, ...conv]);
+  // 活跃卷定位（Phase B：真句柄创建退役——活跃卷也只恢复内容层）
+  const activeId = volumes.some((v) => v.id === ledger.activeId) ? (ledger.activeId as number) : volumes[0].id;
+  const activeVol = volumes.find((v) => v.id === activeId) ?? volumes[0];
 
   ctx.flushReasoning();
   ctx.flushText();
@@ -1086,8 +1089,6 @@ async function restoreFromLedger(
   const scanMax = await scanMaxSessionId(projectPath);
   const nextId = reconcileNextSessionId(ctx.storeId, ledger, scanMax);
 
-  agentSessionState.setAgent(ctx.storeId, activeVol.id, newAgent);
-  newAgent.bindSession?.(String(activeVol.id));
   agentSessionState.setExec(ctx.storeId, activeVol.id, createExecState());
 
   getChatStore(ctx.storeId).sess.setState({
@@ -1098,28 +1099,28 @@ async function restoreFromLedger(
   });
   getChatStore(ctx.storeId).input.getState().clearSessionDrafts();
 
-  // 逐卷恢复内容层：活跃卷真句柄重建，其余卷惰性（msgStore 预填 + 纸面恢复）
+  // 逐卷恢复内容层（rebuildMessagesFromMessages 是纯数据函数）+ 纸面恢复。
+  // 活跃卷最后重建——rebuild 会重置 turnPairs，活跃卷的 turnPairs 必须是终态。
   for (const v of volumes) {
-    if (v.id === activeVol.id) {
-      msgStoreFor(ctx.storeId, v.id).getState().setMessages([]);
-      loadPaperSessionData(ctx.storeId, v.id, v.data.paper ?? null);
-      // 活跃卷 turnPairs/token 等由 renderRestoredSession 重建
-      continue;
-    }
-    // 惰性卷：内容层直接从磁盘数据重建（rebuildMessagesFromMessages 是纯数据函数）
+    if (v.id === activeVol.id) continue;
     const convs = (v.data.messages as Message[]).filter((m) => m.role !== 'system');
     rebuildMessagesFromMessages(convs, ctx.storeId, v.id);
     loadPaperSessionData(ctx.storeId, v.id, v.data.paper ?? null);
   }
-
-  try {
-    renderRestoredSession(ctx);
-  } catch (e) {
-    console.error('[chat] render 崩溃', e);
-  }
+  rebuildMessagesFromMessages(
+    (activeVol.data.messages as Message[]).filter((m) => m.role !== 'system'),
+    ctx.storeId,
+    activeVol.id,
+  );
+  loadPaperSessionData(ctx.storeId, activeVol.id, activeVol.data.paper ?? null);
 
   ctx.setLastUsageText('');
   ctx.updateFooter();
+  // 活跃卷句柄后台补建（「活跃卷有句柄」的既有 UX——导出/改名即存等消费路径
+  // 需要；失败可见但不清会话，拟文时 sendMessage 兜底再试）
+  void ensureSessionAgent(ctx).then((ok) => {
+    if (!ok) ctx.addNotice('卷的 Agent 未就绪（API Key 未配置？）——拟文时会再试', 'warn');
+  });
   ctx.addNotice(
     `已恢复案卷工作集：${volumes.length} 卷（活跃：${activeVol.label}${volumes.length > 1 ? '，其余惰性待唤' : ''}）`,
     'info',

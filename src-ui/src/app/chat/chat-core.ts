@@ -304,15 +304,13 @@ export class ChatCore {
 
   setAgent(agent: OwnedAgentHandle | null): void {
     if (!agent) {
-      // null = 显式拆除（如 API Key 被清空）：注销会话工厂并 dispose 所有
-      // 会话 Agent 句柄 — 否则旧 provider/工厂会继续服务会话（残留 bug）。
+      // null = 显式拆除（旧语义：API Key 被清空时调用）：注销会话工厂并 dispose
+      // 所有会话 Agent 句柄 — 否则旧 provider/工厂会继续服务会话（残留 bug）。
+      // Phase B（2026-08-24 工作区归属根治）：会话列表与各卷消息 store 不再
+      // 清空——会话的显示不依赖 Agent 是否装配成功（无工厂/无句柄 = 无处发出
+      // 请求，中危#5 的「残留服务」由工厂注销 + 句柄 dispose 拦截）。
       Session.setAgentFactory(this.panelId, null);
       Session.clearPanelAgents(this.panelId);
-      // M4：会话列表清空后各卷消息 store 一并拆除——注册表跨工作区存活，
-      // 不拆则旧工作区卷残留（新工作区撞号卷会短暂读到旧消息）
-      Session.disposePanelMessages(this.panelId);
-      // 中危#5：清会话列表 — 否则无 API Key 切换后旧项目会话面板残留。
-      getChatStore(this.panelId).sess.setState({ sessions: [], activeIdx: -1 });
       return;
     }
     // 替换所有会话 — setAgent 是启动/设置阶段，非会话管理。

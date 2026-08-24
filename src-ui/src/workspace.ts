@@ -735,13 +735,15 @@ export class Workspace {
     this.onStatusChange?.(diag);
     useAgentPanelStore.getState().setDiag({ text: diag, ready: !!active.apiKey && active.apiKey.trim() !== '' });
 
+    // Phase B（2026-08-24 工作区归属根治）：无 Key 不再拆除会话——装配照常进行
+    //（工厂注册 + 会话内容层），缺 Key 的表现 = 发消息时工厂返 null →
+    // ensureSessionAgent 提示「请先配置 API Key」/配 Key 后请求期报错，会话
+    // 列表恒在（DSH 形态：配置断了 → 会话照常显示，发送时报错）。
     if (!active.apiKey || active.apiKey.trim() === '') {
-      this.agent = null;
-      chatPanel.setAgent(null);
-      useAgentPanelStore
-        .getState()
-        .setDiag({ text: `❌ 未检测到 API Key — provider="${active.name}" 的 Key 为空。`, ready: false });
-      return;
+      useAgentPanelStore.getState().setDiag({
+        text: `⚠️ 未检测到 API Key — provider="${active.name}"。会话照常可用，发送前请在设置中配置。`,
+        ready: false,
+      });
     }
 
     // ⚡ 2026-08-08：删除启动时的 persistSecrets 回写（原在此行）。

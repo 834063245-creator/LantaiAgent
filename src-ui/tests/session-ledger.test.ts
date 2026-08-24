@@ -265,7 +265,10 @@ describe('autoRestoreLastSession — 总目多卷恢复', () => {
     expect(st.sessions.map((s) => s.label)).toEqual(['背景卷', '活跃卷', '惰性卷']);
     // 活跃指针 = 总目 activeId
     expect(st.sessions[st.activeIdx]?.id).toBe(7);
-    // 活跃卷真句柄（工厂只被调 1 次——惰性卷不建句柄）
+    // Phase B（工作区归属根治）：恢复本身零工厂调用——所有卷（含活跃卷）只恢复
+    // 内容层；活跃卷句柄由 ensureSessionAgent 后台补建（排干后恰 1 次——只有
+    // 活跃卷补建，惰性卷不建句柄）
+    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 10));
     expect(factoryCalls).toBe(1);
     // 惰性卷消息已预填（内容层恢复，无句柄）
     const lazyMsgs = msgStoreFor(panel.panelId, 3).getState().messages;
@@ -543,13 +546,14 @@ describe('惰性水合（判据④補：ensureSessionAgent）', () => {
 
     // 切到惰性卷 9（switchSession 内联 fire-and-forget 唤起）
     panel.switchSession(1);
-    // 等水合链排干（factory + readSessionJSON + setSession 全异步）
+    // 等水合链排干（活跃卷后台补建 + 卷九水合，factory + readSessionJSON + setSession 全异步）
     for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 10));
 
-    // 句柄已建，会话内容从磁盘回填（含卷九的 user 消息）
+    // 句柄已建，会话内容从磁盘回填（含卷九的 user 消息；Phase B 后活跃卷 3
+    // 也后台补建——两条 setSession 链并发，断言对顺序不敏感）
     expect(setSessionCalls.length).toBeGreaterThanOrEqual(2);
-    const last = setSessionCalls[setSessionCalls.length - 1];
-    expect(last.some((m: any) => m.role === 'user' && m.content === '卷九内容')).toBe(true);
+    const vol9 = setSessionCalls.find((calls) => calls.some((m: any) => m.role === 'user' && m.content === '卷九内容'));
+    expect(vol9).toBeTruthy();
     // 活跃指针已切
     expect(getChatStore(panel.panelId).sess.getState().sessions[1].id).toBe(9);
   });
@@ -800,8 +804,9 @@ describe('L2 落盘收编（谁跑完存谁）', () => {
     } as any);
     const sid = panel.activeSessionId;
     expect(sid).toBe(1);
+    // Phase B：setAgent(null) 收窄——会话列表保留，活跃卷 id 不变（显示不依赖句柄）
     panel.setAgent(null as any);
-    expect(panel.activeSessionId).toBeNull();
+    expect(panel.activeSessionId).toBe(1);
   });
 });
 

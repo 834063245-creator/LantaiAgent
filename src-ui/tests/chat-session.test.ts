@@ -426,14 +426,11 @@ describe('ChatPanel session persistence', () => {
       const hash = hashProjectPath('D:/test').toString(36);
       localStorage.setItem(`hologram_session_${hash}_71`, JSON.stringify(goodSession));
 
-      let setSessionMsgs: any[] = [];
       panel.setAgentFactory(
         async () =>
           ({
             getSession: () => [{ role: 'system', content: 'sys' }],
-            setSession: (msgs: any[]) => {
-              setSessionMsgs = msgs;
-            },
+            setSession: vi.fn(),
           }) as any,
       );
       panel.setProjectPath('D:/test');
@@ -463,10 +460,15 @@ describe('ChatPanel session persistence', () => {
 
       await panel.autoRestoreLastSession('D:/test');
 
-      // Should have fallen back to localStorage session 71
-      const userMsgs = setSessionMsgs.filter((m: any) => m.role === 'user');
+      // Phase B：恢复走内容层（msgStore 重建）——回退采纳 localStorage 的
+      // 会话 71，其用户消息进入会话级消息 store（不再依赖工厂装载）。
+      const sess = Session.getSessions(panel.panelId);
+      expect(sess).toHaveLength(1);
+      expect(sess[0].id).toBe(71);
+      const msgs = msgStoreFor(panel.panelId, 71).getState().messages;
+      const userMsgs = msgs.filter((m: any) => m.role === 'user');
       expect(userMsgs).toHaveLength(1);
-      expect(userMsgs[0].content).toBe('帮我分析项目');
+      expect(userMsgs[0].text).toBe('帮我分析项目');
     });
 
     it('does NOT call list_directory during auto-restore', async () => {
@@ -660,10 +662,16 @@ describe('ChatPanel session persistence', () => {
 
       await panel.autoRestoreLastSession('D:/test');
 
-      // Should have recovered the conversation
-      const userMsgs = savedMessages.filter((m: any) => m.role === 'user');
+      // Phase B（工作区归属根治）：恢复走内容层——msgStore 重建，不再依赖工厂
+      // 装载 agent.setSession（工厂仅在后台补建活跃卷句柄时使用）。
+      // 会话已恢复且内容在 msgStore。
+      const sess = Session.getSessions(panel.panelId);
+      expect(sess).toHaveLength(1);
+      expect(sess[0].id).toBe(savedId);
+      const msgs = msgStoreFor(panel.panelId, savedId).getState().messages;
+      const userMsgs = msgs.filter((m: any) => m.role === 'user');
       expect(userMsgs).toHaveLength(1);
-      expect(userMsgs[0].content).toBe('帮我分析');
+      expect(userMsgs[0].text).toBe('帮我分析');
     });
   });
 
@@ -923,7 +931,9 @@ describe('ChatPanel session persistence', () => {
 
       await panel.autoRestoreLastSession(PROJ);
 
-      // 采纳了 localStorage 的更新消息
+      // 采纳了 localStorage 的更新消息（Phase B：水合回填源同为 readVolumeData——
+      // 磁盘权威 + localStorage 较新回退；后台补建链排干后 setSession 收到它）
+      for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 10));
       expect(restored.some((m) => m.content === 'localStorage 更新消息')).toBe(true);
     });
   });
@@ -1253,14 +1263,17 @@ describe('ChatPanel session persistence', () => {
       expect(getMessagesStore(`${panel.panelId}:3`).getState().messages).toHaveLength(0);
     });
 
-    it('setAgent(null)：会话列表清空时各卷 store 一并拆除', async () => {
+    it('setAgent(null)：句柄/工厂拆除，会话列表与消息 store 保留（Phase B 存在性解耦）', async () => {
       await setupTwoSeededVolumes();
 
-      panel.setAgent(null); // API Key 清空 / 无 key 切换路径
+      panel.setAgent(null); // 显式拆除路径（Phase B 后无生产调用方，防御性保留）
 
-      expect(isStoreFresh(panel.panelId, 1)).toBe(true);
-      expect(isStoreFresh(panel.panelId, 2)).toBe(true);
-      expect(Session.getSessions(panel.panelId)).toHaveLength(0);
+      // 工厂注销 + 句柄 dispose；会话列表/消息 store 不清——会话显示不依赖句柄
+      expect(Session.getAgentFactory(panel.panelId)).toBeNull();
+      expect(panel.getAgent()).toBeNull();
+      expect(Session.getSessions(panel.panelId)).toHaveLength(2);
+      expect(isStoreFresh(panel.panelId, 1)).toBe(false);
+      expect(isStoreFresh(panel.panelId, 2)).toBe(false);
     });
   });
 });

@@ -209,6 +209,11 @@ async function setupPlaceholderAgent(): Promise<void> {
   }
   try {
     await ws.setupAgent(chatPanel);
+    // Phase B（2026-08-24）：会话存在性脱离装配——零目录会话照常从用户级目录
+    // 恢复历史案卷（sessionsDir('') 路由 ~/.lantai/sessions/）。
+    await chatPanel.autoRestoreLastSession('').catch((e) => {
+      console.error('[init] zero-dir session restore failed:', e);
+    });
   } catch (e) {
     console.error('[init] setupAgent failed:', e);
   }
