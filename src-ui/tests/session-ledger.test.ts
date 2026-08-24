@@ -1,12 +1,14 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
-// SPDX-License-Identifier: MIT
+// SPDX-License: MIT.
 
-// session-ledger L0 守护测试（session-ledger-plan §4 判据 ①②③④）：
-//   ① 总目读写 roundtrip（含行号剥离/毒化容忍）
-//   ② 工作集恢复：多卷全回、活跃指针正确、惰性卷无句柄
-//   ③ 发号对账：max(内存, 总目, scan+1)——撞号场景不覆盖旧档
-//   ④ 四动词记账：另起一卷 → 总目投影落盘
-// mock 模式沿用 chat-session.test.ts（mockRpc 归一化 + 顺序式/实现式混合）。
+// 会话统一 U4（Q1-B 总目退役）守护测试：
+//   ① 摊开集扫描推导：重启恢复 = 磁盘扫描取最近 N 卷（savedAt 序，最新活跃），
+//      workspace 过滤（本工作区卷 + 零目录卷各归其位）
+//   ② 发号对账：reconcileNextSessionId = max(内存, 恢复集, scan+1)
+//   ③ 记账退役负向：会话操作不再写 _ledger.json / _active.json
+//   ④ 多卷恢复行为面：摊开集整回/死卷跳过/活跃指针/惰性句柄（承继
+//      session-ledger L0 判据②，数据源从总目换为扫描推导）
+// mock 模式沿用 chat-session.test.ts（mockRpc 归一化 + 实现式磁盘 mock）。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -66,90 +68,97 @@ vi.mock('highlight.js', () => ({ default: { highlightElement: vi.fn() } }));
 
 import { ChatCore } from '../src/app/chat/chat-core';
 import { useShellStore } from '../src/app/shell-store';
-import {
-  type LedgerIo,
-  ledgerFile,
-  loadLedger,
-  parseLedger,
-  reconcileNextSessionId,
-  type SessionLedgerDisk,
-} from '../src/state/session-ledger';
+import { reconcileNextSessionId, type SessionLedgerDisk } from '../src/state/session-ledger';
 import * as Session from '../src/ui/chat-session';
 import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
 
 // ── Helpers ──
 
 const PROJ = 'D:/ledger-proj';
+const GLOBAL = '/.lantai/sessions'; // _userSessionsDir 未解析时的兜底路径（测试态）
 
 function createChatPanel(): ChatCore {
   return new ChatCore();
 }
 
-/** 内存 IO（不经 mockInvoke——纯函数面直接喂内存文件表）。 */
-function memIo(files: Record<string, string>): LedgerIo & { written: Record<string, string> } {
-  const written: Record<string, string> = {};
-  return {
-    written,
-    readFile: async (p) => {
-      if (p in files) return files[p];
-      throw new Error('文件不存在');
-    },
-    writeFile: async (p, c) => {
-      written[p] = c;
-      files[p] = c;
-    },
-  };
-}
-
-function volumeFile(id: number, label: string, userContent: string): string {
+function volumeFile(
+  id: number,
+  label: string,
+  userContent: string,
+  savedAt = '2026-08-24T10:00:00Z',
+  ws?: string,
+): string {
   return JSON.stringify({
     id,
     label,
-    savedAt: '2026-08-23T10:00:00Z',
+    savedAt,
     messages: [
       { role: 'system', content: 'sys' },
       { role: 'user', content: userContent },
       { role: 'assistant', content: 'ok' },
     ],
     tokensUsed: 100,
+    ...(ws ? { workspace: ws } : {}),
   });
 }
 
-function ledgerDisk(open: number[], activeId: number, nextSessionId: number): SessionLedgerDisk {
-  return { version: 2, open: open.map((id) => ({ id })), activeId, nextSessionId };
-}
-
-/** 实现式磁盘 mock：_ledger.json / {id}.json / list_directory 三路由。 */
-function mockDiskWith(ledger: SessionLedgerDisk | null, volumes: Record<number, string>, scanMax: number) {
+/** 扫描推导磁盘 mock：list_directory 两目录路由（全局位 + 项目旧目录），
+ *  read 按路径精确命中（workspace 字段在卷文件体内），write 捕获。 */
+function mockScanDisk(globalVolumes: Record<number, string>, legacyVolumes: Record<number, string> = {}) {
+  const writes: Array<{ file_path: string; content: string }> = [];
+  const globalListing = Object.keys(globalVolumes).map((id) => ({
+    name: `${id}.json`,
+    path: `${GLOBAL}/${id}.json`,
+    is_dir: false,
+    children: null,
+  }));
+  const legacyListing = Object.keys(legacyVolumes).map((id) => ({
+    name: `${id}.json`,
+    path: `${PROJ}/.lantai/sessions/${id}.json`,
+    is_dir: false,
+    children: null,
+  }));
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((_cmd: string, payload: any) => {
     const { method, params } = payload;
+    if (method === 'list_directory') {
+      const p = params.path as string;
+      if (p === GLOBAL) return Promise.resolve(JSON.stringify(globalListing));
+      if (p === `${PROJ}/.lantai/sessions`) return Promise.resolve(JSON.stringify(legacyListing));
+      return Promise.resolve(JSON.stringify([]));
+    }
     if (method === 'read_file_content') {
       const fp = params.file_path as string;
-      if (fp.endsWith('_ledger.json')) {
-        return ledger ? Promise.resolve(JSON.stringify(ledger)) : Promise.reject(new Error('no ledger'));
+      const gm = fp.match(/^\/\.lantai\/sessions\/(\d+)\.json$/);
+      if (gm) {
+        const body = globalVolumes[Number(gm[1])];
+        if (body) return Promise.resolve(body);
+        return Promise.reject(new Error('文件不存在'));
       }
-      const m = fp.match(/\/(\d+)\.json$/);
-      if (m && volumes[Number(m[1])]) return Promise.resolve(volumes[Number(m[1])]);
+      const lm = fp.match(/\/(\d+)\.json$/);
+      if (lm && legacyVolumes[Number(lm[1])]) return Promise.resolve(legacyVolumes[Number(lm[1])]);
       return Promise.reject(new Error('文件不存在'));
     }
-    if (method === 'write_file_content') return Promise.resolve('ok');
-    if (method === 'list_directory') {
-      const names = [...Object.keys(volumes).map((id) => `${id}.json`), '_active.json'];
-      return Promise.resolve(
-        JSON.stringify(names.map((n) => ({ name: n, path: `/s/${n}`, is_dir: false, children: null }))),
-      );
+    if (method === 'write_file_content') {
+      writes.push({ file_path: params.file_path as string, content: params.content as string });
+      return Promise.resolve('ok');
     }
-    void scanMax;
     return Promise.resolve(null);
   });
+  return writes;
 }
 
-/** 惰性水合后的 Agent 工厂桩：记录每次工厂调用（活跃卷 1 次）。 */
-function stubFactory(): { calls: number } {
-  const rec = { calls: 0 };
-  const panel = createChatPanel();
-  return Object.assign(rec, { panel });
+function stubAgentFactory(bindings: any[][] = []) {
+  return async () => {
+    const stub = {
+      getSession: () => [{ role: 'system', content: 'sys' }],
+      setSession: vi.fn(),
+      dispose: vi.fn(),
+      bindSession: vi.fn(),
+    };
+    bindings.push(stub);
+    return stub;
+  };
 }
 
 beforeEach(() => {
@@ -160,446 +169,29 @@ beforeEach(() => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// 纯函数面：parseLedger / loadLedger / ledgerFile
+// ② 发号对账（纯函数面，承继 F5 判据）
 // ═══════════════════════════════════════════════════════════════
 
-describe('parseLedger', () => {
-  it('合法账本 roundtrip', () => {
-    const raw = {
-      version: 2,
-      open: [{ id: 3, label: '卷三' }, { id: 7 }],
-      activeId: 7,
-      nextSessionId: 8,
-      savedAt: 't',
-    };
-    const parsed = parseLedger(raw);
-    expect(parsed).not.toBeNull();
-    expect(parsed?.open).toEqual([
-      { id: 3, label: '卷三' },
-      { id: 7, label: undefined },
-    ]);
-    expect(parsed?.activeId).toBe(7);
-    expect(parsed?.nextSessionId).toBe(8);
-  });
-
-  it('version≠2 / open 非数组 / 非对象 → null（毒化容忍）', () => {
-    expect(parseLedger(null)).toBeNull();
-    expect(parseLedger('x')).toBeNull();
-    expect(parseLedger({ version: 1, open: [] })).toBeNull();
-    expect(parseLedger({ version: 2 })).toBeNull();
-    expect(parseLedger({ version: 2, open: 'no' })).toBeNull();
-  });
-
-  it('open 集去重 + 坏条目跳过（id 非数字/重复）', () => {
-    const parsed = parseLedger({
-      version: 2,
-      open: [{ id: 1 }, { id: 1 }, { id: 'x' }, null, { id: 2 }],
-      activeId: null,
-      nextSessionId: 3,
-    });
-    expect(parsed?.open.map((o) => o.id)).toEqual([1, 2]);
-  });
-
-  it('nextSessionId 缺失/非法 → 1 兜底；activeId 非数字 → null', () => {
-    const parsed = parseLedger({ version: 2, open: [{ id: 1 }], activeId: 'x', nextSessionId: -5 });
-    expect(parsed?.nextSessionId).toBe(1);
-    expect(parsed?.activeId).toBeNull();
-  });
-});
-
-describe('loadLedger', () => {
-  it('读 _ledger.json（带 read_file_content 行号前缀也容忍）', async () => {
-    const io = memIo({ [ledgerFile(PROJ)]: '     1\t{"version":2,"open":[{"id":5}],"activeId":5,"nextSessionId":6}' });
-    const { ledger } = await loadLedger(PROJ, io);
-    expect(ledger?.open[0].id).toBe(5);
-  });
-
-  it('无总目 → null（不读 _active.json——自然迁移语义）', async () => {
-    const io = memIo({});
-    const { ledger } = await loadLedger(PROJ, io);
-    expect(ledger).toBeNull();
-  });
-
-  it('毒化总目 → null（读路径容忍，不炸）', async () => {
-    const io = memIo({ [ledgerFile(PROJ)]: '{broken json' });
-    const { ledger } = await loadLedger(PROJ, io);
-    expect(ledger).toBeNull();
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════
-// 集成面：工作集恢复（判据②）+ 发号对账（判据③）+ 记账（判据④）
-// ═══════════════════════════════════════════════════════════════
-
-describe('autoRestoreLastSession — 总目多卷恢复', () => {
-  it('多卷全回：摊开集整回 + 活跃卷真句柄 + 惰性卷无句柄 + 消息预填', async () => {
+describe('reconcileNextSessionId（发号对账）', () => {
+  it('max(内存, 恢复集, scan+1)——scan 主导时不发小号', () => {
     const panel = createChatPanel();
-    panel.setProjectPath(PROJ);
-    let factoryCalls = 0;
-    panel.setAgentFactory(async () => {
-      factoryCalls++;
-      return {
-        getSession: () => [{ role: 'system', content: 'sys' }],
-        setSession: vi.fn(),
-        dispose: vi.fn(),
-        bindSession: vi.fn(),
-      } as any;
-    });
-
-    // 总目：3 卷摊开（7 活跃），磁盘有 3 个卷文件，最大档号 9
-    mockDiskWith(
-      ledgerDisk([3, 7, 9], 7, 10),
-      {
-        3: volumeFile(3, '背景卷', '卷三内容'),
-        7: volumeFile(7, '活跃卷', '卷七内容'),
-        9: volumeFile(9, '惰性卷', '卷九内容'),
-      },
-      9,
-    );
-
-    await panel.autoRestoreLastSession(PROJ);
-
-    // 摊开集整回（3 卷，顺序 = 总目 open 序）
-    const st = getChatStore(panel.panelId).sess.getState();
-    expect(st.sessions.map((s) => s.id)).toEqual([3, 7, 9]);
-    expect(st.sessions.map((s) => s.label)).toEqual(['背景卷', '活跃卷', '惰性卷']);
-    // 活跃指针 = 总目 activeId
-    expect(st.sessions[st.activeIdx]?.id).toBe(7);
-    // Phase B（工作区归属根治）：恢复本身零工厂调用——所有卷（含活跃卷）只恢复
-    // 内容层；活跃卷句柄由 ensureSessionAgent 后台补建（排干后恰 1 次——只有
-    // 活跃卷补建，惰性卷不建句柄）
-    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 10));
-    expect(factoryCalls).toBe(1);
-    // 惰性卷消息已预填（内容层恢复，无句柄）
-    const lazyMsgs = msgStoreFor(panel.panelId, 3).getState().messages;
-    expect(lazyMsgs.some((m: any) => m.role === 'user' && m.text === '卷三内容')).toBe(true);
-    const lazyMsgs9 = msgStoreFor(panel.panelId, 9).getState().messages;
-    expect(lazyMsgs9.some((m: any) => m.role === 'user' && m.text === '卷九内容')).toBe(true);
-    // 发号对账：max(内存 1, 总目 10, scan 9+1) = 10
-    expect(st.nextSessionId).toBe(10);
-  });
-
-  it('总目卷部分损坏：跳过死卷，活卷照常恢复', async () => {
-    const panel = createChatPanel();
-    panel.setProjectPath(PROJ);
-    panel.setAgentFactory(
-      async () =>
-        ({
-          getSession: () => [{ role: 'system', content: 'sys' }],
-          setSession: vi.fn(),
-          dispose: vi.fn(),
-          bindSession: vi.fn(),
-        }) as any,
-    );
-
-    // 总目说 3 卷，磁盘只有 2 卷（5 缺失）
-    mockDiskWith(
-      ledgerDisk([5, 11], 11, 12),
-      {
-        11: volumeFile(11, '幸存卷', '卷十一内容'),
-      },
-      11,
-    );
-
-    await panel.autoRestoreLastSession(PROJ);
-
-    const st = getChatStore(panel.panelId).sess.getState();
-    expect(st.sessions.map((s) => s.id)).toEqual([11]);
-    expect(st.sessions[st.activeIdx]?.id).toBe(11);
-  });
-
-  it('总目卷全灭 → 清账新建（不从 localStorage 复活）', async () => {
-    const panel = createChatPanel();
-    panel.setProjectPath(PROJ);
-    panel.setAgentFactory(
-      async () =>
-        ({
-          getSession: () => [{ role: 'system', content: 'sys' }],
-          setSession: vi.fn(),
-          dispose: vi.fn(),
-          bindSession: vi.fn(),
-        }) as any,
-    );
-
-    // localStorage 有残留（P1-14 精神：磁盘是权威，总目全灭不复活）
-    localStorage.setItem(
-      `hologram_session_${(await import('../src/ui/chat-session')).hashProjectPath(PROJ).toString(36)}_7`,
-      JSON.stringify({ id: 7, savedAt: '2026-08-23T00:00:00Z', messages: [{ role: 'user', content: '残留' }] }),
-    );
-    mockDiskWith(ledgerDisk([7], 7, 8), {}, 0);
-
-    await panel.autoRestoreLastSession(PROJ);
-
-    const st = getChatStore(panel.panelId).sess.getState();
-    expect(st.sessions.some((s) => s.id === 7)).toBe(false);
-  });
-
-  it('恢复成功后总目落盘（含死卷剔除后的最新摊开集）', async () => {
-    const panel = createChatPanel();
-    panel.setProjectPath(PROJ);
-    panel.setAgentFactory(
-      async () =>
-        ({
-          getSession: () => [{ role: 'system', content: 'sys' }],
-          setSession: vi.fn(),
-          dispose: vi.fn(),
-          bindSession: vi.fn(),
-        }) as any,
-    );
-
-    const writes: Record<string, string> = {};
-    mockInvoke.mockReset();
-    mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-      const { method, params } = payload;
-      if (method === 'read_file_content') {
-        const fp = params.file_path as string;
-        if (fp.endsWith('_ledger.json')) {
-          return Promise.resolve(JSON.stringify(ledgerDisk([7], 7, 8)));
-        }
-        if (fp.endsWith('/7.json')) return Promise.resolve(volumeFile(7, '卷七', '内容'));
-        return Promise.reject(new Error('文件不存在'));
-      }
-      if (method === 'write_file_content') {
-        writes[params.file_path as string] = params.content as string;
-        return Promise.resolve('ok');
-      }
-      if (method === 'list_directory') {
-        return Promise.resolve(JSON.stringify([{ name: '7.json', path: '/s/7.json', is_dir: false, children: null }]));
-      }
-      return Promise.resolve(null);
-    });
-
-    await panel.autoRestoreLastSession(PROJ);
-
-    const ledgerWrite = Object.entries(writes).find(([p]) => p.endsWith('_ledger.json'));
-    expect(ledgerWrite).toBeTruthy();
-    const parsed = JSON.parse(ledgerWrite?.[1]);
-    expect(parsed.version).toBe(2);
-    expect(parsed.open).toEqual([{ id: 7, label: '卷七' }]);
-    expect(parsed.activeId).toBe(7);
-  });
-});
-
-describe('四动词记账（判据④）', () => {
-  it('另起一卷 → 总目投影落盘（open 集 + 活跃指针 + 发号器）', async () => {
-    const panel = createChatPanel();
-    panel.setProjectPath(PROJ);
-    panel.setAgent({
-      getSession: () => [{ role: 'system', content: 'sys' }],
-      setSession: vi.fn(),
-      dispose: vi.fn(),
-      cascadeAbort: vi.fn(),
-    } as any);
-    panel.setAgentFactory(
-      async () =>
-        ({
-          getSession: () => [{ role: 'system', content: 'sys' }],
-          setSession: vi.fn(),
-          dispose: vi.fn(),
-          bindSession: vi.fn(),
-        }) as any,
-    );
-
-    const writes: Record<string, string> = {};
-    mockInvoke.mockReset();
-    mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-      const { method, params } = payload;
-      if (method === 'write_file_content') {
-        writes[params.file_path as string] = params.content as string;
-        return Promise.resolve('ok');
-      }
-      return Promise.resolve(null);
-    });
-
-    await panel.createNewSession();
-
-    // 记账是 fire-and-forget——等微任务排干
-    await new Promise((r) => setTimeout(r, 0));
-
-    const ledgerWrite = Object.entries(writes).find(([p]) => p.endsWith('_ledger.json'));
-    expect(ledgerWrite).toBeTruthy();
-    const parsed = JSON.parse(ledgerWrite?.[1]);
-    expect(parsed.open.map((o: any) => o.id)).toEqual([1, 2]);
-    expect(parsed.activeId).toBe(2);
-    expect(parsed.nextSessionId).toBe(3);
-  });
-
-  it('换卷 → 活跃指针变更落盘', async () => {
-    const panel = createChatPanel();
-    panel.setProjectPath(PROJ);
-    panel.setAgent({
-      getSession: () => [{ role: 'system', content: 'sys' }],
-      setSession: vi.fn(),
-      dispose: vi.fn(),
-      cascadeAbort: vi.fn(),
-    } as any);
-    panel.setAgentFactory(
-      async () =>
-        ({
-          getSession: () => [{ role: 'system', content: 'sys' }],
-          setSession: vi.fn(),
-          dispose: vi.fn(),
-          bindSession: vi.fn(),
-        }) as any,
-    );
-
-    const writes: Record<string, string> = {};
-    mockInvoke.mockReset();
-    mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-      const { method, params } = payload;
-      if (method === 'write_file_content') {
-        writes[params.file_path as string] = params.content as string;
-        return Promise.resolve('ok');
-      }
-      return Promise.resolve(null);
-    });
-
-    await panel.createNewSession();
-    await new Promise((r) => setTimeout(r, 0));
-    delete Object.keys(writes).reduce((acc: Record<string, string>, k) => {
-      void acc;
-      delete writes[k];
-      return writes;
-    }, writes);
-
-    panel.switchSession(0); // 换回卷 1
-    await new Promise((r) => setTimeout(r, 0));
-
-    const ledgerWrite = Object.entries(writes).find(([p]) => p.endsWith('_ledger.json'));
-    expect(ledgerWrite).toBeTruthy();
-    const parsed = JSON.parse(ledgerWrite?.[1]);
-    expect(parsed.activeId).toBe(1);
-    expect(parsed.open.map((o: any) => o.id)).toEqual([1, 2]);
-  });
-});
-
-describe('发号对账（判据③）', () => {
-  it('max(内存, 总目, scan+1)——撞号场景不覆盖旧档', async () => {
-    const panel = createChatPanel();
-    // 内存发号器低（1）+ 总目发号器低（2）+ 磁盘已有大档号（230）
-    // 旧裂缝：跟踪文件+localStorage 双失效时发 1 号 → 覆盖 1.json
-    const next = reconcileNextSessionId(panel.panelId, { version: 2, open: [], activeId: null, nextSessionId: 2 }, 230);
+    const next = reconcileNextSessionId(panel.panelId, null, 230);
     expect(next).toBe(231);
   });
-
-  it('loadSessionFromDisk 续开大号卷后另起一卷不发小号', async () => {
+  it('恢复集 nextSessionId 抬升内存值', () => {
     const panel = createChatPanel();
-    panel.setProjectPath(PROJ);
-    panel.setAgent({
-      getSession: () => [{ role: 'system', content: 'sys' }],
-      setSession: vi.fn(),
-      dispose: vi.fn(),
-      cascadeAbort: vi.fn(),
-    } as any);
-    panel.setAgentFactory(
-      async () =>
-        ({
-          getSession: () => [{ role: 'system', content: 'sys' }],
-          setSession: vi.fn(),
-          dispose: vi.fn(),
-          bindSession: vi.fn(),
-        }) as any,
-    );
-
-    mockInvoke.mockReset();
-    mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-      const { method, params } = payload;
-      if (method === 'read_file_content' && (params.file_path as string).endsWith('/230.json')) {
-        return Promise.resolve(volumeFile(230, '大号卷', '内容'));
-      }
-      if (method === 'write_file_content') return Promise.resolve('ok');
-      return Promise.resolve(null);
-    });
-
-    await panel.loadSessionFromDisk(PROJ, 230);
-
-    // 续开 230 后发号下限抬到 231
-    expect(getChatStore(panel.panelId).sess.getState().nextSessionId).toBeGreaterThanOrEqual(231);
+    const set: SessionLedgerDisk = { version: 2, open: [], activeId: null, nextSessionId: 2 };
+    const next = reconcileNextSessionId(panel.panelId, set, 0);
+    expect(next).toBe(2);
   });
 });
 
-describe('惰性水合（判据④補：ensureSessionAgent）', () => {
-  it('切到惰性卷 → 句柄补建 + 磁盘内容回填到 agent session', async () => {
-    const panel = createChatPanel();
-    panel.setProjectPath(PROJ);
-    const setSessionCalls: any[][] = [];
-    panel.setAgentFactory(
-      async () =>
-        ({
-          getSession: () => [{ role: 'system', content: 'sys' }],
-          setSession: (msgs: any[]) => setSessionCalls.push(msgs),
-          dispose: vi.fn(),
-          bindSession: vi.fn(),
-        }) as any,
-    );
+// ═══════════════════════════════════════════════════════════════
+// ①④ 摊开集扫描推导（autoRestoreLastSession — Q1-B 后唯一恢复引擎）
+// ═══════════════════════════════════════════════════════════════
 
-    // 恢复两卷：3 活跃（真句柄）+ 9 惰性
-    mockDiskWith(
-      ledgerDisk([3, 9], 3, 10),
-      {
-        3: volumeFile(3, '活跃卷', '卷三内容'),
-        9: volumeFile(9, '惰性卷', '卷九内容'),
-      },
-      9,
-    );
-    await panel.autoRestoreLastSession(PROJ);
-
-    // 切到惰性卷 9（switchSession 内联 fire-and-forget 唤起）
-    panel.switchSession(1);
-    // 等水合链排干（活跃卷后台补建 + 卷九水合，factory + readSessionJSON + setSession 全异步）
-    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 10));
-
-    // 句柄已建，会话内容从磁盘回填（含卷九的 user 消息；Phase B 后活跃卷 3
-    // 也后台补建——两条 setSession 链并发，断言对顺序不敏感）
-    expect(setSessionCalls.length).toBeGreaterThanOrEqual(2);
-    const vol9 = setSessionCalls.find((calls) => calls.some((m: any) => m.role === 'user' && m.content === '卷九内容'));
-    expect(vol9).toBeTruthy();
-    // 活跃指针已切
-    expect(getChatStore(panel.panelId).sess.getState().sessions[1].id).toBe(9);
-  });
-
-  it('sendMessage 同步唤起兑底：拟文时无句柄 → 补建后继续（不再报 Agent 未就绪）', async () => {
-    const panel = createChatPanel();
-    panel.setProjectPath(PROJ);
-    panel.setAgentFactory(
-      async () =>
-        ({
-          getSession: () => [{ role: 'system', content: 'sys' }],
-          setSession: vi.fn(),
-          dispose: vi.fn(),
-          bindSession: vi.fn(),
-          run: vi.fn(async () => 'ok'),
-          nextInsertIndex: 1,
-          setUiSessionId: vi.fn(),
-          insertMessage: vi.fn(),
-        }) as any,
-    );
-
-    // 恢复一卷活跃（真句柄）+ 惰性卷 9；注意 run 桩最小面即可
-    mockDiskWith(
-      ledgerDisk([3, 9], 3, 10),
-      {
-        3: volumeFile(3, '活跃卷', '卷三内容'),
-        9: volumeFile(9, '惰性卷', '卷九内容'),
-      },
-      9,
-    );
-    await panel.autoRestoreLastSession(PROJ);
-    // 直接把活跃指针拨到惰性卷（不经 switchSession，模拟「句柄缺席的活跃卷」）
-    getChatStore(panel.panelId).sess.getState().setActiveIdx(1);
-
-    getChatStore(panel.panelId).input.getState().setInputText('问一句');
-    // sendMessage 链路长（斜杠/命令/焦点等）——不 await 完成，只验证不因句柄缺席早退。
-    // 早退会写入 error notice；水合成功则 notice 不含「Agent 未就绪」。
-    await panel.sendMessage();
-    const msgs = msgStoreFor(panel.panelId, 9).getState().messages;
-    const notReady = msgs.filter((m: any) => m.role === 'notice' && String(m.text).includes('Agent 未就绪'));
-    expect(notReady).toHaveLength(0);
-  });
-});
-
-describe('L1 视图对齐', () => {
-  it('续开查重（F2）：已摊开的卷 loadSessionFromDisk = 换卷不克隆（书脊不增条、句柄不重建）', async () => {
+describe('autoRestoreLastSession — 扫描推导恢复', () => {
+  it('本工作区卷全回：最近 N 卷摊开（savedAt 序），最新为活跃，惰性卷消息预填', async () => {
     const panel = createChatPanel();
     panel.setProjectPath(PROJ);
     let factoryCalls = 0;
@@ -613,258 +205,109 @@ describe('L1 视图对齐', () => {
       } as any;
     });
 
-    // 恢复两卷：3 活跃 + 9 惰性
-    mockDiskWith(
-      ledgerDisk([3, 9], 3, 10),
-      {
-        3: volumeFile(3, '卷三', '卷三内容'),
-        9: volumeFile(9, '卷九', '卷九内容'),
-      },
-      9,
-    );
-    await panel.autoRestoreLastSession(PROJ);
-    const callsAfterRestore = factoryCalls;
+    // 全局位三卷（归属本工作区），savedAt 9 > 7 > 3；另有一卷归属别的工作区（不进恢复集）
+    mockScanDisk({
+      9: volumeFile(9, '最新卷', '卷九内容', '2026-08-24T09:00:00Z', PROJ),
+      7: volumeFile(7, '中间卷', '卷七内容', '2026-08-24T07:00:00Z', PROJ),
+      3: volumeFile(3, '旧卷', '卷三内容', '2026-08-24T03:00:00Z', PROJ),
+      5: volumeFile(5, '他区卷', '不该恢复', '2026-08-24T08:00:00Z', 'D:/other'),
+    });
 
-    // 续开已摊开的卷 9（当前非活跃）→ 应换卷而非克隆
-    await panel.loadSessionFromDisk(PROJ, 9);
+    await panel.autoRestoreLastSession(PROJ);
 
     const st = getChatStore(panel.panelId).sess.getState();
-    // 书脊不增条（仍两卷，无双 9）——查重主判据
-    expect(st.sessions.filter((s) => s.id === 9)).toHaveLength(1);
-    expect(st.sessions.map((s) => s.id)).toEqual([3, 9]);
-    // 换卷到位
+    // 最近 3 卷（上限内）摊开，最新活跃；他区卷不进
+    expect(st.sessions.map((s) => s.id)).toEqual([9, 7, 3]);
     expect(st.sessions[st.activeIdx]?.id).toBe(9);
-    // 工厂增量 ≤ 1（仅切卷内联惰性水合一次；克隆路径会伴随书脊增条已被上方排除）
-    expect(factoryCalls - callsAfterRestore).toBeLessThanOrEqual(1);
+    // 惰性卷消息预填（内容层恢复）
+    const lazyMsgs = msgStoreFor(panel.panelId, 7).getState().messages;
+    expect(lazyMsgs.some((m: any) => m.text === '卷七内容')).toBe(true);
+    // 发号对账：scan 最大 9 → next = 10
+    expect(st.nextSessionId).toBe(10);
+    // 活跃卷句柄后台补建恰 1 次（惰性卷不建句柄）
+    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(factoryCalls).toBe(1);
+    // 恢复全程零写盘（摊开集推导不落任何账）
+    expect(mockInvoke.mock.calls.some((c: any[]) => c[1]?.method === 'write_file_content')).toBe(false);
   });
 
-  it('续开未摊开的卷 → 正常 clone 路径（查重不误伤）', async () => {
+  it('摊开集上限（RESTORE_OPEN_MAX=3）：第 4 新的卷不摊开', async () => {
     const panel = createChatPanel();
     panel.setProjectPath(PROJ);
-    panel.setAgentFactory(
-      async () =>
-        ({
-          getSession: () => [{ role: 'system', content: 'sys' }],
-          setSession: vi.fn(),
-          dispose: vi.fn(),
-          bindSession: vi.fn(),
-        }) as any,
-    );
+    panel.setAgentFactory(stubAgentFactory());
+    mockScanDisk({
+      1: volumeFile(1, '一', 'a', '2026-08-24T01:00:00Z', PROJ),
+      2: volumeFile(2, '二', 'b', '2026-08-24T02:00:00Z', PROJ),
+      3: volumeFile(3, '三', 'c', '2026-08-24T03:00:00Z', PROJ),
+      4: volumeFile(4, '四', 'd', '2026-08-24T04:00:00Z', PROJ),
+    });
 
-    mockDiskWith(
-      ledgerDisk([3], 3, 10),
-      {
-        3: volumeFile(3, '卷三', '卷三内容'),
-        5: volumeFile(5, '新卷', '卷五内容'),
-      },
-      5,
-    );
     await panel.autoRestoreLastSession(PROJ);
 
-    // 续开未摊开的卷 5 → 正常追加
-    await panel.loadSessionFromDisk(PROJ, 5);
     const st = getChatStore(panel.panelId).sess.getState();
-    expect(st.sessions.map((s) => s.id)).toEqual([3, 5]);
-    expect(st.sessions[st.activeIdx]?.id).toBe(5);
+    expect(st.sessions.map((s) => s.id)).toEqual([4, 3, 2]); // 最新 3 卷
+    // 发号仍对账到最大档号：next = 5
+    expect(st.nextSessionId).toBe(5);
   });
 
-  it('isOpen 投影：sess store 是唯一真相（首页标记查账不查磁盘）', async () => {
+  it('项目旧目录未吸收卷（legacy 无 ws 字段）按位置归属进恢复集', async () => {
     const panel = createChatPanel();
     panel.setProjectPath(PROJ);
-    panel.setAgentFactory(
-      async () =>
-        ({
-          getSession: () => [{ role: 'system', content: 'sys' }],
-          setSession: vi.fn(),
-          dispose: vi.fn(),
-          bindSession: vi.fn(),
-        }) as any,
-    );
+    panel.setAgentFactory(stubAgentFactory());
+    // 全局位空；项目旧目录有 230.json（无 workspace 字段——迁移期旧卷）
+    mockScanDisk({}, { 230: volumeFile(230, '未吸收卷', '旧目录内容') });
 
-    mockDiskWith(
-      ledgerDisk([3, 9], 9, 10),
-      {
-        3: volumeFile(3, '卷三', '卷三内容'),
-        9: volumeFile(9, '卷九', '卷九内容'),
-      },
-      9,
-    );
     await panel.autoRestoreLastSession(PROJ);
 
-    // 磁盘上有 3 和 9，摊开集也有 3 和 9 → isOpen 均真
-    const { isOpen } = await import('../src/state/session-ledger');
-    expect(isOpen(panel.panelId, 3)).toBe(true);
-    expect(isOpen(panel.panelId, 9)).toBe(true);
-    // 未摊开档号（磁盘在但在案头没有）→ 假
-    expect(isOpen(panel.panelId, 5)).toBe(false);
+    const st = getChatStore(panel.panelId).sess.getState();
+    expect(st.sessions.map((s) => s.id)).toEqual([230]);
+    const msgs = msgStoreFor(panel.panelId, 230).getState().messages;
+    expect(msgs.some((m: any) => m.text === '旧目录内容')).toBe(true);
+  });
+
+  it('死卷跳过：墓碑卷不进恢复集；全灭 → 新建兜底', async () => {
+    const panel = createChatPanel();
+    panel.setProjectPath(PROJ);
+    panel.setAgentFactory(stubAgentFactory());
+    mockScanDisk({
+      8: JSON.stringify({ id: 8, deleted: true, label: '', messages: [], savedAt: '', workspace: PROJ }),
+    });
+
+    await panel.autoRestoreLastSession(PROJ);
+
+    // 墓碑被 listSavedSessions 过滤 → 无卷 → baseline 新建
+    const st = getChatStore(panel.panelId).sess.getState();
+    expect(st.sessions).toHaveLength(1);
+    expect(st.sessions[0].id).toBeGreaterThanOrEqual(1);
+  });
+
+  it('零目录恢复（projectPath=""）：只取零目录卷，带 ws 的卷不进', async () => {
+    const panel = createChatPanel();
+    panel.setProjectPath('');
+    panel.setAgentFactory(stubAgentFactory());
+    mockScanDisk({
+      6: volumeFile(6, '零目录卷', '零目录内容'), // 无 ws 字段 = 零目录卷
+      7: volumeFile(7, '项目卷', '不该进', '2026-08-24T11:00:00Z', PROJ),
+    });
+
+    await panel.autoRestoreLastSession('');
+
+    const st = getChatStore(panel.panelId).sess.getState();
+    expect(st.sessions.map((s) => s.id)).toEqual([6]);
+    expect(
+      msgStoreFor(panel.panelId, 6)
+        .getState()
+        .messages.some((m: any) => m.text === '零目录内容'),
+    ).toBe(true);
   });
 });
 
-describe('L2 落盘收编（谁跑完存谁）', () => {
-  it('bumpTurnDone 携带 doneSid——store 断言', async () => {
-    const { useTurnDoneStore, bumpTurnDone } = await import('../src/state/turn-done-store');
-    bumpTurnDone(7);
-    const st = useTurnDoneStore.getState();
-    expect(st.lastDoneSid).toBe(7);
-    bumpTurnDone();
-    expect(useTurnDoneStore.getState().lastDoneSid).toBeNull();
-  });
+// ═══════════════════════════════════════════════════════════════
+// ③ 记账退役负向：会话操作不再写 _ledger.json / _active.json
+// ═══════════════════════════════════════════════════════════════
 
-  it('saveSessionById：后台卷（非活跃）跑完轮次即落盘自己的卷，活跃卷文件不动', async () => {
-    const panel = createChatPanel();
-    panel.setProjectPath(PROJ);
-    // 卷 1（后台，有内容）+ 卷 2（活跃）
-    panel.setAgent({
-      getSession: () => [
-        { role: 'system', content: 'sys' },
-        { role: 'user', content: '后台卷内容' },
-      ],
-      setSession: vi.fn(),
-      dispose: vi.fn(),
-      cascadeAbort: vi.fn(),
-    } as any);
-    const agent2 = {
-      getSession: () => [
-        { role: 'system', content: 'sys' },
-        { role: 'user', content: '活跃卷内容' },
-      ],
-      setSession: vi.fn(),
-      dispose: vi.fn(),
-      cascadeAbort: vi.fn(),
-    };
-    panel.setAgentFactory(async () => agent2 as any);
-    await panel.createNewSession();
-
-    const writes: Array<{ file_path: string; content: string }> = [];
-    mockInvoke.mockReset();
-    mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-      const { method, params } = payload;
-      if (method === 'write_file_content') {
-        writes.push({ file_path: params.file_path as string, content: params.content as string });
-      }
-      return Promise.resolve('ok');
-    });
-
-    // 后台卷 1 跑完（L2：直接调 save 动词——turn-done 分流的终端动作）
-    await panel.saveSessionById(1);
-
-    // 卷 1 落盘（带后台卷内容），卷 2 不动（无 write /2.json）
-    const write1 = writes.find((w) => w.file_path.endsWith('/1.json'));
-    expect(write1).toBeTruthy();
-    expect(JSON.parse(write1?.content).messages.some((m: any) => m.content === '后台卷内容')).toBe(true);
-    expect(writes.find((w) => w.file_path.endsWith('/2.json'))).toBeUndefined();
-  });
-
-  it('saveAllSessions：全部有内容卷落盘（空卷跳过）——beforeunload 收尾', async () => {
-    const panel = createChatPanel();
-    panel.setProjectPath(PROJ);
-    // 卷 1 有内容 + 卷 2 空（仅 system）
-    panel.setAgent({
-      getSession: () => [
-        { role: 'system', content: 'sys' },
-        { role: 'user', content: '卷一' },
-      ],
-      setSession: vi.fn(),
-      dispose: vi.fn(),
-      cascadeAbort: vi.fn(),
-    } as any);
-    const agent2 = {
-      getSession: () => [{ role: 'system', content: 'sys' }],
-      setSession: vi.fn(),
-      dispose: vi.fn(),
-      cascadeAbort: vi.fn(),
-    };
-    panel.setAgentFactory(async () => agent2 as any);
-    await panel.createNewSession();
-
-    const writes: Array<{ file_path: string; content: string }> = [];
-    mockInvoke.mockReset();
-    mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-      const { method, params } = payload;
-      if (method === 'write_file_content') {
-        writes.push({ file_path: params.file_path as string, content: params.content as string });
-      }
-      return Promise.resolve('ok');
-    });
-
-    await panel.saveAllSessions();
-
-    expect(writes.find((w) => w.file_path.endsWith('/1.json'))).toBeTruthy();
-    expect(writes.find((w) => w.file_path.endsWith('/2.json'))).toBeUndefined();
-  });
-
-  it('activeSessionId getter：活跃卷 id 投影（turn-done 分流判据）', async () => {
-    const panel = createChatPanel();
-    panel.setProjectPath(PROJ);
-    panel.setAgent({
-      getSession: () => [{ role: 'system', content: 'sys' }],
-      setSession: vi.fn(),
-      dispose: vi.fn(),
-      cascadeAbort: vi.fn(),
-    } as any);
-    const sid = panel.activeSessionId;
-    expect(sid).toBe(1);
-    // Phase B：setAgent(null) 收窄——会话列表保留，活跃卷 id 不变（显示不依赖句柄）
-    panel.setAgent(null as any);
-    expect(panel.activeSessionId).toBe(1);
-  });
-});
-
-describe('L3 一致性守护（常驻）', () => {
-  it('总目 open 集投影 ≡ sess store：recordOpenSetChange 落盘即对账', async () => {
-    const panel = createChatPanel();
-    panel.setProjectPath(PROJ);
-    panel.setAgent({
-      getSession: () => [
-        { role: 'system', content: 'sys' },
-        { role: 'user', content: '卷一' },
-      ],
-      setSession: vi.fn(),
-      dispose: vi.fn(),
-      cascadeAbort: vi.fn(),
-    } as any);
-    panel.setAgentFactory(
-      async () =>
-        ({
-          getSession: () => [
-            { role: 'system', content: 'sys' },
-            { role: 'user', content: '卷二' },
-          ],
-          setSession: vi.fn(),
-          dispose: vi.fn(),
-          bindSession: vi.fn(),
-        }) as any,
-    );
-
-    const writes: Record<string, string> = {};
-    mockInvoke.mockReset();
-    mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-      const { method, params } = payload;
-      if (method === 'write_file_content') {
-        writes[params.file_path as string] = params.content as string;
-      }
-      return Promise.resolve('ok');
-    });
-
-    // 另起一卷（推两卷进摊开集）+ 等记账链排干
-    await panel.createNewSession();
-    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 10));
-
-    const ledgerWrite = Object.entries(writes).find(([p]) => p.endsWith('_ledger.json'));
-    expect(ledgerWrite).toBeTruthy();
-    const ledger = JSON.parse(ledgerWrite?.[1]);
-    const sessIds = getChatStore(panel.panelId)
-      .sess.getState()
-      .sessions.map((s) => s.id);
-    // 判据①：总目 open ≡ 书脊列表（sess store）
-    expect(ledger.open.map((o: any) => o.id)).toEqual(sessIds);
-    // 判据②：无重复 open id
-    expect(new Set(ledger.open.map((o: any) => o.id)).size).toBe(ledger.open.length);
-    // 活跃指针在 open 集内
-    expect(ledger.open.some((o: any) => o.id === ledger.activeId)).toBe(true);
-  });
-
-  it('tracker 写入退役：saveActiveSession 不再写 _active.json（总目接任）', async () => {
+describe('Q1-B 记账退役负向', () => {
+  it('恢复/另起/合卷全程零 _ledger.json 与 _active.json 写入', async () => {
     const panel = createChatPanel();
     panel.setProjectPath(PROJ);
     panel.setAgent({
@@ -876,24 +319,24 @@ describe('L3 一致性守护（常驻）', () => {
       dispose: vi.fn(),
       cascadeAbort: vi.fn(),
     } as any);
-
-    const writes: Array<string> = [];
-    mockInvoke.mockReset();
-    mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-      const { method, params } = payload;
-      if (method === 'write_file_content') {
-        writes.push(params.file_path as string);
-      }
-      return Promise.resolve('ok');
+    panel.setAgentFactory(stubAgentFactory());
+    const writes = mockScanDisk({
+      1: volumeFile(1, '卷一', '内容', '2026-08-24T10:00:00Z', PROJ),
     });
 
-    await panel.saveActiveSession(PROJ);
+    await panel.createNewSession(); // 另起（两卷现场）
+    panel.closeSession(0); // 合卷一（C8 自动存 = 真实卷写入路径）
+    await new Promise((r) => setTimeout(r, 0)); // 写目标异步消解——排干微任务
 
-    expect(writes.some((p) => p.endsWith('_active.json'))).toBe(false);
-    expect(writes.some((p) => p.endsWith('/1.json'))).toBe(true);
+    // 卷文件照常落盘（全局位）——禁止清单非空洞
+    expect(writes.some((w) => w.file_path.endsWith('/1.json'))).toBe(true);
+    const forbidden = writes.filter(
+      (w) => w.file_path.endsWith('_ledger.json') || w.file_path.endsWith('_active.json'),
+    );
+    expect(forbidden).toEqual([]);
   });
 });
 
-// ponytail: stubFactory 目前只在多卷用例内联使用——保留导出面供后续 L 段扩展
-void stubFactory;
+// ponytail: Session 导出面保留给后续扩展（loadSessionFromDisk 换卷语义在
+// chat-session.test.ts 钉）
 void Session;

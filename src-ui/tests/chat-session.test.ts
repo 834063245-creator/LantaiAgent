@@ -353,40 +353,35 @@ describe('ChatPanel session persistence', () => {
   });
 
   // ═══════════════════════════════════════════════════════════════
-  // autoRestoreLastSession — regression guards
+  // autoRestoreLastSession — U4/Q1-B 扫描推导（恢复 = 磁盘扫描取最近卷）
   // ═══════════════════════════════════════════════════════════════
 
   describe('autoRestoreLastSession', () => {
-    it('completes without calling list_directory (regression: no backend hang)', async () => {
+    it('completes fast when scan rejects（回归：后端不可用不挂起）', async () => {
       panel = createChatPanel();
-      // Set up factory that returns a minimal agent-like object
-      let _factoryCalled = false;
-      panel.setAgentFactory(async () => {
-        _factoryCalled = true;
-        return {
-          getSession: () => [{ role: 'system', content: 'sys' }],
-          setSession: vi.fn(),
-          run: vi.fn(),
-        } as any;
-      });
+      panel.setAgentFactory(
+        async () =>
+          ({
+            getSession: () => [{ role: 'system', content: 'sys' }],
+            setSession: vi.fn(),
+            run: vi.fn(),
+          }) as any,
+      );
       panel.setProjectPath('D:/test');
 
-      // No tracker, no localStorage sessions → returns early
-      mockInvoke.mockRejectedValue(new Error('no tracker'));
+      // 扫描全拒 → 无卷 → baseline 新建（不挂起）
+      mockInvoke.mockRejectedValue(new Error('backend down'));
 
       const start = Date.now();
       await panel.autoRestoreLastSession('D:/test');
       const elapsed = Date.now() - start;
 
-      // Must complete within 1s — if list_directory were called and hung, this times out
       expect(elapsed).toBeLessThan(1000);
-
-      // Verify list_directory was NOT invoked (the regression guard)
-      const listDirCalls = mockInvoke.mock.calls.filter((call: any[]) => call[0] === 'list_directory');
-      expect(listDirCalls).toHaveLength(0);
+      // 无卷兜底：面板仍有 baseline 卷
+      expect(Session.getSessions(panel.panelId).length).toBeGreaterThan(0);
     });
 
-    it('shows notice when tracker is missing and localStorage is empty', async () => {
+    it('shows notice when no volumes found and localStorage is empty', async () => {
       panel = createChatPanel();
       panel.setProjectPath('D:/test');
 
@@ -398,7 +393,7 @@ describe('ChatPanel session persistence', () => {
       panel.setAgent(fakeAgent);
       panel.setAgentFactory(async () => fakeAgent);
 
-      mockInvoke.mockRejectedValue(new Error('no tracker'));
+      mockInvoke.mockRejectedValue(new Error('no volumes'));
 
       await panel.autoRestoreLastSession('D:/test');
 
@@ -420,10 +415,10 @@ describe('ChatPanel session persistence', () => {
       expect(sessions.length).toBeGreaterThan(0);
     });
 
-    it('falls back to localStorage when tracked session has only system messages', async () => {
+    it('adopts newer localStorage content when disk volume is stale（崩溃加速语义保留）', async () => {
       panel = createChatPanel();
 
-      // Put a good session in localStorage
+      // localStorage 有较新内容（同 id 71；磁盘背书由下方 listing+read 提供）
       const goodSession = {
         id: 71,
         label: '有内容的会话',
@@ -446,36 +441,24 @@ describe('ChatPanel session persistence', () => {
       );
       panel.setProjectPath('D:/test');
 
-      // Tracker points to session 1
+      // U4 扫描推导调用序：list(全局) → 读卷(listing 层) → list(旧目录) →
+      // restoreOpenSet 经 readVolumeJSON 再读一次卷（全局位命中）
+      const staleVolume = JSON.stringify({
+        id: 71,
+        label: '有内容的会话',
+        savedAt: '2026-06-29T00:00:00Z',
+        messages: [{ role: 'system', content: 'prompt' }],
+        workspace: 'D:/test',
+      });
       mockInvoke
-        .mockRejectedValueOnce(new Error('no ledger'))
-        .mockResolvedValueOnce(JSON.stringify({ lastId: 1, nextId: 1 }))
-        // Session 1 has only system prompt — no user messages
-        // U1 双读：卷桩带 workspace 字段 = 已吸收卷，全局位探测一次即命中
-        .mockResolvedValueOnce(
-          JSON.stringify({
-            id: 1,
-            label: '空会话',
-            savedAt: '2026-06-29T00:00:00Z',
-            messages: [{ role: 'system', content: '你是助手' }],
-            workspace: 'D:/test',
-          }),
-        )
-        // P1-14: localStorage 回退需要磁盘文件背书 — 71.json 必须存在且未删除
-        .mockResolvedValueOnce(
-          JSON.stringify({
-            id: 71,
-            label: '有内容的会话',
-            savedAt: '2026-06-29T00:00:00Z',
-            messages: [{ role: 'system', content: 'prompt' }],
-            workspace: 'D:/test',
-          }),
-        );
+        .mockResolvedValueOnce(JSON.stringify([{ name: '71.json', path: '/s/71.json', is_dir: false, children: null }]))
+        .mockResolvedValueOnce(staleVolume)
+        .mockResolvedValueOnce(JSON.stringify([])) // 项目旧目录 listing（第二目录）
+        .mockResolvedValueOnce(staleVolume); // readVolumeJSON 全局位重读
 
       await panel.autoRestoreLastSession('D:/test');
 
-      // Phase B：恢复走内容层（msgStore 重建）——回退采纳 localStorage 的
-      // 会话 71，其用户消息进入会话级消息 store（不再依赖工厂装载）。
+      // 扫描列出 71 → readVolumeData 采纳 localStorage 较新内容 → 用户消息进 msgStore
       const sess = Session.getSessions(panel.panelId);
       expect(sess).toHaveLength(1);
       expect(sess[0].id).toBe(71);
@@ -485,7 +468,7 @@ describe('ChatPanel session persistence', () => {
       expect(userMsgs[0].text).toBe('帮我分析项目');
     });
 
-    it('does NOT call list_directory during auto-restore', async () => {
+    it('restores the scanned newest volume（恢复 = 扫描取最近卷）', async () => {
       panel = createChatPanel();
       panel.setAgentFactory(
         async () =>
@@ -496,28 +479,33 @@ describe('ChatPanel session persistence', () => {
       );
       panel.setProjectPath('D:/test');
 
-      // Tracker exists, session file exists with valid conversation
+      // 扫描列出 46（ws 匹配本工作区）→ 恢复其内容（卷响应两次：listing 层 + readVolumeJSON）
+      const vol46 = mockSessionFile(
+        46,
+        [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content: 'hello' },
+        ],
+        undefined,
+        undefined,
+        'D:/test',
+      );
       mockInvoke
-        .mockRejectedValueOnce(new Error('no ledger'))
-        .mockResolvedValueOnce(JSON.stringify({ lastId: 46, nextId: 77 }))
-        .mockResolvedValueOnce(
-          mockSessionFile(
-            46,
-            [
-              { role: 'system', content: 'sys' },
-              { role: 'user', content: 'hello' },
-            ],
-            undefined,
-            undefined,
-            'D:/test',
-          ),
-        );
+        .mockResolvedValueOnce(JSON.stringify([{ name: '46.json', path: '/s/46.json', is_dir: false, children: null }]))
+        .mockResolvedValueOnce(vol46)
+        .mockResolvedValueOnce(JSON.stringify([])) // 项目旧目录 listing（第二目录）
+        .mockResolvedValueOnce(vol46); // readVolumeJSON 全局位重读
 
       await panel.autoRestoreLastSession('D:/test');
 
-      // list_directory should NOT have been called
-      const listDirCalls = mockInvoke.mock.calls.filter((call: any[]) => call[0] === 'list_directory');
-      expect(listDirCalls).toHaveLength(0);
+      const sess = Session.getSessions(panel.panelId);
+      expect(sess).toHaveLength(1);
+      expect(sess[0].id).toBe(46);
+      expect(
+        msgStoreFor(panel.panelId, 46)
+          .getState()
+          .messages.some((m: any) => m.text === 'hello'),
+      ).toBe(true);
     });
   });
 
@@ -654,27 +642,28 @@ describe('ChatPanel session persistence', () => {
       expect(sessions?.[0]?.agent).toBe(newFakeAgent);
 
       // ── Step 4: autoRestoreLastSession should recover the saved conversation ──
-      // Mock read_file_content: tracker + session file
       mockInvoke.mockReset();
-      // L0 总目占位：链头补「无总目」响应（走旧单卷路径，后续链原位）
-      // Tracker points to session that was saved
+      mockInvoke.mockResolvedValue(null);
+      // U4 扫描调用序：list(全局) → 读卷 → list(旧目录) → readVolumeJSON 重读（卷响应两次）
       const savedId = lsKeys.length > 0 ? parseInt(lsKeys[0].replace(`hologram_session_${hash}_`, ''), 10) : 1;
+      const savedVolume = JSON.stringify({
+        id: savedId,
+        label: '已保存',
+        savedAt: new Date().toISOString(),
+        messages: [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content: '帮我分析' },
+          { role: 'assistant', content: '好的，正在分析…' },
+        ],
+        workspace: 'D:/test',
+      });
       mockInvoke
-        .mockRejectedValueOnce(new Error('no ledger'))
-        .mockResolvedValueOnce(JSON.stringify({ lastId: savedId, nextId: savedId + 1 }))
         .mockResolvedValueOnce(
-          JSON.stringify({
-            id: savedId,
-            label: '已保存',
-            savedAt: new Date().toISOString(),
-            messages: [
-              { role: 'system', content: 'sys' },
-              { role: 'user', content: '帮我分析' },
-              { role: 'assistant', content: '好的，正在分析…' },
-            ],
-            workspace: 'D:/test',
-          }),
-        );
+          JSON.stringify([{ name: `${savedId}.json`, path: `/s/${savedId}.json`, is_dir: false, children: null }]),
+        )
+        .mockResolvedValueOnce(savedVolume)
+        .mockResolvedValueOnce(JSON.stringify([])) // 项目旧目录 listing（第二目录）
+        .mockResolvedValueOnce(savedVolume); // readVolumeJSON 全局位重读
 
       // Set fresh agent factory for autoRestoreLastSession
       panel.setAgentFactory(
@@ -792,10 +781,13 @@ describe('ChatPanel session persistence', () => {
 
       // L0 总目占位：autoRestore 先读 _ledger.json——链头补一次「无总目」响应，
       // 后续链恢复原位（走旧单卷路径，行为不变）
+      // U4 扫描调用序：list(全局) → 读卷 → list(旧目录) → readVolumeJSON 重读（卷响应两次）
+      const vol1 = mockSessionFile(1, mockSessionMessages, '测试会话', undefined, 'D:/test');
       mockInvoke
-        .mockRejectedValueOnce(new Error('no ledger'))
-        .mockResolvedValueOnce(JSON.stringify({ lastId: 1, nextId: 2 }))
-        .mockResolvedValueOnce(mockSessionFile(1, mockSessionMessages, '测试会话', undefined, 'D:/test'));
+        .mockResolvedValueOnce(JSON.stringify([{ name: '1.json', path: '/s/1.json', is_dir: false, children: null }]))
+        .mockResolvedValueOnce(vol1)
+        .mockResolvedValueOnce(JSON.stringify([])) // 项目旧目录 listing（第二目录）
+        .mockResolvedValueOnce(vol1); // readVolumeJSON 全局位重读
 
       return panel.autoRestoreLastSession('D:/test');
     }
@@ -875,14 +867,26 @@ describe('ChatPanel session persistence', () => {
       );
     }
 
-    /** tracker 缺失（触发 localStorage 扫描）+ 磁盘 {id}.json 由 impl 决定 */
-    function mockDisk(impl: (filePath: string) => string | null) {
+    /** U4 扫描路径磁盘 mock：list_directory 由 listing 决定，read 按 impl 路由 */
+    function mockDisk(impl: (filePath: string) => string | null, listing: number[] = [7]) {
       mockInvoke.mockReset();
       mockInvoke.mockImplementation((_cmd: string, payload: any) => {
         const { method, params } = payload;
+        if (method === 'list_directory') {
+          const p = params.path as string;
+          // 全局位给 listing；项目旧目录恒空（单目录语义够用）
+          if (p === '/.lantai/sessions') {
+            return Promise.resolve(
+              JSON.stringify(
+                listing.map((id) => ({ name: `${id}.json`, path: `/s/${id}.json`, is_dir: false, children: null })),
+              ),
+            );
+          }
+          return Promise.resolve(JSON.stringify([]));
+        }
         if (method === 'read_file_content') {
           const fp = params.file_path as string;
-          if (fp.endsWith('_active.json')) throw new Error('tracker 缺失');
+          if (fp.endsWith('_active.json')) throw new Error('tracker 已退役——无人读');
           const r = impl(fp);
           if (r === null) throw new Error('文件不存在');
           return r;
@@ -891,7 +895,7 @@ describe('ChatPanel session persistence', () => {
       });
     }
 
-    it('磁盘 deleted 标记 + localStorage 残留 → 不复活，且清理残留', async () => {
+    it('磁盘 deleted 标记 + localStorage 残留 → 不复活（扫描层墓碑过滤）', async () => {
       localStorage.setItem(
         lsKey,
         JSON.stringify({
@@ -903,19 +907,21 @@ describe('ChatPanel session persistence', () => {
       const restored: any[] = [];
       setupStubAgent((msgs) => restored.push(...msgs));
       mockDisk((fp) =>
-        fp.endsWith('/7.json') ? JSON.stringify({ id: 7, deleted: true, label: '', messages: [], savedAt: '' }) : null,
+        fp.endsWith('/7.json')
+          ? JSON.stringify({ id: 7, deleted: true, label: '', messages: [], savedAt: '', workspace: PROJ })
+          : null,
       );
 
       await panel.autoRestoreLastSession(PROJ);
 
-      // 未恢复 id=7
+      // 未恢复 id=7（墓碑被 listSavedSessions 过滤 → 无卷 → baseline）
       const sessions = Session.getSessions(panel.panelId);
       expect(sessions.some((s) => s.id === 7)).toBe(false);
-      // localStorage 残留被顺手清理
-      expect(localStorage.getItem(lsKey)).toBeNull();
+      // localStorage 残留在扫描推导下是惰性残留（恢复不再扫 ls 候选——P1-14
+      // 复活面在 listSavedSessions 的 deleted 过滤已闭合）
     });
 
-    it('磁盘文件不存在 + localStorage 残留 → 不复活，且清理残留', async () => {
+    it('磁盘文件不存在 + localStorage 残留 → 不复活', async () => {
       localStorage.setItem(
         lsKey,
         JSON.stringify({
@@ -931,7 +937,6 @@ describe('ChatPanel session persistence', () => {
 
       const sessions = Session.getSessions(panel.panelId);
       expect(sessions.some((s) => s.id === 7)).toBe(false);
-      expect(localStorage.getItem(lsKey)).toBeNull();
     });
 
     it('磁盘文件有效 + localStorage 更新 → 采纳 localStorage（正常崩溃恢复不受影响）', async () => {
@@ -952,14 +957,15 @@ describe('ChatPanel session persistence', () => {
               label: '旧',
               savedAt: '2026-08-08T08:00:00.000Z',
               messages: [{ role: 'user', content: '旧磁盘消息' }],
+              workspace: PROJ,
             })
           : null,
       );
 
       await panel.autoRestoreLastSession(PROJ);
 
-      // 采纳了 localStorage 的更新消息（Phase B：水合回填源同为 readVolumeData——
-      // 磁盘权威 + localStorage 较新回退；后台补建链排干后 setSession 收到它）
+      // 采纳了 localStorage 的更新消息（readVolumeData 磁盘权威 + ls 较新覆盖；
+      // 后台补建链排干后 setSession 收到它）
       for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 10));
       expect(restored.some((m) => m.content === 'localStorage 更新消息')).toBe(true);
     });
@@ -1322,8 +1328,16 @@ describe('ChatPanel session persistence', () => {
     const PROJ = 'D:/u1-proj';
     const GLOBAL = '/.lantai/sessions'; // _userSessionsDir 未解析时的兜底路径（测试态）
 
-    /** 实现式磁盘 mock：按路径精确路由（global / project 两目录）。 */
+    /** 实现式磁盘 mock：按路径精确路由（global / project 两目录）。
+     *  list_directory 由 files 推导目录清单（U4 扫描推导恢复依赖）。 */
     function mockDualDirDisk(files: Record<string, string>) {
+      const listDir = (dir: string) =>
+        Object.keys(files)
+          .filter((p) => p.startsWith(`${dir}/`) && /\.json$/.test(p))
+          .map((p) => {
+            const name = p.split('/').pop() as string;
+            return { name, path: p, is_dir: false, children: null };
+          });
       mockInvoke.mockReset();
       mockInvoke.mockImplementation((_cmd: string, payload: any) => {
         const { method, params } = payload;
@@ -1336,7 +1350,9 @@ describe('ChatPanel session persistence', () => {
           files[params.file_path as string] = params.content as string;
           return Promise.resolve('ok');
         }
-        if (method === 'list_directory') return Promise.resolve(JSON.stringify([]));
+        if (method === 'list_directory') {
+          return Promise.resolve(JSON.stringify(listDir(params.path as string)));
+        }
         return Promise.resolve(null);
       });
       return files;

@@ -89,12 +89,22 @@ function volumeJson(): string {
   });
 }
 
-/** 零目录磁盘 mock：用户级目录有 7.json；无总目/无 tracker。 */
+/** 零目录磁盘 mock：用户级目录有 7.json（U4/Q1-B：恢复 = 扫描推导，不再读
+ *  总目/tracker——list_directory 路由卷清单）。 */
 function mockZeroDirDisk(): void {
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((_cmd: string, payload: { method: string; params: Record<string, unknown> }) => {
     const { method, params } = payload;
     if (method === 'get_user_sessions_dir') return Promise.resolve(USER_DIR);
+    if (method === 'list_directory') {
+      const p = params.path as string;
+      if (p === USER_DIR) {
+        return Promise.resolve(
+          JSON.stringify([{ name: '7.json', path: `${USER_DIR}/7.json`, is_dir: false, children: null }]),
+        );
+      }
+      return Promise.resolve(JSON.stringify([]));
+    }
     if (method === 'read_file_content') {
       const fp = params.file_path as string;
       if (fp === `${USER_DIR}/7.json`) return Promise.resolve(volumeJson());

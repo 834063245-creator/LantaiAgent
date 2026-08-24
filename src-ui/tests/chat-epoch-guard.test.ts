@@ -22,19 +22,21 @@ const coreSrc = readFileSync(path.resolve(process.cwd(), 'src/app/chat/chat-core
 describe('chat-session H5 — autoRestoreLastSession epoch 防护', () => {
   it('入口记 epoch（getWorkspaceEpoch）', () => {
     const body = sessionSrc.slice(sessionSrc.indexOf('autoRestoreLastSession'));
-    expect(body.indexOf('getWorkspaceEpoch()')).toBeLessThan(
-      body.indexOf('recordOpenSetChange(ctx.storeId, projectPath'),
-    );
+    // U4/Q1-B：记账退役——epoch 记录点之后是恢复引擎调用（restoreOpenSet）
+    expect(body.indexOf('getWorkspaceEpoch()')).toBeLessThan(body.indexOf('restoreOpenSet('));
   });
 
   it('最终写 store 前有 isCurrentEpoch 校验', () => {
     const restore = sessionSrc.slice(sessionSrc.indexOf('autoRestoreLastSession'));
-    // 写 block（会话列表 setState）之前必须有代际校验
-    const guardIdx = restore.indexOf('if (!isCurrentEpoch(epoch)) return;');
+    // 写 block（会话列表 setState）之前必须有代际校验——恢复引擎 restoreOpenSet
+    // 内持有同规校验（函数体在 restoreOpenSet 段落）
+    const engine = sessionSrc.slice(sessionSrc.indexOf('async function restoreOpenSet'));
+    const guardIdx = engine.indexOf('if (!isCurrentEpoch(epoch)) return;');
     expect(guardIdx).toBeGreaterThan(-1);
-    const writeIdx = restore.indexOf('sessions: [{ id: data.id, label }]', guardIdx);
+    const writeIdx = engine.indexOf('sessions: volumes.map', guardIdx);
     expect(writeIdx).toBeGreaterThan(-1);
     expect(guardIdx).toBeLessThan(writeIdx);
+    void restore;
   });
 });
 

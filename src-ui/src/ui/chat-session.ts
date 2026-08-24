@@ -19,14 +19,7 @@ import {
   type PaperSessionData,
   removePaperSessionData,
 } from '../state/paper-store';
-import {
-  type LedgerIo,
-  loadLedger,
-  openMetaOf,
-  reconcileNextSessionId,
-  recordOpenSetChange,
-  type SessionLedgerDisk,
-} from '../state/session-ledger';
+import { openMetaOf, reconcileNextSessionId, type SessionLedgerDisk } from '../state/session-ledger';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
 import { useAgentPanelStore } from './agent-panel-store';
 import { bumpSession, getChatStore, msgStoreFor } from './chat-store';
@@ -293,8 +286,7 @@ export function switchSession(ctx: SessionContext, idx: number): void {
   ctx.setTotalTokensUsed(st.sessionTokens[sessions[idx].id] || 0);
   ctx.setLastUsageText('');
   ctx.updateFooter();
-  // 账本记账（L0）：活跃指针变更 → 总目投影落盘
-  recordOpenSetChange(ctx.storeId, ctx.getProjectPath(), ledgerIo);
+  // U4/Q1-B：总目记账退役——摊开集重启由磁盘扫描推导，运行时真相 = sess store
   // L0 惰性水合：切到无句柄的卷 → 按需补建（fire-and-forget；失败留
   // sendMessage 的同步唤起兜底，这里不拦换卷交互）
   const switchedSid = sessions[idx].id;
@@ -317,7 +309,7 @@ function hydrateSessionAgentVisible(ctx: SessionContext): void {
     });
 }
 
-/** L0 惰性水合（session-ledger）：重启恢复后惰性卷的 Agent 句柄缺席。
+/** L0 惰性水合（摊开集恢复后续语义）：重启恢复后惰性卷的 Agent 句柄缺席。
  *  本卷被切到/拟文时按需补建：factory 现调 + 会话内容从会话级 msgStore
  *  回填 + exec/board 绑定。已有句柄 = no-op（返回 true）。
  *  返回 false = 无法补建（无工厂/工厂返回空——调用方走「Agent 未就绪」提示）。
@@ -447,9 +439,7 @@ export function closeSession(ctx: SessionContext, idx: number): void {
   if (projectPath) {
     scheduleAutoSave(ctx, projectPath);
   }
-  // 账本记账（L0）：open 集缩减 → 总目投影落盘（在 scheduleAutoSave 之后，
-  // 避免与活跃卷快照写盘交错——总目只记开合，无字段竞争）
-  recordOpenSetChange(ctx.storeId, projectPath, ledgerIo);
+  // U4/Q1-B：总目记账退役（摊开集重启由磁盘扫描推导）
 }
 
 export async function createNewSession(ctx: SessionContext): Promise<void> {
@@ -507,8 +497,7 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
   ctx.addNotice(`新案卷已创建 — 案卷 ${st.sessions[st.activeIdx]?.label ?? ''} 仍在后台运行`, 'info');
   ctx.setLastUsageText('');
   ctx.updateFooter();
-  // 账本记账（L0）：摊开集变更 → 总目投影落盘（尽力而为，失败可见于 console）
-  recordOpenSetChange(ctx.storeId, ctx.getProjectPath(), ledgerIo);
+  // U4/Q1-B：总目记账退役（摊开集重启由磁盘扫描推导）
 }
 
 // ── 会话持久化 — 每个会话一个文件，localStorage 备份 ──
@@ -571,18 +560,6 @@ export function _resetUserSessionsDirForTests(): void {
   _userSessionsDir = null;
 }
 
-function sessionsDir(projectPath: string): string {
-  if (projectPath === '') {
-    // 零目录会话：路由用户级目录（缓存未就绪 = 旧兜底路径，ensure 已在装配点调用）
-    return _userSessionsDir ?? '/.lantai/sessions';
-  }
-  return `${projectPath.replace(/\\/g, '/')}/.lantai/sessions`;
-}
-
-function trackerFile(projectPath: string): string {
-  return `${sessionsDir(projectPath)}/_active.json`;
-}
-
 // ── 会话统一 U1（2026-08-24）：全局存储位路由 ─────────────────────
 // 所有新卷统一落全局位 ~/.lantai/sessions/{id}.json（唯一权威存储位）；
 // 项目内 <项目>/.lantai/sessions/ 降级为只读兼容源（打开即吸收——无撞号时
@@ -637,15 +614,6 @@ async function resolveVolumeWriteTarget(projectPath: string, id: number): Promis
   }
   return `${globalSessionsDir()}/${id}.json`;
 }
-
-/** 账本 IO 适配器：把 typedRpc 通道装进 session-ledger（依赖注入——
- *  账本模块不得反向 import 本文件，避免循环依赖）。 */
-const ledgerIo: LedgerIo = {
-  readFile: async (path) => typedRpc('read_file_content', { file_path: path }),
-  writeFile: async (path, content) => {
-    await typedRpc('write_file_content', { file_path: path, content });
-  },
-};
 
 /** 扫描会话目录，查找最大的数字会话 ID。无会话时返回 0。
  *  U1：全局位 + 项目内旧目录两处扫描取总最大——发号对账需同时避开
@@ -725,10 +693,9 @@ async function writeSessionSnapshot(projectPath: string, data: SessionSnapshotDa
 /** 将活跃会话保存到其独立文件。
  *  同时写入同步 localStorage 备份，确保会话在应用崩溃/强制关闭后仍可恢复。
  *  projectPath=''（零目录会话，单槽统一 2026-08-24）合法——全局位即用户级
- *  路由用户级目录，与 loadSessionFromDisk(projectPath='') 的读取侧同构。
- *  L3（session-ledger）：_active.json 跟踪器写入退役——总目 _ledger.json
- *  已接任（四动词 recordOpenSetChange 维护；发号对账 max(mem, ledger, scan)）。
- *  旧 tracker 仅作无总目冷启动的迁移源读一次，不再更新。 */
+ *  目录，与 loadSessionFromDisk(projectPath='') 的读取侧同构。
+ *  U4/Q1-B：tracker（_active.json）与总目（_ledger.json）均已退役——
+ *  摊开集重启由磁盘扫描推导，落盘只写卷文件本身。 */
 export async function saveActiveSession(ctx: SessionContext, projectPath: string): Promise<void> {
   const { sessions, activeIdx } = getChatStore(ctx.storeId).sess.getState();
   if (activeIdx < 0) return;
@@ -760,11 +727,10 @@ export async function saveActiveSession(ctx: SessionContext, projectPath: string
     /* 落盘失败已由 writeSessionSnapshot 记日志——autosave 链容忍（原行为） */
   }
 
-  // L3：tracker 写入退役（见函数头注释）——开合与发号归总目
+  // U4/Q1-B：无 tracker 写入（见函数头注释）——落盘只写卷文件
 }
 
-/** 按 id 落盘指定会话（C8 改名即存）：不要求是活跃卷，不动 _active.json
- *  （跟踪器只记「冷启动恢复谁」，与单卷落盘无关）。projectPath='' 零目录
+/** 按 id 落盘指定会话（C8 改名即存）：不要求是活跃卷。projectPath='' 零目录
  *  会话路由全局位（U1 起所有卷统一落全局位；workspace 字段随卷写入）。
  *  空卷跳过（与 saveActiveSession 同规）。 */
 export async function saveSessionById(ctx: SessionContext, projectPath: string, sid: number): Promise<void> {
@@ -864,193 +830,38 @@ function ensureBaselineSession(ctx: SessionContext): void {
   setTurnPairs(ctx.storeId, []);
 }
 
-/** 恢复项目打开时最后活跃的会话。
- *  优先读总目（L0：多卷工作集恢复——摊开集整回，活跃卷按总目指针），
- *  无总目时回退旧单卷逻辑（_active.json / localStorage，行为不变）。
- *  Phase B（2026-08-24 工作区归属根治）：会话存在性脱离 Agent 装配——不再以
- *  工厂在场为前置（恢复内容层不需要 Agent），projectPath=''（零目录会话）
- *  同样恢复（全局位即用户级目录，U1 起所有卷统一全局位）。所有卷只恢复内容层，句柄由
- *  ensureSessionAgent 在拟文/换卷时按需补建。 */
+/** 摊开集扫描推导的上限（Q1-B：重启不摊开历史大集——最近 N 卷，最新活跃）。 */
+const RESTORE_OPEN_MAX = 3;
+
+/** 恢复打开时最近活跃的会话集（Q1-B 总目退役：摊开集由磁盘现场推导）。
+ *  扫描全局位 + 项目旧目录（listSavedSessions 双目录 + workspace 消解），
+ *  取本工作区最近 RESTORE_OPEN_MAX 卷（savedAt 序）合成恢复集，最新者为
+ *  活跃卷——不再读/写 _ledger.json 总目与 _active.json tracker（在盘旧文件
+ *  自然荒废，无人读即无害）。崩溃加速语义保留：readVolumeData 的 localStorage
+ *  较新覆盖（磁盘权威背书，P1-14 复活守卫同规）。
+ *  Phase B（工作区归属根治）：所有卷只恢复内容层，句柄由 ensureSessionAgent
+ *  在拟文/换卷时按需补建；projectPath=''（零目录）同样适用。 */
 export async function autoRestoreLastSession(ctx: SessionContext, projectPath: string): Promise<void> {
   // 代际防护（H5）：恢复在途期间可能切换工作区 — 写入前校验，过期整段放弃，
   // 防把旧项目的会话状态写进新项目面板。
   const epoch = getWorkspaceEpoch();
 
-  // ── L0 总目路径：有账本 → 多卷工作集恢复；无账本 → 旧单卷路径
-  //    （恢复成功后 recordOpenSetChange 写出首份总目，迁移自然完成）
-  const { ledger } = await loadLedger(projectPath, ledgerIo);
-  if (ledger && ledger.open.length > 0) {
-    await restoreFromLedger(ctx, projectPath, ledger, epoch);
+  const norm = normWs(projectPath);
+  const recent = (await listSavedSessions(ctx, projectPath)).filter((r) => r.workspace === norm);
+  if (recent.length > 0) {
+    const open = recent.slice(0, RESTORE_OPEN_MAX).map((r) => ({ id: r.id }));
+    const restoreSet: SessionLedgerDisk = { version: 2, open, activeId: recent[0].id, nextSessionId: 1 };
+    await restoreOpenSet(ctx, projectPath, restoreSet, epoch);
     return;
   }
 
-  let curNextId = getChatStore(ctx.storeId).sess.getState().nextSessionId;
-
-  // ── 解析最后会话 ID ──
-  let lastId = 0;
-  // 1) 跟踪文件
-  try {
-    const t = await readSessionJSON(trackerFile(projectPath));
-    lastId = t.lastId || 0;
-    const trackerNextId = t.nextId || lastId + 1 || 1;
-    curNextId = Math.max(curNextId, trackerNextId);
-  } catch {
-    /* 跟踪文件缺失 — 尝试下方 localStorage 扫描 */
-  }
-
-  // 2) 若跟踪文件缺失，扫描 localStorage 中本工作区最新的会话
-  if (!lastId && typeof localStorage !== 'undefined') {
-    const wsPrefix = lsKey(projectPath, 0).replace(/_0$/, '_');
-    let newestTs = '';
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!key?.startsWith(wsPrefix)) continue;
-      try {
-        // biome-ignore lint/style/noNonNullAssertion: 冻结文件——key 由 localStorage 枚举而来，读取必命中
-        const d = JSON.parse(localStorage.getItem(key)!);
-        if (d.id && !d.deleted && d.savedAt > newestTs) {
-          newestTs = d.savedAt;
-          lastId = d.id;
-        }
-      } catch {
-        /* 跳过损坏条目 */
-      }
-    }
-    if (lastId) {
-      // P1-14: 复活守卫 — localStorage 候选必须对应磁盘上存在的未删除会话。
-      // 已删会话的磁盘文件是 {deleted:true, savedAt:''}，仅剩 localStorage 残留时
-      // 旧代码会选中它 → 已删会话「复活」。磁盘是权威，localStorage 只是加速器。
-      const candidateId = lastId;
-      // U1 双读：磁盘卷可能在全局位或项目内旧目录
-      const disk = await readVolumeJSON(projectPath, candidateId);
-      const diskValid = !!disk && !disk.deleted;
-      if (!diskValid) {
-        lastId = 0;
-        // 顺手清理残留备份，避免下次打开再次选中
-        try {
-          localStorage.removeItem(lsKey(projectPath, candidateId));
-        } catch {
-          /* 忽略 */
-        }
-      }
-    }
-    if (lastId) curNextId = lastId + 1;
-  }
-  if (!lastId) {
-    getChatStore(ctx.storeId).sess.setState({ nextSessionId: 1 });
-    ctx.addNotice('未找到历史案卷，已新建案卷', 'info');
-    // Phase B：真的建卷（旧版只提示——它依赖 setAgent 已预建「案卷 1」的前提，
-    // 该前提随会话存在性解耦退役）
-    ensureBaselineSession(ctx);
-    return;
-  }
-
-  let data: StoredSession | null = null;
-  // 1) 磁盘双读（U1：全局位优先 + 项目内旧目录回退）
-  data = await readVolumeJSON(projectPath, lastId);
-
-  // 2) localStorage 回退（若 beforeunload 保存未完成，可能比文件更新）
-  if (typeof localStorage !== 'undefined') {
-    const lsRaw = localStorage.getItem(lsKey(projectPath, lastId));
-    if (lsRaw) {
-      try {
-        const lsData = JSON.parse(lsRaw) as StoredSession;
-        // P1-14: 复活守卫 — 仅当磁盘文件有效（存在且未标记删除）时才允许
-        // localStorage 覆盖。已删会话磁盘文件是 {deleted:true, savedAt:''}，
-        // 旧代码因 !data?.savedAt 采纳 localStorage 残留 → 会话复活。
-        if (data && !data.deleted && (!data.savedAt || (lsData.savedAt && lsData.savedAt > data.savedAt))) {
-          data = lsData;
-        }
-      } catch {
-        /* localStorage 条目损坏 */
-      }
-    }
-  }
-  if (!data?.messages || data.messages.length === 0) {
-    ctx.addNotice('历史案卷数据为空，已新建案卷', 'info');
-    // Phase B：真的建卷（同上——内容层兜底，句柄拟文时补建）
-    ensureBaselineSession(ctx);
-    return;
-  }
-
-  // ponytail: 若跟踪的会话无用户消息（仅有系统提示），
-  // 扫描 localStorage 查找有实际对话的会话（不依赖后端）
-  {
-    const convMsgs = data.messages.filter((m) => m.role !== 'system');
-    if (convMsgs.length === 0 && typeof localStorage !== 'undefined') {
-      const wsPrefix = lsKey(projectPath, 0).replace(/_0$/, '_');
-      let bestId = 0;
-      let bestTs = '';
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (!key?.startsWith(wsPrefix)) continue;
-        try {
-          // biome-ignore lint/style/noNonNullAssertion: 冻结文件——key 由 localStorage 枚举而来，读取必命中
-          const d = JSON.parse(localStorage.getItem(key)!) as StoredSession;
-          if (d.id && !d.deleted && (d.savedAt ?? '') > bestTs) {
-            // 快速检查：是否有非系统消息？
-            const hasConv = (d.messages ?? []).some((m) => m.role !== 'system');
-            if (hasConv) {
-              bestTs = d.savedAt ?? '';
-              bestId = d.id;
-            }
-          }
-        } catch {
-          /* 跳过 */
-        }
-      }
-      if (bestId > 0 && bestId !== lastId) {
-        // P1-14: 复活守卫 — localStorage 中的会话必须对应磁盘上的未删除文件，
-        // 否则已删会话（仅剩 localStorage 残留）会在此复活。
-        // U1 双读：候选卷可能在全局位或项目内旧目录。
-        const disk = await readVolumeJSON(projectPath, bestId);
-        if (disk && !disk.deleted) {
-          const lsRaw = localStorage.getItem(lsKey(projectPath, bestId));
-          if (lsRaw) {
-            data = JSON.parse(lsRaw) as StoredSession;
-            lastId = bestId;
-          }
-        }
-      }
-    }
-  }
-
-  // 代际防护（H5）：恢复在途期间已切换工作区 — 丢弃本次恢复，不写任何 store。
-  if (!isCurrentEpoch(epoch)) return;
-
-  const conv = (data.messages as Message[]).filter((m) => m.role !== 'system');
-  const curSt = getChatStore(ctx.storeId).sess.getState();
-  // ponytail: 消息在会话级 store 中 — 无需 saveCurrentMessages
-  ctx.flushReasoning();
-  ctx.flushText();
-  ctx.clearPendingToolCards();
-
-  const label = data.label || '已恢复的案卷';
-  agentSessionState.clearPanelState(ctx.storeId);
-  getChatStore(ctx.storeId).sess.setState({
-    sessions: [{ id: data.id, label }],
-    activeIdx: 0,
-    sessionTokens: { [data.id]: data.tokensUsed ?? 0 },
-    nextSessionId: Math.max(curNextId, curSt.nextSessionId),
-  });
-  // 恢复会话是全新会话树 —— 清空残留草稿与 live 输入（未发送文字不跨重启保留）
-  getChatStore(ctx.storeId).input.getState().clearSessionDrafts();
-  // Phase B：内容层直接从恢复数据重建（msgStore + turnPairs）——恢复不依赖
-  // Agent 句柄；句柄留给 ensureSessionAgent 按需补建（拟文/换卷时）
-  rebuildMessagesFromMessages(conv, ctx.storeId, data.id);
-  // 纸面用户层（钉住块 + 纸条）随卷恢复——旧存档无 paper 字段 = 空纸面
-  loadPaperSessionData(ctx.storeId, data.id, data.paper ?? null);
-
-  ctx.setLastUsageText('');
-  ctx.updateFooter();
-  // 活跃卷句柄后台补建（保持「活跃卷有句柄」的既有 UX——导出/改名即存等
-  // 消费路径需要；失败可见但不清会话，拟文时 sendMessage 兜底再试）
-  hydrateSessionAgentVisible(ctx);
-  // 自然迁移收尾（L0）：旧单卷路径恢复成功 → 首次写总目（此后 _active.json 退休）
-  recordOpenSetChange(ctx.storeId, projectPath, ledgerIo);
+  getChatStore(ctx.storeId).sess.setState({ nextSessionId: 1 });
+  ctx.addNotice('未找到历史案卷，已新建案卷', 'info');
+  // Phase B：真的建卷（内容层兜底，句柄拟文时补建）
+  ensureBaselineSession(ctx);
 }
 
-// ── L0 总目多卷恢复（session-ledger-plan §3.3）─────────────────────
+// ── 摊开集多卷恢复（扫描推导；session-ledger L0 语义承继面）─────────────
 
 /** 恢复路径的卷数据（U1 双读：全局位优先+旧目录回退；localStorage 较新覆盖——与旧单卷路径同规）。 */
 async function readVolumeData(projectPath: string, id: number): Promise<StoredSession | null> {
@@ -1076,7 +887,7 @@ async function readVolumeData(projectPath: string, id: number): Promise<StoredSe
   return data;
 }
 
-/** 卷名候选：卷文件 label 优先，总目 label 兜底，都无 → 案卷 N。 */
+/** 卷名候选：卷文件 label 优先，恢复集 label 兜底，都无 → 案卷 N。 */
 function restoredLabel(data: StoredSession, fallback: string | undefined, ordinal: number): string {
   if (
     data.label &&
@@ -1091,7 +902,9 @@ function restoredLabel(data: StoredSession, fallback: string | undefined, ordina
 }
 
 /**
- * 总目多卷恢复（L0 核心）：摊开集整回，全部卷惰性。
+ * 摊开集多卷恢复（Q1-B 后唯一恢复引擎）：恢复集整回，全部卷惰性。
+ * 恢复集来源 = autoRestoreLastSession 的磁盘扫描推导（最近 N 卷）——磁盘是
+ * 唯一真相源，无账本层。
  *
  * Phase B（2026-08-24 工作区归属根治）：**所有卷（含活跃卷）只恢复「内容层」**
  * （messages 重建到会话级 msgStore + 纸面摆放 + 元数据入 sess store），不建
@@ -1103,28 +916,28 @@ function restoredLabel(data: StoredSession, fallback: string | undefined, ordina
  * 失败容忍：单个卷文件损坏 → 跳过该卷（console.error 可见），不炸整个恢复；
  * 全部卷都读不出来 → 清空摊开集回退新建（与旧行为同构）。
  */
-async function restoreFromLedger(
+async function restoreOpenSet(
   ctx: SessionContext,
   projectPath: string,
   ledger: SessionLedgerDisk,
   epoch: number,
 ): Promise<void> {
-  // 逐卷读数据（活跃卷优先不必要——顺序即总目 open 序）
+  // 逐卷读数据（活跃卷优先不必要——顺序即恢复集 open 序）
   const metas = openMetaOf(ledger);
   const volumes: Array<{ id: number; label: string; data: StoredSession }> = [];
   for (const meta of metas) {
     const data = await readVolumeData(projectPath, meta.id);
     if (!data) {
-      console.error(`[chat] 总目卷 ${meta.id} 恢复失败（缺失/已删/空卷）——跳过`);
+      console.error(`[chat] 恢复集卷 ${meta.id} 恢复失败（缺失/已删/空卷）——跳过`);
       continue;
     }
     volumes.push({ id: meta.id, label: restoredLabel(data, meta.label, volumes.length + 1), data });
   }
 
   if (volumes.length === 0) {
-    // 总目里全是死卷 → 清账新建（与旧路径「未找到历史案卷」同构）
+    // 恢复集里全是死卷 → 清账新建（与「未找到历史案卷」同构）
     getChatStore(ctx.storeId).sess.setState({ nextSessionId: 1 });
-    ctx.addNotice('总目摊开集已无可用案卷，已新建案卷', 'info');
+    ctx.addNotice('摊开集已无可用案卷，已新建案卷', 'info');
     // Phase B：真的建卷（内容层兜底）
     ensureBaselineSession(ctx);
     return;
@@ -1145,7 +958,7 @@ async function restoreFromLedger(
   agentSessionState.clearPanelState(ctx.storeId);
   const curSt = getChatStore(ctx.storeId).sess.getState();
   const activeIdx = volumes.findIndex((v) => v.id === activeVol.id);
-  // 发号对账（L0/F5）：max(内存, 总目, 磁盘最大档号+1)——撞号裂缝在此闭合
+  // 发号对账（F5）：max(内存, 恢复集, 磁盘最大档号+1)——撞号裂缝在此闭合
   const scanMax = await scanMaxSessionId(projectPath);
   const nextId = reconcileNextSessionId(ctx.storeId, ledger, scanMax);
 
@@ -1183,17 +996,16 @@ async function restoreFromLedger(
     `已恢复案卷工作集：${volumes.length} 卷（活跃：${activeVol.label}${volumes.length > 1 ? '，其余惰性待唤' : ''}）`,
     'info',
   );
-  // 恢复即记账：摊开集落盘（吸收迁移后的总目写入 + 死卷剔除）
-  recordOpenSetChange(ctx.storeId, projectPath, ledgerIo);
+  // U4/Q1-B：无记账尾巴——摊开集运行时真相 = sess store，重启由扫描重推导
 }
 
 /** 扫描会话目录 — 无需 Agent。U1：全局位 + 项目内旧目录两处扫描，同号
  *  同归属卷（吸收后新旧两份）按 savedAt 取新，同号异归属卷（撞号）各自
- *  保留——workspace 消解，不在列表层重号。 */
+ *  保留——workspace 消解，不在列表层重号。恢复推导（U4）与旧目录检索共用。 */
 export async function listSavedSessions(
   _ctx: SessionContext,
   projectPath: string,
-): Promise<Array<{ id: number; label: string; msgCount: number; savedAt: string }>> {
+): Promise<Array<{ id: number; label: string; msgCount: number; savedAt: string; workspace: string }>> {
   // 两目录：全局位（所有归属的卷）+ 项目内旧目录（未吸收旧卷）
   const dirs = [globalSessionsDir()];
   const norm = normWs(projectPath);
@@ -1339,7 +1151,7 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   getChatStore(ctx.storeId).sess.setState({
     sessions: [...st1.sessions, { id: sid, label }],
     activeIdx: st1.sessions.length,
-    // 发号下限（L0/F5）：续开大号卷后，另起一卷不得发出 ≤ 已存在档号的号
+    // 发号下限（F5）：续开大号卷后，另起一卷不得发出 ≤ 已存在档号的号
     nextSessionId: Math.max(st1.nextSessionId, sid + 1),
   });
   // ponytail: 创建会话级消息 store
@@ -1364,8 +1176,7 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   ctx.setLastUsageText('');
   ctx.updateFooter();
   ctx.addNotice(`已加载: ${label}`, 'info');
-  // 账本记账（L0）：续开摊开一卷 → 总目投影落盘
-  recordOpenSetChange(ctx.storeId, projectPath, ledgerIo);
+  // U4/Q1-B：总目记账退役（摊开集重启由磁盘扫描推导）
 }
 
 /** 将磁盘上的会话文件标记为已删除。U1：墓碑写入卷实际所在位（全局位/
