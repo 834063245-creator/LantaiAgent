@@ -49,7 +49,7 @@ HoloGram 是一个 **Rust 分析引擎 + Tauri 2 桌面壳 + TypeScript/React �
    cd src-ui && npx vitest run       # 逻辑/契约测试
    cd src-ui && npx biome check --write <改动文件>
    ```
-   > 全仓 biome 588 errors / 335 warnings 是存量基线：不要顺手大修，只保证改动文件零新增。
+   > 全仓 biome 已于 2026-08-24 清零（0 errors / 0 warnings）：改动文件过 `biome check --write` 后提交，勿引入新违例或 CRLF 行尾。
 6. **Agent 运行时改动**（`src-ui/src/agent/**`，agent-core-convergence 门禁）：
    ```bash
    cd src-ui && npm run verify:convergence   # T0 静态 + 8 baseline 对拍；失败即返工

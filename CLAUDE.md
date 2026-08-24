@@ -34,7 +34,7 @@
 |---|---|
 | 前端 | `cd src-ui && npm run build`（tsc --noEmit + vite build） |
 | 前端逻辑 | `cd src-ui && npx vitest run` |
-| 前端格式 | `cd src-ui && npx biome check --write <改动文件>`（全仓 588 errors/335 warnings 是存量基线，只保证自己零新增） |
+| 前端格式 | `cd src-ui && npx biome ci .`（**0/0 已归零**，2026-08-24 存量清零后保持；改动文件 `npx biome check --write <改动文件>` 后提交） |
 | Agent 运行时/组合层 | `cd src-ui && npm run verify:convergence`（T0 静态 + 8 baseline 对拍 + system-prompt.fixture；record 永不上 CI，baseline 变更走 change request 审批） |
 | 引擎 | `cd engine && cargo test`（快验 `cargo build`） |
 | 壳 | `cd src-tauri && cargo check`；权限/锁/IPC/命令改动跑 `cargo test` |

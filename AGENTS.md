@@ -149,7 +149,7 @@ flowchart LR
 | 前端 | `cd src-ui && npx vitest run` | 162 文件 1610 passed / 1 skipped（2026-08-23 ①c 实测；convergence 双 preset 零漂移；graph-engine-toggle 在并行窗口活跃期有已知假红，单跑即绿；本机注意：父进程带 `NODE_ENV=production` 会使 convergence specs 收集阶段报 `No such built-in module: node:` 并剥 devDependencies——跑测试前清掉该变量） |
 | 前端构建 | `cd src-ui && npm run build` | tsc --noEmit + vite build 全绿 |
 | Agent 运行时/组合层 | `cd src-ui && npm run verify:convergence` | exit 0（T0 静态 + 全部 phase specs 对拍 8 baseline + system-prompt.fixture；standard preset 零漂移）；baseline 变更走 `docs/archive/agent-core-convergence/baseline-change-request.md` 审批 |
-| 前端格式 | `cd src-ui && npx biome ci .` | 588 errors / 335 warnings 是存量基线，不要顺手清；改动文件零新增 |
+| 前端格式 | `cd src-ui && npx biome ci .` | **0 errors / 0 warnings（2026-08-24 存量清零，保持归零）**；行尾政策见根 `.gitattributes`（默认 LF，cmd/bat/ps1 除外）——新 clone 后 `npx biome check --write <改动文件>` 即可，勿引入 CRLF |
 | 打包 | `cd src-tauri && cargo tauri build` | 发布构建；不要用 `cargo build --release` 代替 |
 
 CI 只做编译 + 测试；`.github/workflows/ci.yml` 不可修改。
