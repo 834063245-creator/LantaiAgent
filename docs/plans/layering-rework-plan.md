@@ -198,8 +198,19 @@
 
 - ✅ **C1 引擎侧地基**（commit `2771a430`）：Arc 化 + `Engine::new_shared` + TLS 当前引擎（`with_current`，全部 `engine_*` 自由函数前置检查）+ watcher 实例化（`handle_watcher_changes(&self)`——多实例串写洞修复）+ `engine_bind_global_shared`。engine 测试全绿（675+27+1）。
 - ✅ **C2/C3 壳层应用层 + 命令族路由**（commit `9a0edfa6`）：`app/`（WorkspaceDataContext/AppContexts/attach 事实校验/GC/决议链）+ 四命令（session_attach/detach/focus/context_list）+ workspace_activate 兼容腰（同根同实例）+ 壳层 watcher 实例化 + graph/hologram/engine_dispatch 全族决议路由 + hologram_call TLS 绑定 dispatch + filesystem/editor 时间线路由 + 图分页测试实例化（全局锁退役）。cargo test 全绿（bin 419 + 集成 14）。
-- 🔄 **C4 前端接线**（本 commit）：rpc-contract 四命令 + `AgentCtx._session_id`；`state/session-scope.ts`（活跃会话 store）；`agentInvoke` 恒注入 `_session_id`；`chat-session.ts` 三入口接线（switchSession→focus；loadSessionFromDisk→attach+focus[legacy_root=projectPath]；createNewSession→新生声明绑定）；gen-rpc-contract 再生成（顺修脚本分区 off-by-one：`^\s*` 吞换行致首分支归上区——存量 bug）。
+- ✅ **C4 前端接线**（commit `fb16c09a`）：rpc-contract 四命令 + `AgentCtx._session_id`；`state/session-scope.ts`（活跃会话 store）；`agentInvoke` 恒注入 `_session_id`；`chat-session.ts` 三入口接线（switchSession→focus；loadSessionFromDisk→attach+focus[legacy_root=projectPath]；createNewSession→新生声明绑定）；gen-rpc-contract 再生成（顺修脚本分区 off-by-one：`^\s*` 吞换行致首分支归上区——存量 bug）。门禁：vitest 171 文件 1692 用例 + build + biome 0/0 全绿。**L1 至此四步全部落地。**
 - **mcp.rs 上下文参数项**的落地形态说明：Q3 拍板 MCP 面留 engine（stdio serve 是独立进程，其全局 ENGINE 天然单实例正确）；进程内工具面（hologram_call）的「上下文参数」= 分派入口 `with_current` 绑定——不逐 handler 穿线而以线程局部路由达成同构语义（L2/L4 engine 纯化时再评估是否需要显式参数化）。
+
+## 4.3 L2 施工进度（2026-08-25 凌晨）
+
+- ✅ **C5 存储外置（所有权语义落地）**（本 commit）：
+  - engine `storage` 新增 **StoreHost**（GraphStore + timeline 专用连接）——数据文件（hologram.db/FTS5/快照）的**所有权单元**，由宿主（壳层数据上下文 / engine 二进制）创建并**注入** Engine（共享句柄 `Arc<Mutex<StoreHost>>`）；Engine 是计算与访问的执行方，不再唯一拥有数据。
+  - **Engine 绑定单根终身不变**：`Engine::open(root)`（宿主开 store 注入，返回即 Ready）取代 `new()+init()`；`init()` 降级为兼容校验（同根幂等 / 异根 Err——切换 = 新建实例）；`engine_init` 全局路径切根 = 换整个实例（旧实例 watcher 经 Weak 自灭）。
+  - 壳层 `WorkspaceDataContext` 显式持 `store_host` 共享句柄——应用层可直接持久化/检查库（L3 业务归位的数据面就位）。
+  - **验收 e2e 落钉**：`analyze_persist_query_loop_via_context`（分析→落盘→查询闭环经上下文：engine.read 与 store_host 直查同源一致；GC 后重开从 SQLite 读回同量节点）+ 既有双工作区并发不串写测试。engine 676+27+1 全绿、src-tauri bin 420 + 集成 14 全绿。
+- **L2 欠账（诚实记录，后续阶段消化）**：
+  1. **物理 crate 收窄**：`lib.rs` 的 `pub mod storage` 导出暂不收——StoreHost 的物理家仍在 engine crate（shell 直接 import）。收窄前置 = storage 独立 crate 化（机械搬家，语义已定），归入 L5 收尾批。
+  2. **vector 检索注册表实例化**：`vector::get_or_load_index(root)` 按根键控的静态注册表，数据文件已随工作区物理分家；注册表搬进 context 与 hooks/工具数据源同批，归入 L4。
 
 
 

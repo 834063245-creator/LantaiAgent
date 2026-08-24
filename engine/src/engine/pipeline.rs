@@ -366,13 +366,12 @@ impl Engine {
         // 这防止社区 ID 在重新分析时发生偏移：
         // 保留大部分成员的社区继承旧 ID。
         let old_assignment: std::collections::HashMap<String, usize> = {
-            let store_guard = self.store.lock()
+            let host = self.store_host().lock()
                 .map_err(|e| format!("Store lock poisoned: {}", e))?;
-            store_guard.as_ref()
-                .map(|s| s.index.read().nodes_iter()
-                    .filter_map(|n| n.community_id.map(|cid| (n.id.as_str().to_owned(), cid)))
-                    .collect())
-                .unwrap_or_default()
+            let idx_read = host.store.index.read();
+            idx_read.nodes_iter()
+                .filter_map(|n| n.community_id.map(|cid| (n.id.as_str().to_owned(), cid)))
+                .collect::<std::collections::HashMap<String, usize>>()
         };
 
         let (communities, hierarchical) = detect_communities_and_hierarchy(&result.graph, 42);
@@ -462,11 +461,12 @@ impl Engine {
 
         {
             let save_start = std::time::Instant::now();
-            let store_guard = self
-                .store
+            let mut host = self
+                .store_host()
                 .lock()
                 .map_err(|e| format!("Store lock poisoned: {}", e))?;
-            if let Some(store) = store_guard.as_ref() {
+            {
+                let store = &mut host.store;
                 // 先落盘、后换入内存 —— 保证内存与磁盘永远一致。
                 // 落盘失败直接终止分析并向上传播 Err：内存保留旧的（仍有效的）
                 // 索引，磁盘也仍是旧的，绝不出现「界面是新图、冷启动读旧图」的
@@ -474,8 +474,6 @@ impl Engine {
                 // 状态静默落下，重分析"成功"却在下次冷启动读回旧缓存）。
                 store.save_index(&idx)?;
                 store.swap_index(idx);
-            } else {
-                return Err("图存储未初始化，无法持久化分析结果".into());
             }
             eprintln!("[engine]   db-save: persist+swap {:.1}s",
                 save_start.elapsed().as_secs_f64());

@@ -76,13 +76,18 @@ pub(crate) fn display_path(p: &Path) -> String {
 // 数据上下文
 // ═══════════════════════════════════════════════════════════════
 
-/// 按工作区实例化的数据上下文。L1 持引擎实例（图库/索引/时间线/watcher
-/// 封装其内）；L2 存储外置后此结构演进为显式持库/索引/向量句柄。
+/// 按工作区实例化的数据上下文。L2 起显式持**数据宿主共享句柄**——
+/// 图库（hologram.db/FTS5/快照）与 timeline 连接的归属单元在
+/// [`hologram_engine::storage::StoreHost`]，宿主（本上下文）创建并注入
+/// Engine；应用层可直接经 `store_host` 持久化/检查库，Engine 是计算与
+/// 访问的执行方。
 pub(crate) struct WorkspaceDataContext {
     /// canonical 工作区根（注册表键）。
     pub root: PathBuf,
     /// 该工作区专属引擎实例。
     pub engine: Arc<Engine>,
+    /// 数据宿主共享句柄（L2 存储外置）——与 Engine 内部持同一 Arc。
+    pub(crate) store_host: Arc<Mutex<hologram_engine::storage::StoreHost>>,
     /// 绑定到本上下文的会话 id 集（GC 判据）。
     pub(crate) sessions: Mutex<HashSet<u64>>,
     pub created_at_ms: u64,
@@ -208,6 +213,7 @@ impl AppContexts {
             .map_err(|e| format!("工作区引擎初始化失败 {}: {}", display_path(&canon), e))?;
         let ctx = Arc::new(WorkspaceDataContext {
             root: canon.clone(),
+            store_host: engine.store_host().clone(),
             engine: engine.clone(),
             sessions: Mutex::new(HashSet::new()),
             created_at_ms: Self::now_ms(),
@@ -619,5 +625,37 @@ mod tests {
         app.attach_session(31, None, None, &sess_root).unwrap();
         app.detach_session(31, &[]);
         assert_eq!(app.context_count(), 0, "空闲上下文应回收");
+    }
+
+    /// L2 e2e：分析→落盘→查询闭环经数据上下文。
+    /// ① 经 context.engine 分析；② engine.read（计算面）与 store_host 直查
+    /// （应用层数据面）结果一致；③ GC 后重开上下文——新实例从 SQLite
+    /// 读回同量节点（落盘真实发生，非内存假象）。
+    #[test]
+    fn analyze_persist_query_loop_via_context() {
+        let ws = temp_dir("lantai_ctx_l2_loop");
+        std::fs::create_dir_all(ws.join("src")).unwrap();
+        std::fs::write(ws.join("src/main.py"), "def hello(): pass\n").unwrap();
+        let app = AppContexts::new();
+        let ctx = app.ensure_context(&display_path(&ws)).unwrap();
+
+        let result = ctx.engine.analyze(&ctx.root).expect("analyze via context engine");
+        assert!(result.node_count > 0, "fixture must yield nodes");
+
+        let via_engine = ctx.engine.read(|i| i.node_count()).unwrap();
+        let via_host = {
+            let host = ctx.store_host.lock().unwrap();
+            host.store.read(|i| i.node_count())
+        };
+        assert_eq!(via_engine, via_host, "计算面与应用层数据面必须同源一致");
+        assert!(via_engine > 0);
+
+        // 落盘验证：GC（无会话绑定）→ 重开 → 新实例从盘上读回
+        app.gc_if_unused(&ctx.root, &[]);
+        let ctx2 = app.ensure_context(&display_path(&ws)).unwrap();
+        let reloaded = ctx2.engine.read(|i| i.node_count()).unwrap();
+        assert_eq!(reloaded, via_engine, "重开上下文必须从 SQLite 读回同量节点");
+
+        let _ = std::fs::remove_dir_all(&ws);
     }
 }

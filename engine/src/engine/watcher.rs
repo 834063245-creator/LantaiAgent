@@ -224,56 +224,49 @@ impl Engine {
 
     /// 自上次全量分析以来的增量更新次数（持久化，重启后保留）。
     pub fn incremental_since_full(&self) -> u64 {
-        let store_guard = match self.store.lock() {
+        let host = match self.store_host().lock() {
             Ok(g) => g,
             Err(e) => {
                 warn!("[engine] store lock poisoned reading incr_since_full: {}", e);
                 return 0;
             }
         };
-        match store_guard.as_ref() {
-            Some(store) => match store.db.get_meta("incr_since_full") {
-                Ok(Some(v)) => v.parse::<u64>().unwrap_or(0),
-                Ok(None) => 0,
-                Err(e) => {
-                    warn!("[engine] meta read incr_since_full failed: {}", e);
-                    0
-                }
-            },
-            None => 0,
+        match host.store.db.get_meta("incr_since_full") {
+            Ok(Some(v)) => v.parse::<u64>().unwrap_or(0),
+            Ok(None) => 0,
+            Err(e) => {
+                warn!("[engine] meta read incr_since_full failed: {}", e);
+                0
+            }
         }
     }
 
     /// 增量更新成功后调用：漂移计数 +1 并持久化。
     pub fn record_incremental_success(&self) {
         let next = self.incremental_since_full().saturating_add(1);
-        let store_guard = match self.store.lock() {
+        let host = match self.store_host().lock() {
             Ok(g) => g,
             Err(e) => {
                 warn!("[engine] store lock poisoned recording incremental: {}", e);
                 return;
             }
         };
-        if let Some(store) = store_guard.as_ref() {
-            if let Err(e) = store.db.set_meta("incr_since_full", &next.to_string()) {
-                warn!("[engine] persist incr_since_full failed: {}", e);
-            }
+        if let Err(e) = host.store.db.set_meta("incr_since_full", &next.to_string()) {
+            warn!("[engine] persist incr_since_full failed: {}", e);
         }
     }
 
     /// 全量分析成功后调用：漂移计数归零（社区/聚类结果重新变精确）。
     pub fn record_full_analysis(&self) {
-        let store_guard = match self.store.lock() {
+        let host = match self.store_host().lock() {
             Ok(g) => g,
             Err(e) => {
                 warn!("[engine] store lock poisoned resetting incremental drift: {}", e);
                 return;
             }
         };
-        if let Some(store) = store_guard.as_ref() {
-            if let Err(e) = store.db.set_meta("incr_since_full", "0") {
-                warn!("[engine] reset incr_since_full failed: {}", e);
-            }
+        if let Err(e) = host.store.db.set_meta("incr_since_full", "0") {
+            warn!("[engine] reset incr_since_full failed: {}", e);
         }
     }
 
@@ -286,20 +279,17 @@ impl Engine {
         target: &str,
         kind: crate::graph::EdgeKind,
     ) -> Result<bool, String> {
-        let mut store_guard = self
-            .store
+        let host = self
+            .store_host()
             .lock()
             .map_err(|e| format!("store lock poisoned: {}", e))?;
-        let store = store_guard
-            .as_mut()
-            .ok_or_else(|| "Store not initialized".to_string())?;
         {
-            let mut idx = store.index.write();
+            let mut idx = host.store.index.write();
             if !idx.mark_lsp_resolved(source, target, kind) {
                 return Ok(false);
             }
         }
-        store.db.mark_edge_lsp_resolved(source, target, kind.as_str())?;
+        host.store.db.mark_edge_lsp_resolved(source, target, kind.as_str())?;
         Ok(true)
     }
 
@@ -314,29 +304,26 @@ impl Engine {
         // 先取漂移基再拿 store 锁 —— 锁内不可调 incremental_since_full()
         //（std Mutex 不可重入，曾在此死锁）。
         let drift_base = self.incremental_since_full();
-        let mut store_guard = self
-            .store
+        let host = self
+            .store_host()
             .lock()
             .map_err(|e| format!("store lock poisoned: {}", e))?;
-        let store = store_guard
-            .as_mut()
-            .ok_or_else(|| "Store not initialized".to_string())?;
         let stats = {
-            let mut idx = store.index.write();
+            let mut idx = host.store.index.write();
             let s = crate::scip_bridge::import_index(&mut idx, &index, Some(&root));
             idx.flush_pending();
             // SCIP 导入是一次性离线操作 —— 全量落库换取一致性。
-            idx.to_sqlite(&store.db)?;
+            idx.to_sqlite(&host.store.db)?;
             s
         };
         // 新鲜度治理：记录导入时的增量漂移基。此后的任何增量更新
         // 都发生在静态索引生成之后 → SCIP 边可能过期（scip_staleness()）。
-        store.db.set_meta("scip_imported", "1")?;
-        store
+        host.store.db.set_meta("scip_imported", "1")?;
+        host.store
             .db
             .set_meta("scip_import_drift_base", &drift_base.to_string())?;
         // SCIP 合并后的图已全量落库 → 同步冷启动新鲜度基准（见 store.rs save()）。
-        store.db.set_meta(
+        host.store.db.set_meta(
             "graph_generated_at",
             &chrono::Utc::now().timestamp_millis().to_string(),
         )?;
@@ -368,16 +355,17 @@ impl Engine {
     /// 两个 meta 值在同一把 store 锁内读取 —— 不可锁内调
     /// incremental_since_full()（std Mutex 不可重入，曾在此死锁）。
     pub fn scip_staleness(&self) -> Option<(u64, u64)> {
-        let store_guard = self.store.lock().ok()?;
-        let store = store_guard.as_ref()?;
-        let base = store
+        let host = self.store_host().lock().ok()?;
+        let base = host
+            .store
             .db
             .get_meta("scip_import_drift_base")
             .ok()
             .flatten()?
             .parse::<u64>()
             .ok()?;
-        let drift = store
+        let drift = host
+            .store
             .db
             .get_meta("incr_since_full")
             .ok()
@@ -458,13 +446,11 @@ impl Engine {
 
         // 通过 IncrementalUpdater 尝试增量更新（直接访问 store）
         let inc_result = (|| -> Result<(), String> {
-            let store_guard = self
-                .store
+            let host = self
+                .store_host()
                 .lock()
                 .map_err(|e| format!("store lock: {}", e))?;
-            let store = store_guard
-                .as_ref()
-                .ok_or_else(|| "Store not initialized".to_string())?;
+            let store = &host.store;
 
             let paths: Vec<(PathBuf, &str)> = changed_files
                 .iter()

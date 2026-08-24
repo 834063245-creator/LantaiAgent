@@ -492,8 +492,7 @@ pub fn run_stress(size: StressSize) -> StressReport {
     eprintln!("done in {:.1}s ({} symbols)", gen_start.elapsed().as_secs_f64(), symbol_count);
 
     // 初始化引擎并执行分析
-    let engine = Engine::new();
-    engine.init(&root).expect("engine init failed");
+    let engine = Engine::open(&root).expect("engine open failed");
 
     let result = engine.analyze(&root).expect("analysis failed");
     let peak_rss = get_rss_mb();
@@ -541,8 +540,7 @@ pub fn run_stress_real(project_path: &Path, iterations: usize) -> StressReport {
     let mut peak_rss = 0.0_f64;
 
     for i in 0..iterations {
-        let engine = Engine::new();
-        engine.init(&root).expect("engine init failed");
+        let engine = Engine::open(&root).expect("engine open failed");
 
         let iter_start = Instant::now();
         let result = engine.analyze(&root).expect("analysis failed");
@@ -687,8 +685,7 @@ pub fn run_stress_full(project_path: &Path, iterations: usize, ext_filter: &[&st
 
     for i in 0..iterations {
         let iter_start = Instant::now();
-        let engine = Engine::new();
-        engine.init(&root).expect("engine init failed");
+        let engine = Engine::open(&root).expect("engine open failed");
 
         // 阶段 1：结构分析管线
         let result = engine.analyze(&root).expect("analysis failed");

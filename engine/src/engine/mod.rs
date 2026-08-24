@@ -17,11 +17,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 
 use parking_lot::RwLock;
-use rusqlite::Connection;
 use tracing::info;
 
 use crate::graph::Graph;
-use crate::storage::{GraphStore, MemoryIndex, SqliteDb};
+use crate::storage::MemoryIndex;
 use crate::storage::sqlite::{timeline_query, timeline_record, timeline_record_with_props};
 
 // ═══════════════════════════════════════════════════════════════
@@ -127,21 +126,21 @@ fn graph_from_index(idx: &MemoryIndex) -> Graph {
     g
 }
 
-/// 核心引擎实例。拥有所有 graph 状态。
+/// 核心引擎实例。分析与查询的统一执行面。
 ///
 /// 所有 graph 操作 — 查询、分析、watcher — 都通过此结构体。
-/// 外部代码不应直接访问 GraphStore、MemoryIndex 或遗留的
-/// Graph 缓存。
+/// **L2 存储外置**：Engine 不再「拥有」数据文件——图库与时间线连接住在
+/// [`crate::storage::StoreHost`] 里，由宿主（壳层数据上下文 / engine 二进制）
+/// 打开并注入（共享句柄）。Engine 是计算与访问的执行方，数据归属在宿主。
+/// Engine 绑定单根终身不变；「切换工作区」= 宿主新建实例。
 pub struct Engine {
-    /// Graph store（MemoryIndex + SQLite）。使用 std Mutex 包裹，因为
-    /// GraphStore 包含 rusqlite::Connection，其为 !Sync。
-    store: Mutex<Option<GraphStore>>,
+    /// 数据宿主共享句柄（store + timeline 连接）。宿主与 Engine 持同一
+    /// Arc——宿主可直接持久化/检查库，Engine 的分析与查询经它落库。
+    /// std Mutex 包裹（GraphStore 含 rusqlite::Connection，!Sync）。
+    store_host: Arc<Mutex<crate::storage::StoreHost>>,
 
-    /// 专用于 timeline 的 SQLite 连接 — 永不阻塞 graph store 锁。
-    timeline_conn: Mutex<Option<Connection>>,
-
-    /// 当前项目根路径。在 init() 中设置一次。
-    project_root: Mutex<PathBuf>,
+    /// 本实例绑定的项目根（构造期定死，切换 = 新实例）。
+    project_root: PathBuf,
 
     /// 串行化全量分析运行。同一时间仅允许一个 analyze()。
     analyze_lock: Mutex<()>,
@@ -167,40 +166,53 @@ pub struct Engine {
 
     /// 自引用（Arc 的 Weak）——watcher 线程经它升级拿回引擎实例，
     /// 使增量更新落在**本实例**的 store 上而非全局单例（L1 多实例化）。
-    /// 仅 `new_shared` / `engine_init` 创建的共享实例会设置；
-    /// 测试用 `Engine::new()` 裸实例不设置（也不自动起 watcher）。
+    /// 仅共享实例（`new_shared` / `engine_init`）会设置；
+    /// 裸实例（`Engine::open`）不设置（也不自动起 watcher）。
     self_ref: Mutex<Option<Weak<Engine>>>,
 }
 
 impl Engine {
-    /// 创建一个新的未初始化引擎（裸实例，不自动起 watcher）。
-    /// 生产路径请用 `new_shared` / `engine_init` —— watcher 需要
-    /// Weak 自引用才能把增量更新落回本实例。
-    pub fn new() -> Self {
-        Self {
-            store: Mutex::new(None),
-            timeline_conn: Mutex::new(None),
-            project_root: Mutex::new(PathBuf::new()),
+    /// 为工作区根打开引擎（L2：宿主侧开 StoreHost 并注入）。
+    /// 返回即 Ready——SQLite/快照加载发生在 `StoreHost::open` 内。
+    /// 裸实例（无自引用、不自动起 watcher）；生产共享形态用 `new_shared`。
+    pub fn open(project_root: &Path) -> Result<Self, String> {
+        let host = crate::storage::StoreHost::open(project_root)?;
+        let (node_count, edge_count) = host.store.read(|idx| (idx.node_count(), idx.edge_count()));
+        info!(
+            "[engine] opened: {} nodes, {} edges",
+            node_count, edge_count
+        );
+        Ok(Self {
+            store_host: Arc::new(Mutex::new(host)),
+            project_root: project_root.to_path_buf(),
             analyze_lock: Mutex::new(()),
             cancel_token: RwLock::new(None),
-            state: RwLock::new(EngineState::Uninitialized),
+            state: RwLock::new(EngineState::Ready {
+                node_count,
+                edge_count,
+            }),
             watcher_running: Arc::new(AtomicBool::new(false)),
             watcher_handle: Mutex::new(None),
             pending_changes: Mutex::new(Vec::new()),
             self_ref: Mutex::new(None),
-        }
+        })
     }
 
-    /// 创建共享实例（Arc 包裹 + Weak 自引用）并初始化到 root。
+    /// 创建共享实例（Arc 包裹 + Weak 自引用 + 自动起 watcher）。
     /// 壳层数据上下文（WorkspaceDataContext）与全局 `ENGINE` 持有的
     /// 都是这种实例——每个工作区一个，互不串写。
     pub fn new_shared(project_root: &Path) -> Result<Arc<Self>, String> {
-        let engine = Arc::new(Self::new());
+        let engine = Arc::new(Self::open(project_root)?);
         if let Ok(mut r) = engine.self_ref.lock() {
             *r = Some(Arc::downgrade(&engine));
         }
-        engine.init(project_root)?;
+        engine.maybe_autostart_watcher(project_root);
         Ok(engine)
+    }
+
+    /// 数据宿主共享句柄（L2 注入面——宿主侧持久化/检查库用）。
+    pub fn store_host(&self) -> &Arc<Mutex<crate::storage::StoreHost>> {
+        &self.store_host
     }
 
     /// 本实例的 Arc（共享实例才有；裸实例返回 None）。
@@ -218,9 +230,9 @@ impl Engine {
         self.state.read().clone()
     }
 
-    /// 项目根路径（如已初始化）。
+    /// 本实例绑定的项目根（构造期定死）。
     pub fn project_root(&self) -> PathBuf {
-        self.project_root.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.project_root.clone()
     }
 
     /// 引擎是否已准备好响应查询。
@@ -237,62 +249,18 @@ impl Engine {
     ///
     /// L1 起 `&self`（所有状态本就内部可变，Arc 包裹后无 &mut 可言）。
     /// watcher 只在共享实例（有 self_ref）上自动启动。
+    /// L2 起为兼容校验：Engine 绑定单根终身不变（store 由宿主注入，
+    /// 构造期即 Ready）。同根 = 幂等 no-op（补起 watcher）；异根 = Err
+    /// （「切换工作区」= 宿主新建实例——`engine_init` 全局路径自行换整个实例）。
     pub fn init(&self, project_root: &Path) -> Result<(), String> {
-        let new_root = project_root.to_path_buf();
-        let old_root = self.project_root.lock().unwrap_or_else(|e| e.into_inner()).clone();
-
-        if old_root == new_root {
-            // 相同项目 — 检查是否已初始化
-            let store_guard = self.store.lock().unwrap_or_else(|e| e.into_inner());
-            if store_guard.is_some() && self.is_ready() {
-                // 确保 watcher 正在运行（MCP 重连后可能已丢失）
-                self.maybe_autostart_watcher(&new_root);
-                return Ok(());
-            }
-        } else if !old_root.as_os_str().is_empty() {
-            info!(
-                "[engine] workspace switch: {} → {}",
-                old_root.display(),
-                new_root.display()
-            );
-            // 停止旧 watcher — 它在监听前一个工作区。
-            // 新 watcher 将在本方法末尾启动。
-            self.stop_watcher();
+        if &self.project_root != project_root {
+            return Err(format!(
+                "Engine 绑定单根（{}）；切换工作区请新建实例（new_shared）",
+                self.project_root.display()
+            ));
         }
-
-        // 设置加载状态
-        *self.state.write() = EngineState::Loading {
-            nodes_loaded: 0,
-            edges_loaded: 0,
-            elapsed_ms: 0,
-        };
-
-        let start = std::time::Instant::now();
-        let store = GraphStore::open(&new_root)?;
-        let timeline_conn = SqliteDb::open_aux_connection(store.db.path())?;
-
-        // 读取计数以用于 Ready 状态
-        let (node_count, edge_count) = store.read(|idx| (idx.node_count(), idx.edge_count()));
-
-        *self.project_root.lock().unwrap_or_else(|e| e.into_inner()) = new_root.clone();
-        *self.store.lock().unwrap_or_else(|e| e.into_inner()) = Some(store);
-        *self.timeline_conn.lock().unwrap_or_else(|e| e.into_inner()) = Some(timeline_conn);
-        *self.state.write() = EngineState::Ready {
-            node_count,
-            edge_count,
-        };
-
-        info!(
-            "[engine] initialized: {} nodes, {} edges in {:.1}ms",
-            node_count,
-            edge_count,
-            start.elapsed().as_millis()
-        );
-
-        // 自动启动文件 watcher 以进行增量更新（仅共享实例——
-        // watcher 线程需要 Weak 自引用把增量更新落回本实例）
-        self.maybe_autostart_watcher(&new_root);
-
+        // 相同项目 — 确保 watcher 正在运行（MCP 重连后可能已丢失）
+        self.maybe_autostart_watcher(project_root);
         Ok(())
     }
 
@@ -311,46 +279,34 @@ impl Engine {
     // ── 读取访问（并发，读取者之间无锁）──
 
     /// 从 MemoryIndex 读取。多个读取者可同时持有。
-    ///
-    /// 如果 store 未初始化则返回错误。
     pub fn read<R>(&self, f: impl FnOnce(&MemoryIndex) -> R) -> Result<R, String> {
-        let store_guard = self
-            .store
+        let host = self
+            .store_host
             .lock()
             .map_err(|e| format!("Engine store lock poisoned: {}", e))?;
-        let store = store_guard
-            .as_ref()
-            .ok_or_else(|| "Engine not initialized — call init() first".to_string())?;
-        Ok(store.read(f))
+        Ok(host.store.read(f))
     }
 
     /// 通过从 MemoryIndex 重建遗留 Graph 来读取数据。
     /// 供需要 Graph 类型的调用方使用（遗留 API 兼容）。
     pub fn read_graph<R>(&self, f: impl FnOnce(&Graph) -> R) -> Result<R, String> {
         let graph = {
-            let store_guard = self
-                .store
+            let host = self
+                .store_host
                 .lock()
                 .map_err(|e| format!("Engine store lock poisoned: {}", e))?;
-            let store = store_guard
-                .as_ref()
-                .ok_or_else(|| "Engine not initialized — call init() first".to_string())?;
-
-            store.read(graph_from_index)
+            host.store.read(graph_from_index)
         };
         Ok(f(&graph))
     }
 
     /// 使用写锁修改 store。串行化所有写者。
     pub fn write<R>(&self, f: impl FnOnce(&mut MemoryIndex) -> R) -> Result<R, String> {
-        let store_guard = self
-            .store
+        let host = self
+            .store_host
             .lock()
             .map_err(|e| format!("Engine store lock poisoned: {}", e))?;
-        let store = store_guard
-            .as_ref()
-            .ok_or_else(|| "Engine not initialized — call init() first".to_string())?;
-        Ok(store.write(f))
+        Ok(host.store.write(f))
     }
 
     // ── 节点/边计数 ─────────────────────────────────────
@@ -468,14 +424,11 @@ impl Engine {
         node_id: Option<&str>,
         summary: &str,
     ) -> Result<(), String> {
-        let conn_guard = self
-            .timeline_conn
+        let host = self
+            .store_host
             .lock()
             .map_err(|e| format!("Timeline lock poisoned: {}", e))?;
-        let conn = conn_guard
-            .as_ref()
-            .ok_or_else(|| "Engine not initialized".to_string())?;
-        timeline_record(conn, event_type, node_id, summary)
+        timeline_record(&host.timeline_conn, event_type, node_id, summary)
             .map_err(|e| format!("Timeline record failed: {}", e))
     }
 
@@ -487,14 +440,11 @@ impl Engine {
         summary: &str,
         props: &serde_json::Value,
     ) -> Result<(), String> {
-        let conn_guard = self
-            .timeline_conn
+        let host = self
+            .store_host
             .lock()
             .map_err(|e| format!("Timeline lock poisoned: {}", e))?;
-        let conn = conn_guard
-            .as_ref()
-            .ok_or_else(|| "Engine not initialized".to_string())?;
-        timeline_record_with_props(conn, event_type, node_id, summary, props)
+        timeline_record_with_props(&host.timeline_conn, event_type, node_id, summary, props)
             .map_err(|e| format!("Timeline record failed: {}", e))
     }
 
@@ -503,40 +453,31 @@ impl Engine {
         &self,
         limit: usize,
     ) -> Result<Vec<serde_json::Value>, String> {
-        let conn_guard = self
-            .timeline_conn
+        let host = self
+            .store_host
             .lock()
             .map_err(|e| format!("Timeline lock poisoned: {}", e))?;
-        let conn = conn_guard
-            .as_ref()
-            .ok_or_else(|| "Engine not initialized".to_string())?;
-        timeline_query(conn, limit).map_err(|e| format!("Timeline query failed: {}", e))
+        timeline_query(&host.timeline_conn, limit).map_err(|e| format!("Timeline query failed: {}", e))
     }
 
     /// 将当前 MemoryIndex 持久化到 SQLite。
     pub fn save(&self) -> Result<(), String> {
-        let store_guard = self
-            .store
+        let host = self
+            .store_host
             .lock()
             .map_err(|e| format!("Store lock poisoned: {}", e))?;
-        let store = store_guard
-            .as_ref()
-            .ok_or_else(|| "Engine not initialized".to_string())?;
-        store.save()
+        host.store.save()
     }
 
     /// 读取最近一次图持久化的时刻（unix 毫秒串，meta.graph_generated_at）。
     /// SQLite 缓存新鲜度判定的单一事实源 —— 冷启动 fast path 读的就是 SQLite。
     /// 旧库没有该 meta 时返回 None，调用方回退旧判定（hologram_graph.json mtime）。
     pub fn graph_generated_at(&self) -> Result<Option<String>, String> {
-        let store_guard = self
-            .store
+        let host = self
+            .store_host
             .lock()
             .map_err(|e| format!("Store lock poisoned: {}", e))?;
-        let store = store_guard
-            .as_ref()
-            .ok_or_else(|| "Engine not initialized".to_string())?;
-        store.db.get_meta("graph_generated_at")
+        host.store.db.get_meta("graph_generated_at")
     }
 
     /// 通过 SQLite FTS5 全文搜索。返回匹配的节点。
@@ -545,15 +486,12 @@ impl Engine {
         query: &str,
         limit: usize,
     ) -> Result<Vec<crate::graph::Node>, String> {
-        let store_guard = self
-            .store
+        let host = self
+            .store_host
             .lock()
             .map_err(|e| format!("Store lock poisoned: {}", e))?;
-        let store = store_guard
-            .as_ref()
-            .ok_or_else(|| "Engine not initialized".to_string())?;
-        let db = &store.db;
-        Ok(store.read(|idx| idx.fts_search(db, query, limit).unwrap_or_default()))
+        let db = &host.store.db;
+        Ok(host.store.read(|idx| idx.fts_search(db, query, limit).unwrap_or_default()))
     }
 
     /// 增量更新（实例版）——先增量，失败回退全量。
@@ -621,21 +559,18 @@ pub fn with_current<R>(engine: Arc<Engine>, f: impl FnOnce() -> R) -> R {
 }
 
 /// 为给定项目根路径初始化全局引擎。
-/// 可安全多次调用 — 相同项目复用现有引擎，
-/// 工作区切换时替换。
+/// 可安全多次调用 — 相同项目幂等复用；工作区切换 = 换整个实例
+/// （L2：Engine 绑定单根，store 随实例注入；旧实例的 watcher 线程
+/// 经 Weak 自灭，仍被上下文持有的实例不受影响）。
 pub fn engine_init(project_root: &Path) -> Result<(), String> {
     let mut engine_guard = ENGINE.write();
     match engine_guard.as_ref() {
-        Some(engine) => {
-            // 重新初始化内部处理相同项目复用和工作区切换
+        Some(engine) if engine.project_root() == project_root => {
+            // 相同项目 — 幂等（补起 watcher）
             engine.init(project_root)
         }
-        None => {
-            let engine = Arc::new(Engine::new());
-            if let Ok(mut r) = engine.self_ref.lock() {
-                *r = Some(Arc::downgrade(&engine));
-            }
-            engine.init(project_root)?;
+        _ => {
+            let engine = Engine::new_shared(project_root)?;
             *engine_guard = Some(engine);
             Ok(())
         }
@@ -855,27 +790,23 @@ mod tests {
     use super::*;
     use serde_json::json;
     #[test]
-    fn test_engine_new_uninitialized() {
-        let engine = Engine::new();
-        assert_eq!(engine.state(), EngineState::Uninitialized);
-        assert!(!engine.is_ready());
-        assert_eq!(engine.project_root(), PathBuf::new());
-        // 尚未初始化
-        assert!(engine.read(|idx| idx.node_count()).is_err());
-        assert!(engine.read_graph(|g| g.node_count()).is_err());
+    fn test_engine_open_missing_root_is_error() {
+        // L2：Engine 构造即绑定根（store 注入）——坏根 = Err，
+        // 取代旧「new 后未 init」语义（不再存在未初始化实例）。
+        let engine = Engine::open(std::path::Path::new("Z:/definitely/not/here"));
+        assert!(engine.is_err(), "open on missing dir must fail");
     }
 
     #[test]
-    fn test_engine_init_empty_project() {
+    fn test_engine_open_empty_project() {
         let tmp = std::env::temp_dir().join("hologram_test_engine_init_empty");
         // 使用一个没有 .lantai/ 的子目录
         let test_dir = tmp.join("empty_project");
         let _ = std::fs::create_dir_all(&test_dir);
 
-        let engine = Engine::new();
-        // 在没有 graph 数据的目录上初始化应成功（空 store）
-        let result = engine.init(&test_dir);
-        assert!(result.is_ok(), "init should succeed on empty dir: {:?}", result.err());
+        // 在没有 graph 数据的目录上打开应成功（空 store），即 Ready 空图
+        let engine = Engine::open(&test_dir)
+            .unwrap_or_else(|e| panic!("open should succeed on empty dir: {e}"));
         assert!(engine.is_ready());
 
         match engine.state() {
@@ -899,8 +830,7 @@ mod tests {
         let test_dir = tmp.join("same_project");
         let _ = std::fs::create_dir_all(&test_dir);
 
-        let engine = Engine::new();
-        engine.init(&test_dir).unwrap();
+        let engine = Engine::open(&test_dir).unwrap();
         assert!(engine.is_ready());
 
         // 对相同项目的第二次初始化应成功（幂等）
@@ -911,7 +841,7 @@ mod tests {
     }
 
     #[test]
-    fn test_engine_workspace_switch_restarts_watcher() {
+    fn test_engine_workspace_switch_is_new_instance() {
         let tmp = std::env::temp_dir().join("hologram_test_engine_ws_switch");
         let _ = std::fs::remove_dir_all(&tmp);
         let dir_a = tmp.join("project_a");
@@ -919,32 +849,32 @@ mod tests {
         std::fs::create_dir_all(&dir_a).unwrap();
         std::fs::create_dir_all(&dir_b).unwrap();
 
-        // L1：watcher 只在共享实例上自动启动 —— 用 new_shared（生产路径同款）
-        let engine = Engine::new_shared(&dir_a).unwrap();
-        assert!(engine.is_ready());
-        assert_eq!(engine.project_root(), dir_a);
-        assert!(engine.is_watching(), "watcher should be running after first init");
+        // L1/L2：watcher 只在共享实例上启动；Engine 绑定单根，
+        // 「切换工作区」= 新建实例（旧实例 watcher 经 Weak 自灭）。
+        let engine_a = Engine::new_shared(&dir_a).unwrap();
+        assert!(engine_a.is_ready());
+        assert_eq!(engine_a.project_root(), dir_a);
+        assert!(engine_a.is_watching(), "watcher should be running after open");
 
-        // 切换到项目 B — watcher 必须为新根路径重启
-        engine.init(&dir_b).unwrap();
-        assert!(engine.is_ready());
-        assert_eq!(engine.project_root(), dir_b);
-        assert!(engine.is_watching(), "watcher should be running after workspace switch");
-        // 通过检查 project_root 验证它确实在监听新根路径
-        // （watcher 线程持有 project_root 的 clone，隐式测试）
+        // 同实例异根 init 必须拒绝（单根纪律）
+        assert!(
+            engine_a.init(&dir_b).is_err(),
+            "engine must refuse re-rooting; switch = new instance"
+        );
+
+        let engine_b = Engine::new_shared(&dir_b).unwrap();
+        assert_eq!(engine_b.project_root(), dir_b);
+        assert!(engine_b.is_watching(), "watcher should be running for new instance");
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
-    /// 回归：engine_init 的工作区切换路径在持有 ENGINE.write() 时调用
-    /// stop_watcher()；若 watcher 线程正阻塞在 ENGINE.read()
-    /// （handle_watcher_changes），旧的裸 join() 会构成
-    /// 「写锁等 join → join 等线程退出 → 线程等读锁」永久死锁，
-    /// 进而拖死全局引擎锁的所有读者（edit_file 写盘后的
-    /// timeline 记录即经 ENGINE.read()，曾表现为 edit 工具偶发挂死）。
-    /// 修复后 stop_watcher 2s 超时分离，切换必须正常完成。
+    /// 回归（L2 语义更新）：全局 engine_init 的工作区切换 = 换整个实例
+    /// （Engine 单根；旧实例 watcher 经 Weak 自灭）。历史死锁形态
+    /// （持写锁裸 join watcher）已随实例化消失；本测试钉住「切换期间
+    /// 有源文件变更在途时，engine_init 到新根必须正常完成」。
     #[test]
-    fn test_workspace_switch_no_deadlock_when_watcher_blocked_on_read() {
+    fn test_workspace_switch_no_deadlock_when_watcher_active() {
         let _global_guard = global_engine_test_guard();
         let tmp = std::env::temp_dir().join("hologram_test_ws_switch_deadlock");
         let _ = std::fs::remove_dir_all(&tmp);
@@ -954,42 +884,38 @@ mod tests {
         std::fs::create_dir_all(&dir_b).unwrap();
 
         engine_init(&dir_a).unwrap();
+        assert_eq!(
+            with_engine(|e| e.project_root()).unwrap_or_default(),
+            dir_a
+        );
 
-        // 模拟 engine_init 的持写锁窗口：手动拿写锁，制造一次源文件变更，
-        // 等防抖窗口（2s）+ 轮询周期（0.5s）过去 — watcher 线程进入
-        // handle_watcher_changes 处理本实例 store（L1 起不再读全局锁）。
-        let mut guard = ENGINE.write();
+        // 制造一次源文件变更（watcher 线程在防抖窗口内），随即切换
         std::fs::write(dir_a.join("deadlock_probe.rs"), "fn probe() {}\n").unwrap();
-        std::thread::sleep(std::time::Duration::from_millis(3500));
 
-        // 通过写锁 guard 直接调 init（与 engine_init 同路径）——旧实现
-        // 在此裸 join 永久挂死；修复后超时分离，切换正常完成。
-        let engine = guard.as_ref().expect("engine must be initialized").clone();
+        // engine_init 切根 = 换实例（不 join 旧 watcher——2s 超时分离纪律保留）
         let start = std::time::Instant::now();
-        engine
-            .init(&dir_b)
-            .expect("workspace switch must succeed even with watcher blocked on read");
+        engine_init(&dir_b)
+            .expect("workspace switch must succeed even with watcher active");
         assert!(
             start.elapsed() < std::time::Duration::from_secs(10),
             "workspace switch took {:?} — possible watcher join deadlock",
             start.elapsed()
         );
-        assert_eq!(engine.project_root(), dir_b);
-        drop(guard);
+        assert_eq!(
+            with_engine(|e| e.project_root()).unwrap_or_default(),
+            dir_b
+        );
 
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn test_engine_state_transitions() {
-        let engine = Engine::new();
-        assert_eq!(engine.state(), EngineState::Uninitialized);
-
         let tmp = std::env::temp_dir().join("hologram_test_engine_states");
         let test_dir = tmp.join("states_project");
         let _ = std::fs::create_dir_all(&test_dir);
 
-        engine.init(&test_dir).unwrap();
+        let engine = Engine::open(&test_dir).unwrap();
         assert!(matches!(engine.state(), EngineState::Ready { .. }));
 
         let _ = std::fs::remove_dir_all(&tmp);
@@ -1001,8 +927,7 @@ mod tests {
         let test_dir = tmp.join("rg_project");
         let _ = std::fs::create_dir_all(&test_dir);
 
-        let engine = Engine::new();
-        engine.init(&test_dir).unwrap();
+        let engine = Engine::open(&test_dir).unwrap();
 
         let count = engine.read_graph(|g| g.node_count()).unwrap();
         assert_eq!(count, 0); // 空项目
@@ -1018,8 +943,7 @@ mod tests {
         let test_dir = tmp.join("write_project");
         let _ = std::fs::create_dir_all(&test_dir);
 
-        let engine = Engine::new();
-        engine.init(&test_dir).unwrap();
+        let engine = Engine::open(&test_dir).unwrap();
 
         // 通过 write 插入节点
         engine
@@ -1044,15 +968,10 @@ mod tests {
     // 由 MCP 测试隐式覆盖（使用 engine_read/write/init）。
 
     #[test]
-    fn test_engine_read_without_init_returns_error() {
-        // 不使用全局 ENGINE — 直接在一个从未初始化的 Engine 上测试
-        // （read/write 应失败）。
-        let engine = Engine::new();
-        let result = engine.read(|idx: &MemoryIndex| idx.node_count());
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .contains("Engine not initialized"));
+    fn test_engine_read_missing_root_fails_at_construction() {
+        // L2：不再存在「未初始化实例」——坏根在构造期即失败
+        //（read/write 永远有 store，前置于旧 not-initialized 语义）。
+        assert!(Engine::open(std::path::Path::new("Z:/definitely/not/here")).is_err());
     }
 
     /// L1 守卫：with_current（线程局部当前引擎）让 engine_* 全局函数
@@ -1122,8 +1041,7 @@ mod tests {
         std::fs::write(tmp.join("util.py"), "def add(a, b):\n    return a + b\n").unwrap();
 
         // 分析
-        let engine = Engine::new();
-        engine.init(&tmp).unwrap();
+        let engine = Engine::open(&tmp).unwrap();
         let result = engine.analyze(&tmp).unwrap();
         assert!(result.node_count > 0, "should have nodes after analysis");
 
@@ -1134,17 +1052,16 @@ mod tests {
         // 修改文件（模拟 watcher 变更）
         std::fs::write(tmp.join("main.py"), "def hello():\n    return 'updated'\ndef new_fn(): pass\n").unwrap();
 
-        // 尝试增量更新
-        let store_guard = engine.store.lock().unwrap();
-        let store = store_guard.as_ref().unwrap();
+        // 尝试增量更新（L2：经 store_host 共享句柄取 store）
+        let host = engine.store_host().lock().unwrap();
         let changed: Vec<(PathBuf, &str)> = vec![(tmp.join("main.py"), "modified")];
         let inc_result = IncrementalUpdater::update(
             &changed,
-            &store.index.read(),
+            &host.store.index.read(),
             &tmp,
-            &store.db,
+            &host.store.db,
         );
-        drop(store_guard);
+        drop(host);
 
         // 增量更新应成功（不回退到全量分析）
         match inc_result {
@@ -1172,8 +1089,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
 
-        let engine = Engine::new();
-        engine.init(&tmp).unwrap();
+        let engine = Engine::open(&tmp).unwrap();
         assert_eq!(engine.incremental_since_full(), 0, "fresh project starts at zero drift");
 
         engine.record_incremental_success();
@@ -1206,19 +1122,17 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
 
-        let engine = Engine::new();
-        engine.init(&tmp).unwrap();
+        let engine = Engine::open(&tmp).unwrap();
 
         {
-            let store_guard = engine.store.lock().unwrap();
-            let store = store_guard.as_ref().unwrap();
-            let mut idx = store.index.write();
+            let host = engine.store_host().lock().unwrap();
+            let mut idx = host.store.index.write();
             idx.insert_node(Node::new("a", "caller", NodeKind::Symbol));
             idx.insert_node(Node::new("b", "callee", NodeKind::Symbol));
             idx.upsert_edge("a", "b", EdgeKind::Calls, 1, None);
             idx.flush_pending();
             // 落库 —— 生产路径中索引在分析完成后即已持久化
-            idx.to_sqlite(&store.db).unwrap();
+            idx.to_sqlite(&host.store.db).unwrap();
         }
 
         // 不存在的边 → Ok(false)，不凭空造边
@@ -1231,18 +1145,16 @@ mod tests {
             .unwrap());
 
         {
-            let store_guard = engine.store.lock().unwrap();
-            let store = store_guard.as_ref().unwrap();
-            let idx = store.index.read();
+            let host = engine.store_host().lock().unwrap();
+            let idx = host.store.index.read();
             assert!(idx.is_lsp_resolved("a", "b", EdgeKind::Calls));
             assert_eq!(idx.lsp_resolved_count(), 1);
         }
 
         // 持久化可读回（restart 语义）
         {
-            let store_guard = engine.store.lock().unwrap();
-            let store = store_guard.as_ref().unwrap();
-            let loaded = store.db.load_all_edges().unwrap();
+            let host = engine.store_host().lock().unwrap();
+            let loaded = host.store.db.load_all_edges().unwrap();
             let calls = loaded
                 .iter()
                 .find(|(_, _, k, _, _, _, _, _)| *k == EdgeKind::Calls)
@@ -1281,8 +1193,7 @@ mod tests {
         index.documents = vec![d1, d2];
         std::fs::write(tmp.join("index.scip"), index.write_to_bytes().unwrap()).unwrap();
 
-        let engine = Engine::new();
-        engine.init(&tmp).unwrap();
+        let engine = Engine::open(&tmp).unwrap();
         engine.try_auto_import_scip();
 
         engine
@@ -1395,8 +1306,7 @@ mod tests {
         std::fs::create_dir_all(&dir_a).unwrap();
         std::fs::create_dir_all(&dir_b).unwrap();
 
-        let engine = Engine::new();
-        engine.init(&dir_a).unwrap();
+        let engine = Engine::open(&dir_a).unwrap();
         assert!(engine.is_ready());
 
         // 当引擎绑定到 dir_a 时 analyze(dir_b) — 必须失败
@@ -1439,8 +1349,7 @@ mod tests {
         std::fs::write(tmp.join("main.py"), "import util\ndef main():\n    return util.add(1, 2)\n").unwrap();
         std::fs::write(tmp.join("util.py"), "def add(a, b):\n    return a + b\n").unwrap();
 
-        let engine = Engine::new();
-        engine.init(&tmp).unwrap();
+        let engine = Engine::open(&tmp).unwrap();
         assert!(engine.is_ready());
 
         let result = engine.analyze(&tmp);
@@ -1479,8 +1388,7 @@ mod tests {
 
         std::fs::write(tmp.join("hello.py"), "def f(): pass\n").unwrap();
 
-        let engine = Engine::new();
-        engine.init(&tmp).unwrap();
+        let engine = Engine::open(&tmp).unwrap();
 
         // 运行 analyze — 可能成功或失败，但不能让状态卡住
         let _ = engine.analyze(&tmp);
@@ -1526,10 +1434,8 @@ mod tests {
         std::fs::write(dir1.join("a.py"), "def x(): pass\n").unwrap();
         std::fs::write(dir2.join("b.py"), "def y(): pass\n").unwrap();
 
-        let e1 = Engine::new();
-        let e2 = Engine::new();
-        e1.init(&dir1).unwrap();
-        e2.init(&dir2).unwrap();
+        let e1 = Engine::open(&dir1).unwrap();
+        let e2 = Engine::open(&dir2).unwrap();
 
         let r1 = e1.analyze(&dir1);
         let r2 = e2.analyze(&dir2);
@@ -1551,8 +1457,7 @@ mod tests {
         let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("fixtures/test_project");
 
-        let engine = Engine::new();
-        engine.init(&fixture).unwrap();
+        let engine = Engine::open(&fixture).unwrap();
         let result = engine.analyze(&fixture);
         assert!(result.is_ok(), "analyze failed: {:?}", result.err());
 
@@ -1634,8 +1539,7 @@ mod tests {
     fn test_blindspot_synthesis_pipeline() {
         let fixture = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("fixtures/pipeline_test");
-        let engine = Engine::new();
-        engine.init(&fixture).unwrap();
+        let engine = Engine::open(&fixture).unwrap();
         let result = engine.analyze(&fixture).expect("pipeline test failed");
         let mut has_di = false; let mut has_dyn = false;
         let mut has_eval = false; let mut has_xlang = false;
@@ -1680,8 +1584,7 @@ mod tests {
             .unwrap();
         }
 
-        let engine = std::sync::Arc::new(Engine::new());
-        engine.init(&tmp).unwrap();
+        let engine = std::sync::Arc::new(Engine::open(&tmp).unwrap());
 
         let e = engine.clone();
         let t = tmp.clone();
@@ -1725,8 +1628,7 @@ mod tests {
         std::fs::create_dir_all(&tmp).unwrap();
         std::fs::write(tmp.join("a.py"), "def f(): pass\n").unwrap();
 
-        let engine = Engine::new();
-        engine.init(&tmp).unwrap();
+        let engine = Engine::open(&tmp).unwrap();
 
         // 1. 成功分析：令牌必须为 None
         let result = engine.analyze(&tmp);
@@ -1766,8 +1668,7 @@ mod tests {
             .unwrap();
         }
 
-        let engine = std::sync::Arc::new(Engine::new());
-        engine.init(&tmp).unwrap();
+        let engine = std::sync::Arc::new(Engine::open(&tmp).unwrap());
 
         // 启动第一次分析
         let e1 = engine.clone();
