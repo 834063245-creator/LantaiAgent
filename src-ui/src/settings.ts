@@ -84,12 +84,23 @@ export function graphEngineEnabled(s: AppSettings): boolean {
   return s.graphEngine?.enabled !== false;
 }
 
+/** 读取更新自动检查开关（缺省容错：旧存储无此节 = 开）。 */
+export function autoUpdateCheckEnabled(s: AppSettings): boolean {
+  return s.updates?.autoCheck !== false;
+}
+
 /** 组合层设置（S4-1a）——preset 选择的持久化真源（缺省 standard；
  *  运行时镜像在 state/preset-store.selected，boot 期经
  *  composition/preset-assembly.syncPresetSelectionFromSettings 同步）。 */
 export interface CompositionSettings {
   /** 选中的 preset id（内置表 id 或用户 preset 目录 id；未知 id 装配侧回退 factory）。 */
   preset: string;
+}
+
+/** 更新器设置（可选——旧存储无此节 = 启动自动检查开）。 */
+export interface UpdateSettings {
+  /** 启动时延迟自动检查应用更新（壳行 shell-update-check 消费；关闭后手动检查不受影响）。 */
+  autoCheck: boolean;
 }
 
 export interface AppSettings {
@@ -102,6 +113,8 @@ export interface AppSettings {
   composition?: CompositionSettings;
   /** 图谱引擎设置（可选——旧存储无此节 = 引擎开，graphEngineEnabled 容错读取）。 */
   graphEngine?: GraphEngineSettings;
+  /** 更新器设置（可选——旧存储无此节 = 自动检查开，autoUpdateCheckEnabled 容错读取）。 */
+  updates?: UpdateSettings;
 }
 
 const STORAGE_KEY = 'hologram_settings';
@@ -164,6 +177,9 @@ const DEFAULTS: AppSettings = {
   },
   graphEngine: {
     enabled: true,
+  },
+  updates: {
+    autoCheck: true,
   },
 };
 

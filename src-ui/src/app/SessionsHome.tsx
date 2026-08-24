@@ -16,6 +16,7 @@ import { typedJsonRpc } from '../rpc-contract';
 import { graphEngineEnabled, loadSettings } from '../settings';
 import { workspaceFlow } from '../shell/rows/workspace';
 import { useDockStore } from '../state/dock-store';
+import { useUpdateStore } from '../state/update-store';
 import { ensureUserSessionsDir } from '../ui/chat-session';
 import { getChatStore } from '../ui/chat-store';
 import { useCoreStore } from './chat/core-instance';
@@ -212,6 +213,9 @@ export function SessionsHome() {
 
   const activeKey = merged.length > 0 ? merged[0].key : null;
   const onOpenSettings = useCallback(() => openPanel('settings'), [openPanel]);
+  // 更新角标（update-store）：启动自动检查发现新版本且用户未看过 → 朱砂点
+  const updateAvailable = useUpdateStore((s) => s.status === 'available' && !s.badgeDismissed);
+  const updateVersion = useUpdateStore((s) => s.version);
 
   return (
     <div className="sh-root">
@@ -227,7 +231,12 @@ export function SessionsHome() {
           <span className="sh-tagline">档案 · 工作台</span>
         </div>
         <div className="sh-head-right">
-          <button type="button" className="sh-btn-text" onClick={onOpenSettings}>
+          <button
+            type="button"
+            className={`sh-btn-text${updateAvailable ? ' has-update' : ''}`}
+            onClick={onOpenSettings}
+            title={updateAvailable && updateVersion ? `新版本 ${updateVersion} 可用` : undefined}
+          >
             设置
           </button>
           <WinControls />

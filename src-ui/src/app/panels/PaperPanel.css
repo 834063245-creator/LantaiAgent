@@ -123,6 +123,18 @@
   background: var(--paper-deep);
 }
 
+/* 有新版本待看（update-store 角标）：字尾朱砂点——朱批语义，同 .sh-btn-text.has-update */
+.pp-settings.has-update::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  vertical-align: middle;
+  background: var(--seal);
+  border-radius: 50%;
+}
+
 /* ── 画布区（世界容器的宿主）──
  * user-select:none：空白画布不参与原生扫选——平移手势与文字选择分家
  * （幻影扫选曾借道活选区把平移喂进抽纸条通道）；可选性由 .pp-block 自持。 */

@@ -67,6 +67,7 @@ describe('composition/roster（S2-0 组合引擎）', () => {
       'hologram/shell-actions',
       'hologram/shell-workspace',
       'hologram/shell-cold-start',
+      'hologram/shell-update-check',
     ]);
   });
 

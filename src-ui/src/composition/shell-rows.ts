@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 壳行表（S2-3 填充；S2-4 迁入；V5 拆除 2026-08-22 缩至 9 行）—— 壳装配的组合数据源。
+// 壳行表（S2-3 填充；S2-4 迁入；V5 拆除 2026-08-22 缩至 9 行；2026-08-24
+// 增 shell-update-check 行至 10 行）—— 壳装配的组合数据源。
 //
 // 壳行 = 启动接线单元（S2 设计件 §2.6）：main.ts init() 既有执行序切成
 // 行块，每行一行（id 惯例 hologram/shell-<block>）。与 cordis 插件通道
@@ -31,6 +32,7 @@ import { bootKeyguard } from '../shell/rows/keyguard';
 import { bootPersistence } from '../shell/rows/persistence';
 import { bootPlatform } from '../shell/rows/platform';
 import { bootSandboxProbe } from '../shell/rows/sandbox-probe';
+import { bootUpdateCheck } from '../shell/rows/update-check';
 import { bootWorkspace, workspaceFlow } from '../shell/rows/workspace';
 import type { ShellRefs } from '../shell/runtime';
 
@@ -64,6 +66,7 @@ export function builtinShellRows(): ShellRow[] {
     },
     { id: 'hologram/shell-workspace', boot: (refs) => bootWorkspace(refs) },
     { id: 'hologram/shell-cold-start', boot: (refs) => bootColdStart(refs) },
+    { id: 'hologram/shell-update-check', boot: () => bootUpdateCheck() },
   ];
 }
 

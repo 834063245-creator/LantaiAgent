@@ -13,6 +13,7 @@ import { setLang } from '../../i18n';
 import { typedJsonRpc } from '../../rpc-contract';
 import type { AppSettings, ProviderId } from '../../settings';
 import {
+  autoUpdateCheckEnabled,
   graphEngineEnabled,
   loadSettings,
   loadSettingsWithSecrets,
@@ -24,6 +25,7 @@ import { notifyAgentConfigChanged } from '../../state/agent-config-store';
 import { useCompositionStore } from '../../state/composition-store';
 import { useDockStore } from '../../state/dock-store';
 import { usePresetStore } from '../../state/preset-store';
+import { useUpdateStore } from '../../state/update-store';
 import { iconHtml } from '../../ui/icons';
 import { ConfirmDialog } from './settings/ConfirmDialog';
 import { PluginsPage } from './settings/PluginsPage';
@@ -93,53 +95,21 @@ const SettingsPanelApp: React.FC<{
       .catch(() => setAppVersion('9.0.1'));
   }, []);
 
-  const [updateStatus, setUpdateStatus] = useState<
-    'idle' | 'checking' | 'available' | 'downloading' | 'done' | 'error'
-  >('idle');
-  const [updateMsg, setUpdateMsg] = useState('');
-  // 更新版本号内联进 updateMsg 展示；state 值暂无消费面，空位解构只留 setter
-  const [, setUpdateVersion] = useState('');
+  // 更新检测状态消费 update-store（app 级单例，state/update-store.ts）——
+  // 壳行 shell-update-check 的启动自动检查与面板手动检查共享同一状态面：
+  // 自动检查发现的新版本，打开面板即见（不再自持 useState 各写各的）。
+  // mount 即 markBadgeSeen：用户已看见，入口角标熄灭。
+  const updateStatus = useUpdateStore((s) => s.status);
+  const updateMsg = useUpdateStore((s) => s.message);
+  useEffect(() => {
+    useUpdateStore.getState().markBadgeSeen();
+  }, []);
   const checkUpdate = useCallback(async () => {
-    setUpdateStatus('checking');
-    setUpdateMsg('');
-    try {
-      const { check: checkUpdate } = await import('@tauri-apps/plugin-updater');
-      const update = await checkUpdate();
-      if (update) {
-        setUpdateVersion(update.version);
-        setUpdateStatus('available');
-        setUpdateMsg(`新版本 ${update.version} 可用`);
-      } else {
-        setUpdateStatus('done');
-        setUpdateMsg('已是最新版本');
-      }
-    } catch (e) {
-      setUpdateStatus('error');
-      setUpdateMsg(e instanceof Error ? e.message || String(e) : String(e));
-    }
+    await useUpdateStore.getState().checkForUpdates({ manual: true });
   }, []);
   const doUpdate = useCallback(async () => {
-    setUpdateStatus('downloading');
-    try {
-      const { check: checkUpdate } = await import('@tauri-apps/plugin-updater');
-      const update = await checkUpdate();
-      if (!update) {
-        setUpdateStatus('error');
-        setUpdateMsg('更新信息已过期');
-        return;
-      }
-      setUpdateMsg('下载中…');
-      await update.downloadAndInstall((ev) => {
-        if (ev.event === 'Finished') setUpdateMsg('下载完成，重启生效');
-      });
-      setUpdateStatus('done');
-      setUpdateMsg('下载完成，下次启动生效');
-    } catch (e) {
-      setUpdateStatus('error');
-      setUpdateMsg(e instanceof Error ? e.message || String(e) : String(e));
-    }
+    await useUpdateStore.getState().downloadAndInstall();
   }, []);
-
   const [saved, setSaved] = useState(false);
   const [dirty, setDirty] = useState(false);
   // Provider 页独立 dirty：与其他 tab 的全局保存互不牵连
@@ -648,9 +618,20 @@ const SettingsPanelApp: React.FC<{
                 )}
                 {updateStatus === 'downloading' && <span className="sp-hint">{updateMsg}</span>}
                 {updateStatus === 'done' && (
-                  <span className="sp-hint" style={{ color: 'var(--pass)' }}>
-                    {updateMsg}
-                  </span>
+                  <div>
+                    <span className="sp-hint" style={{ color: 'var(--pass)' }}>
+                      {updateMsg}
+                    </span>
+                    <br />
+                    <button
+                      type="button"
+                      className="sp-btn sp-btn-cancel"
+                      style={{ marginTop: 8 }}
+                      onClick={checkUpdate}
+                    >
+                      再检查一次
+                    </button>
+                  </div>
                 )}
                 {updateStatus === 'error' && (
                   <div>
@@ -668,6 +649,19 @@ const SettingsPanelApp: React.FC<{
                     </button>
                   </div>
                 )}
+                <div className="sp-field" style={{ marginTop: 12 }}>
+                  <label className="sp-label sp-checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={autoUpdateCheckEnabled(settings)}
+                      onChange={(e) => {
+                        commit({ ...settings, updates: { autoCheck: e.target.checked } });
+                      }}
+                    />
+                    启动时自动检查更新
+                  </label>
+                  <div className="sp-hint-sub">发现新版本时在设置入口显示朱砂角标；关闭后仍可手动检查。</div>
+                </div>
               </div>
             </div>
           </div>

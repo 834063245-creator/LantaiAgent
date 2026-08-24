@@ -170,6 +170,16 @@ body {
   outline-offset: 2px;
 }
 
+/* 有新版本待看（update-store 角标）：字尾朱砂点——朱批语义（来文圈点），
+ * 随 badgeDismissed / 状态变化增删，不影响按钮布局 */
+.sh-btn-text.has-update::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  background: var(--seal);
+  border-radius: 50%;
+}
+
 .sh-btn-primary {
   display: inline-flex;
   align-items: center;

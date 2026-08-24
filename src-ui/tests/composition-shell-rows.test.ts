@@ -5,7 +5,7 @@
 // 竣工时只有行实现各自的功能测试，表序/失败隔离/编排语义从未有专门钉面）。
 //
 // 覆盖（S2 设计件 §2.6 验收）：
-//   1. 表序 = 引导序（V5 拆除后 9 行硬序——字节契约）；
+//   1. 表序 = 引导序（V5 拆除后 9 行 + shell-update-check = 10 行硬序——字节契约）；
 //   2. 行 id 唯一（roster shell 域寻址面）；
 //   3. workspace 流 deps：actions 行的涟漪语义（deps 缺席 → 跳过注册，warn 可见）；
 //   4. bootShell 失败隔离：单行 boot 抛错 → 后续行照常执行；
@@ -26,6 +26,7 @@ const EXPECTED_ROW_IDS = [
   'hologram/shell-actions',
   'hologram/shell-workspace',
   'hologram/shell-cold-start',
+  'hologram/shell-update-check',
 ];
 
 /** 无副作用的 flow deps 桩（boot 调用签名兼容即可）。 */
@@ -37,7 +38,7 @@ function stubFlowDeps(): WorkspaceFlowDeps {
 }
 
 describe('S2-3/S2-4 壳行表（composition/shell-rows.ts）', () => {
-  it('表序 = 引导序（V5 拆除后 9 行硬序——字节契约，错位即返工）', () => {
+  it('表序 = 引导序（V5 拆除后 9 行 + shell-update-check = 10 行硬序——字节契约，错位即返工）', () => {
     expect(builtinShellRows().map((r) => r.id)).toEqual(EXPECTED_ROW_IDS);
   });
 
@@ -82,7 +83,7 @@ describe('S2-3/S2-4 bootShell 编排器（shell/boot.ts）', () => {
       applyDefaultPreset: vi.fn(),
       reapplyComposition: vi.fn(),
     }));
-    // 9 行全换探针（第 3 行抛错——验证第 4+ 行仍执行）
+    // 10 行全换探针（第 3 行抛错——验证第 4+ 行仍执行）
     const rows: ShellRow[] = EXPECTED_ROW_IDS.map((id, i) => ({
       id,
       boot: () => {
@@ -99,7 +100,7 @@ describe('S2-3/S2-4 bootShell 编排器（shell/boot.ts）', () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { bootShell } = await import('../src/shell/boot');
     await bootShell(stubFlowDeps());
-    // 9 行全部被调用（含抛错的第 3 行）
+    // 10 行全部被调用（含抛错的第 3 行）
     expect(calls).toEqual(EXPECTED_ROW_IDS);
     expect(errSpy).toHaveBeenCalledWith('[shell] 壳行 boot 失败:', 'hologram/shell-bridges', expect.any(Error));
     errSpy.mockRestore();
@@ -189,7 +190,7 @@ describe('S2-3/S2-4 bootShell 编排器（shell/boot.ts）', () => {
     });
     expect(executed).not.toContain('hologram/shell-keyguard');
     expect(executed).not.toContain('hologram/shell-sandbox-probe');
-    expect(executed).toHaveLength(7);
+    expect(executed).toHaveLength(EXPECTED_ROW_IDS.length - 2);
   });
 
   it('actions 行涟漪：workspace 流 deps 缺席 → 跳过注册 + warn（不炸）', () => {

@@ -167,6 +167,7 @@ factory（出厂表）
 | `hologram/shell-keyguard` | 浏览器默认快捷键行为回来（F5 刷新可能打断应用态） | 文档声明 |
 | `hologram/shell-cold-start` | 永远欢迎屏（开项目动作仍可用） | 文档声明 |
 | `hologram/shell-workspace` | 无法打开/切换项目（模块可安全 import，flow 调用一致地失败） | 文档声明 |
+| `hologram/shell-update-check` | 无启动自动检查更新（设置面板手动检查不受影响；新版本角标不再出现） | 文档声明 |
 
 ## 通道与安全
 

@@ -42,6 +42,7 @@ import {
 } from '../../paper/virtualize';
 import { useDockStore } from '../../state/dock-store';
 import { getPaperStore } from '../../state/paper-store';
+import { useUpdateStore } from '../../state/update-store';
 import { getChatStore, msgStoreForActive } from '../../ui/chat-store';
 import { useCoreStore } from '../chat/core-instance';
 import { useShellStore } from '../shell-store';
@@ -197,6 +198,9 @@ function pointInSelectionRects(range: Range, x: number, y: number): boolean {
 export function PaperPanel() {
   const closePanel = useDockStore((s) => s.closePanel);
   const core = useCoreStore((s) => s.core);
+  // 更新角标（update-store）：启动自动检查发现新版本且用户未看过 → 朱砂点
+  const updateAvailable = useUpdateStore((s) => s.status === 'available' && !s.badgeDismissed);
+  const updateVersion = useUpdateStore((s) => s.version);
 
   /* 真实消息（穿全层第一段：消息 store → 转译）。
    * tick 是重转译触发器：消息原位变更时 messages 引用不变（touchMessage 语义），
@@ -982,8 +986,8 @@ export function PaperPanel() {
         <ModeIndicator />
         <button
           type="button"
-          className="pp-settings"
-          title="设置 (Ctrl+,)"
+          className={`pp-settings${updateAvailable ? ' has-update' : ''}`}
+          title={updateAvailable && updateVersion ? `设置 (Ctrl+,) · 新版本 ${updateVersion} 可用` : '设置 (Ctrl+,)'}
           onClick={() => useDockStore.getState().togglePanel('settings')}
         >
           设置
