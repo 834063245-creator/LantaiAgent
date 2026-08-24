@@ -121,7 +121,25 @@ DSH 形态：会话记录（持久化，恒在）＋ 配置在使用点解析（
 - [x] 架构病根诊断（存在性依赖倒挂 + 双注册表 + 配置烘焙）
 - [x] DSH 对标（事实源清单见 §3）
 - [x] 根治设计定型（§4，用户已拍板「直接根治、不要过渡方案」）
-- [ ] Phase A / B / C / D / E —— **全部未开工**
-- [ ] 用户验收：真机配 Key → 不重启 → 会话在 → 能发消息
+- [x] Phase A — 单槽统一（commit `afe93298`；含交接未预见的修正：`saveActiveSession`
+      去 `!projectPath` 早退——零目录会话此前**从不落盘**的数据丢失一并修复；
+      `appendLastMessage` 保留空路径守卫，Rust `session_append` 空路径写相对路径）
+- [x] Phase B — 会话存在性脱离装配（commit `5570a7b2`；所有卷（含活跃卷）只恢复
+      内容层 + `ensureBaselineSession` 兜底建卷 + `setAgent(null)` 收窄 +
+      `ensureSessionAgent` 回填源改 `readVolumeData`）
+- [x] Phase C — 配置使用点解析（commit `8adf5c69`；新增 `provider/live.ts`
+      `createLiveProvider` + `provider/credentials.ts` 凭据缓存写穿失效；
+      P14 恒 swap 退役 → 身份变更才换引用；Agent/AgentHandle 新增 `setPricing` 链）
+- [x] Phase D — 装配失败必可见（commit `ae3eaad5`；pushStatus + setDiag 双通道；
+      fire-and-forget 补建收敛 `hydrateSessionAgentVisible`）
+- [x] Phase E — 测试收口（`provider-hotswap`/`persistence-signal-routing`/`chat-epoch-guard`
+      重写 + 新增 `provider-live.test.ts` / `no-key-cold-start.test.ts` 端到端守护）
+- [ ] 用户验收：真机配 Key → 不重启 → 会话在 → 能发消息（待用户实测回报）
 
-> 接手者从 Phase A 开始。开工前先跑一遍 `git status` 确认工作区干净（本文档 commit 除外）。
+> 五 Phase 全部落地后的行为形态（与 §4 终态定义逐条对应）：
+> 1. 会话列表真相源 = 磁盘，显示不依赖 Agent 装配（B）；
+> 2. Agent 恒可构造，句柄惰性，失败 = 可见错误（B/C/D）；
+> 3. Key 在使用点解析（live provider），无 Key = 请求期 `MISSING_CREDENTIAL`
+>    响亮报错（C）；
+> 4. `shellRefs.workspace` 单槽即唯一注册表，占位 = path='' 普通条目（A）；
+> 5. 装配失败经 pushStatus + setDiag 双通道可见（D）。
