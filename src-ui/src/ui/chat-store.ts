@@ -87,7 +87,9 @@ export function getExpandedReasoningSet(storeId?: string) {
 
 /** 销毁与面板关联的所有 store（messages、session、panel、input）。
  *  同时移除会话级消息 store（panelId:sessionId）。
- *  2026-08-04 复核：生产暂未接线，但有单元测试保护，保留。 */
+ *  2026-08-24（M4 拆除）：msg 组成部分已分路径接线生产（合卷单卷 /
+ *  全量重置整批，见 chat-session.ts）；四件整包调用点（面板销毁）仍缺，
+ *  ChatCore 为应用级单例，暂无整包拆除时机。 */
 export function disposePanelStores(storeId: string): void {
   disposeMessagesStores(storeId);
   disposeSessionStore(storeId);

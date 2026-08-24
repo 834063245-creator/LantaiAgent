@@ -97,9 +97,18 @@ const scoped = createScopedStore('__lantai_msg_stores__', createMessagesStoreImp
 
 export const getMessagesStore = scoped.getStore;
 
+/** 移除单个会话级消息 store（`panelId:sessionId`）。合卷（closeSession）时调用 —
+ *  卷消亡后其消息数组不再有持有者；注册表外的既有引用（如 React 订阅）随
+ *  组件卸载自然回收，后续 getStore 惰性重建为空 store（续开走磁盘恢复）。
+ *  雷区地图 M4：会话级 store 只增不减的无界内存拆除。 */
+export function disposeSessionMessagesStore(storeId: string, sessionId: number): void {
+  scoped.disposeStore(`${storeId}:${sessionId}`);
+}
+
 /** 移除所有 key 以给定前缀（如 panelId）开头的 store。
  *  也移除每会话 store（panelId:sessionId）。
- *  （2026-08-04：生产暂未接线，但有单元测试保护 — disposePanelStores 的组成部分） */
+ *  工作区全量重置（resetSessionState / setAgent(null)）时调用 — 同 storeId
+ *  跨工作区复用，旧工作区全部卷不拆 = 注册表无界增长（M4，2026-08-24 接线）。 */
 export function disposeMessagesStores(storeId: string): void {
   scoped.disposeStoresByPrefix(storeId);
 }

@@ -102,9 +102,9 @@
 | M1 | `ui/agent-panel-store.ts` + `workspace.ts:492` | `runtimeRef`/`currentSessionId`/`messageFlow`/`alerts` 切换不重置 → 2s 轮询拿旧会话 id 在新 runtime 建错位 board | ✅ 已拆（Commit `e4abde23`：bag 登记 setRuntime(null)+currentSessionId+清看板） |
 | M2 | `agent/agent-session-state.ts:233` | 清理挂在下一个 setupAgent 而非 deactivate；setupAgent 失败路径死引用残留 | ✅ 已拆（Commit `e4abde23`：deactivate bag 内 clearPanelState(storeId)） |
 | M3 | `agent/memory.ts:91` | `initAura` 在途晚于 deactivate 的 `auraShutdown` 落地 → 新项目语义召回静默禁用 | ✅ 已拆（Commit `e4abde23`：initAura resolve 后 isCurrentEpoch 校验，过期即 auraShutdown 丢弃） |
-| M4 | `ui/chat-store.ts:91` | `disposePanelStores` 零调用 → 每会话 messages store 只增不减，无界内存 | 📋 计划 Phase 3（不在本计划范围） |
+| M4 | `ui/chat-store.ts:91` | `disposePanelStores` 零调用 → 每会话 messages store 只增不减，无界内存 | ✅ 已拆（2026-08-24：三死亡路径接线——合卷 closeSession 拆单卷（disposeSessionMessagesStore）；resetSessionState 全量重置与 setAgent(null) 拆整批（disposeMessagesStores 前缀清除，同时根治跨工作区撞号卷读到旧消息）；换卷不拆（摊开集内即时切换依赖内存态）；4 回归用例钉死 in tests/chat-session.test.ts M4 describe） |
 | M5 | `app/chat/chat-core.ts:282` | 无 API key 时切换工作区，旧项目会话列表/消息面板原样残留 | ✅ 已拆（Commit `462b2ea1`：setAgent(null) 清会话列表+activeIdx） |
-| M6 | `main.ts:250` `resetCheckPanelState` | deactivate 清完缓存后又回填人造「✅ 通过」进 checkCache → 未检过的项目注入假简报 | 📋 计划 Phase 2（不在本计划范围） |
+| M6 | `main.ts:250` `resetCheckPanelState` | deactivate 清完缓存后又回填人造「✅ 通过」进 checkCache → 未检过的项目注入假简报 | ✅ 已消解（2026-08-24 核实：`resetCheckPanelState` 随 V5 拆除 + C14 check 面退役全库零匹配；现行 `resetAgentCaches` 清空 checkCache、`setCheckResult` 仅喂真结果——人造✅注入点不存在） |
 
 ### P2 — 低危（记录在案，暂不拆）
 

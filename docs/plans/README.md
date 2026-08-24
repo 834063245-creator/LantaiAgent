@@ -5,11 +5,13 @@
 > 状态词：In progress（干着）/ Proposed·Draft（立项未开工）/ 阻塞（等条件）。
 > 维护纪律：**竣工即归档**（CONVENTIONS §4）——这页只保留活的工作。
 
-## 一句话现状（2026-08-23）
+## 一句话现状（2026-08-24）
 
 **兰台（Lantai）= 纸壳（注疏案卷工作台）为唯一主界面的 Agent 软件**。执行原语已落地
 （code_execution + ctx.codeRuntime，模型可在程序体内循环/并发/试错调全部工具）；插件化
-战略已换轨（D9：自研为主，存量逐步拆为域插件，特权区只减不增）。没有拦路的硬依赖。
+战略已换轨（D9：自研为主，存量逐步拆为域插件，特权区只减不增）——**P4 存量拆解
+2026-08-24 全清**（工具行/prompt 段/capability 三类行源全量经插件通道贡献，出厂表三张
+退役），会话层收敛 session-ledger 同日竣工合入。没有拦路的硬依赖。
 
 ## 活跃工程（就一个半）
 
@@ -33,17 +35,17 @@ S0/S1/S2/S4 竣工后，S3（settings 域第一方行化：面板/命令双贡�
 
 | 项 | 成本 | 说明 |
 |---|---|---|
-| **session-ledger 案卷总目**（L0-L3） | ~3 天 | **2026-08-23 立项**：会话管理收敛——立账本（档案号=卷号/开合有册/落盘两动词），书脊列与首页退化为两个视图 → [`session-ledger-plan.md`](session-ledger-plan.md)。paper-shell C8 之后积欠的会话层结构债，四段 L0-L3 按成本排 |
 | ~~rpc 返回值 Value 化~~ | ✅ 已毕 | 两步全落地（2026-08-22）：第一步出口结构化 + typedJsonRpc 单点收敛（be8bba85）；第二步 B 路线命令→形态分派表 + 前端双形态 shim（63e0fd77/a59fc086）。真机双轮验证过（CDP 形态断言 + 真实会话全工具链）→ [`landmine-map.md`](../landmine-map.md) 根治级段；残留仅 DataflowPanel.tsx 启发式一处（P2 段在册） |
 | agent-plugin **P2+P3** 执行原语 | ~~2-4 天 + 1-2 天~~ ✅ 已毕（2026-08-22/23）：code_execution（Web Worker 沙箱 + 协议腰线 + 嵌套审计 + 程文块）+ ctx.codeRuntime cordis 收口；C4-C10 全判据；commit d772af37/15930f65 → [`agent-plugin-architecture-plan.md`](agent-plugin-architecture-plan.md) |
-| agent-plugin **P4** 插件化全集 | 持续 | **D9 换轨（2026-08-23）：不等 DSH，自研为主自己当第一用户**——通道补齐 + 存量拆解①-⑥ + P4a 调研交替推进；批次表见计划 §5 P4 |
-| browser CDP 功能面扩展 | 中 | 现状 4/10 功能覆盖（缺导航/正文提取/表单全动作等）→ [`browser-cdp-suite-review-round2.md`](browser-cdp-suite-review-round2.md) |
+| agent-plugin **P4** 插件化全集 | 持续 | **D9 换轨（2026-08-23）：不等 DSH，自研为主自己当第一用户**——通道补齐 + 存量拆解①-⑥ + P4a 调研交替推进；批次表见计划 §5 P4。**存量拆解 2026-08-24 全清（baton15）**：B①②④⑤⑥/①b/①c/S4-4/A-1/A-2/A-3/C11 全毕，出厂面三类行源（工具行/prompt 段/capability）全量经插件通道贡献；剩余 C12 dsh-compat 唯一合法挂起（等 DSH 外部信号）+ 新能力加面走通道（见 docs/plugins/README.md §3） |
+| ~~browser CDP 功能面扩展~~ | ✅ 已毕 | 五批全落地（2026-08-15，第一至第五批——导航/正文/表单全动作/dialog/upload/tab/截图 inline/网络配对+HAR/AX snapshot/viewport/跨平台/profile+proxy+多账号 slot+cookie 管理），E2E 1-5 已于 2026-08-22 Windows 真机实跑 35/35 全绿 → [`browser-cdp-suite-review-round2.md`](browser-cdp-suite-review-round2.md)；剩余 eval 隔离 world 为已拍板的可选项（不做） |
 
 ## 等外部条件（挂着不动）
 
 | 项 | 等什么 |
 |---|---|
 | ~~agent-plugin **P4** 插件边界/DSH 跟随~~ | **D9 换轨（2026-08-23）：移出等待表**——自研为主不等信号（见上表）；DSH 信号点亮只追加 compat 装载层 |
+| agent-plugin **C12 dsh-compat** | P4 全清后的唯一合法挂起：DSH peer 出非 workspace 版本即启动（外部信号依赖；p4a 调研已备好契约地图，见 agent-plugin 计划） |
 | v4-pro-minimal AB 实验 | Linux 环境（Windows 不可用） |
 | repo 改名 GitHub 侧执行 | 用户操作；改名前不打发布包 |
 
@@ -54,11 +56,12 @@ S0/S1/S2/S4 竣工后，S3（settings 域第一方行化：面板/命令双贡�
 | ~~V5 拆除后的 Tauri 真机~~ | **大部分已跑（2026-08-22 自主段）**：真机启动 + 纸壳渲染截图取证 ✓；窗口控制 IPC 最大化/还原往返 ✓；冷启动缓存过期→重分析全链路（louvain/LSP×3/向量嵌入）✓；优雅关闭 lifecycle 全清 ✓。未覆盖：权限卡桥需真实 agent 写动作触发（需 provider 配置），留给下次带 API key 的会话 |
 | ~~shell 捆绑 bash（P0-P5）~~ | **已实跑（2026-08-22）**：os_sandbox:: 17/17 绿（含新增 repo vendor 三连测试）；init_bundled 开发态兑底路径修正一处布局雷（BUNDLED_BASH_REL 自带 vendor/ 前缀，root 应为 CARGO_MANIFEST_DIR 本身）；src-ui tsc 绿 → [`shell-stability-bundled-bash-plan.md`](shell-stability-bundled-bash-plan.md) §4 已更新 |
 | ~~browser CDP E2E-1/2/3/4/5~~ | **已实跑（2026-08-22）**：cargo test cdp:: 35/35 全绿，含重点 E2E-5 多账号 cookie 隔离（上会话偶发失败本轮未复现） |
+| session-ledger 真机三项 | 代码判据已测试钉死，真机未实跑（需带 API key 会话）：① 重启工作集恢复（多卷摊开 → 关 → 开，摊法全回）；② 后台卷落盘（双卷并发跑一轮后检查卷文件）；③ 续开查重（同卷两次续开只有一条脊）——见 [`session-ledger-plan.md`](session-ledger-plan.md) §7 |
 | workspace-flip 批 3 边界 | 预热期内创建的会话缺 graph 工具（已知边界，非 bug） |
 
 ## 已完成并归档（点名即可，详情勿读）
 
-workspace-flip · 总线归零+ui/拆分 · 岛层退休 · cordis-migration · agent-core-convergence（baseline 冻结维护态）· 组合层 S0-S2/S4 · 雷区地图 P0/P1 全拆 · V5 旧前端拆除。索引见 [`../archive/README.md`](../archive/README.md)。
+workspace-flip · 总线归零+ui/拆分 · 岛层退休 · cordis-migration · agent-core-convergence（baseline 冻结维护态）· 组合层 S0-S2/S4 · 雷区地图 P0/P1 全拆 · V5 旧前端拆除 · **session-ledger L0-L3（2026-08-23 四段当日连推，2026-08-24 merge `e677c5c8` 合入；判据 26 用例钉死，真机三项见上表）**。索引见 [`../archive/README.md`](../archive/README.md)。
 
 **注意两个活的例外**：`landmine-map.md`（技术债清单，P2 残留与根治级在册）与 convergence 的 baseline change request 流程（`agent-core-convergence/baseline-change-request.md`——baseline 变更审批仍走此文件）虽已归档目录，仍是活流程入口。
 

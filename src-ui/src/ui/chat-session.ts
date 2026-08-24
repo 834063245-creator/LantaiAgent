@@ -11,6 +11,7 @@ import { createExecState, type ExecStateInstance } from '../agent/execution-stat
 import type { Message } from '../provider/types';
 import { typedJsonRpc, typedRpc } from '../rpc-contract';
 import { getActiveProvider, loadSettings } from '../settings';
+import { disposeMessagesStores, disposeSessionMessagesStore } from '../state/messages-store';
 import {
   clearPaperSessions,
   getPaperSessionData,
@@ -137,6 +138,13 @@ export function clearPanelAgents(storeId: string): void {
   agentSessionState.clearPanelState(storeId);
 }
 
+/** 拆除面板全部消息 store（面板级 + 每会话级，M4 接线）— setAgent(null)
+ *  会话列表清空后，各卷消息数组不得残留在注册表（同 storeId 跨工作区
+ *  复用，撞号卷会短暂复活旧消息）。 */
+export function disposePanelMessages(storeId: string): void {
+  disposeMessagesStores(storeId);
+}
+
 /** 全量重置 — 用于 ChatPanel 中切换工作区时的 setAgent。 */
 export function resetSessionState(storeId: string, ag: OwnedAgentHandle): void {
   const id = getChatStore(storeId).sess.getState().nextSessionId;
@@ -145,6 +153,9 @@ export function resetSessionState(storeId: string, ag: OwnedAgentHandle): void {
   agentSessionState.clearPanelState(storeId);
   // 工作区全量重置：纸面用户层（钉住块/纸条）一并清空——旧工作区摆放不得串入新工作区
   clearPaperSessions(storeId);
+  // 工作区全量重置：旧工作区全部会话级消息 store（storeId:sessionId）一并移除
+  //（M4：store 注册表跨工作区存活，旧卷不拆 = 无界增长 + 新工作区撞号卷读到旧消息）
+  disposeMessagesStores(storeId);
   agentSessionState.setAgent(storeId, id, ag);
   // 静态绑定该 Agent 的 board 到此会话 — 此后不再随会话切换重定向
   ag.bindSession?.(String(id));
@@ -378,6 +389,9 @@ export function closeSession(ctx: SessionContext, idx: number): void {
   agentSessionState.removeAgent(ctx.storeId, s.id);
   // 合卷 = 卷消亡：paper store 该卷数据随之清除（快照已在上方捕获落盘）
   removePaperSessionData(ctx.storeId, s.id);
+  // 合卷 = 卷消亡：该卷会话级消息 store 一并移除（M4——落盘快照已在上方
+  // 从 agent 数据同步捕获，此处拆的是注册表项；续开该卷走磁盘恢复重建）
+  disposeSessionMessagesStore(ctx.storeId, s.id);
   // 若关闭的是活跃会话，先把它未发送的文字存入其槽再清空，稍后换入新活跃会话的草稿
   const closingActive = idx === st.activeIdx;
   if (closingActive) {

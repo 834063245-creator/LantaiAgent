@@ -308,6 +308,9 @@ export class ChatCore {
       // 会话 Agent 句柄 — 否则旧 provider/工厂会继续服务会话（残留 bug）。
       Session.setAgentFactory(this.panelId, null);
       Session.clearPanelAgents(this.panelId);
+      // M4：会话列表清空后各卷消息 store 一并拆除——注册表跨工作区存活，
+      // 不拆则旧工作区卷残留（新工作区撞号卷会短暂读到旧消息）
+      Session.disposePanelMessages(this.panelId);
       // 中危#5：清会话列表 — 否则无 API Key 切换后旧项目会话面板残留。
       getChatStore(this.panelId).sess.setState({ sessions: [], activeIdx: -1 });
       return;

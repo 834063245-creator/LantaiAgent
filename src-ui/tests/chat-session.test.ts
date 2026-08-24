@@ -79,9 +79,11 @@ vi.mock('highlight.js', () => ({ default: { highlightElement: vi.fn() } }));
 
 import { ChatCore } from '../src/app/chat/chat-core';
 import { makeStrip } from '../src/paper/selection';
+import { getMessagesStore } from '../src/state/messages-store';
 import { getPaperStore } from '../src/state/paper-store';
 import * as Session from '../src/ui/chat-session';
 import { hashProjectPath, scanMaxSessionId, stripLineNumbers } from '../src/ui/chat-session';
+import { msgStoreFor } from '../src/ui/chat-store';
 
 // ── Helpers ──
 
@@ -1163,6 +1165,101 @@ describe('ChatPanel session persistence', () => {
       expect(paperStore.getPinned('5')).toEqual({ 'pb:m9:0': { x: 42, y: -42 } });
       expect(paperStore.getStrips('5')).toHaveLength(1);
       expect(paperStore.getStrips('5')[0].text).toBe('旧纸条');
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // M4：会话级消息 store 生命周期 — 卷消亡必须拆注册表项（无界内存拆除）
+  // ═══════════════════════════════════════════════════════════════
+
+  describe('M4 per-session message store disposal', () => {
+    const PROJ = 'D:/m4-proj';
+
+    function makeAgent() {
+      return {
+        getSession: () => [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content: '有内容' },
+        ],
+        setSession: vi.fn(),
+        dispose: vi.fn(),
+        cascadeAbort: vi.fn(),
+      };
+    }
+
+    /** 判定某卷的 msg store 是否已被拆除：拆除后惰性重建为全新实例
+     *  （messages 空 + version 归零）；活 store 的 setMessages 用
+     *  Date.now() 起版，version 恒 > 0。 */
+    function isStoreFresh(panelId: string, sid: number): boolean {
+      const st = getMessagesStore(`${panelId}:${sid}`).getState();
+      return st.messages.length === 0 && st.version === 0;
+    }
+
+    function seedMsgStore(panelId: string, sid: number, text: string) {
+      msgStoreFor(panelId, sid)
+        .getState()
+        .setMessages([{ _id: `m-${sid}`, role: 'user', content: text } as any]);
+    }
+
+    /** 两卷现场：卷 1（setAgent 起）+ 卷 2（工厂建），各自 seed 消息。 */
+    async function setupTwoSeededVolumes() {
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      panel.setAgent(makeAgent() as any);
+      panel.setAgentFactory(async () => makeAgent() as any);
+      await panel.createNewSession();
+      seedMsgStore(panel.panelId, 1, '卷一消息');
+      seedMsgStore(panel.panelId, 2, '卷二消息');
+      expect(isStoreFresh(panel.panelId, 1)).toBe(false);
+      expect(isStoreFresh(panel.panelId, 2)).toBe(false);
+    }
+
+    it('合卷：被合卷的消息 store 从注册表移除，其余活卷不受影响', async () => {
+      await setupTwoSeededVolumes();
+
+      panel.closeSession(0); // 合卷一
+
+      // 卷一 store 已拆（重建为空实例）；卷二保留内存态
+      expect(isStoreFresh(panel.panelId, 1)).toBe(true);
+      expect(isStoreFresh(panel.panelId, 2)).toBe(false);
+      expect(
+        msgStoreFor(panel.panelId, 2)
+          .getState()
+          .messages.some((m) => m.content === '卷二消息'),
+      ).toBe(true);
+    });
+
+    it('换卷不拆：摊开集内即时切换依赖内存态', async () => {
+      await setupTwoSeededVolumes();
+
+      panel.switchSession(0); // 换到卷一（卷二仍摊开）
+
+      expect(isStoreFresh(panel.panelId, 1)).toBe(false);
+      expect(isStoreFresh(panel.panelId, 2)).toBe(false);
+    });
+
+    it('setAgent 全量重置：旧工作区全部卷 store 一并移除', async () => {
+      await setupTwoSeededVolumes();
+
+      panel.setAgent(makeAgent() as any); // 工作区切换路径（resetSessionState）
+
+      expect(isStoreFresh(panel.panelId, 1)).toBe(true);
+      expect(isStoreFresh(panel.panelId, 2)).toBe(true);
+      // 新会话树：单卷（id 沿 nextSessionId 续发），消息为空
+      const sess = Session.getSessions(panel.panelId);
+      expect(sess).toHaveLength(1);
+      expect(sess[0].id).toBe(3);
+      expect(getMessagesStore(`${panel.panelId}:3`).getState().messages).toHaveLength(0);
+    });
+
+    it('setAgent(null)：会话列表清空时各卷 store 一并拆除', async () => {
+      await setupTwoSeededVolumes();
+
+      panel.setAgent(null); // API Key 清空 / 无 key 切换路径
+
+      expect(isStoreFresh(panel.panelId, 1)).toBe(true);
+      expect(isStoreFresh(panel.panelId, 2)).toBe(true);
+      expect(Session.getSessions(panel.panelId)).toHaveLength(0);
     });
   });
 });
