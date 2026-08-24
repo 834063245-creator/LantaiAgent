@@ -9,12 +9,15 @@ export function withTimeout<T>(
   ms: number,
   onTimeout?: () => void,
 ): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const timeoutP = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       onTimeout?.();
       reject(new Error(`timeout after ${ms}ms`));
     }, ms);
   });
-  return Promise.race([promise, timeoutP]).finally(() => clearTimeout(timer!));
+  // executor 同步运行，timer 在 race 决议前必然已赋值；守卫仅为满足类型
+  return Promise.race([promise, timeoutP]).finally(() => {
+    if (timer !== undefined) clearTimeout(timer);
+  });
 }

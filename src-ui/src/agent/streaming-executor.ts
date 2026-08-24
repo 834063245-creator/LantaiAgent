@@ -260,7 +260,9 @@ export class StreamingToolExecutor {
   /** 将工具 promise 与中止信号竞速。信号在 promise 完成前触发时
    *  以 AbortError 拒绝。 */
   private _raceWithAbort(promise: Promise<PendingResult>): Promise<PendingResult> {
-    const sig = this.signal!;
+    const sig = this.signal;
+    // 无信号时无从竞速，直接透传（调用面只在信号就绪后才会走到这里）
+    if (!sig) return promise;
     if (sig.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'));
     return new Promise<PendingResult>((resolve, reject) => {
       const onAbort = () => {

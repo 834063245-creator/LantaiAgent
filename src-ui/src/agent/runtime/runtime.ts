@@ -374,10 +374,11 @@ export class AgentRuntime implements RuntimePort {
       for (const orphan of orphans) {
         defaultTB.stop(orphan.agentId);
         if (orphan.isolationId) {
+          const orphanIsolationId = orphan.isolationId;
           try {
             await enqueueIsolationOp(async () => {
               const diffText = await agentInvoke<string>('agent_isolation_diff', {
-                agent_id: orphan.isolationId!,
+                agent_id: orphanIsolationId,
               }).catch(() => '');
               if (diffText) {
                 try {

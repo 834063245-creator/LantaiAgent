@@ -68,7 +68,8 @@ function isInternalMessage(content: string | undefined): boolean {
 // ── 辅助函数：将 store 会话桥接到 ChatSession（含 agent 句柄）──
 
 function storeSessionsWithAgents(storeId: string): ChatSession[] {
-  const { sessions, activeIdx } = getChatStore(storeId).sess.getState();
+  const { sessions } = getChatStore(storeId).sess.getState();
+  // biome-ignore lint/style/noNonNullAssertion: 冻结文件——store 会话建立时 agent 槽位必已注册
   return sessions.map((s) => ({ ...s, agent: agentSessionState.getAgent(storeId, s.id)! }));
 }
 
@@ -803,6 +804,7 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
       const key = localStorage.key(i);
       if (!key?.startsWith(wsPrefix)) continue;
       try {
+        // biome-ignore lint/style/noNonNullAssertion: 冻结文件——key 由 localStorage 枚举而来，读取必命中
         const d = JSON.parse(localStorage.getItem(key)!);
         if (d.id && !d.deleted && d.savedAt > newestTs) {
           newestTs = d.savedAt;
@@ -885,6 +887,7 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
         const key = localStorage.key(i);
         if (!key?.startsWith(wsPrefix)) continue;
         try {
+          // biome-ignore lint/style/noNonNullAssertion: 冻结文件——key 由 localStorage 枚举而来，读取必命中
           const d = JSON.parse(localStorage.getItem(key)!) as StoredSession;
           if (d.id && !d.deleted && (d.savedAt ?? '') > bestTs) {
             // 快速检查：是否有非系统消息？

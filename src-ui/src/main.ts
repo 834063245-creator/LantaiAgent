@@ -30,7 +30,9 @@ import { bootShell } from './shell/boot';
 const pluginKernelRoot = loadBuiltinPlugins(initCordisKernel());
 
 // ── React 壳引导（纸壳唯一界面：SessionsHome / DockPanel / 命令面板）──
-createRoot(document.getElementById('app-root')!).render(createElement(App));
+const appRoot = document.getElementById('app-root');
+if (!appRoot) throw new Error('app-root 挂载点不存在——index.html 被破坏');
+createRoot(appRoot).render(createElement(App));
 
 // ── 外部插件装载（WO-S0B）：异步不阻塞首帧；结果只进 plugin-store，不炸应用 ──
 void loadExternalPlugins(pluginKernelRoot);

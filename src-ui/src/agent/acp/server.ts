@@ -176,7 +176,8 @@ export function createAcpServer(opts: AcpServerOptions): {
   async function runPrompt(rec: SessionRecord, text: string, messageId: string): Promise<void> {
     try {
       // 从 ac 快照 signal — 若期间被 cancel 会 reject，下面捕获。
-      await rec.agent.run(rec.ac!.signal, text);
+      if (!rec.ac) throw new Error('session 已取消，无活动 AbortController');
+      await rec.agent.run(rec.ac.signal, text);
       notify('session/update', {
         sessionId: rec.id,
         update: { type: 'turn_finished', messageId, stop_reason: 'end_turn' },

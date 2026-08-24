@@ -91,7 +91,11 @@ export function createExitPlanModeTool(planState: PlanStateManager, eventSink?: 
       if (!planState.state.active) {
         return '错误：不在规划模式中。先调 enter_plan_mode。';
       }
-      const planPath = planState.state.planFilePath!;
+      // active=true 时 planFilePath 由 enter() 保证非空
+      const planPath = planState.state.planFilePath;
+      if (!planPath) {
+        return '错误：规划模式状态异常（无计划文件路径）。请退出后重新进入规划模式。';
+      }
 
       // 读取计划文件内容
       let planContent: string;

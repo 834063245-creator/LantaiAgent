@@ -239,7 +239,10 @@ export async function persistSecrets(s: AppSettings): Promise<string[]> {
   try {
     const { typedRpc } = await import('./rpc-contract');
     for (const p of withKey) {
-      const key = p.apiKey!.trim();
+      // withKey 过滤保证 apiKey 非空；双重守卫防漏
+      const rawKey = p.apiKey;
+      if (!rawKey) continue;
+      const key = rawKey.trim();
       // 「null」字面量护栏：毒化残留的 apiKey:"null" 绝非真 key，绝不写入凭据库
       try {
         await typedRpc('credential_store', { provider: p.name, key });

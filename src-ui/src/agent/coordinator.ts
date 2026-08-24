@@ -249,7 +249,8 @@ export class SubAgentPool {
   /** 排空队列 — 在可用槽位范围内启动尽可能多的排队生成。 */
   private _drainQueue(): void {
     while (this.queue.length > 0 && this.agents.size < this.maxConcurrent) {
-      const item = this.queue.shift()!;
+      const item = this.queue.shift();
+      if (!item) break;
       const spawned = this._doSpawn(item.description, item.runFn, item.callId, item.timeoutMs);
       // 重新映射指向排队 id 的别名 → 真实内部 id。
       // 不 break：同 callId 重试会注册多个别名指向同一排队项，全部重映射，
@@ -333,7 +334,8 @@ export class SubAgentPool {
   stopAll(): string[] {
     const stopped: string[] = [];
     while (this.queue.length > 0) {
-      const item = this.queue.shift()!;
+      const item = this.queue.shift();
+      if (!item) break;
       this._stopQueued(item);
       stopped.push(item.queuedId);
     }

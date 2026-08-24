@@ -369,7 +369,10 @@ function buildDomainTool(registry: ToolRegistry, spec: DomainSpec): Tool | null 
   if (entries.length === 0) return null;
 
   const parameters = domainParametersSchema(entries, registry);
-  const readOnlyActions = entries.filter(([, oldName]) => registry.get(oldName)!.readOnly()).map(([a]) => a);
+  // entries 已过滤出注册表存在的旧名；readOnly 经可选链安全求值
+  const readOnlyActions = entries
+    .filter(([, oldName]) => registry.get(oldName)?.readOnly() === true)
+    .map(([a]) => a);
 
   return {
     name: () => spec.name,

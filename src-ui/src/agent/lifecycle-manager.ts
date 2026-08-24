@@ -157,7 +157,9 @@ export class AgentLifecycleManager {
     );
 
     for (const entry of expired) {
-      const isolationId = entry.isolationId!;
+      // isolationId 非空由 expired 过滤条件保证（isolationId != null）
+      const isolationId = entry.isolationId;
+      if (isolationId == null) continue;
       // discard 操作通过 isolation queue 串行化，避免 git index lock 竞争
       enqueueIsolationOp(async () => {
         let freshDiff = '';

@@ -1007,9 +1007,10 @@ export class Workspace {
           contextWindow: this._effectiveContextWindow(s),
           preRunHook: this.memoryManager
             ? async (input: string) => {
-                if (!this.memoryManager!.auraReady) return null;
+                const mm = this.memoryManager;
+                if (!mm || !mm.auraReady) return null;
                 try {
-                  const records = await this.memoryManager!.auraSemanticRecall(input, 5);
+                  const records = await mm.auraSemanticRecall(input, 5);
                   if (records.length === 0) return null;
                   const lines = records.map((r) => {
                     const t = r.tags?.length ? `[${r.tags.join(', ')}] ` : '';
@@ -1299,8 +1300,12 @@ function rebuildLevel0Communities(nodes: GraphNode[]): CommunityData[] {
   for (const n of nodes) {
     if (n.community_id == null) continue;
     const cid = String(n.community_id);
-    if (!map.has(cid)) map.set(cid, []);
-    map.get(cid)!.push(n.id);
+    const bucket = map.get(cid);
+    if (bucket) {
+      bucket.push(n.id);
+    } else {
+      map.set(cid, [n.id]);
+    }
   }
   return [...map.entries()].map(([cid, nodeIds]) => ({
     id: cid,

@@ -235,7 +235,8 @@ export class LspService extends Service {
   }
 
   async startLsp(language: string, rootUri: string): Promise<number | null> {
-    if (this.lspSessions.has(language)) return this.lspSessions.get(language)!;
+    const existing = this.lspSessions.get(language);
+    if (existing !== undefined) return existing;
     // 代际防护（H2）：startLsp 在途期间可能切换工作区 —
     // 过期 resolve 的 sid 属于旧项目，直接 lsp_stop 丢弃，防把 A 项目文件发进 B 的 tsserver。
     const epoch = getWorkspaceEpoch();
@@ -552,7 +553,7 @@ export class LspService extends Service {
     // 先尝试精确匹配，再全路径归一比较。不做 basename 尾匹配 ——
     // 同名不同目录文件会跨项目串味（landmine-map H1）。
     if (this.diagnosticsCache.has(fileUriOrPath)) {
-      return this.diagnosticsCache.get(fileUriOrPath)!;
+      return this.diagnosticsCache.get(fileUriOrPath) ?? [];
     }
     const normalized = normalizeDiagnosticPath(fileUriOrPath);
     for (const [key, val] of this.diagnosticsCache) {
