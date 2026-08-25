@@ -1068,17 +1068,12 @@ export class ChatCore {
       getChatStore(this.panelId).panel.getState().setUserFocusFile(null);
     }
 
-    // 附加文件 — 暴露路径以便 Agent 读取
+    // 附加文件 — 暴露路径以便 Agent 读取（大小不做假：openFilePicker 拿不到真实
+    // size，旧实现硬编码 0 导致模型看到「0 B」误判空文件；要真大小需 Rust stat 通道）
     if (files.length > 0) {
       focusPrefix += '用户附加了以下文件：\n';
       for (const f of files) {
-        const sizeStr =
-          f.size < 1024
-            ? `${f.size} B`
-            : f.size < 1024 * 1024
-              ? `${(f.size / 1024).toFixed(1)} KB`
-              : `${(f.size / (1024 * 1024)).toFixed(1)} MB`;
-        focusPrefix += `- \`${f.path}\` (${sizeStr})\n`;
+        focusPrefix += `- \`${f.path}\`\n`;
       }
       focusPrefix += '你可以用 read_file 读取这些文件。\n\n';
       getChatStore(this.panelId).input.getState().clearAttachedFiles();
