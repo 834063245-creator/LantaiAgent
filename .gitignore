@@ -19,6 +19,7 @@ src-ui/bun.lock
 
 # Rust / Tauri
 target/
+target.bak-*/
 
 # IDE
 .vscode/
