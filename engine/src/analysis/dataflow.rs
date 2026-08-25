@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-use crate::graph::Graph;
-use crate::storage::MemoryIndex;
+use hologram_graph::Graph;
+use hologram_storage::MemoryIndex;
 use crate::analysis::detect_cycles;
 use crate::analysis::detect_cycles_from_index;
 use serde_json::json;
@@ -14,22 +14,22 @@ pub fn classify_cycles(graph: &Graph) -> serde_json::Value {
 
 pub fn classify_cycles_from_index(idx: &MemoryIndex) -> serde_json::Value {
     let raw_cycles = detect_cycles_from_index(idx);
-    let nodes: Vec<(&str, &crate::graph::Node)> = idx.nodes_iter().map(|n| (n.id.as_str(), n)).collect();
+    let nodes: Vec<(&str, &hologram_graph::Node)> = idx.nodes_iter().map(|n| (n.id.as_str(), n)).collect();
     classify_cycles_inner(nodes.into_iter(), &raw_cycles)
 }
 
 fn classify_cycles_inner<'a>(
-    nodes: impl Iterator<Item = (&'a str, &'a crate::graph::Node)>,
+    nodes: impl Iterator<Item = (&'a str, &'a hologram_graph::Node)>,
     raw_cycles: &[serde_json::Value],
 ) -> serde_json::Value {
-    let node_map: std::collections::HashMap<&str, &crate::graph::Node> = nodes.collect();
+    let node_map: std::collections::HashMap<&str, &hologram_graph::Node> = nodes.collect();
     let mut pure = 0; let mut data = 0; let mut llm = 0;
     let annotated: Vec<_> = raw_cycles.iter().map(|c| {
         let node_ids: Vec<&str> = c["nodes"].as_array().map(|a|
             a.iter().filter_map(|v| v.as_str()).collect()
         ).unwrap_or_default();
         let has_medium = node_ids.iter().any(|id|
-            node_map.get(id).map(|n| matches!(n.kind, crate::graph::NodeKind::Medium)).unwrap_or(false));
+            node_map.get(id).map(|n| matches!(n.kind, hologram_graph::NodeKind::Medium)).unwrap_or(false));
         let has_llm = node_ids.iter().any(|id|
             node_map.get(id).and_then(|n| n.properties.get("llm")).is_some());
         let category = if has_llm { "llm_involved" } else if has_medium { "data_persistent" } else { "pure_code" };
@@ -46,7 +46,7 @@ fn classify_cycles_inner<'a>(
 
 #[cfg(test)]
 mod tests {
-    use crate::graph::{Edge, EdgeKind, Node, NodeKind};
+    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
     use super::*;
 
     #[test]

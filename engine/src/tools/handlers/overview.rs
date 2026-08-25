@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use crate::analysis::*;
 use crate::community::detect_communities_from_index;
 use crate::engine;
-use crate::graph::Graph;
+use hologram_graph::Graph;
 use crate::routing::preflight::{load_baseline, run_full_check, save_baseline};
 use crate::tools::{get_usize, with_store};
 use crate::tools::with_graph;
@@ -199,7 +199,7 @@ pub(crate) fn handler_run_check(args: &Value) -> ToolResponse {
     // 加载基线快照（上次检查保存的）用于前后对比
     let before = load_baseline(&root);
     // 优先使用内存缓存的图；仅在确实为空时才重新分析
-    let after = match engine::engine_read_graph(|g| g.clone()) {
+    let after = match engine::engine_read(engine::graph_from_index) {
         Ok(g) if g.node_count() > 0 || g.edge_count() > 0 => g,
         _ => {
             match engine::engine_init(&root) {

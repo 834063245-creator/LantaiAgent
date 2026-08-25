@@ -13,14 +13,15 @@
 //   6. replay 兼容：含该事件的快照可重建。
 
 import { describe, expect, it } from 'vitest';
-import { Agent } from '../src/agent/agent';
+import type { Agent } from '../src/agent/agent';
 import { SessionLog } from '../src/agent/session-log';
 import { ToolRegistry } from '../src/agent/tool';
 import { usePresetStore } from '../src/state/preset-store';
 import { scriptedProvider } from './convergence/helpers/fixtures';
+import { createTestAgent } from './helpers/agent';
 
 function makeAgent(): Agent {
-  return new Agent(scriptedProvider([]), new ToolRegistry(), 'sys', { agentId: 's41b-agent' });
+  return createTestAgent(scriptedProvider([]), new ToolRegistry(), 'sys', { agentId: 's41b-agent' });
 }
 
 describe('S4-1b preset/selected 首事件（CR 批准实施）', () => {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::adapter::traits::LanguageAdapter;
-use crate::graph::{Edge, EdgeKind, Node, NodeKind};
+use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
 use std::cell::RefCell;
 use crate::engine::GRAMMAR_LOADER;
 use tree_sitter::{Language, Parser};

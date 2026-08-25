@@ -21,7 +21,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 // ── 引擎内部模块导入 ──
 use hologram_engine::analysis::{fragile_nodes, detect_cycles, coupling_report, graph_summary, find_blindspots};
 use hologram_engine::community::{detect_communities, detect_hierarchical_communities};
-use hologram_engine::graph::{query, Graph, EdgeKind};
+use hologram_graph::{EdgeKind, Graph};
 use hologram_engine::logging;
 use hologram_engine::routing::preflight::{check_timeline_props, load_baseline, run_full_check, save_baseline};
 use hologram_engine::mcp::{self, McpServer};
@@ -257,7 +257,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     info!("engine TCP 9777 also serving (serve --tcp)");
                 }
 
-                let server = McpServer::new(&root);
+                let server = McpServer::new();
                 server.run_stdio();
             }
             None => {
@@ -272,7 +272,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     });
                     info!("engine TCP 9777 also serving (serve --tcp)");
                 }
-                let server = McpServer::new(std::path::Path::new("."));
+                let server = McpServer::new();
                 server.run_stdio();
             }
         }
@@ -444,7 +444,7 @@ async fn run_tcp_server() -> Result<(), Box<dyn std::error::Error>> {
                     _ => (args, 50),
                 };
                 handle_simple("search:", query_str, move |g, _| {
-                    let results = query::search_nodes(g, query_str);
+                    let results = g.search_nodes(query_str);
                     let truncated: Vec<_> = results.iter().take(limit).map(|n| json!({"id": n.id, "name": n.name, "kind": n.kind.as_str()})).collect();
                     json!({"results": truncated, "total": results.len(), "limit": limit})
                 })
@@ -671,7 +671,8 @@ fn handle_check(request: &str) -> Vec<u8> {
     }
 
     // 如果图尚未加载（节点和边都为 0），自动初始化并分析
-    if !hologram_engine::engine::engine_read_graph(|g| g.node_count() > 0 || g.edge_count() > 0).unwrap_or(false) {
+    let has_graph = hologram_engine::engine::engine_read(|idx| idx.node_count() > 0 || idx.edge_count() > 0).unwrap_or(false);
+    if !has_graph {
         if let Err(e) = hologram_engine::engine::engine_init(&root) {
             tracing::warn!("auto engine_init failed: {e}");
         }
@@ -681,7 +682,7 @@ fn handle_check(request: &str) -> Vec<u8> {
     }
 
     // 获取当前（分析后）的图快照
-    let after = match hologram_engine::engine::engine_read_graph(|g| g.clone()) {
+    let after = match hologram_engine::engine::engine_read(hologram_engine::engine::graph_from_index) {
         Ok(g) => g,
         Err(_) => return b"{\"error\":\"analysis failed\"}".to_vec(),
     };
@@ -725,11 +726,12 @@ fn handle_simple<F: FnOnce(&Graph, &str) -> serde_json::Value>(prefix: &str, req
     let state = hologram_engine::engine::engine_state();
     let is_ready = matches!(state, hologram_engine::engine::EngineState::Ready { .. })
         || matches!(state, hologram_engine::engine::EngineState::Loading { nodes_loaded, .. } if nodes_loaded > 0);
-    match hologram_engine::engine::engine_read_graph(|g| {
+    match hologram_engine::engine::engine_read(|idx| {
         if !is_ready {
             return serde_json::Value::Null; // engine not initialized
         }
-        f(g, arg)
+        let g = hologram_engine::engine::graph_from_index(idx);
+        f(&g, arg)
     }) {
         Ok(v) if v.is_null() => serde_json::to_vec(&json!({"error": "engine not initialized — run analyze first"})).unwrap_or_default(),
         Ok(v) => serde_json::to_vec(&v).unwrap_or_default(),
@@ -743,7 +745,7 @@ fn handle_simple<F: FnOnce(&Graph, &str) -> serde_json::Value>(prefix: &str, req
 /// 如果基线文件不存在，则将当前图保存为基线并提示用户。
 fn handle_diff(baseline_path: &str) -> Vec<u8> {
     // 获取当前图快照
-    let current = match hologram_engine::engine::engine_read_graph(|g| g.clone()) {
+    let current = match hologram_engine::engine::engine_read(hologram_engine::engine::graph_from_index) {
         Ok(g) if g.node_count() > 0 || g.edge_count() > 0 => g,
         _ => return b"{\"error\":\"no graph loaded, run analyze first\"}".to_vec(),
     };
@@ -797,7 +799,7 @@ fn handle_diff(baseline_path: &str) -> Vec<u8> {
 /// 所有查询都要求图已加载（节点或边数量 > 0）。
 fn handle_query(request: &str, prefix: &str) -> Vec<u8> {
     let args = request.strip_prefix(prefix).unwrap_or("");
-    let graph = match hologram_engine::engine::engine_read_graph(|g| g.clone()) {
+    let graph = match hologram_engine::engine::engine_read(hologram_engine::engine::graph_from_index) {
         Ok(g) if g.node_count() > 0 || g.edge_count() > 0 => g,
         _ => return b"{\"error\":\"no graph loaded, run analyze first\"}".to_vec(),
     };
@@ -809,7 +811,7 @@ fn handle_query(request: &str, prefix: &str) -> Vec<u8> {
             let parts: Vec<&str> = args.split(':').collect();
             let node_id = parts[0];
             let depth: usize = parts.get(1).and_then(|d| d.parse().ok()).unwrap_or(1);
-            let nb = query::neighbors(&graph, node_id, depth);
+            let nb = graph.neighbors(node_id, depth);
             serde_json::json!({ "neighbors": nb.iter().map(|(s,t,d)| json!([s,t,d])).collect::<Vec<_>>() })
         }
         "path:" => {
@@ -818,7 +820,7 @@ fn handle_query(request: &str, prefix: &str) -> Vec<u8> {
             let parts: Vec<&str> = args.split(':').collect();
             if parts.len() < 2 { serde_json::json!({"error":"usage: path:from:to"}) }
             else {
-                match query::shortest_path(&graph, parts[0], parts[1]) {
+                match graph.shortest_path(parts[0], parts[1]) {
                     Some(p) => serde_json::json!({"path": p, "length": p.len()}),
                     None => serde_json::json!({"path": null, "message": "no path found"}),
                 }
@@ -827,7 +829,7 @@ fn handle_query(request: &str, prefix: &str) -> Vec<u8> {
         "search:" => {
             // 格式: search:<query>
             // 按名称模糊搜索节点
-            let results = query::search_nodes(&graph, args);
+            let results = graph.search_nodes(args);
             serde_json::json!({ "results": results.iter().map(|n| json!({"id":n.id,"name":n.name})).collect::<Vec<_>>() })
         }
         "impact:" => {
@@ -836,7 +838,7 @@ fn handle_query(request: &str, prefix: &str) -> Vec<u8> {
             let parts: Vec<&str> = args.split(':').collect();
             let node_id = parts[0];
             let max_depth: usize = parts.get(1).and_then(|d| d.parse().ok()).unwrap_or(3);
-            let layers = query::impact(&graph, node_id, max_depth);
+            let layers = graph.impact(node_id, max_depth);
             serde_json::json!({ "layers": layers })
         }
         _ => serde_json::json!({"error":"unknown query"}),
@@ -850,7 +852,8 @@ fn handle_query(request: &str, prefix: &str) -> Vec<u8> {
 /// 返回 JSON 格式：{"nodes": [...], "edges": [...]}，
 /// 供前端进行整体渲染。引擎未初始化时返回空数组。
 fn handle_get_graph() -> Vec<u8> {
-    match hologram_engine::engine::engine_read_graph(|g| {
+    match hologram_engine::engine::engine_read(|idx| {
+        let g = hologram_engine::engine::graph_from_index(idx);
         let nodes: Vec<serde_json::Value> = g.nodes_iter().map(|(_, n)| {
             serde_json::json!({
                 "id": n.id, "name": n.name, "type": n.kind.as_str(),
@@ -868,14 +871,14 @@ fn handle_get_graph() -> Vec<u8> {
             })
         }).collect();
         // viewer 渲染分组需要社区数据（与 handle_analyze 同源序列化）
-        let communities = detect_communities(g, 42);
+        let communities = detect_communities(&g, 42);
         let communities_json: Vec<serde_json::Value> = communities.iter().enumerate()
             .map(|(i, c)| serde_json::json!({
                 "id": format!("comm_{}", i), "label": format!("社区 {}", i + 1),
                 "size": c.len(), "node_ids": c
             }))
             .collect();
-        let hcommunities = detect_hierarchical_communities(g, 42);
+        let hcommunities = detect_hierarchical_communities(&g, 42);
         let hcommunities_json: Vec<serde_json::Value> = hcommunities.iter()
             .map(|hc| serde_json::json!({
                 "id": hc.id,
@@ -1056,7 +1059,7 @@ fn cli_run(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     //   2. analyze_project / validate_project：工具自身会触发分析
     let self_analyzing = tool == "analyze_project" || tool == "validate_project";
     if tool != "engine_status" && !self_analyzing {
-        let has_graph = hologram_engine::engine::engine_read_graph(|g| g.node_count() > 0 || g.edge_count() > 0)
+        let has_graph = hologram_engine::engine::engine_read(|idx| idx.node_count() > 0 || idx.edge_count() > 0)
             .unwrap_or(false);
         if !has_graph {
             eprintln!("[cli] 图为空，正在分析项目…");
@@ -1119,9 +1122,9 @@ fn cli_run(rest: &[String]) -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hologram_engine::graph::{EdgeKind, Node, NodeKind};
+    use hologram_graph::{EdgeKind, Node, NodeKind};
 
-    // 互斥锁：串行化测试中对全局 CACHED_GRAPH 的访问，避免并发冲突
+    // 互斥锁：串行化测试中对全局引擎图数据的访问，避免并发冲突
     static BIN_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     /// 获取全局互斥锁，确保测试串行执行图操作

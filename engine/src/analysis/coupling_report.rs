@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-use crate::graph::Graph;
-use crate::storage::MemoryIndex;
+use hologram_graph::Graph;
+use hologram_storage::MemoryIndex;
 
 pub fn coupling_report(graph: &Graph, module: &str) -> serde_json::Value {
     let mut l1=0u32; let mut l2=0u32; let mut l3=0u32; let mut l4=0u32;
@@ -143,7 +143,7 @@ pub fn count_l4_by_file(idx: &MemoryIndex) -> Vec<(String, usize)> {
 
 #[cfg(test)]
 mod tests {
-    use crate::graph::{Edge, EdgeKind, Node, NodeKind};
+    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
     use super::*;
 
     #[test]

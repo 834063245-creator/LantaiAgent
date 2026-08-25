@@ -31,16 +31,6 @@ export interface GoalRecord {
   updatedAt: number;
 }
 
-/** 旧格式(agent-store.ts 的 GoalState)— 仅 migrateLegacy 使用 */
-interface LegacyGoalState {
-  goal: string;
-  iteration: number;
-  stallRounds: number;
-  status: 'active' | 'paused';
-  createdAt: number;
-  updatedAt: number;
-}
-
 const INDEX_FILE = 'index.json';
 
 // ── GoalManager ──
@@ -227,47 +217,6 @@ export class GoalManager {
       }
     }
     return adopted;
-  }
-
-  /** 旧格式迁移:agents/main/goal.json → goals/{新id}/。
-   *  旧记录里的 session.json 一并复制;迁移后删除旧 goal.json。
-   *  旧 status 'active' 一律按 paused 处理(迁移发生在启动时,没有活体循环)。 */
-  async migrateLegacy(): Promise<GoalRecord | null> {
-    // 已有活体目标时不迁移(避免覆盖启动后立刻新建的目标;旧档留到下次启动)
-    if (await this.getActive()) return null;
-
-    const legacyGoalPath = this.projectPath.replace(/\\/g, '/').replace(/\/$/, '') + '/.lantai/agents/main/goal.json';
-    let legacy: LegacyGoalState;
-    try {
-      const raw = await typedRpc('read_file_content', { file_path: legacyGoalPath });
-      legacy = JSON.parse(stripNums(raw)) as LegacyGoalState;
-    } catch {
-      return null; // 无旧档
-    }
-
-    const record = await this.create(legacy.goal);
-    const migrated = await this.update(record.id, {
-      status: 'paused',
-      iteration: legacy.iteration ?? 0,
-      stallRounds: legacy.stallRounds ?? 0,
-    });
-
-    // 旧 session 现场复制到新槽(best-effort — 丢了也能靠重注目标提示词继续)
-    try {
-      const legacySessionPath =
-        this.projectPath.replace(/\\/g, '/').replace(/\/$/, '') + '/.lantai/agents/main/session.json';
-      const rawSession = await typedRpc('read_file_content', { file_path: legacySessionPath });
-      await this.saveSession(record.id, JSON.parse(stripNums(rawSession)) as Message[]);
-    } catch {
-      /* session 快照 best-effort */
-    }
-
-    try {
-      await typedRpc('delete_file_or_dir', { path: legacyGoalPath });
-    } catch {
-      /* best effort */
-    }
-    return migrated;
   }
 
   // ── Internals ──

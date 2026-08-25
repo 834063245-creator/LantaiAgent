@@ -26,7 +26,7 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
 use hologram_engine::engine::{self as engine_api, Engine};
-use hologram_engine::graph::Graph;
+use hologram_graph::Graph;
 
 use crate::permissions::PermissionContext;
 
@@ -192,7 +192,7 @@ impl WorkspaceHandle {
                 let changed_paths: Vec<String> = changed.iter().map(|(p, _)| p.clone()).collect();
 
                 // ponytail: 在重新分析前快照旧图以便做 diff
-                let before_graph = engine.read_graph(|g| g.clone()).ok();
+                let before_graph = engine.read(engine_api::graph_from_index).ok();
 
                 // 首先尝试增量更新 (Phase 1-3: 重新解析变更文件,
                 // 文件内 diff, 跨文件边修复)。如果增量失败或验证
@@ -330,7 +330,7 @@ fn collect_file_mtimes(root: &str) -> std::collections::HashMap<String, u64> {
 /// 如果没有前一次图或引擎读取失败则返回 None。
 pub(crate) fn compute_watcher_diff(before: Option<&Graph>, engine: &Engine) -> Option<serde_json::Value> {
     let before = before?;
-    let after = engine.read_graph(|g| g.clone()).ok()?;
+    let after = engine.read(engine_api::graph_from_index).ok()?;
     let d = before.diff(&after);
     let added_nodes: Vec<_> = d.added_nodes.iter().map(|n| serde_json::json!({
         "id": n.id, "name": n.name, "type": n.kind.as_str(),

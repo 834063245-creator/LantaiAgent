@@ -16,11 +16,11 @@ vi.mock('../src/bridge', () => ({
   isMockMode: () => false,
 }));
 
-import { Agent } from '../src/agent/agent';
 import { getSubAgentActivity } from '../src/agent/subagent-activity';
 import { type Tool, ToolRegistry } from '../src/agent/tool';
 import type { Chunk, Provider, Usage } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
+import { createTestAgent } from './helpers/agent';
 
 const USAGE: Usage = {
   prompt_tokens: 10,
@@ -78,7 +78,7 @@ describe('spawnSubAgent — wrapSubAgentSink 接线（tee 端到端）', () => {
     const registry = new ToolRegistry();
     registry.register(stubTool);
 
-    const parent = new Agent(makeProvider(), registry, 'test system prompt', {
+    const parent = createTestAgent(makeProvider(), registry, 'test system prompt', {
       eventSink: () => {},
       contextWindow: 0, // no compaction interference
     });

@@ -28,7 +28,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use crate::graph::{Graph, Node, NodeId, NodeKind};
+use hologram_graph::{Graph, Node, NodeId, NodeKind};
 use crate::graph::resolver::infer_language;
 
 /// 管道解析缓存中保存的已解析源码。

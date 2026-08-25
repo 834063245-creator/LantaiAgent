@@ -111,7 +111,7 @@ pub(crate) fn handler_get_flow(args: &Value) -> ToolResponse {
 
     ToolResponse::Success(with_store(|idx| {
         // 查找匹配流程的入口点节点
-        let entry: Option<(&crate::graph::Node, &serde_json::Value)> = idx
+        let entry: Option<(&hologram_graph::Node, &serde_json::Value)> = idx
             .nodes_iter()
             .find_map(|n| {
                 let flow = n.properties.get("flow")?;

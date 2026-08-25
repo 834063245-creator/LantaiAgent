@@ -18,8 +18,8 @@ use std::path::Path;
 
 use protobuf::Message;
 
-use crate::graph::{EdgeKind, Node, NodeKind};
-use crate::storage::MemoryIndex;
+use hologram_graph::{EdgeKind, Node, NodeKind};
+use hologram_storage::MemoryIndex;
 
 /// SymbolRole 位掩码（与 scip.proto 一致）。
 mod role {

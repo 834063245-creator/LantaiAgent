@@ -7,7 +7,7 @@ use tree_sitter::{Language, Parser};
 
 use crate::adapter::traits::LanguageAdapter;
 use crate::adapter::tree_sitter::PARSE_TIMEOUT_MICROS;
-use crate::graph::{Edge, EdgeKind, Node, NodeKind};
+use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
 use crate::path_utils::normalize_path;
 
 thread_local! {

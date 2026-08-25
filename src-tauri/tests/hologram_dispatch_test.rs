@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use hologram_engine as engine_crate;
 use engine_crate::engine as engine_api;
 use engine_crate::tools::ToolRegistry;
-use engine_crate::graph::{Node, NodeKind, EdgeKind};
+use hologram_graph::{Node, NodeKind, EdgeKind};
 
 fn parse(v: &str) -> Value {
     serde_json::from_str(v).unwrap()

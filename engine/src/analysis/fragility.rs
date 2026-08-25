@@ -1,13 +1,13 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-use crate::graph::Graph;
-use crate::storage::MemoryIndex;
+use hologram_graph::Graph;
+use hologram_storage::MemoryIndex;
 
 pub fn fragile_nodes(graph: &Graph, limit: usize) -> Vec<serde_json::Value> {
     // 构建按节点的边索引：一次 O(E) 遍历替代每个节点 O(V×E) 的边扫描。
     // 20,655 个节点 × 270,690 条边 = 56 亿次过滤操作 → ~30 万次操作。
-    let mut node_edges: std::collections::HashMap<&str, Vec<&crate::graph::Edge>> =
+    let mut node_edges: std::collections::HashMap<&str, Vec<&hologram_graph::Edge>> =
         std::collections::HashMap::with_capacity(graph.node_count());
     for (_, e) in graph.edges_iter() {
         node_edges.entry(&e.source).or_default().push(e);
@@ -53,7 +53,7 @@ pub fn fragile_nodes_from_index(idx: &MemoryIndex, limit: usize) -> Vec<serde_js
 
 #[cfg(test)]
 mod tests {
-    use crate::graph::{Edge, EdgeKind, Node, NodeKind};
+    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
     use super::*;
 
     #[test]

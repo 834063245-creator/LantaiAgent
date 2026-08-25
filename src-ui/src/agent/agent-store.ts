@@ -50,11 +50,7 @@ export class AgentStore {
     return `${this.baseDir}/${id}/state.json`;
   }
 
-  private sessionPath(id: string): string {
-    return `${this.baseDir}/${id}/session.json`;
-  }
-
-  /** P1-15: 会话增量文件（NDJSON，append-only）。旧 session.json 仅作一次性兼容读取。 */
+  /** P1-15: 会话增量文件（NDJSON，append-only）。 */
   private sessionNdsPath(id: string): string {
     return `${this.baseDir}/${id}/session.ndjson`;
   }
@@ -153,7 +149,7 @@ export class AgentStore {
       });
       const record: AgentRecord = JSON.parse(stripNums(rawState));
       let messages: Message[] = [];
-      // P1-15: 优先读 NDJSON 增量文件（逐行 parse）；回退旧 JSON 数组 session.json
+      // P1-15: 只读 NDJSON 增量文件（旧 session.json 格式已归档，不再回读）。
       try {
         const rawNds = await typedRpc('read_file_content', {
           file_path: this.sessionNdsPath(id),
@@ -163,14 +159,7 @@ export class AgentStore {
           .filter((l) => l.trim().length > 0)
           .map((l) => JSON.parse(l) as Message);
       } catch {
-        try {
-          const rawSession = await typedRpc('read_file_content', {
-            file_path: this.sessionPath(id),
-          });
-          messages = JSON.parse(stripNums(rawSession));
-        } catch {
-          /* 会话文件可能尚不存在 — 空会话没问题 */
-        }
+        /* 会话文件可能尚不存在 — 空会话没问题 */
       }
       return { record, messages };
     } catch {

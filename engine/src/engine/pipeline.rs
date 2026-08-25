@@ -24,7 +24,7 @@ use crate::analysis::framework_routes::detect_framework_routes;
 use crate::community::detect_communities_and_hierarchy;
 use crate::graph::resolver::CrossFileResolver;
 use crate::pipeline::runner::analyze_project;
-use crate::storage::MemoryIndex;
+use hologram_storage::MemoryIndex;
 
 use super::{AnalyzeResult, Engine, EngineState, StageTiming};
 
@@ -322,7 +322,7 @@ impl Engine {
                 let mut key: &str = node.id.as_str();
                 loop {
                     if let Some(source) = file_map.get(key) {
-                        if let Some(snippet) = crate::vector::extract_snippet(source, &node.name, &node.kind) {
+                        if let Some(snippet) = hologram_vector::extract_snippet(source, &node.name, &node.kind) {
                             node.snippet = Some(snippet);
                             return 1;
                         }
@@ -330,7 +330,7 @@ impl Engine {
                     }
                     if let Some(path) = path_map.get(key) {
                         if let Ok(source) = std::fs::read_to_string(path) {
-                            if let Some(snippet) = crate::vector::extract_snippet(&source, &node.name, &node.kind) {
+                            if let Some(snippet) = hologram_vector::extract_snippet(&source, &node.name, &node.kind) {
                                 node.snippet = Some(snippet);
                                 return 1;
                             }
@@ -421,29 +421,29 @@ impl Engine {
         // 7.5. 构建语义向量索引（后台异步执行）
         // ponytail: 使用步骤 5.9 中已填充 snippet 的节点。
         // 在后台线程运行 — 不阻塞流水线完成。
-        let vector_nodes: Vec<crate::graph::Node> = result.graph.nodes_iter().map(|(_, n)| n.clone()).collect();
+        let vector_nodes: Vec<hologram_graph::Node> = result.graph.nodes_iter().map(|(_, n)| n.clone()).collect();
         let vector_path = project_root.join(".lantai").join("vectors.usearch");
         let vector_root = project_root.to_path_buf();
         std::thread::spawn(move || {
             // 并发守卫：与增量重建互斥（按索引文件路径键控），避免两个线程同时写同一索引文件
-            if !crate::vector::try_begin_build(&vector_path) {
+            if !hologram_vector::try_begin_build(&vector_path) {
                 tracing::info!("[vector] 已有重建在进行，跳过本轮全量重建");
                 return;
             }
-            let vi = crate::vector::CodeVectorIndex::new(&vector_path);
+            let vi = hologram_vector::CodeVectorIndex::new(&vector_path);
             match vi.build(&vector_nodes) {
                 Ok(n) if n > 0 => match vi.save() {
                     Ok(()) => {
                         tracing::info!("[vector] index built: {} vectors saved to {}", n, vector_path.display());
                         // 让搜索侧缓存失效（按根），下次搜索加载新索引
-                        crate::vector::invalidate_cache(&vector_root);
+                        hologram_vector::invalidate_cache(&vector_root);
                     }
                     Err(e) => tracing::warn!("[vector] save failed: {e}"),
                 },
                 Ok(_) => {}
                 Err(e) => tracing::warn!("[vector] build skipped: {e}"),
             }
-            crate::vector::end_build(&vector_path);
+            hologram_vector::end_build(&vector_path);
         });
 
         // 8. 写入 GraphStore（MemoryIndex + SQLite）

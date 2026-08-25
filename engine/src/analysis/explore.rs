@@ -14,8 +14,7 @@ use std::sync::OnceLock;
 use serde_json::json;
 
 use crate::analysis::{coupling_report, detect_cycles, fragile_nodes};
-use crate::graph::{EdgeKind, Graph, Node, NodeKind};
-use crate::graph::query;
+use hologram_graph::{EdgeKind, Graph, Node, NodeKind};
 
 // ═══════════════════════════════════════════════════════════════
 // 公共 API
@@ -50,7 +49,7 @@ pub fn explore(
 
     // 步骤 1：解析符号 → 节点
     for sym in &effective_symbols {
-        let results = query::search_nodes(graph, sym);
+        let results = graph.search_nodes(sym);
         // 优先精确名称匹配，然后取第一个
         // 结果：Vec<&Node>
         let best: Option<&Node> = results.iter()
@@ -175,7 +174,7 @@ fn parse_nl_query(graph: &Graph, query: &str) -> Vec<String> {
     // 限定 token → 直接查找（按限定名精确匹配）
     for qt in &qualified_tokens {
         // 按完整限定名搜索
-        let matches = query::search_nodes(graph, qt);
+        let matches = graph.search_nodes(qt);
         if let Some(best) = matches.iter().find(|n| n.name == *qt).or_else(|| matches.first()) {
             result.push(best.name.clone());
         }
@@ -183,7 +182,7 @@ fn parse_nl_query(graph: &Graph, query: &str) -> Vec<String> {
 
     // 简单 token → 用 PascalCase 上下文消歧
     for st in &simple_tokens {
-        let matches = query::search_nodes(graph, st);
+        let matches = graph.search_nodes(st);
         let filtered = disambiguate(&matches, &pascal_tokens);
         for node in filtered {
             result.push(node.name.clone());
@@ -192,7 +191,7 @@ fn parse_nl_query(graph: &Graph, query: &str) -> Vec<String> {
 
     // PascalCase token：如果能解析则添加（且不匹配项目/包名）
     for pt in &pascal_tokens {
-        let matches = query::search_nodes(graph, pt);
+        let matches = graph.search_nodes(pt);
         if matches.len() == 1 {
             result.push(matches[0].name.clone());
         } else if let Some(best) = matches.iter().find(|n| n.name == *pt) {
@@ -953,7 +952,7 @@ fn file_key(loc: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{Edge, EdgeKind, Node, NodeKind};
+    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
 
     fn test_graph() -> Graph {
         let mut g = Graph::new();

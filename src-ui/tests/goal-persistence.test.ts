@@ -12,13 +12,14 @@ vi.mock('../src/bridge', () => ({
   isMockMode: () => false,
 }));
 
-import { Agent } from '../src/agent/agent';
+import type { Agent } from '../src/agent/agent';
 import { AgentStore } from '../src/agent/agent-store';
 import { GoalManager } from '../src/agent/goal-manager';
 import type { Tool } from '../src/agent/tool';
 import { ToolRegistry } from '../src/agent/tool';
 import type { Chunk, Provider, ToolCall } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
+import { createTestAgent } from './helpers/agent';
 
 // ── Fixtures ──
 
@@ -70,7 +71,7 @@ function dummyTool(): Tool {
 function makeAgent(prov?: Provider): Agent {
   const reg = new ToolRegistry();
   reg.register(dummyTool());
-  return new Agent(prov ?? steppedProvider([[DONE]]), reg, 'system', { agentId: 'test-agent' });
+  return createTestAgent(prov ?? steppedProvider([[DONE]]), reg, 'system', { agentId: 'test-agent' });
 }
 
 /** Live in-memory FS(同 rpc 面,状态真实流转) */
@@ -123,13 +124,13 @@ describe('Agent identity', () => {
   it('auto-generates agent ID matching agent-timestamp pattern', () => {
     const reg = new ToolRegistry();
     reg.register(dummyTool());
-    const a = new Agent(steppedProvider([[DONE]]), reg, 'sys');
+    const a = createTestAgent(steppedProvider([[DONE]]), reg, 'sys');
     expect(a.id).toMatch(/^agent-/);
   });
   it('uses explicit ID', () => {
     const reg = new ToolRegistry();
     reg.register(dummyTool());
-    expect(new Agent(steppedProvider([[DONE]]), reg, 'sys', { agentId: 'main' }).id).toBe('main');
+    expect(createTestAgent(steppedProvider([[DONE]]), reg, 'sys', { agentId: 'main' }).id).toBe('main');
   });
   it('parentId defaults to null', () => {
     expect(makeAgent().parentId).toBeNull();
@@ -137,13 +138,15 @@ describe('Agent identity', () => {
   it('parentId from options', () => {
     const reg = new ToolRegistry();
     reg.register(dummyTool());
-    expect(new Agent(steppedProvider([[DONE]]), reg, 'sys', { parentId: 'agent-123' }).parentId).toBe('agent-123');
+    expect(createTestAgent(steppedProvider([[DONE]]), reg, 'sys', { parentId: 'agent-123' }).parentId).toBe(
+      'agent-123',
+    );
   });
   it('child agent gets parentId from parent', () => {
     const p = makeAgent();
     const reg = new ToolRegistry();
     reg.register(dummyTool());
-    const c = new Agent(steppedProvider([[DONE]]), reg, 'child', { agentId: 'c1', parentId: p.id });
+    const c = createTestAgent(steppedProvider([[DONE]]), reg, 'child', { agentId: 'c1', parentId: p.id });
     expect(c.parentId).toBe(p.id);
   });
 });

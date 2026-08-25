@@ -8,8 +8,8 @@
 //!
 //! 分层重构（L2 存储外置 · layering-rework-plan）后本 crate 只保留「纯分析器」
 //! 身份：图类型层与存储层已物理拆出为 `hologram-graph` / `hologram-storage`
-//! 两个独立 crate，此处仅 re-export 保持既有路径兼容（消费方 `crate::graph::*`
-//! / `crate::storage::*` 零改动）。导出面收窄的前置（storage crate 化）就此落地。
+//! / `hologram-vector` 三个独立 crate；engine 内部一律直连独立 crate，
+//! 不再经 engine 内门面转发。
 
 // ═══════════════════════════════════════════════════════════════
 // HoloGram — 代码依赖拓扑分析引擎
@@ -37,7 +37,6 @@ pub mod analysis;    // 分析算法（环检测、脆弱节点、耦合报告�
 pub mod community;   // 社区检测（Louvain/Leiden + 层级社区）
 pub mod pipeline;   // 解析管线（源码 → AST → 符号 → 边 → 图合并；incremental 增量更新）
 pub mod routing;    // 路由与预检（提交前约束检查、影响评估）
-pub mod storage;    // 存储层（再导出 hologram-storage crate；StoreHost 所有权单元）
 pub mod engine;     // 引擎核心（Engine 结构体、全局状态、分析入口）
 pub mod tools;      // MCP 工具注册表（30+ hologram_* 工具）
 pub mod mcp;        // MCP JSON-RPC 服务器（stdio 通信）
@@ -46,4 +45,3 @@ pub mod path_utils;  // 路径规范化工具
 pub mod stress;      // 压力测试与基准评估
 pub mod lsp_manager; // LSP 服务器池管理（多语言调用解析）
 pub mod scip_bridge; // SCIP 桥接（P1-1：scip-* indexer 产出 → 图）
-pub mod vector;      // 向量检索（再导出 hologram-vector crate；语义搜索）

@@ -58,11 +58,8 @@ export async function execStreamedShell(
     return '[已取消] 命令执行被中止（agent 运行被中断）。';
   }
 
-  // kill 所有权身份：优先 _owner_id（bus id — 与 spawn 时 job owner 对齐），
-  // 回退 _agent_id（worktree id）兼容旧 job / 旧调用方。
-  const agentId =
-    (typeof args._owner_id === 'string' ? args._owner_id : undefined) ??
-    (typeof args._agent_id === 'string' ? args._agent_id : undefined);
+  // kill 所有权身份：bus id（_owner_id — 与 spawn 时 job owner 对齐）。
+  const agentId = typeof args._owner_id === 'string' ? args._owner_id : undefined;
   /** Rust 侧 ledger job_id — started 响应到达前为 null（此窗口内 abort 无进程可杀） */
   let jobId: number | null = null;
 

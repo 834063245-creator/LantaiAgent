@@ -72,13 +72,14 @@ vi.mock('../src/provider/catalog', async (importOriginal) => {
   return { ...actual, getAllModels: () => [] };
 });
 
-import { Agent } from '../src/agent/agent';
+import type { Agent } from '../src/agent/agent';
 import { AgentStore } from '../src/agent/agent-store';
 import { SessionLog } from '../src/agent/session-log';
 import type { Tool } from '../src/agent/tool';
 import { ToolRegistry } from '../src/agent/tool';
 import type { Chunk, Provider } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
+import { createTestAgent } from './helpers/agent';
 
 // ── 录制型脚本 Provider：每次调用记录请求消息，并在请求时刻快照日志投影 ──
 
@@ -124,7 +125,7 @@ function makeHarness(scripts: Chunk[][], opts?: { toolResultWindow?: number }) {
     execute: async (args) => `ok:${String((args as { v?: unknown }).v ?? '')}`,
   };
   tools.register(echo);
-  const agent = new Agent(prov, tools, 'sys-fixture', {
+  const agent = createTestAgent(prov, tools, 'sys-fixture', {
     agentId: 'diff-agent',
     contextWindow: 10_000_000, // 差分基线：不触发自动压缩（压缩走显式 compactNow）
     toolResultWindow: opts?.toolResultWindow ?? 0,
@@ -493,7 +494,7 @@ describe('T2 差分 — 持久化双写（P1-15 游标不受破坏）', () => {
         return [];
       },
     };
-    const agent = new Agent(prov, new ToolRegistry(), 'sys-fixture', { contextWindow: 100000 });
+    const agent = createTestAgent(prov, new ToolRegistry(), 'sys-fixture', { contextWindow: 100000 });
     agent.setAgentStore(store);
     await expect(agent.run(SIG, 'boom turn')).rejects.toThrow('provider exploded');
 

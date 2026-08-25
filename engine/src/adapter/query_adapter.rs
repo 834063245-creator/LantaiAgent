@@ -9,7 +9,7 @@
 
 use crate::adapter::traits::LanguageAdapter;
 use crate::engine::GRAMMAR_LOADER;
-use crate::graph::{Edge, EdgeKind, Node, NodeKind};
+use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
 use crate::path_utils::normalize_path;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -2362,43 +2362,43 @@ mod tests {
         // ── 按 kind 分组的边 ──
         println!("\n=== EDGES (Calls) ===");
         for e in &edges {
-            if matches!(e.kind, crate::graph::EdgeKind::Calls) {
+            if matches!(e.kind, hologram_graph::EdgeKind::Calls) {
                 println!("  {} -> {}", e.source, e.target);
             }
         }
         println!("\n=== EDGES (Usage) ===");
         for e in &edges {
-            if matches!(e.kind, crate::graph::EdgeKind::Usage) {
+            if matches!(e.kind, hologram_graph::EdgeKind::Usage) {
                 println!("  {} -> {}", e.source, e.target);
             }
         }
         println!("\n=== EDGES (Imports) ===");
         for e in &edges {
-            if matches!(e.kind, crate::graph::EdgeKind::Imports) {
+            if matches!(e.kind, hologram_graph::EdgeKind::Imports) {
                 println!("  {} -> {}", e.source, e.target);
             }
         }
         println!("\n=== EDGES (Inherits) ===");
         for e in &edges {
-            if matches!(e.kind, crate::graph::EdgeKind::Inherits) {
+            if matches!(e.kind, hologram_graph::EdgeKind::Inherits) {
                 println!("  {} -> {}", e.source, e.target);
             }
         }
         println!("\n=== EDGES (Defines) ===");
         for e in &edges {
-            if matches!(e.kind, crate::graph::EdgeKind::Defines) {
+            if matches!(e.kind, hologram_graph::EdgeKind::Defines) {
                 println!("  {} -> {}", e.source, e.target);
             }
         }
         println!("\n=== EDGES (Writes) ===");
         for e in &edges {
-            if matches!(e.kind, crate::graph::EdgeKind::Writes) {
+            if matches!(e.kind, hologram_graph::EdgeKind::Writes) {
                 println!("  {} -> {}", e.source, e.target);
             }
         }
         println!("\n=== EDGES (Other) ===");
         for e in &edges {
-            if !matches!(e.kind, crate::graph::EdgeKind::Calls | crate::graph::EdgeKind::Usage | crate::graph::EdgeKind::Imports | crate::graph::EdgeKind::Inherits | crate::graph::EdgeKind::Defines | crate::graph::EdgeKind::Writes) {
+            if !matches!(e.kind, hologram_graph::EdgeKind::Calls | hologram_graph::EdgeKind::Usage | hologram_graph::EdgeKind::Imports | hologram_graph::EdgeKind::Inherits | hologram_graph::EdgeKind::Defines | hologram_graph::EdgeKind::Writes) {
                 println!("  [{:?}] {} -> {}", e.kind, e.source, e.target);
             }
         }
@@ -2440,7 +2440,7 @@ int main(void) {
             nodes.iter().map(|n| &n.name).collect::<Vec<_>>()
         );
         assert!(
-            edges.iter().any(|e| matches!(e.kind, crate::graph::EdgeKind::Calls)),
+            edges.iter().any(|e| matches!(e.kind, hologram_graph::EdgeKind::Calls)),
             "C 调用边应被提取"
         );
     }

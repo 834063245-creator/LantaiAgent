@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 
-use crate::graph::Graph;
-use crate::storage::MemoryIndex;
+use hologram_graph::Graph;
+use hologram_storage::MemoryIndex;
 
 /// 社区 = 一组节点 ID。
 pub type Community = Vec<String>;
@@ -900,7 +900,7 @@ pub fn match_communities_to_previous(
 ///
 /// 返回被分配社区的节点 ID，以便调用方
 /// 持久化变更（swap_index 仅替换内存中的索引）。
-pub fn assign_communities_to_new_nodes(graph: &mut crate::graph::Graph) -> Vec<String> {
+pub fn assign_communities_to_new_nodes(graph: &mut hologram_graph::Graph) -> Vec<String> {
     use std::collections::{HashMap, HashSet};
 
     let new_ids: HashSet<String> = graph.nodes_iter()
@@ -954,8 +954,8 @@ pub fn assign_communities_to_new_nodes(graph: &mut crate::graph::Graph) -> Vec<S
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{Edge, EdgeKind, Node, NodeKind};
-    use crate::storage::MemoryIndex;
+    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
+    use hologram_storage::MemoryIndex;
 
     fn build_test_graph() -> Graph {
         let mut g = Graph::new();

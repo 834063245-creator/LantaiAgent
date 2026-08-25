@@ -12,9 +12,9 @@ use serde_json::{json, Value};
 
 use crate::engine;
 use crate::engine::GRAMMAR_LOADER;
-use crate::graph::{query, Edge, Graph, Node};
+use hologram_graph::{Edge, Graph, Node};
 use crate::pipeline::discovery::discover_files;
-use crate::storage::MemoryIndex;
+use hologram_storage::MemoryIndex;
 
 // ═══════════════════════════════════════════════════════════════
 // ToolSchema — 单个工具的元数据
@@ -335,7 +335,7 @@ pub(crate) fn with_graph<F>(f: F) -> Value
 where
     F: FnOnce(&Graph) -> Value,
 {
-    match engine::engine_read_graph(|g| f(g)) {
+    match engine::engine_read(|idx| f(&engine::graph_from_index(idx))) {
         Ok(value) => value,
         Err(e) => json!({"error": e}),
     }
@@ -373,7 +373,7 @@ pub(crate) fn resolve_in_graph(g: &Graph, node_id_or_name: &str) -> Option<Strin
     if g.get_node(node_id_or_name).is_some() {
         return Some(node_id_or_name.to_string());
     }
-    query::search_nodes(g, node_id_or_name).first().map(|n| n.id.as_str().to_owned())
+    g.search_nodes(node_id_or_name).first().map(|n| n.id.as_str().to_owned())
 }
 
 pub(crate) fn discover_source_files(root: &Path, limit: usize) -> Vec<PathBuf> {
@@ -919,8 +919,8 @@ mod tests {
 
     #[test]
     fn test_resolve_in_index_suffix_match() {
-        use crate::graph::{Node, NodeKind};
-        let mut idx = crate::storage::MemoryIndex::default();
+        use hologram_graph::{Node, NodeKind};
+        let mut idx = hologram_storage::MemoryIndex::default();
         let mut node = Node::new(
             "D:.HoloGramHG.src-ui.src.agent.ts.Agent.setPlanState",
             "setPlanState",

@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::graph::Graph;
+use hologram_graph::Graph;
 
 /// 管道解析缓存中保存的已解析源码。
 type ParseCache = HashMap<String, (String, Option<tree_sitter::Tree>)>;

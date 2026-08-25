@@ -15,11 +15,12 @@ vi.mock('../src/bridge', () => ({
   isMockMode: () => false,
 }));
 
-import { Agent } from '../src/agent/agent';
+import type { Agent } from '../src/agent/agent';
 import type { CompactionEvent } from '../src/agent/compaction-model';
 import { type Tool, ToolRegistry } from '../src/agent/tool';
 import type { Chunk, Provider, Usage } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
+import { createTestAgent } from './helpers/agent';
 
 const USAGE: Usage = {
   prompt_tokens: 100,
@@ -69,7 +70,7 @@ function failingTool(name: string): Tool {
 }
 
 function makeAgent(prov: Provider, tools: ToolRegistry): Agent {
-  return new Agent(prov, tools, 'test system prompt', {
+  return createTestAgent(prov, tools, 'test system prompt', {
     eventSink: () => {},
     contextWindow: 0, // no compaction interference
   });

@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-use crate::graph::{EdgeKind, Graph, NodeKind};
-use crate::storage::MemoryIndex;
+use hologram_graph::{EdgeKind, Graph, NodeKind};
+use hologram_storage::MemoryIndex;
 use std::collections::HashMap;
 
 pub fn graph_summary(graph: &Graph) -> serde_json::Value {
@@ -97,7 +97,7 @@ fn lsp_resolution_json(calls_total: usize, calls_lsp: usize) -> serde_json::Valu
 
 #[cfg(test)]
 mod tests {
-    use crate::graph::{Edge, EdgeKind, Node, NodeKind};
+    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
     use super::*;
 
     #[test]

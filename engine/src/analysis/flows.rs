@@ -9,7 +9,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::graph::{EdgeKind, NodeKind};
+use hologram_graph::{EdgeKind, NodeKind};
 use crate::pipeline::runner::PipelineResult;
 
 /// 用于关键性评分的安全敏感关键词。
@@ -40,7 +40,7 @@ fn strip_line_suffix(loc: &str) -> &str {
 /// source+target+edge.id 三个 String（全内核百万级 Calls 边 ≈ 2GB 瞬时）。
 /// 入参取边表（经 `Graph::edges_map()`）而非整个 Graph：返回值借用边表，
 /// 零克隆；借用存活期间调用方只读 Graph，节点写回延至借用结束后统一执行。
-fn build_calls_adjacency(edges: &HashMap<crate::graph::EdgeId, crate::graph::Edge>) -> HashMap<&str, Vec<(&str, &str)>> {
+fn build_calls_adjacency(edges: &HashMap<hologram_graph::EdgeId, hologram_graph::Edge>) -> HashMap<&str, Vec<(&str, &str)>> {
     let mut adj: HashMap<&str, Vec<(&str, &str)>> = HashMap::new();
     for edge in edges.values() {
         if edge.kind == EdgeKind::Calls {
@@ -56,7 +56,7 @@ fn build_calls_adjacency(edges: &HashMap<crate::graph::EdgeId, crate::graph::Edg
 /// 一次遍历 O(E)，供入口点检测 O(1) 查询 —— 替代逐节点全边扫描
 /// （O(N×E) 字符串比较，压测中占 Flow 阶段 80%+ 耗时）。
 /// M6: 同样借用化，不再克隆 target。
-fn build_calls_indegree(edges: &HashMap<crate::graph::EdgeId, crate::graph::Edge>) -> HashMap<&str, usize> {
+fn build_calls_indegree(edges: &HashMap<hologram_graph::EdgeId, hologram_graph::Edge>) -> HashMap<&str, usize> {
     let mut indegree: HashMap<&str, usize> = HashMap::new();
     for edge in edges.values() {
         if edge.kind == EdgeKind::Calls {
@@ -88,7 +88,7 @@ fn is_entry_point_name(name: &str) -> bool {
 /// 2. 命名约定 — 覆盖非框架项目
 /// 3. 零 CALLS 入度非测试函数 — 回退方案
 fn detect_entry_points(
-    graph: &crate::graph::Graph,
+    graph: &hologram_graph::Graph,
     calls_adj: &HashMap<&str, Vec<(&str, &str)>>,
     calls_indegree: &HashMap<&str, usize>,
 ) -> Vec<(String, String, Option<String>)> {
@@ -199,7 +199,7 @@ fn trace_flow(
 // ═══════════════════════════════════════════════════════════════
 
 fn compute_criticality(
-    graph: &crate::graph::Graph,
+    graph: &hologram_graph::Graph,
     node_ids: &[String],
     edge_ids: &[String],
     depth: u32,
@@ -322,7 +322,7 @@ pub fn detect_all_flows(result: &mut PipelineResult) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{Edge, Graph, Node, NodeKind};
+    use hologram_graph::{Edge, Graph, Node, NodeKind};
     use crate::pipeline::runner::PipelineResult;
     use std::collections::HashMap;
 

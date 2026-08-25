@@ -33,9 +33,9 @@ use std::path::{Path, PathBuf};
 use tracing::{info, warn};
 
 use crate::adapter::registry;
-use crate::graph::{Edge, Node};
-use crate::storage::MemoryIndex;
-use crate::storage::SqliteDb;
+use hologram_graph::{Edge, Node};
+use hologram_storage::MemoryIndex;
+use hologram_storage::SqliteDb;
 
 /// 用 tree-sitter 分析单个文件的结果。
 struct FileAnalysis {
@@ -483,7 +483,7 @@ impl IncrementalUpdater {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{Node, NodeKind};
+    use hologram_graph::{Node, NodeKind};
 
     fn test_node(id: &str, name: &str, location: Option<&str>) -> Node {
         let mut n = Node::new(id, name, NodeKind::Symbol);

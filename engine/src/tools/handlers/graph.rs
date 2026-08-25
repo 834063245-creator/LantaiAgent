@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{json, Value};
 use crate::community::detect_communities_from_index;
 use crate::engine;
-use crate::graph::{query, Edge};
+use hologram_graph::Edge;
 use crate::tools::{get_str, get_usize, project_root, with_store};
 use crate::tools::{with_graph, resolve_in_index, resolve_in_graph};
 use crate::tools::{node_to_value, edge_to_value, discover_source_files};
@@ -37,7 +37,7 @@ pub(crate) fn handler_neighbors(args: &Value) -> ToolResponse {
             incoming.retain(|e| !idx.is_edge_synthesized(&e.source, &e.target));
             outgoing.retain(|e| !idx.is_edge_synthesized(&e.source, &e.target));
         }
-        let edge_with_flag = |e: &crate::graph::Edge| {
+        let edge_with_flag = |e: &hologram_graph::Edge| {
             let mut v = edge_to_value(e);
             let synthesized = idx.is_edge_synthesized(&e.source, &e.target);
             if synthesized {
@@ -82,7 +82,7 @@ pub(crate) fn handler_neighbors(args: &Value) -> ToolResponse {
             None => return json!({"error": format!("Node {} not found", node_id)}),
         };
         let node = g.get_node(&resolved).expect("节点已解析");
-        let nb = query::neighbors(g, &resolved, 1);
+        let nb = g.neighbors(&resolved, 1);
         let incoming: Vec<_> = g.incoming(&resolved).map(edge_to_value).collect();
         let outgoing: Vec<_> = g.outgoing(&resolved).map(edge_to_value).collect();
         let neighbors_value: Vec<Value> = nb.iter().map(|(_, t, d)| {

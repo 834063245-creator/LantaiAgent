@@ -17,7 +17,6 @@
 
 use std::collections::HashSet;
 use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -127,26 +126,15 @@ struct ProgressCtx {
 }
 
 pub struct McpServer {
-    /// 项目根目录路径（用于重新分析、时间线等）
-    /// 用 Mutex 包装，使 tool_analyze 可在运行时切换项目
-    #[allow(dead_code)] // 遗留字段；工具现在使用全局 ENGINE，但保留以备将来按服务器路由
-    project_root: Mutex<PathBuf>,
     /// 会话状态。
     state: Mutex<ServerState>,
 }
 
 impl McpServer {
-    pub fn new(project_root: &Path) -> Self {
+    pub fn new() -> Self {
         Self {
-            project_root: Mutex::new(project_root.to_path_buf()),
             state: Mutex::new(ServerState::default()),
         }
-    }
-
-    /// 获取当前项目根目录的克隆。
-    #[allow(dead_code)] // 遗留；工具现在使用全局 ENGINE
-    fn project_root(&self) -> PathBuf {
-        self.project_root.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     // ── 会话状态 ──
@@ -537,7 +525,7 @@ mod tests {
 
     /// 创建测试用服务器实例。
     fn server() -> McpServer {
-        McpServer::new(&std::env::temp_dir())
+        McpServer::new()
     }
 
     /// 解析服务器输出中的 JSON 响应行。

@@ -9,7 +9,7 @@ use std::time::Instant;
 use tracing::info;
 
 use crate::adapter::registry::AdapterRegistry;
-use crate::graph::{Edge, Node};
+use hologram_graph::{Edge, Node};
 
 /// 单个文件的解析结果。
 pub struct FileData {

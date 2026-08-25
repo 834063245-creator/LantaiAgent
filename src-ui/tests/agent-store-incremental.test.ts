@@ -6,10 +6,11 @@
 // 修复后：saveState 只 append 增量游标之后的新消息；会话缩短（撤回/替换）时 truncate 重建。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { Agent } from '../src/agent/agent';
+import type { Agent } from '../src/agent/agent';
 import { AgentStore } from '../src/agent/agent-store';
 import { ToolRegistry } from '../src/agent/tool';
 import type { Chunk, Provider } from '../src/provider/types';
+import { createTestAgent } from './helpers/agent';
 
 // ── Mock bridge ──
 const fs = new Map<string, string>();
@@ -69,7 +70,7 @@ function mockProvider(): Provider {
 }
 
 function makeAgent(store: AgentStore): Agent {
-  const a = new Agent(mockProvider(), new ToolRegistry(), 'sys', { agentId: 'main' });
+  const a = createTestAgent(mockProvider(), new ToolRegistry(), 'sys', { agentId: 'main' });
   a.setAgentStore(store);
   return a;
 }
@@ -166,22 +167,5 @@ describe('P1-15 AgentStore.load NDJSON 读取', () => {
     const store = new AgentStore('/p');
     const r = await store.load('main');
     expect(r!.messages.map((m) => m.content)).toEqual(['a', 'b']);
-  });
-
-  it('无 ndjson 时回退旧 session.json（JSON 数组）', async () => {
-    fs.set('/p/.lantai/agents/main/state.json', stateJson());
-    fs.set('/p/.lantai/agents/main/session.json', JSON.stringify([{ role: 'user', content: '旧格式' }]));
-    const store = new AgentStore('/p');
-    const r = await store.load('main');
-    expect(r!.messages.map((m) => m.content)).toEqual(['旧格式']);
-  });
-
-  it('ndjson 优先于旧 session.json', async () => {
-    fs.set('/p/.lantai/agents/main/state.json', stateJson());
-    fs.set('/p/.lantai/agents/main/session.json', JSON.stringify([{ role: 'user', content: '旧' }]));
-    fs.set('/p/.lantai/agents/main/session.ndjson', '{"role":"user","content":"新"}\n');
-    const store = new AgentStore('/p');
-    const r = await store.load('main');
-    expect(r!.messages.map((m) => m.content)).toEqual(['新']);
   });
 });

@@ -3,7 +3,7 @@
 
 use crate::analysis::{coupling_report, detect_cycles, dataflow_engine::query_dataflow_files};
 use crate::community::louvain::detect_communities;
-use crate::graph::{Graph, NodeKind};
+use hologram_graph::{Graph, NodeKind};
 use crate::pipeline::discovery::is_ignored_path;
 use crate::routing::{constraints::{ConstraintConfig, check_constraints}, signals::{DataflowSignalCounts, SignalGenerator}, summary::generate_summary};
 use serde_json::{json, Value};
@@ -308,7 +308,7 @@ pub fn run_full_check(before: &Graph, after: &Graph, changed_files: &[String], _
 
 #[cfg(test)]
 mod tests {
-    use crate::graph::{Edge, EdgeKind, Node, NodeKind};
+    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
     use super::*;
 
     #[test]

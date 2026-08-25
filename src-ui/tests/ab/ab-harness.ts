@@ -1,4 +1,4 @@
-import { Agent } from '../../src/agent/agent';
+import type { Agent } from '../../src/agent/agent';
 import {
   buildFileNodeIndex,
   createGraphContext,
@@ -10,6 +10,7 @@ import {
 import { buildSystemPrompt } from '../../src/agent/runtime/agent-builder';
 import type { Provider } from '../../src/provider/types';
 import { ChunkType } from '../../src/provider/types';
+import { createTestAgent } from '../helpers/agent';
 import type { TrialGraphData } from './ab-graph';
 import { buildTrialRegistry } from './ab-tools';
 
@@ -52,7 +53,7 @@ export function buildTrialAgent(
   }
 
   const systemPrompt = buildSystemPrompt(graph as any, worktree, '', '', '', 'DeepSeek');
-  const agent = new Agent(provider, registry, systemPrompt, {
+  const agent = createTestAgent(provider, registry, systemPrompt, {
     agentId: `ab-${arm}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     contextWindow: 131072,
     temperature: 0.2,

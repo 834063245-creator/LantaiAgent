@@ -150,17 +150,15 @@ pub fn scan_dynamic_boundaries(
 /// 根据从边界匹配中提取的键，在 Graph 中搜索候选目标。
 /// 返回候选节点名称（最多 10 个），按名称包含度评分排序。
 pub fn boundary_candidates(
-    graph: &crate::graph::Graph,
+    graph: &hologram_graph::Graph,
     key: &str,
     key_is_type: bool,
 ) -> Vec<String> {
-    use crate::graph::query;
-
     if key.is_empty() {
         return Vec::new();
     }
 
-    let candidates = query::search_nodes(graph, key);
+    let candidates = graph.search_nodes(key);
     let mut scored: Vec<(usize, String)> = candidates.iter()
         .filter(|n| {
             // 如果键是类型，优先精确匹配

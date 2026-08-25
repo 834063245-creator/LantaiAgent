@@ -3,7 +3,7 @@
 
 use crate::adapter::traits::LanguageAdapter;
 use crate::adapter::tree_sitter::PARSE_TIMEOUT_MICROS;
-use crate::graph::{Edge, EdgeKind, Node, NodeKind};
+use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
 use std::cell::RefCell;
 use tree_sitter::Parser;
 

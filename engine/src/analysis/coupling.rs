@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use crate::graph::{EdgeKind, Graph};
+use hologram_graph::{EdgeKind, Graph};
 
 /// 为所有边分配 L1-L4 耦合深度。O(E) 单次遍历。
 /// L1 = 直接导入（同包），L2 = 跨包，L3 = 数据，L4 = 时序。
@@ -69,7 +69,7 @@ fn compute_coupling_impl(graph: &mut Graph, incremental: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{Edge, EdgeKind, Graph, Node, NodeKind};
+    use hologram_graph::{Edge, EdgeKind, Graph, Node, NodeKind};
 
     #[test]
     fn test_coupling_assigns_depths() {

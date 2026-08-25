@@ -18,6 +18,7 @@ import { describe, expect, it } from 'vitest';
 import { AgentRuntime } from '../../../src/agent/runtime/runtime';
 import { SESSION_EVENT_KINDS, SessionLog } from '../../../src/agent/session-log';
 import { ToolRegistry } from '../../../src/agent/tool';
+import { createTestAgent } from '../../helpers/agent';
 import { scriptedProvider } from '../helpers/fixtures';
 
 /** 读取 src/agent/agent.ts 的 AST（含每个方法名 → 源文本范围映射）。 */
@@ -208,7 +209,7 @@ describe('phase-5 T3 — session-projection 契约快照', () => {
       readOnly: () => true,
       execute: async (args) => `ok:${String((args as { v?: unknown }).v ?? '')}`,
     });
-    const agent = new Agent(prov as unknown as ConstructorParameters<typeof Agent>[1], tools, 'trace-sys', {
+    const agent = createTestAgent(prov as unknown as ConstructorParameters<typeof Agent>[1], tools, 'trace-sys', {
       agentId: 'trace-agent',
       contextWindow: 10_000_000,
     });

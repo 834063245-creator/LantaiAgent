@@ -35,7 +35,7 @@ export interface SubAgentSpawnHost {
   readonly tools: ToolRegistry;
   readonly contextWindow: number;
   readonly _subagentDepth: number;
-  readonly _ctx: AgentContext | null;
+  readonly _ctx: AgentContext;
   readonly _planState: PlanStateManager | null;
   readonly _discoveryBoard: DiscoveryBoard | null;
   readonly _taskBoard: TaskBoard | null;
@@ -310,45 +310,19 @@ ${subTools
   const subSink = wrapSubAgentSink(subAgentId, rawSubSink);
 
   // 共享 provider，全新会话，不压缩。
-  // Phase 3：优先经父 context child() 派生 — 身份（agentId/parentId/depth）
+  // Phase 3：经父 context child() 派生 — 身份（agentId/parentId/depth）
   // 与继承服务（provider/messageBus/agentStore）来自 ctx，tools/eventSink/
-  // execState 为子 Agent 专属覆盖；legacy 构造路径保留（无 ctx 的直接构造方）。
-  const childCtx = ag._ctx
-    ? ag._ctx.child({
-        agentId: subAgentId,
-        isolationId: isolationId ?? undefined,
-        services: { tools: subTools, eventSink: subSink, execState: createExecState() },
-      })
-    : null;
+  // execState 为子 Agent 专属覆盖。
+  const childCtx = ag._ctx.child({
+    agentId: subAgentId,
+    isolationId: isolationId ?? undefined,
+    services: { tools: subTools, eventSink: subSink, execState: createExecState() },
+  });
 
-  const subAgent = childCtx
-    ? new Agent(childCtx, subSystem, {
-        temperature: 0.3,
-        contextWindow: ag.contextWindow,
-      })
-    : new Agent(ag.prov, subTools, subSystem, {
-        temperature: 0.3,
-        subagentDepth: ag._subagentDepth + 1,
-        contextWindow: ag.contextWindow,
-        eventSink: subSink,
-        agentId: subAgentId,
-        parentId: ag.id,
-        execState: createExecState(),
-      });
-  if (!childCtx) {
-    if (isolationId) {
-      subAgent._isolationId = isolationId;
-    }
-    // 从父 Agent 继承持久化存储
-    if (ag.agentStore) {
-      subAgent.setAgentStore(ag.agentStore);
-    }
-
-    // 从父 Agent 继承消息总线 — setBus 处理 register(addr, onWake)
-    if (ag._bus) {
-      subAgent.setBus(ag._bus);
-    }
-  }
+  const subAgent = new Agent(childCtx, subSystem, {
+    temperature: 0.3,
+    contextWindow: ag.contextWindow,
+  });
 
   // 注册到 TaskBoard + 文件追踪 hook — 仅 async 模式。
   // Sync 模式不需要 board 追踪（结果直接返回，立即合并）。

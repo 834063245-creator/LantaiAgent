@@ -49,9 +49,9 @@ pub(crate) type WorkspaceState = Arc<Mutex<Option<workspace::WorkspaceHandle>>>;
 #[cfg(test)]
 use hologram_engine as engine;
 #[cfg(test)]
-use engine::graph::Graph;
+use hologram_graph::Graph;
 #[cfg(test)]
-use engine::graph::{Node, NodeKind, Edge, EdgeKind};
+use hologram_graph::{Node, NodeKind, Edge, EdgeKind};
 
 /// 返回当前活跃工作区路径（未设置时为空字符串）。
 /// 前端在冷启动时 graph meta.source_root 缺失时用作回退。
@@ -61,10 +61,6 @@ fn get_active_project(
 ) -> Result<String, String> {
     utils::workspace_path(&state)
 }
-
-// ═══════════════════════════════════════════════════════
-// Watcher 状态（遗留 — 已被 workspace.rs 中的 WorkspaceHandle 替代）
-// ═══════════════════════════════════════════════════════
 
 fn main() {
     let workspace_state: WorkspaceState = Arc::new(Mutex::new(None));

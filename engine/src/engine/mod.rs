@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Engine — 所有 graph 操作的统一 API 边界。
-// 用一个拥有所有状态的结构体替换分散的全局变量
-// （CACHED_GRAPH, GRAPH_STORE, ANALYZE_LOCK）。
+// 用一个拥有所有状态的结构体替换分散的全局变量。
 //
 // 生命周期：
 //   let mut engine = Engine::new();
@@ -19,8 +18,8 @@ use std::sync::{Arc, Mutex, Weak};
 use parking_lot::RwLock;
 use tracing::info;
 
-use crate::graph::Graph;
-use crate::storage::MemoryIndex;
+use hologram_graph::Graph;
+use hologram_storage::MemoryIndex;
 use hologram_storage::sqlite::{timeline_query, timeline_record, timeline_record_with_props};
 
 // ═══════════════════════════════════════════════════════════════
@@ -107,7 +106,8 @@ pub struct StageTiming {
 // Engine — 唯一入口
 // ═══════════════════════════════════════════════════════════════
 
-fn graph_from_index(idx: &MemoryIndex) -> Graph {
+/// 从 MemoryIndex 快照出完整 Graph（供需要 Graph 类型的调用方）。
+pub fn graph_from_index(idx: &MemoryIndex) -> Graph {
     let mut g = Graph::new();
     for node in idx.nodes_iter() {
         g.add_node(node.clone());
@@ -115,7 +115,7 @@ fn graph_from_index(idx: &MemoryIndex) -> Graph {
     for (source, targets) in idx.edges_iter_full() {
         for (target, kind, coupling_depth, delay, cross_file, metadata) in targets {
             let id = format!("{}::{}::{}", source, target, kind.as_str());
-            let mut edge = crate::graph::Edge::new(id, source.clone(), target, kind);
+            let mut edge = hologram_graph::Edge::new(id, source.clone(), target, kind);
             edge.coupling_depth = coupling_depth;
             edge.temporal_delay_sec = delay;
             edge.cross_file = cross_file;
@@ -130,14 +130,14 @@ fn graph_from_index(idx: &MemoryIndex) -> Graph {
 ///
 /// 所有 graph 操作 — 查询、分析、watcher — 都通过此结构体。
 /// **L2 存储外置**：Engine 不再「拥有」数据文件——图库与时间线连接住在
-/// [`crate::storage::StoreHost`] 里，由宿主（壳层数据上下文 / engine 二进制）
+/// [`hologram_storage::StoreHost`] 里，由宿主（壳层数据上下文 / engine 二进制）
 /// 打开并注入（共享句柄）。Engine 是计算与访问的执行方，数据归属在宿主。
 /// Engine 绑定单根终身不变；「切换工作区」= 宿主新建实例。
 pub struct Engine {
     /// 数据宿主共享句柄（store + timeline 连接）。宿主与 Engine 持同一
     /// Arc——宿主可直接持久化/检查库，Engine 的分析与查询经它落库。
     /// std Mutex 包裹（GraphStore 含 rusqlite::Connection，!Sync）。
-    store_host: Arc<Mutex<crate::storage::StoreHost>>,
+    store_host: Arc<Mutex<hologram_storage::StoreHost>>,
 
     /// 本实例绑定的项目根（构造期定死，切换 = 新实例）。
     project_root: PathBuf,
@@ -176,7 +176,7 @@ impl Engine {
     /// 返回即 Ready——SQLite/快照加载发生在 `StoreHost::open` 内。
     /// 裸实例（无自引用、不自动起 watcher）；生产共享形态用 `new_shared`。
     pub fn open(project_root: &Path) -> Result<Self, String> {
-        let host = crate::storage::StoreHost::open(project_root)?;
+        let host = hologram_storage::StoreHost::open(project_root)?;
         let (node_count, edge_count) = host.store.read(|idx| (idx.node_count(), idx.edge_count()));
         info!(
             "[engine] opened: {} nodes, {} edges",
@@ -211,7 +211,7 @@ impl Engine {
     }
 
     /// 数据宿主共享句柄（L2 注入面——宿主侧持久化/检查库用）。
-    pub fn store_host(&self) -> &Arc<Mutex<crate::storage::StoreHost>> {
+    pub fn store_host(&self) -> &Arc<Mutex<hologram_storage::StoreHost>> {
         &self.store_host
     }
 
@@ -287,19 +287,6 @@ impl Engine {
         Ok(host.store.read(f))
     }
 
-    /// 通过从 MemoryIndex 重建遗留 Graph 来读取数据。
-    /// 供需要 Graph 类型的调用方使用（遗留 API 兼容）。
-    pub fn read_graph<R>(&self, f: impl FnOnce(&Graph) -> R) -> Result<R, String> {
-        let graph = {
-            let host = self
-                .store_host
-                .lock()
-                .map_err(|e| format!("Engine store lock poisoned: {}", e))?;
-            host.store.read(graph_from_index)
-        };
-        Ok(f(&graph))
-    }
-
     /// 使用写锁修改 store。串行化所有写者。
     pub fn write<R>(&self, f: impl FnOnce(&mut MemoryIndex) -> R) -> Result<R, String> {
         let host = self
@@ -331,8 +318,7 @@ impl Engine {
     ///
     /// 流水线：analyze_project → CrossFileResolver → coupling →
     /// framework_routes → dynamic_dispatch → dataflow_synthesis →
-    /// detect_communities → 存入 GraphStore + SQLite →
-    /// 同步 CACHED_GRAPH（临时向后兼容）。
+    /// detect_communities → 存入 GraphStore + SQLite。
     pub fn analyze(&self, project_root: &Path) -> Result<AnalyzeResult, String> {
         // 取消当前正在运行的分析，使其在下一个阶段边界中止，
         // 快速释放锁而非运行到完成。这就是"重新分析"按钮响应灵敏的原因：
@@ -485,7 +471,7 @@ impl Engine {
         &self,
         query: &str,
         limit: usize,
-    ) -> Result<Vec<crate::graph::Node>, String> {
+    ) -> Result<Vec<hologram_graph::Node>, String> {
         let host = self
             .store_host
             .lock()
@@ -595,18 +581,6 @@ pub fn engine_read<R>(f: impl FnOnce(&MemoryIndex) -> R) -> Result<R, String> {
         .as_ref()
         .ok_or_else(|| "Engine not initialized — call engine_init() first".to_string())?;
     engine.read(f)
-}
-
-/// 通过重建的遗留 Graph 从全局引擎读取。
-pub fn engine_read_graph<R>(f: impl FnOnce(&Graph) -> R) -> Result<R, String> {
-    if let Some(engine) = current_engine() {
-        return engine.read_graph(f);
-    }
-    let engine_guard = ENGINE.read();
-    let engine = engine_guard
-        .as_ref()
-        .ok_or_else(|| "Engine not initialized — call engine_init() first".to_string())?;
-    engine.read_graph(f)
 }
 
 /// 修改全局引擎的 MemoryIndex。
@@ -724,7 +698,7 @@ pub fn engine_graph_generated_at() -> Result<Option<String>, String> {
 pub fn engine_fts_search(
     query: &str,
     limit: usize,
-) -> Result<Vec<crate::graph::Node>, String> {
+) -> Result<Vec<hologram_graph::Node>, String> {
     let engine = match current_engine() {
         Some(e) => e,
         None => match ENGINE.read().as_ref() {
@@ -922,22 +896,8 @@ mod tests {
     }
 
     #[test]
-    fn test_engine_read_graph_works() {
-        let tmp = std::env::temp_dir().join("hologram_test_engine_read_graph");
-        let test_dir = tmp.join("rg_project");
-        let _ = std::fs::create_dir_all(&test_dir);
-
-        let engine = Engine::open(&test_dir).unwrap();
-
-        let count = engine.read_graph(|g| g.node_count()).unwrap();
-        assert_eq!(count, 0); // 空项目
-
-        let _ = std::fs::remove_dir_all(&tmp);
-    }
-
-    #[test]
     fn test_engine_write_works() {
-        use crate::graph::{Node, NodeKind};
+        use hologram_graph::{Node, NodeKind};
 
         let tmp = std::env::temp_dir().join("hologram_test_engine_write");
         let test_dir = tmp.join("write_project");
@@ -1021,7 +981,7 @@ mod tests {
         // 同时简报（merge gate 消费实例图数据；双线程并发不 panic、结果可用）
         let check = |engine: Arc<Engine>, root: std::path::PathBuf| {
             move || {
-                let after = engine.read_graph(|g| g.clone()).unwrap();
+                let after = engine.read(graph_from_index).unwrap();
                 let before = crate::routing::preflight::load_baseline(&root);
                 let result = crate::routing::preflight::run_full_check(
                     &before,
@@ -1057,7 +1017,7 @@ mod tests {
         engine_init(&tmp1).unwrap();
         // 绑定引擎 = tmp2（写入一个节点作判别标记）
         let bound = Engine::new_shared(&tmp2).unwrap();
-        use crate::graph::{Node, NodeKind};
+        use hologram_graph::{Node, NodeKind};
         bound
             .write(|idx| idx.insert_node(Node::new("tls_marker", "M", NodeKind::Function)))
             .unwrap();
@@ -1095,7 +1055,7 @@ mod tests {
     /// IncrementalUpdater::update() 成功（不回退到全量分析）。
     #[test]
     fn test_incremental_update_path_is_reachable() {
-        use crate::storage::IncrementalUpdater;
+        use crate::pipeline::incremental::IncrementalUpdater;
         
 
         let tmp = std::env::temp_dir().join("hologram_test_f1_incr");
@@ -1182,7 +1142,7 @@ mod tests {
     /// 并同步落库（load_all_edges 可读回）。
     #[test]
     fn test_mark_edge_lsp_resolved_engine_api() {
-        use crate::graph::{EdgeKind, Node, NodeKind};
+        use hologram_graph::{EdgeKind, Node, NodeKind};
 
         let tmp = std::env::temp_dir().join("hologram_test_lsp_writeback");
         let _ = std::fs::remove_dir_all(&tmp);
@@ -1303,8 +1263,8 @@ mod tests {
     /// 节点位置重新推导 cross_file。
     #[test]
     fn test_graph_from_index_cross_file() {
-        use crate::graph::{EdgeKind, Node, NodeKind};
-        use crate::storage::MemoryIndex;
+        use hologram_graph::{EdgeKind, Node, NodeKind};
+        use hologram_storage::MemoryIndex;
 
         let mut idx = MemoryIndex::new();
 
@@ -1342,8 +1302,8 @@ mod tests {
     /// 没有 location 信息的边应默认 cross_file=false。
     #[test]
     fn test_graph_from_index_no_location() {
-        use crate::graph::{EdgeKind, Node, NodeKind};
-        use crate::storage::MemoryIndex;
+        use hologram_graph::{EdgeKind, Node, NodeKind};
+        use hologram_storage::MemoryIndex;
 
         let mut idx = MemoryIndex::new();
         idx.insert_node(Node::new("a", "A", NodeKind::Symbol));
@@ -1477,7 +1437,7 @@ mod tests {
         }
 
         // 断言 3：graph 写入仍正常工作
-        use crate::graph::{Node, NodeKind};
+        use hologram_graph::{Node, NodeKind};
         let write_result = engine.write(|idx| {
             idx.insert_node(Node::new("test_n", "Test", NodeKind::Symbol));
         });
@@ -1540,10 +1500,10 @@ mod tests {
             for (_src, targets) in idx.edges_iter() {
                 for (_tgt, kind, _depth, _delay) in targets {
                     match kind {
-                        crate::graph::EdgeKind::Calls => calls = true,
-                        crate::graph::EdgeKind::Imports => imports = true,
-                        crate::graph::EdgeKind::Defines => defines = true,
-                        crate::graph::EdgeKind::Inherits => inherits = true,
+                        hologram_graph::EdgeKind::Calls => calls = true,
+                        hologram_graph::EdgeKind::Imports => imports = true,
+                        hologram_graph::EdgeKind::Defines => defines = true,
+                        hologram_graph::EdgeKind::Inherits => inherits = true,
                         _ => {}
                     }
                 }

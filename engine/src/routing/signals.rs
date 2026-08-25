@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::analysis::detect_cycles;
-use crate::graph::Graph;
+use hologram_graph::Graph;
 use crate::routing::patterns::PatternMatcher;
 use serde_json::{json, Value};
 
@@ -116,7 +116,7 @@ impl SignalGenerator {
 
 #[cfg(test)]
 mod tests {
-    use crate::graph::{Edge, EdgeKind, Graph, Node, NodeKind};
+    use hologram_graph::{Edge, EdgeKind, Graph, Node, NodeKind};
     use super::*;
 
     #[test]

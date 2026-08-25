@@ -26,7 +26,7 @@ use std::path::{Component, Path, PathBuf};
 
 use serde_json::{json, Value};
 
-use crate::graph::{EdgeKind, Graph, Node, NodeKind};
+use hologram_graph::{EdgeKind, Graph, Node, NodeKind};
 
 /// import 边 metadata 里的原始 specifier 键名（与 query_adapter 的约定）。
 pub const META_IMPORT_RAW: &str = "import_raw";

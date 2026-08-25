@@ -69,7 +69,7 @@ fn write_back_lsp_resolution(
     line0: u32,
     defs: &[Value],
 ) -> Value {
-    use crate::graph::EdgeKind;
+    use hologram_graph::EdgeKind;
 
     // 1) 定位源节点：同文件 + 同名 + 行号邻近（节点行号 1-based，LSP 0-based → +1）
     let src_id: Option<String> = crate::tools::with_store(|idx| {
@@ -345,7 +345,8 @@ pub(crate) fn handler_find_references(args: &Value) -> ToolResponse {
     };
 
     // 回退：使用图查找入边引用
-    match engine::engine_read_graph(|g| {
+    match engine::engine_read(|idx| {
+        let g = engine::graph_from_index(idx);
         let _node_ids: Vec<String> = g.node_ids().map(|s| s.to_string()).collect();
         let refs: Vec<Value> = g.edges_iter()
             .take(100)

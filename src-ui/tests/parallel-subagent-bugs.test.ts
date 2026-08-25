@@ -23,7 +23,7 @@ vi.mock('../src/bridge', () => ({
   isMockMode: () => false,
 }));
 
-import { Agent } from '../src/agent/agent';
+import type { Agent } from '../src/agent/agent';
 import { SubAgentPool } from '../src/agent/coordinator';
 import { FileOwnership } from '../src/agent/file-ownership';
 import { enqueueIsolationOp } from '../src/agent/isolation-queue';
@@ -37,6 +37,7 @@ import { createMergeTool } from '../src/agent/tools/merge';
 import { MeshTopology } from '../src/agent/topology';
 import type { Provider, Usage } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
+import { createTestAgent } from './helpers/agent';
 
 // ═══════════════════════════════════════════════════════
 // Helpers
@@ -181,7 +182,7 @@ function makeParent(prov: Provider, exec: ToolExecutor): Agent {
   const registry = new ToolRegistry();
   for (const t of createCodingTools(exec)) registry.register(t);
   convergeRegistry(registry); // 与生产 agent-builder 一致：领域工具 + 隐藏旧名
-  return new Agent(prov, registry, 'test', { eventSink: () => {}, contextWindow: 0 });
+  return createTestAgent(prov, registry, 'test', { eventSink: () => {}, contextWindow: 0 });
 }
 
 // ═══════════════════════════════════════════════════════

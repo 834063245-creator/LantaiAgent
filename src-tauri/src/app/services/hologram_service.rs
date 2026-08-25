@@ -41,19 +41,13 @@ pub(crate) async fn run_check(
         let root = std::path::PathBuf::from(&target);
         let before = load_baseline(&root);
         // 优先使用内存/SQLite 缓存；仅在真正为空时才运行完整分析。
-        let after = {
-            let g = engine.read_graph(|g| g.clone()).ok();
-            match g {
-                Some(g) if g.node_count() > 0 || g.edge_count() > 0 => Some(g),
-                _ => None,
-            }
-        };
+        let after = engine.read(hologram_engine::engine::graph_from_index).ok();
         let after = match after {
-            Some(g) => g,
-            None => {
+            Some(g) if g.node_count() > 0 || g.edge_count() > 0 => g,
+            _ => {
                 crate::utils::direct_analyze(&engine, &target, true)?;
                 engine
-                    .read_graph(|g| g.clone())
+                    .read(hologram_engine::engine::graph_from_index)
                     .map_err(|e| format!("分析后无图谱: {}", e))?
             }
         };

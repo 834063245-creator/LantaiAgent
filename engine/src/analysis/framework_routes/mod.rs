@@ -13,7 +13,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use crate::graph::{Edge, EdgeKind, Graph, Node, NodeKind};
+use hologram_graph::{Edge, EdgeKind, Graph, Node, NodeKind};
 
 mod frameworks;
 

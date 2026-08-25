@@ -4,10 +4,10 @@
 
 use hologram_engine as engine;
 use engine::community::detect_hierarchical_communities_with_base;
-use engine::graph::Graph;
+use hologram_graph::Graph;
 use engine::routing::preflight::save_baseline;
 // L2 crate 化：MemoryIndex 物理来源改为 hologram-storage 独立 crate
-// （engine 门面仍可解析，但壳层直连数据家——导出面收窄后的正确姿势）。
+// （壳层直连数据家）。
 use hologram_storage::MemoryIndex;
 
 use tauri::Emitter;
@@ -113,7 +113,8 @@ pub(crate) fn direct_analyze(
         if cached_node_count > 0 && !cache_is_stale(engine, &root) {
             eprintln!("[direct_analyze] 使用缓存图 ({cached_node_count} 个节点)，跳过完整分析");
         // 在回调内从缓存序列化 — 避免克隆整个 Graph
-        return engine.read_graph(|graph| {
+        return engine.read(|idx| {
+            let graph = engine::engine::graph_from_index(idx);
             let nc = graph.node_count();
             let ec = graph.edge_count();
             let nodes: Vec<serde_json::Value> = graph.nodes_map().values().map(|n| serde_json::json!({
@@ -196,8 +197,11 @@ pub(crate) fn direct_analyze(
     // 每次全量分析后都更新基线，使后续检查
     // 与最新快照进行对比 — 防止基线过期导致的误报
     // （例如图结构在两次分析间演化时出现"53 个新循环"）。
-    let _ = engine.read_graph(|g| save_baseline(&root, g));
-    // .hologram MsgPack 已废弃 — CACHED_GRAPH 是唯一的运行时真相，JSON 仅用于冷启动归档
+    let _ = engine.read(|idx| {
+        let g = engine::engine::graph_from_index(idx);
+        save_baseline(&root, &g)
+    });
+    // .hologram MsgPack 已废弃 — MemoryIndex 是唯一的运行时真相，JSON 仅用于冷启动归档
     let _ = std::fs::remove_file(format!("{}/hologram_graph.hologram", path));
     let _ = regenerate_file_graph(path);
 
@@ -232,7 +236,8 @@ pub(crate) fn serialize_cached_graph(
     engine: &engine::engine::Engine,
     source_root: &str,
 ) -> Result<String, String> {
-    engine.read_graph(|g| {
+    engine.read(|idx| {
+        let g = engine::engine::graph_from_index(idx);
         let nodes: Vec<serde_json::Value> = g.nodes_map().values().map(|n| serde_json::json!({
             "id": n.id, "name": n.name, "type": n.kind.as_str(),
             "location": n.location, "in_degree": n.in_degree,
@@ -251,7 +256,7 @@ pub(crate) fn serialize_cached_graph(
             "node_count": g.node_count(),
             "edge_count": g.edge_count(),
         });
-        serde_json::to_string(&serde_json::json!({"meta": meta, "nodes": nodes, "edges": edges, "communities": build_level0_communities_json(g), "hierarchical_communities": build_hierarchical_communities_json(g)})).unwrap_or_default()
+        serde_json::to_string(&serde_json::json!({"meta": meta, "nodes": nodes, "edges": edges, "communities": build_level0_communities_json(&g), "hierarchical_communities": build_hierarchical_communities_json(&g)})).unwrap_or_default()
     })
     .map_err(|e| format!("Engine error: {}", e))
 }
@@ -331,7 +336,7 @@ fn graph_page_index(
     page_size: usize,
 ) -> Result<(Vec<String>, usize), String> {
     let (node_count, edge_count) = engine
-        .read_graph(|g| (g.node_count(), g.edge_count()))
+        .read(|idx| (idx.node_count(), idx.edge_count()))
         .map_err(|e| format!("Engine error: {e}"))?;
     let key = (source_root.to_owned(), node_count, edge_count, page_size);
     {
@@ -342,7 +347,8 @@ fn graph_page_index(
             }
         }
     }
-    let boundaries: Vec<String> = engine.read_graph(|g| {
+    let boundaries: Vec<String> = engine.read(|idx| {
+        let g = engine::engine::graph_from_index(idx);
         let mut ids: Vec<String> = g.nodes_map().values().map(|n| n.id.to_string()).collect();
         ids.sort_unstable();
         let total_pages = if ids.is_empty() { 0 } else { (ids.len() + page_size - 1) / page_size };
@@ -362,7 +368,7 @@ pub(crate) fn graph_meta_json(
     let (boundaries, node_count) = graph_page_index(engine, source_root, page_size)?;
     let total_pages = boundaries.len();
     let edge_count = engine
-        .read_graph(|g| g.edge_count())
+        .read(|idx| idx.edge_count())
         .map_err(|e| format!("Engine error: {e}"))?;
     Ok(serde_json::json!({
         "meta": {"source_root": source_root, "node_count": node_count, "edge_count": edge_count},
@@ -393,7 +399,8 @@ pub(crate) fn serialize_graph_page(
         boundaries.partition_point(|b| b.as_str() <= id).saturating_sub(1)
     };
     let last_page = page + 1 == total_pages;
-    let (nodes, edges, edge_count, communities, hcommunities) = engine.read_graph(|g| {
+    let (nodes, edges, edge_count, communities, hcommunities) = engine.read(|idx| {
+        let g = engine::engine::graph_from_index(idx);
         let nodes: Vec<serde_json::Value> = g.nodes_map().values()
             .filter(|n| page_of(&n.id) == page)
             .map(|n| serde_json::json!({
@@ -413,8 +420,8 @@ pub(crate) fn serialize_graph_page(
                 "temporal_delay_sec": e.temporal_delay_sec,
             }))
             .collect();
-        let communities = if last_page { Some(build_level0_communities_json(g)) } else { None };
-        let hcommunities = if last_page { Some(build_hierarchical_communities_json(g)) } else { None };
+        let communities = if last_page { Some(build_level0_communities_json(&g)) } else { None };
+        let hcommunities = if last_page { Some(build_hierarchical_communities_json(&g)) } else { None };
         (nodes, edges, g.edge_count(), communities, hcommunities)
     })
     .map_err(|e| format!("Engine error: {e}"))?;

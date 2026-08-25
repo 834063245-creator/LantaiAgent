@@ -5,7 +5,7 @@
 
 use std::collections::HashSet;
 use crate::engine::GRAMMAR_LOADER;
-use crate::graph::{Edge, EdgeKind, Graph};
+use hologram_graph::{Edge, EdgeKind, Graph};
 use super::find_or_create_di_node_indexed;
 use super::find_js_enclosing_func;
 use super::is_first_arg_string_literal;

@@ -15,7 +15,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use crate::engine::GRAMMAR_LOADER;
-use crate::graph::{Edge, EdgeKind, Graph, Node, NodeKind};
+use hologram_graph::{Edge, EdgeKind, Graph, Node, NodeKind};
 
 /// 管道解析缓存中保存的已解析源码。
 type ParseCache = HashMap<String, (String, Option<tree_sitter::Tree>)>;

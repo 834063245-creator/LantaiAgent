@@ -4,7 +4,7 @@
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
-use super::{Edge, EdgeKind, Graph, Node, NodeKind};
+use hologram_graph::{Edge, EdgeKind, Graph, Node, NodeKind};
 
 /// 合并期本地字符串驻留 —— 仅作去重 key,不跨 merger 共享。
 ///
@@ -227,7 +227,7 @@ impl Default for GraphMerger {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{Edge, EdgeKind, Node, NodeKind};
+    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
     use super::*;
 
     fn make_node(id: &str, name: &str, loc: &str, kind: NodeKind) -> Node {

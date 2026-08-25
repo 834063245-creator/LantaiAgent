@@ -24,7 +24,7 @@ vi.mock('../src/bridge', () => ({
   isMockMode: () => false,
 }));
 
-import { Agent } from '../src/agent/agent';
+import type { Agent } from '../src/agent/agent';
 import { SubAgentPool } from '../src/agent/coordinator';
 import { createExecState } from '../src/agent/execution-state';
 import { MessageBus } from '../src/agent/message-bus';
@@ -36,6 +36,7 @@ import { createSubAgentTool, type SubAgentSpawner } from '../src/agent/tools/sub
 import { MeshTopology } from '../src/agent/topology';
 import type { Chunk, Provider, Usage } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
+import { createTestAgent } from './helpers/agent';
 
 // ═══════════════════════════════════════════════════════
 // Helpers
@@ -88,7 +89,7 @@ function emptyRegistry(): ToolRegistry {
 }
 
 function makeAgent(prov: Provider, opts: Record<string, unknown> = {}): Agent {
-  return new Agent(prov, emptyRegistry(), 'test', {
+  return createTestAgent(prov, emptyRegistry(), 'test', {
     eventSink: () => {},
     contextWindow: 0,
     ...opts,

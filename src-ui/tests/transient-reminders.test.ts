@@ -16,9 +16,10 @@ vi.mock('../src/bridge', () => ({
   isMockMode: () => false,
 }));
 
-import { Agent } from '../src/agent/agent';
+import type { Agent } from '../src/agent/agent';
 import { ToolRegistry } from '../src/agent/tool';
 import type { Provider } from '../src/provider/types';
+import { createTestAgent } from './helpers/agent';
 
 // ── Helpers ──
 
@@ -38,7 +39,7 @@ function makeMockProvider(): Provider {
 function makeAgent(): Agent {
   const prov = makeMockProvider();
   const tools = new ToolRegistry();
-  return new Agent(prov, tools, 'You are a test agent.', {
+  return createTestAgent(prov, tools, 'You are a test agent.', {
     contextWindow: 100000,
     compactRatio: 0.5,
   });

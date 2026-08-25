@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 import { describe, expect, it } from 'vitest';
-import { Agent, type AgentOptions } from '../src/agent/agent';
+import type { Agent, AgentOptions } from '../src/agent/agent';
 import { AgentStore } from '../src/agent/agent-store';
 import { ToolRegistry } from '../src/agent/tool';
 import type { Chunk, Provider } from '../src/provider/types';
+import { createTestAgent } from './helpers/agent';
 
 // Minimal mock provider — never actually called in these tests
 function mockProvider(): Provider {
@@ -23,7 +24,7 @@ function emptyRegistry(): ToolRegistry {
 }
 
 function makeAgent(opts: AgentOptions = {}): Agent {
-  return new Agent(mockProvider(), emptyRegistry(), 'system prompt', opts);
+  return createTestAgent(mockProvider(), emptyRegistry(), 'system prompt', opts);
 }
 
 describe('Agent identity', () => {

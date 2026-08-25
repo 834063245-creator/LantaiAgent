@@ -15,9 +15,9 @@ vi.mock('../src/bridge', () => ({
   isMockMode: () => false,
 }));
 
-import { Agent } from '../src/agent/agent';
 import { ToolRegistry } from '../src/agent/tool';
 import type { Chunk, Provider } from '../src/provider/types';
+import { createTestAgent } from './helpers/agent';
 
 function mockProvider(name: string): Provider {
   return {
@@ -55,7 +55,7 @@ describe('selectSummaryProvider（B1 修复回归）', () => {
   it('凭据回填后能选到更便宜的 keyed 模型（旧 bug：keyed 永远为空）', async () => {
     mockRpc.mockImplementation(async (method: string) => (method === 'credential_get' ? '"sk-x"' : 'null'));
     const main = mockProvider('deepseek');
-    const agent = new Agent(main, new ToolRegistry(), 'sys', {});
+    const agent = createTestAgent(main, new ToolRegistry(), 'sys', {});
     const result = await (agent as any).selectSummaryProvider();
     // deepseek-v4-pro (in=0.435) → 目录内最便宜 keyed 候选 deepseek-v4-flash (0.14, 1M)
     expect(result.prov).not.toBe(main);
@@ -66,14 +66,14 @@ describe('selectSummaryProvider（B1 修复回归）', () => {
   it('无任何凭据时回退主模型（行为不变）', async () => {
     mockRpc.mockResolvedValue('null');
     const main = mockProvider('deepseek');
-    const agent = new Agent(main, new ToolRegistry(), 'sys', {});
+    const agent = createTestAgent(main, new ToolRegistry(), 'sys', {});
     const result = await (agent as any).selectSummaryProvider();
     expect(result.prov).toBe(main);
   });
 
   it('summaryProvider 缓存选择结果（第二次不再读凭据）', async () => {
     mockRpc.mockImplementation(async (method: string) => (method === 'credential_get' ? '"sk-x"' : 'null'));
-    const agent = new Agent(mockProvider('deepseek'), new ToolRegistry(), 'sys', {});
+    const agent = createTestAgent(mockProvider('deepseek'), new ToolRegistry(), 'sys', {});
     const first = await (agent as any).summaryProvider();
     const callsAfterFirst = mockRpc.mock.calls.length;
     const second = await (agent as any).summaryProvider();

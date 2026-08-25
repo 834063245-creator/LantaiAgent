@@ -1,7 +1,7 @@
 use serde_json::{json, Value};
 use crate::analysis::*;
 use crate::engine;
-use crate::graph::Node;
+use hologram_graph::Node;
 use crate::tools::handlers::{strip_loc_suffix, LspCheck, lsp_has_real_reference};
 use crate::tools::{get_usize, project_root, with_store};
 use crate::tools::ToolResponse;
@@ -84,7 +84,7 @@ pub(crate) fn handler_status(_args: &Value) -> ToolResponse {
             let vi_exists = vi_path.exists();
             // 走进程级缓存（mtime 失效）——不再每次 status 调用都从磁盘全量加载索引
             let vi_count = if vi_exists {
-                crate::vector::get_or_load_index(&project_root())
+                hologram_vector::get_or_load_index(&project_root())
                     .map(|(_, slots)| slots.read().unwrap_or_else(|e| e.into_inner()).len())
                     .unwrap_or(0)
             } else { 0 };
@@ -95,7 +95,7 @@ pub(crate) fn handler_status(_args: &Value) -> ToolResponse {
                 "edges": edges,
                 "has_aux_indexes": has_aux,
                 "is_watching": is_watching,
-                "vector_index": { "exists": vi_exists, "vectors": vi_count, "backend": crate::vector::backend_id() },
+                "vector_index": { "exists": vi_exists, "vectors": vi_count, "backend": hologram_vector::backend_id() },
                 "lsp": lsp_data,
                 // 图工具使用率观测：Agent 是否真的在用图（装饰品检测）
                 "tool_call_counts": crate::tools::tool_call_counts(),

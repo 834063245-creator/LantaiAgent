@@ -14,7 +14,7 @@ use super::Engine;
 use crate::analysis::coupling::compute_coupling;
 use crate::engine::GRAMMAR_LOADER;
 use crate::pipeline::incremental::IncrementalUpdater;
-use crate::storage::MemoryIndex;
+use hologram_storage::MemoryIndex;
 
 impl Engine {
     /// 文件 watcher 是否正在运行。
@@ -277,7 +277,7 @@ impl Engine {
         &self,
         source: &str,
         target: &str,
-        kind: crate::graph::EdgeKind,
+        kind: hologram_graph::EdgeKind,
     ) -> Result<bool, String> {
         let host = self
             .store_host()
@@ -471,7 +471,7 @@ impl Engine {
             let voted_ids = crate::community::assign_communities_to_new_nodes(&mut graph);
             compute_coupling(&mut graph);
             if !voted_ids.is_empty() {
-                let voted_nodes: Vec<&crate::graph::Node> = voted_ids
+                let voted_nodes: Vec<&hologram_graph::Node> = voted_ids
                     .iter()
                     .filter_map(|id| graph.get_node(id))
                     .collect();

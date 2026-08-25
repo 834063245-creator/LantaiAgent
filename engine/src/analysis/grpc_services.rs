@@ -20,7 +20,7 @@ use std::path::Path;
 
 use serde_json::json;
 
-use crate::graph::{Edge, EdgeKind, Graph, Node, NodeKind};
+use hologram_graph::{Edge, EdgeKind, Graph, Node, NodeKind};
 
 type ParseCache = HashMap<String, (String, Option<tree_sitter::Tree>)>;
 

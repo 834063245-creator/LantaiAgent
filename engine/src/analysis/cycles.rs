@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-use crate::graph::Graph;
-use crate::storage::MemoryIndex;
+use hologram_graph::Graph;
+use hologram_storage::MemoryIndex;
 use std::collections::HashMap;
 
 pub fn detect_cycles(graph: &Graph) -> Vec<serde_json::Value> {
@@ -87,7 +87,7 @@ fn run_tarjan(node_ids: &[&str], adj: &[Vec<usize>]) -> Vec<serde_json::Value> {
 
 #[cfg(test)]
 mod tests {
-    use crate::graph::{Edge, EdgeKind, Node, NodeKind};
+    use hologram_graph::{Edge, EdgeKind, Node, NodeKind};
     use super::*;
 
     #[test]

@@ -48,15 +48,6 @@ export interface ProviderSettings {
 }
 
 export interface AgentSettings {
-  /** 遗留：请求构建器（openai.ts / anthropic.ts）均不读 req.temperature，UI 已移除；保留字段兼容旧存储。 */
-  temperature: number;
-  /** 遗留：全局上下文窗口（UI 已拆除，2026-08 P14 兜底退役——目录值 + Provider
-   *  页覆盖已完整覆盖；存量 true 会让压缩阈值全局漂移，读取点已停读）。
-   *  保留字段兼容旧存储。 */
-  contextWindow: number;
-  /** 遗留：全局禁用深度思考（UI 已拆除——Provider 页档位含「关闭」，目录外
-   *  模型的兜底在 OpenAI 兼容协议下本就不发参数、实际空转）。保留字段兼容旧存储。 */
-  disableThinking?: boolean;
   /** 默认协作模式 */
   collaborationMode?: 'normal' | 'plan';
   /** 默认权限模式 */
@@ -164,10 +155,7 @@ const DEFAULTS: AppSettings = {
     },
   ],
   projectPath: '.',
-  agent: {
-    temperature: 0.7,
-    contextWindow: 0,
-  },
+  agent: {},
   display: {
     language: 'zh',
     fontScale: 1.2,

@@ -42,14 +42,11 @@ fn opt_usize(params: &Value, name: &str) -> Option<usize> {
 fn opt_f64(params: &Value, name: &str) -> Option<f64> {
     params.get(name).and_then(|v| v.as_f64())
 }
-/// browser 命令的 agent 路由：target="self"（或 self=true）走自家 webview 只读会话，
+/// browser 命令的 agent 路由：target="self" 走自家 webview 只读会话，
 /// 否则走各 Agent 自己的 CDP 会话（无 _agent_id 共用 default）。
-/// 修复：前端领域工具传的是 target="self" 字符串，旧实现只认 self 布尔参数——
-/// self 路由自 D4 落地起从未生效（静默失效，所有 self 读操作报"尚未 launch 浏览器"）。
+/// 修复：前端领域工具传的是 target="self" 字符串；布尔 self 兼容已拆除。
 fn self_or_agent(params: &Value) -> Option<String> {
-    let is_self = opt_bool(params, "self").unwrap_or(false)
-        || params.get("target").and_then(|v| v.as_str()) == Some("self");
-    if is_self {
+    if params.get("target").and_then(|v| v.as_str()) == Some("self") {
         Some(crate::cdp::SELF_AGENT_ID.to_string())
     } else {
         opt_str(params, "_agent_id")
@@ -902,9 +899,8 @@ async fn dispatch_rpc(
         "browser_attach" => {
             let agent_id = opt_str(&params, "_agent_id");
             check_browser_permission("attach", agent_id.as_deref(), &state, &app).await?;
-            // 前端 schema 用 targetId（camelCase → target_id）；兼容旧调用方的 target
+            // 前端 schema 用 targetId（camelCase → target_id）；旧 target 兼容已拆除
             let target = opt_str(&params, "target_id")
-                .or_else(|| opt_str(&params, "target"))
                 .ok_or_else(|| "browser_attach: missing 'targetId'".to_string())?;
             crate::cdp::cdp_attach(&target, agent_id.as_deref())
         }
@@ -1977,9 +1973,6 @@ mod tests {
             Some(crate::cdp::SELF_AGENT_ID),
             "target=\"self\" 必须路由到 self 会话"
         );
-        // 布尔 self 兼容旧调用方
-        let p2 = json!({ "self": true });
-        assert_eq!(self_or_agent(&p2).as_deref(), Some(crate::cdp::SELF_AGENT_ID));
         // 普通参数不受 target 影响
         let p3 = json!({ "target": "9223" });
         assert_eq!(self_or_agent(&p3), None);

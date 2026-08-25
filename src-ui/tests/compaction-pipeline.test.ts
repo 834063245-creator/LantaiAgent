@@ -42,12 +42,13 @@ vi.mock('../src/provider/catalog', async (importOriginal) => {
   return { ...actual, getAllModels: () => [] };
 });
 
-import { Agent } from '../src/agent/agent';
+import type { Agent } from '../src/agent/agent';
 import { createExecState } from '../src/agent/execution-state';
 import { countMessages, countText } from '../src/agent/token-counter';
 import { ToolRegistry } from '../src/agent/tool';
 import type { Provider } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
+import { createTestAgent } from './helpers/agent';
 
 // ── Helpers ──
 
@@ -80,7 +81,7 @@ function makeSummaryProvider(behavior: {
 }
 
 function makeAgent(prov: Provider, opts: { contextWindow?: number; events?: any[] } = {}): Agent {
-  return new Agent(prov, new ToolRegistry(), 'You are a test agent.', {
+  return createTestAgent(prov, new ToolRegistry(), 'You are a test agent.', {
     contextWindow: opts.contextWindow ?? 100000,
     compactRatio: 0.55,
     execState: createExecState(),
@@ -338,7 +339,7 @@ describe('compaction pipeline E2E', () => {
         execute: async () => 'fake output',
       }),
     );
-    const agent = new Agent(prov, registry, 'You are a test agent.', {
+    const agent = createTestAgent(prov, registry, 'You are a test agent.', {
       contextWindow: 100000,
       compactRatio: 0.55,
       execState: createExecState(),

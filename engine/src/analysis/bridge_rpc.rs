@@ -14,7 +14,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use crate::graph::{Edge, EdgeKind, Graph, NodeKind};
+use hologram_graph::{Edge, EdgeKind, Graph, NodeKind};
 
 type ParseCache = HashMap<String, (String, Option<tree_sitter::Tree>)>;
 

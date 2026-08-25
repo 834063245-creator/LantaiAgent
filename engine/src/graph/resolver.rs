@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
-use super::{Edge, EdgeKind, Graph, Node, NodeKind};
+use hologram_graph::{Edge, EdgeKind, Graph, Node, NodeKind};
 use crate::engine::GRAMMAR_LOADER;
 
 /// 源码文件扩展名，从 GRAMMAR_LOADER 动态派生。
@@ -93,8 +93,8 @@ fn build_indexes(graph: &Graph) -> ResolverIndexes {
         idx.name.entry(short.clone()).or_default().push(id.to_string());
 
         // File / Module 节点：也按主干索引以支持 import 边
-        if node.kind == crate::graph::NodeKind::File
-            || node.kind == crate::graph::NodeKind::Module
+        if node.kind == hologram_graph::NodeKind::File
+            || node.kind == hologram_graph::NodeKind::Module
         {
             let stem = file_stem(&node.name);
             if stem != short {
@@ -653,7 +653,7 @@ fn best_bare_match(
     source_lang: Option<&str>,
     lang_map: &HashMap<String, Option<&'static str>>,
 ) -> Option<String> {
-    use crate::graph::NodeKind;
+    use hologram_graph::NodeKind;
 
     // 评分：lang_match * 100000 + kind_prio * 1000 + 路径深度
     // 同语言候选项始终优先于跨语言候选项。
@@ -698,7 +698,7 @@ fn best_bare_match(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{EdgeKind, Node, NodeKind};
+    use hologram_graph::{EdgeKind, Node, NodeKind};
 
     // ── short_name / file_stem 单元测试 ──
 

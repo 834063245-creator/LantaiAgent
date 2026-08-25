@@ -132,10 +132,6 @@ export class Workspace {
   fileGraphData: unknown = null;
 
   // ── Agent 与记忆 ──
-  /** DSH 形态（2026-08-25）：不再持有单一预造 Agent——句柄生命周期跟随卷
-   *  （agentSessionState 注册表）。agent 字段保留但恒 null（历史消费面已迁
-   *  forEachAgent / agentRef；工厂形态下仅作兼容占位，待全量清理）。 */
-  agent: Agent | null = null;
   /** 工厂已挂接标记（applyAgentConfig 的「补装配」分支判据——工厂在场
    *  即热同步，不重装、不动摊开集）。 */
   private _factoryRegistered = false;
@@ -313,44 +309,29 @@ export class Workspace {
         // 初始简报（runCheck 的隐藏回退会强分析，见 runCheck 门禁注释）。
         // _health 保持 unknown——健康语义只对图谱数据面有意义。
         ws.onStatusChange?.('图谱引擎已停用——纯 Agent 工作区（图工具缺席，fs/shell/git 照常）');
-      } else if (opts?.skipAnalysis && opts.cachedGraph) {
-        if (opts.cachedGraph.paged) {
-          // 冷启动（分页 meta）：先放空壳，后台逐页拉取、到齐后合并为全量图 —
-          // ensure_engine_graph 顺带完成引擎预热（等价旧 fire-and-track
-          // analyze_and_load 的引擎初始化部分）。若拉页失败，工作区进入
-          // 降级模式 — 可见但不阻塞。
-          // V5 拆除（2026-08-22）：starGraph 恒 null（渲染面退役），数据面照旧。
-          ws.graphData = {
-            meta: opts.cachedGraph.meta || {},
-            nodes: [],
-            edges: [],
-            communities: [],
-            hierarchical_communities: [],
-          };
-          loadGraphPages(ws, null, opts.cachedGraph)
-            .then((ok) => {
-              if (!ws._active || !ok) return;
-              ws._health = 'ready';
-            })
-            .catch((err) => {
-              if (!ws._active) return;
-              ws._health = 'degraded';
-              ws.onAnalysisFailed?.(err);
-            });
-        } else {
-          // 旧格式全量缓存图兼容（load_graph_json 遗留磁盘文件小图路径）
-          ws.graphData = opts.cachedGraph as unknown as GraphJSON;
-          typedRpc('analyze_and_load', { path, force: false })
-            .then(() => {
-              if (!ws._active) return;
-              ws._health = 'ready';
-            })
-            .catch((err) => {
-              if (!ws._active) return;
-              ws._health = 'degraded';
-              ws.onAnalysisFailed?.(err);
-            });
-        }
+      } else if (opts?.skipAnalysis && opts.cachedGraph?.paged) {
+        // 冷启动（分页 meta）：先放空壳，后台逐页拉取、到齐后合并为全量图 —
+        // ensure_engine_graph 顺带完成引擎预热（等价旧 fire-and-track
+        // analyze_and_load 的引擎初始化部分）。若拉页失败，工作区进入
+        // 降级模式 — 可见但不阻塞。
+        // V5 拆除（2026-08-22）：starGraph 恒 null（渲染面退役），数据面照旧。
+        ws.graphData = {
+          meta: opts.cachedGraph.meta || {},
+          nodes: [],
+          edges: [],
+          communities: [],
+          hierarchical_communities: [],
+        };
+        loadGraphPages(ws, null, opts.cachedGraph)
+          .then((ok) => {
+            if (!ws._active || !ok) return;
+            ws._health = 'ready';
+          })
+          .catch((err) => {
+            if (!ws._active) return;
+            ws._health = 'degraded';
+            ws.onAnalysisFailed?.(err);
+          });
         // 仍触发 analyze_and_load（force=false），保留缓存过期→重分析能力：
         // direct_analyze 内部校验 SQLite 缓存新鲜度，过期则重建；
         // 分析完成后由 graph-updated 事件驱动图重载。
@@ -817,10 +798,7 @@ export class Workspace {
     // 初始化 Agent 状态持久化 + goal 生命周期 + skill 注册表
     this.agentStore = new AgentStore(this.path);
     this.goalManager = new GoalManager(this.path, broadcastGoalRecord);
-    this.goalManager
-      .migrateLegacy()
-      .then(() => this.goalManager?.adoptOrphans())
-      .catch((e) => console.warn('[workspace] goal migration failed:', e));
+    this.goalManager.adoptOrphans().catch((e) => console.warn('[workspace] goal adoption failed:', e));
     this.skillRegistry = new SkillRegistry(this.path);
 
     await auraReady;
@@ -907,9 +885,6 @@ export class Workspace {
       })();
     });
     teardown.add(unBgNote, 'listener:bg-note');
-    teardown.add(() => {
-      this.agent = null;
-    }, 'agent-null');
     // agentSessionState 解除本面板的全部会话句柄（dispose + 清表）— 拆 audit 中危：
     // 清理不再挂在下一个 setupAgent 上。
     teardown.add(() => agentSessionState.clearPanelState(this._storeId), 'session-state-clear');
@@ -966,7 +941,7 @@ export class Workspace {
     // ── 工厂：每次调用通过 runtime 创建全新 Agent ──
     // 返回 runtime 句柄（含 dispose）— 所有权随句柄交给会话 state
     // （agentSessionState），会话关闭时由其负责销毁；
-    // agentRef/this.agent 仅是借用 raw Agent 引用（spawn 闭包、notifyMemorySaved）。
+    // agentRef 仅是借用 raw Agent 引用（spawn 闭包、notifyMemorySaved）。
     // S4-1a 会话工厂组合覆盖（设计件 §2.2 复审补充的机制位——「无生产 UI
     // 消费、机制完整、选择器留给 V5」）：当前生效组合 ≠ 工作区装配组合时，
     // 工厂为该会话构建会话作用域注册表（deps 全部工作区级可复用）并把组合
@@ -984,7 +959,6 @@ export class Workspace {
       sessProv.prewarm?.(); // 廉价预热（fire-and-forget）；fetchModels 合目录只在 setupAgent 做
 
       const ms = this._modeState();
-      const agentOpts = s.agent || {};
 
       await runtime.ready();
       // 唯一 agentId — 每会话一个 Agent 实例；'main' 硬编码会让所有会话的
@@ -1038,7 +1012,7 @@ export class Workspace {
           execState: chatPanel.execState,
           collaborationMode: ms.collaborationMode,
           pricing: defaultPricing(act.kind, act.model),
-          temperature: agentOpts.temperature ?? 0.7,
+          temperature: 0.7,
           // 从模型目录动态解析窗口（deepseek-v4 标 1M），查不到才 fallback 200K。
           // 0b3e5bf 曾加 Math.min(..., 200000) 硬封顶 — 把动态结果压成 200K，
           // 导致压缩在 110K 就触发；压缩已根治为只影响发送载荷，cap 无必要。
@@ -1101,7 +1075,7 @@ export class Workspace {
 
     // 注册工厂（DSH 形态，2026-08-25：工厂 = 「知道怎么造」，零成本挂接）。
     // 不再预造初始 Agent——句柄生命周期跟随卷，拟文时 ensureSessionAgent
-    // 经工厂现造；this.agent 引用面由 factory 内部 agentRef 承担。
+    // 经工厂现造；raw Agent 引用面由 factory 内部 agentRef 承担。
     chatPanel.setAgentFactory(factory);
     this._factoryRegistered = true;
     // 工作区切换的会话面重置（旧工作区句柄/消息 store/纸面清理）——

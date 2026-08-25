@@ -538,7 +538,7 @@ mod tests {
         assert_eq!(app.context_count(), 2);
 
         // 各自写入只落各自实例
-        use hologram_engine::graph::{Node, NodeKind};
+        use hologram_graph::{Node, NodeKind};
         ctx_a1.engine
             .write(|idx| idx.insert_node(Node::new("a_node", "A", NodeKind::Function)))
             .unwrap();
@@ -667,7 +667,7 @@ mod tests {
         // 「:: 函数名 (」连续序列；本注释刻意断开书写避免自匹配。
         // 拼接构造避免本测试文件自匹配（模式串不出现连续的 "::engine_read" 字面）。
         let fns = [
-            "engine_" , "read", "|engine_read_graph", "|engine_write", "|engine_init",
+            "engine_" , "read", "|engine_write", "|engine_init",
             "|engine_state", "|with_engine", "|engine_record_timeline",
             "|engine_record_timeline_with_props", "|engine_save", "|engine_analyze",
             "|engine_try_incremental", "|engine_fts_search", "|engine_query_timeline",
@@ -733,8 +733,8 @@ mod tests {
     /// L2 crate 化守卫：storage/vector 类型引用必须直连独立 crate
     /// （`hologram_storage::` / `hologram_vector::`），不得再经
     /// `hologram_engine::storage::` / `hologram_engine::vector::`
-    /// 路径引用——engine 的 `pub mod storage/vector` 是兼容门面，
-    /// 新代码不得扩充门面消费面（layering-rework-plan §4.3 欠账项 1 验收钉）。
+    /// 路径引用——engine 的 storage/vector 门面已拆除，
+    /// 新代码不得恢复门面消费面（layering-rework-plan §4.3 欠账项 1 验收钉）。
     #[test]
     fn shell_storage_vector_refs_use_dedicated_crates() {
         let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");

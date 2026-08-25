@@ -18,8 +18,8 @@ use std::collections::{HashMap, HashSet};
 use regex::Regex;
 use serde::Serialize;
 
-use crate::graph::EdgeKind;
-use crate::storage::MemoryIndex;
+use hologram_graph::EdgeKind;
+use hologram_storage::MemoryIndex;
 
 // ── 输出类型 ──
 
@@ -303,7 +303,7 @@ pub fn policy_check_from_index(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{EdgeKind, Node, NodeKind};
+    use hologram_graph::{EdgeKind, Node, NodeKind};
 
     fn make_node(id: &str, name: &str, kind: NodeKind, location: &str) -> Node {
         let mut n = Node::new(id, name, kind);

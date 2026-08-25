@@ -38,7 +38,7 @@ import {
   type ToolEvent,
 } from './agent-types';
 import { type CompactionConfig, type CompactionSessionStats, CompactionTracker } from './compaction-model';
-import { AgentContext } from './context';
+import type { AgentContext } from './context';
 import { type ExecStateInstance, execState } from './execution-state';
 import { type GoalLoopHost, type GoalRunResult, resumeGoalImpl, runGoalImpl } from './goal-loop';
 import type { GoalManager } from './goal-manager';
@@ -135,13 +135,12 @@ export class Agent {
   private pricing: Pricing | undefined;
   _agentOpts: AgentOptions;
 
-  // 装配 context — ctx 构造路径的服务来源（legacy 路径为 null）。
-  // Phase 3 字段来源替换：新路径身份/服务读 ctx，setBus/setSubAgentPool/
-  // setGoalManager 经 write-through 把后续注入同步回 ctx（ctx 是服务真源）。
-  private _ctx: AgentContext | null = null;
+  // 装配 context — 身份/服务唯一来源；setBus/setSubAgentPool/setGoalManager
+  // 经 write-through 把后续注入同步回 ctx（ctx 是服务真源）。
+  private _ctx: AgentContext;
 
   /** 装配用组合产物（S4-1a）— ctx 路径从服务表读（runtime 装配期写入；
-   *  child() 继承白名单成员，子 Agent 与父同一组合面）；legacy 路径为 null。
+   *  child() 继承白名单成员，子 Agent 与父同一组合面）。
    *  消费面：spawnSubAgent 透传子 Agent（ctx 路径）、诊断/测试只读。 */
   private readonly _composition: import('../composition/roster').ResolvedComposition | null = null;
 
@@ -150,7 +149,7 @@ export class Agent {
    *  子 Agent 经 ctx composition 继承组合面，但各 Agent 各自记首事件。 */
   private _presetId: string = 'standard';
 
-  /** 装配用组合产物（只读面；legacy 构造无组合时为 null）。 */
+  /** 装配用组合产物（只读面）。 */
   get composition(): import('../composition/roster').ResolvedComposition | null {
     return this._composition;
   }
@@ -388,23 +387,11 @@ export class Agent {
   _compactSummary: string | null = null;
   _compactTailStart = -1;
 
-  // Phase 3 兼容重载：ctx 入口（身份/服务读 context）与 legacy 入口（prov/tools/opts）
-  // 并存；legacy 路径字段来源逐字节不变，spawnSubAgent / 现有测试继续走 legacy 语义。
-  constructor(ctx: AgentContext, systemPrompt: string, opts?: AgentOptions);
-  constructor(prov: Provider, tools: ToolRegistry, systemPrompt: string, opts?: AgentOptions);
-  constructor(
-    provOrCtx: Provider | AgentContext,
-    toolsOrPrompt: ToolRegistry | string,
-    systemPromptOrOpts?: string | AgentOptions,
-    optsArg?: AgentOptions,
-  ) {
-    const ctx = provOrCtx instanceof AgentContext ? provOrCtx : null;
-    const systemPrompt = ctx ? (toolsOrPrompt as string) : (systemPromptOrOpts as string);
-    const opts: AgentOptions = (ctx ? (systemPromptOrOpts as AgentOptions | undefined) : optsArg) ?? {};
+  constructor(ctx: AgentContext, systemPrompt: string, opts: AgentOptions = {}) {
     this._ctx = ctx;
-    this.prov = ctx ? ctx.resolve('provider') : (provOrCtx as Provider);
-    this.tools = ctx ? ctx.resolve('tools') : (toolsOrPrompt as ToolRegistry);
-    this._sink = opts.eventSink ?? ctx?.get('eventSink') ?? (() => {});
+    this.prov = ctx.resolve('provider');
+    this.tools = ctx.resolve('tools');
+    this._sink = opts.eventSink ?? ctx.get('eventSink') ?? (() => {});
     this._ui = opts.ui ?? {};
     this._agentOpts = opts;
     this.temperature = opts.temperature ?? 0.7;
@@ -418,47 +405,41 @@ export class Agent {
     // 积累足够样本后根据 compaction-model.ts 数据调优。
     this.compactRatio = opts.compactRatio ?? 0.55;
     this.recentKeep = opts.recentKeep ?? 4;
-    this._subagentDepth = ctx?.subagentDepth ?? opts.subagentDepth ?? 0;
-    this.id = ctx?.agentId ?? opts.agentId ?? `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    this.parentId = ctx?.parentId ?? opts.parentId ?? null;
-    this._execState = opts.execState ?? ctx?.get('execState') ?? execState;
-    this._bus = ctx?.get('messageBus') ?? opts.messageBus ?? null;
-    this._taskBoard = ctx?.get('taskBoard') ?? opts.taskBoard ?? null;
-    this._discoveryBoard = ctx?.get('discoveryBoard') ?? opts.discoveryBoard ?? null;
-    this.agentStore = ctx?.get('agentStore') ?? null;
-    this.goalManager = ctx?.get('goalManager') ?? null;
-    this._subAgentPool = ctx?.get('subAgentPool') ?? null;
-    this._composition = ctx?.get('composition') ?? null;
+    this._subagentDepth = ctx.subagentDepth ?? opts.subagentDepth ?? 0;
+    this.id = ctx.agentId ?? opts.agentId ?? `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    this.parentId = ctx.parentId ?? opts.parentId ?? null;
+    this._execState = opts.execState ?? ctx.get('execState') ?? execState;
+    this._bus = ctx.get('messageBus') ?? opts.messageBus ?? null;
+    this._taskBoard = ctx.get('taskBoard') ?? opts.taskBoard ?? null;
+    this._discoveryBoard = ctx.get('discoveryBoard') ?? opts.discoveryBoard ?? null;
+    this.agentStore = ctx.get('agentStore') ?? null;
+    this.goalManager = ctx.get('goalManager') ?? null;
+    this._subAgentPool = ctx.get('subAgentPool') ?? null;
+    this._composition = ctx.get('composition') ?? null;
 
     this.sessionId = opts.sessionId || `session-${Date.now()}`;
     this._onSessionPersisted = opts.onSessionPersisted;
 
     // Phase 5 双写：日志先于 session 初始化（构造期的 system prompt 也走事件入口）。
-    // ctx 路径从服务表取（runtime 物化，每 Agent 独立）；legacy 路径就地新建。
-    this._sessionLog = ctx?.get('sessionLog') ?? new SessionLog();
+    this._sessionLog = ctx.get('sessionLog') ?? new SessionLog();
     this.session = [];
     if (systemPrompt) {
       this._replaceSession([{ role: 'system', content: systemPrompt }], 'init');
     }
     // S4-1b 首事件：构造（init reset）后必发 preset/selected——创建时点事实
     // （「模型可见 ⟺ 已记录」：preset 决定模型看到的 schema/段，必须可重建）。
-    // 读取当前生效 preset（preset-store 选择态；缺省 standard）。
     this._presetId = currentPresetId();
     this._sessionLog.append('preset/selected', { presetId: this._presetId });
 
-    // ctx 路径：bus 注册与隔离接线在构造内完成。旧路径中构造与 runtime 的
-    // setBus/_isolationId 接线之间无 await，时序等价；bus.register 为 Map.set
-    // 覆盖式，即使重复接线也无害（此处只接一次）。
-    if (ctx) {
-      if (this._bus) {
-        const bus = this._bus;
-        this.setBus(bus);
-        // Phase 4：bus 注册的对称清理归 ctx 所有权——runtime _disposeAgent 经
-        // ctx.dispose() 逆序统一释放（flush 前置顺序在 _disposeAgent 内保持）。
-        ctx.effect(() => () => bus.unregister(this.id), 'bus-unregister');
-      }
-      if (ctx.isolationId) this._isolationId = ctx.isolationId;
+    // bus 注册与隔离接线在构造内完成（ctx 为唯一入口）。
+    if (this._bus) {
+      const bus = this._bus;
+      this.setBus(bus);
+      // Phase 4：bus 注册的对称清理归 ctx 所有权——runtime _disposeAgent 经
+      // ctx.dispose() 逆序统一释放（flush 前置顺序在 _disposeAgent 内保持）。
+      ctx.effect(() => () => bus.unregister(this.id), 'bus-unregister');
     }
+    if (ctx.isolationId) this._isolationId = ctx.isolationId;
   }
 
   /** 由 workspace 在会话中途保存记忆时调用 — 排队并在
@@ -526,7 +507,7 @@ export class Agent {
     // 不写则热切换后新 spawn 的子 Agent 仍持有旧 provider/旧 Key ——
     // 2026-08-16 全链路断链审计（provider 切换 不生效 的根因之一）。
     try {
-      this._ctx?.set('provider', prov);
+      this._ctx.set('provider', prov);
     } catch {
       /* ctx 已 dispose —— 忽略写入 */
     }
@@ -718,14 +699,14 @@ export class Agent {
 
   setSubAgentPool(pool: import('./coordinator').SubAgentPool): void {
     this._subAgentPool = pool;
-    this._ctx?.set('subAgentPool', pool);
+    this._ctx.set('subAgentPool', pool);
   }
 
   /** 接线 Agent 间通信的消息总线。
    *  注册 Agent 地址 + 唤醒回调，当 Agent 空闲时消息到达会触发 runLoop。 */
   setBus(bus: MessageBus): void {
     this._bus = bus;
-    this._ctx?.set('messageBus', bus);
+    this._ctx.set('messageBus', bus);
     bus.register({ agentId: this.id, parentId: this.parentId, depth: this._subagentDepth }, () => {
       void this._onMessageDelivered();
     });
@@ -790,7 +771,7 @@ export class Agent {
 
   setGoalManager(mgr: GoalManager): void {
     this.goalManager = mgr;
-    this._ctx?.set('goalManager', mgr);
+    this._ctx.set('goalManager', mgr);
   }
 
   /** 将当前状态 + 会话持久化到磁盘。Best-effort — 不抛异常。

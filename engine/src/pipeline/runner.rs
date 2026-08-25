@@ -9,7 +9,7 @@ use rayon::prelude::*;
 use tracing::info;
 
 use crate::graph::merge::GraphMerger;
-use crate::graph::Graph;
+use hologram_graph::Graph;
 use crate::path_utils::normalize_path;
 use crate::engine::GRAMMAR_LOADER;
 use crate::pipeline::discovery::discover_files;

@@ -90,7 +90,7 @@ pub(crate) fn handler_cycle(args: &Value) -> ToolResponse {
 
 pub(crate) fn handler_thread_conflicts(_args: &Value) -> ToolResponse {
     ToolResponse::Success(with_store(|idx| {
-        use crate::graph::EdgeKind;
+        use hologram_graph::EdgeKind;
         // 扫描所有 Writes / Shares 边，查找有多个写入者的共享资源。
         // "资源"是任何有 ≥2 个不同源节点写入/共享的图节点。
         let mut writers: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
@@ -255,7 +255,7 @@ pub(crate) fn handler_grpc_services(_args: &Value) -> ToolResponse {
         let mut total_methods = 0usize;
         let mut implemented = 0usize;
         let mut missing = 0usize;
-        let mut nodes: Vec<&crate::graph::Node> = idx
+        let mut nodes: Vec<&hologram_graph::Node> = idx
             .nodes_iter()
             .filter(|n| n.properties.get("kind") == Some(&json!("grpc")))
             .collect();
