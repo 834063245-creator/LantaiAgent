@@ -10,6 +10,7 @@ import { assertEffortDeclared, type StoredThinking, THINKING_EFFORT_BUDGETS, thi
 import {
   type Chunk,
   ChunkType,
+  classifyStreamError,
   type Message,
   type ModelDescriptor,
   type Provider,
@@ -444,7 +445,7 @@ async function* readSSE(body: ReadableStream<Uint8Array>, name: string, signal?:
 
       case 'error': {
         const msg = ev.error?.message || 'stream error';
-        yield { type: ChunkType.Error, err: new Error(`${name}: ${msg}`) };
+        yield { type: ChunkType.Error, err: new Error(classifyStreamError(name, msg)) };
         return;
       }
     }

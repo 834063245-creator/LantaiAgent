@@ -174,7 +174,7 @@ describe('真 socket — OpenAI 兼容流式全链路', () => {
       }),
     );
     const err = chunks.find((c) => c.type === ChunkType.Error);
-    expect(err?.err?.message).toContain('insufficient balance');
+    expect(err?.err?.message).toContain('[余额不足]');
   });
 
   it('声明外档位（medium）→ 任何 socket I/O 之前抛错（服务器零请求）', async () => {
@@ -327,7 +327,7 @@ describe('真 socket — Anthropic Messages 流式全链路', () => {
       }),
     );
     const err = chunks.find((c) => c.type === ChunkType.Error);
-    expect(err?.err?.message).toContain('overloaded');
+    expect(err?.err?.message).toContain('[服务商繁忙]');
   });
 
   it('maxTokensOverride 优先于目录（真 socket 钳制）', async () => {
@@ -353,7 +353,7 @@ describe('真 socket — Anthropic Messages 流式全链路', () => {
 });
 
 describe('真 socket — 空闲超时（idle-stream）', () => {
-  it('60s 无 chunk → 中止并标记 idleTimedOut（测试用 50ms 短超时）', async () => {
+  it('30s 无 chunk → 中止并标记 idleTimedOut（测试用 50ms 短超时）', async () => {
     const srv2 = await startServer((_body, _sse, res) => {
       // 挂死流：开头发一帧，然后永远不出数据
       res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: 'stuck' } }] })}\n\n`);
@@ -383,7 +383,7 @@ describe('真 socket — 空闲超时（idle-stream）', () => {
     }
   });
 
-  it('默认超时常量 = 60s（回归钉子）', () => {
-    expect(STREAM_IDLE_TIMEOUT_MS).toBe(60_000);
+  it('默认超时常量 = 30s（回归钉子）', () => {
+    expect(STREAM_IDLE_TIMEOUT_MS).toBe(30_000);
   });
 });

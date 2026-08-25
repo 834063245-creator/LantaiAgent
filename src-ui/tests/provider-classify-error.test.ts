@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { classifyError } from '../src/provider/types';
+import { classifyError, classifyStreamError } from '../src/provider/types';
 
 describe('classifyError', () => {
   const name = 'testprov';
@@ -95,5 +95,50 @@ describe('classifyError', () => {
     const msg = classifyError(name, 418, "I'm a teapot");
     expect(msg).toContain('[未知错误]');
     expect(msg).toContain('418');
+  });
+});
+
+describe('classifyStreamError', () => {
+  const name = 'testprov';
+
+  it('classifies rate limit from stream error message', () => {
+    const msg = classifyStreamError(name, 'rate limit exceeded');
+    expect(msg).toContain('[服务商限流]');
+  });
+
+  it('classifies overloaded as provider busy', () => {
+    const msg = classifyStreamError(name, 'overloaded_error: Overloaded');
+    expect(msg).toContain('[服务商繁忙]');
+  });
+
+  it('classifies insufficient balance as quota error (not retryable)', () => {
+    const msg = classifyStreamError(name, 'insufficient balance');
+    expect(msg).toContain('[余额不足]');
+  });
+
+  it('classifies authentication error as invalid key (not retryable)', () => {
+    const msg = classifyStreamError(name, 'authentication_error: invalid x-api-key');
+    expect(msg).toContain('[密钥错误]');
+  });
+
+  it('classifies permission error as permission issue (not retryable)', () => {
+    const msg = classifyStreamError(name, 'permission_error: not allowed');
+    expect(msg).toContain('[权限不足]');
+  });
+
+  it('classifies model not found as missing model (not retryable)', () => {
+    const msg = classifyStreamError(name, 'model_not_found: no such model');
+    expect(msg).toContain('[模型不存在]');
+  });
+
+  it('classifies server_error as provider fault (retryable)', () => {
+    const msg = classifyStreamError(name, 'server_error: Internal Server Error');
+    expect(msg).toContain('[服务商故障]');
+  });
+
+  it('falls through to unknown error (retryable by isRetryable)', () => {
+    const msg = classifyStreamError(name, 'some unexpected mid-stream problem');
+    expect(msg).toContain('[未知错误]');
+    expect(msg).toContain('some unexpected mid-stream problem');
   });
 });

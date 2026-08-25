@@ -17,6 +17,7 @@ import {
 import {
   type Chunk,
   ChunkType,
+  classifyStreamError,
   type Message,
   type ModelDescriptor,
   type Provider,
@@ -294,7 +295,10 @@ async function* readSSE(body: ReadableStream<Uint8Array>, name: string, signal?:
   for await (const ev of sseEvents<OpenAiSseEvent>(body, name, signal)) {
     // 来自 OpenAI 兼容 API 的流内错误（DeepSeek 过载、限流等）
     if (ev.error) {
-      yield { type: ChunkType.Error, err: new Error(`${name}: ${ev.error.message || JSON.stringify(ev.error)}`) };
+      yield {
+        type: ChunkType.Error,
+        err: new Error(classifyStreamError(name, ev.error.message || JSON.stringify(ev.error))),
+      };
       return;
     }
 

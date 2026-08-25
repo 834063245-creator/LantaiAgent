@@ -36,6 +36,9 @@ export function isRetryable(err: Error): boolean {
     return false;
   }
 
+  // 模型流空闲超时 — 长时间无 chunk 的瞬态挂起，值得重试
+  if (msg.includes('[响应超时]')) return true;
+
   // Unknown errors → retry once (might be transient)
   if (msg.includes('[未知错误]')) return true;
 

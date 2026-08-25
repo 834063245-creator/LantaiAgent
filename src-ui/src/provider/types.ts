@@ -188,6 +188,40 @@ export function classifyError(name: string, status: number, body: string, fetchE
   return `[未知错误] "${name}" 返回了意外错误 (${status})：${snippet}。如不确定原因，请截图联系开发者。`;
 }
 
+/**
+ * 流内错误分类 — SSE error 事件只有 message 文本，没有 HTTP status。
+ * 分类结果与 agent/retry.ts 的 isRetryable 标记面保持一致：
+ * 限流/繁忙/服务商故障/未知 → 可重试；密钥/权限/余额/模型不存在 → 不重试。
+ * （openai.ts / anthropic.ts 的 readSSE 消费；2026-08-25 补流内错误不分类缺口。）
+ */
+export function classifyStreamError(name: string, message: string): string {
+  const b = (message || '').toLowerCase();
+
+  if (b.includes('rate') && (b.includes('limit') || b.includes('exceed')))
+    return `[服务商限流] "${name}" 流式响应速率超限，稍后自动重试。`;
+  if (b.includes('overloaded') || b.includes('busy')) return `[服务商繁忙] "${name}" 流式响应负载过高，稍后重试。`;
+  if (
+    b.includes('insufficient_quota') ||
+    b.includes('insufficient balance') ||
+    b.includes('余额') ||
+    b.includes('quota')
+  )
+    return `[余额不足] "${name}" 账户余额/配额不足，请充值。`;
+  if (
+    b.includes('authentication_error') ||
+    b.includes('invalid_api_key') ||
+    b.includes('invalid api key') ||
+    b.includes('apikey')
+  )
+    return `[密钥错误] "${name}" API Key 无效或已过期。请检查设置中的 Key。`;
+  if (b.includes('permission')) return `[权限不足] "${name}" 拒绝了请求。请检查账户权限或 Key 的访问范围。`;
+  if (b.includes('model_not_found') || b.includes('invalid model') || b.includes('model info'))
+    return `[模型不存在] "${name}" 返回的模型名不在可用列表中。请检查设置中的模型名称。`;
+  if (b.includes('server_error') || (b.includes('internal server') && b.includes('error')))
+    return `[服务商故障] "${name}" 服务器异常，稍后重试。`;
+  return `[未知错误] "${name}" 流式响应中断：${message}。如不确定原因，请截图联系开发者。`;
+}
+
 // ---- 工具配对清理 ----
 
 const interruptedToolResult = '[no result: the previous turn was interrupted before this tool call completed]';

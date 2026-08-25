@@ -1441,10 +1441,10 @@ export class Agent {
     const payload = this.payloadMessages();
     const fullSession = transientMsgs.length > 0 ? [...payload, ...transientMsgs] : payload;
 
-    // 流空闲超时：60s 无任何 chunk 视为挂起（与 callSummaryLLM / dataflow NL 解析
+    // 流空闲超时：30s 无任何 chunk 视为挂起（与 callSummaryLLM / dataflow NL 解析
     // 共用 streamWithIdleTimeout）。超时 abort 后 sendWithRetry/readSSE 抛 aborted，
-    // 此处转为可读的挂起提示。外部 signal 只做转发，不直接传给 stream——
-    // 避免超时 abort 连累调用方。
+    // 此处转为可读的挂起提示（[响应超时] 会在 stream() 重试循环里按瞬态重试）。
+    // 外部 signal 只做转发，不直接传给 stream——避免超时 abort 连累调用方。
     // sanitizeToolPairing 不在此调用 — provider（openai/anthropic）是上线前的最终 gate。
     const stream = streamWithIdleTimeout(this.prov, signal, {
       messages: fullSession,
@@ -1531,7 +1531,7 @@ export class Agent {
       }
     } catch (e) {
       if (stream.idleTimedOut) {
-        err = new Error(`模型响应超时（${STREAM_IDLE_TIMEOUT_MS / 1000} 秒无输出），已自动中止`);
+        err = new Error(`[响应超时] 模型响应超时（${STREAM_IDLE_TIMEOUT_MS / 1000} 秒无输出），已自动中止`);
       } else {
         err = e instanceof Error ? e : new Error(String(e));
       }

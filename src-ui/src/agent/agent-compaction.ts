@@ -601,7 +601,7 @@ export async function selectSummaryProviderImpl(host: CompactionHost): Promise<{
   }
 }
 
-/** 单次摘要 LLM 调用 — 60s 空闲超时守卫（挂起判定，streamWithIdleTimeout），
+/** 单次摘要 LLM 调用 — 30s 空闲超时守卫（挂起判定，streamWithIdleTimeout），
  *  流仍在产出就让它跑完。max_tokens 固定为输出预算，
  *  配合 chunkCap 构成"永不塞爆"的输入/输出硬上界。 */
 export async function callSummaryLLMImpl(
@@ -632,7 +632,7 @@ export async function callSummaryLLMImpl(
     return text.trim();
   } catch (e) {
     if (stream.idleTimedOut && !signal.aborted) {
-      log.warn('agent', 'summary LLM call stalled (60s no output) — 该次调用放弃');
+      log.warn('agent', 'summary LLM call stalled (30s no output) — 该次调用放弃');
     }
     throw e;
   }

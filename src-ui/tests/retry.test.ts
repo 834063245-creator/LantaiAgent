@@ -25,6 +25,10 @@ describe('isRetryable', () => {
     expect(isRetryable(new Error('[网络问题] ECONNRESET'))).toBe(true);
   });
 
+  it('retries idle-stream timeout', () => {
+    expect(isRetryable(new Error('[响应超时] 模型响应超时（30 秒无输出），已自动中止'))).toBe(true);
+  });
+
   it('retries unknown errors once', () => {
     expect(isRetryable(new Error('[未知错误] "test" 返回了意外错误 (500)'))).toBe(true);
   });

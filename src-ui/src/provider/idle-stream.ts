@@ -9,7 +9,7 @@
 
 import type { Chunk, Provider, Request } from './types';
 
-export const STREAM_IDLE_TIMEOUT_MS = 60_000;
+export const STREAM_IDLE_TIMEOUT_MS = 30_000;
 
 export interface IdleTimeoutStream {
   /** 包装后的 chunk 流 — 每到一个 chunk 重置空闲计时。 */
