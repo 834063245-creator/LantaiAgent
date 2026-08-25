@@ -1,4 +1,31 @@
-# baseline change request — 产品更名兰台：system prompt persona + browser 工具描述（2026-08-22）
+# baseline change request — 三面解耦：system-prompt 夹具 noGraph 拆为 engineOff + noProject（2026-08-25）
+
+- **日期**: 2026-08-25
+- **请求 Agent**: 三面解耦执行 Agent
+- **涉及快照**: `baseline/phase-0/system-prompt.fixture.json`、`baseline/preset-minimal/phase-0/system-prompt.fixture.json`——同一动因的结构变更
+- **状态**: **已批准（2026-08-25 用户拍板「批准，重录基线」——standard + minimal 双 preset 已重录，verify 双绿）**
+
+## 变更内容
+
+system-prompt 夹具从两面（withGraph / noGraph）扩为三面（withGraph / engineOff / noProject），键名与结构变化：
+
+1. 旧 `noGraph`（null 图 + 有路径，147 字节简短面）同参调用现落**关引擎面**——夹具改名 `engineOff`：与 withGraph 同输入内容（memory/claudeMd/env 齐备）、仅 graphData=null。含 17 条行为规则/协作模式/多 Agent 指南/记忆库/项目规范 + 新增模型身份段「图谱引擎已停用」行（4038 字节）。
+2. 新增 `noProject`（path='' 零目录面）：内容 = 旧 `noGraph` 简短面字节原样（147 字节）——"当前没有加载项目"在此面才是真话。
+3. `withGraph`（完整面）**字节零漂移**。
+
+## 为什么变
+
+三面解耦的根因修复：此前 `graphData==null` 一刀切二分——绑了目录但关图谱引擎（2026-08-22 能力）的 Agent 被错塞进零目录简短面，17 条行为规则/协作模式/项目规范全部陪葬，且"当前没有加载项目"在绑定目录时是假话。解耦后 hasProject（绑目录）与 hasGraph（图数据）独立判段。生产影响：绑目录 + 引擎关的会话提示词从 147 字节恢复到完整面（约 4KB 行为规则回归）——这是**本变更的目的**，不是回归。
+
+## 影响面
+
+- **模型可见表面**：仅"绑目录 + 关引擎"会话的提示词变完整（引擎停用行明确告知 graph/lsp 缺席）；完整面与零目录面字节不变。
+- **前缀缓存**：关引擎会话一次性失效（预期内；零外部用户无在途成本）。
+- **重录动作**：批准后 `npm run record:convergence`（standard）+ `CONVERGENCE_PRESET=minimal npm run record:convergence`（minimal），随后 `npm run verify:convergence` 与 minimal 对应命令必须 exit 0。
+
+---
+
+
 
 - **日期**: 2026-08-22
 - **请求 Agent**: 更名执行 Agent（用户直接指令「杀死旧名，一次做彻底」——本 CR 即审批记录，用户在场拍板）

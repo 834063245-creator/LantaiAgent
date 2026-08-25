@@ -54,12 +54,17 @@ describe('phase-0 契约快照', () => {
     });
   });
 
-  it('system-prompt.fixture — 固定输入的 buildSystemPrompt', async () => {
+  it('system-prompt.fixture — 固定输入的 buildSystemPrompt（三面夹具）', async () => {
     // P4 B④ 收官（2026-08-23）：13 段全量经 ctx.prompts 第一方插件通道
     // 贡献（试点 memory/claude-md + 续批 graph-snapshot + 收官批 10 段）
     // ——测试环境不跑 main.ts 引导，通道腰在此复现生产装配面
     // （同 B① 工具面 buildStandardRegistry 先例；贡献序 = 迁移前出厂表序，
     // 快照零漂移按构造，双 preset 实测）。
+    // 三面解耦（2026-08-25）：hasProject 与 hasGraph 独立判段，夹具三面
+    // 全覆盖——withGraph（完整面，字节不变）/ engineOff（关引擎面：有目录
+    // 无图，旧 noGraph 同参调用落此面——行为规则/协作模式/项目规范照常
+    // 注入，图纪律/图快照缺席）/ noProject（零目录面：path=''，字节 =
+    // 旧 noGraph 简短面——"当前没有加载项目"在此面才是真话）。
     await withFirstPartyPromptChannel(async () => {
       const withGraph = buildSystemPrompt(
         FIXED_GRAPH_DATA,
@@ -70,12 +75,26 @@ describe('phase-0 契约快照', () => {
         'deepseek',
         '- OS: win32\n- Shell: bash (Git Bash)',
       );
-      const noGraph = buildSystemPrompt(null, '/projects/demo', '', '', '', undefined, '');
+      // 关引擎面：与 withGraph 同输入内容（memory/claudeMd/env 齐备），
+      // 仅 graphData=null——镜像生产的"绑目录 + 引擎开关关"装配。
+      const engineOff = buildSystemPrompt(
+        null,
+        '/projects/demo',
+        '### 固定记忆段落\n- 记忆条目 A',
+        '',
+        '### CLAUDE.md 固定内容\n- 规范条目 A',
+        'deepseek',
+        '- OS: win32\n- Shell: bash (Git Bash)',
+      );
+      // 零目录面：占位工作区装配真值（path='' → hasProject=false）。
+      const noProject = buildSystemPrompt(null, '', '', '', '', undefined, '');
       snapshot('phase-0/system-prompt.fixture.json', {
         withGraphLength: withGraph.length,
         withGraph,
-        noGraphLength: noGraph.length,
-        noGraph,
+        engineOffLength: engineOff.length,
+        engineOff,
+        noProjectLength: noProject.length,
+        noProject,
       });
     });
   });

@@ -84,9 +84,12 @@ export function buildGraphContextFromData(graphData: GraphDataShape | null | und
 
 // ── System prompt builder ──
 // S1-4 起 persona/规则段落拆入 composition/prompt-sections 的 section
-// 注册表（表序 = 拼装序，两装配面经 applicable 分流）；本函数是签名
+// 注册表（表序 = 拼装序，装配面经 applicable 分流）；本函数是签名
 // 兼容壳——组装逻辑机械迁至 assembleSystemPrompt，standard 拼装结果
 // 逐字节不变（system-prompt.fixture 快照守护）。
+// 三面解耦（2026-08-25）：hasProject = projectPath 非空（占位工作区
+// path='' = 零目录面）——绑目录但关图谱引擎的 Agent 不再跌进零目录
+// 简短面，null 图 + 非空路径 = 关引擎面（行为规则/协作模式等照常注入）。
 
 export function buildSystemPrompt(
   graphData: GraphDataShape | null | undefined,
@@ -102,6 +105,7 @@ export function buildSystemPrompt(
     {
       graphData,
       projectPath,
+      hasProject: projectPath !== '',
       memorySection,
       graphSnapshot,
       claudeMdSection,

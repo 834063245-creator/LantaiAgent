@@ -9,11 +9,19 @@
 // 零漂移优先于美化：任何"顺手规整分隔符"的改动都会击穿
 // system-prompt.fixture 快照与前缀缓存。
 //
-// 两个装配面：
-//   - 简短面（graphData 缺帐）：identity-brief → memory-brief → env-brief
+// 三个装配面（2026-08-25 三面解耦——目录 / 图 / 模式独立判面）：
+//   - 零目录面（无项目）：identity-brief → memory-brief → env-brief
+//   - 关引擎面（有目录、graphData 缺帐）：behavior-rules → visual-discipline
+//     → collaboration-mode → env → model-identity（含引擎停用行）→ multi-agent
+//     → memory → claude-md ——图纪律/图快照缺席（没图还教"先问图"是欺骗）
 //   - 完整面（有图）：behavior-rules → graph-discipline → visual-discipline
 //     → collaboration-mode → env → model-identity → multi-agent
 //     → graph-snapshot → memory → claude-md
+// 根因修复：此前 graphData==null 一刀切二分——绑了目录但关图谱引擎
+// （2026-08-22 能力）的 Agent 被错塞进零目录简短面，17 条行为规则/
+// 协作模式/多 Agent 指南/项目规范全部陪葬，且"当前没有加载项目"在
+// 绑定目录时是假话。解耦后 applicable 看"本段真正需要的信号"：
+// 图相关段看 hasGraph，目录相关段看 hasProject（两者独立判段）。
 // 同一段在两个面的位置不同（env 在完整面插在协作模式后、模型身份前；
 // memory 在简短面先于 env）——全局单一表序无法同时满足，故 env/memory
 // 各拆 brief/完整两个 id（render 共享 helper，行为逐字一致）。
@@ -51,6 +59,10 @@ import { activePromptContributions } from './prompt-service';
 export interface PromptSectionContext {
   graphData?: unknown;
   projectPath: string;
+  /** 绑定了项目目录（三面解耦 2026-08-25）：true = 关引擎面/完整面，
+   *  false = 零目录面。缺省按 graphData != null 推导（兼容既有调用点
+   *  ——显式置 false 才落零目录面；null 图 + 有路径 = 关引擎）。 */
+  hasProject?: boolean;
   memorySection?: string;
   graphSnapshot?: string;
   claudeMdSection?: string;
@@ -69,6 +81,11 @@ export interface PromptSection {
 
 const hasGraph = (ctx: PromptSectionContext): boolean => ctx.graphData != null;
 const noGraph = (ctx: PromptSectionContext): boolean => ctx.graphData == null;
+/** 目录面谓词：显式 hasProject 优先；缺省按图推导（兼容 B④ 收官时代
+ *  的既有调用点——除显式 false 外行为不变）。 */
+const hasProject = (ctx: PromptSectionContext): boolean =>
+  ctx.hasProject !== undefined ? ctx.hasProject : ctx.graphData != null;
+const noProject = (ctx: PromptSectionContext): boolean => !hasProject(ctx);
 
 /** 模型身份双行（两面共用；从 buildSystemPrompt 机械迁出）。 */
 function modelIdentityLines(providerName?: string): { negation: string; identity: string } {
@@ -94,10 +111,10 @@ function envText(shellEnvSection: string): string {
   return `\n\n## 运行环境\n${shellEnvSection.trim()}`;
 }
 
-/** 简短面 identity 段。 */
+/** 零目录面 identity 段。 */
 const IDENTITY_BRIEF: PromptSection = {
   id: 'identity-brief',
-  applicable: noGraph,
+  applicable: noProject,
   render: (ctx) => {
     const { negation, identity } = modelIdentityLines(ctx.providerName);
     return `你是兰台的 AI 编码助手。当前没有加载项目。
@@ -109,19 +126,19 @@ const IDENTITY_BRIEF: PromptSection = {
 
 const MEMORY_BRIEF: PromptSection = {
   id: 'memory-brief',
-  applicable: (ctx) => noGraph(ctx) && !!ctx.memorySection?.trim(),
+  applicable: (ctx) => noProject(ctx) && !!ctx.memorySection?.trim(),
   render: (ctx) => memoryText(ctx.memorySection ?? ''),
 };
 
 const ENV_BRIEF: PromptSection = {
   id: 'env-brief',
-  applicable: (ctx) => noGraph(ctx) && !!ctx.shellEnvSection?.trim(),
+  applicable: (ctx) => noProject(ctx) && !!ctx.shellEnvSection?.trim(),
   render: (ctx) => envText(ctx.shellEnvSection ?? ''),
 };
 
 const BEHAVIOR_RULES: PromptSection = {
   id: 'behavior-rules',
-  applicable: hasGraph,
+  applicable: hasProject,
   render: () => `你是兰台的编码 Agent。
 
 ## 行为规则
@@ -162,7 +179,7 @@ const GRAPH_DISCIPLINE: PromptSection = {
 
 const VISUAL_DISCIPLINE: PromptSection = {
   id: 'visual-discipline',
-  applicable: hasGraph,
+  applicable: hasProject,
   render: () => `
 
 ## 视觉自评纪律（改 UI 后必做）
@@ -178,7 +195,7 @@ const VISUAL_DISCIPLINE: PromptSection = {
 // system-reminder 携带（plan/plan-prompts.ts），此处只写两种模式的静态约定。
 const COLLABORATION_MODE: PromptSection = {
   id: 'collaboration-mode',
-  applicable: hasGraph,
+  applicable: hasProject,
   render: () => `
 ## 协作模式
 - 默认为**执行模式**：写文件、跑命令、Git 的全部工具可用。用户说"修"就直接修，修完跑测试验证。
@@ -187,20 +204,26 @@ const COLLABORATION_MODE: PromptSection = {
 
 const ENV: PromptSection = {
   id: 'env',
-  applicable: (ctx) => hasGraph(ctx) && !!ctx.shellEnvSection?.trim(),
+  applicable: (ctx) => hasProject(ctx) && !!ctx.shellEnvSection?.trim(),
   render: (ctx) => envText(ctx.shellEnvSection ?? ''),
 };
 
 const MODEL_IDENTITY: PromptSection = {
   id: 'model-identity',
-  applicable: hasGraph,
+  applicable: hasProject,
   render: (ctx) => {
     const { negation, identity } = modelIdentityLines(ctx.providerName);
+    // 关引擎面（hasProject && 无图）：图谱引擎停用说明——修复"绑了目录
+    // 却说没加载项目"的假话（三面解耦 2026-08-25）。
+    const engineLine =
+      hasGraph(ctx) || noProject(ctx)
+        ? ''
+        : `\n- 图谱引擎已停用：依赖图工具（graph/lsp）本会话缺席，改用 search/fs 直接分析。`;
     return `
 ## 模型身份
 - ${negation}
 - ${identity}
-- 项目: \`${ctx.projectPath}\``;
+- 项目: \`${ctx.projectPath}\`${engineLine}`;
   },
 };
 
@@ -208,7 +231,7 @@ const MODEL_IDENTITY: PromptSection = {
 // 降级为只读克隆，见 planRegistry），内容在两种模式下都成立。
 const MULTI_AGENT: PromptSection = {
   id: 'multi-agent',
-  applicable: hasGraph,
+  applicable: hasProject,
   render: () => `
 
 ## 多 Agent 协作
@@ -275,13 +298,13 @@ ${ctx.graphSnapshot}
 
 const MEMORY: PromptSection = {
   id: 'memory',
-  applicable: (ctx) => hasGraph(ctx) && !!ctx.memorySection,
+  applicable: (ctx) => hasProject(ctx) && !!ctx.memorySection,
   render: (ctx) => memoryText(ctx.memorySection ?? ''),
 };
 
 const CLAUDE_MD: PromptSection = {
   id: 'claude-md',
-  applicable: (ctx) => hasGraph(ctx) && !!ctx.claudeMdSection,
+  applicable: (ctx) => hasProject(ctx) && !!ctx.claudeMdSection,
   render: (ctx) => `
 
 ## 项目规范
