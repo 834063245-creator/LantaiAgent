@@ -25,12 +25,14 @@ import { hooksServicePlugin } from '../composition/hook-service';
 import { promptsServicePlugin } from '../composition/prompt-service';
 import { rendererServicePlugin } from '../composition/renderer-service';
 import { compositionServicesPlugin } from '../composition/services';
+import { spaceServicePlugin } from '../composition/space-service';
 import type { Context } from '../cordis';
 import { paperPlugin } from '../paper/paper-plugin';
 import { getProxyPort } from '../provider/transport';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
 import { type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
 import { settingsPlugin } from './settings-plugin';
+import { spaceDemoPlugin } from './space-demo-plugin';
 import { mountToolDeclarations } from './tool-declarations';
 import { type LantaiPlugin, type PluginManifest, validateManifest } from './types';
 
@@ -81,6 +83,7 @@ export function pluginAssetsOrigin(port: number): string {
  * builtinCapabilities() 退役，本通道是出厂 capability 面唯一来源）。 */
 const BUILTIN_PLUGINS: LantaiPlugin[] = [
   compositionServicesPlugin,
+  spaceServicePlugin,
   codeRuntimePlugin,
   rendererServicePlugin,
   promptsServicePlugin,
@@ -88,6 +91,7 @@ const BUILTIN_PLUGINS: LantaiPlugin[] = [
   capabilitiesServicePlugin,
   paperPlugin,
   settingsPlugin,
+  spaceDemoPlugin,
   ...firstPartyToolPlugins(),
   ...firstPartyPromptPlugins(),
   ...firstPartyCapabilityPlugins(),

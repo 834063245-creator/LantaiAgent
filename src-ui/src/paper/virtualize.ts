@@ -114,3 +114,42 @@ export function visiblePinnedIds(pinned: PinnedGeom[], rect: WorldRect, overscan
 export function rectsIntersect(a: WorldRect, b: WorldRect): boolean {
   return a.x0 <= b.x1 && a.x1 >= b.x0 && a.y0 <= b.y1 && a.y1 >= b.y0;
 }
+
+/* ── Stage-2 一纸多卷：跨流区虚拟化 ──
+ * 数据全量、渲染窗口化的铁律不变——视口窗口跨所有流区查询可见块。
+ * 流区数少（上百会话 = 上百流区），成本 O(流区数 × log n) 可控。 */
+
+/** 单个流区的完整几何（flow 已是世界坐标——layoutRegion 平移后的产物）。 */
+export interface RegionFlowGeom {
+  sessionId: string;
+  /** 该流区的 flow 块几何（世界坐标，栈序 = 消息序） */
+  flow: FlowGeom[];
+  /** 流区中轴（世界） */
+  anchorX: number;
+  /** 流区最新块底边（世界） */
+  anchorY: number;
+  /** 流区宽（世界） */
+  width: number;
+}
+
+/**
+ * 跨流区可见窗口：对每个与视口横向相交的流区跑二分窗口。
+ * 返回 Map<sessionId, { first, lastExcl }>——无可见块的流区不出现在结果里。
+ */
+export function visibleRegionWindows(
+  regions: RegionFlowGeom[],
+  rect: WorldRect,
+  overscan = 0,
+): Map<string, { first: number; lastExcl: number }> {
+  const out = new Map<string, { first: number; lastExcl: number }>();
+  // 横向预筛：流区 x 区间与视口 x 区间（外扩 overscan）相交才查它的流
+  const x0 = rect.x0 - overscan;
+  const x1 = rect.x1 + overscan;
+  for (const r of regions) {
+    const half = r.width / 2;
+    if (r.anchorX + half < x0 || r.anchorX - half > x1) continue;
+    const win = visibleFlowWindow(r.flow, rect, overscan);
+    if (win.lastExcl > win.first) out.set(r.sessionId, win);
+  }
+  return out;
+}

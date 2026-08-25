@@ -28,6 +28,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { agentSessionState } from '../../agent/agent-session-state';
 import type { ExecStateInstance } from '../../agent/execution-state';
+import { useShellStore } from '../../app/shell-store';
 import { getChatStore } from '../../ui/chat-store';
 import type { ChatCore } from '../chat/chat-core';
 import './spine-rack.css';
@@ -60,6 +61,27 @@ export const SpineRack = memo(function SpineRack({ core }: { core: ChatCore | nu
   const [draftLabel, setDraftLabel] = useState('');
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const [localNotice, setLocalNotice] = useState<string | null>(null);
+
+  /* ── 卷目目录（Stage-2 最小侧边栏「列表」：当前工作区磁盘上的卷，
+   *    未摊开的列出来，点击摊上画布；完整侧边栏能力留阶段 3）── */
+  const [dirOpen, setDirOpen] = useState(false);
+  const [directory, setDirectory] = useState<Array<{ id: number; label: string; msgCount: number; savedAt: string }>>(
+    [],
+  );
+  const refreshDirectory = useCallback(() => {
+    if (!core) return;
+    const pp = useShellStore.getState().projectPath;
+    core
+      .listSavedSessions(pp)
+      .then((list) => setDirectory(list))
+      .catch(() => setDirectory([]));
+  }, [core]);
+  useEffect(() => {
+    if (!core || !dirOpen) return;
+    refreshDirectory();
+    const unSess = getChatStore(core.panelId).sess.subscribe(refreshDirectory);
+    return () => unSess();
+  }, [core, dirOpen, refreshDirectory]);
 
   /* 会话列表 + 运行态同步：sess store 订阅（列表/活跃变更）+
    * agentSessionState 版本订阅（agent/exec 注册变化）→ 全量重读。
@@ -132,6 +154,16 @@ export const SpineRack = memo(function SpineRack({ core }: { core: ChatCore | nu
     [core],
   );
 
+  /** 卷目录打开动作：把磁盘上已有卷摊上画布（当前工作区路径；未开则开）。 */
+  const onOpenFromDirectory = useCallback(
+    (id: number) => {
+      if (!core) return;
+      const pp = useShellStore.getState().projectPath;
+      void core.loadSessionFromDisk(pp, id);
+    },
+    [core],
+  );
+
   /* 双击改名：进入编辑态（输入框预填现名，Enter 提交 / Esc 取消 / 失焦提交） */
   const startRename = useCallback((id: number, label: string) => {
     setRenamingId(id);
@@ -153,6 +185,8 @@ export const SpineRack = memo(function SpineRack({ core }: { core: ChatCore | nu
   }, [renamingId]);
 
   if (!core) return null;
+
+  const openIds = new Set(sessions.map((s) => s.id));
 
   return (
     <div className="sr-rack" role="tablist" aria-label="案卷书脊">
@@ -226,6 +260,47 @@ export const SpineRack = memo(function SpineRack({ core }: { core: ChatCore | nu
       <button type="button" className="sr-new" title="另起一卷" onClick={onNewVolume}>
         <span className="sr-new-label">另起一卷</span>
       </button>
+
+      {/* 卷目目录开关（Stage-2 最小侧边栏「列表」）：打开当前工作区磁盘卷清单 */}
+      <button
+        type="button"
+        className={`sr-dir-toggle${dirOpen ? ' open' : ''}`}
+        title="卷目——摊开工作区已有案卷"
+        aria-expanded={dirOpen}
+        onClick={() => setDirOpen((v) => !v)}
+      >
+        <span className="sr-dir-toggle-label">卷目</span>
+      </button>
+      {dirOpen && (
+        <div className="sr-dir-panel">
+          <div className="sr-dir-head">
+            <span className="sr-dir-title">卷目</span>
+            <span className="sr-dir-count">{directory.length}</span>
+          </div>
+          <div className="sr-dir-list">
+            {directory.map((d) => {
+              const isOpen = openIds.has(d.id);
+              return (
+                <button
+                  key={d.id}
+                  type="button"
+                  className={`sr-dir-row${isOpen ? ' open' : ''}`}
+                  onClick={() => onOpenFromDirectory(d.id)}
+                  title={`${d.label || `案卷 ${d.id}`}${isOpen ? '（已在画布——点击换卷）' : '（点击摊上画布）'}`}
+                >
+                  <span className="sr-dir-row-label">{d.label || `案卷 ${d.id}`}</span>
+                  <span className="sr-dir-row-meta">
+                    {isOpen ? '摊开' : ''}
+                    {isOpen ? ' · ' : ''}
+                    {d.msgCount} 块
+                  </span>
+                </button>
+              );
+            })}
+            {directory.length === 0 && <div className="sr-dir-empty">本工作区暂无已存案卷</div>}
+          </div>
+        </div>
+      )}
     </div>
   );
 });

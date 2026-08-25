@@ -125,7 +125,18 @@ export function stashStripPosition(
   occupied: Array<{ x: number; y: number; w: number }>,
   bandHalfWidth: number,
 ): { x: number; y: number } {
-  const x = bandHalfWidth + STRIP_STASH_GAP;
+  return stashStripPositionAt(selectionMidY, occupied, bandHalfWidth, 0);
+}
+
+/** 浮钮路径的纸条落点（Stage-2 一纸多卷：流区中轴在 centerX——落点相对
+ *  该流区右侧空地第一档，x = centerX + bandHalfWidth + 边距）。 */
+export function stashStripPositionAt(
+  selectionMidY: number,
+  occupied: Array<{ x: number; y: number; w: number }>,
+  bandHalfWidth: number,
+  centerX: number,
+): { x: number; y: number } {
+  const x = centerX + bandHalfWidth + STRIP_STASH_GAP;
   const w = 480; // 纸条默认宽（makeStrip 缺省）
   let y = selectionMidY;
   // 同档向下探测：与任一已有纸条 y 区间重叠则再降一档

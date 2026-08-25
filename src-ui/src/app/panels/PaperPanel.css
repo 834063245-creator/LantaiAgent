@@ -158,6 +158,69 @@
   will-change: transform;
 }
 
+/* ── 流区（Stage-2 一纸多卷：每会话一块有界流区）──
+ * 一纸多卷定案（stage-2 §3.5）：流区宽 1440 / 线性排比间距 720 / 边缘拖动
+ * 移动整区（宽度不变，无手柄条——hover 即拖拽态）。z 序：流区底、块之上、
+ * 边缘手柄最上（边缘可随时抓）。 */
+.pp-region {
+  position: absolute;
+  border: 1px solid transparent;
+  background: color-mix(in oklch, var(--paper-deep) 10%, transparent);
+  z-index: 1;
+}
+.pp-region-active {
+  border-color: color-mix(in oklch, var(--seal) 50%, transparent);
+  background: color-mix(in oklch, var(--seal) 4%, transparent);
+}
+.pp-region-label {
+  position: absolute;
+  top: -38px;
+  left: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  white-space: nowrap;
+  user-select: none;
+  pointer-events: none;
+}
+.pp-region-label-zh {
+  font-family: var(--f-song);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+}
+.pp-region-label-meta {
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+}
+.pp-region-active .pp-region-label-zh {
+  color: var(--seal-deep);
+}
+.pp-region-active .pp-region-label-meta {
+  color: var(--seal-deep);
+}
+/* 边缘拖拽面（stage-2 定案：~6px 量级，光标 move；hover 显朱砂提示可抓） */
+.pp-region-edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: move;
+  z-index: 3;
+}
+.pp-region-edge--l {
+  left: -3px;
+}
+.pp-region-edge--r {
+  right: -3px;
+}
+.pp-region-edge:hover {
+  background: color-mix(in oklch, var(--seal) 24%, transparent);
+}
+
 /* 原点十字（世界原点方位感 D-R1-1） */
 .pp-origin {
   position: absolute;
@@ -204,6 +267,8 @@
   color: var(--ink-1);
   cursor: auto; /* 文本区 I-beam（画布 grab 不再继承进来——「看着能拖实际是选」的观感纠偏） */
   user-select: text;
+  /* 压在流区容器之上（一纸多卷：流区 z:1，块 z:2——块可交互优先） */
+  z-index: 2;
 }
 
 /* 结构件不进选区：文类签/状态签/收回钮/占位钮是界面注记不是正文——
@@ -705,6 +770,7 @@
   cursor: pointer;
   padding: 0;
   text-align: center;
+  z-index: 2;
 }
 .pp-ghost:hover {
   border-color: var(--seal);

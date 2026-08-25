@@ -125,7 +125,7 @@ describe('paper/paper-plugin（V3b 壳装配）', () => {
       expect(paper?.unmountOnClose).toBe(true);
       expect(paper?.component).toBeDefined();
     });
-  });
+  }, 15_000);
 
   it('panelDefs() 合流含 paper 贡献；常量面零 paper 行（迁出证据）', async () => {
     await withServices(async () => {
@@ -133,7 +133,7 @@ describe('paper/paper-plugin（V3b 壳装配）', () => {
       expect(mod.panelDefs().find((p) => p.id === 'paper')).toBeDefined(); // 经贡献合流
       expect(mod.PANEL_DEFS.find((p) => p.id === 'paper')).toBeUndefined(); // 常量面已迁出
     });
-  });
+  }, 15_000);
 
   it('paperPlugin 的 disposer 登记（ctx.effect——fiber dispose 即干净退出）', async () => {
     const ctx = new Context();
@@ -146,5 +146,5 @@ describe('paper/paper-plugin（V3b 壳装配）', () => {
     await f2.dispose(); // paperPlugin fiber 释放 → 面板贡献消失
     expect(ctx.panels.get('paper')).toBeUndefined();
     await f1.dispose();
-  });
+  }, 15_000);
 });

@@ -1,20 +1,23 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// paper-store — 纸壳用户层状态（钉住块 + 纸条），按会话隔离。
+// paper-store — 纸壳用户层状态（钉住块 + 纸条 + 流区位置），按会话隔离。
 //
 // 收尾 2026-08-24：从 PaperPanel 的 useState/useRef 迁入 zustand store，
 // 与会话快照持久化配合（chat-session.ts 保存/恢复）。
+// Stage-2（2026-08-25）：扩展流区位置（region）——随会话快照落盘/恢复
+// （位置随工作区走）；活跃流区 activeRegionId 为 sess activeIdx 的镜像
+// （渲染层同步维护，单一权威不变）。
 //
 // 设计：
 //   - 按 panelId 作用域（createScopedStore），每面板自己一套 sessions
-//   - 每 session 有 pinned（块 id → 坐标）和 strips（纸条数组）
-//   - setActiveSession 切换当前活跃会话，组件响应式订阅
+//   - 每 session 有 pinned（块 id → 坐标）、strips（纸条数组）、region（流区位置）
 //   - 非响应式读取（chat-session 保存路径）：getPaperStore(storeId).getState()
 //   - 每面板的 store 实例在 panel 注销时连同 session 数据一起消亡
 
 import { create } from 'zustand';
 import type { PaperStrip } from '../paper/selection';
+import type { StreamRegionState } from '../paper/space';
 import { createScopedStore } from './scoped-store';
 
 // ── 类型 ──
@@ -26,6 +29,8 @@ export interface PaperPinnedState {
 export interface PaperSessionState {
   pinned: PaperPinnedState;
   strips: PaperStrip[];
+  /** 流区位置（Stage-2 一纸多卷）：无 = 未落位，渲染层按线性排比默认落位后补写 */
+  region?: StreamRegionState;
 }
 
 /** 稳定空引用——缺失会话的 getPinned/getStrips 返回同一对象，避免无谓重渲染。 */
@@ -36,21 +41,26 @@ const EMPTY_STRIPS: PaperStrip[] = [];
 export interface PaperSessionData {
   pinned?: PaperPinnedState;
   strips?: PaperStrip[];
+  /** 流区位置（Stage-2：随会话快照落盘/恢复——位置随工作区走） */
+  region?: StreamRegionState;
 }
 
 export interface PaperStore {
   /** key = sessionId (string)，每会话独立数据 */
   sessions: Record<string, PaperSessionState>;
-  /** 当前活跃会话 id（用于组件响应式订阅） */
-  activeSessionId: string | null;
+  /** 当前活跃流区 id（Stage-2：画布活跃流区 = 创作坞指向目标；由渲染层
+   *  跟随 sess store 的 activeIdx 同步，保持单一权威不变） */
+  activeRegionId: string | null;
 
-  /** 切换活跃会话 */
-  setActiveSession: (sessionId: string | null) => void;
+  /** 切换活跃流区（渲染层跟随 sess activeIdx 同步） */
+  setActiveRegion: (sessionId: string | null) => void;
 
   /** 获取当前会话的 pinned 快照（Record，非响应式） */
   getPinned: (sessionId: string) => PaperPinnedState;
   /** 获取当前会话的 strips 快照 */
   getStrips: (sessionId: string) => PaperStrip[];
+  /** 获取流区位置（缺失 = undefined；调用方按默认落位处理） */
+  getRegion: (sessionId: string) => StreamRegionState | undefined;
 
   /** 设置/移除一条钉住记录（pos === null 表示收回） */
   setPinned: (sessionId: string, blockId: string, pos: { x: number; y: number } | null) => void;
@@ -58,6 +68,13 @@ export interface PaperStore {
   movePinned: (sessionId: string, blockId: string, x: number, y: number) => void;
   /** 批量替换 pinned（从持久化恢复） */
   replacePinned: (sessionId: string, pinned: PaperPinnedState) => void;
+
+  /** 设置流区位置（新建/恢复/拖移落定） */
+  setRegion: (sessionId: string, region: StreamRegionState) => void;
+  /** 拖动中更新流区锚点（宽度不变） */
+  moveRegion: (sessionId: string, x: number, y: number) => void;
+  /** 仅缺失时设置流区位置（新建会话默认落位；不覆盖已摆放位置） */
+  ensureRegion: (sessionId: string, region: StreamRegionState) => void;
 
   /** 添加纸条 */
   addStrip: (sessionId: string, strip: PaperStrip) => void;
@@ -81,12 +98,13 @@ export interface PaperStore {
 function createPaperStoreImpl() {
   return create<PaperStore>((set, get) => ({
     sessions: {},
-    activeSessionId: null,
+    activeRegionId: null,
 
-    setActiveSession: (sessionId) => set({ activeSessionId: sessionId }),
+    setActiveRegion: (sessionId) => set((s) => (s.activeRegionId === sessionId ? s : { activeRegionId: sessionId })),
 
     getPinned: (sessionId) => get().sessions[sessionId]?.pinned ?? EMPTY_PINNED,
     getStrips: (sessionId) => get().sessions[sessionId]?.strips ?? EMPTY_STRIPS,
+    getRegion: (sessionId) => get().sessions[sessionId]?.region,
 
     setPinned: (sessionId, blockId, pos) =>
       set((s) => {
@@ -120,6 +138,38 @@ function createPaperStoreImpl() {
         const prev = s.sessions[sessionId] ?? { pinned: {}, strips: [] };
         return {
           sessions: { ...s.sessions, [sessionId]: { ...prev, pinned } },
+        };
+      }),
+
+    setRegion: (sessionId, region) =>
+      set((s) => {
+        const prev = s.sessions[sessionId] ?? { pinned: {}, strips: [] };
+        // 引用比较短路：位置未变不触发订阅（平移缩放逐帧读——避免无谓重渲染）
+        if (prev.region && prev.region.anchorX === region.anchorX && prev.region.anchorY === region.anchorY) return s;
+        return {
+          sessions: { ...s.sessions, [sessionId]: { ...prev, region } },
+        };
+      }),
+
+    moveRegion: (sessionId, x, y) =>
+      set((s) => {
+        const prev = s.sessions[sessionId];
+        if (!prev?.region) return s;
+        if (prev.region.anchorX === x && prev.region.anchorY === y) return s;
+        return {
+          sessions: {
+            ...s.sessions,
+            [sessionId]: { ...prev, region: { ...prev.region, anchorX: x, anchorY: y } },
+          },
+        };
+      }),
+
+    ensureRegion: (sessionId, region) =>
+      set((s) => {
+        const prev = s.sessions[sessionId] ?? { pinned: {}, strips: [] };
+        if (prev.region) return s;
+        return {
+          sessions: { ...s.sessions, [sessionId]: { ...prev, region } },
         };
       }),
 
@@ -177,6 +227,7 @@ function createPaperStoreImpl() {
           [sessionId]: {
             pinned: data?.pinned ?? {},
             strips: data?.strips ?? [],
+            ...(data?.region ? { region: data.region } : {}),
           },
         },
       })),
@@ -184,10 +235,13 @@ function createPaperStoreImpl() {
     removePaperSession: (sessionId) =>
       set((s) => {
         const { [sessionId]: _, ...rest } = s.sessions;
-        return { sessions: rest };
+        return {
+          sessions: rest,
+          activeRegionId: s.activeRegionId === sessionId ? null : s.activeRegionId,
+        };
       }),
 
-    clearSessions: () => set({ sessions: {}, activeSessionId: null }),
+    clearSessions: () => set({ sessions: {}, activeRegionId: null }),
   }));
 }
 
@@ -207,6 +261,7 @@ export function getPaperSessionData(storeId: string, sessionId: number): PaperSe
   return {
     pinned: sess.pinned,
     strips: sess.strips,
+    ...(sess.region ? { region: sess.region } : {}),
   };
 }
 
@@ -236,7 +291,7 @@ export function resetPaperStoresForTests(): void {
   const stores = w[key] as Map<string, { setState: (s: Partial<PaperStore>) => void }> | undefined;
   if (stores) {
     for (const store of stores.values()) {
-      store.setState({ sessions: {}, activeSessionId: null });
+      store.setState({ sessions: {}, activeRegionId: null });
     }
   }
 }

@@ -1,24 +1,25 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// SessionsHome — 案卷首页（workspace-flip 批 1，D-W1-1 纯会话优先；
-// V5 拆除 2026-08-22 后为纸壳关掉后的唯一去向——换卷/续开/绑定目录）。
+// SessionsHome — 案卷首页 → 工作区总览（Stage-2 一纸多卷「方案 A」）。
 //
-// 版式对齐 prototype/lantai.html 案卷首页（2026-08-23 视觉迭代）：
-// 顶部书眉（印章+兰台+设置入口）+ kicker + 大标题 + 描述 + 案卷列表
-// （日期/标题/leader 点线/#编号·N 块）+ 新建按钮 + 底部 footer。
+// 定案（docs/plans/canvas-space/stage-2.md §3.5）：**不并存——画布即主界面**。
+// 首页只做「工作区列表 + 进入动作」：一整个工作区 = 一块画布，选完进画布；
+// 工作区内的会话管理交给画布旁的最小侧边栏（新建 + 列表）。
 //
-// 数据：全局会话列表（会话统一 U2：user_sessions_list 单一来源——全局位
-// 恒扫 + legacy_root 项目旧目录兼容源加扫；不再读图 meta / listSavedSessions）。
-// 视觉契约：docs/design/lantai-design-spec.md（注疏横排 / 朱砂=人 / 圆角恒 0）。
+// 工作区清单从全局会话列表（user_sessions_list 单一来源）按 workspace 字段
+// 分组推导（无需新后端 RPC）：有卷的工作区各一张卡 + 「零目录」桶（无绑定
+// 目录的卷）。进入 = 打开纸画布 + （必要时）切到该工作区；Q-B：进入不自动
+// 摊开任何卷，卷由用户在画布侧边栏另起/展开。
+//
+// 版式对齐 prototype/lantai.html 案卷首页（2026-08-23 视觉迭代）。
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { typedJsonRpc } from '../rpc-contract';
 import { workspaceFlow } from '../shell/rows/workspace';
 import { useDockStore } from '../state/dock-store';
 import { useUpdateStore } from '../state/update-store';
 import { ensureUserSessionsDir } from '../ui/chat-session';
-import { getChatStore } from '../ui/chat-store';
 import { useCoreStore } from './chat/core-instance';
 import { useShellStore } from './shell-store';
 import { WinControls } from './WinControls';
@@ -47,8 +48,7 @@ function formatSessionDate(iso: string): string {
   return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** 顶栏拖拽窗口 — CSS -webkit-app-region: drag 无效时（Linux WM）用
- *  Tauri 原生拖拽兜底。 */
+/** 顶栏拖拽窗口 — CSS -webkit-app-region: drag 无效时（Linux WM）用 Tauri 原生拖拽兜底。 */
 interface TauriInternals {
   metadata?: { currentWindow?: { label?: string } };
   invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -77,31 +77,22 @@ function handleBarDoubleClick(e: React.MouseEvent): void {
   }
 }
 
+interface WorkspaceCard {
+  workspace: string;
+  name: string;
+  sessions: UserSession[];
+  latest: string;
+}
+
 export function SessionsHome() {
   const core = useCoreStore((s) => s.core);
   const openPanel = useDockStore((s) => s.openPanel);
   const [sessions, setSessions] = useState<UserSession[]>([]);
-  // L1 摊开标记：sess store 订阅（谁已摊开——首页卡片直示，点已开卷 = 换卷）
-  const panelId = core?.panelId ?? null;
-  const [openSet, setOpenSet] = useState<Set<number>>(new Set());
-  useEffect(() => {
-    if (!panelId) return;
-    const sess = getChatStore(panelId).sess;
-    const sync = () => {
-      setOpenSet(new Set(sess.getState().sessions.map((s) => s.id)));
-    };
-    sync();
-    const un = sess.subscribe(sync);
-    return () => un();
-  }, [panelId]);
 
-  // 单一全局列表（会话统一 U2 → 归零重建 2026-08-25）：user_sessions_list
-  // 一个来源，仅扫全局位——legacy_root/get_last_project 兼容加扫已拆。
-  // 刷新时机：挂载期 + 每次纸面板从开到关（回首页即重拉——关卷/改名
-  // 后首页立即可见；bug 修复：旧版一次性拉取，回首页永远看到旧列表）。
+  // 单一全局列表（会话统一 U2）：user_sessions_list 一个来源。
+  // 刷新时机：挂载期 + 每次纸面板从开到关（回首页即重拉）。
   const paperOpen = useDockStore((s) => s.open.paper);
   useEffect(() => {
-    // 挂载期（paper 初态）与 paper 每次回到关态时拉取
     if (paperOpen) return;
     let alive = true;
     void (async () => {
@@ -116,15 +107,47 @@ export function SessionsHome() {
     return () => {
       alive = false;
     };
-    // user_sessions_list 是全局位，不依赖面板实例
   }, [paperOpen]);
+
+  /** 工作区清单：按 workspace 字段分组（'' = 零目录桶），按最近保存降序。 */
+  const workspaces = useMemo<WorkspaceCard[]>(() => {
+    const groups = new Map<string, UserSession[]>();
+    for (const s of sessions) {
+      const key = s.workspace ?? '';
+      const arr = groups.get(key) ?? [];
+      arr.push(s);
+      groups.set(key, arr);
+    }
+    const out: WorkspaceCard[] = [];
+    for (const [ws, list] of groups) {
+      list.sort((a, b) => new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime());
+      out.push({
+        workspace: ws,
+        name: ws ? workspaceShortName(ws) : '零目录',
+        sessions: list,
+        latest: list[0]?.saved_at ?? '',
+      });
+    }
+    out.sort((a, b) => new Date(b.latest).getTime() - new Date(a.latest).getTime());
+    return out;
+  }, [sessions]);
+
+  /** 进入工作区画布：打开纸面板 + （必要时）切到该工作区。
+   *  Q-B：进入不自动摊开卷——卷由画布侧边栏另起/展开。 */
+  const onEnterWorkspace = useCallback(
+    (ws: string) => {
+      openPanel('paper');
+      if (!ws) return; // 零目录：当前占位工作区即画布，直接进入
+      const current = useShellStore.getState().projectPath;
+      if (ws !== current) {
+        void workspaceFlow.switchWorkspace(ws, { skipAnalysis: true });
+      }
+    },
+    [openPanel],
+  );
 
   const onNewSession = useCallback(() => {
     openPanel('paper');
-    // L1 真新建（F1 空壳根治）：直调 createNewSession（真建新卷）。
-    // Q-B（2026-08-24）：重启不自动摊开 → 空态是常态（落案卷首页），
-    // 新建不再要求已有活跃会话；无 Key 的提示由 createNewSession 内部
-    // factory 检查承担（Phase C 后 factory 恒可构造，缺 Key 请求期报错）。
     if (!core) return;
     void core.createNewSession();
   }, [core, openPanel]);
@@ -134,43 +157,17 @@ export function SessionsHome() {
     void workspaceFlow.switchWorkspace();
   }, [openPanel]);
 
-  /** 续开入口（会话统一 U2）：跨工作区卷先切到卷的工作区（skipAnalysis——
-   *  引擎只加载缓存不分析，秒级），再摊开该卷；同工作区/零目录卷直接摊开。
-   *  L1 attach/focus 在 loadSessionFromDisk 内统一接线（唯一开卷路径）。 */
-  const onResume = useCallback(
-    (s: UserSession) => {
-      if (!core) return;
-      openPanel('paper');
-      const ws = s.workspace ?? '';
-      const current = useShellStore.getState().projectPath;
-      if (ws && ws !== current) {
-        void (async () => {
-          try {
-            await workspaceFlow.switchWorkspace(ws, { skipAnalysis: true });
-            await core.loadSessionFromDisk(ws, s.id);
-          } catch (e) {
-            window.console.error('[SessionsHome] 跨工作区续开失败:', e);
-          }
-        })();
-        return;
-      }
-      void core.loadSessionFromDisk(ws, s.id);
-    },
-    [core, openPanel],
-  );
-
-  /** 按 savedAt 降序，最新在最上（原型「案卷 Nº 12」在前；Rust 侧已排序，此处稳定化） */
-  const merged = [...sessions].sort((a, b) => new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime());
-
   const onOpenSettings = useCallback(() => openPanel('settings'), [openPanel]);
   // 更新角标（update-store）：启动自动检查发现新版本且用户未看过 → 朱砂点
   const updateAvailable = useUpdateStore((s) => s.status === 'available' && !s.badgeDismissed);
   const updateVersion = useUpdateStore((s) => s.version);
 
+  const totalVolumes = sessions.length;
+
   return (
     <div className="sh-root">
       {/* 顶部书眉：印章 + 兰台 wordmark + tagline · 右侧设置入口 + 窗口控制 */}
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: 窗口拖拽热区（decorations:false 的标题栏——拖动/双击最大化是窗口语义非控件语义；实际可交互目标只有按钮） */}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: 窗口拖拽热区（decorations:false 的标题栏） */}
       <header className="sh-head" onPointerDown={handleBarPointerDown} onDoubleClick={handleBarDoubleClick}>
         <div className="sh-brand">
           <span className="sh-seal" role="img" aria-label="印章：蘭臺">
@@ -193,40 +190,37 @@ export function SessionsHome() {
         </div>
       </header>
 
-      {/* 主区：kicker + 大标题 + 描述 + 案卷列表 + 新建按钮 */}
+      {/* 主区：kicker + 大标题 + 描述 + 工作区列表 + 新建按钮 */}
       <main className="sh-main">
         <p className="sh-kicker">兰台 · 档案</p>
         <h1 className="sh-h1">与 Agent 协作，应当像在纸上书写。</h1>
         <p className="sh-lead">
           在纸面上向 Agent
-          拟文，它的每一次思考、读码与计划，都作为注疏落进同一卷案卷——可对照、可钉住、可追溯。没有喧闹的界面，只有一部装得下你全部工作的案卷。
+          拟文，它的每一次思考、读码与计划，都作为注疏落进同一卷案卷——可对照、可钉住、可追溯。一个工作区就是一张纸，摊开多少卷，都在同一片纸上。
         </p>
 
         <div className="sh-section-title">
-          <span className="t">案卷</span>
-          <span className="n">DOSSIERS · {merged.length}</span>
+          <span className="t">工作区</span>
+          <span className="n">WORKSPACES · {workspaces.length}</span>
         </div>
 
-        {merged.length > 0 ? (
-          <div className="sh-sessions">
-            {merged.slice(0, 8).map((s) => {
-              const opened = openSet.has(s.id);
-              const wsName = workspaceShortName(s.workspace);
+        {workspaces.length > 0 ? (
+          <div className="sh-workspaces">
+            {workspaces.map((w) => {
+              const isZeroDir = w.workspace === '';
               return (
                 <button
+                  key={w.workspace || '__zero__'}
                   type="button"
-                  key={`${s.id}@${s.workspace ?? ''}`}
-                  className={`sh-session-row${opened ? ' open' : ''}`}
-                  onClick={() => onResume(s)}
-                  aria-label={`打开案卷：${s.label || `案卷 ${s.id}`}${opened ? '（已在案头）' : ''}`}
+                  className="sh-ws-card"
+                  onClick={() => onEnterWorkspace(w.workspace)}
+                  aria-label={`进入工作区：${w.name}（${w.sessions.length} 卷）`}
                 >
-                  <span className="date">{formatSessionDate(s.saved_at)}</span>
-                  <span className="title">{s.label || `案卷 ${s.id}`}</span>
-                  <span className="leader" aria-hidden="true" />
-                  <span className="meta">
-                    {opened && <span className="open-mark">已摊开</span>}#{s.id} · <b>{s.msg_count}</b> 块
-                    {wsName ? ` · ${wsName}` : ''}
+                  <span className="sh-ws-name">{w.name}</span>
+                  <span className="sh-ws-meta">
+                    {w.sessions.length} 卷 · 最近 {formatSessionDate(w.latest)}
                   </span>
+                  <span className="sh-ws-enter">{isZeroDir ? '进入画布' : '进入画布 →'}</span>
                 </button>
               );
             })}
@@ -248,7 +242,7 @@ export function SessionsHome() {
       {/* 底部 footer：左 brand 右当前案卷状态 */}
       <footer className="sh-foot">
         <span>兰台 · 档案</span>
-        <span>{merged.length > 0 ? `案卷 Nº ${merged[0].id} · 进行中` : '尚无案卷'}</span>
+        <span>{totalVolumes > 0 ? `${totalVolumes} 卷案卷 · 就绪` : '尚无案卷'}</span>
       </footer>
     </div>
   );

@@ -1,0 +1,63 @@
+// Copyright (c) 2026 Wenbing Jing. MIT License.
+// SPDX-License-Identifier: MIT
+
+// paper/space — 画布空间内核（一纸多卷，Stage-2）。
+//
+// 定案（docs/plans/canvas-space/stage-2.md §3.5 + §5）：
+//   - 流区宽度 = 1440（720×2，先试，落地看手感再调）
+//   - 线性排比间距 = 720（吸附网格粒度 = 宽度 + 间距 = 2160）
+//   - 流区移动 = 边缘拖动（悬停左/右缘即拖拽态、光标 move、宽度不变、
+//     ~6px 量级，无显式手柄条；手感仿窗口边缘、功能是移动）
+//   - 锚点语义 = 流区左下（流从锚点向上长，对齐 D-R1-3 流锚甲：锚点即
+//     最新块底边的世界坐标，anchorX = 流区中轴）
+//
+// 本文件是空间层的纯函数 + 常量（零 DOM、零 store 依赖），渲染/交互层
+// 消费这里的几何与落位规则。流区位置持久化在 state/paper-store（随会话
+// 快照落盘）；流区注册表/活跃流区/空间命令在 composition/space-service
+// （ctx.space 通道），本文件不碰存储。
+
+/** 流区（StreamRegion）几何常量（stage-2 §3.5 用户拍板）。 */
+export const STREAM_REGION = {
+  /** 流区宽度（世界单位）——统一宽度，不做可调宽窄（画布模型拍板 #2） */
+  width: 1440,
+  /** 线性排比间距（世界单位）——新会话默认贴上一个右侧 */
+  spacing: 720,
+  /** 边缘拖拽面宽度（屏幕像素量级——光标反馈为主，无需视觉手柄） */
+  edgeWidth: 6,
+} as const;
+
+/** 吸附网格粒度 = 宽度 + 间距（2160）——边缘拖动松手吸附于此。 */
+export const STREAM_SNAP_GRID = STREAM_REGION.width + STREAM_REGION.spacing;
+
+/** 流区锚点（世界坐标）：anchorX = 流区中轴，anchorY = 最新块底边（流向上长）。 */
+export interface StreamRegionAnchor {
+  x: number;
+  y: number;
+}
+
+/** 流区位置状态（paper-store 持久化形状与空间读面的共同单元）。 */
+export interface StreamRegionState {
+  anchorX: number;
+  anchorY: number;
+  width: number;
+}
+
+/** 默认线性排比落位：第 i 个会话贴第 i 列（i * 网格粒度）。
+ *  index = 会话在 sess store 中的序（新建 = 末尾 → 自动落位在最后列右侧）。 */
+export function defaultRegionFor(index: number): StreamRegionState {
+  return {
+    anchorX: index * STREAM_SNAP_GRID,
+    anchorY: 0,
+    width: STREAM_REGION.width,
+  };
+}
+
+/** X 轴吸附到网格粒度（边缘拖动松手/移动过程中实时吸附）。 */
+export function snapRegionX(x: number): number {
+  return Math.round(x / STREAM_SNAP_GRID) * STREAM_SNAP_GRID;
+}
+
+/** 流区世界包围盒（x 区间）——边缘拖拽命中测试与视口相交预筛用。 */
+export function regionXBounds(anchorX: number, width: number): { x0: number; x1: number } {
+  return { x0: anchorX - width / 2, x1: anchorX + width / 2 };
+}

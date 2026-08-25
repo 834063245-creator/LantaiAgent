@@ -344,6 +344,60 @@ body {
   color: var(--ink-1);
 }
 
+/* ── 工作区总览（Stage-2 方案 A：首页 = 工作区列表 + 进入动作）── */
+.sh-workspaces {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  border-top: var(--rule-strong);
+  padding-top: 18px;
+}
+.sh-ws-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 18px 16px;
+  background: var(--paper);
+  border: var(--rule-soft);
+  border-radius: 0;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+.sh-ws-card:hover {
+  border-color: var(--seal);
+  background: color-mix(in oklch, var(--seal) 4%, var(--paper));
+}
+.sh-ws-card:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: -2px;
+}
+.sh-ws-name {
+  font-family: var(--f-song);
+  font-size: calc(19px * var(--font-scale));
+  font-weight: 600;
+  color: var(--ink-1);
+}
+.sh-ws-meta {
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+}
+.sh-ws-enter {
+  margin-top: 6px;
+  font-family: var(--f-song);
+  font-size: calc(12px * var(--font-scale));
+  letter-spacing: 0.1em;
+  color: var(--seal-deep);
+}
+.sh-ws-card:hover .sh-ws-enter {
+  color: var(--seal-deep);
+}
+
 .sh-empty-hint {
   font-family: var(--f-mono);
   font-size: calc(11px * var(--font-scale));

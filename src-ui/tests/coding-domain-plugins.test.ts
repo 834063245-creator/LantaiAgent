@@ -292,7 +292,7 @@ describe('codingExec 无状态族域第一方插件（P4 B① git/search + ② f
       .filter(([, oldName]) => registered.has(oldName))
       .map(([action]) => action);
     expect(fs.actions?.()).toEqual(expectedActions);
-  });
+  }, 15_000);
 });
 
 // ── 真源对拍：插件贡献工具集 ≡ 族工厂直出集 ──

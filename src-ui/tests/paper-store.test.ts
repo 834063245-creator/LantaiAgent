@@ -126,7 +126,7 @@ describe('纸面持久化往返', () => {
     expect(st.getPinned('1')).toEqual({});
     expect(st.getPinned('2')).toEqual({});
     expect(st.getStrips('1')).toEqual([]);
-    expect(st.activeSessionId).toBeNull();
+    expect(st.activeRegionId).toBeNull();
   });
 });
 

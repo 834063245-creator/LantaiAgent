@@ -297,7 +297,9 @@ declare module '../cordis/context' {
   }
 }
 
-/** 内核线第 3 条的实体化：四注册表常驻根上下文，先于任何外部插件装载。 */
+/** 内核线第 3 条的实体化：注册表常驻根上下文，先于任何外部插件装载。
+ *  空间服务（ctx.space）独立成 spaceServicePlugin（依赖 chat-store 链，
+ *  不并入本插件——见 composition/space-service.ts 头注）。 */
 export const compositionServicesPlugin = {
   name: 'hologram/composition-services',
   apply(ctx: Context) {

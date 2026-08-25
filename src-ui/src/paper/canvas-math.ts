@@ -113,6 +113,27 @@ export function gapAbove(b: { kind?: string }, upper: { kind?: string } | undefi
   return upper?.kind === 'user' ? ANCHOR.userTailGap : ANCHOR.blockGap + (b.kind === 'user' ? ANCHOR.userLeadGap : 0);
 }
 
+/** 流区锚点（Stage-2 一纸多卷：多会话共享同一视口，各自流）。
+ *  anchor.x = 流区中轴（块窄带中心），anchor.y = 最新块底边（流向上长，
+ *  对齐 D-R1-3 流锚甲语义）。坐标 = 世界坐标，块在世界层绝对定位。 */
+export interface RegionAnchor {
+  x: number;
+  y: number;
+}
+
+/** 多锚流布局（stage-2 4.2：单锚 → 多锚）。
+ *  复用 layoutFlow 的相对栈序，整体平移到流区锚点——每流区独立栈：
+ *  一个会话吐字只重算它自己的栈（“单流区更新=常数”铁律的布局根基）。 */
+export function layoutRegion(
+  flowBlocks: Array<{ id: string; h: number; w?: number; kind?: string }>,
+  anchor: RegionAnchor,
+): Map<string, { x: number; y: number }> {
+  const rel = layoutFlow(flowBlocks);
+  const out = new Map<string, { x: number; y: number }>();
+  for (const [id, pos] of rel) out.set(id, { x: anchor.x + pos.x, y: anchor.y + pos.y });
+  return out;
+}
+
 /** 原点十字方位感（D-R1-1：无限画布 + 方位感——原点标记）。 */
 export const ORIGIN_CROSS = { halfLen: 24, gap: 6 } as const;
 
