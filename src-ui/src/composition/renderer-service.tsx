@@ -22,7 +22,8 @@
 //     贡献与内置同 id → 内置胜（对齐 panelDefs() 合流纪律）。
 
 import type { ComponentType } from 'react';
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
+import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan-tools';
 import { type Context, Service } from '../cordis';
 import { type BlockKind, parsePlanItems, type SourcedBlock } from '../paper/block-model';
 import { parseCircledSegments } from '../paper/marks';
@@ -219,8 +220,46 @@ function DiffBody({ block }: BlockRendererProps) {
 }
 
 function PlanBody({ block }: BlockRendererProps) {
-  const p = block.payload as { title: string; content: string };
+  const p = block.payload as {
+    title: string;
+    content: string;
+    options?: { label: string; description: string; outcome?: PlanOptionOutcome }[];
+    _callback?: (response: PlanApprovalResponse) => void;
+  };
   const items = parsePlanItems(p.content ?? '');
+  const cb = p._callback;
+  const [selected, setSelected] = useState<string | null>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedback, setFeedback] = useState('');
+  const [done, setDone] = useState(false);
+
+  if (!cb) {
+    // 只读态（历史块 / 无审批回调）：维持拟策展示
+    return (
+      <div className="pp-pc">
+        <div className="pp-pc-head">
+          <span className="pp-pc-t">{p.title || '拟策'}</span>
+        </div>
+        {items.length > 0 && (
+          <ol>
+            {items.map((item, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: 静态列表逐行渲染，序号即身份
+              <li key={i}>{item}</li>
+            ))}
+          </ol>
+        )}
+      </div>
+    );
+  }
+
+  const hasOptions = (p.options?.length ?? 0) >= 2;
+  const canApprove = !hasOptions || selected !== null;
+  const canRevise = feedback.trim().length > 0;
+  const settle = (response: PlanApprovalResponse) => {
+    cb(response);
+    setDone(true);
+  };
+
   return (
     <div className="pp-pc">
       <div className="pp-pc-head">
@@ -233,6 +272,62 @@ function PlanBody({ block }: BlockRendererProps) {
             <li key={i}>{item}</li>
           ))}
         </ol>
+      )}
+      {hasOptions && (
+        <div className="pp-pc-options">
+          {(p.options ?? []).map((o) => (
+            <button
+              key={o.label}
+              type="button"
+              className={`pp-pc-option${selected === o.label ? ' pp-pc-option--on' : ''}`}
+              onClick={() => setSelected(o.label)}
+            >
+              <span className="pp-pc-option-label">{o.label}</span>
+              <span className="pp-pc-option-desc">{o.description}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {done ? (
+        <div className="pp-pc-done">已处理</div>
+      ) : (
+        <>
+          {feedbackOpen && (
+            <div className="pp-pc-feedback">
+              <textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="修改意见…" />
+            </div>
+          )}
+          <div className="pp-pc-actions">
+            <button
+              type="button"
+              className="pp-pc-btn pp-pc-btn--primary"
+              disabled={!canApprove}
+              onClick={() => settle({ decision: 'approved', selectedLabel: selected ?? undefined })}
+            >
+              批准
+            </button>
+            <button type="button" className="pp-pc-btn" onClick={() => setFeedbackOpen((v) => !v)}>
+              修改
+            </button>
+            {feedbackOpen && (
+              <button
+                type="button"
+                className="pp-pc-btn pp-pc-btn--primary"
+                disabled={!canRevise}
+                onClick={() => settle({ decision: 'revise', feedback: feedback.trim() })}
+              >
+                提交
+              </button>
+            )}
+            <button
+              type="button"
+              className="pp-pc-btn pp-pc-btn--reject"
+              onClick={() => settle({ decision: 'rejected' })}
+            >
+              拒绝
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

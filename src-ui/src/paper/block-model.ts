@@ -15,6 +15,8 @@
 // 走查弹纪律：丑得理直气壮——本层不做任何视觉决定，只做结构与几何。
 
 /** 块状态：流内（随对话流走）| 钉住（用户主权，世界坐标说了算） */
+import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan-tools';
+
 export type BlockState = 'flow' | 'pinned';
 
 /** 块类型（走查弹 v1 集合：markdown / diff / tool result + 用户与通知） */
@@ -61,7 +63,16 @@ export interface BlockPayloads {
     output?: string;
     err?: string;
   };
-  plan: { planId: string; title: string; content: string; status: string };
+  plan: {
+    planId: string;
+    title: string;
+    content: string;
+    status: string;
+    /** 备选方案（exit_plan_mode 的 options 透传）——有则 PlanBody 渲染选择 */
+    options?: { label: string; description: string; outcome?: PlanOptionOutcome }[];
+    /** 审批回调——PlanPart._callback 透传，PlanBody 按钮触发（纸块活引用语义，施工单 #1） */
+    _callback?: (response: PlanApprovalResponse) => void;
+  };
   notice: { text: string; level: 'info' | 'warn' | 'error' };
 }
 

@@ -86,6 +86,8 @@ const PLAN_CHROME_H = 31; // .pp-pc border-top 2 + border-bottom 1 + padding 14�
 const PLAN_HEAD_H = 39; // 标题 15×1.8=27 + head margin-bottom 12
 const PLAN_ITEM_INSET = 36; // li padding-left（石青序号列）
 const PLAN_ITEM_GAP = 7; // li margin-bottom（末项无）
+const PLAN_ACTIONS_H = 40; // 审批操作行（按钮行高 + margin-top 14，偏保守）
+const PLAN_OPTIONS_H = 118; // 方案选择区（border-top + padding + 3 方案×~36，偏保守）
 const NOTICE_CHROME_H = 17; // padding 8×2 + border-bottom 1
 const NOTICE_TEXT_INSET = 24; // padding 12×2
 
@@ -223,7 +225,11 @@ export function measureBlockHeight(b: SourcedBlock): number {
                 PLAN_ITEM_GAP,
               0,
             ) - PLAN_ITEM_GAP;
-      return PLAN_CHROME_H + PLAN_HEAD_H + itemsH;
+      // 审批交互（施工单 #1/#2）：有回调才占操作区高度，无回调的只读拟策块不增加
+      const plan = b.payload as { _callback?: unknown; options?: unknown[] };
+      const optionsH = plan._callback && (plan.options?.length ?? 0) >= 2 ? PLAN_OPTIONS_H : 0;
+      const actionsH = plan._callback ? PLAN_ACTIONS_H : 0;
+      return PLAN_CHROME_H + PLAN_HEAD_H + itemsH + optionsH + actionsH;
     }
   }
 }

@@ -32,6 +32,11 @@ export type PlanApprovalResponse =
   | { decision: 'revise'; feedback: string }
   | { decision: 'rejected' };
 
+/** 审批等待上限——对齐 PromptShelf 的 CARD_TIMEOUT_MS（5 分钟）。
+ *  超时后保持规划模式（用户未批准不给写能力），可重新提交审批。
+ *  防死锁：审批 UI 丢失/损坏时 exit_plan_mode 不再永久挂起（施工单 #3）。 */
+const PLAN_REVIEW_TIMEOUT_MS = 5 * 60 * 1000;
+
 // ── enter_plan_mode ──
 
 export function createEnterPlanModeTool(planState: PlanStateManager, projectPath: string): Tool {
@@ -111,9 +116,19 @@ export function createExitPlanModeTool(planState: PlanStateManager, eventSink?: 
 
       const options = args.options;
 
-      // 有 eventSink → 发 PlanReview 事件到聊天流，UI 创建 PlanPart 卡片
+      // 有 eventSink → 发 PlanReview 事件到聊天流，UI 创建 PlanPart 卡片，用户在卡片上审批
       if (eventSink) {
         return new Promise<string>((resolve) => {
+          let settled = false;
+          const timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            resolve(
+              `计划已提交但用户未在 ${PLAN_REVIEW_TIMEOUT_MS / 60000} 分钟内处理审批。` +
+                `保持规划模式，计划文件仍在 ${planPath}。` +
+                '准备好后可再次调 exit_plan_mode 提交审批。',
+            );
+          }, PLAN_REVIEW_TIMEOUT_MS);
           eventSink({
             kind: EventKind.PlanReview,
             plan: {
@@ -121,6 +136,9 @@ export function createExitPlanModeTool(planState: PlanStateManager, eventSink?: 
               planContent,
               options,
               callback: (response) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
                 switch (response.decision) {
                   case 'approved': {
                     // outcome 优先级：UI 显式覆盖 > 被选中 option 自带标记 > 默认 execute

@@ -252,7 +252,19 @@ function translateAssistantParts(
         break;
       }
       case 'plan':
-        emit('plan', { planId: part.planId, title: '计划', content: part.content, status: part.status }, idx, part);
+        emit(
+          'plan',
+          {
+            planId: part.planId,
+            title: '计划',
+            content: part.content,
+            status: part.status,
+            options: part.options,
+            _callback: part._callback,
+          },
+          idx,
+          part,
+        );
         break;
       case 'subagent':
         // 走查弹：拍平（不建嵌套组）。子 agent parts 顺序展开，
@@ -319,7 +331,14 @@ function translateAssistantParts(
                 return {
                   ...createBlock(
                     'plan',
-                    { planId: sp.planId, title: '计划', content: sp.content, status: sp.status },
+                    {
+                      planId: sp.planId,
+                      title: '计划',
+                      content: sp.content,
+                      status: sp.status,
+                      options: sp.options,
+                      _callback: sp._callback,
+                    },
                     { messageId: msg._id, part: sp },
                   ),
                   id: subId,

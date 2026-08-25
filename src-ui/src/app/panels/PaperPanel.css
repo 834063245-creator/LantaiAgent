@@ -536,6 +536,105 @@
   color: var(--indigo);
 }
 
+/* 拟策审批（paper-interaction-handoff #2）：方案选择 + 操作行 */
+.pp-pc-options {
+  margin-top: 14px;
+  border-top: var(--rule-soft);
+  padding-top: 10px;
+}
+.pp-pc-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--rule-soft);
+  border-radius: 4px;
+  cursor: pointer;
+  background: transparent;
+  font-family: var(--f-song);
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.pp-pc-option:hover {
+  border-color: var(--indigo);
+  color: var(--ink-1);
+}
+.pp-pc-option--on {
+  border-color: var(--indigo);
+  color: var(--ink-1);
+  background: color-mix(in oklch, var(--indigo) 8%, var(--paper));
+}
+.pp-pc-option-label {
+  display: block;
+  font-weight: 600;
+}
+.pp-pc-option-desc {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+.pp-pc-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+.pp-pc-btn {
+  padding: 5px 14px;
+  border: 1px solid var(--rule-soft);
+  border-radius: 4px;
+  background: transparent;
+  font-family: var(--f-song);
+  font-size: 13px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.pp-pc-btn:hover {
+  color: var(--ink-1);
+  border-color: var(--ink-3);
+}
+.pp-pc-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.pp-pc-btn--primary {
+  border-color: var(--pass);
+  color: var(--pass);
+}
+.pp-pc-btn--reject {
+  border-color: var(--seal-deep);
+  color: var(--seal-deep);
+}
+.pp-pc-feedback {
+  margin-top: 10px;
+}
+.pp-pc-feedback textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 56px;
+  padding: 8px 10px;
+  font-family: var(--f-song);
+  font-size: 13px;
+  color: var(--ink-1);
+  background: transparent;
+  border: 1px solid var(--rule-soft);
+  border-radius: 4px;
+  resize: vertical;
+}
+.pp-pc-feedback textarea:focus {
+  outline: none;
+  border-color: var(--indigo);
+}
+.pp-pc-done {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: var(--rule-soft);
+  font-family: var(--f-song);
+  font-size: 12px;
+  color: var(--indigo);
+}
+
 /* ── 贴黄（notice）：系统通知作土黄纸条 ── */
 .pp-block.pp-notice {
   background: color-mix(in oklch, var(--warn) 10%, var(--paper));
