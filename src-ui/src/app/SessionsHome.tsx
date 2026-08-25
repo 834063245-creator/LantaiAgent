@@ -97,7 +97,12 @@ export function SessionsHome() {
 
   // 单一全局列表（会话统一 U2 → 归零重建 2026-08-25）：user_sessions_list
   // 一个来源，仅扫全局位——legacy_root/get_last_project 兼容加扫已拆。
+  // 刷新时机：挂载期 + 每次纸面板从开到关（回首页即重拉——关卷/改名
+  // 后首页立即可见；bug 修复：旧版一次性拉取，回首页永远看到旧列表）。
+  const paperOpen = useDockStore((s) => s.open.paper);
   useEffect(() => {
+    // 挂载期（paper 初态）与 paper 每次回到关态时拉取
+    if (paperOpen) return;
     let alive = true;
     void (async () => {
       await ensureUserSessionsDir();
@@ -111,8 +116,8 @@ export function SessionsHome() {
     return () => {
       alive = false;
     };
-    // 挂载期取一次全局列表（user_sessions_list 是全局位，不依赖面板实例）
-  }, []);
+    // user_sessions_list 是全局位，不依赖面板实例
+  }, [paperOpen]);
 
   const onNewSession = useCallback(() => {
     openPanel('paper');

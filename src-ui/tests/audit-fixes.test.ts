@@ -88,6 +88,8 @@ describe('#1 exportSession parameter name', () => {
       dispose: vi.fn(),
     } as any;
     panel.setAgent(fakeAgent);
+    // 归零重建：setAgent 不铺卷——建卷 1 领预留句柄（exportSession 导出活跃卷）
+    await panel.createNewSession();
 
     // Mock the save dialog to return a file path
     vi.doMock('@tauri-apps/plugin-dialog', () => ({ save: vi.fn(async () => '/tmp/test.md') }));

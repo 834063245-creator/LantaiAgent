@@ -314,6 +314,10 @@ export class ChatCore {
       return;
     }
     // 替换所有会话 — setAgent 是启动/设置阶段，非会话管理。
+    // 归零重建（2026-08-25）：不再铺「案卷 1」空卷（旧 resetSessionState 语义）。
+    // Q-B 拍板后启动落点恒为案卷首页，摊开集由用户点卷决定；装配 = 空摊开集
+    // + 工厂/句柄挂接（resetSessionState 全量重置保留——它清理旧工作区残留），
+    // 铺卷改为「首次拟文时若无摊开卷则现场建」。
     Session.resetSessionState(this.panelId, agent);
     getChatStore(this.panelId).panel.getState().setTotalTokensUsed(0);
     Session.syncActiveSessionTokens(this.panelId, 0);

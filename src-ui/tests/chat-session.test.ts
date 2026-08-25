@@ -480,7 +480,7 @@ describe('ChatPanel session persistence', () => {
   // ═══════════════════════════════════════════════════════════════
 
   describe('setAgent(null) teardown', () => {
-    it('clears the factory and disposes all session agents', () => {
+    it('clears the factory and disposes all session agents', async () => {
       panel = createChatPanel();
       const dispose = vi.fn();
       const fakeAgent = {
@@ -490,7 +490,9 @@ describe('ChatPanel session persistence', () => {
       };
       panel.setAgent(fakeAgent as any);
       panel.setAgentFactory(async () => fakeAgent as any);
-      expect(panel.getAgent()).toBe(fakeAgent);
+      // 归零重建：setAgent 不铺卷——建卷 1 领预留句柄（disposable 面可测）
+      await panel.createNewSession();
+      expect(panel.getAgent()).toBeTruthy();
       expect(Session.getAgentFactory(panel.panelId)).not.toBeNull();
 
       panel.setAgent(null);
@@ -630,7 +632,8 @@ describe('ChatPanel session persistence', () => {
       };
     }
 
-    /** 两卷现场：卷 1（背景，有内容）+ 卷 2（活跃）。返回捕获的写入调用。 */
+    /** 两卷现场：卷 1（背景，有内容）+ 卷 2（活跃）。返回捕获的写入调用。
+     *  归零重建：setAgent 不铺卷——seed 的 createNewSession 领预留句柄（agent1）建卷 1。 */
     function setupTwoVolumes() {
       panel = createChatPanel();
       panel.setProjectPath(PROJ);
@@ -648,7 +651,16 @@ describe('ChatPanel session persistence', () => {
         }
         return Promise.resolve('ok');
       });
-      return { agent1, agent2, writes, seed: async () => void (await panel.createNewSession()) };
+      // 归零重建：setAgent 不铺卷——seed 建两卷（卷 1 领预留 agent1；卷 2 走工厂 agent2）
+      return {
+        agent1,
+        agent2,
+        writes,
+        seed: async () => {
+          await panel.createNewSession(); // 卷 1（预留句柄）
+          await panel.createNewSession(); // 卷 2（工厂句柄）
+        },
+      };
     }
 
     it('合背景卷：先落盘该卷内容再移除（写 /1.json 带该卷消息）', async () => {
@@ -657,8 +669,7 @@ describe('ChatPanel session persistence', () => {
 
       panel.closeSession(0); // 合背景卷 1
 
-      // U1：落盘目标经 resolveVolumeWriteTarget 异步消解（预读全局位）——
-      // fire-and-forget 写链需排干微任务后再断言
+      // 归零重建：写目标同步直取全局位；排干微任务后断言（沿用既有节奏）
       await new Promise((r) => setTimeout(r, 0));
       expect(agent1.dispose).toHaveBeenCalled();
       const write1 = writes.find((w) => w.file_path.endsWith('/1.json'));
@@ -677,7 +688,7 @@ describe('ChatPanel session persistence', () => {
 
       panel.closeSession(1); // 合活跃卷 2
 
-      // U1：写目标异步消解——排干微任务（见合背景卷用例注释）
+      // 归零重建：排干微任务后断言（见合背景卷用例注释）
       await new Promise((r) => setTimeout(r, 0));
       const write2 = writes.find((w) => w.file_path.endsWith('/2.json'));
       expect(write2).toBeTruthy();
@@ -720,8 +731,9 @@ describe('ChatPanel session persistence', () => {
   describe('paper state persistence', () => {
     const PROJ = 'D:/paper-test';
 
-    /** 起一卷有内容的案卷，返回捕获的 write 记录数组。 */
-    function setupVolumeWithContent(writes: Array<{ file_path: string; content: string }>) {
+    /** 起一卷有内容的案卷，返回捕获的 write 记录数组。
+     *  归零重建：setAgent 不铺卷——createNewSession 领预留句柄建卷 1。 */
+    async function setupVolumeWithContent(writes: Array<{ file_path: string; content: string }>) {
       panel = createChatPanel();
       panel.setProjectPath(PROJ);
       panel.setAgent({
@@ -741,12 +753,13 @@ describe('ChatPanel session persistence', () => {
         }
         return Promise.resolve('ok');
       });
+      await panel.createNewSession();
       return panel;
     }
 
     it('saveActiveSession 落盘 JSON 携带 paper（钉住 + 纸条）', async () => {
       const writes: Array<{ file_path: string; content: string }> = [];
-      setupVolumeWithContent(writes);
+      await setupVolumeWithContent(writes);
 
       // 模拟用户钉块 + 抽纸条（写 paper-store）
       const paperStore = getPaperStore(panel.panelId).getState();
@@ -768,7 +781,7 @@ describe('ChatPanel session persistence', () => {
 
     it('纸面空（无钉住无纸条）落盘仍带空 paper 字段（恢复路径零特判）', async () => {
       const writes: Array<{ file_path: string; content: string }> = [];
-      setupVolumeWithContent(writes);
+      await setupVolumeWithContent(writes);
       await panel.saveActiveSession(PROJ);
 
       const sid = Session.getSessions(panel.panelId)[0].id;
@@ -779,7 +792,7 @@ describe('ChatPanel session persistence', () => {
 
     it('合卷（closeSession）落盘快照携带该卷纸面数据，且内存中该卷纸面被清除', async () => {
       const writes: Array<{ file_path: string; content: string }> = [];
-      setupVolumeWithContent(writes);
+      await setupVolumeWithContent(writes);
       // 起第二卷，让第一卷可被合掉
       const agent2 = {
         getSession: () => [
@@ -799,7 +812,7 @@ describe('ChatPanel session persistence', () => {
 
       panel.closeSession(0); // 合卷一
 
-      // U1：写目标异步消解——排干微任务（见 C8 用例注释）
+      // 归零重建：排干微任务后断言（见 C8 用例注释）
       await new Promise((r) => setTimeout(r, 0));
       const write1 = writes.find((w) => w.file_path.endsWith('/1.json'));
       expect(write1).toBeTruthy();
@@ -893,13 +906,14 @@ describe('ChatPanel session persistence', () => {
         .setMessages([{ _id: `m-${sid}`, role: 'user', content: text } as any]);
     }
 
-    /** 两卷现场：卷 1（setAgent 起）+ 卷 2（工厂建），各自 seed 消息。 */
+    /** 两卷现场（归零重建：setAgent 不铺卷——两次 createNewSession 建卷 1/2），各自 seed 消息。 */
     async function setupTwoSeededVolumes() {
       panel = createChatPanel();
       panel.setProjectPath(PROJ);
       panel.setAgent(makeAgent() as any);
       panel.setAgentFactory(async () => makeAgent() as any);
-      await panel.createNewSession();
+      await panel.createNewSession(); // 卷 1（预留句柄）
+      await panel.createNewSession(); // 卷 2（工厂句柄）
       seedMsgStore(panel.panelId, 1, '卷一消息');
       seedMsgStore(panel.panelId, 2, '卷二消息');
       expect(isStoreFresh(panel.panelId, 1)).toBe(false);
@@ -930,18 +944,16 @@ describe('ChatPanel session persistence', () => {
       expect(isStoreFresh(panel.panelId, 2)).toBe(false);
     });
 
-    it('setAgent 全量重置：旧工作区全部卷 store 一并移除', async () => {
+    it('setAgent 全量重置：旧工作区全部卷 store 一并移除，摊开集为空（归零重建：不铺新卷）', async () => {
       await setupTwoSeededVolumes();
 
       panel.setAgent(makeAgent() as any); // 工作区切换路径（resetSessionState）
 
       expect(isStoreFresh(panel.panelId, 1)).toBe(true);
       expect(isStoreFresh(panel.panelId, 2)).toBe(true);
-      // 新会话树：单卷（id 沿 nextSessionId 续发），消息为空
+      // 归零重建：新会话树 = 空摊开集（卷由用户从首页点开），发号下限保留
       const sess = Session.getSessions(panel.panelId);
-      expect(sess).toHaveLength(1);
-      expect(sess[0].id).toBe(3);
-      expect(getMessagesStore(`${panel.panelId}:3`).getState().messages).toHaveLength(0);
+      expect(sess).toHaveLength(0);
     });
 
     it('setAgent(null)：句柄/工厂拆除，会话列表与消息 store 保留（Phase B 存在性解耦）', async () => {
@@ -999,7 +1011,7 @@ describe('ChatPanel session persistence', () => {
       return files;
     }
 
-    function setupVolumePanel() {
+    async function setupVolumePanel() {
       panel = createChatPanel();
       panel.setProjectPath(PROJ);
       panel.setAgent({
@@ -1011,12 +1023,14 @@ describe('ChatPanel session persistence', () => {
         dispose: vi.fn(),
         cascadeAbort: vi.fn(),
       } as any);
+      // 归零重建：setAgent 不铺卷——建卷 1 领预留句柄
+      await panel.createNewSession();
       return panel;
     }
 
     it('saveActiveSession 统一落全局位，卷 JSON 携带 workspace 字段', async () => {
       const files = mockDualDirDisk({});
-      setupVolumePanel();
+      await setupVolumePanel();
 
       await panel.saveActiveSession(PROJ);
 
@@ -1089,7 +1103,8 @@ describe('ChatPanel session persistence', () => {
       const sess = Session.getSessions(panel.panelId);
       expect(sess.some((s) => s.id === 1)).toBe(false);
 
-      // 写：saveActiveSession(PROJ) 恒落全局位（单一路径，无旧目录回退）
+      // 写：saveActiveSession(PROJ) 恒落全局位（单一路径，无旧目录回退）。
+      // 归零重建：setAgent 不铺卷——setNextSessionId 拨回 1 后 createNewSession 建卷。
       Session.setNextSessionId(panel.panelId, 1);
       panel.setAgent({
         getSession: () => [
@@ -1100,6 +1115,7 @@ describe('ChatPanel session persistence', () => {
         dispose: vi.fn(),
         cascadeAbort: vi.fn(),
       } as any);
+      await panel.createNewSession(); // 卷 1（领预留句柄，内容来自上方桩）
       await panel.saveActiveSession(PROJ);
 
       const write = JSON.parse(files[`${GLOBAL}/1.json`]);

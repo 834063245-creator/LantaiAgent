@@ -141,30 +141,45 @@ export function disposePanelMessages(storeId: string): void {
 
 /** 全量重置 — 用于 ChatPanel 中切换工作区时的 setAgent。 */
 export function resetSessionState(storeId: string, ag: OwnedAgentHandle): void {
-  const id = getChatStore(storeId).sess.getState().nextSessionId;
-  const label = '案卷 1';
-  // 仅清除本面板的 agent 句柄和 exec 状态
+  // 归零重建（2026-08-25）：不再铺「案卷 1」空卷——Q-B 拍板后启动落点恒为
+  // 案卷首页，摊开集由用户点卷决定。本函数只做「工作区全量重置」（清理
+  // 旧工作区的一切残留：句柄/exec/纸面/消息 store/草稿），不留任何活卷。
+  // 工厂句柄挂接改为惰性：首个摊开的卷（或首页新建）才领句柄。
+  // 发号下限保留（nextSessionId 不回退）——发号对账由 autoRestoreLastSession 承担。
+  const nextId = getChatStore(storeId).sess.getState().nextSessionId;
   agentSessionState.clearPanelState(storeId);
   // 工作区全量重置：纸面用户层（钉住块/纸条）一并清空——旧工作区摆放不得串入新工作区
   clearPaperSessions(storeId);
   // 工作区全量重置：旧工作区全部会话级消息 store（storeId:sessionId）一并移除
   //（M4：store 注册表跨工作区存活，旧卷不拆 = 无界增长 + 新工作区撞号卷读到旧消息）
   disposeMessagesStores(storeId);
-  agentSessionState.setAgent(storeId, id, ag);
-  // 静态绑定该 Agent 的 board 到此会话 — 此后不再随会话切换重定向
-  ag.bindSession?.(String(id));
-  agentSessionState.setExec(storeId, id, createExecState());
+  // ponytail: 工厂句柄不绑特定卷——由 ensureSessionAgent 按卷补建（惰性水合）。
+  // 这里置空 agent 注册表后把句柄交给工厂层备用：直接丢弃会浪费一次装配。
+  // （句柄挂接见下——绑定到首个用户摊开的卷）
   getChatStore(storeId).sess.setState({
-    sessions: [{ id, label }],
-    activeIdx: 0,
+    sessions: [],
+    activeIdx: -1,
     sessionTokens: {},
-    nextSessionId: id + 1,
+    nextSessionId: nextId,
   });
   // 全新会话树 —— 清空一切旧草稿槽与 live 输入，会话 id 已变化
   getChatStore(storeId).input.getState().clearSessionDrafts();
-  // ponytail: 创建会话级消息 store — 唯一数据源
-  msgStoreFor(storeId, id).getState().setMessages([]);
   setTurnPairs(storeId, []);
+  // 句柄挂接：存进工厂层候补（首个摊开/新建的卷领取）——见 setReservedAgent。
+  setReservedAgent(storeId, ag);
+}
+
+/** 装配期预留句柄：工作区切换后首卷（摊开或新建）领取；若面板又切换
+ *  工作区（预留未领取），丢弃并由新装配的句柄顶替。 */
+const _reservedAgents = new Map<string, OwnedAgentHandle>();
+function setReservedAgent(storeId: string, ag: OwnedAgentHandle): void {
+  _reservedAgents.set(storeId, ag);
+}
+/** 取走预留句柄（一次性；无预留返回 null）。首个卷建立时调用。 */
+export function takeReservedAgent(storeId: string): OwnedAgentHandle | null {
+  const ag = _reservedAgents.get(storeId) ?? null;
+  _reservedAgents.delete(storeId);
+  return ag;
 }
 
 /** 若活跃会话仍为默认标签（"案卷 N"，兼容旧 "会话 N"），则从第一条用户消息自动命名。
@@ -440,16 +455,20 @@ export function closeSession(ctx: SessionContext, idx: number): void {
 }
 
 export async function createNewSession(ctx: SessionContext): Promise<void> {
-  const factory = getAgentFactory(ctx.storeId);
-  if (!factory) {
-    const extra = ctx.getLastAgentDiag() ? `\n诊断: ${ctx.getLastAgentDiag()}` : '';
-    ctx.addNotice(`请先配置 API Key（设置 → Provider）${extra}`, 'info');
-    return;
-  }
-  const newAgent = await factory();
+  // 归零重建：优先领取装配期预留句柄（工作区切换后首卷新建路径）。
+  let newAgent = takeReservedAgent(ctx.storeId);
   if (!newAgent) {
-    ctx.addNotice('无法创建案卷: Agent 工厂返回空', 'error');
-    return;
+    const factory = getAgentFactory(ctx.storeId);
+    if (!factory) {
+      const extra = ctx.getLastAgentDiag() ? `\n诊断: ${ctx.getLastAgentDiag()}` : '';
+      ctx.addNotice(`请先配置 API Key（设置 → Provider）${extra}`, 'info');
+      return;
+    }
+    newAgent = await factory();
+    if (!newAgent) {
+      ctx.addNotice('无法创建案卷: Agent 工厂返回空', 'error');
+      return;
+    }
   }
   const st = getChatStore(ctx.storeId).sess.getState();
   // ponytail: 消息在会话级 store 中 — 无需保存/恢复。
@@ -903,13 +922,16 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   }
 
   // Phase B 对齐（Q-B 后「从首页点开历史卷」即此入口）：句柄是惰性资源——
+  // 优先领取装配期预留句柄（归零重建：工作区切换后首卷），无预留再走工厂。
   // 工厂在场但无 Key（返 null）时，摊开内容层照常（历史卷可见不依赖装配），
   // 句柄留由 ensureSessionAgent 在拟文时补建；无工厂同样摊开（拟文时提示配 Key）。
-  let newAgent: OwnedAgentHandle | null = null;
-  try {
-    newAgent = (await getAgentFactory(ctx.storeId)?.()) ?? null;
-  } catch {
-    /* 装配失败 = 句柄缺席，内容层照常（错误由拟文路径可见） */
+  let newAgent: OwnedAgentHandle | null = takeReservedAgent(ctx.storeId);
+  if (!newAgent) {
+    try {
+      newAgent = (await getAgentFactory(ctx.storeId)?.()) ?? null;
+    } catch {
+      /* 装配失败 = 句柄缺席，内容层照常（错误由拟文路径可见） */
+    }
   }
 
   const conv = (data.messages as Message[]).filter((m) => m.role !== 'system');

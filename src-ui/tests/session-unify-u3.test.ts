@@ -148,7 +148,8 @@ describe('会话统一 U3 — 全局目录摊开/关卷回目录（视图内开�
 
     const panel = new ChatCore();
     panel.setProjectPath('D:/ws-b'); // 续开路由已切到卷的工作区（SessionsHome onResume）
-    // 既有卷：setAgent 重置出卷 1（有内容）
+    // 归零重建：setAgent 不再铺空卷（空摊开集）——摊开集由点卷决定。
+    // 模拟既有卷在场：手动 createNewSession 建卷 1（领预留句柄）。
     panel.setAgent({
       getSession: () => [
         { role: 'system', content: 'sys' },
@@ -159,11 +160,11 @@ describe('会话统一 U3 — 全局目录摊开/关卷回目录（视图内开�
       cascadeAbort: vi.fn(),
     } as any);
     panel.setAgentFactory(storingFactory());
+    await panel.createNewSession(); // 卷 1（既有卷语义）
 
     await panel.loadSessionFromDisk('D:/ws-b', 7);
 
-    // 多卷并存：卷 1 仍在（setAgent 建的卷，msg store 由实况对话填充——此处
-    // 钉存在性与活跃指针），卷 7 摊开为活跃且内容显示
+    // 多卷并存：卷 1 仍在，卷 7 摊开为活跃且内容显示
     const sess = Session.getSessions(panel.panelId);
     expect(sess.map((s) => s.id)).toEqual([1, 7]);
     const st = (await import('../src/ui/chat-store')).getChatStore(panel.panelId).sess.getState();
@@ -207,6 +208,7 @@ describe('会话统一 U3 — 全局目录摊开/关卷回目录（视图内开�
       cascadeAbort: vi.fn(),
     } as any);
     panel.setAgentFactory(storingFactory());
+    await panel.createNewSession(); // 归零重建：setAgent 不铺卷，手动建卷 1
     await panel.createNewSession(); // 两卷现场，卷 1 可合
 
     panel.closeSession(0); // 合卷 1（C8 自动存）
