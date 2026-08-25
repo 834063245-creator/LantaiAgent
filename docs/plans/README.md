@@ -16,7 +16,7 @@
 
 | 线 | 文档 | 状态 | 说明 |
 |---|---|---|---|
-| 会话统一 | [`session-unify-plan.md`](session-unify-plan.md) | ✅ 竣工（真机验收通过） | U1-U4 + 验收修正全落地（2026-08-24 晚收口） |
+| 会话统一 | [`session-unify-plan.md`](session-unify-plan.md) | ✅ 归零重建落地（2026-08-25，待真机验收） | U1-U4 竣工后兼容层（双读/legacy_root/惰性迁移/localStorage 备份/_ledger 残壳）全部拆除；历史 171 卷归档不迁（用户拍板）；全局位成为唯一事实源 |
 | 分层重构 | [`layering-rework-plan.md`](layering-rework-plan.md) | **L1-L4 + L5b crate 化已落地**（2026-08-25） | engine 纯化（StoreHost 注入/单根/Arc+TLS）+ 壳瘦身（app/services）+ 数据上下文（会话 attach 事实校验）+ 双工作区并发守卫 + L5b 三 crate 拆出（hologram-graph/vector/storage，workspace 五成员，CI 全量）；真机验收四项待跑（见计划 §4.6） |
 | 画布空间模型 | [`canvas-space-model-notes.md`](canvas-space-model-notes.md) | 设计挂起 | 卡片 = 画布最小单元 / 同画布同工作区 / 侧边栏监控 vs SpineRack 空间导航（摄像机复位）；SpineRack 改造挂此线 |
 

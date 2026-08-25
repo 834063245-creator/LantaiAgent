@@ -89,6 +89,9 @@ pub(crate) struct WorkspaceDataContext {
     pub engine: Arc<Engine>,
     /// 数据宿主共享句柄（L2 存储外置）——与 Engine 内部持同一 Arc。
     /// L2 crate 化后物理来源为 hologram-storage crate（经 engine 门面再导出）。
+    /// ponytail: 生产面暂无直接消费（L3 业务归位时接入），e2e 测试直查
+    /// （analyze_persist_query_loop_via_context）——dead_code 豁免。
+    #[allow(dead_code)]
     pub(crate) store_host: Arc<Mutex<hologram_storage::StoreHost>>,
     /// 绑定到本上下文的会话 id 集（GC 判据）。
     pub(crate) sessions: Mutex<HashSet<u64>>,
@@ -131,11 +134,12 @@ enum VolumeFact {
     Data(Option<String>),
 }
 
-/// 读卷快照的 workspace 事实：全局位优先，legacy 目录回退（U1 双读）。
+/// 读卷快照的 workspace 事实（归零重建 2026-08-25：仅全局位单读——旧目录
+/// 已归档，legacy 回退面已拆）。
 /// 只读不写；>4MB / 坏 JSON / 非 JSON 全容忍为 Corrupt（INVARIANTS #11.2）。
-fn read_volume_workspace(session_id: u64, legacy_root: Option<&str>, sessions_root: &Path) -> VolumeFact {
-    let read_one = |dir: &Path| -> Option<VolumeFact> {
-        let file = dir.join(format!("{session_id}.json"));
+fn read_volume_workspace(session_id: u64, sessions_root: &Path) -> VolumeFact {
+    let file = sessions_root.join(format!("{session_id}.json"));
+    let read_one = || -> Option<VolumeFact> {
         let meta = std::fs::metadata(&file).ok()?;
         if meta.len() > 4 * 1024 * 1024 {
             return Some(VolumeFact::Corrupt);
@@ -151,14 +155,7 @@ fn read_volume_workspace(session_id: u64, legacy_root: Option<&str>, sessions_ro
             .map(|s| s.replace('\\', "/"));
         Some(VolumeFact::Data(ws))
     };
-    // 全局位优先；未命中（文件不存在）→ legacy 目录（若提供）。
-    match read_one(sessions_root) {
-        Some(fact) => fact,
-        None => match legacy_root.map(canonical_root).flatten() {
-            Some(root) => read_one(&root.join(".lantai").join("sessions")).unwrap_or(VolumeFact::Missing),
-            None => VolumeFact::Missing,
-        },
-    }
+    read_one().unwrap_or(VolumeFact::Missing)
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -236,11 +233,10 @@ impl AppContexts {
     pub(crate) fn attach_session(
         &self,
         session_id: u64,
-        legacy_root: Option<&str>,
         claim: Option<&str>,
         sessions_root: &Path,
     ) -> Result<AttachOutcome, String> {
-        let fact = read_volume_workspace(session_id, legacy_root, sessions_root);
+        let fact = read_volume_workspace(session_id, sessions_root);
         let workspace: Option<PathBuf> = match &fact {
             VolumeFact::Data(Some(ws)) => canonical_root(ws), // 目录缺失 → None（Ungrouped）
             VolumeFact::Data(None) => None,
@@ -436,7 +432,7 @@ mod tests {
 
         let app = AppContexts::new();
         let out = app
-            .attach_session(7, None, None, &sess_root)
+            .attach_session(7, None, &sess_root)
             .expect("attach should succeed");
         assert_eq!(out.workspace.as_deref(), Some(ws_disp.as_str()));
         assert!(out.attached);
@@ -454,7 +450,7 @@ mod tests {
         .unwrap();
 
         let app = AppContexts::new();
-        let out = app.attach_session(8, None, None, &sess_root).unwrap();
+        let out = app.attach_session(8, None, &sess_root).unwrap();
         assert_eq!(out.workspace, None);
         assert!(!out.attached);
         assert_eq!(app.context_count(), 0);
@@ -471,7 +467,7 @@ mod tests {
         .unwrap();
 
         let app = AppContexts::new();
-        let out = app.attach_session(9, None, Some("C:/also/not/here"), &sess_root).unwrap();
+        let out = app.attach_session(9, Some("C:/also/not/here"), &sess_root).unwrap();
         assert_eq!(out.workspace, None, "卷存在时声明不得覆盖卷事实（即便目录缺失）");
         assert_eq!(app.context_count(), 0);
     }
@@ -485,7 +481,7 @@ mod tests {
 
         let app = AppContexts::new();
         let out = app
-            .attach_session(11, None, Some(&ws_disp), &sess_root)
+            .attach_session(11, Some(&ws_disp), &sess_root)
             .unwrap();
         assert_eq!(out.workspace.as_deref(), Some(ws_disp.as_str()));
         assert!(out.attached);
@@ -498,16 +494,17 @@ mod tests {
         )
         .unwrap();
         let out2 = app
-            .attach_session(11, None, Some(&ws_disp), &sess_root)
+            .attach_session(11, Some(&ws_disp), &sess_root)
             .unwrap();
         assert_eq!(out2.workspace.as_deref(), Some(display_path(&ws2).as_str()));
         // 旧声明工作区上下文无会话引用后应被 GC（非焦点、非保留）
         assert_eq!(app.context_count(), 1, "旧上下文应被回收");
     }
 
-    /// legacy 目录回退读卷（U1 双读：全局位无此卷时）。
+    /// 归零重建：全局位无此卷 = 不存在（legacy 回退面已拆，旧目录归档）。
+    /// 旧目录里躺着的卷文件不再被读——attach 走 Ungrouped。
     #[test]
-    fn attach_reads_legacy_volume_when_global_missing() {
+    fn attach_ignores_archived_legacy_volumes() {
         let ws = temp_dir("lantai_ctx_attach_legacy");
         let legacy_project = temp_dir("lantai_ctx_attach_legacy_proj");
         let empty_global = temp_dir("lantai_ctx_attach_legacy_global");
@@ -519,10 +516,9 @@ mod tests {
         .unwrap();
 
         let app = AppContexts::new();
-        let out = app
-            .attach_session(12, Some(&display_path(&legacy_project)), None, &empty_global)
-            .unwrap();
-        assert_eq!(out.workspace.as_deref(), Some(display_path(&ws).as_str()));
+        let out = app.attach_session(12, None, &empty_global).unwrap();
+        assert!(!out.attached, "全局位无此卷 → Ungrouped（旧目录不再回退）");
+        assert_eq!(out.workspace, None);
     }
 
     /// 双工作区并行：各持各的引擎实例，互不串写（L1 验收判据）。
@@ -570,14 +566,14 @@ mod tests {
             serde_json::json!({ "workspace": display_path(&ws_a) }).to_string(),
         )
         .unwrap();
-        app.attach_session(21, None, None, &sess_root).unwrap();
+        app.attach_session(21, None, &sess_root).unwrap();
         // 会话 22 → ws_b，并聚焦
         std::fs::write(
             sess_root.join("22.json"),
             serde_json::json!({ "workspace": display_path(&ws_b) }).to_string(),
         )
         .unwrap();
-        app.attach_session(22, None, None, &sess_root).unwrap();
+        app.attach_session(22, None, &sess_root).unwrap();
         let focused_ws = app.focus_session(22).unwrap();
         assert_eq!(focused_ws, display_path(&ws_b));
 
@@ -616,7 +612,7 @@ mod tests {
             serde_json::json!({ "workspace": display_path(&ws) }).to_string(),
         )
         .unwrap();
-        app.attach_session(31, None, None, &sess_root).unwrap();
+        app.attach_session(31, None, &sess_root).unwrap();
         assert_eq!(app.context_count(), 1);
 
         // 保留集包含该根 → 不回收
@@ -624,7 +620,7 @@ mod tests {
         assert_eq!(app.context_count(), 1, "保留根不回收");
 
         // 重新绑定后无保留解绑 → 回收
-        app.attach_session(31, None, None, &sess_root).unwrap();
+        app.attach_session(31, None, &sess_root).unwrap();
         app.detach_session(31, &[]);
         assert_eq!(app.context_count(), 0, "空闲上下文应回收");
     }
@@ -779,6 +775,7 @@ mod tests {
 
 /// 极简正则（守卫测试专用）：只支持 `::name(` 交替字面量形态，
 /// 无第三方 regex 依赖（src-tauri 无 regex crate——守卫测试不得引入新依赖）。
+#[cfg(test)]
 fn regex_lite(pattern: &str) -> LiteRe {
     // pattern 形如 "::(a|b|c)\s*\(" → 提取交替名集合
     let names: Vec<String> = pattern
@@ -790,10 +787,12 @@ fn regex_lite(pattern: &str) -> LiteRe {
     LiteRe { names }
 }
 
+#[cfg(test)]
 struct LiteRe {
     names: Vec<String>,
 }
 
+#[cfg(test)]
 impl LiteRe {
     fn captures_iter<'a>(&self, text: &'a str) -> Vec<(usize, String)> {
         let mut out = Vec::new();

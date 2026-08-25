@@ -1,6 +1,16 @@
 # 会话统一（Session Unify）— 全局会话池施工计划（交接版）
 
-> 立项：2026-08-24 · 状态：**竣工（U1-U4 全部落地，待真机验收）** · 版本：v2（施工级，2026-08-24 升级；§6 四项拍板已落定）
+> 立项：2026-08-24 · 状态：**归零重建落地（2026-08-25，本计划 U1-U4 兼容层已全部拆除）· 待真机验收** · 版本：v3
+>
+> **归零重建记录（2026-08-25，用户拍板：历史会话一个不留）**：
+> - **背景**：用户反馈「会话管理从根上不对劲，几轮修下来越来越乱」。磁盘实证：项目级 171 卷与全局位 2 卷双轨并存（惰性迁移 = 永久双轨），localStorage 是第三事实源，_ledger/_active 是第四个。四份事实源不同步 = 用户体感的「一团乱麻」。
+> - **归档**：项目级 `sessions/` 216 项 → `sessions.bak-20260825`；全局位 2 卷同款。代码从此只见新目录。
+> - **硬切（TS）**：readVolumeJSON/listSavedSessions/scanMaxSessionId 单一路径（仅全局位）；resolveVolumeWriteTarget/volumeWorkspaceMatches/双读回退全拆；lsKey/hashProjectPath/复活守卫全拆（用户拍板 A：磁盘唯一事实源）。
+> - **硬切（Rust）**：user_sessions_list 删 legacy_root 参数与加扫；session_attach 删 legacy_root 参数；read_volume_workspace 单读全局位；scan_sessions_dir 删 default_workspace 推导。
+> - **残壳**：state/session-ledger.ts + session-ledger.test.ts 删除（零消费方验证）。
+> - **测试对账**：vitest 1679+1 skipped（1692 - 13 拆除项）；bin 421（422 - legacy 加扫测试 1）；集成 14；build/biome 0/0 全绿。
+> - **环境坑（新发现）**：lantai 测试 exe 直接跑会 0xC0000135（onnxruntime.dll 解析失败）——症状为「cargo test 无限卡住」，实为闪退。跑测试工作目录必须在 src-tauri。
+> - **语义变化须知**：无 workspace 字段的旧卷（归零前遗留）在绑项目请求下打不开（归属不符）。归零世界新卷恒带字段，不存在此形态。
 >
 > **竣工记录（2026-08-24）**：
 > - U1 全局存储位 `504e9bc7`：workspace 字段 + 全局位统一落盘 + 双读 + 同号撞卷消解 + 发号扫两目录

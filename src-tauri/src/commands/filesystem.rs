@@ -219,9 +219,8 @@ pub(crate) struct UserSessionEntry {
 
 /// 扫描单个会话目录为摘要列表。读取容忍毒化（INVARIANTS #11.2）：坏 JSON /
 /// 超大文件（>4MB）/ 非数字文件名 / 删除标记全跳过不炸列表；目录不存在 =
-/// 空列表（首启常态）。default_workspace：条目无 workspace 字段时的归属推导
-/// （旧目录卷按位置归属——卷躺在哪个工作区目录就归属谁）。
-fn scan_sessions_dir(dir: &std::path::Path, default_workspace: Option<&str>) -> Vec<UserSessionEntry> {
+/// 空列表（首启常态）。归属只认卷内 workspace 字段（无字段 = 零目录卷）。
+fn scan_sessions_dir(dir: &std::path::Path) -> Vec<UserSessionEntry> {
     let entries = match std::fs::read_dir(dir) {
         Ok(it) => it,
         Err(_) => return Vec::new(), // 目录不存在 = 空列表（非错误）
@@ -276,45 +275,19 @@ fn scan_sessions_dir(dir: &std::path::Path, default_workspace: Option<&str>) -> 
             .get("workspace")
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
-            .map(|s| s.replace('\\', "/"))
-            .or_else(|| default_workspace.map(|s| s.replace('\\', "/")));
+            .map(|s| s.replace('\\', "/"));
         out.push(UserSessionEntry { id, label, msg_count, saved_at, workspace });
     }
     out
 }
 
-/// 全局会话列表（会话统一 U2）：全局位 ~/.lantai/sessions/ 恒扫；legacy_root
-/// 提供时加扫项目内旧目录（U1 迁移期兼容源——未吸收旧卷一并可见，打开即吸收
-/// 自然迁入全局位）。同卷（id + workspace 同键）去重保 savedAt 较新者（吸收后
-/// 全局位与旧目录两份，全局位新）；同号异归属卷各自保留（workspace 消解，
-/// 不重号）。savedAt 倒序 + 50 条上限（home 呈现预算，沿用既有护栏）。
+/// 全局会话列表（会话统一 U2 → 归零重建 2026-08-25）：仅扫全局位
+/// ~/.lantai/sessions/（唯一存储位；旧目录已归档，legacy_root 加扫已拆）。
+/// savedAt 倒序 + 50 条上限（home 呈现预算，沿用既有护栏）。
 #[tauri::command]
-pub(crate) async fn user_sessions_list(
-    legacy_root: Option<String>,
-) -> Result<Vec<UserSessionEntry>, String> {
+pub(crate) async fn user_sessions_list() -> Result<Vec<UserSessionEntry>, String> {
     tokio::task::spawn_blocking(move || {
-        let mut out = scan_sessions_dir(&user_sessions_root(), None);
-        if let Some(root) = legacy_root.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-            if root.contains("..") || root.contains('\0') {
-                return Err("user_sessions_list: legacy_root 路径包含非法字符".into());
-            }
-            let legacy_dir = std::path::PathBuf::from(root).join(".lantai").join("sessions");
-            if legacy_dir != user_sessions_root() {
-                out.extend(scan_sessions_dir(&legacy_dir, Some(root)));
-            }
-        }
-        // 同键去重：保留 savedAt 较新者
-        let mut by_key = std::collections::HashMap::<(u64, Option<String>), UserSessionEntry>::new();
-        for e in out {
-            let key = (e.id, e.workspace.clone());
-            match by_key.get(&key) {
-                Some(prev) if prev.saved_at >= e.saved_at => {}
-                _ => {
-                    by_key.insert(key, e);
-                }
-            }
-        }
-        let mut merged: Vec<UserSessionEntry> = by_key.into_values().collect();
+        let mut merged = scan_sessions_dir(&user_sessions_root());
         merged.sort_by(|a, b| b.saved_at.cmp(&a.saved_at));
         merged.truncate(50); // 列表上限 50（home 呈现预算）
         Ok(merged)
@@ -429,7 +402,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         std::env::set_var("HOLOGRAM_SESSIONS_ROOT", &tmp);
-        let list = user_sessions_list(None).await.unwrap();
+        let list = user_sessions_list().await.unwrap();
         assert!(list.is_empty());
         let _ = std::fs::remove_dir_all(&tmp);
         std::env::remove_var("HOLOGRAM_SESSIONS_ROOT");
@@ -442,7 +415,7 @@ mod tests {
         let missing = std::env::temp_dir().join(format!("hologram_user_sessions_missing_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&missing);
         std::env::set_var("HOLOGRAM_SESSIONS_ROOT", &missing);
-        let list = user_sessions_list(None).await.unwrap();
+        let list = user_sessions_list().await.unwrap();
         assert!(list.is_empty());
         std::env::remove_var("HOLOGRAM_SESSIONS_ROOT");
     }
@@ -464,7 +437,7 @@ mod tests {
         write_session(&tmp, "_ledger.json", "{}");
 
         std::env::set_var("HOLOGRAM_SESSIONS_ROOT", &tmp);
-        let list = user_sessions_list(None).await.unwrap();
+        let list = user_sessions_list().await.unwrap();
         assert_eq!(list.len(), 2);
         assert_eq!(list[0].label, "新"); // savedAt 倒序
         assert_eq!(list[0].msg_count, 3);
@@ -485,62 +458,14 @@ mod tests {
         let big = "x".repeat(5 * 1024 * 1024);
         write_session(&tmp, "9.json", &big);
         std::env::set_var("HOLOGRAM_SESSIONS_ROOT", &tmp);
-        let list = user_sessions_list(None).await.unwrap();
+        let list = user_sessions_list().await.unwrap();
         assert!(list.is_empty());
         let _ = std::fs::remove_dir_all(&tmp);
         std::env::remove_var("HOLOGRAM_SESSIONS_ROOT");
     }
 
-    /// 会话统一 U2：legacy_root 兼容源加扫 + 同键去重保新 + 同号异归属共存。
-    #[tokio::test]
-    async fn user_sessions_list_legacy_merge_and_dedup() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let global = std::env::temp_dir().join(format!("hologram_u2_global_{}", std::process::id()));
-        let legacy = std::env::temp_dir().join(format!("hologram_u2_legacy_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&global);
-        let _ = std::fs::remove_dir_all(&legacy);
-        let legacy_sessions = legacy.join(".lantai").join("sessions");
-        std::fs::create_dir_all(&global).unwrap();
-        std::fs::create_dir_all(&legacy_sessions).unwrap();
-
-        // 全局位：已吸收卷 5（ws=legacy 真实路径，新）+ 零目录卷 1
-        let ws_norm = legacy.to_string_lossy().replace('\\', "/");
-        write_session(
-            &global,
-            "5.json",
-            &format!(r#"{{"label":"吸收后的卷","savedAt":"2026-08-24","messages":[1],"workspace":"{ws_norm}"}}"#),
-        );
-        write_session(&global, "1.json", r#"{"label":"零目录卷","savedAt":"2026-08-20","messages":[1]}"#);
-        // 旧目录：卷 5 陈旧副本（无 ws 字段 → 按位置归属 legacy-ws，同键去重被淘汰）
-        //          + 卷 230 未吸收（仅旧目录，独占行）
-        write_session(&legacy_sessions, "5.json", r#"{"label":"吸收前的旧卷","savedAt":"2026-08-23","messages":[1]}"#);
-        write_session(&legacy_sessions, "230.json", r#"{"label":"未吸收大号卷","savedAt":"2026-08-22","messages":[1]}"#);
-
-        std::env::set_var("HOLOGRAM_SESSIONS_ROOT", &global);
-        let list = user_sessions_list(Some(legacy.to_string_lossy().into_owned()))
-            .await
-            .unwrap();
-        // 卷 5 去重后保留全局位新副本；卷 1（零目录）与卷 230（legacy 归属）共存；
-        // 同号异归属（如全局 1 零目录 vs 旧目录 1 归属 legacy）如出现则各自成行
-        let vol5 = list.iter().find(|e| e.id == 5).expect("vol 5 present");
-        assert_eq!(vol5.label, "吸收后的卷");
-        assert_eq!(vol5.workspace.as_deref(), Some(ws_norm.as_str()));
-        assert_eq!(list.iter().filter(|e| e.id == 5).count(), 1, "同键去重——旧目录陈旧副本被淘汰");
-        let vol230 = list.iter().find(|e| e.id == 230).expect("vol 230 present");
-        assert_eq!(vol230.workspace.as_deref(), Some(ws_norm.as_str())); // 按位置归属推导
-        let vol1 = list.iter().find(|e| e.id == 1).expect("vol 1 present");
-        assert_eq!(vol1.workspace, None);
-        assert_eq!(list.len(), 3);
-        // savedAt 倒序：5(08-24) > 1(08-20) > 230(08-22) → 序 5, 230, 1
-        assert_eq!(list.iter().map(|e| e.id).collect::<Vec<_>>(), vec![5, 230, 1]);
-
-        // legacy_root 非法字符拒绝（fail-closed）
-        let bad = user_sessions_list(Some("..\\evil".into())).await;
-        assert!(bad.is_err());
-        let _ = std::fs::remove_dir_all(&global);
-        let _ = std::fs::remove_dir_all(&legacy);
-        std::env::remove_var("HOLOGRAM_SESSIONS_ROOT");
-    }
+    // 归零重建（2026-08-25）：legacy_root 加扫/去重已拆——旧目录归档，
+    // user_sessions_list 只扫全局位（上两个测试已覆盖单目录行为）。
 
     #[test]
     fn get_user_sessions_dir_matches_root() {

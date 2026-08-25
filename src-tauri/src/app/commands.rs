@@ -14,16 +14,16 @@ use crate::commands::filesystem::user_sessions_root;
 
 /// 会话 attach（事实校验）：卷快照 workspace 字段为准，新生会话可用
 /// `workspace` 声明（出生与绑定分离）。回包 = AttachOutcome JSON。
+/// 归零重建（2026-08-25）：legacy_root 参数已拆（旧目录归档，回退面不存在）。
 #[tauri::command]
 pub(crate) async fn session_attach(
     session_id: u64,
-    legacy_root: Option<String>,
     workspace: Option<String>,
     app: tauri::State<'_, Arc<AppContexts>>,
 ) -> Result<String, String> {
     let app = app.inner().clone();
     tokio::task::spawn_blocking(move || {
-        let out = app.attach_session(session_id, legacy_root.as_deref(), workspace.as_deref(), &user_sessions_root())?;
+        let out = app.attach_session(session_id, workspace.as_deref(), &user_sessions_root())?;
         serde_json::to_string(&out).map_err(|e| format!("session_attach: 序列化失败: {e}"))
     })
     .await

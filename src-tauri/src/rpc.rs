@@ -322,9 +322,8 @@ async fn dispatch_rpc(
                 .get("session_id")
                 .and_then(|v| v.as_u64())
                 .ok_or_else(|| format!("{method}: missing 'session_id'"))?;
-            let legacy_root = opt_str(&params, "legacy_root");
             let workspace = opt_str(&params, "workspace");
-            crate::app::commands::session_attach(session_id, legacy_root, workspace, app_ctx).await
+            crate::app::commands::session_attach(session_id, workspace, app_ctx).await
         }
         "session_detach" => {
             let session_id = params
@@ -516,9 +515,8 @@ async fn dispatch_rpc(
             commands::filesystem::read_file_content(file_path, offset, limit, is_agent, _agent_id, state, app).await
         }
         "user_sessions_list" => {
-            // 会话统一 U2：全局会话列表（全局位恒扫 + legacy_root 兼容源加扫）
-            let legacy_root = opt_str(&params, "legacy_root");
-            ok_json(commands::filesystem::user_sessions_list(legacy_root).await)
+            // 会话统一 U2 → 归零重建（2026-08-25）：全局会话列表（仅全局位单扫）
+            ok_json(commands::filesystem::user_sessions_list().await)
         }
         "get_user_sessions_dir" => {
             // workspace-flip 批 1：用户级会话目录路径（TS sessionsDir('') 路由真源）

@@ -13,7 +13,7 @@
 // 视觉契约：docs/design/lantai-design-spec.md（注疏横排 / 朱砂=人 / 圆角恒 0）。
 
 import { useCallback, useEffect, useState } from 'react';
-import { typedJsonRpc, typedRpc } from '../rpc-contract';
+import { typedJsonRpc } from '../rpc-contract';
 import { workspaceFlow } from '../shell/rows/workspace';
 import { useDockStore } from '../state/dock-store';
 import { useUpdateStore } from '../state/update-store';
@@ -95,26 +95,14 @@ export function SessionsHome() {
     return () => un();
   }, [panelId]);
 
-  // 单一全局列表（会话统一 U2）：user_sessions_list 一个来源——全局位 +
-  // legacy_root（get_last_project 文件直读，与图 meta 无关）兼容源加扫。
+  // 单一全局列表（会话统一 U2 → 归零重建 2026-08-25）：user_sessions_list
+  // 一个来源，仅扫全局位——legacy_root/get_last_project 兼容加扫已拆。
   useEffect(() => {
     let alive = true;
     void (async () => {
       await ensureUserSessionsDir();
-      let legacyRoot: string | null = null;
       try {
-        // get_last_project 是单值字符串命令：RPC Value 化后出口已展开为
-        // 真结构化值（JS string / null），invoke 拿到的就是纯文本路径——
-        // 不能再走 typedJsonRpc（会对裸路径二次 JSON.parse 抛 SyntaxError，
-        // 导致 legacy_root 恒为 null → 项目旧卷整列隐形）。用 typedRpc 取原值。
-        legacyRoot = await typedRpc('get_last_project', {});
-      } catch {
-        /* 指针缺失 = 只列全局位（新卷世界自足） */
-      }
-      try {
-        const parsed = await typedJsonRpc<UserSession[]>('user_sessions_list', {
-          legacy_root: legacyRoot ?? undefined,
-        });
+        const parsed = await typedJsonRpc<UserSession[]>('user_sessions_list', {});
         if (alive) setSessions(Array.isArray(parsed) ? parsed : []);
       } catch {
         /* 目录不存在 = 空（首启常态） */

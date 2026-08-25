@@ -44,8 +44,8 @@ export interface RpcContract {
   /** 会话 attach（事实校验）：卷快照 workspace 字段为准；新生会话（卷未
    *  落盘）可用 workspace 声明绑定。返回 {session_id, workspace, attached}。 */
   session_attach: {
-    params: { session_id: number; legacy_root?: string; workspace?: string };
-    result: string; // JSON
+    params: { session_id: number; workspace?: string };
+    result: string; // JSON — AttachOutcome（归零重建 2026-08-25：legacy_root 已拆，attach 只信卷快照 workspace 字段/新生声明）
   };
   /** 会话解绑（空闲上下文 GC）。 */
   session_detach: {
@@ -131,8 +131,8 @@ export interface RpcContract {
     result: string; // JSON — {path: content|null} 映射（Value 化：Rust 出口已展开）
   };
   user_sessions_list: {
-    params: { legacy_root?: string };
-    result: string; // JSON — 全局会话列表（会话统一 U2：条目含 workspace；legacy_root = 项目旧目录兼容源加扫）
+    params: Record<string, never>;
+    result: string; // JSON — 全局会话列表（归零重建 2026-08-25：仅全局位单扫，条目含 workspace；legacy_root 已拆）
   };
   get_last_project: {
     params: Record<string, never>;

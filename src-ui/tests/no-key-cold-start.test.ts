@@ -69,7 +69,6 @@ vi.mock('highlight.js', () => ({ default: { highlightElement: vi.fn() } }));
 
 import { ChatCore } from '../src/app/chat/chat-core';
 import * as Session from '../src/ui/chat-session';
-import { hashProjectPath } from '../src/ui/chat-session';
 import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
 
 const USER_DIR = '/home/.lantai/sessions';
@@ -125,13 +124,7 @@ beforeEach(() => {
 
 describe('无 Key 冷启动 → 会话恢复 → 配 Key 不重启可发（死路形态守护）', () => {
   it('恢复不依赖工厂：工厂返 null（无 Key）时历史卷照常打开显示', async () => {
-    // 用户级目录的 localStorage 备份（磁盘 7.json 背书——mockZeroDirDisk 提供）
-    const lsKey = `hologram_session_${hashProjectPath('').toString(36)}_7`;
-    localStorage.setItem(
-      lsKey,
-      JSON.stringify({ id: 7, savedAt: '2026-08-24T10:00:00Z', messages: [{ role: 'user', content: '之前的问题' }] }),
-    );
-    mockZeroDirDisk();
+    mockZeroDirDisk(); // 归零重建：磁盘是唯一事实源（localStorage 备份已拆）
 
     const panel = new ChatCore();
     // 无 Key 阶段的工厂（Phase B 契约：工厂在场但返 null——恢复不经工厂）
@@ -160,12 +153,7 @@ describe('无 Key 冷启动 → 会话恢复 → 配 Key 不重启可发（死�
   });
 
   it('配 Key 后不重启：同一面板直接发送成功（句柄拟文时补建）', async () => {
-    const lsKey = `hologram_session_${hashProjectPath('').toString(36)}_7`;
-    localStorage.setItem(
-      lsKey,
-      JSON.stringify({ id: 7, savedAt: '2026-08-24T10:00:00Z', messages: [{ role: 'user', content: '之前的问题' }] }),
-    );
-    mockZeroDirDisk();
+    mockZeroDirDisk(); // 归零重建：磁盘是唯一事实源（localStorage 备份已拆）
 
     const panel = new ChatCore();
     panel.setAgentFactory(async () => null); // 无 Key 冷启动阶段
