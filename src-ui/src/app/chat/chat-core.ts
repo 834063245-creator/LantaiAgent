@@ -313,12 +313,13 @@ export class ChatCore {
       Session.clearPanelAgents(this.panelId);
       return;
     }
-    // 替换所有会话 — setAgent 是启动/设置阶段，非会话管理。
-    // 归零重建（2026-08-25）：不再铺「案卷 1」空卷（旧 resetSessionState 语义）。
-    // Q-B 拍板后启动落点恒为案卷首页，摊开集由用户点卷决定；装配 = 空摊开集
-    // + 工厂/句柄挂接（resetSessionState 全量重置保留——它清理旧工作区残留），
-    // 铺卷改为「首次拟文时若无摊开卷则现场建」。
-    Session.resetSessionState(this.panelId, agent);
+    // Agent 装配时序归位（2026-08-25，DSH 形态）：启动/切工作区不再预造句柄、
+    // 不铺卷——装配链只挂工厂（setupAgent 已挂）+ 清理旧工作区残留。
+    // 传入的预造句柄（历史调用形：workspace.ts 初始 Agent）就地 dispose——
+    // 句柄的生命周期跟随卷，拟文时 ensureSessionAgent 惰性现造。
+    // 会话列表/消息 store 不动：工作区全量重置由 resetSessionState 承担。
+    Session.resetSessionState(this.panelId);
+    agent.dispose();
     getChatStore(this.panelId).panel.getState().setTotalTokensUsed(0);
     Session.syncActiveSessionTokens(this.panelId, 0);
     getChatStore(this.panelId).panel.getState().clearToolUsage();

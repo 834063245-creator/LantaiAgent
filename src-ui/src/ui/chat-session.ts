@@ -140,11 +140,11 @@ export function disposePanelMessages(storeId: string): void {
 }
 
 /** 全量重置 — 用于 ChatPanel 中切换工作区时的 setAgent。 */
-export function resetSessionState(storeId: string, ag: OwnedAgentHandle): void {
-  // 归零重建（2026-08-25）：不再铺「案卷 1」空卷——Q-B 拍板后启动落点恒为
-  // 案卷首页，摊开集由用户点卷决定。本函数只做「工作区全量重置」（清理
-  // 旧工作区的一切残留：句柄/exec/纸面/消息 store/草稿），不留任何活卷。
-  // 工厂句柄挂接改为惰性：首个摊开的卷（或首页新建）才领句柄。
+export function resetSessionState(storeId: string): void {
+  // Agent 装配时序归位（2026-08-25，DSH 形态）：装配不再预造句柄、不铺卷。
+  // 启动/切工作区只做两件事：挂工厂（工厂 = 「知道怎么造」，零成本）+
+  // 清理旧工作区残留（句柄/exec/纸面/消息 store/草稿）。句柄的生命周期
+  // 完全跟随卷——拟文时经 ensureSessionAgent 惰性现造（Phase B 链路）。
   // 发号下限保留（nextSessionId 不回退）——发号对账由 autoRestoreLastSession 承担。
   const nextId = getChatStore(storeId).sess.getState().nextSessionId;
   agentSessionState.clearPanelState(storeId);
@@ -153,9 +153,6 @@ export function resetSessionState(storeId: string, ag: OwnedAgentHandle): void {
   // 工作区全量重置：旧工作区全部会话级消息 store（storeId:sessionId）一并移除
   //（M4：store 注册表跨工作区存活，旧卷不拆 = 无界增长 + 新工作区撞号卷读到旧消息）
   disposeMessagesStores(storeId);
-  // ponytail: 工厂句柄不绑特定卷——由 ensureSessionAgent 按卷补建（惰性水合）。
-  // 这里置空 agent 注册表后把句柄交给工厂层备用：直接丢弃会浪费一次装配。
-  // （句柄挂接见下——绑定到首个用户摊开的卷）
   getChatStore(storeId).sess.setState({
     sessions: [],
     activeIdx: -1,
@@ -165,21 +162,6 @@ export function resetSessionState(storeId: string, ag: OwnedAgentHandle): void {
   // 全新会话树 —— 清空一切旧草稿槽与 live 输入，会话 id 已变化
   getChatStore(storeId).input.getState().clearSessionDrafts();
   setTurnPairs(storeId, []);
-  // 句柄挂接：存进工厂层候补（首个摊开/新建的卷领取）——见 setReservedAgent。
-  setReservedAgent(storeId, ag);
-}
-
-/** 装配期预留句柄：工作区切换后首卷（摊开或新建）领取；若面板又切换
- *  工作区（预留未领取），丢弃并由新装配的句柄顶替。 */
-const _reservedAgents = new Map<string, OwnedAgentHandle>();
-function setReservedAgent(storeId: string, ag: OwnedAgentHandle): void {
-  _reservedAgents.set(storeId, ag);
-}
-/** 取走预留句柄（一次性；无预留返回 null）。首个卷建立时调用。 */
-export function takeReservedAgent(storeId: string): OwnedAgentHandle | null {
-  const ag = _reservedAgents.get(storeId) ?? null;
-  _reservedAgents.delete(storeId);
-  return ag;
 }
 
 /** 若活跃会话仍为默认标签（"案卷 N"，兼容旧 "会话 N"），则从第一条用户消息自动命名。
@@ -455,19 +437,17 @@ export function closeSession(ctx: SessionContext, idx: number): void {
 }
 
 export async function createNewSession(ctx: SessionContext): Promise<void> {
-  // 归零重建：优先领取装配期预留句柄（工作区切换后首卷新建路径）。
-  let newAgent = takeReservedAgent(ctx.storeId);
-  if (!newAgent) {
-    const factory = getAgentFactory(ctx.storeId);
-    if (!factory) {
-      const extra = ctx.getLastAgentDiag() ? `\n诊断: ${ctx.getLastAgentDiag()}` : '';
-      ctx.addNotice(`请先配置 API Key（设置 → Provider）${extra}`, 'info');
-      return;
-    }
-    newAgent = await factory();
-    if (!newAgent) {
-      ctx.addNotice('无法创建案卷: Agent 工厂返回空', 'error');
-      return;
+  // DSH 形态（2026-08-25）：信封先行——建卷是纯数据操作，立即摊开可见；
+  // 句柄不是建卷的前置条件（拟文时 ensureSessionAgent 惰性现造）。
+  // 工厂在场时顺手现造一个句柄（首次拟文的常见路径提前就绪）；
+  // 工厂缺席/返空/抛错 → 无句柄建卷（拟文时提示配 Key——Phase B 契约）。
+  let newAgent: OwnedAgentHandle | null = null;
+  const factory = getAgentFactory(ctx.storeId);
+  if (factory) {
+    try {
+      newAgent = await factory();
+    } catch {
+      /* 装配失败 = 句柄缺席，内容层照常（错误由拟文路径可见） */
     }
   }
   const st = getChatStore(ctx.storeId).sess.getState();
@@ -484,10 +464,12 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
   ctx.clearPendingToolCards();
   const id = st.nextSessionId;
   const label = `案卷 ${st.sessions.length + 1}`;
-  agentSessionState.setAgent(ctx.storeId, id, newAgent);
-  // 静态绑定该 Agent 的 board 到新会话（id 在 factory 之后才确定）
-  newAgent.bindSession?.(String(id));
-  agentSessionState.setExec(ctx.storeId, id, createExecState());
+  if (newAgent) {
+    agentSessionState.setAgent(ctx.storeId, id, newAgent);
+    // 静态绑定该 Agent 的 board 到新会话（id 在 factory 之后才确定）
+    newAgent.bindSession?.(String(id));
+    agentSessionState.setExec(ctx.storeId, id, createExecState());
+  }
   getChatStore(ctx.storeId).sess.setState({
     sessions: [...st.sessions, { id, label }],
     activeIdx: st.sessions.length,
@@ -922,16 +904,14 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   }
 
   // Phase B 对齐（Q-B 后「从首页点开历史卷」即此入口）：句柄是惰性资源——
-  // 优先领取装配期预留句柄（归零重建：工作区切换后首卷），无预留再走工厂。
-  // 工厂在场但无 Key（返 null）时，摊开内容层照常（历史卷可见不依赖装配），
-  // 句柄留由 ensureSessionAgent 在拟文时补建；无工厂同样摊开（拟文时提示配 Key）。
-  let newAgent: OwnedAgentHandle | null = takeReservedAgent(ctx.storeId);
-  if (!newAgent) {
-    try {
-      newAgent = (await getAgentFactory(ctx.storeId)?.()) ?? null;
-    } catch {
-      /* 装配失败 = 句柄缺席，内容层照常（错误由拟文路径可见） */
-    }
+  // 工厂在场时现造（首次拟文常见路径提前就绪）；无 Key（返 null）/抛错时
+  // 摊开内容层照常（历史卷可见不依赖装配），句柄留由 ensureSessionAgent
+  // 在拟文时补建；无工厂同样摊开（拟文时提示配 Key）。
+  let newAgent: OwnedAgentHandle | null = null;
+  try {
+    newAgent = (await getAgentFactory(ctx.storeId)?.()) ?? null;
+  } catch {
+    /* 装配失败 = 句柄缺席，内容层照常（错误由拟文路径可见） */
   }
 
   const conv = (data.messages as Message[]).filter((m) => m.role !== 'system');

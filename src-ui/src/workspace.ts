@@ -64,7 +64,7 @@ import { broadcastGoalRecord } from './state/goal-store';
 import { getPanelStore } from './state/panel-store';
 import { bumpTimelineRefresh } from './state/timeline-store';
 import { useAgentPanelStore } from './ui/agent-panel-store';
-import { stripLineNumbers } from './ui/chat-session';
+import { resetSessionState, stripLineNumbers } from './ui/chat-session';
 import { getDiagnosticsForFile, LspService } from './ui/lsp-client';
 import { createBuilderDeps, createRuntimeAdapter } from './ui/runtime-adapter';
 import { resolveSemanticToolName } from './ui/tool-semantics';
@@ -132,7 +132,17 @@ export class Workspace {
   fileGraphData: unknown = null;
 
   // ── Agent 与记忆 ──
+  /** DSH 形态（2026-08-25）：不再持有单一预造 Agent——句柄生命周期跟随卷
+   *  （agentSessionState 注册表）。agent 字段保留但恒 null（历史消费面已迁
+   *  forEachAgent / agentRef；工厂形态下仅作兼容占位，待全量清理）。 */
   agent: Agent | null = null;
+  /** 工厂已挂接标记（applyAgentConfig 的「补装配」分支判据——工厂在场
+   *  即热同步，不重装、不动摊开集）。 */
+  private _factoryRegistered = false;
+  /** 工厂现造的最后一个 raw Agent 引用（模块能力面：setPlanMode /
+   *  notifyMemorySaved / spawnSubAgent 闭包——接口层未覆盖的能力经此触达；
+   *  句柄随卷生灭，本引用仅是「最近一次工厂产出」的借用，不持所有权）。 */
+  private _lastRawAgent: Agent | null = null;
   prov: Provider | null = null;
   registry: ToolRegistry | null = null;
   memoryManager: MemoryManager | null = null;
@@ -611,10 +621,11 @@ export class Workspace {
    * 照常显示）——DSH 形态的「配置断了 → 会话在，发送时报错」。
    */
   async applyAgentConfig(chatPanel: ChatCore, reason: AgentConfigChangeReason): Promise<void> {
-    // 规划模式切换 — 运行时状态切换
+    // 规划模式切换 — 运行时状态切换（raw Agent 引用承担——接口层无 setPlanMode；
+    // 工厂现造的句柄下次造时从 mode-store 现读，无活句柄也不丢状态）
     if (reason === 'collaboration-mode') {
       const mode = this._modeState().collaborationMode;
-      this.agent?.setPlanMode(mode === 'plan');
+      this._lastRawAgent?.setPlanMode(mode === 'plan');
       return;
     }
 
@@ -631,17 +642,13 @@ export class Workspace {
       useAgentPanelStore.getState().setDiag({ text: `[Agent] provider=${act.name}`, ready: true });
     }
 
-    // Agent 缺席（装配失败/异常路径的恢复）：没有引用可热切换——走全量装配 +
-    // 恢复历史案卷，与冷启动同一序列（switchWorkspace：setupAgent →
-    // autoRestoreLastSession）。setupAgent 自带并发合并守卫；装配成功后
-    // this.agent 非空，后续信号走热切换。
-    if (!this.agent) {
+    // Agent 装配时序归位（2026-08-25）：this.agent 不再存在（句柄生命周期
+    // 跟随卷，活句柄在 agentSessionState 注册表）。配置变更的热切换面 =
+    // 工厂重挂（新句柄下次拟文时吃到新配置）+ 活句柄逐一热同步——无需
+    // 全量重装，更不动摊开集。
+    // 工厂缺席（装配从未成功过的恢复路径）才补一次全量装配。
+    if (!this._factoryRegistered) {
       await this.setupAgent(chatPanel);
-      if (this.agent && this.path) {
-        await chatPanel
-          .autoRestoreLastSession(this.path)
-          .catch((e) => console.error('[agent-config] autoRestoreLastSession failed:', e));
-      }
       return;
     }
 
@@ -652,11 +659,9 @@ export class Workspace {
       const prov = this._buildProvider(s);
       prov.prewarm?.(); // 廉价预热（fire-and-forget，3s 自灭）
       this.prov = prov;
-      this.agent?.setProvider(prov, pricing);
       agentSessionState.forEachAgent((h) => h.setProvider(prov, pricing));
     } else {
       // 同身份：定价随模型热同步（模型可能同提供方内被切换）
-      this.agent?.setPricing(pricing);
       agentSessionState.forEachAgent((h) => h.setPricing(pricing));
     }
 
@@ -664,8 +669,6 @@ export class Workspace {
     // 随 settings 每请求现解析，此处保持调用链以覆盖非 live 形态）
     const thinkingCfg = act.thinking;
     const win = this._effectiveContextWindow(s);
-    this.agent?.setThinking(thinkingCfg);
-    this.agent?.setContextWindow(win);
     agentSessionState.forEachAgent((h) => {
       h.setThinking(thinkingCfg);
       h.setContextWindow(win);
@@ -799,7 +802,8 @@ export class Workspace {
       }
     }, 'aura-shutdown');
     this.memoryManager.onSaved = (info) => {
-      this.agent?.notifyMemorySaved(
+      // raw Agent 引用（agentRef）承担非接口能力面——接口层无 notifyMemorySaved
+      this._lastRawAgent?.notifyMemorySaved(
         `记忆已更新: **${info.description || info.name}** (${info.confidence || 'reference'})`,
       );
     };
@@ -1090,18 +1094,20 @@ export class Workspace {
         return null;
       }
       agentRef.current = agent;
+      this._lastRawAgent = agent;
       this.memoryManager?.prewarmAura();
       return handle;
     };
 
-    // 注册工厂 + 创建初始 Agent
+    // 注册工厂（DSH 形态，2026-08-25：工厂 = 「知道怎么造」，零成本挂接）。
+    // 不再预造初始 Agent——句柄生命周期跟随卷，拟文时 ensureSessionAgent
+    // 经工厂现造；this.agent 引用面由 factory 内部 agentRef 承担。
     chatPanel.setAgentFactory(factory);
-    const initialAgent = await factory();
-    if (initialAgent) {
-      this.agent = agentRef.current;
-      chatPanel.setAgent(initialAgent);
-      this.onStatusChange?.('[Agent] ✅ 已就绪');
-    }
+    this._factoryRegistered = true;
+    // 工作区切换的会话面重置（旧工作区句柄/消息 store/纸面清理）——
+    // 原由 setAgent 承担（伴随铺卷），现独立调用（resetSessionState 不铺卷）。
+    resetSessionState(chatPanel.panelId);
+    this.onStatusChange?.('[Agent] ✅ 工厂已就绪（拟文时装配）');
   }
 
   // ═══════════════════════════════════════════════════════════════

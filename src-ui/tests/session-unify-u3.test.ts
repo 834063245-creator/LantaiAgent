@@ -148,18 +148,26 @@ describe('会话统一 U3 — 全局目录摊开/关卷回目录（视图内开�
 
     const panel = new ChatCore();
     panel.setProjectPath('D:/ws-b'); // 续开路由已切到卷的工作区（SessionsHome onResume）
-    // 归零重建：setAgent 不再铺空卷（空摊开集）——摊开集由点卷决定。
-    // 模拟既有卷在场：手动 createNewSession 建卷 1（领预留句柄）。
-    panel.setAgent({
-      getSession: () => [
-        { role: 'system', content: 'sys' },
-        { role: 'user', content: '本区既有卷' },
-      ],
-      setSession: vi.fn(),
-      dispose: vi.fn(),
-      cascadeAbort: vi.fn(),
-    } as any);
-    panel.setAgentFactory(storingFactory());
+    // DSH 形态：既有卷经工厂现造（带内容——多卷并存场景的卷 1）；
+    // loadSessionFromDisk 再造的句柄用 storingFactory 语义（setSession 真存——
+    // 渲染重建依赖 agent.getSession() 读回 conv）。
+    let firstCall = true;
+    panel.setAgentFactory(async () => {
+      if (firstCall) {
+        firstCall = false;
+        return {
+          getSession: () => [
+            { role: 'system', content: 'sys' },
+            { role: 'user', content: '本区既有卷' },
+          ],
+          setSession: vi.fn(),
+          dispose: vi.fn(),
+          bindSession: vi.fn(),
+          cascadeAbort: vi.fn(),
+        } as any;
+      }
+      return storingFactory()();
+    });
     await panel.createNewSession(); // 卷 1（既有卷语义）
 
     await panel.loadSessionFromDisk('D:/ws-b', 7);
@@ -198,17 +206,21 @@ describe('会话统一 U3 — 全局目录摊开/关卷回目录（视图内开�
     const files = memDisk();
     const panel = new ChatCore();
     panel.setProjectPath('D:/ws-b');
-    panel.setAgent({
-      getSession: () => [
-        { role: 'system', content: 'sys' },
-        { role: 'user', content: '待合卷的内容' },
-      ],
-      setSession: vi.fn(),
-      dispose: vi.fn(),
-      cascadeAbort: vi.fn(),
-    } as any);
-    panel.setAgentFactory(storingFactory());
-    await panel.createNewSession(); // 归零重建：setAgent 不铺卷，手动建卷 1
+    // DSH 形态：工厂现造带内容的句柄（合卷自动存的快照源）
+    panel.setAgentFactory(
+      async () =>
+        ({
+          getSession: () => [
+            { role: 'system', content: 'sys' },
+            { role: 'user', content: '待合卷的内容' },
+          ],
+          setSession: vi.fn(),
+          dispose: vi.fn(),
+          bindSession: vi.fn(),
+          cascadeAbort: vi.fn(),
+        }) as any,
+    );
+    await panel.createNewSession(); // 卷 1（工厂现造，带内容）
     await panel.createNewSession(); // 两卷现场，卷 1 可合
 
     panel.closeSession(0); // 合卷 1（C8 自动存）

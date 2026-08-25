@@ -47,8 +47,9 @@ describe('workspace provider 配置 — 使用点解析（Phase C，恒 swap 退
     const body = applyAgentConfigBody();
     expect(body).toContain('this.prov?.name() !== act.name');
     expect(body).toContain('this._buildProvider(s)');
-    expect(body).toContain('this.agent?.setProvider(prov, pricing)');
+    // DSH 形态（2026-08-25）：无预造 this.agent——热切换面 = 活句柄逐一同步
     expect(body).toContain('agentSessionState.forEachAgent((h) => h.setProvider(prov, pricing))');
+    expect(body).not.toContain('this.agent?.setProvider');
   });
 
   it('Key 清空不再拆 Agent/会话（teardown 分支整体退役）', () => {
@@ -60,12 +61,11 @@ describe('workspace provider 配置 — 使用点解析（Phase C，恒 swap 退
     expect(body).toContain('setDiag');
   });
 
-  it('Agent 缺席 → 全量装配 + 恢复历史案卷分支保留（装配失败恢复路径）', () => {
+  it('工厂缺席 → 补装配分支保留（装配从未成功的恢复路径）', () => {
     const body = applyAgentConfigBody();
-    expect(body).toContain('if (!this.agent)');
+    expect(body).toContain('if (!this._factoryRegistered)');
     expect(body).toContain('await this.setupAgent(chatPanel)');
-    expect(body).toContain('autoRestoreLastSession');
-    const bootstrap = body.indexOf('if (!this.agent)');
+    const bootstrap = body.indexOf('if (!this._factoryRegistered)');
     const swap = body.indexOf('this.prov?.name() !== act.name');
     expect(bootstrap).toBeGreaterThan(-1);
     expect(swap).toBeGreaterThan(bootstrap);
@@ -73,8 +73,8 @@ describe('workspace provider 配置 — 使用点解析（Phase C，恒 swap 退
 
   it('同身份：定价热同步（setPricing，不换引用）', () => {
     const body = applyAgentConfigBody();
-    expect(body).toContain('this.agent?.setPricing(pricing)');
     expect(body).toContain('agentSessionState.forEachAgent((h) => h.setPricing(pricing))');
+    expect(body).not.toContain('this.agent?.setPricing');
   });
 
   it('factory：Agent 恒可构造（Key 缺失不再返 null）', () => {

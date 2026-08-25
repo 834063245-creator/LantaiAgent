@@ -651,14 +651,16 @@ describe('ChatPanel session persistence', () => {
         }
         return Promise.resolve('ok');
       });
-      // 归零重建：setAgent 不铺卷——seed 建两卷（卷 1 领预留 agent1；卷 2 走工厂 agent2）
+      // DSH 形态：两卷都走工厂现造（工厂依次返回 agent1、agent2）
+      let call = 0;
+      panel.setAgentFactory(async () => (call++ === 0 ? agent1 : agent2) as any);
       return {
         agent1,
         agent2,
         writes,
         seed: async () => {
-          await panel.createNewSession(); // 卷 1（预留句柄）
-          await panel.createNewSession(); // 卷 2（工厂句柄）
+          await panel.createNewSession(); // 卷 1（工厂第一次调用 = agent1）
+          await panel.createNewSession(); // 卷 2（工厂第二次调用 = agent2）
         },
       };
     }
@@ -736,15 +738,19 @@ describe('ChatPanel session persistence', () => {
     async function setupVolumeWithContent(writes: Array<{ file_path: string; content: string }>) {
       panel = createChatPanel();
       panel.setProjectPath(PROJ);
-      panel.setAgent({
-        getSession: () => [
-          { role: 'system', content: 'sys' },
-          { role: 'user', content: '钉住我' },
-        ],
-        setSession: vi.fn(),
-        dispose: vi.fn(),
-        cascadeAbort: vi.fn(),
-      } as any);
+      // DSH 形态：工厂造真句柄（createNewSession 现造）
+      panel.setAgentFactory(
+        async () =>
+          ({
+            getSession: () => [
+              { role: 'system', content: 'sys' },
+              { role: 'user', content: '钉住我' },
+            ],
+            setSession: vi.fn(),
+            dispose: vi.fn(),
+            cascadeAbort: vi.fn(),
+          }) as any,
+      );
       mockInvoke.mockReset();
       mockInvoke.mockImplementation((_cmd: string, payload: any) => {
         const { method, params } = payload;
@@ -910,10 +916,9 @@ describe('ChatPanel session persistence', () => {
     async function setupTwoSeededVolumes() {
       panel = createChatPanel();
       panel.setProjectPath(PROJ);
-      panel.setAgent(makeAgent() as any);
       panel.setAgentFactory(async () => makeAgent() as any);
-      await panel.createNewSession(); // 卷 1（预留句柄）
-      await panel.createNewSession(); // 卷 2（工厂句柄）
+      await panel.createNewSession(); // 卷 1（工厂现造）
+      await panel.createNewSession(); // 卷 2（工厂现造）
       seedMsgStore(panel.panelId, 1, '卷一消息');
       seedMsgStore(panel.panelId, 2, '卷二消息');
       expect(isStoreFresh(panel.panelId, 1)).toBe(false);
@@ -1014,7 +1019,8 @@ describe('ChatPanel session persistence', () => {
     async function setupVolumePanel() {
       panel = createChatPanel();
       panel.setProjectPath(PROJ);
-      panel.setAgent({
+      // DSH 形态：工厂造真句柄（createNewSession 现造）；setAgent 仅清理不铺卷
+      const stub = {
         getSession: () => [
           { role: 'system', content: 'sys' },
           { role: 'user', content: 'U1 内容' },
@@ -1022,8 +1028,9 @@ describe('ChatPanel session persistence', () => {
         setSession: vi.fn(),
         dispose: vi.fn(),
         cascadeAbort: vi.fn(),
-      } as any);
-      // 归零重建：setAgent 不铺卷——建卷 1 领预留句柄
+      };
+      panel.setAgent(stub as any); // 清理路径（历史调用形）
+      panel.setAgentFactory(async () => ({ ...stub }) as any);
       await panel.createNewSession();
       return panel;
     }
@@ -1106,16 +1113,19 @@ describe('ChatPanel session persistence', () => {
       // 写：saveActiveSession(PROJ) 恒落全局位（单一路径，无旧目录回退）。
       // 归零重建：setAgent 不铺卷——setNextSessionId 拨回 1 后 createNewSession 建卷。
       Session.setNextSessionId(panel.panelId, 1);
-      panel.setAgent({
-        getSession: () => [
-          { role: 'system', content: 'sys' },
-          { role: 'user', content: '本区新内容' },
-        ],
-        setSession: vi.fn(),
-        dispose: vi.fn(),
-        cascadeAbort: vi.fn(),
-      } as any);
-      await panel.createNewSession(); // 卷 1（领预留句柄，内容来自上方桩）
+      panel.setAgentFactory(
+        async () =>
+          ({
+            getSession: () => [
+              { role: 'system', content: 'sys' },
+              { role: 'user', content: '本区新内容' },
+            ],
+            setSession: vi.fn(),
+            dispose: vi.fn(),
+            cascadeAbort: vi.fn(),
+          }) as any,
+      );
+      await panel.createNewSession(); // 卷 1（工厂现造，内容来自桩）
       await panel.saveActiveSession(PROJ);
 
       const write = JSON.parse(files[`${GLOBAL}/1.json`]);
