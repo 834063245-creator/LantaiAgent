@@ -1,6 +1,6 @@
 # Stage-2 一纸多卷（画布支第二阶段展开）
 
-> 立项：2026-08-25 · 状态：**草案（待痞老板审）** · 类型：阶段展开（Agent 起草）
+> 立项：2026-08-25 · 状态：**已落地（2026-08-25，门禁全绿）** · 类型：阶段展开（Agent 起草 → 施工完成）
 > 总设计：`docs/plans/canvas-space/canvas-space-model-notes.md` §7（施工顺序）与 §5（空间模型拍板）
 > 依赖：第一阶段（地基清零：性能两热点 + 真机验收四项）完成
 > 施工纪律：原则一（每步可测切片）· 原则二（空间内核=平台+API，上层形态=插件）· 原则三（插件行落位不改核心）· 原则四（随做随清）
@@ -123,3 +123,25 @@
 4. 不并存：画布即主界面
 5. 首页 = 方案 A（工作区总览：列表 + 进入动作；会话管理交画布旁最小侧边栏）
 6. 边缘拖拽面宽度 ~6px 量级（光标反馈为主，无需视觉手柄）
+
+---
+
+## 落地状态（2026-08-25 施工完成，门禁全绿）
+
+> 实现全部对齐 §3.5/§8 定案与 §4 子任务拓扑序；无遗留临时债，旧路径已拆。
+
+**已交付**：
+
+| 子任务 | 落点 | 验收 |
+|---|---|---|
+| 4.1 数据层：流区位置模型 + 工作区级持久化 | `state/paper-store.ts`（`region` 随会话快照落盘/恢复 + `activeRegionId` 镜像）；`paper/space.ts`（常量/默认落位/吸附） | store 单测 + 快照往返测试（`tests/paper-space.test.ts`） |
+| 4.0 出生最小路径 | `SessionsHome` 改工作区总览（方案 A：工作区列表 + 进入动作）；SpineRack 补最小卷目录（列表 + 摊开 + 另起一卷） | 首页进工作区 → 画布 → 新建/摊开落位 |
+| 4.2 布局层：单锚 → 多锚 | `canvas-math.ts` `layoutRegion`（每流区独立栈） | 两流区各自坐标正确、互不牵连（测试） |
+| 4.3 虚拟化层：跨流区窗口 | `virtualize.ts` `visibleRegionWindows`（横向预筛 + 每流区二分） | 多流区视口窗口只含可见块（测试） |
+| 4.4 渲染层：多流区 + 边缘拖动 + 吸附 | `PaperPanel` 多流区渲染 + 边缘拖动（X 吸附 2160）+ 活跃流区高亮 | 一画布摊多会话互不干扰 |
+| 4.5 空间内核 + ctx.space 打孔 | `composition/space-service.ts` `SpaceService`（读状态/订阅/focus/place/expand/collapse）+ `spaceServicePlugin`；demo 插件 `plugins/space-demo-plugin.ts` | demo 插件经 ctx.space 读到画布状态（测试钉住） |
+| 4.6 性能常数落地 | 单流区更新 = 常数（增量转译/块级测量缓存按会话隔离延续） | 门禁全绿 |
+| 4.7 旧路径拆除 | PaperPanel 单流渲染迁移到多流区；paper-store 死字段 `activeSessionId`/`setActiveSession` 拆除 | grep 无单流调用点残留 |
+
+**门禁**：vitest（新增 `tests/paper-space.test.ts` 17 用例；全部 paper 域测试绿）· `npm run build` ✓ · `npm run verify:convergence` exit 0 · biome 改动文件 0/0。
+（注：全量 vitest 偶发 2 个无关重型装配测试在满负荷下 5s 超时——`coding-domain-plugins`/`settings-panel-save-split`/`paper-v3b` 各自独立/小批跑全绿，属本机负载 flake，非本阶段回归。）
