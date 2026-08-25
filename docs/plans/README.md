@@ -18,7 +18,7 @@
 |---|---|---|---|
 | 会话统一 | [`session-unify-plan.md`](session-unify-plan.md) | ✅ 归零重建落地（2026-08-25，待真机验收） | U1-U4 竣工后兼容层（双读/legacy_root/惰性迁移/localStorage 备份/_ledger 残壳）全部拆除；历史 171 卷归档不迁（用户拍板）；全局位成为唯一事实源 |
 | 分层重构 | [`layering-rework-plan.md`](layering-rework-plan.md) | **L1-L4 + L5b crate 化已落地**（2026-08-25） | engine 纯化（StoreHost 注入/单根/Arc+TLS）+ 壳瘦身（app/services）+ 数据上下文（会话 attach 事实校验）+ 双工作区并发守卫 + L5b 三 crate 拆出（hologram-graph/vector/storage，workspace 五成员，CI 全量）；真机验收四项待跑（见计划 §4.6） |
-| 画布空间模型 | [`canvas-space/canvas-space-model-notes.md`](canvas-space/canvas-space-model-notes.md) | **设计定稿（2026-08-25）；Stage-1 性能闭环 ✅ + Stage-2 一纸多卷已落地（2026-08-25）**，施工顺序见笔记 §7 | 一整片会生长的纸 / 有界流区（统一宽度·线性排比）/ 宿主模型（依附物跟宿主走）/ 三层导航（工作区→侧边栏+画布→书脊+创作坞）/ 性能基准（上百会话+N Agent 同跑）/ 施工六阶段+五原则；阶段性展开文档将落 `canvas-space/` 子目录 |
+| 画布空间模型 | [`canvas-space/canvas-space-model-notes.md`](canvas-space/canvas-space-model-notes.md) | **设计定稿（2026-08-25）；Stage-1 性能闭环 ✅ + Stage-2 一纸多卷已落地（2026-08-25，实机已验）**，施工顺序见笔记 §7 | 一整片会生长的纸 / 有界流区（统一宽度·线性排比）/ 宿主模型（依附物跟宿主走）/ 三层导航（工作区→侧边栏+画布→书脊+创作坞）/ 性能基准（上百会话+N Agent 同跑）/ 施工六阶段+五原则；阶段性展开文档将落 `canvas-space/` 子目录 |
 
 ## 活跃工程（就一个半）
 
