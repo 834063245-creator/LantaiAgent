@@ -828,6 +828,8 @@
   padding: 0 24px;
   background: var(--paper-deep);
   border-top: var(--rule-strong);
+  /* 斜杠补全面板（施工单 #7）：.pp-slash 绝对定位于此之上 */
+  position: relative;
 }
 .pp-composer input,
 .pp-composer textarea {
@@ -878,6 +880,86 @@
 .pp-composer button:hover {
   background: var(--ink-1);
   color: var(--paper);
+}
+
+/* 停止按钮（施工单 #4）：运行中才出现，朱砂警示色，区别于拟文 */
+.pp-composer .pp-stop {
+  border-color: var(--seal);
+  color: var(--seal-deep);
+}
+.pp-composer .pp-stop:hover {
+  background: var(--seal);
+  color: var(--paper);
+}
+
+/* 消息操作条（施工单 #5）：块 hover 浮现——改/重发/重试/抄（结构件，不进选区） */
+.pp-msg-ops {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  z-index: 5;
+}
+.pp-block:hover .pp-msg-ops,
+.pp-msg-ops:focus-within {
+  opacity: 1;
+}
+.pp-msg-ops button {
+  padding: 2px 8px;
+  border: 1px solid var(--rule-soft);
+  background: var(--paper);
+  color: var(--ink-2);
+  font-family: var(--f-song);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  border-radius: 2px;
+}
+.pp-msg-ops button:hover {
+  border-color: var(--indigo);
+  color: var(--ink-1);
+}
+
+/* 斜杠补全面板（施工单 #7）：行首 '/' 时弹出的可用命令列表 */
+.pp-slash {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 340px;
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--rule-soft);
+  box-shadow: var(--elev-raise);
+  z-index: 40;
+  padding: 6px 0;
+}
+.pp-slash-item {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 14px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--f-song);
+}
+.pp-slash-item:hover {
+  background: color-mix(in oklch, var(--indigo) 8%, var(--paper));
+}
+.pp-slash-shortcut {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  color: var(--indigo);
+}
+.pp-slash-label {
+  font-size: 13px;
+  color: var(--ink-2);
 }
 
 /* ── 抽纸条交互件（收尾批 II：B 浮钮 + A 幽灵预览）── */

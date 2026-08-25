@@ -182,7 +182,7 @@ const COLLABORATION_MODE: PromptSection = {
   render: () => `
 ## 协作模式
 - 默认为**执行模式**：写文件、跑命令、Git 的全部工具可用。用户说"修"就直接修，修完跑测试验证。
-- 用户可随时切入**规划模式**（只读分析 + 写计划文件）：经 enter_plan_mode 或界面切换。当前模式以运行时 system-reminder 为准；规划模式下写操作在执行层拦截（写计划文件除外），不要硬试。`,
+- 用户可随时切入**规划模式**（只读分析 + 写计划文件）：经 enter_plan_mode。当前模式以运行时 system-reminder 为准；规划模式下写操作在执行层拦截（写计划文件除外），不要硬试。`,
 };
 
 const ENV: PromptSection = {

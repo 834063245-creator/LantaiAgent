@@ -14,7 +14,6 @@ import type { AgentEvent, EventSink } from '../agent/agent-types';
 import type { AgentStatus, RuntimeNotifier } from '../agent/runtime/types';
 import type { Message } from '../provider/types';
 import { pushAsk } from '../state/ask-store';
-import { bumpDataflowSaved } from '../state/dataflow-store';
 import { useAgentPanelStore } from './agent-panel-store';
 import { rebuildMessagesFromMessages } from './chat-session';
 import { getChatStore, msgStoreFor } from './chat-store';
@@ -185,9 +184,6 @@ export function createBuilderDeps(storeId: string): import('../agent/runtime/age
     onAskUser: (req) => {
       // P1 总线归零：prompt:ask → state/ask-store（callback-in-store）
       pushAsk(req);
-    },
-    onDataflowSaved: () => {
-      bumpDataflowSaved();
     },
     // diagnosticsSource 和 shellStream 单独接线
     // （它们需要属于 UI 层的 Tauri 特定 import）

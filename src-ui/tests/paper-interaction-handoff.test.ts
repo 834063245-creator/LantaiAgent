@@ -13,7 +13,7 @@
 //
 // 修复纪律：施工单修一条，销账一条（删 KNOWN_DEAD 里对应 id），直到清单清空。
 
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { builtinRendererDefs } from '../src/composition/renderer-service';
@@ -42,7 +42,7 @@ function readAllTs(dir: string, excludeBasename: string[] = []): string {
     for (const e of entries) {
       const p = join(d, e.name);
       if (e.isDirectory()) walk(p);
-      else if (/^\.(ts|tsx)$/.test(e.name) && !excludeBasename.includes(e.name)) out.push(read(p));
+      else if (/\.(ts|tsx)$/.test(e.name) && !excludeBasename.includes(e.name)) out.push(read(p));
     }
   };
   walk(dir);
@@ -122,8 +122,8 @@ const PROBES: DeadLinkProbe[] = [
   },
   {
     id: 'dataflow-display',
-    note: '#6 bumpDataflowSaved 信号白发，无展示消费方（DataflowPanel 已拆）',
-    isDead: () => !/from ['"][^'"]*dataflow-store|bumpDataflowSaved/.test(readAllTs(APP, ['chat-core.ts'])),
+    note: '#6 dataflow 信号退役：dataflow-store.ts 已删除（DataflowPanel 随 chrome 退役，死信号不再养）',
+    isDead: () => existsSync(join(SRC, 'state', 'dataflow-store.ts')),
   },
   {
     id: 'slash-at-composer',
@@ -135,19 +135,17 @@ const PROBES: DeadLinkProbe[] = [
   },
   {
     id: 'plan-mode-ui-switch',
-    note: '#8 "界面直接切换到执行模式"是虚承诺，UI 无 plan 模式切换入口',
-    isDead: () => !readAllTs(APP).includes('切换到执行模式'),
+    note: '#8 虚承诺已删：plan-tools/prompt-sections 不再宣称「界面可直接切换执行模式」',
+    isDead: () => {
+      const pt = read(join(PLAN_DIR, 'plan-tools.ts'));
+      const ps = read(join(SRC, 'composition', 'prompt-sections.ts'));
+      return pt.includes('界面直接切换') || ps.includes('或界面切换');
+    },
   },
 ];
 
 /** 已知断链登记表——施工单修复一条就删一条，直到清空。 */
-const KNOWN_DEAD: string[] = [
-  'stop-button',
-  'message-ops',
-  'dataflow-display',
-  'slash-at-composer',
-  'plan-mode-ui-switch',
-];
+const KNOWN_DEAD: string[] = [];
 
 /* ═══ 展示面守护（硬锚，永远全绿）═══ */
 

@@ -47,8 +47,6 @@ export interface ToolRowContext {
   codingExec: ToolExecutor;
   /** ask_user 的 UI 回调（builder 从 BuilderDeps.onAskUser 注入）。 */
   ui?: CodingToolsUI;
-  /** dataflow_save 完成回调（builder 从 BuilderDeps.onDataflowSaved 注入）。 */
-  onDataflowSaved?: () => void;
   skillRegistry?: SkillRegistry;
   memoryManager?: MemoryManager;
   taskManager: TaskManager;

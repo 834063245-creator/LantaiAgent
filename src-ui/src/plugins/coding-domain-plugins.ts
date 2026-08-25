@@ -349,7 +349,6 @@ export const hologramDomainPlugin = {
               }),
               execute: async (args) => {
                 const r = await agentInvoke('dataflow_save', args);
-                rowCtx.onDataflowSaved?.();
                 return r;
               },
             }),

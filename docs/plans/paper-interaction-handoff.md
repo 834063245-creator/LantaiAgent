@@ -68,13 +68,18 @@ PaperPanel 书眉承接设置），但清单不全：**Agent 工作流刚需的�
 
 ## 五、当前进度
 
-第一棒（plan 审批闭环）已修，守护测试 KNOWN_DEAD 已删对应三条。剩余按序推进。
+全部销账（2026-08-25 一口气扫完）。
 
 - [x] #1 plan-callback-translate
 - [x] #2 plan-approval-ui
 - [x] #3 plan-exit-timeout
-- [ ] #4 stop-button
-- [ ] #5 message-ops
-- [ ] #6 dataflow-display
-- [ ] #7 slash-at-composer
-- [ ] #8 plan-mode-ui-switch
+- [x] #4 stop-button
+- [x] #5 message-ops
+- [x] #6 dataflow-display（决定：退役信号，dataflow-store.ts 删除）
+- [x] #7 slash-at-composer（命令解析本就在 core，补发现性面板；@提及依赖图谱节点名，图谱面退役后永久降级）
+- [x] #8 plan-mode-ui-switch（决定：删虚承诺文案，不做 UI 入口）
+
+收敛说明：
+- 守护测试 KNOWN_DEAD 已清空（断链全集 = 空）。
+- #8 与 #6 是「拆干净」型收敛：虚承诺删文案、死信号退役，均非新增功能。
+- convergence baseline 因 prompt-sections 文案变更重录一次（record 提交）。

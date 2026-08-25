@@ -149,7 +149,7 @@ export function createExitPlanModeTool(planState: PlanStateManager, eventSink?: 
                       resolve(
                         `计划已批准并留档（方案：${response.selectedLabel ?? '(未指定)'}）。` +
                           `用户暂不开工——保持规划模式，不要执行任何改动。` +
-                          `等用户明确说开工时再次调 exit_plan_mode 提交审批（或用户在界面直接切换到执行模式）。` +
+                          `等用户明确说开工时再次调 exit_plan_mode 提交审批。` +
                           `计划文件：${planPath}`,
                       );
                     } else {

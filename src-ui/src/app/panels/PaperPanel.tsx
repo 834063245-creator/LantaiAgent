@@ -17,6 +17,7 @@
 // ——agent 层零改动，消息追加后经 version 订阅自动重转译。
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { agentSessionState } from '../../agent/agent-session-state';
 import { resolveRenderer } from '../../composition/renderer-service';
 import type { SourcedBlock } from '../../paper/block-model';
 import {
@@ -44,6 +45,8 @@ import { useDockStore } from '../../state/dock-store';
 import { getPaperStore } from '../../state/paper-store';
 import { useUpdateStore } from '../../state/update-store';
 import { getChatStore, msgStoreForActive } from '../../ui/chat-store';
+import { CommandRegistry } from '../../ui/command-registry';
+import type { ChatMessage, TextPart } from '../../ui/message-model';
 import { useCoreStore } from '../chat/core-instance';
 import { useShellStore } from '../shell-store';
 import { WinControls } from '../WinControls';
@@ -80,15 +83,34 @@ const KIND_EN: Record<string, string> = {
 
 /** 灰框块渲染器（V3b：体渲染经第五贡献通道解析——ctx.renderers） */
 
+/** 消息操作项（施工单 #5）：块 hover 出现的操作按钮。 */
+interface BlockOp {
+  key: string;
+  label: string;
+  run: () => void;
+}
+
+/** 从消息提取可复制的正文文本（text part 拼接）。 */
+function messageCopyText(msg: ChatMessage): string {
+  if (msg.role !== 'assistant') return msg.text;
+  return msg.parts
+    .filter((p): p is TextPart => p.type === 'text')
+    .map((p) => p.text)
+    .join('\n');
+}
+
 function BlockView({
   block,
   seq,
+  ops,
   onUnpin,
   onDragHandleMouseDown,
 }: {
   block: SourcedBlock;
   /** 文类签机读序号（卷内流水号，三位补零） */
   seq: string;
+  /** 消息操作（hover 浮现）——user 块编辑/重发，assistant 块重试，全部可抄录（施工单 #5） */
+  ops: BlockOp[];
   onUnpin: (id: string) => void;
   /** 拖拽手柄（文类签 .pp-kind）——V3a 手势分工：签=整块拖出（D-R2-1），
    * 文本区=原生选择（待定 #10 抽纸条的前提：选中文字拖离流出纸条） */
@@ -115,6 +137,22 @@ function BlockView({
         )}
       </div>
       {Body ? <Body block={block} /> : <div className="pp-body">{(p as { text?: string }).text ?? ''}</div>}
+      {ops.length > 0 && (
+        <div className="pp-msg-ops">
+          {ops.map((o) => (
+            <button
+              key={o.key}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                o.run();
+              }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
       {block.state === 'pinned' && (
         <button
           type="button"
@@ -212,6 +250,9 @@ export function PaperPanel() {
 
   /* 活跃会话 id（paper-store 按会话隔离钉住/纸条） */
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+  /* Agent 运行态（停止按钮）：exec store 订阅——运行中才显示「停」。
+   * 照 SpineRack 模式：agentSessionState.getExec + exec.onChange（施工单 #4）。 */
+  const [running, setRunning] = useState(false);
   /* paper-store 订阅 tick：钉住/纸条变更触发本组件重渲染 */
   const [paperTick, setPaperTick] = useState(0);
 
@@ -263,6 +304,22 @@ export function PaperPanel() {
     });
   }, [core]);
 
+  /* Agent 运行态（停止按钮）：订阅活跃会话 exec.isRunning。
+   * 照 SpineRack：agentSessionState.getExec + exec.onChange（施工单 #4）。 */
+  useEffect(() => {
+    if (!core || activeSessionId == null) {
+      setRunning(false);
+      return;
+    }
+    const exec = agentSessionState.getExec(core.panelId, activeSessionId);
+    if (!exec) {
+      setRunning(false);
+      return;
+    }
+    setRunning(exec.isRunning);
+    return exec.onChange(() => setRunning(exec.isRunning));
+  }, [core, activeSessionId]);
+
   const paperStore = core ? getPaperStore(core.panelId) : null;
   const sessionKey = activeSessionId != null ? String(activeSessionId) : null;
   // paperTick 显式消费：订阅 tick 变化 = store 变化 = 本组件重渲染重读
@@ -278,6 +335,27 @@ export function PaperPanel() {
         pinnedPositions: new Map(Object.entries(pinnedRecord)),
       }),
     [msgState, pinnedRecord],
+  );
+
+  /* 消息操作（施工单 #5）：按块来源消息反查 chat-core 回调。
+   * user 块=编辑/重发；assistant 块=重试；全部=抄录正文。 */
+  const msgOps = useCallback(
+    (b: SourcedBlock): BlockOp[] => {
+      if (!core) return [];
+      const msg = msgState.messages.find((m) => m._id === b.source.messageId);
+      if (!msg) return [];
+      const ops: BlockOp[] = [];
+      if (msg.role === 'user') {
+        ops.push({ key: 'edit', label: '改', run: () => core.editUserMessage(msg) });
+        ops.push({ key: 'resend', label: '重发', run: () => core.resendUserMessage(msg) });
+      } else if (msg.role === 'assistant') {
+        ops.push({ key: 'retry', label: '重试', run: () => core.retryAssistant(msg) });
+      }
+      const text = messageCopyText(msg);
+      if (text.trim()) ops.push({ key: 'copy', label: '抄', run: () => core.copyText(text) });
+      return ops;
+    },
+    [core, msgState.messages],
   );
 
   /* 视口状态 */
@@ -555,6 +633,24 @@ export function PaperPanel() {
    * 多行 textarea + 输入历史（↑ 取上一条——input-store 的 inputHistory 由
    * chat-core sendMessage 落账，此处只读；光标在首行且非多行编辑态才拦）。 */
   const [inputText, setInputText] = useState('');
+  /* 斜杠命令补全（施工单 #7）：行首/空格后 '/' 时弹可用命令列表（点击执行）。
+   * 命令解析与执行仍在 chat-core（sendMessage / executeCommand），这里只补发现性。 */
+  const slashQuery = useMemo(() => {
+    const v = inputText;
+    if (!v) return null;
+    const last = v.lastIndexOf('/');
+    if (last < 0) return null;
+    if (last > 0 && v[last - 1] !== ' ' && v[last - 1] !== '\n') return null;
+    return v.slice(last + 1);
+  }, [inputText]);
+
+  const slashCommands = useMemo(() => {
+    if (slashQuery === null) return [];
+    const q = slashQuery.toLowerCase();
+    return CommandRegistry.instance
+      .getAll()
+      .filter((c) => c.shortcut.toLowerCase().includes(q) || c.label.toLowerCase().includes(q));
+  }, [slashQuery]);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   /* textarea 自适应高（min 1 行 max ~6 行）；发送清空后回 1 行 */
   const autoGrow = useCallback(() => {
@@ -1096,6 +1192,7 @@ export function PaperPanel() {
                   <BlockView
                     block={b}
                     seq={seqOf.get(b.id) ?? '000'}
+                    ops={msgOps(b)}
                     onUnpin={onUnpin}
                     onDragHandleMouseDown={(e) => onBlockMouseDown(e, b)}
                   />
@@ -1125,6 +1222,7 @@ export function PaperPanel() {
                   <BlockView
                     block={b}
                     seq={seqOf.get(b.id) ?? '000'}
+                    ops={msgOps(b)}
                     onUnpin={onUnpin}
                     onDragHandleMouseDown={(e) => onBlockMouseDown(e, b)}
                   />
@@ -1139,6 +1237,16 @@ export function PaperPanel() {
       <MinimapView content={minimap.content} viewport={minimap.viewport} />
 
       <div className="pp-composer">
+        {slashCommands.length > 0 && (
+          <div className="pp-slash">
+            {slashCommands.map((c) => (
+              <button key={c.id} type="button" className="pp-slash-item" onClick={() => core?.executeCommand(c)}>
+                <span className="pp-slash-shortcut">{c.shortcut}</span>
+                <span className="pp-slash-label">{c.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <button
           type="button"
           className="pp-attach"
@@ -1194,6 +1302,17 @@ export function PaperPanel() {
             }
           }}
         />
+        {running && (
+          <button
+            type="button"
+            className="pp-stop"
+            title="停止当前回合（级联子 Agent）"
+            aria-label="停止"
+            onClick={() => core?.abort()}
+          >
+            停
+          </button>
+        )}
         <button type="button" onClick={onSend}>
           拟文
         </button>

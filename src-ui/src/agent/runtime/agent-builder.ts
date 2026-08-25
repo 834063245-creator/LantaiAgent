@@ -35,8 +35,6 @@ export interface BuilderDeps {
   onAskUser?: (req: import('../tools/coding').AskUserRequest) => void;
   /** exit_plan_mode 工具的计划审批回调（UI 展示计划审批 banner） */
   onPlanReview?: (req: import('../plan/plan-tools').PlanReviewRequest) => void;
-  /** dataflow_save 后的通知（UI 面板刷新） */
-  onDataflowSaved?: () => void;
   /** LSP 诊断数据源（用于 state hooks） */
   diagnosticsSource?: {
     getDiagnosticsForFile(
@@ -236,7 +234,6 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
     graphData,
     codingExec,
     ui: { askUser: deps.onAskUser ?? (() => {}) },
-    onDataflowSaved: () => deps.onDataflowSaved?.(),
     skillRegistry,
     memoryManager: mm,
     taskManager,
