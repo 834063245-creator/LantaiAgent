@@ -15,7 +15,7 @@
 // 挂载：PaperPanel 书眉（设置/关卷旁）。app 级状态（mode-store）+
 // settings 快照（模型），不依赖面板生命周期。
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { findModels } from '../../provider/catalog';
 import { getActiveProvider, loadSettings, type ProviderSettings, saveSettings, updateProvider } from '../../settings';
 import { notifyAgentConfigChanged } from '../../state/agent-config-store';
@@ -97,7 +97,7 @@ function ModelMenu({
 
 const MODE_ORDER: PermissionMode[] = ['ask', 'auto', 'yolo'];
 
-export function ModeIndicator() {
+export const ModeIndicator = memo(function ModeIndicator() {
   const permissionMode = useModeStore((s) => s.permissionMode);
   const pendingYolo = useModeStore((s) => s.pendingYolo);
   const setPermissionMode = useModeStore((s) => s.setPermissionMode);
@@ -203,4 +203,4 @@ export function ModeIndicator() {
       </button>
     </div>
   );
-}
+});

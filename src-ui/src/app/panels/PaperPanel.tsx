@@ -16,7 +16,7 @@
 // 输入条：写 input-store（真相源），提交走 core.sendMessage()
 // ——agent 层零改动，消息追加后经 version 订阅自动重转译。
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { agentSessionState } from '../../agent/agent-session-state';
 import { resolveRenderer } from '../../composition/renderer-service';
 import type { SourcedBlock } from '../../paper/block-model';
@@ -31,9 +31,14 @@ import {
   zoomAt,
 } from '../../paper/canvas-math';
 import { composerSubmitOnKey } from '../../paper/ime';
-import { clearPaperMeasureCache, measureBlockHeight } from '../../paper/measure';
+import {
+  type BlockMeasureCache,
+  clearPaperMeasureCache,
+  createBlockMeasureCache,
+  measureBlockHeightCached,
+} from '../../paper/measure';
 import { classifyDropZone, makeStrip, type PaperStrip, stashStripPosition } from '../../paper/selection';
-import { translateMessages } from '../../paper/translate';
+import { type MessageTranslateCache, translateMessagesCached } from '../../paper/translate';
 import {
   type FlowGeom,
   type PinnedGeom,
@@ -46,7 +51,7 @@ import { getPaperStore } from '../../state/paper-store';
 import { useUpdateStore } from '../../state/update-store';
 import { getChatStore, msgStoreForActive } from '../../ui/chat-store';
 import { CommandRegistry } from '../../ui/command-registry';
-import type { ChatMessage, TextPart } from '../../ui/message-model';
+import type { AssistantMessage, ChatMessage, TextPart, UserMessage } from '../../ui/message-model';
 import { useCoreStore } from '../chat/core-instance';
 import { useShellStore } from '../shell-store';
 import { WinControls } from '../WinControls';
@@ -99,7 +104,7 @@ function messageCopyText(msg: ChatMessage): string {
     .join('\n');
 }
 
-function BlockView({
+const BlockView = memo(function BlockView({
   block,
   seq,
   ops,
@@ -113,8 +118,9 @@ function BlockView({
   ops: BlockOp[];
   onUnpin: (id: string) => void;
   /** 拖拽手柄（文类签 .pp-kind）——V3a 手势分工：签=整块拖出（D-R2-1），
-   * 文本区=原生选择（待定 #10 抽纸条的前提：选中文字拖离流出纸条） */
-  onDragHandleMouseDown: (e: React.MouseEvent) => void;
+   * 文本区=原生选择（待定 #10 抽纸条的前提：选中文字拖离流出纸条）
+   * 签名带 block：调用方直接传稳定 onBlockMouseDown（memo 友好——不逐帧重建闭包） */
+  onDragHandleMouseDown: (e: React.MouseEvent, block: SourcedBlock) => void;
 }) {
   const p = block.payload;
   // 体渲染器：注册表按 kind 解析（内置注疏行 + 插件贡献——后注册胜）；
@@ -124,7 +130,7 @@ function BlockView({
   return (
     <>
       {/* biome-ignore lint/a11y/noStaticElementInteractions: 拖拽手柄（D-R2-1 拖出钉住）；收回有原生按钮 */}
-      <div className="pp-kind pp-drag-handle" onMouseDown={onDragHandleMouseDown}>
+      <div className="pp-kind pp-drag-handle" onMouseDown={(e) => onDragHandleMouseDown(e, block)}>
         <span className="pp-zh">{KIND_ZH[block.kind] ?? block.kind}</span>
         <span className="pp-en">
           {KIND_EN[block.kind] ?? 'NOTE'} · {seq}
@@ -167,7 +173,7 @@ function BlockView({
       )}
     </>
   );
-}
+});
 
 /* ── 主组件 ── */
 
@@ -219,6 +225,7 @@ const STRIP_H = 96;
 /** 稳定空引用——无会话/无钉住时避免无谓重渲染 */
 const EMPTY_PINNED: Record<string, { x: number; y: number }> = {};
 const EMPTY_STRIPS: PaperStrip[] = [];
+const EMPTY_OPS: BlockOp[] = [];
 
 /** 按点是否落在选区几何矩形内（±4px 容差盖住行间边缘）。
  *  A2「拎起」命中判据——旧 isPointInRange(target, 0) 对单元素选区恒 false
@@ -324,39 +331,87 @@ export function PaperPanel() {
   const sessionKey = activeSessionId != null ? String(activeSessionId) : null;
   // paperTick 显式消费：订阅 tick 变化 = store 变化 = 本组件重渲染重读
   void paperTick;
+
+  /* 性能专项第一刀缓存（流式增量）：
+   *  - translateCache：按消息引用增量转译（流式只重译最后一条消息的块）
+   *  - measureCache：按块 id + 内容签名记忆高度（签名未变零重测）
+   *  - opsCache：按块 id 记忆消息操作数组（memo 友好——未变块 ops 引用稳定）
+   * 会话切换时三缓存一并重置，防跨卷串味/无界增长。 */
+  const translateCacheRef = useRef<MessageTranslateCache | null>(null);
+  const measureCacheRef = useRef<BlockMeasureCache>(createBlockMeasureCache());
+  const opsCacheRef = useRef<Map<string, { msg: ChatMessage; ops: BlockOp[] }>>(new Map());
+  const lastSessionKeyRef = useRef<string | null>(null);
+  if (lastSessionKeyRef.current !== sessionKey) {
+    lastSessionKeyRef.current = sessionKey;
+    translateCacheRef.current = null;
+    measureCacheRef.current = createBlockMeasureCache();
+    opsCacheRef.current = new Map();
+  }
   const pinnedRecord = paperStore && sessionKey ? paperStore.getState().getPinned(sessionKey) : EMPTY_PINNED;
   const strips = paperStore && sessionKey ? paperStore.getState().getStrips(sessionKey) : EMPTY_STRIPS;
 
   /* 转译（穿全层第二段）——msgState.tick 驱动重算；
-   * pinnedRecord 来自 paper-store，钉住变化经订阅触发重转译 */
-  const blocks = useMemo(
-    () =>
-      translateMessages(msgState.messages, {
-        pinnedPositions: new Map(Object.entries(pinnedRecord)),
-      }),
-    [msgState, pinnedRecord],
-  );
+   * pinnedRecord 来自 paper-store，钉住变化经订阅触发重转译。
+   * 增量缓存：消息引用未变（touchMessage 只浅拷贝被触碰那条）→ 块对象引用稳定，
+   * 未变块在流式/平移中跳过重渲染（React.memo(BlockView) 前提）。 */
+  const blocks = useMemo(() => {
+    const res = translateMessagesCached(msgState.messages, pinnedRecord, translateCacheRef.current);
+    translateCacheRef.current = res.cache;
+    return res.blocks;
+  }, [msgState, pinnedRecord]);
 
-  /* 消息操作（施工单 #5）：按块来源消息反查 chat-core 回调。
-   * user 块=编辑/重发；assistant 块=重试；全部=抄录正文。 */
-  const msgOps = useCallback(
-    (b: SourcedBlock): BlockOp[] => {
+  /* 消息操作（施工单 #5）：按来源消息构造 user 编辑/重发、assistant 重试、全部抄录。
+   * ops 按块 id 记忆（opsCacheRef）——点击时经 messagesRef 取最新消息（流式中
+   * 缓存块也能抄到最新文本），memo 友好的稳定 ops 引用由此成立。 */
+  const messagesRef = useRef<readonly ChatMessage[]>([]);
+  messagesRef.current = msgState.messages;
+  const msgOpsFor = useCallback(
+    (msg: ChatMessage): BlockOp[] => {
       if (!core) return [];
-      const msg = msgState.messages.find((m) => m._id === b.source.messageId);
-      if (!msg) return [];
+      const latest = (): ChatMessage => messagesRef.current.find((m) => m._id === msg._id) ?? msg;
+      const latestMsg = latest();
       const ops: BlockOp[] = [];
       if (msg.role === 'user') {
-        ops.push({ key: 'edit', label: '改', run: () => core.editUserMessage(msg) });
-        ops.push({ key: 'resend', label: '重发', run: () => core.resendUserMessage(msg) });
+        const latestUser = (): UserMessage => {
+          const m = messagesRef.current.find((x) => x._id === msg._id);
+          return m && m.role === 'user' ? m : msg;
+        };
+        ops.push({ key: 'edit', label: '改', run: () => core.editUserMessage(latestUser()) });
+        ops.push({ key: 'resend', label: '重发', run: () => core.resendUserMessage(latestUser()) });
       } else if (msg.role === 'assistant') {
-        ops.push({ key: 'retry', label: '重试', run: () => core.retryAssistant(msg) });
+        const latestAsst = (): AssistantMessage => {
+          const m = messagesRef.current.find((x) => x._id === msg._id);
+          return m && m.role === 'assistant' ? m : msg;
+        };
+        ops.push({ key: 'retry', label: '重试', run: () => core.retryAssistant(latestAsst()) });
       }
-      const text = messageCopyText(msg);
-      if (text.trim()) ops.push({ key: 'copy', label: '抄', run: () => core.copyText(text) });
+      const text = messageCopyText(latestMsg);
+      if (text.trim()) ops.push({ key: 'copy', label: '抄', run: () => core.copyText(messageCopyText(latest())) });
       return ops;
     },
-    [core, msgState.messages],
+    [core],
   );
+  /* ops 按块 id 缓存：消息引用未变 → 复用同一 ops 数组（memo 生效）；
+   * 消息引用变（touchMessage 新拷贝）→ 该块重算 ops，其余块引用稳定。 */
+  const opsByBlock = useMemo(() => {
+    const map = new Map<string, BlockOp[]>();
+    if (!core) return map;
+    const byId = new Map<string, ChatMessage>();
+    for (const m of msgState.messages) byId.set(m._id, m);
+    for (const b of blocks) {
+      const msg = byId.get(b.source.messageId);
+      if (!msg) continue;
+      const hit = opsCacheRef.current.get(b.id);
+      if (hit && hit.msg === msg) {
+        map.set(b.id, hit.ops);
+      } else {
+        const ops = msgOpsFor(msg);
+        opsCacheRef.current.set(b.id, { msg, ops });
+        map.set(b.id, ops);
+      }
+    }
+    return map;
+  }, [blocks, msgState.messages, core, msgOpsFor]);
 
   /* 视口状态 */
   const [view, setView] = useState(identityView());
@@ -389,7 +444,12 @@ export function PaperPanel() {
    * V3a：实测反馈环已拆——测量是唯一真相（chrome 常量镜像 CSS，改样式两处同步）。 */
   const stack = useMemo(
     () =>
-      blocks.map((b) => ({ id: b.id, h: b.state === 'flow' ? measureBlockHeight(b) : GHOST_H, w: b.w, kind: b.kind })),
+      blocks.map((b) => ({
+        id: b.id,
+        h: b.state === 'flow' ? measureBlockHeightCached(b, measureCacheRef.current) : GHOST_H,
+        w: b.w,
+        kind: b.kind,
+      })),
     [blocks],
   );
   const layout = useMemo(() => layoutFlow(stack), [stack]);
@@ -414,20 +474,26 @@ export function PaperPanel() {
   const OVERSCAN = 200;
   const flowGeom = useMemo(
     () =>
-      blocks.map((b) => ({
-        id: b.id,
-        y: layout.get(b.id)?.y ?? 0,
-        h: b.state === 'flow' ? measureBlockHeight(b) : GHOST_H,
-        x: layout.get(b.id)?.x ?? 0,
-        w: b.w,
+      stack.map((s) => ({
+        id: s.id,
+        y: layout.get(s.id)?.y ?? 0,
+        h: s.h,
+        x: layout.get(s.id)?.x ?? 0,
+        w: s.w,
       })) satisfies FlowGeom[],
-    [blocks, layout],
+    [stack, layout],
   );
   const pinnedGeom = useMemo(
     () =>
       blocks
         .filter((b) => b.state === 'pinned')
-        .map((b) => ({ id: b.id, x: b.x, y: b.y, w: b.w, h: measureBlockHeight(b) })) satisfies PinnedGeom[],
+        .map((b) => ({
+          id: b.id,
+          x: b.x,
+          y: b.y,
+          w: b.w,
+          h: measureBlockHeightCached(b, measureCacheRef.current),
+        })) satisfies PinnedGeom[],
     [blocks],
   );
   const viewRect = useMemo(
@@ -530,30 +596,36 @@ export function PaperPanel() {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
 
-  const onBlockMouseDown = useCallback(
-    (e: React.MouseEvent, block: SourcedBlock) => {
-      if (e.button !== 0) return;
-      e.stopPropagation(); // 不触发画布平移
-      e.preventDefault(); // 手柄拖拽不启动原生文本选择（文本区选择不经过这里）
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const w = screenToWorld(view, e.clientX - rect.left, e.clientY - rect.top);
-      // 偏移基于「当前渲染位」：flow 块取流布局位（block.x 是默认值 0，非渲染位）
-      const rx = block.state === 'flow' ? (layout.get(block.id)?.x ?? block.x) : block.x;
-      const ry = block.state === 'flow' ? (layout.get(block.id)?.y ?? block.y) : block.y;
-      dragRef.current = {
-        id: block.id,
-        sx: e.clientX,
-        sy: e.clientY,
-        moved: false,
-        wasFlow: block.state === 'flow',
-        bw: block.w,
-        offX: w.x - rx,
-        offY: w.y - ry,
-      };
-    },
-    [view, layout],
-  );
+  /* 稳定引用（性能专项第二刀）：平移/缩放每帧 view 变——回调读 ref 而非依赖
+   * view/layout，onBlockMouseDown 才可零依赖稳定（memo 友好，不逐帧重建闭包）。 */
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+
+  const onBlockMouseDown = useCallback((e: React.MouseEvent, block: SourcedBlock) => {
+    if (e.button !== 0) return;
+    e.stopPropagation(); // 不触发画布平移
+    e.preventDefault(); // 手柄拖拽不启动原生文本选择（文本区选择不经过这里）
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const v = viewRef.current;
+    const lay = layoutRef.current;
+    const w = screenToWorld(v, e.clientX - rect.left, e.clientY - rect.top);
+    // 偏移基于「当前渲染位」：flow 块取流布局位（block.x 是默认值 0，非渲染位）
+    const rx = block.state === 'flow' ? (lay.get(block.id)?.x ?? block.x) : block.x;
+    const ry = block.state === 'flow' ? (lay.get(block.id)?.y ?? block.y) : block.y;
+    dragRef.current = {
+      id: block.id,
+      sx: e.clientX,
+      sy: e.clientY,
+      moved: false,
+      wasFlow: block.state === 'flow',
+      bw: block.w,
+      offX: w.x - rx,
+      offY: w.y - ry,
+    };
+  }, []);
 
   /* 钉住/收回写入 paper-store（辅助函数——必须先于拖块 effect 定义，
    * 并进其依赖：sessionKey 切卷变化时拖拽监听需重建闭包，否则写错卷） */
@@ -1192,9 +1264,9 @@ export function PaperPanel() {
                   <BlockView
                     block={b}
                     seq={seqOf.get(b.id) ?? '000'}
-                    ops={msgOps(b)}
+                    ops={opsByBlock.get(b.id) ?? EMPTY_OPS}
                     onUnpin={onUnpin}
-                    onDragHandleMouseDown={(e) => onBlockMouseDown(e, b)}
+                    onDragHandleMouseDown={onBlockMouseDown}
                   />
                 </div>
               );
@@ -1222,9 +1294,9 @@ export function PaperPanel() {
                   <BlockView
                     block={b}
                     seq={seqOf.get(b.id) ?? '000'}
-                    ops={msgOps(b)}
+                    ops={opsByBlock.get(b.id) ?? EMPTY_OPS}
                     onUnpin={onUnpin}
-                    onDragHandleMouseDown={(e) => onBlockMouseDown(e, b)}
+                    onDragHandleMouseDown={onBlockMouseDown}
                   />
                 </div>
               </Fragment>

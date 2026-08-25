@@ -15,7 +15,7 @@
 //
 // 挂载：PaperPanel 书眉（pp-zoom 旁）。app 级单例 store，无面板生命周期。
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { useShellStore } from '../shell-store';
 import './status-line.css';
 
@@ -29,7 +29,7 @@ function formatLogTime(at: number): string {
   return h + ':' + m;
 }
 
-export function StatusLine() {
+export const StatusLine = memo(function StatusLine() {
   const statusText = useShellStore((s) => s.statusText);
   const statusLog = useShellStore((s) => s.statusLog);
   const analyzing = useShellStore((s) => s.analyzing);
@@ -95,4 +95,4 @@ export function StatusLine() {
       )}
     </div>
   );
-}
+});

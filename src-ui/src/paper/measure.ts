@@ -234,6 +234,53 @@ export function measureBlockHeight(b: SourcedBlock): number {
   }
 }
 
+/* ── 块级测量缓存（性能专项第一刀：流式全量重算 → 只真测变更块）──
+ * measureBlockHeight 内部的 prepareCache 已按「字体::文本」缓存 canvas 测量，
+ * 但每渲染仍会对全量块跑一遍 kind 分派 + 文本拆分 + prepare 命中查询。
+ * 块级缓存按 块 id + 内容签名 记忆高度：签名未变（消息未动）→ O(1) 命中，
+ * 流式只让最后一条消息的块（签名变化）真测一次，其余块零分派开销。 */
+
+export interface BlockMeasureCache {
+  byId: Map<string, { sig: string; h: number }>;
+}
+
+export function createBlockMeasureCache(): BlockMeasureCache {
+  return { byId: new Map() };
+}
+
+/** 内容签名（决定块高的全部 payload 字段——签名变 = 高度必须重测）。 */
+function measureSignature(b: SourcedBlock): string {
+  const p = b.payload as Record<string, unknown>;
+  switch (b.kind) {
+    case 'user':
+      return `user|${p.text ?? ''}|${(p.files as Array<{ path: string; name: string }> | undefined)?.length ?? 0}`;
+    case 'markdown':
+      return `markdown|${p.text ?? ''}`;
+    case 'reasoning':
+      return `reasoning|${p.text ?? ''}`;
+    case 'notice':
+      return `notice|${p.text ?? ''}`;
+    case 'diff':
+      return `diff|${p.lang ?? ''}|${p.text ?? ''}`;
+    case 'tool':
+      return `tool|${p.args ?? ''}|${p.output ?? ''}|${p.err ?? ''}`;
+    case 'code':
+      return `code|${p.code ?? ''}|${p.output ?? ''}|${p.err ?? ''}`;
+    case 'plan':
+      return `plan|${p.content ?? ''}|${(p.options as unknown[] | undefined)?.length ?? 0}|${p._callback ? 1 : 0}`;
+  }
+}
+
+/** 块高缓存测量：签名命中直接返回记忆高度，否则真测并登记。 */
+export function measureBlockHeightCached(b: SourcedBlock, cache: BlockMeasureCache): number {
+  const sig = measureSignature(b);
+  const hit = cache.byId.get(b.id);
+  if (hit && hit.sig === sig) return hit.h;
+  const h = measureBlockHeight(b);
+  cache.byId.set(b.id, { sig, h });
+  return h;
+}
+
 /* ── 缓存管理 ── */
 
 /** 测试复位（生产不调用）。 */

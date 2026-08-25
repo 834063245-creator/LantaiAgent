@@ -26,7 +26,12 @@ import {
   ZOOM_MIN,
   zoomAt,
 } from '../src/paper/canvas-math';
-import { splitFencedSegments, translateMessages, USER_BLOCK_WIDTH } from '../src/paper/translate';
+import {
+  splitFencedSegments,
+  translateMessages,
+  translateMessagesCached,
+  USER_BLOCK_WIDTH,
+} from '../src/paper/translate';
 import type { AssistantMessage, ChatMessage, UserMessage } from '../src/ui/message-model';
 
 /* ── 测试数据构造（真实 message-model 形状，非 mock 接口——数据是本地产物） ── */
@@ -346,5 +351,60 @@ describe('paper/translate', () => {
     toolPart.output = 'ok';
     const third = translateMessages([msg]);
     expect(third[1].payload).toMatchObject({ status: 'done', output: 'ok' });
+  });
+});
+
+/* ═══ 增量转译缓存（性能专项第一刀：流式全量重算 → 只重译被触碰的消息）═══ */
+
+describe('paper/translate 增量缓存', () => {
+  it('未变消息块对象引用稳定（流式只重建被触碰消息的块）', () => {
+    resetBlockIdCounterForTests();
+    const pinned: Record<string, { x: number; y: number }> = {};
+    const m1 = userMsg('u1', '稳定用户消息');
+    const part = { type: 'text' as const, text: 'v1', finalised: false };
+    const m2 = asstMsg('a1', [part]);
+    const first = translateMessagesCached([m1, m2], pinned, null);
+    // 触碰 m2（touchMessage 语义：浅拷贝该消息，引用变）
+    part.text = 'v1……流式变长';
+    const m2Touched = { ...m2 };
+    const second = translateMessagesCached([m1, m2Touched], pinned, first.cache);
+    expect(second.blocks).toHaveLength(2);
+    expect(second.blocks[0]).toBe(first.blocks[0]); // m1 块复用同一对象
+    expect(second.blocks[1]).not.toBe(first.blocks[1]); // m2 块重建
+    expect(second.blocks[1].payload).toEqual({ text: 'v1……流式变长' });
+  });
+
+  it('钉住表引用变化 → 缓存全量失效重建', () => {
+    resetBlockIdCounterForTests();
+    const m = asstMsg('a1', [{ type: 'text', text: 'x', finalised: true }]);
+    const pinned1: Record<string, { x: number; y: number }> = {};
+    const first = translateMessagesCached([m], pinned1, null);
+    const pinned2: Record<string, { x: number; y: number }> = { [first.blocks[0].id]: { x: 1, y: 2 } };
+    const second = translateMessagesCached([m], pinned2, first.cache);
+    expect(second.blocks[0]).not.toBe(first.blocks[0]);
+    expect(second.blocks[0].state).toBe('pinned');
+    expect(second.blocks[0].x).toBe(1);
+  });
+
+  it('新增消息走缓存补录，既有块引用不动', () => {
+    resetBlockIdCounterForTests();
+    const pinned: Record<string, { x: number; y: number }> = {};
+    const m1 = asstMsg('a1', [{ type: 'text', text: 'old', finalised: true }]);
+    const first = translateMessagesCached([m1], pinned, null);
+    const m2 = asstMsg('a2', [{ type: 'text', text: 'new', finalised: true }]);
+    const second = translateMessagesCached([m1, m2], pinned, first.cache);
+    expect(second.blocks[0]).toBe(first.blocks[0]);
+    expect(second.blocks[1].payload).toEqual({ text: 'new' });
+  });
+
+  it('消息数组整体换新引用（会话切换/磁盘恢复）→ 全部重译且缓存不脏', () => {
+    resetBlockIdCounterForTests();
+    const pinned: Record<string, { x: number; y: number }> = {};
+    const m1a = asstMsg('a1', [{ type: 'text', text: 'old', finalised: true }]);
+    const first = translateMessagesCached([m1a], pinned, null);
+    const m1b = asstMsg('a1', [{ type: 'text', text: 'new', finalised: true }]);
+    const second = translateMessagesCached([m1b], pinned, first.cache);
+    expect(second.blocks[0]).not.toBe(first.blocks[0]);
+    expect(second.blocks[0].payload).toEqual({ text: 'new' });
   });
 });

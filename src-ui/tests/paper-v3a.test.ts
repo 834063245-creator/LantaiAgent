@@ -22,7 +22,9 @@ import { layoutFlow, panBy, viewForAnchor, zoomAt } from '../src/paper/canvas-ma
 import { composerSubmitOnKey } from '../src/paper/ime';
 import {
   clearPaperMeasureCache,
+  createBlockMeasureCache,
   measureBlockHeight,
+  measureBlockHeightCached,
   measureTextHeight,
   OUT_MAX_H,
   PAPER_BODY_FONT,
@@ -351,5 +353,48 @@ describe('paper/measure → layoutFlow 接缝', () => {
     const mid = blocks[1];
     expect(laid.get(mid.id)?.y).toBe(-measureBlockHeight(last) - ANCHOR.blockGap - measureBlockHeight(mid));
     void DEFAULT_BLOCK_WIDTH;
+  });
+});
+
+/* ═══ 块级测量缓存（性能专项第一刀：签名未变零重测）═══ */
+
+describe('paper/measure 块级缓存', () => {
+  beforeEach(() => {
+    prepareMock.mockClear();
+    layoutMock.mockClear();
+    clearPaperMeasureCache();
+    resetBlockIdCounterForTests();
+  });
+
+  it('签名不变 → 命中块级缓存，不重复真测（layout 不二次调用）', () => {
+    const cache = createBlockMeasureCache();
+    const b = block('markdown', { text: '稳定文本' });
+    expect(measureBlockHeightCached(b, cache)).toBe(36);
+    expect(layoutMock).toHaveBeenCalledTimes(1);
+    measureBlockHeightCached(b, cache);
+    expect(layoutMock).toHaveBeenCalledTimes(1); // 命中缓存，未重测
+  });
+
+  it('内容签名变 → 该块重测，其余块仍命中（流式只真测被触碰块）', () => {
+    const cache = createBlockMeasureCache();
+    const stable = block('markdown', { text: 'stable' });
+    const growing = block('markdown', { text: 'v1' });
+    measureBlockHeightCached(stable, cache);
+    measureBlockHeightCached(growing, cache);
+    layoutMock.mockClear();
+    // 流式：growing 文本变长（block id 不变、payload 原位变更）
+    growing.payload.text = 'v1 变长';
+    measureBlockHeightCached(stable, cache); // 命中，零真测
+    measureBlockHeightCached(growing, cache); // 重测一次
+    expect(layoutMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('不同块同签名各自记账（key 是块 id 而非内容）', () => {
+    const cache = createBlockMeasureCache();
+    const a = block('markdown', { text: '同文本' });
+    const b = block('markdown', { text: '同文本' });
+    measureBlockHeightCached(a, cache);
+    measureBlockHeightCached(b, cache);
+    expect(layoutMock).toHaveBeenCalledTimes(2);
   });
 });

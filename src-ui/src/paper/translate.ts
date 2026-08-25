@@ -42,31 +42,76 @@ interface TranslateOpts {
   pinnedPositions?: ReadonlyMap<string, { x: number; y: number }>;
 }
 
-/** 转译主函数（纯函数，可无头测试）。 */
-export function translateMessages(messages: readonly ChatMessage[], opts?: TranslateOpts): SourcedBlock[] {
+/** 单条消息 → 块序列（纯函数，可无头测试；增量转译缓存的基本单元）。 */
+export function translateMessage(
+  msg: ChatMessage,
+  pinned: ReadonlyMap<string, { x: number; y: number }> | undefined,
+): SourcedBlock[] {
   const out: SourcedBlock[] = [];
-  const pinned = opts?.pinnedPositions;
-
-  const adopt = (b: SourcedBlock): void => {
+  if (msg.role === 'user') {
+    const b = translateUser(msg);
     const pos = pinned?.get(b.id);
-    if (pos) {
-      out.push({ ...b, state: 'pinned', x: pos.x, y: pos.y });
-    } else {
-      out.push(b);
-    }
-  };
-
-  for (const msg of messages) {
-    if (msg.role === 'user') {
-      adopt(translateUser(msg));
-    } else if (msg.role === 'notice') {
-      const b = createBlock('notice', { text: msg.text, level: msg.level }, { messageId: msg._id, part: null });
-      out.push(b);
-    } else {
-      translateAssistantParts(msg, out, pinned);
-    }
+    out.push(pos ? { ...b, state: 'pinned', x: pos.x, y: pos.y } : b);
+  } else if (msg.role === 'notice') {
+    out.push(createBlock('notice', { text: msg.text, level: msg.level }, { messageId: msg._id, part: null }));
+  } else {
+    translateAssistantParts(msg, out, pinned);
   }
   return out;
+}
+
+/** 转译主函数（纯函数，可无头测试）。 */
+export function translateMessages(messages: readonly ChatMessage[], opts?: TranslateOpts): SourcedBlock[] {
+  const pinned = opts?.pinnedPositions;
+  const out: SourcedBlock[] = [];
+  for (const msg of messages) out.push(...translateMessage(msg, pinned));
+  return out;
+}
+
+/* ── 增量转译缓存（性能专项第一刀：流式全量重算 → 只重译被触碰的消息）──
+ * 消息 store 的 touchMessage 语义是「浅拷贝被触碰的那条消息」——未触碰消息的
+ * 对象引用保持不变。本缓存以消息对象引用为 key：流式 token 只换最后一条消息的
+ * 引用 → 只有那条消息的块重建，其余块对象引用稳定（React.memo 因而在流式中也
+ * 能跳过未变块的 DOM 重渲染）。
+ * 钉住表引用变化（用户钉/收/拖）时缓存全量失效——钉住是稀有交互，全量重译可接受。 */
+
+export interface MessageTranslateCache {
+  /** 钉住表引用身份——引用变了必须全量重译（钉住状态变化） */
+  pinned: Readonly<Record<string, { x: number; y: number }>>;
+  pinnedMap: ReadonlyMap<string, { x: number; y: number }>;
+  byMessage: Map<ChatMessage, SourcedBlock[]>;
+}
+
+/** 增量转译入口：prev 为 null/钉住表变化时全量重建，否则只补新消息引用。 */
+export function translateMessagesCached(
+  messages: readonly ChatMessage[],
+  pinned: Readonly<Record<string, { x: number; y: number }>>,
+  prev: MessageTranslateCache | null,
+): { blocks: SourcedBlock[]; cache: MessageTranslateCache } {
+  if (!prev || prev.pinned !== pinned) {
+    const pinnedMap = new Map(Object.entries(pinned));
+    const byMessage = new Map<ChatMessage, SourcedBlock[]>();
+    const blocks: SourcedBlock[] = [];
+    for (const msg of messages) {
+      const sub = translateMessage(msg, pinnedMap);
+      byMessage.set(msg, sub);
+      blocks.push(...sub);
+    }
+    return { blocks, cache: { pinned, pinnedMap, byMessage } };
+  }
+  const byMessage = prev.byMessage;
+  const blocks: SourcedBlock[] = [];
+  for (const msg of messages) {
+    const sub = byMessage.get(msg);
+    if (sub) {
+      blocks.push(...sub);
+    } else {
+      const fresh = translateMessage(msg, prev.pinnedMap);
+      byMessage.set(msg, fresh);
+      blocks.push(...fresh);
+    }
+  }
+  return { blocks, cache: prev };
 }
 
 function translateUser(msg: UserMessage): SourcedBlock {

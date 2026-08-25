@@ -25,7 +25,7 @@
 // 经 getChatStore(core.panelId).sess 订阅；运行态经 agentSessionState
 // 版本号 + exec.onChange 订阅（exec 是 zustand vanilla——订阅后 setState 触发）。
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { agentSessionState } from '../../agent/agent-session-state';
 import type { ExecStateInstance } from '../../agent/execution-state';
 import { getChatStore } from '../../ui/chat-store';
@@ -52,7 +52,7 @@ function readRunning(storeId: string, sid: number): boolean {
   return !!exec && exec.isRunning;
 }
 
-export function SpineRack({ core }: { core: ChatCore | null }) {
+export const SpineRack = memo(function SpineRack({ core }: { core: ChatCore | null }) {
   const [sessions, setSessions] = useState<Array<{ id: number; label: string }>>([]);
   const [activeId, setActiveId] = useState<number>(-1);
   const [runningIds, setRunningIds] = useState<Set<number>>(new Set());
@@ -228,4 +228,4 @@ export function SpineRack({ core }: { core: ChatCore | null }) {
       </button>
     </div>
   );
-}
+});
