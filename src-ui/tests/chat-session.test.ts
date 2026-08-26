@@ -79,12 +79,13 @@ vi.mock('gsap', () => {
 vi.mock('highlight.js', () => ({ default: { highlightElement: vi.fn() } }));
 
 import { ChatCore } from '../src/app/chat/chat-core';
+import { createBlock } from '../src/paper/block-model';
 import { makeStrip } from '../src/paper/selection';
+import { getCanvasStore, resetCanvasStoresForTests, snapshotFromBlock } from '../src/state/canvas-store';
 import { getMessagesStore } from '../src/state/messages-store';
-import { getPaperStore } from '../src/state/paper-store';
 import * as Session from '../src/ui/chat-session';
 import { scanMaxSessionId, stripLineNumbers } from '../src/ui/chat-session';
-import { msgStoreFor } from '../src/ui/chat-store';
+import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
 
 // ── Helpers ──
 
@@ -94,14 +95,15 @@ function createChatPanel(): ChatCore {
 }
 
 /** Mock invoke to return session data on disk for read_file_content calls.
- *  workspace（U1）：卷归属工作区——带字段的桩模拟「已吸收进全局位的卷」。 */
+ *  workspace（U1）：卷归属工作区——默认 D:/test（listSavedSessions 测试的
+ *  查询路径），零目录退役后（Stage-5）无归属卷不再进列表。 */
 function mockSessionFile(id: number, messages: any[], label = `会话 ${id}`, savedAt?: string, workspace?: string) {
   return JSON.stringify({
     id,
     label,
     savedAt: savedAt || new Date().toISOString(),
     messages,
-    ...(workspace ? { workspace } : {}),
+    workspace: workspace ?? 'D:/test',
   });
 }
 
@@ -490,6 +492,8 @@ describe('ChatPanel session persistence', () => {
       };
       panel.setAgent(fakeAgent as any);
       panel.setAgentFactory(async () => fakeAgent as any);
+      // 零目录退役（Stage-5）：创建必须要有目录——先绑定工作区再建卷
+      panel.setProjectPath('D:/test');
       // 归零重建：setAgent 不铺卷——建卷 1 领预留句柄（disposable 面可测）
       await panel.createNewSession();
       expect(panel.getAgent()).toBeTruthy();
@@ -727,18 +731,17 @@ describe('ChatPanel session persistence', () => {
   });
 
   // ═══════════════════════════════════════════════════════════════
-  // 纸面用户层持久化（2026-08-24 收尾）：钉住块 + 纸条随卷落盘/恢复
+  // 画布公共物与摊开集合（Stage-5 工作区级）：布局/钉住/纸条不再随卷快照——
+  // 属于工作区画布状态（state/canvas-store），会话文件不再携带 paper 字段。
   // ═══════════════════════════════════════════════════════════════
 
-  describe('paper state persistence', () => {
+  describe('canvas state persistence (Stage-5 工作区级)', () => {
     const PROJ = 'D:/paper-test';
 
-    /** 起一卷有内容的案卷，返回捕获的 write 记录数组。
-     *  归零重建：setAgent 不铺卷——createNewSession 领预留句柄建卷 1。 */
+    /** 起一卷有内容的案卷，返回捕获的 write 记录数组。 */
     async function setupVolumeWithContent(writes: Array<{ file_path: string; content: string }>) {
       panel = createChatPanel();
       panel.setProjectPath(PROJ);
-      // DSH 形态：工厂造真句柄（createNewSession 现造）
       panel.setAgentFactory(
         async () =>
           ({
@@ -763,40 +766,35 @@ describe('ChatPanel session persistence', () => {
       return panel;
     }
 
-    it('saveActiveSession 落盘 JSON 携带 paper（钉住 + 纸条）', async () => {
+    it('saveActiveSession 落盘 JSON 不再携带 paper（布局/公共物已升格工作区级）', async () => {
       const writes: Array<{ file_path: string; content: string }> = [];
       await setupVolumeWithContent(writes);
 
-      // 模拟用户钉块 + 抽纸条（写 paper-store）
-      const paperStore = getPaperStore(panel.panelId).getState();
+      // 钉住块/纸条现在写 canvas-store（工作区级），不随会话快照
+      const canvasStore = getCanvasStore(panel.panelId).getState();
       const sid = Session.getSessions(panel.panelId)[0].id;
-      paperStore.setPinned(String(sid), 'pb:m1:0', { x: 800, y: -600 });
-      paperStore.addStrip(String(sid), makeStrip('引用片段', 900, -300, 480, { messageId: 'm1' }));
+      const block = createBlock('markdown', { text: '钉住内容' }, { messageId: 'm1', part: null });
+      canvasStore.setPin(block.id, {
+        x: 800,
+        y: -600,
+        w: block.w,
+        source: { sessionId: sid, blockId: block.id },
+        snapshot: snapshotFromBlock(block),
+      });
+      canvasStore.addStrip(makeStrip('引用片段', 900, -300, 480, { messageId: 'm1' }));
 
       await panel.saveActiveSession(PROJ);
 
       const write = writes.find((w) => w.file_path.endsWith(`/${sid}.json`));
       expect(write).toBeTruthy();
       const parsed = JSON.parse(write!.content);
-      expect(parsed.paper).toBeDefined();
-      expect(parsed.paper.pinned).toEqual({ 'pb:m1:0': { x: 800, y: -600 } });
-      expect(parsed.paper.strips).toHaveLength(1);
-      expect(parsed.paper.strips[0].text).toBe('引用片段');
-      expect(parsed.paper.strips[0].source).toEqual({ messageId: 'm1' });
+      expect(parsed.paper).toBeUndefined();
+      // 公共物在 canvas-store（工作区级）——不随卷落盘
+      expect(getCanvasStore(panel.panelId).getState().pins[block.id]).toMatchObject({ x: 800, y: -600 });
+      expect(getCanvasStore(panel.panelId).getState().strips).toHaveLength(1);
     });
 
-    it('纸面空（无钉住无纸条）落盘仍带空 paper 字段（恢复路径零特判）', async () => {
-      const writes: Array<{ file_path: string; content: string }> = [];
-      await setupVolumeWithContent(writes);
-      await panel.saveActiveSession(PROJ);
-
-      const sid = Session.getSessions(panel.panelId)[0].id;
-      const write = writes.find((w) => w.file_path.endsWith(`/${sid}.json`));
-      const parsed = JSON.parse(write!.content);
-      expect(parsed.paper).toEqual({ pinned: {}, strips: [] });
-    });
-
-    it('合卷（closeSession）落盘快照携带该卷纸面数据，且内存中该卷纸面被清除', async () => {
+    it('合卷（closeSession）：流区从摊开集合移除、公共物钉保留（钉到拔为止）', async () => {
       const writes: Array<{ file_path: string; content: string }> = [];
       await setupVolumeWithContent(writes);
       // 起第二卷，让第一卷可被合掉
@@ -812,23 +810,32 @@ describe('ChatPanel session persistence', () => {
       panel.setAgentFactory(async () => agent2 as any);
       await panel.createNewSession();
 
-      // 钉卷一（背景卷）的块
-      const paperStore = getPaperStore(panel.panelId).getState();
-      paperStore.setPinned('1', 'pb:m1:0', { x: 100, y: -100 });
+      // 摊开卷一 + 钉卷一（背景卷）的块
+      const canvasStore = getCanvasStore(panel.panelId).getState();
+      canvasStore.setRegion('1', { anchorX: 0, anchorY: 0, width: 1440 });
+      const block = createBlock('markdown', { text: '钉住内容' }, { messageId: 'm1', part: null });
+      canvasStore.setPin(block.id, {
+        x: 100,
+        y: -100,
+        w: block.w,
+        source: { sessionId: 1, blockId: block.id },
+        snapshot: snapshotFromBlock(block),
+      });
 
       panel.closeSession(0); // 合卷一
 
-      // 归零重建：排干微任务后断言（见 C8 用例注释）
       await new Promise((r) => setTimeout(r, 0));
       const write1 = writes.find((w) => w.file_path.endsWith('/1.json'));
       expect(write1).toBeTruthy();
       const parsed = JSON.parse(write1!.content);
-      expect(parsed.paper?.pinned).toEqual({ 'pb:m1:0': { x: 100, y: -100 } });
-      // 内存中卷一纸面已清（getPinned 回到稳定空引用）
-      expect(paperStore.getPinned('1')).toEqual({});
+      expect(parsed.paper).toBeUndefined();
+      // 卷一从摊开集合移除（流区退场不重排）；公共物钉保留
+      expect(getCanvasStore(panel.panelId).getState().spread['1']).toBeUndefined();
+      expect(getCanvasStore(panel.panelId).getState().pins[block.id]).toMatchObject({ x: 100, y: -100 });
     });
 
-    it('loadSessionFromDisk 恢复 paper 到 paper-store（旧存档无字段 = 空纸面）', async () => {
+    it('loadSessionFromDisk：会话文件里的旧 paper 字段不再回灌（只读工作区画布状态）', async () => {
+      resetCanvasStoresForTests();
       panel = createChatPanel();
       panel.setProjectPath(PROJ);
       panel.setAgent({
@@ -848,7 +855,7 @@ describe('ChatPanel session persistence', () => {
       mockInvoke.mockImplementation((_cmd: string, payload: any) => {
         const { method, params } = payload;
         if (method === 'read_file_content') {
-          // 模拟磁盘上的会话文件（带 paper + workspace 字段——归零世界卷恒带归属）
+          // 模拟磁盘上的会话文件（带旧 paper 字段——归零世界卷恒带归属）
           return Promise.resolve(
             JSON.stringify({
               id: 5,
@@ -872,10 +879,203 @@ describe('ChatPanel session persistence', () => {
 
       await panel.loadSessionFromDisk(PROJ, 5);
 
-      const paperStore = getPaperStore(panel.panelId).getState();
-      expect(paperStore.getPinned('5')).toEqual({ 'pb:m9:0': { x: 42, y: -42 } });
-      expect(paperStore.getStrips('5')).toHaveLength(1);
-      expect(paperStore.getStrips('5')[0].text).toBe('旧纸条');
+      // 会话文件里的旧 paper 是惰性字段——不回灌 canvas-store（工作区级由
+      // 工作区画布状态文件提供，不在卷文件里）
+      const canvas = getCanvasStore(panel.panelId).getState();
+      expect(canvas.pins).toEqual({});
+      expect(canvas.strips).toEqual([]);
+      // 会话本身照常打开
+      expect(Session.getSessions(panel.panelId).some((s) => s.id === 5)).toBe(true);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // Stage-5 收尾：恢复摊开集 + 删卷公共物不连坐 + 零目录退役（bind/archive）
+  // ═══════════════════════════════════════════════════════════════
+
+  describe('Stage-5 canvas restore & zero-dir retirement', () => {
+    const PROJ = 'D:/restore-test';
+
+    it('restoreCanvasSpread：读工作区画布状态文件 → 摊开集合落回画布 + 活跃会话', async () => {
+      resetCanvasStoresForTests();
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      const agent2 = {
+        getSession: () => [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content: '旧消息' },
+        ],
+        setSession: vi.fn(),
+        dispose: vi.fn(),
+        cascadeAbort: vi.fn(),
+      };
+      panel.setAgentFactory(async () => agent2 as any);
+      mockInvoke.mockReset();
+      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
+        const { method, params } = payload;
+        if (method === 'read_file_content') {
+          const fp = params.file_path as string;
+          if (fp.endsWith('/.lantai/canvas.json')) {
+            return Promise.resolve(
+              JSON.stringify({
+                version: 1,
+                spread: [{ sessionId: 5, anchorX: 6480, anchorY: -1200, width: 1440 }],
+                activeSessionId: 5,
+                publics: { pinned: {}, strips: [] },
+              }),
+            );
+          }
+          if (fp.endsWith('/5.json')) {
+            return Promise.resolve(
+              JSON.stringify({
+                id: 5,
+                label: '卷五',
+                workspace: PROJ,
+                messages: [
+                  { role: 'system', content: 'sys' },
+                  { role: 'user', content: 'hi' },
+                ],
+              }),
+            );
+          }
+        }
+        return Promise.resolve('ok');
+      });
+
+      await panel.restoreCanvasSpread(PROJ);
+
+      // 摊开集合恢复：卷 5 已摊开 + 位置从画布状态文件恢复
+      expect(Session.getSessions(panel.panelId).map((s) => s.id)).toContain(5);
+      expect(getCanvasStore(panel.panelId).getState().getRegion('5')).toEqual({
+        anchorX: 6480,
+        anchorY: -1200,
+        width: 1440,
+      });
+      // 活跃会话恢复（创作坞/输入条跟随）
+      const st = getChatStore(panel.panelId).sess.getState();
+      expect(st.sessions[st.activeIdx]?.id).toBe(5);
+    });
+
+    it('deleteSessionFile：流区移除、公共物钉保留（公共物不连坐，钉到拔为止）', async () => {
+      resetCanvasStoresForTests();
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      panel.setAgentFactory(
+        async () =>
+          ({
+            getSession: () => [
+              { role: 'system', content: 'sys' },
+              { role: 'user', content: '内容' },
+            ],
+            setSession: vi.fn(),
+            dispose: vi.fn(),
+            cascadeAbort: vi.fn(),
+          }) as any,
+      );
+      mockInvoke.mockReset();
+      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
+        const { method, params } = payload;
+        if (method === 'read_file_content') {
+          return Promise.resolve(
+            JSON.stringify({
+              id: 7,
+              label: '卷七',
+              workspace: PROJ,
+              messages: [
+                { role: 'system', content: 'sys' },
+                { role: 'user', content: 'hi' },
+              ],
+            }),
+          );
+        }
+        void params;
+        return Promise.resolve('ok');
+      });
+      await panel.createNewSession();
+      const canvas = getCanvasStore(panel.panelId).getState();
+      const sid = Session.getSessions(panel.panelId)[0].id;
+      canvas.setRegion(String(sid), { anchorX: 0, anchorY: 0, width: 1440 });
+      const block = createBlock('markdown', { text: '公共钉' }, { messageId: 'm1', part: null });
+      canvas.setPin(block.id, {
+        x: 100,
+        y: -100,
+        w: block.w,
+        source: { sessionId: sid, blockId: block.id },
+        snapshot: snapshotFromBlock(block),
+      });
+
+      await panel.deleteSessionFile(PROJ, sid);
+
+      // 流区从摊开集合移除（卷没了）；公共物钉保留（不连坐）
+      const after = getCanvasStore(panel.panelId).getState();
+      expect(after.getRegion(String(sid))).toBeUndefined();
+      expect(after.getPin(block.id)).toMatchObject({ x: 100, y: -100 });
+    });
+
+    it('bindZeroDirSessions：零目录卷 → 归入目标工作区（workspace 字段改写）', async () => {
+      panel = createChatPanel();
+      panel.setProjectPath('');
+      mockInvoke.mockReset();
+      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
+        const { method, params } = payload;
+        if (method === 'list_directory') {
+          return Promise.resolve(JSON.stringify([{ name: '9.json', path: '/s/9.json', is_dir: false }]));
+        }
+        if (method === 'read_file_content') {
+          return Promise.resolve(
+            JSON.stringify({
+              id: 9,
+              label: '零目录卷',
+              workspace: null,
+              messages: [{ role: 'user', content: 'x' }],
+            }),
+          );
+        }
+        void params;
+        return Promise.resolve('ok');
+      });
+
+      const n = await panel.bindZeroDirSessions('D:/target');
+      expect(n).toBe(1);
+      const writes = mockInvoke.mock.calls.filter((c: any[]) => c[1]?.method === 'write_file_content');
+      expect(writes.length).toBe(1);
+      const parsed = JSON.parse(writes[0][1].params.content);
+      expect(parsed.workspace).toBe('D:/target'); // 归入目标工作区
+    });
+
+    it('archiveZeroDirSessions：拷贝到归档目录 + 原位墓碑（代码永不回读）', async () => {
+      panel = createChatPanel();
+      panel.setProjectPath('');
+      mockInvoke.mockReset();
+      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
+        const { method, params } = payload;
+        if (method === 'list_directory') {
+          return Promise.resolve(JSON.stringify([{ name: '9.json', path: '/s/9.json', is_dir: false }]));
+        }
+        if (method === 'read_file_content') {
+          return Promise.resolve(
+            JSON.stringify({
+              id: 9,
+              label: '零目录卷',
+              workspace: null,
+              messages: [{ role: 'user', content: 'x' }],
+            }),
+          );
+        }
+        void params;
+        return Promise.resolve('ok');
+      });
+
+      const n = await panel.archiveZeroDirSessions();
+      expect(n).toBe(1);
+      const writes = mockInvoke.mock.calls.filter((c: any[]) => c[1]?.method === 'write_file_content');
+      // 两份写：归档拷贝（原样） + 原位墓碑（deleted:true）
+      expect(writes.length).toBe(2);
+      const [archiveWrite, tombstoneWrite] = writes;
+      expect(archiveWrite[1].params.file_path).toContain('sessions-archive-');
+      expect(JSON.parse(archiveWrite[1].params.content).id).toBe(9);
+      const tomb = JSON.parse(tombstoneWrite[1].params.content);
+      expect(tomb.deleted).toBe(true);
     });
   });
 

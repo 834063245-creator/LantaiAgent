@@ -14,9 +14,9 @@ import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
 import { ComposerDock } from '../src/app/panels/ComposerDock';
 import { PaperDockContext, type PaperDockContextValue } from '../src/paper/overlay-context';
+import { resetCanvasStoresForTests } from '../src/state/canvas-store';
 import { getComposeStore, resetComposeStoresForTests } from '../src/state/compose-store';
 import { useModeStore } from '../src/state/mode-store';
-import { resetPaperStoresForTests } from '../src/state/paper-store';
 import { getChatStore } from '../src/ui/chat-store';
 
 function fakeCore(panelId: string): ChatCore {
@@ -71,7 +71,7 @@ describe('ComposerDock 返工 P2-2（思考档位 pill 下拉，DSH 移植）', 
 
   beforeEach(() => {
     resetComposeStoresForTests();
-    resetPaperStoresForTests();
+    resetCanvasStoresForTests();
     container = document.createElement('div');
     document.body.appendChild(container);
   });
@@ -160,7 +160,7 @@ describe('ComposerDock 运行中守卫（DSH 移植）', () => {
 
   beforeEach(() => {
     resetComposeStoresForTests();
-    resetPaperStoresForTests();
+    resetCanvasStoresForTests();
     container = document.createElement('div');
     document.body.appendChild(container);
   });
@@ -196,7 +196,7 @@ describe('ComposerDock 返工 P2-3（权限分段 + 全放模态）', () => {
 
   beforeEach(() => {
     resetComposeStoresForTests();
-    resetPaperStoresForTests();
+    resetCanvasStoresForTests();
     useModeStore.setState({ permissionMode: 'ask', pendingYolo: false });
     container = document.createElement('div');
     document.body.appendChild(container);

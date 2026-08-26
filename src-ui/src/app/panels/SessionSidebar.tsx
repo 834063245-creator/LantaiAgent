@@ -183,7 +183,14 @@ export const SessionSidebar = memo(function SessionSidebar() {
   const onNew = useCallback(() => {
     if (!core) return;
     setLocalNotice(null);
-    void core.createNewSession();
+    // 出生 = 一种展开：绑定视角聚焦（用户拍板）——新卷落点（最近空位）
+    // 相对视口中心，聚焦把它带到眼前
+    void (async () => {
+      await core.createNewSession();
+      const st = getChatStore(core.panelId).sess.getState();
+      const sid = st.sessions[st.activeIdx]?.id;
+      if (sid != null) useCanvasViewStore.getState().requestFocus(String(sid));
+    })();
   }, [core]);
 
   const onCollapseSidebar = useCallback(() => {

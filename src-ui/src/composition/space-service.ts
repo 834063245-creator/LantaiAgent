@@ -10,22 +10,24 @@
 // ctx.space 提供：
 //   - 读画布状态：getState() → { regions, activeSessionId }（流区位置 +
 //     活跃会话，供插件/工具读）
-//   - 订阅：subscribe(cb) → 流区/活跃会话变化即回调（paper-store +
+//   - 订阅：subscribe(cb) → 流区/活跃会话变化即回调（canvas-store +
 //     sess store 双订阅）
 //   - 空间命令：focus（定位）/ expand（展开）/ collapse（收起）/ place（落位）
 //
 // 本阶段只打孔不消费完整形态：书脊三手势（阶段 3）、目次带（阶段 4）届时
 // 以插件消费本通道；demo 插件（plugins/space-demo-plugin）验证孔真的能用。
 //
-// 状态权威不变：流区位置唯一真相 = state/paper-store（随会话快照落盘）；
-// 活跃会话唯一权威 = sess store 的 activeIdx。本 service 是只读合流 +
-// 命令转发，不持有任何画布状态（「创作坞是视图不是容器」同族纪律）。
+// 状态权威不变：流区位置唯一真相 = state/canvas-store（工作区级，随
+// 工作区画布状态文件落盘，Stage-5）；活跃会话唯一权威 = sess store 的
+// activeIdx。本 service 是只读合流 + 命令转发，不持有任何画布状态
+// （「创作坞是视图不是容器」同族纪律）。
 
 import { useCoreStore } from '../app/chat/core-instance';
 import { useShellStore } from '../app/shell-store';
 import { type Context, Service } from '../cordis';
 import { defaultRegionFor } from '../paper/space';
-import { getPaperStore } from '../state/paper-store';
+import { getCanvasStore, regionFor } from '../state/canvas-store';
+import { useCanvasViewStore } from '../state/canvas-view-store';
 import { getChatStore } from '../ui/chat-store';
 
 /** 插件/工具可见的流区快照（空间读面单元）。 */
@@ -59,10 +61,9 @@ export class SpaceService extends Service {
     const panelId = panelIdOf();
     if (!panelId) return { regions: [], activeSessionId: null };
     const sessSt = getChatStore(panelId).sess.getState();
-    const paper = getPaperStore(panelId).getState();
     const activeSid = sessSt.sessions[sessSt.activeIdx]?.id ?? null;
     const regions: SpaceRegionState[] = sessSt.sessions.map((s, i) => {
-      const region = paper.getRegion(String(s.id)) ?? defaultRegionFor(i);
+      const region = regionFor(panelId, String(s.id)) ?? defaultRegionFor(i);
       return {
         sessionId: String(s.id),
         label: s.label,
@@ -79,7 +80,7 @@ export class SpaceService extends Service {
     const panelId = panelIdOf();
     if (!panelId) return () => {};
     const unsubs: Array<() => void> = [];
-    unsubs.push(getPaperStore(panelId).subscribe(cb));
+    unsubs.push(getCanvasStore(panelId).subscribe(cb));
     unsubs.push(getChatStore(panelId).sess.subscribe(cb));
     return () => {
       for (const u of unsubs) u();
@@ -95,23 +96,25 @@ export class SpaceService extends Service {
     const idx = sessSt.sessions.findIndex((s) => String(s.id) === sessionId);
     if (idx < 0) return;
     core?.switchSession(idx);
-    getPaperStore(panelId).getState().setActiveRegion(sessionId);
+    getCanvasStore(panelId).getState().setActiveRegion(sessionId);
   }
 
   /** 空间命令·落位：把流区摆到指定世界坐标（边缘拖拽落定的同族 API）。 */
   place(sessionId: string, anchorX: number, anchorY: number): void {
     const panelId = panelIdOf();
     if (!panelId) return;
-    const paper = getPaperStore(panelId).getState();
-    const cur = paper.getRegion(sessionId);
-    paper.setRegion(sessionId, {
+    const canvas = getCanvasStore(panelId).getState();
+    const cur = regionFor(panelId, sessionId);
+    canvas.setRegion(sessionId, {
       anchorX,
       anchorY,
       width: cur?.width ?? defaultRegionFor(0).width,
     });
   }
 
-  /** 空间命令·展开：把磁盘上已有卷摊上画布（未开则开，已开只定位）。 */
+  /** 空间命令·展开：把磁盘上已有卷摊上画布（未开则开，已开只定位）。
+   *  展开绑定视角聚焦（用户拍板：不然落点找不到）——load 落定后
+   *  requestFocus，流区出现后 PaperPanel 补飞。 */
   expand(sessionId: string): void {
     const panelId = panelIdOf();
     const core = useCoreStore.getState().core;
@@ -124,7 +127,9 @@ export class SpaceService extends Service {
     }
     // 从当前工作区磁盘续开（fire-and-forget；失败由 loadSessionFromDisk 通知）
     const ws = useShellStore.getState().projectPath;
-    void core.loadSessionFromDisk(ws, Number(sessionId));
+    void core.loadSessionFromDisk(ws, Number(sessionId)).then(() => {
+      useCanvasViewStore.getState().requestFocus(sessionId);
+    });
   }
 
   /** 空间命令·收起：合卷（流区从画布彻底退场；不自动重排——用户自主）。 */

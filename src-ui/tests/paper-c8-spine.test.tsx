@@ -16,8 +16,8 @@ import { useCoreStore } from '../src/app/chat/core-instance';
 import { SpineRack } from '../src/app/panels/SpineRack';
 import { SpaceService } from '../src/composition/space-service';
 import { Context } from '../src/cordis';
+import { getCanvasStore, resetCanvasStoresForTests } from '../src/state/canvas-store';
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
-import { getPaperStore, resetPaperStoresForTests } from '../src/state/paper-store';
 import { getChatStore } from '../src/ui/chat-store';
 
 /** 最小 ChatCore 桩：SpineRack 只消费这几个面。 */
@@ -58,7 +58,7 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
-    resetPaperStoresForTests();
+    resetCanvasStoresForTests();
     useCanvasViewStore.getState().requestFocus(null);
   });
   afterEach(() => {
@@ -208,7 +208,7 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
       window.dispatchEvent(new MouseEvent('mouseup', { clientX: 2600, clientY: 30 }));
     });
     // 世界 x=2600 → 吸附列 1（2160）；无占用列 → 落该列；y=用户落点 30
-    expect(getPaperStore('sr-t7').getState().getRegion('1')).toEqual({
+    expect(getCanvasStore('sr-t7').getState().spread['1']).toEqual({
       anchorX: 2160,
       anchorY: 30,
       width: 1440,

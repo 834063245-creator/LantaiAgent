@@ -164,6 +164,12 @@ async function switchWorkspace(
       console.error('[switchWorkspace] autoRestoreLastSession failed:', e);
       pushStatus(`⚠️ 会话恢复失败: ${e instanceof Error ? e.message : String(e)}`);
     });
+    // Stage-5：进工作区恢复画布——摊开集合 + 各自位置 + 活跃会话（拍板 11：
+    // 展开 = 永远展开，重启恢复；Q-B 在画布语义下不再适用）。
+    await chatPanel.restoreCanvasSpread(folder).catch((e) => {
+      console.error('[switchWorkspace] restoreCanvasSpread failed:', e);
+      pushStatus(`⚠️ 画布布局恢复失败: ${e instanceof Error ? e.message : String(e)}`);
+    });
     if (ws._graphEngineOn) {
       ws.runCheck();
       await typedRpc('workspace_start_watcher', {}).catch(() => {});

@@ -8,14 +8,14 @@
 // ——本文件把类型外提为共享模块（纯类型零运行时，避免 PaperPanel ↔ 组件
 // 的循环 import）。
 
-import type { PaperPinnedState } from '../state/paper-store';
 import type { SourcedBlock } from './block-model';
-import type { PaperStrip } from './selection';
 import type { StreamRegionState } from './space';
 import type { FlowGeom, PinnedGeom } from './virtualize';
 
 /** 单会话（流区）的完整渲染态——派生计算的最小隔离单元：
- *  一个会话吐字只重算它自己的栈（"单流区更新=常数"铁律）。 */
+ *  一个会话吐字只重算它自己的栈（"单流区更新=常数"铁律）。
+ *  Stage-5：公共物（钉住块/纸条）已升格为工作区级（state/canvas-store），
+ *  不再随流区归属——本类型不含 strips/pinned，渲染层读全局画布状态。 */
 export interface RegionView {
   sessionId: string;
   sessionNum: number;
@@ -28,8 +28,6 @@ export interface RegionView {
   flowWindow: { first: number; lastExcl: number };
   visibleIds: Set<string>;
   seq: Map<string, string>;
-  strips: PaperStrip[];
-  pinned: PaperPinnedState;
   /** 流区内容顶（世界 y——最旧块顶） */
   regionTop: number;
   /** 流区内容底（世界 y = 锚点 y——最新块底边） */

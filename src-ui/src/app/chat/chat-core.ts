@@ -22,6 +22,7 @@ import { useShellStore } from '../../app/shell-store';
 import type { ToolSchema } from '../../provider/types';
 import type { StarGraph } from '../../scene/graph-types';
 import { askSessionOf, useAskStore } from '../../state/ask-store';
+import { getCanvasStore, loadCanvasFromDisk, saveCanvasToDisk } from '../../state/canvas-store';
 import { useChatContextStore } from '../../state/chat-context-store';
 import { useDockStore } from '../../state/dock-store';
 import { broadcastGoalRecord, useGoalStore } from '../../state/goal-store';
@@ -729,6 +730,47 @@ export class ChatCore {
   }
   async deleteSessionFile(projectPath: string, sessionId: number): Promise<void> {
     return Session.deleteSessionFile(this._sessionCtx(), projectPath, sessionId);
+  }
+
+  /** Stage-5：进工作区恢复画布——读工作区画布状态文件 → 摊开集合落回画布
+   *  （拍板 11：展开 = 永远展开，重启恢复；Q-B 在画布语义下不再适用）。 */
+  async restoreCanvasSpread(workspace: string): Promise<void> {
+    await loadCanvasFromDisk(this.panelId, workspace);
+    const canvas = getCanvasStore(this.panelId).getState();
+    const st = getChatStore(this.panelId).sess.getState();
+    const openIds = new Set(st.sessions.map((s) => s.id));
+    for (const sid of Object.keys(canvas.spread)) {
+      const n = Number(sid);
+      if (!openIds.has(n)) {
+        try {
+          await this.loadSessionFromDisk(workspace, n);
+        } catch (e) {
+          console.error('[canvas] 恢复摊开卷失败', n, e);
+        }
+      }
+    }
+    // 恢复活跃会话指向（画布状态文件的 activeSessionId——创作坞/输入条跟随）
+    const activeSid = canvas.activeSessionId ? Number(canvas.activeSessionId) : null;
+    if (activeSid != null) {
+      const st2 = getChatStore(this.panelId).sess.getState();
+      const idx = st2.sessions.findIndex((s) => s.id === activeSid);
+      if (idx >= 0 && idx !== st2.activeIdx) this.switchSession(idx);
+    }
+  }
+
+  /** Stage-5：显式保存点落盘工作区画布状态（切换/关闭窗口时调用）。 */
+  async saveCanvasState(workspace: string): Promise<void> {
+    await saveCanvasToDisk(this.panelId, workspace);
+  }
+
+  /** Stage-5 零目录退役：存量零目录卷 → 归入某工作区。返回处理卷数。 */
+  async bindZeroDirSessions(targetWs: string): Promise<number> {
+    return Session.bindZeroDirSessions(this._sessionCtx(), targetWs);
+  }
+
+  /** Stage-5 零目录退役：存量零目录卷 → 归档（拷贝 + 墓碑）。返回归档卷数。 */
+  async archiveZeroDirSessions(): Promise<number> {
+    return Session.archiveZeroDirSessions(this._sessionCtx());
   }
 
   // ── 轮次撤回（委托给 chat-session.ts）──

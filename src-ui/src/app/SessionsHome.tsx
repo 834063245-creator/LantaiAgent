@@ -17,9 +17,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { typedJsonRpc } from '../rpc-contract';
 import { workspaceFlow } from '../shell/rows/workspace';
+import { useCanvasViewStore } from '../state/canvas-view-store';
 import { useDockStore } from '../state/dock-store';
 import { useUpdateStore } from '../state/update-store';
 import { ensureUserSessionsDir } from '../ui/chat-session';
+import { getChatStore } from '../ui/chat-store';
 import { useCoreStore } from './chat/core-instance';
 import { useShellStore } from './shell-store';
 import { WinControls } from './WinControls';
@@ -109,21 +111,22 @@ export function SessionsHome() {
     };
   }, [paperOpen]);
 
-  /** 工作区清单：按 workspace 字段分组（'' = 零目录桶），按最近保存降序。 */
+  /** 工作区清单：按 workspace 字段分组（Stage-5：零目录退役——零目录卷
+   *  不进工作区卡，独立走「绑定目录/归档」退役动作；无目录不能进画布）。 */
   const workspaces = useMemo<WorkspaceCard[]>(() => {
     const groups = new Map<string, UserSession[]>();
     for (const s of sessions) {
-      const key = s.workspace ?? '';
-      const arr = groups.get(key) ?? [];
+      if (!s.workspace) continue; // 零目录卷不进工作区清单
+      const arr = groups.get(s.workspace) ?? [];
       arr.push(s);
-      groups.set(key, arr);
+      groups.set(s.workspace, arr);
     }
     const out: WorkspaceCard[] = [];
     for (const [ws, list] of groups) {
       list.sort((a, b) => new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime());
       out.push({
         workspace: ws,
-        name: ws ? workspaceShortName(ws) : '零目录',
+        name: workspaceShortName(ws),
         sessions: list,
         latest: list[0]?.saved_at ?? '',
       });
@@ -132,12 +135,17 @@ export function SessionsHome() {
     return out;
   }, [sessions]);
 
+  /** 存量零目录卷（Stage-5 退役对象：要么绑目录、要么归档，不能进画布）。 */
+  const zeroDirSessions = useMemo(() => sessions.filter((s) => !s.workspace), [sessions]);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [zeroDirBusy, setZeroDirBusy] = useState(false);
+
   /** 进入工作区画布：打开纸面板 + （必要时）切到该工作区。
-   *  Q-B：进入不自动摊开卷——卷由画布侧边栏另起/展开。 */
+   *  Q-B：进入不自动摊开卷——摊开集由画布状态文件恢复（Stage-5 拍板 11）。 */
   const onEnterWorkspace = useCallback(
     (ws: string) => {
       openPanel('paper');
-      if (!ws) return; // 零目录：当前占位工作区即画布，直接进入
+      if (!ws) return; // 零目录：当前占位工作区即画布，直接进入（退役后不出现）
       const current = useShellStore.getState().projectPath;
       if (ws !== current) {
         void workspaceFlow.switchWorkspace(ws, { skipAnalysis: true });
@@ -149,13 +157,53 @@ export function SessionsHome() {
   const onNewSession = useCallback(() => {
     openPanel('paper');
     if (!core) return;
-    void core.createNewSession();
+    // 零目录退役（Stage-5 拍板 a）：创建必须要有目录——无工作区先选/建工作区
+    if (!useShellStore.getState().projectPath) {
+      void workspaceFlow.switchWorkspace();
+      return;
+    }
+    // 出生 = 一种展开：绑定视角聚焦（用户拍板）——新卷落点（最近空位）
+    // 相对视口中心，聚焦把它带到眼前
+    void (async () => {
+      await core.createNewSession();
+      const st = getChatStore(core.panelId).sess.getState();
+      const sid = st.sessions[st.activeIdx]?.id;
+      if (sid != null) useCanvasViewStore.getState().requestFocus(String(sid));
+    })();
   }, [core, openPanel]);
 
   const onNewSessionWithDir = useCallback(() => {
     openPanel('paper');
     void workspaceFlow.switchWorkspace();
   }, [openPanel]);
+
+  /** 零目录卷 → 绑目录：把全部零目录卷归入用户选的工作区。 */
+  const onBindZeroDir = useCallback(async () => {
+    const { open } = await import('@tauri-apps/plugin-dialog');
+    const result = (await open({ directory: true, multiple: false, title: '选择工作区目录' })) as string | null;
+    if (!result || !core) return;
+    setZeroDirBusy(true);
+    setNotice(null);
+    try {
+      const n = await core.bindZeroDirSessions(result);
+      setNotice(n > 0 ? `已把 ${n} 卷零目录案卷归入工作区` : '没有可绑定的零目录案卷');
+    } finally {
+      setZeroDirBusy(false);
+    }
+  }, [core]);
+
+  /** 零目录卷 → 归档：拷贝到归档目录 + 原位墓碑（代码永不回读）。 */
+  const onArchiveZeroDir = useCallback(async () => {
+    if (!core) return;
+    setZeroDirBusy(true);
+    setNotice(null);
+    try {
+      const n = await core.archiveZeroDirSessions();
+      setNotice(n > 0 ? `已归档 ${n} 卷零目录案卷` : '没有可归档的零目录案卷');
+    } finally {
+      setZeroDirBusy(false);
+    }
+  }, [core]);
 
   const onOpenSettings = useCallback(() => openPanel('settings'), [openPanel]);
   // 更新角标（update-store）：启动自动检查发现新版本且用户未看过 → 朱砂点
@@ -206,28 +254,43 @@ export function SessionsHome() {
 
         {workspaces.length > 0 ? (
           <div className="sh-workspaces">
-            {workspaces.map((w) => {
-              const isZeroDir = w.workspace === '';
-              return (
-                <button
-                  key={w.workspace || '__zero__'}
-                  type="button"
-                  className="sh-ws-card"
-                  onClick={() => onEnterWorkspace(w.workspace)}
-                  aria-label={`进入工作区：${w.name}（${w.sessions.length} 卷）`}
-                >
-                  <span className="sh-ws-name">{w.name}</span>
-                  <span className="sh-ws-meta">
-                    {w.sessions.length} 卷 · 最近 {formatSessionDate(w.latest)}
-                  </span>
-                  <span className="sh-ws-enter">{isZeroDir ? '进入画布' : '进入画布 →'}</span>
-                </button>
-              );
-            })}
+            {workspaces.map((w) => (
+              <button
+                key={w.workspace}
+                type="button"
+                className="sh-ws-card"
+                onClick={() => onEnterWorkspace(w.workspace)}
+                aria-label={`进入工作区：${w.name}（${w.sessions.length} 卷）`}
+              >
+                <span className="sh-ws-name">{w.name}</span>
+                <span className="sh-ws-meta">
+                  {w.sessions.length} 卷 · 最近 {formatSessionDate(w.latest)}
+                </span>
+                <span className="sh-ws-enter">进入画布 →</span>
+              </button>
+            ))}
           </div>
         ) : (
-          <p className="sh-empty-hint">从一卷新案卷开始——需要 Agent 干活时再绑目录。</p>
+          <p className="sh-empty-hint">从一卷新案卷开始——需要 Agent 干活时先创建/选择一个工作区目录。</p>
         )}
+
+        {/* 零目录卷退役（Stage-5 拍板 a）：无目录不能进画布——存量零目录卷
+         * 要么绑目录（归入某工作区）、要么归档。 */}
+        {zeroDirSessions.length > 0 && (
+          <div className="sh-zero-dir">
+            <span className="sh-zero-dir-title">零目录案卷 · {zeroDirSessions.length} 卷（待退役）</span>
+            <span className="sh-zero-dir-desc">这些案卷没有所属工作区，无法进入画布。请归入一个工作区或归档。</span>
+            <div className="sh-zero-dir-actions">
+              <button type="button" className="sh-btn-text" disabled={zeroDirBusy} onClick={onBindZeroDir}>
+                绑定目录
+              </button>
+              <button type="button" className="sh-btn-text" disabled={zeroDirBusy} onClick={onArchiveZeroDir}>
+                归档
+              </button>
+            </div>
+          </div>
+        )}
+        {notice && <p className="sh-notice">{notice}</p>}
 
         <div className="sh-actions">
           <button type="button" className="sh-btn-primary" onClick={onNewSession}>

@@ -88,6 +88,8 @@ describe('#1 exportSession parameter name', () => {
       dispose: vi.fn(),
     } as any;
     panel.setAgent(fakeAgent);
+    // 零目录退役（Stage-5）：创建必须要有目录——绑定工作区再建卷
+    panel.setProjectPath('/test');
     // 归零重建：setAgent 不铺卷——建卷 1 领预留句柄（exportSession 导出活跃卷）
     await panel.createNewSession();
 

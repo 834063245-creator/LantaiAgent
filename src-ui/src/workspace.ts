@@ -542,6 +542,13 @@ export class Workspace {
       /* 忽略 */
     }
 
+    // Stage-5：切走前落盘工作区画布状态（布局 + 公共物——工作区级，随工作区走）
+    try {
+      await chatPanel.saveCanvasState(this.path);
+    } catch {
+      /* 忽略 */
+    }
+
     // 停止 watcher 并清除后端状态
     try {
       await typedRpc('workspace_deactivate', {});

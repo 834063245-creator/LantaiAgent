@@ -9,7 +9,8 @@
 //   ChatMessage[] → paper/translate 转译 → SourcedBlock[] → 注疏渲染）。
 // 一纸多卷（Stage-2，docs/plans/canvas-space/stage-2.md）：
 //   - 每个摊开的会话 = 一个**流区**（StreamRegion），自锚点向上长；
-//     流区位置 = 工作区级持久化（state/paper-store，随会话快照落盘）。
+//     流区位置 = 工作区级持久化（state/canvas-store，随工作区画布状态文件
+//     {workspace}/.lantai/canvas.json 落盘，不随会话快照——Stage-5）。
 //   - 新会话默认线性排比落位（贴上一个右侧）；拖流区边缘移动整个流区，
 //     X 轴吸附网格（宽度+间距 = 2160）。
 //   - 平移/缩放全局；虚拟化 = 数据全量、渲染只画视口内可见块。
@@ -20,7 +21,7 @@
 // 书眉：卷名 + 缩放读数 + 设置入口 + 关卷（回案卷首页）+ 窗口控制。
 // 输入条：写 input-store（真相源），提交走 core.sendMessage()。
 
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { activeOverlayContributions, subscribeOverlayContributions } from '../../composition/overlay-service';
 import { resolveRenderer } from '../../composition/renderer-service';
 import {
@@ -49,7 +50,13 @@ import {
 import { PaperDockContext, PaperRegionContext } from '../../paper/overlay-context';
 import type { RegionView } from '../../paper/region-view';
 import { classifyDropZone, makeStrip, type PaperStrip, stashStripPositionAt } from '../../paper/selection';
-import { defaultRegionFor, STREAM_REGION, type StreamRegionState, snapRegionX } from '../../paper/space';
+import {
+  defaultRegionFor,
+  nearestFreeRegion,
+  STREAM_REGION,
+  type StreamRegionState,
+  snapRegionX,
+} from '../../paper/space';
 import { type MessageTranslateCache, translateMessagesCached } from '../../paper/translate';
 import {
   type FlowGeom,
@@ -58,9 +65,15 @@ import {
   visibleFlowWindow,
   visiblePinnedIds,
 } from '../../paper/virtualize';
+import {
+  blockFromSnapshot,
+  type CanvasStore,
+  getCanvasStore,
+  scheduleCanvasSave,
+  snapshotFromBlock,
+} from '../../state/canvas-store';
 import { useCanvasViewStore } from '../../state/canvas-view-store';
 import { useDockStore } from '../../state/dock-store';
-import { getPaperStore } from '../../state/paper-store';
 import { useUpdateStore } from '../../state/update-store';
 import { getChatStore, msgStoreFor } from '../../ui/chat-store';
 import type { AssistantMessage, ChatMessage, TextPart, UserMessage } from '../../ui/message-model';
@@ -224,6 +237,33 @@ const GHOST_H = 32;
 /** 稳定空引用——无会话/无钉住时避免无谓重渲染 */
 const EMPTY_OPS: BlockOp[] = [];
 
+/** 稳定空画布——core 缺席时 useSyncExternalStore 读面（无核心面板 = 空态，方法 no-op） */
+const EMPTY_CANVAS: CanvasStore = {
+  spread: {},
+  pins: {},
+  strips: [],
+  activeSessionId: null,
+  getRegion: () => undefined,
+  getPin: () => undefined,
+  getPins: () => ({}),
+  getStrips: () => [],
+  setRegion: () => {},
+  moveRegion: () => {},
+  ensureRegion: () => {},
+  removeRegion: () => {},
+  setPin: () => {},
+  movePin: () => {},
+  unpin: () => {},
+  replacePins: () => {},
+  addStrip: () => {},
+  moveStrip: () => {},
+  removeStrip: () => {},
+  replaceStrips: () => {},
+  setActiveRegion: () => {},
+  loadCanvas: () => {},
+  clearCanvas: () => {},
+};
+
 /** 按点是否落在选区几何矩形内（±4px 容差盖住行间边缘）。 */
 function pointInSelectionRects(range: Range, x: number, y: number): boolean {
   const rects = range.getClientRects();
@@ -295,24 +335,37 @@ export function PaperPanel() {
     });
   }, [sessions]);
 
-  /* 活跃流区镜像：paper-store.activeRegionId 跟随 sess activeIdx（单一权威），
-   * setActiveRegion 引用短路——同值不触发订阅（不产生无谓自动保存）。 */
+  /* 活跃流区镜像：canvas-store.activeSessionId 跟随 sess activeIdx（单一权威），
+   * setActiveRegion 引用短路——同值不触发订阅（不产生无谓画布保存）。 */
   useEffect(() => {
     if (!core) return;
-    getPaperStore(core.panelId)
+    getCanvasStore(core.panelId)
       .getState()
       .setActiveRegion(activeSessionId != null ? String(activeSessionId) : null);
   }, [core, activeSessionId]);
 
-  /* paper-store 订阅 tick：钉住/纸条/流区位置变更触发重渲染 + 防抖自动保存 */
+  /* 画布状态响应式读面（Stage-5：state/canvas-store 工作区级唯一真相）。
+   * useSyncExternalStore——zustand 原生 subscribe/getState，引用稳定
+   * （pins/spread/strips 对象引用不变 = 无重渲染 + translate 缓存命中）。 */
+  const canvasStoreId = core?.panelId ?? null;
+  const canvasState = useSyncExternalStore<CanvasStore>(
+    useCallback(
+      (cb: () => void) => (canvasStoreId ? getCanvasStore(canvasStoreId).subscribe(cb) : () => {}),
+      [canvasStoreId],
+    ),
+    useCallback(() => (canvasStoreId ? getCanvasStore(canvasStoreId).getState() : EMPTY_CANVAS), [canvasStoreId]),
+  );
+
+  /* 画布状态变更 → 防抖落盘（工作区画布状态文件）。Stage-5：布局/公共物
+   * 不再随会话快照落盘，独立走 {workspace}/.lantai/canvas.json。 */
   const [paperTick, setPaperTick] = useState(0);
   useEffect(() => {
     if (!core) return;
-    const paper = getPaperStore(core.panelId);
-    return paper.subscribe(() => {
+    const canvas = getCanvasStore(core.panelId);
+    return canvas.subscribe(() => {
       setPaperTick((t) => t + 1);
       const pp = useShellStore.getState().projectPath;
-      if (pp) core.scheduleAutoSave(pp);
+      if (pp) scheduleCanvasSave(core.panelId, pp);
     });
   }, [core]);
 
@@ -331,16 +384,28 @@ export function PaperPanel() {
     }
   }, [sessions]);
 
-  /* 新会话默认线性排比落位（Stage-2 定案）：未落位的流区按序补默认位置并持久化。
-   * ensureRegion 幂等——只补缺，不覆盖已摆放位置；落位变化随 paper-store
-   * 订阅触发自动保存（位置随工作区走）。 */
+  /* 新会话默认落位（Stage-5 用户拍板改：X 线性 → 最近空位，不分栏）：
+   * 未落位的流区落在「当前视口中心」最近的空列（X 吸附栅格，Y 取视口中心）。
+   * 展开绑定视角聚焦（调用方 requestFocus）——落点可预期且一定看得到。
+   * ensureRegion 幂等——只补缺，不覆盖已摆放位置（重启恢复的位置不碰）。 */
   useEffect(() => {
     if (!core) return;
-    const paper = getPaperStore(core.panelId).getState();
-    sessions.forEach((s, i) => {
+    const canvas = getCanvasStore(core.panelId).getState();
+    const missing = sessions.filter((s) => !canvas.spread[String(s.id)]);
+    if (missing.length === 0) return;
+    const v = useCanvasViewStore.getState();
+    const center = viewportCenterWorld(v.view, v.canvasSize.w, v.canvasSize.h);
+    const occupied: Array<{ sessionId: string; anchorX: number }> = Object.entries(canvas.spread).map(([sid, r]) => ({
+      sessionId: sid,
+      anchorX: r.anchorX,
+    }));
+    for (const s of missing) {
       const sid = String(s.id);
-      if (!paper.getRegion(sid)) paper.ensureRegion(sid, defaultRegionFor(i));
-    });
+      if (canvas.spread[sid]) continue;
+      const region = nearestFreeRegion(occupied, center.x, center.y);
+      canvas.ensureRegion(sid, region);
+      occupied.push({ sessionId: sid, anchorX: region.anchorX });
+    }
   }, [core, sessions]);
 
   const activeSessionKey = activeSessionId != null ? String(activeSessionId) : null;
@@ -413,8 +478,6 @@ export function PaperPanel() {
   const [edgeDragPos, setEdgeDragPos] = useState<{ sessionId: string; x: number; y: number } | null>(null);
 
   /* ── 每流区派生数据（核心：一纸多卷的布局/虚拟化/渲染态）── */
-  const paperStoreRef = useRef(core ? getPaperStore(core.panelId) : null);
-  paperStoreRef.current = core ? getPaperStore(core.panelId) : null;
   /* 稳定引用（性能专项第二刀）：平移/缩放每帧 view 变——回调读 ref 而非依赖
    * view/layout，onBlockMouseDown 才可零依赖稳定（memo 友好，不逐帧重建闭包）。 */
   const viewRef = useRef(view);
@@ -422,20 +485,25 @@ export function PaperPanel() {
   const regionsRef = useRef<RegionView[]>([]);
   const blockSessionRef = useRef<Map<string, string>>(new Map());
 
+  /* 钉住块位置查找表：引用随 canvasState.pins 引用稳定——不变化时 translate
+   * 缓存命中（流式增量铁律：纸面不动的会话零重算）。 */
+  const pinsMap = useMemo(() => {
+    const m: Record<string, { x: number; y: number }> = {};
+    for (const [id, pin] of Object.entries(canvasState.pins)) m[id] = { x: pin.x, y: pin.y };
+    return m;
+  }, [canvasState.pins]);
+
   const regions: RegionView[] = useMemo(() => {
-    // paperTick/measureTick 是显式失效信号：纸面状态（钉住/纸条/流区位置）或
-    // 测量缓存清空后必须重算本 memo——void 引用使依赖声明与闭包语义一致。
+    // paperTick/measureTick 是显式失效信号：测量缓存清空后必须重算本 memo——
+    // void 引用使依赖声明与闭包语义一致（canvasState 变化本身就是触发源）。
     void paperTick;
     void measureTick;
-    const paper = paperStoreRef.current?.getState() ?? null;
     const out: RegionView[] = [];
     const blockSession = new Map<string, string>();
     sessions.forEach((s, i) => {
       const sid = String(s.id);
       const msgs = regionMsgs[s.id]?.messages ?? [];
-      const pinned = paper?.getPinned(sid) ?? {};
-      const strips = paper?.getStrips(sid) ?? [];
-      const persisted = paper?.getRegion(sid);
+      const persisted = canvasState.spread[sid];
       const baseAnchor = persisted ?? defaultRegionFor(i);
       // 边缘拖动中：用拖动态锚点覆盖（块/纸条随流区整体平移）
       const dragging = edgeDragPos && edgeDragPos.sessionId === sid;
@@ -444,7 +512,7 @@ export function PaperPanel() {
         : baseAnchor;
 
       let cache = translateCacheBySession.current.get(s.id) ?? null;
-      const res = translateMessagesCached(msgs, pinned, cache);
+      const res = translateMessagesCached(msgs, pinsMap, cache);
       cache = res.cache;
       translateCacheBySession.current.set(s.id, cache);
       const blocks = res.blocks;
@@ -499,8 +567,6 @@ export function PaperPanel() {
         flowWindow,
         visibleIds,
         seq,
-        strips,
-        pinned,
         regionTop,
         regionBottom,
         regionHeight: Math.max(0, regionBottom - regionTop) + 72,
@@ -508,9 +574,29 @@ export function PaperPanel() {
     });
     blockSessionRef.current = blockSession;
     return out;
-  }, [sessions, regionMsgs, paperTick, viewRect, edgeDragPos, measureTick]);
+  }, [sessions, regionMsgs, paperTick, viewRect, edgeDragPos, measureTick, canvasState, pinsMap]);
 
   regionsRef.current = regions;
+
+  /* 公共物 · 纸条（工作区级宿主，Stage-5）：不再随流区归属——独立渲染层 */
+  const canvasStrips = canvasState.strips;
+  /* 公共物 · 孤儿钉：源会话未摊开/已删除，或源块当前不在摊开会话的转译结果里
+   * （消息撤回等）——以快照渲染的独立钉层（公共物不绑会话，钉到拔为止） */
+  const openSessionIds = useMemo(() => new Set(sessions.map((s) => String(s.id))), [sessions]);
+  const openBlockIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of regions) for (const b of r.blocks) s.add(b.id);
+    return s;
+  }, [regions]);
+  const orphanPins = useMemo(() => {
+    const out: Array<[string, (typeof canvasState.pins)[string]]> = [];
+    for (const [id, pin] of Object.entries(canvasState.pins)) {
+      const srcOpen = pin.source ? openSessionIds.has(String(pin.source.sessionId)) : false;
+      const present = pin.source ? openBlockIds.has(pin.source.blockId) : false;
+      if (!srcOpen || !present) out.push([id, pin]);
+    }
+    return out;
+  }, [canvasState.pins, openSessionIds, openBlockIds]);
 
   /* ── 视口轻动画：飞到指定会话的指定世界 y（书脊定位器/目次带共用）──
    * 复用 viewFocusRegion（锚到流区中轴 + 目标世界 y）；未摊开卷 expand
@@ -720,10 +806,12 @@ export function PaperPanel() {
     };
   }, [panning, setView]);
 
-  /* ── 拖块（D-R2-1 拖出钉住）：阈值即脱流 → 全程跟手 → 松手判位 ── */
+  /* ── 拖块（D-R2-1 拖出钉住）：阈值即脱流 → 全程跟手 → 松手判位 ──
+   * Stage-5：钉住块 = 工作区级公共物。源会话未摊开的孤儿钉（快照块）同样
+   * 可拖（sessionId 缺省）——拖动更新 canvas.pins 位置，不重新钉。 */
   const dragRef = useRef<{
     id: string;
-    sessionId: string;
+    sessionId: string | undefined;
     sx: number;
     sy: number;
     moved: boolean;
@@ -731,6 +819,7 @@ export function PaperPanel() {
     bw: number;
     offX: number;
     offY: number;
+    block: SourcedBlock | null;
   } | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
@@ -742,8 +831,7 @@ export function PaperPanel() {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     const sessionId = blockSessionRef.current.get(block.id);
-    if (sessionId == null) return;
-    const region = regionsRef.current.find((r) => r.sessionId === sessionId);
+    const region = sessionId ? regionsRef.current.find((r) => r.sessionId === sessionId) : undefined;
     const v = viewRef.current;
     const w = screenToWorld(v, e.clientX - rect.left, e.clientY - rect.top);
     const lay = region?.layout;
@@ -759,13 +847,38 @@ export function PaperPanel() {
       bw: block.w,
       offX: w.x - rx,
       offY: w.y - ry,
+      block,
     };
   }, []);
 
+  /** 落定钉住：新钉 = 捕获快照 + 活引用源；已钉 = 移位置；pos null = 收回。
+   *  源会话缺省（孤儿钉）= 只移动既有钉，不新建。 */
   const commitPinned = useCallback(
-    (sessionId: string, blockId: string, pos: { x: number; y: number } | null) => {
+    (
+      sessionId: string | undefined,
+      blockId: string,
+      pos: { x: number; y: number } | null,
+      block?: SourcedBlock | null,
+    ) => {
       if (!core) return;
-      getPaperStore(core.panelId).getState().setPinned(sessionId, blockId, pos);
+      const canvas = getCanvasStore(core.panelId).getState();
+      if (!pos) {
+        canvas.unpin(blockId);
+        return;
+      }
+      const existing = canvas.pins[blockId];
+      if (existing) {
+        canvas.movePin(blockId, pos.x, pos.y);
+        return;
+      }
+      if (!block) return;
+      canvas.setPin(blockId, {
+        x: pos.x,
+        y: pos.y,
+        w: block.w,
+        source: sessionId ? { sessionId: Number(sessionId), blockId } : undefined,
+        snapshot: snapshotFromBlock(block),
+      });
     },
     [core],
   );
@@ -782,7 +895,7 @@ export function PaperPanel() {
         d.moved = true;
         setDraggingId(d.id);
         if (d.wasFlow) {
-          commitPinned(d.sessionId, d.id, { x: w.x - d.offX, y: w.y - d.offY });
+          commitPinned(d.sessionId, d.id, { x: w.x - d.offX, y: w.y - d.offY }, d.block);
         }
       }
       setDragPos({ x: w.x - d.offX, y: w.y - d.offY });
@@ -797,13 +910,13 @@ export function PaperPanel() {
       const w = screenToWorld(view, e.clientX - rect.left, e.clientY - rect.top);
       const fx = w.x - d.offX;
       const fy = w.y - d.offY;
-      const region = regionsRef.current.find((r) => r.sessionId === d.sessionId);
+      const region = d.sessionId ? regionsRef.current.find((r) => r.sessionId === d.sessionId) : undefined;
       const bandCenter = region?.anchor.anchorX ?? 0;
-      // 松手判位：落在来源流区窄带内且原为 flow → 回流（不钉）
-      if (d.wasFlow && Math.abs(fx - bandCenter) <= ANCHOR.bandHalfWidth) {
+      // 松手判位：落在来源流区窄带内且原为 flow → 回流（不钉）；孤儿钉不回流
+      if (d.wasFlow && d.sessionId && Math.abs(fx - bandCenter) <= ANCHOR.bandHalfWidth) {
         commitPinned(d.sessionId, d.id, null);
       } else {
-        commitPinned(d.sessionId, d.id, { x: fx, y: fy });
+        commitPinned(d.sessionId, d.id, { x: fx, y: fy }, d.block);
       }
       setDragPos(null);
     };
@@ -815,11 +928,11 @@ export function PaperPanel() {
     };
   }, [view, commitPinned]);
 
-  /* 收回/占位符点击恢复（即时手势，双向对称） */
+  /* 收回（即时手势，双向对称）：钉从纸上拔掉（回到流/或孤儿钉直接消失） */
   const onUnpin = useCallback(
-    (sessionId: string, id: string) => {
+    (id: string) => {
       if (!core) return;
-      getPaperStore(core.panelId).getState().setPinned(sessionId, id, null);
+      getCanvasStore(core.panelId).getState().unpin(id);
     },
     [core],
   );
@@ -849,7 +962,7 @@ export function PaperPanel() {
       const idx = st.sessions.findIndex((s) => String(s.id) === sessionId);
       if (idx < 0) return;
       if (idx !== st.activeIdx) core.switchSession(idx);
-      getPaperStore(core.panelId).getState().setActiveRegion(sessionId);
+      getCanvasStore(core.panelId).getState().setActiveRegion(sessionId);
     },
     [core],
   );
@@ -940,11 +1053,11 @@ export function PaperPanel() {
       edgeDragLatestRef.current = null;
       setEdgeDragPos(null);
       if (!d || !core) return;
-      const paper = getPaperStore(core.panelId).getState();
-      const cur = paper.getRegion(d.sessionId);
+      const canvas = getCanvasStore(core.panelId).getState();
+      const cur = canvas.spread[d.sessionId];
       const x = last && last.sessionId === d.sessionId ? last.x : snapRegionX(cur?.anchorX ?? d.ax);
       const y = last && last.sessionId === d.sessionId ? last.y : (cur?.anchorY ?? d.ay);
-      paper.setRegion(d.sessionId, {
+      canvas.setRegion(d.sessionId, {
         anchorX: x,
         anchorY: y,
         width: cur?.width ?? STREAM_REGION.width,
@@ -958,7 +1071,8 @@ export function PaperPanel() {
     };
   }, [core]);
 
-  /* 小地图（D-R1-1 方位感：全画布内容聚落 + 视口框）——跨流区包围盒 */
+  /* 小地图（D-R1-1 方位感：全画布内容聚落 + 视口框）——跨流区包围盒。
+   * Stage-5：公共物（纸条 + 孤儿钉快照）同样计入画布范围。 */
   const minimap = useMemo(() => {
     let x0 = Infinity;
     let y0 = Infinity;
@@ -977,12 +1091,18 @@ export function PaperPanel() {
         x1 = Math.max(x1, g.x + g.w);
         y1 = Math.max(y1, g.y + g.h);
       }
-      for (const s of r.strips) {
-        x0 = Math.min(x0, s.x);
-        y0 = Math.min(y0, s.y);
-        x1 = Math.max(x1, s.x + s.w);
-        y1 = Math.max(y1, s.y + 96);
-      }
+    }
+    for (const s of canvasStrips) {
+      x0 = Math.min(x0, s.x);
+      y0 = Math.min(y0, s.y);
+      x1 = Math.max(x1, s.x + s.w);
+      y1 = Math.max(y1, s.y + 96);
+    }
+    for (const [, pin] of orphanPins) {
+      x0 = Math.min(x0, pin.x);
+      y0 = Math.min(y0, pin.y);
+      x1 = Math.max(x1, pin.x + pin.w);
+      y1 = Math.max(y1, pin.y + 96);
     }
     if (!Number.isFinite(x0)) {
       x0 = -400;
@@ -991,13 +1111,13 @@ export function PaperPanel() {
       y1 = 0;
     }
     return { content: { x0, y0, x1, y1 }, viewport: viewRect };
-  }, [regions, viewRect]);
+  }, [regions, viewRect, canvasStrips, orphanPins]);
 
   /* ── 抽纸条交互（A 拖拽做正 + B 选中浮钮）──
-   * 一纸多卷：纸条按来源会话归属（data-session-id），落点相对来源流区 */
+   * Stage-5：纸条 = 工作区级公共物（拷贝语义快照，独立宿主，不挂会话）——
+   * 落点相对来源流区计算，但数据本身不再随流区归属。 */
   const stripDragRef = useRef<{
     id: string;
-    sessionId: string;
     sx: number;
     sy: number;
     moved: boolean;
@@ -1022,8 +1142,9 @@ export function PaperPanel() {
     (sessionId: string, text: string, messageId: string | undefined, x: number, y: number) => {
       const trimmed = text.trim();
       if (!trimmed || !core) return;
+      void sessionId; // 纸条 = 工作区级公共物（Stage-5），源会话只作溯源展示
       const strip = makeStrip(trimmed, x, y, 480, messageId ? { messageId } : undefined);
-      getPaperStore(core.panelId).getState().addStrip(sessionId, strip);
+      getCanvasStore(core.panelId).getState().addStrip(strip);
     },
     [core],
   );
@@ -1235,19 +1356,18 @@ export function PaperPanel() {
     }
     const worldMidY = screenToWorld(view, 0, selRect.top + selRect.height / 2 - rect.top).y;
     const region = regionsRef.current.find((r) => r.sessionId === selAnchor.sessionId);
-    const strips = region?.strips ?? [];
     const centerX = region?.anchor.anchorX ?? 0;
-    const pos = stashStripPositionAt(worldMidY, strips, ANCHOR.bandHalfWidth, centerX);
+    const pos = stashStripPositionAt(worldMidY, canvasStrips, ANCHOR.bandHalfWidth, centerX);
     spawnStrip(selAnchor.sessionId, selAnchor.text, selAnchor.messageId, pos.x, pos.y);
     window.getSelection()?.removeAllRanges();
     setSelAnchor(null);
-  }, [selAnchor, view, spawnStrip]);
+  }, [selAnchor, view, spawnStrip, canvasStrips]);
 
-  /* 拖纸条：与拖块同款阈值手势——超阈才跟动，松手一次性写 paper-store */
+  /* 拖纸条：与拖块同款阈值手势——超阈才跟动，松手一次性写 canvas-store */
   const [dragStripId, setDragStripId] = useState<string | null>(null);
   const [stripDragPos, setStripDragPos] = useState<{ x: number; y: number } | null>(null);
   const onStripMouseDown = useCallback(
-    (e: React.MouseEvent, sessionId: string, s: PaperStrip) => {
+    (e: React.MouseEvent, s: PaperStrip) => {
       if (e.button !== 0) return;
       e.stopPropagation();
       const rect = canvasRef.current?.getBoundingClientRect();
@@ -1255,7 +1375,6 @@ export function PaperPanel() {
       const w = screenToWorld(view, e.clientX - rect.left, e.clientY - rect.top);
       stripDragRef.current = {
         id: s.id,
-        sessionId,
         sx: e.clientX,
         sy: e.clientY,
         moved: false,
@@ -1288,9 +1407,9 @@ export function PaperPanel() {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
       const w = screenToWorld(view, e.clientX - rect.left, e.clientY - rect.top);
-      getPaperStore(core.panelId)
+      getCanvasStore(core.panelId)
         .getState()
-        .moveStrip(d.sessionId, d.id, w.x - d.offX, w.y - d.offY);
+        .moveStrip(d.id, w.x - d.offX, w.y - d.offY);
     };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
@@ -1301,9 +1420,9 @@ export function PaperPanel() {
   }, [view, core]);
 
   const onRemoveStrip = useCallback(
-    (sessionId: string, id: string) => {
+    (id: string) => {
       if (!core) return;
-      getPaperStore(core.panelId).getState().removeStrip(sessionId, id);
+      getCanvasStore(core.panelId).getState().removeStrip(id);
     },
     [core],
   );
@@ -1316,8 +1435,8 @@ export function PaperPanel() {
 
   const zoomLabel = Math.round(view.zoom * 100) + '%';
   const totalBlocks = regions.reduce((n, r) => n + r.blocks.length, 0);
-  const totalPinned = regions.reduce((n, r) => n + Object.keys(r.pinned).length, 0);
-  const totalStrips = regions.reduce((n, r) => n + r.strips.length, 0);
+  const totalPinned = Object.keys(canvasState.pins).length;
+  const totalStrips = canvasState.strips.length;
 
   /* 流区容器横向可见性（虚拟化：眼睛看不到的流区不进 DOM） */
   const visibleRegionIds = useMemo(() => {
@@ -1479,40 +1598,68 @@ export function PaperPanel() {
                 );
               })}
 
-              {/* 纸条（V3a：拷贝语义快照，可拖动、可销毁；按来源流区渲染） */}
-              {regions.map((r) =>
-                r.strips.map((s) => {
-                  const stripDragged = dragStripId === s.id;
-                  const stripPos = stripDragged && stripDragPos ? stripDragPos : { x: s.x, y: s.y };
-                  return (
-                    // biome-ignore lint/a11y/noStaticElementInteractions: 纸条拖拽面（D-R2-1 手势族）
-                    <div
-                      key={s.id}
-                      className={`pp-strip${stripDragged ? ' pp-dragging' : ''}`}
-                      style={{ left: stripPos.x, top: stripPos.y, width: s.w }}
-                      onMouseDown={(e) => onStripMouseDown(e, r.sessionId, s)}
-                    >
-                      <div className="pp-strip-head">
-                        <span className="pp-strip-tag">纸条</span>
-                        <button
-                          type="button"
-                          className="pp-strip-remove"
-                          title="销毁纸条"
-                          aria-label="销毁纸条"
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onRemoveStrip(r.sessionId, s.id);
-                          }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                      <div className="pp-strip-body">{s.text}</div>
+              {/* 纸条（V3a：拷贝语义快照，可拖动、可销毁；工作区级公共物 Stage-5） */}
+              {canvasStrips.map((s) => {
+                const stripDragged = dragStripId === s.id;
+                const stripPos = stripDragged && stripDragPos ? stripDragPos : { x: s.x, y: s.y };
+                return (
+                  // biome-ignore lint/a11y/noStaticElementInteractions: 纸条拖拽面（D-R2-1 手势族）
+                  <div
+                    key={s.id}
+                    className={`pp-strip${stripDragged ? ' pp-dragging' : ''}`}
+                    style={{ left: stripPos.x, top: stripPos.y, width: s.w }}
+                    onMouseDown={(e) => onStripMouseDown(e, s)}
+                  >
+                    <div className="pp-strip-head">
+                      <span className="pp-strip-tag">纸条</span>
+                      <button
+                        type="button"
+                        className="pp-strip-remove"
+                        title="销毁纸条"
+                        aria-label="销毁纸条"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveStrip(s.id);
+                        }}
+                      >
+                        ✕
+                      </button>
                     </div>
-                  );
-                }),
-              )}
+                    <div className="pp-strip-body">{s.text}</div>
+                  </div>
+                );
+              })}
+
+              {/* 公共物 · 孤儿钉（源会话未摊开/已删除，Stage-5）：以快照独立渲染——
+               * 公共物不绑会话、钉到拔为止。源会话摊开时由下方流区 pass 渲染活块。 */}
+              {orphanPins.map(([pinId, pin]) => {
+                const snapshotBlock = blockFromSnapshot(pinId, pin);
+                const isDragged = draggingId === pinId;
+                const pos = isDragged && dragPos ? dragPos : { x: pin.x, y: pin.y };
+                return (
+                  // biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler
+                  <div
+                    key={pinId}
+                    className={[
+                      'pp-block',
+                      `pp-${snapshotBlock.kind}`,
+                      'pp-pinned',
+                      isDragged ? 'pp-dragging' : '',
+                    ].join(' ')}
+                    style={{ left: pos.x, top: pos.y, width: pin.w }}
+                    onDragStart={(e) => e.preventDefault()}
+                  >
+                    <BlockView
+                      block={snapshotBlock}
+                      seq="PIN"
+                      ops={EMPTY_OPS}
+                      onUnpin={onUnpin}
+                      onDragHandleMouseDown={onBlockMouseDown}
+                    />
+                  </div>
+                );
+              })}
 
               {/* 流序列：每流区 flow 块按序渲染（视口窗口化——视口外不进 DOM） */}
               {regions.map((r) =>
@@ -1534,7 +1681,7 @@ export function PaperPanel() {
                           block={b}
                           seq={r.seq.get(b.id) ?? '000'}
                           ops={opsByBlock.get(b.id) ?? EMPTY_OPS}
-                          onUnpin={(id) => onUnpin(r.sessionId, id)}
+                          onUnpin={onUnpin}
                           onDragHandleMouseDown={onBlockMouseDown}
                         />
                       </div>
@@ -1548,7 +1695,7 @@ export function PaperPanel() {
                         type="button"
                         className="pp-ghost"
                         style={{ left: slot.x, top: slot.y, width: b.w, height: GHOST_H }}
-                        onClick={() => onGhostClick(r.sessionId, b.id)}
+                        onClick={() => onGhostClick(b.id)}
                       >
                         已移出 · 点击恢复
                       </button>
@@ -1564,7 +1711,7 @@ export function PaperPanel() {
                           block={b}
                           seq={r.seq.get(b.id) ?? '000'}
                           ops={opsByBlock.get(b.id) ?? EMPTY_OPS}
-                          onUnpin={(id) => onUnpin(r.sessionId, id)}
+                          onUnpin={onUnpin}
                           onDragHandleMouseDown={onBlockMouseDown}
                         />
                       </div>

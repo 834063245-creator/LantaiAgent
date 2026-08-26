@@ -12,7 +12,7 @@ import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
 import { SessionSidebar } from '../src/app/panels/SessionSidebar';
 import { useShellStore } from '../src/app/shell-store';
-import { resetPaperStoresForTests } from '../src/state/paper-store';
+import { resetCanvasStoresForTests } from '../src/state/canvas-store';
 import { getChatStore } from '../src/ui/chat-store';
 
 function fakeCore(panelId: string, saved: Array<{ id: number; label: string; msgCount: number; savedAt: string }>) {
@@ -36,7 +36,7 @@ describe('SessionSidebar 返工 P4-1（projectPath 变化重拉）', () => {
 
   beforeEach(() => {
     panelId = `test-sidebar-${Math.random().toString(36).slice(2)}`;
-    resetPaperStoresForTests();
+    resetCanvasStoresForTests();
     useShellStore.getState().setProjectPath('');
     container = document.createElement('div');
     document.body.appendChild(container);

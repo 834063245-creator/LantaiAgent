@@ -3,8 +3,8 @@
 
 // paper-space — Stage-2 一纸多卷空间层无头测试。
 // 覆盖：① 线性排比默认落位 + 网格吸附 ② layoutRegion 多锚布局（流区隔离）
-// ③ 跨流区虚拟化 ④ paper-store 流区位置持久化往返 ⑤ ctx.space 读面 +
-// demo 插件消费验证。
+// ③ 跨流区虚拟化 ④ canvas-store 流区位置（工作区级）持久化往返
+// ⑤ ctx.space 读面 + demo 插件消费验证。
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { ChatCore } from '../src/app/chat/chat-core';
@@ -12,17 +12,18 @@ import { useCoreStore } from '../src/app/chat/core-instance';
 import { CommandsService } from '../src/composition/services';
 import { SpaceService } from '../src/composition/space-service';
 import { Context } from '../src/cordis';
+import { createBlock } from '../src/paper/block-model';
 import { layoutRegion } from '../src/paper/canvas-math';
 import { stashStripPositionAt } from '../src/paper/selection';
-import { defaultRegionFor, STREAM_REGION, STREAM_SNAP_GRID, snapRegionX } from '../src/paper/space';
+import { defaultRegionFor, nearestFreeRegion, STREAM_REGION, STREAM_SNAP_GRID, snapRegionX } from '../src/paper/space';
 import { type RegionFlowGeom, visibleRegionWindows } from '../src/paper/virtualize';
 import { formatSpaceState, spaceDemoPlugin } from '../src/plugins/space-demo-plugin';
 import {
-  getPaperSessionData,
-  getPaperStore,
-  loadPaperSessionData,
-  resetPaperStoresForTests,
-} from '../src/state/paper-store';
+  getCanvasStore,
+  resetCanvasStoresForTests,
+  snapshotCanvas,
+  snapshotFromBlock,
+} from '../src/state/canvas-store';
 import { getChatStore } from '../src/ui/chat-store';
 
 const STORE = 'test-space';
@@ -58,6 +59,40 @@ describe('paper/space 常量与落位', () => {
     expect(snapRegionX(2160 + 900)).toBe(2160);
     expect(snapRegionX(2160 + 1200)).toBe(4320);
     expect(snapRegionX(-1100)).toBe(-2160);
+  });
+
+  it('nearestFreeRegion：空场落参考列，Y 取参考 y', () => {
+    const r = nearestFreeRegion([], 100, -500);
+    expect(r).toEqual({ anchorX: 0, anchorY: -500, width: STREAM_REGION.width });
+  });
+
+  it('nearestFreeRegion：参考列被占 → 向左右外扩找最近空列', () => {
+    const regions = [
+      { sessionId: 'a', anchorX: 0 },
+      { sessionId: 'b', anchorX: STREAM_SNAP_GRID },
+    ];
+    // 参考列 0 被占 → 先右（+1 已占）→ 左（-1）→ 落 -2160
+    const r = nearestFreeRegion(regions, 100, 0);
+    expect(r.anchorX).toBe(-STREAM_SNAP_GRID);
+    // 参考列 1 被占 → 右 +1 = 4320 空 → 落 4320
+    const r2 = nearestFreeRegion(regions, STREAM_SNAP_GRID + 100, 0);
+    expect(r2.anchorX).toBe(STREAM_SNAP_GRID * 2);
+  });
+
+  it('nearestFreeRegion：填洞优先（占用间空列先被取）', () => {
+    const regions = [
+      { sessionId: 'a', anchorX: 0 },
+      { sessionId: 'b', anchorX: STREAM_SNAP_GRID * 2 },
+    ];
+    // 参考列 0 被占、+1 空 → 落 +1（填洞而非外扩到 -1）
+    const r = nearestFreeRegion(regions, 100, 0);
+    expect(r.anchorX).toBe(STREAM_SNAP_GRID);
+  });
+
+  it('nearestFreeRegion：排除自身（拖动中的卷可留在原列）', () => {
+    const regions = [{ sessionId: 'a', anchorX: 0 }];
+    const r = nearestFreeRegion(regions, 100, 0, 'a');
+    expect(r.anchorX).toBe(0);
   });
 });
 
@@ -115,13 +150,13 @@ describe('paper/virtualize visibleRegionWindows（跨流区）', () => {
   });
 });
 
-describe('paper-store 流区位置（工作区级持久化形状）', () => {
+describe('canvas-store 流区位置（工作区级持久化形状，Stage-5）', () => {
   beforeEach(() => {
-    resetPaperStoresForTests();
+    resetCanvasStoresForTests();
   });
 
-  it('setRegion/getRegion/moveRegion/ensureRegion 语义', () => {
-    const st = getPaperStore(STORE).getState();
+  it('setRegion/moveRegion/ensureRegion 语义', () => {
+    const st = getCanvasStore(STORE).getState();
     expect(st.getRegion('1')).toBeUndefined();
 
     st.setRegion('1', { anchorX: 2160, anchorY: -300, width: 1440 });
@@ -138,40 +173,46 @@ describe('paper-store 流区位置（工作区级持久化形状）', () => {
     expect(st.getRegion('2')).toEqual(defaultRegionFor(0));
   });
 
-  it('流区位置随会话快照落盘/恢复往返（重启恢复）', () => {
-    const st = getPaperStore(STORE).getState();
+  it('流区位置随工作区画布状态文件落盘/恢复往返（重启恢复）', () => {
+    const st = getCanvasStore(STORE).getState();
     st.setRegion('7', { anchorX: 6480, anchorY: -1200, width: 1440 });
-    st.setPinned('7', 'pb:m1', { x: 100, y: -200 });
+    const block = createBlock('markdown', { text: 'x' }, { messageId: 'm1', part: null });
+    st.setPin(block.id, {
+      x: 100,
+      y: -200,
+      w: block.w,
+      source: { sessionId: 7, blockId: block.id },
+      snapshot: snapshotFromBlock(block),
+    });
 
-    const snapshot = getPaperSessionData(STORE, 7);
-    expect(snapshot.region).toEqual({ anchorX: 6480, anchorY: -1200, width: 1440 });
+    const snapshot = snapshotCanvas(STORE);
+    expect(snapshot.spread).toEqual([{ sessionId: 7, anchorX: 6480, anchorY: -1200, width: 1440 }]);
+    expect(Object.keys(snapshot.publics.pinned)).toHaveLength(1);
 
     // 模拟重启：清内存 → 恢复
-    resetPaperStoresForTests();
-    loadPaperSessionData(STORE, 7, snapshot);
-    const restored = getPaperStore(STORE).getState();
-    expect(restored.getRegion('7')).toEqual(snapshot.region);
-    expect(restored.getPinned('7')).toEqual(snapshot.pinned);
+    resetCanvasStoresForTests();
+    getCanvasStore(STORE).getState().loadCanvas(snapshot);
+    const restored = getCanvasStore(STORE).getState();
+    expect(restored.getRegion('7')).toEqual({ anchorX: 6480, anchorY: -1200, width: 1440 });
+    expect(restored.getPin(block.id)).toMatchObject({ x: 100, y: -200 });
   });
 
   it('旧存档无 region 字段 = 未落位（渲染层按默认落位补写），不炸', () => {
-    loadPaperSessionData(STORE, 9, { pinned: {}, strips: [] });
-    const st = getPaperStore(STORE).getState();
+    getCanvasStore(STORE).getState().loadCanvas(null);
+    const st = getCanvasStore(STORE).getState();
     expect(st.getRegion('9')).toBeUndefined();
   });
 
   it('setRegion 引用比较短路：位置未变不触发订阅', () => {
-    const st = getPaperStore(STORE).getState();
+    const st = getCanvasStore(STORE).getState();
     st.setRegion('1', { anchorX: 0, anchorY: 0, width: 1440 });
-    const snap = getPaperStore(STORE).getState();
     let calls = 0;
-    const un = getPaperStore(STORE).subscribe(() => calls++);
+    const un = getCanvasStore(STORE).subscribe(() => calls++);
     st.setRegion('1', { anchorX: 0, anchorY: 0, width: 1440 });
     expect(calls).toBe(0);
     st.setRegion('1', { anchorX: 2160, anchorY: 0, width: 1440 });
     expect(calls).toBe(1);
     un();
-    void snap;
   });
 });
 
@@ -190,14 +231,14 @@ describe('paper/selection stashStripPositionAt（流区中轴落点）', () => {
 
 describe('ctx.space 通道（SpaceService + demo 插件消费）', () => {
   beforeEach(() => {
-    resetPaperStoresForTests();
-    // 注入测试面板的假 core（SpaceService 以 panelId 定位 paper/sess store）
+    resetCanvasStoresForTests();
+    // 注入测试面板的假 core（SpaceService 以 panelId 定位 canvas/sess store）
     useCoreStore.getState().setChatCore(fakeCore());
   });
 
   it('getState：读流区位置 + 活跃会话（含默认落位推导）', () => {
-    const paper = getPaperStore(STORE).getState();
-    paper.setRegion('1', { anchorX: 2160, anchorY: -300, width: 1440 });
+    const canvas = getCanvasStore(STORE).getState();
+    canvas.setRegion('1', { anchorX: 2160, anchorY: -300, width: 1440 });
     getChatStore(STORE).sess.setState({
       sessions: [
         { id: 1, label: '案卷一' },
@@ -216,11 +257,11 @@ describe('ctx.space 通道（SpaceService + demo 插件消费）', () => {
     expect(state.regions[1]).toMatchObject({ sessionId: '2', anchorX: STREAM_SNAP_GRID, width: 1440 });
   });
 
-  it('place：落位命令写入 paper-store', () => {
+  it('place：落位命令写入 canvas-store', () => {
     const ctx = new Context();
     new SpaceService(ctx);
     ctx.space.place('1', 4320, -600);
-    expect(getPaperStore(STORE).getState().getRegion('1')).toEqual({
+    expect(getCanvasStore(STORE).getState().spread['1']).toEqual({
       anchorX: 4320,
       anchorY: -600,
       width: 1440,
@@ -234,14 +275,14 @@ describe('ctx.space 通道（SpaceService + demo 插件消费）', () => {
     const un = ctx.space.subscribe(() => calls++);
     getChatStore(STORE).sess.setState({ sessions: [{ id: 1, label: 'a' }], activeIdx: 0 });
     expect(calls).toBe(1);
-    getPaperStore(STORE).getState().setRegion('1', { anchorX: 2160, anchorY: 0, width: 1440 });
+    getCanvasStore(STORE).getState().setRegion('1', { anchorX: 2160, anchorY: 0, width: 1440 });
     expect(calls).toBe(2);
     un();
   });
 
   it('demo 插件经 ctx.space 读到画布状态（stage-2 验收：孔可用）', () => {
-    const paper = getPaperStore(STORE).getState();
-    paper.setRegion('1', { anchorX: 2160, anchorY: -300, width: 1440 });
+    const canvas = getCanvasStore(STORE).getState();
+    canvas.setRegion('1', { anchorX: 2160, anchorY: -300, width: 1440 });
     getChatStore(STORE).sess.setState({ sessions: [{ id: 1, label: '案卷一' }], activeIdx: 0 });
 
     const ctx = new Context();

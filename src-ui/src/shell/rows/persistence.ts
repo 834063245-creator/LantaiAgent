@@ -87,6 +87,14 @@ export function bootPersistence(refs: ShellRefs): void {
         /* 静默 */
       }
       try {
+        // Stage-5：画布状态（布局 + 公共物）显式落盘（fire-and-forget——窗口
+        // 关闭前 RPC 未必完成，防抖 + 切换点保存已覆盖绝大多数；与
+        // saveAllSessions 同规接受未完成写入）。
+        refs.chatPanel?.saveCanvasState(ws.path).catch(() => {});
+      } catch {
+        /* 静默 */
+      }
+      try {
         ws.subAgentPool.stopAll();
       } catch {
         /* 静默 */

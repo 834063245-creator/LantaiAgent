@@ -13,8 +13,8 @@ import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
 import { ComposerDock } from '../src/app/panels/ComposerDock';
 import { PaperDockContext, type PaperDockContextValue } from '../src/paper/overlay-context';
+import { resetCanvasStoresForTests } from '../src/state/canvas-store';
 import { resetComposeStoresForTests } from '../src/state/compose-store';
-import { resetPaperStoresForTests } from '../src/state/paper-store';
 import { getChatStore } from '../src/ui/chat-store';
 import { type CommandDef, CommandRegistry } from '../src/ui/command-registry';
 
@@ -87,7 +87,7 @@ describe('ComposerDock 输入历史键盘导航（↑↓）', () => {
 
   beforeEach(() => {
     resetComposeStoresForTests();
-    resetPaperStoresForTests();
+    resetCanvasStoresForTests();
     container = document.createElement('div');
     document.body.appendChild(container);
     // jsdom rAF 时序不稳——同步执行 selection 回调，保证 act 内完成
@@ -201,7 +201,7 @@ describe('ComposerDock 斜杠命令键盘导航', () => {
   beforeEach(() => {
     CommandRegistry.instance.registerAll(SLASH_CMDS); // registerAll 按 id 去重，可重复调用
     resetComposeStoresForTests();
-    resetPaperStoresForTests();
+    resetCanvasStoresForTests();
     container = document.createElement('div');
     document.body.appendChild(container);
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {

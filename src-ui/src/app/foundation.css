@@ -407,6 +407,40 @@ body {
   border-bottom: var(--rule-soft);
 }
 
+/* ── 零目录卷退役（Stage-5 拍板 a）── */
+.sh-zero-dir {
+  margin-top: 20px;
+  padding: 14px 16px;
+  border: var(--rule-soft);
+  border-left: 3px solid var(--seal-deep);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sh-zero-dir-title {
+  font-family: var(--f-song);
+  font-size: calc(14px * var(--font-scale));
+  font-weight: 600;
+  color: var(--ink-1);
+}
+.sh-zero-dir-desc {
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+}
+.sh-zero-dir-actions {
+  display: flex;
+  gap: 10px;
+}
+.sh-notice {
+  margin-top: 12px;
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.08em;
+  color: var(--seal-deep);
+}
+
 .sh-actions {
   display: flex;
   gap: 14px;

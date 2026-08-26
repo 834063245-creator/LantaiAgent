@@ -5,22 +5,24 @@
 //
 // 定案（docs/plans/canvas-space/stage-2.md §3.5 + §5）：
 //   - 流区宽度 = 1440（720×2，先试，落地看手感再调）
-//   - 线性排比间距 = 720（吸附网格粒度 = 宽度 + 间距 = 2160）
+//   - 吸附网格粒度 = 宽度 + 间距 = 2160（X 吸附；Y 用户自主）
 //   - 流区移动 = 边缘拖动（悬停左/右缘即拖拽态、光标 move、宽度不变、
 //     ~6px 量级，无显式手柄条；手感仿窗口边缘、功能是移动）
 //   - 锚点语义 = 流区左下（流从锚点向上长，对齐 D-R1-3 流锚甲：锚点即
 //     最新块底边的世界坐标，anchorX = 流区中轴）
+//   - 自动落位（Stage-5 用户拍板：X 线性 → 最近空位，不分栏）：
+//     nearestFreeRegion 以视口中心为参照、向左右逐列外扩找最近空列。
 //
 // 本文件是空间层的纯函数 + 常量（零 DOM、零 store 依赖），渲染/交互层
-// 消费这里的几何与落位规则。流区位置持久化在 state/paper-store（随会话
-// 快照落盘）；流区注册表/活跃流区/空间命令在 composition/space-service
-// （ctx.space 通道），本文件不碰存储。
+// 消费这里的几何与落位规则。流区位置持久化在 state/canvas-store（Stage-5
+// 起随工作区画布状态文件落盘，不再随会话快照）；流区注册表/活跃流区/空间
+// 命令在 composition/space-service（ctx.space 通道），本文件不碰存储。
 
 /** 流区（StreamRegion）几何常量（stage-2 §3.5 用户拍板）。 */
 export const STREAM_REGION = {
   /** 流区宽度（世界单位）——统一宽度，不做可调宽窄（画布模型拍板 #2） */
   width: 1440,
-  /** 线性排比间距（世界单位）——新会话默认贴上一个右侧 */
+  /** 流区间距（世界单位）——X 吸附栅格的粒度组成（宽度+间距=2160） */
   spacing: 720,
   /** 边缘拖拽面宽度（屏幕像素量级——光标反馈为主，无需视觉手柄） */
   edgeWidth: 6,
@@ -35,7 +37,7 @@ export interface StreamRegionAnchor {
   y: number;
 }
 
-/** 流区位置状态（paper-store 持久化形状与空间读面的共同单元）。 */
+/** 流区位置状态（canvas-store 持久化形状与空间读面的共同单元）。 */
 export interface StreamRegionState {
   anchorX: number;
   anchorY: number;
@@ -82,4 +84,28 @@ export function pickDropAnchor(
     anchorY: dropY,
     width: STREAM_REGION.width,
   };
+}
+
+/** 最近空位落位（Stage-5 用户拍板：不分栏，改「最近空位」）。
+ *  占用模型 = X 列互斥（统一宽度 + X 吸附栅格；Y 用户自主）——从参考列
+ *  （通常 = 视口中心）向左右逐列外扩，落最近空列；Y 取参考 y。纯函数，
+ *  便于测试。 */
+export function nearestFreeRegion(
+  regions: Array<{ sessionId: string; anchorX: number }>,
+  refX: number,
+  refY: number,
+  excludeSessionId?: string,
+): StreamRegionState {
+  const occupied = new Set(
+    regions.filter((r) => r.sessionId !== excludeSessionId).map((r) => Math.round(r.anchorX / STREAM_SNAP_GRID)),
+  );
+  const start = Math.round(refX / STREAM_SNAP_GRID);
+  let d = 0;
+  for (; ; d++) {
+    for (const c of d === 0 ? [start] : [start + d, start - d]) {
+      if (!occupied.has(c)) {
+        return { anchorX: c * STREAM_SNAP_GRID, anchorY: refY, width: STREAM_REGION.width };
+      }
+    }
+  }
 }

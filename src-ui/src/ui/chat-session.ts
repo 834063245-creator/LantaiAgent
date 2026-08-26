@@ -11,15 +11,9 @@ import { createExecState, type ExecStateInstance } from '../agent/execution-stat
 import type { Message } from '../provider/types';
 import { typedJsonRpc, typedRpc } from '../rpc-contract';
 import { getActiveProvider, loadSettings } from '../settings';
+import { getCanvasStore } from '../state/canvas-store';
 import { type ComposeSessionPrefs, getComposeStore } from '../state/compose-store';
 import { disposeMessagesStores, disposeSessionMessagesStore } from '../state/messages-store';
-import {
-  clearPaperSessions,
-  getPaperSessionData,
-  loadPaperSessionData,
-  type PaperSessionData,
-  removePaperSessionData,
-} from '../state/paper-store';
 import { sessionScopeStore } from '../state/session-scope';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
 import { useAgentPanelStore } from './agent-panel-store';
@@ -147,8 +141,9 @@ export function resetSessionState(storeId: string): void {
   // 发号下限保留（nextSessionId 不回退）——发号对账由 autoRestoreLastSession 承担。
   const nextId = getChatStore(storeId).sess.getState().nextSessionId;
   agentSessionState.clearPanelState(storeId);
-  // 工作区全量重置：纸面用户层（钉住块/纸条）一并清空——旧工作区摆放不得串入新工作区
-  clearPaperSessions(storeId);
+  // 工作区全量重置：画布状态（摊开集合 + 公共物钉/纸条）一并清空——
+  // 旧工作区摆放不得串入新工作区（Stage-5：state/canvas-store 工作区级）
+  getCanvasStore(storeId).getState().clearCanvas();
   // 工作区全量重置：旧工作区全部会话级消息 store（storeId:sessionId）一并移除
   //（M4：store 注册表跨工作区存活，旧卷不拆 = 无界增长 + 新工作区撞号卷读到旧消息）
   disposeMessagesStores(storeId);
@@ -377,22 +372,20 @@ export function closeSession(ctx: SessionContext, idx: number): void {
     if (agent && messages && hasContent) {
       const projectPath = ctx.getProjectPath();
       const tokensUsed = idx === st.activeIdx ? ctx.getTotalTokensUsed() : (st.sessionTokens[s.id] ?? 0);
-      // 纸面用户层快照与消息同点捕获（合卷后 paper store 该卷数据随即清除）
-      const paper = getPaperSessionData(ctx.storeId, s.id);
       writeSessionSnapshot(projectPath, {
         id: s.id,
         label: s.label,
         savedAt: new Date().toISOString(),
         messages,
         tokensUsed,
-        paper,
       }).catch(() => ctx.addNotice(`合卷落盘失败：${s.label}`, 'error'));
     }
   }
   removeSessionExecState(ctx.storeId, s.id);
   agentSessionState.removeAgent(ctx.storeId, s.id);
-  // 合卷 = 卷消亡：paper store 该卷数据随之清除（快照已在上方捕获落盘）
-  removePaperSessionData(ctx.storeId, s.id);
+  // 合卷 = 流区从纸面退场（Stage-5）：摊开集合移除该卷位置（位置释放不重排）；
+  // 公共物（钉住块/纸条）是工作区级宿主，不随卷退场——钉到拔为止。
+  getCanvasStore(ctx.storeId).getState().removeRegion(String(s.id));
   // 合卷 = 卷消亡：该卷会话级消息 store 一并移除（M4——落盘快照已在上方
   // 从 agent 数据同步捕获，此处拆的是注册表项；续开该卷走磁盘恢复重建）
   disposeSessionMessagesStore(ctx.storeId, s.id);
@@ -446,6 +439,13 @@ export function closeSession(ctx: SessionContext, idx: number): void {
 }
 
 export async function createNewSession(ctx: SessionContext): Promise<void> {
+  // 零目录退役（Stage-5 拍板 a）：创建必须要有目录——无工作区（projectPath 空）
+  // 不造零目录会话，改由首页选/建工作区。与「创建工作区必须要有目录」一致。
+  const claimWs = ctx.getProjectPath();
+  if (!claimWs) {
+    ctx.addNotice('新建案卷需要先绑定目录——请在首页选择或创建工作区', 'warn');
+    return;
+  }
   // DSH 形态（2026-08-25）：信封先行——建卷是纯数据操作，立即摊开可见；
   // 句柄不是建卷的前置条件（拟文时 ensureSessionAgent 惰性现造）。
   // 工厂在场时顺手现造一个句柄（首次拟文的常见路径提前就绪）；
@@ -510,7 +510,6 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
   // U4/Q1-B：总目记账退役（摊开集重启由磁盘扫描推导）
   // L1 数据上下文：新生会话声明绑定（DSH 出生与绑定分离——卷未落盘，
   // workspace 事实源暂为当前工作区；首笔落盘后重开以卷为准）。
-  const claimWs = ctx.getProjectPath();
   sessionScopeStore.getState().setCurrentSessionId(id);
   void (async () => {
     try {
@@ -528,16 +527,15 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
 // ── 会话持久化 — 每个会话一个文件（全局位唯一存储位）──
 
 /** 会话文件的持久化形状（磁盘 JSON）。
- *  paper（钉住块坐标 + 纸条，2026-08-24 收尾）：可选字段，旧存档无此字段 = 空纸面。
  *  workspace（会话统一 U1，2026-08-24）：卷归属的工作区（正斜杠归一）或
- *  null（零目录卷）。 */
+ *  null（零目录卷）。Stage-5 起不再含 paper（钉住块/纸条/流区位置已升格
+ *  工作区级——随 {workspace}/.lantai/canvas.json，不再随卷快照）。 */
 interface StoredSession {
   id: number;
   label?: string;
   savedAt?: string;
   messages?: Message[];
   tokensUsed?: number;
-  paper?: PaperSessionData;
   /** 会话级创作坞覆盖（方案甲 2026-08-27）：旧存档无此字段 = 无覆盖。 */
   compose?: ComposeSessionPrefs;
   workspace?: string | null;
@@ -642,17 +640,16 @@ export async function scanMaxSessionId(_projectPath: string): Promise<number> {
 }
 
 /** 会话快照的磁盘形状（C8：saveActiveSession 与合卷落盘共用）。
- *  paper：纸面用户层状态（钉住块 + 纸条）——2026-08-24 收尾接入持久化。
  *  workspace：卷归属工作区（U1 起写入；正斜杠归一，零目录卷 = null）。
  *  compose：会话级创作坞覆盖（方案甲 2026-08-27）——只存显式改动过的卷，
- *  旧存档无此字段 = 无覆盖（实时跟随全局默认）。 */
+ *  旧存档无此字段 = 无覆盖（实时跟随全局默认）。
+ *  Stage-5：不再含 paper——布局/公共物已升格工作区级（canvas-store）。 */
 interface SessionSnapshotData {
   id: number;
   label: string;
   savedAt: string;
   messages: Message[];
   tokensUsed: number;
-  paper?: PaperSessionData;
   compose?: ComposeSessionPrefs;
   workspace?: string | null;
 }
@@ -705,8 +702,6 @@ export async function saveActiveSession(ctx: SessionContext, projectPath: string
     savedAt: new Date().toISOString(),
     messages,
     tokensUsed: ctx.getTotalTokensUsed(),
-    // 纸面用户层（钉住块 + 纸条）随卷落盘——快照捕获与 messages 同步时点
-    paper: getPaperSessionData(ctx.storeId, sMeta.id),
     // 方案甲：会话级创作坞覆盖随卷落盘（无覆盖 = undefined，字段省略）
     compose: getComposeStore(ctx.storeId).getState().getPrefs(String(sMeta.id)),
   };
@@ -741,8 +736,6 @@ export async function saveSessionById(ctx: SessionContext, projectPath: string, 
       savedAt: new Date().toISOString(),
       messages,
       tokensUsed,
-      // 纸面用户层随卷落盘（改名即存路径与活跃卷同构）
-      paper: getPaperSessionData(ctx.storeId, sid),
       // 方案甲：会话级创作坞覆盖随卷落盘（与活跃卷同构）
       compose: getComposeStore(ctx.storeId).getState().getPrefs(String(sid)),
     });
@@ -752,7 +745,7 @@ export async function saveSessionById(ctx: SessionContext, projectPath: string, 
 }
 
 /** 改名未摊开的已存卷（Stage-3 侧边栏行操作）：磁盘直改 label，不要求
- *  句柄/不摊开卷。读取当前卷文件 → 保留 messages/paper/tokens 原样 →
+ *  句柄/不摊开卷。读取当前卷文件 → 保留 messages/tokens 原样 →
  *  重写全局位（workspace 归属随当前 projectPath 重写——readVolumeJSON 已
  *  先做过归属校验，因此只会改写本工作区/零目录的卷）。 */
 export async function renameSessionFile(
@@ -773,7 +766,6 @@ export async function renameSessionFile(
       savedAt: data.savedAt ?? new Date().toISOString(),
       messages: data.messages ?? [],
       tokensUsed: data.tokensUsed ?? 0,
-      paper: data.paper,
     });
   } catch {
     /* writeSessionSnapshot 已记日志；此处不重复静默 */
@@ -906,7 +898,9 @@ export async function listSavedSessions(
       if (d.deleted) return null;
       const sid = parseInt(e.name.replace('.json', ''), 10);
       const ws = typeof d.workspace === 'string' && d.workspace ? normWs(d.workspace) : '';
-      if (ws !== '' && ws !== norm) return null; // 他工作区卷：不属于本列表
+      // Stage-5（零目录退役）：他工作区卷 + 零目录卷（ws===''）都不属于本列表
+      // ——无目录不能进画布，零目录卷只走首页绑定/归档动作。
+      if (ws !== norm) return null;
       return {
         id: d.id || sid,
         label: d.label || `案卷 ${sid}`,
@@ -999,8 +993,6 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   });
   // ponytail: 创建会话级消息 store
   msgStoreFor(ctx.storeId, sid).getState().setMessages([]);
-  // 纸面用户层（钉住块 + 纸条）随卷恢复——旧存档无 paper 字段 = 空纸面
-  loadPaperSessionData(ctx.storeId, sid, data.paper ?? null);
   // 方案甲（2026-08-27）：会话级创作坞覆盖随卷恢复——旧存档无 compose 字段
   // = 无覆盖（实时跟随全局默认）。回填在句柄创建之后（工厂装配时覆盖已在
   // compose-store：磁盘路径先于工厂读卷？否——见下方：磁盘数据在上、工厂
@@ -1076,13 +1068,81 @@ export async function deleteSessionFile(ctx: SessionContext, projectPath: string
     ctx.addNotice('删除案卷文件失败', 'error');
     return; // 写入失败则不关闭标签页
   }
-  // 清理内存中的纸面用户层（卷已删，摆放数据无主）
-  removePaperSessionData(ctx.storeId, sessionId);
+  // 卷已彻底删除：摊开集合移除该卷位置；公共物（钉住块/纸条）是工作区级
+  // 宿主、不连坐——钉块以快照继续显示在纸上（钉到拔为止，Stage-5）。
+  getCanvasStore(ctx.storeId).getState().removeRegion(String(sessionId));
   // 若该会话在标签页中打开，则关闭该标签页
   const idx = getChatStore(ctx.storeId)
     .sess.getState()
     .sessions.findIndex((s) => s.id === sessionId);
   if (idx >= 0) closeSession(ctx, idx);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 零目录卷退役（Stage-5 拍板 a）：存量零目录卷**彻底退役**——要么绑目录
+// （归入某工作区）要么归档（拷贝到归档目录 + 原位墓碑，代码永不回读）。
+// 零目录概念整体消失：无目录不能进画布、创建必须要有目录。
+// ═══════════════════════════════════════════════════════════════
+
+/** 零目录卷 → 绑目录：把全部零目录卷的 workspace 字段改写为目标工作区
+ *  （归入某工作区，随后即作为该工作区的普通卷）。返回处理卷数。 */
+export async function bindZeroDirSessions(ctx: SessionContext, targetWs: string): Promise<number> {
+  const norm = normWs(targetWs);
+  if (!norm) return 0;
+  const entries = await listSavedSessions(ctx, '');
+  let n = 0;
+  for (const e of entries) {
+    const data = await readVolumeJSON('', e.id);
+    if (!data) continue;
+    try {
+      await writeSessionSnapshot(norm, {
+        id: data.id,
+        label: data.label ?? `案卷 ${data.id}`,
+        savedAt: data.savedAt ?? new Date().toISOString(),
+        messages: data.messages ?? [],
+        tokensUsed: data.tokensUsed ?? 0,
+      });
+      n++;
+    } catch (err) {
+      console.error('[chat] 零目录卷绑目录失败', e.id, err);
+    }
+  }
+  return n;
+}
+
+/** 零目录卷 → 归档：拷贝原卷到全局会话目录旁的归档目录（原样保留，
+ *  含 workspace 空值），原位写墓碑（deleted:true——列表与扫描不再可见）。
+ *  返回归档卷数。归档可手动找回（文件仍在归档目录），代码不读回。 */
+export async function archiveZeroDirSessions(ctx: SessionContext): Promise<number> {
+  const entries = await listSavedSessions(ctx, '');
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  const dir = `${globalSessionsDir()}-archive-${ts}`;
+  let n = 0;
+  for (const e of entries) {
+    const data = await readVolumeJSON('', e.id);
+    if (!data) continue;
+    try {
+      await typedRpc('write_file_content', {
+        file_path: `${dir}/${e.id}.json`,
+        content: JSON.stringify(data),
+      });
+      await typedRpc('write_file_content', {
+        file_path: `${globalSessionsDir()}/${e.id}.json`,
+        content: JSON.stringify({
+          id: e.id,
+          deleted: true,
+          label: '',
+          messages: [],
+          savedAt: '',
+          workspace: null,
+        }),
+      });
+      n++;
+    } catch (err) {
+      console.error('[chat] 零目录卷归档失败', e.id, err);
+    }
+  }
+  return n;
 }
 
 // ── 会话恢复（内部辅助函数）──
