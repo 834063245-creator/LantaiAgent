@@ -8,8 +8,10 @@ import {
   getAllModels,
   getCatalogVendors,
   getDefaultModel,
+  getDynamicFetchFailure,
   getModel,
   mergeDynamicModels,
+  recordDynamicFetchResult,
   searchModels,
 } from '../src/provider/catalog';
 import { guessReasoning } from '../src/provider/openai';
@@ -179,6 +181,42 @@ describe('catalog', () => {
     // 静态条目未被覆盖
     const staticOne = getModel('deepseek-v4-pro');
     expect(staticOne?.baseUrl).toBe('https://api.deepseek.com/v1');
+  });
+
+  it('C5: recordDynamicFetchResult 记失败面——失败记原因，成功清标记', () => {
+    expect(getDynamicFetchFailure('c5-fail-prov')).toBeUndefined();
+    recordDynamicFetchResult('c5-fail-prov', false, '网络错误');
+    expect(getDynamicFetchFailure('c5-fail-prov')).toBe('网络错误');
+    recordDynamicFetchResult('c5-fail-prov', true);
+    expect(getDynamicFetchFailure('c5-fail-prov')).toBeUndefined();
+  });
+
+  it('C5: 失败原因缺省回落「获取失败」', () => {
+    recordDynamicFetchResult('c5-err-prov', false);
+    expect(getDynamicFetchFailure('c5-err-prov')).toBe('获取失败');
+    recordDynamicFetchResult('c5-err-prov', true); // 清标记防污染
+    expect(getDynamicFetchFailure('c5-err-prov')).toBeUndefined();
+  });
+
+  it('C5: last-good 保留——拉取失败不清已合并的动态模型', () => {
+    mergeDynamicModels('c5-lastgood', [
+      {
+        id: 'c5-dynamic-x',
+        name: 'C5 Dynamic',
+        kind: 'openai',
+        vendor: 'c5-lastgood',
+        baseUrl: 'https://api.c5lastgood.com/v1',
+        reasoning: false,
+        input: ['text'],
+        cost: { input: 0, output: 0, cacheRead: 0 },
+        contextWindow: 0,
+        maxTokens: 0,
+      },
+    ]);
+    recordDynamicFetchResult('c5-lastgood', false, 'boom');
+    // 失败后动态模型仍可查（静态目录 + last-good 兜底，不因失败消失）
+    expect(getModel('c5-dynamic-x')).toBeDefined();
+    expect(getDynamicFetchFailure('c5-lastgood')).toBe('boom');
   });
 
   it('guessReasoning heuristic (P0: 动态模型 reasoning 启发式)', () => {

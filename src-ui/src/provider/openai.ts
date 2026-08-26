@@ -125,7 +125,12 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
         },
         10000,
       );
-      if (!json) return [];
+      // C5（2026-08-27）：目录失败面——fetchJsonWithTimeout 对非 ok/网络/超时
+      // 一律返回 null，此前被静默当成「无模型」（调用面 .catch(() => {}) 永不
+      // 触发，用户完全无感）。上抛让调用面可记失败（compact 选择器分组头标注 /
+      // 手动刷新报真实原因）；静态目录 + 已合并的 last-good 动态模型兜底，不因
+      // 失败丢失。
+      if (!json) throw new Error(`${name}: 模型目录获取失败（网络错误或端点无响应）`);
       const data: Array<{ id: string }> = (json as { data?: Array<{ id: string }> }).data || [];
       return data
         .filter((m) => m.id)

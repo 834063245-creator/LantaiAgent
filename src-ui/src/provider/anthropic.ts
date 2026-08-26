@@ -120,7 +120,10 @@ export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
         },
         10000,
       );
-      if (!json) return [];
+      // C5（2026-08-27）：目录失败面——同 openai.ts，失败不再伪装成「无模型」，
+      // 上抛让调用面可见（选择器分组头标注 / 手动刷新报真实原因）；静态目录 +
+      // last-good 动态模型兜底。
+      if (!json) throw new Error(`${name}: 模型目录获取失败（网络错误或端点无响应）`);
       const data: Array<{ id: string; display_name?: string }> =
         (json as { data?: Array<{ id: string; display_name?: string }> }).data || [];
       return data

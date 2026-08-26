@@ -43,7 +43,8 @@ import { useShellStore } from './app/shell-store';
 import { resolveCurrentComposition } from './composition/preset-assembly';
 import type { Context, Fiber } from './cordis';
 import { initCordisKernel } from './cordis/boot';
-import { getModel, mergeDynamicModels } from './provider/catalog';
+import { getModel, mergeDynamicModels, recordDynamicFetchResult } from './provider/catalog';
+import { resolveApiKey } from './provider/credentials';
 import { createLiveProvider } from './provider/live';
 import type { Provider } from './provider/types';
 import { parseJson, typedJsonRpc, typedListen, typedRpc } from './rpc-contract';
@@ -611,11 +612,18 @@ export class Workspace {
       return;
     }
 
-    const s = await loadSettingsWithSecrets();
+    // D2（2026-08-27 收窄）：热切换路径不再全量 restoreSecrets——loadSettings
+    // 同步读就够了（providers/activeProvider/model 都在 localStorage）；诊断 Key
+    // 状态改走 resolveApiKey（provider/credentials.ts 内存缓存，命中零 IPC）。
+    // 此前每个 model-switched/settings-saved 信号都逐个 provider credential_get
+    // （切一次模型 = N 次 IPC），只为算个诊断用 keyLen。request 期真实凭据仍由
+    // live provider 按名现解析（fail-loud 语义不变）。
+    const s = loadSettings();
     const act = getActiveProvider(s);
 
     // Key 状态仅作诊断呈现（不拆 Agent/会话——请求期由 live provider 报错）
-    if (!act.apiKey || act.apiKey.trim() === '') {
+    const apiKey = await resolveApiKey(act.name);
+    if (!apiKey || apiKey.trim() === '') {
       useAgentPanelStore.getState().setDiag({
         text: `⚠️ API Key 未配置 — provider="${act.name}"。会话保留，发送请求将报错。`,
         ready: false,
@@ -825,8 +833,12 @@ export class Workspace {
       .fetchModels?.()
       .then((models) => {
         if (models.length > 0) mergeDynamicModels(active.name, models);
+        // C5（2026-08-27）：后台自动拉取也记失败面——成功清标记，失败记原因
+        // （compact 选择器分组头可见「目录获取失败」）。last-good 已合并模型
+        // 不因失败被清。
+        recordDynamicFetchResult(active.name, true);
       })
-      .catch(() => {});
+      .catch((e) => recordDynamicFetchResult(active.name, false, e instanceof Error ? e.message : String(e)));
     this.prov = prov;
 
     // ── 创建 Runtime + UI 适配器 ──

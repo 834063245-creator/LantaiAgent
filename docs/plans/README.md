@@ -12,7 +12,9 @@
 分层重构 L1-L4 + L5b crate 化已于 2026-08-25 落地（真机验收四项待跑）；画布支 Stage-4 会话内
 体验已落地（2026-08-26），**同日完成联合体检 + 方案甲施工**：创作坞会话级模型/思考真生效
 （覆盖制，`composer-provider-audit.md`），provider/创作坞两报告共 20+ 项毛病一次修完
-（三 commit，门禁全绿，实机验收七项待跑）。没有拦路的硬依赖。
+（三 commit，门禁全绿，实机验收七项待跑）；**同日夜在册小账收尾**（D2 热切换 IPC 收窄 /
+C5 目录失败面 / D5 组件测试补齐——体检全表清零，仅剩实机验收，见 `lantai-handoff-baton18.md`）。
+没有拦路的硬依赖。
 
 ## 会话 / 分层 / 画布三线（2026-08-24 立项）
 
@@ -20,7 +22,7 @@
 |---|---|---|---|
 | 会话统一 | [`session-unify-plan.md`](session-unify-plan.md) | ✅ 归零重建落地（2026-08-25，待真机验收） | U1-U4 竣工后兼容层全部拆除；全局位成为唯一事实源 |
 | 分层重构 | [`layering-rework-plan.md`](layering-rework-plan.md) | **L1-L4 + L5b crate 化已落地**（2026-08-25） | engine 纯化 + 壳瘦身 + 数据上下文 + 双工作区并发守卫 + L5b 三 crate 拆出；真机验收四项待跑（见计划 §4.6） |
-| 画布空间模型 | [`canvas-space/canvas-space-model-notes.md`](canvas-space/canvas-space-model-notes.md) | **设计定稿；Stage-1 ✅ + Stage-2 ✅（实机已验）+ Stage-3 ✅（门禁全绿）+ Stage-4 ✅（2026-08-26 落地 + 返工修复 + 联合体检方案甲施工）**，Stage-5 草案待审（开工依赖：返工清单 + 体检验收实机勾销） | 一整片会生长的纸 / 有界流区 / 宿主模型 / 三层导航 / 性能基准；阶段性展开文档见 `canvas-space/` 子目录；**provider/创作坞联合体检与修复见 [`canvas-space/composer-provider-audit.md`](canvas-space/composer-provider-audit.md)**（方案甲定案 + 2026-08-26 修复落账） |
+| 画布空间模型 | [`canvas-space/canvas-space-model-notes.md`](canvas-space/canvas-space-model-notes.md) | **设计定稿；Stage-1 ✅ + Stage-2 ✅（实机已验）+ Stage-3 ✅（门禁全绿）+ Stage-4 ✅（2026-08-26 落地 + 返工修复 + 联合体检方案甲施工）**，Stage-5 草案待审（开工依赖：返工清单 + 体检验收实机勾销） | 一整片会生长的纸 / 有界流区 / 宿主模型 / 三层导航 / 性能基准；阶段性展开文档见 `canvas-space/` 子目录；**provider/创作坞联合体检与修复见 [`canvas-space/composer-provider-audit.md`](canvas-space/composer-provider-audit.md)**（方案甲定案 + 2026-08-26 修复落账 + 夜批在册小账收尾 D2/C5/D5，全表清零） |
 
 ## 活跃工程（就一个半）
 

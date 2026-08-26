@@ -47,6 +47,29 @@ let _catalog: CatalogData | undefined;
 // 同一模型 ID 以静态目录优先（元数据更丰富：cost、contextWindow 等）
 const _dynamicModels = new Map<string, ModelDescriptor[]>();
 
+// ── 动态模型目录失败面（C5 2026-08-27）──
+// 拉取失败（网络/超时/端点 4xx/无 Key 等）记在此处；成功 = 清标记。选择器分组头
+// 据此显示「目录获取失败」；已合并的 last-good 动态模型不因失败被清掉（静态目录 +
+// 上次成功合并结果兜底，与 DSH groups 的「last-good 保留」同语义）。
+// 模块级可变态归属（CONVENTIONS §1.10 第 3 类）：键控进程级状态（键 = 提供方名），
+// 同 _dynamicModels 归属，无跨工作区所有权问题。
+const _dynamicFetchFailures = new Map<string, string>();
+
+/** 记录某 provider 动态模型目录的拉取结果。成功 = 清失败标记；
+ *  失败 = 记原因（getDynamicFetchFailure 返回 undefined 表示无失败）。 */
+export function recordDynamicFetchResult(providerName: string, ok: boolean, error?: string): void {
+  if (ok) {
+    _dynamicFetchFailures.delete(providerName);
+  } else {
+    _dynamicFetchFailures.set(providerName, error?.trim() ? error : '获取失败');
+  }
+}
+
+/** 某 provider 动态模型目录的拉取失败原因；无失败 = undefined。 */
+export function getDynamicFetchFailure(providerName: string): string | undefined {
+  return _dynamicFetchFailures.get(providerName);
+}
+
 /** 将动态获取的模型合并到目录中。会使缓存失效。
  *  已在静态目录中的模型 ID 会被跳过（静态目录元数据更丰富）。 */
 export function mergeDynamicModels(providerName: string, models: ModelDescriptor[]): void {

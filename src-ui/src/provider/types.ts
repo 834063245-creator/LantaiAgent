@@ -96,7 +96,9 @@ export interface Provider {
   prewarm?(): void;
   /** 从 provider 的 /models API 端点获取可用模型。
    *  返回 ModelDescriptor[]，仅含最小元数据（cost/contextWindow 从 API 不可知）。
-   *  尽力而为 — 失败时返回空数组。 */
+   *  尽力而为：传输失败（网络/超时/端点 4xx）上抛——调用面据此记失败面
+   *  （C5 2026-08-27：此前静默返回 [] 被当成「无模型」，用户完全无感）；
+   *  成功但端点无 data = 返回空数组。 */
   fetchModels?(): Promise<ModelDescriptor[]>;
 }
 

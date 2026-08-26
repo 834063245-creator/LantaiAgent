@@ -1,6 +1,6 @@
 # 创作坞 + 提供方（Provider）联合体检报告 · 方案甲定案
 
-> 日期：2026-08-27（合并稿）；2026-08-26 修复施工落账（见文末「修复落账」）
+> 日期：2026-08-27（合并稿）；2026-08-26 修复施工落账；2026-08-26 夜在册小账收尾（D2/C5/D5）
 > 来源：两份独立体检合并——①提供方链路审计（provider/settings/credentials/目录/热切换/代理）②创作坞体检（ComposerDock/compose-store/ModelSelector/输入历史/斜杠/插件挂载）。
 > 性质：代码面体检，未改代码；部分结论需实机复验确认。
 > 合并核验：两报告重叠项（A1/A2）已互证一致；创作坞报告的 B 组/C1 断言在本窗口逐一 grep/read 复核属实（`inputHistoryIdx` 全工程无读者、`registerComposer` 无调用方、chat-core.ts:1018 全局阻断、:998-1015 静默注入均实证）。唯一口径修正：原「B1 打开时永远不列全」——已选模型时成立（常见路径），模型为空时全表分支可触发。
@@ -294,11 +294,17 @@ effective(sessionId) = 会话覆盖 prefs ?? 全局 active provider
 | C4 每击键 loadSettings | ✅ 已修 | 显示走「初值 + onSettingsSaved 订阅触发重读」（settingsVersion 合成触发器），打字热路径零 localStorage 读 |
 | D1 getActiveProvider 空表崩 | ✅ 已修 | 双兜底：loadSettings 对空 providers 数组回落 DEFAULTS.providers；getActiveProvider 终极兜底 DEFAULTS.providers[0] |
 | D4 legacy thinking 静默清空 | ✅ 已修 | select 对存量遗留值（数字预算/未知档）显式加「自定义 (N)」option，不再隐形「自动」+onChange 清空 |
-| D2 热切换 IPC 风暴 | 🟡 部分收窄 | 会话级分支不再走 restoreSecrets 全量回填（直接 loadSettings）；settings-saved 全局面仍走 loadSettingsWithSecrets——彻底根治需诊断面改走 resolveApiKey 缓存（遗留小账） |
+| D2 热切换 IPC 风暴 | ✅ 已收窄（2026-08-26 夜追加） | `applyAgentConfig` 统一改 `loadSettings()`（同步读，providers/activeProvider/model 都在 localStorage）+ 诊断 Key 状态走 `resolveApiKey`（provider/credentials.ts 内存缓存，命中零 IPC）——热切换路径不再逐个 provider `credential_get`；request 期真实凭据仍由 live provider 按名现解析（fail-loud 语义不变） |
 | D3 thinking 双写者 | ✅ 收窄 | compose-store 写者拆除后只剩 ProviderDetail 暂存通道（单写者语义自洽） |
-| D5 组件测试缺口 | 🟡 补齐关键面 | compose-store 重写（覆盖制 9 用例）+ model-selector-compact 扩展（B1/B2）+ composer-history-nav 新增（7 用例）+ composer-dock-rework 适配新 store 面；↑↓ 键盘行为、斜杠键盘导航的组件级测试仍欠（后续） |
-| C5 目录无失败面 | ⬜ 未动 | fetchModels 静默失败面未做（B3 标注是部分缓解）；与 DSH 的 groups/failures/routable 三分面差距仍在，留待后续 |
+| D5 组件测试缺口 | ✅ 补齐（2026-08-26 夜追加） | 新增 `tests/composer-dock-keyboard.test.tsx`（5 用例）：↑↓ 历史浏览（进入存草稿/↑ 回退/↓ 前进/越过最新恢复草稿/手输退出浏览/空历史不越界）+ 斜杠面板键盘导航（↑↓ 高亮/Enter 执行/Esc 关去触发词） |
+| C5 目录无失败面 | ✅ 已修（2026-08-26 夜追加） | 根因：`fetchJsonWithTimeout` 对非 ok/网络/超时一律返回 null → `fetchModels` 永不 reject，失败被静默当成「无模型」（调用面 `.catch(() => {})` 永不触发）。修复：openai/anthropic `fetchModels` 失败上抛；catalog 记 per-provider 失败面（`recordDynamicFetchResult`/`getDynamicFetchFailure`，成功清标记）；compact 分组头「目录获取失败」标注（`.ms-group-fail` 虚线徽标，区别于 B3 无 Key 实线）；last-good 保留——已合并动态模型不因失败清掉（对应 DSH groups 面） |
 | D6 实机复验清单 | ⬜ 未动 | stage-4-rework-checklist 的待复验项仍在（P0-1 崩溃/P1-1 三道闸/P1-2 落点/P3-1 布局）+ 本次修复的实机验收（见下） |
+
+### 在册小账收尾（2026-08-26 夜追加施工，门禁全绿）
+
+> 收掉 baton17 §2.2 三件代码面在册小账（实机验收仍不在本次范围）。
+> 门禁实测：全量 vitest 181 文件 1771 passed / 4 skipped · `npm run build` ✓ · `npm run verify:convergence`（NODE_ENV=test）exit 0 · `npx biome ci .` 0 error。
+> 追加改动文件：`src/workspace.ts`（D2 IPC 收窄 + C5 后台拉取记失败）、`src/provider/catalog.ts`（失败面 Map + 访问器）、`src/provider/openai.ts`/`src/provider/anthropic.ts`（fetchModels 失败上抛）、`src/provider/types.ts`（fetchModels 契约注释）、`src/app/panels/settings/ProviderPage.tsx`（手动刷新记失败）、`src/app/panels/ModelSelector.tsx` + `PaperPanel.css`（分组头失败标注）、测试：`tests/composer-dock-keyboard.test.tsx`（新增 5）、`tests/model-selector-compact.test.tsx`（+1）、`tests/provider-catalog.test.ts`（+3）。
 
 **本次修复的实机验收清单**（用户过一遍才算勾销）：
 1. 卷 A 切 anthropic 模型 → 切回卷 B：B 显示并实际用自己的配置（A 的改动不影响 B/全局设置）；

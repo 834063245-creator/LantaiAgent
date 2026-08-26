@@ -8,6 +8,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ModelSelector } from '../src/app/panels/ModelSelector';
+import { recordDynamicFetchResult } from '../src/provider/catalog';
 
 describe('ModelSelector compact（创作坞触发器形态）', () => {
   let container: HTMLDivElement | null = null;
@@ -132,6 +133,50 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
     // B3：无 Key 厂商分组头带「未配置 Key」标注（文本拼接），按前缀断言
     expect(heads.some((h) => h.startsWith('deepseek'))).toBe(true);
     expect(heads.some((h) => h.startsWith('openai'))).toBe(false); // 未配置厂商被过滤——杜绝写错行 400
+  });
+
+  it('C5：动态目录拉取失败的厂商分组头标注「目录获取失败」', async () => {
+    recordDynamicFetchResult('anthropic', false, '网络错误');
+    try {
+      // 只配置 anthropic 一家——compact 空查询列出该 vendor 的静态目录模型
+      localStorage.setItem(
+        'hologram_settings',
+        JSON.stringify({
+          activeProvider: 'anthropic',
+          providers: [
+            {
+              kind: 'anthropic',
+              name: 'anthropic',
+              apiKey: '',
+              baseUrl: 'https://api.anthropic.com',
+              model: 'claude-sonnet-4-6',
+            },
+          ],
+          projectPath: '.',
+          agent: {},
+          display: { language: 'zh', fontScale: 1 },
+        }),
+      );
+      act(() => {
+        root?.render(
+          createElement(ModelSelector, {
+            compact: true,
+            value: 'claude-sonnet-4-6',
+            providerName: 'anthropic',
+            kind: 'anthropic',
+            onChange: () => {},
+          }),
+        );
+      });
+      act(() => {
+        container!.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
+      });
+      await act(async () => {});
+      const heads = [...container!.querySelectorAll('.ms-group-head')].map((e) => e.textContent ?? '');
+      expect(heads.some((h) => h.startsWith('anthropic') && h.includes('目录获取失败'))).toBe(true);
+    } finally {
+      recordDynamicFetchResult('anthropic', true); // 清标记防污染同文件其它用例
+    }
   });
 
   it('非 compact（设置面板字段形态）保持平铺：无触发器、无分组头', () => {

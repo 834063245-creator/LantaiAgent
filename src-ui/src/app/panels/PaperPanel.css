@@ -1519,3 +1519,13 @@
   border: 1px solid color-mix(in oklch, var(--warn) 40%, var(--paper));
   padding: 0 4px;
 }
+/* C5（2026-08-27）：动态目录获取失败标注——静态目录 + last-good 动态模型仍可用，
+   但拉取失败要可见（DSH groups/failures 的失败面；区别于 B3 无 Key 实线预警） */
+.pp-composer-settings .ms-dropdown .ms-group-head .ms-group-fail {
+  margin-left: 8px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--warn);
+  border: 1px dashed color-mix(in oklch, var(--warn) 50%, var(--paper));
+  padding: 0 4px;
+}

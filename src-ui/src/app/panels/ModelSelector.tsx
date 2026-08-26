@@ -6,7 +6,7 @@
 // 从 API 动态获取的模型会标记 "live" 徽章。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { findModels, getModel, searchModels } from '../../provider/catalog';
+import { findModels, getDynamicFetchFailure, getModel, searchModels } from '../../provider/catalog';
 import { resolveApiKey } from '../../provider/credentials';
 import type { ModelDescriptor, Protocol } from '../../provider/types';
 import { loadSettings } from '../../settings';
@@ -114,6 +114,14 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
   const headerVendors = useMemo(
     () => [...new Set(displayRows.filter((r) => r.type === 'header').map((r) => (r as { vendor: string }).vendor))],
     [displayRows],
+  );
+  /* ── C5（2026-08-27）：动态目录失败面——该 vendor 后台/手动拉模型表失败时
+   *    分组头标注「目录获取失败」（静态目录 + last-good 动态模型兜底，不因失败
+   *    消失）。failure 状态在 setupAgent 后台拉取 / 设置页手动刷新时记录，打开
+   *    下拉（displayRows 重算）时同步可见。 ── */
+  const failedVendors = useMemo(
+    () => new Set(headerVendors.filter((v) => getDynamicFetchFailure(v) !== undefined)),
+    [headerVendors],
   );
   useEffect(() => {
     if (!open || !compact || headerVendors.length === 0) return;
@@ -304,6 +312,11 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
               <div key={`h-${row.vendor}`} className="ms-group-head">
                 {row.vendor}
                 {noKeyVendors.has(row.vendor) && <span className="ms-group-nokey">未配置 Key</span>}
+                {failedVendors.has(row.vendor) && (
+                  <span className="ms-group-fail" title={getDynamicFetchFailure(row.vendor)}>
+                    目录获取失败
+                  </span>
+                )}
               </div>
             ) : (
               <ModelRow

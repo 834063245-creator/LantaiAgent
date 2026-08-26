@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createProvider } from '../../../provider';
-import { mergeDynamicModels } from '../../../provider/catalog';
+import { mergeDynamicModels, recordDynamicFetchResult } from '../../../provider/catalog';
 import { ChunkType, type ModelDescriptor } from '../../../provider/types';
 import {
   type AppSettings,
@@ -128,9 +128,18 @@ export function ProviderPage({
     const p = selectedProvider;
     if (!p.apiKey?.trim()) throw new Error('请先填写 API Key');
     const prov = createProvider(p);
-    const models = (await prov.fetchModels?.()) ?? [];
-    if (models.length > 0) mergeDynamicModels(p.name, models);
-    return models.length;
+    // C5（2026-08-27）：手动刷新记目录失败面（compact 选择器分组头同步可见）；
+    // 失败上抛给 ModelSelector.handleRefresh 显示真实原因（fetchModels 不再把
+    // 网络失败伪装成「未获取到新模型」）。
+    try {
+      const models = (await prov.fetchModels?.()) ?? [];
+      recordDynamicFetchResult(p.name, true);
+      if (models.length > 0) mergeDynamicModels(p.name, models);
+      return models.length;
+    } catch (e) {
+      recordDynamicFetchResult(p.name, false, e instanceof Error ? e.message : String(e));
+      throw e;
+    }
   }, [selectedProvider]);
 
   const handleTest = useCallback(async () => {
