@@ -9,11 +9,17 @@ import { useCallback, useState } from 'react';
 import { getModel } from '../../../provider/catalog';
 import { type StoredThinking, thinkingOptionsFor } from '../../../provider/thinking';
 import type { Protocol } from '../../../provider/types';
-import { type ConnectionProbe, effectiveModels, isFactoryBaseUrl, type ProbeOutcome } from '../../../settings';
+import {
+  type ConnectionProbe,
+  effectiveModels,
+  isFactoryBaseUrl,
+  type ModelOverrides,
+  type ProbeOutcome,
+} from '../../../settings';
 import { protocolLabel } from './protocol';
 import { formatLatency, formatTestAt, providerStatus, STATUS_LABEL } from './status';
 
-export type ProviderField = 'apiKey' | 'baseUrl' | 'model' | 'thinking' | 'contextWindow' | 'maxTokens';
+export type ProviderField = 'apiKey' | 'baseUrl' | 'model' | 'thinking';
 
 /** 连接探针的 UI 阶段（瞬时态，不持久化）；结果本体见 ConnectionProbe。 */
 export type ProbeUiPhase = 'idle' | 'testing' | ProbeOutcome;
@@ -32,9 +38,8 @@ interface ProviderDetailProps {
     model: string;
     thinking?: StoredThinking;
     lastTest?: ConnectionProbe;
-    /** P14 用户覆盖：0/缺省 = 用目录值。 */
-    contextWindow?: number;
-    maxTokens?: number;
+    /** per-model 覆盖（上下文窗口 / 最大输出）；0/缺省 = 用目录值。 */
+    modelOverrides?: Record<string, ModelOverrides>;
     /** 该提供方「可用模型」id 列表（创作坞下拉的可选面；缺省 = [model]）。 */
     models?: string[];
   };
@@ -67,6 +72,8 @@ export interface ProviderDetailActions {
   onAddModel: (modelId: string) => void;
   /** 从「可用模型」列表移除一个模型 id。 */
   onRemoveModel: (modelId: string) => void;
+  /** per-model 覆盖（P14）：上下文窗口 / 最大输出，0 = 清回目录值。 */
+  onModelOverride: (modelId: string, field: 'contextWindow' | 'maxTokens', value: number) => void;
   onTest: () => void;
   onSetCurrent: () => void;
   onClearKey: () => void;
@@ -82,6 +89,7 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
     onFetchModels,
     onAddModel,
     onRemoveModel,
+    onModelOverride,
     onTest,
     onSetCurrent,
     onClearKey,
@@ -94,6 +102,8 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
   const [newModel, setNewModel] = useState('');
   const [fetching, setFetching] = useState(false);
   const [fetchMsg, setFetchMsg] = useState('');
+  // per-model 参数展开（参数编辑器作用到哪个模型）
+  const [paramModel, setParamModel] = useState<string | null>(null);
   const handleFetch = useCallback(async () => {
     if (fetching) return;
     setFetching(true);
@@ -238,19 +248,58 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
           {models.length > 0 && (
             <div className="pp-models-list">
               {models.map((id) => (
-                <span key={id} className={`pp-model-chip${id === provider.model ? ' is-default' : ''}`} title={id}>
-                  <span className="pp-model-chip-name">{getModel(id)?.name ?? id}</span>
-                  {id === provider.model && <span className="pp-model-chip-default">新会话默认</span>}
-                  <button
-                    type="button"
-                    className="pp-model-chip-x"
-                    title={`移除 ${id}`}
-                    aria-label={`移除 ${id}`}
-                    onClick={() => onRemoveModel(id)}
-                  >
-                    ✕
-                  </button>
-                </span>
+                <div key={id} className="pp-model-item">
+                  <span className={`pp-model-chip${id === provider.model ? ' is-default' : ''}`} title={id}>
+                    <span className="pp-model-chip-name">{getModel(id)?.name ?? id}</span>
+                    {id === provider.model && <span className="pp-model-chip-default">新会话默认</span>}
+                    <button
+                      type="button"
+                      className="pp-model-chip-param"
+                      title="上下文窗口 / 最大输出"
+                      onClick={() => setParamModel(paramModel === id ? null : id)}
+                    >
+                      {paramModel === id ? '收起' : '参数'}
+                    </button>
+                    <button
+                      type="button"
+                      className="pp-model-chip-x"
+                      title={`移除 ${id}`}
+                      aria-label={`移除 ${id}`}
+                      onClick={() => onRemoveModel(id)}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                  {paramModel === id && (
+                    <div className="pp-model-params">
+                      <label className="pp-model-param">
+                        <span>上下文窗口</span>
+                        <input
+                          type="number"
+                          min={0}
+                          value={provider.modelOverrides?.[id]?.contextWindow ?? ''}
+                          placeholder={String(getModel(id)?.contextWindow || 200000)}
+                          onChange={(e) =>
+                            onModelOverride(id, 'contextWindow', Number.parseInt(e.target.value, 10) || 0)
+                          }
+                        />
+                      </label>
+                      <label className="pp-model-param">
+                        <span>最大输出</span>
+                        <input
+                          type="number"
+                          min={0}
+                          value={provider.modelOverrides?.[id]?.maxTokens ?? ''}
+                          placeholder={String(getModel(id)?.maxTokens || 0)}
+                          onChange={(e) => onModelOverride(id, 'maxTokens', Number.parseInt(e.target.value, 10) || 0)}
+                        />
+                      </label>
+                      <span className="pp-model-params-hint">
+                        留空 = 用目录值（自定义模型目录无值则上下文 200K / 输出不钳制）
+                      </span>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           )}
@@ -307,46 +356,6 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
             placeholder="https://…/v1"
             autoComplete="off"
           />
-        </div>
-
-        <div className="pp-field">
-          <div className="pp-f-label-row">
-            <label className="pp-f-label" htmlFor="pd-ctx">
-              上下文窗口
-            </label>
-            <span className="pp-chip">{provider.contextWindow || modelDesc?.contextWindow || '默认 200K'}</span>
-          </div>
-          <input
-            id="pd-ctx"
-            className="sp-input"
-            type="number"
-            min={0}
-            value={provider.contextWindow || ''}
-            placeholder={String(modelDesc?.contextWindow || 200000)}
-            onChange={(e) => onFieldChange('contextWindow', e.target.value)}
-            autoComplete="off"
-          />
-          <div className="pp-f-hint">目录数据过时时手动覆盖（token 数，0 = 用目录值）。</div>
-        </div>
-
-        <div className="pp-field">
-          <div className="pp-f-label-row">
-            <label className="pp-f-label" htmlFor="pd-maxtok">
-              最大输出 token
-            </label>
-            <span className="pp-chip">{provider.maxTokens || modelDesc?.maxTokens || '模型自定'}</span>
-          </div>
-          <input
-            id="pd-maxtok"
-            className="sp-input"
-            type="number"
-            min={0}
-            value={provider.maxTokens || ''}
-            placeholder={String(modelDesc?.maxTokens || 0)}
-            onChange={(e) => onFieldChange('maxTokens', e.target.value)}
-            autoComplete="off"
-          />
-          <div className="pp-f-hint">目录数据过时时手动覆盖（token 数，0 = 用目录值钳制）。</div>
         </div>
 
         {thinkingModes.length > 0 && (

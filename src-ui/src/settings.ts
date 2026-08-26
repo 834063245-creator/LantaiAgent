@@ -44,11 +44,17 @@ export interface ProviderSettings {
    *  会话级在列表内切换；缺省/空 = 视为 [model]（旧数据零迁移）。
    *  从 API 拉取（fetchModels）会填充此列表（写进暂存，随保存落盘）。 */
   models?: string[];
-  /** 用户覆盖：上下文窗口（P14）——目录数据 stale 时无需发版即可纠正；
-   *  0/缺省 = 用目录值。workspace._effectiveContextWindow 消费。 */
+  /** per-model 覆盖（P14 替代旧的 per-provider 单字段 contextWindow/maxTokens——
+   *  多模型时代按 Provider 管一个值毫无意义）。键 = 模型 id；0/缺省 = 用目录值。
+   *  workspace._contextWindowFor 与 createProvider → buildRequest → clampMaxTokens 消费。 */
+  modelOverrides?: Record<string, ModelOverrides>;
+}
+
+/** 单模型的 P14 覆盖：目录数据 stale / 目录外自定义模型时的纠正。 */
+export interface ModelOverrides {
+  /** 上下文窗口（token 数）；0/缺省 = 用目录值（目录无 = 默认 200K）。 */
   contextWindow?: number;
-  /** 用户覆盖：最大输出 token（P14）——目录数据 stale 时无需发版即可纠正；
-   *  0/缺省 = 用目录值。createProvider → buildRequest → clampMaxTokens 消费。 */
+  /** 最大输出 token；0/缺省 = 用目录值（目录无 = 不钳制）。 */
   maxTokens?: number;
 }
 
@@ -58,6 +64,21 @@ export function effectiveModels(p: ProviderSettings): string[] {
   const list = Array.isArray(p.models) && p.models.length > 0 ? p.models.filter((m) => m?.trim()) : [];
   if (list.length > 0) return list;
   return p.model?.trim() ? [p.model.trim()] : [];
+}
+
+/** 某模型生效的上下文窗口：per-model 覆盖 ?? 目录值 ?? 默认（200K）。 */
+export function modelContextWindow(p: ProviderSettings, modelId: string, fallback = 200000): number {
+  const ov = p.modelOverrides?.[modelId]?.contextWindow;
+  if (ov && ov > 0) return ov;
+  return getModel(modelId)?.contextWindow || fallback;
+}
+
+/** 某模型生效的最大输出 token：per-model 覆盖 ?? 目录值 ?? 0（不钳制）。
+ *  （clampMaxTokens 内部另有目录兜底，此处返回 per-model 覆盖优先值。） */
+export function modelMaxTokens(p: ProviderSettings, modelId: string): number {
+  const ov = p.modelOverrides?.[modelId]?.maxTokens;
+  if (ov && ov > 0) return ov;
+  return getModel(modelId)?.maxTokens || 0;
 }
 
 export interface AgentSettings {

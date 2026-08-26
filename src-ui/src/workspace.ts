@@ -43,7 +43,7 @@ import { useShellStore } from './app/shell-store';
 import { resolveCurrentComposition } from './composition/preset-assembly';
 import type { Context, Fiber } from './cordis';
 import { initCordisKernel } from './cordis/boot';
-import { getModel, mergeDynamicModels, recordDynamicFetchResult } from './provider/catalog';
+import { mergeDynamicModels, recordDynamicFetchResult } from './provider/catalog';
 import { resolveApiKey } from './provider/credentials';
 import { createLiveProvider } from './provider/live';
 import type { Provider } from './provider/types';
@@ -56,6 +56,9 @@ import {
   graphEngineEnabled,
   loadSettings,
   loadSettingsWithSecrets,
+  type ModelOverrides,
+  modelContextWindow,
+  type ProviderSettings,
 } from './settings';
 import type { AgentConfigChangeReason } from './state/agent-config-store';
 import { getComposeStore, resolveComposeEffective } from './state/compose-store';
@@ -719,11 +722,16 @@ export class Workspace {
     return createLiveProvider(getActiveProvider(settings).name);
   }
 
-  /** 方案甲（2026-08-27）：会话级窗口计算——provider 行的覆盖（P14）优先，
-   *  其次会话生效模型的目录值，最后 200K。工厂与热切换共用（原全局版
-   *  _effectiveContextWindow 随「全局单 provider 装配」退役）。 */
-  private _contextWindowFor(row: { contextWindow?: number; kind: string }, model: string): number {
-    return row.contextWindow || getModel(model)?.contextWindow || 200000;
+  /** 方案甲（2026-08-27）+ per-model 覆盖（2026-08-26）：会话级窗口计算——
+   *  per-model 覆盖（modelOverrides）优先，其次会话生效模型的目录值，最后 200K。
+   *  工厂与热切换共用（原全局版 _effectiveContextWindow 随「全局单 provider 装配」
+   *  退役；per-provider 单字段 contextWindow 已拆，多模型时代按 Provider 管一个值
+   *  毫无意义）。 */
+  private _contextWindowFor(
+    row: { modelOverrides?: Record<string, ModelOverrides>; kind: string },
+    model: string,
+  ): number {
+    return modelContextWindow(row as ProviderSettings, model);
   }
 
   private async _setupAgentInner(chatPanel: ChatCore): Promise<void> {

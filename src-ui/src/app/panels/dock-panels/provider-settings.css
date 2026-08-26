@@ -462,9 +462,14 @@
 /* ── 可用模型列表（创作坞下拉的可选面）── */
 .pp-models-list {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 5px;
   margin-bottom: 6px;
+}
+.pp-model-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 .pp-model-chip {
   display: inline-flex;
@@ -507,6 +512,45 @@
 }
 .pp-model-chip-x:hover {
   color: var(--ink-1);
+}
+/* per-model 参数展开（上下文窗口 / 最大输出，P14 覆盖） */
+.pp-model-chip-param {
+  flex: 0 0 auto;
+  border: 1px solid var(--rule-soft);
+  background: transparent;
+  color: var(--ink-3);
+  font-size: calc(9px * var(--font-scale));
+  padding: 0 5px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.pp-model-chip-param:hover {
+  color: var(--ink-1);
+  border-color: var(--ink-3);
+}
+.pp-model-params {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px dashed var(--rule-soft);
+  background: var(--paper-deep);
+}
+.pp-model-param {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: calc(9px * var(--font-scale));
+  color: var(--ink-3);
+}
+.pp-model-param .sp-input {
+  width: 110px;
+}
+.pp-model-params-hint {
+  flex-basis: 100%;
+  font-size: calc(8px * var(--font-scale));
+  color: var(--ink-3);
 }
 .pp-models-add {
   display: flex;

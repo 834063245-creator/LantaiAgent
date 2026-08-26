@@ -99,14 +99,23 @@ export function ProviderPage({
         }
         setKeyDirtyMap((m) => new Map(m).set(name, true));
       }
-      // P14 覆盖字段：数字语义（空串/0 = 用目录值），存储 number | undefined
-      const patch =
-        field === 'contextWindow' || field === 'maxTokens'
-          ? { [field]: Math.max(0, Number.parseInt(value, 10) || 0) }
-          : { [field]: value };
-      onCommitProvider(updateProvider(settings, name, patch as Partial<ProviderSettings>));
+      onCommitProvider(updateProvider(settings, name, { [field]: value } as Partial<ProviderSettings>));
     },
     [settings, onCommitProvider, onStageClear, onUnstageClear],
+  );
+
+  /** per-model 覆盖（P14）：上下文窗口 / 最大输出，按模型 id 存 modelOverrides。 */
+  const handleModelOverride = useCallback(
+    (name: string, modelId: string, field: 'contextWindow' | 'maxTokens', value: number) => {
+      const p = settings.providers.find((x) => x.name === name);
+      const cur = p?.modelOverrides?.[modelId] ?? {};
+      const nextOverrides = {
+        ...(p?.modelOverrides ?? {}),
+        [modelId]: { ...cur, [field]: value > 0 ? value : undefined },
+      };
+      onCommitProvider(updateProvider(settings, name, { modelOverrides: nextOverrides }));
+    },
+    [settings, onCommitProvider],
   );
 
   const handleRefreshModels = useCallback(async (): Promise<number> => {
@@ -311,6 +320,8 @@ export function ProviderPage({
             onFetchModels: handleRefreshModels,
             onAddModel: (modelId) => handleAddModel(selectedProvider.name, modelId),
             onRemoveModel: (modelId) => handleRemoveModel(selectedProvider.name, modelId),
+            onModelOverride: (modelId, field, value) =>
+              handleModelOverride(selectedProvider.name, modelId, field, value),
             onTest: handleTest,
             onSetCurrent: handleSetCurrent,
             onClearKey: () => setClearTarget(selectedProvider.name),

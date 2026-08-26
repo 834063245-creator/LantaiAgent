@@ -58,8 +58,8 @@ interface OpenAIConfig {
   model: string;
   /** 思考档位（ThinkingPolicy）。'off' = 关闭；命名档位须在模型声明清单内。 */
   thinking?: StoredThinking;
-  /** 用户设置的最大输出覆盖（ProviderSettings.maxTokens，优先于目录值）。 */
-  maxTokensOverride?: number;
+  /** per-model 最大输出覆盖（P14）：请求时按模型解析，0/缺省 = 目录值。 */
+  maxTokensFor?: (model: string) => number | undefined;
 }
 
 /** 动态模型 reasoning 启发式（P0 定稿）：
@@ -92,7 +92,7 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
         model,
         req.max_tokens,
         thinking,
-        cfg.maxTokensOverride,
+        cfg.maxTokensFor,
       );
       const response = await sendWithRetry({
         url: `${baseUrl}/chat/completions`,
@@ -197,7 +197,7 @@ export function buildChatRequest(
   model: string,
   maxTok: number,
   thinking: StoredThinking | undefined,
-  maxTokensOverride?: number,
+  maxTokensFor?: (model: string) => number | undefined,
 ): ChatRequest {
   // P14 能力协商：档位合法性由模型目录声明裁决（deepseek.json 等声明 thinkingEfforts）。
   // 直连 DeepSeek 声明 low/high/max（2026-08-22 用户官方文档核实 low 成立）。
@@ -281,7 +281,7 @@ export function buildChatRequest(
     model,
     messages: chatMsgs,
     tools: chatTools,
-    max_tokens: clampMaxTokens(model, maxTok > 0 ? maxTok : DEFAULT_MAX_TOKENS, maxTokensOverride),
+    max_tokens: clampMaxTokens(model, maxTok > 0 ? maxTok : DEFAULT_MAX_TOKENS, maxTokensFor?.(model)),
     stream: true,
     stream_options: { include_usage: true },
     thinking: thinkingBlock,

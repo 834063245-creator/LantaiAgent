@@ -16,7 +16,8 @@ export interface CreateProviderOptions {
 
 /** Create a Provider from ProviderSettings, dispatching to the correct implementation. */
 export function createProvider(settings: ProviderSettings, options?: CreateProviderOptions): Provider {
-  const maxTokensOverride = settings.maxTokens && settings.maxTokens > 0 ? settings.maxTokens : undefined;
+  // per-model 最大输出覆盖（P14）：请求时按模型解析，0/缺省 = 目录值（clampMaxTokens 兜底）
+  const maxTokensFor = (model: string): number | undefined => settings.modelOverrides?.[model]?.maxTokens || undefined;
   if (settings.kind === 'anthropic') {
     return createAnthropicProvider({
       name: settings.name,
@@ -26,7 +27,7 @@ export function createProvider(settings: ProviderSettings, options?: CreateProvi
       // disableThinking 语义统一到两种协议：true → 强制关闭扩展思考。
       // 翻译器/摘要路径都传 disableThinking: true，anthropic 在此同样关闭。
       thinking: withThinkingDisabled(settings.thinking, options?.disableThinking),
-      maxTokensOverride,
+      maxTokensFor,
     });
   }
   return createOpenAIProvider({
@@ -35,6 +36,6 @@ export function createProvider(settings: ProviderSettings, options?: CreateProvi
     baseUrl: settings.baseUrl,
     model: settings.model,
     thinking: withThinkingDisabled(settings.thinking, options?.disableThinking),
-    maxTokensOverride,
+    maxTokensFor,
   });
 }

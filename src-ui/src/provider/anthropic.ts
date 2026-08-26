@@ -55,8 +55,8 @@ interface AnthropicConfig {
   model: string;
   /** "adaptive" 启用扩展思考 */
   thinking?: StoredThinking;
-  /** 用户设置的最大输出覆盖（ProviderSettings.maxTokens，优先于目录值）。 */
-  maxTokensOverride?: number;
+  /** per-model 最大输出覆盖（P14）：请求时按模型解析，0/缺省 = 目录值。 */
+  maxTokensFor?: (model: string) => number | undefined;
 }
 
 export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
@@ -84,7 +84,7 @@ export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
         model,
         thinking || '',
         req.max_tokens,
-        cfg.maxTokensOverride,
+        cfg.maxTokensFor,
       );
       const response = await sendWithRetry({
         url: `${baseUrl}/v1/messages`,
@@ -214,7 +214,7 @@ function buildRequest(
   model: string,
   thinkingCfg: string,
   maxTok: number,
-  maxTokensOverride?: number,
+  maxTokensFor?: (model: string) => number | undefined,
 ): AnthRequest {
   const system: TextBlock[] = [];
   const anthMsgs: AnthMessage[] = [];
@@ -324,7 +324,7 @@ function buildRequest(
 
   const r: AnthRequest = {
     model,
-    max_tokens: clampMaxTokens(model, maxTok > 0 ? maxTok : DEFAULT_MAX_TOKENS, maxTokensOverride),
+    max_tokens: clampMaxTokens(model, maxTok > 0 ? maxTok : DEFAULT_MAX_TOKENS, maxTokensFor?.(model)),
     system: system.length > 0 ? system : undefined,
     messages: anthMsgs,
     tools: anthTools.length > 0 ? anthTools : undefined,

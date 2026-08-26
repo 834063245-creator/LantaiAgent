@@ -68,8 +68,8 @@ describe('buildChatRequest — thinking / reasoning_effort wire（P14 声明驱�
     expect(body.reasoning_effort).toBe('high');
   });
 
-  it('maxTokensOverride 优先于目录值（P14 用户覆盖）', () => {
-    const body = buildChatRequest(msgs, [], 'deepseek-v4-pro', 100000, 'high', 64000);
+  it('maxTokensFor 优先于目录值（P14 per-model 用户覆盖）', () => {
+    const body = buildChatRequest(msgs, [], 'deepseek-v4-pro', 100000, 'high', () => 64000);
     expect(body.max_tokens).toBe(64000);
   });
 

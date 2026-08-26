@@ -267,4 +267,27 @@ describe('ProviderPage — 暂存流程', () => {
     await click(lastX);
     expect(document.querySelector('.pp-model-chip')).toBeNull();
   });
+
+  it('可用模型 per-model 参数：点「参数」展开，设上下文/最大输出写进 modelOverrides', async () => {
+    await render(makeSettings());
+
+    const paramBtn = [...document.querySelectorAll<HTMLButtonElement>('.pp-model-chip-param')].find((b) =>
+      b.title.includes('上下文窗口'),
+    )!;
+    await click(paramBtn);
+    const params = document.querySelector<HTMLElement>('.pp-model-params');
+    expect(params).not.toBeNull();
+
+    const inputs = [...document.querySelectorAll<HTMLInputElement>('.pp-model-params input')];
+    expect(inputs.length).toBe(2); // 上下文窗口 + 最大输出
+    await setInputValue(inputs[0]!, '64000');
+    await setInputValue(inputs[1]!, '32000');
+    // 写入暂存 settings.modelOverrides 后回读（Harness onCommitProvider 更新 state 重渲）
+    expect(inputs[0]?.value).toBe('64000');
+    expect(inputs[1]?.value).toBe('32000');
+
+    // 收起后展开仍在（modelOverrides 已持久到暂存 settings）
+    await click(paramBtn);
+    expect(document.querySelector('.pp-model-params')).toBeNull();
+  });
 });

@@ -330,14 +330,14 @@ describe('真 socket — Anthropic Messages 流式全链路', () => {
     expect(err?.err?.message).toContain('[服务商繁忙]');
   });
 
-  it('maxTokensOverride 优先于目录（真 socket 钳制）', async () => {
+  it('maxTokensFor 优先于目录（真 socket 钳制，per-model）', async () => {
     const prov = createAnthropicProvider({
       name: 'test-anthropic',
       apiKey: 'sk-ant-test',
       baseUrl: srv.url,
       model: 'claude-sonnet-4-6',
       thinking: '',
-      maxTokensOverride: 777,
+      maxTokensFor: () => 777,
     });
     await collect(
       prov.stream(new AbortController().signal, {
