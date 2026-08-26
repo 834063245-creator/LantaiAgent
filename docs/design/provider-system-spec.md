@@ -674,3 +674,74 @@ waterfall 拦截、配置面声明路由）；兰台是**单活跃 provider** �
   零声明处理，待官方文档核实后加条目。
 - o3-deep-research / o4-mini-deep-research 零声明（pi-ai 无该模型 tlm 数据）。
 
+## P15 — Provider 数据模型重构：可用模型列表 + 最近使用默认 + per-model 覆盖（2026-08-26）
+
+> 动机：从「一 Provider = 一模型」到多模型化（本 Phase 前已由方案甲实现会话级覆盖），
+> 暴露 P14 遗留的三个反人类点：① 创作坞下拉倒静态目录全集（配一个显示一大堆）；
+> ② 「默认模型」与「可用模型」两个控件并列、上下文/最大输出按 Provider 一个值管所有模型；
+> ③ 「设为当前」是全局单 provider 时代的遗物。参考 DSH 的模型一等对象语义，重构数据模型。
+
+### 数据模型（当前真源，settings.ts）
+
+```ts
+interface ProviderSettings {
+  kind: 'anthropic' | 'openai';
+  name: ProviderId;          // 连接身份 = 凭据键 = 动态模型合并键（三合一不变）
+  apiKey: string;            // 会话内明文，持久化权威 = 加密凭据
+  baseUrl: string;
+  model: string;             // 新会话默认 = 最近使用（自动跟从创作坞，非手动设置）
+  thinking?: StoredThinking;
+  lastTest?: ConnectionProbe;
+  models?: string[];         // 可用模型列表（创作坞下拉可选面；缺省 = [model]，零迁移）
+  modelOverrides?: Record<string, ModelOverrides>; // per-model 覆盖
+}
+interface ModelOverrides { contextWindow?: number; maxTokens?: number; }
+```
+
+- **`models` = 用户管的模型配置面**：Provider 页增删 + 「从 API 拉取」填充
+  （拉取结果写进暂存 models，随保存落盘）。创作坞下拉只列它（`effectiveModels`），
+  不再倒静态目录全集。vendor 一律用 provider 名（自定义 provider 复用目录模型 id 时
+  分组/切换对准该 provider，杜绝写错家 400）。
+- **`model` = 新会话默认 = 最近使用**：`compose-store.setModel` 定向写该 provider 行
+  model + activeProvider（新鲜 loadSettings 读改写单字段，不整份快照 → A4 clobber
+  不复活）；只影响新卷/未改卷出生默认，已存在会话走覆盖（applyAgentConfig 会话级
+  分支按会话解析，A1「切一个拖累全部」不复发）。
+- **`modelOverrides` = per-model 上下文/最大输出**（取代 P14 的 per-provider
+  `contextWindow/maxTokens` 单字段）：`modelContextWindow` / `modelMaxTokens` 解析
+  （覆盖 ?? 目录值 ?? 默认）；workspace `_contextWindowFor` 与 `createProvider`
+  `maxTokensFor(model)`（请求时按模型解析，取代构造时固定的 maxTokensOverride）消费。
+- **`activeProvider` = 最近使用的 provider**（「设为当前」按钮退役）；Provider 列表
+  角标叫「新会话默认」。`addProvider` 仍设 activeProvider = 新家，`removeProvider`
+  回落 next[0]。
+- **思考档位常驻**：per-model 档位来自目录声明（P14）；无目录声明的模型给
+  「自动/关闭」协议安全兜底（assertEffortDeclared 对 ''/off 不拦），不再整控件消失。
+
+### 退役清单（本 Phase 删除）
+
+- 「设为当前」按钮 + ProviderDetail 的 `isCurrent` / `onSetCurrent`（activeProvider
+  语义反转，不再手动指定）。
+- 「默认模型」目录选择器 + `handleModelChange`（可用模型列表为唯一模型配置面）。
+- per-provider `ProviderSettings.contextWindow / maxTokens`（改 per-model
+  `modelOverrides`）；`maxTokensOverride`（构造时固定）→ `maxTokensFor(model)`。
+- `ModelSelector.onRefreshModels` 死代码（拉取能力迁 Provider 页「可用模型」区）。
+
+### P14「为何不做 DSH 注册表」口径更新
+
+P14 写「兰台是单活跃 provider 形态」，P15 后修正为：**多 provider 在册、activeProvider
+只是新会话默认（最近使用），不承担运行期路由**——请求仍由 live provider 按名现解析
+（Phase C），会话热切换按会话解析（方案甲）。DSH 的多路由注册表依旧不照搬（架构空转），
+`composition/services.ts` 的 ProvidersService 空壳保留给未来真正多路由需求。seam 仍是
+`_buildProvider` 单一创建收口 + live 按名现解析。
+
+### 验证
+
+- 每 commit 门禁：vitest 1793-1794 passed / 4 skipped · build ✓ · convergence exit 0 ·
+  biome ci 0/0。
+- 测试增量：compose-store（setModel 最近使用语义 + activeProvider 跟随）、
+  model-selector-compact（配置面只列 / 同家多模型 / 自定义 provider 分组 / 不可用态 /
+  运行中守卫 / 同款 no-op）、provider-page-staging（可用模型增删 + 默认顶位 + per-model
+  参数）、composer-dock-rework（思考 pill + 兜底 + 运行中守卫接线）、
+  provider-openai-thinking / provider-realsocket（maxTokensFor）。
+- 实机验收：用户逐条（Provider 页可用模型 / 创作坞下拉 / 思考常驻 / 自定义 provider 分组）。
+
+
