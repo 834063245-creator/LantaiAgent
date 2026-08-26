@@ -364,9 +364,11 @@ describe('S4-1a preset-assembly：cache + 选择同步 + boot 应用', () => {
 
 describe('S4-1a workspace 会话工厂：会话作用域注册表路径（源码窗口断言）', () => {
   const src = readFileSync(path.resolve(process.cwd(), 'src/workspace.ts'), 'utf8');
+  // 方案甲（2026-08-27）：工厂签名带 sessionId（按会话生效配置装配）
+  const factoryAnchor = 'const factory = async (sessionId: number): Promise<AgentHandle | null> => {';
 
   it('工厂读 resolveCurrentComposition 并做引用不等判定', () => {
-    const i = src.indexOf('const factory = async (): Promise<AgentHandle | null> => {');
+    const i = src.indexOf(factoryAnchor);
     expect(i).toBeGreaterThan(0);
     const window = src.slice(i, i + 1600);
     expect(window).toContain('resolveCurrentComposition()');
@@ -374,15 +376,15 @@ describe('S4-1a workspace 会话工厂：会话作用域注册表路径（源码
   });
 
   it('覆盖存在时走 buildToolRegistry({toolRows: compositionOverride.tools})', () => {
-    const i = src.indexOf('const factory = async (): Promise<AgentHandle | null> => {');
-    const window = src.slice(i, i + 2400);
+    const i = src.indexOf(factoryAnchor);
+    const window = src.slice(i, i + 3200);
     expect(window).toContain('compositionOverride');
     expect(window).toContain('toolRows: compositionOverride.tools');
     expect(window).toContain('tools: sessionRegistry');
   });
 
   it('覆盖经 createAgent 第二参透传（AgentConfig 面冻结不破）', () => {
-    const i = src.indexOf('const factory = async (): Promise<AgentHandle | null> => {');
+    const i = src.indexOf(factoryAnchor);
     const window = src.slice(i, i + 6000);
     expect(window).toContain('compositionOverride,');
   });

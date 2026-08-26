@@ -47,7 +47,8 @@ describe('persistence 行 — agent-config 信号单分支路由（单槽统一�
     notifyAgentConfigChanged('settings-saved');
     await new Promise((r) => setTimeout(r, 0));
     expect(applyMock).toHaveBeenCalledTimes(1);
-    expect(applyMock).toHaveBeenCalledWith(chatPanel, 'settings-saved');
+    // 方案甲（2026-08-27）：第三参 sessionId（全局信号 = undefined）随信号透传
+    expect(applyMock).toHaveBeenCalledWith(chatPanel, 'settings-saved', undefined);
   });
 
   it('行为：workspace 缺席 → 不投递（warn 可见）', async () => {

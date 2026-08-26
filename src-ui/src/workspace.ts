@@ -57,6 +57,7 @@ import {
   loadSettingsWithSecrets,
 } from './settings';
 import type { AgentConfigChangeReason } from './state/agent-config-store';
+import { getComposeStore, resolveComposeEffective } from './state/compose-store';
 import { useCompositionStore } from './state/composition-store';
 import type { CheckResult } from './state/dock-store';
 import { useDockStore } from './state/dock-store';
@@ -601,7 +602,7 @@ export class Workspace {
    * （下一次请求经 live 现解析出空 Key → MISSING_CREDENTIAL 响亮报错，会话
    * 照常显示）——DSH 形态的「配置断了 → 会话在，发送时报错」。
    */
-  async applyAgentConfig(chatPanel: ChatCore, reason: AgentConfigChangeReason): Promise<void> {
+  async applyAgentConfig(chatPanel: ChatCore, reason: AgentConfigChangeReason, sessionId?: number): Promise<void> {
     // 规划模式切换 — 运行时状态切换（raw Agent 引用承担——接口层无 setPlanMode；
     // 工厂现造的句柄下次造时从 mode-store 现读，无活句柄也不丢状态）
     if (reason === 'collaboration-mode') {
@@ -623,36 +624,45 @@ export class Workspace {
       useAgentPanelStore.getState().setDiag({ text: `[Agent] provider=${act.name}`, ready: true });
     }
 
-    // Agent 装配时序归位（2026-08-25）：this.agent 不再存在（句柄生命周期
-    // 跟随卷，活句柄在 agentSessionState 注册表）。配置变更的热切换面 =
-    // 工厂重挂（新句柄下次拟文时吃到新配置）+ 活句柄逐一热同步——无需
-    // 全量重装，更不动摊开集。
     // 工厂缺席（装配从未成功过的恢复路径）才补一次全量装配。
     if (!this._factoryRegistered) {
       await this.setupAgent(chatPanel);
       return;
     }
 
-    // 提供方身份变更 → 换 live provider 引用（baseUrl/model/key/thinking 经它
-    // 按名现解析；同身份无需重建——这是 P14 恒 swap 退役后的唯一换引用场景）
-    const pricing = defaultPricing(act.kind, act.model);
-    if (this.prov?.name() !== act.name) {
-      const prov = this._buildProvider(s);
-      prov.prewarm?.(); // 廉价预热（fire-and-forget，3s 自灭）
-      this.prov = prov;
-      agentSessionState.forEachAgent((h) => h.setProvider(prov, pricing));
-    } else {
-      // 同身份：定价随模型热同步（模型可能同提供方内被切换）
-      agentSessionState.forEachAgent((h) => h.setPricing(pricing));
+    // ── 方案甲（2026-08-27）：会话级变更（创作坞切模型/思考，信号带 sessionId）
+    //    → 只热切换该会话的句柄。解析该会话生效配置（覆盖 ?? 全局默认）。 ──
+    if ((reason === 'model-switched' || reason === 'thinking-changed') && sessionId != null) {
+      const handle = agentSessionState.getAgent(this._storeId, sessionId);
+      if (!handle) return; // 句柄未建（惰性）——工厂现造时会吃到新覆盖
+      const eff = resolveComposeEffective(this._storeId, sessionId);
+      const row = s.providers.find((p) => p.name === eff.providerName) ?? act;
+      const prov = createLiveProvider(eff.providerName, undefined, {
+        model: eff.model,
+        thinking: eff.thinking,
+      });
+      prov.prewarm?.();
+      handle.setProvider(prov, defaultPricing(row.kind, eff.model));
+      handle.setThinking(eff.thinking);
+      handle.setContextWindow(this._contextWindowFor(row, eff.model));
+      return;
     }
 
-    // 行为参数总是热同步（幂等；live provider 的 setThinking 为 no-op——档位
-    // 随 settings 每请求现解析，此处保持调用链以覆盖非 live 形态）
-    const thinkingCfg = act.thinking;
-    const win = this._effectiveContextWindow(s);
-    agentSessionState.forEachAgent((h) => {
-      h.setThinking(thinkingCfg);
-      h.setContextWindow(win);
+    // ── 全局变更（settings-saved）→ 逐会话重解析（方案甲语义 3/4）：
+    //    有覆盖的卷保持自己的值；无覆盖的卷实时跟随新全局默认。 ──
+    this.prov = this._buildProvider(s); // 工厂/后续装配的全局基准
+    this.prov.prewarm?.();
+    agentSessionState.forEachAgentEntry((storeId, sid, h) => {
+      const eff = resolveComposeEffective(storeId, sid);
+      const row = s.providers.find((p) => p.name === eff.providerName) ?? act;
+      // 覆盖存在 → live 带覆盖（该会话维度不跟随全局）；无覆盖 → 裸 live（现解析行值）
+      const override = getComposeStore(storeId).getState().getPrefs(String(sid));
+      const prov = override
+        ? createLiveProvider(eff.providerName, undefined, { model: eff.model, thinking: eff.thinking })
+        : createLiveProvider(eff.providerName);
+      h.setProvider(prov, defaultPricing(row.kind, eff.model));
+      h.setThinking(eff.thinking);
+      h.setContextWindow(this._contextWindowFor(row, eff.model));
     });
   }
 
@@ -701,12 +711,11 @@ export class Workspace {
     return createLiveProvider(getActiveProvider(settings).name);
   }
 
-  /** 生效上下文窗口 — Provider 覆盖（P14）优先，其次目录值，最后 200K。
-   *  factory 与 settings-saved 热切换共用，保证两处计算不分叉。
-   *  agent.contextWindow（全局窗口）是遗留字段，UI 已拆除，此处不再读取。 */
-  private _effectiveContextWindow(s: AppSettings): number {
-    const act = getActiveProvider(s);
-    return act.contextWindow || getModel(act.model)?.contextWindow || 200000;
+  /** 方案甲（2026-08-27）：会话级窗口计算——provider 行的覆盖（P14）优先，
+   *  其次会话生效模型的目录值，最后 200K。工厂与热切换共用（原全局版
+   *  _effectiveContextWindow 随「全局单 provider 装配」退役）。 */
+  private _contextWindowFor(row: { contextWindow?: number; kind: string }, model: string): number {
+    return row.contextWindow || getModel(model)?.contextWindow || 200000;
   }
 
   private async _setupAgentInner(chatPanel: ChatCore): Promise<void> {
@@ -948,14 +957,21 @@ export class Workspace {
     // 覆盖传给 createAgent（prompt/capabilities 域随覆盖换源；工具域经会话
     // 注册表换源）。无选择器时两值恒等 → 走共享注册表 + 无覆盖 = S2 现状
     // 零漂移。子 Agent 经 ctx composition 服务继承 → 与父同面。
-    const factory = async (): Promise<AgentHandle | null> => {
+    const factory = async (sessionId: number): Promise<AgentHandle | null> => {
       // Phase C（2026-08-24 工作区归属根治）：Agent 恒可构造——Key 缺失不再拒绝
-      // 装配。凭据/baseUrl/model/thinking 全部在使用点经 live provider 按名现
-      // 解析（缺 Key = 请求期 MISSING_CREDENTIAL 报错，会话不动）。定价/窗口
-      // 出自同步 settings 快照（零 IPC），后续变更由 applyAgentConfig 热同步。
+      // 装配。凭据/baseUrl/apiKey 全部在使用点经 live provider 按名现解析（缺
+      // Key = 请求期 MISSING_CREDENTIAL 报错，会话不动）。定价/窗口出自同步
+      // settings 快照（零 IPC），后续变更由 applyAgentConfig 热同步。
+      // 方案甲（2026-08-27）：按会话生效配置装配——有覆盖的卷用会话的
+      // provider/model/thinking，未改过的卷 = 裸 live（实时跟随全局默认）。
       const s = loadSettings();
       const act = getActiveProvider(s);
-      const sessProv = this._buildProvider(s);
+      const override = getComposeStore(this._storeId).getState().getPrefs(String(sessionId));
+      const eff = resolveComposeEffective(this._storeId, sessionId);
+      const row = s.providers.find((p) => p.name === eff.providerName) ?? act;
+      const sessProv = override
+        ? createLiveProvider(eff.providerName, undefined, { model: eff.model, thinking: eff.thinking })
+        : createLiveProvider(eff.providerName);
       sessProv.prewarm?.(); // 廉价预热（fire-and-forget）；fetchModels 合目录只在 setupAgent 做
 
       const ms = this._modeState();
@@ -1011,12 +1027,13 @@ export class Workspace {
           eventSink: chatPanel.eventSink,
           execState: chatPanel.execState,
           collaborationMode: ms.collaborationMode,
-          pricing: defaultPricing(act.kind, act.model),
+          pricing: defaultPricing(row.kind, eff.model),
           temperature: 0.7,
           // 从模型目录动态解析窗口（deepseek-v4 标 1M），查不到才 fallback 200K。
           // 0b3e5bf 曾加 Math.min(..., 200000) 硬封顶 — 把动态结果压成 200K，
           // 导致压缩在 110K 就触发；压缩已根治为只影响发送载荷，cap 无必要。
-          contextWindow: this._effectiveContextWindow(s),
+          // 方案甲：按会话生效模型 + provider 行覆盖计算。
+          contextWindow: this._contextWindowFor(row, eff.model),
           preRunHook: this.memoryManager
             ? async (input: string) => {
                 const mm = this.memoryManager;

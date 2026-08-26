@@ -287,7 +287,7 @@ export class ChatCore {
   get progressSink(): (data: { step: number; toolName: string }) => void {
     return (data: { step: number; toolName: string }) => this._updateStatusBar('thinking', `${data.toolName}…`);
   }
-  setAgentFactory(fn: (() => Promise<OwnedAgentHandle | null>) | null): void {
+  setAgentFactory(fn: ((sessionId: number) => Promise<OwnedAgentHandle | null>) | null): void {
     Session.setAgentFactory(this.panelId, fn);
   }
 
@@ -1001,6 +1001,8 @@ export class ChatCore {
       getChatStore(this.panelId).input.getState().setInputText('');
       getChatStore(this.panelId).input.getState().pushInputHistory(text);
       getChatStore(this.panelId).input.getState().setDraftText('');
+      // C1（2026-08-27）：静默注入曾让用户误以为 Enter 被吞——插话落地要有回音
+      this.addNotice('已插入进行中的回合（Agent 运行中，消息将在下轮生效）', 'info');
       // 纸视图（走查弹）打开时不唤起观测台面板——纸是当前输入面
       if (getChatStore(this.panelId).panel.getState().panelMode === 'input' && !useDockStore.getState().isOpen('paper'))
         this.summonPanel();

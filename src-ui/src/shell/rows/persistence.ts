@@ -50,7 +50,8 @@ export function bootPersistence(refs: ShellRefs): void {
     const ws = refs.workspace;
     const chatPanel = refs.chatPanel;
     if (ws && chatPanel) {
-      void ws.applyAgentConfig(chatPanel, reason).catch((err) => {
+      // 方案甲（2026-08-27）：会话级信号携带 sessionId → 只热切换该会话
+      void ws.applyAgentConfig(chatPanel, reason, state.sessionId ?? undefined).catch((err) => {
         // Phase D（错误不静默）：热切换失败可见——状态条呈现，不只进 console
         console.error('[agent-config] hot-switch failed:', err);
         pushStatus(`⚠️ 配置热切换失败: ${err instanceof Error ? err.message : String(err)}`);

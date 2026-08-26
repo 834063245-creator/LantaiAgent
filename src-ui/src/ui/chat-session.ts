@@ -11,7 +11,7 @@ import { createExecState, type ExecStateInstance } from '../agent/execution-stat
 import type { Message } from '../provider/types';
 import { typedJsonRpc, typedRpc } from '../rpc-contract';
 import { getActiveProvider, loadSettings } from '../settings';
-import { getComposeStore } from '../state/compose-store';
+import { type ComposeSessionPrefs, getComposeStore } from '../state/compose-store';
 import { disposeMessagesStores, disposeSessionMessagesStore } from '../state/messages-store';
 import {
   clearPaperSessions,
@@ -101,7 +101,10 @@ export function setTurnPairs(storeId: string, pairs: TurnPair[]): void {
 export function getAgentFactory(storeId: string) {
   return agentSessionState.getAgentFactory(storeId);
 }
-export function setAgentFactory(storeId: string, fn: (() => Promise<OwnedAgentHandle | null>) | null): void {
+export function setAgentFactory(
+  storeId: string,
+  fn: ((sessionId: number) => Promise<OwnedAgentHandle | null>) | null,
+): void {
   agentSessionState.setAgentFactory(storeId, fn);
 }
 
@@ -321,7 +324,7 @@ export async function ensureSessionAgent(ctx: SessionContext): Promise<boolean> 
   const factory = getAgentFactory(ctx.storeId);
   if (!factory) return false;
   const epoch = getWorkspaceEpoch();
-  const agent = await factory();
+  const agent = await factory(sid);
   if (!agent) return false;
   if (!isCurrentEpoch(epoch)) return false;
 
@@ -448,14 +451,16 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
   // 工厂缺席/返空/抛错 → 无句柄建卷（拟文时提示配 Key——Phase B 契约）。
   let newAgent: OwnedAgentHandle | null = null;
   const factory = getAgentFactory(ctx.storeId);
+  const st = getChatStore(ctx.storeId).sess.getState();
   if (factory) {
     try {
-      newAgent = await factory();
+      // 方案甲：新卷句柄按「出生时刻的全局默认」装配——此刻尚无会话覆盖，
+      // 工厂收到 id 后裸 live（实时跟随全局默认）。
+      newAgent = await factory(st.nextSessionId);
     } catch {
       /* 装配失败 = 句柄缺席，内容层照常（错误由拟文路径可见） */
     }
   }
-  const st = getChatStore(ctx.storeId).sess.getState();
   // ponytail: 消息在会话级 store 中 — 无需保存/恢复。
   // 只需保存旧会话的 token 计数。
   if (st.activeIdx >= 0) {
@@ -531,6 +536,8 @@ interface StoredSession {
   messages?: Message[];
   tokensUsed?: number;
   paper?: PaperSessionData;
+  /** 会话级创作坞覆盖（方案甲 2026-08-27）：旧存档无此字段 = 无覆盖。 */
+  compose?: ComposeSessionPrefs;
   workspace?: string | null;
   deleted?: boolean;
   /** _active.json 跟踪文件字段（与单个会话文件形状不同） */
@@ -634,7 +641,9 @@ export async function scanMaxSessionId(_projectPath: string): Promise<number> {
 
 /** 会话快照的磁盘形状（C8：saveActiveSession 与合卷落盘共用）。
  *  paper：纸面用户层状态（钉住块 + 纸条）——2026-08-24 收尾接入持久化。
- *  workspace：卷归属工作区（U1 起写入；正斜杠归一，零目录卷 = null）。 */
+ *  workspace：卷归属工作区（U1 起写入；正斜杠归一，零目录卷 = null）。
+ *  compose：会话级创作坞覆盖（方案甲 2026-08-27）——只存显式改动过的卷，
+ *  旧存档无此字段 = 无覆盖（实时跟随全局默认）。 */
 interface SessionSnapshotData {
   id: number;
   label: string;
@@ -642,6 +651,7 @@ interface SessionSnapshotData {
   messages: Message[];
   tokensUsed: number;
   paper?: PaperSessionData;
+  compose?: ComposeSessionPrefs;
   workspace?: string | null;
 }
 
@@ -695,6 +705,8 @@ export async function saveActiveSession(ctx: SessionContext, projectPath: string
     tokensUsed: ctx.getTotalTokensUsed(),
     // 纸面用户层（钉住块 + 纸条）随卷落盘——快照捕获与 messages 同步时点
     paper: getPaperSessionData(ctx.storeId, sMeta.id),
+    // 方案甲：会话级创作坞覆盖随卷落盘（无覆盖 = undefined，字段省略）
+    compose: getComposeStore(ctx.storeId).getState().getPrefs(String(sMeta.id)),
   };
 
   try {
@@ -729,6 +741,8 @@ export async function saveSessionById(ctx: SessionContext, projectPath: string, 
       tokensUsed,
       // 纸面用户层随卷落盘（改名即存路径与活跃卷同构）
       paper: getPaperSessionData(ctx.storeId, sid),
+      // 方案甲：会话级创作坞覆盖随卷落盘（与活跃卷同构）
+      compose: getComposeStore(ctx.storeId).getState().getPrefs(String(sid)),
     });
   } catch {
     /* 已记日志——改名即存是尽力而为（合卷路径另有告警） */
@@ -943,7 +957,9 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   // 在拟文时补建；无工厂同样摊开（拟文时提示配 Key）。
   let newAgent: OwnedAgentHandle | null = null;
   try {
-    newAgent = (await getAgentFactory(ctx.storeId)?.()) ?? null;
+    // 方案甲：续开卷的句柄按该卷的生效配置装配（有覆盖用覆盖——见下方
+    // hydratePrefs 回填；无覆盖 = 全局默认）
+    newAgent = (await getAgentFactory(ctx.storeId)?.(data.id || sessionId)) ?? null;
   } catch {
     /* 装配失败 = 句柄缺席，内容层照常（错误由拟文路径可见） */
   }
@@ -983,6 +999,15 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   msgStoreFor(ctx.storeId, sid).getState().setMessages([]);
   // 纸面用户层（钉住块 + 纸条）随卷恢复——旧存档无 paper 字段 = 空纸面
   loadPaperSessionData(ctx.storeId, sid, data.paper ?? null);
+  // 方案甲（2026-08-27）：会话级创作坞覆盖随卷恢复——旧存档无 compose 字段
+  // = 无覆盖（实时跟随全局默认）。回填在句柄创建之后（工厂装配时覆盖已在
+  // compose-store：磁盘路径先于工厂读卷？否——见下方：磁盘数据在上、工厂
+  // 在下同函数内，回填先于 handle 使用的下一条消息即可）。注意：句柄若已
+  // 建（newAgent 非空），其 provider 覆盖需要热同步——hydratePrefs 落表后
+  // 直接走 model-switched 信号面（applyAgentConfig 按会话解析覆盖）。
+  if (data.compose) {
+    getComposeStore(ctx.storeId).getState().hydratePrefs(String(sid), data.compose);
+  }
   if (typeof data.tokensUsed === 'number') {
     ctx.setTotalTokensUsed(data.tokensUsed);
     getChatStore(ctx.storeId).sess.getState().setSessionTokens(sid, data.tokensUsed);

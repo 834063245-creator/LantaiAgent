@@ -1,38 +1,28 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// state/compose-store — 创作坞的会话级状态对象（Stage-4 打孔③）。
+// state/compose-store — 创作坞的会话级配置覆盖（Stage-4 打孔③ → 方案甲 2026-08-27）。
 //
 // 拍板（canvas-space-model-notes.md §5 拍板 9 注）「创作坞状态归属铁律」：
-// 创作坞是视图不是容器，不拥有任何会话状态，只"指向"活跃会话。每会话
-// 持有一个完整状态对象（模型/思考强度/权限——可热切换，改了立即生效，
-// 下一条消息即用）。切换会话 = 指针换向，不迁移不重算。
+// 创作坞是视图不是容器，不拥有任何会话状态，只"指向"活跃会话。
 //
-// 落点设计（集成任务定位——功能均已存在，散落各处，这里收拢为「会话状态
-// API」）：
-//   - 每会话一份 `ComposeSessionPrefs`（providerName / model / thinking），
-//     缺失时从全局 settings 惰性快照（ensurePrefs）；
-//   - 写 = 写本 store + 落全局 settings（ProviderSettings 单一真相）+ 发
-//     agent-config 信号（model-switched / thinking-changed）→ Workspace.
-//     applyAgentConfig 热同步到全部活句柄（下一条消息即用）；
-//   - 权限模式不在此列——mode-store 是工作区级单一真相（「模式是相处方式，
-//     属工作台不属面板」），创作坞的权限控件直读 mode-store；
-//   - token/上下文 = 惰性计算 + 缓存（组件按活跃会话键 memo，切回不重算，
-//     见 ComposerDock 的 useMemo 键——本 store 不持有派生计数）。
+// 方案甲语义（composer-provider-audit.md 第二部分，2026-08-27 拍板）：
+//   全局 = 新卷/未改卷的实时默认；会话 = 只存自己的覆盖；运行与显示都按会话解析。
+//   - prefs 表只存「用户显式改动过的卷」的覆盖条目——ensurePrefs 的
+//     「首次触碰就快照冻结」语义已退役（那是 A1「显示层谎言」的一半根）；
+//   - setModel / setThinking 只写会话覆盖 + 发带 sessionId 的信号
+//     （notifyAgentConfigChanged('model-switched', sid)），一行不碰全局 settings
+//     （A2「thinking 写错行」随之消除；A4 localStorage clobber 面同步收窄）；
+//   - resolveEffective(sessionId) = 会话覆盖 ?? 全局活跃 provider（实时读，
+//     未改过的卷跟随全局默认，改过的卷不跟随）。
+//   - 权限模式不在此列——mode-store 是工作区级单一真相，创作坞的权限控件直读。
 //
 // 模块级可变态归属（CONVENTIONS §1.10）：每面板 scoped store（同
 // input-store 形态，createScopedStore 注册表，sessionId 按面板隔离）。
 
 import { create } from 'zustand';
 import type { StoredThinking } from '../provider/thinking';
-import {
-  type AppSettings,
-  getActiveProvider,
-  loadSettings,
-  type ProviderSettings,
-  saveSettings,
-  updateProvider,
-} from '../settings';
+import { getActiveProvider, loadSettings } from '../settings';
 import { notifyAgentConfigChanged } from './agent-config-store';
 import { createScopedStore } from './scoped-store';
 
@@ -44,20 +34,22 @@ export interface ComposeSessionPrefs {
 }
 
 export interface ComposeStore {
-  /** 会话偏好表（key = sessionId string，按面板隔离）。 */
+  /** 会话覆盖表（key = sessionId string，按面板隔离）。只含显式改动过的卷。 */
   sessions: Record<string, ComposeSessionPrefs>;
 
-  /** 读偏好；缺失 = undefined（组件走 ensurePrefs 惰性补）。 */
+  /** 读会话覆盖；无覆盖 = undefined（未改过的卷，显示/运行回落全局默认）。 */
   getPrefs: (sessionId: string) => ComposeSessionPrefs | undefined;
-  /** 缺失时从全局 settings 快照当前活跃提供方（惰性初始化，不写盘）。 */
-  ensurePrefs: (sessionId: string) => ComposeSessionPrefs;
-  /** 热切换模型：写 store + 落全局 settings（含跨 provider 联动 active）+ 信号。 */
+  /** 解析生效配置：会话覆盖 ?? 全局活跃 provider（实时读，不写任何状态）。 */
+  resolveEffective: (sessionId: string) => ComposeSessionPrefs;
+  /** 热切换模型：写会话覆盖 + 发带 sessionId 的 model-switched 信号（不写全局）。 */
   setModel: (sessionId: string, providerName: string, model: string) => void;
-  /** 热切换思考档位：写 store + 落全局 settings（当前活跃 provider）+ 信号。 */
+  /** 热切换思考档位：写会话覆盖 + 发带 sessionId 的 thinking-changed 信号（不写全局）。 */
   setThinking: (sessionId: string, thinking: StoredThinking | undefined) => void;
-  /** 移除会话偏好（合卷/删除时清理）。 */
+  /** 恢复期回填（从卷快照读盘时）：整条覆盖写入，不发包信号。 */
+  hydratePrefs: (sessionId: string, prefs: ComposeSessionPrefs) => void;
+  /** 移除会话覆盖（合卷/删除时清理）。 */
   removePrefs: (sessionId: string) => void;
-  /** 清空全部偏好（切换工作区全量重置时调用）。 */
+  /** 清空全部覆盖（切换工作区全量重置时调用）。 */
   clearAll: () => void;
 }
 
@@ -76,49 +68,35 @@ function createComposeStoreImpl() {
 
     getPrefs: (sessionId) => get().sessions[sessionId],
 
-    ensurePrefs: (sessionId) => {
-      const cur = get().sessions[sessionId];
-      if (cur) return cur;
-      const snap = snapshotFromGlobal();
-      set((s) => ({ sessions: { ...s.sessions, [sessionId]: snap } }));
-      return snap;
-    },
+    resolveEffective: (sessionId) => get().sessions[sessionId] ?? snapshotFromGlobal(),
 
     setModel: (sessionId, providerName, model) => {
-      const prev = get().ensurePrefs(sessionId);
-      let next: ComposeSessionPrefs = { ...prev, providerName, model };
+      // 覆盖条目的 thinking 初值取目标 provider 行的当前值（跨 provider 切模型
+      // 时档位跟随目标家——与既有创作坞行为一致，只是落点从全局行改为会话覆盖）
+      let thinking: StoredThinking | undefined;
       try {
-        const s = loadSettings();
-        const act = getActiveProvider(s);
-        let n: AppSettings = updateProvider(s, providerName, { model });
-        if (act.name !== providerName) {
-          n = { ...n, activeProvider: providerName as ProviderSettings['name'] };
-        }
-        saveSettings(n);
-        // 联动读回目标 provider 的 thinking（跨 provider 切模型时档位跟随）
-        const target = n.providers.find((p) => p.name === providerName);
-        next = { providerName, model, thinking: target?.thinking };
-      } catch (e) {
-        // 落盘失败 = 热切换不生效——失败可见（不静默吞），不阻断 store 侧记录
-        console.error('[compose-store] 切模型失败（设置未落盘，重启不保留）:', e);
+        thinking = loadSettings().providers.find((p) => p.name === providerName)?.thinking;
+      } catch {
+        /* 读失败 → thinking 覆盖缺省（undefined = 使用点回落 provider 行） */
       }
+      const next: ComposeSessionPrefs = { providerName, model, thinking };
       set((s) => ({ sessions: { ...s.sessions, [sessionId]: next } }));
-      notifyAgentConfigChanged('model-switched');
+      // 方案甲：信号带 sessionId → applyAgentConfig 只热切换该会话的句柄
+      notifyAgentConfigChanged('model-switched', Number(sessionId));
     },
 
     setThinking: (sessionId, thinking) => {
-      const prev = get().ensurePrefs(sessionId);
-      const next: ComposeSessionPrefs = { ...prev, thinking };
-      try {
-        const s = loadSettings();
-        const act = getActiveProvider(s);
-        saveSettings(updateProvider(s, act.name, { thinking }));
-      } catch (e) {
-        console.error('[compose-store] 切思考档位失败（设置未落盘，重启不保留）:', e);
-      }
-      set((s) => ({ sessions: { ...s.sessions, [sessionId]: next } }));
-      notifyAgentConfigChanged('thinking-changed');
+      set((s) => {
+        const prev = s.sessions[sessionId];
+        // 无覆盖的卷先落一条（以当前生效配置为底）再改 thinking——
+        // 「改过思考」也算显式改动，之后模型不再跟随全局
+        const base: ComposeSessionPrefs = prev ?? snapshotFromGlobal();
+        return { sessions: { ...s.sessions, [sessionId]: { ...base, thinking } } };
+      });
+      notifyAgentConfigChanged('thinking-changed', Number(sessionId));
     },
+
+    hydratePrefs: (sessionId, prefs) => set((s) => ({ sessions: { ...s.sessions, [sessionId]: prefs } })),
 
     removePrefs: (sessionId) =>
       set((s) => {
@@ -136,6 +114,12 @@ function createComposeStoreImpl() {
 const scoped = createScopedStore('__lantai_compose_stores__', createComposeStoreImpl);
 
 export const getComposeStore = scoped.getStore;
+
+/** 方案甲：跨面板解析某会话的生效配置（覆盖 ?? 全局默认）。
+ *  workspace.applyAgentConfig（settings-saved 逐会话重解析）与工厂共用。 */
+export function resolveComposeEffective(storeId: string, sessionId: number): ComposeSessionPrefs {
+  return getComposeStore(storeId).getState().resolveEffective(String(sessionId));
+}
 
 /** 从注册表中移除面板的创作坞状态。 */
 export function disposeComposeStore(storeId: string): void {

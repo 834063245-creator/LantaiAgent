@@ -28,7 +28,7 @@ export interface TurnPair {
   sessionIndex: number;
 }
 
-export type AgentFactory = () => Promise<OwnedAgentHandle | null>;
+export type AgentFactory = (sessionId: number) => Promise<OwnedAgentHandle | null>;
 
 /** 会话持有的 Agent 句柄 — 必须可销毁。
  *  所有权契约：存入 setAgent 即转移所有权；removeAgent / clearPanelState /
@@ -75,6 +75,10 @@ export interface AgentSessionStateApi {
 
   /** 遍历所有活跃会话的 agent 句柄（运行时更新用，如思考策略切换）。 */
   forEachAgent(fn: (handle: OwnedAgentHandle) => void): void;
+
+  /** 方案甲（2026-08-27）：带身份遍历——热切换按会话解析时需要知道句柄属于
+   *  哪个面板哪个会话（compose 覆盖表按 sessionId 键控）。 */
+  forEachAgentEntry(fn: (storeId: string, sessionId: number, handle: OwnedAgentHandle) => void): void;
 
   // ── 订阅 ──
   /** 订阅状态变更。返回取消订阅函数。 */
@@ -212,6 +216,16 @@ export function createAgentSessionState(): AgentSessionStateApi {
 
     forEachAgent(fn): void {
       for (const h of _agentBySession.values()) fn(h);
+    },
+
+    forEachAgentEntry(fn): void {
+      for (const [key, h] of _agentBySession) {
+        const sep = key.lastIndexOf(':');
+        if (sep <= 0) continue; // 形状防御——键恒为 `${storeId}:${sid}`
+        const sid = Number.parseInt(key.slice(sep + 1), 10);
+        if (!Number.isFinite(sid)) continue;
+        fn(key.slice(0, sep), sid, h);
+      }
     },
 
     // ── 订阅 ──

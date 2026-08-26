@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 // workspace provider 配置守护（Phase C，2026-08-24 工作区归属根治——P14 恒 swap
-// 退役落账）。新语义钉住四类历史 bug 不复活：
+// 退役落账；方案甲 2026-08-27 会话级覆盖制改写）。钉住历史 bug 不复活：
 //   ① 手工字段枚举 diff（_agentRebuildKey——temperature 漏过、maxTokens 差点漏）
 //   ② 拆除路径（Key 清空 setAgent(null) → 会话整列消失——用户症状的直接根因）
 //   ③ 配置烘焙进构造（factory 无 Key 返 null → Agent 不存在 → 会话不存在）
 //   ④ setProvider 未写穿 ctx → 子 Agent 继承旧 provider（P13 #1）
-// 现形态：provider = live 无状态适配器（使用点按名现解析），换引用只剩
-// 「提供方身份变更」一个场景；Key 清空不拆 Agent，请求期报错。
+// 现形态（方案甲）：provider = live 无状态适配器（使用点按名现解析）+ 会话级
+// model/thinking 覆盖（live 第三参）；换引用场景 = 会话级变更重造带覆盖的 live
+// + 全局变更逐会话重解析；Key 清空不拆 Agent，请求期报错。
 // 通过静态源扫描钉（workspace.ts 是高 fan-in 文件，静态钉防回归）；live
 // provider 行为由 tests/provider-live.test.ts 回归。
 
@@ -30,7 +31,10 @@ function applyAgentConfigBody(): string {
   return codeOnly.slice(start, codeOnly.indexOf('async setupAgent(', start));
 }
 
-describe('workspace provider 配置 — 使用点解析（Phase C，恒 swap 退役）', () => {
+/** 方案甲：工厂签名带 sessionId（按会话生效配置装配）。 */
+const factoryAnchor = 'const factory = async (sessionId: number): Promise<AgentHandle | null> =>';
+
+describe('workspace provider 配置 — 使用点解析（Phase C + 方案甲会话覆盖）', () => {
   it('_agentRebuildKey / _lastAgentCfgKey 手工 diff 已整链退役（代码零残留）', () => {
     expect(codeOnly).not.toContain('_agentRebuildKey');
     expect(codeOnly).not.toContain('_lastAgentCfgKey');
@@ -43,13 +47,21 @@ describe('workspace provider 配置 — 使用点解析（Phase C，恒 swap 退
     expect(body).toContain('createLiveProvider');
   });
 
-  it('applyAgentConfig：身份变更才换引用（唯一换引用场景）', () => {
+  it('applyAgentConfig：会话级变更只打目标会话（方案甲——不再 forEachAgent 全量轰炸）', () => {
     const body = applyAgentConfigBody();
-    expect(body).toContain('this.prov?.name() !== act.name');
-    expect(body).toContain('this._buildProvider(s)');
-    // DSH 形态（2026-08-25）：无预造 this.agent——热切换面 = 活句柄逐一同步
-    expect(body).toContain('agentSessionState.forEachAgent((h) => h.setProvider(prov, pricing))');
+    // 会话级信号分支：带 sessionId、按会话解析生效配置、只热切换该句柄
+    expect(body).toContain("reason === 'model-switched' || reason === 'thinking-changed'");
+    expect(body).toContain('sessionId != null');
+    expect(body).toContain('agentSessionState.getAgent(this._storeId, sessionId)');
+    expect(body).toContain('resolveComposeEffective(this._storeId, sessionId)');
     expect(body).not.toContain('this.agent?.setProvider');
+  });
+
+  it('applyAgentConfig：全局变更逐会话重解析（settings-saved 面）', () => {
+    const body = applyAgentConfigBody();
+    expect(body).toContain('agentSessionState.forEachAgentEntry((storeId, sid, h) => {');
+    // 覆盖卷带覆盖重造 live；未改卷裸 live（实时跟随全局默认）
+    expect(body).toContain('const override = getComposeStore(storeId).getState().getPrefs(String(sid));');
   });
 
   it('Key 清空不再拆 Agent/会话（teardown 分支整体退役）', () => {
@@ -66,23 +78,20 @@ describe('workspace provider 配置 — 使用点解析（Phase C，恒 swap 退
     expect(body).toContain('if (!this._factoryRegistered)');
     expect(body).toContain('await this.setupAgent(chatPanel)');
     const bootstrap = body.indexOf('if (!this._factoryRegistered)');
-    const swap = body.indexOf('this.prov?.name() !== act.name');
+    const sessionBranch = body.indexOf("reason === 'model-switched'");
     expect(bootstrap).toBeGreaterThan(-1);
-    expect(swap).toBeGreaterThan(bootstrap);
+    expect(sessionBranch).toBeGreaterThan(bootstrap);
   });
 
-  it('同身份：定价热同步（setPricing，不换引用）', () => {
-    const body = applyAgentConfigBody();
-    expect(body).toContain('agentSessionState.forEachAgent((h) => h.setPricing(pricing))');
-    expect(body).not.toContain('this.agent?.setPricing');
-  });
-
-  it('factory：Agent 恒可构造（Key 缺失不再返 null）', () => {
-    const start = codeOnly.indexOf('const factory = async (): Promise<AgentHandle | null> =>');
+  it('factory：Agent 恒可构造（Key 缺失不再返 null）+ 按会话生效配置装配', () => {
+    const start = codeOnly.indexOf(factoryAnchor);
     expect(start).toBeGreaterThan(-1);
     const body = codeOnly.slice(start, codeOnly.indexOf('chatPanel.setAgentFactory(factory)', start));
     expect(body).not.toContain('act.apiKey');
-    expect(body).toContain('this._buildProvider(s)');
+    // 方案甲：会话生效配置解析（覆盖 ?? 全局默认）+ 覆盖卷带 model/thinking 覆盖
+    expect(body).toContain('resolveComposeEffective(this._storeId, sessionId)');
+    expect(body).toContain('getComposeStore(this._storeId).getState().getPrefs(String(sessionId))');
+    expect(body).toContain('model: eff.model, thinking: eff.thinking');
     // 配置快照来自同步 settings（零 IPC）——凭据不进构造
     expect(body).toContain('const s = loadSettings();');
   });
