@@ -226,4 +226,31 @@ describe('catalog', () => {
     expect(guessReasoning('gpt-4o')).toBe(false);
     expect(guessReasoning('claude-3-5-sonnet')).toBe(false);
   });
+
+  it('GLM-5.x 数据修复快照（2026-08-27 zhipu 官方核实；regen-catalogs 防回退）', () => {
+    const flash = getModel('glm-5.3-flash');
+    expect(flash).toBeDefined();
+    expect(flash?.contextWindow).toBe(1_000_000);
+    expect(flash?.maxTokens).toBe(131_072);
+    expect(flash?.reasoning).toBe(true);
+    // GLM-5.3 系原生档位 low/high/max（不可关闭）；缺档即选择器不出——这正是 P14 要的行为
+    expect([...(flash?.thinkingEfforts ?? [])].join(',')).toBe('low,high,max');
+    expect(getModel('glm-5.3')?.contextWindow).toBe(1_000_000);
+    expect(getModel('glm-5.2')?.contextWindow).toBe(1_000_000);
+    expect(getModel('glm-5.2')?.thinkingEfforts).toEqual(['high', 'max']);
+    expect(getModel('glm-5.1')?.contextWindow).toBe(200_000);
+    // glm-5.1 API 不收 effort 参数（无佐证不声明）→ 选择器不出现、请求不发参数
+    expect(getModel('glm-5.1')?.thinkingEfforts).toBeUndefined();
+    // 裁决 #3：视觉属实但产品未落地——保持 ['text']，multimodal 立项时随 breaking change 解禁
+    expect(flash?.input.includes('image'), 'glm-5.3-flash 声明了 image').toBe(false);
+  });
+
+  it('thinkingEfforts 是 canonical 词表子集且无重复（生成器保险丝）', () => {
+    const VOCAB = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+    for (const m of getAllModels()) {
+      if (!m.thinkingEfforts) continue;
+      for (const e of m.thinkingEfforts) expect(VOCAB, `${m.id} 非法档位 ${e}`).toContain(e);
+      expect(new Set(m.thinkingEfforts).size, `${m.id} 档位重复`).toBe(m.thinkingEfforts.length);
+    }
+  });
 });

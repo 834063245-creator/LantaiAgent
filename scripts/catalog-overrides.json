@@ -1,0 +1,55 @@
+{
+  "$schema-note": "人工核实目录覆盖表 —— regen-catalogs.cjs 消费。字段语义与 ModelDescriptor 一致;只允许声明经厂商文档核实的值。对已有模型条目:本表不写文件,冲突打印 [override-conflict] 由人工裁决;对新模型条目:本表即事实来源。禁止声明 input 含 'image'(P0 铁门:多模态未落地,tests 禁假声明)。reasoningEfforts 词表 = minimal|low|medium|high|xhigh|max;未核实到原生档位就不写该键(P14:无证据不编造参数)。",
+  "verified": {
+    "glm": {
+      "sources": [
+        "https://docs.bigmodel.cn/cn/guide/models/text/glm-5.3",
+        "https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash"
+      ],
+      "date": "2026-08-27",
+      "notes": [
+        "GLM-5.3 文本参数:1M 上下文,最大输出 128K;thinking 仅支持 enabled,reasoning_effort ∈ low|high|max(默认 max)",
+        "GLM-5.3-Flash 文本参数与 GLM-5.3 保持一致(1M / 128K);原生视觉输入属实(zhipu 官方页明示 image_url 内容块)——但按 provider-system-spec 裁决 #3 缓报:Message.content 为 string、无传图入口,多模态立项前全目录保持 ['text']",
+        "GLM-5.2 经 pi-ai 目录佐证(ctx 1M,out 131K);其 low 档无官方佐证(pi-ai 将 low 映射为 high 发送),故只声明 [high,max]",
+        "GLM-5.1 ctx 200000 佐证自 pi-ai 目录;supportsReasoningEffort=false(API 不收 effort 参数),故不声明 thinkingEfforts,选择器不出现",
+        "定价策略（用户拍板 2026-08-27）：价位永久退出人工维护面——本表不写 cost,数据源给多少用多少,没有就 0 占位;0 = 未知而非免费,不做任何人为价格核对"
+      ]
+    }
+  },
+  "vendors": {
+    "glm": {
+      "kind": "openai",
+      "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+      "input": ["text"],
+      "models": {
+        "glm-5.1": {
+          "name": "GLM-5.1",
+          "contextWindow": 200000,
+          "maxTokens": 131072,
+          "reasoning": true
+        },
+        "glm-5.2": {
+          "name": "GLM-5.2",
+          "contextWindow": 1000000,
+          "maxTokens": 131072,
+          "reasoning": true,
+          "thinkingEfforts": ["high", "max"]
+        },
+        "glm-5.3": {
+          "name": "GLM-5.3",
+          "contextWindow": 1000000,
+          "maxTokens": 131072,
+          "reasoning": true,
+          "thinkingEfforts": ["low", "high", "max"]
+        },
+        "glm-5.3-flash": {
+          "name": "GLM-5.3 Flash",
+          "contextWindow": 1000000,
+          "maxTokens": 131072,
+          "reasoning": true,
+          "thinkingEfforts": ["low", "high", "max"]
+        }
+      }
+    }
+  }
+}

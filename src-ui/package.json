@@ -16,6 +16,7 @@
     "test": "vitest run",
     "gen:tool-contract": "node ../scripts/gen-tool-contract-md.cjs",
     "check:tool-contract": "node ../scripts/gen-tool-contract-md.cjs --check",
+    "gen:catalogs": "node ../scripts/regen-catalogs.cjs",
     "test:convergence": "vitest run tests/convergence",
     "verify:convergence": "node tests/convergence/gate.mjs check",
     "record:convergence": "cross-env CONVERGENCE_RECORD=1 node tests/convergence/gate.mjs record",

@@ -168,6 +168,9 @@ src-tauri/gen/schemas/
 # Daily progress reports (auto-generated, don't commit)
 scripts/daily-report/report-*.md
 
+# Catalog regen source snapshot (1.8MB build artifact — refetch or save your own)
+scripts/catalog-source.snapshot.json
+
 # Grammar build artifacts
 grammars/build/
 

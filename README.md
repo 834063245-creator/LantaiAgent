@@ -42,7 +42,7 @@ LLM 分析"改 A 会炸什么"时，靠逐文件读源码推测依赖——弱�
 | **35 个图查询工具** | 影响面、改前预检、死代码、线程冲突、语义向量搜索、SCIP 导入、符号重命名……全部以结构化 JSON 返回 |
 | **精确解析** | 按需启动原生 LSP（rust-analyzer / gopls / pyright 等 9 个），`resolve_call` / `infer_type` / `find_implementations` / `find_references` |
 | **内置 Agent 编码工作台** | 12 个领域工具（fs / shell / git / search / web / agent / task / browser / desktop / graph / ops / lsp）+ ask_user/wait 常驻件 + code_execution 执行原语，多 Agent 协作、Plan / Goal 模式、事件溯源会话日志、token 治理 |
-| **多厂商 LLM** | 9 个静态模型目录共 73 个模型 + 运行时动态发现，Anthropic / OpenAI 兼容 / DeepSeek / GLM / Qwen / MiniMax / Moonshot / Ollama / opencode；thinking 档位按厂商适配；本地反向代理绕 CORS |
+| **多厂商 LLM** | 9 个静态模型目录共 77 个模型 + 运行时动态发现，Anthropic / OpenAI 兼容 / DeepSeek / GLM / Qwen / MiniMax / Moonshot / Ollama / opencode；thinking 档位按厂商适配；本地反向代理绕 CORS |
 | **完全插件化** | 面板/命令/工具/块渲染器/prompt 段/管道钩子/capability 八条贡献通道 + MCP 机器桥；第一方与第三方走同一注册表（详见「插件系统」） |
 | **Harness 工程模式** | 约束治理（constraints.yaml）、权限引擎（Allow / Deny / Ask / Passthrough）、三层沙箱、git worktree 隔离、审计日志、系统级加密凭证 |
 | **注疏案卷主界面** | 古籍注疏范式：来文/正文/夹注/脚注/抄录/拟策/贴黄七类文类块，矿物墨色语义（朱砂=人、石青=机、石墨=草稿），无限画布纸条交互（详见「桌面端」） |
@@ -241,7 +241,7 @@ Python · JavaScript/TypeScript/TSX · Rust · Go · Java · C/C++ · C# · Ruby
 
 ### LLM Provider 体系
 
-- **模型目录**：9 个静态 catalog JSON（anthropic / openai / moonshotai / qwen / deepseek / glm / minimax / ollama / opencode，共 73 个模型）+ 运行时 `fetchModels()` 动态合并（静态目录同 ID 优先）
+- **模型目录**：9 个静态 catalog JSON（anthropic / openai / moonshotai / qwen / deepseek / glm / minimax / ollama / opencode，共 77 个模型）+ 运行时 `fetchModels()` 动态合并（静态目录同 ID 优先）
 - **协议适配**：统一 `Provider` trait 抹平 Anthropic Messages 与 OpenAI 兼容两大协议；流式 chunk 类型 Text / Reasoning / ToolCallStart / ToolCall / Usage / Done / Error
 - **thinking 档位**：自动 / low / medium / high / max / off，wire 参数按厂商适配
 - **本地反向代理**：壳侧起 loopback-only 的 HTTP 代理转发 LLM 请求并强加 CORS 头，绕开浏览器直连 API 的跨域限制

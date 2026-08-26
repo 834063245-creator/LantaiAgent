@@ -1,0 +1,56 @@
+# 目录日更——regen-catalogs.cjs 每天跑一次，有新增/变化才开 PR。
+# PR 永不自动合入：[added]/[review]/[override-conflict] 报告就是人审的全部成本，
+# 看一眼 diff 点 merge 即可；不看也不影响任何现有行为。
+#
+# 拍板记录（2026-08-27 用户）：daily 频率获批。CONVENTIONS §3「不要修改 CI」
+# 的豁免范围仅限本文件；ci.yml 本体仍不动。
+name: catalog-refresh
+
+on:
+  schedule:
+    - cron: '17 3 * * *' # UTC 03:17 = 北京 11:17；错峰分钟，避开整点任务潮
+  workflow_dispatch: {} # 手动补跑入口
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: catalog-refresh
+  cancel-in-progress: false
+
+jobs:
+  regen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 记录日期
+        run: echo "TODAY=$(date +%F)" >> "$GITHUB_ENV"
+
+      - name: 再生成模型目录
+        run: node scripts/regen-catalogs.cjs | tee catalog-report.txt
+
+      - name: 检测目录是否变化
+        id: diff
+        run: echo "changed=$(git status --porcelain -- src-ui/src/provider/catalog | wc -l)" >> "$GITHUB_OUTPUT"
+
+      - name: 开 PR
+        if: steps.diff.outputs.changed != '0'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: auto/catalog-refresh
+          delete-branch: true
+          title: 'chore(catalog): 模型目录日更 — ${{ env.TODAY }}'
+          body-path: catalog-report.txt
+          labels: area/provider
+          commit-message: |
+            chore(catalog): regen-catalogs 日更 ${{ env.TODAY }}
+
+            由 catalog-refresh 工作流自动生成。
+            合并前核对报告中的 [added] / [review] / [override-conflict]：
+            只有 [added] 会出现在本 PR 的 diff 里；后两者仅为可见性提示，未写文件。
