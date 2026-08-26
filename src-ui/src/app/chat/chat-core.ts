@@ -636,6 +636,12 @@ export class ChatCore {
     if (pp) void Session.saveSessionById(this._sessionCtx(), pp, id);
   }
 
+  /** 改名未摊开的已存卷（Stage-3 侧边栏行操作）：磁盘直改，不要求句柄。 */
+  async renameSavedSession(id: number, label: string): Promise<void> {
+    const pp = useShellStore.getState().projectPath;
+    return Session.renameSessionFile(this._sessionCtx(), pp, id, label);
+  }
+
   // ── 会话持久化（委托给 chat-session.ts）──
 
   /** 当前活跃会话 id（L2 持久化分流：turn-done 判后台卷用）。 */

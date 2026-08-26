@@ -1,0 +1,218 @@
+/* SessionSidebar — 当前工作区会话管理侧边栏（Stage-3 DSH 范式）。
+ * 布局（Plan A）：书脊恒显最左缘，侧边栏在其右；侧边栏收起 = 只剩书脊。
+ * 挂载：DockPanel 上层覆盖（z 高于纸面板 .pp-root z:280），随纸面板开合。 */
+
+.ss-sidebar {
+  position: fixed;
+  left: 44px; /* 书脊右缘 */
+  top: var(--bar-h);
+  bottom: var(--composer-h);
+  width: 224px;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  border-right: var(--rule-strong);
+  z-index: 282;
+  font-family: var(--f-song);
+}
+
+.ss-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: var(--rule-soft);
+  flex-shrink: 0;
+}
+.ss-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--ink-1);
+}
+.ss-count {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+}
+.ss-fold {
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: var(--rule-soft);
+  border-radius: 0;
+  color: var(--ink-2);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+}
+.ss-fold:hover {
+  background: var(--paper-deep);
+  color: var(--ink-1);
+}
+
+.ss-notice {
+  margin: 8px 10px 0;
+  padding: 8px 10px;
+  background: var(--paper);
+  border: var(--rule-strong);
+  border-left: 3px solid var(--warn);
+  font-size: 11.5px;
+  color: var(--ink-2);
+}
+.ss-notice button {
+  margin-top: 4px;
+  font-family: var(--f-song);
+  font-size: 10.5px;
+  color: var(--ink-1);
+  background: none;
+  border: var(--rule-soft);
+  border-radius: 0;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.ss-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.ss-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+.ss-row:hover {
+  background: color-mix(in oklch, var(--indigo) 7%, var(--paper));
+}
+.ss-row.open {
+  border-left-color: var(--indigo);
+}
+
+/* 状态点：pending=朱砂（交互等待）> running=石青（机）> done=墨（完成）> idle=灰 */
+.ss-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.ss-dot-pending {
+  background: var(--seal);
+  animation: ss-breathe 1.4s ease-in-out infinite;
+}
+.ss-dot-running {
+  background: var(--indigo);
+  animation: ss-breathe 1.6s ease-in-out infinite;
+}
+.ss-dot-done {
+  background: var(--ink-2);
+}
+.ss-dot-idle {
+  background: var(--ink-4);
+}
+@keyframes ss-breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.ss-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ss-label {
+  font-size: 13px;
+  color: var(--ink-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ss-meta {
+  font-family: var(--f-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ss-rename-input {
+  width: 100%;
+  font-family: var(--f-song);
+  font-size: 12.5px;
+  color: var(--ink-1);
+  background: var(--paper);
+  border: none;
+  border-bottom: 2px solid var(--seal);
+  padding: 2px 0;
+  outline: none;
+}
+
+.ss-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--snap);
+}
+.ss-row:hover .ss-actions {
+  opacity: 1;
+}
+.ss-actions button {
+  width: 22px;
+  height: 22px;
+  background: none;
+  border: var(--rule-soft);
+  border-radius: 0;
+  color: var(--ink-2);
+  font-size: 10.5px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ss-actions button:hover {
+  background: var(--paper-deep);
+  color: var(--ink-1);
+}
+
+.ss-empty {
+  padding: 16px 12px;
+  font-size: 12px;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.ss-foot {
+  padding: 8px 10px;
+  border-top: var(--rule-soft);
+  flex-shrink: 0;
+}
+.ss-new {
+  width: 100%;
+  padding: 8px 0;
+  background: none;
+  border: var(--rule-dashed);
+  border-radius: 0;
+  font-family: var(--f-song);
+  font-size: 12.5px;
+  letter-spacing: 0.12em;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.ss-new:hover {
+  background: var(--seal-soft);
+  border-color: var(--seal);
+  color: var(--seal-deep);
+}

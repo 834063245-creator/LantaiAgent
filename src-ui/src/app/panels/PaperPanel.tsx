@@ -26,10 +26,10 @@ import { resolveRenderer } from '../../composition/renderer-service';
 import type { SourcedBlock } from '../../paper/block-model';
 import {
   ANCHOR,
-  identityView,
   layoutRegion,
   panBy,
   screenToWorld,
+  viewFocusRegion,
   viewForAnchor,
   wheelFactor,
   zoomAt,
@@ -51,6 +51,7 @@ import {
   visibleFlowWindow,
   visiblePinnedIds,
 } from '../../paper/virtualize';
+import { useCanvasViewStore } from '../../state/canvas-view-store';
 import { useDockStore } from '../../state/dock-store';
 import { getPaperStore, type PaperPinnedState } from '../../state/paper-store';
 import { useUpdateStore } from '../../state/update-store';
@@ -61,7 +62,6 @@ import { useCoreStore } from '../chat/core-instance';
 import { useShellStore } from '../shell-store';
 import { WinControls } from '../WinControls';
 import { ModeIndicator } from './ModeIndicator';
-import { SpineRack } from './SpineRack';
 import { StatusLine } from './StatusLine';
 import './PaperPanel.css';
 
@@ -373,27 +373,42 @@ export function PaperPanel() {
   // paperTick 显式消费：订阅变化 = 重渲染重读
   void paperTick;
 
-  /* 视口状态 */
-  const [view, setView] = useState(identityView());
+  /* 视口状态（Stage-3：书脊定位器共享真源——canvas-view-store app 级单例，
+   * PaperPanel 读写；书脊/侧边栏经 requestFocus 驱动摄像机） */
+  const view = useCanvasViewStore((s) => s.view);
+  const setView = useCanvasViewStore((s) => s.setView);
+  const canvasSize = useCanvasViewStore((s) => s.canvasSize);
+  const setCanvasSize = useCanvasViewStore((s) => s.setCanvasSize);
   const canvasRef = useRef<HTMLDivElement | null>(null);
-  const [canvasSize, setCanvasSize] = useState({ w: 800, h: 600 });
 
   /* 初始视口：锚点对视口下缘（D-R1-3）。画布尺寸变化时保持锚点关系 */
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
-      setCanvasSize({ w: el.clientWidth, h: el.clientHeight });
+      setCanvasSize(el.clientWidth, el.clientHeight);
     });
     ro.observe(el);
-    setCanvasSize({ w: el.clientWidth, h: el.clientHeight });
+    setCanvasSize(el.clientWidth, el.clientHeight);
     return () => ro.disconnect();
-  }, []);
+  }, [setCanvasSize]);
 
   useEffect(() => {
     const { panX, panY } = viewForAnchor(canvasSize.w, canvasSize.h);
     setView((v) => ({ ...v, panX, panY }));
-  }, [canvasSize.w, canvasSize.h]);
+  }, [canvasSize.w, canvasSize.h, setView]);
+
+  /* 画布重挂 = 干净的初始视角：清掉上一轮残留定位请求，回到锚点视口
+   * （不许跨开合残留旧 pan——否则实机「进来视角不知在哪/拖不动」）。
+   * 只用稳定的 store 动作，刻意只在挂载跑一次（空依赖数组）。 */
+  useEffect(() => {
+    useCanvasViewStore.getState().requestFocus(null);
+    const { panX, panY } = viewForAnchor(
+      useCanvasViewStore.getState().canvasSize.w,
+      useCanvasViewStore.getState().canvasSize.h,
+    );
+    useCanvasViewStore.getState().setView((v) => ({ ...v, panX, panY }));
+  }, []);
 
   /* 字体加载后重测：webfont 到位前 canvas 量的是回退字体宽度 */
   const [measureTick, setMeasureTick] = useState(0);
@@ -523,6 +538,58 @@ export function PaperPanel() {
 
   regionsRef.current = regions;
 
+  /* ── 书脊定位器：pendingFocusId → 轻动画飞到目标流区最新块（Stage-3）──
+   * 复用 viewFocusRegion（锚到流区而不是全局锚）；未摊开卷 expand 在途时
+   * pending 保持，流区出现后补飞（regions 依赖的第二个 effect）。 */
+  const focusRafRef = useRef(0);
+  const flyToRegion = useCallback(
+    (sessionId: string) => {
+      const region = regionsRef.current.find((r) => r.sessionId === sessionId);
+      if (!region) return;
+      const start = useCanvasViewStore.getState().view;
+      const target = viewFocusRegion(start, canvasSize.w, canvasSize.h, {
+        x: region.anchor.anchorX,
+        y: region.anchor.anchorY,
+      });
+      if (focusRafRef.current) cancelAnimationFrame(focusRafRef.current);
+      const DURATION = 240;
+      const t0 = performance.now();
+      const tick = (now: number) => {
+        const t = Math.min(1, (now - t0) / DURATION);
+        const ease = 1 - (1 - t) ** 3;
+        useCanvasViewStore.getState().setView({
+          zoom: start.zoom,
+          panX: start.panX + (target.panX - start.panX) * ease,
+          panY: start.panY + (target.panY - start.panY) * ease,
+        });
+        if (t < 1) {
+          focusRafRef.current = requestAnimationFrame(tick);
+        } else {
+          focusRafRef.current = 0;
+          useCanvasViewStore.getState().requestFocus(null);
+        }
+      };
+      focusRafRef.current = requestAnimationFrame(tick);
+    },
+    [canvasSize.w, canvasSize.h],
+  );
+  const pendingFocusId = useCanvasViewStore((s) => s.pendingFocusId);
+  useEffect(() => {
+    if (pendingFocusId) flyToRegion(pendingFocusId);
+  }, [pendingFocusId, flyToRegion]);
+  useEffect(() => {
+    // 未摊开卷 expand 在途：流区出现后补飞（pending 未清且目标已存在）
+    void regions;
+    const pending = useCanvasViewStore.getState().pendingFocusId;
+    if (pending) flyToRegion(pending);
+  }, [regions, flyToRegion]);
+  useEffect(
+    () => () => {
+      if (focusRafRef.current) cancelAnimationFrame(focusRafRef.current);
+    },
+    [],
+  );
+
   /* 消息操作（施工单 #5）：按来源消息构造 user 编辑/重发、assistant 重试、全部抄录。
    *  ops 按块 id 记忆（opsCacheRef）——点击时经 regionMsgs 取最新消息 */
   const msgOpsFor = useCallback(
@@ -598,12 +665,18 @@ export function PaperPanel() {
       const t = e.target instanceof Element ? e.target : null;
       if (!e.ctrlKey && t?.closest('pre, .pp-out')) return;
       e.preventDefault();
+      // 用户缩放 = 手动接管视口：取消在途定位动画（否则动画会跟手抢 pan）
+      if (focusRafRef.current) {
+        cancelAnimationFrame(focusRafRef.current);
+        focusRafRef.current = 0;
+      }
+      useCanvasViewStore.getState().requestFocus(null);
       const rect = el.getBoundingClientRect();
       setView((v) => zoomAt(v, e.clientX - rect.left, e.clientY - rect.top, wheelFactor(e.deltaY)));
     };
     el.addEventListener('wheel', onWheelNative, { passive: false });
     return () => el.removeEventListener('wheel', onWheelNative);
-  }, []);
+  }, [setView]);
 
   /* 回原点快捷键（D-R1-1 方位感）：Home → 视口回锚点几何 */
   useEffect(() => {
@@ -617,13 +690,19 @@ export function PaperPanel() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [canvasSize.w, canvasSize.h]);
+  }, [canvasSize.w, canvasSize.h, setView]);
 
   const onCanvasMouseDown = useCallback((e: React.MouseEvent) => {
     // 空白处按下 → 开始平移（块/流区有自己的处理，不落到这里）
     if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('pp-world')) {
       if (e.button !== 0) return;
       e.preventDefault();
+      // 用户拖拽 = 手动接管视口：取消在途定位动画（否则动画会跟手抢 pan）
+      if (focusRafRef.current) {
+        cancelAnimationFrame(focusRafRef.current);
+        focusRafRef.current = 0;
+      }
+      useCanvasViewStore.getState().requestFocus(null);
       panningRef.current = { lastX: e.clientX, lastY: e.clientY };
       setPanning(true);
     }
@@ -647,7 +726,7 @@ export function PaperPanel() {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
     };
-  }, [panning]);
+  }, [panning, setView]);
 
   /* ── 拖块（D-R2-1 拖出钉住）：阈值即脱流 → 全程跟手 → 松手判位 ── */
   const dragRef = useRef<{
@@ -1297,9 +1376,6 @@ export function PaperPanel() {
           抽纸条
         </button>
       )}
-
-      {/* 书脊列（多卷管理：另起一卷 + 卷目目录——Stage-2 最小侧边栏） */}
-      <SpineRack core={core} />
 
       {/* biome-ignore lint/a11y/noStaticElementInteractions: 无限画布是鼠标平移/缩放交互面 */}
       <div ref={canvasRef} className={`pp-canvas${panning ? ' pp-panning' : ''}`} onMouseDown={onCanvasMouseDown}>

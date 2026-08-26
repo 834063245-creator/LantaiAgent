@@ -80,7 +80,6 @@ export interface PromptSection {
 }
 
 const hasGraph = (ctx: PromptSectionContext): boolean => ctx.graphData != null;
-const noGraph = (ctx: PromptSectionContext): boolean => ctx.graphData == null;
 /** 目录面谓词：显式 hasProject 优先；缺省按图推导（兼容 B④ 收官时代
  *  的既有调用点——除显式 false 外行为不变）。 */
 const hasProject = (ctx: PromptSectionContext): boolean =>

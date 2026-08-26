@@ -61,3 +61,25 @@ export function snapRegionX(x: number): number {
 export function regionXBounds(anchorX: number, width: number): { x0: number; x1: number } {
   return { x0: anchorX - width / 2, x1: anchorX + width / 2 };
 }
+
+/** 书脊拖动落位判据（Stage-3：抽书放桌——找「竖向不打架」的空位）。
+ *  x 吸附到网格粒度（复用 Stage-2 吸附/落位判据），并跳过已被其他流区
+ *  占用的列（排除自身——拖动中的卷可以留在原列）；y 取用户落点（垂直
+ *  自主），系统只保秩序下限（统一宽度 + x 网格）。纯函数便于测试。 */
+export function pickDropAnchor(
+  regions: Array<{ sessionId: string; anchorX: number }>,
+  sessionId: string,
+  dropX: number,
+  dropY: number,
+): StreamRegionState {
+  let col = Math.round(dropX / STREAM_SNAP_GRID);
+  const occupied = new Set(
+    regions.filter((r) => r.sessionId !== sessionId).map((r) => Math.round(r.anchorX / STREAM_SNAP_GRID)),
+  );
+  while (occupied.has(col)) col++;
+  return {
+    anchorX: col * STREAM_SNAP_GRID,
+    anchorY: dropY,
+    width: STREAM_REGION.width,
+  };
+}

@@ -1,54 +1,53 @@
-/* SpineRack — 书脊列（C8 多卷切换）。
+/* SpineRack — 画布空间导航器（Stage-3 书脊三手势）。
  * 视觉契约同 PaperPanel.css：兰台 token（paper / ink / seal 系）、圆角恒 0、
  * 无软投影（硬偏移可用 --elev-raise）。书脊 = 函套立视图抽象：
- * 宽 36px 常态、hover 展宽露出全文（题签竖排，writing-mode 竖排）。 */
+ * 宽 36px 常态、hover 展宽露出全文（题签竖排，writing-mode 竖排）。
+ * 挂载：DockPanel 上层覆盖（z 高于纸面板），随纸面板开合。 */
 
 .sr-rack {
-  position: absolute;
+  position: fixed;
   left: 0;
   top: var(--bar-h);
-  bottom: var(--composer-h); /* 多行输入撑高 composer 时最下书脊被盖（走查弹已知取舍；多卷时列可滚） */
+  bottom: var(--composer-h);
   width: 44px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 6px;
-  padding: 14px 0 14px 6px;
-  z-index: 45; /* 画布之上、小地图(60)/纸条(40)之下——书脊是结构层 */
+  padding: 12px 0 12px 6px;
+  z-index: 281; /* 纸面板 .pp-root z:280 之上——书脊恒显最左缘 */
   pointer-events: none; /* 列容器不挡画布，热区在书脊自身 */
 }
 
-/* 本地提示条（冷启动死路防护——同 pp-local-notice 语言） */
-.sr-notice {
-  position: absolute;
-  left: calc(100% + 12px);
-  top: 12px;
-  width: 232px;
-  background: var(--paper);
-  border: var(--rule-strong);
-  border-left: 3px solid var(--warn);
-  box-shadow: var(--elev-raise);
-  padding: 10px 12px;
-  font-size: 12.5px;
-  color: var(--ink-2);
+.sr-sidebar-toggle {
   pointer-events: auto;
-  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  min-height: 56px;
+  background: transparent;
+  border: var(--rule-dashed);
+  border-radius: 0;
+  cursor: pointer;
+  transition:
+    background var(--snap),
+    border-color var(--snap);
 }
-.sr-notice button {
-  margin-top: 6px;
+.sr-sidebar-toggle:hover {
+  background: var(--paper-deep);
+  border-color: var(--indigo);
+}
+.sr-sidebar-toggle-label {
+  writing-mode: vertical-rl;
   font-family: var(--f-song);
   font-size: 11px;
-  letter-spacing: 0.1em;
-  color: var(--ink-1);
-  background: none;
-  border: var(--rule-soft);
-  border-radius: 0;
-  padding: 4px 10px;
-  cursor: pointer;
+  letter-spacing: 0.22em;
+  color: var(--ink-3);
+  white-space: nowrap;
 }
-.sr-notice button:hover {
-  background: var(--ink-1);
-  color: var(--paper);
+.sr-sidebar-toggle:hover .sr-sidebar-toggle-label {
+  color: var(--indigo);
 }
 
 .sr-spine {
@@ -126,27 +125,7 @@
   }
 }
 
-/* 改名输入：绝对定位在脊右侧纸面（题签位置替换；竖排容器内横排输入）。
- * 2026-08 UI 大清扫：max-width 视口保护——窄窗口下 148px 定宽会右溢出屏幕。 */
-.sr-rename-input {
-  position: absolute;
-  left: calc(100% + 12px);
-  top: 6px;
-  width: 148px;
-  max-width: calc(100vw - 120px);
-  writing-mode: horizontal-tb;
-  font-family: var(--f-song);
-  font-size: 13px;
-  color: var(--ink-1);
-  background: var(--paper);
-  border: none;
-  border-bottom: 2px solid var(--seal);
-  padding: 4px 2px;
-  outline: none;
-  z-index: 3;
-}
-
-/* hover 小卡：卷名全文 + 运行态 + 合卷钮 */
+/* hover 小卡：卷名 + 运行态 + 合卷钮（改名/删除在侧边栏——各管一摊） */
 .sr-hover-card {
   position: absolute;
   left: calc(100% + 10px);
@@ -167,7 +146,7 @@
   pointer-events: auto;
 }
 /* hover 桥：书脊右缘伸出透明通行带（平时 pointer-events:none 不挡画布；
- * 书脊 hover 时激活）——鼠标穿过 10px 缝隙去点合卷时 :hover 不断开。 */
+ * 书脊 hover 时激活）——鼠标穿过缝隙去点合卷时 :hover 不断开。 */
 .sr-spine::after {
   content: "";
   position: absolute;
@@ -223,148 +202,38 @@
   background: none;
 }
 
-/* 另起一卷：列尾虚脊（dashed 勾边 = 占位/草稿语义 token --rule-dashed） */
-.sr-new {
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  min-height: 64px;
-  background: transparent;
-  border: var(--rule-dashed);
-  border-radius: 0;
-  cursor: pointer;
-  transition:
-    background var(--snap),
-    border-color var(--snap);
-}
-.sr-new:hover {
-  background: var(--seal-soft);
-  border-color: var(--seal);
-}
-.sr-new-label {
+.sr-empty {
   writing-mode: vertical-rl;
   font-family: var(--f-song);
-  font-size: 11px;
-  letter-spacing: 0.22em;
-  color: var(--ink-3);
+  font-size: 10.5px;
+  letter-spacing: 0.2em;
+  color: var(--ink-4);
   white-space: nowrap;
-}
-.sr-new:hover .sr-new-label {
-  color: var(--seal-deep);
+  pointer-events: none;
+  padding: 8px 0;
 }
 
-/* ── 卷目目录（Stage-2 最小侧边栏「列表」：当前工作区磁盘卷清单）── */
-.sr-dir-toggle {
-  pointer-events: auto;
+/* 拖动落位幽灵预览（屏幕坐标浮层——抽书放桌） */
+.sr-drag-ghost {
+  position: fixed;
+  transform: translate(8px, 8px);
+  width: 120px;
+  height: 56px;
+  background: color-mix(in oklch, var(--seal) 8%, var(--paper));
+  border: var(--rule-dashed);
+  border-left: 3px solid var(--seal);
+  box-shadow: var(--elev-raise);
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 36px;
-  min-height: 56px;
-  background: transparent;
-  border: var(--rule-soft);
-  border-radius: 0;
-  cursor: pointer;
-  transition:
-    background var(--snap),
-    border-color var(--snap);
+  padding: 0 12px;
+  pointer-events: none;
+  z-index: 320;
 }
-.sr-dir-toggle:hover,
-.sr-dir-toggle.open {
-  background: var(--paper-deep);
-  border-color: var(--indigo);
-}
-.sr-dir-toggle-label {
+.sr-drag-ghost-tag {
   writing-mode: vertical-rl;
   font-family: var(--f-song);
-  font-size: 11px;
-  letter-spacing: 0.22em;
-  color: var(--ink-3);
+  font-size: 10.5px;
+  letter-spacing: 0.2em;
+  color: var(--seal-deep);
   white-space: nowrap;
-}
-.sr-dir-toggle.open .sr-dir-toggle-label {
-  color: var(--indigo);
-}
-.sr-dir-panel {
-  position: absolute;
-  left: 44px;
-  top: -6px;
-  width: 216px;
-  max-height: calc(100% - 12px);
-  display: flex;
-  flex-direction: column;
-  background: var(--paper);
-  border: var(--rule-strong);
-  border-radius: 0;
-  box-shadow: var(--elev-raise);
-  z-index: 3;
-  pointer-events: auto;
-}
-.sr-dir-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: 10px 12px 8px;
-  border-bottom: var(--rule-soft);
-}
-.sr-dir-title {
-  font-family: var(--f-song);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink-1);
-  letter-spacing: 0.1em;
-}
-.sr-dir-count {
-  font-family: var(--f-mono);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  color: var(--ink-3);
-}
-.sr-dir-list {
-  overflow-y: auto;
-  padding: 4px 0;
-}
-.sr-dir-row {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  width: 100%;
-  padding: 7px 12px;
-  background: transparent;
-  border: none;
-  border-left: 3px solid transparent;
-  border-radius: 0;
-  cursor: pointer;
-  text-align: left;
-}
-.sr-dir-row:hover {
-  background: color-mix(in oklch, var(--indigo) 7%, var(--paper));
-  border-left-color: var(--indigo);
-}
-.sr-dir-row.open {
-  border-left-color: var(--indigo);
-}
-.sr-dir-row-label {
-  font-family: var(--f-song);
-  font-size: 13px;
-  color: var(--ink-1);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-.sr-dir-row-meta {
-  font-family: var(--f-mono);
-  font-size: 9.5px;
-  letter-spacing: 0.06em;
-  color: var(--ink-3);
-}
-.sr-dir-empty {
-  padding: 14px 12px;
-  font-family: var(--f-song);
-  font-size: 12px;
-  color: var(--ink-3);
 }

@@ -30,6 +30,7 @@ import type { Context } from '../cordis';
 import { paperPlugin } from '../paper/paper-plugin';
 import { getProxyPort } from '../provider/transport';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
+import { canvasNavPlugin } from './canvas-nav-plugin';
 import { type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
 import { settingsPlugin } from './settings-plugin';
 import { spaceDemoPlugin } from './space-demo-plugin';
@@ -92,6 +93,7 @@ const BUILTIN_PLUGINS: LantaiPlugin[] = [
   paperPlugin,
   settingsPlugin,
   spaceDemoPlugin,
+  canvasNavPlugin,
   ...firstPartyToolPlugins(),
   ...firstPartyPromptPlugins(),
   ...firstPartyCapabilityPlugins(),

@@ -730,6 +730,35 @@ export async function saveSessionById(ctx: SessionContext, projectPath: string, 
   }
 }
 
+/** 改名未摊开的已存卷（Stage-3 侧边栏行操作）：磁盘直改 label，不要求
+ *  句柄/不摊开卷。读取当前卷文件 → 保留 messages/paper/tokens 原样 →
+ *  重写全局位（workspace 归属随当前 projectPath 重写——readVolumeJSON 已
+ *  先做过归属校验，因此只会改写本工作区/零目录的卷）。 */
+export async function renameSessionFile(
+  ctx: SessionContext,
+  projectPath: string,
+  sessionId: number,
+  label: string,
+): Promise<void> {
+  const data = await readVolumeJSON(projectPath, sessionId);
+  if (!data) {
+    ctx.addNotice('案卷文件不存在，无法改名', 'error');
+    return;
+  }
+  try {
+    await writeSessionSnapshot(projectPath, {
+      id: data.id,
+      label,
+      savedAt: data.savedAt ?? new Date().toISOString(),
+      messages: data.messages ?? [],
+      tokensUsed: data.tokensUsed ?? 0,
+      paper: data.paper,
+    });
+  } catch {
+    /* writeSessionSnapshot 已记日志；此处不重复静默 */
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // 防抖自动保存 — 将密集的保存触发合并为
 // 每 500ms 窗口内一次写入。显式保存（失活、设置

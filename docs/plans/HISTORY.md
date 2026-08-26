@@ -6,6 +6,7 @@
 
 | 日期 | 里程碑 | 工程 |
 |---|---|---|
+| 2026-08-25 | **画布支 Stage-3 会话的出生与管理落地（门禁全绿，实机待验）**——侧边栏 = 当前工作区会话管理（DSH 范式：两源合流/状态点/相对时间/行操作/常驻滚动/可折叠/新建），书脊 = 画布空间导航器（左键定位轻动画 / 拖动落位吸附网格+幽灵预览 / hover 小卡合卷；同日用户反馈：书脊右键菜单取消、改名/删除归侧边栏）；生命周期闭环（新建→落位→收起→删除）经 `plugins/canvas-nav-plugin.ts` 以贡献行消费既有 `ctx.space`（零新增核心空间 API）；旧 SpineRack 二合一（单击换卷/另起一卷/hover 合卷小卡/卷目目录）拆净；`canvas-view-store` 成为书脊↔PaperPanel 视口共享真源（手动拖拽/缩放会取消在途定位动画，不抢 pan）。展开：`canvas-space/stage-3.md`；实机待验见 plans/README 真机欠账表 | 画布支 |
 | 2026-08-24 | **agent-plugin P4 存量拆解全清（baton15，commit `3dca1925`）**——B①②④⑤⑥/①b/①c/S4-4/A-1/A-2/A-3/C11 全毕：出厂面三类行源（工具行/prompt 段/capability）全量经插件通道贡献，builtin 出厂表三张退役；十五项第一方 capability 定义零改写留在 blueprint.ts（builtinCapabilities 改名 firstPartyCapabilities）经 capabilitySegmentsPlugin 装载。剩余 C12 dsh-compat 唯一合法挂起（等 DSH 外部信号）；新能力加面从此走通道（docs/plugins/README.md §3） | agent-plugin |
 | 2026-08-24 | **session-ledger L0-L3 竣工合入（merge `e677c5c8`；四段 2026-08-23 当日连推，四独立 commit）**——案卷总目 `_ledger.json` 立账（发号对账 max(mem,ledger,scan)/自然迁移/多卷工作集恢复 + 句柄惰性水合）；视图对齐（续开查重换卷不克隆/首页真新建/「已摊开」石青小标）；落盘收编（turn-done 携 doneSid 谁跑完存谁 + beforeunload 全卷保存）；清账守护（_active.json 写入退役 + 一致性守护常驻）。26 判据用例钉死；真机三项欠账见 plans/README 真机验证欠账表 | session-ledger |
 | 2026-08-23 | **session-ledger 立项：会话管理收敛（用户定调）**——用户实机反馈「新开一卷没什么用」链路排查出五道裂缝（首页新建空壳/续开不查重/后台卷落盘窗口期/摊开集不持久/发号器可撞号），用户定调「会话管理要做收敛，别堆成屎山」。方案：立案卷总目 `_ledger.json`（档案号=卷号/开合有册/发号对账/落盘收编两动词），书脊列与首页退化为账本两视图；四段 L0-L3 排程，五片载荷仓（msg/agent/exec/草稿/纸面）明确不合并 → [`../archive/session-ledger-plan.md`](../archive/session-ledger-plan.md) | session-ledger |
