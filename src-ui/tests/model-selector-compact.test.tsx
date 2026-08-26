@@ -26,7 +26,7 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
     root = null;
   });
 
-  it('收起态 = 触发器：供应商 / 人类可读模型名 + 箭头（不再裸露 model id）', () => {
+  it('收起态 = 触发器：厂商 monogram + 人类可读模型名 + 箭头（不再裸露 model id）', () => {
     act(() => {
       root?.render(
         createElement(ModelSelector, {
@@ -38,11 +38,13 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
         }),
       );
     });
-    const trigger = container!.querySelector('.ms-trigger');
+    const trigger = container!.querySelector<HTMLButtonElement>('.ms-trigger');
     expect(trigger).not.toBeNull();
-    expect(trigger?.textContent).toContain('deepseek'); // 供应商层级
-    expect(trigger?.textContent).toContain('DeepSeek V4 Pro'); // 人类可读名
+    // DSH ProviderIcon 的 monogram 替代：首字大写 chip
+    expect(trigger?.querySelector('.ms-provider-mark')?.textContent).toBe('D');
+    expect(trigger?.textContent).toContain('DeepSeek V4 Pro'); // 人类可读名，不裸露 model id
     expect(container!.querySelector('.ms-trigger-caret')).not.toBeNull(); // 箭头暗示可展开
+    expect(trigger?.title).toContain('deepseek'); // 厂商身份在 title 可见
   });
 
   it('展开：按 vendor 分组；选择模型触发 onChange', async () => {
@@ -64,7 +66,7 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
     await act(async () => {});
     const heads = [...container!.querySelectorAll('.ms-group-head')].map((e) => e.textContent);
     expect(heads.length).toBeGreaterThan(0);
-    expect(heads).toContain('deepseek');
+    expect(heads.some((h) => h?.includes('deepseek'))).toBe(true); // 分组头 = monogram + 厂商名
     const items = container!.querySelectorAll<HTMLButtonElement>('.ms-item');
     expect(items.length).toBeGreaterThan(0);
     act(() => {
@@ -130,9 +132,9 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
     });
     await act(async () => {});
     const heads = [...container!.querySelectorAll('.ms-group-head')].map((e) => e.textContent ?? '');
-    // B3：无 Key 厂商分组头带「未配置 Key」标注（文本拼接），按前缀断言
-    expect(heads.some((h) => h.startsWith('deepseek'))).toBe(true);
-    expect(heads.some((h) => h.startsWith('openai'))).toBe(false); // 未配置厂商被过滤——杜绝写错行 400
+    // B3：无 Key 厂商分组头带「未配置 Key」标注（文本拼接），按包含断言（monogram 前缀）
+    expect(heads.some((h) => h.includes('deepseek'))).toBe(true);
+    expect(heads.some((h) => h.includes('openai'))).toBe(false); // 未配置厂商被过滤——杜绝写错行 400
   });
 
   it('C5：动态目录拉取失败的厂商分组头标注「目录获取失败」', async () => {
@@ -173,10 +175,59 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
       });
       await act(async () => {});
       const heads = [...container!.querySelectorAll('.ms-group-head')].map((e) => e.textContent ?? '');
-      expect(heads.some((h) => h.startsWith('anthropic') && h.includes('目录获取失败'))).toBe(true);
+      expect(heads.some((h) => h.includes('anthropic') && h.includes('目录获取失败'))).toBe(true);
     } finally {
       recordDynamicFetchResult('anthropic', true); // 清标记防污染同文件其它用例
     }
+  });
+
+  it('DSH 运行中守卫：isStreaming 时点击触发器不打开，回调 onBlocked', async () => {
+    const onBlocked = vi.fn();
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          compact: true,
+          value: 'deepseek-v4-pro',
+          providerName: 'deepseek',
+          kind: 'openai',
+          isStreaming: true,
+          onBlocked,
+          onChange: () => {},
+        }),
+      );
+    });
+    act(() => {
+      container!.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
+    });
+    await act(async () => {});
+    expect(onBlocked).toHaveBeenCalledTimes(1); // 拦截提示（宿主挂 localNotice）
+    expect(container!.querySelector('.ms-dropdown')).toBeNull(); // 菜单根本没打开
+  });
+
+  it('DSH same-model guard：compact 下再选当前同款不触发 onChange（跨 vendor 同 id 除外）', async () => {
+    const onChange = vi.fn();
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          compact: true,
+          value: 'deepseek-v4-pro',
+          providerName: 'deepseek',
+          kind: 'openai',
+          onChange,
+        }),
+      );
+    });
+    act(() => {
+      container!.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
+    });
+    await act(async () => {});
+    // 点当前已选同款（deepseek 家 deepseek-v4-pro）→ no-op
+    const items = [...container!.querySelectorAll<HTMLButtonElement>('.ms-item')];
+    const current = items.find((b) => b.textContent?.includes('deepseek-v4-pro'));
+    act(() => {
+      current?.click();
+    });
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it('非 compact（设置面板字段形态）保持平铺：无触发器、无分组头', () => {

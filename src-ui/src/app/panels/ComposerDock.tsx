@@ -82,6 +82,18 @@ function thinkingZhLabel(value: string | undefined): string {
   return THINKING_ZH[value] ?? value;
 }
 
+/** DSH thinkingDesc 语义（中文）——思考档位下拉选项的说明行。 */
+const THINKING_DESC: Record<string, string> = {
+  '': '模型自定推理强度',
+  off: '不推理，直接作答',
+  minimal: '最浅推理，响应最快',
+  low: '轻度推理',
+  medium: '均衡推理',
+  high: '深入推理',
+  xhigh: '较深推理',
+  max: '极限推理',
+};
+
 export const ComposerDock = memo(function ComposerDock() {
   const core = useCoreStore((s) => s.core);
   const { activeSessionId, setInputLocked } = usePaperDock();
@@ -350,14 +362,18 @@ export const ComposerDock = memo(function ComposerDock() {
         </span>
         {activeSessionId != null && (
           <>
+            {/* DSH 移植（2026-08-26）：运行中守卫——本卷在跑时模型下拉打开被拦
+                （DSH onAttemptOpen 语义：流式中不允许切模型），localNotice 提示 */}
             <ModelSelector
               value={model}
               onChange={onModelChange}
               providerName={providerName}
               kind={providerKind}
               compact
+              isStreaming={running}
+              onBlocked={() => setLocalNotice('Agent 正在运行——本回合结束后才能切换模型。')}
             />
-            {/* rework P2-3：权限三档分段控件（不再循环按钮） */}
+            {/* rework P2-3：权限三档分段控件（不随 DSH 迁移——权限是工作区级单一真相） */}
             <fieldset className="pp-mode-seg" aria-label="权限模式">
               {PERMISSION_MODES.map((m) => (
                 <button
@@ -372,16 +388,61 @@ export const ComposerDock = memo(function ComposerDock() {
                 </button>
               ))}
             </fieldset>
+            {/* DSH 移植（2026-08-26）：思考档位 = 图标 pill 下拉（brain 图标，
+                off 划横线；选项带档位说明），不再是「思考·档」文本按钮 + 展开分段行 */}
             {thinkingOptions.length > 0 && (
-              <button
-                type="button"
-                className={`pp-thinking-toggle${settingsOpen ? ' open' : ''}`}
-                title="思考档位"
-                aria-expanded={settingsOpen}
-                onClick={() => setSettingsOpen((v) => !v)}
-              >
-                思考 · {thinkingZhLabel(currentThinking)}
-              </button>
+              <div className="pp-thinking-sel">
+                <button
+                  type="button"
+                  className={`pp-thinking-pill${(currentThinking ?? '') === 'off' ? ' off' : ''}${settingsOpen ? ' open' : ''}`}
+                  title={`思考档位：${thinkingZhLabel(currentThinking)}`}
+                  aria-haspopup="listbox"
+                  aria-expanded={settingsOpen}
+                  onClick={() => setSettingsOpen((v) => !v)}
+                >
+                  <svg
+                    className="pp-thinking-icon"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M9 18h6" />
+                    <path d="M10 22h4" />
+                    <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5.76.76 1.23 1.52 1.41 2.5" />
+                    {(currentThinking ?? '') === 'off' && <line x1="4" y1="4" x2="20" y2="20" strokeWidth="1.5" />}
+                  </svg>
+                  <span className="pp-thinking-pill-label">{thinkingZhLabel(currentThinking)}</span>
+                  <span className="pp-thinking-pill-caret" aria-hidden="true">
+                    ▾
+                  </span>
+                </button>
+                {settingsOpen && (
+                  <div className="pp-thinking-menu" role="listbox" aria-label="思考档位">
+                    {thinkingOptions.map((o) => (
+                      <button
+                        key={o.value}
+                        type="button"
+                        role="option"
+                        aria-selected={(currentThinking ?? '') === o.value}
+                        className={`pp-thinking-opt${(currentThinking ?? '') === o.value ? ' selected' : ''}`}
+                        onClick={() => {
+                          onThinkingChange(o.value);
+                          setSettingsOpen(false);
+                        }}
+                      >
+                        <span className="pp-thinking-opt-label">{thinkingZhLabel(o.value)}</span>
+                        <span className="pp-thinking-opt-desc">{THINKING_DESC[o.value] ?? ''}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </>
         )}
@@ -405,26 +466,6 @@ export const ComposerDock = memo(function ComposerDock() {
           </span>
         )}
       </div>
-
-      {/* 思考档位展开区（stage-4 §8：思考进展开；rework P2-2：分段控件 + 纯中文） */}
-      {settingsOpen && thinkingOptions.length > 0 && (
-        <div className="pp-composer-expanded">
-          <span className="pp-composer-expanded-label">思考档位</span>
-          <fieldset className="pp-thinking-seg" aria-label="思考档位">
-            {thinkingOptions.map((o) => (
-              <button
-                key={o.value}
-                type="button"
-                className={`pp-thinking-opt${(currentThinking ?? '') === o.value ? ' selected' : ''}`}
-                aria-pressed={(currentThinking ?? '') === o.value}
-                onClick={() => onThinkingChange(o.value)}
-              >
-                {thinkingZhLabel(o.value)}
-              </button>
-            ))}
-          </fieldset>
-        </div>
-      )}
 
       {localNotice && (
         <div className="pp-local-notice">

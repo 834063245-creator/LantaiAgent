@@ -940,28 +940,6 @@
   white-space: nowrap;
   flex: 0 0 auto;
 }
-.pp-composer .pp-thinking-toggle {
-  font-family: var(--f-song);
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  padding: 3px 10px;
-  border: var(--rule-soft);
-  border-radius: 0;
-  background: transparent;
-  color: var(--ink-2);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.pp-composer .pp-thinking-toggle:hover {
-  color: var(--ink-1);
-  border-color: var(--ink-3);
-  background: var(--paper);
-}
-.pp-composer .pp-thinking-toggle.open {
-  border-color: var(--seal);
-  color: var(--seal-deep);
-}
-
 /* rework P2-3：权限三档分段控件 */
 .pp-mode-seg {
   display: inline-flex;
@@ -1055,51 +1033,100 @@
   color: var(--paper);
 }
 
-.pp-composer-expanded {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 4px 0 2px;
-  flex-wrap: wrap;
+/* DSH 移植（2026-08-26）：思考档位 = 图标 pill 下拉（替代旧「思考·档」文本按钮 +
+   展开分段行）。off = 脑图标划横线 + 静默灰；选中档 = seal 强调。菜单开在 pill 上方。 */
+.pp-composer-settings .pp-thinking-sel {
+  position: relative;
+  flex: 0 0 auto;
 }
-.pp-composer-expanded-label {
-  font-family: var(--f-mono);
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  color: var(--ink-3);
-}
-/* rework P2-2：思考档位分段控件（纯中文，选中态强烈） */
-.pp-thinking-seg {
+.pp-composer-settings .pp-thinking-pill {
   display: inline-flex;
-  margin: 0;
-  padding: 0;
-  border: 1px solid var(--rule-soft);
-  border-radius: 0;
-  overflow: hidden;
-  flex-wrap: wrap;
-}
-.pp-thinking-opt {
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
   font-family: var(--f-song);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  padding: 3px 10px;
-  border: none;
-  border-right: 1px solid var(--rule-soft);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  border: var(--rule-soft);
+  border-radius: 0;
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
   white-space: nowrap;
 }
-.pp-thinking-opt:last-child {
-  border-right: none;
+.pp-composer-settings .pp-thinking-pill:hover,
+.pp-composer-settings .pp-thinking-pill.open {
+  color: var(--seal-deep);
+  border-color: var(--seal);
 }
-.pp-thinking-opt:hover {
+.pp-composer-settings .pp-thinking-pill.off {
+  color: var(--ink-3);
+}
+.pp-composer-settings .pp-thinking-pill.off:hover,
+.pp-composer-settings .pp-thinking-pill.off.open {
+  color: var(--ink-2);
+  border-color: var(--ink-3);
+}
+.pp-composer-settings .pp-thinking-icon {
+  flex: 0 0 auto;
+}
+.pp-composer-settings .pp-thinking-pill-caret {
+  flex: 0 0 auto;
+  color: var(--ink-3);
+  font-size: 10px;
+}
+.pp-composer-settings .pp-thinking-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  z-index: 80;
+  min-width: 168px;
+  max-height: 280px;
+  overflow-y: auto;
   background: var(--paper);
+  border: 1px solid var(--rule-strong);
+  box-shadow: var(--elev-raise);
+}
+.pp-composer-settings .pp-thinking-opt {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-bottom: 1px solid var(--rule-soft);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  text-align: left;
+}
+.pp-composer-settings .pp-thinking-opt:last-child {
+  border-bottom: none;
+}
+.pp-composer-settings .pp-thinking-opt:hover {
+  background: var(--paper-deep);
   color: var(--ink-1);
 }
-.pp-thinking-opt.selected {
+.pp-composer-settings .pp-thinking-opt.selected {
   background: var(--seal-soft);
   color: var(--seal-deep);
+}
+.pp-composer-settings .pp-thinking-opt-label {
+  font-family: var(--f-song);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.pp-composer-settings .pp-thinking-opt-desc {
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.pp-composer-settings .pp-thinking-opt.selected .pp-thinking-opt-desc {
+  color: color-mix(in oklch, var(--seal-deep) 70%, var(--ink-3));
 }
 .pp-composer input,
 .pp-composer textarea {
@@ -1459,16 +1486,16 @@
   z-index: 80;
 }
 
-/* rework P2-1：紧凑触发器（收起态 = 供应商 / 模型名 + 箭头） */
+/* rework P2-1 + DSH 移植（2026-08-26）：紧凑触发器（收起态 = 厂商 monogram + 人类模型名 + 箭头） */
 .pp-composer-settings .ms-container .ms-trigger {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
   max-width: 240px;
   min-width: 0;
   font-family: var(--f-song);
   font-size: 12px;
-  padding: 3px 8px;
+  padding: 2px 8px;
   border: var(--rule-soft);
   border-radius: 0;
   background: transparent;
@@ -1482,12 +1509,20 @@
   border-color: var(--ink-3);
   background: var(--paper);
 }
-.pp-composer-settings .ms-trigger-vendor {
+/* DSH ProviderIcon 的 monogram 替代——触发 pill 里的厂商首字 chip */
+.pp-composer-settings .ms-provider-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
   font-family: var(--f-mono);
   font-size: 10px;
-  letter-spacing: 0.06em;
-  color: var(--indigo);
-  flex: 0 0 auto;
+  line-height: 1;
+  color: var(--paper);
+  background: var(--seal);
+  border-radius: 3px;
 }
 .pp-composer-settings .ms-trigger-name {
   overflow: hidden;
@@ -1501,14 +1536,27 @@
   font-size: 10px;
 }
 
-/* rework P2-1：下拉供应商分组头 */
+/* rework P2-1：下拉供应商分组头（DSH ProviderGroupHeader 形态：图标 + 名字） */
 .pp-composer-settings .ms-dropdown .ms-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--f-mono);
   font-size: 9px;
   letter-spacing: 0.2em;
   color: var(--ink-3);
   padding: 6px 12px 2px;
   text-transform: uppercase;
+}
+.pp-composer-settings .ms-dropdown .ms-group-head .ms-group-mark {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  font-size: 9px;
+  border-radius: 2px;
+}
+.pp-composer-settings .ms-dropdown .ms-group-head .ms-group-name {
+  letter-spacing: 0.2em;
 }
 /* B3（2026-08-27）：无 Key 厂商标注——选中即 MISSING_CREDENTIAL 的预警 */
 .pp-composer-settings .ms-dropdown .ms-group-head .ms-group-nokey {

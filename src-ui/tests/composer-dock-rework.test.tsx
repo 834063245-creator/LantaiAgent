@@ -8,6 +8,8 @@
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { agentSessionState } from '../src/agent/agent-session-state';
+import { createExecState } from '../src/agent/execution-state';
 import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
 import { ComposerDock } from '../src/app/panels/ComposerDock';
@@ -35,8 +37,14 @@ const DOCK_CONTEXT: PaperDockContextValue = {
   flyToPoint: vi.fn(),
 };
 
-/** 装配 core + 播种会话/创作坞偏好，并把 ComposerDock 渲染进 container。 */
-async function mountDock(panelId: string, container: HTMLDivElement, onRoot: (r: Root) => void) {
+/** 装配 core + 播种会话/创作坞偏好，并把 ComposerDock 渲染进 container。
+ *  thinking = 会话思考覆盖种子（缺省 high）。 */
+async function mountDock(
+  panelId: string,
+  container: HTMLDivElement,
+  onRoot: (r: Root) => void,
+  thinking: 'high' | 'off' = 'high',
+) {
   useCoreStore.getState().setChatCore(fakeCore(panelId));
   getChatStore(panelId).sess.setState({
     sessions: [{ id: 1, label: '案卷一' }],
@@ -44,9 +52,9 @@ async function mountDock(panelId: string, container: HTMLDivElement, onRoot: (r:
     sessionTokens: {},
     nextSessionId: 2,
   });
-  // 播种会话覆盖：deepseek-v4-pro + thinking=high（方案甲：覆盖制——
+  // 播种会话覆盖：deepseek-v4-pro + thinking 档位（方案甲：覆盖制——
   // setThinking 自带「以当前生效配置为底落覆盖」，不再需要 ensurePrefs 预热）
-  getComposeStore(panelId).getState().setThinking('1', 'high');
+  getComposeStore(panelId).getState().setThinking('1', thinking);
 
   let root: Root;
   act(() => {
@@ -57,7 +65,7 @@ async function mountDock(panelId: string, container: HTMLDivElement, onRoot: (r:
   await act(async () => {});
 }
 
-describe('ComposerDock 返工 P2-2（思考档位）', () => {
+describe('ComposerDock 返工 P2-2（思考档位 pill 下拉，DSH 移植）', () => {
   let container: HTMLDivElement;
   let root: Root | null = null;
 
@@ -73,30 +81,90 @@ describe('ComposerDock 返工 P2-2（思考档位）', () => {
     root = null;
   });
 
-  it('收起态按钮显示「思考 · 高」（当前档可见，非恒「思考」）', async () => {
+  it('收起态 pill 显示当前档中文标签（高）——非恒「思考」文本', async () => {
     await mountDock('p22-collapsed', container, (r) => {
       root = r;
     });
-    const toggle = container.querySelector<HTMLButtonElement>('.pp-thinking-toggle');
-    expect(toggle).not.toBeNull();
-    expect(toggle?.textContent).toContain('思考 · 高');
+    const pill = container.querySelector<HTMLButtonElement>('.pp-thinking-pill');
+    expect(pill).not.toBeNull();
+    expect(pill?.textContent).toContain('高');
   });
 
-  it('展开为纯中文分段控件：选中「高」，无英文括号混排', async () => {
-    await mountDock('p22-expanded', container, (r) => {
+  it('off 档：pill 带 .off 静默类，脑图标划横线（DSH 语义）', async () => {
+    await mountDock(
+      'p22-off',
+      container,
+      (r) => {
+        root = r;
+      },
+      'off',
+    );
+    const pill = container.querySelector<HTMLButtonElement>('.pp-thinking-pill');
+    expect(pill?.classList.contains('off')).toBe(true);
+    expect(pill?.querySelector('line')).not.toBeNull(); // 脑图标上的划线
+  });
+
+  it('点 pill 打开下拉：纯中文档位 + 说明、选中态正确；选「低」写会话覆盖并关闭', async () => {
+    await mountDock('p22-open', container, (r) => {
       root = r;
     });
     act(() => {
-      container.querySelector<HTMLButtonElement>('.pp-thinking-toggle')?.click();
+      container.querySelector<HTMLButtonElement>('.pp-thinking-pill')?.click();
     });
     await act(async () => {});
-    const seg = container.querySelector('.pp-thinking-seg');
-    expect(seg).not.toBeNull();
+    const menu = container.querySelector('.pp-thinking-menu');
+    expect(menu).not.toBeNull();
     const opts = [...container.querySelectorAll<HTMLButtonElement>('.pp-thinking-opt')];
     expect(opts.length).toBeGreaterThan(0);
+    // 无中英混排：档位标签与说明行都是中文（thinkingZhLabel / THINKING_DESC）
+    expect(menu?.textContent).not.toMatch(/\(|\)/);
+    // 选中态 = 当前档「高」
     const selected = opts.find((b) => b.classList.contains('selected'));
-    expect(selected?.textContent?.trim()).toBe('高');
-    expect(seg?.textContent).not.toMatch(/\(|\)/); // 无中英混排
+    expect(selected?.textContent).toContain('高');
+    // 选「低」→ compose-store 会话覆盖 + 菜单关闭
+    const low = opts.find((b) => b.textContent?.includes('低'));
+    act(() => {
+      low?.click();
+    });
+    await act(async () => {});
+    expect(getComposeStore('p22-open').getState().getPrefs('1')?.thinking).toBe('low');
+    expect(container.querySelector('.pp-thinking-menu')).toBeNull();
+  });
+});
+
+describe('ComposerDock 运行中守卫（DSH 移植）', () => {
+  let container: HTMLDivElement;
+  let root: Root | null = null;
+
+  beforeEach(() => {
+    resetComposeStoresForTests();
+    resetPaperStoresForTests();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+  afterEach(() => {
+    act(() => root?.unmount());
+    container.remove();
+    root = null;
+    agentSessionState.removeExec('guard', 1);
+  });
+
+  it('活跃卷运行中：模型下拉打开被拦 + localNotice 提示', async () => {
+    // 种子运行中的 exec（B7 running 态来源）——须在 mount 前，运行态 effect 才能读到
+    const exec = createExecState();
+    exec.start();
+    agentSessionState.setExec('guard', 1, exec);
+    await mountDock('guard', container, (r) => {
+      root = r;
+    });
+    act(() => {
+      container.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
+    });
+    await act(async () => {});
+    expect(container.querySelector('.ms-dropdown')).toBeNull(); // 没打开（DSH onAttemptOpen veto）
+    expect(container.querySelector('.pp-local-notice')?.textContent).toContain('正在运行');
+    // 停止 exec 会触发运行态订阅更新——须在 act 内，否则 React 报未包裹更新
+    act(() => exec.stop());
   });
 });
 

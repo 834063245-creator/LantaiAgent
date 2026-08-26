@@ -24,13 +24,27 @@ interface ModelSelectorProps {
   /** rework P2-1：紧凑触发器形态（创作坞底部用）——收起态 = 按钮（供应商/模型名 + 箭头），
    *  空查询列出全部已配置 provider 的目录模型（跨 vendor 直接选）。缺省 = 设置页字段形态不变。 */
   compact?: boolean;
+  /** DSH 移植（2026-08-26）：运行中守卫——为 true 时打开被拦（DSH onAttemptOpen
+   *  语义：流式中不允许切模型），回调 onBlocked 让宿主提示（创作坞挂 localNotice）。 */
+  isStreaming?: boolean;
+  /** 运行中被拦时的回调。 */
+  onBlocked?: () => void;
 }
 
 function hasMetadata(m: ModelDescriptor): boolean {
   return m.cost.input > 0 || m.contextWindow > 0;
 }
 
-export function ModelSelector({ value, onChange, providerName, kind, onRefreshModels, compact }: ModelSelectorProps) {
+export function ModelSelector({
+  value,
+  onChange,
+  providerName,
+  kind,
+  onRefreshModels,
+  compact,
+  isStreaming,
+  onBlocked,
+}: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
@@ -82,6 +96,8 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
 
   /** 收起态人类可读名（rework P2-1：不再只露 model id）。 */
   const selectedHumanName = useMemo(() => getModel(value)?.name ?? value, [value]);
+  /** 收起态标签（DSH model.notSelected 语义）：有值 = 人类可读名；空 = 显式未选择。 */
+  const triggerLabel = value ? selectedHumanName || value : '选择模型';
 
   /** 下拉展示行：compact 下按 vendor 分组（组头 + 项），非 compact 保持平铺（设置页零改动）。 */
   const displayRows = useMemo(() => {
@@ -163,12 +179,29 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
     setActiveIdx(0);
   }, []);
 
+  /* ── DSH 移植（2026-08-26）：运行中守卫——流式中不允许切模型（onAttemptOpen
+   *    语义）。拦下时回调 onBlocked，宿主弹提示；打开本身被 veto。 ── */
+  const attemptOpen = useCallback(() => {
+    if (isStreaming) {
+      onBlocked?.();
+      return false;
+    }
+    return true;
+  }, [isStreaming, onBlocked]);
+
   const handleSelect = useCallback(
     (desc: ModelDescriptor) => {
+      // DSH same-model guard（compact 会话热切换）：同 (provider, model) 不重复
+      // 发信号——会话覆盖已在位，再选同款只是无谓重写 + 热切换。跨 vendor 同 id
+      // （目录允许共享 id）不算同款，正常切换。
+      if (compact && desc.id === value && desc.vendor === providerName) {
+        close();
+        return;
+      }
       onChange(desc.id, desc);
       close();
     },
-    [onChange, close],
+    [compact, value, providerName, onChange, close],
   );
 
   useEffect(() => {
@@ -222,10 +255,11 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
         <button
           type="button"
           className="ms-trigger"
-          title={`${providerName} · ${selectedHumanName}（点击选择模型）`}
+          title={`${providerName} · ${triggerLabel}（点击选择模型）`}
           aria-haspopup="listbox"
           aria-expanded={false}
           onClick={() => {
+            if (!attemptOpen()) return;
             setOpen(true);
             // B1（2026-08-27）：打开置空 query——预填当前模型 id 会把 results
             // 打进 searchModels(value) 分支，「空查询列全部已配置 provider」
@@ -236,13 +270,15 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') {
               e.preventDefault();
+              if (!attemptOpen()) return;
               setOpen(true);
               setQuery('');
             }
           }}
         >
-          <span className="ms-trigger-vendor">{providerName}</span>
-          <span className="ms-trigger-name">{selectedHumanName || value || '…'}</span>
+          {/* DSH ProviderIcon 的轻量替代：厂商 monogram（首字大写 seal chip） */}
+          <ProviderMark vendor={providerName} className="ms-trigger-mark" />
+          <span className="ms-trigger-name">{triggerLabel}</span>
           <span className="ms-trigger-caret" aria-hidden="true">
             ▾
           </span>
@@ -310,7 +346,8 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
           {displayRows.map((row) =>
             row.type === 'header' ? (
               <div key={`h-${row.vendor}`} className="ms-group-head">
-                {row.vendor}
+                <ProviderMark vendor={row.vendor} className="ms-group-mark" />
+                <span className="ms-group-name">{row.vendor}</span>
                 {noKeyVendors.has(row.vendor) && <span className="ms-group-nokey">未配置 Key</span>}
                 {failedVendors.has(row.vendor) && (
                   <span className="ms-group-fail" title={getDynamicFetchFailure(row.vendor)}>
@@ -356,6 +393,16 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
         </div>
       )}
     </div>
+  );
+}
+
+/** DSH ProviderIcon 的轻量替代（兰台无 @lobehub 图标集）：厂商名首字 monogram，
+ *  seal 色圆角 chip。compact 触发 pill 与分组头共用，保证两处视觉一致。 */
+function ProviderMark({ vendor, className }: { vendor: string; className?: string }) {
+  return (
+    <span className={`ms-provider-mark${className ? ` ${className}` : ''}`} aria-hidden="true">
+      {(vendor || '?').slice(0, 1).toUpperCase()}
+    </span>
   );
 }
 
