@@ -22,6 +22,7 @@ import { firstPartyCapabilityPlugins } from '../composition/first-party-capabili
 import { firstPartyPromptPlugins } from '../composition/first-party-prompts';
 import { firstPartyToolPlugins } from '../composition/first-party-tools';
 import { hooksServicePlugin } from '../composition/hook-service';
+import { overlayServicePlugin } from '../composition/overlay-service';
 import { promptsServicePlugin } from '../composition/prompt-service';
 import { rendererServicePlugin } from '../composition/renderer-service';
 import { compositionServicesPlugin } from '../composition/services';
@@ -31,6 +32,7 @@ import { paperPlugin } from '../paper/paper-plugin';
 import { getProxyPort } from '../provider/transport';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
 import { canvasNavPlugin } from './canvas-nav-plugin';
+import { composeDockPlugin } from './compose-dock-plugin';
 import { type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
 import { settingsPlugin } from './settings-plugin';
 import { spaceDemoPlugin } from './space-demo-plugin';
@@ -85,6 +87,7 @@ export function pluginAssetsOrigin(port: number): string {
 const BUILTIN_PLUGINS: LantaiPlugin[] = [
   compositionServicesPlugin,
   spaceServicePlugin,
+  overlayServicePlugin,
   codeRuntimePlugin,
   rendererServicePlugin,
   promptsServicePlugin,
@@ -94,6 +97,7 @@ const BUILTIN_PLUGINS: LantaiPlugin[] = [
   settingsPlugin,
   spaceDemoPlugin,
   canvasNavPlugin,
+  composeDockPlugin,
   ...firstPartyToolPlugins(),
   ...firstPartyPromptPlugins(),
   ...firstPartyCapabilityPlugins(),

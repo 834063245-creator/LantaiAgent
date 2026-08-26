@@ -99,11 +99,18 @@ export const SessionSidebar = memo(function SessionSidebar() {
     const unAgents = agentSessionState.subscribe(refresh);
     const unAsk = useAskStore.subscribe(refresh);
     const unSpace = activeSpace()?.subscribe(refresh);
+    // rework P4-1：工作区路径变化（进工作区/切换）必须重拉 listSavedSessions——
+    // 首拉若早于 projectPath 落定（Workspace.open 之后才写 shell-store），
+    // 会拉到空集且再无重试点。
+    const unShell = useShellStore.subscribe((s, prev) => {
+      if (s.projectPath !== prev.projectPath) refresh();
+    });
     return () => {
       unSess();
       unAgents();
       unAsk();
       unSpace?.();
+      unShell();
     };
   }, [core, refresh]);
 

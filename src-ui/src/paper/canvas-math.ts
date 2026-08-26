@@ -145,15 +145,20 @@ export function viewForAnchor(viewportWidth: number, viewportHeight: number): { 
   return { panX: ax, panY: ay };
 }
 
-/** 定位器视口（Stage-3：书脊左键定位——把目标流区锚点对到屏幕
- *  （水平居中、输入条上方），复用 viewForAnchor 语义锚到流区而不是全局锚；
- *  保持当前 zoom 不变。纯函数便于测试）。 */
+/** 定位器视口（Stage-3 书脊 / Stage-4 目次带共用）。
+ *  rework P1-2（2026-08-26 实机）：把目标锚点对到**视口中心**（原实现沿用
+ *  viewForAnchor 的「底部上方 margin」公式——锚点一跳落在屏高 35% 处，
+ *  不符合「跳到目标轮次」的直觉）。水平居中 + 垂直中心，保持 zoom 不变。
+ *  纯函数便于测试。 */
 export function viewFocusRegion(
   v: Viewport,
   viewportWidth: number,
   viewportHeight: number,
   anchor: { x: number; y: number },
 ): Viewport {
-  const { panX, panY } = viewForAnchor(viewportWidth, viewportHeight);
-  return { zoom: v.zoom, panX: panX - anchor.x * v.zoom, panY: panY - anchor.y * v.zoom };
+  return {
+    zoom: v.zoom,
+    panX: viewportWidth / 2 - anchor.x * v.zoom,
+    panY: viewportHeight / 2 - anchor.y * v.zoom,
+  };
 }

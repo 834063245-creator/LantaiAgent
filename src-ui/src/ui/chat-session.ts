@@ -11,6 +11,7 @@ import { createExecState, type ExecStateInstance } from '../agent/execution-stat
 import type { Message } from '../provider/types';
 import { typedJsonRpc, typedRpc } from '../rpc-contract';
 import { getActiveProvider, loadSettings } from '../settings';
+import { getComposeStore } from '../state/compose-store';
 import { disposeMessagesStores, disposeSessionMessagesStore } from '../state/messages-store';
 import {
   clearPaperSessions,
@@ -161,6 +162,8 @@ export function resetSessionState(storeId: string): void {
   });
   // 全新会话树 —— 清空一切旧草稿槽与 live 输入，会话 id 已变化
   getChatStore(storeId).input.getState().clearSessionDrafts();
+  // 创作坞每会话偏好（模型/思考）同属工作区级状态——一并清空防串味
+  getComposeStore(storeId).getState().clearAll();
   setTurnPairs(storeId, []);
 }
 
@@ -396,6 +399,8 @@ export function closeSession(ctx: SessionContext, idx: number): void {
   }
   // 丢弃被关闭会话的输入草稿槽 —— 关闭后不应再残留其未发送文字
   getChatStore(ctx.storeId).input.getState().clearSessionDraft(s.id);
+  // 创作坞每会话偏好随卷消亡一并清理（Stage-4）
+  getComposeStore(ctx.storeId).getState().removePrefs(String(s.id));
 
   const newSessions = [...st.sessions];
   newSessions.splice(idx, 1);

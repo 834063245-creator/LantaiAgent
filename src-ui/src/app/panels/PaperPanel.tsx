@@ -21,8 +21,14 @@
 // 输入条：写 input-store（真相源），提交走 core.sendMessage()。
 
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { agentSessionState } from '../../agent/agent-session-state';
+import { activeOverlayContributions, subscribeOverlayContributions } from '../../composition/overlay-service';
 import { resolveRenderer } from '../../composition/renderer-service';
+import {
+  createSettleSelector,
+  hitRegionAtWorld,
+  type RegionHitRect,
+  viewportCenterWorld,
+} from '../../paper/active-region';
 import type { SourcedBlock } from '../../paper/block-model';
 import {
   ANCHOR,
@@ -34,13 +40,14 @@ import {
   wheelFactor,
   zoomAt,
 } from '../../paper/canvas-math';
-import { composerSubmitOnKey } from '../../paper/ime';
 import {
   type BlockMeasureCache,
   clearPaperMeasureCache,
   createBlockMeasureCache,
   measureBlockHeightCached,
 } from '../../paper/measure';
+import { PaperDockContext, PaperRegionContext } from '../../paper/overlay-context';
+import type { RegionView } from '../../paper/region-view';
 import { classifyDropZone, makeStrip, type PaperStrip, stashStripPositionAt } from '../../paper/selection';
 import { defaultRegionFor, STREAM_REGION, type StreamRegionState, snapRegionX } from '../../paper/space';
 import { type MessageTranslateCache, translateMessagesCached } from '../../paper/translate';
@@ -53,15 +60,13 @@ import {
 } from '../../paper/virtualize';
 import { useCanvasViewStore } from '../../state/canvas-view-store';
 import { useDockStore } from '../../state/dock-store';
-import { getPaperStore, type PaperPinnedState } from '../../state/paper-store';
+import { getPaperStore } from '../../state/paper-store';
 import { useUpdateStore } from '../../state/update-store';
 import { getChatStore, msgStoreFor } from '../../ui/chat-store';
-import { CommandRegistry } from '../../ui/command-registry';
 import type { AssistantMessage, ChatMessage, TextPart, UserMessage } from '../../ui/message-model';
 import { useCoreStore } from '../chat/core-instance';
 import { useShellStore } from '../shell-store';
 import { WinControls } from '../WinControls';
-import { ModeIndicator } from './ModeIndicator';
 import { StatusLine } from './StatusLine';
 import './PaperPanel.css';
 
@@ -177,9 +182,12 @@ const BlockView = memo(function BlockView({
 function MinimapView({
   content,
   viewport,
+  bottom,
 }: {
   content: { x0: number; y0: number; x1: number; y1: number };
   viewport: { x0: number; y0: number; x1: number; y1: number };
+  /** 创作坞实际高度（rework P3-1：minimap 底部随它定位，避免被动态变高的坞遮住） */
+  bottom: number;
 }) {
   const W = 128;
   const H = 96;
@@ -197,7 +205,7 @@ function MinimapView({
     height: Math.max(2, (viewport.y1 - viewport.y0) * scale),
   };
   return (
-    <div className="pp-minimap" title="小地图 · Home 键回原点">
+    <div className="pp-minimap" style={{ bottom: bottom + 18 }} title="小地图 · Home 键回原点">
       <div className="pp-mm-viewport" style={vp} />
     </div>
   );
@@ -205,34 +213,16 @@ function MinimapView({
 
 /** 拖动阈值（px）：超过即视为拖块（区分点击） */
 const DRAG_THRESHOLD = 6;
+/** 自动选中命中区向上外扩（px，世界单位）：流区标签带在 regionTop 之上
+ *  ~38px——用户常把视口中心对准会话标题，不扩会“空白保持当前”不切 */
+const REGION_HIT_LABEL_BAND = 40;
+/** 手动切换后抑制自动选中的窗口（ms）：显式选会话后给 800ms 喘息，
+ * 避免“侧边栏点 A、视口中心还在 B，400ms 后被自动选中拉回 B”的冲突感 */
+const MANUAL_GUARD_MS = 800;
 /** 流内占位符高度（pinned 块在流原序位的洞——设计文档 §2.3） */
 const GHOST_H = 32;
 /** 稳定空引用——无会话/无钉住时避免无谓重渲染 */
 const EMPTY_OPS: BlockOp[] = [];
-
-/** 单会话（流区）的完整渲染态——派生计算的最小隔离单元：
- *  一个会话吐字只重算它自己的栈（"单流区更新=常数"铁律）。 */
-interface RegionView {
-  sessionId: string;
-  sessionNum: number;
-  label: string;
-  anchor: StreamRegionState;
-  blocks: SourcedBlock[];
-  layout: Map<string, { x: number; y: number }>;
-  flowGeom: FlowGeom[];
-  pinnedGeom: PinnedGeom[];
-  flowWindow: { first: number; lastExcl: number };
-  visibleIds: Set<string>;
-  seq: Map<string, string>;
-  strips: PaperStrip[];
-  pinned: PaperPinnedState;
-  /** 流区内容顶（世界 y——最旧块顶） */
-  regionTop: number;
-  /** 流区内容底（世界 y = 锚点 y——最新块底边） */
-  regionBottom: number;
-  /** 流区容器高（世界单位，含头部留白） */
-  regionHeight: number;
-}
 
 /** 按点是否落在选区几何矩形内（±4px 容差盖住行间边缘）。 */
 function pointInSelectionRects(range: Range, x: number, y: number): boolean {
@@ -312,22 +302,6 @@ export function PaperPanel() {
     getPaperStore(core.panelId)
       .getState()
       .setActiveRegion(activeSessionId != null ? String(activeSessionId) : null);
-  }, [core, activeSessionId]);
-
-  /* Agent 运行态（停止按钮）：订阅活跃会话 exec.isRunning */
-  const [running, setRunning] = useState(false);
-  useEffect(() => {
-    if (!core || activeSessionId == null) {
-      setRunning(false);
-      return;
-    }
-    const exec = agentSessionState.getExec(core.panelId, activeSessionId);
-    if (!exec) {
-      setRunning(false);
-      return;
-    }
-    setRunning(exec.isRunning);
-    return exec.onChange(() => setRunning(exec.isRunning));
   }, [core, activeSessionId]);
 
   /* paper-store 订阅 tick：钉住/纸条/流区位置变更触发重渲染 + 防抖自动保存 */
@@ -538,18 +512,18 @@ export function PaperPanel() {
 
   regionsRef.current = regions;
 
-  /* ── 书脊定位器：pendingFocusId → 轻动画飞到目标流区最新块（Stage-3）──
-   * 复用 viewFocusRegion（锚到流区而不是全局锚）；未摊开卷 expand 在途时
-   * pending 保持，流区出现后补飞（regions 依赖的第二个 effect）。 */
+  /* ── 视口轻动画：飞到指定会话的指定世界 y（书脊定位器/目次带共用）──
+   * 复用 viewFocusRegion（锚到流区中轴 + 目标世界 y）；未摊开卷 expand
+   * 在途时 pending 保持，流区出现后补飞（regions 依赖的第二个 effect）。 */
   const focusRafRef = useRef(0);
-  const flyToRegion = useCallback(
-    (sessionId: string) => {
+  const flyToPoint = useCallback(
+    (sessionId: string, worldY: number) => {
       const region = regionsRef.current.find((r) => r.sessionId === sessionId);
       if (!region) return;
       const start = useCanvasViewStore.getState().view;
       const target = viewFocusRegion(start, canvasSize.w, canvasSize.h, {
         x: region.anchor.anchorX,
-        y: region.anchor.anchorY,
+        y: worldY,
       });
       if (focusRafRef.current) cancelAnimationFrame(focusRafRef.current);
       const DURATION = 240;
@@ -572,6 +546,13 @@ export function PaperPanel() {
       focusRafRef.current = requestAnimationFrame(tick);
     },
     [canvasSize.w, canvasSize.h],
+  );
+  const flyToRegion = useCallback(
+    (sessionId: string) => {
+      const region = regionsRef.current.find((r) => r.sessionId === sessionId);
+      if (region) flyToPoint(sessionId, region.anchor.anchorY);
+    },
+    [flyToPoint],
   );
   const pendingFocusId = useCanvasViewStore((s) => s.pendingFocusId);
   useEffect(() => {
@@ -656,6 +637,10 @@ export function PaperPanel() {
   /* ── 交互：平移 / 缩放 ── */
   const panningRef = useRef<{ lastX: number; lastY: number } | null>(null);
   const [panning, setPanning] = useState(false);
+  /* rework P1-1：缩放守卫——滚轮缩放期间/刚停（600ms）不判自动选中（缩放是读细节不改归属） */
+  const zoomGuardUntilRef = useRef(0);
+  /* rework P1-1：手动切换守卫——显式切会话后 800ms 内不判自动选中（防“切完被拉回”） */
+  const manualGuardUntilRef = useRef(0);
 
   /* 缩放：原生非被动监听（React 合成 wheel 是 passive，preventDefault 无效） */
   useEffect(() => {
@@ -671,6 +656,8 @@ export function PaperPanel() {
         focusRafRef.current = 0;
       }
       useCanvasViewStore.getState().requestFocus(null);
+      // 缩放守卫：记录「最近一次缩放」时刻，自动选中在其后 600ms 内不判
+      zoomGuardUntilRef.current = performance.now() + 600;
       const rect = el.getBoundingClientRect();
       setView((v) => zoomAt(v, e.clientX - rect.left, e.clientY - rect.top, wheelFactor(e.deltaY)));
     };
@@ -719,7 +706,12 @@ export function PaperPanel() {
       p.lastY = e.clientY;
       if (dx !== 0 || dy !== 0) setView((v) => panBy(v, dx, dy));
     };
-    const up = () => setPanning(false);
+    const up = () => {
+      // ⚠ 必须清 panningRef：否则 moving 里 panningRef.current != null 恒 true，
+      // 第一次拖画布后自动选中永远被当成“平移中”而取消计时。
+      panningRef.current = null;
+      setPanning(false);
+    };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
     return () => {
@@ -833,10 +825,26 @@ export function PaperPanel() {
   );
   const onGhostClick = onUnpin;
 
-  /* ── 流区激活（点流区背景 = 显式动作立即切）── */
+  /* ── 自动选中（Stage-4 §4.1）：三道闸停留控制器 ──
+   * 活跃会话是有记忆的状态，非每帧重算：视口中心命中流区 + 连续停留
+   * 400ms 才切；平移/缩放/输入锁存折叠成 moving 喂进控制器。
+   * 显式动作（点流区/书脊/侧边栏/边缘拖拽）走 activateRegion 并 adopt，
+   * 防止自动选中在用户显式切换后立刻把它拉回去。 */
+  const [inputLocked, setInputLocked] = useState(false);
+  const activateRegionRef = useRef<(sessionId: string) => void>(() => {});
+  const settleRef = useRef(
+    createSettleSelector({
+      delayMs: 400,
+      onChange: (sessionId) => activateRegionRef.current(sessionId),
+    }),
+  );
+  useEffect(() => () => settleRef.current.dispose(), []);
+
+  /* ── 流区激活（点流区背景 = 显式动作立即切；自动选中也经此落定）── */
   const activateRegion = useCallback(
     (sessionId: string) => {
       if (!core) return;
+      settleRef.current.adopt(sessionId);
       const st = getChatStore(core.panelId).sess.getState();
       const idx = st.sessions.findIndex((s) => String(s.id) === sessionId);
       if (idx < 0) return;
@@ -845,6 +853,56 @@ export function PaperPanel() {
     },
     [core],
   );
+  activateRegionRef.current = activateRegion;
+
+  // 任何路径使活跃会话变化（显式点击/新建/摊开/恢复/自动选中）都把它登记为「最近落定值」，
+  // 防止自动选中在状态刚切换后立刻拉回旧流区；同时给 800ms 手动守卫，
+  // 避免“侧边栏点 A、视口中心还在 B，400ms 后被自动选中拉回 B”的冲突感。
+  useEffect(() => {
+    settleRef.current.adopt(activeSessionKey);
+    manualGuardUntilRef.current = performance.now() + MANUAL_GUARD_MS;
+  }, [activeSessionKey]);
+
+  /* ── 自动选中效果：视口中心 → 命中判定 → 停留控制器 ── */
+  useEffect(() => {
+    const settle = settleRef.current;
+    const panningRefLocal = panningRef; // 平移中不判（随 view 变化每帧喂）
+    const tick = () => {
+      // 读 store 实时 view：订阅回调在 React 重渲染前同步触发，viewRef 会滞后一帧
+      const v = useCanvasViewStore.getState().view;
+      const center = viewportCenterWorld(v, canvasSize.w, canvasSize.h);
+      const rects: RegionHitRect[] = regionsRef.current.map((r) => ({
+        sessionId: r.sessionId,
+        x0: r.anchor.anchorX - r.anchor.width / 2,
+        x1: r.anchor.anchorX + r.anchor.width / 2,
+        // 向上外扩盖住标签带（标题在 regionTop 之上）——中心对准会话标题也算命中
+        y0: r.regionTop - REGION_HIT_LABEL_BAND,
+        y1: r.regionBottom,
+      }));
+      const hit = hitRegionAtWorld(center.x, center.y, rects);
+      // 运动中不判：平移/边缘拖/定位动画 + 拖块/拖纸条（用户正握着东西，别抢活跃会话）
+      // + 输入锁存 + 缩放守卫 + 手动切换守卫
+      const moving =
+        panningRefLocal.current != null ||
+        edgeDragRef.current != null ||
+        dragRef.current != null ||
+        stripDragRef.current != null ||
+        focusRafRef.current > 0 ||
+        inputLocked ||
+        performance.now() < zoomGuardUntilRef.current ||
+        performance.now() < manualGuardUntilRef.current;
+      settle.push(hit, moving);
+    };
+    tick();
+    // view 每帧变化（平移/缩放/动画）即时喂（运动中快速取消）；
+    // 200ms 间隔兜底「停住」后的最终判定（停止后不再有 view 变更事件）。
+    const iv = window.setInterval(tick, 200);
+    const unsub = useCanvasViewStore.subscribe(tick);
+    return () => {
+      window.clearInterval(iv);
+      unsub();
+    };
+  }, [canvasSize.w, canvasSize.h, inputLocked]);
 
   /* ── 流区边缘拖动（Stage-2 定案：悬停边缘即拖拽态，无显式手柄条）── */
   const onRegionEdgeMouseDown = useCallback((e: React.MouseEvent, sessionId: string) => {
@@ -899,70 +957,6 @@ export function PaperPanel() {
       window.removeEventListener('mouseup', up);
     };
   }, [core]);
-
-  /* ── 输入条：真相走 input-store，提交走 core.sendMessage（agent 层零改动）── */
-  const [inputText, setInputText] = useState('');
-  const slashQuery = useMemo(() => {
-    const v = inputText;
-    if (!v) return null;
-    const last = v.lastIndexOf('/');
-    if (last < 0) return null;
-    if (last > 0 && v[last - 1] !== ' ' && v[last - 1] !== '\n') return null;
-    return v.slice(last + 1);
-  }, [inputText]);
-  const slashCommands = useMemo(() => {
-    if (slashQuery === null) return [];
-    const q = slashQuery.toLowerCase();
-    return CommandRegistry.instance
-      .getAll()
-      .filter((c) => c.shortcut.toLowerCase().includes(q) || c.label.toLowerCase().includes(q));
-  }, [slashQuery]);
-  const composerRef = useRef<HTMLTextAreaElement | null>(null);
-  const autoGrow = useCallback(() => {
-    const el = composerRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 144) + 'px';
-  }, []);
-  useEffect(() => {
-    void inputText;
-    autoGrow();
-  }, [inputText, autoGrow]);
-  const [attachedFiles, setAttachedFiles] = useState<Array<{ path: string; name: string; size: number }>>([]);
-  useEffect(() => {
-    if (!core) {
-      setAttachedFiles([]);
-      return;
-    }
-    const input = getChatStore(core.panelId).input;
-    setAttachedFiles(input.getState().attachedFiles);
-    const unsub = input.subscribe((s) => setAttachedFiles(s.attachedFiles));
-    return () => unsub();
-  }, [core]);
-  const onAttach = useCallback(() => {
-    void core?.openFilePicker();
-  }, [core]);
-  const onRemoveAttached = useCallback(
-    (idx: number) => {
-      if (!core) return;
-      getChatStore(core.panelId).input.getState().removeAttachedFile(idx);
-    },
-    [core],
-  );
-  const [localNotice, setLocalNotice] = useState<string | null>(null);
-  const onSend = useCallback(async () => {
-    const t = inputText.trim();
-    if (!t || !core) return;
-    const sess = getChatStore(core.panelId).sess.getState();
-    if (sess.activeIdx < 0 || !sess.sessions[sess.activeIdx]) {
-      setLocalNotice('当前没有活跃会话——请在设置中配置 API Key（书眉「设置」→ Provider）后保存，保存后即可直接使用。');
-      return;
-    }
-    setLocalNotice(null);
-    getChatStore(core.panelId).input.getState().setInputText(t);
-    setInputText('');
-    await core.sendMessage();
-  }, [inputText, core]);
 
   /* 小地图（D-R1-1 方位感：全画布内容聚落 + 视口框）——跨流区包围盒 */
   const minimap = useMemo(() => {
@@ -1337,292 +1331,264 @@ export function PaperPanel() {
     return s;
   }, [regions, viewRect]);
 
+  /* ── 覆盖层贡献（Stage-4 插件化落位：创作坞/目次带 = 贡献行）──
+   * 订阅贡献变更：插件热注册/卸载时即时重取渲染面（对齐 panels 的 bump 信号）。 */
+  const [, setOverlayTick] = useState(0);
+  useEffect(() => subscribeOverlayContributions(() => setOverlayTick((t) => t + 1)), []);
+  const composerOverlays = activeOverlayContributions('composer');
+  const edgeOverlays = activeOverlayContributions('right-edge');
+
+  /* rework P3-1：创作坞实际高度（动态——思考展开/附件/yolo 都会变高）驱动
+   * 目次带/小地图的底部定位，避免硬编码 gap 导致重叠。
+   * 用 callback ref（React 19 支持清理）替代 effect+dep，避免 lint 对
+   * composerOverlays.length 依赖的误报，同时正确响应槽挂载/卸载。 */
+  const [composerHeight, setComposerHeight] = useState(96);
+  const composerSlotRef = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
+    const ro = new ResizeObserver(() => setComposerHeight(el.getBoundingClientRect().height));
+    ro.observe(el);
+    setComposerHeight(el.getBoundingClientRect().height);
+    return () => ro.disconnect();
+  }, []);
+
+  /* ── 覆盖层上下文（Stage-4）：创作坞消费低频（动作/活跃/锁存），
+   * 目次带消费高频（流区几何）。拆两 context 避免创作坞随平移重渲。 ── */
+  const dockContext = useMemo(
+    () => ({
+      activeSessionId: activeSessionKey,
+      inputLocked,
+      setInputLocked,
+      flyToPoint,
+    }),
+    [activeSessionKey, inputLocked, flyToPoint],
+  );
+  const regionContext = useMemo(
+    () => ({
+      regions,
+      activeSessionId: activeSessionKey,
+      viewRect,
+      canvasSize,
+      composerHeight,
+    }),
+    [regions, activeSessionKey, viewRect, canvasSize, composerHeight],
+  );
+
   return (
-    <div className="pp-root">
-      <div className="pp-topbar">
-        <span className="pp-title">画布</span>
-        <span className="pp-tag">兰台 · CANVAS</span>
-        <span className="pp-zoom">
-          {zoomLabel} · {totalBlocks} 块 · 已钉 {totalPinned} · 纸条 {totalStrips}
-        </span>
-        <StatusLine />
-        <ModeIndicator />
-        <button
-          type="button"
-          className={`pp-settings${updateAvailable ? ' has-update' : ''}`}
-          title={updateAvailable && updateVersion ? `设置 (Ctrl+,) · 新版本 ${updateVersion} 可用` : '设置 (Ctrl+,)'}
-          onClick={() => useDockStore.getState().togglePanel('settings')}
-        >
-          设置
-        </button>
-        <button type="button" className="pp-close" onClick={() => closePanel('paper')}>
-          回首页
-        </button>
-        <WinControls />
-      </div>
-
-      {localNotice && (
-        <div className="pp-local-notice">
-          {localNotice}
-          <button type="button" onClick={() => setLocalNotice(null)}>
-            知道了
-          </button>
-        </div>
-      )}
-
-      {/* B 选中浮钮：块内有选区时现身（锚点随视口现算），点击成条（落来源流区右侧空地） */}
-      {selAnchor && !ghost && fabPos && (
-        <button type="button" className="pp-strip-fab" style={fabPos} onClick={onStripButton}>
-          抽纸条
-        </button>
-      )}
-
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: 无限画布是鼠标平移/缩放交互面 */}
-      <div ref={canvasRef} className={`pp-canvas${panning ? ' pp-panning' : ''}`} onMouseDown={onCanvasMouseDown}>
-        {sessions.length === 0 && (
-          <div className="pp-empty">
-            这张纸上还没有案卷。
-            <br />
-            点左侧「另起一卷」开始，新卷会自动落到右侧。
-          </div>
-        )}
-
-        {/* 世界层 */}
-        <div className="pp-world" style={worldStyle}>
-          {/* 原点十字（方位感） */}
-          <div className="pp-origin" style={{ left: 0, top: 0 }}>
-            <span className="pp-origin-label">origin</span>
-          </div>
-
-          {/* 幽灵预览（抽纸条拖拽过程反馈） */}
-          {ghost && (
-            <div
-              className={`pp-strip-ghost${ghost.zone === 'strip' ? ' pp-strip-ghost--ok' : ''}`}
-              style={{ left: ghost.x + 12, top: ghost.y + 12 }}
+    <PaperDockContext.Provider value={dockContext}>
+      <PaperRegionContext.Provider value={regionContext}>
+        <div className="pp-root">
+          <div className="pp-topbar">
+            <span className="pp-title">画布</span>
+            <span className="pp-tag">兰台 · CANVAS</span>
+            <span className="pp-zoom">
+              {zoomLabel} · {totalBlocks} 块 · 已钉 {totalPinned} · 纸条 {totalStrips}
+            </span>
+            <StatusLine />
+            <button
+              type="button"
+              className={`pp-settings${updateAvailable ? ' has-update' : ''}`}
+              title={
+                updateAvailable && updateVersion ? `设置 (Ctrl+,) · 新版本 ${updateVersion} 可用` : '设置 (Ctrl+,)'
+              }
+              onClick={() => useDockStore.getState().togglePanel('settings')}
             >
-              <span className="pp-strip-ghost-tag">纸条</span>
-              <span className="pp-strip-ghost-text">{ghost.zone === 'strip' ? '松手成条' : '拖出流带成条'}</span>
-            </div>
+              设置
+            </button>
+            <button type="button" className="pp-close" onClick={() => closePanel('paper')}>
+              回首页
+            </button>
+            <WinControls />
+          </div>
+
+          {/* B 选中浮钮：块内有选区时现身（锚点随视口现算），点击成条（落来源流区右侧空地） */}
+          {selAnchor && !ghost && fabPos && (
+            <button type="button" className="pp-strip-fab" style={fabPos} onClick={onStripButton}>
+              抽纸条
+            </button>
           )}
 
-          {/* 流区容器（一纸多卷：每会话一块有界流区——边缘拖动移动整区） */}
-          {regions.map((r) => {
-            if (!visibleRegionIds.has(r.sessionId)) return null;
-            const isActive = r.sessionId === activeSessionKey;
-            return (
-              // biome-ignore lint/a11y/noStaticElementInteractions: 流区是可点击交互面（点背景激活流区）
-              <div
-                key={r.sessionId}
-                className={`pp-region${isActive ? ' pp-region-active' : ''}`}
-                style={{
-                  left: r.anchor.anchorX - r.anchor.width / 2,
-                  top: r.regionTop,
-                  width: r.anchor.width,
-                  height: r.regionHeight,
-                }}
-                data-session-id={r.sessionId}
-                onMouseDown={(e) => {
-                  if (e.button !== 0) return;
-                  if (e.target === e.currentTarget) activateRegion(r.sessionId);
-                }}
-              >
-                <div className="pp-region-label" title={`案卷 ${r.sessionNum}${isActive ? ' · 活跃' : ' · 点击激活'}`}>
-                  <span className="pp-region-label-zh">{r.label || `案卷 ${r.sessionNum}`}</span>
-                  <span className="pp-region-label-meta">
-                    {isActive ? '活跃' : '点击激活'} · {r.blocks.length} 块
-                  </span>
-                </div>
-                {/* biome-ignore lint/a11y/noStaticElementInteractions: 边缘拖拽面（Stage-2 定案：无手柄条，hover 即拖拽态） */}
-                <div
-                  className="pp-region-edge pp-region-edge--l"
-                  onMouseDown={(e) => onRegionEdgeMouseDown(e, r.sessionId)}
-                />
-                {/* biome-ignore lint/a11y/noStaticElementInteractions: 边缘拖拽面（同左缘——拖右缘移动整个流区） */}
-                <div
-                  className="pp-region-edge pp-region-edge--r"
-                  onMouseDown={(e) => onRegionEdgeMouseDown(e, r.sessionId)}
-                />
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: 无限画布是鼠标平移/缩放交互面 */}
+          <div ref={canvasRef} className={`pp-canvas${panning ? ' pp-panning' : ''}`} onMouseDown={onCanvasMouseDown}>
+            {sessions.length === 0 && (
+              <div className="pp-empty">
+                这张纸上还没有案卷。
+                <br />
+                点左侧「另起一卷」开始，新卷会自动落到右侧。
               </div>
-            );
-          })}
+            )}
 
-          {/* 纸条（V3a：拷贝语义快照，可拖动、可销毁；按来源流区渲染） */}
-          {regions.map((r) =>
-            r.strips.map((s) => {
-              const stripDragged = dragStripId === s.id;
-              const stripPos = stripDragged && stripDragPos ? stripDragPos : { x: s.x, y: s.y };
-              return (
-                // biome-ignore lint/a11y/noStaticElementInteractions: 纸条拖拽面（D-R2-1 手势族）
+            {/* 世界层 */}
+            <div className="pp-world" style={worldStyle}>
+              {/* 原点十字（方位感） */}
+              <div className="pp-origin" style={{ left: 0, top: 0 }}>
+                <span className="pp-origin-label">origin</span>
+              </div>
+
+              {/* 幽灵预览（抽纸条拖拽过程反馈） */}
+              {ghost && (
                 <div
-                  key={s.id}
-                  className={`pp-strip${stripDragged ? ' pp-dragging' : ''}`}
-                  style={{ left: stripPos.x, top: stripPos.y, width: s.w }}
-                  onMouseDown={(e) => onStripMouseDown(e, r.sessionId, s)}
+                  className={`pp-strip-ghost${ghost.zone === 'strip' ? ' pp-strip-ghost--ok' : ''}`}
+                  style={{ left: ghost.x + 12, top: ghost.y + 12 }}
                 >
-                  <div className="pp-strip-head">
-                    <span className="pp-strip-tag">纸条</span>
-                    <button
-                      type="button"
-                      className="pp-strip-remove"
-                      title="销毁纸条"
-                      aria-label="销毁纸条"
-                      onMouseDown={(e) => e.stopPropagation()}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRemoveStrip(r.sessionId, s.id);
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <div className="pp-strip-body">{s.text}</div>
+                  <span className="pp-strip-ghost-tag">纸条</span>
+                  <span className="pp-strip-ghost-text">{ghost.zone === 'strip' ? '松手成条' : '拖出流带成条'}</span>
                 </div>
-              );
-            }),
-          )}
+              )}
 
-          {/* 流序列：每流区 flow 块按序渲染（视口窗口化——视口外不进 DOM） */}
-          {regions.map((r) =>
-            r.blocks.map((b) => {
-              const slot = r.layout.get(b.id);
-              if (!slot || !r.visibleIds.has(b.id)) return null;
-              if (b.state === 'flow') {
+              {/* 流区容器（一纸多卷：每会话一块有界流区——边缘拖动移动整区） */}
+              {regions.map((r) => {
+                if (!visibleRegionIds.has(r.sessionId)) return null;
+                const isActive = r.sessionId === activeSessionKey;
                 return (
-                  // biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler
+                  // biome-ignore lint/a11y/noStaticElementInteractions: 流区是可点击交互面（点背景激活流区）
                   <div
-                    key={b.id}
-                    className={`pp-block pp-${b.kind}`}
-                    style={{ left: slot.x, top: slot.y, width: b.w }}
-                    data-message-id={b.source.messageId}
+                    key={r.sessionId}
+                    className={`pp-region${isActive ? ' pp-region-active' : ''}`}
+                    style={{
+                      left: r.anchor.anchorX - r.anchor.width / 2,
+                      top: r.regionTop,
+                      width: r.anchor.width,
+                      height: r.regionHeight,
+                    }}
                     data-session-id={r.sessionId}
-                    onDragStart={(e) => e.preventDefault()}
+                    onMouseDown={(e) => {
+                      if (e.button !== 0) return;
+                      if (e.target === e.currentTarget) activateRegion(r.sessionId);
+                    }}
                   >
-                    <BlockView
-                      block={b}
-                      seq={r.seq.get(b.id) ?? '000'}
-                      ops={opsByBlock.get(b.id) ?? EMPTY_OPS}
-                      onUnpin={(id) => onUnpin(r.sessionId, id)}
-                      onDragHandleMouseDown={onBlockMouseDown}
+                    <div
+                      className="pp-region-label"
+                      title={`案卷 ${r.sessionNum}${isActive ? ' · 活跃' : ' · 点击激活'}`}
+                    >
+                      <span className="pp-region-label-zh">{r.label || `案卷 ${r.sessionNum}`}</span>
+                      <span className="pp-region-label-meta">
+                        {isActive ? '活跃' : '点击激活'} · {r.blocks.length} 块
+                      </span>
+                    </div>
+                    {/* biome-ignore lint/a11y/noStaticElementInteractions: 边缘拖拽面（Stage-2 定案：无手柄条，hover 即拖拽态） */}
+                    <div
+                      className="pp-region-edge pp-region-edge--l"
+                      onMouseDown={(e) => onRegionEdgeMouseDown(e, r.sessionId)}
+                    />
+                    {/* biome-ignore lint/a11y/noStaticElementInteractions: 边缘拖拽面（同左缘——拖右缘移动整个流区） */}
+                    <div
+                      className="pp-region-edge pp-region-edge--r"
+                      onMouseDown={(e) => onRegionEdgeMouseDown(e, r.sessionId)}
                     />
                   </div>
                 );
-              }
-              const isDragged = draggingId === b.id;
-              const pos = isDragged && dragPos ? dragPos : { x: b.x, y: b.y };
-              return (
-                <Fragment key={b.id}>
-                  <button
-                    type="button"
-                    className="pp-ghost"
-                    style={{ left: slot.x, top: slot.y, width: b.w, height: GHOST_H }}
-                    onClick={() => onGhostClick(r.sessionId, b.id)}
-                  >
-                    已移出 · 点击恢复
-                  </button>
-                  {/* biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler */}
-                  <div
-                    className={['pp-block', `pp-${b.kind}`, 'pp-pinned', isDragged ? 'pp-dragging' : ''].join(' ')}
-                    style={{ left: pos.x, top: pos.y, width: b.w }}
-                    data-message-id={b.source.messageId}
-                    data-session-id={r.sessionId}
-                    onDragStart={(e) => e.preventDefault()}
-                  >
-                    <BlockView
-                      block={b}
-                      seq={r.seq.get(b.id) ?? '000'}
-                      ops={opsByBlock.get(b.id) ?? EMPTY_OPS}
-                      onUnpin={(id) => onUnpin(r.sessionId, id)}
-                      onDragHandleMouseDown={onBlockMouseDown}
-                    />
-                  </div>
-                </Fragment>
-              );
-            }),
-          )}
+              })}
+
+              {/* 纸条（V3a：拷贝语义快照，可拖动、可销毁；按来源流区渲染） */}
+              {regions.map((r) =>
+                r.strips.map((s) => {
+                  const stripDragged = dragStripId === s.id;
+                  const stripPos = stripDragged && stripDragPos ? stripDragPos : { x: s.x, y: s.y };
+                  return (
+                    // biome-ignore lint/a11y/noStaticElementInteractions: 纸条拖拽面（D-R2-1 手势族）
+                    <div
+                      key={s.id}
+                      className={`pp-strip${stripDragged ? ' pp-dragging' : ''}`}
+                      style={{ left: stripPos.x, top: stripPos.y, width: s.w }}
+                      onMouseDown={(e) => onStripMouseDown(e, r.sessionId, s)}
+                    >
+                      <div className="pp-strip-head">
+                        <span className="pp-strip-tag">纸条</span>
+                        <button
+                          type="button"
+                          className="pp-strip-remove"
+                          title="销毁纸条"
+                          aria-label="销毁纸条"
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRemoveStrip(r.sessionId, s.id);
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="pp-strip-body">{s.text}</div>
+                    </div>
+                  );
+                }),
+              )}
+
+              {/* 流序列：每流区 flow 块按序渲染（视口窗口化——视口外不进 DOM） */}
+              {regions.map((r) =>
+                r.blocks.map((b) => {
+                  const slot = r.layout.get(b.id);
+                  if (!slot || !r.visibleIds.has(b.id)) return null;
+                  if (b.state === 'flow') {
+                    return (
+                      // biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler
+                      <div
+                        key={b.id}
+                        className={`pp-block pp-${b.kind}`}
+                        style={{ left: slot.x, top: slot.y, width: b.w }}
+                        data-message-id={b.source.messageId}
+                        data-session-id={r.sessionId}
+                        onDragStart={(e) => e.preventDefault()}
+                      >
+                        <BlockView
+                          block={b}
+                          seq={r.seq.get(b.id) ?? '000'}
+                          ops={opsByBlock.get(b.id) ?? EMPTY_OPS}
+                          onUnpin={(id) => onUnpin(r.sessionId, id)}
+                          onDragHandleMouseDown={onBlockMouseDown}
+                        />
+                      </div>
+                    );
+                  }
+                  const isDragged = draggingId === b.id;
+                  const pos = isDragged && dragPos ? dragPos : { x: b.x, y: b.y };
+                  return (
+                    <Fragment key={b.id}>
+                      <button
+                        type="button"
+                        className="pp-ghost"
+                        style={{ left: slot.x, top: slot.y, width: b.w, height: GHOST_H }}
+                        onClick={() => onGhostClick(r.sessionId, b.id)}
+                      >
+                        已移出 · 点击恢复
+                      </button>
+                      {/* biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler */}
+                      <div
+                        className={['pp-block', `pp-${b.kind}`, 'pp-pinned', isDragged ? 'pp-dragging' : ''].join(' ')}
+                        style={{ left: pos.x, top: pos.y, width: b.w }}
+                        data-message-id={b.source.messageId}
+                        data-session-id={r.sessionId}
+                        onDragStart={(e) => e.preventDefault()}
+                      >
+                        <BlockView
+                          block={b}
+                          seq={r.seq.get(b.id) ?? '000'}
+                          ops={opsByBlock.get(b.id) ?? EMPTY_OPS}
+                          onUnpin={(id) => onUnpin(r.sessionId, id)}
+                          onDragHandleMouseDown={onBlockMouseDown}
+                        />
+                      </div>
+                    </Fragment>
+                  );
+                }),
+              )}
+            </div>
+          </div>
+
+          {/* 小地图（D-R1-1 方位感：全画布内容聚落 + 视口框 + Home 回原点） */}
+          <MinimapView content={minimap.content} viewport={minimap.viewport} bottom={composerHeight} />
+
+          {/* 覆盖层贡献行（Stage-4）：创作坞（composer 槽）在底栏，目次带（right-edge 槽）在右缘 */}
+          <div className="pp-composer-slot" ref={composerSlotRef}>
+            {composerOverlays.map((def) => (
+              <def.component key={def.id} />
+            ))}
+          </div>
+          {edgeOverlays.map((def) => (
+            <def.component key={def.id} />
+          ))}
         </div>
-      </div>
-
-      {/* 小地图（D-R1-1 方位感：全画布内容聚落 + 视口框 + Home 回原点） */}
-      <MinimapView content={minimap.content} viewport={minimap.viewport} />
-
-      <div className="pp-composer">
-        {slashCommands.length > 0 && (
-          <div className="pp-slash">
-            {slashCommands.map((c) => (
-              <button key={c.id} type="button" className="pp-slash-item" onClick={() => core?.executeCommand(c)}>
-                <span className="pp-slash-shortcut">{c.shortcut}</span>
-                <span className="pp-slash-label">{c.label}</span>
-              </button>
-            ))}
-          </div>
-        )}
-        <button
-          type="button"
-          className="pp-attach"
-          title="拾遗——附文件入卷"
-          aria-label="拾遗：附加文件"
-          onClick={onAttach}
-        >
-          夹
-        </button>
-        {attachedFiles.length > 0 && (
-          <div className="pp-attach-list">
-            {attachedFiles.map((f, i) => (
-              <button
-                key={f.path}
-                type="button"
-                className="pp-attach-chip"
-                title={`${f.path}（点击移除）`}
-                onClick={() => onRemoveAttached(i)}
-              >
-                {f.name} ✕
-              </button>
-            ))}
-            {attachedFiles.length > 3 && <span className="pp-attach-count">共 {attachedFiles.length} 件</span>}
-          </div>
-        )}
-        <textarea
-          ref={composerRef}
-          rows={1}
-          value={inputText}
-          placeholder="拟文…（Enter 发送 · Shift+Enter 换行 · ↑ 取历史；拖住任意块可移出钉住；拖流区边缘可移动流区）"
-          onChange={(e) => {
-            setInputText(e.target.value);
-          }}
-          onKeyDown={(e) => {
-            if (composerSubmitOnKey(e.key, e.nativeEvent.isComposing)) {
-              e.preventDefault();
-              onSend();
-              return;
-            }
-            if (e.key === 'ArrowUp' && !e.nativeEvent.isComposing) {
-              const el = e.currentTarget;
-              const atFirstLine = el.selectionStart === 0 || !el.value.includes('\n');
-              const history = core ? getChatStore(core.panelId).input.getState().inputHistory : [];
-              if (atFirstLine && history.length > 0) {
-                e.preventDefault();
-                const next = history[history.length - 1] ?? '';
-                setInputText(next);
-                requestAnimationFrame(() => el.setSelectionRange(next.length, next.length));
-              }
-            }
-          }}
-        />
-        {running && (
-          <button
-            type="button"
-            className="pp-stop"
-            title="停止当前回合（级联子 Agent）"
-            aria-label="停止"
-            onClick={() => core?.abort()}
-          >
-            停
-          </button>
-        )}
-        <button type="button" onClick={onSend}>
-          拟文
-        </button>
-      </div>
-    </div>
+      </PaperRegionContext.Provider>
+    </PaperDockContext.Provider>
   );
 }

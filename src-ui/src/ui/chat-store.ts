@@ -10,6 +10,7 @@
 //
 // 每个都是真实的 Zustand store。getState() 返回实时内部状态。
 
+import { disposeComposeStore } from '../state/compose-store';
 import { disposeInputStore, getInputStore, type InputStoreApi } from '../state/input-store';
 import {
   getExpandedReasoningSet as _msg_expandedReasoning,
@@ -95,4 +96,5 @@ export function disposePanelStores(storeId: string): void {
   disposeSessionStore(storeId);
   disposePanelStore(storeId);
   disposeInputStore(storeId);
+  disposeComposeStore(storeId);
 }

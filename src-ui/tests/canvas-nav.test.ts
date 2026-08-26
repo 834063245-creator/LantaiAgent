@@ -94,13 +94,12 @@ describe('paper/space pickDropAnchor（拖动落位判据）', () => {
 });
 
 describe('paper/canvas-math viewFocusRegion（定位器视口）', () => {
-  it('把流区锚点对到屏幕视图中心下方（输入条上方）', () => {
+  it('把流区锚点对到视口中心（rework P1-2：目标轮次落在中心，非底部上方 margin）', () => {
     const v = identityView();
     const target = viewFocusRegion(v, 1600, 900, { x: 2160, y: -500 });
-    // viewForAnchor(1600,900) = {panX:800, panY:900-96}
     expect(target.zoom).toBe(1);
-    expect(target.panX).toBe(800 - 2160);
-    expect(target.panY).toBe(804 - -500);
+    expect(target.panX).toBe(800 - 2160); // 水平居中
+    expect(target.panY).toBe(450 - -500); // 垂直中心
   });
 });
 

@@ -63,7 +63,6 @@
 }
 .pp-topbar button,
 .pp-topbar .wc-btns,
-.pp-topbar .mi-root,
 .pp-topbar .sl-root {
   -webkit-app-region: no-drag;
 }
@@ -884,18 +883,223 @@
   background: var(--seal-soft);
 }
 
-/* ── 底部输入条（题签输入 D-R1-3）── */
+/* ── 底部创作坞（Stage-4：设置行 + 输入行两段；旧 composer 升级）── */
 .pp-composer {
   min-height: var(--composer-h);
   flex: 0 0 auto;
   display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 24px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 24px;
   background: var(--paper-deep);
   border-top: var(--rule-strong);
   /* 斜杠补全面板（施工单 #7）：.pp-slash 绝对定位于此之上 */
   position: relative;
+}
+.pp-composer-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 34px;
+  flex-wrap: wrap; /* rework P3-1：窄窗口下附件条可换行，不溢出 */
+}
+/* rework P3-1：创作坞槽容器（ResizeObserver 量高锚点）不参与 flex 压缩 */
+.pp-composer-slot {
+  flex: 0 0 auto;
+}
+.pp-composer-settings {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  row-gap: 6px;
+  min-height: 30px;
+  flex-wrap: wrap; /* rework P3-1：窄窗口下设置项换行不重叠 */
+}
+.pp-composer-settings > * {
+  min-width: 0;
+}
+.pp-composer-settings-spacer {
+  flex: 1;
+}
+.pp-composer-target {
+  font-family: var(--f-song);
+  font-size: calc(13px * var(--font-scale));
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+  max-width: 180px;
+}
+.pp-composer-tokens {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.pp-composer .pp-thinking-toggle {
+  font-family: var(--f-song);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  padding: 3px 10px;
+  border: var(--rule-soft);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pp-composer .pp-thinking-toggle:hover {
+  color: var(--ink-1);
+  border-color: var(--ink-3);
+  background: var(--paper);
+}
+.pp-composer .pp-thinking-toggle.open {
+  border-color: var(--seal);
+  color: var(--seal-deep);
+}
+
+/* rework P2-3：权限三档分段控件 */
+.pp-mode-seg {
+  display: inline-flex;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--rule-soft);
+  border-radius: 0;
+  overflow: hidden;
+  flex-wrap: nowrap;
+}
+.pp-mode-opt {
+  font-family: var(--f-song);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  padding: 3px 10px;
+  border: none;
+  border-right: 1px solid var(--rule-soft);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pp-mode-opt:last-child {
+  border-right: none;
+}
+.pp-mode-opt:hover {
+  background: var(--paper);
+  color: var(--ink-1);
+}
+.pp-mode-opt.selected {
+  background: var(--seal-soft);
+  color: var(--seal-deep);
+}
+
+/* rework P2-3 / P0-1：全放二次确认 = 独立居中模态（不内嵌创作坞） */
+.pp-mode-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in oklch, var(--ink-1) 25%, transparent);
+}
+.pp-mode-dialog {
+  min-width: 320px;
+  max-width: 420px;
+  background: var(--paper);
+  border: 1px solid var(--rule-strong);
+  box-shadow: var(--elev-raise);
+  padding: 18px 20px;
+  color: var(--ink-1);
+}
+.pp-mode-dialog-title {
+  font-family: var(--f-song);
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.pp-mode-dialog-body {
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-bottom: 16px;
+  line-height: 1.7;
+}
+.pp-mode-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.pp-mode-dialog-actions button {
+  font-family: var(--f-song);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  padding: 5px 16px;
+  border: 1px solid var(--rule-strong);
+  background: transparent;
+  color: var(--ink-1);
+  cursor: pointer;
+}
+.pp-mode-dialog-actions button:hover {
+  background: var(--ink-1);
+  color: var(--paper);
+}
+.pp-mode-dialog-actions .primary {
+  border-color: var(--seal);
+  color: var(--seal-deep);
+}
+.pp-mode-dialog-actions .primary:hover {
+  background: var(--seal);
+  color: var(--paper);
+}
+
+.pp-composer-expanded {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0 2px;
+  flex-wrap: wrap;
+}
+.pp-composer-expanded-label {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--ink-3);
+}
+/* rework P2-2：思考档位分段控件（纯中文，选中态强烈） */
+.pp-thinking-seg {
+  display: inline-flex;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--rule-soft);
+  border-radius: 0;
+  overflow: hidden;
+  flex-wrap: wrap;
+}
+.pp-thinking-opt {
+  font-family: var(--f-song);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 3px 10px;
+  border: none;
+  border-right: 1px solid var(--rule-soft);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pp-thinking-opt:last-child {
+  border-right: none;
+}
+.pp-thinking-opt:hover {
+  background: var(--paper);
+  color: var(--ink-1);
+}
+.pp-thinking-opt.selected {
+  background: var(--seal-soft);
+  color: var(--seal-deep);
 }
 .pp-composer input,
 .pp-composer textarea {
@@ -1138,7 +1342,8 @@
 .pp-minimap {
   position: absolute;
   right: 18px;
-  bottom: calc(var(--composer-h) + 18px);
+  /* Stage-4：创作坞升级为两段（设置行+输入行），比旧单行高——minimap 上移避开重叠 */
+  bottom: calc(var(--composer-h) + 44px);
   width: 132px;
   height: 96px;
   background: var(--paper);
@@ -1167,4 +1372,113 @@
   text-align: center;
   pointer-events: none;
   font-size: calc(13px * var(--font-scale));
+}
+
+/* ── 目次带（Stage-4 §4.4：右缘窄条、屏幕固定、内容跟随活跃会话）── */
+.pp-toc {
+  position: fixed;
+  right: 0;
+  top: var(--bar-h);
+  bottom: calc(var(--composer-h) + 30px);
+  width: 44px;
+  border-left: var(--rule-soft);
+  background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
+  z-index: 70;
+  user-select: none;
+  cursor: pointer;
+}
+.pp-toc-viewport {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  background: color-mix(in oklch, var(--seal) 22%, transparent);
+  border: 1px solid color-mix(in oklch, var(--seal) 40%, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+.pp-toc-anchor {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  height: 6px;
+  padding: 0;
+  border: none;
+  background: color-mix(in oklch, var(--ink-2) 45%, transparent);
+  cursor: pointer;
+  z-index: 2;
+}
+.pp-toc-anchor:hover {
+  background: var(--seal);
+}
+
+/* 创作坞设置行内的 ModelSelector 压缩（下拉不撑高输入区；rework P3-1 可收缩） */
+.pp-composer-settings .ms-container {
+  min-width: 150px;
+  max-width: 280px;
+  flex: 0 1 auto;
+}
+.pp-composer-settings .ms-input-wrap input {
+  font-size: 12px;
+}
+.pp-composer-settings .ms-input-row {
+  min-height: 24px;
+}
+/* 创作坞在窗口底部——模型下拉必须向上开，否则 280px 菜单落到屏幕外 */
+.pp-composer-settings .ms-container .ms-dropdown {
+  top: auto;
+  bottom: calc(100% + 4px);
+  max-height: 260px;
+  z-index: 80;
+}
+
+/* rework P2-1：紧凑触发器（收起态 = 供应商 / 模型名 + 箭头） */
+.pp-composer-settings .ms-container .ms-trigger {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 240px;
+  min-width: 0;
+  font-family: var(--f-song);
+  font-size: 12px;
+  padding: 3px 8px;
+  border: var(--rule-soft);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.pp-composer-settings .ms-container .ms-trigger:hover {
+  color: var(--ink-1);
+  border-color: var(--ink-3);
+  background: var(--paper);
+}
+.pp-composer-settings .ms-trigger-vendor {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--indigo);
+  flex: 0 0 auto;
+}
+.pp-composer-settings .ms-trigger-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.pp-composer-settings .ms-trigger-caret {
+  flex: 0 0 auto;
+  color: var(--ink-3);
+  font-size: 10px;
+}
+
+/* rework P2-1：下拉供应商分组头 */
+.pp-composer-settings .ms-dropdown .ms-group-head {
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: var(--ink-3);
+  padding: 6px 12px 2px;
+  text-transform: uppercase;
 }

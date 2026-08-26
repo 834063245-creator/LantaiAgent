@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { findModels, getModel, searchModels } from '../../provider/catalog';
 import type { ModelDescriptor, Protocol } from '../../provider/types';
+import { loadSettings } from '../../settings';
 import { iconHtml } from '../../ui/icons';
 
 interface ModelSelectorProps {
@@ -19,13 +20,16 @@ interface ModelSelectorProps {
   kind: Protocol;
   /** 可选：从 provider 的 API 获取模型并合并到目录中。 */
   onRefreshModels?: () => Promise<number>;
+  /** rework P2-1：紧凑触发器形态（创作坞底部用）——收起态 = 按钮（供应商/模型名 + 箭头），
+   *  空查询列出全部已配置 provider 的目录模型（跨 vendor 直接选）。缺省 = 设置页字段形态不变。 */
+  compact?: boolean;
 }
 
 function hasMetadata(m: ModelDescriptor): boolean {
   return m.cost.input > 0 || m.contextWindow > 0;
 }
 
-export function ModelSelector({ value, onChange, providerName, kind, onRefreshModels }: ModelSelectorProps) {
+export function ModelSelector({ value, onChange, providerName, kind, onRefreshModels, compact }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
@@ -37,15 +41,58 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
   const results = useMemo(() => {
     if (!open) return [];
     const q = query.toLowerCase().trim();
-    // 空查询 = 默认列表只看本家 vendor 的模型（其他提供方的模型混排
-    // 会让「选错端点」变得容易——跨家选择走设置页左侧切换 provider）。
+    // 空查询：
+    //   - 字段形态（compact=false）= 只列本家 vendor（跨家选择走设置页切换 provider）；
+    //   - 紧凑形态（compact=true，创作坞）= 列出全部已配置 provider 的目录模型，
+    //     跨 vendor 直接在创作坞选（rework P2-1）。
     // 有查询词 = 全目录搜索（含动态模型），再按协议过滤。
-    const base = q ? searchModels(q) : findModels(providerName);
+    let base: ModelDescriptor[];
+    if (q) {
+      base = searchModels(q);
+    } else if (compact) {
+      base = [];
+      try {
+        for (const p of loadSettings().providers) {
+          base = base.concat(findModels(p.name));
+        }
+      } catch {
+        base = findModels(providerName);
+      }
+    } else {
+      base = findModels(providerName);
+    }
     return base
       .filter((m) => m.kind === kind)
       .sort((a, b) => a.id.localeCompare(b.id))
       .slice(0, 30);
-  }, [open, query, kind, providerName]);
+  }, [open, query, kind, providerName, compact]);
+
+  /** 收起态人类可读名（rework P2-1：不再只露 model id）。 */
+  const selectedHumanName = useMemo(() => getModel(value)?.name ?? value, [value]);
+
+  /** 下拉展示行：compact 下按 vendor 分组（组头 + 项），非 compact 保持平铺（设置页零改动）。 */
+  const displayRows = useMemo(() => {
+    const rows: Array<{ type: 'header'; vendor: string } | { type: 'item'; m: ModelDescriptor; idx: number }> = [];
+    if (!compact) {
+      results.forEach((m, idx) => {
+        rows.push({ type: 'item', m, idx });
+      });
+      return rows;
+    }
+    const byVendor = new Map<string, ModelDescriptor[]>();
+    for (const m of results) {
+      const arr = byVendor.get(m.vendor) ?? [];
+      arr.push(m);
+      byVendor.set(m.vendor, arr);
+    }
+    for (const [vendor, list] of byVendor) {
+      rows.push({ type: 'header', vendor });
+      list.forEach((m) => {
+        rows.push({ type: 'item', m, idx: results.indexOf(m) });
+      });
+    }
+    return rows;
+  }, [results, compact]);
 
   const selectedDesc = useMemo(() => getModel(value), [value]);
 
@@ -125,103 +172,110 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
   };
 
   return (
-    <div className={`ms-container${open ? ' ms-open' : ''}`} ref={containerRef}>
-      <div className="ms-input-row">
-        <div className="ms-input-wrap">
-          <span
-            className="ms-input-icon"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG，无外部输入
-            dangerouslySetInnerHTML={{ __html: iconHtml('search', 12) }}
-          />
-          <input
-            type="text"
-            className="sp-input ms-input"
-            value={open ? query : value}
-            placeholder="搜索模型或输入名称…"
-            onFocus={() => {
+    <div className={`ms-container${open ? ' ms-open' : ''}${compact ? ' ms-compact' : ''}`} ref={containerRef}>
+      {compact && !open ? (
+        <button
+          type="button"
+          className="ms-trigger"
+          title={`${providerName} · ${selectedHumanName}（点击选择模型）`}
+          aria-haspopup="listbox"
+          aria-expanded={false}
+          onClick={() => {
+            setOpen(true);
+            setQuery(value);
+            setActiveIdx(0);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
               setOpen(true);
               setQuery(value);
-            }}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              if (!open) setOpen(true);
-              setActiveIdx(0);
-              /* 不在每次击键提交 onChange（会级联 onCommitProvider 全量落
-               * settings + 标 dirty——输入 "gpt" 3 次触发 3 次保存条）。
-               * 自定义模型名经 Enter（下方 handleKeyDown）/失焦提交。 */
-            }}
-            onBlur={() => {
-              // 失焦提交：用户手动输入了完整自定义名（未从下拉选中）的场景
-              const q = query.trim();
-              if (q && q !== value) onChange(q);
-            }}
-            onKeyDown={handleKeyDown}
-          />
-          {value && !open && (
+            }
+          }}
+        >
+          <span className="ms-trigger-vendor">{providerName}</span>
+          <span className="ms-trigger-name">{selectedHumanName || value || '…'}</span>
+          <span className="ms-trigger-caret" aria-hidden="true">
+            ▾
+          </span>
+        </button>
+      ) : (
+        <div className="ms-input-row">
+          <div className="ms-input-wrap">
+            <span
+              className="ms-input-icon"
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG，无外部输入
+              dangerouslySetInnerHTML={{ __html: iconHtml('search', 12) }}
+            />
+            <input
+              type="text"
+              className="sp-input ms-input"
+              value={open ? query : value}
+              placeholder="搜索模型或输入名称…"
+              onFocus={() => {
+                setOpen(true);
+                setQuery(value);
+              }}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                if (!open) setOpen(true);
+                setActiveIdx(0);
+                /* 不在每次击键提交 onChange（会级联 onCommitProvider 全量落
+                 * settings + 标 dirty——输入 "gpt" 3 次触发 3 次保存条）。
+                 * 自定义模型名经 Enter（下方 handleKeyDown）/失焦提交。 */
+              }}
+              onBlur={() => {
+                // 失焦提交：用户手动输入了完整自定义名（未从下拉选中）的场景
+                const q = query.trim();
+                if (q && q !== value) onChange(q);
+              }}
+              onKeyDown={handleKeyDown}
+            />
+            {value && !open && (
+              <button
+                type="button"
+                className="ms-input-clear"
+                title="清除"
+                onClick={() => onChange('')}
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG，无外部输入
+                dangerouslySetInnerHTML={{ __html: iconHtml('close', 10) }}
+              />
+            )}
+          </div>
+          {onRefreshModels && (
             <button
               type="button"
-              className="ms-input-clear"
-              title="清除"
-              onClick={() => onChange('')}
+              className={`ms-refresh-btn${refreshing ? ' spinning' : ''}`}
+              title="从 API 获取模型列表"
+              onClick={handleRefresh}
               // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG，无外部输入
-              dangerouslySetInnerHTML={{ __html: iconHtml('close', 10) }}
+              dangerouslySetInnerHTML={{
+                __html: iconHtml(refreshing ? 'loading' : 'refresh', 13),
+              }}
             />
           )}
         </div>
-        {onRefreshModels && (
-          <button
-            type="button"
-            className={`ms-refresh-btn${refreshing ? ' spinning' : ''}`}
-            title="从 API 获取模型列表"
-            onClick={handleRefresh}
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG，无外部输入
-            dangerouslySetInnerHTML={{
-              __html: iconHtml(refreshing ? 'loading' : 'refresh', 13),
-            }}
-          />
-        )}
-      </div>
+      )}
       {refreshMsg && <div className="ms-refresh-msg">{refreshMsg}</div>}
       {open && results.length > 0 && (
         <div className="ms-dropdown" ref={listRef}>
-          {results.map((m, i) => {
-            const isDynamic = !hasMetadata(m);
-            return (
-              <button
-                type="button"
-                key={`${m.vendor}/${m.id}`}
-                className={`ms-item${i === activeIdx ? ' active' : ''}${m.id === value ? ' selected' : ''}`}
-                onMouseEnter={() => setActiveIdx(i)}
-                onClick={() => handleSelect(m)}
-              >
-                <div className="ms-item-main">
-                  <div className="ms-item-id-row">
-                    <span className="ms-item-id">{m.id}</span>
-                    {isDynamic && <span className="ms-badge-live">LIVE</span>}
-                    {m.id === value && <span className="ms-vendor-hint">{m.vendor}</span>}
-                  </div>
-                  {m.name !== m.id && <span className="ms-item-name">{m.name}</span>}
-                </div>
-                <div className="ms-item-badges">
-                  {m.reasoning && (
-                    <span className="ms-badge ms-badge-reason" title="支持推理/思考">
-                      🧠
-                    </span>
-                  )}
-                  {m.contextWindow > 0 && (
-                    <span className="ms-badge ms-badge-ctx" title="上下文窗口">
-                      {(m.contextWindow / 1000).toFixed(0)}k
-                    </span>
-                  )}
-                  {m.cost.input > 0 && (
-                    <span className="ms-badge ms-badge-cost" title="每 1M token 价格">
-                      ${m.cost.input}/${m.cost.output}
-                    </span>
-                  )}
-                </div>
-              </button>
-            );
-          })}
+          {displayRows.map((row) =>
+            row.type === 'header' ? (
+              <div key={`h-${row.vendor}`} className="ms-group-head">
+                {row.vendor}
+              </div>
+            ) : (
+              <ModelRow
+                key={`${row.m.vendor}/${row.m.id}`}
+                m={row.m}
+                idx={row.idx}
+                activeIdx={activeIdx}
+                value={value}
+                onHover={setActiveIdx}
+                onSelect={handleSelect}
+              />
+            ),
+          )}
         </div>
       )}
       {open && results.length === 0 && (
@@ -229,7 +283,7 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
           <span className="ms-empty-text">{query ? `无匹配模型「${query}」` : '目录为空，点击刷新从 API 获取'}</span>
         </div>
       )}
-      {selectedDesc && !open && (
+      {selectedDesc && !open && !compact && (
         <div className="ms-meta">
           {selectedDesc.reasoning && <span className="ms-meta-tag ms-meta-reason">推理</span>}
           {selectedDesc.contextWindow > 0 && (
@@ -248,5 +302,58 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
         </div>
       )}
     </div>
+  );
+}
+
+/** 下拉单项（分组模式下复用——保持设置页平铺行为一致，仅展示差异）。 */
+function ModelRow({
+  m,
+  idx,
+  activeIdx,
+  value,
+  onHover,
+  onSelect,
+}: {
+  m: ModelDescriptor;
+  idx: number;
+  activeIdx: number;
+  value: string;
+  onHover: (i: number) => void;
+  onSelect: (desc: ModelDescriptor) => void;
+}) {
+  const isDynamic = !hasMetadata(m);
+  return (
+    <button
+      type="button"
+      className={`ms-item${idx === activeIdx ? ' active' : ''}${m.id === value ? ' selected' : ''}`}
+      onMouseEnter={() => onHover(idx)}
+      onClick={() => onSelect(m)}
+    >
+      <div className="ms-item-main">
+        <div className="ms-item-id-row">
+          <span className="ms-item-id">{m.id}</span>
+          {isDynamic && <span className="ms-badge-live">LIVE</span>}
+          {m.id === value && <span className="ms-vendor-hint">{m.vendor}</span>}
+        </div>
+        {m.name !== m.id && <span className="ms-item-name">{m.name}</span>}
+      </div>
+      <div className="ms-item-badges">
+        {m.reasoning && (
+          <span className="ms-badge ms-badge-reason" title="支持推理/思考">
+            🧠
+          </span>
+        )}
+        {m.contextWindow > 0 && (
+          <span className="ms-badge ms-badge-ctx" title="上下文窗口">
+            {(m.contextWindow / 1000).toFixed(0)}k
+          </span>
+        )}
+        {m.cost.input > 0 && (
+          <span className="ms-badge ms-badge-cost" title="每 1M token 价格">
+            ${m.cost.input}/${m.cost.output}
+          </span>
+        )}
+      </div>
+    </button>
   );
 }

@@ -112,8 +112,10 @@ const PROBES: DeadLinkProbe[] = [
   },
   {
     id: 'stop-button',
-    note: '#4 Agent 运行中无停止入口（chat-core.abort 活着，纸壳没接）',
-    isDead: () => !read(join(APP, 'panels', 'PaperPanel.tsx')).includes('abort'),
+    note: '#4 Agent 运行中无停止入口（chat-core.abort 活着，纸壳没接）——Stage-4 后停止钮在创作坞（ComposerDock）',
+    isDead: () =>
+      !read(join(APP, 'panels', 'PaperPanel.tsx')).includes('abort') &&
+      !read(join(APP, 'panels', 'ComposerDock.tsx')).includes('abort'),
   },
   {
     id: 'message-ops',
@@ -127,10 +129,11 @@ const PROBES: DeadLinkProbe[] = [
   },
   {
     id: 'slash-at-composer',
-    note: '#7 斜杠命令 / @提及注册槽"待纸壳复用"未兑现，composer 是裸 textarea',
+    note: '#7 斜杠命令 / @提及注册槽"待纸壳复用"未兑现，composer 是裸 textarea——Stage-4 后斜杠在创作坞（ComposerDock）',
     isDead: () => {
       const pp = read(join(APP, 'panels', 'PaperPanel.tsx'));
-      return !/slash|AtAuto/i.test(pp);
+      const dock = read(join(APP, 'panels', 'ComposerDock.tsx'));
+      return !/slash|AtAuto/i.test(pp) && !/slash|AtAuto/i.test(dock);
     },
   },
   {
