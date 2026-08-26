@@ -155,10 +155,15 @@ HoloGram 单进程内暂不需要，P4 插件边界时再评估。
   第一用户是自己的域功能开发（多窗口并行 / 可禁用域 / 贡献面即契约）；②**形状与
   DSH 契约兼容、零依赖**原则保留——将来 DSH 信号点亮只需补 compat 层即可吃其生态；
   ③存量拆解与通道建设交替推进（拆到哪疼了通道就知道该长什么样），不存在大工程
-  开工时刻。特权区（永不插件化）清单同步定案：cordis 内核 / 五 service 壳 / RPC
-  边界 / agent 流式循环核心 / Workspace 原语（fiber·epoch·scoped store）/ Rust 壳
-  （权限沙箱·IPC·Tauri）——**只减不增**。Rust 侧插件化的标准形态 = 外部 MCP
-  server（新能力优先做成进程外 MCP，不是往 src-tauri 加命令）。
+  开工时刻。特权区清单同步定案（**2026-08-25 按 `agent-platformization-plan.md`
+  Phase 0 修订，权威以该计划 §3/§9 为准**）：**强制层** = cordis 内核 / 注册表机制 /
+  RPC 平台面（权限咽喉）/ 沙箱内核 / 审计 / Workspace 原语 / React root+壳——
+  **只减不增**；**能力实现（fs/shell/subprocess/session/graph/llm/subagents/agent
+  loop）不是特权**——已从旧特权区减出，Rust/engine 降为默认 provider。
+  **旧裁定"Rust 侧插件化的标准形态 = 外部 MCP server（新能力优先做成进程外 MCP，
+  不是往 src-tauri 加命令）"作废**，替换为：强制层外不得新增 Rust 命令（守卫测试
+  `src-tauri/tests/platform_boundary_test.rs` 钉住）；新能力走开放面（前端 seam /
+  外部 MCP / 动态插件）。
 
 ## 5. 阶段
 

@@ -506,13 +506,17 @@ browser/desktop 命令域尚未接入 Rust 权限检查。
 registry 缺省 `https://registry.npmjs.org`；镜像经 manifest 外的安装参数
 `registry` 覆写（安装输入框暂只收包名——镜像参数走 RPC 直接调用）。
 
-## 6. ⚠️ 完全信任模型（安装前必读）
+## 6. ⚠️ 完全信任模型（v1 已知债——第三方优先下必须明牌）
 
 **插件是本机全信任代码：可读写文件、起子进程、调用全部 RPC。npm 上的包
 ≠ 审核过的包。**
 
-- 不做签名、不做校验和、不做沙箱（v1 已拍板，ADR
-  `docs/adr/composition-boundaries.md` §5 信任模型）。
+- 不做签名、不做校验和、不做静态插件沙箱（v1 已拍板，ADR
+  `docs/adr/composition-boundaries.md` §5 信任模型）。**这是 v1 已知债**：
+  平台方向是第三方优先，完全信任只适合第一方/熟人插件。
+- 平台化落地的路径（`docs/plans/agent-platformization-plan.md` D12/D7）：
+  动态插件 = approval + vm 沙箱；静态插件沙箱化 / 签名 / 隔离列为后续硬化项。
+  本文档随 Phase 4 落地更新为实际状态。
 - 唯一边界是装载通道的路径安全（遍历防护）——那是防攻击面不是防恶意
   代码：恶意代码装进来之后**拥有你本机账户的全部能力**。
 - 这与你手动改本机文件、跑 `npm install` 是同一信任级别。若你的 home

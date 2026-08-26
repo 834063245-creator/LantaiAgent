@@ -1,25 +1,32 @@
 # 组合架构（composition-architecture）——特权线左移计划
 
 > **本目录阅读顺序**：① 本 README（宪法 + 现状）→ ② [`HISTORY.md`](HISTORY.md)（S0-S2/S4 施工史与批次记录）→ ③ `designs/`（设计件全文）。边界依据 [`docs/adr/composition-boundaries.md`](../../adr/composition-boundaries.md)。
-> 立项：2026-08-20 · 状态：**S0-S4 全竣工（S3 于 2026-08-22 收官——全段竣工）**
+> 立项：2026-08-20 · 状态：**S0-S4 全竣工（S3 于 2026-08-22 收官——全段竣工）** · **平台边界修订（2026-08-25，`agent-platformization-plan.md` Phase 0：内核线改强制层/能力契约层二分）**
 
 ## 一句话
 
 把「给固化宿主开插件口子」反转为「移动特权线」：内核线收敛到最小，线外一切——**包括第一方代码**——走同一条声明式组合管道（roster 行 + patch 叠加 + preset realm）。
 
-## 宪法（内核线定义）
+## 宪法（平台边界：强制层 vs 能力契约层）
 
-**内核线内（特权代码，永不插件化）：**
+> 2026-08-25 按 `agent-platformization-plan.md` Phase 0 修订（推翻旧内核线第 6 条
+> "Agent↔engine 耦合带永久特权"）。权威定义：`docs/adr/project-constitution.md` 第五条「平台边界」。
+
+**强制层内（特权代码，永不插件化）：**
 1. cordis kernel（vendored）+ 根引导
 2. Loader + 组合引擎本体（roster 解析 + patch 叠加 + 行生命周期）
-3. slot / 注册表本身（panels/commands/tools/providers/renderers 五 service 的注册机制）
+3. slot / 注册表机制（全部 ctx 服务的注册机制——panels/commands/tools/renderers/prompts/hooks/capabilities/overlays/space/lsp/codeRuntime 等）
 4. React root 挂载点 + 壳容器（App 骨架 / DockPanel 容器）
-5. RPC 平台面（rpc.rs 冻结契约 + agentInvoke 动态分发 + biome 受权出口）
-6. **Agent↔engine 耦合带**：图数据管线、graph hooks、执行腰——产品核心，永久特权
+5. RPC 平台面（rpc.rs 冻结契约 + 权限咽喉 + agentInvoke 动态分发 + biome 受权出口）
+6. 强制设施：沙箱内核（os_sandbox / sandbox 强制原语）· 审计 · Workspace 原语（fiber·epoch·scoped store）
 7. 星图 scene（`src/scene/**`）——GPU 资源 + dispose 纪律，永久豁免
 
-**线外一切皆行**：面板 / 命令 / 工具 / provider / system-prompt section / 第一方功能域。
-**试金石**：独占进程级单例资源或有顺序契约 → 宿主；功能面 → 行。
+**能力契约层（线外，可 plugin / provider 化）：**
+- 一切功能面与能力实现：面板 / 命令 / 工具 / prompt section / capability / 管道钩子 / 渲染器 / 画布形态 / 第一方功能域。
+- **能力实现不是特权**：fs / shell / subprocess / session 持久化 / graph 分析 / LLM / 子代理 / agent loop 均为 seam——Rust / engine 只是默认 provider 后端，可被配置替换或叠加。
+- 新能力加面规则：优先开放面（前端 seam / 外部 MCP / 动态插件）；**强制层外不得新增 Rust 命令**（守卫测试 `src-tauri/tests/platform_boundary_test.rs` 钉住）。
+
+**试金石**：独占进程级单例资源 / 有顺序契约 / 是强制层（权限·沙箱·审计·IPC）→ 强制层；功能面 / 可换实现 / 可叠加 → 行或 provider。
 
 ## 现状（全段竣工）
 
