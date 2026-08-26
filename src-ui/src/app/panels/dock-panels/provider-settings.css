@@ -483,6 +483,18 @@
   white-space: nowrap;
   max-width: 220px;
 }
+/* 「新会话默认」标记（= 最近使用，自动跟从创作坞切换；只读展示，非选择器） */
+.pp-model-chip.is-default {
+  border-color: color-mix(in oklch, var(--seal) 45%, var(--paper));
+}
+.pp-model-chip-default {
+  flex: 0 0 auto;
+  font-size: calc(8px * var(--font-scale));
+  letter-spacing: 0.05em;
+  color: var(--seal-deep);
+  border: 1px solid color-mix(in oklch, var(--seal) 35%, var(--paper));
+  padding: 0 4px;
+}
 .pp-model-chip-x {
   flex: 0 0 auto;
   border: none;

@@ -22,7 +22,7 @@
 
 import { create } from 'zustand';
 import type { StoredThinking } from '../provider/thinking';
-import { getActiveProvider, loadSettings } from '../settings';
+import { getActiveProvider, loadSettings, saveSettings, updateProvider } from '../settings';
 import { notifyAgentConfigChanged } from './agent-config-store';
 import { createScopedStore } from './scoped-store';
 
@@ -81,6 +81,17 @@ function createComposeStoreImpl() {
       }
       const next: ComposeSessionPrefs = { providerName, model, thinking };
       set((s) => ({ sessions: { ...s.sessions, [sessionId]: next } }));
+      // 新会话默认 = 最近使用（2026-08-26）：定向写该 provider 行的 model 字段——
+      // 重新 loadSettings 读改写单字段（不整份快照 → A4 clobber 不复活）；只影响
+      // 新卷/未改卷的出生默认，已存在会话走覆盖（方案甲 A1「切一个拖累全部」不复发，
+      // activeProvider 一字不动）。
+      try {
+        const s = loadSettings();
+        const row = s.providers.find((p) => p.name === providerName);
+        if (row && row.model !== model) saveSettings(updateProvider(s, providerName, { model }));
+      } catch {
+        /* 读/写失败静默——新会话默认保持旧值，不阻断热切换 */
+      }
       // 方案甲：信号带 sessionId → applyAgentConfig 只热切换该会话的句柄
       notifyAgentConfigChanged('model-switched', Number(sessionId));
     },

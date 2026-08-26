@@ -8,9 +8,8 @@ import type React from 'react';
 import { useCallback, useState } from 'react';
 import { getModel } from '../../../provider/catalog';
 import { type StoredThinking, thinkingOptionsFor } from '../../../provider/thinking';
-import type { ModelDescriptor, Protocol } from '../../../provider/types';
+import type { Protocol } from '../../../provider/types';
 import { type ConnectionProbe, effectiveModels, isFactoryBaseUrl, type ProbeOutcome } from '../../../settings';
-import { ModelSelector } from '../ModelSelector';
 import { protocolLabel } from './protocol';
 import { formatLatency, formatTestAt, providerStatus, STATUS_LABEL } from './status';
 
@@ -62,7 +61,6 @@ export interface KeyUiState {
 /** 控制台回调簇：所有动作统一经此 seam 注入，便于测试与复用 */
 export interface ProviderDetailActions {
   onFieldChange: (field: ProviderField, value: string) => void;
-  onModelChange: (modelId: string, desc?: ModelDescriptor) => void;
   /** 从 API 拉取该提供方可用模型列表（写进暂存 settings.models）。 */
   onFetchModels: () => Promise<number>;
   /** 向「可用模型」列表添加一个模型 id（旧数据无 models 时先并入默认模型）。 */
@@ -81,7 +79,6 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
   const { saved: keySaved, pendingClear, visible: keyVisible, inputRef: keyInputRef } = keyState;
   const {
     onFieldChange,
-    onModelChange,
     onFetchModels,
     onAddModel,
     onRemoveModel,
@@ -226,21 +223,8 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
           <div className="pp-f-hint">Key 只保存在本机系统加密凭据中，不会写入 localStorage。</div>
         </div>
 
-        <div className="pp-field">
-          <div className="pp-f-label-row">
-            {/* 模型：ModelSelector 为复合控件（内含输入+下拉），无单一可关联原生控件——视觉标签用 span */}
-            <span className="pp-f-label">模型</span>
-          </div>
-          <ModelSelector
-            value={provider.model}
-            providerName={provider.name}
-            kind={provider.kind}
-            onChange={onModelChange}
-          />
-        </div>
-
-        {/* 可用模型：创作坞下拉的可选面（DSH routable 列表的前端配置形态）——
-            同一提供方可配多个模型，会话级在列表内切换 */}
+        {/* 可用模型 = 唯一的模型配置面（2026-08-26）：创作坞下拉的可选列表 + 新会话
+            默认（= 最近使用，自动跟从创作坞切换，不在此手动选「默认模型」） */}
         <div className="pp-field">
           <div className="pp-f-label-row">
             <label className="pp-f-label" htmlFor="pd-models-input">
@@ -254,8 +238,9 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
           {models.length > 0 && (
             <div className="pp-models-list">
               {models.map((id) => (
-                <span key={id} className="pp-model-chip" title={id}>
+                <span key={id} className={`pp-model-chip${id === provider.model ? ' is-default' : ''}`} title={id}>
                   <span className="pp-model-chip-name">{getModel(id)?.name ?? id}</span>
+                  {id === provider.model && <span className="pp-model-chip-default">新会话默认</span>}
                   <button
                     type="button"
                     className="pp-model-chip-x"

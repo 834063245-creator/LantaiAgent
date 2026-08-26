@@ -8,14 +8,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createProvider } from '../../../provider';
 import { recordDynamicFetchResult } from '../../../provider/catalog';
-import { ChunkType, type ModelDescriptor } from '../../../provider/types';
+import { ChunkType } from '../../../provider/types';
 import {
   type AppSettings,
   addProvider,
   type ConnectionProbe,
   defaultBaseUrl,
   getActiveProvider,
-  isFactoryBaseUrl,
   type ProviderId,
   type ProviderSettings,
   removeProvider,
@@ -110,20 +109,6 @@ export function ProviderPage({
     [settings, onCommitProvider, onStageClear, onUnstageClear],
   );
 
-  const handleModelChange = useCallback(
-    (name: string, modelId: string, desc?: ModelDescriptor) => {
-      let next = updateProvider(settings, name, { model: modelId });
-      if (desc) {
-        const p = next.providers.find((x) => x.name === name);
-        if (p && (!p.baseUrl?.trim() || isFactoryBaseUrl(p.baseUrl))) {
-          next = updateProvider(next, name, { baseUrl: desc.baseUrl });
-        }
-      }
-      onCommitProvider(next);
-    },
-    [settings, onCommitProvider],
-  );
-
   const handleRefreshModels = useCallback(async (): Promise<number> => {
     const p = selectedProvider;
     if (!p.apiKey?.trim()) throw new Error('请先填写 API Key');
@@ -152,15 +137,23 @@ export function ProviderPage({
       // 旧数据无 models：先把当前默认模型并入，再追加新模型——默认模型不消失
       const seed = cur.length === 0 && p?.model?.trim() ? [p.model.trim()] : [];
       const next = seed.concat(cur.includes(id) ? [] : [id]);
-      onCommitProvider(updateProvider(settings, name, { models: next }));
+      const patch: Partial<ProviderSettings> = { models: next };
+      // 还没有「新会话默认」（= 最近使用，自动跟从创作坞）：第一个可用模型即默认
+      if (!p?.model?.trim() && next.length > 0) patch.model = next[0];
+      onCommitProvider(updateProvider(settings, name, patch));
     },
     [settings, onCommitProvider],
   );
 
   const handleRemoveModel = useCallback(
     (name: string, modelId: string) => {
-      const cur = settings.providers.find((p) => p.name === name)?.models ?? [];
-      onCommitProvider(updateProvider(settings, name, { models: cur.filter((m) => m !== modelId) }));
+      const p = settings.providers.find((x) => x.name === name);
+      const cur = Array.isArray(p?.models) ? p.models : [];
+      const next = cur.filter((m) => m !== modelId);
+      const patch: Partial<ProviderSettings> = { models: next };
+      // 删的是当前「新会话默认」→ 自动顶上第一个（无剩余则清空）
+      if (p?.model === modelId) patch.model = next[0] ?? '';
+      onCommitProvider(updateProvider(settings, name, patch));
     },
     [settings, onCommitProvider],
   );
@@ -315,7 +308,6 @@ export function ProviderPage({
           }}
           actions={{
             onFieldChange: (field, value) => handleFieldChange(selectedProvider.name, field, value),
-            onModelChange: (modelId, desc) => handleModelChange(selectedProvider.name, modelId, desc),
             onFetchModels: handleRefreshModels,
             onAddModel: (modelId) => handleAddModel(selectedProvider.name, modelId),
             onRemoveModel: (modelId) => handleRemoveModel(selectedProvider.name, modelId),

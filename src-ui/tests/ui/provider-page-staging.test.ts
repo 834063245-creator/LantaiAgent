@@ -229,13 +229,15 @@ describe('ProviderPage — 暂存流程', () => {
     expect(document.querySelector('.pp-save-bar')).toBeNull();
   });
 
-  it('可用模型：输入添加（默认模型并入）+ 移除（写进暂存 settings.models）', async () => {
+  it('可用模型：输入添加（默认并入）+ 移除（写进暂存 settings.models）', async () => {
     await render(makeSettings());
     // chip 文本是目录人类名，id 在 title——用 title 断言
     const chipIds = () => [...document.querySelectorAll<HTMLElement>('.pp-model-chip')].map((c) => c.title);
 
-    // 添加前：旧数据无 models → 自动视为 [默认模型]
+    // 添加前：旧数据无 models → 自动视为 [默认模型]（= 新会话默认，带标记）
     expect(chipIds()).toContain('deepseek-v4-pro');
+    expect(document.querySelector('.pp-model-chip.is-default')?.title).toBe('deepseek-v4-pro');
+    expect(document.querySelector('.pp-model-chip-default')?.textContent).toContain('新会话默认');
 
     const addInput = document.querySelector<HTMLInputElement>('#pd-models-input')!;
     await setInputValue(addInput, 'deepseek-reasoner');
@@ -245,15 +247,24 @@ describe('ProviderPage — 暂存流程', () => {
       )!,
     );
 
-    // 默认模型并入 + 新模型追加 → 两个 chip
+    // 默认模型并入 + 新模型追加 → 两个 chip；新会话默认标记仍在 deepseek-v4-pro
     expect(chipIds()).toContain('deepseek-reasoner');
     expect(chipIds()).toContain('deepseek-v4-pro');
+    expect(document.querySelector('.pp-model-chip.is-default')?.title).toBe('deepseek-v4-pro');
 
-    // 移除新加的
-    const x = [...document.querySelectorAll<HTMLButtonElement>('.pp-model-chip-x')].find((b) =>
+    // 移除「新会话默认」→ 自动顶上剩余第一个为默认
+    const defaultX = [...document.querySelectorAll<HTMLButtonElement>('.pp-model-chip-x')].find((b) =>
+      b.title.includes('deepseek-v4-pro'),
+    )!;
+    await click(defaultX);
+    expect(chipIds()).not.toContain('deepseek-v4-pro');
+    expect(document.querySelector('.pp-model-chip.is-default')?.title).toBe('deepseek-reasoner');
+
+    // 再移除新加的（已是默认）→ 无剩余，默认清空
+    const lastX = [...document.querySelectorAll<HTMLButtonElement>('.pp-model-chip-x')].find((b) =>
       b.title.includes('deepseek-reasoner'),
     )!;
-    await click(x);
-    expect(chipIds()).not.toContain('deepseek-reasoner');
+    await click(lastX);
+    expect(document.querySelector('.pp-model-chip')).toBeNull();
   });
 });
