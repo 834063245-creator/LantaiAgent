@@ -1,6 +1,6 @@
 # 创作坞 + 提供方（Provider）联合体检报告 · 方案甲定案
 
-> 日期：2026-08-27（合并稿）
+> 日期：2026-08-27（合并稿）；2026-08-26 修复施工落账（见文末「修复落账」）
 > 来源：两份独立体检合并——①提供方链路审计（provider/settings/credentials/目录/热切换/代理）②创作坞体检（ComposerDock/compose-store/ModelSelector/输入历史/斜杠/插件挂载）。
 > 性质：代码面体检，未改代码；部分结论需实机复验确认。
 > 合并核验：两报告重叠项（A1/A2）已互证一致；创作坞报告的 B 组/C1 断言在本窗口逐一 grep/read 复核属实（`inputHistoryIdx` 全工程无读者、`registerComposer` 无调用方、chat-core.ts:1018 全局阻断、:998-1015 静默注入均实证）。唯一口径修正：原「B1 打开时永远不列全」——已选模型时成立（常见路径），模型为空时全表分支可触发。
@@ -266,3 +266,61 @@ effective(sessionId) = 会话覆盖 prefs ?? 全局 active provider
 | 提供方审计 A1 / A2 / A3.1+A3.2 / A3.3 | A1 / A2 / A3 / 并入 A2 |
 | 提供方审计 B1 / B2 / C1 / C2 / C3 | A4 / B4 / B2 / B3 / C5 |
 | 提供方审计 D1 / D2 / D3 / D4 | D1 / D2 / D3 / D4 |
+
+---
+
+# 第三部分 · 修复落账（2026-08-26 施工，门禁全绿）
+
+> 施工范围：方案甲整批 + 纯 bug 批（B1/B2/B5/B6/B7）+ 选择面守卫（B3）+ 设置面板小账（B4/D1/D4）+ 交互批（C1/C2/C3/C4）。
+> 门禁实测：vitest 全量 180 文件 1762 passed / 4 skipped · `npm run build`（tsc+vite）✓ · `npm run verify:convergence`（NODE_ENV=test）exit 0 · `npx biome ci .` 0 error。
+> 注：convergence 必须带 `$env:NODE_ENV='test'` 跑（Cowork 进程链注入 production 的既有环境坑，非本次改动引入）。
+
+| 条目 | 状态 | 落点 / 修法 |
+|---|---|---|
+| A1 假 per-session | ✅ 已修 | 方案甲整批：compose-store 覆盖制（prefs 只存显式改动过的卷；`resolveEffective` = 覆盖 ?? 全局实时解析）；`setModel/setThinking` 不再写全局 settings，信号带 sessionId；`applyAgentConfig` 会话级分支只热切换目标会话句柄（`getAgent(storeId, sid)`）；`settings-saved` 走 `forEachAgentEntry` 逐会话重解析（覆盖卷保持自己的值、未改卷裸 live 跟随全局）；`AgentFactory` 签名带 sessionId，工厂按会话 effective 装配 provider/pricing/contextWindow |
+| A2 thinking 写错行 | ✅ 随 A1 消除 | `setThinking` 只写会话覆盖；测试 `tests/compose-store.test.ts` 重写（原 :103-110 错误行为固化已拔除） |
+| A3 三条发散路径 | ✅ 随 A1 消除 | 显示走 `resolveEffective`（实时），运行走工厂/热切换同源解析——显示与实际同源，发散面消失 |
+| A4 localStorage clobber | 🟡 收窄 | 写者③（compose-store 全局写）已拆；剩余写者①（保存管线）②（测试连接）中②已修（B4）——三写者剩一 |
+| B1 打开不列全 | ✅ 已修 | compact 触发器打开置空 query（原预填当前模型 id 把 results 锁进搜索分支）；测试新增「已选模型时打开 = 空查询全表」断言 |
+| B2 搜到未配置厂商写错行 | ✅ 已修 | compact 结果面（含搜索分支）只列已配置 provider 的模型（`configured.has(m.vendor)` 过滤）；测试断言未配置厂商不出现 |
+| B3 无 Key 静默可切 | ✅ 已修 | compact 分组头异步解析 Key（`resolveApiKey` 缓存），无 Key 厂商标注「未配置 Key」（CSS 徽标）；选择仍放行（fail-loud 语义保留），但预警可见 |
+| B4 测试连接全量提交 | ✅ 已修 | `onPersistSettings` → `onPersistProbe(name, probe)`：面板态只更新 lastTest 展示；磁盘走「读盘-改 lastTest-写回」最小面，暂存改动不再随探针落盘 |
+| B5 历史导航死状态 | ✅ 已修 | `navigateHistory` 纯函数（tests/composer-history-nav.test.ts 7 用例）；↑ 回退/↓ 前进/越出最新恢复草稿（draftText 槽）；手输退出浏览复位 idx |
+| B6 焦点死链 | ✅ 已修 | ComposerDock mount 时 `core.registerComposer({focus/selectEnd})`，卸载注销——chat-core 内 9 处 `_composer?.focus()` 全部接活（含斜杠 fill 焦点回归、exec 停止后焦点回归） |
+| B7 后台运行无指示 | ✅ 已修 | ComposerDock 订阅全部会话 exec（不只活跃卷）；后台有卷运行显示「⟳ 后台 N 卷运行中 + 停止」（stop = 逐卷 removeExec 级联中止）；CSS 新增 `.pp-bg-running/.pp-bg-stop` |
+| C1 插话无提示 | ✅ 已修 | chat-core 插入路径补 notice「已插入进行中的回合（Agent 运行中，消息将在下轮生效）」 |
+| C2 本地态跨卷残留 | ✅ 已修 | activeSessionId 变化 → localNotice/settingsOpen 复位 |
+| C3 斜杠无键盘导航 | ✅ 已修 | ↑↓ 选（active 高亮 + 左缘朱砂指示）/Enter 执行/Esc 关（去斜杠触发词）；placeholder 改「↑↓ 取历史」 |
+| C4 每击键 loadSettings | ✅ 已修 | 显示走「初值 + onSettingsSaved 订阅触发重读」（settingsVersion 合成触发器），打字热路径零 localStorage 读 |
+| D1 getActiveProvider 空表崩 | ✅ 已修 | 双兜底：loadSettings 对空 providers 数组回落 DEFAULTS.providers；getActiveProvider 终极兜底 DEFAULTS.providers[0] |
+| D4 legacy thinking 静默清空 | ✅ 已修 | select 对存量遗留值（数字预算/未知档）显式加「自定义 (N)」option，不再隐形「自动」+onChange 清空 |
+| D2 热切换 IPC 风暴 | 🟡 部分收窄 | 会话级分支不再走 restoreSecrets 全量回填（直接 loadSettings）；settings-saved 全局面仍走 loadSettingsWithSecrets——彻底根治需诊断面改走 resolveApiKey 缓存（遗留小账） |
+| D3 thinking 双写者 | ✅ 收窄 | compose-store 写者拆除后只剩 ProviderDetail 暂存通道（单写者语义自洽） |
+| D5 组件测试缺口 | 🟡 补齐关键面 | compose-store 重写（覆盖制 9 用例）+ model-selector-compact 扩展（B1/B2）+ composer-history-nav 新增（7 用例）+ composer-dock-rework 适配新 store 面；↑↓ 键盘行为、斜杠键盘导航的组件级测试仍欠（后续） |
+| C5 目录无失败面 | ⬜ 未动 | fetchModels 静默失败面未做（B3 标注是部分缓解）；与 DSH 的 groups/failures/routable 三分面差距仍在，留待后续 |
+| D6 实机复验清单 | ⬜ 未动 | stage-4-rework-checklist 的待复验项仍在（P0-1 崩溃/P1-1 三道闸/P1-2 落点/P3-1 布局）+ 本次修复的实机验收（见下） |
+
+**本次修复的实机验收清单**（用户过一遍才算勾销）：
+1. 卷 A 切 anthropic 模型 → 切回卷 B：B 显示并实际用自己的配置（A 的改动不影响 B/全局设置）；
+2. 未改过的卷：设置页改全局默认后实时跟随；改过的卷保持自己的值；
+3. 重启后各卷会话级配置仍在（compose 字段随卷落盘）；
+4. 创作坞模型下拉打开即列全部已配置厂商（不再只有 1 条），未配置厂商不出现，无 Key 厂商有标注；
+5. 设置页测试连接后点取消 → 暂存的 baseUrl 等改动确实未落盘；
+6. ↑↓ 历史浏览可用、越过最新恢复草稿；斜杠命令后焦点回输入框；
+7. 后台卷运行时创作坞出现「后台 N 卷运行中 + 停止」。
+
+**改动文件清单**（本次施工）：
+- `src/state/compose-store.ts`（方案甲重写：覆盖制）
+- `src/state/agent-config-store.ts`（信号带 sessionId）
+- `src/provider/live.ts`（会话级 model/thinking 覆盖，setThinking 不再 no-op）
+- `src/agent/agent-session-state.ts`（AgentFactory 带 sessionId；forEachAgentEntry）
+- `src/workspace.ts`（applyAgentConfig 按会话热切换；工厂按会话装配；_contextWindowFor）
+- `src/shell/rows/persistence.ts`（sessionId 透传）
+- `src/ui/chat-session.ts`（工厂三调用点传 sid；compose 随卷落盘/恢复）
+- `src/app/chat/chat-core.ts`（setAgentFactory 签名；C1 notice）
+- `src/app/panels/ComposerDock.tsx`（effective 显示/B5/B6/B7/C2/C3/C4）
+- `src/app/panels/ModelSelector.tsx`（B1/B2/B3）
+- `src/app/panels/SettingsPanel.tsx` + `src/app/panels/settings/ProviderPage.tsx` + `ProviderDetail.tsx`（B4/D4）
+- `src/settings.ts`（D1 兜底）
+- `src/app/panels/PaperPanel.css`（B7/C3/B3 样式）
+- 测试：`tests/compose-store.test.ts`（重写）、`tests/composer-history-nav.test.ts`（新增）、`tests/model-selector-compact.test.tsx`（扩展）、`tests/composer-dock-rework.test.tsx`、`tests/composition-preset-assembly.test.ts`、`tests/persistence-signal-routing.test.ts`、`tests/provider-hotswap.test.ts`（适配方案甲新形态）
