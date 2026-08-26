@@ -47,7 +47,21 @@ const COMMAND: CommandContribution = {
 
 const TOOL: ToolContribution = { id: 'probe/tool', factory: probeTool };
 
-const PROVIDER: ProviderContribution = { id: 'probe/provider', factory: () => ({ kind: 'probe' }) };
+// 方言贡献的最小 Provider 桩：name 可断言归属，空流生成器满足接口形状
+function probeProvider(tag: string) {
+  return {
+    name: () => tag,
+    stream: async function* () {
+      /* 探针不产流 */
+    },
+  };
+}
+
+const PROVIDER: ProviderContribution = {
+  id: 'probe/provider',
+  kind: 'openai',
+  create: () => probeProvider('probe'),
+};
 
 describe('四 service 装载（compositionServicesPlugin 挂根 Context）', () => {
   it('挂载后 ctx.panels/commands/tools/providers 四服务可解析', async () => {

@@ -10,31 +10,22 @@
 //   DeepSeek Beta 端点挂 kind=anthropic 是特性（官方提供 Anthropic 兼容 API）。
 //   JSON 不支持注释，模型条目的协议归属以本文件与 tests/provider-catalog.test.ts 为准。
 
-import anthropicJson from './catalog/anthropic.json';
-import deepseekJson from './catalog/deepseek.json';
-import glmJson from './catalog/glm.json';
-import minimaxJson from './catalog/minimax.json';
-import moonshotaiJson from './catalog/moonshotai.json';
-import ollamaJson from './catalog/ollama.json';
-import openaiJson from './catalog/openai.json';
-import opencodeJson from './catalog/opencode.json';
-import qwenJson from './catalog/qwen.json';
 import type { ModelDescriptor } from './types';
 
 /** 目录 JSON 文件结构：{ [modelId]: ModelDescriptor } */
 type CatalogFile = Record<string, ModelDescriptor>;
 
-const CATALOG_FILES: Record<string, CatalogFile> = {
-  anthropic: anthropicJson as CatalogFile,
-  deepseek: deepseekJson as CatalogFile,
-  glm: glmJson as CatalogFile,
-  minimax: minimaxJson as CatalogFile,
-  moonshotai: moonshotaiJson as CatalogFile,
-  ollama: ollamaJson as CatalogFile,
-  openai: openaiJson as CatalogFile,
-  opencode: opencodeJson as CatalogFile,
-  qwen: qwenJson as CatalogFile,
-};
+// 目录装载 —— glob 化（2026-08-27 provider 插件化收口）：
+// 「加一个厂商 = 往 catalog/ 丢一个 json」，无需回本文件挂表。
+// 权威规则：modelMap 先到先得 = 文件名字母序先者得（既有重复 id 契约不变——
+// opencode/deepseek 共享 id 时 deepseek.json 靠字母序保持权威，tests 已钉住）。
+const CATALOG_MODULES = import.meta.glob<{ default: unknown }>('./catalog/*.json', { eager: true });
+
+const CATALOG_FILES: Record<string, CatalogFile> = {};
+for (const [file, mod] of Object.entries(CATALOG_MODULES)) {
+  const stem = file.slice('./catalog/'.length, -'.json'.length);
+  CATALOG_FILES[stem] = mod.default as CatalogFile;
+}
 
 interface CatalogData {
   allModels: ModelDescriptor[];

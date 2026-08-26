@@ -733,6 +733,31 @@ P14 写「兰台是单活跃 provider 形态」，P15 后修正为：**多 provi
 `composition/services.ts` 的 ProvidersService 空壳保留给未来真正多路由需求。seam 仍是
 `_buildProvider` 单一创建收口 + live 按名现解析。
 
+## 追加裁决 · 方言收口与目录装载（2026-08-27，用户拍板「直接干到位」）
+
+上节「空壳保留」口径自本日起废止——ProvidersService 从死壳变为**方言贡献道的活通道**，
+但多路由注册表依然不照搬：路由权在 live 按名现解析，本道只管「协议方言怎么建」，不管
+「哪个提供方被选中」。四条：
+
+1. **方言贡献道**（ProvidersService 真实消费闭环兑现）：
+   - `ProviderContribution = { id, kind, create(rt: ProviderRuntimeArgs): Provider }`，
+     替换 `{ id, factory: () => unknown }` 死形状。
+   - `createProvider` 的二元 if/else 改为方言解析：同 kind 贡献**后注册胜**
+     （对齐 renderer-service 覆盖语义，dispose 分层恢复）；未命中回落内核
+     `'anthropic' | 'openai'`；两者皆无 → `PROVIDER_DIALECT` 响亮报错并点名可用方言。
+   - **修复潜伏静默 bug**：旧实现未知 kind 一律跌进 openai 分支（拼错 `"anthromorphic"`
+     也能跑通但语义全错），违反宪法「错误不静默」。
+2. **Protocol 类型开放集挂起**：第三方方言要新增 kind 字面量时才扩存储联合类型
+   （挂在 ADR #0002 的 kind=协议语义上单独裁决）。当前贡献道的合法用法是覆盖两种内核
+   方言；目录/设置仍按闭合字面量校验。
+3. **目录装载 glob 化**：`CATALOG_FILES` 硬编码 import 表退役，换
+   `import.meta.glob('./catalog/*.json', { eager: true })`——加厂商 = 丢一个 json 进
+   目录，零代码挂载。重复 id 权威规则 = 文件名字母序先者得（字母序恰与原手排一致，
+   opencode/deepseek 共享 id 的既有归属不变，tests 钉死）。
+4. **P-next（未做，非遗漏）**：用户家目录 `~/.lantai/provider-catalogs/*.json`
+   外置 overlay——需要异步读取道与失败面的完整设计，硬塞半成品违反本 spec 第 #3
+   裁决的同源纪律。触发条件：出现「不改包体接入自定义网关目录」的真实需求。
+
 ### 验证
 
 - 每 commit 门禁：vitest 1793-1794 passed / 4 skipped · build ✓ · convergence exit 0 ·

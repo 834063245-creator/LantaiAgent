@@ -294,6 +294,7 @@ NetBenefit = |R|·c_in·(T-1) − |S|·c_out − L·avg_turn_cost
 - **9 个静态模型目录** JSON（77 个模型，`npm run gen:catalogs` 从 catalog-overrides.json + 社区数据源再生成）：anthropic / openai / moonshotai / qwen / deepseek / glm / minimax / ollama / opencode
 - **动态模型发现**：`fetchModels()` 拉取 `/models`（OpenAI）/ `/v1/models`（Anthropic）并合并，静态目录同 ID 优先（元数据更丰富）
 - **thinking 档位适配（EffortVendor）**：Anthropic budget_tokens（low4k/medium8k/high16k/max32k）、DeepSeek reasoning_effort（high/max）、OpenAI 官方 low/medium/high
+- **方言贡献道**（2026-08-27 插件化收口）：`ctx.providers.register({ id, kind, create })` 可覆盖内核 anthropic/openai 方言（后注册胜）；未知 kind 响亮报错不再静默跌 openai。详见 provider-system-spec「追加裁决 2026-08-27」
 - **本地反向代理**（`llm_proxy.rs` + `transport.ts`）：loopback-only HTTP 代理（127.0.0.1:14570）转发 LLM 请求并强加 CORS 头，SSE 逐块透传；`spawn_llm_proxy` 不 join 防启动挂起，停机标志保证退出干净
 - 流式 chunk 类型：Text / Reasoning / ToolCallStart / ToolCall / Usage / Done / Error；支持 reasoning_content round-trip
 

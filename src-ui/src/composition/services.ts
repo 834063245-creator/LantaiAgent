@@ -23,6 +23,7 @@
 import type { ComponentType } from 'react';
 import type { Tool } from '../agent/tool';
 import { type Context, Service } from '../cordis';
+import type { Provider } from '../provider/types';
 import { bumpCommands, bumpPanelDefs } from '../state/panel-defs-store';
 import type { ToolRowContext } from './tool-rows';
 
@@ -97,10 +98,17 @@ export interface ToolContribution {
   noCache?: boolean;
 }
 
+/** Provider 工厂收到的运行期实参形状（真源在 provider/types.ts；此处 type-only 别名防环）。 */
+type ProviderRuntimeArgs = import('../provider/types').ProviderRuntimeArgs;
+
 export interface ProviderContribution {
+  /** 注册表寻址 id（稳定行标识）。 */
   id: string;
-  /** provider 工厂（S1 阶段仅注册语义；组合引擎消费在 S2）。 */
-  factory: () => unknown;
+  /** 适配的 settings.kind（'anthropic' | 'openai' 可覆盖，同 kind 后注册胜——
+   *  对齐 renderer-service 覆盖语义；未知 kind 由 createProvider 请求期响亮报错）。 */
+  kind: string;
+  /** 方言工厂：从 createProvider 解析好的运行期实参构建完整 Provider。 */
+  create: (rt: ProviderRuntimeArgs) => Provider;
 }
 
 // ── 通用注册表内核（四 service 共用：id 寻址 + Disposer + 重名拒绝 + 组合序）──
@@ -224,6 +232,8 @@ export class ProvidersService extends Service {
 
   constructor(ctx: Context) {
     super(ctx, 'providers');
+    // 消费读取面（createProvider 方言解析——2026-08-27 S2 承诺兑现收口）
+    setActiveProviders(this);
   }
 
   register(def: ProviderContribution): () => void {
@@ -250,6 +260,7 @@ export class ProvidersService extends Service {
 let _activePanels: PanelsService | null = null;
 let _activeCommands: CommandsService | null = null;
 let _activeTools: ToolsService | null = null;
+let _activeProviders: ProvidersService | null = null;
 
 /** 服务构造期登记（loadBuiltinPlugins 引导的唯一入口）。 */
 function setActivePanels(svc: PanelsService): void {
@@ -260,6 +271,9 @@ function setActiveCommands(svc: CommandsService): void {
 }
 function setActiveTools(svc: ToolsService): void {
   _activeTools = svc;
+}
+function setActiveProviders(svc: ProvidersService): void {
+  _activeProviders = svc;
 }
 
 /** 当前面板贡献（无服务/无注册 = 空集——合流点读这个，常量面零改写）。 */
@@ -280,6 +294,11 @@ export function activeCommandContributions(): CommandContribution[] {
 /** 当前工具贡献（无服务/无注册 = 空集——pluginToolRows 折算源）。 */
 export function activeToolContributions(): ToolContribution[] {
   return _activeTools?.list() ?? [];
+}
+
+/** 当前方言贡献（无服务/无注册 = 空集——createProvider 方言解析的「后注册胜」扫描源）。 */
+export function activeProviderContributions(): ProviderContribution[] {
+  return _activeProviders?.list() ?? [];
 }
 
 // ── 组合层挂载插件（根 Context 装配四 service；经 loadBuiltinPlugins 引导）──

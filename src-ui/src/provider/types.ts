@@ -102,6 +102,17 @@ export interface Provider {
   fetchModels?(): Promise<ModelDescriptor[]>;
 }
 
+/** 方言工厂实参——createProvider 从 settings 解析后的运行期产物（2026-08-27 方言收口）。
+ *  thinking 已过 withThinkingDisabled / 会话覆盖合并；maxTokensFor 即 P14 覆盖闭包。 */
+export interface ProviderRuntimeArgs {
+  name: string;
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  thinking: StoredThinking | undefined;
+  maxTokensFor: (model: string) => number | undefined;
+}
+
 // ---- 模型目录 ----
 
 /** 每百万 token 的费用（USD）。 */
