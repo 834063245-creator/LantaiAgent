@@ -21,7 +21,7 @@ import type { RuntimePort } from '../../agent/runtime/types';
 import { useShellStore } from '../../app/shell-store';
 import type { ToolSchema } from '../../provider/types';
 import type { StarGraph } from '../../scene/graph-types';
-import { useAskStore } from '../../state/ask-store';
+import { askSessionOf, useAskStore } from '../../state/ask-store';
 import { useChatContextStore } from '../../state/chat-context-store';
 import { useDockStore } from '../../state/dock-store';
 import { broadcastGoalRecord, useGoalStore } from '../../state/goal-store';
@@ -92,18 +92,21 @@ export class ChatCore {
 
   /** 执行状态 — 面板级实例。 */
   private _exec: ExecStateInstance;
-  /** workspace 接线的公开访问器。 */
+  /** workspace 接线的公开访问器（面板级兜底 exec——无卷场景）。 */
   get execState(): ExecStateInstance {
     return this._exec;
   }
 
+  /** 会话级 execState（并发会话，2026-08-26）：工厂装配时给 Agent 挂
+   *  所属卷的 exec——权限卡队列/停止语义按卷隔离，停 A 卷不杀 B 卷的卡。 */
+  getSessionExecState(sessionId: number): ExecStateInstance {
+    return Session.getSessionExecState(this.panelId, sessionId);
+  }
+
   private starGraph: StarGraph | null = null;
 
-  /** rAF 句柄，用于批量合并流式更新。 */
-  private _syncRafId: number | null = null;
-
-  /** 流式目标会话 ID — 替代 _pendingStreamingSessions 全局 Map。 */
-  private _streamingTargetSid: number | null = null;
+  /** 流式同步 timer — 按卷隔离（并发会话：两卷各自防抖刷新，互不挤掉对方）。 */
+  private _syncTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
   private onOpenSettings: (() => void) | null = null;
   private _onTrailToggle: (() => void) | null = null;
@@ -279,9 +282,15 @@ export class ChatCore {
     this._onTrailToggle?.();
   }
 
-  /** 面板级事件接收器 — 直接调用，无总线中转。 */
+  /** 面板级事件接收器 — 直接调用，无总线中转。（遗留：无会话身份，
+   *  路由兜底活跃卷——仅恢复路径使用；工厂装配一律用 eventSinkFor。） */
   get eventSink(): (ev: AgentEvent) => void {
     return (ev: AgentEvent) => this.renderEvent(ev);
+  }
+  /** 会话级事件入口 — 工厂装配时绑定（并发会话，2026-08-26）：事件天生
+   *  携带所属卷身份，无论哪卷活跃都路由进自己的消息 store。 */
+  eventSinkFor(sid: number): (ev: AgentEvent) => void {
+    return (ev: AgentEvent) => Stream.renderEvent(this._streamCtxFor(sid), ev);
   }
   /** 面板级 Agent 进度事件接收器。 */
   get progressSink(): (data: { step: number; toolName: string }) => void {
@@ -326,6 +335,8 @@ export class ChatCore {
     getChatStore(this.panelId).panel.getState().clearToolHistory();
     this.messages = [];
     resetMsgIdCounter(this.panelId);
+    // 工作区重置：流式标志随会话级消息 store 整体消亡（disposeMessagesStores
+    // 已随 resetSessionState 拆除全部卷 store），面板默认槽一并清零兜底。
     getChatStore(this.panelId).msg.getState().setStreamingAssistantId(null);
     this.addNotice('已连接到当前项目', 'info');
   }
@@ -415,12 +426,16 @@ export class ChatCore {
     setTimeout(() => this.sendMessage(), alreadyOpen ? 0 : 200);
   }
 
-  /** 通过 PromptShelf 渲染权限请求（位于输入框上方，非内联）。 */
+  /** 通过 PromptShelf 渲染权限请求（位于输入框上方，非内联）。
+   *  并发会话（2026-08-26）：ownerSid = 请求归属卷（bridges 按 agentId 解析）。
+   *  权限卡挂归属卷的 execState 队列——停止语义按卷隔离（停 A 卷只杀 A 的卡，
+   *  旧「挂此刻活跃卷」是活 bug：切到 B 后 A 的写权限卡会被 B 的停止键误杀）。 */
   showPermissionCard(
     toolName: string,
     reason: string,
     subject: string,
     danger?: string,
+    ownerSid?: number | null,
   ): Promise<{ allow: boolean; remember: boolean }> {
     if (getChatStore(this.panelId).panel.getState().panelMode !== 'panel') {
       this.summonPanel();
@@ -429,7 +444,8 @@ export class ChatCore {
       return Promise.resolve({ allow: false, remember: false });
     }
     const shelf = this._promptShelf;
-    return this._activeExec().enqueuePerm(() =>
+    const exec = ownerSid != null ? Session.getSessionExecState(this.panelId, ownerSid) : this._activeExec();
+    return exec.enqueuePerm(() =>
       shelf.showPermission({
         type: 'permission',
         id: `perm-${toolName}-${Date.now()}`,
@@ -549,45 +565,62 @@ export class ChatCore {
     };
   }
 
-  private _streamCtx(): Stream.StreamContext {
+  /** 会话级流上下文（并发会话，2026-08-26）：sid = 事件流所属卷（工厂绑定
+   *  的 eventSinkFor 传入）；null = 无身份遗留路径，按活跃卷解析。
+   *  流式状态（streamingAssistantId / 同步 timer）随 ctx 按卷隔离——
+   *  两卷并发流式互不覆盖。状态栏/用量文本/面板 token 只跟随活跃卷
+   *  （后台卷的运行态由创作坞 bgRunning 指示承担）。
+   *  ownerSid 在遗留路径（sid=null）下解析为活跃卷——活跃卷缺席时
+   *  （无会话）ownerSid 为 null，ctx 上所有会话寻址面降级为 no-op。 */
+  private _streamCtxFor(sid: number | null): Stream.StreamContext {
     const storeId = this.panelId;
+    // ctx 所属卷（null 时每次调用解析活跃卷——遗留路径语义）
+    const ownerSid = sid ?? this.activeSessionId;
+    // 同步 timer 按卷隔离（并发流各自防抖，互不挤掉对方的刷新；
+    // 无会话（ownerSid null）共用 -1 槽——无消息面，timer 无实际作用）
+    const timerKey = ownerSid ?? -1;
     return {
       storeId,
-      getSessionMessages: (sid: number) => msgStoreFor(storeId, sid).getState().messages,
+      sessionId: ownerSid,
+      getSessionMessages: (s: number) => msgStoreFor(storeId, s).getState().messages,
       getActiveMessages: () => {
         const s = msgStoreForActive(storeId);
         return s?.getState().messages ?? [];
       },
-      setSessionMessages: (sid: number, msgs: ChatMessage[]) => {
-        msgStoreFor(storeId, sid).getState().setMessages(msgs);
+      setSessionMessages: (s: number, msgs: ChatMessage[]) => {
+        msgStoreFor(storeId, s).getState().setMessages(msgs);
       },
-      bumpSessionMessages: (sid: number) => {
-        msgStoreFor(storeId, sid).getState().bump();
+      bumpSessionMessages: (s: number) => {
+        msgStoreFor(storeId, s).getState().bump();
       },
-      getStreamingAssistantId: () => getStreamingAssistantId(storeId),
+      getStreamingAssistantId: () =>
+        ownerSid != null
+          ? msgStoreFor(storeId, ownerSid).getState().streamingAssistantId
+          : getStreamingAssistantId(storeId),
       setStreamingAssistantId: (id) => {
-        getChatStore(storeId).msg.getState().setStreamingAssistantId(id);
+        if (ownerSid != null) msgStoreFor(storeId, ownerSid).getState().setStreamingAssistantId(id);
+        else getChatStore(storeId).msg.getState().setStreamingAssistantId(id);
       },
       getUserScrolledUp: () => getUserScrolledUp(storeId),
       setUserScrolledUp: (v) => {
         getChatStore(storeId).msg.getState().setUserScrolledUp(v);
       },
-      getSyncRafId: () => this._syncRafId,
+      getSyncRafId: () => this._syncTimers.get(timerKey) ?? null,
       setSyncRafId: (id) => {
-        this._syncRafId = id;
+        if (id === null) this._syncTimers.delete(timerKey);
+        else this._syncTimers.set(timerKey, id);
       },
-      getStreamingTargetSid: () => this._streamingTargetSid,
-      setStreamingTargetSid: (sid) => {
-        this._streamingTargetSid = sid;
-      },
-      getTurnPairs: () => Session.getTurnPairs(this.panelId),
-      getAgent: () => this.agent,
+      getTurnPairs: () => Session.getTurnPairs(this.panelId, ownerSid ?? undefined),
+      getAgent: () => (ownerSid != null ? Session.getSessionAgent(this.panelId, ownerSid) : this.agent),
       getStarGraph: () => this.starGraph,
       updateFooter: () => this.updateFooter(),
       setLastUsageText: (s) => {
-        getChatStore(storeId).panel.getState().setLastUsageText(s);
+        // 用量文本是活跃卷的底栏——后台卷事件不覆盖显示
+        if (ownerSid == null || ownerSid === this.activeSessionId) {
+          getChatStore(storeId).panel.getState().setLastUsageText(s);
+        }
       },
-      addNotice: (text, level) => this.addNotice(text, level as 'info' | 'warn' | 'error'),
+      addNotice: (text, level) => this.addNoticeFor(ownerSid, text, level as 'info' | 'warn' | 'error'),
       saveActiveSession: (p) => this.saveActiveSession(p),
       scheduleAutoSave: (p) => Session.scheduleAutoSave(this._sessionCtx(), p),
       bumpPillBadge: () => {
@@ -599,13 +632,24 @@ export class ChatCore {
         /* 已迁移到 execState */
       },
       abort: () => this.abort(),
-      _updateStatusBar: (s, d) => this._updateStatusBar(s, d),
+      _updateStatusBar: (s, d) => {
+        // 状态栏是活跃卷的——后台卷事件不改状态栏（其进度由纸面流式呈现）
+        if (ownerSid == null || ownerSid === this.activeSessionId) this._updateStatusBar(s, d);
+      },
       _recordToolUsage: (n, a) => this._recordToolUsage(n, a),
       _retractUserMessage: (m) => this._retractUserMessage(m),
       retractTurn: (i) => this.retractTurn(i),
       sendMessage: () => this.sendMessage(),
       _updateTokens: (n) => {
-        getChatStore(storeId).panel.getState().setTotalTokensUsed(n);
+        // token 按卷入账（会话级）；面板显示只跟随活跃卷
+        if (ownerSid != null) {
+          getChatStore(storeId).sess.getState().setSessionTokens(ownerSid, n);
+          if (ownerSid === this.activeSessionId) {
+            getChatStore(storeId).panel.getState().setTotalTokensUsed(n);
+          }
+        } else {
+          getChatStore(storeId).panel.getState().setTotalTokensUsed(n);
+        }
       },
       getProjectPath: () => useShellStore.getState().projectPath,
       getRunning: () => this._activeExec().isRunning,
@@ -795,11 +839,9 @@ export class ChatCore {
     drive: (signal: AbortSignal) => Promise<unknown>;
     onResult?: (result: GoalRunResult) => void;
   }): Promise<void> {
+    // 并发会话（2026-08-26）：闸门拆除——后台卷运行不再阻止本卷新轮次；
+    // 仅本卷自身在跑时拒发（Enter 插话路径由 sendMessage 处理）。
     if (!this.agent || this._activeExec().isRunning) return;
-    if (Session.hasRunningBackgroundSession(this.panelId)) {
-      this.addNotice('有后台任务运行中，请等待完成', 'info');
-      return;
-    }
     const signal = this._activeExec().start();
     // L2（session-ledger）：本轮跑的是哪卷——头部捕获，finally 随 turn-done
     // 信号发出（后台卷跑完存它自己，不再只存当前翻开的卷）。
@@ -809,11 +851,12 @@ export class ChatCore {
       turnSid = sessStore.sessions[sessStore.activeIdx]?.id ?? null;
     }
 
-    // 为新轮次重置自动滚动
+    // 为新轮次重置自动滚动（视图级状态——只在本轮卷即活跃卷时才有意义；
+    // _runAgentTurn 恒由活跃卷发起，turnSid == 活跃卷）
     getChatStore(this.panelId).msg.getState().setUserScrolledUp(false);
 
     if (opts.userText) {
-      Session.getTurnPairs(this.panelId).push({
+      Session.getTurnPairs(this.panelId, turnSid).push({
         userText: opts.userText,
         userBubble: null,
         assistantBubble: null,
@@ -825,13 +868,10 @@ export class ChatCore {
     }
 
     // 3.6: 在 Agent 上设置 UI 会话 ID，使子 Agent 通知能正确路由到对应会话
-    {
-      const sessStore = getChatStore(this.panelId).sess.getState();
-      const activeSid = sessStore.sessions[sessStore.activeIdx]?.id;
-      if (activeSid != null) {
-        this._streamingTargetSid = activeSid;
-        this.agent.setUiSessionId(activeSid);
-      }
+    //（并发会话：轮次路由身份已由工厂绑定的 eventSinkFor 携带；这里只管
+    // 子 Agent 通知路由的 agent._uiSessionId）
+    if (turnSid != null) {
+      this.agent.setUiSessionId(turnSid);
     }
 
     try {
@@ -840,16 +880,17 @@ export class ChatCore {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('aborted') || msg.includes('AbortError')) {
-        this.addNotice('已中止', 'info');
+        this.addNoticeFor(turnSid, '已中止', 'info');
       } else if (msg.includes('paused after')) {
-        this.addNotice(msg, 'warn');
+        this.addNoticeFor(turnSid, msg, 'warn');
       } else {
-        this.addNotice(`错误: ${msg}`, 'error');
+        this.addNoticeFor(turnSid, `错误: ${msg}`, 'error');
       }
     } finally {
-      this._streamingTargetSid = null;
       this._activeExec().done();
-      this.finishTurn();
+      // 轮次收尾按轮次所属卷路由（后台卷跑完 finalize 自己的流式助手 +
+      // 自动命名自己；用户中途切走不影响）
+      Stream.finishTurn(this._streamCtxFor(turnSid));
       bumpTurnDone(turnSid ?? undefined);
     }
   }
@@ -868,14 +909,31 @@ export class ChatCore {
     }
   }
 
-  /** 消费 ask-store 的在途请求 → PromptShelf（无 shelf 时立即按取消回答回调）。 */
+  /** 卷标签（ask/权限卡徽标用）：优先用户改过的标签，缺省「案卷 N」。 */
+  private _sessionLabelOf(sid: number): string {
+    const st = getChatStore(this.panelId).sess.getState();
+    const s = st.sessions.find((x) => x.id === sid);
+    return s?.label || `案卷 ${sid}`;
+  }
+
+  /** _sessionLabelOf 的公开出口（bridges 权限卡徽标）。 */
+  sessionLabelOf(sid: number): string {
+    return this._sessionLabelOf(sid);
+  }
+
+  /** 消费 ask-store 的在途请求 → PromptShelf（无 shelf 时立即按取消回答回调）。
+   *  并发会话：按 seq 最老优先消费任意队列（PromptShelf 自身 FIFO 多卡，
+   *  多卷同时提问各答各的）。 */
   private _consumePendingAsk(): void {
-    const data = useAskStore.getState().consumeAsk();
+    const data = useAskStore.getState().consumeAnyAsk();
     if (!data) return;
     if (!this._promptShelf) {
       data.callback(null);
       return;
     }
+    // 归属卷徽标（哪卷在问——多卷并发时用户需要知道替谁作答）
+    const ownerSid = askSessionOf(data);
+    const sessionBadge = ownerSid != null ? this._sessionLabelOf(ownerSid) : null;
     // 批量多问（questions 数组）→ 一张分页卡收集；单问 → AskCard
     if (data.questions && data.questions.length > 0) {
       this._promptShelf
@@ -883,7 +941,7 @@ export class ChatCore {
           type: 'ask-batch',
           id: data.id,
           questions: data.questions,
-          header: data.header ?? '提问',
+          header: (sessionBadge ? `${sessionBadge} · ` : '') + (data.header ?? '提问'),
         })
         .then((answers) => data.callback(answers));
       return;
@@ -893,7 +951,7 @@ export class ChatCore {
         type: 'ask',
         id: data.id,
         question: data.question ?? '',
-        header: data.header ?? '提问',
+        header: (sessionBadge ? `${sessionBadge} · ` : '') + (data.header ?? '提问'),
         options: data.options ?? [],
         multiSelect: !!data.multiSelect,
       })
@@ -1006,7 +1064,7 @@ export class ChatCore {
       // 纸视图（走查弹）打开时不唤起观测台面板——纸是当前输入面
       if (getChatStore(this.panelId).panel.getState().panelMode === 'input' && !useDockStore.getState().isOpen('paper'))
         this.summonPanel();
-      Session.getTurnPairs(this.panelId).push({
+      Session.getTurnPairs(this.panelId, this.activeSessionId ?? undefined).push({
         userText: text,
         userBubble: null,
         assistantBubble: null,
@@ -1015,11 +1073,8 @@ export class ChatCore {
       this.appendUserBubble(text);
       return;
     }
-    // ⚡ 若有任何后台会话仍有 Agent 在运行，则阻止新轮次。
-    if (Session.hasRunningBackgroundSession(this.panelId)) {
-      this.addNotice('有后台任务正在运行中，请等待完成', 'info');
-      return;
-    }
+    // 并发会话（2026-08-26）：后台卷闸门拆除——本卷不在跑即可发起新轮次，
+    // 与后台卷并行流式（事件路由由工厂绑定的 eventSinkFor 承担）。
 
     // 首条用户消息时自动标记会话
     if (Session.getActiveIdx(this.panelId) >= 0) {
@@ -1047,7 +1102,8 @@ export class ChatCore {
 
     // 重试用轮次对 — sessionIndex 是用户消息将要落地的位置
     const sessIdx = this.agent.getSession().length;
-    Session.getTurnPairs(this.panelId).push({
+    const turnSidPre = this.activeSessionId;
+    Session.getTurnPairs(this.panelId, turnSidPre ?? undefined).push({
       userText: text,
       userBubble: null,
       assistantBubble: null,
@@ -1087,16 +1143,11 @@ export class ChatCore {
       getChatStore(this.panelId).input.getState().clearAttachedFiles();
     }
 
-    // 追踪启动本次运行的会话 — 切换标签页时流式仍能正确路由
-    let turnSid: number | null = null;
-    {
-      const sessStore = getChatStore(this.panelId).sess.getState();
-      const activeSid = sessStore.sessions[sessStore.activeIdx]?.id;
-      turnSid = activeSid ?? null;
-      if (activeSid != null) {
-        this._streamingTargetSid = activeSid;
-        this.agent?.setUiSessionId(activeSid);
-      }
+    // 追踪启动本次运行的会话 — 事件路由身份已由工厂绑定的 eventSinkFor
+    // 携带；这里只管子 Agent 通知路由的 agent._uiSessionId。
+    const turnSid: number | null = this.activeSessionId;
+    if (turnSid != null) {
+      this.agent?.setUiSessionId(turnSid);
     }
 
     // 运行 Agent
@@ -1105,16 +1156,20 @@ export class ChatCore {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('aborted') || msg.includes('AbortError')) {
-        this.addNotice('已中止', 'info');
+        this.addNoticeFor(turnSid, '已中止', 'info');
       } else if (msg.includes('paused after')) {
-        this.addNotice(msg, 'warn');
+        this.addNoticeFor(turnSid, msg, 'warn');
       } else {
-        this.addNotice(`错误: ${msg}。发送任意消息重试，或输入 /compact 压缩上下文，或输入 /new 新建会话`, 'error');
+        this.addNoticeFor(
+          turnSid,
+          `错误: ${msg}。发送任意消息重试，或输入 /compact 压缩上下文，或输入 /new 新建会话`,
+          'error',
+        );
       }
     } finally {
-      this._streamingTargetSid = null;
       this._activeExec().done();
-      this.finishTurn();
+      // 轮次收尾按轮次所属卷路由（用户中途切卷，后台卷 finalize 自己的流）
+      Stream.finishTurn(this._streamCtxFor(turnSid));
     }
     // 通知持久化链（P1 总线归零：chat:turn-done → state/turn-done-store 信号；
     // L2：携带跑完的会话 id——谁跑完存谁）
@@ -1153,11 +1208,17 @@ export class ChatCore {
   // ═══════════════════════════════════════════════════════
 
   private addNotice(text: string, level: 'info' | 'warn' | 'error'): void {
-    Stream.addNotice(this._streamCtx(), text, level);
+    Stream.addNotice(this._streamCtxFor(null), text, level);
+  }
+
+  /** 会话定向通知（并发会话）：notice 落到指定卷的消息流——后台卷的
+   *  中止/错误信息不再串进活跃卷。sid=null = 活跃卷（遗留语义）。 */
+  private addNoticeFor(sid: number | null, text: string, level: 'info' | 'warn' | 'error'): void {
+    Stream.addNotice(this._streamCtxFor(sid), text, level);
   }
 
   private renderEvent(ev: AgentEvent): void {
-    Stream.renderEvent(this._streamCtx(), ev);
+    Stream.renderEvent(this._streamCtxFor(null), ev);
   }
 
   // ── Footer — 视图挂载；settings 变更时刷新模型名 ──
@@ -1209,11 +1270,11 @@ export class ChatCore {
     files?: { path: string; name: string; size: number }[],
     skipActions?: boolean,
   ): void {
-    Stream.appendUserBubble(this._streamCtx(), text, files, skipActions);
+    Stream.appendUserBubble(this._streamCtxFor(null), text, files, skipActions);
   }
 
   private finishTurn(): void {
-    Stream.finishTurn(this._streamCtx());
+    Stream.finishTurn(this._streamCtxFor(null));
   }
 
   // ── 消息操作回调（视图 ChatMessages 委托）──
@@ -1256,31 +1317,26 @@ export class ChatCore {
     const agent = this.agent;
     if (!agent) return;
     const sessIdx = agent.getSession().length;
-    Session.getTurnPairs(this.panelId).push({
+    const retrySid = this.activeSessionId;
+    Session.getTurnPairs(this.panelId, retrySid ?? undefined).push({
       userText,
       userBubble: null,
       assistantBubble: null,
       sessionIndex: sessIdx,
     });
-    {
-      const sessStore = getChatStore(this.panelId).sess.getState();
-      const activeSid = sessStore.sessions[sessStore.activeIdx]?.id;
-      if (activeSid != null) {
-        this._streamingTargetSid = activeSid;
-        this.agent?.setUiSessionId(activeSid);
-      }
+    if (retrySid != null) {
+      this.agent?.setUiSessionId(retrySid);
     }
     agent
       .run(signal, userText)
       .catch((err: Error) => {
         if (!err.message?.includes('aborted')) {
-          this.addNotice(`重试失败: ${err.message || String(err)}`, 'error');
+          this.addNoticeFor(retrySid, `重试失败: ${err.message || String(err)}`, 'error');
         }
       })
       .finally(() => {
-        this._streamingTargetSid = null;
         this._activeExec().done();
-        this.finishTurn();
+        Stream.finishTurn(this._streamCtxFor(retrySid));
       });
   }
 
@@ -1366,6 +1422,9 @@ export class ChatCore {
         .then(() => {
           this.messages = [];
           resetMsgIdCounter(this.panelId);
+          // 压缩只发生在活跃卷（上方 isRunning 守卫 = 本卷）——清本卷流式槽
+          const compactSid = this.activeSessionId;
+          if (compactSid != null) msgStoreFor(this.panelId, compactSid).getState().setStreamingAssistantId(null);
           getChatStore(this.panelId).msg.getState().setStreamingAssistantId(null);
           Session._rebuildMessagesFromSession(this._sessionCtx());
           this._chatMessages?.bump();

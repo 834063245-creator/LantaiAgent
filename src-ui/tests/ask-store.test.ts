@@ -76,24 +76,24 @@ function makeReq(overrides: Partial<AskRequest> = {}): AskRequest {
 }
 
 beforeEach(() => {
-  useAskStore.setState({ pending: null, seq: 0 });
+  useAskStore.setState({ pendingBySession: new Map(), seq: 0 });
   mockInvoke.mockReset();
   mockInvoke.mockResolvedValue('ok');
 });
 
 describe('ask-store（prompt:ask 退役）', () => {
-  it('pushAsk 递增 seq；consumeAsk 取走 pending 并清空（幂等）', () => {
+  it('pushAsk 递增 seq；consumeAsk 取走队首并清空（幂等）', () => {
     const req = makeReq();
     expect(useAskStore.getState().seq).toBe(0);
 
+    // 无 agentId 归属 → -1 队列（活跃卷兜底）
     pushAsk(req);
     expect(useAskStore.getState().seq).toBe(1);
-    expect(useAskStore.getState().pending).toBe(req);
 
-    expect(useAskStore.getState().consumeAsk()).toBe(req);
-    expect(useAskStore.getState().pending).toBeNull();
+    expect(useAskStore.getState().consumeAsk(-1)).toBe(req);
+    expect(useAskStore.getState().consumeAsk(-1)).toBeNull();
     // 幂等：第二次消费返回 null，不会把同一请求交给两个消费者
-    expect(useAskStore.getState().consumeAsk()).toBeNull();
+    expect(useAskStore.getState().consumeAsk(-1)).toBeNull();
   });
 
   it('pending 期 chat-core 重建：构造即回放，无 shelf 时 callback(null) 恰好一次', async () => {

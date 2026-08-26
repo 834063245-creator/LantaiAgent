@@ -30,23 +30,24 @@ type TurnPair = {
 export interface StreamContext {
   storeId: string;
 
+  /** 本事件流所属会话（并发会话，2026-08-26）：工厂装配时绑定进 eventSink
+   *  闭包——事件路由的权威身份，不再靠 streamingTargetSid 猜测。
+   *  null = 无身份的遗留路径（用户主动作/恢复），按活跃卷兜底。 */
+  sessionId: number | null;
+
   // ── 会话级消息 store（ponytail: 唯一数据源）──
   getSessionMessages: (sid: number) => ChatMessage[];
   getActiveMessages: () => ChatMessage[];
   setSessionMessages: (sid: number, msgs: ChatMessage[]) => void;
   bumpSessionMessages: (sid: number) => void;
 
-  // ── 流式状态（面板级 — 每个面板一个流）──
+  // ── 流式状态（会话级 — 每卷一个流式助手；并发会话互不覆盖）──
   getStreamingAssistantId: () => MessageId | null;
   setStreamingAssistantId: (id: MessageId | null) => void;
   getUserScrolledUp: () => boolean;
   setUserScrolledUp: (v: boolean) => void;
   getSyncRafId: () => number | null;
   setSyncRafId: (id: number | null) => void;
-
-  // ── 流式目标会话（替代 _pendingStreamingSessions 全局 Map）──
-  getStreamingTargetSid: () => number | null;
-  setStreamingTargetSid: (sid: number | null) => void;
 
   // ── turnPairs ──
   getTurnPairs: () => TurnPair[];
@@ -89,6 +90,8 @@ export interface StreamContext {
 //   3. 兜底 → 活跃会话
 // 防止用户在 sendMessage 后、第一个文本事件到达前切换标签页的竞态
 // （此时 streamingAssistantId 仍为 null）。
+// 并发会话改造（2026-08-26）：策略 0 = ctx.sessionId（工厂绑定的 eventSink
+// 闭包携带）直达，取代原 pendingStreamingSession 猜测。
 
 interface SessionTarget {
   sessionId: number;
@@ -96,18 +99,18 @@ interface SessionTarget {
   isActive: boolean;
 }
 
-/** 跟踪哪个会话启动了当前流式运行。
- *  由 sendMessage（或 sendAgentText/runGoal）在 agent.run() 前设置，
- *  在 _finaliseStreamingAssistant 或调用者的 finally 块中清除。
- *  现存储在 RenderContext 上（getStreamingTargetSid/setStreamingTargetSid）
- *  而非模块级 Map — 消除全局可变状态。 */
-
 function _resolveSessionTarget(ctx: StreamContext, assistantId: MessageId | null): SessionTarget | null {
   const sessStore = getChatStore(ctx.storeId).sess;
   const { sessions, activeIdx } = sessStore.getState();
   const activeSid = sessions[activeIdx]?.id;
 
-  // 1) 已知 assistant → 查找其所属会话
+  // 0) 事件流身份直达 — 工厂装配时绑定的 sink 携带所属卷，并发流互不串扰
+  if (ctx.sessionId != null) {
+    const msgs = ctx.getSessionMessages(ctx.sessionId);
+    return { sessionId: ctx.sessionId, messages: msgs, isActive: ctx.sessionId === activeSid };
+  }
+
+  // 1) 遗留路径（无身份）：已知 assistant → 查找其所属会话
   if (assistantId) {
     for (const s of sessions) {
       const msgs = ctx.getSessionMessages(s.id);
@@ -117,14 +120,7 @@ function _resolveSessionTarget(ctx: StreamContext, assistantId: MessageId | null
     }
   }
 
-  // 2) 尚无 assistant → 使用启动运行的会话
-  const pendingSid = ctx.getStreamingTargetSid();
-  if (pendingSid != null) {
-    const msgs = ctx.getSessionMessages(pendingSid);
-    return { sessionId: pendingSid, messages: msgs, isActive: pendingSid === activeSid };
-  }
-
-  // 3) 最后手段：活跃会话
+  // 2) 兜底：活跃会话
   if (activeSid != null) {
     return {
       sessionId: activeSid,
@@ -160,9 +156,8 @@ function _streamingAssistant(ctx: StreamContext): AssistantMessage {
   // 持久化 + 递增会话的 store
   ctx.setSessionMessages(target.sessionId, [...msgs]);
   ctx.bumpSessionMessages(target.sessionId);
-  // ponytail: assistant ID 已确立 — 后续事件通过会话 store
-  // 扫描找到它。流式目标不再需要用于本次运行。
-  ctx.setStreamingTargetSid(null);
+  // ponytail: assistant ID 已确立 — 后续事件通过会话 store 找到它
+  //（并发会话改造：streamingAssistantId 已按会话隔离，无需再清流式目标）。
   return assistant;
 }
 
@@ -254,10 +249,8 @@ function _finaliseStreamingAssistant(ctx: StreamContext): void {
   }
 
   ctx.setStreamingAssistantId(null);
-  // ponytail: 不要在此清除 pending。TurnStarted 在第一个 Text 事件创建新 assistant 之前
-  // 触发 _finaliseStreamingAssistant。若用户在此窗口内切换标签页，
-  // pending 是 _resolveSessionTarget 唯一的线索。在 _streamingAssistant 中
-  // assistant ID 确立后清除 pending。
+  // ponytail（并发会话改造）：streamingAssistantId 按会话隔离（get/set 路由
+  // 到本 ctx 所属卷的 store），TurnStarted 提前触发本函数不会误伤其它卷的流。
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -452,7 +445,9 @@ function finishCurrentTurn(ctx: StreamContext): void {
 
 export function finishTurn(ctx: StreamContext): void {
   finishCurrentTurn(ctx);
-  autoTitleSessionIfDefault(ctx.storeId);
+  // 并发会话：自动命名跟着轮次所属卷走（ctx.sessionId），后台卷跑完
+  // 只命名自己，不再误改活跃卷标题。
+  autoTitleSessionIfDefault(ctx.storeId, ctx.sessionId ?? undefined);
   const pp = ctx.getProjectPath();
   if (pp) {
     ctx.scheduleAutoSave(pp);

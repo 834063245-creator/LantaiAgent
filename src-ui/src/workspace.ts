@@ -1036,8 +1036,11 @@ export class Workspace {
           subAgentPool: this.subAgentPool,
           taskManager: this.taskManager,
           graphContext: graphCtx,
-          eventSink: chatPanel.eventSink,
-          execState: chatPanel.execState,
+          // 并发会话（2026-08-26）：事件入口按会话绑定——事件天生携带所属卷
+          // 身份，两卷并发流式互不串扰（旧共享 eventSink 靠活跃卷猜测路由）。
+          // execState 同步改挂会话级（权限卡/停止语义按卷隔离）。
+          eventSink: chatPanel.eventSinkFor(sessionId),
+          execState: chatPanel.getSessionExecState(sessionId),
           collaborationMode: ms.collaborationMode,
           pricing: defaultPricing(row.kind, eff.model),
           temperature: 0.7,
@@ -1075,7 +1078,9 @@ export class Workspace {
             (async () => {
               await refreshGitStatus(this.path);
               if (this._graphEngineOn) await refreshTimeline(this.path);
-              // 只消费本 Agent 产生的构建结果（其他会话的留在槽位等本尊）
+              // 只消费本 Agent 产生的构建结果（其他会话的留在槽位等本尊）——
+              // 并发会话：用本工厂闭包捕获的 agent（handle 建成即定），不再
+              // 经共享 agentRef.current（最后创建的卷）错路由。
               const block = buildTurnStartBlock(sessionAgentId);
               if (block)
                 agentRef.current?.insertMessage(`<system-reminder>\n${block}\n</system-reminder>`, { silent: true });

@@ -22,9 +22,12 @@ export interface AskUserQuestionItem {
 /** ask_user 工具的 UI 请求 — 由 workspace 注入的回调转发到 UI 总线。
  *  保持 agent 层不 import ui/ 模块。
  *  单问：question/options/multiSelect + callback(answer)；
- *  批量：questions 一次推全部 + callback(answers)（与 questions 对齐，未答/跳过为 null）。 */
+ *  批量：questions 一次推全部 + callback(answers)（与 questions 对齐，未答/跳过为 null）。
+ *  并发会话（2026-08-26）：agentId = 发起 Agent 的 bus id（executor 注入
+ *  _owner_id，主 Agent 即 main-<ts>-<rand>）——UI 据此路由到所属卷的提问卡。 */
 export interface AskUserRequest {
   id: string;
+  agentId?: string;
   question?: string;
   header?: string;
   options?: { label: string; description: string }[];
@@ -706,11 +709,18 @@ export function createAskUserTools(ui?: CodingToolsUI): Tool[] {
         if (!batch && !args.question) {
           return JSON.stringify({ error: 'ask_user: 需要提供 question（单问）或 questions（多问）' });
         }
+        // 发起 Agent 身份（executor 注入的 _owner_id meta key——不在 zod 类型内，
+        // 见 define-tool 注释的 meta key 约定）——UI 路由提问卡到所属卷
+        const agentId =
+          typeof (args as { _owner_id?: unknown })._owner_id === 'string'
+            ? ((args as { _owner_id?: unknown })._owner_id as string)
+            : undefined;
         // 批量：一次推全部 questions，UI 渲成分页表单一次性收集；取消 → 整批 null
         if (batch) {
           const answers = await new Promise<(string[] | null)[] | null>((resolve) => {
             ui.askUser?.({
               id: `ask-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              agentId,
               questions: batch,
               callback: (res) => resolve(Array.isArray(res) ? (res as (string[] | null)[]) : null),
             });
@@ -730,6 +740,7 @@ export function createAskUserTools(ui?: CodingToolsUI): Tool[] {
         const ans = await new Promise<string[] | null>((resolve) => {
           ui.askUser?.({
             id: `ask-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            agentId,
             question: args.question,
             header: args.header,
             options: args.options ?? [],

@@ -92,11 +92,18 @@ export function syncActiveSessionTokens(storeId: string, count: number): void {
   const s = sessions[activeIdx];
   if (s) getChatStore(storeId).sess.getState().setSessionTokens(s.id, count);
 }
-export function getTurnPairs(storeId: string): TurnPair[] {
-  return agentSessionState.getTurnPairs(storeId);
+/** 轮次对（并发会话 2026-08-26：按卷键控——sessionId 缺省 = 活跃卷，
+ *  null 显式传 = 面板级遗留键，仅在重置面使用）。 */
+export function getTurnPairs(storeId: string, sessionId?: number): TurnPair[] {
+  const sid = sessionId ?? getChatStore(storeId).sess.getState().sessions[getActiveIdx(storeId)]?.id ?? null;
+  return agentSessionState.getTurnPairs(storeId, sid ?? null);
 }
-export function setTurnPairs(storeId: string, pairs: TurnPair[]): void {
-  agentSessionState.setTurnPairs(storeId, pairs);
+export function setTurnPairs(storeId: string, sessionId: number | null, pairs: TurnPair[]): void {
+  agentSessionState.setTurnPairs(storeId, sessionId, pairs);
+}
+/** 按 id 取指定卷的 Agent 句柄（并发会话：事件流 ctx 的 getAgent 消费）。 */
+export function getSessionAgent(storeId: string, sessionId: number): ChatAgentHandle | null {
+  return agentSessionState.getAgent(storeId, sessionId);
 }
 export function getAgentFactory(storeId: string) {
   return agentSessionState.getAgentFactory(storeId);
@@ -111,18 +118,6 @@ export function setAgentFactory(
 /** 获取或创建会话的 execState。 */
 export function getSessionExecState(storeId: string, sessionId: number): ExecStateInstance {
   return agentSessionState.getOrCreateExec(storeId, sessionId);
-}
-
-/** 检查活跃会话以外的任何会话是否有运行中的 Agent。
- *  两个 Agent 同时流式输出会导致事件交错。 */
-export function hasRunningBackgroundSession(storeId: string): boolean {
-  const { sessions, activeIdx } = getChatStore(storeId).sess.getState();
-  for (let i = 0; i < sessions.length; i++) {
-    if (i === activeIdx) continue;
-    const es = agentSessionState.getExec(storeId, sessions[i].id);
-    if (es?.isRunning) return true;
-  }
-  return false;
 }
 
 /** 清理已关闭会话的 execState。 */
@@ -167,15 +162,21 @@ export function resetSessionState(storeId: string): void {
   getChatStore(storeId).input.getState().clearSessionDrafts();
   // 创作坞每会话偏好（模型/思考）同属工作区级状态——一并清空防串味
   getComposeStore(storeId).getState().clearAll();
-  setTurnPairs(storeId, []);
+  // 面板级遗留轮次对清空（会话级键由 clearPanelState 随面板全清）
+  setTurnPairs(storeId, null, []);
 }
 
-/** 若活跃会话仍为默认标签（"案卷 N"，兼容旧 "会话 N"），则从第一条用户消息自动命名。
- *  在每轮对话完成后调用。 */
-export function autoTitleSessionIfDefault(storeId: string): void {
+/** 若会话仍为默认标签（"案卷 N"，兼容旧 "会话 N"），则从第一条用户消息自动命名。
+ *  在每轮对话完成后调用。sid 指定轮次所属卷（并发会话：后台卷跑完只命名
+ *  自己）；缺省 = 活跃卷（遗留调用语义）。 */
+export function autoTitleSessionIfDefault(storeId: string, sid?: number): void {
   const st = getChatStore(storeId).sess.getState();
   const { sessions, activeIdx } = st;
-  const s = sessions[activeIdx];
+  const targetSid = sid ?? sessions[activeIdx]?.id;
+  if (targetSid == null) return;
+  const idx = sessions.findIndex((x) => x.id === targetSid);
+  if (idx < 0) return;
+  const s = sessions[idx];
   if (!s) return;
 
   // 仅在标签仍为默认格式时自动命名（兰台术语：案卷；旧存档：会话）
@@ -189,7 +190,7 @@ export function autoTitleSessionIfDefault(storeId: string): void {
   if (!firstUser?.content) return;
 
   const derived = firstUser.content.slice(0, 28) + (firstUser.content.length > 28 ? '…' : '');
-  const updated = sessions.map((x, i) => (i === activeIdx ? { ...x, label: derived } : x));
+  const updated = sessions.map((x, i) => (i === idx ? { ...x, label: derived } : x));
   getChatStore(storeId).sess.setState({ sessions: updated });
 }
 
@@ -491,7 +492,8 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
   ctx.clearInputHistory();
   // 新会话无草稿槽 → 清空 live 输入，避免沿用上一会话未发送的文字
   getChatStore(ctx.storeId).input.getState().restoreSessionDraft(id);
-  setTurnPairs(ctx.storeId, []);
+  setTurnPairs(ctx.storeId, null, []);
+  setTurnPairs(ctx.storeId, id, []);
   ctx.setTotalTokensUsed(0);
   getChatStore(ctx.storeId).sess.getState().setSessionTokens(id, 0);
 
@@ -1120,7 +1122,7 @@ export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, se
   }
 
   resetMsgIdCounter();
-  setTurnPairs(storeId, []);
+  setTurnPairs(storeId, sessionId, []);
 
   const toolResults = new Map<string, string>();
   for (const m of msgs) {
@@ -1147,7 +1149,7 @@ export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, se
         continue;
       }
       if (pendingUserText && pendingUserId) {
-        getTurnPairs(storeId).push({
+        getTurnPairs(storeId, sessionId).push({
           userText: pendingUserText,
           userBubble: null,
           assistantBubble: null,
@@ -1199,7 +1201,7 @@ export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, se
       rebuilt.push(am);
 
       if (pendingUserText) {
-        getTurnPairs(storeId).push({
+        getTurnPairs(storeId, sessionId).push({
           userText: pendingUserText,
           userBubble: null,
           assistantBubble: null,
@@ -1212,7 +1214,7 @@ export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, se
   }
 
   if (pendingUserText) {
-    getTurnPairs(storeId).push({
+    getTurnPairs(storeId, sessionId).push({
       userText: pendingUserText,
       userBubble: null,
       assistantBubble: null,
@@ -1249,16 +1251,18 @@ export function _rebuildMessagesFromSession(ctx: SessionContext): void {
 
 // ── 轮次撤回 ──
 
-/** 从 DOM 和 agent 会话中撤回一轮对话。返回 userText 或 null。 */
+/** 从 DOM 和 agent 会话中撤回一轮对话。返回 userText 或 null。
+ *  撤回对象 = 活跃卷（编辑/重发/撤回入口都在活跃卷的消息上）。 */
 export function retractTurn(ctx: SessionContext, idx: number): string | null {
-  const tp = getTurnPairs(ctx.storeId);
+  const { sessions, activeIdx } = getChatStore(ctx.storeId).sess.getState();
+  const activeSid = sessions[activeIdx]?.id;
+  const tp = getTurnPairs(ctx.storeId, activeSid);
   const pair = tp[idx];
   if (!pair) return null;
   // ⚡ React 处理 DOM 移除，只需清理模型
   // 从 agent 会话中移除 — 若索引已过期（运行中插入），按内容搜索
   let sessIdx = pair.sessionIndex;
-  const { sessions, activeIdx } = getChatStore(ctx.storeId).sess.getState();
-  const agent = agentSessionState.getAgent(ctx.storeId, sessions[activeIdx]?.id ?? -1);
+  const agent = agentSessionState.getAgent(ctx.storeId, activeSid ?? -1);
   if (sessIdx < 0 && agent) {
     const agentSession = agent.getSession();
     for (let i = 0; i < agentSession.length; i++) {

@@ -65,9 +65,16 @@ export interface AgentSessionStateApi {
   setAgentFactory(storeId: string, fn: AgentFactory | null): void;
   getAgentFactory(storeId: string): AgentFactory | null;
 
-  // ── 轮次对（每面板）──
-  getTurnPairs(storeId: string): TurnPair[];
-  setTurnPairs(storeId: string, pairs: TurnPair[]): void;
+  // ── agentId → 会话归属（并发会话 2026-08-26：权限卡/ask 请求的路由依据。
+  //    主 Agent id（main-<ts>-<rand>）由工厂生成时随句柄登记；子 Agent 不入
+  //    此表——请求方经 runtime parentId 链上溯到主 Agent 再查本表）──
+  /** 查询 agentId 所属面板与会话（未登记返回 null）。 */
+  sessionOfAgent(agentId: string): { storeId: string; sessionId: number } | null;
+
+  // ── 轮次对（每会话——并发会话 2026-08-26：面板级共享数组会让多卷并发
+  //    推对时 retract/retry 语义错位，按 storeId:sid 键控隔离）──
+  getTurnPairs(storeId: string, sessionId: number | null): TurnPair[];
+  setTurnPairs(storeId: string, sessionId: number | null, pairs: TurnPair[]): void;
 
   // ── 批量操作 ──
   /** 移除并 dispose 面板的所有 agent 句柄，清除 exec 状态。 */
@@ -104,7 +111,8 @@ export function createAgentSessionState(): AgentSessionStateApi {
   const _agentBySession = new Map<string, OwnedAgentHandle>();
   const _execBySession = new Map<string, ExecStateInstance>();
   const _agentFactoryByPanel = new Map<string, AgentFactory>();
-  const _turnPairsByPanel = new Map<string, TurnPair[]>();
+  const _turnPairsBySession = new Map<string, TurnPair[]>();
+  const _sessionOfAgentId = new Map<string, { storeId: string; sessionId: number }>();
 
   function _bump(): void {
     store.setState({ version: store.getState().version + 1 });
@@ -116,10 +124,15 @@ export function createAgentSessionState(): AgentSessionStateApi {
     setAgent(storeId, sessionId, agent): void {
       const k = agentKey(storeId, sessionId);
       // 覆盖即接管：旧句柄若无人 dispose 会成为 runtime 注册表里的孤儿
-      // （拓扑面板堆积的根因）。同一对象重复登记则跳过。
+      //（拓扑面板堆积的根因）。同一对象重复登记则跳过。
       const prev = _agentBySession.get(k);
-      if (prev && prev !== agent) prev.dispose();
+      if (prev && prev !== agent) {
+        _sessionOfAgentId.delete(prev.id);
+        prev.dispose();
+      }
       _agentBySession.set(k, agent);
+      // agentId → 会话归属登记（权限卡/ask 路由依据；removeAgent/clearPanelState 对称注销）
+      _sessionOfAgentId.set(agent.id, { storeId, sessionId });
       _bump();
     },
 
@@ -131,10 +144,15 @@ export function createAgentSessionState(): AgentSessionStateApi {
       const k = agentKey(storeId, sessionId);
       const agent = _agentBySession.get(k);
       if (agent) {
+        _sessionOfAgentId.delete(agent.id);
         agent.dispose();
         _agentBySession.delete(k);
       }
       _bump();
+    },
+
+    sessionOfAgent(agentId): { storeId: string; sessionId: number } | null {
+      return _sessionOfAgentId.get(agentId) ?? null;
     },
 
     // ── Exec 状态 ──
@@ -182,19 +200,21 @@ export function createAgentSessionState(): AgentSessionStateApi {
       return _agentFactoryByPanel.get(storeId) ?? null;
     },
 
-    // ── 轮次对 ──
+    // ── 轮次对（每会话）──
 
-    getTurnPairs(storeId): TurnPair[] {
-      let tp = _turnPairsByPanel.get(storeId);
+    getTurnPairs(storeId, sessionId): TurnPair[] {
+      const k = sessionId != null ? agentKey(storeId, sessionId) : `${storeId}:__panel__`;
+      let tp = _turnPairsBySession.get(k);
       if (!tp) {
         tp = [];
-        _turnPairsByPanel.set(storeId, tp);
+        _turnPairsBySession.set(k, tp);
       }
       return tp;
     },
 
-    setTurnPairs(storeId, pairs): void {
-      _turnPairsByPanel.set(storeId, pairs);
+    setTurnPairs(storeId, sessionId, pairs): void {
+      const k = sessionId != null ? agentKey(storeId, sessionId) : `${storeId}:__panel__`;
+      _turnPairsBySession.set(k, pairs);
       _bump();
     },
 
@@ -204,12 +224,18 @@ export function createAgentSessionState(): AgentSessionStateApi {
       const prefix = storeId + ':';
       for (const k of [..._agentBySession.keys()]) {
         if (k.startsWith(prefix)) {
-          _agentBySession.get(k)?.dispose();
+          const h = _agentBySession.get(k);
+          if (h) _sessionOfAgentId.delete(h.id);
+          h?.dispose();
           _agentBySession.delete(k);
         }
       }
       for (const k of [..._execBySession.keys()]) {
         if (k.startsWith(prefix)) _execBySession.delete(k);
+      }
+      // 轮次对随面板全清（含面板级遗留键）
+      for (const k of [..._turnPairsBySession.keys()]) {
+        if (k.startsWith(prefix)) _turnPairsBySession.delete(k);
       }
       _bump();
     },

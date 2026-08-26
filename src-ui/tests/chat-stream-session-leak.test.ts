@@ -60,12 +60,17 @@ function setupSessions(activeSession: number = SESSION_A) {
 }
 
 let _streamingId: MessageId | null = null;
-let _streamingTargetSid: number | null = null;
+/** per-session streamingAssistantId 槽（并发会话：真实实现按卷路由，
+ *  测试桩同样按卷存取——两卷各自的流式助手互不覆盖）。 */
+const _streamingIdBySession = new Map<number, MessageId | null>();
 
-function makeCtx(activeSession: number = SESSION_A): StreamContext {
-  setupSessions(activeSession);
+/** 并发会话改造（2026-08-26）：ctx.sessionId = 事件流身份（工厂绑定）；
+ *  null = 遗留无身份路径（按活跃卷兜底）。 */
+function makeCtx(sessionId: number | null = SESSION_A): StreamContext {
+  setupSessions(SESSION_A);
   return {
     storeId: STORE_ID,
+    sessionId,
     getSessionMessages: (sid: number) => msgStoreFor(STORE_ID, sid).getState().messages,
     getActiveMessages: () => msgStoreForActive(STORE_ID)?.getState().messages ?? [],
     setSessionMessages: (sid: number, msgs: ChatMessage[]) => {
@@ -74,14 +79,12 @@ function makeCtx(activeSession: number = SESSION_A): StreamContext {
     bumpSessionMessages: (sid: number) => {
       msgStoreFor(STORE_ID, sid).getState().bump();
     },
-    getStreamingAssistantId: (() => _streamingId) as () => MessageId | null,
+    getStreamingAssistantId: (() =>
+      sessionId != null ? (_streamingIdBySession.get(sessionId) ?? null) : _streamingId) as () => MessageId | null,
     setStreamingAssistantId: ((id: MessageId | null) => {
-      _streamingId = id;
+      if (sessionId != null) _streamingIdBySession.set(sessionId, id);
+      else _streamingId = id;
     }) as (id: MessageId | null) => void,
-    getStreamingTargetSid: () => _streamingTargetSid,
-    setStreamingTargetSid: (sid: number | null) => {
-      _streamingTargetSid = sid;
-    },
     getUserScrolledUp: () => false,
     setUserScrolledUp: vi.fn(),
     getSyncRafId: () => null,
@@ -122,7 +125,7 @@ function turnStartedEvent(): AgentEvent {
 describe('cross-session streaming leak regression', () => {
   beforeEach(() => {
     _streamingId = null;
-    _streamingTargetSid = null;
+    _streamingIdBySession.clear();
     getSessionStore(STORE_ID).setState({
       sessions: [],
       activeIdx: -1,
@@ -132,16 +135,15 @@ describe('cross-session streaming leak regression', () => {
     });
   });
 
-  it('streaming routes to pending session after TurnStarted + tab switch', () => {
+  it('streaming routes to owning session after TurnStarted + tab switch', () => {
     const ctx = makeCtx(SESSION_A);
-    ctx.setStreamingTargetSid(SESSION_A);
     appendUserBubble(ctx, 'hello from session A');
     renderEvent(ctx, turnStartedEvent());
 
     // User switches to session B
     getSessionStore(STORE_ID).setState({ activeIdx: 1 });
 
-    // Text event arrives AFTER tab switch 鈥?must route to pending session A
+    // Text event arrives AFTER tab switch — must route to owning session A
     renderEvent(ctx, textEvent('Hello!'));
 
     const msgsA = msgStoreFor(STORE_ID, SESSION_A).getState().messages;
@@ -155,7 +157,6 @@ describe('cross-session streaming leak regression', () => {
 
   it('subsequent events route via assistant ID after first event establishes it', () => {
     const ctx = makeCtx(SESSION_A);
-    ctx.setStreamingTargetSid(SESSION_A);
     appendUserBubble(ctx, 'hello');
     renderEvent(ctx, textEvent('First chunk'));
 
@@ -170,8 +171,8 @@ describe('cross-session streaming leak regression', () => {
     expect(msgsB.length).toBe(0);
   });
 
-  it('falls back to active session when no pending and no assistant', () => {
-    const ctx = makeCtx(SESSION_A);
+  it('falls back to active session when no identity and no assistant', () => {
+    const ctx = makeCtx(null);
     appendUserBubble(ctx, 'user msg');
     renderEvent(ctx, textEvent('assistant response'));
 
@@ -179,9 +180,8 @@ describe('cross-session streaming leak regression', () => {
     expect(msgsA.length).toBe(2);
   });
 
-  it('routes notice to pending session after tab switch', () => {
+  it('routes notice to owning session after tab switch', () => {
     const ctx = makeCtx(SESSION_A);
-    ctx.setStreamingTargetSid(SESSION_A);
     getSessionStore(STORE_ID).setState({ activeIdx: 1 });
     addNotice(ctx, 'notice during streaming');
 
@@ -195,7 +195,6 @@ describe('cross-session streaming leak regression', () => {
 
   it('finishes turn in the correct session', () => {
     const ctx = makeCtx(SESSION_A);
-    ctx.setStreamingTargetSid(SESSION_A);
     appendUserBubble(ctx, 'hello');
     renderEvent(ctx, textEvent('response'));
     finishTurn(ctx);
@@ -203,5 +202,34 @@ describe('cross-session streaming leak regression', () => {
     const msgsA = msgStoreFor(STORE_ID, SESSION_A).getState().messages;
     expect(msgsA.length).toBe(2);
     expect((msgsA[1] as AssistantMessage).status).toBe('done');
+  });
+
+  it('concurrent streams of two sessions never cross-contaminate', () => {
+    // 并发会话（2026-08-26）：两卷各持自己的 ctx（工厂绑定的 eventSinkFor），
+    // 交错流式 —— A 的事件只能进 A 的 store，B 同理。
+    //（用户气泡由发送方写入本卷 store——appendUserBubble 恒写活跃卷，
+    //  并发时后台卷的用户消息来自发送时刻的活跃卷写入，此处直接落 B store 模拟）
+    const ctxA = makeCtx(SESSION_A);
+    const ctxB = makeCtx(SESSION_B);
+
+    appendUserBubble(ctxA, 'hello A');
+    msgStoreFor(STORE_ID, SESSION_B)
+      .getState()
+      .setMessages([{ ...msgStoreFor(STORE_ID, SESSION_A).getState().messages[0], text: 'hello B' }]);
+
+    renderEvent(ctxA, turnStartedEvent());
+    renderEvent(ctxB, turnStartedEvent());
+    renderEvent(ctxA, textEvent('A1'));
+    renderEvent(ctxB, textEvent('B1'));
+    renderEvent(ctxA, textEvent('A2'));
+    renderEvent(ctxB, textEvent('B2'));
+
+    const msgsA = msgStoreFor(STORE_ID, SESSION_A).getState().messages;
+    const msgsB = msgStoreFor(STORE_ID, SESSION_B).getState().messages;
+
+    expect(msgsA.length).toBe(2);
+    expect(msgsB.length).toBe(2);
+    expect((msgsA[1] as AssistantMessage).parts[0]).toMatchObject({ type: 'text', text: 'A1A2' });
+    expect((msgsB[1] as AssistantMessage).parts[0]).toMatchObject({ type: 'text', text: 'B1B2' });
   });
 });

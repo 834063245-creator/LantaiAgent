@@ -126,27 +126,43 @@ describe('AgentSessionState', () => {
 
   describe('turn pairs', () => {
     it('getTurnPairs returns empty array on first access', () => {
-      expect(state.getTurnPairs('panel-1')).toEqual([]);
+      expect(state.getTurnPairs('panel-1', 1)).toEqual([]);
     });
 
     it('getTurnPairs returns same array reference (mutatable)', () => {
-      const tp = state.getTurnPairs('panel-1');
+      const tp = state.getTurnPairs('panel-1', 1);
       tp.push({ userText: 'hello', userBubble: null, assistantBubble: null, sessionIndex: 0 });
-      expect(state.getTurnPairs('panel-1')).toHaveLength(1);
+      expect(state.getTurnPairs('panel-1', 1)).toHaveLength(1);
     });
 
     it('setTurnPairs replaces the array', () => {
       const pairs = [{ userText: 'test', userBubble: null, assistantBubble: null, sessionIndex: 5 }];
-      state.setTurnPairs('panel-1', pairs);
-      expect(state.getTurnPairs('panel-1')).toBe(pairs);
+      state.setTurnPairs('panel-1', 1, pairs);
+      expect(state.getTurnPairs('panel-1', 1)).toBe(pairs);
     });
 
     it('panels are isolated', () => {
-      state.getTurnPairs('panel-A').push({ userText: 'A', userBubble: null, assistantBubble: null, sessionIndex: 0 });
-      state.getTurnPairs('panel-B').push({ userText: 'B', userBubble: null, assistantBubble: null, sessionIndex: 0 });
-      expect(state.getTurnPairs('panel-A')).toHaveLength(1);
-      expect(state.getTurnPairs('panel-A')[0].userText).toBe('A');
-      expect(state.getTurnPairs('panel-B')[0].userText).toBe('B');
+      state
+        .getTurnPairs('panel-A', 1)
+        .push({ userText: 'A', userBubble: null, assistantBubble: null, sessionIndex: 0 });
+      state
+        .getTurnPairs('panel-B', 1)
+        .push({ userText: 'B', userBubble: null, assistantBubble: null, sessionIndex: 0 });
+      expect(state.getTurnPairs('panel-A', 1)).toHaveLength(1);
+      expect(state.getTurnPairs('panel-A', 1)[0].userText).toBe('A');
+      expect(state.getTurnPairs('panel-B', 1)[0].userText).toBe('B');
+    });
+
+    it('sessions are isolated (concurrent turns never cross)', () => {
+      state
+        .getTurnPairs('panel-1', 1)
+        .push({ userText: 's1', userBubble: null, assistantBubble: null, sessionIndex: 0 });
+      state
+        .getTurnPairs('panel-1', 2)
+        .push({ userText: 's2', userBubble: null, assistantBubble: null, sessionIndex: 0 });
+      expect(state.getTurnPairs('panel-1', 1)).toHaveLength(1);
+      expect(state.getTurnPairs('panel-1', 1)[0].userText).toBe('s1');
+      expect(state.getTurnPairs('panel-1', 2)[0].userText).toBe('s2');
     });
   });
 

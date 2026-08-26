@@ -67,7 +67,8 @@ export const SessionSidebar = memo(function SessionSidebar() {
     const pp = useShellStore.getState().projectPath;
     const st = getChatStore(panelId).sess.getState();
     const activeSid = st.sessions[st.activeIdx]?.id ?? null;
-    const askPending = useAskStore.getState().pending != null;
+    // 并发会话：任一卷有在途提问即标记活跃卷 pending（提问卡本身带卷徽标）
+    const askPending = useAskStore.getState().pendingBySession.size > 0;
     const open = st.sessions.map((s) => ({
       id: s.id,
       label: s.label,
