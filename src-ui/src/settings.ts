@@ -129,7 +129,11 @@ export interface UpdateSettings {
 }
 
 export interface AppSettings {
-  activeProvider: ProviderId; // provider 身份（领域词见 CONTEXT.md「ProviderId」）
+  /** 新会话默认提供方 = 最近使用的 provider（2026-08-26：「设为当前」按钮退役，
+   *  activeProvider 不再手动指定，而是在创作坞切模型时自动跟从——compose-store
+   *  setModel 定向写）。新卷/未改卷出生默认 = 该 provider + 其 model（最近使用）。
+   *  领域词见 CONTEXT.md「ProviderId」。 */
+  activeProvider: ProviderId;
   providers: ProviderSettings[];
   projectPath: string;
   agent: AgentSettings;

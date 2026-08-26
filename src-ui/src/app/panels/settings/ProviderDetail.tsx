@@ -43,7 +43,6 @@ interface ProviderDetailProps {
     /** 该提供方「可用模型」id 列表（创作坞下拉的可选面；缺省 = [model]）。 */
     models?: string[];
   };
-  isCurrent: boolean;
   canDelete: boolean;
   test: ProbeUiState;
   /** Key 栏 UI 状态簇：已保存 / 清除暂存 / 明文可见 / 输入框引用 */
@@ -75,14 +74,13 @@ export interface ProviderDetailActions {
   /** per-model 覆盖（P14）：上下文窗口 / 最大输出，0 = 清回目录值。 */
   onModelOverride: (modelId: string, field: 'contextWindow' | 'maxTokens', value: number) => void;
   onTest: () => void;
-  onSetCurrent: () => void;
   onClearKey: () => void;
   onResetBaseUrl: () => void;
   onToggleKeyVisible: () => void;
   onDelete: () => void;
 }
 
-export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState, actions }: ProviderDetailProps) {
+export function ProviderDetail({ provider, canDelete, test, keyState, actions }: ProviderDetailProps) {
   const { saved: keySaved, pendingClear, visible: keyVisible, inputRef: keyInputRef } = keyState;
   const {
     onFieldChange,
@@ -91,7 +89,6 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
     onRemoveModel,
     onModelOverride,
     onTest,
-    onSetCurrent,
     onClearKey,
     onResetBaseUrl,
     onToggleKeyVisible,
@@ -169,17 +166,7 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
           <i className="pp-pdot" />
           {statusLabel}
         </span>
-        {isCurrent && <span className="pp-badge pp-badge-current">当前使用</span>}
         <span className="pp-spacer" />
-        <button
-          type="button"
-          className="pp-btn-set-current"
-          disabled={isCurrent}
-          title={isCurrent ? '该提供方正在被 Agent 使用' : '切换为当前使用中的 Provider'}
-          onClick={onSetCurrent}
-        >
-          {isCurrent ? '已在用' : '设为当前'}
-        </button>
       </div>
 
       <div className="pp-card">

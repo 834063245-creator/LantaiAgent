@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Provider 页左侧「提供方列表」：一行一个 provider，
-// 状态点 = 未配置 / 已配置 / 正常 / 异常，当前使用中带「当前」角标。
+// 状态点 = 未配置 / 已配置 / 正常 / 异常；「新会话默认」角标 = 最近使用的
+// provider（activeProvider 自动跟从创作坞切换，「设为当前」已退役）。
 
 import type { ProviderId, ProviderSettings } from '../../../settings';
 import { protocolLabel } from './protocol';
@@ -38,7 +39,7 @@ export function ProviderList({ providers, selected, current, onSelect, onAdd }: 
               <span className="pp-src-main">
                 <span className="pp-src-name">
                   {p.name}
-                  {p.name === current && <span className="pp-now-badge">当前</span>}
+                  {p.name === current && <span className="pp-now-badge">新会话默认</span>}
                 </span>
                 <span className="pp-src-sub">
                   {protocolLabel(p.kind)}

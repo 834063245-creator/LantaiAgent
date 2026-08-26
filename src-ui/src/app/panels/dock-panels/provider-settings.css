@@ -296,11 +296,6 @@
   background: var(--seal-soft);
   border: 1px solid color-mix(in oklch, var(--seal) 32%, transparent);
 }
-.pp-badge-current {
-  color: var(--indigo);
-  background: color-mix(in oklch, var(--indigo) 8%, transparent);
-  border: 1px solid color-mix(in oklch, var(--indigo) 32%, transparent);
-}
 .pp-status-pill {
   display: inline-flex;
   align-items: center;
@@ -356,27 +351,6 @@
 }
 .pp-spacer {
   flex: 1;
-}
-.pp-btn-set-current {
-  font-family: var(--f-mono);
-  font-size: calc(8.5px * var(--font-scale));
-  letter-spacing: 0.08em;
-  padding: 5px 10px;
-  border-radius: 0;
-  background: transparent;
-  border: var(--rule-soft);
-  color: var(--ink-2);
-  cursor: pointer;
-  transition: all var(--snap);
-}
-.pp-btn-set-current:hover:not([disabled]) {
-  background: var(--ink-1);
-  border-color: var(--ink-1);
-  color: var(--paper);
-}
-.pp-btn-set-current[disabled] {
-  opacity: 0.45;
-  cursor: default;
 }
 
 /* ── 卡片（分节：序号式规线头 + 纸面）── */

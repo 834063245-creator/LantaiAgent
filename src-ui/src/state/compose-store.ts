@@ -22,7 +22,7 @@
 
 import { create } from 'zustand';
 import type { StoredThinking } from '../provider/thinking';
-import { getActiveProvider, loadSettings, saveSettings, updateProvider } from '../settings';
+import { getActiveProvider, loadSettings, type ProviderId, saveSettings, updateProvider } from '../settings';
 import { notifyAgentConfigChanged } from './agent-config-store';
 import { createScopedStore } from './scoped-store';
 
@@ -81,14 +81,18 @@ function createComposeStoreImpl() {
       }
       const next: ComposeSessionPrefs = { providerName, model, thinking };
       set((s) => ({ sessions: { ...s.sessions, [sessionId]: next } }));
-      // 新会话默认 = 最近使用（2026-08-26）：定向写该 provider 行的 model 字段——
-      // 重新 loadSettings 读改写单字段（不整份快照 → A4 clobber 不复活）；只影响
-      // 新卷/未改卷的出生默认，已存在会话走覆盖（方案甲 A1「切一个拖累全部」不复发，
-      // activeProvider 一字不动）。
+      // 新会话默认 = 最近使用（2026-08-26）：定向写「最近使用的 provider + 该行
+      // model」——重新 loadSettings 读改写单字段（不整份快照 → A4 clobber 不复活）。
+      // 只影响新卷/未改卷的出生默认；已存在会话走覆盖（方案甲 A1「切一个拖累全部」
+      // 不复发——applyAgentConfig 会话级分支按会话解析，不读 activeProvider）。
+      // 「设为当前」按钮随此语义退役：activeProvider 不再是手动指定的「当前」，
+      // 而是自动跟从最近使用的 provider。
       try {
         const s = loadSettings();
         const row = s.providers.find((p) => p.name === providerName);
-        if (row && row.model !== model) saveSettings(updateProvider(s, providerName, { model }));
+        if (row && (row.model !== model || s.activeProvider !== providerName)) {
+          saveSettings(updateProvider({ ...s, activeProvider: providerName as ProviderId }, providerName, { model }));
+        }
       } catch {
         /* 读/写失败静默——新会话默认保持旧值，不阻断热切换 */
       }

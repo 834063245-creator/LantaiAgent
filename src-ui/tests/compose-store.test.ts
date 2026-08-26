@@ -84,7 +84,7 @@ describe('state/compose-store（方案甲：会话级覆盖制）', () => {
     expect(st.getPrefs('2')).toBeUndefined();
   });
 
-  it('setModel：写会话覆盖 + 信号 + 定向写「最近使用」为新会话默认（不切 activeProvider）', () => {
+  it('setModel：写会话覆盖 + 信号 + 定向写「最近使用」(provider+model) 为新会话默认', () => {
     const st = getComposeStore(STORE).getState();
     // 切到与 anthropic 行当前 model 不同的模型——触发「最近使用」定向写
     st.setModel('1', 'anthropic', 'claude-opus-4-6');
@@ -97,13 +97,13 @@ describe('state/compose-store（方案甲：会话级覆盖制）', () => {
     // 信号带 sessionId（applyAgentConfig 只热切换该会话）
     expect(notifyAgentConfigChanged).toHaveBeenCalledWith('model-switched', 1);
     // 新语义（2026-08-26「新会话默认 = 最近使用」）：定向写目标 provider 行的
-    // model 字段（saveSettings 被 mock，断言入参）——只影响新卷出生默认。
+    // model + activeProvider = 最近使用的 provider（saveSettings 被 mock，断言入参）
     const saveSpy = vi.mocked(settingsModule.saveSettings);
     expect(saveSpy).toHaveBeenCalled();
     const saved = saveSpy.mock.calls.at(-1)?.[0] as settingsModule.AppSettings;
     expect(saved.providers.find((p) => p.name === 'anthropic')?.model).toBe('claude-opus-4-6');
-    // A1 不复发：activeProvider 一字未动、别家 provider 未被拖累（不是全量轰炸）
-    expect(saved.activeProvider).toBe('deepseek');
+    expect(saved.activeProvider).toBe('anthropic'); // 最近使用跟随（「设为当前」退役）
+    // A1 不复发：别家 provider 未被拖累（不是全量轰炸）；已存在会话走覆盖
     expect(saved.providers.find((p) => p.name === 'deepseek')?.model).toBe('deepseek-v4-pro');
   });
 

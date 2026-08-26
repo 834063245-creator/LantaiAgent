@@ -215,10 +215,6 @@ export function ProviderPage({
     }
   }, [selectedProvider, onPersistProbe]);
 
-  const handleSetCurrent = useCallback(() => {
-    onCommitProvider({ ...settings, activeProvider: selectedProvider.name });
-  }, [settings, selectedProvider.name, onCommitProvider]);
-
   const handleAdd = useCallback(
     (entry: AddProviderEntry) => {
       try {
@@ -306,7 +302,6 @@ export function ProviderPage({
         />
         <ProviderDetail
           provider={selectedProvider}
-          isCurrent={selectedProvider.name === settings.activeProvider}
           canDelete={settings.providers.length > 1}
           test={tests.get(selectedProvider.name) ?? { phase: 'idle', msg: '' }}
           keyState={{
@@ -323,7 +318,6 @@ export function ProviderPage({
             onModelOverride: (modelId, field, value) =>
               handleModelOverride(selectedProvider.name, modelId, field, value),
             onTest: handleTest,
-            onSetCurrent: handleSetCurrent,
             onClearKey: () => setClearTarget(selectedProvider.name),
             onResetBaseUrl: () =>
               onCommitProvider(
