@@ -140,10 +140,21 @@
 | P0-1 全放确认+关窗崩溃 | 🟡 代码面已处理，**待实机复验** | 内嵌确认条改独立居中模态（`pp-mode-dialog-backdrop`，不参与创作坞高度/销毁时序）；`ComposerDock` 卸载时清 `pendingYolo`。若实机仍崩，属 wry/webview2 运行时级问题，需单独查（升级/更换 WebView2 运行时），非本清单可覆盖 |
 | P1-1 自动选中三道闸 | 🟡 已定位根因并修复，**待实机复验** | **根因**：`panningRef.current` 只在 mousedown 赋值、mouseup 只 `setPanning(false)` 没清空 → 第一次拖画布后 `moving` 恒 true → 400ms 计时永不启动（自动选中形同虚设）。**已修**：①mouseup 清 `panningRef.current`；②命中区向上外扩 40px 盖住标签带（中心对准会话标题也算命中）；③显式切会话后 800ms 手动守卫（`MANUAL_GUARD_MS`），避免「侧边栏点 A、视口中心还在 B，400ms 后被自动选中拉回 B」的冲突感。门禁全绿 |
 | P1-2 目次带/书脊聚焦落点 | ✅ 代码完成，**待实机确认落点手感** | `paper/canvas-math.ts` `viewFocusRegion` 改为视口中心（水平居中+垂直中心）；书脊/目次带共用。测试已更新（`canvas-nav.test.ts`）。若痞老板要「顶部 1/3」舒适区，改一处常量即可 |
-| P2-1 模型选择器 UX | ✅ 代码完成，**待实机确认** | `ModelSelector` 新增 `compact` 触发器形态（供应商/模型名 + 箭头）；空查询列出全部已配置 provider（跨 vendor 直接选）；下拉按 vendor 分组。设置面板字段形态零改动 |
+| P2-1 模型选择器 UX | ✅ 代码完成，**待实机确认** | `ModelSelector` 新增 `compact` 触发器形态（供应商/模型名 + 箭头）；空查询列出全部已配置 provider（跨 vendor 直接选）；下拉按 vendor 分组。设置面板字段形态零改动。**2026-08-26 联合体检追加修复**（见 `composer-provider-audit.md`）：①打开预填当前模型 id 把列表锁成 1 条的 bug 已修（打开置空 query）；②compact 结果只列已配置 provider 的模型（搜索到未配置厂商 → 写错行 → 400 的路径封死）；③无 Key 厂商分组头标注「未配置 Key」 |
 | P2-2 思考档位反馈 | ✅ 代码完成，**待实机确认** | 收起态按钮显示「思考 · 当前档」；展开改纯中文分段控件（`pp-thinking-seg`），选中态强；去掉中英混排 |
 | P2-3 权限档位 | ✅ 代码完成，**待实机确认** | 循环按钮改三档分段控件（`pp-mode-seg`，常询/半放/全放，选中高亮）；全放二次确认改居中模态（确定/取消） |
 | P3-1 非全屏布局 | ✅ 代码完成，**待实机确认** | 设置行 `flex-wrap` 收缩/换行；创作坞高度经 ResizeObserver 联动目次带（`.pp-toc` bottom 内联）与小地图（minimap bottom 内联）；min window 已在 `tauri.conf.json`（880×600）。「侧边栏盖画布」为 dock 覆盖语义，是否改需痞老板定夺 |
 | P4-1 重启会话口径 | 🟡 已加固（projectPath 订阅重拉），**待实机复验** | 根因高嫌疑：`Workspace.open` 之后才写 shell-store 的 projectPath，而 `SessionSidebar` 刷新只订阅 sess/agent/ask/space，**没订阅 projectPath**——首拉早于路径落定会拉到空集且无重试点。已补 `useShellStore.subscribe`（路径变化即重拉 `listSavedSessions`）。首页（Rust `user_sessions_list`）与侧边栏（`listSavedSessions` 按 workspace 过滤）数据源差异仍建议实机断点核对一次 |
 
 **门禁（本轮实测）**：vitest 176 文件 1742 passed / 4 skipped · `npm run build` ✓ · `npm run verify:convergence` exit 0 · `npx biome ci .` 0/0。
+
+---
+
+## 后续叠加（2026-08-26 联合体检施工，见 `composer-provider-audit.md`）
+
+创作坞/提供方联合体检（两份独立报告合并）发现 Stage-4 施工窗口未见的 20+ 项毛病，同日方案甲施工修完（三 commit：`efc74e7d` / `254ad008` / `36ad9ed5`，门禁全绿：vitest 180 文件 1762 / build / convergence / biome 0）。与本清单交集：
+
+- **P2-1 追加修复**：模型选择器打开不列全（预填 id bug）+ 未配置厂商可选（写错行 400）+ 无 Key 无预警——见上表已并入
+- **P2-2/P2-3 的状态根源**：联合体检发现创作坞显示与 Agent 实际使用可发散（假 per-session）——方案甲根治后，思考档位/权限控件的显示值才是真的
+- **本清单未覆盖的新修复**：↑↓ 历史导航、斜杠命令焦点回归 ×9 死链、后台卷运行态指示+停止、运行中插话提示、切卷本地态清理、设置页测试连接隐性提交、历史 legacy thinking 静默清空等——全量见 `composer-provider-audit.md` 修复落账节
+- **实机验收**：本清单 P0-P4 各项 + 体检验收七项，一并真机过
