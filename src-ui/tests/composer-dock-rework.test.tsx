@@ -130,6 +130,28 @@ describe('ComposerDock 返工 P2-2（思考档位 pill 下拉，DSH 移植）', 
     expect(getComposeStore('p22-open').getState().getPrefs('1')?.thinking).toBe('low');
     expect(container.querySelector('.pp-thinking-menu')).toBeNull();
   });
+
+  it('无目录声明模型：思考 pill 常驻（带「思考」字样），菜单只给自动/关闭安全兜底', async () => {
+    await mountDock('p22-fallback', container, (r) => {
+      root = r;
+    });
+    // 把会话模型换成目录外模型（无 thinkingEfforts 声明）——思考控件不应消失
+    getComposeStore('p22-fallback').getState().setModel('1', 'deepseek', 'custom-unknown-model');
+    await act(async () => {});
+    const pill = container.querySelector<HTMLButtonElement>('.pp-thinking-pill');
+    expect(pill).not.toBeNull(); // 常驻
+    expect(pill?.textContent).toContain('思考'); // 有「思考」字样可辨识
+    act(() => {
+      pill?.click();
+    });
+    await act(async () => {});
+    const opts = [...container.querySelectorAll<HTMLButtonElement>('.pp-thinking-opt')];
+    expect(opts.length).toBeGreaterThan(0);
+    // 只给「自动/关闭」——不编造命名档位（P14 不破，assertEffortDeclared 对 ''/off 不拦）
+    expect(opts.some((b) => b.textContent?.includes('自动'))).toBe(true);
+    expect(opts.some((b) => b.textContent?.includes('关闭'))).toBe(true);
+    expect(opts.some((b) => b.textContent?.includes('高'))).toBe(false);
+  });
 });
 
 describe('ComposerDock 运行中守卫（DSH 移植）', () => {

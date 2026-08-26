@@ -228,4 +228,32 @@ describe('ProviderPage — 暂存流程', () => {
     expect(mockSaveProviders).toHaveBeenCalledTimes(1);
     expect(document.querySelector('.pp-save-bar')).toBeNull();
   });
+
+  it('可用模型：输入添加（默认模型并入）+ 移除（写进暂存 settings.models）', async () => {
+    await render(makeSettings());
+    // chip 文本是目录人类名，id 在 title——用 title 断言
+    const chipIds = () => [...document.querySelectorAll<HTMLElement>('.pp-model-chip')].map((c) => c.title);
+
+    // 添加前：旧数据无 models → 自动视为 [默认模型]
+    expect(chipIds()).toContain('deepseek-v4-pro');
+
+    const addInput = document.querySelector<HTMLInputElement>('#pd-models-input')!;
+    await setInputValue(addInput, 'deepseek-reasoner');
+    await click(
+      [...document.querySelectorAll<HTMLButtonElement>('.pp-models-add button')].find((b) =>
+        b.textContent?.includes('添加'),
+      )!,
+    );
+
+    // 默认模型并入 + 新模型追加 → 两个 chip
+    expect(chipIds()).toContain('deepseek-reasoner');
+    expect(chipIds()).toContain('deepseek-v4-pro');
+
+    // 移除新加的
+    const x = [...document.querySelectorAll<HTMLButtonElement>('.pp-model-chip-x')].find((b) =>
+      b.title.includes('deepseek-reasoner'),
+    )!;
+    await click(x);
+    expect(chipIds()).not.toContain('deepseek-reasoner');
+  });
 });

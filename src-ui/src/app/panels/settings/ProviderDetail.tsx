@@ -5,10 +5,11 @@
 // 状态展示与测试结果均按 provider 独立，切换提供方不会串台。
 
 import type React from 'react';
+import { useCallback, useState } from 'react';
 import { getModel } from '../../../provider/catalog';
 import { type StoredThinking, thinkingOptionsFor } from '../../../provider/thinking';
 import type { ModelDescriptor, Protocol } from '../../../provider/types';
-import { type ConnectionProbe, isFactoryBaseUrl, type ProbeOutcome } from '../../../settings';
+import { type ConnectionProbe, effectiveModels, isFactoryBaseUrl, type ProbeOutcome } from '../../../settings';
 import { ModelSelector } from '../ModelSelector';
 import { protocolLabel } from './protocol';
 import { formatLatency, formatTestAt, providerStatus, STATUS_LABEL } from './status';
@@ -35,6 +36,8 @@ interface ProviderDetailProps {
     /** P14 用户覆盖：0/缺省 = 用目录值。 */
     contextWindow?: number;
     maxTokens?: number;
+    /** 该提供方「可用模型」id 列表（创作坞下拉的可选面；缺省 = [model]）。 */
+    models?: string[];
   };
   isCurrent: boolean;
   canDelete: boolean;
@@ -60,7 +63,12 @@ export interface KeyUiState {
 export interface ProviderDetailActions {
   onFieldChange: (field: ProviderField, value: string) => void;
   onModelChange: (modelId: string, desc?: ModelDescriptor) => void;
-  onRefreshModels: () => Promise<number>;
+  /** 从 API 拉取该提供方可用模型列表（写进暂存 settings.models）。 */
+  onFetchModels: () => Promise<number>;
+  /** 向「可用模型」列表添加一个模型 id（旧数据无 models 时先并入默认模型）。 */
+  onAddModel: (modelId: string) => void;
+  /** 从「可用模型」列表移除一个模型 id。 */
+  onRemoveModel: (modelId: string) => void;
   onTest: () => void;
   onSetCurrent: () => void;
   onClearKey: () => void;
@@ -74,7 +82,9 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
   const {
     onFieldChange,
     onModelChange,
-    onRefreshModels,
+    onFetchModels,
+    onAddModel,
+    onRemoveModel,
     onTest,
     onSetCurrent,
     onClearKey,
@@ -82,6 +92,30 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
     onToggleKeyVisible,
     onDelete,
   } = actions;
+  // ── 「可用模型」列表编辑器本地态（瞬时 UI，不持久化）──
+  const models = effectiveModels(provider);
+  const [newModel, setNewModel] = useState('');
+  const [fetching, setFetching] = useState(false);
+  const [fetchMsg, setFetchMsg] = useState('');
+  const handleFetch = useCallback(async () => {
+    if (fetching) return;
+    setFetching(true);
+    setFetchMsg('');
+    try {
+      const count = await onFetchModels();
+      setFetchMsg(count > 0 ? `已拉取 ${count} 个模型` : '未获取到模型');
+    } catch (e) {
+      setFetchMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFetching(false);
+    }
+  }, [fetching, onFetchModels]);
+  const submitAdd = useCallback(() => {
+    const id = newModel.trim();
+    if (!id) return;
+    onAddModel(id);
+    setNewModel('');
+  }, [newModel, onAddModel]);
   const st = providerStatus(provider);
   const statusCls = test.phase === 'testing' ? 'testing' : st;
   const statusLabel = test.phase === 'testing' ? '测试中…' : STATUS_LABEL[st];
@@ -201,9 +235,63 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
             value={provider.model}
             providerName={provider.name}
             kind={provider.kind}
-            onRefreshModels={onRefreshModels}
             onChange={onModelChange}
           />
+        </div>
+
+        {/* 可用模型：创作坞下拉的可选面（DSH routable 列表的前端配置形态）——
+            同一提供方可配多个模型，会话级在列表内切换 */}
+        <div className="pp-field">
+          <div className="pp-f-label-row">
+            <label className="pp-f-label" htmlFor="pd-models-input">
+              可用模型
+            </label>
+            <span className="pp-chip">{models.length} 个</span>
+            <button type="button" className="sp-btn-sm" disabled={fetching} onClick={handleFetch}>
+              {fetching ? '拉取中…' : '从 API 拉取'}
+            </button>
+          </div>
+          {models.length > 0 && (
+            <div className="pp-models-list">
+              {models.map((id) => (
+                <span key={id} className="pp-model-chip" title={id}>
+                  <span className="pp-model-chip-name">{getModel(id)?.name ?? id}</span>
+                  <button
+                    type="button"
+                    className="pp-model-chip-x"
+                    title={`移除 ${id}`}
+                    aria-label={`移除 ${id}`}
+                    onClick={() => onRemoveModel(id)}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="pp-models-add">
+            <input
+              id="pd-models-input"
+              className="sp-input"
+              value={newModel}
+              placeholder="输入模型 id 添加，如 deepseek-reasoner"
+              autoComplete="off"
+              onChange={(e) => setNewModel(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  submitAdd();
+                }
+              }}
+            />
+            <button type="button" className="sp-btn-sm" onClick={submitAdd}>
+              添加
+            </button>
+          </div>
+          {fetchMsg && <div className="pp-f-hint">{fetchMsg}</div>}
+          <div className="pp-f-hint">
+            创作坞模型下拉只列这里的模型；旧数据自动视为「默认模型」一个。从 API 拉取会替换整个列表。
+          </div>
         </div>
 
         <div className="pp-field">

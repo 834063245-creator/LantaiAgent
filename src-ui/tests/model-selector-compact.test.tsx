@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// ModelSelector compact（rework P2-1）：收起态 = 触发器（供应商/模型名+箭头），
-// 空查询列出全部已配置 provider 的目录模型并按 vendor 分组。
+// ModelSelector compact（rework P2-1 + 2026-08-26 数据源重构）：收起态 = 触发器
+// （厂商 monogram + 模型名 + 箭头）；选择面 = 各已配置 provider 的「可用模型」
+// （ProviderSettings.models，缺省回落 [model]）——配了哪些列哪些，不再倒静态目录。
 
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -228,6 +229,134 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
       current?.click();
     });
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('只列配置面：同 vendor 未配置的目录模型不出现（不再倒静态目录全集）', async () => {
+    // deepseek 只配 models:['deepseek-v4-pro']——目录里同家的 deepseek-v4-flash 不得出现
+    localStorage.setItem(
+      'hologram_settings',
+      JSON.stringify({
+        activeProvider: 'deepseek',
+        providers: [
+          {
+            kind: 'openai',
+            name: 'deepseek',
+            apiKey: '',
+            baseUrl: 'https://api.deepseek.com/v1',
+            model: 'deepseek-v4-pro',
+            models: ['deepseek-v4-pro'],
+          },
+        ],
+        projectPath: '.',
+        agent: {},
+        display: { language: 'zh', fontScale: 1 },
+      }),
+    );
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          compact: true,
+          value: 'deepseek-v4-pro',
+          providerName: 'deepseek',
+          kind: 'openai',
+          onChange: () => {},
+        }),
+      );
+    });
+    act(() => {
+      container!.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
+    });
+    await act(async () => {});
+    const ids = [...container!.querySelectorAll<HTMLButtonElement>('.ms-item')].map((b) => b.textContent ?? '');
+    expect(ids.some((t) => t.includes('deepseek-v4-pro'))).toBe(true);
+    expect(ids.some((t) => t.includes('deepseek-v4-flash'))).toBe(false); // 目录有、配置没有 → 不出现
+  });
+
+  it('同一 provider 配置多个模型：下拉全部列出（同 vendor 多模型）', async () => {
+    localStorage.setItem(
+      'hologram_settings',
+      JSON.stringify({
+        activeProvider: 'deepseek',
+        providers: [
+          {
+            kind: 'openai',
+            name: 'deepseek',
+            apiKey: '',
+            baseUrl: 'https://api.deepseek.com/v1',
+            model: 'deepseek-v4-pro',
+            models: ['deepseek-v4-pro', 'deepseek-v4-flash'],
+          },
+        ],
+        projectPath: '.',
+        agent: {},
+        display: { language: 'zh', fontScale: 1 },
+      }),
+    );
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          compact: true,
+          value: 'deepseek-v4-pro',
+          providerName: 'deepseek',
+          kind: 'openai',
+          onChange: () => {},
+        }),
+      );
+    });
+    act(() => {
+      container!.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
+    });
+    await act(async () => {});
+    const ids = [...container!.querySelectorAll<HTMLButtonElement>('.ms-item')].map((b) => b.textContent ?? '');
+    expect(ids.some((t) => t.includes('deepseek-v4-pro'))).toBe(true);
+    expect(ids.some((t) => t.includes('deepseek-v4-flash'))).toBe(true);
+    // 两个都在 deepseek 分组下（只有一家）
+    const heads = [...container!.querySelectorAll('.ms-group-head')].map((e) => e.textContent ?? '');
+    expect(heads.filter((h) => h.includes('deepseek')).length).toBe(1);
+  });
+
+  it('自定义 provider 复用目录模型 id：分组按 provider 名，不落目录厂商（防写错家）', async () => {
+    localStorage.setItem(
+      'hologram_settings',
+      JSON.stringify({
+        activeProvider: 'my-gateway',
+        providers: [
+          {
+            kind: 'openai',
+            name: 'my-gateway',
+            apiKey: '',
+            baseUrl: 'https://gw.example/v1',
+            model: 'deepseek-v4-pro',
+            models: ['deepseek-v4-pro'],
+          },
+        ],
+        projectPath: '.',
+        agent: {},
+        display: { language: 'zh', fontScale: 1 },
+      }),
+    );
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          compact: true,
+          value: 'deepseek-v4-pro',
+          providerName: 'my-gateway',
+          kind: 'openai',
+          onChange: () => {},
+        }),
+      );
+    });
+    act(() => {
+      container!.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
+    });
+    await act(async () => {});
+    // 分组头 = my-gateway（连接身份），目录厂商 deepseek 不出现
+    const heads = [...container!.querySelectorAll('.ms-group-head')].map((e) => e.textContent ?? '');
+    expect(heads.some((h) => h.includes('my-gateway'))).toBe(true);
+    expect(heads.some((h) => h.includes('deepseek'))).toBe(false);
+    // 行内人类名仍来自目录元数据
+    const items = [...container!.querySelectorAll<HTMLButtonElement>('.ms-item')].map((b) => b.textContent ?? '');
+    expect(items.some((t) => t.includes('DeepSeek V4 Pro'))).toBe(true);
   });
 
   it('非 compact（设置面板字段形态）保持平铺：无触发器、无分组头', () => {

@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { findModels, getDynamicFetchFailure, getModel, searchModels } from '../../provider/catalog';
 import { resolveApiKey } from '../../provider/credentials';
 import type { ModelDescriptor, Protocol } from '../../provider/types';
-import { loadSettings } from '../../settings';
+import { effectiveModels, loadSettings } from '../../settings';
 import { iconHtml } from '../../ui/icons';
 
 interface ModelSelectorProps {
@@ -19,10 +19,9 @@ interface ModelSelectorProps {
   providerName: string;
   /** Provider 类型 — 按匹配的 API 协议过滤目录。 */
   kind: Protocol;
-  /** 可选：从 provider 的 API 获取模型并合并到目录中。 */
-  onRefreshModels?: () => Promise<number>;
-  /** rework P2-1：紧凑触发器形态（创作坞底部用）——收起态 = 按钮（供应商/模型名 + 箭头），
-   *  空查询列出全部已配置 provider 的目录模型（跨 vendor 直接选）。缺省 = 设置页字段形态不变。 */
+  /** rework P2-1：紧凑触发器形态（创作坞底部用）——收起态 = 按钮（厂商 monogram +
+   *  人类模型名 + 箭头），空查询列出全部已配置 provider 的「可用模型」（配置面，
+   *  跨 vendor 直接选）。缺省 = 设置页字段形态不变。 */
   compact?: boolean;
   /** DSH 移植（2026-08-26）：运行中守卫——为 true 时打开被拦（DSH onAttemptOpen
    *  语义：流式中不允许切模型），回调 onBlocked 让宿主提示（创作坞挂 localNotice）。 */
@@ -35,12 +34,47 @@ function hasMetadata(m: ModelDescriptor): boolean {
   return m.cost.input > 0 || m.contextWindow > 0;
 }
 
+/** 各已配置 provider 的「可用模型」并集（创作坞可选面，DSH routable 列表语义）。
+ *  来源 = ProviderSettings.models（缺省回落 [model]，零迁移），不是静态目录全集——
+ *  用户配了哪些，下拉就列哪些。id 有目录元数据 → 用目录描述符（名字/协议等）；
+ *  目录外 id → 合成最小描述符。⚠️ vendor 一律用 provider 名（连接身份），不是目录
+ *  厂商名——自定义 provider（my-gateway）复用目录模型 id 时，分组与切换目标都对
+ *  准该 provider，不落到目录厂商（写错家 400 的同族病根）。 */
+function configuredModelDescriptors(): ModelDescriptor[] {
+  try {
+    const out: ModelDescriptor[] = [];
+    for (const p of loadSettings().providers) {
+      for (const id of effectiveModels(p)) {
+        const known = getModel(id);
+        if (known) {
+          out.push({ ...known, vendor: p.name });
+        } else {
+          out.push({
+            id,
+            name: id,
+            kind: p.kind,
+            vendor: p.name,
+            baseUrl: p.baseUrl || '',
+            reasoning: false,
+            input: ['text'] as ('text' | 'image')[],
+            cost: { input: 0, output: 0, cacheRead: 0 },
+            contextWindow: 0,
+            maxTokens: 0,
+          });
+        }
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 export function ModelSelector({
   value,
   onChange,
   providerName,
   kind,
-  onRefreshModels,
   compact,
   isStreaming,
   onBlocked,
@@ -48,48 +82,34 @@ export function ModelSelector({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
-  const [refreshMsg, setRefreshMsg] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   const results = useMemo(() => {
     if (!open) return [];
     const q = query.toLowerCase().trim();
-    // 已配置 provider 名集合——compact（创作坞）形态的选择面只列这些家的
-    // 模型（B2：搜索到未配置厂商时 providerNameForModel 兜底会把模型写进
-    // 当前 provider 行 → 请求 400 model_not_found）。读失败 = null（不过滤，
-    // 与旧行为一致——设置页形态不走此过滤）。
-    const configured = (() => {
-      try {
-        return new Set(loadSettings().providers.map((p) => p.name));
-      } catch {
-        return null;
-      }
-    })();
-    // 空查询：
-    //   - 字段形态（compact=false）= 只列本家 vendor（跨家选择走设置页切换 provider）；
-    //   - 紧凑形态（compact=true，创作坞）= 列出全部已配置 provider 的目录模型，
-    //     跨 vendor 直接在创作坞选（rework P2-1）。
-    // 有查询词 = 全目录搜索（含动态模型），再按协议过滤。
+    // 选择面：
+    //   - 紧凑形态（compact=true，创作坞）= 各已配置 provider 的「可用模型」列表
+    //     （ProviderSettings.models，缺省回落 [model]）并集——配了哪些列哪些，
+    //     跨 vendor 直接选（rework P2-1），协议不互拦（精选列表每项自带 kind）。
+    //   - 字段形态（compact=false，设置页）= 本家 vendor 目录（跨家走左侧切 provider）。
+    // 查询词：compact 在配置面内过滤；字段形态走全目录搜索。
     let base: ModelDescriptor[];
-    if (q) {
-      base = searchModels(q);
-    } else if (compact) {
-      base = [];
-      try {
-        for (const p of loadSettings().providers) {
-          base = base.concat(findModels(p.name));
-        }
-      } catch {
-        base = findModels(providerName);
+    if (compact) {
+      base = configuredModelDescriptors();
+      if (q) {
+        base = base.filter(
+          (m) =>
+            m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q) || m.vendor.toLowerCase().includes(q),
+        );
       }
+    } else if (q) {
+      base = searchModels(q);
     } else {
       base = findModels(providerName);
     }
     return base
-      .filter((m) => m.kind === kind)
-      .filter((m) => !compact || !configured || configured.has(m.vendor))
+      .filter((m) => compact || m.kind === kind)
       .sort((a, b) => a.id.localeCompare(b.id))
       .slice(0, 30);
   }, [open, query, kind, providerName, compact]);
@@ -156,22 +176,6 @@ export function ModelSelector({
   }, [open, compact, headerVendors]);
 
   const selectedDesc = useMemo(() => getModel(value), [value]);
-
-  const handleRefresh = useCallback(async () => {
-    if (!onRefreshModels || refreshing) return;
-    setRefreshing(true);
-    setRefreshMsg('');
-    try {
-      const count = await onRefreshModels();
-      setRefreshMsg(count > 0 ? `已发现 ${count} 个模型` : '未获取到新模型');
-    } catch (e) {
-      // 无 Key / 网络失败等真实原因透出，避免「未获取到新模型」误导
-      setRefreshMsg((e instanceof Error ? e.message || String(e) : String(e)) || '获取失败');
-    } finally {
-      setRefreshing(false);
-      setTimeout(() => setRefreshMsg(''), 3000);
-    }
-  }, [onRefreshModels, refreshing]);
 
   const close = useCallback(() => {
     setOpen(false);
@@ -326,21 +330,8 @@ export function ModelSelector({
               />
             )}
           </div>
-          {onRefreshModels && (
-            <button
-              type="button"
-              className={`ms-refresh-btn${refreshing ? ' spinning' : ''}`}
-              title="从 API 获取模型列表"
-              onClick={handleRefresh}
-              // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG，无外部输入
-              dangerouslySetInnerHTML={{
-                __html: iconHtml(refreshing ? 'loading' : 'refresh', 13),
-              }}
-            />
-          )}
         </div>
       )}
-      {refreshMsg && <div className="ms-refresh-msg">{refreshMsg}</div>}
       {open && results.length > 0 && (
         <div className="ms-dropdown" ref={listRef}>
           {displayRows.map((row) =>
@@ -371,7 +362,13 @@ export function ModelSelector({
       )}
       {open && results.length === 0 && (
         <div className="ms-dropdown ms-empty">
-          <span className="ms-empty-text">{query ? `无匹配模型「${query}」` : '目录为空，点击刷新从 API 获取'}</span>
+          <span className="ms-empty-text">
+            {query
+              ? `无匹配模型「${query}」`
+              : compact
+                ? '没有可用模型——去 设置 → Provider 添加'
+                : '目录为空，点击刷新从 API 获取'}
+          </span>
         </div>
       )}
       {selectedDesc && !open && !compact && (

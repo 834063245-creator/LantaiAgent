@@ -22,7 +22,7 @@ import { agentSessionState } from '../../agent/agent-session-state';
 import { composerSubmitOnKey } from '../../paper/ime';
 import { usePaperDock } from '../../paper/overlay-context';
 import { getModel } from '../../provider/catalog';
-import { type StoredThinking, thinkingOptionsFor } from '../../provider/thinking';
+import { type StoredThinking, type ThinkingMode, thinkingOptionsFor } from '../../provider/thinking';
 import { loadSettings, onSettingsSaved, type ProviderSettings } from '../../settings';
 import { type ComposeSessionPrefs, getComposeStore } from '../../state/compose-store';
 import {
@@ -93,6 +93,14 @@ const THINKING_DESC: Record<string, string> = {
   xhigh: '较深推理',
   max: '极限推理',
 };
+
+/** 无目录声明模型的思考控件安全兜底（DSH 语义：思考控制常驻）：只给「自动 /
+ *  关闭」两个协议安全档——assertEffortDeclared 对 ''/off 不拦，openai 关闭未声明
+ *  时降级不发参数、anthropic 不发 thinking 块，都不编造命名档位（P14 不破）。 */
+const THINKING_SAFE_FALLBACK: readonly { value: ThinkingMode; label: string }[] = [
+  { value: '', label: '自动（模型自定）' },
+  { value: 'off', label: '关闭' },
+];
 
 export const ComposerDock = memo(function ComposerDock() {
   const core = useCoreStore((s) => s.core);
@@ -251,7 +259,13 @@ export const ComposerDock = memo(function ComposerDock() {
   const provider: ProviderSettings | undefined = settings?.providers.find((p) => p.name === providerName);
   const providerKind = provider?.kind ?? 'openai';
   const modelDesc = useMemo(() => getModel(model), [model]);
-  const thinkingOptions = useMemo(() => thinkingOptionsFor(modelDesc), [modelDesc]);
+  const thinkingOptions = useMemo(() => {
+    const declared = thinkingOptionsFor(modelDesc);
+    // P14：有目录声明用声明档位表；无声明也给「自动/关闭」协议安全兜底——
+    // 思考按钮常驻（DSH 语义），不编造命名档位（''/off 在 assertEffortDeclared
+    // 不拦、协议层可安全表达，P14「不编造参数」不破）。
+    return declared.length > 0 ? declared : THINKING_SAFE_FALLBACK;
+  }, [modelDesc]);
   const currentThinking = prefs?.thinking;
 
   /* ── 权限（mode-store 工作区级单一真相）── */
@@ -417,7 +431,7 @@ export const ComposerDock = memo(function ComposerDock() {
                     <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5.76.76 1.23 1.52 1.41 2.5" />
                     {(currentThinking ?? '') === 'off' && <line x1="4" y1="4" x2="20" y2="20" strokeWidth="1.5" />}
                   </svg>
-                  <span className="pp-thinking-pill-label">{thinkingZhLabel(currentThinking)}</span>
+                  <span className="pp-thinking-pill-label">思考 · {thinkingZhLabel(currentThinking)}</span>
                   <span className="pp-thinking-pill-caret" aria-hidden="true">
                     ▾
                   </span>

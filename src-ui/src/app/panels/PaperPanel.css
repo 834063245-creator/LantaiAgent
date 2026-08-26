@@ -1478,12 +1478,25 @@
 .pp-composer-settings .ms-input-row {
   min-height: 24px;
 }
-/* 创作坞在窗口底部——模型下拉必须向上开，否则 280px 菜单落到屏幕外 */
+/* 创作坞在窗口底部——模型下拉必须向上开，否则 280px 菜单落到屏幕外；
+   2026-08-26 重构：下拉加宽（min-width 300）让模型名整行可见，不再截断 */
 .pp-composer-settings .ms-container .ms-dropdown {
   top: auto;
   bottom: calc(100% + 4px);
   max-height: 260px;
   z-index: 80;
+  right: 0;
+  min-width: 300px;
+}
+/* 模型名全宽显示：id 可换行兜底，name 不截断 */
+.pp-composer-settings .ms-item-name {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.35;
+}
+.pp-composer-settings .ms-item-id {
+  overflow-wrap: anywhere;
 }
 
 /* rework P2-1 + DSH 移植（2026-08-26）：紧凑触发器（收起态 = 厂商 monogram + 人类模型名 + 箭头） */

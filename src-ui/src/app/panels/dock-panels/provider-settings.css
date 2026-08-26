@@ -459,6 +459,53 @@
   line-height: 1.5;
 }
 
+/* ── 可用模型列表（创作坞下拉的可选面）── */
+.pp-models-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 6px;
+}
+.pp-model-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 2px 6px 2px 8px;
+  font-size: calc(10px * var(--font-scale));
+  color: var(--ink-2);
+  border: 1px solid var(--rule-soft);
+  background: var(--paper);
+}
+.pp-model-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+.pp-model-chip-x {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 0 2px;
+  line-height: 1;
+}
+.pp-model-chip-x:hover {
+  color: var(--ink-1);
+}
+.pp-models-add {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.pp-models-add .sp-input {
+  flex: 1;
+  min-width: 0;
+}
+
 /* ── 诊断（测试连接）── */
 .pp-test-row {
   display: flex;

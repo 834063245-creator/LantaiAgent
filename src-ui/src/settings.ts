@@ -39,12 +39,25 @@ export interface ProviderSettings {
   model: string;
   thinking?: StoredThinking; // 领域词 ThinkingPolicy；存储字段名保持 thinking（遗留名）
   lastTest?: ConnectionProbe; // 存储字段名保持 lastTest（遗留名）；领域词 ConnectionProbe
+  /** 该提供方「可用模型」id 列表——创作坞下拉的可选面（DSH routable 列表的
+   *  前端配置形态）。与 model（默认模型）解耦：同一提供方可挂多个模型，
+   *  会话级在列表内切换；缺省/空 = 视为 [model]（旧数据零迁移）。
+   *  从 API 拉取（fetchModels）会填充此列表（写进暂存，随保存落盘）。 */
+  models?: string[];
   /** 用户覆盖：上下文窗口（P14）——目录数据 stale 时无需发版即可纠正；
    *  0/缺省 = 用目录值。workspace._effectiveContextWindow 消费。 */
   contextWindow?: number;
   /** 用户覆盖：最大输出 token（P14）——目录数据 stale 时无需发版即可纠正；
    *  0/缺省 = 用目录值。createProvider → buildRequest → clampMaxTokens 消费。 */
   maxTokens?: number;
+}
+
+/** 解析某提供方的「可用模型」id 列表：显式 models 优先，缺省回落 [model]
+ *  （旧存档无 models 字段 = 只有一个默认模型，零迁移）。 */
+export function effectiveModels(p: ProviderSettings): string[] {
+  const list = Array.isArray(p.models) && p.models.length > 0 ? p.models.filter((m) => m?.trim()) : [];
+  if (list.length > 0) return list;
+  return p.model?.trim() ? [p.model.trim()] : [];
 }
 
 export interface AgentSettings {

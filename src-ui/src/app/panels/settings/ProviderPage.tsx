@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createProvider } from '../../../provider';
-import { mergeDynamicModels, recordDynamicFetchResult } from '../../../provider/catalog';
+import { recordDynamicFetchResult } from '../../../provider/catalog';
 import { ChunkType, type ModelDescriptor } from '../../../provider/types';
 import {
   type AppSettings,
@@ -129,18 +129,41 @@ export function ProviderPage({
     if (!p.apiKey?.trim()) throw new Error('请先填写 API Key');
     const prov = createProvider(p);
     // C5（2026-08-27）：手动刷新记目录失败面（compact 选择器分组头同步可见）；
-    // 失败上抛给 ModelSelector.handleRefresh 显示真实原因（fetchModels 不再把
-    // 网络失败伪装成「未获取到新模型」）。
+    // 失败上抛给调用方显示真实原因（fetchModels 不再把网络失败伪装成「无模型」）。
+    // 重构（2026-08-26）：拉取结果 = 该提供方「可用模型」列表（DSH /api/models 的
+    // host 报告语义）——写进暂存 settings，随保存落盘；创作坞下拉据此列项。
     try {
       const models = (await prov.fetchModels?.()) ?? [];
       recordDynamicFetchResult(p.name, true);
-      if (models.length > 0) mergeDynamicModels(p.name, models);
+      onCommitProvider(updateProvider(settings, p.name, { models: models.map((m) => m.id).filter(Boolean) }));
       return models.length;
     } catch (e) {
       recordDynamicFetchResult(p.name, false, e instanceof Error ? e.message : String(e));
       throw e;
     }
-  }, [selectedProvider]);
+  }, [selectedProvider, settings, onCommitProvider]);
+
+  const handleAddModel = useCallback(
+    (name: string, modelId: string) => {
+      const id = modelId.trim();
+      if (!id) return;
+      const p = settings.providers.find((x) => x.name === name);
+      const cur = Array.isArray(p?.models) ? (p?.models ?? []).filter((m) => m?.trim()) : [];
+      // 旧数据无 models：先把当前默认模型并入，再追加新模型——默认模型不消失
+      const seed = cur.length === 0 && p?.model?.trim() ? [p.model.trim()] : [];
+      const next = seed.concat(cur.includes(id) ? [] : [id]);
+      onCommitProvider(updateProvider(settings, name, { models: next }));
+    },
+    [settings, onCommitProvider],
+  );
+
+  const handleRemoveModel = useCallback(
+    (name: string, modelId: string) => {
+      const cur = settings.providers.find((p) => p.name === name)?.models ?? [];
+      onCommitProvider(updateProvider(settings, name, { models: cur.filter((m) => m !== modelId) }));
+    },
+    [settings, onCommitProvider],
+  );
 
   const handleTest = useCallback(async () => {
     const name = selectedProvider.name;
@@ -293,7 +316,9 @@ export function ProviderPage({
           actions={{
             onFieldChange: (field, value) => handleFieldChange(selectedProvider.name, field, value),
             onModelChange: (modelId, desc) => handleModelChange(selectedProvider.name, modelId, desc),
-            onRefreshModels: handleRefreshModels,
+            onFetchModels: handleRefreshModels,
+            onAddModel: (modelId) => handleAddModel(selectedProvider.name, modelId),
+            onRemoveModel: (modelId) => handleRemoveModel(selectedProvider.name, modelId),
             onTest: handleTest,
             onSetCurrent: handleSetCurrent,
             onClearKey: () => setClearTarget(selectedProvider.name),
