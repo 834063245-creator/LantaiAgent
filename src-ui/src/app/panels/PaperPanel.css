@@ -1548,6 +1548,22 @@
   color: var(--ink-3);
   font-size: 10px;
 }
+/* DSH 不可用状态（2026-08-26）：会话模型所属 provider 已不在配置里——warn 边框 + ⚠ */
+.pp-composer-settings .ms-trigger.ms-trigger-unavailable {
+  color: var(--warn);
+  border-color: color-mix(in oklch, var(--warn) 50%, var(--paper));
+}
+.pp-composer-settings .ms-trigger.ms-trigger-unavailable:hover {
+  color: var(--warn);
+  border-color: var(--warn);
+  background: color-mix(in oklch, var(--warn) 6%, var(--paper));
+}
+.pp-composer-settings .ms-trigger-unavail {
+  flex: 0 0 auto;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--warn);
+}
 
 /* rework P2-1：下拉供应商分组头（DSH ProviderGroupHeader 形态：图标 + 名字） */
 .pp-composer-settings .ms-dropdown .ms-group-head {

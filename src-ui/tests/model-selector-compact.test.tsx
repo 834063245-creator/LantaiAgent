@@ -359,6 +359,49 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
     expect(items.some((t) => t.includes('DeepSeek V4 Pro'))).toBe(true);
   });
 
+  it('DSH 不可用状态：会话模型所属 provider 已不在配置里 → 触发器 ⚠ + title 提示，仍可打开恢复', async () => {
+    // 配置里只有 deepseek；当前 providerName = 已移除的 'ghost'
+    localStorage.setItem(
+      'hologram_settings',
+      JSON.stringify({
+        activeProvider: 'deepseek',
+        providers: [
+          {
+            kind: 'openai',
+            name: 'deepseek',
+            apiKey: '',
+            baseUrl: 'https://api.deepseek.com/v1',
+            model: 'deepseek-v4-pro',
+          },
+        ],
+        projectPath: '.',
+        agent: {},
+        display: { language: 'zh', fontScale: 1 },
+      }),
+    );
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          compact: true,
+          value: 'ghost-model',
+          providerName: 'ghost',
+          kind: 'openai',
+          onChange: () => {},
+        }),
+      );
+    });
+    const trigger = container!.querySelector<HTMLButtonElement>('.ms-trigger');
+    expect(trigger?.classList.contains('ms-trigger-unavailable')).toBe(true);
+    expect(trigger?.title).toContain('不可用');
+    expect(trigger?.querySelector('.ms-trigger-unavail')).not.toBeNull();
+    // 仍可打开下拉（从有效配置里恢复）
+    act(() => {
+      trigger?.click();
+    });
+    await act(async () => {});
+    expect(container!.querySelector('.ms-dropdown')).not.toBeNull();
+  });
+
   it('非 compact（设置面板字段形态）保持平铺：无触发器、无分组头', () => {
     act(() => {
       root?.render(

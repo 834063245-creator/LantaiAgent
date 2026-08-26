@@ -177,6 +177,18 @@ export function ModelSelector({
 
   const selectedDesc = useMemo(() => getModel(value), [value]);
 
+  /* ── DSH 不可用状态（2026-08-26）：当前会话模型所属 provider 已不在配置里
+   *    （被删/改名）——触发器标「⚠ 不可用」，title 说明；仍可打开下拉选有效
+   *    配置恢复（选哪家就写哪家，不落回兜底写错家）。 ── */
+  const providerUnavailable = useMemo(() => {
+    if (!value) return false;
+    try {
+      return !loadSettings().providers.some((p) => p.name === providerName);
+    } catch {
+      return false;
+    }
+  }, [value, providerName]);
+
   const close = useCallback(() => {
     setOpen(false);
     setQuery('');
@@ -258,8 +270,12 @@ export function ModelSelector({
       {compact && !open ? (
         <button
           type="button"
-          className="ms-trigger"
-          title={`${providerName} · ${triggerLabel}（点击选择模型）`}
+          className={`ms-trigger${providerUnavailable ? ' ms-trigger-unavailable' : ''}`}
+          title={
+            providerUnavailable
+              ? `⚠ 提供方「${providerName}」不可用（已移除？）——从下拉选择可用模型`
+              : `${providerName} · ${triggerLabel}（点击选择模型）`
+          }
           aria-haspopup="listbox"
           aria-expanded={false}
           onClick={() => {
@@ -283,6 +299,11 @@ export function ModelSelector({
           {/* DSH ProviderIcon 的轻量替代：厂商 monogram（首字大写 seal chip） */}
           <ProviderMark vendor={providerName} className="ms-trigger-mark" />
           <span className="ms-trigger-name">{triggerLabel}</span>
+          {providerUnavailable && (
+            <span className="ms-trigger-unavail" aria-hidden="true">
+              ⚠
+            </span>
+          )}
           <span className="ms-trigger-caret" aria-hidden="true">
             ▾
           </span>
