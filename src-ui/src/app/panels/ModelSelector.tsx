@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { findModels, getModel, searchModels } from '../../provider/catalog';
+import { resolveApiKey } from '../../provider/credentials';
 import type { ModelDescriptor, Protocol } from '../../provider/types';
 import { loadSettings } from '../../settings';
 import { iconHtml } from '../../ui/icons';
@@ -41,6 +42,17 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
   const results = useMemo(() => {
     if (!open) return [];
     const q = query.toLowerCase().trim();
+    // 已配置 provider 名集合——compact（创作坞）形态的选择面只列这些家的
+    // 模型（B2：搜索到未配置厂商时 providerNameForModel 兜底会把模型写进
+    // 当前 provider 行 → 请求 400 model_not_found）。读失败 = null（不过滤，
+    // 与旧行为一致——设置页形态不走此过滤）。
+    const configured = (() => {
+      try {
+        return new Set(loadSettings().providers.map((p) => p.name));
+      } catch {
+        return null;
+      }
+    })();
     // 空查询：
     //   - 字段形态（compact=false）= 只列本家 vendor（跨家选择走设置页切换 provider）；
     //   - 紧凑形态（compact=true，创作坞）= 列出全部已配置 provider 的目录模型，
@@ -63,6 +75,7 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
     }
     return base
       .filter((m) => m.kind === kind)
+      .filter((m) => !compact || !configured || configured.has(m.vendor))
       .sort((a, b) => a.id.localeCompare(b.id))
       .slice(0, 30);
   }, [open, query, kind, providerName, compact]);
@@ -93,6 +106,30 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
     }
     return rows;
   }, [results, compact]);
+
+  /* ── B3（2026-08-27）：无 Key 厂商分组头标注——选中即全局切到无 Key 行，
+   *    下一条消息就 MISSING_CREDENTIAL，选择器必须给预警。resolveApiKey
+   *    有内存缓存（首个 promise 后零 IPC），Key 状态变化走写穿失效重解析。 ── */
+  const [noKeyVendors, setNoKeyVendors] = useState<Set<string>>(new Set());
+  const headerVendors = useMemo(
+    () => [...new Set(displayRows.filter((r) => r.type === 'header').map((r) => (r as { vendor: string }).vendor))],
+    [displayRows],
+  );
+  useEffect(() => {
+    if (!open || !compact || headerVendors.length === 0) return;
+    let alive = true;
+    void (async () => {
+      const next = new Set<string>();
+      for (const v of headerVendors) {
+        const key = await resolveApiKey(v);
+        if (alive && !key) next.add(v);
+      }
+      if (alive) setNoKeyVendors(next);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [open, compact, headerVendors]);
 
   const selectedDesc = useMemo(() => getModel(value), [value]);
 
@@ -182,14 +219,17 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
           aria-expanded={false}
           onClick={() => {
             setOpen(true);
-            setQuery(value);
+            // B1（2026-08-27）：打开置空 query——预填当前模型 id 会把 results
+            // 打进 searchModels(value) 分支，「空查询列全部已配置 provider」
+            // 的全表分支永不触发（P2-1 跨 vendor 直选没兑现的直接根因）。
+            setQuery('');
             setActiveIdx(0);
           }}
           onKeyDown={(e) => {
             if (e.key === 'ArrowDown') {
               e.preventDefault();
               setOpen(true);
-              setQuery(value);
+              setQuery('');
             }
           }}
         >
@@ -263,6 +303,7 @@ export function ModelSelector({ value, onChange, providerName, kind, onRefreshMo
             row.type === 'header' ? (
               <div key={`h-${row.vendor}`} className="ms-group-head">
                 {row.vendor}
+                {noKeyVendors.has(row.vendor) && <span className="ms-group-nokey">未配置 Key</span>}
               </div>
             ) : (
               <ModelRow

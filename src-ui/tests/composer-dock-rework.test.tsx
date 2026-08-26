@@ -23,6 +23,8 @@ function fakeCore(panelId: string): ChatCore {
     sendMessage: vi.fn(),
     abort: vi.fn(),
     openFilePicker: vi.fn(),
+    // B6（2026-08-27）：ComposerDock 挂载时注册输入框命令式接口
+    registerComposer: vi.fn(),
   } as unknown as ChatCore;
 }
 
@@ -42,8 +44,8 @@ async function mountDock(panelId: string, container: HTMLDivElement, onRoot: (r:
     sessionTokens: {},
     nextSessionId: 2,
   });
-  // 播种每会话偏好：deepseek-v4-pro + thinking=high
-  getComposeStore(panelId).getState().ensurePrefs('1');
+  // 播种会话覆盖：deepseek-v4-pro + thinking=high（方案甲：覆盖制——
+  // setThinking 自带「以当前生效配置为底落覆盖」，不再需要 ensurePrefs 预热）
   getComposeStore(panelId).getState().setThinking('1', 'high');
 
   let root: Root;

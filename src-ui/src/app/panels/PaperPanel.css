@@ -1219,8 +1219,13 @@
   cursor: pointer;
   font-family: var(--f-song);
 }
-.pp-slash-item:hover {
+.pp-slash-item:hover,
+.pp-slash-item.active {
   background: color-mix(in oklch, var(--indigo) 8%, var(--paper));
+}
+/* C3（2026-08-27）：键盘导航选中态——与 hover 同底色 + 左缘朱砂指示 */
+.pp-slash-item.active {
+  box-shadow: inset 2px 0 0 var(--seal);
 }
 .pp-slash-shortcut {
   font-family: var(--f-mono);
@@ -1230,6 +1235,29 @@
 .pp-slash-label {
   font-size: 13px;
   color: var(--ink-2);
+}
+
+/* ── B7（2026-08-27）：后台卷运行指示 + 停止 ── */
+.pp-bg-running {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-family: var(--f-mono);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.pp-bg-stop {
+  border: 1px solid var(--rule-soft);
+  background: none;
+  font-family: var(--f-song);
+  font-size: 11px;
+  color: var(--seal-deep);
+  padding: 1px 8px;
+  cursor: pointer;
+}
+.pp-bg-stop:hover {
+  background: color-mix(in oklch, var(--seal) 10%, var(--paper));
 }
 
 /* ── 抽纸条交互件（收尾批 II：B 浮钮 + A 幽灵预览）── */
@@ -1481,4 +1509,13 @@
   color: var(--ink-3);
   padding: 6px 12px 2px;
   text-transform: uppercase;
+}
+/* B3（2026-08-27）：无 Key 厂商标注——选中即 MISSING_CREDENTIAL 的预警 */
+.pp-composer-settings .ms-dropdown .ms-group-head .ms-group-nokey {
+  margin-left: 8px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--warn);
+  border: 1px solid color-mix(in oklch, var(--warn) 40%, var(--paper));
+  padding: 0 4px;
 }

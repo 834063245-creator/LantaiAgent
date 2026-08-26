@@ -72,6 +72,68 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
     expect(onChange).toHaveBeenCalled();
   });
 
+  it('B1：已选模型时打开 = 空查询全表（不再预填 id 把列表锁成 1 条）', async () => {
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          compact: true,
+          value: 'deepseek-v4-pro', // 已选模型——原 bug 路径：打开预填 value 进搜索框
+          providerName: 'deepseek',
+          kind: 'openai',
+          onChange: () => {},
+        }),
+      );
+    });
+    act(() => {
+      container!.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
+    });
+    await act(async () => {});
+    // 空查询 = 全部已配置 provider 的目录模型（多条，不是按 id 搜出的 1 条）
+    const items = container!.querySelectorAll('.ms-item');
+    expect(items.length).toBeGreaterThan(1);
+  });
+
+  it('B2：compact 只列已配置 provider 的模型（未配置厂商不出现）', async () => {
+    // 只配置 deepseek 一家（localStorage 种子）——目录里 openai 家模型不得出现
+    localStorage.setItem(
+      'hologram_settings',
+      JSON.stringify({
+        activeProvider: 'deepseek',
+        providers: [
+          {
+            kind: 'openai',
+            name: 'deepseek',
+            apiKey: '',
+            baseUrl: 'https://api.deepseek.com/v1',
+            model: 'deepseek-v4-pro',
+          },
+        ],
+        projectPath: '.',
+        agent: {},
+        display: { language: 'zh', fontScale: 1 },
+      }),
+    );
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          compact: true,
+          value: 'deepseek-v4-pro',
+          providerName: 'deepseek',
+          kind: 'openai',
+          onChange: () => {},
+        }),
+      );
+    });
+    act(() => {
+      container!.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
+    });
+    await act(async () => {});
+    const heads = [...container!.querySelectorAll('.ms-group-head')].map((e) => e.textContent ?? '');
+    // B3：无 Key 厂商分组头带「未配置 Key」标注（文本拼接），按前缀断言
+    expect(heads.some((h) => h.startsWith('deepseek'))).toBe(true);
+    expect(heads.some((h) => h.startsWith('openai'))).toBe(false); // 未配置厂商被过滤——杜绝写错行 400
+  });
+
   it('非 compact（设置面板字段形态）保持平铺：无触发器、无分组头', () => {
     act(() => {
       root?.render(

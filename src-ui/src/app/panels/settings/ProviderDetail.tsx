@@ -286,7 +286,7 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
             <select
               id="pd-thinking"
               className="sp-select"
-              value={thinkingModes.some((o) => o.value === (provider.thinking || '')) ? provider.thinking || '' : ''}
+              value={provider.thinking || ''}
               onChange={(e) => onFieldChange('thinking', e.target.value)}
             >
               {thinkingModes.map((o) => (
@@ -294,6 +294,12 @@ export function ProviderDetail({ provider, isCurrent, canDelete, test, keyState,
                   {o.label}
                 </option>
               ))}
+              {/* D4（2026-08-27）：遗留数字 thinking（如 "4000"）不在档位表内——
+                  原实现把它显示成「自动」，一旦 onChange 就静默写成 ''，历史预算
+                  无声丢失。现在给存量值加显式 option，改不改由用户定。 */}
+              {provider.thinking && !thinkingModes.some((o) => o.value === (provider.thinking || '')) && (
+                <option value={provider.thinking}>自定义 ({provider.thinking})</option>
+              )}
             </select>
             <div className="pp-f-hint">{thinkingHint}</div>
           </div>

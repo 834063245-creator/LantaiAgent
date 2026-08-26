@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { selectPreset } from '../../composition/preset-assembly';
 import { setLang } from '../../i18n';
 import { typedJsonRpc } from '../../rpc-contract';
-import type { AppSettings, ProviderId } from '../../settings';
+import type { AppSettings, ConnectionProbe, ProviderId } from '../../settings';
 import {
   autoUpdateCheckEnabled,
   graphEngineEnabled,
@@ -188,10 +188,27 @@ const SettingsPanelApp: React.FC<{
     setProviderDirty(true);
   }, []);
 
-  /** 立即落盘但不标 dirty——用于非配置类状态（如测试结果）。 */
-  const persistSettings = useCallback((next: AppSettings): void => {
-    setSettings(next);
-    saveSettings(next);
+  /** 立即落盘但不标 dirty——用于非配置类状态（如测试结果）。
+   *  B4（2026-08-27）：改为「读盘 → 只改 lastTest → 写回」最小面。原实现
+   *  直接落整份面板 state（saveSettings(next)），把所有未保存的
+   *  baseUrl/model/maxTokens 暂存改动一并隐性提交——用户点「取消」后改动
+   *  早已在盘上，「未保存的更改将丢失」的确认弹窗成了谎言。 */
+  const persistProbe = useCallback((name: string, probe: ConnectionProbe): void => {
+    // 面板态：只更新该 provider 的 lastTest 展示（不触碰其他暂存字段）
+    setSettings((s) => ({
+      ...s,
+      providers: s.providers.map((p) => (p.name === name ? { ...p, lastTest: probe } : p)),
+    }));
+    // 磁盘：读盘-改探针-写回，暂存中的配置改动不随探针落盘
+    try {
+      const disk = loadSettings();
+      saveSettings({
+        ...disk,
+        providers: disk.providers.map((p) => (p.name === name ? { ...p, lastTest: probe } : p)),
+      });
+    } catch (e) {
+      console.warn('[settings] 测试结果落盘失败（仅面板内展示）:', e);
+    }
   }, []);
 
   const stageDelete = useCallback(
@@ -348,7 +365,7 @@ const SettingsPanelApp: React.FC<{
             <ProviderPage
               settings={settings}
               onCommitProvider={commitProvider}
-              onPersistSettings={persistSettings}
+              onPersistProbe={persistProbe}
               onStageDelete={stageDelete}
               onStageClear={stageClear}
               onUnstageClear={unstageClear}

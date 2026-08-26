@@ -23,7 +23,7 @@ import { composerSubmitOnKey } from '../../paper/ime';
 import { usePaperDock } from '../../paper/overlay-context';
 import { getModel } from '../../provider/catalog';
 import { type StoredThinking, thinkingOptionsFor } from '../../provider/thinking';
-import { loadSettings, type ProviderSettings } from '../../settings';
+import { loadSettings, onSettingsSaved, type ProviderSettings } from '../../settings';
 import { type ComposeSessionPrefs, getComposeStore } from '../../state/compose-store';
 import {
   MODE_DESCRIPTIONS,
@@ -47,6 +47,22 @@ function providerNameForModel(desc: { vendor: string } | undefined, fallback: st
   } catch {
     return fallback;
   }
+}
+
+/** B5（2026-08-27）：输入历史导航纯函数——↑ 回退 / ↓ 前进。
+ *  idx = -1 = 不在历史浏览（live 草稿）；history 按旧→新排列（尾部 = 最近）。
+ *  返回 entry.idx = 新的浏览下标，entry = null 表示该方向无路可走
+ *  （最新端再 ↓ = 越出，调用方恢复草稿；空历史/最老端 ↑ 不动）。 */
+export function navigateHistory(
+  history: readonly string[],
+  idx: number,
+  dir: -1 | 1,
+): { entry: { idx: number; text: string } | null } {
+  if (history.length === 0) return { entry: null };
+  const cur = idx >= 0 ? idx : history.length; // -1（live）视同「在最新一条之外」
+  const next = cur + dir;
+  if (next < 0 || next >= history.length) return { entry: null };
+  return { entry: { idx: next, text: history[next] } };
 }
 
 /** rework P2-2：思考档位纯中文展示词（创作坞内不再中英混排）。 */
@@ -122,6 +138,32 @@ export const ComposerDock = memo(function ComposerDock() {
     [core],
   );
 
+  /* ── B6（2026-08-27）：注册输入框命令式接口——接活 chat-core 的
+   *    _composer 死链（此前 registerComposer 全工程无调用方，9 处
+   *    focus/selectEnd 全部空转，含斜杠 fill 后焦点回归、exec 停止后
+   *    焦点回归路径）。卸载时注销。 ── */
+  useEffect(() => {
+    if (!core) return;
+    core.registerComposer({
+      focus: () => composerRef.current?.focus(),
+      selectEnd: () => {
+        const el = composerRef.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      },
+    });
+    return () => core.registerComposer({ focus: () => {}, selectEnd: () => {} });
+  }, [core]);
+
+  /* ── C2（2026-08-27）：切卷清理本地态——localNotice 与思考展开面板
+   *    不跨会话残留（A 卷的提示/展开状态带到 B 卷是认知噪音）。 ── */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activeSessionId 是刻意的「切卷触发器」——正是要响应它变化清本地态
+  useEffect(() => {
+    setLocalNotice(null);
+    setSettingsOpen(false);
+  }, [activeSessionId]);
+
   const autoGrow = useCallback(() => {
     const el = composerRef.current;
     if (!el) return;
@@ -134,23 +176,39 @@ export const ComposerDock = memo(function ComposerDock() {
     autoGrow();
   }, [inputText, autoGrow]);
 
-  /* ── 运行态（停止按钮）── */
+  /* ── 运行态（停止按钮 + 后台卷运行指示，B7 运行态感知 2026-08-27）── */
   const [running, setRunning] = useState(false);
+  /** 后台运行中的会话（不含活跃卷）：显示「后台 N 卷运行中 + 停止」。 */
+  const [bgRunning, setBgRunning] = useState<Array<{ id: number; label: string }>>([]);
   useEffect(() => {
     if (!core || activeSidNum == null) {
       setRunning(false);
+      setBgRunning([]);
       return;
     }
-    const exec = agentSessionState.getExec(core.panelId, activeSidNum);
-    if (!exec) {
-      setRunning(false);
-      return;
-    }
-    setRunning(exec.isRunning);
-    return exec.onChange(() => setRunning(exec.isRunning));
+    const syncAll = () => {
+      let activeRun = false;
+      const bg: Array<{ id: number; label: string }> = [];
+      const sess = getChatStore(core.panelId).sess.getState().sessions;
+      for (const s of sess) {
+        const exec = agentSessionState.getExec(core.panelId, s.id);
+        if (!exec?.isRunning) continue;
+        if (s.id === activeSidNum) activeRun = true;
+        else bg.push({ id: s.id, label: s.label || `案卷 ${s.id}` });
+      }
+      setRunning(activeRun);
+      setBgRunning(bg);
+    };
+    syncAll();
+    // 订阅全部会话的 exec（不只活跃卷）——任何一卷起停都重算运行态
+    const sess = getChatStore(core.panelId).sess.getState().sessions;
+    const unsubs = sess.map((s) => agentSessionState.getExec(core.panelId, s.id)?.onChange(syncAll) ?? null);
+    return () => {
+      for (const u of unsubs) u?.();
+    };
   }, [core, activeSidNum]);
 
-  /* ── 会话状态对象（compose-store：模型/思考，缺失惰性快照）── */
+  /* ── 会话生效配置（方案甲：覆盖 ?? 全局默认，实时解析）── */
   const [prefs, setPrefs] = useState<ComposeSessionPrefs | undefined>(undefined);
   useEffect(() => {
     if (!core || activeSessionId == null) {
@@ -158,26 +216,26 @@ export const ComposerDock = memo(function ComposerDock() {
       return;
     }
     const compose = getComposeStore(core.panelId);
-    const sync = () => setPrefs(compose.getState().sessions[activeSessionId]);
+    const sync = () => setPrefs(compose.getState().resolveEffective(activeSessionId));
     sync();
     return compose.subscribe(sync);
-  }, [core, activeSessionId]);
-  useEffect(() => {
-    if (!core || activeSessionId == null) return;
-    getComposeStore(core.panelId).getState().ensurePrefs(activeSessionId);
   }, [core, activeSessionId]);
 
   const providerName = prefs?.providerName ?? '';
   const model = prefs?.model ?? '';
-  // 直接每渲染读 settings（ComposerDock 已 memo，且不随平移重渲——成本可忽略；
-  // 用 useMemo 反而要管理「会话偏好变化时重读」的依赖）
-  const settings = (() => {
+  // C4（2026-08-27）：显示读 settings 走「初值 + onSettingsSaved 订阅」，
+  // 不再每渲染全量 loadSettings()（打字热路径上的 localStorage JSON.parse）
+  const [settingsTick, setSettingsTick] = useState(0);
+  useEffect(() => onSettingsSaved(() => setSettingsTick((n) => n + 1)), []);
+  const settingsVersion = settingsTick + providerName.length; // 触发器合成：保存代数 + 覆盖换向
+  // biome-ignore lint/correctness/useExhaustiveDependencies: settingsVersion 是刻意的重读触发器（保存事件/覆盖切换 provider），非响应值
+  const settings = useMemo(() => {
     try {
       return loadSettings();
     } catch {
       return null;
     }
-  })();
+  }, [settingsVersion]);
   const provider: ProviderSettings | undefined = settings?.providers.find((p) => p.name === providerName);
   const providerKind = provider?.kind ?? 'openai';
   const modelDesc = useMemo(() => getModel(model), [model]);
@@ -220,6 +278,13 @@ export const ComposerDock = memo(function ComposerDock() {
       .getAll()
       .filter((c) => c.shortcut.toLowerCase().includes(q) || c.label.toLowerCase().includes(q));
   }, [slashQuery]);
+  /* ── C3（2026-08-27）：斜杠面板键盘导航（↑↓ 选、Enter 执行、Esc 关）。 ── */
+  const [slashIdx, setSlashIdx] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: slashQuery 是刻意的「查询词变化」触发器——正是要响应它复位高亮
+  useEffect(() => {
+    setSlashIdx(0); // 查询词变化 → 高亮复位首项
+  }, [slashQuery]);
+  const slashActive = slashCommands.length > 0;
 
   /* ── 附件 ── */
   const onAttach = useCallback(() => {
@@ -321,6 +386,24 @@ export const ComposerDock = memo(function ComposerDock() {
           </>
         )}
         <div className="pp-composer-settings-spacer" />
+        {/* B7（2026-08-27）：后台卷运行指示 + 停止——此前任一后台会话在跑就
+            全局阻断发送（chat-core），但创作坞无任何指示、无从停止。 */}
+        {bgRunning.length > 0 && (
+          <span className="pp-bg-running" title={bgRunning.map((s) => s.label).join('、')}>
+            ⟳ 后台 {bgRunning.length} 卷运行中
+            <button
+              type="button"
+              className="pp-bg-stop"
+              title={`停止后台卷：${bgRunning.map((s) => s.label).join('、')}`}
+              onClick={() => {
+                if (!core) return;
+                for (const s of bgRunning) agentSessionState.removeExec(core.panelId, s.id);
+              }}
+            >
+              停止
+            </button>
+          </span>
+        )}
       </div>
 
       {/* 思考档位展开区（stage-4 §8：思考进展开；rework P2-2：分段控件 + 纯中文） */}
@@ -356,8 +439,14 @@ export const ComposerDock = memo(function ComposerDock() {
       <div className="pp-composer-row">
         {slashCommands.length > 0 && (
           <div className="pp-slash">
-            {slashCommands.map((c) => (
-              <button key={c.id} type="button" className="pp-slash-item" onClick={() => core?.executeCommand(c)}>
+            {slashCommands.map((c, i) => (
+              <button
+                key={c.id}
+                type="button"
+                className={`pp-slash-item${i === slashIdx ? ' active' : ''}`}
+                onMouseEnter={() => setSlashIdx(i)}
+                onClick={() => core?.executeCommand(c)}
+              >
                 <span className="pp-slash-shortcut">{c.shortcut}</span>
                 <span className="pp-slash-label">{c.label}</span>
               </button>
@@ -395,15 +484,49 @@ export const ComposerDock = memo(function ComposerDock() {
           value={inputText}
           placeholder={
             activeSession
-              ? '拟文…（Enter 发送 · Shift+Enter 换行 · ↑ 取历史；拖住任意块可移出钉住；拖流区边缘可移动流区）'
+              ? '拟文…（Enter 发送 · Shift+Enter 换行 · ↑↓ 取历史；拖住任意块可移出钉住；拖流区边缘可移动流区）'
               : '先在侧边栏另起一卷，再在此拟文'
           }
           onChange={(e) => {
             setInputText(e.target.value);
+            // 手输 = 退出历史浏览（浏览下标复位；草稿槽保留到下次进入时覆写）
+            if (core) {
+              const input = getChatStore(core.panelId).input.getState();
+              if (input.inputHistoryIdx !== -1) input.setInputHistoryIdx(-1);
+            }
           }}
           onFocus={onComposerFocus}
           onBlur={onComposerBlur}
           onKeyDown={(e) => {
+            /* ── C3：斜杠面板键盘导航优先（↑↓ 选 / Enter 执行 / Esc 关） ── */
+            if (slashActive && !e.nativeEvent.isComposing) {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setSlashIdx((i) => Math.min(i + 1, slashCommands.length - 1));
+                return;
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setSlashIdx((i) => Math.max(i - 1, 0));
+                return;
+              }
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                core?.executeCommand(slashCommands[slashIdx]);
+                return;
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                // 关 = 保留已输入查询词，去掉行首斜杠触发词即散面板
+                const live = core ? getChatStore(core.panelId).input.getState() : null;
+                if (live) {
+                  const v = live.inputText;
+                  const last = v.lastIndexOf('/');
+                  if (last >= 0) setInputText(v.slice(0, last) + v.slice(last + 1));
+                }
+                return;
+              }
+            }
             if (composerSubmitOnKey(e.key, e.nativeEvent.isComposing)) {
               e.preventDefault();
               onSend();
@@ -412,12 +535,35 @@ export const ComposerDock = memo(function ComposerDock() {
             if (e.key === 'ArrowUp' && !e.nativeEvent.isComposing) {
               const el = e.currentTarget;
               const atFirstLine = el.selectionStart === 0 || !el.value.includes('\n');
-              const history = core ? getChatStore(core.panelId).input.getState().inputHistory : [];
-              if (atFirstLine && history.length > 0) {
+              if (atFirstLine && core) {
+                const input = getChatStore(core.panelId).input.getState();
+                const { entry } = navigateHistory(input.inputHistory, input.inputHistoryIdx, -1);
+                if (entry !== null) {
+                  e.preventDefault();
+                  // 进入历史时保存当前草稿（draftText 槽），越过后恢复
+                  if (input.inputHistoryIdx === -1) input.setDraftText(input.inputText);
+                  input.setInputHistoryIdx(entry.idx);
+                  setInputText(entry.text);
+                  requestAnimationFrame(() => el.setSelectionRange(entry.text.length, entry.text.length));
+                }
+              }
+            } else if (e.key === 'ArrowDown' && !e.nativeEvent.isComposing) {
+              const el = e.currentTarget;
+              // 多行输入中间行按 ↓ 是移光标——只有已在历史浏览（idx≥0）时才消费
+              const input = core ? getChatStore(core.panelId).input.getState() : null;
+              if (input && input.inputHistoryIdx >= 0) {
                 e.preventDefault();
-                const next = history[history.length - 1] ?? '';
-                setInputText(next);
-                requestAnimationFrame(() => el.setSelectionRange(next.length, next.length));
+                const { entry } = navigateHistory(input.inputHistory, input.inputHistoryIdx, +1);
+                if (entry !== null) {
+                  input.setInputHistoryIdx(entry.idx);
+                  setInputText(entry.text);
+                  requestAnimationFrame(() => el.setSelectionRange(entry.text.length, entry.text.length));
+                } else {
+                  // 越过最新一条 → 退出历史浏览，恢复进入时的草稿
+                  input.setInputHistoryIdx(-1);
+                  setInputText(input.draftText);
+                  requestAnimationFrame(() => el.setSelectionRange(input.draftText.length, input.draftText.length));
+                }
               }
             }
           }}

@@ -187,6 +187,11 @@ export function loadSettings(): AppSettings {
             }
           }
         }
+        // D1：providers 空数组 = 腐坏存储——回落出厂 provider 表（否则
+        // getActiveProvider 兜底链每天都在边缘行走）
+        if (!Array.isArray(parsed?.providers) || parsed.providers.length === 0) {
+          parsed.providers = DEFAULTS.providers;
+        }
         return { ...DEFAULTS, ...parsed };
       }
     }
@@ -341,7 +346,10 @@ export async function loadSettingsWithSecrets(): Promise<AppSettings> {
 
 export function getActiveProvider(s: AppSettings): ProviderSettings {
   const active = s.providers.find((p) => p.name === s.activeProvider);
-  return active || s.providers[0];
+  // D1（2026-08-27）：providers 空表兜底——localStorage 腐坏（providers:[] 覆盖
+  // DEFAULTS）时此处曾返回 undefined，消费点（_buildProvider 等）拿 .name 直接
+  // TypeError。回落出厂首行，宁可指向可修复的默认也不崩。
+  return active ?? s.providers[0] ?? DEFAULTS.providers[0];
 }
 
 export function updateProvider(s: AppSettings, name: string, patch: Partial<ProviderSettings>): AppSettings {

@@ -31,8 +31,8 @@ interface ProviderPageProps {
   settings: AppSettings;
   /** Provider 变更只进 state 并标 providerDirty（与全局保存互不牵连） */
   onCommitProvider: (next: AppSettings) => void;
-  /** 立即落盘但不标 dirty（如测试结果，非配置变更） */
-  onPersistSettings: (next: AppSettings) => void;
+  /** 立即落盘测试探针但不标 dirty（B4 2026-08-27：读盘-改 lastTest-写回，最小落盘面） */
+  onPersistProbe: (name: string, probe: ConnectionProbe) => void;
   /** 暂存「删除 Provider」——保存时才删系统凭据，取消不丢 Key */
   onStageDelete: (name: string) => void;
   /** 暂存「清除 Key」——保存时才删系统凭据 */
@@ -49,7 +49,7 @@ interface ProviderPageProps {
 export function ProviderPage({
   settings,
   onCommitProvider,
-  onPersistSettings,
+  onPersistProbe,
   onStageDelete,
   onStageClear,
   onUnstageClear,
@@ -67,10 +67,6 @@ export function ProviderPage({
   const [clearTarget, setClearTarget] = useState<ProviderId | null>(null);
   const [focusNonce, setFocusNonce] = useState(0);
   const keyInputRef = useRef<HTMLInputElement | null>(null);
-
-  // 异步回调（测试连接）完成时读取最新 settings，避免覆盖并发编辑
-  const settingsRef = useRef(settings);
-  settingsRef.current = settings;
 
   const activeProvider = getActiveProvider(settings);
   const selectedProvider = settings.providers.find((p) => p.name === selected) ?? activeProvider;
@@ -170,18 +166,20 @@ export function ProviderPage({
       const latencyMs = Math.round(performance.now() - started);
       const msg = received ? formatLatency(latencyMs) : '连接成功（无文本返回，请检查模型行为）';
       const result: ConnectionProbe = { status: 'ok', latencyMs, at: Date.now(), message: msg };
-      onPersistSettings(updateProvider(settingsRef.current, name, { lastTest: result }));
+      // B4：探针走最小落盘面（onPersistProbe 读盘-改 lastTest-写回），
+      // 不再 onPersistSettings(updateProvider(settingsRef.current,...)) 全量提交暂存改动
+      onPersistProbe(name, result);
       setTests((t) => new Map(t).set(name, { phase: 'ok', msg }));
     } catch (e) {
       const latencyMs = Math.round(performance.now() - started);
       const msg = e instanceof Error ? e.message || String(e) : String(e);
       const result: ConnectionProbe = { status: 'fail', latencyMs, at: Date.now(), message: msg };
-      onPersistSettings(updateProvider(settingsRef.current, name, { lastTest: result }));
+      onPersistProbe(name, result);
       setTests((t) => new Map(t).set(name, { phase: 'fail', msg }));
     } finally {
       clearTimeout(timer);
     }
-  }, [selectedProvider, onPersistSettings]);
+  }, [selectedProvider, onPersistProbe]);
 
   const handleSetCurrent = useCallback(() => {
     onCommitProvider({ ...settings, activeProvider: selectedProvider.name });
