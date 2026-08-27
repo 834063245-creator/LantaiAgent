@@ -33,8 +33,6 @@ interface PanelStore {
   lastAgentState: AgentState;
   lastUsageText: string;
   lastAgentDiag: string;
-  userFocusFile: string | null;
-  userFocusNode: { name: string; location?: string } | null;
   historyOpen: boolean;
   toolFilter: string;
   contextFilter: string;
@@ -57,8 +55,6 @@ interface PanelStore {
   setLastAgentState: (state: AgentState) => void;
   setLastUsageText: (s: string) => void;
   setLastAgentDiag: (s: string) => void;
-  setUserFocusFile: (file: string | null) => void;
-  setUserFocusNode: (node: { name: string; location?: string } | null) => void;
   setHistoryOpen: (open: boolean) => void;
   setToolFilter: (filter: string) => void;
   setContextFilter: (filter: string) => void;
@@ -80,8 +76,6 @@ function createPanelStoreImpl() {
     lastAgentState: 'idle' as AgentState,
     lastUsageText: '',
     lastAgentDiag: '',
-    userFocusFile: null,
-    userFocusNode: null,
     historyOpen: false,
     toolFilter: '',
     contextFilter: '',
@@ -108,8 +102,6 @@ function createPanelStoreImpl() {
     setLastAgentState: (lastAgentState) => set({ lastAgentState }),
     setLastUsageText: (lastUsageText) => set({ lastUsageText }),
     setLastAgentDiag: (lastAgentDiag) => set({ lastAgentDiag }),
-    setUserFocusFile: (userFocusFile) => set({ userFocusFile }),
-    setUserFocusNode: (userFocusNode) => set({ userFocusNode }),
     setHistoryOpen: (historyOpen) => set({ historyOpen }),
     setToolFilter: (toolFilter) => set({ toolFilter }),
     setContextFilter: (contextFilter) => set({ contextFilter }),

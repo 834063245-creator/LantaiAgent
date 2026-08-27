@@ -41,7 +41,6 @@
 
 ✅ app 级单例（一个应用只有一份）：
    app/shell-store.ts（chrome 状态）、state/dock-store.ts（面板开合/简报）、
-   state/overlay-store.ts（portal 宿主）
 
 ✅ 组件内部瞬态 UI 状态（菜单开合、输入焦点等）用 useState；跨组件共享的业务状态进 store
 
@@ -262,7 +261,7 @@ preset realm + 热重载 + 消费闭环（S4，2026-08-20 起生效）：
 ✅ memo 会阻止必要重渲染（对象引用不变但内部被 mutate）时不用 memo，并加 // ponytail: 注释
 
 DOM 所有权按层划分，不要跨层抢 DOM：
-✅ app/ 的 UI 经 React 渲染；portal 目标由 state/overlay-store 管理
+✅ app/ 的 UI 经 React 渲染
 ✅ 星图 scene/overlay（scene/graph*.ts）、Monaco 宿主（ui/file-viewer.tsx）、
    file-translator wrapper 是现有 imperative-DOM 所有者；修改它们沿用其内部模式
 ❌ 新的 React UI 组件不要 document.createElement / appendChild / innerHTML 自建游离 DOM

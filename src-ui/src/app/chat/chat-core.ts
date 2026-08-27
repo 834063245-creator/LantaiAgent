@@ -23,10 +23,8 @@ import type { ToolSchema } from '../../provider/types';
 import type { StarGraph } from '../../scene/graph-types';
 import { askSessionOf, useAskStore } from '../../state/ask-store';
 import { getCanvasStore, loadCanvasFromDisk, saveCanvasToDisk } from '../../state/canvas-store';
-import { useChatContextStore } from '../../state/chat-context-store';
 import { useDockStore } from '../../state/dock-store';
 import { broadcastGoalRecord, useGoalStore } from '../../state/goal-store';
-import { useSceneSignalStore } from '../../state/scene-signal-store';
 import { bumpTurnDone } from '../../state/turn-done-store';
 import { useWorkspaceSwitchStore } from '../../state/workspace-switch-store';
 import { useAgentPanelStore } from '../../ui/agent-panel-store';
@@ -155,33 +153,9 @@ export class ChatCore {
       if (s.seq !== prev.seq) this._consumePendingAsk();
     });
     this._consumePendingAsk(); // 回放在途 pending（chat-core 重建场景）
-    // ── 追踪用户焦点 — 文件查看器 / 图谱选择 ──
-    // P1 总线归零：highlight:file / navigate:file 两事件消费端行为一致，
-    // 合并为 state/chat-context-store 单信号
-    useChatContextStore.subscribe((s, prev) => {
-      if (s.focusFileTick !== prev.focusFileTick) {
-        const panel = getChatStore(this.panelId).panel.getState();
-        panel.setUserFocusFile(s.focusFile);
-        panel.setUserFocusNode(null);
-      }
-    });
-    // P1 总线归零：graph:node-clicked → state/scene-signal-store（用户焦点节点）
-    useSceneSignalStore.subscribe((s, prev) => {
-      if (s.nodeClickedTick !== prev.nodeClickedTick && s.nodeClicked) {
-        const panel = getChatStore(this.panelId).panel.getState();
-        panel.setUserFocusNode({
-          name: s.nodeClicked.nodeName,
-          location: s.nodeClicked.location || undefined,
-        });
-        panel.setUserFocusFile(null);
-      }
-    });
-    // 每次完整渲染后将可见节点名喂给 @ 自动补全（P1 总线归零：graph:rendered → scene 信号）
-    useSceneSignalStore.subscribe((s, prev) => {
-      if (s.renderedTick !== prev.renderedTick && this.starGraph) {
-        this._atAutocomplete?.setNodeNames(this.starGraph.getNodeNames());
-      }
-    });
+    // ── 追踪用户焦点已拆除（2026-08-27 死码清扫）：发射点随星图 V5 拆除 /
+    // app-shell 死亡而消失——chat-context-store / scene-signal-store 整链删除，
+    // @ 自动补全节点名喂给逻辑一并退役（P2 起 starGraph 恒缺席）。
     // P1 总线归零：agent:diag → agent-panel-store.diag（workspace 直写，此处订阅转写）
     useAgentPanelStore.subscribe((s, prev) => {
       if (s.diag !== prev.diag && s.diag !== null) {
@@ -350,13 +324,7 @@ export class ChatCore {
   }
   setProjectPath(p: string): void {
     // projectPath 单一权威 = shell-store（2026-08-04 状态治理收口）。
-    // 项目变更时清除用户焦点 — 过期的引用会误导 Agent。
     const shell = useShellStore.getState();
-    if (p && p !== shell.projectPath) {
-      const panel = getChatStore(this.panelId).panel.getState();
-      panel.setUserFocusFile(null);
-      panel.setUserFocusNode(null);
-    }
     shell.setProjectPath(p);
   }
 
@@ -1143,22 +1111,9 @@ export class ChatCore {
     const filesSnapshot = [...files];
     this.appendUserBubble(text, filesSnapshot);
 
-    // 构建焦点上下文前缀 — 告诉 Agent 用户正在查看什么。
-    // 每次发送消费一次后清除，防止过期焦点泄漏到后续轮次。
+    // 焦点上下文前缀已随星图/文件查看器焦点链拆除（2026-08-27 死码清扫）——
+    // 仅保留附加文件上下文。
     let focusPrefix = '';
-    const focusNode = getChatStore(this.panelId).panel.getState().userFocusNode;
-    const focusFile = getChatStore(this.panelId).panel.getState().userFocusFile;
-    if (focusNode) {
-      focusPrefix = `[用户当前选中了图中的节点 "${focusNode.name}"`;
-      if (focusNode.location) {
-        focusPrefix += ` (位于 ${focusNode.location})`;
-      }
-      focusPrefix += ']\n\n';
-      getChatStore(this.panelId).panel.getState().setUserFocusNode(null);
-    } else if (focusFile) {
-      focusPrefix = `[用户当前正在查看文件 "${focusFile}"]\n\n`;
-      getChatStore(this.panelId).panel.getState().setUserFocusFile(null);
-    }
 
     // 附加文件 — 暴露路径以便 Agent 读取（大小不做假：openFilePicker 拿不到真实
     // size，旧实现硬编码 0 导致模型看到「0 B」误判空文件；要真大小需 Rust stat 通道）

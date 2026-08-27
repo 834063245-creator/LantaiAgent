@@ -8,9 +8,11 @@
 |---|---|
 | 注册表原语 | `scoped-store.ts`（`createScopedStore`——面板级 store 都经它建注册表） |
 | 领域 store（面板级，scoped） | `messages-store.ts` `session-store.ts` `panel-store.ts` `input-store.ts`（聚合入口 `ui/chat-store.ts`） |
-| app 级单例 | `dock-store.ts`（面板开合/简报）`overlay-store.ts`（portal 宿主）`timeline-store.ts` `agent-config-store.ts` `update-store.ts`（应用更新检测/角标） |
-| 信号 store（总线退役产物，P1） | `turn-done-store.ts` `goal-store.ts` `chat-context-store.ts` `scene-signal-store.ts` `ask-store.ts` `workspace-switch-store.ts` |
-| 注入槽 | `dock-config.ts`（面板外部依赖注入槽：DataflowQueryParser / dockStarGraph，main.ts 启动写入） |
+| app 级单例 | `dock-store.ts`（面板开合/简报）`timeline-store.ts` `agent-config-store.ts` `update-store.ts`（应用更新检测/角标） |
+| 信号 store（总线退役产物，P1） | `turn-done-store.ts` `goal-store.ts` `ask-store.ts` `workspace-switch-store.ts` |
+
+> 2026-08-27 死码清扫：`overlay-store.ts`（portal 宿主随 UI 大清扫失消费者）、
+> `dock-config.ts`（main.ts 薄引导化后注入槽无人写读）删除——可达性闭包零引用。
 
 ## 契约
 
