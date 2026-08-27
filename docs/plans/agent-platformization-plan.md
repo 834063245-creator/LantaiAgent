@@ -1,7 +1,7 @@
 # Agent 平台化（Lantai Platform）总计划 —— 一个文档解决所有问题
 
 > 立项：2026-08-25
-> 状态：**Phase 0 已落地（2026-08-25）**——宪法边界（强制层/能力契约层二分）已入档 + 守卫测试钉住强制层外命令零增长（2026-08-27 复验 `platform_boundary_test` 绿）；**Phase 1 施工中（2026-08-27 夜开工）**——开工时用户拍板 A 路线修订 D2/D5（2026-08-26 方言贡献道收口 commit `62860fb7` 先例吸收，见 §3 各裁定行的修订注记）
+> 状态：**Phase 1 已竣工（2026-08-27 夜，三 commit）**——① `98a6f30d` ctx.llm 升格（D2 修订版/D5 作废，A 路线用户拍板）② `605d6e8a` ctx.subagents（D3）③ D4 全 loop 事件表（13 事件 + 完整性 guard + feature→mechanism map）；Phase 0 宪法边界已入档 + 守卫测试复验绿；**Phase 2（后端能力 seam）待开工**
 > 性质：能力建设计划（capability plan），不是还债（debt plan）
 > 上位：`agent-plugin-architecture-plan.md`（P1-P4 已竣工部分）+ `composition-architecture/README.md`（S0-S4 已竣工 + 内核线）+ `docs/adr/project-constitution.md`
 > 参照系：DeepSeek Harness（`D:\useful\deepseek-harness`，下称 DSH）；"DSH 实证"均给文件路径供执行者直查。
@@ -145,7 +145,7 @@
 | **`ctx.subprocess`** | **swappable seam（新）** | ❌ Rust 命令锁死 | **D11** | 现有 Rust subprocess 命令包装 | shell / lsp / 子代理后端 |
 | **`ctx.sessionPersistence`** | **swappable seam（新）** | ❌ 存储实现锁死 | **D11** | 现有 session 持久化包装 | 会话加载/落盘 |
 | **`ctx.graph`** | **swappable seam（新）** | ❌ engine RPC 锁死 | **D11** | 现有 engine 分析 RPC 包装 | graph 工具 / 数据流 |
-| **全 loop 事件表** | **监听面（新）** | ❌ 5 事件 | **D4** | — | 全部第一方功能重表达 |
+| **全 loop 事件表** | **监听面（新）** | ✅ 施工③落地：13 事件表（5 工具 + turn/step/request 六事件 + subagent 能力域首批），Agent.onLoopEvent 监听面 + 七发射点；第一方重表达 = P5 | **D4**（已落地 2026-08-27） | — | 全部第一方功能重表达（P5） |
 | **`ctx.dynamicRunner`** | **运行时定义 seam（新）** | ❌ | **D7** | vm 沙箱宿主 | `cordis_*` 模型工具 |
 | **MCP 能力面** | 进程外能力 | ✅ 机器桥 | 扩展（D1） | — | ctx.tools 消费 |
 
@@ -172,6 +172,8 @@
 **谁判断：** 用户拍板（宪法改动）。这是本计划唯一需要用户先拍板的一段——拍完 D1-D13 即冻结，后续施工段全部 agent 可自主推进。
 
 ### Phase 1 —— 前端 swappable seam 开放（契约先行）
+
+> **落地记录（2026-08-27 夜，三 commit 铁律 7 分段）**：开工时用户拍板 A 路线修订 D2/D5（方言贡献道先例吸收）。① `98a6f30d` ctx.llm：更名 + llm-adapters-plugin 贡献 + 内核回落拆除（P1-C1/C2/C5 达成，T1-T6 清零）；② `605d6e8a` ctx.subagents：service + in-process 默认 provider + spawnSubAgent 消费单点改查（P1-C3 达成，T7 清零）；③ D4 事件面：13 事件表 + Agent.onLoopEvent + 七发射点 + `docs/agents/event-feature-map.md`（P1-C4 达成；baseline-change-request 评估零基线文件变更，用户批准留痕于 `docs/archive/agent-core-convergence/baseline-change-request.md`）。门禁四连全绿（vitest 1806 passed / build / biome 0/0 / convergence standard 零漂移）。**谁判断：Agent 自主（用户仅拍板 D2/D5 修订与 D4 基线评估）——本段按计划主体自主推进。**
 
 **做什么：**
 

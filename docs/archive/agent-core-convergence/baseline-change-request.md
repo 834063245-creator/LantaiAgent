@@ -47,3 +47,38 @@
 
 - `search` 域（单动作 content）与 memory 语义检索的进一步融合留待后续；
 - 领域扁平 schema 同名参数类型合并（domainParametersSchema 取首类型）目前无冲突实例，未加检测。
+
+---
+
+# Baseline 变更评估 — D4 全 loop 事件表扩展（agent-platformization-plan Phase 1 施工③）
+
+> 申请日期：2026-08-27 · 申请人：编码助手（平台化 Phase 1 · D4）
+> 状态：**已批准（用户 2026-08-27 对话拍板 A 路线：「批准动基线，继续实施」）·
+> 评估结论：无需改动任何冻结 baseline 文件**——本节为审批留痕。
+
+## 1. 变更对象（评估结果）
+
+- `src-ui/src/agent/events.ts` 的 `AGENT_EVENT_MAP`：5 工具事件 → 13 事件
+  （+turn/step/request 生命周期六事件 + subagent/spawn|done 能力域首批，全部
+  mode='emit'，载荷表 `LoopEventPayload` + `LOOP_EVENT_NAMES` 运行时镜像）。
+- **冻结 baseline 文件：零改动**。依据：
+  - `specs/phase-2.test.ts` 的 mode 合法性断言是泛化的（遍历 `AGENT_EVENT_MAP`
+    全部键，新增事件自动纳入门禁，无需改断言）；
+  - phase-2 第二断言钉「5 个 legacy 工具事件存在」——保持真；
+  - trace 等价测试（eventBus 路径 ↔ legacy 冻结 trace）的 fixture 不含新事件，
+    逐字节对拍不受影响。
+
+## 2. 为什么此前需要申请
+
+- 事件表扩充在名义上触碰「T0 门禁 + 8 baseline 对拍」冻结面（R1 风险表 +
+  CONVENTIONS record 纪律）；按纪律先申请后动手，实测评估后确认零基线文件变更。
+
+## 3. 证据（随施工③ commit）
+
+- `tests/agent-loop-events.test.ts`（新）：完整性 guard 双向对拍（LOOP_EVENT_NAMES ↔
+  map emit 域，tool/result|error 豁免）+ emitLoopEvent 拒绝非 emit 域（运行时守卫）+
+  发射序/载荷逐项断言 + disposer 生效；
+- `docs/agents/event-feature-map.md`（新）：事件目录 + feature→mechanism map +
+  R1「非模型可见、不进 session log」显式声明；
+- vitest / build / biome / convergence 四连全绿（数字见施工③ commit message）。
+

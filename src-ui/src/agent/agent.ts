@@ -40,10 +40,12 @@ import {
 } from './agent-types';
 import { type CompactionConfig, type CompactionSessionStats, CompactionTracker } from './compaction-model';
 import type { AgentContext } from './context';
+import { AgentEventBus, type ListenerOptions, type LoopEventName, type LoopEventPayload } from './events';
 import { type ExecStateInstance, execState } from './execution-state';
 import { type GoalLoopHost, type GoalRunResult, resumeGoalImpl, runGoalImpl } from './goal-loop';
 import type { GoalManager } from './goal-manager';
 import type { HookRegistry, PreflightHookRegistry } from './hooks';
+import type { Disposer } from './lifecycle';
 import { log } from './logger';
 import { batchStormSignature, finishReasonMessage, parseFilePathArg, type ToolOutcome } from './loop-helpers';
 import { type PlanGate, planGateCheck } from './plan/plan-registry';
@@ -973,6 +975,22 @@ export class Agent {
   /** 运行一轮: 追加用户输入，驱动工具循环。
    *  空输入（bus 唤醒）跳过 preRunHook 和用户消息 — runLoop
    *  从 _injectInbox() 开始，将 inbox 消息作为唯一输入。 */
+  // ── D4 loop 事件监听面（平台化 Phase 1）──
+  // 发射点：runLoop 的 turn/step/request 边界 + spawnSubAgent 漏斗（能力域首批）。
+  // 无监听器时零开销（ordered() 空集短路）；不改变既有 sink/sessionLog 双轨。
+  private readonly _loopEvents = new AgentEventBus();
+
+  /** 监听 loop 生命周期/能力域事件（平台化 Phase 1 · D4 监听面）。目录单一真源 =
+   *  agent/events.ts AGENT_EVENT_MAP；载荷形状 = LoopEventPayload；R1 声明 =
+   *  非模型可见、不进 session log（见 events.ts 头注）。返回 disposer。 */
+  onLoopEvent<E extends LoopEventName>(
+    event: E,
+    fn: (payload: LoopEventPayload[E]) => void,
+    opts?: ListenerOptions,
+  ): Disposer {
+    return this._loopEvents.onLoopEvent(event, fn, opts);
+  }
+
   async run(signal: AbortSignal, input: string): Promise<void> {
     this._isRunning = true;
     this._ui.onStatusChange?.(true);
@@ -1028,6 +1046,7 @@ export class Agent {
    *  其会话已以 fork 指令结尾的情况。 */
   private async runLoop(signal: AbortSignal): Promise<void> {
     const turnStart = performance.now();
+    let turnErr: unknown = null;
     log.info('agent', 'turn started', { model: this.prov.name() });
 
     try {
@@ -1036,8 +1055,11 @@ export class Agent {
       this._sink({ kind: EventKind.TurnStarted });
       // Phase 5：轮次边界事件（无消息投影 — 回放/审计用）
       this._sessionLog.append('turn/start', { model: this.prov.name() });
+      // D4：turn/start 监听面广播（可观测，非模型可见——见 events.ts R1 声明）
+      this._loopEvents.emitLoopEvent('turn/start', { agentId: this.id, model: this.prov.name() });
 
       for (let step = 0; ; step++) {
+        this._loopEvents.emitLoopEvent('step/start', { agentId: this.id, step });
         // 清除上一步的临时提醒 — 仅当前步骤的
         // 提醒应对本轮 LLM 可见。
         // Step 0 跳过清除: run() 可能已将 preRunHook
@@ -1158,7 +1180,18 @@ export class Agent {
           // 通知路由身份（bus id）— bg job owner / bash_kill 所有权（executor 注入 _owner_id）
           this.id,
         );
+        this._loopEvents.emitLoopEvent('request/start', {
+          agentId: this.id,
+          step: step + 1,
+          model: this.prov.name(),
+        });
         let { text, reasoning, signature, calls, usage, err } = await this.stream(signal, step + 1, executor);
+        this._loopEvents.emitLoopEvent('request/end', {
+          agentId: this.id,
+          step: step + 1,
+          totalTokens: usage?.total_tokens ?? null,
+          err: err ? String(err.message || err) : null,
+        });
         if (err) {
           log.error('agent', 'stream error', { error: String(err.message || err) });
           throw err;
@@ -1226,6 +1259,7 @@ export class Agent {
         }
 
         if (calls.length === 0 && this._pendingInserts.length === 0) {
+          this._loopEvents.emitLoopEvent('step/end', { agentId: this.id, step, toolCalls: 0 });
           return;
         }
 
@@ -1306,10 +1340,19 @@ export class Agent {
 
         // 下一轮前按需压缩
         this.maybeCompact(usage);
+        this._loopEvents.emitLoopEvent('step/end', { agentId: this.id, step, toolCalls: calls.length });
       }
+    } catch (e) {
+      turnErr = e;
+      throw e;
     } finally {
       this._isRunning = false;
       this._ui.onStatusChange?.(false);
+      this._loopEvents.emitLoopEvent('turn/end', {
+        agentId: this.id,
+        ok: turnErr === null,
+        aborted: signal.aborted,
+      });
       // 重新检查新（尚未注入的）消息 — 避免本轮已注入但未 ack 的消息
       // 导致无限循环。
       if (!signal.aborted && this._bus) {
@@ -1810,17 +1853,40 @@ export class Agent {
         'SUBAGENT_PROVIDER: 无已注册子代理 provider——请确认 subagents 通道装配（生产 = loadBuiltinPlugins）',
       );
     }
-    return provider.spawn(this as unknown as SubAgentSpawnHost, {
-      description,
-      prompt,
-      onProgress,
+    this._loopEvents.emitLoopEvent('subagent/spawn', {
+      parentId: this.id,
+      agentId: agentIdOverride ?? null,
       mode,
-      toolAllowlist,
-      poolSignal,
-      asyncMode,
-      agentIdOverride,
-      outputSchema,
+      async: asyncMode ?? false,
     });
+    try {
+      const outcome = await provider.spawn(this as unknown as SubAgentSpawnHost, {
+        description,
+        prompt,
+        onProgress,
+        mode,
+        toolAllowlist,
+        poolSignal,
+        asyncMode,
+        agentIdOverride,
+        outputSchema,
+      });
+      this._loopEvents.emitLoopEvent('subagent/done', {
+        parentId: this.id,
+        agentId: agentIdOverride ?? null,
+        ok: !outcome.err,
+        async: asyncMode ?? false,
+      });
+      return outcome;
+    } catch (e) {
+      this._loopEvents.emitLoopEvent('subagent/done', {
+        parentId: this.id,
+        agentId: agentIdOverride ?? null,
+        ok: false,
+        async: asyncMode ?? false,
+      });
+      throw e;
+    }
   }
 }
 

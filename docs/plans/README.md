@@ -19,10 +19,11 @@
 上下文/最大输出改 per-model（`modelOverrides`）。**baton 制退役，所有交接棒已归档**
 （`docs/archive/lantai-handoff/`）。没有拦路的硬依赖。
 
-## 会话 / 分层 / 画布三线（2026-08-24 立项）
+## 会话 / 分层 / 画布 / 平台化四线（2026-08-24 起立项）
 
 | 线 | 文档 | 状态 | 说明 |
 |---|---|---|---|
+| 平台化 | [`agent-platformization-plan.md`](agent-platformization-plan.md) | **Phase 1 竣工**（2026-08-27，三 commit `98a6f30d`/`605d6e8a`/施工③；D2/D5 修订 A 路线拍板），Phase 2 后端能力 seam 待开工 | 强制层/能力契约层二分宪法已入档（2026-08-25）；swappable seam ①ctx.llm 升格 ②ctx.subagents ③全 loop 事件表（13 事件 + 完整性 guard + feature→mechanism map）落地；拆旧清单 T1-T7 清零，门禁四连全绿 |
 | 会话统一 → **归属反转** | [`workspace-session-ownership-rework.md`](workspace-session-ownership-rework.md) | **In progress：P1-P3 已落地**（2026-08-27，commits 40a43875/7b1d5a3e/cc0df8c0），P4 文档收口 + P5 实机验收进行中 | 推翻全局会话池方向——会话**物理归属工作区**（`{ws}/.lantai/sessions/` 唯一存储位，焦点/绑定/全局列表全退役）。旧 session-unify 计划已归档归档标记取代：[`../archive/session-unify-plan.md`](../archive/session-unify-plan.md) |
 | 分层重构 | [`layering-rework-plan.md`](layering-rework-plan.md) | **L1-L4 + L5b crate 化已落地**（2026-08-25） | engine 纯化 + 壳瘦身 + 数据上下文 + 双工作区并发守卫 + L5b 三 crate 拆出；真机验收四项待跑（见计划 §4.6） |
 | 画布空间模型 | [`canvas-space/canvas-space-model-notes.md`](canvas-space/canvas-space-model-notes.md) | **设计定稿；Stage-1 ✅ + Stage-2 ✅（实机已验）+ Stage-3 ✅（门禁全绿）+ Stage-4 ✅（2026-08-26 落地 + 返工修复 + 联合体检方案甲施工）+ Stage-5 ✅（2026-08-26 落地：布局持久化 + 公共物工作区级 + 零目录退役，门禁全绿）**，Stage-6 待推进 | 一整片会生长的纸 / 有界流区 / 宿主模型 / 三层导航 / 性能基准；阶段性展开文档见 `canvas-space/` 子目录；**provider/创作坞联合体检与修复见 [`canvas-space/composer-provider-audit.md`](canvas-space/composer-provider-audit.md)**（方案甲定案 + 2026-08-26 修复落账 + 夜批在册小账收尾 D2/C5/D5，全表清零） |
