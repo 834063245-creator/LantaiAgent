@@ -11,6 +11,10 @@ import { AgentStore } from '../src/agent/agent-store';
 import { ToolRegistry } from '../src/agent/tool';
 import type { Chunk, Provider } from '../src/provider/types';
 import { createTestAgent } from './helpers/agent';
+import { ensureProductionChannelsBooted } from './helpers/composition-boot';
+
+// 生产装配复现（平台化 Phase 2 · D11 施工⑥）：builtin/rust-sessions 在册。
+await ensureProductionChannelsBooted();
 
 // ── Mock bridge ──
 const fs = new Map<string, string>();

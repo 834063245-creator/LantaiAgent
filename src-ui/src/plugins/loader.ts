@@ -17,6 +17,8 @@
 import { createElement } from 'react';
 import { codeRuntimePlugin } from '../agent/code-run/runtime-service';
 import { builtinFsPlugin } from '../agent/fs-provider';
+import { builtinGraphPlugin } from '../agent/graph-provider';
+import { builtinSessionsPlugin } from '../agent/sessions-provider';
 import { builtinShellPlugin } from '../agent/shell-provider';
 import { inProcessSubagentPlugin } from '../agent/subagent-provider';
 import { useShellStore } from '../app/shell-store';
@@ -25,11 +27,13 @@ import { firstPartyCapabilityPlugins } from '../composition/first-party-capabili
 import { firstPartyPromptPlugins } from '../composition/first-party-prompts';
 import { firstPartyToolPlugins } from '../composition/first-party-tools';
 import { fsServicePlugin } from '../composition/fs-service';
+import { graphServicePlugin } from '../composition/graph-service';
 import { hooksServicePlugin } from '../composition/hook-service';
 import { overlayServicePlugin } from '../composition/overlay-service';
 import { promptsServicePlugin } from '../composition/prompt-service';
 import { rendererServicePlugin } from '../composition/renderer-service';
 import { compositionServicesPlugin } from '../composition/services';
+import { sessionPersistenceServicePlugin } from '../composition/session-persistence-service';
 import { shellServicePlugin } from '../composition/shell-service';
 import { spaceServicePlugin } from '../composition/space-service';
 import { subagentsServicePlugin } from '../composition/subagent-service';
@@ -103,6 +107,10 @@ const BUILTIN_PLUGINS: LantaiPlugin[] = [
   builtinFsPlugin,
   shellServicePlugin,
   builtinShellPlugin,
+  sessionPersistenceServicePlugin,
+  builtinSessionsPlugin,
+  graphServicePlugin,
+  builtinGraphPlugin,
   spaceServicePlugin,
   overlayServicePlugin,
   codeRuntimePlugin,

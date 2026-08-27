@@ -49,6 +49,7 @@ import { defineTool } from '../agent/tools/define-tool';
 import { loadHologramSchemas, mcpSchemaToTool } from '../agent/tools/hologram';
 import { createAgentStatusTool, createSubAgentTool } from '../agent/tools/subagent';
 import { createWaitTool } from '../agent/tools/wait';
+import { graphExecute } from '../composition/graph-service';
 import type { ToolContribution } from '../composition/services';
 import type { ToolRowContext } from '../composition/tool-rows';
 import type { Context } from '../cordis';
@@ -334,7 +335,9 @@ export const hologramDomainPlugin = {
         factory: async (rowCtx) => {
           if (!rowCtx?.graphData) return []; // 缺帐 = 空集（原 if (graphData) 分支）
           const holoExec: ToolExecutor = async (name, args) => {
-            const result = await agentInvoke('hologram_call', { tool: name, args });
+            // 平台化 Phase 2 · D11 施工⑦：engine 分析查询经 ctx.graph 注册表解析
+            // provider（后注册胜；默认 builtin/rust-graph 经 hologram_call 派发）
+            const result = await graphExecute(name, args);
             return typeof result === 'string' ? result : JSON.stringify(result);
           };
           const schemas = await loadHologramSchemas();

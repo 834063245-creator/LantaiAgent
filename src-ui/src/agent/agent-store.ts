@@ -5,8 +5,8 @@
 // 实现 agent 身份追踪、会话恢复和子 Agent 血缘关系
 // 模式参照 MemoryManager：rpc 文件 I/O、ensureDir、stripLineNumbers。
 
+import { sessionExecute } from '../composition/session-persistence-service';
 import type { Message } from '../provider/types';
-import { typedRpc } from '../rpc-contract';
 import { stripNums } from './board-persistence';
 import type { SessionEvent } from './session-log';
 
@@ -68,7 +68,7 @@ export class AgentStore {
     await this.ensureAgentDir(id);
     try {
       const block = events.map((e) => JSON.stringify(e)).join('\n') + '\n';
-      await typedRpc('log_append', { path: this.sessionLogPath(id), content: block });
+      await sessionExecute('appendLog', { path: this.sessionLogPath(id), content: block });
     } catch (e) {
       console.warn(`[AgentStore] ${id} 会话事件日志追加失败:`, e);
     }
@@ -83,7 +83,7 @@ export class AgentStore {
   private async ensureDir(): Promise<void> {
     if (this.dirReady) return;
     try {
-      await typedRpc('create_directory', { path: this.baseDir });
+      await sessionExecute('mkdir', { path: this.baseDir });
     } catch {
       /* 已存在 */
     }
@@ -93,7 +93,7 @@ export class AgentStore {
   private async ensureAgentDir(id: string): Promise<void> {
     await this.ensureDir();
     try {
-      await typedRpc('create_directory', { path: `${this.baseDir}/${id}` });
+      await sessionExecute('mkdir', { path: `${this.baseDir}/${id}` });
     } catch {
       /* 已存在 */
     }
@@ -115,7 +115,7 @@ export class AgentStore {
       subagentDepth: partial.subagentDepth ?? 0,
     };
     // 状态文件 — 精简，总是写入
-    await typedRpc('write_file_content', {
+    await sessionExecute('write', {
       file_path: this.statePath(id),
       content: JSON.stringify(record, null, 2),
     });
@@ -129,7 +129,7 @@ export class AgentStore {
     if (messages.length === 0) return;
     await this.ensureAgentDir(id);
     try {
-      await typedRpc('agent_session_append', {
+      await sessionExecute('append', {
         project_path: this.projectPath,
         agent_id: id,
         messages: messages as unknown as Record<string, unknown>[],
@@ -144,14 +144,14 @@ export class AgentStore {
   async load(id: string): Promise<AgentLoadResult | null> {
     await this.ensureDir();
     try {
-      const rawState = await typedRpc('read_file_content', {
+      const rawState = await sessionExecute('read', {
         file_path: this.statePath(id),
       });
       const record: AgentRecord = JSON.parse(stripNums(rawState));
       let messages: Message[] = [];
       // P1-15: 只读 NDJSON 增量文件（旧 session.json 格式已归档，不再回读）。
       try {
-        const rawNds = await typedRpc('read_file_content', {
+        const rawNds = await sessionExecute('read', {
           file_path: this.sessionNdsPath(id),
         });
         messages = stripNums(rawNds)
@@ -171,7 +171,7 @@ export class AgentStore {
   async list(): Promise<AgentRecord[]> {
     await this.ensureDir();
     try {
-      const raw = await typedRpc('read_file_content', {
+      const raw = await sessionExecute('read', {
         file_path: this.indexPath(),
       });
       return JSON.parse(stripNums(raw)) as AgentRecord[];
@@ -183,7 +183,7 @@ export class AgentStore {
   /** 删除 agent 的持久化状态。尽力而为 — 永不抛异常。 */
   async delete(id: string): Promise<void> {
     try {
-      await typedRpc('delete_file_or_dir', { path: `${this.baseDir}/${id}` });
+      await sessionExecute('delete', { path: `${this.baseDir}/${id}` });
     } catch {
       /* 尽力而为 */
     }
@@ -199,7 +199,7 @@ export class AgentStore {
       const all = await this.list();
       const next = fn(all);
       try {
-        await typedRpc('write_file_content', {
+        await sessionExecute('write', {
           file_path: this.indexPath(),
           content: JSON.stringify(next, null, 2),
         });

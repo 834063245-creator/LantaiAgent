@@ -7,6 +7,11 @@
 // 修复后读-改-写包进 _indexChain，按调用序串行落盘。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ensureProductionChannelsBooted } from './helpers/composition-boot';
+
+// 生产装配复现（平台化 Phase 2 · D11 施工⑥）：AgentStore 经 ctx.sessionPersistence
+// 注册表解析 provider——需要 builtin/rust-sessions 在册（bridge mock 链路照旧）。
+await ensureProductionChannelsBooted();
 
 // ── 内存文件系统 mock ──
 // write 带 ~8ms 延迟：拉宽「读后写前」窗口，让并发交错的丢失现场真实可复现。

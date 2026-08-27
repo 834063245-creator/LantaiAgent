@@ -20,6 +20,10 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { Message } from '../src/provider/types';
+import { ensureProductionChannelsBooted } from './helpers/composition-boot';
+
+// 生产装配复现（平台化 Phase 2 · D11 施工⑥）：builtin/rust-sessions 在册。
+await ensureProductionChannelsBooted();
 
 const appendCalls: Array<{ agentId: string; messages: Message[]; rewrite: boolean }> = [];
 const logAppends: Array<{ path: string; content: string }> = [];
