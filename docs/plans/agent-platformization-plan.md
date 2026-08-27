@@ -1,7 +1,7 @@
 # Agent 平台化（Lantai Platform）总计划 —— 一个文档解决所有问题
 
 > 立项：2026-08-25
-> 状态：**Phase 2 已竣工（2026-08-27 深夜，四 commit）**——Phase 1（2026-08-27 夜，三 commit）：① `98a6f30d` ctx.llm 升格（D2 修订版/D5 作废，A 路线用户拍板）② `605d6e8a` ctx.subagents（D3）③ D4 全 loop 事件表（13 事件 + 完整性 guard + feature→mechanism map）；Phase 2（后端能力 seam，D11）：④ `4c7b6467` ctx.fs ⑤ `4bcd0c05` ctx.shell（D11 修订：subprocess 并入）⑥⑦ `daae88c3` ctx.sessionPersistence + ctx.graph。Phase 0 宪法边界已入档 + 守卫测试复验绿；**Phase 3（组合域统一 + 目录生成）待开工**
+> 状态：**Phase 3 已竣工（2026-08-27 深夜，三 commit）**——Phase 1（三 commit）+ Phase 2（四 commit）见 §5 落地记录；Phase 3：① `1505272f` seam 裁剪域进组合解析域 ② `68f1d2e5` 服务/事件目录生成器 + doc-sync 门禁 ③ `21ff8324` 开放面契约版本化 + plugin_install 版本比较。Phase 0-2 宪法边界已入档 + 守卫测试复验绿；**Phase 4（运行时插件全链路）待开工**
 > 性质：能力建设计划（capability plan），不是还债（debt plan）
 > 上位：`agent-plugin-architecture-plan.md`（P1-P4 已竣工部分）+ `composition-architecture/README.md`（S0-S4 已竣工 + 内核线）+ `docs/adr/project-constitution.md`
 > 参照系：DeepSeek Harness（`D:\useful\deepseek-harness`，下称 DSH）；"DSH 实证"均给文件路径供执行者直查。
