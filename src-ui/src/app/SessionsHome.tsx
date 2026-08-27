@@ -8,10 +8,10 @@
 // 登记工作区）、改名、固定常用、移除（连带删卷，需确认）、进画布；
 // 工作区内的会话管理交给画布旁的侧边栏（出生仪式在那边）。
 //
-// 数据源（Stage-5 补尾）：`workspace_list` 单一来源——Rust 把
-// ~/.lantai/workspaces.json 注册表与会话推导合流（空工作区也可见，
-// 未登记的旧绑定自动补齐）；不再由会话倒推工作区卡。零目录桶仍走
-// user_sessions_list（退役对象：要么绑目录要么归档）。
+// 数据源：`workspace_list` 单一来源——Rust 把 ~/.lantai/workspaces.json 注册表
+// 全量列出，每个工作区的会话计数/最近时间扫**自己的会话根**
+// `{path}/.lantai/sessions/`（workspace-session-ownership-rework 2026-08-27）。
+// 工作区内的会话管理交给画布旁的侧边栏；会话只在所属工作区内可见。
 //
 // 版式对齐 prototype/lantai.html 案卷首页（2026-08-23 视觉迭代）。
 

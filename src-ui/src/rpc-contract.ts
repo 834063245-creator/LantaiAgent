@@ -116,25 +116,17 @@ export interface RpcContract {
     params: { paths?: string[] };
     result: string; // JSON — {path: content|null} 映射（Value 化：Rust 出口已展开）
   };
-  user_sessions_list: {
-    params: Record<string, never>;
-    result: string; // JSON — 全局会话列表（归零重建 2026-08-25：仅全局位单扫，条目含 workspace；legacy_root 已拆）
-  };
   get_last_project: {
     params: Record<string, never>;
     result: string; // JSON — 最近工作区路径 "path"/null（引擎开关关态的冷启动恢复信号）
   };
   workspace_list: {
     params: Record<string, never>;
-    result: string; // JSON — 已知工作区清单（注册表 + 会话推导合流，Stage-5 补尾：含空工作区）
+    result: string; // JSON — 已知工作区清单（注册表 + 各工作区会话计数，Stage-5 补尾：含空工作区）
   };
   workspace_rename: { params: { path: string; name: string }; result: string }; // "null"
   workspace_toggle_pin: { params: { path: string; pinned: boolean }; result: string }; // "null"
   workspace_remove: { params: { path: string }; result: string }; // "null" — 删除该工作区全部会话 + 解除登记
-  get_user_sessions_dir: {
-    params: Record<string, never>;
-    result: string; // text — ~/.lantai/sessions 路径（零目录会话存储位）
-  };
   read_file_base64: {
     params: { file_path: string } & AgentCtx;
     result: string; // text — base64

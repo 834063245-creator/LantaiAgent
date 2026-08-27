@@ -241,51 +241,29 @@ pub(crate) mod registry {
         pub latest_saved_at: Option<String>,
     }
 
-    /// 已知工作区清单：注册表条目在前（含空工作区），会话推导补充未登记的
-    /// 旧绑定；排序 = 固定优先 → lastOpenedAt 降序。零目录卷不参与（已退役）。
+    /// 已知工作区清单：注册表条目全量列出（含空工作区）；每个工作区的
+    /// 会话计数/最近时间扫**自己的会话根** `{path}/.lantai/sessions/`。
+    /// workspace-session-ownership-rework（2026-08-27）：会话物理归属工作区，
+    /// 不再有「全局位按 workspace 字段推导」的回退臂；排序 = 固定优先 →
+    /// lastOpenedAt 降序。
     pub(crate) fn list() -> Result<Vec<WorkspaceSummary>, String> {
         let reg = read_registry();
-        let sessions = crate::commands::filesystem::scan_sessions_dir(
-            &crate::commands::filesystem::user_sessions_root(),
-        );
-
-        let mut by_ws: std::collections::HashMap<String, (usize, Option<String>)> =
-            std::collections::HashMap::new();
-        for s in &sessions {
-            let ws = s.workspace.clone().unwrap_or_default();
-            if ws.is_empty() {
-                continue; // 零目录退役：不进工作区清单
-            }
-            let ws = ws.replace('\\', "/");
-            let e = by_ws.entry(ws).or_insert((0, None));
-            e.0 += 1;
-            let latest = e.1.clone().unwrap_or_default();
-            if s.saved_at > latest {
-                e.1 = Some(s.saved_at.clone());
-            }
-        }
-
         let mut out: Vec<WorkspaceSummary> = Vec::new();
         for e in &reg.workspaces {
-            let (count, latest) = by_ws.remove(&e.path).unwrap_or((0, None));
+            let sessions = crate::commands::filesystem::scan_sessions_dir(
+                &crate::commands::filesystem::workspace_sessions_root(&e.path),
+            );
+            let latest = sessions
+                .iter()
+                .map(|s| s.saved_at.clone())
+                .filter(|s| !s.is_empty())
+                .max();
             out.push(WorkspaceSummary {
                 path: e.path.clone(),
                 name: e.name.clone(),
                 last_opened_at: e.last_opened_at.clone(),
                 pinned: e.pinned,
-                session_count: count,
-                latest_saved_at: latest,
-            });
-        }
-        for (ws, (count, latest)) in by_ws {
-            let name =
-                PathBuf::from(&ws).file_name().map(|s| s.to_string_lossy().to_string());
-            out.push(WorkspaceSummary {
-                path: ws,
-                name,
-                last_opened_at: latest.clone().unwrap_or_default(),
-                pinned: false,
-                session_count: count,
+                session_count: sessions.len(),
                 latest_saved_at: latest,
             });
         }
@@ -375,34 +353,50 @@ pub(crate) mod registry {
         }
 
         #[test]
-        fn list_merges_registry_and_session_derived() {
+        fn list_counts_per_workspace_sessions() {
+            // workspace-session-ownership-rework：会话计数扫各工作区自己的
+            // 会话根（{ws}/.lantai/sessions/）——工作区根用临时目录真实落盘，
+            // 注册表读写走 with_temp_home 隔离。
+            let ws_empty = std::env::temp_dir().join(format!(
+                "lantai_ws_list_empty_{}",
+                crate::audit::now_iso().replace([':', '.'], "-")
+            ));
+            let ws_full = std::env::temp_dir().join(format!(
+                "lantai_ws_list_full_{}",
+                crate::audit::now_iso().replace([':', '.'], "-")
+            ));
+            let _ = std::fs::remove_dir_all(&ws_empty);
+            let _ = std::fs::remove_dir_all(&ws_full);
+            let empty_str = ws_empty.to_string_lossy().replace('\\', "/");
+            let full_str = ws_full.to_string_lossy().replace('\\', "/");
+            let sessions_dir = crate::commands::filesystem::workspace_sessions_root(&full_str);
+            std::fs::create_dir_all(&sessions_dir).unwrap();
+            crate::utils::write_atomic(
+                &sessions_dir.join("11.json").to_string_lossy(),
+                r#"{"id":11,"label":"a","savedAt":"2026-08-26T00:00:00Z"}"#,
+            )
+            .unwrap();
+            crate::utils::write_atomic(
+                &sessions_dir.join("12.json").to_string_lossy(),
+                r#"{"id":12,"label":"b","savedAt":"2026-08-26T01:00:00Z"}"#,
+            )
+            .unwrap();
+
             with_temp_home(|| {
-                // 注册一个空工作区 + 一个带会话的工作区（未登记 → 推导补充）
-                register("D:/empty", None).unwrap();
-                let sessions_dir = crate::commands::filesystem::user_sessions_root();
-                std::fs::create_dir_all(&sessions_dir).unwrap();
-                crate::utils::write_atomic(
-                    &sessions_dir.join("11.json").to_string_lossy(),
-                    r#"{"id":11,"label":"a","savedAt":"2026-08-26T00:00:00Z","workspace":"D:/derived"}"#,
-                )
-                .unwrap();
-                crate::utils::write_atomic(
-                    &sessions_dir.join("12.json").to_string_lossy(),
-                    r#"{"id":12,"label":"b","savedAt":"2026-08-26T01:00:00Z","workspace":"D:/derived"}"#,
-                )
-                .unwrap();
+                register(&empty_str, None).unwrap();
+                register(&full_str, None).unwrap();
 
                 let list = list().unwrap();
-                // 空工作区也在列（注册表来源）
-                assert!(list.iter().any(|w| w.path == "D:/empty" && w.session_count == 0));
-                // 未登记的会话工作区被推导补充 + 计数/最近正确
-                let derived = list.iter().find(|w| w.path == "D:/derived").unwrap();
-                assert_eq!(derived.session_count, 2);
-                assert_eq!(
-                    derived.latest_saved_at.as_deref(),
-                    Some("2026-08-26T01:00:00Z")
-                );
+                // 空工作区也在列（注册表来源，计数 0）
+                let empty = list.iter().find(|w| w.path == empty_str).unwrap();
+                assert_eq!(empty.session_count, 0, "空工作区可见且计数 0");
+                // 会话计数扫本工作区会话根 + 最近正确
+                let full = list.iter().find(|w| w.path == full_str).unwrap();
+                assert_eq!(full.session_count, 2);
+                assert_eq!(full.latest_saved_at.as_deref(), Some("2026-08-26T01:00:00Z"));
             });
+            let _ = std::fs::remove_dir_all(&ws_empty);
+            let _ = std::fs::remove_dir_all(&ws_full);
         }
 
         #[test]

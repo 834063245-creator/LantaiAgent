@@ -168,9 +168,10 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // ── 文件系统 ──
         // list_directory/list_directory_flat：ok_json(DirEntry 数组) 恒 JSON。
         // read_file_content/read_file_base64/read_memory_batch：字节精确/内容
-        // 不可控，Text 铁律。user_sessions_list：ok_json(Vec) 恒 JSON。
-        // workspace_list：ok_json(注册表+推导合并) 恒 JSON。
-        "list_directory" | "list_directory_flat" | "user_sessions_list" | "workspace_list" => {
+        // 不可控，Text 铁律。workspace_list：ok_json(注册表+各工作区会话计数) 恒 JSON。
+        // （workspace-session-ownership-rework 2026-08-27：user_sessions_list 退役——
+        //  首页工作区清单由 workspace_list 承担，计数扫各工作区会话根。）
+        "list_directory" | "list_directory_flat" | "workspace_list" => {
             RpcResultShape::JsonValue
         }
 
@@ -241,7 +242,7 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
 
         // ── 其余（含 ok_unit "null" 家族、read_file_content、edit_file、
         // exec_command、浏览器命令、PTY、会话持久化、约束、workspace、
-        // protocol_bridge、get_user_sessions_dir、llm_proxy_port 等）──
+        // protocol_bridge、llm_proxy_port 等）──
         // 默认 Text：字节精确优先，形态不恒定或体量不可控的一律不展开。
         _ => RpcResultShape::Text,
     }
@@ -494,14 +495,6 @@ async fn dispatch_rpc(
             let is_agent = opt_bool(&params, "is_agent");
             let _agent_id = opt_str(&params, "_agent_id");
             commands::filesystem::read_file_content(file_path, offset, limit, is_agent, _agent_id, state, app).await
-        }
-        "user_sessions_list" => {
-            // 会话统一 U2 → 归零重建（2026-08-25）：全局会话列表（仅全局位单扫）
-            ok_json(commands::filesystem::user_sessions_list().await)
-        }
-        "get_user_sessions_dir" => {
-            // workspace-flip 批 1：用户级会话目录路径（TS sessionsDir('') 路由真源）
-            Ok(commands::filesystem::get_user_sessions_dir())
         }
         "read_memory_batch" => {
             let paths: Vec<String> = params.get("paths")
