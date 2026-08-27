@@ -19,7 +19,17 @@ type CatalogFile = Record<string, ModelDescriptor>;
 // 「加一个厂商 = 往 catalog/ 丢一个 json」，无需回本文件挂表。
 // 权威规则：modelMap 先到先得 = 文件名字母序先者得（既有重复 id 契约不变——
 // opencode/deepseek 共享 id 时 deepseek.json 靠字母序保持权威，tests 已钉住）。
-const CATALOG_MODULES = import.meta.glob<{ default: unknown }>('./catalog/*.json', { eager: true });
+// 环境守卫（2026-08-27 平台化 P3）：import.meta.glob 是 Vite 编译期变换，
+// 纯 node/tsx 环境（gen-tool-contract 等脚本）没有它——直接调用时属性不存在
+// 抛 TypeError，接住 = 空目录（裁决 #15：目录是开箱优化非必需，消费点全有
+// fallback），不得在模块顶层硬炸非 Vite 装载链。注意必须以全名直呼
+// `import.meta.glob`（Vite 静态变换要求，别名/解构都会破）。
+let CATALOG_MODULES: Record<string, { default: unknown }> = {};
+try {
+  CATALOG_MODULES = import.meta.glob('./catalog/*.json', { eager: true });
+} catch {
+  // 非 Vite 环境：空目录 fallback（消费点均有兜底，不静默炸装载链）
+}
 
 const CATALOG_FILES: Record<string, CatalogFile> = {};
 for (const [file, mod] of Object.entries(CATALOG_MODULES)) {
