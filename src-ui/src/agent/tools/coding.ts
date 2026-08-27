@@ -9,6 +9,7 @@
 
 import { z } from 'zod';
 import { activeFsProviders, type FsAction } from '../../composition/fs-service';
+import { activeShellProviders, type ShellAction } from '../../composition/shell-service';
 import type { Tool, ToolExecutor } from '../tool';
 import { defineTool } from './define-tool';
 
@@ -28,6 +29,26 @@ export function fsExecute(
   if (!provider) {
     return Promise.reject(
       new Error('FS_PROVIDER: 无已注册 fs provider——请确认 fs 通道装配（生产 = loadBuiltinPlugins）'),
+    );
+  }
+  return provider.execute(action, args, { dispatch: exec, onProgress, signal });
+}
+
+/** shell 域消费面（平台化 Phase 2 · D11 施工⑤）：经 ctx.shell 注册表解析 provider
+ *  （后注册胜；subprocess 并入本 seam——spawn/stdio/进程树即后台任务族，见计划
+ *  D11 修订注记）。强制层 gate 在 executor 管道层、先于本调用——换 provider 不豁免。 */
+export function shellExecute(
+  action: ShellAction,
+  args: Record<string, unknown>,
+  exec: ToolExecutor,
+  onProgress?: (chunk: string) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  const providers = activeShellProviders();
+  const provider = providers[providers.length - 1];
+  if (!provider) {
+    return Promise.reject(
+      new Error('SHELL_PROVIDER: 无已注册 shell provider——请确认 shell 通道装配（生产 = loadBuiltinPlugins）'),
     );
   }
   return provider.execute(action, args, { dispatch: exec, onProgress, signal });
@@ -276,7 +297,7 @@ export function createShellTools(exec: ToolExecutor): Tool[] {
             'Optional interpreter. Default/omit = bundled bash (Unix syntax). Set "pwsh" ONLY for Windows-native tasks bash cannot do (registry queries, ACL, MSI, COM, WMI) — PowerShell syntax required.',
           ),
       }),
-      execute: (args, onProgress, signal) => exec('exec_command', args, onProgress, signal),
+      execute: (args, onProgress, signal) => shellExecute('run', args, exec, onProgress, signal),
     }),
 
     // ── Shell: 后台任务管理 ──
@@ -288,7 +309,7 @@ export function createShellTools(exec: ToolExecutor): Tool[] {
         jobId: z.coerce.number().int().describe('The job ID returned by run_shell with runInBackground: true'),
       }),
       readOnly: true,
-      execute: (args, onProgress) => exec('bash_output', { jobId: args.jobId }, onProgress),
+      execute: (args, onProgress) => shellExecute('output', { jobId: args.jobId }, exec, onProgress),
     }),
     defineTool({
       name: 'bash_kill',
@@ -298,12 +319,13 @@ export function createShellTools(exec: ToolExecutor): Tool[] {
       }),
       execute: (args, onProgress) =>
         // 所有权身份：bus id（_owner_id — 与 spawn 时的 job owner 对齐）。
-        exec(
-          'bash_kill',
+        shellExecute(
+          'kill',
           {
             jobId: args.jobId,
             agentId: (args as { _owner_id?: string })._owner_id,
           },
+          exec,
           onProgress,
         ),
     }),
@@ -320,7 +342,8 @@ export function createShellTools(exec: ToolExecutor): Tool[] {
           .describe('Maximum wait time in milliseconds (default: 60000 = 60s, max: 600000 = 10min)'),
       }),
       readOnly: true,
-      execute: (args, onProgress) => exec('bash_wait', { jobId: args.jobId, timeoutMs: args.timeoutMs }, onProgress),
+      execute: (args, onProgress) =>
+        shellExecute('wait', { jobId: args.jobId, timeoutMs: args.timeoutMs }, exec, onProgress),
     }),
   ];
 }

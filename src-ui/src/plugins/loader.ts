@@ -17,6 +17,7 @@
 import { createElement } from 'react';
 import { codeRuntimePlugin } from '../agent/code-run/runtime-service';
 import { builtinFsPlugin } from '../agent/fs-provider';
+import { builtinShellPlugin } from '../agent/shell-provider';
 import { inProcessSubagentPlugin } from '../agent/subagent-provider';
 import { useShellStore } from '../app/shell-store';
 import { capabilitiesServicePlugin } from '../composition/capability-service';
@@ -29,6 +30,7 @@ import { overlayServicePlugin } from '../composition/overlay-service';
 import { promptsServicePlugin } from '../composition/prompt-service';
 import { rendererServicePlugin } from '../composition/renderer-service';
 import { compositionServicesPlugin } from '../composition/services';
+import { shellServicePlugin } from '../composition/shell-service';
 import { spaceServicePlugin } from '../composition/space-service';
 import { subagentsServicePlugin } from '../composition/subagent-service';
 import type { Context } from '../cordis';
@@ -99,6 +101,8 @@ const BUILTIN_PLUGINS: LantaiPlugin[] = [
   inProcessSubagentPlugin,
   fsServicePlugin,
   builtinFsPlugin,
+  shellServicePlugin,
+  builtinShellPlugin,
   spaceServicePlugin,
   overlayServicePlugin,
   codeRuntimePlugin,
