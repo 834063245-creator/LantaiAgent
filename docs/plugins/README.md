@@ -42,7 +42,7 @@
 | 概念 | 是什么 | 真源 |
 |---|---|---|
 | 插件 | 自包含 ESM 模块（`{ name, inject?, apply(ctx) }`） | 本文档 |
-| 贡献通道 | `ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.llm`（LLM adapter）/ `ctx.subagents`（子代理 provider，平台化 Phase 1）/ `ctx.renderers`（块渲染器，V3b）/ `ctx.prompts`（prompt 段，P4 A-1）/ `ctx.hooks`（管道钩子，P4 A-2）/ `ctx.capabilities`（capability，P4 A-3） | `src-ui/src/composition/services.ts` + `subagent-service.ts` + `renderer-service.tsx` + `prompt-service.ts` + `hook-service.ts` + `capability-service.ts` |
+| 贡献通道 | `ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.llm`（LLM adapter）/ `ctx.subagents`（子代理 provider）/ `ctx.fs` / `ctx.shell`（subprocess 并入）/ `ctx.sessionPersistence` / `ctx.graph`（后端能力四 seam，平台化 Phase 2 · D11）/ `ctx.renderers`（块渲染器，V3b）/ `ctx.prompts`（prompt 段，P4 A-1）/ `ctx.hooks`（管道钩子，P4 A-2）/ `ctx.capabilities`（capability，P4 A-3） | `src-ui/src/composition/services.ts` + `subagent-service.ts` + `fs-service.ts` + `shell-service.ts` + `session-persistence-service.ts` + `graph-service.ts` + `renderer-service.tsx` + `prompt-service.ts` + `hook-service.ts` + `capability-service.ts` |
 | 行（row） | 组合的最小单元——工具族/prompt 段/capability/壳行各有 id | `src-ui/src/composition/*` |
 | preset | 命名的行组合叠加层（standard/minimal 内置 + 用户目录） | §8 + `docs/composition/README.md` |
 | patch | 四域行的增量数据（禁用/覆盖/插入） | `docs/composition/README.md` |

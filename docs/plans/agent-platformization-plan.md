@@ -1,7 +1,7 @@
 # Agent 平台化（Lantai Platform）总计划 —— 一个文档解决所有问题
 
 > 立项：2026-08-25
-> 状态：**Phase 1 已竣工（2026-08-27 夜，三 commit）**——① `98a6f30d` ctx.llm 升格（D2 修订版/D5 作废，A 路线用户拍板）② `605d6e8a` ctx.subagents（D3）③ D4 全 loop 事件表（13 事件 + 完整性 guard + feature→mechanism map）；Phase 0 宪法边界已入档 + 守卫测试复验绿；**Phase 2（后端能力 seam）待开工**
+> 状态：**Phase 2 已竣工（2026-08-27 深夜，四 commit）**——Phase 1（2026-08-27 夜，三 commit）：① `98a6f30d` ctx.llm 升格（D2 修订版/D5 作废，A 路线用户拍板）② `605d6e8a` ctx.subagents（D3）③ D4 全 loop 事件表（13 事件 + 完整性 guard + feature→mechanism map）；Phase 2（后端能力 seam，D11）：④ `4c7b6467` ctx.fs ⑤ `4bcd0c05` ctx.shell（D11 修订：subprocess 并入）⑥⑦ `daae88c3` ctx.sessionPersistence + ctx.graph。Phase 0 宪法边界已入档 + 守卫测试复验绿；**Phase 3（组合域统一 + 目录生成）待开工**
 > 性质：能力建设计划（capability plan），不是还债（debt plan）
 > 上位：`agent-plugin-architecture-plan.md`（P1-P4 已竣工部分）+ `composition-architecture/README.md`（S0-S4 已竣工 + 内核线）+ `docs/adr/project-constitution.md`
 > 参照系：DeepSeek Harness（`D:\useful\deepseek-harness`，下称 DSH）；"DSH 实证"均给文件路径供执行者直查。
@@ -222,6 +222,8 @@
 **谁判断：** Agent 自主（D1-D13 已冻结）。
 
 ### Phase 2 —— 后端能力 seam（默认 provider 包装 Rust/engine）
+
+> **落地记录（2026-08-27 深夜，四 commit 铁律 7 分段）**：④ `4c7b6467` ctx.fs（11 动作，tool-fs 消费面改查，P2-C1/C2/C3 达成，T8 清零）；⑤ `4bcd0c05` ctx.shell（四动作 + **D11 修订：ctx.subprocess 并入 ctx.shell**——spawn/stdio/进程树即后台任务族，无第二消费者不开空通道，Agent 自主裁定留痕于 D11 注记，T9 清零）；⑥⑦ `daae88c3` ctx.sessionPersistence（六动词，agent-store 单一权威源改查，T10 清零）+ ctx.graph（holoExec 改查，T11 清零）。**P2-C4 汇总**：src-tauri cargo test 全量——bin 417 passed + 集成 15/15 全绿；唯一失败 `cdp::e2e::e2e_multi_account_profiles_and_cookies` = 基线在册环境型用例（需真实浏览器 profile；`git diff --stat` 证明 src-tauri 及全部 Rust crate 在施工窗口零改动，归属既有环境欠账非本计划回归）。强制层不旁路由 fs/shell seam 的 P2-C3 守卫测试钉死（plan 激活拦截时 provider 与 dispatch 双未触）。**谁判断：Agent 自主（D1-D13 冻结 + 施工⑤ subprocess 合并为授权范围内裁定，留痕于 D11 注记）。**
 
 **做什么：**
 

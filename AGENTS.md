@@ -67,7 +67,7 @@ HoloGram/（根 Cargo.toml = workspace，五成员）
 │   ├── src/scene/     星图类型层（C13 sweep 后仅存 graph-types.ts；渲染面已退役）
 │   ├── src/ui/        chat 编排域核心 + 旧层命令式基础设施（终态 25 文件，见目录 README）
 │   ├── src/cordis/    vendored cordis 内核（Context/Fiber/Service；禁就地改，见目录 README）
-│   ├── src/composition/ 组合层（S1+V3b+P4+平台化 Phase 1）：工具行表 tool-rows + prompt section 表 + 贡献通道 service 注册表（四 service + V3b 块渲染器 renderer-service + P4 A-1 prompt 段 prompt-service + P4 A-2/3 hooks/capabilities + Phase 1 llm/subagents）
+│   ├── src/composition/ 组合层（S1+V3b+P4+平台化 Phase 1/2）：工具行表 tool-rows + prompt section 表 + 贡献通道 service 注册表（四 service + V3b 块渲染器 renderer-service + P4 A-1 prompt 段 prompt-service + P4 A-2/3 hooks/capabilities + Phase 1 llm/subagents + Phase 2 fs/shell/sessionPersistence/graph）
 │   └── src/agent/     Agent 运行时、工具层、多 Agent、goal/plan
 ├── docs/              架构/ADR/交接/研究；archive/ 是历史，勿作现状依据
 ├── assets/            图标、UI 原型

@@ -767,6 +767,19 @@ P14 写「兰台是单活跃 provider 形态」，P15 后修正为：**多 provi
      `provider/index.ts` 只余「贡献扫描 → 未命中 PROVIDER_DIALECT 响亮报错」。
    - 裸环境语义变更：此前未装配也走内核兜底，现响亮报错（P1-C2 显式降级）——
      生产装配恒经 loadBuiltinPlugins 无感知差异；测试以「装配复现 helper」先行。
+6. **平台化 Phase 2 落地纪要（2026-08-27 深夜，agent-platformization-plan D11）**：
+   - 后端能力四 seam 落地：`ctx.fs`（11 动作）/ `ctx.shell`（四动作；**ctx.subprocess
+     并入 ctx.shell**——spawn/stdio/进程树即后台任务族，无第二消费者不开空通道）/
+     `ctx.sessionPersistence`（六动词，含实测发现的 `log_append` 会话事件日志动词）/
+     `ctx.graph`（hologram_call 派发）。
+   - 统一形状：`composition/*-service.ts`（ContributionRegistry 单一内核）+
+     `agent/*-provider.ts` 默认 provider（动作→命令恒等映射）；fs/shell 走 dispatch
+     腰注入（meta/_agent_id 全量透传），sessions 直连 typedRpc（基础设施无 meta），
+     graph 走 agentInvoke。
+   - 强制层不旁路：gate 在 executor 管道层、先于工具 execute——P2-C3 守卫测试
+     钉死「plan 激活拦截时 provider 与 dispatch 双未触」（fs/shell seam 各一）。
+   - 消费面收口：tool-fs（coding.ts）/ tool-shell / agent-store / hologram holoExec
+     全部改经注册表；chat-session 卷落盘与 Monaco file-viewer 保持 typedRpc（P5 统一）。
 
 ### 验证
 
