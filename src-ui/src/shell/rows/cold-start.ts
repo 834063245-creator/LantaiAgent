@@ -5,12 +5,14 @@
 // 自 main.ts 机械迁移（S2-4）；workspace-flip 批 1/3（纯会话优先 + 打开流
 // 两段化）；V5 拆除（2026-08-22）——星图渲染分支退役（旧「有缓存图→
 // 星图视图」不再成立）。
+// workspace-session-ownership-rework（2026-08-27）：setupPlaceholderAgent
+// 退役——零目录/占位工作区移除，无恢复信号 = 直接落案卷首页（不装配 Agent，
+// 用户从首页选/建工作区）。
 //
-// 现职责只剩两件：
-//   1. 引擎开关开 + 有缓存项目 → switchWorkspace(skipAnalysis) 恢复工作区
-//      数据面（Agent 工具的图谱预热 + 会话续开）；
-//      引擎开关关 → get_last_project（.last_project）恢复纯 Agent 工作区；
-//   2. 无恢复信号 → setupPlaceholderAgent（零目录通用会话）。
+// 现职责只剩一件：
+//   有恢复信号（引擎开 = 缓存图 source_root；引擎关 = .last_project）→
+//   switchWorkspace 恢复工作区数据面（Agent 工具的图谱预热 + 会话续开）；
+//   无恢复信号 → 落点首页（不再装配占位 Agent）。
 // 视图不再由此行决定——启动落点恒为案卷首页（bootShell 不再开纸面板，
 // 2026-08-22 用户拍板；纸面板由用户的新建/续开动作唤起）。
 
@@ -19,7 +21,7 @@ import { typedJsonRpc } from '../../rpc-contract';
 import { graphEngineEnabled, loadSettings } from '../../settings';
 import type { CachedGraphMeta } from '../../workspace';
 import { pushStatus, type ShellRefs, setLoading } from '../runtime';
-import { setupPlaceholderAgent, workspaceFlow } from './workspace';
+import { workspaceFlow } from './workspace';
 
 /** 冷启动缓存载荷 — 分页 meta（P0-2）或旧格式全量图（兼容）。 */
 interface CachedGraphPayload {
@@ -41,15 +43,14 @@ export async function bootColdStart(_refs: ShellRefs): Promise<void> {
       try {
         lastDir = await typedJsonRpc<string | null>('get_last_project', {});
       } catch {
-        /* 无后端通道（浏览器 mock）→ 占位会话兜底 */
+        /* 无后端通道（浏览器 mock）→ 落点首页 */
       }
       if (lastDir) {
         console.log('[init] cold start (engine off): restoring last workspace', lastDir);
         await workspaceFlow.switchWorkspace(lastDir, { skipAnalysis: true });
         pushStatus('已恢复上次案卷（图谱引擎已停用）');
-      } else {
-        await setupPlaceholderAgent();
       }
+      // 无恢复信号 → 落点案卷首页（不装配 Agent，用户从首页选/建工作区）
       return;
     }
     let graph: CachedGraphPayload | null = null;
@@ -59,9 +60,8 @@ export async function bootColdStart(_refs: ShellRefs): Promise<void> {
       // 无缓存图谱
     }
     if (!graph) {
+      // 无缓存图谱 → 落点案卷首页（无工作区上下文不装配 Agent）
       setLoading(false);
-      // 在无工作区上下文下设置 agent（仅通用聊天）
-      await setupPlaceholderAgent();
       return;
     }
 
@@ -75,10 +75,9 @@ export async function bootColdStart(_refs: ShellRefs): Promise<void> {
     if (nodeCount > 0) {
       const root: string = graph.meta?.source_root || '';
       if (!root) {
-        // 图谱存在但无路径 — 无工作区上下文，占位 agent 兜底
+        // 图谱存在但无路径 — 无工作区上下文，落点首页（不装配占位 Agent）
         pushStatus('⚠️ 缓存图谱已加载，但工作区路径丢失 — 请重新绑定目录');
         setLoading(false);
-        await setupPlaceholderAgent();
         return;
       }
 
@@ -98,7 +97,6 @@ export async function bootColdStart(_refs: ShellRefs): Promise<void> {
     /* 无缓存 */
   }
 
-  // 无缓存图谱 — 占位 Agent（零目录通用会话；视图落点 = 案卷首页）
+  // 无缓存图谱 / 无恢复信号 — 落点案卷首页（不装配 Agent）
   setLoading(false);
-  await setupPlaceholderAgent();
 }

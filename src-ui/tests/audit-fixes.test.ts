@@ -232,13 +232,12 @@ describe('#10 scheduleAutoSave per-panel isolation', () => {
     // 每面板至少 1 份卷文件，两面板合计 ≥ 2
     expect(writeCalls.length).toBeGreaterThanOrEqual(2);
 
-    // Verify both panels' saves appear — U1（会话统一）后统一落全局位，
-    // 面板区分信息在卷内容 workspace 字段（不再按路径分段）
-    const allParams = writeCalls.map((c: any[]) => String(c[1].params?.content || ''));
-    const hasPanelA = allParams.some((p: string) => p.includes('"workspace":"/a"'));
-    const hasPanelB = allParams.some((p: string) => p.includes('"workspace":"/b"'));
-    expect(hasPanelA).toBe(true);
-    expect(hasPanelB).toBe(true);
+    // Verify both panels' saves appear — workspace-session-ownership-rework 后
+    // 归属 = 存储位置：面板 A/B 写各自 {workspace}/.lantai/sessions/{id}.json
+    // （workspace 字段标签已退役——同一 storeId 跨面板隔离仍由复合键保证）
+    const paths = writeCalls.map((c: any[]) => String(c[1]?.params?.file_path || ''));
+    expect(paths.some((p: string) => p === '/a/.lantai/sessions/1.json')).toBe(true);
+    expect(paths.some((p: string) => p === '/b/.lantai/sessions/1.json')).toBe(true);
   });
 });
 

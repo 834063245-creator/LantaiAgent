@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: MIT.
 
 // 壳行（hologram/shell-workspace）：workspace 流函数族 —
-// switchWorkspace / escLayer / setupPlaceholderAgent。
+// switchWorkspace / escLayer。
 // 自 main.ts 机械迁移（S2-4）；workspace-flip 批 3（打开流两段化）。
+// workspace-session-ownership-rework（2026-08-27）：setupPlaceholderAgent 退役——
+// 零目录会话/占位工作区已随「会话物理归属工作区」移除，无项目不装配 Agent。
 //
 // V5 拆除（2026-08-22，纸壳唯一主界面）：星图渲染面退役——switchWorkspace
 // 不再构造/等待 StarGraph 渲染，图谱数据面（graphData 分页装载 + graph-
@@ -77,11 +79,6 @@ async function switchWorkspace(
       wsMachine.forceState(workspace?._health === 'degraded' ? 'degraded' : 'active');
       return;
     }
-
-    // 会话统一 U1：项目会话卷文件统一落全局位——切工作区时先解析用户级
-    // 会话目录（幂等缓存；与 setupPlaceholderAgent / SessionsHome 同一装配点惯例）
-    const { ensureUserSessionsDir } = await import('../../ui/chat-session');
-    await ensureUserSessionsDir();
 
     // 在可能缓慢的 deactivate() await 之前标记加载态。
     setLoading(true, folder);
@@ -200,61 +197,11 @@ function escLayer(): void {
   else if (dock.isOpen('paper')) dock.closePanel('paper');
 }
 
-// ── 辅助：用占位工作区设置 agent（未加载项目）──
-
-/** 占位工作区装配（单槽统一，2026-08-24 工作区归属根治 Phase A）：
- *  零目录会话的 Workspace 实例直接进 shellRefs.workspace 槽（path='' 的
- *  普通条目）——模块级影子实例（_placeholderWs）退役。persistence 行的
- *  agent-config 信号路由因此坍缩为单分支（查槽即得，不再三分支猜测）；
- *  切真目录时 switchWorkspace 的 deactivate 链照常适用（saveActiveSession('')
- *  路由用户级目录）。槽里已有工作区（真目录或此前装配的占位）→ 复用不重建。 */
-async function setupPlaceholderAgent(): Promise<void> {
-  if (shellRefs.workspace) return;
-  // 零目录会话装配点（workspace-flip 批 2）：用户级会话目录先于任何会话操作解析
-  const { ensureUserSessionsDir } = await import('../../ui/chat-session');
-  await ensureUserSessionsDir();
-  // 清除后端工作区绑定 — 防止上一个项目的 PermissionContext
-  // 泄漏到占位工作区的 read_file / list_directory 调用中。
-  await typedRpc('workspace_activate', { path: '' }).catch(() => {});
-  const { Workspace: WorkspaceCls } = await wsMod();
-  // 并发防御：上面有 await 间隔，槽在此期间被占（如另一路冷启动已装配）则复用
-  if (shellRefs.workspace) return;
-  const ws = WorkspaceCls.placeholder();
-  ws.onStatusChange = (msg) => {
-    pushStatus(msg);
-  };
-  shellRefs.workspace = ws;
-  const chatPanel = shellRefs.chatPanel;
-  if (!chatPanel) {
-    // chat 壳行被禁用的涟漪（设计件 §2.8）：无面板承接，占位 agent 不装配
-    console.warn('[init] chatPanel 缺席，跳过占位 agent 装配');
-    return;
-  }
-  try {
-    await ws.setupAgent(chatPanel);
-  } catch (e) {
-    // Phase D（错误不静默）：占位装配失败同样可见
-    console.error('[init] setupAgent failed:', e);
-    const msg = e instanceof Error ? e.message : String(e);
-    pushStatus(`⚠️ Agent 装配失败: ${msg}`);
-    useAgentPanelStore.getState().setDiag({ text: `❌ Agent 装配失败 — ${msg}`, ready: false });
-  }
-  // Phase B（2026-08-24）：会话存在性脱离装配——零目录会话照常从用户级目录
-  // 恢复历史案卷（sessionsDir('') 路由 ~/.lantai/sessions/）。
-  await chatPanel.autoRestoreLastSession('').catch((e) => {
-    console.error('[init] zero-dir session restore failed:', e);
-    pushStatus(`⚠️ 会话恢复失败: ${e instanceof Error ? e.message : String(e)}`);
-  });
-}
-
 /** 导出面：冷启动行 + actions 行消费的 workspace 流函数族。 */
 export const workspaceFlow = {
   switchWorkspace,
   escLayer,
 };
-
-/** 占位 agent 装配（冷启动行消费——无缓存/无路径分支共用）。 */
-export { setupPlaceholderAgent };
 
 /** 壳行 boot：workspace 流本身就是模块级函数族——boot 无接线动作，
  *  仅暴露 flow 导出（编排器经 deps 注入给 actions 行 / 冷启动行）。

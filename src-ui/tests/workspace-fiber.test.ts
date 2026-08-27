@@ -3,11 +3,13 @@
 
 // Workspace fiber 生命周期运行时验证（cordis-migration P1）。
 // 与 workspace-lifecycle / workspace-scope 的 T0 静态断言互补：这里跑真实
-// Workspace（placeholder 路径 — 不触 RPC），钉住 fiber 的可观测契约：
-//   1. placeholder 工作区持有 cordis fiber（ctx 是 Context 品牌）；
+// Workspace（低层 new — 不触 RPC），钉住 fiber 的可观测契约：
+//   1. Workspace 持有 cordis fiber（ctx 是 Context 品牌）；
 //   2. 获取点 effect 登记 → forceClearState 快通道释放（清理器执行、epoch 推进）；
 //   3. deactivate 走 fiber dispose-to-quiescence（await 返回即清理器全部 settle）；
 //   4. dispose 后拒绝新增 effect（显式失败，对齐旧 DisposerBag 的停注册契约）。
+// workspace-session-ownership-rework（2026-08-27）：占位工作区（path=''）退役，
+// 低层构造改 public——测试用真实路径轻量实例（不触 RPC，同占位语义）。
 
 import { describe, expect, it } from 'vitest';
 import type { ChatCore } from '../src/app/chat/chat-core';
@@ -22,18 +24,23 @@ function flush(): Promise<void> {
 }
 
 function fakeChatPanel(): ChatCore {
-  return { saveActiveSession: async () => {} } as unknown as ChatCore;
+  return { saveActiveSession: async () => {}, saveAllSessions: async () => {} } as unknown as ChatCore;
+}
+
+/** 轻量工作区实例（低层 new，不触 RPC——测试专用）。 */
+function makeWs(): Workspace {
+  return new Workspace('D:/__lantai_test_ws__');
 }
 
 describe('Workspace fiber 生命周期（P1）', () => {
-  it('placeholder 工作区持有 cordis fiber，cordisCtx 是 Context 品牌', async () => {
-    const ws = Workspace.placeholder();
+  it('Workspace 持有 cordis fiber，cordisCtx 是 Context 品牌', async () => {
+    const ws = makeWs();
     expect(Context.is(ws.cordisCtx)).toBe(true);
     await ws.deactivate(fakeChatPanel());
   });
 
   it('effect 随 forceClearState 快通道释放，epoch 同步推进', async () => {
-    const ws = Workspace.placeholder();
+    const ws = makeWs();
     const events: string[] = [];
     ws.cordisCtx.effect(() => {
       events.push('setup');
@@ -49,7 +56,7 @@ describe('Workspace fiber 生命周期（P1）', () => {
   });
 
   it('deactivate 是 dispose-to-quiescence：await 返回即清理器已全部执行', async () => {
-    const ws = Workspace.placeholder();
+    const ws = makeWs();
     let disposed = false;
     ws.cordisCtx.effect(
       () => async () => {
@@ -64,14 +71,14 @@ describe('Workspace fiber 生命周期（P1）', () => {
   });
 
   it('fiber dispose 后拒绝新增 effect（显式失败契约保持）', async () => {
-    const ws = Workspace.placeholder();
+    const ws = makeWs();
     ws.forceClearState();
     await flush();
     expect(() => ws.cordisCtx.effect(() => {}, 'late')).toThrow();
   });
 
   it('LSP 子系统服务挂工作区 fiber（P3）— 随 fiber 生命周期收尾', async () => {
-    const ws = Workspace.placeholder();
+    const ws = makeWs();
     expect(ws.lsp).toBeInstanceOf(LspService);
     await ws.deactivate(fakeChatPanel());
     // 服务随工作区 fiber dispose 收尾（H1：旧项目诊断缓存不带入新工作区）

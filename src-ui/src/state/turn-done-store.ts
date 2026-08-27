@@ -4,8 +4,10 @@
 // turn-done-store — 聊天轮次完成信号（P1 事件归零：替代 bus 'chat:turn-done' 事件；
 // 见 docs/plans/eventbus-zero-and-ui-split-plan.md）。
 // 发射点：chat-core（_runAgentTurn / sendMessage 的 finally）。
-// 消费者：shell/rows/persistence（订阅 tick — 增量持久化 appendLastMessage +
-// scheduleAutoSave）。
+// 消费者：shell/rows/persistence（订阅 tick — 防抖全量 scheduleAutoSave +
+// 后台卷 saveSessionById）。
+// workspace-session-ownership-rework（2026-08-27）：NDJSON 增量持久化已拆
+// （appendLastMessage/session_append 退役），唯一存储路径 = 工作区会话根全量快照。
 // L2（session-ledger）：tick 携带 doneSid（本轮跑完的会话 id）——持久化
 // 「谁跑完存谁」，后台卷跑完立即落盘自己的卷，不再只存当前翻开的卷。
 

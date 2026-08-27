@@ -152,7 +152,6 @@ describe('图谱引擎开关：冷启动信号', () => {
     settingsState.graphEngine = { enabled: false };
     vi.doMock('../src/shell/rows/workspace', () => ({
       workspaceFlow: { switchWorkspace: vi.fn(async () => {}) },
-      setupPlaceholderAgent: vi.fn(async () => {}),
     }));
     const { bootColdStart } = await import('../src/shell/rows/cold-start');
     await bootColdStart({} as never);

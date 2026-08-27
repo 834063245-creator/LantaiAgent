@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// workspace-flip 批 2 测试 — 零目录会话路由（sessionsDir('') → 用户级目录）。
-// 冻结文件 chat-session.ts 的外科手术面：ensureUserSessionsDir 缓存 + '' 路由 + 持久化往返。
+// workspace-flip 批 2 测试 → workspace-session-ownership-rework（2026-08-27）重写：
+// 会话**物理归属工作区**——scanMaxSessionId 扫 `{projectPath}/.lantai/sessions`
+// 单一存储位。零目录路由（ensureUserSessionsDir / '' 用户级目录兜底）已退役。
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -23,39 +24,16 @@ vi.mock('../src/bridge', () => ({
   isMockMode: () => false,
 }));
 
-import { _resetUserSessionsDirForTests, ensureUserSessionsDir, scanMaxSessionId } from '../src/ui/chat-session';
+import { scanMaxSessionId } from '../src/ui/chat-session';
 
 // rpc-contract 的 typedRpc 经 bridge.rpc 路由——mock 已覆盖。
 
-describe('workspace-flip 批 2：零目录会话路由', () => {
-  it('ensureUserSessionsDir：解析一次并缓存（幂等）', async () => {
-    _resetUserSessionsDirForTests();
+describe('工作区会话根路由（workspace-session-ownership-rework）', () => {
+  it('scanMaxSessionId(projectPath) 扫 {projectPath}/.lantai/sessions（单一路径）', async () => {
     mockInvoke.mockImplementation(async (_: string, req: any) => {
-      if (req.method === 'get_user_sessions_dir') return 'C:/Users/test/.lantai/sessions';
-      return '[]';
-    });
-    await ensureUserSessionsDir();
-    await ensureUserSessionsDir(); // 幂等
-    const dirCalls = mockInvoke.mock.calls.filter(([, r]: any[]) => r.method === 'get_user_sessions_dir');
-    expect(dirCalls.length).toBe(1);
-  });
-
-  it('RPC 失败兜底：显式旧路径（不静默改道）', async () => {
-    _resetUserSessionsDirForTests();
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockInvoke.mockRejectedValueOnce(new Error('no backend'));
-    await ensureUserSessionsDir();
-    expect(errSpy).toHaveBeenCalledWith(expect.stringContaining('get_user_sessions_dir 解析失败'), expect.anything());
-    errSpy.mockRestore();
-  });
-
-  it("scanMaxSessionId('')：list_directory 打到用户级目录（路由生效）", async () => {
-    _resetUserSessionsDirForTests();
-    mockInvoke.mockImplementation(async (_: string, req: any) => {
-      if (req.method === 'get_user_sessions_dir') return 'C:/U/.lantai/sessions';
       if (req.method === 'list_directory') {
-        // 钉路由：path 必须是用户级目录（不是 '/.lantai/sessions' 旧兜底）
-        expect(req.params.path).toBe('C:/U/.lantai/sessions');
+        // 钉路由：必须打到工作区会话根（不是旧全局位 / 用户级目录）
+        expect(req.params.path).toBe('D:/proj/.lantai/sessions');
         return JSON.stringify([
           { name: '1.json', path: 'x', is_dir: false },
           { name: '2.json', path: 'y', is_dir: false },
@@ -63,21 +41,13 @@ describe('workspace-flip 批 2：零目录会话路由', () => {
       }
       return '[]';
     });
-    await ensureUserSessionsDir();
-    const max = await scanMaxSessionId('');
+    const max = await scanMaxSessionId('D:/proj');
     expect(max).toBe(2);
   });
 
-  it("未 ensure 时 sessionsDir('') 走旧兜底（与批 1 行为一致——不静默改道）", async () => {
-    _resetUserSessionsDirForTests();
-    mockInvoke.mockImplementation(async (_: string, req: any) => {
-      if (req.method === 'list_directory') {
-        expect(req.params.path).toBe('/.lantai/sessions'); // 旧兜底路径
-        return '[]';
-      }
-      return '[]';
-    });
-    const max = await scanMaxSessionId('');
+  it('目录缺席 / 读失败 → 0（首启常态，不抛）', async () => {
+    mockInvoke.mockRejectedValueOnce(new Error('no dir'));
+    const max = await scanMaxSessionId('D:/proj');
     expect(max).toBe(0);
   });
 });

@@ -30,33 +30,19 @@ import { listen, rpc } from './bridge';
 // ─────────────────────────────────────────────────────────────
 
 /** Agent 上下文的公共可选参数（写操作需 is_agent + _agent_id 走权限路径）。
- *  L1 数据上下文：`_session_id` 让引擎命令（hologram_call / 图查询 / 时间线）
- *  决议到会话 attach 的工作区引擎实例——agentInvoke 恒注入活跃会话 id。 */
+ *  workspace-session-ownership-rework（2026-08-27）：`_session_id` 已退役——
+ *  引擎决议只跟活动工作区（单槽）走，会话 id 不参与引擎路由。 */
 interface AgentCtx {
   is_agent?: boolean;
   _agent_id?: string;
-  _session_id?: number;
   [key: string]: unknown;
 }
 
 export interface RpcContract {
-  // ── 应用层：数据上下文 / 会话 attach（L1）────────────────
-  /** 会话 attach（事实校验）：卷快照 workspace 字段为准；新生会话（卷未
-   *  落盘）可用 workspace 声明绑定。返回 {session_id, workspace, attached}。 */
-  session_attach: {
-    params: { session_id: number; workspace?: string };
-    result: string; // JSON — AttachOutcome（归零重建 2026-08-25：legacy_root 已拆，attach 只信卷快照 workspace 字段/新生声明）
-  };
-  /** 会话解绑（空闲上下文 GC）。 */
-  session_detach: {
-    params: { session_id: number };
-    result: string; // "null"
-  };
-  /** 焦点会话（UI 投影锚）——返回该会话工作区 "path"/null。 */
-  session_focus: {
-    params: { session_id: number };
-    result: string; // JSON
-  };
+  // ── 应用层：数据上下文（L1）────────────────────────────
+  // （workspace-session-ownership-rework 2026-08-27：session_attach/detach/
+  //  focus 三命令退役——会话只在所属工作区内打开，引擎决议只看活动工作区，
+  //  无需会话绑定/焦点投影。）
   /** 数据上下文清单（诊断）。 */
   context_list: {
     params: Record<string, never>;
@@ -83,11 +69,11 @@ export interface RpcContract {
     result: string; // JSON
   };
   get_graph_meta: {
-    params: { _session_id?: number };
+    params: Record<string, never>;
     result: string; // JSON
   };
   get_graph_page: {
-    params: { page?: number; page_size?: number; _session_id?: number };
+    params: { page?: number; page_size?: number };
     result: string; // JSON
   };
   engine_impact: {
@@ -292,12 +278,12 @@ export interface RpcContract {
   sandbox_status: { params: Record<string, never>; result: string }; // JSON — {degraded,reason}（Value 化：Rust 出口已展开）
 
   // ── Hologram 遗留命令 ────────────────────────────────────
-  hologram_run_check: { params: { path?: string; _session_id?: number }; result: string }; // JSON
+  hologram_run_check: { params: { path?: string }; result: string }; // JSON
   hologram_record_event: {
-    params: { event_type: string; file?: string; summary: string; _session_id?: number };
+    params: { event_type: string; file?: string; summary: string };
     result: string; // "null"（fire-and-forget）
   };
-  get_full_graph: { params: { _session_id?: number }; result: string }; // JSON — 大图慎用，优先分页
+  get_full_graph: { params: Record<string, never>; result: string }; // JSON — 大图慎用，优先分页
 
   // ── 工作区 ───────────────────────────────────────────────
   workspace_activate: { params: { path: string }; result: string }; // "null"
@@ -305,10 +291,10 @@ export interface RpcContract {
   workspace_start_watcher: { params: Record<string, never>; result: string }; // "null"
 
   // ── 会话持久化 ───────────────────────────────────────────
-  session_append: {
-    params: { path: string; session_id: string; message: Record<string, unknown> };
-    result: string; // "null"
-  };
+  // （workspace-session-ownership-rework 2026-08-27：chat 会话 NDJSON
+  //  session_append 已拆——只写不读孤儿退役；唯一保留路径 = 工作区会话根
+  //  全量快照（saveActiveSession/saveSessionById）。agent 侧
+  //  session-log.ndjson 是另一条保留路径，见 agent_session_append。）
   agent_session_append: {
     params: { project_path: string; agent_id: string; messages: Record<string, unknown>[]; rewrite?: boolean };
     result: string; // "null"

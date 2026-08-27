@@ -14,10 +14,10 @@ import { pushStatus } from '../runtime';
 export function bootPersistence(refs: ShellRefs): void {
   // ── 轮次完成通知（P1 总线归零：chat:turn-done → state/turn-done-store 信号）──
   // L2（session-ledger）：谁跑完存谁——doneSid = 后台卷 → 该卷全量快照
-  // （saveSessionById，F3 窗口期闭合）；doneSid = 活跃卷/缺席 → 现行链
-  // （NDJSON 增量 + 防抖全量）不变。占位工作区（path=''，单槽统一后进槽）
-  // 同样参与：saveActiveSession('') 路由用户级目录（appendLastMessage 对
-  // path='' 自行跳过——Rust session_append 不支持空路径）。
+  // （saveSessionById，F3 窗口期闭合）；doneSid = 活跃卷/缺席 → 防抖全量
+  // （scheduleAutoSave → saveActiveSession，工作区会话根唯一存储路径）。
+  // workspace-session-ownership-rework（2026-08-27）：NDJSON 增量
+  // （appendLastMessage/session_append）已拆除——只写不读孤儿路径退役。
   useTurnDoneStore.subscribe((s, prev) => {
     if (s.turnDoneTick === prev.turnDoneTick) return;
     const ws = refs.workspace;
@@ -32,8 +32,7 @@ export function bootPersistence(refs: ShellRefs): void {
         return;
       }
     }
-    // 增量持久化 — 将最后一条消息追加到后端 NDJSON
-    chatPanel.appendLastMessage(ws.path);
+    // 防抖全量落盘（工作区会话根）
     chatPanel.scheduleAutoSave(ws.path);
   });
 
@@ -75,8 +74,7 @@ export function bootPersistence(refs: ShellRefs): void {
   // debounce 定时器（同步）并触发刷新（尽力异步）。
   // L2（session-ledger）：不再只存活跃卷——全部有内容卷都落盘
   // （F3 收尾：后台卷即使从未被切回也不丢）。
-  // 单槽统一：占位工作区（path=''）同样收尾——saveAllSessions 对空路径
-  // 卷照常落盘（sessionsDir('') = 用户级目录）。
+  // workspace-session-ownership-rework：工作区会话根唯一存储位，随工作区走。
   window.addEventListener('beforeunload', () => {
     const ws = refs.workspace;
     if (ws) {

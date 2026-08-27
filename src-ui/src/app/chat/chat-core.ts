@@ -713,10 +713,6 @@ export class ChatCore {
   scheduleAutoSave(projectPath: string): void {
     Session.scheduleAutoSave(this._sessionCtx(), projectPath);
   }
-  /** 增量持久化最后一条消息到后端 NDJSON（即发即忘）。 */
-  appendLastMessage(projectPath: string): void {
-    Session.appendLastMessage(this._sessionCtx(), projectPath);
-  }
   async autoRestoreLastSession(projectPath: string): Promise<void> {
     return Session.autoRestoreLastSession(this._sessionCtx(), projectPath);
   }
@@ -761,16 +757,6 @@ export class ChatCore {
   /** Stage-5：显式保存点落盘工作区画布状态（切换/关闭窗口时调用）。 */
   async saveCanvasState(workspace: string): Promise<void> {
     await saveCanvasToDisk(this.panelId, workspace);
-  }
-
-  /** Stage-5 零目录退役：存量零目录卷 → 归入某工作区。返回处理卷数。 */
-  async bindZeroDirSessions(targetWs: string): Promise<number> {
-    return Session.bindZeroDirSessions(this._sessionCtx(), targetWs);
-  }
-
-  /** Stage-5 零目录退役：存量零目录卷 → 归档（拷贝 + 墓碑）。返回归档卷数。 */
-  async archiveZeroDirSessions(): Promise<number> {
-    return Session.archiveZeroDirSessions(this._sessionCtx());
   }
 
   // ── 轮次撤回（委托给 chat-session.ts）──

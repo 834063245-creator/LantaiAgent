@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-08-27T07:07:05.343Z
-> 方法总数：161（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-08-27T11:43:35.343Z
+> 方法总数：158（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -13,16 +13,13 @@
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
-| `session_attach` | — | workspace | 字符串 |
-| `session_detach` | — | — | `null`（unit） |
-| `session_focus` | — | — | 字符串 |
 | `context_list` | — | — | 字符串 |
 
 ## Engine 调度
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
-| `hologram_call` | tool | _session_id, workspace, args | 字符串 |
+| `hologram_call` | tool | workspace, args | 字符串 |
 | `hologram_tools_list` | — | — | 字符串 |
 
 ## Graph
@@ -31,8 +28,8 @@
 |------|----------|----------|------|
 | `load_graph_json` | — | path | 字符串 |
 | `analyze_and_load` | path | force | 字符串 |
-| `get_graph_meta` | — | _session_id | 字符串 |
-| `get_graph_page` | — | page, page_size, _session_id | 字符串 |
+| `get_graph_meta` | — | — | 字符串 |
+| `get_graph_page` | — | page, page_size | 字符串 |
 | `engine_impact` | node_id | max_depth | 字符串 |
 
 ## Git
@@ -212,9 +209,9 @@
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
-| `hologram_run_check` | — | path, _session_id | 字符串 |
-| `hologram_record_event` | event_type, summary | file, _session_id | `null`（unit） |
-| `get_full_graph` | — | _session_id | 字符串 |
+| `hologram_run_check` | — | path | 字符串 |
+| `hologram_record_event` | event_type, summary | file | `null`（unit） |
+| `get_full_graph` | — | — | 字符串 |
 
 ## 工作区
 

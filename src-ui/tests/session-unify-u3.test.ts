@@ -1,12 +1,10 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License: MIT.
 
-// 会话统一 U3 验收钉（session-unify-plan §4 U3；Q2-A+B / Q3 最小方案拍板）：
-//   ① 从全局目录摊开一卷 → 进视图 → 内容显示且既有卷不破（多卷并存）
-//   ② 零目录卷原地摊开（无工作区上下文，纯内容层）
-//   ③ 关闭卷 → 落盘写全局位（workspace 字段正确）→ 卷文件可读回（回目录可见）
-// 视图边界（Q3 最小方案）：SpineRack = 当前工作区视图内开卷列表；全局目录
-// （SessionsHome 单列表）= 唯一总入口；卡片排布/画布空间模型挂起不做。
+// 会话统一 U3 验收钉 → workspace-session-ownership-rework（2026-08-27）重写：
+//   · ① 同工作区多卷并存（既有卷 + 续开卷，同一工作区会话根）
+//   · ③ 关闭卷 → 落盘写工作区会话根（无 workspace 字段）→ 卷文件可读回
+//   · ② 零目录卷/跨工作区开卷已退役（D2/D5：会话只在所属工作区内打开）
 // mock 模式沿用 chat-session.test.ts（mockRpc 归一化 + 路径键实现式 mock）。
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -86,8 +84,6 @@ import { ChatCore } from '../src/app/chat/chat-core';
 import * as Session from '../src/ui/chat-session';
 import { msgStoreFor } from '../src/ui/chat-store';
 
-const GLOBAL = '/.lantai/sessions'; // _userSessionsDir 未解析时的兜底路径（测试态）
-
 /** 实现式磁盘 mock：read/write/list 三路由 + 内存文件表。 */
 function memDisk() {
   const files: Record<string, string> = {};
@@ -132,22 +128,21 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-describe('会话统一 U3 — 全局目录摊开/关卷回目录（视图内开卷语义）', () => {
-  it('① 从全局目录摊开跨工作区卷：内容显示且既有卷不破（多卷并存）', async () => {
+describe('同工作区多卷语义（workspace-session-ownership-rework 重写）', () => {
+  it('① 同工作区多卷并存：既有卷 1 + 续开卷 7（同一工作区会话根）', async () => {
     const files = memDisk();
-    files[`${GLOBAL}/7.json`] = JSON.stringify({
+    files['D:/ws-b/.lantai/sessions/7.json'] = JSON.stringify({
       id: 7,
-      label: '跨区卷',
+      label: '本区卷',
       savedAt: '2026-08-24T00:00:00Z',
       messages: [
         { role: 'system', content: 'sys' },
-        { role: 'user', content: '跨区卷内容' },
+        { role: 'user', content: '本区卷内容' },
       ],
-      workspace: 'D:/ws-b',
     });
 
     const panel = new ChatCore();
-    panel.setProjectPath('D:/ws-b'); // 续开路由已切到卷的工作区（SessionsHome onResume）
+    panel.setProjectPath('D:/ws-b');
     // DSH 形态：既有卷经工厂现造（带内容——多卷并存场景的卷 1）；
     // loadSessionFromDisk 再造的句柄用 storingFactory 语义（setSession 真存——
     // 渲染重建依赖 agent.getSession() 读回 conv）。
@@ -178,31 +173,10 @@ describe('会话统一 U3 — 全局目录摊开/关卷回目录（视图内开�
     const st = (await import('../src/ui/chat-store')).getChatStore(panel.panelId).sess.getState();
     expect(st.sessions[st.activeIdx]?.id).toBe(7);
     const msgs7 = msgStoreFor(panel.panelId, 7).getState().messages;
-    expect(msgs7.some((m: any) => m.text === '跨区卷内容')).toBe(true);
+    expect(msgs7.some((m: any) => m.text === '本区卷内容')).toBe(true);
   });
 
-  it('② 零目录卷原地摊开（纯内容层，无工作区上下文）', async () => {
-    memDisk()[`${GLOBAL}/5.json`] = JSON.stringify({
-      id: 5,
-      label: '零目录卷',
-      savedAt: '2026-08-24T00:00:00Z',
-      messages: [
-        { role: 'system', content: 'sys' },
-        { role: 'user', content: '零目录卷内容' },
-      ],
-    });
-
-    const panel = new ChatCore();
-    panel.setProjectPath('');
-    panel.setAgentFactory(storingFactory());
-
-    await panel.loadSessionFromDisk('', 5);
-
-    const msgs = msgStoreFor(panel.panelId, 5).getState().messages;
-    expect(msgs.some((m: any) => m.text === '零目录卷内容')).toBe(true);
-  });
-
-  it('③ 关闭卷 → 落盘写全局位（workspace 字段正确）→ 卷文件可读回（回目录可见）', async () => {
+  it('③ 关闭卷 → 落盘写工作区会话根（无 workspace 字段）→ 卷文件可读回', async () => {
     const files = memDisk();
     const panel = new ChatCore();
     panel.setProjectPath('D:/ws-b');
@@ -225,15 +199,15 @@ describe('会话统一 U3 — 全局目录摊开/关卷回目录（视图内开�
 
     panel.closeSession(0); // 合卷 1（C8 自动存）
 
-    // 写目标 = 全局位（非项目旧目录）+ workspace 字段
+    // 写目标 = 工作区会话根（归属 = 存储位置，无 workspace 字段）
     await new Promise((r) => setTimeout(r, 0)); // 写目标异步消解——排干微任务
     const write = Object.entries(files).find(([p]) => p.endsWith('/1.json'));
-    expect(write?.[0]).toBe(`${GLOBAL}/1.json`);
+    expect(write?.[0]).toBe('D:/ws-b/.lantai/sessions/1.json');
     const parsed = JSON.parse(write![1]);
-    expect(parsed.workspace).toBe('D:/ws-b');
+    expect(parsed).not.toHaveProperty('workspace'); // 归属 = 存储位置，无字段标签
     expect(parsed.messages.some((m: any) => m.content === '待合卷的内容')).toBe(true);
 
-    // 回目录可见：全局位卷文件成立（list 层由 Rust user_sessions_list 测试钉住）
-    expect(files[`${GLOBAL}/1.json`]).toBeTruthy();
+    // 回目录可见：工作区会话根卷文件成立（list 层由本工作区扫描承担）
+    expect(files['D:/ws-b/.lantai/sessions/1.json']).toBeTruthy();
   });
 });

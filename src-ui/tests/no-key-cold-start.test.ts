@@ -6,9 +6,9 @@
 //   ① 无 Key 冷启动 → 历史案卷从磁盘照常恢复显示（恢复不依赖工厂/装配）
 //   ② 缺 Key 的表现 = 明确的可见提示（拟文时补建失败 warn），不是会话消失
 //   ③ 配置 Key 后（工厂可用）→ 不重启，同一面板直接发送成功
-// （真实链路：无 Key 冷启动 → setupPlaceholderAgent → autoRestoreLastSession('')；
-//  本测试在 chat-session 层复现该契约——工厂形态由 stub 模拟「无 Key 返 null」
-//  与「配 Key 后可用」两个阶段。）
+// workspace-session-ownership-rework（2026-08-27）：会话物理归属工作区——
+// 历史卷存于 {workspace}/.lantai/sessions/（零目录路由已退役），本测试改在
+// 真实工作区路径上复现同一契约。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from '../src/app/shell-store';
@@ -71,13 +71,15 @@ import { ChatCore } from '../src/app/chat/chat-core';
 import * as Session from '../src/ui/chat-session';
 import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
 
-const USER_DIR = '/home/.lantai/sessions';
+/** 工作区 + 其会话根（workspace-session-ownership-rework 唯一存储位）。 */
+const WS = 'D:/ws';
+const WS_SESSIONS = 'D:/ws/.lantai/sessions';
 
-/** 磁盘卷 7（零目录会话，用户级目录）。 */
+/** 磁盘卷 7（本工作区会话根）。 */
 function volumeJson(): string {
   return JSON.stringify({
     id: 7,
-    label: '零目录历史卷',
+    label: '历史卷',
     savedAt: new Date().toISOString(),
     messages: [
       { role: 'system', content: 'sys' },
@@ -88,25 +90,24 @@ function volumeJson(): string {
   });
 }
 
-/** 零目录磁盘 mock：用户级目录有 7.json（U4/Q1-B：恢复 = 扫描推导，不再读
- *  总目/tracker——list_directory 路由卷清单）。 */
-function mockZeroDirDisk(): void {
+/** 工作区会话根磁盘 mock：{WS}/.lantai/sessions 有 7.json（恢复 = 扫描推导，
+ *  不再读总目/tracker——list_directory 路由卷清单）。 */
+function mockWorkspaceDisk(): void {
   mockInvoke.mockReset();
   mockInvoke.mockImplementation((_cmd: string, payload: { method: string; params: Record<string, unknown> }) => {
     const { method, params } = payload;
-    if (method === 'get_user_sessions_dir') return Promise.resolve(USER_DIR);
     if (method === 'list_directory') {
       const p = params.path as string;
-      if (p === USER_DIR) {
+      if (p === WS_SESSIONS) {
         return Promise.resolve(
-          JSON.stringify([{ name: '7.json', path: `${USER_DIR}/7.json`, is_dir: false, children: null }]),
+          JSON.stringify([{ name: '7.json', path: `${WS_SESSIONS}/7.json`, is_dir: false, children: null }]),
         );
       }
       return Promise.resolve(JSON.stringify([]));
     }
     if (method === 'read_file_content') {
       const fp = params.file_path as string;
-      if (fp === `${USER_DIR}/7.json`) return Promise.resolve(volumeJson());
+      if (fp === `${WS_SESSIONS}/7.json`) return Promise.resolve(volumeJson());
       return Promise.reject(new Error('文件不存在'));
     }
     return Promise.resolve(null);
@@ -119,25 +120,23 @@ async function drain(times = 10): Promise<void> {
 
 beforeEach(() => {
   localStorage.clear();
-  useShellStore.setState({ projectPath: '' });
+  useShellStore.setState({ projectPath: WS });
 });
 
 describe('无 Key 冷启动 → 会话恢复 → 配 Key 不重启可发（死路形态守护）', () => {
   it('恢复不依赖工厂：工厂返 null（无 Key）时历史卷照常打开显示', async () => {
-    mockZeroDirDisk(); // 归零重建：磁盘是唯一事实源（localStorage 备份已拆）
+    mockWorkspaceDisk(); // 归零重建：磁盘是唯一事实源（localStorage 备份已拆）
 
     const panel = new ChatCore();
     // 无 Key 阶段的工厂（Phase B 契约：工厂在场但返 null——恢复不经工厂）
     panel.setAgentFactory(async () => null);
-    // 零目录会话目录解析（真实链路由 setupPlaceholderAgent 调用；测试直调）
-    await Session.ensureUserSessionsDir();
 
     // Q-B（2026-08-24）：不自动摊开——autoRestoreLastSession 只做发号对账
-    await panel.autoRestoreLastSession('');
+    await panel.autoRestoreLastSession(WS);
     expect(Session.getSessions(panel.panelId)).toHaveLength(0);
 
     // 历史卷可见 = 从案卷首页打开（内容层恢复不依赖工厂，Phase B 契约）
-    await panel.loadSessionFromDisk('', 7);
+    await panel.loadSessionFromDisk(WS, 7);
     const sess = Session.getSessions(panel.panelId);
     expect(sess).toHaveLength(1);
     expect(sess[0].id).toBe(7);
@@ -153,13 +152,12 @@ describe('无 Key 冷启动 → 会话恢复 → 配 Key 不重启可发（死�
   });
 
   it('配 Key 后不重启：同一面板直接发送成功（句柄拟文时补建）', async () => {
-    mockZeroDirDisk(); // 归零重建：磁盘是唯一事实源（localStorage 备份已拆）
+    mockWorkspaceDisk(); // 归零重建：磁盘是唯一事实源（localStorage 备份已拆）
 
     const panel = new ChatCore();
     panel.setAgentFactory(async () => null); // 无 Key 冷启动阶段
-    await Session.ensureUserSessionsDir();
-    await panel.autoRestoreLastSession('');
-    await panel.loadSessionFromDisk('', 7); // Q-B：从案卷首页点开历史卷
+    await panel.autoRestoreLastSession(WS);
+    await panel.loadSessionFromDisk(WS, 7); // Q-B：从案卷首页点开历史卷
     await drain(); // 排干补建失败 warn
 
     // 用户在设置中配置 Key 保存（不重启）：工厂从「返 null」变为可用

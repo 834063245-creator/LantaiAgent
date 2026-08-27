@@ -221,7 +221,10 @@ export class Workspace {
   onStatusChange: ((msg: string) => void) | null = null;
   onLoadingChange: ((loading: boolean) => void) | null = null;
 
-  private constructor(path: string) {
+  /** 低层构造（测试缝/占位形态退役后的实例化入口）：仅建 fiber 与身份，
+   *  不绑定后端（open() 才是生产入口——内部走 workspace_activate）。
+   *  直接 new 出来的实例 _active=false，不触发任何 RPC。 */
+  constructor(path: string) {
     this.path = path;
     // 引擎开关快照（2026-08-22）：构造期读一次 settings——绑定期语义
     // （在途工作区不活拆，重新绑定/重启即见新值）。
@@ -249,17 +252,11 @@ export class Workspace {
     this._fiber.ctx.effect(() => () => cancelEngineSnapshotRefresh(), 'engine-snapshot-refresh-cancel');
   }
 
-  /** 创建仅 Agent 模式的占位工作区（未加载项目，path=''）。永不 _active——
-   *  单槽统一（2026-08-24）：占位实例进 shellRefs.workspace 槽（见
-   *  shell/rows/workspace.ts），switchWorkspace 的 deactivate 链对它照常适用
-   *  （saveActiveSession('') 路由用户级目录）。 */
-  static placeholder(): Workspace {
-    return new Workspace('');
-  }
-
   // ═══════════════════════════════════════════════════════════════
   // 工厂方法：打开工作区 — 分析 + 数据装载 + 监听器
   // （V5 拆除 2026-08-22：starGraph 渲染面退役——图谱数据面照旧）
+  // （workspace-session-ownership-rework 2026-08-27：占位工作区 path='' 退役——
+  //  零目录会话已退役，工作区 = 目录实体，无项目不装配 Agent）
   // ═══════════════════════════════════════════════════════════════
 
   static async open(
