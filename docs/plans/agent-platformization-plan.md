@@ -246,20 +246,17 @@
 
 ### Phase 3 —— 组合域统一 + 目录生成
 
-**做什么：**
+> **施工设计（2026-08-27，开工时定案）**：① seam 贡献进组合解析域——新增 `composition/seam-resolution.ts` 叶模块（各 seam 域禁用集的运行时单一读面，零依赖）+ `factoryComposition()` 收编七条 seam 寻址域（`seam/llm`、`seam/subagents`、`seam/fs`、`seam/shell`、`seam/sessionPersistence`、`seam/graph`、`seam/loopEvents`——`seam/` 前缀与既有四域键隔离，`shell` 键已被壳行域占用）+ patch schema 同名域（disable 条目，last-write-wins）+ `ResolvedComposition.seamDisabled` 消费裁剪面。**语义裁定**：注册表 = 实现真源（谁存在），组合 = 裁剪真源（谁生效）；消费视图 = 活动注册表 − 禁用集（晚注册的 provider 可见，除非显式禁用——免除快照陈旧类）；过滤收在 `active*Providers()`/`activeLlmAdapters()` 与 `emitLoopEvent` 消费单点，调用方零改动。生效语义 = 调用期全局裁剪（与 Phase 2 调用期扫描一致）；会话级 compositionOverride 的 seam 面不穿线（AgentConfig 冻结，P5 全量挂 seam 时再评估）。`seam/loopEvents` 域 = D4 事件面开关（行源 = LOOP_EVENT_NAMES；仅 emit 观测域可开关，tool/guard|preflight|around 是强制层语义不开放禁用——禁 guard = 绕 planGate）。② 目录生成（D9 随段落）：`gen-service-catalog`（ctx.* 全量：key/service/kind/owner/默认实现/消费面——kind 由源码机械推导规则出，缺标注即生成器报错）+ `gen-event-catalog`（event → mode/载荷/发射点/监听点——自 AGENT_EVENT_MAP + 调用点扫描生成）+ `doc-sync` 门禁（tool-contract + 两目录的 --check 对拍）。③ 契约版本化：开放面契约版本常量 + 变更记录 + seam 契约文件指纹对拍测试（变更未更新版本 = 红）+ `plugin_install` 版本比较兑现（降级拒绝 + force 逃生）。
 
-1. **一行 = provider + consumer**：Phase 1/2 的全部 seam 贡献并进组合解析域（对齐 `factoryComposition()` 快照 + 寻址）；patch/preset 可禁用/换默认 provider。
-2. **全栈 preset**：llm adapter、subagent provider、fs/shell/subprocess/session/graph provider、事件面开关全部进 preset（standard/minimal + 用户 preset）。
-3. **目录生成 + 完整性 guard（D9）**：
-   - 服务目录（`ctx.*` 全部 + owner/implementations/consumers，对齐 DSH `capability-seams.md` 生成方式）；
-   - 事件目录（event → producers/consumers，对齐 DSH `event-producer-consumer.md`）；
-   - 工具目录（现有 gen-tool-contract 已具，扩到 `cordis_*` 与动态插件可注册面）。
-   - 每条目录有生成器 + 漂移检查（doc-sync 门禁）。
-4. **契约版本化**：manifest `version` 比较 + 开放面契约版本（seam 接口变更记录），对齐 DSH `SESSION_FORMAT_VERSION` 机制。
+**拆旧清单（本段第一步交付物，收工清零——铁律 3）：**
 
-**动哪些文件：** `src-ui/src/composition/roster.ts`、`preset-assembly.ts`、`presets.ts`、新增 `scripts/gen-service-catalog.cjs` / `gen-event-catalog.cjs`、`docs/` 生成物 + `doc-sync` 接线。
+| # | 旧物 | grep 锚点 | 归宿 |
+|---|---|---|---|
+| T-P3-1 | `docs/agents/event-feature-map.md` 手写「事件目录」表（14 行手抄——与 AGENT_EVENT_MAP/发射点双源漂移面） | `docs/agents/event-feature-map.md` §事件目录 | 施工②：删手写表 → `docs/agents/event-catalog.md` 生成物（gen-event-catalog 生成 + 对拍守护），feature→mechanism 叙事保留 |
+| T-P3-2 | `docs/agents/event-feature-map.md`「P3 扩 gen-event-catalog 生成器后改生成物对拍」挂起注记 | 同文件「P3 扩」字样 | 施工②兑现后删除 |
+| T-P3-3 | `plugin_install.rs`「第一版不做版本比较（未决项）」 | `第一版不做版本比较` | 施工③：同名重装 semver 比较（降级拒绝 + force 逃生），未决项注记删除 |
 
-**验收判据：**
+**验收判据（判据号 P3-Cn）：**
 - P3-C1：全部 seam 贡献行可被 patch/preset 寻址禁用/替换。
 - P3-C2：standard/minimal 双 preset 快照零漂移（含新 seam 面）。
 - P3-C3：服务/事件目录生成 + 漂移检查入 doc-sync；目录与源码无手工双源。

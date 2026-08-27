@@ -13,6 +13,7 @@
 
 import type { SubAgentSpawnHost } from '../agent/subagent-spawn';
 import { type Context, Service } from '../cordis';
+import { seamDisabled } from './seam-resolution';
 import { ContributionRegistry } from './services';
 
 /** 子代理派生请求（字段与 Agent.spawnSubAgent 形参一一对应）。 */
@@ -71,9 +72,17 @@ function setActiveSubagents(svc: SubagentsService): void {
   _activeSubagents = svc;
 }
 
-/** 当前子代理 provider 贡献（无服务/无注册 = 空集——Agent.spawnSubAgent 的「后注册胜」扫描源）。 */
-export function activeSubagentProviders(): SubagentProvider[] {
+/** 注册表原始清单（寻址行源——factoryComposition 的 `seam/subagents` 域快照
+ *  收编本清单；被组合禁用的行仍在此处，patch 才能重新启用）。 */
+export function registeredSubagentProviders(): SubagentProvider[] {
   return _activeSubagents?.list() ?? [];
+}
+
+/** 当前子代理 provider 贡献（无服务/无注册 = 空集——Agent.spawnSubAgent 的「后注册胜」扫描源）。
+ *  裁剪面（平台化 Phase 3）：组合 `seam/subagents` 域禁用的 provider id 从视图剔除。 */
+export function activeSubagentProviders(): SubagentProvider[] {
+  const disabled = seamDisabled('subagents');
+  return registeredSubagentProviders().filter((p) => !disabled.has(p.id));
 }
 
 // ── ctx 通道声明 ──

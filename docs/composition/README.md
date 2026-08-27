@@ -2,10 +2,12 @@
 
 > S2 竣工（2026-08-20）· S4 preset/热重载/安装通道竣工（2026-08-20）·
 > S4-4 甲：插件贡献行/段进组合解析域（2026-08-23）·
-> ①b：builtin 行表退役，tools 域全量走插件贡献行（2026-08-23）。
-> 组合架构的「数据外化」段：工具行 / prompt 段 / capability / 壳行的
-> 「禁哪些、换哪段文本、插哪些段」从编译期 TS 表外化为用户可改的 patch
-> 数据文件。设计件：
+> ①b：builtin 行表退役，tools 域全量走插件贡献行（2026-08-23）·
+> P3：seam 裁剪域进组合解析域——llm/subagents/fs/shell/sessionPersistence/graph
+> provider 与 loopEvents 事件面开关可被 patch/preset 寻址（2026-08-27）。
+> 组合架构的「数据外化」段：工具行 / prompt 段 / capability / 壳行 /
+> seam provider 的「禁哪些、换哪段文本、插哪些段」从编译期 TS 表外化为
+> 用户可改的 patch 数据文件。设计件：
 > `docs/plans/composition-architecture/designs/S2-composition-externalization.md`
 > （S2）与 `.../S4-preset-realm-distribution.md`（S4）。
 
@@ -36,7 +38,8 @@ prompt:
 
 （①b 起 builtin 行表退役——全部十四族工具行均走
 `plugin/hologram/<域>-domain/<工具名>` 贡献行寻址；第一方 prompt 段 id
-亦可寻址。完整寻址域见 §「四个行域」。）
+亦可寻址；seam provider/事件经 `seam/<域>` 域寻址。完整寻址域见
+§「四个行域」与 §「seam 裁剪域」。）
 
 保存即生效（S4-2 热重载）：**新 Agent 装配（新会话）即用新组合；在途
 会话保持创建时点的组合不变**。没有这个文件（或文件为空）= 出厂组合。
@@ -64,9 +67,52 @@ prompt:
 
 完整 id 清单以各真源文件为准——它们是唯一权威源。
 
+## seam 裁剪域（七——平台化 Phase 3）
+
+Phase 1/2 开放的全部 swappable seam 并进组合解析域：每个 seam provider
+（或 D4 事件）是一条可寻址行，域键 = `seam/<ctx 键名>`（`seam/` 前缀与四个
+行域键隔离——`shell` 键已被壳行域占用）：
+
+| 域 | 行 id 举例 | 裁剪对象 |
+|---|---|---|
+| `seam/llm` | `builtin/anthropic`、`builtin/openai` | LLM adapter（`ctx.llm`——同 kind 后注册胜） |
+| `seam/subagents` | `builtin/in-process` | 子代理 provider（`ctx.subagents`） |
+| `seam/fs` | `builtin/rust-fs` | 文件系统后端（`ctx.fs`） |
+| `seam/shell` | `builtin/rust-shell` | shell/子进程后端（`ctx.shell`） |
+| `seam/sessionPersistence` | `builtin/rust-sessions` | 会话持久化后端（`ctx.sessionPersistence`） |
+| `seam/graph` | `builtin/rust-graph` | 图分析后端（`ctx.graph`） |
+| `seam/loopEvents` | `turn/start`、`subagent/spawn`… | D4 emit 观测事件（事件面开关——裁决域 tool/guard 等不开放） |
+
+**语义（注册表 = 实现真源，组合 = 裁剪真源）**：
+
+- 禁用某行 = 从对应 seam 的「后注册胜」消费视图剔除该 provider；**替换
+  默认 provider** = 插件/动态贡献一个替代 provider（后注册即胜）+（需要时）
+  禁用默认行。全部禁用 = 消费面响亮报错（`FS_PROVIDER` / `PROVIDER_DIALECT` /
+  `SUBAGENT_PROVIDER` / `SESSION_PERSISTENCE_PROVIDER` / `GRAPH_PROVIDER`
+  / `SHELL_PROVIDER`——显式降级非静默）。
+- **晚注册可见**：解析之后新注册的 provider 不被误裁（除非其 id 显式在
+  禁用集）——组合表达「裁剪谁」，不表达「冻结清单」。
+- `seam/loopEvents` 禁用事件 = 该事件不再广播（观测面裁剪；事件非模型可见、
+  不进 session log，禁用不影响 loop 执行本身）。
+- **生效时机 = 调用期**：seam 消费面按当前组合的禁用集在每次调用时过滤
+  （与 Phase 2 调用期扫描语义一致）；会话级 compositionOverride 的 seam 面
+  不穿线（裁剪是全局组合语义）。
+- 权限咽喉 / plan gate / 审计在 executor 管道层与 RPC 平台面——**换
+  provider、禁 provider 均不豁免强制层**（P2-C3 守卫测试钉死）。
+
+```yaml
+# 例：换默认 fs 后端（插件贡献了 my/fs 后）+ 关掉 subagent 观测事件
+seam/fs:
+  - id: builtin/rust-fs
+    disabled: true
+seam/loopEvents:
+  - id: subagent/spawn
+    disabled: true
+```
+
 ## patch 语法
 
-### 禁用（四个域通用）
+### 禁用（四个行域 + 七个 seam 域通用）
 
 ```yaml
 tools:

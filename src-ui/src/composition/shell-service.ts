@@ -17,6 +17,7 @@
 
 import type { ToolExecutor } from '../agent/tool';
 import { type Context, Service } from '../cordis';
+import { seamDisabled } from './seam-resolution';
 import { ContributionRegistry } from './services';
 
 /** shell 域动作（执行 + 后台任务族三动词）。 */
@@ -65,9 +66,17 @@ function setActiveShell(svc: ShellService): void {
   _activeShell = svc;
 }
 
-/** 当前 shell provider 贡献（无服务/无注册 = 空集——工具消费面的「后注册胜」扫描源）。 */
-export function activeShellProviders(): ShellProvider[] {
+/** 注册表原始清单（寻址行源——factoryComposition 的 `seam/shell` 域快照收编本
+ *  清单；被组合禁用的行仍在此处，patch 才能重新启用）。 */
+export function registeredShellProviders(): ShellProvider[] {
   return _activeShell?.list() ?? [];
+}
+
+/** 当前 shell provider 贡献（无服务/无注册 = 空集——工具消费面的「后注册胜」扫描源）。
+ *  裁剪面（平台化 Phase 3）：组合 `seam/shell` 域禁用的 provider id 从视图剔除。 */
+export function activeShellProviders(): ShellProvider[] {
+  const disabled = seamDisabled('shell');
+  return registeredShellProviders().filter((p) => !disabled.has(p.id));
 }
 
 // ── ctx 通道声明 ──

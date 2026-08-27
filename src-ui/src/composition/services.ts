@@ -28,6 +28,7 @@ import type { Tool } from '../agent/tool';
 import { type Context, Service } from '../cordis';
 import type { Provider } from '../provider/types';
 import { bumpCommands, bumpPanelDefs } from '../state/panel-defs-store';
+import { seamDisabled } from './seam-resolution';
 import type { ToolRowContext } from './tool-rows';
 
 // ── 工具贡献变更监听（S4-1.5）──
@@ -300,9 +301,18 @@ export function activeToolContributions(): ToolContribution[] {
   return _activeTools?.list() ?? [];
 }
 
-/** 当前 LLM adapter 贡献（无服务/无注册 = 空集——createProvider 方言解析的「后注册胜」扫描源）。 */
-export function activeLlmAdapters(): LlmAdapterContribution[] {
+/** LLM adapter 注册表原始清单（寻址行源——factoryComposition 的 `seam/llm`
+ *  域快照收编本清单；被组合禁用的行仍在此处，patch 才能重新启用）。 */
+export function registeredLlmAdapters(): LlmAdapterContribution[] {
   return _activeLlm?.list() ?? [];
+}
+
+/** 当前 LLM adapter 贡献（无服务/无注册 = 空集——createProvider 方言解析的
+ *  「后注册胜」扫描源）。裁剪面（平台化 Phase 3）：组合 seam 裁剪域
+ *  `seam/llm` 禁用的 adapter id 从视图剔除（消费视图 = 注册表 − 禁用集）。 */
+export function activeLlmAdapters(): LlmAdapterContribution[] {
+  const disabled = seamDisabled('llm');
+  return registeredLlmAdapters().filter((a) => !disabled.has(a.id));
 }
 
 // ── 组合层挂载插件（根 Context 装配四 service；经 loadBuiltinPlugins 引导）──

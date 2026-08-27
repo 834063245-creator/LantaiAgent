@@ -27,6 +27,7 @@
 //   - preflight / around 的静默降级由适配层（attach*）负责，与旧 executor 相同；
 //   - emit 不吞异常（观察者抛错是 bug，暴露优于掩盖）。
 
+import { seamDisabled } from '../composition/seam-resolution';
 import type { ToolPipelineContext } from './agent-types';
 import type { HookRegistry, PreflightHookRegistry } from './hooks';
 import type { Disposer } from './lifecycle';
@@ -232,12 +233,16 @@ export class AgentEventBus {
 
   /** D4 loop/能力域事件广播（emit 语义，fire-and-forget，不吞异常）。
    *  非 emit 域事件名在运行时响亮拒绝（类型层已收窄到 LoopEventName，此为
-   *  JS 调用方守卫——错误不静默宪法）。 */
+   *  JS 调用方守卫——错误不静默宪法）。
+   *  事件面开关（平台化 Phase 3）：组合 `seam/loopEvents` 域禁用的事件
+   *  不广播（观测面裁剪——R1 语义不变：事件非模型可见、不进 session log，
+   *  禁用仅影响监听方观测，不影响 loop 执行本身）。 */
   emitLoopEvent<E extends LoopEventName>(event: E, payload: LoopEventPayload[E]): void {
     const mode = AGENT_EVENT_MAP[event]?.mode;
     if (mode !== 'emit') {
       throw new Error(`[events] ${event} 非 emit 域事件（mode=${String(mode)}）——请走专用 runner`);
     }
+    if (seamDisabled('loopEvents').has(event)) return;
     for (const e of this.ordered(event)) {
       (e.fn as (payload: LoopEventPayload[E]) => void)(payload);
     }

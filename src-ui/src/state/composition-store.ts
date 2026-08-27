@@ -19,6 +19,7 @@
 
 import { create } from 'zustand';
 import { factoryComposition, type ResolvedComposition } from '../composition/roster';
+import { applySeamDisabled } from '../composition/seam-resolution';
 
 export type CompositionStatus = 'factory' | 'ok' | 'error';
 
@@ -41,8 +42,19 @@ interface CompositionState {
 export const useCompositionStore = create<CompositionState>((set) => ({
   status: 'factory',
   resolved: factoryComposition(),
-  setResolved: (resolved, patchOrigin) => set({ status: 'ok', resolved, patchOrigin, error: undefined }),
-  setError: (error, patchOrigin) => set({ status: 'error', resolved: factoryComposition(), patchOrigin, error }),
-  resetToFactory: () =>
-    set({ status: 'factory', resolved: factoryComposition(), patchOrigin: undefined, error: undefined }),
+  // 组合写入口 = seam 裁剪面的唯一灌入点（平台化 Phase 3）：三个 setter
+  // 都先经 applySeamDisabled 把 resolved.seamDisabled 灌进运行时读面
+  // （seam-resolution.ts 叶模块——消费单点 active*/emitLoopEvent 的过滤源）。
+  setResolved: (resolved, patchOrigin) => {
+    applySeamDisabled(resolved.seamDisabled);
+    set({ status: 'ok', resolved, patchOrigin, error: undefined });
+  },
+  setError: (error, patchOrigin) => {
+    applySeamDisabled(factoryComposition().seamDisabled); // 回退出厂 = 裁剪面清空
+    set({ status: 'error', resolved: factoryComposition(), patchOrigin, error });
+  },
+  resetToFactory: () => {
+    applySeamDisabled(factoryComposition().seamDisabled);
+    set({ status: 'factory', resolved: factoryComposition(), patchOrigin: undefined, error: undefined });
+  },
 }));

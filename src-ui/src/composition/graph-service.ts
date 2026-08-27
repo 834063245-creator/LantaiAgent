@@ -14,6 +14,7 @@
 // 注册纪律：ContributionRegistry 单一内核复用；disposer 经 ctx.effect 登记。
 
 import { type Context, Service } from '../cordis';
+import { seamDisabled } from './seam-resolution';
 import { ContributionRegistry } from './services';
 
 /** graph provider：一个「图分析后端」。tool = engine 分析工具名（动态 schema 面），
@@ -53,9 +54,17 @@ function setActiveGraph(svc: GraphService): void {
   _activeGraph = svc;
 }
 
-/** 当前 graph provider 贡献（无服务/无注册 = 空集——holoExec 的「后注册胜」扫描源）。 */
-export function activeGraphProviders(): GraphProvider[] {
+/** 注册表原始清单（寻址行源——factoryComposition 的 `seam/graph` 域快照收编本
+ *  清单；被组合禁用的行仍在此处，patch 才能重新启用）。 */
+export function registeredGraphProviders(): GraphProvider[] {
   return _activeGraph?.list() ?? [];
+}
+
+/** 当前 graph provider 贡献（无服务/无注册 = 空集——holoExec 的「后注册胜」扫描源）。
+ *  裁剪面（平台化 Phase 3）：组合 `seam/graph` 域禁用的 provider id 从视图剔除。 */
+export function activeGraphProviders(): GraphProvider[] {
+  const disabled = seamDisabled('graph');
+  return registeredGraphProviders().filter((p) => !disabled.has(p.id));
 }
 
 /** graph 分析消费单点（hologram 域 holoExec 唯一入口；无注册响亮报错）。 */

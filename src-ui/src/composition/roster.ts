@@ -4,10 +4,17 @@
 // roster 组合引擎（S2-0）—— 组合外化的解析层（设计件
 // docs/plans/composition-architecture/designs/S2-composition-externalization.md §2.1-2.3）。
 //
-// 四域行模型：tools（插件贡献行——①b 后 builtin 行表退役）/ prompt（通道段
+// 四行域模型：tools（插件贡献行——①b 后 builtin 行表退役）/ prompt（通道段
 // 贡献快照——S4-4 甲）/ capabilities（ctx.capabilities 贡献快照——B⑤ 后
 // builtin 表退役，第一方十五项经通道注册，plugins/capability-segments-plugin）
 // / shell（builtinShellRows）。
+// 七 seam 裁剪域（平台化 Phase 3，2026-08-27）：`seam/llm` `seam/subagents`
+// `seam/fs` `seam/shell` `seam/sessionPersistence` `seam/graph` `seam/loopEvents`
+// ——Phase 1/2 的 swappable seam 贡献并进组合解析域，patch/preset 可禁用/
+// 换默认 provider（禁用默认行后「后注册胜」落到替代 provider；loopEvents =
+// D4 emit 观测域的事件面开关）。键名 `seam/` 前缀与四行域隔离（`shell` 键
+// 已被壳行域占用）；行源 = factoryComposition() 的 seams 快照（注册表 =
+// 实现真源，组合 = 裁剪真源，见 seam-resolution.ts）。
 // 出厂层是代码——行实现留代码、patch 只写增量，杜绝「yml 复述全量清单」的
 // 双真源漂移（对 DSH 的第一处刻意偏离：学它的 patch 语义——id 寻址 /
 // disabled / insert / last-write-wins——不学它的文件形态，它的行是 npm 包
@@ -51,11 +58,19 @@
 
 import { z } from 'zod';
 import type { AgentCapability } from '../agent/blueprint';
+import { LOOP_EVENT_NAMES } from '../agent/events';
 import { activeCapabilityContributions } from './capability-service';
+import { registeredFsProviders } from './fs-service';
+import { registeredGraphProviders } from './graph-service';
 import { pluginToolRows } from './plugin-tool-rows';
 import type { PromptSection } from './prompt-sections';
 import { activePromptContributions } from './prompt-service';
+import { EMPTY_SEAM_DISABLED, SEAM_DOMAINS, type SeamDisabledMap } from './seam-resolution';
+import { registeredLlmAdapters } from './services';
+import { registeredSessionPersistenceProviders } from './session-persistence-service';
 import { builtinShellRows, type ShellRow } from './shell-rows';
+import { registeredShellProviders } from './shell-service';
+import { registeredSubagentProviders } from './subagent-service';
 import type { BuiltinToolRow } from './tool-rows';
 
 // ── patch 条目 schema ──
@@ -101,13 +116,24 @@ const PromptDomainEntrySchema = z.union([
   z.strictObject({ insert: z.array(PromptInsertSchema).min(1) }),
 ]);
 
-/** 用户组合 patch 文件的结构（S2 设计件 §2.2）：一个文件、四个域键，
- *  缺哪个域 = 该域无增量。未知顶层键拒绝（strict）。 */
+/** 用户组合 patch 文件的结构（S2 设计件 §2.2）：一个文件、四个行域键 + 七个
+ *  seam 裁剪域键（平台化 Phase 3——`seam/<域>` 键名，与行域键隔离），缺哪个
+ *  域 = 该域无增量。未知顶层键拒绝（strict）。 */
 export const CompositionPatchSchema = z.strictObject({
   tools: z.array(DisableEntrySchema).optional(),
   prompt: z.array(PromptDomainEntrySchema).optional(),
   capabilities: z.array(DisableEntrySchema).optional(),
   shell: z.array(DisableEntrySchema).optional(),
+  // ── seam 裁剪域（平台化 Phase 3）：disable 条目，语义 = 对应 ctx seam 注册
+  //    表的「后注册胜」扫描面剔除该 id（消费视图 = 活动注册表 − 禁用集）。
+  //    loopEvents 域条目 id = D4 事件名（emit 观测域；裁决域不开放）。 ──
+  'seam/llm': z.array(DisableEntrySchema).optional(),
+  'seam/subagents': z.array(DisableEntrySchema).optional(),
+  'seam/fs': z.array(DisableEntrySchema).optional(),
+  'seam/shell': z.array(DisableEntrySchema).optional(),
+  'seam/sessionPersistence': z.array(DisableEntrySchema).optional(),
+  'seam/graph': z.array(DisableEntrySchema).optional(),
+  'seam/loopEvents': z.array(DisableEntrySchema).optional(),
 });
 
 export type CompositionPatch = z.infer<typeof CompositionPatchSchema>;
@@ -127,22 +153,43 @@ export function parseCompositionPatch(raw: unknown): PatchParseResult {
 
 // ── 组合数据类型 ──
 
-/** 出厂组合 — 三张 TS 表 + 壳行表的聚合（唯一真源，永不出 yml）。 */
+/** seam 寻址行（平台化 Phase 3）：`seam/<域>` 域的行源——provider / 事件的
+ *  稳定 id。解析只消费 id（裁剪寻址面）；实现本体由各 seam 注册表持有
+ *  （注册表 = 实现真源，组合 = 裁剪真源，见 seam-resolution.ts 头注）。 */
+export interface SeamAddressRow {
+  id: string;
+}
+
+/** seam 寻址域快照（factoryComposition 按域聚合；键 = SEAM_DOMAINS）。 */
+export type SeamAddressRows = Readonly<Record<(typeof SEAM_DOMAINS)[number], readonly SeamAddressRow[]>>;
+
+/** 出厂组合 — 三张 TS 表 + 壳行表 + seam 寻址域的聚合（唯一真源，永不出 yml）。 */
 export interface FactoryComposition {
   tools: BuiltinToolRow[];
   prompt: PromptSection[];
   capabilities: AgentCapability[];
   shell: ShellRow[];
+  /** seam 寻址域（平台化 Phase 3）——`seam/<域>` 域的合法行 id 源。 */
+  seams: SeamAddressRows;
 }
 
-/** 解析产物 — 存活行列表（按最终表序）+ 诊断信息。
+/** 解析产物 — 存活行列表（按最终表序）+ seam 寻址行/裁剪面 + 诊断信息。
  *  S2-1 起穿线进装配面（buildToolRegistry / assembleSystemPrompt /
- *  AgentBlueprint.fromRoster / 壳引导）；S2-2 起由 composition-store 持有。 */
+ *  AgentBlueprint.fromRoster / 壳引导）；S2-2 起由 composition-store 持有。
+ *  结构可赋给 FactoryComposition（resolvePresetComposition / patch-loader
+ *  以 factoryComposition() 产物直接作入参——既有穿线保持）。 */
 export interface ResolvedComposition {
   tools: BuiltinToolRow[];
   prompt: PromptSection[];
   capabilities: AgentCapability[];
   shell: ShellRow[];
+  /** seam 寻址域存活行（平台化 Phase 3）——禁用行已滤除；实现本体归各
+   *  seam 注册表（注册表 = 实现真源），此处是寻址/展示/后续装配绑定的行面。 */
+  seams: SeamAddressRows;
+  /** seam 裁剪面（平台化 Phase 3）——各 seam 域被禁用的 provider/事件 id。
+   *  消费视图 = 活动注册表 − 本表（晚注册可见，除非显式禁用）；composition-store
+   *  写入口经 applySeamDisabled 灌入运行时（seam-resolution.ts）。 */
+  seamDisabled: SeamDisabledMap;
   /** 终态诊断（信息性，供 store/UI 呈现）：禁用行 / 被覆盖段 / 插入段 id。 */
   diagnostics: CompositionDiagnostics;
 }
@@ -181,6 +228,16 @@ export function factoryComposition(): ResolvedComposition {
     prompt: activePromptContributions(),
     capabilities: activeCapabilityContributions(),
     shell: builtinShellRows(),
+    seams: {
+      llm: registeredLlmAdapters().map((a) => ({ id: a.id })),
+      subagents: registeredSubagentProviders().map((p) => ({ id: p.id })),
+      fs: registeredFsProviders().map((p) => ({ id: p.id })),
+      shell: registeredShellProviders().map((p) => ({ id: p.id })),
+      sessionPersistence: registeredSessionPersistenceProviders().map((p) => ({ id: p.id })),
+      graph: registeredGraphProviders().map((p) => ({ id: p.id })),
+      loopEvents: LOOP_EVENT_NAMES.map((id) => ({ id })),
+    },
+    seamDisabled: EMPTY_SEAM_DISABLED,
     diagnostics: { disabled: [], overridden: [], inserted: [] },
   };
 }
@@ -247,16 +304,56 @@ function insertPromptRow(list: PromptWorkRow[], ins: PromptInsertEntry): void {
 /** zod 推断的窄化别名（insert 条目形状）。 */
 type PromptInsertEntry = z.infer<typeof PromptInsertSchema>;
 
+/** patch 条目类型（disable 域条目）。 */
+type DisableEntry = z.infer<typeof DisableEntrySchema>;
+
+/** seam 域条目寻址（穷举 switch——计算键不能索引 strictObject 推断类型，
+ *  漏域由 exhaustiveness 编译期钉住）。 */
+function seamEntries(
+  layer: CompositionPatch,
+  domain: (typeof SEAM_DOMAINS)[number],
+): readonly DisableEntry[] | undefined {
+  switch (domain) {
+    case 'llm':
+      return layer['seam/llm'];
+    case 'subagents':
+      return layer['seam/subagents'];
+    case 'fs':
+      return layer['seam/fs'];
+    case 'shell':
+      return layer['seam/shell'];
+    case 'sessionPersistence':
+      return layer['seam/sessionPersistence'];
+    case 'graph':
+      return layer['seam/graph'];
+    case 'loopEvents':
+      return layer['seam/loopEvents'];
+  }
+}
+
 /** 组合解析主入口（纯函数）。
  *
  *  语义见文件头注释；空层列表 = 恒等（resolveRoster(factory, []) 与出厂
- *  表 id+序 全等——这是 S2 各批「零漂移」的构造性保证，S2-0 测试钉住）。
- *  抛 CompositionPatchError = 整体拒绝（all-or-nothing）。 */
+ *  表 id+序 全等、seamDisabled 全空——这是 S2 各批「零漂移」的构造性保证，
+ *  S2-0 测试钉住）。抛 CompositionPatchError = 整体拒绝（all-or-nothing）。 */
 export function resolveRoster(factory: FactoryComposition, layers: CompositionPatch[]): ResolvedComposition {
   const tools = toWorkRows(factory.tools);
   const capabilities = toCapWorkRows(factory.capabilities);
   const shell = toWorkRows(factory.shell);
   const prompt = toPromptWorkRows(factory.prompt);
+
+  // seam 裁剪域（平台化 Phase 3）：每域一张工作列表；条目 id = provider/事件
+  // 稳定 id。禁用集 = 终态 disabled 行的 per-域收集（ResolvedComposition.
+  // seamDisabled —— 消费视图的裁剪面）；启用的 seam 行进解析产物寻址面。
+  const seamWork: Record<(typeof SEAM_DOMAINS)[number], WorkRow<SeamAddressRow>[]> = {
+    llm: toWorkRows([...factory.seams.llm]),
+    subagents: toWorkRows([...factory.seams.subagents]),
+    fs: toWorkRows([...factory.seams.fs]),
+    shell: toWorkRows([...factory.seams.shell]),
+    sessionPersistence: toWorkRows([...factory.seams.sessionPersistence]),
+    graph: toWorkRows([...factory.seams.graph]),
+    loopEvents: toWorkRows([...factory.seams.loopEvents]),
+  };
 
   const overriddenIds: string[] = [];
   const insertedIds: string[] = [];
@@ -270,6 +367,12 @@ export function resolveRoster(factory: FactoryComposition, layers: CompositionPa
     }
     for (const entry of layer.shell ?? []) {
       applyDisable(shell, entry.id, entry.disabled, 'shell');
+    }
+    for (const domain of SEAM_DOMAINS) {
+      const entries = seamEntries(layer, domain) ?? [];
+      for (const entry of entries) {
+        applyDisable(seamWork[domain], entry.id, entry.disabled, 'seam/' + domain);
+      }
     }
     for (const entry of layer.prompt ?? []) {
       if ('insert' in entry) {
@@ -296,7 +399,7 @@ export function resolveRoster(factory: FactoryComposition, layers: CompositionPa
     }
   }
 
-  // 终步：过滤禁用行（disabled 诊断按表序收集终态）
+  // 终步：过滤禁用行（disabled 诊断按表序收集终态）+ seam 禁用集收集
   const disabledIds: string[] = [];
   const finish = <T>(list: WorkRow<T>[]): T[] => {
     const out: T[] = [];
@@ -310,11 +413,42 @@ export function resolveRoster(factory: FactoryComposition, layers: CompositionPa
     return out;
   };
 
+  const seamResolved: Record<(typeof SEAM_DOMAINS)[number], SeamAddressRow[]> = {
+    llm: [],
+    subagents: [],
+    fs: [],
+    shell: [],
+    sessionPersistence: [],
+    graph: [],
+    loopEvents: [],
+  };
+  const seamDisabledOut: Record<(typeof SEAM_DOMAINS)[number], string[]> = {
+    llm: [],
+    subagents: [],
+    fs: [],
+    shell: [],
+    sessionPersistence: [],
+    graph: [],
+    loopEvents: [],
+  };
+  for (const domain of SEAM_DOMAINS) {
+    for (const e of seamWork[domain]) {
+      if (e.disabled) {
+        disabledIds.push(e.id);
+        seamDisabledOut[domain].push(e.id);
+        continue;
+      }
+      seamResolved[domain].push(e.row);
+    }
+  }
+
   return {
     tools: finish(tools),
     prompt: finish(prompt),
     capabilities: finish(capabilities),
     shell: finish(shell),
+    seams: seamResolved,
+    seamDisabled: seamDisabledOut,
     diagnostics: { disabled: disabledIds, overridden: overriddenIds, inserted: insertedIds },
   };
 }

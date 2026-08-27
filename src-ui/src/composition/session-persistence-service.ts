@@ -17,6 +17,7 @@
 // executor 派发腰（强制层 gate 管模型工具调用，不 管 store 内部落盘）。
 
 import { type Context, Service } from '../cordis';
+import { seamDisabled } from './seam-resolution';
 import { ContributionRegistry } from './services';
 
 /** 会话持久化动作（与 agent-store.ts 消费动词一一对应；appendLog = 会话事件
@@ -60,9 +61,17 @@ function setActiveSessionPersistence(svc: SessionPersistenceService): void {
   _activeSessions = svc;
 }
 
-/** 当前会话持久化 provider 贡献（无服务/无注册 = 空集——agent-store 的「后注册胜」扫描源）。 */
-export function activeSessionPersistenceProviders(): SessionPersistenceProvider[] {
+/** 注册表原始清单（寻址行源——factoryComposition 的 `seam/sessionPersistence`
+ *  域快照收编本清单；被组合禁用的行仍在此处，patch 才能重新启用）。 */
+export function registeredSessionPersistenceProviders(): SessionPersistenceProvider[] {
   return _activeSessions?.list() ?? [];
+}
+
+/** 当前会话持久化 provider 贡献（无服务/无注册 = 空集——agent-store 的「后注册胜」扫描源）。
+ *  裁剪面（平台化 Phase 3）：组合 `seam/sessionPersistence` 域禁用的 id 从视图剔除。 */
+export function activeSessionPersistenceProviders(): SessionPersistenceProvider[] {
+  const disabled = seamDisabled('sessionPersistence');
+  return registeredSessionPersistenceProviders().filter((p) => !disabled.has(p.id));
 }
 
 /** 会话持久化消费单点（agent-store 唯一入口；无注册响亮报错——错误不静默）。 */

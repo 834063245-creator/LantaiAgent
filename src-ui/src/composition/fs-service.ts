@@ -17,6 +17,7 @@
 
 import type { ToolExecutor } from '../agent/tool';
 import { type Context, Service } from '../cordis';
+import { seamDisabled } from './seam-resolution';
 import { ContributionRegistry } from './services';
 
 /** fs 域动作（与 domains.ts fs 域动作枚举对齐——消费面形状的唯一事实）。 */
@@ -80,9 +81,18 @@ function setActiveFs(svc: FsService): void {
   _activeFs = svc;
 }
 
-/** 当前 fs provider 贡献（无服务/无注册 = 空集——工具消费面的「后注册胜」扫描源）。 */
-export function activeFsProviders(): FsProvider[] {
+/** 注册表原始清单（寻址行源——factoryComposition 的 `seam/fs` 域快照收编本
+ *  清单；被组合禁用的行仍在此处，patch 才能重新启用）。与消费视图分离：
+ *  activeFsProviders() = 本清单 − 组合禁用集。 */
+export function registeredFsProviders(): FsProvider[] {
   return _activeFs?.list() ?? [];
+}
+
+/** 当前 fs provider 贡献（无服务/无注册 = 空集——工具消费面的「后注册胜」扫描源）。
+ *  裁剪面（平台化 Phase 3）：组合 `seam/fs` 域禁用的 provider id 从视图剔除。 */
+export function activeFsProviders(): FsProvider[] {
+  const disabled = seamDisabled('fs');
+  return registeredFsProviders().filter((p) => !disabled.has(p.id));
 }
 
 // ── ctx 通道声明 ──
