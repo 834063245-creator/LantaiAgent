@@ -4,7 +4,7 @@
 > 从组合层源码机械推导生成 — 勿手改；服务面变更后重新生成并同 commit。
 > 不含时间戳：字节稳定是 `--check`（doc-sync 门禁）的前提。
 
-共 17 个 ctx 服务：seam 6 · 贡献通道 8 · 服务 3。
+共 18 个 ctx 服务：seam 6 · 贡献通道 8 · 服务 4。
 kind 三分规则（机械推导）：ctx 键 ∈ SEAM_DOMAINS（seam-resolution.ts 单一真源）= seam；
 类体含 `register(def: *Contribution)` = 贡献通道；其余 = 服务。
 
@@ -149,6 +149,7 @@ system-prompt 段落注册表（A-1 第六贡献通道）——段注册 → dis
 | ctx 键 | Service | owner | 默认实现 / 贡献者 | 消费面 |
 |---|---|---|---|---|
 | `ctx.codeRuntime` | `CodeRuntimeService` | `src/agent/code-run/runtime-service.ts` | — | 0 文件 |
+| `ctx.dynamicRunner` | `DynamicRunnerService` | `src/agent/dynamic-runner/dynamic-runner-service.ts` | — | 0 文件 |
 | `ctx.lsp` | `LspService` | `src/ui/lsp-client.ts` | — | 0 文件 |
 | `ctx.space` | `SpaceService` | `src/composition/space-service.ts` | — | 2 文件 |
 
@@ -157,6 +158,14 @@ system-prompt 段落注册表（A-1 第六贡献通道）——段注册 → dis
 执行腰服务（P3）——run() 门面 + 绑定面归一；后端可换。
 
 - owner：`src/agent/code-run/runtime-service.ts`
+- 默认实现 / 贡献者 id：—
+- 消费面：—（无直接 import/ctx 引用——运行时通道注入）
+
+### `ctx.dynamicRunner` — DynamicRunnerService（服务）
+
+动态插件运行时（平台化 Phase 4 · D7）——define/run/stop/undefine/ inspect；沙箱宿主半见 agent/dynamic-runner/sandbox.ts。
+
+- owner：`src/agent/dynamic-runner/dynamic-runner-service.ts`
 - 默认实现 / 贡献者 id：—
 - 消费面：—（无直接 import/ctx 引用——运行时通道注入）
 

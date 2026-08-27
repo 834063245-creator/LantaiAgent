@@ -4,7 +4,7 @@
 > 从 `buildToolRegistry` 出厂行表装配产物生成 — 勿手改；工具面变更后重新生成并同 commit。
 > 本文档不含时间戳：字节稳定是 `--check` 构建守护的前提。
 
-可见工具 14 个（域折叠形态 + 常驻件）；隐藏旧名 138 个（附录）。
+可见工具 15 个（域折叠形态 + 常驻件）；隐藏旧名 144 个（附录）。
 
 装配说明：标准注册表 = composition 行表出厂序；hologram 动态族（graph/ops/lsp 引擎侧
 schema）在本生成环境（无 Tauri bridge / 无引擎连接）恒为空集，引擎侧工具面以引擎
@@ -31,6 +31,7 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 | [`graph`](#graph) | — | 27 | 依赖图查询与分析（27 语言 AST + 符号级引用边）。**改代码前先问图**：定位符号、评估影响面、判断架构都走这里，grep 只能看到文本，图能看到结构。symbols 搜符号（「XX 在哪」）; semantic 语义检索（向量索引，按含义找符号——不知道确切名字时用，如「内存在哪释放」）; neighbors 谁依赖谁(1跳)（「这个模块被谁依赖」）; impact 改某文件的影响面（改前必查）; path 两符号间依赖路径; inspect 单符号全景; explore 自然语言探索依赖; community 模块所属社区; clusters 全局社区地图; summary 图统计+解析率+SCIP 新鲜度; cycles 循环依赖; coupling 单模块耦合画像(L1-L4); fragile 脆弱模块排名; blindspots 架构盲点; boundaries 边界违规; conflicts 线程冲突; async 异步/时序边; unused 死代码; flows 数据流列表; flow 单条数据流; affected_flows 受影响数据流; dataflow 变量使用统计(语法级,非污点); preflight 改前预检(改文件前必须); grpc gRPC 服务映射; diff 与基线图对比; dataflow_save 保存数据流追踪结果（供面板查看，写动作）; dataflow_query 查询已保存的数据流。 |
 | [`ops`](#ops) | — | 7 | 工程操作与状态：analyze 全量重分析（慢，后台跑）; validate 全约束校验; health 项目健康快照; status 引擎状态（含工具调用计数/向量索引/LSP）; timeline 审计日志; rename 符号重命名; import_scip 导入 SCIP 索引提升符号级引用精度。 |
 | [`lsp`](#lsp) | ✓ | 4 | 语言服务器精确解析（按需启动）：resolve_call 解析调用点的真实定义; infer_type 推断符号类型; implementations 找接口实现; references 找全部引用点。graph 查不到或需要类型级答案时用。 |
+| [`cordis`](#cordis) | — | 6 | Dynamic-plugin runtime (shapes mirror DSH tool-cordis): define an immutable package (plain-JS factory returning { name?, apply(ctx) }; sandboxed — dangerous globals are undefined, contributions via guarded ctx.register), run it (first activation asks user approval), stop (chain-recycle contributions), undefine (delete all packages), inspect_list / inspect_self (source + diagnostics, rebuildable trail). |
 
 ## 工具明细
 
@@ -351,9 +352,30 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 |------|------|------|------|
 | `action` | ✓ | `resolve_call` / `infer_type` / `implementations` / `references` | Which operation to perform. |
 
+### `cordis`
+
+> Dynamic-plugin runtime (shapes mirror DSH tool-cordis): define an immutable package (plain-JS factory returning { name?, apply(ctx) }; sandboxed — dangerous globals are undefined, contributions via guarded ctx.register), run it (first activation asks user approval), stop (chain-recycle contributions), undefine (delete all packages), inspect_list / inspect_self (source + diagnostics, rebuildable trail).
+
+- 只读：否
+- 域：`cordis`
+- action 枚举（6）：`define` · `run` · `stop` · `undefine` · `inspect_list` · `inspect_self`
+- 只读 action：`inspect_list` · `inspect_self`
+
+| 参数 | 必选 | 类型 | 说明 |
+|------|------|------|------|
+| `action` | ✓ | `define` / `run` / `stop` / `undefine` / `inspect_list` / `inspect_self` | Which operation to perform. |
+| `kind` | — | `new` / `existing` | new = 创建插件并追加首个包；existing = 向已拥有的插件追加包 |
+| `idPrefix` | — | string | kind=new：3-6 个小写英文字母的语义前缀（宿主补唯一后缀） |
+| `pluginId` | — | string | kind=existing：已拥有插件的 id (action: define); cordis_define 返回的插件 id (action: run); 要停用的插件 id (action: stop); 要删除的插件 id (action: undefine); 插件 id（省略 = 列出全部） (action: inspect_self) |
+| `name` | — | string | 包的短名（可读） |
+| `purpose` | — | string | 一句话的用户可读目的 |
+| `code` | — | string | 插件工厂源码（纯 JS 函数体，return { name?, apply(ctx) }） |
+| `packageId` | — | string | 要激活的精确包 id (action: run); 精确包 id（返回源码与诊断；必须与 pluginId 同给） (action: inspect_self) |
+| `mode` | — | `run` / `update` | run = 首次激活/重启/回滚；update = 从当前包切到另一包 |
+
 ## 附录：隐藏旧名（hide + retireRedirect）
 
 以下细粒度旧名已从模型可见面隐藏，运行时调用会被 `retireRedirect` 拦截并给出重定向提示；
 内部代码/测试仍可经 `registry.get(name)` 解析。新代码不得重新暴露：
 
-`web_fetch` · `browser_launch` · `browser_connect` · `browser_discover` · `browser_targets` · `browser_kill` · `browser_sessions` · `browser_switch_session` · `browser_cookies` · `browser_attach` · `browser_new_tab` · `browser_close_tab` · `browser_navigate` · `browser_back` · `browser_forward` · `browser_reload` · `browser_snapshot` · `browser_content` · `browser_inspect` · `browser_report` · `browser_console` · `browser_network` · `browser_network_detail` · `browser_network_har` · `browser_click` · `browser_hover` · `browser_type` · `browser_select` · `browser_upload` · `browser_dialog` · `browser_press` · `browser_scroll` · `browser_viewport` · `browser_fill` · `browser_navigate_snapshot` · `browser_wait` · `browser_eval` · `browser_screenshot` · `browser_audit` · `browser_status` · `desktop_probe` · `desktop_screenshot` · `desktop_uia_tree` · `desktop_uia_find` · `desktop_uia_read` · `desktop_uia_wait` · `desktop_uia_click` · `desktop_uia_right_click` · `desktop_uia_type` · `desktop_uia_select` · `desktop_uia_expand` · `desktop_uia_scroll` · `desktop_uia_keys` · `desktop_uia_activate` · `desktop_uia_fill` · `desktop_uia_window_shot` · `desktop_audit` · `desktop_status` · `explore_deps` · `search_symbols` · `semantic_search` · `get_neighbors` · `trace_impact` · `find_dep_path` · `inspect_symbol` · `get_community` · `cluster_report` · `grpc_services` · `fragile_modules` · `detect_cycles` · `thread_conflicts` · `coupling_report` · `arch_blindspots` · `graph_summary` · `async_edges` · `project_timeline` · `analyze_project` · `graph_diff` · `import_scip` · `preflight_check` · `validate_project` · `project_health` · `rename_symbol` · `engine_status` · `check_boundaries` · `find_unused` · `trace_dataflow` · `list_flows` · `get_flow` · `get_affected_flows` · `resolve_call` · `infer_type` · `find_implementations` · `find_references` · `dataflow_save` · `dataflow_query` · `git_status` · `git_diff` · `git_log` · `git_stage` · `git_commit` · `git_push` · `git_pull` · `git_init` · `git_checkout` · `git_create_branch` · `git_discard` · `git_stash_push` · `git_stash_pop` · `search_content` · `read_file_content` · `write_file` · `edit_file` · `list_directory` · `read_constraints` · `write_constraints` · `glob` · `delete_file` · `create_directory` · `move_file` · `rename_file` · `run_shell` · `bash_output` · `bash_kill` · `bash_wait` · `agent_isolation_create` · `agent_isolation_diff` · `agent_isolation_merge` · `agent_isolation_discard` · `agent_isolation_status` · `task_create` · `task_update` · `task_list` · `task_get` · `task_stop` · `agent_spawn` · `agent_status` · `read_file`
+`web_fetch` · `browser_launch` · `browser_connect` · `browser_discover` · `browser_targets` · `browser_kill` · `browser_sessions` · `browser_switch_session` · `browser_cookies` · `browser_attach` · `browser_new_tab` · `browser_close_tab` · `browser_navigate` · `browser_back` · `browser_forward` · `browser_reload` · `browser_snapshot` · `browser_content` · `browser_inspect` · `browser_report` · `browser_console` · `browser_network` · `browser_network_detail` · `browser_network_har` · `browser_click` · `browser_hover` · `browser_type` · `browser_select` · `browser_upload` · `browser_dialog` · `browser_press` · `browser_scroll` · `browser_viewport` · `browser_fill` · `browser_navigate_snapshot` · `browser_wait` · `browser_eval` · `browser_screenshot` · `browser_audit` · `browser_status` · `desktop_probe` · `desktop_screenshot` · `desktop_uia_tree` · `desktop_uia_find` · `desktop_uia_read` · `desktop_uia_wait` · `desktop_uia_click` · `desktop_uia_right_click` · `desktop_uia_type` · `desktop_uia_select` · `desktop_uia_expand` · `desktop_uia_scroll` · `desktop_uia_keys` · `desktop_uia_activate` · `desktop_uia_fill` · `desktop_uia_window_shot` · `desktop_audit` · `desktop_status` · `explore_deps` · `search_symbols` · `semantic_search` · `get_neighbors` · `trace_impact` · `find_dep_path` · `inspect_symbol` · `get_community` · `cluster_report` · `grpc_services` · `fragile_modules` · `detect_cycles` · `thread_conflicts` · `coupling_report` · `arch_blindspots` · `graph_summary` · `async_edges` · `project_timeline` · `analyze_project` · `graph_diff` · `import_scip` · `preflight_check` · `validate_project` · `project_health` · `rename_symbol` · `engine_status` · `check_boundaries` · `find_unused` · `trace_dataflow` · `list_flows` · `get_flow` · `get_affected_flows` · `resolve_call` · `infer_type` · `find_implementations` · `find_references` · `dataflow_save` · `dataflow_query` · `git_status` · `git_diff` · `git_log` · `git_stage` · `git_commit` · `git_push` · `git_pull` · `git_init` · `git_checkout` · `git_create_branch` · `git_discard` · `git_stash_push` · `git_stash_pop` · `search_content` · `read_file_content` · `write_file` · `edit_file` · `list_directory` · `read_constraints` · `write_constraints` · `glob` · `delete_file` · `create_directory` · `move_file` · `rename_file` · `run_shell` · `bash_output` · `bash_kill` · `bash_wait` · `agent_isolation_create` · `agent_isolation_diff` · `agent_isolation_merge` · `agent_isolation_discard` · `agent_isolation_status` · `task_create` · `task_update` · `task_list` · `task_get` · `task_stop` · `agent_spawn` · `agent_status` · `cordis_define` · `cordis_run` · `cordis_stop` · `cordis_undefine` · `cordis_inspect_list` · `cordis_inspect_self` · `read_file`

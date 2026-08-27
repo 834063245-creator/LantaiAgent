@@ -1,5 +1,5 @@
 {
-  "count": 16,
+  "count": 17,
   "schemas": [
     {
       "description": "Ask the user one or more questions when you need clarification or confirmation before proceeding. Use when the request is ambiguous, you need to choose between approaches, or you need approval for a destructive action. Supports: single question (question/header/options/multiSelect), multiple questions in one call (questions array — recommended for 2+, asked one at a time), and open-ended questions (omit options — the user types a free-text answer). Returns the user's answer(s).",
@@ -1208,6 +1208,77 @@
               "implementations",
               "references"
             ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Dynamic-plugin runtime (shapes mirror DSH tool-cordis): define an immutable package (plain-JS factory returning { name?, apply(ctx) }; sandboxed — dangerous globals are undefined, contributions via guarded ctx.register), run it (first activation asks user approval), stop (chain-recycle contributions), undefine (delete all packages), inspect_list / inspect_self (source + diagnostics, rebuildable trail).",
+      "name": "cordis",
+      "parameters": {
+        "properties": {
+          "action": {
+            "description": "Which operation to perform.",
+            "enum": [
+              "define",
+              "run",
+              "stop",
+              "undefine",
+              "inspect_list",
+              "inspect_self"
+            ],
+            "type": "string"
+          },
+          "code": {
+            "description": "插件工厂源码（纯 JS 函数体，return { name?, apply(ctx) }）",
+            "minLength": 1,
+            "type": "string"
+          },
+          "idPrefix": {
+            "description": "kind=new：3-6 个小写英文字母的语义前缀（宿主补唯一后缀）",
+            "pattern": "^[a-z]{3,6}$",
+            "type": "string"
+          },
+          "kind": {
+            "description": "new = 创建插件并追加首个包；existing = 向已拥有的插件追加包",
+            "enum": [
+              "new",
+              "existing"
+            ],
+            "type": "string"
+          },
+          "mode": {
+            "description": "run = 首次激活/重启/回滚；update = 从当前包切到另一包",
+            "enum": [
+              "run",
+              "update"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "description": "包的短名（可读）",
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "packageId": {
+            "description": "要激活的精确包 id (action: run); 精确包 id（返回源码与诊断；必须与 pluginId 同给） (action: inspect_self)",
+            "minLength": 1,
+            "type": "string"
+          },
+          "pluginId": {
+            "description": "kind=existing：已拥有插件的 id (action: define); cordis_define 返回的插件 id (action: run); 要停用的插件 id (action: stop); 要删除的插件 id (action: undefine); 插件 id（省略 = 列出全部） (action: inspect_self)",
+            "type": "string"
+          },
+          "purpose": {
+            "description": "一句话的用户可读目的",
+            "maxLength": 500,
+            "minLength": 1,
             "type": "string"
           }
         },

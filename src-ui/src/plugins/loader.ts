@@ -16,6 +16,7 @@
 
 import { createElement } from 'react';
 import { codeRuntimePlugin } from '../agent/code-run/runtime-service';
+import { dynamicRunnerPlugin } from '../agent/dynamic-runner/dynamic-runner-service';
 import { builtinFsPlugin } from '../agent/fs-provider';
 import { builtinGraphPlugin } from '../agent/graph-provider';
 import { builtinSessionsPlugin } from '../agent/sessions-provider';
@@ -114,6 +115,7 @@ const BUILTIN_PLUGINS: LantaiPlugin[] = [
   spaceServicePlugin,
   overlayServicePlugin,
   codeRuntimePlugin,
+  dynamicRunnerPlugin,
   rendererServicePlugin,
   promptsServicePlugin,
   hooksServicePlugin,

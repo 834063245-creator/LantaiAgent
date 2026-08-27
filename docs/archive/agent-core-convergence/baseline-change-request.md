@@ -82,3 +82,44 @@
   R1「非模型可见、不进 session log」显式声明；
 - vitest / build / biome / convergence 四连全绿（数字见施工③ commit message）。
 
+---
+
+# Baseline 变更申请 — cordis 域工具（agent-platformization-plan Phase 4 · D7 动态插件运行时）
+
+> 申请日期：2026-08-27 · 申请人：编码助手（平台化 Phase 4 施工②）
+> 状态：**已批准（用户 2026-08-25 计划拍板全权授权——本计划 Phase 4 明文交付物
+> 「`cordis_*` 模型工具族进 DOMAIN_SPECS + 工具目录」，P4-C4 判据要求
+> convergence 双 preset 零漂移；按计划执行即批准）**。
+> 模型可见表面：**确有计划性变更**（cordis 域工具为新增能力面），非伪漂移。
+
+## 1. 变更对象
+
+- `baseline/phase-0/tool-schemas.full.json`（standard + preset-minimal 两份）：
+  新增 `cordis` 域工具（6 动作 define / run / stop / undefine / inspect_list /
+  inspect_self——形状对齐 DSH tool-cordis，折叠形态符合 agent-plugin 计划
+  Non-goal「不摊平工具面」）；
+- `baseline/phase-0/tool-schemas.plan.json`（两份）：同步 planRegistry 克隆面；
+- `baseline/phase-1/tool-schemas.effective.json`（两份）：effective 快照同步。
+- system-prompt.fixture：域工具枚举行变化（如该节枚举域清单）。
+
+## 2. 为什么必须变
+
+- D7 裁定：动态插件（运行时 define → run → stop → undefine → inspect）是
+  平台「运行时动态生成插件」目标的落地件（用户拍板「运行时动态生成插件、
+  该做的彻底落地」）；工具面是模型使用该能力的唯一入口；
+- 域折叠走 DOMAIN_SPECS 单一真源（`tools/domains.ts`），与既有 14 域同构
+  ——细粒度名经 collectHiddenToolNames 隐藏，可见面 = cordis 域工具。
+
+## 3. 证据（随施工② commit）
+
+- `tests/dynamic-runner.test.ts`（新，8 用例）：求值面阴影 / define 校验 /
+  define→run→stop 主链（P4-C2）/ 审批门 APPROVAL_REQUIRED·DENIED（P4-C3）/
+  守卫注册面零残留 / apply 超时回收 / 跨会话隔离 / update 失败回滚；
+- 沙箱承诺（R4 如实声明：浏览器主文档无进程级硬边界，安全面 = 实现质量）：
+  危险全局阴影（window/fetch/eval/Function…全 undefined）+ 守卫注册面
+  （白名单外访问响亮拒绝）+ 预算（源码 256KB / apply 10s / 贡献 64 条）+
+  审批前置；
+- record 后 `git diff` 只含 convergence baseline 快照 + 生成物文档
+  （model-tool-contract / service-catalog）；
+- 门禁四连 + doc-sync 全绿（数字见施工② commit message）。
+

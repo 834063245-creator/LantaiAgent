@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：1
+当前版本：2
 
-<!-- contract-fingerprint: 9f1f1a3030e7d6bde3a3207f87361db096f970c6b9b7f4a2383b08fe192a6aa6 -->
+<!-- contract-fingerprint: 54ad5291428f76758c0014142d6a91a1049d68353d51470b3be22432ba97c267 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -23,7 +23,9 @@
 | `src/composition/graph-service.ts` | `ctx.graph`（`GraphProvider.invoke` + `graphExecute` 消费单点） |
 | `src/composition/subagent-service.ts` | `ctx.subagents`（`SubagentProvider` / `SubAgentSpawnArgs·Outcome`） |
 | `src/composition/seam-resolution.ts` | seam 裁剪面（`SEAM_DOMAINS` 七域 / `SeamDisabledMap` / patch `seam/<域>` 域契约） |
-| `src/agent/events.ts` | D4 事件面（`AGENT_EVENT_MAP` mode 表 / `LoopEventPayload` 载荷形状 / 监听契约） |
+| src/agent/events.ts | D4 事件面（AGENT_EVENT_MAP mode 表 / LoopEventPayload 载荷形状 / 监听契约） |
+| src/agent/dynamic-runner/dynamic-runner-service.ts | ctx.dynamicRunner（D7——define/run/stop/undefine/inspect + 审批门 + 包不可变/回滚语义） |
+| src/agent/dynamic-runner/sandbox.ts | 动态插件沙箱承诺（阴影求值面 / 守卫注册面白名单 / 三预算常量） |
 | `src/plugins/types.ts` | 插件 manifest schema（name/version/inject/permissions/tools/mcpServers） |
 
 ## 变更记录
@@ -31,6 +33,7 @@
 | 版本 | 日期 | 变更 | 依据 |
 |---|---|---|---|
 | 1 | 2026-08-27 | 初版：六 seam + 裁剪面 + 事件面 + manifest 契约入册（P3-C4） | agent-platformization-plan Phase 3 |
+| 2 | 2026-08-27 | 新增动态插件运行时契约（D7：ctx.dynamicRunner define/run/stop/undefine/inspect + 沙箱三层防线——阴影求值面/守卫注册面/预算；P4-C2/C3） | agent-platformization-plan Phase 4 |
 
 ## 变更流程（guard 红 → 修复四步）
 

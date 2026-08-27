@@ -362,6 +362,19 @@ export const DOMAIN_SPECS: DomainSpec[] = [
       references: 'find_references',
     },
   },
+  {
+    name: 'cordis',
+    description:
+      'Dynamic-plugin runtime (shapes mirror DSH tool-cordis): define an immutable package (plain-JS factory returning { name?, apply(ctx) }; sandboxed — dangerous globals are undefined, contributions via guarded ctx.register), run it (first activation asks user approval), stop (chain-recycle contributions), undefine (delete all packages), inspect_list / inspect_self (source + diagnostics, rebuildable trail).',
+    actions: {
+      define: 'cordis_define',
+      run: 'cordis_run',
+      stop: 'cordis_stop',
+      undefine: 'cordis_undefine',
+      inspect_list: 'cordis_inspect_list',
+      inspect_self: 'cordis_inspect_self',
+    },
+  },
 ];
 
 function buildDomainTool(registry: ToolRegistry, spec: DomainSpec): Tool | null {
