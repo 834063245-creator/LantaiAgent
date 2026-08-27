@@ -16,12 +16,14 @@
 
 import { createElement } from 'react';
 import { codeRuntimePlugin } from '../agent/code-run/runtime-service';
+import { builtinFsPlugin } from '../agent/fs-provider';
 import { inProcessSubagentPlugin } from '../agent/subagent-provider';
 import { useShellStore } from '../app/shell-store';
 import { capabilitiesServicePlugin } from '../composition/capability-service';
 import { firstPartyCapabilityPlugins } from '../composition/first-party-capabilities';
 import { firstPartyPromptPlugins } from '../composition/first-party-prompts';
 import { firstPartyToolPlugins } from '../composition/first-party-tools';
+import { fsServicePlugin } from '../composition/fs-service';
 import { hooksServicePlugin } from '../composition/hook-service';
 import { overlayServicePlugin } from '../composition/overlay-service';
 import { promptsServicePlugin } from '../composition/prompt-service';
@@ -95,6 +97,8 @@ const BUILTIN_PLUGINS: LantaiPlugin[] = [
   llmAdaptersPlugin,
   subagentsServicePlugin,
   inProcessSubagentPlugin,
+  fsServicePlugin,
+  builtinFsPlugin,
   spaceServicePlugin,
   overlayServicePlugin,
   codeRuntimePlugin,

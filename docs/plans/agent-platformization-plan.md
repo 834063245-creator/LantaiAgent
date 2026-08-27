@@ -140,7 +140,7 @@
 | `ctx.codeRuntime` | 服务 | ✅ | 无 | — | code_execution |
 | **`ctx.llm`** | **swappable seam（升格中）** | ⚠️ 方言贡献道已在位（`62860fb7`），缺 adapter 迁移 + 命名归一 | **D2 修订版**：`ProvidersService`→`LlmService` + 两 adapter 第一方贡献 + 内核回落删除 | anthropic / openai adapter（第一方贡献） | 流式执行 / 摘要 / 翻译 / 标题 |
 | **`ctx.subagents`** | **swappable seam（新）** | ✅ 施工②落地：`composition/subagent-service.ts` + in-process 默认 provider，消费面 = `Agent.spawnSubAgent` 单点 | **D3**（已落地 2026-08-27） | in-process（`builtin/in-process`，逐字节透传 spawnSubAgentImpl） | tool-subagent / blueprint spawn 绑定 |
-| **`ctx.fs`** | **swappable seam（新）** | ❌ Rust 命令锁死 | **D11** | 现有 Rust fs 命令包装 | tool-fs / 编辑器 |
+| **`ctx.fs`** | **swappable seam（新）** | ✅ 施工④落地：`fs-service.ts` + `builtin/rust-fs`（动作→命令恒等映射经 dispatch 腰），tool-fs 消费面 `fsExecute` 单点改查 | **D11**（fs 已落地 2026-08-27；编辑器等非工具消费面 = P5 全量挂 seam） | `builtin/rust-fs`（逐字节透传） | tool-fs（coding.ts fs 域 11 动作） |
 | **`ctx.shell`** | **swappable seam（新）** | ❌ Rust 命令锁死 | **D11** | 现有 Rust shell 命令包装 | tool-bash / tool-pwsh |
 | **`ctx.subprocess`** | **swappable seam（新）** | ❌ Rust 命令锁死 | **D11** | 现有 Rust subprocess 命令包装 | shell / lsp / 子代理后端 |
 | **`ctx.sessionPersistence`** | **swappable seam（新）** | ❌ 存储实现锁死 | **D11** | 现有 session 持久化包装 | 会话加载/落盘 |
@@ -196,12 +196,14 @@
 | T5 | 过时注释/断言：`tests/composition-consumption-wiring.test.ts` 头注「providers 留注册表现状（不接线）」已与 8-26 收口后的现实矛盾 | 该文件头注 | 改写到新语义 |
 | T6 | 测试旧名引用：composition-services.test.ts / provider-dialect.test.ts 的类型导入与注册调用 | grep | 改写到新名 |
 | T7 | `Agent.spawnSubAgent` 直调 `spawnSubAgentImpl`（seam 旁路点） | grep `spawnSubAgentImpl` 于 `src/agent/agent.ts`（消费侧） | 消费改经 `ctx.subagents` 注册表；impl 本体保留为默认 provider 内核（施工②） |
+| T8 | fs 工具直派生命令（`exec('read_file_content'…)` 等 11 处——seam 旁路点） | grep `exec\('read_file_content'\|'write_file_content'\|'edit_file'\|'list_directory'\|'glob'\|'create_directory'\|'move_file'\|'rename_file_or_dir'\|'delete_file_or_dir'\|'read_constraints'\|'write_constraints'` 于 coding.ts | 消费面改 `fsExecute(action…)` 经 `ctx.fs` 注册表；命令名映射移入 `builtin/rust-fs`（施工④） |
 
 > settings 层 `s.providers`（配置行模型）与本 seam 无涉，一律不动。
 
 **施工记录（滚动更新，每条 seam 翻转一账——铁律 7）：**
 - **施工①（2026-08-27 夜）**：LLM 通道升格落地——`LlmService`/`ctx.llm` 更名（T2/T3）、`plugins/llm-adapters-plugin.ts` 两条第一方 adapter 贡献 `builtin/anthropic` + `builtin/openai`（ctx.effect 登记，loader 表序第二行）、`resolveProviderDialect` 内核回落 if 分支拆除（T1），裸路径未命中 = `PROVIDER_DIALECT` 响亮报错（P1-C2）；测试装配复现 shim ×3（provider-live / provider-factory / summary-model-selection）+ provider-dialect 重写（裸路径降级 / 生产路径 / 后注册胜 / 全撤回落内置）；文档同步 T4/T5。T1-T6 全清零。门禁：vitest 1797 passed / build ✓ / biome ci 0/0（463 文件）/ convergence exit 0。commit `98a6f30d`。
 - **施工②（2026-08-27 夜）**：`ctx.subagents` seam 落地——`composition/subagent-service.ts`（SubagentsService / SubagentProvider / SubAgentSpawnArgs·Outcome，复用 ContributionRegistry 单一内核）+ `agent/subagent-provider.ts`（`builtin/in-process` 逐字节透传 spawnSubAgentImpl + inProcessSubagentPlugin）+ loader 表序第三/四行 + `Agent.spawnSubAgent` 消费面改查注册表（后注册胜；无注册响亮 `SUBAGENT_PROVIDER` 报错）。拆旧清单 T7 清零（agent.ts 直调 spawnSubAgentImpl 消灭）。测试：新 `subagent-seam.test.ts` 四守护（裸路径降级 / 在册默认 / 后注册胜覆盖回落 / 消费路由）+ 幂等装配复现 helper（`tests/helpers/composition-boot.ts`）收编三处 llm shim + 两个真实 spawn 套件接入（parallel-subagent-bugs / subagent-activity-wiring）。
+- **施工④（2026-08-27 夜，Phase 2 开工）**：`ctx.fs` seam 落地（D11 第 1/4 段）——`composition/fs-service.ts`（FsService / FsProvider / FsAction 11 动作 / FsCallOptions.dispatch 腰注入）+ `agent/fs-provider.ts`（`builtin/rust-fs` 动作→命令恒等映射）+ loader 表序第五/六行 + `coding.ts` fs 域 11 个 execute 体改查注册表（`fsExecute` 消费单点导出；无注册响亮 `FS_PROVIDER` 报错）。拆旧清单 T8 清零。测试：新 `fs-seam.test.ts` 五守护（裸路径降级 / 派发恒等路由 / rename 键映射 / 内存 provider 替换零消费面改动 + 不触 Rust 腰 / **P2-C3 gate 不旁路**——plan 激活拦截时 provider 与 dispatch 均未触）；P2-C2 由 ④ 用例 + 既有 6 文件 shim 接入满足（helper +2 通道；define-tool / tool-param-contract / coding-domain-plugins 各补装配复现）。非工具消费面（Monaco file-viewer / runLoop 计划文件读取等）保持 typedRpc 直连不动——P5 全量挂 seam 时统一（拆旧清单外注记）。
 
 **验收判据（判据号 P1-Cn）：**
 - P1-C1：`createProvider` 无 switch；anthropic/openai 各是 `ctx.llm` 的一条 adapter。

@@ -20,6 +20,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { SubAgentPool } from '../src/agent/coordinator';
+import { builtinFsPlugin } from '../src/agent/fs-provider';
 import { TaskManager } from '../src/agent/task';
 import type { Tool, ToolExecutor, ToolRegistry, ToolRowContext } from '../src/agent/tool';
 import {
@@ -30,6 +31,7 @@ import {
   createShellTools,
   createWebTools,
 } from '../src/agent/tools/coding';
+import { fsServicePlugin } from '../src/composition/fs-service';
 import { pluginToolRows } from '../src/composition/plugin-tool-rows';
 import { activeToolContributions, compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
@@ -127,6 +129,9 @@ function makeRowCtx(exec: ToolExecutor): ToolRowContext {
  *  序 = firstPartyToolPlugins 清单序（web 首位，①b 前插）。 */
 async function applyPlugins(root: Context) {
   await root.plugin(compositionServicesPlugin);
+  // fs 消费面通道（平台化 Phase 2 · D11）——fs 工具 execute 经 ctx.fs 解析 provider
+  await root.plugin(fsServicePlugin);
+  await root.plugin(builtinFsPlugin);
   const webFiber = await root.plugin(webDomainPlugin);
   const gitFiber = await root.plugin(gitDomainPlugin);
   const searchFiber = await root.plugin(searchDomainPlugin);
@@ -140,6 +145,8 @@ async function applyPlugins(root: Context) {
  *  序同 firstPartyToolPlugins）。 */
 async function applyAllPlugins(root: Context) {
   await root.plugin(compositionServicesPlugin);
+  await root.plugin(fsServicePlugin);
+  await root.plugin(builtinFsPlugin);
   const fibers = [];
   fibers.push(await root.plugin(webDomainPlugin));
   fibers.push(await root.plugin(browserDesktopDomainPlugin));

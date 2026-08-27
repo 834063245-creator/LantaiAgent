@@ -8,8 +8,30 @@
 // ═══════════════════════════════════════════════════════
 
 import { z } from 'zod';
+import { activeFsProviders, type FsAction } from '../../composition/fs-service';
 import type { Tool, ToolExecutor } from '../tool';
 import { defineTool } from './define-tool';
+
+/** fs 域消费面（平台化 Phase 2 · D11，2026-08-27）：经 ctx.fs 注册表解析 provider
+ *  （后注册胜取默认），默认 builtin/rust-fs 借注入的 dispatch 腰转发既有 Rust 命令。
+ *  替代 provider（JS 内存 / MCP / 远程）实现同一 FsProvider 接口即插即用；
+ *  强制层 gate（plan/权限/审计）在 executor 管道层、先于本调用——换 provider 不豁免。 */
+export function fsExecute(
+  action: FsAction,
+  args: Record<string, unknown>,
+  exec: ToolExecutor,
+  onProgress?: (chunk: string) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  const providers = activeFsProviders();
+  const provider = providers[providers.length - 1];
+  if (!provider) {
+    return Promise.reject(
+      new Error('FS_PROVIDER: 无已注册 fs provider——请确认 fs 通道装配（生产 = loadBuiltinPlugins）'),
+    );
+  }
+  return provider.execute(action, args, { dispatch: exec, onProgress, signal });
+}
 
 /** ask_user 单条问题（单问表单或批量 questions 数组元素）。 */
 export interface AskUserQuestionItem {
@@ -56,7 +78,7 @@ export function createFsTools(exec: ToolExecutor): Tool[] {
         limit: z.number().int().optional().describe('Maximum number of lines to return (default: all lines)'),
       }),
       readOnly: true,
-      execute: (args, onProgress) => exec('read_file_content', args, onProgress),
+      execute: (args, onProgress) => fsExecute('read', args, exec, onProgress),
     }),
     defineTool({
       name: 'write_file',
@@ -72,7 +94,7 @@ export function createFsTools(exec: ToolExecutor): Tool[] {
             'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
           ),
       }),
-      execute: (args, onProgress) => exec('write_file_content', args, onProgress),
+      execute: (args, onProgress) => fsExecute('write', args, exec, onProgress),
     }),
     defineTool({
       name: 'edit_file',
@@ -100,7 +122,7 @@ export function createFsTools(exec: ToolExecutor): Tool[] {
       }),
       // 全量透传（含 executor 注入的 _agent_id）— fork 子 Agent 的
       // worktree 路由完全依赖该参数；重建参数对象会把 edit 静默导向主仓。
-      execute: (args, onProgress) => exec('edit_file', args, onProgress),
+      execute: (args, onProgress) => fsExecute('edit', args, exec, onProgress),
     }),
     defineTool({
       name: 'list_directory',
@@ -110,7 +132,7 @@ export function createFsTools(exec: ToolExecutor): Tool[] {
         path: z.string().describe('Absolute path to the directory to list'),
       }),
       readOnly: true,
-      execute: (args, onProgress) => exec('list_directory', args, onProgress),
+      execute: (args, onProgress) => fsExecute('list', args, exec, onProgress),
     }),
     defineTool({
       name: 'read_constraints',
@@ -120,7 +142,7 @@ export function createFsTools(exec: ToolExecutor): Tool[] {
         projectPath: z.string().describe('Project root directory path'),
       }),
       readOnly: true,
-      execute: (args, onProgress) => exec('read_constraints', args, onProgress),
+      execute: (args, onProgress) => fsExecute('constraints', args, exec, onProgress),
     }),
     defineTool({
       name: 'write_constraints',
@@ -130,7 +152,7 @@ export function createFsTools(exec: ToolExecutor): Tool[] {
         projectPath: z.string().describe('Project root directory path'),
         content: z.string().describe('Full YAML content to write'),
       }),
-      execute: (args, onProgress) => exec('write_constraints', args, onProgress),
+      execute: (args, onProgress) => fsExecute('write_constraints', args, exec, onProgress),
     }),
 
     // ── Glob 文件匹配 ──
@@ -145,7 +167,7 @@ export function createFsTools(exec: ToolExecutor): Tool[] {
         path: z.string().optional().describe('Directory to search in. Defaults to the current workspace root.'),
       }),
       readOnly: true,
-      execute: (args, onProgress) => exec('glob', args, onProgress),
+      execute: (args, onProgress) => fsExecute('glob', args, exec, onProgress),
     }),
 
     // ── Phase 2a: 文件操作（Tauri 命令已存在） ──
@@ -162,7 +184,7 @@ export function createFsTools(exec: ToolExecutor): Tool[] {
             'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
           ),
       }),
-      execute: (args, onProgress) => exec('delete_file_or_dir', args, onProgress),
+      execute: (args, onProgress) => fsExecute('delete', args, exec, onProgress),
     }),
     defineTool({
       name: 'create_directory',
@@ -171,7 +193,7 @@ export function createFsTools(exec: ToolExecutor): Tool[] {
       schema: z.object({
         path: z.string().describe('Absolute path to the directory to create'),
       }),
-      execute: (args, onProgress) => exec('create_directory', args, onProgress),
+      execute: (args, onProgress) => fsExecute('mkdir', args, exec, onProgress),
     }),
     defineTool({
       name: 'move_file',
@@ -186,7 +208,7 @@ export function createFsTools(exec: ToolExecutor): Tool[] {
             'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
           ),
       }),
-      execute: (args, onProgress) => exec('move_file', args, onProgress),
+      execute: (args, onProgress) => fsExecute('move', args, exec, onProgress),
     }),
     defineTool({
       name: 'rename_file',
@@ -206,7 +228,7 @@ export function createFsTools(exec: ToolExecutor): Tool[] {
       // 其余全量透传 — 必须保留 _agent_id（worktree 路由），否则 rename 静默落到主仓。
       execute: (args, onProgress) => {
         const { path, new_name, ...rest } = args;
-        return exec('rename_file_or_dir', { ...rest, filePath: path, newName: new_name }, onProgress);
+        return fsExecute('rename', { ...rest, filePath: path, newName: new_name }, exec, onProgress);
       },
     }),
   ];

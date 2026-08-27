@@ -8,7 +8,9 @@
 //
 // 裸路径（不调本函数）的显式降级语义由 provider-dialect / subagent-seam 钉住。
 
+import { builtinFsPlugin } from '../../src/agent/fs-provider';
 import { inProcessSubagentPlugin } from '../../src/agent/subagent-provider';
+import { fsServicePlugin } from '../../src/composition/fs-service';
 import { compositionServicesPlugin } from '../../src/composition/services';
 import { subagentsServicePlugin } from '../../src/composition/subagent-service';
 import { Context } from '../../src/cordis';
@@ -16,9 +18,9 @@ import { llmAdaptersPlugin } from '../../src/plugins/llm-adapters-plugin';
 
 let bootRoot: Context | null = null;
 
-/** 幂等装配复现：需要 createProvider / spawnSubAgent 走注册表的测试在用到前
- *  await 本函数（可在模块顶层，也可在用例体内——后者用于保住裸路径用例的
- *  零装配前提）。返回根 Context。 */
+/** 幂等装配复现：需要 createProvider / spawnSubAgent / fs 消费面走注册表的测试
+ *  在用到前 await 本函数（可在模块顶层，也可在用例体内——后者用于保住裸路径
+ *  用例的零装配前提）。返回根 Context。 */
 export async function ensureProductionChannelsBooted(): Promise<Context> {
   if (bootRoot) return bootRoot;
   const root = new Context();
@@ -26,6 +28,8 @@ export async function ensureProductionChannelsBooted(): Promise<Context> {
   await root.plugin(llmAdaptersPlugin);
   await root.plugin(subagentsServicePlugin);
   await root.plugin(inProcessSubagentPlugin);
+  await root.plugin(fsServicePlugin);
+  await root.plugin(builtinFsPlugin);
   bootRoot = root;
   return root;
 }

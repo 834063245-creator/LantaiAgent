@@ -6,6 +6,11 @@ import { z } from 'zod';
 import type { ToolExecutor } from '../src/agent/tool';
 import { createCodingTools } from '../src/agent/tool';
 import { defineTool, toInputJsonSchema } from '../src/agent/tools/define-tool';
+import { ensureProductionChannelsBooted } from './helpers/composition-boot';
+
+// 生产装配复现（平台化 Phase 2 · D11）：fs 工具 execute 经 ctx.fs 注册表解析
+// provider——meta 透传用例需要 builtin/rust-fs 在册。
+await ensureProductionChannelsBooted();
 
 describe('toInputJsonSchema', () => {
   it('输出 JSON Schema 形状: properties + required, 无 $schema 元字段', () => {

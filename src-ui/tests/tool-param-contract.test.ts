@@ -20,6 +20,11 @@ vi.mock('../src/mock-data', async (importOriginal) => {
 import { agentInvoke } from '../src/agent/tool';
 // tool.ts 模块加载时引用 bus 做事件接线
 import { rpc } from '../src/bridge';
+import { ensureProductionChannelsBooted } from './helpers/composition-boot';
+
+// 生产装配复现（平台化 Phase 2 · D11）：fs 工具 execute 经 ctx.fs 注册表解析
+// provider——rename 三处契约端到端用例需要 builtin/rust-fs 在册。
+await ensureProductionChannelsBooted();
 
 /** 走真实 rpc()，从 mock 探针参数里取出转换后的 snake_case params */
 async function toSnake(params: Record<string, unknown>): Promise<Record<string, unknown>> {
