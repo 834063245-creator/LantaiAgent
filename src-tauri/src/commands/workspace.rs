@@ -12,6 +12,8 @@ pub(crate) async fn workspace_activate(
     app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
 ) -> Result<(), String> {
     let mut handle = crate::workspace::WorkspaceHandle::new(&path);
+    // register 需要 path，但 activate 会 move 走——先克隆（登记在激活成功后）。
+    let reg_path = path.clone();
     crate::app::services::workspace_service::activate(
         path,
         app_ctx.inner().clone(),
@@ -19,6 +21,13 @@ pub(crate) async fn workspace_activate(
     )
     .await?;
     *crate::utils::lock_or_recover(&state) = Some(handle);
+    // Stage-5 补尾：绑定真目录 → 登记进「已知工作区」注册表（首页工作区管理
+    // 的实体来源；空工作区也可见）。登记是便利面，失败不阻断激活（可见于日志）。
+    if !reg_path.trim().is_empty() {
+        if let Err(e) = registry::register(&reg_path, None) {
+            eprintln!("[workspace] 已知工作区登记失败 {reg_path}: {e}");
+        }
+    }
     Ok(())
 }
 
@@ -67,4 +76,403 @@ pub(crate) fn get_last_project() -> Result<Option<String>, String> {
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
     Ok(last)
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 已知工作区注册表（Stage-5 补尾：首页工作区管理的「已知工作区」实体）
+//
+// ~ 用途：`~/.lantai/workspaces.json` 记录用户绑定过的目录（路径 + 显示名 +
+//   最近打开 + 固定）。与「由会话推导」互补：空工作区（无卷）也可见、可管理，
+//   解决「工作区清单 = 会话倒推 → 空目录不可见、无法增删改查」的结构缺口。
+//
+// 边界纪律：并入既有 commands::workspace 模块——不新增命令模块（守卫测试
+// platform_boundary_test::capability_command_modules_are_frozen 钉死清单）。
+//
+// 读写纪律：原子写（write_atomic）+ 毒化容忍（INVARIANTS #11.2——坏文件不变
+// 成每次启动必崩）。登记在 `workspace_activate` 时触发（后端侧，与前端无关）。
+// ═══════════════════════════════════════════════════════════════
+pub(crate) mod registry {
+    use serde::{Deserialize, Serialize};
+    use std::path::PathBuf;
+
+    #[derive(Serialize, Deserialize, Clone, Debug)]
+    pub(crate) struct WorkspaceEntry {
+        pub path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub name: Option<String>,
+        pub last_opened_at: String,
+        #[serde(default)]
+        pub pinned: bool,
+    }
+
+    #[derive(Serialize, Deserialize, Clone, Debug, Default)]
+    pub(crate) struct WorkspaceRegistry {
+        pub version: u32,
+        pub workspaces: Vec<WorkspaceEntry>,
+    }
+
+    /// 注册表文件路径：`~/.lantai/workspaces.json`。
+    fn registry_path() -> PathBuf {
+        crate::commands::filesystem::user_lantai_dir().join("workspaces.json")
+    }
+
+    /// 读注册表（缺失 = 空；毒化 = 空并丢弃坏内容——不把坏文件变每次启动必崩）。
+    pub(crate) fn read_registry() -> WorkspaceRegistry {
+        let raw = match std::fs::read_to_string(registry_path()) {
+            Ok(r) => r,
+            Err(_) => return WorkspaceRegistry { version: 1, workspaces: Vec::new() },
+        };
+        match serde_json::from_str::<WorkspaceRegistry>(&raw) {
+            Ok(mut r) => {
+                if r.version != 1 {
+                    r.version = 1;
+                }
+                r
+            }
+            Err(_) => WorkspaceRegistry { version: 1, workspaces: Vec::new() },
+        }
+    }
+
+    fn write_registry(reg: &WorkspaceRegistry) -> Result<(), String> {
+        let path = registry_path();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("创建 ~/.lantai 目录失败: {e}"))?;
+        }
+        let json =
+            serde_json::to_string_pretty(reg).map_err(|e| format!("序列化工作区注册表失败: {e}"))?;
+        crate::utils::write_atomic(&path.to_string_lossy(), &json)
+    }
+
+    /// 路径归一：反斜杠 → 正斜杠、去尾斜杠（与 TS chat-session normWs 同规——
+    /// 匹配时统一，避免 `D:\x` 与 `D:/x` 双写一条）。
+    fn norm_path(p: &str) -> String {
+        p.replace('\\', "/").trim_end_matches('/').to_string()
+    }
+
+    /// 登记（upsert）：path 已存在 → 刷新 last_opened_at（name 提供则更新）；
+    /// 否则新增。`workspace_activate` 每次绑定真目录时调用。
+    pub(crate) fn register(path: &str, name: Option<String>) -> Result<(), String> {
+        if path.trim().is_empty() {
+            return Ok(()); // 占位工作区（path=''）不登记
+        }
+        let np = norm_path(path);
+        let now = crate::audit::now_iso();
+        let mut reg = read_registry();
+        if let Some(e) = reg.workspaces.iter_mut().find(|e| e.path == np) {
+            e.last_opened_at = now;
+            if let Some(n) = name {
+                let n = n.trim();
+                if !n.is_empty() {
+                    e.name = Some(n.to_string());
+                }
+            }
+        } else {
+            reg.workspaces.push(WorkspaceEntry {
+                path: np,
+                name,
+                last_opened_at: now,
+                pinned: false,
+            });
+        }
+        write_registry(&reg)
+    }
+
+    /// 重命名（显示名）。未知路径自动补登记（首页可能先于 activate 操作派生卡）。
+    pub(crate) fn rename(path: &str, name: String) -> Result<(), String> {
+        let np = norm_path(path);
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("工作区显示名不能为空".into());
+        }
+        let mut reg = read_registry();
+        if let Some(e) = reg.workspaces.iter_mut().find(|e| e.path == np) {
+            e.name = Some(name.to_string());
+        } else {
+            reg.workspaces.push(WorkspaceEntry {
+                path: np,
+                name: Some(name.to_string()),
+                last_opened_at: crate::audit::now_iso(),
+                pinned: false,
+            });
+        }
+        write_registry(&reg)
+    }
+
+    /// 固定/取消固定（常用工作区置顶）。未知路径自动补登记。
+    pub(crate) fn toggle_pin(path: &str, pinned: bool) -> Result<(), String> {
+        let np = norm_path(path);
+        let mut reg = read_registry();
+        if let Some(e) = reg.workspaces.iter_mut().find(|e| e.path == np) {
+            e.pinned = pinned;
+        } else {
+            reg.workspaces.push(WorkspaceEntry {
+                path: np,
+                name: None,
+                last_opened_at: crate::audit::now_iso(),
+                pinned,
+            });
+        }
+        write_registry(&reg)
+    }
+
+    /// 移除工作区（彻底）：删除该工作区**全部会话**（墓碑——与 deleteSessionFile
+    /// 同形，listSavedSessions 过滤）并从注册表移除。若只解登记不删会话，会话推导
+    /// 会把工作区重新带回首页（回到结构性缺口）——所以「移除」必须是彻底的。
+    pub(crate) fn remove(path: &str) -> Result<(), String> {
+        let np = norm_path(path);
+        let dir = crate::commands::filesystem::user_sessions_root();
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !name.ends_with(".json") || name == "_active.json" || name == "_ledger.json" {
+                    continue;
+                }
+                if name.trim_end_matches(".json").parse::<u64>().is_err() {
+                    continue;
+                }
+                let content = match std::fs::read_to_string(entry.path()) {
+                    Ok(c) => c,
+                    Err(_) => continue,
+                };
+                let ws = match serde_json::from_str::<serde_json::Value>(&content) {
+                    Ok(v) => v
+                        .get("workspace")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .replace('\\', "/"),
+                    Err(_) => continue,
+                };
+                if ws != np {
+                    continue;
+                }
+                // 墓碑（归零世界：删除 = 标记 deleted，列表/扫描过滤）
+                let _ = crate::utils::write_atomic(
+                    &entry.path().to_string_lossy(),
+                    &serde_json::json!({
+                        "id": name.trim_end_matches(".json").parse::<u64>().unwrap_or(0),
+                        "deleted": true,
+                        "label": "",
+                        "messages": [],
+                        "savedAt": "",
+                        "workspace": np,
+                    })
+                    .to_string(),
+                );
+            }
+        }
+        let mut reg = read_registry();
+        reg.workspaces.retain(|e| e.path != np);
+        write_registry(&reg)
+    }
+
+    /// 首页工作区卡（注册表 + 会话推导合流后的完整形状）。
+    #[derive(serde::Serialize)]
+    pub(crate) struct WorkspaceSummary {
+        pub path: String,
+        pub name: Option<String>,
+        pub last_opened_at: String,
+        pub pinned: bool,
+        pub session_count: usize,
+        pub latest_saved_at: Option<String>,
+    }
+
+    /// 已知工作区清单：注册表条目在前（含空工作区），会话推导补充未登记的
+    /// 旧绑定；排序 = 固定优先 → lastOpenedAt 降序。零目录卷不参与（已退役）。
+    pub(crate) fn list() -> Result<Vec<WorkspaceSummary>, String> {
+        let reg = read_registry();
+        let sessions = crate::commands::filesystem::scan_sessions_dir(
+            &crate::commands::filesystem::user_sessions_root(),
+        );
+
+        let mut by_ws: std::collections::HashMap<String, (usize, Option<String>)> =
+            std::collections::HashMap::new();
+        for s in &sessions {
+            let ws = s.workspace.clone().unwrap_or_default();
+            if ws.is_empty() {
+                continue; // 零目录退役：不进工作区清单
+            }
+            let ws = ws.replace('\\', "/");
+            let e = by_ws.entry(ws).or_insert((0, None));
+            e.0 += 1;
+            let latest = e.1.clone().unwrap_or_default();
+            if s.saved_at > latest {
+                e.1 = Some(s.saved_at.clone());
+            }
+        }
+
+        let mut out: Vec<WorkspaceSummary> = Vec::new();
+        for e in &reg.workspaces {
+            let (count, latest) = by_ws.remove(&e.path).unwrap_or((0, None));
+            out.push(WorkspaceSummary {
+                path: e.path.clone(),
+                name: e.name.clone(),
+                last_opened_at: e.last_opened_at.clone(),
+                pinned: e.pinned,
+                session_count: count,
+                latest_saved_at: latest,
+            });
+        }
+        for (ws, (count, latest)) in by_ws {
+            let name =
+                PathBuf::from(&ws).file_name().map(|s| s.to_string_lossy().to_string());
+            out.push(WorkspaceSummary {
+                path: ws,
+                name,
+                last_opened_at: latest.clone().unwrap_or_default(),
+                pinned: false,
+                session_count: count,
+                latest_saved_at: latest,
+            });
+        }
+
+        out.sort_by(|a, b| {
+            b.pinned.cmp(&a.pinned).then_with(|| b.last_opened_at.cmp(&a.last_opened_at))
+        });
+        Ok(out)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        /// 隔离测试：把用户主目录指到临时目录（USERPROFILE/HOME 重定向——
+        /// user_lantai_dir 的解析真源），结束还原并清理。
+        fn with_temp_home(f: impl FnOnce()) {
+            let dir = std::env::temp_dir().join(format!(
+                "lantai_ws_registry_test_{}",
+                crate::audit::now_iso().replace([':', '.'], "-")
+            ));
+            let old_home = std::env::var("USERPROFILE").ok();
+            let old_home2 = std::env::var("HOME").ok();
+            std::env::set_var("USERPROFILE", &dir);
+            std::env::set_var("HOME", &dir);
+            f();
+            if let Some(h) = old_home {
+                std::env::set_var("USERPROFILE", h);
+            } else {
+                std::env::remove_var("USERPROFILE");
+            }
+            if let Some(h) = old_home2 {
+                std::env::set_var("HOME", h);
+            } else {
+                std::env::remove_var("HOME");
+            }
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+
+        #[test]
+        fn register_upsert_refreshes_last_opened() {
+            with_temp_home(|| {
+                register("D:/proj", Some("项目A".into())).unwrap();
+                register("D:/proj", None).unwrap();
+                let reg = read_registry();
+                assert_eq!(reg.workspaces.len(), 1);
+                assert_eq!(reg.workspaces[0].name.as_deref(), Some("项目A"));
+            });
+        }
+
+        #[test]
+        fn empty_path_not_registered() {
+            with_temp_home(|| {
+                register("", None).unwrap();
+                assert!(read_registry().workspaces.is_empty());
+            });
+        }
+
+        #[test]
+        fn rename_and_pin_upsert() {
+            with_temp_home(|| {
+                rename("D:/proj", " 新名 ".into()).unwrap();
+                let reg = read_registry();
+                assert_eq!(reg.workspaces.len(), 1);
+                assert_eq!(reg.workspaces[0].name.as_deref(), Some("新名"));
+                toggle_pin("D:/proj", true).unwrap();
+                assert!(read_registry().workspaces[0].pinned);
+            });
+        }
+
+        #[test]
+        fn rename_rejects_empty() {
+            with_temp_home(|| {
+                assert!(rename("D:/proj", "  ".into()).is_err());
+            });
+        }
+
+        #[test]
+        fn poison_registry_is_empty_not_panic() {
+            with_temp_home(|| {
+                let p = registry_path();
+                std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+                std::fs::write(&p, "{{not json").unwrap();
+                let reg = read_registry();
+                assert!(reg.workspaces.is_empty());
+            });
+        }
+
+        #[test]
+        fn list_merges_registry_and_session_derived() {
+            with_temp_home(|| {
+                // 注册一个空工作区 + 一个带会话的工作区（未登记 → 推导补充）
+                register("D:/empty", None).unwrap();
+                let sessions_dir = crate::commands::filesystem::user_sessions_root();
+                std::fs::create_dir_all(&sessions_dir).unwrap();
+                crate::utils::write_atomic(
+                    &sessions_dir.join("11.json").to_string_lossy(),
+                    r#"{"id":11,"label":"a","savedAt":"2026-08-26T00:00:00Z","workspace":"D:/derived"}"#,
+                )
+                .unwrap();
+                crate::utils::write_atomic(
+                    &sessions_dir.join("12.json").to_string_lossy(),
+                    r#"{"id":12,"label":"b","savedAt":"2026-08-26T01:00:00Z","workspace":"D:/derived"}"#,
+                )
+                .unwrap();
+
+                let list = list().unwrap();
+                // 空工作区也在列（注册表来源）
+                assert!(list.iter().any(|w| w.path == "D:/empty" && w.session_count == 0));
+                // 未登记的会话工作区被推导补充 + 计数/最近正确
+                let derived = list.iter().find(|w| w.path == "D:/derived").unwrap();
+                assert_eq!(derived.session_count, 2);
+                assert_eq!(
+                    derived.latest_saved_at.as_deref(),
+                    Some("2026-08-26T01:00:00Z")
+                );
+            });
+        }
+
+        #[test]
+        fn remove_deletes_sessions_and_entry() {
+            with_temp_home(|| {
+                register("D:/proj", None).unwrap();
+                let sessions_dir = crate::commands::filesystem::user_sessions_root();
+                std::fs::create_dir_all(&sessions_dir).unwrap();
+                crate::utils::write_atomic(
+                    &sessions_dir.join("21.json").to_string_lossy(),
+                    r#"{"id":21,"label":"a","messages":[{"role":"user","content":"x"}],"workspace":"D:/proj"}"#,
+                )
+                .unwrap();
+                crate::utils::write_atomic(
+                    &sessions_dir.join("22.json").to_string_lossy(),
+                    r#"{"id":22,"label":"b","messages":[{"role":"user","content":"y"}],"workspace":"D:/other"}"#,
+                )
+                .unwrap();
+
+                remove("D:/proj").unwrap();
+
+                // 该工作区会话墓碑化（deleted），他工作区卷不动
+                let s21: serde_json::Value = serde_json::from_str(
+                    &std::fs::read_to_string(sessions_dir.join("21.json")).unwrap(),
+                )
+                .unwrap();
+                assert_eq!(s21["deleted"], serde_json::Value::Bool(true));
+                let s22: serde_json::Value = serde_json::from_str(
+                    &std::fs::read_to_string(sessions_dir.join("22.json")).unwrap(),
+                )
+                .unwrap();
+                assert_eq!(s22.get("deleted"), None);
+                // 注册表条目移除
+                assert!(!read_registry().workspaces.iter().any(|e| e.path == "D:/proj"));
+            });
+        }
+    }
 }

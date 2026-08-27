@@ -1,32 +1,41 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// SessionsHome — 案卷首页 → 工作区总览（Stage-2 一纸多卷「方案 A」）。
+// SessionsHome — 案卷首页 = 工作区管理面（Stage-5 补尾：已知工作区实体）。
 //
-// 定案（docs/plans/canvas-space/stage-2.md §3.5）：**不并存——画布即主界面**。
-// 首页只做「工作区列表 + 进入动作」：一整个工作区 = 一块画布，选完进画布；
-// 工作区内的会话管理交给画布旁的最小侧边栏（新建 + 列表）。
+// 定案（docs/plans/canvas-space/stage-2.md §3.5 方案 A + Stage-5 补尾拍板）：
+// **不并存——画布即主界面**。首页管「你有哪些工作区」：绑定目录（= 创建/
+// 登记工作区）、改名、固定常用、移除（连带删卷，需确认）、进画布；
+// 工作区内的会话管理交给画布旁的侧边栏（出生仪式在那边）。
 //
-// 工作区清单从全局会话列表（user_sessions_list 单一来源）按 workspace 字段
-// 分组推导（无需新后端 RPC）：有卷的工作区各一张卡 + 「零目录」桶（无绑定
-// 目录的卷）。进入 = 打开纸画布 + （必要时）切到该工作区；Q-B：进入不自动
-// 摊开任何卷，卷由用户在画布侧边栏另起/展开。
+// 数据源（Stage-5 补尾）：`workspace_list` 单一来源——Rust 把
+// ~/.lantai/workspaces.json 注册表与会话推导合流（空工作区也可见，
+// 未登记的旧绑定自动补齐）；不再由会话倒推工作区卡。零目录桶仍走
+// user_sessions_list（退役对象：要么绑目录要么归档）。
 //
 // 版式对齐 prototype/lantai.html 案卷首页（2026-08-23 视觉迭代）。
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { typedJsonRpc } from '../rpc-contract';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { typedJsonRpc, typedRpc } from '../rpc-contract';
 import { workspaceFlow } from '../shell/rows/workspace';
-import { useCanvasViewStore } from '../state/canvas-view-store';
 import { useDockStore } from '../state/dock-store';
 import { useUpdateStore } from '../state/update-store';
 import { ensureUserSessionsDir } from '../ui/chat-session';
-import { getChatStore } from '../ui/chat-store';
 import { useCoreStore } from './chat/core-instance';
 import { useShellStore } from './shell-store';
 import { WinControls } from './WinControls';
 
-/** 全局会话行（Rust UserSessionEntry 同形）——workspace：卷归属工作区（可空 = 零目录卷）。 */
+/** 已知工作区行（Rust WorkspaceSummary 同形——注册表 + 会话推导合流）。 */
+interface KnownWorkspace {
+  path: string;
+  name?: string | null;
+  last_opened_at: string;
+  pinned: boolean;
+  session_count: number;
+  latest_saved_at?: string | null;
+}
+
+/** 全局会话行（Rust UserSessionEntry 同形）——首页只取零目录桶用。 */
 interface UserSession {
   id: number;
   label: string;
@@ -35,16 +44,21 @@ interface UserSession {
   workspace?: string | null;
 }
 
-/** 卷所属工作区的短名（路径末段；零目录卷 = null 不显示）。 */
-function workspaceShortName(ws: string | null | undefined): string {
-  if (!ws) return '';
-  const norm = ws.replace(/\\/g, '/').replace(/\/+$/, '');
+/** 工作区显示名：登记名优先，缺省 = 路径末段。 */
+function wsDisplayName(ws: KnownWorkspace): string {
+  if (ws.name?.trim()) return ws.name.trim();
+  return pathBasename(ws.path);
+}
+
+function pathBasename(p: string): string {
+  const norm = p.replace(/\\/g, '/').replace(/\/+$/, '');
   const last = norm.split('/').filter(Boolean).pop();
   return last ?? norm;
 }
 
 /** 案卷日期列：MM-DD（原型 .session-row .date 同款） */
-function formatSessionDate(iso: string): string {
+function formatSessionDate(iso: string | null | undefined): string {
+  if (!iso) return '——';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '——';
   return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -79,19 +93,27 @@ function handleBarDoubleClick(e: React.MouseEvent): void {
   }
 }
 
-interface WorkspaceCard {
-  workspace: string;
-  name: string;
-  sessions: UserSession[];
-  latest: string;
-}
-
 export function SessionsHome() {
   const core = useCoreStore((s) => s.core);
   const openPanel = useDockStore((s) => s.openPanel);
-  const [sessions, setSessions] = useState<UserSession[]>([]);
 
-  // 单一全局列表（会话统一 U2）：user_sessions_list 一个来源。
+  // ── 已知工作区清单（workspace_list：注册表 + 会话推导合流）──
+  const [workspaces, setWorkspaces] = useState<KnownWorkspace[]>([]);
+  /** 存量零目录卷（Stage-5 退役对象：要么绑目录、要么归档，不能进画布）。 */
+  const [zeroDirCount, setZeroDirCount] = useState(0);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  /** 内联改名（一次一张卡）。 */
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+  /** 两段式移除确认：第一击记录待确认路径，再击确认。 */
+  const [removingPath, setRemovingPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (renamingPath !== null) renameInputRef.current?.focus();
+  }, [renamingPath]);
+
   // 刷新时机：挂载期 + 每次纸面板从开到关（回首页即重拉）。
   const paperOpen = useDockStore((s) => s.open.paper);
   useEffect(() => {
@@ -100,10 +122,16 @@ export function SessionsHome() {
     void (async () => {
       await ensureUserSessionsDir();
       try {
-        const parsed = await typedJsonRpc<UserSession[]>('user_sessions_list', {});
-        if (alive) setSessions(Array.isArray(parsed) ? parsed : []);
+        const parsed = await typedJsonRpc<KnownWorkspace[]>('workspace_list', {});
+        if (alive) setWorkspaces(Array.isArray(parsed) ? parsed : []);
       } catch {
-        /* 目录不存在 = 空（首启常态） */
+        /* 目录缺席（首启常态）= 空清单 */
+      }
+      try {
+        const parsed = await typedJsonRpc<UserSession[]>('user_sessions_list', {});
+        if (alive) setZeroDirCount(Array.isArray(parsed) ? parsed.filter((s) => !s.workspace).length : 0);
+      } catch {
+        /* 同上 */
       }
     })();
     return () => {
@@ -111,41 +139,22 @@ export function SessionsHome() {
     };
   }, [paperOpen]);
 
-  /** 工作区清单：按 workspace 字段分组（Stage-5：零目录退役——零目录卷
-   *  不进工作区卡，独立走「绑定目录/归档」退役动作；无目录不能进画布）。 */
-  const workspaces = useMemo<WorkspaceCard[]>(() => {
-    const groups = new Map<string, UserSession[]>();
-    for (const s of sessions) {
-      if (!s.workspace) continue; // 零目录卷不进工作区清单
-      const arr = groups.get(s.workspace) ?? [];
-      arr.push(s);
-      groups.set(s.workspace, arr);
+  const refreshWorkspaces = useCallback(async (): Promise<void> => {
+    try {
+      const parsed = await typedJsonRpc<KnownWorkspace[]>('workspace_list', {});
+      setWorkspaces(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      /* 保留旧清单，失败可见于 console */
+      console.warn('[home] workspace_list 刷新失败');
     }
-    const out: WorkspaceCard[] = [];
-    for (const [ws, list] of groups) {
-      list.sort((a, b) => new Date(b.saved_at).getTime() - new Date(a.saved_at).getTime());
-      out.push({
-        workspace: ws,
-        name: workspaceShortName(ws),
-        sessions: list,
-        latest: list[0]?.saved_at ?? '',
-      });
-    }
-    out.sort((a, b) => new Date(b.latest).getTime() - new Date(a.latest).getTime());
-    return out;
-  }, [sessions]);
-
-  /** 存量零目录卷（Stage-5 退役对象：要么绑目录、要么归档，不能进画布）。 */
-  const zeroDirSessions = useMemo(() => sessions.filter((s) => !s.workspace), [sessions]);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [zeroDirBusy, setZeroDirBusy] = useState(false);
+  }, []);
 
   /** 进入工作区画布：打开纸面板 + （必要时）切到该工作区。
-   *  Q-B：进入不自动摊开卷——摊开集由画布状态文件恢复（Stage-5 拍板 11）。 */
+   *  摊开集由画布状态文件恢复（Stage-5 拍板 11）。 */
   const onEnterWorkspace = useCallback(
     (ws: string) => {
+      setRemovingPath(null);
       openPanel('paper');
-      if (!ws) return; // 零目录：当前占位工作区即画布，直接进入（退役后不出现）
       const current = useShellStore.getState().projectPath;
       if (ws !== current) {
         void workspaceFlow.switchWorkspace(ws, { skipAnalysis: true });
@@ -154,63 +163,108 @@ export function SessionsHome() {
     [openPanel],
   );
 
-  const onNewSession = useCallback(() => {
-    openPanel('paper');
-    if (!core) return;
-    // 零目录退役（Stage-5 拍板 a）：创建必须要有目录——无工作区先选/建工作区
-    if (!useShellStore.getState().projectPath) {
-      void workspaceFlow.switchWorkspace();
-      return;
-    }
-    // 出生 = 一种展开：绑定视角聚焦（用户拍板）——新卷落点（最近空位）
-    // 相对视口中心，聚焦把它带到眼前
-    void (async () => {
-      await core.createNewSession();
-      const st = getChatStore(core.panelId).sess.getState();
-      const sid = st.sessions[st.activeIdx]?.id;
-      if (sid != null) useCanvasViewStore.getState().requestFocus(String(sid));
-    })();
-  }, [core, openPanel]);
-
-  const onNewSessionWithDir = useCallback(() => {
+  /** 绑定工作区（= 创建/登记）：选目录 → activate → 自动进画布建卷。
+   *  出生仪式在画布侧边栏——首页只管工作区本身。 */
+  const onBindWorkspace = useCallback(() => {
     openPanel('paper');
     void workspaceFlow.switchWorkspace();
   }, [openPanel]);
 
-  /** 零目录卷 → 绑目录：把全部零目录卷归入用户选的工作区。 */
+  /** 改名提交：空名 = 取消。 */
+  const onRenameCommit = useCallback(
+    async (path: string) => {
+      const next = renameDraft.trim();
+      setRenamingPath(null);
+      if (!next) return;
+      setBusy(true);
+      try {
+        await typedRpc('workspace_rename', { path, name: next });
+        await refreshWorkspaces();
+      } catch (e) {
+        console.error('[home] workspace_rename failed:', e);
+        setNotice(`改名失败: ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [renameDraft, refreshWorkspaces],
+  );
+
+  const onTogglePin = useCallback(
+    async (ws: KnownWorkspace) => {
+      setBusy(true);
+      try {
+        await typedRpc('workspace_toggle_pin', { path: ws.path, pinned: !ws.pinned });
+        await refreshWorkspaces();
+      } catch (e) {
+        console.error('[home] workspace_toggle_pin failed:', e);
+        setNotice(`固定失败: ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [refreshWorkspaces],
+  );
+
+  /** 移除工作区（彻底：连带删其中全部案卷）——两段式确认后执行。 */
+  const onRemoveConfirmed = useCallback(
+    async (ws: KnownWorkspace) => {
+      setBusy(true);
+      setNotice(null);
+      try {
+        await typedRpc('workspace_remove', { path: ws.path });
+        setRemovingPath(null);
+        await refreshWorkspaces();
+        setNotice(
+          `已移除工作区「${wsDisplayName(ws)}」${ws.session_count > 0 ? `（含 ${ws.session_count} 卷案卷）` : ''}`,
+        );
+      } catch (e) {
+        console.error('[home] workspace_remove failed:', e);
+        setNotice(`移除失败: ${e instanceof Error ? e.message : String(e)}`);
+        setRemovingPath(null);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [refreshWorkspaces],
+  );
+
+  /** 零目录卷 → 绑目录：把全部零目录卷归入用户选的工作区（ChatCore 委托）。 */
   const onBindZeroDir = useCallback(async () => {
     const { open } = await import('@tauri-apps/plugin-dialog');
     const result = (await open({ directory: true, multiple: false, title: '选择工作区目录' })) as string | null;
     if (!result || !core) return;
-    setZeroDirBusy(true);
+    setBusy(true);
     setNotice(null);
     try {
       const n = await core.bindZeroDirSessions(result);
       setNotice(n > 0 ? `已把 ${n} 卷零目录案卷归入工作区` : '没有可绑定的零目录案卷');
+      await refreshWorkspaces();
     } finally {
-      setZeroDirBusy(false);
+      setBusy(false);
     }
-  }, [core]);
+  }, [core, refreshWorkspaces]);
 
-  /** 零目录卷 → 归档：拷贝到归档目录 + 原位墓碑（代码永不回读）。 */
+  /** 零目录卷 → 归档：拷贝到归档目录 + 原位墓碑（代码永不回读，ChatCore 委托）。 */
   const onArchiveZeroDir = useCallback(async () => {
     if (!core) return;
-    setZeroDirBusy(true);
+    setBusy(true);
     setNotice(null);
     try {
       const n = await core.archiveZeroDirSessions();
       setNotice(n > 0 ? `已归档 ${n} 卷零目录案卷` : '没有可归档的零目录案卷');
+      await refreshWorkspaces();
     } finally {
-      setZeroDirBusy(false);
+      setBusy(false);
     }
-  }, [core]);
+  }, [core, refreshWorkspaces]);
 
   const onOpenSettings = useCallback(() => openPanel('settings'), [openPanel]);
   // 更新角标（update-store）：启动自动检查发现新版本且用户未看过 → 朱砂点
   const updateAvailable = useUpdateStore((s) => s.status === 'available' && !s.badgeDismissed);
   const updateVersion = useUpdateStore((s) => s.version);
 
-  const totalVolumes = sessions.length;
+  const totalVolumes = workspaces.reduce((n, w) => n + w.session_count, 0) + zeroDirCount;
 
   return (
     <div className="sh-root">
@@ -238,13 +292,12 @@ export function SessionsHome() {
         </div>
       </header>
 
-      {/* 主区：kicker + 大标题 + 描述 + 工作区列表 + 新建按钮 */}
+      {/* 主区：kicker + 大标题 + 描述 + 工作区管理列表 + 绑定入口 */}
       <main className="sh-main">
         <p className="sh-kicker">兰台 · 档案</p>
         <h1 className="sh-h1">与 Agent 协作，应当像在纸上书写。</h1>
         <p className="sh-lead">
-          在纸面上向 Agent
-          拟文，它的每一次思考、读码与计划，都作为注疏落进同一卷案卷——可对照、可钉住、可追溯。一个工作区就是一张纸，摊开多少卷，都在同一片纸上。
+          一个工作区就是一张纸：绑定一个目录，摊开多少卷都在同一片纸上——可对照、可钉住、可追溯。
         </p>
 
         <div className="sh-section-title">
@@ -254,37 +307,118 @@ export function SessionsHome() {
 
         {workspaces.length > 0 ? (
           <div className="sh-workspaces">
-            {workspaces.map((w) => (
-              <button
-                key={w.workspace}
-                type="button"
-                className="sh-ws-card"
-                onClick={() => onEnterWorkspace(w.workspace)}
-                aria-label={`进入工作区：${w.name}（${w.sessions.length} 卷）`}
-              >
-                <span className="sh-ws-name">{w.name}</span>
-                <span className="sh-ws-meta">
-                  {w.sessions.length} 卷 · 最近 {formatSessionDate(w.latest)}
-                </span>
-                <span className="sh-ws-enter">进入画布 →</span>
-              </button>
-            ))}
+            {workspaces.map((w) => {
+              const isRenaming = renamingPath === w.path;
+              const isConfirmingRemove = removingPath === w.path;
+              return (
+                <div key={w.path} className="sh-ws-card sh-ws-card--row">
+                  <button
+                    type="button"
+                    className="sh-ws-card-main"
+                    onClick={() => onEnterWorkspace(w.path)}
+                    aria-label={`进入工作区：${wsDisplayName(w)}（${w.session_count} 卷）`}
+                  >
+                    <span className="sh-ws-name">
+                      {isRenaming ? (
+                        <input
+                          ref={renameInputRef}
+                          className="sh-ws-rename-input"
+                          value={renameDraft}
+                          onChange={(e) => setRenameDraft(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              void onRenameCommit(w.path);
+                            } else if (e.key === 'Escape') {
+                              e.preventDefault();
+                              setRenamingPath(null);
+                            }
+                            e.stopPropagation();
+                          }}
+                          onBlur={() => void onRenameCommit(w.path)}
+                        />
+                      ) : (
+                        <>
+                          {wsDisplayName(w)}
+                          {w.pinned && <span className="sh-ws-pin">固定</span>}
+                        </>
+                      )}
+                    </span>
+                    <span className="sh-ws-meta" title={w.path}>
+                      {w.session_count > 0
+                        ? `${w.session_count} 卷 · 最近 ${formatSessionDate(w.latest_saved_at)}`
+                        : '空工作区 · 还没有案卷'}
+                    </span>
+                    <span className="sh-ws-enter">进入画布 →</span>
+                  </button>
+                  {!isRenaming && !isConfirmingRemove && (
+                    <div className="sh-ws-actions">
+                      <button
+                        type="button"
+                        title="重命名"
+                        onClick={() => {
+                          setRenamingPath(w.path);
+                          setRenameDraft(w.name ?? '');
+                        }}
+                      >
+                        改名
+                      </button>
+                      <button
+                        type="button"
+                        title={w.pinned ? '取消固定' : '固定（置顶）'}
+                        disabled={busy}
+                        onClick={() => void onTogglePin(w)}
+                      >
+                        {w.pinned ? '解固' : '固定'}
+                      </button>
+                      <button
+                        type="button"
+                        title="移除工作区（连带删除其中的全部案卷）"
+                        disabled={busy}
+                        onClick={() => setRemovingPath(w.path)}
+                      >
+                        移除
+                      </button>
+                    </div>
+                  )}
+                  {isConfirmingRemove && (
+                    <div className="sh-ws-remove-confirm">
+                      <span>
+                        删除「{wsDisplayName(w)}」及其 {w.session_count} 卷案卷？
+                      </span>
+                      <button
+                        type="button"
+                        className="danger"
+                        disabled={busy}
+                        onClick={() => void onRemoveConfirmed(w)}
+                      >
+                        确认移除
+                      </button>
+                      <button type="button" onClick={() => setRemovingPath(null)}>
+                        取消
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         ) : (
-          <p className="sh-empty-hint">从一卷新案卷开始——需要 Agent 干活时先创建/选择一个工作区目录。</p>
+          <p className="sh-empty-hint">还没有工作区——绑定一个目录，从一卷新案卷开始。</p>
         )}
 
         {/* 零目录卷退役（Stage-5 拍板 a）：无目录不能进画布——存量零目录卷
          * 要么绑目录（归入某工作区）、要么归档。 */}
-        {zeroDirSessions.length > 0 && (
+        {zeroDirCount > 0 && (
           <div className="sh-zero-dir">
-            <span className="sh-zero-dir-title">零目录案卷 · {zeroDirSessions.length} 卷（待退役）</span>
+            <span className="sh-zero-dir-title">零目录案卷 · {zeroDirCount} 卷（待退役）</span>
             <span className="sh-zero-dir-desc">这些案卷没有所属工作区，无法进入画布。请归入一个工作区或归档。</span>
             <div className="sh-zero-dir-actions">
-              <button type="button" className="sh-btn-text" disabled={zeroDirBusy} onClick={onBindZeroDir}>
+              <button type="button" className="sh-btn-text" disabled={busy} onClick={onBindZeroDir}>
                 绑定目录
               </button>
-              <button type="button" className="sh-btn-text" disabled={zeroDirBusy} onClick={onArchiveZeroDir}>
+              <button type="button" className="sh-btn-text" disabled={busy} onClick={onArchiveZeroDir}>
                 归档
               </button>
             </div>
@@ -293,11 +427,8 @@ export function SessionsHome() {
         {notice && <p className="sh-notice">{notice}</p>}
 
         <div className="sh-actions">
-          <button type="button" className="sh-btn-primary" onClick={onNewSession}>
-            ＋ 新建案卷
-          </button>
-          <button type="button" className="sh-btn-text" onClick={onNewSessionWithDir}>
-            新建案卷 · 绑定目录
+          <button type="button" className="sh-btn-primary" onClick={onBindWorkspace}>
+            ＋ 绑定工作区
           </button>
         </div>
       </main>

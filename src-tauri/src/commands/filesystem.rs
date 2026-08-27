@@ -192,6 +192,15 @@ pub(crate) fn get_global_memory_dir() -> String {
     format!("{}/.lantai/global_memory", home.replace("\\", "/"))
 }
 
+/// 用户级数据根：~/.lantai（会话/工作区注册表等用户数据的共同家目录）。
+/// 独立于 workspace 根——用户级数据不随项目走。
+pub(crate) fn user_lantai_dir() -> std::path::PathBuf {
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_else(|_| ".".to_string());
+    std::path::PathBuf::from(home).join(".lantai")
+}
+
 /// 用户级会话目录（workspace-flip 批 1）：~/.lantai/sessions/（零目录会话的落盘位）。
 /// HOLOGRAM_SESSIONS_ROOT 环境变量可覆盖（测试隔离与目录重定位——plugins_root 同款惯例）。
 pub(crate) fn user_sessions_root() -> std::path::PathBuf {
@@ -200,10 +209,7 @@ pub(crate) fn user_sessions_root() -> std::path::PathBuf {
             return std::path::PathBuf::from(custom);
         }
     }
-    let home = std::env::var("USERPROFILE")
-        .or_else(|_| std::env::var("HOME"))
-        .unwrap_or_else(|_| ".".to_string());
-    std::path::PathBuf::from(home).join(".lantai").join("sessions")
+    user_lantai_dir().join("sessions")
 }
 
 /// 会话摘要（全局会话列表行——TS UserSession 同形）。
@@ -220,7 +226,8 @@ pub(crate) struct UserSessionEntry {
 /// 扫描单个会话目录为摘要列表。读取容忍毒化（INVARIANTS #11.2）：坏 JSON /
 /// 超大文件（>4MB）/ 非数字文件名 / 删除标记全跳过不炸列表；目录不存在 =
 /// 空列表（首启常态）。归属只认卷内 workspace 字段（无字段 = 零目录卷）。
-fn scan_sessions_dir(dir: &std::path::Path) -> Vec<UserSessionEntry> {
+/// pub(crate)：工作区注册表（workspace_registry::list）复用做计数/最近合并。
+pub(crate) fn scan_sessions_dir(dir: &std::path::Path) -> Vec<UserSessionEntry> {
     let entries = match std::fs::read_dir(dir) {
         Ok(it) => it,
         Err(_) => return Vec::new(), // 目录不存在 = 空列表（非错误）

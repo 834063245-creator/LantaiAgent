@@ -138,6 +138,13 @@ export interface RpcContract {
     params: Record<string, never>;
     result: string; // JSON — 最近工作区路径 "path"/null（引擎开关关态的冷启动恢复信号）
   };
+  workspace_list: {
+    params: Record<string, never>;
+    result: string; // JSON — 已知工作区清单（注册表 + 会话推导合流，Stage-5 补尾：含空工作区）
+  };
+  workspace_rename: { params: { path: string; name: string }; result: string }; // "null"
+  workspace_toggle_pin: { params: { path: string; pinned: boolean }; result: string }; // "null"
+  workspace_remove: { params: { path: string }; result: string }; // "null" — 删除该工作区全部会话 + 解除登记
   get_user_sessions_dir: {
     params: Record<string, never>;
     result: string; // text — ~/.lantai/sessions 路径（零目录会话存储位）

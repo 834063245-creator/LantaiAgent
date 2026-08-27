@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-08-24T16:17:47.936Z
-> 方法总数：157（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-08-27T07:07:05.343Z
+> 方法总数：161（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -13,7 +13,7 @@
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
-| `session_attach` | — | legacy_root, workspace | 字符串 |
+| `session_attach` | — | workspace | 字符串 |
 | `session_detach` | — | — | `null`（unit） |
 | `session_focus` | — | — | 字符串 |
 | `context_list` | — | — | 字符串 |
@@ -63,7 +63,7 @@
 | `list_directory` | path | is_agent, filter_ignored, _agent_id | JSON 字符串 |
 | `list_directory_flat` | path | is_agent, _agent_id | JSON 字符串 |
 | `read_file_content` | file_path | offset, limit, is_agent, _agent_id | 字符串 |
-| `user_sessions_list` | — | legacy_root | JSON 字符串 |
+| `user_sessions_list` | — | — | JSON 字符串 |
 | `get_user_sessions_dir` | — | — | 字符串 |
 | `read_memory_batch` | — | paths | 字符串 |
 | `read_file_base64` | file_path | is_agent, _agent_id | 字符串 |
@@ -118,7 +118,7 @@
 | `desktop_uia_window_shot` | — | _agent_id, title, pid, hwnd | 字符串 |
 | `desktop_audit` | — | _agent_id, limit | 字符串 |
 | `desktop_status` | — | _agent_id | 字符串 |
-| `browser_attach` | target_id | _agent_id, target | 字符串 |
+| `browser_attach` | target_id | _agent_id | 字符串 |
 | `browser_inspect` | selector | max_results, props | 字符串 |
 | `browser_report` | — | scope | 字符串 |
 | `browser_snapshot` | — | scope, max_results, offset | 字符串 |
@@ -224,6 +224,10 @@
 | `workspace_deactivate` | — | — | `null`（unit） |
 | `workspace_start_watcher` | — | — | `null`（unit） |
 | `get_last_project` | — | — | JSON 字符串 |
+| `workspace_list` | — | — | JSON 字符串 |
+| `workspace_rename` | path, name | — | `null`（unit） |
+| `workspace_toggle_pin` | path | — | `null`（unit） |
+| `workspace_remove` | path | — | `null`（unit） |
 
 ## 会话持久化
 

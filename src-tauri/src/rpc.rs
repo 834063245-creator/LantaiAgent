@@ -27,6 +27,12 @@ fn opt_str(params: &Value, name: &str) -> Option<String> {
 fn opt_bool(params: &Value, name: &str) -> Option<bool> {
     params.get(name).and_then(|v| v.as_bool())
 }
+fn req_bool(params: &Value, name: &str, method: &str) -> Result<bool, String> {
+    params
+        .get(name)
+        .and_then(|v| v.as_bool())
+        .ok_or_else(|| format!("{method}: missing '{name}'"))
+}
 fn opt_i32(params: &Value, name: &str) -> Option<i32> {
     params.get(name).and_then(|v| v.as_i64()).map(|n| n as i32)
 }
@@ -164,7 +170,10 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // list_directory/list_directory_flat：ok_json(DirEntry 数组) 恒 JSON。
         // read_file_content/read_file_base64/read_memory_batch：字节精确/内容
         // 不可控，Text 铁律。user_sessions_list：ok_json(Vec) 恒 JSON。
-        "list_directory" | "list_directory_flat" | "user_sessions_list" => RpcResultShape::JsonValue,
+        // workspace_list：ok_json(注册表+推导合并) 恒 JSON。
+        "list_directory" | "list_directory_flat" | "user_sessions_list" | "workspace_list" => {
+            RpcResultShape::JsonValue
+        }
 
         // ── 搜索 ──
         // search_content（含 search_code）/glob：output_val/json! 构造恒 JSON。
@@ -1425,7 +1434,7 @@ async fn dispatch_rpc(
         }
 
         // ═══════════════════════════════════════════════════════
-        // 工作区（4 个命令）
+        // 工作区（8 个命令）
         // ═══════════════════════════════════════════════════════
         "workspace_activate" => {
             let path = req_str(&params, "path", "workspace_activate")?;
@@ -1444,6 +1453,37 @@ async fn dispatch_rpc(
                 .await
                 .map_err(|e| format!("get_last_project 任务失败: {e}"))?;
             ok_json(r)
+        }
+        // ── 已知工作区注册表（Stage-5 补尾：首页工作区管理）──
+        "workspace_list" => {
+            let r = tokio::task::spawn_blocking(commands::workspace::registry::list)
+                .await
+                .map_err(|e| format!("workspace_list 任务失败: {e}"))?
+                .map_err(|e| format!("workspace_list: {e}"))?;
+            ok_json(Ok(r))
+        }
+        "workspace_rename" => {
+            let path = req_str(&params, "path", "workspace_rename")?;
+            let name = req_str(&params, "name", "workspace_rename")?;
+            let res = tokio::task::spawn_blocking(move || commands::workspace::registry::rename(&path, name))
+                .await
+                .map_err(|e| format!("workspace_rename 任务失败: {e}"))?;
+            ok_unit(res)
+        }
+        "workspace_toggle_pin" => {
+            let path = req_str(&params, "path", "workspace_toggle_pin")?;
+            let pinned = req_bool(&params, "pinned", "workspace_toggle_pin")?;
+            let res = tokio::task::spawn_blocking(move || commands::workspace::registry::toggle_pin(&path, pinned))
+                .await
+                .map_err(|e| format!("workspace_toggle_pin 任务失败: {e}"))?;
+            ok_unit(res)
+        }
+        "workspace_remove" => {
+            let path = req_str(&params, "path", "workspace_remove")?;
+            let res = tokio::task::spawn_blocking(move || commands::workspace::registry::remove(&path))
+                .await
+                .map_err(|e| format!("workspace_remove 任务失败: {e}"))?;
+            ok_unit(res)
         }
 
         // ═══════════════════════════════════════════════════════

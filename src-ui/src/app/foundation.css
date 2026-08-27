@@ -398,6 +398,138 @@ body {
   color: var(--seal-deep);
 }
 
+/* ── 工作区卡 · 管理形态（Stage-5 补尾：主区可点进画布 + 右侧操作）── */
+.sh-ws-card--row {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+}
+.sh-ws-card-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 18px 16px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  flex: 1;
+  min-width: 0;
+  color: inherit;
+  font: inherit;
+}
+.sh-ws-card-main:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: -2px;
+}
+.sh-ws-card:focus-within {
+  outline: 2px solid var(--seal);
+  outline-offset: -2px;
+}
+.sh-ws-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--f-song);
+  font-size: calc(19px * var(--font-scale));
+  font-weight: 600;
+  color: var(--ink-1);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sh-ws-pin {
+  font-family: var(--f-mono);
+  font-size: calc(10px * var(--font-scale));
+  letter-spacing: 0.08em;
+  color: var(--seal-deep);
+  border: var(--rule-soft);
+  padding: 1px 6px;
+}
+.sh-ws-meta {
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sh-ws-rename-input {
+  font: inherit;
+  color: var(--ink-1);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--seal-deep);
+  padding: 0;
+  width: 100%;
+  min-width: 120px;
+  outline: none;
+}
+.sh-ws-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 10px;
+  align-self: center;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.sh-ws-card:hover .sh-ws-actions,
+.sh-ws-card:focus-within .sh-ws-actions {
+  opacity: 1;
+}
+.sh-ws-actions button {
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+.sh-ws-actions button:hover {
+  color: var(--ink-1);
+}
+.sh-ws-remove-confirm {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: color-mix(in oklch, var(--paper) 92%, var(--ink-1));
+  z-index: 1;
+}
+.sh-ws-remove-confirm span {
+  flex: 1;
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.06em;
+  color: var(--ink-1);
+}
+.sh-ws-remove-confirm button {
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.06em;
+  background: transparent;
+  border: var(--rule-soft);
+  cursor: pointer;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+.sh-ws-remove-confirm button.danger {
+  color: var(--paper);
+  background: var(--seal-deep);
+  border-color: var(--seal-deep);
+}
+
 .sh-empty-hint {
   font-family: var(--f-mono);
   font-size: calc(11px * var(--font-scale));
