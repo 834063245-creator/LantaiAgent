@@ -1,7 +1,7 @@
 # Agent 平台化（Lantai Platform）总计划 —— 一个文档解决所有问题
 
 > 立项：2026-08-25
-> 状态：**Phase 3 已竣工（2026-08-27 深夜，三 commit）**——Phase 1（三 commit）+ Phase 2（四 commit）见 §5 落地记录；Phase 3：① `1505272f` seam 裁剪域进组合解析域 ② `68f1d2e5` 服务/事件目录生成器 + doc-sync 门禁 ③ `21ff8324` 开放面契约版本化 + plugin_install 版本比较。Phase 0-2 宪法边界已入档 + 守卫测试复验绿；**Phase 4（运行时插件全链路）待开工**
+> 状态：**Phase 4 已竣工（2026-08-28 凌晨，三 commit）**——Phase 1-3 见 §5 落地记录；Phase 4：① `5b676af2` D6 外部插件运行时热重载 ② `7151086e` D7 ctx.dynamicRunner + cordis 域工具族 + 收敛基线变更 + 开放面契约 v2 ③ `40f119fb` D1 进程外能力面端到端例子 + D12 信任模型叙事。Phase 0-3 宪法边界与组合域统一已入档；**Phase 5（存量迁移与出厂面清零，含 agent loop 降级）待开工**
 > 性质：能力建设计划（capability plan），不是还债（debt plan）
 > 上位：`agent-plugin-architecture-plan.md`（P1-P4 已竣工部分）+ `composition-architecture/README.md`（S0-S4 已竣工 + 内核线）+ `docs/adr/project-constitution.md`
 > 参照系：DeepSeek Harness（`D:\useful\deepseek-harness`，下称 DSH）；"DSH 实证"均给文件路径供执行者直查。
@@ -268,25 +268,9 @@
 
 ### Phase 4 —— 运行时插件全链路（热重载 + 动态生成 + 信任模型落实）
 
-**做什么：**
+> **落地记录（2026-08-27 深夜→凌晨，三 commit 铁律 7 分段）**：① `5b676af2` D6 外部插件运行时热重载（loader 活跃注册表 + activate/deactivateExternalPlugin + plugin-store 增量更新 + PluginsPage 装卸接线——装/卸/启用/禁用即时生效，fiber dispose 链式回收；blocked 卡片「重新装载」免重启）；② `7151086e` D7 `ctx.dynamicRunner`（agent/dynamic-runner/ 沙箱三层防线 + runner 服务：define/run/stop/undefine/inspect + 审批门 + 包不可变/失败回滚/会话所有权隔离）+ cordis 域工具族（DOMAIN_SPECS 折叠，形状对齐 DSH tool-cordis）+ 收敛基线变更（baseline-change-request 第 3 节留痕：phase-0 full/plan 双 preset 四文件，phase-1 effective 零漂移；双 preset record 后 check 双绿）+ 开放面契约 v2（dynamic-runner 两文件入册）；③ `40f119fb` D1 进程外能力面收口（examples/plugins/dataflow-mcp/ 端到端例子 + mcp-bridge `./` 前缀 args 相对解析）+ D12 信任模型叙事（docs/plugins/README.md §6 重写：静态完全信任 v1 已知债明牌 + 动态插件 approval+沙箱双门 + R4「协议纪律沙箱」边界如实声明）。**P4-C1~C6 全达成**（C6 门禁四连 + doc-sync 全绿；Rust 侧仅注释改动，cargo 状态沿用 P3 实测）。**谁判断：Agent 自主（范围拍板点按 D7 对齐 DSH，不再另行询问——cordis 命名与形状已按裁定落位）。**
 
-1. **外部插件热重载（D6）**：`plugin_install` / `plugin_uninstall` / `plugin_set_enabled` 写 `plugins.json` 后立即生效；卸载/禁用 = fiber dispose（贡献链式注销 + MCP 进程 kill）；安装/启用 = 增量装载。复用 `composition:changed` 广播 + 贡献变更监听。
-2. **`ctx.dynamicRunner`（D7）**：新建 `dynamic-runner-service.ts`——运行时定义注册表 + 宿主半执行器；define/run/stop/undefine/inspect；vm 沙箱（对齐 code-runtime 的敌意校验：无损 JSON、输出预算、一次性应答、correlation-id）；**动态插件可提供任意 seam**（tools/panels/llm adapter/fs provider/…）。
-3. **模型工具面**：`cordis_define` / `cordis_run` / `cordis_stop` / `cordis_undefine` / `cordis_inspect_*`（形状对齐 DSH `tool-cordis`）；进 `DOMAIN_SPECS` + 工具目录。
-4. **信任模型落实（D12）**：动态插件 = approval（复用 `ctx.approval` 语义）+ vm 沙箱；静态插件完全信任如实入档为 v1 已知债；`docs/plugins/README.md` 重写安全叙事（授予门禁 / 声明面 / 逐调用强制 / 动态插件沙箱 / 静态插件已知债）。
-5. **进程外能力面收口（D1）**：MCP 是能力加面的**路径之一**（不是唯一）；补一个真实例子：把现有第一方能力（如 dataflow 查询）以外部 MCP server 形态挂接，验证端到端。
-
-**动哪些文件：** `src-tauri/src/commands/plugin_install.rs`（或新生命周期入口）、`src-ui/src/plugins/loader.ts`、新增 `dynamic-runner-service.ts` + `tool-cordis` 族 + `cordis_*` DOMAIN_SPECS、`docs/plugins/README.md`、CONVENTIONS。
-
-**验收判据：**
-- P4-C1：装/卸/禁用/启用一个外部插件在运行中生效（无需重启），贡献面与进程随 fiber dispose 干净回收。
-- P4-C2：动态定义一条插件（含一个 seam provider，如自定义 llm adapter 或 fs provider）→ 激活 → 模型可见 → stop → 贡献消失；全程 session-log 可重建。
-- P4-C3：动态插件宿主半在 vm 沙箱内运行；敌意校验测试（伪造消息/超预算/畸形 JSON）全绿；未 approval 的动态插件不能运行。
-- P4-C4：`cordis_*` 工具面入目录文档 + 门禁；convergence 双 preset 零漂移。
-- P4-C5：存在一条"外部 MCP 承载新能力"的端到端例子（真实跑通）。
-- P4-C6：门禁同 P1-C6 + `cd src-tauri && cargo test`。
-
-**谁判断：** Agent 自主。范围拍板点（如 cordis 工具命名/是否含 client 半）如与 DSH 形状冲突，按 D7 裁定对齐 DSH，不再另行询问。
+**施工设计（2026-08-27，开工时定案）**：① seam 贡献进组合解析域——新增 `composition/seam-resolution.ts` 叶模块（各 seam 域禁用集的运行时单一读面，零依赖）+ `factoryComposition()` 收编七条 seam 寻址域（`seam/llm`、`seam/subagents`、`seam/fs`、`seam/shell`、`seam/sessionPersistence`、`seam/graph`、`seam/loopEvents`——`seam/` 前缀与既有四域键隔离，`shell` 键已被壳行域占用）+ patch schema 同名域（disable 条目，last-write-wins）+ `ResolvedComposition.seamDisabled` 消费裁剪面。**语义裁定**：注册表 = 实现真源（谁存在），组合 = 裁剪真源（谁生效）；消费视图 = 活动注册表 − 禁用集（晚注册的 provider 可见，除非显式禁用——免除快照陈旧类）；过滤收在 `active*Providers()`/`activeLlmAdapters()` 与 `emitLoopEvent` 消费单点，调用方零改动。生效语义 = 调用期全局裁剪（与 Phase 2 调用期扫描一致）；会话级 compositionOverride 的 seam 面不穿线（AgentConfig 冻结，P5 全量挂 seam 时再评估）。`seam/loopEvents` 域 = D4 事件面开关（行源 = LOOP_EVENT_NAMES；仅 emit 观测域可开关，tool/guard|preflight|around 是强制层语义不开放禁用——禁 guard = 绕 planGate）。② 目录生成（D9 随段落）：`gen-service-catalog`（ctx.* 全量：key/service/kind/owner/默认实现/消费面——kind 由源码机械推导规则出，缺标注即生成器报错）+ `gen-event-catalog`（event → mode/载荷/发射点/监听点——自 AGENT_EVENT_MAP + 调用点扫描生成）+ `doc-sync` 门禁（tool-contract + 两目录的 --check 对拍）。③ 契约版本化：开放面契约版本常量 + 变更记录 + seam 契约文件指纹对拍测试（变更未更新版本 = 红）+ `plugin_install` 版本比较兑现（降级拒绝 + force 逃生）。
 
 ### Phase 5 —— 存量迁移与出厂面清零（含 agent loop 降为默认实现）
 
