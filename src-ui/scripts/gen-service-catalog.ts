@@ -47,18 +47,30 @@ function* walkTs(dir: string): Generator<string> {
   }
 }
 
-function scanSources(): Map<string, { file: string; text: string }> {
-  const out = new Map<string, { file: string; text: string }>();
+interface SourceFile {
+  file: string;
+  /** 原文（extractCtxKey 的 JSDoc 描述提取用）。 */
+  text: string;
+  /** 注释剥离后的代码文本（消费面/实现扫描用——注释里提及 ctx.<键> 不是消费）。 */
+  code: string;
+}
+
+function scanSources(): Map<string, SourceFile> {
+  const out = new Map<string, SourceFile>();
   for (const dir of SCAN_DIRS) {
     const abs = path.join(SRC_UI, dir);
     for (const file of walkTs(abs)) {
-      out.set(path.relative(SRC_UI, file).replaceAll('\\', '/'), {
-        file: path.relative(SRC_UI, file).replaceAll('\\', '/'),
-        text: readFileSync(file, 'utf8'),
-      });
+      const rel = path.relative(SRC_UI, file).replaceAll('\\', '/');
+      const text = readFileSync(file, 'utf8');
+      out.set(rel, { file: rel, text, code: stripComments(text) });
     }
   }
   return out;
+}
+
+/** 保守注释剥离：块注释全剥；行注释只剥行首形态（不碰字符串里的 'http://…'）。 */
+function stripComments(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 }
 
 interface ServiceEntry {
@@ -101,11 +113,11 @@ function classifyKind(key: string, classBody: string): ServiceEntry['kind'] {
 /** 模块级 const 标识符 → id 字面量（「register(标识符)」形态的解析表——
  *  builtin provider 常量定义在贡献插件之外，如 agent/fs-provider.ts 的
  *  builtinFsProvider）。 */
-function buildConstIdMap(sources: Map<string, { file: string; text: string }>): Map<string, string> {
+function buildConstIdMap(sources: Map<string, SourceFile>): Map<string, string> {
   const map = new Map<string, string>();
   const re = /(?:const|let|var)\s+(\w+)[^=\n]*=\s*\{[\s\S]{0,400}?id:\s*'([^']+)'/g;
-  for (const { text } of sources.values()) {
-    for (const m of text.matchAll(re)) {
+  for (const { code } of sources.values()) {
+    for (const m of code.matchAll(re)) {
       const name = m[1];
       const id = m[2];
       if (name && id) map.set(name, id);
@@ -118,16 +130,16 @@ function buildConstIdMap(sources: Map<string, { file: string; text: string }>): 
  *  内联对象字面量（register({ id: 'x' …})）与标识符（register(builtinFsProvider)
  *  ——经 const→id 解析表）。 */
 function extractImplementations(
-  sources: Map<string, { file: string; text: string }>,
+  sources: Map<string, SourceFile>,
   constIds: Map<string, string>,
   key: string,
 ): string[] {
   const ids = new Set<string>();
   const prefix = key + '.register(';
-  for (const { text } of sources.values()) {
-    let idx = text.indexOf(prefix);
+  for (const { code } of sources.values()) {
+    let idx = code.indexOf(prefix);
     while (idx >= 0) {
-      const rest = text.slice(idx + prefix.length, idx + prefix.length + 400);
+      const rest = code.slice(idx + prefix.length, idx + prefix.length + 400);
       const inline = /id:\s*'([^']+)'/.exec(rest.slice(0, 200));
       const ident = /^([\w$]+)/.exec(rest.trimStart());
       const inlineId = inline?.[1];
@@ -138,30 +150,25 @@ function extractImplementations(
         const resolved = constIds.get(identName);
         if (resolved) ids.add(resolved);
       }
-      idx = text.indexOf(prefix, idx + prefix.length);
+      idx = code.indexOf(prefix, idx + prefix.length);
     }
   }
   return [...ids].sort();
 }
 
-function extractConsumers(
-  sources: Map<string, { file: string; text: string }>,
-  ownerModule: string,
-  key: string,
-  owner: string,
-): string[] {
+function extractConsumers(sources: Map<string, SourceFile>, ownerModule: string, key: string, owner: string): string[] {
   const consumers = new Set<string>();
   const ownerBase = path.basename(ownerModule).replace(/\.tsx$/, '');
-  for (const [rel, { text }] of sources) {
+  for (const [rel, { code }] of sources) {
     if (rel === owner) continue;
-    const importsOwner = new RegExp("from\\s+'[^']*" + ownerBase + "'").test(text);
-    const usesCtx = new RegExp('ctx\\.' + key + '\\b').test(text);
+    const importsOwner = new RegExp("from\\s+'[^']*" + ownerBase + "'").test(code);
+    const usesCtx = new RegExp('ctx\\.' + key + '\\b').test(code);
     if (importsOwner || usesCtx) consumers.add(rel);
   }
   return [...consumers].sort();
 }
 
-function buildEntries(sources: Map<string, { file: string; text: string }>): ServiceEntry[] {
+function buildEntries(sources: Map<string, SourceFile>): ServiceEntry[] {
   const constIds = buildConstIdMap(sources);
   const entries: ServiceEntry[] = [];
   for (const [rel, { text }] of sources) {
@@ -194,7 +201,7 @@ const KIND_LABEL: Record<ServiceEntry['kind'], string> = {
   service: '服务',
 };
 
-function generate(sources: Map<string, { file: string; text: string }>): string {
+function generate(sources: Map<string, SourceFile>): string {
   const entries = buildEntries(sources);
   const seams = entries.filter((e) => e.kind === 'seam');
   const channels = entries.filter((e) => e.kind === 'channel');

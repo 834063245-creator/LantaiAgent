@@ -9,6 +9,7 @@
 //   - model-tool-contract.md（工具面契约，gen-tool-contract-md）
 //   - service-catalog.md（ctx 服务目录，gen-service-catalog）
 //   - event-catalog.md（事件目录，gen-event-catalog）
+//   - open-surface-contract.md 指纹（契约版本化，gen-contract-fingerprint）
 // 注：frontend-rpc-contract.md 生成器嵌时间戳，字节对拍不可行——其守护
 // 由「生成后同 commit」纪律 + 契约测试承担，不入本门禁。
 
@@ -22,6 +23,7 @@ const generators = [
   { name: 'model-tool-contract', script: path.join(ROOT, 'scripts', 'gen-tool-contract-md.cjs') },
   { name: 'service-catalog', script: path.join(ROOT, 'scripts', 'gen-service-catalog.cjs') },
   { name: 'event-catalog', script: path.join(ROOT, 'scripts', 'gen-event-catalog.cjs') },
+  { name: 'contract-fingerprint', script: path.join(ROOT, 'scripts', 'gen-contract-fingerprint.cjs') },
 ];
 
 let failed = false;

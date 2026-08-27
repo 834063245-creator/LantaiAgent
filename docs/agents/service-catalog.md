@@ -12,10 +12,10 @@ kind 三分规则（机械推导）：ctx 键 ∈ SEAM_DOMAINS（seam-resolution
 
 | ctx 键 | Service | owner | 默认实现 / 贡献者 | 消费面 |
 |---|---|---|---|---|
-| `ctx.fs` | `FsService` | `src/composition/fs-service.ts` | `builtin/rust-fs` | 2 文件 |
+| `ctx.fs` | `FsService` | `src/composition/fs-service.ts` | — | 2 文件 |
 | `ctx.graph` | `GraphService` | `src/composition/graph-service.ts` | `builtin/rust-graph` | 2 文件 |
-| `ctx.llm` | `LlmService` | `src/composition/services.ts` | `builtin/anthropic` · `builtin/openai` | 3 文件 |
-| `ctx.sessionPersistence` | `SessionPersistenceService` | `src/composition/session-persistence-service.ts` | — | 1 文件 |
+| `ctx.llm` | `LlmService` | `src/composition/services.ts` | `builtin/anthropic` · `builtin/openai` | 2 文件 |
+| `ctx.sessionPersistence` | `SessionPersistenceService` | `src/composition/session-persistence-service.ts` | — | 2 文件 |
 | `ctx.shell` | `ShellService` | `src/composition/shell-service.ts` | — | 2 文件 |
 | `ctx.subagents` | `SubagentsService` | `src/composition/subagent-service.ts` | `builtin/in-process` | 2 文件 |
 
@@ -24,8 +24,8 @@ kind 三分规则（机械推导）：ctx 键 ∈ SEAM_DOMAINS（seam-resolution
 fs 后端能力注册表（平台化 Phase 2 · D11）——默认 provider = builtin/rust-fs（agent/fs-provider.ts）；消费面 = agent/tools/coding.ts fs 域。
 
 - owner：`src/composition/fs-service.ts`
-- 默认实现 / 贡献者 id：`builtin/rust-fs`
-- 消费面（2）：`src/agent/fs-provider.ts` · `src/agent/tools/coding.ts`
+- 默认实现 / 贡献者 id：—
+- 消费面（2）：`src/agent/fs-provider.ts` · `src/composition/contract-version.ts`
 
 ### `ctx.graph` — GraphService（swappable seam（可换实现））
 
@@ -33,7 +33,7 @@ fs 后端能力注册表（平台化 Phase 2 · D11）——默认 provider = bu
 
 - owner：`src/composition/graph-service.ts`
 - 默认实现 / 贡献者 id：`builtin/rust-graph`
-- 消费面（2）：`src/agent/graph-provider.ts` · `src/plugins/coding-domain-plugins.ts`
+- 消费面（2）：`src/agent/graph-provider.ts` · `src/composition/contract-version.ts`
 
 ### `ctx.llm` — LlmService（swappable seam（可换实现））
 
@@ -41,7 +41,7 @@ LLM adapter 注册表（S1-1 起；平台化 Phase 1 升格为 ctx.llm seam）�
 
 - owner：`src/composition/services.ts`
 - 默认实现 / 贡献者 id：`builtin/anthropic` · `builtin/openai`
-- 消费面（3）：`src/plugins/llm-adapters-plugin.ts` · `src/plugins/loader.ts` · `src/provider/index.ts`
+- 消费面（2）：`src/composition/contract-version.ts` · `src/plugins/llm-adapters-plugin.ts`
 
 ### `ctx.sessionPersistence` — SessionPersistenceService（swappable seam（可换实现））
 
@@ -49,7 +49,7 @@ LLM adapter 注册表（S1-1 起；平台化 Phase 1 升格为 ctx.llm seam）�
 
 - owner：`src/composition/session-persistence-service.ts`
 - 默认实现 / 贡献者 id：—
-- 消费面（1）：`src/agent/sessions-provider.ts`
+- 消费面（2）：`src/agent/sessions-provider.ts` · `src/composition/contract-version.ts`
 
 ### `ctx.shell` — ShellService（swappable seam（可换实现））
 
@@ -57,7 +57,7 @@ shell 后端能力注册表（平台化 Phase 2 · D11；subprocess 并入本 se
 
 - owner：`src/composition/shell-service.ts`
 - 默认实现 / 贡献者 id：—
-- 消费面（2）：`src/agent/shell-provider.ts` · `src/agent/tools/coding.ts`
+- 消费面（2）：`src/agent/shell-provider.ts` · `src/composition/contract-version.ts`
 
 ### `ctx.subagents` — SubagentsService（swappable seam（可换实现））
 
@@ -65,20 +65,20 @@ shell 后端能力注册表（平台化 Phase 2 · D11；subprocess 并入本 se
 
 - owner：`src/composition/subagent-service.ts`
 - 默认实现 / 贡献者 id：`builtin/in-process`
-- 消费面（2）：`src/agent/agent.ts` · `src/agent/subagent-provider.ts`
+- 消费面（2）：`src/agent/subagent-provider.ts` · `src/composition/contract-version.ts`
 
 ## 贡献通道
 
 | ctx 键 | Service | owner | 默认实现 / 贡献者 | 消费面 |
 |---|---|---|---|---|
-| `ctx.capabilities` | `CapabilitiesService` | `src/composition/capability-service.ts` | — | 7 文件 |
-| `ctx.commands` | `CommandsService` | `src/composition/services.ts` | `canvas/sidebar-toggle` · `compose/space-status` · `paper/toggle` · `settings/toggle` · `space/demo-status` | 7 文件 |
-| `ctx.hooks` | `HooksService` | `src/composition/hook-service.ts` | — | 2 文件 |
-| `ctx.overlays` | `OverlayService` | `src/composition/overlay-service.ts` | `compose-dock` · `toc-strip` | 3 文件 |
-| `ctx.panels` | `PanelsService` | `src/composition/services.ts` | `canvas-sidebar` · `canvas-spine` · `paper` · `settings` | 6 文件 |
-| `ctx.prompts` | `PromptsService` | `src/composition/prompt-service.ts` | — | 5 文件 |
+| `ctx.capabilities` | `CapabilitiesService` | `src/composition/capability-service.ts` | — | 1 文件 |
+| `ctx.commands` | `CommandsService` | `src/composition/services.ts` | `canvas/sidebar-toggle` · `compose/space-status` · `paper/toggle` · `settings/toggle` · `space/demo-status` | 5 文件 |
+| `ctx.hooks` | `HooksService` | `src/composition/hook-service.ts` | — | 0 文件 |
+| `ctx.overlays` | `OverlayService` | `src/composition/overlay-service.ts` | `compose-dock` · `toc-strip` | 1 文件 |
+| `ctx.panels` | `PanelsService` | `src/composition/services.ts` | `canvas-sidebar` · `canvas-spine` · `paper` · `settings` | 3 文件 |
+| `ctx.prompts` | `PromptsService` | `src/composition/prompt-service.ts` | — | 1 文件 |
 | `ctx.renderers` | `RenderersService` | `src/composition/renderer-service.tsx` | — | 2 文件 |
-| `ctx.tools` | `ToolsService` | `src/composition/services.ts` | `hologram/browser-desktop-domain/tools` · `hologram/engine-domain/tools` | 8 文件 |
+| `ctx.tools` | `ToolsService` | `src/composition/services.ts` | `hologram/browser-desktop-domain/tools` · `hologram/engine-domain/tools` | 3 文件 |
 
 ### `ctx.capabilities` — CapabilitiesService（贡献通道）
 
@@ -86,7 +86,7 @@ capability 贡献注册表（A-3 第八贡献通道）——贡献注册 → dis
 
 - owner：`src/composition/capability-service.ts`
 - 默认实现 / 贡献者 id：—
-- 消费面（7）：`src/agent/blueprint.ts` · `src/agent/runtime/runtime.ts` · `src/composition/first-party-capabilities.ts` · `src/composition/presets.ts` · `src/composition/roster.ts` · `src/plugins/capability-segments-plugin.ts` · `src/plugins/loader.ts`
+- 消费面（1）：`src/plugins/capability-segments-plugin.ts`
 
 ### `ctx.commands` — CommandsService（贡献通道）
 
@@ -94,7 +94,7 @@ capability 贡献注册表（A-3 第八贡献通道）——贡献注册 → dis
 
 - owner：`src/composition/services.ts`
 - 默认实现 / 贡献者 id：`canvas/sidebar-toggle` · `compose/space-status` · `paper/toggle` · `settings/toggle` · `space/demo-status`
-- 消费面（7）：`src/app/CommandPalette.tsx` · `src/app/actions.ts` · `src/paper/paper-plugin.ts` · `src/plugins/canvas-nav-plugin.ts` · `src/plugins/compose-dock-plugin.ts` · `src/plugins/settings-plugin.ts` · `src/plugins/space-demo-plugin.ts`
+- 消费面（5）：`src/paper/paper-plugin.ts` · `src/plugins/canvas-nav-plugin.ts` · `src/plugins/compose-dock-plugin.ts` · `src/plugins/settings-plugin.ts` · `src/plugins/space-demo-plugin.ts`
 
 ### `ctx.hooks` — HooksService（贡献通道）
 
@@ -102,7 +102,7 @@ capability 贡献注册表（A-3 第八贡献通道）——贡献注册 → dis
 
 - owner：`src/composition/hook-service.ts`
 - 默认实现 / 贡献者 id：—
-- 消费面（2）：`src/agent/runtime/runtime.ts` · `src/plugins/loader.ts`
+- 消费面：—（无直接 import/ctx 引用——运行时通道注入）
 
 ### `ctx.overlays` — OverlayService（贡献通道）
 
@@ -110,7 +110,7 @@ capability 贡献注册表（A-3 第八贡献通道）——贡献注册 → dis
 
 - owner：`src/composition/overlay-service.ts`
 - 默认实现 / 贡献者 id：`compose-dock` · `toc-strip`
-- 消费面（3）：`src/app/panels/ComposerDock.tsx` · `src/app/panels/TocStrip.tsx` · `src/plugins/compose-dock-plugin.ts`
+- 消费面（1）：`src/plugins/compose-dock-plugin.ts`
 
 ### `ctx.panels` — PanelsService（贡献通道）
 
@@ -118,7 +118,7 @@ capability 贡献注册表（A-3 第八贡献通道）——贡献注册 → dis
 
 - owner：`src/composition/services.ts`
 - 默认实现 / 贡献者 id：`canvas-sidebar` · `canvas-spine` · `paper` · `settings`
-- 消费面（6）：`src/app/panels/SessionSidebar.tsx` · `src/app/panels/SpineRack.tsx` · `src/app/panels/panel-def.ts` · `src/paper/paper-plugin.ts` · `src/plugins/canvas-nav-plugin.ts` · `src/plugins/settings-plugin.ts`
+- 消费面（3）：`src/paper/paper-plugin.ts` · `src/plugins/canvas-nav-plugin.ts` · `src/plugins/settings-plugin.ts`
 
 ### `ctx.prompts` — PromptsService（贡献通道）
 
@@ -126,7 +126,7 @@ system-prompt 段落注册表（A-1 第六贡献通道）——段注册 → dis
 
 - owner：`src/composition/prompt-service.ts`
 - 默认实现 / 贡献者 id：—
-- 消费面（5）：`src/composition/first-party-prompts.ts` · `src/composition/prompt-sections.ts` · `src/composition/roster.ts` · `src/plugins/loader.ts` · `src/plugins/prompt-segments-plugin.ts`
+- 消费面（1）：`src/plugins/prompt-segments-plugin.ts`
 
 ### `ctx.renderers` — RenderersService（贡献通道）
 
@@ -142,15 +142,15 @@ system-prompt 段落注册表（A-1 第六贡献通道）——段注册 → dis
 
 - owner：`src/composition/services.ts`
 - 默认实现 / 贡献者 id：`hologram/browser-desktop-domain/tools` · `hologram/engine-domain/tools`
-- 消费面（8）：`src/agent/runtime/runtime.ts` · `src/composition/first-party-tools.ts` · `src/composition/plugin-tool-rows.ts` · `src/composition/tool-rows.ts` · `src/plugins/coding-domain-plugins.ts` · `src/plugins/loader.ts` · `src/plugins/mcp-bridge.ts` · `src/plugins/tool-declarations.ts`
+- 消费面（3）：`src/plugins/coding-domain-plugins.ts` · `src/plugins/mcp-bridge.ts` · `src/plugins/tool-declarations.ts`
 
 ## 服务
 
 | ctx 键 | Service | owner | 默认实现 / 贡献者 | 消费面 |
 |---|---|---|---|---|
-| `ctx.codeRuntime` | `CodeRuntimeService` | `src/agent/code-run/runtime-service.ts` | — | 2 文件 |
+| `ctx.codeRuntime` | `CodeRuntimeService` | `src/agent/code-run/runtime-service.ts` | — | 0 文件 |
 | `ctx.lsp` | `LspService` | `src/ui/lsp-client.ts` | — | 0 文件 |
-| `ctx.space` | `SpaceService` | `src/composition/space-service.ts` | — | 7 文件 |
+| `ctx.space` | `SpaceService` | `src/composition/space-service.ts` | — | 2 文件 |
 
 ### `ctx.codeRuntime` — CodeRuntimeService（服务）
 
@@ -158,7 +158,7 @@ system-prompt 段落注册表（A-1 第六贡献通道）——段注册 → dis
 
 - owner：`src/agent/code-run/runtime-service.ts`
 - 默认实现 / 贡献者 id：—
-- 消费面（2）：`src/agent/blueprint.ts` · `src/agent/code-run/code-execution-tool.ts`
+- 消费面：—（无直接 import/ctx 引用——运行时通道注入）
 
 ### `ctx.lsp` — LspService（服务）
 
@@ -172,5 +172,5 @@ system-prompt 段落注册表（A-1 第六贡献通道）——段注册 → dis
 
 - owner：`src/composition/space-service.ts`
 - 默认实现 / 贡献者 id：—
-- 消费面（7）：`src/app/panels/SessionSidebar.tsx` · `src/app/panels/SpineRack.tsx` · `src/composition/services.ts` · `src/paper/space.ts` · `src/plugins/canvas-nav-plugin.ts` · `src/plugins/compose-dock-plugin.ts` · `src/plugins/space-demo-plugin.ts`
+- 消费面（2）：`src/plugins/compose-dock-plugin.ts` · `src/plugins/space-demo-plugin.ts`
 

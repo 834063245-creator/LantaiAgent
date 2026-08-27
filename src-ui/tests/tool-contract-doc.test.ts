@@ -18,7 +18,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DOC_MD = path.resolve(HERE, '..', '..', 'docs', 'agents', 'model-tool-contract.md');
 
 describe('model-tool-contract 生成物守护', () => {
-  it('已提交文档与当前装配产物逐字节一致', async () => {
+  // timeout 显式放宽：全量并行负载下 buildToolRegistry 装配可超 vitest 缺省 5s
+  // （对拍本身是确定性的，只有时间是变量）。
+  it('已提交文档与当前装配产物逐字节一致', { timeout: 60_000 }, async () => {
     const expected = await buildContractMarkdown();
     let current: string;
     try {

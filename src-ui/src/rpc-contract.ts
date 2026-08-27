@@ -236,7 +236,9 @@ export interface RpcContract {
   /** 安装插件：source_kind = registry（name/version?/registry?）|
    *  tarball（location = URL 或本地 .tgz 路径）| local_dir（location =
    *  本地目录——复制进 plugins 根）。expect_name 可选校验 manifest.name。
-   *  返回安装的插件目录名。生效时机：重启。 */
+   *  force = true 跳过版本守卫（平台化 P3：同名重装默认比较 manifest.version
+   *  ——升级原子换装，同版本/降级拒绝）。返回安装的插件目录名。
+   *  生效时机：重启（Phase 4 改运行时生效）。 */
   plugin_install: {
     params: {
       source_kind: 'registry' | 'tarball' | 'local_dir';
@@ -245,6 +247,7 @@ export interface RpcContract {
       registry?: string;
       location?: string;
       expect_name?: string;
+      force?: boolean;
     };
     result: string; // 插件名（JSON 字符串）
   };

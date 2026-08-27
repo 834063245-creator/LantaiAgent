@@ -23,7 +23,9 @@
     "report:convergence": "node tests/convergence/gate.mjs report",
     "gen:catalogs:service": "node ../scripts/gen-service-catalog.cjs",
     "gen:catalogs:event": "node ../scripts/gen-event-catalog.cjs",
-    "doc-sync": "node ../scripts/doc-sync.cjs"
+    "doc-sync": "node ../scripts/doc-sync.cjs",
+    "gen:contract-fingerprint": "node ../scripts/gen-contract-fingerprint.cjs",
+    "check:contract-fingerprint": "node ../scripts/gen-contract-fingerprint.cjs --check"
   },
   "dependencies": {
     "@chenglou/pretext": "^0.0.8",

@@ -1284,12 +1284,14 @@ async fn dispatch_rpc(
         "plugin_install" => {
             let source = commands::plugin_install::PluginSource::from_params(&params)?;
             let expect_name = opt_str(&params, "expect_name");
+            // force = true 跳过版本守卫（降级/同版本覆盖安装——显式逃生门，P3）
+            let force = opt_bool(&params, "force").unwrap_or(false);
             // 本地目录源走复制路径；registry/tarball 走下载+解包路径
             let name = match source {
                 commands::plugin_install::PluginSource::LocalDir(dir) => {
-                    commands::plugin_install::plugin_install_local_dir(dir, expect_name).await?
+                    commands::plugin_install::plugin_install_local_dir(dir, expect_name, force).await?
                 }
-                other => commands::plugin_install::plugin_install(other, expect_name).await?,
+                other => commands::plugin_install::plugin_install(other, expect_name, force).await?,
             };
             ok_json(Ok(name))
         }

@@ -468,13 +468,17 @@ const host = globalThis.__lantai_plugin_host__;
 
 | 动作 | 入口 | 语义 |
 |---|---|---|
-| 安装 | `plugin_install`（registry 名 / tarball URL·路径 / 本地目录） | 下载→解包→**tar-slip 防护**（绝对路径/`..`/空段/盘符/符号链接逐条拒绝）→`.tmp` 原子落盘→重名拒绝 |
+| 安装 | `plugin_install`（registry 名 / tarball URL·路径 / 本地目录） | 下载→解包→**tar-slip 防护**（绝对路径/`..`/空段/盘符/符号链接逐条拒绝）→版本守卫→`.tmp` 原子落盘 |
 | 卸载 | `plugin_uninstall`（name） | 删目录（幂等；名字围栏防路径逃逸） |
 | 禁用 | `plugin_set_enabled`（name, enabled） | plugins.json 读改写（只改 `disabled` 段——**granted 授权段原样保留**） |
 | 授权 | `plugins.json` 手编 granted 段 | C11-2 权限声明门禁的授予面（见下） |
 
-**四者中安装/卸载/禁用均重启生效**（装载是 boot 期一次性）。更新 = 同名重装（先卸载或
-走「卸载 + 安装」的原子复合；版本比较是未决项——§9）。
+**四者中安装/卸载/禁用均重启生效**（装载是 boot 期一次性——Phase 4 改运行时
+生效）。**同名重装走版本守卫（平台化 P3，2026-08-27）**：比较
+manifest.version——升级 = 原子换装（备份→rename，失败回滚）；同版本拒绝；
+降级拒绝；任一端 version 缺失/不可解析拒绝；`force: true` 显式跳过比较。
+开放面契约的版本机制见 `docs/agents/open-surface-contract.md`（契约文件变更
+未升版 = 守护测试红）。
 
 ### 权限声明与授权（C11-2，2026-08-24）
 
@@ -582,8 +586,9 @@ factory（出厂表，代码真源）
   解析）/ http 双传输；lazy/startup-error 失败策略；行 id
   `plugin/<插件名>/mcp/<server名>` 进寻址域；kill 挂插件 fiber disposer；
   §3「MCP 机器桥」。
-- **版本比较/更新提示**：manifest.version 有、UI 显示之；比较逻辑与更新
-  流程属增强。
+- **版本比较/更新提示**：~~安装期版本比较~~已落地（平台化 P3：同名重装
+  semver 比较，升级换装 / 降级拒绝 / force 逃生——§5）；更新提示 UI
+  （已装版本 vs registry latest 的角标）属增强。
 - **preset 的 UI 选择面**：当前只有设置面板默认值 + 新会话携带默认
   （DSH 四面砍到最小——新会话 chip / 会话头标签 / 管理节留给 V5 壳）。
 - **机器桥断线重连监督**：lazy 的装配期重试已落地；DSH reconnect loop

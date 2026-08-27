@@ -12,8 +12,11 @@
 //     registry.npmjs.org，拼 tarball URL 下载）；(b) tarball URL 或本地
 //     文件路径（同一解包校验路径）；(c) 本地目录——复制进 plugins 根
 //     （loader 只扫自己根，指向外部目录无效）；
-//   - 更新 = 同一 source 重装（先装 .tmp 校验后换名——卸载+安装的原子
-//     复合）；第一版不做版本比较（未决项）。
+//   - 更新 = 同名重装（平台化 P3 · 契约版本化，2026-08-27）：安装前做
+//     manifest.version 比较——incoming > installed = 原子换装（.old 备份 +
+//     rename，失败回滚）；incoming == installed 拒绝（同版本重装请先卸载）；
+//     incoming < installed 拒绝降级；force = true 跳过比较（显式逃生门）。
+//     semver 解析失败（非 a.b.c[-pre] 形态）同样拒绝——不猜、不静默升级。
 //
 // 路径安全（tar-slip 防护，v1 P3 原案 + DSH 供应链警告合并）：tar crate
 // unpack 不带内置防护——entry 逐条校验：拒绝绝对路径 / `..` 段 / 符号链接
@@ -97,23 +100,20 @@ fn registry_tarball_url(name: &str, version: &str, registry: &str) -> String {
     format!("{registry}/{name}/-/{file_stem}-{version}.tgz")
 }
 
-/// 安装主流程（spawn_blocking 调用）：取包 → 解包校验 → 原子落盘。
+/// 安装主流程（spawn_blocking 调用）：取包 → 解包校验 → 版本守卫 → 原子落盘。
 /// 返回安装的插件目录名（npm 包名，scope 保留）。
-pub(crate) async fn plugin_install(
-    source: PluginSource,
-    expect_name: Option<String>,
-) -> Result<String, String> {
+pub(crate) async fn plugin_install(source: PluginSource, expect_name: Option<String>, force: bool) -> Result<String, String> {
     // 1) 取字节（下载或本地读）
     let bytes = fetch_source_bytes(&source).await?;
-    // 2) 解包校验 + 落盘（阻塞 IO → spawn_blocking）
-    tokio::task::spawn_blocking(move || install_from_tarball_bytes(&bytes, expect_name))
+    // 2) 解包校验 + 版本守卫 + 落盘（阻塞 IO → spawn_blocking）
+    tokio::task::spawn_blocking(move || install_from_tarball_bytes(&bytes, expect_name, force))
         .await
         .map_err(|e| format!("plugin_install 任务失败: {e}"))?
 }
 
 /// 本地目录安装（复制进 plugins 根后校验 manifest 存在性）。
-pub(crate) async fn plugin_install_local_dir(dir: PathBuf, expect_name: Option<String>) -> Result<String, String> {
-    tokio::task::spawn_blocking(move || install_from_local_dir(&dir, expect_name))
+pub(crate) async fn plugin_install_local_dir(dir: PathBuf, expect_name: Option<String>, force: bool) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || install_from_local_dir(&dir, expect_name, force))
         .await
         .map_err(|e| format!("plugin_install_local_dir 任务失败: {e}"))?
 }
@@ -208,8 +208,8 @@ async fn download(url: &str) -> Result<Vec<u8>, String> {
     Ok(bytes.to_vec())
 }
 
-/// tarball 字节 → 校验 + 原子落盘。返回安装的插件目录名。
-fn install_from_tarball_bytes(bytes: &[u8], expect_name: Option<String>) -> Result<String, String> {
+/// tarball 字节 → 校验 + 版本守卫 + 原子落盘。返回安装的插件目录名。
+fn install_from_tarball_bytes(bytes: &[u8], expect_name: Option<String>, force: bool) -> Result<String, String> {
     // 1) 解包到内存结构（entry 路径 → 字节），同步做 tar-slip 校验与
     //    npm `package/` 前缀剥离
     let entries = extract_tarball(bytes)?;
@@ -229,12 +229,11 @@ fn install_from_tarball_bytes(bytes: &[u8], expect_name: Option<String>) -> Resu
             return Err(format!("manifest.name ({manifest_name}) 与 expect_name ({expected}) 不一致——拒绝安装"));
         }
     }
-    // 3) 目标目录：重名拒绝；先落 .tmp 再 rename（原子）
+    let incoming_version = parse_manifest_version(&manifest)?;
+    // 3) 版本守卫（平台化 P3）——Fresh 落盘 / Replace 换装 / 同版本·降级拒绝
     let plugins_root = crate::plugin_assets::plugins_root();
+    let plan = plan_install(&plugins_root, &manifest_name, &incoming_version, force)?;
     let target = plugins_root.join(&manifest_name);
-    if target.exists() {
-        return Err(format!("插件已存在: {manifest_name}（先卸载或走更新路径）"));
-    }
     let tmp = plugins_root.join(format!(
         ".tmp-{}-{}",
         std::process::id(),
@@ -249,12 +248,18 @@ fn install_from_tarball_bytes(bytes: &[u8], expect_name: Option<String>) -> Resu
         }
         std::fs::write(&dest, data).map_err(|e| format!("写入 {rel} 失败: {e}"))?;
     }
-    std::fs::rename(&tmp, &target).map_err(|e| format!("原子落盘失败（rename {tmp:?} → {target:?}）: {e}"))?;
+    match plan {
+        InstallPlan::Fresh => {
+            std::fs::rename(&tmp, &target)
+                .map_err(|e| format!("原子落盘失败（rename {tmp:?} → {target:?}）: {e}"))?;
+        }
+        InstallPlan::Replace => replace_existing(&tmp, &target)?,
+    }
     Ok(manifest_name)
 }
 
-/// 本地目录安装：复制进 plugins 根 + manifest 存在性校验（同款原子纪律）。
-fn install_from_local_dir(dir: &Path, expect_name: Option<String>) -> Result<String, String> {
+/// 本地目录安装：复制进 plugins 根 + manifest 存在性校验 + 版本守卫（同款原子纪律）。
+fn install_from_local_dir(dir: &Path, expect_name: Option<String>, force: bool) -> Result<String, String> {
     let manifest_path = dir.join("manifest.json");
     if !manifest_path.is_file() {
         return Err(format!("本地目录缺 manifest.json: {}", dir.display()));
@@ -266,15 +271,17 @@ fn install_from_local_dir(dir: &Path, expect_name: Option<String>) -> Result<Str
             return Err(format!("manifest.name ({manifest_name}) 与 expect_name ({expected}) 不一致——拒绝安装"));
         }
     }
+    let incoming_version = parse_manifest_version(&manifest)?;
     let plugins_root = crate::plugin_assets::plugins_root();
+    let plan = plan_install(&plugins_root, &manifest_name, &incoming_version, force)?;
     let target = plugins_root.join(&manifest_name);
-    if target.exists() {
-        return Err(format!("插件已存在: {manifest_name}（先卸载或走更新路径）"));
-    }
     let tmp = plugins_root.join(format!(".tmp-{}-{}", std::process::id(), rand_suffix()));
     let _guard = TmpDirGuard(&tmp);
     copy_dir_recursive(dir, &tmp)?;
-    std::fs::rename(&tmp, &target).map_err(|e| format!("原子落盘失败: {e}"))?;
+    match plan {
+        InstallPlan::Fresh => std::fs::rename(&tmp, &target).map_err(|e| format!("原子落盘失败: {e}"))?,
+        InstallPlan::Replace => replace_existing(&tmp, &target)?,
+    }
     Ok(manifest_name)
 }
 
@@ -360,6 +367,174 @@ fn parse_manifest_name(manifest: &[u8]) -> Result<String, String> {
         .filter(|n| !n.trim().is_empty())
         .map(String::from)
         .ok_or_else(|| "manifest.json 缺 name 字段".to_string())
+}
+
+/// 解析 manifest.json 的 version 字段（缺字段 = Err——版本比较的输入必须显式）。
+fn parse_manifest_version(manifest: &[u8]) -> Result<String, String> {
+    let v: serde_json::Value =
+        serde_json::from_slice(manifest).map_err(|e| format!("manifest.json 解析失败: {e}"))?;
+    v.get("version")
+        .and_then(|n| n.as_str())
+        .filter(|n| !n.trim().is_empty())
+        .map(String::from)
+        .ok_or_else(|| "manifest.json 缺 version 字段".to_string())
+}
+
+/// 预发布段标识符（semver 规则：数字段数值比且 < 字母段；字母段按字典序）。
+#[derive(Debug, PartialEq, Eq)]
+enum PrereleaseId {
+    Numeric(u64),
+    Alpha(String),
+}
+
+/// semver 核心三元组 + 可选预发布段（"1.2.3" | "1.2.3-alpha.1"）。
+type Semver = (u64, u64, u64, Option<Vec<PrereleaseId>>);
+
+/// 宽松 semver 解析（a.b.c[-pre]；build 元数据段 @+ 忽略——不参与比较）。
+/// 解析失败 = Err（调用方拒绝安装，不猜、不静默）。
+fn parse_semver(v: &str) -> Result<Semver, String> {
+    let v = v.trim();
+    let core = v.split(['+', '-']).next().unwrap_or("");
+    let nums: Vec<&str> = core.split('.').collect();
+    if nums.len() != 3 {
+        return Err(format!("version 非 a.b.c 形态: {v}"));
+    }
+    let mut triple = [0u64; 3];
+    for (i, n) in nums.iter().enumerate() {
+        triple[i] = n
+            .parse::<u64>()
+            .map_err(|_| format!("version 段 {n} 非数字: {v}"))?;
+    }
+    let prerelease = match v.split_once('-') {
+        None => None,
+        Some((_, pre)) => {
+            if pre.is_empty() || pre.contains('+') {
+                let pre = pre.split('+').next().unwrap_or("");
+                if pre.is_empty() {
+                    return Err(format!("version 预发布段为空: {v}"));
+                }
+            }
+            Some(
+                pre.split('.')
+                    .map(|seg| match seg.parse::<u64>() {
+                        Ok(n) => Ok(PrereleaseId::Numeric(n)),
+                        Err(_) => {
+                            if seg.is_empty()
+                                || !seg.chars().all(|c| c.is_ascii_alphanumeric())
+                            {
+                                Err(format!("version 预发布段含非法字符: {seg}（{v}）"))
+                            } else {
+                                Ok(PrereleaseId::Alpha(seg.to_string()))
+                            }
+                        }
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+            )
+        }
+    };
+    Ok((triple[0], triple[1], triple[2], prerelease))
+}
+
+/// semver 比较（semver.org 规则）：release > prerelease；预发布段逐标识符比、
+/// 数字 < 字母、短集 < 长集（前缀相等时）。解析失败 = Err。
+fn semver_cmp(a: &str, b: &str) -> Result<std::cmp::Ordering, String> {
+    use std::cmp::Ordering;
+    let (ma, mia, pa, pre_a) = parse_semver(a)?;
+    let (mb, mib, pb, pre_b) = parse_semver(b)?;
+    let core = (ma, mia, pa).cmp(&(mb, mib, pb));
+    if core != Ordering::Equal {
+        return Ok(core);
+    }
+    match (pre_a, pre_b) {
+        (None, None) => Ok(Ordering::Equal),
+        (Some(_), None) => Ok(Ordering::Less), // release > prerelease
+        (None, Some(_)) => Ok(Ordering::Greater),
+        (Some(x), Some(y)) => {
+            for (ia, ib) in x.iter().zip(y.iter()) {
+                let ord = match (ia, ib) {
+                    (PrereleaseId::Numeric(na), PrereleaseId::Numeric(nb)) => na.cmp(nb),
+                    (PrereleaseId::Numeric(_), PrereleaseId::Alpha(_)) => Ordering::Less,
+                    (PrereleaseId::Alpha(_), PrereleaseId::Numeric(_)) => Ordering::Greater,
+                    (PrereleaseId::Alpha(xa), PrereleaseId::Alpha(xb)) => xa.cmp(xb),
+                };
+                if ord != Ordering::Equal {
+                    return Ok(ord);
+                }
+            }
+            Ok(x.len().cmp(&y.len()))
+        }
+    }
+}
+
+/// 安装意图（版本守卫产物）。
+enum InstallPlan {
+    /// 目标不存在——直接落盘。
+    Fresh,
+    /// 目标存在且版本守卫放行（升级或 force）——换装（.old 备份 + rename）。
+    Replace,
+}
+
+/// 版本守卫（平台化 P3 · 契约版本化）：目标已装时比较 incoming vs installed——
+/// 升级 = Replace；同版本 / 降级 / 任一端 version 缺失或不可解析 = Err；
+/// force = true 跳过比较。错误信息始终点名 force 逃生门。
+fn plan_install(
+    plugins_root: &Path,
+    name: &str,
+    incoming_version: &str,
+    force: bool,
+) -> Result<InstallPlan, String> {
+    let target = plugins_root.join(name);
+    if !target.exists() {
+        return Ok(InstallPlan::Fresh);
+    }
+    if force {
+        return Ok(InstallPlan::Replace);
+    }
+    let manifest_path = target.join("manifest.json");
+    if !manifest_path.is_file() {
+        return Err(format!("插件已存在且缺 manifest.json（无法比较版本）: {name}——force = true 覆盖"));
+    }
+    let bytes = std::fs::read(&manifest_path).map_err(|e| format!("读取已装 manifest 失败: {e}"))?;
+    let old = match parse_manifest_version(&bytes) {
+        Ok(v) => v,
+        Err(_) => {
+            return Err(format!("已装插件缺 version 字段（无法比较）: {name}——force = true 覆盖"));
+        }
+    };
+    match semver_cmp(incoming_version, &old) {
+        Ok(std::cmp::Ordering::Greater) => Ok(InstallPlan::Replace),
+        Ok(std::cmp::Ordering::Equal) => {
+            Err(format!("同版本已安装: {name} {old}——重装请先卸载（force = true 覆盖）"))
+        }
+        Ok(std::cmp::Ordering::Less) => Err(format!(
+            "拒绝降级安装: {name} 请求 {incoming_version} < 已装 {old}（force = true 覆盖）"
+        )),
+        Err(e) => Err(format!("版本比较失败（拒绝安装）: {e}——force = true 覆盖")),
+    }
+}
+
+/// 换装（Replace 路径）：target → .old 备份，tmp → target，清 .old。
+/// 备份的 manifest.json 先行摘除——任何一步失败留下的 .old-* 目录都不会被
+/// 插件索引收录（list_plugin_dirs 只列含 manifest.json 的目录）。
+fn replace_existing(tmp: &Path, target: &Path) -> Result<(), String> {
+    let old = target.with_extension(format!("old-{}", rand_suffix()));
+    std::fs::rename(target, &old).map_err(|e| format!("换装备份失败（rename {target:?} → {old:?}）: {e}"))?;
+    let old_manifest = old.join("manifest.json");
+    if old_manifest.is_file() {
+        if let Err(e) = std::fs::remove_file(&old_manifest) {
+            let _ = std::fs::rename(&old, target); // 回滚
+            return Err(format!("备份 manifest 摘除失败: {e}"));
+        }
+    }
+    if let Err(e) = std::fs::rename(tmp, target) {
+        let _ = std::fs::rename(&old, target); // 回滚
+        return Err(format!("换装失败（rename {tmp:?} → {target:?}）: {e}"));
+    }
+    if let Err(e) = std::fs::remove_dir_all(&old) {
+        // 已装成功，旧目录残留是无 manifest 的不可见目录——warn 不阻断
+        eprintln!("[plugin_install] 旧版本目录清理失败（残留 {}）: {e}", old.display());
+    }
+    Ok(())
 }
 
 /// 卸载：删目录（幂等——不存在 = 成功）。
@@ -498,8 +673,13 @@ mod tests {
 
     /// 造一个 npm 形态 tarball（package/ 前缀 + manifest.json + entry.js）。
     fn make_tarball(name: &str, extra: &[(&str, &[u8])]) -> Vec<u8> {
+        make_tarball_versioned(name, "1.0.0", extra)
+    }
+
+    /// 同上，version 显式（版本守卫测试用）。
+    fn make_tarball_versioned(name: &str, version: &str, extra: &[(&str, &[u8])]) -> Vec<u8> {
         let mut builder = tar::Builder::new(Vec::new());
-        let manifest = serde_json::json!({ "name": name, "version": "1.0.0", "entry": "entry.js" });
+        let manifest = serde_json::json!({ "name": name, "version": version, "entry": "entry.js" });
         let mut add = |path: String, data: Vec<u8>| {
             let mut header = tar::Header::new_gnu();
             header.set_size(data.len() as u64);
@@ -604,17 +784,17 @@ mod tests {
         let root = tmp.clone();
 
         // 安装：复制进根 + 原子落盘
-        let name = install_from_local_dir(&src, Some("hello".to_string())).unwrap();
+        let name = install_from_local_dir(&src, Some("hello".to_string()), false).unwrap();
         assert_eq!(name, "hello");
         assert!(root.join("hello/manifest.json").is_file());
         assert!(root.join("hello/assets/x.txt").is_file());
 
         // 重名拒绝
-        let dup = install_from_local_dir(&src, Some("hello".to_string()));
+        let dup = install_from_local_dir(&src, Some("hello".to_string()), false);
         assert!(dup.is_err(), "重名安装应拒绝");
 
         // expect_name 不一致拒绝
-        let mismatch = install_from_local_dir(&src, Some("other".to_string()));
+        let mismatch = install_from_local_dir(&src, Some("other".to_string()), false);
         assert!(mismatch.is_err(), "expect_name 不一致应拒绝");
 
         // 禁用读改写：plugins.json 落盘 + 幂等 + 毒化容错
@@ -674,7 +854,7 @@ mod tests {
             br#"{"name":"hello","version":"1.0.0","entry":"entry.js"}"#,
         )
         .unwrap();
-        let name = install_from_local_dir(&src, Some("hello".to_string())).unwrap();
+        let name = install_from_local_dir(&src, Some("hello".to_string()), false).unwrap();
 
         // 存在 → 绝对路径（含插件名尾段）
         let dir = plugin_dir(&name).unwrap();
@@ -698,13 +878,13 @@ mod tests {
         let (_guard, tmp) = with_plugins_root("tarball");
 
         let tarball = gz(make_tarball("acme-tools", &[]));
-        let name = install_from_tarball_bytes(&tarball, Some("acme-tools".to_string())).unwrap();
+        let name = install_from_tarball_bytes(&tarball, Some("acme-tools".to_string()), false).unwrap();
         assert_eq!(name, "acme-tools");
         assert!(tmp.join("acme-tools/manifest.json").is_file());
         assert!(tmp.join("acme-tools/entry.js").is_file());
 
         // 重名拒绝（原子性：第二次安装不留垃圾）
-        assert!(install_from_tarball_bytes(&tarball, None).is_err());
+        assert!(install_from_tarball_bytes(&tarball, None, false).is_err());
         // 无 .tmp-* 残留（TmpDirGuard 或 rename 已清理）
         let leftovers: Vec<_> = std::fs::read_dir(&tmp)
             .unwrap()
@@ -721,7 +901,7 @@ mod tests {
         header.set_cksum();
         builder.append_data(&mut header, "package/entry.js", data.as_slice()).unwrap();
         let no_manifest = gz(builder.into_inner().unwrap());
-        assert!(install_from_tarball_bytes(&no_manifest, None).is_err());
+        assert!(install_from_tarball_bytes(&no_manifest, None, false).is_err());
 
         std::env::remove_var("HOLOGRAM_PLUGINS_ROOT");
         let _ = std::fs::remove_dir_all(&tmp);
@@ -844,6 +1024,131 @@ mod tests {
                 // + 显式 is_symlink 分支守护——plugin_assets 的 junction 测试同款处理）
             }
         }
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ── 版本守卫（平台化 P3 · 契约版本化）──
+
+    #[test]
+    fn semver_cmp_orders_core_patch_and_major() {
+        use std::cmp::Ordering;
+        assert_eq!(semver_cmp("1.0.0", "1.0.0"), Ok(Ordering::Equal));
+        assert_eq!(semver_cmp("1.0.1", "1.0.0"), Ok(Ordering::Greater));
+        assert_eq!(semver_cmp("1.2.3", "1.10.0"), Ok(Ordering::Less)); // 数值比不是字典比
+        assert_eq!(semver_cmp("2.0.0", "1.9.9"), Ok(Ordering::Greater));
+    }
+
+    #[test]
+    fn semver_cmp_orders_prerelease_by_semver_rules() {
+        use std::cmp::Ordering;
+        // release > prerelease
+        assert_eq!(semver_cmp("1.0.0", "1.0.0-alpha"), Ok(Ordering::Greater));
+        // 数字段数值比且 < 字母段；字母段字典序
+        assert_eq!(semver_cmp("1.0.0-alpha.1", "1.0.0-alpha"), Ok(Ordering::Greater));
+        assert_eq!(semver_cmp("1.0.0-alpha.2", "1.0.0-alpha.10"), Ok(Ordering::Less));
+        assert_eq!(semver_cmp("1.0.0-alpha", "1.0.0-beta"), Ok(Ordering::Less));
+        assert_eq!(semver_cmp("1.0.0-1", "1.0.0-alpha"), Ok(Ordering::Less));
+        // 前缀相等的短集 < 长集
+        assert_eq!(semver_cmp("1.0.0-alpha", "1.0.0-alpha.1"), Ok(Ordering::Less));
+    }
+
+    #[test]
+    fn semver_cmp_rejects_unparseable() {
+        for bad in ["", "abc", "1.2", "1.2.x", "1.2.3-!", ".."] {
+            assert!(semver_cmp(bad, "1.0.0").is_err(), "{bad:?} 应拒绝");
+        }
+    }
+
+    /// 本地目录升级 = 原子换装；降级/同版本拒绝；force 逃生。
+    #[test]
+    fn install_version_guard_upgrade_downgrade_force() {
+        let (_guard, tmp) = with_plugins_root("version-guard");
+        let root = tmp.clone();
+        let make_src = |ver: &str| {
+            let dir = tmp.join(format!("src-{ver}"));
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("manifest.json"),
+                format!(r#"{{"name":"hello","version":"{ver}","entry":"entry.js"}}"#),
+            )
+            .unwrap();
+            std::fs::write(dir.join("entry.js"), format!("// {ver}")).unwrap();
+            dir
+        };
+
+        // 首装 1.0.0 → Fresh
+        let v1 = make_src("1.0.0");
+        install_from_local_dir(&v1, Some("hello".to_string()), false).unwrap();
+        assert!(root.join("hello/manifest.json").is_file());
+
+        // 升级 2.0.0 → 换装成功，manifest 已是新版本，根下无残留含 manifest 的备份目录
+        let v2 = make_src("2.0.0");
+        install_from_local_dir(&v2, Some("hello".to_string()), false).unwrap();
+        let manifest = std::fs::read_to_string(root.join("hello/manifest.json")).unwrap();
+        assert!(manifest.contains("2.0.0"), "升级后 manifest 应为新版本: {manifest}");
+        assert!(root.join("hello/entry.js").is_file(), "entry.js 应为新内容面");
+        let leftovers: Vec<String> = std::fs::read_dir(&root)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .filter(|n| n.starts_with("hello.old"))
+            .collect();
+        assert!(leftovers.is_empty(), "换装备份目录应清干净: {leftovers:?}");
+
+        // 降级 1.0.0 → 拒绝且已装面不被破坏
+        let err = install_from_local_dir(&v1, Some("hello".to_string()), false).unwrap_err();
+        assert!(err.contains("降级"), "应拒绝降级: {err}");
+        let manifest = std::fs::read_to_string(root.join("hello/manifest.json")).unwrap();
+        assert!(manifest.contains("2.0.0"), "拒绝降级后已装面不变: {manifest}");
+
+        // 同版本 → 拒绝
+        let err = install_from_local_dir(&v2, Some("hello".to_string()), false).unwrap_err();
+        assert!(err.contains("同版本"), "同版本重装应拒绝: {err}");
+
+        // force = true → 同版本覆盖放行
+        install_from_local_dir(&v2, Some("hello".to_string()), true).unwrap();
+        assert!(root.join("hello/manifest.json").is_file());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// tarball 路径同守卫：升级换装 + 降级拒绝；manifest 缺 version = 拒绝。
+    #[test]
+    fn install_version_guard_tarball_path() {
+        let (_guard, tmp) = with_plugins_root("version-guard-tarball");
+        let root = tmp.clone();
+        let v1 = gz(make_tarball_versioned("acme-tools", "1.0.0", &[]));
+        install_from_tarball_bytes(&v1, Some("acme-tools".to_string()), false).unwrap();
+
+        // 升级 2.0.0 tarball → 换装
+        let v2 = gz(make_tarball_versioned("acme-tools", "2.0.0", &[]));
+        install_from_tarball_bytes(&v2, Some("acme-tools".to_string()), false).unwrap();
+        let manifest = std::fs::read_to_string(root.join("acme-tools/manifest.json")).unwrap();
+        assert!(manifest.contains("2.0.0"), "升级后 manifest 应为新版本: {manifest}");
+
+        // 降级拒绝
+        let err = install_from_tarball_bytes(&v1, Some("acme-tools".to_string()), false).unwrap_err();
+        assert!(err.contains("降级"), "应拒绝降级: {err}");
+
+        // 手工造缺 version 的 tarball → 拒绝（不猜）
+        let mut builder = tar::Builder::new(Vec::new());
+        let mut header = tar::Header::new_gnu();
+        let data = br#"{"name":"acme-tools","entry":"entry.js"}"#;
+        header.set_size(data.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, "package/manifest.json", data.as_slice())
+            .unwrap();
+        let mut entry_header = tar::Header::new_gnu();
+        entry_header.set_size(2);
+        entry_header.set_mode(0o644);
+        entry_header.set_cksum();
+        builder
+            .append_data(&mut entry_header, "package/entry.js", b"{}".as_slice())
+            .unwrap();
+        let no_version = gz(builder.into_inner().unwrap());
+        let err = install_from_tarball_bytes(&no_version, Some("acme-tools".to_string()), false).unwrap_err();
+        assert!(err.contains("version"), "缺 version 应拒绝: {err}");
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }
