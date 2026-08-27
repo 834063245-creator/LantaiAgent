@@ -139,7 +139,7 @@
 | `ctx.lsp` | 服务 | ✅ | 无 | — | lsp 工具 |
 | `ctx.codeRuntime` | 服务 | ✅ | 无 | — | code_execution |
 | **`ctx.llm`** | **swappable seam（升格中）** | ⚠️ 方言贡献道已在位（`62860fb7`），缺 adapter 迁移 + 命名归一 | **D2 修订版**：`ProvidersService`→`LlmService` + 两 adapter 第一方贡献 + 内核回落删除 | anthropic / openai adapter（第一方贡献） | 流式执行 / 摘要 / 翻译 / 标题 |
-| **`ctx.subagents`** | **swappable seam（新）** | ❌ 单一实现 | **D3** | in-process | tool-subagent |
+| **`ctx.subagents`** | **swappable seam（新）** | ✅ 施工②落地：`composition/subagent-service.ts` + in-process 默认 provider，消费面 = `Agent.spawnSubAgent` 单点 | **D3**（已落地 2026-08-27） | in-process（`builtin/in-process`，逐字节透传 spawnSubAgentImpl） | tool-subagent / blueprint spawn 绑定 |
 | **`ctx.fs`** | **swappable seam（新）** | ❌ Rust 命令锁死 | **D11** | 现有 Rust fs 命令包装 | tool-fs / 编辑器 |
 | **`ctx.shell`** | **swappable seam（新）** | ❌ Rust 命令锁死 | **D11** | 现有 Rust shell 命令包装 | tool-bash / tool-pwsh |
 | **`ctx.subprocess`** | **swappable seam（新）** | ❌ Rust 命令锁死 | **D11** | 现有 Rust subprocess 命令包装 | shell / lsp / 子代理后端 |
@@ -198,7 +198,8 @@
 > settings 层 `s.providers`（配置行模型）与本 seam 无涉，一律不动。
 
 **施工记录（滚动更新，每条 seam 翻转一账——铁律 7）：**
-- **施工①（2026-08-27 夜）**：LLM 通道升格落地——`LlmService`/`ctx.llm` 更名（T2/T3）、`plugins/llm-adapters-plugin.ts` 两条第一方 adapter 贡献 `builtin/anthropic` + `builtin/openai`（ctx.effect 登记，loader 表序第二行）、`resolveProviderDialect` 内核回落 if 分支拆除（T1），裸路径未命中 = `PROVIDER_DIALECT` 响亮报错（P1-C2）；测试装配复现 shim ×3（provider-live / provider-factory / summary-model-selection）+ provider-dialect 重写（裸路径降级 / 生产路径 / 后注册胜 / 全撤回落内置）；文档同步 T4/T5。T1-T6 全清零。门禁：vitest 1797 passed / build ✓ / biome ci 0/0（463 文件）/ convergence exit 0。
+- **施工①（2026-08-27 夜）**：LLM 通道升格落地——`LlmService`/`ctx.llm` 更名（T2/T3）、`plugins/llm-adapters-plugin.ts` 两条第一方 adapter 贡献 `builtin/anthropic` + `builtin/openai`（ctx.effect 登记，loader 表序第二行）、`resolveProviderDialect` 内核回落 if 分支拆除（T1），裸路径未命中 = `PROVIDER_DIALECT` 响亮报错（P1-C2）；测试装配复现 shim ×3（provider-live / provider-factory / summary-model-selection）+ provider-dialect 重写（裸路径降级 / 生产路径 / 后注册胜 / 全撤回落内置）；文档同步 T4/T5。T1-T6 全清零。门禁：vitest 1797 passed / build ✓ / biome ci 0/0（463 文件）/ convergence exit 0。commit `98a6f30d`。
+- **施工②（2026-08-27 夜）**：`ctx.subagents` seam 落地——`composition/subagent-service.ts`（SubagentsService / SubagentProvider / SubAgentSpawnArgs·Outcome，复用 ContributionRegistry 单一内核）+ `agent/subagent-provider.ts`（`builtin/in-process` 逐字节透传 spawnSubAgentImpl + inProcessSubagentPlugin）+ loader 表序第三/四行 + `Agent.spawnSubAgent` 消费面改查注册表（后注册胜；无注册响亮 `SUBAGENT_PROVIDER` 报错）。拆旧清单 T7 清零（agent.ts 直调 spawnSubAgentImpl 消灭）。测试：新 `subagent-seam.test.ts` 四守护（裸路径降级 / 在册默认 / 后注册胜覆盖回落 / 消费路由）+ 幂等装配复现 helper（`tests/helpers/composition-boot.ts`）收编三处 llm shim + 两个真实 spawn 套件接入（parallel-subagent-bugs / subagent-activity-wiring）。
 
 **验收判据（判据号 P1-Cn）：**
 - P1-C1：`createProvider` 无 switch；anthropic/openai 各是 `ctx.llm` 的一条 adapter。

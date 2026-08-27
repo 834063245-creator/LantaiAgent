@@ -16,6 +16,7 @@
 
 import { createElement } from 'react';
 import { codeRuntimePlugin } from '../agent/code-run/runtime-service';
+import { inProcessSubagentPlugin } from '../agent/subagent-provider';
 import { useShellStore } from '../app/shell-store';
 import { capabilitiesServicePlugin } from '../composition/capability-service';
 import { firstPartyCapabilityPlugins } from '../composition/first-party-capabilities';
@@ -27,6 +28,7 @@ import { promptsServicePlugin } from '../composition/prompt-service';
 import { rendererServicePlugin } from '../composition/renderer-service';
 import { compositionServicesPlugin } from '../composition/services';
 import { spaceServicePlugin } from '../composition/space-service';
+import { subagentsServicePlugin } from '../composition/subagent-service';
 import type { Context } from '../cordis';
 import { paperPlugin } from '../paper/paper-plugin';
 import { getProxyPort } from '../provider/transport';
@@ -91,6 +93,8 @@ export function pluginAssetsOrigin(port: number): string {
 const BUILTIN_PLUGINS: LantaiPlugin[] = [
   compositionServicesPlugin,
   llmAdaptersPlugin,
+  subagentsServicePlugin,
+  inProcessSubagentPlugin,
   spaceServicePlugin,
   overlayServicePlugin,
   codeRuntimePlugin,

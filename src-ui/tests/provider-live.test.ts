@@ -30,9 +30,6 @@ vi.mock('../src/bridge', () => ({
   isMockMode: () => false,
 }));
 
-import { compositionServicesPlugin } from '../src/composition/services';
-import { Context } from '../src/cordis';
-import { llmAdaptersPlugin } from '../src/plugins/llm-adapters-plugin';
 import {
   _resetCredentialCacheForTests,
   invalidateCredentialCache,
@@ -43,14 +40,11 @@ import { createLiveProvider } from '../src/provider/live';
 import { resetProxyPort } from '../src/provider/transport';
 import { ChunkType, type Request } from '../src/provider/types';
 import { type AppSettings, providerId } from '../src/settings';
+import { ensureProductionChannelsBooted } from './helpers/composition-boot';
 
 // ── 生产装配复现（平台化 Phase 1 · D2 修订版）：createProvider 经 ctx.llm 解析
 // 方言——live 用例需要 builtin adapter 在册（settings 种子行走 kind 'openai'）。──
-{
-  const bootRoot = new Context();
-  await bootRoot.plugin(compositionServicesPlugin);
-  await bootRoot.plugin(llmAdaptersPlugin);
-}
+await ensureProductionChannelsBooted();
 
 // ── settings 种子（loadSettings 直读 localStorage 'hologram_settings'）──
 

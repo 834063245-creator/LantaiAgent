@@ -38,6 +38,11 @@ import { MeshTopology } from '../src/agent/topology';
 import type { Provider, Usage } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
 import { createTestAgent } from './helpers/agent';
+import { ensureProductionChannelsBooted } from './helpers/composition-boot';
+
+// 生产装配复现（平台化 Phase 1 · D3）：真实 spawnSubAgent 经 ctx.subagents
+// 注册表解析 provider——需要 in-process 默认贡献在册。
+await ensureProductionChannelsBooted();
 
 // ═══════════════════════════════════════════════════════
 // Helpers

@@ -5,17 +5,11 @@
 // 解析——本文件需要第一方 llm-adapters 贡献在册（生产装配复现，同 provider-live）。
 
 import { describe, expect, it } from 'vitest';
-import { compositionServicesPlugin } from '../src/composition/services';
-import { Context } from '../src/cordis';
-import { llmAdaptersPlugin } from '../src/plugins/llm-adapters-plugin';
 import { createProvider } from '../src/provider';
 import type { ProviderSettings } from '../src/settings';
+import { ensureProductionChannelsBooted } from './helpers/composition-boot';
 
-{
-  const bootRoot = new Context();
-  await bootRoot.plugin(compositionServicesPlugin);
-  await bootRoot.plugin(llmAdaptersPlugin);
-}
+await ensureProductionChannelsBooted();
 
 describe('createProvider', () => {
   it('creates an anthropic provider with correct name', () => {

@@ -4,6 +4,7 @@
 // Agent 循环 — Run() → stream() → StreamingToolExecutor → 循环直到模型给出最终答案
 
 import { currentPresetId } from '../composition/preset-assembly';
+import { activeSubagentProviders } from '../composition/subagent-service';
 import { STREAM_IDLE_TIMEOUT_MS, streamWithIdleTimeout } from '../provider/idle-stream';
 import type { StoredThinking } from '../provider/thinking';
 import type { Message, Provider, ToolCall, ToolSchema, Usage } from '../provider/types';
@@ -49,7 +50,7 @@ import { type PlanGate, planGateCheck } from './plan/plan-registry';
 import { backoffDelay, isRetryable, MAX_RETRIES, sleepWithAbort } from './retry';
 import { SessionLog, type SessionResetReason } from './session-log';
 import { StreamingToolExecutor } from './streaming-executor';
-import { type SubAgentSpawnHost, spawnSubAgentImpl } from './subagent-spawn';
+import type { SubAgentSpawnHost } from './subagent-spawn';
 import { countMessage, countMessages, countTexts, countToolSchemas } from './token-counter';
 import type { ToolRegistry } from './tool';
 import { createStableSchemaSelector, type StableSchemaSelector, userContext } from './tool-select';
@@ -1788,7 +1789,9 @@ export class Agent {
 
   /** 派生子 Agent 处理聚焦任务。阻塞直到子 Agent 完成；
    *  子 Agent 的最终报告（加合并备注）成为工具结果。
-   *  委托 subagent-spawn.ts（11c 拆分）；完整语义见 spawnSubAgentImpl 文档。 */
+   *  消费面 = ctx.subagents 注册表（平台化 Phase 1 · D3）——后注册胜取默认
+   *  provider；默认 in-process 实现逐字节透传进程内实现（见
+   *  agent/subagent-provider.ts），完整语义仍见其文档。 */
   async spawnSubAgent(
     description: string,
     prompt: string,
@@ -1800,8 +1803,14 @@ export class Agent {
     agentIdOverride?: string,
     outputSchema?: Record<string, unknown> | null,
   ): Promise<{ text: string; err?: string }> {
-    return spawnSubAgentImpl(
-      this as unknown as SubAgentSpawnHost,
+    const providers = activeSubagentProviders();
+    const provider = providers[providers.length - 1];
+    if (!provider) {
+      throw new Error(
+        'SUBAGENT_PROVIDER: 无已注册子代理 provider——请确认 subagents 通道装配（生产 = loadBuiltinPlugins）',
+      );
+    }
+    return provider.spawn(this as unknown as SubAgentSpawnHost, {
       description,
       prompt,
       onProgress,
@@ -1811,7 +1820,7 @@ export class Agent {
       asyncMode,
       agentIdOverride,
       outputSchema,
-    );
+    });
   }
 }
 

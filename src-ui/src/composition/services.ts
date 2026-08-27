@@ -125,7 +125,7 @@ export interface LlmAdapterContribution {
  */
 type ChangeSignal = () => void;
 
-class ContributionRegistry<T extends { id: string }> {
+export class ContributionRegistry<T extends { id: string }> {
   private entries = new Map<string, { def: T; dispose: () => void }>();
 
   constructor(
