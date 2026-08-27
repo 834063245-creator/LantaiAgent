@@ -33,6 +33,7 @@ import { getProxyPort } from '../provider/transport';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
 import { canvasNavPlugin } from './canvas-nav-plugin';
 import { composeDockPlugin } from './compose-dock-plugin';
+import { llmAdaptersPlugin } from './llm-adapters-plugin';
 import { type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
 import { settingsPlugin } from './settings-plugin';
 import { spaceDemoPlugin } from './space-demo-plugin';
@@ -61,8 +62,11 @@ export function pluginAssetsOrigin(port: number): string {
 
 /** 第一方插件表（编译期 bundle 内，不走磁盘通道；S3 起逐域填充）。
  * 表序 = 装配序。首项固定为组合层四 service（内核线第 3 条的实体化——
- * panels/commands/tools/providers 注册表本身，常驻且先于外部插件，
- * 保证外部插件 manifest 的 inject 依赖可解析）。P3：codeRuntime 服务行
+ * panels/commands/tools/llm 注册表本身，常驻且先于外部插件，
+ * 保证外部插件 manifest 的 inject 依赖可解析）。第二行为 llm-adapters
+ * （平台化 Phase 1 · D2 修订版 2026-08-27：内核 anthropic/openai 协议方言经
+ * ctx.llm 贡献为默认 adapter——排位紧随四 service 使 ctx.llm 可解析，且先于
+ * 外部插件装载保持「后注册胜」覆盖方向；取代 resolveProviderDialect 的内核回落分支）。P3：codeRuntime 服务行
  * （agent/code-run——执行腰，四 service 之后）。V3b：块渲染器第五 service。
  * S3：settings 域行化（面板 + 命令双贡献）。P4 A-1（2026-08-23）：
  * prompts 第六 service（system-prompt 段贡献注册表）。P4 B①+②（2026-08-23）：
@@ -86,6 +90,7 @@ export function pluginAssetsOrigin(port: number): string {
  * builtinCapabilities() 退役，本通道是出厂 capability 面唯一来源）。 */
 const BUILTIN_PLUGINS: LantaiPlugin[] = [
   compositionServicesPlugin,
+  llmAdaptersPlugin,
   spaceServicePlugin,
   overlayServicePlugin,
   codeRuntimePlugin,

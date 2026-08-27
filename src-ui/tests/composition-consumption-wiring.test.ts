@@ -7,7 +7,7 @@
 //      清缓存）、撞名走装载期拒绝；
 //   3. 插件命令贡献进 CommandPalette 清单（effectiveActions 折算面）；
 //   4. hello 前身（mock 贡献）三通道机制全绿。
-// providers 留注册表现状（不接线——设计件裁定）。
+// llm 通道现状 = 方言收口已接线（createProvider 消费，见 provider-dialect.test）。
 
 import { describe, expect, it } from 'vitest';
 import type { Tool } from '../src/agent/tool';

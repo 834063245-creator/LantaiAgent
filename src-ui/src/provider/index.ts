@@ -3,21 +3,22 @@
 
 // Provider factory — unified entry point for creating Provider instances from settings
 //
-// 方言解析器（2026-08-27，provider 插件化收口）：
-//   - 协议实现按 settings.kind 解析：先查贡献道（ProvidersService 经
-//     activeProviderContributions 露出），同 kind **后注册胜**（对齐 renderer-service
-//     覆盖语义）——插件可以包一层仪器化 wrapper 替换内核方言；
-//   - 未命中回落内核 'anthropic' | 'openai'；
-//   - 都没有 = 响亮报错并列出已注册方言。此前未知 kind 会静默跌进 openai 分支
-//     （拼错 "anthromorphic" 也能跑通但语义全错），违反宪法「错误不静默」，此处一并纠正。
+// 方言解析器（平台化 Phase 1 · D2 修订版，2026-08-27）：
+//   - 协议实现按 settings.kind 解析：只查 ctx.llm adapter 注册表
+//     （composition/services.ts activeLlmAdapters 露出），同 kind **后注册胜**
+//     （对齐 renderer-service 覆盖语义）——外部方言可仪器化/替换内核实现；
+//   - 内核 anthropic / openai 两方言由第一方插件贡献
+//     （plugins/llm-adapters-plugin.ts，loadBuiltinPlugins 表序紧随四 service）
+//     ——本文件零内核回落分支；
+//   - 未命中任何 adapter = 响亮报错并列出已注册方言（PROVIDER_DIALECT）——
+//     此前未知 kind 静默跌进 openai 分支（拼错 "anthromorphic" 也能跑通但语义
+//     全错），违反宪法「错误不静默」，2026-08-27 收口时一并纠正，此处保持。
 //
 // 类型开放集挂起说明：第三方方言要新增 kind 字面量时才扩 Protocol（存储格式变更，
 // 挂着 ADR #0002 单独裁决）；贡献道当前的合法用法是【覆盖】两种内核方言。
 
-import { activeProviderContributions } from '../composition/services';
+import { activeLlmAdapters } from '../composition/services';
 import type { ProviderSettings } from '../settings';
-import { createAnthropicProvider } from './anthropic';
-import { createOpenAIProvider } from './openai';
 import { withThinkingDisabled } from './thinking';
 import type { Provider, ProviderRuntimeArgs } from './types';
 
@@ -26,36 +27,15 @@ export interface CreateProviderOptions {
   disableThinking?: boolean;
 }
 
-/** 按贡献注册序取最后一个同 kind 实现（后注册胜）；没有则回落内核方言。 */
+/** 按 ctx.llm adapter 注册序取最后一个同 kind 实现（后注册胜）；未命中响亮报错。 */
 function resolveProviderDialect(kind: string, rt: ProviderRuntimeArgs): Provider {
-  const contributed = [...activeProviderContributions()].filter((d) => d.kind === kind);
+  const contributed = [...activeLlmAdapters()].filter((d) => d.kind === kind);
   const winner = contributed[contributed.length - 1];
   if (winner) return winner.create(rt);
-  if (kind === 'anthropic') {
-    return createAnthropicProvider({
-      name: rt.name,
-      apiKey: rt.apiKey,
-      baseUrl: rt.baseUrl,
-      model: rt.model,
-      thinking: rt.thinking,
-      maxTokensFor: rt.maxTokensFor,
-    });
-  }
-  if (kind === 'openai') {
-    return createOpenAIProvider({
-      name: rt.name,
-      apiKey: rt.apiKey,
-      baseUrl: rt.baseUrl,
-      model: rt.model,
-      thinking: rt.thinking,
-      maxTokensFor: rt.maxTokensFor,
-    });
-  }
-  const registered = [...new Set([...activeProviderContributions().map((d) => d.kind), 'anthropic', 'openai'])].join(
-    ', ',
-  );
+  const registeredKinds = [...new Set(activeLlmAdapters().map((d) => d.kind))].sort();
   throw new Error(
-    `PROVIDER_DIALECT: 未注册的协议方言 "${kind}"（当前可用：${registered}）——请检查该提供方的 kind 设置`,
+    `PROVIDER_DIALECT: 未注册的协议方言 "${kind}"（当前可用：${registeredKinds.join(', ') || '(无已注册 adapter)'}）` +
+      '——请检查该提供方的 kind 设置与 llm-adapters 装配',
   );
 }
 

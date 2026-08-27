@@ -1,17 +1,20 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 方言解析器守护（2026-08-27 provider 插件化收口）：
-//   ① 内核 anthropic / openai 兜底可用
-//   ② 贡献覆盖同 kind **后注册胜**（对齐 renderer-service 语义），dispose 分层恢复
-//   ③ 未知 kind 响亮报错并点名已注册方言——钉死「错误不静默」宪法
-//     （修复前行为：未知 kind 静默跌进 openai 分支）
+// 方言解析器守护（2026-08-27 provider 插件化收口；同日平台化 Phase 1 D2 修订版升格）：
+//   ① 无服务/无 adapter → PROVIDER_DIALECT 响亮报错（降级显式非静默，P1-C2）
+//   ② 第一方装配（llm-adapters-plugin）后内核 anthropic/openai 可用（生产路径）
+//   ③ 贡献覆盖同 kind **后注册胜**（对齐 renderer-service 语义），dispose 分层回落
+//   ④ 未知 kind 响亮报错并点名已注册方言——钉死「错误不静默」宪法
+//     （修复前行为：未知 kind 静默跌进 openai 分支；内核回落 if 分支已拆除，
+//      全部方言统一走 ctx.llm 注册表）
 
 import { describe, expect, it } from 'vitest';
 
-import type { ProviderContribution } from '../src/composition/services';
+import type { LlmAdapterContribution } from '../src/composition/services';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
+import { llmAdaptersPlugin } from '../src/plugins/llm-adapters-plugin';
 import { createProvider } from '../src/provider/index';
 import type { Provider, ProviderRuntimeArgs } from '../src/provider/types';
 
@@ -25,7 +28,7 @@ function stub(tag: string): Provider {
   };
 }
 
-function dialect(id: string, kind: string, tag: string): ProviderContribution {
+function dialect(id: string, kind: string, tag: string): LlmAdapterContribution {
   return { id, kind, create: () => stub(tag) };
 }
 
@@ -38,20 +41,42 @@ const SETTINGS = (kind: string) => ({
   model: 'm1',
 });
 
+/** 生产最小装配复现：四 service + 第一方 llm-adapters（内核方言贡献在册）。 */
 async function booted(): Promise<{ dispose: () => Promise<void> }> {
   const root = new Context();
-  const fiber = root.plugin(compositionServicesPlugin);
-  await fiber;
-  return { dispose: () => fiber.dispose() };
+  const servicesFiber = root.plugin(compositionServicesPlugin);
+  await servicesFiber;
+  const adaptersFiber = root.plugin(llmAdaptersPlugin);
+  await adaptersFiber;
+  return {
+    dispose: () => adaptersFiber.dispose().then(() => servicesFiber.dispose()),
+  };
 }
 
 describe('方言解析器（createProvider 收口）', () => {
-  it('内核 openai / anthropic 兜底可用，name 直通', () => {
-    const p = createProvider(SETTINGS('openai'));
-    expect(p.name()).toBe('p1');
-    expect(typeof p.stream).toBe('function');
-    const a = createProvider(SETTINGS('anthropic'));
-    expect(a.name()).toBe('p1');
+  // 注意次序：本用例必须是文件内首个 createProvider 调用（验证零装配裸路径）
+  it('未装配任何 adapter → PROVIDER_DIALECT 响亮报错（降级显式非静默，P1-C2）', () => {
+    let thrown: unknown;
+    try {
+      createProvider(SETTINGS('openai'));
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect(String((thrown as Error)?.message ?? '')).toContain('PROVIDER_DIALECT');
+  });
+
+  it('第一方 llm-adapters 装配后内核 openai / anthropic 可用，name 直通（生产路径）', async () => {
+    const env = await booted();
+    try {
+      const p = createProvider(SETTINGS('openai'));
+      expect(p.name()).toBe('p1');
+      expect(typeof p.stream).toBe('function');
+      const a = createProvider(SETTINGS('anthropic'));
+      expect(a.name()).toBe('p1');
+    } finally {
+      await env.dispose();
+    }
   });
 
   it('未知 kind 响亮报错：点名 kind 与全部已注册方言（不再静默跌进 openai）', async () => {
@@ -76,17 +101,19 @@ describe('方言解析器（createProvider 收口）', () => {
 });
 
 interface DialectEnv {
-  register(d: ProviderContribution): () => void;
+  register(d: LlmAdapterContribution): () => void;
   dispose(): Promise<void>;
 }
 
 async function bootedWithRegistry(): Promise<DialectEnv> {
   const root = new Context();
-  const fiber = root.plugin(compositionServicesPlugin);
-  await fiber;
+  const servicesFiber = root.plugin(compositionServicesPlugin);
+  await servicesFiber;
+  const adaptersFiber = root.plugin(llmAdaptersPlugin);
+  await adaptersFiber;
   return {
-    register: (d) => root.providers.register(d),
-    dispose: () => fiber.dispose(),
+    register: (d) => root.llm.register(d),
+    dispose: () => adaptersFiber.dispose().then(() => servicesFiber.dispose()),
   };
 }
 
@@ -131,7 +158,7 @@ describe('方言解析器 · 贡献道生命周期', () => {
     const env = await bootedWithRegistry();
     try {
       let seen: ProviderRuntimeArgs | null = null;
-      const capture: ProviderContribution = {
+      const capture: LlmAdapterContribution = {
         id: 'probe/capture',
         kind: 'openai',
         create: (rt) => {

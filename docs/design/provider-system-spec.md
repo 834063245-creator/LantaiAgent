@@ -658,13 +658,13 @@ maxTokens 覆盖——三个 bug 同根：**手写字段枚举必然漂移**。P
 - 守护测试：`tests/provider-hotswap.test.ts`（注释剥离后的静态扫描 + 拆除路径
   行为断言）。
 
-**为何不做 DSH 式完整注册表**（ProvidersService 多路由 + 原子 replace）：DSH 的
+**为何不做 DSH 式完整注册表**（LlmService 多路由 + 原子 replace；历史名 ProvidersService，
+2026-08-27 平台化 Phase 1 升格更名）：DSH 的
 registry 服务「多 provider 路由并发在册」的场景（每请求按 route 选 adapter、
 waterfall 拦截、配置面声明路由）；兰台是**单活跃 provider** 形态——`_buildProvider`
 单一创建收口（P4 已建）+ `setProvider` 写穿（P13 已建）+ 恒 swap（本次）即为
 兰台的正确 seam。把 DSH 的注册表照搬过来服务一个永远只有一个 active provider 的
-系统是架构空转；`composition/services.ts` 的 ProvidersService 空壳（S1 注册语义）
-保留给未来真正的多路由需求。
+系统是架构空转；`composition/services.ts` 的 LlmService 通道（S1 注册语义）在方言收口时兑现为活通道（见下节）。
 
 ### 已知边界（如实记录）
 
@@ -730,7 +730,7 @@ interface ModelOverrides { contextWindow?: number; maxTokens?: number; }
 P14 写「兰台是单活跃 provider 形态」，P15 后修正为：**多 provider 在册、activeProvider
 只是新会话默认（最近使用），不承担运行期路由**——请求仍由 live provider 按名现解析
 （Phase C），会话热切换按会话解析（方案甲）。DSH 的多路由注册表依旧不照搬（架构空转），
-`composition/services.ts` 的 ProvidersService 空壳保留给未来真正多路由需求。seam 仍是
+`composition/services.ts` 的 LlmService 通道在方言收口时兑现为活通道（同节追裁）。seam 仍是
 `_buildProvider` 单一创建收口 + live 按名现解析。
 
 ## 追加裁决 · 方言收口与目录装载（2026-08-27，用户拍板「直接干到位」）
@@ -739,12 +739,12 @@ P14 写「兰台是单活跃 provider 形态」，P15 后修正为：**多 provi
 但多路由注册表依然不照搬：路由权在 live 按名现解析，本道只管「协议方言怎么建」，不管
 「哪个提供方被选中」。四条：
 
-1. **方言贡献道**（ProvidersService 真实消费闭环兑现）：
-   - `ProviderContribution = { id, kind, create(rt: ProviderRuntimeArgs): Provider }`，
-     替换 `{ id, factory: () => unknown }` 死形状。
+1. **方言贡献道**（LlmService 真实消费闭环兑现）：
+   - `LlmAdapterContribution = { id, kind, create(rt: ProviderRuntimeArgs): Provider }`
+     （2026-08-27 平台化 Phase 1 定名；替换 `{ id, factory: () => unknown }` 死形状）。
    - `createProvider` 的二元 if/else 改为方言解析：同 kind 贡献**后注册胜**
-     （对齐 renderer-service 覆盖语义，dispose 分层恢复）；未命中回落内核
-     `'anthropic' | 'openai'`；两者皆无 → `PROVIDER_DIALECT` 响亮报错并点名可用方言。
+      （对齐 renderer-service 覆盖语义，dispose 分层恢复）；平台化 Phase 1 起
+      内核回落分支拆除，未命中任何 adapter → `PROVIDER_DIALECT` 响亮报错并点名可用方言。
    - **修复潜伏静默 bug**：旧实现未知 kind 一律跌进 openai 分支（拼错 `"anthromorphic"`
      也能跑通但语义全错），违反宪法「错误不静默」。
 2. **Protocol 类型开放集挂起**：第三方方言要新增 kind 字面量时才扩存储联合类型
@@ -757,6 +757,16 @@ P14 写「兰台是单活跃 provider 形态」，P15 后修正为：**多 provi
 4. **P-next（未做，非遗漏）**：用户家目录 `~/.lantai/provider-catalogs/*.json`
    外置 overlay——需要异步读取道与失败面的完整设计，硬塞半成品违反本 spec 第 #3
    裁决的同源纪律。触发条件：出现「不改包体接入自定义网关目录」的真实需求。
+5. **平台化 Phase 1 升格（2026-08-27 夜，agent-platformization-plan D2 修订版 · 用户拍板 A 路线）**：
+   - 通道升格为平台 seam 并更名：`ProvidersService`/`ctx.providers` →
+     `LlmService`/`ctx.llm`；读取面 `activeProviderContributions()` →
+     `activeLlmAdapters()`；贡献类型 → `LlmAdapterContribution`。
+   - **内核回落 if 分支拆除**：anthropic/openai 改由第一方
+     `plugins/llm-adapters-plugin.ts` 经 `ctx.llm.register` 贡献为默认 adapter
+     （loadBuiltinPlugins 表序第二行，先于外部插件保持「后注册胜」覆盖方向）；
+     `provider/index.ts` 只余「贡献扫描 → 未命中 PROVIDER_DIALECT 响亮报错」。
+   - 裸环境语义变更：此前未装配也走内核兜底，现响亮报错（P1-C2 显式降级）——
+     生产装配恒经 loadBuiltinPlugins 无感知差异；测试以「装配复现 helper」先行。
 
 ### 验证
 

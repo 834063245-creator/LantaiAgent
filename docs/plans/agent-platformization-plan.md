@@ -1,7 +1,7 @@
 # Agent 平台化（Lantai Platform）总计划 —— 一个文档解决所有问题
 
 > 立项：2026-08-25
-> 状态：**Phase 0 已落地（2026-08-25）**——宪法边界（强制层/能力契约层二分）已入档 + 守卫测试钉住强制层外命令零增长；Phase 1 待开工
+> 状态：**Phase 0 已落地（2026-08-25）**——宪法边界（强制层/能力契约层二分）已入档 + 守卫测试钉住强制层外命令零增长（2026-08-27 复验 `platform_boundary_test` 绿）；**Phase 1 施工中（2026-08-27 夜开工）**——开工时用户拍板 A 路线修订 D2/D5（2026-08-26 方言贡献道收口 commit `62860fb7` 先例吸收，见 §3 各裁定行的修订注记）
 > 性质：能力建设计划（capability plan），不是还债（debt plan）
 > 上位：`agent-plugin-architecture-plan.md`（P1-P4 已竣工部分）+ `composition-architecture/README.md`（S0-S4 已竣工 + 内核线）+ `docs/adr/project-constitution.md`
 > 参照系：DeepSeek Harness（`D:\useful\deepseek-harness`，下称 DSH）；"DSH 实证"均给文件路径供执行者直查。
@@ -72,10 +72,10 @@
 
 | 缺口 | 现状 | 本计划动作 |
 |---|---|---|
-| LLM provider 不是 seam | `provider/index.ts` 的 `createProvider` 是硬编码 factory switch（anthropic/openai） | 拆成 `ctx.llm` adapter 注册表（D2） |
+| LLM adapter 未全量进 seam | 方言贡献道已在位（2026-08-26 commit `62860fb7` 兑现：`{id,kind,create}` 强类型、同 kind 后注册胜、未知 kind 响亮报错）；但 anthropic/openai 仍是 `resolveProviderDialect` 的内核回落分支 | 升格为 `ctx.llm`：服务更名 + 两枚第一方 adapter 贡献 + 删内核回落（D2 修订版） |
 | 子代理单一实现 | `subagent-spawn.ts` 进程内唯一实现 | 拆成 `ctx.subagents` provider 注册表（D3） |
 | 事件面只有 5 个工具事件 | `agent/events.ts`（guard/preflight/around/result/error） | 扩成全 loop 事件表（D4） |
-| `ctx.providers` 是空通道 | 无消费者（文档自认"无消费者不开通道"） | 退役（D5） |
+| ~~`ctx.providers` 是空通道~~ **前提已失效** | 2026-08-26 已兑现为真实方言贡献道（有消费方有守护测试，非空通道） | **D5 作废（2026-08-27 用户拍板 A 路线）**——该通道即 `ctx.llm` 本体，升格吸收而非退役（见 §3 D2/D5 修订注记） |
 | 外部插件装卸禁用重启生效 | `docs/plugins/README.md` §5 | 运行时热重载（D6） |
 | 无运行时动态生成插件 | 只有磁盘 JS + MCP | `ctx.dynamicRunner`（D7） |
 | **后端能力全部锁死** | fs/shell/subprocess/session/graph 全在 Rust 命令层，无 seam | **后端能力 seam 化（D11）**——Rust/engine 降为默认 provider |
@@ -112,10 +112,10 @@
 | # | 裁定 | 内容 |
 |---|---|---|
 | **D1** | 平台边界（推翻 D9 绝对化） | **强制层特权，能力契约全开。** 特权 = cordis 内核 / 组合引擎 / 注册表机制 / React root+壳 / RPC 平台面（含权限咽喉）/ 沙箱内核 / 审计 / Workspace 原语。**线外 = 所有能力**：llm、subagents、fs、shell、subprocess、session persistence、graph/analysis、sandbox 策略面，全部成为前端组合层 seam；Rust/engine 是默认 provider 后端，不再是"不可替换的能力"。 |
-| **D2** | LLM adapter seam | `createProvider` 的 factory switch → `ctx.llm` 注册表。`anthropic.ts` / `openai.ts` 迁成两个 adapter 插件（第一方先例，settings-plugin 样式）。设置/模型目录驱动选择。 |
+| **D2** | LLM adapter seam | 原文：`createProvider` 的 factory switch → `ctx.llm` 注册表。`anthropic.ts` / `openai.ts` 迁成两个 adapter 插件（第一方先例，settings-plugin 样式）。设置/模型目录驱动选择。**【修订 2026-08-27，用户拍板 A】**commit `62860fb7`（2026-08-26）已把空壳兑现为强类型方言贡献道（同 kind 后注册胜、dispose 分层恢复、未知 kind `PROVIDER_DIALECT` 响亮报错），本裁定吸收其为 `ctx.llm` 本体：`ProvidersService`/`ctx.providers` 更名 `LlmService`/`ctx.llm`（沿用既有四 service 结构落 `composition/services.ts`，不另立文件），anthropic/openai 从内核回落分支迁为两条第一方 adapter 贡献并删除回落分支；`createProvider(settings)` 保留为消费单一入口（内部查 `ctx.llm`，消费方不经此函数外均直查注册表）。 |
 | **D3** | 子代理 provider seam | `spawnSubAgentImpl` → `ctx.subagents` provider 注册表。进程内实现 = 默认 provider；consumer = tool-subagent。未来 ACP/外部后端可挂。 |
 | **D4** | 事件面扩展 | 5 工具事件扩成全 loop 事件表（turn/step/request/tool 生命周期 + 能力事件域），每个事件声明 mode（emit/waterfall/serial/parallel）+ 目录生成 + 完整性 guard。**loop 本体不是特权**（见 D13）——事件是监听面，loop 是默认实现。 |
-| **D5** | `ctx.providers` 退役 | 空通道无消费者 → 删除（沿用"无消费者不开通道"已定纪律）。新 swappable seam 各自带类型化注册表（`ctx.llm` / `ctx.subagents` / `ctx.fs` / …），不复用泛化 provider 通道。 |
+| **D5** | `ctx.providers` 退役 | **【作废 2026-08-27，用户拍板 A 路线】**原裁定的事实前提（"空通道无消费者"）被 commit `62860fb7`（2026-08-26 方言贡献道收口）推翻：该通道现为唯一 LLM adapter 贡献面且行为已提交规范 ADR。按项目纪律「规则与代码冲突以代码为准」，处置改为**升格吸收**（D2 修订版：更名 `ctx.llm` 进平台边界图）而非退役；"泛化通道不复用、每个 seam 类型化专用"的精神保留——`ctx.llm` 就是类型化专用表，不恢复任何泛化 provider 语义。原裁定文字仅供历史追溯：~~空通道无消费者 → 删除 ProvidersService + 文档行 + 引用~~。 |
 | **D6** | 外部插件热重载 | install / uninstall / disable 从"重启生效"改为**运行时生效**：写 `plugins.json` → 对已装载插件做 fiber dispose / 装载 / 贡献变更广播（复用 patch 热重载机制）。 |
 | **D7** | 运行时动态生成插件 | 建 `ctx.dynamicRunner`（DSH `cordis-host-runner` 同构）：运行时 define → run → stop → undefine cordis 插件包；**动态插件可提供任意 seam**（工具/面板/llm adapter/fs provider/…），不只是工具行。宿主半进 vm 沙箱（对齐 `code-runtime` worker 的敌意校验纪律）；模型工具面 = `cordis_*` 族（形状对齐 DSH `tool-cordis`）。 |
 | **D8** | 特权区只减不增 | 本计划从特权区**减出**：LLM、子代理、工具管道监听面、fs/shell/subprocess/session/graph 能力实现、agent loop（降为默认实现）。**不新增任何特权代码**。减出清单可用 git 度量（对应代码从特权区迁出 = 减一行特权）。 |
@@ -138,7 +138,7 @@
 | `ctx.overlays` / `ctx.space` | 贡献通道 / API | ✅ | 无 | — | 画布 |
 | `ctx.lsp` | 服务 | ✅ | 无 | — | lsp 工具 |
 | `ctx.codeRuntime` | 服务 | ✅ | 无 | — | code_execution |
-| **`ctx.llm`** | **swappable seam（新）** | ❌ factory switch | **D2** | anthropic / openai adapter | 流式执行 / 摘要 / 翻译 / 标题 |
+| **`ctx.llm`** | **swappable seam（升格中）** | ⚠️ 方言贡献道已在位（`62860fb7`），缺 adapter 迁移 + 命名归一 | **D2 修订版**：`ProvidersService`→`LlmService` + 两 adapter 第一方贡献 + 内核回落删除 | anthropic / openai adapter（第一方贡献） | 流式执行 / 摘要 / 翻译 / 标题 |
 | **`ctx.subagents`** | **swappable seam（新）** | ❌ 单一实现 | **D3** | in-process | tool-subagent |
 | **`ctx.fs`** | **swappable seam（新）** | ❌ Rust 命令锁死 | **D11** | 现有 Rust fs 命令包装 | tool-fs / 编辑器 |
 | **`ctx.shell`** | **swappable seam（新）** | ❌ Rust 命令锁死 | **D11** | 现有 Rust shell 命令包装 | tool-bash / tool-pwsh |
@@ -175,20 +175,37 @@
 
 **做什么：**
 
-1. **`ctx.llm`（D2）**：新建 `src-ui/src/composition/llm-service.ts`；`createProvider` 改查 `ctx.llm`；anthropic/openai 迁为第一方 adapter 插件；消费方（流式/摘要/翻译/标题）全部经 `ctx.llm` 查询。
+1. **`ctx.llm`（D2，修订版）**：方言贡献道升格落位——`composition/services.ts` 内 `ProvidersService`→`LlmService`、Context 键 `ctx.providers`→`ctx.llm`、读取面 `activeProviderContributions()`→`activeLlmAdapters()`（沿用四 service 同文件结构，不另立 llm-service.ts）；新建第一方 `plugins/llm-adapters-plugin.ts` 把 anthropic/openai 经 `ctx.llm.register` 贡献为两条 adapter（生产经 loadBuiltinPlugins 表尾装载，测试沿用「装配复现助手」先例）；`provider/index.ts` 删内核回落 if 分支，只余「贡献扫描（后注册胜）→ 未命中 `PROVIDER_DIALECT` 响亮报错」。消费方（流式 createLiveProvider / 摘要 compaction）以 `createProvider(settings)` 为单一入口不动。
 2. **`ctx.subagents`（D3）**：新建 `src-ui/src/composition/subagent-service.ts`；`spawnSubAgentImpl` 抽成默认 in-process provider；tool-subagent 成为 consumer。
 3. **事件面扩展（D4）**：`agent/events.ts` 5 事件扩为全 loop 事件表（turn/step/request/tool + 能力域），每个事件声明 mode + 单一真源 + T0 门禁；落 feature→mechanism map，第一方功能逐个重表达为监听器。
-4. **`ctx.providers` 退役（D5）**：删 `ProvidersService` + 文档行 + 引用（无消费者，干净删除）。
+4. ~~`ctx.providers` 退役（D5）~~ **作废（2026-08-27 用户拍板 A 路线，见 §3 D5 注记）**：退役对象已被 8-26 兑现并升格吸收——本条改执行旧名归零（拆旧清单 T2/T3/T4）。
 5. **第一方迁移**：LLM adapter 两枚、子代理默认 provider 挂上注册表；出厂面零硬编码（`createProvider` 的 switch 消灭）。
 
-**动哪些文件：** `src-ui/src/composition/*`（新增 llm-service / subagent-service）、`src-ui/src/provider/*`、`src-ui/src/plugins/*`、`src-ui/src/agent/subagent-spawn.ts`、`src-ui/src/agent/events.ts`、`src-ui/src/composition/services.ts`、`docs/plugins/README.md`。
+**动哪些文件：** `src-ui/src/composition/services.ts`（LlmService 更名落位）、`src-ui/src/provider/index.ts`（回落分支拆除）、新 `src-ui/src/plugins/llm-adapters-plugin.ts`、`src-ui/src/composition/subagent-service.ts`（新）、`src-ui/src/agent/subagent-spawn.ts` + tool-subagent 消费面、`src-ui/src/agent/events.ts`、相关测试（composition-services / provider-dialect / provider-live / composition-consumption-wiring 等）、文档同步（provider-system-spec / ARCHITECTURE §4.8 / plugins README / AGENTS / CLAUDE）。
+
+**拆旧清单（本段第一步交付物，收工清零——铁律 3）：**
+
+| # | 旧物 | grep 锚点 | 归宿 |
+|---|---|---|---|
+| T1 | `resolveProviderDialect` 内核回落分支（kind==='anthropic'\|\|'openai' 直调工厂） | `src-ui/src/provider/index.ts` | 删——两协议迁 adapter 贡献后未命中即响亮报错 |
+| T2 | `ProvidersService` 类名 + Context 键 `providers` | grep `ProvidersService` / `ctx.providers` / `root.providers` | 更名 `LlmService` / `ctx.llm` |
+| T3 | 读取面旧名 `ProviderContribution` / `activeProviderContributions` / `_activeProviders` / `setActiveProviders` / registry 标签 'providers' | grep 同名符号 | 更名 `LlmAdapterContribution` / `activeLlmAdapters()` / `_activeLlm` 等 |
+| T4 | 文档旧名：AGENTS·CLAUDE「六 service…provider」表述、ARCHITECTURE §4.8 方言贡献道行、`docs/design/provider-system-spec.md` 追加裁决节、plugins README | grep `ProvidersService` 于 docs/*.md | 同步更名 |
+| T5 | 过时注释/断言：`tests/composition-consumption-wiring.test.ts` 头注「providers 留注册表现状（不接线）」已与 8-26 收口后的现实矛盾 | 该文件头注 | 改写到新语义 |
+| T6 | 测试旧名引用：composition-services.test.ts / provider-dialect.test.ts 的类型导入与注册调用 | grep | 改写到新名 |
+| T7 | `Agent.spawnSubAgent` 直调 `spawnSubAgentImpl`（seam 旁路点） | grep `spawnSubAgentImpl` 于 `src/agent/agent.ts`（消费侧） | 消费改经 `ctx.subagents` 注册表；impl 本体保留为默认 provider 内核（施工②） |
+
+> settings 层 `s.providers`（配置行模型）与本 seam 无涉，一律不动。
+
+**施工记录（滚动更新，每条 seam 翻转一账——铁律 7）：**
+- **施工①（2026-08-27 夜）**：LLM 通道升格落地——`LlmService`/`ctx.llm` 更名（T2/T3）、`plugins/llm-adapters-plugin.ts` 两条第一方 adapter 贡献 `builtin/anthropic` + `builtin/openai`（ctx.effect 登记，loader 表序第二行）、`resolveProviderDialect` 内核回落 if 分支拆除（T1），裸路径未命中 = `PROVIDER_DIALECT` 响亮报错（P1-C2）；测试装配复现 shim ×3（provider-live / provider-factory / summary-model-selection）+ provider-dialect 重写（裸路径降级 / 生产路径 / 后注册胜 / 全撤回落内置）；文档同步 T4/T5。T1-T6 全清零。门禁：vitest 1797 passed / build ✓ / biome ci 0/0（463 文件）/ convergence exit 0。
 
 **验收判据（判据号 P1-Cn）：**
 - P1-C1：`createProvider` 无 switch；anthropic/openai 各是 `ctx.llm` 的一条 adapter。
 - P1-C2：不装 adapter 时装配仍可启动（降级显式，非静默）。
 - P1-C3：子代理经 `ctx.subagents` 注册表派发；默认 provider 行为与现状逐字节一致（快照/测试钉住）。
 - P1-C4：事件表覆盖 turn/step/request/tool 全生命周期，mode 门禁全绿；feature→mechanism map 落档。
-- P1-C5：`ctx.providers` 无任何残留引用（grep 归零）；docs/plugins README 同步删行。
+- P1-C5：旧名归零（判据精确化）——`ProvidersService` / `ctx.providers` / `activeProviderContributions` / `ProviderContribution` 在 **src-ui 源码与活文档引用归零**；唯一例外 = 更名记录本体（计划 §3 D2/D5 修订行、spec 追加裁决第 5 条的旧→新映射、spec §历史段一处 dated 历史名标注）——这些是有意保留的 dated 历史，不是活引用。ARCHITECTURE §4.8 / provider-system-spec / docs/plugins README / AGENTS·CLAUDE 手册同步更名完成。settings 层 `providers: ProviderSettings[]` 配置字段是另一概念（用户配置行模型），不在清除范围。
 - P1-C6：门禁 = `cd src-ui && npm run build && npx vitest run && npx biome ci .` + `npm run verify:convergence`（动 agent/** 必过，standard 零漂移）。
 
 **谁判断：** Agent 自主（D1-D13 已冻结）。

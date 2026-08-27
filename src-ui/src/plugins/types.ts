@@ -4,7 +4,7 @@
 // 插件规范层（WO-S0B）——manifest 与插件对象的宿主无关契约。
 // 设计边界（composition 计划 D0 拍板）：manifest 形状设计为将来可迁移的规范层，
 // 不耦合兰台的 UI/RPC 细节；宿主交互面（四 service：panels/commands/
-// tools/providers）是 S1 的事，本文件不预设。
+// tools/llm——2026-08-27 providers 键升格更名 llm）是 S1 的事，本文件不预设。
 //
 // 纪律（CONVENTIONS §1.6 defineTool 同款）：一个 zod schema 同时产出运行时校验
 // 与 TS 类型（z.infer），禁止手写平行接口后再 as 强转。

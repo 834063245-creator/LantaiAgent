@@ -10,10 +10,10 @@ import {
   type CommandContribution,
   CommandsService,
   compositionServicesPlugin,
+  type LlmAdapterContribution,
+  LlmService,
   type PanelContribution,
   PanelsService,
-  type ProviderContribution,
-  ProvidersService,
   type ToolContribution,
   ToolsService,
 } from '../src/composition/services';
@@ -57,21 +57,21 @@ function probeProvider(tag: string) {
   };
 }
 
-const PROVIDER: ProviderContribution = {
+const PROVIDER: LlmAdapterContribution = {
   id: 'probe/provider',
   kind: 'openai',
   create: () => probeProvider('probe'),
 };
 
 describe('四 service 装载（compositionServicesPlugin 挂根 Context）', () => {
-  it('挂载后 ctx.panels/commands/tools/providers 四服务可解析', async () => {
+  it('挂载后 ctx.panels/commands/tools/llm 四服务可解析', async () => {
     const root = new Context();
     const fiber = root.plugin(compositionServicesPlugin);
     await fiber;
     expect(root.panels).toBeInstanceOf(PanelsService);
     expect(root.commands).toBeInstanceOf(CommandsService);
     expect(root.tools).toBeInstanceOf(ToolsService);
-    expect(root.providers).toBeInstanceOf(ProvidersService);
+    expect(root.llm).toBeInstanceOf(LlmService);
     await fiber.dispose();
   });
 
@@ -131,14 +131,14 @@ describe('注册 → disposer 契约（四 service 结构同构，逐个钉住�
     await fiber.dispose();
   });
 
-  it('providers：同契约', async () => {
+  it('llm：同契约', async () => {
     const root = new Context();
     const fiber = root.plugin(compositionServicesPlugin);
     await fiber;
-    const dispose = root.providers.register(PROVIDER);
-    expect(root.providers.get('probe/provider')).toBe(PROVIDER);
+    const dispose = root.llm.register(PROVIDER);
+    expect(root.llm.get('probe/provider')).toBe(PROVIDER);
     dispose();
-    expect(root.providers.get('probe/provider')).toBeUndefined();
+    expect(root.llm.get('probe/provider')).toBeUndefined();
     await fiber.dispose();
   });
 });

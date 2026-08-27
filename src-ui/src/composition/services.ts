@@ -1,7 +1,10 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 组合层四 service（S1-1）——panels / commands / tools / providers 挂根 Context。
+// 组合层四 service（S1-1）——panels / commands / tools / llm 挂根 Context。
+//
+// llm 通道（平台化 Phase 1 · D2 修订版，2026-08-27）：providers 键升格更名为
+// llm——方言贡献道即 LLM adapter seam 本体（agent-platformization-plan §3 D2/D5 注记）。
 //
 // 宪法定位（composition-architecture README「内核线」第 3 条）：slot / 注册表本身是
 // 特权代码，永不插件化——本文件在内核线内。四 service 只做注册与注销（行生命周期的
@@ -101,11 +104,12 @@ export interface ToolContribution {
 /** Provider 工厂收到的运行期实参形状（真源在 provider/types.ts；此处 type-only 别名防环）。 */
 type ProviderRuntimeArgs = import('../provider/types').ProviderRuntimeArgs;
 
-export interface ProviderContribution {
+export interface LlmAdapterContribution {
   /** 注册表寻址 id（稳定行标识）。 */
   id: string;
-  /** 适配的 settings.kind（'anthropic' | 'openai' 可覆盖，同 kind 后注册胜——
-   *  对齐 renderer-service 覆盖语义；未知 kind 由 createProvider 请求期响亮报错）。 */
+  /** 适配的 settings.kind（'anthropic' | 'openai' 由第一方 llm-adapters 插件提供默认，
+   *  同 kind 后注册胜——对齐 renderer-service 覆盖语义；未知 kind 由 createProvider
+   *  请求期响亮报错）。 */
   kind: string;
   /** 方言工厂：从 createProvider 解析好的运行期实参构建完整 Provider。 */
   create: (rt: ProviderRuntimeArgs) => Provider;
@@ -116,7 +120,7 @@ export interface ProviderContribution {
 /**
  * 注册表变更信号（S4-1.5 消费闭环）——panels/commands 域贡献变更时 bump
  * 对应信号 store（即时生效语义：DockRail/DockPanel/CommandPalette 重取
- * 清单）。tools/providers 不 bump——它们的生效时机是「下次 Agent 装配」
+ * 清单）。tools/llm 不 bump——它们的生效时机是「下次 Agent 装配」
  * （S1 既有语义），无即时消费面。
  */
 type ChangeSignal = () => void;
@@ -227,24 +231,24 @@ export class ToolsService extends Service {
   }
 }
 
-export class ProvidersService extends Service {
-  private registry = new ContributionRegistry<ProviderContribution>('providers');
+export class LlmService extends Service {
+  private registry = new ContributionRegistry<LlmAdapterContribution>('llm');
 
   constructor(ctx: Context) {
-    super(ctx, 'providers');
-    // 消费读取面（createProvider 方言解析——2026-08-27 S2 承诺兑现收口）
-    setActiveProviders(this);
+    super(ctx, 'llm');
+    // 消费读取面（createProvider 方言解析——2026-08-27 S2 收口 + Phase 1 升格为 ctx.llm）
+    setActiveLlm(this);
   }
 
-  register(def: ProviderContribution): () => void {
+  register(def: LlmAdapterContribution): () => void {
     return this.registry.register(def);
   }
 
-  get(id: string): ProviderContribution | undefined {
+  get(id: string): LlmAdapterContribution | undefined {
     return this.registry.get(id);
   }
 
-  list(): ProviderContribution[] {
+  list(): LlmAdapterContribution[] {
     return this.registry.list();
   }
 }
@@ -260,7 +264,7 @@ export class ProvidersService extends Service {
 let _activePanels: PanelsService | null = null;
 let _activeCommands: CommandsService | null = null;
 let _activeTools: ToolsService | null = null;
-let _activeProviders: ProvidersService | null = null;
+let _activeLlm: LlmService | null = null;
 
 /** 服务构造期登记（loadBuiltinPlugins 引导的唯一入口）。 */
 function setActivePanels(svc: PanelsService): void {
@@ -272,8 +276,8 @@ function setActiveCommands(svc: CommandsService): void {
 function setActiveTools(svc: ToolsService): void {
   _activeTools = svc;
 }
-function setActiveProviders(svc: ProvidersService): void {
-  _activeProviders = svc;
+function setActiveLlm(svc: LlmService): void {
+  _activeLlm = svc;
 }
 
 /** 当前面板贡献（无服务/无注册 = 空集——合流点读这个，常量面零改写）。 */
@@ -296,9 +300,9 @@ export function activeToolContributions(): ToolContribution[] {
   return _activeTools?.list() ?? [];
 }
 
-/** 当前方言贡献（无服务/无注册 = 空集——createProvider 方言解析的「后注册胜」扫描源）。 */
-export function activeProviderContributions(): ProviderContribution[] {
-  return _activeProviders?.list() ?? [];
+/** 当前 LLM adapter 贡献（无服务/无注册 = 空集——createProvider 方言解析的「后注册胜」扫描源）。 */
+export function activeLlmAdapters(): LlmAdapterContribution[] {
+  return _activeLlm?.list() ?? [];
 }
 
 // ── 组合层挂载插件（根 Context 装配四 service；经 loadBuiltinPlugins 引导）──
@@ -311,8 +315,9 @@ declare module '../cordis/context' {
     commands: CommandsService;
     /** 工具注册表（S1-1）——行注册 → disposer；下次 Agent 装配生效语义。 */
     tools: ToolsService;
-    /** Provider 注册表（S1-1）——行注册 → disposer；下次 Agent 装配生效语义。 */
-    providers: ProvidersService;
+    /** LLM adapter 注册表（S1-1 起；平台化 Phase 1 升格为 ctx.llm seam）——
+     *  行注册 → disposer；请求期解析语义见 provider/index.ts 方言解析器。 */
+    llm: LlmService;
   }
 }
 
@@ -325,6 +330,6 @@ export const compositionServicesPlugin = {
     new PanelsService(ctx);
     new CommandsService(ctx);
     new ToolsService(ctx);
-    new ProvidersService(ctx);
+    new LlmService(ctx);
   },
 };

@@ -1,9 +1,21 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
+// createProvider 方言解析单测（平台化 Phase 1 · D2 修订版）：协议实现经 ctx.llm
+// 解析——本文件需要第一方 llm-adapters 贡献在册（生产装配复现，同 provider-live）。
+
 import { describe, expect, it } from 'vitest';
+import { compositionServicesPlugin } from '../src/composition/services';
+import { Context } from '../src/cordis';
+import { llmAdaptersPlugin } from '../src/plugins/llm-adapters-plugin';
 import { createProvider } from '../src/provider';
 import type { ProviderSettings } from '../src/settings';
+
+{
+  const bootRoot = new Context();
+  await bootRoot.plugin(compositionServicesPlugin);
+  await bootRoot.plugin(llmAdaptersPlugin);
+}
 
 describe('createProvider', () => {
   it('creates an anthropic provider with correct name', () => {

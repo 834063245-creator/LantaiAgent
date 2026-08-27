@@ -42,7 +42,7 @@
 | 概念 | 是什么 | 真源 |
 |---|---|---|
 | 插件 | 自包含 ESM 模块（`{ name, inject?, apply(ctx) }`） | 本文档 |
-| 贡献通道 | `ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.providers` / `ctx.renderers`（块渲染器，V3b）/ `ctx.prompts`（prompt 段，P4 A-1）/ `ctx.hooks`（管道钩子，P4 A-2）/ `ctx.capabilities`（capability，P4 A-3） | `src-ui/src/composition/services.ts` + `renderer-service.tsx` + `prompt-service.ts` + `hook-service.ts` + `capability-service.ts` |
+| 贡献通道 | `ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.llm`（LLM adapter）/ `ctx.renderers`（块渲染器，V3b）/ `ctx.prompts`（prompt 段，P4 A-1）/ `ctx.hooks`（管道钩子，P4 A-2）/ `ctx.capabilities`（capability，P4 A-3） | `src-ui/src/composition/services.ts` + `renderer-service.tsx` + `prompt-service.ts` + `hook-service.ts` + `capability-service.ts` |
 | 行（row） | 组合的最小单元——工具族/prompt 段/capability/壳行各有 id | `src-ui/src/composition/*` |
 | preset | 命名的行组合叠加层（standard/minimal 内置 + 用户目录） | §8 + `docs/composition/README.md` |
 | patch | 四域行的增量数据（禁用/覆盖/插入） | `docs/composition/README.md` |
@@ -190,10 +190,17 @@ ctx.effect(
 - 撞名语义：两个插件贡献同名 id → 前缀不同不撞；**真正的撞名**是两个
   工具 `Tool.name()` 相同 → 行表装载期拒绝（duplicate throw）。
 
-### ctx.providers —— 预留（不接线）
+### ctx.llm —— LLM adapter seam（平台化 Phase 1 · D2 修订版）
 
-注册表现状可用，但当前无消费者（S4-1.5 复审裁定：无消费者不开通道——
-先接线只剩静默 no-op 一种坏结局）。真实消费者出现时再开。
+第一方 `llm-adapters-plugin`（loadBuiltinPlugins 表序第二行）贡献内核
+anthropic/openai 两条默认 adapter（`{ id, kind, create }`）；外部插件按同 kind
+**后注册胜**覆盖（仪器化 wrapper / 替换协议实现），dispose 分层回落。消费入口 =
+`createProvider(settings)` 方言解析器（provider/index.ts 只查本通道，零内核回落
+分支）；未命中响亮报错 `PROVIDER_DIALECT` 并点名已注册方言。
+
+> 历史注：原「预留不接线」状态自 2026-08-26 方言收口起终结；通道名
+> ctx.providers 于 2026-08-27 平台化 Phase 1 升格更名为 ctx.llm
+> （agent-platformization-plan §3 D2/D5 修订注记）。
 
 ### manifest.tools —— 声明式工具挂接（C11-1，2026-08-24）
 

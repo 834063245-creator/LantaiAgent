@@ -16,8 +16,19 @@ vi.mock('../src/bridge', () => ({
 }));
 
 import { ToolRegistry } from '../src/agent/tool';
+import { compositionServicesPlugin } from '../src/composition/services';
+import { Context } from '../src/cordis';
+import { llmAdaptersPlugin } from '../src/plugins/llm-adapters-plugin';
 import type { Chunk, Provider } from '../src/provider/types';
 import { createTestAgent } from './helpers/agent';
+
+// 生产装配复现（平台化 Phase 1 · D2 修订版）：selectSummaryProvider 经
+// createProvider 构建摘要 provider——需第一方 llm-adapters 贡献在册。
+{
+  const bootRoot = new Context();
+  await bootRoot.plugin(compositionServicesPlugin);
+  await bootRoot.plugin(llmAdaptersPlugin);
+}
 
 function mockProvider(name: string): Provider {
   return {
