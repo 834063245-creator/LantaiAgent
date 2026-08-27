@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 //! 引擎工具分发业务（L3 自 commands/engine_dispatch.rs 迁入，零语义改写）。
-//! 决议链（workspace/_session_id → 焦点 → 单槽）+ TLS 绑定 dispatch。
+//! 决议链（workspace-session-ownership-rework 2026-08-27：显式 root → 活动
+//! 工作区单槽）+ TLS 绑定 dispatch。
 
 use std::sync::Arc;
 
@@ -45,12 +46,11 @@ pub(crate) fn call_dispatched(
     ws_state: &crate::WorkspaceState,
     tool: String,
     args: serde_json::Value,
-    session_id: Option<u64>,
     workspace: Option<String>,
 ) -> Result<String, String> {
     let engine = {
         let fallback = crate::utils::workspace_path(ws_state).ok();
-        app_ctx.resolve_engine(workspace.as_deref(), session_id, fallback.as_deref())
+        app_ctx.resolve_engine(workspace.as_deref(), fallback.as_deref())
     };
     match engine {
         Some(engine) => {

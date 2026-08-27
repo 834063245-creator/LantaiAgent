@@ -9,7 +9,6 @@ use serde_json;
 pub(crate) async fn hologram_call(
     tool: String,
     mut args: serde_json::Value,
-    session_id: Option<u64>,
     workspace: Option<String>,
     state: tauri::State<'_, crate::WorkspaceState>,
     app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
@@ -35,7 +34,6 @@ pub(crate) async fn hologram_call(
             &ws_state,
             tool,
             args,
-            session_id,
             workspace,
         )
     })

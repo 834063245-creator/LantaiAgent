@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 //! 图命令业务（L3 自 commands/graph.rs 迁入，零语义改写）。
-//! 引擎一律经 AppContexts 决议（显式 path → _session_id → 焦点会话 →
-//! 单槽工作区），不再以「当前工作区」为隐式全局锚。
+//! 引擎一律经 AppContexts 决议（显式 path → 活动工作区单槽），
+//! 不再以「会话/焦点投影」为决议依据（workspace-session-ownership-rework
+//! 2026-08-27：会话只在所属工作区内打开）。
 
 use std::sync::Arc;
 
@@ -11,13 +12,12 @@ use hologram_engine::engine::Engine;
 
 use crate::app::AppContexts;
 
-/// 命令层引擎决议：显式根优先，其后会话/焦点/单槽回退。
+/// 命令层引擎决议：显式根优先，其后活动工作区（单槽）回退。
 /// 返回 (引擎, 根路径展示形)——引擎必属该根（ensure_context 语义）。
 pub(crate) fn resolve(
     app_ctx: &Arc<AppContexts>,
     state: &crate::WorkspaceState,
     explicit: Option<&str>,
-    session_id: Option<u64>,
 ) -> Result<(Arc<Engine>, String), String> {
     let fallback = crate::utils::workspace_path(state).ok();
     let root = explicit
@@ -26,7 +26,7 @@ pub(crate) fn resolve(
         .map(|s| s.to_string())
         .or_else(|| fallback.clone());
     let engine = app_ctx
-        .resolve_engine(explicit, session_id, fallback.as_deref())
+        .resolve_engine(explicit, fallback.as_deref())
         .ok_or_else(|| "未打开工作区，请先打开项目".to_string())?;
     let root = root.unwrap_or_else(|| {
         hologram_engine::path_utils::normalize_path(
@@ -66,7 +66,7 @@ pub(crate) async fn load_graph_json(
             return Err("路径包含非法字符".into());
         }
         // 引擎图（内存/SQLite 缓存）优先 — ensure_context 只加载缓存不分析。
-        if let Ok((engine, root_disp)) = resolve(&app_ctx, &state, Some(&root), None) {
+        if let Ok((engine, root_disp)) = resolve(&app_ctx, &state, Some(&root)) {
             if crate::utils::ensure_engine_ready(&engine, &root_disp).is_ok() {
                 // 冷启动新鲜度门禁（2026-08-18 修复）：SQLite 缓存可能过期
                 // （源文件在上次分析后被修改）。过期时不阻断渲染，但必须留痕，
@@ -114,7 +114,7 @@ pub(crate) async fn analyze_and_load(
     let _ = std::fs::write(crate::utils::project_root().join(".last_project"), &path);
 
     // L1：目标根显式 → 数据上下文（不存在则创建，引擎 init 落在 spawn_blocking 内）
-    let (engine, root_disp) = resolve(&app_ctx, &state, Some(&path), None)?;
+    let (engine, root_disp) = resolve(&app_ctx, &state, Some(&path))?;
     let analyze_future = crate::utils::run_analyze_with_progress(
         engine.clone(),
         path.clone(),
@@ -138,13 +138,12 @@ pub(crate) async fn analyze_and_load(
     Ok(meta)
 }
 
-/// get_graph_meta 业务体：决议链 _session_id → 焦点会话 → 单槽工作区。
+/// get_graph_meta 业务体：活动工作区（单槽）决议。
 pub(crate) async fn get_graph_meta(
-    session_id: Option<u64>,
     state: crate::WorkspaceState,
     app_ctx: Arc<AppContexts>,
 ) -> Result<String, String> {
-    let (engine, root) = resolve(&app_ctx, &state, None, session_id)?;
+    let (engine, root) = resolve(&app_ctx, &state, None)?;
     let page_default = crate::utils::GRAPH_PAGE_DEFAULT_NODES;
     tokio::task::spawn_blocking(move || {
         crate::utils::ensure_engine_ready(&engine, &root)?;
@@ -159,11 +158,10 @@ pub(crate) async fn get_graph_meta(
 pub(crate) async fn get_graph_page(
     page: usize,
     page_size: Option<usize>,
-    session_id: Option<u64>,
     state: crate::WorkspaceState,
     app_ctx: Arc<AppContexts>,
 ) -> Result<String, String> {
-    let (engine, root) = resolve(&app_ctx, &state, None, session_id)?;
+    let (engine, root) = resolve(&app_ctx, &state, None)?;
     let size = page_size.unwrap_or(crate::utils::GRAPH_PAGE_DEFAULT_NODES).clamp(500, 60_000);
     let serialized = tokio::task::spawn_blocking(move || {
         crate::utils::ensure_engine_ready(&engine, &root)?;
@@ -182,7 +180,7 @@ pub(crate) async fn engine_impact(
     app_ctx: Arc<AppContexts>,
 ) -> Result<String, String> {
     let fallback = crate::utils::workspace_path(&state).ok();
-    match app_ctx.resolve_engine(None, None, fallback.as_deref()) {
+    match app_ctx.resolve_engine(None, fallback.as_deref()) {
         Some(engine) => {
             tokio::task::spawn_blocking(move || {
                 crate::utils::with_index(&engine, move |idx| {

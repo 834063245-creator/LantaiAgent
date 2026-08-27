@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 //! Hologram 查询业务（L3 自 commands/hologram.rs 迁入，零语义改写）。
-//! 引擎经 AppContexts 决议（显式 path → 会话 → 焦点 → 单槽），
-//! 时间线/简报落点跟随会话绑定的引擎实例。
+//! 引擎经 AppContexts 决议（显式 path → 活动工作区单槽），
+//! 时间线/简报落点跟随活动工作区的引擎实例。
 
 use std::sync::Arc;
 
@@ -15,11 +15,10 @@ use crate::app::services::graph_service;
 
 /// get_full_graph 业务体。
 pub(crate) async fn get_full_graph(
-    session_id: Option<u64>,
     state: crate::WorkspaceState,
     app_ctx: Arc<AppContexts>,
 ) -> Result<String, String> {
-    let (engine, root) = graph_service::resolve(&app_ctx, &state, None, session_id)?;
+    let (engine, root) = graph_service::resolve(&app_ctx, &state, None)?;
     let serialized = tokio::task::spawn_blocking(move || crate::utils::serialize_cached_graph(&engine, &root))
         .await.map_err(|e| format!("任务失败: {e}"))??;
     crate::utils::guard_ipc_size(serialized, "序列化图")
@@ -28,14 +27,13 @@ pub(crate) async fn get_full_graph(
 /// hologram_run_check 业务体（changed_files 快取由壳层完成传入）。
 pub(crate) async fn run_check(
     path: Option<String>,
-    session_id: Option<u64>,
     state: crate::WorkspaceState,
     app_ctx: Arc<AppContexts>,
     changed_files: Vec<String>,
 ) -> Result<String, String> {
     // 默认 target = 当前工作区根（而非应用安装目录 project_root()）。
-    // L1：显式 path → 会话/焦点/单槽决议；引擎实例与根天然绑定。
-    let (engine, target) = graph_service::resolve(&app_ctx, &state, path.as_deref(), session_id)?;
+    // L1：显式 path → 活动工作区单槽决议；引擎实例与根天然绑定。
+    let (engine, target) = graph_service::resolve(&app_ctx, &state, path.as_deref())?;
     tokio::task::spawn_blocking(move || {
         use hologram_engine::routing::preflight::run_full_check;
         let root = std::path::PathBuf::from(&target);
@@ -78,14 +76,13 @@ pub(crate) async fn run_check(
     }).await.map_err(|e| format!("简报任务失败: {e}"))?
 }
 
-/// record_event 的决议（无显式根；会话/焦点优先，全局兜底）。
+/// record_event 的决议（无显式根；活动工作区优先，全局兜底）。
 fn resolve_engine_or_global(
     app_ctx: &Arc<AppContexts>,
     state: &crate::WorkspaceState,
-    session_id: Option<u64>,
 ) -> Option<Arc<Engine>> {
     let fallback = crate::utils::workspace_path(state).ok();
-    app_ctx.resolve_engine(None, session_id, fallback.as_deref())
+    app_ctx.resolve_engine(None, fallback.as_deref())
 }
 
 /// hologram_record_event 业务体。
@@ -93,12 +90,11 @@ pub(crate) async fn record_event(
     event_type: String,
     file: Option<String>,
     summary: String,
-    session_id: Option<u64>,
     state: crate::WorkspaceState,
     app_ctx: Arc<AppContexts>,
 ) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
-        match resolve_engine_or_global(&app_ctx, &state, session_id) {
+        match resolve_engine_or_global(&app_ctx, &state) {
             Some(engine) => engine
                 .record_timeline(&event_type, file.as_deref(), &summary)
                 .map_err(|e| format!("时间轴写入失败: {}", e)),

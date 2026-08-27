@@ -4,22 +4,24 @@
 //! 应用层（L1 数据上下文抽象）—— 壳内新生的业务与数据归属层。
 //!
 //! [`WorkspaceDataContext`] 按工作区实例化：每个工作区一个专属引擎实例
-//! （图库 / 索引 / 时间线连接 / watcher 全在该实例内部），会话经
-//! **事实校验**（卷快照 `workspace` 字段 + 目录存在性）attach 到自己的
-//! 上下文；「当前工作区」退化为 UI 投影（由焦点会话推导）。
+//! （图库 / 索引 / 时间线连接 / watcher 全在该实例内部）。
+//! 工作区 = 容器（workspace-session-ownership-rework 2026-08-27）：
+//! 会话物理归属工作区，会话只在所属工作区内打开——因此**不再需要**会话
+//! 绑定表与焦点投影；引擎决议只看「显式 root → 活动工作区（单槽
+//! WorkspaceState）→ None」两条臂。
 //!
 //! 设计参照 DSH 五条铁律（docs/plans/layering-rework-plan.md §4 L1）：
-//! 1. 会话是第一公民，自带 workspace 事实（卷快照字段）；
-//! 2. 工作区 = 注册表容器（canonical 路径为键）；
-//! 3. attach = 事实校验非声明——卷在则以卷为准，目录在才绑定；
-//! 4. 出生与绑定分离——新会话卷未落盘时可用声明绑定，落盘后以卷为事实；
-//! 5. 运行时锚点 = 会话，工作区是派生投影。
+//! 1. 会话是第一公民（按区归属）；
+//! 2. 工作区 = 注册表容器（canonical 路径为键）+ 目录实体；
+//! 3. 归属 = 存储结构（`{ws}/.lantai/sessions/`），不是元数据标签；
+//! 4. 引擎上下文按需 ensure（幂等复用）；
+//! 5. 运行时锚点 = 活动工作区（单槽），会话是其内的作用域。
 //!
 //! 线程/锁纪律：std::sync 锁 + `unwrap_or_else(|e| e.into_inner())` 中毒
 //! 恢复（壳层惯例，见 CONVENTIONS）；所有会阻塞的引擎操作（Engine init
 //! 开 SQLite）由命令层包 spawn_blocking，本层保持同步纯逻辑。
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 
@@ -42,7 +44,7 @@ fn write_or_recover<T>(lock: &RwLock<T>) -> std::sync::RwLockWriteGuard<'_, T> {
 
 /// canonical 化工作区根：必须存在且是目录；去除 Windows verbatim 前缀
 /// （`\\?\C:\...` → `C:\...`、`\\?\UNC\srv\share` → `\\srv\share`）。
-/// 不存在 / 非目录 → None（attach 事实校验的「目录在」判据）。
+/// 不存在 / 非目录 → None（绑定校验的「目录在」判据）。
 pub(crate) fn canonical_root(path: &str) -> Option<PathBuf> {
     let trimmed = path.trim();
     if trimmed.is_empty() || trimmed.contains('\0') {
@@ -77,7 +79,7 @@ pub(crate) fn display_path(p: &Path) -> String {
 // 数据上下文
 // ═══════════════════════════════════════════════════════════════
 
-/// 按工作区实例化的数据上下文。L2 起显式持**数据宿主共享句柄**——
+/// 按工作区实例化的数据上下文。显式持**数据宿主共享句柄**——
 /// 图库（hologram.db/FTS5/快照）与 timeline 连接的归属单元在
 /// [`hologram_storage::StoreHost`]（L2 crate 化：engine/src/storage 物理拆出
 /// 为独立 crate），宿主（本上下文）创建并注入 Engine；应用层可直接经
@@ -93,8 +95,6 @@ pub(crate) struct WorkspaceDataContext {
     /// （analyze_persist_query_loop_via_context）——dead_code 豁免。
     #[allow(dead_code)]
     pub(crate) store_host: Arc<Mutex<hologram_storage::StoreHost>>,
-    /// 绑定到本上下文的会话 id 集（GC 判据）。
-    pub(crate) sessions: Mutex<HashSet<u64>>,
     pub created_at_ms: u64,
 }
 
@@ -106,58 +106,6 @@ impl WorkspaceDataContext {
     }
 }
 
-/// 会话绑定记录。`workspace == None` = Ungrouped（零目录/目录缺失卷，
-/// 最小上下文——会话照常可用，无图上下文）。
-pub(crate) struct SessionBinding {
-    pub workspace: Option<PathBuf>,
-}
-
-/// attach 结果（命令回包 / 测试判据）。
-#[derive(serde::Serialize, Debug, PartialEq, Eq)]
-pub struct AttachOutcome {
-    pub session_id: u64,
-    /// 绑定到的工作区（正斜杠 canonical 展示形）；None = Ungrouped。
-    pub workspace: Option<String>,
-    /// 是否绑定成功（workspace 非 None）。
-    pub attached: bool,
-}
-
-/// 卷快照读取事实。
-#[derive(Debug, PartialEq, Eq)]
-enum VolumeFact {
-    /// 卷文件不存在（新生会话——可用声明绑定，DSH 规则 4）。
-    Missing,
-    /// 卷在但读不出事实（坏 JSON / 超 4MB 毒化护栏）——按 Ungrouped 处理，
-    /// 不采纳声明（卷已存在，不按新生对待）。
-    Corrupt,
-    /// 卷在且可读；workspace 字段（可空）。
-    Data(Option<String>),
-}
-
-/// 读卷快照的 workspace 事实（归零重建 2026-08-25：仅全局位单读——旧目录
-/// 已归档，legacy 回退面已拆）。
-/// 只读不写；>4MB / 坏 JSON / 非 JSON 全容忍为 Corrupt（INVARIANTS #11.2）。
-fn read_volume_workspace(session_id: u64, sessions_root: &Path) -> VolumeFact {
-    let file = sessions_root.join(format!("{session_id}.json"));
-    let read_one = || -> Option<VolumeFact> {
-        let meta = std::fs::metadata(&file).ok()?;
-        if meta.len() > 4 * 1024 * 1024 {
-            return Some(VolumeFact::Corrupt);
-        }
-        let content = std::fs::read_to_string(&file).ok()?;
-        let parsed: serde_json::Value = serde_json::from_str(&content).ok()?;
-        // 墓碑卷（deleted）视同数据卷——workspace 字段仍可作为归属事实，
-        // 但 attach 前端不会打开墓碑；按 Data 处理保持读侧无特判。
-        let ws = parsed
-            .get("workspace")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.trim().is_empty())
-            .map(|s| s.replace('\\', "/"));
-        Some(VolumeFact::Data(ws))
-    };
-    read_one().unwrap_or(VolumeFact::Missing)
-}
-
 // ═══════════════════════════════════════════════════════════════
 // 注册表（Tauri managed state：Arc<AppContexts>）
 // ═══════════════════════════════════════════════════════════════
@@ -165,10 +113,6 @@ fn read_volume_workspace(session_id: u64, sessions_root: &Path) -> VolumeFact {
 pub struct AppContexts {
     /// canonical root → context。
     contexts: RwLock<HashMap<PathBuf, Arc<WorkspaceDataContext>>>,
-    /// session_id → binding（None = Ungrouped）。
-    sessions: RwLock<HashMap<u64, SessionBinding>>,
-    /// 焦点会话（UI 投影锚；决议链回退序之一）。
-    focus: RwLock<Option<u64>>,
 }
 
 impl Default for AppContexts {
@@ -181,8 +125,6 @@ impl AppContexts {
     pub fn new() -> Self {
         Self {
             contexts: RwLock::new(HashMap::new()),
-            sessions: RwLock::new(HashMap::new()),
-            focus: RwLock::new(None),
         }
     }
 
@@ -214,7 +156,6 @@ impl AppContexts {
             root: canon.clone(),
             store_host: engine.store_host().clone(),
             engine: engine.clone(),
-            sessions: Mutex::new(HashSet::new()),
             created_at_ms: Self::now_ms(),
         });
         guard.insert(canon, ctx.clone());
@@ -223,106 +164,12 @@ impl AppContexts {
         Ok(ctx)
     }
 
-    /// 会话 attach（事实校验）：
-    /// - 卷在 → 卷快照 workspace 字段为准（声明不参与）；目录在 → 绑定；
-    ///   目录缺失 / 字段空 → Ungrouped；
-    /// - 卷不在（新生）→ 声明 workspace（目录在）→ 绑定；无声明 → Ungrouped；
-    /// - 坏卷 → Ungrouped（不采纳声明）。
-    /// 重 attach（会话迁移）覆盖旧绑定并 GC 旧上下文。
-    /// ⚠ 命中需建引擎时开 SQLite——命令层须包 spawn_blocking。
-    pub(crate) fn attach_session(
-        &self,
-        session_id: u64,
-        claim: Option<&str>,
-        sessions_root: &Path,
-    ) -> Result<AttachOutcome, String> {
-        let fact = read_volume_workspace(session_id, sessions_root);
-        let workspace: Option<PathBuf> = match &fact {
-            VolumeFact::Data(Some(ws)) => canonical_root(ws), // 目录缺失 → None（Ungrouped）
-            VolumeFact::Data(None) => None,
-            VolumeFact::Corrupt => None,
-            VolumeFact::Missing => claim.and_then(canonical_root),
-        };
-        let ctx = match &workspace {
-            Some(root) => Some(self.ensure_context(&display_path(root))?),
-            None => None,
-        };
-        // 旧绑定迁移：先取旧值再写新值；从旧上下文会话集移除 + GC。
-        let old_root = {
-            let mut sessions = write_or_recover(&self.sessions);
-            let old = sessions
-                .get(&session_id)
-                .and_then(|b| b.workspace.clone());
-            sessions.insert(
-                session_id,
-                SessionBinding {
-                    workspace: workspace.clone(),
-                },
-            );
-            old
-        };
-        if let Some(ref old) = old_root {
-            if Some(old) != workspace.as_ref() {
-                if let Some(old_ctx) = read_or_recover(&self.contexts).get(old).cloned() {
-                    old_ctx
-                        .sessions
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .remove(&session_id);
-                }
-                let keep: Vec<PathBuf> = workspace.clone().into_iter().collect();
-                self.gc_if_unused(old, &keep);
-            }
-        }
-        if let Some(ref ctx) = ctx {
-            ctx.sessions
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .insert(session_id);
-        }
-        Ok(AttachOutcome {
-            session_id,
-            workspace: workspace.as_deref().map(display_path),
-            attached: workspace.is_some(),
-        })
-    }
-
-    /// 焦点会话（UI 投影锚）。未 attach 的会话也可被聚焦（决议链自然回退）。
-    pub(crate) fn focus_session(&self, session_id: u64) -> Option<String> {
-        *write_or_recover(&self.focus) = Some(session_id);
-        self.session_workspace(session_id)
-    }
-
-    /// 会话绑定的工作区（展示形）。
-    pub(crate) fn session_workspace(&self, session_id: u64) -> Option<String> {
-        read_or_recover(&self.sessions)
-            .get(&session_id)
-            .and_then(|b| b.workspace.as_ref())
-            .map(|p| display_path(p))
-    }
-
-    /// 解绑会话并按需 GC 上下文（无会话绑定且非焦点且不在保留集）。
-    pub(crate) fn detach_session(&self, session_id: u64, keep_roots: &[PathBuf]) {
-        let old = write_or_recover(&self.sessions).remove(&session_id);
-        if *read_or_recover(&self.focus) == Some(session_id) {
-            *write_or_recover(&self.focus) = None;
-        }
-        if let Some(SessionBinding { workspace: Some(root), .. }) = old {
-            self.gc_if_unused(&root, keep_roots);
-        }
-    }
-
-    /// 上下文空闲判定回收：无会话绑定、非焦点工作区、不在保留集 →
-    /// 停 watcher + 移除（Arc 落 Drop 关库连接）。
+    /// 上下文空闲判定回收：非活动工作区（不在保留集）→ 停 watcher + 移除
+    /// （Arc 落 Drop 关库连接）。保留集由命令层传入（单槽活动根）。
+    /// 归零：会话绑定判定已退役——引擎上下文只跟「活动工作区」走。
     pub(crate) fn gc_if_unused(&self, root: &Path, keep_roots: &[PathBuf]) {
-        let in_use = read_or_recover(&self.sessions)
-            .values()
-            .any(|b| b.workspace.as_deref() == Some(root));
-        let focused_root = self
-            .focused_context()
-            .map(|c| c.root.clone());
         let kept = keep_roots.iter().any(|k| k == root);
-        if in_use || focused_root.as_deref() == Some(root) || kept {
+        if kept {
             return;
         }
         if let Some(ctx) = write_or_recover(&self.contexts).remove(root) {
@@ -330,30 +177,12 @@ impl AppContexts {
         }
     }
 
-    /// 会话 → 上下文。
-    pub(crate) fn context_for_session(&self, session_id: u64) -> Option<Arc<WorkspaceDataContext>> {
-        let root = read_or_recover(&self.sessions)
-            .get(&session_id)
-            .and_then(|b| b.workspace.clone())?;
-        read_or_recover(&self.contexts).get(&root).cloned()
-    }
-
-    /// 焦点会话 → 上下文。
-    pub(crate) fn focused_context(&self) -> Option<Arc<WorkspaceDataContext>> {
-        let focus = *read_or_recover(&self.focus);
-        self.context_for_session(focus?)
-    }
     /// 上下文清单（诊断 / 守护测试）。
     pub(crate) fn list_contexts(&self) -> Vec<ContextInfo> {
         read_or_recover(&self.contexts)
             .values()
             .map(|c| ContextInfo {
                 workspace: display_path(&c.root),
-                session_count: c
-                    .sessions
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .len(),
                 created_at_ms: c.created_at_ms,
                 ready: c.engine.is_ready(),
             })
@@ -366,26 +195,17 @@ impl AppContexts {
         read_or_recover(&self.contexts).len()
     }
 
-    /// 解析链核心：显式 root → 会话 → 焦点 → 保留回退（单槽）。
-    /// 全部未命中 → None（调用方回落全局引擎——MCP 时代语义）。
-    /// ⚠ ensure 语义（miss 即建）只对 explicit_root 生效；会话/焦点链
-    /// 只读（未 attach 的会话不应凭空调用就建引擎）。
+    /// 解析链核心：显式 root → 活动工作区（单槽回退）。全部未命中 → None
+    /// （调用方回落全局引擎——MCP 时代语义）。
+    /// ⚠ ensure 语义（miss 即建）对两条臂都生效：显式 root 是命令指名，
+    /// 回退 root 是活动工作区（激活时上下文已存在，ensure 幂等无副作用）。
     pub(crate) fn resolve_engine(
         &self,
         explicit_root: Option<&str>,
-        session_id: Option<u64>,
         fallback_root: Option<&str>,
     ) -> Option<Arc<Engine>> {
         if let Some(root) = explicit_root.map(str::trim).filter(|s| !s.is_empty()) {
             return self.ensure_context(root).ok().map(|c| c.engine.clone());
-        }
-        if let Some(sid) = session_id {
-            if let Some(ctx) = self.context_for_session(sid) {
-                return Some(ctx.engine.clone());
-            }
-        }
-        if let Some(ctx) = self.focused_context() {
-            return Some(ctx.engine.clone());
         }
         if let Some(root) = fallback_root.map(str::trim).filter(|s| !s.is_empty()) {
             return self.ensure_context(root).ok().map(|c| c.engine.clone());
@@ -398,7 +218,6 @@ impl AppContexts {
 #[derive(serde::Serialize)]
 pub struct ContextInfo {
     pub workspace: String,
-    pub session_count: usize,
     pub created_at_ms: u64,
     pub ready: bool,
 }
@@ -416,109 +235,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         tmp
-    }
-
-    /// attach 事实校验：卷在、workspace 字段有效、目录存在 → 绑定对应上下文。
-    #[test]
-    fn attach_binds_to_volume_workspace_fact() {
-        let ws = temp_dir("lantai_ctx_attach_fact");
-        let sess_root = temp_dir("lantai_ctx_attach_fact_sess");
-        let ws_disp = display_path(&ws);
-        std::fs::write(
-            sess_root.join("7.json"),
-            serde_json::json!({ "label": "x", "workspace": ws_disp }).to_string(),
-        )
-        .unwrap();
-
-        let app = AppContexts::new();
-        let out = app
-            .attach_session(7, None, &sess_root)
-            .expect("attach should succeed");
-        assert_eq!(out.workspace.as_deref(), Some(ws_disp.as_str()));
-        assert!(out.attached);
-        assert_eq!(app.context_count(), 1, "context created for workspace");
-    }
-
-    /// 卷在但 workspace 字段空 → Ungrouped（不建上下文，会话仍可用）。
-    #[test]
-    fn attach_zero_workspace_volume_is_ungrouped() {
-        let sess_root = temp_dir("lantai_ctx_attach_zero");
-        std::fs::write(
-            sess_root.join("8.json"),
-            serde_json::json!({ "label": "x", "workspace": null }).to_string(),
-        )
-        .unwrap();
-
-        let app = AppContexts::new();
-        let out = app.attach_session(8, None, &sess_root).unwrap();
-        assert_eq!(out.workspace, None);
-        assert!(!out.attached);
-        assert_eq!(app.context_count(), 0);
-    }
-
-    /// 卷在但工作区目录已删 → Ungrouped（事实校验拒绝，不采纳声明）。
-    #[test]
-    fn attach_volume_workspace_dir_missing_is_ungrouped() {
-        let sess_root = temp_dir("lantai_ctx_attach_missing_dir");
-        std::fs::write(
-            sess_root.join("9.json"),
-            serde_json::json!({ "label": "x", "workspace": "Z:/definitely/not/here" }).to_string(),
-        )
-        .unwrap();
-
-        let app = AppContexts::new();
-        let out = app.attach_session(9, Some("C:/also/not/here"), &sess_root).unwrap();
-        assert_eq!(out.workspace, None, "卷存在时声明不得覆盖卷事实（即便目录缺失）");
-        assert_eq!(app.context_count(), 0);
-    }
-
-    /// 新生会话（卷不在）→ 声明绑定（DSH 出生与绑定分离）。
-    #[test]
-    fn attach_newborn_uses_claim() {
-        let ws = temp_dir("lantai_ctx_attach_newborn");
-        let sess_root = temp_dir("lantai_ctx_attach_newborn_sess");
-        let ws_disp = display_path(&ws);
-
-        let app = AppContexts::new();
-        let out = app
-            .attach_session(11, Some(&ws_disp), &sess_root)
-            .unwrap();
-        assert_eq!(out.workspace.as_deref(), Some(ws_disp.as_str()));
-        assert!(out.attached);
-
-        // 卷随后落盘（带另一 workspace 事实）→ 重 attach 以卷为准
-        let ws2 = temp_dir("lantai_ctx_attach_newborn_2");
-        std::fs::write(
-            sess_root.join("11.json"),
-            serde_json::json!({ "workspace": display_path(&ws2) }).to_string(),
-        )
-        .unwrap();
-        let out2 = app
-            .attach_session(11, Some(&ws_disp), &sess_root)
-            .unwrap();
-        assert_eq!(out2.workspace.as_deref(), Some(display_path(&ws2).as_str()));
-        // 旧声明工作区上下文无会话引用后应被 GC（非焦点、非保留）
-        assert_eq!(app.context_count(), 1, "旧上下文应被回收");
-    }
-
-    /// 归零重建：全局位无此卷 = 不存在（legacy 回退面已拆，旧目录归档）。
-    /// 旧目录里躺着的卷文件不再被读——attach 走 Ungrouped。
-    #[test]
-    fn attach_ignores_archived_legacy_volumes() {
-        let ws = temp_dir("lantai_ctx_attach_legacy");
-        let legacy_project = temp_dir("lantai_ctx_attach_legacy_proj");
-        let empty_global = temp_dir("lantai_ctx_attach_legacy_global");
-        std::fs::create_dir_all(legacy_project.join(".lantai/sessions")).unwrap();
-        std::fs::write(
-            legacy_project.join(".lantai/sessions/12.json"),
-            serde_json::json!({ "workspace": display_path(&ws) }).to_string(),
-        )
-        .unwrap();
-
-        let app = AppContexts::new();
-        let out = app.attach_session(12, None, &empty_global).unwrap();
-        assert!(!out.attached, "全局位无此卷 → Ungrouped（旧目录不再回退）");
-        assert_eq!(out.workspace, None);
     }
 
     /// 双工作区并行：各持各的引擎实例，互不串写（L1 验收判据）。
@@ -551,77 +267,49 @@ mod tests {
         assert!(ctx_b.engine.read(|i| i.get_node("a_node").is_none()).unwrap());
     }
 
-    /// 决议链：显式 root > 会话 > 焦点 > 回退；全空 → None。
+    /// 决议链（workspace-session-ownership-rework 后两条臂）：
+    /// 显式 root 优先 → 活动工作区回退 → 全空 None。
     #[test]
-    fn resolve_engine_chain_priority() {
+    fn resolve_engine_two_arms_priority() {
         let ws_a = temp_dir("lantai_ctx_chain_a");
         let ws_b = temp_dir("lantai_ctx_chain_b");
         let ws_c = temp_dir("lantai_ctx_chain_c");
-        let sess_root = temp_dir("lantai_ctx_chain_sess");
         let app = AppContexts::new();
 
-        // 会话 21 → ws_a（卷事实）
-        std::fs::write(
-            sess_root.join("21.json"),
-            serde_json::json!({ "workspace": display_path(&ws_a) }).to_string(),
-        )
-        .unwrap();
-        app.attach_session(21, None, &sess_root).unwrap();
-        // 会话 22 → ws_b，并聚焦
-        std::fs::write(
-            sess_root.join("22.json"),
-            serde_json::json!({ "workspace": display_path(&ws_b) }).to_string(),
-        )
-        .unwrap();
-        app.attach_session(22, None, &sess_root).unwrap();
-        let focused_ws = app.focus_session(22).unwrap();
-        assert_eq!(focused_ws, display_path(&ws_b));
-
-        let b_disp = display_path(&ws_b);
-        let c_disp = display_path(&ws_c);
-
-        // 显式 root 最高优先（即便与会话/焦点不同）
-        let e_c = app.resolve_engine(Some(&c_disp), Some(21), Some(&b_disp)).unwrap();
+        // 显式 root 最高优先（即便与回退不同）
+        let e_c = app.resolve_engine(Some(&display_path(&ws_c)), Some(&display_path(&ws_b))).unwrap();
         assert_eq!(e_c.project_root(), ws_c);
 
-        // 会话 > 焦点
-        let e_21 = app.resolve_engine(None, Some(21), Some(&b_disp)).unwrap();
-        assert_eq!(e_21.project_root(), ws_a);
-
-        // 焦点兜底
-        let e_focus = app.resolve_engine(None, None, Some(&b_disp)).unwrap();
-        assert_eq!(e_focus.project_root(), ws_b);
-
-        // 焦点 detach 后 → 回退根
-        app.detach_session(22, &[]);
-        let e_fb = app.resolve_engine(None, None, Some(&b_disp)).unwrap();
+        // 无显式 → 回退（活动工作区）
+        let e_fb = app.resolve_engine(None, Some(&display_path(&ws_b))).unwrap();
         assert_eq!(e_fb.project_root(), ws_b);
 
+        // 回退无效（空/不存在）→ None
+        assert!(app.resolve_engine(None, Some("")).is_none());
+        assert!(app.resolve_engine(None, Some("Z:/definitely/not/here")).is_none());
+
         // 全空 → None
-        assert!(app.resolve_engine(None, Some(999), None).is_none());
+        assert!(app.resolve_engine(None, None).is_none());
+
+        // 幂等：重复解析不同根不新建（两条臂各 ensure 一次，共 3 个上下文）
+        let _ = app.resolve_engine(None, Some(&display_path(&ws_a))).unwrap();
+        assert_eq!(app.context_count(), 3, "ensure_context 幂等，不因重复解析新建");
     }
 
-    /// detach GC：最后一个会话解绑 → 上下文回收。
+    /// GC：非保留根回收；保留根不回收。
     #[test]
-    fn detach_garbage_collects_idle_context() {
+    fn gc_if_unused_honors_keep_roots() {
         let ws = temp_dir("lantai_ctx_gc");
-        let sess_root = temp_dir("lantai_ctx_gc_sess");
         let app = AppContexts::new();
-        std::fs::write(
-            sess_root.join("31.json"),
-            serde_json::json!({ "workspace": display_path(&ws) }).to_string(),
-        )
-        .unwrap();
-        app.attach_session(31, None, &sess_root).unwrap();
+        app.ensure_context(&display_path(&ws)).unwrap();
         assert_eq!(app.context_count(), 1);
 
         // 保留集包含该根 → 不回收
-        app.detach_session(31, &[ws.clone()]);
+        app.gc_if_unused(&ws, &[ws.clone()]);
         assert_eq!(app.context_count(), 1, "保留根不回收");
 
-        // 重新绑定后无保留解绑 → 回收
-        app.attach_session(31, None, &sess_root).unwrap();
-        app.detach_session(31, &[]);
+        // 无保留 → 回收
+        app.gc_if_unused(&ws, &[]);
         assert_eq!(app.context_count(), 0, "空闲上下文应回收");
     }
 
@@ -648,7 +336,7 @@ mod tests {
         assert_eq!(via_engine, via_host, "计算面与应用层数据面必须同源一致");
         assert!(via_engine > 0);
 
-        // 落盘验证：GC（无会话绑定）→ 重开 → 新实例从盘上读回
+        // 落盘验证：GC（非保留）→ 重开 → 新实例从盘上读回
         app.gc_if_unused(&ctx.root, &[]);
         let ctx2 = app.ensure_context(&display_path(&ws)).unwrap();
         let reloaded = ctx2.engine.read(|i| i.node_count()).unwrap();

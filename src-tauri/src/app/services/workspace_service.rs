@@ -66,7 +66,8 @@ pub(crate) async fn activate(
 
 /// workspace_deactivate 业务体：上下文 GC + 进程池清理（横切）。
 pub(crate) async fn deactivate(old_path: String, app_ctx: Arc<AppContexts>) -> Result<(), String> {
-    // L1：停用时释放该根的数据上下文（若无会话仍绑定）——
+    // L1：停用时释放该根的数据上下文（workspace-session-ownership-rework
+    // 2026-08-27：无会话绑定判定——引擎上下文只跟活动工作区走，切走即关）——
     // 引擎实例停 watcher、Arc 落 Drop 关库连接。
     if !old_path.trim().is_empty() {
         if let Some(canon) = crate::app::canonical_root(&old_path) {

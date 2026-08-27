@@ -215,50 +215,15 @@ pub(crate) mod registry {
         write_registry(&reg)
     }
 
-    /// 移除工作区（彻底）：删除该工作区**全部会话**（墓碑——与 deleteSessionFile
-    /// 同形，listSavedSessions 过滤）并从注册表移除。若只解登记不删会话，会话推导
-    /// 会把工作区重新带回首页（回到结构性缺口）——所以「移除」必须是彻底的。
+    /// 移除工作区（彻底）：删除该工作区自己的会话目录（`{ws}/.lantai/sessions/`）
+    /// 并从注册表移除。workspace-session-ownership-rework（2026-08-27）：会话
+    /// 物理归属工作区——删除 = 删目录；旧模型的「按 workspace 字段扫描全局位
+    /// 墓碑」已随全局位归档退役。
     pub(crate) fn remove(path: &str) -> Result<(), String> {
         let np = norm_path(path);
-        let dir = crate::commands::filesystem::user_sessions_root();
-        if let Ok(entries) = std::fs::read_dir(&dir) {
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if !name.ends_with(".json") || name == "_active.json" || name == "_ledger.json" {
-                    continue;
-                }
-                if name.trim_end_matches(".json").parse::<u64>().is_err() {
-                    continue;
-                }
-                let content = match std::fs::read_to_string(entry.path()) {
-                    Ok(c) => c,
-                    Err(_) => continue,
-                };
-                let ws = match serde_json::from_str::<serde_json::Value>(&content) {
-                    Ok(v) => v
-                        .get("workspace")
-                        .and_then(|x| x.as_str())
-                        .unwrap_or("")
-                        .replace('\\', "/"),
-                    Err(_) => continue,
-                };
-                if ws != np {
-                    continue;
-                }
-                // 墓碑（归零世界：删除 = 标记 deleted，列表/扫描过滤）
-                let _ = crate::utils::write_atomic(
-                    &entry.path().to_string_lossy(),
-                    &serde_json::json!({
-                        "id": name.trim_end_matches(".json").parse::<u64>().unwrap_or(0),
-                        "deleted": true,
-                        "label": "",
-                        "messages": [],
-                        "savedAt": "",
-                        "workspace": np,
-                    })
-                    .to_string(),
-                );
-            }
+        if !np.is_empty() {
+            let dir = crate::commands::filesystem::workspace_sessions_root(&np);
+            let _ = std::fs::remove_dir_all(&dir);
         }
         let mut reg = read_registry();
         reg.workspaces.retain(|e| e.path != np);
@@ -442,37 +407,30 @@ pub(crate) mod registry {
 
         #[test]
         fn remove_deletes_sessions_and_entry() {
+            // 工作区根用临时目录（workspace_sessions_root 直读 ws 路径，
+            // 不经 HOME——注册表读写才走 with_temp_home 隔离）
+            let ws_root = std::env::temp_dir().join(format!(
+                "lantai_ws_remove_test_{}",
+                crate::audit::now_iso().replace([':', '.'], "-")
+            ));
+            let _ = std::fs::remove_dir_all(&ws_root);
+            let ws_str = ws_root.to_string_lossy().replace('\\', "/");
             with_temp_home(|| {
-                register("D:/proj", None).unwrap();
-                let sessions_dir = crate::commands::filesystem::user_sessions_root();
+                register(&ws_str, None).unwrap();
+                // 新模型（workspace-session-ownership-rework）：会话在
+                // {ws}/.lantai/sessions/ 下——删除 = 删该目录
+                let sessions_dir = crate::commands::filesystem::workspace_sessions_root(&ws_str);
                 std::fs::create_dir_all(&sessions_dir).unwrap();
-                crate::utils::write_atomic(
-                    &sessions_dir.join("21.json").to_string_lossy(),
-                    r#"{"id":21,"label":"a","messages":[{"role":"user","content":"x"}],"workspace":"D:/proj"}"#,
-                )
-                .unwrap();
-                crate::utils::write_atomic(
-                    &sessions_dir.join("22.json").to_string_lossy(),
-                    r#"{"id":22,"label":"b","messages":[{"role":"user","content":"y"}],"workspace":"D:/other"}"#,
-                )
-                .unwrap();
+                std::fs::write(sessions_dir.join("21.json"), r#"{"id":21,"label":"a"}"#).unwrap();
+                std::fs::write(sessions_dir.join("22.json"), r#"{"id":22,"label":"b"}"#).unwrap();
 
-                remove("D:/proj").unwrap();
+                remove(&ws_str).unwrap();
 
-                // 该工作区会话墓碑化（deleted），他工作区卷不动
-                let s21: serde_json::Value = serde_json::from_str(
-                    &std::fs::read_to_string(sessions_dir.join("21.json")).unwrap(),
-                )
-                .unwrap();
-                assert_eq!(s21["deleted"], serde_json::Value::Bool(true));
-                let s22: serde_json::Value = serde_json::from_str(
-                    &std::fs::read_to_string(sessions_dir.join("22.json")).unwrap(),
-                )
-                .unwrap();
-                assert_eq!(s22.get("deleted"), None);
-                // 注册表条目移除
-                assert!(!read_registry().workspaces.iter().any(|e| e.path == "D:/proj"));
+                // 该工作区会话目录被删除；注册表条目移除
+                assert!(!sessions_dir.exists(), "工作区会话目录应被删除");
+                assert!(!read_registry().workspaces.iter().any(|e| e.path == ws_str));
             });
+            let _ = std::fs::remove_dir_all(&ws_root);
         }
     }
 }

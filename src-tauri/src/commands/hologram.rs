@@ -7,12 +7,10 @@ use tauri;
 
 #[tauri::command]
 pub(crate) async fn get_full_graph(
-    session_id: Option<u64>,
     state: tauri::State<'_, crate::WorkspaceState>,
     app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
 ) -> Result<String, String> {
     crate::app::services::hologram_service::get_full_graph(
-        session_id,
         state.inner().clone(),
         app_ctx.inner().clone(),
     )
@@ -22,7 +20,6 @@ pub(crate) async fn get_full_graph(
 #[tauri::command]
 pub(crate) async fn hologram_run_check(
     path: Option<String>,
-    session_id: Option<u64>,
     state: tauri::State<'_, crate::WorkspaceState>,
     app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
 ) -> Result<String, String> {
@@ -39,7 +36,6 @@ pub(crate) async fn hologram_run_check(
         .unwrap_or_default();
     crate::app::services::hologram_service::run_check(
         path,
-        session_id,
         state.inner().clone(),
         app_ctx.inner().clone(),
         changed_files,
@@ -53,7 +49,6 @@ pub(crate) async fn hologram_record_event(
     event_type: String,
     file: Option<String>,
     summary: String,
-    session_id: Option<u64>,
     state: tauri::State<'_, crate::WorkspaceState>,
     app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
 ) -> Result<String, String> {
@@ -62,7 +57,6 @@ pub(crate) async fn hologram_record_event(
         event_type,
         file,
         summary,
-        session_id,
         state.inner().clone(),
         app_ctx.inner().clone(),
     )

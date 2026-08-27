@@ -48,12 +48,10 @@ pub(crate) async fn analyze_and_load(
 /// 当前工作区图的 meta + 分页信息。
 #[tauri::command]
 pub(crate) async fn get_graph_meta(
-    session_id: Option<u64>,
     state: tauri::State<'_, crate::WorkspaceState>,
     app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
 ) -> Result<String, String> {
     crate::app::services::graph_service::get_graph_meta(
-        session_id,
         state.inner().clone(),
         app_ctx.inner().clone(),
     )
@@ -65,14 +63,12 @@ pub(crate) async fn get_graph_meta(
 pub(crate) async fn get_graph_page(
     page: usize,
     page_size: Option<usize>,
-    session_id: Option<u64>,
     state: tauri::State<'_, crate::WorkspaceState>,
     app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
 ) -> Result<String, String> {
     crate::app::services::graph_service::get_graph_page(
         page,
         page_size,
-        session_id,
         state.inner().clone(),
         app_ctx.inner().clone(),
     )

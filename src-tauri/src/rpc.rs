@@ -138,11 +138,10 @@ enum RpcResultShape {
 fn rpc_result_shape(method: &str) -> RpcResultShape {
     match method {
         // ── 应用层（L1 数据上下文）──
-        // session_attach：AttachOutcome serde 序列化恒 JSON。
-        // session_focus：Option<String> serde（"path"/null），恒 JSON。
         // context_list：Vec<ContextInfo> serde，恒 JSON。
-        // session_detach：ok_unit "null" 家族，Text。
-        "session_attach" | "session_focus" | "context_list" => RpcResultShape::JsonValue,
+        // （workspace-session-ownership-rework 2026-08-27：session_attach/
+        //  detach/focus 三命令退役，shape 表同步清。）
+        "context_list" => RpcResultShape::JsonValue,
 
         // ── Engine 调度 ──
         // hologram_call 是元命令（37 个底层工具），输出形态由工具决定，无法在
@@ -321,30 +320,11 @@ async fn dispatch_rpc(
 
     match method.as_str() {
         // ═══════════════════════════════════════════════════════
-        // 应用层：数据上下文 / 会话 attach（L1）
+        // 应用层：数据上下文（L1）
+        // （workspace-session-ownership-rework 2026-08-27：session_attach/
+        //  detach/focus 三命令退役——会话只在所属工作区内打开，引擎决议
+        //  只看活动工作区，无需会话绑定/焦点投影。）
         // ═══════════════════════════════════════════════════════
-        "session_attach" => {
-            let session_id = params
-                .get("session_id")
-                .and_then(|v| v.as_u64())
-                .ok_or_else(|| format!("{method}: missing 'session_id'"))?;
-            let workspace = opt_str(&params, "workspace");
-            crate::app::commands::session_attach(session_id, workspace, app_ctx).await
-        }
-        "session_detach" => {
-            let session_id = params
-                .get("session_id")
-                .and_then(|v| v.as_u64())
-                .ok_or_else(|| format!("{method}: missing 'session_id'"))?;
-            crate::app::commands::session_detach(session_id, app_ctx, state).await.map(|_| "null".into())
-        }
-        "session_focus" => {
-            let session_id = params
-                .get("session_id")
-                .and_then(|v| v.as_u64())
-                .ok_or_else(|| format!("{method}: missing 'session_id'"))?;
-            crate::app::commands::session_focus(session_id, app_ctx)
-        }
         "context_list" => crate::app::commands::context_list(app_ctx),
 
         // ═══════════════════════════════════════════════════════
@@ -353,10 +333,9 @@ async fn dispatch_rpc(
         "hologram_call" => {
             let tool = req_str(&params, "tool", "hologram_call")?;
             let args = params.get("args").cloned().unwrap_or(Value::Null);
-            // L1：会话/工作区身份透传（决议链见 engine_dispatch）。
-            let session_id = opt_u64(&params, "_session_id");
+            // 工作区身份透传（显式 workspace；缺省 = 活动工作区单槽决议）。
             let workspace = opt_str(&params, "workspace");
-            commands::engine_dispatch::hologram_call(tool, args, session_id, workspace, state, app_ctx).await
+            commands::engine_dispatch::hologram_call(tool, args, workspace, state, app_ctx).await
         }
         "hologram_tools_list" => commands::engine_dispatch::hologram_tools_list(),
 
@@ -372,15 +351,11 @@ async fn dispatch_rpc(
             let force = opt_bool(&params, "force");
             commands::graph::analyze_and_load(path, force, app, state, app_ctx).await
         }
-        "get_graph_meta" => {
-            let session_id = opt_u64(&params, "_session_id");
-            commands::graph::get_graph_meta(session_id, state, app_ctx).await
-        }
+        "get_graph_meta" => commands::graph::get_graph_meta(state, app_ctx).await,
         "get_graph_page" => {
             let page = opt_usize(&params, "page").unwrap_or(0);
             let page_size = opt_usize(&params, "page_size");
-            let session_id = opt_u64(&params, "_session_id");
-            commands::graph::get_graph_page(page, page_size, session_id, state, app_ctx).await
+            commands::graph::get_graph_page(page, page_size, state, app_ctx).await
         }
         "engine_impact" => {
             let node_id = req_str(&params, "node_id", "engine_impact")?;
@@ -1413,24 +1388,21 @@ async fn dispatch_rpc(
         // ═══════════════════════════════════════════════════════
         "hologram_run_check" => {
             let path = opt_str(&params, "path");
-            let session_id = opt_u64(&params, "_session_id");
-            commands::hologram::hologram_run_check(path, session_id, state, app_ctx).await
+            commands::hologram::hologram_run_check(path, state, app_ctx).await
         }
         "hologram_record_event" => {
             let event_type = req_str(&params, "event_type", "hologram_record_event")?;
             let file = opt_str(&params, "file");
             let summary = req_str(&params, "summary", "hologram_record_event")?;
-            let session_id = opt_u64(&params, "_session_id");
             // E3: 统一返回包装 — 将 "ok" 映射为 "null" 以保持
             // 与其他返回单元的命令一致（ok_unit 模式）。
             // 前端以 fire-and-forget 方式调用，不检查返回值。
-            commands::hologram::hologram_record_event(event_type, file, summary, session_id, state, app_ctx)
+            commands::hologram::hologram_record_event(event_type, file, summary, state, app_ctx)
                 .await
                 .map(|_| "null".into())
         }
         "get_full_graph" => {
-            let session_id = opt_u64(&params, "_session_id");
-            commands::hologram::get_full_graph(session_id, state, app_ctx).await
+            commands::hologram::get_full_graph(state, app_ctx).await
         }
 
         // ═══════════════════════════════════════════════════════

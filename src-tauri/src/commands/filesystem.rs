@@ -212,6 +212,13 @@ pub(crate) fn user_sessions_root() -> std::path::PathBuf {
     user_lantai_dir().join("sessions")
 }
 
+/// 工作区会话根（workspace-session-ownership-rework 2026-08-27）：
+/// 会话**物理归属工作区**——唯一存储位 = `{workspace}/.lantai/sessions/`。
+/// 全局位 ~/.lantai/sessions 将归档，本函数是新模型的唯一存储路径真源。
+pub(crate) fn workspace_sessions_root(ws: &str) -> std::path::PathBuf {
+    std::path::PathBuf::from(ws).join(".lantai").join("sessions")
+}
+
 /// 会话摘要（全局会话列表行——TS UserSession 同形）。
 /// workspace（会话统一 U2，2026-08-24）：卷归属工作区（正斜杠归一）；None = 零目录卷。
 #[derive(serde::Serialize, Clone)]
