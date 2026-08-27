@@ -500,7 +500,7 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
   // U4/Q1-B：总目记账退役（摊开集重启由磁盘扫描推导）
 }
 
-// ── 会话持久化 — 每个会话一个文件（全局位唯一存储位）──
+// ── 会话持久化 — 每个工作区一个会话根，每卷一个文件（{ws}/.lantai/sessions/）──
 
 /** 会话文件的持久化形状（磁盘 JSON）。
  *  Stage-5 起不再含 paper（钉住块/纸条/流区位置已升格工作区级——
@@ -682,9 +682,8 @@ export async function saveSessionById(ctx: SessionContext, projectPath: string, 
 }
 
 /** 改名未摊开的已存卷（Stage-3 侧边栏行操作）：磁盘直改 label，不要求
- *  句柄/不摊开卷。读取当前卷文件 → 保留 messages/tokens 原样 →
- *  重写全局位（workspace 归属随当前 projectPath 重写——readVolumeJSON 已
- *  先做过归属校验，因此只会改写本工作区/零目录的卷）。 */
+ *  句柄/不摊开卷。读取当前工作区会话根的卷文件 → 保留 messages/tokens
+ *  原样 → 重写同一路径（归属 = 存储位置，无字段改写面）。 */
 export async function renameSessionFile(
   ctx: SessionContext,
   projectPath: string,
@@ -839,7 +838,7 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
     }
   }
   let data: StoredSession | null = null;
-  // 读卷：全局位单读 + 墓碑/空卷过滤。
+  // 读卷：工作区会话根单读 + 墓碑/空卷过滤。
   // Q-B 后 autoRestore 不再恢复内容，本契约由打开路径（首页点卷）承担。
   data = await readVolumeData(projectPath, sessionId);
   if (!data) {

@@ -23,7 +23,7 @@
 
 | 线 | 文档 | 状态 | 说明 |
 |---|---|---|---|
-| 会话统一 | [`session-unify-plan.md`](session-unify-plan.md) | ✅ 归零重建落地（2026-08-25，待真机验收） | U1-U4 竣工后兼容层全部拆除；全局位成为唯一事实源 |
+| 会话统一 → **归属反转** | [`workspace-session-ownership-rework.md`](workspace-session-ownership-rework.md) | **In progress：P1-P3 已落地**（2026-08-27，commits 40a43875/7b1d5a3e/cc0df8c0），P4 文档收口 + P5 实机验收进行中 | 推翻全局会话池方向——会话**物理归属工作区**（`{ws}/.lantai/sessions/` 唯一存储位，焦点/绑定/全局列表全退役）。旧 session-unify 计划已归档归档标记取代：[`../archive/session-unify-plan.md`](../archive/session-unify-plan.md) |
 | 分层重构 | [`layering-rework-plan.md`](layering-rework-plan.md) | **L1-L4 + L5b crate 化已落地**（2026-08-25） | engine 纯化 + 壳瘦身 + 数据上下文 + 双工作区并发守卫 + L5b 三 crate 拆出；真机验收四项待跑（见计划 §4.6） |
 | 画布空间模型 | [`canvas-space/canvas-space-model-notes.md`](canvas-space/canvas-space-model-notes.md) | **设计定稿；Stage-1 ✅ + Stage-2 ✅（实机已验）+ Stage-3 ✅（门禁全绿）+ Stage-4 ✅（2026-08-26 落地 + 返工修复 + 联合体检方案甲施工）+ Stage-5 ✅（2026-08-26 落地：布局持久化 + 公共物工作区级 + 零目录退役，门禁全绿）**，Stage-6 待推进 | 一整片会生长的纸 / 有界流区 / 宿主模型 / 三层导航 / 性能基准；阶段性展开文档见 `canvas-space/` 子目录；**provider/创作坞联合体检与修复见 [`canvas-space/composer-provider-audit.md`](canvas-space/composer-provider-audit.md)**（方案甲定案 + 2026-08-26 修复落账 + 夜批在册小账收尾 D2/C5/D5，全表清零） |
 
@@ -72,7 +72,7 @@ S0/S1/S2/S4 竣工后，S3（settings 域第一方行化：面板/命令双贡�
 | ~~browser CDP E2E-1/2/3/4/5~~ | **已实跑（2026-08-22）**：cargo test cdp:: 35/35 全绿，含重点 E2E-5 多账号 cookie 隔离（上会话偶发失败本轮未复现） |
 | session-ledger 真机三项 | 代码判据已测试钉死，真机未实跑（需带 API key 会话）：① 重启工作集恢复（多卷摊开 → 关 → 开，摊法全回）；② 后台卷落盘（双卷并发跑一轮后检查卷文件）；③ 续开查重（同卷两次续开只有一条脊）——见 [`../archive/session-ledger-plan.md`](../archive/session-ledger-plan.md) §7（⚠️ ①已被 session-unify Q-B 取代：重启不自动摊开） |
 | workspace-flip 批 3 边界 | 预热期内创建的会话缺 graph 工具（已知边界，非 bug） |
-| **分层重构真机验收四项** | L1-L4 + L5b crate 化代码已落地（2026-08-25，七 commit 全绿；L5b 三 crate 拆出后 workspace 全量测试对账守恒），真机待跑：① 单工作区零回归（开卷/切卷/图查询/工具调用如常）；② 双工作区并行（两会话两项目同时跑图查询无错乱）；③ 跨工作区续开（首页点他工作区卷 → 图上下文正确）；④ Ungrouped 会话可用（零目录卷打开不报图错误）——见 [`layering-rework-plan.md`](layering-rework-plan.md) §4.6 |
+| **分层重构真机验收四项** | L1-L4 + L5b crate 化代码已落地（2026-08-25，七 commit 全绿；L5b 三 crate 拆出后 workspace 全量测试对账守恒），真机待跑：① 单工作区零回归（开卷/切卷/图查询/工具调用如常）；② 双工作区并行（两会话两项目同时跑图查询无错乱）；~~③ 跨工作区续开~~（**作废**——workspace-session-ownership-rework D2 拍板砍掉跨工作区开卷，2026-08-27）；~~④ Ungrouped 会话可用~~（**作废**——零目录会话随同一反转退役）——见 [`layering-rework-plan.md`](layering-rework-plan.md) §4.6 |
 | **画布 Stage-3 实机待验** | 代码已落地（2026-08-25，门禁全绿）：① 书脊手感（左键定位轻动画 / 拖动落位幽灵+吸附 / hover 小卡合卷；右键菜单已取消，改名/删除在侧边栏）；② 侧边栏折叠（收起只剩书脊）与状态点/相对时间/行操作；③ 生命周期闭环体验（新建→落位→展开→收起→删除）；④ 未摊开卷行点击展开补飞 + 视角自由拖拽（定位动画不再抢手动 pan）——见 [`canvas-space/stage-3.md`](canvas-space/stage-3.md) |
 | **画布 Stage-4 返工清单（P0-P4）** | 代码面已修（2026-08-26），待实机勾销：P0-1 全放确认+关窗崩溃 / P1-1 自动选中三道闸（panningRef 根因已修）/ P1-2 聚焦落点手感 / P3-1 非全屏布局——见 [`canvas-space/stage-4-rework-checklist.md`](canvas-space/stage-4-rework-checklist.md) |
 | **创作坞+提供方联合体检验收七项** | 方案甲 + 全批修复已落地（2026-08-26 三 commit `efc74e7d`/`254ad008`/`36ad9ed5`，门禁全绿）：① 卷间会话级模型/思考隔离；② 未改卷跟全局/改过卷不跟；③ 重启后各卷配置保留；④ 模型下拉列全+未配置厂商不出现+无 Key 标注；⑤ 测试连接后取消不落暂存改动；⑥ ↑↓ 历史+焦点回归；⑦ 后台卷运行态指示——见 [`canvas-space/composer-provider-audit.md`](canvas-space/composer-provider-audit.md) 修复落账节 |

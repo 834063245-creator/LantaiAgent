@@ -1452,37 +1452,11 @@ async fn dispatch_rpc(
         }
 
         // ═══════════════════════════════════════════════════════
-        // 会话持久化（2 个命令）
+        // 会话持久化（1 个命令）
+        // （workspace-session-ownership-rework 2026-08-27：chat 会话 NDJSON
+        //  session_append 已拆——只写不读孤儿路径；唯一保留路径 = 工作区会话根
+        //  全量快照，由前端 write_file_content 写 {ws}/.lantai/sessions/{id}.json。）
         // ═══════════════════════════════════════════════════════
-        "session_append" => {
-            let path = req_str(&params, "path", "session_append")?;
-            let session_id = req_str(&params, "session_id", "session_append")?;
-            crate::utils::sanitize_path_id(&session_id, "session_id")?;
-            let message = params.get("message")
-                .ok_or("session_append: missing 'message'")?;
-            let file = std::path::Path::new(&path)
-                .join(".lantai/sessions")
-                .join(format!("{session_id}.ndjson"));
-            if let Some(parent) = file.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| format!("session_append: cannot create dir: {e}"))?;
-            }
-            let line = serde_json::to_string(message)
-                .map_err(|e| format!("session_append: serialize: {e}"))?;
-            use std::io::Write;
-            let mut f = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&file)
-                .map_err(|e| format!("session_append: open: {e}"))?;
-            f.write_all(line.as_bytes())
-                .map_err(|e| format!("session_append: write: {e}"))?;
-            f.write_all(b"\n")
-                .map_err(|e| format!("session_append: write: {e}"))?;
-            f.flush()
-                .map_err(|e| format!("session_append: flush: {e}"))?;
-            ok_unit(Ok(()))
-        }
 
         // P1-15: agent 会话增量追加（NDJSON）— 与 session_append 同构，但写到
         // .lantai/agents/{agent_id}/session.ndjson。rewrite=true 时 truncate 重写
