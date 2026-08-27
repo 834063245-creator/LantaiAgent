@@ -10,11 +10,13 @@
 //      本地目录——同一解包校验路径）；
 //   3. 常驻供应链警告条（完全信任模型原文——不做任何「已审核」标记）。
 //
-// 生效时机如实声明：安装/卸载/禁用均重启生效（装载是 boot 期一次性——
-// 与组合层「下次装配」语义对齐）。
+// 生效时机（平台化 Phase 4 · D6，2026-08-27）：**运行时生效**——装/卸/启用/
+// 禁用即时装卸插件 fiber（贡献链式回收/装载；工具面在下次 Agent 装配生效，
+// 面板/命令即时生效）。
 
 import { useState } from 'react';
-import { typedRpc } from '../../../rpc-contract';
+import { activateExternalPlugin, deactivateExternalPlugin } from '../../../plugins/loader';
+import { parseJson, typedRpc } from '../../../rpc-contract';
 import { type PluginRecord, usePluginStore } from '../../../state/plugin-store';
 import { Icon } from '../../Icon';
 
@@ -36,7 +38,7 @@ function PluginCard({
   plugin: PluginRecord;
   /** 操作中的插件名（按插件粒度禁用——全局 busy 会锁住无关插件，2026-08 UI 大清扫） */
   busyName: string | null;
-  onToggle: (name: string, enabled: boolean) => void;
+  onToggle: (name: string, action: 'enable' | 'disable' | 'reload') => void;
   onUninstall: (name: string) => void;
 }) {
   const badge = statusBadge(plugin.status);
@@ -73,12 +75,19 @@ function PluginCard({
               {' '}
               {'{ "' + plugin.name + '": [' + plugin.missingPermissions.map((p) => `'${p}'`).join(', ') + '] }'}
             </code>
-            后重启。
+            后点「重新装载」立即生效。
           </div>
         )}
         <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-          <button type="button" className="sp-btn-sm" disabled={busy} onClick={() => onToggle(plugin.name, !enabled)}>
-            {enabled ? '禁用' : '启用'}
+          <button
+            type="button"
+            className="sp-btn-sm"
+            disabled={busy}
+            onClick={() =>
+              onToggle(plugin.name, plugin.status === 'blocked' ? 'reload' : enabled ? 'disable' : 'enable')
+            }
+          >
+            {plugin.status === 'blocked' ? '重新装载' : enabled ? '禁用' : '启用'}
           </button>
           <button
             type="button"
@@ -107,12 +116,42 @@ export function PluginsPage() {
     setMessage(null);
     try {
       const name = await action();
-      setMessage({ kind: 'ok', text: `操作成功：${name}——重启后生效` });
+      setMessage({ kind: 'ok', text: `${name}——运行时已生效（工具面在下次 Agent 装配生效）` });
     } catch (e) {
       setMessage({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
     } finally {
       setBusyKey(null);
     }
+  }
+
+  /** 装/卸/启/禁的运行时生效面（D6）：RPC 落盘成功后即时装卸 fiber。
+   *  plugin_install 的 result 是 JSON 字符串（ok_json）——parseJson 还原名。 */
+  async function installThenActivate(p: { source_kind: string; name?: string; location?: string }): Promise<string> {
+    const raw = await typedRpc('plugin_install', p as never);
+    const name = parseJson<string>(raw);
+    const record = await activateExternalPlugin(name);
+    return `${name}（${record.status === 'active' ? '已装载' : `状态 ${record.status}${record.error ? `：${record.error}` : ''}`}）`;
+  }
+  async function enableThenActivate(name: string): Promise<string> {
+    await typedRpc('plugin_set_enabled', { name, enabled: true });
+    const record = await activateExternalPlugin(name);
+    return `${name}（${record.status === 'active' ? '已装载' : `状态 ${record.status}${record.error ? `：${record.error}` : ''}`}）`;
+  }
+  /** blocked → 授权后的重新装载（plugins.json granted 已手改；RPC 侧无状态要写）。 */
+  async function activateThenReport(name: string): Promise<string> {
+    const record = await activateExternalPlugin(name);
+    return `${name}（${record.status === 'active' ? '已装载' : `状态 ${record.status}${record.error ? `：${record.error}` : ''}`}）`;
+  }
+  async function disableThenDeactivate(name: string): Promise<string> {
+    await typedRpc('plugin_set_enabled', { name, enabled: false });
+    await deactivateExternalPlugin(name);
+    return `${name}（已停用并回收贡献）`;
+  }
+  async function uninstallThenDeactivate(name: string): Promise<string> {
+    await deactivateExternalPlugin(name);
+    await typedRpc('plugin_uninstall', { name });
+    usePluginStore.getState().removePlugin(name);
+    return `${name}（已卸载并回收贡献）`;
   }
 
   /** 解析安装输入（三形态，设计件 §2.6）：npm 名 / tarball（URL 或本地
@@ -163,7 +202,7 @@ export function PluginsPage() {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && input.trim() && busyKey === null) {
                 const p = parseInstallParams(input);
-                void run('install', () => typedRpc('plugin_install', p));
+                void run('install', () => installThenActivate(p));
               }
             }}
           />
@@ -174,7 +213,7 @@ export function PluginsPage() {
             disabled={busyKey === 'install' || !input.trim()}
             onClick={() => {
               const p = parseInstallParams(input);
-              void run('install', () => typedRpc('plugin_install', p));
+              void run('install', () => installThenActivate(p));
             }}
           >
             安装
@@ -182,7 +221,7 @@ export function PluginsPage() {
         </div>
         <div className="sp-hint-sub">
           三种源：npm 包名（缺省 registry.npmjs.org）、tarball URL 或本地路径（npm pack 产物）、
-          本地插件目录（复制进插件根）。安装/卸载/禁用均重启后生效。
+          本地插件目录（复制进插件根）。装/卸/启用/禁用均运行时生效（D6）。
         </div>
         {message && (
           <div className="sp-hint-sub" style={{ color: message.kind === 'ok' ? 'var(--pass)' : 'var(--warn)' }}>
@@ -204,11 +243,15 @@ export function PluginsPage() {
               key={p.name}
               plugin={p}
               busyName={busyKey}
-              onToggle={(name, enabled) => {
-                void run(name, () => typedRpc('plugin_set_enabled', { name, enabled }));
+              onToggle={(name, action) => {
+                void run(name, () => {
+                  if (action === 'enable') return enableThenActivate(name);
+                  if (action === 'reload') return activateThenReport(name);
+                  return disableThenDeactivate(name);
+                });
               }}
               onUninstall={(name) => {
-                void run(name, () => typedRpc('plugin_uninstall', { name }));
+                void run(name, () => uninstallThenDeactivate(name));
               }}
             />
           ))

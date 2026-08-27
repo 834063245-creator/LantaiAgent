@@ -8,7 +8,13 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../src/cordis';
-import { loadExternalPlugins } from '../src/plugins/loader';
+import {
+  activateExternalPlugin,
+  activeExternalPluginNames,
+  deactivateExternalPlugin,
+  loadExternalPlugins,
+  resetPluginRuntimeForTests,
+} from '../src/plugins/loader';
 import { PluginManifestSchema, validateManifest } from '../src/plugins/types';
 import { usePluginStore } from '../src/state/plugin-store';
 
@@ -481,5 +487,130 @@ describe('fiber 生命周期（cordis，workspace-fiber 测试同款模式）', 
       },
     });
     await expect(Promise.resolve(fiber)).rejects.toThrow('apply boom');
+  });
+});
+
+// ── D6 运行时热重载（平台化 Phase 4，2026-08-27）──
+
+describe('D6 运行时热重载（activateExternalPlugin / deactivateExternalPlugin）', () => {
+  beforeEach(async () => {
+    // 同 worker 模块态跨用例共享：先拆掉前面用例装载的插件 + 复位运行时
+    for (const name of activeExternalPluginNames()) {
+      await deactivateExternalPlugin(name);
+    }
+    resetPluginRuntimeForTests();
+    usePluginStore.getState().setPlugins([]);
+  });
+
+  function hotPluginModule(name: string, probe: { events: string[] }) {
+    return {
+      default: {
+        name,
+        apply(ctx: { effect: (f: () => () => void, label: string) => unknown }) {
+          ctx.effect(() => {
+            probe.events.push(`${name}:setup`);
+            return () => probe.events.push(`${name}:dispose`);
+          }, `${name}-probe`);
+        },
+      },
+    };
+  }
+
+  it('① boot 装载填充活跃注册表；disable 的插件不在表内', async () => {
+    const root = new Context();
+    const probe = { events: [] as string[] };
+    const importModule = async (url: string): Promise<Record<string, unknown>> => {
+      if (url.includes('/hello/')) return hotPluginModule('hello', probe);
+      throw new Error('unexpected ' + url);
+    };
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['hello'],
+        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
+        [ORIGIN + '/hello/manifest.json']: HELLO_MANIFEST,
+      }),
+      importModule,
+    });
+    expect(activeExternalPluginNames()).toEqual(['hello']);
+    expect(probe.events).toEqual(['hello:setup']);
+    expect(usePluginStore.getState().plugins[0]?.status).toBe('active');
+  });
+
+  it('② 停用 = fiber dispose 链式回收贡献；再启用 = 重新装载', async () => {
+    const root = new Context();
+    const probe = { events: [] as string[] };
+    const importModule = async (): Promise<Record<string, unknown>> => hotPluginModule('hello', probe);
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['hello'],
+        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
+        [ORIGIN + '/hello/manifest.json']: HELLO_MANIFEST,
+      }),
+      importModule,
+    });
+    expect(probe.events).toEqual(['hello:setup']);
+
+    // 停用：dispose → effect 清理器跑（贡献链式回收）
+    expect(await deactivateExternalPlugin('hello')).toBe(true);
+    expect(probe.events).toEqual(['hello:setup', 'hello:dispose']);
+    expect(activeExternalPluginNames()).toEqual([]);
+
+    // 再启用：重新装载（apply 重跑）
+    const record = await activateExternalPlugin('hello');
+    expect(record.status).toBe('active');
+    expect(probe.events).toEqual(['hello:setup', 'hello:dispose', 'hello:setup']);
+    expect(activeExternalPluginNames()).toEqual(['hello']);
+
+    // 未活跃插件停用 = no-op false
+    expect(await deactivateExternalPlugin('nope')).toBe(false);
+  });
+
+  it('③ 权限门禁照常生效：granted 未覆盖 → blocked 不装载', async () => {
+    const root = new Context();
+    const manifest = { ...HELLO_MANIFEST, permissions: ['bash'] };
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['hello'],
+        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
+        [ORIGIN + '/hello/manifest.json']: manifest,
+      }),
+      importModule: async (): Promise<Record<string, unknown>> => {
+        throw new Error('blocked 插件不应被 import');
+      },
+    });
+    expect(activeExternalPluginNames()).toEqual([]);
+
+    // 授权后增量激活 → 仍 blocked（granted 段未覆盖——读最新 plugins.json）
+    const record = await activateExternalPlugin('hello');
+    expect(record.status).toBe('blocked');
+    expect(record.missingPermissions).toEqual(['bash']);
+    expect(activeExternalPluginNames()).toEqual([]);
+  });
+
+  it('④ 未引导运行时（loadExternalPlugins 未跑）→ 显式错误记录，不静默', async () => {
+    const record = await activateExternalPlugin('ghost');
+    expect(record.status).toBe('error');
+    expect(record.error).toContain('插件运行时未引导');
+  });
+
+  it('⑤ 升级重装：已活跃插件再 activate = 先拆旧再装载新（dispose → setup）', async () => {
+    const root = new Context();
+    const probe = { events: [] as string[] };
+    const importModule = async (): Promise<Record<string, unknown>> => hotPluginModule('hello', probe);
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['hello'],
+        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
+        [ORIGIN + '/hello/manifest.json']: HELLO_MANIFEST,
+      }),
+      importModule,
+    });
+    await activateExternalPlugin('hello'); // 已活跃 → 重装载
+    expect(probe.events).toEqual(['hello:setup', 'hello:dispose', 'hello:setup']);
+    expect(activeExternalPluginNames()).toEqual(['hello']);
   });
 });

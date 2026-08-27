@@ -37,7 +37,7 @@ import { sessionPersistenceServicePlugin } from '../composition/session-persiste
 import { shellServicePlugin } from '../composition/shell-service';
 import { spaceServicePlugin } from '../composition/space-service';
 import { subagentsServicePlugin } from '../composition/subagent-service';
-import type { Context } from '../cordis';
+import type { Context, Fiber } from '../cordis';
 import { paperPlugin } from '../paper/paper-plugin';
 import { getProxyPort } from '../provider/transport';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
@@ -221,6 +221,66 @@ function errText(e: unknown): string {
   return e instanceof Error ? e.name + ': ' + e.message : String(e);
 }
 
+// ── D6 运行时热重载（平台化 Phase 4，2026-08-27）──
+// 外部插件的「活跃注册表」：插件名 → 装载 fiber。boot 期 loadExternalPlugins
+// 填充；此后设置面板的 装/卸/启用/禁用 走 activateExternalPlugin /
+// deactivateExternalPlugin 增量装卸——fiber dispose 链式回收贡献（工具行/
+// 面板/命令/prompt 段/MCP 进程 kill 全挂插件 fiber 的 ctx.effect）。
+// 模块级可变态归属（CONVENTIONS §1.10 第 3 类）：单键进程级状态，
+// 生命周期 = 进程（与 _activePanels 等活动服务面同款）。
+interface PluginRuntime {
+  root: Context;
+  deps: {
+    origin: string;
+    fetchImpl: FetchLike;
+    importModule: (url: string) => Promise<Record<string, unknown>>;
+    mcpBridgeIO?: McpBridgeIO;
+  };
+}
+let runtime: PluginRuntime | null = null;
+const activeExternalFibers = new Map<string, Fiber>();
+
+/** 当前活跃的外部插件名清单（诊断/测试面）。 */
+export function activeExternalPluginNames(): string[] {
+  return [...activeExternalFibers.keys()];
+}
+
+/** 测试复位：清空运行时绑定与活跃注册表（vitest 同 worker 模块态跨用例
+ *  共享——loader 测试的 beforeEach 调用，防用例间串味）。 */
+export function resetPluginRuntimeForTests(): void {
+  runtime = null;
+  activeExternalFibers.clear();
+}
+
+/** 增量装载一个外部插件（安装/启用后的运行时生效入口）。
+ *  已活跃 = 先 dispose 旧 fiber 再重载（升级重装路径）。装载语义与
+ *  loadOne 逐字节一致（manifest 校验 / inject 检查 / 权限门禁 / 失败
+ *  隔离——永不 reject，结果写 plugin-store 并返回）。 */
+export async function activateExternalPlugin(dirId: string): Promise<PluginRecord> {
+  if (runtime == null) {
+    return errorRecord(dirId, null, '插件运行时未引导（main.ts loadExternalPlugins 未跑）');
+  }
+  const { root, deps } = runtime;
+  // 重装载路径：旧 fiber 先拆（dispose 链式回收全部贡献）
+  await deactivateExternalPlugin(dirId);
+  // 权限门禁读最新 granted 段（plugins.json 可被授权流手改——不 boot 缓存）
+  const { granted } = await readPluginsState(deps.fetchImpl, deps.origin);
+  const { record, fiber } = await loadOne(root, dirId, { ...deps, disabled: new Set(), granted });
+  if (fiber) activeExternalFibers.set(record.name, fiber);
+  usePluginStore.getState().upsertPlugin(record);
+  return record;
+}
+
+/** 增量卸载（卸载/禁用后的运行时生效入口）：dispose fiber → 贡献链式
+ *  回收。未活跃 = no-op 返回 false。 */
+export async function deactivateExternalPlugin(name: string): Promise<boolean> {
+  const fiber = activeExternalFibers.get(name);
+  if (!fiber) return false;
+  activeExternalFibers.delete(name);
+  await fiber.dispose();
+  return true;
+}
+
 /** 外部插件装载主入口（main.ts 引导期调用；永不 reject）。 */
 export async function loadExternalPlugins(root: Context, opts: LoadExternalPluginsOptions = {}): Promise<void> {
   const fetchImpl: FetchLike = opts.fetchImpl ?? fetch;
@@ -229,6 +289,7 @@ export async function loadExternalPlugins(root: Context, opts: LoadExternalPlugi
   try {
     const origin = opts.origin ?? (await resolveOrigin());
     if (!origin) return; // 无后端通道（浏览器 mock / 代理未起）——非错误
+    runtime = { root, deps: { origin, fetchImpl, importModule, mcpBridgeIO } };
     const index = await fetchJson(fetchImpl, origin + '/');
     if (!Array.isArray(index)) {
       console.warn('[plugins] 装载通道索引不可用');
@@ -237,9 +298,16 @@ export async function loadExternalPlugins(root: Context, opts: LoadExternalPlugi
     const { disabled, granted } = await readPluginsState(fetchImpl, origin);
     const records: PluginRecord[] = [];
     for (const dirId of index) {
-      records.push(
-        await loadOne(root, String(dirId), { origin, disabled, granted, fetchImpl, importModule, mcpBridgeIO }),
-      );
+      const { record, fiber } = await loadOne(root, String(dirId), {
+        origin,
+        disabled,
+        granted,
+        fetchImpl,
+        importModule,
+        mcpBridgeIO,
+      });
+      if (fiber) activeExternalFibers.set(record.name, fiber);
+      records.push(record);
     }
     usePluginStore.getState().setPlugins(records);
   } catch (e) {
@@ -258,27 +326,36 @@ interface LoadOneDeps {
   mcpBridgeIO?: McpBridgeIO;
 }
 
-/** 装载单个插件；任何一步失败 → error 记录（失败隔离，永不抛出）。 */
-async function loadOne(root: Context, dirId: string, deps: LoadOneDeps): Promise<PluginRecord> {
+/** 装载单个插件；任何一步失败 → error 记录（失败隔离，永不抛出）。
+ *  返回 fiber（D6 运行时热重载的 dispose 锚点——未装载态为 null）。 */
+async function loadOne(
+  root: Context,
+  dirId: string,
+  deps: LoadOneDeps,
+): Promise<{ record: PluginRecord; fiber: Fiber | null }> {
   const { origin, fetchImpl, importModule } = deps;
   // 1) manifest 获取 + 校验
   const raw = await fetchJson(fetchImpl, origin + '/' + dirId + '/manifest.json');
-  if (raw == null) return errorRecord(dirId, null, 'manifest.json 缺失或不可解析');
+  if (raw == null) return { record: errorRecord(dirId, null, 'manifest.json 缺失或不可解析'), fiber: null };
   const validated = validateManifest(raw);
-  if (!validated.ok) return errorRecord(dirId, null, 'manifest 校验失败: ' + validated.error);
+  if (!validated.ok) return { record: errorRecord(dirId, null, 'manifest 校验失败: ' + validated.error), fiber: null };
   const manifest = validated.manifest;
   // 2) 名字与目录一致（URL 按名字寻址磁盘目录，不一致 = 装不上）
   if (manifest.name !== dirId) {
-    return errorRecord(dirId, manifest, 'manifest.name (' + manifest.name + ') 与目录名 (' + dirId + ') 不一致');
+    return {
+      record: errorRecord(dirId, manifest, 'manifest.name (' + manifest.name + ') 与目录名 (' + dirId + ') 不一致'),
+      fiber: null,
+    };
   }
   // 3) inject 依赖存在性（缺 → error 状态，WO-S0B 装载期校验）
   if (manifest.inject) {
     const missing = manifest.inject.filter((name) => root.reflect.get(name) == null);
-    if (missing.length > 0) return errorRecord(manifest.name, manifest, '缺少依赖服务: ' + missing.join(', '));
+    if (missing.length > 0)
+      return { record: errorRecord(manifest.name, manifest, '缺少依赖服务: ' + missing.join(', ')), fiber: null };
   }
   // 4) disabled 跳过（不 import）
   if (deps.disabled.has(manifest.name)) {
-    return { name: manifest.name, manifest, status: 'disabled' };
+    return { record: { name: manifest.name, manifest, status: 'disabled' }, fiber: null };
   }
   // 4b) 权限门禁（C11-2 装载期一票否决）：manifest.permissions 声明的
   //     权限类未被 plugins.json granted 段全覆盖 → 不装载（blocked 状态
@@ -290,10 +367,13 @@ async function loadOne(root: Context, dirId: string, deps: LoadOneDeps): Promise
     const missing = declaredPerms.filter((p) => !grantedFor.has(p));
     if (missing.length > 0) {
       return {
-        name: manifest.name,
-        manifest,
-        status: 'blocked',
-        missingPermissions: missing,
+        record: {
+          name: manifest.name,
+          manifest,
+          status: 'blocked',
+          missingPermissions: missing,
+        },
+        fiber: null,
       };
     }
   }
@@ -303,10 +383,13 @@ async function loadOne(root: Context, dirId: string, deps: LoadOneDeps): Promise
     const mod = await importModule(url);
     const candidate = pickPluginObject(mod);
     if (!isPluginShape(candidate)) {
-      return errorRecord(manifest.name, manifest, '插件入口未导出 { name, apply } 形状的对象');
+      return { record: errorRecord(manifest.name, manifest, '插件入口未导出 { name, apply } 形状的对象'), fiber: null };
     }
     if (candidate.name !== manifest.name) {
-      return errorRecord(manifest.name, manifest, '插件对象 name (' + candidate.name + ') 与 manifest.name 不一致');
+      return {
+        record: errorRecord(manifest.name, manifest, '插件对象 name (' + candidate.name + ') 与 manifest.name 不一致'),
+        fiber: null,
+      };
     }
     // 声明式挂接（S4-4 乙机器桥 + C11-1 工具声明）：manifest 声明
     // mcpServers/tools 时包装插件——entry.apply 之后挂接（注册动作归包装
@@ -333,10 +416,10 @@ async function loadOne(root: Context, dirId: string, deps: LoadOneDeps): Promise
             },
           }
         : candidate;
-    await root.plugin(target);
-    return { name: manifest.name, manifest, status: 'active' };
+    const fiber = await root.plugin(target);
+    return { record: { name: manifest.name, manifest, status: 'active' }, fiber };
   } catch (e) {
-    return errorRecord(manifest.name, manifest, errText(e));
+    return { record: errorRecord(manifest.name, manifest, errText(e)), fiber: null };
   }
 }
 

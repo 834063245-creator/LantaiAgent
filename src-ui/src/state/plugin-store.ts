@@ -26,9 +26,22 @@ export interface PluginRecord {
 interface PluginStoreState {
   plugins: PluginRecord[];
   setPlugins: (plugins: PluginRecord[]) => void;
+  /** 增量更新（D6 运行时热重载）：按 name 替换或追加记录。 */
+  upsertPlugin: (record: PluginRecord) => void;
+  /** 移除记录（D6：卸载后从清单撤下）。 */
+  removePlugin: (name: string) => void;
 }
 
 export const usePluginStore = create<PluginStoreState>((set) => ({
   plugins: [],
   setPlugins: (plugins) => set({ plugins }),
+  upsertPlugin: (record) =>
+    set((s) => {
+      const rest = s.plugins.filter((p) => p.name !== record.name);
+      // 稳定序：按 name 插回原位或表尾（UI 清单不因增量更新跳序）
+      const idx = s.plugins.findIndex((p) => p.name === record.name);
+      if (idx < 0) return { plugins: [...s.plugins, record] };
+      return { plugins: [...rest.slice(0, idx), record, ...rest.slice(idx)] };
+    }),
+  removePlugin: (name) => set((s) => ({ plugins: s.plugins.filter((p) => p.name !== name) })),
 }));

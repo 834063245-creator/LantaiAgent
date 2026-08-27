@@ -16,6 +16,13 @@ vi.mock('../src/bridge', () => ({
   listen: vi.fn(),
   isMockMode: () => false,
 }));
+// D6：装卸动作的运行时面 mock（loader 真身需要浏览器动态 import 通道）
+const mockActivate = vi.fn(async (name: string) => ({ name, manifest: null, status: 'active' as const }));
+const mockDeactivate = vi.fn(async (_name: string) => true);
+vi.mock('../src/plugins/loader', () => ({
+  activateExternalPlugin: (...args: unknown[]) => mockActivate(args[0]),
+  deactivateExternalPlugin: (...args: unknown[]) => mockDeactivate(args[0]),
+}));
 
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -116,9 +123,10 @@ describe('S4-3 PluginsPage（设置面板插件 tab）', () => {
     cleanup();
   });
 
-  it('安装动作 → plugin_install RPC（registry 形态）+ 重启后生效提示', async () => {
+  it('安装动作 → plugin_install RPC + 运行时激活（D6）', async () => {
     usePluginStore.getState().setPlugins([]);
     mockRpc.mockResolvedValue('"hello"');
+    mockActivate.mockClear();
     root.render(createElement(PluginsPage));
     await vi.waitFor(() => {
       expect(container.querySelector('input')).toBeTruthy();
@@ -135,9 +143,11 @@ describe('S4-3 PluginsPage（设置面板插件 tab）', () => {
     await vi.waitFor(() => expect(mockRpc).toHaveBeenCalled());
     expect(mockRpc.mock.calls[0][0]).toBe('plugin_install');
     expect(mockRpc.mock.calls[0][1]).toEqual({ source_kind: 'registry', name: 'hologram-hello' });
-    // 成功提示（重启后生效的如实声明）
+    // D6：安装成功后增量激活插件 fiber（运行时生效）
+    await vi.waitFor(() => expect(mockActivate).toHaveBeenCalledWith('hello'));
+    // 成功提示（运行时生效的如实声明）
     await vi.waitFor(() => {
-      expect(container.textContent).toContain('重启后生效');
+      expect(container.textContent).toContain('运行时已生效');
     });
     cleanup();
   });
