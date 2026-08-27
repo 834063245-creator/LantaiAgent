@@ -473,12 +473,25 @@ const host = globalThis.__lantai_plugin_host__;
 | 禁用 | `plugin_set_enabled`（name, enabled） | plugins.json 读改写（只改 `disabled` 段——**granted 授权段原样保留**） |
 | 授权 | `plugins.json` 手编 granted 段 | C11-2 权限声明门禁的授予面（见下） |
 
-**四者中安装/卸载/禁用均重启生效**（装载是 boot 期一次性——Phase 4 改运行时
-生效）。**同名重装走版本守卫（平台化 P3，2026-08-27）**：比较
+**四者运行时生效（平台化 Phase 4 · D6，2026-08-27）**：装/卸/启用/禁用即时装卸
+插件 fiber（贡献链式回收/装载——工具面在下次 Agent 装配生效，面板/命令即时）。
+**同名重装走版本守卫（平台化 P3，2026-08-27）**：比较
 manifest.version——升级 = 原子换装（备份→rename，失败回滚）；同版本拒绝；
 降级拒绝；任一端 version 缺失/不可解析拒绝；`force: true` 显式跳过比较。
 开放面契约的版本机制见 `docs/agents/open-surface-contract.md`（契约文件变更
 未升版 = 守护测试红）。
+
+### 示例：外部 MCP server 承载真实能力（平台化 P4 · D1 收口，P4-C5）
+
+`examples/plugins/dataflow-mcp/`——**MCP 是能力加面路径之一（不是唯一）**
+的活例子：dataflow 查询既可走进程内 seam（`ctx.graph` / dataflow RPC），
+也可走外部 MCP server（本例）。插件 manifest 以 `mcpServers` 声明
+`node ./server.cjs`（`./` 前缀 arg 相对插件目录解析），零依赖 Node 进程
+直读 `<工作区>/.lantai/dataflow/*.json`（格式与 dataflow_service.rs 逐字段
+对齐），经 MCP `tools/call` 应答——装载后模型可见工具名
+`mcp__dataflow__dataflow_query`。端到端守护：
+`tests/plugin-dataflow-mcp-e2e.test.ts`（真实 node 子进程 + 真实 stdio +
+loader 同款挂接路径）。
 
 ### 权限声明与授权（C11-2，2026-08-24）
 
@@ -517,21 +530,42 @@ browser/desktop 命令域尚未接入 Rust 权限检查。
 registry 缺省 `https://registry.npmjs.org`；镜像经 manifest 外的安装参数
 `registry` 覆写（安装输入框暂只收包名——镜像参数走 RPC 直接调用）。
 
-## 6. ⚠️ 完全信任模型（v1 已知债——第三方优先下必须明牌）
+## 6. ⚠️ 信任模型（v1：静态插件完全信任 + 动态插件 approval+沙箱）
 
-**插件是本机全信任代码：可读写文件、起子进程、调用全部 RPC。npm 上的包
-≠ 审核过的包。**
+**静态插件是本机全信任代码：可读写文件、起子进程、调用全部 RPC。npm 上的
+包 ≠ 审核过的包。**
 
 - 不做签名、不做校验和、不做静态插件沙箱（v1 已拍板，ADR
   `docs/adr/composition-boundaries.md` §5 信任模型）。**这是 v1 已知债**：
-  平台方向是第三方优先，完全信任只适合第一方/熟人插件。
-- 平台化落地的路径（`docs/plans/agent-platformization-plan.md` D12/D7）：
-  动态插件 = approval + vm 沙箱；静态插件沙箱化 / 签名 / 隔离列为后续硬化项。
-  本文档随 Phase 4 落地更新为实际状态。
+  平台方向是第三方优先，完全信任只适合第一方/熟人插件——后续硬化项
+  （静态插件沙箱化 / 签名 / 进程隔离）在列但不在 v1。
 - 唯一边界是装载通道的路径安全（遍历防护）——那是防攻击面不是防恶意
   代码：恶意代码装进来之后**拥有你本机账户的全部能力**。
 - 这与你手动改本机文件、跑 `npm install` 是同一信任级别。若你的 home
   目录不可信，问题不在插件层。
+
+### 动态插件（cordis 工具族 · 平台化 P4 / D7+D12 已落地）——approval + 沙箱
+
+与静态插件的「装进来 = 全信任」不同，模型经 `cordis(define|run|stop|
+undefine|inspect_list|inspect_self)` 运行时定义的插件包走**双门**：
+
+1. **审批门（D12）**——首激活必经用户批准（UI 审批卡，拒绝即终局，
+   不得重复请求）；授权按「会话 × 插件 × 包」记账；无 UI 通道且未授权 =
+   `APPROVAL_REQUIRED` 拒绝运行。
+2. **沙箱（D7 三层防线）**——动态插件源码在受控环境求值：
+   - **求值面阴影**：`window`/`fetch`/`document`/`eval`/`Function`/
+     `localStorage`/`Worker`/`require`/`process` 等 23 个危险全局以形参
+     阴影为 undefined（插件拿不到 DOM/网络/存储/动态求值逃逸面）；
+   - **守卫注册面**：apply 收守卫代理——只暴露 effect 与 12 个可注册
+     seam 的 register（def 形状逐个校验 + 贡献预算 64 条 + 取消后拒绝），
+     白名单外访问/赋值响亮拒绝（错误不静默）；
+   - **预算**：源码 ≤256KB / apply ≤10s / 贡献 ≤64 条，超限取消并链式
+     回收全部已注册贡献（disposer 袋归 runner 管理）。
+- **边界如实声明**（R4）：浏览器主文档没有进程级硬边界——动态插件沙箱
+  是「协议纪律沙箱」（与 code_execution worker 同一定位），安全面 =
+  上述实现质量；进程外硬隔离是后续硬化项，不是 v1 承诺。
+- 生命周期与所有权：包不可变（define 只追加）；跨会话不可见/不可操作；
+  stop/undefine 链式回收贡献；审批通过后的重启免审批（会话内记账）。
 
 ## 7. KV-cache 注意事项
 

@@ -38,7 +38,9 @@ const McpServerDeclSchema = z
     transport: z.enum(['stdio', 'http']),
     /** stdio：可执行命令。相对路径（含分隔符）相对插件目录解析；裸名走 PATH。 */
     command: z.string().min(1).optional(),
-    /** stdio：命令参数（原样透传——相对路径不解析，用绝对路径）。 */
+    /** stdio：命令参数。`./`/`../` 前缀的相对形态相对插件目录解析
+     *  （平台化 P4 · D1 示例：`["./server.cjs"]`）；其余原样透传（用绝对路径
+     *  或 PATH 可执行）。 */
     args: z.array(z.string()).optional(),
     /** http：直连端点。 */
     url: z.string().min(1).optional(),

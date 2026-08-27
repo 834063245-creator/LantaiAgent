@@ -51,8 +51,15 @@ export const tauriMcpBridgeIO: McpBridgeIO = {
 function resolveCommand(command: string, pluginDir: string): string {
   const looksRelative = !/^[a-zA-Z]:[\\/]/.test(command) && /[\\/]/.test(command);
   if (!looksRelative) return command;
+  return resolvePluginRel(command, pluginDir);
+}
+
+/** `./`/`../` 前缀的 arg → 相对插件目录解析（平台化 P4 · D1 端到端例子：
+ *  让示例插件能以 `args: ["./server.cjs"]` 便携声明脚本参数——裸名 arg
+ *  （如 `-v`、`--flag`、`file.json`）不受影响，向后兼容）。 */
+function resolvePluginRel(p: string, pluginDir: string): string {
   const base = pluginDir.replace(/[\\/]$/, '');
-  const tail = command
+  const tail = p
     .replace(/^[\\/]+/, '')
     .split(/[\\/]+/)
     .filter((seg) => seg !== '.')
@@ -74,7 +81,8 @@ async function connectServer(server: McpServerDecl, pluginName: string, io: McpB
   }
   const pluginDir = await io.pluginDir(pluginName);
   const bridgeId = `mcp-bridge/${pluginName}/${server.name}`;
-  const procIO = await io.createProcIO(bridgeId, resolveCommand(server.command ?? '', pluginDir), server.args ?? []);
+  const args = (server.args ?? []).map((a) => (/^\.{1,2}[\\/]/.test(a) ? resolvePluginRel(a, pluginDir) : a));
+  const procIO = await io.createProcIO(bridgeId, resolveCommand(server.command ?? '', pluginDir), args);
   const client = new McpClient({
     serverName: server.name,
     failurePolicy: server.failurePolicy ?? 'lazy',

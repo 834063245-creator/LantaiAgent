@@ -27,7 +27,8 @@
 //
 // 卸载/禁用：plugin_uninstall（删目录）/ plugin_set_enabled（plugins.json
 // 读改写——webview 无盘权必须走 RPC；S0 已定文件形状 {"disabled": [...]}）。
-// 两者均重启生效（装载是 boot 期一次性——与组合层「下次装配」语义对齐）。
+// 生效时机（平台化 Phase 4 · D6）：前端在 RPC 落盘后即时装卸插件 fiber
+// （运行时生效）；本 Rust 侧只管盘面与进程。
 
 use std::io::Read;
 use std::path::{Path, PathBuf};

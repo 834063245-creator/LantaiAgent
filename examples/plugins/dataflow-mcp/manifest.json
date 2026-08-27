@@ -1,0 +1,15 @@
+{
+  "name": "dataflow-mcp",
+  "version": "1.0.0",
+  "description": "进程外能力面端到端示例（平台化 P4 · D1）：把 dataflow 查询能力以外部 MCP server 形态挂接——server.cjs 是零依赖 Node 进程，直读 <工作区>/.lantai/dataflow/*.json 并以 MCP tools/call 应答。",
+  "entry": "entry.js",
+  "mcpServers": [
+    {
+      "name": "dataflow",
+      "transport": "stdio",
+      "command": "node",
+      "args": ["./server.cjs"],
+      "failurePolicy": "startup-error"
+    }
+  ]
+}
