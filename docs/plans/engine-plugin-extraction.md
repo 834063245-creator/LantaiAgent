@@ -183,7 +183,7 @@ DSH / Unity / 任意 MCP 客户端消费的是同一个二进制、同一份契�
 | 多进程内存/资源 | EXE 页共享；典型 1-3 工作区；崩溃隔离反而是收益 |
 | LSP 子进程归属 | 本来就在引擎进程内，跨边界无变化 |
 | 248 处直调迁移遗漏 | Phase 2 的 transport 抽象 + 差分对拍兜底；Phase 3 摘依赖后编译期强约束（漏一处就编不过）；Phase 1.5 已砍掉 graph_io 大头 |
-| N 进程与现有单进程假设（MCP 语义） | 拓扑决策 §6 拍板后，Phase 2/3 按该拓扑落 |
+| N 进程与现有单进程假设（MCP 语义） | 拓扑已拍板 A（每工作区一进程）；Phase 2 按 A 建 EngineProcessManager |
 | 前端迁移（Phase 1.5）回归 | graphData 消费面测试（hooks/agent-builder/工具开关）+ vitest 兜底 |
 
 ## 6. 待拍板
