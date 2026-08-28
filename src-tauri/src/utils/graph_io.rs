@@ -1,98 +1,19 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
-// 引擎图 IO — 分析/序列化/分页（从 utils.rs 拆出）
+// 引擎图 IO — 分析/快照/索引查询（engine-plugin-extraction Phase 1.5 缩水：
+// 图分页运输栈整链删除——分页只为已退役 3D 星图 + IPC 128MB 护栏服务的双重
+// 死代码；graphData 改为轻量聚合快照，跨边界只传聚合面与按文件查询）。
 
 use hologram_engine as engine;
-use engine::community::detect_hierarchical_communities_with_base;
-use hologram_graph::Graph;
-use engine::routing::preflight::save_baseline;
-// L2 crate 化：MemoryIndex 物理来源改为 hologram-storage 独立 crate
-// （壳层直连数据家）。
 use hologram_storage::MemoryIndex;
 
 use tauri::Emitter;
 
-use crate::utils::ipc_guard::lock_or_recover;
-use crate::utils::{regenerate_file_graph, write_atomic};
-
-pub(crate) fn cache_is_stale(engine: &engine::engine::Engine, root: &std::path::Path) -> bool {
-    // 新鲜度基准 = SQLite 里最近一次图持久化的时刻（冷启动实际读取的产物）。
-    // 旧实现用 root/hologram_graph.json 的 mtime —— 该文件只在 direct_analyze 里
-    // 写，而 SQLite 由 engine_analyze / watcher 增量也会写，两者可能分歧：
-    // SQLite 旧、json 新时会把旧图误判为“新鲜”，冷启动就永远停在旧图上。
-    let cache_mtime = engine
-        .graph_generated_at()
-        .ok()
-        .flatten()
-        .and_then(|s| {
-            s.parse::<u64>()
-                .ok()
-                .and_then(|ms| std::time::UNIX_EPOCH.checked_add(std::time::Duration::from_millis(ms)))
-        })
-        .or_else(|| {
-            // 旧库无 graph_generated_at —— 回退到 json mtime（兼容旧数据）
-            let graph_json = root.join("hologram_graph.json");
-            std::fs::metadata(&graph_json).ok().and_then(|m| m.modified().ok())
-        });
-    let cache_mtime = match cache_mtime {
-        Some(t) => t,
-        None => return true, // 无任何持久化基准 → 假设已过期（触发重分析补全）
-    };
-
-    const EXTS: &[&str] = &[
-        ".py", ".pyi", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".go", ".rs", ".java", ".c",
-        ".cpp", ".cc", ".cxx", ".h", ".hpp", ".hh", ".rb", ".cs", ".kt", ".kts", ".swift",
-        ".php", ".lua",
-    ];
-    const SKIP: &[&str] = &[
-        ".git", "node_modules", "target", "build", "dist", "out", ".venv", "venv",
-        // .hologram 与 .lantai 双名共存（2026-08-23 改名）：用户硬盘上的老项目可能
-        // 永远存在未迁移的 .hologram，必须继续忽略防止被吃进图。
-        ".hologram", ".lantai", "release-bin", "__pycache__", ".pytest_cache", ".ruff_cache",
-        ".mypy_cache", ".next", ".nuxt", ".svelte-kit", ".turbo", ".cursor",
-        ".idea", ".vscode", ".coverage",
-    ];
-
-    for entry in walkdir::WalkDir::new(root)
-        .follow_links(false)
-        .into_iter()
-        .filter_entry(|e| {
-            if e.file_type().is_dir() {
-                let name = e.file_name().to_string_lossy();
-                // 前缀规则与引擎 discovery.rs 保持一致：`.venv-lme` 等
-                // 带后缀虚拟环境同样排除，避免其 mtime 频繁变化误判缓存过期。
-                !(SKIP.iter().any(|d| name.as_ref() == *d)
-                    || name.starts_with(".venv")
-                    || name.starts_with("venv-")
-                    || name.starts_with("venv_"))
-            } else {
-                true
-            }
-        })
-        .filter_map(|e| e.ok())
-    {
-        let path = entry.path();
-        if !path.is_file() { continue; }
-        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        let ext_dot = format!(".{}", ext);
-        if !EXTS.contains(&ext_dot.as_str()) { continue; }
-        if let Ok(meta) = path.metadata() {
-            if let Ok(mtime) = meta.modified() {
-                if mtime > cache_mtime {
-                    eprintln!(
-                        "[direct_analyze] 缓存已过期: {} 在上次分析后被修改",
-                        path.display()
-                    );
-                    return true;
-                }
-            }
-        }
-    }
-    false
-}
+use crate::utils::regenerate_file_graph;
 
 /// 全量/缓存分析（L1 起显式引擎版）：engine 必须已 init 到 path
-/// （数据上下文 ensure 时完成）。返回值契约不变。
+/// （数据上下文 ensure 时完成）。返回轻状态 JSON——不再序列化全量图
+/// （前端 graphData = get_graph_snapshot 聚合查询，不再消费分析返回的图体）。
 pub(crate) fn direct_analyze(
     engine: &engine::engine::Engine,
     path: &str,
@@ -110,46 +31,14 @@ pub(crate) fn direct_analyze(
     // （例如在 VS Code 中跨会话修改）将静默不可见，直到用户手动点击"重新分析"。
     if !force {
         let cached_node_count = engine.read(|idx| idx.node_count()).unwrap_or(0);
-        if cached_node_count > 0 && !cache_is_stale(engine, &root) {
+        if cached_node_count > 0 && !cache_stale(engine, &root) {
             eprintln!("[direct_analyze] 使用缓存图 ({cached_node_count} 个节点)，跳过完整分析");
-        // 在回调内从缓存序列化 — 避免克隆整个 Graph
-        return engine.read(|idx| {
-            let graph = engine::engine::graph_from_index(idx);
-            let nc = graph.node_count();
-            let ec = graph.edge_count();
-            let nodes: Vec<serde_json::Value> = graph.nodes_map().values().map(|n| serde_json::json!({
-                "id": n.id, "name": n.name, "type": n.kind.as_str(),
-                "location": n.location, "in_degree": n.in_degree,
-                "out_degree": n.out_degree, "properties": n.properties,
-                "position": n.position, "community_id": n.community_id,
-            })).collect();
-            let edges: Vec<serde_json::Value> = graph.edges_map().values().map(|e| serde_json::json!({
-                "id": e.id, "source": e.source, "target": e.target,
-                "type": e.kind.as_str(), "coupling_depth": e.coupling_depth,
-                "cross_file": e.cross_file,
-                "temporal_delay_sec": e.temporal_delay_sec,
-            })).collect();
-            let mut comm_map: std::collections::HashMap<usize, Vec<&str>> = std::collections::HashMap::new();
-            for n in graph.nodes_map().values() {
-                if let Some(cid) = n.community_id {
-                    comm_map.entry(cid).or_default().push(&n.id);
-                }
-            }
-            let comms: Vec<serde_json::Value> = comm_map.iter()
-                .map(|(cid, node_ids)| {
-                    let nids: Vec<String> = node_ids.iter().map(|s| s.to_string()).collect();
-                    let label = derive_community_label(&nids);
-                    serde_json::json!({"id": format!("comm_{}", cid), "size": nids.len(), "node_ids": nids, "label": label})
-                })
-                .collect();
-            serde_json::json!({
-                "ok": true, "node_count": nc, "edge_count": ec,
-                "nodes": nodes, "edges": edges, "communities": comms,
-                "hierarchical_communities": [],
-                "cached": true,
-            }).to_string()
-        }).map_err(|e| format!("Read cached graph failed: {e}"));
-    }
+            return Ok(serde_json::json!({
+                "status": "ok", "cached": true, "total_nodes": cached_node_count,
+                "node_count": cached_node_count,
+                "edge_count": engine.read(|idx| idx.edge_count()).unwrap_or(0),
+            }).to_string());
+        }
     } // if !force 结束
 
     let result = engine
@@ -157,51 +46,21 @@ pub(crate) fn direct_analyze(
         .map_err(|e| format!("Analyze failed: {e}"))?;
 
     // result.graph 已被引擎消费（节点/边已移至 MemoryIndex/store）。
-    // 使用 result.node_count / result.edge_count 获取标量值，
-    // 从 store 读取图数据进行序列化。
+    // 图数据统一从 store 读（get_graph_snapshot 聚合查询），这里只留标量。
     let nc = result.node_count;
     let ec = result.edge_count;
 
-    // 从图 store 序列化（数据已由 engine_analyze 交换入）
-    let serialized = serialize_cached_graph(engine, path)?;
-    let wrapped: serde_json::Value = serde_json::from_str(&serialized)
-        .unwrap_or(serde_json::json!({"nodes":[],"edges":[],"communities":[]}));
-    let nodes = wrapped.get("nodes").cloned().unwrap_or(serde_json::json!([]));
-    let edges = wrapped.get("edges").cloned().unwrap_or(serde_json::json!([]));
-    let comms = wrapped.get("communities").cloned().unwrap_or(serde_json::json!([]));
-    // 层次社区来自 result（未被消费）
-    let hcomms: Vec<serde_json::Value> = result.hierarchical_communities.iter()
-        .map(|hc| serde_json::json!({
-            "id": hc.id,
-            "label": hc.label,
-            "node_ids": hc.node_ids,
-            "level": hc.level,
-            "parent_id": hc.parent_id,
-        }))
-        .collect();
-
-    // 持久化 hologram_graph.json 供冷启动使用
-    let graph_path = format!("{}/hologram_graph.json", path);
-    let wrapped = serde_json::json!({
-        "meta": { "source_root": path,
-            "generated_at": chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
-            "version": "0.1.0", "node_count": nc, "edge_count": ec },
-        "nodes": nodes, "edges": edges, "communities": comms,
-        "hierarchical_communities": hcomms,
-    });
-    // 原子写：大图数百 MB 写入窗口长，中途崩溃留下截断 JSON
-    // 会被冷启动原样读回（雷区地图 P0-4）；失败必须可见（宪法·错误不静默）
-    if let Err(e) = write_atomic(&graph_path, &serde_json::to_string(&wrapped).unwrap_or_default()) {
-        eprintln!("[hologram] hologram_graph.json 落盘失败（冷启动缓存缺失）: {e}");
-    }
     // 每次全量分析后都更新基线，使后续检查
     // 与最新快照进行对比 — 防止基线过期导致的误报
     // （例如图结构在两次分析间演化时出现"53 个新循环"）。
     let _ = engine.read(|idx| {
         let g = engine::engine::graph_from_index(idx);
-        save_baseline(&root, &g)
+        engine::routing::preflight::save_baseline(&root, &g)
     });
-    // .hologram MsgPack 已废弃 — MemoryIndex 是唯一的运行时真相，JSON 仅用于冷启动归档
+    // hologram_graph.json 归档已退役（Phase 1.5）：SQLite 是唯一持久化，
+    // 快照按需算——冷启动缓存路径改走 get_graph_snapshot。
+    let _ = std::fs::remove_file(format!("{}/hologram_graph.json", path));
+    // .hologram MsgPack 已废弃 — MemoryIndex 是唯一的运行时真相
     let _ = std::fs::remove_file(format!("{}/hologram_graph.hologram", path));
     let _ = regenerate_file_graph(path);
 
@@ -213,12 +72,23 @@ pub(crate) fn direct_analyze(
     );
 
     Ok(serde_json::json!({
-        "status": "ok", "total_nodes": nc, "total_edges": ec,
+        "status": "ok", "cached": false, "total_nodes": nc, "total_edges": ec,
         "communities": result.community_count, "elapsed_secs": result.elapsed_secs,
         "node_count": nc, "edge_count": ec,
     }).to_string())
 }
-// （2026-08-04 清理：with_graph 全库零调用，已删 — 查询统一走 with_index/MemoryIndex）
+
+/// 缓存新鲜度（薄包装）：核心在引擎 `tools::staleness::compute_cache_stale`
+/// （单一真源，壳方法 cache_stale 同源）；基准 = graph_generated_at，
+/// 无 meta 回退 .lantai/hologram.db mtime。
+fn cache_stale(engine: &engine::engine::Engine, root: &std::path::Path) -> bool {
+    let generated_at_ms: Option<u64> = engine
+        .graph_generated_at()
+        .ok()
+        .flatten()
+        .and_then(|s| s.parse().ok());
+    engine::tools::staleness::compute_cache_stale(root, generated_at_ms).stale
+}
 
 /// 在 MemoryIndex（基于 CSR，O(1) 邻接查询）上运行查询（显式引擎版）。
 pub(crate) fn with_index<F: FnOnce(&MemoryIndex) -> serde_json::Value>(
@@ -230,217 +100,24 @@ pub(crate) fn with_index<F: FnOnce(&MemoryIndex) -> serde_json::Value>(
         .map_err(|e| format!("Engine error: {}", e))
 }
 
-/// 序列化完整图 JSON — 前端和 analyze_and_load 共用。
-/// 仅从 Engine 读取。
-pub(crate) fn serialize_cached_graph(
+/// 聚合快照 JSON —— graphData 的唯一装载形态（Phase 1.5）：计数/kind 分布/
+/// 边类型分布/社区规模/top 扇入扇出。聚合逻辑单一真源 =
+/// `hologram_engine::tools::graph_snapshot_value`（与引擎 graph_snapshot
+/// 壳方法同构同源；Phase 2 transport 后壳侧改经 MCP 调同一方法）。
+pub(crate) fn graph_snapshot_json(
     engine: &engine::engine::Engine,
-    source_root: &str,
 ) -> Result<String, String> {
-    engine.read(|idx| {
-        let g = engine::engine::graph_from_index(idx);
-        let nodes: Vec<serde_json::Value> = g.nodes_map().values().map(|n| serde_json::json!({
-            "id": n.id, "name": n.name, "type": n.kind.as_str(),
-            "location": n.location, "in_degree": n.in_degree,
-            "out_degree": n.out_degree,
-            "properties": n.properties, "position": n.position,
-            "community_id": n.community_id,
-        })).collect();
-        let edges: Vec<serde_json::Value> = g.edges_map().values().map(|e| serde_json::json!({
-            "id": e.id, "source": e.source, "target": e.target,
-            "type": e.kind.as_str(), "coupling_depth": e.coupling_depth,
-            "cross_file": e.cross_file,
-            "temporal_delay_sec": e.temporal_delay_sec,
-        })).collect();
-        let meta = serde_json::json!({
-            "source_root": source_root,
-            "node_count": g.node_count(),
-            "edge_count": g.edge_count(),
-        });
-        serde_json::to_string(&serde_json::json!({"meta": meta, "nodes": nodes, "edges": edges, "communities": build_level0_communities_json(&g), "hierarchical_communities": build_hierarchical_communities_json(&g)})).unwrap_or_default()
-    })
-    .map_err(|e| format!("Engine error: {}", e))
-}
-
-/// 从每个节点上预计算的 community_id 重建 level-0 社区
-/// （避免重新运行 Louvain，其复杂度为 O(V·avg_degree·iterations)）
-/// community_id 是 Option<usize> → JSON 数字，而非字符串。
-fn build_level0_communities_json(g: &Graph) -> serde_json::Value {
-    let mut comm_map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-    for n in g.nodes_map().values() {
-        if let Some(cid) = n.community_id {
-            comm_map.entry(cid.to_string()).or_default().push(n.id.to_string());
-        }
-    }
-    serde_json::to_value(
-        comm_map.iter().map(|(cid, node_ids)| {
-            // 从最常见的文件前缀推导可读标签
-            let label = derive_community_label(node_ids);
-            serde_json::json!({"id": cid, "size": node_ids.len(), "node_ids": node_ids, "label": label})
-        }).collect::<Vec<_>>(),
-    ).unwrap_or(serde_json::json!([]))
-}
-
-/// 层次社区 — 从 node.community_id 重建基础社区
-/// （在分析阶段已设置），然后仅运行 Phase 2 凝聚。
-/// 避免每次序列化时重新运行 Phase 1 detect_communities。
-fn build_hierarchical_communities_json(g: &Graph) -> serde_json::Value {
-    let mut base_map: std::collections::HashMap<usize, Vec<String>> = std::collections::HashMap::new();
-    for n in g.nodes_map().values() {
-        if let Some(cid) = n.community_id {
-            base_map.entry(cid).or_default().push(n.id.as_str().to_owned());
-        }
-    }
-    let base: Vec<Vec<String>> = base_map.values().cloned().collect();
-    let hcommunities = detect_hierarchical_communities_with_base(g, base, 42);
-    serde_json::to_value(
-        hcommunities.iter().map(|hc| serde_json::json!({
-            "id": hc.id,
-            "label": hc.label,
-            "node_ids": hc.node_ids,
-            "level": hc.level,
-            "parent_id": hc.parent_id,
-        })).collect::<Vec<_>>(),
-    ).unwrap_or(serde_json::json!([]))
-}
-
-// ═══════════════════════════════════════════════════════════════
-// 图分页 — landmine-map.md P0-2 欠账清账（雷 2：大响应无尺寸上限）
-// ═══════════════════════════════════════════════════════════════
-// 大仓库（kernel 级）全量图 JSON 可达数百 MB，超过 IPC 硬上限
-// （guard_ipc_size 128MB）会直接报错导致工作区无法打开。分页方案：
-// 1. 节点按 id 字典序排序后切成等宽页（页数 = ceil(V / page_size)），
-//    页边界缓存只存每页首个 id（内存可忽略），缓存键含
-//    (source_root, node_count, edge_count, page_size) — 图变更自动失效。
-//    每页响应远小于护栏；重复拉页不会跨页漏节点（边界重建时节点
-//    只会移位到相邻页，前端按 id 去重吸收）。
-// 2. 第 k 页只回本页「新引入」的边（max(page_of(source), page_of(target)) == k）——
-//    每条边恰好下发一次，单页响应严格有界（旧累积规则 ≤k 会让末页 ≈ 全量
-//    边表，大图直接撞 128MB 护栏 → 末页永远拉不到）；前端按 id 合并即全图。
-// 3. 社区数据不随页下发（节点自带 community_id，前端渐进重建 level-0）；
-//    hierarchical_communities 仅最后一页携带（O(社区) 凝聚只做一次）。
-pub(crate) const GRAPH_PAGE_DEFAULT_NODES: usize = 12_000;
-
-struct PageIndexCache {
-    key: (String, usize, usize, usize),
-    boundaries: Vec<String>,
-}
-
-static PAGE_INDEX_CACHE: std::sync::LazyLock<std::sync::Mutex<Option<PageIndexCache>>> =
-    std::sync::LazyLock::new(|| std::sync::Mutex::new(None));
-
-/// 构建/复用分页索引，返回 (页边界 id 列表, 节点总数)。
-/// 边界 = 每页第一个 id（字典序）；page_of(id) = 二分定位。
-fn graph_page_index(
-    engine: &engine::engine::Engine,
-    source_root: &str,
-    page_size: usize,
-) -> Result<(Vec<String>, usize), String> {
-    let (node_count, edge_count) = engine
-        .read(|idx| (idx.node_count(), idx.edge_count()))
-        .map_err(|e| format!("Engine error: {e}"))?;
-    let key = (source_root.to_owned(), node_count, edge_count, page_size);
-    {
-        let cache = lock_or_recover(&PAGE_INDEX_CACHE);
-        if let Some(c) = cache.as_ref() {
-            if c.key == key {
-                return Ok((c.boundaries.clone(), node_count));
-            }
-        }
-    }
-    let boundaries: Vec<String> = engine.read(|idx| {
-        let g = engine::engine::graph_from_index(idx);
-        let mut ids: Vec<String> = g.nodes_map().values().map(|n| n.id.to_string()).collect();
-        ids.sort_unstable();
-        let total_pages = if ids.is_empty() { 0 } else { (ids.len() + page_size - 1) / page_size };
-        (0..total_pages).map(|p| ids[p * page_size].clone()).collect()
-    })
-    .map_err(|e| format!("Engine error: {e}"))?;
-    *lock_or_recover(&PAGE_INDEX_CACHE) = Some(PageIndexCache { key, boundaries: boundaries.clone() });
-    Ok((boundaries, node_count))
-}
-
-/// 图谱 meta + 分页信息 — 工作区切换/冷启动的轻量响应（替代全量图 JSON）。
-pub(crate) fn graph_meta_json(
-    engine: &engine::engine::Engine,
-    source_root: &str,
-    page_size: usize,
-) -> Result<String, String> {
-    let (boundaries, node_count) = graph_page_index(engine, source_root, page_size)?;
-    let total_pages = boundaries.len();
-    let edge_count = engine
-        .read(|idx| idx.edge_count())
-        .map_err(|e| format!("Engine error: {e}"))?;
-    Ok(serde_json::json!({
-        "meta": {"source_root": source_root, "node_count": node_count, "edge_count": edge_count},
-        "paged": true,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "has_more": total_pages > 0,
-    }).to_string())
-}
-
-/// 序列化第 page 页（0 基）。边只含 max(两端点页号) == page 的边（每边恰好一次）。
-/// 最后一页附带完整 communities + hierarchical_communities。
-pub(crate) fn serialize_graph_page(
-    engine: &engine::engine::Engine,
-    source_root: &str,
-    page: usize,
-    page_size: usize,
-) -> Result<String, String> {
-    let (boundaries, node_count) = graph_page_index(engine, source_root, page_size)?;
-    let total_pages = boundaries.len();
-    if total_pages == 0 {
-        return Err(format!("图谱为空，无法分页: {source_root}"));
-    }
-    if page >= total_pages {
-        return Err(format!("图谱分页越界: page={page}, total_pages={total_pages}"));
-    }
-    let page_of = |id: &str| -> usize {
-        boundaries.partition_point(|b| b.as_str() <= id).saturating_sub(1)
-    };
-    let last_page = page + 1 == total_pages;
-    let (nodes, edges, edge_count, communities, hcommunities) = engine.read(|idx| {
-        let g = engine::engine::graph_from_index(idx);
-        let nodes: Vec<serde_json::Value> = g.nodes_map().values()
-            .filter(|n| page_of(&n.id) == page)
-            .map(|n| serde_json::json!({
-                "id": n.id, "name": n.name, "type": n.kind.as_str(),
-                "location": n.location, "in_degree": n.in_degree,
-                "out_degree": n.out_degree,
-                "properties": n.properties, "position": n.position,
-                "community_id": n.community_id,
-            }))
-            .collect();
-        let edges: Vec<serde_json::Value> = g.edges_map().values()
-            .filter(|e| page_of(&e.source).max(page_of(&e.target)) == page)
-            .map(|e| serde_json::json!({
-                "id": e.id, "source": e.source, "target": e.target,
-                "type": e.kind.as_str(), "coupling_depth": e.coupling_depth,
-                "cross_file": e.cross_file,
-                "temporal_delay_sec": e.temporal_delay_sec,
-            }))
-            .collect();
-        let communities = if last_page { Some(build_level0_communities_json(&g)) } else { None };
-        let hcommunities = if last_page { Some(build_hierarchical_communities_json(&g)) } else { None };
-        (nodes, edges, g.edge_count(), communities, hcommunities)
-    })
-    .map_err(|e| format!("Engine error: {e}"))?;
-    let mut payload = serde_json::json!({
-        "meta": {"source_root": source_root, "node_count": node_count, "edge_count": edge_count},
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-        "has_more": !last_page,
-        "nodes": nodes,
-        "edges": edges,
-    });
-    if let Some(c) = communities {
-        payload["communities"] = c;
-    }
-    if let Some(h) = hcommunities {
-        payload["hierarchical_communities"] = h;
-    }
-    Ok(payload.to_string())
+    let root = engine.project_root().to_string_lossy().to_string();
+    engine
+        .read(|idx| {
+            let g = engine::engine::graph_from_index(idx);
+            serde_json::to_string(&engine::tools::graph_snapshot_value(
+                &g,
+                &engine::path_utils::normalize_path(&root),
+            ))
+            .unwrap_or_default()
+        })
+        .map_err(|e| format!("Engine error: {e}"))
 }
 
 /// （L1 起退役）原 ensure_engine_graph —— 引擎按根绑定与就绪检查
@@ -452,57 +129,6 @@ pub(crate) fn ensure_engine_ready(engine: &engine::engine::Engine, source_root: 
         return Err(format!("引擎中无图谱数据: {source_root}（请先执行分析）"));
     }
     Ok(())
-}
-
-/// 从社区的成员节点 ID 推导可读标签。
-/// 使用节点 ID 中最常见的文件路径片段。
-pub(crate) fn derive_community_label(node_ids: &[String]) -> String {
-    use std::collections::HashMap;
-    let mut prefix_counts: HashMap<String, usize> = HashMap::new();
-    for nid in node_ids {
-        // 节点 ID 通常为 "file_path:line" 或 "file_path::symbol"
-        // 提取顶级目录或文件名
-        let file = nid.split(':').next().unwrap_or(nid);
-        let parts: Vec<&str> = file.split(['/', '\\']).collect();
-        // 尝试获取有意义的前缀：路径的前 1-2 段
-        let prefix = if parts.len() >= 2 {
-            format!("{}/{}", parts[parts.len().saturating_sub(2)], parts[parts.len() - 1])
-        } else {
-            file.to_string()
-        };
-        *prefix_counts.entry(prefix).or_default() += 1;
-    }
-    // 选择最常见的前缀，若无则回退到第一个节点
-    prefix_counts
-        .into_iter()
-        .max_by_key(|(_, count)| *count)
-        .map(|(prefix, _)| prefix)
-        .unwrap_or_else(|| "社区".to_string())
-}
-
-#[allow(dead_code)] // 供 main.rs 中的测试使用
-pub(crate) fn diff_to_json(before: &Graph, after: &Graph) -> serde_json::Value {
-    let d = before.diff(after);
-    let added_nodes: Vec<_> = d.added_nodes.iter().map(|n| serde_json::json!({
-        "id": n.id, "name": n.name, "type": n.kind.as_str(),
-        "location": n.location,
-    })).collect();
-    let removed_nodes: Vec<_> = d.removed_nodes.iter().map(|n| serde_json::json!({
-        "id": n.id, "name": n.name, "type": n.kind.as_str(),
-    })).collect();
-    let modified_nodes: Vec<_> = d.modified_nodes.iter().map(|(old, new)| serde_json::json!({
-        "node_id": new.id, "name": new.name,
-        "old_kind": old.kind.as_str(), "new_kind": new.kind.as_str(),
-    })).collect();
-    let is_empty = added_nodes.is_empty() && removed_nodes.is_empty() && modified_nodes.is_empty();
-    serde_json::json!({
-        "is_empty": is_empty,
-        "added_nodes": added_nodes,
-        "removed_nodes": removed_nodes,
-        "modified_nodes": modified_nodes,
-        "added_edges": d.added_edges.len(),
-        "removed_edges": d.removed_edges.len(),
-    })
 }
 
 pub(crate) async fn run_analyze_with_progress(
@@ -563,5 +189,62 @@ pub(crate) async fn run_analyze_with_progress(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tmp_root(tag: &str) -> std::path::PathBuf {
+        let tmp = std::env::temp_dir().join(format!(
+            "hologram_shell_graphio_{}_{}",
+            tag,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        tmp
+    }
+
+    /// direct_analyze 轻状态契约：缓存快路径与全量路径都只回标量，
+    /// 不再序列化全量 nodes/edges（graphData 改快照装载的根基）。
+    #[test]
+    fn direct_analyze_returns_lightweight_status() {
+        let tmp = tmp_root("light");
+        std::fs::write(tmp.join("a.rs"), "fn a_one() {}\n").unwrap();
+        let eng = hologram_engine::engine::Engine::open(&tmp).unwrap();
+        let full = direct_analyze(&eng, tmp.to_str().unwrap(), true).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&full).unwrap();
+        assert_eq!(v["status"], "ok");
+        assert_eq!(v["cached"], false);
+        assert!(v["node_count"].as_u64().unwrap() > 0);
+        assert!(v.get("nodes").is_none(), "全量路径不得回传图体");
+        // 缓存快路径
+        let cached = direct_analyze(&eng, tmp.to_str().unwrap(), false).unwrap();
+        let v2: serde_json::Value = serde_json::from_str(&cached).unwrap();
+        assert_eq!(v2["cached"], true);
+        assert!(v2.get("nodes").is_none());
+        // 归档 JSON 不再产出
+        assert!(!tmp.join("hologram_graph.json").exists());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// 快照组装契约：与引擎 graph_snapshot 壳方法同构（计数/分布/top 扇入）。
+    #[test]
+    fn graph_snapshot_json_shape() {
+        let tmp = tmp_root("snap");
+        std::fs::write(tmp.join("a.rs"), "fn a_one() {}\n").unwrap();
+        let eng = hologram_engine::engine::Engine::open(&tmp).unwrap();
+        direct_analyze(&eng, tmp.to_str().unwrap(), true).unwrap();
+        let raw = graph_snapshot_json(&eng).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert!(v["node_count"].as_u64().unwrap() > 0);
+        assert!(v["kind_counts"].is_object());
+        assert!(v["top_fan_in"].is_array());
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

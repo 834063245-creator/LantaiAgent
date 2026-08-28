@@ -60,21 +60,24 @@ export interface RpcContract {
   };
 
   // ── Graph ────────────────────────────────────────────────
+  // Phase 1.5（engine-plugin-extraction）：分页运输栈拆除——graphData =
+  // 聚合快照（get_graph_snapshot / load_graph_json），按文件符号索引走
+  // hologram_file_nodes 轻查询；跨边界不再传全量图体。
   load_graph_json: {
     params: { path?: string };
-    result: string; // JSON
+    result: string; // JSON — 聚合快照
   };
   analyze_and_load: {
     params: { path: string; force?: boolean };
-    result: string; // JSON
+    result: string; // JSON — 轻状态（分析完成后经 get_graph_snapshot 装载）
   };
-  get_graph_meta: {
+  get_graph_snapshot: {
     params: Record<string, never>;
-    result: string; // JSON
+    result: string; // JSON — 聚合快照
   };
-  get_graph_page: {
-    params: { page?: number; page_size?: number };
-    result: string; // JSON
+  hologram_file_nodes: {
+    params: { file: string };
+    result: string; // JSON — { file, count, nodes: [{id,name,kind,fan_in,fan_out}] }
   };
   engine_impact: {
     params: { node_id: string; max_depth?: number };
@@ -278,7 +281,6 @@ export interface RpcContract {
     params: { event_type: string; file?: string; summary: string };
     result: string; // "null"（fire-and-forget）
   };
-  get_full_graph: { params: Record<string, never>; result: string }; // JSON — 大图慎用，优先分页
 
   // ── 工作区 ───────────────────────────────────────────────
   workspace_activate: { params: { path: string }; result: string }; // "null"

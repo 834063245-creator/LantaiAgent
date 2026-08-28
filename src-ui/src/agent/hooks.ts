@@ -129,11 +129,42 @@ export interface EngineSnapshot {
 }
 
 export interface GraphContext {
+  /** 按文件符号索引 —— 读按需缓存（file_nodes 轻查询的产物，Phase 1.5）。
+   *  未预热的文件返回 []（保守无警告）；preflight 命中前先 warmFile。 */
   getNodesInFile(filePath: string): NodeBrief[];
   getImpactSummary(filePath: string): string | null;
   getSearchContext(files: string[]): string | null;
+  /** 预热单文件符号索引（file_nodes 轻查询 → 缓存；幂等，在途去重）。 */
+  warmFile(filePath: string): Promise<void>;
+  /** 图更新时清空按需索引缓存（下次查询重新拉取，保新鲜）。 */
+  invalidate(): void;
   /** 引擎快照 — 异步 fetch 完成前为 null。由 preflight hook 读取。 */
   engine: EngineSnapshot | null;
+}
+
+// ── GraphSnapshot —— 引擎 graph_snapshot 聚合载荷（Phase 1.5 graphData 形态）──
+// 契约真源 = engine/src/tools/mod.rs graph_snapshot_value（壳侧 get_graph_snapshot
+// / load_graph_json / 引擎壳方法 graph_snapshot 三路同源）。
+
+export interface GraphSnapshot {
+  source_root?: string;
+  node_count: number;
+  edge_count: number;
+  file_count: number;
+  class_count: number;
+  kind_counts: Record<string, number>;
+  edge_kind_counts: Record<string, number>;
+  communities: Array<{ id: number; size: number }>;
+  top_fan_in: Array<{ id: string; name: string; fan_in: number }>;
+  top_fan_out: Array<{ id: string; name: string; fan_out: number }>;
+}
+
+/** 兼容收窄：unknown → GraphSnapshot（宽松判定 = 有 node_count 数字）。 */
+export function asGraphSnapshot(v: unknown): GraphSnapshot | null {
+  if (v && typeof v === 'object' && typeof (v as Record<string, unknown>).node_count === 'number') {
+    return v as GraphSnapshot;
+  }
+  return null;
 }
 
 export interface NodeBrief {
@@ -144,148 +175,33 @@ export interface NodeBrief {
   fanOut: number;
 }
 
-/** 图数据的宽松形状（11c any 清零）：引擎/缓存跨版本字段名有别名，
- *  入参面保持 unknown 兼容任意来源（GraphJSON/引擎 JSON），
- *  消费方经 asArray 单点断言收窄到 Node/Edge 形状。 */
-export interface GraphNodeShape {
-  id: string;
-  name?: string;
-  kind?: string;
-  location?: string;
-  community_id?: number;
-  communityId?: number;
-}
+// ── formatGraphSnapshot —— 快照 → 架构速览文本，注入 system prompt ──
+// （Phase 1.5：替代 buildGraphSnapshot —— 后者从全量 nodes/edges 现场聚合，
+// 现在聚合面由引擎 graph_snapshot 一次给出，前端只做渲染。）
 
-export interface GraphEdgeShape {
-  source?: string;
-  target?: string;
-  kind?: string;
-  edge_type?: string;
-}
-
-export interface GraphDataShape {
-  nodes?: unknown;
-  edges?: unknown;
-}
-
-function asArray<T>(v: unknown): T[] {
-  if (Array.isArray(v)) return v as T[];
-  if (v && typeof v === 'object') return Object.values(v as Record<string, T>);
-  return [];
-}
-
-// ── 构建 file→nodes 索引 + degree map ──
-
-export function buildFileNodeIndex(graphData: GraphDataShape): {
-  fileIndex: Map<string, NodeBrief[]>;
-  fanIn: Map<string, number>;
-  fanOut: Map<string, number>;
-} {
-  const fileIndex = new Map<string, NodeBrief[]>();
-  const fanIn = new Map<string, number>();
-  const fanOut = new Map<string, number>();
-
-  const nodes = asArray<GraphNodeShape>(graphData.nodes);
-  const edges = asArray<GraphEdgeShape>(graphData.edges);
-
-  // 第一遍：计算度数
-  for (const e of edges) {
-    const src = e.source,
-      tgt = e.target;
-    if (src && tgt) {
-      fanOut.set(src, (fanOut.get(src) || 0) + 1);
-      fanIn.set(tgt, (fanIn.get(tgt) || 0) + 1);
-    }
-  }
-
-  // 第二遍：构建文件索引
-  for (const n of nodes) {
-    const loc: string = n.location || '';
-    let fp = loc;
-    const colonIdx = loc.lastIndexOf(':');
-    if (colonIdx > 1) {
-      // 仅当最后一个 : 之后的部分看起来像行号时才截取
-      const after = loc.slice(colonIdx + 1);
-      if (/^\d+$/.test(after)) fp = loc.slice(0, colonIdx);
-    }
-    if (!fp) continue;
-    const norm = fp.replace(/\\/g, '/').toLowerCase();
-    let arr = fileIndex.get(norm);
-    if (!arr) {
-      arr = [];
-      fileIndex.set(norm, arr);
-    }
-    arr.push({
-      id: n.id,
-      name: n.name ?? '',
-      kind: n.kind || '',
-      fanIn: fanIn.get(n.id) || 0,
-      fanOut: fanOut.get(n.id) || 0,
-    });
-  }
-
-  return { fileIndex, fanIn, fanOut };
-}
-
-// ── buildGraphSnapshot —— 从 graphData 计算架构快照，注入 system prompt ──
-
-export function buildGraphSnapshot(graphData: GraphDataShape): string {
-  const nodes = asArray<GraphNodeShape>(graphData.nodes);
-  const edges = asArray<GraphEdgeShape>(graphData.edges);
-
-  // 社区分布
-  const communityMap = new Map<number, number>();
-  for (const n of nodes) {
-    const cid = n.community_id ?? n.communityId;
-    if (cid != null) communityMap.set(cid, (communityMap.get(cid) || 0) + 1);
-  }
-
-  // 边类型分布
-  const edgeTypes = new Map<string, number>();
-  for (const e of edges) {
-    const k = e.kind || e.edge_type || '?';
-    edgeTypes.set(k, (edgeTypes.get(k) || 0) + 1);
-  }
-
-  // 高扇入节点
-  const fanIn = new Map<string, number>();
-  for (const e of edges) {
-    if (e.target) fanIn.set(e.target, (fanIn.get(e.target) || 0) + 1);
-  }
-  const topFanIn = nodes
-    .map((n) => ({ name: n.name || n.id, fanIn: fanIn.get(n.id) || 0 }))
-    .filter((n) => n.fanIn > 0)
-    .sort((a, b) => b.fanIn - a.fanIn)
-    .slice(0, 5);
-
-  // 继承边 — 去重计数
-  const inheritsEdges = edges.filter((e) => (e.kind || e.edge_type) === 'inherits');
-  const classCount = nodes.filter((n) => (n.kind || '').toLowerCase() === 'class').length;
-
+export function formatGraphSnapshot(s: GraphSnapshot): string {
   const parts: string[] = [];
-  parts.push(`${nodes.length} 节点 / ${edges.length} 边`);
+  parts.push(`${s.node_count} 节点 / ${s.edge_count} 边`);
 
-  // 社区
-  if (communityMap.size > 0) {
-    const sizes = [...communityMap.values()].sort((a, b) => b - a).slice(0, 5);
-    parts.push(`${communityMap.size} 个社区（规模: ${sizes.join('/')}）`);
+  if (s.communities.length > 0) {
+    const sizes = s.communities
+      .map((c) => c.size)
+      .sort((a, b) => b - a)
+      .slice(0, 5);
+    parts.push(`${s.communities.length} 个社区（规模: ${sizes.join('/')}）`);
   }
 
-  // 边类型
-  const typeParts: string[] = [];
-  for (const [k, v] of [...edgeTypes.entries()].sort((a, b) => b[1] - a[1])) {
-    typeParts.push(`${k}:${v}`);
-  }
-  parts.push(`边: ${typeParts.join(', ')}`);
-
-  // 类层次结构
-  if (classCount > 0) {
-    parts.push(`${classCount} 个类/接口, ${inheritsEdges.length} 条继承边`);
+  const typeParts = Object.entries(s.edge_kind_counts).sort((a, b) => b[1] - a[1]);
+  if (typeParts.length > 0) {
+    parts.push(`边: ${typeParts.map(([k, v]) => `${k}:${v}`).join(', ')}`);
   }
 
-  // 热点
-  if (topFanIn.length > 0) {
-    parts.push(`枢纽: ${topFanIn.map((n) => `\`${n.name}\`(${n.fanIn})`).join(', ')}`);
+  if (s.class_count > 0) {
+    parts.push(`${s.class_count} 个类/接口`);
+  }
+
+  if (s.top_fan_in.length > 0) {
+    parts.push(`枢纽: ${s.top_fan_in.map((n) => `\`${n.name}\`(${n.fan_in})`).join(', ')}`);
   }
 
   return parts.join(' | ');
@@ -338,6 +254,7 @@ export function createGraphContextHook(ctx: GraphContext): Hook {
         case 'read_file': {
           const fp = String(args.filePath || args.file_path || '');
           if (fp) {
+            await ctx.warmFile(fp);
             snippet = ctx.getImpactSummary(fp);
             // 引擎层：脆弱度排名
             if (ctx.engine) {
@@ -358,6 +275,7 @@ export function createGraphContextHook(ctx: GraphContext): Hook {
         case 'git_diff': {
           const files = extractFilesFromDiffResult(result);
           if (files.length > 0) {
+            await Promise.all(files.slice(0, 3).map((f) => ctx.warmFile(f)));
             snippet = ctx.getSearchContext(files.slice(0, 3));
             // 引擎层：变更文件的脆弱度摘要
             if (ctx.engine) {
@@ -565,20 +483,49 @@ function extractFilesFromDiffResult(result: string): string[] {
   return [...files];
 }
 
-// ── GraphContext 实现（基于 fileIndex） ──
+// ── GraphContext 实现（file_nodes 按需索引 + 缓存，Phase 1.5）──
+// 旧形态 = 工作区装载时全量建 fileIndex（graphData 携带全量 nodes/edges）；
+// 快照形态下图数据不再过界 —— getNodesInFile 读按需缓存，未命中走
+// file_nodes 轻查询（单文件毫秒级）。preflight（同步接口）命中前
+// 保守无警告并后台预热；enrich（异步）先 warm 再读，始终新鲜。
+
+export type GraphFileNodesFetcher = (file: string) => Promise<NodeBrief[]>;
 
 export function createGraphContext(
-  fileIndex: Map<string, NodeBrief[]>,
-  _fanIn: Map<string, number>,
-  _fanOut: Map<string, number>,
+  fetchFileNodes: GraphFileNodesFetcher,
   engine: EngineSnapshot | null = null,
 ): GraphContext {
+  const cache = new Map<string, NodeBrief[]>();
+  const inflight = new Map<string, Promise<void>>();
+
   function norm(fp: string): string {
     return fp.replace(/\\/g, '/').toLowerCase();
   }
 
   function getNodesInFile(filePath: string): NodeBrief[] {
-    return fileIndex.get(norm(filePath)) || [];
+    return cache.get(norm(filePath)) || [];
+  }
+
+  async function warmFile(filePath: string): Promise<void> {
+    const key = norm(filePath);
+    if (cache.has(key)) return;
+    const existing = inflight.get(key);
+    if (existing) return existing;
+    const p = fetchFileNodes(filePath)
+      .then((nodes) => {
+        cache.set(key, nodes);
+      })
+      .catch(() => {
+        /* 查询失败 = 保持未预热（保守无警告），下次再试 */
+      })
+      .finally(() => inflight.delete(key));
+    inflight.set(key, p);
+    return p;
+  }
+
+  function invalidate(): void {
+    cache.clear();
+    inflight.clear();
   }
 
   function getImpactSummary(filePath: string): string | null {
@@ -637,7 +584,7 @@ export function createGraphContext(
     return summary;
   }
 
-  return { engine, getNodesInFile, getImpactSummary, getSearchContext };
+  return { engine, getNodesInFile, getImpactSummary, getSearchContext, warmFile, invalidate };
 }
 
 // ── GraphPreflightHook —— 写操作前自动影响分析 ──
@@ -686,7 +633,12 @@ export function createGraphPreflightHook(ctx: GraphContext): PreflightHook {
       if (!fp) return null;
 
       const nodes = ctx.getNodesInFile(fp);
-      if (nodes.length === 0) return null;
+      if (nodes.length === 0) {
+        // Phase 1.5 按需索引：该文件尚未预热 → 同步接口保守无警告，
+        // 后台预热一次（同文件下一次写操作即有完整评估）。
+        void ctx.warmFile(fp);
+        return null;
+      }
 
       const totalFanIn = nodes.reduce((sum, n) => sum + n.fanIn, 0);
       const topSymbols = [...nodes]

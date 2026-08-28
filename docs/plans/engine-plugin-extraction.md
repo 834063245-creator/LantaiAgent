@@ -132,7 +132,7 @@ DSH / Unity / 任意 MCP 客户端消费的是同一个二进制、同一份契�
 - **DoD 达成**：全部壳方法在 dispatch 可达（stdio 会话测试 + 契约对拍）；引擎门禁全绿
   （lib 584 / bin 0 / doc 0）；双工作区并发 e2e 随 Phase 2 进程形态差分补齐。
 
-### Phase 1.5 — 前端分页拆除 + graphData → snapshot 迁移（2026-08-29 新增）
+### Phase 1.5 — 前端分页拆除 + graphData → snapshot 迁移（2026-08-29 新增）✅ 已落地（2026-08-29）
 
 砍掉为已退役渲染面服务的分页栈，graphData 从「分页拉全量 nodes/edges」改为「轻量快照」：
 
@@ -146,8 +146,37 @@ DSH / Unity / 任意 MCP 客户端消费的是同一个二进制、同一份契�
   `cache_is_stale` / `derive_community_label`），`diff_to_json` 视用途；`graph_io` 从 42 处直调大幅缩水
 - RPC：`get_graph_page` / `get_graph_meta` 拆除；`analyze_and_load` 去分页形态；`load_graph_json` 重定义
 - `mock-data.ts`：分页 fixture 更新
-- **DoD**：`graphData` 消费面（hooks/agent-builder/tool-rows 开关/prompt-sections）全绿；128MB IPC 护栏问题消失；
-  前端 build + vitest 全绿
+- **DoD 达成（2026-08-29 实测全绿）**：`graphData` 消费面（hooks/agent-builder/tool-rows 开关/prompt-sections）全绿；
+  128MB IPC 护栏问题消失；前端 build + vitest（200 文件 1883）+ biome 0/0 + convergence 零漂移 +
+  引擎 584 / 壳 417 全绿。
+
+施工落点与关键决策（2026-08-29）：
+
+- **聚合单一真源上收引擎**：`tools::graph_snapshot_value(&Graph, source_root)` 与
+  `tools::file_nodes_value(&Graph, root, file)`（pub）——引擎 `graph_snapshot`/`file_nodes`
+  壳方法与壳侧内嵌 RPC（`get_graph_snapshot`/`load_graph_json`/`hologram_file_nodes`）三路同源，
+  Phase 2 transport 切换零逻辑漂移。快照带 `source_root`（冷启动恢复信号）。
+- **缓存新鲜度上收**：`tools::staleness::compute_cache_stale`（pub）——壳方法 `cache_stale`
+  与壳层 `direct_analyze`/冷启动门同源；hologram_graph.json 归档退役（SQLite 唯一持久化，
+  快照按需算），壳侧硬编码 EXTS/SKIP 表删除。
+- **RPC 面**：拆 `get_graph_meta`/`get_graph_page`/`get_full_graph`（前端零调用的死面）+
+  壳 main.rs 三段旧回归测试（分页等价/diff JSON/序列化饿死——旧行为陪葬）；加
+  `get_graph_snapshot`/`hologram_file_nodes`；`load_graph_json` 重定义为快照形态；
+  `analyze_and_load` 回轻状态；RpcResultShape 守卫测试同步。
+- **前端 graphData = GraphSnapshot**（hooks.ts 契约类型，`asGraphSnapshot` 宽容收窄）：
+  workspace.ts 删 loadGraphPages/mergePageIntoGraph/rebuildLevel0Communities/reloadGraphPaged/
+  mergeGraphDiff/CachedGraphMeta/GraphPage 与 opts.skipAnalysis（快照毫秒级，装载统一为
+  「load_graph_json 即时 + analyze_and_load fire-and-forget + graph-updated 重拉」）；
+  workspace-flip-b3.test.ts 重写为新结构钉（含分页栈禁回潮断言），graph-paging.test.ts 删除。
+- **GraphContext 重造**（file_nodes 按需索引 + 缓存）：`createGraphContext(fetcher, engine)`，
+  `warmFile`（幂等在途去重）/`invalidate`（图更新失效）；enrich（异步）先 warm 再读始终新鲜；
+  preflight（同步接口）未预热 → 保守无警告 + 后台预热（eventBus `tool/preflight` 同步管道与
+  convergence baseline 零接触——避免异步化涟漪）；buildFileNodeIndex 全量建索引退役。
+- **记忆锚点收缩**：extractGraphNodeNames 从全量节点名改为 snapshot top 扇入/扇出枢纽名
+  （聚合面自然范围；kernel 级仓库全量名单本就过重）。
+- **convergence fixture 零漂移构造**：FIXED_GRAPH_SNAPSHOT 与旧 FIXED_GRAPH_DATA 的
+  buildGraphSnapshot 聚合输出逐字节等价（4 节点/4 边 | 2 社区 2/2 | import:2,call:2 |
+  枢纽 core(2)/util(2)）——system-prompt.fixture 无需变更审批，check 通过。
 
 ### Phase 2 — 壳侧 transport 抽象（加第二条路，不翻默认）
 

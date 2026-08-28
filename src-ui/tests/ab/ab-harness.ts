@@ -1,6 +1,5 @@
 import type { Agent } from '../../src/agent/agent';
 import {
-  buildFileNodeIndex,
   createGraphContext,
   createGraphContextHook,
   createGraphPreflightHook,
@@ -41,8 +40,32 @@ export function buildTrialAgent(
   arm: 'on' | 'off',
   provider: Provider,
 ): TrialAgent {
-  const { fileIndex, fanIn, fanOut } = buildFileNodeIndex(graph as any);
-  const ctx = createGraphContext(fileIndex, fanIn, fanOut);
+  // Phase 1.5：GraphContext = file_nodes 按需索引 —— fetcher 就地从
+  // trial 图数据按文件分组（与引擎 file_nodes 同口径的模拟实现）。
+  const fanIn = new Map<string, number>();
+  const fanOut = new Map<string, number>();
+  const g = graph as unknown as {
+    nodes: Array<{ id: string; name?: string; kind?: string; location?: string }>;
+    edges: Array<{ source: string; target: string }>;
+  };
+  for (const e of g.edges) {
+    fanOut.set(e.source, (fanOut.get(e.source) || 0) + 1);
+    fanIn.set(e.target, (fanIn.get(e.target) || 0) + 1);
+  }
+  const nodeById = new Map(g.nodes.map((n) => [n.id, n]));
+  const fetchFileNodes = async (file: string) => {
+    const norm = file.replace(/\\/g, '/').toLowerCase();
+    return g.nodes
+      .filter((n) => (n.location || '').replace(/\\/g, '/').toLowerCase().startsWith(norm))
+      .map((n) => ({
+        id: n.id,
+        name: nodeById.get(n.id)?.name ?? n.name ?? n.id,
+        kind: n.kind ?? '',
+        fanIn: fanIn.get(n.id) || 0,
+        fanOut: fanOut.get(n.id) || 0,
+      }));
+  };
+  const ctx = createGraphContext(fetchFileNodes);
   const registry = buildTrialRegistry(worktree, graph);
 
   const hooks = new HookRegistry();

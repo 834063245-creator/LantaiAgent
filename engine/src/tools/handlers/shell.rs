@@ -12,14 +12,12 @@
 //! 回调），本模块只负责「确保 watcher 在跑」（ensure_watching，不重启——
 //! notify 同目录重注册存在事件丢失窗口）与 `take_watcher_events` 转发。
 
-use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 
 use crate::engine;
 use crate::engine::Engine;
-use crate::tools::handlers::graph::strip_loc_suffix;
 use crate::tools::{get_str, get_usize, project_root};
 use crate::tools::ToolResponse;
 
@@ -44,51 +42,11 @@ pub(crate) fn ensure_watching(engine: &Engine, root: PathBuf) {
 
 /// 聚合快照 —— 契约 v2 的 graphData 消费面：进程外形态下前端不搬原始图，
 /// nodes/edges 计数、kind/边类型分布、社区规模、top 扇入/扇出一次返回。
+/// 聚合逻辑单一真源 = `tools::graph_snapshot_value`（壳侧内嵌形态同源复用）。
 pub(crate) fn handler_graph_snapshot(_args: &Value) -> ToolResponse {
     match engine::engine_read(|idx| {
         let g = engine::graph_from_index(idx);
-        let mut kind_counts: HashMap<&str, usize> = HashMap::new();
-        let mut files: HashSet<String> = HashSet::new();
-        let mut community_sizes: HashMap<usize, usize> = HashMap::new();
-        let mut fan_in: Vec<(&str, &str, u32)> = Vec::new();
-        let mut fan_out: Vec<(&str, &str, u32)> = Vec::new();
-        for n in g.nodes_map().values() {
-            *kind_counts.entry(n.kind.as_str()).or_default() += 1;
-            if let Some(loc) = &n.location {
-                files.insert(strip_loc_suffix(loc).replace('\\', "/"));
-            }
-            if let Some(cid) = n.community_id {
-                *community_sizes.entry(cid).or_default() += 1;
-            }
-            if n.in_degree > 0 {
-                fan_in.push((n.id.as_str(), n.name.as_str(), n.in_degree));
-            }
-            if n.out_degree > 0 {
-                fan_out.push((n.id.as_str(), n.name.as_str(), n.out_degree));
-            }
-        }
-        fan_in.sort_by(|a, b| b.2.cmp(&a.2).then(a.0.cmp(b.0)));
-        fan_out.sort_by(|a, b| b.2.cmp(&a.2).then(a.0.cmp(b.0)));
-        let mut edge_kinds: HashMap<&str, usize> = HashMap::new();
-        for e in g.edges_map().values() {
-            *edge_kinds.entry(e.kind.as_str()).or_default() += 1;
-        }
-        let mut communities: Vec<Value> = community_sizes
-            .iter()
-            .map(|(cid, size)| json!({ "id": cid, "size": size }))
-            .collect();
-        communities.sort_by_key(|c| c["id"].as_u64().unwrap_or(0));
-        json!({
-            "node_count": g.node_count(),
-            "edge_count": g.edge_count(),
-            "file_count": files.len(),
-            "class_count": kind_counts.get("class").copied().unwrap_or(0),
-            "kind_counts": kind_counts,
-            "edge_kind_counts": edge_kinds,
-            "communities": communities,
-            "top_fan_in": fan_in.iter().take(10).map(|(id, name, deg)| json!({"id": id, "name": name, "fan_in": deg})).collect::<Vec<_>>(),
-            "top_fan_out": fan_out.iter().take(10).map(|(id, name, deg)| json!({"id": id, "name": name, "fan_out": deg})).collect::<Vec<_>>(),
-        })
+        crate::tools::graph_snapshot_value(&g, &project_root().to_string_lossy())
     }) {
         Ok(v) => ToolResponse::Success(v),
         Err(e) => ToolResponse::Fault {
@@ -100,6 +58,7 @@ pub(crate) fn handler_graph_snapshot(_args: &Value) -> ToolResponse {
 
 /// 按文件返回符号索引 —— 取代壳侧 buildFileNodeIndex 的全量构建
 ///（Phase 1.5 起前端 GraphContext.getNodesInFile 每文件一次轻查询）。
+/// 匹配逻辑单一真源 = `tools::file_nodes_value`（壳侧内嵌形态同源复用）。
 pub(crate) fn handler_file_nodes(args: &Value) -> ToolResponse {
     let file = get_str(args, &["file", "path"]);
     if file.is_empty() {
@@ -109,25 +68,9 @@ pub(crate) fn handler_file_nodes(args: &Value) -> ToolResponse {
             details: json!({}),
         };
     }
-    let want = file.replace('\\', "/");
-    let root_prefix = format!("{}/", project_root().to_string_lossy().replace('\\', "/"));
     match engine::engine_read(|idx| {
         let g = engine::graph_from_index(idx);
-        let mut nodes: Vec<Value> = Vec::new();
-        for n in g.nodes_map().values() {
-            let Some(loc) = &n.location else { continue };
-            let norm = strip_loc_suffix(loc).replace('\\', "/");
-            // 归一为相对项目根再比对；非根内路径按后缀匹配
-            //（与 resolve_in_index 的 suffix 语义一致）。
-            let rel = norm.strip_prefix(root_prefix.as_str()).unwrap_or(&norm);
-            if rel == want || norm.ends_with(&want) {
-                nodes.push(json!({
-                    "id": n.id, "name": n.name, "kind": n.kind.as_str(),
-                    "fan_in": n.in_degree, "fan_out": n.out_degree,
-                }));
-            }
-        }
-        json!({ "file": want, "count": nodes.len(), "nodes": nodes })
+        crate::tools::file_nodes_value(&g, &project_root().to_string_lossy(), &file)
     }) {
         Ok(v) => ToolResponse::Success(v),
         Err(e) => ToolResponse::Fault {
@@ -234,89 +177,9 @@ fn same_root(a: &Path, b: &Path) -> bool {
         .eq_ignore_ascii_case(&b.to_string_lossy().replace('/', "\\"))
 }
 
-/// 缓存新鲜度判定结果。
-pub(crate) struct StaleCheck {
-    pub stale: bool,
-    pub reason: Option<String>,
-    pub baseline: &'static str,
-}
-
-/// 缓存新鲜度核心（纯函数，可单测）—— 基准 = SQLite 最近一次图持久化
-/// 时刻（`graph_generated_at`，冷启动实际读取的产物）；旧库无该 meta 时
-/// 回退 hologram_graph.json / .lantai/hologram.db 的 mtime；无任何基准
-/// → 视为过期（触发重分析补全）。遍历规则单一真源：扩展名 =
-/// grammar 注册表（+.proto，gRPC 合成器依赖），忽略 = discovery 的
-/// is_ignored_path（含虚拟环境前缀与 gitignore 锚定语义）。
-pub(crate) fn compute_cache_stale(root: &Path, generated_at_ms: Option<u64>) -> StaleCheck {
-    let baseline: Option<(std::time::SystemTime, &'static str)> =
-        if let Some(ms) = generated_at_ms {
-            std::time::UNIX_EPOCH
-                .checked_add(std::time::Duration::from_millis(ms))
-                .map(|t| (t, "graph_generated_at"))
-        } else if let Ok(m) = std::fs::metadata(root.join("hologram_graph.json")) {
-            m.modified().ok().map(|t| (t, "graph_json_mtime"))
-        } else {
-            std::fs::metadata(root.join(".lantai").join("hologram.db"))
-                .ok()
-                .and_then(|m| m.modified().ok())
-                .map(|t| (t, "db_mtime"))
-        };
-    let Some((baseline_time, baseline_kind)) = baseline else {
-        return StaleCheck {
-            stale: true,
-            reason: Some("no persistence baseline found".into()),
-            baseline: "none",
-        };
-    };
-    let mut exts: HashSet<String> = engine::GRAMMAR_LOADER.supported_extensions().into_iter().collect();
-    exts.insert("proto".to_string());
-    for entry in walkdir::WalkDir::new(root)
-        .follow_links(false)
-        .into_iter()
-        .filter_entry(|e| {
-            let rel = e
-                .path()
-                .strip_prefix(root)
-                .unwrap_or(e.path())
-                .to_string_lossy();
-            !crate::pipeline::discovery::is_ignored_path(&rel)
-        })
-        .filter_map(|e| e.ok())
-    {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
-            continue;
-        };
-        if !exts.contains(ext) {
-            continue;
-        }
-        if let Ok(mtime) = path.metadata().and_then(|m| m.modified()) {
-            if mtime > baseline_time {
-                let rel = path
-                    .strip_prefix(root)
-                    .unwrap_or(path)
-                    .to_string_lossy()
-                    .to_string();
-                return StaleCheck {
-                    stale: true,
-                    reason: Some(format!("{rel} modified after last persist")),
-                    baseline: baseline_kind,
-                };
-            }
-        }
-    }
-    StaleCheck {
-        stale: false,
-        reason: None,
-        baseline: baseline_kind,
-    }
-}
-
 /// 图是否过期 —— 壳侧冷启动 fast path 的判定原语（graph_io cache_is_stale
-/// 的引擎侧化，遍历规则与引擎 discovery/watcher 同源）。
+/// 的引擎侧化，Phase 1.5 起核心在 `tools::staleness::compute_cache_stale`，
+/// 壳层内嵌形态同源复用）。
 pub(crate) fn handler_cache_stale(args: &Value) -> ToolResponse {
     let root: PathBuf = match get_str(args, &["path"]) {
         p if !p.is_empty() => PathBuf::from(p),
@@ -329,10 +192,11 @@ pub(crate) fn handler_cache_stale(args: &Value) -> ToolResponse {
             details: json!({}),
         };
     }
-    let generated_at_ms: Option<u64> = engine::with_engine(|e| e.graph_generated_at().ok().flatten())
-        .unwrap_or(None)
-        .and_then(|s| s.parse().ok());
-    let r = compute_cache_stale(&root, generated_at_ms);
+    let generated_at_ms: Option<u64> =
+        engine::with_engine(|e| e.graph_generated_at().ok().flatten())
+            .unwrap_or(None)
+            .and_then(|s| s.parse().ok());
+    let r = crate::tools::staleness::compute_cache_stale(&root, generated_at_ms);
     ToolResponse::Success(json!({
         "stale": r.stale,
         "reason": r.reason,
@@ -648,35 +512,6 @@ mod tests {
         assert!(matches!(refused, ToolResponse::Refused { .. }), "异根必须拒绝");
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&other);
-    }
-
-    #[test]
-    fn test_compute_cache_stale_detects_fresh_and_stale() {
-        let root = tmp_root("stale");
-        std::fs::write(root.join("a.rs"), "fn a() {}\n").unwrap();
-        // 无基准 → 过期
-        let r = compute_cache_stale(&root, None);
-        assert!(r.stale && r.baseline == "none");
-        // 以「现在」为基准 → 新鲜（源文件早于基准）
-        std::thread::sleep(std::time::Duration::from_millis(30));
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
-        std::thread::sleep(std::time::Duration::from_millis(30));
-        let r = compute_cache_stale(&root, Some(now_ms));
-        assert!(!r.stale, "新基准后无修改应新鲜: {:?}", r.reason);
-        // 忽略目录里的修改不算（基准后只动 node_modules）
-        std::fs::create_dir_all(root.join("node_modules")).unwrap();
-        std::fs::write(root.join("node_modules").join("x.rs"), "fn x() {}\n").unwrap();
-        let r = compute_cache_stale(&root, Some(now_ms));
-        assert!(!r.stale, "node_modules 修改不应触发过期: {:?}", r.reason);
-        // 修改源文件 → 过期，带 reason
-        std::fs::write(root.join("a.rs"), "fn a_changed() {}\n").unwrap();
-        let r = compute_cache_stale(&root, Some(now_ms));
-        assert!(r.stale, "基准后修改源文件必须判过期");
-        assert!(r.reason.as_deref().unwrap_or("").contains("a.rs"));
-        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

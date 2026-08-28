@@ -13,17 +13,6 @@ use hologram_engine::routing::preflight::{check_timeline_props, load_baseline, s
 use crate::app::AppContexts;
 use crate::app::services::graph_service;
 
-/// get_full_graph 业务体。
-pub(crate) async fn get_full_graph(
-    state: crate::WorkspaceState,
-    app_ctx: Arc<AppContexts>,
-) -> Result<String, String> {
-    let (engine, root) = graph_service::resolve(&app_ctx, &state, None)?;
-    let serialized = tokio::task::spawn_blocking(move || crate::utils::serialize_cached_graph(&engine, &root))
-        .await.map_err(|e| format!("任务失败: {e}"))??;
-    crate::utils::guard_ipc_size(serialized, "序列化图")
-}
-
 /// hologram_run_check 业务体（changed_files 快取由壳层完成传入）。
 pub(crate) async fn run_check(
     path: Option<String>,

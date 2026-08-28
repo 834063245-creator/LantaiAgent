@@ -18,14 +18,13 @@ import { auraShutdown } from './agent/aura-memory';
 import { resetAgentCaches } from './agent/cache-store';
 import { SubAgentPool } from './agent/coordinator';
 import { GoalManager } from './agent/goal-manager';
-import type { GraphContext } from './agent/hooks';
+import { createGraphContext, type GraphContext, type GraphSnapshot, type NodeBrief } from './agent/hooks';
 import { DisposerBag } from './agent/lifecycle';
 import { initLogger, log } from './agent/logger';
 import { MemoryManager } from './agent/memory';
 import { memoryBundleIngest } from './agent/memory-bundle-client';
 import {
   type BuilderDeps,
-  buildGraphContextFromData,
   buildToolRegistry,
   cancelEngineSnapshotRefresh,
   extractGraphNodeNames,
@@ -48,7 +47,7 @@ import { resolveApiKey } from './provider/credentials';
 import { createLiveProvider } from './provider/live';
 import type { Provider } from './provider/types';
 import { parseJson, typedJsonRpc, typedListen, typedRpc } from './rpc-contract';
-import type { CommunityData, GraphDiffJson, GraphEdge, GraphJSON, GraphNode } from './scene/graph-types';
+// Phase 1.5：全量图形状（GraphJSON/GraphNode/…）随分页栈退役；graphData = GraphSnapshot（agent/hooks）
 import {
   type AppSettings,
   defaultPricing,
@@ -96,29 +95,12 @@ export function isSamePath(a: string, b: string): boolean {
 
 // ── Workspace 类 ─────────────────────────────────────────────────
 
-/** analyze_and_load / get_graph_meta 返回的分页元信息（冷启动缓存图）。 */
-export interface CachedGraphMeta {
-  paged?: boolean;
-  meta?: Record<string, unknown>;
-  page_size?: number;
-  total_pages?: number;
-}
-
-/** get_graph_page 的单页载荷。 */
-interface GraphPage {
-  meta?: { source_root?: string };
-  nodes?: GraphNode[];
-  edges?: GraphEdge[];
-  communities?: CommunityData[];
-  hierarchical_communities?: CommunityData[];
-}
-
-/** graph-updated 事件载荷（workspace.rs 发射的 JSON 摘要）。 */
+/** graph-updated 事件载荷（workspace.rs 发射的 JSON 摘要）。
+ *  Phase 1.5：diff 字段不再消费 —— 事件只作「图变了」信号，快照重拉。 */
 interface GraphUpdatedSummary {
   meta?: { source_root?: string };
   total_nodes?: number;
   node_count?: number;
-  diff?: GraphDiffJson;
 }
 
 /** 工作区 scope fiber 的插件定义（cordis-migration P1）。
@@ -133,7 +115,9 @@ export class Workspace {
   readonly path: string;
 
   // ── 图数据 ──
-  graphData: GraphJSON | null = null;
+  /** Phase 1.5：聚合快照（引擎 graph_snapshot 形态）——不再承载全量
+   *  nodes/edges；按文件符号索引走 _preflightCtx 的按需查询。 */
+  graphData: GraphSnapshot | null = null;
   fileGraphData: unknown = null;
 
   // ── Agent 与记忆 ──
@@ -195,9 +179,8 @@ export class Workspace {
   /** 后台分析失败时的回调（冷启动降级模式）。 */
   onAnalysisFailed: ((err: unknown) => void) | null = null;
 
-  /** 守卫：初始冷启动装载（open() 的第 4 步）进行中时为 true。
-   *  防止 graph-updated 事件踩踏 loadGraphPages 的原子换入（历史名
-   *  _initialRenderActive——V5 拆除后渲染面退役，守卫语义保留于数据面）。 */
+  /** 守卫（历史名 _initialRenderActive）：分页原子换入已随 Phase 1.5 退役，
+   *  快照重拉幂等无需防踩踏 —— 字段保留给既有读写点，语义 = 初始装载期。 */
   _initialRenderActive: boolean = false;
 
   /** 预检 GraphContext — 存储以便写入后刷新引擎快照。 */
@@ -263,7 +246,6 @@ export class Workspace {
     path: string,
     _starGraph: null,
     _chatPanel: ChatCore,
-    opts?: { skipAnalysis?: boolean; cachedGraph?: CachedGraphMeta },
     callbacks?: { onStatusChange?: (msg: string) => void; onLoadingChange?: (loading: boolean) => void },
   ): Promise<Workspace> {
     const ws = new Workspace(path);
@@ -306,76 +288,37 @@ export class Workspace {
       if (!ws._graphEngineOn) {
         // 引擎开关关闭（2026-08-22）：绑目录 ≠ 开图谱。graphData 留 null——
         // 走零目录会话的既有无图路径（hologram 工具行产出空集 + noGraph
-        // prompt 段），fs/shell/git/权限全套保留。跳过：分析/拉页（含缓存
-        // 快路径——ensure_engine_graph 会顺手 engine_init）、文件级图谱、
-        // 初始简报（runCheck 的隐藏回退会强分析，见 runCheck 门禁注释）。
+        // prompt 段），fs/shell/git/权限全套保留。跳过：分析/快照装载、
+        // 文件级图谱、初始简报（runCheck 的隐藏回退会强分析，见 runCheck 门禁注释）。
         // _health 保持 unknown——健康语义只对图谱数据面有意义。
         ws.onStatusChange?.('图谱引擎已停用——纯 Agent 工作区（图工具缺席，fs/shell/git 照常）');
-      } else if (opts?.skipAnalysis && opts.cachedGraph?.paged) {
-        // 冷启动（分页 meta）：先放空壳，后台逐页拉取、到齐后合并为全量图 —
-        // ensure_engine_graph 顺带完成引擎预热（等价旧 fire-and-track
-        // analyze_and_load 的引擎初始化部分）。若拉页失败，工作区进入
-        // 降级模式 — 可见但不阻塞。
-        // V5 拆除（2026-08-22）：starGraph 恒 null（渲染面退役），数据面照旧。
-        ws.graphData = {
-          meta: opts.cachedGraph.meta || {},
-          nodes: [],
-          edges: [],
-          communities: [],
-          hierarchical_communities: [],
-        };
-        loadGraphPages(ws, null, opts.cachedGraph)
-          .then((ok) => {
-            if (!ws._active || !ok) return;
-            ws._health = 'ready';
-          })
-          .catch((err) => {
-            if (!ws._active) return;
-            ws._health = 'degraded';
-            ws.onAnalysisFailed?.(err);
-          });
-        // 仍触发 analyze_and_load（force=false），保留缓存过期→重分析能力：
-        // direct_analyze 内部校验 SQLite 缓存新鲜度，过期则重建；
-        // 分析完成后由 graph-updated 事件驱动图重载。
-        typedRpc('analyze_and_load', { path, force: false }).catch(() => {
-          /* 拉页路径已降级处理，此处静默 */
-        });
       } else {
-        // 完整分析（workspace-flip 批 3 两段化，D-W1-3）：分析出关键路径——
-        // 急段（本分支现在）：analyze_and_load 拿 meta + 分页信息即返回，会话
-        // 立即可用（setupAgent 在 open 返回后即跑，对话秒进）；
-        // 缓段（fire-and-forget，_active 守卫 + 既有降级路径）：逐页拉图并
-        // 合并进 graphData（V5 拆除后无渲染）、graph-updated 事件驱动后续
-        // 增量。图谱预热完成前 graph 工具按既有语义缺席（hologram 行
+        // 图快照装载（Phase 1.5）：引擎内嵌形态下聚合快照毫秒级——
+        // 缓存新鲜时一步到位；无缓存/过期时快照为空或不返回，
+        // 由后台 analyze_and_load（缓存过期→全量重建）+ graph-updated
+        // 事件驱动重拉。预热完成前 graph 工具按既有语义缺席（hologram 行
         // 空集）——会话工厂在会话创建时点读 this.graphData，预热完成后
         // 新会话自动获得完整图工具面。
-        ws.onLoadingChange?.(true);
-        const meta = await typedJsonRpc<CachedGraphMeta>('analyze_and_load', { path, force: false });
-        ws.graphData = {
-          meta: meta.meta || {},
-          nodes: [],
-          edges: [],
-          communities: [],
-          hierarchical_communities: [],
-        };
-        // 图谱预热状态（D-W1-3 优雅降级的 UI 呈现位）
-        ws._graphWarming = true;
-        ws.onStatusChange?.('图谱后台预热中——对话已就绪，图工具将在分析完成后可用');
-        loadGraphPages(ws, null, meta)
-          .then(() => {
-            if (!ws._active) return;
-            ws._graphWarming = false;
+        try {
+          const raw = await typedJsonRpc<string>('load_graph_json', { path });
+          const snap = parseJson<GraphSnapshot>(raw);
+          if (snap && snap.node_count > 0) {
+            ws.graphData = snap;
             ws._health = 'ready';
-            ws.onLoadingChange?.(false);
-            ws.onStatusChange?.('图谱预热完成——图工具已可用（新会话生效）');
-            ws.runCheck();
-          })
-          .catch((err) => {
-            if (!ws._active) return;
-            ws._graphWarming = false;
-            ws._health = 'degraded';
-            ws.onAnalysisFailed?.(err);
-          });
+          }
+        } catch {
+          /* 无缓存图 → 留 null，后台分析补 */
+        }
+        // 仍触发 analyze_and_load（force=false），保留缓存过期→重分析能力：
+        // direct_analyze 内部校验 SQLite 缓存新鲜度，过期则重建；
+        // 分析完成后由 graph-updated 事件驱动快照重拉。
+        ws._graphWarming = ws.graphData === null;
+        if (ws._graphWarming) {
+          ws.onStatusChange?.('图谱后台预热中——对话已就绪，图工具将在分析完成后可用');
+        }
+        typedRpc('analyze_and_load', { path, force: false }).catch(() => {
+          /* 快照路径已降级处理，此处静默 */
+        });
       }
 
       // 3. 加载文件级图谱 — 5 秒超时，不阻塞工作区打开。
@@ -417,7 +360,7 @@ export class Workspace {
       console.log('[Workspace.open] step 5: wiring listeners...');
       const unlistenGraphUpdated = await typedListen('graph-updated', async (rawSummary) => {
         if (!ws._active) return;
-        // 引擎开关关闭：本工作区无图数据面——事件兜底拉页/简报一律不触
+        // 引擎开关关闭：本工作区无图数据面——事件兜底/简报一律不触
         //（防御性守卫：正常路径下 watcher 未启动，事件本不该来）。
         if (!ws._graphEngineOn) return;
         try {
@@ -426,29 +369,20 @@ export class Workspace {
           if (eventRoot && !isSamePath(eventRoot, ws.path)) return;
           const nc = summary.total_nodes || summary.node_count || 0;
           if (nc > 0 && ws.path) {
-            // ponytail: 初始装载仍在进行中时跳过（loadGraphPages 的原子换入
-            // 不容踩踏——_initialRenderActive 是装载期守卫的历史名，语义保留）。
-            if (ws._initialRenderActive) {
-              console.log('[Workspace.open] graph-updated: skipping (initial load in flight)');
-              return;
-            }
             try {
-              // ⚡ 2026-08-04 状态治理：不再每次全量 get_full_graph。
-              // watcher 已算好 diff —— 用 diff 合并本地 graphData（数据层；
-              // V5 拆除后无渲染层增量）。合并后校验 nodeCount，
-              // 与引擎汇总不一致（事件丢失/漂移）时兜底全量拉取。
-              if (summary.diff && ws.graphData) {
-                mergeGraphDiff(ws.graphData, summary.diff);
-                const nc = Array.isArray(ws.graphData.nodes)
-                  ? ws.graphData.nodes.length
-                  : Object.keys(ws.graphData.nodes || {}).length;
-                if (nc !== (summary.total_nodes ?? summary.node_count ?? nc)) {
-                  throw new Error(`nodeCount mismatch: local ${nc} vs engine ${summary.total_nodes}`);
+              // Phase 1.5：快照重拉（毫秒级轻查询）——diff 本地合并与分页
+              // 重载已随全量图形态退役；按需文件索引缓存同步失效。
+              const raw = await typedJsonRpc<string>('load_graph_json', { path: ws.path });
+              const snap = parseJson<GraphSnapshot>(raw);
+              if (snap && snap.node_count > 0) {
+                ws.graphData = snap;
+                if (ws._graphWarming) {
+                  ws._graphWarming = false;
+                  ws._health = 'ready';
+                  ws.onStatusChange?.('图谱预热完成——图工具已可用（新会话生效）');
+                  ws.runCheck();
                 }
-              } else {
-                // 无 diff 可用 → 分页全量重载（P0-2：不再 get_full_graph 全量拉图）
-                await reloadGraphPaged(ws, null);
-                ws.runCheck();
+                ws._preflightCtx?.invalidate();
               }
               try {
                 const filesPath = ws.path.replace(/\\/g, '/').replace(/\/$/, '') + '/hologram_graph_files.json';
@@ -460,13 +394,7 @@ export class Workspace {
               }
               bumpTimelineRefresh();
             } catch {
-              // 合并失败 / nodeCount 漂移 → 分页全量兜底
-              try {
-                await reloadGraphPaged(ws, null);
-                bumpTimelineRefresh();
-              } catch {
-                /* reloadGraphPaged 也失败 — 保持现状 */
-              }
+              /* 快照重拉失败 — 保持现状 */
             }
           }
         } catch {
@@ -940,8 +868,15 @@ export class Workspace {
     });
     teardown.add(unsubMsg, 'listener:runtime-msg');
 
-    // ── 构建图谱上下文 ──
-    const graphCtx = buildGraphContextFromData(this.graphData);
+    // ── 构建图谱上下文（Phase 1.5：file_nodes 按需索引 + 缓存）──
+    // 快照形态下全量 fileIndex 不再存在 —— GraphContext 按文件轻查询
+    // （单文件毫秒级），preflight 同步消费缓存、enrich 异步预热。
+    const graphCtx = this.graphData
+      ? createGraphContext(async (file) => {
+          const raw = await typedRpc('hologram_file_nodes', { file });
+          return parseJson<{ nodes?: NodeBrief[] }>(raw)?.nodes ?? [];
+        })
+      : null;
     this._preflightCtx = graphCtx;
 
     // ── 构建工具注册表（通过 agent-builder，零 UI 导入）──
@@ -1233,186 +1168,9 @@ export class Workspace {
   doGraphUpdate(): void {
     const gd = this.graphData;
     if (!gd) return;
-    const nodeCount = Array.isArray(gd.nodes) ? gd.nodes.length : Object.keys(gd.nodes || {}).length;
-    this.onStatusChange?.(`已更新 (${nodeCount} 节点)`);
+    this.onStatusChange?.(`已更新 (${gd.node_count} 节点)`);
     this.runCheck();
   }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// mergeGraphDiff — 数据层增量合并（2026-08-04 状态治理）
-// ═══════════════════════════════════════════════════════════════
-// 将 watcher 的 diff 原地合并进本地 graphData（nodes/edges），
-// 使 graph-updated 不再需要全量 get_full_graph。
-// 支持 nodes/edges 的数组（引擎 serialize_cached_graph 输出）与
-// Record（id → 节点）两种形态；communiities/meta 不随 diff 变更，保持原样。
-// ⚠️ 原地修改 graphData — 调用方持有同一引用，无需重新赋值。
-function mergeGraphDiff(graphData: GraphJSON, diff: GraphDiffJson): void {
-  const removedIds = new Set(diff.removed_nodes.map((n) => n.id));
-  if (Array.isArray(graphData.nodes)) {
-    for (const n of diff.added_nodes) graphData.nodes.push(n);
-    for (const m of diff.modified_nodes) {
-      const n = graphData.nodes.find((x) => x.id === m.node_id);
-      if (n) {
-        n.name = m.name;
-        n.kind = m.new_kind;
-        n.type = m.new_kind;
-      }
-    }
-    if (removedIds.size > 0) {
-      let w = 0;
-      for (let i = 0; i < graphData.nodes.length; i++) {
-        if (!removedIds.has(graphData.nodes[i].id)) graphData.nodes[w++] = graphData.nodes[i];
-      }
-      graphData.nodes.length = w;
-    }
-  } else if (graphData.nodes && typeof graphData.nodes === 'object') {
-    for (const n of diff.added_nodes) graphData.nodes[n.id] = n;
-    for (const m of diff.modified_nodes) {
-      const n = graphData.nodes[m.node_id];
-      if (n) {
-        n.name = m.name;
-        n.kind = m.new_kind;
-        n.type = m.new_kind;
-      }
-    }
-    for (const id of removedIds) delete graphData.nodes[id];
-  }
-
-  const removedEdgeIds = new Set(diff.removed_edges.map((e) => e.id));
-  if (Array.isArray(graphData.edges)) {
-    for (const e of diff.added_edges) graphData.edges.push(e);
-    if (removedEdgeIds.size > 0) {
-      let w = 0;
-      for (let i = 0; i < graphData.edges.length; i++) {
-        if (!removedEdgeIds.has(graphData.edges[i].id)) graphData.edges[w++] = graphData.edges[i];
-      }
-      graphData.edges.length = w;
-    }
-  } else if (graphData.edges && typeof graphData.edges === 'object') {
-    for (const e of diff.added_edges) graphData.edges[e.id] = e;
-    for (const id of removedEdgeIds) delete graphData.edges[id];
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════
-// 图分页加载（P0-2 分页化 — landmine-map.md 雷 2 清账）
-// ═══════════════════════════════════════════════════════════════
-// 大仓库全量图 JSON 超 IPC 128MB 护栏，analyze_and_load 只回 meta + 分页信息，
-// 图数据经 get_graph_page 逐页拉取。分页只是传输机制，不参与渲染决策：
-// 逐页合并进本地暂存图（节点/边按 id 去重，吸收图变更导致的分页漂移），
-// 全部页到齐后原子换入 ws.graphData（V5 拆除后无渲染——星图退役），
-// 加载进度经 onStatusChange 上报。旧设计「首页残图布局 + 后续页嫁接 +
-// 末页补丁重布局」已拆除（2026-08-16）。拉页失败直接抛错：暂存图丢弃，
-// 旧图保留。
-
-/** 逐页拉取并合并为全量图，到齐后原子换入 ws.graphData；返回是否完整加载（false = 工作区已切走）。
- *  V5 拆除（2026-08-22）：starGraph 参数恒 null（渲染面退役），数据面照旧。 */
-export async function loadGraphPages(
-  ws: Workspace,
-  _starGraph: null,
-  paged: { meta?: Record<string, unknown>; page_size?: number; total_pages?: number },
-): Promise<boolean> {
-  const pageSize = paged.page_size || 12000;
-  const totalPages = paged.total_pages ?? 1;
-  // 暂存图：全部页到齐前不触碰 ws.graphData
-  const merged: GraphJSON = {
-    meta: paged.meta || {},
-    nodes: [],
-    edges: [],
-    communities: [],
-    hierarchical_communities: [],
-  };
-  for (let page = 0; page < totalPages; page++) {
-    if (!ws.active) return false;
-    const raw = await typedRpc('get_graph_page', { page, page_size: pageSize });
-    if (!ws.active) return false;
-    const p = parseJson<GraphPage>(raw);
-    const root = p.meta?.source_root || '';
-    if (root && !isSamePath(root, ws.path)) continue; // 引擎已被切走，丢弃错页
-    mergePageIntoGraph(merged, p);
-    // 权威社区（最后一页携带）覆盖渐进重建版本，必须先于换入挂载
-    if (p.communities) merged.communities = p.communities;
-    if (p.hierarchical_communities) merged.hierarchical_communities = p.hierarchical_communities;
-    if (totalPages > 1) ws.onStatusChange?.(`已加载图谱 ${page + 1}/${totalPages} 页`);
-  }
-  if (!ws.active) return false;
-  ws.graphData = merged;
-  return true;
-}
-
-/** 分页全量重载：get_graph_meta → 逐页重建（事件兜底/重分析用）。失败时旧图保留。 */
-async function reloadGraphPaged(ws: Workspace, _starGraph: null): Promise<void> {
-  const meta = await typedJsonRpc<CachedGraphMeta>('get_graph_meta', {});
-  if (!meta.paged) throw new Error('引擎未返回分页信息');
-  await loadGraphPages(ws, null, meta);
-}
-
-/** 把一页数据并入 graphData（节点/边按 id 去重）。 */
-function mergePageIntoGraph(graphData: GraphJSON, page: GraphPage): void {
-  if (!Array.isArray(graphData.nodes)) graphData.nodes = [];
-  if (!Array.isArray(graphData.edges)) graphData.edges = [];
-  const nodes = graphData.nodes;
-  const edges = graphData.edges;
-  const existingNodeIds = new Set<string>();
-  for (const n of nodes) existingNodeIds.add(n.id);
-  const existingEdgeIds = new Set<string>();
-  for (const e of edges) existingEdgeIds.add(e.id);
-  for (const n of page.nodes || []) {
-    if (!existingNodeIds.has(n.id)) {
-      existingNodeIds.add(n.id);
-      nodes.push(n);
-    }
-  }
-  for (const e of page.edges || []) {
-    if (!existingEdgeIds.has(e.id)) {
-      existingEdgeIds.add(e.id);
-      edges.push(e);
-    }
-  }
-  // 渐进重建 level-0 社区（节点自带 community_id；最后一页服务器会下发权威社区覆盖）
-  graphData.communities = rebuildLevel0Communities(nodes);
-}
-
-/** 从节点的 community_id 重建 level-0 社区（端口自引擎 derive_community_label）。 */
-function rebuildLevel0Communities(nodes: GraphNode[]): CommunityData[] {
-  const map = new Map<string, string[]>();
-  for (const n of nodes) {
-    if (n.community_id == null) continue;
-    const cid = String(n.community_id);
-    const bucket = map.get(cid);
-    if (bucket) {
-      bucket.push(n.id);
-    } else {
-      map.set(cid, [n.id]);
-    }
-  }
-  return [...map.entries()].map(([cid, nodeIds]) => ({
-    id: cid,
-    size: nodeIds.length,
-    node_ids: nodeIds,
-    label: deriveCommunityLabel(nodeIds),
-  }));
-}
-
-/** 社区标签：取成员 id 中最常见的文件路径尾段（与引擎 derive_community_label 同启发式）。 */
-function deriveCommunityLabel(nodeIds: string[]): string {
-  const prefixCounts = new Map<string, number>();
-  for (const nid of nodeIds) {
-    const file = nid.split(':')[0] || nid;
-    const parts = file.split(/[/\\]/);
-    const prefix = parts.length >= 2 ? `${parts[parts.length - 2]}/${parts[parts.length - 1]}` : file;
-    prefixCounts.set(prefix, (prefixCounts.get(prefix) || 0) + 1);
-  }
-  let best = '社区';
-  let bestCount = 0;
-  for (const [p, c] of prefixCounts) {
-    if (c > bestCount) {
-      best = p;
-      bestCount = c;
-    }
-  }
-  return best;
 }
 
 // ═══════════════════════════════════════════════════════════════

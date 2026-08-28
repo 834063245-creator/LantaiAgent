@@ -12,7 +12,7 @@ import type { AgentEvent, EventSink, Pricing } from '../agent-types';
 import type { SubAgentPool } from '../coordinator';
 import type { ExecStateInstance } from '../execution-state';
 import type { GoalManager } from '../goal-manager';
-import type { GraphContext, GraphDataShape } from '../hooks';
+import type { GraphContext, GraphSnapshot } from '../hooks';
 import type { MemoryManager } from '../memory';
 import type { MessageBus } from '../message-bus';
 import type { SkillRegistry } from '../skills';
@@ -78,7 +78,7 @@ export interface AgentConfig {
   /** 项目路径 */
   projectPath: string;
   /** 图数据（null = 无图模式；宽松形状 — 宽容引擎跨版本字段别名） */
-  graphData?: GraphDataShape | null;
+  graphData?: GraphSnapshot | null;
   /** LLM Provider */
   provider: Provider;
   /** 工具注册表（已按权限过滤） */
@@ -143,7 +143,7 @@ export interface AgentAssemblyInputs {
   /** 预构建 system prompt（缺省由 runtime 按 ctx + graphData 构建） */
   systemPrompt?: string;
   /** 图数据快照（null/缺省 = 无图模式；system prompt 图段落原料） */
-  graphData?: GraphDataShape | null;
+  graphData?: GraphSnapshot | null;
   /** 图上下文（hooks 用；缺省不注册图 hooks） */
   graphContext?: GraphContext | null;
   /** 提示注入类 hooks 总开关（false = 关闭 graph-context / preflight / state / plan 注入；

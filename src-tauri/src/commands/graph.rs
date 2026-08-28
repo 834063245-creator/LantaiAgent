@@ -45,30 +45,28 @@ pub(crate) async fn analyze_and_load(
     result
 }
 
-/// 当前工作区图的 meta + 分页信息。
+/// 当前工作区图的聚合快照（graphData 唯一装载形态，Phase 1.5）。
 #[tauri::command]
-pub(crate) async fn get_graph_meta(
+pub(crate) async fn get_graph_snapshot(
     state: tauri::State<'_, crate::WorkspaceState>,
     app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
 ) -> Result<String, String> {
-    crate::app::services::graph_service::get_graph_meta(
+    crate::app::services::graph_service::get_graph_snapshot(
         state.inner().clone(),
         app_ctx.inner().clone(),
     )
     .await
 }
 
-/// 分页拉取当前工作区图的第 page 页（0 基）。
+/// 按文件返回符号索引（GraphContext 按文件轻查询，Phase 1.5）。
 #[tauri::command]
-pub(crate) async fn get_graph_page(
-    page: usize,
-    page_size: Option<usize>,
+pub(crate) async fn hologram_file_nodes(
+    file: String,
     state: tauri::State<'_, crate::WorkspaceState>,
     app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
 ) -> Result<String, String> {
-    crate::app::services::graph_service::get_graph_page(
-        page,
-        page_size,
+    crate::app::services::graph_service::hologram_file_nodes(
+        file,
         state.inner().clone(),
         app_ctx.inner().clone(),
     )

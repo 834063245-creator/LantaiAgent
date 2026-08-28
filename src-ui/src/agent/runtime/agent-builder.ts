@@ -18,8 +18,7 @@ import type { BuiltinToolRow, ToolRowContext } from '../../composition/tool-rows
 import { typedJsonRpc } from '../../rpc-contract';
 import type { Agent } from '../agent';
 import { createCompactionTools } from '../compaction-model';
-import type { GraphContext, GraphDataShape } from '../hooks';
-import { buildFileNodeIndex, createGraphContext } from '../hooks';
+import type { GraphContext, GraphSnapshot } from '../hooks';
 import { errText } from '../loop-helpers';
 import { type McpClient, registerMcpTools } from '../mcp';
 import type { ToolExecutor } from '../tool';
@@ -54,32 +53,14 @@ export interface BuilderDeps {
 // ── Graph helpers ──
 
 export function extractGraphNodeNames(graphData: unknown): string[] | undefined {
-  if (!graphData || typeof graphData !== 'object') return undefined;
-  const gd = graphData as Record<string, unknown>;
-  const nodes = gd.nodes;
-  if (!nodes) return undefined;
-  if (Array.isArray(nodes)) {
-    return nodes
-      .map((n: unknown) => {
-        if (typeof n === 'string') return n;
-        if (typeof n === 'object' && n !== null) {
-          const obj = n as Record<string, unknown>;
-          return String(obj.id || obj.name || obj.file || '');
-        }
-        return '';
-      })
-      .filter(Boolean);
-  }
-  if (typeof nodes === 'object') {
-    return Object.keys(nodes as Record<string, unknown>);
-  }
-  return undefined;
-}
-
-export function buildGraphContextFromData(graphData: GraphDataShape | null | undefined): GraphContext | null {
-  if (!graphData) return null;
-  const { fileIndex, fanIn, fanOut } = buildFileNodeIndex(graphData);
-  return createGraphContext(fileIndex, fanIn, fanOut);
+  // Phase 1.5：graphData = 聚合快照 —— 记忆召回锚点从全量节点名缩到
+  // top 扇入/扇出枢纽（聚合面自然范围；全量名单在 kernel 级仓库本就过重）。
+  const snap = graphData as { top_fan_in?: Array<{ name?: string }>; top_fan_out?: Array<{ name?: string }> } | null;
+  if (!snap || typeof snap !== 'object') return undefined;
+  const names = [...(snap.top_fan_in ?? []), ...(snap.top_fan_out ?? [])]
+    .map((n) => String(n.name || ''))
+    .filter(Boolean);
+  return names.length > 0 ? names : undefined;
 }
 
 // ── System prompt builder ──
@@ -92,7 +73,7 @@ export function buildGraphContextFromData(graphData: GraphDataShape | null | und
 // 简短面，null 图 + 非空路径 = 关引擎面（行为规则/协作模式等照常注入）。
 
 export function buildSystemPrompt(
-  graphData: GraphDataShape | null | undefined,
+  graphData: GraphSnapshot | null | undefined,
   projectPath: string,
   memorySection = '',
   graphSnapshot = '',
@@ -119,7 +100,7 @@ export function buildSystemPrompt(
 // ── Tool registry builder ──
 
 export interface ToolRegistryOptions {
-  graphData: GraphDataShape | null;
+  graphData: GraphSnapshot | null;
   deps: BuilderDeps;
   memoryManager?: MemoryManager;
   skillRegistry?: SkillRegistry;

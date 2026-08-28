@@ -16,20 +16,14 @@
 // 视图不再由此行决定——启动落点恒为案卷首页（bootShell 不再开纸面板，
 // 2026-08-22 用户拍板；纸面板由用户的新建/续开动作唤起）。
 
+import { asGraphSnapshot, type GraphSnapshot } from '../../agent/hooks';
 import { isMockMode } from '../../bridge';
 import { typedJsonRpc } from '../../rpc-contract';
 import { graphEngineEnabled, loadSettings } from '../../settings';
-import type { CachedGraphMeta } from '../../workspace';
 import { pushStatus, type ShellRefs, setLoading } from '../runtime';
 import { workspaceFlow } from './workspace';
 
-/** 冷启动缓存载荷 — 分页 meta（P0-2）或旧格式全量图（兼容）。 */
-interface CachedGraphPayload {
-  paged?: boolean;
-  meta?: { node_count?: number; source_root?: string; [key: string]: unknown };
-  nodes?: unknown;
-  edges?: unknown;
-}
+// Phase 1.5：冷启动恢复信号 = 聚合快照（node_count + source_root 顶层字段）。
 
 export async function bootColdStart(_refs: ShellRefs): Promise<void> {
   try {
@@ -47,33 +41,27 @@ export async function bootColdStart(_refs: ShellRefs): Promise<void> {
       }
       if (lastDir) {
         console.log('[init] cold start (engine off): restoring last workspace', lastDir);
-        await workspaceFlow.switchWorkspace(lastDir, { skipAnalysis: true });
+        await workspaceFlow.switchWorkspace(lastDir);
         pushStatus('已恢复上次案卷（图谱引擎已停用）');
       }
       // 无恢复信号 → 落点案卷首页（不装配 Agent，用户从首页选/建工作区）
       return;
     }
-    let graph: CachedGraphPayload | null = null;
+    // Phase 1.5：load_graph_json 返回聚合快照（node_count/source_root 在顶层）。
+    let graph: GraphSnapshot | null = null;
     try {
-      graph = await typedJsonRpc<CachedGraphPayload>('load_graph_json', {});
+      graph = asGraphSnapshot(await typedJsonRpc<unknown>('load_graph_json', {}));
     } catch {
       // 无缓存图谱
     }
-    if (!graph) {
+    if (!graph || graph.node_count <= 0) {
       // 无缓存图谱 → 落点案卷首页（无工作区上下文不装配 Agent）
       setLoading(false);
       return;
     }
 
-    // P0-2 分页化：load_graph_json 返回 meta-only（paged）或旧格式全量图（兼容）。
-    const nodes = graph.nodes;
-    const nodeCount = graph.paged
-      ? graph.meta?.node_count || 0
-      : Array.isArray(nodes)
-        ? nodes.length
-        : Object.keys((nodes as Record<string, unknown>) || {}).length;
-    if (nodeCount > 0) {
-      const root: string = graph.meta?.source_root || '';
+    {
+      const root: string = graph.source_root || '';
       if (!root) {
         // 图谱存在但无路径 — 无工作区上下文，落点首页（不装配占位 Agent）
         pushStatus('⚠️ 缓存图谱已加载，但工作区路径丢失 — 请重新绑定目录');
@@ -83,10 +71,8 @@ export async function bootColdStart(_refs: ShellRefs): Promise<void> {
 
       // 使用统一的 switchWorkspace 恢复缓存工作区（数据面：图谱预热 + 会话）
       console.log('[init] cold start: switching to cached workspace', root);
-      await workspaceFlow.switchWorkspace(root, {
-        skipAnalysis: true,
-        cachedGraph: graph as CachedGraphMeta,
-      });
+      // Phase 1.5：不再传缓存 meta —— 快照装载已内建于 open()（毫秒级）。
+      await workspaceFlow.switchWorkspace(root);
       console.log('[init] cold start: switchWorkspace done');
       pushStatus(isMockMode() ? '🎨 Mock 模式 — 所见即所得，秒级刷新' : '已恢复上次案卷');
       // 引擎预热通过 runCheck → engine_init（SQLite 缓存）完成。不要在此处触发

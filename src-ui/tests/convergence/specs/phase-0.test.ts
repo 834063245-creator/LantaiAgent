@@ -14,7 +14,7 @@ import { runDifferential } from '../helpers/differential';
 import {
   agentDomainTool,
   buildStandardRegistry,
-  FIXED_GRAPH_DATA,
+  FIXED_GRAPH_SNAPSHOT,
   fixedGraphSnapshot,
   fsDomainTool,
   readOnlyTool,
@@ -67,7 +67,7 @@ describe('phase-0 契约快照', () => {
     // 旧 noGraph 简短面——"当前没有加载项目"在此面才是真话）。
     await withFirstPartyPromptChannel(async () => {
       const withGraph = buildSystemPrompt(
-        FIXED_GRAPH_DATA,
+        FIXED_GRAPH_SNAPSHOT,
         '/projects/demo',
         '### 固定记忆段落\n- 记忆条目 A',
         fixedGraphSnapshot(),

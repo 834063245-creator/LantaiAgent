@@ -197,3 +197,132 @@ mod tests {
         assert!(scip_banner_for("engine_status", 7, 5).is_none());
     }
 }
+
+// ═══════════════════════════════════════════════════════════════
+// 持久化缓存新鲜度（engine-plugin-extraction Phase 1.5 自壳侧 graph_io
+// 上收）—— cache_stale 壳方法与壳层冷启动/分析路径的单一真源
+// ═══════════════════════════════════════════════════════════════
+
+/// 缓存新鲜度判定结果。
+pub struct StaleCheck {
+    pub stale: bool,
+    pub reason: Option<String>,
+    pub baseline: &'static str,
+}
+
+/// 缓存新鲜度核心（纯函数，可单测）—— 基准 = SQLite 最近一次图持久化
+/// 时刻（`graph_generated_at`，冷启动实际读取的产物）；旧库无该 meta 时
+/// 回退 .lantai/hologram.db 的 mtime；无任何基准 → 视为过期（触发重分析
+/// 补全）。遍历规则单一真源：扩展名 = grammar 注册表（+.proto，gRPC 合成
+/// 器依赖），忽略 = discovery 的 is_ignored_path（含虚拟环境前缀与
+/// gitignore 锚定语义）。旧 hologram_graph.json mtime 回退基准已随该
+/// 归档产物退役（Phase 1.5：SQLite 是唯一持久化，快照按需算）。
+pub fn compute_cache_stale(root: &std::path::Path, generated_at_ms: Option<u64>) -> StaleCheck {
+    use std::collections::HashSet;
+
+    let baseline: Option<(std::time::SystemTime, &'static str)> =
+        if let Some(ms) = generated_at_ms {
+            std::time::UNIX_EPOCH
+                .checked_add(std::time::Duration::from_millis(ms))
+                .map(|t| (t, "graph_generated_at"))
+        } else {
+            std::fs::metadata(root.join(".lantai").join("hologram.db"))
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .map(|t| (t, "db_mtime"))
+        };
+    let Some((baseline_time, baseline_kind)) = baseline else {
+        return StaleCheck {
+            stale: true,
+            reason: Some("no persistence baseline found".into()),
+            baseline: "none",
+        };
+    };
+    let mut exts: HashSet<String> = engine::GRAMMAR_LOADER.supported_extensions().into_iter().collect();
+    exts.insert("proto".to_string());
+    for entry in walkdir::WalkDir::new(root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| {
+            let rel = e
+                .path()
+                .strip_prefix(root)
+                .unwrap_or(e.path())
+                .to_string_lossy();
+            !crate::pipeline::discovery::is_ignored_path(&rel)
+        })
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+            continue;
+        };
+        if !exts.contains(ext) {
+            continue;
+        }
+        if let Ok(mtime) = path.metadata().and_then(|m| m.modified()) {
+            if mtime > baseline_time {
+                let rel = path
+                    .strip_prefix(root)
+                    .unwrap_or(path)
+                    .to_string_lossy()
+                    .to_string();
+                return StaleCheck {
+                    stale: true,
+                    reason: Some(format!("{rel} modified after last persist")),
+                    baseline: baseline_kind,
+                };
+            }
+        }
+    }
+    StaleCheck {
+        stale: false,
+        reason: None,
+        baseline: baseline_kind,
+    }
+}
+
+#[cfg(test)]
+mod stale_tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_cache_stale_detects_fresh_and_stale() {
+        let root = std::env::temp_dir().join(format!(
+            "hologram_stale_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("a.rs"), "fn a() {}\n").unwrap();
+        // 无基准 → 过期
+        let r = compute_cache_stale(&root, None);
+        assert!(r.stale && r.baseline == "none");
+        // 以「现在」为基准 → 新鲜（源文件早于基准）
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        let r = compute_cache_stale(&root, Some(now_ms));
+        assert!(!r.stale, "新基准后无修改应新鲜: {:?}", r.reason);
+        // 忽略目录里的修改不算（基准后只动 node_modules）
+        std::fs::create_dir_all(root.join("node_modules")).unwrap();
+        std::fs::write(root.join("node_modules").join("x.rs"), "fn x() {}\n").unwrap();
+        let r = compute_cache_stale(&root, Some(now_ms));
+        assert!(!r.stale, "node_modules 修改不应触发过期: {:?}", r.reason);
+        // 修改源文件 → 过期，带 reason
+        std::fs::write(root.join("a.rs"), "fn a_changed() {}\n").unwrap();
+        let r = compute_cache_stale(&root, Some(now_ms));
+        assert!(r.stale, "基准后修改源文件必须判过期");
+        assert!(r.reason.as_deref().unwrap_or("").contains("a.rs"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}

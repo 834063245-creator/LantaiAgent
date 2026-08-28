@@ -442,6 +442,82 @@ pub(crate) fn edge_to_value(e: &Edge) -> Value {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// 图聚合快照 —— 壳方法 graph_snapshot 与壳侧内嵌消费的单一真源
+// ═══════════════════════════════════════════════════════════════
+
+/// 从 Graph 组装聚合快照值（graph_snapshot 壳方法的负载形状：
+/// 计数 / kind 分布 / 边类型分布 / 社区规模 / top 扇入扇出 / 类数）。
+/// pub 供壳层（src-tauri 内嵌形态）复用 —— Phase 2 transport 后壳改经
+/// MCP 调同一方法，本函数回归引擎内单一消费。
+pub fn graph_snapshot_value(g: &Graph, source_root: &str) -> Value {
+    let mut kind_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    let mut files: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut community_sizes: std::collections::HashMap<usize, usize> =
+        std::collections::HashMap::new();
+    let mut fan_in: Vec<(&str, &str, u32)> = Vec::new();
+    let mut fan_out: Vec<(&str, &str, u32)> = Vec::new();
+    for n in g.nodes_map().values() {
+        *kind_counts.entry(n.kind.as_str()).or_default() += 1;
+        if let Some(loc) = &n.location {
+            files.insert(handlers::graph::strip_loc_suffix(loc).replace('\\', "/"));
+        }
+        if let Some(cid) = n.community_id {
+            *community_sizes.entry(cid).or_default() += 1;
+        }
+        if n.in_degree > 0 {
+            fan_in.push((n.id.as_str(), n.name.as_str(), n.in_degree));
+        }
+        if n.out_degree > 0 {
+            fan_out.push((n.id.as_str(), n.name.as_str(), n.out_degree));
+        }
+    }
+    fan_in.sort_by(|a, b| b.2.cmp(&a.2).then(a.0.cmp(b.0)));
+    fan_out.sort_by(|a, b| b.2.cmp(&a.2).then(a.0.cmp(b.0)));
+    let mut edge_kinds: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for e in g.edges_map().values() {
+        *edge_kinds.entry(e.kind.as_str()).or_default() += 1;
+    }
+    let mut communities: Vec<Value> = community_sizes
+        .iter()
+        .map(|(cid, size)| json!({ "id": cid, "size": size }))
+        .collect();
+    communities.sort_by_key(|c| c["id"].as_u64().unwrap_or(0));
+    json!({
+        "source_root": source_root,
+        "node_count": g.node_count(),
+        "edge_count": g.edge_count(),
+        "file_count": files.len(),
+        "class_count": kind_counts.get("class").copied().unwrap_or(0),
+        "kind_counts": kind_counts,
+        "edge_kind_counts": edge_kinds,
+        "communities": communities,
+        "top_fan_in": fan_in.iter().take(10).map(|(id, name, deg)| json!({"id": id, "name": name, "fan_in": deg})).collect::<Vec<_>>(),
+        "top_fan_out": fan_out.iter().take(10).map(|(id, name, deg)| json!({"id": id, "name": name, "fan_out": deg})).collect::<Vec<_>>(),
+    })
+}
+
+/// 按文件符号索引（file_nodes 壳方法与壳侧内嵌消费的单一真源）：
+/// 归一为相对项目根路径再比对，非根内路径按后缀匹配
+///（与 resolve_in_index 的 suffix 语义一致）。
+pub fn file_nodes_value(g: &Graph, project_root: &str, want_file: &str) -> Value {
+    let want = want_file.replace('\\', "/");
+    let root_prefix = format!("{}/", project_root.replace('\\', "/"));
+    let mut nodes: Vec<Value> = Vec::new();
+    for n in g.nodes_map().values() {
+        let Some(loc) = &n.location else { continue };
+        let norm = handlers::graph::strip_loc_suffix(loc).replace('\\', "/");
+        let rel = norm.strip_prefix(root_prefix.as_str()).unwrap_or(&norm);
+        if rel == want || norm.ends_with(&want) {
+            nodes.push(json!({
+                "id": n.id, "name": n.name, "kind": n.kind.as_str(),
+                "fan_in": n.in_degree, "fan_out": n.out_degree,
+            }));
+        }
+    }
+    json!({ "file": want, "count": nodes.len(), "nodes": nodes })
+}
+
+// ═══════════════════════════════════════════════════════════════
 // V1 处理器 —— 图查询
 // ═══════════════════════════════════════════════════════════════
 

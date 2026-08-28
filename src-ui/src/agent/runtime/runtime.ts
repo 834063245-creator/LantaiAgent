@@ -26,7 +26,7 @@ import { AgentBlueprint, type BlueprintScope } from '../blueprint';
 import { AgentContext } from '../context';
 import { DiscoveryBoard, DiscoveryBoardProxy } from '../discovery-board';
 import { createExecState } from '../execution-state';
-import { buildGraphSnapshot, HookRegistry, PreflightHookRegistry } from '../hooks';
+import { asGraphSnapshot, formatGraphSnapshot, HookRegistry, PreflightHookRegistry } from '../hooks';
 import { enqueueIsolationOp } from '../isolation-queue';
 import { AgentLifecycleManager } from '../lifecycle-manager';
 import { log } from '../logger';
@@ -597,7 +597,8 @@ export class AgentRuntime implements RuntimePort {
       try {
         claudeMd = await typedRpc('read_file_content', { file_path: `${ctx.projectPath}/CLAUDE.md` });
       } catch {}
-      const snap = inputs.graphData ? buildGraphSnapshot(inputs.graphData) : '';
+      const snapshot = asGraphSnapshot(inputs.graphData);
+      const snap = snapshot ? formatGraphSnapshot(snapshot) : '';
 
       // 运行环境块 — 探测当前 shell（bash/cmd），注入 system prompt。
       // Agent 第一轮就知道命令跑在哪个解释器上，避免"猜语法"反复踩坑。

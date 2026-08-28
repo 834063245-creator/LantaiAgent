@@ -1,11 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import type { GraphContext } from '../src/agent/hooks';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
-  buildFileNodeIndex,
   createGraphContext,
   createGraphContextHook,
   createGraphPreflightHook,
+  type GraphContext,
   HookRegistry,
+  type NodeBrief,
   PreflightHookRegistry,
 } from '../src/agent/hooks';
 
@@ -42,9 +42,46 @@ const mockGraphData = {
   ],
 };
 
-function makeCtx(): GraphContext {
-  const { fileIndex, fanIn, fanOut } = buildFileNodeIndex(mockGraphData);
-  return createGraphContext(fileIndex, fanIn, fanOut);
+// Phase 1.5：模拟引擎 file_nodes 轻查询 —— fanIn/fanOut 按边就地计数
+//（与旧 buildFileNodeIndex 同口径），单文件一次一个查询。
+async function makeCtx(): Promise<GraphContext> {
+  const nodeById = new Map(mockGraphData.nodes.map((n) => [n.id, n]));
+  const fetchFileNodes = async (file: string): Promise<NodeBrief[]> => {
+    const norm = file.replace(/\\/g, '/').toLowerCase();
+    const fanIn = new Map<string, number>();
+    const fanOut = new Map<string, number>();
+    for (const e of mockGraphData.edges) {
+      fanOut.set(e.source, (fanOut.get(e.source) || 0) + 1);
+      fanIn.set(e.target, (fanIn.get(e.target) || 0) + 1);
+    }
+    return mockGraphData.nodes
+      .filter((n) => {
+        const loc = (n.location || '').replace(/\\/g, '/').toLowerCase();
+        const colonIdx = loc.lastIndexOf(':');
+        const fp = /^\d+$/.test(loc.slice(colonIdx + 1)) ? loc.slice(0, colonIdx) : loc;
+        return fp === norm;
+      })
+      .map((n) => ({
+        id: n.id,
+        name: nodeById.get(n.id)?.name ?? n.name,
+        kind: n.kind,
+        fanIn: fanIn.get(n.id) || 0,
+        fanOut: fanOut.get(n.id) || 0,
+      }));
+  };
+  const ctx = createGraphContext(fetchFileNodes);
+  // 同步消费面（getNodesInFile）读缓存 —— 用例前置预热全部 mock 文件。
+  await Promise.all(
+    [
+      'D:/repo/src/io.ts',
+      'D:/repo/src/config.ts',
+      'D:/repo/src/ui/app.tsx',
+      'D:/repo/src/state.ts',
+      'D:/repo/src/main.ts',
+      'D:/repo/src/utils.ts',
+    ].map((f) => ctx.warmFile(f)),
+  );
+  return ctx;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -52,7 +89,10 @@ function makeCtx(): GraphContext {
 // ═══════════════════════════════════════════════════════════
 
 describe('GraphContext', () => {
-  const ctx = makeCtx();
+  let ctx: GraphContext;
+  beforeAll(async () => {
+    ctx = await makeCtx();
+  });
 
   it('getNodesInFile 返回文件内所有符号', () => {
     const nodes = ctx.getNodesInFile('D:/repo/src/config.ts');
@@ -89,7 +129,10 @@ describe('GraphContext', () => {
 // ═══════════════════════════════════════════════════════════
 
 describe('GraphContextHook.shouldEnrich', () => {
-  const hook = createGraphContextHook(makeCtx());
+  let hook: ReturnType<typeof createGraphContextHook>;
+  beforeAll(async () => {
+    hook = createGraphContextHook(await makeCtx());
+  });
 
   const shouldTrigger = ['read_file_content', 'read_file', 'git_diff', 'run_shell'];
 
@@ -127,8 +170,10 @@ describe('GraphContextHook.shouldEnrich', () => {
 // ═══════════════════════════════════════════════════════════
 
 describe('GraphContextHook.enrich', () => {
-  const ctx = makeCtx();
-  const hook = createGraphContextHook(ctx);
+  let hook: ReturnType<typeof createGraphContextHook>;
+  beforeAll(async () => {
+    hook = createGraphContextHook(await makeCtx());
+  });
 
   it('read_file_content 注入符号概要', async () => {
     const out = await hook.enrich('read_file_content', { filePath: 'D:/repo/src/config.ts' }, 'line 1\nline 2\n');
@@ -240,7 +285,10 @@ describe('GraphContextHook.enrich', () => {
 // ═══════════════════════════════════════════════════════════
 
 describe('GraphPreflightHook.shouldCheck', () => {
-  const hook = createGraphPreflightHook(makeCtx());
+  let hook: ReturnType<typeof createGraphPreflightHook>;
+  beforeAll(async () => {
+    hook = createGraphPreflightHook(await makeCtx());
+  });
 
   const shouldTrigger = [
     'edit_file',
@@ -273,8 +321,10 @@ describe('GraphPreflightHook.shouldCheck', () => {
 // ═══════════════════════════════════════════════════════════
 
 describe('GraphPreflightHook.check', () => {
-  const ctx = makeCtx();
-  const hook = createGraphPreflightHook(ctx);
+  let hook: ReturnType<typeof createGraphPreflightHook>;
+  beforeAll(async () => {
+    hook = createGraphPreflightHook(await makeCtx());
+  });
 
   it('edit_file 正常文件注入影响分析', () => {
     // config.ts: parseConfig(fanIn=1), applyConfig(fanIn=1)

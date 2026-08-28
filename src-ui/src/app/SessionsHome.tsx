@@ -136,7 +136,7 @@ export function SessionsHome() {
       openPanel('paper');
       const current = useShellStore.getState().projectPath;
       if (ws !== current) {
-        void workspaceFlow.switchWorkspace(ws, { skipAnalysis: true });
+        void workspaceFlow.switchWorkspace(ws);
       }
     },
     [openPanel],

@@ -22,7 +22,7 @@ import { typedRpc } from '../../rpc-contract';
 import { useDockStore } from '../../state/dock-store';
 import { bumpWorkspaceSwitched } from '../../state/workspace-switch-store';
 import { useAgentPanelStore } from '../../ui/agent-panel-store';
-import type { CachedGraphMeta, Workspace } from '../../workspace';
+import type { Workspace } from '../../workspace';
 import { pushStatus, type ShellRefs, setLoading, shellRefs } from '../runtime';
 
 // 惰性取 Workspace 模块（值面）——防组合层环：roster → shell-rows →
@@ -50,10 +50,7 @@ async function pickFolder(): Promise<string | null> {
 // switchWorkspace — 统一入口
 // ═══════════════════════════════════════════════════════════════
 
-async function switchWorkspace(
-  path?: string,
-  opts?: { skipAnalysis?: boolean; cachedGraph?: CachedGraphMeta },
-): Promise<void> {
+async function switchWorkspace(path?: string): Promise<void> {
   const { workspace, wsMachine } = shellRefs;
   const chatPanel = shellRefs.chatPanel;
   if (!chatPanel) {
@@ -108,7 +105,7 @@ async function switchWorkspace(
     let ws: Workspace;
     try {
       console.log('[switchWorkspace] calling Workspace.open...');
-      ws = await WorkspaceCls.open(folder, null, chatPanel, opts, { onStatusChange, onLoadingChange });
+      ws = await WorkspaceCls.open(folder, null, chatPanel, { onStatusChange, onLoadingChange });
       console.log('[switchWorkspace] Workspace.open returned');
     } catch (err) {
       console.error('[switchWorkspace] Workspace.open threw:', err);
@@ -129,15 +126,13 @@ async function switchWorkspace(
     shellRefs.workspace = ws;
     wsMachine.transition(ws._health === 'degraded' ? 'degraded' : 'active');
 
+    // Phase 1.5：graphData = 聚合快照（不再有全量 nodes/edges 计数）
     const gd = ws.graphData;
-    const nodeCount = gd ? (Array.isArray(gd.nodes) ? gd.nodes.length : Object.keys(gd.nodes || {}).length) : 0;
-    const genRaw = gd?.meta?.generated_at;
-    const genTime =
-      typeof genRaw === 'string' || typeof genRaw === 'number' ? new Date(genRaw).toLocaleTimeString() : '';
-    pushStatus(`✨ ${nodeCount} 节点已就绪${genTime ? ` · ${genTime}` : ''}`);
+    const nodeCount = gd?.node_count ?? 0;
+    pushStatus(`✨ ${nodeCount} 节点已就绪`);
     log.info('main', 'project loaded', {
       nodes: nodeCount,
-      edges: gd ? (Array.isArray(gd.edges) ? gd.edges.length : Object.keys(gd.edges || {}).length) : 0,
+      edges: gd?.edge_count ?? 0,
     });
     setLoading(false);
     bumpWorkspaceSwitched(); // P1 总线归零：workspace:switched → state/workspace-switch-store

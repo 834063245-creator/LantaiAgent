@@ -36,9 +36,9 @@ vi.mock('../src/agent/hooks', () => ({
   PreflightHookRegistry: class {},
   createGraphContextHook: vi.fn(),
   createGraphContext: vi.fn(),
-  buildFileNodeIndex: vi.fn(),
   createGraphPreflightHook: vi.fn(),
-  buildGraphSnapshot: vi.fn(() => ''),
+  formatGraphSnapshot: vi.fn(() => ''),
+  asGraphSnapshot: vi.fn(() => null),
 }));
 vi.mock('../src/settings', () => ({
   loadSettings: vi.fn(() => ({ providers: [], activeProvider: 'deepseek' })),

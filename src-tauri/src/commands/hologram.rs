@@ -6,18 +6,6 @@
 use tauri;
 
 #[tauri::command]
-pub(crate) async fn get_full_graph(
-    state: tauri::State<'_, crate::WorkspaceState>,
-    app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
-) -> Result<String, String> {
-    crate::app::services::hologram_service::get_full_graph(
-        state.inner().clone(),
-        app_ctx.inner().clone(),
-    )
-    .await
-}
-
-#[tauri::command]
 pub(crate) async fn hologram_run_check(
     path: Option<String>,
     state: tauri::State<'_, crate::WorkspaceState>,

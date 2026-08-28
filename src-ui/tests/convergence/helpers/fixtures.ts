@@ -4,7 +4,7 @@
 // 内容：录制型 ToolExecutor、固定图数据、标准工具注册表、合成门禁工具、脚本化 Provider。
 
 import { SubAgentPool } from '../../../src/agent/coordinator';
-import { buildGraphSnapshot } from '../../../src/agent/hooks';
+import { formatGraphSnapshot } from '../../../src/agent/hooks';
 import { buildToolRegistry } from '../../../src/agent/runtime/agent-builder';
 import { TaskManager } from '../../../src/agent/task';
 import type { Tool, ToolExecutor, ToolRegistry } from '../../../src/agent/tool';
@@ -25,25 +25,32 @@ export function recordingExec(log: Array<{ name: string; args: Record<string, un
   };
 }
 
-// ── 固定图数据 — buildGraphSnapshot/buildFileNodeIndex 的确定性输入 ──
+// ── 固定图快照 — formatGraphSnapshot/装配开关的确定性输入 ──
+// Phase 1.5：graphData = 聚合快照（引擎 graph_snapshot 形态）。
+// 本快照与旧 FIXED_GRAPH_DATA(nodes/edges) 在 buildGraphSnapshot 下的
+// 聚合输出逐字节等价（4 节点/4 边 | 2 社区 2/2 | import:2,call:2 |
+// 枢纽 core(2)/util(2)）——system-prompt.fixture 零漂移。
 
-export const FIXED_GRAPH_DATA = {
-  nodes: [
-    { id: 'demo/core.ts', name: 'core', community_id: 0 },
-    { id: 'demo/adapter.ts', name: 'adapter', community_id: 0 },
-    { id: 'demo/ui.ts', name: 'ui', community_id: 1 },
-    { id: 'demo/util.ts', name: 'util', community_id: 1 },
+export const FIXED_GRAPH_SNAPSHOT = {
+  node_count: 4,
+  edge_count: 4,
+  file_count: 0,
+  class_count: 0,
+  kind_counts: {},
+  edge_kind_counts: { import: 2, call: 2 },
+  communities: [
+    { id: 0, size: 2 },
+    { id: 1, size: 2 },
   ],
-  edges: [
-    { source: 'demo/adapter.ts', target: 'demo/core.ts', kind: 'import' },
-    { source: 'demo/ui.ts', target: 'demo/core.ts', kind: 'call' },
-    { source: 'demo/ui.ts', target: 'demo/util.ts', kind: 'import' },
-    { source: 'demo/core.ts', target: 'demo/util.ts', kind: 'call' },
+  top_fan_in: [
+    { id: 'demo/core.ts', name: 'core', fan_in: 2 },
+    { id: 'demo/util.ts', name: 'util', fan_in: 2 },
   ],
+  top_fan_out: [],
 };
 
 export function fixedGraphSnapshot(): string {
-  return buildGraphSnapshot(FIXED_GRAPH_DATA);
+  return formatGraphSnapshot(FIXED_GRAPH_SNAPSHOT);
 }
 
 // ── 标准注册表：真实 buildToolRegistry 生产路径 + 确定性依赖 ──
@@ -74,7 +81,7 @@ export async function buildStandardRegistry(
       // capability 行；数组直传兼容）。
       const rows = typeof toolRows === 'function' ? toolRows() : toolRows;
       const reg = await buildToolRegistry({
-        graphData: FIXED_GRAPH_DATA,
+        graphData: FIXED_GRAPH_SNAPSHOT,
         deps: {},
         taskManager: new TaskManager(),
         subAgentPool: new SubAgentPool(),

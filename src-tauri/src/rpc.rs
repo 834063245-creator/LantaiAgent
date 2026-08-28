@@ -150,14 +150,12 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         "hologram_tools_list" => RpcResultShape::JsonValue,
 
         // ── Graph ──
-        // load_graph_json/analyze_and_load：引擎图 meta JSON；但磁盘兑底路径返回
-        // hologram_graph.json 原文（合法 JSON，字段不同）——两种路径都是合法 JSON，
-        // 前端 parse 后宽容读 meta。保守起见 load_graph_json 保持 Text（磁盘全文
-        // 可能很大，出口 parse 再重新序列化的开销不划算；analyze_and_load 只回 meta
-        // 恒定小 JSON）。get_graph_meta：graph_meta_json 产物恒定。get_graph_page/
-        // get_full_graph：同 load_graph_json 的磁盘兑底风险 + 体积，保持 Text。
+        // Phase 1.5：load_graph_json/get_graph_snapshot 返回聚合快照 JSON
+        // （快照按需算，恒定轻量，跨边界不再传全量图体）。
+        // analyze_and_load：轻状态。hologram_file_nodes：按文件符号索引。
         // engine_impact：with_index 产物恒定。
-        "analyze_and_load" | "get_graph_meta" | "engine_impact" => RpcResultShape::JsonValue,
+        "load_graph_json" | "get_graph_snapshot" | "hologram_file_nodes"
+        | "analyze_and_load" | "engine_impact" => RpcResultShape::JsonValue,
 
         // ── Git ──
         // status（json! 构造）/log（commits 数组）恒 JSON；
@@ -352,11 +350,10 @@ async fn dispatch_rpc(
             let force = opt_bool(&params, "force");
             commands::graph::analyze_and_load(path, force, app, state, app_ctx).await
         }
-        "get_graph_meta" => commands::graph::get_graph_meta(state, app_ctx).await,
-        "get_graph_page" => {
-            let page = opt_usize(&params, "page").unwrap_or(0);
-            let page_size = opt_usize(&params, "page_size");
-            commands::graph::get_graph_page(page, page_size, state, app_ctx).await
+        "get_graph_snapshot" => commands::graph::get_graph_snapshot(state, app_ctx).await,
+        "hologram_file_nodes" => {
+            let file = req_str(&params, "file", "hologram_file_nodes")?;
+            commands::graph::hologram_file_nodes(file, state, app_ctx).await
         }
         "engine_impact" => {
             let node_id = req_str(&params, "node_id", "engine_impact")?;
@@ -1396,9 +1393,6 @@ async fn dispatch_rpc(
                 .await
                 .map(|_| "null".into())
         }
-        "get_full_graph" => {
-            commands::hologram::get_full_graph(state, app_ctx).await
-        }
 
         // ═══════════════════════════════════════════════════════
         // 工作区（8 个命令）
@@ -1919,13 +1913,19 @@ mod tests {
         use serde_json::json;
         // 形态表钉死：小样命令 = JsonValue，未列命令默认 Text
         assert_eq!(rpc_result_shape("shell_env"), RpcResultShape::JsonValue);
-        assert_eq!(rpc_result_shape("get_graph_meta"), RpcResultShape::JsonValue);
+        // Phase 1.5：load_graph_json/get_graph_snapshot = 聚合快照（JsonValue 恒定）；
+        // 分页双命令（get_graph_meta/get_graph_page）与 get_full_graph 已拆除。
+        assert_eq!(rpc_result_shape("load_graph_json"), RpcResultShape::JsonValue);
+        assert_eq!(rpc_result_shape("get_graph_snapshot"), RpcResultShape::JsonValue);
+        assert_eq!(rpc_result_shape("hologram_file_nodes"), RpcResultShape::JsonValue);
+        assert_eq!(rpc_result_shape("get_graph_meta"), RpcResultShape::Text);
+        assert_eq!(rpc_result_shape("get_graph_page"), RpcResultShape::Text);
         assert_eq!(rpc_result_shape("read_file_content"), RpcResultShape::Text);
         assert_eq!(rpc_result_shape("anything_else"), RpcResultShape::Text);
-        // JsonValue 命令：真结构化展开（小样 shell_env / get_graph_meta）
+        // JsonValue 命令：真结构化展开（小样 shell_env / get_graph_snapshot）
         let v = dispatch_result_to_value("shell_env", Ok(r#"{"bundled":true}"#.into())).unwrap();
         assert_eq!(v, json!({"bundled": true}));
-        let v = dispatch_result_to_value("get_graph_meta", Ok(r#"{"total_nodes":42}"#.into())).unwrap();
+        let v = dispatch_result_to_value("get_graph_snapshot", Ok(r#"{"total_nodes":42}"#.into())).unwrap();
         assert_eq!(v, json!({"total_nodes": 42}));
         // JsonValue 命令返回非合法 JSON：违反契约转 Err（错误可见，不静默）
         let bad = dispatch_result_to_value("shell_env", Ok("not json".into()));

@@ -779,27 +779,32 @@ export function mockInvoke(cmd: string, args?: Record<string, unknown>): string 
     return mockInvoke(method, params);
   }
 
-  // 图谱命令（P0-2 分页化）：analyze_and_load / load_graph_json / get_graph_meta 回 meta-only，
-  // get_graph_page 回整图（mock 图小，单页即全量）。
-  if (cmd === 'analyze_and_load' || cmd === 'load_graph_json' || cmd === 'get_graph_meta') {
+  // 图谱命令（Phase 1.5 快照化）：load_graph_json / get_graph_snapshot 回聚合
+  // 快照；analyze_and_load 回轻状态。分页命令已拆除。
+  if (cmd === 'load_graph_json' || cmd === 'get_graph_snapshot') {
     const g = buildMockGraph();
+    const nodes = Array.isArray(g.nodes) ? g.nodes : [];
+    const edges = Array.isArray(g.edges) ? g.edges : [];
+    const kindCounts: Record<string, number> = {};
+    for (const n of nodes) {
+      const k = String((n as Record<string, unknown>).type ?? (n as Record<string, unknown>).kind ?? 'symbol');
+      kindCounts[k] = (kindCounts[k] || 0) + 1;
+    }
     return JSON.stringify({
-      meta: {
-        source_root: g.meta?.source_root || '/mock/nebula-project',
-        node_count: Array.isArray(g.nodes) ? g.nodes.length : 0,
-        edge_count: Array.isArray(g.edges) ? g.edges.length : 0,
-      },
-      paged: true,
-      page_size: 1,
-      total_pages: 1,
-      has_more: false,
+      source_root: g.meta?.source_root || '/mock/nebula-project',
+      node_count: nodes.length,
+      edge_count: edges.length,
+      file_count: 0,
+      class_count: kindCounts.class ?? 0,
+      kind_counts: kindCounts,
+      edge_kind_counts: {},
+      communities: [],
+      top_fan_in: [],
+      top_fan_out: [],
     });
   }
-  if (cmd === 'get_graph_page') {
-    const g = buildMockGraph();
-    // source_root 置空：mock 工作区路径可被用户任意输入，跳过前端的错页校验
-    g.meta = { ...g.meta, source_root: '' };
-    return JSON.stringify(g);
+  if (cmd === 'analyze_and_load') {
+    return JSON.stringify({ status: 'ok', analyzed: true });
   }
 
   // 简报
