@@ -1,7 +1,7 @@
 # Agent 平台化（Lantai Platform）总计划 —— 一个文档解决所有问题
 
 > 立项：2026-08-25
-> 状态：**Phase 4 已竣工（2026-08-28 凌晨，三 commit）**——Phase 1-3 见 §5 落地记录；Phase 4：① `5b676af2` D6 外部插件运行时热重载 ② `7151086e` D7 ctx.dynamicRunner + cordis 域工具族 + 收敛基线变更 + 开放面契约 v2 ③ `40f119fb` D1 进程外能力面端到端例子 + D12 信任模型叙事。Phase 0-3 宪法边界与组合域统一已入档；**Phase 5（存量迁移与出厂面清零，含 agent loop 降级）待开工**
+> 状态：**Phase 5 已竣工（2026-08-28，两 commit）**——Phase 1-4 见 §5 落地记录；Phase 5：① `23a81a3f` D13 ctx.agentLoop（loop 降为第一方默认实现）+ 工具管道切 eventBus 路径 ② `4a61076e` 第一方 loop 可观测监听器 + 遗留清理。Phase 0-4 宪法边界/组合域统一/运行时插件全链路已入档；**Phase 6（平台税收口）待开工**
 > 性质：能力建设计划（capability plan），不是还债（debt plan）
 > 上位：`agent-plugin-architecture-plan.md`（P1-P4 已竣工部分）+ `composition-architecture/README.md`（S0-S4 已竣工 + 内核线）+ `docs/adr/project-constitution.md`
 > 参照系：DeepSeek Harness（`D:\useful\deepseek-harness`，下称 DSH）；"DSH 实证"均给文件路径供执行者直查。
@@ -273,6 +273,8 @@
 **施工设计（2026-08-27，开工时定案）**：① seam 贡献进组合解析域——新增 `composition/seam-resolution.ts` 叶模块（各 seam 域禁用集的运行时单一读面，零依赖）+ `factoryComposition()` 收编七条 seam 寻址域（`seam/llm`、`seam/subagents`、`seam/fs`、`seam/shell`、`seam/sessionPersistence`、`seam/graph`、`seam/loopEvents`——`seam/` 前缀与既有四域键隔离，`shell` 键已被壳行域占用）+ patch schema 同名域（disable 条目，last-write-wins）+ `ResolvedComposition.seamDisabled` 消费裁剪面。**语义裁定**：注册表 = 实现真源（谁存在），组合 = 裁剪真源（谁生效）；消费视图 = 活动注册表 − 禁用集（晚注册的 provider 可见，除非显式禁用——免除快照陈旧类）；过滤收在 `active*Providers()`/`activeLlmAdapters()` 与 `emitLoopEvent` 消费单点，调用方零改动。生效语义 = 调用期全局裁剪（与 Phase 2 调用期扫描一致）；会话级 compositionOverride 的 seam 面不穿线（AgentConfig 冻结，P5 全量挂 seam 时再评估）。`seam/loopEvents` 域 = D4 事件面开关（行源 = LOOP_EVENT_NAMES；仅 emit 观测域可开关，tool/guard|preflight|around 是强制层语义不开放禁用——禁 guard = 绕 planGate）。② 目录生成（D9 随段落）：`gen-service-catalog`（ctx.* 全量：key/service/kind/owner/默认实现/消费面——kind 由源码机械推导规则出，缺标注即生成器报错）+ `gen-event-catalog`（event → mode/载荷/发射点/监听点——自 AGENT_EVENT_MAP + 调用点扫描生成）+ `doc-sync` 门禁（tool-contract + 两目录的 --check 对拍）。③ 契约版本化：开放面契约版本常量 + 变更记录 + seam 契约文件指纹对拍测试（变更未更新版本 = 红）+ `plugin_install` 版本比较兑现（降级拒绝 + force 逃生）。
 
 ### Phase 5 —— 存量迁移与出厂面清零（含 agent loop 降为默认实现）
+
+> **落地记录（2026-08-28，两 commit 铁律 7 分段）**：① `23a81a3f` D13 `ctx.agentLoop`——agent/agent-loop/ 包（AgentLoop/AgentLoopHost 契约 + builtin/default 默认实现 + 注册表后注册胜 + resolveAgentLoop 无服务环境回落默认，单一实现无兼容分支）；runLoop 本体机械迁移（this.→host.，行为逐字节一致——convergence phase-5 trace + 全量 agent 测试组钉住）；AgentOptions.agentLoop 注入 + runtime `_cordisParent.agentLoop.active()` 解析 + loader 表序挂服务；**工具管道生产路径切 eventBus**（构造期 attachPlanGate 无条件挂——缺 guard 监听 = plan 门禁失效铁律；setHooks/setPreflightHooks 各自一次性 attach；executor 收 bus 优先、legacy 直调忽略——差分 trace fixture 钉住逐字节等价）。② `4a61076e` 第一方 loop 可观测监听器（observability.ts：turn/start → 'turn started' 监听化，建新拆旧——loop 体散点同步删；其余散点依赖 loop 内部上下文/R1 载荷不可及，保留原位 + event-feature-map「部分重表达」清单化，不扩载荷不搞双线）+ 遗留注释清理（events.ts 过渡适配层 → 生产事实；feature-map 生产接线现状更新）。**P5-C1~C4 全达成**：C1 零硬编码守卫（first-party-surface.test.ts：全 DOMAIN_SPEC 域经通道折叠可见 + seam 默认 provider 全注册 + dynamicRunner/agentLoop 在册）；C2 agentLoop 装配成立（agent-loop-seam.test.ts 4 用例：默认登记/后注册胜/替换接管 host 面活性/可寻址）+ import agent-loop 包消费面 grep 归零（只允许 Agent/runtime/loader/包自身）；C3 强制层外零增长复核（全计划 P3/P4/P5 未新增强制层外 Rust 命令——platform_boundary_test 保持绿，改动均为既有命令内部）；C4 门禁四连 + convergence 双 preset + doc-sync 全绿（vitest 1856 passed / biome 0/0 / build）。开放面契约 v3（agent-loop 三文件入册）。**谁判断：Agent 自主 + 用户终审（loop 抽取为产品核心行为变更——commit message 已写明；本段施工记录留痕于计划与 commit）。**
 
 **做什么：**
 
