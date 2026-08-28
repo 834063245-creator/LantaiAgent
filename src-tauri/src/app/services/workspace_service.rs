@@ -75,13 +75,12 @@ pub(crate) async fn deactivate(old_path: String, app_ctx: Arc<AppContexts>) -> R
         }
     }
     // ⚡ 2026-08-04 状态治理：workspace 切换时清理进程池全局，
-    // 防止旧项目的 LSP / PTY / 后台任务 / 引擎(MCP) 跨 workspace 串场或泄漏。
-    // - LSP/PTY/MCP 绑项目根，切走必须停；
+    // 防止旧项目的 LSP / PTY / 后台任务跨 workspace 串场或泄漏。
+    // - LSP/PTY 绑项目根，切走必须停；引擎子进程随上下文 GC/remote.shutdown 走；
     // - 后台 shell 任务（BG_JOBS）kill_tree 防 cargo/rustc 孙进程占锁。
     crate::utils::kill_all_bg();
     crate::pty_manager::kill_all();
     crate::lsp_manager::stop_all();
-    crate::commands::external::stop_mcp();
     // 粘性 cwd 全清 — 旧项目的目录状态不得带进新工作区（代际递增使
     // 在途捕获不落新账）。
     crate::utils::sticky_cwd::clear_all();

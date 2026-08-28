@@ -7,14 +7,14 @@
 //! `save` / `fts_search` / `timeline_record` / `diff` / `ensure_ready` /
 //! `cache_stale` / `watcher_subscribe`）+ 模型工具全名（hologram_call 分发面）。
 //! 两个实现走**同一方法名**：
-//!   - `InProcessTransport`（现状默认）：with_current TLS 绑定 →
-//!     `ToolRegistry::dispatch`（内嵌引擎即自己）；
-//!   - `McpRemoteTransport`（Phase 3 翻默认）：每工作区一个 `engine serve`
+//!   - `InProcessTransport`（内嵌直调，调试逃生口 env=inprocess）：
+//!     with_current TLS 绑定 → `ToolRegistry::dispatch`（内嵌引擎即自己）；
+//!   - `McpRemoteTransport`（Phase 3 起缺省）：每工作区一个 `engine serve`
 //!     子进程，经 stdio MCP `tools/call`。
 //! 差分对拍因此天然同构——同一 dispatch 面、只差传输；差分测试钉住
 //! 两实现逐字节等价（layering-rework 对账守恒做法）。
 //!
-//! `HOLOGRAM_ENGINE_TRANSPORT=inprocess|mcp`（缺省 inprocess，Phase 3 翻默认）。
+//! `HOLOGRAM_ENGINE_TRANSPORT=inprocess|mcp`（缺省 mcp）。
 
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
@@ -65,8 +65,7 @@ impl EngineTransport for InProcessTransport {
 // EngineProcess —— 一个 engine serve 子进程（stdio MCP 会话）
 // ═══════════════════════════════════════════════════════════════
 
-/// 就绪信号等待超时。serve 启动即发 ready（分析/观察者延迟到首次调用），
-/// 正常毫秒级到；上限对齐 legacy McpManager 的保守值。
+/// 就绪信号等待超时。serve 启动即发 ready（分析/观察者延迟到首次调用）。
 const READY_TIMEOUT_SECS: u64 = 600;
 
 pub(crate) struct EngineProcess {
@@ -367,12 +366,12 @@ pub(crate) enum TransportMode {
     Mcp,
 }
 
-/// 传输模式：`HOLOGRAM_ENGINE_TRANSPORT=inprocess|mcp`（缺省 inprocess——
-/// Phase 2 行为零变化；Phase 3 翻默认）。
+/// 传输模式：`HOLOGRAM_ENGINE_TRANSPORT=inprocess|mcp`（Phase 3 起缺省
+/// McpRemote——每工作区一个引擎进程；env=inprocess 为调试逃生口）。
 pub(crate) fn transport_mode() -> TransportMode {
     match std::env::var("HOLOGRAM_ENGINE_TRANSPORT").as_deref() {
-        Ok("mcp") | Ok("MCP") => TransportMode::Mcp,
-        _ => TransportMode::InProcess,
+        Ok("inprocess") | Ok("INPROCESS") => TransportMode::InProcess,
+        _ => TransportMode::Mcp,
     }
 }
 
@@ -383,10 +382,9 @@ mod tests {
 
     #[test]
     fn transport_mode_env_parse() {
-        // 缺省 = inprocess（Phase 2 行为零变化的根基）
-        // （env 由调用进程决定，这里只验证非法值回落缺省）
-        // 注：不能在本测试设置 env（并行测试共享进程环境），
-        // transport_mode() 的 mcp 分支由差分测试以显式构造覆盖。
+        // 缺省 = mcp（Phase 3 翻默认）；env=inprocess 为调试逃生口。
+        // （env 由调用进程决定，这里只验证解析函数可调用不 panic；
+        // 分支语义由差分测试以显式构造覆盖。）
         let _ = transport_mode();
     }
 

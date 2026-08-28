@@ -89,8 +89,8 @@ pub(crate) struct WorkspaceDataContext {
     pub root: PathBuf,
     /// 该工作区专属引擎实例。
     pub engine: Arc<Engine>,
-    /// 进程外传输（Phase 2：惰性构造，`HOLOGRAM_ENGINE_TRANSPORT=mcp` 时
-    /// 经 resolve_transport 取用；Phase 3 翻默认后成为主路径）。
+    /// 进程外传输（每工作区一个引擎子进程的 stdio MCP 通道；惰性构造，
+    /// 经 resolve_transport 取用——Phase 3 起为主路径）。
     pub(crate) remote: std::sync::Mutex<Option<std::sync::Arc<crate::engine_transport::McpRemoteTransport>>>,
     /// 数据宿主共享句柄（L2 存储外置）——与 Engine 内部持同一 Arc。
     /// L2 crate 化后物理来源为 hologram-storage crate（经 engine 门面再导出）。

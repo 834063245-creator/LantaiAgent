@@ -267,8 +267,6 @@ export interface RpcContract {
   agent_isolation_force_purge: { params: { agent_id: string }; result: string }; // JSON
 
   // ── 外部服务 ─────────────────────────────────────────────
-  start_mcp_server: { params: { project_root: string }; result: string }; // text
-  stop_mcp_server: { params: Record<string, never>; result: string }; // text
   sandbox_status: { params: Record<string, never>; result: string }; // JSON — {degraded,reason}（Value 化：Rust 出口已展开）
 
   // ── Hologram 遗留命令 ────────────────────────────────────

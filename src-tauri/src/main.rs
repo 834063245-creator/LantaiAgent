@@ -11,7 +11,6 @@
 
 mod agent_isolation;
 mod aura_memory;
-mod mcp_manager;
 mod engine_transport;
 mod pty_manager;
 mod lsp_manager;
@@ -139,7 +138,6 @@ fn main() {
             let mut ledger = lifecycle::ResourceLedger::new();
             ledger.register(Box::new(lifecycle::LlmProxyService));
             ledger.register(Box::new(lifecycle::BgJobsService));
-            ledger.register(Box::new(lifecycle::McpService));
             ledger.register(Box::new(lifecycle::PtyService));
             ledger.register(Box::new(lifecycle::LspService));
             ledger.register(Box::new(lifecycle::UiaService));

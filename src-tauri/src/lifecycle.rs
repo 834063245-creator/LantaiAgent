@@ -123,20 +123,6 @@ impl LifecycleService for BgJobsService {
     }
 }
 
-/// MCP server 进程。
-pub struct McpService;
-
-impl LifecycleService for McpService {
-    fn name(&self) -> &'static str { "mcp_manager" }
-
-    fn shutdown(&self, _deadline: Instant) -> ShutdownStatus {
-        let mut mgr = crate::commands::external::MCP_MANAGER.lock()
-            .unwrap_or_else(|e| e.into_inner());
-        mgr.stop();
-        ShutdownStatus::Clean
-    }
-}
-
 /// PTY 会话 — 终止所有 shell。
 pub struct PtyService;
 

@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-08-27T12:21:18.938Z
-> 方法总数：156（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-08-28T22:40:48.572Z
+> 方法总数：151（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -28,9 +28,8 @@
 |------|----------|----------|------|
 | `load_graph_json` | — | path | 字符串 |
 | `analyze_and_load` | path | force | 字符串 |
-| `get_graph_meta` | — | — | 字符串 |
-| `get_graph_page` | — | page, page_size | 字符串 |
-| `engine_impact` | node_id | max_depth | 字符串 |
+| `get_graph_snapshot` | — | — | 字符串 |
+| `hologram_file_nodes` | file | — | 字符串 |
 
 ## Git
 
@@ -179,7 +178,7 @@
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
-| `plugin_install` | — | expect_name | JSON 字符串 |
+| `plugin_install` | — | expect_name, force | JSON 字符串 |
 | `plugin_uninstall` | name | — | `null`（unit） |
 | `plugin_dir` | name | — | JSON 字符串 |
 | `plugin_set_enabled` | name, enabled | — | `null`（unit） |
@@ -199,8 +198,6 @@
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
-| `start_mcp_server` | project_root | — | 字符串 |
-| `stop_mcp_server` | — | — | 字符串 |
 | `sandbox_status` | — | — | 字符串 |
 
 ## Hologram 遗留命令
@@ -209,7 +206,6 @@
 |------|----------|----------|------|
 | `hologram_run_check` | — | path | 字符串 |
 | `hologram_record_event` | event_type, summary | file | `null`（unit） |
-| `get_full_graph` | — | — | 字符串 |
 
 ## 工作区
 
@@ -228,7 +224,6 @@
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
-| `session_append` | path, session_id, message | — | `null`（unit） |
 | `agent_session_append` | project_path, agent_id, messages, rewrite | — | `null`（unit） |
 
 ## 约束

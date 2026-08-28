@@ -1361,13 +1361,9 @@ async fn dispatch_rpc(
         }
 
         // ═══════════════════════════════════════════════════════
-        // 外部服务（6 个命令）
+        // 外部服务（sandbox_status；MCP server 生命周期面已随 legacy
+        // McpManager 退役——引擎子进程统一走 engine_transport）
         // ═══════════════════════════════════════════════════════
-        "start_mcp_server" => {
-            let project_root = req_str(&params, "project_root", "start_mcp_server")?;
-            commands::external::start_mcp_server(project_root).await
-        }
-        "stop_mcp_server" => commands::external::stop_mcp_server().await,
         "sandbox_status" => commands::external::sandbox_status(),
 
         // ═══════════════════════════════════════════════════════
