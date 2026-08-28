@@ -11,13 +11,17 @@
 > ctx.capabilities 贡献，出厂 builtinCapabilities() 退役（2026-08-24，
 > plugins/capability-segments-plugin.ts + composition/first-party-
 > capabilities.ts 装配腰）。
+> **平台化 Phase 3-6（2026-08-27/28）：seam 裁剪域 / 运行时热重载（D6）/
+> 动态插件 cordis 域（D7）/ 信任模型二分（D12）/ 平台契约总览（§0）——
+> 本文件自此为插件面唯一人类契约。**
 > 插件 = 经
 > webview 动态 import 装载的自包含 ES 模块，
 > 向宿主注册**面板 / 命令 / 工具 / 块渲染器 / prompt 段 / 管道钩子 /
-> capability**贡献；
+> capability / swappable seam provider / 动态插件包**贡献；
 > 也可经 manifest 声明式挂接**外部 MCP server**（§3 机器桥）。
 > 完全信任模型——安装前必读 §6。从零到跑通的最短路径：
-> `examples/plugins/hello/README.md`。
+> `examples/plugins/hello/README.md`；发布路径见
+> `docs/user/develop/publishing-plugins.md`；各 seam cookbook 见 `docs/cookbook/`。
 > 第一方插件先例（编译期 bundle 内，不走磁盘通道）：`paper/paper-plugin.ts`
 > （面板 + 命令）、`plugins/settings-plugin.ts`（面板 + 命令，S3 样板）、
 > `plugins/coding-domain-plugins.ts`（工具域，P4 B①+② 五族样板：
@@ -27,15 +31,72 @@
 
 ## 目录
 
+0. [平台契约总览](#0-平台契约总览)
 1. [五个概念](#1-五个概念)
 2. [插件目录与 manifest](#2-插件目录与-manifest)
 3. [通道 API](#3-通道-api)
 4. [宿主桥（无裸 import 的平台契约）](#4-宿主桥无裸-import-的平台契约)
 5. [安装 / 卸载 / 禁用](#5-安装--卸载--禁用)
-6. [⚠️ 完全信任模型（安装前必读）](#6-️-完全信任模型安装前必读)
+6. [⚠️ 信任模型（安装前必读）](#6-️-信任模型安装前必读)
 7. [KV-cache 注意事项](#7-kv-cache-注意事项)
 8. [preset（行组合预设）](#8-preset行组合预设)
 9. [未决项（如实声明）](#9-未决项如实声明)
+
+## 0. 平台契约总览
+
+**线外一切皆行 / 皆 seam**（宪法第五条平台边界）：强制层（权限咽喉 / 沙箱内核 /
+审计 / IPC / cordis 内核 / 组合引擎 / Workspace 原语）特权且永不插件化；能力契约层
+全开——Rust/engine 只是默认 provider。本文件 + 生成物目录（`docs/agents/`）+
+cookbook（`docs/cookbook/`）+ 发布路径（`docs/user/develop/`）是平台的人类契约。
+
+### 贡献通道（十二 +）
+
+| ctx 通道 | 贡献形状 | 生效时机 | 真源 |
+|---|---|---|---|
+| `ctx.panels` | PanelContribution | 即时 | composition/services.ts |
+| `ctx.commands` | CommandContribution | 即时 | composition/services.ts |
+| `ctx.tools` | ToolContribution（行） | 下次装配 | composition/services.ts |
+| `ctx.prompts` | PromptSection（段） | 下次装配 | composition/prompt-service.ts |
+| `ctx.renderers` | RendererContribution | 即时 | composition/renderer-service.tsx |
+| `ctx.hooks` | Hook 贡献（enrich/preflight） | 下次装配 | composition/hook-service.ts |
+| `ctx.capabilities` | AgentCapability（会话级） | 下次装配 | composition/capability-service.ts |
+| `ctx.overlays` | 画布覆盖层 | 即时 | composition/overlay-service.ts |
+
+### swappable seam（能力契约层——可换实现）
+
+| ctx seam | 默认 provider | 消费面 | patch 域 |
+|---|---|---|---|
+| `ctx.llm` | `builtin/anthropic` · `builtin/openai` | createProvider | `seam/llm` |
+| `ctx.subagents` | `builtin/in-process` | Agent.spawnSubAgent | `seam/subagents` |
+| `ctx.fs` | `builtin/rust-fs` | fsExecute（fs 域 11 动作） | `seam/fs` |
+| `ctx.shell` | `builtin/rust-shell` | shellExecute（shell 域四动作；subprocess 并入） | `seam/shell` |
+| `ctx.sessionPersistence` | `builtin/rust-sessions` | sessionExecute（agent-store） | `seam/sessionPersistence` |
+| `ctx.graph` | `builtin/rust-graph` | graphExecute（hologram 域） | `seam/graph` |
+| `ctx.agentLoop` | `builtin/default` | Agent.runLoop | —（契约可替换，patch 域未开） |
+| 事件面 | —（D4 表） | emitLoopEvent 开关 | `seam/loopEvents` |
+
+> seam 语义：消费视图 = 活动注册表 − 组合禁用集（`seam/<域>` patch/preset 可寻址禁用/
+> 换默认 provider；晚注册可见）。完整清单以生成物 `docs/agents/service-catalog.md` 为唯一
+> 机器事实源（doc-sync 门禁对拍）。
+
+### 运行时插件三形态
+
+1. **外部 ESM 插件**（§2-4）：磁盘 JS + manifest，装/卸/启用/禁用**运行时生效**（D6）；
+2. **动态插件**（cordis 域，D7）：模型运行时 define→run→stop→undefine，approval + 沙箱
+   （见 `docs/cookbook/adding-a-dynamic-plugin.md`）；
+3. **外部 MCP server**（§3）：manifest.mcpServers 声明式挂接（见
+   `docs/cookbook/adding-an-mcp-server.md`）。
+
+### 契约版本
+
+- 开放面契约版本：`docs/agents/open-surface-contract.md`（seam 接口 / manifest schema /
+  dynamic runner / agent loop 变更必须升版 + 记录——守护测试红着就是没改完）。
+- 插件 manifest schema 真源：`src/plugins/types.ts`（zod——单一权威）。
+
+### 信任模型二分（详见 §6）
+
+- 静态插件 = **完全信任（v1 已知债）**——装进来拥有本机账户全部能力；
+- 动态插件 = **approval + 沙箱**（首激活用户批准 + 三层防线）。
 
 ## 1. 五个概念
 
