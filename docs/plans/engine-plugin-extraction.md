@@ -178,14 +178,40 @@ DSH / Unity / 任意 MCP 客户端消费的是同一个二进制、同一份契�
   buildGraphSnapshot 聚合输出逐字节等价（4 节点/4 边 | 2 社区 2/2 | import:2,call:2 |
   枢纽 core(2)/util(2)）——system-prompt.fixture 无需变更审批，check 通过。
 
-### Phase 2 — 壳侧 transport 抽象（加第二条路，不翻默认）
+### Phase 2 — 壳侧 transport 抽象（加第二条路，不翻默认）——⚠️ 施工约 90%，**未 commit**
 
-- `dispatch_service` / `graph_service` / `hologram_service` / `graph_io`（缩水后）背后加 `EngineTransport` trait：
-  `InProcessTransport`（现状默认）| `McpRemoteTransport`（连引擎进程）
-- 复用 + 现代化 `McpManager` 为「每工作区一个进程」的 `EngineProcessManager`（spawn / 就绪握手 /
-  崩溃重启 / 关停），改造成不带单例锁的长等待（P1-19 教训已在案）
-- **差分对拍**：同一条命令在两个 transport 下逐字节等价（layering-rework 对账守恒的做法照搬）；
-  壳 `cargo test` 全绿（含双工作区并发 e2e 双跑）
+> **2026-08-29 会话交接现状**（改动全部在工作区未 commit，`git status` 12 文件）。
+> 已完成：`engine_transport.rs` 新模块（trait + 双实现 + EngineProcess + 传输模式）；AppContexts 接线；
+> graph_service/dispatch_service 收口；engine_impact 死面拆除（service/commands/rpc 分支/rpc-contract 声明）；
+> 差分对拍测试 `tests/engine_transport_parity.rs` 已建立并**抓到两个真 bug 已修**：
+> ① 契约面 HashMap 非确定序（graph_snapshot_value/file_nodes_value 改 BTreeMap/排序——字节契约）；
+> ② ensure_ready 的 watching 字段（环境状态不进字节契约，已从引擎 handler 删除，测试内嵌臂改 new_shared）。
+> **接手即做（精确序列）**：
+> 1. `cd engine && cargo test --lib` —— 验证 watching 删字段后 shell.rs 测试绿；
+> 2. `cd engine && cargo build -p hologram-engine`（对拍需要引擎 exe）；
+> 3. `cd src-tauri && cargo test --test engine_transport_parity --no-run` 然后**直接跑测试二进制**
+>    （内嵌臂 new_shared + serve 进程臂，watching 已删应对拍绿；若差：看输出逐字段对齐）；
+> 4. 全量门禁（引擎 lib / 壳 bins+lib / 前端 tsc+vitest+biome——rpc-contract 改了）；
+> 5. commit Phase 2（写明：传输接缝 + 死面拆除 + 差分对拍抓到的两个契约面 bug 修复）。
+> 已知坑（必读，2026-08-29 实测）：`hologram-engine.exe`（`serve --project-root D:\useful\deepseek-harness --tcp`，
+> 46MB 常驻）是用户 **DSH 应用的子进程，绝不能杀**（它崩溃自动重启，杀了会误导排障）；
+> cargo 测试一律 `--no-run` 先链接再直跑二进制、输出直写文件、**不用管道 tail**（后台管道收尾假挂）；
+> 冷链接 2-10 分钟属正常，不是 hang；跨行代码修改用 Read+Edit 工具（python heredoc 转义不可靠）。
+
+- ✅ `EngineTransport` trait（`src-tauri/src/engine_transport.rs`）：`call(method, args)` 统一方法面
+  （Phase 1 壳方法契约 v2 + 模型工具全名）；`InProcessTransport`（with_current → dispatch，缺省）|
+  `McpRemoteTransport`（每工作区一个 `engine serve` 子进程：惰性 spawn / ready+initialize 握手 /
+  通知行过滤 / isError 转译 / 崩溃重启一次 / Drop 关停）；`HOLOGRAM_ENGINE_TRANSPORT=inprocess|mcp`
+  （缺省 inprocess = 行为零变化）
+- ✅ AppContexts 接线：WorkspaceDataContext.remote 槽（惰性 Arc\<McpRemoteTransport\>）+
+  shutdown 对称关停 + `resolve_transport`（与 resolve_engine 同决议链）
+- ✅ 服务收口：graph_service（load_graph_json / get_graph_snapshot / hologram_file_nodes 经 transport，
+  冷启动新鲜度留痕走 cache_stale 壳方法）+ dispatch_service::call_dispatched 传输化（回落全局臂保留）
+- ✅ 差分对拍（`tests/engine_transport_parity.rs`）：内嵌臂（new_shared + ToolRegistry::dispatch）vs
+  进程外臂（真引擎 serve + mini MCP client），查询面 5 方法逐字节等价（graph_snapshot / file_nodes /
+  fts_search / ensure_ready / cache_stale）；副作用命令不进差分（elapsed_secs 非确定）
+- 待办：对拍跑绿 + 全量门禁 + commit（见上方接手序列）；`hologram_service.run_check` 仍内嵌
+  （壳编排面，Phase 3 一并处理）；engine_impact 死面已拆（前端零调用）
 - **DoD**：`McpRemoteTransport` 在测试环境全程可用；差分测试钉住等价；默认仍是内嵌（行为零变化）
 
 ### Phase 3 — 翻默认 + 内嵌退役（做彻底那一刀）

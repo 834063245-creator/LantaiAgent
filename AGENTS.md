@@ -201,6 +201,8 @@ flowchart LR
 
 CI 只做编译 + 测试；`.github/workflows/ci.yml` 仅经用户拍板可改（2026-08-25 用户授权：engine job 改 workspace 全量测试 `cargo test --release --workspace --exclude lantai`，覆盖三个新拆 crate）。
 
+> ⚠ **测试运行纪律（2026-08-29 立规，实测踩坑 2 小时）**：cargo 测试一律 **`--no-run` 先链接、再前台直跑测试二进制、输出直写文件**，禁止 `| tail` 管道后台跑（管道缓冲全程无输出 + 收尾假挂，会把「冷链接 2-10 分钟」误判成 hang）。**`hologram-engine.exe`（`serve --project-root …`，46MB 常驻）是用户 DSH 应用的子进程，绝不能 taskkill**——它崩溃自动重启，杀了会误导排障。
+
 ## 11. 不要做的事
 
 - 不要恢复 Python 引擎路径（`src_python/` 已退役，`tests/` 已移除）。
