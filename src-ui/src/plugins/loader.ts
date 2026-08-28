@@ -15,6 +15,7 @@
 //   - 完全信任模型：不校验插件代码内容，只校验 manifest 形状（Rust 侧负责遍历防护）。
 
 import { createElement } from 'react';
+import { agentLoopServicePlugin } from '../agent/agent-loop/agent-loop-service';
 import { codeRuntimePlugin } from '../agent/code-run/runtime-service';
 import { dynamicRunnerPlugin } from '../agent/dynamic-runner/dynamic-runner-service';
 import { builtinFsPlugin } from '../agent/fs-provider';
@@ -116,6 +117,7 @@ const BUILTIN_PLUGINS: LantaiPlugin[] = [
   overlayServicePlugin,
   codeRuntimePlugin,
   dynamicRunnerPlugin,
+  agentLoopServicePlugin,
   rendererServicePlugin,
   promptsServicePlugin,
   hooksServicePlugin,

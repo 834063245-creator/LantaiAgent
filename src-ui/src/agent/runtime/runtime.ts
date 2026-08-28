@@ -688,6 +688,9 @@ export class AgentRuntime implements RuntimePort {
       contextWindow: inputs.contextWindow ?? 0,
       toolResultWindow: inputs.toolResultWindow,
       ui: this._wrapNotifier(agentId),
+      // D13（平台化 Phase 5）：loop 解析 = ctx.agentLoop 注册表后注册胜
+      // （服务缺省已登记 builtin/default；无 cordis 父 = Agent 侧缺省，同实现）
+      agentLoop: this._cordisParent?.agentLoop?.active(),
     });
 
     // 5. agent 阶段 capability — 注册序 = 表序（通信/discovery/merge/request/

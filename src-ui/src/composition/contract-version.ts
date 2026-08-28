@@ -22,7 +22,7 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 2;
+export const OPEN_SURFACE_CONTRACT_VERSION = 3;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。 */
 export const OPEN_SURFACE_CONTRACT_FILES: readonly string[] = [
@@ -40,6 +40,10 @@ export const OPEN_SURFACE_CONTRACT_FILES: readonly string[] = [
   // 动态插件运行时（D7——define/run/stop/undefine/inspect + 沙箱承诺）
   'src/agent/dynamic-runner/dynamic-runner-service.ts',
   'src/agent/dynamic-runner/sandbox.ts',
+  // agent loop seam（D13——AgentLoop/AgentLoopHost 契约 + 默认实现）
+  'src/agent/agent-loop/types.ts',
+  'src/agent/agent-loop/default-loop.ts',
+  'src/agent/agent-loop/agent-loop-service.ts',
   // 插件 manifest 契约（loader 装载面）
   'src/plugins/types.ts',
 ];

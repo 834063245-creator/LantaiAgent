@@ -9,7 +9,6 @@ import { STREAM_IDLE_TIMEOUT_MS, streamWithIdleTimeout } from '../provider/idle-
 import type { StoredThinking } from '../provider/thinking';
 import type { Message, Provider, ToolCall, ToolSchema, Usage } from '../provider/types';
 import { ChunkType } from '../provider/types';
-import { typedRpc } from '../rpc-contract';
 import {
   applyAutoTuneConfigImpl,
   type CompactionHost,
@@ -27,6 +26,8 @@ import {
   summarizeRegionImpl,
   summaryProviderImpl,
 } from './agent-compaction';
+import { defaultAgentLoop } from './agent-loop/default-loop';
+import type { AgentLoop, AgentLoopHost } from './agent-loop/types';
 import type { AgentRecord, AgentStore } from './agent-store';
 // 共享类型 — 本文件内部也使用
 import {
@@ -40,18 +41,26 @@ import {
 } from './agent-types';
 import { type CompactionConfig, type CompactionSessionStats, CompactionTracker } from './compaction-model';
 import type { AgentContext } from './context';
-import { AgentEventBus, type ListenerOptions, type LoopEventName, type LoopEventPayload } from './events';
+import {
+  AgentEventBus,
+  attachHookRegistry,
+  attachPlanGate,
+  attachPreflightRegistry,
+  type ListenerOptions,
+  type LoopEventName,
+  type LoopEventPayload,
+} from './events';
 import { type ExecStateInstance, execState } from './execution-state';
 import { type GoalLoopHost, type GoalRunResult, resumeGoalImpl, runGoalImpl } from './goal-loop';
 import type { GoalManager } from './goal-manager';
 import type { HookRegistry, PreflightHookRegistry } from './hooks';
 import type { Disposer } from './lifecycle';
 import { log } from './logger';
-import { batchStormSignature, finishReasonMessage, parseFilePathArg, type ToolOutcome } from './loop-helpers';
+import { batchStormSignature, type ToolOutcome } from './loop-helpers';
 import { type PlanGate, planGateCheck } from './plan/plan-registry';
 import { backoffDelay, isRetryable, MAX_RETRIES, sleepWithAbort } from './retry';
 import { SessionLog, type SessionResetReason } from './session-log';
-import { StreamingToolExecutor } from './streaming-executor';
+import type { StreamingToolExecutor } from './streaming-executor';
 import type { SubAgentSpawnHost } from './subagent-spawn';
 import { countMessage, countMessages, countTexts, countToolSchemas } from './token-counter';
 import type { ToolRegistry } from './tool';
@@ -112,6 +121,9 @@ export interface AgentOptions {
   taskBoard?: TaskBoard;
   /** DiscoveryBoard — 共享发现区，Agent 间交换探索结果 */
   discoveryBoard?: DiscoveryBoard;
+  /** agent loop 实现（平台化 Phase 5 · D13）——缺省 = builtin/default
+   *  （逐字节一致）；runtime 装配经 ctx.agentLoop 注册表解析传入。 */
+  agentLoop?: AgentLoop;
   // gate 已移除 — 权限由 Rust 后端 has_permission_to_use_tool() 处理
 }
 
@@ -137,6 +149,8 @@ export class Agent {
   _toolFoldBoundary = 0;
   private pricing: Pricing | undefined;
   _agentOpts: AgentOptions;
+  /** agent loop 实现（D13）——构造期解析（显式注入优先，缺省 = builtin/default）。 */
+  private readonly _loop: AgentLoop;
 
   // 装配 context — 身份/服务唯一来源；setBus/setSubAgentPool/setGoalManager
   // 经 write-through 把后续注入同步回 ctx（ctx 是服务真源）。
@@ -397,6 +411,12 @@ export class Agent {
     this._sink = opts.eventSink ?? ctx.get('eventSink') ?? (() => {});
     this._ui = opts.ui ?? {};
     this._agentOpts = opts;
+    // D13：loop 实现 = 显式注入优先，缺省 = builtin/default（逐字节一致）
+    this._loop = opts.agentLoop ?? defaultAgentLoop;
+    // Phase 5：planGate 常驻经 eventBus tool/guard 监听（构造期挂——
+    // executor 收到 eventBus 后优先 bus；缺 guard 监听 = plan 门禁失效，
+    // 故守卫监听必须无条件先于任何 bus 使用）
+    attachPlanGate(this._loopEvents, this._planGate);
     this.temperature = opts.temperature ?? 0.7;
     this._visibleToolsLimit = opts.visibleToolsLimit ?? DEFAULT_VISIBLE_TOOLS_LIMIT;
     // 默认禁用折叠 — 见 toolResultWindow 注释（DeepSeek 缓存计价下不划算）
@@ -453,11 +473,23 @@ export class Agent {
 
   setHooks(hooks: HookRegistry): void {
     this.hooks = hooks;
+    // Phase 5：hooks 经 eventBus tool/around 监听运行（executor 优先 bus）
+    if (!this._hookAttached) {
+      this._hookAttached = true;
+      attachHookRegistry(this._loopEvents, hooks);
+    }
   }
 
   setPreflightHooks(hooks: PreflightHookRegistry): void {
     this.preflightHooks = hooks;
+    // Phase 5：preflight 经 eventBus tool/preflight 监听运行
+    if (!this._preflightAttached) {
+      this._preflightAttached = true;
+      attachPreflightRegistry(this._loopEvents, hooks);
+    }
   }
+  private _hookAttached = false;
+  private _preflightAttached = false;
 
   /** Plan 模式状态 + 注入器 — 由 Runtime 在 createAgent 时设置。
    *  2026-08-10 起不再按 plan 状态切换工具注册表（schema 跨模式恒定，
@@ -1045,325 +1077,92 @@ export class Agent {
   /** 驱动工具循环而不添加用户消息。用于 fork 子 Agent
    *  其会话已以 fork 指令结尾的情况。 */
   private async runLoop(signal: AbortSignal): Promise<void> {
-    const turnStart = performance.now();
-    let turnErr: unknown = null;
-    log.info('agent', 'turn started', { model: this.prov.name() });
+    // D13（平台化 Phase 5）：流式循环降为第一方默认实现（agent/agent-loop/）
+    // ——Agent 接口不变；解析 = ctx.agentLoop 注册表后注册胜，缺省 =
+    // builtin/default（行为逐字节一致，钉子见包内注释）。
+    await this._loop.run(this._loopHost(), signal);
+  }
 
-    try {
-      this._isRunning = true;
-      this._currentRunSignal = signal; // 子 Agent 派生时合并此 signal 用于级联中止
-      this._sink({ kind: EventKind.TurnStarted });
-      // Phase 5：轮次边界事件（无消息投影 — 回放/审计用）
-      this._sessionLog.append('turn/start', { model: this.prov.name() });
-      // D4：turn/start 监听面广播（可观测，非模型可见——见 events.ts R1 声明）
-      this._loopEvents.emitLoopEvent('turn/start', { agentId: this.id, model: this.prov.name() });
-
-      for (let step = 0; ; step++) {
-        this._loopEvents.emitLoopEvent('step/start', { agentId: this.id, step });
-        // 清除上一步的临时提醒 — 仅当前步骤的
-        // 提醒应对本轮 LLM 可见。
-        // Step 0 跳过清除: run() 可能已将 preRunHook
-        // （aura recall）结果推入 _transientReminders 后才调用 runLoop。
-        if (step > 0) this._transientReminders = [];
-
-        // Plan 模式提醒注入 — 去重逻辑在 PlanModeInjector 内部
-        if (this._planState && this._planInjector) {
-          let planContent = '';
-          if (this._planState.state.active && this._planState.state.planFilePath) {
-            try {
-              const raw = await typedRpc('read_file_content', {
-                file_path: this._planState.state.planFilePath,
-                is_agent: false,
-              });
-              planContent = raw.replace(/^\s*\d+\t/gm, '');
-            } catch {
-              /* plan 文件尚未写入 — 正常 */
-            }
-          }
-          const reminder = this._planInjector.getReminder(step, this._planState.state, planContent);
-          if (reminder) {
-            this._transientReminders.push(`<system-reminder>\n${reminder}\n</system-reminder>`);
-          }
-        }
-
-        // 中止检查 — signal 覆盖用户停止 + 会话替换（通过 this._execState.stop）
-        if (signal.aborted) throw new Error('aborted');
-
-        // 在安全边界应用待插入的用户消息（工具结果提交后）
-        this._applyPendingInserts();
-        this._applyPendingMemoryUpdates();
-
-        this._ui.progress?.(step + 1, 'thinking');
-
-        // 在每次 stream() 调用前排空后台任务通知（临时 —
-        // 轮次结束后进度更新无价值）。按 agent_id 路由排干：全局排干会把
-        // 其他 agent（含并行子 Agent）的后台任务通知吸进本 agent 上下文。
-        try {
-          const notes = await typedRpc('drain_bg_notifications', { agent_id: this.id });
-          if (notes) {
-            this._transientReminders.push(`<system-reminder>\n${notes}\n</system-reminder>`);
-          }
-        } catch {
-          // 尽力而为 — 排空失败不阻塞循环
-        }
-
-        // 注入未读 inbox 消息（窥探 — 不消费）
-        this._injectInbox();
-
-        // 注入其他 Agent 的新发现
-        this._injectDiscoveries();
-
-        // ── 预检上下文窗口 ──
-        // 在发送到 API 前检查 — 捕获上轮结束时（maybeCompact() 在 0.55 触发）
-        // 与危险区（0.88）之间的间隙。估算基于发送载荷（折叠视图），
-        // 与真实 API 压力一致。没有这个检查，大量工具结果 + 注入
-        // 会在下一轮导致 400 错误。
-        if (this.contextWindow > 0) {
-          const preFlight = this.tokenCountWithEstimation();
-          const preFlightRatio = preFlight / this.contextWindow;
-          if (preFlightRatio >= 0.88) {
-            if (this.compactStuck) {
-              log.warn('agent', 'pre-flight skipped: compact stuck', {
-                estimated: preFlight,
-                ratio: preFlightRatio.toFixed(2),
-              });
-              this._sink({
-                kind: EventKind.Notice,
-                level: 'warn',
-                text: `上下文使用率 ${(preFlightRatio * 100).toFixed(0)}%，但压缩已卡住。建议 /new。`,
-              });
-            } else if (this.compactRunning) {
-              log.info('agent', 'pre-flight skipped: compact already running', {
-                estimated: preFlight,
-                ratio: preFlightRatio.toFixed(2),
-              });
-            } else {
-              log.info('agent', 'pre-flight compaction triggered', {
-                estimated: preFlight,
-                ratio: preFlightRatio.toFixed(2),
-                contextWindow: this.contextWindow,
-              });
-              this._sink({
-                kind: EventKind.Notice,
-                level: 'warn',
-                text: `上下文使用率 ${(preFlightRatio * 100).toFixed(0)}%，发送前压缩…`,
-              });
-              try {
-                const outcome = await this.compactNow(signal);
-                if (outcome === 'stuck') {
-                  this._sink({
-                    kind: EventKind.Notice,
-                    level: 'warn',
-                    text: '压缩无法减少上下文——消息太少。建议 /new。',
-                  });
-                }
-              } catch {
-                // compactNow 已发出自身错误 — 继续让 API 错误处理器
-                // （stream 中的响应式压缩）捕获
-                log.warn('agent', 'pre-flight compaction failed, falling through to API call');
-              }
-            }
-          }
-        }
-
-        // ---- Stream（带流式工具执行器 + hooks）----
-        this.compactionTracker.recordTurn();
-        const executor = new StreamingToolExecutor(
-          this.tools,
-          (ev: AgentEvent) => this._sink(ev),
-          this.hooks,
-          this.preflightHooks,
-          this._isolationId ?? null,
-          signal,
-          this._planGate,
-          null,
-          // 通知路由身份（bus id）— bg job owner / bash_kill 所有权（executor 注入 _owner_id）
-          this.id,
-        );
-        this._loopEvents.emitLoopEvent('request/start', {
-          agentId: this.id,
-          step: step + 1,
-          model: this.prov.name(),
-        });
-        let { text, reasoning, signature, calls, usage, err } = await this.stream(signal, step + 1, executor);
-        this._loopEvents.emitLoopEvent('request/end', {
-          agentId: this.id,
-          step: step + 1,
-          totalTokens: usage?.total_tokens ?? null,
-          err: err ? String(err.message || err) : null,
-        });
-        if (err) {
-          log.error('agent', 'stream error', { error: String(err.message || err) });
-          throw err;
-        }
-
-        if (usage && usage.total_tokens > 0) {
-          log.info('agent', 'llm response', {
-            turn: step + 1,
-            model: this.prov.name(),
-            finish_reason: usage.finish_reason,
-            total_tokens: usage.total_tokens,
-            prompt_tokens: usage.prompt_tokens,
-            cache_hit_tokens: usage.cache_hit_tokens,
-            cache_miss_tokens: usage.cache_miss_tokens,
-            cache_creation_tokens: usage.cache_creation_tokens,
-            completion_tokens: usage.completion_tokens,
-            reasoning_tokens: usage.reasoning_tokens,
-            elapsed_ms: Math.round(performance.now() - turnStart),
-          });
-          this._diagTokenBreakdown(usage);
-          this.cacheHitTotal += usage.cache_hit_tokens;
-          this.cacheMissTotal += usage.cache_miss_tokens;
-          this.lastUsage = usage;
-          this._sink({
-            kind: EventKind.Usage,
-            usage,
-            pricing: this.pricing,
-            session_hit: this.cacheHitTotal,
-            session_miss: this.cacheMissTotal,
-          });
-        }
-
-        // 异常完成原因告警
-        const warnMsg = finishReasonMessage(usage);
-        if (warnMsg) {
-          this._sink({ kind: EventKind.Notice, level: 'warn', text: warnMsg });
-        }
-
-        // 保护: DeepSeek 拒绝既无 content 也无 tool_calls 的 assistant 消息。
-        if (!text && calls.length === 0) {
-          if (this._pendingInserts.length > 0 || reasoning) {
-            text = reasoning ? '(思考完成)' : '(等待中)';
-          } else {
-            log.warn('agent', 'empty assistant turn — skipping push to avoid API 400');
-            this._sink({
-              kind: EventKind.Notice,
-              level: 'warn',
-              text: 'Provider 本次调用了但无内容返回，已跳过此轮。',
-            });
-            return;
-          }
-        }
-
-        // 存储 assistant 轮次（reasoning 保留用于显示，不重新上传）
-        this._appendMessage('assistant/text', {
-          role: 'assistant',
-          content: text,
-          reasoning_content: reasoning,
-          reasoning_signature: signature,
-          tool_calls: calls,
-        });
-        // 工具调用审计事件（每调用一条；消息投影取自上方事件内嵌的 tool_calls — 单一事实源）
-        for (const call of calls) {
-          this._sessionLog.append('tool/call', { call });
-        }
-
-        if (calls.length === 0 && this._pendingInserts.length === 0) {
-          this._loopEvents.emitLoopEvent('step/end', { agentId: this.id, step, toolCalls: 0 });
-          return;
-        }
-
-        // ---- 收集工具结果（流式执行器在 stream 期间已执行）----
-        log.info('agent', 'collect streaming results', {
-          tools: calls.map((c) => c.name),
-          count: calls.length,
-        });
-        const pendingResults = await executor.awaitRemaining();
-        // 按调用顺序构建结果
-        const resultsByCallId = new Map(pendingResults.map((r) => [r.call.id, r]));
-
-        // ── Storm breaker + 压缩埋点 ──
-        // 两个调用点在 6e75046（StreamingToolExecutor 清理前）丢失；
-        // 在此重新接线。Storm breaker 将模型从相同失败的循环中推开；
-        // tracker 用真实损失数据喂给压缩自动调优。
-        const stormNudge = this._stormNudge(calls, resultsByCallId);
-        for (const call of calls) {
-          // 领域调用（fs/shell/...）解析回旧语义名 — 压缩追踪按旧名统计
-          let guardName: string;
-          try {
-            guardName = resolveGuardToolName(this.tools, call.name, JSON.parse(call.arguments || '{}'));
-          } catch {
-            guardName = call.name;
-          }
-          this.compactionTracker.recordToolCall(guardName, call.arguments || '{}');
-          if (guardName === 'read_file_content' || guardName === 'read_file') {
-            const fp = parseFilePathArg(call.arguments);
-            if (fp) this.compactionTracker.recordFileRead(fp);
-          }
-        }
-
-        for (let i = 0; i < calls.length; i++) {
-          const call = calls[i];
-          const r = resultsByCallId.get(call.id);
-          // r 存在但 output 为空 = 工具执行成功但无输出(如 git add 成功、git diff 无差异)。
-          // 空字符串是 falsy,若用 `r?.output || error` 会把成功误判成"工具没结果",
-          // 导致 Agent 看到 "did not produce a result" 而困惑/重试。
-          // 仅当 r 不存在(流式重试丢失、未分发)才算真正失败。
-          let content = r
-            ? r.output || `(工具 ${call.name} 执行成功，无输出)`
-            : `error: tool "${call.name}" did not produce a result`;
-          if (!r) {
-            // 补发 ToolResult 终止 UI 卡片（执行器 abort 已覆盖主流路径，
-            // 此处兜底任何残留缺口，防止卡片永久"执行中"——会话 223 事故）。
-            this._sink({
-              kind: EventKind.ToolResult,
-              tool: {
-                id: call.id,
-                name: call.name,
-                args: call.arguments,
-                output: content,
-                err: 'did not produce a result',
-                read_only: this.toolReadOnly(call.name),
-              },
-            });
-          }
-          if (stormNudge && i === 0) content += stormNudge;
-          this._appendMessage('tool/result', {
-            role: 'tool',
-            content,
-            tool_call_id: call.id,
-            name: call.name,
-          });
-          // 通知面板自动刷新（workspace 注入的端口）
-          this._ui.toolDone?.(
-            call.name,
-            (() => {
-              try {
-                return JSON.parse(call.arguments || '{}');
-              } catch {
-                return {};
-              }
-            })(),
-            r?.output || '',
-          );
-        }
-
-        // 下一轮前按需压缩
-        this.maybeCompact(usage);
-        this._loopEvents.emitLoopEvent('step/end', { agentId: this.id, step, toolCalls: calls.length });
-      }
-    } catch (e) {
-      turnErr = e;
-      throw e;
-    } finally {
-      this._isRunning = false;
-      this._ui.onStatusChange?.(false);
-      this._loopEvents.emitLoopEvent('turn/end', {
-        agentId: this.id,
-        ok: turnErr === null,
-        aborted: signal.aborted,
-      });
-      // 重新检查新（尚未注入的）消息 — 避免本轮已注入但未 ack 的消息
-      // 导致无限循环。
-      if (!signal.aborted && this._bus) {
-        const hasNew = this._bus.peekInbox(this.id).some((m) => !this._injectedMsgIds.has(m.id));
-        if (hasNew) {
-          queueMicrotask(() => {
-            void this._onMessageDelivered();
-          });
-        }
-      }
-    }
+  /** loop 宿主面（D13）——私有成员以闭包暴露给 loop 包（不出类边界；
+   *  稳定引用传引用、可变标量 get/set 闭包保活性）。 */
+  private _loopHost(): AgentLoopHost {
+    const self = this;
+    return {
+      id: this.id,
+      prov: this.prov,
+      tools: this.tools,
+      hooks: this.hooks,
+      preflightHooks: this.preflightHooks,
+      isolationId: this._isolationId ?? null,
+      planGate: this._planGate,
+      loopEvents: this._loopEvents,
+      sessionLog: this._sessionLog,
+      bus: this._bus,
+      injectedMsgIds: this._injectedMsgIds,
+      ui: this._ui,
+      planState: this._planState,
+      planInjector: this._planInjector,
+      compactionTracker: this.compactionTracker,
+      pricing: this.pricing,
+      contextWindow: this.contextWindow,
+      pendingInserts: this._pendingInserts,
+      sink: (ev: AgentEvent) => this._sink(ev),
+      appendMessage: (kind, message) => this._appendMessage(kind, message),
+      stream: (sig, turn, executor) => this.stream(sig, turn, executor),
+      tokenCountWithEstimation: () => this.tokenCountWithEstimation(),
+      compactNow: (sig) => this.compactNow(sig),
+      maybeCompact: (usage) => this.maybeCompact(usage),
+      stormNudge: (calls, resultsByCallId) => this._stormNudge(calls, resultsByCallId),
+      diagTokenBreakdown: (usage) => this._diagTokenBreakdown(usage),
+      toolReadOnly: (name) => this.toolReadOnly(name),
+      applyPendingInserts: () => this._applyPendingInserts(),
+      applyPendingMemoryUpdates: () => this._applyPendingMemoryUpdates(),
+      injectInbox: () => this._injectInbox(),
+      injectDiscoveries: () => this._injectDiscoveries(),
+      onMessageDelivered: () => this._onMessageDelivered(),
+      get isRunning() {
+        return self._isRunning;
+      },
+      set isRunning(v) {
+        self._isRunning = v;
+      },
+      get currentRunSignal() {
+        return self._currentRunSignal;
+      },
+      set currentRunSignal(v) {
+        self._currentRunSignal = v;
+      },
+      get transientReminders() {
+        return self._transientReminders;
+      },
+      set transientReminders(v) {
+        self._transientReminders = v;
+      },
+      get compactStuck() {
+        return self.compactStuck;
+      },
+      get compactRunning() {
+        return self.compactRunning;
+      },
+      get cacheHitTotal() {
+        return self.cacheHitTotal;
+      },
+      set cacheHitTotal(v) {
+        self.cacheHitTotal = v;
+      },
+      get cacheMissTotal() {
+        return self.cacheMissTotal;
+      },
+      set cacheMissTotal(v) {
+        self.cacheMissTotal = v;
+      },
+      get lastUsage() {
+        return self.lastUsage;
+      },
+      set lastUsage(v) {
+        self.lastUsage = v;
+      },
+    };
   }
 
   // ---- 私有: stream（带重试）----

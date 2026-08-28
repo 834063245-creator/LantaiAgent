@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：2
+当前版本：3
 
-<!-- contract-fingerprint: 3a310d9e9943cf09a0d7129ce3ed7dea77d82e0dd8841600f783777332cc9116 -->
+<!-- contract-fingerprint: 0da96b730529a35cfef97db1d8a1426c03c1c30d35f3da7e9aa94c65c0bbfcd3 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -26,7 +26,10 @@
 | src/agent/events.ts | D4 事件面（AGENT_EVENT_MAP mode 表 / LoopEventPayload 载荷形状 / 监听契约） |
 | src/agent/dynamic-runner/dynamic-runner-service.ts | ctx.dynamicRunner（D7——define/run/stop/undefine/inspect + 审批门 + 包不可变/回滚语义） |
 | src/agent/dynamic-runner/sandbox.ts | 动态插件沙箱承诺（阴影求值面 / 守卫注册面白名单 / 三预算常量） |
-| `src/plugins/types.ts` | 插件 manifest schema（name/version/inject/permissions/tools/mcpServers） |
+| src/plugins/types.ts | 插件 manifest schema（name/version/inject/permissions/tools/mcpServers） |
+| src/agent/agent-loop/types.ts | AgentLoop/AgentLoopHost（D13 loop seam 契约） |
+| src/agent/agent-loop/default-loop.ts | 默认 loop 实现（行为逐字节一致，D13） |
+| src/agent/agent-loop/agent-loop-service.ts | ctx.agentLoop 注册表（构造期登记 builtin/default，后注册胜） |
 
 ## 变更记录
 
@@ -34,6 +37,7 @@
 |---|---|---|---|
 | 1 | 2026-08-27 | 初版：六 seam + 裁剪面 + 事件面 + manifest 契约入册（P3-C4） | agent-platformization-plan Phase 3 |
 | 2 | 2026-08-27 | 新增动态插件运行时契约（D7：ctx.dynamicRunner define/run/stop/undefine/inspect + 沙箱三层防线——阴影求值面/守卫注册面/预算；P4-C2/C3） | agent-platformization-plan Phase 4 |
+| 3 | 2026-08-28 | 新增 agent loop seam 契约（D13：AgentLoop/AgentLoopHost + 默认实现；loop 降为第一方默认实现，契约上可替换） | agent-platformization-plan Phase 5 |
 
 ## 变更流程（guard 红 → 修复四步）
 

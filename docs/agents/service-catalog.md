@@ -4,7 +4,7 @@
 > 从组合层源码机械推导生成 — 勿手改；服务面变更后重新生成并同 commit。
 > 不含时间戳：字节稳定是 `--check`（doc-sync 门禁）的前提。
 
-共 18 个 ctx 服务：seam 6 · 贡献通道 8 · 服务 4。
+共 19 个 ctx 服务：seam 6 · 贡献通道 8 · 服务 5。
 kind 三分规则（机械推导）：ctx 键 ∈ SEAM_DOMAINS（seam-resolution.ts 单一真源）= seam；
 类体含 `register(def: *Contribution)` = 贡献通道；其余 = 服务。
 
@@ -148,10 +148,19 @@ system-prompt 段落注册表（A-1 第六贡献通道）——段注册 → dis
 
 | ctx 键 | Service | owner | 默认实现 / 贡献者 | 消费面 |
 |---|---|---|---|---|
+| `ctx.agentLoop` | `AgentLoopService` | `src/agent/agent-loop/agent-loop-service.ts` | — | 0 文件 |
 | `ctx.codeRuntime` | `CodeRuntimeService` | `src/agent/code-run/runtime-service.ts` | — | 0 文件 |
 | `ctx.dynamicRunner` | `DynamicRunnerService` | `src/agent/dynamic-runner/dynamic-runner-service.ts` | — | 0 文件 |
 | `ctx.lsp` | `LspService` | `src/ui/lsp-client.ts` | — | 0 文件 |
 | `ctx.space` | `SpaceService` | `src/composition/space-service.ts` | — | 2 文件 |
+
+### `ctx.agentLoop` — AgentLoopService（服务）
+
+agent loop 注册表（平台化 Phase 5 · D13）——默认实现构造期登记， 替换实现 register 即接管（后注册胜）。
+
+- owner：`src/agent/agent-loop/agent-loop-service.ts`
+- 默认实现 / 贡献者 id：—
+- 消费面：—（无直接 import/ctx 引用——运行时通道注入）
 
 ### `ctx.codeRuntime` — CodeRuntimeService（服务）
 
