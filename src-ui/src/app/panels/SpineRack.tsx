@@ -196,12 +196,7 @@ export const SpineRack = memo(function SpineRack() {
             <div className="sr-hover-card">
               <div className="sr-hover-title">{s.label}</div>
               <div className="sr-hover-meta">{isRunning ? '运行中 · 不可合卷' : '左键定位 · 拖动落位'}</div>
-              <button
-                type="button"
-                className="sr-close-btn"
-                disabled={isRunning || sessions.length <= 1}
-                onClick={() => onClose(s.id)}
-              >
+              <button type="button" className="sr-close-btn" disabled={isRunning} onClick={() => onClose(s.id)}>
                 合卷（自动存）
               </button>
             </div>

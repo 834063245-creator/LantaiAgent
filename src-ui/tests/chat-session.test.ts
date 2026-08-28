@@ -710,14 +710,17 @@ describe('ChatPanel session persistence', () => {
     it('空卷（仅 system）合卷不落盘', async () => {
       panel = createChatPanel();
       panel.setProjectPath(PROJ);
-      panel.setAgent({
+      // 双卷现场：卷 1 空卷（仅 system）+ 卷 2 有内容——合空卷须真正执行
+      // （此前单卷靠「至少保留一卷案卷」守卫短路假绿，守卫已随画布模型移除）。
+      const emptyAgent = {
         getSession: () => [{ role: 'system', content: 'sys' }],
         setSession: vi.fn(),
         dispose: vi.fn(),
         cascadeAbort: vi.fn(),
-      } as any);
-      const agent2 = makeAgent('有内容');
-      panel.setAgentFactory(async () => agent2 as any);
+      };
+      const contentAgent = makeAgent('有内容');
+      let call = 0;
+      panel.setAgentFactory(async () => (call++ === 0 ? emptyAgent : contentAgent) as any);
       const writes: Array<{ file_path: string; content: string }> = [];
       mockInvoke.mockReset();
       mockInvoke.mockImplementation((_cmd: string, payload: any) => {
@@ -727,11 +730,50 @@ describe('ChatPanel session persistence', () => {
         }
         return Promise.resolve('ok');
       });
-      await panel.createNewSession();
+      await panel.createNewSession(); // 卷 1（空卷）
+      await panel.createNewSession(); // 卷 2（有内容）
 
       panel.closeSession(0); // 合空卷 1
 
+      // 空卷（仅 system）合卷不落盘——快照捕获 hasContent 守卫
+      await new Promise((r) => setTimeout(r, 0));
       expect(writes.find((w) => w.file_path.endsWith('/1.json'))).toBeUndefined();
+    });
+
+    it('合最后一卷（closeSession）：空画布（会话清空 + 流区移除），快照仍落盘可再摊开', async () => {
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      const writes: Array<{ file_path: string; content: string }> = [];
+      mockInvoke.mockReset();
+      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
+        const { method, params } = payload;
+        if (method === 'write_file_content') {
+          writes.push({ file_path: params.file_path as string, content: params.content as string });
+        }
+        return Promise.resolve('ok');
+      });
+      const agent = makeAgent('最后一卷的内容');
+      panel.setAgentFactory(async () => agent as any);
+      await panel.createNewSession();
+      const sid = Session.getSessions(panel.panelId)[0].id;
+      expect(Session.getSessions(panel.panelId)).toHaveLength(1);
+      // 摊开该卷（流区落画布）
+      const canvas = getCanvasStore(panel.panelId).getState();
+      canvas.setRegion(String(sid), { anchorX: 0, anchorY: 0, width: 1440 });
+
+      panel.closeSession(0); // 合唯一一卷——不再被「至少保留一卷案卷」守卫拦下
+
+      // 画布清空：会话列表空 + activeIdx=-1（空画布 = 合法态，与删除唯一卷同规）
+      expect(Session.getSessions(panel.panelId)).toHaveLength(0);
+      expect(getChatStore(panel.panelId).sess.getState().activeIdx).toBe(-1);
+      // 流区随卷退场
+      expect(getCanvasStore(panel.panelId).getState().getRegion(String(sid))).toBeUndefined();
+      // 合卷语义 = 数据保留：快照仍落盘（侧边栏「未摊开·已存卷」可再摊开）
+      await new Promise((r) => setTimeout(r, 0));
+      const write = writes.find((w) => w.file_path.endsWith(`/${sid}.json`));
+      expect(write).toBeTruthy();
+      const parsed = JSON.parse(write!.content);
+      expect(parsed.messages.some((m: any) => m.content === '最后一卷的内容')).toBe(true);
     });
   });
 

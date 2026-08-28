@@ -346,11 +346,8 @@ export async function ensureSessionAgent(ctx: SessionContext): Promise<boolean> 
 
 export function closeSession(ctx: SessionContext, idx: number): void {
   const st = getChatStore(ctx.storeId).sess.getState();
-  if (st.sessions.length <= 1) {
-    ctx.addNotice('至少保留一卷案卷', 'info');
-    return;
-  }
   const s = st.sessions[idx];
+  if (!s) return;
   // C8 合卷自动存：被合卷在 agent dispose 前同步捕获快照、异步落盘（用户拍板）。
   // 数据捕获必须在 removeAgent 之前（句柄消亡后 getSession 不可再得）；
   // 写入目标路径在捕获时固定，无跨工作区串写风险（与 scheduleAutoSave 的
@@ -391,6 +388,21 @@ export function closeSession(ctx: SessionContext, idx: number): void {
 
   const newSessions = [...st.sessions];
   newSessions.splice(idx, 1);
+
+  // 合卷最后一卷 → 空画布（2026-08-28 会话管理专项延展）：空画布是合法态
+  // （新工作区即空画布）。合卷语义 = 数据保留落盘，卷仍可从侧边栏
+  // 「未摊开·已存卷」再摊开。旧「至少保留一卷案卷」守卫是标签页聊天时代
+  // 的遗留——画布模型下收回全部卷不再有意义，删除/合卷统一允许清空画布。
+  if (newSessions.length === 0) {
+    getChatStore(ctx.storeId).sess.setState({ sessions: [], activeIdx: -1 });
+    const runtime = ctx.getRuntime?.();
+    if (runtime) {
+      runtime.destroySessionBoards(String(s.id)).catch(() => {});
+    }
+    ctx.updateFooter();
+    return;
+  }
+
   // 调整 activeIdx：若关闭的会话在活跃会话之前，则左移；
   // 若关闭的是活跃会话，则下一个会话变为活跃（或钳制）。
   let newIdx = st.activeIdx;
@@ -968,9 +980,9 @@ export async function deleteSessionFile(ctx: SessionContext, projectPath: string
     .sess.getState()
     .sessions.findIndex((s) => s.id === sessionId);
   if (idx < 0) return;
-  // 删除唯一/最后一卷（2026-08-28 会话管理专项修复）：closeSession 的
-  // 「至少保留一卷案卷」守卫是**合卷语义**——删除语义下允许清空画布。否则
-  // 墓碑已写、流区已移除，但标签页不关（僵尸），且再发消息自动保存会把
+  // 删除唯一/最后一卷（2026-08-28 会话管理专项修复）：删除语义下允许清空
+  // 画布（closeSession 已同步放开——合卷最后一卷同样清空画布，见其空分支）。
+  // 否则墓碑已写、流区已移除，但标签页不关（僵尸），且再发消息自动保存会把
   // {id}.json 重写回真实内容 → 已删卷复活。这里直接收掉最后一个标签页。
   if (getChatStore(ctx.storeId).sess.getState().sessions.length <= 1) {
     removeSessionExecState(ctx.storeId, sessionId);
