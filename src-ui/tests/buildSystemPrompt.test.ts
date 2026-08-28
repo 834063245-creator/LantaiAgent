@@ -94,15 +94,14 @@ describe('buildSystemPrompt', () => {
     });
   });
 
-  it('loaded graph prompt has a mode-neutral collaboration block', async () => {
+  it('collaboration 静态段已从 system prompt 移除（模式信息归运行时 reminder）', async () => {
     await withFirstPartyPromptChannel(async () => {
-      // 系统提示词不随协作模式变化（热切换不重建，前缀缓存不击穿）——
-      // 规划模式的完整工作流由 PlanModeInjector 的运行时提醒携带。
+      // 2026-08-28：collaboration-mode 段删除——系统提示词不再含静态协作模式块，
+      // 规划/执行模式信息由 PlanModeInjector 的运行时 system-reminder 承担。
       const prompt = buildSystemPrompt({ nodes: [1], edges: [1] }, 'D:\\proj');
-      expect(prompt).toContain('## 协作模式');
-      expect(prompt).toContain('规划模式');
-      expect(prompt).toContain('执行模式');
-      expect(prompt).not.toContain('当前激活');
+      expect(prompt).toContain('你是兰台的编码 Agent。');
+      expect(prompt).not.toContain('## 协作模式');
+      expect(prompt).not.toContain('执行模式');
     });
   });
 });

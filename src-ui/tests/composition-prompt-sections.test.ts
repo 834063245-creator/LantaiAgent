@@ -7,7 +7,7 @@ import { assembleSystemPrompt, firstPartyPromptSections } from '../src/compositi
 // 表序 = 拼装序（standard preset 的事实来源）。逐字节零漂移由
 // verify:convergence 的 system-prompt.fixture 快照守护（设计件 §2.4），
 // 此处钉注册表自身的结构语义。
-// P4 B④ 收官（2026-08-23）：13 段全量迁 ctx.prompts 插件通道——出厂段表
+// P4 B④ 收官（2026-08-23）：9 段全量迁 ctx.prompts 插件通道——出厂段表
 // builtinPromptSections() 退役，firstPartyPromptSections() 是出厂装配面
 // 唯一清单（序 = 迁移前出厂表序）；涉及装配输出的断言经
 // withFirstPartyPromptChannel 复现生产装配面。
@@ -22,13 +22,9 @@ const SECTION_IDS = [
   'identity-brief',
   'memory-brief',
   'env-brief',
-  'behavior-rules',
-  'graph-discipline',
-  'visual-discipline',
-  'collaboration-mode',
+  'identity',
   'env',
   'model-identity',
-  'multi-agent',
   'graph-snapshot',
   'memory',
   'claude-md',
@@ -37,12 +33,11 @@ const SECTION_IDS = [
 /** 完整面段（表序第 4 段起——前 3 段是零目录面 *-brief）。 */
 const FULL_FACE_IDS = SECTION_IDS.slice(3);
 
-/** 关引擎面段（完整面去掉 graph-discipline / graph-snapshot——没图还教
- *  "先问图"是欺骗；行为规则/协作模式/多 Agent/项目规范照常注入）。 */
-const ENGINE_OFF_FACE_IDS = FULL_FACE_IDS.filter((id) => id !== 'graph-discipline' && id !== 'graph-snapshot');
+/** 关引擎面段（完整面去掉 graph-snapshot——没图不注入图快照）。 */
+const ENGINE_OFF_FACE_IDS = FULL_FACE_IDS.filter((id) => id !== 'graph-snapshot');
 
 describe('composition/prompt-sections（S1-4 section 注册表，B④ 收官纯插件面）', () => {
-  it('section id 唯一且稳定：第一方面 13 段（清单序 = 迁移前出厂表序）', () => {
+  it('section id 唯一且稳定：第一方面 9 段（清单序 = 迁移前出厂表序）', () => {
     expect(firstPartyPromptSections().map((s) => s.id)).toEqual(SECTION_IDS);
     const ids = firstPartyPromptSections().map((s) => s.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -84,9 +79,8 @@ describe('composition/prompt-sections（S1-4 section 注册表，B④ 收官纯�
     expect(legacyBrief).toEqual(['identity-brief', 'memory-brief', 'env-brief']);
 
     await withFirstPartyPromptChannel(async () => {
-      // 拼装面：关引擎面含行为规则/协作模式/多 Agent/项目规范/记忆库，
-      // 含模型身份项目路径行与引擎停用行，不含图纪律与图快照，
-      // 不含零目录面的"当前没有加载项目"假话。
+      // 拼装面：关引擎面含项目规范/记忆库，含模型身份项目路径行与引擎停用行，
+      // 不含图快照，不含零目录面的"当前没有加载项目"假话。
       const engineOff = assembleSystemPrompt({
         graphData: null,
         projectPath: '/projects/demo',
@@ -96,18 +90,14 @@ describe('composition/prompt-sections（S1-4 section 注册表，B④ 收官纯�
         providerName: 'deepseek',
         shellEnvSection: 'env-line',
       });
-      expect(engineOff).toContain('## 行为规则');
-      expect(engineOff).toContain('## 协作模式');
-      expect(engineOff).toContain('## 多 Agent 协作');
       expect(engineOff).toContain('## 记忆库\nmem');
       expect(engineOff).toContain('## 项目规范\nmd');
       expect(engineOff).toContain('项目: `/projects/demo`');
       expect(engineOff).toContain('图谱引擎已停用');
-      expect(engineOff).not.toContain('先问图');
       expect(engineOff).not.toContain('## 项目架构快照');
       expect(engineOff).not.toContain('当前没有加载项目');
 
-      // 关引擎面 = 完整面扣除图纪律 + 图快照 + 模型身份停用行差异：
+      // 关引擎面 = 完整面扣除图快照 + 模型身份停用行差异：
       // 完整面（同内容输入）与之共享全部非图段文本。
       const withGraphFace = assembleSystemPrompt({
         graphData: GRAPH_DATA,
@@ -118,7 +108,6 @@ describe('composition/prompt-sections（S1-4 section 注册表，B④ 收官纯�
         providerName: 'deepseek',
         shellEnvSection: 'env-line',
       });
-      expect(withGraphFace).toContain('先问图');
       expect(withGraphFace).toContain('## 项目架构快照');
       // 模型身份段：完整面无停用行（有图），关引擎面有（无图 + 有目录）
       expect(withGraphFace).not.toContain('图谱引擎已停用');
@@ -126,8 +115,8 @@ describe('composition/prompt-sections（S1-4 section 注册表，B④ 收官纯�
   });
 
   it('出厂面零漂移：通道内缺省拼装 ≡ 清单注入（无通道重述迁移前面）', async () => {
-    // 迁移前出厂面的重述：13 段一并作 sections 注入（无通道 = 无贡献追加）
-    // ——通道内缺省拼装（空解析产物 + 13 贡献）与之逐字节全等
+    // 迁移前出厂面的重述：9 段一并作 sections 注入（无通道 = 无贡献追加）
+    // ——通道内缺省拼装（空解析产物 + 9 贡献）与之逐字节全等
     const preMigrationFace = assembleSystemPrompt(
       {
         graphData: GRAPH_DATA,

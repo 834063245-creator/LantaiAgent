@@ -115,7 +115,7 @@ describe('S4-1a 装配穿线：createAgentFromContext/createAgent 组合覆盖',
       const rt = new AgentRuntime();
       await rt.ready();
       const minimal = await minimalComposition();
-      // graphData 在场 → 完整面（多 Agent 段/图纪律段参与——minimal 未禁它们）
+      // graphData 在场 → 完整面（模型身份等段参与——minimal 未禁它们）
       const h = await rt.createAgentFromContext(
         makeCtx('s41a-minimal', rt),
         { graphData: { nodes: [] } },
@@ -125,7 +125,7 @@ describe('S4-1a 装配穿线：createAgentFromContext/createAgent 组合覆盖',
       const { composition } = agentOf(h);
       expect(composition).toBe(minimal); // ctx 服务写入的就是覆盖对象（引用透传）
       const sys = sysOf(h);
-      expect(sys).toContain('多 Agent 协作'); // 未被禁的段仍在
+      expect(sys).toContain('## 模型身份'); // 未被禁的段仍在
       h.dispose();
     });
   });

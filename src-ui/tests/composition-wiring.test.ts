@@ -251,7 +251,7 @@ describe('S2-1 穿线：AgentRuntime(composition) 端到端', () => {
       expect(sys).toContain('【覆盖后的探针】');
       expect(sys).toContain('【穿线探针二】');
       expect(sys).not.toContain('【穿线探针一】');
-      expect(sys).toContain('## 多 Agent 协作'); // 第一方面（通道贡献）也在
+      expect(sys).toContain('## 模型身份'); // 第一方面（通道贡献）也在
       h.dispose();
     });
   });

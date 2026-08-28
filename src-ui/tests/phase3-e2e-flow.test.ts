@@ -6,7 +6,7 @@
 // 5 个场景：
 //   1. async spawn → bus result → agent_merge 完整流程
 //   2. bus 唤醒 idle agent 触发 runLoop
-//   3. 系统提示词包含多 Agent 协作段落
+//   3. 系统提示词极简骨架验证（工具说明段已移除）
 //   4. Agent 状态变更回调触发
 //   5. AgentPanelStore 数据更新
 
@@ -210,30 +210,29 @@ describe('端到端：bus 唤醒 idle agent', () => {
 // ═══════════════════════════════════════════════════════
 
 describe('端到端：系统提示词验证', () => {
-  // P4 B④ 收官（2026-08-23）：出厂面 13 段全经 ctx.prompts 通道贡献——
+  // P4 B④ 收官（2026-08-23）：出厂面 9 段全经 ctx.prompts 通道贡献——
   // 出厂拼装断言须在通道腰内复现生产装配面（无通道 = 空提示词）。
-  it('系统提示词包含多 Agent 协作段落', async () => {
+  it('系统提示词包含极简骨架：身份 + 模型身份（工具说明段已移除）', async () => {
     await withFirstPartyPromptChannel(async () => {
       const prompt = buildSystemPrompt({ nodes: [], edges: [] }, '/fake/project', '', '', '', 'deepseek');
 
-      expect(prompt).toContain('多 Agent 协作');
-      expect(prompt).toContain('异步子 Agent');
-      expect(prompt).toContain('async=true');
-      expect(prompt).toContain('agent(merge)');
-      expect(prompt).toContain('agent(message)');
-      expect(prompt).toContain('决策指南');
+      expect(prompt).toContain('你是兰台的编码 Agent。');
+      expect(prompt).toContain('## 模型身份');
+      // 2026-08-28：多 Agent/协作模式等工具说明段已从 system prompt 移除，
+      // 改由各工具自带 schema 注入。
+      expect(prompt).not.toContain('多 Agent 协作');
+      expect(prompt).not.toContain('## 协作模式');
     });
   });
 
-  it('系统提示词模式无关：多 Agent 段落在规划/执行模式下一致', async () => {
+  it('系统提示词模式无关：不含协作模式/多 Agent 静态段（模式信息归运行时 reminder）', async () => {
     await withFirstPartyPromptChannel(async () => {
-      // 协作模式不再影响系统提示词（footer 热切换不重建，避免击穿前缀缓存）；
+      // 协作模式/多 Agent 静态段已移除（2026-08-28）——系统提示词模式无关，
       // 规划模式约束由 PlanModeInjector 的运行时提醒下发。
       const prompt = buildSystemPrompt({ nodes: [], edges: [] }, '/fake/project', '', '', '', 'deepseek');
 
-      expect(prompt).toContain('多 Agent 协作');
-      expect(prompt).toContain('## 协作模式');
-      expect(prompt).toContain('规划模式');
+      expect(prompt).not.toContain('多 Agent 协作');
+      expect(prompt).not.toContain('## 协作模式');
       expect(prompt).not.toContain('当前激活');
     });
   });

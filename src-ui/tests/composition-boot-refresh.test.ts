@@ -71,10 +71,10 @@ describe('composition-store 引导期新鲜度（①b boot 序洞）', () => {
       expect(tools.some((r) => r.id === 'plugin/hologram/git-domain/git_status')).toBe(true);
       expect(tools.some((r) => r.id === 'plugin/hologram/search-domain/search_content')).toBe(true);
       expect(tools.length).toBeGreaterThan(20);
-      // prompt 域：13 第一方段全量（空提示词是同一快照的第二处毒害）
+      // prompt 域：9 第一方段全量（空提示词是同一快照的第二处毒害）
       expect(prompt.map((s) => s.id)).toContain('identity-brief');
-      expect(prompt.map((s) => s.id)).toContain('behavior-rules');
-      expect(prompt).toHaveLength(13);
+      expect(prompt.map((s) => s.id)).toContain('identity');
+      expect(prompt).toHaveLength(9);
       // capabilities 域：15 第一方能力全量（第三处毒害）
       expect(capabilities.map((c) => c.key)).toContain('plan-tools');
       expect(capabilities.map((c) => c.key)).toContain('spawn-tool');

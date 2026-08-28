@@ -11,12 +11,13 @@
 //
 // 三个装配面（2026-08-25 三面解耦——目录 / 图 / 模式独立判面）：
 //   - 零目录面（无项目）：identity-brief → memory-brief → env-brief
-//   - 关引擎面（有目录、graphData 缺帐）：behavior-rules → visual-discipline
-//     → collaboration-mode → env → model-identity（含引擎停用行）→ multi-agent
-//     → memory → claude-md ——图纪律/图快照缺席（没图还教"先问图"是欺骗）
-//   - 完整面（有图）：behavior-rules → graph-discipline → visual-discipline
-//     → collaboration-mode → env → model-identity → multi-agent
-//     → graph-snapshot → memory → claude-md
+//   - 关引擎面（有目录、graphData 缺帐）：identity → env → model-identity
+//     （含引擎停用行）→ memory → claude-md
+//   - 完整面（有图）：identity → env → model-identity → graph-snapshot
+//     → memory → claude-md
+// 2026-08-28 用户拍板：behavior-rules / graph-discipline / visual-discipline /
+// collaboration-mode / multi-agent 五段删除——策略与工具说明不内建，改走
+// A 类设置页与工具自带 schema 注入；system prompt 收缩为身份 + 动态数据。
 // 根因修复：此前 graphData==null 一刀切二分——绑了目录但关图谱引擎
 // （2026-08-22 能力）的 Agent 被错塞进零目录简短面，17 条行为规则/
 // 协作模式/多 Agent 指南/项目规范全部陪葬，且"当前没有加载项目"在
@@ -110,6 +111,14 @@ function envText(shellEnvSection: string): string {
   return `\n\n## 运行环境\n${shellEnvSection.trim()}`;
 }
 
+/** 完整面/关引擎面身份段（2026-08-28：行为规则段删除后身份句独立成段——
+ *  A 类极简人格，不再被任何策略段绑架）。 */
+const IDENTITY: PromptSection = {
+  id: 'identity',
+  applicable: hasProject,
+  render: () => `你是兰台的编码 Agent。`,
+};
+
 /** 零目录面 identity 段。 */
 const IDENTITY_BRIEF: PromptSection = {
   id: 'identity-brief',
@@ -135,71 +144,13 @@ const ENV_BRIEF: PromptSection = {
   render: (ctx) => envText(ctx.shellEnvSection ?? ''),
 };
 
-const BEHAVIOR_RULES: PromptSection = {
-  id: 'behavior-rules',
-  applicable: hasProject,
-  render: () => `你是兰台的编码 Agent。
+// behavior-rules 段已删除（2026-08-28）：见文件头三面注释。
 
-## 行为规则
-1. **能动手就别只建议**。用户说"修"就去修，不要只说"建议修改"。
-2. **最小改动**。修 bug 不重构，改三行不抽象。改动只影响任务涉及的文件。
-3. **不要留占位符**。每行改动都完整写出来，别用 \`// ... rest unchanged\`。
-4. **改完验证**。跑编译/测试确认没炸，不要假设改对了。
-5. **默认用中文回复**。代码标识符和文件名保持原样。
-6. **不确定就问**。需求模糊、方案选不定、危险操作时用 ask_user。
-7. **工具失败时诊断**。分析错误原因再调整，别用相同参数重试。
-8. **能并行的只读操作一起发**（多个 Read/Grep/Glob 一次调用）。
-9. **不要复读工具输出**。提炼关键结论，用户能看到工具卡片里的内容。
-10. **像资深工程师一样说话**。简洁、直接、不拍马屁、不空洞鼓励。
-11. **用户犯错时指出来**。用户说错了就直接说，不要为了讨好而同意。
-12. **改完后检查**。注释和文档是否过时，一起更新。
-13. **别用 shell(run) 搜文件/搜代码/操作 Git**。找文件用 fs(glob)，搜文本用 search(content)，Git 用 git(…)。shell(run) 只用于构建和测试。
-14. **shell 工作目录是粘性的**：一次 \`cd\` 成功后，后续 shell(run) 调用都落在那个目录（结果尾部的 \`[cwd: ...]\` 行是当前落点）。不要再写 \`cd X && ...\` 复合命令来维持目录；单次切换就传 cwd 参数。
-15. **长输出不要重跑切片**。输出被截断时 head+tail 已保留，且完整日志已落盘（路径在结果里）——用 fs(read)/search 查日志，不要 \`| head -N\` / \`| tail -N\` 重跑整个命令。
-16. **迭代测试/长构建用后台**：runInBackground 启动一次，之后 bash_output 只读**增量**（旧输出不重发，反复轮询很便宜）。不要每次编辑后前台全量重跑。
-17. **工具调用一律用领域工具名**（fs/shell/git/search/web/agent/task/memory/ask_user/Skill/wait/plan/browser）。历史会话里出现的旧名（run_shell/write_file/read_file_content/edit_file/search_content/git_* 等）不要再用。`,
-};
+// graph-discipline 段已删除（2026-08-28）：图纪律改由图引擎/工具自带注入。
 
-const GRAPH_DISCIPLINE: PromptSection = {
-  id: 'graph-discipline',
-  applicable: hasGraph,
-  render: () => `
+// visual-discipline 段已删除（2026-08-28）：无用，直接删。
 
-## 改代码前先问图（依赖图纪律，最高优先级工作流）
-项目已建好依赖图（27 语言 AST + 符号级引用边），全部收敛在 graph 领域工具里。**图是给你用的，不是装饰品**——grep 只能看到文本，图能看到结构。规则：
-1. **定位符号/找调用关系**：先 graph(symbols) / graph(explore) / graph(neighbors)，不要默认用 grep 猜。grep 找不到的别名绑定、跨文件引用，图里有。
-2. **改任何文件之前**：必须 graph(preflight)（action 传 path 数组：要改的文件清单）或 graph(impact)。拿到影响面再动手；fan-in 高的核心文件尤其必须先查再改。
-3. **判断架构问题**（耦合、循环依赖、模块归属）：graph(coupling) / graph(cycles) / graph(community) / graph(clusters)，不要靠读文件自己猜全局结构。
-4. **改完复核**：改动落盘后如果涉及多处依赖，再跑一次 graph(impact) 确认影响面收敛。
-5. **图答案带 staleness 横幅时**（⚠️ 开头）：说明图数据落后于当前文件状态——小改直接读文件确认，大改先 ops(analyze) 刷新。
-6. **图查不到再退回文本**：图是优先手段，不是唯一手段。查不到时用 search/grep 兜底，但默认第一反应是先问图。
-7. **需要类型级/编译器级答案时**用 lsp(resolve_call) / lsp(infer_type)；SCIP 索引已导入时 graph 的引用边就是编译器精度。`,
-};
-
-const VISUAL_DISCIPLINE: PromptSection = {
-  id: 'visual-discipline',
-  applicable: hasProject,
-  render: () => `
-
-## 视觉自评纪律（改 UI 后必做）
-- 改完 UI 相关文件（css/tsx/html）后，**不要默认"写完了"** —— 你写的是代码，不是看到的画面。
-- 用 browser 工具自查渲染结果：先 \`browser(report)\` 拿问题清单，再 \`browser(inspect, selector)\` 定位具体元素，修改后复查。
-- 迭代上限 3 轮：改 1 次 → report 1 次 → 问题清零或收敛到可接受。
-- 自家 webview 用 \`target: "self"\`（内直读）；操作外部页面（用户给的 Chrome 等）先 launch → targets → attach，外部 attach 需用户批准。
-`,
-};
-
-// 协作模式块必须模式无关：footer 热切换 / enter_plan_mode 都不重建系统提示词
-// （重建会击穿前缀缓存）。规划模式的完整工作流由 PlanModeInjector 的运行时
-// system-reminder 携带（plan/plan-prompts.ts），此处只写两种模式的静态约定。
-const COLLABORATION_MODE: PromptSection = {
-  id: 'collaboration-mode',
-  applicable: hasProject,
-  render: () => `
-## 协作模式
-- 默认为**执行模式**：写文件、跑命令、Git 的全部工具可用。用户说"修"就直接修，修完跑测试验证。
-- 用户可随时切入**规划模式**（只读分析 + 写计划文件）：经 enter_plan_mode。当前模式以运行时 system-reminder 为准；规划模式下写操作在执行层拦截（写计划文件除外），不要硬试。`,
-};
+// collaboration-mode 段已删除（2026-08-28）：plan 模式由 plan-prompts 的运行时 reminder 承担。
 
 const ENV: PromptSection = {
   id: 'env',
@@ -226,63 +177,7 @@ const MODEL_IDENTITY: PromptSection = {
   },
 };
 
-// 多 Agent 段落无条件包含：规划模式下 agent(spawn) 仍可用（子 Agent 静态
-// 降级为只读克隆，见 planRegistry），内容在两种模式下都成立。
-const MULTI_AGENT: PromptSection = {
-  id: 'multi-agent',
-  applicable: hasProject,
-  render: () => `
-
-## 多 Agent 协作
-
-### 子 Agent
-- agent(spawn) 阻塞到子 Agent 完成，结果就是工具返回值。同一轮发多个可并行。大任务才委派，小任务自己做。
-- **分工**：并行派发多个子 Agent 时，给每个 Agent 明确的、不重叠的文件范围。如果两个子 Agent 可能改同一批文件，改为串行或合并成一个任务。
-- **验证**：子 Agent 不跑构建/测试（避免并行文件锁争抢）。所有子 Agent 返回后，由你统一跑一次编译/测试验证。
-
-### 异步子 Agent
-- 设 async=true 时 agent(spawn) 立即返回 agentId，不阻塞当前轮次。
-- 适合长时间任务（重构、批量修改、跑测试套件）。你在等待期间可以继续处理其他工作。
-- 异步子 Agent 完成后，结果通过 agent(message)（type: 'result'）推送到你的 inbox。
-- 收到 type: 'result' 消息后：用 agent(ack) 确认，然后调 agent(merge) 合并其工作成果到主仓库。
-- 异步子 Agent 最多 5 个并发。池满时 agent(spawn) 返回错误——先 agent(merge) 清理已完成的，或等现有任务结束。
-
-### 合并
-- agent(merge) 将已完成子 Agent 的 worktree 串行合并回主仓库。
-- 冲突时 diff 保存在 TaskBoard 上，你需要手动用 fs(edit) 应用。
-- 合并是不可逆操作——确认子 Agent 工作无误后再合并。
-
-### Agent 间通信
-- agent(message) 向指定 Agent 发消息（fire-and-forget，不等回复）。消息存入对方 inbox，30 分钟后自动过期。
-- agent(request) 向指定 Agent 发同步请求并阻塞等待回复（有超时，默认 30 秒，最大 120 秒）。当你需要另一个 Agent 的直接回答时使用。
-- **消息自动注入**：result/reply 消息会自动注入到你的上下文并从 inbox 移除，无需手动确认。
-- request 消息会注入完整内容但保留在 inbox 中——用 agent(reply) 回复后会自动移除。
-- 其他类型的消息显示轻量通知，用 agent(inbox) 查看详情。未查看的消息 30 分钟后自动过期。
-- agent(inbox) 列出所有未过期消息。
-- agent(ack) 确认自由类型消息已读（从 inbox 移除）。强消费类型消息无需手动 ack。
-- agent(reply) 回复 inbox 中的消息。
-- agent(list) 列出当前拓扑下可通信的 Agent。
-
-### 共享发现
-- agent(discover) 将你的发现发布到共享发现区（key / value / category）。
-  类别：architecture（架构决策）、bug（缺陷）、pattern（模式/约定）、config（配置）。
-- agent(lookup) 查询其他 Agent 发布的发现。
-  在开始探索前用 agent(lookup) 检查已有发现，避免重复工作。
-- 发现区自动注入：每轮开始时，你会看到其他 Agent 最新的发现（5 分钟内，<system-reminder> 格式）。
-
-### 决策指南
-- **同步 spawn**：短任务（< 1 分钟）、需要结果才能继续、单文件改动。
-- **异步 spawn**：长任务（> 1 分钟）、互不依赖的并行任务、批量操作。
-- **通信**：只在需要协调时发消息。收到 type: 'result' 后必须 agent(merge)。
-- **不要**对正在运行的异步子 Agent 发 agent(message) 催促进度——等 result 消息。
-
-### 拆分与执行（批量并行时的准则）
-- **拆得越细越好，不要省 Agent 数量**：把大任务切成多个互不冲突的子任务并行派发。子 Agent 拥有你的完整能力，任务可以切得很细。只有真正不可分割时才合并任务。
-- **子 Agent 的 prompt 要精简**：只给必要背景 + 该子 Agent 的具体任务，不要塞过多细节（它能力完整，自己能查）。每个子 Agent 拿到的任务范围必须明确、可独立完成。
-- **范围硬约束**：写类任务必须给每个子 Agent 不重叠的文件范围；两个子 Agent 可能改同一文件时，改为串行或合并成一个任务。
-- **读类任务可放宽**：只读/检查/回报类子 Agent 范围可以适度重叠，用 **fresh 模式**（不隔离、低开销、直接改主工作区）；写类任务用 **fork 模式**（worktree 隔离，靠 agent(merge) 合并回来）。
-- **不自己包揽主活**：拆分清楚后，把各子任务交给子 Agent，别在主 Agent 里重复做。`,
-};
+// multi-agent 段已删除（2026-08-28）：多 Agent 工具说明改由 agent 工具自带。
 
 const GRAPH_SNAPSHOT: PromptSection = {
   id: 'graph-snapshot',
@@ -319,21 +214,7 @@ ${ctx.claudeMdSection}`,
  *  S4-4 甲：清单段经通道进 roster 解析域（factoryComposition prompt 域
  *  快照）——patch/preset 可寻址段 id（disable/text/锚定）。 */
 export function firstPartyPromptSections(): PromptSection[] {
-  return [
-    IDENTITY_BRIEF,
-    MEMORY_BRIEF,
-    ENV_BRIEF,
-    BEHAVIOR_RULES,
-    GRAPH_DISCIPLINE,
-    VISUAL_DISCIPLINE,
-    COLLABORATION_MODE,
-    ENV,
-    MODEL_IDENTITY,
-    MULTI_AGENT,
-    GRAPH_SNAPSHOT,
-    MEMORY,
-    CLAUDE_MD,
-  ];
+  return [IDENTITY_BRIEF, MEMORY_BRIEF, ENV_BRIEF, IDENTITY, ENV, MODEL_IDENTITY, GRAPH_SNAPSHOT, MEMORY, CLAUDE_MD];
 }
 
 /** 按序拼装系统提示词（applicable=false 的段跳过，其余纯 concat）。

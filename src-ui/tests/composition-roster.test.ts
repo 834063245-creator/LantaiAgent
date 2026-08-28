@@ -84,7 +84,7 @@ describe('composition/roster（S2-0 组合引擎）', () => {
           expect(f.tools.some((r) => r.id === 'plugin/hologram/git-domain/git_status')).toBe(true);
           // prompt 域：通道段贡献快照（注册序）
           expect(f.prompt.map((s) => s.id)).toEqual(activePromptContributions().map((s) => s.id));
-          expect(f.prompt.map((s) => s.id)).toContain('multi-agent');
+          expect(f.prompt.map((s) => s.id)).toContain('model-identity');
           // capabilities 域（B⑤）：通道贡献快照 = 第一方十五项（注册序 =
           // 清单序 = 迁移前出厂表序——零漂移按构造）
           expect(f.capabilities.map((c) => c.key)).toEqual(capKeys());
@@ -161,26 +161,26 @@ describe('composition/roster（S2-0 组合引擎）', () => {
   });
 
   it('S4-4 甲：第一方段寻址恢复（disable/text/锚定/insert 撞名拒绝——通道内）', async () => {
-    // 13 第一方段经 ctx.prompts 通道贡献——通道内快照进解析域，
+    // 9 第一方段经 ctx.prompts 通道贡献——通道内快照进解析域，
     // 寻址/锚定/撞名语义与出厂段表时代一致（B④ 收官临时语义消灭）
     await withFirstPartyPromptChannel(async () => {
       const f = factoryComposition();
       // disable 第一方段
-      const r1 = resolveRoster(f, [{ prompt: [{ id: 'multi-agent', disabled: true }] }]);
-      expect(r1.prompt.map((s) => s.id)).not.toContain('multi-agent');
-      expect(r1.diagnostics.disabled).toContain('multi-agent');
+      const r1 = resolveRoster(f, [{ prompt: [{ id: 'model-identity', disabled: true }] }]);
+      expect(r1.prompt.map((s) => s.id)).not.toContain('model-identity');
+      expect(r1.diagnostics.disabled).toContain('model-identity');
       // text 覆盖第一方段：保位 + 保 applicable、render 换固定文本
       const r2 = resolveRoster(f, [{ prompt: [{ id: 'identity-brief', text: '【替换段】' }] }]);
       const seg = r2.prompt.find((s) => s.id === 'identity-brief');
       expect(seg?.render({ projectPath: '' })).toBe('【替换段】');
       expect(r2.diagnostics.overridden).toContain('identity-brief');
       // insert 锚定第一方段（after：紧随其后）
-      const r3 = resolveRoster(f, [{ prompt: [{ insert: [{ id: 'probe', after: 'behavior-rules', text: 'P' }] }] }]);
-      const idx = r3.prompt.findIndex((s) => s.id === 'behavior-rules');
+      const r3 = resolveRoster(f, [{ prompt: [{ insert: [{ id: 'probe', after: 'model-identity', text: 'P' }] }] }]);
+      const idx = r3.prompt.findIndex((s) => s.id === 'model-identity');
       expect(r3.prompt[idx + 1].id).toBe('probe');
       // insert id 与第一方段同名 → 撞名拒绝（B④ 收官「不拒」临时语义消灭）
       expect(() =>
-        resolveRoster(f, [{ prompt: [{ insert: [{ id: 'multi-agent', text: '自定义多 Agent 段' }] }] }]),
+        resolveRoster(f, [{ prompt: [{ insert: [{ id: 'model-identity', text: '自定义模型身份段' }] }] }]),
       ).toThrow(CompositionPatchError);
     });
   });
@@ -364,7 +364,7 @@ describe('composition/roster（S2-0 组合引擎）', () => {
     await withFirstPartyPromptChannel(async () => {
       expect(() =>
         resolveRoster(factoryComposition(), [
-          { prompt: [{ insert: [{ id: 'multi-agent', text: '自定义多 Agent 段' }] }] },
+          { prompt: [{ insert: [{ id: 'model-identity', text: '自定义模型身份段' }] }] },
         ]),
       ).toThrow(CompositionPatchError);
     });
