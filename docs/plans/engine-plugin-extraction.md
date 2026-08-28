@@ -83,14 +83,14 @@ DSH / Unity / 任意 MCP 客户端消费的是同一个二进制、同一份契�
 
 ### Phase 0 — 契约化（纯文档 + 守卫测试，零行为变化）
 
-> **2026-08-29 已落地（v1）**：`engine/src/contract.rs`（`ENGINE_CONTRACT_VERSION=1` + 载体文件清单 + 11 个壳专属方法清单）；
+> **2026-08-29 已落地（v1）**：`engine/src/contract.rs`（`ENGINE_CONTRACT_VERSION` + 载体文件清单 + 壳专属方法清单）；
 > `engine_status` 新增 `contract` 字段；`DEFAULT_MCP_TOOLS` 升 pub；守卫测试（引擎 4 用例 + TS 5 用例）；
 > 生成文档 + 生成器（`gen:engine-contract` / `check:engine-contract` 字节稳定）。
-> **2026-08-29 复盘修订（v2，待施工）**：砍分页 → 从 `SHELL_METHODS` 删 `get_graph_page` / `graph_meta` / `get_full_graph`，
-> 新增 `graph_snapshot`（聚合快照）+ `file_nodes`（按文件符号索引）→ 共 **10 个壳方法**；`ENGINE_CONTRACT_VERSION` → 2；
-> 重生成文档 + 同步 TS 守卫 `EXPECTED_SHELL_METHODS`。
+> **2026-08-29 复盘修订（v2）已落地**：砍分页 → 从 `SHELL_METHODS` 删 `get_graph_page` / `graph_meta` / `get_full_graph`，
+> 新增 `graph_snapshot`（聚合快照）+ `file_nodes`（按文件符号索引）→ 共 **10 个壳方法**；`ENGINE_CONTRACT_VERSION` = 2；
+> 文档重生成 + TS 守卫 `EXPECTED_SHELL_METHODS` 同步（`timeline_record` 补 detail/node_id 可选参数）。
 
-### Phase 1 — 引擎侧壳专属方法实现（10 个，全部 hidden tools）
+### Phase 1 — 引擎侧壳专属方法实现（10 个，全部 hidden tools）✅ 已落地（2026-08-29）
 
 最终壳方法清单（host API，永不进模型 `tools/list`）：
 
@@ -107,9 +107,30 @@ DSH / Unity / 任意 MCP 客户端消费的是同一个二进制、同一份契�
 | `cache_stale` | 图是否过期（源码 mtime 比对） | `cache_is_stale` |
 | `watcher_subscribe` | 订阅 watcher 通知（graph-updated 推送） | 进程内 watcher 回调 |
 
-- 逐个接进 `dispatch`（与模型工具同一注册面）；MCP notification 承载进度/watcher 推送
-- **DoD**：全部壳方法在 `engine.exe serve` 下可用；引擎 `cargo test` 全绿（新增方法单测）；
-  双工作区并发 e2e 在进程形态下可跑
+施工落点与关键决策（2026-08-29 实测全绿，lib 584）：
+
+- **hidden 机制**：schema 注册进 `all_schemas`（category=`shell`）但不进 `DEFAULT_MCP_TOOLS` ——
+  tools/list 不可见、tools/call 可达（与 `symbol_history` 同型）；`handle_tools_call` 的
+  `get_schema` 存在性校验因此对壳方法放行。守卫测试三层钉住：引擎
+  `test_shell_methods_contract_alignment`（契约 ↔ schema ↔ dispatch 三面对齐）+
+  `test_shell_methods_absent_from_tools_list`（行为面）+ mcp `test_tools_list_hides_shell_methods`。
+- **实现在 `engine/src/tools/handlers/shell.rs`**：10 个 handler；`analyze_with_progress` 复用
+  `is_long_running` + progressToken 的既有进度轮询（path 必填，与 `analyze_project` 同纪律）；
+  `cache_stale` 的遍历规则单一真源 = `GRAMMAR_LOADER.supported_extensions()`（+proto）+
+  `discovery::is_ignored_path`（替代壳侧硬编码 EXTS/SKIP 表，Phase 1.5 壳侧删除时零漂移）；
+  `ensure_ready` 的异根拒绝用 canonicalize 比对（进程绑定单根纪律）。
+- **watcher 事件桥下沉 `engine::watcher`**（进程级封顶队列 64，`push/take_watcher_event`）：
+  `maybe_autostart_watcher` 起 watcher 时**回调常驻**（不再传 None）；`try_incremental` 完成摘要
+  也进桥（旧实现硬编码 `&None` —— 单跑靠 OS watcher 兜底、并行下 notify 事件丢失即断链的
+  测试不稳定根因）；`watcher_subscribe` 只 `ensure_watching` **绝不 stop+start 重启**
+  （notify 同目录重注册存在事件丢失窗口，A/B 实验证实）。mcp.rs 主循环空闲轮询 drain 队列 →
+  `notifications/message`（data=JSON 串）推宿主；`is_long_running` 加 `analyze_with_progress`。
+- **bin 测试拆除**：main.rs tests 模块 27 个全删（TCP 旧协议面 Phase 3 本就拆；其 analyze 用例
+  与 DSH 常驻引擎进程叠加出「测试 hang」误判链——测试 0.1s 全过，慢在冷链接 + 误杀
+  `serve` 子进程的观察假象）。`engine_teardown_global` 新增（测试 teardown 清全局槽 +
+  停 watcher）。
+- **DoD 达成**：全部壳方法在 dispatch 可达（stdio 会话测试 + 契约对拍）；引擎门禁全绿
+  （lib 584 / bin 0 / doc 0）；双工作区并发 e2e 随 Phase 2 进程形态差分补齐。
 
 ### Phase 1.5 — 前端分页拆除 + graphData → snapshot 迁移（2026-08-29 新增）
 

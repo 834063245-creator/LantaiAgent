@@ -166,9 +166,11 @@ pub(crate) fn handler_analyze(args: &Value) -> ToolResponse {
         .stack_size(16 * 1024 * 1024)
         .spawn(move || {
             if engine::engine_analyze(&root_clone).is_ok() {
+                // watcher 回调随实例永驻（maybe_autostart 已带进程级事件桥）；
+                // 这里只 ensure —— 不 stop+start 重启（notify 同目录重注册
+                // 存在事件丢失窗口）。进程内形态队列无人消费、封顶自弃。
                 engine::with_engine(|eng| {
-                    eng.stop_watcher();
-                    eng.start_watcher(root_clone.clone(), None::<Box<dyn Fn(String) + Send + 'static>>);
+                    super::shell::ensure_watching(eng, root_clone.clone());
                 });
             }
         })

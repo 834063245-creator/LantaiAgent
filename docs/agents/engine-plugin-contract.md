@@ -8,9 +8,9 @@
 
 | 项 | 值 |
 |---|---|
-| 当前版本 | 1 |
+| 当前版本 | 2 |
 | 模型可见默认工具数 | 36 |
-| 壳专属方法数 | 11 |
+| 壳专属方法数 | 10 |
 | GraphJSON 权威源 | src-ui/src/scene/graph-types.ts |
 
 ## 模型可见默认工具面（tools/list 默认返回）
@@ -21,9 +21,8 @@
 
 | 方法 | 说明 | 读写 | 接线阶段 |
 |---|---|---|---|
-| `get_graph_page` | 返回 UI 分页图数据（GraphJSON 页）。壳专属——模型工具面不暴露原始图转储。 | 只读 | phase1 |
-| `graph_meta` | 图元信息：node/edge 计数、community 层级、分页尺寸。壳专属。 | 只读 | phase1 |
-| `get_full_graph` | 全量 GraphJSON 转储（nodes/edges/communities）。壳专属。 | 只读 | phase1 |
+| `graph_snapshot` | 聚合快照：节点/边数、社区分布、边类型、top 扇入、类数。壳专属——进程外形态下前端不搬原始图，graphData = 一次轻量查询。 | 只读 | phase1 |
+| `file_nodes` | 按文件返回符号索引（id/name/kind/fanIn/fanOut）。壳专属——取代前端全量建索引。 | 只读 | phase1 |
 | `analyze_with_progress` | 全量分析并持久化，进度经 MCP notifications/progress 推送。壳专属。 | 写 | phase1 |
 | `save` | 持久化 store 到磁盘（.lantai/hologram.db）。壳专属。 | 写 | phase1 |
 | `fts_search` | FTS5 全文搜索（内容级，区别于 search_symbols 的符号名模糊）。壳专属。 | 只读 | phase1 |
@@ -37,13 +36,12 @@
 
 | 方法 | 参数 |
 |---|---|
-| `get_graph_page` | page (integer)，page_size (integer) |
-| `graph_meta` | （无参数） |
-| `get_full_graph` | （无参数） |
+| `graph_snapshot` | （无参数） |
+| `file_nodes` | file (string) |
 | `analyze_with_progress` | path (string) |
 | `save` | （无参数） |
 | `fts_search` | query (string)，limit (integer) |
-| `timeline_record` | event (string) |
+| `timeline_record` | event (string)，detail (string)，node_id (string) |
 | `diff` | baseline_path (string) |
 | `ensure_ready` | path (string) |
 | `cache_stale` | path (string) |

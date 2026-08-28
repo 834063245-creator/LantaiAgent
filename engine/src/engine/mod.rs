@@ -265,6 +265,11 @@ impl Engine {
     }
 
     /// 共享实例且未在监听 → 启动 watcher；裸实例（无 self_ref）跳过。
+    /// 回调 = 进程级事件桥（watcher.rs push_watcher_event）：进程外形态
+    /// （serve）下变更摘要经 MCP notification 推给宿主；进程内形态（Tauri
+    /// 壳自建轮询 watcher）队列无人消费、封顶自弃。回调随实例永驻、
+    /// 永不重启 —— watcher_subscribe 只 ensure，不 stop+start（notify 的
+    /// 同目录重注册存在事件丢失窗口，实证见 shell.rs 测试注释）。
     fn maybe_autostart_watcher(&self, root: &Path) {
         if self.is_watching() {
             return;
@@ -273,7 +278,10 @@ impl Engine {
             // 裸实例（测试直建）无法起 watcher —— 线程拿不到实例引用。
             return;
         }
-        self.start_watcher(root.to_path_buf(), None::<Box<dyn Fn(String) + Send + 'static>>);
+        self.start_watcher(
+            root.to_path_buf(),
+            Some(Box::new(watcher::push_watcher_event)),
+        );
     }
 
     // ── 读取访问（并发，读取者之间无锁）──
@@ -482,12 +490,19 @@ impl Engine {
 
     /// 增量更新（实例版）——先增量，失败回退全量。
     /// 壳层数据上下文 / 实例绑定的 watcher 调这里，增量落在**本实例**。
+    /// 完成摘要统一进进程级事件桥（watcher.rs push_watcher_event）——
+    /// serve 形态经 MCP notification 推宿主；进程内形态（Tauri 壳自建
+    /// 轮询 watcher + 自己的 Tauri 事件）队列无人消费、封顶自弃。
     pub fn try_incremental(
         &self,
         root: &Path,
         changed_files: &[(PathBuf, String)],
     ) -> Result<(), String> {
-        self.handle_watcher_changes(root, changed_files, &None)
+        self.handle_watcher_changes(
+            root,
+            changed_files,
+            &Some(Box::new(watcher::push_watcher_event)),
+        )
     }
 
 }
@@ -499,7 +514,9 @@ impl Engine {
 // 子模块（从此文件中提取以保持可维护性）。
 mod grammar;
 mod pipeline;
-mod watcher;
+/// watcher 子模块：事件桥（push/take_watcher_event）供 mcp.rs 与壳方法
+/// 消费 —— 进程外形态的变更推送通道。
+pub(crate) mod watcher;
 pub use grammar::GRAMMAR_LOADER;
 
 /// 全局引擎实例（Arc 包裹——壳层数据上下文持有的实例与全局槽
@@ -569,6 +586,19 @@ pub fn engine_init(project_root: &Path) -> Result<(), String> {
 /// 指针级换绑，不搬数据、不重建 watcher。
 pub fn engine_bind_global_shared(engine: Arc<Engine>) {
     *ENGINE.write() = Some(engine);
+}
+
+/// 清空全局引擎槽（测试 teardown 用）：实例 Arc 引用计数归零，
+/// watcher 线程的 Weak 升级失败后 ≤500ms 自行退出，进程得以收尾。
+/// 不清槽的后果：watcher 线程永生 → 测试二进制跑完全部用例后进程
+/// 仍不退出（AGENTS.md「bin 测试偶发 hang」的根因 —— 测试全过但
+/// 进程挂住，是否 hang 取决于分析线程是否来得及起 watcher）。
+pub fn engine_teardown_global() {
+    let mut slot = ENGINE.write();
+    if let Some(e) = slot.as_ref() {
+        e.stop_watcher();
+    }
+    *slot = None;
 }
 
 /// 从全局引擎的 MemoryIndex 读取。

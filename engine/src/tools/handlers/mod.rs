@@ -14,6 +14,7 @@ pub(crate) mod rename;
 pub(crate) mod resolve;
 pub(crate) mod scip;
 pub(crate) mod search;
+pub(crate) mod shell;
 pub(crate) use analysis::*;
 pub(crate) use audit::*;
 pub(crate) use flows::*;
@@ -24,3 +25,5 @@ pub(crate) use rename::*;
 pub(crate) use resolve::*;
 pub(crate) use scip::*;
 pub(crate) use search::*;
+// shell 不走 glob 重导出 —— 壳方法路由显式写 handlers::shell::*，
+// 保持「模型工具面 / 壳专属面」两条路径在代码可读性上也分开。

@@ -191,7 +191,7 @@ flowchart LR
 | 图类型层 | `cd hologram-graph && cargo test` | 44 + doc 1（2026-08-25 L5b crate 化实测；含扩展名感知默认表退化语义） |
 | 向量层 | `cd hologram-vector && cargo test` | 16 passed + 1 ignored（2026-08-25 L5b 实测；真实索引测试无文件自动跳过） |
 | 存储层 | `cd hologram-storage && cargo test` | 46 passed（2026-08-25 L5b 实测；memory/store/snapshot/sqlite 全套随 crate 迁入） |
-| 引擎 | `cd engine && cargo test` | lib 571 + bin 27 + doc 1（2026-08-25 L5b crate 化实测全绿；⚠️ bin 测试本机并行偶发 hang，加 `-- --test-threads=1`；storage/vector/graph 测试已随 crate 拆出，总数对账见 layering-rework-plan §4.6；含 TLS 路由守卫/双工作区并发 e2e/StoreHost 闭环） |
+| 引擎 | `cd engine && cargo test` | lib 584 + bin 0 + doc 0（2026-08-29 引擎插件化 Phase 1 实测全绿；bin 测试 27 个已删——TCP 旧协议面本就排定 Phase 3 拆除，且其 analyze 用例与 DSH 常驻引擎进程叠加造成「测试 hang」误判链；storage/vector/graph 测试已随 crate 拆出，总数对账见 layering-rework-plan §4.6） |
 | 壳 | `cd src-tauri && cargo test` | bin 422 + 集成 14（2026-08-25 L5b 实测全绿；含 attach 事实校验/决议链优先级/直连白名单守卫 + 新增 storage/vector 引用守卫；集成测试本机建议 `-- --test-threads=1`；cdp e2e 按环境偶现 ±1，UIA 真实窗口 e2e 需 `HOLOGRAM_UIA_E2E=1`） |
 | 前端 | `cd src-ui && npx vitest run` | 172 文件 1692 passed / 1 skipped（2026-08-25 实测；convergence 双 preset 零漂移；本机注意：父进程带 `NODE_ENV=production` 会使 convergence specs 收集阶段报 `No such built-in module: node:` 并剥 devDependencies——跑测试前清掉该变量） |
 | 前端构建 | `cd src-ui && npm run build` | tsc --noEmit + vite build 全绿 |

@@ -13,11 +13,10 @@ const ENGINE_ROOT = join(process.cwd(), '..', 'engine');
 const CONTRACT_RS = join(ENGINE_ROOT, 'src', 'contract.rs');
 const TOOLS_RS = join(ENGINE_ROOT, 'src', 'tools', 'mod.rs');
 
-/** 预期壳专属方法（Phase 0 契约定稿；新增方法必须在 contract.rs 与本清单双登记）。 */
+/** 预期壳专属方法（契约 v2 定稿：砍分页删 3 加 graph_snapshot/file_nodes；新增方法必须在 contract.rs 与本清单双登记）。 */
 const EXPECTED_SHELL_METHODS = [
-  'get_graph_page',
-  'graph_meta',
-  'get_full_graph',
+  'graph_snapshot',
+  'file_nodes',
   'analyze_with_progress',
   'save',
   'fts_search',

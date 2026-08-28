@@ -183,6 +183,17 @@ impl ToolRegistry {
             "find_implementations" => handlers::handler_find_implementations(args),
             "find_references" => handlers::handler_find_references(args),
             "import_scip" => handlers::handler_import_scip(args),
+            // ── 壳专属方法（契约 v2；hidden —— 不在 DEFAULT_MCP_TOOLS）──
+            "graph_snapshot" => handlers::shell::handler_graph_snapshot(args),
+            "file_nodes" => handlers::shell::handler_file_nodes(args),
+            "analyze_with_progress" => handlers::shell::handler_analyze_with_progress(args),
+            "save" => handlers::shell::handler_save(args),
+            "fts_search" => handlers::shell::handler_fts_search(args),
+            "timeline_record" => handlers::shell::handler_timeline_record(args),
+            "diff" => handlers::shell::handler_diff(args),
+            "ensure_ready" => handlers::shell::handler_ensure_ready(args),
+            "cache_stale" => handlers::shell::handler_cache_stale(args),
+            "watcher_subscribe" => handlers::shell::handler_watcher_subscribe(args),
             _ => return ToolResponse::Degraded {
                 guidance: format!("Tool not found: {}", name),
                 fallback: "Check tools/list for available tools".into(),
@@ -807,6 +818,95 @@ fn all_schemas() -> &'static [ToolSchema] {
             read_only: true,
             category: "lsp",
         },
+        // ── 壳专属方法（contract.rs SHELL_METHODS 的 schema 载体；hidden ——
+        //    不进 DEFAULT_MCP_TOOLS，tools/list 默认不可见，tools/call 可达）──
+        ToolSchema {
+            name: "graph_snapshot",
+            description: "[SHELL] Aggregated graph snapshot: node/edge counts, kind distribution, edge-kind distribution, community sizes, top fan-in/out, class count. Replaces raw-graph transfer for out-of-process hosts.",
+            params: &[],
+            required: &[],
+            read_only: true,
+            category: "shell",
+        },
+        ToolSchema {
+            name: "file_nodes",
+            description: "[SHELL] Symbol index for one file (id/name/kind/fanIn/fanOut). Replaces host-side full-graph index building; one lightweight query per file.",
+            params: &[p!("file", "string", "File path (relative to project root or absolute)")],
+            required: &["file"],
+            read_only: true,
+            category: "shell",
+        },
+        ToolSchema {
+            name: "analyze_with_progress",
+            description: "[SHELL] Full analysis in background; progress arrives via notifications/progress. Path defaults to the bound project root.",
+            params: &[p!("path", "string", "Project root path (optional; defaults to bound root)")],
+            required: &[],
+            read_only: false,
+            category: "shell",
+        },
+        ToolSchema {
+            name: "save",
+            description: "[SHELL] Persist the store to disk (.lantai/hologram.db).",
+            params: &[],
+            required: &[],
+            read_only: false,
+            category: "shell",
+        },
+        ToolSchema {
+            name: "fts_search",
+            description: "[SHELL] FTS5 full-text search (content-level; distinct from search_symbols name matching).",
+            params: &[
+                p!("query", "string", "Search query"),
+                p!("limit", "integer", "Max results (default 20)"),
+            ],
+            required: &["query"],
+            read_only: true,
+            category: "shell",
+        },
+        ToolSchema {
+            name: "timeline_record",
+            description: "[SHELL] Record a timeline event (write action).",
+            params: &[
+                p!("event", "string", "Event name"),
+                p!("detail", "string", "Event summary (optional; defaults to event name)"),
+                p!("node_id", "string", "Related node (optional)"),
+            ],
+            required: &["event"],
+            read_only: false,
+            category: "shell",
+        },
+        ToolSchema {
+            name: "diff",
+            description: "[SHELL] Baseline diff: baseline.json (default <root>/.lantai/baseline.json, override with baseline_path) vs current graph.",
+            params: &[p!("baseline_path", "string", "Baseline file path (optional)")],
+            required: &[],
+            read_only: true,
+            category: "shell",
+        },
+        ToolSchema {
+            name: "ensure_ready",
+            description: "[SHELL] Ensure engine readiness — same-root idempotent, different-root refused (one process per workspace). Returns readiness for the host to decide next step.",
+            params: &[p!("path", "string", "Project root path (optional; defaults to bound root)")],
+            required: &[],
+            read_only: true,
+            category: "shell",
+        },
+        ToolSchema {
+            name: "cache_stale",
+            description: "[SHELL] Whether the persisted graph is stale (source mtimes vs last persistence). Reason and baseline kind are reported.",
+            params: &[p!("path", "string", "Project root path (optional; defaults to bound root)")],
+            required: &[],
+            read_only: true,
+            category: "shell",
+        },
+        ToolSchema {
+            name: "watcher_subscribe",
+            description: "[SHELL] Subscribe to watcher notifications — change summaries arrive via notifications/message (data = JSON string).",
+            params: &[],
+            required: &[],
+            read_only: false,
+            category: "shell",
+        },
     ]
 }
 
@@ -849,6 +949,58 @@ mod tests {
             let args = json!({});
             let result = ToolRegistry::dispatch(schema.name, &args, &dummy_id);
             assert!(result.is_object(), "dispatch({}) must return a JSON object", schema.name);
+        }
+    }
+
+    /// 契约一致性（engine-plugin-extraction Phase 1）：contract.rs 的
+    /// SHELL_METHODS 必须与注册面完全对齐 —— schema 已注册（tools/call
+    /// 可达）、不在模型默认清单（tools/list 不可见）、与 dispatch 分支一一对应。
+    #[test]
+    fn test_shell_methods_contract_alignment() {
+        let contract_names = crate::contract::shell_method_names();
+        assert_eq!(contract_names.len(), 10, "契约 v2 = 10 个壳专属方法");
+        let registry = ToolRegistry::global();
+        let default_set: HashSet<&str> = ToolRegistry::DEFAULT_MCP_TOOLS.iter().copied().collect();
+        let dummy_id = json!(1);
+        for name in &contract_names {
+            assert!(
+                registry.get_schema(name).is_some(),
+                "壳方法 {name} 未注册 schema（tools/call 会被拒）"
+            );
+            assert!(
+                !default_set.contains(name),
+                "壳方法 {name} 不得进模型默认工具面"
+            );
+            let result = ToolRegistry::dispatch(name, &json!({}), &dummy_id);
+            let text = result["result"]["content"][0]["text"].as_str().unwrap_or("");
+            assert!(
+                !text.contains("Tool not found"),
+                "壳方法 {name} 的 dispatch 分支缺失: {text}"
+            );
+        }
+        // 反向：schema 里 category = "shell" 的条目必须恰好是契约清单
+        let shell_schemas: Vec<&str> = all_schemas()
+            .iter()
+            .filter(|s| s.category == "shell")
+            .map(|s| s.name)
+            .collect();
+        assert_eq!(shell_schemas.len(), contract_names.len(), "shell 类目 schema 数应与契约一致");
+        for name in &contract_names {
+            assert!(shell_schemas.contains(name), "契约方法 {name} 缺 shell 类目 schema");
+        }
+    }
+
+    /// tools/list 默认面绝不返回壳专属方法（hidden 机制的行为面验证）。
+    #[test]
+    fn test_shell_methods_absent_from_tools_list() {
+        let contract_names: HashSet<&str> = crate::contract::shell_method_names().into_iter().collect();
+        let tools = ToolRegistry::global().tools_list();
+        for tool in &tools {
+            let name = tool.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            assert!(
+                !contract_names.contains(name),
+                "tools/list 泄漏了壳专属方法 {name}"
+            );
         }
     }
 

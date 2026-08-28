@@ -29,8 +29,9 @@ use crate::engine::{self, EngineState};
 /// 空闲轮询周期：分析进行中时，主循环用它向客户端推送进度。
 const PROGRESS_POLL_MS: u64 = 150;
 /// 需要上报进度的长任务工具（内部异步分析，返回 `started` 后仍在后台跑）。
+/// `analyze_with_progress` 是壳专属方法（Phase 1），进度推送机制与模型工具同路。
 fn is_long_running(name: &str) -> bool {
-    matches!(name, "analyze_project" | "validate_project")
+    matches!(name, "analyze_project" | "validate_project" | "analyze_with_progress")
 }
 
 /// 解析 CLI 参数 `engine.exe serve [--project-root <path>]`。
@@ -269,6 +270,20 @@ impl McpServer {
                     // 空闲：分析进行中则推一个进度通知。
                     if let Some(notif) = self.current_progress_notification() {
                         let _ = writeln!(stdout, "{}", notif);
+                        let _ = stdout.flush();
+                    }
+                    // watcher 事件桥（Phase 1）：drain 进程内队列 →
+                    // notifications/message 推给宿主（graph-updated 语义由宿主转译）。
+                    for ev in engine::watcher::take_watcher_events() {
+                        let _ = writeln!(
+                            stdout,
+                            "{}",
+                            json!({
+                                "jsonrpc": "2.0",
+                                "method": "notifications/message",
+                                "params": { "level": "info", "logger": "watcher", "data": ev }
+                            })
+                        );
                         let _ = stdout.flush();
                     }
                 }
@@ -609,6 +624,49 @@ mod tests {
         let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
         assert!(names.contains(&"get_neighbors"));
         assert!(names.contains(&"analyze_project"));
+    }
+
+    /// 契约 v2（Phase 1）：tools/list 默认面绝不返回壳专属方法
+    ///（schema 已注册但不在 DEFAULT_MCP_TOOLS —— hidden 机制行为面验证）。
+    #[test]
+    fn test_tools_list_hides_shell_methods() {
+        let srv = server();
+        let req = serde_json::to_string(&make_rpc("tools/list", json!({}), 1)).unwrap();
+        let lines = srv.handle_request(&req);
+        let v = responses(&lines);
+        let names: Vec<&str> = v[0]["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|t| t["name"].as_str())
+            .collect();
+        for shell in crate::contract::shell_method_names() {
+            assert!(!names.contains(&shell), "tools/list 泄漏壳专属方法 {shell}");
+        }
+    }
+
+    /// 壳专属方法经 stdio tools/call 可达（与模型工具同一注册面）。
+    #[test]
+    fn test_shell_method_call_via_stdio() {
+        let srv = server();
+        // graph_snapshot 无参可调；空引擎（本测试进程未绑全局引擎时）返回
+        // Fault（isError result）或零值快照 —— 两者都证明「方法可达」而非
+        // 「Tool not found」拒绝。
+        let req = serde_json::to_string(&make_tool_call("graph_snapshot", json!({}), 2)).unwrap();
+        let lines = srv.handle_request(&req);
+        let v = responses(&lines);
+        assert!(v[0].get("error").is_none(), "壳方法调用不得是 JSON-RPC 层错误: {:?}", v[0]);
+        let text = v[0]["result"]["content"][0]["text"].as_str().unwrap_or_default();
+        assert!(!text.contains("Tool not found"), "graph_snapshot 必须可达: {text}");
+        // 未注册的名字依旧被拒（契约 v2 已删除的 get_graph_page 不再存在）
+        let req = serde_json::to_string(&make_tool_call("get_graph_page", json!({}), 3)).unwrap();
+        let lines = srv.handle_request(&req);
+        let v = responses(&lines);
+        assert!(
+            v[0]["error"].is_object(),
+            "契约 v2 已删除的 get_graph_page 必须不可达: {:?}",
+            v[0]
+        );
     }
 
     #[test]

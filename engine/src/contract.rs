@@ -16,7 +16,13 @@
 //! 必须显式升版 + 记录，不得静默改约。
 
 /// 引擎开放面契约当前版本（变更即 +1）。
-pub const ENGINE_CONTRACT_VERSION: u32 = 1;
+///
+/// v2（2026-08-29 复盘修订）：砍图分页——分页只为已退役 3D 星图 + IPC 128MB
+/// 护栏服务的双重死代码，整链删除（计划 Phase 1.5）。删 `get_graph_page` /
+/// `graph_meta` / `get_full_graph` 三个分页/全量转储方法，新增
+/// `graph_snapshot`（聚合快照）+ `file_nodes`（按文件符号索引）——
+/// graphData 的三个消费面（快照聚合 / 文件索引 / 就绪开关）全是查询不是传输。
+pub const ENGINE_CONTRACT_VERSION: u32 = 2;
 
 /// 契约面物理载体（相对仓库根）。指纹 guard 对拍：文件变更未升版 = 红。
 pub const ENGINE_CONTRACT_FILES: &[&str] = &[
@@ -45,29 +51,19 @@ pub struct ShellMethodSpec {
     pub wired_in: &'static str,
 }
 
-/// 壳专属方法清单（Phase 0 契约定稿；Phase 1 逐个接线进 dispatch）。
+/// 壳专属方法清单（契约 v2 定稿；Phase 1 逐个接线进 dispatch）。
 pub const SHELL_METHODS: &[ShellMethodSpec] = &[
     ShellMethodSpec {
-        name: "get_graph_page",
-        description: "返回 UI 分页图数据（GraphJSON 页）。壳专属——模型工具面不暴露原始图转储。",
-        params: &[
-            ShellParam { name: "page", ptype: "integer", description: "页码（0 起）" },
-            ShellParam { name: "page_size", ptype: "integer", description: "每页节点数（缺省引擎自持）" },
-        ],
-        read_only: true,
-        wired_in: "phase1",
-    },
-    ShellMethodSpec {
-        name: "graph_meta",
-        description: "图元信息：node/edge 计数、community 层级、分页尺寸。壳专属。",
+        name: "graph_snapshot",
+        description: "聚合快照：节点/边数、社区分布、边类型、top 扇入、类数。壳专属——进程外形态下前端不搬原始图，graphData = 一次轻量查询。",
         params: &[],
         read_only: true,
         wired_in: "phase1",
     },
     ShellMethodSpec {
-        name: "get_full_graph",
-        description: "全量 GraphJSON 转储（nodes/edges/communities）。壳专属。",
-        params: &[],
+        name: "file_nodes",
+        description: "按文件返回符号索引（id/name/kind/fanIn/fanOut）。壳专属——取代前端全量建索引。",
+        params: &[ShellParam { name: "file", ptype: "string", description: "文件路径（相对项目根或绝对）" }],
         read_only: true,
         wired_in: "phase1",
     },
@@ -98,7 +94,11 @@ pub const SHELL_METHODS: &[ShellMethodSpec] = &[
     ShellMethodSpec {
         name: "timeline_record",
         description: "记录时间线事件（写动作）。壳专属。",
-        params: &[ShellParam { name: "event", ptype: "string", description: "事件名" }],
+        params: &[
+            ShellParam { name: "event", ptype: "string", description: "事件名" },
+            ShellParam { name: "detail", ptype: "string", description: "事件摘要（可选，缺省用事件名）" },
+            ShellParam { name: "node_id", ptype: "string", description: "关联节点（可选）" },
+        ],
         read_only: false,
         wired_in: "phase1",
     },

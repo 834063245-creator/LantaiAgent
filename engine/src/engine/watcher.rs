@@ -4,9 +4,10 @@
 // 文件 watcher — 基于 notify 的增量更新，带防抖和回退机制。
 // 从 engine/mod.rs 中提取。
 
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, Mutex};
 
 use tracing::{info, warn};
 
@@ -15,6 +16,41 @@ use crate::analysis::coupling::compute_coupling;
 use crate::engine::GRAMMAR_LOADER;
 use crate::pipeline::incremental::IncrementalUpdater;
 use hologram_storage::MemoryIndex;
+
+// ═══════════════════════════════════════════════════════════════
+// watcher 事件桥 —— 进程内回调 → 封顶队列 → MCP notification
+// ═══════════════════════════════════════════════════════════════
+//
+// 进程外形态（serve）：maybe_autostart_watcher / ensure_watching 起的
+// watcher 携带 push_watcher_event 回调，变更摘要进本队列；mcp.rs 主循环
+// 空闲轮询 drain 后以 `notifications/message` 推给宿主（壳侧
+// EngineProcessManager 转译回 graph-updated 语义）。
+// 进程内形态（Tauri）：壳侧用自建轮询 watcher + Tauri 事件
+// `graph-updated`，本队列无人消费 —— 封顶自弃最旧，不积压。
+
+/// watcher 变更摘要队列（封顶，丢最旧）。
+pub static WATCHER_EVENTS: LazyLock<Mutex<VecDeque<String>>> =
+    LazyLock::new(|| Mutex::new(VecDeque::new()));
+
+const WATCHER_EVENT_CAP: usize = 64;
+
+/// watcher on_change 桥回调（进程级函数，随实例永驻）。
+pub fn push_watcher_event(summary: String) {
+    if let Ok(mut q) = WATCHER_EVENTS.lock() {
+        while q.len() >= WATCHER_EVENT_CAP {
+            q.pop_front();
+        }
+        q.push_back(summary);
+    }
+}
+
+/// drain 队列（mcp.rs 主循环空闲轮询消费）。
+pub fn take_watcher_events() -> Vec<String> {
+    match WATCHER_EVENTS.lock() {
+        Ok(mut q) => q.drain(..).collect(),
+        Err(_) => Vec::new(),
+    }
+}
 
 impl Engine {
     /// 文件 watcher 是否正在运行。
@@ -603,5 +639,18 @@ mod tests {
         assert!(Engine::should_full_reanalyze(25, 10, false));
         // 达标但正在分析 → 不重入
         assert!(!Engine::should_full_reanalyze(10, 10, true));
+    }
+
+    /// 事件桥封顶语义：丢最旧、保留最新（进程外形态无订阅者时不积压）。
+    #[test]
+    fn test_watcher_event_queue_is_bounded() {
+        for i in 0..(WATCHER_EVENT_CAP + 10) {
+            push_watcher_event(format!("{{\"i\":{i}}}"));
+        }
+        let events = take_watcher_events();
+        assert_eq!(events.len(), WATCHER_EVENT_CAP, "封顶丢弃最旧");
+        assert!(events[0].contains(&format!("\"i\":{}", 10)), "最旧的 10 条被丢弃");
+        assert!(events.last().unwrap().contains(&format!("\"i\":{}", WATCHER_EVENT_CAP + 9)));
+        assert!(take_watcher_events().is_empty(), "drain 后队列清空");
     }
 }
