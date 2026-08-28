@@ -264,7 +264,11 @@ export class AgentEventBus {
   }
 }
 
-// ── 过渡适配层：旧 registries / planGate 挂进新 bus（Phase 2 验收前两路径并存）──
+// ── 适配层：planGate / preflight / hooks 经 bus 监听接线（生产路径）──
+// 平台化 Phase 5：executor 生产路径统一走 eventBus（Agent 构造期
+// attach* 接线；bus 非空时 executor 优先 bus、legacy 直调参数被忽略——
+// 差分 trace fixture 钉住逐字节等价）。本层即生产事实，不再有「两路径
+// 并存」的过渡态（legacy 直调仅存在于未传 bus 的旧调用点）。
 
 /** planGate → tool/guard 监听。非法 JSON（args null）放行至 invalid-JSON 错误路径，
  *  与 legacy addTool 的 lenient parse 行为一致。 */

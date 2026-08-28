@@ -31,8 +31,16 @@
 
 ## 生产接线现状（如实）
 
-- executor 第 8 参 `eventBus = null`：工具管道走 legacy 直调路径（两路径等价由
-  convergence trace fixture 钉住）；**Phase 5「第一方全量挂 seam」时统一切
-  eventBus 路径 + 第一方监听器重表达**。
-- loop/能力域 bus 由 Agent 内建（`Agent._loopEvents`），与 executor 无耦合；
-  监听入口 = `Agent.onLoopEvent`（D4 监听面），当前零第一方消费者（零行为差）。
+- **平台化 Phase 5（2026-08-28）已统一切 eventBus 路径**：Agent 构造期
+  attachPlanGate / attachPreflightRegistry / attachHookRegistry 挂
+  `_loopEvents`；default-loop 的 executor 收 `host.loopEvents`（优先 bus、
+  legacy 直调参数忽略——差分 trace fixture 钉住逐字节等价）。
+- **第一方 loop 可观测监听器**（agent/agent-loop/observability.ts）：turn/start
+  → `log.info('turn started', { model })` 已监听化（载荷 model 可及，loop 体
+  散点同步删除——建新拆旧）；其余散点（llm response / collect streaming
+  results / stream error / empty assistant turn / pre-flight 族）**保留原位**
+  ——依赖 loop 内部上下文或载荷在 R1 观测面不可及（usage 明细扩载荷 = 契约
+  变更，列 P6 平台税收口观察项，不扩）。
+- loop/能力域 bus 由 Agent 内建（`Agent._loopEvents`），监听入口 =
+  `Agent.onLoopEvent`（D4 监听面）；第一方消费者 = observability 监听器
+  （turn/start）+ planGate/preflight/hooks 管道适配层。

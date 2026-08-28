@@ -35,7 +35,6 @@ export const defaultAgentLoop: import('./types').AgentLoop = {
 export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): Promise<void> {
   const turnStart = performance.now();
   let turnErr: unknown = null;
-  log.info('agent', 'turn started', { model: host.prov.name() });
 
   try {
     host.isRunning = true;

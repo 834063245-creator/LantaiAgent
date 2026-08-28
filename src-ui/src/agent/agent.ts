@@ -27,6 +27,7 @@ import {
   summaryProviderImpl,
 } from './agent-compaction';
 import { defaultAgentLoop } from './agent-loop/default-loop';
+import { attachFirstPartyLoopObservability } from './agent-loop/observability';
 import type { AgentLoop, AgentLoopHost } from './agent-loop/types';
 import type { AgentRecord, AgentStore } from './agent-store';
 // 共享类型 — 本文件内部也使用
@@ -417,6 +418,9 @@ export class Agent {
     // executor 收到 eventBus 后优先 bus；缺 guard 监听 = plan 门禁失效，
     // 故守卫监听必须无条件先于任何 bus 使用）
     attachPlanGate(this._loopEvents, this._planGate);
+    // Phase 5 施工②：第一方 loop 可观测监听器（turn/start → 'turn started'
+    // 日志——重表达自 default-loop 散点；disposer 随 bus 生命周期）
+    attachFirstPartyLoopObservability(this._loopEvents);
     this.temperature = opts.temperature ?? 0.7;
     this._visibleToolsLimit = opts.visibleToolsLimit ?? DEFAULT_VISIBLE_TOOLS_LIMIT;
     // 默认禁用折叠 — 见 toolResultWindow 注释（DeepSeek 缓存计价下不划算）
