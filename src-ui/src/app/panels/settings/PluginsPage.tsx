@@ -3,20 +3,20 @@
 
 // PluginsPage（S4-3）— 设置面板「插件」标签页。
 //
-// 三块（设计件 §2.6）：
-//   1. 已装列表（plugin-store 现状渲染：name/version/status/error + 禁用
-//      开关 + 卸载按钮）；
-//   2. 安装输入框（source 三形态：registry 规格 / tarball URL 或本地路径 /
-//      本地目录——同一解包校验路径）；
-//   3. 常驻供应链警告条（完全信任模型原文——不做任何「已审核」标记）。
-//
-// 生效时机（平台化 Phase 4 · D6，2026-08-27）：**运行时生效**——装/卸/启用/
-// 禁用即时装卸插件 fiber（贡献链式回收/装载；工具面在下次 Agent 装配生效，
-// 面板/命令即时生效）。
+// 三块（设计件 §2.6；2026-08-29 收编第一方插件）：
+//   1. 平台服务（常驻）——组合层 service / seam provider / 运行体本体，
+//      只读陈列（第一方清单 kind=service），无开关（禁了应用就散架）；
+//   2. 内置插件（第一方）——功能插件（kind=feature），可启用/禁用
+//      （偏好经 plugin-prefs 持久化，**下次启动生效**——第一方是编译期
+//      bundle，贡献面在 boot 期装载，跳过是诚实生效点）；
+//   3. 已安装插件（第三方）——磁盘通道外部插件，运行时装/卸/启用/禁用
+//      （D6）+ 卸载按钮。
+// 顶部安装输入框 + 常驻供应链警告条（完全信任模型原文——不做「已审核」标记）。
 
 import { useState } from 'react';
 import { activateExternalPlugin, deactivateExternalPlugin } from '../../../plugins/loader';
 import { parseJson, typedRpc } from '../../../rpc-contract';
+import { usePluginPrefs } from '../../../state/plugin-prefs';
 import { type PluginRecord, usePluginStore } from '../../../state/plugin-store';
 import { Icon } from '../../Icon';
 
@@ -28,7 +28,7 @@ function statusBadge(s: PluginRecord['status']): { text: string; color: string }
   return { text: '装载失败', color: 'var(--warn)' };
 }
 
-/** 已装插件卡片。 */
+/** 第三方已装插件卡片（装/卸/启/禁走 RPC + 运行时 fiber 装卸）。 */
 function PluginCard({
   plugin,
   busyName,
@@ -103,13 +103,66 @@ function PluginCard({
   );
 }
 
+/** 第一方插件卡片（元数据来自 first-party-manifest；kind=service 时无开关）。 */
+function FirstPartyCard({
+  plugin,
+  onToggle,
+}: {
+  plugin: PluginRecord;
+  onToggle: (name: string, enabled: boolean) => void;
+}) {
+  const meta = plugin.meta;
+  const enabled = plugin.status !== 'disabled';
+  const badge = statusBadge(plugin.status);
+  return (
+    <div className="sp-lsp-card">
+      <span className="sp-lsp-card-icon" style={{ color: badge.color }}>
+        <Icon name="agent" />
+      </span>
+      <div className="sp-lsp-card-body">
+        <div className="sp-lsp-card-header">
+          <span className="lang-name">{plugin.name}</span>
+          <span className="lang-status" style={{ color: badge.color }}>
+            {badge.text}
+          </span>
+        </div>
+        <div className="sp-lsp-card-meta">
+          <code>v{meta?.version ?? '?'}</code>
+          {meta?.description ? <span> · {meta.description}</span> : null}
+        </div>
+        {plugin.error && <div className="sp-lsp-card-err">{plugin.error}</div>}
+        <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+          {plugin.meta?.kind === 'service' ? (
+            <span className="sp-hint-sub">平台服务 · 常驻</span>
+          ) : (
+            <button type="button" className="sp-btn-sm" onClick={() => onToggle(plugin.name, !enabled)}>
+              {enabled ? '禁用' : '启用'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** 插件标签页（S4-3）。 */
 export function PluginsPage() {
   const plugins = usePluginStore((s) => s.plugins);
+  // 三组：平台服务（常驻）/ 内置插件（第一方，可禁用）/ 已安装插件（第三方）
+  const services = plugins.filter((p) => p.builtin && p.meta?.kind === 'service');
+  const builtinFeatures = plugins.filter((p) => p.builtin && p.meta?.kind === 'feature');
+  const externals = plugins.filter((p) => !p.builtin);
   /** 操作目标（插件名或 'install' 哨兵）——按目标粒度锁按钮，无关插件不受牵连 */
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [input, setInput] = useState('');
   const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  /** 第一方禁用/启用（偏好持久化；下次启动生效——boot 期装载跳过）。 */
+  function toggleBuiltin(name: string, enabled: boolean): void {
+    usePluginPrefs.getState().setDisabled(name, !enabled);
+    usePluginStore.getState().setPluginStatus(name, enabled ? 'active' : 'disabled');
+    setMessage({ kind: 'ok', text: `${name}——下次启动生效` });
+  }
 
   async function run(key: string, action: () => Promise<string>): Promise<void> {
     setBusyKey(key);
@@ -230,15 +283,37 @@ export function PluginsPage() {
         )}
       </div>
 
-      {/* 已装列表 */}
+      {/* 平台服务（第一方 kind=service，常驻） */}
+      {services.length > 0 && (
+        <div className="sp-section">
+          <div className="sp-section-title">平台服务（{services.length}）</div>
+          <div className="sp-hint-sub">组合层服务 / 引擎缝 / 运行体本体——应用运行所需，不可禁用。</div>
+          {services.map((p) => (
+            <FirstPartyCard key={p.name} plugin={p} onToggle={toggleBuiltin} />
+          ))}
+        </div>
+      )}
+
+      {/* 内置插件（第一方 kind=feature，可禁用） */}
+      {builtinFeatures.length > 0 && (
+        <div className="sp-section">
+          <div className="sp-section-title">内置插件（{builtinFeatures.length}）</div>
+          <div className="sp-hint-sub">第一方功能插件——禁用/启用下次启动生效。</div>
+          {builtinFeatures.map((p) => (
+            <FirstPartyCard key={p.name} plugin={p} onToggle={toggleBuiltin} />
+          ))}
+        </div>
+      )}
+
+      {/* 已装列表（第三方外部插件） */}
       <div className="sp-section">
-        <div className="sp-section-title">已安装（{plugins.length}）</div>
-        {plugins.length === 0 ? (
+        <div className="sp-section-title">已安装（{externals.length}）</div>
+        {externals.length === 0 ? (
           <div className="sp-hint" style={{ padding: 8 }}>
             暂无插件。手动放置：~/.lantai/plugins/&lt;name&gt;/（含 manifest.json）。
           </div>
         ) : (
-          plugins.map((p) => (
+          externals.map((p) => (
             <PluginCard
               key={p.name}
               plugin={p}

@@ -11,6 +11,10 @@
 > ctx.capabilities 贡献，出厂 builtinCapabilities() 退役（2026-08-24，
 > plugins/capability-segments-plugin.ts + composition/first-party-
 > capabilities.ts 装配腰）。
+> **2026-08-29：第一方插件收编插件列表**——43 个第一方插件获得清单身份
+> （`plugins/first-party-manifest.ts`：version/description/kind）并进入设置
+> 面板插件 tab（平台服务/内置插件分组，feature 类可启用/禁用，下次启动
+> 生效；装载结果统一收 `state/plugin-store.ts`）。
 > **平台化 Phase 3-6（2026-08-27/28）：seam 裁剪域 / 运行时热重载（D6）/
 > 动态插件 cordis 域（D7）/ 信任模型二分（D12）/ 平台契约总览（§0）——
 > 本文件自此为插件面唯一人类契约。**
@@ -541,6 +545,29 @@ manifest.version——升级 = 原子换装（备份→rename，失败回滚）�
 降级拒绝；任一端 version 缺失/不可解析拒绝；`force: true` 显式跳过比较。
 开放面契约的版本机制见 `docs/agents/open-surface-contract.md`（契约文件变更
 未升版 = 守护测试红）。
+
+### 第一方插件在插件列表（2026-08-29）
+
+编译期 bundle 内的 43 个第一方插件同样进入设置面板「插件」tab——按三组陈列：
+
+- **平台服务**（kind=`service`，21）：组合层 service / seam provider / 运行体
+  本体——常驻，不提供禁用开关（禁了应用就散架）；
+- **内置插件**（kind=`feature`，22）：功能插件（域工具族 / 面板 / 段贡献）——
+  可启用/禁用；
+- **已安装**：第三方磁盘通道插件（D6 运行时生效）。
+
+第一方身份单一真源 = `plugins/first-party-manifest.ts`（name →
+version/description/kind），必须覆盖 `plugins/loader.ts` 的 `BUILTIN_PLUGINS`
+全量（缺条目 = loader 跳过装载 + error 记录，错误不静默；守护
+`tests/first-party-manifest.test.ts` 测试期拦死）。
+
+第一方启用/禁用 = 用户偏好（`state/plugin-prefs.ts`，localStorage 持久化）——
+**下次启动生效**（boot 期 loader 跳过被禁用的 feature 插件，记录
+status=disabled）。与第三方差异：第三方走磁盘通道 + RPC + 运行时装卸（D6）；
+第一方是编译期 bundle，不做运行时 fiber 手术——多数贡献面（工具/prompt/
+capability）本就只能在下次 Agent 装配体现，boot 期跳过是最诚实、最安全的
+生效点。装载结果统一收 `state/plugin-store.ts`（`builtin` 标志 + `meta`
+元数据，`mergePlugins` 按 name 合并——第一方 boot 与第三方异步装载互不冲刷）。
 
 ### 示例：外部 MCP server 承载真实能力（平台化 P4 · D1 收口，P4-C5）
 

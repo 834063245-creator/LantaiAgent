@@ -42,9 +42,11 @@ import { subagentsServicePlugin } from '../composition/subagent-service';
 import type { Context, Fiber } from '../cordis';
 import { paperPlugin } from '../paper/paper-plugin';
 import { getProxyPort } from '../provider/transport';
+import { usePluginPrefs } from '../state/plugin-prefs';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
 import { canvasNavPlugin } from './canvas-nav-plugin';
 import { composeDockPlugin } from './compose-dock-plugin';
+import { FIRST_PARTY_MANIFEST } from './first-party-manifest';
 import { llmAdaptersPlugin } from './llm-adapters-plugin';
 import { type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
 import { settingsPlugin } from './settings-plugin';
@@ -99,8 +101,9 @@ export function pluginAssetsOrigin(port: number): string {
  * 收官（2026-08-24）：表尾接第一方 capability 插件清单（十五项会话级
  * 能力全量经 ctx.capabilities 贡献——单一真源 composition/first-party-
  * capabilities.ts，贡献序 = 清单序 = 迁移前出厂表序；出厂
- * builtinCapabilities() 退役，本通道是出厂 capability 面唯一来源）。 */
-const BUILTIN_PLUGINS: LantaiPlugin[] = [
+ * builtinCapabilities() 退役，本通道是出厂 capability 面唯一来源）。
+ * 2026-08-29 起 export（守护测试对拍 first-party-manifest 完备性）。 */
+export const BUILTIN_PLUGINS: LantaiPlugin[] = [
   compositionServicesPlugin,
   llmAdaptersPlugin,
   subagentsServicePlugin,
@@ -160,15 +163,39 @@ function installPluginHostBridge(): void {
 /** 装载第一方插件表。返回根 Context（main.ts 接线链式取用）。
  * 同步装载（apply 内的 provide 同步生效——外部插件的 inject 依赖立即可解析）；
  * fiber await 的 rejection 显式接住（内核装配失败必须可见，不留 unhandled）。
- * S4-5：装载前先注入插件宿主桥（外部插件的 createElement/notify 来源）。 */
+ * S4-5：装载前先注入插件宿主桥（外部插件的 createElement/notify 来源）。
+ * 2026-08-29：装载结果折算为 PluginRecord 写入 plugin-store（builtin=true +
+ * first-party-manifest 元数据）——第一方插件从此进插件列表；用户禁用的
+ * feature 插件跳过装载（下次启动生效），记录 status=disabled；platform
+ * 类（service）常驻不提供禁用。清单缺失 = 装配断层，跳过 + error 记录
+ * （错误不静默；守护测试拦死，这里兜底）。 */
 export function loadBuiltinPlugins(root: Context): Context {
   installPluginHostBridge();
+  const records: PluginRecord[] = [];
   for (const plugin of BUILTIN_PLUGINS) {
+    const meta = FIRST_PARTY_MANIFEST[plugin.name];
+    if (!meta) {
+      records.push({
+        name: plugin.name,
+        manifest: null,
+        status: 'error',
+        builtin: true,
+        error: 'first-party-manifest 缺条目（name=' + plugin.name + '）',
+      });
+      continue;
+    }
+    if (meta.kind === 'feature' && usePluginPrefs.getState().isDisabled(plugin.name)) {
+      records.push({ name: plugin.name, manifest: null, status: 'disabled', builtin: true, meta });
+      continue;
+    }
     const fiber = root.plugin(plugin);
     void Promise.resolve(fiber).catch((err: unknown) => {
       console.error('[plugins] 第一方插件装载失败:', plugin.name, err);
     });
+    records.push({ name: plugin.name, manifest: null, status: 'active', builtin: true, meta });
   }
+  // merge 而非 setPlugins：第一方先装载、第三方异步后到不得冲刷第一方记录
+  usePluginStore.getState().mergePlugins(records);
   return root;
 }
 
@@ -313,7 +340,8 @@ export async function loadExternalPlugins(root: Context, opts: LoadExternalPlugi
       if (fiber) activeExternalFibers.set(record.name, fiber);
       records.push(record);
     }
-    usePluginStore.getState().setPlugins(records);
+    // merge 而非 setPlugins：外部插件装载不得冲刷第一方 boot 记录
+    usePluginStore.getState().mergePlugins(records);
   } catch (e) {
     // 通道级失败（内部已全捕获，理论不可达；防御性兜底防未处理拒绝）
     console.warn('[plugins] 装载通道失败:', e);

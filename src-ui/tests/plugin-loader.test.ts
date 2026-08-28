@@ -8,14 +8,18 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { Context } from '../src/cordis';
+import { FIRST_PARTY_MANIFEST } from '../src/plugins/first-party-manifest';
 import {
   activateExternalPlugin,
   activeExternalPluginNames,
+  BUILTIN_PLUGINS,
   deactivateExternalPlugin,
+  loadBuiltinPlugins,
   loadExternalPlugins,
   resetPluginRuntimeForTests,
 } from '../src/plugins/loader';
 import { PluginManifestSchema, validateManifest } from '../src/plugins/types';
+import { usePluginPrefs } from '../src/state/plugin-prefs';
 import { usePluginStore } from '../src/state/plugin-store';
 
 const ORIGIN = 'http://127.0.0.1:14570/plugins';
@@ -257,6 +261,8 @@ describe('loadExternalPlugins（失败隔离铁律）', () => {
     await expect(tools[0]?.execute({ q: 'x' })).resolves.toBe('todo:x');
 
     // 缺 handler → 插件 error（失败隔离；all-or-nothing：一条不挂，全部不挂）
+    // 注：2026-08-29 起 loader 写 store 用 mergePlugins（外部装载不冲刷第一方
+    // 记录）——多次装载的记录按 name 合并，断言按 name 找而非 plugins[0]。
     const root2 = new Context();
     await root2.plugin(compositionServicesPlugin);
     await loadExternalPlugins(root2, {
@@ -277,8 +283,9 @@ describe('loadExternalPlugins（失败隔离铁律）', () => {
         toolHandlers: { other: async () => 'x' },
       }),
     });
-    expect(usePluginStore.getState().plugins[0]?.status).toBe('error');
-    expect(usePluginStore.getState().plugins[0]?.error).toContain('未声明的工具');
+    const broken = usePluginStore.getState().plugins.find((p) => p.name === 'acme/broken');
+    expect(broken?.status).toBe('error');
+    expect(broken?.error).toContain('未声明的工具');
     expect(pluginToolRows()).toEqual([]); // 失败不残留贡献
   });
 
@@ -612,5 +619,74 @@ describe('D6 运行时热重载（activateExternalPlugin / deactivateExternalPlu
     await activateExternalPlugin('hello'); // 已活跃 → 重装载
     expect(probe.events).toEqual(['hello:setup', 'hello:dispose', 'hello:setup']);
     expect(activeExternalPluginNames()).toEqual(['hello']);
+  });
+});
+
+// ── 2026-08-29：第一方插件收编 plugin-store（平台化收尾）──
+
+describe('loadBuiltinPlugins（第一方插件进插件列表）', () => {
+  beforeEach(() => {
+    usePluginPrefs.getState().resetForTests();
+    usePluginStore.getState().setPlugins([]);
+  });
+
+  it('装载后写入 plugin-store：43 条 builtin 记录 + 元数据 + 状态 active', () => {
+    const root = new Context();
+    loadBuiltinPlugins(root);
+    const plugins = usePluginStore.getState().plugins;
+    expect(plugins).toHaveLength(BUILTIN_PLUGINS.length);
+    expect(BUILTIN_PLUGINS.length).toBe(43);
+    expect(plugins.every((p) => p.builtin === true)).toBe(true);
+    expect(plugins.every((p) => p.meta?.name === p.name)).toBe(true);
+    expect(plugins.every((p) => p.status === 'active')).toBe(true);
+  });
+
+  it('用户禁用的 feature 插件：跳过装载 + 记录 disabled（下次启动生效）', () => {
+    const feature = BUILTIN_PLUGINS.find((p) => FIRST_PARTY_MANIFEST[p.name]?.kind === 'feature');
+    expect(feature).toBeTruthy();
+    if (!feature) return;
+    usePluginPrefs.getState().setDisabled(feature.name, true);
+    const root = new Context();
+    loadBuiltinPlugins(root);
+    const rec = usePluginStore.getState().plugins.find((p) => p.name === feature.name);
+    expect(rec?.status).toBe('disabled');
+    // 其余仍是 active
+    const activeCount = usePluginStore
+      .getState()
+      .plugins.filter((p) => p.name !== feature.name && p.status === 'active').length;
+    expect(activeCount).toBe(BUILTIN_PLUGINS.length - 1);
+  });
+
+  it('platform（service）无视禁用集——常驻不可禁', () => {
+    const service = BUILTIN_PLUGINS.find((p) => FIRST_PARTY_MANIFEST[p.name]?.kind === 'service');
+    expect(service).toBeTruthy();
+    if (!service) return;
+    usePluginPrefs.getState().setDisabled(service.name, true);
+    const root = new Context();
+    loadBuiltinPlugins(root);
+    const rec = usePluginStore.getState().plugins.find((p) => p.name === service.name);
+    expect(rec?.status).toBe('active');
+  });
+
+  it('外部插件装载不冲刷第一方记录（mergePlugins 语义）', async () => {
+    // 先装载第一方
+    const root = new Context();
+    loadBuiltinPlugins(root);
+    const builtinCount = usePluginStore.getState().plugins.length;
+    expect(builtinCount).toBeGreaterThan(0);
+    // 再装载一个外部插件——第一方记录必须保留
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['hello'],
+        [ORIGIN + '/plugins.json']: { disabled: [] },
+        [ORIGIN + '/hello/manifest.json']: HELLO_MANIFEST,
+      }),
+      importModule: async () => ({ default: { name: 'hello', apply() {} } }),
+    });
+    const plugins = usePluginStore.getState().plugins;
+    expect(plugins).toHaveLength(builtinCount + 1);
+    expect(plugins.filter((p) => p.builtin === true)).toHaveLength(builtinCount);
+    expect(plugins.find((p) => p.name === 'hello')?.builtin).toBeFalsy();
   });
 });

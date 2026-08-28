@@ -24,9 +24,10 @@ vi.mock('../src/plugins/loader', () => ({
   deactivateExternalPlugin: (...args: unknown[]) => mockDeactivate(args[0]),
 }));
 
-import { createElement } from 'react';
+import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { PluginsPage } from '../src/app/panels/settings/PluginsPage';
+import { usePluginPrefs } from '../src/state/plugin-prefs';
 import { usePluginStore } from '../src/state/plugin-store';
 
 /** 输入解析（PluginsPage 内部 parseInstallParams 的形状镜像——组件行为断言）。 */
@@ -180,5 +181,80 @@ describe('S4-3 PluginsPage（设置面板插件 tab）', () => {
       source_kind: 'local_dir',
       location: '/home/me/hello',
     });
+  });
+
+  // ── 2026-08-29：第一方插件收编插件列表（平台服务 / 内置插件分组）──
+
+  it('内置分组渲染：平台服务（无开关）+ 内置插件（可禁用）+ 已安装（外部）', async () => {
+    usePluginStore.getState().setPlugins([
+      {
+        name: 'hologram/composition-services',
+        manifest: null,
+        status: 'active',
+        builtin: true,
+        meta: {
+          name: 'hologram/composition-services',
+          version: '0.1.0',
+          description: '组合层四 service',
+          kind: 'service',
+        },
+      },
+      {
+        name: 'hologram/web-domain',
+        manifest: null,
+        status: 'active',
+        builtin: true,
+        meta: { name: 'hologram/web-domain', version: '0.1.0', description: 'web 域工具', kind: 'feature' },
+      },
+      {
+        name: 'hello',
+        manifest: { name: 'hello', version: '1.0.0', entry: 'entry.js' },
+        status: 'active',
+      },
+    ]);
+    root.render(createElement(PluginsPage));
+    await vi.waitFor(() => {
+      expect(container.textContent).toContain('平台服务（1）');
+    });
+    expect(container.textContent).toContain('内置插件（1）');
+    expect(container.textContent).toContain('已安装（1）');
+    expect(container.textContent).toContain('组合层四 service');
+    expect(container.textContent).toContain('web 域工具');
+    // 平台服务 = 常驻（无禁用按钮）；feature 内置插件 + 外部插件各有禁用按钮
+    const buttons = [...container.querySelectorAll('button')].map((b) => b.textContent);
+    expect(buttons.filter((t) => t === '禁用').length).toBe(2);
+    expect(container.textContent).toContain('平台服务 · 常驻');
+    cleanup();
+  });
+
+  it('内置 feature 插件禁用 → plugin-prefs 持久化 + store 状态翻转 + 提示', async () => {
+    usePluginPrefs.getState().resetForTests();
+    usePluginStore.getState().setPlugins([
+      {
+        name: 'hologram/web-domain',
+        manifest: null,
+        status: 'active',
+        builtin: true,
+        meta: { name: 'hologram/web-domain', version: '0.1.0', description: 'web 域工具', kind: 'feature' },
+      },
+    ]);
+    root.render(createElement(PluginsPage));
+    await vi.waitFor(() => {
+      expect(container.textContent).toContain('内置插件（1）');
+    });
+    const btn = [...container.querySelectorAll('button')].find((b) => b.textContent === '禁用');
+    expect(btn).toBeTruthy();
+    act(() => {
+      btn?.click();
+    });
+    await vi.waitFor(() => {
+      expect(usePluginPrefs.getState().isDisabled('hologram/web-domain')).toBe(true);
+    });
+    expect(usePluginStore.getState().plugins[0]?.status).toBe('disabled');
+    expect(container.textContent).toContain('下次启动生效');
+    // 状态已翻转 → 按钮变「启用」
+    expect([...container.querySelectorAll('button')].some((b) => b.textContent === '启用')).toBe(true);
+    usePluginPrefs.getState().resetForTests();
+    cleanup();
   });
 });
