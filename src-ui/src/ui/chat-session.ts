@@ -494,7 +494,7 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
     useAgentPanelStore.getState().setCurrentSessionId(String(id));
   }
 
-  ctx.addNotice(`新案卷已创建 — 案卷 ${st.sessions[st.activeIdx]?.label ?? ''} 仍在后台运行`, 'info');
+  ctx.addNotice(`新案卷已创建 — 案卷 ${id}`, 'info');
   ctx.setLastUsageText('');
   ctx.updateFooter();
   // U4/Q1-B：总目记账退役（摊开集重启由磁盘扫描推导）
@@ -725,7 +725,13 @@ export function scheduleAutoSave(ctx: SessionContext, projectPath: string): void
   const timer = setTimeout(() => {
     _autoSaveTimers.delete(ctx.storeId);
     if (!isCurrentEpoch(epoch)) return;
-    saveActiveSession(ctx, projectPath).catch(() => {});
+    // Phase D（错误不静默，2026-08-28 会话管理专项）：自动保存失败此前
+    // catch{} 静默吞——磁盘满/权限/路径错误时本轮对话静默丢失。可见化。
+    saveActiveSession(ctx, projectPath).catch((e) => {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('[chat] 自动保存失败:', e);
+      ctx.addNotice(`⚠️ 案卷自动保存失败: ${msg}`, 'error');
+    });
   }, AUTO_SAVE_DELAY_MS);
   _autoSaveTimers.set(ctx.storeId, timer);
 }
@@ -951,6 +957,9 @@ export async function deleteSessionFile(ctx: SessionContext, projectPath: string
     ctx.addNotice('删除案卷文件失败', 'error');
     return; // 写入失败则不关闭标签页
   }
+  // 标记源会话已删（2026-08-28 会话管理专项）：其孤儿钉的「收回」语义失效——
+  // 画布上该钉的按钮应显示「删除」。切工作区随画布整表重置。
+  getCanvasStore(ctx.storeId).getState().markSessionDeleted(sessionId);
   // 卷已彻底删除：摊开集合移除该卷位置；公共物（钉住块/纸条）是工作区级
   // 宿主、不连坐——钉块以快照继续显示在纸上（钉到拔为止，Stage-5）。
   getCanvasStore(ctx.storeId).getState().removeRegion(String(sessionId));
@@ -958,7 +967,24 @@ export async function deleteSessionFile(ctx: SessionContext, projectPath: string
   const idx = getChatStore(ctx.storeId)
     .sess.getState()
     .sessions.findIndex((s) => s.id === sessionId);
-  if (idx >= 0) closeSession(ctx, idx);
+  if (idx < 0) return;
+  // 删除唯一/最后一卷（2026-08-28 会话管理专项修复）：closeSession 的
+  // 「至少保留一卷案卷」守卫是**合卷语义**——删除语义下允许清空画布。否则
+  // 墓碑已写、流区已移除，但标签页不关（僵尸），且再发消息自动保存会把
+  // {id}.json 重写回真实内容 → 已删卷复活。这里直接收掉最后一个标签页。
+  if (getChatStore(ctx.storeId).sess.getState().sessions.length <= 1) {
+    removeSessionExecState(ctx.storeId, sessionId);
+    agentSessionState.removeAgent(ctx.storeId, sessionId);
+    disposeSessionMessagesStore(ctx.storeId, sessionId);
+    getChatStore(ctx.storeId).input.getState().clearSessionDraft(sessionId);
+    getComposeStore(ctx.storeId).getState().removePrefs(String(sessionId));
+    getChatStore(ctx.storeId).sess.setState({ sessions: [], activeIdx: -1 });
+    const runtime = ctx.getRuntime?.();
+    if (runtime) runtime.destroySessionBoards(String(sessionId)).catch(() => {});
+    ctx.updateFooter();
+    return;
+  }
+  closeSession(ctx, idx);
 }
 
 // ── 会话恢复（内部辅助函数）──

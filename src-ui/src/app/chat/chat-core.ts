@@ -17,9 +17,11 @@ import type { AgentEvent } from '../../agent/agent-types';
 import type { ChatAgentHandle, GoalRunResult } from '../../agent/chat-agent-handle';
 import { createExecState, type ExecStateInstance } from '../../agent/execution-state';
 import { GoalManager, type GoalRecord } from '../../agent/goal-manager';
+import { log } from '../../agent/logger';
 import type { RuntimePort } from '../../agent/runtime/types';
 import { useShellStore } from '../../app/shell-store';
 import type { ToolSchema } from '../../provider/types';
+import { typedJsonRpc } from '../../rpc-contract';
 import type { StarGraph } from '../../scene/graph-types';
 import { askSessionOf, useAskStore } from '../../state/ask-store';
 import { getCanvasStore, loadCanvasFromDisk, saveCanvasToDisk } from '../../state/canvas-store';
@@ -697,13 +699,58 @@ export class ChatCore {
   }
 
   /** Stage-5：进工作区恢复画布——读工作区画布状态文件 → 摊开集合落回画布
-   *  （拍板 11：展开 = 永远展开，重启恢复；Q-B 在画布语义下不再适用）。 */
+   *  （拍板 11：展开 = 永远展开，重启恢复；Q-B 在画布语义下不再适用）。
+   *  自愈（2026-08-28 会话管理专项）：画布摊开集可能引用磁盘上不存在的卷——
+   *  空卷不落盘（saveActiveSession 只存非空卷）/ 卷文件被删 / 早期切换残留，
+   *  直接恢复会每次启动弹「案卷文件读取失败」+ 画布残留幽灵流区。恢复前先探
+   *  真实卷集（在开卷 + 磁盘已落盘卷），剪掉悬空摊开项并回写清理后的画布。
+   *  剪枝只在目录列表**成功**时进行（列表失败 = 保守不剪，避免误删真实卷）。 */
   async restoreCanvasSpread(workspace: string): Promise<void> {
     await loadCanvasFromDisk(this.panelId, workspace);
     const canvas = getCanvasStore(this.panelId).getState();
     const st = getChatStore(this.panelId).sess.getState();
     const openIds = new Set(st.sessions.map((s) => s.id));
-    for (const sid of Object.keys(canvas.spread)) {
+
+    // 磁盘已落盘卷集（目录缺席/列表失败 = 不剪枝，保守）。
+    // 用 listSavedSessions 取**有效**卷集（过滤墓碑 deleted:true / 坏 JSON /
+    // 空卷）——不能按文件名收集（墓碑/坏文件会被误判为有效卷，导致已删卷的
+    // 摊开项不剪枝、每次启动弹「案卷文件读取失败」）。
+    const sessionsDir = `${workspace.replace(/[\\/]+$/, '')}/.lantai/sessions`;
+    let listed = false;
+    try {
+      const parsed = await typedJsonRpc<Array<{ name: string; is_dir?: boolean }>>('list_directory', {
+        path: sessionsDir,
+        filter_ignored: false,
+      });
+      listed = Array.isArray(parsed);
+    } catch {
+      /* 目录缺席/列表失败 = 不剪枝 */
+    }
+    if (listed) {
+      const validIds = new Set<number>([...openIds]);
+      const saved = await this.listSavedSessions(workspace);
+      for (const s of saved) validIds.add(s.id);
+      const phantom = Object.keys(canvas.spread).filter((sid) => !validIds.has(Number(sid)));
+      if (phantom.length > 0) {
+        for (const sid of phantom) canvas.removeRegion(sid);
+        // 活跃会话指向若落在被剪的幽灵卷 → 一并清掉（不残留失效指向）
+        if (canvas.activeSessionId != null && phantom.includes(canvas.activeSessionId)) {
+          canvas.setActiveRegion(null);
+        }
+        // 回写清理后的画布（幂等——下次启动已无悬空项，不再重复剪）
+        void saveCanvasToDisk(this.panelId, workspace).catch(() => {});
+      }
+      // 已删源会话播种（2026-08-28 会话管理专项）：钉的源卷既不在开卷也不在
+      // 有效落盘卷集 = 源已删（或空卷从未落盘）——「收回」语义失效，孤儿钉
+      // 按钮应显示「删除」。deleteSessionFile 运行时另做增量标记。
+      const dead = new Set<number>();
+      for (const pin of Object.values(canvas.pins)) {
+        if (pin.source && !validIds.has(pin.source.sessionId)) dead.add(pin.source.sessionId);
+      }
+      if (dead.size > 0) canvas.replaceDeletedSessionIds(dead);
+    }
+
+    for (const sid of Object.keys(getCanvasStore(this.panelId).getState().spread)) {
       const n = Number(sid);
       if (!openIds.has(n)) {
         try {
@@ -990,7 +1037,21 @@ export class ChatCore {
     if (!this.agent) {
       // L0 惰性水合（session-ledger）：重启后惰性卷切到/拟文时句柄缺席——
       // 按需补建（factory 现调 + msgStore 内容回填），摊开集大时避免全量起 Agent
-      const hydrated = await Session.ensureSessionAgent(this._sessionCtx());
+      // Phase D（错误不静默，2026-08-28 加固）：工厂/装配抛错此前一路穿透
+      // sendMessage 变成 unhandled rejection——界面零反馈（「点发送没反应」）。
+      // 这里捕获并双通道暴露（可见 notice + ui.log），同时不再让错误静默消失。
+      let hydrated = false;
+      try {
+        hydrated = await Session.ensureSessionAgent(this._sessionCtx());
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error('[sendMessage] Agent 装配抛错:', e);
+        log.error('chat', `[DEBUG-send] Agent 装配抛错: ${msg}`, {
+          stack: e instanceof Error ? e.stack : undefined,
+        });
+        this.addNotice(`Agent 装配失败: ${msg}`, 'error');
+        return;
+      }
       if (!this.agent) {
         const detail = getChatStore(this.panelId).panel.getState().lastAgentDiag
           ? `${getChatStore(this.panelId).panel.getState().lastAgentDiag} (factory:${Session.getAgentFactory(this.panelId) ? 'yes' : 'NO'})`

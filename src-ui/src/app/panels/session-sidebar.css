@@ -186,6 +186,16 @@
   background: var(--paper-deep);
   color: var(--ink-1);
 }
+/* 删除二次确认（2026-08-28 会话管理专项）：武装态 = 朱砂深底白字，视觉上
+ * 「这是危险操作」；宽 3 字（确删?），与改/收的单字按钮区分。 */
+.ss-actions .ss-danger,
+.ss-actions .ss-danger:hover {
+  width: auto;
+  padding: 0 4px;
+  color: var(--paper);
+  background: var(--seal-deep);
+  border-color: var(--seal-deep);
+}
 
 .ss-empty {
   padding: 16px 12px;

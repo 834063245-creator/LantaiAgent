@@ -81,7 +81,12 @@ vi.mock('highlight.js', () => ({ default: { highlightElement: vi.fn() } }));
 import { ChatCore } from '../src/app/chat/chat-core';
 import { createBlock } from '../src/paper/block-model';
 import { makeStrip } from '../src/paper/selection';
-import { getCanvasStore, resetCanvasStoresForTests, snapshotFromBlock } from '../src/state/canvas-store';
+import {
+  getCanvasStore,
+  loadCanvasFromDisk,
+  resetCanvasStoresForTests,
+  snapshotFromBlock,
+} from '../src/state/canvas-store';
 import { getMessagesStore } from '../src/state/messages-store';
 import * as Session from '../src/ui/chat-session';
 import { scanMaxSessionId, stripLineNumbers } from '../src/ui/chat-session';
@@ -956,6 +961,59 @@ describe('ChatPanel session persistence', () => {
       expect(st.sessions[st.activeIdx]?.id).toBe(5);
     });
 
+    it('restoreCanvasSpread 自愈：画布摊开集引用磁盘不存在的卷 → 剪枝幽灵流区（不弹读取失败）', async () => {
+      resetCanvasStoresForTests();
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      const agent2 = {
+        getSession: () => [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content: '旧消息' },
+        ],
+        setSession: vi.fn(),
+        dispose: vi.fn(),
+        cascadeAbort: vi.fn(),
+      };
+      panel.setAgentFactory(async () => agent2 as any);
+      mockInvoke.mockReset();
+      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
+        const { method, params } = payload;
+        if (method === 'list_directory') {
+          // 磁盘只有卷 5 的会话文件——卷 6 是幽灵（画布引用了它但文件不存在）
+          return Promise.resolve(
+            JSON.stringify([{ name: '5.json', path: 'D:/restore-test/.lantai/sessions/5.json', is_dir: false }]),
+          );
+        }
+        if (method === 'read_file_content') {
+          const fp = params.file_path as string;
+          if (fp.endsWith('/.lantai/canvas.json')) {
+            return Promise.resolve(
+              JSON.stringify({
+                version: 1,
+                spread: [
+                  { sessionId: 5, anchorX: 6480, anchorY: -1200, width: 1440 },
+                  { sessionId: 6, anchorX: 0, anchorY: 0, width: 1440 },
+                ],
+                activeSessionId: 5,
+                publics: { pinned: {}, strips: [] },
+              }),
+            );
+          }
+          if (fp.endsWith('/5.json')) {
+            return Promise.resolve(mockSessionFile(5, [{ role: 'user', content: 'hi' }], '卷五', undefined, PROJ));
+          }
+        }
+        return Promise.resolve('ok');
+      });
+
+      await panel.restoreCanvasSpread(PROJ);
+
+      // 卷 5 摊开并加载；卷 6 幽灵被剪枝（不摊开、不弹「案卷文件读取失败」）
+      expect(Session.getSessions(panel.panelId).map((s) => s.id)).toContain(5);
+      expect(Session.getSessions(panel.panelId).map((s) => s.id)).not.toContain(6);
+      expect(Object.keys(getCanvasStore(panel.panelId).getState().spread)).toEqual(['5']);
+    });
+
     it('deleteSessionFile：流区移除、公共物钉保留（公共物不连坐，钉到拔为止）', async () => {
       resetCanvasStoresForTests();
       panel = createChatPanel();
@@ -1010,6 +1068,69 @@ describe('ChatPanel session persistence', () => {
       const after = getCanvasStore(panel.panelId).getState();
       expect(after.getRegion(String(sid))).toBeUndefined();
       expect(after.getPin(block.id)).toMatchObject({ x: 100, y: -100 });
+    });
+
+    it('deleteSessionFile 删除唯一/最后一卷：标签页关闭（不僵尸、不复活）', async () => {
+      resetCanvasStoresForTests();
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      panel.setAgentFactory(
+        async () =>
+          ({
+            getSession: () => [{ role: 'system', content: 'sys' }],
+            setSession: vi.fn(),
+            dispose: vi.fn(),
+            cascadeAbort: vi.fn(),
+          }) as any,
+      );
+      mockInvoke.mockReset();
+      mockInvoke.mockResolvedValue('ok');
+      await panel.createNewSession();
+      const sid = Session.getSessions(panel.panelId)[0].id;
+      expect(Session.getSessions(panel.panelId)).toHaveLength(1);
+
+      await panel.deleteSessionFile(PROJ, sid);
+
+      // 唯一/最后一卷删除 → 标签页随之关闭（closeSession 的「至少保留一卷」
+      // 守卫是合卷语义，删除语义下允许清空——否则僵尸标签页 + 自动保存复活）
+      expect(Session.getSessions(panel.panelId)).toHaveLength(0);
+      expect(getChatStore(panel.panelId).sess.getState().activeIdx).toBe(-1);
+    });
+
+    it('deleteSessionFile 标记源会话已删：孤儿钉「收回」失效（画布渲染为「删除」的数据基础）', async () => {
+      resetCanvasStoresForTests();
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      panel.setAgentFactory(
+        async () =>
+          ({
+            getSession: () => [{ role: 'system', content: 'sys' }],
+            setSession: vi.fn(),
+            dispose: vi.fn(),
+            cascadeAbort: vi.fn(),
+          }) as any,
+      );
+      mockInvoke.mockReset();
+      mockInvoke.mockResolvedValue('ok');
+      await panel.createNewSession();
+      const sid = Session.getSessions(panel.panelId)[0].id;
+      // 模拟该卷有一个钉住块（源指向本卷）
+      const canvas = getCanvasStore(panel.panelId).getState();
+      canvas.setPin('pin-a', {
+        x: 0,
+        y: 0,
+        w: 480,
+        source: { sessionId: sid, blockId: 'b1' },
+        snapshot: { kind: 'markdown', text: '快照' },
+      });
+
+      await panel.deleteSessionFile(PROJ, sid);
+
+      // 源卷已删 → deletedSessionIds 含该 id（PaperPanel 据此渲染「删除」而非「收回」）
+      expect(getCanvasStore(panel.panelId).getState().deletedSessionIds.has(sid)).toBe(true);
+      // 切换工作区（loadCanvas(null)）→ 标记清空
+      await loadCanvasFromDisk(panel.panelId, 'D:/other-ws');
+      expect(getCanvasStore(panel.panelId).getState().deletedSessionIds.size).toBe(0);
     });
   });
 

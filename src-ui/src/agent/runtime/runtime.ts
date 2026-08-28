@@ -19,6 +19,7 @@ import type { StoredThinking } from '../../provider/thinking';
 import type { Message, Provider } from '../../provider/types';
 import { typedJsonRpc, typedRpc } from '../../rpc-contract';
 import { Agent } from '../agent';
+import { resolveAgentLoop } from '../agent-loop/agent-loop-service';
 import type { AgentUINotifier, EventSink, Pricing } from '../agent-types';
 import { EventKind } from '../agent-types';
 import { AgentBlueprint, type BlueprintScope } from '../blueprint';
@@ -688,9 +689,14 @@ export class AgentRuntime implements RuntimePort {
       contextWindow: inputs.contextWindow ?? 0,
       toolResultWindow: inputs.toolResultWindow,
       ui: this._wrapNotifier(agentId),
-      // D13（平台化 Phase 5）：loop 解析 = ctx.agentLoop 注册表后注册胜
-      // （服务缺省已登记 builtin/default；无 cordis 父 = Agent 侧缺省，同实现）
-      agentLoop: this._cordisParent?.agentLoop?.active(),
+      // D13（平台化 Phase 5）：loop 解析 = ctx.agentLoop 注册表后注册胜。
+      // 修复（2026-08-28 实机）：不再经 `this._cordisParent?.agentLoop?.active()`
+      // 裸取 cordis 服务——生产 fiber 链上该访问抛「cannot get property
+      // "agentLoop" without inject」（装配整链失败 → 点发送没反应）。改用
+      // agent-loop-service 自带的消费读取面 resolveAgentLoop()：读模块级活动
+      // 服务单例（后注册胜），无服务环境回落 defaultAgentLoop——与 AgentOptions
+      // 缺省语义一致（agent.ts 构造 `opts.agentLoop ?? defaultAgentLoop`）。
+      agentLoop: resolveAgentLoop(),
     });
 
     // 5. agent 阶段 capability — 注册序 = 表序（通信/discovery/merge/request/

@@ -154,6 +154,16 @@ async function switchWorkspace(
     }
 
     chatPanel.setProjectPath(folder);
+    // 会话根目录确保创建（2026-08-28 会话管理专项）：{ws}/.lantai/sessions/ 是
+    // 会话唯一存储位。首启工作区目录缺席时 list_directory 报「不是有效目录」，
+    // 恢复/剪枝/发号对账全走错误兜底路径；这里 await 建目录（create_dir_all
+    // 幂等），使随后的 autoRestoreLastSession 读路径确定性（编号对账可靠）。
+    // 建目录失败不阻断进工作区——写路径仍会按需创建父目录，失败 console 可见。
+    try {
+      await typedRpc('create_directory', { path: `${folder.replace(/[\\/]+$/, '')}/.lantai/sessions` });
+    } catch (e) {
+      console.warn('[switchWorkspace] 会话根目录创建失败:', folder, e);
+    }
     // 会话统一 U2：恢复改为 await——跨工作区续开（首页点他区卷 → switch →
     // loadSessionFromDisk）需要恢复落定后再摊开目标卷，否则恢复的整表 setState
     // 会与续开的 append 交错（续开的卷被恢复态覆写）。

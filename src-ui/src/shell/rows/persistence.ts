@@ -28,7 +28,12 @@ export function bootPersistence(refs: ShellRefs): void {
       const activeSid = chatPanel.activeSessionId;
       if (doneSid !== activeSid) {
         // 后台卷跑完：立即全量落盘自己的卷（不等切回）
-        chatPanel.saveSessionById(doneSid).catch(() => {});
+        // Phase D（错误不静默，2026-08-28 会话管理专项）：后台卷落盘失败此前
+        // 静默吞掉（catch{}）——该卷最近一轮会丢且用户无感知。这里可见化。
+        chatPanel.saveSessionById(doneSid).catch((e) => {
+          console.error(`[persistence] 后台卷 ${doneSid} 落盘失败:`, e);
+          pushStatus(`⚠️ 案卷 ${doneSid} 保存失败——重启可能丢失最近一轮`);
+        });
         return;
       }
     }

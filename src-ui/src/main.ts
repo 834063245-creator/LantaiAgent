@@ -20,10 +20,22 @@ import './app/panels/dock-panels/provider-settings.css';
 import './app/panels/PaperPanel.css';
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
+import { log } from './agent/logger';
 import { App } from './app/App';
 import { initCordisKernel } from './cordis/boot';
 import { loadBuiltinPlugins, loadExternalPlugins } from './plugins/loader';
 import { bootShell } from './shell/boot';
+
+// ── 全局错误钩子（错误不静默，2026-08-28 加固）──
+// 此前装配/发送链路的未捕获异常只进 WebView console（用户打不开开发者工具），
+// 排查完全不可见。这里把 unhandledrejection / uncaught error 落进 ui.log
+//（[gbl] 标签，排查后清理）。
+function logGlobalError(kind: string, reason: unknown): void {
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  log.error('main', `[gbl] ${kind}: ${err.message}`, { stack: err.stack });
+}
+window.addEventListener('unhandledrejection', (ev) => logGlobalError('unhandledrejection', ev.reason));
+window.addEventListener('error', (ev) => logGlobalError('uncaught', ev.error ?? ev.message));
 
 // ── Cordis 内核引导（cordis-migration P0：根 Context 先于 React 壳与壳行）──
 // ── 插件内核（WO-S0B）：第一方插件表装载（组合层四 service + 块渲染器 + 纸壳面板）──

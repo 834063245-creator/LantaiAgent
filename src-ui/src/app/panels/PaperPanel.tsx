@@ -128,6 +128,7 @@ const BlockView = memo(function BlockView({
   ops,
   onUnpin,
   onDragHandleMouseDown,
+  unpinLabel = '收回',
 }: {
   block: SourcedBlock;
   /** 文类签机读序号（卷内流水号，三位补零） */
@@ -137,6 +138,8 @@ const BlockView = memo(function BlockView({
   onUnpin: (id: string) => void;
   /** 拖拽手柄（文类签 .pp-kind）——V3a 手势分工：签=整块拖出（D-R2-1） */
   onDragHandleMouseDown: (e: React.MouseEvent, block: SourcedBlock) => void;
+  /** 孤儿钉按钮文案（2026-08-28 会话管理专项）：源卷已删 = 「删除」，否则「收回」 */
+  unpinLabel?: string;
 }) {
   const p = block.payload;
   const renderer = resolveRenderer(block.kind);
@@ -177,12 +180,13 @@ const BlockView = memo(function BlockView({
         <button
           type="button"
           className="pp-unpin"
+          title={unpinLabel === '删除' ? '删除孤儿钉（源卷已删，无法收回）' : undefined}
           onClick={(e) => {
             e.stopPropagation();
             onUnpin(block.id);
           }}
         >
-          收回
+          {unpinLabel}
         </button>
       )}
     </>
@@ -243,6 +247,7 @@ const EMPTY_CANVAS: CanvasStore = {
   pins: {},
   strips: [],
   activeSessionId: null,
+  deletedSessionIds: new Set(),
   getRegion: () => undefined,
   getPin: () => undefined,
   getPins: () => ({}),
@@ -260,6 +265,8 @@ const EMPTY_CANVAS: CanvasStore = {
   removeStrip: () => {},
   replaceStrips: () => {},
   setActiveRegion: () => {},
+  markSessionDeleted: () => {},
+  replaceDeletedSessionIds: () => {},
   loadCanvas: () => {},
   clearCanvas: () => {},
 };
@@ -597,6 +604,17 @@ export function PaperPanel() {
     }
     return out;
   }, [canvasState.pins, openSessionIds, openBlockIds]);
+  /** 孤儿钉的源卷已删（2026-08-28 会话管理专项）：源卷被删除后「收回」语义
+   *  失效——按钮应显示「删除」。来自 deletedSessionIds（deleteSessionFile 标记
+   *  + restoreCanvasSpread 播种）。 */
+  const deadOrphanPinIds = useMemo(() => {
+    if (canvasState.deletedSessionIds.size === 0) return new Set<string>();
+    const dead = new Set<string>();
+    for (const [id, pin] of orphanPins) {
+      if (pin.source && canvasState.deletedSessionIds.has(pin.source.sessionId)) dead.add(id);
+    }
+    return dead;
+  }, [orphanPins, canvasState.deletedSessionIds]);
 
   /* ── 视口轻动画：飞到指定会话的指定世界 y（书脊定位器/目次带共用）──
    * 复用 viewFocusRegion（锚到流区中轴 + 目标世界 y）；未摊开卷 expand
@@ -1656,6 +1674,7 @@ export function PaperPanel() {
                       ops={EMPTY_OPS}
                       onUnpin={onUnpin}
                       onDragHandleMouseDown={onBlockMouseDown}
+                      unpinLabel={deadOrphanPinIds.has(pinId) ? '删除' : '收回'}
                     />
                   </div>
                 );

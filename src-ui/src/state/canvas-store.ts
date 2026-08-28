@@ -24,6 +24,7 @@ import { createBlock } from '../paper/block-model';
 import type { PaperStrip } from '../paper/selection';
 import type { StreamRegionState } from '../paper/space';
 import { typedRpc } from '../rpc-contract';
+import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
 import { createScopedStore } from './scoped-store';
 
 // ── 类型 ──
@@ -76,6 +77,10 @@ export interface CanvasStore {
   strips: PaperStrip[];
   /** 活跃会话（画布状态文件的持久化镜像；渲染权威 = sess activeIdx） */
   activeSessionId: string | null;
+  /** 已删除的源会话 id 集（2026-08-28 会话管理专项）：源卷被删后其孤儿钉的
+   *  「收回」语义失效——按钮应显示「删除」。deleteSessionFile 标记 + 恢复时
+   *  从「钉源不在有效卷集」播种；切换工作区随 loadCanvas/clearCanvas 清空。 */
+  deletedSessionIds: Set<number>;
 
   // ── 读面（非响应式 getter——组件外/测试消费，读的是最新 state）──
   getRegion: (sessionId: string) => StreamRegionState | undefined;
@@ -105,6 +110,10 @@ export interface CanvasStore {
   // ── 活跃会话镜像 ──
   setActiveRegion: (sessionId: string | null) => void;
 
+  // ── 已删除源会话标记 ──
+  markSessionDeleted: (sessionId: number) => void;
+  replaceDeletedSessionIds: (ids: Set<number>) => void;
+
   // ── 整表 ──
   loadCanvas: (canvas: StoredWorkspaceCanvas | null) => void;
   clearCanvas: () => void;
@@ -118,6 +127,7 @@ function createCanvasStoreImpl() {
     pins: {},
     strips: [],
     activeSessionId: null,
+    deletedSessionIds: new Set(),
 
     getRegion: (sessionId) => get().spread[sessionId],
     getPin: (blockId) => get().pins[blockId],
@@ -181,9 +191,19 @@ function createCanvasStoreImpl() {
 
     setActiveRegion: (sessionId) => set((s) => (s.activeSessionId === sessionId ? s : { activeSessionId: sessionId })),
 
+    markSessionDeleted: (sessionId) =>
+      set((s) => {
+        if (s.deletedSessionIds.has(sessionId)) return s;
+        const n = new Set(s.deletedSessionIds);
+        n.add(sessionId);
+        return { deletedSessionIds: n };
+      }),
+
+    replaceDeletedSessionIds: (ids) => set(() => ({ deletedSessionIds: new Set(ids) })),
+
     loadCanvas: (canvas) =>
       set(() => {
-        if (!canvas) return { spread: {}, pins: {}, strips: [], activeSessionId: null };
+        if (!canvas) return { spread: {}, pins: {}, strips: [], activeSessionId: null, deletedSessionIds: new Set() };
         const spread: Record<string, StreamRegionState> = {};
         for (const r of canvas.spread ?? []) {
           spread[String(r.sessionId)] = { anchorX: r.anchorX, anchorY: r.anchorY, width: r.width };
@@ -193,10 +213,12 @@ function createCanvasStoreImpl() {
           pins: canvas.publics?.pinned ?? {},
           strips: canvas.publics?.strips ?? [],
           activeSessionId: canvas.activeSessionId != null ? String(canvas.activeSessionId) : null,
+          // 工作区切换/重载：已删标记是会话内生命周期状态，随画布整表重置
+          deletedSessionIds: new Set(),
         };
       }),
 
-    clearCanvas: () => set({ spread: {}, pins: {}, strips: [], activeSessionId: null }),
+    clearCanvas: () => set({ spread: {}, pins: {}, strips: [], activeSessionId: null, deletedSessionIds: new Set() }),
   }));
 }
 
@@ -213,7 +235,7 @@ export function resetCanvasStoresForTests(): void {
   const stores = w[key] as Map<string, { setState: (s: Partial<CanvasStore>) => void }> | undefined;
   if (stores) {
     for (const store of stores.values()) {
-      store.setState({ spread: {}, pins: {}, strips: [], activeSessionId: null });
+      store.setState({ spread: {}, pins: {}, strips: [], activeSessionId: null, deletedSessionIds: new Set() });
     }
   }
 }
@@ -289,7 +311,11 @@ export async function saveCanvasToDisk(storeId: string, workspace: string): Prom
   }
 }
 
-/** 防抖保存（与 scheduleAutoSave 同规：500ms 窗口合并密集写入）。 */
+/** 防抖保存（与 scheduleAutoSave 同规：500ms 窗口合并密集写入）。
+ *  代际防护（INVARIANTS #12，2026-08-28 会话管理专项）：定时器触发时若已
+ *  切走工作区则丢弃——否则用「已被新工作区覆盖的画布 store」快照写进旧工作区
+ *  canvas.json（跨工作区污染；切走时 deactivate 已显式 flushCanvasSave，此
+ *  处丢弃不丢数据）。 */
 const _canvasSaveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const CANVAS_SAVE_DELAY_MS = 500;
 
@@ -297,8 +323,10 @@ export function scheduleCanvasSave(storeId: string, workspace: string): void {
   const key = `${storeId}:${workspace}`;
   const existing = _canvasSaveTimers.get(key);
   if (existing) clearTimeout(existing);
+  const epoch = getWorkspaceEpoch();
   const timer = setTimeout(() => {
     _canvasSaveTimers.delete(key);
+    if (!isCurrentEpoch(epoch)) return; // 切走工作区：丢弃（deactivate 已 flush）
     void saveCanvasToDisk(storeId, workspace);
   }, CANVAS_SAVE_DELAY_MS);
   _canvasSaveTimers.set(key, timer);

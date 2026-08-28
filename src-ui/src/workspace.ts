@@ -20,7 +20,7 @@ import { SubAgentPool } from './agent/coordinator';
 import { GoalManager } from './agent/goal-manager';
 import type { GraphContext } from './agent/hooks';
 import { DisposerBag } from './agent/lifecycle';
-import { initLogger } from './agent/logger';
+import { initLogger, log } from './agent/logger';
 import { MemoryManager } from './agent/memory';
 import { memoryBundleIngest } from './agent/memory-bundle-client';
 import {
@@ -1033,76 +1033,89 @@ export class Workspace {
           })
         : registry;
 
-      const handle = await runtime.createAgent(
-        {
-          agentId: sessionAgentId,
-          parentId: null,
-          projectPath: this.path,
-          graphData: this.graphData,
-          provider: sessProv,
-          tools: sessionRegistry,
-          memoryManager: this.memoryManager ?? undefined,
-          skillRegistry: this.skillRegistry ?? undefined,
-          goalManager: this.goalManager ?? undefined,
-          agentStore: this.agentStore ?? undefined,
-          subAgentPool: this.subAgentPool,
-          taskManager: this.taskManager,
-          graphContext: graphCtx,
-          // 并发会话（2026-08-26）：事件入口按会话绑定——事件天生携带所属卷
-          // 身份，两卷并发流式互不串扰（旧共享 eventSink 靠活跃卷猜测路由）。
-          // execState 同步改挂会话级（权限卡/停止语义按卷隔离）。
-          eventSink: chatPanel.eventSinkFor(sessionId),
-          execState: chatPanel.getSessionExecState(sessionId),
-          collaborationMode: ms.collaborationMode,
-          pricing: defaultPricing(row.kind, eff.model),
-          temperature: 0.7,
-          // 从模型目录动态解析窗口（deepseek-v4 标 1M），查不到才 fallback 200K。
-          // 0b3e5bf 曾加 Math.min(..., 200000) 硬封顶 — 把动态结果压成 200K，
-          // 导致压缩在 110K 就触发；压缩已根治为只影响发送载荷，cap 无必要。
-          // 方案甲：按会话生效模型 + provider 行覆盖计算。
-          contextWindow: this._contextWindowFor(row, eff.model),
-          preRunHook: this.memoryManager
-            ? async (input: string) => {
-                const mm = this.memoryManager;
-                if (!mm?.auraReady) return null;
-                try {
-                  const records = await mm.auraSemanticRecall(input, 5);
-                  if (records.length === 0) return null;
-                  const lines = records.map((r) => {
-                    const t = r.tags?.length ? `[${r.tags.join(', ')}] ` : '';
-                    return `- ${t}${r.content.slice(0, 250)}`;
-                  });
-                  return `AuraSDK 语义记忆召回：\n${lines.join('\n')}`;
-                } catch {
-                  return null;
+      let handle: Awaited<ReturnType<typeof runtime.createAgent>>;
+      try {
+        handle = await runtime.createAgent(
+          {
+            agentId: sessionAgentId,
+            parentId: null,
+            projectPath: this.path,
+            graphData: this.graphData,
+            provider: sessProv,
+            tools: sessionRegistry,
+            memoryManager: this.memoryManager ?? undefined,
+            skillRegistry: this.skillRegistry ?? undefined,
+            goalManager: this.goalManager ?? undefined,
+            agentStore: this.agentStore ?? undefined,
+            subAgentPool: this.subAgentPool,
+            taskManager: this.taskManager,
+            graphContext: graphCtx,
+            // 并发会话（2026-08-26）：事件入口按会话绑定——事件天生携带所属卷
+            // 身份，两卷并发流式互不串扰（旧共享 eventSink 靠活跃卷猜测路由）。
+            // execState 同步改挂会话级（权限卡/停止语义按卷隔离）。
+            eventSink: chatPanel.eventSinkFor(sessionId),
+            execState: chatPanel.getSessionExecState(sessionId),
+            collaborationMode: ms.collaborationMode,
+            pricing: defaultPricing(row.kind, eff.model),
+            temperature: 0.7,
+            // 从模型目录动态解析窗口（deepseek-v4 标 1M），查不到才 fallback 200K。
+            // 0b3e5bf 曾加 Math.min(..., 200000) 硬封顶 — 把动态结果压成 200K，
+            // 导致压缩在 110K 就触发；压缩已根治为只影响发送载荷，cap 无必要。
+            // 方案甲：按会话生效模型 + provider 行覆盖计算。
+            contextWindow: this._contextWindowFor(row, eff.model),
+            preRunHook: this.memoryManager
+              ? async (input: string) => {
+                  const mm = this.memoryManager;
+                  if (!mm?.auraReady) return null;
+                  try {
+                    const records = await mm.auraSemanticRecall(input, 5);
+                    if (records.length === 0) return null;
+                    const lines = records.map((r) => {
+                      const t = r.tags?.length ? `[${r.tags.join(', ')}] ` : '';
+                      return `- ${t}${r.content.slice(0, 250)}`;
+                    });
+                    return `AuraSDK 语义记忆召回：\n${lines.join('\n')}`;
+                  } catch {
+                    return null;
+                  }
                 }
-              }
-            : undefined,
-          onSessionPersisted: (_sid: string, messages: Array<{ role: string; content: unknown }>) => {
-            memoryBundleIngest(
-              messages.map((m) => ({
-                role: m.role,
-                content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-              })),
-              'holo',
-              _sid,
-            ).catch(() => {});
-            (async () => {
-              await refreshGitStatus(this.path);
-              if (this._graphEngineOn) await refreshTimeline(this.path);
-              // 只消费本 Agent 产生的构建结果（其他会话的留在槽位等本尊）——
-              // 并发会话：用本工厂闭包捕获的 agent（handle 建成即定），不再
-              // 经共享 agentRef.current（最后创建的卷）错路由。
-              const block = buildTurnStartBlock(sessionAgentId);
-              if (block)
-                agentRef.current?.insertMessage(`<system-reminder>\n${block}\n</system-reminder>`, { silent: true });
-            })().catch(() => {});
+              : undefined,
+            onSessionPersisted: (_sid: string, messages: Array<{ role: string; content: unknown }>) => {
+              memoryBundleIngest(
+                messages.map((m) => ({
+                  role: m.role,
+                  content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+                })),
+                'holo',
+                _sid,
+              ).catch(() => {});
+              (async () => {
+                await refreshGitStatus(this.path);
+                if (this._graphEngineOn) await refreshTimeline(this.path);
+                // 只消费本 Agent 产生的构建结果（其他会话的留在槽位等本尊）——
+                // 并发会话：用本工厂闭包捕获的 agent（handle 建成即定），不再
+                // 经共享 agentRef.current（最后创建的卷）错路由。
+                const block = buildTurnStartBlock(sessionAgentId);
+                if (block)
+                  agentRef.current?.insertMessage(`<system-reminder>\n${block}\n</system-reminder>`, { silent: true });
+              })().catch(() => {});
+            },
           },
-        },
-        // S4-1a：会话组合覆盖（prompt/capabilities 域随会话换源；缺省 =
-        // runtime 组合 = 工作区装配组合，S2 零漂移）
-        compositionOverride,
-      );
+          // S4-1a：会话组合覆盖（prompt/capabilities 域随会话换源；缺省 =
+          // runtime 组合 = 工作区装配组合，S2 零漂移）
+          compositionOverride,
+        );
+      } catch (e) {
+        // Phase D（错误不静默，2026-08-28 加固）：createAgent 抛错此前被上层
+        // 静默吞掉（createNewSession catch{} / ensureSessionAgent 无 catch）→
+        // 「点发送没反应」。这里落 ui.log（[DEBUG-send] 标签），错误仍上抛由
+        // 调用方（sendMessage 已加 catch）可见化。
+        const msg = e instanceof Error ? e.message : String(e);
+        log.error('workspace', `[DEBUG-send] 会话 Agent 装配抛错（projectPath=${this.path}）: ${msg}`, {
+          stack: e instanceof Error ? e.stack : undefined,
+        });
+        throw e;
+      }
 
       const agent = '_getAgent' in handle ? (handle as { _getAgent(): Agent })._getAgent() : null;
       if (!agent) {

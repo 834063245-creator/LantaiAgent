@@ -56,6 +56,12 @@ export const SessionSidebar = memo(function SessionSidebar() {
   const [draftLabel, setDraftLabel] = useState('');
   const [localNotice, setLocalNotice] = useState<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
+  /** 新建防抖（双击竞态：createNewSession 发号在 await factory 之后）。 */
+  const newBusyRef = useRef(false);
+  const [newBusy, setNewBusy] = useState(false);
+  /** 删除二次确认：已武装的卷 id（第一击变红，再击才删；null = 未武装）。 */
+  const confirmingDeleteIdRef = useRef<number | null>(null);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
 
   useEffect(() => {
     if (renamingId !== null) renameInputRef.current?.focus();
@@ -115,10 +121,17 @@ export const SessionSidebar = memo(function SessionSidebar() {
     };
   }, [core, refresh]);
 
+  /** 取消删除武装（改名/点击行/新建等任何其它动作都解武）。 */
+  const cancelDeleteConfirm = useCallback(() => {
+    confirmingDeleteIdRef.current = null;
+    setConfirmingDeleteId(null);
+  }, []);
+
   /* ── 行点击：摊开/定位 ── */
   const onRowClick = useCallback(
     (row: SidebarRow) => {
       if (!core) return;
+      cancelDeleteConfirm(); // 点击行 = 其它意图，解除删除武装
       const sid = String(row.id);
       if (row.open) {
         activeSpace()?.focus(sid);
@@ -128,7 +141,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
         useCanvasViewStore.getState().requestFocus(sid);
       }
     },
-    [core],
+    [core, cancelDeleteConfirm],
   );
 
   /* ── 行操作：改名 / 收起（合卷）/ 删除 ── */
@@ -173,6 +186,15 @@ export const SessionSidebar = memo(function SessionSidebar() {
         setLocalNotice('运行中的卷不能删除——先停止再移除');
         return;
       }
+      // 二次确认（2026-08-28 会话管理专项，用户拍板）：第一击武装（按钮变红），
+      // 再击才真正写墓碑——「删」与「改」「收」相邻，防误触不可撤销。
+      if (confirmingDeleteIdRef.current !== id) {
+        confirmingDeleteIdRef.current = id;
+        setConfirmingDeleteId(id);
+        return;
+      }
+      confirmingDeleteIdRef.current = null;
+      setConfirmingDeleteId(null);
       const pp = useShellStore.getState().projectPath;
       void core.deleteSessionFile(pp, id);
       refresh();
@@ -183,13 +205,24 @@ export const SessionSidebar = memo(function SessionSidebar() {
   const onNew = useCallback(() => {
     if (!core) return;
     setLocalNotice(null);
+    // busy 防抖（2026-08-28 会话管理专项）：createNewSession 先 await factory
+    // 再发号自增——双击落在 await 窗口内会读到同一 nextSessionId → 同号双建
+    // + 泄漏一个 Agent 句柄。防抖期间忽略重复点击。
+    if (newBusyRef.current) return;
+    newBusyRef.current = true;
+    setNewBusy(true);
     // 出生 = 一种展开：绑定视角聚焦（用户拍板）——新卷落点（最近空位）
     // 相对视口中心，聚焦把它带到眼前
     void (async () => {
-      await core.createNewSession();
-      const st = getChatStore(core.panelId).sess.getState();
-      const sid = st.sessions[st.activeIdx]?.id;
-      if (sid != null) useCanvasViewStore.getState().requestFocus(String(sid));
+      try {
+        await core.createNewSession();
+        const st = getChatStore(core.panelId).sess.getState();
+        const sid = st.sessions[st.activeIdx]?.id;
+        if (sid != null) useCanvasViewStore.getState().requestFocus(String(sid));
+      } finally {
+        newBusyRef.current = false;
+        setNewBusy(false);
+      }
     })();
   }, [core]);
 
@@ -280,6 +313,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
                     title="改名"
                     onClick={(e) => {
                       e.stopPropagation();
+                      cancelDeleteConfirm();
                       setRenamingId(r.id);
                       setDraftLabel(r.label || `案卷 ${r.id}`);
                     }}
@@ -292,22 +326,37 @@ export const SessionSidebar = memo(function SessionSidebar() {
                       title="收起（合卷，数据保留）"
                       onClick={(e) => {
                         e.stopPropagation();
+                        cancelDeleteConfirm();
                         onCollapse(r.id);
                       }}
                     >
                       收
                     </button>
                   )}
-                  <button
-                    type="button"
-                    title="彻底删除"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete(r.id);
-                    }}
-                  >
-                    删
-                  </button>
+                  {confirmingDeleteId === r.id ? (
+                    <button
+                      type="button"
+                      className="ss-danger"
+                      title="再点一次确认删除（不可撤销）；点其它处取消"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(r.id);
+                      }}
+                    >
+                      确删?
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      title="彻底删除（点两次确认）"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(r.id);
+                      }}
+                    >
+                      删
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -317,7 +366,13 @@ export const SessionSidebar = memo(function SessionSidebar() {
       </div>
 
       <div className="ss-foot">
-        <button type="button" className="ss-new" onClick={onNew}>
+        <button
+          type="button"
+          className="ss-new"
+          onClick={onNew}
+          disabled={newBusy}
+          title={newBusy ? '正在创建…' : undefined}
+        >
           ＋ 另起一卷
         </button>
       </div>
