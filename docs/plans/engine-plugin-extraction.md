@@ -1,9 +1,10 @@
 # 引擎独立插件化：兰台进程外 + MCP 契约（engine-plugin-extraction）
 
-> 状态：Proposed·Draft（2026-08-29 立项，用户拍板三点：①做彻底——兰台从内嵌改连进程；
+> 状态：In progress（2026-08-29 立项，用户拍板三点：①做彻底——兰台从内嵌改连进程；
 > ②DSH 不共包——hologram-dsh 保持现状，两个宿主各自有各自的胶水；③monorepo 子目录——不开新仓）
-> 本文是「把图谱引擎拆成独立插件」的唯一计划。与 v11 分析引擎计划（算法面：
-> 预算/降噪/动态边）是两条独立线，互不阻塞。
+> **2026-08-29 复盘修订**：全仓旧时代残留清点后拍板——**图分页整链删除**（为已退役 3D 星图 + 即将消失的
+> IPC 128MB 护栏服务的双重死代码），契约壳方法清单随之修订（删 3 加 2），新增「前端分页拆除」阶段。
+> 本文是「把图谱引擎拆成独立插件」的唯一计划。与 v11 分析引擎计划（算法面：预算/降噪/动态边）是两条独立线。
 > 背景拍板史：2026-08-23 已定「Rust 侧插件化标准形态 = 外部 MCP server」；本文把它兑现成兰台自身的消费方式。
 
 ---
@@ -33,16 +34,20 @@ DSH / Unity / 任意 MCP 客户端消费的是同一个二进制、同一份契�
    走 stdin/stdout JSON-RPC + 崩溃追踪 + 降级回退）+ `commands/external.rs` 的 `start_mcp_server/stop_mcp_server` RPC +
    `lifecycle.rs` 关停任务 + `workspace_service.rs` 切工作区 `stop_mcp()` **全部还在接线**。
    → **「切进程外」= 复活并现代化一套现成机制，不是从零造。**
-2. **前端 RPC 契约可零改动**：前端消费引擎的路径（`hologram_call` / `get_graph_page` / `get_graph_meta` /
-   `analyze_and_load` / `engine_impact` / `graph-updated` 事件）全部经 `typedRpc/typedListen` → src-tauri 命令。
-   手术全部在**两个 Rust 侧**（引擎 + 壳）——TS 侧 43 插件 / convergence baseline / 前端测试零接触。
-   这是本计划爆炸半径被压住的核心性质。
-3. **跨边界有真实成本的三条数据路径**：
-   - **图分页**：`graph_io.rs` 现在直读进程内 `MemoryIndex` 算 page / hierarchical communities / diff / 缓存（大图逐页拉全量 JSON 不现实）
-   - **watcher 增量推送**：现在进程内 watcher 改共享 index → 壳发 `graph-updated`；跨边界要引擎 → 壳的推送通道
-   - **持久化/审计**：`store_host` 现在是壳与引擎共享 Arc（L2 注入面）；跨边界后数据归属整个移到引擎进程
-4. **引擎二进制已是独立发布物**：GitHub Releases 附件（`hologram-engine-win32-x64.exe`，install.mjs 按 tag 下载），
-   这正好是「插件」的物理形态。
+2. **前端改动面从「零」变为「有界」**：引擎消费路径（`hologram_call` / `graph-updated` 事件）仍走 `typedRpc/typedListen` →
+   src-tauri 命令，前端契约主体不动；但 **Phase 1.5 砍分页是一次有界的前端迁移**（workspace.ts 加载器 / hooks.ts 快照消费 /
+   cold-start 缓存 / mock-data fixture），有测试兜底。TS 侧 43 插件 / convergence baseline 仍零接触。
+3. **跨边界有真实成本的路径**（2026-08-29 复盘后）：
+
+   - **图分页：砍掉，不迁移**。分页只为「已退役 3D 星图」+「Tauri IPC 128MB 护栏」服务（`workspace.ts` 注释自证：
+     「V5 拆除后无渲染」「分页只是传输机制」）；Phase 3 进程外后前端根本不该搬原始图。graphData 的三个消费面
+     （buildGraphSnapshot 聚合 / buildFileNodeIndex 文件索引 / 就绪开关）全是**查询不是传输**——由两个轻量壳方法取代。
+   - **watcher 增量推送**：进程内 watcher 改共享 index → 壳发 `graph-updated`；跨边界要引擎 → 壳的推送通道
+   - **持久化/审计**：`store_host` 壳与引擎共享 Arc（L2 注入面）；跨边界后数据归属整个移到引擎进程
+4. **引擎二进制已是独立发布物**：GitHub Releases 附件（`hologram-engine-win32-x64.exe`，install.mjs 按 tag 下载）。
+5. **全仓旧时代残留清点（2026-08-29）**：除分页栈外，另有 91 个死 `#[tauri::command]` 注解（invoke_handler 只注册
+   2 个）、legacy `start_mcp_server/stop_mcp_server` RPC 死面（前端零调用）、`specs/` 6 份零引用孤儿文档、`.venv` /
+   `release-bin/` / 两个空目录 / 1 个孤儿 .scm 等物理残留——明细见 §8，按序清理。
 
 ## 2. 目标架构
 
@@ -51,7 +56,7 @@ DSH / Unity / 任意 MCP 客户端消费的是同一个二进制、同一份契�
 │  图谱引擎插件（独立维护单元，本仓 engine/ + hologram-*/ 子树）     │
 │                                                              │
 │  hologram-engine 进程（每工作区一个）                           │
-│   ├─ stdio MCP：36 模型工具 + N 个壳专属方法（hidden tools）      │
+│   ├─ stdio MCP：36 模型工具 + 10 个壳专属方法（hidden tools）    │
 │   ├─ TCP 9777：外部客户端（Unity / DSH viewer）数据面            │
 │   └─ 免编译扩展面（Phase 4：manifest：语言/框架/工具）            │
 └──────────────────────────────────────────────────────────────┘
@@ -76,35 +81,54 @@ DSH / Unity / 任意 MCP 客户端消费的是同一个二进制、同一份契�
 
 ### Phase 0 — 契约化（纯文档 + 守卫测试，零行为变化）
 
-> **2026-08-29 已落地**：`engine/src/contract.rs`（`ENGINE_CONTRACT_VERSION=1` + 载体文件清单 + 11 个壳专属方法清单）；
-> `engine_status` 新增 `contract` 字段（版本 + 壳方法名，宿主可探测）；`DEFAULT_MCP_TOOLS` 升 pub 供契约消费；
-> 守卫测试：引擎 `contract::tests` 4 用例 + `src-ui/tests/engine-contract.test.ts` 5 用例（版本/唯一性/与模型工具零冲突/定稿双登记）；
-> 生成文档 `docs/agents/engine-plugin-contract.md` + 生成器 `scripts/gen-engine-plugin-contract.cjs` → `src-ui/scripts/gen-engine-plugin-contract.ts`（`npm run gen:engine-contract` / `check:engine-contract`，字节稳定无时间戳）。
+> **2026-08-29 已落地（v1）**：`engine/src/contract.rs`（`ENGINE_CONTRACT_VERSION=1` + 载体文件清单 + 11 个壳专属方法清单）；
+> `engine_status` 新增 `contract` 字段；`DEFAULT_MCP_TOOLS` 升 pub；守卫测试（引擎 4 用例 + TS 5 用例）；
+> 生成文档 + 生成器（`gen:engine-contract` / `check:engine-contract` 字节稳定）。
+> **2026-08-29 复盘修订（v2，待施工）**：砍分页 → 从 `SHELL_METHODS` 删 `get_graph_page` / `graph_meta` / `get_full_graph`，
+> 新增 `graph_snapshot`（聚合快照）+ `file_nodes`（按文件符号索引）→ 共 **10 个壳方法**；`ENGINE_CONTRACT_VERSION` → 2；
+> 重生成文档 + 同步 TS 守卫 `EXPECTED_SHELL_METHODS`。
 
-- 引擎 MCP 工具面版本化：契约版本号（组合层 `composition/contract-version.ts` 的先例照搬，引擎侧镜像一份）；
-  36 工具名 / schema / 输出形态冻结；`HOLOGRAM_MCP_TOOLS` 开关语义不变
-- GraphJSON 数据契约钉死：`src-ui/src/scene/graph-types.ts` 已是唯一权威源（viewer 复用中），补一份引擎侧类型声明的对拍守卫
-- 新增「壳专属方法」清单定稿（hidden tools，不进 `tools/list`，形如 `symbol_history` 的隐藏先例）：
-  `get_graph_page` / `graph_meta` / `get_full_graph` / `analyze_with_progress`（进度走 notification）/
-  `save` / `fts_search` / `timeline_record` / `diff`（baseline）/ `ensure_ready` / `cache_stale` /
-  watcher 订阅（notification push）
-- **DoD**：契约文档落 `docs/agents/engine-plugin-contract.md`（gen 脚本生成，勿手改）；
-  守卫测试钉住「36 工具清单 + 隐藏方法清单」三层对齐（沿用 `tests/engine-tool-surface.test.ts` 模式）；
-  内嵌 / DSH / 裸 MCP 三形态看到同一工具面
+### Phase 1 — 引擎侧壳专属方法实现（10 个，全部 hidden tools）
 
-### Phase 1 — 引擎侧壳专属方法补齐（跨边界的数据路径在引擎侧实现）
+最终壳方法清单（host API，永不进模型 `tools/list`）：
 
-- 图分页：`graph_io.rs` 的 page / communities / diff / 缓存逻辑**迁入引擎**（引擎持有 index，按需算页），
-  壳侧 `graph_io.rs` 变成薄转发
-- 进度：`run_analyze_with_progress` → MCP `notifications/progress`（引擎内自持分析状态）
-- watcher：引擎 watcher 事件 → MCP notification（`graph-updated`）→ 壳转发 `typedListen`
-- 持久化：`save` / FTS / timeline 落引擎侧方法
-- **DoD**：全部壳专属方法在 `engine.exe serve` 下可用；引擎 `cargo test` 全绿（新增方法单测）；
-  双工作区并发 e2e 在进程形态下可跑（引擎侧多实例自持）
+| 方法 | 说明 | 替代的旧路径 |
+|---|---|---|
+| `graph_snapshot` | 聚合快照：节点/边数、社区分布、边类型、top 扇入、类数 | `get_graph_page`+`graph_meta`+`get_full_graph`（砍掉） |
+| `file_nodes` | 按文件返回符号索引（id/name/kind/fanIn/fanOut） | 前端 `buildFileNodeIndex` 的全量构建 |
+| `analyze_with_progress` | 全量分析，进度经 MCP notification 推送 | `run_analyze_with_progress` |
+| `save` | 持久化 store | `engine_save` |
+| `fts_search` | FTS5 全文搜索 | `engine_fts_search` |
+| `timeline_record` | 记录时间线事件 | `engine_record_timeline` |
+| `diff` | 基线 diff（baseline.json → 当前图） | `diff_to_json` |
+| `ensure_ready` | 确保引擎就绪（同根幂等/异根报错） | `ensure_engine_ready` |
+| `cache_stale` | 图是否过期（源码 mtime 比对） | `cache_is_stale` |
+| `watcher_subscribe` | 订阅 watcher 通知（graph-updated 推送） | 进程内 watcher 回调 |
+
+- 逐个接进 `dispatch`（与模型工具同一注册面）；MCP notification 承载进度/watcher 推送
+- **DoD**：全部壳方法在 `engine.exe serve` 下可用；引擎 `cargo test` 全绿（新增方法单测）；
+  双工作区并发 e2e 在进程形态下可跑
+
+### Phase 1.5 — 前端分页拆除 + graphData → snapshot 迁移（2026-08-29 新增）
+
+砍掉为已退役渲染面服务的分页栈，graphData 从「分页拉全量 nodes/edges」改为「轻量快照」：
+
+- `workspace.ts`：删 `loadGraphPages` / `mergePageIntoGraph` / `rebuildLevel0Communities` / `reloadGraphPaged` / 分页暂存图；
+  graphData 装载 = 一次 `graph_snapshot` 查询
+- `agent/hooks.ts`：`buildGraphSnapshot` / `buildFileNodeIndex` 改吃 snapshot；`GraphContext.getNodesInFile` 改走 `file_nodes`
+  （每文件一次轻查询，比现在「全量建索引」更正确且新鲜）
+- `cold-start.ts` + `load_graph_json`：缓存改 snapshot（引擎侧已持久化图，快照按需算，客户端缓存简化）
+- `src-tauri/src/utils/graph_io.rs`：删分页函数族（`serialize_cached_graph` / `build_level0_communities_json` /
+  `build_hierarchical_communities_json` / `graph_page_index` / `graph_meta_json` / `serialize_graph_page` /
+  `cache_is_stale` / `derive_community_label`），`diff_to_json` 视用途；`graph_io` 从 42 处直调大幅缩水
+- RPC：`get_graph_page` / `get_graph_meta` 拆除；`analyze_and_load` 去分页形态；`load_graph_json` 重定义
+- `mock-data.ts`：分页 fixture 更新
+- **DoD**：`graphData` 消费面（hooks/agent-builder/tool-rows 开关/prompt-sections）全绿；128MB IPC 护栏问题消失；
+  前端 build + vitest 全绿
 
 ### Phase 2 — 壳侧 transport 抽象（加第二条路，不翻默认）
 
-- `dispatch_service` / `graph_service` / `hologram_service` / `graph_io` 背后加 `EngineTransport` trait：
+- `dispatch_service` / `graph_service` / `hologram_service` / `graph_io`（缩水后）背后加 `EngineTransport` trait：
   `InProcessTransport`（现状默认）| `McpRemoteTransport`（连引擎进程）
 - 复用 + 现代化 `McpManager` 为「每工作区一个进程」的 `EngineProcessManager`（spawn / 就绪握手 /
   崩溃重启 / 关停），改造成不带单例锁的长等待（P1-19 教训已在案）
@@ -116,10 +140,10 @@ DSH / Unity / 任意 MCP 客户端消费的是同一个二进制、同一份契�
 
 - 默认 transport = `McpRemoteTransport`；`WorkspaceDataContext` 从持 `Arc<Engine>` 改持 `EngineProcessHandle`
   （进程 + MCP client + 事件桥）
-- 壳侧 248 处引擎直调收口到 transport（`app/mod.rs` / `graph_io` / `graph_service` / `hologram_service` 等）；
+- 壳侧 248 处引擎直调收口到 transport（Phase 1.5 缩水后的 `graph_io` + `app/mod.rs` / `graph_service` / `hologram_service` 等）；
   `src-tauri` 从 Cargo.toml 摘掉 `hologram-engine` 依赖（壳不再内嵌）
 - 生命周期：工作区开 = spawn 进程（`serve --project-root`），工作区关 = kill；崩溃 = 重启 + 降级提示
-- 清理：legacy `start_mcp_server/stop_mcp_server` RPC 面拆除（前端 rpc-contract 同步）
+- 清理：legacy `start_mcp_server/stop_mcp_server` RPC 面拆除（前端 rpc-contract 同步）；McpManager 被 EngineProcessManager 取代
 - **DoD**：内嵌路径从 src-tauri 移除（无编译期残留）；全量门禁绿（壳 bin + 集成 + 双工作区进程级 e2e）；
   真机验收：开卷/切卷/图查询/工具调用/merge gate/图 hooks 全链路如常；崩溃恢复不挂主进程
 
@@ -143,27 +167,30 @@ DSH / Unity / 任意 MCP 客户端消费的是同一个二进制、同一份契�
 |---|---|
 | 引擎 | `cd engine && cargo test`（bin 测试 `-- --test-threads=1`） |
 | 壳 | `cd src-tauri && cargo test`（集成 `-- --test-threads=1`） |
-| 前端（应零改动，防回归） | `cd src-ui && npx vitest run` + `npm run build` |
-| 组合层（应零改动） | `cd src-ui && npm run verify:convergence` |
+| 前端 | `cd src-ui && npx vitest run` + `npm run build`（Phase 1.5 起前端有改动，不再是「零改动」） |
+| 组合层 | `cd src-ui && npm run verify:convergence` |
 | 格式 | `cd src-ui && npx biome ci .`（0/0） |
 
 ## 5. 风险
 
 | 风险 | 缓解 |
 |---|---|
-| 跨边界性能回退（图分页/查询延迟） | 分页/communities 逻辑迁引擎（Phase 1 就做，不等到 Phase 3）；TCP 协议与 viewer 已证明可行 |
+| 跨边界性能回退（快照/查询延迟） | 分页栈已砍（Phase 1.5），跨边界只传聚合快照与按文件查询；DSH viewer 的 TCP 全量图已证明可行 |
+| GraphContextHook 每文件一次 `file_nodes` 查询的延迟 | 单文件小查询，stdio MCP 毫秒级；比现状「全量建索引」更正确且新鲜 |
 | watcher 增量推送断链 | Phase 1 先建 notification 通道，差分测试钉住 graph-updated 时序 |
 | 多进程内存/资源 | EXE 页共享；典型 1-3 工作区；崩溃隔离反而是收益 |
 | LSP 子进程归属 | 本来就在引擎进程内，跨边界无变化 |
-| 248 处直调迁移遗漏 | Phase 2 的 transport 抽象 + 差分对拍兜底；Phase 3 摘依赖后编译期强约束（漏一处就编不过） |
+| 248 处直调迁移遗漏 | Phase 2 的 transport 抽象 + 差分对拍兜底；Phase 3 摘依赖后编译期强约束（漏一处就编不过）；Phase 1.5 已砍掉 graph_io 大头 |
 | N 进程与现有单进程假设（MCP 语义） | 拓扑决策 §6 拍板后，Phase 2/3 按该拓扑落 |
+| 前端迁移（Phase 1.5）回归 | graphData 消费面测试（hooks/agent-builder/工具开关）+ vitest 兜底 |
 
-## 6. 待拍板（开工 Phase 0 不依赖，Phase 2/3 依赖）
+## 6. 待拍板
 
-1. **拓扑**：每工作区一个引擎进程（推荐：隔离干净、复用 McpManager、语义对齐现状）
+1. **拓扑**（Phase 2/3 依赖）：每工作区一个引擎进程（推荐：隔离干净、复用 McpManager、语义对齐现状）
    vs 单进程多根（内存省，但要改引擎 serve 成多根模式、MCP 契约语义复杂化）
 2. **壳专属方法命名空间**：隐藏工具（形如 `symbol_history`）vs 独立 `_shell/` 前缀——推荐隐藏工具，复用既有注册面
-3. **Phase 0/1 先开工**：契约 + 引擎侧数据路径补齐不依赖任何拓扑决策，可立即启动
+3. **残留清理节奏**（§8）：砍分页（Phase 1.5）先做；91 个死 `#[tauri::command]` 注解 / legacy RPC 死面 / 孤儿小件
+   按需穿插，不阻塞主线
 
 ## 7. 非目标（本轮明确不做）
 
@@ -172,3 +199,44 @@ DSH / Unity / 任意 MCP 客户端消费的是同一个二进制、同一份契�
 - 新开 git 仓库（用户已拍板：monorepo 子目录）
 - v11 算法面（预算/降噪/动态边）——独立计划，不并入本文
 - 引擎物理目录收编——Phase 5 视需要再议
+
+## 8. 相关旧时代残留清点（2026-08-29 全仓排查，供按序清理）
+
+### 8.1 为「已退役 3D 星图 + 旧前端」服务（砍分页 = 最大块）
+
+- 图分页运输栈（见 Phase 1.5）：壳侧 graph_io 8 函数 + 前端 4 loader + 3 RPC + mock fixture
+- `chat-core.ts` `ChatFooterHandle` 死槽（V5 后无注册方）
+- `shell-store.ts` `graphStats` 死字段（V5 后无写入方）
+- `scene/graph-types.ts` `StarGraph` 兼容形状（type-only 壳，服务冻结文件；可留可拆）
+
+### 8.2 装饰性/误导性残留
+
+- **91 个 `#[tauri::command]` 注解**：`invoke_handler` 实际只注册 2 个（`rpc::rpc` + `get_active_project`）
+  ——壳真实 IPC 面是 rpc.rs 162 分支，这些注解是死装饰（landmine-map 原记「~30」，实测 91，30+ 文件）
+- legacy `start_mcp_server` / `stop_mcp_server` RPC：rpc.rs 有分支 + rpc-contract 声明 + McpManager 活着，
+  但**前端零调用**——纯死面（Phase 3 拆）
+- TCP 9777 旧协议 20+ 分支（blindspots/timeline/fragile/cycle/coupling_report/graph_summary/community_report/
+  community/diff/history/delayed/neighbors/path/search/impact/rename/check/preflight/health）：DSH viewer 只用 3 个
+  （get_graph/analyze/reanalyze），其余无已知消费者——待确认外部 Unity 假设
+
+### 8.3 孤儿/物理残留（小而明确）
+
+| 件 | 判定 |
+|---|---|
+| `specs/` 6 份文档（全仓零引用） | 归档或删 |
+| `.venv/` + `scripts/bench_resolution.py` + `bench_scip_bridge.py` | 清（Python 引擎退役残留） |
+| `release-bin/`（hologram.cmd/install.cmd/install.sh） | 与现 Tauri 打包核对后清 |
+| `engine/engine-bin/` 空目录、`engine/tmplinux-stress/` 空目录 | 删 |
+| `engine/queries/js_ts_structure.scm`（38 个查询里唯一孤儿） | 删 |
+
+### 8.4 存疑待核（不急着动）
+
+- `stress.rs`（48KB）+ main.rs stress CLI：开发压测工具在役，但 48KB 编进 lib 值得商榷
+- `get_full_graph`：workspace.ts:436/449/1246 还在用（导出/备份？）——看用途再定生死
+- `engine/onnxruntime.dll`（13MB）：向量功能 live，别动
+
+### 8.5 已确认健康（不是残留，别误伤）
+
+- three/WebGL 在 src-ui 零残留（renderer = 块渲染器不是 WebGL）；Python 引擎代码零残留（只剩注释）
+- louvain/leiden、timeline-store、subagent-sink、graph.ts shim：全 live
+- 旧 UI 组件（TimelineHUD/ChatFooter/ChatBeacon/CommandBar/DataflowPanel）：已全部退役，只剩历史注释
