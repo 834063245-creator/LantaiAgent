@@ -215,6 +215,7 @@ CI 只做编译 + 测试；`.github/workflows/ci.yml` 仅经用户拍板可改�
 | 文档 | 作用 |
 |---|---|
 | `CONVENTIONS.md` / `INVARIANTS.md` | 编码规则 + 雷区（开工前必读） |
+| `PLUGINS.md` | 插件开发指南（根目录：写插件的人从这里开始；契约全集在 `docs/plugins/README.md`） |
 | `docs/adr/project-constitution.md` | 四条最高架构约定 |
 | `docs/landmine-map.md` | 已知技术债/雷区拆弹状态 |
 | `docs/README.md` | 文档总索引（先看这个） |
