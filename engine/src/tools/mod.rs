@@ -80,7 +80,8 @@ impl ToolRegistry {
         &REGISTRY
     }
 
-    const DEFAULT_MCP_TOOLS: &[&str] = &[
+    /// 模型可见默认工具（单一真源；契约 guard 消费）。
+    pub const DEFAULT_MCP_TOOLS: &[&str] = &[
         "explore_deps",
         "search_symbols",
         "semantic_search",

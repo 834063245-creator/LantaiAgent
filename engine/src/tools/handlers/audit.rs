@@ -99,6 +99,7 @@ pub(crate) fn handler_status(_args: &Value) -> ToolResponse {
                 "lsp": lsp_data,
                 // 图工具使用率观测：Agent 是否真的在用图（装饰品检测）
                 "tool_call_counts": crate::tools::tool_call_counts(),
+                "contract": crate::contract::engine_contract_info(),
             }))
         }
         Err(_) => ToolResponse::Success(json!({
@@ -108,6 +109,7 @@ pub(crate) fn handler_status(_args: &Value) -> ToolResponse {
             "edges": 0,
             "lsp": lsp_data,
             "tool_call_counts": crate::tools::tool_call_counts(),
+            "contract": crate::contract::engine_contract_info(),
         })),
     }
 }

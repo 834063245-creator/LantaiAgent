@@ -31,6 +31,7 @@ pub const AUTHOR: &str = "Wenbing Jing";
 // ── 模块声明 ──
 // 每个模块对应 src/ 下的一个子目录或同名文件
 
+pub mod contract;    // 开放面契约（版本 + 壳专属方法清单；engine-plugin-extraction Phase 0）
 pub mod graph;       // 依赖图数据结构（再导出 hologram-graph 纯类型层；resolver/merge/查询留在 engine）
 pub mod adapter;    // 语言适配器（Python/JS/Go/Rust/Java 等解析器）
 pub mod analysis;    // 分析算法（环检测、脆弱节点、耦合报告、盲点）
