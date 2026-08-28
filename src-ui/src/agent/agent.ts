@@ -1109,7 +1109,12 @@ export class Agent {
       compactionTracker: this.compactionTracker,
       pricing: this.pricing,
       contextWindow: this.contextWindow,
-      pendingInserts: this._pendingInserts,
+      // getter 暴露活引用：_applyPendingInserts 重绑 this._pendingInserts，
+      // 快照引用会让 loop 的终止检查（pendingInserts.length===0）读到过期
+      // 数组——插队消息应用后循环永转（session-differential OOM 根因）。
+      get pendingInserts() {
+        return self._pendingInserts;
+      },
       sink: (ev: AgentEvent) => this._sink(ev),
       appendMessage: (kind, message) => this._appendMessage(kind, message),
       stream: (sig, turn, executor) => this.stream(sig, turn, executor),
