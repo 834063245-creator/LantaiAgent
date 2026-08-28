@@ -237,6 +237,14 @@ preset realm + 热重载 + 消费闭环（S4，2026-08-20 起生效）：
    window.__lantai_plugin_host__ 提供 createElement/notify）
 ✅ 插件/组合面变更同步 docs/plugins/README.md（通道 API/生效语义/
    信任模型的单一人类契约）
+✅ 第一方插件清单（2026-08-29）：plugins/first-party-manifest.ts = 43 个
+   第一方插件身份单一真源（service 平台服务常驻不可禁 / feature 功能插件
+   可禁用）；设置「插件」tab 三组陈列（平台服务/内置插件/已安装）；
+   feature 启用/禁用经 state/plugin-prefs.ts（localStorage）**下次启动生效**
+   （loader boot 跳过）；装载统一收 state/plugin-store.ts（builtin+meta，
+   mergePlugins 按 name 合并——第一方 boot 与第三方异步装载互不冲刷）。
+   **新增第一方插件 = BUILTIN_PLUGINS 加行 + 本清单加条目**（守护
+   tests/first-party-manifest.test.ts 钉死覆盖，漏条目 = loader 跳过 + error）
 ```
 
 ### 1.8 文件命名与 import
