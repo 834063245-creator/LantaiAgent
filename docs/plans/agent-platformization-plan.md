@@ -1,7 +1,7 @@
 # Agent 平台化（Lantai Platform）总计划 —— 一个文档解决所有问题
 
 > 立项：2026-08-25
-> 状态：**Phase 5 已竣工（2026-08-28，两 commit）**——Phase 1-4 见 §5 落地记录；Phase 5：① `23a81a3f` D13 ctx.agentLoop（loop 降为第一方默认实现）+ 工具管道切 eventBus 路径 ② `4a61076e` 第一方 loop 可观测监听器 + 遗留清理。Phase 0-4 宪法边界/组合域统一/运行时插件全链路已入档；**Phase 6（平台税收口）待开工**
+> 状态：**全计划竣工（Phase 0-6，2026-08-25/28）**——Phase 1-5 见 §5 落地记录；Phase 6（平台税收口）：`57e935a3` 平台契约总览 + cookbook + 三方发布路径 + 形状守卫/跨 seam 集成测试。铁律 3 拆旧清单逐段清零（T1-T11 + T-P3-1/2/3 全灭）；每段门禁四连 + doc-sync + 双 preset convergence 全绿。**本计划为最终态：强制层特权 / 能力契约全开 / 运行时插件三形态 / 平台契约文档齐备，交付用户验收。**
 > 性质：能力建设计划（capability plan），不是还债（debt plan）
 > 上位：`agent-plugin-architecture-plan.md`（P1-P4 已竣工部分）+ `composition-architecture/README.md`（S0-S4 已竣工 + 内核线）+ `docs/adr/project-constitution.md`
 > 参照系：DeepSeek Harness（`D:\useful\deepseek-harness`，下称 DSH）；"DSH 实证"均给文件路径供执行者直查。
@@ -295,6 +295,8 @@
 **谁判断：** Agent 自主 + 用户终审（loop 抽取是产品核心行为变更，commit message 写明）。
 
 ### Phase 6 —— 平台税收口
+
+> **落地记录（2026-08-28，两 commit）**：① `57e935a3` 平台契约文档总览（plugins README §0——贡献通道表 + seam provider 表 + 运行时插件三形态 + 契约版本指针 + 信任模型二分）+ cookbook 八指南（llm/subagents/fs/shell/session/graph 后端 + 动态插件 + MCP server，全用真实 seam 契约）+ 三方发布路径（docs/user/develop/publishing-plugins.md：从零做插件 → npm 发布 → 安装与信任面）+ docs README 索引 + 形状守卫（platform-contract-doc.test.ts）与跨 seam 替换集成（cross-seam-swap.test.ts）。② 本文档收口。**P6-C1~C4 全达成**：C1 平台契约文档与代码现状对齐（doc-sync 门禁 + §0 形状守卫 + 服务目录生成物为机器事实源）；C2 替换性测试覆盖三条真实 seam（llm adapter——provider-dialect ③ + seam-composition ⑥；fs provider——fs-seam ④；subagent provider——subagent-seam ③；外加 cross-seam-swap 三 seam 正交共存集成）；C3 三方从零装真实插件（hello 级 = examples/plugins/hello + plugin-hello-e2e 自动化半边 + 发布指南；带后端能力 = examples/plugins/dataflow-mcp 端到端）；C4 信任模型 v1 已知债明示于 §6 + 动态插件 approval/沙箱测试钉死（dynamic-runner.test ④⑤⑥）。**谁判断：Agent 自主 + 用户终审（对外契约措辞——本段落档于计划 + commit）。**
 
 **做什么：**
 
