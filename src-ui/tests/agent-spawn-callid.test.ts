@@ -37,7 +37,7 @@ describe('StreamingToolExecutor — agent_spawn _callId injection', () => {
       events.push(ev);
     };
 
-    const executor = new StreamingToolExecutor(registry, sink, null, null);
+    const executor = new StreamingToolExecutor(registry, sink);
     executor.addTool({ id: 'call-42', name: 'agent_spawn', arguments: '{"description":"test","prompt":"hello"}' });
 
     const results = await executor.awaitRemaining();
@@ -65,7 +65,7 @@ describe('StreamingToolExecutor — agent_spawn _callId injection', () => {
     const registry = new ToolRegistry();
     registry.register(tool);
 
-    const executor = new StreamingToolExecutor(registry, () => {}, null, null);
+    const executor = new StreamingToolExecutor(registry, () => {});
     executor.addTool({ id: 'call-99', name: 'read_file_content', arguments: '{"filePath":"/test.txt"}' });
 
     const results = await executor.awaitRemaining();
@@ -84,7 +84,7 @@ describe('StreamingToolExecutor — agent_spawn _callId injection', () => {
       events.push(ev);
     };
 
-    const executor = new StreamingToolExecutor(registry, sink, null, null);
+    const executor = new StreamingToolExecutor(registry, sink);
     executor.addTool({ id: 'call-7', name: 'agent_spawn', arguments: '{"description":"d","prompt":"p"}' });
 
     await executor.awaitRemaining();
@@ -122,18 +122,8 @@ describe('StreamingToolExecutor — _owner_id injection (bg 通知路由身份)'
     const registry = new ToolRegistry();
     registry.register(makePassthroughTool(received));
 
-    // ctor: (tools, emit, hooks, preflightHooks, agentId, signal, planGate, eventBus, ownerId)
-    const executor = new StreamingToolExecutor(
-      registry,
-      () => {},
-      null,
-      null,
-      'agent-123',
-      null,
-      null,
-      null,
-      'sub-456',
-    );
+    // ctor: (tools, emit, agentId, signal, eventBus, ownerId)
+    const executor = new StreamingToolExecutor(registry, () => {}, 'agent-123', null, null, 'sub-456');
     executor.addTool({ id: 'call-1', name: 'run_shell', arguments: '{"command":"echo hi"}' });
     await executor.awaitRemaining();
 
@@ -149,7 +139,7 @@ describe('StreamingToolExecutor — _owner_id injection (bg 通知路由身份)'
     registry.register(makePassthroughTool(received));
 
     // 主 Agent：agentId（隔离 id）为 null，ownerId = bus id
-    const executor = new StreamingToolExecutor(registry, () => {}, null, null, null, null, null, null, 'agent-789');
+    const executor = new StreamingToolExecutor(registry, () => {}, null, null, null, 'agent-789');
     executor.addTool({ id: 'call-2', name: 'run_shell', arguments: '{"command":"echo main"}' });
     await executor.awaitRemaining();
 
@@ -163,7 +153,7 @@ describe('StreamingToolExecutor — _owner_id injection (bg 通知路由身份)'
     const registry = new ToolRegistry();
     registry.register(makePassthroughTool(received));
 
-    const executor = new StreamingToolExecutor(registry, () => {}, null, null);
+    const executor = new StreamingToolExecutor(registry, () => {});
     executor.addTool({ id: 'call-3', name: 'run_shell', arguments: '{"command":"echo legacy"}' });
     await executor.awaitRemaining();
 

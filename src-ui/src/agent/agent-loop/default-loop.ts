@@ -157,16 +157,12 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
       host.compactionTracker.recordTurn();
       // 平台化 Phase 5：executor 收 eventBus（host.loopEvents）——planGate/
       // preflight/hooks 经 tool/guard·preflight·around 监听面运行（Agent
-      // 构造期 attach* 接线；bus 非空时 executor 优先 bus、legacy 直调参数
-      // 被忽略——差分 trace fixture 钉住两路径逐字节等价）。
+      // 构造期 attach* 接线），eventBus 是唯一管道。
       const executor = new StreamingToolExecutor(
         host.tools,
         (ev: AgentEvent) => host.sink(ev),
-        null,
-        null,
         host.isolationId,
         signal,
-        null,
         host.loopEvents,
         // 通知路由身份（bus id）— bg job owner / bash_kill 所有权（executor 注入 _owner_id）
         host.id,

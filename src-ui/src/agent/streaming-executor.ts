@@ -7,13 +7,16 @@
 // 钩子（GraphContextHook / PreflightHook）在此运行 — 执行前预检，
 // 工具后富化 — 这样它们不会被流式执行绕过。
 //
+// 平台化 Phase 5（D13）：guard/preflight/around 全量经 eventBus 管道
+// （AgentEventBus）驱动——executor 不再持有 planGate/hooks/preflightHooks
+// 直调参数，统一由事件监听面（attachPlanGate / attachPreflightRegistry /
+// attachHookRegistry）接线。eventBus 是唯一管道，没有 legacy 双路径。
+//
 // CC 参考：StreamingToolExecutor, query.ts:1366-1408
 
 import type { ToolCall } from '../provider/types';
 import { type AgentEvent, EventKind, type ToolPipelineContext } from './agent-types';
 import type { AgentEventBus } from './events';
-import type { HookRegistry, PreflightHookRegistry } from './hooks';
-import type { PlanGate } from './plan/plan-registry';
 import type { Tool, ToolRegistry } from './tool';
 import { resolveGuardToolName, retireRedirect } from './tools/domains';
 import { truncateToolOutput } from './truncate';
@@ -34,7 +37,7 @@ interface PendingResult {
  * StreamingToolExecutor — 管理流期间的并发工具执行。
  *
  * 在 agent 循环中的用法：
- *   const executor = new StreamingToolExecutor(tools, emitEvent, hooks, preflightHooks);
+ *   const executor = new StreamingToolExecutor(tools, emitEvent, agentId, signal, eventBus, ownerId);
  *   for await (const chunk of stream) {
  *     if chunk is ToolCall → executor.addTool(chunk.tool_call);
  *     // 每次迭代轮询已完成的结果
@@ -50,8 +53,6 @@ interface PendingResult {
 export class StreamingToolExecutor {
   private tools: ToolRegistry;
   private emit: (ev: AgentEvent) => void;
-  private hooks: HookRegistry | null;
-  private preflightHooks: PreflightHookRegistry | null;
   private pending = new Map<string, Promise<PendingResult>>();
   private pendingCalls = new Map<string, ToolCall>();
   private completed: PendingResult[] = [];
@@ -66,33 +67,24 @@ export class StreamingToolExecutor {
   private ownerId: string | null;
   /** AbortSignal — 设置后，awaitRemaining 将每个 pending promise 与其竞速。 */
   private signal: AbortSignal | null;
-  /** Plan 门禁 — plan 激活时在执行层拦截写操作；schema 跨模式恒定（缓存友好）。 */
-  private planGate: PlanGate | null;
-  /** 类型化事件管道（Phase 2）— 提供时执行阶段经 bus 驱动（guard/preflight/around/
-   *  result/error），且 ctor 的 planGate/hooks/preflightHooks 字段被忽略——旧接口
-   *  经 events.ts 的 attach* 适配器挂进 bus（见 tool-pipeline-events.test.ts 差分）。
-   *  缺省时走旧直调路径，行为与本文件历史实现逐字节一致。 */
+  /** 类型化事件管道（平台化 Phase 5）— 执行阶段全量经 bus 驱动
+   *  （guard/preflight/around/result/error），由 events.ts 的 attach* 适配器
+   *  把 planGate / hooks / preflightHooks 挂进 bus。eventBus 是唯一管道。 */
   private eventBus: AgentEventBus | null;
 
   constructor(
     tools: ToolRegistry,
     emitEvent: (ev: AgentEvent) => void,
-    hooks?: HookRegistry | null,
-    preflightHooks?: PreflightHookRegistry | null,
     agentId?: string | null,
     signal?: AbortSignal | null,
-    planGate?: PlanGate | null,
     eventBus?: AgentEventBus | null,
     ownerId?: string | null,
   ) {
     this.tools = tools;
     this.emit = emitEvent;
-    this.hooks = hooks ?? null;
-    this.preflightHooks = preflightHooks ?? null;
     this.agentId = agentId ?? null;
     this.ownerId = ownerId ?? null;
     this.signal = signal ?? null;
-    this.planGate = planGate ?? null;
     this.eventBus = eventBus ?? null;
   }
 
@@ -150,9 +142,8 @@ export class StreamingToolExecutor {
     // Plan 门禁：plan 激活时在执行层拦截写操作（schema 不切换注册表，
     // DeepSeek 前缀缓存不被 plan 切换击穿；规则见 plan/plan-registry.ts）。
     // 内部 plan 文件写入不走 executor，不受影响。
-    // 新路径：守卫经 eventBus 的 tool/guard 监听器（attachPlanGate 适配）；
-    // eventBus 存在时 ctor 的 planGate 字段被忽略（差分测试钉住两路径等价）。
-    if (this.eventBus || this.planGate) {
+    // 守卫经 eventBus 的 tool/guard 监听器驱动（attachPlanGate 适配）。
+    if (this.eventBus) {
       // 门禁需要解析后的 args（action/filePath）；非法 JSON 放行至
       // executeTool 的 "invalid JSON arguments" 错误路径，保持报错语义。
       let gateArgs: Record<string, unknown> | null = null;
@@ -161,12 +152,7 @@ export class StreamingToolExecutor {
       } catch {
         gateArgs = null;
       }
-      let blocked: string | null = null;
-      if (this.eventBus) {
-        blocked = gateArgs ? this.eventBus.runGuard(this.pipelineCtx(call, tool, gateArgs, call.name)) : null;
-      } else if (this.planGate) {
-        blocked = gateArgs ? this.planGate(call.name, gateArgs, tool) : null;
-      }
+      const blocked = gateArgs ? this.eventBus.runGuard(this.pipelineCtx(call, tool, gateArgs, call.name)) : null;
       if (blocked) {
         const result: PendingResult = {
           call,
@@ -317,16 +303,10 @@ export class StreamingToolExecutor {
     const guardName = resolveGuardToolName(this.tools, call.name, args);
     const ctx = this.pipelineCtx(call, tool, args, guardName);
 
-    // ── 预检钩子：破坏性写入前警告 ──
+    // ── 预检钩子：破坏性写入前警告（经 eventBus 的 tool/preflight 监听面）──
     let preflightWarning: string | null = null;
     if (this.eventBus) {
       preflightWarning = this.eventBus.runPreflight(ctx);
-    } else if (this.preflightHooks) {
-      try {
-        preflightWarning = this.preflightHooks.check(guardName, args);
-      } catch {
-        // 静默降级 — 不阻止执行
-      }
     }
 
     // ── 架构门禁：HIGH 风险 → 返回阻止结果，不执行 ──
@@ -387,15 +367,9 @@ export class StreamingToolExecutor {
         this.signal ?? undefined,
       );
 
-      // ── 工具后钩子：用图上下文富化结果 ──
+      // ── 工具后钩子：用图上下文富化结果（经 eventBus 的 tool/around 监听面）──
       if (this.eventBus) {
         output = await this.eventBus.runAround(ctx, output);
-      } else if (this.hooks) {
-        try {
-          output = await this.hooks.apply(guardName, args, output);
-        } catch {
-          // 静默降级 — 不破坏结果
-        }
       }
 
       // 在结果顶部前置预检警告
@@ -441,8 +415,9 @@ export class StreamingToolExecutor {
     return { call, tool, args, agentId: this.agentId, signal: this.signal, guardName };
   }
 
-  /** 结果落点统一：eventBus 双发（tool/result 或 tool/error）+ legacy sink（UI/模型可见事件）。
-   *  legacy sink 的事件序列与旧路径逐项一致（差分测试钉住），UI 零改动。 */
+  /** 结果落点统一：eventBus 事件（tool/result 或 tool/error）+ UI sink（EventKind
+   *  ToolResult/ToolDispatch 等，模型/UI 可见事件）。两路各自独立：bus 是执行管道
+   *  内部机制，sink 是 UI 呈现面，两者都要发。 */
   private emitPipelineResult(
     call: ToolCall,
     tool: Tool | null,

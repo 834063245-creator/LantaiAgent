@@ -15,6 +15,7 @@
 // phase 快照不受影响（verify:convergence 双 preset 实测）。
 
 import { describe, expect, it } from 'vitest';
+import { AgentEventBus, attachHookRegistry, attachPreflightRegistry } from '../src/agent/events';
 import { activeHookContributions, type HookContribution, hooksServicePlugin } from '../src/composition/hook-service';
 import { Context } from '../src/cordis';
 
@@ -179,7 +180,10 @@ describe('composition/hook-service（A-2 管道钩子贡献通道）', () => {
     const tools = new ToolRegistry();
     tools.register(legacyEditTool());
     const sink = () => {};
-    const executor = new StreamingToolExecutor(tools, sink, hooks, preflight);
+    const bus = new AgentEventBus();
+    attachHookRegistry(bus, hooks);
+    attachPreflightRegistry(bus, preflight);
+    const executor = new StreamingToolExecutor(tools, sink, null, null, bus);
     executor.addTool({ id: 'c1', name: 'edit_file', arguments: '{"filePath":"/p/a.ts"}' });
     const results = await executor.awaitRemaining();
     expect(results[0]?.output).toContain('⚠️ [ACME] 风险等级: HIGH');

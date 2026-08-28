@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentEvent } from '../src/agent/agent-types';
 import { EventKind } from '../src/agent/agent-types';
+import { AgentEventBus, attachHookRegistry, attachPreflightRegistry } from '../src/agent/events';
 import type { Hook, PreflightHook } from '../src/agent/hooks';
 import { HookRegistry, PreflightHookRegistry } from '../src/agent/hooks';
 import { StreamingToolExecutor } from '../src/agent/streaming-executor';
@@ -8,6 +9,23 @@ import type { Tool } from '../src/agent/tool';
 import { ToolRegistry } from '../src/agent/tool';
 
 // ── Helpers ──
+
+/** 构造 executor：hooks/preflight 经 eventBus 监听面接线（平台化 Phase 5
+ *  唯一管道），signal 透传。 */
+function makeExecutor(
+  registry: ToolRegistry,
+  sink: (ev: AgentEvent) => void,
+  opts: {
+    hooks?: HookRegistry | null;
+    preflight?: PreflightHookRegistry | null;
+    signal?: AbortSignal | null;
+  } = {},
+): StreamingToolExecutor {
+  const bus = new AgentEventBus();
+  if (opts.hooks) attachHookRegistry(bus, opts.hooks);
+  if (opts.preflight) attachPreflightRegistry(bus, opts.preflight);
+  return new StreamingToolExecutor(registry, sink, null, opts.signal ?? null, bus);
+}
 
 function makeTool(name: string, readOnly: boolean, output: string): Tool {
   return {
@@ -43,7 +61,7 @@ describe('StreamingToolExecutor — hook integration', () => {
     const hooks = new HookRegistry();
     hooks.register(hook);
 
-    const executor = new StreamingToolExecutor(registry, noopSink, hooks, null);
+    const executor = makeExecutor(registry, noopSink, { hooks });
     executor.addTool({ id: 'c1', name: 'read_file_content', arguments: '{"filePath":"/test.ts"}' });
 
     const results = await executor.awaitRemaining();
@@ -57,7 +75,7 @@ describe('StreamingToolExecutor — hook integration', () => {
     const tool = makeTool('read_file_content', true, 'hello');
     const registry = makeRegistry([tool]);
 
-    const executor = new StreamingToolExecutor(registry, noopSink, null, null);
+    const executor = makeExecutor(registry, noopSink);
     executor.addTool({ id: 'c1', name: 'read_file_content', arguments: '{"filePath":"/x.ts"}' });
 
     const results = await executor.awaitRemaining();
@@ -78,7 +96,7 @@ describe('StreamingToolExecutor — hook integration', () => {
     const hooks = new HookRegistry();
     hooks.register(hook);
 
-    const executor = new StreamingToolExecutor(registry, noopSink, hooks, null);
+    const executor = makeExecutor(registry, noopSink, { hooks });
     executor.addTool({ id: 'c1', name: 'edit_file', arguments: '{}' });
 
     const results = await executor.awaitRemaining();
@@ -109,7 +127,7 @@ describe('StreamingToolExecutor — hook integration', () => {
     const preflight = new PreflightHookRegistry();
     preflight.register(preflightHook);
 
-    const executor = new StreamingToolExecutor(registry, noopSink, null, preflight);
+    const executor = makeExecutor(registry, noopSink, { preflight });
     executor.addTool({ id: 'c1', name: 'edit_file', arguments: '{"filePath":"/test.ts"}' });
 
     const results = await executor.awaitRemaining();
@@ -133,7 +151,7 @@ describe('StreamingToolExecutor — hook integration', () => {
     const preflight = new PreflightHookRegistry();
     preflight.register(preflightHook);
 
-    const executor = new StreamingToolExecutor(registry, noopSink, null, preflight);
+    const executor = makeExecutor(registry, noopSink, { preflight });
     executor.addTool({ id: 'c1', name: 'edit_file', arguments: '{"filePath":"/foo.ts"}' });
 
     const results = await executor.awaitRemaining();
@@ -156,7 +174,7 @@ describe('StreamingToolExecutor — hook integration', () => {
     const preflight = new PreflightHookRegistry();
     preflight.register(preflightHook);
 
-    const executor = new StreamingToolExecutor(registry, noopSink, null, preflight);
+    const executor = makeExecutor(registry, noopSink, { preflight });
     executor.addTool({ id: 'c1', name: 'read_file_content', arguments: '{}' });
 
     const results = await executor.awaitRemaining();
@@ -183,7 +201,7 @@ describe('StreamingToolExecutor — hook integration', () => {
     const hooks = new HookRegistry();
     hooks.register(postHook);
 
-    const executor = new StreamingToolExecutor(registry, noopSink, hooks, preflight);
+    const executor = makeExecutor(registry, noopSink, { hooks, preflight });
     executor.addTool({ id: 'c1', name: 'edit_file', arguments: '{}' });
 
     const results = await executor.awaitRemaining();
@@ -207,7 +225,7 @@ describe('StreamingToolExecutor — hook integration', () => {
     const hooks = new HookRegistry();
     hooks.register(crashHook);
 
-    const executor = new StreamingToolExecutor(registry, noopSink, hooks, null);
+    const executor = makeExecutor(registry, noopSink, { hooks });
     executor.addTool({ id: 'c1', name: 'read_file_content', arguments: '{}' });
 
     const results = await executor.awaitRemaining();
@@ -230,7 +248,7 @@ describe('StreamingToolExecutor — hook integration', () => {
     const preflight = new PreflightHookRegistry();
     preflight.register(crashHook);
 
-    const executor = new StreamingToolExecutor(registry, noopSink, null, preflight);
+    const executor = makeExecutor(registry, noopSink, { preflight });
     executor.addTool({ id: 'c1', name: 'edit_file', arguments: '{}' });
 
     const results = await executor.awaitRemaining();
@@ -262,7 +280,7 @@ describe('StreamingToolExecutor — hook integration', () => {
     const preflight = new PreflightHookRegistry();
     preflight.register(preflightHook);
 
-    const executor = new StreamingToolExecutor(registry, noopSink, null, preflight);
+    const executor = makeExecutor(registry, noopSink, { preflight });
     executor.addTool({ id: 'c1', name: 'delete_file', arguments: '{"filePath":"/x.ts"}' });
 
     const results = await executor.awaitRemaining();
@@ -284,7 +302,7 @@ describe('StreamingToolExecutor — hook integration', () => {
     const preflight = new PreflightHookRegistry();
     preflight.register(preflightHook);
 
-    const executor = new StreamingToolExecutor(registry, noopSink, null, preflight);
+    const executor = makeExecutor(registry, noopSink, { preflight });
     executor.addTool({ id: 'c1', name: 'rename_file', arguments: '{"filePath":"/x.ts"}' });
 
     const results = await executor.awaitRemaining();
@@ -299,7 +317,7 @@ describe('StreamingToolExecutor — unknown tool', () => {
     const registry = makeRegistry([]); // nothing registered — the call is hallucinated
 
     const events: AgentEvent[] = [];
-    const executor = new StreamingToolExecutor(registry, (ev) => events.push(ev), null, null);
+    const executor = makeExecutor(registry, (ev) => events.push(ev));
     executor.addTool({ id: 'c-ghost', name: 'hallucinated_tool', arguments: '{}' });
 
     const results = await executor.awaitRemaining();
@@ -333,7 +351,7 @@ describe('StreamingToolExecutor — abort settles pending tools (会话 223 事�
     const registry = makeRegistry([neverTool]);
     const events: AgentEvent[] = [];
     const ctrl = new AbortController();
-    const executor = new StreamingToolExecutor(registry, (ev) => events.push(ev), null, null, null, ctrl.signal);
+    const executor = makeExecutor(registry, (ev) => events.push(ev), { signal: ctrl.signal });
     executor.addTool({ id: 'c-shell', name: 'run_shell', arguments: '{"command":"cargo test"}' });
     ctrl.abort();
 
@@ -368,7 +386,7 @@ describe('StreamingToolExecutor — abort settles pending tools (会话 223 事�
     const registry = makeRegistry([slowTool]);
     const events: AgentEvent[] = [];
     const ctrl = new AbortController();
-    const executor = new StreamingToolExecutor(registry, (ev) => events.push(ev), null, null, null, ctrl.signal);
+    const executor = makeExecutor(registry, (ev) => events.push(ev), { signal: ctrl.signal });
     executor.addTool({ id: 'c-fast', name: 'search_content', arguments: '{"_testId":"c-fast"}' });
     executor.addTool({ id: 'c-slow', name: 'search_content', arguments: '{"_testId":"c-slow"}' });
 

@@ -10,6 +10,7 @@
 
 // 注意用例次序：① 必须先于任何 ensureProductionChannelsBooted() 调用。
 
+import { AgentEventBus, attachPlanGate } from '../src/agent/events';
 import { planGateCheck } from '../src/agent/plan/plan-registry';
 import { PlanStateManager } from '../src/agent/plan/plan-state';
 import { StreamingToolExecutor } from '../src/agent/streaming-executor';
@@ -120,7 +121,9 @@ describe('shell seam（ctx.shell · D11 施工⑤）', () => {
     registry.register(shellTool);
     const ps = new PlanStateManager();
     const gate = (name: string, args: Record<string, unknown>, tool: Tool) => planGateCheck(ps, name, args, tool);
-    const executor = new StreamingToolExecutor(registry, () => {}, null, null, null, null, gate);
+    const bus = new AgentEventBus();
+    attachPlanGate(bus, gate);
+    const executor = new StreamingToolExecutor(registry, () => {}, null, null, bus);
 
     // plan 未激活 → 放行，内存 provider 服务（dispatch 不触——替代实现）
     executor.addTool({ id: 'c0', name: 'shell', arguments: '{"action":"run","command":"echo hi"}' });
@@ -131,7 +134,7 @@ describe('shell seam（ctx.shell · D11 施工⑤）', () => {
 
     // plan 激活 → 管道层拦截，provider/dispatch 均未触（换 provider 不豁免 gate）
     ps.enter('/proj');
-    const ex2 = new StreamingToolExecutor(registry, () => {}, null, null, null, null, gate);
+    const ex2 = new StreamingToolExecutor(registry, () => {}, null, null, bus);
     ex2.addTool({ id: 'c1', name: 'shell', arguments: '{"action":"run","command":"rm -rf /"}' });
     const blocked = await ex2.awaitRemaining();
     expect(blocked[0]?.output).toContain('[已拦截]');

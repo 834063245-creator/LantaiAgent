@@ -9,20 +9,18 @@
 //   subagent-seam ③ 已各自覆盖；本测试证明三 seam 正交共存不互相污染。）
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { Context } from '../src/cordis';
-import { createFsTools } from '../src/agent/tools/coding';
-import { createProvider } from '../src/provider/index';
-import type { LlmAdapterContribution } from '../src/composition/services';
-import { ensureProductionChannelsBooted } from './helpers/composition-boot';
-import type { FsProvider } from '../src/composition/fs-service';
-import type { SubagentProvider } from '../src/composition/subagent-service';
-import type { SubAgentSpawnHost } from '../src/agent/subagent-spawn';
-import type { ToolExecutor } from '../src/agent/tool';
 import { Agent } from '../src/agent/agent';
-import { AgentContext } from '../src/agent/context';
-import type { ToolRegistry } from '../src/agent/tool';
-import type { Provider } from '../src/provider/types';
 import { resetAgentLoopForTests } from '../src/agent/agent-loop/agent-loop-service';
+import { AgentContext } from '../src/agent/context';
+import type { SubAgentSpawnHost } from '../src/agent/subagent-spawn';
+import type { ToolExecutor, ToolRegistry } from '../src/agent/tool';
+import { createFsTools } from '../src/agent/tools/coding';
+import type { FsProvider } from '../src/composition/fs-service';
+import type { LlmAdapterContribution } from '../src/composition/services';
+import type { SubagentProvider } from '../src/composition/subagent-service';
+import { createProvider } from '../src/provider/index';
+import type { Provider } from '../src/provider/types';
+import { ensureProductionChannelsBooted } from './helpers/composition-boot';
 
 afterEach(() => {
   resetAgentLoopForTests();
@@ -89,11 +87,14 @@ describe('P6-C2 跨 seam 替换集成（llm + fs + subagents 同时换实现）'
 
     // ③ subagents：Agent.spawnSubAgent 路由到假 provider
     const agent = new Agent(
-      new AgentContext({ agentId: 'cross', parentId: null, subagentDepth: 0 }, {
-        provider: stubProvider(),
-        tools: stubRegistry(),
-        eventSink: () => {},
-      }),
+      new AgentContext(
+        { agentId: 'cross', parentId: null, subagentDepth: 0 },
+        {
+          provider: stubProvider(),
+          tools: stubRegistry(),
+          eventSink: () => {},
+        },
+      ),
       'test',
     );
     const out = await agent.spawnSubAgent('cross-seam-task', 'probe');

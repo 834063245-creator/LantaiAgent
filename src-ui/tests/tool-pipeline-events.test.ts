@@ -1,10 +1,12 @@
 // 类型化事件管道测试（agent-core-convergence Phase 2 / 验证计划 V2 T1 + T2）。
 //
 // T1：AgentEventBus 各 mode 的调度顺序与短路语义、listener disposer 移除。
-// T2：差分矩阵——同一 ToolCall fixture 分别跑 legacy 直调路径与 event pipeline
-//     路径，比较 PendingResult 与 legacy sink 事件序列必须逐项一致。
+// T2：全覆盖矩阵——同一组 ToolCall fixture 经 eventBus 路径跑 StreamingToolExecutor
+//     （平台化 Phase 5 后唯一管道，legacy 直调参数已拆），验证每个调用都有
+//     结果落账且 sink 事件成对（ToolDispatch → ToolResult/ToolError）。
 import { describe, expect, it } from 'vitest';
 import type { ToolPipelineContext } from '../src/agent/agent-types';
+import { EventKind } from '../src/agent/agent-types';
 import { AgentEventBus, attachHookRegistry, attachPlanGate, attachPreflightRegistry } from '../src/agent/events';
 import { HookRegistry, PreflightHookRegistry } from '../src/agent/hooks';
 import { type PlanGate, planGateCheck } from '../src/agent/plan/plan-registry';
@@ -162,8 +164,8 @@ describe('T1 — AgentEventBus 调度语义', () => {
 });
 
 // ═══════════════════════════════════════════════════════
-// T2 — 差分矩阵：legacy 直调 vs event pipeline（验证计划 V2 T2）
-// 纪律：两侧各自独立构建夹具实例（不共享 registry/hooks），防共享同一 bug。
+// T2 — eventBus 路径全覆盖矩阵（验证计划 V2 T2）
+// 平台化 Phase 5：executor 只有 eventBus 一条管道（legacy 直调参数已拆）。
 // ═══════════════════════════════════════════════════════
 
 interface DiffFixture {
@@ -413,29 +415,14 @@ function sinkRecorder() {
   return { events, sink };
 }
 
-async function runLegacy(c: { fixture: DiffFixture }): Promise<SideOutcome> {
-  const f = c.fixture;
-  const { events, sink } = sinkRecorder();
-  const ex = new StreamingToolExecutor(
-    f.registry(),
-    sink as never,
-    f.hooks?.() ?? null,
-    f.preflight?.() ?? null,
-    null,
-    f.signal?.() ?? null,
-    f.planGate ?? null,
-  );
-  return finish(ex, f, events);
-}
-
-async function runPipeline(c: { fixture: DiffFixture }): Promise<SideOutcome> {
+async function runEventBus(c: { fixture: DiffFixture }): Promise<SideOutcome> {
   const f = c.fixture;
   const { events, sink } = sinkRecorder();
   const bus = new AgentEventBus();
   if (f.planGate) attachPlanGate(bus, f.planGate);
   if (f.preflight) attachPreflightRegistry(bus, f.preflight());
   if (f.hooks) attachHookRegistry(bus, f.hooks());
-  const ex = new StreamingToolExecutor(f.registry(), sink as never, null, null, null, f.signal?.() ?? null, null, bus);
+  const ex = new StreamingToolExecutor(f.registry(), sink as never, null, f.signal?.() ?? null, bus);
   return finish(ex, f, events);
 }
 
@@ -462,14 +449,19 @@ async function finish(
   return { events, results, threw };
 }
 
-describe('T2 — 差分矩阵：legacy 直调 vs event pipeline', () => {
+describe('T2 — eventBus 路径全覆盖矩阵（唯一管道）', () => {
   for (const c of diffCases()) {
-    it(`${c.label}：PendingResult 与 sink 事件序列逐项一致`, async () => {
-      const legacy = await runLegacy(c);
-      const pipeline = await runPipeline(c);
-      expect(pipeline.results).toEqual(legacy.results);
-      expect(pipeline.events).toEqual(legacy.events);
-      expect(pipeline.threw).toBe(legacy.threw);
+    it(`${c.label}：每个调用都有结果落账，sink 事件守恒（dispatch = result + error）`, async () => {
+      const out = await runEventBus(c);
+      // 每个调用必有结果（含拦截 / 取消 / 错误路径）
+      expect(out.results).toHaveLength(c.fixture.calls.length);
+      // sink 事件守恒：每个调用恰好一次 ToolDispatch + 一次终态（ToolResult 或 ToolError）
+      const dispatchN = out.events.filter((e) => e.kind === String(EventKind.ToolDispatch)).length;
+      const terminalN =
+        out.events.filter((e) => e.kind === String(EventKind.ToolResult)).length +
+        out.events.filter((e) => e.kind === String(EventKind.ToolError)).length;
+      expect(dispatchN).toBe(c.fixture.calls.length);
+      expect(terminalN).toBe(c.fixture.calls.length);
     });
   }
 
@@ -495,7 +487,7 @@ describe('T2 — 差分矩阵：legacy 直调 vs event pipeline', () => {
     const dg = bus.on('tool/guard', (ctx) => (ctx.call.name === 'fs' ? '[已拦截] 自定义守卫 veto' : null), {
       priority: 5,
     });
-    const ex1 = new StreamingToolExecutor(regOf(fsToy()), () => {}, null, null, null, null, null, bus);
+    const ex1 = new StreamingToolExecutor(regOf(fsToy()), () => {}, null, null, bus);
     ex1.addTool(call('c1', 'fs', '{"action":"write","filePath":"/proj/a.ts"}'));
     await ex1.awaitRemaining();
     dg();
@@ -504,9 +496,6 @@ describe('T2 — 差分矩阵：legacy 直调 vs event pipeline', () => {
     const ex2 = new StreamingToolExecutor(
       regOf(toyTool('edit_file', { readOnly: () => false, execute: async () => 'edited' }), toyTool('search_content')),
       () => {},
-      null,
-      null,
-      null,
       null,
       null,
       bus,

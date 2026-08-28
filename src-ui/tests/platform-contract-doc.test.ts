@@ -42,7 +42,15 @@ describe('P6-C1 平台契约文档形状守卫', () => {
   it('plugins README §0 平台契约总览含全部 seam + 信任模型二分 + 契约版本指针', () => {
     const readme = readFileSync(PLUGINS_README, 'utf8');
     expect(readme).toContain('# 0. 平台契约总览');
-    for (const seam of ['ctx.llm', 'ctx.subagents', 'ctx.fs', 'ctx.shell', 'ctx.sessionPersistence', 'ctx.graph', 'ctx.agentLoop']) {
+    for (const seam of [
+      'ctx.llm',
+      'ctx.subagents',
+      'ctx.fs',
+      'ctx.shell',
+      'ctx.sessionPersistence',
+      'ctx.graph',
+      'ctx.agentLoop',
+    ]) {
       expect(readme, `§0 缺 seam ${seam}`).toContain(seam);
     }
     expect(readme).toContain('swappable seam（能力契约层——可换实现）');
@@ -53,9 +61,7 @@ describe('P6-C1 平台契约文档形状守卫', () => {
   });
 
   it('发布路径文档存在（docs/user/develop/publishing-plugins.md）', () => {
-    expect(
-      existsSync(path.join(ROOT, 'docs', 'user', 'develop', 'publishing-plugins.md')),
-    ).toBe(true);
+    expect(existsSync(path.join(ROOT, 'docs', 'user', 'develop', 'publishing-plugins.md'))).toBe(true);
   });
 
   it('开放面契约文档含当前版本与变更记录', () => {

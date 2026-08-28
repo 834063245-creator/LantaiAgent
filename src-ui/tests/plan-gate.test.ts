@@ -2,6 +2,7 @@
 // plan 模式不再切换工具注册表（schema 跨模式恒定保 DeepSeek 前缀缓存），
 // 写约束在执行层按 planState 运行时拦截。
 import { describe, expect, it } from 'vitest';
+import { AgentEventBus, attachPlanGate } from '../src/agent/events';
 import { type PlanGate, planGateCheck, planRegistry } from '../src/agent/plan/plan-registry';
 import { PlanStateManager } from '../src/agent/plan/plan-state';
 import { StreamingToolExecutor } from '../src/agent/streaming-executor';
@@ -69,7 +70,9 @@ function setup(gateState: PlanStateManager | null, ...tools: Tool[]) {
   const registry = new ToolRegistry();
   for (const t of tools) registry.register(t);
   const gate: PlanGate = (name, args, tool) => planGateCheck(gateState, name, args, tool);
-  const executor = new StreamingToolExecutor(registry, () => {}, null, null, null, null, gate);
+  const bus = new AgentEventBus();
+  attachPlanGate(bus, gate);
+  const executor = new StreamingToolExecutor(registry, () => {}, null, null, bus);
   return executor;
 }
 

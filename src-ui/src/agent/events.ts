@@ -3,7 +3,7 @@
 
 // 类型化事件管道 — agent-core-convergence Phase 2 + 平台化 Phase 1 D4 扩域。
 //
-// 把 StreamingToolExecutor 的硬编码执行阶段显式化为可组合、可排序、可短路的事件：
+// 把 StreamingToolExecutor 的执行阶段显式化为可组合、可排序、可短路的事件：
 //   tool/guard    (waterfall·同步短路) 派发前裁决——planGate 等守卫，非空返回 = 拦截
 //   tool/preflight(serial·同步聚合)    执行前预检——聚合 warning，保持 HIGH gate 语义
 //   tool/around   (waterfall·异步串流) 执行后富化——输出流过监听器
@@ -16,14 +16,14 @@
 // R1 声明：本域事件是可观测监听面，**非模型可见、不进 session log**——session 溯源
 // 仍走三入口 + 既有 'turn/start' sessionLog append，双轨不混。
 //
-// 与旧 EventKind sink 的关系：本 bus 是执行管道内部机制；模型/UI 可见事件仍由
-// executor 双发（bus + legacy emit），UI 零改动。
+// 与 EventKind sink 的关系：本 bus 是执行管道内部机制；模型/UI 可见事件仍由
+// executor 双发（bus + sink），UI 零改动。
 //
 // 纪律（验证计划 Phase 2 T0 + D4 完整性 guard）：新增事件必须声明 mode 且 ∈
 // serial|parallel|waterfall|emit；loop/能力域事件必须同时在 LOOP_EVENT_PAYLOADS
-// 声明载荷形状（tests/agent-loop-events.test.ts 双向钉住）。容错语义与 legacy
-// 逐点对齐：
-//   - guard 不吞异常（legacy planGate 无 try/catch，抛错即传播）；
+// 声明载荷形状（tests/agent-loop-events.test.ts 双向钉住）。容错语义与历史
+// 实现逐点对齐：
+//   - guard 不吞异常（历史 planGate 直调无 try/catch，抛错即传播）；
 //   - preflight / around 的静默降级由适配层（attach*）负责，与旧 executor 相同；
 //   - emit 不吞异常（观察者抛错是 bug，暴露优于掩盖）。
 
@@ -187,7 +187,7 @@ export class AgentEventBus {
   }
 
   /** 派发前守卫：按优先级同步执行，首个非 null 返回值短路。
-   *  不吞异常——与 legacy planGate 直调行为一致。 */
+   *  不吞异常——历史 planGate 直调无 try/catch，抛错即传播。 */
   runGuard(ctx: ToolPipelineContext): string | null {
     for (const e of this.ordered('tool/guard')) {
       const verdict = (e.fn as GuardListener)(ctx);
@@ -265,13 +265,10 @@ export class AgentEventBus {
 }
 
 // ── 适配层：planGate / preflight / hooks 经 bus 监听接线（生产路径）──
-// 平台化 Phase 5：executor 生产路径统一走 eventBus（Agent 构造期
-// attach* 接线；bus 非空时 executor 优先 bus、legacy 直调参数被忽略——
-// 差分 trace fixture 钉住逐字节等价）。本层即生产事实，不再有「两路径
-// 并存」的过渡态（legacy 直调仅存在于未传 bus 的旧调用点）。
+// 平台化 Phase 5：executor 统一走 eventBus（Agent 构造期 attach* 接线）；
+// 本层即生产事实，executor 不再有 legacy 直调参数。
 
-/** planGate → tool/guard 监听。非法 JSON（args null）放行至 invalid-JSON 错误路径，
- *  与 legacy addTool 的 lenient parse 行为一致。 */
+/** planGate → tool/guard 监听。非法 JSON（args null）放行至 invalid-JSON 错误路径。 */
 export function attachPlanGate(bus: AgentEventBus, gate: PlanGate, opts: ListenerOptions = {}): Disposer {
   return bus.on(
     'tool/guard',

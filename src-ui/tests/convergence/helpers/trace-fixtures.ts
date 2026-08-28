@@ -1,10 +1,8 @@
-// Convergence 测试基建 — hook-pipeline trace 夹具（Phase 0 冻结，Phase 2 差分复用）。
+// Convergence 测试基建 — hook-pipeline trace 夹具（Phase 0 冻结，Phase 2 复用）。
 //
-// 同一组 fixture 驱动两条执行路径：
-//   legacy   —— StreamingToolExecutor 旧直调路径（hooks/preflightHooks/planGate ctor 注入）
-//   pipeline —— eventBus 路径（attach* 适配器挂进 AgentEventBus）
-// Phase 2 的等价性证明：两条路径对同一 fixture 产出与 phase-0/hook-pipeline.trace.json
-// 冻结 baseline 逐字节一致的 trace。
+// 平台化 Phase 5（D13）后 executor 只有 eventBus 一条路径（legacy 直调参数已拆），
+// fixture 统一经 eventBus 路径（attach* 适配器挂进 AgentEventBus）跑，产出与
+// phase-0/hook-pipeline.trace.json 冻结 baseline 逐字节一致的 trace。
 
 import { EventKind } from '../../../src/agent/agent-types';
 import { AgentEventBus, attachHookRegistry, attachPlanGate, attachPreflightRegistry } from '../../../src/agent/events';
@@ -15,8 +13,6 @@ import { StreamingToolExecutor } from '../../../src/agent/streaming-executor';
 import { type Tool, ToolRegistry } from '../../../src/agent/tool';
 import type { ToolCall } from '../../../src/provider/types';
 import { enrichableTool, fsDomainTool, legacyEditTool, progressTool, readOnlyTool, throwingTool } from './fixtures';
-
-export type TraceMode = 'legacy' | 'pipeline';
 
 export interface TraceCase {
   label: string;
@@ -142,28 +138,15 @@ function regWith(...tools: Tool[]): ToolRegistry {
   return registry;
 }
 
-/** 以指定模式跑一个 trace case，返回与 phase-0 baseline 同构的 trace 结构。 */
-export async function runTraceCase(c: TraceCase, mode: TraceMode = 'legacy') {
+/** 跑一个 trace case，返回与 phase-0 baseline 同构的 trace 结构（统一 eventBus 路径）。 */
+export async function runTraceCase(c: TraceCase) {
   const events: Array<{ kind: string; name: string | undefined; chunk?: string }> = [];
   const { registry, hooks, preflight, planGate } = c.build();
-  let ex: StreamingToolExecutor;
-  if (mode === 'pipeline') {
-    const bus = new AgentEventBus();
-    if (planGate) attachPlanGate(bus, planGate);
-    if (preflight) attachPreflightRegistry(bus, preflight);
-    if (hooks) attachHookRegistry(bus, hooks);
-    ex = new StreamingToolExecutor(registry, makeSink(events), null, null, null, null, null, bus);
-  } else {
-    ex = new StreamingToolExecutor(
-      registry,
-      makeSink(events),
-      hooks ?? null,
-      preflight ?? null,
-      null,
-      null,
-      planGate ?? null,
-    );
-  }
+  const bus = new AgentEventBus();
+  if (planGate) attachPlanGate(bus, planGate);
+  if (preflight) attachPreflightRegistry(bus, preflight);
+  if (hooks) attachHookRegistry(bus, hooks);
+  const ex = new StreamingToolExecutor(registry, makeSink(events), null, null, bus);
   for (const call of c.calls) ex.addTool(call as ToolCall);
   const results = await ex.awaitRemaining();
   return {
