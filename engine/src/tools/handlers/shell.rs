@@ -158,12 +158,12 @@ pub(crate) fn handler_ensure_ready(args: &Value) -> ToolResponse {
     }
     let (nodes, edges) = engine::engine_read(|idx| (idx.node_count(), idx.edge_count()))
         .unwrap_or((0, 0));
+    // watching 不进契约（环境状态而非就绪语义；进程内外形态天然不同）。
     ToolResponse::Success(json!({
         "ready": nodes > 0,
         "node_count": nodes,
         "edge_count": edges,
         "project_root": bound.to_string_lossy(),
-        "watching": engine::with_engine(|e| e.is_watching()).unwrap_or(false),
     }))
 }
 

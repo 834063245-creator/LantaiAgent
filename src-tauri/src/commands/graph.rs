@@ -72,19 +72,3 @@ pub(crate) async fn hologram_file_nodes(
     )
     .await
 }
-
-#[tauri::command]
-pub(crate) async fn engine_impact(
-    node_id: String,
-    max_depth: usize,
-    state: tauri::State<'_, crate::WorkspaceState>,
-    app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
-) -> Result<String, String> {
-    crate::app::services::graph_service::engine_impact(
-        node_id,
-        max_depth,
-        state.inner().clone(),
-        app_ctx.inner().clone(),
-    )
-    .await
-}

@@ -192,8 +192,8 @@ flowchart LR
 | 向量层 | `cd hologram-vector && cargo test` | 16 passed + 1 ignored（2026-08-25 L5b 实测；真实索引测试无文件自动跳过） |
 | 存储层 | `cd hologram-storage && cargo test` | 46 passed（2026-08-25 L5b 实测；memory/store/snapshot/sqlite 全套随 crate 迁入） |
 | 引擎 | `cd engine && cargo test` | lib 584 + bin 0 + doc 0（2026-08-29 引擎插件化 Phase 1 实测全绿；bin 测试 27 个已删——TCP 旧协议面本就排定 Phase 3 拆除，且其 analyze 用例与 DSH 常驻引擎进程叠加造成「测试 hang」误判链；storage/vector/graph 测试已随 crate 拆出，总数对账见 layering-rework-plan §4.6） |
-| 壳 | `cd src-tauri && cargo test` | bin 422 + 集成 14（2026-08-25 L5b 实测全绿；含 attach 事实校验/决议链优先级/直连白名单守卫 + 新增 storage/vector 引用守卫；集成测试本机建议 `-- --test-threads=1`；cdp e2e 按环境偶现 ±1，UIA 真实窗口 e2e 需 `HOLOGRAM_UIA_E2E=1`） |
-| 前端 | `cd src-ui && npx vitest run` | 172 文件 1692 passed / 1 skipped（2026-08-25 实测；convergence 双 preset 零漂移；本机注意：父进程带 `NODE_ENV=production` 会使 convergence specs 收集阶段报 `No such built-in module: node:` 并剥 devDependencies——跑测试前清掉该变量） |
+| 壳 | `cd src-tauri && cargo test` | bins+lib 420 + 集成 16（2026-08-29 引擎插件化 Phase 2 实测全绿；含直连白名单守卫/storage·vector 引用守卫/transport 差分对拍；集成测试本机建议 `-- --test-threads=1`；cdp e2e 按环境偶现 ±1，UIA 真实窗口 e2e 需 `HOLOGRAM_UIA_E2E=1`） |
+| 前端 | `cd src-ui && npx vitest run` | 203 文件 1895 passed / 4 skipped（2026-08-29 引擎插件化 Phase 2 实测；convergence 双 preset 零漂移；本机注意：父进程带 `NODE_ENV=production` 会使 convergence specs 收集阶段报 `No such built-in module: node:` 并剥 devDependencies——跑测试前清掉该变量） |
 | 前端构建 | `cd src-ui && npm run build` | tsc --noEmit + vite build 全绿 |
 | Agent 运行时/组合层 | `cd src-ui && npm run verify:convergence` | exit 0（T0 静态 + 全部 phase specs 对拍 8 baseline + system-prompt.fixture；standard preset 零漂移）；baseline 变更走 `docs/archive/agent-core-convergence/baseline-change-request.md` 审批 |
 | 前端格式 | `cd src-ui && npx biome ci .` | **0 errors / 0 warnings（2026-08-24 存量清零，保持归零）**；行尾政策见根 `.gitattributes`（默认 LF，cmd/bat/ps1 除外）——新 clone 后 `npx biome check --write <改动文件>` 即可，勿引入 CRLF |
@@ -201,7 +201,7 @@ flowchart LR
 
 CI 只做编译 + 测试；`.github/workflows/ci.yml` 仅经用户拍板可改（2026-08-25 用户授权：engine job 改 workspace 全量测试 `cargo test --release --workspace --exclude lantai`，覆盖三个新拆 crate）。
 
-> ⚠ **测试运行纪律（2026-08-29 立规，实测踩坑 2 小时）**：cargo 测试一律 **`--no-run` 先链接、再前台直跑测试二进制、输出直写文件**，禁止 `| tail` 管道后台跑（管道缓冲全程无输出 + 收尾假挂，会把「冷链接 2-10 分钟」误判成 hang）。**`hologram-engine.exe`（`serve --project-root …`，46MB 常驻）是用户 DSH 应用的子进程，绝不能 taskkill**——它崩溃自动重启，杀了会误导排障。
+> ⚠ **测试运行纪律（2026-08-29 立规，实测踩坑 2 小时）**：cargo 测试一律 **`--no-run` 先链接、再前台直跑测试二进制、输出直写文件**，禁止 `| tail` 管道后台跑（管道缓冲全程无输出 + 收尾假挂，会把「冷链接 2-10 分钟」误判成 hang）。**`hologram-engine.exe`（`serve --project-root …`，46MB 常驻）是用户 DSH 应用的子进程，绝不能 taskkill**——它崩溃自动重启，杀了会误导排障。补充三条（2026-08-29 续窗实测）：① PowerShell `>` 对原生命令重定向有「收尾假挂」变体（exe 已退出但 PS 管道不收尾，前台也复现）——小输出直接由工具捕获，大输出用 `cmd /c "exe > log 2>&1"` 重定向；② cdp e2e 报「端口 Ns 内未就绪」先查 `D:\tmp\hologram-browser-profile*` 残留：失败测试 panic 不清浏览器树，僵尸 chrome + 残留 profile 自续污染后续每一轮（清进程树 + profile 目录后即绿）；③ vitest 全量报 `1 error`（Worker exited unexpectedly / heap OOM）但测试计数全过 = 有测试文件在 module/用例体内自旋（事件循环被饿死连 testTimeout 都不触发）——**别调大堆**，用文件列表二分（注意：列表必须落盘后 `(Get-Content 列表)` 传参，命令内变量会被外层 shell 吞掉），单文件复现后再读代码。
 
 ## 11. 不要做的事
 

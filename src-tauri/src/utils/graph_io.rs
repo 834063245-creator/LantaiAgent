@@ -5,8 +5,6 @@
 // 死代码；graphData 改为轻量聚合快照，跨边界只传聚合面与按文件查询）。
 
 use hologram_engine as engine;
-use hologram_storage::MemoryIndex;
-
 use tauri::Emitter;
 
 use crate::utils::regenerate_file_graph;
@@ -90,16 +88,6 @@ fn cache_stale(engine: &engine::engine::Engine, root: &std::path::Path) -> bool 
     engine::tools::staleness::compute_cache_stale(root, generated_at_ms).stale
 }
 
-/// 在 MemoryIndex（基于 CSR，O(1) 邻接查询）上运行查询（显式引擎版）。
-pub(crate) fn with_index<F: FnOnce(&MemoryIndex) -> serde_json::Value>(
-    engine: &engine::engine::Engine,
-    f: F,
-) -> Result<String, String> {
-    engine
-        .read(|idx| serde_json::to_string(&f(idx)).unwrap_or_default())
-        .map_err(|e| format!("Engine error: {}", e))
-}
-
 /// 聚合快照 JSON —— graphData 的唯一装载形态（Phase 1.5）：计数/kind 分布/
 /// 边类型分布/社区规模/top 扇入扇出。聚合逻辑单一真源 =
 /// `hologram_engine::tools::graph_snapshot_value`（与引擎 graph_snapshot
@@ -118,17 +106,6 @@ pub(crate) fn graph_snapshot_json(
             .unwrap_or_default()
         })
         .map_err(|e| format!("Engine error: {e}"))
-}
-
-/// （L1 起退役）原 ensure_engine_graph —— 引擎按根绑定与就绪检查
-/// 已上收到 `AppContexts::ensure_context`（每根一实例，无「切回来」概念）；
-/// 非空校验保留为薄断言供命令层使用。
-pub(crate) fn ensure_engine_ready(engine: &engine::engine::Engine, source_root: &str) -> Result<(), String> {
-    let node_count = engine.read(|idx| idx.node_count()).unwrap_or(0);
-    if node_count == 0 {
-        return Err(format!("引擎中无图谱数据: {source_root}（请先执行分析）"));
-    }
-    Ok(())
 }
 
 pub(crate) async fn run_analyze_with_progress(

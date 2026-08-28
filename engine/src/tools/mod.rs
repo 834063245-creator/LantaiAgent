@@ -450,7 +450,8 @@ pub(crate) fn edge_to_value(e: &Edge) -> Value {
 /// pub 供壳层（src-tauri 内嵌形态）复用 —— Phase 2 transport 后壳改经
 /// MCP 调同一方法，本函数回归引擎内单一消费。
 pub fn graph_snapshot_value(g: &Graph, source_root: &str) -> Value {
-    let mut kind_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    // BTreeMap：契约面确定性（HashMap 序列化序不稳定，字节契约）。
+    let mut kind_counts: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
     let mut files: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut community_sizes: std::collections::HashMap<usize, usize> =
         std::collections::HashMap::new();
@@ -473,7 +474,7 @@ pub fn graph_snapshot_value(g: &Graph, source_root: &str) -> Value {
     }
     fan_in.sort_by(|a, b| b.2.cmp(&a.2).then(a.0.cmp(b.0)));
     fan_out.sort_by(|a, b| b.2.cmp(&a.2).then(a.0.cmp(b.0)));
-    let mut edge_kinds: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    let mut edge_kinds: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
     for e in g.edges_map().values() {
         *edge_kinds.entry(e.kind.as_str()).or_default() += 1;
     }
@@ -502,18 +503,26 @@ pub fn graph_snapshot_value(g: &Graph, source_root: &str) -> Value {
 pub fn file_nodes_value(g: &Graph, project_root: &str, want_file: &str) -> Value {
     let want = want_file.replace('\\', "/");
     let root_prefix = format!("{}/", project_root.replace('\\', "/"));
-    let mut nodes: Vec<Value> = Vec::new();
+    let mut matched: Vec<&hologram_graph::Node> = Vec::new();
     for n in g.nodes_map().values() {
         let Some(loc) = &n.location else { continue };
         let norm = handlers::graph::strip_loc_suffix(loc).replace('\\', "/");
         let rel = norm.strip_prefix(root_prefix.as_str()).unwrap_or(&norm);
         if rel == want || norm.ends_with(&want) {
-            nodes.push(json!({
-                "id": n.id, "name": n.name, "kind": n.kind.as_str(),
-                "fan_in": n.in_degree, "fan_out": n.out_degree,
-            }));
+            matched.push(n);
         }
     }
+    // 契约面确定性：HashMap 迭代序不稳定，按 id 排序输出（字节契约）。
+    matched.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str()));
+    let nodes: Vec<Value> = matched
+        .iter()
+        .map(|n| {
+            json!({
+                "id": n.id, "name": n.name, "kind": n.kind.as_str(),
+                "fan_in": n.in_degree, "fan_out": n.out_degree,
+            })
+        })
+        .collect();
     json!({ "file": want, "count": nodes.len(), "nodes": nodes })
 }
 

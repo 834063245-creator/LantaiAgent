@@ -89,6 +89,9 @@ pub(crate) struct WorkspaceDataContext {
     pub root: PathBuf,
     /// 该工作区专属引擎实例。
     pub engine: Arc<Engine>,
+    /// 进程外传输（Phase 2：惰性构造，`HOLOGRAM_ENGINE_TRANSPORT=mcp` 时
+    /// 经 resolve_transport 取用；Phase 3 翻默认后成为主路径）。
+    pub(crate) remote: std::sync::Mutex<Option<std::sync::Arc<crate::engine_transport::McpRemoteTransport>>>,
     /// 数据宿主共享句柄（L2 存储外置）——与 Engine 内部持同一 Arc。
     /// L2 crate 化后物理来源为 hologram-storage crate（经 engine 门面再导出）。
     /// ponytail: 生产面暂无直接消费（L3 业务归位时接入），e2e 测试直查
@@ -103,6 +106,12 @@ impl WorkspaceDataContext {
     /// GC 释放上下文前调用；幂等。
     pub(crate) fn shutdown(&self) {
         self.engine.stop_watcher();
+        // 进程外形态：随上下文回收关停引擎子进程（惰性 spawn 的对称清理）。
+        if let Ok(mut guard) = self.remote.lock() {
+            if let Some(t) = guard.take() {
+                t.shutdown();
+            }
+        }
     }
 }
 
@@ -156,12 +165,48 @@ impl AppContexts {
             root: canon.clone(),
             store_host: engine.store_host().clone(),
             engine: engine.clone(),
+            remote: std::sync::Mutex::new(None),
             created_at_ms: Self::now_ms(),
         });
         guard.insert(canon, ctx.clone());
         drop(guard);
         engine_bind_global_shared(engine);
         Ok(ctx)
+    }
+
+    /// 传输解析（Phase 2 接缝）：与 resolve_engine 同决议链（显式 → 活动单槽），
+    /// 按传输模式产出 InProcess（内嵌直调，缺省）或 McpRemote（每工作区一个
+    /// 引擎进程，惰性 spawn）。调用方 spawn_blocking 后 .call(method, args)。
+    pub(crate) fn resolve_transport(
+        &self,
+        explicit_root: Option<&str>,
+        fallback_root: Option<&str>,
+    ) -> Result<(std::sync::Arc<dyn crate::engine_transport::EngineTransport>, PathBuf), String> {
+        match crate::engine_transport::transport_mode() {
+            crate::engine_transport::TransportMode::InProcess => {
+                let engine = self
+                    .resolve_engine(explicit_root, fallback_root)
+                    .ok_or_else(|| "未打开工作区，请先打开项目".to_string())?;
+                let root = engine.project_root();
+                Ok((std::sync::Arc::new(crate::engine_transport::InProcessTransport::new(engine)), root))
+            }
+            crate::engine_transport::TransportMode::Mcp => {
+                let root = explicit_root
+                    .or(fallback_root)
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| "未打开工作区，请先打开项目".to_string())?;
+                let ctx = self.ensure_context(root)?;
+                let mut guard = crate::utils::lock_or_recover(&ctx.remote);
+                if guard.is_none() {
+                    *guard = Some(std::sync::Arc::new(
+                        crate::engine_transport::McpRemoteTransport::new(&ctx.root.to_string_lossy()),
+                    ));
+                }
+                let t = guard.clone().expect("just set");
+                Ok((t, ctx.root.clone()))
+            }
+        }
     }
 
     /// 上下文空闲判定回收：非活动工作区（不在保留集）→ 停 watcher + 移除
@@ -366,8 +411,6 @@ mod tests {
 
         // 白名单：文件（相对 src-tauri/src）→ 允许的全局函数直连
         let whitelist: &[(&str, &[&str])] = &[
-            // engine_impact 的决议链 None 兜底（MCP 时代语义）
-            (r"app\services\graph_service.rs", &["engine_read"]),
             // record_event 的决议链 None 兜底
             (r"app\services\hologram_service.rs", &["engine_record_timeline"]),
             // fs 命令时间线：单槽实例缺席时的全局兜底

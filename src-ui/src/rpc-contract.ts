@@ -79,10 +79,6 @@ export interface RpcContract {
     params: { file: string };
     result: string; // JSON — { file, count, nodes: [{id,name,kind,fan_in,fan_out}] }
   };
-  engine_impact: {
-    params: { node_id: string; max_depth?: number };
-    result: string; // JSON
-  };
 
   // ── Git ──────────────────────────────────────────────────
   git_status: { params: { path: string } & AgentCtx; result: string }; // JSON

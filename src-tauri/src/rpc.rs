@@ -155,7 +155,7 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // analyze_and_load：轻状态。hologram_file_nodes：按文件符号索引。
         // engine_impact：with_index 产物恒定。
         "load_graph_json" | "get_graph_snapshot" | "hologram_file_nodes"
-        | "analyze_and_load" | "engine_impact" => RpcResultShape::JsonValue,
+        | "analyze_and_load" => RpcResultShape::JsonValue,
 
         // ── Git ──
         // status（json! 构造）/log（commits 数组）恒 JSON；
@@ -354,11 +354,6 @@ async fn dispatch_rpc(
         "hologram_file_nodes" => {
             let file = req_str(&params, "file", "hologram_file_nodes")?;
             commands::graph::hologram_file_nodes(file, state, app_ctx).await
-        }
-        "engine_impact" => {
-            let node_id = req_str(&params, "node_id", "engine_impact")?;
-            let max_depth = opt_usize(&params, "max_depth").unwrap_or(3);
-            commands::graph::engine_impact(node_id, max_depth, state, app_ctx).await
         }
 
         // ═══════════════════════════════════════════════════════

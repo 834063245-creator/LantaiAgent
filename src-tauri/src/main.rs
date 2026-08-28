@@ -12,6 +12,7 @@
 mod agent_isolation;
 mod aura_memory;
 mod mcp_manager;
+mod engine_transport;
 mod pty_manager;
 mod lsp_manager;
 

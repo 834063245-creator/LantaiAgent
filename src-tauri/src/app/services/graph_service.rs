@@ -17,6 +17,19 @@ use hologram_engine::engine::Engine;
 
 use crate::app::AppContexts;
 
+/// 命令层传输解析（Phase 2 接缝）：显式根优先，其后活动工作区（单槽）回退。
+/// 按传输模式（HOLOGRAM_ENGINE_TRANSPORT）产出 InProcess 或 McpRemote。
+pub(crate) fn resolve_transport(
+    app_ctx: &Arc<AppContexts>,
+    state: &crate::WorkspaceState,
+    explicit: Option<&str>,
+) -> Result<(std::sync::Arc<dyn crate::engine_transport::EngineTransport>, String), String> {
+    let fallback = crate::utils::workspace_path(state).ok();
+    let (transport, root) = app_ctx.resolve_transport(explicit, fallback.as_deref())?;
+    let root = root.to_string_lossy().to_string();
+    Ok((transport, root))
+}
+
 /// 命令层引擎决议：显式根优先，其后活动工作区（单槽）回退。
 /// 返回 (引擎, 根路径展示形)——引擎必属该根（ensure_context 语义）。
 pub(crate) fn resolve(
@@ -71,41 +84,32 @@ pub(crate) async fn load_graph_json(
     if root.contains("..") || root.contains('\0') {
         return Err("路径包含非法字符".into());
     }
-    // 引擎图（内存/SQLite 缓存）优先 — ensure_context 只加载缓存不分析。
-    if let Ok((engine, root_disp)) = resolve(&app_ctx, &state, Some(&root)).map(|(e, r)| (e.clone(), r)) {
-        if crate::utils::ensure_engine_ready(&engine, &root_disp).is_ok() {
-            // 冷启动新鲜度门禁：SQLite 缓存可能过期（源文件在上次分析后
-            // 被修改）。过期时不阻断快照返回，但必须留痕 —— 前端紧随其后
-            // 的 analyze_and_load(force=false) 触发重分析，graph-updated
-            // 事件随后把图面换到最新快照。
-            let stale = tokio::task::spawn_blocking({
-                let engine = engine.clone();
-                let root = root.clone();
-                move || {
-                    let generated_at_ms: Option<u64> = engine
-                        .graph_generated_at()
-                        .ok()
-                        .flatten()
-                        .and_then(|s| s.parse().ok());
-                    hologram_engine::tools::staleness::compute_cache_stale(
-                        std::path::Path::new(&root),
-                        generated_at_ms,
-                    )
-                    .stale
-                }
-            })
-            .await
-            .unwrap_or(false);
-            if stale {
-                eprintln!(
-                    "[hologram] ⚠ 冷启动：SQLite 缓存的图已过期（源文件在上次分析后被修改），将触发重新分析"
-                );
-            }
-            let snap = tokio::task::spawn_blocking(move || crate::utils::graph_snapshot_json(&engine))
-                .await
-                .map_err(|e| format!("任务失败: {e}"))??;
-            return Ok(snap);
+    // 引擎图（内存/SQLite 缓存）优先 — 传输接缝（Phase 2）：内嵌/进程外
+    // 两形态同方法面（graph_snapshot / cache_stale），差分对拍钉等价。
+    if let Ok((transport, root_disp)) = resolve_transport(&app_ctx, &state, Some(&root)) {
+        let stale_transport = transport.clone();
+        let stale_root = root_disp.clone();
+        let stale = tokio::task::spawn_blocking(move || {
+            let raw = stale_transport
+                .call("cache_stale", &serde_json::json!({ "path": stale_root }))
+                .unwrap_or_else(|_| r#"{"stale":false}"#.into());
+            serde_json::from_str::<serde_json::Value>(&raw)
+                .ok()
+                .and_then(|v| v.get("stale").and_then(|b| b.as_bool()))
+                .unwrap_or(false)
+        })
+        .await
+        .unwrap_or(false);
+        if stale {
+            eprintln!(
+                "[hologram] ⚠ 冷启动：SQLite 缓存的图已过期（源文件在上次分析后被修改），将触发重新分析"
+            );
         }
+        let snap = tokio::task::spawn_blocking(move || transport.call("graph_snapshot", &serde_json::json!({})))
+            .await
+            .map_err(|e| format!("任务失败: {e}"))?
+            ?;
+        return Ok(snap);
     }
     Err("No cached graph found".into())
 }
@@ -145,10 +149,9 @@ pub(crate) async fn get_graph_snapshot(
     state: crate::WorkspaceState,
     app_ctx: Arc<AppContexts>,
 ) -> Result<String, String> {
-    let (engine, root) = resolve(&app_ctx, &state, None)?;
+    let (transport, _root) = resolve_transport(&app_ctx, &state, None)?;
     let snap = tokio::task::spawn_blocking(move || {
-        crate::utils::ensure_engine_ready(&engine, &root)?;
-        crate::utils::graph_snapshot_json(&engine)
+        transport.call("graph_snapshot", &serde_json::json!({}))
     })
     .await
     .map_err(|e| format!("任务失败: {e}"))??;
@@ -163,51 +166,10 @@ pub(crate) async fn hologram_file_nodes(
     state: crate::WorkspaceState,
     app_ctx: Arc<AppContexts>,
 ) -> Result<String, String> {
-    let (engine, root) = resolve(&app_ctx, &state, None)?;
-    let value = tokio::task::spawn_blocking(move || {
-        engine.read(|idx| {
-            let g = hologram_engine::engine::graph_from_index(idx);
-            hologram_engine::tools::file_nodes_value(
-                &g,
-                &hologram_engine::path_utils::normalize_path(&root),
-                &file,
-            )
-        })
+    let (transport, _root) = resolve_transport(&app_ctx, &state, None)?;
+    tokio::task::spawn_blocking(move || {
+        transport.call("file_nodes", &serde_json::json!({ "file": file }))
     })
     .await
     .map_err(|e| format!("任务失败: {e}"))?
-    .map_err(|e| format!("Engine error: {e}"))?;
-    serde_json::to_string(&value).map_err(|e| format!("序列化失败: {e}"))
-}
-
-/// engine_impact 业务体：决议链命中最左；全空回落全局（MCP 时代语义）。
-pub(crate) async fn engine_impact(
-    node_id: String,
-    max_depth: usize,
-    state: crate::WorkspaceState,
-    app_ctx: Arc<AppContexts>,
-) -> Result<String, String> {
-    let fallback = crate::utils::workspace_path(&state).ok();
-    match app_ctx.resolve_engine(None, fallback.as_deref()) {
-        Some(engine) => {
-            tokio::task::spawn_blocking(move || {
-                crate::utils::with_index(&engine, move |idx| {
-                    let layers = idx.impact(&node_id, max_depth);
-                    serde_json::json!({"layers": layers})
-                })
-            })
-            .await
-            .map_err(|e| format!("任务失败: {e}"))?
-        }
-        None => tokio::task::spawn_blocking(move || {
-            hologram_engine::engine::engine_read(|idx| {
-                let layers = idx.impact(&node_id, max_depth);
-                serde_json::to_string(&serde_json::json!({"layers": layers}))
-                    .unwrap_or_default()
-            })
-            .map_err(|e| format!("Engine error: {e}"))
-        })
-        .await
-        .map_err(|e| format!("任务失败: {e}"))?,
-    }
 }

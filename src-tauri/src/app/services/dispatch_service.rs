@@ -38,9 +38,10 @@ pub(crate) fn dispatch_engine(tool: &str, args: &serde_json::Value) -> Result<St
     Ok(text.to_string())
 }
 
-/// hologram_call 业务体：决议引擎 → TLS 绑定（with_current）dispatch；
-/// 全空回落全局（MCP 时代语义）。validate_project 的 changed_files 注入
-/// 由壳层命令完成（读单槽 state）。
+/// hologram_call 业务体（Phase 2 传输接缝）：决议传输 → 同一方法面调用。
+/// 内嵌形态 = 决议引擎 → TLS 绑定（with_current）dispatch；进程外形态 =
+/// 每工作区引擎进程 tools/call。全空回落全局（MCP 时代语义，仅内嵌臂）。
+/// validate_project 的 changed_files 注入由壳层命令完成（读单槽 state）。
 pub(crate) fn call_dispatched(
     app_ctx: &Arc<AppContexts>,
     ws_state: &crate::WorkspaceState,
@@ -48,16 +49,18 @@ pub(crate) fn call_dispatched(
     args: serde_json::Value,
     workspace: Option<String>,
 ) -> Result<String, String> {
-    let engine = {
+    let has_ctx = {
         let fallback = crate::utils::workspace_path(ws_state).ok();
-        app_ctx.resolve_engine(workspace.as_deref(), fallback.as_deref())
+        let explicit = workspace.as_deref().map(str::trim).filter(|s| !s.is_empty());
+        explicit.is_some() || fallback.as_deref().map(|s| !s.is_empty()).unwrap_or(false)
     };
-    match engine {
-        Some(engine) => {
-            hologram_engine::engine::with_current(engine, || dispatch_engine(&tool, &args))
+    if has_ctx {
+        match crate::app::services::graph_service::resolve_transport(app_ctx, ws_state, workspace.as_deref()) {
+            Ok((transport, _root)) => return transport.call(&tool, &args),
+            Err(_) => { /* 回落全局臂 */ }
         }
-        None => dispatch_engine(&tool, &args),
     }
+    dispatch_engine(&tool, &args)
 }
 
 /// 工具清单（无状态——注册表全局）。
