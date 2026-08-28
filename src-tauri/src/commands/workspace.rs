@@ -280,7 +280,12 @@ pub(crate) mod registry {
 
         /// 隔离测试：把用户主目录指到临时目录（USERPROFILE/HOME 重定向——
         /// user_lantai_dir 的解析真源），结束还原并清理。
+        /// 进程级 env 是全测试进程共享的：并行测试线程同时翻转会让
+        /// registry 路径错乱（os error 3 / 计数互串）——写侧互斥串行化，
+        /// 持锁覆盖「翻转 → 执行 → 还原」全程。
         fn with_temp_home(f: impl FnOnce()) {
+            static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+            let _guard = crate::utils::lock_or_recover(&ENV_LOCK);
             let dir = std::env::temp_dir().join(format!(
                 "lantai_ws_registry_test_{}",
                 crate::audit::now_iso().replace([':', '.'], "-")
