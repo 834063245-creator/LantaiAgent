@@ -12,32 +12,6 @@ use crate::permissions::{PermissionContext, PermissionDecision, has_permission_t
 use crate::tools;
 use crate::workspace;
 
-/// 查找 Rust 引擎可执行文件。
-/// 检查顺序：1) HOLOGRAM_ENGINE 环境变量  2) engine/target/release  3) engine/target/debug
-pub(crate) fn engine_binary() -> String {
-    if let Ok(p) = std::env::var("HOLOGRAM_ENGINE") {
-        if std::path::Path::new(&p).exists() {
-            return p;
-        }
-    }
-    let root = project_root();
-    let paths = [
-        // 打包资源：engine.exe 放在应用二进制文件旁边
-        root.join("hologram-engine.exe"),
-        // 开发布局：引擎构建在 engine/target/
-        root.join("engine/target/release/hologram-engine.exe"),
-        root.join("engine/target/debug/hologram-engine.exe"),
-    ];
-    for p in &paths {
-        if p.exists() {
-            return p.to_string_lossy().to_string();
-        }
-    }
-    // 回退：默认 debug 路径
-    project_root().join("engine/target/debug/hologram-engine.exe")
-        .to_string_lossy().to_string()
-}
-
 pub(crate) fn project_root() -> PathBuf {
     // 生产环境（已安装应用）：使用 exe 所在目录 — python/ 和 src_python/ 打包在旁边
     if let Ok(exe) = std::env::current_exe() {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 // 搜索与 glob — 编码 agent 工具。
 
-use hologram_engine::pipeline::discovery::is_ignored_path;
+use hologram_graph::is_ignored_path;
 
 /// 展开 glob 模式中的花括号表达式。
 /// "**/*.{ts,rs}" → ["**/*.ts", "**/*.rs"]

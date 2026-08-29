@@ -40,7 +40,8 @@ base64 = "0.22"
 # S4-3 插件安装通道：npm tarball 解包（纯解包，无传递风险——tar-slip 防护手写）
 tar = "0.4"
 flate2 = "1"
-hologram-engine = { path = "../engine" }
+# Phase 3（engine-plugin-extraction）：hologram-engine 依赖已摘除——
+# 引擎 = 独立子进程（hologram-engine.exe，stdio MCP），壳内零内嵌。
 hologram-graph = { path = "../hologram-graph" }
 hologram-storage = { path = "../hologram-storage" }
 hologram-vector = { path = "../hologram-vector" }

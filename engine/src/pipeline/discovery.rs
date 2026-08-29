@@ -193,39 +193,11 @@ fn collect_gitignore_rules(root: &Path) -> GitignoreRules {
     rules
 }
 
-/// 硬编码的通用排除规则（工具链、VCS、构建产物、HoloGram 运行时）。
-/// 由文件发现、watcher 和简报（preflight）共享，确保
-/// 所有子系统中的过滤行为一致。
-///
-/// 注意：不收录 `vendor`（Go/PHP 依赖树）与 `bin`（.NET 输出）——kernel
-/// 实证存在同名的真实源码目录（arch/riscv/include/uapi/asm/vendor、
-/// tools/perf/scripts/*/bin），全局 basename 排除会误伤；这些场景应
-/// 由项目自己的 .gitignore（已按 git 语义生效）处理。
-pub const IGNORED_DIRS: &[&str] = &[
-    ".git", "__pycache__", "node_modules", "venv", ".venv", "env",
-    ".tox", ".mypy_cache", ".pytest_cache", ".hg", ".svn",
-    "dist", "build", "target", ".eggs", "*.egg-info",
-    // .hologram 与 .lantai 双名共存（2026-08-23 改名）：用户硬盘上的老项目
-    // 可能永远存在未迁移的 .hologram，必须继续忽略防止被吃进图。
-    ".hologram", ".lantai", "htmlcov", ".reasonix", ".codegraph", ".ruff_cache",
-    ".next", ".nuxt", "out", ".angular", ".cache", "coverage",
-    "vendored", "generated", "tests",
-    ".vscode", ".idea", ".fleet", ".cursor",  // 编辑器
-    "Pods", ".gradle",  // CocoaPods 依赖 / Gradle 缓存 — 语义铁定的依赖目录
-];
-
-/// 目录名是否应被排除（精确名单 + 虚拟环境前缀规则）。
-/// `.venv*` / `venv-` / `venv_` 前缀覆盖带后缀命名的 Python 虚拟环境
-/// （`.venv-lme`、`.venv2`、`venv-lme`…）——精确名单匹配不上时，整棵
-/// site-packages 依赖树会漏进图（d:\newexperience 实证：1,891 个第三方
-/// py → 9 万节点 / 280MB graph JSON / 447MB sqlite）。虚拟环境目录
-/// 无源码语义，前缀匹配不会误伤真实源码（区别于 vendor/bin 的教训）。
-pub fn is_ignored_dir_name(name: &str) -> bool {
-    if IGNORED_DIRS.contains(&name) {
-        return true;
-    }
-    name.starts_with(".venv") || name.starts_with("venv-") || name.starts_with("venv_")
-}
+/// 硬编码的通用排除规则已迁 `hologram_graph::ignore`（engine-plugin-extraction
+/// Phase 3：壳层摘除 hologram-engine 依赖后仍需同一套忽略语义，纯函数
+/// 归属图类型层）。此处 re-export 保持 engine 内部路径
+/// `crate::pipeline::discovery::is_ignored_path` 零改动。
+pub use hologram_graph::{is_ignored_dir_name, is_ignored_path, IGNORED_DIRS};
 
 /// 检查目录条目是否应从遍历中排除。
 /// global_names 按 basename 匹配（兼容旧行为），anchored 按相对 root 路径匹配。
@@ -239,30 +211,6 @@ fn is_excluded(entry: &walkdir::DirEntry, rules: &GitignoreRules, root: &Path) -
     }
     let rel = rel_path_str(entry.path(), root).unwrap_or_default();
     rules.is_excluded(name, &rel)
-}
-
-/// 检查文件路径是否位于任何被忽略的目录中。
-/// 供简报系统（preflight）使用，用于过滤 `.hologram/`、`.git/`、
-/// `node_modules/` 等目录中文件的变更 — 这些是工具/运行时
-/// 产物，而非用户源代码，不应产生约束违规。
-///
-/// 同时处理 `/` 和 `\` 路径分隔符，以实现跨平台兼容。
-pub fn is_ignored_path(path: &str) -> bool {
-    let normalized = path.replace('\\', "/");
-    let mut components = normalized.split('/').peekable();
-    while let Some(component) = components.next() {
-        if components.peek().is_some() {
-            // 目录分量：精确名单 + 虚拟环境前缀规则（`.venv-lme` 等）
-            if is_ignored_dir_name(component) {
-                return true;
-            }
-        } else if IGNORED_DIRS.contains(&component) {
-            // 末位分量（文件名）：仅精确名单——前缀规则是目录语义，
-            // 套到文件名会误伤 `venv_helper.py` 这类真实文件。
-            return true;
-        }
-    }
-    false
 }
 
 #[cfg(test)]
@@ -509,51 +457,9 @@ mod tests {
         let _ = fs::remove_dir_all(&tmp);
     }
 
-    #[test]
-    fn test_is_ignored_path_hologram() {
-        assert!(is_ignored_path("D:/projects/myapp/.hologram/baseline.json"));
-        assert!(is_ignored_path("D:/projects/myapp/.hologram/memory/ctx.json"));
-        assert!(is_ignored_path(".hologram/cache/graph.json"));
-    }
-
-    #[test]
-    fn test_is_ignored_path_git() {
-        assert!(is_ignored_path("D:/projects/myapp/.git/HEAD"));
-        assert!(is_ignored_path("D:/projects/myapp/.git/config"));
-    }
-
-    #[test]
-    fn test_is_ignored_path_node_modules() {
-        assert!(is_ignored_path("D:/projects/myapp/node_modules/express/index.js"));
-        assert!(is_ignored_path("node_modules/react/index.js"));
-    }
-
-    #[test]
-    fn test_is_ignored_path_source_files() {
-        assert!(!is_ignored_path("D:/projects/myapp/src/main.rs"));
-        assert!(!is_ignored_path("src/handler.py"));
-        assert!(!is_ignored_path("app/config/settings.yaml"));
-    }
-
-    #[test]
-    fn test_venv_suffix_variants_excluded() {
-        // d:\newexperience 回归点：嵌套 venv 带后缀命名（.venv-lme）漏过
-        // 精确名单（.venv/venv），整棵 site-packages 依赖树进图 → 9 万节点。
-        for name in [".venv-lme", ".venv2", ".venv_backup", "venv-lme", "venv_foo"] {
-            assert!(is_ignored_dir_name(name), "{name} should be ignored");
-            assert!(
-                is_ignored_path(&format!("D:/proj/{name}/Lib/site-packages/pip/_internal/x.py")),
-                "{name} path should be ignored"
-            );
-        }
-        // 精确名单语义保持（旧行为回归）
-        assert!(is_ignored_dir_name(".venv"));
-        assert!(is_ignored_dir_name("venv"));
-        // 前缀规则不误伤真实源码目录
-        assert!(!is_ignored_dir_name("src"));
-        assert!(!is_ignored_dir_name("vendor"));
-        assert!(!is_ignored_path("D:/proj/src/venv_helper.py"));
-    }
+    // is_ignored_path / is_ignored_dir_name / IGNORED_DIRS 的测试已随实现
+    // 迁 hologram-graph/src/ignore.rs（Phase 3 归置）；此处保留 discover_files
+    // 与 venv 前缀规则的端到端集成验证。
 
     #[test]
     fn test_discover_skips_suffixed_venv() {
@@ -572,7 +478,6 @@ mod tests {
 
         let files = discover_files(&tmp, &["py"]);
         let names: Vec<String> = files.iter().map(|p| p.to_string_lossy().replace('\\', "/")).collect();
-
         assert!(names.iter().any(|p| p.ends_with("src/main.py")), "src/main.py should be found");
         assert!(names.iter().all(|p| !p.contains(".venv-lme")), ".venv-lme must be excluded");
 

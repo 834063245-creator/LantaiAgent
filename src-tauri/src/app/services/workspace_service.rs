@@ -27,18 +27,19 @@ pub(crate) async fn activate(
     let _ = crate::utils::LOG_GUARD.get_or_init(|| crate::logging::init_logging(project_path));
     handle.activate(&crate::utils::project_root());
 
-    // L1 兼容腰：单槽激活同时确保数据上下文——壳层 watcher / 图命令
-    // 与上下文见到的永远是同一引擎实例（杜绝同根双实例漂移）。
-    // 引擎初始化（开 SQLite）是阻塞 IO，在 spawn_blocking 中执行。
+    // L1 兼容腰：单槽激活同时确保数据上下文与传输句柄——壳层 pump / 图命令
+    // 与上下文见到的永远是同一引擎通道（同根同会话，杜绝双进程漂移）。
+    // 上下文开 SQLite（阻塞 IO）在 spawn_blocking 中执行；transport 句柄
+    // 构造是纯内存操作，引擎子进程惰性 spawn（首次调用才拉起）。
     if !path.trim().is_empty() {
         let path_for_ctx = path.trim().to_string();
-        let engine = tokio::task::spawn_blocking(move || {
-            app_ctx.ensure_context(&path_for_ctx).map(|c| c.engine.clone())
+        let transport = tokio::task::spawn_blocking(move || {
+            app_ctx.transport_of(&path_for_ctx)
         })
         .await
         .map_err(|e| format!("上下文初始化任务失败: {e}"))?;
-        match engine {
-            Ok(engine) => handle.engine = Some(engine),
+        match transport {
+            Ok(t) => handle.transport = Some(t),
             Err(e) => {
                 // 上下文失败不阻断激活（无图可用的降级与既有语义一致——
                 // 引擎损坏时命令层各自报错），但必须可见。
@@ -68,7 +69,7 @@ pub(crate) async fn activate(
 pub(crate) async fn deactivate(old_path: String, app_ctx: Arc<AppContexts>) -> Result<(), String> {
     // L1：停用时释放该根的数据上下文（workspace-session-ownership-rework
     // 2026-08-27：无会话绑定判定——引擎上下文只跟活动工作区走，切走即关）——
-    // 引擎实例停 watcher、Arc 落 Drop 关库连接。
+    // 上下文关停引擎子进程（remote.shutdown）、Arc 落 Drop 关库连接。
     if !old_path.trim().is_empty() {
         if let Some(canon) = crate::app::canonical_root(&old_path) {
             app_ctx.gc_if_unused(&canon, &[]);

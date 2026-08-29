@@ -48,15 +48,19 @@
 HoloGram/（根 Cargo.toml = workspace，五成员）
 ├── hologram-graph/    图类型层独立 crate（L5b）：Node/Edge/Graph + ID 全局驻留器；
 │                      零项目内依赖；engine 的 code_extension_set 后缀表经
-│                      set_code_extensions 注入（未注入退化通用默认表）
+│                      set_code_extensions 注入（未注入退化通用默认表）；
+│                      ignore.rs = 通用排除规则（is_ignored_path 等，engine 与壳共用）
 ├── hologram-vector/   向量检索层独立 crate（L5b）：usearch 索引 + MiniLM ONNX 嵌入；
 │                      纯计算，依赖 graph；vectors.usearch 数据文件归属仍在宿主
 ├── hologram-storage/  数据家层独立 crate（L5b）：GraphStore/MemoryIndex/SqliteDb/
 │                      快照 + StoreHost 所有权单元；依赖 graph+vector，不依赖 engine
-├── engine/            Rust 分析引擎（27 静态 tree-sitter 语法；36 默认 MCP 工具 / 37 schema；
-│                      L2 存储外置 + L5b crate 化：storage/vector/graph 三门面再导出
-│                      保持 crate::storage::vector:: 内部路径零改动；StoreHost 由宿主注入，
-│                      Engine 单根实例可多开；incremental.rs 归 pipeline/）
+├── engine/            Rust 分析引擎（27 静态 tree-sitter 语法；36 默认 MCP 工具 / 38 schema；
+│                      Phase 3 竣工：壳内嵌消费已退役，引擎唯一运行时实体 = 独立进程
+│                      `hologram-engine.exe serve`（每工作区一个，stdio MCP；11 个壳专属
+│                      hidden 方法 = 壳 host API，见 contract.rs v3）；L2 存储外置 + L5b
+│                      crate 化：storage/vector/graph 三门面再导出保持内部路径零改动；
+│                      StoreHost 由引擎自开，壳侧另开同库并发；Engine 单根实例可多开；
+│                      incremental.rs 归 pipeline/）
 ├── src-tauri/         Tauri 2 桌面壳（rpc.rs 单一 IPC 入口 + 权限沙箱 + app/ 应用层 + 命令薄壳）
 │   ├── src/app/       应用层（L1 分层重构）：WorkspaceDataContext 按工作区实例化 + 会话 attach
 │   │                  事实校验 + services/ 命令族业务（决议链：显式 path → _session_id → 焦点 → 单槽）
@@ -116,7 +120,7 @@ flowchart LR
 ## 4. 引擎能力与工具面（2026-08-17 实测）
 
 - **语言**：27 种 tree-sitter 语法静态链接；18 族适配器有专用结构查询（`.scm`，`engine/queries/` 共 38 个查询文件），其余静态语言走通用兜底；JSON 语法在代码中禁用（数据文件不解析）；Kotlin / Markdown / TOML 动态加载。
-- **引擎 MCP 工具**：37 个 schema，默认激活 36 个（`symbol_history` 为 legacy 不默认激活；`HOLOGRAM_MCP_TOOLS=*` 放开全量）。外部 MCP 客户端（Cursor/Claude Code）仍见细粒度工具名。
+- **引擎 MCP 工具**：38 个 schema，默认激活 36 个（`symbol_history` 为 legacy 不默认激活；另 11 个壳专属 hidden 方法 = 壳 host API，永不进模型 `tools/list`，真源 `contract.rs` v3；`HOLOGRAM_MCP_TOOLS=*` 放开全量）。外部 MCP 客户端（Cursor/Claude Code）仍见细粒度工具名。
 - **内置 Agent 领域工具**：模型可见工具面清单/枚举/参数以生成物为唯一事实源——
   `docs/agents/model-tool-contract.md`（`scripts/gen-tool-contract-md.cjs` 从 ToolRegistry
   装配产物生成，勿手改；变更后重新生成并同 commit，vitest 守护测试对拍漂移）。
@@ -188,12 +192,12 @@ flowchart LR
 
 | 层 | 命令 | 基线 |
 |---|---|---|
-| 图类型层 | `cd hologram-graph && cargo test` | 44 + doc 1（2026-08-25 L5b crate 化实测；含扩展名感知默认表退化语义） |
+| 图类型层 | `cd hologram-graph && cargo test` | 53 + doc 1（2026-08-29 实测；Phase 3 起 ignore.rs 承载通用排除规则 is_ignored_path/is_ignored_dir_name/IGNORED_DIRS——engine 与壳共用；含扩展名感知默认表退化语义） |
 | 向量层 | `cd hologram-vector && cargo test` | 16 passed + 1 ignored（2026-08-25 L5b 实测；真实索引测试无文件自动跳过） |
 | 存储层 | `cd hologram-storage && cargo test` | 46 passed（2026-08-25 L5b 实测；memory/store/snapshot/sqlite 全套随 crate 迁入） |
-| 引擎 | `cd engine && cargo test` | lib 584 + bin 0 + doc 0（2026-08-29 引擎插件化 Phase 1 实测全绿；bin 测试 27 个已删——TCP 旧协议面本就排定 Phase 3 拆除，且其 analyze 用例与 DSH 常驻引擎进程叠加造成「测试 hang」误判链；storage/vector/graph 测试已随 crate 拆出，总数对账见 layering-rework-plan §4.6） |
-| 壳 | `cd src-tauri && cargo test` | bins+lib 420 + 集成 16（2026-08-29 引擎插件化 Phase 2 实测全绿；含直连白名单守卫/storage·vector 引用守卫/transport 差分对拍；集成测试本机建议 `-- --test-threads=1`；cdp e2e 按环境偶现 ±1，UIA 真实窗口 e2e 需 `HOLOGRAM_UIA_E2E=1`） |
-| 前端 | `cd src-ui && npx vitest run` | 203 文件 1895 passed / 4 skipped（2026-08-29 引擎插件化 Phase 2 实测；convergence 双 preset 零漂移；本机注意：父进程带 `NODE_ENV=production` 会使 convergence specs 收集阶段报 `No such built-in module: node:` 并剥 devDependencies——跑测试前清掉该变量） |
+| 引擎 | `cd engine && cargo test` | lib 583 + bin 0 + doc 0（2026-08-29 引擎插件化 Phase 3 实测全绿；契约 v3 = 11 壳方法 + analyze_with_progress 缓存门；bin 测试 27 个已删——TCP 旧协议面本就排定 Phase 3 拆除，且其 analyze 用例与 DSH 常驻引擎进程叠加造成「测试 hang」误判链；storage/vector/graph 测试已随 crate 拆出，总数对账见 layering-rework-plan §4.6） |
+| 壳 | `cd src-tauri && cargo test` | bins+lib 411 + 集成 1（2026-08-29 引擎插件化 Phase 3 竣工实测全绿；**hologram-engine 依赖已摘**，引擎 = 进程外消费；含进程级 e2e 双工作区隔离 + 崩溃重启持久化闭环（引擎二进制缺席自动跳过）+ 直连白名单清零守卫/storage·vector 引用守卫；cdp e2e 按环境偶现 ±1，UIA 真实窗口 e2e 需 `HOLOGRAM_UIA_E2E=1`） |
+| 前端 | `cd src-ui && npx vitest run` | 203 文件 1895 passed / 4 skipped（2026-08-29 引擎插件化 Phase 3 实测；convergence 双 preset 零漂移；本机注意：父进程带 `NODE_ENV=production` 会使 convergence specs 收集阶段报 `No such built-in module: node:` 并剥 devDependencies——跑测试前清掉该变量） |
 | 前端构建 | `cd src-ui && npm run build` | tsc --noEmit + vite build 全绿 |
 | Agent 运行时/组合层 | `cd src-ui && npm run verify:convergence` | exit 0（T0 静态 + 全部 phase specs 对拍 8 baseline + system-prompt.fixture；standard preset 零漂移）；baseline 变更走 `docs/archive/agent-core-convergence/baseline-change-request.md` 审批 |
 | 前端格式 | `cd src-ui && npx biome ci .` | **0 errors / 0 warnings（2026-08-24 存量清零，保持归零）**；行尾政策见根 `.gitattributes`（默认 LF，cmd/bat/ps1 除外）——新 clone 后 `npx biome check --write <改动文件>` 即可，勿引入 CRLF |

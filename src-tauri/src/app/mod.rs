@@ -25,8 +25,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, RwLock};
 
-use hologram_engine::engine::{Engine, engine_bind_global_shared};
-
 pub(crate) mod commands;
 pub(crate) mod services;
 
@@ -82,31 +80,28 @@ pub(crate) fn display_path(p: &Path) -> String {
 /// 按工作区实例化的数据上下文。显式持**数据宿主共享句柄**——
 /// 图库（hologram.db/FTS5/快照）与 timeline 连接的归属单元在
 /// [`hologram_storage::StoreHost`]（L2 crate 化：engine/src/storage 物理拆出
-/// 为独立 crate），宿主（本上下文）创建并注入 Engine；应用层可直接经
-/// `store_host` 持久化/检查库，Engine 是计算与访问的执行方。
+/// 为独立 crate）。Phase 3（engine-plugin-extraction）起宿主自开 StoreHost
+/// （`StoreHost::open`，与引擎进程同库并发，SQLite 侧已并发安全）——
+/// 计算与访问的执行方是引擎子进程（经 `remote` transport）。
 pub(crate) struct WorkspaceDataContext {
     /// canonical 工作区根（注册表键）。
     pub root: PathBuf,
-    /// 该工作区专属引擎实例。
-    pub engine: Arc<Engine>,
     /// 进程外传输（每工作区一个引擎子进程的 stdio MCP 通道；惰性构造，
-    /// 经 resolve_transport 取用——Phase 3 起为主路径）。
+    /// 经 resolve_transport 取用）。
     pub(crate) remote: std::sync::Mutex<Option<std::sync::Arc<crate::engine_transport::McpRemoteTransport>>>,
-    /// 数据宿主共享句柄（L2 存储外置）——与 Engine 内部持同一 Arc。
-    /// L2 crate 化后物理来源为 hologram-storage crate（经 engine 门面再导出）。
+    /// 数据宿主共享句柄（L2 存储外置；Phase 3 起宿主自开，与引擎进程
+    /// 同库并发）。
     /// ponytail: 生产面暂无直接消费（L3 业务归位时接入），e2e 测试直查
-    /// （analyze_persist_query_loop_via_context）——dead_code 豁免。
+    /// ——dead_code 豁免。
     #[allow(dead_code)]
     pub(crate) store_host: Arc<Mutex<hologram_storage::StoreHost>>,
     pub created_at_ms: u64,
 }
 
 impl WorkspaceDataContext {
-    /// 优雅停机：停 watcher（增量线程）后由 Drop 关库连接。
-    /// GC 释放上下文前调用；幂等。
+    /// 优雅停机：进程外形态下随上下文回收关停引擎子进程（惰性 spawn 的
+    /// 对称清理）。GC 释放上下文前调用；幂等。
     pub(crate) fn shutdown(&self) {
-        self.engine.stop_watcher();
-        // 进程外形态：随上下文回收关停引擎子进程（惰性 spawn 的对称清理）。
         if let Ok(mut guard) = self.remote.lock() {
             if let Some(t) = guard.take() {
                 t.shutdown();
@@ -144,9 +139,7 @@ impl AppContexts {
             .as_millis() as u64
     }
 
-    /// 确保工作区上下文存在（幂等——同根复用同一实例）；创建后同步全局槽
-    /// 指向同一 Arc（hologram_call 等无解析信息的调用回退到全局时，
-    /// 与上下文见到的永远是同一实例，杜绝同根双实例漂移）。
+    /// 确保工作区上下文存在（幂等——同根复用同一实例）。
     /// ⚠ 会开 SQLite（阻塞 IO）——命令层须包 spawn_blocking。
     pub(crate) fn ensure_context(&self, root: &str) -> Result<Arc<WorkspaceDataContext>, String> {
         let canon = canonical_root(root)
@@ -159,54 +152,51 @@ impl AppContexts {
         if let Some(ctx) = guard.get(&canon) {
             return Ok(ctx.clone());
         }
-        let engine = Engine::new_shared(&canon)
-            .map_err(|e| format!("工作区引擎初始化失败 {}: {}", display_path(&canon), e))?;
+        // Phase 3：数据宿主自开（与引擎进程同库并发，SQLite 侧已并发安全）。
+        let store_host = hologram_storage::StoreHost::open(&canon)
+            .map_err(|e| format!("工作区数据宿主初始化失败 {}: {}", display_path(&canon), e))?;
         let ctx = Arc::new(WorkspaceDataContext {
             root: canon.clone(),
-            store_host: engine.store_host().clone(),
-            engine: engine.clone(),
+            store_host: Arc::new(Mutex::new(store_host)),
             remote: std::sync::Mutex::new(None),
             created_at_ms: Self::now_ms(),
         });
         guard.insert(canon, ctx.clone());
-        drop(guard);
-        engine_bind_global_shared(engine);
         Ok(ctx)
     }
 
-    /// 传输解析（Phase 2 接缝）：与 resolve_engine 同决议链（显式 → 活动单槽），
-    /// 按传输模式产出 InProcess（内嵌直调，缺省）或 McpRemote（每工作区一个
-    /// 引擎进程，惰性 spawn）。调用方 spawn_blocking 后 .call(method, args)。
+    /// 工作区传输句柄（具体型，供 WorkspaceHandle pump / timeline 记录等
+    /// 长生命周期消费方持有）。ensure_context + 惰性构造 McpRemoteTransport。
+    pub(crate) fn transport_of(
+        &self,
+        root: &str,
+    ) -> Result<Arc<crate::engine_transport::McpRemoteTransport>, String> {
+        let ctx = self.ensure_context(root)?;
+        let mut guard = crate::utils::lock_or_recover(&ctx.remote);
+        if guard.is_none() {
+            *guard = Some(std::sync::Arc::new(
+                crate::engine_transport::McpRemoteTransport::new(&ctx.root.to_string_lossy()),
+            ));
+        }
+        Ok(guard.clone().expect("just set"))
+    }
+
+    /// 传输解析（命令层入口）：与旧 resolve_engine 同决议链（显式 → 活动
+    /// 单槽），产出每工作区引擎进程的 stdio MCP 通道。调用方 spawn_blocking
+    /// 后 .call(method, args)。
     pub(crate) fn resolve_transport(
         &self,
         explicit_root: Option<&str>,
         fallback_root: Option<&str>,
-    ) -> Result<(std::sync::Arc<dyn crate::engine_transport::EngineTransport>, PathBuf), String> {
-        match crate::engine_transport::transport_mode() {
-            crate::engine_transport::TransportMode::InProcess => {
-                let engine = self
-                    .resolve_engine(explicit_root, fallback_root)
-                    .ok_or_else(|| "未打开工作区，请先打开项目".to_string())?;
-                let root = engine.project_root();
-                Ok((std::sync::Arc::new(crate::engine_transport::InProcessTransport::new(engine)), root))
-            }
-            crate::engine_transport::TransportMode::Mcp => {
-                let root = explicit_root
-                    .or(fallback_root)
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .ok_or_else(|| "未打开工作区，请先打开项目".to_string())?;
-                let ctx = self.ensure_context(root)?;
-                let mut guard = crate::utils::lock_or_recover(&ctx.remote);
-                if guard.is_none() {
-                    *guard = Some(std::sync::Arc::new(
-                        crate::engine_transport::McpRemoteTransport::new(&ctx.root.to_string_lossy()),
-                    ));
-                }
-                let t = guard.clone().expect("just set");
-                Ok((t, ctx.root.clone()))
-            }
-        }
+    ) -> Result<(std::sync::Arc<crate::engine_transport::McpRemoteTransport>, PathBuf), String> {
+        let root = explicit_root
+            .or(fallback_root)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| "未打开工作区，请先打开项目".to_string())?;
+        let ctx = self.ensure_context(root)?;
+        let transport = self.transport_of(&ctx.root.to_string_lossy())?;
+        Ok((transport, ctx.root.clone()))
     }
 
     /// 上下文空闲判定回收：非活动工作区（不在保留集）→ 停 watcher + 移除
@@ -229,7 +219,11 @@ impl AppContexts {
             .map(|c| ContextInfo {
                 workspace: display_path(&c.root),
                 created_at_ms: c.created_at_ms,
-                ready: c.engine.is_ready(),
+                ready: c
+                    .store_host
+                    .lock()
+                    .map(|host| host.store.read(|idx| idx.node_count()) > 0)
+                    .unwrap_or(false),
             })
             .collect()
     }
@@ -238,24 +232,6 @@ impl AppContexts {
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) fn context_count(&self) -> usize {
         read_or_recover(&self.contexts).len()
-    }
-
-    /// 解析链核心：显式 root → 活动工作区（单槽回退）。全部未命中 → None
-    /// （调用方回落全局引擎——MCP 时代语义）。
-    /// ⚠ ensure 语义（miss 即建）对两条臂都生效：显式 root 是命令指名，
-    /// 回退 root 是活动工作区（激活时上下文已存在，ensure 幂等无副作用）。
-    pub(crate) fn resolve_engine(
-        &self,
-        explicit_root: Option<&str>,
-        fallback_root: Option<&str>,
-    ) -> Option<Arc<Engine>> {
-        if let Some(root) = explicit_root.map(str::trim).filter(|s| !s.is_empty()) {
-            return self.ensure_context(root).ok().map(|c| c.engine.clone());
-        }
-        if let Some(root) = fallback_root.map(str::trim).filter(|s| !s.is_empty()) {
-            return self.ensure_context(root).ok().map(|c| c.engine.clone());
-        }
-        None
     }
 }
 
@@ -282,9 +258,11 @@ mod tests {
         tmp
     }
 
-    /// 双工作区并行：各持各的引擎实例，互不串写（L1 验收判据）。
+    /// 双工作区并行：各持各的数据上下文与 StoreHost，互不串写（L1 验收
+    /// 判据的存储面）。引擎进程级隔离由 tests/engine_process_e2e.rs 覆盖
+    ///（Phase 3 起引擎在子进程，单元测试不 spawn）。
     #[test]
-    fn two_workspaces_get_distinct_engines() {
+    fn two_workspaces_get_distinct_contexts() {
         let ws_a = temp_dir("lantai_ctx_par_a");
         let ws_b = temp_dir("lantai_ctx_par_b");
         let app = AppContexts::new();
@@ -295,50 +273,57 @@ mod tests {
 
         assert!(Arc::ptr_eq(&ctx_a1, &ctx_a2), "同根幂等复用");
         assert!(!Arc::ptr_eq(&ctx_a1, &ctx_b), "异根各持实例");
-        assert_ne!(ctx_a1.engine.project_root(), ctx_b.engine.project_root());
+        assert_ne!(ctx_a1.root, ctx_b.root);
+        assert!(!Arc::ptr_eq(&ctx_a1.store_host, &ctx_b.store_host), "各持数据宿主");
         assert_eq!(app.context_count(), 2);
 
-        // 各自写入只落各自实例
+        // 各自写入只落各自宿主
         use hologram_graph::{Node, NodeKind};
-        ctx_a1.engine
-            .write(|idx| idx.insert_node(Node::new("a_node", "A", NodeKind::Function)))
-            .unwrap();
-        ctx_b.engine
-            .write(|idx| idx.insert_node(Node::new("b_node", "B", NodeKind::Function)))
-            .unwrap();
-        assert_eq!(ctx_a1.engine.read(|i| i.node_count()).unwrap(), 1);
-        assert_eq!(ctx_b.engine.read(|i| i.node_count()).unwrap(), 1);
-        assert!(ctx_a1.engine.read(|i| i.get_node("b_node").is_none()).unwrap());
-        assert!(ctx_b.engine.read(|i| i.get_node("a_node").is_none()).unwrap());
+        let _ = ctx_a1
+            .store_host
+            .lock()
+            .unwrap()
+            .store
+            .write(|idx| idx.insert_node(Node::new("a_node", "A", NodeKind::Function)));
+        let _ = ctx_b
+            .store_host
+            .lock()
+            .unwrap()
+            .store
+            .write(|idx| idx.insert_node(Node::new("b_node", "B", NodeKind::Function)));
+        assert_eq!(
+            ctx_a1.store_host.lock().unwrap().store.read(|i| i.node_count()),
+            1
+        );
+        assert_eq!(
+            ctx_b.store_host.lock().unwrap().store.read(|i| i.node_count()),
+            1
+        );
+        assert!(
+            ctx_a1
+                .store_host
+                .lock()
+                .unwrap()
+                .store
+                .read(|i| i.get_node("b_node").is_none())
+        );
+
+        let _ = std::fs::remove_dir_all(&ws_a);
+        let _ = std::fs::remove_dir_all(&ws_b);
     }
 
-    /// 决议链（workspace-session-ownership-rework 后两条臂）：
-    /// 显式 root 优先 → 活动工作区回退 → 全空 None。
+    /// 决议链（workspace-session-ownership-rework 后两条臂）：上下文级。
+    /// resolve_transport 的进程 spawn 面由 tests/engine_process_e2e.rs 覆盖。
     #[test]
-    fn resolve_engine_two_arms_priority() {
-        let ws_a = temp_dir("lantai_ctx_chain_a");
-        let ws_b = temp_dir("lantai_ctx_chain_b");
-        let ws_c = temp_dir("lantai_ctx_chain_c");
+    fn resolve_transport_rejects_empty_roots() {
         let app = AppContexts::new();
-
-        // 显式 root 最高优先（即便与回退不同）
-        let e_c = app.resolve_engine(Some(&display_path(&ws_c)), Some(&display_path(&ws_b))).unwrap();
-        assert_eq!(e_c.project_root(), ws_c);
-
-        // 无显式 → 回退（活动工作区）
-        let e_fb = app.resolve_engine(None, Some(&display_path(&ws_b))).unwrap();
-        assert_eq!(e_fb.project_root(), ws_b);
-
-        // 回退无效（空/不存在）→ None
-        assert!(app.resolve_engine(None, Some("")).is_none());
-        assert!(app.resolve_engine(None, Some("Z:/definitely/not/here")).is_none());
-
-        // 全空 → None
-        assert!(app.resolve_engine(None, None).is_none());
-
-        // 幂等：重复解析不同根不新建（两条臂各 ensure 一次，共 3 个上下文）
-        let _ = app.resolve_engine(None, Some(&display_path(&ws_a))).unwrap();
-        assert_eq!(app.context_count(), 3, "ensure_context 幂等，不因重复解析新建");
+        // 显式与回退全空/全无效 → 显式报错（「未打开工作区」）
+        let err = app.resolve_transport(Some(""), Some("")).unwrap_err();
+        assert!(err.contains("未打开工作区"), "{err}");
+        let err = app.resolve_transport(Some("Z:/definitely/not/here"), None).unwrap_err();
+        assert!(err.contains("工作区目录不存在"), "{err}");
+        // 全 None 同理
+        assert!(app.resolve_transport(None, None).is_err());
     }
 
     /// GC：非保留根回收；保留根不回收。
@@ -358,42 +343,9 @@ mod tests {
         assert_eq!(app.context_count(), 0, "空闲上下文应回收");
     }
 
-    /// L2 e2e：分析→落盘→查询闭环经数据上下文。
-    /// ① 经 context.engine 分析；② engine.read（计算面）与 store_host 直查
-    /// （应用层数据面）结果一致；③ GC 后重开上下文——新实例从 SQLite
-    /// 读回同量节点（落盘真实发生，非内存假象）。
-    #[test]
-    fn analyze_persist_query_loop_via_context() {
-        let ws = temp_dir("lantai_ctx_l2_loop");
-        std::fs::create_dir_all(ws.join("src")).unwrap();
-        std::fs::write(ws.join("src/main.py"), "def hello(): pass\n").unwrap();
-        let app = AppContexts::new();
-        let ctx = app.ensure_context(&display_path(&ws)).unwrap();
-
-        let result = ctx.engine.analyze(&ctx.root).expect("analyze via context engine");
-        assert!(result.node_count > 0, "fixture must yield nodes");
-
-        let via_engine = ctx.engine.read(|i| i.node_count()).unwrap();
-        let via_host = {
-            let host = ctx.store_host.lock().unwrap();
-            host.store.read(|i| i.node_count())
-        };
-        assert_eq!(via_engine, via_host, "计算面与应用层数据面必须同源一致");
-        assert!(via_engine > 0);
-
-        // 落盘验证：GC（非保留）→ 重开 → 新实例从盘上读回
-        app.gc_if_unused(&ctx.root, &[]);
-        let ctx2 = app.ensure_context(&display_path(&ws)).unwrap();
-        let reloaded = ctx2.engine.read(|i| i.node_count()).unwrap();
-        assert_eq!(reloaded, via_engine, "重开上下文必须从 SQLite 读回同量节点");
-
-        let _ = std::fs::remove_dir_all(&ws);
-    }
-
-    /// L4 守卫：壳层对 engine 全局函数（隐式单例存储访问）的直连点必须
-    /// 全部在白名单内——白名单 = 决议链的 None 兜底臂（MCP 时代语义），
-    /// 新增直连即红（应走 app::services 决议链 / 实例方法）。
-    /// 白名单条目同时要求真实存在（防腐烂）。
+    /// L4 守卫：壳层对 engine 全局函数的直连点必须**为零**——Phase 3 摘除
+    /// hologram-engine 依赖后壳内已无全局引擎（hologram_call 必须有工作区，
+    /// 经 transport），新增直连即红。
     #[test]
     fn engine_global_direct_calls_are_whitelisted() {
         // 扫描模式：全局 engine_ 函数的直连调用形态（含 engine_api 前缀），即
@@ -409,15 +361,8 @@ mod tests {
         let pattern = format!("::({fns})\\s*\\(");
         let re = regex_lite(&pattern);
 
-        // 白名单：文件（相对 src-tauri/src）→ 允许的全局函数直连
-        let whitelist: &[(&str, &[&str])] = &[
-            // record_event 的决议链 None 兜底
-            (r"app\services\hologram_service.rs", &["engine_record_timeline"]),
-            // fs 命令时间线：单槽实例缺席时的全局兜底
-            (r"commands\filesystem.rs", &["engine_record_timeline"]),
-            // edit 副作用时间线：同上兜底
-            (r"commands\editor.rs", &["engine_record_timeline"]),
-        ];
+        // 白名单：Phase 3 后为空——壳内不允许任何 engine 全局直连
+        let whitelist: &[(&str, &[&str])] = &[];
 
         let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut violations: Vec<String> = Vec::new();

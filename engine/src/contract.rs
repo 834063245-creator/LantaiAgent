@@ -22,7 +22,12 @@
 /// `graph_meta` / `get_full_graph` 三个分页/全量转储方法，新增
 /// `graph_snapshot`（聚合快照）+ `file_nodes`（按文件符号索引）——
 /// graphData 的三个消费面（快照聚合 / 文件索引 / 就绪开关）全是查询不是传输。
-pub const ENGINE_CONTRACT_VERSION: u32 = 2;
+///
+/// v3（2026-08-29 Phase 3 摘依赖）：新增 `run_check`（第 11 个壳方法）——
+/// 简报编排真源（基线 load/diff/save + 时间线记录）从壳层上收引擎；
+/// `analyze_with_progress` 增加 `force` 参数（缓存新鲜度门上收：
+/// 新鲜即返回 cached，杜绝壳侧重复判定）。
+pub const ENGINE_CONTRACT_VERSION: u32 = 3;
 
 /// 契约面物理载体（相对仓库根）。指纹 guard 对拍：文件变更未升版 = 红。
 pub const ENGINE_CONTRACT_FILES: &[&str] = &[
@@ -51,7 +56,7 @@ pub struct ShellMethodSpec {
     pub wired_in: &'static str,
 }
 
-/// 壳专属方法清单（契约 v2 定稿；Phase 1 逐个接线进 dispatch）。
+/// 壳专属方法清单（契约 v3；Phase 1 接线 10 个 + Phase 3 增 run_check）。
 pub const SHELL_METHODS: &[ShellMethodSpec] = &[
     ShellMethodSpec {
         name: "graph_snapshot",
@@ -69,8 +74,11 @@ pub const SHELL_METHODS: &[ShellMethodSpec] = &[
     },
     ShellMethodSpec {
         name: "analyze_with_progress",
-        description: "全量分析并持久化，进度经 MCP notifications/progress 推送。壳专属。",
-        params: &[ShellParam { name: "path", ptype: "string", description: "项目根路径" }],
+        description: "全量分析并持久化，进度经 MCP notifications/progress 推送。force=true 跳过缓存新鲜度门；默认缓存新鲜（非空且未过期）时直接返回 cached 不重分析。壳专属。",
+        params: &[
+            ShellParam { name: "path", ptype: "string", description: "项目根路径" },
+            ShellParam { name: "force", ptype: "boolean", description: "强制全量重分析（默认 false）" },
+        ],
         read_only: false,
         wired_in: "phase1",
     },
@@ -129,6 +137,16 @@ pub const SHELL_METHODS: &[ShellMethodSpec] = &[
         params: &[],
         read_only: false,
         wired_in: "phase1",
+    },
+    ShellMethodSpec {
+        name: "run_check",
+        description: "简报检查：基线 load/diff/save + 违规信号 + 时间线记录（quiet/baseline_seed 门）一次完成。编排真源在引擎侧。壳专属。",
+        params: &[
+            ShellParam { name: "path", ptype: "string", description: "项目根路径（可选，缺省用绑定根；异根拒绝）" },
+            ShellParam { name: "changed_files", ptype: "array", description: "自上次检查以来的变更文件列表" },
+        ],
+        read_only: false,
+        wired_in: "phase3",
     },
 ];
 

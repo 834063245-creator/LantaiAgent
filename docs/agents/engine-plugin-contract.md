@@ -8,9 +8,9 @@
 
 | 项 | 值 |
 |---|---|
-| 当前版本 | 2 |
+| 当前版本 | 3 |
 | 模型可见默认工具数 | 36 |
-| 壳专属方法数 | 10 |
+| 壳专属方法数 | 11 |
 | GraphJSON 权威源 | src-ui/src/scene/graph-types.ts |
 
 ## 模型可见默认工具面（tools/list 默认返回）
@@ -23,7 +23,7 @@
 |---|---|---|---|
 | `graph_snapshot` | 聚合快照：节点/边数、社区分布、边类型、top 扇入、类数。壳专属——进程外形态下前端不搬原始图，graphData = 一次轻量查询。 | 只读 | phase1 |
 | `file_nodes` | 按文件返回符号索引（id/name/kind/fanIn/fanOut）。壳专属——取代前端全量建索引。 | 只读 | phase1 |
-| `analyze_with_progress` | 全量分析并持久化，进度经 MCP notifications/progress 推送。壳专属。 | 写 | phase1 |
+| `analyze_with_progress` | 全量分析并持久化，进度经 MCP notifications/progress 推送。force=true 跳过缓存新鲜度门；默认缓存新鲜（非空且未过期）时直接返回 cached 不重分析。壳专属。 | 写 | phase1 |
 | `save` | 持久化 store 到磁盘（.lantai/hologram.db）。壳专属。 | 写 | phase1 |
 | `fts_search` | FTS5 全文搜索（内容级，区别于 search_symbols 的符号名模糊）。壳专属。 | 只读 | phase1 |
 | `timeline_record` | 记录时间线事件（写动作）。壳专属。 | 写 | phase1 |
@@ -31,6 +31,7 @@
 | `ensure_ready` | 确保引擎就绪（同根幂等 / 异根报错）。壳专属。 | 只读 | phase1 |
 | `cache_stale` | 缓存是否过期（源码 mtime 与图缓存比对）。壳专属。 | 只读 | phase1 |
 | `watcher_subscribe` | 订阅 watcher 通知（graph-updated 推送，MCP notification）。壳专属。 | 写 | phase1 |
+| `run_check` | 简报检查：基线 load/diff/save + 违规信号 + 时间线记录（quiet/baseline_seed 门）一次完成。编排真源在引擎侧。壳专属。 | 写 | phase3 |
 
 ### 壳专属方法参数
 
@@ -38,7 +39,7 @@
 |---|---|
 | `graph_snapshot` | （无参数） |
 | `file_nodes` | file (string) |
-| `analyze_with_progress` | path (string) |
+| `analyze_with_progress` | path (string)，force (boolean) |
 | `save` | （无参数） |
 | `fts_search` | query (string)，limit (integer) |
 | `timeline_record` | event (string)，detail (string)，node_id (string) |
@@ -46,6 +47,7 @@
 | `ensure_ready` | path (string) |
 | `cache_stale` | path (string) |
 | `watcher_subscribe` | （无参数） |
+| `run_check` | path (string)，changed_files (array) |
 
 ## 消费方式
 

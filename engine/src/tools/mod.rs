@@ -194,6 +194,7 @@ impl ToolRegistry {
             "ensure_ready" => handlers::shell::handler_ensure_ready(args),
             "cache_stale" => handlers::shell::handler_cache_stale(args),
             "watcher_subscribe" => handlers::shell::handler_watcher_subscribe(args),
+            "run_check" => handlers::shell::handler_run_check(args),
             _ => return ToolResponse::Degraded {
                 guidance: format!("Tool not found: {}", name),
                 fallback: "Check tools/list for available tools".into(),
@@ -296,6 +297,15 @@ pub(crate) fn get_usize(args: &Value, key: &str, default: usize) -> usize {
                 .map(|v| v as usize)
                 .unwrap_or(default)
         })
+}
+
+/// 布尔参数读取（缺省 default；容忍字符串 "true"/"false" 形态）。
+pub(crate) fn get_bool(args: &Value, key: &str, default: bool) -> bool {
+    match args.get(key) {
+        Some(Value::Bool(b)) => *b,
+        Some(Value::String(s)) => matches!(s.as_str(), "true" | "True" | "1"),
+        _ => default,
+    }
 }
 
 /// 将 snake_case 转换为 camelCase（如 "min_size" → "minSize"，"node_id" → "nodeId"）
@@ -992,6 +1002,17 @@ fn all_schemas() -> &'static [ToolSchema] {
             read_only: false,
             category: "shell",
         },
+        ToolSchema {
+            name: "run_check",
+            description: "[SHELL] Preflight check: load baseline, diff vs current graph, persist new baseline, record timeline (quiet/baseline_seed gated). Orchestration lives in the engine.",
+            params: &[
+                p!("path", "string", "Project root path (optional; defaults to bound root, different root refused)"),
+                p!("changed_files", "array", "Files changed since the last check"),
+            ],
+            required: &[],
+            read_only: false,
+            category: "shell",
+        },
     ]
 }
 
@@ -1043,7 +1064,7 @@ mod tests {
     #[test]
     fn test_shell_methods_contract_alignment() {
         let contract_names = crate::contract::shell_method_names();
-        assert_eq!(contract_names.len(), 10, "契约 v2 = 10 个壳专属方法");
+        assert_eq!(contract_names.len(), 11, "契约 v3 = 11 个壳专属方法");
         let registry = ToolRegistry::global();
         let default_set: HashSet<&str> = ToolRegistry::DEFAULT_MCP_TOOLS.iter().copied().collect();
         let dummy_id = json!(1);

@@ -1,7 +1,9 @@
 # 引擎独立插件化：兰台进程外 + MCP 契约（engine-plugin-extraction）
 
-> 状态：In progress（2026-08-29 立项，用户拍板三点：①做彻底——兰台从内嵌改连进程；
-> ②DSH 不共包——hologram-dsh 保持现状，两个宿主各自有各自的胶水；③monorepo 子目录——不开新仓）
+> 状态：Phase 0-3 已竣工（2026-08-29，兰台已从内嵌改连进程外引擎、hologram-engine 依赖已摘）；
+> 剩余：Phase 4（免编译扩展面）/ Phase 5（收口）未开工。
+> 立项拍板（2026-08-29）：①做彻底——兰台从内嵌改连进程；
+> ②DSH 不共包——hologram-dsh 保持现状，两个宿主各自有各自的胶水；③monorepo 子目录——不开新仓。
 > **2026-08-29 复盘修订**：全仓旧时代残留清点后拍板——**图分页整链删除**（为已退役 3D 星图 + 即将消失的
 > IPC 128MB 护栏服务的双重死代码），契约壳方法清单随之修订（删 3 加 2），新增「前端分页拆除」阶段。
 > **2026-08-29 拓扑拍板：A（每工作区一个引擎进程）**——壳消费形态与 DSH 完全同构（一进程一根 + stdio MCP，引擎零改动）；
@@ -214,9 +216,9 @@ DSH / Unity / 任意 MCP 客户端消费的是同一个二进制、同一份契�
 - 待办（随 Phase 3）：`hologram_service.run_check` 仍内嵌（壳编排面，Phase 3 一并处理）
 - **DoD 达成**：`McpRemoteTransport` 在测试环境全程可用；差分测试钉住等价；默认仍是内嵌（行为零变化）
 
-### Phase 3 — 翻默认 + 内嵌退役（做彻底那一刀）
+### Phase 3 — 翻默认 + 内嵌退役（做彻底那一刀）✅ 已落地（2026-08-29 两步全竣工）
 
-> **2026-08-29 施工中（两步走）——第一步已落地（默认翻 McpRemote + legacy 面拆除）**：
+> **第一步（默认翻 McpRemote + legacy 面拆除）**：
 > - `transport_mode()` 缺省 = **Mcp**（`HOLOGRAM_ENGINE_TRANSPORT=inprocess` 为调试逃生口）；
 > - legacy `start_mcp_server` / `stop_mcp_server` RPC 分支拆除（rpc.rs / rpc-contract.ts，前端零调用）+
 >   `mcp_manager.rs` 整文件删除（McpManager + 3 个测试）+ `commands/external.rs` 的 MCP_MANAGER /
@@ -224,35 +226,59 @@ DSH / Unity / 任意 MCP 客户端消费的是同一个二进制、同一份契�
 >   （ResourceLedger 注册行删除）+ `workspace_service` 切卷 stop_mcp 调用拆除；
 > - `frontend-rpc-contract.md` 再生成（156→151 方法，同 commit 纪律）。
 >
-> **第二步（摘 hologram-engine Cargo 依赖）施工清单——2026-08-29 全仓盘点，29 处引用 / 11 文件**：
-> 1. `engine_transport.rs`：InProcessTransport 整臂 + TransportMode 枚举退役（无 engine crate 即无
->    内嵌形态，`HOLOGRAM_ENGINE_TRANSPORT` env 一并退役）；`engine_exe_path` 升 pub 供 utils 迁移；
->    模块内 test 404（Engine::open）随臂删。
-> 2. **notification 泵（本步最大设计活）**：McpRemoteTransport 的 read_response 现在丢弃无 id 通知行
->    ——需要通知出泵：watcher 桥（`notifications/message` → 壳 graph-updated 事件）+
->    analyze 进度（progressToken 通知 → run_analyze_with_progress 的 Emitter 流）。
->    落点建议：EngineProcess 挂通知回调槽 + 读循环常驻线程（参考 Phase 1 watcher 桥的进程级封顶队列）。
-> 3. **新壳方法 `run_check`（第 11 个 hidden tool，契约 v3）**：hologram_run_check RPC 的编排真源
->    （run_full_check + baseline load/save + timeline props 校验）全部在引擎侧
->    （hologram_engine::routing::preflight），跨边界须整段上收；契约版本 bump + TS 守卫同步 +
+> **第二步（摘 hologram-engine Cargo 依赖）竣工记录（2026-08-29，对照 10 项清单）**：
+> 1. ✅ `engine_transport.rs`：InProcessTransport 整臂 + TransportMode 枚举 + env 退役；
+>    EngineTransport trait（单实现也留层）一并拆除——全链路直用具体型 `Arc<McpRemoteTransport>`。
+> 2. ✅ **notification 泵（本步最大设计活）**：EngineSession 重写——常驻读线程按 id 路由
+>    （带 id 行 → 在途请求通道；通知行 → 进程级封顶队列 cap 64 丢最旧）；EOF fail-close
+>    全部在途请求（错误封套 → 上层重启重试）。同会话并发调用天然多路复用（stdin 串行 +
+>    id 路由），修复旧 with_process 独占会话 + 工具级 isError 也杀进程重启的病灶
+>    （CallError::Tool 与 Transport 分型，仅传输断裂重启重试一次）。壳侧 pump =
+>    `WorkspaceHandle::start_watcher` 重写：`notifications/progress` → analyze-phase /
+>    analyze-progress / analyze-heartbeat；`notifications/message`（watcher 摘要 / analyze_done）
+>    → graph_snapshot 重查 → emit `graph-updated`（载荷形状与旧壳侧 watcher 一致）。
+>    壳侧 mtime 轮询 watcher（collect_file_mtimes / compute_watcher_diff）整体退役——
+>    引擎进程自带 notify watcher（engine_init 自动带事件桥起）。
+> 3. ✅ **新壳方法 `run_check`（第 11 个 hidden tool，契约 v3）**：简报编排真源上收
+>    （load_baseline → 空图兜底同步分析 → run_full_check → save_baseline → 时间线记录
+>    quiet/baseline_seed 门，与旧壳侧逐语义等价）；异根拒绝（同 ensure_ready）。
+>    `analyze_with_progress` 增加 `force` 参数——缓存新鲜度门上收（新鲜 → cached 直回，
+>    旧 direct_analyze 语义等价）；分析完成后 save_baseline + 事件桥推 analyze_done。
+>    `ENGINE_CONTRACT_VERSION` = 3；引擎守卫 10→11 + TS 守卫 EXPECTED_SHELL_METHODS 同步 +
 >    生成文档再生成。
-> 4. `hologram_service.rs`：record_event 的 before/after 图快照（graph_from_index×2）→ transport
->    `graph_snapshot` 两次轻查询；timeline_record 走壳方法。
-> 5. `editor.rs` / `filesystem.rs` 的 engine_record_timeline 白名单兜底臂 → transport
->    `timeline_record`（白名单守卫条目同步删除）。
-> 6. `is_ignored_path` 归置（utils.rs / editor.rs / filesystem.rs / search.rs 四处消费）：纯函数，
->    建议迁 `hologram-graph`（后缀表本就在该 crate），engine 内部改引新位。
-> 7. `app/mod.rs`：WorkspaceDataContext 去 `Arc<Engine>` 字段——`store_host` 改由壳自开
->    （hologram_storage::StoreHost::open，与引擎进程同库并发，SQLite 侧已并发安全）；去掉
->    engine_bind_global_shared；`resolve_engine` 退役（生产已无消费）；测试
->    analyze_persist_query_loop_via_context 重写为 transport 形态。
-> 8. `graph_io.rs`：run_analyze_with_progress → transport `analyze_with_progress`（依赖 #2 泵）；
->    regenerate_file_graph 同族；两段 Engine::open 测试随函数迁移改写或删除。
-> 9. `dispatch_service.rs` 全空回落全局臂（dispatch_engine）拆除——hologram_call 必须有工作区；
->    `engine_dispatch.rs` / `utils.rs engine_binary` / `commands/workspace.rs` 的引擎引用随清。
-> 10. 双工作区进程级 e2e（两 workspace 各 spawn 一 serve，互不串场）+ 崩溃重启 e2e。
-> - **DoD（第二步后）**：`src-tauri/Cargo.toml` 无 hologram-engine；grep 零残留；全量门禁绿；
->   真机验收：开卷/切卷/图查询/工具调用/merge gate/图 hooks 全链路如常；崩溃恢复不挂主进程。
+> 4. ✅ `hologram_service.rs`：run_check → transport `run_check`；record_event → transport
+>    `timeline_record`（node_id="" 与 None 落库等价）。无工作区显式报错（全局兜底臂随内嵌
+>    形态退役——行为变更：未开卷时 hologram_record_event / hologram_call 由「写/查全局引擎」
+>    改为报「未打开工作区」）。
+> 5. ✅ `editor.rs` / `filesystem.rs`：timeline → transport `timeline_record`
+>    （utils::record_timeline_transport 共享 helper；WorkspaceHandle 持 transport 代替 engine）；
+>    白名单守卫清零（壳内 engine 全局直连 = 0）。
+> 6. ✅ `is_ignored_path` 归置：IGNORED_DIRS / is_ignored_dir_name / is_ignored_path 迁
+>    `hologram-graph/src/ignore.rs`（测试随迁 + 补 .lantai 用例），engine discovery re-export
+>    保内部路径零改动；壳侧 utils/editor/filesystem/search 四处改引 `hologram_graph::`。
+> 7. ✅ `app/mod.rs`：WorkspaceDataContext 去 `Arc<Engine>`；store_host 壳自开
+>    （`hologram_storage::StoreHost::open`，与引擎进程同库并发）；engine_bind_global_shared /
+>    resolve_engine 退役；ContextInfo.ready 改 store 判定；analyze_persist_query_loop 单测
+>    重写为进程级 e2e（见 10）。
+> 8. ✅ `graph_io.rs`：缩水为 transport 版 `run_analyze_with_progress`（发起 → engine_status
+>    轮询等待 → graph_snapshot 重查 → emit graph-updated——补直「全量分析后快照从不重拉」
+>    的旧缺口）；direct_analyze / graph_snapshot_json / regenerate_file_graph（Phase 1.5 起即
+>    死代码：其输入 hologram_graph.json 已不产出）整链删除 + 前端 fileGraphData 死状态删除。
+> 9. ✅ `dispatch_service.rs` 回落臂拆除（hologram_call 必须有工作区）；tools_list → transport
+>    `tools/list`（hologram_tools_list RPC 改 async，前端 loadHologramSchemas 契约不变）；
+>    engine_binary / dispatch_engine / hologram_dispatch_test.rs（工具行为引擎侧自测已覆盖）删除。
+> 10. ✅ 双工作区进程级 e2e + 崩溃重启 e2e（engine_transport.rs 测试模块，引擎二进制缺席自动
+>     跳过）：两工作区各 spawn 一 serve、FTS 符号互不可见；硬杀子进程 → 下一次调用自动重启
+>     且从 SQLite 恢复（持久化闭环 = 旧 analyze_persist_query_loop 的 transport 形态）。
+>     engine_transport_parity.rs（内嵌臂对拍，内嵌臂已退役）删除。
+> - **DoD 达成（2026-08-29 实测）**：`src-tauri/Cargo.toml` 无 hologram-engine（Cargo.lock 同步）；
+>   `hologram_engine` 路径引用 grep 零残留（仅守卫测试字面量/注释）；全量门禁绿（分项数字见
+>   commit message）；待真机验收：开卷/切卷/图查询/工具调用/merge gate/图 hooks 全链路如常；
+>   崩溃恢复不挂主进程。
+> - 行为变更清单（结果可查）：① hologram_call / hologram_record_event 无工作区时显式报错；
+>   ② 引擎关闭的工作区首次 agent 写/编辑会惰性拉起引擎进程（timeline 照常落库——与旧行为一致）；
+>   ③ 全量分析完成后现在确定性地发 graph-updated（旧形态 watcher 只覆盖增量路径，冷启动后
+>   图预热清理依赖用户再改文件）；④ 工具级 isError 不再触发引擎进程重启。
 
 ### Phase 4 — 免编译扩展（第三方插件面）
 

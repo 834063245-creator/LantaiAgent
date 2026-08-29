@@ -4,8 +4,7 @@
 
 use std::io::Write;
 use base64::Engine;
-use hologram_engine::engine as engine_api;
-use hologram_engine::pipeline::discovery::is_ignored_path;
+use hologram_graph::is_ignored_path;
 
 #[tauri::command]
 pub(crate) async fn list_directory(
@@ -97,10 +96,10 @@ pub(crate) async fn read_file_base64(
     Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
 }
 
-/// fs 命令的 timeline 记录（L1）：优先落单槽工作区绑定的引擎实例
-/// （workspace_activate 时确保的数据上下文），无实例回落全局。
+/// fs 命令的 timeline 记录（Phase 3 transport 形态）：落工作区引擎进程的
+/// hologram.db（占位工作区无传输，不记录）。
 /// (event, 路径, 短名) → 事件文案约定与既有完全一致。
-fn record_fs_timeline(state: &crate::WorkspaceState, event: &str, path: &str, short: &str) -> Result<(), String> {
+fn record_fs_timeline(state: &crate::WorkspaceState, event: &str, path: &str, short: &str) {
     let verb = match event {
         "agent_write" => "写入",
         "agent_delete" => "删除",
@@ -109,14 +108,11 @@ fn record_fs_timeline(state: &crate::WorkspaceState, event: &str, path: &str, sh
         _ => "操作",
     };
     let summary = format!("Agent {}: {}", verb, short);
-    let handle = crate::utils::lock_or_recover(state);
-    if let Some(ref h) = *handle {
-        if let Some(ref engine) = h.engine {
-            return engine.record_timeline(event, Some(path), &summary);
-        }
-    }
-    drop(handle);
-    engine_api::engine_record_timeline(event, Some(path), &summary)
+    let transport = {
+        let handle = crate::utils::lock_or_recover(state);
+        handle.as_ref().and_then(|h| h.transport.clone())
+    };
+    crate::utils::record_timeline_transport(transport.as_ref(), event, Some(path), &summary);
 }
 
 #[tauri::command]
@@ -134,7 +130,7 @@ pub(crate) async fn write_file_content(
     if let Some(ref handle) = *crate::utils::lock_or_recover(&state) {
         if !is_ignored_path(&rp) {
             let short = rp.rsplit(['/', '\\']).next().unwrap_or(&rp);
-            let _ = record_fs_timeline(&state, "agent_write", &rp, &short);
+            record_fs_timeline(&state, "agent_write", &rp, &short);
             if let Ok(mut changed) = handle.changed_files.lock() {
                 if !changed.contains(&rp) { changed.push(rp.clone()); }
             }
@@ -298,7 +294,7 @@ pub(crate) async fn delete_file_or_dir(
     if let Some(ref handle) = *crate::utils::lock_or_recover(&state) {
         if !is_ignored_path(&rp) {
             let short = rp.rsplit('/').next().unwrap_or(&rp);
-            let _ = record_fs_timeline(&state, "agent_delete", &rp, &short);
+            record_fs_timeline(&state, "agent_delete", &rp, &short);
             if let Ok(mut changed) = handle.changed_files.lock() {
                 if !changed.contains(&rp) { changed.push(rp.clone()); }
             }
@@ -331,7 +327,7 @@ pub(crate) async fn rename_file_or_dir(
     if let Some(ref handle) = *crate::utils::lock_or_recover(&state) {
         if !is_ignored_path(&rp) {
             let short = rp.rsplit('/').next().unwrap_or(&rp);
-            let _ = record_fs_timeline(&state, "agent_rename", &rp, &short);
+            record_fs_timeline(&state, "agent_rename", &rp, &short);
             if let Ok(mut changed) = handle.changed_files.lock() {
                 if !changed.contains(&rp) { changed.push(rp.clone()); }
             }
@@ -355,7 +351,7 @@ pub(crate) async fn move_file(
     if let Some(ref handle) = *crate::utils::lock_or_recover(&state) {
         if !is_ignored_path(&rp) {
             let short = rp.rsplit('/').next().unwrap_or(&rp);
-            let _ = record_fs_timeline(&state, "agent_move", &rp, &short);
+            record_fs_timeline(&state, "agent_move", &rp, &short);
             if let Ok(mut changed) = handle.changed_files.lock() {
                 if !changed.contains(&rp) { changed.push(rp.clone()); }
             }

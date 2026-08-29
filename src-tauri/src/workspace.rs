@@ -18,15 +18,12 @@
 // 作为 Tauri state 管理: State<Arc<Mutex<Option<WorkspaceHandle>>>>
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use tauri::{AppHandle, Emitter};
-
-use hologram_engine::engine::{self as engine_api, Engine};
-use hologram_graph::Graph;
 
 use crate::permissions::PermissionContext;
 
@@ -43,10 +40,11 @@ pub struct WorkspaceHandle {
     /// 自上次检查以来的变更文件（原 LAST_CHANGED_FILES 全局变量）。
     pub changed_files: Arc<Mutex<Vec<String>>>,
 
-    /// 该工作区专属引擎实例（L1 数据上下文）：壳层 watcher 的增量更新
-    /// 落在此实例上，不再吃全局 ENGINE（跨工作区不串写）。
-    /// 占位工作区（path=''）为 None。
-    pub(crate) engine: Option<Arc<Engine>>,
+    /// 该工作区的引擎进程通道（每工作区一个 `engine serve` 子进程的
+    /// stdio MCP 传输；workspace_activate 时自数据上下文取用）。
+    /// 占位工作区（path=''）为 None。引擎子进程惰性 spawn——首次
+    /// transport 调用才拉起。
+    pub(crate) transport: Option<Arc<crate::engine_transport::McpRemoteTransport>>,
 
     // 监控器内部状态
     watcher_running: Arc<AtomicBool>,
@@ -68,7 +66,7 @@ impl WorkspaceHandle {
             path: path.to_string(),
             permission_ctx: Arc::new(PermissionContext::new(project_path)),
             changed_files: Arc::new(Mutex::new(Vec::new())),
-            engine: None,
+            transport: None,
             watcher_running: Arc::new(AtomicBool::new(false)),
             watcher_thread: None,
         }
@@ -109,28 +107,42 @@ impl WorkspaceHandle {
         }
     }
 
-    /// 启动此工作区的后台文件监控器。
+    /// 启动此工作区的通知泵（Phase 3：引擎进程自带 notify watcher，壳侧
+    /// mtime 轮询 watcher 退役）。
+    ///
+    /// 职责两件：
+    /// 1. **watcher 订阅**——确保引擎进程的文件 watcher 以事件桥回调运行
+    ///   （启动时一次；崩溃重启后新进程 engine_init 自动重起 watcher）；
+    /// 2. **通知出泵**——drain transport 通知队列并转译：
+    ///    - `notifications/progress` → analyze-phase / analyze-progress /
+    ///      analyze-heartbeat（分析进度流，载荷形状与旧 run_analyze_with_progress
+    ///      轮询一致）；
+    ///    - `notifications/message`（watcher 变更摘要 / analyze_done）→
+    ///      graph_snapshot 重查 → emit `graph-updated`（载荷形状与旧壳侧
+    ///      watcher 一致：计数 + source_root，前端 `nc > 0` 守卫通过）。
     pub fn start_watcher(&mut self, app_handle: AppHandle) {
         self.watcher_running.store(false, Ordering::SeqCst);
         self.watcher_thread.take();
 
+        // 占位工作区（无传输）不起泵。
+        let Some(ref transport) = self.transport else {
+            return;
+        };
+        let transport = transport.clone();
         let path = self.path.clone();
         let running = self.watcher_running.clone();
-        let changed_files = self.changed_files.clone();
-        // L1：增量更新落在本工作区专属引擎实例上（engine_try_incremental 的
-        // 全局版会让壳层 watcher 串写「最后绑定的全局引擎」——跨工作区即错库）。
-        let engine = self.engine.clone();
 
         self.watcher_running.store(true, Ordering::SeqCst);
 
         let handle = thread::spawn(move || {
-            let mut last_mtimes = collect_file_mtimes(&path);
-            let poll_interval = Duration::from_secs(1);
-            let debounce = Duration::from_secs(2);
-            let mut consecutive_failures: u32 = 0;
-            // (path, action) — action 为 "modified" / "created" / "removed"
-            let mut pending_changed: Vec<(String, String)> = Vec::new();
-            let mut last_change_at: Option<std::time::Instant> = None;
+            // 订阅（best-effort：失败仅可见于日志——引擎进程未起时 pump
+            // 不 spawn，等首次图命令拉起后下一轮 message 自然接上）。
+            if let Err(e) = transport.call("watcher_subscribe", &serde_json::json!({})) {
+                eprintln!("[lantai-watch] watcher_subscribe 失败（drain 继续跑）: {e}");
+            }
+
+            let poll_interval = Duration::from_millis(300);
+            let mut analyze_started: Option<std::time::Instant> = None;
 
             while running.load(Ordering::SeqCst) {
                 thread::sleep(poll_interval);
@@ -139,115 +151,64 @@ impl WorkspaceHandle {
                     break;
                 }
 
-                let current_mtimes = collect_file_mtimes(&path);
-
-                // 检测变更并为增量更新器添加动作标签
-                let mut changed: Vec<(String, String)> = Vec::new();
-                for (fp, mt) in &current_mtimes {
-                    match last_mtimes.get(fp) {
-                        Some(old) if old != mt => changed.push((fp.clone(), "modified".into())),
-                        None => changed.push((fp.clone(), "created".into())),
+                for notif in transport.take_notifications() {
+                    match notif.get("method").and_then(|m| m.as_str()) {
+                        Some("notifications/progress") => {
+                            let params = notif.get("params").cloned().unwrap_or_default();
+                            let message = params
+                                .get("message")
+                                .and_then(|m| m.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let current = params.get("progress").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let total = params.get("total").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let start = *analyze_started.get_or_insert_with(std::time::Instant::now);
+                            let _ = app_handle.emit("analyze-phase", serde_json::json!({
+                                "phase": message,
+                                "message": message,
+                            }));
+                            if total > 0 {
+                                let _ = app_handle.emit("analyze-progress", serde_json::json!({
+                                    "current": current,
+                                    "total": total,
+                                    "file": message,
+                                }));
+                            }
+                            let _ = app_handle.emit("analyze-heartbeat", serde_json::json!({
+                                "label": message,
+                                "elapsed": format!("{:.1}s", start.elapsed().as_secs_f64()),
+                            }));
+                        }
+                        Some("notifications/message") => {
+                            // 图变更信号（watcher 增量摘要 / analyze_done）：
+                            // 快照重查（毫秒级轻查询）→ graph-updated。
+                            let Ok(raw) =
+                                transport.call("graph_snapshot", &serde_json::json!({}))
+                            else {
+                                continue;
+                            };
+                            let Ok(snap) = serde_json::from_str::<serde_json::Value>(&raw) else {
+                                continue;
+                            };
+                            let nc = snap.get("node_count").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let ec = snap.get("edge_count").and_then(|v| v.as_u64()).unwrap_or(0);
+                            if nc == 0 {
+                                // 与旧 watcher 同语义：前端 `nc > 0` 守卫，空图不推
+                                continue;
+                            }
+                            let summary = serde_json::json!({
+                                "total_nodes": nc,
+                                "node_count": nc,
+                                "edge_count": ec,
+                                "meta": { "source_root": &path },
+                            });
+                            if let Err(e) = app_handle.emit("graph-updated", summary.to_string()) {
+                                eprintln!("[lantai-watch] emit graph-updated failed: {e}");
+                            }
+                            // message 到达意味着一段长任务（分析/增量）已落定
+                            analyze_started = None;
+                        }
                         _ => {}
-                    }
-                }
-                for fp in last_mtimes.keys() {
-                    if !current_mtimes.contains_key(fp) {
-                        changed.push((fp.clone(), "removed".into()));
-                    }
-                }
-
-                if !changed.is_empty() {
-                    for (fp, action) in &changed {
-                        if !pending_changed.iter().any(|(p, _)| p == fp) {
-                            pending_changed.push((fp.clone(), action.clone()));
-                        }
-                    }
-                    last_change_at = Some(std::time::Instant::now());
-                }
-
-                let settled = last_change_at
-                    .map(|t| t.elapsed() >= debounce)
-                    .unwrap_or(false);
-                if !settled || pending_changed.is_empty() {
-                    continue;
-                }
-
-                // L1：增量更新落在本工作区专属引擎实例上（engine_try_incremental
-                // 的全局版会让壳层 watcher 串写「最后绑定的全局引擎」——
-                // 跨工作区即错库）。占位工作区（无实例）只清账不动引擎。
-                let Some(ref engine) = engine else {
-                    pending_changed.clear();
-                    last_change_at = None;
-                    continue;
-                };
-
-                if engine.state().is_analyzing() {
-                    continue;
-                }
-
-                let changed = std::mem::take(&mut pending_changed);
-                last_change_at = None;
-
-                // 提取路径列表供不需要动作信息的消费者使用
-                let changed_paths: Vec<String> = changed.iter().map(|(p, _)| p.clone()).collect();
-
-                // ponytail: 在重新分析前快照旧图以便做 diff
-                let before_graph = engine.read(engine_api::graph_from_index).ok();
-
-                // 首先尝试增量更新 (Phase 1-3: 重新解析变更文件,
-                // 文件内 diff, 跨文件边修复)。如果增量失败或验证
-                // 阈值 (0.85 边保留率) 未达标，则自动回退到全量重新分析。
-                let changed_for_engine: Vec<(PathBuf, String)> = changed.iter()
-                    .map(|(p, a)| (PathBuf::from(p), a.clone()))
-                    .collect();
-                let root = Path::new(&path);
-                let analysis_ok = engine.try_incremental(root, &changed_for_engine).is_ok();
-
-                if analysis_ok {
-                    last_mtimes = current_mtimes;
-                    consecutive_failures = 0;
-
-                    if let Ok(mut last) = changed_files.lock() {
-                        *last = changed_paths.clone();
-                    }
-
-                    // ponytail: 计算旧图与新图之间的 diff 以供增量更新
-                    let diff_json = compute_watcher_diff(before_graph.as_ref(), engine);
-
-                    // 从引擎存储中读取实际节点/边数量，使前端的
-                    // `nc > 0` 守卫通过并获取最新图。
-                    // 之前这里硬编码为 0，导致每个 graph-updated
-                    // 事件被静默忽略 — 后端存储已更新但
-                    // 前端一直显示旧数据，直到用户手动点击"重新分析"。
-                    let (nc, ec) = engine.read(|idx| (idx.node_count(), idx.edge_count()))
-                        .unwrap_or((0, 0));
-
-                    let mut summary = serde_json::json!({
-                        "total_nodes": nc,
-                        "node_count": nc,
-                        "edge_count": ec,
-                        "meta": { "source_root": &path }
-                    });
-                    if let Some(d) = &diff_json {
-                        summary["diff"] = d.clone();
-                    }
-                    if let Err(e) = app_handle.emit("graph-updated", summary.to_string()) {
-                        eprintln!("[hologram] emit graph-updated failed: {e}");
-                    }
-                } else {
-                    consecutive_failures += 1;
-                    if consecutive_failures >= 3 {
-                        last_mtimes = current_mtimes;
-                        let msg = format!(
-                            r#"{{"error":"分析失败 (已重试{}次)，实时更新已暂停。保存文件后将重新尝试。"}}"#,
-                            consecutive_failures
-                        );
-                        if let Err(e) = app_handle.emit("graph-updated", msg) {
-                            eprintln!("[hologram] emit graph-updated error failed: {e}");
-                        }
-                    } else {
-                        pending_changed = changed;
-                        last_change_at = Some(std::time::Instant::now());
                     }
                 }
             }
@@ -255,109 +216,5 @@ impl WorkspaceHandle {
 
         self.watcher_thread = Some(handle);
     }
-}
-
-// ── 辅助函数 ────────────────────────────────────────────────────
-
-/// 收集 root 下所有源文件的 mtime，按路径索引。
-fn collect_file_mtimes(root: &str) -> std::collections::HashMap<String, u64> {
-    let mut map = std::collections::HashMap::new();
-    // ponytail: 从引擎的 grammar loader 动态加载支持的扩展名，
-    // 而非硬编码列表 — 新的 grammar DLL 会被自动识别，无需修改代码。
-    let exts: std::collections::HashSet<String> =
-        engine_api::engine_supported_extensions().into_iter().collect();
-    const IGNORE_DIRS: &[&str] = &[
-        ".git",
-        "node_modules",
-        "target",
-        "build",
-        "dist",
-        "out",
-        ".venv",
-        "venv",
-        ".lantai",
-        "release-bin",
-        "__pycache__",
-        ".pytest_cache",
-        ".ruff_cache",
-        ".mypy_cache",
-        ".next",
-        ".nuxt",
-        ".svelte-kit",
-        ".turbo",
-        ".cursor",
-        ".idea",
-        ".vscode",
-        ".coverage",
-    ];
-    for entry in walkdir::WalkDir::new(root)
-        .follow_links(false)
-        .into_iter()
-        .filter_entry(|e| {
-            if e.file_type().is_dir() {
-                let name = e.file_name().to_string_lossy();
-                // 前缀规则与引擎 discovery.rs 保持一致：`.venv-lme` 等
-                // 带后缀虚拟环境同样排除，避免增量重解析扫进第三方依赖树。
-                !(IGNORE_DIRS.iter().any(|d| name.as_ref() == *d)
-                    || name.starts_with(".venv")
-                    || name.starts_with("venv-")
-                    || name.starts_with("venv_"))
-            } else {
-                true
-            }
-        })
-        .filter_map(|e| e.ok())
-    {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        if exts.contains(ext) {
-            if let Ok(meta) = path.metadata() {
-                if let Ok(mtime) = meta.modified() {
-                    if let Ok(secs) = mtime.duration_since(std::time::UNIX_EPOCH) {
-                        map.insert(path.to_string_lossy().to_string(), secs.as_secs());
-                    }
-                }
-            }
-        }
-    }
-    map
-}
-
-/// 计算前一次图与当前引擎图之间的 diff 以供增量更新。
-/// 如果没有前一次图或引擎读取失败则返回 None。
-pub(crate) fn compute_watcher_diff(before: Option<&Graph>, engine: &Engine) -> Option<serde_json::Value> {
-    let before = before?;
-    let after = engine.read(engine_api::graph_from_index).ok()?;
-    let d = before.diff(&after);
-    let added_nodes: Vec<_> = d.added_nodes.iter().map(|n| serde_json::json!({
-        "id": n.id, "name": n.name, "type": n.kind.as_str(),
-        "location": n.location, "in_degree": n.in_degree, "out_degree": n.out_degree,
-        "community_id": n.community_id,
-    })).collect();
-    let removed_nodes: Vec<_> = d.removed_nodes.iter().map(|n| serde_json::json!({
-        "id": n.id, "name": n.name, "type": n.kind.as_str(),
-    })).collect();
-    let modified_nodes: Vec<_> = d.modified_nodes.iter().map(|(old, new)| serde_json::json!({
-        "node_id": new.id, "name": new.name,
-        "old_kind": old.kind.as_str(), "new_kind": new.kind.as_str(),
-    })).collect();
-    let added_edges: Vec<_> = d.added_edges.iter().map(|e| serde_json::json!({
-        "id": e.id, "source": e.source, "target": e.target,
-        "type": e.kind.as_str(), "coupling_depth": e.coupling_depth,
-        "cross_file": e.cross_file,
-    })).collect();
-    let removed_edges: Vec<_> = d.removed_edges.iter().map(|e| serde_json::json!({
-        "id": e.id, "source": e.source, "target": e.target,
-    })).collect();
-    Some(serde_json::json!({
-        "added_nodes": added_nodes,
-        "removed_nodes": removed_nodes,
-        "modified_nodes": modified_nodes,
-        "added_edges": added_edges,
-        "removed_edges": removed_edges,
-    }))
 }
 

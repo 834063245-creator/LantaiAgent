@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-//! 壳专属方法（engine-plugin-extraction Phase 1）——host API，永不进模型
-//! `tools/list`。契约真源：`crate::contract::SHELL_METHODS`（v2，10 方法）。
+//! 壳专属方法（engine-plugin-extraction Phase 1/3）——host API，永不进模型
+//! `tools/list`。契约真源：`crate::contract::SHELL_METHODS`（v3，11 方法）。
 //!
 //! hidden 机制与 `symbol_history` 同型：schema 注册进 `all_schemas` 但不进
 //! `DEFAULT_MCP_TOOLS` —— tools/list 不可见、tools/call 可达；契约守卫
@@ -18,7 +18,7 @@ use serde_json::{json, Value};
 
 use crate::engine;
 use crate::engine::Engine;
-use crate::tools::{get_str, get_usize, project_root};
+use crate::tools::{get_bool, get_str, get_usize, project_root};
 use crate::tools::ToolResponse;
 
 // ═══════════════════════════════════════════════════════════════
@@ -87,6 +87,13 @@ pub(crate) fn handler_file_nodes(args: &Value) -> ToolResponse {
 /// 全量分析（后台）—— 进度经 `notifications/progress` 推送
 ///（mcp.rs 空闲轮询引擎状态机；`is_long_running` 已列入本方法）。
 /// path 必填 —— 与 analyze_project 同纪律：显式根，杜绝兜底误分析。
+///
+/// 缓存新鲜度门（契约 v3，Phase 3 自壳侧 direct_analyze 上收）：
+/// `force=false` 且图非空且缓存未过期 → 直接返回 cached 轻状态，
+/// 不重分析（与旧行为逐语义等价：每次打开工作区都会带 force=false
+/// 调本方法，门必须在引擎侧，否则每次打开都全量重建）。
+/// 全量完成后：推进简报基线（防过期基线误报）+ 经 watcher 事件桥
+/// 推送 analyze_done 摘要（宿主转译为 graph-updated 快照重拉）。
 pub(crate) fn handler_analyze_with_progress(args: &Value) -> ToolResponse {
     let root: PathBuf = match get_str(args, &["path"]) {
         p if !p.is_empty() => PathBuf::from(p),
@@ -98,6 +105,7 @@ pub(crate) fn handler_analyze_with_progress(args: &Value) -> ToolResponse {
             };
         }
     };
+    let force = get_bool(args, "force", false);
     if !root.exists() {
         return ToolResponse::Degraded {
             guidance: format!("Path not found: {}", root.display()),
@@ -118,11 +126,47 @@ pub(crate) fn handler_analyze_with_progress(args: &Value) -> ToolResponse {
             "message": "Analysis already in progress; progress arrives via notifications/progress.",
         }));
     }
+    // 缓存新鲜度门：图非空 + 未过期 + 未强制 → 返回 cached（不重分析）。
+    if !force {
+        let cached_nodes = engine::engine_read(|idx| idx.node_count()).unwrap_or(0);
+        let fresh = cached_nodes > 0 && {
+            let generated_at_ms: Option<u64> =
+                engine::with_engine(|e| e.graph_generated_at().ok().flatten())
+                    .unwrap_or(None)
+                    .and_then(|s| s.parse().ok());
+            !crate::tools::staleness::compute_cache_stale(&root, generated_at_ms).stale
+        };
+        if fresh {
+            return ToolResponse::Success(json!({
+                "status": "cached",
+                "cached": true,
+                "total_nodes": cached_nodes,
+                "node_count": cached_nodes,
+                "edge_count": engine::engine_read(|idx| idx.edge_count()).unwrap_or(0),
+            }));
+        }
+    }
     let spawn_root = root.clone();
     std::thread::Builder::new()
         .stack_size(16 * 1024 * 1024)
         .spawn(move || {
             if engine::engine_analyze(&spawn_root).is_ok() {
+                // 全量分析后推进简报基线（旧壳侧 direct_analyze 同职责——
+                // 防止基线过期在下次 run_check 产生误报）。
+                if let Ok(after) = engine::engine_read(engine::graph_from_index) {
+                    crate::routing::preflight::save_baseline(&spawn_root, &after);
+                }
+                // 完成摘要进事件桥（宿主 pump 转译为 graph-updated → 快照重拉）。
+                let (nc, ec) = engine::engine_read(|idx| (idx.node_count(), idx.edge_count()))
+                    .unwrap_or((0, 0));
+                crate::engine::watcher::push_watcher_event(
+                    json!({
+                        "status": "analyze_done",
+                        "node_count": nc,
+                        "edge_count": ec,
+                    })
+                    .to_string(),
+                );
                 engine::with_engine(|eng| {
                     ensure_watching(eng, spawn_root.clone());
                 });
@@ -349,6 +393,88 @@ pub(crate) fn handler_watcher_subscribe(_args: &Value) -> ToolResponse {
             retry: false,
         },
     }
+}
+
+/// 简报检查（契约 v3，Phase 3 自壳侧 hologram_run_check 上收）——
+/// 编排真源：基线 load → 空图兜底全量分析 → run_full_check → 基线推进 →
+/// 时间线记录（quiet/baseline_seed 门，与旧壳侧行为逐语义等价）。
+/// 异根拒绝（进程绑定单根纪律，同 ensure_ready）。
+pub(crate) fn handler_run_check(args: &Value) -> ToolResponse {
+    use crate::routing::preflight::{check_timeline_props, load_baseline, run_full_check, save_baseline};
+    let requested = get_str(args, &["path"]);
+    let root = if requested.is_empty() {
+        project_root()
+    } else {
+        let p = PathBuf::from(&requested);
+        if !same_root(&p, &project_root()) {
+            return ToolResponse::Refused {
+                reason: format!(
+                    "engine is bound to {} — a different project root requires a separate engine process",
+                    project_root().display()
+                ),
+            };
+        }
+        p
+    };
+    if !root.exists() {
+        return ToolResponse::Degraded {
+            guidance: format!("Path not found: {}", root.display()),
+            fallback: "Verify the path exists and try again".into(),
+            details: json!({}),
+        };
+    }
+    let changed_files: Vec<String> = args
+        .get("changed_files")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    let root_str = root.to_string_lossy().to_string();
+    let before = load_baseline(&root);
+    // 优先使用内存/SQLite 缓存；仅在真正为空时才运行完整分析
+    //（与旧壳侧 run_check 一致：空图兜底同步全量分析）。
+    let after = match engine::engine_read(engine::graph_from_index) {
+        Ok(g) if g.node_count() > 0 || g.edge_count() > 0 => g,
+        _ => {
+            if let Err(e) = engine::engine_analyze(&root) {
+                return ToolResponse::Fault {
+                    message: format!("run_check 分析失败: {e}"),
+                    retry: false,
+                };
+            }
+            match engine::engine_read(engine::graph_from_index) {
+                Ok(g) => g,
+                Err(e) => {
+                    return ToolResponse::Fault {
+                        message: format!("分析后无图谱: {e}"),
+                        retry: false,
+                    };
+                }
+            }
+        }
+    };
+    let result = run_full_check(&before, &after, &changed_files, &root_str);
+
+    // 始终推进基线 — 下次检查将与此快照进行差异比较。
+    save_baseline(&root, &after);
+
+    // 将有意义的检查记录到时间轴（跳过静默的项目打开轮询）。
+    let quiet = result.get("quiet").and_then(|v| v.as_bool()).unwrap_or(false);
+    let baseline_seed = result.get("baseline_seed").and_then(|v| v.as_bool()).unwrap_or(false);
+    if !quiet || baseline_seed {
+        let passed = result["passed"].as_bool().unwrap_or(true);
+        let violation_count = result["violation_count"].as_u64().unwrap_or(0);
+        let event_type = if passed { "commit_clean" } else { "commit_violation" };
+        let summary = if baseline_seed {
+            "基线已建立".to_string()
+        } else if passed {
+            format!("简报通过（{} 违规）", violation_count)
+        } else {
+            format!("简报未通过：{} 条违规", violation_count)
+        };
+        let props = check_timeline_props(&result);
+        let _ = engine::engine_record_timeline_with_props(event_type, None::<&str>, &summary, &props);
+    }
+    ToolResponse::Success(result)
 }
 
 #[cfg(test)]
@@ -617,6 +743,95 @@ mod tests {
         }
         with_engine(|e| e.stop_watcher());
         assert!(got, "增量更新完成后事件必须入队（桥接通）");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // ── run_check（契约 v3）──
+
+    #[test]
+    fn test_run_check_reports_and_advances_baseline() {
+        let _guard = global_engine_test_guard();
+        let root = tmp_root("runcheck");
+        seed_graph(&root, &[("alpha.rs", "fn alpha_one() {}\n")]);
+        // 有变更文件 → 非静默检查（违规与否取决于信号，只验证编排面）
+        let v = serde_json::from_str::<Value>(&resp_text(&handler_run_check(&json!({
+            "changed_files": ["alpha.rs"],
+        }))))
+        .expect("run_check json");
+        assert!(v["passed"].is_boolean() && v["violation_count"].is_u64(), "CheckResult 形状: {v}");
+        assert_eq!(v["changed_files"], json!(["alpha.rs"]));
+        assert_eq!(v["total_changed_files"], 1);
+        // 基线已推进（.lantai/baseline.json 落盘）
+        assert!(crate::routing::preflight::baseline_path(&root).exists(), "基线必须落盘");
+        // 无变更 → 静默（quiet=true，不写基线违规轮询）
+        let v2 = serde_json::from_str::<Value>(&resp_text(&handler_run_check(&json!({}))))
+            .expect("run_check quiet json");
+        assert_eq!(v2["quiet"], true, "无变更应为静默");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_run_check_refuses_foreign_root() {
+        let _guard = global_engine_test_guard();
+        let root = tmp_root("runcheck_root");
+        bind_test_engine(&root);
+        let other = tmp_root("runcheck_other");
+        let refused = handler_run_check(&json!({ "path": other.to_string_lossy() }));
+        assert!(matches!(refused, ToolResponse::Refused { .. }), "异根必须拒绝");
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_dir_all(&other);
+    }
+
+    // ── analyze_with_progress 缓存新鲜度门（契约 v3）──
+
+    #[test]
+    fn test_analyze_with_progress_cached_fast_path() {
+        let _guard = global_engine_test_guard();
+        let root = tmp_root("analyze_cached");
+        seed_graph(&root, &[("alpha.rs", "fn alpha_one() {}\n")]);
+        // 刚分析完、无源码变更 → cached 快路径（不重分析）
+        let v = serde_json::from_str::<Value>(&resp_text(&handler_analyze_with_progress(
+            &json!({ "path": root.to_string_lossy() }),
+        )))
+        .expect("analyze json");
+        assert_eq!(v["status"], "cached", "新鲜缓存必须走 cached 快路径: {v}");
+        assert_eq!(v["cached"], true);
+        assert!(v["node_count"].as_u64().unwrap_or(0) > 0);
+        // force=true → 照常启动全量分析
+        let v2 = serde_json::from_str::<Value>(&resp_text(&handler_analyze_with_progress(
+            &json!({ "path": root.to_string_lossy(), "force": true }),
+        )))
+        .expect("analyze force json");
+        assert_eq!(v2["status"], "started", "force 必须跳过缓存门: {v2}");
+        // 等后台分析结束（防脏状态泄漏给兄弟用例）
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        while std::time::Instant::now() < deadline {
+            if !engine::engine_state().is_analyzing() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_analyze_with_progress_empty_graph_analyzes() {
+        let _guard = global_engine_test_guard();
+        let root = tmp_root("analyze_empty");
+        bind_test_engine(&root);
+        // 空图（节点 0）→ 即便缓存「新鲜」也必须启动分析
+        let v = serde_json::from_str::<Value>(&resp_text(&handler_analyze_with_progress(
+            &json!({ "path": root.to_string_lossy() }),
+        )))
+        .expect("analyze empty json");
+        assert_eq!(v["status"], "started", "空图不得走 cached 快路径: {v}");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        while std::time::Instant::now() < deadline {
+            if !engine::engine_state().is_analyzing() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 }

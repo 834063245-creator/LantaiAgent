@@ -104,8 +104,8 @@ pub(crate) fn list_dir_recursive(root: &std::path::Path, filter_ignored: bool) -
             let name = entry.file_name().to_string_lossy().to_string();
 
             let is_dir = path.is_dir();
-            // 复用引擎的 is_ignored_path 以保持一致的排除行为（仅面向 Agent）
-            if filter_ignored && is_dir && hologram_engine::pipeline::discovery::is_ignored_path(
+            // 复用 hologram-graph 的 is_ignored_path 以保持一致的排除行为（仅面向 Agent）
+            if filter_ignored && is_dir && hologram_graph::is_ignored_path(
                 &path.to_string_lossy().replace('\\', "/"),
             ) {
                 continue;
@@ -183,8 +183,31 @@ pub(crate) struct GlobEntry {
     pub(crate) name: String,
 }
 
-pub(crate) fn is_private_ip(host: &str) -> bool {
-    // 主机名检查（解析到本地/私有的 DNS 名称）
+/// 时间线记录（Phase 3 transport 形态）：事件落工作区引擎进程的
+/// hologram.db（timeline_record 壳方法）。best-effort——timeline 是旁路
+/// 观测面，失败仅日志可见，不阻断主操作。
+pub(crate) fn record_timeline_transport(
+    transport: Option<&std::sync::Arc<crate::engine_transport::McpRemoteTransport>>,
+    event: &str,
+    node_id: Option<&str>,
+    summary: &str,
+) {
+    let Some(t) = transport else {
+        return; // 占位工作区（无传输）不记录
+    };
+    if let Err(e) = t.call(
+        "timeline_record",
+        &serde_json::json!({
+            "event": event,
+            "node_id": node_id.unwrap_or(""),
+            "detail": summary,
+        }),
+    ) {
+        eprintln!("[timeline] 记录失败 ({event}): {e}");
+    }
+}
+
+pub(crate) fn is_private_ip(host: &str) -> bool {    // 主机名检查（解析到本地/私有的 DNS 名称）
     let host_lower = host.to_lowercase();
     if host_lower == "localhost" || host_lower.ends_with(".local") || host_lower.ends_with(".internal") {
         return true;
@@ -221,104 +244,6 @@ pub(crate) fn urlencoding(s: &str) -> String {
         }
     }
     out
-}
-
-/// 从节点 location 提取文件路径 —— 必须容忍 Windows 盘符与 `:line[:col]` 后缀。
-/// `"D:/root/src/a.ts:325"` → `"D:/root/src/a.ts"`；`"src/a.ts"` → `"src/a.ts"`。
-/// 旧实现 `location.split(':').next()` 会把 `D:` 盘符吞成 "D"，导致文件级图谱
-/// 所有节点归并到单一 "D" 节点（2026-08-18 回归修复）。
-pub(crate) fn file_part_of_location(loc: &str) -> &str {
-    fn digits(s: &str) -> bool {
-        !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit())
-    }
-    // 只剥 `:行号`（或 `:行号:列号`）后缀 —— 盘符 `D:` 不满足“尾段纯数字”，不会误伤。
-    if let Some((path, rest)) = loc.rsplit_once(':') {
-        let first = rest.split(':').next().unwrap_or("");
-        if digits(first) {
-            // 形如 "…:line:col"（列号）时再剥一层
-            if let Some((p2, _)) = path.rsplit_once(':') {
-                let after_p2 = &path[p2.len() + 1..];
-                if digits(after_p2) {
-                    return p2;
-                }
-            }
-            return path;
-        }
-    }
-    loc
-}
-
-pub(crate) fn regenerate_file_graph(project_path: &str) -> Result<String, String> {
-    let graph_path = format!("{}/hologram_graph.json", project_path);
-    let files_path = format!("{}/hologram_graph_files.json", project_path);
-
-    let content = std::fs::read_to_string(&graph_path)
-        .map_err(|e| format!("Cannot read graph: {}", e))?;
-    let g: serde_json::Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Invalid graph JSON: {}", e))?;
-
-    // 按文件分组节点
-    let mut file_nodes: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-    if let Some(nodes) = g.get("nodes").and_then(|v| v.as_array()) {
-        for n in nodes {
-            let loc = n.get("location").and_then(|v| v.as_str()).unwrap_or("");
-            // 从 "D:/…/file.py:123" 或 "file.py" 中提取文件路径（保留 Windows 盘符）
-            let file = file_part_of_location(loc).to_string();
-            if !file.is_empty() {
-                if let Some(id) = n.get("id").and_then(|v| v.as_str()) {
-                    file_nodes.entry(file).or_default().push(id.to_string());
-                }
-            }
-        }
-    }
-
-    // 以 O(N) 构建 node_id → file 查找表 — 避免 O(N*E) 的 find_node_file 扫描
-    let node_file: std::collections::HashMap<&str, &str> = g.get("nodes")
-        .and_then(|v| v.as_array())
-        .map(|nodes| {
-            nodes.iter().filter_map(|n| {
-                let id = n.get("id").and_then(|v| v.as_str())?;
-                let file = file_part_of_location(
-                    n.get("location").and_then(|v| v.as_str()).unwrap_or(""),
-                );
-                if file.is_empty() { None } else { Some((id, file)) }
-            }).collect()
-        }).unwrap_or_default();
-
-    // 统计每对文件之间的边数
-    let mut file_edges: std::collections::HashMap<(String, String), u32> = std::collections::HashMap::new();
-    if let Some(edges) = g.get("edges").and_then(|v| v.as_array()) {
-        for e in edges {
-            let src = e.get("source").and_then(|v| v.as_str()).unwrap_or("");
-            let tgt = e.get("target").and_then(|v| v.as_str()).unwrap_or("");
-            let src_file = node_file.get(src).copied().unwrap_or("");
-            let tgt_file = node_file.get(tgt).copied().unwrap_or("");
-            if !src_file.is_empty() && !tgt_file.is_empty() && src_file != tgt_file {
-                *file_edges.entry((src_file.to_string(), tgt_file.to_string())).or_default() += 1;
-            }
-        }
-    }
-
-    let file_graph: serde_json::Value = serde_json::json!({
-        "nodes": file_nodes.iter().map(|(f, ids)| serde_json::json!({
-            "id": f,
-            "name": f.split('/').next_back().unwrap_or(f),
-            "type": "file",
-            "location": f,
-            "symbol_count": ids.len(),
-        })).collect::<Vec<_>>(),
-        "edges": file_edges.iter().map(|((s, t), count)| serde_json::json!({
-            "source": s,
-            "target": t,
-            "type": "structural",
-            "weight": count,
-        })).collect::<Vec<_>>(),
-        "meta": g.get("meta").cloned().unwrap_or(serde_json::json!({})),
-    });
-
-    std::fs::write(&files_path, serde_json::to_string(&file_graph).unwrap_or_default())
-        .map_err(|e| format!("Cannot write file graph: {}", e))?;
-    Ok("ok".to_string())
 }
 
 pub(crate) fn run_git_sync(dir: &str, args: &[String]) -> Result<String, String> {
@@ -665,28 +590,6 @@ mod tests {
         let s = "x".repeat(MAX_IPC_RESPONSE_BYTES + 1);
         let err = guard_ipc_size(s, "Graph JSON").unwrap_err();
         assert!(err.contains("超过 IPC 上限"), "报错必须说明原因：{err}");
-    }
-
-    /// 回归 2026-08-18：location 含 Windows 盘符 D: —— 旧实现 split(':') 把盘符
-    /// 吞掉导致文件级图所有节点归并到单一 "D" 节点。
-    #[test]
-    fn file_part_of_location_keeps_windows_drive() {
-        assert_eq!(
-            file_part_of_location("D:/HoloGramHG/src/a.ts:325"),
-            "D:/HoloGramHG/src/a.ts"
-        );
-        assert_eq!(
-            file_part_of_location("D:/HoloGramHG/src/a.ts"),
-            "D:/HoloGramHG/src/a.ts"
-        );
-        assert_eq!(
-            file_part_of_location("D:/HoloGramHG/src/a.ts:32:6"),
-            "D:/HoloGramHG/src/a.ts"
-        );
-        assert_eq!(file_part_of_location("src/main.rs:12"), "src/main.rs");
-        assert_eq!(file_part_of_location("src/main.rs"), "src/main.rs");
-        assert_eq!(file_part_of_location("main.py:120"), "main.py");
-        assert_eq!(file_part_of_location(""), "");
     }
 
     /// 回归 P0-3：上次崩溃残留的 .bak 不得让后续写入永久失败。

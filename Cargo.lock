@@ -2250,7 +2250,6 @@ dependencies = [
  "flate2",
  "futures-util",
  "glob",
- "hologram-engine",
  "hologram-graph",
  "hologram-storage",
  "hologram-vector",

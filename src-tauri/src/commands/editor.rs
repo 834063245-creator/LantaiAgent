@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: MIT
 // Code editor: edit_file + 真实行级 diff（build_line_diff）.
 
-use hologram_engine::engine as engine_api;
-use hologram_engine::pipeline::discovery::is_ignored_path;
+use hologram_graph::is_ignored_path;
 
 /// 进程级编辑写锁 — 序列化「重读校验 → 原子写入」临界区。
 /// 否则两个并发 edit_file 可双双通过乐观检查后互相覆盖（TOCTOU），
@@ -51,23 +50,18 @@ fn record_edit_side_effects(state: &crate::WorkspaceState, file_path: &str) {
         return;
     }
     let short = file_path.rsplit(['/', '\\']).next().unwrap_or(file_path);
-    // L1：timeline 落单槽工作区绑定的引擎实例（无实例回落全局）。
-    let engine = {
+    // Phase 3：timeline 落工作区引擎进程（transport timeline_record；占位
+    // 工作区无传输，不记录）。
+    let transport = {
         let guard = crate::utils::lock_or_recover(state);
-        guard.as_ref().and_then(|h| h.engine.clone())
+        guard.as_ref().and_then(|h| h.transport.clone())
     };
-    let _ = match engine {
-        Some(ref e) => e.record_timeline(
-            "agent_edit",
-            Some(file_path),
-            &format!("Agent 编辑: {}", short),
-        ),
-        None => engine_api::engine_record_timeline(
-            "agent_edit",
-            Some(file_path),
-            &format!("Agent 编辑: {}", short),
-        ),
-    };
+    crate::utils::record_timeline_transport(
+        transport.as_ref(),
+        "agent_edit",
+        Some(file_path),
+        &format!("Agent 编辑: {}", short),
+    );
     if let Ok(mut changed) = changed_files.lock() {
         let owned = file_path.to_string();
         if !changed.contains(&owned) {

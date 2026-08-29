@@ -68,7 +68,7 @@ import { broadcastGoalRecord } from './state/goal-store';
 import { getPanelStore } from './state/panel-store';
 import { bumpTimelineRefresh } from './state/timeline-store';
 import { useAgentPanelStore } from './ui/agent-panel-store';
-import { resetSessionState, stripLineNumbers } from './ui/chat-session';
+import { resetSessionState } from './ui/chat-session';
 import { getDiagnosticsForFile, LspService } from './ui/lsp-client';
 import { createBuilderDeps, createRuntimeAdapter } from './ui/runtime-adapter';
 import { resolveSemanticToolName } from './ui/tool-semantics';
@@ -116,9 +116,10 @@ export class Workspace {
 
   // ── 图数据 ──
   /** Phase 1.5：聚合快照（引擎 graph_snapshot 形态）——不再承载全量
-   *  nodes/edges；按文件符号索引走 _preflightCtx 的按需查询。 */
+   *  nodes/edges；按文件符号索引走 _preflightCtx 的按需查询。
+   *  （fileGraphData 已随 hologram_graph_files.json 产物链退役——
+   *  Phase 3 摘依赖时 regenerate_file_graph 死代码删除，此处为死状态。） */
   graphData: GraphSnapshot | null = null;
-  fileGraphData: unknown = null;
 
   // ── Agent 与记忆 ──
   /** 工厂已挂接标记（applyAgentConfig 的「补装配」分支判据——工厂在场
@@ -321,31 +322,12 @@ export class Workspace {
         });
       }
 
-      // 3. 加载文件级图谱 — 5 秒超时，不阻塞工作区打开。
-      // ponytail: read_file_content 的 async require_read 运行在 Tokio 运行时上，
-      // 可能被 fire-and-forget 的 analyze_and_load 在异步线程上序列化 11669 节点
-      // 的 JSON 占满。这是一个内部文件；若超时，文件级图谱为 null — 非致命。
-      // 引擎开关关闭时跳过（无分析 = 无文件图谱产物）。
-      if (ws._graphEngineOn) {
-        console.log('[Workspace.open] step 3: read_file_content...');
-        try {
-          const filesPath = path.replace(/\\/g, '/').replace(/\/$/, '') + '/hologram_graph_files.json';
-          const raw = await Promise.race([
-            typedRpc('read_file_content', { file_path: filesPath }),
-            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
-          ]);
-          ws.fileGraphData = JSON.parse(stripLineNumbers(raw));
-          console.log('[Workspace.open] step 3: done');
-        } catch (e) {
-          console.log('[Workspace.open] step 3: failed', e);
-          ws.fileGraphData = null;
-        }
-      }
+      // 3.（已删）文件级图谱装载——hologram_graph_files.json 产物链随
+      //    regenerate_file_graph 退役（Phase 3），fileGraphData 消费面本就为零。
 
       // 4. 初始基线检查 — 渲染段已随 V5 拆除（星图退役），runCheck 保留
       //    （简报注入 cacheCheckResult 服务 Agent 状态注入面）。
-      //    引擎开关关闭时跳过（runCheck 的 engine_init→direct_analyze(force)
-      //    隐藏回退会击穿开关，见 runCheck 门禁注释）。
+      //    引擎开关关闭时跳过（runCheck 的隐藏回退会击穿开关，见 runCheck 门禁注释）。
       if (ws._graphEngineOn) {
         console.log('[Workspace.open] step 4: scheduling initial check...');
         ws._initialRenderActive = true;
@@ -383,14 +365,6 @@ export class Workspace {
                   ws.runCheck();
                 }
                 ws._preflightCtx?.invalidate();
-              }
-              try {
-                const filesPath = ws.path.replace(/\\/g, '/').replace(/\/$/, '') + '/hologram_graph_files.json';
-                ws.fileGraphData = JSON.parse(
-                  stripLineNumbers(await typedRpc('read_file_content', { file_path: filesPath })),
-                );
-              } catch {
-                /* 文件图谱可能尚不存在 */
               }
               bumpTimelineRefresh();
             } catch {

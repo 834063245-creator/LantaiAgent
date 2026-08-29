@@ -13,7 +13,7 @@ const ENGINE_ROOT = join(process.cwd(), '..', 'engine');
 const CONTRACT_RS = join(ENGINE_ROOT, 'src', 'contract.rs');
 const TOOLS_RS = join(ENGINE_ROOT, 'src', 'tools', 'mod.rs');
 
-/** 预期壳专属方法（契约 v2 定稿：砍分页删 3 加 graph_snapshot/file_nodes；新增方法必须在 contract.rs 与本清单双登记）。 */
+/** 预期壳专属方法（契约 v3：v2 十方法 + Phase 3 新增 run_check——简报编排上收引擎）。 */
 const EXPECTED_SHELL_METHODS = [
   'graph_snapshot',
   'file_nodes',
@@ -25,6 +25,7 @@ const EXPECTED_SHELL_METHODS = [
   'ensure_ready',
   'cache_stale',
   'watcher_subscribe',
+  'run_check',
 ];
 
 function parseContract(): { version: number; shellMethods: string[] } {

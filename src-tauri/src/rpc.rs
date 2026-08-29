@@ -336,7 +336,7 @@ async fn dispatch_rpc(
             let workspace = opt_str(&params, "workspace");
             commands::engine_dispatch::hologram_call(tool, args, workspace, state, app_ctx).await
         }
-        "hologram_tools_list" => commands::engine_dispatch::hologram_tools_list(),
+        "hologram_tools_list" => commands::engine_dispatch::hologram_tools_list(state, app_ctx).await,
 
         // ═══════════════════════════════════════════════════════
         // Graph（9 个命令）

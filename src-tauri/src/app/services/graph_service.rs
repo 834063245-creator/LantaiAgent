@@ -13,45 +13,19 @@
 
 use std::sync::Arc;
 
-use hologram_engine::engine::Engine;
-
 use crate::app::AppContexts;
 
-/// 命令层传输解析（Phase 2 接缝）：显式根优先，其后活动工作区（单槽）回退。
-/// 按传输模式（HOLOGRAM_ENGINE_TRANSPORT）产出 InProcess 或 McpRemote。
+/// 命令层传输解析：显式根优先，其后活动工作区（单槽）回退。
+/// Phase 3 起唯一形态 = 每工作区一个引擎进程的 stdio MCP 通道。
 pub(crate) fn resolve_transport(
     app_ctx: &Arc<AppContexts>,
     state: &crate::WorkspaceState,
     explicit: Option<&str>,
-) -> Result<(std::sync::Arc<dyn crate::engine_transport::EngineTransport>, String), String> {
+) -> Result<(std::sync::Arc<crate::engine_transport::McpRemoteTransport>, String), String> {
     let fallback = crate::utils::workspace_path(state).ok();
     let (transport, root) = app_ctx.resolve_transport(explicit, fallback.as_deref())?;
     let root = root.to_string_lossy().to_string();
     Ok((transport, root))
-}
-
-/// 命令层引擎决议：显式根优先，其后活动工作区（单槽）回退。
-/// 返回 (引擎, 根路径展示形)——引擎必属该根（ensure_context 语义）。
-pub(crate) fn resolve(
-    app_ctx: &Arc<AppContexts>,
-    state: &crate::WorkspaceState,
-    explicit: Option<&str>,
-) -> Result<(Arc<Engine>, String), String> {
-    let fallback = crate::utils::workspace_path(state).ok();
-    let root = explicit
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .or_else(|| fallback.clone());
-    let engine = app_ctx
-        .resolve_engine(explicit, fallback.as_deref())
-        .ok_or_else(|| "未打开工作区，请先打开项目".to_string())?;
-    let root = root.unwrap_or_else(|| {
-        hologram_engine::path_utils::normalize_path(
-            &engine.project_root().to_string_lossy(),
-        )
-    });
-    Ok((engine, root))
 }
 
 /// load_graph_json 业务体（Phase 1.5 重定义）：返回聚合快照 JSON。
@@ -114,8 +88,8 @@ pub(crate) async fn load_graph_json(
     Err("No cached graph found".into())
 }
 
-/// analyze_and_load 业务体：写 .last_project + 窗口标题 + 分析 + 回轻状态。
-/// （窗口标题联动留在壳层——UI 表现属通道职责，此处只做分析编排。）
+/// analyze_and_load 业务体：写 .last_project + 窗口标题（壳层）+ transport
+/// 分析编排（graph_io::run_analyze_with_progress——发起 / 等待 / graph-updated）。
 /// Phase 1.5：不再回分页 meta —— 前端分析完成后经 get_graph_snapshot
 /// 装载快照，graph-updated 事件驱动后续刷新。
 pub(crate) async fn analyze_and_load(
@@ -127,21 +101,10 @@ pub(crate) async fn analyze_and_load(
 ) -> Result<String, String> {
     let _ = std::fs::write(crate::utils::project_root().join(".last_project"), &path);
 
-    // L1：目标根显式 → 数据上下文（不存在则创建，引擎 init 落在 spawn_blocking 内）
-    let (engine, _root_disp) = resolve(&app_ctx, &state, Some(&path))?;
-    let analyze_future = crate::utils::run_analyze_with_progress(
-        engine.clone(),
-        path.clone(),
-        app.clone(),
-        force,
-    );
-    analyze_future.await.map_err(|e| format!("Rust 引擎分析失败: {e}"))?;
-
-    let files_path = format!("{}/hologram_graph_files.json", path);
-    if !std::path::Path::new(&files_path).exists() {
-        let _ = crate::utils::regenerate_file_graph(&path);
-    }
-    Ok(serde_json::json!({ "status": "ok", "analyzed": true }).to_string())
+    // 目标根显式 → 数据上下文 + 传输句柄（引擎子进程惰性 spawn，
+    // 全部 stdio 调用在 spawn_blocking 内）。
+    let (transport, _root_disp) = resolve_transport(&app_ctx, &state, Some(&path))?;
+    crate::utils::run_analyze_with_progress(transport, path, app, force).await
 }
 
 /// get_graph_snapshot 业务体：活动工作区（单槽）决议，返回聚合快照 JSON。
