@@ -29,29 +29,29 @@ export function ProviderList({ providers, selected, current, onSelect, onAdd }: 
           <div className="pp-rail-empty">还没有提供方——点击下方「添加提供方」开始。</div>
         ) : (
           providers.map((p) => {
-          const st = providerStatus(p);
-          const active = p.name === selected;
-          return (
-            <button
-              type="button"
-              key={p.name}
-              className={`pp-src pp-src-${st}${active ? ' active' : ''}`}
-              onClick={() => onSelect(p.name)}
-            >
-              <span className={`pp-src-dot pp-dot-${st}`} />
-              <span className="pp-src-main">
-                <span className="pp-src-name">
-                  {p.name}
-                  {p.name === current && <span className="pp-now-badge">新会话默认</span>}
+            const st = providerStatus(p);
+            const active = p.name === selected;
+            return (
+              <button
+                type="button"
+                key={p.name}
+                className={`pp-src pp-src-${st}${active ? ' active' : ''}`}
+                onClick={() => onSelect(p.name)}
+              >
+                <span className={`pp-src-dot pp-dot-${st}`} />
+                <span className="pp-src-main">
+                  <span className="pp-src-name">
+                    {p.name}
+                    {p.name === current && <span className="pp-now-badge">新会话默认</span>}
+                  </span>
+                  <span className="pp-src-sub">
+                    {protocolLabel(p.kind)}
+                    {p.model ? ` · ${p.model}` : ''}
+                  </span>
                 </span>
-                <span className="pp-src-sub">
-                  {protocolLabel(p.kind)}
-                  {p.model ? ` · ${p.model}` : ''}
-                </span>
-              </span>
-              <span className="pp-src-state">{STATUS_LABEL[st]}</span>
-            </button>
-          );
+                <span className="pp-src-state">{STATUS_LABEL[st]}</span>
+              </button>
+            );
           })
         )}
       </div>

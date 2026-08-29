@@ -24,6 +24,7 @@ import type { ToolSchema } from '../../provider/types';
 import { typedJsonRpc } from '../../rpc-contract';
 import type { StarGraph } from '../../scene/graph-types';
 import { askSessionOf, useAskStore } from '../../state/ask-store';
+import { useBgAlertStore } from '../../state/bg-alert-store';
 import { getCanvasStore, loadCanvasFromDisk, saveCanvasToDisk } from '../../state/canvas-store';
 import { useDockStore } from '../../state/dock-store';
 import { broadcastGoalRecord, useGoalStore } from '../../state/goal-store';
@@ -740,15 +741,23 @@ export class ChatCore {
       if (dead.size > 0) canvas.replaceDeletedSessionIds(dead);
     }
 
+    let restoreFailed = 0;
     for (const sid of Object.keys(getCanvasStore(this.panelId).getState().spread)) {
       const n = Number(sid);
       if (!openIds.has(n)) {
         try {
           await this.loadSessionFromDisk(workspace, n);
         } catch (e) {
+          restoreFailed += 1;
           console.error('[canvas] 恢复摊开卷失败', n, e);
         }
       }
+    }
+    // D5（拍板 C）：恢复失败可见——StatusLine 警告档 + 一次性提示条
+    if (restoreFailed > 0) {
+      useBgAlertStore.getState().pushBgAlert('restore-open', `有 ${restoreFailed} 卷恢复失败——可在左侧栏手动展开`);
+    } else {
+      useBgAlertStore.getState().clearBgAlert('restore-open');
     }
     // 恢复活跃会话指向（画布状态文件的 activeSessionId——创作坞/输入条跟随）
     const activeSid = canvas.activeSessionId ? Number(canvas.activeSessionId) : null;

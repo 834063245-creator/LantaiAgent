@@ -15,8 +15,8 @@ import './prompt-shelf.css';
 /** 内联 SVG 图标 — 单点色 dangerousHTML（iconSvg 返回自有静态图标库字符串，
  *  非用户输入，无 XSS 面）；全部使用点经此组件，豁免只留这一处。 */
 function Icon({ name, size = 12 }: { name: string; size?: number }): React.ReactElement {
-  // biome-ignore lint/security/noDangerouslySetInnerHtml: 自有静态图标库字符串（ui/icons.ts），非用户输入
   // 装饰性图标（2026-08-29 走查）：语义由宿主按钮 title 承载，不进无障碍树
+  // biome-ignore lint/security/noDangerouslySetInnerHtml: 自有静态图标库字符串（ui/icons.ts），非用户输入
   return <span aria-hidden="true" dangerouslySetInnerHTML={{ __html: iconSvg(name, size) }} />;
 }
 
@@ -348,7 +348,12 @@ const AskBatchCard: React.FC<{
   const next = !isLast;
 
   return (
-    <div className="prompt-shelf__card prompt-shelf__card--batch" role="dialog" aria-modal="false" aria-labelledby={titleId}>
+    <div
+      className="prompt-shelf__card prompt-shelf__card--batch"
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby={titleId}
+    >
       {/* 头部：进度 + 取消 */}
       <div className="prompt-shelf__head">
         <span className="prompt-shelf__tag prompt-shelf__tag--ask">

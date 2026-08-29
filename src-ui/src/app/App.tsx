@@ -17,10 +17,12 @@ import { useCoreStore } from './chat/core-instance';
 import { PromptShelfHost } from './chat/PromptShelfHost';
 import { DockPanel } from './panels/DockPanel';
 import { SessionsHome } from './SessionsHome';
+import { useDocumentTitle } from './use-document-title';
 import { useGlobalKeys } from './useGlobalKeys';
 
 export function App() {
   useGlobalKeys();
+  useDocumentTitle();
   const core = useCoreStore((s) => s.core);
   return (
     <>

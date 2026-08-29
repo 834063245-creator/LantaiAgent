@@ -99,6 +99,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
   };
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: 模态遮罩点击空白 = 取消（明确对话框语义）
     <div
       className="cd-overlay"
       onMouseDown={(e) => {

@@ -56,6 +56,62 @@
   background: var(--indigo);
 }
 
+/* 后台失败警报档（R5 D5 拍板 C）：警告色文字 + 朱砂点（人的警告——
+   铁律：朱砂=人；机器的「分析中」用石青，人的「出事了」用朱砂/警告色） */
+.sl-chip--warn {
+  color: var(--warn);
+}
+.sl-warn-dot {
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--warn);
+}
+
+/* 一次性提示条（进入失败态弹一次；「知道了」收条，警告档随失败解除才消失） */
+.sl-alert {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 340px;
+  background: var(--paper);
+  border: var(--rule-soft);
+  border-top: 2px solid var(--warn);
+  box-shadow: var(--elev-menu);
+  padding: 8px 12px;
+}
+.sl-alert-msg {
+  flex: 1;
+  font-family: var(--f-song);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-1);
+}
+.sl-alert-ok {
+  flex-shrink: 0;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  background: transparent;
+  border: var(--rule-soft);
+  border-radius: 0;
+  cursor: pointer;
+  padding: 2px 8px;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.sl-alert-ok:hover {
+  background: var(--ink-1);
+  color: var(--paper);
+}
+
 /* 状态记录（纸面小菜单，与模型菜单同语言） */
 .sl-log {
   position: absolute;

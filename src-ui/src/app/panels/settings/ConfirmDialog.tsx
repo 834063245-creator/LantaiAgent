@@ -8,7 +8,7 @@
 // Enter 只在弹层自身持有焦点时生效（avoid 文本输入中的 Enter 提交表单）。
 
 import type React from 'react';
-import { useEffect, useRef, useId } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { mountDialogFocus } from '../../dialog-focus';
 
 interface ConfirmDialogProps {
@@ -71,6 +71,7 @@ export function ConfirmDialog({
 
   if (!open) return null;
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: 模态遮罩点击空白 = 取消（明确对话框语义）
     <div
       className="cd-overlay"
       onMouseDown={(e) => {

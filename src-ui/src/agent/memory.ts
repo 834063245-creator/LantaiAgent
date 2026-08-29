@@ -104,7 +104,7 @@ export class MemoryManager {
         // 代际防护：initAura 在途期间可能已切换工作区 —
         // 过期后这个 brain 属于旧项目，初始化结果直接丢弃并关闭，防跨项目串味。
         const epoch = getWorkspaceEpoch();
-        const result = await auraInit(brainPath);
+        await auraInit(brainPath);
         if (!isCurrentEpoch(epoch)) {
           await auraShutdown();
           return;

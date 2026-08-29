@@ -25,6 +25,7 @@ import type { PaperStrip } from '../paper/selection';
 import type { StreamRegionState } from '../paper/space';
 import { typedRpc } from '../rpc-contract';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
+import { useBgAlertStore } from './bg-alert-store';
 import { createScopedStore } from './scoped-store';
 
 // ── 类型 ──
@@ -304,9 +305,13 @@ export async function saveCanvasToDisk(storeId: string, workspace: string): Prom
   const payload = snapshotCanvas(storeId);
   try {
     await typedRpc('write_file_content', { file_path: path, content: JSON.stringify(payload) });
+    // D5（拍板 C）：成功解除警报——下次失败重新弹
+    useBgAlertStore.getState().clearBgAlert('canvas-save');
     return true;
   } catch (e) {
+    // 尽力而为但不静默：失败态接 StatusLine 警告档 + 一次性提示条（自动重试不变）
     console.error('[canvas] 工作区画布状态落盘失败:', e);
+    useBgAlertStore.getState().pushBgAlert('canvas-save', '画布状态落盘失败——未保存改动稍后自动重试');
     return false;
   }
 }

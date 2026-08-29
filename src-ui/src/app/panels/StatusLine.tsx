@@ -16,6 +16,7 @@
 // 挂载：PaperPanel 书眉（pp-zoom 旁）。app 级单例 store，无面板生命周期。
 
 import { memo, useEffect, useRef, useState } from 'react';
+import { useBgAlertStore } from '../../state/bg-alert-store';
 import { useShellStore } from '../shell-store';
 import './status-line.css';
 
@@ -33,9 +34,20 @@ export const StatusLine = memo(function StatusLine() {
   const statusText = useShellStore((s) => s.statusText);
   const statusLog = useShellStore((s) => s.statusLog);
   const analyzing = useShellStore((s) => s.analyzing);
+  const bgAlert = useBgAlertStore((s) => s.bgAlert);
   const [logOpen, setLogOpen] = useState(false);
   const [pulse, setPulse] = useState(false);
+  const [alertDismissedId, setAlertDismissedId] = useState('');
   const hostRef = useRef<HTMLDivElement | null>(null);
+  const alertId = bgAlert?.id ?? '';
+
+  // 警报 id 变化（含成功解除后同源再失败）→ 提示条重新可弹（拍板 C：每次进入失败态弹一次）。
+  // React 官方「props/state 变化时重置 state」模式——render 期调 setState，免 effect 免依赖。
+  const [prevAlertId, setPrevAlertId] = useState(alertId);
+  if (prevAlertId !== alertId) {
+    setPrevAlertId(alertId);
+    setAlertDismissedId('');
+  }
 
   // 分析中的呼吸点（可停原则：CSS transition + 定时翻转，卸载即清）
   useEffect(() => {
@@ -65,20 +77,39 @@ export const StatusLine = memo(function StatusLine() {
   }, [logOpen]);
 
   const busy = analyzing !== null;
+  const alerting = bgAlert !== null;
 
   return (
     <div ref={hostRef} className="sl-root">
       <button
         type="button"
-        className={`sl-chip${busy ? ' sl-chip--busy' : ''}`}
-        title="状态（点击查看最近记录）"
-        aria-label={`工作区状态：${busy ? '分析中' : statusText}`}
+        className={`sl-chip${busy ? ' sl-chip--busy' : ''}${alerting ? ' sl-chip--warn' : ''}`}
+        title={alerting ? `后台警报：${bgAlert?.msg ?? ''}（点击查看最近记录）` : '状态（点击查看最近记录）'}
+        aria-label={`工作区状态：${alerting ? `后台警报 ${bgAlert?.msg ?? ''}` : busy ? '分析中' : statusText}`}
         aria-expanded={logOpen}
         onClick={() => setLogOpen((v) => !v)}
       >
-        {busy && <span className={`sl-dot${pulse ? ' sl-dot--on' : ''}`} aria-hidden="true" />}
-        <span className="sl-text">{busy ? (analyzing === 'reanalyze' ? '重分析中' : '分析中') : statusText}</span>
+        {alerting && <span className="sl-warn-dot" aria-hidden="true" />}
+        {!alerting && busy && <span className={`sl-dot${pulse ? ' sl-dot--on' : ''}`} aria-hidden="true" />}
+        <span className="sl-text">
+          {alerting
+            ? `⚠ ${bgAlert?.msg ?? ''}`
+            : busy
+              ? analyzing === 'reanalyze'
+                ? '重分析中'
+                : '分析中'
+              : statusText}
+        </span>
       </button>
+      {alerting && alertDismissedId !== alertId && (
+        // 拍板 C：每次进入失败态弹一次提示条；「知道了」只收提示条，警告档随失败解除才消失
+        <div className="sl-alert" role="alert">
+          <span className="sl-alert-msg">{bgAlert?.msg}</span>
+          <button type="button" className="sl-alert-ok" onClick={() => setAlertDismissedId(alertId)}>
+            知道了
+          </button>
+        </div>
+      )}
       {logOpen && (
         <div className="sl-log" role="log" aria-label="最近状态记录">
           {statusLog.length === 0 ? (

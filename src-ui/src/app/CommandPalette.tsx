@@ -12,9 +12,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { activeCommandContributions, type CommandContribution } from '../composition/services';
 import { shellRefs } from '../shell/runtime';
 import { usePanelDefsStore } from '../state/panel-defs-store';
-import { mountDialogFocus } from './dialog-focus';
 import type { CommandDef } from '../ui/command-registry';
 import { type AppAction, listActions } from './actions';
+import { mountDialogFocus } from './dialog-focus';
 import { Icon } from './Icon';
 import { useShellStore } from './shell-store';
 
