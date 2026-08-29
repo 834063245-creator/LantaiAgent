@@ -6,15 +6,17 @@
 // 无面板级消息数组，无 sessionMessageModels 缓存，无手动同步。
 // 流式写入直接指向会话的 store — 无论哪个标签页活跃都始终正确。
 
-import type { AgentEvent } from '../agent/agent-types';
+import type { AgentEvent, AssetEventData } from '../agent/agent-types';
 import { EventKind } from '../agent/agent-types';
 import type { ChatAgentHandle } from '../agent/chat-agent-handle';
+import { getAssetTableStore } from '../state/asset-store';
+import { refreshPinnedAssetSnapshots } from '../state/canvas-store';
 import { autoTitleSessionIfDefault } from './chat-session';
-import { bumpChat, getChatStore } from './chat-store';
+import { bumpChat, getChatStore, msgStoreFor } from './chat-store';
 import type { StarGraph } from './graph';
 import type { AssistantMessage, ChatMessage, FileAttachment, MessageId, PlanPart, UserMessage } from './message-model';
 import { createAssistantMessage, createNoticeMessage, createUserMessage } from './message-model';
-import { applyEventToParts } from './part-mutator';
+import { applyAssetUpdateToExistingParts, applyEventToParts } from './part-mutator';
 import { isSubagentSpawnTool } from './tool-semantics';
 
 // ── 轮次配对类型（与 chat-session 共享）──
@@ -303,6 +305,41 @@ export function _scheduleSync(ctx: StreamContext): void {
 }
 
 // ═══════════════════════════════════════════════════════════
+// Asset 广播（WO-5/A7）：update_asset 原位替换所有引用 + pinned 孤儿快照刷新
+// ═══════════════════════════════════════════════════════════
+
+function _applyAssetBroadcast(ctx: StreamContext, asset: AssetEventData): void {
+  const target = _resolveSessionTarget(ctx, ctx.getStreamingAssistantId());
+  if (!target) return;
+  const sid = target.sessionId;
+  const store = msgStoreFor(ctx.storeId, sid);
+  const assetTable = getAssetTableStore(`${ctx.storeId}:${sid}`);
+  const existed = assetTable.getState().get(asset.assetId) !== undefined;
+
+  const touched: MessageId[] = [];
+  let found = false;
+  for (const msg of target.messages) {
+    if (msg.role !== 'assistant') continue;
+    if (applyAssetUpdateToExistingParts(msg.parts, asset)) {
+      found = true;
+      touched.push(msg._id);
+    }
+  }
+  for (const id of touched) store.getState().touchMessage(id);
+
+  // 全新资产（show_asset）且会话中还没有任何引用：沿用原路径 append 到当前流式助手。
+  // 若资产表已有记录却找不到消息引用 = 源 part 已被压缩/清理的 orphan-only 更新，
+  // 不新增块，只刷 pinned 孤儿快照。
+  if (!found && !existed) {
+    applyEventToParts(_streamingAssistant(ctx).parts, { kind: EventKind.Asset, asset });
+    _streamingBump(ctx);
+  }
+
+  assetTable.getState().upsert(asset);
+  refreshPinnedAssetSnapshots(ctx.storeId, asset);
+}
+
+// ═══════════════════════════════════════════════════════════
 // renderEvent — Agent 事件分发
 // ═══════════════════════════════════════════════════════════
 
@@ -392,6 +429,17 @@ export function renderEvent(ctx: StreamContext, ev: AgentEvent): void {
         const assistant = _streamingAssistant(ctx);
         assistant.parts.push(planPart);
         _streamingBump(ctx);
+      }
+      break;
+
+    case EventKind.Asset:
+      if (ev.asset) _applyAssetBroadcast(ctx, ev.asset);
+      break;
+
+    case EventKind.AssetDelta:
+      if (ev.assetDelta) {
+        applyEventToParts(_streamingAssistant(ctx).parts, ev);
+        _scheduleSync(ctx);
       }
       break;
 

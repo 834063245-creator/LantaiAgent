@@ -113,6 +113,11 @@ export const FIRST_PARTY_MANIFEST: Record<string, FirstPartyPluginMeta> = {
   'hologram/task-domain': meta('hologram/task-domain', 'feature', '任务域工具（task_*）'),
   'hologram/agent-domain': meta('hologram/agent-domain', 'feature', '子代理域工具（spawn/kill/status/通信）'),
   'hologram/cordis-domain': meta('hologram/cordis-domain', 'feature', '运行时插件域工具（define/run/stop/inspect）'),
+  'hologram/asset-domain': meta(
+    'hologram/asset-domain',
+    'feature',
+    '资产块域工具（show_asset/update_asset/list_block_kinds——Agent 生成可引用/更新的资产块）',
+  ),
   'hologram/prompt-segments': meta(
     'hologram/prompt-segments',
     'feature',

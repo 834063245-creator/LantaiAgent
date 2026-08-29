@@ -231,6 +231,9 @@ export function measureBlockHeight(b: SourcedBlock): number {
       const actionsH = plan._callback ? PLAN_ACTIONS_H : 0;
       return PLAN_CHROME_H + PLAN_HEAD_H + itemsH + optionsH + actionsH;
     }
+    default:
+      // 资产/开放 kind：WO-4 漂亮 JSON 渲染器落地前给保守占位高，避免 NaN/塌陷。
+      return 80;
   }
 }
 
@@ -268,6 +271,9 @@ function measureSignature(b: SourcedBlock): string {
       return `code|${p.code ?? ''}|${p.output ?? ''}|${p.err ?? ''}`;
     case 'plan':
       return `plan|${p.content ?? ''}|${(p.options as unknown[] | undefined)?.length ?? 0}|${p._callback ? 1 : 0}`;
+    default:
+      // 资产/开放 kind：占位高度固定，签名只记 kind（WO-6 精确测量时再纳入 payload）。
+      return `open|${b.kind}`;
   }
 }
 

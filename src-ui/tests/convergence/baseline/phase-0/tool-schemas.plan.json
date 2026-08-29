@@ -1,5 +1,5 @@
 {
-  "count": 17,
+  "count": 20,
   "schemas": [
     {
       "description": "Ask the user one or more questions when you need clarification or confirmation before proceeding. Use when the request is ambiguous, you need to choose between approaches, or you need approval for a destructive action. Supports: single question (question/header/options/multiSelect), multiple questions in one call (questions array — recommended for 2+, asked one at a time), and open-ended questions (omit options — the user types a free-text answer). Returns the user's answer(s).",
@@ -114,6 +114,73 @@
             "type": "number"
           }
         },
+        "type": "object"
+      }
+    },
+    {
+      "description": "Create a visual asset block in the conversation (chart/table/metric/graph/html...) rendered as a component. Use for any deliverable that benefits from spatial layout or needs to be referred/updated later (charts, tables, impact graphs, metric dashboards, SVG/HTML cards). The block enters the chat flow and can be pinned to the canvas by the user. Kinds and their payload schemas are listed by list_block_kinds; presentation selects the visual form within the kind white-list (omit for the default). Check list_block_kinds before your first call.",
+      "name": "show_asset",
+      "parameters": {
+        "additionalProperties": {},
+        "properties": {
+          "kind": {
+            "description": "资产语义 kind（list_block_kinds 可查全量与 schema）",
+            "type": "string"
+          },
+          "payload": {
+            "description": "资产数据（须为 JSON；纯数据，不含回调）"
+          },
+          "presentation": {
+            "description": "表现形态（kind 白名单内；缺省用默认表现）",
+            "type": "string"
+          },
+          "stream": {
+            "description": "append 型 kind 可流式构建（终值仍以本调用为准）",
+            "type": "boolean"
+          },
+          "title": {
+            "description": "短标题（snake_case 风格，可作下载/引用名）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Update an existing asset block in-place by assetId (payload/presentation replace; the block id and pin position keep unchanged — pinned copies update live). Rules: kind is NOT changeable (changing semantics means creating a new asset with show_asset); presentation is changeable (skin swap, within the same kind white-list). Errors name what went wrong and what to do instead.",
+      "name": "update_asset",
+      "parameters": {
+        "additionalProperties": {},
+        "properties": {
+          "assetId": {
+            "description": "资产 id（show_asset 返回）",
+            "type": "string"
+          },
+          "payload": {
+            "description": "新资产数据（纯 JSON；整体替换）"
+          },
+          "presentation": {
+            "description": "新表现形态（kind 白名单内；缺省保持原表现）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId",
+          "payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List all available asset block kinds with their payload JSON Schema, presentation white-lists, and streaming mode. Call before show_asset to learn what you can generate and how the payload must be shaped; the list reflects the live registry (plugin-contributed kinds appear automatically).",
+      "name": "list_block_kinds",
+      "parameters": {
+        "additionalProperties": {},
+        "properties": {},
         "type": "object"
       }
     },

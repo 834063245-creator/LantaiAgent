@@ -15,7 +15,8 @@
 // CC 参考：StreamingToolExecutor, query.ts:1366-1408
 
 import type { ToolCall } from '../provider/types';
-import { type AgentEvent, EventKind, type ToolPipelineContext } from './agent-types';
+import { type AgentEvent, type AssetEventData, EventKind, type ToolPipelineContext } from './agent-types';
+import { generateAssetId } from './asset-kinds';
 import type { AgentEventBus } from './events';
 import type { Tool, ToolRegistry } from './tool';
 import { resolveGuardToolName, retireRedirect } from './tools/domains';
@@ -346,6 +347,12 @@ export class StreamingToolExecutor {
       args._owner_id = this.ownerId;
     }
 
+    // 资产通道：预生成 assetId 注入（工具以 args._asset_id 为准；AssetDelta 路由
+    // 需要它——工具内部 onProgress 时 executor 已经知道目标资产）
+    if (tool.assetChannel === true) {
+      args._asset_id = generateAssetId();
+    }
+
     try {
       const _toolStart = performance.now();
       let output = '';
@@ -353,6 +360,16 @@ export class StreamingToolExecutor {
       output = await tool.execute(
         args,
         (chunk) => {
+          // 资产通道：onProgress 增量路由为 AssetDelta（append 型资产流式构建）
+          if (tool.assetChannel === true) {
+            const assetId = typeof args._asset_id === 'string' ? args._asset_id : '';
+            const kind = typeof args.kind === 'string' ? args.kind : '';
+            this.emit({
+              kind: EventKind.AssetDelta,
+              assetDelta: { assetId, kind, chunk },
+            });
+            return;
+          }
           this.emit({
             kind: EventKind.ToolProgress,
             tool: {
@@ -366,6 +383,17 @@ export class StreamingToolExecutor {
         },
         this.signal ?? undefined,
       );
+
+      // 资产通道：终值解析 → Asset 事件（必须在 runAround/前缀拼接之前——
+      // 返回的 JSON 不能被富化文本污染；解析失败 = 工具异常路径，错误不静默）
+      if (tool.assetChannel === true) {
+        const assetEvent = parseAssetEventOutput(output);
+        if (assetEvent) {
+          this.emit({ kind: EventKind.Asset, asset: assetEvent });
+        } else if (output?.trim()) {
+          console.warn('[executor] assetChannel tool returned non-asset output', call.name);
+        }
+      }
 
       // ── 工具后钩子：用图上下文富化结果（经 eventBus 的 tool/around 监听面）──
       if (this.eventBus) {
@@ -450,5 +478,25 @@ export class StreamingToolExecutor {
         truncated: result.truncated,
       },
     });
+  }
+}
+
+/* ── 资产通道终值解析（协议 §2.3——assetChannel 工具返回 JSON 的 AssetEventData 形状）── */
+
+function parseAssetEventOutput(output: string): AssetEventData | null {
+  try {
+    const parsed: unknown = JSON.parse(output);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const o = parsed as Record<string, unknown>;
+    if (typeof o.assetId !== 'string' || typeof o.kind !== 'string' || !('payload' in o)) return null;
+    return {
+      assetId: o.assetId,
+      kind: o.kind,
+      ...(typeof o.presentation === 'string' ? { presentation: o.presentation } : {}),
+      ...(typeof o.title === 'string' && o.title.length > 0 ? { title: o.title } : {}),
+      payload: o.payload,
+    };
+  } catch {
+    return null;
   }
 }

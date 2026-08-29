@@ -311,6 +311,26 @@ function translateAssistantParts(
           part,
         );
         break;
+      case 'block': {
+        // 资产块（WO-3）：BlockPart → 1 块映射——不拆围栏、不分组。
+        // id 沿用 pb:{msg}:{i} 稳定规则（update 后重转译 id 不变 = 钉住续命）。
+        // 活引用 source.part = BlockPart；资产身份/表现选择挂在 block.asset，
+        // payload 保持 BlockPart.payload 纯 JSON 原样。
+        const base = {
+          ...createBlock(part.kind, part.payload as never, { messageId: msg._id, part }),
+          id: partBlockId(msg._id, idx),
+          asset: {
+            assetId: part.assetId,
+            presentation: part.presentation,
+            ...(part.title !== undefined ? { title: part.title } : {}),
+            finalised: part.finalised,
+          },
+          w: DEFAULT_BLOCK_WIDTH,
+        };
+        const pos = pinned?.get(base.id);
+        out.push(pos ? { ...base, state: 'pinned', x: pos.x, y: pos.y } : base);
+        break;
+      }
       case 'subagent':
         // 走查弹：拍平（不建嵌套组）。子 agent parts 顺序展开，
         // id 带子前缀防与父消息 part 撞号。
@@ -387,6 +407,17 @@ function translateAssistantParts(
                     { messageId: msg._id, part: sp },
                   ),
                   id: subId,
+                };
+              case 'block':
+                return {
+                  ...createBlock(sp.kind, sp.payload as never, { messageId: msg._id, part: sp }),
+                  id: subId,
+                  asset: {
+                    assetId: sp.assetId,
+                    presentation: sp.presentation,
+                    ...(sp.title !== undefined ? { title: sp.title } : {}),
+                    finalised: sp.finalised,
+                  },
                 };
               default:
                 return { ...createBlock('markdown', { text: '' }, { messageId: msg._id, part: sp }), id: subId };

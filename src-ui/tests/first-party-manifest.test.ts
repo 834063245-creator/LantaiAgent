@@ -35,8 +35,8 @@ describe('first-party-manifest（清单完备性守护）', () => {
     }
   });
 
-  it('计数快照（43 = 26 直列 + 15 工具域 + 1 prompt 段 + 1 capability 段）', () => {
-    expect(Object.keys(FIRST_PARTY_MANIFEST)).toHaveLength(43);
+  it('计数快照（44 = 26 直列 + 16 工具域 + 1 prompt 段 + 1 capability 段）', () => {
+    expect(Object.keys(FIRST_PARTY_MANIFEST)).toHaveLength(44); // 43 + hologram/asset-domain（资产块域，2026）
   });
 
   it('两类都有存量：service 平台服务（常驻）与 feature 功能插件（可禁用）', () => {

@@ -19,7 +19,7 @@
 // 本 store 的 activeSessionId 是画布状态文件里的持久化镜像（重启恢复用）。
 
 import { create } from 'zustand';
-import type { BlockKind, SourcedBlock } from '../paper/block-model';
+import type { BlockAssetMeta, BlockKind, SourcedBlock } from '../paper/block-model';
 import { createBlock } from '../paper/block-model';
 import type { PaperStrip } from '../paper/selection';
 import type { StreamRegionState } from '../paper/space';
@@ -32,12 +32,15 @@ import { createScopedStore } from './scoped-store';
 
 /** 钉住块的内容快照（源会话退场后仍可显示——公共物不连坐，钉到拔为止）。
  *  kind/text/lang 覆盖文本类块；payload 承载结构化块（plan/tool/code…）的
- *  展示字段。渲染层重建块时：有源用活块，无源用快照。 */
+ *  展示字段。资产块额外保存 asset（身份/表现/载荷），供 update 广播刷新孤儿钉。
+ *  渲染层重建块时：有源用活块，无源用快照。 */
 export interface PinSnapshot {
   kind: BlockKind;
   text?: string;
   lang?: string;
   payload?: Record<string, unknown>;
+  /** 资产块快照（仅 type:block 映射出的块有）——载荷随快照保存，坐标/钉住不属快照。 */
+  asset?: BlockAssetMeta & { payload: unknown };
 }
 
 /** 工作区级钉住块（独立宿主）。 */
@@ -376,6 +379,14 @@ export function regionFor(storeId: string, sessionId: string): StreamRegionState
 /** 块 → 钉住快照（钉住时刻捕获，源会话退场后仍可显示）。
  *  _callback 等函数字段不可序列化，随 JSON.stringify 自然丢弃。 */
 export function snapshotFromBlock(block: SourcedBlock): PinSnapshot {
+  // 资产块：保留完整 asset 元数据 + 原始 payload（可能是 string/json），
+  // 不走 text/lang 抽取——更新广播需要按 assetId 找到并整体替换。
+  if (block.asset) {
+    return {
+      kind: block.kind,
+      asset: { ...block.asset, payload: block.payload },
+    };
+  }
   const p = (block.payload ?? {}) as Record<string, unknown>;
   const { text, lang, ...rest } = p;
   const snapshot: PinSnapshot = { kind: block.kind };
@@ -387,18 +398,67 @@ export function snapshotFromBlock(block: SourcedBlock): PinSnapshot {
 
 /** 快照 → 渲染块（公共物独立宿主：源会话未摊开/已删除时渲染它）。 */
 export function blockFromSnapshot(blockId: string, pin: WorkspacePin): SourcedBlock {
-  const { text, lang, payload } = pin.snapshot;
+  const { text, lang, payload, asset } = pin.snapshot;
   const base: Record<string, unknown> = { ...payload };
   if (text !== undefined) base.text = text;
   if (lang !== undefined) base.lang = lang;
+  const sourcePayload: unknown = asset ? asset.payload : base;
   return {
-    ...createBlock(pin.snapshot.kind, base as never, { messageId: '', part: null }),
+    ...createBlock(
+      pin.snapshot.kind,
+      sourcePayload as never,
+      { messageId: '', part: null },
+      asset
+        ? {
+            asset: {
+              assetId: asset.assetId,
+              presentation: asset.presentation,
+              ...(asset.title !== undefined ? { title: asset.title } : {}),
+              finalised: asset.finalised,
+            },
+          }
+        : undefined,
+    ),
     id: blockId,
     state: 'pinned',
     x: pin.x,
     y: pin.y,
     w: pin.w,
   };
+}
+
+/** 资产更新广播（WO-5/A7）：按 assetId 刷新钉住块的快照——包括源已压缩/未摊开/
+ *  已删除的 orphan 钉。只换 snapshot.payload/presentation/title/finalised，
+ *  不碰坐标、钉住状态、source 与 kind（update 不换 kind 铁律）。 */
+export function refreshPinnedAssetSnapshots(
+  storeId: string,
+  asset: { assetId: string; presentation?: string; title?: string; payload: unknown },
+): void {
+  const st = getCanvasStore(storeId).getState();
+  const nextPins: Record<string, WorkspacePin> = {};
+  let changed = false;
+  for (const [id, pin] of Object.entries(st.pins)) {
+    const snap = pin.snapshot;
+    if (snap.asset?.assetId === asset.assetId) {
+      nextPins[id] = {
+        ...pin,
+        snapshot: {
+          ...snap,
+          asset: {
+            ...snap.asset,
+            presentation: asset.presentation ?? snap.asset.presentation,
+            ...(asset.title !== undefined ? { title: asset.title } : {}),
+            finalised: true,
+            payload: asset.payload,
+          },
+        },
+      };
+      changed = true;
+    } else {
+      nextPins[id] = pin;
+    }
+  }
+  if (changed) st.replacePins(nextPins);
 }
 
 /** 钉住块 → 位置查找表（转译层 ghosting + 渲染层定位共用）。

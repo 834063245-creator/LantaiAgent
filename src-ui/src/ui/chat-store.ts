@@ -10,6 +10,7 @@
 //
 // 每个都是真实的 Zustand store。getState() 返回实时内部状态。
 
+import { disposeAssetTables } from '../state/asset-store';
 import { disposeComposeStore } from '../state/compose-store';
 import { disposeInputStore, getInputStore, type InputStoreApi } from '../state/input-store';
 import {
@@ -93,6 +94,7 @@ export function getExpandedReasoningSet(storeId?: string) {
  *  ChatCore 为应用级单例，暂无整包拆除时机。 */
 export function disposePanelStores(storeId: string): void {
   disposeMessagesStores(storeId);
+  disposeAssetTables(storeId);
   disposeSessionStore(storeId);
   disposePanelStore(storeId);
   disposeInputStore(storeId);

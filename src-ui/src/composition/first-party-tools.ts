@@ -27,6 +27,7 @@ import {
   agentDomainPlugin,
   agentIsolationDomainPlugin,
   askDomainPlugin,
+  assetDomainPlugin,
   browserDesktopDomainPlugin,
   cordisDomainPlugin,
   fsDomainPlugin,
@@ -69,6 +70,8 @@ export function firstPartyToolPlugins(): LantaiPlugin[] {
     waitDomainPlugin,
     // 平台化 Phase 4 · D7：动态插件面（装配期真值族——审批通道收 rowCtx.ui）
     cordisDomainPlugin,
+    // Agent 资产块域（无状态族——kind 注册表模块级，args meta 注入）
+    assetDomainPlugin,
   ];
 }
 

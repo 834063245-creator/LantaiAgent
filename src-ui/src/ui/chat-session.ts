@@ -11,13 +11,14 @@ import { createExecState, type ExecStateInstance } from '../agent/execution-stat
 import type { Message } from '../provider/types';
 import { typedJsonRpc, typedRpc } from '../rpc-contract';
 import { getActiveProvider, loadSettings } from '../settings';
+import { disposeAssetSessionStore, disposeAssetTables, rebuildAssetTableFromMessages } from '../state/asset-store';
 import { getCanvasStore } from '../state/canvas-store';
 import { type ComposeSessionPrefs, getComposeStore } from '../state/compose-store';
 import { disposeMessagesStores, disposeSessionMessagesStore } from '../state/messages-store';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
 import { useAgentPanelStore } from './agent-panel-store';
 import { bumpSession, getChatStore, msgStoreFor } from './chat-store';
-import type { AssistantMessage, ChatMessage, MessageId, SubAgentPart, UserMessage } from './message-model';
+import type { AssistantMessage, BlockPart, ChatMessage, MessageId, SubAgentPart, UserMessage } from './message-model';
 import {
   createAssistantMessage,
   createNoticeMessage,
@@ -129,6 +130,7 @@ export function clearPanelAgents(storeId: string): void {
  *  复用，撞号卷会短暂复活旧消息）。 */
 export function disposePanelMessages(storeId: string): void {
   disposeMessagesStores(storeId);
+  disposeAssetTables(storeId);
 }
 
 /** 全量重置 — 用于 ChatPanel 中切换工作区时的 setAgent。 */
@@ -146,6 +148,7 @@ export function resetSessionState(storeId: string): void {
   // 工作区全量重置：旧工作区全部会话级消息 store（storeId:sessionId）一并移除
   //（M4：store 注册表跨工作区存活，旧卷不拆 = 无界增长 + 新工作区撞号卷读到旧消息）
   disposeMessagesStores(storeId);
+  disposeAssetTables(storeId);
   getChatStore(storeId).sess.setState({
     sessions: [],
     activeIdx: -1,
@@ -376,6 +379,7 @@ export function closeSession(ctx: SessionContext, idx: number): void {
   // 合卷 = 卷消亡：该卷会话级消息 store 一并移除（M4——落盘快照已在上方
   // 从 agent 数据同步捕获，此处拆的是注册表项；续开该卷走磁盘恢复重建）
   disposeSessionMessagesStore(ctx.storeId, s.id);
+  disposeAssetSessionStore(ctx.storeId, s.id);
   // 若关闭的是活跃会话，先把它未发送的文字存入其槽再清空，稍后换入新活跃会话的草稿
   const closingActive = idx === st.activeIdx;
   if (closingActive) {
@@ -523,6 +527,8 @@ interface StoredSession {
   label?: string;
   savedAt?: string;
   messages?: Message[];
+  /** UI 消息副本（WO-7）：含 BlockPart 资产块；旧存档无此字段 = 仅 provider 消息。 */
+  uiMessages?: ChatMessage[];
   tokensUsed?: number;
   /** 会话级创作坞覆盖（方案甲 2026-08-27）：旧存档无此字段 = 无覆盖。 */
   compose?: ComposeSessionPrefs;
@@ -603,6 +609,8 @@ interface SessionSnapshotData {
   label: string;
   savedAt: string;
   messages: Message[];
+  /** UI 消息副本（WO-7）：见 StoredSession.uiMessages。 */
+  uiMessages?: ChatMessage[];
   tokensUsed: number;
   compose?: ComposeSessionPrefs;
 }
@@ -651,6 +659,7 @@ export async function saveActiveSession(ctx: SessionContext, projectPath: string
     label: sMeta.label,
     savedAt: new Date().toISOString(),
     messages,
+    uiMessages: msgStoreFor(ctx.storeId, sMeta.id).getState().messages,
     tokensUsed: ctx.getTotalTokensUsed(),
     // 方案甲：会话级创作坞覆盖随卷落盘（无覆盖 = undefined，字段省略）
     compose: getComposeStore(ctx.storeId).getState().getPrefs(String(sMeta.id)),
@@ -684,6 +693,7 @@ export async function saveSessionById(ctx: SessionContext, projectPath: string, 
       label: sMeta.label,
       savedAt: new Date().toISOString(),
       messages,
+      uiMessages: msgStoreFor(ctx.storeId, sid).getState().messages,
       tokensUsed,
       // 方案甲：会话级创作坞覆盖随卷落盘（与活跃卷同构）
       compose: getComposeStore(ctx.storeId).getState().getPrefs(String(sid)),
@@ -713,6 +723,7 @@ export async function renameSessionFile(
       label,
       savedAt: data.savedAt ?? new Date().toISOString(),
       messages: data.messages ?? [],
+      uiMessages: data.uiMessages,
       tokensUsed: data.tokensUsed ?? 0,
     });
   } catch {
@@ -910,6 +921,11 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   });
   // ponytail: 创建会话级消息 store
   msgStoreFor(ctx.storeId, sid).getState().setMessages([]);
+  // WO-7：若存档带 UI 消息副本，先灌入 store——rebuildMessagesFromMessages
+  // 会保留其中的 BlockPart（资产块），再按 provider 消息重建其余部分。
+  if (Array.isArray(data.uiMessages) && data.uiMessages.length > 0) {
+    msgStoreFor(ctx.storeId, sid).getState().setMessages(data.uiMessages);
+  }
   // 方案甲（2026-08-27）：会话级创作坞覆盖随卷恢复——旧存档无 compose 字段
   // = 无覆盖（实时跟随全局默认）。回填在句柄创建之后（工厂装配时覆盖已在
   // compose-store：磁盘路径先于工厂读卷？否——见下方：磁盘数据在上、工厂
@@ -988,6 +1004,7 @@ export async function deleteSessionFile(ctx: SessionContext, projectPath: string
     removeSessionExecState(ctx.storeId, sessionId);
     agentSessionState.removeAgent(ctx.storeId, sessionId);
     disposeSessionMessagesStore(ctx.storeId, sessionId);
+    disposeAssetSessionStore(ctx.storeId, sessionId);
     getChatStore(ctx.storeId).input.getState().clearSessionDraft(sessionId);
     getComposeStore(ctx.storeId).getState().removePrefs(String(sessionId));
     getChatStore(ctx.storeId).sess.setState({ sessions: [], activeIdx: -1 });
@@ -1024,6 +1041,7 @@ export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, se
   // （冻结的卡片、丢失的输出）。同样的对象会在
   // 下方重新附加到重建的消息中。
   const preservedSubAgents = new Map<number, SubAgentPart[]>();
+  const preservedBlockParts = new Map<number, BlockPart[]>();
   {
     const existing = msgStoreFor(storeId, sessionId).getState().messages;
     let aIdx = 0;
@@ -1031,6 +1049,8 @@ export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, se
       if (m.role !== 'assistant') continue;
       const subs = (m as AssistantMessage).parts.filter((p): p is SubAgentPart => p.type === 'subagent');
       if (subs.length > 0) preservedSubAgents.set(aIdx, subs);
+      const blocks = (m as AssistantMessage).parts.filter((p): p is BlockPart => p.type === 'block');
+      if (blocks.length > 0) preservedBlockParts.set(aIdx, blocks);
       aIdx++;
     }
   }
@@ -1139,16 +1159,21 @@ export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, se
   // 按助手消息序号重新附加保留的子 Agent 部件。
   // 超出重建范围的序号（如仍在流式输出但尚未出现在
   // provider 消息中的轮次）回退到最后一条重建的助手消息。
-  if (preservedSubAgents.size > 0) {
+  if (preservedSubAgents.size > 0 || preservedBlockParts.size > 0) {
     const rebuiltAssistants = rebuilt.filter((m): m is AssistantMessage => m.role === 'assistant');
     for (const [ordinal, subs] of preservedSubAgents) {
       const target = rebuiltAssistants[ordinal] ?? rebuiltAssistants[rebuiltAssistants.length - 1];
       if (target) target.parts.push(...subs);
     }
+    for (const [ordinal, blocks] of preservedBlockParts) {
+      const target = rebuiltAssistants[ordinal] ?? rebuiltAssistants[rebuiltAssistants.length - 1];
+      if (target) target.parts.push(...blocks);
+    }
   }
 
   // ponytail: 写入会话级 store — 唯一数据源
   msgStoreFor(storeId, sessionId).getState().setMessages(rebuilt);
+  rebuildAssetTableFromMessages(storeId, sessionId, rebuilt);
   bumpSession(storeId, sessionId);
 }
 

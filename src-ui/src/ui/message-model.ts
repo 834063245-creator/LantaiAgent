@@ -96,7 +96,23 @@ export interface PlanPart {
   _callback?: (response: PlanApprovalResponse) => void;
 }
 
-export type AssistantPart = ReasonPart | TextPart | ToolCallPart | SubAgentPart | PlanPart;
+/** 资产块 — Agent 生成的语义资产（show_asset / update_asset 通道，协议
+ *  「Agent 资产块」design：docs/plans/agent-asset-blocks.md）。
+ *  - assetId 是资产身份（会话内唯一），update 不换 assetId、不换 kind
+ *  - presentation 是表现原语名（kind 白名单内；空串 = 渲染层回落 defaultPresentation）
+ *  - payload 必须纯 JSON（回调不进 payload，加载时按 assetId 重绑）
+ *  - finalised=true 前 payload 为 append 型字符串累加（AssetDelta 语义） */
+export interface BlockPart {
+  type: 'block';
+  assetId: string;
+  kind: string;
+  presentation: string;
+  title?: string;
+  payload: unknown;
+  finalised: boolean;
+}
+
+export type AssistantPart = ReasonPart | TextPart | ToolCallPart | SubAgentPart | PlanPart | BlockPart;
 
 // ── 消息 ─────────────────────────────────────────────
 
@@ -181,4 +197,13 @@ export function lastReasoningPart(parts: AssistantPart[]): ReasonPart | undefine
 /** 按 toolId 查找工具部分。 */
 export function findToolPart(parts: AssistantPart[], toolId: string): ToolCallPart | undefined {
   return parts.find((p): p is ToolCallPart => p.type === 'tool' && p.toolId === toolId);
+}
+
+/** 按 assetId 查找资产部分（从后往前——最新的优先）。 */
+export function findBlockPart(parts: AssistantPart[], assetId: string): BlockPart | undefined {
+  for (let i = parts.length - 1; i >= 0; i -= 1) {
+    const p = parts[i];
+    if (p.type === 'block' && p.assetId === assetId) return p;
+  }
+  return undefined;
 }

@@ -47,6 +47,8 @@ export interface DefineToolOpts<S extends z.ZodObject<z.ZodRawShape>> {
   schema: S;
   /** 是否只读(可安全并行)。默认 false */
   readOnly?: boolean;
+  /** 资产通道标记——透传到 Tool.assetChannel（executor 据此前路由 Asset 事件） */
+  assetChannel?: boolean;
   /** 接收 parse 后的类型化参数(default 已注入, 校验失败会抛错而非静默兜底)。
    *  meta key(_callId/_agent_id/_forceGate) 不在类型内 — 需要时用 (args as { _callId?: string })._callId。
    *  signal 是可选中止信号 — 目前仅 shell 链路消费。 */
@@ -55,7 +57,7 @@ export interface DefineToolOpts<S extends z.ZodObject<z.ZodRawShape>> {
 
 /** 创建 Tool。返回的 Tool 与旧手写对象形状完全一致, 消费方(ToolRegistry/executor/plan/mock)零感知。 */
 export function defineTool<S extends z.ZodObject<z.ZodRawShape>>(opts: DefineToolOpts<S>): Tool {
-  const { name, description, schema, readOnly = false, execute } = opts;
+  const { name, description, schema, readOnly = false, assetChannel = false, execute } = opts;
   // passthrough: 允许 schema 未声明的 meta key 透传(见文件头注释)
   const passthroughSchema = schema.passthrough();
   return {
@@ -63,6 +65,7 @@ export function defineTool<S extends z.ZodObject<z.ZodRawShape>>(opts: DefineToo
     description: () => description,
     parameters: () => toInputJsonSchema(passthroughSchema),
     readOnly: () => readOnly,
+    ...(assetChannel ? { assetChannel: true } : {}),
     execute: async (args, onProgress, signal) => {
       let parsed: z.output<S>;
       try {

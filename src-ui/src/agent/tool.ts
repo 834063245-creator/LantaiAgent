@@ -26,6 +26,10 @@ export interface Tool {
   actions?(): string[];
   /** 只读动作（领域工具在 plan 模式下的白名单） */
   readOnlyActions?(): string[];
+  /** 资产通道标记（show_asset/update_asset 等）：工具结果以 Agent 资产事件
+   *  （Asset/AssetDelta）广播（协议 agent-asset-blocks.md §2.3）；executor 据此前
+   *  路由 onProgress 增量与终值解析，ToolDispatch/ToolResult 照常（管道审计完整）。 */
+  assetChannel?: boolean;
   /** 用原始 JSON 参数执行工具。返回结果字符串。
    *  onProgress 是可选回调，用于在执行期间流式输出部分结果。
    *  signal 是可选中止信号 — 目前仅 shell 链路消费（abort 时取消排队/终止进程）。 */

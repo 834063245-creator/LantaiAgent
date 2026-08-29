@@ -123,3 +123,50 @@
   （model-tool-contract / service-catalog）；
 - 门禁四连 + doc-sync 全绿（数字见施工② commit message）。
 
+---
+
+# Baseline 变更申请 — Agent 资产块工具三件套（asset-domain：show_asset / update_asset / list_block_kinds）
+
+> 申请日期：2026 资产协议实施（WO-2）· 申请人：编码助手（Agent 资产块协议 docs/plans/agent-asset-blocks.md 施工）
+> 状态：**已批准** —— 用户在对话中逐项拍板协议（Q1-A7 全部裁决，含三原语设计），并批准「开始实施」（WO-1/2 开工指令）；
+> record 以 WO-2 收尾的独立步骤执行（与 baseline-change-request 模板纪律一致）。
+
+## 1. 变更对象
+
+- `src-ui/tests/convergence/baseline/phase-0/tool-schemas.full.json`（标准装配静态面 15 → **18**）
+- `src-ui/tests/convergence/baseline/phase-0/tool-schemas.plan.json`（plan 克隆面 17 → **20**）
+- `docs/agents/model-tool-contract.md`（gen:tool-contract 随工具面变更同 commit 重生成）
+- 变更内容：新增 `show_asset` / `update_asset` / `list_block_kinds` 三个独立工具（asset 域插件
+  `plugin/hologram/asset-domain/<工具名>` 贡献行，经 ctx.tools 第八通道同构装配）。
+- **模型可见表面：确有计划性变更**——三原语是资产协议经用户逐项拍板的核心交付物（Q1/A4/A7），非伪漂移。
+
+## 2. 为什么必须变
+
+- 用户拍板（Q1）：Agent 必须能**生成可被引用/更新的资产块**——show_asset / update_asset 是
+  「Agent → 块」通路的两原语，list_block_kinds 是发现通道（报错带窗的「窗」）；
+- 工具面是模型使用资产能力的唯一入口（对齐 D7 先例：能力 → 工具面 → 可见）；
+- 三工具全部静态注册（无引擎依赖），语义由 kind 注册表（agent/asset-kinds.ts）承载。
+
+## 3. 证据（随 WO-2 commit）
+
+- 新测试 `tests/asset-tools.test.ts`（16 用例）：校验带窗 / update 语义 / 注册表实时性 /
+  executor 资产通道事件路由（ToolDispatch→AssetDelta→Asset→ToolResult 序）全钉；
+- 新测试 `tests/asset-blocks.test.ts`（8 用例，WO-1）：BlockPart 事件路由；
+- 装配回归 82/82（composition 六件套）+ asset 套件 24/24 + tsc 零错误 + biome 全绿；
+- 门禁全量 vitest 除 baseline 三处（本申请对象）+ tool-contract 生成物（同 commit 重生成）外全绿。
+
+## 4. 拟议变更（record 已生成）
+
+- 采纳 record 快照（phase-0 full 18 工具 / plan 20 工具，含三工具 schema 逐字节一致）。
+
+## 5. 落地步骤
+
+1. 新增 asset-domain 工具面（WO-2，本 commit）；
+2. 新测试钉死（asset-tools 16 / asset-blocks 8）；
+3. plugin-loader 计数 43→44 + first-party-manifest 补 `hologram/asset-domain`；
+4. 本文件追加申请；
+5. 用户批准（开工指令即批准：协议 Q1-A7 逐项拍板 + WO 开工授权）；
+6. record:convergence 独立步骤执行；
+7. gen:tool-contract 重生成 model-tool-contract.md 随同 commit；
+8. 门禁四连（vitest / tsc / biome / convergence）重跑全绿收尾。
+

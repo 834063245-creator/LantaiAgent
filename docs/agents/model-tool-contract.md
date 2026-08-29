@@ -4,7 +4,7 @@
 > 从 `buildToolRegistry` 出厂行表装配产物生成 — 勿手改；工具面变更后重新生成并同 commit。
 > 本文档不含时间戳：字节稳定是 `--check` 构建守护的前提。
 
-可见工具 15 个（域折叠形态 + 常驻件）；隐藏旧名 144 个（附录）。
+可见工具 18 个（域折叠形态 + 常驻件）；隐藏旧名 144 个（附录）。
 
 装配说明：标准注册表 = composition 行表出厂序；hologram 动态族（graph/ops/lsp 引擎侧
 schema）在本生成环境（无 Tauri bridge / 无引擎连接）恒为空集，引擎侧工具面以引擎
@@ -19,6 +19,9 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 |------|------|--------|--------------|
 | [`ask_user`](#ask_user) | ✓ | — | Ask the user one or more questions when you need clarification or confirmation before proceeding. Use when the request is ambiguous, you need to choose between approaches, or you need approval for a destructive action. Supports: single question (question/header/options/multiSelect), multiple questions in one call (questions array — recommended for 2+, asked one at a time), and open-ended questions (omit options — the user types a free-text answer). Returns the user's answer(s). |
 | [`wait`](#wait) | ✓ | — | Block until a target completes, then return immediately — event-driven, NOT a fixed sleep. Pass agentId to wait for that sub-agent to finish: returns its final status the moment it completes (no polling loops, no guessing durations). For background shell jobs use bash_wait (dedicated tool). Omit agentId and pass durationMs ONLY as a fallback for non-event waits (watcher re-analysis, file appearance). Max 10 minutes per call. |
+| [`show_asset`](#show_asset) | ✓ | — | Create a visual asset block in the conversation (chart/table/metric/graph/html...) rendered as a component. Use for any deliverable that benefits from spatial layout or needs to be referred/updated later (charts, tables, impact graphs, metric dashboards, SVG/HTML cards). The block enters the chat flow and can be pinned to the canvas by the user. Kinds and their payload schemas are listed by list_block_kinds; presentation selects the visual form within the kind white-list (omit for the default). Check list_block_kinds before your first call. |
+| [`update_asset`](#update_asset) | ✓ | — | Update an existing asset block in-place by assetId (payload/presentation replace; the block id and pin position keep unchanged — pinned copies update live). Rules: kind is NOT changeable (changing semantics means creating a new asset with show_asset); presentation is changeable (skin swap, within the same kind white-list). Errors name what went wrong and what to do instead. |
+| [`list_block_kinds`](#list_block_kinds) | ✓ | — | List all available asset block kinds with their payload JSON Schema, presentation white-lists, and streaming mode. Call before show_asset to learn what you can generate and how the payload must be shaped; the list reflects the live registry (plugin-contributed kinds appear automatically). |
 | [`fs`](#fs) | — | 11 | File-system operations: read / write / edit / list / glob / mkdir / move / rename / delete / constraints / write_constraints. Use fs(read) to inspect files, fs(write)/fs(edit) to modify them. fs(constraints) reads hologram.constraints.yaml; fs(write_constraints) replaces it (read first — extend existing rules rather than dropping them). |
 | [`shell`](#shell) | — | 4 | Shell execution: run (build/test commands only, bundled bash by default; interpreter:"pwsh" ONLY for Windows-native tasks like registry/ACL/MSI/COM/WMI), plus output / wait / kill for background jobs. Working directory is sticky per agent (a successful cd persists across calls; results end with a [cwd: ...] line). bash_output returns only NEW bytes since your last read — polling watch modes/dev servers is cheap. Do NOT use shell(run) for file search, code search, or git — use fs/search/git instead. |
 | [`git`](#git) | — | 13 | Git operations: status / diff / log / stage / commit / push / pull / checkout / branch / stash / unstash / discard / init / blame. |
@@ -60,6 +63,38 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 | `agentId` | — | string | Sub-agent ID to wait for (from agent_spawn result or agent_status). Waits until it completes/fails/stops. |
 | `durationMs` | — | number | Fallback sleep when agentId is omitted (1000 = 1s, max 600000). Prefer agentId/bash_wait. |
 | `timeoutMs` | — | number | Max wait in ms (default 600000 = 10 min). |
+
+### `show_asset`
+
+> Create a visual asset block in the conversation (chart/table/metric/graph/html...) rendered as a component. Use for any deliverable that benefits from spatial layout or needs to be referred/updated later (charts, tables, impact graphs, metric dashboards, SVG/HTML cards). The block enters the chat flow and can be pinned to the canvas by the user. Kinds and their payload schemas are listed by list_block_kinds; presentation selects the visual form within the kind white-list (omit for the default). Check list_block_kinds before your first call.
+
+- 只读：是
+
+| 参数 | 必选 | 类型 | 说明 |
+|------|------|------|------|
+| `kind` | ✓ | string | 资产语义 kind（list_block_kinds 可查全量与 schema） |
+| `presentation` | — | string | 表现形态（kind 白名单内；缺省用默认表现） |
+| `title` | — | string | 短标题（snake_case 风格，可作下载/引用名） |
+| `payload` | ✓ | unknown | 资产数据（须为 JSON；纯数据，不含回调） |
+| `stream` | — | boolean | append 型 kind 可流式构建（终值仍以本调用为准） |
+
+### `update_asset`
+
+> Update an existing asset block in-place by assetId (payload/presentation replace; the block id and pin position keep unchanged — pinned copies update live). Rules: kind is NOT changeable (changing semantics means creating a new asset with show_asset); presentation is changeable (skin swap, within the same kind white-list). Errors name what went wrong and what to do instead.
+
+- 只读：是
+
+| 参数 | 必选 | 类型 | 说明 |
+|------|------|------|------|
+| `assetId` | ✓ | string | 资产 id（show_asset 返回） |
+| `presentation` | — | string | 新表现形态（kind 白名单内；缺省保持原表现） |
+| `payload` | ✓ | unknown | 新资产数据（纯 JSON；整体替换） |
+
+### `list_block_kinds`
+
+> List all available asset block kinds with their payload JSON Schema, presentation white-lists, and streaming mode. Call before show_asset to learn what you can generate and how the payload must be shaped; the list reflects the live registry (plugin-contributed kinds appear automatically).
+
+- 只读：是
 
 ### `fs`
 

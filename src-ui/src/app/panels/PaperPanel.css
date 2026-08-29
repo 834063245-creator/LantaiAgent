@@ -1670,3 +1670,297 @@
   border: 1px dashed color-mix(in oklch, var(--indigo) 40%, var(--paper));
   padding: 0 4px;
 }
+
+/* ── 资产块兜底 JSON 视图（WO-4）：未知 kind / 表现原语未接时保信息保真 ── */
+.pp-json {
+  padding: 10px 0 2px;
+}
+.pp-json-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+}
+.pp-json-kind {
+  color: var(--indigo);
+  font-weight: 600;
+}
+.pp-json-pres {
+  color: var(--ink-3);
+}
+.pp-json-title {
+  color: var(--seal-deep);
+}
+.pp-json-pre {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--indigo);
+  background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
+  font-family: var(--f-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 360px;
+  overflow: auto;
+}
+
+/* ── 资产表现原语（WO-6）：grid / chart / metric / media / graph / html / form ── */
+
+.pp-grid {
+  padding: 2px 0;
+}
+.pp-grid-caption {
+  font-family: var(--f-song);
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-bottom: 6px;
+}
+.pp-grid-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--ink-1);
+}
+.pp-grid-table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--ink-3);
+  border-bottom: var(--rule-soft);
+  padding: 4px 8px;
+}
+.pp-grid-table td {
+  padding: 4px 8px;
+  border-bottom: 0.5px solid color-mix(in oklch, var(--ink-3) 18%, transparent);
+}
+.pp-grid-table tr:last-child td {
+  border-bottom: none;
+}
+
+.pp-chart {
+  padding: 4px 0;
+}
+.pp-chart-type {
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 4px;
+}
+.pp-chart-svg {
+  width: 100%;
+  height: auto;
+  max-height: 240px;
+}
+.pp-chart-bar {
+  fill: var(--indigo);
+}
+.pp-chart-line {
+  fill: none;
+  stroke: var(--seal);
+  stroke-width: 2;
+}
+.pp-chart-dot {
+  fill: var(--seal);
+}
+.pp-chart-pie {
+  display: flex;
+  height: 180px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--paper-deep);
+}
+.pp-chart-pie-seg {
+  display: block;
+  height: 100%;
+  background: conic-gradient(var(--seal) var(--seg), var(--indigo) 0);
+}
+.pp-chart-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 6px;
+  font-family: var(--f-mono);
+  font-size: 9px;
+  color: var(--ink-3);
+}
+
+.pp-metric {
+  padding: 2px 0;
+}
+.pp-metric-caption {
+  font-family: var(--f-song);
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-bottom: 6px;
+}
+.pp-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+.pp-metric-card {
+  border: var(--rule-soft);
+  background: color-mix(in oklch, var(--paper-deep) 40%, transparent);
+  padding: 8px 10px;
+}
+.pp-metric-label {
+  font-family: var(--f-song);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.pp-metric-value {
+  font-family: var(--f-mono);
+  font-size: 20px;
+  line-height: 1.2;
+  color: var(--ink-1);
+}
+.pp-metric-unit {
+  font-size: 11px;
+  color: var(--ink-3);
+  margin-left: 3px;
+}
+.pp-metric-tone-accent .pp-metric-value {
+  color: var(--seal-deep);
+}
+.pp-metric-tone-green .pp-metric-value {
+  color: var(--pass);
+}
+.pp-metric-tone-danger .pp-metric-value {
+  color: var(--fail);
+}
+.pp-metric-tone-muted .pp-metric-value {
+  color: var(--ink-3);
+}
+
+.pp-media {
+  padding: 2px 0;
+}
+.pp-media-label {
+  font-family: var(--f-song);
+  font-size: 13px;
+  color: var(--ink-2);
+  margin-bottom: 4px;
+}
+.pp-media-img {
+  max-width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  border: var(--rule-soft);
+}
+.pp-media-file {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--ink-2);
+}
+.pp-media-ext {
+  color: var(--indigo);
+  text-transform: uppercase;
+}
+.pp-media-path {
+  color: var(--ink-3);
+  word-break: break-all;
+}
+
+.pp-graph {
+  padding: 4px 0;
+}
+.pp-graph-svg {
+  width: 100%;
+  height: auto;
+  max-height: 360px;
+}
+.pp-graph-edge {
+  stroke: var(--ink-3);
+  stroke-width: 1;
+}
+.pp-graph-node-box {
+  fill: var(--paper-deep);
+  stroke: var(--indigo);
+  stroke-width: 1;
+}
+.pp-graph-node-text {
+  fill: var(--ink-1);
+  font-family: var(--f-mono);
+  font-size: 10px;
+}
+
+.pp-html {
+  padding: 2px 0;
+}
+.pp-html-frame {
+  width: 100%;
+  height: 240px;
+  border: var(--rule-soft);
+  background: var(--paper);
+  /* flow 限高 1000px 可滚动（A3）；pinned 不限高由 .pp-pinned 覆盖 */
+  max-height: 1000px;
+  overflow: auto;
+}
+.pp-block.pp-pinned .pp-html-frame {
+  max-height: none;
+}
+
+.pp-form {
+  padding: 2px 0;
+}
+.pp-form-title {
+  font-family: var(--f-song);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-1);
+  margin-bottom: 4px;
+}
+.pp-form-body {
+  font-family: var(--f-song);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink-2);
+  margin-bottom: 8px;
+}
+.pp-form-options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.pp-form-option {
+  border: var(--rule-soft);
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pp-form-option-label {
+  font-family: var(--f-song);
+  font-size: 13px;
+  color: var(--ink-1);
+}
+.pp-form-option-desc {
+  font-family: var(--f-song);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.pp-form-actions {
+  display: flex;
+  gap: 8px;
+}
+.pp-form-confirm {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  padding: 4px 12px;
+  border: 1px solid var(--seal);
+  background: none;
+  color: var(--seal-deep);
+  cursor: default;
+}

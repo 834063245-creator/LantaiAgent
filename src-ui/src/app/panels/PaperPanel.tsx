@@ -23,7 +23,7 @@
 
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { activeOverlayContributions, subscribeOverlayContributions } from '../../composition/overlay-service';
-import { resolveRenderer } from '../../composition/renderer-service';
+import { resolveAssetBlock, resolveRenderer } from '../../composition/renderer-service';
 import {
   createSettleSelector,
   hitRegionAtWorld,
@@ -94,6 +94,14 @@ const KIND_ZH: Record<string, string> = {
   code: '程文',
   plan: '拟策',
   notice: '贴黄',
+  // 资产 kind（WO-4 文类签）：未知名仍回退 block.kind 字面。
+  table: '表格',
+  chart: '图表',
+  metric: '指标',
+  file: '文件',
+  deps_impact: '影响',
+  html: '卡片',
+  confirm: '确认',
 };
 const KIND_EN: Record<string, string> = {
   user: 'USER',
@@ -104,6 +112,13 @@ const KIND_EN: Record<string, string> = {
   code: 'CODE',
   plan: 'PLAN',
   notice: 'NOTE',
+  table: 'TABLE',
+  chart: 'CHART',
+  metric: 'METRIC',
+  file: 'FILE',
+  deps_impact: 'GRAPH',
+  html: 'HTML',
+  confirm: 'CONFIRM',
 };
 
 /** 消息操作项（施工单 #5）：块 hover 出现的操作按钮。 */
@@ -142,8 +157,9 @@ const BlockView = memo(function BlockView({
   unpinLabel?: string;
 }) {
   const p = block.payload;
-  const renderer = resolveRenderer(block.kind);
-  const Body = renderer?.component;
+  const Body = block.asset
+    ? resolveAssetBlock(block.kind, block.asset.presentation)
+    : resolveRenderer(block.kind)?.component;
   return (
     <>
       {/* biome-ignore lint/a11y/noStaticElementInteractions: 拖拽手柄（D-R2-1 拖出钉住）；收回有原生按钮 */}

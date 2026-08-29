@@ -19,8 +19,8 @@ import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan
 
 export type BlockState = 'flow' | 'pinned';
 
-/** 块类型（走查弹 v1 集合：markdown / diff / tool result + 用户与通知） */
-export type BlockKind =
+/** 内置块类型（走查弹 v1 集合：markdown / diff / tool result + 用户与通知） */
+export type BuiltinBlockKind =
   | 'user' // 用户消息（右对齐气泡的语义源）
   | 'markdown' // agent 文本（markdown 渲染）
   | 'reasoning' // 推理段（可折叠语义，走查弹平铺）
@@ -29,6 +29,10 @@ export type BlockKind =
   | 'code' // 程序执行卡（code_execution 专属：程序体+日志+完成值，P2-A）
   | 'plan' // 计划卡
   | 'notice'; // 系统通知
+
+/** 块类型——自 Agent 资产块（WO-3）起开放：内置 8 种强类型保留，
+ *  资产 kind（show_asset 的语义 kind）与插件贡献的块类型走开放 string 面。 */
+export type BlockKind = BuiltinBlockKind | (string & {});
 
 /** 块内容判别联合：kind 决定 payload 形状（块协议 §3.2 语义声明的走查弹子集） */
 export interface BlockPayloads {
@@ -78,13 +82,29 @@ export interface BlockPayloads {
 
 export type BlockPayload = BlockPayloads[keyof BlockPayloads];
 
+/** 资产块元数据（译自 BlockPart——资产身份与表现选择不混进 payload；
+ *  渲染层据此走 resolveAssetBlock(kind, presentation)，WO-4 接入）。 */
+export interface BlockAssetMeta {
+  /** 资产身份——Agent 后续引用/更新的唯一键（会话内唯一） */
+  assetId: string;
+  /** 表现形态（presentation）——kind 白名单内的表现原语名；空串 = 渲染层回落 default */
+  presentation: string;
+  /** 面向用户的标题（文类签展示语义，可空） */
+  title?: string;
+  /** 流式最终化标记（对齐 TextPart.finalised 语义） */
+  finalised: boolean;
+}
+
 /** 块物件——真相层唯一实体。
  *  x/y/w：世界坐标。flow 块的 x/y 由布局器计算（复算不存），
- *  pinned 块的 x/y 是唯一真相（D-R2-4）。w 对两类块都是布局宽度。 */
+ *  pinned 块的 x/y 是唯一真相（D-R2-4）。w 对两类块都是布局宽度。
+ *  payload：内置 8 种强类型；开放/资产 kind 兜底 unknown（纯 JSON 形状）。 */
 export interface Block<K extends BlockKind = BlockKind> {
   id: string;
   kind: K;
-  payload: BlockPayloads[K];
+  payload: K extends keyof BlockPayloads ? BlockPayloads[K] : unknown;
+  /** 资产块元数据（仅 type:block 映射出的块有；非资产块缺省） */
+  asset?: BlockAssetMeta;
   state: BlockState;
   /** 钉住时的世界坐标（state==='flow' 时无意义，布局器给流内位置） */
   x: number;
@@ -125,9 +145,9 @@ export function resetBlockIdCounterForTests(): void {
 
 export function createBlock<K extends BlockKind>(
   kind: K,
-  payload: BlockPayloads[K],
+  payload: K extends keyof BlockPayloads ? BlockPayloads[K] : unknown,
   source: BlockSource,
-  opts?: Partial<Pick<Block, 'state' | 'x' | 'y' | 'w'>>,
+  opts?: Partial<Pick<Block<K>, 'state' | 'x' | 'y' | 'w' | 'asset'>>,
 ): SourcedBlock<K> {
   return {
     id: nextBlockId(),
@@ -137,6 +157,7 @@ export function createBlock<K extends BlockKind>(
     x: opts?.x ?? 0,
     y: opts?.y ?? 0,
     w: opts?.w ?? DEFAULT_BLOCK_WIDTH,
+    ...(opts?.asset ? { asset: opts.asset } : {}),
     source,
   };
 }

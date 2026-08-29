@@ -630,12 +630,12 @@ describe('loadBuiltinPlugins（第一方插件进插件列表）', () => {
     usePluginStore.getState().setPlugins([]);
   });
 
-  it('装载后写入 plugin-store：43 条 builtin 记录 + 元数据 + 状态 active', () => {
+  it('装载后写入 plugin-store：44 条 builtin 记录 + 元数据 + 状态 active', () => {
     const root = new Context();
     loadBuiltinPlugins(root);
     const plugins = usePluginStore.getState().plugins;
     expect(plugins).toHaveLength(BUILTIN_PLUGINS.length);
-    expect(BUILTIN_PLUGINS.length).toBe(43);
+    expect(BUILTIN_PLUGINS.length).toBe(44); // 43 + hologram/asset-domain（资产块域，2026）
     expect(plugins.every((p) => p.builtin === true)).toBe(true);
     expect(plugins.every((p) => p.meta?.name === p.name)).toBe(true);
     expect(plugins.every((p) => p.status === 'active')).toBe(true);

@@ -23,10 +23,12 @@
 
 import type { ComponentType } from 'react';
 import { Fragment, useState } from 'react';
+import { assetKinds } from '../agent/asset-kinds';
 import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan-tools';
 import { type Context, Service } from '../cordis';
 import { type BlockKind, parsePlanItems, type SourcedBlock } from '../paper/block-model';
 import { parseCircledSegments } from '../paper/marks';
+import { assetPresentationDefs } from './asset-renderers';
 
 /** 渲染器组件入参——渲染器拿到块本体 + 纸壳递下的服务性回调。 */
 export interface BlockRendererProps {
@@ -86,6 +88,13 @@ export class RenderersService extends Service {
     for (const def of builtinRendererDefs()) {
       this.registry.register(def);
     }
+    // '*' 兜底行：未知/资产 kind 未接表现原语时显示漂亮 JSON（WO-4）。
+    // 不并入 builtinRendererDefs()，保持「八 kind 全谱」的既有契约面。
+    this.registry.register({ id: 'builtin/*', kind: '*', component: JsonBody });
+    // 资产表现原语（WO-6）：grid/chart/metric/media/graph/tree/html/form。
+    for (const def of assetPresentationDefs()) {
+      this.registry.register(def);
+    }
   }
 
   register(def: BlockRendererContribution): () => void {
@@ -119,6 +128,21 @@ export function resolveRenderer(kind: BlockKind): BlockRendererContribution | un
     else if (r.kind === kind) found = r; // 后写胜（list 保注册序）
   }
   return found ?? fallback;
+}
+
+/**
+ * 资产块解析（协议 §2.11）：kind → 白名单回落 → presentation → 表现原语组件。
+ * kind 未注册 / presentation 脏数据（不在白名单）→ 回落 kind 的 defaultPresentation；
+ * 仍无表现组件 → undefined（纸壳走 '*' 兜底 JSON 视图，WO-4）。
+ */
+export function resolveAssetBlock(
+  kind: string,
+  presentation: string | undefined,
+): ComponentType<BlockRendererProps> | undefined {
+  const def = assetKinds.get(kind);
+  if (!def) return resolveRenderer('*')?.component;
+  const resolved = presentation && def.presentations.includes(presentation) ? presentation : def.defaultPresentation;
+  return resolveRenderer(resolved as BlockKind)?.component;
 }
 
 // ── 内置注疏渲染器（默认行）──
@@ -362,6 +386,29 @@ function CodeBody({ block }: BlockRendererProps) {
         </div>
       )}
     </>
+  );
+}
+
+/** 兜底 JSON 视图（WO-4）：未知/资产 kind 未接表现原语时，不崩且保信息保真。
+ *  只渲染块体；kind/presentation/title 作为文类签补充，payload 以漂亮 JSON 展示。 */
+function JsonBody({ block }: BlockRendererProps) {
+  const p = block.payload;
+  const pretty = (() => {
+    try {
+      return JSON.stringify(p, null, 2);
+    } catch {
+      return String(p);
+    }
+  })();
+  return (
+    <div className="pp-json">
+      <div className="pp-json-head">
+        <span className="pp-json-kind">{block.kind}</span>
+        {block.asset?.presentation && <span className="pp-json-pres">{block.asset.presentation}</span>}
+        {block.asset?.title && <span className="pp-json-title">{block.asset.title}</span>}
+      </div>
+      <pre className="pp-json-pre">{pretty}</pre>
+    </div>
   );
 }
 

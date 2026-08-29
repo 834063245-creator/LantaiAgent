@@ -5,9 +5,9 @@
 // 主 agent（chat-stream.ts）和子 agent（subagent-sink.ts）共用。
 // 一个函数，一套实现 — 不再有漂移的重复代码。
 
-import type { AgentEvent } from '../agent/agent-types';
+import type { AgentEvent, AssetDeltaEventData, AssetEventData } from '../agent/agent-types';
 import { EventKind } from '../agent/agent-types';
-import type { AssistantPart } from './message-model';
+import type { AssistantPart, BlockPart } from './message-model';
 import { findToolPart, lastTextPart } from './message-model';
 import { resolveSemanticToolName } from './tool-semantics';
 
@@ -15,7 +15,8 @@ import { resolveSemanticToolName } from './tool-semantics';
  * 将一个 AgentEvent 应用到 parts 数组。原地变更。
  * 数组有变化时返回 true。
  *
- * 处理：Reasoning、Text、Message、ToolDispatch、ToolProgress、ToolResult。
+ * 处理：Reasoning、Text、Message、ToolDispatch、ToolProgress、ToolResult、
+ *       Asset（资产终值）、AssetDelta（资产增量）。
  * 不处理：TurnStarted、Usage、Notice、SessionChanged — 这些有显示特定的
  * 副作用，由调用方单独管理。
  */
@@ -134,7 +135,79 @@ export function applyEventToParts(parts: AssistantPart[], ev: AgentEvent): boole
       }
       return false;
 
+    case EventKind.Asset:
+      if (ev.asset) return applyAssetFinal(parts, ev.asset);
+      return false;
+
+    case EventKind.AssetDelta:
+      if (ev.assetDelta) return applyAssetDelta(parts, ev.assetDelta);
+      return false;
+
     default:
       return false;
   }
+}
+
+/* ── 资产块路由（协议 docs/plans/agent-asset-blocks.md §2.2/§2.3）── */
+
+function applyAssetFinal(parts: AssistantPart[], asset: AssetEventData): boolean {
+  const part: BlockPart = {
+    type: 'block',
+    assetId: asset.assetId,
+    kind: asset.kind,
+    presentation: asset.presentation ?? '',
+    ...(asset.title !== undefined ? { title: asset.title } : {}),
+    payload: asset.payload,
+    finalised: true,
+  };
+  const idx = parts.findIndex((p) => p.type === 'block' && p.assetId === asset.assetId);
+  if (idx >= 0) parts[idx] = part;
+  else parts.push(part);
+  return true;
+}
+
+function applyAssetDelta(parts: AssistantPart[], asset: AssetDeltaEventData): boolean {
+  const idx = parts.findIndex((p) => p.type === 'block' && p.assetId === asset.assetId);
+  if (idx < 0) {
+    // 增量先于终值（流式）：建未 finalised 占位（presentation 未知 = ''，渲染层回落 default）
+    parts.push({
+      type: 'block',
+      assetId: asset.assetId,
+      kind: asset.kind,
+      presentation: '',
+      payload: asset.chunk,
+      finalised: false,
+    });
+    return true;
+  }
+  const existing = parts[idx] as BlockPart;
+  // 已 finalised 的块不再接受增量（协议顺序保证 delta 先于 final；防御性忽略）
+  if (existing.finalised) return false;
+  const prev = typeof existing.payload === 'string' ? existing.payload : '';
+  existing.payload = prev + asset.chunk;
+  return true;
+}
+
+/** 资产更新广播（WO-5/A7）：只更新**已存在**的 BlockPart（含 subagent 内嵌），
+ *  不新增位置——update_asset 的“原位置换”语义。递归扫描使子 Agent 内的资产块同刷。 */
+export function applyAssetUpdateToExistingParts(parts: AssistantPart[], asset: AssetEventData): boolean {
+  let changed = false;
+  for (let i = 0; i < parts.length; i += 1) {
+    const p = parts[i];
+    if (p.type === 'block' && p.assetId === asset.assetId) {
+      parts[i] = {
+        type: 'block',
+        assetId: asset.assetId,
+        kind: asset.kind,
+        presentation: asset.presentation ?? '',
+        ...(asset.title !== undefined ? { title: asset.title } : {}),
+        payload: asset.payload,
+        finalised: true,
+      };
+      changed = true;
+    } else if (p.type === 'subagent') {
+      if (applyAssetUpdateToExistingParts(p.parts, asset)) changed = true;
+    }
+  }
+  return changed;
 }

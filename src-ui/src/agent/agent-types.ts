@@ -17,6 +17,10 @@ export enum EventKind {
   Notice = 'notice',
   SessionChanged = 'session_changed',
   PlanReview = 'plan_review',
+  /** 资产块终值（权威）：一次性交付完整 payload（append/replace 两段式的 replace 端） */
+  Asset = 'asset',
+  /** 资产块增量（append/replace 两段式的 append 端）：chunk 追加到未 finalised 的 BlockPart */
+  AssetDelta = 'asset_delta',
 }
 
 export interface ToolEvent {
@@ -50,6 +54,29 @@ export interface PlanReviewEvent {
   callback: (response: import('./plan/plan-tools').PlanApprovalResponse) => void;
 }
 
+/** 资产块终值载荷（EventKind.Asset）——BlockPart 的权威来源；payload 必须纯 JSON。
+ *  presentation 缺省时由渲染层回落 kind 的 defaultPresentation（协议 §2.2）。 */
+export interface AssetEventData {
+  /** 资产身份——会话内唯一，后续 update/reference 的唯一键 */
+  assetId: string;
+  /** 语义 kind（kind 注册表的键；update 不可变更） */
+  kind: string;
+  /** 表现形态（presentation）——kind 白名单内的表现原语名；可空（回落 default） */
+  presentation?: string;
+  /** 面向用户的标题（文类签展示语义，可空） */
+  title?: string;
+  /** 完整 payload（纯 JSON） */
+  payload: unknown;
+}
+
+/** 资产块增量载荷（EventKind.AssetDelta）——append 型 kind 的流式 chunk。 */
+export interface AssetDeltaEventData {
+  assetId: string;
+  kind: string;
+  /** 追加文本块（字符串累加器语义——与 TextPart 追加同构） */
+  chunk: string;
+}
+
 export interface AgentEvent {
   kind: EventKind;
   text?: string;
@@ -61,6 +88,10 @@ export interface AgentEvent {
   session_miss?: number;
   level?: 'info' | 'warn' | 'error';
   plan?: PlanReviewEvent;
+  /** EventKind.Asset 时携带 */
+  asset?: AssetEventData;
+  /** EventKind.AssetDelta 时携带 */
+  assetDelta?: AssetDeltaEventData;
 }
 
 export interface Pricing {

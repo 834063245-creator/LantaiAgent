@@ -48,6 +48,7 @@ import {
 import { CORDIS_TOOL_NAMES, createCordisTools } from '../agent/tools/cordis';
 import { defineTool } from '../agent/tools/define-tool';
 import { loadHologramSchemas, mcpSchemaToTool } from '../agent/tools/hologram';
+import { createAssetTools } from '../agent/tools/show-asset';
 import { createAgentStatusTool, createSubAgentTool } from '../agent/tools/subagent';
 import { createWaitTool } from '../agent/tools/wait';
 import { graphExecute } from '../composition/graph-service';
@@ -332,6 +333,22 @@ export const cordisDomainPlugin = {
       noCacheContributions('hologram/cordis-domain', (rowCtx) => createCordisTools({ ui: rowCtx.ui }), [
         ...CORDIS_TOOL_NAMES,
       ]),
+    );
+  },
+};
+
+/** asset 域插件（Agent 资产块，2026 资产协议）——show_asset / update_asset /
+ *  list_block_kinds 三工具。无状态族：只依赖模块级 kind 注册表（asset-kinds）与
+ *  args meta（_owner_id/_asset_id），实例缓存跨装配复用安全；executor 据
+ *  assetChannel 路由 Asset/AssetDelta 事件（协议 docs/plans/agent-asset-blocks.md）。 */
+export const assetDomainPlugin = {
+  name: 'hologram/asset-domain',
+  inject: ['tools'],
+  apply(ctx: Context) {
+    registerFamily(
+      ctx,
+      'asset-domain-tools',
+      familyContributions('hologram/asset-domain', () => createAssetTools()),
     );
   },
 };
