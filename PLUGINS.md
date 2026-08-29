@@ -7,6 +7,8 @@
 > 链到权威文档（单一事实源，不在这里复制正文）。
 > 权威契约全集：`docs/plugins/README.md` · 各 seam 指南：`docs/cookbook/`
 > · 发布路径：`docs/user/develop/publishing-plugins.md`。
+> 想扩展的是**图谱引擎**（Rust 侧，非兰台插件系统）→ 免编译扩展面
+> `examples/engine-plugins/`（manifest 声明语言/框架/工具，契约 `docs/agents/engine-plugin-contract.md`）。
 
 ## 插件是什么（30 秒）
 

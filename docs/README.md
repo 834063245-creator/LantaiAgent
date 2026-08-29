@@ -29,6 +29,7 @@
 | [`CONTEXT.md`](../CONTEXT.md) | 当前 | 应用级统一词汇（`kind`/`status` 带簇前缀） |
 | [`docs/composition/README.md`](composition/README.md) | 当前（2026-08-20 S4 校准） | 组合层用户指南：patch 语法/preset/热重载/涟漪表 |
 | [docs/plugins/README.md](plugins/README.md) | 当前（2026-08-28 平台化 P6 平台契约校准） | 插件契约 = 平台契约总览（§0）：贡献通道/seam provider/动态插件/MCP 面/契约版本/信任模型二分 |
+| [`docs/agents/engine-plugin-contract.md`](agents/engine-plugin-contract.md) | 当前（契约 v4，2026-08-29） | 引擎开放面契约：模型工具面 / 11 壳专属方法（hidden tools）/ 免编译扩展面（`HOLOGRAM_PLUGIN_DIR` manifest，三类扩展；示例 `examples/engine-plugins/`） |
 | [docs/cookbook/](cookbook/) | 当前（2026-08-28 平台化 P6） | 各 seam 指南：llm adapter / subagent provider / fs / shell / session / graph 后端 / 动态插件 / MCP server |
 | [docs/user/develop/publishing-plugins.md](user/develop/publishing-plugins.md) | 当前（2026-08-28 平台化 P6） | 三方发布路径（registry 发布 + 安装 + 信任面） |
 | [`docs/MULTI_AGENT_ROADMAP.md`](MULTI_AGENT_ROADMAP.md) | 工作台 | 多 Agent 路线图与已落地能力 |
@@ -39,7 +40,7 @@
 | 目录 | 放什么 | 现状 |
 |---|---|---|
 | [`adr/`](adr/) | 架构决策记录（编号 ADR + 主题 ADR） | 6 篇，见目录 |
-| [`agents/`](agents/) | Agent 操作/事故/对比文档 | 保留：dsh-harness-comparison、platform-bugs-2026-08-13、frontend-rpc-contract（生成物） |
+| [`agents/`](agents/) | Agent 操作/事故/对比文档 | 保留：dsh-harness-comparison、platform-bugs-2026-08-13、frontend-rpc-contract（生成物）、engine-plugin-contract（生成物） |
 | [`design/`](design/) | 设计定稿与探索 | provider-system-spec、visual-language-ink-brass、mcp-acp-protocol-support、一张纸设计 |
 | [`plans/`](plans/) | 待执行/进行中的计划与实验；**竣工即归档** | 入口 [`plans/README.md`](plans/README.md)（现状全景）+ [`plans/HISTORY.md`](plans/HISTORY.md)（里程碑时间轴） |
 | [`research/`](research/) | 调研证据与决策 | 入口 [`research/README.md`](research/README.md) |
@@ -62,7 +63,9 @@
 1. **完成即归档**：施工稿、交接稿、被取代的 plan 完成后移入 `docs/archive/`，并更新本索引与相关链接。
 2. **生成物勿手改**：`docs/agents/frontend-rpc-contract.md` 由 `scripts/gen-rpc-contract-md.cjs` 生成；
    `docs/agents/model-tool-contract.md` 由 `scripts/gen-tool-contract-md.cjs`（经 tsx 运行
-   `src-ui/scripts/gen-tool-contract-md.ts`）生成，工具面变更后重新生成并同 commit。
+   `src-ui/scripts/gen-tool-contract-md.ts`）生成，工具面变更后重新生成并同 commit；
+   `docs/agents/engine-plugin-contract.md` 由 `scripts/gen-engine-plugin-contract.cjs` 生成
+   （真源 `engine/src/contract.rs` + `engine/src/tools/mod.rs`），随 `npm run doc-sync` 门禁对拍。
 3. **数字必须实测**：README / ARCHITECTURE / AGENTS / CONVENTIONS 中的用例数、方法数、语言数等，改动后要重测并标注日期。
 4. **工具/RPC/领域动作变更**：同步 `tools/domains.ts` → 根规则文档 → 本索引 → 生成物。
 5. 归档文件保留 commit 历史，不删除；历史文件顶部应有「已归档/被取代」说明。

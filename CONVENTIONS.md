@@ -1,6 +1,6 @@
 # CONVENTIONS.md — HoloGram 编码约定
 
-> 最后校准：2026-08-16（逐条对照源码与实测门禁）。
+> 最后校准：2026-08-29（逐条对照源码与实测门禁）。
 > 所有写代码的 Agent（内置 Agent / Claude Code / Codex / Cursor）在动文件前必须先读本文件；
 > `CLAUDE.md` 与 `AGENTS.md` 强制执行这一条。本文件只写仓库里**已经占多数**的模式，不是理想设计。
 
@@ -368,20 +368,20 @@ DOM 所有权按层划分，不要跨层抢 DOM：
    （历史遗留按 docs/landmine-map.md 拆除，新代码不得新增）
 ```
 
-## 3. 验证门禁与基线（2026-08-17 实测）
+## 3. 验证门禁与基线（2026-08-29 实测；数字会漂移，细则以 `AGENTS.md` §10 为准）
 
 | 改了什么 | 必须过 | 实测基线 |
 |---|---|---|
 | 前端 | `cd src-ui && npm run build` | tsc --noEmit + vite build 全绿 |
-| 前端逻辑 | `cd src-ui && npx vitest run` | 1200 passed / 1 skipped（116 文件，共 1201） |
+| 前端逻辑 | `cd src-ui && npx vitest run` | 203 文件 1895 passed / 4 skipped（跑前清 `NODE_ENV=production`，否则 specs 收集报 `No such built-in module: node:`） |
 | `src-ui/src/agent/**` | `cd src-ui && npm run verify:convergence` | exit 0（T0 静态 + 全部 phase specs 对拍 8 baseline；record 永不上 CI，baseline 变更走 change request 审批） |
 | 前端格式 | `npx biome check --write <改动文件>` | 全仓 `npx biome ci .` 0 errors / 0 warnings（2026-08-24 清零，保持归零）；行尾 = LF（根 `.gitattributes`） |
-| 引擎 | `cd engine && cargo test` | 697 tests（lib 669 + bin 27 + doc 1；696 passed / 1 ignored） |
-| 壳 | `cd src-tauri && cargo test` | 322 tests（bin 308 + 集成 14，全绿；pwsh 冒烟在无 pwsh 7 的环境自动跳过） |
+| 引擎 | `cd engine && cargo test` | lib 592 + bin 0 + doc 0（bin 测试 27 个已随 Phase 3 TCP 拆除；storage/vector/graph 测试已随 L5b crate 拆出） |
+| 壳 | `cd src-tauri && cargo test` | bins+lib 411 + 集成 1（hologram-engine 依赖已摘，引擎 = 进程外消费；cdp e2e 按环境偶现 ±1；pwsh 冒烟在无 pwsh 7 的环境自动跳过） |
 | 桌面打包 | `cd src-tauri && cargo tauri build` | 会先跑前端构建；禁止用 `cargo build --release` 代替 |
+| 生成物文档 | `cd src-ui && npm run doc-sync` | 五生成器全对拍（工具契约 / service·event 目录 / 开放面指纹 / 引擎契约 v4） |
 
 - CI（`.github/workflows/ci.yml`）只做编译 + 测试。**不要修改 CI。**
-- `npx biome ci src/app` 当前不是零（存量 14 errors），不要顺手清历史问题；改动文件自己零新增。
 - 修 INVARIANTS/landmine-map 里的雷，必须配回归测试，一颗雷一个 commit。
 
 ## 4. 文档维护

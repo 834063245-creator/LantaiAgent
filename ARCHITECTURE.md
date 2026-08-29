@@ -1,7 +1,7 @@
 # 兰台（Lantai）— 核心能力与技术架构
 
 > © 2026 Wenbing Jing. MIT License.
-> 最后更新：2026-08-25（分层重构 L1-L4 + L5b crate 化：应用层（数据上下文）新生 + Engine 纯化（StoreHost 注入/单根实例）+ 壳层瘦身 + storage/vector/graph 三 crate 物理拆出；图谱引擎专名 HoloGram 不变）
+> 最后更新：2026-08-29（引擎插件化全计划竣工：兰台进程外消费引擎（每工作区一个 serve 子进程）+ 免编译扩展面 src/plugins/（HOLOGRAM_PLUGIN_DIR manifest）；分层重构 L1-L4 + L5b crate 化）
 
 兰台（Lantai）不是一个单纯的"代码图谱可视化工具"。它的本质是一个 **Harness Engineering 平台**——将多种成熟软件工程模式（依赖分析、约束治理、变更预演、沙箱隔离、Agent 自主执行等）编排为统一 Harness，并通过内置 Agent 与对外 MCP 服务将这些能力开放给人和 AI。桌面主界面是**注疏案卷**（纸壳）；工作台本体经八条贡献通道**完全插件化**——出厂态零硬编码特权行，第一方能力与第三方插件在同一注册表上竞争。
 
@@ -79,7 +79,7 @@
 ```
 
 三层各自独立编译，通过明确边界通信：
-- **Engine** 是纯 Rust 库 + CLI 二进制，零外部运行时进程，可独立 `serve` 作为 MCP 服务器；**数据文件（hologram.db/FTS5/快照/向量）的所有权在 StoreHost**，由宿主创建注入——Engine 是计算与访问的执行方，不是数据的唯一拥有者。**L5b crate 化后 Rust 侧为四层 crate**（根 workspace）：`hologram-graph`（纯类型）← `hologram-vector`（纯计算）← `hologram-storage`（数据家，不依赖 engine）← `hologram-engine`（分析器；graph/storage/vector 三门面再导出，内部 `crate::storage::*` 路径零改动；壳层直连独立 crate，守卫测试钉死）
+- **Engine** 是纯 Rust 库 + CLI 二进制，可独立 `serve` 作为 MCP 服务器；**兰台 Phase 3 起零内嵌**（无 hologram-engine path 依赖）——每工作区由壳 spawn 一个 `engine serve` 子进程，经 `engine_transport`（stdio MCP）消费，Engine 崩溃自动重启；**数据文件（hologram.db/FTS5/快照/向量）的所有权在 StoreHost**，由宿主创建注入——Engine 是计算与访问的执行方，不是数据的唯一拥有者。**L5b crate 化后 Rust 侧为四层 crate**（根 workspace）：`hologram-graph`（纯类型）← `hologram-vector`（纯计算）← `hologram-storage`（数据家，不依赖 engine）← `hologram-engine`（分析器；graph/storage/vector 三门面再导出，内部 `crate::storage::*` 路径零改动；壳层直连独立 crate，守卫测试钉死）。**免编译扩展面（Phase 4）**：`src/plugins/` 读 `HOLOGRAM_PLUGIN_DIR` manifest 声明 language/framework/tool 三类扩展，不改一行 Rust（`examples/engine-plugins/`，契约 = `docs/agents/engine-plugin-contract.md` v4）
 - **Tauri Shell** 是通道（rpc.rs 薄壳）、权限守卫与进程管理者；**业务编排在应用层 `src-tauri/src/app/`**（数据上下文 + services），插件安装/授权通道也在此层
 - **前端** 是 Agent 运行时和用户界面（注疏案卷纸壳 + 组合层/插件系统），通过 `typedRpc()` / `typedListen()`（`rpc-contract.ts`）与后端通信
 
@@ -527,7 +527,7 @@ Engine 作为独立 MCP Server 运行，通过 JSON-RPC over stdin/stdout 对外
 | `ureq` / `url` / `regex` / `glob` | HTTP / URL / 模式 |
 | `libloading` | Aura SDK + 凭证库 FFI 加载 |
 | `tokio` (sync/time) | 异步通道、超时 |
-| `hologram-engine` (path 依赖) | 引擎集成 |
+| `engine_transport`（壳内模块） | 引擎进程外消费（每工作区一个 `engine serve` 子进程，stdio MCP；Phase 3 起无 hologram-engine path 依赖） |
 | `base64` | 编码 |
 
 ### 前端 (TypeScript / React 19)
@@ -575,6 +575,7 @@ HoloGram/
 ├── engine/                      # 代码图谱分析引擎 (Rust 库 + CLI)
 │   ├── src/
 │   │   ├── engine/              # 统一 API (Engine 结构体 + 状态机 + GRAMMAR_LOADER + watcher + pipeline)
+│   │   ├── plugins/             # 免编译扩展面 (HOLOGRAM_PLUGIN_DIR manifest: language/framework/tool)
 │   │   ├── graph/               # 图数据模型 (Node, Edge, Graph, merge, query)
 │   │   ├── adapter/             # 语言适配器 (LanguageAdapter trait + 27 静态语法 + 动态加载)
 │   │   ├── analysis/            # 分析模块 (coupling, cycles, dataflow, fragility, blindspots, flows, explore)
@@ -675,7 +676,7 @@ HoloGram/
 
 ### 10.1 为什么 Engine 是独立二进制
 
-Engine 编译为独立的 `hologram-engine.exe`，既可作为 Tauri 的子进程运行，也可独立 `serve` 作为 MCP 服务器。这保证了：
+Engine 编译为独立的 `hologram-engine.exe`。兰台（Phase 3 起）每工作区 spawn 一个 `serve` 子进程（stdio MCP，`engine_transport`），外部 MCP 客户端（Cursor / Claude Code / DSH）也可独立消费同一二进制；引擎能力面支持免编译扩展（`HOLOGRAM_PLUGIN_DIR` manifest）。这保证了：
 - 外部 MCP 客户端无需安装桌面应用即可使用图谱能力
 - Engine 崩溃不影响 Tauri Shell，Shell 可重启 Engine
 - Engine 的性能不受 Tauri 的 WebView 开销影响
