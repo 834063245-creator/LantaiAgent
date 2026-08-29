@@ -60,7 +60,7 @@
 
 > 背景：三方探查（交互 a11y / CSS 规格符合度 / 四态手感）55 条线索，人工复核后修复 16 处落 **commit `b5195c24`**（弹层 a11y/焦点管理 + 四态补齐 + token 纪律收编 + 退役字体删除；门禁 build/biome/vitest 全绿零回归），4 条误报剔除（见段尾记录）。以下为复核后不进修复批的余项。
 >
-> 栈裁决记录（2026-08-29，UI/UX 专项开工前置）：外部推荐栈评审结论 = React Flow / Tailwind / shadcn / react-query / React 18 全不引入（范式不合：文档画布非节点图、tokens.css 即设计系统、Tauri IPC 无 HTTP 缓存面）；控件行为层定「甲路线」= 手写为常规（dialog-focus.ts 为范式件），复杂交互件单点 react-aria hooks 例外（一事一议）；motion 不预装，遇 CSS 不可达的弹簧/FLIP 交互单点引入。按 Agent 建议执行中，用户可随时翻案。
+> 栈裁决记录（2026-08-29，UI/UX 专项开工前置）：外部推荐栈评审结论 = React Flow / Tailwind / shadcn / react-query / React 18 全不引入（范式不合：文档画布非节点图、tokens.css 即设计系统、Tauri IPC 无 HTTP 缓存面）；控件行为层定「甲路线」= 手写为常规（dialog-focus.ts 为范式件），复杂交互件单点 react-aria hooks 例外（一事一议）；motion 不预装，遇 CSS 不可达的弹簧/FLIP 交互单点引入。按 Agent 建议执行中 → **用户拍板确认（2026-08-29：拍板 1A），栈关闭。**
 
 | # | 项 | 谁判断 | 状态 |
 |---|---|---|---|
@@ -68,8 +68,8 @@
 | D2 | 状态圆点形态：状态点/呼吸点/更新角标等 `border-radius: 50%` 族（~12 处）——用户拍板（2026-08-29）「不是百分之百要的，有更好方案更好」；现状圆点保留（视作字形本体，同 C7 圈点豁免先例），后续视觉方案若出现更优标记形态（方点/短竖线/印泥点）单点替换 | Agent（可自主探索） | 开放 |
 | D3 | hover 过渡普遍缺失：多数交互件 hover 瞬间变色，`--snap`（0.12s）token 已在但未普遍引用——补齐属手感维度 | Agent | 开放 |
 | D4 | IME 候选窗错位：钉住块就地编辑时输入法候选窗位置漂移（`ime.ts` 头注记录在案）——画布变换 × OS 输入法坐标换算 | Agent | 挂起（深水区，单独立项） |
-| D5 | 后台失败统一可见出口：画布落盘失败仅 console.warn 静默重试（board-persistence）+ 摊开集恢复失败仅 console.error——需先定「后台错误提示面」形态（StatusLine 警告档？notice 条？）再两处接入 | 用户（形态）+ Agent（落地） | 待拍板形态 |
-| D6 | document.title 动态化：窗口标题恒「兰台 — Lantai」，切工作区不随动，多开难区分 | 用户（格式） | 待拍板格式 |
+| D5 | 后台失败统一可见出口：画布落盘失败仅 console.warn 静默重试（board-persistence）+ 摊开集恢复失败仅 console.error——需先定「后台错误提示面」形态（StatusLine 警告档？notice 条？）再两处接入 | 用户（形态）+ Agent（落地） | ✅ 已拍板 **C 混合**（2026-08-29）：StatusLine 常驻警告档 + 每次进入失败态弹一次 notice——待落地 |
+| D6 | document.title 动态化：窗口标题恒「兰台 — Lantai」，切工作区不随动，多开难区分 | 用户（格式） | ✅ 已拍板 **C**（2026-08-29）：`{工作区名} · {活跃案卷} — 兰台`——待落地 |
 | D7 | 窗口位置/尺寸记忆：前端未定位到实现，需查 src-tauri 侧（tauri.conf / window-state 插件）——核查项非缺陷 | Agent | 待核查 |
 | D8 | ModelSelector 目录拉取 loading 行：动态目录拉取中下拉无「拉取中…」指示（失败标注已有）——需目录状态 plumbing，可见度低 | Agent | 开放（低优先） |
 
