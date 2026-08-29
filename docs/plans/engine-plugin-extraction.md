@@ -363,37 +363,51 @@ DSH / Unity / 任意 MCP 客户端消费的是同一个二进制、同一份契�
 
 ## 8. 相关旧时代残留清点（2026-08-29 全仓排查，供按序清理）
 
+> **2026-08-29 清理执行**：8.1 后三项 + 8.3 全部物理残留已清（详见各条）；
+> 8.2 的 `#[tauri::command]` 死装饰（实测 87 处，非 91）+ TCP 9777 旧协议分支留待
+> 专项核签（函数可能用 `tauri::State` 参数，需逐个验签名）；8.4 bench 脚本与研究文档
+> 冲突（研究文档记为活跃基准工具），存疑未动。门禁全绿（引擎 592 / 前端 1894+4skip /
+> build / biome 0/0 / convergence exit 0）。
+
 ### 8.1 为「已退役 3D 星图 + 旧前端」服务（砍分页 = 最大块）
 
 - 图分页运输栈（见 Phase 1.5）：壳侧 graph_io 8 函数 + 前端 4 loader + 3 RPC + mock fixture
-- `chat-core.ts` `ChatFooterHandle` 死槽（V5 后无注册方）
-- `shell-store.ts` `graphStats` 死字段（V5 后无写入方）
-- `scene/graph-types.ts` `StarGraph` 兼容形状（type-only 壳，服务冻结文件；可留可拆）
+- ~~`chat-core.ts` `ChatFooterHandle` 死槽（V5 后无注册方）~~ ✅ 已删（接口 + 字段 + registerFooter
+  方法；`updateFooter` 改显式空操作保留 StreamContext API 契约——冻结文件 chat-stream/
+  chat-session 仍调用）
+- ~~`shell-store.ts` `graphStats` 死字段（V5 后无写入方）~~ ✅ 已删（GraphStats 接口 + 字段 +
+  setter 全链删除；全仓零引用确认）
+- `scene/graph-types.ts` `StarGraph` 兼容形状（type-only 壳）——**不动**：深度嵌入冻结文件
+  chat-stream.ts/chat-session.ts + 12 个测试 mock，拆除需改冻结文件签名，风险不符收益
 
 ### 8.2 装饰性/误导性残留
 
-- **91 个 `#[tauri::command]` 注解**：`invoke_handler` 实际只注册 2 个（`rpc::rpc` + `get_active_project`）
-  ——壳真实 IPC 面是 rpc.rs 162 分支，这些注解是死装饰（landmine-map 原记「~30」，实测 91，30+ 文件）
-- legacy `start_mcp_server` / `stop_mcp_server` RPC：rpc.rs 有分支 + rpc-contract 声明 + McpManager 活着，
-  但**前端零调用**——纯死面（Phase 3 拆）
+- **87 个 `#[tauri::command]` 注解**（实测 87，非原记 91）：`invoke_handler` 实际只注册 2 个
+  （`rpc::rpc` + `get_active_project`）——壳真实 IPC 面是 rpc.rs 162 分支，这些注解是死装饰。
+  **留待专项核签**：函数可能用 `tauri::State`/`Window` 参数，删注解需逐个验签名，量大面广（30+ 文件）。
+- ~~legacy `start_mcp_server` / `stop_mcp_server` RPC~~ ✅ Phase 3 已拆（rpc.rs / rpc-contract /
+  mcp_manager.rs 整文件删除；全仓仅文档/注释残留）
 - TCP 9777 旧协议 20+ 分支（blindspots/timeline/fragile/cycle/coupling_report/graph_summary/community_report/
   community/diff/history/delayed/neighbors/path/search/impact/rename/check/preflight/health）：DSH viewer 只用 3 个
-  （get_graph/analyze/reanalyze），其余无已知消费者——待确认外部 Unity 假设
+  （get_graph/analyze/reanalyze），其余无已知消费者——**待确认外部 Unity 假设**
 
 ### 8.3 孤儿/物理残留（小而明确）
 
 | 件 | 判定 |
 |---|---|
-| `specs/` 6 份文档（全仓零引用） | 归档或删 |
-| `.venv/` + `scripts/bench_resolution.py` + `bench_scip_bridge.py` | 清（Python 引擎退役残留） |
-| `release-bin/`（hologram.cmd/install.cmd/install.sh） | 与现 Tauri 打包核对后清 |
-| `engine/engine-bin/` 空目录、`engine/tmplinux-stress/` 空目录 | 删 |
-| `engine/queries/js_ts_structure.scm`（38 个查询里唯一孤儿） | 删 |
+| ~~`specs/` 6 份文档（全仓零引用）~~ | ✅ 已删（gitignored 本地残留） |
+| ~~`.venv/`（裸 Python venv，1686 文件）~~ | ✅ 已删（gitignored 本地残留） |
+| `scripts/bench_resolution.py` + `bench_scip_bridge.py` | **存疑未动**：研究文档记为活跃基准工具（P1-3 尚未接 CI），与「Python 引擎退役残留」判定冲突 |
+| ~~`release-bin/`（hologram/hologram.cmd/install.cmd/install.sh）~~ | ✅ 已删（tracked，git rm；全仓零引用确认） |
+| ~~`engine/engine-bin/` 空目录~~ | ✅ 已删（gitignored） |
+| ~~`engine/tmplinux-stress/`~~ | ✅ 已删（gitignored；含嵌套 .git + 171MB pack，误留 clone） |
+| ~~`engine/queries/js_ts_structure.scm`~~ | ✅ 已删（tracked，git rm；`new_js_ts()` 用 ts_structure + js_structure，零代码引用确认） |
 
 ### 8.4 存疑待核（不急着动）
 
 - `stress.rs`（48KB）+ main.rs stress CLI：开发压测工具在役，但 48KB 编进 lib 值得商榷
-- `get_full_graph`：workspace.ts:436/449/1246 还在用（导出/备份？）——看用途再定生死
+- ~~`get_full_graph`：workspace.ts 还在用（导出/备份？）~~ ✅ Phase 1.5 已拆（workspace.ts 无残留）；
+  `tool-rename-impact.test.ts` 的 `KNOWN_TAURI_COMMANDS` 过期条目已清
 - `engine/onnxruntime.dll`（13MB）：向量功能 live，别动
 
 ### 8.5 已确认健康（不是残留，别误伤）

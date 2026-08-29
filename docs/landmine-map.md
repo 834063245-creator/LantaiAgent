@@ -52,7 +52,7 @@
 - `agent/goal-manager.ts:123,206`：parse 有 try 但无形状校验（:143 有正确示范没跟上）
 - `message-bus.ts:158`：unregister 删 inbox 失败 → 死 agent 的 request 消息重启复活（消费路径未证实，存疑）
 - `DataflowPanel.tsx:313-322`：typeof==='string'?parse:原样 的双重编码启发式残留
-- ~30 个死 `#[tauri::command]` 属性（未注册进 invoke_handler）——谁误注册谁把重活带上 UI 主线程，建议清理
+- 87 个死 `#[tauri::command]` 属性（未注册进 invoke_handler——实测 87，非原记 ~30；invoke_handler 只注册 `rpc::rpc` + `get_active_project`）——谁误注册谁把重活带上 UI 主线程；**留待专项核签**：函数可能用 `tauri::State`/`Window` 参数，删注解需逐个验签名（30+ 文件）
 - `agent-identity.test.ts:62` 把「saveState 吞错不抛」**当规格断言固化**——拆 ① 类吞错时需先松绑测试
 
 ## 已确认健康（不要再动）

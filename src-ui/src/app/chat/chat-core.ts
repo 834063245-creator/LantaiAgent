@@ -66,12 +66,6 @@ export interface AtAutocompleteHandle {
   readonly open: boolean;
 }
 
-/** 视图注册的底栏句柄（V5 拆除后无注册方——ChatFooter 退役；槽保留）。 */
-export interface ChatFooterHandle {
-  /** 手动催更（token 条等非 settings 内容） */
-  refresh(): void;
-}
-
 /** 视图注册的斜杠面板句柄（V5 拆除后无注册方——SlashPanel 退役；
  *  斜杠命令本身仍由 sendMessage 的文本解析面承接，槽保留待纸壳 autocomplete）。 */
 export interface SlashPanelHandle {
@@ -117,7 +111,6 @@ export class ChatCore {
   private _promptShelf: PromptShelfHandle | null = null;
   private _slashController: SlashPanelHandle | null = null;
   private _atAutocomplete: AtAutocompleteHandle | null = null;
-  private _footerController: ChatFooterHandle | null = null;
   private _chatMessages: MessagesApi | null = null;
 
   // ── chat-session ctx 的 DOM 桩：分离元素，吸收写入，永不挂载 ──
@@ -221,9 +214,6 @@ export class ChatCore {
   registerAt(c: AtAutocompleteHandle): void {
     this._atAutocomplete = c;
     if (this.starGraph) c.setNodeNames(this.starGraph.getNodeNames());
-  }
-  registerFooter(c: ChatFooterHandle): void {
-    this._footerController = c;
   }
   registerMessages(c: MessagesApi): void {
     this._chatMessages = c;
@@ -1265,10 +1255,11 @@ export class ChatCore {
     Stream.renderEvent(this._streamCtxFor(null), ev);
   }
 
-  // ── Footer — 视图挂载；settings 变更时刷新模型名 ──
+  // ── Footer — V5 拆除后 ChatFooter 退役；updateFooter 保留为空操作
+  // （StreamContext API 契约，chat-stream/chat-session 冻结文件仍调用）
 
   private updateFooter(): void {
-    this._footerController?.refresh();
+    // no-op: ChatFooter 已退役（V5），槽不再需要注册方
   }
 
   // ── 文件附件 ──

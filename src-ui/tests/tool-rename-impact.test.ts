@@ -265,7 +265,6 @@ describe('P4: invoke pathway — 每个工具名都有对应 Tauri command', () 
     // ── hologram tools 全部通过 hologram_call 分发 ──
     'hologram_call',
     'hologram_tools_list',
-    'get_full_graph',
     // ── workspace ──
     'workspace_activate',
     'workspace_deactivate',
