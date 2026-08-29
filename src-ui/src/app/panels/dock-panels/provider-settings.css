@@ -109,7 +109,7 @@
   width: 3px;
 }
 .pp-rail-list::-webkit-scrollbar-thumb {
-  background: rgba(85, 80, 63, 0.35);
+  background: color-mix(in srgb, var(--ink-2) 35%, transparent);
   border-radius: 0;
 }
 .pp-src {
@@ -261,7 +261,7 @@
   width: 4px;
 }
 .pp-console::-webkit-scrollbar-thumb {
-  background: rgba(85, 80, 63, 0.35);
+  background: color-mix(in srgb, var(--ink-2) 35%, transparent);
   border-radius: 0;
 }
 .pp-console-head {
@@ -666,7 +666,7 @@
   align-items: center;
   justify-content: center;
   padding: 14px;
-  background: rgba(38, 34, 28, 0.38);
+  background: var(--veil);
 }
 .cd-sheet {
   width: 420px;
@@ -685,7 +685,7 @@
   width: 4px;
 }
 .cd-sheet::-webkit-scrollbar-thumb {
-  background: rgba(85, 80, 63, 0.35);
+  background: color-mix(in srgb, var(--ink-2) 35%, transparent);
   border-radius: 0;
 }
 .cd-danger {
@@ -908,3 +908,13 @@
   background: var(--ink-2);
   border-color: var(--ink-2);
 }
+
+/* 2026-08-29 走查：左侧列表空态（此前 providers=[] 时纯空白） */
+.pp-rail-empty {
+  padding: 18px 12px;
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+

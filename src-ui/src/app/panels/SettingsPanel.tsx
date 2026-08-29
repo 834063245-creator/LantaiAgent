@@ -84,7 +84,11 @@ const SettingsPanelApp: React.FC<{
           return next;
         });
       })
-      .catch(() => {});
+      .catch(() => {
+        // Key 回填失败不再静默（2026-08-29 走查）：否则已配 Key 的 provider
+        // 显示空 Key 字段，用户误以为没配过。
+        setSaveError('已配置 Key 回填失败——下方 Key 字段显示为空；保存前请先重开面板确认。');
+      });
     return () => {
       alive = false;
     };

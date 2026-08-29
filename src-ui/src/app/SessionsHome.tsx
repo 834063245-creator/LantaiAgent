@@ -86,7 +86,10 @@ export function SessionsHome() {
   const openPanel = useDockStore((s) => s.openPanel);
 
   // ── 已知工作区清单（workspace_list：注册表 + 会话推导合流）──
+  // listState 三态（2026-08-29 走查）：Rust 侧注册表缺席/毒化返回空表不报错，
+  // 因此 RPC 失败必是真故障——不再把错误伪装成「还没有工作区」空态。
   const [workspaces, setWorkspaces] = useState<KnownWorkspace[]>([]);
+  const [listState, setListState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   /** 内联改名（一次一张卡）。 */
@@ -108,9 +111,12 @@ export function SessionsHome() {
     void (async () => {
       try {
         const parsed = await typedJsonRpc<KnownWorkspace[]>('workspace_list', {});
-        if (alive) setWorkspaces(Array.isArray(parsed) ? parsed : []);
+        if (alive) {
+          setWorkspaces(Array.isArray(parsed) ? parsed : []);
+          setListState('ready');
+        }
       } catch {
-        /* 目录缺席（首启常态）= 空清单 */
+        if (alive) setListState('error');
       }
     })();
     return () => {
@@ -122,9 +128,9 @@ export function SessionsHome() {
     try {
       const parsed = await typedJsonRpc<KnownWorkspace[]>('workspace_list', {});
       setWorkspaces(Array.isArray(parsed) ? parsed : []);
+      setListState('ready');
     } catch {
-      /* 保留旧清单，失败可见于 console */
-      console.warn('[home] workspace_list 刷新失败');
+      setListState('error');
     }
   }, []);
 
@@ -258,7 +264,16 @@ export function SessionsHome() {
           <span className="n">WORKSPACES · {workspaces.length}</span>
         </div>
 
-        {workspaces.length > 0 ? (
+        {listState === 'loading' ? (
+          <p className="sh-empty-hint">载入工作区清单…</p>
+        ) : listState === 'error' ? (
+          <p className="sh-notice">
+            工作区清单读取失败。
+            <button type="button" className="sh-retry" onClick={() => void refreshWorkspaces()}>
+              重试
+            </button>
+          </p>
+        ) : workspaces.length > 0 ? (
           <div className="sh-workspaces">
             {workspaces.map((w) => {
               const isRenaming = renamingPath === w.path;

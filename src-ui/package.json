@@ -32,10 +32,7 @@
   "dependencies": {
     "@chenglou/pretext": "^0.0.8",
     "@fontsource-variable/eb-garamond": "^5.3.0",
-    "@fontsource-variable/fraunces": "^5.2.9",
     "@fontsource/ibm-plex-mono": "^5.3.0",
-    "@fontsource/jetbrains-mono": "^5.3.0",
-    "@fontsource/lxgw-wenkai": "^5.3.0",
     "@fontsource/ma-shan-zheng": "^5.3.0",
     "@fontsource/noto-serif-sc": "^5.2.9",
     "@tanstack/react-virtual": "^3.14.8",

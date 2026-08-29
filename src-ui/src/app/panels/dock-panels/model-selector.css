@@ -133,7 +133,7 @@
 }
 
 .ms-dropdown::-webkit-scrollbar-thumb {
-  background: rgba(85, 80, 63, 0.35);
+  background: color-mix(in srgb, var(--ink-2) 35%, transparent);
   border-radius: 0;
 }
 

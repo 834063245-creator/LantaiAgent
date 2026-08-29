@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { activeCommandContributions, type CommandContribution } from '../composition/services';
 import { shellRefs } from '../shell/runtime';
 import { usePanelDefsStore } from '../state/panel-defs-store';
+import { mountDialogFocus } from './dialog-focus';
 import type { CommandDef } from '../ui/command-registry';
 import { type AppAction, listActions } from './actions';
 import { Icon } from './Icon';
@@ -62,13 +63,14 @@ export function CommandPalette() {
   const boxRef = useRef<HTMLDivElement>(null);
   void commandsTick; // 贡献变更信号——长驻打开态也重取清单（S4-1.5）
 
+  // 打开：清查询 + 焦点入面板 + Tab 圈定 + 关闭归还打开者
+  // （2026-08-29 走查：此前 setTimeout 手搓抢焦点、关闭后焦点散落 body）
   useEffect(() => {
-    if (open) {
-      setQuery('');
-      setActive(0);
-      setTick((t) => t + 1);
-      setTimeout(() => inputRef.current?.focus(), 30);
-    }
+    if (!open || !boxRef.current) return;
+    setQuery('');
+    setActive(0);
+    setTick((t) => t + 1);
+    return mountDialogFocus(boxRef.current, { initial: inputRef.current });
   }, [open]);
 
   // 点击面板外关闭（document 级监听，静态元素上不挂交互处理器）

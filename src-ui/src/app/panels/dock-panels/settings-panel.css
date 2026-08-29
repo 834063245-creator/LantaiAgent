@@ -12,7 +12,7 @@
      （--z-paper-base）——settings 从书眉/命令面板唤起，纸在底下。 */
   z-index: var(--z-panel-veil);
   /* 印刷品方向：平色暗化，无玻璃模糊 */
-  background: rgba(38, 34, 28, 0.38);
+  background: var(--veil);
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--snap);

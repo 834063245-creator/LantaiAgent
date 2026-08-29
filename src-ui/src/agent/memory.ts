@@ -110,7 +110,6 @@ export class MemoryManager {
           return;
         }
         this._auraReady = true;
-        console.log(`[aura] initialized — ${result.record_count} records at ${result.path}`);
       } catch (e) {
         console.warn('[aura] init failed (semantic recall disabled):', e);
       } finally {

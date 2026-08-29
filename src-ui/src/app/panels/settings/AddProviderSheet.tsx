@@ -4,10 +4,11 @@
 // 添加提供方弹层：目录 chips 一键添加（name/kind/baseUrl/model 全带出），
 // 或展开自定义表单手动配置。校验在本地完成，父组件只负责落 state。
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { getCatalogVendors, getDefaultModel } from '../../../provider/catalog';
 import type { Protocol } from '../../../provider/types';
 import { type ProviderId, providerId } from '../../../settings';
+import { mountDialogFocus } from '../../dialog-focus';
 import { protocolLabel } from './protocol';
 
 export interface AddProviderEntry {
@@ -35,6 +36,8 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
   const [key, setKey] = useState('');
   const [error, setError] = useState('');
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const titleId = useId();
 
   useEffect(() => {
     if (open) {
@@ -44,9 +47,14 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       setModel('');
       setKey('');
       setError('');
-      // 打开即聚焦名称输入（键盘用户主路径）
-      setTimeout(() => nameInputRef.current?.focus(), 0);
     }
+  }, [open]);
+
+  // 焦点圈定 + 打开即聚焦名称输入（键盘用户主路径）+ 关闭归还焦点
+  // （2026-08-29 走查：此前 Tab 可逃逸弹层、关闭焦点落 body）
+  useEffect(() => {
+    if (!open || !sheetRef.current) return;
+    return mountDialogFocus(sheetRef.current, { initial: nameInputRef.current });
   }, [open]);
 
   // Esc = 关闭（capture 先于 useGlobalKeys，防穿透关掉整个 settings 面板）
@@ -96,11 +104,12 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      aria-hidden="true"
     >
-      <div className="cd-sheet pp-add-sheet" role="dialog" aria-modal="true">
+      <div ref={sheetRef} className="cd-sheet pp-add-sheet" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="cd-hd">
-          <span className="cd-title">添加提供方</span>
+          <span id={titleId} className="cd-title">
+            添加提供方
+          </span>
           <button type="button" className="cd-close" onClick={onClose} title="关闭">
             ✕
           </button>

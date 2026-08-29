@@ -8,7 +8,8 @@
 // Enter 只在弹层自身持有焦点时生效（avoid 文本输入中的 Enter 提交表单）。
 
 import type React from 'react';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useId } from 'react';
+import { mountDialogFocus } from '../../dialog-focus';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -33,10 +34,13 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const cancelRef = useRef<HTMLButtonElement | null>(null);
+  const titleId = useId();
 
-  // 挂载即聚焦取消键（danger 弹层的保守默认：误按 Enter 不至于触发危险操作）
+  // 焦点圈定 + 开启即聚焦取消键（danger 弹层的保守默认：误按 Enter 不至于触发
+  // 危险操作）+ 关闭归还焦点给打开者（2026-08-29 走查：此前 Tab 可逃逸弹层）
   useEffect(() => {
-    if (open) cancelRef.current?.focus();
+    if (!open || !sheetRef.current) return;
+    return mountDialogFocus(sheetRef.current, { initial: cancelRef.current });
   }, [open]);
 
   // Esc = 取消 / Enter = 确认（弹层内焦点时）；stopPropagation 防 esc-layer 穿透
@@ -72,17 +76,18 @@ export function ConfirmDialog({
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onCancel();
       }}
-      aria-hidden="true"
     >
       <div
         ref={sheetRef}
         className={`cd-sheet${tone === 'danger' ? ' cd-danger' : ''}`}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-labelledby={titleId}
       >
         <div className="cd-hd">
-          <span className="cd-title">{title}</span>
+          <span id={titleId} className="cd-title">
+            {title}
+          </span>
           <button type="button" className="cd-close" onClick={onCancel} title="关闭 (Esc)">
             ✕
           </button>

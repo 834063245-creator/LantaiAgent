@@ -76,7 +76,7 @@
   align-items: flex-start;
   justify-content: center;
   padding-top: 12vh;
-  background: rgba(38, 34, 28, 0.38); /* 墨色遮罩（与 settings-panel 遮罩同语言） */
+  background: var(--veil); /* 墨色遮罩（与 settings-panel 遮罩同语言） */
 }
 .pal-box {
   width: min(640px, 92vw);
@@ -142,7 +142,7 @@ html.no-bf .pal-box {
   color: var(--ink-2);
   font-family: var(--f-song);
   font-size: 12.5px;
-  border-radius: 6px;
+  border-radius: 0; /* 印刷品无圆角（2026-08-29 走查：6px 圆角违例拆除） */
   cursor: pointer;
   text-align: left;
 }

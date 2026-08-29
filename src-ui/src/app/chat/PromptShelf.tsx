@@ -6,7 +6,7 @@
 // 不在消息数组内 — 独立的 React root。
 
 import type React from 'react';
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useId, useImperativeHandle, useRef, useState } from 'react';
 import { iconSvg } from '../../ui/icons';
 import './prompt-shelf.css';
 
@@ -16,7 +16,8 @@ import './prompt-shelf.css';
  *  非用户输入，无 XSS 面）；全部使用点经此组件，豁免只留这一处。 */
 function Icon({ name, size = 12 }: { name: string; size?: number }): React.ReactElement {
   // biome-ignore lint/security/noDangerouslySetInnerHtml: 自有静态图标库字符串（ui/icons.ts），非用户输入
-  return <span dangerouslySetInnerHTML={{ __html: iconSvg(name, size) }} />;
+  // 装饰性图标（2026-08-29 走查）：语义由宿主按钮 title 承载，不进无障碍树
+  return <span aria-hidden="true" dangerouslySetInnerHTML={{ __html: iconSvg(name, size) }} />;
 }
 
 /** 批量多问的单条题目 */
@@ -69,6 +70,7 @@ const AskCard: React.FC<{
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const advanceTimer = useRef<number | null>(null);
+  const titleId = useId();
 
   /** 无 options = 开放式问题（用户输入自由文本回答）。 */
   const hasOptions = prompt.options.length > 0;
@@ -153,11 +155,13 @@ const AskCard: React.FC<{
   const hoveredOption = hoverIdx !== null ? prompt.options[hoverIdx] : null;
 
   return (
-    <div className="prompt-shelf__card" role="dialog" aria-modal="false">
+    <div className="prompt-shelf__card" role="dialog" aria-modal="false" aria-labelledby={titleId}>
       {/* 头部 */}
       <div className="prompt-shelf__head">
         <span className="prompt-shelf__tag prompt-shelf__tag--ask">{prompt.header.slice(0, 12)}</span>
-        <span className="prompt-shelf__question">{prompt.question}</span>
+        <span id={titleId} className="prompt-shelf__question">
+          {prompt.question}
+        </span>
         <button className="prompt-shelf__dismiss" onClick={cancel} title="取消 (Esc)" type="button">
           <Icon name="close" size={14} />
         </button>
@@ -255,6 +259,7 @@ const AskBatchCard: React.FC<{
   /** answers[i] = 第 i 题答案（string[]）；null = 未答 */
   const [answers, setAnswers] = useState<(string[] | null)[]>(() => prompt.questions.map(() => null));
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const titleId = useId();
 
   const q = prompt.questions[page];
   const options = q.options ?? [];
@@ -343,14 +348,16 @@ const AskBatchCard: React.FC<{
   const next = !isLast;
 
   return (
-    <div className="prompt-shelf__card prompt-shelf__card--batch" role="dialog" aria-modal="false">
+    <div className="prompt-shelf__card prompt-shelf__card--batch" role="dialog" aria-modal="false" aria-labelledby={titleId}>
       {/* 头部：进度 + 取消 */}
       <div className="prompt-shelf__head">
         <span className="prompt-shelf__tag prompt-shelf__tag--ask">
           {total > 1 ? `问 ${page + 1}/${total}` : '问询'}
           {prompt.header ? ` · ${prompt.header}` : ''}
         </span>
-        <span className="prompt-shelf__question">{q.question}</span>
+        <span id={titleId} className="prompt-shelf__question">
+          {q.question}
+        </span>
         <button className="prompt-shelf__dismiss" onClick={cancel} title="取消整批 (Esc)" type="button">
           <Icon name="close" size={14} />
         </button>

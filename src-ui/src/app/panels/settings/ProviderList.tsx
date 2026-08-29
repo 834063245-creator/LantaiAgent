@@ -25,7 +25,10 @@ export function ProviderList({ providers, selected, current, onSelect, onAdd }: 
         <span className="pp-cnt">{providers.length}</span>
       </div>
       <div className="pp-rail-list">
-        {providers.map((p) => {
+        {providers.length === 0 ? (
+          <div className="pp-rail-empty">还没有提供方——点击下方「添加提供方」开始。</div>
+        ) : (
+          providers.map((p) => {
           const st = providerStatus(p);
           const active = p.name === selected;
           return (
@@ -49,7 +52,8 @@ export function ProviderList({ providers, selected, current, onSelect, onAdd }: 
               <span className="pp-src-state">{STATUS_LABEL[st]}</span>
             </button>
           );
-        })}
+          })
+        )}
       </div>
       <button type="button" className="pp-rail-add" onClick={onAdd}>
         ＋ 添加提供方

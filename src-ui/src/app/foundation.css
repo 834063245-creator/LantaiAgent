@@ -51,6 +51,12 @@ body {
   background: transparent;
 }
 
+/* Firefox 等标准属性侧（WebKit 走上面的伪元素；元素级 scrollbar-width:none 会自然覆盖） */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-4) var(--paper);
+}
+
 ::selection {
   background: var(--seal-soft);
 }
@@ -77,7 +83,7 @@ body {
   content: "";
   position: fixed;
   inset: 0;
-  z-index: 9998;
+  z-index: var(--z-grain);
   pointer-events: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
   opacity: 0.05;
@@ -571,6 +577,25 @@ body {
   font-size: calc(11px * var(--font-scale));
   letter-spacing: 0.08em;
   color: var(--seal-deep);
+}
+.sh-retry {
+  margin-left: 10px;
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.08em;
+  color: var(--ink-1);
+  background: transparent;
+  border: var(--rule-soft);
+  border-radius: 0;
+  cursor: pointer;
+  padding: 2px 10px;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.sh-retry:hover {
+  background: var(--ink-1);
+  color: var(--paper);
 }
 
 .sh-actions {

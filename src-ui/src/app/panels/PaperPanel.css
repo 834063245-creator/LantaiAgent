@@ -613,7 +613,7 @@
   padding: 7px 10px;
   margin-bottom: 6px;
   border: 1px solid var(--rule-soft);
-  border-radius: 4px;
+  border-radius: 0;
   cursor: pointer;
   background: transparent;
   font-family: var(--f-song);
@@ -647,7 +647,7 @@
 .pp-pc-btn {
   padding: 5px 14px;
   border: 1px solid var(--rule-soft);
-  border-radius: 4px;
+  border-radius: 0;
   background: transparent;
   font-family: var(--f-song);
   font-size: 13px;
@@ -683,7 +683,7 @@
   color: var(--ink-1);
   background: transparent;
   border: 1px solid var(--rule-soft);
-  border-radius: 4px;
+  border-radius: 0;
   resize: vertical;
 }
 .pp-pc-feedback textarea:focus {
@@ -978,7 +978,7 @@
 .pp-mode-dialog-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 5000;
+  z-index: var(--z-dialog); /* 2026-08-29 走查：5000 魔法数收编进 tokens 分层 */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1213,7 +1213,7 @@
   font-size: 11px;
   letter-spacing: 0.1em;
   cursor: pointer;
-  border-radius: 2px;
+  border-radius: 0;
 }
 .pp-msg-ops button:hover {
   border-color: var(--indigo);
@@ -1535,7 +1535,7 @@
   line-height: 1;
   color: var(--paper);
   background: var(--seal);
-  border-radius: 3px;
+  border-radius: 0; /* 2026-08-29 走查：3px 圆角违例（印刷品无圆角） */
 }
 .pp-composer-settings .ms-trigger-name {
   overflow: hidden;
@@ -1582,7 +1582,7 @@
   width: 14px;
   height: 14px;
   font-size: 9px;
-  border-radius: 2px;
+  border-radius: 0;
 }
 .pp-composer-settings .ms-dropdown .ms-group-head .ms-group-name {
   letter-spacing: 0.2em;

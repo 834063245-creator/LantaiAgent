@@ -277,7 +277,7 @@ export function ModelSelector({
               : `${providerName} · ${triggerLabel}（点击选择模型）`
           }
           aria-haspopup="listbox"
-          aria-expanded={false}
+          aria-expanded={open}
           onClick={() => {
             if (!attemptOpen()) return;
             setOpen(true);
@@ -319,6 +319,11 @@ export function ModelSelector({
             <input
               type="text"
               className="sp-input ms-input"
+              role="combobox"
+              aria-expanded={open}
+              aria-controls="ms-listbox"
+              aria-activedescendant={open && results.length > 0 ? `ms-opt-${activeIdx}` : undefined}
+              aria-label="模型选择"
               value={open ? query : value}
               placeholder="搜索模型或输入名称…"
               onFocus={() => {
@@ -354,7 +359,7 @@ export function ModelSelector({
         </div>
       )}
       {open && results.length > 0 && (
-        <div className="ms-dropdown" ref={listRef}>
+        <div className="ms-dropdown" ref={listRef} role="listbox" id="ms-listbox">
           {displayRows.map((row) =>
             row.type === 'header' ? (
               <div key={`h-${row.vendor}`} className="ms-group-head">
@@ -444,6 +449,9 @@ function ModelRow({
   return (
     <button
       type="button"
+      id={`ms-opt-${idx}`}
+      role="option"
+      aria-selected={m.id === value}
       className={`ms-item${idx === activeIdx ? ' active' : ''}${m.id === value ? ' selected' : ''}`}
       onMouseEnter={() => onHover(idx)}
       onClick={() => onSelect(m)}

@@ -104,9 +104,7 @@ async function switchWorkspace(path?: string): Promise<void> {
     };
     let ws: Workspace;
     try {
-      console.log('[switchWorkspace] calling Workspace.open...');
       ws = await WorkspaceCls.open(folder, null, chatPanel, { onStatusChange, onLoadingChange });
-      console.log('[switchWorkspace] Workspace.open returned');
     } catch (err) {
       console.error('[switchWorkspace] Workspace.open threw:', err);
       pushStatus(`分析失败: ${err}`);
