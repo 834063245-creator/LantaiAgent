@@ -63,17 +63,19 @@
 > 栈裁决记录（2026-08-29，UI/UX 专项开工前置）：外部推荐栈评审结论 = React Flow / Tailwind / shadcn / react-query / React 18 全不引入（范式不合：文档画布非节点图、tokens.css 即设计系统、Tauri IPC 无 HTTP 缓存面）；控件行为层定「甲路线」= 手写为常规（dialog-focus.ts 为范式件），复杂交互件单点 react-aria hooks 例外（一事一议）；motion 不预装，遇 CSS 不可达的弹簧/FLIP 交互单点引入。**用户拍板确认（2026-08-29：拍板 1A），栈关闭。**
 >
 > 本批 commit 链（2026-08-29）：`b5195c24` 走查修复批 → `61c73aa2` D 段落账 → `2a5ddcad` 三拍板落账 → `a5fa474f` 印章候选归置（D1 收口）→ `d2846bd9` D5+D6 落地 → `3a863a94` 状态收口。
+>
+> **D 段收官批（2026-08-29 续窗，D 剩余五项全清）**：`14d6489b` D1 印章落地 + D2 方点化 + D3 hover 过渡 → `f5ae69e1` D4 IME 风险收档消解 → `dfbe87b7` D8 目录拉取 loading → 本 commit 落账。门禁实测：build ✓ / vitest 全量 204 文件 1901 passed / 4 skipped ✓ / biome ci 0/0 ✓。**D 段至此全清，A/B/C 段此前已收——R5 polish backlog 全账清零。**
 
 | # | 项 | 谁判断 | 状态 |
 |---|---|---|---|
-| D1 | **印章重制**：用户自评「蘭臺」印章不好看（`.sh-seal` 竖排字 + 3px 边框微倾，foundation.css）——方向：生图模型出朱砂印章图案候选（篆刻风、透明底、单色朱砂），产品侧替换 CSS 字排章；favicon/应用图标同源换装可顺带 | 用户（候选终审） | ✅ **候选集齐 4 张（2026-08-29，用户拍板「都留着需要时用」）**——资产落 `assets/seals/`（README 含各张评估与建议用途）；书眉替换/favicon 换装等落地待办见该 README，不在 D1 探索范围 |
-| D2 | 状态圆点形态：状态点/呼吸点/更新角标等 `border-radius: 50%` 族（~12 处）——用户拍板（2026-08-29）「不是百分之百要的，有更好方案更好」；现状圆点保留（视作字形本体，同 C7 圈点豁免先例），后续视觉方案若出现更优标记形态（方点/短竖线/印泥点）单点替换 | Agent（可自主探索） | 开放 |
-| D3 | hover 过渡普遍缺失：多数交互件 hover 瞬间变色，`--snap`（0.12s）token 已在但未普遍引用——补齐属手感维度 | Agent | 开放 |
-| D4 | IME 候选窗错位：钉住块就地编辑时输入法候选窗位置漂移（`ime.ts` 头注记录在案）——画布变换 × OS 输入法坐标换算 | Agent | 挂起（深水区，单独立项） |
+| D1 | **印章重制**：用户自评「蘭臺」印章不好看（`.sh-seal` 竖排字 + 3px 边框微倾，foundation.css）——方向：生图模型出朱砂印章图案候选（篆刻风、透明底、单色朱砂），产品侧替换 CSS 字排章；favicon/应用图标同源换装可顺带 | 用户（候选终审） | ✅ **候选集齐 + 全部落地（2026-08-29 两段收官）**——候选 4 张落 `assets/seals/`（用户拍板全留）；落地段（commit `14d6489b`）：`seal-zhuwen-vertical` 去白底转 alpha 遮罩（`src-ui/src/app/sh-seal-mask.png`，黑 RGB + alpha=红度），`.sh-seal` 改 CSS mask + `--seal` token 上色（aspect-ratio 1:2.43 钉原始章面比例）；`seal-baiwen-ornate`（透明底白文方章）裁边垫方出 `app-icon-1024.png` → `cargo tauri icon` 全套换装（android/ios 随生随删，C4 先例）；favicon.svg 亭台线稿退役 → `favicon.png`（256px）；小尺寸两档验证过。细节见 `assets/seals/README.md`（落地待办三勾已销） |
+| D2 | 状态圆点形态：状态点/呼吸点/更新角标等 `border-radius: 50%` 族（~12 处）——用户拍板（2026-08-29）「不是百分之百要的，有更好方案更好」；现状圆点保留（视作字形本体，同 C7 圈点豁免先例），后续视觉方案若出现更优标记形态（方点/短竖线/印泥点）单点替换 | Agent（可自主探索） | ✅ **收维，已落地（2026-08-29，commit `14d6489b`）**：agent 定 **方点**——11 处状态/标记点 `border-radius:50%` 全拆（has-update 朱批点×2 / sl-dot·sl-warn-dot / ss-dot / sr-run-dot / prompt-shelf__dot / pp-src-dot·pp-dot-legend·pp-pdot·pp-save-bar-dot），圆角恒 0 铁律收编最后一个豁免族（铅印方点观感，呼吸/闪烁动画语义不变）；三处豁免有据保留：.pp-circled（C7 圈点字形）/ .pp-spin（spinner 环结构件）/ .sp-radio（radio 控件语义） |
+| D3 | hover 过渡普遍缺失：多数交互件 hover 瞬间变色，`--snap`（0.12s）token 已在但未普遍引用——补齐属手感维度 | Agent | ✅ **已落地（2026-08-29，commit `14d6489b`）**：11 个 CSS 文件 63 处 hover 全量盘点——补齐缺失过渡 26 件（shell 域 wc-btn/pal-row、session-sidebar 三件、PaperPanel 域 18 件、provider-settings 五件）+ 存量硬编码 0.12s/0.14s ease 全部收编 `var(--snap)`；sp-btn-sm 基类 transition 扩 border-color（rm-provider hover 有过渡可跟） |
+| D4 | IME 候选窗错位：钉住块就地编辑时输入法候选窗位置漂移（`ime.ts` 头注记录在案）——画布变换 × OS 输入法坐标换算 | Agent | ✅ **收档消解（2026-08-29，commit `f5ae69e1`，零行为改动）**：核查实际落地面——编辑宿主从未进世界层：块「改」= `chat-core.editUserMessage` 抄正文进底部 composer（`.pp-composer-slot` 固定视口底、`.pp-world` 之外）并聚焦；画布无可编辑元素（流块/钉块/纸条只读渲染，SpineRack 改名框在画布外固定层）。ime.ts 头注预言的「编辑宿主浮出 transform 层」正是实际形态，错位前提（transform 内编辑面）结构性不成立；ime.ts 头注改写收档 + paper/README 两处记录同步；未来若真做 transform 内可编辑面，须先 spike caret 屏幕位换算（头注留规） |
 | D5 | 后台失败统一可见出口：画布落盘失败仅 console.warn 静默重试（board-persistence）+ 摊开集恢复失败仅 console.error——需先定「后台错误提示面」形态（StatusLine 警告档？notice 条？）再两处接入 | 用户（形态）+ Agent（落地） | ✅ 已拍板 **C 混合**（2026-08-29）+ **已落地**（commit d2846bd9）：bg-alert-store（同 id 失败态延续不重复弹/成功解除再弹/单槽语义，4 用例守护）+ StatusLine 警告档（--warn 色警点）+ 一次性提示条（「知道了」收条不动警报）；接入画布落盘失败 + 摊开集恢复失败两处 |
 | D6 | document.title 动态化：窗口标题恒「兰台 — Lantai」，切工作区不随动，多开难区分 | 用户（格式） | ✅ 已拍板 **C**（2026-08-29）+ **已落地**（commit d2846bd9）：`useDocumentTitle`——`{工作区名} · {活跃案卷} — 兰台`，随切工作区/切卷/改名实时刷新（工作区名取 basename，注册表登记名不参与） |
 | D7 | 窗口位置/尺寸记忆：**核查完毕（2026-08-29）——已实现，无需改动**。`tauri-plugin-window-state` 依赖（Cargo.toml:49）+ `main.rs:66` 注册在位，插件默认 StateFlags 恢复尺寸/位置/最大化（首次探查误报「未实现」系 pattern 连字符没匹配到下划线 `window_state`，记为教训） | Agent | ✅ 已实现 |
-| D8 | ModelSelector 目录拉取 loading 行：动态目录拉取中下拉无「拉取中…」指示（失败标注已有）——需目录状态 plumbing，可见度低 | Agent | 开放（低优先） |
+| D8 | ModelSelector 目录拉取 loading 行：动态目录拉取中下拉无「拉取中…」指示（失败标注已有）——需目录状态 plumbing，可见度低 | Agent | ✅ **已落地（2026-08-29，commit `dfbe87b7`）**：catalog.ts 加拉取中面（`_dynamicFetchInflight` 键控集 + markDynamicFetchStart/getDynamicFetchInflight/hasDynamicFetchInflight + onDynamicFetchChange 订阅；拉取点双接 workspace 后台预热 + 设置页手动刷新，recordDynamicFetchResult 配对收尾并通知）；compact 分组头「目录获取中…」（石青=机铁律，区别失败标注警告黄；样式随 D1-D3 批先落 PaperPanel.css）+ 下拉空态同文案兜底；失败标注顺带获得实时性（原打开下拉才重算）；守护 3 用例入 provider-catalog.test.ts |
 
 **误报剔除记录**（2026-08-29 走查，避免后人重查）：① 流式中发送=插话特性（chat-core 插入路径有「已插入进行中的回合」回音通知），非吞消息；② 「hover 无 focus-visible 系统性缺失」大部分被 foundation.css 全局 `:focus-visible` 兜底覆盖，实际缺口小；③ PromptShelf 权限卡实有 `aria-label="权限请示"`；④ `type="button"` 全数在位。另：--indigo 语义存疑三处复核合规（摊开标记自注「机=石青」/拟策序号=规格书明文/牒卡=机器问询）。
 
