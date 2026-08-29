@@ -3,12 +3,16 @@
 
 // 添加提供方弹层：目录 chips 一键添加（name/kind/baseUrl/model 全带出），
 // 或展开自定义表单手动配置。校验在本地完成，父组件只负责落 state。
+//
+// 2026-08-29 frontend-overlay-a11y-plan 档位 A-1：Escape/遮罩点关/背景 inert 收编到
+// Overlay 原语（统一语义），本件只保留焦点环。
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { getCatalogVendors, getDefaultModel } from '../../../provider/catalog';
 import type { Protocol } from '../../../provider/types';
 import { type ProviderId, providerId } from '../../../settings';
 import { mountDialogFocus } from '../../dialog-focus';
+import { Overlay } from '../../overlay';
 import { protocolLabel } from './protocol';
 
 export interface AddProviderEntry {
@@ -57,22 +61,6 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
     return mountDialogFocus(sheetRef.current, { initial: nameInputRef.current });
   }, [open]);
 
-  // Esc = 关闭（capture 先于 useGlobalKeys，防穿透关掉整个 settings 面板）
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', onKey, true);
-    return () => document.removeEventListener('keydown', onKey, true);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   const handleCustomAdd = () => {
     const n = name.trim();
     if (!n) {
@@ -99,13 +87,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
   };
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: 模态遮罩点击空白 = 取消（明确对话框语义）
-    <div
-      className="cd-overlay"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
+    <Overlay open={open} onClose={onClose} className="cd-overlay" inertBackground>
       <div ref={sheetRef} className="cd-sheet pp-add-sheet" role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="cd-hd">
           <span id={titleId} className="cd-title">
@@ -235,6 +217,6 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
           </button>
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }

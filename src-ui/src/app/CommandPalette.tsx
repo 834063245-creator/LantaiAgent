@@ -118,6 +118,10 @@ export function CommandPalette() {
             placeholder="输入命令、面板或符号名…"
             autoComplete="off"
             spellCheck={false}
+            role="combobox"
+            aria-expanded
+            aria-controls="pal-listbox"
+            aria-activedescendant={rows.length > 0 ? `pal-opt-${active}` : undefined}
             onChange={(e) => {
               setQuery(e.target.value);
               setActive(0);
@@ -138,15 +142,24 @@ export function CommandPalette() {
             }}
           />
         </div>
-        <div className="pal-list">
-          {rows.length === 0 ? <div className="pal-group">无匹配命令</div> : null}
+        <div className="pal-list" role="listbox" id="pal-listbox" aria-label="命令">
+          {rows.length === 0 ? (
+            <div className="pal-group" role="presentation">
+              无匹配命令
+            </div>
+          ) : null}
           {groups.map((g) => (
-            <div key={g.g}>
-              <div className="pal-group">{g.g}</div>
+            <div key={g.g} role="presentation">
+              <div className="pal-group" role="presentation">
+                {g.g}
+              </div>
               {g.items.map(({ a, idx }) => (
                 <button
                   key={a.id}
                   type="button"
+                  id={`pal-opt-${idx}`}
+                  role="option"
+                  aria-selected={idx === active}
                   className={`pal-row${idx === active ? ' active' : ''}`}
                   onMouseEnter={() => setActive(idx)}
                   onClick={() => run(a)}

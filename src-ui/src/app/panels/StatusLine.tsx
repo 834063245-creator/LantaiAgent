@@ -17,6 +17,7 @@
 
 import { memo, useEffect, useRef, useState } from 'react';
 import { useBgAlertStore } from '../../state/bg-alert-store';
+import { useDialogEscape } from '../overlay';
 import { useShellStore } from '../shell-store';
 import './status-line.css';
 
@@ -59,22 +60,18 @@ export const StatusLine = memo(function StatusLine() {
     return () => window.clearInterval(t);
   }, [analyzing]);
 
-  // 外点收起日志 + Esc 关闭（弹层键盘一致性，2026-08 UI 大清扫）
+  // 外点收起日志（弹层一致性，2026-08 UI 大清扫）
   useEffect(() => {
     if (!logOpen) return;
     const onDown = (e: MouseEvent) => {
       if (hostRef.current && !hostRef.current.contains(e.target as Node)) setLogOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setLogOpen(false);
-    };
     document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
+    return () => document.removeEventListener('mousedown', onDown);
   }, [logOpen]);
+
+  // Esc 关闭日志弹层（2026-08-29 overlay 原语收编：非模态气泡——不拦冒泡不挡默认）
+  useDialogEscape(() => setLogOpen(false), { enabled: logOpen, capture: false, blockPropagation: false });
 
   const busy = analyzing !== null;
   const alerting = bgAlert !== null;

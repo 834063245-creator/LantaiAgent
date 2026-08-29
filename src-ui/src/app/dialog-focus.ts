@@ -7,7 +7,7 @@
 // Escape 与遮罩关闭仍由各组件自持（本件只管焦点进出与 Tab 环游）。
 
 const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex="-1"])';
 
 function firstFocusable(root: HTMLElement): HTMLElement | null {
   return root.querySelector<HTMLElement>(FOCUSABLE);

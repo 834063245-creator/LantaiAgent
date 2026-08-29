@@ -6,10 +6,14 @@
 // 键盘：Esc = 取消 / Enter = 确认（2026-08 UI 大清扫——此前只有鼠标路径，
 // 且 Esc 会穿透到 useGlobalKeys 的 esc-layer 误关整个 settings 面板）。
 // Enter 只在弹层自身持有焦点时生效（avoid 文本输入中的 Enter 提交表单）。
+//
+// 2026-08-29 frontend-overlay-a11y-plan 档位 A-1：Escape/遮罩点关/背景 inert 收编到
+// Overlay 原语（统一语义），本件只保留焦点环 + Enter 确认。
 
 import type React from 'react';
 import { useEffect, useId, useRef } from 'react';
 import { mountDialogFocus } from '../../dialog-focus';
+import { Overlay } from '../../overlay';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -43,41 +47,27 @@ export function ConfirmDialog({
     return mountDialogFocus(sheetRef.current, { initial: cancelRef.current });
   }, [open]);
 
-  // Esc = 取消 / Enter = 确认（弹层内焦点时）；stopPropagation 防 esc-layer 穿透
+  // Enter = 确认（弹层内焦点时）；stopPropagation 防 esc-layer 穿透（Esc 已归 Overlay）
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key !== 'Enter') return;
+      const inSheet = sheetRef.current?.contains(document.activeElement);
+      const inInput =
+        document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
+      // 焦点在弹层按钮上（非输入框）才走 Enter 确认
+      if (inSheet && !inInput) {
         e.preventDefault();
         e.stopPropagation();
-        onCancel();
-        return;
-      }
-      if (e.key === 'Enter') {
-        const inSheet = sheetRef.current?.contains(document.activeElement);
-        const inInput =
-          document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
-        // 焦点在弹层按钮上（非输入框）才走 Enter 确认
-        if (inSheet && !inInput) {
-          e.preventDefault();
-          e.stopPropagation();
-          onConfirm();
-        }
+        onConfirm();
       }
     };
     document.addEventListener('keydown', onKey, true); // capture：先于 useGlobalKeys（window 冒泡）
     return () => document.removeEventListener('keydown', onKey, true);
-  }, [open, onCancel, onConfirm]);
+  }, [open, onConfirm]);
 
-  if (!open) return null;
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: 模态遮罩点击空白 = 取消（明确对话框语义）
-    <div
-      className="cd-overlay"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onCancel();
-      }}
-    >
+    <Overlay open={open} onClose={onCancel} className="cd-overlay" inertBackground>
       <div
         ref={sheetRef}
         className={`cd-sheet${tone === 'danger' ? ' cd-danger' : ''}`}
@@ -107,6 +97,6 @@ export function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }

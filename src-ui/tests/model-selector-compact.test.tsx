@@ -421,3 +421,143 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
     expect(container!.querySelectorAll('.ms-group-head').length).toBe(0);
   });
 });
+
+describe('ModelSelector 键盘导航（react-aria useComboBox，档位 C）', () => {
+  let container: HTMLDivElement | null = null;
+  let root: Root | null = null;
+
+  beforeEach(() => {
+    localStorage.clear();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+  afterEach(() => {
+    act(() => root?.unmount());
+    container?.remove();
+    root = null;
+  });
+
+  const key = (el: Element, k: string) =>
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+
+  it('↑↓ 移动 aria-activedescendant 聚焦项（react-aria 接管键盘导航）', async () => {
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          compact: true,
+          value: 'deepseek-v4-pro',
+          providerName: 'deepseek',
+          kind: 'openai',
+          onChange: () => {},
+        }),
+      );
+    });
+    act(() => {
+      container!.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
+    });
+    await act(async () => {});
+    const input = container!.querySelector<HTMLInputElement>('.ms-input')!;
+    // 打开即自动聚焦当前选中项（react-aria autoFocus 语义——combobox 惯例：焦点落在已选项），
+    // aria-activedescendant 指向该项
+    const firstActive = container!.querySelector<HTMLElement>('.ms-item.active');
+    expect(firstActive).not.toBeNull();
+    expect(input.getAttribute('aria-activedescendant')).toBe(firstActive?.id);
+    // ArrowDown 在最后一项不换行（react-aria 默认 shouldFocusWrap=false）
+    act(() => {
+      key(input, 'ArrowDown');
+    });
+    expect(container!.querySelector<HTMLElement>('.ms-item.active')).toBe(firstActive);
+    // ArrowUp 移到前一项 → active 跟随移动
+    act(() => {
+      key(input, 'ArrowUp');
+    });
+    const prevActive = container!.querySelector<HTMLElement>('.ms-item.active');
+    expect(prevActive).not.toBe(firstActive);
+    expect(input.getAttribute('aria-activedescendant')).toBe(prevActive?.id);
+  });
+
+  it('Enter 选中聚焦项 → onChange（无需鼠标）', async () => {
+    const onChange = vi.fn();
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          compact: true,
+          value: 'deepseek-v4-pro',
+          providerName: 'deepseek',
+          kind: 'openai',
+          onChange,
+        }),
+      );
+    });
+    act(() => {
+      container!.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
+    });
+    await act(async () => {});
+    const input = container!.querySelector<HTMLInputElement>('.ms-input')!;
+    // 打开自动聚焦当前已选项（deepseek-v4-pro）；ArrowUp 到前一项（anthropic 家 claude-sonnet-4-6）
+    act(() => {
+      key(input, 'ArrowUp');
+    });
+    act(() => {
+      key(input, 'Enter');
+    });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith('claude-sonnet-4-6', expect.anything());
+  });
+
+  it('自定义模型名：输入无匹配 + Enter → onChange(输入值)（allowsCustomValue 语义）', async () => {
+    const onChange = vi.fn();
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          value: 'deepseek-v4-pro',
+          providerName: 'deepseek',
+          kind: 'openai',
+          onChange,
+        }),
+      );
+    });
+    act(() => {
+      container!.querySelector<HTMLInputElement>('.ms-input')?.focus();
+    });
+    const input = container!.querySelector<HTMLInputElement>('.ms-input')!;
+    // 输入目录里不存在的名字（目录无此模型 → 无匹配）
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+      setter.call(input, 'my-custom-model');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      key(input, 'Enter');
+    });
+    expect(onChange).toHaveBeenCalledWith('my-custom-model');
+  });
+
+  it('Escape 只关闭不提交自定义值（覆盖 react-aria 默认 revert 语义）', async () => {
+    const onChange = vi.fn();
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          value: 'deepseek-v4-pro',
+          providerName: 'deepseek',
+          kind: 'openai',
+          onChange,
+        }),
+      );
+    });
+    act(() => {
+      container!.querySelector<HTMLInputElement>('.ms-input')?.focus();
+    });
+    const input = container!.querySelector<HTMLInputElement>('.ms-input')!;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+      setter.call(input, 'my-custom-model');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {
+      key(input, 'Escape');
+    });
+    expect(onChange).not.toHaveBeenCalled(); // Escape = 取消，不提交
+  });
+});
