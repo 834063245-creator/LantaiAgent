@@ -6,7 +6,15 @@
 // 从 API 动态获取的模型会标记 "live" 徽章。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { findModels, getDynamicFetchFailure, getModel, searchModels } from '../../provider/catalog';
+import {
+  findModels,
+  getDynamicFetchFailure,
+  getDynamicFetchInflight,
+  getModel,
+  hasDynamicFetchInflight,
+  onDynamicFetchChange,
+  searchModels,
+} from '../../provider/catalog';
 import { resolveApiKey } from '../../provider/credentials';
 import type { ModelDescriptor, Protocol } from '../../provider/types';
 import { effectiveModels, loadSettings } from '../../settings';
@@ -151,14 +159,24 @@ export function ModelSelector({
     () => [...new Set(displayRows.filter((r) => r.type === 'header').map((r) => (r as { vendor: string }).vendor))],
     [displayRows],
   );
-  /* ── C5（2026-08-27）：动态目录失败面——该 vendor 后台/手动拉模型表失败时
-   *    分组头标注「目录获取失败」（静态目录 + last-good 动态模型兜底，不因失败
-   *    消失）。failure 状态在 setupAgent 后台拉取 / 设置页手动刷新时记录，打开
-   *    下拉（displayRows 重算）时同步可见。 ── */
-  const failedVendors = useMemo(
-    () => new Set(headerVendors.filter((v) => getDynamicFetchFailure(v) !== undefined)),
-    [headerVendors],
-  );
+  /* ── C5（2026-08-27）+ D8（2026-08-29）：动态目录状态面——分组头标注
+   *    「目录获取失败」（failure 在 setupAgent 后台拉取 / 设置页手动刷新时记录）
+   *    与「目录获取中…」（拉取中→完成必须实时刷新，否则「获取中」悬挂到下次
+   *    重开下拉）。订阅 catalog 的拉取状态变更：打开期间挂订阅，变更即重快照。 ── */
+  const [fetchFlags, setFetchFlags] = useState(() => ({
+    inflight: new Set<string>(),
+    failed: new Set<string>(),
+  }));
+  useEffect(() => {
+    if (!open) return;
+    const refresh = () =>
+      setFetchFlags({
+        inflight: new Set(headerVendors.filter((v) => getDynamicFetchInflight(v))),
+        failed: new Set(headerVendors.filter((v) => getDynamicFetchFailure(v) !== undefined)),
+      });
+    refresh();
+    return onDynamicFetchChange(refresh);
+  }, [open, headerVendors]);
   useEffect(() => {
     if (!open || !compact || headerVendors.length === 0) return;
     let alive = true;
@@ -366,7 +384,8 @@ export function ModelSelector({
                 <ProviderMark vendor={row.vendor} className="ms-group-mark" />
                 <span className="ms-group-name">{row.vendor}</span>
                 {noKeyVendors.has(row.vendor) && <span className="ms-group-nokey">未配置 Key</span>}
-                {failedVendors.has(row.vendor) && (
+                {fetchFlags.inflight.has(row.vendor) && <span className="ms-group-fetch">目录获取中…</span>}
+                {fetchFlags.failed.has(row.vendor) && (
                   <span className="ms-group-fail" title={getDynamicFetchFailure(row.vendor)}>
                     目录获取失败
                   </span>
@@ -391,9 +410,11 @@ export function ModelSelector({
           <span className="ms-empty-text">
             {query
               ? `无匹配模型「${query}」`
-              : compact
-                ? '没有可用模型——去 设置 → Provider 添加'
-                : '目录为空，点击刷新从 API 获取'}
+              : hasDynamicFetchInflight()
+                ? '目录获取中…'
+                : compact
+                  ? '没有可用模型——去 设置 → Provider 添加'
+                  : '目录为空，点击刷新从 API 获取'}
           </span>
         </div>
       )}

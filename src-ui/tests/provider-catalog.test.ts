@@ -9,8 +9,12 @@ import {
   getCatalogVendors,
   getDefaultModel,
   getDynamicFetchFailure,
+  getDynamicFetchInflight,
   getModel,
+  hasDynamicFetchInflight,
+  markDynamicFetchStart,
   mergeDynamicModels,
+  onDynamicFetchChange,
   recordDynamicFetchResult,
   searchModels,
 } from '../src/provider/catalog';
@@ -217,6 +221,34 @@ describe('catalog', () => {
     // 失败后动态模型仍可查（静态目录 + last-good 兜底，不因失败消失）
     expect(getModel('c5-dynamic-x')).toBeDefined();
     expect(getDynamicFetchFailure('c5-lastgood')).toBe('boom');
+  });
+
+  it('D8: markDynamicFetchStart 标记拉取中，recordDynamicFetchResult 收尾即清', () => {
+    expect(getDynamicFetchInflight('d8-prov')).toBe(false);
+    markDynamicFetchStart('d8-prov');
+    expect(getDynamicFetchInflight('d8-prov')).toBe(true);
+    expect(hasDynamicFetchInflight()).toBe(true);
+    // 成功与失败两条收尾路都清拉取中标记
+    recordDynamicFetchResult('d8-prov', true);
+    expect(getDynamicFetchInflight('d8-prov')).toBe(false);
+    markDynamicFetchStart('d8-prov');
+    recordDynamicFetchResult('d8-prov', false, 'boom');
+    expect(getDynamicFetchInflight('d8-prov')).toBe(false);
+    expect(hasDynamicFetchInflight()).toBe(false);
+  });
+
+  it('D8: onDynamicFetchChange 开始/收尾各通知一次，退订后静默', () => {
+    let ticks = 0;
+    const off = onDynamicFetchChange(() => {
+      ticks++;
+    });
+    markDynamicFetchStart('d8-notify-prov');
+    recordDynamicFetchResult('d8-notify-prov', true);
+    expect(ticks).toBe(2);
+    off();
+    markDynamicFetchStart('d8-notify-prov');
+    recordDynamicFetchResult('d8-notify-prov', true);
+    expect(ticks).toBe(2);
   });
 
   it('guessReasoning heuristic (P0: 动态模型 reasoning 启发式)', () => {

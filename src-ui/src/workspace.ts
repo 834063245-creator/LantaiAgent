@@ -42,7 +42,7 @@ import { useShellStore } from './app/shell-store';
 import { resolveCurrentComposition } from './composition/preset-assembly';
 import type { Context, Fiber } from './cordis';
 import { initCordisKernel } from './cordis/boot';
-import { mergeDynamicModels, recordDynamicFetchResult } from './provider/catalog';
+import { markDynamicFetchStart, mergeDynamicModels, recordDynamicFetchResult } from './provider/catalog';
 import { resolveApiKey } from './provider/credentials';
 import { createLiveProvider } from './provider/live';
 import type { Provider } from './provider/types';
@@ -743,6 +743,8 @@ export class Workspace {
     const prov: Provider = this._buildProvider(settings);
     prov.prewarm?.();
     // 从 API 获取动态模型，合并到目录（尽力而为）
+    // R5 D8（2026-08-29）：拉取中面——compact 选择器分组头「目录获取中…」可见
+    markDynamicFetchStart(active.name);
     prov
       .fetchModels?.()
       .then((models) => {

@@ -57,13 +57,53 @@ const _dynamicModels = new Map<string, ModelDescriptor[]>();
 const _dynamicFetchFailures = new Map<string, string>();
 
 /** 记录某 provider 动态模型目录的拉取结果。成功 = 清失败标记；
- *  失败 = 记原因（getDynamicFetchFailure 返回 undefined 表示无失败）。 */
+ *  失败 = 记原因（getDynamicFetchFailure 返回 undefined 表示无失败）。
+ *  同时收掉拉取中标记（markDynamicFetchStart 的配对收尾）并通知订阅者。 */
 export function recordDynamicFetchResult(providerName: string, ok: boolean, error?: string): void {
   if (ok) {
     _dynamicFetchFailures.delete(providerName);
   } else {
     _dynamicFetchFailures.set(providerName, error?.trim() ? error : '获取失败');
   }
+  _dynamicFetchInflight.delete(providerName);
+  _notifyDynamicFetchListeners();
+}
+
+// ── 动态目录拉取中面（R5 D8 2026-08-29）──
+// 拉取进行中标记（键 = 提供方名），选择器分组头显示「目录获取中…」。
+// 开始/收尾经 onDynamicFetchChange 通知——选择器打开期间订阅，拉取完成实时
+// 刷新（否则「获取中」会悬挂到下次重开下拉；失败标注是静态读无此诉求）。
+// 模块级可变态归属（CONVENTIONS §1.10 第 3 类）：键控进程级状态，同
+// _dynamicFetchFailures 归属，无跨工作区所有权问题。
+const _dynamicFetchInflight = new Set<string>();
+const _dynamicFetchListeners = new Set<() => void>();
+
+/** 标记某 provider 动态目录拉取开始（拉取点：workspace 后台预热 / 设置页手动刷新）。 */
+export function markDynamicFetchStart(providerName: string): void {
+  _dynamicFetchInflight.add(providerName);
+  _notifyDynamicFetchListeners();
+}
+
+/** 某 provider 动态目录是否拉取中。 */
+export function getDynamicFetchInflight(providerName: string): boolean {
+  return _dynamicFetchInflight.has(providerName);
+}
+
+/** 是否存在任一进行中的目录拉取（下拉空态文案用）。 */
+export function hasDynamicFetchInflight(): boolean {
+  return _dynamicFetchInflight.size > 0;
+}
+
+/** 订阅拉取状态变更（开始/收尾各通知一次；返回退订函数）。 */
+export function onDynamicFetchChange(listener: () => void): () => void {
+  _dynamicFetchListeners.add(listener);
+  return () => {
+    _dynamicFetchListeners.delete(listener);
+  };
+}
+
+function _notifyDynamicFetchListeners(): void {
+  for (const listener of _dynamicFetchListeners) listener();
 }
 
 /** 某 provider 动态模型目录的拉取失败原因；无失败 = undefined。 */

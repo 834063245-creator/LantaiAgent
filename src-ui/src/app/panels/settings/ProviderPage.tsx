@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createProvider } from '../../../provider';
-import { recordDynamicFetchResult } from '../../../provider/catalog';
+import { markDynamicFetchStart, recordDynamicFetchResult } from '../../../provider/catalog';
 import { ChunkType } from '../../../provider/types';
 import {
   type AppSettings,
@@ -127,6 +127,8 @@ export function ProviderPage({
     // 重构（2026-08-26）：拉取结果 = 该提供方「可用模型」列表（DSH /api/models 的
     // host 报告语义）——写进暂存 settings，随保存落盘；创作坞下拉据此列项。
     try {
+      // R5 D8（2026-08-29）：拉取中面——选择器分组头「目录获取中…」同步可见
+      markDynamicFetchStart(p.name);
       const models = (await prov.fetchModels?.()) ?? [];
       recordDynamicFetchResult(p.name, true);
       onCommitProvider(updateProvider(settings, p.name, { models: models.map((m) => m.id).filter(Boolean) }));
