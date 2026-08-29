@@ -165,6 +165,20 @@ impl AdapterRegistry {
         registry.register(TypeScriptAdapter::new());
         registry.register(TreeSitterAdapter::new());
 
+        // ── Manifest 语言适配器（免编译扩展面 Phase 4）──
+        // 内置表之后注册：ext_index first-wins 语义下 manifest 只补缺口
+        //（装载期已显式拒绝与内置扩展名冲突的 manifest，此处静默跳过是防线）。
+        for entry in crate::plugins::language_adapter_entries() {
+            if let Some(query_src) = entry.structure_query {
+                registry.register(QueryStructureAdapter::new_generic(
+                    entry.extensions,
+                    query_src,
+                    entry.func_kinds,
+                    entry.class_kinds,
+                ));
+            }
+        }
+
         registry
     }
 

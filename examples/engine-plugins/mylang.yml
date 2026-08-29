@@ -1,0 +1,12 @@
+manifest_version: 1
+kind: language
+name: mylang
+description: Example manifest language reusing the python grammar with custom extensions
+extensions: [".myl"]
+grammar:
+  builtin: python
+queries:
+  structure: ./queries/mylang_structure.scm
+  dataflow: ./queries/mylang_dataflow.scm
+func_kinds: [function_definition, lambda]
+class_kinds: [class_definition]

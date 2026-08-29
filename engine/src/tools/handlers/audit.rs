@@ -100,6 +100,8 @@ pub(crate) fn handler_status(_args: &Value) -> ToolResponse {
                 // 图工具使用率观测：Agent 是否真的在用图（装饰品检测）
                 "tool_call_counts": crate::tools::tool_call_counts(),
                 "contract": crate::contract::engine_contract_info(),
+                // 免编译扩展面（Phase 4）：已装载 manifest 扩展 + 逐文件装载错误
+                "extensions": crate::plugins::extensions_status(),
             }))
         }
         Err(_) => ToolResponse::Success(json!({
@@ -110,6 +112,7 @@ pub(crate) fn handler_status(_args: &Value) -> ToolResponse {
             "lsp": lsp_data,
             "tool_call_counts": crate::tools::tool_call_counts(),
             "contract": crate::contract::engine_contract_info(),
+            "extensions": crate::plugins::extensions_status(),
         })),
     }
 }

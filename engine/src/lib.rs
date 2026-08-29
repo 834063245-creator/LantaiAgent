@@ -40,6 +40,7 @@ pub mod pipeline;   // 解析管线（源码 → AST → 符号 → 边 → 图�
 pub mod routing;    // 路由与预检（提交前约束检查、影响评估）
 pub mod engine;     // 引擎核心（Engine 结构体、全局状态、分析入口）
 pub mod tools;      // MCP 工具注册表（30+ hologram_* 工具）
+pub mod plugins;    // 免编译扩展面（HOLOGRAM_PLUGIN_DIR manifest：language/framework/tool；Phase 4）
 pub mod mcp;        // MCP JSON-RPC 服务器（stdio 通信）
 pub mod logging;    // 结构化日志（tracing + NDJSON 文件输出）
 pub mod path_utils;  // 路径规范化工具

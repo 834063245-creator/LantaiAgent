@@ -1,0 +1,7 @@
+manifest_version: 1
+kind: framework
+name: pagesfw
+description: Example file-system route framework (pages/**/*.page.myl → route nodes)
+routes:
+  - pattern: "pages/**/*.page.myl"
+    method: GET

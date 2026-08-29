@@ -1,0 +1,11 @@
+manifest_version: 1
+kind: tool
+name: myfw_list_pages
+description: List symbols via the built-in symbol search (example of a manifest tool reusing a built-in handler)
+read_only: true
+handler: search_symbols
+params:
+  - name: query
+    ptype: string
+    description: symbol name query
+    required: true

@@ -24,6 +24,7 @@ use rayon::prelude::*;
 
 // ── 语言配置 ──
 
+#[derive(Clone)]
 pub struct LangDataflowConfig {
     /// 编译内置的 .scm 查询源码
     pub query_src: &'static str,
@@ -780,7 +781,9 @@ pub fn config_for_ext(ext: &str) -> Option<(&'static str, LangDataflowConfig)> {
         "ex" | "exs" => Some(("ex", elixir_config())),
         "sh" | "bash" => Some(("bash", bash_config())),
         "r" | "R" => Some(("r", r_config())),
-        _ => None,
+        // manifest 数据流配置兜底（免编译扩展面 Phase 4）：
+        // builtin 表未覆盖的扩展名 → manifest 声明的同形状配置。
+        _ => crate::plugins::dataflow_entry(ext),
     }
 }
 

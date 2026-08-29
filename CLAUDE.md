@@ -67,7 +67,7 @@
 | 壳 | `cd src-tauri && cargo check`；权限/锁/IPC/命令改动跑 `cargo test` |
 | 桌面打包 | `cd src-tauri && cargo tauri build`（会自动先跑前端构建；根目录 `build.cmd` 是 Windows 包装） |
 
-禁止用 `cargo build --release` 代替桌面发布验证。当前实测基线：engine lib 583 · hologram-graph 53 + doc 1 · src-tauri bins+lib 411 + 集成 1（2026-08-29 引擎插件化 Phase 3 竣工实测，含进程级 e2e；**hologram-engine 依赖已摘——引擎 = 进程外消费**）· 前端 203 文件 1895 passed / 4 skipped（2026-08-29 Phase 3 实测；convergence 双 preset 零漂移；本机跑测试前清 `NODE_ENV=production`，否则 specs 收集报 `No such built-in module: node:`）。基线细则以 `AGENTS.md` §10 为准。
+禁止用 `cargo build --release` 代替桌面发布验证。当前实测基线：engine lib 592 · hologram-graph 53 + doc 1 · src-tauri bins+lib 411 + 集成 1（2026-08-29 引擎插件化 Phase 4 竣工实测，含进程级 e2e；**hologram-engine 依赖已摘——引擎 = 进程外消费**；**Phase 4 免编译扩展面 = plugins 模块 + HOLOGRAM_PLUGIN_DIR manifest（language/framework/tool）+ engine_status.extensions，契约 v4，示例 examples/engine-plugins/**）· 前端 203 文件 1895 passed / 4 skipped（2026-08-29 Phase 3 实测；convergence 双 preset 零漂移；本机跑测试前清 `NODE_ENV=production`，否则 specs 收集报 `No such built-in module: node:`）。基线细则以 `AGENTS.md` §10 为准。
 
 ## 项目快照
 

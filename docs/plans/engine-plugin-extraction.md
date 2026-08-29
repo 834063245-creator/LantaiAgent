@@ -1,7 +1,7 @@
 # 引擎独立插件化：兰台进程外 + MCP 契约（engine-plugin-extraction）
 
-> 状态：Phase 0-3 已竣工（2026-08-29，兰台已从内嵌改连进程外引擎、hologram-engine 依赖已摘）；
-> 剩余：Phase 4（免编译扩展面）/ Phase 5（收口）未开工。
+> 状态：**全计划竣工**（Phase 0-5，2026-08-29。兰台已从内嵌改连进程外引擎、hologram-engine 依赖已摘；
+> Phase 4 免编译扩展面 + Phase 5 收口同日落地）。
 > 立项拍板（2026-08-29）：①做彻底——兰台从内嵌改连进程；
 > ②DSH 不共包——hologram-dsh 保持现状，两个宿主各自有各自的胶水；③monorepo 子目录——不开新仓。
 > **2026-08-29 复盘修订**：全仓旧时代残留清点后拍板——**图分页整链删除**（为已退役 3D 星图 + 即将消失的
@@ -280,19 +280,49 @@ DSH / Unity / 任意 MCP 客户端消费的是同一个二进制、同一份契�
 >   ③ 全量分析完成后现在确定性地发 graph-updated（旧形态 watcher 只覆盖增量路径，冷启动后
 >   图预热清理依赖用户再改文件）；④ 工具级 isError 不再触发引擎进程重启。
 
-### Phase 4 — 免编译扩展（第三方插件面）
+### Phase 4 — 免编译扩展（第三方插件面）✅ 已落地（2026-08-29）
 
-- 语言/框架/工具三张注册表化 + manifest 驱动（`engine/plugins/*.yml` 声明式：扩展名表 / .scm 路径 /
-  框架候选模式 / 工具 schema + handler id），可选 cdylib 逻辑面（grammar_loader 的 libloading 先例）
-- 引擎启动读 manifest；`engine_status` 报告已加载扩展；`HOLOGRAM_PLUGIN_DIR` env 指向扩展目录
-- **DoD**：写一个示例语言 manifest 端到端生效（不加一行 Rust）；`engine_status` 可见；
-  破坏性兼容由契约版本号管控
+- ✅ `engine/src/plugins/mod.rs`：manifest 解析（serde_yaml + `deny_unknown_fields`——拼错字段可见失败）
+  + 装载编排（`engine_init` 首行 `ensure_loaded`，先于 watcher 扩展表快照与任何分析）+ 全局状态
+  （`STATE` = dir/loaded/errors；四张运行时表：语言适配器行 / 数据流配置 / 框架模式 / 工具条目）
+- ✅ `HOLOGRAM_PLUGIN_DIR` env 指向扩展目录（设了就用，缺失即 warn 可见）；缺省
+  `<project_root>/plugins`（存在才用）；都不满足 = 无扩展（no-op，不清表——已装载显式目录后
+  无配置的 engine_init 不回退，测试进程并行安全）
+- ✅ **语言注册表**：manifest 声明 `extensions` + `grammar`（`builtin: python` 复用静态语法——
+  GrammarLoader 增 `named` 表寻址；或 `dll:` + `symbol:` 显式 cdylib，available 表改存全路径
+  `AvailableGrammar`，与 grammars/ 目录扫描同一惰性 libloading 通道）+ `queries`
+  （structure/dataflow .scm 运行时读盘，`Box::leak` 一次性转 `'static` 与 include_str! 共享
+  进程生命周期语义；func/class kinds 同法）——AdapterRegistry::new() 尾部读表注册
+  （first-wins 语义下只补缺口；装载期显式拒绝与内置扩展名冲突的 manifest）
+- ✅ **框架注册表**：manifest 声明 `routes`（glob 候选模式 + method；glob→regex 编译，
+  字面 `.` 经 escape 不当任意符）——`detect_framework_routes` 在内置检测器之后跑
+  manifest 检测，命中文件按「剥模式前缀 + 剥扩展名」推导 URL 注入 route 节点（无 handler 边）
+- ✅ **工具注册表**：manifest 声明 schema（params 对齐 ParamDef 形状，ptype 白名单校验）+
+  `handler` id——`tools::builtin_handler` 注册表（= DEFAULT_MCP_TOOLS 全量 36 id 的运行时
+  dispatch 形态；守卫测试钉全覆盖；壳专属方法刻意不入表——host API 不经 manifest 暴露）；
+  dispatch `_ =>` 兜底按名寻址；tools/list 缺省面 = DEFAULT ∪ manifest 工具
+  （`HOLOGRAM_MCP_TOOLS` 显式白名单优先，`*` = 全量 ∪ manifest）；mcp.rs 未知工具校验改
+  `knows_tool`（静态 ∪ manifest）
+- ✅ `engine_status` 新增 `extensions` 字段：`{dir, loaded[], errors[]}`——单 manifest 失败
+  （坏 yaml / 未知版本 / 撞名 / 缺文件 / 未知 handler）只记 errors + warn，**不阻断引擎启动**
+- ✅ 兼容管控：`manifest_version: 1`（未知版本 = 拒绝装载）；引擎开放面契约升 **v4**
+  （ENGINE_CONTRACT_FILES + grammar_loader.rs / plugins/mod.rs；changelog 记 extensions 字段
+  + tools/list 面 + HOLOGRAM_PLUGIN_DIR）
+- **DoD 达成**：`examples/engine-plugins/`（mylang.yml + pagesfw.yml + mytools.yml + 两份 .scm）
+  三 manifest **零行 Rust** 端到端生效——`test_manifest_end_to_end` 钉死：engine_init 装载
+  → engine_status 三扩展可见 → .myl 文件经 manifest .scm 提取出符号 → config_for_ext 命中
+  manifest 数据流配置 → tools/list 含 manifest 工具且 dispatch 可调 → 候选模式注入 route 节点
+  → 同 env 重入幂等。16 用例全绿（glob/URL 推导、解析错误矩阵、grammar 注册/冲突、
+  handler 注册表全覆盖守卫）
 
-### Phase 5 — 收口（文档 / 布局 / 历史）
+### Phase 5 — 收口（文档 / 布局 / 历史）✅ 已落地（2026-08-29）
 
-- `docs/plans/README.md` 计划现状入口 + `HISTORY.md` 里程碑行
-- 契约生成脚本挂进门禁（`gen-engine-plugin-contract` + doc-sync 模式）
-- 若有必要：物理收编（`plugins/hologram-engine/` 子树）作为独立里程碑，本计划不预设
+- ✅ `gen-engine-plugin-contract` 挂 doc-sync 门禁（`scripts/doc-sync.cjs` generators 登记第 5 项——
+  生成器字节稳定 + `--check` 对拍，doc-sync 全绿）
+- ✅ `docs/plans/README.md` 计划现状入口换血（引擎插件化行 = 全计划竣工）+ `HISTORY.md` 里程碑行
+- ✅ 计划本文：状态头 + Phase 4/5 施工落点记录（本节）
+- 物理收编（`plugins/hologram-engine/` 子树）：未做——本计划不预设，维持 monorepo 子目录现状
+  （§2 拍板），若有价值作为独立里程碑再议
 
 ## 4. 门禁（每段 commit 前）
 

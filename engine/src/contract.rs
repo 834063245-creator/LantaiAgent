@@ -27,7 +27,17 @@
 /// 简报编排真源（基线 load/diff/save + 时间线记录）从壳层上收引擎；
 /// `analyze_with_progress` 增加 `force` 参数（缓存新鲜度门上收：
 /// 新鲜即返回 cached，杜绝壳侧重复判定）。
-pub const ENGINE_CONTRACT_VERSION: u32 = 3;
+///
+/// v4（2026-08-29 Phase 4 免编译扩展面）：①新增 `plugins` 模块——
+/// `HOLOGRAM_PLUGIN_DIR` 指向扩展目录（缺省 `<project_root>/plugins`），
+/// manifest yaml 声明 language（扩展名表 + builtin/dll 语法 + 运行时 .scm 查询）/
+/// framework（路由候选模式）/ tool（schema + handler id 复用既有 handler）三类扩展，
+/// `engine_init` 首行装载；②`engine_status` 新增 `extensions` 字段
+/// （已装载清单 + 逐文件装载错误）；③模型 `tools/list` 缺省面 = DEFAULT_MCP_TOOLS
+/// ∪ manifest 工具（`HOLOGRAM_MCP_TOOLS` 显式白名单优先）；manifest 工具经
+/// `tools::builtin_handler` 注册表按 id 复用既有 handler，壳专属方法不入表。
+/// 免编译扩展自身的破坏性兼容由 manifest 文件的 `manifest_version` 管控。
+pub const ENGINE_CONTRACT_VERSION: u32 = 4;
 
 /// 契约面物理载体（相对仓库根）。指纹 guard 对拍：文件变更未升版 = 红。
 pub const ENGINE_CONTRACT_FILES: &[&str] = &[
@@ -36,6 +46,8 @@ pub const ENGINE_CONTRACT_FILES: &[&str] = &[
     "engine/src/tools/response.rs",
     "engine/src/mcp.rs",
     "engine/src/adapter/registry.rs",
+    "engine/src/adapter/grammar_loader.rs",
+    "engine/src/plugins/mod.rs",
     "engine/src/engine/grammar.rs",
 ];
 

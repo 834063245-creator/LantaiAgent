@@ -10,6 +10,8 @@
 //   - service-catalog.md（ctx 服务目录，gen-service-catalog）
 //   - event-catalog.md（事件目录，gen-event-catalog）
 //   - open-surface-contract.md 指纹（契约版本化，gen-contract-fingerprint）
+//   - engine-plugin-contract.md（引擎开放面契约，gen-engine-plugin-contract；
+//     engine-plugin-extraction Phase 5 挂入门禁）
 // 注：frontend-rpc-contract.md 生成器嵌时间戳，字节对拍不可行——其守护
 // 由「生成后同 commit」纪律 + 契约测试承担，不入本门禁。
 
@@ -24,6 +26,7 @@ const generators = [
   { name: 'service-catalog', script: path.join(ROOT, 'scripts', 'gen-service-catalog.cjs') },
   { name: 'event-catalog', script: path.join(ROOT, 'scripts', 'gen-event-catalog.cjs') },
   { name: 'contract-fingerprint', script: path.join(ROOT, 'scripts', 'gen-contract-fingerprint.cjs') },
+  { name: 'engine-plugin-contract', script: path.join(ROOT, 'scripts', 'gen-engine-plugin-contract.cjs') },
 ];
 
 let failed = false;

@@ -26,10 +26,22 @@ struct LoadedGrammar {
 /// 线程安全：RwLock 允许并发读取（热路径）和串行写入（冷路径）。
 pub struct GrammarLoader {
     loaded: RwLock<HashMap<String, Arc<LoadedGrammar>>>,
-    grammar_dir: PathBuf,
-    /// 扩展名 → (dll_name, symbol_name, extensions)，用于可在磁盘上发现的语法。
-    /// 在构造时由 scan_dir() 填充。
-    available: HashMap<String, (String, String, Vec<String>)>,
+    /// 扩展名 → 可发现语法（DLL 全路径 + 符号 + 扩展名组）。
+    /// 构造时由 scan_dir() 填充；manifest 可经 register_dll() 追加（Phase 4）。
+    available: RwLock<HashMap<String, AvailableGrammar>>,
+    /// 语法键 → 已加载语法（register_static 填充）——manifest `builtin:`
+    /// 复用静态语法的寻址面（Phase 4）。
+    named: RwLock<HashMap<String, Arc<LoadedGrammar>>>,
+}
+
+/// 可发现但尚未加载的语法。
+#[derive(Clone)]
+struct AvailableGrammar {
+    /// DLL 全路径（scan_dir 锚定 grammar_dir；manifest 锚定插件目录）。
+    dll_path: PathBuf,
+    symbol: String,
+    /// 共享同一 DLL 的扩展名组。
+    extensions: Vec<String>,
 }
 
 /// 内置扩展名到语法名的映射，用于扩展名
@@ -64,14 +76,15 @@ impl GrammarLoader {
         let available = Self::scan_dir(grammar_dir);
         Self {
             loaded: RwLock::new(HashMap::new()),
-            grammar_dir: grammar_dir.to_path_buf(),
-            available,
+            available: RwLock::new(available),
+            named: RwLock::new(HashMap::new()),
         }
     }
 
     /// 预注册静态链接语法（来自 Cargo 依赖）。
-    /// 多个扩展名共享同一个 Language。
-    pub fn register_static(&self, lang: Language, _lang_key: &str, extensions: &[&str]) {
+    /// 多个扩展名共享同一个 Language；同时以 lang_key 存入 named 表
+    ///（manifest `builtin:` 复用寻址面）。
+    pub fn register_static(&self, lang: Language, lang_key: &str, extensions: &[&str]) {
         let grammar = Arc::new(LoadedGrammar {
             // ponytail: 静态语法不需要 Library 句柄 — 数据在 .text 段中。
             // 零值 Library 在 drop 时会调用 dlclose(0)/FreeLibrary(NULL)，在 glibc 上会导致中止。
@@ -82,6 +95,64 @@ impl GrammarLoader {
         for ext in extensions {
             loaded.insert(ext.to_string(), grammar.clone());
         }
+        drop(loaded);
+        self.named
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(lang_key.to_string(), grammar);
+    }
+
+    /// 扩展名是否已被占用（loaded ∪ available）——manifest 装载期冲突检查。
+    pub fn is_extension_registered(&self, ext: &str) -> bool {
+        if self.loaded.read().unwrap_or_else(|e| e.into_inner()).contains_key(ext) {
+            return true;
+        }
+        self.available
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains_key(ext)
+    }
+
+    /// manifest `builtin:`：把已静态注册的语法按新扩展名登记（Arc 共享）。
+    pub fn register_builtin_grammar(&self, lang_key: &str, extensions: &[String]) -> Result<(), String> {
+        let grammar = self
+            .named
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(lang_key)
+            .cloned()
+            .ok_or_else(|| format!("builtin grammar '{lang_key}' is not statically registered"))?;
+        let mut loaded = self.loaded.write().unwrap_or_else(|e| e.into_inner());
+        for ext in extensions {
+            if loaded.contains_key(ext) {
+                return Err(format!("extension '{ext}' already registered"));
+            }
+            loaded.insert(ext.clone(), grammar.clone());
+        }
+        Ok(())
+    }
+
+    /// manifest `dll:`：登记显式语法 DLL（全路径 + 符号名 + 扩展名组）。
+    /// 惰性加载走 get() 慢速路径（与 scan_dir 发现的 DLL 同一机制）。
+    pub fn register_dll(&self, dll_path: PathBuf, symbol: &str, extensions: Vec<String>) -> Result<(), String> {
+        if !dll_path.is_file() {
+            return Err(format!("grammar dll not found: {}", dll_path.display()));
+        }
+        for ext in &extensions {
+            if self.is_extension_registered(ext) {
+                return Err(format!("extension '{ext}' already registered"));
+            }
+        }
+        let entry = AvailableGrammar {
+            dll_path,
+            symbol: symbol.to_string(),
+            extensions: extensions.clone(),
+        };
+        let mut available = self.available.write().unwrap_or_else(|e| e.into_inner());
+        for ext in &extensions {
+            available.insert(ext.clone(), entry.clone());
+        }
+        Ok(())
     }
 
     /// 根据文件扩展名获取 Language。如果不支持则返回 None。
@@ -95,8 +166,11 @@ impl GrammarLoader {
         }
 
         // 慢速路径：尝试从 DLL 加载
-        let (dll_name, symbol_name, extensions) = self.available.get(ext)?;
-        let dll_path = self.grammar_dir.join(dll_name);
+        let (dll_path, symbol_name, extensions) = {
+            let available = self.available.read().unwrap_or_else(|e| e.into_inner());
+            let ag = available.get(ext)?;
+            (ag.dll_path.clone(), ag.symbol.clone(), ag.extensions.clone())
+        };
 
         // 安全性：从我们自己的 grammars/ 目录加载受信任的语法 DLL。
         // 符号名来自已知约定，而非用户输入。
@@ -140,8 +214,10 @@ impl GrammarLoader {
     pub fn supported_extensions(&self) -> Vec<String> {
         let loaded = self.loaded.read().unwrap_or_else(|e| e.into_inner());
         let mut exts: Vec<String> = loaded.keys().cloned().collect();
+        drop(loaded);
         // 也包括尚未加载但可用的
-        for ext in self.available.keys() {
+        let available = self.available.read().unwrap_or_else(|e| e.into_inner());
+        for ext in available.keys() {
             if !exts.contains(ext) {
                 exts.push(ext.clone());
             }
@@ -150,9 +226,9 @@ impl GrammarLoader {
     }
 
     /// 扫描 grammars/ 目录中的 tree-sitter-*.dll 文件。
-    /// 返回 扩展名 → (dll_name, symbol_name, extensions) 映射。
-    fn scan_dir(dir: &Path) -> HashMap<String, (String, String, Vec<String>)> {
-        let mut map = HashMap::new();
+    /// 返回 扩展名 → 可发现语法（DLL 全路径 + 符号 + 扩展名组）映射。
+    fn scan_dir(dir: &Path) -> HashMap<String, AvailableGrammar> {
+        let mut map: HashMap<String, AvailableGrammar> = HashMap::new();
 
         let Ok(entries) = std::fs::read_dir(dir) else {
             return map;
@@ -175,17 +251,18 @@ impl GrammarLoader {
                 continue;
             };
 
-            let dll_name = name.to_string();
             let symbol_name = format!("tree_sitter_{}", grammar_name.replace('-', "_"));
 
             // 解析扩展名
             let exts = Self::resolve_extensions(grammar_name);
 
+            let entry = AvailableGrammar {
+                dll_path: dir.join(name),
+                symbol: symbol_name,
+                extensions: exts.clone(),
+            };
             for ext in &exts {
-                map.insert(
-                    ext.to_string(),
-                    (dll_name.clone(), symbol_name.clone(), exts.clone()),
-                );
+                map.insert(ext.to_string(), entry.clone());
             }
         }
 
@@ -301,7 +378,70 @@ mod tests {
         let tmp = std::env::temp_dir().join("hologram_test_scan_empty");
         let _ = std::fs::create_dir_all(&tmp);
         let loader = GrammarLoader::new(&tmp);
-        assert!(loader.available.is_empty());
+        assert!(loader.available.read().unwrap().is_empty());
+    }
+
+    // ── manifest 注册面（Phase 4）──
+
+    #[test]
+    fn test_register_builtin_grammar_and_collision() {
+        let tmp = std::env::temp_dir().join("hologram_test_grammars_manifest");
+        let _ = std::fs::create_dir_all(&tmp);
+        let loader = GrammarLoader::new(&tmp);
+        let lang: Language = tree_sitter_json::LANGUAGE.into();
+        loader.register_static(lang, "json", &["json"]);
+
+        assert!(!loader.is_extension_registered("myj"));
+        loader.register_builtin_grammar("json", &["myj".to_string()]).unwrap();
+        assert!(loader.is_extension_registered("myj"));
+        assert!(loader.get("myj").is_some());
+
+        // 已占用扩展名 → 显式报错
+        let err = loader
+            .register_builtin_grammar("json", &["myj".to_string()])
+            .unwrap_err();
+        assert!(err.contains("already registered"), "{err}");
+
+        // 未注册的 builtin 键 → 显式报错
+        let err = loader
+            .register_builtin_grammar("no_such_grammar", &["zz".to_string()])
+            .unwrap_err();
+        assert!(err.contains("not statically registered"), "{err}");
+    }
+
+    #[test]
+    fn test_register_dll_manifest_entry() {
+        let tmp = std::env::temp_dir().join("hologram_test_grammars_dll_manifest");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let loader = GrammarLoader::new(&tmp);
+
+        let dll = tmp.join("tree-sitter-fake.dll");
+        std::fs::File::create(&dll).unwrap();
+
+        // DLL 不存在 → 显式报错
+        let err = loader
+            .register_dll(tmp.join("missing.dll"), "tree_sitter_x", vec!["xx".to_string()])
+            .unwrap_err();
+        assert!(err.contains("not found"), "{err}");
+
+        loader
+            .register_dll(dll.clone(), "tree_sitter_fake", vec!["xx".to_string(), "xx2".to_string()])
+            .unwrap();
+        assert!(loader.is_extension_registered("xx"));
+        assert!(loader.is_extension_registered("xx2"));
+        // supported_extensions 立即可见（available 面）
+        let exts = loader.supported_extensions();
+        assert!(exts.contains(&"xx".to_string()));
+        assert!(exts.contains(&"xx2".to_string()));
+
+        // 与 available 冲突 → 显式报错
+        let err = loader
+            .register_dll(dll.clone(), "tree_sitter_fake", vec!["xx".to_string()])
+            .unwrap_err();
+        assert!(err.contains("already registered"), "{err}");
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
@@ -318,8 +458,9 @@ mod tests {
         std::fs::File::create(tmp.join("not-a-grammar.txt")).unwrap();
 
         let loader = GrammarLoader::new(&tmp);
-        assert!(loader.available.contains_key("php"));
-        assert!(loader.available.contains_key("kt")); // kotlin 有已知的扩展名
+        let available = loader.available.read().unwrap();
+        assert!(available.contains_key("php"));
+        assert!(available.contains_key("kt")); // kotlin 有已知的扩展名
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }

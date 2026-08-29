@@ -121,23 +121,51 @@ impl ToolRegistry {
     ];
 
     fn get_active_tool_names() -> Vec<String> {
-        match std::env::var("HOLOGRAM_MCP_TOOLS") {
-            Ok(val) if val == "*" => all_schemas().iter().map(|s| s.name.to_string()).collect(),
+        let mut names = match std::env::var("HOLOGRAM_MCP_TOOLS") {
+            Ok(val) if val == "*" => {
+                // 全量 = 静态 schema 面 ∪ manifest 工具面（免编译扩展面 Phase 4）
+                let mut all: Vec<String> =
+                    all_schemas().iter().map(|s| s.name.to_string()).collect();
+                all.extend(crate::plugins::plugin_tool_names());
+                all
+            }
             Ok(val) => val.split(',').map(|s| s.trim().to_string()).collect(),
-            Err(_) => Self::DEFAULT_MCP_TOOLS.iter().map(|s| s.to_string()).collect(),
-        }
+            Err(_) => {
+                // 缺省 = 出厂默认 ∪ manifest 工具（manifest 工具装了即见；
+                // HOLOGRAM_MCP_TOOLS 显式白名单则严格按白名单）。
+                let mut all: Vec<String> =
+                    Self::DEFAULT_MCP_TOOLS.iter().map(|s| s.to_string()).collect();
+                all.extend(crate::plugins::plugin_tool_names());
+                all
+            }
+        };
+        names.dedup();
+        names
     }
 
     pub fn tools_list(&self) -> Vec<Value> {
         let active: HashSet<String> = Self::get_active_tool_names().into_iter().collect();
-        all_schemas().iter()
+        let mut list: Vec<Value> = all_schemas()
+            .iter()
             .filter(|s| active.contains(s.name))
             .map(|s| s.mcp_value())
-            .collect()
+            .collect();
+        // manifest 工具追加在静态面之后（tools/list 消费方零感知）
+        list.extend(
+            crate::plugins::plugin_tool_values()
+                .into_iter()
+                .filter(|v| active.contains(v["name"].as_str().unwrap_or(""))),
+        );
+        list
     }
 
     pub fn get_schema(&self, name: &str) -> Option<&'static ToolSchema> {
         all_schemas().iter().find(|s| s.name == name)
+    }
+
+    /// 工具是否可被 tools/call 调用（静态 schema 面 ∪ manifest 工具面）。
+    pub fn knows_tool(&self, name: &str) -> bool {
+        self.get_schema(name).is_some() || crate::plugins::is_plugin_tool(name)
     }
 
     pub fn dispatch(name: &str, args: &Value, id: &Value) -> Value {
@@ -195,16 +223,77 @@ impl ToolRegistry {
             "cache_stale" => handlers::shell::handler_cache_stale(args),
             "watcher_subscribe" => handlers::shell::handler_watcher_subscribe(args),
             "run_check" => handlers::shell::handler_run_check(args),
-            _ => return ToolResponse::Degraded {
-                guidance: format!("Tool not found: {}", name),
-                fallback: "Check tools/list for available tools".into(),
-                details: json!({}),
-            }.to_mcp_value(id),
+            // ── manifest 工具（免编译扩展面 Phase 4）──
+            _ => match crate::plugins::dispatch_plugin_tool(name, args) {
+                Some(resp) => resp,
+                None => {
+                    return ToolResponse::Degraded {
+                        guidance: format!("Tool not found: {}", name),
+                        fallback: "Check tools/list for available tools".into(),
+                        details: json!({}),
+                    }
+                    .to_mcp_value(id)
+                }
+            },
         };
         // ponytail：在分发层注入后续工具建议，
         // 使每个处理器免费获得 —— 无需逐处理器编写样板代码。
         resp.with_suggestions(suggestions_for(name)).to_mcp_value(id)
     }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Handler id 注册表 —— manifest 工具的寻址面（免编译扩展面 Phase 4）。
+// 静态 dispatch match 的运行时形态：id = 模型工具名，fn = 既有 handler。
+// manifest 工具声明 handler id 即复用既有能力，不引入任意代码执行。
+// ═══════════════════════════════════════════════════════════════
+
+/// manifest 工具可指向的 handler 形态（与 dispatch 静态臂同签名）。
+pub(crate) type HandlerFn = fn(&Value) -> ToolResponse;
+
+/// 按 id 寻址既有 handler。注册面 = 全部模型默认工具（DEFAULT_MCP_TOOLS）；
+/// 壳专属方法（handlers::shell::*）刻意不入表 —— host API 不经 manifest 暴露。
+pub(crate) fn builtin_handler(id: &str) -> Option<HandlerFn> {
+    let f: HandlerFn = match id {
+        "explore_deps" => handlers::handler_explore,
+        "search_symbols" => handlers::handler_search,
+        "semantic_search" => handlers::handler_semantic_search,
+        "get_neighbors" => handlers::handler_neighbors,
+        "trace_impact" => handlers::handler_impact,
+        "find_dep_path" => handlers::handler_path,
+        "inspect_symbol" => handlers::handler_node,
+        "get_community" => handlers::handler_community,
+        "async_edges" => handlers::handler_delayed,
+        "fragile_modules" => handlers::handler_fragile,
+        "detect_cycles" => handlers::handler_cycle,
+        "thread_conflicts" => handlers::handler_thread_conflicts,
+        "coupling_report" => handlers::handler_coupling_report,
+        "project_timeline" => handlers::handler_timeline,
+        "arch_blindspots" => handlers::handler_blindspots,
+        "grpc_services" => handlers::handler_grpc_services,
+        "preflight_check" => handlers::handler_preflight,
+        "graph_summary" => handlers::handler_graph_summary,
+        "cluster_report" => handlers::handler_clusters,
+        "graph_diff" => handlers::handler_diff,
+        "analyze_project" => handlers::handler_analyze,
+        "validate_project" => handlers::handler_run_check,
+        "project_health" => handlers::handler_run_health,
+        "rename_symbol" => handlers::handler_rename,
+        "engine_status" => handlers::handler_status,
+        "check_boundaries" => handlers::handler_policy_check,
+        "find_unused" => handlers::handler_unused,
+        "trace_dataflow" => handlers::handler_dataflow,
+        "list_flows" => handlers::handler_list_flows,
+        "get_flow" => handlers::handler_get_flow,
+        "get_affected_flows" => handlers::handler_affected_flows,
+        "resolve_call" => handlers::handler_resolve_call,
+        "infer_type" => handlers::handler_resolve_type,
+        "find_implementations" => handlers::handler_find_implementations,
+        "find_references" => handlers::handler_find_references,
+        "import_scip" => handlers::handler_import_scip,
+        _ => return None,
+    };
+    Some(f)
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1025,6 +1114,21 @@ mod tests {
     fn test_tool_count() {
         let schemas = all_schemas();
         assert!(!schemas.is_empty(), "must have at least one tool");
+    }
+
+    #[test]
+    fn test_builtin_handler_registry_covers_default_tools() {
+        // handler id 注册表（免编译扩展面 Phase 4）必须覆盖全部模型默认工具——
+        // manifest 工具的可寻址面 = DEFAULT_MCP_TOOLS，漏一 id 即 manifest 无法复用。
+        for id in ToolRegistry::DEFAULT_MCP_TOOLS {
+            assert!(
+                builtin_handler(id).is_some(),
+                "handler id '{id}' missing from builtin_handler registry"
+            );
+        }
+        // 壳专属方法刻意不入表（host API 不经 manifest 暴露）
+        assert!(builtin_handler("graph_snapshot").is_none());
+        assert!(builtin_handler("no_such_handler").is_none());
     }
 
     #[test]

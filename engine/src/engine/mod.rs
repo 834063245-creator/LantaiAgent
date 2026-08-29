@@ -566,6 +566,10 @@ pub fn with_current<R>(engine: Arc<Engine>, f: impl FnOnce() -> R) -> R {
 /// （L2：Engine 绑定单根，store 随实例注入；旧实例的 watcher 线程
 /// 经 Weak 自灭，仍被上下文持有的实例不受影响）。
 pub fn engine_init(project_root: &Path) -> Result<(), String> {
+    // 免编译扩展面装载（Phase 4）：先于引擎实例/watcher——watcher 启动时
+    // 快照 supported_extensions，manifest 扩展名必须已经注册。失败不阻断
+    // 引擎启动（逐 manifest 错误经 engine_status.extensions 可见）。
+    crate::plugins::ensure_loaded(project_root);
     let mut engine_guard = ENGINE.write();
     match engine_guard.as_ref() {
         Some(engine) if engine.project_root() == project_root => {

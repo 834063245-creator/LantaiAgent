@@ -155,6 +155,13 @@ pub fn detect_framework_routes(
     added += inject_routes(graph, &nextjs_routes, "nextjs");
     added += inject_routes(graph, &sveltekit_routes, "sveltekit");
 
+    // ── Manifest 框架（免编译扩展面 Phase 4）──
+    // 内置检测器之后运行：候选模式为显式用户声明，不与内置 fs_claimed 协调
+    //（同一文件被内置检测器与 manifest 模式同时命中 = 各自产出路由，属预期）。
+    for (framework, routes) in detect_manifest_framework_routes(project_root, discovered_files) {
+        added += inject_manifest_routes(graph, &routes, &framework);
+    }
+
     // 按框架候选模式过滤已发现的文件列表（来自管道步骤 1）。
     // 这消除了冗余的全目录 walkdir。
     let mut files: HashSet<String> = HashSet::new();
@@ -482,6 +489,64 @@ pub(crate) fn inject_routes(graph: &mut Graph, routes: &[DetectedRoute], framewo
         added += 1;
     }
 
+    added
+}
+
+/// manifest 框架检测（免编译扩展面 Phase 4）：候选模式（glob 已编译为 regex）
+/// 对项目相对路径匹配，命中文件按「剥模式前缀 + 剥扩展名」推导 URL 产出路由。
+fn detect_manifest_framework_routes(
+    project_root: &Path,
+    discovered_files: &[std::path::PathBuf],
+) -> Vec<(String, Vec<DetectedRoute>)> {
+    let entries = crate::plugins::framework_entries();
+    if entries.is_empty() {
+        return Vec::new();
+    }
+    let mut out: Vec<(String, Vec<DetectedRoute>)> = Vec::new();
+    for entry in entries {
+        let mut routes: Vec<DetectedRoute> = Vec::new();
+        for p in discovered_files {
+            let Ok(rel) = p.strip_prefix(project_root) else {
+                continue;
+            };
+            let rel_str = rel.to_string_lossy().replace('\\', "/");
+            for pat in &entry.patterns {
+                if pat.matcher.is_match(&rel_str) {
+                    routes.push((
+                        pat.method.clone(),
+                        crate::plugins::manifest_route_url(&rel_str, &pat.prefix),
+                        String::new(), // manifest v1 不链接 handler
+                        rel_str.clone(),
+                        0,
+                    ));
+                    break; // 单文件只被该框架的第一个命中模式认领
+                }
+            }
+        }
+        if !routes.is_empty() {
+            out.push((entry.name, routes));
+        }
+    }
+    out
+}
+
+/// manifest 路由注入：只建 route 节点（无 handler 可链接，不产边）。
+fn inject_manifest_routes(graph: &mut Graph, routes: &[DetectedRoute], framework: &str) -> usize {
+    let mut added = 0usize;
+    for (method, url, _handler, file, line) in routes {
+        let route_name = format!("{} {}", method, url);
+        let route_id = format!("route_manifest_{}_{}", framework, added);
+        let mut route_node = Node::new(&route_id, &route_name, NodeKind::Symbol);
+        route_node.location = Some(format!("{}:{}", file, line));
+        route_node.properties = serde_json::json!({
+            "kind": "route",
+            "framework": framework,
+            "method": method,
+            "path": url,
+        });
+        graph.add_node(route_node);
+        added += 1;
+    }
     added
 }
 

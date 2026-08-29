@@ -433,7 +433,8 @@ impl McpServer {
         let args = params.get("arguments").cloned().unwrap_or(json!({}));
 
         // 未知工具（含缺失名称）→ 规范 JSON-RPC 错误，不再 _isDegraded 假冒成功。
-        if crate::tools::ToolRegistry::global().get_schema(tool_name).is_none() {
+        // knows_tool = 静态 schema 面 ∪ manifest 工具面（免编译扩展面 Phase 4）。
+        if !crate::tools::ToolRegistry::global().knows_tool(tool_name) {
             let msg = if tool_name.is_empty() {
                 "Invalid params: missing tool name".to_string()
             } else {
