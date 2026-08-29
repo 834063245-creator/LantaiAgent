@@ -231,10 +231,7 @@ export function SessionsHome() {
       {/* biome-ignore lint/a11y/noStaticElementInteractions: 窗口拖拽热区（decorations:false 的标题栏） */}
       <header className="sh-head" onPointerDown={handleBarPointerDown} onDoubleClick={handleBarDoubleClick}>
         <div className="sh-brand">
-          <span className="sh-seal" role="img" aria-label="印章：蘭臺">
-            <b>蘭</b>
-            <b>臺</b>
-          </span>
+          <span className="sh-seal" role="img" aria-label="印章：蘭臺"></span>
           <span className="sh-wordmark">兰台</span>
           <span className="sh-tagline">档案 · 工作台</span>
         </div>

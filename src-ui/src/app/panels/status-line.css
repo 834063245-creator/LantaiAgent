@@ -48,7 +48,6 @@
   flex-shrink: 0;
   width: 5px;
   height: 5px;
-  border-radius: 50%;
   background: color-mix(in oklch, var(--indigo) 30%, transparent);
   transition: background 0.5s ease;
 }
@@ -65,7 +64,6 @@
   flex-shrink: 0;
   width: 5px;
   height: 5px;
-  border-radius: 50%;
   background: var(--warn);
 }
 
@@ -104,8 +102,8 @@
   cursor: pointer;
   padding: 2px 8px;
   transition:
-    background 0.12s ease,
-    color 0.12s ease;
+    background var(--snap),
+    color var(--snap);
 }
 .sl-alert-ok:hover {
   background: var(--ink-1);

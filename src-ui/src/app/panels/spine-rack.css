@@ -106,12 +106,11 @@
   font-weight: 600;
 }
 
-/* 运行点：石青呼吸（机=石青，语义铁律） */
+/* 运行点：石青呼吸（机=石青，语义铁律）；D2 方点化（圆角恒 0 收编） */
 .sr-run-dot {
   width: 6px;
   height: 6px;
   background: var(--indigo);
-  border-radius: 50%;
   animation: sr-breathe 1.6s ease-in-out infinite;
   flex: 0 0 auto;
 }

@@ -97,6 +97,10 @@
   border-radius: 0;
   padding: 6px 10px;
   cursor: pointer;
+  transition:
+    border-color var(--snap),
+    color var(--snap),
+    background var(--snap);
 }
 .pp-close:hover {
   border-color: var(--ink-2);
@@ -115,6 +119,10 @@
   border-radius: 0;
   padding: 6px 10px;
   cursor: pointer;
+  transition:
+    border-color var(--snap),
+    color var(--snap),
+    background var(--snap);
 }
 .pp-settings:hover {
   border-color: var(--ink-2);
@@ -122,7 +130,8 @@
   background: var(--paper-deep);
 }
 
-/* 有新版本待看（update-store 角标）：字尾朱砂点——朱批语义，同 .sh-btn-text.has-update */
+/* 有新版本待看（update-store 角标）：字尾朱砂点——朱批语义，同 .sh-btn-text.has-update。
+ * D2（2026-08-29）：状态点全族方点化（圆角恒 0 收编最后一个豁免族）。 */
 .pp-settings.has-update::after {
   content: "";
   display: inline-block;
@@ -131,7 +140,6 @@
   margin-left: 6px;
   vertical-align: middle;
   background: var(--seal);
-  border-radius: 50%;
 }
 
 /* ── 画布区（世界容器的宿主）──
@@ -209,6 +217,7 @@
   width: 6px;
   cursor: move;
   z-index: 3;
+  transition: background var(--snap);
 }
 .pp-region-edge--l {
   left: -3px;
@@ -294,6 +303,7 @@
   /* 手柄热区外扩（不位移视觉） */
   padding: 2px 6px;
   margin: -2px -6px;
+  transition: background var(--snap);
 }
 .pp-kind::after {
   content: "";
@@ -303,12 +313,14 @@
   width: 14px;
   height: 1px;
   background: var(--ink-4);
+  transition: background var(--snap);
 }
 .pp-kind .pp-zh {
   font-family: var(--f-song);
   font-size: 15px; /* 块内件不吃 font-scale（测量镜像） */
   font-weight: 600;
   color: var(--ink-2);
+  transition: color var(--snap);
 }
 .pp-kind .pp-en {
   font-family: var(--f-mono);
@@ -619,6 +631,10 @@
   font-family: var(--f-song);
   font-size: 13px;
   color: var(--ink-2);
+  transition:
+    border-color var(--snap),
+    color var(--snap),
+    background var(--snap);
 }
 .pp-pc-option:hover {
   border-color: var(--indigo);
@@ -653,6 +669,9 @@
   font-size: 13px;
   color: var(--ink-2);
   cursor: pointer;
+  transition:
+    color var(--snap),
+    border-color var(--snap);
 }
 .pp-pc-btn:hover {
   color: var(--ink-1);
@@ -743,7 +762,10 @@
   padding: 4px 8px;
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.14s ease;
+  transition:
+    opacity var(--snap),
+    color var(--snap),
+    border-color var(--snap);
 }
 .pp-block.pp-pinned:hover .pp-unpin {
   opacity: 1;
@@ -770,6 +792,9 @@
   padding: 0;
   text-align: center;
   z-index: 2;
+  transition:
+    border-color var(--snap),
+    color var(--snap);
 }
 .pp-ghost:hover {
   border-color: var(--seal);
@@ -798,6 +823,9 @@
   font-family: var(--f-song);
   font-size: 12px;
   cursor: pointer;
+  transition:
+    color var(--snap),
+    border-color var(--snap);
 }
 .pp-local-notice button:hover {
   color: var(--seal-deep);
@@ -961,6 +989,9 @@
   color: var(--ink-2);
   cursor: pointer;
   white-space: nowrap;
+  transition:
+    background var(--snap),
+    color var(--snap);
 }
 .pp-mode-opt:last-child {
   border-right: none;
@@ -1019,6 +1050,10 @@
   background: transparent;
   color: var(--ink-1);
   cursor: pointer;
+  transition:
+    background var(--snap),
+    color var(--snap),
+    border-color var(--snap);
 }
 .pp-mode-dialog-actions button:hover {
   background: var(--ink-1);
@@ -1054,6 +1089,9 @@
   color: var(--ink-2);
   cursor: pointer;
   white-space: nowrap;
+  transition:
+    color var(--snap),
+    border-color var(--snap);
 }
 .pp-composer-settings .pp-thinking-pill:hover,
 .pp-composer-settings .pp-thinking-pill.open {
@@ -1101,6 +1139,9 @@
   color: var(--ink-2);
   cursor: pointer;
   text-align: left;
+  transition:
+    background var(--snap),
+    color var(--snap);
 }
 .pp-composer-settings .pp-thinking-opt:last-child {
   border-bottom: none;
@@ -1171,8 +1212,9 @@
   background: none;
   cursor: pointer;
   transition:
-    background 0.12s ease,
-    color 0.12s ease;
+    background var(--snap),
+    color var(--snap),
+    border-color var(--snap);
 }
 .pp-composer button:hover {
   background: var(--ink-1);
@@ -1197,7 +1239,7 @@
   display: flex;
   gap: 4px;
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--snap);
   z-index: 5;
 }
 .pp-block:hover .pp-msg-ops,
@@ -1214,6 +1256,9 @@
   letter-spacing: 0.1em;
   cursor: pointer;
   border-radius: 0;
+  transition:
+    border-color var(--snap),
+    color var(--snap);
 }
 .pp-msg-ops button:hover {
   border-color: var(--indigo);
@@ -1245,6 +1290,9 @@
   background: none;
   cursor: pointer;
   font-family: var(--f-song);
+  transition:
+    background var(--snap),
+    box-shadow var(--snap);
 }
 .pp-slash-item:hover,
 .pp-slash-item.active {
@@ -1282,6 +1330,7 @@
   color: var(--seal-deep);
   padding: 1px 8px;
   cursor: pointer;
+  transition: background var(--snap);
 }
 .pp-bg-stop:hover {
   background: color-mix(in oklch, var(--seal) 10%, var(--paper));
@@ -1302,6 +1351,9 @@
   cursor: pointer;
   box-shadow: var(--elev-raise);
   border-radius: 0;
+  transition:
+    background var(--snap),
+    color var(--snap);
 }
 .pp-strip-fab:hover {
   background: var(--seal);
@@ -1380,7 +1432,9 @@
   color: var(--ink-3);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition:
+    opacity var(--snap),
+    color var(--snap);
 }
 .pp-strip:hover .pp-strip-remove {
   opacity: 1;
@@ -1461,6 +1515,7 @@
   background: color-mix(in oklch, var(--ink-2) 45%, transparent);
   cursor: pointer;
   z-index: 2;
+  transition: background var(--snap);
 }
 .pp-toc-anchor:hover {
   background: var(--seal);
@@ -1604,5 +1659,14 @@
   text-transform: none;
   color: var(--warn);
   border: 1px dashed color-mix(in oklch, var(--warn) 50%, var(--paper));
+  padding: 0 4px;
+}
+/* D8（2026-08-29）：目录拉取中标注——机器在干活（石青=机铁律），区别于失败警告黄 */
+.pp-composer-settings .ms-dropdown .ms-group-head .ms-group-fetch {
+  margin-left: 8px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--indigo);
+  border: 1px dashed color-mix(in oklch, var(--indigo) 40%, var(--paper));
   padding: 0 4px;
 }

@@ -13,6 +13,12 @@
 
 ## 落地待办（用时再做，不在 D1 范围内）
 
-- [ ] 书眉替换：去底/统一到 `--seal` → 数据 URI 或 assets 引用 → `.sh-seal` 从 CSS 字排章换图章
-- [ ] favicon / 应用图标同源换装（规格书 §8 落地清单项）
-- [ ] 小尺寸可读性验证（30×50 与 16×16 favicon 两档）
+- [x] 书眉替换：**已落地（2026-08-29 R5 D1 收口）**——`seal-zhuwen-vertical.jpeg` 去白底转 alpha 遮罩
+      `src-ui/src/app/sh-seal-mask.png`（黑 RGB + alpha=红度，540×1314），`.sh-seal` 改 CSS mask +
+      `background-color: var(--seal)`（色随 token 走），aspect-ratio 钉住 1:2.43 防拉伸；
+      合成验证（遮罩按 --seal 叠纸色）通过
+- [x] favicon / 应用图标同源换装：**已落地（同日）**——`seal-baiwen-ornate.png` alpha 裁边 + 方形垫边
+      生成 `app-icon-1024.png`（本目录，重制源）→ `cargo tauri icon` 全套换装（android/ios 随生随删，
+      C4 先例）；`public/favicon.svg`（亭台线稿）退役删除，换 `public/favicon.png`（256px，同源白文方章）
+- [x] 小尺寸可读性验证：书眉档以全分辨率合成图核对（笔画/边框完整）；favicon 256px 目检清晰，
+      16px 下白文方章呈红底白纹印章块（白文高对比，符合印章小尺寸直觉）

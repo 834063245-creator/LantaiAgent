@@ -541,7 +541,8 @@ button.sp-btn.sp-btn-ok {
   border: var(--rule-soft);
   transition:
     background var(--snap),
-    color var(--snap);
+    color var(--snap),
+    border-color var(--snap);
   white-space: nowrap;
 }
 

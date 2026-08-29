@@ -27,6 +27,9 @@
   font-size: 11px;
   cursor: pointer;
   border-radius: 0;
+  transition:
+    background var(--snap),
+    color var(--snap);
 }
 .wc-btn:hover {
   background: var(--paper-deep);
@@ -145,6 +148,10 @@ html.no-bf .pal-box {
   border-radius: 0; /* 印刷品无圆角（2026-08-29 走查：6px 圆角违例拆除） */
   cursor: pointer;
   text-align: left;
+  transition:
+    background var(--snap),
+    color var(--snap),
+    box-shadow var(--snap);
 }
 .pal-row .pal-label {
   flex: 1;

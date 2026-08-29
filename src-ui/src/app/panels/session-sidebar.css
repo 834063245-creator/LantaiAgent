@@ -47,6 +47,9 @@
   cursor: pointer;
   font-size: 11px;
   line-height: 1;
+  transition:
+    background var(--snap),
+    color var(--snap);
 }
 .ss-fold:hover {
   background: var(--paper-deep);
@@ -87,6 +90,9 @@
   padding: 7px 10px;
   cursor: pointer;
   border-left: 3px solid transparent;
+  transition:
+    background var(--snap),
+    border-left-color var(--snap);
 }
 .ss-row:hover {
   background: color-mix(in oklch, var(--indigo) 7%, var(--paper));
@@ -95,11 +101,11 @@
   border-left-color: var(--indigo);
 }
 
-/* 状态点：pending=朱砂（交互等待）> running=石青（机）> done=墨（完成）> idle=灰 */
+/* 状态点：pending=朱砂（交互等待）> running=石青（机）> done=墨（完成）> idle=灰
+ * D2（2026-08-29）：方点化——圆角恒 0 纪律收编状态点族（原 50% 圆点豁免退役）。 */
 .ss-dot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
   flex: 0 0 auto;
 }
 .ss-dot-pending {
@@ -181,6 +187,9 @@
   font-size: 10.5px;
   line-height: 1;
   cursor: pointer;
+  transition:
+    background var(--snap),
+    color var(--snap);
 }
 .ss-actions button:hover {
   background: var(--paper-deep);

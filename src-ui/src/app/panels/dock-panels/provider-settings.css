@@ -141,7 +141,6 @@
 .pp-src-dot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
   flex-shrink: 0;
   background: var(--ink-3);
 }
@@ -231,7 +230,6 @@
 .pp-dot-legend {
   width: 5px;
   height: 5px;
-  border-radius: 50%;
   display: inline-block;
 }
 .pp-dot-legend.unconfigured {
@@ -309,7 +307,6 @@
 .pp-pdot {
   width: 5px;
   height: 5px;
-  border-radius: 50%;
   background: currentColor;
 }
 .pp-pill-ok {
@@ -483,6 +480,7 @@
   font-size: 10px;
   padding: 0 2px;
   line-height: 1;
+  transition: color var(--snap);
 }
 .pp-model-chip-x:hover {
   color: var(--ink-1);
@@ -497,6 +495,9 @@
   padding: 0 5px;
   cursor: pointer;
   line-height: 1.4;
+  transition:
+    color var(--snap),
+    border-color var(--snap);
 }
 .pp-model-chip-param:hover {
   color: var(--ink-1);
@@ -649,6 +650,7 @@
   font-size: 12px;
   padding: 0 2px;
   border-radius: 0;
+  transition: color var(--snap);
 }
 .pp-error-close:hover {
   color: var(--fail);
@@ -723,6 +725,7 @@
   border: none;
   color: var(--ink-3);
   cursor: pointer;
+  transition: color var(--snap);
   font-size: 13px;
   padding: 0 4px;
   border-radius: 0;
@@ -881,7 +884,6 @@
 .pp-save-bar-dot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
   background: var(--seal);
   animation: pp-pulse 1.6s ease-in-out infinite;
 }
