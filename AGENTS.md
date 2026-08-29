@@ -205,7 +205,7 @@ flowchart LR
 
 CI 只做编译 + 测试；`.github/workflows/ci.yml` 仅经用户拍板可改（2026-08-25 用户授权：engine job 改 workspace 全量测试 `cargo test --release --workspace --exclude lantai`，覆盖三个新拆 crate）。
 
-> ⚠ **测试运行纪律（2026-08-29 立规，实测踩坑 2 小时）**：cargo 测试一律 **`--no-run` 先链接、再前台直跑测试二进制、输出直写文件**，禁止 `| tail` 管道后台跑（管道缓冲全程无输出 + 收尾假挂，会把「冷链接 2-10 分钟」误判成 hang）。**`hologram-engine.exe`（`serve --project-root …`，46MB 常驻）是用户 DSH 应用的子进程，绝不能 taskkill**——它崩溃自动重启，杀了会误导排障。补充三条（2026-08-29 续窗实测）：① PowerShell `>` 对原生命令重定向有「收尾假挂」变体（exe 已退出但 PS 管道不收尾，前台也复现）——小输出直接由工具捕获，大输出用 `cmd /c "exe > log 2>&1"` 重定向；② cdp e2e 报「端口 Ns 内未就绪」先查 `D:\tmp\hologram-browser-profile*` 残留：失败测试 panic 不清浏览器树，僵尸 chrome + 残留 profile 自续污染后续每一轮（清进程树 + profile 目录后即绿）；③ vitest 全量报 `1 error`（Worker exited unexpectedly / heap OOM）但测试计数全过 = 有测试文件在 module/用例体内自旋（事件循环被饿死连 testTimeout 都不触发）——**别调大堆**，用文件列表二分（注意：列表必须落盘后 `(Get-Content 列表)` 传参，命令内变量会被外层 shell 吞掉），单文件复现后再读代码。
+> ⚠ **测试运行纪律（2026-08-29 立规，实测踩坑 2 小时）**：cargo 测试一律 **`--no-run` 先链接、再前台直跑测试二进制、输出直写文件**，禁止 `| tail` 管道后台跑（管道缓冲全程无输出 + 收尾假挂，会把「冷链接 2-10 分钟」误判成 hang）。**`hologram-engine.exe`（`serve --project-root …`，46MB 常驻）是用户 DSH 应用的子进程，绝不能 taskkill**——它崩溃自动重启，杀了会误导排障。补充三条（2026-08-29 续窗实测）：① PowerShell `>` 对原生命令重定向有「收尾假挂」变体（exe 已退出但 PS 管道不收尾，前台也复现）——小输出直接由工具捕获，大输出用 `cmd /c "exe > log 2>&1"` 重定向；② cdp e2e 报「端口 Ns 内未就绪」先查 `D:\tmp\hologram-browser-profile*` 残留：失败测试 panic 不清浏览器树，僵尸 chrome + 残留 profile 自续污染后续每一轮（清进程树 + profile 目录后即绿）；③ vitest 全量报 `1 error`（Worker exited unexpectedly / heap OOM）但测试计数全过 = 有测试文件在 module/用例体内自旋（事件循环被饿死连 testTimeout 都不触发）——**别调大堆**，用文件列表二分（注意：列表必须落盘后 `(Get-Content 列表)` 传参，命令内变量会被外层 shell 吞掉），单文件复现后再读代码。再补两条（2026-08-29 Phase 3 竣工窗实测）：④ **`Select-String`/`| tail` 挂在长 cargo 命令尾部必假挂且日志全空**——最可靠的姿势 = `Start-Process -FilePath cargo -ArgumentList @(...) -RedirectStandardOutput log -RedirectStandardError errlog -NoNewWindow`（fire-and-forget）+ 独立命令 `Get-Content log` 轮询；⑤ **构建报 os error 32（文件被占用）先查 IDE rust-analyzer 残留句柄**：`Invoke-WebRequest live.sysinternals.com/handle.exe` + `handle.exe -a <文件名>` 定位持有者——若为 rustup/rust-analyzer（IDE 语言服务器，会自动重启，非用户应用进程），`handle.exe -c <句柄号> -p <pid> -y` 远程关句柄即解锁，杀进程会立刻被 IDE 重启并重新锁上。
 
 ## 11. 不要做的事
 
@@ -214,6 +214,7 @@ CI 只做编译 + 测试；`.github/workflows/ci.yml` 仅经用户拍板可改�
 - 不要在应用程序层「推断 bug 根源 / 解释因果」——产品只呈现图数据；编码 Agent 的排查推理不受此限制。
 - 不要用 `cargo build --release` 代替 `cargo tauri build`。
 - 壳层不要经 `engine::storage::` / `engine::vector::` 门面引存储/向量类型——直连 `hologram_storage::` / `hologram_vector::`（守卫测试钉死）。
+- **不要在壳内重新引入 hologram-engine 依赖**（Phase 3 已摘，Cargo.toml 无此依赖）：引擎唯一消费面 = `engine_transport::McpRemoteTransport`（每工作区一个 `engine serve` 子进程，stdio MCP）；新增引擎能力 = 引擎侧加壳专属方法（`contract.rs` v3 + 守卫同步），不走壳内编译。
 - 不要把与任务无关的未提交改动混进 commit；用户工作区改动要单独确认。
 
 ## 12. 文档地图（只信这些是现状）
