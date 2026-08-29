@@ -60,7 +60,9 @@
 
 > 背景：三方探查（交互 a11y / CSS 规格符合度 / 四态手感）55 条线索，人工复核后修复 16 处落 **commit `b5195c24`**（弹层 a11y/焦点管理 + 四态补齐 + token 纪律收编 + 退役字体删除；门禁 build/biome/vitest 全绿零回归），4 条误报剔除（见段尾记录）。以下为复核后不进修复批的余项。
 >
-> 栈裁决记录（2026-08-29，UI/UX 专项开工前置）：外部推荐栈评审结论 = React Flow / Tailwind / shadcn / react-query / React 18 全不引入（范式不合：文档画布非节点图、tokens.css 即设计系统、Tauri IPC 无 HTTP 缓存面）；控件行为层定「甲路线」= 手写为常规（dialog-focus.ts 为范式件），复杂交互件单点 react-aria hooks 例外（一事一议）；motion 不预装，遇 CSS 不可达的弹簧/FLIP 交互单点引入。按 Agent 建议执行中 → **用户拍板确认（2026-08-29：拍板 1A），栈关闭。**
+> 栈裁决记录（2026-08-29，UI/UX 专项开工前置）：外部推荐栈评审结论 = React Flow / Tailwind / shadcn / react-query / React 18 全不引入（范式不合：文档画布非节点图、tokens.css 即设计系统、Tauri IPC 无 HTTP 缓存面）；控件行为层定「甲路线」= 手写为常规（dialog-focus.ts 为范式件），复杂交互件单点 react-aria hooks 例外（一事一议）；motion 不预装，遇 CSS 不可达的弹簧/FLIP 交互单点引入。**用户拍板确认（2026-08-29：拍板 1A），栈关闭。**
+>
+> 本批 commit 链（2026-08-29）：`b5195c24` 走查修复批 → `61c73aa2` D 段落账 → `2a5ddcad` 三拍板落账 → `a5fa474f` 印章候选归置（D1 收口）→ `d2846bd9` D5+D6 落地 → `3a863a94` 状态收口。
 
 | # | 项 | 谁判断 | 状态 |
 |---|---|---|---|

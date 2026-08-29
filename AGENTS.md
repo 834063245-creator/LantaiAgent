@@ -204,6 +204,8 @@ flowchart LR
 | 前端构建 | `cd src-ui && npm run build` | tsc --noEmit + vite build 全绿 |
 | Agent 运行时/组合层 | `cd src-ui && npm run verify:convergence` | exit 0（T0 静态 + 全部 phase specs 对拍 8 baseline + system-prompt.fixture；standard preset 零漂移）；baseline 变更走 `docs/archive/agent-core-convergence/baseline-change-request.md` 审批 |
 | 前端格式 | `cd src-ui && npx biome ci .` | **0 errors / 0 warnings（2026-08-24 存量清零，保持归零）**；行尾政策见根 `.gitattributes`（默认 LF，cmd/bat/ps1 除外）——新 clone 后 `npx biome check --write <改动文件>` 即可，勿引入 CRLF |
+
+> ⚠ **本机 NODE_ENV=production 注入的两刀（2026-08-29 实测扩写）**：Cowork/codely 进程链给子 shell 注入 `NODE_ENV=production`（注册表无此值，纯进程内渗入）——① vitest jsdom UI 测试大面积假红（`act is not a function` + `No such built-in module: node:`）；② **`npm install` / `npm uninstall` 同样中招：在该环境下剥掉 devDependencies**（`Cannot find package 'vitest'`，`node_modules/.bin` shim 一并丢失）。恢复流程 = `$env:NODE_ENV='test'` → `npm install` → 必要时 `npm rebuild` 重建 .bin shim。**纪律：本机凡 npm 命令（含 install/uninstall/rebuild）一律先清掉该变量。**
 | 打包 | `cd src-tauri && cargo tauri build` | 发布构建；不要用 `cargo build --release` 代替 |
 
 CI 只做编译 + 测试；`.github/workflows/ci.yml` 仅经用户拍板可改（2026-08-25 用户授权：engine job 改 workspace 全量测试 `cargo test --release --workspace --exclude lantai`，覆盖三个新拆 crate）。
