@@ -68,9 +68,9 @@
 | D2 | 状态圆点形态：状态点/呼吸点/更新角标等 `border-radius: 50%` 族（~12 处）——用户拍板（2026-08-29）「不是百分之百要的，有更好方案更好」；现状圆点保留（视作字形本体，同 C7 圈点豁免先例），后续视觉方案若出现更优标记形态（方点/短竖线/印泥点）单点替换 | Agent（可自主探索） | 开放 |
 | D3 | hover 过渡普遍缺失：多数交互件 hover 瞬间变色，`--snap`（0.12s）token 已在但未普遍引用——补齐属手感维度 | Agent | 开放 |
 | D4 | IME 候选窗错位：钉住块就地编辑时输入法候选窗位置漂移（`ime.ts` 头注记录在案）——画布变换 × OS 输入法坐标换算 | Agent | 挂起（深水区，单独立项） |
-| D5 | 后台失败统一可见出口：画布落盘失败仅 console.warn 静默重试（board-persistence）+ 摊开集恢复失败仅 console.error——需先定「后台错误提示面」形态（StatusLine 警告档？notice 条？）再两处接入 | 用户（形态）+ Agent（落地） | ✅ 已拍板 **C 混合**（2026-08-29）：StatusLine 常驻警告档 + 每次进入失败态弹一次 notice——待落地 |
-| D6 | document.title 动态化：窗口标题恒「兰台 — Lantai」，切工作区不随动，多开难区分 | 用户（格式） | ✅ 已拍板 **C**（2026-08-29）：`{工作区名} · {活跃案卷} — 兰台`——待落地 |
-| D7 | 窗口位置/尺寸记忆：前端未定位到实现，需查 src-tauri 侧（tauri.conf / window-state 插件）——核查项非缺陷 | Agent | 待核查 |
+| D5 | 后台失败统一可见出口：画布落盘失败仅 console.warn 静默重试（board-persistence）+ 摊开集恢复失败仅 console.error——需先定「后台错误提示面」形态（StatusLine 警告档？notice 条？）再两处接入 | 用户（形态）+ Agent（落地） | ✅ 已拍板 **C 混合**（2026-08-29）+ **已落地**（commit d2846bd9）：bg-alert-store（同 id 失败态延续不重复弹/成功解除再弹/单槽语义，4 用例守护）+ StatusLine 警告档（--warn 色警点）+ 一次性提示条（「知道了」收条不动警报）；接入画布落盘失败 + 摊开集恢复失败两处 |
+| D6 | document.title 动态化：窗口标题恒「兰台 — Lantai」，切工作区不随动，多开难区分 | 用户（格式） | ✅ 已拍板 **C**（2026-08-29）+ **已落地**（commit d2846bd9）：`useDocumentTitle`——`{工作区名} · {活跃案卷} — 兰台`，随切工作区/切卷/改名实时刷新（工作区名取 basename，注册表登记名不参与） |
+| D7 | 窗口位置/尺寸记忆：**核查完毕（2026-08-29）——已实现，无需改动**。`tauri-plugin-window-state` 依赖（Cargo.toml:49）+ `main.rs:66` 注册在位，插件默认 StateFlags 恢复尺寸/位置/最大化（首次探查误报「未实现」系 pattern 连字符没匹配到下划线 `window_state`，记为教训） | Agent | ✅ 已实现 |
 | D8 | ModelSelector 目录拉取 loading 行：动态目录拉取中下拉无「拉取中…」指示（失败标注已有）——需目录状态 plumbing，可见度低 | Agent | 开放（低优先） |
 
 **误报剔除记录**（2026-08-29 走查，避免后人重查）：① 流式中发送=插话特性（chat-core 插入路径有「已插入进行中的回合」回音通知），非吞消息；② 「hover 无 focus-visible 系统性缺失」大部分被 foundation.css 全局 `:focus-visible` 兜底覆盖，实际缺口小；③ PromptShelf 权限卡实有 `aria-label="权限请示"`；④ `type="button"` 全数在位。另：--indigo 语义存疑三处复核合规（摊开标记自注「机=石青」/拟策序号=规格书明文/牒卡=机器问询）。
