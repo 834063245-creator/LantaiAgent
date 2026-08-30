@@ -95,6 +95,19 @@ rAF 直读 canvas-view-store 不进 React 渲染帧——「分层渲染」支�
 - 测试：tests/paper-marginalia.test.ts 9 用例（配对/合并/回退/围栏回退/max
   测高/签名失效）。
 
+## 三点五、实机验收返工 ✅（commit `b870ede8`——用户三条反馈一次修完）
+
+1. **LOD 观感差 → 真文字缩微**：抽象墨条（灰线）换 `materializeLineRange` 行
+   原文 + `字号 × zoom` canvas fillText 直绘——远看是真实的缩小纸面。BlockInk
+   增 size/stack（主文字源，多源次源字号差 ≤1.5px 共用主源——LOD 抽象层）；
+   折叠/空块桩条走空 text 矩形路径。
+2. **眉批恒折可展开**：延续「夹注恒折」拍板——眉批缺省收起「▸ 思考 N 字」
+   （foldLabel 复用），点击展开；壳层 foldOv 持久（key = `${id}:sc`）；测高
+   max(正文, 夹注@侧栏) 同步折叠语义（折叠态一行）。
+3. **眉批可拖出钉画布**：眉批栏「钉」手柄（hover 现身）→ 拖出 = 独立夹注快照
+   钉上画布（`pinId = ${block.id}:sc`，拷贝语义工作区级公共物，composite 不受
+   影响）；拖中 body grab 光标反馈。
+
 ## 四、遗留与待办
 
 | 项 | 说明 |
