@@ -42,7 +42,12 @@ export interface BlockPayloads {
      *  不再拼进入文楷书正文） */
     files?: Array<{ path: string; name: string }>;
   };
-  markdown: { text: string };
+  markdown: {
+    text: string;
+    /** 眉批（P5 夹注旁注化）：配对吸附的夹注全文——渲染正文右侧眉批栏，
+     *  测高 = max(正文@全宽, 夹注@侧栏宽)。translate 配对注入，纯可选字段。 */
+    sidecar?: { text: string };
+  };
   reasoning: { text: string };
   diff: { lang?: string; text: string };
   tool: {

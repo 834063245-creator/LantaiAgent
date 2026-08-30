@@ -1729,6 +1729,24 @@
   pointer-events: none;
 }
 
+/* ── 眉批栏（P5 夹注旁注化）：夹注吸附正文块右侧界栏外——古籍旁批形态。
+ * 左侧被文类签列（.pp-kind -132px）占据，右侧空 margin 放眉批；石墨小字
+ * （夹注同族 13.5px/1.85）+ 弱规线起笔。宽度/内缩镜像 measure.MARGINALIA_W/
+ * MARGINALIA_INSET（测高 max(正文, 夹注@侧栏) 的另一半）。 ── */
+.pp-marginalia {
+  position: absolute;
+  top: 2px;
+  left: calc(100% + 24px);
+  width: 240px;
+  font-family: var(--f-song);
+  font-size: 13.5px;
+  line-height: 1.85;
+  color: var(--graphite);
+  border-left: 2px solid var(--ink-4);
+  padding-left: 10px;
+  white-space: pre-wrap;
+}
+
 /* ── 纸条（V3a 抽纸条：拷贝语义快照——用户层物件；收尾 2026-08-24 完整化）── */
 .pp-strip {
   position: absolute;

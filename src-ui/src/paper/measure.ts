@@ -446,6 +446,11 @@ export interface InkSource {
 /** 纸条墨迹常量（.pp-strip 镜像：12.5px 宋体 / 1.7 行距 / padding 12）。 */
 export const STRIP_INK = { font: `12.5px ${SONG_STACK}`, lineHeight: 12.5 * 1.7, inset: 12 };
 
+/* ── 眉批栏（P5 夹注旁注化）——.pp-marginalia 镜像：块右缘 24px 起、总宽 240，
+ * 左规线 2 + padding 10 → 内容宽 228；字体沿用夹注族（13.5px/1.85 石墨）。 ── */
+export const MARGINALIA_W = 240;
+export const MARGINALIA_INSET = 12;
+
 export function inkSourcesFor(b: SourcedBlock, folded: boolean): InkSource[] {
   const p = b.payload as PayloadLike;
   switch (b.kind) {
@@ -690,7 +695,19 @@ export function measureBlockHeight(b: SourcedBlock, folded = false): number {
       // markdown 专项（2026-08-30）：消费 parseMarkdown 结构模型逐元素计高
       // （与 MarkdownBody 渲染共用同一解析——结构漂移结构性不成立）。
       if (!p.text) return 0;
-      return measureMdBlocks(parseMarkdown(p.text), b.w);
+      const bodyH = measureMdBlocks(parseMarkdown(p.text), b.w);
+      // P5 眉批化：夹注挂侧栏（.pp-marginalia）——复合块高 = max(正文@全宽,
+      // 夹注@侧栏内容宽)。眉批恒容于块高内 → 栈几何零变化（方案甲的决定性
+      // 优势，见 pretext-typography-plan §三）。
+      const sidecar = (b.payload as { sidecar?: { text: string } }).sidecar;
+      if (!sidecar?.text) return bodyH;
+      const noteH = measureTextHeight(
+        sidecar.text,
+        MARGINALIA_W - MARGINALIA_INSET,
+        PAPER_REASONING_FONT,
+        PAPER_REASONING_LINE_HEIGHT,
+      );
+      return Math.max(bodyH, noteH);
     }
     case 'reasoning': {
       if (!p.text) return FOLD_ROW_H;
@@ -790,7 +807,7 @@ export function measureSignature(b: SourcedBlock, folded: boolean): string {
     case 'user':
       return `user|${p.text ?? ''}|${(p.files as Array<{ path: string; name: string }> | undefined)?.length ?? 0}`;
     case 'markdown':
-      return `markdown|${p.text ?? ''}`;
+      return `markdown|${p.text ?? ''}|${(p.sidecar as { text?: string } | undefined)?.text ?? ''}`;
     case 'reasoning':
       return `reasoning|${f}|${p.text ?? ''}`;
     case 'notice':

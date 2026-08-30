@@ -192,34 +192,52 @@ function emitTextWithFences(
   partIndex: number,
   part: object,
   out: SourcedBlock[],
-  pinned: ReadonlyMap<string, { x: number; y: number }> | undefined,
+  pinned: ReadonlyMap<string, { x: number; y: number; w?: number }> | undefined,
+  sidecar?: { text: string; reasoningIdx: number },
 ): void {
   const segs = splitFencedSegments(text);
   if (segs.length === 1 && segs[0].kind === 'markdown') {
     // 纯文本：保持 1:1 映射与稳定 id（兼容既有行为）
     const id = partBlockId(messageId, partIndex);
     const base = {
-      ...createBlock('markdown', { text: segs[0].text }, { messageId, part }),
+      ...createBlock(
+        'markdown',
+        { text: segs[0].text, ...(sidecar ? { sidecar: { text: sidecar.text } } : {}) },
+        { messageId, part },
+      ),
       id,
       w: DEFAULT_BLOCK_WIDTH,
     };
-    const pos = pinned?.get(id);
-    out.push(withPin(base, pos));
+    out.push(withPin(base, pinned?.get(id)));
     return;
   }
   // 拆分序列：t{n} 文本段 / f{n} 围栏段
   let tN = 0;
   let fN = 0;
+  let sidecarLeft = sidecar;
   for (const seg of segs) {
     const id =
       seg.kind === 'markdown' ? `pb:${messageId}:${partIndex}t${tN++}` : `pb:${messageId}:${partIndex}f${fN++}`;
+    const isMd = seg.kind === 'markdown';
+    const payload = isMd
+      ? { text: seg.text, ...(sidecarLeft ? { sidecar: { text: sidecarLeft.text } } : {}) }
+      : { lang: seg.lang, text: seg.text };
+    if (isMd && sidecarLeft) sidecarLeft = undefined;
     const base = {
-      ...createBlock(seg.kind, seg.kind === 'diff' ? { lang: seg.lang, text: seg.text } : { text: seg.text }, {
-        messageId,
-        part,
-      }),
+      ...createBlock(seg.kind, payload as never, { messageId, part }),
       id,
       w: seg.kind === 'diff' ? 640 : DEFAULT_BLOCK_WIDTH,
+    };
+    out.push(withPin(base, pinned?.get(id)));
+  }
+  // 眉批未消化（text 全是围栏）→ 回退独立 reasoning 块，id 用原夹注 part idx
+  // （钉住续命不断：流式中钉过的夹注在回退态仍按原 id 续命）
+  if (sidecarLeft) {
+    const id = partBlockId(messageId, sidecarLeft.reasoningIdx);
+    const base = {
+      ...createBlock('reasoning', { text: sidecarLeft.text }, { messageId, part }),
+      id,
+      w: REASONING_BLOCK_WIDTH,
     };
     out.push(withPin(base, pinned?.get(id)));
   }
@@ -228,8 +246,30 @@ function emitTextWithFences(
 function translateAssistantParts(
   msg: AssistantMessage,
   out: SourcedBlock[],
-  pinned: ReadonlyMap<string, { x: number; y: number }> | undefined,
+  pinned: ReadonlyMap<string, { x: number; y: number; w?: number }> | undefined,
 ): void {
+  /* P5 眉批化配对预扫：连续 reasoning 合并 → 紧随的 text part 吸收为眉批
+   * （payload.sidecar，测高 max(正文, 夹注@侧栏)）；无正文后继（tool 结尾/
+   * 消息尾/全围栏 text 由 emitTextWithFences 二次回退）→ 独立 reasoning 块
+   * 不丢字，id 保持原夹注 part idx（钉住续命不断）。 */
+  const sidecarFor = new Map<number, { text: string; reasoningIdx: number }>();
+  const fallbackIdx = new Set<number>();
+  let pending: Array<{ idx: number; text: string }> = [];
+  msg.parts.forEach((part, idx) => {
+    if (part.type === 'reasoning') {
+      pending.push({ idx, text: part.text });
+      return;
+    }
+    if (part.type === 'text' && pending.length > 0) {
+      sidecarFor.set(idx, { text: pending.map((p) => p.text).join('\n\n'), reasoningIdx: pending[0].idx });
+      pending = [];
+      return;
+    }
+    for (const pr of pending) fallbackIdx.add(pr.idx);
+    pending = [];
+  });
+  for (const pr of pending) fallbackIdx.add(pr.idx);
+
   const emit = (
     kind: SourcedBlock['kind'],
     payload: SourcedBlock['payload'],
@@ -249,10 +289,13 @@ function translateAssistantParts(
   msg.parts.forEach((part, idx) => {
     switch (part.type) {
       case 'reasoning':
-        emit('reasoning', { text: part.text }, idx, part, REASONING_BLOCK_WIDTH);
+        // 被眉批吸收的夹注不单独发射（随 text part 走）；仅回退路径发射
+        if (fallbackIdx.has(idx)) {
+          emit('reasoning', { text: part.text }, idx, part, REASONING_BLOCK_WIDTH);
+        }
         break;
       case 'text':
-        emitTextWithFences(msg._id, part.text, idx, part, out, pinned);
+        emitTextWithFences(msg._id, part.text, idx, part, out, pinned, sidecarFor.get(idx));
         break;
       case 'tool': {
         // code_execution 专属块（P2-A 拍板）：三段式形态与 tool 单进单出分离；

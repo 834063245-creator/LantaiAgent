@@ -362,6 +362,9 @@ function renderMdBlock(el: MdBlock, tail?: ReactNode): ReactNode {
  *    - stable 为空（首 token）时行内尾也兜底渲染，不丢字。 */
 function MarkdownBody({ block }: BlockRendererProps) {
   const text = (block.payload as { text?: string }).text ?? '';
+  // P5 眉批化：配对吸附的夹注全文 → 右侧眉批栏（.pp-marginalia，绝对定位
+  // 锚 .pp-block——世界层块是唯一定位祖先，侧栏在块宽之外不挤正文列）
+  const sidecar = (block.payload as { sidecar?: { text: string } }).sidecar;
   const { stable, delta } = useStreamDelta(text, null);
   const blocks = useMemo(() => parseMarkdown(stable), [stable]);
   // 三级切分：换行前行内尾 / 换行后新块（剥掉分块换行——它属于块边界非内容）
@@ -371,6 +374,7 @@ function MarkdownBody({ block }: BlockRendererProps) {
   const tailNode = inlineTail && <span className="pp-ink-delta">{inlineTail}</span>;
   return (
     <div className="pp-body pp-md">
+      {sidecar?.text ? <aside className="pp-marginalia">{sidecar.text}</aside> : null}
       {blocks.map((el, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: 同上
         <Fragment key={i}>{renderMdBlock(el, i === blocks.length - 1 ? tailNode : undefined)}</Fragment>
