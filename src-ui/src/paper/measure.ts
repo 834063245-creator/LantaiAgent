@@ -618,7 +618,12 @@ function measureAssetBlockHeight(b: SourcedBlock): number {
  * 拟策卡交互态（反馈框展开/审批完成）。这几族（资产 kind + 开放 kind +
  * 拟策）挂载后由壳层 ResizeObserver 实测回写：实测优先于静态镜像。
  * 卸载不清记录——虚拟化挂/卸边界上「实测-镜像」高度差会反复横跳成布局
- * 振荡；payload 变化由下次挂载的 observe 首报自愈。 */
+ * 振荡；payload 变化由重挂载首报登记 + 壳层去抖收敛自愈。
+ *
+ * 2026-08-31 滚动意图修（与壳层 blockRoRef 配套）：破「首报即重排」脉冲——
+ * 首报（无记录）= 静态镜像校准登记，只写入不通知；滚动虚拟化中逐卡挂载
+ * 逐卡立即重排 = 全局布局脉冲（实机症状：滚过图表/拟策卡区域整个流抽搐）。
+ * 收敛改为壳层去抖一次触发；首报后值再变（媒体图加载等动态高）才即时通知。 */
 
 interface ObservedHeight {
   w: number;
@@ -628,14 +633,25 @@ interface ObservedHeight {
 const observedHeights = new Map<string, ObservedHeight>();
 const observedListeners = new Set<() => void>();
 
-/** 壳层 RO 实测回写（世界单位 = CSS px——RO 读布局盒，transform 缩放不影响）。 */
-export function reportObservedBlockHeight(blockId: string, w: number, h: number): boolean {
+/** RO 实测回写结果：registered=首报校准登记（不触发布局重排）/
+ *  changed=挂载后值变（动态高，立即重排）/ unchanged=同值（无变化）。 */
+export type ObservedReport = 'registered' | 'changed' | 'unchanged';
+
+/** 壳层 RO 实测回写（世界单位 = CSS px——RO 读布局盒，transform 缩放不影响）。
+ *  无记录或宽度变化 = 首报：登记不通知（校准登记——收敛由壳层去抖一次触发，
+ *  避免滚动挂载逐卡脉冲式全局重排）；记录已存在且值变 = 动态高（媒体图加载/
+ *  iframe 上报/拟策反馈框展开），通知订阅者立即重排。 */
+export function reportObservedBlockHeight(blockId: string, w: number, h: number): ObservedReport {
   const rec = Math.ceil(h);
   const prev = observedHeights.get(blockId);
-  if (prev && prev.w === w && prev.h === rec) return false;
+  if (prev && prev.w === w) {
+    if (prev.h === rec) return 'unchanged';
+    observedHeights.set(blockId, { w, h: rec });
+    for (const fn of observedListeners) fn();
+    return 'changed';
+  }
   observedHeights.set(blockId, { w, h: rec });
-  for (const fn of observedListeners) fn();
-  return true;
+  return 'registered';
 }
 
 /** 有效实测高（记录宽与块宽一致才有效——钉住改宽后旧实测作废待重报）。 */

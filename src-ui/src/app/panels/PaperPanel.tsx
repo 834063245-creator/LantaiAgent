@@ -41,6 +41,7 @@ import {
   wheelFactor,
   zoomAt,
 } from '../../paper/canvas-math';
+import { createFocusFlightScheduler } from '../../paper/focus-flight';
 import { defaultFolded, foldLabel, isFoldable } from '../../paper/fold';
 import { createInkCache, type InkCache, inkColorOf, inkForBlock, lodActive } from '../../paper/ink';
 import {
@@ -708,34 +709,57 @@ export function PaperPanel() {
 
   /* ── 实测回写桥（2026-08-30 溢出修复）──
    * 静态镜像管不了的动态高（媒体图加载 / html 卡 iframe 上报 / 拟策反馈框
-   * 展开）由 ResizeObserver 实测兜底：资产/开放/拟策块挂载即观察，尺寸变化
-   * → reportObservedBlockHeight → 订阅回调 bump measureTick → 布局重算。
+   * 展开）由 ResizeObserver 实测兜底：资产/开放/拟策块挂载即观察。
+   * 挂载首报（registered）= 校准登记：只写入不重排——滚动虚拟化中逐卡挂载
+   * 逐卡立即全局重排会脉冲成整条流抽搐（2026-08-31 修复），改为 120ms 去抖
+   * 一次收敛；首报后值再变（changed：媒体图加载等动态高）才即时 bump。
    * RO 读布局盒（transform 缩放不影响）——世界单位与 CSS px 同源。 */
   const blockRoRef = useRef<ResizeObserver | null>(null);
   const blockRoElIds = useRef(new WeakMap<Element, string>());
-  const blockRootRef = useCallback((el: HTMLDivElement | null) => {
-    if (!el) return; // 卸载清理由 RO 弱目标语义 + WeakMap GC 兜底（记录保留防振荡）
-    if (typeof ResizeObserver === 'undefined') return; // jsdom 测试环境无 RO
-    const id = el.dataset.blockObserved;
-    if (!id) return;
-    if (!blockRoRef.current) {
-      blockRoRef.current = new ResizeObserver((entries) => {
-        for (const e of entries) {
-          const eid = blockRoElIds.current.get(e.target);
-          if (!eid) continue;
-          const box = e.borderBoxSize?.[0];
-          const target = e.target as HTMLElement;
-          reportObservedBlockHeight(
-            eid,
-            box ? box.inlineSize : target.offsetWidth,
-            box ? box.blockSize : target.offsetHeight,
-          );
-        }
-      });
-    }
-    blockRoElIds.current.set(el, id);
-    blockRoRef.current.observe(el);
+  /* 首报收敛去抖：滚动中不断有新卡挂载，逐次重排 = 布局脉冲；停下 120ms 后
+   * 一次收敛全部登记（媒体图/反馈框等挂载后动态高仍走 changed 即时重排）。 */
+  const convergeTimerRef = useRef<number | null>(null);
+  const scheduleConverge = useCallback(() => {
+    if (convergeTimerRef.current) window.clearTimeout(convergeTimerRef.current);
+    convergeTimerRef.current = window.setTimeout(() => {
+      convergeTimerRef.current = null;
+      setMeasureTick((t) => t + 1);
+    }, 120);
   }, []);
+  useEffect(
+    () => () => {
+      if (convergeTimerRef.current) window.clearTimeout(convergeTimerRef.current);
+    },
+    [],
+  );
+  const blockRootRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      if (!el) return; // 卸载清理由 RO 弱目标语义 + WeakMap GC 兜底（记录保留防振荡）
+      if (typeof ResizeObserver === 'undefined') return; // jsdom 测试环境无 RO
+      const id = el.dataset.blockObserved;
+      if (!id) return;
+      if (!blockRoRef.current) {
+        blockRoRef.current = new ResizeObserver((entries) => {
+          for (const e of entries) {
+            const eid = blockRoElIds.current.get(e.target);
+            if (!eid) continue;
+            const box = e.borderBoxSize?.[0];
+            const target = e.target as HTMLElement;
+            const verdict = reportObservedBlockHeight(
+              eid,
+              box ? box.inlineSize : target.offsetWidth,
+              box ? box.blockSize : target.offsetHeight,
+            );
+            // 首报校准登记：去抖一次收敛（changed 已由订阅即时重排）
+            if (verdict === 'registered') scheduleConverge();
+          }
+        });
+      }
+      blockRoElIds.current.set(el, id);
+      blockRoRef.current.observe(el);
+    },
+    [scheduleConverge],
+  );
   useEffect(() => subscribeObservedBlockHeights(() => setMeasureTick((t) => t + 1)), []);
   useEffect(
     () => () => {
@@ -1006,10 +1030,14 @@ export function PaperPanel() {
    * 复用 viewFocusRegion（锚到流区中轴 + 目标世界 y）；未摊开卷 expand
    * 在途时 pending 保持，流区出现后补飞（regions 依赖的第二个 effect）。 */
   const focusRafRef = useRef(0);
+  /** 飞行调度（2026-08-31 视口乱飞修复）：动画在途不重播——见 paper/focus-flight */
+  const focusFlightRef = useRef(createFocusFlightScheduler());
   const flyToPoint = useCallback(
     (sessionId: string, worldY: number) => {
       const region = regionsRef.current.find((r) => r.sessionId === sessionId);
       if (!region) return;
+      // 同目标动画在途不再重播（regions 随视口每帧换引用——无守卫会自锁成乱飞）
+      if (focusFlightRef.current.begin(sessionId) === 'rejected') return;
       const start = useCanvasViewStore.getState().view;
       const target = viewFocusRegion(start, canvasSize.w, canvasSize.h, {
         x: region.anchor.anchorX,
@@ -1030,6 +1058,7 @@ export function PaperPanel() {
           focusRafRef.current = requestAnimationFrame(tick);
         } else {
           focusRafRef.current = 0;
+          focusFlightRef.current.end();
           useCanvasViewStore.getState().requestFocus(null);
         }
       };
@@ -1049,6 +1078,8 @@ export function PaperPanel() {
    * 「运动中不判」守卫也随之生效。 */
   const glideViewTo = useCallback(
     (worldX: number, worldY: number) => {
+      // glide 也是飞行：进入在途态（无目标卷），阻挡补飞打扰；定位到达后取代
+      if (focusFlightRef.current.begin(null) === 'rejected') return;
       const start = useCanvasViewStore.getState().view;
       const target = {
         zoom: start.zoom,
@@ -1070,6 +1101,7 @@ export function PaperPanel() {
           focusRafRef.current = requestAnimationFrame(tick);
         } else {
           focusRafRef.current = 0;
+          focusFlightRef.current.end();
           useCanvasViewStore.getState().requestFocus(null);
         }
       };
@@ -1082,14 +1114,17 @@ export function PaperPanel() {
     if (pendingFocusId) flyToRegion(pendingFocusId);
   }, [pendingFocusId, flyToRegion]);
   useEffect(() => {
-    // 未摊开卷 expand 在途：流区出现后补飞（pending 未清且目标已存在）
+    // 未摊开卷 expand 在途：流区出现后补飞（pending 未清且目标已存在）。
+    // 动画在途不重启（2026-08-31 视口乱飞修复）：regions 随视口每帧换引用，
+    // 无守卫会让补飞每帧 cancel+重播动画 → 动画永不完、pending 永不清。
     void regions;
     const pending = useCanvasViewStore.getState().pendingFocusId;
-    if (pending) flyToRegion(pending);
+    if (pending && !focusFlightRef.current.isActive()) flyToRegion(pending);
   }, [regions, flyToRegion]);
   useEffect(
     () => () => {
       if (focusRafRef.current) cancelAnimationFrame(focusRafRef.current);
+      focusFlightRef.current.end();
     },
     [],
   );
@@ -1177,6 +1212,7 @@ export function PaperPanel() {
       if (focusRafRef.current) {
         cancelAnimationFrame(focusRafRef.current);
         focusRafRef.current = 0;
+        focusFlightRef.current.end();
       }
       useCanvasViewStore.getState().requestFocus(null);
       // 缩放守卫：记录「最近一次缩放」时刻，自动选中在其后 600ms 内不判
@@ -1211,6 +1247,7 @@ export function PaperPanel() {
       if (focusRafRef.current) {
         cancelAnimationFrame(focusRafRef.current);
         focusRafRef.current = 0;
+        focusFlightRef.current.end();
       }
       useCanvasViewStore.getState().requestFocus(null);
       panningRef.current = { lastX: e.clientX, lastY: e.clientY };

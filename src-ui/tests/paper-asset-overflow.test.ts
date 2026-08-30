@@ -230,14 +230,33 @@ describe('实测回写桥（动态高兜底）', () => {
     expect(measureBlockHeightCached(b, cache)).toBe(300);
   });
 
-  it('同值重报不触发订阅（RO 挂载首报幂等，布局不振荡）', () => {
+  it('首报静默登记不触发订阅；挂载后值变才重排（滚动意图修 2026-08-31）', () => {
     const events: number[] = [];
     const off = subscribeObservedBlockHeights(() => events.push(events.length));
-    reportObservedBlockHeight('x1', 720, 100);
-    reportObservedBlockHeight('x1', 720, 100);
+    // 挂载首报 = 校准登记（滚动磁盘挂载场景）：只写入记录，不脉冲全局重排
+    expect(reportObservedBlockHeight('x1', 720, 100)).toBe('registered');
+    expect(events).toHaveLength(0);
+    // 同值重报（卸载→重挂载记录保留）：无变化
+    expect(reportObservedBlockHeight('x1', 720, 100)).toBe('unchanged');
+    expect(events).toHaveLength(0);
+    // 挂载后值变 = 动态高（媒体图加载/html iframe 上报/拟策反馈框展开）：立即重排
+    expect(reportObservedBlockHeight('x1', 720, 120)).toBe('changed');
     expect(events).toHaveLength(1);
-    reportObservedBlockHeight('x1', 720, 120);
-    expect(events).toHaveLength(2);
+    off();
+  });
+
+  it('宽度变化 = 旧实测作废待重报（钉住改宽），首次上报属登记', () => {
+    const events: number[] = [];
+    const off = subscribeObservedBlockHeights(() => events.push(events.length));
+    reportObservedBlockHeight('x3', 720, 100);
+    // 改宽后重报：宽度不匹配 → 登记新记录（不通知），旧宽记录已作废
+    expect(reportObservedBlockHeight('x3', 640, 80)).toBe('registered');
+    expect(observedBlockHeightOf('x3', 720)).toBeUndefined();
+    expect(observedBlockHeightOf('x3', 640)).toBe(80);
+    expect(events).toHaveLength(0);
+    // 再变仍走动态高即时通知
+    expect(reportObservedBlockHeight('x3', 640, 90)).toBe('changed');
+    expect(events).toHaveLength(1);
     off();
   });
 
