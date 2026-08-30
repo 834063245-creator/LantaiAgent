@@ -17,6 +17,7 @@ tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 walkdir = "2"
+ignore = "0.4"
 ureq = "3"
 regex = "1"
 encoding_rs = "0.8"

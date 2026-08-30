@@ -174,7 +174,7 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         }
 
         // ── 搜索 ──
-        // search_content（含 search_code）/glob：output_val/json! 构造恒 JSON。
+        // search_content（search_code 已并入）/glob：output_val/json! 构造恒 JSON。
         "search_content" | "glob" => RpcResultShape::JsonValue,
 
         // ── Web ──

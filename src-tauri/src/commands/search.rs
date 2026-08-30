@@ -25,9 +25,11 @@ fn expand_braces(pattern: &str) -> Vec<String> {
     vec![pattern.to_string()]
 }
 
+/// search_content — 唯一搜索实现（search_code 已并入，2026-08-30）。
+/// 对外契约名 search_content：RPC 分发器 / TS rpc-contract / 领域工具 search(content) 均指向这里。
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn search_code(
+pub(crate) async fn search_content(
     directory: String,
     pattern: String,
     file_types: Option<String>,
@@ -144,14 +146,17 @@ pub(crate) async fn search_code(
         let root_str = root.to_string_lossy().replace('\\', "/");
         let root_str = root_str.trim_end_matches('/').to_string();
 
-        for entry in walkdir::WalkDir::new(&root)
-            .into_iter()
+        let mut builder = ignore::WalkBuilder::new(&root);
+        builder
+            .hidden(false) // 原 walkdir 行为：包含隐藏文件，交给下面的 filter_entry 名单判断
+            .require_git(false) // 无 .git 目录时也读取 .gitignore/.ignore
             .filter_entry(|e| {
-                !e.file_type().is_dir() || !is_ignored_path(
-                    &e.path().to_string_lossy().replace('\\', "/"),
-                )
-            })
-        {
+                e.file_type().map_or(true, |ft| !ft.is_dir())
+                    || !is_ignored_path(
+                        &e.path().to_string_lossy().replace('\\', "/"),
+                    )
+            });
+        for entry in builder.build() {
             // ── 预算检查 ──
             if scanned_files >= MAX_SCAN_FILES || std::time::Instant::now() > deadline {
                 truncated_by_budget = true;
@@ -162,7 +167,7 @@ pub(crate) async fn search_code(
                 Ok(e) => e,
                 Err(_) => continue,
             };
-            if !entry.file_type().is_file() {
+            if !entry.file_type().map_or(false, |ft| ft.is_file()) {
                 continue;
             }
             scanned_files += 1;
@@ -335,29 +340,6 @@ fn append_vector_hits(output_val: &mut serde_json::Value, root: &std::path::Path
 }
 
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
-/// search_code 的别名 — 实现相同，作为独立的 Tauri 命令
-/// 用于工具名兼容（Agent 工具：search_content、search_code）。
-/// 如果 search_code 的行为变化，此命令自动继承。
-pub(crate) async fn search_content(
-    directory: String, pattern: String, file_types: Option<String>,
-    max_results: Option<usize>, use_regex: Option<bool>,
-    context_lines: Option<usize>, output_mode: Option<String>,
-    show_line_numbers: Option<bool>, head_limit: Option<usize>,
-    offset: Option<usize>, glob_filter: Option<String>,
-    is_agent: Option<bool>,
-    _agent_id: Option<String>,
-    state: tauri::State<'_, crate::WorkspaceState>,
-    app: tauri::AppHandle,
-) -> Result<String, String> {
-    search_code(
-        directory, pattern, file_types, max_results, use_regex,
-        context_lines, output_mode, show_line_numbers, head_limit,
-        offset, glob_filter, is_agent, _agent_id, state, app,
-    ).await
-}
-
-#[tauri::command]
 pub(crate) async fn glob(
     pattern: String,
     path: Option<String>,
@@ -475,7 +457,7 @@ mod tests {
         assert_eq!(result, vec!["a.ts", "b.ts"]);
     }
 
-    /// 测试 glob→regex 转换函数（独立于 search_code，不依赖文件系统）。
+    /// 测试 glob→regex 转换函数（独立于 search_content，不依赖文件系统）。
     fn glob_to_regex(gf: &str) -> Option<regex::Regex> {
         let gf = gf.replace('\\', "/");
         let mut re = String::from("^");
@@ -569,5 +551,38 @@ mod tests {
         // 如果转义正确，正则不会 panic，且能字面匹配
         assert!(re.is_match("a+b(c)[d]{e}^f$g|h.txt"));
         assert!(!re.is_match("aXb(c)[d]{e}^f$g|h.txt")); // 加号不是量词
+    }
+
+    /// 证明新遍历尊重 .gitignore：被忽略的文件不出现在搜索结果中。
+    #[test]
+    fn test_search_respects_gitignore() {
+        use std::io::Write;
+        let tmp = std::env::temp_dir().join(format!("hologram_search_ignore_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("src")).unwrap();
+        std::fs::create_dir_all(tmp.join("vendor")).unwrap();
+        let mut gi = std::fs::File::create(tmp.join(".gitignore")).unwrap();
+        gi.write_all(b"vendor/\nsecret.txt\n").unwrap();
+        std::fs::write(tmp.join("src/main.rs"), "fn main() {}\n").unwrap();
+        std::fs::write(tmp.join("src/keep.txt"), "hello world\n").unwrap();
+        std::fs::write(tmp.join("vendor/drop.txt"), "hello world\n").unwrap();
+        std::fs::write(tmp.join("secret.txt"), "hello world\n").unwrap();
+
+        // .gitignore 过滤由 ignore crate 内部处理，无需 filter_entry 剪目录（那会阻止进入子目录）
+        let found: Vec<String> = ignore::WalkBuilder::new(&tmp)
+            .hidden(false)
+            .require_git(false)
+            .build()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().map_or(false, |ft| ft.is_file()))
+            .map(|e| e.path().to_string_lossy().replace('\\', "/"))
+            .collect();
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        let hit = |name: &str| found.iter().any(|p| p.ends_with(name));
+        assert!(hit("main.rs"), "src/main.rs 应被搜索到");
+        assert!(hit("keep.txt"), "src/keep.txt 应被搜索到");
+        assert!(!hit("drop.txt"), "vendor/ 被 .gitignore 忽略，不应被搜索到");
+        assert!(!hit("secret.txt"), "secret.txt 被 .gitignore 忽略，不应被搜索到");
     }
 }

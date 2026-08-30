@@ -181,7 +181,7 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
     }
     // ── Timeout wrapper for search/list tools — prevent stuck Tauri invokes ──
     const TOOL_TIMEOUT = 120_000;
-    const TIMEOUT_TOOLS = new Set(['search_content', 'search_code', 'glob', 'list_directory']);
+    const TIMEOUT_TOOLS = new Set(['search_content', 'glob', 'list_directory']);
     if (TIMEOUT_TOOLS.has(name)) {
       return new Promise<string>((resolve) => {
         let settled = false;
