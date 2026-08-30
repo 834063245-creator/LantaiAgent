@@ -21,6 +21,7 @@ const HOME_CSS = readFileSync(join(SRC, 'app', 'foundation.css'), 'utf8');
 const PANEL_TSX = readFileSync(join(SRC, 'app', 'panels', 'PaperPanel.tsx'), 'utf8');
 const ICONS_TS = readFileSync(join(SRC, 'ui', 'icons.ts'), 'utf8');
 const MEASURE_TS = readFileSync(join(SRC, 'paper', 'measure.ts'), 'utf8');
+const TYPE_TOKENS_TS = readFileSync(join(SRC, 'paper', 'type-tokens.ts'), 'utf8');
 
 /** 从选择器名截取规则体（到下一个 `}` 为止——纸壳 CSS 规则无嵌套）。 */
 function ruleBody(css: string, selector: string): string {
@@ -30,12 +31,17 @@ function ruleBody(css: string, selector: string): string {
 }
 
 describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
-  it('B4+B5：来文 16px/1.9 朱砂深；diff add 松绿 / del 朱砂深删除线', () => {
+  it('B4：来文 16px/1.9 朱砂深（token 化后守真源 + CSS 变量引用）', () => {
+    // 真源钉值（type-tokens.ts）
+    expect(TYPE_TOKENS_TS).toContain('user: { size: 16, lh: 1.9');
+    // CSS 侧引用同一 token（不再写死字面量）
     const userBody = ruleBody(PANEL_CSS, '.pp-block.pp-user .pp-body');
-    expect(userBody).toContain('font-size: 16px');
-    expect(userBody).toContain('line-height: 1.9');
+    expect(userBody).toContain('font-size: var(--pp-type-user-size)');
+    expect(userBody).toContain('line-height: var(--pp-type-user-lh)');
     expect(userBody).toContain('var(--seal-deep)');
+  });
 
+  it('B5：diff add 松绿 / del 朱砂深删除线', () => {
     expect(ruleBody(PANEL_CSS, '.pp-diff .pp-add')).toContain('var(--pass)');
     const del = ruleBody(PANEL_CSS, '.pp-diff .pp-del');
     expect(del).toContain('var(--seal-deep)');
@@ -106,10 +112,13 @@ describe('卷首 folio-head 钉值（2026-08-30 原型转录：prototype/lantai.
     expect(sub).toContain('font-variant-numeric: tabular-nums');
   });
 
-  it('测量镜像：measure.ts 卷首常量与 CSS 逐字对映 + 亭徽图标在册', () => {
-    expect(MEASURE_TS).toContain('FOLIO_TITLE_LINE_HEIGHT = 32 * 1.2');
-    expect(MEASURE_TS).toContain('FOLIO_PAD_TOP = 24');
-    expect(MEASURE_TS).toContain('FOLIO_HEAD_GAP = 28');
+  it('测量镜像：type-tokens.ts 卷首真源与 CSS 逐字对映 + 亭徽图标在册', () => {
+    // token 化后单一真源 = type-tokens.ts（measure 派生自它，CSS 走 --pp-* 注入）
+    expect(TYPE_TOKENS_TS).toContain('titleSize: 32');
+    expect(TYPE_TOKENS_TS).toContain('titleLh: 1.2');
+    expect(TYPE_TOKENS_TS).toContain('padTop: 24');
+    expect(TYPE_TOKENS_TS).toContain('headGap: 28');
+    expect(MEASURE_TS).toContain('FOLIO_TOKENS.titleSize');
     expect(MEASURE_TS).toContain('export function measureFolioHeadHeight');
     expect(ICONS_TS).toContain('lantai: {');
     expect(ICONS_TS).toContain('M4 9.2 L12 3.4 L20 9.2');

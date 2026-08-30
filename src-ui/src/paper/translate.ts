@@ -21,7 +21,7 @@
 // part → 块保持引用（source.part = part 对象）——外部改动可经消息
 // version 信号触发重转译，块 id 按消息 id+part 索引稳定重建。
 
-import type { AssistantMessage, ChatMessage, UserMessage } from '../ui/message-model';
+import type { AssistantMessage, ChatMessage, ToolCallPart, UserMessage } from '../ui/message-model';
 import type { SourcedBlock } from './block-model';
 import { createBlock, DEFAULT_BLOCK_WIDTH } from './block-model';
 
@@ -62,8 +62,57 @@ export function translateMessage(
     out.push(createBlock('notice', { text: msg.text, level: msg.level }, { messageId: msg._id, part: null }));
   } else {
     translateAssistantParts(msg, out, pinned);
+    return groupToolRuns(out, msg._id, pinned);
   }
   return out;
+}
+
+/* ── 工具组（2026-08-30 会话流专项）：同轮并发调用的折叠头 ──
+ * 用户报「edit、shell 并发好几个全平铺在聊天流里」。连续 ≥2 个工具块合成
+ * 一个 toolgroup 头块 + 各自独立的子 tool 块：组头复用 fold 机制（默认收起、
+ * 出错自动张开），壳层按折叠态把子卡从布局栈摘除（collapseToolGroups）。
+ * 组头 id 锚在首个子卡 id 上（`${firstId}g`）——流式追加子卡组头 id 稳定，
+ * 钉住续命与用户折叠覆盖（foldOv）都不漂。 */
+
+/** 连续 flow 工具块运行 → 组头 + 子卡序列（run < 2 原样，不包组）。 */
+function groupToolRuns(
+  blocks: SourcedBlock[],
+  messageId: string,
+  pinned: ReadonlyMap<string, { x: number; y: number; w?: number }> | undefined,
+): SourcedBlock[] {
+  const out: SourcedBlock[] = [];
+  let run: SourcedBlock[] = [];
+  const flush = (): void => {
+    if (run.length >= 2) {
+      const items = run.map((b) => b.source.part as ToolCallPart);
+      const header = createBlock('toolgroup', { childIds: run.map((b) => b.id), items }, { messageId, part: items[0] });
+      // 组头同样走钉住续命（用户把组头拖出流，重转译后钉态不丢）
+      out.push(withPin({ ...header, id: `${run[0].id}g`, w: 640 }, pinned?.get(`${run[0].id}g`)));
+    }
+    out.push(...run);
+    run = [];
+  };
+  for (const b of blocks) {
+    if (b.kind === 'tool' && b.state === 'flow') run.push(b);
+    else {
+      flush();
+      out.push(b);
+    }
+  }
+  flush();
+  return out;
+}
+
+/** 工具组收起摘除（壳层消费）：折叠态组头的 flow 子卡不进布局栈——
+ *  钉住子卡不摘（钉住态在世界层，与组收起无关）。 */
+export function collapseToolGroups(blocks: SourcedBlock[], isCollapsed: (b: SourcedBlock) => boolean): SourcedBlock[] {
+  const hidden = new Set<string>();
+  for (const b of blocks) {
+    if (b.kind !== 'toolgroup' || !isCollapsed(b)) continue;
+    for (const id of (b.payload as { childIds?: string[] }).childIds ?? []) hidden.add(id);
+  }
+  if (hidden.size === 0) return blocks;
+  return blocks.filter((b) => !hidden.has(b.id) || b.state === 'pinned');
 }
 
 /** 转译主函数（纯函数，可无头测试）。 */

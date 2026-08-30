@@ -73,7 +73,8 @@ import {
   STREAM_REGION,
   type StreamRegionState,
 } from '../../paper/space';
-import { type MessageTranslateCache, translateMessagesCached } from '../../paper/translate';
+import { collapseToolGroups, type MessageTranslateCache, translateMessagesCached } from '../../paper/translate';
+import { injectPaperTokens } from '../../paper/type-tokens';
 import {
   type FlowGeom,
   type PinnedGeom,
@@ -111,6 +112,7 @@ const KIND_ZH: Record<string, string> = {
   tool: '脚注',
   code: '程文',
   plan: '拟策',
+  toolgroup: '工具组',
   notice: '贴黄',
   // 资产 kind（WO-4 文类签）：未知名仍回退 block.kind 字面。
   table: '表格',
@@ -129,6 +131,7 @@ const KIND_EN: Record<string, string> = {
   tool: 'TOOL',
   code: 'CODE',
   plan: 'PLAN',
+  toolgroup: 'TOOLS',
   notice: 'NOTE',
   table: 'TABLE',
   chart: 'CHART',
@@ -604,6 +607,11 @@ export function PaperPanel() {
   const canvasSize = useCanvasViewStore((s) => s.canvasSize);
   const setCanvasSize = useCanvasViewStore((s) => s.setCanvasSize);
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  /** 纸面根（.pp-root）：挂载时注入版式 token 为 CSS 变量（单一真源 type-tokens）。 */
+  const paperRootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (paperRootRef.current) injectPaperTokens(paperRootRef.current);
+  }, []);
   /** 世界层（pp-world）引用：缩放停稳后摘 will-change + 强制 reflow 用。 */
   const worldRef = useRef<HTMLDivElement | null>(null);
 
@@ -881,7 +889,8 @@ export function PaperPanel() {
       const res = translateMessagesCached(msgs, pinsMap, cache);
       cache = res.cache;
       translateCacheBySession.current.set(s.id, cache);
-      const blocks = adaptBlocks(res.blocks, anchor.width);
+      // 工具组收起摘除（2026-08-30 会话流专项）：折叠态组头的子卡不进布局栈
+      const blocks = collapseToolGroups(adaptBlocks(res.blocks, anchor.width), foldedOf);
 
       const stack = blocks.map((b) => ({
         id: b.id,
@@ -2125,7 +2134,7 @@ export function PaperPanel() {
   return (
     <PaperDockContext.Provider value={dockContext}>
       <PaperRegionContext.Provider value={regionContext}>
-        <div className="pp-root">
+        <div className="pp-root" ref={paperRootRef}>
           <div className="pp-topbar">
             <span className="pp-title">画布</span>
             <span className="pp-tag">兰台 · CANVAS</span>

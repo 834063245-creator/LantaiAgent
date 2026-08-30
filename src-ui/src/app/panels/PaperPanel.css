@@ -437,8 +437,8 @@
 
 /* ── 来文（user）：楷书手迹 + 朱砂批线 ── */
 .pp-block.pp-user {
-  padding-left: 18px;
-  border-left: 2px solid var(--seal);
+  padding-left: var(--pp-ch-user-padL);
+  border-left: var(--pp-ch-user-borderL) solid var(--seal);
 }
 .pp-block.pp-user .pp-kind .pp-zh {
   color: var(--seal-deep);
@@ -447,8 +447,8 @@
 .pp-block.pp-user .pp-body {
   font-family: var(--f-kai);
   font-weight: 400;
-  font-size: 16px; /* B4 环1 拍板 C：seal-deep 保持，字号 18→16（收正文 17 之下） */
-  line-height: 1.9;
+  font-size: var(--pp-type-user-size); /* B4 环1 拍板 C：seal-deep 保持，字号 18→16（收正文 17 之下） */
+  line-height: var(--pp-type-user-lh);
   color: var(--seal-deep);
 }
 
@@ -458,10 +458,10 @@
   display: block;
   text-align: center;
   color: var(--ink-3);
-  font-size: 14px;
+  font-size: var(--pp-ch-user-asterismLine);
   line-height: 1;
   letter-spacing: 0.6em;
-  margin: 30px 0 0;
+  margin: var(--pp-ch-user-asterismMarginTop) 0 0;
   user-select: none;
 }
 
@@ -488,8 +488,8 @@
  * 纵向量纪律：块元素只用「padding 上下面距 + margin-bottom 块间距」，
  * 不用 margin-top（首元素 margin 逃逸 .pp-body 会破坏测高）。 */
 .pp-block.pp-markdown .pp-body {
-  font-size: 17px;
-  line-height: 2;
+  font-size: var(--pp-type-body-size);
+  line-height: var(--pp-type-body-lh);
   color: var(--ink-1);
 }
 
@@ -501,7 +501,7 @@
 }
 
 .pp-md-p {
-  margin: 0 0 14px;
+  margin: 0 0 var(--pp-md-p-gap);
 }
 
 /* 标题：padding 承担上下距（不入 margin 塌陷），宋体加粗、墨色随级加深 */
@@ -511,36 +511,36 @@
   color: var(--ink-1);
 }
 .pp-md-h1 {
-  font-size: 20px;
-  line-height: 1.5;
-  padding: 22px 0 10px;
+  font-size: var(--pp-md-h1-size);
+  line-height: var(--pp-md-h1-lh);
+  padding: var(--pp-md-h1-pt) 0 var(--pp-md-h1-pb);
 }
 .pp-md-h2 {
-  font-size: 18px;
-  line-height: 1.6;
-  padding: 20px 0 8px;
+  font-size: var(--pp-md-h2-size);
+  line-height: var(--pp-md-h2-lh);
+  padding: var(--pp-md-h2-pt) 0 var(--pp-md-h2-pb);
 }
 .pp-md-h3 {
-  font-size: 16.5px;
-  line-height: 1.7;
-  padding: 16px 0 6px;
+  font-size: var(--pp-md-h3-size);
+  line-height: var(--pp-md-h3-lh);
+  padding: var(--pp-md-h3-pt) 0 var(--pp-md-h3-pb);
 }
 .pp-md-h4 {
-  font-size: 15.5px;
-  line-height: 1.8;
-  padding: 14px 0 6px;
+  font-size: var(--pp-md-h4-size);
+  line-height: var(--pp-md-h4-lh);
+  padding: var(--pp-md-h4-pt) 0 var(--pp-md-h4-pb);
 }
 
 /* 列表：标记列绝对定位（不占宽），条目列缩进 26（镜像 MD_LI_INDENT） */
 .pp-md-list {
-  margin: 0 0 14px;
+  margin: 0 0 var(--pp-md-listGap);
   padding: 0;
   list-style: none;
 }
 .pp-md-li {
   position: relative;
-  margin: 0 0 6px;
-  padding-left: 26px;
+  margin: 0 0 var(--pp-md-liGap);
+  padding-left: var(--pp-md-liIndent);
 }
 .pp-md-li:last-child {
   margin-bottom: 0;
@@ -557,15 +557,15 @@
   font-variant-numeric: tabular-nums;
 }
 .pp-md-sub {
-  margin-top: 4px;
-  padding-left: 22px;
+  margin-top: var(--pp-md-subTop);
+  padding-left: var(--pp-md-subIndent);
 }
 
 /* 引用：石墨左线 + 缩进（正文同字号，色降 ink-2） */
 .pp-md-quote {
-  margin: 0 0 14px;
-  padding: 2px 0 2px 16px;
-  border-left: 2px solid color-mix(in oklch, var(--graphite) 45%, transparent);
+  margin: 0 0 var(--pp-md-quoteGap);
+  padding: var(--pp-md-quotePadV) 0 var(--pp-md-quotePadV) var(--pp-md-quotePadL);
+  border-left: var(--pp-md-quoteBorderL) solid color-mix(in oklch, var(--graphite) 45%, transparent);
   color: var(--ink-2);
 }
 .pp-md-quote .pp-md-p {
@@ -574,47 +574,47 @@
 
 /* 图码（列表/引用内幸存的围栏——独立 diff 块之外的兜底） */
 .pp-md-code {
-  margin: 0 0 14px;
-  padding: 10px 12px;
-  border-left: 3px solid var(--indigo);
+  margin: 0 0 var(--pp-md-codeGap);
+  padding: var(--pp-md-codePadV) var(--pp-md-codePadH);
+  border-left: var(--pp-md-codeBorderL) solid var(--indigo);
   background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
   font-family: var(--f-mono);
-  font-size: 12.5px;
-  line-height: 1.7;
+  font-size: var(--pp-type-mono-size);
+  line-height: var(--pp-type-mono-lh);
   color: var(--ink-1);
   white-space: pre-wrap;
   word-break: break-all;
-  max-height: 260px;
+  max-height: var(--pp-lim-preMaxH);
   overflow: auto;
 }
 
 /* 分隔线 */
 .pp-md-hr {
   border: none;
-  border-top: 1px solid var(--rule-soft);
-  margin: 18px 0;
+  border-top: var(--pp-md-hrBorder) solid var(--rule-soft);
+  margin: var(--pp-md-hrMargin) 0;
 }
 
 /* 表格（GFM）：等宽小字 + 弱规线（.pp-grid-table 同族视觉） */
 .pp-md-table {
   width: 100%;
   border-collapse: collapse;
-  margin: 0 0 14px;
+  margin: 0 0 var(--pp-md-tableGap);
   font-family: var(--f-mono);
-  font-size: 11.5px;
-  line-height: 1.5;
+  font-size: var(--pp-md-tableSize);
+  line-height: var(--pp-md-tableLh);
   color: var(--ink-1);
 }
 .pp-md-table th {
   text-align: left;
   font-weight: 600;
   color: var(--ink-2);
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--rule-soft);
+  padding: var(--pp-md-tableCellPadV) var(--pp-md-tableCellPadH);
+  border-bottom: var(--pp-md-tableRowBorder) solid var(--rule-soft);
 }
 .pp-md-table td {
-  padding: 4px 8px;
-  border-bottom: 0.5px solid color-mix(in oklch, var(--ink-3) 18%, transparent);
+  padding: var(--pp-md-tableCellPadV) var(--pp-md-tableCellPadH);
+  border-bottom: var(--pp-md-tableCellBorder) solid color-mix(in oklch, var(--ink-3) 18%, transparent);
 }
 .pp-md-table tr:last-child td {
   border-bottom: none;
@@ -630,8 +630,8 @@
 .pp-md-ci {
   font-family: var(--f-mono);
   font-size: 0.82em;
-  padding: 1px 5px;
-  border: 1px solid var(--rule-soft);
+  padding: 1px var(--pp-md-ciPadH);
+  border: var(--pp-md-ciBorder) solid var(--rule-soft);
   background: color-mix(in oklch, var(--paper-deep) 65%, transparent);
 }
 .pp-md-a {
@@ -663,6 +663,11 @@
   cursor: pointer;
   text-align: left;
   font-variant-numeric: tabular-nums;
+  /* 单行守卫（2026-08-30 会话流专项）：折叠行现在携带名字+参数摘要，窄钉块下
+   * 换行会涨高破坏测高镜像（折叠行恒 14px+6px）——截断不换行。 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: color var(--snap);
 }
 .pp-fold:hover {
@@ -683,21 +688,21 @@
 
 /* ── 夹注（reasoning）：石墨铅笔 + 虚线勾边 ── */
 .pp-block.pp-reasoning {
-  padding-left: 18px;
-  border-left: 2px dashed var(--graphite);
+  padding-left: var(--pp-ch-reasoning-padL);
+  border-left: var(--pp-ch-reasoning-borderL) dashed var(--graphite);
 }
 .pp-block.pp-reasoning .pp-kind .pp-zh {
   color: var(--graphite);
 }
 .pp-block.pp-reasoning .pp-body {
-  font-size: 13.5px;
-  line-height: 1.85;
+  font-size: var(--pp-type-reasoning-size);
+  line-height: var(--pp-type-reasoning-lh);
   color: var(--graphite);
 }
 
 /* ── 脚注（tool）：石青注线小字 ── */
 .pp-block.pp-tool {
-  padding-top: 10px;
+  padding-top: var(--pp-ch-tool-padTop);
 }
 .pp-block.pp-tool::before {
   content: "";
@@ -711,26 +716,44 @@
 .pp-block.pp-tool .pp-kind .pp-zh {
   color: var(--indigo);
 }
+
+/* ── 工具组（2026-08-30 会话流专项）：同轮并发调用的折叠头 ──
+ * 脚注族同款石青注线；折叠行即本体（foldLabel 摘要），展开后子卡各回各流。 */
+.pp-block.pp-toolgroup {
+  padding-top: var(--pp-ch-tool-padTop);
+}
+.pp-block.pp-toolgroup::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 44px;
+  height: 1.5px;
+  background: var(--indigo);
+}
+.pp-block.pp-toolgroup .pp-kind .pp-zh {
+  color: var(--indigo);
+}
 .pp-block.pp-tool pre {
   margin: 0;
   font-family: var(--f-mono);
-  font-size: 11.5px;
-  line-height: 1.6;
+  font-size: var(--pp-type-tool-size);
+  line-height: var(--pp-type-tool-lh);
   white-space: pre-wrap;
   word-break: break-all;
   color: var(--indigo);
-  max-height: 260px;
+  max-height: var(--pp-lim-preMaxH);
   overflow: auto;
 }
 .pp-block.pp-tool .pp-out {
-  margin-top: 6px;
-  border-top: var(--rule-soft);
-  padding-top: 6px;
+  margin-top: var(--pp-ch-out-marginTop);
+  border-top: var(--pp-ch-out-borderTop) solid var(--rule-soft);
+  padding-top: var(--pp-ch-out-padTop);
   font-family: var(--f-mono);
-  font-size: 11px;
-  line-height: 1.5;
+  font-size: var(--pp-type-out-size);
+  line-height: var(--pp-type-out-lh);
   color: var(--ink-2); /* B3 环1 拍板：工具输出=信息承载，提墨 ink-3→ink-2 */
-  max-height: 160px;
+  max-height: var(--pp-lim-outMaxH);
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-all;
@@ -739,7 +762,7 @@
 /* ── 程文（code，P2-A）：程序执行卡——石青注线同源（脚注族），
  *  程序体带浅底色块与 tool 块的参数行区分（程序语义 vs 调用语义） ── */
 .pp-block.pp-code {
-  padding-top: 10px;
+  padding-top: var(--pp-ch-tool-padTop);
 }
 .pp-block.pp-code::before {
   content: "";
@@ -756,26 +779,26 @@
 .pp-block.pp-code .pp-code-src {
   margin: 0;
   font-family: var(--f-mono);
-  font-size: 11.5px;
-  line-height: 1.6;
+  font-size: var(--pp-type-tool-size);
+  line-height: var(--pp-type-tool-lh);
   color: var(--ink-1);
-  max-height: 320px;
+  max-height: var(--pp-ch-codeSrc-maxH);
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-all;
-  border-left: 3px solid var(--indigo);
+  border-left: var(--pp-ch-codeSrc-borderL) solid var(--indigo);
   background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
-  padding: 10px 0 10px 14px;
+  padding: var(--pp-ch-codeSrc-padV) 0 var(--pp-ch-codeSrc-padV) var(--pp-ch-codeSrc-padL);
 }
 .pp-block.pp-code .pp-out {
-  margin-top: 6px;
-  border-top: var(--rule-soft);
-  padding-top: 6px;
+  margin-top: var(--pp-ch-out-marginTop);
+  border-top: var(--pp-ch-out-borderTop) solid var(--rule-soft);
+  padding-top: var(--pp-ch-out-padTop);
   font-family: var(--f-mono);
-  font-size: 11px;
-  line-height: 1.5;
+  font-size: var(--pp-type-out-size);
+  line-height: var(--pp-type-out-lh);
   color: var(--ink-2); /* B3 环1 拍板：程文输出=信息承载，提墨 ink-3→ink-2 */
-  max-height: 200px;
+  max-height: var(--pp-ch-codeOut-maxH);
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-all;
@@ -784,25 +807,25 @@
 /* ── 抄录（diff）：栏内图版，3px 硬左线 + 上下规线 + 米黄底 ── */
 .pp-block.pp-diff .pp-lang {
   font-family: var(--f-mono);
-  font-size: 10px;
-  line-height: 1;
+  font-size: var(--pp-ch-diff-langSize);
+  line-height: var(--pp-ch-diff-langLh);
   color: var(--ink-3);
-  margin-bottom: 6px;
+  margin-bottom: var(--pp-ch-diff-langMarginB);
 }
 .pp-block.pp-diff pre {
   margin: 0;
-  border-left: 3px solid var(--ink-1);
-  border-top: var(--rule-soft);
-  border-bottom: var(--rule-soft);
-  padding: 14px 0 14px 20px;
+  border-left: var(--pp-ch-diff-preBorderL) solid var(--ink-1);
+  border-top: var(--pp-ch-diff-preBorderTb) solid var(--rule-soft);
+  border-bottom: var(--pp-ch-diff-preBorderTb) solid var(--rule-soft);
+  padding: var(--pp-ch-diff-prePadV) 0 var(--pp-ch-diff-prePadV) var(--pp-ch-diff-prePadL);
   background: color-mix(in oklch, var(--paper-deep) 55%, transparent);
   font-family: var(--f-mono);
-  font-size: 12.5px;
-  line-height: 1.7;
+  font-size: var(--pp-type-mono-size);
+  line-height: var(--pp-type-mono-lh);
   color: var(--ink-1);
   white-space: pre-wrap;
   word-break: break-all;
-  max-height: 260px;
+  max-height: var(--pp-lim-preMaxH);
   overflow: auto;
 }
 /* B5 环2 拍板（红绿墨色化）：add 松绿（--pass 矿物绿）/ del 朱砂深+删除线。
@@ -822,17 +845,17 @@
 .pp-pc {
   border-top: var(--rule-hard);
   border-bottom: var(--rule-soft);
-  padding: 14px 0;
+  padding: var(--pp-ch-plan-padV) 0;
 }
 .pp-pc-head {
   display: flex;
   align-items: baseline;
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: var(--pp-ch-plan-headGap);
+  margin-bottom: var(--pp-ch-plan-headMarginB);
 }
 .pp-pc-head .pp-pc-t {
   font-family: var(--f-song);
-  font-size: 15px;
+  font-size: var(--pp-ch-plan-headSize);
   font-weight: 600;
   color: var(--ink-1);
 }
@@ -845,11 +868,11 @@
 .pp-pc li {
   counter-increment: plan;
   position: relative;
-  padding-left: 36px;
-  font-size: 13.5px;
-  line-height: 1.8;
+  padding-left: var(--pp-ch-plan-itemPadL);
+  font-size: var(--pp-ch-plan-itemSize);
+  line-height: var(--pp-ch-plan-itemLh);
   color: var(--ink-2);
-  margin-bottom: 7px;
+  margin-bottom: var(--pp-ch-plan-itemGap);
 }
 .pp-pc li:last-child {
   margin-bottom: 0;
@@ -858,9 +881,9 @@
   content: counter(plan, decimal-leading-zero);
   position: absolute;
   left: 0;
-  top: 2px;
+  top: var(--pp-ch-plan-numTop);
   font-family: var(--f-mono);
-  font-size: 10px;
+  font-size: var(--pp-ch-plan-numSize);
   letter-spacing: 0.1em;
   color: var(--indigo);
   font-variant-numeric: tabular-nums;
@@ -871,22 +894,22 @@
 
 /* 拟策审批（paper-interaction-handoff #2）：方案选择 + 操作行 */
 .pp-pc-options {
-  margin-top: 14px;
+  margin-top: var(--pp-ch-plan-optionsMarginTop);
   border-top: var(--rule-soft);
-  padding-top: 10px;
+  padding-top: var(--pp-ch-plan-optionsPadTop);
 }
 .pp-pc-option {
   display: block;
   width: 100%;
   text-align: left;
-  padding: 7px 10px;
-  margin-bottom: 6px;
-  border: 1px solid var(--rule-soft);
+  padding: var(--pp-ch-plan-optionPadV) var(--pp-ch-plan-optionPadH);
+  margin-bottom: var(--pp-ch-plan-optionGap);
+  border: var(--pp-ch-plan-optionBorder) solid var(--rule-soft);
   border-radius: 0;
   cursor: pointer;
   background: transparent;
   font-family: var(--f-song);
-  font-size: 13px;
+  font-size: var(--pp-ch-plan-optionSize);
   color: var(--ink-2);
   transition:
     border-color var(--snap),
@@ -909,22 +932,22 @@
 }
 .pp-pc-option-desc {
   display: block;
-  font-size: 12px;
+  font-size: var(--pp-ch-plan-optionDescSize);
   color: var(--ink-3);
-  margin-top: 2px;
+  margin-top: var(--pp-ch-plan-optionDescMarginTop);
 }
 .pp-pc-actions {
   display: flex;
-  gap: 8px;
-  margin-top: 14px;
+  gap: var(--pp-ch-plan-actionsGap);
+  margin-top: var(--pp-ch-plan-actionsMarginTop);
 }
 .pp-pc-btn {
-  padding: 5px 14px;
-  border: 1px solid var(--rule-soft);
+  padding: var(--pp-ch-plan-actionsPadV) 14px;
+  border: var(--pp-ch-plan-actionsBorder) solid var(--rule-soft);
   border-radius: 0;
   background: transparent;
   font-family: var(--f-song);
-  font-size: 13px;
+  font-size: var(--pp-ch-plan-actionsSize);
   color: var(--ink-2);
   cursor: pointer;
   transition:
@@ -979,12 +1002,12 @@
 /* ── 贴黄（notice）：系统通知作土黄纸条 ── */
 .pp-block.pp-notice {
   background: color-mix(in oklch, var(--warn) 10%, var(--paper));
-  border-bottom: var(--rule-soft);
-  padding: 8px 12px;
+  border-bottom: var(--pp-ch-notice-borderBottom) solid var(--rule-soft);
+  padding: var(--pp-ch-notice-padV) var(--pp-ch-notice-padH);
 }
 .pp-block.pp-notice .pp-body {
-  font-size: 12.5px;
-  line-height: 1.7;
+  font-size: var(--pp-type-notice-size);
+  line-height: var(--pp-type-notice-lh);
   color: var(--ink-2);
 }
 
@@ -1741,14 +1764,14 @@
 .pp-marginalia {
   position: absolute;
   top: 2px;
-  left: calc(100% + 24px);
-  width: 240px;
+  left: calc(100% + var(--pp-ch-marginalia-offset));
+  width: var(--pp-ch-marginalia-width);
   font-family: var(--f-song);
-  font-size: 13.5px;
-  line-height: 1.85;
+  font-size: var(--pp-type-reasoning-size);
+  line-height: var(--pp-type-reasoning-lh);
   color: var(--graphite);
-  border-left: 2px solid var(--ink-4);
-  padding-left: 10px;
+  border-left: var(--pp-ch-marginalia-borderL) solid var(--ink-4);
+  padding-left: var(--pp-ch-marginalia-padL);
   white-space: pre-wrap;
 }
 /* 眉批折叠切换（P5 夹注恒折拍板延续：默认收起「▸ 思考 N 字」，点击展开） */
@@ -1838,10 +1861,10 @@ body.pp-pin-grabbing {
   border: var(--rule-dashed);
   background: var(--paper);
   border-radius: 0;
-  padding: 10px 12px;
+  padding: var(--pp-ch-strip-padV) var(--pp-ch-strip-padH);
   color: var(--ink-2);
-  font-size: 12.5px;
-  line-height: 1.7;
+  font-size: var(--pp-ch-strip-size);
+  line-height: var(--pp-ch-strip-lh);
   cursor: grab;
   user-select: none;
   z-index: 40;
@@ -2173,15 +2196,15 @@ body.pp-pin-grabbing {
 
 /* ── 资产块兜底 JSON 视图（WO-4）：未知 kind / 表现原语未接时保信息保真 ── */
 .pp-json {
-  padding: 10px 0 2px;
+  padding: var(--pp-asset-json-padTop) 0 var(--pp-asset-json-padBottom);
 }
 .pp-json-head {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  margin-bottom: 6px;
+  margin-bottom: var(--pp-asset-json-headMarginB);
   font-family: var(--f-mono);
-  font-size: 10px;
+  font-size: var(--pp-asset-json-headSize);
   letter-spacing: 0.1em;
   color: var(--ink-3);
 }
@@ -2197,67 +2220,67 @@ body.pp-pin-grabbing {
 }
 .pp-json-pre {
   margin: 0;
-  padding: 10px 12px;
-  border-left: 3px solid var(--indigo);
+  padding: var(--pp-asset-json-prePadV) var(--pp-asset-json-prePadH);
+  border-left: var(--pp-asset-json-preBorderL) solid var(--indigo);
   background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
   font-family: var(--f-mono);
-  font-size: 11px;
-  line-height: 1.6;
+  font-size: var(--pp-asset-json-preSize);
+  line-height: var(--pp-asset-json-preLh);
   color: var(--ink-2);
   white-space: pre-wrap;
   word-break: break-word;
-  max-height: 360px;
+  max-height: var(--pp-asset-json-preMaxH);
   overflow: auto;
 }
 
 /* ── 资产表现原语（WO-6）：grid / chart / metric / media / graph / html / form ── */
 
 .pp-grid {
-  padding: 2px 0;
+  padding: var(--pp-asset-grid-padV) 0;
 }
 .pp-grid-caption {
   font-family: var(--f-song);
-  font-size: 13px;
+  font-size: var(--pp-asset-grid-captionSize);
   color: var(--ink-2);
-  margin-bottom: 6px;
+  margin-bottom: var(--pp-asset-grid-captionMarginB);
 }
 .pp-grid-table {
   width: 100%;
   border-collapse: collapse;
   font-family: var(--f-mono);
-  font-size: 11px;
+  font-size: var(--pp-asset-grid-rowSize);
   color: var(--ink-1);
 }
 .pp-grid-table th {
   text-align: left;
   font-weight: 500;
   color: var(--ink-3);
-  border-bottom: var(--rule-soft);
-  padding: 4px 8px;
+  border-bottom: var(--pp-asset-grid-headBorder) solid var(--rule-soft);
+  padding: var(--pp-asset-grid-cellPadV) var(--pp-asset-grid-cellPadH);
 }
 .pp-grid-table td {
-  padding: 4px 8px;
-  border-bottom: 0.5px solid color-mix(in oklch, var(--ink-3) 18%, transparent);
+  padding: var(--pp-asset-grid-cellPadV) var(--pp-asset-grid-cellPadH);
+  border-bottom: var(--pp-asset-grid-rowBorder) solid color-mix(in oklch, var(--ink-3) 18%, transparent);
 }
 .pp-grid-table tr:last-child td {
   border-bottom: none;
 }
 
 .pp-chart {
-  padding: 4px 0;
+  padding: var(--pp-asset-chart-padV) 0;
 }
 .pp-chart-type {
   font-family: var(--f-mono);
-  font-size: 9px;
+  font-size: var(--pp-asset-chart-typeSize);
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--ink-3);
-  margin-bottom: 4px;
+  margin-bottom: var(--pp-asset-chart-typeMarginB);
 }
 .pp-chart-svg {
   width: 100%;
   height: auto;
-  max-height: 240px;
+  max-height: var(--pp-asset-chart-svgMaxH);
 }
 .pp-chart-bar {
   fill: var(--indigo);
@@ -2272,7 +2295,7 @@ body.pp-pin-grabbing {
 }
 .pp-chart-pie {
   display: flex;
-  height: 180px;
+  height: var(--pp-asset-chart-pieH);
   border-radius: 50%;
   overflow: hidden;
   background: var(--paper-deep);
@@ -2286,44 +2309,44 @@ body.pp-pin-grabbing {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 12px;
-  margin-top: 6px;
+  margin-top: var(--pp-asset-chart-labelMarginTop);
   font-family: var(--f-mono);
-  font-size: 9px;
+  font-size: var(--pp-asset-chart-labelSize);
   color: var(--ink-3);
 }
 
 .pp-metric {
-  padding: 2px 0;
+  padding: var(--pp-asset-metric-padV) 0;
 }
 .pp-metric-caption {
   font-family: var(--f-song);
-  font-size: 13px;
+  font-size: var(--pp-asset-metric-captionSize);
   color: var(--ink-2);
-  margin-bottom: 6px;
+  margin-bottom: var(--pp-asset-metric-captionMarginB);
 }
 .pp-metric-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(var(--pp-asset-metric-minCol), 1fr));
+  gap: var(--pp-asset-metric-gap);
 }
 .pp-metric-card {
-  border: var(--rule-soft);
+  border: var(--pp-asset-metric-cardBorder) solid var(--rule-soft);
   background: color-mix(in oklch, var(--paper-deep) 40%, transparent);
   padding: 8px 10px;
 }
 .pp-metric-label {
   font-family: var(--f-song);
-  font-size: 11px;
+  font-size: var(--pp-asset-metric-cardLabelSize);
   color: var(--ink-3);
 }
 .pp-metric-value {
   font-family: var(--f-mono);
-  font-size: 20px;
-  line-height: 1.2;
+  font-size: var(--pp-asset-metric-cardValueSize);
+  line-height: var(--pp-asset-metric-cardValueLh);
   color: var(--ink-1);
 }
 .pp-metric-unit {
-  font-size: 11px;
+  font-size: var(--pp-asset-metric-cardLabelSize);
   color: var(--ink-3);
   margin-left: 3px;
 }
@@ -2341,17 +2364,17 @@ body.pp-pin-grabbing {
 }
 
 .pp-media {
-  padding: 2px 0;
+  padding: var(--pp-asset-media-padV) 0;
 }
 .pp-media-label {
   font-family: var(--f-song);
-  font-size: 13px;
+  font-size: var(--pp-asset-media-labelSize);
   color: var(--ink-2);
-  margin-bottom: 4px;
+  margin-bottom: var(--pp-asset-media-labelMarginB);
 }
 .pp-media-img {
   max-width: 100%;
-  max-height: 320px;
+  max-height: var(--pp-asset-media-imgMaxH);
   object-fit: contain;
   border: var(--rule-soft);
 }
@@ -2360,7 +2383,7 @@ body.pp-pin-grabbing {
   align-items: baseline;
   gap: 8px;
   font-family: var(--f-mono);
-  font-size: 11px;
+  font-size: var(--pp-asset-media-rowSize);
   color: var(--ink-2);
 }
 .pp-media-ext {
@@ -2373,12 +2396,12 @@ body.pp-pin-grabbing {
 }
 
 .pp-graph {
-  padding: 4px 0;
+  padding: var(--pp-asset-graph-padV) 0;
 }
 .pp-graph-svg {
   width: 100%;
   height: auto;
-  max-height: 360px;
+  max-height: var(--pp-asset-graph-svgMaxH);
 }
 .pp-graph-edge {
   stroke: var(--ink-3);
@@ -2396,11 +2419,11 @@ body.pp-pin-grabbing {
 }
 
 .pp-html {
-  padding: 2px 0;
+  padding: var(--pp-asset-html-padV) 0;
 }
 .pp-html-frame {
   width: 100%;
-  height: 240px;
+  height: var(--pp-asset-html-frameDefaultH);
   border: var(--rule-soft);
   background: var(--paper);
   /* flow 限高 1000px 可滚动（A3）；pinned 不限高由 .pp-pinned 覆盖 */
@@ -2412,43 +2435,43 @@ body.pp-pin-grabbing {
 }
 
 .pp-form {
-  padding: 2px 0;
+  padding: var(--pp-asset-form-padV) 0;
 }
 .pp-form-title {
   font-family: var(--f-song);
-  font-size: 15px;
+  font-size: var(--pp-asset-form-titleSize);
   font-weight: 600;
   color: var(--ink-1);
-  margin-bottom: 4px;
+  margin-bottom: var(--pp-asset-form-titleMarginB);
 }
 .pp-form-body {
   font-family: var(--f-song);
-  font-size: 13px;
-  line-height: 1.7;
+  font-size: var(--pp-asset-form-bodySize);
+  line-height: var(--pp-asset-form-bodyLh);
   color: var(--ink-2);
-  margin-bottom: 8px;
+  margin-bottom: var(--pp-asset-form-bodyMarginB);
 }
 .pp-form-options {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-bottom: 8px;
+  gap: var(--pp-asset-form-optGap);
+  margin-bottom: var(--pp-asset-form-sectionGap);
 }
 .pp-form-option {
-  border: var(--rule-soft);
-  padding: 6px 10px;
+  border: var(--pp-asset-form-optBorder) solid var(--rule-soft);
+  padding: var(--pp-asset-form-optPadV) 10px;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 .pp-form-option-label {
   font-family: var(--f-song);
-  font-size: 13px;
+  font-size: var(--pp-asset-form-optLabelSize);
   color: var(--ink-1);
 }
 .pp-form-option-desc {
   font-family: var(--f-song);
-  font-size: 11px;
+  font-size: var(--pp-asset-form-optDescSize);
   color: var(--ink-3);
 }
 .pp-form-actions {

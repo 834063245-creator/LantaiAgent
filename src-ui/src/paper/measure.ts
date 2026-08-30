@@ -44,87 +44,93 @@ import {
 import { parseCircledSegments } from './marks';
 import { prettyToolArgs } from './tool-text';
 
-/* ── 纸面字体常量（镜像 PaperPanel.css 兰台注疏版式——改样式两处同步）──
+/* ── 纸面字体常量（2026-08-30 token 化：单一真源 = type-tokens.ts）──
  * 兰台四体分工（docs/design/lantai-design-spec.md §2）：宋体正文 / 楷书来文 /
  * 等宽机读；英文思考链走宋体/Garamond，楷书只给人的来文。
  * 栈全具名——pretext 对 system-ui 在 macOS 不建模（PLATFORM_BUGS.md），
- * 且 canvas 测量字体必须与渲染字体一致，具名栈两处可对齐。 */
+ * 且 canvas 测量字体必须与渲染字体一致（FONT_STACKS 与 tokens.css --f-* 同源）。 */
 
-const SONG_STACK = '"EB Garamond Variable", "EB Garamond", "Noto Serif SC", "Songti SC", serif';
-const KAI_STACK = '"Ma Shan Zheng", "EB Garamond Variable", "Kaiti SC", "STKaiti", "KaiTi", "楷体", serif';
-const MONO_STACK = '"IBM Plex Mono", "Cascadia Code", "Consolas", monospace';
+import {
+  ASSET_TOKENS,
+  CHROME_DERIVED,
+  CHROME_TOKENS,
+  FOLIO_TOKENS,
+  FONT_STACKS,
+  LIMIT_TOKENS,
+  MD_TOKENS,
+  PAPER_TYPE,
+} from './type-tokens';
+
+const SONG_STACK = FONT_STACKS.song;
+const KAI_STACK = FONT_STACKS.kai;
+const MONO_STACK = FONT_STACKS.mono;
 
 /** 来文（user）：楷书 16px/1.9 朱砂深（.pp-block.pp-user .pp-body）
  *  B4 环1 拍板 C：字号 18→16 收到正文 17 之下，行高同 C 变体 1.9 */
-export const PAPER_USER_FONT = `16px ${KAI_STACK}`;
-export const PAPER_USER_LINE_HEIGHT = 16 * 1.9;
+export const PAPER_USER_FONT = `${PAPER_TYPE.user.size}px ${FONT_STACKS[PAPER_TYPE.user.stack]}`;
+export const PAPER_USER_LINE_HEIGHT = PAPER_TYPE.user.size * PAPER_TYPE.user.lh;
 
 /** 正文（markdown）：宋体 17px/2.0（.pp-block.pp-markdown .pp-body） */
-export const PAPER_BODY_FONT = `17px ${SONG_STACK}`;
-export const PAPER_BODY_LINE_HEIGHT = 17 * 2;
+export const PAPER_BODY_FONT = `${PAPER_TYPE.body.size}px ${FONT_STACKS[PAPER_TYPE.body.stack]}`;
+export const PAPER_BODY_LINE_HEIGHT = PAPER_TYPE.body.size * PAPER_TYPE.body.lh;
 
 /** 夹注（reasoning）：13.5px/1.85 石墨（.pp-block.pp-reasoning .pp-body） */
-export const PAPER_REASONING_FONT = `13.5px ${SONG_STACK}`;
-export const PAPER_REASONING_LINE_HEIGHT = 13.5 * 1.85;
+export const PAPER_REASONING_FONT = `${PAPER_TYPE.reasoning.size}px ${FONT_STACKS[PAPER_TYPE.reasoning.stack]}`;
+export const PAPER_REASONING_LINE_HEIGHT = PAPER_TYPE.reasoning.size * PAPER_TYPE.reasoning.lh;
 
 /** 贴黄（notice）：12.5px/1.7（.pp-block.pp-notice .pp-body） */
-export const PAPER_NOTICE_FONT = `12.5px ${SONG_STACK}`;
-export const PAPER_NOTICE_LINE_HEIGHT = 12.5 * 1.7;
+export const PAPER_NOTICE_FONT = `${PAPER_TYPE.notice.size}px ${FONT_STACKS[PAPER_TYPE.notice.stack]}`;
+export const PAPER_NOTICE_LINE_HEIGHT = PAPER_TYPE.notice.size * PAPER_TYPE.notice.lh;
 
 /** 抄录（diff）图版：等宽 12.5px/1.7（.pp-block.pp-diff pre） */
-export const PAPER_MONO_FONT = `12.5px ${MONO_STACK}`;
-export const PAPER_MONO_LINE_HEIGHT = 12.5 * 1.7;
+export const PAPER_MONO_FONT = `${PAPER_TYPE.mono.size}px ${FONT_STACKS[PAPER_TYPE.mono.stack]}`;
+export const PAPER_MONO_LINE_HEIGHT = PAPER_TYPE.mono.size * PAPER_TYPE.mono.lh;
 
 /** 脚注（tool）args：等宽 11.5px/1.6 石青（.pp-block.pp-tool pre） */
-export const PAPER_TOOL_FONT = `11.5px ${MONO_STACK}`;
-export const PAPER_TOOL_LINE_HEIGHT = 11.5 * 1.6;
+export const PAPER_TOOL_FONT = `${PAPER_TYPE.tool.size}px ${FONT_STACKS[PAPER_TYPE.tool.stack]}`;
+export const PAPER_TOOL_LINE_HEIGHT = PAPER_TYPE.tool.size * PAPER_TYPE.tool.lh;
 
 /** 脚注输出/错误（.pp-out）：等宽 11px/1.5 */
-export const PAPER_OUT_FONT = `11px ${MONO_STACK}`;
-export const PAPER_OUT_LINE_HEIGHT = 11 * 1.5;
+export const PAPER_OUT_FONT = `${PAPER_TYPE.out.size}px ${FONT_STACKS[PAPER_TYPE.out.stack]}`;
+export const PAPER_OUT_LINE_HEIGHT = PAPER_TYPE.out.size * PAPER_TYPE.out.lh;
 
 /** 拟策条目：13.5px/1.8（.pp-pc li） */
-export const PAPER_PLAN_ITEM_FONT = `13.5px ${SONG_STACK}`;
-export const PAPER_PLAN_ITEM_LINE_HEIGHT = 13.5 * 1.8;
+export const PAPER_PLAN_ITEM_FONT = `${PAPER_TYPE.planItem.size}px ${FONT_STACKS[PAPER_TYPE.planItem.stack]}`;
+export const PAPER_PLAN_ITEM_LINE_HEIGHT = PAPER_TYPE.planItem.size * PAPER_TYPE.planItem.lh;
 
 /** 正文段距（2026-08-30 markdown 专项改版：17px/行距 2.0 下 10px 段距比行距
  *  还小、段落黏连——提到 14px；.pp-md-p margin-bottom 镜像）。 */
-export const MD_P_GAP = 14;
+export const MD_P_GAP = MD_TOKENS.pGap;
 
 /** 正文字号（PAPER_BODY_FONT 同源拆出——rich 字体合成用）。 */
-const BODY_SIZE = 17;
+const BODY_SIZE = PAPER_TYPE.body.size;
 
-/* ── markdown 子版式常量（逐字镜像 PaperPanel.css .pp-md-*——2026-08-30 增）──
+/* ── markdown 子版式常量（2026-08-30 token 化：单一真源 = type-tokens.ts）──
  * 结构：块元素只用「padding 上下面距 + margin-bottom 块间距」两种纵向量，
  * 测高 = Σ(元素高) + Σ(非末元素 margin-bottom)（CSS :last-child margin 归零镜像）；
  * 不用 margin-top（首元素 margin 会逃逸出 .pp-body 破坏测高）。 */
 /** 标题四级：字号 / 行高系数 / padding 上下（.pp-md-h1..h4） */
-const MD_H = [
-  { size: 20, lh: 1.5, pt: 22, pb: 10 },
-  { size: 18, lh: 1.6, pt: 20, pb: 8 },
-  { size: 16.5, lh: 1.7, pt: 16, pb: 6 },
-  { size: 15.5, lh: 1.8, pt: 14, pb: 6 },
-] as const;
-const MD_LIST_GAP = 14; // .pp-md-list margin-bottom
-const MD_LI_GAP = 6; // .pp-md-li margin-bottom（末项 :last-child 归零）
-const MD_LI_INDENT = 26; // .pp-md-li padding-left（标记列）
-const MD_SUB_INDENT = 22; // .pp-md-list--sub padding-left（嵌套列表再缩进）
-const MD_SUB_TOP = 4; // 嵌套列表与项文本间距（.pp-md-list--sub margin-top）
-const MD_QUOTE_GAP = 14; // .pp-md-quote margin-bottom
-const MD_QUOTE_PAD_V = 4; // .pp-md-quote padding 上下（2+2）
-const MD_QUOTE_INSET = 18; // .pp-md-quote padding-left 16 + border-left 2
-const MD_CODE_GAP = 14; // .pp-md-code margin-bottom
-const MD_CODE_PAD_V = 20; // .pp-md-code padding 上下（10+10）
-const MD_CODE_INSET = 27; // border-left 3 + padding 左右 12×2
-const MD_HR_H = 37; // .pp-md-hr margin 18 + 线 1 + margin 18
-const MD_HR_LAST_H = 19; // 末元素 :last-child margin-bottom 归零
-const MD_TABLE_GAP = 14; // .pp-md-table margin-bottom
-const MD_TABLE_CELL_PAD = 8; // th/td 左右 padding 8×2
-const MD_TABLE_CELL_PAD_V = 8; // th/td 上下 padding 4×2
-const MD_TABLE_ROW_BORDER = 1; // 行底规线
+const MD_H = MD_TOKENS.h;
+const MD_LIST_GAP = MD_TOKENS.listGap; // .pp-md-list margin-bottom
+const MD_LI_GAP = MD_TOKENS.liGap; // .pp-md-li margin-bottom（末项 :last-child 归零）
+const MD_LI_INDENT = MD_TOKENS.liIndent; // .pp-md-li padding-left（标记列）
+const MD_SUB_INDENT = MD_TOKENS.subIndent; // .pp-md-list--sub padding-left
+const MD_SUB_TOP = MD_TOKENS.subTop; // .pp-md-list--sub margin-top
+const MD_QUOTE_GAP = MD_TOKENS.quoteGap; // .pp-md-quote margin-bottom
+const MD_QUOTE_PAD_V = MD_TOKENS.quotePadV * 2; // .pp-md-quote padding 上下（单侧 2×2）
+const MD_QUOTE_INSET = MD_TOKENS.quotePadL + MD_TOKENS.quoteBorderL; // padding-left 16 + border-left 2
+const MD_CODE_GAP = MD_TOKENS.codeGap; // .pp-md-code margin-bottom
+const MD_CODE_PAD_V = MD_TOKENS.codePadV * 2; // .pp-md-code padding 上下（单侧 10×2）
+const MD_CODE_INSET = MD_TOKENS.codePadH * 2 + MD_TOKENS.codeBorderL; // border-left 3 + padding 左右 12×2
+const MD_HR_H = MD_TOKENS.hrMargin * 2 + MD_TOKENS.hrBorder; // margin 18 + 线 1 + margin 18
+const MD_HR_LAST_H = MD_TOKENS.hrMargin + MD_TOKENS.hrBorder; // 末元素 margin-bottom 归零
+const MD_TABLE_GAP = MD_TOKENS.tableGap; // .pp-md-table margin-bottom
+const MD_TABLE_CELL_PAD = MD_TOKENS.tableCellPadH; // th/td 左右 padding 8×2
+const MD_TABLE_CELL_PAD_V = MD_TOKENS.tableCellPadV * 2; // th/td 上下 padding 4×2
+const MD_TABLE_ROW_BORDER = MD_TOKENS.tableRowBorder; // th 行底规线
 /** 表格单元字体：等宽 11.5px/1.5（.pp-md-table） */
-const MD_TABLE_SIZE = 11.5;
-const MD_TABLE_LINE_HEIGHT = 11.5 * 1.5;
+const MD_TABLE_SIZE = MD_TOKENS.tableSize;
+const MD_TABLE_LINE_HEIGHT = MD_TOKENS.tableSize * MD_TOKENS.tableLh;
 
 /* ── 富行内精确测量（P3 2026-08-30：@chenglou/pretext/rich-inline）──
  * 有富标志（粗/斜/删/行内码/链接）的行内序列走逐片段字体精确测量——旧
@@ -135,12 +141,12 @@ const MD_TABLE_LINE_HEIGHT = 11.5 * 1.5;
  *   .pp-md del / .pp-md-a → 仅着色/下划线，无宽度影响
  *   .pp-md-ci → mono 0.82em + 横向 padding 5×2 + border 1×2
  *   .pp-circled → 600 + 横向 padding 4×2 + border 1.5×2 = 11（椭圆原子件） */
-const MD_CI_SIZE_RATIO = 0.82;
-const MD_CI_EXTRA = 12;
+const MD_CI_SIZE_RATIO = MD_TOKENS.ciSizeRatio;
+const MD_CI_EXTRA = MD_TOKENS.ciPadH * 2 + MD_TOKENS.ciBorder * 2;
 /** 圈点椭圆横向 chrome（.pp-circled：padding 4×2 + border 1.5×2）。 */
 export const CIRCLE_EXTRA = 11;
 /** 圈点字体：来文楷体 16px 加 600（.pp-circled font-weight 镜像）。 */
-const CIRCLE_FONT = `600 16px ${KAI_STACK}`;
+const CIRCLE_FONT = `600 ${PAPER_TYPE.user.size}px ${KAI_STACK}`;
 
 const RICH_CACHE_MAX = 500;
 const richCache = new Map<string, PreparedRichInline>();
@@ -201,45 +207,44 @@ function measureInlineHeight(inl: MdInline[], width: number, size: number, stack
 
 /* ── 折叠行（2026-08-30 折叠机制；.pp-fold 镜像）── */
 /** 折叠行高 = 行 14px（mono 10px）+ margin-bottom 6px。夹注/脚注/程文恒有。 */
-export const FOLD_ROW_H = 20;
+export const FOLD_ROW_H = LIMIT_TOKENS.foldRowH;
 
 /** 渲染端滚动上限（PaperPanel.css pre/输出 max-height——超限部分滚动不占高） */
-export const PRE_MAX_H = 260;
-export const OUT_MAX_H = 160;
+export const PRE_MAX_H = LIMIT_TOKENS.preMaxH;
+export const OUT_MAX_H = LIMIT_TOKENS.outMaxH;
 
 /* ── 程文（code）专属镜像常量——.pp-code-src / .pp-code .pp-out 与脚注族不同款 ──
  * 2026-08-30 溢出修复：旧测量按整宽 + PRE_MAX_H 260 + 零内距，而 CSS 实况是
  * 17px 横向内缩 + 20px 纵向内距 + max-height 320 → 展开后 DOM 恒高于测高，
  * 下一块压字（用户报「程文展开后文字溢出」的根因）。 */
 /** .pp-code-src 横向内缩 = border-left 3 + padding-left 14。 */
-export const CODE_SRC_INSET = 17;
+export const CODE_SRC_INSET = CHROME_DERIVED.codeSrcInset;
 /** .pp-code-src 纵向内距 = padding 10×2（box-sizing border-box，max-height 内扣）。 */
-export const CODE_SRC_PAD_V = 20;
+export const CODE_SRC_PAD_V = CHROME_DERIVED.codeSrcPadV;
 /** .pp-code-src max-height（内容预算 = 320 - 20 内距）。 */
-export const CODE_SRC_MAX_H = 320;
+export const CODE_SRC_MAX_H = CHROME_DERIVED.codeSrcMaxH;
 /** .pp-code .pp-out max-height 200（脚注族是 160）——文本内容预算 = 200 - padding-top 6 - border-top 1。 */
-export const CODE_OUT_TEXT_MAX = 193;
+export const CODE_OUT_TEXT_MAX = CHROME_DERIVED.codeOutTextMax;
 
-/* ── per-kind chrome 常量（逐字镜像 PaperPanel.css 的 padding/border/margin）── */
-const USER_TEXT_INSET = 20; // padding-left 18 + border-left 2
+/* ── per-kind chrome 常量（2026-08-30 token 化：单一真源 = type-tokens.ts）── */
+const USER_TEXT_INSET = CHROME_DERIVED.userTextInset; // padding-left 18 + border-left 2
 /** asterism（B1）：来文尾三星高度 = margin-top 30 + 字行 14（line-height 1）。 */
-const USER_ASTERISM_H = 30 + 14;
-/** 来文附件行（C10）：每行 mono 11px / 行高 16 + 上间距 8 + 弱规线 1。
- *  逐字镜像 .pp-user-files / .pp-user-file 的 margin/line-height。 */
-const USER_FILE_LINE_H = 16;
-const USER_FILES_MARGIN_TOP = 9; // margin-top 8 + 规线 1
-const REASONING_TEXT_INSET = 20; // padding-left 18 + border-left 2（虚线）
-const TOOL_PAD_TOP = 10; // .pp-block.pp-tool padding-top（注线 ::before 不占高）
-const OUT_CHROME_H = 13; // .pp-out margin-top 6 + padding-top 6 + border-top 1
-const DIFF_LANG_H = 16; // .pp-lang 10px×lh1 + margin-bottom 6
-const DIFF_PRE_CHROME_H = 30; // pre padding 14×2 + border-top/bottom 1×2
-const DIFF_TEXT_INSET = 23; // border-left 3 + padding-left 20
-const PLAN_CHROME_H = 31; // .pp-pc border-top 2 + border-bottom 1 + padding 14×2
-const PLAN_ITEM_INSET = 36; // li padding-left（石青序号列）
-const PLAN_ITEM_GAP = 7; // li margin-bottom（末项无）
-const PLAN_ACTIONS_H = 13 * 1.8 + 10 + 2 + 14; // 按钮 13×1.8 + padding 5×2 + border 2 + margin-top 14
-const NOTICE_CHROME_H = 17; // padding 8×2 + border-bottom 1
-const NOTICE_TEXT_INSET = 24; // padding 12×2
+const USER_ASTERISM_H = CHROME_DERIVED.userAsterismH;
+/** 来文附件行（C10）：每行 mono 11px / 行高 16 + 上间距 8 + 弱规线 1。 */
+const USER_FILE_LINE_H = CHROME_DERIVED.userFileLineH;
+const USER_FILES_MARGIN_TOP = CHROME_DERIVED.userFilesMarginTop; // margin-top 8 + 规线 1
+const REASONING_TEXT_INSET = CHROME_DERIVED.reasoningTextInset; // padding-left 18 + border-left 2（虚线）
+const TOOL_PAD_TOP = CHROME_DERIVED.toolPadTop; // .pp-block.pp-tool padding-top
+const OUT_CHROME_H = CHROME_DERIVED.outChromeH; // .pp-out margin-top 6 + padding-top 6 + border-top 1
+const DIFF_LANG_H = CHROME_DERIVED.diffLangH; // .pp-lang 10px×lh1 + margin-bottom 6
+const DIFF_PRE_CHROME_H = CHROME_DERIVED.diffPreChromeH; // pre padding 14×2 + border 1×2
+const DIFF_TEXT_INSET = CHROME_DERIVED.diffTextInset; // border-left 3 + padding-left 20
+const PLAN_CHROME_H = CHROME_DERIVED.planChromeH; // .pp-pc border-top 2 + border-bottom 1 + padding 14×2
+const PLAN_ITEM_INSET = CHROME_DERIVED.planItemInset; // li padding-left（石青序号列）
+const PLAN_ITEM_GAP = CHROME_DERIVED.planItemGap; // li margin-bottom（末项无）
+const PLAN_ACTIONS_H = CHROME_DERIVED.planActionsH; // 按钮行
+const NOTICE_CHROME_H = CHROME_DERIVED.noticeChromeH; // padding 8×2 + border-bottom 1
+const NOTICE_TEXT_INSET = CHROME_DERIVED.noticeTextInset; // padding 12×2
 
 /* ── 资产/开放 kind 镜像常量（2026-08-30 溢出修复：default 固定 80 退役）──
  * 资产块此前测高恒 80、签名不含 payload——媒体图 320 / JSON 兜底 400+ /
@@ -247,83 +252,89 @@ const NOTICE_TEXT_INSET = 24; // padding 12×2
  * 卡片溢出、会话流渲染乱成一团的根因）。此处按表现原语逐款镜像
  * asset-renderers.tsx 的结构（改表现组件两处同步）；加载/上报/交互类动态高
  * （图片、iframe、拟策反馈框）由壳层 ResizeObserver 实测回写桥兜底。 */
-const JSON_VIEW_PAD_V = 12; // .pp-json padding 10 + 2
-const JSON_VIEW_HEAD_H = 10 * 1.8 + 6; // .pp-json-head mono 10px（行距继承 1.8）+ margin 6
-const JSON_PRE_PAD_V = 20; // .pp-json-pre padding 10×2
-const JSON_PRE_INSET = 27; // border-left 3 + padding 左右 12×2
-const JSON_PRE_MAX_H = 360; // box-sizing border-box → 文本预算 340
-const JSON_PRE_FONT = `11px ${MONO_STACK}`;
-const JSON_PRE_LINE_HEIGHT = 11 * 1.6;
+const JSON_VIEW_PAD_V = ASSET_TOKENS.json.padTop + ASSET_TOKENS.json.padBottom; // .pp-json padding 10 + 2
+const JSON_VIEW_HEAD_H = ASSET_TOKENS.json.headSize * 1.8 + ASSET_TOKENS.json.headMarginB; // .pp-json-head mono 10px（行距继承 1.8）+ margin 6
+const JSON_PRE_PAD_V = ASSET_TOKENS.json.prePadV * 2; // .pp-json-pre padding 10×2
+const JSON_PRE_INSET = ASSET_TOKENS.json.preBorderL + ASSET_TOKENS.json.prePadH * 2; // border-left 3 + padding 左右 12×2
+const JSON_PRE_MAX_H = ASSET_TOKENS.json.preMaxH; // box-sizing border-box → 文本预算
+const JSON_PRE_FONT = `${ASSET_TOKENS.json.preSize}px ${MONO_STACK}`;
+const JSON_PRE_LINE_HEIGHT = ASSET_TOKENS.json.preSize * ASSET_TOKENS.json.preLh;
 
-const MEDIA_PAD_V = 4; // .pp-media padding 2×2
-const MEDIA_LABEL_H = 13 * 1.8 + 4; // .pp-media-label（行距继承 1.8）+ margin-bottom 4
-const MEDIA_IMG_MAX_H = 320; // .pp-media-img max-height（上下 border 1×2 另计）
-const MEDIA_ROW_H = 11 * 1.8; // .pp-media-file 行（行距继承 1.8）
+const MEDIA_PAD_V = ASSET_TOKENS.media.padV * 2; // .pp-media padding 2×2
+const MEDIA_LABEL_H = ASSET_TOKENS.media.labelSize * 1.8 + ASSET_TOKENS.media.labelMarginB; // .pp-media-label（行距继承 1.8）+ margin-bottom 4
+const MEDIA_IMG_MAX_H = ASSET_TOKENS.media.imgMaxH; // .pp-media-img max-height
+const MEDIA_ROW_H = ASSET_TOKENS.media.rowSize * 1.8; // .pp-media-file 行（行距继承 1.8）
 
-const CHART_PAD_V = 8; // .pp-chart padding 4×2
-const CHART_TYPE_H = 9 * 1.8 + 4; // .pp-chart-type（行距继承 1.8）+ margin-bottom 4
-const CHART_SVG_MAX_H = 240; // .pp-chart-svg max-height
-const CHART_PIE_H = 180; // .pp-chart-pie height
-const CHART_LABEL_GAP = 6; // .pp-chart-labels margin-top
-const CHART_LABEL_LINE = 9 * 1.8;
-const CHART_LABEL_FONT = `9px ${MONO_STACK}`;
+const CHART_PAD_V = ASSET_TOKENS.chart.padV * 2; // .pp-chart padding 4×2
+const CHART_TYPE_H = ASSET_TOKENS.chart.typeSize * 1.8 + ASSET_TOKENS.chart.typeMarginB; // .pp-chart-type（行距继承 1.8）+ margin-bottom 4
+const CHART_SVG_MAX_H = ASSET_TOKENS.chart.svgMaxH; // .pp-chart-svg max-height
+const CHART_PIE_H = ASSET_TOKENS.chart.pieH; // .pp-chart-pie height
+const CHART_LABEL_GAP = ASSET_TOKENS.chart.labelMarginTop; // .pp-chart-labels margin-top
+const CHART_LABEL_LINE = ASSET_TOKENS.chart.labelSize * 1.8;
+const CHART_LABEL_FONT = `${ASSET_TOKENS.chart.labelSize}px ${MONO_STACK}`;
 
-const METRIC_PAD_V = 4; // .pp-metric padding 2×2
-const METRIC_CAPTION_H = 13 * 1.8 + 6; // .pp-metric-caption + margin-bottom 6
-const METRIC_CARD_H = 2 + 16 + 11 * 1.8 + 20 * 1.2; // border 2 + padding 16 + label + value(lh 1.2)
-const METRIC_GAP = 8; // .pp-metric-grid gap
-const METRIC_MIN_COL = 120; // minmax(120px, 1fr)
+const METRIC_PAD_V = ASSET_TOKENS.metric.padV * 2; // .pp-metric padding 2×2
+const METRIC_CAPTION_H = ASSET_TOKENS.metric.captionSize * 1.8 + ASSET_TOKENS.metric.captionMarginB; // .pp-metric-caption + margin-bottom 6
+const METRIC_CARD_H =
+  ASSET_TOKENS.metric.cardBorder +
+  ASSET_TOKENS.metric.cardPad +
+  ASSET_TOKENS.metric.cardLabelSize * 1.8 +
+  ASSET_TOKENS.metric.cardValueSize * ASSET_TOKENS.metric.cardValueLh; // border + padding + label + value
+const METRIC_GAP = ASSET_TOKENS.metric.gap; // .pp-metric-grid gap
+const METRIC_MIN_COL = ASSET_TOKENS.metric.minCol; // minmax(120px, 1fr)
 
-const GRID_PAD_V = 4; // .pp-grid padding 2×2
-const GRID_CAPTION_H = 13 * 1.8 + 6;
-const GRID_CELL_PAD_V = 8; // th/td padding 4×2
-const GRID_ROW_LINE = 11 * 1.8; // .pp-grid-table 11px（行距继承 1.8）
-const GRID_HEAD_BORDER = 1; // th border-bottom（rule-soft）
-const GRID_ROW_BORDER = 0.5; // td border-bottom
-const GRID_MEASURE_ROW_CAP = 50; // 逐行文字测量上限（其余单行估——挂载后 RO 实测兜底）
-const GRID_FONT = `11px ${MONO_STACK}`;
+const GRID_PAD_V = ASSET_TOKENS.grid.padV * 2; // .pp-grid padding 2×2
+const GRID_CAPTION_H = ASSET_TOKENS.grid.captionSize * 1.8 + ASSET_TOKENS.grid.captionMarginB;
+const GRID_CELL_PAD_V = ASSET_TOKENS.grid.cellPadV * 2; // th/td padding 4×2
+const GRID_ROW_LINE = ASSET_TOKENS.grid.rowSize * 1.8; // .pp-grid-table 11px（行距继承 1.8）
+const GRID_HEAD_BORDER = ASSET_TOKENS.grid.headBorder; // th border-bottom
+const GRID_ROW_BORDER = ASSET_TOKENS.grid.rowBorder; // td border-bottom
+const GRID_MEASURE_ROW_CAP = ASSET_TOKENS.grid.measureRowCap; // 逐行文字测量上限
+const GRID_FONT = `${ASSET_TOKENS.grid.rowSize}px ${MONO_STACK}`;
 
-const GRAPH_PAD_V = 8; // .pp-graph padding 4×2
-const GRAPH_SVG_MAX_H = 360; // .pp-graph-svg max-height
-const GRAPH_COL_W = 160; // 深度列宽（GraphTreeBody 同款公式）
-const GRAPH_ROW_H = 52;
-const GRAPH_ORIGIN = 40;
-const GRAPH_MIN_W = 320;
-const GRAPH_MIN_H = 80;
+const GRAPH_PAD_V = ASSET_TOKENS.graph.padV * 2; // .pp-graph padding 4×2
+const GRAPH_SVG_MAX_H = ASSET_TOKENS.graph.svgMaxH; // .pp-graph-svg max-height
+const GRAPH_COL_W = ASSET_TOKENS.graph.colW; // 深度列宽
+const GRAPH_ROW_H = ASSET_TOKENS.graph.rowH;
+const GRAPH_ORIGIN = ASSET_TOKENS.graph.origin;
+const GRAPH_MIN_W = ASSET_TOKENS.graph.minW;
+const GRAPH_MIN_H = ASSET_TOKENS.graph.minH;
 
-const HTML_BODY_PAD_V = 4; // .pp-html padding 2×2
-const HTML_FRAME_DEFAULT_H = 240; // .pp-html-frame CSS 初始高（iframe 上报前）
+const HTML_BODY_PAD_V = ASSET_TOKENS.html.padV * 2; // .pp-html padding 2×2
+const HTML_FRAME_DEFAULT_H = ASSET_TOKENS.html.frameDefaultH; // .pp-html-frame 初始高
 
-const FORM_PAD_V = 4; // .pp-form padding 2×2
-const FORM_TITLE_H = 15 * 1.8 + 4; // .pp-form-title（行距继承 1.8）+ margin-bottom 4
-const FORM_BODY_LINE = 13 * 1.7; // .pp-form-body line-height 1.7
-const FORM_BODY_GAP = 8; // margin-bottom 8
-const FORM_OPT_PAD_V = 12; // .pp-form-option padding 6×2
-const FORM_OPT_BORDER = 2;
-const FORM_OPT_LABEL_H = 13 * 1.8;
-const FORM_OPT_DESC_LINE = 11 * 1.8;
-const FORM_OPT_DESC_INSET = 20; // padding 左右 10×2
-const FORM_OPT_GAP = 4; // .pp-form-options row-gap
-const FORM_SECTION_GAP = 8; // body/options margin-bottom
-const FORM_ACTIONS_H = 11 * 1.8 + 8 + 2; // .pp-form-confirm 行 + padding 4×2 + border 2
-const FORM_BODY_FONT = `13px ${SONG_STACK}`;
-const FORM_DESC_FONT = `11px ${SONG_STACK}`;
+const FORM_PAD_V = ASSET_TOKENS.form.padV * 2; // .pp-form padding 2×2
+const FORM_TITLE_H = ASSET_TOKENS.form.titleSize * 1.8 + ASSET_TOKENS.form.titleMarginB; // .pp-form-title + margin-bottom 4
+const FORM_BODY_LINE = ASSET_TOKENS.form.bodySize * ASSET_TOKENS.form.bodyLh; // .pp-form-body line-height 1.7
+const FORM_BODY_GAP = ASSET_TOKENS.form.bodyMarginB; // margin-bottom 8
+const FORM_OPT_PAD_V = ASSET_TOKENS.form.optPadV * 2; // .pp-form-option padding 6×2
+const FORM_OPT_BORDER = ASSET_TOKENS.form.optBorder;
+const FORM_OPT_LABEL_H = ASSET_TOKENS.form.optLabelSize * 1.8;
+const FORM_OPT_DESC_LINE = ASSET_TOKENS.form.optDescSize * 1.8;
+const FORM_OPT_DESC_INSET = ASSET_TOKENS.form.optDescPadH * 2; // padding 左右 10×2
+const FORM_OPT_GAP = ASSET_TOKENS.form.optGap; // .pp-form-options row-gap
+const FORM_SECTION_GAP = ASSET_TOKENS.form.sectionGap; // body/options margin-bottom
+const FORM_ACTIONS_H =
+  ASSET_TOKENS.form.confirmSize * 1.8 + ASSET_TOKENS.form.confirmPadV * 2 + ASSET_TOKENS.form.confirmBorder * 2; // .pp-form-confirm 行
+const FORM_BODY_FONT = `${ASSET_TOKENS.form.bodySize}px ${SONG_STACK}`;
+const FORM_DESC_FONT = `${ASSET_TOKENS.form.optDescSize}px ${SONG_STACK}`;
 
 /* ── 拟策测高镜像（2026-08-30 溢出修复：PLAN_OPTIONS_H 118 / PLAN_HEAD_H 39 退役）──
  * 旧固定预算装不下两枚带描述的方案（实况 ≈163）+ 操作行按钮实高 49.4（旧 40）
  * + 标题换行未计 → 交互拟策块恒比测高高 50~120px，下一块压字。选项描述文本
  * 实测；反馈框展开属动态高（壳层 RO 实测兜底，needsObservedHeight 含 plan）。 */
-const PLAN_TITLE_FONT = `15px ${SONG_STACK}`;
-const PLAN_TITLE_LINE_HEIGHT = 15 * 1.8;
-const PLAN_HEAD_MARGIN = 12; // .pp-pc-head margin-bottom
-const PLAN_OPTIONS_CHROME_H = 25; // .pp-pc-options margin-top 14 + border-top 1 + padding-top 10
-const PLAN_OPTION_PAD_V = 14; // .pp-pc-option padding 7×2
-const PLAN_OPTION_BORDER = 2;
-const PLAN_OPTION_LABEL_H = 13 * 1.8; // 行距继承 1.8
-const PLAN_OPTION_DESC_GAP = 2; // .pp-pc-option-desc margin-top
-const PLAN_OPTION_DESC_LINE = 12 * 1.8;
-const PLAN_OPTION_DESC_INSET = 20; // option padding 左右 10×2
-const PLAN_OPTION_GAP = 6; // .pp-pc-option margin-bottom（每枚，含末枚）
+const PLAN_TITLE_FONT = `${ASSET_TOKENS.plan.titleSize}px ${SONG_STACK}`;
+const PLAN_TITLE_LINE_HEIGHT = ASSET_TOKENS.plan.titleSize * ASSET_TOKENS.plan.titleLh;
+const PLAN_HEAD_MARGIN = ASSET_TOKENS.plan.headMarginB; // .pp-pc-head margin-bottom
+const PLAN_OPTIONS_CHROME_H =
+  ASSET_TOKENS.plan.optionsMarginTop + ASSET_TOKENS.plan.optionsBorderTop + ASSET_TOKENS.plan.optionsPadTop; // .pp-pc-options
+const PLAN_OPTION_PAD_V = ASSET_TOKENS.plan.optionPadV * 2; // .pp-pc-option padding 7×2
+const PLAN_OPTION_BORDER = ASSET_TOKENS.plan.optionBorder;
+const PLAN_OPTION_LABEL_H = ASSET_TOKENS.plan.optionSize * 1.8; // 行距继承 1.8
+const PLAN_OPTION_DESC_GAP = ASSET_TOKENS.plan.optionDescMarginTop; // .pp-pc-option-desc margin-top
+const PLAN_OPTION_DESC_LINE = ASSET_TOKENS.plan.optionDescSize * 1.8;
+const PLAN_OPTION_DESC_INSET = ASSET_TOKENS.plan.optionPadH * 2; // option padding 左右
+const PLAN_OPTION_GAP = ASSET_TOKENS.plan.optionGap; // .pp-pc-option margin-bottom（每枚，含末枚）
 
 /* ── prepare 缓存（pretext-cache.ts 同款纪律）── */
 
@@ -359,21 +370,22 @@ export function measureTextHeight(
   return layout(prepared, maxWidth, lineHeight).height;
 }
 
-/* ── 卷首（folio-head，2026-08-30 原型转录）──
+/* ── 卷首（folio-head，2026-08-30 原型转录；token 化：单一真源 = type-tokens.ts）──
  * 结构常量逐字镜像 PaperPanel.css .pp-folio-head 族
  * （源规格：prototype/lantai.html .folio-head / .yuwei / .folio-eyebrow / .folio-title / .folio-sub）。
  * 标题随换行实测（measureTextHeight），其余为固定结构高度。 */
-export const FOLIO_TITLE_FONT = `600 32px ${SONG_STACK}`;
-export const FOLIO_TITLE_LINE_HEIGHT = 32 * 1.2; // .pp-folio-title line-height 1.2
-export const FOLIO_EYEBROW_H = 14; // mono 10px × line-height 1.4
-export const FOLIO_SUB_H = 14; // mono 10px × line-height 1.4
-export const FOLIO_PAD_TOP = 24; // .pp-folio-head padding-top
-export const FOLIO_PAD_BOTTOM = 24; // padding-bottom 22 + rule-hard 2
-export const FOLIO_YUWEI_H = 36; // 24px 玉徽 + margin-bottom 12
-export const FOLIO_TITLE_MARGIN_TOP = 12;
-export const FOLIO_SUB_MARGIN_TOP = 14;
+export const FOLIO_TITLE_FONT = `600 ${FOLIO_TOKENS.titleSize}px ${SONG_STACK}`;
+export const FOLIO_TITLE_LINE_HEIGHT = FOLIO_TOKENS.titleSize * FOLIO_TOKENS.titleLh; // .pp-folio-title line-height
+
+export const FOLIO_EYEBROW_H = FOLIO_TOKENS.eyebrowH; // mono 10px × line-height 1.4
+export const FOLIO_SUB_H = FOLIO_TOKENS.subH; // mono 10px × line-height 1.4
+export const FOLIO_PAD_TOP = FOLIO_TOKENS.padTop; // .pp-folio-head padding-top
+export const FOLIO_PAD_BOTTOM = FOLIO_TOKENS.padBottom; // padding-bottom 22 + rule-hard 2
+export const FOLIO_YUWEI_H = FOLIO_TOKENS.yuweiH; // 24px 玉徽 + margin-bottom 12
+export const FOLIO_TITLE_MARGIN_TOP = FOLIO_TOKENS.titleMarginTop;
+export const FOLIO_SUB_MARGIN_TOP = FOLIO_TOKENS.subMarginTop;
 /** 卷头与首块的呼吸距（原型 .folio-head margin-bottom 28） */
-export const FOLIO_HEAD_GAP = 28;
+export const FOLIO_HEAD_GAP = FOLIO_TOKENS.headGap;
 /** 卷首头整体高度（世界单位）：标题按可用宽实测行数，其余固定。 */
 export function measureFolioHeadHeight(title: string, availWidth: number): number {
   const titleH = measureTextHeight(title, availWidth, FOLIO_TITLE_FONT, FOLIO_TITLE_LINE_HEIGHT);
@@ -649,7 +661,8 @@ export function subscribeObservedBlockHeights(fn: () => void): () => void {
   };
 }
 
-/** 实测优先的块族：资产 kind（asset 元数据在）+ 开放 kind（非内置）+ 拟策。 */
+/** 实测优先的块族：资产 kind（asset 元数据在）+ 开放 kind（非内置）+ 拟策。
+ *  工具组头是恒高结构块（一行注线+折叠行），不进观察面。 */
 const BUILTIN_MEASURE_KINDS = new Set<string>([
   'user',
   'markdown',
@@ -658,6 +671,7 @@ const BUILTIN_MEASURE_KINDS = new Set<string>([
   'tool',
   'code',
   'plan',
+  'toolgroup',
   'notice',
 ]);
 
@@ -787,13 +801,18 @@ export interface InkSource {
   cap?: number;
 }
 
-/** 纸条墨迹常量（.pp-strip 镜像：12.5px 宋体 / 1.7 行距 / padding 12）。 */
-export const STRIP_INK = { font: `12.5px ${SONG_STACK}`, lineHeight: 12.5 * 1.7, inset: 12 };
+/** 纸条墨迹常量（.pp-strip 镜像：12.5px 宋体 / 1.7 行距 / padding 12）。
+ *  token 化：单一真源 = CHROME_TOKENS.strip。 */
+export const STRIP_INK = {
+  font: `${CHROME_TOKENS.strip.size}px ${SONG_STACK}`,
+  lineHeight: CHROME_TOKENS.strip.size * CHROME_TOKENS.strip.lh,
+  inset: CHROME_TOKENS.strip.padH,
+};
 
 /* ── 眉批栏（P5 夹注旁注化）——.pp-marginalia 镜像：块右缘 24px 起、总宽 240，
  * 左规线 2 + padding 10 → 内容宽 228；字体沿用夹注族（13.5px/1.85 石墨）。 ── */
-export const MARGINALIA_W = 240;
-export const MARGINALIA_INSET = 12;
+export const MARGINALIA_W = CHROME_DERIVED.marginaliaW;
+export const MARGINALIA_INSET = CHROME_DERIVED.marginaliaInset;
 
 export function inkSourcesFor(b: SourcedBlock, folded: boolean): InkSource[] {
   const p = b.payload as PayloadLike;
@@ -1139,6 +1158,10 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       const actionsH = plan._callback ? PLAN_ACTIONS_H : 0;
       return PLAN_CHROME_H + headH + itemsH + optionsH + actionsH;
     }
+    case 'toolgroup':
+      // 工具组头恒一行（2026-08-30 会话流专项）：折叠行即本体，注线顶距同脚注族；
+      // 子卡是独立 tool 块，收起由壳层摘出布局栈，头高与子卡数无关。
+      return TOOL_PAD_TOP + FOLD_ROW_H;
     default:
       // 资产/开放 kind：按表现原语镜像计高（旧固定 80 是画图族卡片溢出的根因）。
       return measureAssetBlockHeight(b);
@@ -1201,6 +1224,9 @@ export function measureSignature(b: SourcedBlock, folded: boolean, sidecarFolded
       return `plan|${p.title ?? ''}|${p.content ?? ''}|${(p.options as unknown[] | undefined)?.length ?? 0}|${
         p._callback ? 1 : 0
       }`;
+    case 'toolgroup':
+      // 子卡数入签（流式追加子卡 → 组头重测；头高本身恒定）
+      return `toolgroup|${((p.items as unknown[] | undefined) ?? []).length}`;
     default:
       // 资产/开放 kind：表现名入签；payload 变化由 RO 实测驱动（静态镜像
       // 只服务未挂载块的虚拟化窗口估高，不逐 payload 入签省 stringify）。

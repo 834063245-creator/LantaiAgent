@@ -16,6 +16,7 @@
 
 /** 块状态：流内（随对话流走）| 钉住（用户主权，世界坐标说了算） */
 import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan-tools';
+import type { ToolCallPart } from '../ui/message-model';
 
 export type BlockState = 'flow' | 'pinned';
 
@@ -28,6 +29,7 @@ export type BuiltinBlockKind =
   | 'tool' // 工具调用卡（name/args/status/output）
   | 'code' // 程序执行卡（code_execution 专属：程序体+日志+完成值，P2-A）
   | 'plan' // 计划卡
+  | 'toolgroup' // 工具组（同轮并发调用的折叠头，2026-08-30 会话流专项）
   | 'notice'; // 系统通知
 
 /** 块类型——自 Agent 资产块（WO-3）起开放：内置 8 种强类型保留，
@@ -81,6 +83,13 @@ export interface BlockPayloads {
     options?: { label: string; description: string; outcome?: PlanOptionOutcome }[];
     /** 审批回调——PlanPart._callback 透传，PlanBody 按钮触发（纸块活引用语义，施工单 #1） */
     _callback?: (response: PlanApprovalResponse) => void;
+  };
+  /** 工具组（2026-08-30 会话流专项）：同轮连续工具调用的折叠头。
+   *  items 持有活 part 引用（status 流转直接可读）；子卡是独立 tool 块，
+   *  折叠/钉住/操作全复用既有机制——组头只负责「一行摘要 + 收起摘除」。 */
+  toolgroup: {
+    childIds: string[];
+    items: ToolCallPart[];
   };
   notice: { text: string; level: 'info' | 'warn' | 'error' };
 }

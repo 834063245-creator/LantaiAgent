@@ -705,6 +705,13 @@ function JsonBody({ block }: BlockRendererProps) {
   );
 }
 
+/** 工具组头（2026-08-30 会话流专项）：体恒空——信息全部在壳层折叠行
+ *  （foldLabel 摘要：×N · 名字分布 · 在跑数），子卡是独立 tool 块。
+ *  不注册会落 '*' JSON 兜底（payload 含活 part 引用，绝不能 JSON 化）。 */
+function ToolGroupBody(): null {
+  return null;
+}
+
 /** 内置渲染器行（默认行——视觉由纸壳 CSS 承载，渲染器只管体结构）。 */
 export function builtinRendererDefs(): BlockRendererContribution[] {
   return [
@@ -716,6 +723,7 @@ export function builtinRendererDefs(): BlockRendererContribution[] {
     { id: 'builtin/plan', kind: 'plan', component: PlanBody },
     { id: 'builtin/tool', kind: 'tool', component: ToolBody },
     { id: 'builtin/code', kind: 'code', component: CodeBody },
+    { id: 'builtin/toolgroup', kind: 'toolgroup', component: ToolGroupBody },
   ];
 }
 

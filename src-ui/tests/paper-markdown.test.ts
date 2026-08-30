@@ -145,14 +145,16 @@ describe('paper/fold — 默认规则与文案', () => {
     expect(isFoldable('markdown')).toBe(false);
   });
 
-  it('折叠行文案：折叠报字数量化，展开报收起；空脚注报待执行', () => {
+  it('折叠行文案：折叠报「名字+参数摘要」（2026-08-30 会话流专项，纯字数退役），展开报收起', () => {
     expect(foldLabel('reasoning', { text: 'x'.repeat(214) }, true)).toBe('▸ 思考 214 字');
     expect(foldLabel('reasoning', { text: '思' }, false)).toBe('▾ 收起思考');
-    expect(foldLabel('tool', { args: 'abc', output: 'ok' }, true)).toBe('▸ 参数 3 字 · 输出 2 字');
-    expect(foldLabel('tool', { args: '', output: '', err: '' }, true)).toBe('▸ 待执行');
-    expect(foldLabel('tool', { args: 'a' }, false)).toBe('▾ 收起调用');
-    expect(foldLabel('code', { code: 'abcd' }, true)).toBe('▸ 程序 4 字');
-    expect(foldLabel('code', { code: 'abcd' }, false)).toBe('▾ 收起程序');
+    expect(foldLabel('tool', { name: 'edit', label: 'edit', args: '{"file_path":"a.ts"}', output: 'ok' }, true)).toBe(
+      '▸ edit a.ts · 输出 2 字',
+    );
+    expect(foldLabel('tool', { args: '', output: '', err: '' }, true)).toBe('▸ 工具 · 待执行');
+    expect(foldLabel('tool', { args: 'a' }, false)).toBe('▾ 收起 工具');
+    expect(foldLabel('code', { code: 'abcd' }, true)).toBe('▸ 程序');
+    expect(foldLabel('code', { code: 'abcd' }, false)).toBe('▾ 收起 程序');
   });
 
   it('夹注预览取首个非空行', () => {
