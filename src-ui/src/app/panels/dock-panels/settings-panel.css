@@ -288,22 +288,31 @@
   padding: 7px 2px;
   font-family: var(--f-mono);
   font-size: calc(13px * var(--font-scale));
-  background: transparent;
+  background: color-mix(in oklch, var(--paper-deep) 35%, transparent);
   color: var(--ink-1);
   border: none;
   border-bottom: var(--rule-soft);
   border-radius: 0;
   outline: none;
-  transition: border-color var(--snap);
+  transition:
+    border-bottom-color var(--snap),
+    background var(--snap);
 }
 
 .sp-select {
   cursor: pointer;
 }
 
+.sp-input:hover,
+.sp-select:hover {
+  border-bottom-color: var(--ink-3);
+}
+
 .sp-input:focus,
 .sp-select:focus {
-  border-bottom-color: var(--seal);
+  border-bottom: 2px solid var(--seal);
+  padding-bottom: 6px; /* 2px 边框替代 1px：补偿下探 1px，行高不跳 */
+  background: color-mix(in oklch, var(--paper-deep) 22%, transparent);
 }
 
 .sp-input::placeholder {
@@ -489,7 +498,9 @@
   cursor: pointer;
   transition:
     background var(--snap),
-    color var(--snap);
+    color var(--snap),
+    border-color var(--snap),
+    transform var(--snap);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -516,6 +527,11 @@
   background: var(--ink-2);
   border-color: var(--ink-2);
 }
+.sp-btn-save:active {
+  background: var(--ink-3);
+  border-color: var(--ink-3);
+  transform: translateY(1px);
+}
 
 /* 保存成功：朱砂细框确认（人批语义） */
 button.sp-btn.sp-btn-ok {
@@ -538,7 +554,7 @@ button.sp-btn.sp-btn-ok {
   cursor: pointer;
   background: transparent;
   color: var(--ink-2);
-  border: var(--rule-soft);
+  border: var(--rule-strong);
   transition:
     background var(--snap),
     color var(--snap),

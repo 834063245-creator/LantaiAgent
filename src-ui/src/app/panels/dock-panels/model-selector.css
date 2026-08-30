@@ -1,6 +1,8 @@
 /* ── ModelSelector — 模型目录搜索下拉（兰台注疏化重涂，2026-08 UI 大清扫）
    原 P10 暗色观测台样式换装：纸面 / 圆角恒 0 / 兰台 token。
-   下拉 = 纸面小菜单（对齐 ModeIndicator 的 mi-model-menu 语言）。 ── */
+   下拉 = 纸面小菜单（对齐 ModeIndicator 的 mi-model-menu 语言）。
+   P1 字号收敛（2026-08-30）：6/7/8px 瞎眼档上提——徽章/标签归 8px、
+   厂商提示/副名归 9px，消除 Windows ClearType 下衬线小字发糊。 ── */
 
 .ms-container {
   position: relative;
@@ -97,7 +99,7 @@
 
 .ms-refresh-msg {
   font-family: var(--f-mono);
-  font-size: calc(8px * var(--font-scale));
+  font-size: calc(9px * var(--font-scale));
   color: var(--ink-3);
   padding: 2px 4px;
 }
@@ -201,13 +203,13 @@
 /* 选中态的厂商提示：跨家同 ID（deepseek/opencode 共享 v4 条目）时标明归属 */
 .ms-vendor-hint {
   font-family: var(--f-mono);
-  font-size: calc(8px * var(--font-scale));
+  font-size: calc(9px * var(--font-scale));
   color: var(--ink-3);
   flex-shrink: 0;
 }
 
 .ms-item-name {
-  font-size: calc(8px * var(--font-scale));
+  font-size: calc(9px * var(--font-scale));
   color: var(--ink-2);
   white-space: nowrap;
   overflow: hidden;
@@ -223,7 +225,7 @@
 
 .ms-badge {
   font-family: var(--f-mono);
-  font-size: calc(7px * var(--font-scale));
+  font-size: calc(8px * var(--font-scale));
   padding: 1px 4px;
   border-radius: 0;
   white-space: nowrap;
@@ -246,7 +248,7 @@
 /* LIVE 徽章：石青语义（机=石青——来自 API 动态发现） */
 .ms-badge-live {
   font-family: var(--f-mono);
-  font-size: calc(6px * var(--font-scale));
+  font-size: calc(8px * var(--font-scale));
   font-weight: 700;
   letter-spacing: 0.5px;
   color: var(--indigo);
@@ -266,7 +268,7 @@
 
 .ms-meta-tag {
   font-family: var(--f-mono);
-  font-size: calc(7px * var(--font-scale));
+  font-size: calc(8px * var(--font-scale));
   color: var(--ink-2);
   padding: 1px 5px;
   border-radius: 0;

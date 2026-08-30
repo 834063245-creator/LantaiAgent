@@ -68,7 +68,7 @@
 .ss-notice button {
   margin-top: 4px;
   font-family: var(--f-song);
-  font-size: 10.5px;
+  font-size: 10px;
   color: var(--ink-1);
   background: none;
   border: var(--rule-soft);
@@ -92,10 +92,12 @@
   border-left: 3px solid transparent;
   transition:
     background var(--snap),
-    border-left-color var(--snap);
+    border-left-color var(--snap),
+    transform var(--snap);
 }
 .ss-row:hover {
-  background: color-mix(in oklch, var(--indigo) 7%, var(--paper));
+  background: color-mix(in oklch, var(--indigo) 12%, var(--paper));
+  transform: translateY(-1px);
 }
 .ss-row.open {
   border-left-color: var(--indigo);
@@ -148,7 +150,7 @@
 }
 .ss-meta {
   font-family: var(--f-mono);
-  font-size: 9.5px;
+  font-size: 10px;
   letter-spacing: 0.05em;
   color: var(--ink-3);
   white-space: nowrap;
@@ -181,10 +183,10 @@
   width: 22px;
   height: 22px;
   background: none;
-  border: var(--rule-soft);
+  border: var(--rule-strong);
   border-radius: 0;
   color: var(--ink-2);
-  font-size: 10.5px;
+  font-size: 10px;
   line-height: 1;
   cursor: pointer;
   transition:
@@ -229,9 +231,18 @@
   letter-spacing: 0.12em;
   color: var(--ink-2);
   cursor: pointer;
+  transition:
+    background var(--snap),
+    border-color var(--snap),
+    color var(--snap),
+    transform var(--snap);
 }
 .ss-new:hover {
   background: var(--seal-soft);
   border-color: var(--seal);
   color: var(--seal-deep);
+}
+.ss-new:active {
+  background: color-mix(in oklch, var(--seal) 20%, var(--paper));
+  transform: translateY(1px);
 }

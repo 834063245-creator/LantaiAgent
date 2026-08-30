@@ -164,11 +164,16 @@ body {
   cursor: pointer;
   transition:
     background var(--snap),
-    color var(--snap);
+    color var(--snap),
+    transform var(--snap);
 }
 .sh-btn-text:hover {
   background: var(--ink-1);
   color: var(--paper);
+}
+.sh-btn-text:active {
+  background: var(--ink-2);
+  transform: translateY(1px);
 }
 .sh-btn-text:focus-visible {
   outline: 2px solid var(--seal);
@@ -200,12 +205,18 @@ body {
   transition:
     background var(--snap),
     color var(--snap),
-    border-color var(--snap);
+    border-color var(--snap),
+    transform var(--snap);
 }
 .sh-btn-primary:hover {
   background: var(--seal-deep);
   border-color: var(--seal-deep);
   color: var(--paper);
+}
+.sh-btn-primary:active {
+  background: var(--seal);
+  border-color: var(--seal);
+  transform: translateY(1px);
 }
 .sh-btn-primary:focus-visible {
   outline: 2px solid var(--seal);
@@ -282,10 +293,13 @@ body {
   cursor: pointer;
   position: relative;
   text-align: left;
-  transition: background var(--snap);
+  transition:
+    background var(--snap),
+    transform var(--snap);
 }
 .sh-session-row:hover {
   background: var(--paper-deep);
+  transform: translateY(-1px);
 }
 .sh-session-row:focus-visible {
   outline: 2px solid var(--seal);
@@ -369,11 +383,13 @@ body {
   text-align: left;
   transition:
     border-color var(--snap),
-    background var(--snap);
+    background var(--snap),
+    transform var(--snap);
 }
 .sh-ws-card:hover {
   border-color: var(--seal);
-  background: color-mix(in oklch, var(--seal) 4%, var(--paper));
+  background: color-mix(in oklch, var(--seal) 8%, var(--paper));
+  transform: translateY(-1px);
 }
 .sh-ws-card:focus-visible {
   outline: 2px solid var(--seal);
