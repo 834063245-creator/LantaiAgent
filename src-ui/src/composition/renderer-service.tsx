@@ -27,7 +27,7 @@ import { assetKinds } from '../agent/asset-kinds';
 import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan-tools';
 import { type Context, Service } from '../cordis';
 import { type BlockKind, parsePlanItems, type SourcedBlock } from '../paper/block-model';
-import { foldPreviewLine } from '../paper/fold';
+import { foldLabel, foldPreviewLine } from '../paper/fold';
 import { type MdBlock, type MdInline, type MdParseState, parseMarkdownIncremental } from '../paper/markdown';
 import { parseCircledSegments } from '../paper/marks';
 import { prettyToolArgs } from '../paper/tool-text';
@@ -39,6 +39,12 @@ import { assetPresentationDefs } from './asset-renderers';
 export interface BlockRendererProps {
   block: SourcedBlock;
   folded?: boolean;
+  /** P5 眉批折叠态（夹注恒折拍板延续——复合 markdown 的眉批默认收起） */
+  sidecarFolded?: boolean;
+  /** 眉批折叠切换（壳层 foldOv 持久，key = `${block.id}:sc`） */
+  onToggleSidecarFold?: (block: SourcedBlock) => void;
+  /** 眉批拖出钉画布（拷贝语义公共物：独立夹注快照，composite 不受影响） */
+  onSidecarPinMouseDown?: (e: React.MouseEvent, block: SourcedBlock) => void;
 }
 
 /* ── 流式增量渐显（streaming-fade-render-plan 2026-08-30）──
@@ -360,7 +366,7 @@ function renderMdBlock(el: MdBlock, tail?: ReactNode): ReactNode {
  *    - 增量按首个换行切：换行前 = 行内续写（tail 接进最后一个块，字符级淡入）；
  *    - 换行后 = 新块（块级 DeltaZone，从行首开始不腰斩 markdown 结构）。
  *    - stable 为空（首 token）时行内尾也兜底渲染，不丢字。 */
-function MarkdownBody({ block }: BlockRendererProps) {
+function MarkdownBody({ block, sidecarFolded, onToggleSidecarFold, onSidecarPinMouseDown }: BlockRendererProps) {
   const text = (block.payload as { text?: string }).text ?? '';
   // P5 眉批化：配对吸附的夹注全文 → 右侧眉批栏（.pp-marginalia，绝对定位
   // 锚 .pp-block——世界层块是唯一定位祖先，侧栏在块宽之外不挤正文列）
@@ -384,7 +390,45 @@ function MarkdownBody({ block }: BlockRendererProps) {
   const tailNode = inlineTail && <span className="pp-ink-delta">{inlineTail}</span>;
   return (
     <div className="pp-body pp-md">
-      {sidecar?.text ? <aside className="pp-marginalia">{sidecar.text}</aside> : null}
+      {sidecar?.text ? (
+        <aside className="pp-marginalia">
+          {sidecarFolded ? (
+            <button
+              type="button"
+              className="pp-marginalia-toggle"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSidecarFold?.(block);
+              }}
+            >
+              {foldLabel('reasoning', { text: sidecar.text }, true)}
+            </button>
+          ) : (
+            <>
+              {sidecar.text}
+              <button
+                type="button"
+                className="pp-marginalia-toggle"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleSidecarFold?.(block);
+                }}
+              >
+                {foldLabel('reasoning', { text: sidecar.text }, false)}
+              </button>
+            </>
+          )}
+          {/* 拖出钉画布：独立夹注快照（拷贝语义公共物，composite 不受影响） */}
+          <button
+            type="button"
+            className="pp-marginalia-pin"
+            title="拖出钉上画布"
+            onMouseDown={(e) => onSidecarPinMouseDown?.(e, block)}
+          >
+            钉
+          </button>
+        </aside>
+      ) : null}
       {blocks.map((el, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: 同上
         <Fragment key={i}>{renderMdBlock(el, i === blocks.length - 1 ? tailNode : undefined)}</Fragment>

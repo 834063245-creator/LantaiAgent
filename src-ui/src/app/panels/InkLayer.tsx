@@ -1,16 +1,17 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// InkLayer — 缩远墨迹层（P4 LOD）：远缩档的屏幕空间 canvas，把可见块的
-// 「真墨」行条骨架画出来（paper/ink），替代整棵 DOM 块树——远看真卷轴全景。
+// InkLayer — 缩远墨迹层（P4 LOD 返工）：远缩档的屏幕空间 canvas，把可见块的
+// 「真文字缩微」直绘出来（paper/ink：materializeLineRange 行原文 + 缩放字号
+// fillText）——远看是真实的缩小纸面（真卷轴），替代抽象线条与整棵 DOM 块树。
 // rAF 直读 canvas-view-store（不进 React 渲染帧——画布支「分层渲染」支柱）；
-// 骨架几何缓存于 InkCache（签名命中零重算）。本层 pointer-events: none，
-// 远缩导航仍走小地图 / 书脊 / Home 回原点。
+// 骨架（行文+几何）缓存于 InkCache（签名命中零重算）。本层 pointer-events:
+// none，远缩导航仍走小地图 / 书脊 / Home 回原点。
 
 import { useEffect, useRef } from 'react';
 import type { SourcedBlock } from '../../paper/block-model';
 import { worldToScreen } from '../../paper/canvas-math';
-import { type InkCache, inkColorOf, inkForBlock, inkForText } from '../../paper/ink';
+import { type BlockInk, type InkCache, inkColorOf, inkForBlock, inkForText } from '../../paper/ink';
 import type { RegionView } from '../../paper/region-view';
 import type { PaperStrip } from '../../paper/selection';
 import { useCanvasViewStore } from '../../state/canvas-view-store';
@@ -25,9 +26,9 @@ interface InkLayerProps {
   orphanBlocks: SourcedBlock[];
 }
 
-/** 墨条屏幕高：行高 × zoom 的一半（粗细感），clamp [1, 9]px。 */
-function barH(lineH: number, zoom: number): number {
-  return Math.max(1, Math.min(9, lineH * zoom * 0.5));
+/** 桩条屏幕高（折叠/空块的短矩形——text 为空串的墨条走矩形路径）。 */
+function stubH(zoom: number): number {
+  return Math.max(1.5, Math.min(10, 14 * zoom * 0.6));
 }
 
 export function InkLayer({ regionsRef, foldedOf, inkCache, strips, orphanBlocks }: InkLayerProps) {
@@ -53,7 +54,7 @@ export function InkLayer({ regionsRef, foldedOf, inkCache, strips, orphanBlocks 
       }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, canvasSize.w, canvasSize.h);
-      // 视口世界矩形（外扩一屏——块半高粗判即可，多余墨条被画布裁掉）
+      // 视口世界矩形（外扩一屏——块高粗判即可，多余墨迹被画布裁掉）
       const vx0 = (0 - view.panX) / view.zoom - 600;
       const vx1 = (canvasSize.w - view.panX) / view.zoom + 600;
       const vy0 = (0 - view.panY) / view.zoom - 800;
@@ -64,11 +65,16 @@ export function InkLayer({ regionsRef, foldedOf, inkCache, strips, orphanBlocks 
         const bottom = y + (ink.bars.length > 0 ? ink.bars[ink.bars.length - 1].dy + ink.lineH : 14);
         if (y > vy1 || bottom < vy0) return;
         ctx.fillStyle = inkColorOf(b.kind);
-        const h = barH(ink.lineH, view.zoom);
+        ctx.textBaseline = 'top';
+        ctx.font = `${(ink.size * view.zoom).toFixed(2)}px ${ink.stack}`;
         for (const bar of ink.bars) {
           const p = worldToScreen(view, x + bar.x0, y + bar.dy);
-          if (p.y < -h || p.y > canvasSize.h + h || p.x > canvasSize.w || p.x + bar.w * view.zoom < 0) continue;
-          ctx.fillRect(p.x, p.y, Math.max(2, bar.w * view.zoom), h);
+          if (p.y < -20 || p.y > canvasSize.h + 20 || p.x > canvasSize.w || p.x + bar.w * view.zoom < 0) continue;
+          if (bar.text) {
+            ctx.fillText(bar.text, p.x, p.y);
+          } else {
+            ctx.fillRect(p.x, p.y, Math.max(2, bar.w * view.zoom), stubH(view.zoom));
+          }
         }
       };
 
@@ -88,19 +94,20 @@ export function InkLayer({ regionsRef, foldedOf, inkCache, strips, orphanBlocks 
       }
       // 孤儿钉快照（公共物：源卷不在纸上也在墨）
       for (const b of orphanBlocks) drawBlock(b, b.x, b.y);
-      // 纸条（外框 + 墨条）
+      // 纸条（外框 + 真文字缩微）
       ctx.strokeStyle = '#55503f';
       ctx.lineWidth = 1;
-      ctx.fillStyle = '#55503f';
       for (const s of strips) {
         if (s.x > vx1 || s.x + s.w < vx0 || s.y > vy1 || s.y + 160 < vy0) continue;
         const p = worldToScreen(view, s.x, s.y);
         ctx.strokeRect(p.x, p.y, s.w * view.zoom, 96 * view.zoom);
         const ink = inkForText(s.text, s.w);
-        const h = barH(ink.lineH, view.zoom);
+        ctx.fillStyle = '#55503f';
+        ctx.textBaseline = 'top';
+        ctx.font = `${(ink.size * view.zoom).toFixed(2)}px ${ink.stack}`;
         for (const bar of ink.bars) {
           const bp = worldToScreen(view, s.x + bar.x0, s.y + 34 + bar.dy);
-          ctx.fillRect(bp.x, bp.y, Math.max(2, bar.w * view.zoom), h);
+          ctx.fillText(bar.text, bp.x, bp.y);
         }
       }
     };
@@ -111,3 +118,6 @@ export function InkLayer({ regionsRef, foldedOf, inkCache, strips, orphanBlocks 
 
   return <canvas ref={canvasRef} className="pp-ink-layer" />;
 }
+
+// BlockInk 类型再导出（PaperPanel 端不直接消费，ink.ts 单一来源）
+export type { BlockInk };

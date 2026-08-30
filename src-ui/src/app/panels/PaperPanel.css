@@ -163,12 +163,17 @@
   cursor: grabbing;
 }
 
-/* 世界层：transform 由 JS 设置（pan/zoom） */
+/* 世界层：transform 由 JS 设置（pan/zoom）
+ * will-change 只在交互期挂（.pp-world--live）——常驻会让浏览器固定合成层
+ * 栅格化分辨率，放大时 GPU 拉伸旧位图导致文字发虚；停止后摘掉 + 强制 reflow
+ * 逼浏览器按当前档位重新栅格化（2026-08-30 文字锐化）。 */
 .pp-world {
   position: absolute;
   top: 0;
   left: 0;
   transform-origin: 0 0;
+}
+.pp-world.pp-world--live {
   will-change: transform;
 }
 
@@ -1745,6 +1750,50 @@
   border-left: 2px solid var(--ink-4);
   padding-left: 10px;
   white-space: pre-wrap;
+}
+/* 眉批折叠切换（P5 夹注恒折拍板延续：默认收起「▸ 思考 N 字」，点击展开） */
+.pp-marginalia-toggle {
+  display: block;
+  margin: 0 0 4px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.pp-marginalia-toggle:hover {
+  color: var(--seal-deep);
+}
+/* 眉批拖出钉手柄（P5：拖出 = 独立夹注快照钉上画布——拷贝语义公共物） */
+.pp-marginalia-pin {
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.24em;
+  color: var(--graphite);
+  background: var(--paper);
+  border: var(--rule-soft);
+  padding: 2px 5px;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+.pp-marginalia:hover .pp-marginalia-pin {
+  opacity: 1;
+}
+.pp-marginalia-pin:hover {
+  color: var(--seal-deep);
+  border-color: var(--seal);
+}
+/* 眉批拖出中：grab 光标反馈（body 级——纸面多数表面无自设 cursor，可继承） */
+body.pp-pin-grabbing {
+  cursor: grabbing;
 }
 
 /* ── 纸条（V3a 抽纸条：拷贝语义快照——用户层物件；收尾 2026-08-24 完整化）── */

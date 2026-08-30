@@ -683,19 +683,21 @@ export function measureMdBlocks(blocks: MdBlock[], w: number): number {
 /** markdown 块体高（渲染 MarkdownBody 的逐字镜像——消费同一结构模型）。
  *  blocks 由调用方解析（全量 parseMarkdown 或增量 parseMarkdownIncremental）
  *  ——增量路径复用同函数，测量与渲染共用单一解析的纪律不变。 */
-function measureMarkdownBody(blocks: MdBlock[], b: SourcedBlock): number {
+function measureMarkdownBody(blocks: MdBlock[], b: SourcedBlock, sidecarFolded = false): number {
   const bodyH = measureMdBlocks(blocks, b.w);
   // P5 眉批化：夹注挂侧栏（.pp-marginalia）——复合块高 = max(正文@全宽,
   // 夹注@侧栏内容宽)。眉批恒容于块高内 → 栈几何零变化（方案甲的决定性
-  // 优势，见 pretext-typography-plan §三）。
+  // 优势，见 pretext-typography-plan §三）。折叠态（夹注恒折拍板）只占一行。
   const sidecar = (b.payload as { sidecar?: { text: string } }).sidecar;
   if (!sidecar?.text) return bodyH;
-  const noteH = measureTextHeight(
-    sidecar.text,
-    MARGINALIA_W - MARGINALIA_INSET,
-    PAPER_REASONING_FONT,
-    PAPER_REASONING_LINE_HEIGHT,
-  );
+  const noteH = sidecarFolded
+    ? PAPER_REASONING_LINE_HEIGHT
+    : measureTextHeight(
+        sidecar.text,
+        MARGINALIA_W - MARGINALIA_INSET,
+        PAPER_REASONING_FONT,
+        PAPER_REASONING_LINE_HEIGHT,
+      );
   return Math.max(bodyH, noteH);
 }
 
@@ -705,7 +707,7 @@ function measureMarkdownBody(blocks: MdBlock[], b: SourcedBlock): number {
  * folded（2026-08-30 折叠机制）：夹注/脚注/程文的折叠态计高——直接调用缺省
  * 展开（false）；壳层经 measureBlockHeightCached 传有效折叠态（覆盖 ?? 默认规则）。
  */
-export function measureBlockHeight(b: SourcedBlock, folded = false): number {
+export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolded = false): number {
   const p = b.payload as PayloadLike;
   switch (b.kind) {
     case 'user': {
@@ -722,7 +724,7 @@ export function measureBlockHeight(b: SourcedBlock, folded = false): number {
       // markdown 专项（2026-08-30）：消费 parseMarkdown 结构模型逐元素计高
       // （与 MarkdownBody 渲染共用同一解析——结构漂移结构性不成立）。
       if (!p.text) return 0;
-      return measureMarkdownBody(parseMarkdown(p.text), b);
+      return measureMarkdownBody(parseMarkdown(p.text), b, sidecarFolded);
     }
     case 'reasoning': {
       if (!p.text) return FOLD_ROW_H;
@@ -818,14 +820,15 @@ export function createBlockMeasureCache(): BlockMeasureCache {
 
 /** 内容签名（决定块高的全部 payload 字段 + 折叠态——签名变 = 高度必须重测）。
  *  P4：ink 层复用同一签名做墨迹缓存 key（块 id + 签名 + 宽）。 */
-export function measureSignature(b: SourcedBlock, folded: boolean): string {
+export function measureSignature(b: SourcedBlock, folded: boolean, sidecarFolded = false): string {
   const p = b.payload as Record<string, unknown>;
   const f = folded ? 1 : 0;
+  const sf = sidecarFolded ? 1 : 0;
   switch (b.kind) {
     case 'user':
       return `user|${p.text ?? ''}|${(p.files as Array<{ path: string; name: string }> | undefined)?.length ?? 0}`;
     case 'markdown':
-      return `markdown|${p.text ?? ''}|${(p.sidecar as { text?: string } | undefined)?.text ?? ''}`;
+      return `markdown|${p.text ?? ''}|${(p.sidecar as { text?: string } | undefined)?.text ?? ''}|${sf}`;
     case 'reasoning':
       return `reasoning|${f}|${p.text ?? ''}`;
     case 'notice':
@@ -849,8 +852,13 @@ export function measureSignature(b: SourcedBlock, folded: boolean): string {
  *  w（P2 变宽）：宽度也是高度信号（收缩/resize 改宽必改高）——签名尾缀。
  *  markdown 块走增量解析：流式文本增长时复用稳定前缀块，只重解析最后一个块
  *  （与渲染端 parseMarkdownIncremental 同源，测量与渲染结构一致性不破）。 */
-export function measureBlockHeightCached(b: SourcedBlock, cache: BlockMeasureCache, folded = false): number {
-  const sig = `${measureSignature(b, folded)}|w=${b.w}`;
+export function measureBlockHeightCached(
+  b: SourcedBlock,
+  cache: BlockMeasureCache,
+  folded = false,
+  sidecarFolded = false,
+): number {
+  const sig = `${measureSignature(b, folded, sidecarFolded)}|w=${b.w}`;
   const hit = cache.byId.get(b.id);
   if (hit && hit.sig === sig) return hit.h;
   let h: number;
@@ -863,10 +871,10 @@ export function measureBlockHeightCached(b: SourcedBlock, cache: BlockMeasureCac
       const prev = cache.mdParse.get(b.id) ?? null;
       const res = parseMarkdownIncremental(text, prev);
       cache.mdParse.set(b.id, res.state);
-      h = measureMarkdownBody(res.blocks, b);
+      h = measureMarkdownBody(res.blocks, b, sidecarFolded);
     }
   } else {
-    h = measureBlockHeight(b, folded);
+    h = measureBlockHeight(b, folded, sidecarFolded);
   }
   cache.byId.set(b.id, { sig, h });
   return h;

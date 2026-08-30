@@ -156,7 +156,10 @@ const BlockView = memo(function BlockView({
   seq,
   ops,
   folded,
+  sidecarFolded,
   onToggleFold,
+  onToggleSidecarFold,
+  onSidecarPinMouseDown,
   onUnpin,
   onDragHandleMouseDown,
   unpinLabel = '收回',
@@ -168,8 +171,14 @@ const BlockView = memo(function BlockView({
   ops: BlockOp[];
   /** 有效折叠态（壳层：用户覆盖 ?? paper/fold 默认规则）——夹注/脚注/程文消费 */
   folded: boolean;
+  /** P5 眉批折叠态（夹注恒折拍板延续——复合 markdown 眉批默认收起） */
+  sidecarFolded?: boolean;
   /** 折叠行点击（切换覆盖态） */
   onToggleFold: (b: SourcedBlock) => void;
+  /** 眉批折叠切换（壳层 foldOv 持久，key = `${block.id}:sc`） */
+  onToggleSidecarFold?: (b: SourcedBlock) => void;
+  /** 眉批拖出钉画布（拷贝语义公共物：独立夹注快照） */
+  onSidecarPinMouseDown?: (e: React.MouseEvent, block: SourcedBlock) => void;
   onUnpin: (id: string) => void;
   /** 拖拽手柄（文类签 .pp-kind）——V3a 手势分工：签=整块拖出（D-R2-1） */
   onDragHandleMouseDown: (e: React.MouseEvent, block: SourcedBlock) => void;
@@ -209,7 +218,13 @@ const BlockView = memo(function BlockView({
         </button>
       )}
       {Body ? (
-        <Body block={block} folded={folded} />
+        <Body
+          block={block}
+          folded={folded}
+          sidecarFolded={sidecarFolded}
+          onToggleSidecarFold={onToggleSidecarFold}
+          onSidecarPinMouseDown={onSidecarPinMouseDown}
+        />
       ) : (
         <div className="pp-body">{(p as { text?: string }).text ?? ''}</div>
       )}
@@ -524,6 +539,15 @@ export function PaperPanel() {
       return { ...prev, [b.id]: !cur };
     });
   }, []);
+  /* P5 眉批折叠（夹注恒折拍板延续）：key = `${block.id}:sc`，缺省收起。 */
+  const sidecarFoldedOf = useCallback((b: SourcedBlock): boolean => foldOv[`${b.id}:sc`] ?? true, [foldOv]);
+  const onToggleSidecarFold = useCallback((b: SourcedBlock) => {
+    setFoldOv((prev) => {
+      const key = `${b.id}:sc`;
+      const cur = prev[key] ?? true;
+      return { ...prev, [key]: !cur };
+    });
+  }, []);
 
   /* ── 流式生命感（2026-08-30）──
    * seenBlocks：已渲染过的块 id 集——pp-enter 入场类只发首见（无 StrictMode，
@@ -573,6 +597,8 @@ export function PaperPanel() {
   const canvasSize = useCanvasViewStore((s) => s.canvasSize);
   const setCanvasSize = useCanvasViewStore((s) => s.setCanvasSize);
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  /** 世界层（pp-world）引用：缩放停稳后摘 will-change + 强制 reflow 用。 */
+  const worldRef = useRef<HTMLDivElement | null>(null);
 
   /* ── 缩远墨迹（P4 LOD）：zoom 低于迟滞阈值时块/纸条 DOM 退场，InkLayer 画
    * 真墨行条骨架——远看真卷轴 + 远缩性能防线（阈值间往返不闪烁）。 ── */
@@ -589,6 +615,38 @@ export function PaperPanel() {
     sync();
     return useCanvasViewStore.subscribe(sync);
   }, []);
+
+  /* ── 文字锐化（2026-08-30）：世界层 will-change 只在交互期挂。
+   * 常驻 will-change:transform 会让浏览器固定合成层栅格化分辨率，放大时
+   * GPU 拉伸旧位图、文字发虚；只有层内容变 dirty（重排）才按当前档位重新
+   * 栅格化。这里订阅 view 变化（wheel/pan/动画全源）：变化中挂 live 保合成
+   * 层流畅 + 重置 settle 定时器；停稳 120ms 摘 live + 强制 reflow，逼浏览器
+   * 按当前档位重新栅格化。subscribe 模式对齐 LOD effect（不依赖 React 渲染
+   * 周期，view 变化在 store 层即触发）。 */
+  const rerasterTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    const sync = () => {
+      const world = worldRef.current;
+      if (!world) return;
+      world.classList.add('pp-world--live');
+      if (rerasterTimerRef.current) window.clearTimeout(rerasterTimerRef.current);
+      rerasterTimerRef.current = window.setTimeout(() => {
+        const el = worldRef.current;
+        if (!el) return;
+        el.classList.remove('pp-world--live');
+        void el.offsetHeight; // 强制同步 reflow → 触发重新栅格化
+        rerasterTimerRef.current = null;
+      }, 120);
+    };
+    sync();
+    return useCanvasViewStore.subscribe(sync);
+  }, []);
+  useEffect(
+    () => () => {
+      if (rerasterTimerRef.current) window.clearTimeout(rerasterTimerRef.current);
+    },
+    [],
+  );
 
   /* 初始视口：锚点对视口下缘（D-R1-3）。画布尺寸变化时保持锚点关系 */
   useEffect(() => {
@@ -708,7 +766,10 @@ export function PaperPanel() {
 
       const stack = blocks.map((b) => ({
         id: b.id,
-        h: b.state === 'flow' ? measureBlockHeightCached(b, measureCacheRef.current, foldedOf(b)) : GHOST_H,
+        h:
+          b.state === 'flow'
+            ? measureBlockHeightCached(b, measureCacheRef.current, foldedOf(b), sidecarFoldedOf(b))
+            : GHOST_H,
         w: b.w,
         kind: b.kind,
       }));
@@ -727,7 +788,7 @@ export function PaperPanel() {
           x: b.x,
           y: b.y,
           w: b.w,
-          h: measureBlockHeightCached(b, measureCacheRef.current, foldedOf(b)),
+          h: measureBlockHeightCached(b, measureCacheRef.current, foldedOf(b), sidecarFoldedOf(b)),
         }));
       const flowWindow = visibleFlowWindow(flowGeom, viewRect, OVERSCAN);
       const visiblePinnedSet = new Set(visiblePinnedIds(pinnedGeom, viewRect, OVERSCAN));
@@ -776,6 +837,7 @@ export function PaperPanel() {
     canvasState,
     pinsMap,
     foldedOf,
+    sidecarFoldedOf,
     shrinkUserBlocks,
   ]);
 
@@ -1830,6 +1892,51 @@ export function PaperPanel() {
     };
   }, [core]);
 
+  /* ── 眉批拖出钉画布（P5）：眉批栏「钉」手柄按下 → 跟手（body cursor 反馈）
+   * → 松手落独立夹注快照钉（拷贝语义公共物，composite 不受影响）。 ── */
+  const sidecarPinRef = useRef<{ block: SourcedBlock; sx: number; sy: number } | null>(null);
+  const onSidecarPinMouseDown = useCallback((e: React.MouseEvent, block: SourcedBlock) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    sidecarPinRef.current = { block, sx: e.clientX, sy: e.clientY };
+  }, []);
+  useEffect(() => {
+    const move = (e: MouseEvent) => {
+      const d = sidecarPinRef.current;
+      if (!d) return;
+      if (Math.hypot(e.clientX - d.sx, e.clientY - d.sy) > DRAG_THRESHOLD) {
+        document.body.classList.add('pp-pin-grabbing');
+      }
+    };
+    const up = (e: MouseEvent) => {
+      const d = sidecarPinRef.current;
+      sidecarPinRef.current = null;
+      document.body.classList.remove('pp-pin-grabbing');
+      if (!d || !core) return;
+      if (Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < DRAG_THRESHOLD) return; // 点击=无操作
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const w = screenToWorld(viewRef.current, e.clientX - rect.left, e.clientY - rect.top);
+      const sidecar = (d.block.payload as { sidecar?: { text: string } }).sidecar;
+      if (!sidecar?.text) return;
+      getCanvasStore(core.panelId)
+        .getState()
+        .setPin(`${d.block.id}:sc`, {
+          x: w.x,
+          y: w.y,
+          w: 320,
+          snapshot: { kind: 'reasoning', text: sidecar.text },
+        });
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+  }, [core]);
+
   /* 世界层 transform */
   const worldStyle = useMemo(
     () => ({ transform: `translate(${view.panX}px, ${view.panY}px) scale(${view.zoom})` }),
@@ -1942,7 +2049,7 @@ export function PaperPanel() {
             )}
 
             {/* 世界层 */}
-            <div className="pp-world" style={worldStyle}>
+            <div ref={worldRef} className="pp-world" style={worldStyle}>
               {/* 原点十字（方位感） */}
               <div className="pp-origin" style={{ left: 0, top: 0 }}>
                 <span className="pp-origin-label">origin</span>
@@ -2085,7 +2192,10 @@ export function PaperPanel() {
                         seq="PIN"
                         ops={EMPTY_OPS}
                         folded={foldedOf(snapshotBlock)}
+                        sidecarFolded={sidecarFoldedOf(snapshotBlock)}
                         onToggleFold={onToggleFold}
+                        onToggleSidecarFold={onToggleSidecarFold}
+                        onSidecarPinMouseDown={onSidecarPinMouseDown}
                         onUnpin={onUnpin}
                         onDragHandleMouseDown={onBlockMouseDown}
                         unpinLabel={deadOrphanPinIds.has(pinId) ? '删除' : '收回'}
@@ -2121,7 +2231,10 @@ export function PaperPanel() {
                           seq={r.seq.get(b.id) ?? '000'}
                           ops={opsByBlock.get(b.id) ?? EMPTY_OPS}
                           folded={foldedOf(b)}
+                          sidecarFolded={sidecarFoldedOf(b)}
                           onToggleFold={onToggleFold}
+                          onToggleSidecarFold={onToggleSidecarFold}
+                          onSidecarPinMouseDown={onSidecarPinMouseDown}
                           onUnpin={onUnpin}
                           onDragHandleMouseDown={onBlockMouseDown}
                         />
@@ -2154,7 +2267,10 @@ export function PaperPanel() {
                           seq={r.seq.get(b.id) ?? '000'}
                           ops={opsByBlock.get(b.id) ?? EMPTY_OPS}
                           folded={foldedOf(b)}
+                          sidecarFolded={sidecarFoldedOf(b)}
                           onToggleFold={onToggleFold}
+                          onToggleSidecarFold={onToggleSidecarFold}
+                          onSidecarPinMouseDown={onSidecarPinMouseDown}
                           onUnpin={onUnpin}
                           onDragHandleMouseDown={onBlockMouseDown}
                         />

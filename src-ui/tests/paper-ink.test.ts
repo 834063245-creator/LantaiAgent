@@ -6,7 +6,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { walkMock, naturalWidthMock } = vi.hoisted(() => ({
+const { walkMock, naturalWidthMock, materializeMock } = vi.hoisted(() => ({
   walkMock: vi.fn(
     (_prepared: unknown, _width: number, onLine: (line: { width: number; start: unknown; end: unknown }) => void) => {
       // 固定两行折行（宽 100 / 80）——行条几何的确定桩
@@ -16,12 +16,14 @@ const { walkMock, naturalWidthMock } = vi.hoisted(() => ({
     },
   ),
   naturalWidthMock: vi.fn(() => 200),
+  materializeMock: vi.fn(() => ({ text: '测试行', width: 100, start: null, end: null })),
 }));
 vi.mock('@chenglou/pretext', () => ({
   prepare: vi.fn((text: string) => ({ _text: text, _mock: true })),
   layout: vi.fn(() => ({ height: 36, lineCount: 2 })),
   prepareWithSegments: vi.fn((text: string) => ({ _text: text, _segs: true })),
   walkLineRanges: walkMock,
+  materializeLineRange: materializeMock,
   measureNaturalWidth: naturalWidthMock,
   clearCache: vi.fn(),
 }));
@@ -88,15 +90,17 @@ describe('paper/ink inkForBlock', () => {
     resetBlockIdCounterForTests();
   });
 
-  it('来文块：逐行真实行宽的墨条（mock 两行折行）', () => {
+  it('来文块：逐行真实行宽 + 行原文（materialize 缩微直绘用）', () => {
     const cache = createInkCache();
     const b = block('user', { text: '一段来文' });
     b.w = 560;
     const ink = inkForBlock(b, false, cache);
     // mock 每次走查出 2 行：bars = 2，dy 依次 0 / lineHeight
     expect(ink.bars).toHaveLength(2);
-    expect(ink.bars[0]).toMatchObject({ dy: 0, x0: 20 }); // USER_TEXT_INSET
+    expect(ink.bars[0]).toMatchObject({ dy: 0, x0: 20, text: '测试行' }); // USER_TEXT_INSET
+    expect(ink.bars[1]).toMatchObject({ dy: 16 * 1.9, text: '测试行' });
     expect(ink.lineH).toBe(16 * 1.9);
+    expect(ink.size).toBe(16); // 来文楷体字号（缩放直绘用）
   });
 
   it('缓存命中：同签名二次取墨不重复走查', () => {
@@ -109,13 +113,13 @@ describe('paper/ink inkForBlock', () => {
     expect(walkMock.mock.calls.length).toBe(calls);
   });
 
-  it('折叠夹注 → 桩条（单根短墨保「有物」观感）', () => {
+  it('折叠夹注 → 桩条（空 text 走矩形路径，单根短墨保「有物」观感）', () => {
     const cache = createInkCache();
     const b = block('reasoning', { text: '思考' });
     b.w = 720;
     const ink = inkForBlock(b, true, cache);
     expect(ink.bars).toHaveLength(1);
-    expect(ink.bars[0]).toMatchObject({ dy: 0, x0: 0 });
+    expect(ink.bars[0]).toMatchObject({ dy: 0, x0: 0, text: '' });
   });
 
   it('脚注多源：args + output 顺序累计 dy（输出段接在参数段之后）', () => {
