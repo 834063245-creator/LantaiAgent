@@ -75,8 +75,8 @@ describe('C10 附件链 — measure 计高', () => {
     const h0 = measureBlockHeight(without);
     const h2 = measureBlockHeight(with2);
     expect(h2).toBeGreaterThan(h0);
-    // 每行 16px + 上边距 9：两行 = 41px（线性叠加可精确断言）
-    expect(h2 - h0).toBe(9 + 2 * 16);
+    // 每行 16px + 上边距 9：两行 = 41px（浮点叠加，用 closeTo 精确断言）
+    expect(h2 - h0).toBeCloseTo(9 + 2 * 16, 5);
   });
 });
 

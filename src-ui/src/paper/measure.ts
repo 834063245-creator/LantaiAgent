@@ -15,15 +15,7 @@
 //
 // 纸面字体常量自持（纸是独立壳，不随观测台 --font-scale 缩放）。
 
-import {
-  clearCache as clearPretextCache,
-  layout,
-  measureNaturalWidth,
-  type PreparedText,
-  type PreparedTextWithSegments,
-  prepare,
-  prepareWithSegments,
-} from '@chenglou/pretext';
+import { clearCache as clearPretextCache, layout, type PreparedText, prepare } from '@chenglou/pretext';
 import {
   measureRichInlineStats,
   type PreparedRichInline,
@@ -51,12 +43,13 @@ import { prettyToolArgs } from './tool-text';
  * 且 canvas 测量字体必须与渲染字体一致（FONT_STACKS 与 tokens.css --f-* 同源）。 */
 
 import {
-  ASSET_TOKENS,
+  ASSET_DERIVED,
   CHROME_DERIVED,
   CHROME_TOKENS,
   FOLIO_TOKENS,
   FONT_STACKS,
   LIMIT_TOKENS,
+  MD_DERIVED,
   MD_TOKENS,
   PAPER_TYPE,
 } from './type-tokens';
@@ -117,16 +110,16 @@ const MD_LI_INDENT = MD_TOKENS.liIndent; // .pp-md-li padding-left（标记列�
 const MD_SUB_INDENT = MD_TOKENS.subIndent; // .pp-md-list--sub padding-left
 const MD_SUB_TOP = MD_TOKENS.subTop; // .pp-md-list--sub margin-top
 const MD_QUOTE_GAP = MD_TOKENS.quoteGap; // .pp-md-quote margin-bottom
-const MD_QUOTE_PAD_V = MD_TOKENS.quotePadV * 2; // .pp-md-quote padding 上下（单侧 2×2）
-const MD_QUOTE_INSET = MD_TOKENS.quotePadL + MD_TOKENS.quoteBorderL; // padding-left 16 + border-left 2
+const MD_QUOTE_PAD_V = MD_DERIVED.quotePadV; // .pp-md-quote padding 上下（单侧×2）
+const MD_QUOTE_INSET = MD_DERIVED.quoteInset; // padding-left 16 + border-left 2
 const MD_CODE_GAP = MD_TOKENS.codeGap; // .pp-md-code margin-bottom
-const MD_CODE_PAD_V = MD_TOKENS.codePadV * 2; // .pp-md-code padding 上下（单侧 10×2）
-const MD_CODE_INSET = MD_TOKENS.codePadH * 2 + MD_TOKENS.codeBorderL; // border-left 3 + padding 左右 12×2
-const MD_HR_H = MD_TOKENS.hrMargin * 2 + MD_TOKENS.hrBorder; // margin 18 + 线 1 + margin 18
-const MD_HR_LAST_H = MD_TOKENS.hrMargin + MD_TOKENS.hrBorder; // 末元素 margin-bottom 归零
+const MD_CODE_PAD_V = MD_DERIVED.codePadV; // .pp-md-code padding 上下（单侧×2）
+const MD_CODE_INSET = MD_DERIVED.codeInset; // border-left 3 + padding 左右 12×2
+const MD_HR_H = MD_DERIVED.hrH; // margin 18 + 线 1 + margin 18
+const MD_HR_LAST_H = MD_DERIVED.hrLastH; // 末元素 margin-bottom 归零
 const MD_TABLE_GAP = MD_TOKENS.tableGap; // .pp-md-table margin-bottom
 const MD_TABLE_CELL_PAD = MD_TOKENS.tableCellPadH; // th/td 左右 padding 8×2
-const MD_TABLE_CELL_PAD_V = MD_TOKENS.tableCellPadV * 2; // th/td 上下 padding 4×2
+const MD_TABLE_CELL_PAD_V = MD_DERIVED.tableCellPadV; // th/td 上下 padding 4×2
 const MD_TABLE_ROW_BORDER = MD_TOKENS.tableRowBorder; // th 行底规线
 /** 表格单元字体：等宽 11.5px/1.5（.pp-md-table） */
 const MD_TABLE_SIZE = MD_TOKENS.tableSize;
@@ -142,7 +135,7 @@ const MD_TABLE_LINE_HEIGHT = MD_TOKENS.tableSize * MD_TOKENS.tableLh;
  *   .pp-md-ci → mono 0.82em + 横向 padding 5×2 + border 1×2
  *   .pp-circled → 600 + 横向 padding 4×2 + border 1.5×2 = 11（椭圆原子件） */
 const MD_CI_SIZE_RATIO = MD_TOKENS.ciSizeRatio;
-const MD_CI_EXTRA = MD_TOKENS.ciPadH * 2 + MD_TOKENS.ciBorder * 2;
+const MD_CI_EXTRA = MD_DERIVED.ciExtra;
 /** 圈点椭圆横向 chrome（.pp-circled：padding 4×2 + border 1.5×2）。 */
 export const CIRCLE_EXTRA = 11;
 /** 圈点字体：来文楷体 16px 加 600（.pp-circled font-weight 镜像）。 */
@@ -227,7 +220,9 @@ export const CODE_SRC_MAX_H = CHROME_DERIVED.codeSrcMaxH;
 export const CODE_OUT_TEXT_MAX = CHROME_DERIVED.codeOutTextMax;
 
 /* ── per-kind chrome 常量（2026-08-30 token 化：单一真源 = type-tokens.ts）── */
-const USER_TEXT_INSET = CHROME_DERIVED.userTextInset; // padding-left 18 + border-left 2
+const USER_TEXT_INSET = CHROME_DERIVED.userTextInset; // 标题化后无左批线 = 0
+/** 来文题签（2026-08-30 标题化）：题签占高 = 题签行 + 下距（镜像 .pp-user-kind 族）。 */
+const USER_KIND_H = CHROME_DERIVED.userKindH;
 /** asterism（B1）：来文尾三星高度 = margin-top 30 + 字行 14（line-height 1）。 */
 const USER_ASTERISM_H = CHROME_DERIVED.userAsterismH;
 /** 来文附件行（C10）：每行 mono 11px / 行高 16 + 上间距 8 + 弱规线 1。 */
@@ -251,90 +246,86 @@ const NOTICE_TEXT_INSET = CHROME_DERIVED.noticeTextInset; // padding 12×2
  * html 卡 1000 的体格全被按成 80 → 绝对定位流里下一块压字（画图族等资产
  * 卡片溢出、会话流渲染乱成一团的根因）。此处按表现原语逐款镜像
  * asset-renderers.tsx 的结构（改表现组件两处同步）；加载/上报/交互类动态高
- * （图片、iframe、拟策反馈框）由壳层 ResizeObserver 实测回写桥兜底。 */
-const JSON_VIEW_PAD_V = ASSET_TOKENS.json.padTop + ASSET_TOKENS.json.padBottom; // .pp-json padding 10 + 2
-const JSON_VIEW_HEAD_H = ASSET_TOKENS.json.headSize * 1.8 + ASSET_TOKENS.json.headMarginB; // .pp-json-head mono 10px（行距继承 1.8）+ margin 6
-const JSON_PRE_PAD_V = ASSET_TOKENS.json.prePadV * 2; // .pp-json-pre padding 10×2
-const JSON_PRE_INSET = ASSET_TOKENS.json.preBorderL + ASSET_TOKENS.json.prePadH * 2; // border-left 3 + padding 左右 12×2
-const JSON_PRE_MAX_H = ASSET_TOKENS.json.preMaxH; // box-sizing border-box → 文本预算
-const JSON_PRE_FONT = `${ASSET_TOKENS.json.preSize}px ${MONO_STACK}`;
-const JSON_PRE_LINE_HEIGHT = ASSET_TOKENS.json.preSize * ASSET_TOKENS.json.preLh;
+ * （图片、iframe、拟策反馈框）由壳层 ResizeObserver 实测回写桥兜底。
+ * token 化：数值全归一在 type-tokens.ts ASSET_DERIVED，本区零公式。 */
+const JSON_VIEW_PAD_V = ASSET_DERIVED.jsonViewPadV; // .pp-json padding 10 + 2
+const JSON_VIEW_HEAD_H = ASSET_DERIVED.jsonViewHeadH; // .pp-json-head + margin 6
+const JSON_PRE_PAD_V = ASSET_DERIVED.jsonPrePadV; // .pp-json-pre padding 10×2
+const JSON_PRE_INSET = ASSET_DERIVED.jsonPreInset; // border-left 3 + padding 左右 12×2
+const JSON_PRE_MAX_H = ASSET_DERIVED.jsonPreMaxH; // box-sizing border-box → 文本预算
+const JSON_PRE_FONT = `${ASSET_DERIVED.jsonPreSize}px ${MONO_STACK}`;
+const JSON_PRE_LINE_HEIGHT = ASSET_DERIVED.jsonPreSize * ASSET_DERIVED.jsonPreLh;
 
-const MEDIA_PAD_V = ASSET_TOKENS.media.padV * 2; // .pp-media padding 2×2
-const MEDIA_LABEL_H = ASSET_TOKENS.media.labelSize * 1.8 + ASSET_TOKENS.media.labelMarginB; // .pp-media-label（行距继承 1.8）+ margin-bottom 4
-const MEDIA_IMG_MAX_H = ASSET_TOKENS.media.imgMaxH; // .pp-media-img max-height
-const MEDIA_ROW_H = ASSET_TOKENS.media.rowSize * 1.8; // .pp-media-file 行（行距继承 1.8）
+const MEDIA_PAD_V = ASSET_DERIVED.mediaPadV; // .pp-media padding 2×2
+const MEDIA_LABEL_H = ASSET_DERIVED.mediaLabelH; // .pp-media-label + margin-bottom 4
+const MEDIA_IMG_MAX_H = ASSET_DERIVED.mediaImgMaxH; // .pp-media-img max-height
+const MEDIA_ROW_H = ASSET_DERIVED.mediaRowSize * 1.8; // .pp-media-file 行（行距继承 1.8）
 
-const CHART_PAD_V = ASSET_TOKENS.chart.padV * 2; // .pp-chart padding 4×2
-const CHART_TYPE_H = ASSET_TOKENS.chart.typeSize * 1.8 + ASSET_TOKENS.chart.typeMarginB; // .pp-chart-type（行距继承 1.8）+ margin-bottom 4
-const CHART_SVG_MAX_H = ASSET_TOKENS.chart.svgMaxH; // .pp-chart-svg max-height
-const CHART_PIE_H = ASSET_TOKENS.chart.pieH; // .pp-chart-pie height
-const CHART_LABEL_GAP = ASSET_TOKENS.chart.labelMarginTop; // .pp-chart-labels margin-top
-const CHART_LABEL_LINE = ASSET_TOKENS.chart.labelSize * 1.8;
-const CHART_LABEL_FONT = `${ASSET_TOKENS.chart.labelSize}px ${MONO_STACK}`;
+const CHART_PAD_V = ASSET_DERIVED.chartPadV; // .pp-chart padding 4×2
+const CHART_TYPE_H = ASSET_DERIVED.chartTypeH; // .pp-chart-type + margin-bottom 4
+const CHART_SVG_MAX_H = ASSET_DERIVED.chartSvgMaxH; // .pp-chart-svg max-height
+const CHART_PIE_H = ASSET_DERIVED.chartPieH; // .pp-chart-pie height
+const CHART_LABEL_GAP = ASSET_DERIVED.chartLabelGap; // .pp-chart-labels margin-top
+const CHART_LABEL_LINE = ASSET_DERIVED.chartLabelSize * 1.8;
+const CHART_LABEL_FONT = `${ASSET_DERIVED.chartLabelSize}px ${MONO_STACK}`;
 
-const METRIC_PAD_V = ASSET_TOKENS.metric.padV * 2; // .pp-metric padding 2×2
-const METRIC_CAPTION_H = ASSET_TOKENS.metric.captionSize * 1.8 + ASSET_TOKENS.metric.captionMarginB; // .pp-metric-caption + margin-bottom 6
-const METRIC_CARD_H =
-  ASSET_TOKENS.metric.cardBorder +
-  ASSET_TOKENS.metric.cardPad +
-  ASSET_TOKENS.metric.cardLabelSize * 1.8 +
-  ASSET_TOKENS.metric.cardValueSize * ASSET_TOKENS.metric.cardValueLh; // border + padding + label + value
-const METRIC_GAP = ASSET_TOKENS.metric.gap; // .pp-metric-grid gap
-const METRIC_MIN_COL = ASSET_TOKENS.metric.minCol; // minmax(120px, 1fr)
+const METRIC_PAD_V = ASSET_DERIVED.metricPadV; // .pp-metric padding 2×2
+const METRIC_CAPTION_H = ASSET_DERIVED.metricCaptionH; // .pp-metric-caption + margin-bottom 6
+const METRIC_CARD_H = ASSET_DERIVED.metricCardH; // border + padding + label + value
+const METRIC_GAP = ASSET_DERIVED.metricGap; // .pp-metric-grid gap
+const METRIC_MIN_COL = ASSET_DERIVED.metricMinCol; // minmax(120px, 1fr)
 
-const GRID_PAD_V = ASSET_TOKENS.grid.padV * 2; // .pp-grid padding 2×2
-const GRID_CAPTION_H = ASSET_TOKENS.grid.captionSize * 1.8 + ASSET_TOKENS.grid.captionMarginB;
-const GRID_CELL_PAD_V = ASSET_TOKENS.grid.cellPadV * 2; // th/td padding 4×2
-const GRID_ROW_LINE = ASSET_TOKENS.grid.rowSize * 1.8; // .pp-grid-table 11px（行距继承 1.8）
-const GRID_HEAD_BORDER = ASSET_TOKENS.grid.headBorder; // th border-bottom
-const GRID_ROW_BORDER = ASSET_TOKENS.grid.rowBorder; // td border-bottom
-const GRID_MEASURE_ROW_CAP = ASSET_TOKENS.grid.measureRowCap; // 逐行文字测量上限
-const GRID_FONT = `${ASSET_TOKENS.grid.rowSize}px ${MONO_STACK}`;
+const GRID_PAD_V = ASSET_DERIVED.gridPadV; // .pp-grid padding 2×2
+const GRID_CAPTION_H = ASSET_DERIVED.gridCaptionH;
+const GRID_CELL_PAD_V = ASSET_DERIVED.gridCellPadV; // th/td padding 4×2
+const GRID_ROW_LINE = ASSET_DERIVED.gridRowLine; // .pp-grid-table 11px（行距继承 1.8）
+const GRID_HEAD_BORDER = ASSET_DERIVED.gridHeadBorder; // th border-bottom
+const GRID_ROW_BORDER = ASSET_DERIVED.gridRowBorder; // td border-bottom
+const GRID_MEASURE_ROW_CAP = ASSET_DERIVED.gridMeasureRowCap; // 逐行文字测量上限
+const GRID_FONT = `${ASSET_DERIVED.gridSize}px ${MONO_STACK}`;
 
-const GRAPH_PAD_V = ASSET_TOKENS.graph.padV * 2; // .pp-graph padding 4×2
-const GRAPH_SVG_MAX_H = ASSET_TOKENS.graph.svgMaxH; // .pp-graph-svg max-height
-const GRAPH_COL_W = ASSET_TOKENS.graph.colW; // 深度列宽
-const GRAPH_ROW_H = ASSET_TOKENS.graph.rowH;
-const GRAPH_ORIGIN = ASSET_TOKENS.graph.origin;
-const GRAPH_MIN_W = ASSET_TOKENS.graph.minW;
-const GRAPH_MIN_H = ASSET_TOKENS.graph.minH;
+const GRAPH_PAD_V = ASSET_DERIVED.graphPadV; // .pp-graph padding 4×2
+const GRAPH_SVG_MAX_H = ASSET_DERIVED.graphSvgMaxH; // .pp-graph-svg max-height
+const GRAPH_COL_W = ASSET_DERIVED.graphColW; // 深度列宽
+const GRAPH_ROW_H = ASSET_DERIVED.graphRowH;
+const GRAPH_ORIGIN = ASSET_DERIVED.graphOrigin;
+const GRAPH_MIN_W = ASSET_DERIVED.graphMinW;
+const GRAPH_MIN_H = ASSET_DERIVED.graphMinH;
 
-const HTML_BODY_PAD_V = ASSET_TOKENS.html.padV * 2; // .pp-html padding 2×2
-const HTML_FRAME_DEFAULT_H = ASSET_TOKENS.html.frameDefaultH; // .pp-html-frame 初始高
+const HTML_BODY_PAD_V = ASSET_DERIVED.htmlPadV; // .pp-html padding 2×2
+const HTML_FRAME_DEFAULT_H = ASSET_DERIVED.htmlFrameDefaultH; // .pp-html-frame 初始高
 
-const FORM_PAD_V = ASSET_TOKENS.form.padV * 2; // .pp-form padding 2×2
-const FORM_TITLE_H = ASSET_TOKENS.form.titleSize * 1.8 + ASSET_TOKENS.form.titleMarginB; // .pp-form-title + margin-bottom 4
-const FORM_BODY_LINE = ASSET_TOKENS.form.bodySize * ASSET_TOKENS.form.bodyLh; // .pp-form-body line-height 1.7
-const FORM_BODY_GAP = ASSET_TOKENS.form.bodyMarginB; // margin-bottom 8
-const FORM_OPT_PAD_V = ASSET_TOKENS.form.optPadV * 2; // .pp-form-option padding 6×2
-const FORM_OPT_BORDER = ASSET_TOKENS.form.optBorder;
-const FORM_OPT_LABEL_H = ASSET_TOKENS.form.optLabelSize * 1.8;
-const FORM_OPT_DESC_LINE = ASSET_TOKENS.form.optDescSize * 1.8;
-const FORM_OPT_DESC_INSET = ASSET_TOKENS.form.optDescPadH * 2; // padding 左右 10×2
-const FORM_OPT_GAP = ASSET_TOKENS.form.optGap; // .pp-form-options row-gap
-const FORM_SECTION_GAP = ASSET_TOKENS.form.sectionGap; // body/options margin-bottom
-const FORM_ACTIONS_H =
-  ASSET_TOKENS.form.confirmSize * 1.8 + ASSET_TOKENS.form.confirmPadV * 2 + ASSET_TOKENS.form.confirmBorder * 2; // .pp-form-confirm 行
-const FORM_BODY_FONT = `${ASSET_TOKENS.form.bodySize}px ${SONG_STACK}`;
-const FORM_DESC_FONT = `${ASSET_TOKENS.form.optDescSize}px ${SONG_STACK}`;
+const FORM_PAD_V = ASSET_DERIVED.formPadV; // .pp-form padding 2×2
+const FORM_TITLE_H = ASSET_DERIVED.formTitleH; // .pp-form-title + margin-bottom 4
+const FORM_BODY_LINE = ASSET_DERIVED.formBodyLine; // .pp-form-body line-height 1.7
+const FORM_BODY_GAP = ASSET_DERIVED.formBodyGap; // margin-bottom 8
+const FORM_OPT_PAD_V = ASSET_DERIVED.formOptPadV; // .pp-form-option padding 6×2
+const FORM_OPT_BORDER = ASSET_DERIVED.formOptBorder;
+const FORM_OPT_LABEL_H = ASSET_DERIVED.formOptLabelH;
+const FORM_OPT_DESC_LINE = ASSET_DERIVED.formOptDescLine;
+const FORM_OPT_DESC_INSET = ASSET_DERIVED.formOptDescInset; // padding 左右 10×2
+const FORM_OPT_GAP = ASSET_DERIVED.formOptGap; // .pp-form-options row-gap
+const FORM_SECTION_GAP = ASSET_DERIVED.formSectionGap; // body/options margin-bottom
+const FORM_ACTIONS_H = ASSET_DERIVED.formActionsH; // .pp-form-confirm 行
+const FORM_BODY_FONT = `${ASSET_DERIVED.formBodySize}px ${SONG_STACK}`;
+const FORM_DESC_FONT = `${ASSET_DERIVED.formDescSize}px ${SONG_STACK}`;
 
 /* ── 拟策测高镜像（2026-08-30 溢出修复：PLAN_OPTIONS_H 118 / PLAN_HEAD_H 39 退役）──
  * 旧固定预算装不下两枚带描述的方案（实况 ≈163）+ 操作行按钮实高 49.4（旧 40）
  * + 标题换行未计 → 交互拟策块恒比测高高 50~120px，下一块压字。选项描述文本
- * 实测；反馈框展开属动态高（壳层 RO 实测兜底，needsObservedHeight 含 plan）。 */
-const PLAN_TITLE_FONT = `${ASSET_TOKENS.plan.titleSize}px ${SONG_STACK}`;
-const PLAN_TITLE_LINE_HEIGHT = ASSET_TOKENS.plan.titleSize * ASSET_TOKENS.plan.titleLh;
-const PLAN_HEAD_MARGIN = ASSET_TOKENS.plan.headMarginB; // .pp-pc-head margin-bottom
-const PLAN_OPTIONS_CHROME_H =
-  ASSET_TOKENS.plan.optionsMarginTop + ASSET_TOKENS.plan.optionsBorderTop + ASSET_TOKENS.plan.optionsPadTop; // .pp-pc-options
-const PLAN_OPTION_PAD_V = ASSET_TOKENS.plan.optionPadV * 2; // .pp-pc-option padding 7×2
-const PLAN_OPTION_BORDER = ASSET_TOKENS.plan.optionBorder;
-const PLAN_OPTION_LABEL_H = ASSET_TOKENS.plan.optionSize * 1.8; // 行距继承 1.8
-const PLAN_OPTION_DESC_GAP = ASSET_TOKENS.plan.optionDescMarginTop; // .pp-pc-option-desc margin-top
-const PLAN_OPTION_DESC_LINE = ASSET_TOKENS.plan.optionDescSize * 1.8;
-const PLAN_OPTION_DESC_INSET = ASSET_TOKENS.plan.optionPadH * 2; // option padding 左右
-const PLAN_OPTION_GAP = ASSET_TOKENS.plan.optionGap; // .pp-pc-option margin-bottom（每枚，含末枚）
+ * 实测；反馈框展开属动态高（壳层 RO 实测兜底，needsObservedHeight 含 plan）。
+ * token 化：数值全归一在 ASSET_DERIVED，本区零公式。 */
+const PLAN_TITLE_FONT = `${ASSET_DERIVED.planTitleSize}px ${SONG_STACK}`;
+const PLAN_TITLE_LINE_HEIGHT = ASSET_DERIVED.planTitleSize * ASSET_DERIVED.planTitleLh;
+const PLAN_HEAD_MARGIN = ASSET_DERIVED.planHeadMargin; // .pp-pc-head margin-bottom
+const PLAN_OPTIONS_CHROME_H = ASSET_DERIVED.planOptionsChromeH; // .pp-pc-options
+const PLAN_OPTION_PAD_V = ASSET_DERIVED.planOptionPadV; // .pp-pc-option padding 7×2
+const PLAN_OPTION_BORDER = ASSET_DERIVED.planOptionBorder;
+const PLAN_OPTION_LABEL_H = ASSET_DERIVED.planOptionSize * 1.8; // 行距继承 1.8
+const PLAN_OPTION_DESC_GAP = ASSET_DERIVED.planOptionDescGap; // .pp-pc-option-desc margin-top
+const PLAN_OPTION_DESC_LINE = ASSET_DERIVED.planOptionDescLine;
+const PLAN_OPTION_DESC_INSET = ASSET_DERIVED.planOptionDescInset; // option padding 左右
+const PLAN_OPTION_GAP = ASSET_DERIVED.planOptionGap; // .pp-pc-option margin-bottom（每枚，含末枚）
 
 /* ── prepare 缓存（pretext-cache.ts 同款纪律）── */
 
@@ -708,80 +699,10 @@ function measureUserTextHeight(text: string, maxWidth: number): number {
   return h;
 }
 
-/* ── 来文收缩宽（P2a 变宽纸条 2026-08-30）──
- * 用户来文按内容取宽（手迹纸条隐喻）：内容自然宽 = 最长行宽 + 左内缩。
- * 有【】走逐行 rich 的 maxLineWidth（精确）；纯文本走 prepareWithSegments +
- * measureNaturalWidth（最宽强制行——pre-wrap 硬换行）；附件行（mono）同法参与。
- * 任一内容在预算宽下折行（rich lineCount>1 / natural 超预算）→ 不收缩（全宽）。
- * prepare 与宽度无关：宽度变化只重 layout（prepare 缓存全命中）——resize 零重排。 */
+/* ── 来文宽度约束（2026-08-30 标题化：收缩宽退役）──
+ * 原 P2a 来文按内容取宽（手迹纸条隐喻）随标题化整体移除；此处仅留最小版心宽
+ * 约束供壳层使用（窄流区不压碎版心）。 */
 export const USER_SHRINK_MIN_W = 320;
-
-const SEG_CACHE_MAX = 300;
-const segCache = new Map<string, PreparedTextWithSegments>();
-
-function getPreparedWithSegments(text: string, font: string): PreparedTextWithSegments {
-  const key = `${font}::${text}`;
-  let p = segCache.get(key);
-  if (p === undefined) {
-    p = prepareWithSegments(text, font, { whiteSpace: 'pre-wrap' });
-    segCache.set(key, p);
-    if (segCache.size > SEG_CACHE_MAX) {
-      const first = segCache.keys().next().value;
-      if (first !== undefined) segCache.delete(first);
-    }
-  }
-  return p;
-}
-
-/** 来文内容自然宽（世界单位）；null = 内容超预算宽（收缩无意义，保持全宽）。 */
-function userNaturalWidth(
-  text: string | undefined,
-  files: Array<{ name: string }> | undefined,
-  maxContentW: number,
-): number | null {
-  let natural = 0;
-  if (text) {
-    if (text.includes('【')) {
-      for (const line of text.split('\n')) {
-        if (line === '') continue;
-        const items: RichInlineItem[] = parseCircledSegments(line).map((seg) =>
-          seg.circled
-            ? { text: seg.text, font: CIRCLE_FONT, break: 'never' as const, extraWidth: CIRCLE_EXTRA }
-            : { text: seg.text, font: PAPER_USER_FONT },
-        );
-        if (items.every((it) => it.text.length === 0)) continue;
-        const stats = measureRichInlineStats(getRichPrepared(items), maxContentW);
-        if (stats.lineCount > 1) return null;
-        natural = Math.max(natural, stats.maxLineWidth);
-      }
-    } else {
-      const w = measureNaturalWidth(getPreparedWithSegments(text, PAPER_USER_FONT));
-      if (w > maxContentW) return null;
-      natural = Math.max(natural, w);
-    }
-  }
-  for (const f of files ?? []) {
-    // 附件行渲染 = 「附 · 」前缀 + 文件名（mono 11px）
-    const w = measureNaturalWidth(getPreparedWithSegments(`附 · ${f.name}`, PAPER_OUT_FONT));
-    if (w > maxContentW) return null;
-    natural = Math.max(natural, w);
-  }
-  return natural > 0 ? natural : null;
-}
-
-/** 来文收缩宽（P2a）：内容自然宽 + 左内缩，clamp [USER_SHRINK_MIN_W, 全宽]；
- *  超宽/触顶返回 null（调用方保持原宽不动）。 */
-export function shrinkWrapUserWidth(
-  payload: { text?: string; files?: Array<{ name: string }> },
-  blockWidth: number,
-): number | null {
-  const maxContentW = blockWidth - USER_TEXT_INSET;
-  const natural = userNaturalWidth(payload.text, payload.files, maxContentW);
-  if (natural === null) return null;
-  const w = Math.ceil(natural) + USER_TEXT_INSET;
-  if (w >= blockWidth) return null;
-  return Math.max(USER_SHRINK_MIN_W, w);
-}
 
 /* ── 缩远墨迹（P4 LOD）──
  * InkLayer 在远缩档用 canvas 画「真墨」行条骨架（每行真实行宽），替代整棵
@@ -1072,8 +993,8 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       // 附件行（C10）：每文件一行 mono 小字，高度线性叠加
       const files = (b.payload as { files?: Array<{ path: string; name: string }> }).files;
       const filesH = files?.length ? USER_FILES_MARGIN_TOP + files.length * USER_FILE_LINE_H : 0;
-      // asterism（B1）：来文恒有尾三星，高度恒加
-      return textH + filesH + USER_ASTERISM_H;
+      // 题签（2026-08-30 标题化）+ asterism（B1）恒加：题签置顶、花押收尾
+      return USER_KIND_H + textH + filesH + USER_ASTERISM_H;
     }
     case 'markdown': {
       // markdown 专项（2026-08-30）：消费 parseMarkdown 结构模型逐元素计高
@@ -1279,6 +1200,5 @@ export function measureBlockHeightCached(
 export function clearPaperMeasureCache(): void {
   prepareCache.clear();
   richCache.clear();
-  segCache.clear();
   clearPretextCache();
 }

@@ -97,10 +97,10 @@ describe('paper/ink inkForBlock', () => {
     const ink = inkForBlock(b, false, cache);
     // mock 每次走查出 2 行：bars = 2，dy 依次 0 / lineHeight
     expect(ink.bars).toHaveLength(2);
-    expect(ink.bars[0]).toMatchObject({ dy: 0, x0: 20, text: '测试行' }); // USER_TEXT_INSET
-    expect(ink.bars[1]).toMatchObject({ dy: 16 * 1.9, text: '测试行' });
-    expect(ink.lineH).toBe(16 * 1.9);
-    expect(ink.size).toBe(16); // 来文楷体字号（缩放直绘用）
+    expect(ink.bars[0]).toMatchObject({ dy: 0, x0: 0, text: '测试行' }); // 2026-08-30 标题化：左批线退役，inset=0
+    expect(ink.bars[1]).toMatchObject({ dy: 22 * 1.65, text: '测试行' });
+    expect(ink.lineH).toBe(22 * 1.65);
+    expect(ink.size).toBe(22); // 来文楷体字号（缩放直绘用）——标题化放大
   });
 
   it('缓存命中：同签名二次取墨不重复走查', () => {

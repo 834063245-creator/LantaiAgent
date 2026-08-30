@@ -22,7 +22,7 @@ export const FONT_STACKS = {
 
 /* ── 块体字号 / 行高系数（CSS 侧 .pp-block.pp-* .pp-body 镜像）── */
 export const PAPER_TYPE = {
-  user: { size: 16, lh: 1.9, stack: 'kai' as const }, // 来文楷书朱砂深
+  user: { size: 22, lh: 1.65, stack: 'kai' as const }, // 来文楷书朱砂深——2026-08-30 标题化：题签居中、正文变大（题 > 正文 17）
   body: { size: 17, lh: 2.0, stack: 'song' as const }, // 正文宋体墨
   reasoning: { size: 13.5, lh: 1.85, stack: 'song' as const }, // 夹注石墨
   notice: { size: 12.5, lh: 1.7, stack: 'song' as const }, // 贴黄
@@ -68,9 +68,29 @@ export const MD_TOKENS = {
   ciBorder: 1, // 行内码 border
 } as const;
 
+/* ── markdown 子版式组合派生（measure 用；CSS 引用 MD_TOKENS 原始值）──
+ * 全部组合公式归一在此：改 MD_TOKENS 原始值，派生自动跟随，measure.ts 零公式。 */
+export const MD_DERIVED = {
+  quotePadV: MD_TOKENS.quotePadV * 2, // .pp-md-quote padding 上下（单侧×2）
+  quoteInset: MD_TOKENS.quotePadL + MD_TOKENS.quoteBorderL, // padding-left 16 + border-left 2
+  codePadV: MD_TOKENS.codePadV * 2, // .pp-md-code padding 上下（单侧×2）
+  codeInset: MD_TOKENS.codePadH * 2 + MD_TOKENS.codeBorderL, // border-left 3 + padding 左右 12×2
+  hrH: MD_TOKENS.hrMargin * 2 + MD_TOKENS.hrBorder, // margin 18 + 线 1 + margin 18
+  hrLastH: MD_TOKENS.hrMargin + MD_TOKENS.hrBorder, // 末元素 margin-bottom 归零
+  tableCellPadV: MD_TOKENS.tableCellPadV * 2, // th/td 上下 padding 4×2
+  ciExtra: MD_TOKENS.ciPadH * 2 + MD_TOKENS.ciBorder * 2, // 行内码横向 chrome
+} as const;
+
 /* ── per-kind chrome 原始值（CSS 侧各块 padding/border/margin 镜像）── */
 export const CHROME_TOKENS = {
-  user: { borderL: 2, padL: 18, asterismMarginTop: 30, asterismLine: 14 },
+  user: {
+    borderL: 0,
+    padL: 0,
+    kindLabelSize: 15, // 题签「来 文」字号（2026-08-30 标题化）
+    kindGap: 12, // 题签下距（题签占高 = labelSize + gap）
+    asterismMarginTop: 30,
+    asterismLine: 14,
+  },
   userFiles: { lineH: 16, marginTop: 8, borderTop: 1 },
   reasoning: { borderL: 2, padL: 18 },
   tool: { padTop: 10, noteW: 44, noteH: 1.5 },
@@ -125,7 +145,8 @@ export const CHROME_TOKENS = {
 
 /* ── 组合 chrome 常量（measure 用；CSS 引用 CHROME_TOKENS 原始值）── */
 export const CHROME_DERIVED = {
-  userTextInset: CHROME_TOKENS.user.borderL + CHROME_TOKENS.user.padL,
+  userTextInset: CHROME_TOKENS.user.borderL + CHROME_TOKENS.user.padL, // 0——标题化后无左批线
+  userKindH: CHROME_TOKENS.user.kindLabelSize + CHROME_TOKENS.user.kindGap, // 题签占高
   userAsterismH: CHROME_TOKENS.user.asterismMarginTop + CHROME_TOKENS.user.asterismLine,
   userFileLineH: CHROME_TOKENS.userFiles.lineH,
   userFilesMarginTop: CHROME_TOKENS.userFiles.marginTop + CHROME_TOKENS.userFiles.borderTop,
@@ -228,6 +249,91 @@ export const ASSET_TOKENS = {
     optionPadH: 10,
     optionGap: 6,
   },
+} as const;
+
+/* ── 资产/拟策组合派生（measure 用；CSS 引用 ASSET_TOKENS 原始值）──
+ * 全部组合公式归一在此：改 ASSET_TOKENS 原始值，派生自动跟随，measure.ts 零公式。
+ * 命名 = measure 侧导出常量名（JSON_VIEW_PAD_V 等），逐行对应原 measure 镜像。 */
+export const ASSET_DERIVED = {
+  jsonViewPadV: ASSET_TOKENS.json.padTop + ASSET_TOKENS.json.padBottom, // .pp-json padding 10 + 2
+  jsonViewHeadH: ASSET_TOKENS.json.headSize * 1.8 + ASSET_TOKENS.json.headMarginB, // .pp-json-head + margin 6
+  jsonPrePadV: ASSET_TOKENS.json.prePadV * 2, // .pp-json-pre padding 10×2
+  jsonPreInset: ASSET_TOKENS.json.preBorderL + ASSET_TOKENS.json.prePadH * 2, // border-left 3 + padding 左右 12×2
+  jsonPreMaxH: ASSET_TOKENS.json.preMaxH,
+  jsonPreSize: ASSET_TOKENS.json.preSize,
+  jsonPreLh: ASSET_TOKENS.json.preLh,
+
+  mediaPadV: ASSET_TOKENS.media.padV * 2, // .pp-media padding 2×2
+  mediaLabelH: ASSET_TOKENS.media.labelSize * 1.8 + ASSET_TOKENS.media.labelMarginB,
+  mediaImgMaxH: ASSET_TOKENS.media.imgMaxH,
+  mediaRowSize: ASSET_TOKENS.media.rowSize,
+
+  chartPadV: ASSET_TOKENS.chart.padV * 2, // .pp-chart padding 4×2
+  chartTypeH: ASSET_TOKENS.chart.typeSize * 1.8 + ASSET_TOKENS.chart.typeMarginB,
+  chartSvgMaxH: ASSET_TOKENS.chart.svgMaxH,
+  chartPieH: ASSET_TOKENS.chart.pieH,
+  chartLabelGap: ASSET_TOKENS.chart.labelMarginTop,
+  chartLabelSize: ASSET_TOKENS.chart.labelSize,
+
+  metricPadV: ASSET_TOKENS.metric.padV * 2, // .pp-metric padding 2×2
+  metricCaptionH: ASSET_TOKENS.metric.captionSize * 1.8 + ASSET_TOKENS.metric.captionMarginB,
+  metricCardH:
+    ASSET_TOKENS.metric.cardBorder +
+    ASSET_TOKENS.metric.cardPad +
+    ASSET_TOKENS.metric.cardLabelSize * 1.8 +
+    ASSET_TOKENS.metric.cardValueSize * ASSET_TOKENS.metric.cardValueLh,
+  metricGap: ASSET_TOKENS.metric.gap,
+  metricMinCol: ASSET_TOKENS.metric.minCol,
+
+  gridPadV: ASSET_TOKENS.grid.padV * 2, // .pp-grid padding 2×2
+  gridCaptionH: ASSET_TOKENS.grid.captionSize * 1.8 + ASSET_TOKENS.grid.captionMarginB,
+  gridCellPadV: ASSET_TOKENS.grid.cellPadV * 2,
+  gridRowLine: ASSET_TOKENS.grid.rowSize * 1.8,
+  gridHeadBorder: ASSET_TOKENS.grid.headBorder,
+  gridRowBorder: ASSET_TOKENS.grid.rowBorder,
+  gridMeasureRowCap: ASSET_TOKENS.grid.measureRowCap,
+  gridSize: ASSET_TOKENS.grid.rowSize,
+
+  graphPadV: ASSET_TOKENS.graph.padV * 2, // .pp-graph padding 4×2
+  graphSvgMaxH: ASSET_TOKENS.graph.svgMaxH,
+  graphColW: ASSET_TOKENS.graph.colW,
+  graphRowH: ASSET_TOKENS.graph.rowH,
+  graphOrigin: ASSET_TOKENS.graph.origin,
+  graphMinW: ASSET_TOKENS.graph.minW,
+  graphMinH: ASSET_TOKENS.graph.minH,
+
+  htmlPadV: ASSET_TOKENS.html.padV * 2, // .pp-html padding 2×2
+  htmlFrameDefaultH: ASSET_TOKENS.html.frameDefaultH,
+
+  formPadV: ASSET_TOKENS.form.padV * 2, // .pp-form padding 2×2
+  formTitleH: ASSET_TOKENS.form.titleSize * 1.8 + ASSET_TOKENS.form.titleMarginB,
+  formBodyLine: ASSET_TOKENS.form.bodySize * ASSET_TOKENS.form.bodyLh,
+  formBodyGap: ASSET_TOKENS.form.bodyMarginB,
+  formOptPadV: ASSET_TOKENS.form.optPadV * 2, // .pp-form-option padding 6×2
+  formOptBorder: ASSET_TOKENS.form.optBorder,
+  formOptLabelH: ASSET_TOKENS.form.optLabelSize * 1.8,
+  formOptDescLine: ASSET_TOKENS.form.optDescSize * 1.8,
+  formOptDescInset: ASSET_TOKENS.form.optDescPadH * 2, // padding 左右 10×2
+  formOptGap: ASSET_TOKENS.form.optGap,
+  formSectionGap: ASSET_TOKENS.form.sectionGap,
+  formActionsH:
+    ASSET_TOKENS.form.confirmSize * 1.8 + ASSET_TOKENS.form.confirmPadV * 2 + ASSET_TOKENS.form.confirmBorder * 2,
+  formBodySize: ASSET_TOKENS.form.bodySize,
+  formDescSize: ASSET_TOKENS.form.optDescSize,
+
+  planTitleSize: ASSET_TOKENS.plan.titleSize,
+  planTitleLh: ASSET_TOKENS.plan.titleLh,
+  planHeadMargin: ASSET_TOKENS.plan.headMarginB,
+  planOptionsChromeH:
+    ASSET_TOKENS.plan.optionsMarginTop + ASSET_TOKENS.plan.optionsBorderTop + ASSET_TOKENS.plan.optionsPadTop,
+  planOptionPadV: ASSET_TOKENS.plan.optionPadV * 2, // .pp-pc-option padding 7×2
+  planOptionBorder: ASSET_TOKENS.plan.optionBorder,
+  planOptionSize: ASSET_TOKENS.plan.optionSize,
+  planOptionDescSize: ASSET_TOKENS.plan.optionDescSize,
+  planOptionDescGap: ASSET_TOKENS.plan.optionDescMarginTop,
+  planOptionDescLine: ASSET_TOKENS.plan.optionDescSize * 1.8,
+  planOptionDescInset: ASSET_TOKENS.plan.optionPadH * 2,
+  planOptionGap: ASSET_TOKENS.plan.optionGap,
 } as const;
 
 /* ── 折叠 / 滚动上限 ── */

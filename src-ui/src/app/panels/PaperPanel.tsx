@@ -51,7 +51,6 @@ import {
   measureFolioHeadHeight,
   needsObservedHeight,
   reportObservedBlockHeight,
-  shrinkWrapUserWidth,
   subscribeObservedBlockHeights,
   USER_SHRINK_MIN_W,
 } from '../../paper/measure';
@@ -842,7 +841,8 @@ export function PaperPanel() {
   }, [canvasState.pins]);
 
   /* P2a+P6 宽度自由：块宽适配流区——先 clamp 到流区内容宽（窄流区压版心，
-   * 宽流区不放宽：版心有可读上限 720），user 再走内容收缩。WeakMap 以
+   * 宽流区不放宽：版心有可读上限 720）。2026-08-30 来文标题化：来文不再收缩
+   * 宽（纸条隐喻退役），与其他块同走版心宽——标题居中吃版心。WeakMap 以
    * 「源对象 + 目标宽」记忆——resize 拖动中逐帧换宽不破 React.memo 身份。 */
   const shrinkCopyCacheRef = useRef(new WeakMap<SourcedBlock, { w: number; copy: SourcedBlock }>());
   const adaptBlocks = useCallback((blocks: SourcedBlock[], regionW: number): SourcedBlock[] => {
@@ -850,10 +850,7 @@ export function PaperPanel() {
     const contentW = Math.max(USER_SHRINK_MIN_W, regionW - REGION_CONTENT_MARGIN);
     return blocks.map((b) => {
       const cappedW = Math.min(b.w, contentW);
-      const targetW =
-        b.kind === 'user' && b.state === 'flow'
-          ? (shrinkWrapUserWidth(b.payload as { text?: string; files?: Array<{ name: string }> }, cappedW) ?? cappedW)
-          : cappedW;
+      const targetW = cappedW;
       if (targetW === b.w) return b;
       const hit = cache.get(b);
       if (hit && hit.w === targetW) return hit.copy;

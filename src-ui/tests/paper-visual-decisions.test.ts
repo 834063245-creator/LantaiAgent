@@ -31,9 +31,9 @@ function ruleBody(css: string, selector: string): string {
 }
 
 describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
-  it('B4：来文 16px/1.9 朱砂深（token 化后守真源 + CSS 变量引用）', () => {
-    // 真源钉值（type-tokens.ts）
-    expect(TYPE_TOKENS_TS).toContain('user: { size: 16, lh: 1.9');
+  it('B4：来文 22px/1.65 朱砂深（token 化后守真源 + CSS 变量引用）', () => {
+    // 真源钉值（type-tokens.ts）——2026-08-30 标题化：题 > 正文 17
+    expect(TYPE_TOKENS_TS).toContain('user: { size: 22, lh: 1.65');
     // CSS 侧引用同一 token（不再写死字面量）
     const userBody = ruleBody(PANEL_CSS, '.pp-block.pp-user .pp-body');
     expect(userBody).toContain('font-size: var(--pp-type-user-size)');

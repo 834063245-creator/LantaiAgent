@@ -435,10 +435,13 @@
   color: var(--ink-3);
 }
 
-/* ── 来文（user）：楷书手迹 + 朱砂批线 ── */
+/* ── 来文（user）：楷书手迹 + 朱砂批线 ──
+ * 2026-08-30 标题化：来文 = 题。去左批线，正文居中；题签（.pp-kind）从
+ * 左缘外改块顶居中，文字在题签下。花押（asterism）保留收尾。 */
 .pp-block.pp-user {
-  padding-left: var(--pp-ch-user-padL);
-  border-left: var(--pp-ch-user-borderL) solid var(--seal);
+  padding-left: 0;
+  border-left: none;
+  text-align: center;
 }
 .pp-block.pp-user .pp-kind .pp-zh {
   color: var(--seal-deep);
@@ -447,8 +450,47 @@
 .pp-block.pp-user .pp-body {
   font-family: var(--f-kai);
   font-weight: 400;
-  font-size: var(--pp-type-user-size); /* B4 环1 拍板 C：seal-deep 保持，字号 18→16（收正文 17 之下） */
+  font-size: var(--pp-type-user-size); /* 2026-08-30 标题化：22px 题 > 正文 17 */
   line-height: var(--pp-type-user-lh);
+  color: var(--seal-deep);
+  text-align: center;
+}
+
+/* 题签（2026-08-30 标题化）：来文文类签居中置顶，不再挂左缘外；
+ * 拖拽保留（.pp-kind 仍是整块拖出手柄）。占高 = zh 15px + 下距 12px
+ * = 27px，镜像 measure.USER_KIND_H。 */
+.pp-block.pp-user .pp-kind {
+  position: static;
+  left: auto;
+  top: auto;
+  width: auto;
+  display: block;
+  align-items: initial;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+  cursor: grab;
+}
+.pp-block.pp-user .pp-kind::after {
+  display: none; /* 标题化：去 hairline 连线 */
+}
+.pp-block.pp-user .pp-kind .pp-zh {
+  display: block;
+  font-size: var(--pp-ch-user-kindLabelSize);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.34em;
+  text-indent: 0.34em; /* 末位字距补偿，视觉居中 */
+  margin-bottom: var(--pp-ch-user-kindGap);
+}
+.pp-block.pp-user .pp-kind .pp-en {
+  display: none; /* 标题化：隐藏 USER · 序 */
+}
+.pp-block.pp-user .pp-kind:hover {
+  background: transparent; /* 题签是标题不是把手，hover 不涂底 */
+}
+.pp-block.pp-user .pp-kind:hover .pp-zh {
   color: var(--seal-deep);
 }
 
