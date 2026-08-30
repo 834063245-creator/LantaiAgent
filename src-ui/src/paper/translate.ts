@@ -38,8 +38,15 @@ export const USER_BLOCK_WIDTH = 560;
 export const REASONING_BLOCK_WIDTH = Math.round(DEFAULT_BLOCK_WIDTH * 0.86);
 
 interface TranslateOpts {
-  /** 钉住状态续命表：id → pinned 坐标（重转译时保持已钉块不回flow） */
-  pinnedPositions?: ReadonlyMap<string, { x: number; y: number }>;
+  /** 钉住状态续命表：id → pinned 坐标（重转译时保持已钉块不回flow）。
+   *  w（P2b 宽度手调）：pin.w 是钉住几何唯一真相——命中即覆盖块宽。 */
+  pinnedPositions?: ReadonlyMap<string, { x: number; y: number; w?: number }>;
+}
+
+/** 钉住续命投影：flow 块 + pin 坐标 → pinned 块（pin.w 有值时覆盖块宽）。 */
+function withPin(b: SourcedBlock, pos: { x: number; y: number; w?: number } | undefined): SourcedBlock {
+  if (!pos) return b;
+  return { ...b, state: 'pinned', x: pos.x, y: pos.y, ...(pos.w !== undefined ? { w: pos.w } : {}) };
 }
 
 /** 单条消息 → 块序列（纯函数，可无头测试；增量转译缓存的基本单元）。 */
@@ -50,8 +57,7 @@ export function translateMessage(
   const out: SourcedBlock[] = [];
   if (msg.role === 'user') {
     const b = translateUser(msg);
-    const pos = pinned?.get(b.id);
-    out.push(pos ? { ...b, state: 'pinned', x: pos.x, y: pos.y } : b);
+    out.push(withPin(b, pinned?.get(b.id)));
   } else if (msg.role === 'notice') {
     out.push(createBlock('notice', { text: msg.text, level: msg.level }, { messageId: msg._id, part: null }));
   } else {
@@ -198,7 +204,7 @@ function emitTextWithFences(
       w: DEFAULT_BLOCK_WIDTH,
     };
     const pos = pinned?.get(id);
-    out.push(pos ? { ...base, state: 'pinned', x: pos.x, y: pos.y } : base);
+    out.push(withPin(base, pos));
     return;
   }
   // 拆分序列：t{n} 文本段 / f{n} 围栏段
@@ -215,8 +221,7 @@ function emitTextWithFences(
       id,
       w: seg.kind === 'diff' ? 640 : DEFAULT_BLOCK_WIDTH,
     };
-    const pos = pinned?.get(id);
-    out.push(pos ? { ...base, state: 'pinned', x: pos.x, y: pos.y } : base);
+    out.push(withPin(base, pinned?.get(id)));
   }
 }
 
@@ -238,8 +243,7 @@ function translateAssistantParts(
       id,
       w: w ?? DEFAULT_BLOCK_WIDTH,
     };
-    const pos = pinned?.get(id);
-    out.push(pos ? { ...base, state: 'pinned', x: pos.x, y: pos.y } : base);
+    out.push(withPin(base, pinned?.get(id)));
   };
 
   msg.parts.forEach((part, idx) => {
@@ -328,7 +332,7 @@ function translateAssistantParts(
           w: DEFAULT_BLOCK_WIDTH,
         };
         const pos = pinned?.get(base.id);
-        out.push(pos ? { ...base, state: 'pinned', x: pos.x, y: pos.y } : base);
+        out.push(withPin(base, pos));
         break;
       }
       case 'subagent':
@@ -424,8 +428,7 @@ function translateAssistantParts(
             }
           };
           const b = make();
-          const pos = pinned?.get(subId);
-          out.push(pos ? { ...b, state: 'pinned', x: pos.x, y: pos.y } : b);
+          out.push(withPin(b, pinned?.get(subId)));
         });
         break;
       default:

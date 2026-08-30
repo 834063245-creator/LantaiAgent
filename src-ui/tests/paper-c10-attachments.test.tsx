@@ -11,14 +11,20 @@ import { builtinRendererDefs } from '../src/composition/renderer-service';
 
 // measure 依赖 Canvas 2D（jsdom 没有）→ vi.mock '@chenglou/pretext'
 // （paper-v3a 同款范式）：文本高度恒 36，附件行差值断言不受影响（线性叠加精确可期）。
-const { prepareMock, layoutMock } = vi.hoisted(() => ({
+const { prepareMock, layoutMock, richStatsMock } = vi.hoisted(() => ({
   prepareMock: vi.fn((text: string) => ({ _text: text, _mock: true })),
   layoutMock: vi.fn(() => ({ height: 36, lineCount: 2 })),
+  richStatsMock: vi.fn(() => ({ lineCount: 1, maxLineWidth: 100 })),
 }));
 vi.mock('@chenglou/pretext', () => ({
   prepare: prepareMock,
   layout: layoutMock,
   clearCache: vi.fn(),
+}));
+// P3：measure 的富行内路径（圈点走 rich）→ 子路径出口同样 mock
+vi.mock('@chenglou/pretext/rich-inline', () => ({
+  prepareRichInline: vi.fn((items: unknown[]) => ({ _items: items, _mock: true })),
+  measureRichInlineStats: richStatsMock,
 }));
 
 import { parseCircledSegments } from '../src/paper/marks';

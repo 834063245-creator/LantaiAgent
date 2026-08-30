@@ -149,3 +149,37 @@ export function stashStripPositionAt(
   }
   return { x, y };
 }
+
+/* ── lift 遮罩几何（P1 手感修复 2026-08-30：拖出时原地「被揭起」占位）── */
+
+/** 世界矩形（壳层直接定位用：left/top/width/height 语义）。 */
+export interface MaskRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * 选区屏幕矩形 → 世界矩形数组（lift 遮罩定位原语）。
+ * 输入 rects 是 Range.getClientRects() 产物（屏幕坐标，跨行选区 = 多矩形），
+ * view/canvasOrigin 由壳层传入（本文件保持零依赖纪律，不 import canvas-math）。
+ * 零宽/零高矩形（选区折叠边缘）跳过。
+ */
+export function selectionMaskRects(
+  rects: ArrayLike<{ left: number; top: number; right: number; bottom: number; width: number; height: number }>,
+  view: { panX: number; panY: number; zoom: number },
+  canvasOrigin: { x: number; y: number },
+): MaskRect[] {
+  const out: MaskRect[] = [];
+  for (let i = 0; i < rects.length; i++) {
+    const r = rects[i];
+    if (r.width <= 0 || r.height <= 0) continue;
+    const x0 = (r.left - canvasOrigin.x - view.panX) / view.zoom;
+    const y0 = (r.top - canvasOrigin.y - view.panY) / view.zoom;
+    const x1 = (r.right - canvasOrigin.x - view.panX) / view.zoom;
+    const y1 = (r.bottom - canvasOrigin.y - view.panY) / view.zoom;
+    out.push({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+  }
+  return out;
+}

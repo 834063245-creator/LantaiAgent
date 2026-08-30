@@ -102,12 +102,16 @@ export interface CanvasStore {
   // ── 公共物 · 钉住块 ──
   setPin: (blockId: string, pin: WorkspacePin) => void;
   movePin: (blockId: string, x: number, y: number) => void;
+  /** 宽度手调（P2b）：pin.w 是钉住几何唯一真相（渲染宽经 pinsMap 进 translate） */
+  resizePin: (blockId: string, w: number) => void;
   unpin: (blockId: string) => void;
   replacePins: (pins: Record<string, WorkspacePin>) => void;
 
   // ── 公共物 · 纸条 ──
   addStrip: (strip: PaperStrip) => void;
   moveStrip: (stripId: string, x: number, y: number) => void;
+  /** 宽度手调（P2b）：纸条右缘拖拽改宽 */
+  resizeStrip: (stripId: string, w: number) => void;
   removeStrip: (stripId: string) => void;
   replaceStrips: (strips: PaperStrip[]) => void;
 
@@ -176,6 +180,13 @@ function createCanvasStoreImpl() {
         return { pins: { ...s.pins, [blockId]: { ...cur, x, y } } };
       }),
 
+    resizePin: (blockId, w) =>
+      set((s) => {
+        const cur = s.pins[blockId];
+        if (!cur || cur.w === w) return s;
+        return { pins: { ...s.pins, [blockId]: { ...cur, w } } };
+      }),
+
     unpin: (blockId) =>
       set((s) => {
         if (!s.pins[blockId]) return s;
@@ -190,6 +201,12 @@ function createCanvasStoreImpl() {
       set((s) => ({
         strips: s.strips.map((st) => (st.id === stripId ? { ...st, x, y } : st)),
       })),
+    resizeStrip: (stripId, w) =>
+      set((s) => {
+        const cur = s.strips.find((st) => st.id === stripId);
+        if (!cur || cur.w === w) return s;
+        return { strips: s.strips.map((st) => (st.id === stripId ? { ...st, w } : st)) };
+      }),
     removeStrip: (stripId) => set((s) => ({ strips: s.strips.filter((st) => st.id !== stripId) })),
     replaceStrips: (strips) => set({ strips }),
 

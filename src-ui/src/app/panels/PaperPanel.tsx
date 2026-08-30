@@ -22,7 +22,6 @@
 // 输入条：写 input-store（真相源），提交走 core.sendMessage()。
 
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { agentSessionState } from '../../agent/agent-session-state';
 import { activeOverlayContributions, subscribeOverlayContributions } from '../../composition/overlay-service';
 import { resolveAssetBlock, resolveRenderer } from '../../composition/renderer-service';
 import {
@@ -49,10 +48,19 @@ import {
   createBlockMeasureCache,
   measureBlockHeightCached,
   measureFolioHeadHeight,
+  shrinkWrapUserWidth,
+  USER_SHRINK_MIN_W,
 } from '../../paper/measure';
 import { PaperDockContext, PaperRegionContext } from '../../paper/overlay-context';
 import type { RegionView } from '../../paper/region-view';
-import { classifyDropZone, makeStrip, type PaperStrip, stashStripPositionAt } from '../../paper/selection';
+import {
+  classifyDropZone,
+  type MaskRect,
+  makeStrip,
+  type PaperStrip,
+  selectionMaskRects,
+  stashStripPositionAt,
+} from '../../paper/selection';
 import {
   defaultRegionFor,
   nearestFreeRegion,
@@ -320,10 +328,12 @@ const EMPTY_CANVAS: CanvasStore = {
   removeRegion: () => {},
   setPin: () => {},
   movePin: () => {},
+  resizePin: () => {},
   unpin: () => {},
   replacePins: () => {},
   addStrip: () => {},
   moveStrip: () => {},
+  resizeStrip: () => {},
   removeStrip: () => {},
   replaceStrips: () => {},
   setActiveRegion: () => {},
@@ -464,23 +474,9 @@ export function PaperPanel() {
 
   /* ── 流式生命感（2026-08-30）──
    * seenBlocks：已渲染过的块 id 集——pp-enter 入场类只发首见（无 StrictMode，
-   * 渲染期标记安全），虚拟化平移重挂不重放动画；
-   * activeRunning：活跃卷执行态（agentSessionState，同 ComposerDock 读面）——
-   * 末块挂朱砂尾笔的开关。 */
+   * 渲染期标记安全），虚拟化平移重挂不重放动画。
+   * （pp-tail 尾笔已由用户拍板拆除——见 taste-ledger 翻案。） */
   const seenBlocksRef = useRef<Set<string>>(new Set());
-  const [activeRunning, setActiveRunning] = useState(false);
-  useEffect(() => {
-    if (!core || activeSessionId == null) {
-      setActiveRunning(false);
-      return;
-    }
-    const sync = (): void => {
-      setActiveRunning(agentSessionState.getExec(core.panelId, activeSessionId)?.isRunning === true);
-    };
-    sync();
-    const off = agentSessionState.getExec(core.panelId, activeSessionId)?.onChange(sync) ?? null;
-    return () => off?.();
-  }, [core, activeSessionId]);
   // 会话合卷/新增后修剪无主缓存
   useEffect(() => {
     const ids = new Set(sessions.map((s) => s.id));
@@ -591,12 +587,31 @@ export function PaperPanel() {
   const blockSessionRef = useRef<Map<string, string>>(new Map());
 
   /* 钉住块位置查找表：引用随 canvasState.pins 引用稳定——不变化时 translate
-   * 缓存命中（流式增量铁律：纸面不动的会话零重算）。 */
+   * 缓存命中（流式增量铁律：纸面不动的会话零重算）。w 一并入表（P2b 宽度
+   * 手调：pin.w 是钉住几何唯一真相，渲染宽经 translate 覆盖块宽）。 */
   const pinsMap = useMemo(() => {
-    const m: Record<string, { x: number; y: number }> = {};
-    for (const [id, pin] of Object.entries(canvasState.pins)) m[id] = { x: pin.x, y: pin.y };
+    const m: Record<string, { x: number; y: number; w?: number }> = {};
+    for (const [id, pin] of Object.entries(canvasState.pins)) m[id] = { x: pin.x, y: pin.y, w: pin.w };
     return m;
   }, [canvasState.pins]);
+
+  /* P2a 变宽纸条：来文 flow 块按内容收缩。拷贝换 w（不 mutate——translate
+   * 缓存以对象引用稳定为命中条件）；WeakMap 以源块对象为 key——源引用
+   * 稳定则拷贝引用稳定，React.memo 不因重映射逐帧失效。 */
+  const shrinkCopyCacheRef = useRef(new WeakMap<SourcedBlock, SourcedBlock>());
+  const shrinkUserBlocks = useCallback((blocks: SourcedBlock[]): SourcedBlock[] => {
+    const cache = shrinkCopyCacheRef.current;
+    return blocks.map((b) => {
+      if (b.kind !== 'user' || b.state !== 'flow') return b;
+      const hit = cache.get(b);
+      if (hit) return hit;
+      const sw = shrinkWrapUserWidth(b.payload as { text?: string; files?: Array<{ name: string }> }, b.w);
+      if (sw == null) return b;
+      const copy = { ...b, w: sw };
+      cache.set(b, copy);
+      return copy;
+    });
+  }, []);
 
   const regions: RegionView[] = useMemo(() => {
     // paperTick/measureTick 是显式失效信号：测量缓存清空后必须重算本 memo——
@@ -620,7 +635,7 @@ export function PaperPanel() {
       const res = translateMessagesCached(msgs, pinsMap, cache);
       cache = res.cache;
       translateCacheBySession.current.set(s.id, cache);
-      const blocks = res.blocks;
+      const blocks = shrinkUserBlocks(res.blocks);
 
       const stack = blocks.map((b) => ({
         id: b.id,
@@ -682,7 +697,18 @@ export function PaperPanel() {
     });
     blockSessionRef.current = blockSession;
     return out;
-  }, [sessions, regionMsgs, paperTick, viewRect, edgeDragPos, measureTick, canvasState, pinsMap, foldedOf]);
+  }, [
+    sessions,
+    regionMsgs,
+    paperTick,
+    viewRect,
+    edgeDragPos,
+    measureTick,
+    canvasState,
+    pinsMap,
+    foldedOf,
+    shrinkUserBlocks,
+  ]);
 
   regionsRef.current = regions;
 
@@ -1357,6 +1383,26 @@ export function PaperPanel() {
     blockEl: Element | null;
   } | null>(null);
 
+  /* ── lift 遮罩（P1 抽纸条手感 2026-08-30）：拖出选区时原地「被揭起」占位。
+   * rects = 捕获时刻选区的世界矩形快照（世界层渲染，随视口变换跟手）；
+   * done = 成条后的淡出态。取消路径即时移除（选区原样恢复 = 无事发生）。 */
+  const [liftMask, setLiftMask] = useState<{ rects: MaskRect[]; done: boolean } | null>(null);
+  const liftFadeTimerRef = useRef(0);
+  const showLiftMask = useCallback((rects: MaskRect[]) => {
+    window.clearTimeout(liftFadeTimerRef.current);
+    setLiftMask({ rects, done: false });
+  }, []);
+  const completeLiftMask = useCallback(() => {
+    window.clearTimeout(liftFadeTimerRef.current);
+    setLiftMask((prev) => (prev ? { ...prev, done: true } : null));
+    liftFadeTimerRef.current = window.setTimeout(() => setLiftMask(null), 220);
+  }, []);
+  const clearLiftMask = useCallback(() => {
+    window.clearTimeout(liftFadeTimerRef.current);
+    setLiftMask(null);
+  }, []);
+  useEffect(() => () => window.clearTimeout(liftFadeTimerRef.current), []);
+
   const spawnStrip = useCallback(
     (sessionId: string, text: string, messageId: string | undefined, x: number, y: number) => {
       const trimmed = text.trim();
@@ -1447,7 +1493,7 @@ export function PaperPanel() {
         sessionId: blockEl?.getAttribute('data-session-id') ?? undefined,
         blockEl,
       };
-      if (dragRef.current || stripDragRef.current) {
+      if (dragRef.current || stripDragRef.current || resizeRef.current) {
         liftRef.current = null;
         return;
       }
@@ -1457,12 +1503,18 @@ export function PaperPanel() {
       if (!snap) return;
       const range = sel.getRangeAt(0);
       if (!pointInSelectionRects(range, e.clientX, e.clientY)) return;
+      // 原地遮罩矩形在清选区前捕获（世界坐标快照——渲染层随视口变换跟手）
+      const cr = canvasRef.current?.getBoundingClientRect();
+      const worldRects = cr
+        ? selectionMaskRects(range.getClientRects(), viewRef.current, { x: cr.left, y: cr.top })
+        : [];
       liftRef.current = {
         text: snap.text,
         messageId: snap.messageId,
         sessionId: snap.sessionId,
         rect: range.getBoundingClientRect(),
       };
+      if (worldRects.length > 0) showLiftMask(worldRects);
       sel.removeAllRanges();
       e.preventDefault();
     };
@@ -1502,8 +1554,10 @@ export function PaperPanel() {
         const center = bandCenterOf(lift.sessionId);
         if (w && lift.sessionId && classifyDropZone(w.x - center, ANCHOR.bandHalfWidth) === 'strip') {
           spawnStrip(lift.sessionId, lift.text, lift.messageId, w.x, w.y);
+          completeLiftMask(); // 成条：原地遮罩淡出（揭走动作完成）
         } else if (lift.rect) {
           restoreSelectionByRect(lift.rect);
+          clearLiftMask(); // 取消：选区原样恢复，遮罩即撤（无事发生）
         }
         return;
       }
@@ -1525,7 +1579,16 @@ export function PaperPanel() {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
     };
-  }, [spawnStrip, snapshotBlockSelection, toWorldInCanvas, restoreSelectionByRect, bandCenterOf]);
+  }, [
+    spawnStrip,
+    snapshotBlockSelection,
+    toWorldInCanvas,
+    restoreSelectionByRect,
+    bandCenterOf,
+    showLiftMask,
+    completeLiftMask,
+    clearLiftMask,
+  ]);
 
   /* B：选中浮钮（selectionchange 监听——选区出现在块内时浮钮现身） */
   const [selAnchor, setSelAnchor] = useState<{
@@ -1646,6 +1709,51 @@ export function PaperPanel() {
     [core],
   );
 
+  /* ── 宽度手调（P2b）：钉住块/纸条右缘 resize 面——hover 即拖拽态（同流区
+   * 边缘范式）。live 预览走本地态，松手一次性写 canvas-store；prepare 与
+   * 宽度无关 → 高度重测零 reflow，拖动全程 60fps。钉住块 x 是左缘（世界
+   * 坐标唯一真相），右缘拖拽只改宽不改位。 */
+  const resizeRef = useRef<{ id: string; kind: 'pin' | 'strip'; startX: number; startW: number } | null>(null);
+  const resizeLatestRef = useRef<{ id: string; w: number } | null>(null);
+  const [resizePreview, setResizePreview] = useState<{ id: string; w: number } | null>(null);
+
+  const onResizeMouseDown = useCallback((e: React.MouseEvent, id: string, kind: 'pin' | 'strip', startW: number) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    resizeRef.current = { id, kind, startX: e.clientX, startW };
+  }, []);
+
+  useEffect(() => {
+    const move = (e: MouseEvent) => {
+      const d = resizeRef.current;
+      if (!d) return;
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const dx = (e.clientX - d.startX) / viewRef.current.zoom;
+      const w = Math.min(STREAM_REGION.width, Math.max(USER_SHRINK_MIN_W, Math.round(d.startW + dx)));
+      resizeLatestRef.current = { id: d.id, w };
+      setResizePreview({ id: d.id, w });
+    };
+    const up = () => {
+      const d = resizeRef.current;
+      const last = resizeLatestRef.current;
+      resizeRef.current = null;
+      resizeLatestRef.current = null;
+      setResizePreview(null);
+      if (!d || !last || last.id !== d.id || !core) return;
+      const canvas = getCanvasStore(core.panelId).getState();
+      if (d.kind === 'pin') canvas.resizePin(d.id, last.w);
+      else canvas.resizeStrip(d.id, last.w);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+  }, [core]);
+
   /* 世界层 transform */
   const worldStyle = useMemo(
     () => ({ transform: `translate(${view.panX}px, ${view.panY}px) scale(${view.zoom})` }),
@@ -1764,6 +1872,16 @@ export function PaperPanel() {
                 <span className="pp-origin-label">origin</span>
               </div>
 
+              {/* lift 遮罩（P1 抽纸条手感）：原地「被揭起」占位——世界层随视口变换 */}
+              {liftMask?.rects.map((r, i) => (
+                <div
+                  // biome-ignore lint/suspicious/noArrayIndexKey: 遮罩片按位静态渲染（选区矩形序），无重排身份
+                  key={`lift-${i}`}
+                  className={`pp-lift-mask${liftMask.done ? ' pp-lift-mask--done' : ''}`}
+                  style={{ left: r.x, top: r.y, width: r.w, height: r.h }}
+                />
+              ))}
+
               {/* 幽灵预览（抽纸条拖拽过程反馈） */}
               {ghost && (
                 <div
@@ -1832,12 +1950,13 @@ export function PaperPanel() {
               {canvasStrips.map((s) => {
                 const stripDragged = dragStripId === s.id;
                 const stripPos = stripDragged && stripDragPos ? stripDragPos : { x: s.x, y: s.y };
+                const stripW = resizePreview?.id === s.id ? resizePreview.w : s.w;
                 return (
                   // biome-ignore lint/a11y/noStaticElementInteractions: 纸条拖拽面（D-R2-1 手势族）
                   <div
                     key={s.id}
                     className={`pp-strip${stripDragged ? ' pp-dragging' : ''}`}
-                    style={{ left: stripPos.x, top: stripPos.y, width: s.w }}
+                    style={{ left: stripPos.x, top: stripPos.y, width: stripW }}
                     onMouseDown={(e) => onStripMouseDown(e, s)}
                   >
                     <div className="pp-strip-head">
@@ -1857,6 +1976,9 @@ export function PaperPanel() {
                       </button>
                     </div>
                     <div className="pp-strip-body">{s.text}</div>
+                    {/* P2b 宽度手调面（右缘拖拽） */}
+                    {/* biome-ignore lint/a11y/noStaticElementInteractions: resize 是拖拽交互面 */}
+                    <div className="pp-resize" onMouseDown={(e) => onResizeMouseDown(e, s.id, 'strip', s.w)} />
                   </div>
                 );
               })}
@@ -1877,7 +1999,7 @@ export function PaperPanel() {
                       'pp-pinned',
                       isDragged ? 'pp-dragging' : '',
                     ].join(' ')}
-                    style={{ left: pos.x, top: pos.y, width: pin.w }}
+                    style={{ left: pos.x, top: pos.y, width: resizePreview?.id === pinId ? resizePreview.w : pin.w }}
                     onDragStart={(e) => e.preventDefault()}
                   >
                     <BlockView
@@ -1890,24 +2012,15 @@ export function PaperPanel() {
                       onDragHandleMouseDown={onBlockMouseDown}
                       unpinLabel={deadOrphanPinIds.has(pinId) ? '删除' : '收回'}
                     />
+                    {/* P2b 宽度手调面（右缘拖拽） */}
+                    {/* biome-ignore lint/a11y/noStaticElementInteractions: resize 是拖拽交互面 */}
+                    <div className="pp-resize" onMouseDown={(e) => onResizeMouseDown(e, pinId, 'pin', pin.w)} />
                   </div>
                 );
               })}
 
               {/* 流序列：每流区 flow 块按序渲染（视口窗口化——视口外不进 DOM） */}
               {regions.map((r) => {
-                /* 流式尾笔：活跃卷运行中，最后一个 flow 块底缘挂石青笔尖——
-                 * 「机器仍在书写」的观感锚点（运行态语义族恒石青：书脊运行点/
-                 * 状态签 running/StatusLine 分析点同色，铁律：石青=机） */
-                let tailId: string | null = null;
-                if (r.sessionId === activeSessionKey && activeRunning) {
-                  for (let i = r.blocks.length - 1; i >= 0; i--) {
-                    if (r.blocks[i].state === 'flow') {
-                      tailId = r.blocks[i].id;
-                      break;
-                    }
-                  }
-                }
                 return r.blocks.map((b) => {
                   const slot = r.layout.get(b.id);
                   if (!slot || !r.visibleIds.has(b.id)) return null;
@@ -1918,7 +2031,7 @@ export function PaperPanel() {
                       // biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler
                       <div
                         key={b.id}
-                        className={`pp-block pp-${b.kind}${firstSeen ? ' pp-enter' : ''}${b.id === tailId ? ' pp-tail' : ''}`}
+                        className={`pp-block pp-${b.kind}${firstSeen ? ' pp-enter' : ''}`}
                         style={{ left: slot.x, top: slot.y, width: b.w }}
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}
@@ -1938,6 +2051,7 @@ export function PaperPanel() {
                   }
                   const isDragged = draggingId === b.id;
                   const pos = isDragged && dragPos ? dragPos : { x: b.x, y: b.y };
+                  const pinW = resizePreview?.id === b.id ? resizePreview.w : b.w;
                   return (
                     <Fragment key={b.id}>
                       <button
@@ -1951,7 +2065,7 @@ export function PaperPanel() {
                       {/* biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler */}
                       <div
                         className={['pp-block', `pp-${b.kind}`, 'pp-pinned', isDragged ? 'pp-dragging' : ''].join(' ')}
-                        style={{ left: pos.x, top: pos.y, width: b.w }}
+                        style={{ left: pos.x, top: pos.y, width: pinW }}
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}
                         onDragStart={(e) => e.preventDefault()}
@@ -1965,6 +2079,9 @@ export function PaperPanel() {
                           onUnpin={onUnpin}
                           onDragHandleMouseDown={onBlockMouseDown}
                         />
+                        {/* P2b 宽度手调面（右缘拖拽） */}
+                        {/* biome-ignore lint/a11y/noStaticElementInteractions: resize 是拖拽交互面 */}
+                        <div className="pp-resize" onMouseDown={(e) => onResizeMouseDown(e, b.id, 'pin', b.w)} />
                       </div>
                     </Fragment>
                   );

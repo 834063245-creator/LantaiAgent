@@ -15,9 +15,24 @@
 //
 // 纸面字体常量自持（纸是独立壳，不随观测台 --font-scale 缩放）。
 
-import { clearCache as clearPretextCache, layout, type PreparedText, prepare } from '@chenglou/pretext';
+import {
+  clearCache as clearPretextCache,
+  layout,
+  measureNaturalWidth,
+  type PreparedText,
+  type PreparedTextWithSegments,
+  prepare,
+  prepareWithSegments,
+} from '@chenglou/pretext';
+import {
+  measureRichInlineStats,
+  type PreparedRichInline,
+  prepareRichInline,
+  type RichInlineItem,
+} from '@chenglou/pretext/rich-inline';
 import { parsePlanItems, type SourcedBlock } from './block-model';
 import { type MdBlock, type MdInline, mdHasRichInline, mdPlainText, parseMarkdown } from './markdown';
+import { parseCircledSegments } from './marks';
 import { prettyToolArgs } from './tool-text';
 
 /* ── 纸面字体常量（镜像 PaperPanel.css 兰台注疏版式——改样式两处同步）──
@@ -67,6 +82,9 @@ export const PAPER_PLAN_ITEM_LINE_HEIGHT = 13.5 * 1.8;
  *  还小、段落黏连——提到 14px；.pp-md-p margin-bottom 镜像）。 */
 export const MD_P_GAP = 14;
 
+/** 正文字号（PAPER_BODY_FONT 同源拆出——rich 字体合成用）。 */
+const BODY_SIZE = 17;
+
 /* ── markdown 子版式常量（逐字镜像 PaperPanel.css .pp-md-*——2026-08-30 增）──
  * 结构：块元素只用「padding 上下面距 + margin-bottom 块间距」两种纵向量，
  * 测高 = Σ(元素高) + Σ(非末元素 margin-bottom)（CSS :last-child margin 归零镜像）；
@@ -96,11 +114,81 @@ const MD_TABLE_CELL_PAD = 8; // th/td 左右 padding 8×2
 const MD_TABLE_CELL_PAD_V = 8; // th/td 上下 padding 4×2
 const MD_TABLE_ROW_BORDER = 1; // 行底规线
 /** 表格单元字体：等宽 11.5px/1.5（.pp-md-table） */
-const MD_TABLE_FONT = `11.5px ${MONO_STACK}`;
+const MD_TABLE_SIZE = 11.5;
 const MD_TABLE_LINE_HEIGHT = 11.5 * 1.5;
-/** 富行内（行内码/加粗/斜体/删除线/链接）字宽偏移的保守补偿：
- *  可用宽度 ×0.96 → 宁可多计行（偏高=多留空隙），不许偏矮（重叠）。 */
-const MD_RICH_BIAS = 0.96;
+
+/* ── 富行内精确测量（P3 2026-08-30：@chenglou/pretext/rich-inline）──
+ * 有富标志（粗/斜/删/行内码/链接）的行内序列走逐片段字体精确测量——旧
+ * 「纯文本 ×0.96 偏窄」补偿系数（MD_RICH_BIAS）退役；纯文本序列保持
+ * prepare+layout 旧路（pre-wrap 语义与渲染一致，零回归）。
+ * 镜像常量（PaperPanel.css，改版式两处同步）：
+ *   .pp-md strong → font-weight 600；em → italic（浏览器缺省，CSS 无覆盖）
+ *   .pp-md del / .pp-md-a → 仅着色/下划线，无宽度影响
+ *   .pp-md-ci → mono 0.82em + 横向 padding 5×2 + border 1×2
+ *   .pp-circled → 600 + 横向 padding 4×2 + border 1.5×2 = 11（椭圆原子件） */
+const MD_CI_SIZE_RATIO = 0.82;
+const MD_CI_EXTRA = 12;
+/** 圈点椭圆横向 chrome（.pp-circled：padding 4×2 + border 1.5×2）。 */
+export const CIRCLE_EXTRA = 11;
+/** 圈点字体：来文楷体 16px 加 600（.pp-circled font-weight 镜像）。 */
+const CIRCLE_FONT = `600 16px ${KAI_STACK}`;
+
+const RICH_CACHE_MAX = 500;
+const richCache = new Map<string, PreparedRichInline>();
+
+function richCacheKey(items: RichInlineItem[]): string {
+  return items
+    .map((it) => `${it.font}\u0002${it.extraWidth ?? ''}\u0002${it.break ?? ''}\u0002${it.text}`)
+    .join('\u0003');
+}
+
+function getRichPrepared(items: RichInlineItem[]): PreparedRichInline {
+  const key = richCacheKey(items);
+  let p = richCache.get(key);
+  if (p === undefined) {
+    p = prepareRichInline(items);
+    richCache.set(key, p);
+    if (richCache.size > RICH_CACHE_MAX) {
+      const first = richCache.keys().next().value;
+      if (first !== undefined) richCache.delete(first);
+    }
+  }
+  return p;
+}
+
+/** 富行内序列高度：lineCount × lineHeight（与 layout() 行盒语义一致）。
+ *  空序列/全空文本返回 0。 */
+function measureRichItemsHeight(items: RichInlineItem[], maxWidth: number, lineHeight: number): number {
+  if (items.length === 0 || items.every((it) => it.text.length === 0)) return 0;
+  const prepared = getRichPrepared(items);
+  return measureRichInlineStats(prepared, maxWidth).lineCount * lineHeight;
+}
+
+/** md 行内序列 → rich items（标志位 → 字体映射，镜像规则见上节注释）。 */
+function mdRichItems(inl: MdInline[], size: number, stack: string): RichInlineItem[] {
+  return inl.map((seg) => {
+    const weight = seg.b ? '600 ' : '';
+    const style = seg.i ? 'italic ' : '';
+    if (seg.c) {
+      return {
+        text: seg.text,
+        font: `${weight}${style}${size * MD_CI_SIZE_RATIO}px ${MONO_STACK}`,
+        extraWidth: MD_CI_EXTRA,
+      };
+    }
+    return { text: seg.text, font: `${weight}${style}${size}px ${stack}` };
+  });
+}
+
+function measureInlineHeight(inl: MdInline[], width: number, size: number, stack: string, lineHeight: number): number {
+  const text = mdPlainText(inl);
+  if (!text) return 0;
+  if (mdHasRichInline(inl)) {
+    // P3：富行内逐片段精确——width 原样（不打折）
+    return measureRichItemsHeight(mdRichItems(inl, size, stack), Math.max(80, width), lineHeight);
+  }
+  return measureTextHeight(text, width, `${size}px ${stack}`, lineHeight);
+}
 
 /* ── 折叠行（2026-08-30 折叠机制；.pp-fold 镜像）── */
 /** 折叠行高 = 行 14px（mono 10px）+ margin-bottom 6px。夹注/脚注/程文恒有。 */
@@ -239,29 +327,112 @@ function codeSrcH(text: string, w: number): number {
   return contentH + CODE_SRC_PAD_V;
 }
 
+/** 来文测高（P3 2026-08-30）：含圈点候选（【】）的文本按行拆解（pre-wrap 硬
+ *  换行语义），逐行走 rich 精确——圈点段 = 原子件 + CIRCLE_EXTRA 横向 chrome，
+ *  其余段 = 来文楷体；空行仍占一行。纯文本（无【】）保持旧路整体 layout。 */
+function measureUserTextHeight(text: string, maxWidth: number): number {
+  if (!text.includes('【')) {
+    return measureTextHeight(text, maxWidth, PAPER_USER_FONT, PAPER_USER_LINE_HEIGHT);
+  }
+  let h = 0;
+  for (const line of text.split('\n')) {
+    if (line === '') {
+      h += PAPER_USER_LINE_HEIGHT;
+      continue;
+    }
+    const items: RichInlineItem[] = parseCircledSegments(line).map((seg) =>
+      seg.circled
+        ? { text: seg.text, font: CIRCLE_FONT, break: 'never' as const, extraWidth: CIRCLE_EXTRA }
+        : { text: seg.text, font: PAPER_USER_FONT },
+    );
+    h += measureRichItemsHeight(items, maxWidth, PAPER_USER_LINE_HEIGHT);
+  }
+  return h;
+}
+
+/* ── 来文收缩宽（P2a 变宽纸条 2026-08-30）──
+ * 用户来文按内容取宽（手迹纸条隐喻）：内容自然宽 = 最长行宽 + 左内缩。
+ * 有【】走逐行 rich 的 maxLineWidth（精确）；纯文本走 prepareWithSegments +
+ * measureNaturalWidth（最宽强制行——pre-wrap 硬换行）；附件行（mono）同法参与。
+ * 任一内容在预算宽下折行（rich lineCount>1 / natural 超预算）→ 不收缩（全宽）。
+ * prepare 与宽度无关：宽度变化只重 layout（prepare 缓存全命中）——resize 零重排。 */
+export const USER_SHRINK_MIN_W = 320;
+
+const SEG_CACHE_MAX = 300;
+const segCache = new Map<string, PreparedTextWithSegments>();
+
+function getPreparedWithSegments(text: string, font: string): PreparedTextWithSegments {
+  const key = `${font}::${text}`;
+  let p = segCache.get(key);
+  if (p === undefined) {
+    p = prepareWithSegments(text, font, { whiteSpace: 'pre-wrap' });
+    segCache.set(key, p);
+    if (segCache.size > SEG_CACHE_MAX) {
+      const first = segCache.keys().next().value;
+      if (first !== undefined) segCache.delete(first);
+    }
+  }
+  return p;
+}
+
+/** 来文内容自然宽（世界单位）；null = 内容超预算宽（收缩无意义，保持全宽）。 */
+function userNaturalWidth(
+  text: string | undefined,
+  files: Array<{ name: string }> | undefined,
+  maxContentW: number,
+): number | null {
+  let natural = 0;
+  if (text) {
+    if (text.includes('【')) {
+      for (const line of text.split('\n')) {
+        if (line === '') continue;
+        const items: RichInlineItem[] = parseCircledSegments(line).map((seg) =>
+          seg.circled
+            ? { text: seg.text, font: CIRCLE_FONT, break: 'never' as const, extraWidth: CIRCLE_EXTRA }
+            : { text: seg.text, font: PAPER_USER_FONT },
+        );
+        if (items.every((it) => it.text.length === 0)) continue;
+        const stats = measureRichInlineStats(getRichPrepared(items), maxContentW);
+        if (stats.lineCount > 1) return null;
+        natural = Math.max(natural, stats.maxLineWidth);
+      }
+    } else {
+      const w = measureNaturalWidth(getPreparedWithSegments(text, PAPER_USER_FONT));
+      if (w > maxContentW) return null;
+      natural = Math.max(natural, w);
+    }
+  }
+  for (const f of files ?? []) {
+    // 附件行渲染 = 「附 · 」前缀 + 文件名（mono 11px）
+    const w = measureNaturalWidth(getPreparedWithSegments(`附 · ${f.name}`, PAPER_OUT_FONT));
+    if (w > maxContentW) return null;
+    natural = Math.max(natural, w);
+  }
+  return natural > 0 ? natural : null;
+}
+
+/** 来文收缩宽（P2a）：内容自然宽 + 左内缩，clamp [USER_SHRINK_MIN_W, 全宽]；
+ *  超宽/触顶返回 null（调用方保持原宽不动）。 */
+export function shrinkWrapUserWidth(
+  payload: { text?: string; files?: Array<{ name: string }> },
+  blockWidth: number,
+): number | null {
+  const maxContentW = blockWidth - USER_TEXT_INSET;
+  const natural = userNaturalWidth(payload.text, payload.files, maxContentW);
+  if (natural === null) return null;
+  const w = Math.ceil(natural) + USER_TEXT_INSET;
+  if (w >= blockWidth) return null;
+  return Math.max(USER_SHRINK_MIN_W, w);
+}
+
 /* ── markdown 块测量（渲染 MarkdownBody 的逐字镜像——消费同一 parseMarkdown 模型）── */
-
-function songFont(size: number): string {
-  return `${size}px ${SONG_STACK}`;
-}
-
-/** 富行内偏窄宽度：无富行内原宽；有 → ×0.96（宁高勿矮）。 */
-function biasWidth(inl: MdInline[], width: number): number {
-  return mdHasRichInline(inl) ? Math.max(80, Math.round(width * MD_RICH_BIAS)) : width;
-}
-
-function measureInlineHeight(inl: MdInline[], width: number, font: string, lineHeight: number): number {
-  const text = mdPlainText(inl);
-  if (!text) return 0;
-  return measureTextHeight(text, biasWidth(inl, width), font, lineHeight);
-}
 
 function tableRowH(cells: MdInline[][], w: number): number {
   const cols = Math.max(1, ...cells.map((c) => c.length));
   const colW = Math.max(40, w / cols - MD_TABLE_CELL_PAD);
   let linesH = 0;
   for (const cell of cells)
-    linesH = Math.max(linesH, measureInlineHeight(cell, colW, MD_TABLE_FONT, MD_TABLE_LINE_HEIGHT));
+    linesH = Math.max(linesH, measureInlineHeight(cell, colW, MD_TABLE_SIZE, MONO_STACK, MD_TABLE_LINE_HEIGHT));
   return linesH + MD_TABLE_CELL_PAD_V + MD_TABLE_ROW_BORDER;
 }
 
@@ -269,18 +440,18 @@ function tableRowH(cells: MdInline[][], w: number): number {
 function measureMdElement(el: MdBlock, w: number, last: boolean): number {
   switch (el.t) {
     case 'p': {
-      const h = measureInlineHeight(el.inl, w, PAPER_BODY_FONT, PAPER_BODY_LINE_HEIGHT);
+      const h = measureInlineHeight(el.inl, w, BODY_SIZE, SONG_STACK, PAPER_BODY_LINE_HEIGHT);
       if (!el.inl.length || mdPlainText(el.inl).length === 0) return 0;
       return h + (last ? 0 : MD_P_GAP);
     }
     case 'h': {
       const c = MD_H[el.lv - 1];
-      return c.pt + measureInlineHeight(el.inl, w, songFont(c.size), c.size * c.lh) + c.pb;
+      return c.pt + measureInlineHeight(el.inl, w, c.size, SONG_STACK, c.size * c.lh) + c.pb;
     }
     case 'list': {
       let items = 0;
       for (const it of el.items) {
-        let ih = measureInlineHeight(it.inl, w - MD_LI_INDENT, PAPER_BODY_FONT, PAPER_BODY_LINE_HEIGHT);
+        let ih = measureInlineHeight(it.inl, w - MD_LI_INDENT, BODY_SIZE, SONG_STACK, PAPER_BODY_LINE_HEIGHT);
         if (it.sub) ih += MD_SUB_TOP + measureMdBlocks(it.sub, w - MD_LI_INDENT - MD_SUB_INDENT);
         items += ih + MD_LI_GAP;
       }
@@ -321,12 +492,9 @@ export function measureBlockHeight(b: SourcedBlock, folded = false): number {
   const p = b.payload as PayloadLike;
   switch (b.kind) {
     case 'user': {
-      // 圈点（C7）：测高用原文不去【】括号——括号被渲染消费但宽度预算
-      // 保守覆盖了圈的 padding/border（每关键词净差约一个全角字符，方向是
-      // 测多不测少 → 只会偏高不会截字），零镜像成本。
-      const textH = p.text
-        ? measureTextHeight(p.text, b.w - USER_TEXT_INSET, PAPER_USER_FONT, PAPER_USER_LINE_HEIGHT)
-        : 0;
+      // 圈点（C7 + P3）：含【】候选走逐行 rich 精确（圈点 = 原子件 + 椭圆横向
+      // chrome，括号被渲染消费不再保守覆盖）；纯文本保持 pre-wrap 整体 layout。
+      const textH = p.text ? measureUserTextHeight(p.text, b.w - USER_TEXT_INSET) : 0;
       // 附件行（C10）：每文件一行 mono 小字，高度线性叠加
       const files = (b.payload as { files?: Array<{ path: string; name: string }> }).files;
       const filesH = files?.length ? USER_FILES_MARGIN_TOP + files.length * USER_FILE_LINE_H : 0;
@@ -456,9 +624,10 @@ function measureSignature(b: SourcedBlock, folded: boolean): string {
 }
 
 /** 块高缓存测量：签名命中直接返回记忆高度，否则真测并登记。
- *  folded（折叠机制）：折叠/展开是高度信号——入签名，切换必重测。 */
+ *  folded（折叠机制）：折叠/展开是高度信号——入签名，切换必重测。
+ *  w（P2 变宽）：宽度也是高度信号（收缩/resize 改宽必改高）——签名尾缀。 */
 export function measureBlockHeightCached(b: SourcedBlock, cache: BlockMeasureCache, folded = false): number {
-  const sig = measureSignature(b, folded);
+  const sig = `${measureSignature(b, folded)}|w=${b.w}`;
   const hit = cache.byId.get(b.id);
   if (hit && hit.sig === sig) return hit.h;
   const h = measureBlockHeight(b, folded);
@@ -471,5 +640,7 @@ export function measureBlockHeightCached(b: SourcedBlock, cache: BlockMeasureCac
 /** 测试复位（生产不调用）。 */
 export function clearPaperMeasureCache(): void {
   prepareCache.clear();
+  richCache.clear();
+  segCache.clear();
   clearPretextCache();
 }

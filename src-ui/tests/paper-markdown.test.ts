@@ -16,6 +16,11 @@ vi.mock('@chenglou/pretext', () => ({
   layout: layoutMock,
   clearCache: vi.fn(),
 }));
+// P3：measure 的富行内路径 → 子路径出口同样 mock（本文件文本全纯文本，rich 不触发）
+vi.mock('@chenglou/pretext/rich-inline', () => ({
+  prepareRichInline: vi.fn((items: unknown[]) => ({ _items: items, _mock: true })),
+  measureRichInlineStats: vi.fn(() => ({ lineCount: 2, maxLineWidth: 100 })),
+}));
 
 import { createBlock, resetBlockIdCounterForTests } from '../src/paper/block-model';
 import { defaultFolded, foldLabel, foldPreviewLine, isFoldable } from '../src/paper/fold';

@@ -7,20 +7,27 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { prepareMock, layoutMock } = vi.hoisted(() => ({
+const { prepareMock, layoutMock, prepareRichMock, richStatsMock } = vi.hoisted(() => ({
   prepareMock: vi.fn((text: string) => ({ _text: text, _mock: true })),
   layoutMock: vi.fn(() => ({ height: 36, lineCount: 2 })),
+  prepareRichMock: vi.fn((items: unknown[]) => ({ _items: items, _mock: true })),
+  richStatsMock: vi.fn(() => ({ lineCount: 2, maxLineWidth: 100 })),
 }));
 vi.mock('@chenglou/pretext', () => ({
   prepare: prepareMock,
   layout: layoutMock,
   clearCache: vi.fn(),
 }));
+vi.mock('@chenglou/pretext/rich-inline', () => ({
+  prepareRichInline: prepareRichMock,
+  measureRichInlineStats: richStatsMock,
+}));
 
 import { createBlock, DEFAULT_BLOCK_WIDTH, resetBlockIdCounterForTests } from '../src/paper/block-model';
 import { layoutFlow, panBy, viewForAnchor, zoomAt } from '../src/paper/canvas-math';
 import { composerSubmitOnKey } from '../src/paper/ime';
 import {
+  CIRCLE_EXTRA,
   CODE_OUT_TEXT_MAX,
   CODE_SRC_MAX_H,
   clearPaperMeasureCache,
@@ -40,6 +47,7 @@ import {
   makeStrip,
   moveStrip,
   resetStripIdCounterForTests,
+  selectionMaskRects,
   sliceSelection,
   tryMakeStripFromSelection,
 } from '../src/paper/selection';
@@ -329,6 +337,35 @@ describe('paper/selection', () => {
     expect(ok).not.toBeNull();
     expect(ok?.text).toBe('有货'); // trim
   });
+
+  it('selectionMaskRects：屏幕矩形 → 世界矩形（lift 遮罩定位原语）', () => {
+    const view = { panX: 100, panY: -50, zoom: 0.5 };
+    const origin = { x: 10, y: 20 };
+    const masks = selectionMaskRects(
+      [
+        // screen = world*zoom + pan + 画布原点 → world = (screen - 原点 - pan) / zoom
+        { left: 110, top: 30, right: 210, bottom: 62, width: 100, height: 32 },
+        { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }, // 折叠边缘矩形跳过
+      ],
+      view,
+      origin,
+    );
+    expect(masks).toHaveLength(1);
+    expect(masks[0]).toEqual({ x: 0, y: 120, w: 200, h: 64 });
+  });
+
+  it('selectionMaskRects：跨行选区产出多矩形（逐行遮罩）', () => {
+    const masks = selectionMaskRects(
+      [
+        { left: 0, top: 0, right: 300, bottom: 20, width: 300, height: 20 },
+        { left: 0, top: 20, right: 120, bottom: 40, width: 120, height: 20 },
+      ],
+      { panX: 0, panY: 0, zoom: 1 },
+      { x: 0, y: 0 },
+    );
+    expect(masks).toHaveLength(2);
+    expect(masks[1]).toEqual({ x: 0, y: 20, w: 120, h: 20 });
+  });
 });
 
 /* ═══ IME 安全谓词（V3a spike·待定 #8 前置验证）═══ */
@@ -412,5 +449,59 @@ describe('paper/measure 块级缓存', () => {
     measureBlockHeightCached(a, cache);
     measureBlockHeightCached(b, cache);
     expect(layoutMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+/* ═══ 富行内精确测量（P3 rich-inline：0.96 系数退役）═══ */
+
+describe('paper/measure 富行内（P3）', () => {
+  beforeEach(() => {
+    prepareMock.mockClear();
+    layoutMock.mockClear();
+    prepareRichMock.mockClear();
+    richStatsMock.mockClear();
+    clearPaperMeasureCache();
+    resetBlockIdCounterForTests();
+  });
+
+  it('富行内走 rich 路径且宽度不打折（0.96 偏窄系数死刑验证）', () => {
+    const b = block('markdown', { text: '一段**加粗**正文' });
+    measureBlockHeight(b);
+    expect(prepareRichMock).toHaveBeenCalledTimes(1);
+    expect(layoutMock).not.toHaveBeenCalled(); // 富标志不再落回纯文本近似路
+    const widthArg = richStatsMock.mock.calls[0][1];
+    expect(widthArg).toBe(b.w); // 段落原宽——不再 ×0.96
+  });
+
+  it('纯文本仍走 prepare+layout 旧路（rich 零接触，存量语义不变）', () => {
+    measureBlockHeight(block('markdown', { text: '两行纯文本' }));
+    expect(prepareRichMock).not.toHaveBeenCalled();
+    expect(layoutMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rich 缓存命中：同内容二次测量只 prepare 一次（FIFO 同 prepareCache 纪律）', () => {
+    const b = block('markdown', { text: '**粗**体' });
+    measureBlockHeight(b);
+    measureBlockHeight(b);
+    expect(prepareRichMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('圈点来文走 rich：圈点段 = 原子件 + 椭圆 chrome 11 + 600 楷体', () => {
+    richStatsMock.mockReturnValueOnce({ lineCount: 1, maxLineWidth: 100 });
+    const h = measureBlockHeight(block('user', { text: '看这个【关键词】位置' }));
+    const items = prepareRichMock.mock.calls[0][0] as Array<Record<string, unknown>>;
+    const circled = items.find((it) => it.extraWidth !== undefined);
+    expect(circled).toMatchObject({ text: '关键词', break: 'never', extraWidth: CIRCLE_EXTRA });
+    expect(String(circled?.font)).toContain('600');
+    // mock lineCount=1 → 文本高 = 1×PAPER_USER_LINE_HEIGHT，加 asterism 44
+    expect(h).toBe(PAPER_USER_LINE_HEIGHT + 44);
+  });
+
+  it('圈点来文逐行拆解：空行占一行（pre-wrap 硬换行语义）', () => {
+    richStatsMock.mockReturnValue({ lineCount: 1, maxLineWidth: 100 });
+    const h = measureBlockHeight(block('user', { text: '上【词】\n\n下' }));
+    // 三行：上（rich 1 行）+ 空行（占一行）+ 下（rich 1 行）→ 3 × 行高 + asterism
+    expect(h).toBe(3 * PAPER_USER_LINE_HEIGHT + 44);
+    expect(prepareRichMock).toHaveBeenCalledTimes(2); // 空行不进 rich
   });
 });
