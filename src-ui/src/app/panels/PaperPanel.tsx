@@ -1800,7 +1800,7 @@ export function PaperPanel() {
                      * 玉徽（亭台线稿）居中钤印 + 机读眉行 + 宋体题字 + 机读档行，
                      * 底部硬规线 + 左缘朱砂版口钮。框体向上扩展包住卷首（界栏护持）。
                      * pointer-events none——点击穿透流区背景，激活语义不变；
-                     * 原浮动标签带（pp-region-label）退役：卷首即卷名，不重复播报。 */}
+                     * 原浮动标签带退役（卷首即卷名，不重复播报）。 */}
                     <div className="pp-folio-head">
                       <span className="pp-yuwei">
                         <Icon name="lantai" size={24} />
