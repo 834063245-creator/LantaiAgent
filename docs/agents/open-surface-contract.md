@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：4
+当前版本：5
 
-<!-- contract-fingerprint: 18c1ae4cd5809cc4583b32544a6fd79aa8ccc441d513408322dc413383214bbd -->
+<!-- contract-fingerprint: da8c721212b6806240c5d0f7168c8e35626a58de28f1b071bbd6724b54161cec -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -39,6 +39,7 @@
 | 2 | 2026-08-27 | 新增动态插件运行时契约（D7：ctx.dynamicRunner define/run/stop/undefine/inspect + 沙箱三层防线——阴影求值面/守卫注册面/预算；P4-C2/C3） | agent-platformization-plan Phase 4 |
 | 3 | 2026-08-28 | 新增 agent loop seam 契约（D13：AgentLoop/AgentLoopHost + 默认实现；loop 降为第一方默认实现，契约上可替换） | agent-platformization-plan Phase 5 |
 | 4 | 2026-08-28 | executor legacy 直调参数拆除（StreamingToolExecutor 构造签名删 hooks/preflightHooks/planGate，guard/preflight/around 全量经 eventBus 监听面——唯一管道）；events.ts 注释同步（去 legacy 表述，无语义变更）；事件目录再生成（attach* 接线点无移动，同指） | 平台化 Phase 5 收尾 / 拆旧清单清零 |
+| 5 | 2026-08-31 | agent loop 契约行为面：default-loop err 分支先补落已执行工具结果（append assistant/text + tool/call 审计 + tool/result 回传上下文）再抛 err——流内失败不再丢已执行副作用记录 | 33dae0f4（该提交漏走契约手续，本行代补） |
 
 ## 变更流程（guard 红 → 修复四步）
 
