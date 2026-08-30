@@ -2496,6 +2496,30 @@ body.pp-pin-grabbing {
   max-height: var(--pp-asset-media-imgMaxH);
   border: var(--rule-soft);
 }
+.pp-media-open {
+  display: block;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+}
+/* 点击放大浏览浮层（portal 到 body 的全局模态） */
+.pp-media-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.8);
+  cursor: zoom-out;
+}
+.pp-media-preview {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+}
 
 .pp-graph {
   padding: var(--pp-asset-graph-padV) 0;

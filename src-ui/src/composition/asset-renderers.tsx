@@ -13,6 +13,7 @@
 // 与资产语义 kind 正交；resolveAssetBlock 负责从 kind 白名单落到表现组件。
 
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
+import { Overlay } from '../app/overlay';
 import { typedRpc } from '../rpc-contract';
 import type { BlockRendererContribution, BlockRendererProps } from './renderer-service';
 
@@ -241,39 +242,47 @@ function MediaBody({ block }: BlockRendererProps) {
   // 只有图片/视频才需要读文件内容；未知类型走文件壳，不浪费一次 RPC
   const isMedia = isImage || isVideo;
   const loaded = useMediaData(isMedia ? p.filePath : undefined);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const loadingNode =
     loaded.status === 'error' ? (
       <div className="pp-media-loading">读取失败：{loaded.error}</div>
     ) : (
       <div className="pp-media-loading">加载中…</div>
     );
+  const src =
+    loaded.status === 'ready' && loaded.data
+      ? `data:${mime ?? (isVideo ? 'video/mp4' : 'image/png')};base64,${loaded.data}`
+      : null;
+  const previewBody = isVideo ? (
+    // biome-ignore lint/a11y/useMediaCaption: 预览用户本地视频，无字幕轨道来源（非交互媒体）
+    <video className="pp-media-preview" src={src ?? undefined} controls autoPlay aria-label={label} />
+  ) : (
+    <img className="pp-media-preview" src={src ?? undefined} alt={label} />
+  );
   return (
     <div className="pp-media">
       <div className="pp-media-label">{label}</div>
       {isImage && p.filePath ? (
-        loaded.status === 'ready' && loaded.data ? (
-          <img className="pp-media-img" src={`data:${mime ?? 'image/png'};base64,${loaded.data}`} alt={label} />
+        src ? (
+          <button type="button" className="pp-media-open" onClick={() => setPreviewOpen(true)}>
+            <img className="pp-media-img" src={src} alt={label} />
+          </button>
         ) : (
           loadingNode
         )
       ) : isVideo && p.filePath ? (
-        loaded.status === 'ready' && loaded.data ? (
-          // biome-ignore lint/a11y/useMediaCaption: 展示用户本地视频，无字幕轨道来源（非交互媒体）
-          <video
-            className="pp-media-video"
-            src={`data:${mime ?? 'video/mp4'};base64,${loaded.data}`}
-            controls
-            aria-label={label}
-          />
-        ) : (
-          loadingNode
-        )
+        // biome-ignore lint/a11y/useMediaCaption: 展示用户本地视频，无字幕轨道来源（非交互媒体）
+        <video className="pp-media-video" src={src ?? undefined} controls aria-label={label} />
       ) : (
         <div className="pp-media-file">
           {ext && <span className="pp-media-ext">{ext}</span>}
           <span className="pp-media-path">{p.filePath ?? ''}</span>
         </div>
       )}
+      {/* 点击放大浏览：全局浮层（portal 到 body）+ Escape/点遮罩关闭 */}
+      <Overlay open={previewOpen} onClose={() => setPreviewOpen(false)} portal className="pp-media-preview-overlay">
+        {previewBody}
+      </Overlay>
     </div>
   );
 }

@@ -107,4 +107,32 @@ describe('composition/asset-renderers — 媒体图片经 read_file_base64 加�
       expect(container.querySelector('.pp-media-img')).toBeNull();
     });
   });
+
+  it('点击缩略图 → 打开全屏预览浮层；Esc 关闭', async () => {
+    vi.mocked(typedRpc).mockResolvedValue('QUJD'); // base64("ABC")
+    await withRenderers(async () => {
+      const Comp = resolveAssetBlock('file', 'media')!;
+      root = createRoot(container);
+      await act(async () => {
+        root!.render(createElement(Comp, { block: mediaBlock({ filePath: 'D:/a.png', ext: 'png' }) }));
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(document.querySelector('.pp-media-preview-overlay')).toBeNull();
+      const openBtn = container.querySelector('.pp-media-open') as HTMLButtonElement | null;
+      expect(openBtn).not.toBeNull();
+      await act(async () => {
+        openBtn!.click();
+      });
+      const overlay = document.querySelector('.pp-media-preview-overlay');
+      expect(overlay).not.toBeNull();
+      expect(overlay?.querySelector('.pp-media-preview')?.getAttribute('src')).toBe('data:image/png;base64,QUJD');
+      // Esc 关闭
+      await act(async () => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      });
+      expect(document.querySelector('.pp-media-preview-overlay')).toBeNull();
+    });
+  });
 });
