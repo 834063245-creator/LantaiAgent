@@ -1,0 +1,88 @@
+# 第一方代码「改完即生效」——开发热更工作流 + 渲染器插件通道化
+
+> 状态：✅ 已批准留档（2026-08-30，方案 P0+P1 全批）· 制定 2026-08-30 · 面向兰台（HoloGram）
+> 一句话：把「改代码 → 重新打包（分钟级、每次都要）」变成「改代码 → 秒级看到效果」：
+> P0 立开发热更工作流（零成本），P1 让渲染器等 UI 扩展点走插件通道（生产包也可热替换）。
+> **注：批准留档，暂不开工**（用户拍板：并行窗口太多，先落盘，等指令再启动）。
+
+---
+
+## 1. 背景与现状（已查证，非猜测）
+
+**用户痛点**：Agent 改前端代码（如媒体渲染器），用户必须重新 `cargo tauri build` 才能看到效果，每次几分钟。
+
+**项目实际的热更能力有三个层次**：
+
+| 层次 | 机制 | 代码位置 | 生效方式 |
+|---|---|---|---|
+| 外部插件 | 动态 import ESM + fiber 热插拔（D6） | `plugins/loader.ts`（activate/deactivateExternalPlugin）、`plugin_assets.rs`（127.0.0.1:14570 通道，MIME/CORS/遍历防护齐全） | 装/卸/启用/禁用 **运行时即时生效**，零重启 |
+| 组合配置 | composition_watcher 轮询 | `src-tauri/src/composition_watcher.rs` → `composition:changed` → patch-loader | 改 `roster.patch.yml` 1-2 秒生效（只热配置） |
+| 第一方源码 | 编译期 bundle | `BUILTIN_PLUGINS`（loader.ts）+ React 组件 | ❌ **必须重新构建** |
+
+**关键发现**：渲染器（`composition/asset-renderers.tsx`）本来就是设计上的插件面——`renderer-service.tsx` 头注明言「插件换的是这个 kind 长什么样」，`ctx.renderers` 注册表支持后注册胜。但它目前是编译期内置的，改了要重打包。**通道是通的，缺的是把第一方 UI 扩展点接上通道**。
+
+## 2. 目标与非目标
+
+**目标**：
+1. 改第一方前端代码后，秒级看到效果（不再每次重打包）；
+2. 生产包也能对特定扩展点做运行时热替换（不重启应用）。
+
+**非目标**：
+- 不改第三方插件安全/信任模型；
+- 不把全部第一方代码外置（服务层/装配层仍编译进包——它们不需要热更）；
+- 不做在线插件商店/自动升级。
+
+## 3. 方案一（P0）：开发迭代工作流立即可用
+
+现实：Vite dev server（`vite.config.ts` devUrl 1420）本就支持 HMR——**dev 模式改代码保存即生效，零代码改动**。用户一直跑生产包所以感受不到。
+
+**交付**：
+1. 根目录 `dev.cmd`（对齐既有 `build.cmd` 的 Windows 包装）：
+   - 起 `cargo tauri dev`（自动先跑 `beforeDevCommand: npm run dev`，Vite HMR + 开发窗口一条命令）；
+2. `docs/dev-workflow.md`：dev 模式怎么用、与生产包差异、错误怎么看；
+3. 承诺：Agent 改完前端代码，用户 dev 模式保存即见；生产发布前仍过一次 `cargo tauri build` 全量验证。
+
+**验收**：跑 `dev.cmd` → 改 `asset-renderers.tsx` 保存 → 窗口内行为即时更新，无需重编译。
+
+**成本**：半天内，纯新增脚本/文档，零架构风险。
+
+## 4. 方案二（P1）：渲染器插件通道化——生产包也可热替换
+
+**思路**：把「媒体等资产渲染器」从编译期 bundle 迁为「第一方内置插件」：源码留仓库，构建管线产出 ESM 产物 + manifest.json，随包携带；运行时经插件通道装载（与第三方插件同一条 D6 热插拔链路），设置面板给「重新加载」按钮 → 重激活 fiber 替换渲染器行。
+
+**落地步骤（每步独立可验）**：
+
+- **P1a 宿主桥扩展**（`plugins/loader.ts`）：`window.__lantai_plugin_host__` 增加 React（`React` 全量 + hooks 子集）——渲染器插件用 JSX 写的源码经 esbuild 编译（`--jsx=transform` + external react），entry.js 从宿主桥取 React，保持「插件自包含、无裸 import」契约不破。
+- **P1b 渲染器源码迁目录**：`src-ui/plugins/builtin/renderers/`（manifest.json + 源码；先迁 `media` 试点，验证后再迁其余 grid/chart/metric/graph/html/form）。
+- **P1c 构建管线**：新增脚本（esbuild 增量编译该目录 → `dist/plugins/builtin/renderers/entry.js`，秒级）；`tauri.conf.json` resources 增加产物目录随包携带。
+- **P1d Rust 兜底解析**（`plugin_assets.rs`）：插件资产解析先查用户插件目录（`~/.lantai/plugins/`），查不到回退内置资源目录（第一方插件同款路径、同款安全校验）。
+- **P1e 重载入口**：设置面板插件 tab 对内置插件提供「重新加载」→ `deactivateExternalPlugin` + `activateExternalPlugin`（复用 D6，重 fetch entry.js 后重激活）。
+- **P1f 门禁同步**：`first-party-manifest.ts` 条目（守护测试钉死）、`verify:convergence`（BUILTIN_PLUGINS 表变化对拍）、asset-primitives 渲染器测试保持全绿（测试直引源码组件，与插件产物双走查）。
+
+**权衡**：
+- 渲染器插件加载失败/崩 → 走既有 `'*'` JSON 兜底，不炸应用；
+- 改渲染器代码后，构建插件产物（秒级）+ 点重载 = 生效，比整包构建（分钟级）快一个量级；
+- 面板/命令等其它扩展点后续可复刻同一模式（本次不做）。
+
+**验收**：生产包中：改媒体渲染器源码 → 构建产物 → 设置面板「重新加载」→ 新行为生效，应用不重启。
+
+**成本**：约 2-3 个工作日（含管线与测试），是架构动作，建议 P0 之后择机进行。
+
+## 5. 方案三（远期，本次不做）
+
+全部第一方能力外置、插件版本管理、在线分发——不在本次范围，留作后续讨论。
+
+## 6. 风险与回退
+
+| 风险 | 对策 |
+|---|---|
+| P1 渲染器插件加载失败 | '*' JSOn 兜底 + 出厂内置行保留；失败隔离（loader 永不 reject）已有 |
+| dev 模式与生产行为差异 | dev-workflow 文档写明差异；发布门禁仍以生产构建为准 |
+| BUILTIN_PLUGINS 表变化引发收敛快照漂移 | P1f 明确列为步骤，按 change request 流程走 |
+| esbuild 引入新依赖 | 仅 devDependency，不污染运行时依赖面 |
+
+## 7. 总验收
+
+1. P0：`dev.cmd` 一条命令进开发模式，改渲染器保存即生效；
+2. P1（若批）：生产包中媒体渲染器可在设置面板一键重载，重载后新行为生效；
+3. 全程：`vitest` / `tsc` / `biome ci` / `verify:convergence` / `cargo test` 全绿。
