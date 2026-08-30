@@ -2056,6 +2056,32 @@ body.pp-pin-grabbing {
   background: var(--ink-4);
   margin: 16px auto 14px;
 }
+/* 空态 CTA（2026-08-31 拍板 A）：显式出生入口——印章底色 + mono 机读 */
+.pp-empty-cta {
+  font-family: var(--f-mono);
+  font-size: calc(12px * var(--font-scale));
+  letter-spacing: 0.14em;
+  color: var(--paper);
+  background: var(--seal-deep);
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  padding: 9px 22px;
+  margin: 0 auto 14px;
+  transition:
+    filter var(--snap),
+    transform var(--snap);
+}
+.pp-empty-cta:hover {
+  filter: brightness(1.1);
+}
+.pp-empty-cta:active {
+  transform: translateY(1px);
+}
+.pp-empty-cta:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .pp-empty-hint {
   font-family: var(--f-song);
   font-size: calc(12.5px * var(--font-scale));
@@ -2458,6 +2484,17 @@ body.pp-pin-grabbing {
 .pp-media-path {
   color: var(--ink-3);
   word-break: break-all;
+}
+.pp-media-loading {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-media-rowSize);
+  color: var(--ink-3);
+}
+.pp-media-video {
+  display: block;
+  max-width: 100%;
+  max-height: var(--pp-asset-media-imgMaxH);
+  border: var(--rule-soft);
 }
 
 .pp-graph {

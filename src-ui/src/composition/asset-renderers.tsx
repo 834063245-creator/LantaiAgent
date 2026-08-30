@@ -13,6 +13,7 @@
 // 与资产语义 kind 正交；resolveAssetBlock 负责从 kind 白名单落到表现组件。
 
 import { type CSSProperties, useEffect, useRef, useState } from 'react';
+import { typedRpc } from '../rpc-contract';
 import type { BlockRendererContribution, BlockRendererProps } from './renderer-service';
 
 /* ── grid ── */
@@ -175,16 +176,98 @@ function MetricBody({ block }: BlockRendererProps) {
 
 /* ── media ── */
 
+/** 媒体扩展名 → MIME 类型（冻结常量表——初始化后只读，模块级归属第 4 类） */
+const MEDIA_MIME: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  svg: 'image/svg+xml',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  ogg: 'video/ogg',
+  mov: 'video/quicktime',
+};
+
+/** 图片扩展名集合 */
+const MEDIA_IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg']);
+/** 视频扩展名集合 */
+const MEDIA_VIDEO_EXTS = new Set(['mp4', 'webm', 'ogg', 'mov']);
+
+/** 媒体加载状态（base64 拉取 + 生命周期守卫） */
+type MediaLoadState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'ready'; data: string }
+  | { status: 'error'; error: string };
+
+/**
+ * 经 read_file_base64 拉取本地文件（Tauri WebView 拦裸本地路径——
+ * <img src="D:/..."> 打不开，必须走后端读成 base64 再喂 data: URI）。
+ * 组件卸载/路径变化时丢弃在途结果（epoch 语义，防串流）。
+ */
+function useMediaData(filePath: string | undefined): MediaLoadState {
+  const [state, setState] = useState<MediaLoadState>({ status: filePath ? 'loading' : 'idle' });
+  useEffect(() => {
+    let cancelled = false;
+    setState({ status: filePath ? 'loading' : 'idle' });
+    if (!filePath) return;
+    typedRpc('read_file_base64', { file_path: filePath })
+      .then((b64) => {
+        if (!cancelled) setState({ status: 'ready', data: b64 });
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          const msg = e instanceof Error ? e.message : String(e);
+          setState({ status: 'error', error: msg });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [filePath]);
+  return state;
+}
+
 function MediaBody({ block }: BlockRendererProps) {
   const p = block.payload as { fileId?: string; filePath?: string; label?: string; ext?: string };
   const label = p.label || p.fileId || p.filePath || '文件';
   const ext = (p.ext || '').toLowerCase();
-  const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext);
+  const mime = MEDIA_MIME[ext];
+  const isImage = MEDIA_IMAGE_EXTS.has(ext);
+  const isVideo = MEDIA_VIDEO_EXTS.has(ext);
+  // 只有图片/视频才需要读文件内容；未知类型走文件壳，不浪费一次 RPC
+  const isMedia = isImage || isVideo;
+  const loaded = useMediaData(isMedia ? p.filePath : undefined);
+  const loadingNode =
+    loaded.status === 'error' ? (
+      <div className="pp-media-loading">读取失败：{loaded.error}</div>
+    ) : (
+      <div className="pp-media-loading">加载中…</div>
+    );
   return (
     <div className="pp-media">
       <div className="pp-media-label">{label}</div>
       {isImage && p.filePath ? (
-        <img className="pp-media-img" src={p.filePath} alt={label} />
+        loaded.status === 'ready' && loaded.data ? (
+          <img className="pp-media-img" src={`data:${mime ?? 'image/png'};base64,${loaded.data}`} alt={label} />
+        ) : (
+          loadingNode
+        )
+      ) : isVideo && p.filePath ? (
+        loaded.status === 'ready' && loaded.data ? (
+          // biome-ignore lint/a11y/useMediaCaption: 展示用户本地视频，无字幕轨道来源（非交互媒体）
+          <video
+            className="pp-media-video"
+            src={`data:${mime ?? 'video/mp4'};base64,${loaded.data}`}
+            controls
+            aria-label={label}
+          />
+        ) : (
+          loadingNode
+        )
       ) : (
         <div className="pp-media-file">
           {ext && <span className="pp-media-ext">{ext}</span>}
