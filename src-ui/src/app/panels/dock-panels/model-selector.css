@@ -118,6 +118,7 @@
   border-radius: 0;
   box-shadow: var(--elev-menu);
   background: var(--paper);
+  animation: pop-down 0.14s cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 .ms-dropdown.ms-empty {

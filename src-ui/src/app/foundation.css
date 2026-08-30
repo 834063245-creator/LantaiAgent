@@ -65,6 +65,28 @@ body {
   display: none !important;
 }
 
+/* ── 浮层微动效关键帧（全局共享——纸面递出语言，2026-08-30）──
+ * pop-down：向下开的弹层（自锚点侧轻微下落）；pop-up：向上开的弹层（自锚点侧
+ * 轻微托起）；veil-in：遮罩淡入。只动 transform/opacity 不触发布局；
+ * 消费方在各组件 CSS（时长/曲线各自声明）；reduced-motion 全局豁免已兜底。 */
+@keyframes pop-down {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@keyframes pop-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@keyframes veil-in {
+  from {
+    opacity: 0;
+  }
+}
+
 /* ── 案卷首页（workspace-flip 批 1：SessionsHome——D-W1-1 纯会话优先；
  * 2026-08-23 视觉迭代：完全对齐 prototype/lantai.html 案卷首页版式——
  * 顶部书眉 / kicker / 大标题 / 描述 / 案卷列表（日期+标题+leader 点线+
@@ -128,6 +150,23 @@ body {
   mask-size: contain;
   mask-repeat: no-repeat;
   mask-position: center;
+  /* 钤印入场（2026-08-30）：印章自空中按下落定——起手偏大微透、中段过压
+   * 0.96、末笔回正 -3deg；fill both 兜首帧前不闪原态。 */
+  animation: sh-stamp 0.6s cubic-bezier(0.23, 1, 0.32, 1) 0.12s both;
+}
+@keyframes sh-stamp {
+  0% {
+    opacity: 0;
+    transform: rotate(-9deg) scale(1.22);
+  }
+  55% {
+    opacity: 1;
+    transform: rotate(-3deg) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(-3deg) scale(1);
+  }
 }
 .sh-wordmark {
   font-family: var(--f-song);
@@ -425,6 +464,27 @@ body {
   align-items: stretch;
   padding: 0;
 }
+/* 朱批左条（2026-08-30）：hover/焦点时左缘朱砂条自中央生长——与活动案卷
+ * .sh-session-row.active::before 同语言（人的在场标记=朱砂铁律） */
+.sh-ws-card--row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 16px;
+  bottom: 16px;
+  width: 3px;
+  background: var(--seal);
+  opacity: 0;
+  transform: scaleY(0.3);
+  transition:
+    opacity var(--snap),
+    transform var(--glide);
+}
+.sh-ws-card--row:hover::before,
+.sh-ws-card--row:focus-within::before {
+  opacity: 1;
+  transform: none;
+}
 .sh-ws-card-main {
   display: flex;
   flex-direction: column;
@@ -616,6 +676,34 @@ body {
   display: flex;
   gap: 14px;
   margin-top: 28px;
+}
+
+/* ── 卷首入场编排（2026-08-30）：kicker→标题→导语→列表→动作逐层浮现 ──
+ * sh-rise 单关键帧（to=静态位）；每层只调 delay。首页是低频全屏页，
+ * 挂载重放即「回到卷首」的仪式感；reduced-motion 全局豁免已兜底。 */
+@keyframes sh-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+.sh-kicker {
+  animation: sh-rise 0.5s cubic-bezier(0.23, 1, 0.32, 1) 0.05s both;
+}
+.sh-h1 {
+  animation: sh-rise 0.55s cubic-bezier(0.23, 1, 0.32, 1) 0.12s both;
+}
+.sh-lead {
+  animation: sh-rise 0.55s cubic-bezier(0.23, 1, 0.32, 1) 0.2s both;
+}
+.sh-section-title {
+  animation: sh-rise 0.5s cubic-bezier(0.23, 1, 0.32, 1) 0.3s both;
+}
+.sh-workspaces {
+  animation: sh-rise 0.55s cubic-bezier(0.23, 1, 0.32, 1) 0.36s both;
+}
+.sh-actions {
+  animation: sh-rise 0.5s cubic-bezier(0.23, 1, 0.32, 1) 0.44s both;
 }
 
 /* ── 底部 footer ── */

@@ -46,4 +46,29 @@ describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
     expect(ruleBody(HOME_CSS, '.sh-session-row .meta')).toContain('color: var(--ink-2)');
     expect(ruleBody(HOME_CSS, '.sh-foot')).toContain('color: var(--ink-2)');
   });
+
+  it('界栏（规格书 §1 锁定件 2026-08-30 落地）：流区左右栏线走墨系不走朱砂', () => {
+    const region = ruleBody(PANEL_CSS, '.pp-region {');
+    // 左右栏线存在
+    expect(region).toContain('border-left-color');
+    expect(region).toContain('border-right-color');
+    // 栏线是墨系结构件——朱砂=人铁律，栏线不沾朱砂
+    expect(region).toContain('var(--ink-2)');
+    expect(region).not.toContain('var(--seal)');
+    const active = ruleBody(PANEL_CSS, '.pp-region-active');
+    // 活跃卷示活走洗底朱砂 + 栏线提浓，栏线本体仍是墨
+    expect(active).toContain('var(--seal) 4%');
+    expect(active).toContain('var(--ink-2) 48%');
+  });
+
+  it('流式尾笔与块入场（2026-08-30 流式生命感）：尾笔绝对定位不入测高、石青运行态语义、入场动画单次', () => {
+    const tail = ruleBody(PANEL_CSS, '.pp-block.pp-tail::after');
+    // 挂件路线：绝对定位不占流内高度（测量镜像纪律——任何入流高度的视觉必须同步 measure.ts）
+    expect(tail).toContain('position: absolute');
+    // 运行态语义族恒石青（铁律：石青=机——机器仍在书写），朱砂=人不得挪用
+    expect(tail).toContain('var(--indigo)');
+    expect(tail).not.toContain('var(--seal');
+    const enter = ruleBody(PANEL_CSS, '.pp-block.pp-enter');
+    expect(enter).toContain('animation: pp-enter');
+  });
 });

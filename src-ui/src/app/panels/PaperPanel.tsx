@@ -22,6 +22,7 @@
 // 输入条：写 input-store（真相源），提交走 core.sendMessage()。
 
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { agentSessionState } from '../../agent/agent-session-state';
 import { activeOverlayContributions, subscribeOverlayContributions } from '../../composition/overlay-service';
 import { resolveAssetBlock, resolveRenderer } from '../../composition/renderer-service';
 import {
@@ -439,6 +440,26 @@ export function PaperPanel() {
       return { ...prev, [b.id]: !cur };
     });
   }, []);
+
+  /* ── 流式生命感（2026-08-30）──
+   * seenBlocks：已渲染过的块 id 集——pp-enter 入场类只发首见（无 StrictMode，
+   * 渲染期标记安全），虚拟化平移重挂不重放动画；
+   * activeRunning：活跃卷执行态（agentSessionState，同 ComposerDock 读面）——
+   * 末块挂朱砂尾笔的开关。 */
+  const seenBlocksRef = useRef<Set<string>>(new Set());
+  const [activeRunning, setActiveRunning] = useState(false);
+  useEffect(() => {
+    if (!core || activeSessionId == null) {
+      setActiveRunning(false);
+      return;
+    }
+    const sync = (): void => {
+      setActiveRunning(agentSessionState.getExec(core.panelId, activeSessionId)?.isRunning === true);
+    };
+    sync();
+    const off = agentSessionState.getExec(core.panelId, activeSessionId)?.onChange(sync) ?? null;
+    return () => off?.();
+  }, [core, activeSessionId]);
   // 会话合卷/新增后修剪无主缓存
   useEffect(() => {
     const ids = new Set(sessions.map((s) => s.id));
@@ -1603,10 +1624,12 @@ export function PaperPanel() {
           {/* biome-ignore lint/a11y/noStaticElementInteractions: 无限画布是鼠标平移/缩放交互面 */}
           <div ref={canvasRef} className={`pp-canvas${panning ? ' pp-panning' : ''}`} onMouseDown={onCanvasMouseDown}>
             {sessions.length === 0 && (
-              <div className="pp-empty">
-                这张纸上还没有案卷。
-                <br />
-                点左侧「另起一卷」开始，新卷会自动落到右侧。
+              <div className="pp-empty" aria-hidden="true">
+                <div className="pp-empty-kicker">LANTAI · BLANK SHEET</div>
+                <div className="pp-empty-title">这张纸上还没有案卷</div>
+                <div className="pp-empty-rule" />
+                <div className="pp-empty-hint">点左侧「另起一卷」开始，新卷会自动落到右侧</div>
+                <div className="pp-empty-asterism">⁂</div>
               </div>
             )}
 
@@ -1739,16 +1762,30 @@ export function PaperPanel() {
               })}
 
               {/* 流序列：每流区 flow 块按序渲染（视口窗口化——视口外不进 DOM） */}
-              {regions.map((r) =>
-                r.blocks.map((b) => {
+              {regions.map((r) => {
+                /* 流式尾笔：活跃卷运行中，最后一个 flow 块底缘挂石青笔尖——
+                 * 「机器仍在书写」的观感锚点（运行态语义族恒石青：书脊运行点/
+                 * 状态签 running/StatusLine 分析点同色，铁律：石青=机） */
+                let tailId: string | null = null;
+                if (r.sessionId === activeSessionKey && activeRunning) {
+                  for (let i = r.blocks.length - 1; i >= 0; i--) {
+                    if (r.blocks[i].state === 'flow') {
+                      tailId = r.blocks[i].id;
+                      break;
+                    }
+                  }
+                }
+                return r.blocks.map((b) => {
                   const slot = r.layout.get(b.id);
                   if (!slot || !r.visibleIds.has(b.id)) return null;
                   if (b.state === 'flow') {
+                    const firstSeen = !seenBlocksRef.current.has(b.id);
+                    if (firstSeen) seenBlocksRef.current.add(b.id);
                     return (
                       // biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler
                       <div
                         key={b.id}
-                        className={`pp-block pp-${b.kind}`}
+                        className={`pp-block pp-${b.kind}${firstSeen ? ' pp-enter' : ''}${b.id === tailId ? ' pp-tail' : ''}`}
                         style={{ left: slot.x, top: slot.y, width: b.w }}
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}
@@ -1798,8 +1835,8 @@ export function PaperPanel() {
                       </div>
                     </Fragment>
                   );
-                }),
-              )}
+                });
+              })}
             </div>
           </div>
 

@@ -80,6 +80,7 @@
   justify-content: center;
   padding-top: 12vh;
   background: var(--veil); /* 墨色遮罩（与 settings-panel 遮罩同语言） */
+  animation: veil-in 0.15s ease-out;
 }
 .pal-box {
   width: min(640px, 92vw);
@@ -95,6 +96,7 @@
   border-radius: 0; /* 印刷品无圆角（2026-08 UI 大清扫） */
   overflow: hidden;
   box-shadow: var(--elev-raise);
+  animation: pop-down 0.16s cubic-bezier(0.23, 1, 0.32, 1);
 }
 html.no-bf .pal-box {
   background: var(--paper-margin);

@@ -32,7 +32,7 @@
 }
 .pp-ob-text {
   flex: 1;
-  font-size: calc(10.5px * var(--font-scale));
+  font-size: calc(10px * var(--font-scale));
   color: var(--ink-2);
   line-height: 1.5;
 }
@@ -42,8 +42,9 @@
 }
 .pp-ob-btn {
   flex-shrink: 0;
-  font-family: var(--f-mono);
-  font-size: calc(8.5px * var(--font-scale));
+  /* 纯中文钮禁 mono（P4 教训：mono 栈无中文字形，回退更糊）——用宋体 */
+  font-family: var(--f-song);
+  font-size: calc(10px * var(--font-scale));
   letter-spacing: 0.08em;
   padding: 5px 10px;
   border-radius: 0;
@@ -57,6 +58,11 @@
   background: var(--ink-1);
   border-color: var(--ink-1);
   color: var(--paper);
+}
+.pp-ob-btn:active {
+  background: var(--ink-2);
+  border-color: var(--ink-2);
+  transform: translateY(1px);
 }
 
 /* ── 双栏 ── */
@@ -164,10 +170,11 @@
   font-size: calc(11px * var(--font-scale));
   font-weight: 600;
 }
+/* 「新会话默认」角标 = 中文文案走宋体（P4 教训）；6.5px 瞎眼档上提 8px */
 .pp-now-badge {
-  font-family: var(--f-mono);
-  font-size: calc(6.5px * var(--font-scale));
-  font-weight: 700;
+  font-family: var(--f-song);
+  font-size: calc(8px * var(--font-scale));
+  font-weight: 600;
   letter-spacing: 0.1em;
   color: var(--seal-deep);
   border: 1px solid color-mix(in oklch, var(--seal) 36%, transparent);
@@ -183,9 +190,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 状态字（未配置/已配置/正常/异常）= 纯中文——禁 mono（P4 教训） */
 .pp-src-state {
-  font-size: calc(8.5px * var(--font-scale));
-  font-family: var(--f-mono);
+  font-size: calc(9px * var(--font-scale));
   flex-shrink: 0;
   color: var(--ink-3);
 }
@@ -212,6 +219,9 @@
   color: var(--seal-deep);
   border-color: var(--seal);
   background: var(--seal-soft);
+}
+.pp-rail-add:active {
+  transform: translateY(1px);
 }
 .pp-legend {
   display: flex;
@@ -277,7 +287,7 @@
 }
 .pp-badge {
   font-family: var(--f-mono);
-  font-size: calc(7.5px * var(--font-scale));
+  font-size: calc(8px * var(--font-scale));
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -298,7 +308,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: calc(9.5px * var(--font-scale));
+  font-size: calc(10px * var(--font-scale));
   padding: 2px 8px;
   border-radius: 0;
   font-weight: 500;
@@ -395,9 +405,10 @@
   font-weight: 500;
   font-family: var(--f-song);
 }
+/* 状态 chip（已存/N 个）= 中文文案——禁 mono（P4 教训）；7.5px 上提 8px */
 .pp-chip {
-  font-family: var(--f-mono);
-  font-size: calc(7.5px * var(--font-scale));
+  font-family: var(--f-song);
+  font-size: calc(8px * var(--font-scale));
   letter-spacing: 0.05em;
   color: var(--pass);
   background: color-mix(in oklch, var(--pass) 8%, transparent);
@@ -424,7 +435,7 @@
   flex: 1;
 }
 .pp-f-hint {
-  font-size: calc(8.5px * var(--font-scale));
+  font-size: calc(9px * var(--font-scale));
   color: var(--ink-3);
   margin-top: 4px;
   line-height: 1.5;
@@ -563,6 +574,11 @@
   background: var(--ink-1);
   color: var(--paper);
 }
+.pp-btn-test:active:not([disabled]) {
+  background: var(--ink-2);
+  border-color: var(--ink-2);
+  transform: translateY(1px);
+}
 .pp-btn-test.testing {
   opacity: 0.8;
   cursor: progress;
@@ -597,7 +613,7 @@
   font-size: calc(9px * var(--font-scale));
 }
 .pp-test-last {
-  font-size: calc(8.5px * var(--font-scale));
+  font-size: calc(9px * var(--font-scale));
   color: var(--ink-3);
   font-family: var(--f-mono);
   margin-top: 7px;
@@ -634,7 +650,7 @@
   border-radius: 0;
   background: color-mix(in oklch, var(--fail) 8%, transparent);
   color: var(--fail);
-  font-size: calc(9.5px * var(--font-scale));
+  font-size: calc(10px * var(--font-scale));
   line-height: 1.5;
 }
 .pp-error-text {
@@ -773,13 +789,16 @@
   background: var(--seal);
   border-color: var(--seal);
 }
+.cd-btn-danger:active {
+  transform: translateY(1px);
+}
 
 /* ── 添加提供方弹层 ── */
 .pp-add-sheet {
   width: 540px;
 }
 .pp-sheet-note {
-  font-size: calc(9.5px * var(--font-scale));
+  font-size: calc(10px * var(--font-scale));
   color: var(--ink-3);
   line-height: 1.55;
   margin-bottom: 12px;
@@ -823,7 +842,7 @@
 }
 .pp-cat-kind {
   font-family: var(--f-mono);
-  font-size: calc(7px * var(--font-scale));
+  font-size: calc(8px * var(--font-scale));
   letter-spacing: 0.1em;
   color: var(--indigo);
   margin-top: 3px;
@@ -859,7 +878,7 @@
   gap: 4px;
 }
 .pp-fg label {
-  font-size: calc(9.5px * var(--font-scale));
+  font-size: calc(10px * var(--font-scale));
   color: var(--ink-2);
 }
 .pp-form-error {
@@ -909,6 +928,11 @@
 .pp-save-btn:hover {
   background: var(--ink-2);
   border-color: var(--ink-2);
+}
+.pp-save-btn:active {
+  background: var(--ink-3);
+  border-color: var(--ink-3);
+  transform: translateY(1px);
 }
 
 /* 2026-08-29 走查：左侧列表空态（此前 providers=[] 时纯空白） */
