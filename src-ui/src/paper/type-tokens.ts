@@ -87,7 +87,12 @@ export const CHROME_TOKENS = {
     borderL: 0,
     padL: 0,
     kindLabelSize: 15, // 题签「来 文」字号（2026-08-30 标题化）
-    kindGap: 12, // 题签下距（题签占高 = labelSize + gap）
+    kindSeqSize: 10, // 题签小注「USER · 序」字号（乙方案恢复小注）
+    kindSeqGap: 5, // 大字 → 小注间距
+    kindBarGap: 4, // 小注 → 横线间距（2026-08-30 乙方案横线回归）
+    kindBarH: 2, // 横线高
+    kindBarW: 24, // 横线宽
+    kindGap: 12, // 题签区 → 正文区下距（题签占高 = 上述全合计）
     asterismMarginTop: 30,
     asterismLine: 14,
   },
@@ -146,7 +151,13 @@ export const CHROME_TOKENS = {
 /* ── 组合 chrome 常量（measure 用；CSS 引用 CHROME_TOKENS 原始值）── */
 export const CHROME_DERIVED = {
   userTextInset: CHROME_TOKENS.user.borderL + CHROME_TOKENS.user.padL, // 0——标题化后无左批线
-  userKindH: CHROME_TOKENS.user.kindLabelSize + CHROME_TOKENS.user.kindGap, // 题签占高
+  userKindH:
+    CHROME_TOKENS.user.kindLabelSize +
+    CHROME_TOKENS.user.kindSeqGap +
+    CHROME_TOKENS.user.kindSeqSize +
+    CHROME_TOKENS.user.kindBarGap +
+    CHROME_TOKENS.user.kindBarH +
+    CHROME_TOKENS.user.kindGap, // 题签区总高（大字 + 小注 + 横线间距 + 横线 + 下距）
   userAsterismH: CHROME_TOKENS.user.asterismMarginTop + CHROME_TOKENS.user.asterismLine,
   userFileLineH: CHROME_TOKENS.userFiles.lineH,
   userFilesMarginTop: CHROME_TOKENS.userFiles.marginTop + CHROME_TOKENS.userFiles.borderTop,

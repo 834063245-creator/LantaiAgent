@@ -124,10 +124,11 @@ describe('paper/measure', () => {
   // jsdom 下 node: 模块 baseline 不可用、?raw 被 vitest css 管线吞空——两条路试过）。
 
   it('user/reasoning/notice/plan 四类分支各自计高（kinds 全谱）', () => {
-    // user 题签 27 + 纯文本 36 + asterism 44（2026-08-30 标题化：题签置顶占高）；
+    // user 题签 48 + 纯文本 36 + asterism 44（2026-08-30 标题化：题签置顶占高，
+
     // reasoning 展开态 = 折叠行 20 + 纯文本 36（折叠机制 2026-08-30）；
     // notice 带贴黄 chrome 17；plan 带拟策 chrome 31+39
-    expect(measureBlockHeight(block('user', { text: 'hi' }))).toBe(27 + 36 + 44);
+    expect(measureBlockHeight(block('user', { text: 'hi' }))).toBe(48 + 36 + 44);
     expect(measureBlockHeight(block('reasoning', { text: 'think' }))).toBe(FOLD_ROW_H + 36);
     expect(measureBlockHeight(block('notice', { text: 'n', level: 'info' }))).toBe(17 + 36);
     // 拟策 2026-08-30 溢出修复：标题实测（mock 36）+ head margin 12——旧固定 39 退役
@@ -494,15 +495,15 @@ describe('paper/measure 富行内（P3）', () => {
     const circled = items.find((it) => it.extraWidth !== undefined);
     expect(circled).toMatchObject({ text: '关键词', break: 'never', extraWidth: CIRCLE_EXTRA });
     expect(String(circled?.font)).toContain('600');
-    // mock lineCount=1 → 文本高 = 1×PAPER_USER_LINE_HEIGHT，加题签 27 + asterism 44（2026-08-30 标题化）
-    expect(h).toBe(27 + PAPER_USER_LINE_HEIGHT + 44);
+    // mock lineCount=1 → 文本高 = 1×PAPER_USER_LINE_HEIGHT，加题签 48 + asterism 44（2026-08-30 标题化）
+    expect(h).toBe(48 + PAPER_USER_LINE_HEIGHT + 44);
   });
 
   it('圈点来文逐行拆解：空行占一行（pre-wrap 硬换行语义）', () => {
     richStatsMock.mockReturnValue({ lineCount: 1, maxLineWidth: 100 });
     const h = measureBlockHeight(block('user', { text: '上【词】\n\n下' }));
-    // 三行：上（rich 1 行）+ 空行（占一行）+ 下（rich 1 行）→ 3 × 行高 + 题签 27 + asterism
-    expect(h).toBe(27 + 3 * PAPER_USER_LINE_HEIGHT + 44);
+    // 三行：上（rich 1 行）+ 空行（占一行）+ 下（rich 1 行）→ 3 × 行高 + 题签 48 + asterism
+    expect(h).toBe(48 + 3 * PAPER_USER_LINE_HEIGHT + 44);
     expect(prepareRichMock).toHaveBeenCalledTimes(2); // 空行不进 rich
   });
 });

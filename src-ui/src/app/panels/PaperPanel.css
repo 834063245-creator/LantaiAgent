@@ -457,8 +457,10 @@
 }
 
 /* 题签（2026-08-30 标题化）：来文文类签居中置顶，不再挂左缘外；
- * 拖拽保留（.pp-kind 仍是整块拖出手柄）。占高 = zh 15px + 下距 12px
- * = 27px，镜像 measure.USER_KIND_H。 */
+ * 拖拽保留（.pp-kind 仍是整块拖出手柄）。结构 = 大字「来 文」+ 小注
+ * 「USER · 序」+ 横线；占高 = label 15 + seqGap 5 + seq 10 + barGap 4
+ * + barH 2 + gap 12 = 48px，镜像 measure.USER_KIND_H。
+ * hover 恢复把手反馈（乙方案：涂底 + 小注转深 + 横线转朱砂）。 */
 .pp-block.pp-user .pp-kind {
   position: static;
   left: auto;
@@ -467,13 +469,21 @@
   display: block;
   align-items: initial;
   gap: 0;
-  margin: 0;
+  margin: 0 0 var(--pp-ch-user-kindGap); /* 下距 = kindGap（镜像 USER_KIND_H） */
   padding: 0;
   text-align: center;
   cursor: grab;
+  transition: background var(--snap);
 }
 .pp-block.pp-user .pp-kind::after {
-  display: none; /* 标题化：去 hairline 连线 */
+  display: block; /* 乙方案：横线回归（题签下压着的栏线） */
+  content: "";
+  position: static;
+  width: var(--pp-ch-user-kindBarW);
+  height: var(--pp-ch-user-kindBarH);
+  margin: var(--pp-ch-user-kindBarGap) auto 0; /* barGap（镜像 USER_KIND_H） */
+  background: var(--ink-4);
+  transition: background var(--snap);
 }
 .pp-block.pp-user .pp-kind .pp-zh {
   display: block;
@@ -482,16 +492,29 @@
   line-height: 1;
   letter-spacing: 0.34em;
   text-indent: 0.34em; /* 末位字距补偿，视觉居中 */
-  margin-bottom: var(--pp-ch-user-kindGap);
+  margin: 0;
 }
 .pp-block.pp-user .pp-kind .pp-en {
-  display: none; /* 标题化：隐藏 USER · 序 */
+  display: block; /* 乙方案：小注回归（USER · 序） */
+  margin-top: var(--pp-ch-user-kindSeqGap); /* seqGap（镜像 USER_KIND_H） */
+  font-family: var(--f-mono);
+  font-size: var(--pp-ch-user-kindSeqSize);
+  line-height: 1;
+  letter-spacing: 0.16em;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  transition: color var(--snap);
 }
+/* hover 恢复把手反馈（2026-08-30 UX 补缺：标题也是可拖手柄——
+ * 涂朱砂底 + 小注转朱砂深 + 横线转朱砂，整块可发现性回归） */
 .pp-block.pp-user .pp-kind:hover {
-  background: transparent; /* 题签是标题不是把手，hover 不涂底 */
+  background: var(--seal-soft);
 }
-.pp-block.pp-user .pp-kind:hover .pp-zh {
+.pp-block.pp-user .pp-kind:hover .pp-en {
   color: var(--seal-deep);
+}
+.pp-block.pp-user .pp-kind:hover::after {
+  background: var(--seal);
 }
 
 /* asterism（B1）：来文收尾三星——卷末花押句号。原型 lantai.html 同款
