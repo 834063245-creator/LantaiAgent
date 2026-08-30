@@ -30,7 +30,8 @@ import {
   prepareRichInline,
   type RichInlineItem,
 } from '@chenglou/pretext/rich-inline';
-import { parsePlanItems, type SourcedBlock } from './block-model';
+import { assetKinds } from '../agent/asset-kinds';
+import { type BlockKind, parsePlanItems, type SourcedBlock } from './block-model';
 import {
   type MdBlock,
   type MdInline,
@@ -234,13 +235,95 @@ const DIFF_LANG_H = 16; // .pp-lang 10px×lh1 + margin-bottom 6
 const DIFF_PRE_CHROME_H = 30; // pre padding 14×2 + border-top/bottom 1×2
 const DIFF_TEXT_INSET = 23; // border-left 3 + padding-left 20
 const PLAN_CHROME_H = 31; // .pp-pc border-top 2 + border-bottom 1 + padding 14×2
-const PLAN_HEAD_H = 39; // 标题 15×1.8=27 + head margin-bottom 12
 const PLAN_ITEM_INSET = 36; // li padding-left（石青序号列）
 const PLAN_ITEM_GAP = 7; // li margin-bottom（末项无）
-const PLAN_ACTIONS_H = 40; // 审批操作行（按钮行高 + margin-top 14，偏保守）
-const PLAN_OPTIONS_H = 118; // 方案选择区（border-top + padding + 3 方案×~36，偏保守）
+const PLAN_ACTIONS_H = 13 * 1.8 + 10 + 2 + 14; // 按钮 13×1.8 + padding 5×2 + border 2 + margin-top 14
 const NOTICE_CHROME_H = 17; // padding 8×2 + border-bottom 1
 const NOTICE_TEXT_INSET = 24; // padding 12×2
+
+/* ── 资产/开放 kind 镜像常量（2026-08-30 溢出修复：default 固定 80 退役）──
+ * 资产块此前测高恒 80、签名不含 payload——媒体图 320 / JSON 兜底 400+ /
+ * html 卡 1000 的体格全被按成 80 → 绝对定位流里下一块压字（画图族等资产
+ * 卡片溢出、会话流渲染乱成一团的根因）。此处按表现原语逐款镜像
+ * asset-renderers.tsx 的结构（改表现组件两处同步）；加载/上报/交互类动态高
+ * （图片、iframe、拟策反馈框）由壳层 ResizeObserver 实测回写桥兜底。 */
+const JSON_VIEW_PAD_V = 12; // .pp-json padding 10 + 2
+const JSON_VIEW_HEAD_H = 10 * 1.8 + 6; // .pp-json-head mono 10px（行距继承 1.8）+ margin 6
+const JSON_PRE_PAD_V = 20; // .pp-json-pre padding 10×2
+const JSON_PRE_INSET = 27; // border-left 3 + padding 左右 12×2
+const JSON_PRE_MAX_H = 360; // box-sizing border-box → 文本预算 340
+const JSON_PRE_FONT = `11px ${MONO_STACK}`;
+const JSON_PRE_LINE_HEIGHT = 11 * 1.6;
+
+const MEDIA_PAD_V = 4; // .pp-media padding 2×2
+const MEDIA_LABEL_H = 13 * 1.8 + 4; // .pp-media-label（行距继承 1.8）+ margin-bottom 4
+const MEDIA_IMG_MAX_H = 320; // .pp-media-img max-height（上下 border 1×2 另计）
+const MEDIA_ROW_H = 11 * 1.8; // .pp-media-file 行（行距继承 1.8）
+
+const CHART_PAD_V = 8; // .pp-chart padding 4×2
+const CHART_TYPE_H = 9 * 1.8 + 4; // .pp-chart-type（行距继承 1.8）+ margin-bottom 4
+const CHART_SVG_MAX_H = 240; // .pp-chart-svg max-height
+const CHART_PIE_H = 180; // .pp-chart-pie height
+const CHART_LABEL_GAP = 6; // .pp-chart-labels margin-top
+const CHART_LABEL_LINE = 9 * 1.8;
+const CHART_LABEL_FONT = `9px ${MONO_STACK}`;
+
+const METRIC_PAD_V = 4; // .pp-metric padding 2×2
+const METRIC_CAPTION_H = 13 * 1.8 + 6; // .pp-metric-caption + margin-bottom 6
+const METRIC_CARD_H = 2 + 16 + 11 * 1.8 + 20 * 1.2; // border 2 + padding 16 + label + value(lh 1.2)
+const METRIC_GAP = 8; // .pp-metric-grid gap
+const METRIC_MIN_COL = 120; // minmax(120px, 1fr)
+
+const GRID_PAD_V = 4; // .pp-grid padding 2×2
+const GRID_CAPTION_H = 13 * 1.8 + 6;
+const GRID_CELL_PAD_V = 8; // th/td padding 4×2
+const GRID_ROW_LINE = 11 * 1.8; // .pp-grid-table 11px（行距继承 1.8）
+const GRID_HEAD_BORDER = 1; // th border-bottom（rule-soft）
+const GRID_ROW_BORDER = 0.5; // td border-bottom
+const GRID_MEASURE_ROW_CAP = 50; // 逐行文字测量上限（其余单行估——挂载后 RO 实测兜底）
+const GRID_FONT = `11px ${MONO_STACK}`;
+
+const GRAPH_PAD_V = 8; // .pp-graph padding 4×2
+const GRAPH_SVG_MAX_H = 360; // .pp-graph-svg max-height
+const GRAPH_COL_W = 160; // 深度列宽（GraphTreeBody 同款公式）
+const GRAPH_ROW_H = 52;
+const GRAPH_ORIGIN = 40;
+const GRAPH_MIN_W = 320;
+const GRAPH_MIN_H = 80;
+
+const HTML_BODY_PAD_V = 4; // .pp-html padding 2×2
+const HTML_FRAME_DEFAULT_H = 240; // .pp-html-frame CSS 初始高（iframe 上报前）
+
+const FORM_PAD_V = 4; // .pp-form padding 2×2
+const FORM_TITLE_H = 15 * 1.8 + 4; // .pp-form-title（行距继承 1.8）+ margin-bottom 4
+const FORM_BODY_LINE = 13 * 1.7; // .pp-form-body line-height 1.7
+const FORM_BODY_GAP = 8; // margin-bottom 8
+const FORM_OPT_PAD_V = 12; // .pp-form-option padding 6×2
+const FORM_OPT_BORDER = 2;
+const FORM_OPT_LABEL_H = 13 * 1.8;
+const FORM_OPT_DESC_LINE = 11 * 1.8;
+const FORM_OPT_DESC_INSET = 20; // padding 左右 10×2
+const FORM_OPT_GAP = 4; // .pp-form-options row-gap
+const FORM_SECTION_GAP = 8; // body/options margin-bottom
+const FORM_ACTIONS_H = 11 * 1.8 + 8 + 2; // .pp-form-confirm 行 + padding 4×2 + border 2
+const FORM_BODY_FONT = `13px ${SONG_STACK}`;
+const FORM_DESC_FONT = `11px ${SONG_STACK}`;
+
+/* ── 拟策测高镜像（2026-08-30 溢出修复：PLAN_OPTIONS_H 118 / PLAN_HEAD_H 39 退役）──
+ * 旧固定预算装不下两枚带描述的方案（实况 ≈163）+ 操作行按钮实高 49.4（旧 40）
+ * + 标题换行未计 → 交互拟策块恒比测高高 50~120px，下一块压字。选项描述文本
+ * 实测；反馈框展开属动态高（壳层 RO 实测兜底，needsObservedHeight 含 plan）。 */
+const PLAN_TITLE_FONT = `15px ${SONG_STACK}`;
+const PLAN_TITLE_LINE_HEIGHT = 15 * 1.8;
+const PLAN_HEAD_MARGIN = 12; // .pp-pc-head margin-bottom
+const PLAN_OPTIONS_CHROME_H = 25; // .pp-pc-options margin-top 14 + border-top 1 + padding-top 10
+const PLAN_OPTION_PAD_V = 14; // .pp-pc-option padding 7×2
+const PLAN_OPTION_BORDER = 2;
+const PLAN_OPTION_LABEL_H = 13 * 1.8; // 行距继承 1.8
+const PLAN_OPTION_DESC_GAP = 2; // .pp-pc-option-desc margin-top
+const PLAN_OPTION_DESC_LINE = 12 * 1.8;
+const PLAN_OPTION_DESC_INSET = 20; // option padding 左右 10×2
+const PLAN_OPTION_GAP = 6; // .pp-pc-option margin-bottom（每枚，含末枚）
 
 /* ── prepare 缓存（pretext-cache.ts 同款纪律）── */
 
@@ -333,6 +416,259 @@ function codeSrcH(text: string, w: number): number {
     CODE_SRC_MAX_H - CODE_SRC_PAD_V,
   );
   return contentH + CODE_SRC_PAD_V;
+}
+
+/* ── 资产/开放 kind 体高（2026-08-30 溢出修复）──
+ * 分派规则镜像 renderer-service.resolveAssetBlock：kind 注册表查 def →
+ * presentation 白名单校验回落 default → 已知表现原语逐款计高；def 缺失或
+ * 表现名无注册渲染器（'*' 兜底）→ JSON 兜底视图计高。静态镜像只服务
+ * 未挂载块的虚拟化窗口估高——挂载后以壳层 RO 实测为准（见下方回写桥）。 */
+
+/** JSON 兜底视图高（JsonBody 逐字镜像：head 行 + pretty pre 封顶）。 */
+function jsonViewH(payload: unknown, w: number): number {
+  const pretty = (() => {
+    try {
+      return JSON.stringify(payload, null, 2);
+    } catch {
+      return String(payload);
+    }
+  })();
+  const textH = cappedH(
+    pretty,
+    Math.max(80, w - JSON_PRE_INSET),
+    JSON_PRE_FONT,
+    JSON_PRE_LINE_HEIGHT,
+    JSON_PRE_MAX_H - JSON_PRE_PAD_V,
+  );
+  return JSON_VIEW_PAD_V + JSON_VIEW_HEAD_H + JSON_PRE_PAD_V + textH;
+}
+
+/** media 体高：图（保守占满 320 上限——加载后 RO 实测收敛）/ 文件行。 */
+function mediaBodyH(p: { ext?: unknown; filePath?: unknown }): number {
+  const ext = typeof p.ext === 'string' ? p.ext.toLowerCase() : '';
+  const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp'].includes(ext) && typeof p.filePath === 'string';
+  return MEDIA_PAD_V + MEDIA_LABEL_H + (isImage ? 2 + MEDIA_IMG_MAX_H : MEDIA_ROW_H);
+}
+
+/** chart 体高：type 行 + svg（bar 按数据量加宽，与 ChartBody viewBox 同款公式）+ 标签行。 */
+function chartBodyH(p: { type?: unknown; data?: unknown }, w: number): number {
+  const type = typeof p.type === 'string' ? p.type : 'bar';
+  const values = Array.isArray(p.data) ? p.data : [];
+  const n = Math.max(values.length, 1);
+  const svgH =
+    type === 'pie'
+      ? CHART_PIE_H
+      : Math.min((w * 220) / Math.max(GRAPH_MIN_W, type === 'bar' ? n * 44 : 400), CHART_SVG_MAX_H);
+  const labels = values.map((d) => (d && typeof d === 'object' ? String((d as { label?: unknown }).label ?? '') : ''));
+  const hasLabels = labels.length > 0;
+  const anyLabelText = labels.some((l) => l.length > 0);
+  const labelLines = hasLabels
+    ? Math.max(
+        1,
+        Math.ceil(measureTextHeight(labels.join(' '), w, CHART_LABEL_FONT, CHART_LABEL_LINE) / CHART_LABEL_LINE),
+      )
+    : 0;
+  // 全空标签（纯数值 data）DOM 只剩 margin 空条（空 span 不产生行盒）
+  const labelH = !hasLabels ? 0 : anyLabelText ? CHART_LABEL_GAP + labelLines * CHART_LABEL_LINE : CHART_LABEL_GAP;
+  return CHART_PAD_V + CHART_TYPE_H + svgH + labelH;
+}
+
+/** metric 体高：caption + auto-fill 网格行（列数镜像 minmax(120,1fr)+gap 8）。 */
+function metricBodyH(p: { items?: unknown; caption?: unknown }, w: number): number {
+  const items = Array.isArray(p.items) ? p.items : [];
+  const cols = Math.max(1, Math.floor((w + METRIC_GAP) / (METRIC_MIN_COL + METRIC_GAP)));
+  const rows = Math.max(1, Math.ceil(items.length / cols));
+  return METRIC_PAD_V + (p.caption ? METRIC_CAPTION_H : 0) + rows * METRIC_CARD_H + (rows - 1) * METRIC_GAP;
+}
+
+/** grid 表格体高：caption + 逐行文字测量（前 50 行精测、其余单行估——表格列宽
+ *  是浏览器 auto 分配，偶数分列只是近似，挂载后 RO 实测兜底）。 */
+function gridBodyH(p: { columns?: unknown; rows?: unknown; caption?: unknown }, w: number): number {
+  const rows = Array.isArray(p.rows) ? p.rows : [];
+  const first = rows[0];
+  const colCount = Array.isArray(p.columns) ? p.columns.length : Array.isArray(first) ? first.length : 0;
+  const head = GRID_PAD_V + (p.caption ? GRID_CAPTION_H : 0);
+  if (colCount === 0) return head;
+  const colW = Math.max(40, w / colCount - 8);
+  const rowH = (cells: unknown[], border: number): number => {
+    let lines = 1;
+    for (const c of cells) {
+      const th = measureTextHeight(String(c), colW, GRID_FONT, GRID_ROW_LINE);
+      lines = Math.max(lines, Math.ceil(th / GRID_ROW_LINE));
+    }
+    return lines * GRID_ROW_LINE + GRID_CELL_PAD_V + border;
+  };
+  let h = head + rowH(Array.isArray(p.columns) ? p.columns : [], GRID_HEAD_BORDER);
+  const measured = Math.min(rows.length, GRID_MEASURE_ROW_CAP);
+  for (let i = 0; i < measured; i++) h += rowH(Array.isArray(rows[i]) ? rows[i] : [], GRID_ROW_BORDER);
+  h += (rows.length - measured) * (GRID_ROW_LINE + GRID_CELL_PAD_V + GRID_ROW_BORDER);
+  return h;
+}
+
+/** graph/tree 体高：确定性树布局几何镜像（GraphTreeBody 同款深度/规模公式）。 */
+function graphBodyH(payload: unknown, w: number): number {
+  const p = payload as {
+    nodes?: Array<{ id?: unknown; children?: Array<{ id?: unknown }> }>;
+    edges?: Array<{ from: unknown; to: unknown }>;
+  };
+  const nodes = Array.isArray(p.nodes) ? p.nodes : [];
+  const children = new Map<string, string[]>();
+  const hasParent = new Set<string>();
+  if (Array.isArray(p.edges)) {
+    for (const e of p.edges) {
+      if (typeof e?.from !== 'string' || typeof e?.to !== 'string') continue;
+      const list = children.get(e.from);
+      if (list) list.push(e.to);
+      else children.set(e.from, [e.to]);
+      hasParent.add(e.to);
+    }
+  } else {
+    for (const n of nodes) {
+      if (typeof n?.id !== 'string') continue;
+      for (const c of n.children ?? []) {
+        if (typeof c?.id !== 'string') continue;
+        const list = children.get(n.id);
+        if (list) list.push(c.id);
+        else children.set(n.id, [c.id]);
+        hasParent.add(c.id);
+      }
+    }
+  }
+  let maxDepth = 0;
+  const seen = new Set<string>();
+  const walk = (id: string, depth: number): void => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    maxDepth = Math.max(maxDepth, depth);
+    for (const c of children.get(id) ?? []) walk(c, depth + 1);
+  };
+  const roots = nodes.filter((n) => typeof n?.id === 'string' && !hasParent.has(n.id)).map((n) => n.id as string);
+  if (roots.length === 0)
+    for (const n of nodes)
+      if (typeof n?.id === 'string') walk(n.id, 0);
+      else for (const r of roots) walk(r, 0);
+  const W = Math.max(GRAPH_MIN_W, (maxDepth + 1) * GRAPH_COL_W + GRAPH_ORIGIN);
+  const H = Math.max(GRAPH_MIN_H, nodes.length * GRAPH_ROW_H + 30);
+  return GRAPH_PAD_V + Math.min((w * H) / W, GRAPH_SVG_MAX_H);
+}
+
+/** form 体高：题/文/选项列（desc 文本实测）/操作行。 */
+function formBodyH(p: { title?: unknown; body?: unknown; options?: unknown }, w: number): number {
+  const options = Array.isArray(p.options) ? p.options : [];
+  let h = FORM_PAD_V + FORM_TITLE_H;
+  if (typeof p.body === 'string' && p.body) {
+    h += measureTextHeight(p.body, w, FORM_BODY_FONT, FORM_BODY_LINE) + FORM_BODY_GAP;
+  }
+  if (options.length > 0) {
+    const descW = Math.max(80, w - FORM_OPT_DESC_INSET);
+    let opts = 0;
+    for (const o of options) {
+      opts += FORM_OPT_BORDER + FORM_OPT_PAD_V + FORM_OPT_LABEL_H;
+      const desc = (o as { description?: unknown } | undefined)?.description;
+      if (typeof desc === 'string' && desc) {
+        opts += measureTextHeight(desc, descW, FORM_DESC_FONT, FORM_OPT_DESC_LINE);
+      }
+    }
+    h += opts + (options.length - 1) * FORM_OPT_GAP + FORM_SECTION_GAP;
+  }
+  return h + FORM_ACTIONS_H;
+}
+
+/** 表现解析（renderer-service.resolveAssetBlock 同款规则镜像）：
+ * def 缺失 → undefined（'*' JSON 兜底）；presentation 越界 → default。 */
+function assetPresentationOf(b: SourcedBlock): string | undefined {
+  const def = assetKinds.get(b.kind);
+  if (!def) return undefined;
+  const pres = b.asset?.presentation;
+  return pres && def.presentations.includes(pres) ? pres : def.defaultPresentation;
+}
+
+/** 资产/开放 kind 块体高（按表现原语分派；无注册表现 → JSON 兜底视图）。 */
+function measureAssetBlockHeight(b: SourcedBlock): number {
+  const pres = assetPresentationOf(b);
+  const p = b.payload;
+  switch (pres) {
+    case 'media':
+      return mediaBodyH(p as { ext?: unknown; filePath?: unknown });
+    case 'chart':
+      return chartBodyH(p as { type?: unknown; data?: unknown }, b.w);
+    case 'metric':
+      return metricBodyH(p as { items?: unknown; caption?: unknown }, b.w);
+    case 'grid':
+      return gridBodyH(p as { columns?: unknown; rows?: unknown; caption?: unknown }, b.w);
+    case 'graph':
+    case 'tree':
+      return graphBodyH(p, b.w);
+    case 'html':
+      return HTML_BODY_PAD_V + HTML_FRAME_DEFAULT_H;
+    case 'form':
+      return formBodyH(p as { title?: unknown; body?: unknown; options?: unknown }, b.w);
+    default:
+      // 未知 kind / 表现名无注册渲染器（'*' 兜底 JsonBody；插件若覆盖 '*' 行，
+      // 静态估高失准由挂载后 RO 实测兜底）。
+      return jsonViewH(p, b.w);
+  }
+}
+
+/* ── 实测回写桥（2026-08-30 溢出修复）──
+ * 静态镜像对三类动态高结构性失明：媒体图加载、html 卡 iframe 上报、
+ * 拟策卡交互态（反馈框展开/审批完成）。这几族（资产 kind + 开放 kind +
+ * 拟策）挂载后由壳层 ResizeObserver 实测回写：实测优先于静态镜像。
+ * 卸载不清记录——虚拟化挂/卸边界上「实测-镜像」高度差会反复横跳成布局
+ * 振荡；payload 变化由下次挂载的 observe 首报自愈。 */
+
+interface ObservedHeight {
+  w: number;
+  h: number;
+}
+
+const observedHeights = new Map<string, ObservedHeight>();
+const observedListeners = new Set<() => void>();
+
+/** 壳层 RO 实测回写（世界单位 = CSS px——RO 读布局盒，transform 缩放不影响）。 */
+export function reportObservedBlockHeight(blockId: string, w: number, h: number): boolean {
+  const rec = Math.ceil(h);
+  const prev = observedHeights.get(blockId);
+  if (prev && prev.w === w && prev.h === rec) return false;
+  observedHeights.set(blockId, { w, h: rec });
+  for (const fn of observedListeners) fn();
+  return true;
+}
+
+/** 有效实测高（记录宽与块宽一致才有效——钉住改宽后旧实测作废待重报）。 */
+export function observedBlockHeightOf(blockId: string, w: number): number | undefined {
+  const rec = observedHeights.get(blockId);
+  return rec && rec.w === w ? rec.h : undefined;
+}
+
+/** 壳层订阅（回报 → measureTick bump → 布局重算）。 */
+export function subscribeObservedBlockHeights(fn: () => void): () => void {
+  observedListeners.add(fn);
+  return () => {
+    observedListeners.delete(fn);
+  };
+}
+
+/** 实测优先的块族：资产 kind（asset 元数据在）+ 开放 kind（非内置）+ 拟策。 */
+const BUILTIN_MEASURE_KINDS = new Set<string>([
+  'user',
+  'markdown',
+  'reasoning',
+  'diff',
+  'tool',
+  'code',
+  'plan',
+  'notice',
+]);
+
+/** 壳层观察判据（与上方实测优先家族同源——只挂 RO 不回写是白挂）。 */
+export function needsObservedHeight(kind: BlockKind, hasAsset: boolean): boolean {
+  return hasAsset || kind === 'plan' || !BUILTIN_MEASURE_KINDS.has(kind);
+}
+
+/** 测试复位（生产不调用）。 */
+export function clearObservedBlockHeights(): void {
+  observedHeights.clear();
 }
 
 /** 来文测高（P3 2026-08-30）：含圈点候选（【】）的文本按行拆解（pre-wrap 硬
@@ -789,16 +1125,37 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
                 PLAN_ITEM_GAP,
               0,
             ) - PLAN_ITEM_GAP;
-      // 审批交互（施工单 #1/#2）：有回调才占操作区高度，无回调的只读拟策块不增加
-      const plan = b.payload as { _callback?: unknown; options?: unknown[] };
-      const optionsH = plan._callback && (plan.options?.length ?? 0) >= 2 ? PLAN_OPTIONS_H : 0;
+      // 2026-08-30 溢出修复：标题实测（旧固定 39 漏算换行）、方案选择区逐枚
+      // 实测（旧 118 装不下两枚带描述的方案）、操作行按钮实高（旧 40 偏小）。
+      // 无回调的只读拟策块不增加交互区高度（施工单 #1/#2 语义不变）。
+      const plan = b.payload as {
+        title?: string;
+        _callback?: unknown;
+        options?: Array<{ label?: string; description?: string }>;
+      };
+      const headH =
+        measureTextHeight(plan.title || '拟策', b.w, PLAN_TITLE_FONT, PLAN_TITLE_LINE_HEIGHT) + PLAN_HEAD_MARGIN;
+      const optionsH = plan._callback && (plan.options?.length ?? 0) >= 2 ? planOptionsH(plan.options ?? [], b.w) : 0;
       const actionsH = plan._callback ? PLAN_ACTIONS_H : 0;
-      return PLAN_CHROME_H + PLAN_HEAD_H + itemsH + optionsH + actionsH;
+      return PLAN_CHROME_H + headH + itemsH + optionsH + actionsH;
     }
     default:
-      // 资产/开放 kind：WO-4 漂亮 JSON 渲染器落地前给保守占位高，避免 NaN/塌陷。
-      return 80;
+      // 资产/开放 kind：按表现原语镜像计高（旧固定 80 是画图族卡片溢出的根因）。
+      return measureAssetBlockHeight(b);
   }
+}
+
+/** 拟策方案选择区高（.pp-pc-options 逐字镜像；描述文本实测可换行）。 */
+function planOptionsH(options: Array<{ label?: string; description?: string }>, w: number): number {
+  const textW = Math.max(80, w - PLAN_OPTION_DESC_INSET);
+  let h = PLAN_OPTIONS_CHROME_H;
+  for (const o of options) {
+    h += PLAN_OPTION_PAD_V + PLAN_OPTION_BORDER + PLAN_OPTION_LABEL_H + PLAN_OPTION_GAP;
+    if (o.description) {
+      h += PLAN_OPTION_DESC_GAP + measureTextHeight(o.description, textW, `12px ${SONG_STACK}`, PLAN_OPTION_DESC_LINE);
+    }
+  }
+  return h;
 }
 
 /* ── 块级测量缓存（性能专项第一刀：流式全量重算 → 只真测变更块）──
@@ -840,10 +1197,14 @@ export function measureSignature(b: SourcedBlock, folded: boolean, sidecarFolded
     case 'code':
       return `code|${f}|${p.code ?? ''}|${p.output ?? ''}|${p.err ?? ''}`;
     case 'plan':
-      return `plan|${p.content ?? ''}|${(p.options as unknown[] | undefined)?.length ?? 0}|${p._callback ? 1 : 0}`;
+      // 标题入签（2026-08-30 起标题实测计高——换行变高度）
+      return `plan|${p.title ?? ''}|${p.content ?? ''}|${(p.options as unknown[] | undefined)?.length ?? 0}|${
+        p._callback ? 1 : 0
+      }`;
     default:
-      // 资产/开放 kind：占位高度固定，签名只记 kind（WO-6 精确测量时再纳入 payload）。
-      return `open|${b.kind}`;
+      // 资产/开放 kind：表现名入签；payload 变化由 RO 实测驱动（静态镜像
+      // 只服务未挂载块的虚拟化窗口估高，不逐 payload 入签省 stringify）。
+      return `open|${b.kind}|${b.asset?.presentation ?? ''}`;
   }
 }
 
@@ -851,18 +1212,24 @@ export function measureSignature(b: SourcedBlock, folded: boolean, sidecarFolded
  *  folded（折叠机制）：折叠/展开是高度信号——入签名，切换必重测。
  *  w（P2 变宽）：宽度也是高度信号（收缩/resize 改宽必改高）——签名尾缀。
  *  markdown 块走增量解析：流式文本增长时复用稳定前缀块，只重解析最后一个块
- *  （与渲染端 parseMarkdownIncremental 同源，测量与渲染结构一致性不破）。 */
+ *  （与渲染端 parseMarkdownIncremental 同源，测量与渲染结构一致性不破）。
+ *  实测优先（2026-08-30 溢出修复）：动态高家族（资产/开放/拟策）挂载后有
+ *  壳层 RO 回写记录 → 直接采用（静态镜像只服务未挂载块的窗口估高）；
+ *  实测值入签——记录变化即重算，记录与静态镜像同值时零额外重测。 */
 export function measureBlockHeightCached(
   b: SourcedBlock,
   cache: BlockMeasureCache,
   folded = false,
   sidecarFolded = false,
 ): number {
-  const sig = `${measureSignature(b, folded, sidecarFolded)}|w=${b.w}`;
+  const obs = needsObservedHeight(b.kind, b.asset != null) ? observedBlockHeightOf(b.id, b.w) : undefined;
+  const sig = `${measureSignature(b, folded, sidecarFolded)}|w=${b.w}|obs=${obs ?? ''}`;
   const hit = cache.byId.get(b.id);
   if (hit && hit.sig === sig) return hit.h;
   let h: number;
-  if (b.kind === 'markdown') {
+  if (obs != null) {
+    h = obs;
+  } else if (b.kind === 'markdown') {
     const p = b.payload as { text?: string };
     const text = p.text ?? '';
     if (!text) {

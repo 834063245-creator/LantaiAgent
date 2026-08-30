@@ -1796,6 +1796,42 @@ body.pp-pin-grabbing {
   cursor: grabbing;
 }
 
+/* ── 流区四角横向缩放柄（P6 宽度自由：角落只开放横向——Y 由内容生长）──
+ * hover 现身的小方柄，压在边缘移动面之上（z-index 更高、命中优先）。 */
+.pp-region-corner {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  z-index: 6;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+.pp-region-corner--nw {
+  top: -6px;
+  left: -6px;
+  cursor: nwse-resize;
+}
+.pp-region-corner--ne {
+  top: -6px;
+  right: -6px;
+  cursor: nesw-resize;
+}
+.pp-region-corner--sw {
+  bottom: -6px;
+  left: -6px;
+  cursor: nesw-resize;
+}
+.pp-region-corner--se {
+  bottom: -6px;
+  right: -6px;
+  cursor: nwse-resize;
+}
+.pp-region:hover .pp-region-corner {
+  opacity: 1;
+  background: var(--paper);
+  border: 1.5px solid var(--ink-2);
+}
+
 /* ── 纸条（V3a 抽纸条：拷贝语义快照——用户层物件；收尾 2026-08-24 完整化）── */
 .pp-strip {
   position: absolute;

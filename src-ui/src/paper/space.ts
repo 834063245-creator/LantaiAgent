@@ -1,35 +1,45 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// paper/space — 画布空间内核（一纸多卷，Stage-2）。
+// paper/space — 画布空间内核（一纸多卷）。
 //
-// 定案（docs/plans/canvas-space/stage-2.md §3.5 + §5）：
-//   - 流区宽度 = 1440（720×2，先试，落地看手感再调）
-//   - 吸附网格粒度 = 宽度 + 间距 = 2160（X 吸附；Y 用户自主）
-//   - 流区移动 = 边缘拖动（悬停左/右缘即拖拽态、光标 move、宽度不变、
-//     ~6px 量级，无显式手柄条；手感仿窗口边缘、功能是移动）
-//   - 锚点语义 = 流区左下（流从锚点向上长，对齐 D-R1-3 流锚甲：锚点即
-//     最新块底边的世界坐标，anchorX = 流区中轴）
-//   - 自动落位（Stage-5 用户拍板：X 线性 → 最近空位，不分栏）：
-//     nearestFreeRegion 以视口中心为参照、向左右逐列外扩找最近空列。
+// 定案沿革：
+//   - Stage-2（2026-08-25）：统一宽 1440 / 吸附栅格 2160 / 拖边缘=移动。
+//   - **2026-08-30 用户拍板翻案（实机反馈，pretext 排版引擎线）**：
+//     ① 吸附栅格拆除——列模型让会话一字排开、画布排布失去自由度
+//     （用户手动布局能力强于预设秩序）；
+//     ② 流区宽自由变换 clamp [720, 2160]，四角手柄横向缩放（角落只开放
+//     横向——普通窗口角落是全维缩放，流区 Y 由内容生长）；
+//     ③ 「拖边缘=移动」手势保留（翻案「边缘=resize」被否：长卷定位卷首
+//     成本高）。
+//   - 落位从列模型改 **X 区间模型**：自动落位/书脊拖落找「不与既有流区
+//     重叠」的最近位置（留 REGION_GAP 间距）；手动移动/缩放自由、允许
+//     重叠（用户主权——系统只管自动落位的秩序下限）。
 //
-// 本文件是空间层的纯函数 + 常量（零 DOM、零 store 依赖），渲染/交互层
-// 消费这里的几何与落位规则。流区位置持久化在 state/canvas-store（Stage-5
-// 起随工作区画布状态文件落盘，不再随会话快照）；流区注册表/活跃流区/空间
-// 命令在 composition/space-service（ctx.space 通道），本文件不碰存储。
+// 本文件是空间层纯函数 + 常量（零 DOM、零 store 依赖）。流区位置持久化在
+// state/canvas-store（Stage-5 起随工作区画布状态文件落盘，width 是真值）。
 
-/** 流区（StreamRegion）几何常量（stage-2 §3.5 用户拍板）。 */
+/** 流区几何常量。 */
 export const STREAM_REGION = {
-  /** 流区宽度（世界单位）——统一宽度，不做可调宽窄（画布模型拍板 #2） */
+  /** 新流区初落宽（世界单位）——落位后可四角横向缩放（clamp [MIN, MAX]） */
   width: 1440,
-  /** 流区间距（世界单位）——X 吸附栅格的粒度组成（宽度+间距=2160） */
-  spacing: 720,
-  /** 边缘拖拽面宽度（屏幕像素量级——光标反馈为主，无需视觉手柄） */
+  /** 自动落位/拖落与既有流区的最小间距（区间缓冲） */
+  gap: 120,
+  /** 边缘拖拽面宽（移动手势） */
   edgeWidth: 6,
 } as const;
 
-/** 吸附网格粒度 = 宽度 + 间距（2160）——边缘拖动松手吸附于此。 */
-export const STREAM_SNAP_GRID = STREAM_REGION.width + STREAM_REGION.spacing;
+/** 流区宽上下限（2026-08-30 拍板：min 720 / max 2160）。 */
+export const REGION_MIN_W = 720;
+export const REGION_MAX_W = 2160;
+
+export function clampRegionW(w: number): number {
+  return Math.min(REGION_MAX_W, Math.max(REGION_MIN_W, w));
+}
+
+/** 块宽跟随流区的缓冲（两侧各 120——块恒窄于界栏不贴栏；
+ *  窄流区压版心：块 w = min(kindW, regionW - REGION_CONTENT_MARGIN)）。 */
+export const REGION_CONTENT_MARGIN = 240;
 
 /** 流区锚点（世界坐标）：anchorX = 流区中轴，anchorY = 最新块底边（流向上长）。 */
 export interface StreamRegionAnchor {
@@ -44,68 +54,104 @@ export interface StreamRegionState {
   width: number;
 }
 
-/** 默认线性排比落位：第 i 个会话贴第 i 列（i * 网格粒度）。
- *  index = 会话在 sess store 中的序（新建 = 末尾 → 自动落位在最后列右侧）。 */
+const DEFAULT_W = STREAM_REGION.width;
+
+/** 占用区间（含 REGION_GAP 缓冲——自动落位不贴脸）。 */
+function occupiedInterval(anchorX: number, width: number): { x0: number; x1: number } {
+  return { x0: anchorX - width / 2 - STREAM_REGION.gap, x1: anchorX + width / 2 + STREAM_REGION.gap };
+}
+
+/** 合并排序后的占用区间（探测窗 [refX-RANGE, refX+RANGE] 内）。 */
+function mergedIntervals(
+  regions: Array<{ anchorX: number; width: number; sessionId?: string }>,
+  excludeSessionId: string | undefined,
+  refX: number,
+): Array<{ x0: number; x1: number }> {
+  const RANGE = 100000;
+  const sorted = regions
+    .filter((r) => r.sessionId !== excludeSessionId)
+    .map((r) => occupiedInterval(r.anchorX, r.width))
+    .filter((o) => o.x1 > refX - RANGE && o.x0 < refX + RANGE)
+    .sort((a, b) => a.x0 - b.x0);
+  const merged: Array<{ x0: number; x1: number }> = [];
+  for (const o of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && o.x0 <= last.x1) last.x1 = Math.max(last.x1, o.x1);
+    else merged.push({ ...o });
+  }
+  return merged;
+}
+
+/** 参考点两侧最近的「能容纳 w 的空闲位」中心（区间模型——栅格拆除后的
+ *  最近空位语义）。探测窗全满 → refX 直接落（允许叠，理论兜底）。 */
+function nearestFreeCenter(
+  regions: Array<{ anchorX: number; width: number; sessionId?: string }>,
+  refX: number,
+  w: number,
+  excludeSessionId?: string,
+): number {
+  const merged = mergedIntervals(regions, excludeSessionId, refX);
+  const RANGE = 100000;
+  const gaps: Array<{ x0: number; x1: number }> = [];
+  let prev = refX - RANGE;
+  for (const m of merged) {
+    if (m.x0 > prev) gaps.push({ x0: prev, x1: m.x0 });
+    prev = Math.max(prev, m.x1);
+  }
+  gaps.push({ x0: prev, x1: refX + RANGE });
+  let best: number | null = null;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const g of gaps) {
+    if (g.x1 - g.x0 < w) continue;
+    const cx = Math.min(Math.max(refX, g.x0 + w / 2), g.x1 - w / 2);
+    const d = Math.abs(cx - refX);
+    if (d < bestDist) {
+      bestDist = d;
+      best = cx;
+    }
+  }
+  return best ?? refX;
+}
+
+/** 首帧兜底落位（正式落位走 nearestFreeRegion——effect 自动找位补正；
+ *  仅保证确定性非全叠的初值，无栅格语义）。 */
 export function defaultRegionFor(index: number): StreamRegionState {
-  return {
-    anchorX: index * STREAM_SNAP_GRID,
-    anchorY: 0,
-    width: STREAM_REGION.width,
-  };
+  return { anchorX: index * (DEFAULT_W + STREAM_REGION.gap), anchorY: 0, width: DEFAULT_W };
 }
 
-/** X 轴吸附到网格粒度（边缘拖动松手/移动过程中实时吸附）。 */
-export function snapRegionX(x: number): number {
-  return Math.round(x / STREAM_SNAP_GRID) * STREAM_SNAP_GRID;
-}
-
-/** 流区世界包围盒（x 区间）——边缘拖拽命中测试与视口相交预筛用。 */
-export function regionXBounds(anchorX: number, width: number): { x0: number; x1: number } {
-  return { x0: anchorX - width / 2, x1: anchorX + width / 2 };
-}
-
-/** 书脊拖动落位判据（Stage-3：抽书放桌——找「竖向不打架」的空位）。
- *  x 吸附到网格粒度（复用 Stage-2 吸附/落位判据），并跳过已被其他流区
- *  占用的列（排除自身——拖动中的卷可以留在原列）；y 取用户落点（垂直
- *  自主），系统只保秩序下限（统一宽度 + x 网格）。纯函数便于测试。 */
-export function pickDropAnchor(
-  regions: Array<{ sessionId: string; anchorX: number }>,
-  sessionId: string,
-  dropX: number,
-  dropY: number,
-): StreamRegionState {
-  let col = Math.round(dropX / STREAM_SNAP_GRID);
-  const occupied = new Set(
-    regions.filter((r) => r.sessionId !== sessionId).map((r) => Math.round(r.anchorX / STREAM_SNAP_GRID)),
-  );
-  while (occupied.has(col)) col++;
-  return {
-    anchorX: col * STREAM_SNAP_GRID,
-    anchorY: dropY,
-    width: STREAM_REGION.width,
-  };
-}
-
-/** 最近空位落位（Stage-5 用户拍板：不分栏，改「最近空位」）。
- *  占用模型 = X 列互斥（统一宽度 + X 吸附栅格；Y 用户自主）——从参考列
- *  （通常 = 视口中心）向左右逐列外扩，落最近空列；Y 取参考 y。纯函数，
- *  便于测试。 */
+/** 自动落位（Stage-5 拍板「最近空位」的区间模型版）：以参考点（视口中心）
+ *  为参照找最近可容纳位，Y 取参考 y。 */
 export function nearestFreeRegion(
-  regions: Array<{ sessionId: string; anchorX: number }>,
+  regions: Array<{ anchorX: number; width: number; sessionId?: string }>,
   refX: number,
   refY: number,
   excludeSessionId?: string,
 ): StreamRegionState {
-  const occupied = new Set(
-    regions.filter((r) => r.sessionId !== excludeSessionId).map((r) => Math.round(r.anchorX / STREAM_SNAP_GRID)),
-  );
-  const start = Math.round(refX / STREAM_SNAP_GRID);
-  let d = 0;
-  for (; ; d++) {
-    for (const c of d === 0 ? [start] : [start + d, start - d]) {
-      if (!occupied.has(c)) {
-        return { anchorX: c * STREAM_SNAP_GRID, anchorY: refY, width: STREAM_REGION.width };
-      }
-    }
-  }
+  return {
+    anchorX: nearestFreeCenter(regions, refX, DEFAULT_W, excludeSessionId),
+    anchorY: refY,
+    width: DEFAULT_W,
+  };
+}
+
+/** 书脊拖出落位：拖到哪落哪（自由，不吸附）；与既有流区区间重叠 → 推最近
+ *  空位（「竖向不打架」拍板语义的区间版）。 */
+export function pickDropAnchor(
+  regions: Array<{ anchorX: number; width: number; sessionId?: string }>,
+  sessionId: string,
+  dropX: number,
+  dropY: number,
+): StreamRegionState {
+  const mine = { x0: dropX - DEFAULT_W / 2, x1: dropX + DEFAULT_W / 2 };
+  const overlap = regions.some((r) => {
+    if (r.sessionId === sessionId) return false;
+    const o = { x0: r.anchorX - r.width / 2, x1: r.anchorX + r.width / 2 };
+    return mine.x0 < o.x1 && mine.x1 > o.x0;
+  });
+  if (!overlap) return { anchorX: dropX, anchorY: dropY, width: DEFAULT_W };
+  return {
+    anchorX: nearestFreeCenter(regions, dropX, DEFAULT_W, sessionId),
+    anchorY: dropY,
+    width: DEFAULT_W,
+  };
 }

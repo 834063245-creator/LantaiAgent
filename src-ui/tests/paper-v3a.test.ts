@@ -130,8 +130,9 @@ describe('paper/measure', () => {
     expect(measureBlockHeight(block('user', { text: 'hi' }))).toBe(36 + 44);
     expect(measureBlockHeight(block('reasoning', { text: 'think' }))).toBe(FOLD_ROW_H + 36);
     expect(measureBlockHeight(block('notice', { text: 'n', level: 'info' }))).toBe(17 + 36);
+    // 拟策 2026-08-30 溢出修复：标题实测（mock 36）+ head margin 12——旧固定 39 退役
     expect(measureBlockHeight(block('plan', { planId: 'p', title: 't', content: 'c', status: 's' }))).toBe(
-      31 + 39 + 36,
+      31 + 36 + 12 + 36,
     );
   });
 

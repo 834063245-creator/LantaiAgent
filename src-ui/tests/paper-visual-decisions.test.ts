@@ -64,13 +64,9 @@ describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
     expect(active).toContain('var(--ink-2) 48%');
   });
 
-  it('流式尾笔与块入场（2026-08-30 流式生命感）：尾笔绝对定位不入测高、石青运行态语义、入场动画单次', () => {
-    const tail = ruleBody(PANEL_CSS, '.pp-block.pp-tail::after');
-    // 挂件路线：绝对定位不占流内高度（测量镜像纪律——任何入流高度的视觉必须同步 measure.ts）
-    expect(tail).toContain('position: absolute');
-    // 运行态语义族恒石青（铁律：石青=机——机器仍在书写），朱砂=人不得挪用
-    expect(tail).toContain('var(--indigo)');
-    expect(tail).not.toContain('var(--seal');
+  it('块入场（2026-08-30 流式生命感）：入场动画单次（尾笔已由用户拍板拆除）', () => {
+    // 尾笔（pp-tail）2026-08-30 用户拍板拆除——见 taste-ledger 翻案；只钉入场
+    expect(ruleBody(PANEL_CSS, '.pp-block.pp-tail')).toBe('');
     const enter = ruleBody(PANEL_CSS, '.pp-block.pp-enter');
     expect(enter).toContain('animation: pp-enter');
   });

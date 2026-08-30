@@ -207,9 +207,9 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
     act(() => {
       window.dispatchEvent(new MouseEvent('mouseup', { clientX: 2600, clientY: 30 }));
     });
-    // 世界 x=2600 → 吸附列 1（2160）；无占用列 → 落该列；y=用户落点 30
+    // 世界 x=2600 空位（无重叠）→ 拖到哪落哪（P6 区间模型，不吸附）；y=用户落点 30
     expect(getCanvasStore('sr-t7').getState().spread['1']).toEqual({
-      anchorX: 2160,
+      anchorX: 2600,
       anchorY: 30,
       width: 1440,
     });

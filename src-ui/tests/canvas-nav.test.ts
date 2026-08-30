@@ -16,7 +16,7 @@ import { compositionServicesPlugin } from '../src/composition/services';
 import { spaceServicePlugin } from '../src/composition/space-service';
 import { Context } from '../src/cordis';
 import { identityView, viewFocusRegion } from '../src/paper/canvas-math';
-import { pickDropAnchor, STREAM_SNAP_GRID } from '../src/paper/space';
+import { pickDropAnchor } from '../src/paper/space';
 import { canvasNavPlugin } from '../src/plugins/canvas-nav-plugin';
 import { useDockStore } from '../src/state/dock-store';
 
@@ -68,28 +68,29 @@ describe('session-sidebar-model（DSH 合流）', () => {
   });
 });
 
-describe('paper/space pickDropAnchor（拖动落位判据）', () => {
-  it('无占用：吸附到网格列，y 取用户落点', () => {
+describe('paper/space pickDropAnchor（拖动落位判据，P6 区间模型）', () => {
+  it('无占用：拖到哪落哪（不吸附），y 取用户落点', () => {
     const anchor = pickDropAnchor([], '1', 2600, -300);
-    expect(anchor).toEqual({ anchorX: STREAM_SNAP_GRID, anchorY: -300, width: 1440 });
+    expect(anchor).toEqual({ anchorX: 2600, anchorY: -300, width: 1440 });
   });
 
-  it('占用列跳过：不跟其他流区打架', () => {
+  it('与既有流区区间重叠 → 推最近空位（不跟其他流区打架）', () => {
     const existing = [
-      { sessionId: '2', anchorX: 0 },
-      { sessionId: '3', anchorX: STREAM_SNAP_GRID },
+      { sessionId: '2', anchorX: 0, width: 1440 },
+      { sessionId: '3', anchorX: 3120, width: 1440 },
     ];
+    // 落点 2600 与 b [2280,3960] 重叠 → 推最近空位
     const anchor = pickDropAnchor(existing, '1', 2600, 50);
-    expect(anchor.anchorX).toBe(STREAM_SNAP_GRID * 2);
+    expect(anchor.anchorX).not.toBe(2600);
   });
 
-  it('自身所在列不算占用（拖动中的卷可以留在原列）', () => {
+  it('自身所在位不算占用（拖动中的卷可以留在原位）', () => {
     const existing = [
-      { sessionId: '1', anchorX: STREAM_SNAP_GRID },
-      { sessionId: '2', anchorX: STREAM_SNAP_GRID * 2 },
+      { sessionId: '1', anchorX: 3120, width: 1440 },
+      { sessionId: '2', anchorX: 1560, width: 1440 },
     ];
-    const anchor = pickDropAnchor(existing, '1', 2600, 10);
-    expect(anchor.anchorX).toBe(STREAM_SNAP_GRID); // 原列可留
+    const anchor = pickDropAnchor(existing, '1', 3120, 10);
+    expect(anchor.anchorX).toBe(3120); // 原位可留
   });
 });
 

@@ -49,7 +49,10 @@ import {
   createBlockMeasureCache,
   measureBlockHeightCached,
   measureFolioHeadHeight,
+  needsObservedHeight,
+  reportObservedBlockHeight,
   shrinkWrapUserWidth,
+  subscribeObservedBlockHeights,
   USER_SHRINK_MIN_W,
 } from '../../paper/measure';
 import { PaperDockContext, PaperRegionContext } from '../../paper/overlay-context';
@@ -63,11 +66,12 @@ import {
   stashStripPositionAt,
 } from '../../paper/selection';
 import {
+  clampRegionW,
   defaultRegionFor,
   nearestFreeRegion,
+  REGION_CONTENT_MARGIN,
   STREAM_REGION,
   type StreamRegionState,
-  snapRegionX,
 } from '../../paper/space';
 import { type MessageTranslateCache, translateMessagesCached } from '../../paper/translate';
 import {
@@ -573,16 +577,19 @@ export function PaperPanel() {
     if (missing.length === 0) return;
     const v = useCanvasViewStore.getState();
     const center = viewportCenterWorld(v.view, v.canvasSize.w, v.canvasSize.h);
-    const occupied: Array<{ sessionId: string; anchorX: number }> = Object.entries(canvas.spread).map(([sid, r]) => ({
-      sessionId: sid,
-      anchorX: r.anchorX,
-    }));
+    const occupied: Array<{ sessionId: string; anchorX: number; width: number }> = Object.entries(canvas.spread).map(
+      ([sid, r]) => ({
+        sessionId: sid,
+        anchorX: r.anchorX,
+        width: r.width,
+      }),
+    );
     for (const s of missing) {
       const sid = String(s.id);
       if (canvas.spread[sid]) continue;
       const region = nearestFreeRegion(occupied, center.x, center.y);
       canvas.ensureRegion(sid, region);
-      occupied.push({ sessionId: sid, anchorX: region.anchorX });
+      occupied.push({ sessionId: sid, anchorX: region.anchorX, width: region.width });
     }
   }, [core, sessions]);
 
@@ -692,6 +699,45 @@ export function PaperPanel() {
     };
   }, []);
 
+  /* ── 实测回写桥（2026-08-30 溢出修复）──
+   * 静态镜像管不了的动态高（媒体图加载 / html 卡 iframe 上报 / 拟策反馈框
+   * 展开）由 ResizeObserver 实测兜底：资产/开放/拟策块挂载即观察，尺寸变化
+   * → reportObservedBlockHeight → 订阅回调 bump measureTick → 布局重算。
+   * RO 读布局盒（transform 缩放不影响）——世界单位与 CSS px 同源。 */
+  const blockRoRef = useRef<ResizeObserver | null>(null);
+  const blockRoElIds = useRef(new WeakMap<Element, string>());
+  const blockRootRef = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return; // 卸载清理由 RO 弱目标语义 + WeakMap GC 兜底（记录保留防振荡）
+    if (typeof ResizeObserver === 'undefined') return; // jsdom 测试环境无 RO
+    const id = el.dataset.blockObserved;
+    if (!id) return;
+    if (!blockRoRef.current) {
+      blockRoRef.current = new ResizeObserver((entries) => {
+        for (const e of entries) {
+          const eid = blockRoElIds.current.get(e.target);
+          if (!eid) continue;
+          const box = e.borderBoxSize?.[0];
+          const target = e.target as HTMLElement;
+          reportObservedBlockHeight(
+            eid,
+            box ? box.inlineSize : target.offsetWidth,
+            box ? box.blockSize : target.offsetHeight,
+          );
+        }
+      });
+    }
+    blockRoElIds.current.set(el, id);
+    blockRoRef.current.observe(el);
+  }, []);
+  useEffect(() => subscribeObservedBlockHeights(() => setMeasureTick((t) => t + 1)), []);
+  useEffect(
+    () => () => {
+      blockRoRef.current?.disconnect();
+      blockRoRef.current = null;
+    },
+    [],
+  );
+
   /* 视口虚拟化输入 */
   const OVERSCAN = 200;
   const viewRect = useMemo(
@@ -704,6 +750,71 @@ export function PaperPanel() {
   const edgeDragRef = useRef<{ sessionId: string; sx: number; sy: number; ax: number; ay: number } | null>(null);
   const edgeDragLatestRef = useRef<{ sessionId: string; x: number; y: number } | null>(null);
   const [edgeDragPos, setEdgeDragPos] = useState<{ sessionId: string; x: number; y: number } | null>(null);
+
+  /* ── 四角横向缩放（P6 宽度自由）：角落手柄拖拽改宽——东角动右缘、西角动
+   * 左缘（对缘锚定），clamp [720, 2160]；Y 不动（流区 Y 由内容生长）。
+   * 拖动中流区框跟手（anchor 覆盖），块体重排走 adaptBlocks（measure 缓存
+   * w 键失效自动重测——layout 纯算术零 reflow）。 ── */
+  const regionCornerRef = useRef<{
+    sessionId: string;
+    corner: 'nw' | 'ne' | 'sw' | 'se';
+    sx: number;
+    orig: StreamRegionState;
+  } | null>(null);
+  const regionCornerLatestRef = useRef<{ sessionId: string; x: number; width: number } | null>(null);
+  const [regionCornerPos, setRegionCornerPos] = useState<{ sessionId: string; x: number; width: number } | null>(null);
+
+  const onRegionCornerMouseDown = useCallback(
+    (e: React.MouseEvent, sessionId: string, corner: 'nw' | 'ne' | 'sw' | 'se') => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const region = regionsRef.current.find((r) => r.sessionId === sessionId);
+      if (!region) return;
+      regionCornerRef.current = { sessionId, corner, sx: e.clientX, orig: { ...region.anchor } };
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const move = (e: MouseEvent) => {
+      const d = regionCornerRef.current;
+      if (!d) return;
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const dx = (e.clientX - d.sx) / viewRef.current.zoom;
+      const east = d.corner === 'ne' || d.corner === 'se';
+      const newW = clampRegionW(east ? d.orig.width + dx : d.orig.width - dx);
+      // 对缘锚定：东角动 → 左缘固定；西角动 → 右缘固定
+      const leftEdge = d.orig.anchorX - d.orig.width / 2;
+      const rightEdge = d.orig.anchorX + d.orig.width / 2;
+      const anchorX = east ? leftEdge + newW / 2 : rightEdge - newW / 2;
+      regionCornerLatestRef.current = { sessionId: d.sessionId, x: anchorX, width: newW };
+      setRegionCornerPos({ sessionId: d.sessionId, x: anchorX, width: newW });
+    };
+    const up = () => {
+      const d = regionCornerRef.current;
+      const last = regionCornerLatestRef.current;
+      regionCornerRef.current = null;
+      regionCornerLatestRef.current = null;
+      setRegionCornerPos(null);
+      if (!d || !last || last.sessionId !== d.sessionId || !core) return;
+      const cur = getCanvasStore(core.panelId).getState().spread[d.sessionId];
+      getCanvasStore(core.panelId)
+        .getState()
+        .setRegion(d.sessionId, {
+          anchorX: last.x,
+          anchorY: cur?.anchorY ?? d.orig.anchorY,
+          width: last.width,
+        });
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+  }, [core]);
 
   /* ── 每流区派生数据（核心：一纸多卷的布局/虚拟化/渲染态）── */
   /* 稳定引用（性能专项第二刀）：平移/缩放每帧 view 变——回调读 ref 而非依赖
@@ -722,20 +833,24 @@ export function PaperPanel() {
     return m;
   }, [canvasState.pins]);
 
-  /* P2a 变宽纸条：来文 flow 块按内容收缩。拷贝换 w（不 mutate——translate
-   * 缓存以对象引用稳定为命中条件）；WeakMap 以源块对象为 key——源引用
-   * 稳定则拷贝引用稳定，React.memo 不因重映射逐帧失效。 */
-  const shrinkCopyCacheRef = useRef(new WeakMap<SourcedBlock, SourcedBlock>());
-  const shrinkUserBlocks = useCallback((blocks: SourcedBlock[]): SourcedBlock[] => {
+  /* P2a+P6 宽度自由：块宽适配流区——先 clamp 到流区内容宽（窄流区压版心，
+   * 宽流区不放宽：版心有可读上限 720），user 再走内容收缩。WeakMap 以
+   * 「源对象 + 目标宽」记忆——resize 拖动中逐帧换宽不破 React.memo 身份。 */
+  const shrinkCopyCacheRef = useRef(new WeakMap<SourcedBlock, { w: number; copy: SourcedBlock }>());
+  const adaptBlocks = useCallback((blocks: SourcedBlock[], regionW: number): SourcedBlock[] => {
     const cache = shrinkCopyCacheRef.current;
+    const contentW = Math.max(USER_SHRINK_MIN_W, regionW - REGION_CONTENT_MARGIN);
     return blocks.map((b) => {
-      if (b.kind !== 'user' || b.state !== 'flow') return b;
+      const cappedW = Math.min(b.w, contentW);
+      const targetW =
+        b.kind === 'user' && b.state === 'flow'
+          ? (shrinkWrapUserWidth(b.payload as { text?: string; files?: Array<{ name: string }> }, cappedW) ?? cappedW)
+          : cappedW;
+      if (targetW === b.w) return b;
       const hit = cache.get(b);
-      if (hit) return hit;
-      const sw = shrinkWrapUserWidth(b.payload as { text?: string; files?: Array<{ name: string }> }, b.w);
-      if (sw == null) return b;
-      const copy = { ...b, w: sw };
-      cache.set(b, copy);
+      if (hit && hit.w === targetW) return hit.copy;
+      const copy = { ...b, w: targetW };
+      cache.set(b, { w: targetW, copy });
       return copy;
     });
   }, []);
@@ -752,17 +867,21 @@ export function PaperPanel() {
       const msgs = regionMsgs[s.id]?.messages ?? [];
       const persisted = canvasState.spread[sid];
       const baseAnchor = persisted ?? defaultRegionFor(i);
-      // 边缘拖动中：用拖动态锚点覆盖（块/纸条随流区整体平移）
+      // 边缘拖动中：用拖动态锚点覆盖（块/纸条随流区整体平移）；
+      // 四角缩放中：宽/中轴用预览值（块体重排随 adaptBlocks 跟手）
       const dragging = edgeDragPos && edgeDragPos.sessionId === sid;
-      const anchor: StreamRegionState = dragging
-        ? { anchorX: edgeDragPos.x, anchorY: edgeDragPos.y, width: baseAnchor.width }
-        : baseAnchor;
+      const resizing = regionCornerPos && regionCornerPos.sessionId === sid;
+      const anchor: StreamRegionState = resizing
+        ? { anchorX: regionCornerPos.x, anchorY: baseAnchor.anchorY, width: regionCornerPos.width }
+        : dragging
+          ? { anchorX: edgeDragPos.x, anchorY: edgeDragPos.y, width: baseAnchor.width }
+          : baseAnchor;
 
       let cache = translateCacheBySession.current.get(s.id) ?? null;
       const res = translateMessagesCached(msgs, pinsMap, cache);
       cache = res.cache;
       translateCacheBySession.current.set(s.id, cache);
-      const blocks = shrinkUserBlocks(res.blocks);
+      const blocks = adaptBlocks(res.blocks, anchor.width);
 
       const stack = blocks.map((b) => ({
         id: b.id,
@@ -833,12 +952,13 @@ export function PaperPanel() {
     paperTick,
     viewRect,
     edgeDragPos,
+    regionCornerPos,
     measureTick,
     canvasState,
     pinsMap,
     foldedOf,
     sidecarFoldedOf,
-    shrinkUserBlocks,
+    adaptBlocks,
   ]);
 
   regionsRef.current = regions;
@@ -1419,7 +1539,7 @@ export function PaperPanel() {
       const v = viewRef.current;
       const dx = (e.clientX - d.sx) / v.zoom;
       const dy = (e.clientY - d.sy) / v.zoom;
-      const nx = snapRegionX(d.ax + dx);
+      const nx = d.ax + dx;
       const ny = d.ay + dy;
       edgeDragLatestRef.current = { sessionId: d.sessionId, x: nx, y: ny };
       setEdgeDragPos({ sessionId: d.sessionId, x: nx, y: ny });
@@ -1433,7 +1553,7 @@ export function PaperPanel() {
       if (!d || !core) return;
       const canvas = getCanvasStore(core.panelId).getState();
       const cur = canvas.spread[d.sessionId];
-      const x = last && last.sessionId === d.sessionId ? last.x : snapRegionX(cur?.anchorX ?? d.ax);
+      const x = last && last.sessionId === d.sessionId ? last.x : (cur?.anchorX ?? d.ax);
       const y = last && last.sessionId === d.sessionId ? last.y : (cur?.anchorY ?? d.ay);
       canvas.setRegion(d.sessionId, {
         anchorX: x,
@@ -2125,6 +2245,15 @@ export function PaperPanel() {
                       className="pp-region-edge pp-region-edge--r"
                       onMouseDown={(e) => onRegionEdgeMouseDown(e, r.sessionId)}
                     />
+                    {/* P6 四角横向缩放柄（角落只开放横向——Y 由内容生长） */}
+                    {(['nw', 'ne', 'sw', 'se'] as const).map((c) => (
+                      // biome-ignore lint/a11y/noStaticElementInteractions: 角柄是拖拽交互面
+                      <div
+                        key={c}
+                        className={`pp-region-corner pp-region-corner--${c}`}
+                        onMouseDown={(e) => onRegionCornerMouseDown(e, r.sessionId, c)}
+                      />
+                    ))}
                   </div>
                 );
               })}
@@ -2224,6 +2353,8 @@ export function PaperPanel() {
                         style={{ left: slot.x, top: slot.y, width: b.w }}
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}
+                        data-block-observed={needsObservedHeight(b.kind, b.asset != null) ? b.id : undefined}
+                        ref={blockRootRef}
                         onDragStart={(e) => e.preventDefault()}
                       >
                         <BlockView
@@ -2260,6 +2391,8 @@ export function PaperPanel() {
                         style={{ left: pos.x, top: pos.y, width: pinW }}
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}
+                        data-block-observed={needsObservedHeight(b.kind, b.asset != null) ? b.id : undefined}
+                        ref={blockRootRef}
                         onDragStart={(e) => e.preventDefault()}
                       >
                         <BlockView

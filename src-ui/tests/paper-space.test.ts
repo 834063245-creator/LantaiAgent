@@ -15,7 +15,15 @@ import { Context } from '../src/cordis';
 import { createBlock } from '../src/paper/block-model';
 import { layoutRegion } from '../src/paper/canvas-math';
 import { stashStripPositionAt } from '../src/paper/selection';
-import { defaultRegionFor, nearestFreeRegion, STREAM_REGION, STREAM_SNAP_GRID, snapRegionX } from '../src/paper/space';
+import {
+  clampRegionW,
+  defaultRegionFor,
+  nearestFreeRegion,
+  pickDropAnchor,
+  REGION_MAX_W,
+  REGION_MIN_W,
+  STREAM_REGION,
+} from '../src/paper/space';
 import { type RegionFlowGeom, visibleRegionWindows } from '../src/paper/virtualize';
 import { formatSpaceState, spaceDemoPlugin } from '../src/plugins/space-demo-plugin';
 import {
@@ -33,66 +41,69 @@ function fakeCore(panelId = STORE): ChatCore {
   return { panelId } as ChatCore;
 }
 
-describe('paper/space 常量与落位', () => {
-  it('流区定案常量：宽 1440 / 间距 720 / 吸附网格 2160 / 边缘 6px', () => {
+describe('paper/space 常量与落位（P6 区间模型）', () => {
+  it('流区常量：初落宽 1440 / 间距 120 / 宽限 720-2160 / 边缘 6px', () => {
     expect(STREAM_REGION.width).toBe(1440);
-    expect(STREAM_REGION.spacing).toBe(720);
-    expect(STREAM_SNAP_GRID).toBe(2160);
+    expect(STREAM_REGION.gap).toBe(120);
+    expect(REGION_MIN_W).toBe(720);
+    expect(REGION_MAX_W).toBe(2160);
     expect(STREAM_REGION.edgeWidth).toBe(6);
   });
 
-  it('defaultRegionFor：线性排比——第 i 个会话贴第 i 列', () => {
+  it('clampRegionW：宽度上下限（min 720 / max 2160）', () => {
+    expect(clampRegionW(500)).toBe(720);
+    expect(clampRegionW(1440)).toBe(1440);
+    expect(clampRegionW(3000)).toBe(2160);
+  });
+
+  it('defaultRegionFor：首帧兜底（确定性非叠初值，正式落位走最近空位）', () => {
     const r0 = defaultRegionFor(0);
     const r1 = defaultRegionFor(1);
-    const r2 = defaultRegionFor(2);
     expect(r0.anchorX).toBe(0);
-    expect(r1.anchorX).toBe(STREAM_SNAP_GRID);
-    expect(r2.anchorX).toBe(STREAM_SNAP_GRID * 2);
+    expect(r1.anchorX).toBe(1440 + 120);
     expect(r0.anchorY).toBe(0);
     expect(r0.width).toBe(STREAM_REGION.width);
   });
 
-  it('snapRegionX：吸附到网格粒度', () => {
-    expect(snapRegionX(100)).toBe(0);
-    expect(snapRegionX(1000)).toBe(0);
-    expect(snapRegionX(1081)).toBe(2160);
-    expect(snapRegionX(2160 + 900)).toBe(2160);
-    expect(snapRegionX(2160 + 1200)).toBe(4320);
-    expect(snapRegionX(-1100)).toBe(-2160);
-  });
-
-  it('nearestFreeRegion：空场落参考列，Y 取参考 y', () => {
+  it('nearestFreeRegion：空场落参考点（不吸附栅格），Y 取参考 y', () => {
     const r = nearestFreeRegion([], 100, -500);
-    expect(r).toEqual({ anchorX: 0, anchorY: -500, width: STREAM_REGION.width });
+    expect(r).toEqual({ anchorX: 100, anchorY: -500, width: STREAM_REGION.width });
   });
 
-  it('nearestFreeRegion：参考列被占 → 向左右外扩找最近空列', () => {
+  it('nearestFreeRegion：参考位被占 → 最近可容纳位（区间模型，含 gap 缓冲）', () => {
     const regions = [
-      { sessionId: 'a', anchorX: 0 },
-      { sessionId: 'b', anchorX: STREAM_SNAP_GRID },
+      { sessionId: 'a', anchorX: 0, width: 1440 },
+      { sessionId: 'b', anchorX: 3120, width: 1440 },
     ];
-    // 参考列 0 被占 → 先右（+1 已占）→ 左（-1）→ 落 -2160
+    // a 缓冲 [-840, 840]、b 缓冲 [2280, 3960]；参考点 100 在 a 内 →
+    // 右 gap [840, 2280] 容纳 1440（cx 1560，距 1460）近于左 gap（cx -1560，距 1660）
     const r = nearestFreeRegion(regions, 100, 0);
-    expect(r.anchorX).toBe(-STREAM_SNAP_GRID);
-    // 参考列 1 被占 → 右 +1 = 4320 空 → 落 4320
-    const r2 = nearestFreeRegion(regions, STREAM_SNAP_GRID + 100, 0);
-    expect(r2.anchorX).toBe(STREAM_SNAP_GRID * 2);
+    expect(r.anchorX).toBe(1560);
   });
 
-  it('nearestFreeRegion：填洞优先（占用间空列先被取）', () => {
+  it('nearestFreeRegion：窄 gap 容不下 → 跳过找次近', () => {
     const regions = [
-      { sessionId: 'a', anchorX: 0 },
-      { sessionId: 'b', anchorX: STREAM_SNAP_GRID * 2 },
+      { sessionId: 'a', anchorX: 0, width: 1440 },
+      { sessionId: 'b', anchorX: 2400, width: 1440 },
     ];
-    // 参考列 0 被占、+1 空 → 落 +1（填洞而非外扩到 -1）
+    // a [-840,840]、b [1560,3240] 之间 gap [840,1560] 长 720 < 1440 → 跳过；
+    // 右 gap cx 3960（距 3860）vs 左 gap cx -1560（距 1660）→ 落左
     const r = nearestFreeRegion(regions, 100, 0);
-    expect(r.anchorX).toBe(STREAM_SNAP_GRID);
+    expect(r.anchorX).toBe(-1560);
   });
 
-  it('nearestFreeRegion：排除自身（拖动中的卷可留在原列）', () => {
-    const regions = [{ sessionId: 'a', anchorX: 0 }];
+  it('nearestFreeRegion：排除自身（拖动中的卷可留在原位）', () => {
+    const regions = [{ sessionId: 'a', anchorX: 0, width: 1440 }];
     const r = nearestFreeRegion(regions, 100, 0, 'a');
-    expect(r.anchorX).toBe(0);
+    expect(r.anchorX).toBe(100);
+  });
+
+  it('pickDropAnchor：空位直接落（不吸附）；重叠 → 推最近空位', () => {
+    const regions = [{ sessionId: 'a', anchorX: 0, width: 1440 }];
+    const free = pickDropAnchor(regions, 'b', 2000, -300);
+    expect(free).toEqual({ anchorX: 2000, anchorY: -300, width: STREAM_REGION.width });
+    const overlapped = pickDropAnchor(regions, 'b', 100, -300);
+    expect(overlapped.anchorX).not.toBe(100); // 重叠 → 推开
   });
 });
 
@@ -103,13 +114,13 @@ describe('paper/canvas-math layoutRegion（多锚布局）', () => {
       { id: 'b', h: 60, w: 720, kind: 'user' },
     ];
     const r0 = layoutRegion(blocks, { x: 0, y: 0 });
-    const r1 = layoutRegion(blocks, { x: STREAM_SNAP_GRID, y: -500 });
+    const r1 = layoutRegion(blocks, { x: 2160, y: -500 });
     // 相对关系在两区一致（平移不变）
     const d0 = (r0.get('a')!.y - r0.get('b')!.y) / 1;
     const d1 = (r1.get('a')!.y - r1.get('b')!.y) / 1;
     expect(d0).toBe(d1);
     // r1 = r0 + 锚点平移
-    expect(r1.get('a')!.x - r0.get('a')!.x).toBe(STREAM_SNAP_GRID);
+    expect(r1.get('a')!.x - r0.get('a')!.x).toBe(2160);
     expect(r1.get('b')!.y - r0.get('b')!.y).toBe(-500);
   });
 
@@ -252,9 +263,9 @@ describe('ctx.space 通道（SpaceService + demo 插件消费）', () => {
     const state = ctx.space.getState();
     expect(state.activeSessionId).toBe('2');
     expect(state.regions).toHaveLength(2);
-    // 流区 1 读持久化位置；流区 2 无位置 → 默认线性排比
+    // 流区 1 读持久化位置；流区 2 无位置 → 首帧兜底（defaultRegionFor）
     expect(state.regions[0]).toMatchObject({ sessionId: '1', anchorX: 2160, anchorY: -300, width: 1440 });
-    expect(state.regions[1]).toMatchObject({ sessionId: '2', anchorX: STREAM_SNAP_GRID, width: 1440 });
+    expect(state.regions[1]).toMatchObject({ sessionId: '2', anchorX: 1560, width: 1440 });
   });
 
   it('place：落位命令写入 canvas-store', () => {
