@@ -96,10 +96,20 @@ pub(crate) async fn read_file_base64(
     Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
 }
 
-/// fs 命令的 timeline 记录（Phase 3 transport 形态）：落工作区引擎进程的
-/// hologram.db（占位工作区无传输，不记录）。
-/// (event, 路径, 短名) → 事件文案约定与既有完全一致。
-fn record_fs_timeline(state: &crate::WorkspaceState, event: &str, path: &str, short: &str) {
+/// fs 写路径副作用：timeline 记录（fire-and-forget）。
+///
+/// 锁纪律与 editor.rs `record_edit_side_effects` 同款：transport 由调用方
+/// 在 WorkspaceState 锁内克隆出来，本函数内部**零锁**、引擎调用在 detached
+/// 线程——引擎卡死/缺席只丢观测事件，绝不拖住写命令。
+/// （Phase 3 回归教训：曾以 `&WorkspaceState` 为参在本函数内二次加锁——
+/// 调用方 guard 存活期内同线程重入 std Mutex = 必死自锁，且引擎往返
+/// （3600s 超时）同步内联在写命令线程上。）
+fn record_fs_timeline(
+    transport: Option<std::sync::Arc<crate::engine_transport::McpRemoteTransport>>,
+    event: &str,
+    path: &str,
+    short: &str,
+) {
     let verb = match event {
         "agent_write" => "写入",
         "agent_delete" => "删除",
@@ -108,11 +118,7 @@ fn record_fs_timeline(state: &crate::WorkspaceState, event: &str, path: &str, sh
         _ => "操作",
     };
     let summary = format!("Agent {}: {}", verb, short);
-    let transport = {
-        let handle = crate::utils::lock_or_recover(state);
-        handle.as_ref().and_then(|h| h.transport.clone())
-    };
-    crate::utils::record_timeline_transport(transport.as_ref(), event, Some(path), &summary);
+    crate::utils::record_timeline_transport_detached(transport, event, Some(path), &summary);
 }
 
 #[tauri::command]
@@ -130,7 +136,7 @@ pub(crate) async fn write_file_content(
     if let Some(ref handle) = *crate::utils::lock_or_recover(&state) {
         if !is_ignored_path(&rp) {
             let short = rp.rsplit(['/', '\\']).next().unwrap_or(&rp);
-            record_fs_timeline(&state, "agent_write", &rp, &short);
+            record_fs_timeline(handle.transport.clone(), "agent_write", &rp, &short);
             if let Ok(mut changed) = handle.changed_files.lock() {
                 if !changed.contains(&rp) { changed.push(rp.clone()); }
             }
@@ -294,7 +300,7 @@ pub(crate) async fn delete_file_or_dir(
     if let Some(ref handle) = *crate::utils::lock_or_recover(&state) {
         if !is_ignored_path(&rp) {
             let short = rp.rsplit('/').next().unwrap_or(&rp);
-            record_fs_timeline(&state, "agent_delete", &rp, &short);
+            record_fs_timeline(handle.transport.clone(), "agent_delete", &rp, &short);
             if let Ok(mut changed) = handle.changed_files.lock() {
                 if !changed.contains(&rp) { changed.push(rp.clone()); }
             }
@@ -327,7 +333,7 @@ pub(crate) async fn rename_file_or_dir(
     if let Some(ref handle) = *crate::utils::lock_or_recover(&state) {
         if !is_ignored_path(&rp) {
             let short = rp.rsplit('/').next().unwrap_or(&rp);
-            record_fs_timeline(&state, "agent_rename", &rp, &short);
+            record_fs_timeline(handle.transport.clone(), "agent_rename", &rp, &short);
             if let Ok(mut changed) = handle.changed_files.lock() {
                 if !changed.contains(&rp) { changed.push(rp.clone()); }
             }
@@ -351,7 +357,7 @@ pub(crate) async fn move_file(
     if let Some(ref handle) = *crate::utils::lock_or_recover(&state) {
         if !is_ignored_path(&rp) {
             let short = rp.rsplit('/').next().unwrap_or(&rp);
-            record_fs_timeline(&state, "agent_move", &rp, &short);
+            record_fs_timeline(handle.transport.clone(), "agent_move", &rp, &short);
             if let Ok(mut changed) = handle.changed_files.lock() {
                 if !changed.contains(&rp) { changed.push(rp.clone()); }
             }

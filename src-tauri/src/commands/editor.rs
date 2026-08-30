@@ -56,8 +56,10 @@ fn record_edit_side_effects(state: &crate::WorkspaceState, file_path: &str) {
         let guard = crate::utils::lock_or_recover(state);
         guard.as_ref().and_then(|h| h.transport.clone())
     };
-    crate::utils::record_timeline_transport(
-        transport.as_ref(),
+    // fire-and-forget：引擎往返（3600s 超时）不得内联在 edit 命令线程上——
+    // 锁纪律只保证不拖死其它命令，detach 才保证 edit 本身不被引擎拖住。
+    crate::utils::record_timeline_transport_detached(
+        transport,
         "agent_edit",
         Some(file_path),
         &format!("Agent 编辑: {}", short),
@@ -96,9 +98,19 @@ pub(crate) async fn edit_file(
     app: tauri::AppHandle,
 ) -> Result<String, String> {
     let is_agent = is_agent.unwrap_or(false);
-    let (_, content) = crate::confined_fs::read_text(&file_path, is_agent, _agent_id.as_deref(), &state, &app).await?;
     let resolved = crate::utils::resolve_write_dispatch(&file_path, is_agent, _agent_id.as_deref(), &state, &app).await?;
     let file_path = resolved.to_string_lossy().to_string();
+
+    // 并发门禁摘除（2026-08-30 用户拍板：拒绝+模型重试 = 往返/token 浪费）：
+    // EDIT_LOCK 内重读校验发现内容漂移时，本命令内重读重算（≤3 次），
+    // 模型零感知零往返。old_string 锚即冲突检测器——锚还在（非冲突的
+    // 并行编辑）→ 直接落盘；锚没了 → 走常规 not-found/不唯一语义。
+    // 2026-08-13 事故的保留项只有「绝不基于过期内容落盘」，重试环在
+    // Rust 内闭合，不再外溢为模型侧重试风暴。
+    const EDIT_RACE_ATTEMPTS: usize = 3;
+    'retry: for attempt in 0..EDIT_RACE_ATTEMPTS {
+    // 循环体保持原缩进（机械包裹，避免整段重排的 diff 噪声）
+    let (_, content) = crate::confined_fs::read_text(&file_path, is_agent, _agent_id.as_deref(), &state, &app).await?;
 
     let replace_all = replace_all.unwrap_or(false);
     if old_string.is_empty() {
@@ -147,7 +159,17 @@ pub(crate) async fn edit_file(
                         }
                         // 乐观并发检查 + 原子写入在同一临界区（锁内重读校验，
                         // fail-closed）；timeline 记录等后续动作在锁外。
-                        checked_write_atomic(&file_path, &content, &out)?;
+                        // 内容漂移 → 命令内重读重算，不惊动模型。
+                        match checked_write_atomic(&file_path, &content, &out) {
+                            Ok(()) => {}
+                            Err(e)
+                                if (e.contains("并发修改") || e.contains("无法重读"))
+                                    && attempt + 1 < EDIT_RACE_ATTEMPTS =>
+                            {
+                                continue 'retry;
+                            }
+                            Err(e) => return Err(e),
+                        }
                         record_edit_side_effects(&state, &file_path);
                         let match_line = start + 1;
                         let ds = build_line_diff(&content, &out);
@@ -184,8 +206,17 @@ pub(crate) async fn edit_file(
         content.replacen(&old_string, &new_string, 1)
     };
 
-    // 乐观并发检查 + 原子写入在同一临界区（锁内重读校验，fail-closed）
-    checked_write_atomic(&file_path, &content, &new_content)?;
+    // 乐观并发检查 + 原子写入在同一临界区（锁内重读校验，fail-closed）。
+    // 内容漂移 → 命令内重读重算，不惊动模型。
+    match checked_write_atomic(&file_path, &content, &new_content) {
+        Ok(()) => {}
+        Err(e)
+            if (e.contains("并发修改") || e.contains("无法重读")) && attempt + 1 < EDIT_RACE_ATTEMPTS =>
+        {
+            continue 'retry;
+        }
+        Err(e) => return Err(e),
+    }
 
     record_edit_side_effects(&state, &file_path);
 
@@ -204,7 +235,7 @@ pub(crate) async fn edit_file(
     // （此前按 old_string 伪造的 snippet 在行内替换/replace_all 时会误导）。
     let diff_snippet = build_line_diff(&content, &new_content);
 
-    Ok(if replace_all {
+    return Ok(if replace_all {
         format!(
             "已替换 {} 处匹配 — {}{}\n```diff\n{}\n```",
             count, file_path, line_info, diff_snippet
@@ -214,7 +245,10 @@ pub(crate) async fn edit_file(
             "已替换 1 处匹配 — {}{}\n```diff\n{}\n```",
             file_path, line_info, diff_snippet
         )
-    })
+    });
+    }
+    // 防御性不可达：每轮必以 return/continue 收束；末轮并发拒绝也直返 Err。
+    Err("文件被高频并发修改，编辑未落地，请重读后重试".to_string())
 }
 
 // ═══════════════════════════════════════════════════════════

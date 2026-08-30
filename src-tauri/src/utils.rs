@@ -207,6 +207,27 @@ pub(crate) fn record_timeline_transport(
     }
 }
 
+/// timeline 记录的 fire-and-forget 形态：detached 线程发送，引擎卡死/缺席
+/// 只丢观测事件，绝不拖住工具命令线程。同步形态（`record_timeline_transport`）
+/// 会把引擎往返（`CALL_TIMEOUT_SECS` = 3600s）内联进调用方命令——Phase 3 后
+/// write/edit 挂起的根治形态：能力工具与引擎的耦合必须不占命令线程。
+pub(crate) fn record_timeline_transport_detached(
+    transport: Option<std::sync::Arc<crate::engine_transport::McpRemoteTransport>>,
+    event: &str,
+    node_id: Option<&str>,
+    summary: &str,
+) {
+    let Some(t) = transport else {
+        return; // 占位工作区（无传输）不记录
+    };
+    let event = event.to_string();
+    let node_id = node_id.unwrap_or("").to_string();
+    let summary = summary.to_string();
+    std::thread::spawn(move || {
+        record_timeline_transport(Some(&t), &event, Some(&node_id), &summary);
+    });
+}
+
 pub(crate) fn is_private_ip(host: &str) -> bool {    // 主机名检查（解析到本地/私有的 DNS 名称）
     let host_lower = host.to_lowercase();
     if host_lower == "localhost" || host_lower.ends_with(".local") || host_lower.ends_with(".internal") {
