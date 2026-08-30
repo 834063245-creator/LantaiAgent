@@ -28,7 +28,7 @@ import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan
 import { type Context, Service } from '../cordis';
 import { type BlockKind, parsePlanItems, type SourcedBlock } from '../paper/block-model';
 import { foldPreviewLine } from '../paper/fold';
-import { type MdBlock, type MdInline, parseMarkdown } from '../paper/markdown';
+import { type MdBlock, type MdInline, type MdParseState, parseMarkdownIncremental } from '../paper/markdown';
 import { parseCircledSegments } from '../paper/marks';
 import { prettyToolArgs } from '../paper/tool-text';
 import { assetPresentationDefs } from './asset-renderers';
@@ -366,7 +366,17 @@ function MarkdownBody({ block }: BlockRendererProps) {
   // 锚 .pp-block——世界层块是唯一定位祖先，侧栏在块宽之外不挤正文列）
   const sidecar = (block.payload as { sidecar?: { text: string } }).sidecar;
   const { stable, delta } = useStreamDelta(text, null);
-  const blocks = useMemo(() => parseMarkdown(stable), [stable]);
+  // 增量解析：stable 尾部追加时只重解析最后一个块，稳定前缀块跨 token
+  // 引用不变（parseMarkdownIncremental 复用 prev 的 prefix blocks）。
+  // parseStateRef 生命周期 = 组件实例（block 每次流式 bump 重挂？——不，块体
+  // 组件随 block 引用稳定而 memo 保持，ref 跨 bump 存活）。非追加（编辑/重置）
+  // 自动回退全量，ref 更新为最新全量状态。
+  const parseStateRef = useRef<MdParseState | null>(null);
+  const blocks = useMemo(() => {
+    const res = parseMarkdownIncremental(stable, parseStateRef.current);
+    parseStateRef.current = res.state;
+    return res.blocks;
+  }, [stable]);
   // 三级切分：换行前行内尾 / 换行后新块（剥掉分块换行——它属于块边界非内容）
   const nl = delta.indexOf('\n');
   const inlineTail = nl < 0 ? delta : delta.slice(0, nl);

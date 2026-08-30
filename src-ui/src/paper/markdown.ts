@@ -286,11 +286,19 @@ function collectList(lines: string[], startIdx: number): { block: MdBlock; next:
   return { block: { t: 'list', ord, start, items }, next: i };
 }
 
-/** markdown → 块模型（渲染 MarkdownBody 与测量 measureMdBlocks 共用入口）。 */
-export function parseMarkdown(text: string): MdBlock[] {
-  if (!text) return [];
+/** 详细解析结果：块 + 每块起始行号（0 基）。 */
+interface MdDetailed {
+  blocks: MdBlock[];
+  /** 与 blocks 等长——每块的起始行号（0 基，流式追加后行号稳定）。 */
+  starts: number[];
+}
+
+/** 全量解析（内部）：块 + 起始行跟踪。增量入口 parseMarkdownIncremental 复用。 */
+function parseDetailed(text: string): MdDetailed {
+  if (!text) return { blocks: [], starts: [] };
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
   const blocks: MdBlock[] = [];
+  const starts: number[] = [];
   let i = 0;
   while (i < lines.length) {
     const raw = lines[i];
@@ -301,6 +309,7 @@ export function parseMarkdown(text: string): MdBlock[] {
       i++;
       continue;
     }
+    const blockStart = i;
     // 围栏码（未闭合按到文末——流式容忍）
     const fence = FENCE_RE.exec(trimmed);
     if (fence) {
@@ -317,6 +326,7 @@ export function parseMarkdown(text: string): MdBlock[] {
         i++;
       }
       blocks.push({ t: 'code', lang, text: code.join('\n') });
+      starts.push(blockStart);
       continue;
     }
     // 标题（5/6 级按 4 级收）
@@ -324,12 +334,14 @@ export function parseMarkdown(text: string): MdBlock[] {
     if (h) {
       const lv = Math.min(4, h[1].length) as 1 | 2 | 3 | 4;
       blocks.push({ t: 'h', lv, inl: parseInline(h[2].trim()) });
+      starts.push(blockStart);
       i++;
       continue;
     }
     // 分隔线
     if (HR_RE.test(trimmed) && !LIST_RE.test(line)) {
       blocks.push({ t: 'hr' });
+      starts.push(blockStart);
       i++;
       continue;
     }
@@ -346,7 +358,10 @@ export function parseMarkdown(text: string): MdBlock[] {
         break;
       }
       const inner = parseMarkdown(quote.join('\n'));
-      if (inner.length > 0) blocks.push({ t: 'quote', blocks: inner });
+      if (inner.length > 0) {
+        blocks.push({ t: 'quote', blocks: inner });
+        starts.push(blockStart);
+      }
       continue;
     }
     // 表格：本行有竖线且下一行是分隔行
@@ -359,23 +374,87 @@ export function parseMarkdown(text: string): MdBlock[] {
         i++;
       }
       blocks.push({ t: 'table', head, rows });
+      starts.push(blockStart);
       continue;
     }
     // 列表
     const list = collectList(lines, i);
     if (list) {
       blocks.push(list.block);
+      starts.push(blockStart);
       i = list.next;
       continue;
     }
-    // 段落：攒到块级起点/空行
-    const para: string[] = [];
+    // 段落：攒到块级起点/空行。首行无条件收进（孤立块级起点行——如表格分隔行
+    // `| --- | --- |`——前面分支不匹配但 isBlockStart 为真，若空转则死循环；
+    // 首行进段落保证 i 必前进、解析必终止，语义 = 超出子集的行→段落兜底不丢字）。
+    const para: string[] = [lines[i].replace(/\t/g, '  ').trimEnd()];
+    i++;
     while (i < lines.length && !isBlockStart(lines[i].replace(/\t/g, '  '))) {
       para.push(lines[i].replace(/\t/g, '  ').trimEnd());
       i++;
     }
     const joined = para.join('\n').trim();
-    if (joined) blocks.push({ t: 'p', inl: parseInline(joined) });
+    if (joined) {
+      blocks.push({ t: 'p', inl: parseInline(joined) });
+      starts.push(blockStart);
+    }
   }
-  return blocks;
+  return { blocks, starts };
+}
+
+/** markdown → 块模型（渲染 MarkdownBody 与测量 measureMdBlocks 共用入口）。 */
+export function parseMarkdown(text: string): MdBlock[] {
+  return parseDetailed(text).blocks;
+}
+
+/* ── 增量解析（2026-08-30 性能专项）：流式追加只重解析最后一个块 ── */
+
+/** 增量解析状态：上次的完整文本 + 块 + 最后一块起始行。 */
+export interface MdParseState {
+  text: string;
+  blocks: MdBlock[];
+  /** 最后一个顶层块起始行（0 基）；无块 = -1 */
+  lastBlockStartLine: number;
+}
+
+/** 从指定行号（0 基）截取剩余文本（避免全量 split 分配）。 */
+function sliceLines(text: string, startLine: number): string {
+  if (startLine <= 0) return text;
+  let idx = 0;
+  for (let k = 0; k < startLine; k++) {
+    const n = text.indexOf('\n', idx);
+    if (n < 0) return '';
+    idx = n + 1;
+  }
+  return text.slice(idx);
+}
+
+/**
+ * 增量 markdown 解析：文本尾部追加（流式）时复用稳定前缀块，只从最后一块
+ * 起始行重解析。非追加（编辑/重置）自动回退全量。
+ * 正确性根基：块边界由行首标记决定，追加只可能影响最后一个块（段落续行 /
+ * 列表续项 / 表格续行 / 未闭合围栏都落在最后一块内）；从最后一块起始行
+ * 重解析与全量解析逐字节一致。
+ */
+export function parseMarkdownIncremental(
+  text: string,
+  prev: MdParseState | null,
+): { blocks: MdBlock[]; state: MdParseState } {
+  if (prev && text === prev.text) return { blocks: prev.blocks, state: prev };
+  if (!prev || !text.startsWith(prev.text) || prev.blocks.length === 0) {
+    const r = parseDetailed(text);
+    return {
+      blocks: r.blocks,
+      state: { text, blocks: r.blocks, lastBlockStartLine: r.starts.length ? r.starts[r.starts.length - 1] : -1 },
+    };
+  }
+  const prefixBlocks = prev.blocks.slice(0, -1);
+  const tailText = sliceLines(text, prev.lastBlockStartLine);
+  const tail = parseDetailed(tailText);
+  const blocks = [...prefixBlocks, ...tail.blocks];
+  const lastBlockStartLine = tail.starts.length
+    ? prev.lastBlockStartLine + tail.starts[tail.starts.length - 1]
+    : prev.lastBlockStartLine;
+  return { blocks, state: { text, blocks, lastBlockStartLine } };
 }

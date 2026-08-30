@@ -31,7 +31,15 @@ import {
   type RichInlineItem,
 } from '@chenglou/pretext/rich-inline';
 import { parsePlanItems, type SourcedBlock } from './block-model';
-import { type MdBlock, type MdInline, mdHasRichInline, mdPlainText, parseMarkdown } from './markdown';
+import {
+  type MdBlock,
+  type MdInline,
+  type MdParseState,
+  mdHasRichInline,
+  mdPlainText,
+  parseMarkdown,
+  parseMarkdownIncremental,
+} from './markdown';
 import { parseCircledSegments } from './marks';
 import { prettyToolArgs } from './tool-text';
 
@@ -672,6 +680,25 @@ export function measureMdBlocks(blocks: MdBlock[], w: number): number {
   return total;
 }
 
+/** markdown 块体高（渲染 MarkdownBody 的逐字镜像——消费同一结构模型）。
+ *  blocks 由调用方解析（全量 parseMarkdown 或增量 parseMarkdownIncremental）
+ *  ——增量路径复用同函数，测量与渲染共用单一解析的纪律不变。 */
+function measureMarkdownBody(blocks: MdBlock[], b: SourcedBlock): number {
+  const bodyH = measureMdBlocks(blocks, b.w);
+  // P5 眉批化：夹注挂侧栏（.pp-marginalia）——复合块高 = max(正文@全宽,
+  // 夹注@侧栏内容宽)。眉批恒容于块高内 → 栈几何零变化（方案甲的决定性
+  // 优势，见 pretext-typography-plan §三）。
+  const sidecar = (b.payload as { sidecar?: { text: string } }).sidecar;
+  if (!sidecar?.text) return bodyH;
+  const noteH = measureTextHeight(
+    sidecar.text,
+    MARGINALIA_W - MARGINALIA_INSET,
+    PAPER_REASONING_FONT,
+    PAPER_REASONING_LINE_HEIGHT,
+  );
+  return Math.max(bodyH, noteH);
+}
+
 /**
  * 块高真测量（世界单位）：按 kind 分派，注疏版式七类各自计高。
  * 纯函数 + 缓存——同 key 重复调用零成本。
@@ -695,19 +722,7 @@ export function measureBlockHeight(b: SourcedBlock, folded = false): number {
       // markdown 专项（2026-08-30）：消费 parseMarkdown 结构模型逐元素计高
       // （与 MarkdownBody 渲染共用同一解析——结构漂移结构性不成立）。
       if (!p.text) return 0;
-      const bodyH = measureMdBlocks(parseMarkdown(p.text), b.w);
-      // P5 眉批化：夹注挂侧栏（.pp-marginalia）——复合块高 = max(正文@全宽,
-      // 夹注@侧栏内容宽)。眉批恒容于块高内 → 栈几何零变化（方案甲的决定性
-      // 优势，见 pretext-typography-plan §三）。
-      const sidecar = (b.payload as { sidecar?: { text: string } }).sidecar;
-      if (!sidecar?.text) return bodyH;
-      const noteH = measureTextHeight(
-        sidecar.text,
-        MARGINALIA_W - MARGINALIA_INSET,
-        PAPER_REASONING_FONT,
-        PAPER_REASONING_LINE_HEIGHT,
-      );
-      return Math.max(bodyH, noteH);
+      return measureMarkdownBody(parseMarkdown(p.text), b);
     }
     case 'reasoning': {
       if (!p.text) return FOLD_ROW_H;
@@ -792,10 +807,13 @@ export function measureBlockHeight(b: SourcedBlock, folded = false): number {
 
 export interface BlockMeasureCache {
   byId: Map<string, { sig: string; h: number }>;
+  /** markdown 块增量解析状态（按块 id）——流式文本增长时复用稳定前缀解析，
+   *  避免每个 token 对整段文本重新 parseMarkdown（measure 与渲染共用增量入口）。 */
+  mdParse: Map<string, MdParseState>;
 }
 
 export function createBlockMeasureCache(): BlockMeasureCache {
-  return { byId: new Map() };
+  return { byId: new Map(), mdParse: new Map() };
 }
 
 /** 内容签名（决定块高的全部 payload 字段 + 折叠态——签名变 = 高度必须重测）。
@@ -828,12 +846,28 @@ export function measureSignature(b: SourcedBlock, folded: boolean): string {
 
 /** 块高缓存测量：签名命中直接返回记忆高度，否则真测并登记。
  *  folded（折叠机制）：折叠/展开是高度信号——入签名，切换必重测。
- *  w（P2 变宽）：宽度也是高度信号（收缩/resize 改宽必改高）——签名尾缀。 */
+ *  w（P2 变宽）：宽度也是高度信号（收缩/resize 改宽必改高）——签名尾缀。
+ *  markdown 块走增量解析：流式文本增长时复用稳定前缀块，只重解析最后一个块
+ *  （与渲染端 parseMarkdownIncremental 同源，测量与渲染结构一致性不破）。 */
 export function measureBlockHeightCached(b: SourcedBlock, cache: BlockMeasureCache, folded = false): number {
   const sig = `${measureSignature(b, folded)}|w=${b.w}`;
   const hit = cache.byId.get(b.id);
   if (hit && hit.sig === sig) return hit.h;
-  const h = measureBlockHeight(b, folded);
+  let h: number;
+  if (b.kind === 'markdown') {
+    const p = b.payload as { text?: string };
+    const text = p.text ?? '';
+    if (!text) {
+      h = 0;
+    } else {
+      const prev = cache.mdParse.get(b.id) ?? null;
+      const res = parseMarkdownIncremental(text, prev);
+      cache.mdParse.set(b.id, res.state);
+      h = measureMarkdownBody(res.blocks, b);
+    }
+  } else {
+    h = measureBlockHeight(b, folded);
+  }
   cache.byId.set(b.id, { sig, h });
   return h;
 }
