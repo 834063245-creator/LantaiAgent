@@ -18,6 +18,9 @@ import { describe, expect, it } from 'vitest';
 const SRC = join(__dirname, '..', 'src');
 const PANEL_CSS = readFileSync(join(SRC, 'app', 'panels', 'PaperPanel.css'), 'utf8');
 const HOME_CSS = readFileSync(join(SRC, 'app', 'foundation.css'), 'utf8');
+const PANEL_TSX = readFileSync(join(SRC, 'app', 'panels', 'PaperPanel.tsx'), 'utf8');
+const ICONS_TS = readFileSync(join(SRC, 'ui', 'icons.ts'), 'utf8');
+const MEASURE_TS = readFileSync(join(SRC, 'paper', 'measure.ts'), 'utf8');
 
 /** 从选择器名截取规则体（到下一个 `}` 为止——纸壳 CSS 规则无嵌套）。 */
 function ruleBody(css: string, selector: string): string {
@@ -70,5 +73,49 @@ describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
     expect(tail).not.toContain('var(--seal');
     const enter = ruleBody(PANEL_CSS, '.pp-block.pp-enter');
     expect(enter).toContain('animation: pp-enter');
+  });
+});
+
+describe('卷首 folio-head 钉值（2026-08-30 原型转录：prototype/lantai.html .folio-head 族）', () => {
+  it('卷首结构：玉徽居中钤印 + 硬规线底 + 朱砂版口钮；浮动标签带退役', () => {
+    const head = ruleBody(PANEL_CSS, '.pp-folio-head');
+    expect(head).toContain('border-bottom: var(--rule-hard)');
+    // pointer-events none：点击穿透流区背景，激活语义不变
+    expect(head).toContain('pointer-events: none');
+    const yuwei = ruleBody(PANEL_CSS, '.pp-yuwei');
+    expect(yuwei).toContain('margin: 0 auto 12px');
+    expect(yuwei).toContain('width: 24px');
+    const tab = ruleBody(PANEL_CSS, '.pp-folio-head::after');
+    expect(tab).toContain('width: 56px');
+    expect(tab).toContain('height: 3px');
+    // 版口钮是朱砂——卷首钤印语义（朱砂=人/仪式），非状态色挪用
+    expect(tab).toContain('background: var(--seal)');
+    // 标签带退役（卷首即卷名，不重复播报）
+    expect(PANEL_CSS).not.toContain('.pp-region-label');
+    expect(PANEL_TSX).toContain('pp-folio-head');
+    expect(PANEL_TSX).not.toContain('pp-region-label');
+  });
+
+  it('卷首排印：眉行/题字/档行字号字距（原型逐字转录）', () => {
+    const eyebrow = ruleBody(PANEL_CSS, '.pp-folio-eyebrow');
+    expect(eyebrow).toContain('font-size: 10px');
+    expect(eyebrow).toContain('letter-spacing: 0.26em');
+    expect(eyebrow).toContain('var(--ink-3)');
+    const title = ruleBody(PANEL_CSS, '.pp-folio-title');
+    expect(title).toContain('font-size: 32px');
+    expect(title).toContain('line-height: 1.2');
+    expect(title).toContain('var(--f-song)');
+    const sub = ruleBody(PANEL_CSS, '.pp-folio-sub');
+    expect(sub).toContain('letter-spacing: 0.14em');
+    expect(sub).toContain('font-variant-numeric: tabular-nums');
+  });
+
+  it('测量镜像：measure.ts 卷首常量与 CSS 逐字对映 + 亭徽图标在册', () => {
+    expect(MEASURE_TS).toContain('FOLIO_TITLE_LINE_HEIGHT = 32 * 1.2');
+    expect(MEASURE_TS).toContain('FOLIO_PAD_TOP = 24');
+    expect(MEASURE_TS).toContain('FOLIO_HEAD_GAP = 28');
+    expect(MEASURE_TS).toContain('export function measureFolioHeadHeight');
+    expect(ICONS_TS).toContain('lantai: {');
+    expect(ICONS_TS).toContain('M4 9.2 L12 3.4 L20 9.2');
   });
 });

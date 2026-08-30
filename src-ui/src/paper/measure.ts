@@ -180,6 +180,37 @@ export function measureTextHeight(
   return layout(prepared, maxWidth, lineHeight).height;
 }
 
+/* ── 卷首（folio-head，2026-08-30 原型转录）──
+ * 结构常量逐字镜像 PaperPanel.css .pp-folio-head 族
+ * （源规格：prototype/lantai.html .folio-head / .yuwei / .folio-eyebrow / .folio-title / .folio-sub）。
+ * 标题随换行实测（measureTextHeight），其余为固定结构高度。 */
+export const FOLIO_TITLE_FONT = `600 32px ${SONG_STACK}`;
+export const FOLIO_TITLE_LINE_HEIGHT = 32 * 1.2; // .pp-folio-title line-height 1.2
+export const FOLIO_EYEBROW_H = 14; // mono 10px × line-height 1.4
+export const FOLIO_SUB_H = 14; // mono 10px × line-height 1.4
+export const FOLIO_PAD_TOP = 24; // .pp-folio-head padding-top
+export const FOLIO_PAD_BOTTOM = 24; // padding-bottom 22 + rule-hard 2
+export const FOLIO_YUWEI_H = 36; // 24px 玉徽 + margin-bottom 12
+export const FOLIO_TITLE_MARGIN_TOP = 12;
+export const FOLIO_SUB_MARGIN_TOP = 14;
+/** 卷头与首块的呼吸距（原型 .folio-head margin-bottom 28） */
+export const FOLIO_HEAD_GAP = 28;
+/** 卷首头整体高度（世界单位）：标题按可用宽实测行数，其余固定。 */
+export function measureFolioHeadHeight(title: string, availWidth: number): number {
+  const titleH = measureTextHeight(title, availWidth, FOLIO_TITLE_FONT, FOLIO_TITLE_LINE_HEIGHT);
+  return (
+    FOLIO_PAD_TOP +
+    FOLIO_YUWEI_H +
+    FOLIO_EYEBROW_H +
+    FOLIO_TITLE_MARGIN_TOP +
+    titleH +
+    FOLIO_SUB_MARGIN_TOP +
+    FOLIO_SUB_H +
+    FOLIO_PAD_BOTTOM +
+    FOLIO_HEAD_GAP
+  );
+}
+
 /* ── 块级测量 ── */
 
 interface PayloadLike {

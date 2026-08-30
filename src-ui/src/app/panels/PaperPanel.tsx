@@ -48,6 +48,7 @@ import {
   clearPaperMeasureCache,
   createBlockMeasureCache,
   measureBlockHeightCached,
+  measureFolioHeadHeight,
 } from '../../paper/measure';
 import { PaperDockContext, PaperRegionContext } from '../../paper/overlay-context';
 import type { RegionView } from '../../paper/region-view';
@@ -80,6 +81,7 @@ import { useUpdateStore } from '../../state/update-store';
 import { getChatStore, msgStoreFor } from '../../ui/chat-store';
 import type { AssistantMessage, ChatMessage, TextPart, UserMessage } from '../../ui/message-model';
 import { useCoreStore } from '../chat/core-instance';
+import { Icon } from '../Icon';
 import { useShellStore } from '../shell-store';
 import { WinControls } from '../WinControls';
 import { StatusLine } from './StatusLine';
@@ -289,8 +291,9 @@ function MinimapView({
 
 /** 拖动阈值（px）：超过即视为拖块（区分点击） */
 const DRAG_THRESHOLD = 6;
-/** 自动选中命中区向上外扩（px，世界单位）：流区标签带在 regionTop 之上
- *  ~38px——用户常把视口中心对准会话标题，不扩会“空白保持当前”不切 */
+/** 自动选中命中区向上外扩余量（px，世界单位）：卷首头（folio-head）在
+ *  regionTop 之上实测 folioH——命中区再外扩 40px 兜住卷首上缘的呼吸带，
+ *  用户常把视口中心对准卷首，不扩会“空白保持当前”不切 */
 const REGION_HIT_LABEL_BAND = 40;
 /** 手动切换后抑制自动选中的窗口（ms）：显式选会话后给 800ms 喘息，
  * 避免“侧边栏点 A、视口中心还在 B，400ms 后被自动选中拉回 B”的冲突感 */
@@ -657,6 +660,8 @@ export function PaperPanel() {
       for (const g of flowGeom) top = Math.min(top, g.y);
       const regionTop = top;
       const regionBottom = anchor.anchorY;
+      // 卷首头高度：标题按流区可用宽实测（folio 头左右内距 16×2，镜像 .pp-folio-head padding）
+      const folioH = measureFolioHeadHeight(s.label || `案卷 ${s.id}`, anchor.width - 32);
       out.push({
         sessionId: sid,
         sessionNum: s.id,
@@ -672,6 +677,7 @@ export function PaperPanel() {
         regionTop,
         regionBottom,
         regionHeight: Math.max(0, regionBottom - regionTop) + 72,
+        folioH,
       });
     });
     blockSessionRef.current = blockSession;
@@ -1201,8 +1207,8 @@ export function PaperPanel() {
         sessionId: r.sessionId,
         x0: r.anchor.anchorX - r.anchor.width / 2,
         x1: r.anchor.anchorX + r.anchor.width / 2,
-        // 向上外扩盖住标签带（标题在 regionTop 之上）——中心对准会话标题也算命中
-        y0: r.regionTop - REGION_HIT_LABEL_BAND,
+        // 向上外扩盖住卷首头（卷首在 regionTop 之上实测 folioH）——中心对准卷首也算命中
+        y0: r.regionTop - r.folioH - REGION_HIT_LABEL_BAND,
         y1: r.regionBottom,
       }));
       const hit = hitRegionAtWorld(center.x, center.y, rects);
@@ -1780,9 +1786,9 @@ export function PaperPanel() {
                     className={`pp-region${isActive ? ' pp-region-active' : ''}`}
                     style={{
                       left: r.anchor.anchorX - r.anchor.width / 2,
-                      top: r.regionTop,
+                      top: r.regionTop - r.folioH,
                       width: r.anchor.width,
-                      height: r.regionHeight,
+                      height: r.regionHeight + r.folioH,
                     }}
                     data-session-id={r.sessionId}
                     onMouseDown={(e) => {
@@ -1790,14 +1796,20 @@ export function PaperPanel() {
                       if (e.target === e.currentTarget) activateRegion(r.sessionId);
                     }}
                   >
-                    <div
-                      className="pp-region-label"
-                      title={`案卷 ${r.sessionNum}${isActive ? ' · 活跃' : ' · 点击激活'}`}
-                    >
-                      <span className="pp-region-label-zh">{r.label || `案卷 ${r.sessionNum}`}</span>
-                      <span className="pp-region-label-meta">
-                        {isActive ? '活跃' : '点击激活'} · {r.blocks.length} 块
+                    {/* 卷首（folio-head，2026-08-30 自 prototype/lantai.html .folio-head 转录）：
+                     * 玉徽（亭台线稿）居中钤印 + 机读眉行 + 宋体题字 + 机读档行，
+                     * 底部硬规线 + 左缘朱砂版口钮。框体向上扩展包住卷首（界栏护持）。
+                     * pointer-events none——点击穿透流区背景，激活语义不变；
+                     * 原浮动标签带（pp-region-label）退役：卷首即卷名，不重复播报。 */}
+                    <div className="pp-folio-head">
+                      <span className="pp-yuwei">
+                        <Icon name="lantai" size={24} />
                       </span>
+                      <p className="pp-folio-eyebrow">兰台 · 案卷 Nº {r.sessionNum}</p>
+                      <h2 className="pp-folio-title">{r.label || `案卷 ${r.sessionNum}`}</h2>
+                      <p className="pp-folio-sub">
+                        案卷 #{r.sessionNum} · {r.blocks.length} 块
+                      </p>
                     </div>
                     {/* 空卷题字：零块流区的版心竖排占位（pointer-events none——
                      * 点击穿透到流区背景激活） */}

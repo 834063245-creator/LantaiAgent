@@ -192,35 +192,60 @@
   border-right-color: color-mix(in oklch, var(--ink-2) 48%, transparent);
   background: color-mix(in oklch, var(--seal) 4%, transparent);
 }
-.pp-region-label {
+/* ── 卷首（folio-head，2026-08-30 自 prototype/lantai.html .folio-head 族转录）──
+ * 玉徽（亭台线稿 icon-lantai）居中钤印 + 机读眉行 + 宋体题字 + 机读档行，
+ * 底部硬规线 + 左缘朱砂版口钮（原型 ::after 56×3）。结构常量的测高镜像在
+ * paper/measure.ts measureFolioHeadHeight（逐字对映，改一处必改两处）。
+ * 原浮动标签带（pp-region-label）退役：卷首即卷名。 */
+.pp-folio-head {
   position: absolute;
-  top: -38px;
+  top: 0;
   left: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  white-space: nowrap;
-  user-select: none;
+  right: 0;
+  padding: 24px 16px 22px;
+  border-bottom: var(--rule-hard);
   pointer-events: none;
+  user-select: none;
 }
-.pp-region-label-zh {
-  font-family: var(--f-song);
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--ink-2);
+.pp-folio-head::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  width: 56px;
+  height: 3px;
+  background: var(--seal);
 }
-.pp-region-label-meta {
+.pp-yuwei {
+  display: block;
+  width: 24px;
+  height: 24px;
+  margin: 0 auto 12px;
+  color: var(--ink-1);
+}
+.pp-folio-eyebrow {
   font-family: var(--f-mono);
-  font-size: 9px;
-  letter-spacing: 0.12em;
+  font-size: 10px;
+  line-height: 1.4;
+  letter-spacing: 0.26em;
   color: var(--ink-3);
 }
-.pp-region-active .pp-region-label-zh {
-  color: var(--seal-deep);
+.pp-folio-title {
+  font-family: var(--f-song);
+  font-weight: 600;
+  font-size: 32px;
+  line-height: 1.2;
+  margin-top: 12px;
+  color: var(--ink-1);
 }
-.pp-region-active .pp-region-label-meta {
-  color: var(--seal-deep);
+.pp-folio-sub {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  line-height: 1.4;
+  letter-spacing: 0.14em;
+  color: var(--ink-3);
+  margin-top: 14px;
+  font-variant-numeric: tabular-nums;
 }
 /* 边缘拖拽面（stage-2 定案：~6px 量级，光标 move；hover 显朱砂提示可抓） */
 .pp-region-edge {
@@ -300,6 +325,22 @@
 .pp-body {
   white-space: pre-wrap;
   overflow-wrap: break-word;
+}
+
+/* 流式增量渐显（streaming-fade-render-plan 2026-08-30）：新长出的文本段
+ * 淡入（Claude Code 桌面端同款观感）。0.72 起墨（不从 0 全透明——避免
+ * 闪烁感；纸壳正文保持始终可读）。时长用 --glide（0.3s）而非 --snap
+ * （0.12s 偏快，流式增量需要一点呼吸）。钉值 tests/paper-visual-decisions.test.ts。 */
+@keyframes pp-ink-enter {
+  from {
+    opacity: 0.72;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.pp-ink-delta {
+  animation: pp-ink-enter var(--glide) ease-out both;
 }
 
 /* 结构件不进选区：文类签/状态签/收回钮/占位钮是界面注记不是正文——

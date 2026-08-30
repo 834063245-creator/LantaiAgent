@@ -159,6 +159,12 @@ const icons: Record<string, IconDef> = {
     label: '',
     path: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.5"/><circle cx="12" cy="12" r="0.8" fill="currentColor"/><line x1="12" y1="3" x2="12" y2="8"/><line x1="12" y1="16" x2="12" y2="21"/><line x1="3" y1="12" x2="8" y2="12"/><line x1="16" y1="12" x2="21" y2="12"/>',
   },
+  // 兰台亭徽（卷首玉徽，2026-08-30 自 prototype/lantai.html #icon-lantai 转录）：
+  // 亭顶翘檐 + 双柱 + 双层台基——亭台线稿，玉徽居中钤于卷首。
+  lantai: {
+    label: '兰台亭徽',
+    path: '<path d="M4 9.2 L12 3.4 L20 9.2"/><path d="M4 9.2 C3.2 8.8 2.7 7.7 3.3 7"/><path d="M20 9.2 C20.8 8.8 21.3 7.7 20.7 7"/><path d="M7.6 9.2 V16.2"/><path d="M16.4 9.2 V16.2"/><path d="M4.4 16.2 H19.6"/><path d="M6.2 18.8 H17.8"/>',
+  },
 
   // ── Status & feedback ──
   loading: {

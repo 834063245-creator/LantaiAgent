@@ -34,4 +34,6 @@ export interface RegionView {
   regionBottom: number;
   /** 流区容器高（世界单位，含头部留白） */
   regionHeight: number;
+  /** 卷首头高度（世界单位，measureFolioHeadHeight 实测——流区框向上扩展包住卷首） */
+  folioH: number;
 }
