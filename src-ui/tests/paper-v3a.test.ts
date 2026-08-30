@@ -23,6 +23,7 @@ import { composerSubmitOnKey } from '../src/paper/ime';
 import {
   clearPaperMeasureCache,
   createBlockMeasureCache,
+  FOLD_ROW_H,
   measureBlockHeight,
   measureBlockHeightCached,
   measureTextHeight,
@@ -81,10 +82,10 @@ describe('paper/measure', () => {
     expect(measureBlockHeight(noLang)).toBe(0 + 30 + 36);
   });
 
-  it('tool 块：注线顶距 + args + output + err 各计一段，output/err 封顶 OUT_MAX_H', () => {
+  it('tool 块：注线顶距 + 折叠行 + args + output + err 各计一段，output/err 封顶 OUT_MAX_H', () => {
     const b = block('tool', { toolId: 't', name: 'n', label: 'l', args: 'a', status: 'done', output: 'o', err: 'e' });
-    // 顶距 10；args 36；output/err 各 13 chrome + 36
-    expect(measureBlockHeight(b)).toBe(10 + 36 + 49 + 49);
+    // 顶距 10 + 折叠行 20；args 36；output/err 各 13 chrome + 36
+    expect(measureBlockHeight(b)).toBe(10 + FOLD_ROW_H + 36 + 49 + 49);
   });
 
   it('prepare 缓存：同文本同字体只 prepare 一次（FIFO 纪律）', () => {
@@ -113,17 +114,18 @@ describe('paper/measure', () => {
   // jsdom 下 node: 模块 baseline 不可用、?raw 被 vitest css 管线吞空——两条路试过）。
 
   it('user/reasoning/notice/plan 四类分支各自计高（kinds 全谱）', () => {
-    // user 纯文本 36 + asterism 44（B1：margin 30 + 字行 14）；reasoning 纯文本路径；
+    // user 纯文本 36 + asterism 44（B1：margin 30 + 字行 14）；
+    // reasoning 展开态 = 折叠行 20 + 纯文本 36（折叠机制 2026-08-30）；
     // notice 带贴黄 chrome 17；plan 带拟策 chrome 31+39
     expect(measureBlockHeight(block('user', { text: 'hi' }))).toBe(36 + 44);
-    expect(measureBlockHeight(block('reasoning', { text: 'think' }))).toBe(36);
+    expect(measureBlockHeight(block('reasoning', { text: 'think' }))).toBe(FOLD_ROW_H + 36);
     expect(measureBlockHeight(block('notice', { text: 'n', level: 'info' }))).toBe(17 + 36);
     expect(measureBlockHeight(block('plan', { planId: 'p', title: 't', content: 'c', status: 's' }))).toBe(
       31 + 39 + 36,
     );
   });
 
-  it('B1 垂直节奏：块距 48；user 头顶 48+24、尾部 8（asterism 让位）；markdown 段距 10', () => {
+  it('B1 垂直节奏：块距 48；user 头顶 48+24、尾部 8（asterism 让位）；markdown 段距 14', () => {
     // 三块栈（旧→新）：a(markdown) → u(user) → b(markdown)，自底向上累积。
     // 几何：u 的头顶 = u 与上方 a 的间距；u 的尾距 = u 与下方 b 的间距。
     const stack = [
@@ -138,8 +140,8 @@ describe('paper/measure', () => {
     expect(lay.get('u')?.y).toBe(-100 - 8 - 50);
     // u 头顶（u 顶到 a 底）：blockGap 48 + userLeadGap 24 = 72 → a 顶 = -158 - 72 - 100 = -330
     expect(lay.get('a')?.y).toBe(-100 - 8 - 50 - 48 - 24 - 100);
-    // 双换行分段：两段各 36 + 段距 10
-    expect(measureBlockHeight(block('markdown', { text: 'p1\n\np2' }))).toBe(36 + 10 + 36);
+    // 双换行分段：两段各 36 + 段距 14（2026-08-30 markdown 专项：10→14）
+    expect(measureBlockHeight(block('markdown', { text: 'p1\n\np2' }))).toBe(36 + 14 + 36);
   });
 
   it('PRE_MAX_H/OUT_MAX_H 截断路径：mock 返超高时封顶生效（滚动不占高）', () => {
@@ -157,8 +159,8 @@ describe('paper/measure', () => {
       status: 'done',
       output: 'y'.repeat(1000),
     });
-    // args 为空走零成本路径；output 截断后 +13 chrome，加顶距 10
-    expect(measureBlockHeight(tool)).toBe(10 + OUT_MAX_H + 13);
+    // args 为空走零成本路径；折叠行 20 + output 截断后 +13 chrome，加顶距 10
+    expect(measureBlockHeight(tool)).toBe(10 + FOLD_ROW_H + OUT_MAX_H + 13);
     expect(layoutMock).toHaveBeenCalled();
   });
 

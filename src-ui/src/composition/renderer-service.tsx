@@ -21,18 +21,24 @@
 //   - 内置灰框渲染器 = 默认行（本文件 registerBuiltinRenderers，装载期注册）；
 //     贡献与内置同 id → 内置胜（对齐 panelDefs() 合流纪律）。
 
-import type { ComponentType } from 'react';
-import { Fragment, useState } from 'react';
+import type { ComponentType, ReactNode } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { assetKinds } from '../agent/asset-kinds';
 import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan-tools';
 import { type Context, Service } from '../cordis';
 import { type BlockKind, parsePlanItems, type SourcedBlock } from '../paper/block-model';
+import { foldPreviewLine } from '../paper/fold';
+import { type MdBlock, type MdInline, parseMarkdown } from '../paper/markdown';
 import { parseCircledSegments } from '../paper/marks';
+import { prettyToolArgs } from '../paper/tool-text';
 import { assetPresentationDefs } from './asset-renderers';
 
-/** 渲染器组件入参——渲染器拿到块本体 + 纸壳递下的服务性回调。 */
+/** 渲染器组件入参——渲染器拿到块本体 + 纸壳递下的服务性回调。
+ *  folded（2026-08-30 折叠机制）：壳层算好的有效折叠态（用户覆盖 ?? 默认规则，
+ *  规则在 paper/fold.ts）——渲染器只按态收敛渲染面，不自持折叠状态。 */
 export interface BlockRendererProps {
   block: SourcedBlock;
+  folded?: boolean;
 }
 
 /** 渲染器贡献：一个 kind 一个渲染器（body 渲染组件）。 */
@@ -151,27 +157,153 @@ export function resolveAssetBlock(
 // 渲染器只补结构语义（diff 行着色 / 拟策条目化）。壳件（文类签/手柄/收回）留在
 // PaperPanel（结构件不进注册表）。
 
-/** 正文段落拆分（B1）：双换行分段，段间 10px（原型 .block.agent .body p 语义）。
- *  只在正文（markdown）用——夹注/贴黄保持单段流。 */
-function splitParagraphs(text: string): string[] {
-  return text.split(/\n{2,}/).filter((s) => s.trim().length > 0);
+/* ── 正文 markdown 渲染（2026-08-30 会话流渲染专项）──
+ * 消费 paper/markdown.ts 的结构模型（与 measure.ts 测高同一解析——镜像纪律：
+ * 两边结构必须同源）。视觉版式常量在 PaperPanel.css .pp-md-*，测量镜像在
+ * measure.ts MD_* 常量——改版式三处同步（CSS/measure/此处类名契约）。 */
+
+/** 行内片段 → 节点（标志位解析期已打平，无嵌套结构）。 */
+function InlineRuns({ inl }: { inl: MdInline[] }) {
+  return (
+    <>
+      {inl.map((seg, i) => {
+        let node: ReactNode = seg.text;
+        if (seg.c) node = <code className="pp-md-ci">{seg.text}</code>;
+        else if (seg.href) {
+          node = (
+            <a className="pp-md-a" href={seg.href} target="_blank" rel="noreferrer">
+              {seg.text}
+            </a>
+          );
+        }
+        if (seg.s) node = <del>{node}</del>;
+        if (seg.i) node = <em>{node}</em>;
+        if (seg.b) node = <strong>{node}</strong>;
+        return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: 解析段按位置渲染，静态内容无重排身份
+          <Fragment key={i}>{node}</Fragment>
+        );
+      })}
+    </>
+  );
 }
 
-function TextBody({ block }: BlockRendererProps) {
-  const text = (block.payload as { text: string }).text;
-  if (block.kind !== 'markdown') return <div className="pp-body">{text}</div>;
-  const paras = splitParagraphs(text);
-  if (paras.length <= 1) return <div className="pp-body">{text}</div>;
+/** 块序列渲染（quote 内层 / 列表项嵌套递归复用；top = .pp-body 直排面）。 */
+function MdBlocksView({ blocks }: { blocks: MdBlock[] }) {
   return (
-    <div className="pp-body">
-      {paras.map((p, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: 段落按位置渲染，静态内容无重排身份
-        <p key={i} className="pp-para">
-          {p}
+    <>
+      {blocks.map((el, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: 静态解析结果按位渲染
+        <Fragment key={i}>{renderMdBlock(el)}</Fragment>
+      ))}
+    </>
+  );
+}
+
+function renderMdBlock(el: MdBlock): ReactNode {
+  switch (el.t) {
+    case 'p':
+      return (
+        <p className="pp-md-p">
+          <InlineRuns inl={el.inl} />
         </p>
+      );
+    case 'h': {
+      const Tag = `h${el.lv}` as 'h1' | 'h2' | 'h3' | 'h4';
+      return (
+        <Tag className={`pp-md-h pp-md-h${el.lv}`}>
+          <InlineRuns inl={el.inl} />
+        </Tag>
+      );
+    }
+    case 'list': {
+      const Tag = el.ord ? 'ol' : 'ul';
+      return (
+        <Tag className="pp-md-list">
+          {el.items.map((it, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 列表项按位渲染，序号即身份
+            <li key={i} className="pp-md-li">
+              <span className="pp-md-mark" aria-hidden="true">
+                {el.ord ? `${el.start + i}.` : '·'}
+              </span>
+              <InlineRuns inl={it.inl} />
+              {it.sub && (
+                <div className="pp-md-sub">
+                  <MdBlocksView blocks={it.sub} />
+                </div>
+              )}
+            </li>
+          ))}
+        </Tag>
+      );
+    }
+    case 'quote':
+      return (
+        <blockquote className="pp-md-quote">
+          <MdBlocksView blocks={el.blocks} />
+        </blockquote>
+      );
+    case 'code':
+      return <pre className="pp-md-code">{el.text}</pre>;
+    case 'hr':
+      return <hr className="pp-md-hr" />;
+    case 'table':
+      return (
+        <table className="pp-md-table">
+          <thead>
+            <tr>
+              {el.head.map((cell, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: 表头按位渲染
+                <th key={i}>
+                  <InlineRuns inl={cell} />
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {el.rows.map((row, r) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: 表行按位渲染
+              <tr key={r}>
+                {row.map((cell, c) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: 表格按位渲染
+                  <td key={c}>
+                    <InlineRuns inl={cell} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      );
+  }
+}
+
+/** 正文（markdown）：结构化渲染——标题/段落/列表/引用/图码/表格 + 行内强调。
+ *  流式友好：parseMarkdown 对未闭合围栏/未配对标记按已闭合/字面量处理。 */
+function MarkdownBody({ block }: BlockRendererProps) {
+  const text = (block.payload as { text?: string }).text ?? '';
+  const blocks = useMemo(() => parseMarkdown(text), [text]);
+  return (
+    <div className="pp-body pp-md">
+      {blocks.map((el, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: 同上
+        <Fragment key={i}>{renderMdBlock(el)}</Fragment>
       ))}
     </div>
   );
+}
+
+/** 夹注/贴黄体：纯文本单段流（夹注折叠态 = 一行预览，folded 由壳层递下）。 */
+function TextBody({ block, folded }: BlockRendererProps) {
+  const text = (block.payload as { text: string }).text ?? '';
+  if (block.kind === 'reasoning') {
+    if (folded) {
+      const preview = foldPreviewLine(text);
+      return <div className="pp-body">{preview ? <div className="pp-fold-preview">{preview}</div> : null}</div>;
+    }
+    return <div className="pp-body">{text}</div>;
+  }
+  return <div className="pp-body">{text}</div>;
 }
 
 /** 来文体：圈点解析（C7）——【词】→ 朱砂圈，其余字面。
@@ -357,11 +489,12 @@ function PlanBody({ block }: BlockRendererProps) {
   );
 }
 
-function ToolBody({ block }: BlockRendererProps) {
+function ToolBody({ block, folded }: BlockRendererProps) {
   const p = block.payload as { args: string; output?: string; err?: string };
+  if (folded) return null; // 折叠态只留壳层折叠行（paper/fold.ts 规则）——参数/输出全收
   return (
     <>
-      <pre>{p.args}</pre>
+      {p.args ? <pre>{prettyToolArgs(p.args)}</pre> : null}
       {p.output && <div className="pp-out">{p.output}</div>}
       {p.err && (
         <div className="pp-out" style={{ color: 'var(--fail)' }}>
@@ -373,12 +506,13 @@ function ToolBody({ block }: BlockRendererProps) {
 }
 
 /** 程序执行卡（P2-A）：三段式——程序体（等宽）→ 日志/完成值（终态写入）。
- *  与 ToolBody 的分离点：code 是程序语义（体/出）而非调用语义（参/果）。 */
-function CodeBody({ block }: BlockRendererProps) {
+ *  与 ToolBody 的分离点：code 是程序语义（体/出）而非调用语义（参/果）。
+ *  折叠态收程序体、留输出/错误（执行结果一眼可见——测量端同款镜像）。 */
+function CodeBody({ block, folded }: BlockRendererProps) {
   const p = block.payload as { code: string; output?: string; err?: string };
   return (
     <>
-      <pre className="pp-code-src">{p.code}</pre>
+      {!folded && <pre className="pp-code-src">{p.code}</pre>}
       {p.output && <div className="pp-out">{p.output}</div>}
       {p.err && (
         <div className="pp-out" style={{ color: 'var(--fail)' }}>
@@ -416,7 +550,7 @@ function JsonBody({ block }: BlockRendererProps) {
 export function builtinRendererDefs(): BlockRendererContribution[] {
   return [
     { id: 'builtin/user', kind: 'user', component: UserBody },
-    { id: 'builtin/markdown', kind: 'markdown', component: TextBody },
+    { id: 'builtin/markdown', kind: 'markdown', component: MarkdownBody },
     { id: 'builtin/reasoning', kind: 'reasoning', component: TextBody },
     { id: 'builtin/notice', kind: 'notice', component: TextBody },
     { id: 'builtin/diff', kind: 'diff', component: DiffBody },

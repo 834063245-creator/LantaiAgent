@@ -8,6 +8,9 @@
 | 文件 | 职责 |
 |---|---|
 | `block-model.ts` | 真相层：块物件 `{ id, kind, payload, state: flow\|pinned, x/y/w }` + 纯操作（pin/unpin/move） |
+| `markdown.ts` | **2026-08-30** 正文单一解析：markdown → 块/行内结构模型——渲染（MarkdownBody）与测量（measureMdBlocks）共用同一解析（结构漂移结构性不成立；react-markdown 黑盒无法镜像测高故不用） |
+| `fold.ts` | **2026-08-30** 折叠机制：夹注/脚注/程文的默认折叠规则（夹注恒折；脚注/程文 running\|error 展开、其余收起）+ 折叠行文案 + 预览行；用户覆盖态在壳层（PaperPanel foldOv） |
+| `tool-text.ts` | **2026-08-30** 脚注参数规整（pretty JSON）——ToolBody 渲染与 measure 计高共用的单一变换 |
 | `canvas-math.ts` | 交互层：无限画布数学（视口/缩放锚点/屏幕↔世界换算/流锚布局） |
 | `translate.ts` | 宿主侧块转译 v1：`ChatMessage[]` → `SourcedBlock[]` 纯函数（agent 层零改动） |
 | `measure.ts` | **V3a** 块高真测量：`@chenglou/pretext`（上游包，待定 #8）+ prepare 缓存纪律 + 纸面字体常量（具名栈：Fraunces/Noto Serif SC/JetBrains Mono） |

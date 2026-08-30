@@ -41,6 +41,7 @@ import {
   wheelFactor,
   zoomAt,
 } from '../../paper/canvas-math';
+import { defaultFolded, foldLabel, isFoldable } from '../../paper/fold';
 import {
   type BlockMeasureCache,
   clearPaperMeasureCache,
@@ -141,6 +142,8 @@ const BlockView = memo(function BlockView({
   block,
   seq,
   ops,
+  folded,
+  onToggleFold,
   onUnpin,
   onDragHandleMouseDown,
   unpinLabel = '收回',
@@ -150,6 +153,10 @@ const BlockView = memo(function BlockView({
   seq: string;
   /** 消息操作（hover 浮现）——user 块编辑/重发，assistant 块重试，全部可抄录（施工单 #5） */
   ops: BlockOp[];
+  /** 有效折叠态（壳层：用户覆盖 ?? paper/fold 默认规则）——夹注/脚注/程文消费 */
+  folded: boolean;
+  /** 折叠行点击（切换覆盖态） */
+  onToggleFold: (b: SourcedBlock) => void;
   onUnpin: (id: string) => void;
   /** 拖拽手柄（文类签 .pp-kind）——V3a 手势分工：签=整块拖出（D-R2-1） */
   onDragHandleMouseDown: (e: React.MouseEvent, block: SourcedBlock) => void;
@@ -160,6 +167,7 @@ const BlockView = memo(function BlockView({
   const Body = block.asset
     ? resolveAssetBlock(block.kind, block.asset.presentation)
     : resolveRenderer(block.kind)?.component;
+  const foldable = isFoldable(block.kind);
   return (
     <>
       {/* biome-ignore lint/a11y/noStaticElementInteractions: 拖拽手柄（D-R2-1 拖出钉住）；收回有原生按钮 */}
@@ -175,7 +183,23 @@ const BlockView = memo(function BlockView({
           <span className={`pp-status pp-${(p as { status: string }).status}`}>{(p as { status: string }).status}</span>
         )}
       </div>
-      {Body ? <Body block={block} /> : <div className="pp-body">{(p as { text?: string }).text ?? ''}</div>}
+      {foldable && (
+        <button
+          type="button"
+          className="pp-fold"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleFold(block);
+          }}
+        >
+          {foldLabel(block.kind, p, folded)}
+        </button>
+      )}
+      {Body ? (
+        <Body block={block} folded={folded} />
+      ) : (
+        <div className="pp-body">{(p as { text?: string }).text ?? ''}</div>
+      )}
       {ops.length > 0 && (
         <div className="pp-msg-ops">
           {ops.map((o) => (
@@ -399,6 +423,22 @@ export function PaperPanel() {
   const translateCacheBySession = useRef(new Map<number, MessageTranslateCache | null>());
   const measureCacheRef = useRef<BlockMeasureCache>(createBlockMeasureCache());
   const opsCacheRef = useRef<Map<string, { msg: ChatMessage; ops: BlockOp[] }>>(new Map());
+
+  /* ── 折叠态（2026-08-30 会话流渲染专项）──
+   * 规则态在 paper/fold.ts（夹注恒折；脚注/程文按状态：running/error 展开、
+   * 其余收起）。本表只存用户显式覆盖（点折叠行）——覆盖缺席回落规则态，
+   * running→done 的状态翻转自动收回的是「没有用户意志的默认态」，不打架。 */
+  const [foldOv, setFoldOv] = useState<Record<string, boolean>>({});
+  const foldedOf = useCallback(
+    (b: SourcedBlock): boolean => foldOv[b.id] ?? defaultFolded(b.kind, b.payload),
+    [foldOv],
+  );
+  const onToggleFold = useCallback((b: SourcedBlock) => {
+    setFoldOv((prev) => {
+      const cur = prev[b.id] ?? defaultFolded(b.kind, b.payload);
+      return { ...prev, [b.id]: !cur };
+    });
+  }, []);
   // 会话合卷/新增后修剪无主缓存
   useEffect(() => {
     const ids = new Set(sessions.map((s) => s.id));
@@ -542,7 +582,7 @@ export function PaperPanel() {
 
       const stack = blocks.map((b) => ({
         id: b.id,
-        h: b.state === 'flow' ? measureBlockHeightCached(b, measureCacheRef.current) : GHOST_H,
+        h: b.state === 'flow' ? measureBlockHeightCached(b, measureCacheRef.current, foldedOf(b)) : GHOST_H,
         w: b.w,
         kind: b.kind,
       }));
@@ -561,7 +601,7 @@ export function PaperPanel() {
           x: b.x,
           y: b.y,
           w: b.w,
-          h: measureBlockHeightCached(b, measureCacheRef.current),
+          h: measureBlockHeightCached(b, measureCacheRef.current, foldedOf(b)),
         }));
       const flowWindow = visibleFlowWindow(flowGeom, viewRect, OVERSCAN);
       const visiblePinnedSet = new Set(visiblePinnedIds(pinnedGeom, viewRect, OVERSCAN));
@@ -597,7 +637,7 @@ export function PaperPanel() {
     });
     blockSessionRef.current = blockSession;
     return out;
-  }, [sessions, regionMsgs, paperTick, viewRect, edgeDragPos, measureTick, canvasState, pinsMap]);
+  }, [sessions, regionMsgs, paperTick, viewRect, edgeDragPos, measureTick, canvasState, pinsMap, foldedOf]);
 
   regionsRef.current = regions;
 
@@ -1688,6 +1728,8 @@ export function PaperPanel() {
                       block={snapshotBlock}
                       seq="PIN"
                       ops={EMPTY_OPS}
+                      folded={foldedOf(snapshotBlock)}
+                      onToggleFold={onToggleFold}
                       onUnpin={onUnpin}
                       onDragHandleMouseDown={onBlockMouseDown}
                       unpinLabel={deadOrphanPinIds.has(pinId) ? '删除' : '收回'}
@@ -1716,6 +1758,8 @@ export function PaperPanel() {
                           block={b}
                           seq={r.seq.get(b.id) ?? '000'}
                           ops={opsByBlock.get(b.id) ?? EMPTY_OPS}
+                          folded={foldedOf(b)}
+                          onToggleFold={onToggleFold}
                           onUnpin={onUnpin}
                           onDragHandleMouseDown={onBlockMouseDown}
                         />
@@ -1746,6 +1790,8 @@ export function PaperPanel() {
                           block={b}
                           seq={r.seq.get(b.id) ?? '000'}
                           ops={opsByBlock.get(b.id) ?? EMPTY_OPS}
+                          folded={foldedOf(b)}
+                          onToggleFold={onToggleFold}
                           onUnpin={onUnpin}
                           onDragHandleMouseDown={onBlockMouseDown}
                         />

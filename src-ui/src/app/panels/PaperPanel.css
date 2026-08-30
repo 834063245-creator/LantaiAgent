@@ -279,12 +279,23 @@
   z-index: 2;
 }
 
+/* 块体基础（2026-08-30 间距专项）：pre-wrap 镜像测量——measure.ts 的 pretext
+ * 一律按 whiteSpace:'pre-wrap' 计行，而此处旧缺省 normal 把换行折叠掉，
+ * 「测得多、渲染少」= 绝对定位块之间出现幻影大间距（流内间距不均的根因）。
+ * 长词兜底 break-word：DOM 因此多折行时测高偏矮方向只发生在超长 token
+ * （正文罕见；工具/代码路径本就走 break-all 的 mono pre）。 */
+.pp-body {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
 /* 结构件不进选区：文类签/状态签/收回钮/占位钮是界面注记不是正文——
  * 跨块扫选与 Ctrl+A 曾把它们卷进 sel.toString()（抽出的纸条带签名）。 */
 .pp-kind,
 .pp-status,
 .pp-unpin,
-.pp-ghost {
+.pp-ghost,
+.pp-fold {
   user-select: none;
 }
 
@@ -408,20 +419,207 @@
   font-weight: 600;
 }
 
-/* 正文段落（B1）：双换行分段，段间 10px（原型 .block.agent .body p margin-bottom）。
- *  测量镜像 measure.ts PARAGRAPH_GAP。 */
-.pp-para {
-  margin: 0 0 10px;
-}
-.pp-para:last-child {
-  margin-bottom: 0;
-}
+/* 正文段落间距（2026-08-30 markdown 专项）：.pp-md-p margin-bottom 14
+ * （17px/行距 2.0 下 10px 段距比行距还小、段落黏连——提到 14）。
+ * 测量镜像 measure.ts MD_P_GAP。 */
 
-/* ── 正文（markdown）：宋体主角 ── */
+/* ── 正文（markdown）：宋体主角 + 结构化子版式（2026-08-30 专项）──
+ * 版式常量与 measure.ts MD_* 逐字镜像（改版式两处同步）；
+ * 结构模型与测量共用 paper/markdown.ts 的 parseMarkdown（同源防漂移）。
+ * 纵向量纪律：块元素只用「padding 上下面距 + margin-bottom 块间距」，
+ * 不用 margin-top（首元素 margin 逃逸 .pp-body 会破坏测高）。 */
 .pp-block.pp-markdown .pp-body {
   font-size: 17px;
   line-height: 2;
   color: var(--ink-1);
+}
+
+/* 末元素 margin 归零（测量端镜像：measureMdBlocks 不计末元素 margin） */
+.pp-body > :last-child,
+.pp-md-quote > :last-child,
+.pp-md-sub > :last-child {
+  margin-bottom: 0;
+}
+
+.pp-md-p {
+  margin: 0 0 14px;
+}
+
+/* 标题：padding 承担上下距（不入 margin 塌陷），宋体加粗、墨色随级加深 */
+.pp-md-h {
+  margin: 0;
+  font-weight: 600;
+  color: var(--ink-1);
+}
+.pp-md-h1 {
+  font-size: 20px;
+  line-height: 1.5;
+  padding: 22px 0 10px;
+}
+.pp-md-h2 {
+  font-size: 18px;
+  line-height: 1.6;
+  padding: 20px 0 8px;
+}
+.pp-md-h3 {
+  font-size: 16.5px;
+  line-height: 1.7;
+  padding: 16px 0 6px;
+}
+.pp-md-h4 {
+  font-size: 15.5px;
+  line-height: 1.8;
+  padding: 14px 0 6px;
+}
+
+/* 列表：标记列绝对定位（不占宽），条目列缩进 26（镜像 MD_LI_INDENT） */
+.pp-md-list {
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+.pp-md-li {
+  position: relative;
+  margin: 0 0 6px;
+  padding-left: 26px;
+}
+.pp-md-li:last-child {
+  margin-bottom: 0;
+}
+.pp-md-mark {
+  position: absolute;
+  left: 0;
+  top: 12px;
+  font-family: var(--f-mono);
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.pp-md-sub {
+  margin-top: 4px;
+  padding-left: 22px;
+}
+
+/* 引用：石墨左线 + 缩进（正文同字号，色降 ink-2） */
+.pp-md-quote {
+  margin: 0 0 14px;
+  padding: 2px 0 2px 16px;
+  border-left: 2px solid color-mix(in oklch, var(--graphite) 45%, transparent);
+  color: var(--ink-2);
+}
+.pp-md-quote .pp-md-p {
+  color: var(--ink-2);
+}
+
+/* 图码（列表/引用内幸存的围栏——独立 diff 块之外的兜底） */
+.pp-md-code {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--indigo);
+  background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
+  font-family: var(--f-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink-1);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 260px;
+  overflow: auto;
+}
+
+/* 分隔线 */
+.pp-md-hr {
+  border: none;
+  border-top: 1px solid var(--rule-soft);
+  margin: 18px 0;
+}
+
+/* 表格（GFM）：等宽小字 + 弱规线（.pp-grid-table 同族视觉） */
+.pp-md-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 14px;
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ink-1);
+}
+.pp-md-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--ink-2);
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.pp-md-table td {
+  padding: 4px 8px;
+  border-bottom: 0.5px solid color-mix(in oklch, var(--ink-3) 18%, transparent);
+}
+.pp-md-table tr:last-child td {
+  border-bottom: none;
+}
+
+/* 行内：加粗/斜体/删除线/行内码/链接 */
+.pp-md strong {
+  font-weight: 600;
+}
+.pp-md del {
+  color: var(--graphite);
+}
+.pp-md-ci {
+  font-family: var(--f-mono);
+  font-size: 0.82em;
+  padding: 1px 5px;
+  border: 1px solid var(--rule-soft);
+  background: color-mix(in oklch, var(--paper-deep) 65%, transparent);
+}
+.pp-md-a {
+  color: var(--indigo);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklch, var(--indigo) 45%, transparent);
+  text-underline-offset: 3px;
+}
+.pp-md-a:hover {
+  color: var(--seal-deep);
+  text-decoration-color: var(--seal);
+}
+
+/* ── 折叠行（2026-08-30 折叠机制）：夹注/脚注/程文块顶的展开/收起面 ──
+ * 折叠规则与字数文案在 paper/fold.ts；行高 14 + margin 6 = FOLD_ROW_H 20
+ * （测量镜像）。mono 小字 + 墨三级——是界面注记，不搅正文墨色。 */
+.pp-fold {
+  display: block;
+  height: 14px;
+  margin: 0 0 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  line-height: 14px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  cursor: pointer;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+  transition: color var(--snap);
+}
+.pp-fold:hover {
+  color: var(--seal-deep);
+}
+.pp-block.pp-reasoning .pp-fold {
+  color: var(--graphite);
+}
+.pp-block.pp-reasoning .pp-fold:hover {
+  color: var(--ink-1);
+}
+/* 夹注折叠预览：单行截断（行高 13.5×1.85≈25px——测量端按一行计高） */
+.pp-fold-preview {
+  max-height: 25px;
+  overflow: hidden;
+  opacity: 0.85;
 }
 
 /* ── 夹注（reasoning）：石墨铅笔 + 虚线勾边 ── */
