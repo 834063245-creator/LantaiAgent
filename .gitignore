@@ -186,6 +186,7 @@ scripts/python-3.14.4-embed-amd64.zip
 .mcp.json
 .cursor/
 .codely-cli/
+.codely/clipboard/
 
 # Engine binaries
 engine-bin/
