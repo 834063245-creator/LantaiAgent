@@ -16,6 +16,13 @@
   line-height: 1.8;
   display: flex;
   flex-direction: column;
+  /* CJK 排印确定性（2026-08-30）：canvas 测高（pretext）只按字体 metrics 计行，
+   * 不含 CSS 文本间距特性——Chromium 123+/128+ 的 text-spacing-trim（行首标点
+   * 修剪）与 text-autospace（中西文自动间距）默认开启会让 DOM 行宽偏离测量
+   * 行宽（测少渲染多 → 绝对定位块重叠）。纸面显式钉死「无修剪/无自动间距」，
+   * 跨 WebView 版本与测量镜像确定性对齐（镜像纪律：measure 是唯一真相）。 */
+  text-autospace: no-autospace;
+  text-spacing-trim: space-all;
 }
 
 /* 纸张颗粒（全屏极淡噪点，印刷质感——原型同款 SVG turbulence） */
@@ -1728,8 +1735,28 @@
   border: var(--rule-soft);
   border-radius: 0;
   padding: 6px;
-  pointer-events: none; /* 走查阶段只读方位感；点击跳转 V3b 接 */
   z-index: 60;
+  /* V3b 欠账接回（2026-08-30）：点击跳转——不再是只读装饰 */
+  pointer-events: auto;
+  cursor: pointer;
+  transition: border-color var(--snap);
+}
+.pp-minimap:hover {
+  border-color: var(--ink-3);
+}
+/* 空卷题字（2026-08-30）：零块流区的版心竖排占位——古籍虚卷俟补页 */
+.pp-region-empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  writing-mode: vertical-rl;
+  font-family: var(--f-song);
+  font-size: 14px;
+  letter-spacing: 0.3em;
+  color: var(--ink-4);
+  pointer-events: none;
+  user-select: none;
 }
 .pp-mm-band {
   position: absolute;

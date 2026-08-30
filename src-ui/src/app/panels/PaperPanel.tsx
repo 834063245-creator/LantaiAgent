@@ -236,25 +236,31 @@ const BlockView = memo(function BlockView({
 
 /* ── 主组件 ── */
 
-/** 小地图（D-R1-1 方位感件——全画布内容包围盒 + 视口框投影，点击跳转中心） */
+/** 小地图（D-R1-1 方位感件——全画布内容包围盒 + 视口框投影，点击跳转）。
+ * V3b 欠账接回（2026-08-30）：pointer-events 开启，点击像素反解世界坐标滑过去。 */
 function MinimapView({
   content,
   viewport,
   bottom,
+  onJump,
 }: {
   content: { x0: number; y0: number; x1: number; y1: number };
   viewport: { x0: number; y0: number; x1: number; y1: number };
   /** 创作坞实际高度（rework P3-1：minimap 底部随它定位，避免被动态变高的坞遮住） */
   bottom: number;
+  /** 点击跳转：视口中心滑到对应世界点（保 zoom） */
+  onJump: (worldX: number, worldY: number) => void;
 }) {
   const W = 128;
   const H = 96;
   const cw = Math.max(1, content.x1 - content.x0);
   const ch = Math.max(1, content.y1 - content.y0);
   const scale = Math.min((W - 8) / cw, (H - 8) / ch);
+  const offX = (W - 8 - cw * scale) / 2;
+  const offY = (H - 8 - ch * scale) / 2;
   const toMap = (x: number, y: number) => ({
-    left: 4 + (x - content.x0) * scale + (W - 8 - cw * scale) / 2,
-    top: 4 + (y - content.y0) * scale + (H - 8 - ch * scale) / 2,
+    left: 4 + (x - content.x0) * scale + offX,
+    top: 4 + (y - content.y0) * scale + offY,
   });
   const vp = {
     left: toMap(viewport.x0, viewport.y0).left,
@@ -263,7 +269,19 @@ function MinimapView({
     height: Math.max(2, (viewport.y1 - viewport.y0) * scale),
   };
   return (
-    <div className="pp-minimap" style={{ bottom: bottom + 18 }} title="小地图 · Home 键回原点">
+    <div
+      className="pp-minimap"
+      style={{ bottom: bottom + 18 }}
+      title="小地图 · 点击跳转 · Home 键回原点 · Alt+↑↓ 走块 · Alt+←→ 走卷"
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        const rect = e.currentTarget.getBoundingClientRect();
+        const mx = e.clientX - rect.left - 4 - offX;
+        const my = e.clientY - rect.top - 4 - offY;
+        onJump(content.x0 + mx / scale, content.y0 + my / scale);
+      }}
+    >
       <div className="pp-mm-viewport" style={vp} />
     </div>
   );
@@ -735,6 +753,39 @@ export function PaperPanel() {
     },
     [flyToPoint],
   );
+  /* 小地图点击跳转（V3b 欠账接回，2026-08-30）：视口中心滑到目标世界点（保 zoom）。
+   * 复用 focusRafRef——与 flyToPoint 互斥（后动取消先动），自动选中的
+   * 「运动中不判」守卫也随之生效。 */
+  const glideViewTo = useCallback(
+    (worldX: number, worldY: number) => {
+      const start = useCanvasViewStore.getState().view;
+      const target = {
+        zoom: start.zoom,
+        panX: canvasSize.w / 2 - worldX * start.zoom,
+        panY: canvasSize.h / 2 - worldY * start.zoom,
+      };
+      if (focusRafRef.current) cancelAnimationFrame(focusRafRef.current);
+      const DURATION = 240;
+      const t0 = performance.now();
+      const tick = (now: number) => {
+        const t = Math.min(1, (now - t0) / DURATION);
+        const ease = 1 - (1 - t) ** 3;
+        useCanvasViewStore.getState().setView({
+          zoom: start.zoom,
+          panX: start.panX + (target.panX - start.panX) * ease,
+          panY: start.panY + (target.panY - start.panY) * ease,
+        });
+        if (t < 1) {
+          focusRafRef.current = requestAnimationFrame(tick);
+        } else {
+          focusRafRef.current = 0;
+          useCanvasViewStore.getState().requestFocus(null);
+        }
+      };
+      focusRafRef.current = requestAnimationFrame(tick);
+    },
+    [canvasSize.w, canvasSize.h],
+  );
   const pendingFocusId = useCanvasViewStore((s) => s.pendingFocusId);
   useEffect(() => {
     if (pendingFocusId) flyToRegion(pendingFocusId);
@@ -1062,6 +1113,73 @@ export function PaperPanel() {
     [core],
   );
   activateRegionRef.current = activateRegion;
+
+  /* ── 键盘走卷（2026-08-30 中期件）：Alt+↑↓ 块间 / Alt+←→ 卷间 ──
+   * 画布对键盘党此前是黑洞。块序 = 流序（尾=最新），以「视口中心最近块」为
+   * 基准 ±1 飞行（flyToPoint 复用，目次带同款动画）；卷间 = 激活 + 飞到流区。
+   * isEditing / 命令面板打开时不抢键；preventDefault 压 WebView 的 Alt+←→ 导航。 */
+  const jumpBlock = useCallback(
+    (dir: 1 | -1) => {
+      if (!core) return;
+      const sessSt = getChatStore(core.panelId).sess.getState();
+      const active = sessSt.sessions[sessSt.activeIdx];
+      if (!active) return;
+      const region = regionsRef.current.find((r) => r.sessionId === String(active.id));
+      if (!region) return;
+      const geomById = new Map<string, FlowGeom>(region.flowGeom.map((g) => [g.id, g]));
+      const flow = region.blocks.filter((b) => b.state === 'flow' && geomById.has(b.id));
+      if (flow.length === 0) return;
+      const view = useCanvasViewStore.getState().view;
+      const centerY = viewportCenterWorld(view, canvasSize.w, canvasSize.h).y;
+      let cur = 0;
+      let best = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < flow.length; i++) {
+        const g = geomById.get(flow[i].id);
+        if (!g) continue;
+        const d = Math.abs(centerY - (g.y + g.h / 2));
+        if (d < best) {
+          best = d;
+          cur = i;
+        }
+      }
+      const target = flow[Math.min(flow.length - 1, Math.max(0, cur + dir))];
+      const g = geomById.get(target.id);
+      if (!g) return;
+      flyToPoint(region.sessionId, g.y + g.h / 2);
+    },
+    [core, flyToPoint, canvasSize.w, canvasSize.h],
+  );
+  const jumpRegion = useCallback(
+    (dir: 1 | -1) => {
+      if (!core) return;
+      const st = getChatStore(core.panelId).sess.getState();
+      if (st.sessions.length === 0) return;
+      const next = Math.min(st.sessions.length - 1, Math.max(0, st.activeIdx + dir));
+      if (next === st.activeIdx) return;
+      const target = st.sessions[next];
+      activateRegion(String(target.id));
+      flyToRegion(String(target.id));
+    },
+    [core, activateRegion, flyToRegion],
+  );
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown' && e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      if (useShellStore.getState().paletteOpen) return;
+      const el = document.activeElement;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || (el as HTMLElement).isContentEditable)) return;
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        jumpBlock(e.key === 'ArrowDown' ? 1 : -1);
+      } else {
+        e.preventDefault();
+        jumpRegion(e.key === 'ArrowRight' ? 1 : -1);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [jumpBlock, jumpRegion]);
 
   // 任何路径使活跃会话变化（显式点击/新建/摊开/恢复/自动选中）都把它登记为「最近落定值」，
   // 防止自动选中在状态刚切换后立刻拉回旧流区；同时给 800ms 手动守卫，
@@ -1594,8 +1712,8 @@ export function PaperPanel() {
           <div className="pp-topbar">
             <span className="pp-title">画布</span>
             <span className="pp-tag">兰台 · CANVAS</span>
-            <span className="pp-zoom">
-              {zoomLabel} · {totalBlocks} 块 · 已钉 {totalPinned} · 纸条 {totalStrips}
+            <span className="pp-zoom" title={`画布读数：${totalBlocks} 块 · 已钉 ${totalPinned} · 纸条 ${totalStrips}`}>
+              {zoomLabel}
             </span>
             <StatusLine />
             <button
@@ -1681,6 +1799,9 @@ export function PaperPanel() {
                         {isActive ? '活跃' : '点击激活'} · {r.blocks.length} 块
                       </span>
                     </div>
+                    {/* 空卷题字：零块流区的版心竖排占位（pointer-events none——
+                     * 点击穿透到流区背景激活） */}
+                    {r.blocks.length === 0 && <div className="pp-region-empty">此卷未落墨</div>}
                     {/* biome-ignore lint/a11y/noStaticElementInteractions: 边缘拖拽面（Stage-2 定案：无手柄条，hover 即拖拽态） */}
                     <div
                       className="pp-region-edge pp-region-edge--l"
@@ -1841,7 +1962,12 @@ export function PaperPanel() {
           </div>
 
           {/* 小地图（D-R1-1 方位感：全画布内容聚落 + 视口框 + Home 回原点） */}
-          <MinimapView content={minimap.content} viewport={minimap.viewport} bottom={composerHeight} />
+          <MinimapView
+            content={minimap.content}
+            viewport={minimap.viewport}
+            bottom={composerHeight}
+            onJump={glideViewTo}
+          />
 
           {/* 覆盖层贡献行（Stage-4）：创作坞（composer 槽）在底栏，目次带（right-edge 槽）在右缘 */}
           <div className="pp-composer-slot" ref={composerSlotRef}>

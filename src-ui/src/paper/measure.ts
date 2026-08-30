@@ -27,7 +27,7 @@ import { prettyToolArgs } from './tool-text';
  * 且 canvas 测量字体必须与渲染字体一致，具名栈两处可对齐。 */
 
 const SONG_STACK = '"EB Garamond Variable", "EB Garamond", "Noto Serif SC", "Songti SC", serif';
-const KAI_STACK = '"Ma Shan Zheng", "EB Garamond Variable", "Kaiti SC", "STKaiti", serif';
+const KAI_STACK = '"Ma Shan Zheng", "EB Garamond Variable", "Kaiti SC", "STKaiti", "KaiTi", "楷体", serif';
 const MONO_STACK = '"IBM Plex Mono", "Cascadia Code", "Consolas", monospace';
 
 /** 来文（user）：楷书 16px/1.9 朱砂深（.pp-block.pp-user .pp-body）
