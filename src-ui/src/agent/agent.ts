@@ -1430,7 +1430,11 @@ export class Agent {
 
     if (err) {
       this._sink({ kind: EventKind.Notice, level: 'error', text: `模型调用失败: ${err.message || err}` });
-      return { text: '', reasoning: '', signature: '', calls: [], usage, err };
+      // 交还已收集的 calls（不清空）：流失败时 executor 可能已实时执行部分工具
+      // （资产生成等有副作用工具），default-loop 需要真实的 calls 才能把已执行
+      // 的结果补 append 进上下文——否则 UI 已渲染、上下文无记录，Agent 下一轮
+      // 会重复执行同一任务（会话 225 事故根因：流内错误丢资产生成结果）。
+      return { text, reasoning, signature, calls, usage, err };
     }
 
     // 关闭文本流

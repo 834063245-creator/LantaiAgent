@@ -181,6 +181,40 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
       });
       if (err) {
         log.error('agent', 'stream error', { error: String(err.message || err) });
+        // 流中途失败：executor 已实时执行了部分工具（资产生成等有副作用工具），
+        // 其结果必须落进上下文——否则 UI 已渲染、session 无记录，Agent 下一轮
+        // 会重复执行同一任务（会话 225 事故根因：流内错误丢资产生成结果）。
+        // 先把已分发的工具调用与结果补 append 进 session，再抛 err 交上层处理。
+        if (calls.length > 0) {
+          log.info('agent', 'stream error: preserving executed tool results', {
+            calls: calls.map((c) => c.name),
+            error: String(err.message || err),
+          });
+          host.appendMessage('assistant/text', {
+            role: 'assistant',
+            content: text,
+            reasoning_content: reasoning,
+            reasoning_signature: signature,
+            tool_calls: calls,
+          });
+          for (const call of calls) {
+            host.sessionLog.append('tool/call', { call });
+          }
+          const pendingResults = await executor.awaitRemaining();
+          const resultsByCallId = new Map(pendingResults.map((r) => [r.call.id, r]));
+          for (const call of calls) {
+            const r = resultsByCallId.get(call.id);
+            const content = r
+              ? r.output || `(工具 ${call.name} 执行成功，无输出)`
+              : `error: tool "${call.name}" did not produce a result`;
+            host.appendMessage('tool/result', {
+              role: 'tool',
+              content,
+              tool_call_id: call.id,
+              name: call.name,
+            });
+          }
+        }
         throw err;
       }
 
