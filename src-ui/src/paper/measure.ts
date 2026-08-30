@@ -110,6 +110,19 @@ export const FOLD_ROW_H = 20;
 export const PRE_MAX_H = 260;
 export const OUT_MAX_H = 160;
 
+/* ── 程文（code）专属镜像常量——.pp-code-src / .pp-code .pp-out 与脚注族不同款 ──
+ * 2026-08-30 溢出修复：旧测量按整宽 + PRE_MAX_H 260 + 零内距，而 CSS 实况是
+ * 17px 横向内缩 + 20px 纵向内距 + max-height 320 → 展开后 DOM 恒高于测高，
+ * 下一块压字（用户报「程文展开后文字溢出」的根因）。 */
+/** .pp-code-src 横向内缩 = border-left 3 + padding-left 14。 */
+export const CODE_SRC_INSET = 17;
+/** .pp-code-src 纵向内距 = padding 10×2（box-sizing border-box，max-height 内扣）。 */
+export const CODE_SRC_PAD_V = 20;
+/** .pp-code-src max-height（内容预算 = 320 - 20 内距）。 */
+export const CODE_SRC_MAX_H = 320;
+/** .pp-code .pp-out max-height 200（脚注族是 160）——文本内容预算 = 200 - padding-top 6 - border-top 1。 */
+export const CODE_OUT_TEXT_MAX = 193;
+
 /* ── per-kind chrome 常量（逐字镜像 PaperPanel.css 的 padding/border/margin）── */
 const USER_TEXT_INSET = 20; // padding-left 18 + border-left 2
 /** asterism（B1）：来文尾三星高度 = margin-top 30 + 字行 14（line-height 1）。 */
@@ -182,6 +195,17 @@ interface PayloadLike {
 function cappedH(text: string, width: number, font: string, lineHeight: number, maxH: number): number {
   if (!text) return 0;
   return Math.min(maxH, measureTextHeight(text, width, font, lineHeight));
+}
+
+/** 程文程序体高（.pp-code-src 逐字镜像）：文本宽 = w - 17 内缩；
+ * DOM 高 = min(textH, 320 内容预算 300) + 20 纵向内距（overflow:auto 截断部分不占高）。 */
+function codeSrcH(text: string, w: number): number {
+  if (!text) return 0;
+  const contentH = Math.min(
+    measureTextHeight(text, Math.max(80, w - CODE_SRC_INSET), PAPER_TOOL_FONT, PAPER_TOOL_LINE_HEIGHT),
+    CODE_SRC_MAX_H - CODE_SRC_PAD_V,
+  );
+  return contentH + CODE_SRC_PAD_V;
 }
 
 /* ── markdown 块测量（渲染 MarkdownBody 的逐字镜像——消费同一 parseMarkdown 模型）── */
@@ -324,19 +348,15 @@ export function measureBlockHeight(b: SourcedBlock, folded = false): number {
     case 'code': {
       // 与 tool 同构的封顶测量（P2-A）：程序体 + 输出 + 错误三段。
       // 折叠态收程序体、留输出/错误（执行结果一眼可见——与脚注折叠的差异面）。
-      const codeH = folded
-        ? 0
-        : cappedH(
-            (b.payload as { code?: string }).code ?? p.args ?? '',
-            b.w,
-            PAPER_TOOL_FONT,
-            PAPER_TOOL_LINE_HEIGHT,
-            PRE_MAX_H,
-          );
+      // 2026-08-30 溢出修复：程序体走 .pp-code-src 专属镜像（内缩/内距/320 封顶），
+      // 输出/错误走 .pp-code .pp-out 的 200 上限（脚注族 160 不同款）。
+      const codeH = folded ? 0 : codeSrcH((b.payload as { code?: string }).code ?? p.args ?? '', b.w);
       const outH = p.output
-        ? OUT_CHROME_H + cappedH(p.output, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, OUT_MAX_H)
+        ? OUT_CHROME_H + cappedH(p.output, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, CODE_OUT_TEXT_MAX)
         : 0;
-      const errH = p.err ? OUT_CHROME_H + cappedH(p.err, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, OUT_MAX_H) : 0;
+      const errH = p.err
+        ? OUT_CHROME_H + cappedH(p.err, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, CODE_OUT_TEXT_MAX)
+        : 0;
       return TOOL_PAD_TOP + FOLD_ROW_H + codeH + outH + errH;
     }
     case 'plan': {

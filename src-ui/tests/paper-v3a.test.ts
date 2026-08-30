@@ -21,6 +21,8 @@ import { createBlock, DEFAULT_BLOCK_WIDTH, resetBlockIdCounterForTests } from '.
 import { layoutFlow, panBy, viewForAnchor, zoomAt } from '../src/paper/canvas-math';
 import { composerSubmitOnKey } from '../src/paper/ime';
 import {
+  CODE_OUT_TEXT_MAX,
+  CODE_SRC_MAX_H,
   clearPaperMeasureCache,
   createBlockMeasureCache,
   FOLD_ROW_H,
@@ -161,6 +163,18 @@ describe('paper/measure', () => {
     });
     // args 为空走零成本路径；折叠行 20 + output 截断后 +13 chrome，加顶距 10
     expect(measureBlockHeight(tool)).toBe(10 + FOLD_ROW_H + OUT_MAX_H + 13);
+    // 超长程文（2026-08-30 溢出修复钉值）：程序体内容预算 320-20 内距、文本宽
+    // w-17 内缩；输出截断到 193（.pp-code .pp-out 200 - padding 6 - border 1）
+    layoutMock.mockReturnValueOnce({ height: 9999, lineCount: 999 });
+    layoutMock.mockReturnValueOnce({ height: 9999, lineCount: 999 });
+    const code = block('code', {
+      toolId: 't',
+      description: 'd',
+      code: 'x'.repeat(1000),
+      status: 'done',
+      output: 'y'.repeat(1000),
+    });
+    expect(measureBlockHeight(code)).toBe(10 + FOLD_ROW_H + CODE_SRC_MAX_H + 13 + CODE_OUT_TEXT_MAX);
     expect(layoutMock).toHaveBeenCalled();
   });
 

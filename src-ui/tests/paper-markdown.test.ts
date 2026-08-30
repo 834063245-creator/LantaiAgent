@@ -180,7 +180,8 @@ describe('paper/measure — 折叠态计高', () => {
 
   it('程文：折叠收程序体、留输出/错误（执行结果可见——与脚注的差异面）', () => {
     const b = block('code', { toolId: 't', description: 'd', code: 'c', status: 'done', output: 'o', err: 'e' });
-    expect(measureBlockHeight(b, false)).toBe(10 + FOLD_ROW_H + 36 + 49 + 49);
+    // 56 = 36 文本 + 20 程序体纵向内距（.pp-code-src 内距镜像，2026-08-30 溢出修复）
+    expect(measureBlockHeight(b, false)).toBe(10 + FOLD_ROW_H + 56 + 49 + 49);
     expect(measureBlockHeight(b, true)).toBe(10 + FOLD_ROW_H + 49 + 49);
   });
 
