@@ -74,7 +74,8 @@ describe('领域工具参数 schema（DeepSeek 严格校验回归）', () => {
     expect(params.anyOf).toBeUndefined();
     expect(params.properties.action).toMatchObject({ type: 'string', enum: ['read', 'write', 'list'] });
     expect(params.required).toEqual(['action']);
-    for (const key of ['filePath', 'content', 'path']) {
+    // tool-ergonomics T-1：fs 可见面同义路径键归一（filePath/projectPath → path）
+    for (const key of ['path', 'content']) {
       expect(params.properties[key]).toBeTruthy();
     }
   });

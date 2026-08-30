@@ -22,15 +22,15 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 | [`show_asset`](#show_asset) | ✓ | — | Create a visual asset block in the conversation (chart/table/metric/graph/html...) rendered as a component. Use for any deliverable that benefits from spatial layout or needs to be referred/updated later (charts, tables, impact graphs, metric dashboards, SVG/HTML cards). The block enters the chat flow and can be pinned to the canvas by the user. Kinds and their payload schemas are listed by list_block_kinds; presentation selects the visual form within the kind white-list (omit for the default). Check list_block_kinds before your first call. |
 | [`update_asset`](#update_asset) | ✓ | — | Update an existing asset block in-place by assetId (payload/presentation replace; the block id and pin position keep unchanged — pinned copies update live). Rules: kind is NOT changeable (changing semantics means creating a new asset with show_asset); presentation is changeable (skin swap, within the same kind white-list). Errors name what went wrong and what to do instead. |
 | [`list_block_kinds`](#list_block_kinds) | ✓ | — | List all available asset block kinds with their payload JSON Schema, presentation white-lists, and streaming mode. Call before show_asset to learn what you can generate and how the payload must be shaped; the list reflects the live registry (plugin-contributed kinds appear automatically). |
-| [`fs`](#fs) | — | 11 | File-system operations: read / write / edit / list / glob / mkdir / move / rename / delete / constraints / write_constraints. Use fs(read) to inspect files, fs(write)/fs(edit) to modify them. fs(constraints) reads hologram.constraints.yaml; fs(write_constraints) replaces it (read first — extend existing rules rather than dropping them). |
+| [`fs`](#fs) | — | 11 | File-system operations: read / write / edit / list / glob / mkdir / move / rename / delete / constraints / write_constraints. Use fs(read) to inspect files, fs(write)/fs(edit) to modify them. fs(constraints) reads hologram.constraints.yaml; fs(write_constraints) replaces it (read first — extend existing rules rather than dropping them). Path params accept workspace-root-relative paths (e.g. "src/agent/tool.ts"); fs(list)/fs(glob)/fs(constraints) may omit the path — omitted = the workspace root. fs(read)/fs(edit) may also omit the path — omitted = the file from your most recent fs(read)/fs(edit) (results end with a [file: ...] line showing where you landed). |
 | [`shell`](#shell) | — | 4 | Shell execution: run (build/test commands only, bundled bash by default; interpreter:"pwsh" ONLY for Windows-native tasks like registry/ACL/MSI/COM/WMI), plus output / wait / kill for background jobs. Working directory is sticky per agent (a successful cd persists across calls; results end with a [cwd: ...] line). bash_output returns only NEW bytes since your last read — polling watch modes/dev servers is cheap. Do NOT use shell(run) for file search, code search, or git — use fs/search/git instead. |
-| [`git`](#git) | — | 13 | Git operations: status / diff / log / stage / commit / push / pull / checkout / branch / stash / unstash / discard / init / blame. |
-| [`search`](#search) | ✓ | 1 | Search source text across files: content matches, file lists, or match counts. |
+| [`git`](#git) | — | 13 | Git operations: status / diff / log / stage / commit / push / pull / checkout / branch / stash / unstash / discard / init / blame. path may be omitted for every action — omitted = the workspace root. |
+| [`search`](#search) | ✓ | 1 | Search source text across files: content matches, file lists, or match counts. directory may be omitted — omitted = the workspace root. |
 | [`web`](#web) | ✓ | 1 | Fetch a URL and return readable text (documentation, API responses, raw files). |
 | [`agent`](#agent) | — | 7 | Sub-agent and inter-agent coordination: spawn / status / kill / message / request / reply / inbox / ack / list / merge / discover / lookup / isolation. 委派：agent(spawn) 阻塞到子 Agent 完成，结果即工具返回；同轮发多个可并行。短任务（<1min）用同步 spawn；长任务或互不依赖的并行用 async=true（立即返回 agentId，完成后 result 消息进 inbox——agent(ack) 确认后 agent(merge) 合并）。异步最多 5 并发，池满先 agent(merge) 清理已完成的。 写类任务必须给每个子 Agent 不重叠的文件范围：fork 模式（worktree 隔离，靠 agent(merge) 合并回来）；读/检查类用 fresh 模式（直接改主工作区）。大任务切细、子 Agent 的 prompt 精简、别自己包揽子任务。 agent(merge) 串行合并已完成的 worktree，冲突存为 diff 由你手动应用；合并不可逆，先确认子 Agent 工作无误。 agent(message) 即发（30 分钟过期）；agent(request) 阻塞等回复（30s 默认、最大 120s）。 agent(discover) 发布发现（architecture/bug/pattern/config），agent(lookup) 查他人发现，最新发现每轮自动注入。 |
 | [`task`](#task) | — | 5 | Task board: create / get / list / update / stop / board. |
 | [`browser`](#browser) | — | 39 | Browser control: launch a controlled Chrome/Edge (isolated profile; headless/windowSize/profile/proxy supported), connect to a user-started debug-port browser instance, list/switch isolated account sessions (multi-account), list/attach/switch tabs (new_tab/close_tab), navigate/back/forward/reload, snapshot interactive elements (AX tree preferred, iframe/shadow+accessible-name fallback; ref-based ops), extract page content (text/markdown), inspect/report visual state, read console/network events (paired by requestId) + single request detail + HAR export, manage cookies (list/set/delete), screenshot (fullPage/inline), audit log, and operate (click/hover/type/select/upload/dialog/press with modifiers/scroll/viewport/eval). target="self" = 兰台 webview 只读会话（inspect/report/snapshot/content/console/network/network_detail/network_har/screenshot/status 支持）；省略 target = 已 attach 的外部页面。交互范式：先 snapshot 拿 ref 编号，操作按 ref 引用（不要手写 CSS selector）；操作自带等待与反馈；敏感目标每次单独确认。attach 用 targetId（来自 browser(targets) 的 CDP target id）。connect 连接用户已启动的浏览器实例（端口由用户提供，或先 discover 选择），操作其真实数据；kill 只断开不杀该进程。多账号：browser(launch, profile:"work") 创建独立持久登录态，browser(switch_session,"work") 切换，browser(sessions) 查看；不同 profile 的 cookie/登录态完全隔离。用户没给端口时先 discover 列实例让用户选（进程表查询，用户无需知道端口号）。 |
-| [`desktop`](#desktop) | — | 18 | Windows desktop control (in-process UIA COM, millisecond-latency): probe process tree + windows with channel routing advice (cdp/uia/vision per window), read a window control tree (interactive-only by default, paginated), find/read controls, and operate them by ref or selector (click/type/select/expand/scroll/keys/activate). Write actions return world-change feedback (title/focus/value/toggle before→after). Permission model: first takeover of a window asks once (then pattern actions flow); sensitive targets and physical input (coordinate clicks/SendKeys/wheel) always ask separately; a global input lease serializes physical injection across agents. desktop(audit) reviews what was done. desktop(screenshot) is high-privacy and asks every time. Self-drawn apps (WeChat/QQ/DingTalk) expose empty trees — use desktop(uia_window_shot) + vision instead. |
+| [`desktop`](#desktop) | — | 18 | Windows desktop control (in-process UIA COM, millisecond-latency): probe process tree + windows with channel routing advice (cdp/uia/vision per window), read a window control tree (interactive-only by default, paginated), find/read controls, and operate them by ref or selector (click/type/select/expand/scroll/keys/activate). Write actions return world-change feedback (title/focus/value/toggle before→after). Permission model: first takeover of a window asks once (then pattern actions flow); sensitive targets and physical input (coordinate clicks/SendKeys/wheel) always ask separately; a global input lease serializes physical injection across agents. desktop(audit) reviews what was done. desktop(screenshot) is high-privacy and asks every time. Self-drawn apps (WeChat/QQ/DingTalk) expose empty trees — use desktop(uia_window_shot) + vision instead. Locator params (hwnd/pid/title) may be omitted on uia_* actions — omitted = the focused window (set by your last explicit locator or uia_activate). |
 | [`graph`](#graph) | — | 27 | 依赖图查询与分析（27 语言 AST + 符号级引用边）。**改代码前先问图**：定位符号、评估影响面、判断架构都走这里，grep 只能看到文本，图能看到结构。答案带 ⚠️ staleness 横幅 = 图数据落后于当前文件——小改直接读文件确认，大改先 ops(analyze) 刷新；图查不到再退回 search/grep 文本兜底。symbols 搜符号（「XX 在哪」）; semantic 语义检索（向量索引，按含义找符号——不知道确切名字时用，如「内存在哪释放」）; neighbors 谁依赖谁(1跳)（「这个模块被谁依赖」）; impact 改某文件的影响面（改前必查）; path 两符号间依赖路径; inspect 单符号全景; explore 自然语言探索依赖; community 模块所属社区; clusters 全局社区地图; summary 图统计+解析率+SCIP 新鲜度; cycles 循环依赖; coupling 单模块耦合画像(L1-L4); fragile 脆弱模块排名; blindspots 架构盲点; boundaries 边界违规; conflicts 线程冲突; async 异步/时序边; unused 死代码; flows 数据流列表; flow 单条数据流; affected_flows 受影响数据流; dataflow 变量使用统计(语法级,非污点); preflight 改前预检(改文件前必须); grpc gRPC 服务映射; diff 与基线图对比; dataflow_save 保存数据流追踪结果（供面板查看，写动作）; dataflow_query 查询已保存的数据流。 |
 | [`ops`](#ops) | — | 7 | 工程操作与状态：analyze 全量重分析（慢，后台跑）; validate 全约束校验; health 项目健康快照; status 引擎状态（含工具调用计数/向量索引/LSP）; timeline 审计日志; rename 符号重命名; import_scip 导入 SCIP 索引提升符号级引用精度。 |
 | [`lsp`](#lsp) | ✓ | 4 | 语言服务器精确解析（按需启动）：resolve_call 解析调用点的真实定义; infer_type 推断符号类型; implementations 找接口实现; references 找全部引用点。graph 查不到或需要类型级答案时用。 |
@@ -98,7 +98,7 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 
 ### `fs`
 
-> File-system operations: read / write / edit / list / glob / mkdir / move / rename / delete / constraints / write_constraints. Use fs(read) to inspect files, fs(write)/fs(edit) to modify them. fs(constraints) reads hologram.constraints.yaml; fs(write_constraints) replaces it (read first — extend existing rules rather than dropping them).
+> File-system operations: read / write / edit / list / glob / mkdir / move / rename / delete / constraints / write_constraints. Use fs(read) to inspect files, fs(write)/fs(edit) to modify them. fs(constraints) reads hologram.constraints.yaml; fs(write_constraints) replaces it (read first — extend existing rules rather than dropping them). Path params accept workspace-root-relative paths (e.g. "src/agent/tool.ts"); fs(list)/fs(glob)/fs(constraints) may omit the path — omitted = the workspace root. fs(read)/fs(edit) may also omit the path — omitted = the file from your most recent fs(read)/fs(edit) (results end with a [file: ...] line showing where you landed).
 
 - 只读：否
 - 域：`fs`
@@ -108,7 +108,7 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 | 参数 | 必选 | 类型 | 说明 |
 |------|------|------|------|
 | `action` | ✓ | string（枚举见 action 表/描述） | Which operation to perform. |
-| `filePath` | — | string | Absolute path to the file to read (action: read); Absolute path to the file to create or overwrite (action: write); Absolute path to the file to modify (action: edit) |
+| `path` | — | string | Target path. Relative paths resolve against the workspace root; where the action allows omitting it, omitted = the workspace root. |
 | `offset` | — | integer | Line number to start reading from (0-indexed, default: 0) |
 | `limit` | — | integer | Maximum number of lines to return (default: all lines) |
 | `content` | — | string | Full file content to write (action: write); Full YAML content to write (action: write_constraints) |
@@ -116,12 +116,10 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 | `oldString` | — | string | The exact text to find and replace (must match the file exactly, including whitespace) |
 | `newString` | — | string | The text to replace it with (must be different from oldString) |
 | `replaceAll` | — | boolean | Replace all occurrences instead of just the first (default: false). Use when the old_string appears multiple times. |
-| `path` | — | string | Absolute path to the directory to list (action: list); Directory to search in. Defaults to the current workspace root. (action: glob); Absolute path to the directory to create (action: mkdir); Absolute path to the file/directory to rename (action: rename); Absolute path to the file or directory to delete (action: delete) |
 | `pattern` | — | string | Glob pattern to match file paths against (e.g. "**/*.rs", "src/**/agent*.ts", "*.json") |
 | `from` | — | string | Source path |
 | `to` | — | string | Destination path |
 | `new_name` | — | string | New name (not path, just the name) |
-| `projectPath` | — | string | Project root directory path (action: constraints); Project root directory path (action: write_constraints) |
 
 ### `shell`
 
@@ -144,7 +142,7 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 
 ### `git`
 
-> Git operations: status / diff / log / stage / commit / push / pull / checkout / branch / stash / unstash / discard / init / blame.
+> Git operations: status / diff / log / stage / commit / push / pull / checkout / branch / stash / unstash / discard / init / blame. path may be omitted for every action — omitted = the workspace root.
 
 - 只读：否
 - 域：`git`
@@ -154,7 +152,7 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 | 参数 | 必选 | 类型 | 说明 |
 |------|------|------|------|
 | `action` | ✓ | string（枚举见 action 表/描述） | Which operation to perform. |
-| `path` | — | string | Absolute path to the git repository root (action: status); Absolute path to the git repository root (action: diff); Absolute path to the git repository root (action: log); Absolute path to the git repository root (action: stage); Absolute path to the git repository root (action: commit); Absolute path to the git repository root (action: push); Absolute path to the git repository root (action: pull); Absolute path to the git repository (action: checkout); Absolute path to the git repository (action: branch); Absolute path to the git repository (action: stash); Absolute path to the git repository (action: unstash); Absolute path to the git repository (action: discard); Absolute path to the directory (action: init) |
+| `path` | — | string | Target path. Relative paths resolve against the workspace root; where the action allows omitting it, omitted = the workspace root. |
 | `file` | — | string | Optional: specific file to diff. If omitted, shows all unstaged changes. (action: diff); File path to discard changes for (relative to repo root) (action: discard) |
 | `staged` | — | boolean | Set to true to show staged changes instead of unstaged |
 | `count` | — | integer | Number of recent commits to show (default: 10) |
@@ -165,7 +163,7 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 
 ### `search`
 
-> Search source text across files: content matches, file lists, or match counts.
+> Search source text across files: content matches, file lists, or match counts. directory may be omitted — omitted = the workspace root.
 
 - 只读：是
 - 域：`search`
@@ -175,7 +173,7 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 | 参数 | 必选 | 类型 | 说明 |
 |------|------|------|------|
 | `action` | ✓ | `content` | Which operation to perform. |
-| `directory` | — | string | Absolute path to the directory to search in |
+| `path` | — | string | Target path. Relative paths resolve against the workspace root; where the action allows omitting it, omitted = the workspace root. |
 | `pattern` | — | string | Text or regex pattern to search for (case-insensitive) |
 | `fileTypes` | — | string | Optional comma-separated file extensions to filter (e.g. ".ts,.py,.rs") |
 | `maxResults` | — | integer | Maximum number of results to return (default: 50, max: 200) |
@@ -300,7 +298,7 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 
 ### `desktop`
 
-> Windows desktop control (in-process UIA COM, millisecond-latency): probe process tree + windows with channel routing advice (cdp/uia/vision per window), read a window control tree (interactive-only by default, paginated), find/read controls, and operate them by ref or selector (click/type/select/expand/scroll/keys/activate). Write actions return world-change feedback (title/focus/value/toggle before→after). Permission model: first takeover of a window asks once (then pattern actions flow); sensitive targets and physical input (coordinate clicks/SendKeys/wheel) always ask separately; a global input lease serializes physical injection across agents. desktop(audit) reviews what was done. desktop(screenshot) is high-privacy and asks every time. Self-drawn apps (WeChat/QQ/DingTalk) expose empty trees — use desktop(uia_window_shot) + vision instead.
+> Windows desktop control (in-process UIA COM, millisecond-latency): probe process tree + windows with channel routing advice (cdp/uia/vision per window), read a window control tree (interactive-only by default, paginated), find/read controls, and operate them by ref or selector (click/type/select/expand/scroll/keys/activate). Write actions return world-change feedback (title/focus/value/toggle before→after). Permission model: first takeover of a window asks once (then pattern actions flow); sensitive targets and physical input (coordinate clicks/SendKeys/wheel) always ask separately; a global input lease serializes physical injection across agents. desktop(audit) reviews what was done. desktop(screenshot) is high-privacy and asks every time. Self-drawn apps (WeChat/QQ/DingTalk) expose empty trees — use desktop(uia_window_shot) + vision instead. Locator params (hwnd/pid/title) may be omitted on uia_* actions — omitted = the focused window (set by your last explicit locator or uia_activate).
 
 - 只读：否
 - 域：`desktop`

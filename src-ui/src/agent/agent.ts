@@ -61,6 +61,7 @@ import { log } from './logger';
 import { batchStormSignature, type ToolOutcome } from './loop-helpers';
 import { type PlanGate, planGateCheck } from './plan/plan-registry';
 import { backoffDelay, isRetryable, MAX_RETRIES, sleepWithAbort } from './retry';
+import { registerOwnerContext } from './session-context';
 import { SessionLog, type SessionResetReason } from './session-log';
 import type { StreamingToolExecutor } from './streaming-executor';
 import { parseAssetEventOutput } from './streaming-executor';
@@ -494,6 +495,12 @@ export class Agent {
       ctx.effect(() => () => bus.unregister(this.id), 'bus-unregister');
     }
     if (ctx.isolationId) this._isolationId = ctx.isolationId;
+    // 会话上下文注册（tool-ergonomics design-1 rev2）：owner id → 工作区根，供域工具
+    // 参数预处理腰（相对路径解析/省缺填充/焦点态）读取。child() 派生继承 projectPath
+    // → 子 Agent 自动注册；对称清理归 ctx 所有权（bus-unregister 同款纪律）。
+    if (ctx.projectPath) {
+      ctx.effect(() => registerOwnerContext(this.id, ctx.projectPath), 'session-context');
+    }
   }
 
   /** 由 workspace 在会话中途保存记忆时调用 — 排队并在

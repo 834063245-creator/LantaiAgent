@@ -1,7 +1,8 @@
 # T-2 设计件 — 会话焦点态（fs 焦点文件 + desktop 粘性窗口）rev2
 
-> 状态：**自查模式待实施**（2026-08-30 rev2；紧随 T-1 rev2 同一工程窗连续实施，两批两 commit，
-> 同窗共享 baseline freeze）。
+> 状态：**已落地（2026-08-30 rev2 当日竣工；与 T-1 同 commit、共享 baseline freeze）**。
+> 实施偏差一处：desktop 粘性窗口 fill 从 per-field 改为 **all-or-nothing**（自查缺陷 B——
+> per-field 会把不同窗口的 hwnd/title 混进同一 locator；模型给了任一定位字段即不补）。
 > **rev2 重裁记录**：rev1 把焦点态放 Rust（session_focus.rs + rpc.rs 臂接线），与 T-1
 > 同因归位错误——2026-08-30 用户质询插件化纪律后随 T-1 一并重裁。焦点态是**参数预处理
 > + 会话上下文**，归 T-1 rev2 的 per-owner 注册表（`session-context.ts`）统一承载；

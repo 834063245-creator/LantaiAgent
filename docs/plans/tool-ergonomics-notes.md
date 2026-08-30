@@ -2,12 +2,10 @@
 
 > 2026-08-30 记录。来源：用户实际使用反馈「agent 手里的工具每次使用要传的参数太多太长」，
 > 对话中深化为「工具层智能太低」的方向批评。本文是讨论记录 + 候选补丁清单。
-> **进展**：设计件两件全出 **rev2（2026-08-30 二次重裁）**——[`tool-ergonomics/design-1-context-waist.md`](tool-ergonomics/design-1-context-waist.md)
-> （JS 上下文腰：per-owner 注册表 + 相对路径/省缺填充/可见键归一）+ [`tool-ergonomics/design-2-session-focus.md`](tool-ergonomics/design-2-session-focus.md)
-> （fs 焦点文件 + desktop 粘性窗口）。rev1 原把腰放 Rust 漏斗，用户质询「插件化改造后
-> 为什么还往 Rust 写特权代码」→ 重裁：enforcement 留 Rust 不动，resolution 归 JS 平台层
-> （per-owner 注册表挂 Agent 装配期），**Rust 零改动**，provider seam 契约反而收纯。
-> 同窗连续两批实施，共享 baseline freeze。
+> **进展**：**T-1 + T-2 已落地（2026-08-30 当日实施竣工）**——rev2 归位 JS 平台层
+> （per-owner 注册表 `agent/session-context.ts` + domains.ts 参数预处理腰），Rust 零改动；
+> 门禁全绿（tsc/biome/vitest 全量/双 preset verify/doc-sync/契约文档重录），baseline
+> freeze 附带补录 56fb9285 漏掉的 minimal system-prompt 侧重录（详见 baseline-change-request.md）。
 
 ## 诊断（对着 docs/agents/model-tool-contract.md 实账）
 

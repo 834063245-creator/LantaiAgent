@@ -1,6 +1,7 @@
 # T-1 设计件 — 工具层上下文腰与参数减负（fs/git/search 三域）rev2
 
-> 状态：**自查模式待实施**（2026-08-30 rev2）。
+> 状态：**已落地（2026-08-30 rev2 当日竣工）**。实施偏差一处：coding.ts zod 未 optional 化——
+> 域可见面 required 恒为 ['action']，省缺由腰填充、旧工具 zod 必填保持即 loud 失败语义，少一面 diff。
 > **rev2 重裁记录**：rev1 把解析腰放在 Rust 漏斗（path_resolve.rs），2026-08-30 用户质询
 > 「费尽心思做了插件化改造，为什么还往 Rust 写特权代码」。重审后 rev1 归位错误成立：
 > enforcement（Rust 沙箱/权限/worktree 映射，不动）与 resolution（参数预处理，本件）

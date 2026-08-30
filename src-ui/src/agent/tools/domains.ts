@@ -7,7 +7,21 @@
 //     避免手写参数映射造成"schema key / execute key / Rust 参数名"三处漂移（见 tests/tool-param-contract.test.ts）。
 //   - execute 委托给 registry 中仍保留的旧工具（隐藏但可解析），逻辑零复制。
 //   - 旧工具通过 ToolRegistry.hide() 从 schemas() 消失，但 get() 仍可解析（防御模型幻觉旧名、保持测试兼容）。
+//   - 参数预处理腰（tool-ergonomics design-1 rev2）：fs/git/search 三域的路径语义参数
+//     在派发前做同义键归一 / 相对路径解析 / 省缺填充（per-owner 上下文，session-context.ts）；
+//     Rust 强制层零改动——腰只补全「模型可见意图」，校验仍由 Rust 漏斗原样执行。
 
+import {
+  clearFocusPath,
+  clearFocusWindow,
+  focusPathOf,
+  isAbsolutePath,
+  ownerContext,
+  resolveAgainstRoot,
+  setFocusPath,
+  setFocusWindow,
+  type WindowLocator,
+} from '../session-context';
 import type { Tool, ToolRegistry } from '../tool';
 
 interface JsonProp {
@@ -29,7 +43,69 @@ interface JsonSchema {
  * oneOf 根节点会直接 400（Invalid schema for function 'fs' ... got 'type: null'）。
  * action 为必选枚举；各动作私有参数合并为可选属性，跨动作参数在描述中标注所属动作。
  */
-function domainParametersSchema(entries: Array<[string, string]>, registry: ToolRegistry): Record<string, unknown> {
+/** path 族可见键归一映射（design-1 rev2 §2.3）：合并期把旧工具的同义路径键
+ *  折到单一 `path`（fs 的 filePath/projectPath、search 的 directory）——
+ *  模型可见面 16 键收敛，normalizeArgs 反向桥保证旧工具仍收原键。 */
+const CANONICAL_PATH_KEY: Record<string, string> = { filePath: 'path', directory: 'path', projectPath: 'path' };
+
+/** path 族共享描述（fs/git/search 三域统一；relative/省缺语义一处承载，取代逐 action 标注）。 */
+export const PATH_PARAM_DESC =
+  'Target path. Relative paths resolve against the workspace root; ' +
+  'where the action allows omitting it, omitted = the workspace root.';
+
+/** path 族语义键集合（模型输入侧 camelCase 形态；rpc 转换在后）。 */
+const PATH_FAMILY = new Set(['path', 'filePath', 'directory', 'projectPath']);
+/** 可解析相对路径的键（比 PATH_FAMILY 宽：move 的 from/to 也是路径语义）。 */
+const PATH_RESOLVE_FAMILY = new Set([...PATH_FAMILY, 'from', 'to']);
+/** 参数预处理腰的适用域（design-1 rev2 §2.1——其它域的 from/to 等是非路径语义，绝不着腰）。 */
+const PATH_WAIST_DOMAINS = new Set(['fs', 'git', 'search']);
+/** 省缺填充 = workspace root 的域（全部 action）。fs 单列（按 action 白名单）。 */
+const PATH_DEFAULT_DOMAINS = new Set(['git', 'search']);
+const PATH_DEFAULT_FS_ACTIONS = new Set(['list', 'glob', 'constraints', 'write_constraints']);
+
+/** 焦点态规格（design-2 rev2）：set = 成功后设焦；fill = 省缺时从焦点填充。
+ *  desktop 粘性窗口为 all-or-nothing 填充（模型给了任一定位字段即不补——
+ *  per-field 会把不同窗口的 hwnd/title 混进同一 locator，自查缺陷 B）。 */
+interface FocusSpec {
+  kind: 'path' | 'window';
+  set: ReadonlySet<string>;
+  fill: ReadonlySet<string>;
+}
+const DESKTOP_WINDOW_ACTIONS: ReadonlySet<string> = new Set([
+  'uia_tree',
+  'uia_find',
+  'uia_read',
+  'uia_wait',
+  'uia_click',
+  'uia_right_click',
+  'uia_type',
+  'uia_select',
+  'uia_expand',
+  'uia_scroll',
+  'uia_keys',
+  'uia_activate',
+  'uia_fill',
+  'uia_window_shot',
+]);
+const FOCUS_SPECS: Record<string, FocusSpec> = {
+  fs: { kind: 'path', set: new Set(['read', 'write', 'edit']), fill: new Set(['read', 'edit']) },
+  desktop: { kind: 'window', set: DESKTOP_WINDOW_ACTIONS, fill: DESKTOP_WINDOW_ACTIONS },
+};
+
+/** 显式窗口定位参数提取（三字段全空 = 无显式定位）。 */
+function explicitWindowLocator(args: Record<string, unknown>): WindowLocator | undefined {
+  const hwnd = typeof args.hwnd === 'number' ? args.hwnd : undefined;
+  const pid = typeof args.pid === 'number' ? args.pid : undefined;
+  const title = typeof args.title === 'string' && args.title !== '' ? args.title : undefined;
+  if (hwnd === undefined && pid === undefined && title === undefined) return undefined;
+  return { hwnd, pid, title };
+}
+
+function domainParametersSchema(
+  entries: Array<[string, string]>,
+  registry: ToolRegistry,
+  pathKeyDesc?: string,
+): Record<string, unknown> {
   const properties: Record<string, unknown> = {
     action: {
       type: 'string',
@@ -43,8 +119,9 @@ function domainParametersSchema(entries: Array<[string, string]>, registry: Tool
     const old = registry.get(oldName);
     if (!old) continue;
     const oldSchema = (old.parameters() ?? {}) as JsonSchema;
-    for (const [key, rawProp] of Object.entries(oldSchema.properties ?? {})) {
-      if (key === 'action') continue; // 保留域判别字段，避免旧工具参数覆盖
+    for (const [rawKey, rawProp] of Object.entries(oldSchema.properties ?? {})) {
+      if (rawKey === 'action') continue; // 保留域判别字段，避免旧工具参数覆盖
+      const key = CANONICAL_PATH_KEY[rawKey] ?? rawKey;
       const prop = rawProp as JsonProp;
       const list = sources.get(key);
       if (list) list.push({ action, prop });
@@ -55,7 +132,9 @@ function domainParametersSchema(entries: Array<[string, string]>, registry: Tool
   for (const [key, list] of sources) {
     const merged: JsonProp = { ...list[0].prop };
     const described = list.filter((s) => s.prop.description);
-    if (described.length === 1) {
+    if (key === 'path' && pathKeyDesc) {
+      merged.description = pathKeyDesc;
+    } else if (described.length === 1) {
       merged.description = described[0].prop.description;
     } else if (described.length > 1) {
       merged.description = described.map((s) => `${s.prop.description} (action: ${s.action})`).join('; ');
@@ -66,12 +145,72 @@ function domainParametersSchema(entries: Array<[string, string]>, registry: Tool
   return { type: 'object', properties, required: ['action'] };
 }
 
-/** 领域扁平 schema 的参数名归一：模型常混用 filePath/path/projectPath 等常见键。
- *  按旧工具的必填参数补齐（例如 fs(delete, filePath) → delete_file 的 path）。 */
-export function normalizeArgs(old: Tool, rest: Record<string, unknown>): Record<string, unknown> {
+/** 参数预处理腰的上下文（design-1 rev2 §2.3）。 */
+export interface NormalizePathCtx {
+  /** owner id（executor 注入的 _owner_id/_agent_id）——per-owner 上下文查键。 */
+  ownerId?: string;
+  /** 该 action 的 path 族参数省缺时填充 workspace root（git 全族/search/fs 白名单）。 */
+  defaultPathToRoot?: boolean;
+}
+
+/** 老工具唯一的 path 族键（恰一个时返回；from/to 等多键工具返回 undefined）。 */
+function oldSinglePathKey(old: Tool): string | undefined {
+  const props = ((old.parameters() ?? {}) as JsonSchema).properties ?? {};
+  const keys = Object.keys(props).filter((k) => PATH_FAMILY.has(k));
+  return keys.length === 1 ? keys[0] : undefined;
+}
+
+/**
+ * 领域扁平 schema 的参数预处理腰：
+ * ① path 族同义键归一——老工具恰有一个 path 族键时，模型带来的其它同义键
+ *    （path/filePath/directory/projectPath）改写到它；from/to 等多键工具跳过归一。
+ * ② 省缺填充——role=resolve+default 的 action 缺 path 时填 workspace root；
+ *    无注册上下文时不填（旧工具 zod/req_str loudly 报错，绝不静默兜底）。
+ * ③ 相对解析——路径语义键（含 move 的 from/to）的相对值对 workspace root 纯 join
+ *    （`..` 原样保留，穿越由 Rust 沙箱拒绝）；绝对路径原样透传。
+ * ④ 既有 required 别名桥（newName/new_name 等）——保留兜底。
+ * 旧工具 schema 键名零改动；仅 fs/git/search 三域着腰（pathWaist）。
+ */
+export function normalizeArgs(
+  old: Tool,
+  rest: Record<string, unknown>,
+  pathCtx?: NormalizePathCtx & { pathWaist?: boolean },
+): Record<string, unknown> {
   const schema = (old.parameters() ?? {}) as JsonSchema;
   const required = (schema.required ?? []) as string[];
   const out = { ...rest };
+
+  if (pathCtx?.pathWaist) {
+    const root = ownerContext(pathCtx.ownerId)?.workspaceRoot;
+    const pathKey = oldSinglePathKey(old);
+
+    // ① 同义键归一（单 path 键工具）
+    if (pathKey) {
+      for (const k of Object.keys(out)) {
+        if (k === pathKey || !PATH_FAMILY.has(k) || out[k] === undefined) continue;
+        if (out[pathKey] === undefined) {
+          out[pathKey] = out[k];
+          delete out[k];
+        }
+      }
+    }
+
+    // ② 省缺填充（workspace root）
+    if (pathKey && pathCtx.defaultPathToRoot && out[pathKey] === undefined && root) {
+      out[pathKey] = root;
+    }
+
+    // ③ 相对解析（from/to 等宽族；`..` 不规范化）
+    if (root) {
+      for (const k of Object.keys(out)) {
+        const v = out[k];
+        if (PATH_RESOLVE_FAMILY.has(k) && typeof v === 'string' && v !== '' && !isAbsolutePath(v)) {
+          out[k] = resolveAgainstRoot(root, v);
+        }
+      }
+    }
+  }
+
   const aliasMap: Record<string, string[]> = {
     filePath: ['path', 'file_path'],
     path: ['filePath'],
@@ -105,7 +244,9 @@ export const DOMAIN_SPECS: DomainSpec[] = [
     description:
       'File-system operations: read / write / edit / list / glob / mkdir / move / rename / delete / constraints / write_constraints. ' +
       'Use fs(read) to inspect files, fs(write)/fs(edit) to modify them. ' +
-      'fs(constraints) reads hologram.constraints.yaml; fs(write_constraints) replaces it (read first — extend existing rules rather than dropping them).',
+      'fs(constraints) reads hologram.constraints.yaml; fs(write_constraints) replaces it (read first — extend existing rules rather than dropping them). ' +
+      'Path params accept workspace-root-relative paths (e.g. "src/agent/tool.ts"); fs(list)/fs(glob)/fs(constraints) may omit the path — omitted = the workspace root. ' +
+      'fs(read)/fs(edit) may also omit the path — omitted = the file from your most recent fs(read)/fs(edit) (results end with a [file: ...] line showing where you landed).',
     actions: {
       read: 'read_file_content',
       write: 'write_file',
@@ -137,7 +278,8 @@ export const DOMAIN_SPECS: DomainSpec[] = [
   {
     name: 'git',
     description:
-      'Git operations: status / diff / log / stage / commit / push / pull / checkout / branch / stash / unstash / discard / init / blame.',
+      'Git operations: status / diff / log / stage / commit / push / pull / checkout / branch / stash / unstash / discard / init / blame. ' +
+      'path may be omitted for every action — omitted = the workspace root.',
     actions: {
       status: 'git_status',
       diff: 'git_diff',
@@ -157,7 +299,8 @@ export const DOMAIN_SPECS: DomainSpec[] = [
   },
   {
     name: 'search',
-    description: 'Search source text across files: content matches, file lists, or match counts.',
+    description:
+      'Search source text across files: content matches, file lists, or match counts. directory may be omitted — omitted = the workspace root.',
     actions: {
       content: 'search_content',
     },
@@ -285,7 +428,8 @@ export const DOMAIN_SPECS: DomainSpec[] = [
       'Permission model: first takeover of a window asks once (then pattern actions flow); sensitive targets and physical input ' +
       '(coordinate clicks/SendKeys/wheel) always ask separately; a global input lease serializes physical injection across agents. ' +
       'desktop(audit) reviews what was done. desktop(screenshot) is high-privacy and asks every time. ' +
-      'Self-drawn apps (WeChat/QQ/DingTalk) expose empty trees — use desktop(uia_window_shot) + vision instead.',
+      'Self-drawn apps (WeChat/QQ/DingTalk) expose empty trees — use desktop(uia_window_shot) + vision instead. ' +
+      'Locator params (hwnd/pid/title) may be omitted on uia_* actions — omitted = the focused window (set by your last explicit locator or uia_activate).',
     actions: {
       probe: 'desktop_probe',
       screenshot: 'desktop_screenshot',
@@ -387,7 +531,8 @@ function buildDomainTool(registry: ToolRegistry, spec: DomainSpec): Tool | null 
   const entries = Object.entries(spec.actions).filter(([, oldName]) => registry.get(oldName) !== undefined);
   if (entries.length === 0) return null;
 
-  const parameters = domainParametersSchema(entries, registry);
+  const pathWaist = PATH_WAIST_DOMAINS.has(spec.name);
+  const parameters = domainParametersSchema(entries, registry, pathWaist ? PATH_PARAM_DESC : undefined);
   // entries 已过滤出注册表存在的旧名；readOnly 经可选链安全求值
   const readOnlyActions = entries.filter(([, oldName]) => registry.get(oldName)?.readOnly() === true).map(([a]) => a);
 
@@ -408,8 +553,71 @@ function buildDomainTool(registry: ToolRegistry, spec: DomainSpec): Tool | null 
         return `[${spec.name}] unsupported action "${String(action)}". Available actions: ${available}`;
       }
       const { action: _action, ...rest } = args;
-      // signal 透传 — shell 链路的 abort 取消依赖它（取消排队/终止进程）
-      return old.execute(normalizeArgs(old, rest), onProgress, signal);
+      // 参数预处理腰（design-1 rev2）：per-owner 相对解析 + 省缺填充。
+      // owner 身份 = executor 注入的 _owner_id（缺失回退 _agent_id——fork 子 Agent）。
+      const a = rest as { _owner_id?: unknown; _agent_id?: unknown };
+      const ownerId =
+        typeof a._owner_id === 'string' ? a._owner_id : typeof a._agent_id === 'string' ? a._agent_id : undefined;
+      const isAction = typeof action === 'string' ? action : '';
+      const pathCtx = pathWaist
+        ? {
+            ownerId,
+            pathWaist: true,
+            defaultPathToRoot:
+              PATH_DEFAULT_DOMAINS.has(spec.name) || (spec.name === 'fs' && PATH_DEFAULT_FS_ACTIONS.has(isAction)),
+          }
+        : undefined;
+      const out = normalizeArgs(old, rest, pathCtx);
+
+      // 焦点态（design-2 rev2）：fill → 派发 → set/回显；fill 后派发失败 → 自愈清焦
+      // （错清成本 = 一次重读/重定位；不清成本 = 反复踩死路径）。
+      const focus = FOCUS_SPECS[spec.name];
+      let filledFromFocus = false;
+      if (focus && ownerId && focus.fill.has(isAction)) {
+        if (focus.kind === 'path') {
+          const pathKey = oldSinglePathKey(old);
+          if (pathKey && out[pathKey] === undefined) {
+            const fp = focusPathOf(ownerId);
+            if (fp !== undefined) {
+              out[pathKey] = fp;
+              filledFromFocus = true;
+            }
+          }
+        } else if (out.hwnd === undefined && out.pid === undefined && out.title === undefined) {
+          const w = ownerContext(ownerId)?.focusWindow;
+          if (w) {
+            if (w.hwnd !== undefined) out.hwnd = w.hwnd;
+            if (w.pid !== undefined) out.pid = w.pid;
+            if (w.title !== undefined) out.title = w.title;
+            filledFromFocus = w.hwnd !== undefined || w.pid !== undefined || w.title !== undefined;
+          }
+        }
+      }
+
+      try {
+        const result = await old.execute(out, onProgress, signal);
+        if (focus && ownerId && focus.set.has(isAction)) {
+          if (focus.kind === 'path') {
+            const pathKey = oldSinglePathKey(old);
+            const v = pathKey ? out[pathKey] : undefined;
+            if (pathKey && typeof v === 'string' && v !== '') {
+              setFocusPath(ownerId, v);
+              // 回显（shell `[cwd: ...]` 行先例）：每步落点模型可见
+              return `${result}\n[file: ${v}]`;
+            }
+          } else {
+            const loc = explicitWindowLocator(out);
+            if (loc) setFocusWindow(ownerId, loc);
+          }
+        }
+        return result;
+      } catch (e) {
+        if (filledFromFocus && ownerId) {
+          if (focus?.kind === 'path') clearFocusPath(ownerId);
+          else clearFocusWindow(ownerId);
+        }
+        throw e;
+      }
     },
   };
 }
