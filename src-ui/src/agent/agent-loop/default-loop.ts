@@ -15,7 +15,7 @@
 // 替换契约：ctx.agentLoop 注册表后注册胜——替换实现只需满足 AgentLoop
 // 接口（拿到同一宿主面即可接管全生命周期）。
 
-import { typedRpc } from '../../rpc-contract';
+import { typedRpcWithTimeout } from '../../rpc-contract';
 import { type AgentEvent, EventKind } from '../agent-types';
 import { log } from '../logger';
 import { finishReasonMessage, parseFilePathArg } from '../loop-helpers';
@@ -25,6 +25,11 @@ import type { AgentLoopHost } from './types';
 
 /** 默认实现寻址 id（ctx.agentLoop 注册表；后注册的替换实现胜出）。 */
 export const DEFAULT_AGENT_LOOP_ID = 'builtin/default';
+
+/** 每步 best-effort RPC 的超时兜底。本地 sqlite/文件读取正常毫秒级；
+ *  3s 只在 Rust 侧卡死或回包丢失时触发——落回各自的跳过分支，
+ *  循环不死等在无界 await 上（run() 永不 settle = UI 永卡运行态）。 */
+const STEP_RPC_TIMEOUT_MS = 3_000;
 
 /** 默认 agent loop（出厂实现——AgentOptions 缺省 + ctx.agentLoop 构造期登记）。 */
 export const defaultAgentLoop: import('./types').AgentLoop = {
@@ -58,10 +63,14 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
         let planContent = '';
         if (host.planState.state.active && host.planState.state.planFilePath) {
           try {
-            const raw = await typedRpc('read_file_content', {
-              file_path: host.planState.state.planFilePath,
-              is_agent: false,
-            });
+            const raw = await typedRpcWithTimeout(
+              'read_file_content',
+              {
+                file_path: host.planState.state.planFilePath,
+                is_agent: false,
+              },
+              STEP_RPC_TIMEOUT_MS,
+            );
             planContent = raw.replace(/^\s*\d+\t/gm, '');
           } catch {
             /* plan 文件尚未写入 — 正常 */
@@ -86,7 +95,7 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
       // 轮次结束后进度更新无价值）。按 agent_id 路由排干：全局排干会把
       // 其他 agent（含并行子 Agent）的后台任务通知吸进本 agent 上下文。
       try {
-        const notes = await typedRpc('drain_bg_notifications', { agent_id: host.id });
+        const notes = await typedRpcWithTimeout('drain_bg_notifications', { agent_id: host.id }, STEP_RPC_TIMEOUT_MS);
         if (notes) {
           host.transientReminders = [...host.transientReminders, `<system-reminder>\n${notes}\n</system-reminder>`];
         }

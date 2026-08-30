@@ -42,7 +42,7 @@ export interface ExecStateInstance {
   readonly permCardCount: number;
   // ── 主 Agent 生命周期 ──
   start(): AbortSignal;
-  done(): void;
+  done(runSignal?: AbortSignal): void;
   stop(): void;
   forceReset(): void;
 
@@ -121,7 +121,15 @@ export function createExecState(): ExecStateInstance {
       return _abortController.signal;
     },
 
-    done(): void {
+    done(runSignal?: AbortSignal): void {
+      // runSignal 守卫——只清「属于自己的运行」。防两类错杀：
+      // ① 轮次结算时活跃卷已切换：收尾若按「当前活跃卷」取 exec，会把
+      //    新卷的状态清掉，而发起卷的 exec 永远 isRunning=true（切回即
+      //    幽灵「运行中」，发消息被当插话吞掉）；
+      // ② 新轮已 start（controller 已换）后旧轮才 settle：不清新轮的
+      //    isRunning/AbortController，否则新轮变僵尸（停止按钮失效）。
+      // controller 为 null（stop/forceReset 已处理过）时直接落复位，幂等。
+      if (runSignal && _abortController && _abortController.signal !== runSignal) return;
       _abortController = null;
       _set({ isRunning: false });
     },

@@ -884,7 +884,8 @@ export class ChatCore {
     // 并发会话（2026-08-26）：闸门拆除——后台卷运行不再阻止本卷新轮次；
     // 仅本卷自身在跑时拒发（Enter 插话路径由 sendMessage 处理）。
     if (!this.agent || this._activeExec().isRunning) return;
-    const signal = this._activeExec().start();
+    const exec = this._activeExec();
+    const signal = exec.start();
     // L2（session-ledger）：本轮跑的是哪卷——头部捕获，finally 随 turn-done
     // 信号发出（后台卷跑完存它自己，不再只存当前翻开的卷）。
     let turnSid: number | null = null;
@@ -929,7 +930,9 @@ export class ChatCore {
         this.addNoticeFor(turnSid, `错误: ${msg}`, 'error');
       }
     } finally {
-      this._activeExec().done();
+      // 发起时刻捕获的 exec + signal 守卫（execution-state.done 注释）——
+      // 收尾清「发起轮次的卷」的状态，与结算时刻的活跃卷无关
+      exec.done(signal);
       // 轮次收尾按轮次所属卷路由（后台卷跑完 finalize 自己的流式助手 +
       // 自动命名自己；用户中途切走不影响）
       Stream.finishTurn(this._streamCtxFor(turnSid));
@@ -1154,7 +1157,8 @@ export class ChatCore {
     getChatStore(this.panelId).input.getState().setDraftText('');
     getChatStore(this.panelId).input.getState().setInputText('');
 
-    const signal = this._activeExec().start();
+    const exec = this._activeExec();
+    const signal = exec.start();
 
     // 重试用轮次对 — sessionIndex 是用户消息将要落地的位置
     const sessIdx = this.agent.getSession().length;
@@ -1210,7 +1214,9 @@ export class ChatCore {
         );
       }
     } finally {
-      this._activeExec().done();
+      // 发起时刻捕获的 exec + signal 守卫（execution-state.done 注释）——
+      // 收尾清「发起轮次的卷」的状态，与结算时刻的活跃卷无关
+      exec.done(signal);
       // 轮次收尾按轮次所属卷路由（用户中途切卷，后台卷 finalize 自己的流）
       Stream.finishTurn(this._streamCtxFor(turnSid));
     }
@@ -1357,9 +1363,13 @@ export class ChatCore {
     const userText = userMsg && 'text' in userMsg ? (userMsg.text as string) : '';
     if (!userText) return;
     getChatStore(this.panelId).input.getState().setInputText('');
-    const signal = this._activeExec().start();
+    const exec = this._activeExec();
+    const signal = exec.start();
     const agent = this.agent;
-    if (!agent) return;
+    if (!agent) {
+      exec.done(signal); // 早退也必须结算，否则 exec 永卡运行态
+      return;
+    }
     const sessIdx = agent.getSession().length;
     const retrySid = this.activeSessionId;
     Session.getTurnPairs(this.panelId, retrySid ?? undefined).push({
@@ -1379,7 +1389,7 @@ export class ChatCore {
         }
       })
       .finally(() => {
-        this._activeExec().done();
+        exec.done(signal); // 发起时刻捕获 + signal 守卫（见 execution-state.done）
         Stream.finishTurn(this._streamCtxFor(retrySid));
       });
   }

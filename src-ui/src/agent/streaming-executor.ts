@@ -52,6 +52,11 @@ interface PendingResult {
  *   }
  */
 export class StreamingToolExecutor {
+  /** awaitRemaining 正常路径的总兜底时长——对齐子 Agent 池超时
+   *  （coordinator.ts DEFAULT_TIMEOUT_MS 30min）：正常工具（bash/子 Agent/
+   *  读文件）最迟都在界内 settle；超界仍 pending = 病态挂起。 */
+  private static readonly AWAIT_BACKSTOP_MS = 30 * 60 * 1000;
+
   private tools: ToolRegistry;
   private emit: (ev: AgentEvent) => void;
   private pending = new Map<string, Promise<PendingResult>>();
@@ -184,6 +189,24 @@ export class StreamingToolExecutor {
       return this._settleCancelled();
     }
 
+    // 正常路径总兜底：排水与兜底定时器竞速。abort 竞速只保护用户停止路径，
+    // 管不住正常路径——工具 promise 若永不 settle（Tauri invoke 回包丢失、
+    // Rust 命令死锁），没有兜底则 run() 永不 settle → UI 永卡运行态。
+    let backstopTimer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        this._drainPending(),
+        new Promise<PendingResult[]>((resolve) => {
+          backstopTimer = setTimeout(() => resolve(this._settleBackstop()), StreamingToolExecutor.AWAIT_BACKSTOP_MS);
+        }),
+      ]);
+    } finally {
+      if (backstopTimer !== undefined) clearTimeout(backstopTimer);
+    }
+  }
+
+  /** 正常路径排水——逐个等待 pending（带 abort 竞速），返回全部结果。 */
+  private async _drainPending(): Promise<PendingResult[]> {
     const remaining: PendingResult[] = [];
     for (const [_id, promise] of this.pending) {
       try {
@@ -206,6 +229,27 @@ export class StreamingToolExecutor {
       this.pending.delete(r.call.id);
     }
     return [...syncCompleted, ...remaining];
+  }
+
+  /** 兜底结算：仍 pending 的工具以合成错误结果落地并补发 ToolResult
+   *  终结 UI 卡片；迟到的真实结果被丢弃（pending 面已结算）。 */
+  private _settleBackstop(): PendingResult[] {
+    const out: PendingResult[] = this.completed.splice(0);
+    for (const [id, call] of this.pendingCalls) {
+      void this.pending.get(id); // 真实结果若迟到即被丢弃
+      const minutes = Math.round(StreamingToolExecutor.AWAIT_BACKSTOP_MS / 60_000);
+      const result: PendingResult = {
+        call,
+        output: `[超时兜底] 工具 ${call.name} 超过 ${minutes} 分钟未返回结果（可能丢失回包或后端卡死），本次不再等待。`,
+        err: 'await backstop timeout',
+        truncated: false,
+      };
+      this.emitPipelineResult(call, this.tools.get(call.name) ?? null, result, call.name, true);
+      out.push(result);
+    }
+    this.pending.clear();
+    this.pendingCalls.clear();
+    return out;
   }
 
   /** 中止时把仍 pending 的工具全部落地为结果：短竞速窗口（100ms）内

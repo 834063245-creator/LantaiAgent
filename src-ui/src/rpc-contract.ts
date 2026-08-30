@@ -424,6 +424,30 @@ export async function typedRpc<M extends RpcMethodName>(method: M, params: RpcPa
   return rpc<RpcResultOf<M>>(method, params);
 }
 
+/** 带超时的类型化调用——只给「每步都会经过、且失败可安全跳过」的
+ *  best-effort 调用兜底（如 loop 顶部的 drain_bg_notifications / plan
+ *  提醒读取）。Tauri invoke 本身无超时语义：Rust 侧卡死或回包丢失时，
+ *  无界 await 会让 run() 永不 settle（UI 永卡运行态的挂起源之一）。
+ *  不要 blanket 化——bash 等长任务工具调用没有超时才是正确语义。
+ *  超时后底层 invoke 仍可能在途：调用方须保证超时分支的跳过是安全的。 */
+export async function typedRpcWithTimeout<M extends RpcMethodName>(
+  method: M,
+  params: RpcParamsOf<M>,
+  timeoutMs: number,
+): Promise<RpcResultOf<M>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      typedRpc(method, params),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`rpc ${method} 超时（${timeoutMs}ms）`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 /** 解析 Rust 返回的 JSON 字符串（ok_json 类方法）。"null" 会解析为 null。 */
 export function parseJson<T>(raw: string): T {
   return JSON.parse(raw) as T;
