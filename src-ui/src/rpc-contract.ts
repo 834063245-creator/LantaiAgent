@@ -3,7 +3,7 @@
 //
 // RPC 契约 — 前后端 IPC 的单一类型事实源（前端侧投影）。
 //
-// 后端唯一权威源：src-tauri/src/rpc.rs（当前 133 个 RPC 方法，由
+// 后端唯一权威源：src-tauri/src/rpc.rs（当前 135 个 RPC 方法，由
 // scripts/gen-rpc-contract-md.cjs 生成目录）。本文件的 RpcContract 是
 // typedRpc 可见的 UI 子集；Agent 工具调用走 agent/tool.ts 的 agentInvoke 动态分发。
 // 维护纪律：后端加/改方法 → 同步更新本文件 RpcContract；
@@ -117,15 +117,19 @@ export interface RpcContract {
   };
   get_last_project: {
     params: Record<string, never>;
-    result: string; // JSON — 最近工作区路径 "path"/null（引擎开关关态的冷启动恢复信号）
+    result: string; // JSON — 最近工作区路径 "path"/null（冷启动恢复信号，与图谱引擎无关）
   };
   workspace_list: {
     params: Record<string, never>;
-    result: string; // JSON — 已知工作区清单（注册表 + 各工作区会话计数，Stage-5 补尾：含空工作区）
+    result: string; // JSON — 已知工作区清单（注册表 + 各工作区会话计数/dir_exists/graph_engine，含空工作区）
   };
   workspace_rename: { params: { path: string; name: string }; result: string }; // "null"
   workspace_toggle_pin: { params: { path: string; pinned: boolean }; result: string }; // "null"
-  workspace_remove: { params: { path: string }; result: string }; // "null" — 删除该工作区全部会话 + 解除登记
+  workspace_remove: { params: { path: string }; result: string }; // "null" — 删除该工作区全部会话 + 解除登记（删除失败报错且不解除登记）
+  /** per-workspace 图谱引擎开关（首页卡片徽标切换入口）。生效语义 = 装配期一次（在途不活拆）。 */
+  workspace_set_graph_engine: { params: { path: string; enabled: boolean }; result: string }; // "null"
+  /** 新建工作区目录：~/Documents/兰台/<名字>，返回归一化路径。只建目录不登记（登记随后续 activate）。 */
+  workspace_create_dir: { params: { name: string }; result: string }; // JSON — 归一化路径字符串
   read_file_base64: {
     params: { file_path: string } & AgentCtx;
     result: string; // text — base64
@@ -277,7 +281,10 @@ export interface RpcContract {
   };
 
   // ── 工作区 ───────────────────────────────────────────────
-  workspace_activate: { params: { path: string }; result: string }; // "null"
+  workspace_activate: {
+    params: { path: string; graph_engine?: boolean | null };
+    result: string;
+  }; // "null" — graph_engine 缺省 = 保持注册表现值；显式值随登记写入（新建工作区 sheet）
   workspace_deactivate: { params: Record<string, never>; result: string }; // "null"
   workspace_start_watcher: { params: Record<string, never>; result: string }; // "null"
 

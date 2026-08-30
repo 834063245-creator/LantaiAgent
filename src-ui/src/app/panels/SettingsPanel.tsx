@@ -440,11 +440,12 @@ const SettingsPanelApp: React.FC<{
                       commit({ ...settings, graphEngine: { enabled: e.target.checked } });
                     }}
                   />
-                  绑定目录时启用图谱引擎
+                  新工作区默认启用图谱引擎
                 </label>
                 <div className="sp-hint-sub">
-                  关闭 = 绑定目录只做纯 Agent 工作区：不分析、无图/简报工具、不监视文件（fs/shell/git
-                  照常，内存占用更低）。 生效时机：重新绑定目录或重启后；在途工作区不活拆。
+                  关闭 = 新工作区只做纯 Agent 工作区：不分析、无图/简报工具、不监视文件（fs/shell/git
+                  照常，内存占用更低）。此为新建工作区时的默认勾选值；已有工作区在首页卡片的
+                  「开/关图谱」单独切换（下次进入生效），在途工作区不活拆。
                 </div>
               </div>
             </div>

@@ -167,9 +167,10 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // list_directory/list_directory_flat：ok_json(DirEntry 数组) 恒 JSON。
         // read_file_content/read_file_base64/read_memory_batch：字节精确/内容
         // 不可控，Text 铁律。workspace_list：ok_json(注册表+各工作区会话计数) 恒 JSON。
+        // workspace_create_dir：ok_json(归一化路径字符串) 恒 JSON 字符串。
         // （workspace-session-ownership-rework 2026-08-27：user_sessions_list 退役——
         //  首页工作区清单由 workspace_list 承担，计数扫各工作区会话根。）
-        "list_directory" | "list_directory_flat" | "workspace_list" => {
+        "list_directory" | "list_directory_flat" | "workspace_list" | "workspace_create_dir" => {
             RpcResultShape::JsonValue
         }
 
@@ -1386,11 +1387,13 @@ async fn dispatch_rpc(
         }
 
         // ═══════════════════════════════════════════════════════
-        // 工作区（8 个命令）
+        // 工作区（10 个命令）
         // ═══════════════════════════════════════════════════════
         "workspace_activate" => {
             let path = req_str(&params, "path", "workspace_activate")?;
-            ok_unit(commands::workspace::workspace_activate(path, state, app_ctx).await)
+            // per-workspace 图谱引擎旗标（2026-08-31）：缺省 = None（保持注册表现值）
+            let graph_engine = params.get("graph_engine").and_then(|v| v.as_bool());
+            ok_unit(commands::workspace::workspace_activate(path, graph_engine, state, app_ctx).await)
         }
         "workspace_deactivate" => {
             ok_unit(commands::workspace::workspace_deactivate(state, app_ctx).await)
@@ -1436,6 +1439,26 @@ async fn dispatch_rpc(
                 .await
                 .map_err(|e| format!("workspace_remove 任务失败: {e}"))?;
             ok_unit(res)
+        }
+        // per-workspace 图谱引擎开关（2026-08-31）：首页卡片徽标切换入口；
+        // 未知路径自动补登记。生效语义 = 装配期一次（在途不活拆）。
+        "workspace_set_graph_engine" => {
+            let path = req_str(&params, "path", "workspace_set_graph_engine")?;
+            let enabled = req_bool(&params, "enabled", "workspace_set_graph_engine")?;
+            let res =
+                tokio::task::spawn_blocking(move || commands::workspace::registry::set_graph_engine(&path, enabled))
+                    .await
+                    .map_err(|e| format!("workspace_set_graph_engine 任务失败: {e}"))?;
+            ok_unit(res)
+        }
+        // 新建工作区目录（2026-08-31 首页 sheet「创建」路径）：
+        // ~/Documents/兰台/<名字>，返回归一化路径字符串。
+        "workspace_create_dir" => {
+            let name = req_str(&params, "name", "workspace_create_dir")?;
+            let res = tokio::task::spawn_blocking(move || commands::workspace::create_default_workspace_dir(&name))
+                .await
+                .map_err(|e| format!("workspace_create_dir 任务失败: {e}"))?;
+            ok_json(res)
         }
 
         // ═══════════════════════════════════════════════════════

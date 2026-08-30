@@ -24,7 +24,7 @@ import { usePaperDock } from '../../paper/overlay-context';
 import { getModel } from '../../provider/catalog';
 import { type StoredThinking, type ThinkingMode, thinkingOptionsFor } from '../../provider/thinking';
 import { loadSettings, onSettingsSaved, type ProviderSettings } from '../../settings';
-import { type ComposeSessionPrefs, getComposeStore } from '../../state/compose-store';
+import { type ComposeSessionPrefs, getComposeStore, resolveNewSessionDefault } from '../../state/compose-store';
 import {
   MODE_DESCRIPTIONS,
   MODE_LABELS,
@@ -241,12 +241,17 @@ export const ComposerDock = memo(function ComposerDock() {
     return compose.subscribe(sync);
   }, [core, activeSessionId]);
 
-  const providerName = prefs?.providerName ?? '';
-  const model = prefs?.model ?? '';
   // C4（2026-08-27）：显示读 settings 走「初值 + onSettingsSaved 订阅」，
   // 不再每渲染全量 loadSettings()（打字热路径上的 localStorage JSON.parse）
   const [settingsTick, setSettingsTick] = useState(0);
   useEffect(() => onSettingsSaved(() => setSettingsTick((n) => n + 1)), []);
+  // 开口即开卷（2026-08-31）：无主态显示/操作「新卷出生默认」（全局活跃行）；
+  // 有活跃卷时 prefs（resolveEffective）已含全局回落（覆盖 ?? 全局）。
+  // tick 驱动重读——无主态拨模型/思考走 settings-saved → tick 变 → 重算。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: settingsTick 是刻意的重读触发器（非响应值），与上方 settings memo 同款手法
+  const newSessionDefault = useMemo(() => resolveNewSessionDefault(), [settingsTick]);
+  const providerName = prefs?.providerName ?? newSessionDefault.providerName;
+  const model = prefs?.model ?? newSessionDefault.model;
   const settingsVersion = settingsTick + providerName.length; // 触发器合成：保存代数 + 覆盖换向
   // biome-ignore lint/correctness/useExhaustiveDependencies: settingsVersion 是刻意的重读触发器（保存事件/覆盖切换 provider），非响应值
   const settings = useMemo(() => {
@@ -266,7 +271,8 @@ export const ComposerDock = memo(function ComposerDock() {
     // 不拦、协议层可安全表达，P14「不编造参数」不破）。
     return declared.length > 0 ? declared : THINKING_SAFE_FALLBACK;
   }, [modelDesc]);
-  const currentThinking = prefs?.thinking;
+  // 开口即开卷（2026-08-31）：无主态思考档位跟随新卷出生默认
+  const currentThinking = prefs?.thinking ?? newSessionDefault.thinking;
 
   /* ── 权限（mode-store 工作区级单一真相）── */
   const permissionMode = useModeStore((s) => s.permissionMode);
@@ -335,8 +341,17 @@ export const ComposerDock = memo(function ComposerDock() {
     if (!t) return;
     const sessSt = getChatStore(core.panelId).sess.getState();
     if (sessSt.activeIdx < 0 || !sessSt.sessions[sessSt.activeIdx]) {
-      setLocalNotice('当前没有活跃会话——请先在侧边栏另起一卷。');
-      return;
+      // 开口即开卷（2026-08-31 拍板）：无活跃卷 → 先建卷再把这句发出去。
+      // 创作坞不再是无主死端——「落笔」本身就是最显式的出生动作。
+      // createNewSession 内部 restoreSessionDraft 会清 live 输入——正文先存后还。
+      await core.createNewSession();
+      const after = getChatStore(core.panelId).sess.getState();
+      if (after.activeIdx < 0 || !after.sessions[after.activeIdx]) {
+        // 建卷失败（未绑定目录等）——createNewSession 已弹 warn，这里兜底可见
+        setLocalNotice('当前没有活跃会话——请先在首页新建或指定工作区。');
+        return;
+      }
+      getChatStore(core.panelId).input.getState().setInputText(t);
     }
     setLocalNotice(null);
     await core.sendMessage();
@@ -345,17 +360,28 @@ export const ComposerDock = memo(function ComposerDock() {
   /* ── 热切换：模型 / 思考 ── */
   const onModelChange = useCallback(
     (modelId: string, desc?: { vendor: string }) => {
-      if (!core || activeSessionId == null) return;
+      if (!core) return;
       const targetProvider = providerNameForModel(desc, providerName);
-      getComposeStore(core.panelId).getState().setModel(activeSessionId, targetProvider, modelId);
+      const compose = getComposeStore(core.panelId).getState();
+      // 开口即开卷（2026-08-31）：无主态拨「新卷出生默认」；有卷写会话覆盖
+      if (activeSessionId == null) {
+        compose.setGlobalModel(targetProvider, modelId);
+        return;
+      }
+      compose.setModel(activeSessionId, targetProvider, modelId);
     },
     [core, activeSessionId, providerName],
   );
   const onThinkingChange = useCallback(
     (value: string) => {
-      if (!core || activeSessionId == null) return;
+      if (!core) return;
       const next = (value === '' ? '' : value) as StoredThinking;
-      getComposeStore(core.panelId).getState().setThinking(activeSessionId, next);
+      const compose = getComposeStore(core.panelId).getState();
+      if (activeSessionId == null) {
+        compose.setGlobalThinking(next);
+        return;
+      }
+      compose.setThinking(activeSessionId, next);
     },
     [core, activeSessionId],
   );
@@ -366,99 +392,100 @@ export const ComposerDock = memo(function ComposerDock() {
 
   return (
     <div className="pp-composer">
-      {/* 设置行：常驻一行只放高频件（模型 + 权限）；思考等进展开（stage-4 §8） */}
+      {/* 设置行：常驻一行只放高频件（模型 + 权限）；思考等进展开（stage-4 §8）。
+          开口即开卷（2026-08-31）：控件不再随活跃卷隐藏——无主态操作「新卷出生
+          默认」，「发送前顺手拨」在自己的核心场景（开卷前拨好）恒可用。 */}
       <div className="pp-composer-settings">
-        <span className="pp-composer-target" title={activeSession ? `案卷 ${activeSession.id}` : '未选中会话'}>
-          {activeSession ? activeSession.label || `案卷 ${activeSession.id}` : '未选中会话'}
+        <span
+          className="pp-composer-target"
+          title={activeSession ? `案卷 ${activeSession.id}` : '无活跃卷——落笔即另起一卷'}
+        >
+          {activeSession ? activeSession.label || `案卷 ${activeSession.id}` : '新卷'}
         </span>
         <span className="pp-composer-tokens" title="本卷 token 计数（惰性读取，切回直接读）">
           {tokenCount > 0 ? `${tokenCount} tok` : '—'}
         </span>
-        {activeSessionId != null && (
-          <>
-            {/* DSH 移植（2026-08-26）：运行中守卫——本卷在跑时模型下拉打开被拦
-                （DSH onAttemptOpen 语义：流式中不允许切模型），localNotice 提示 */}
-            <ModelSelector
-              value={model}
-              onChange={onModelChange}
-              providerName={providerName}
-              kind={providerKind}
-              compact
-              isStreaming={running}
-              onBlocked={() => setLocalNotice('Agent 正在运行——本回合结束后才能切换模型。')}
-            />
-            {/* rework P2-3：权限三档分段控件（不随 DSH 迁移——权限是工作区级单一真相） */}
-            <fieldset className="pp-mode-seg" aria-label="权限模式">
-              {PERMISSION_MODES.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  className={`pp-mode-opt${permissionMode === m ? ' selected' : ''}`}
-                  title={MODE_DESCRIPTIONS[m]}
-                  aria-pressed={permissionMode === m}
-                  onClick={() => selectMode(m)}
-                >
-                  {MODE_LABELS[m]}
-                </button>
-              ))}
-            </fieldset>
-            {/* DSH 移植（2026-08-26）：思考档位 = 图标 pill 下拉（brain 图标，
+        {/* DSH 移植（2026-08-26）：运行中守卫——本卷在跑时模型下拉打开被拦
+            （DSH onAttemptOpen 语义：流式中不允许切模型），localNotice 提示 */}
+        <ModelSelector
+          value={model}
+          onChange={onModelChange}
+          providerName={providerName}
+          kind={providerKind}
+          compact
+          isStreaming={running}
+          onBlocked={() => setLocalNotice('Agent 正在运行——本回合结束后才能切换模型。')}
+        />
+        {/* rework P2-3：权限三档分段控件（不随 DSH 迁移——权限是工作区级单一真相） */}
+        <fieldset className="pp-mode-seg" aria-label="权限模式">
+          {PERMISSION_MODES.map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={`pp-mode-opt${permissionMode === m ? ' selected' : ''}`}
+              title={MODE_DESCRIPTIONS[m]}
+              aria-pressed={permissionMode === m}
+              onClick={() => selectMode(m)}
+            >
+              {MODE_LABELS[m]}
+            </button>
+          ))}
+        </fieldset>
+        {/* DSH 移植（2026-08-26）：思考档位 = 图标 pill 下拉（brain 图标，
                 off 划横线；选项带档位说明），不再是「思考·档」文本按钮 + 展开分段行 */}
-            {thinkingOptions.length > 0 && (
-              <div className="pp-thinking-sel">
-                <button
-                  type="button"
-                  className={`pp-thinking-pill${(currentThinking ?? '') === 'off' ? ' off' : ''}${settingsOpen ? ' open' : ''}`}
-                  title={`思考档位：${thinkingZhLabel(currentThinking)}`}
-                  aria-haspopup="listbox"
-                  aria-expanded={settingsOpen}
-                  onClick={() => setSettingsOpen((v) => !v)}
-                >
-                  <svg
-                    className="pp-thinking-icon"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
+        {thinkingOptions.length > 0 && (
+          <div className="pp-thinking-sel">
+            <button
+              type="button"
+              className={`pp-thinking-pill${(currentThinking ?? '') === 'off' ? ' off' : ''}${settingsOpen ? ' open' : ''}`}
+              title={`思考档位：${thinkingZhLabel(currentThinking)}`}
+              aria-haspopup="listbox"
+              aria-expanded={settingsOpen}
+              onClick={() => setSettingsOpen((v) => !v)}
+            >
+              <svg
+                className="pp-thinking-icon"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M9 18h6" />
+                <path d="M10 22h4" />
+                <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5.76.76 1.23 1.52 1.41 2.5" />
+                {(currentThinking ?? '') === 'off' && <line x1="4" y1="4" x2="20" y2="20" strokeWidth="1.5" />}
+              </svg>
+              <span className="pp-thinking-pill-label">思考 · {thinkingZhLabel(currentThinking)}</span>
+              <span className="pp-thinking-pill-caret" aria-hidden="true">
+                ▾
+              </span>
+            </button>
+            {settingsOpen && (
+              <div className="pp-thinking-menu" role="listbox" aria-label="思考档位">
+                {thinkingOptions.map((o) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    role="option"
+                    aria-selected={(currentThinking ?? '') === o.value}
+                    className={`pp-thinking-opt${(currentThinking ?? '') === o.value ? ' selected' : ''}`}
+                    onClick={() => {
+                      onThinkingChange(o.value);
+                      setSettingsOpen(false);
+                    }}
                   >
-                    <path d="M9 18h6" />
-                    <path d="M10 22h4" />
-                    <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5.76.76 1.23 1.52 1.41 2.5" />
-                    {(currentThinking ?? '') === 'off' && <line x1="4" y1="4" x2="20" y2="20" strokeWidth="1.5" />}
-                  </svg>
-                  <span className="pp-thinking-pill-label">思考 · {thinkingZhLabel(currentThinking)}</span>
-                  <span className="pp-thinking-pill-caret" aria-hidden="true">
-                    ▾
-                  </span>
-                </button>
-                {settingsOpen && (
-                  <div className="pp-thinking-menu" role="listbox" aria-label="思考档位">
-                    {thinkingOptions.map((o) => (
-                      <button
-                        key={o.value}
-                        type="button"
-                        role="option"
-                        aria-selected={(currentThinking ?? '') === o.value}
-                        className={`pp-thinking-opt${(currentThinking ?? '') === o.value ? ' selected' : ''}`}
-                        onClick={() => {
-                          onThinkingChange(o.value);
-                          setSettingsOpen(false);
-                        }}
-                      >
-                        <span className="pp-thinking-opt-label">{thinkingZhLabel(o.value)}</span>
-                        <span className="pp-thinking-opt-desc">{THINKING_DESC[o.value] ?? ''}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+                    <span className="pp-thinking-opt-label">{thinkingZhLabel(o.value)}</span>
+                    <span className="pp-thinking-opt-desc">{THINKING_DESC[o.value] ?? ''}</span>
+                  </button>
+                ))}
               </div>
             )}
-          </>
+          </div>
         )}
         <div className="pp-composer-settings-spacer" />
         {/* B7（2026-08-27）：后台卷运行指示 + 停止——此前任一后台会话在跑就
@@ -540,7 +567,7 @@ export const ComposerDock = memo(function ComposerDock() {
           placeholder={
             activeSession
               ? '拟文…（Enter 发送 · Shift+Enter 换行 · ↑↓ 取历史；拖住任意块可移出钉住；拖流区边缘可移动流区）'
-              : '先在侧边栏另起一卷，再在此拟文'
+              : '落笔即另起一卷…（Enter 发送 · Shift+Enter 换行）'
           }
           onChange={(e) => {
             setInputText(e.target.value);

@@ -247,7 +247,15 @@ export class Workspace {
     path: string,
     _starGraph: null,
     _chatPanel: ChatCore,
-    callbacks?: { onStatusChange?: (msg: string) => void; onLoadingChange?: (loading: boolean) => void },
+    callbacks?: {
+      onStatusChange?: (msg: string) => void;
+      onLoadingChange?: (loading: boolean) => void;
+      /** per-workspace 图谱引擎旗标（2026-08-31）：
+       *  true/false = 显式指定（新建工作区 sheet 的勾选）——随 workspace_activate
+       *  写入注册表；
+       *  null/undefined = 按注册表现值装配（无记录回退全局默认），注册表不被覆写。 */
+      graphEngine?: boolean | null;
+    },
   ): Promise<Workspace> {
     const ws = new Workspace(path);
     ws._active = true;
@@ -256,13 +264,28 @@ export class Workspace {
     ws.onStatusChange = callbacks?.onStatusChange ?? null;
     ws.onLoadingChange = callbacks?.onLoadingChange ?? null;
 
+    // per-workspace 引擎旗标解析（2026-08-31）：显式旗标 > 注册表现值 > 全局默认
+    // （构造期已读入 ws._graphEngineOn = 全局默认）。进入既有工作区不携旗标 →
+    // 查注册表该区的 graph_engine 字段；查不到（mock/毒化/未登记）→ 全局默认。
+    let engineFlag: boolean | null = callbacks?.graphEngine ?? null;
+    if (engineFlag === null) {
+      try {
+        const list = await typedJsonRpc<Array<{ path: string; graph_engine?: boolean | null }>>('workspace_list', {});
+        const hit = Array.isArray(list) ? list.find((w) => isSamePath(w.path, path)) : undefined;
+        if (hit && typeof hit.graph_engine === 'boolean') engineFlag = hit.graph_engine;
+      } catch {
+        /* 读失败 → 全局默认（engineFlag 保持 null） */
+      }
+    }
+    if (engineFlag !== null) ws._graphEngineOn = engineFlag;
+
     // Agent 写入文件时自动调度检查
     // （通过 agent:tool-done → onToolDone → scheduleCheck 处理，见下文）
 
-    // 1. 向后端注册工作区
+    // 1. 向后端注册工作区（显式旗标随登记写入；null = 保持注册表现值）
     ws.onStatusChange?.('正在初始化引擎...');
     console.log('[Workspace.open] step 1: workspace_activate...');
-    await typedRpc('workspace_activate', { path }).catch((e) => {
+    await typedRpc('workspace_activate', { path, graph_engine: callbacks?.graphEngine ?? null }).catch((e) => {
       console.error('[Workspace.open] workspace_activate failed:', e);
     });
     console.log('[Workspace.open] step 1: done');

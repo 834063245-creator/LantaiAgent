@@ -2165,11 +2165,20 @@ export function PaperPanel() {
           {/* biome-ignore lint/a11y/noStaticElementInteractions: 无限画布是鼠标平移/缩放交互面 */}
           <div ref={canvasRef} className={`pp-canvas${panning ? ' pp-panning' : ''}`} onMouseDown={onCanvasMouseDown}>
             {sessions.length === 0 && (
-              <div className="pp-empty" aria-hidden="true">
+              <div className="pp-empty">
                 <div className="pp-empty-kicker">LANTAI · BLANK SHEET</div>
                 <div className="pp-empty-title">这张纸上还没有案卷</div>
                 <div className="pp-empty-rule" />
-                <div className="pp-empty-hint">点左侧「另起一卷」开始，新卷会自动落到右侧</div>
+                {/* 空态 CTA（2026-08-31 拍板 A）：显式出生入口——不再只是文字指路 */}
+                <button
+                  type="button"
+                  className="pp-empty-cta"
+                  disabled={!core}
+                  onClick={() => void core?.createNewSession()}
+                >
+                  ＋ 另起一卷
+                </button>
+                <div className="pp-empty-hint">也可以点左侧「另起一卷」，或直接在下方落笔——开口即开卷</div>
                 <div className="pp-empty-asterism">⁂</div>
               </div>
             )}

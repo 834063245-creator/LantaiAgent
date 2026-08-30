@@ -93,10 +93,10 @@ interface DisplaySettings {
   fontScale: number;
 }
 
-/** 图谱引擎设置（引擎开关，2026-08-22）——「绑目录 ≠ 开图谱」：
- *  关 = 绑定目录的工作区跳过分析/预热/简报/watcher，graphData 留 null
- *  （零目录会话既有语义），fs/shell/git/权限全套保留。生效时机 =
- *  下次绑定目录（在途工作区不活拆）。 */
+/** 图谱引擎设置（引擎开关，2026-08-22；per-workspace 旗标化 2026-08-31）：
+ *  「绑目录 ≠ 开图谱」。per-workspace 时代本节 = **新工作区的默认勾选值**；
+ *  已有工作区的旗标存注册表（workspaces.json graph_engine 字段，首页卡片
+ *  徽标切换），工作区装配时显式旗标 > 注册表 > 本节全局默认。 */
 export interface GraphEngineSettings {
   /** 引擎总开关（缺省 true = 旧行为零漂移；false 时读取点见 workspace.ts
    *  （绑定期快照——装配面经 graphContext 间接消费，见 blueprint.ts）/

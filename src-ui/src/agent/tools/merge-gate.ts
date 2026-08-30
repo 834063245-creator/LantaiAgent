@@ -68,7 +68,7 @@ export async function runGraphGate(_entry: BoardEntry, opts: MergeGateOptions): 
     return {
       passed: true,
       quiet: true,
-      report: '本工作区未启用图谱数据面（绑定目录时引擎关闭或图未加载），跳过图检查门禁',
+      report: '本工作区未启用图谱数据面（工作区引擎旗标关闭或图未加载），跳过图检查门禁',
     };
   }
   const maxWait = opts.maxCheckWaitMs ?? 60_000;

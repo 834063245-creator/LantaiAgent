@@ -4,9 +4,10 @@
 // SessionsHome — 案卷首页 = 工作区管理面（Stage-5 补尾：已知工作区实体）。
 //
 // 定案（docs/plans/canvas-space/stage-2.md §3.5 方案 A + Stage-5 补尾拍板）：
-// **不并存——画布即主界面**。首页管「你有哪些工作区」：绑定目录（= 创建/
-// 登记工作区）、改名、固定常用、移除（连带删卷，需确认）、进画布；
-// 工作区内的会话管理交给画布旁的侧边栏（出生仪式在那边）。
+// **不并存——画布即主界面**。首页管「你有哪些工作区」：新建工作区（创建
+// 目录或指定已有目录 + per-workspace 图谱引擎勾选，2026-08-31 拍板）、
+// 改名、固定常用、移除（连带删卷，模态勾选确认——不做退路）、进画布；
+// 工作区内的会话管理交给画布旁的侧边栏（出生仪式在那边，开口即开卷）。
 //
 // 数据源：`workspace_list` 单一来源——Rust 把 ~/.lantai/workspaces.json 注册表
 // 全量列出，每个工作区的会话计数/最近时间扫**自己的会话根**
@@ -17,7 +18,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { typedJsonRpc, typedRpc } from '../rpc-contract';
-import { workspaceFlow } from '../shell/rows/workspace';
+import { graphEngineEnabled, loadSettings } from '../settings';
+import { pickFolder, workspaceFlow } from '../shell/rows/workspace';
 import { useDockStore } from '../state/dock-store';
 import { useUpdateStore } from '../state/update-store';
 import { useShellStore } from './shell-store';
@@ -31,6 +33,10 @@ interface KnownWorkspace {
   pinned: boolean;
   session_count: number;
   latest_saved_at?: string | null;
+  /** 工作区根目录在磁盘上是否仍存在（false = 「目录已丢失」诚实显示并禁进）。 */
+  dir_exists?: boolean;
+  /** per-workspace 图谱引擎旗标（null = 未显式选择，回退全局默认值）。 */
+  graph_engine?: boolean | null;
 }
 
 /** 工作区显示名：登记名优先，缺省 = 路径末段。 */
@@ -43,6 +49,19 @@ function pathBasename(p: string): string {
   const norm = p.replace(/\\/g, '/').replace(/\/+$/, '');
   const last = norm.split('/').filter(Boolean).pop();
   return last ?? norm;
+}
+
+/** 路径等值比较（大小写/斜杠不敏感——与 Rust registry norm_path 同规）。
+ *  本地内联小函数：避免 import workspace.ts 巨型模块图进首页。 */
+function isSamePath(a: string, b: string): boolean {
+  return (
+    a.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase() === b.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+  );
+}
+
+/** 该工作区的图谱旗标显示值：注册表未显式选择时回退全局默认。 */
+function wsGraphOn(ws: KnownWorkspace): boolean {
+  return ws.graph_engine ?? graphEngineEnabled(loadSettings());
 }
 
 /** 案卷日期列：MM-DD（原型 .session-row .date 同款） */
@@ -96,12 +115,27 @@ export function SessionsHome() {
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
   const renameInputRef = useRef<HTMLInputElement | null>(null);
-  /** 两段式移除确认：第一击记录待确认路径，再击确认。 */
-  const [removingPath, setRemovingPath] = useState<string | null>(null);
+  /** 新建工作区 sheet（2026-08-31 拍板）：choose = 双路选择 / create = 命名创建。
+   *  「指定已有目录」直接走系统选择器，不经 create 阶段。 */
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetStage, setSheetStage] = useState<'choose' | 'create'>('choose');
+  const [newWsName, setNewWsName] = useState('');
+  /** 勾选项 = 「分析此目录」——per-workspace 图谱引擎旗标；默认取全局设置值。 */
+  const [newWsEngine, setNewWsEngine] = useState(() => graphEngineEnabled(loadSettings()));
+  /** 移除确认模态（2026-08-31 拍板「不做退路、确认做足」）：居中弹窗 + 勾选
+   *  承认不可恢复后才能点亮红色删除键；取代旧的卡片内两段式点击确认。 */
+  const [removeTarget, setRemoveTarget] = useState<KnownWorkspace | null>(null);
+  const [removeAck, setRemoveAck] = useState(false);
+  /** 创建页名字输入框焦点（noAutofocus 纪律：ref + effect 取代 autoFocus 属性）。 */
+  const createNameInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (renamingPath !== null) renameInputRef.current?.focus();
   }, [renamingPath]);
+
+  useEffect(() => {
+    if (sheetOpen && sheetStage === 'create') createNameInputRef.current?.focus();
+  }, [sheetOpen, sheetStage]);
 
   // 刷新时机：挂载期 + 每次纸面板从开到关（回首页即重拉）。
   const paperOpen = useDockStore((s) => s.open.paper);
@@ -135,25 +169,92 @@ export function SessionsHome() {
   }, []);
 
   /** 进入工作区画布：打开纸面板 + （必要时）切到该工作区。
-   *  摊开集由画布状态文件恢复（Stage-5 拍板 11）。 */
+   *  摊开集由画布状态文件恢复（Stage-5 拍板 11）。
+   *  目录已丢失的工作区禁进（调用侧守卫）。 */
   const onEnterWorkspace = useCallback(
     (ws: string) => {
-      setRemovingPath(null);
+      setRemoveTarget(null);
       openPanel('paper');
       const current = useShellStore.getState().projectPath;
-      if (ws !== current) {
+      if (!isSamePath(ws, current)) {
         void workspaceFlow.switchWorkspace(ws);
       }
     },
     [openPanel],
   );
 
-  /** 绑定工作区（= 创建/登记）：选目录 → activate → 自动进画布建卷。
-   *  出生仪式在画布侧边栏——首页只管工作区本身。 */
-  const onBindWorkspace = useCallback(() => {
-    openPanel('paper');
-    void workspaceFlow.switchWorkspace();
-  }, [openPanel]);
+  /** 新建工作区 sheet：创建/指定双路（2026-08-31 拍板——一个按钮管两件事）。
+   *  出生仪式在画布——sheet 只负责把工作区实体立起来（建目录/选目录 + 引擎勾选）。 */
+  const onOpenCreateSheet = useCallback(() => {
+    setNotice(null);
+    setNewWsName('');
+    setNewWsEngine(graphEngineEnabled(loadSettings()));
+    setSheetStage('choose');
+    setSheetOpen(true);
+  }, []);
+
+  /** 「创建」提交：命名 → ~/Documents/兰台/<名字> → activate（携引擎勾选）→ 进画布。 */
+  const onCreateCommit = useCallback(async () => {
+    const name = newWsName.trim();
+    if (!name || busy) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const path = await typedRpc('workspace_create_dir', { name });
+      setSheetOpen(false);
+      openPanel('paper');
+      await workspaceFlow.switchWorkspace(path, { graphEngine: newWsEngine });
+    } catch (e) {
+      console.error('[home] workspace_create_dir failed:', e);
+      setNotice(`创建失败: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  }, [newWsName, newWsEngine, busy, openPanel]);
+
+  /** 「指定已有目录」提交：系统选择器 → activate（携引擎勾选）→ 进画布。 */
+  const onPickCommit = useCallback(async () => {
+    if (busy) return;
+    const folder = await pickFolder();
+    if (!folder) return;
+    setSheetOpen(false);
+    setNotice(null);
+    setBusy(true);
+    try {
+      openPanel('paper');
+      await workspaceFlow.switchWorkspace(folder, { graphEngine: newWsEngine });
+    } catch (e) {
+      console.error('[home] pick workspace failed:', e);
+      setNotice(`打开失败: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, newWsEngine, openPanel]);
+
+  /** 图谱徽标切换（per-workspace 引擎旗标，2026-08-31 拍板方案一）。
+   *  生效语义 = 装配期一次（在途不活拆）——切的是当前激活工作区时提示下次进入生效。 */
+  const onToggleGraphEngine = useCallback(
+    async (ws: KnownWorkspace) => {
+      if (busy) return;
+      setBusy(true);
+      setNotice(null);
+      try {
+        const next = !wsGraphOn(ws);
+        await typedRpc('workspace_set_graph_engine', { path: ws.path, enabled: next });
+        await refreshWorkspaces();
+        const current = useShellStore.getState().projectPath;
+        if (isSamePath(ws.path, current)) {
+          setNotice(`「${wsDisplayName(ws)}」图谱引擎已${next ? '开启' : '关闭'}——生效于下次进入该工作区`);
+        }
+      } catch (e) {
+        console.error('[home] workspace_set_graph_engine failed:', e);
+        setNotice(`图谱开关失败: ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, refreshWorkspaces],
+  );
 
   /** 改名提交：空名 = 取消。 */
   const onRenameCommit = useCallback(
@@ -191,14 +292,17 @@ export function SessionsHome() {
     [refreshWorkspaces],
   );
 
-  /** 移除工作区（彻底：连带删其中全部案卷）——两段式确认后执行。 */
+  /** 移除工作区（彻底：连带删其中全部案卷）——模态 + 勾选确认后执行。
+   *  「不做退路」拍板（2026-08-31）：没有「仅移出清单」选项；Rust 侧删除
+   *  失败会报错且保留登记（不产生孤儿卷）。 */
   const onRemoveConfirmed = useCallback(
     async (ws: KnownWorkspace) => {
       setBusy(true);
       setNotice(null);
       try {
         await typedRpc('workspace_remove', { path: ws.path });
-        setRemovingPath(null);
+        setRemoveTarget(null);
+        setRemoveAck(false);
         await refreshWorkspaces();
         setNotice(
           `已移除工作区「${wsDisplayName(ws)}」${ws.session_count > 0 ? `（含 ${ws.session_count} 卷案卷）` : ''}`,
@@ -206,7 +310,8 @@ export function SessionsHome() {
       } catch (e) {
         console.error('[home] workspace_remove failed:', e);
         setNotice(`移除失败: ${e instanceof Error ? e.message : String(e)}`);
-        setRemovingPath(null);
+        setRemoveTarget(null);
+        setRemoveAck(false);
       } finally {
         setBusy(false);
       }
@@ -253,7 +358,7 @@ export function SessionsHome() {
         <p className="sh-kicker">兰台 · 档案</p>
         <h1 className="sh-h1">与 Agent 协作，应当像在纸上书写。</h1>
         <p className="sh-lead">
-          一个工作区就是一张纸：绑定一个目录，摊开多少卷都在同一片纸上——可对照、可钉住、可追溯。
+          一个工作区就是一张纸：新建或指定一个目录，摊开多少卷都在同一片纸上——可对照、可钉住、可追溯。
         </p>
 
         <div className="sh-section-title">
@@ -274,14 +379,24 @@ export function SessionsHome() {
           <div className="sh-workspaces">
             {workspaces.map((w) => {
               const isRenaming = renamingPath === w.path;
-              const isConfirmingRemove = removingPath === w.path;
+              const isDead = w.dir_exists === false;
               return (
-                <div key={w.path} className="sh-ws-card sh-ws-card--row">
+                <div key={w.path} className={`sh-ws-card sh-ws-card--row${isDead ? ' sh-ws-card--dead' : ''}`}>
                   <button
                     type="button"
                     className="sh-ws-card-main"
-                    onClick={() => onEnterWorkspace(w.path)}
-                    aria-label={`进入工作区：${wsDisplayName(w)}（${w.session_count} 卷）`}
+                    onClick={() => {
+                      if (isDead) {
+                        setNotice(`「${wsDisplayName(w)}」的目录已丢失——无法进入。可移除该工作区，或恢复目录后再试`);
+                        return;
+                      }
+                      onEnterWorkspace(w.path);
+                    }}
+                    aria-label={
+                      isDead
+                        ? `工作区目录已丢失：${wsDisplayName(w)}`
+                        : `进入工作区：${wsDisplayName(w)}（${w.session_count} 卷）`
+                    }
                   >
                     <span className="sh-ws-name">
                       {isRenaming ? (
@@ -311,13 +426,17 @@ export function SessionsHome() {
                       )}
                     </span>
                     <span className="sh-ws-meta" title={w.path}>
-                      {w.session_count > 0
-                        ? `${w.session_count} 卷 · 最近 ${formatSessionDate(w.latest_saved_at)}`
-                        : '空工作区 · 还没有案卷'}
+                      {isDead
+                        ? '目录已丢失 · 无法访问案卷'
+                        : `图谱${wsGraphOn(w) ? '开' : '关'} · ${
+                            w.session_count > 0
+                              ? `${w.session_count} 卷 · 最近 ${formatSessionDate(w.latest_saved_at)}`
+                              : '空工作区 · 还没有案卷'
+                          }`}
                     </span>
                     <span className="sh-ws-enter">进入画布 →</span>
                   </button>
-                  {!isRenaming && !isConfirmingRemove && (
+                  {!isRenaming && (
                     <div className="sh-ws-actions">
                       <button
                         type="button"
@@ -339,29 +458,22 @@ export function SessionsHome() {
                       </button>
                       <button
                         type="button"
-                        title="移除工作区（连带删除其中的全部案卷）"
+                        title={`图谱引擎${wsGraphOn(w) ? '关闭' : '开启'}（本工作区，下次进入生效）`}
                         disabled={busy}
-                        onClick={() => setRemovingPath(w.path)}
+                        onClick={() => void onToggleGraphEngine(w)}
                       >
-                        移除
+                        {wsGraphOn(w) ? '关图谱' : '开图谱'}
                       </button>
-                    </div>
-                  )}
-                  {isConfirmingRemove && (
-                    <div className="sh-ws-remove-confirm">
-                      <span>
-                        删除「{wsDisplayName(w)}」及其 {w.session_count} 卷案卷？
-                      </span>
                       <button
                         type="button"
-                        className="danger"
+                        title="移除工作区（连带删除其中的全部案卷）"
                         disabled={busy}
-                        onClick={() => void onRemoveConfirmed(w)}
+                        onClick={() => {
+                          setRemoveTarget(w);
+                          setRemoveAck(false);
+                        }}
                       >
-                        确认移除
-                      </button>
-                      <button type="button" onClick={() => setRemovingPath(null)}>
-                        取消
+                        移除
                       </button>
                     </div>
                   )}
@@ -370,16 +482,135 @@ export function SessionsHome() {
             })}
           </div>
         ) : (
-          <p className="sh-empty-hint">还没有工作区——绑定一个目录，从一卷新案卷开始。</p>
+          <p className="sh-empty-hint">还没有工作区——新建或指定一个目录，从一卷新案卷开始。</p>
         )}
         {notice && <p className="sh-notice">{notice}</p>}
 
         <div className="sh-actions">
-          <button type="button" className="sh-btn-primary" onClick={onBindWorkspace}>
-            ＋ 绑定工作区
+          <button type="button" className="sh-btn-primary" onClick={onOpenCreateSheet}>
+            ＋ 新建工作区
           </button>
         </div>
       </main>
+
+      {/* 新建工作区 sheet（2026-08-31 拍板：一个按钮，指定或创建） */}
+      {sheetOpen && (
+        // biome-ignore lint/a11y/noStaticElementInteractions: 模态遮罩点击空白 = 取消
+        <div
+          className="sh-modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setSheetOpen(false);
+          }}
+        >
+          <div className="sh-modal" role="dialog" aria-modal="true" aria-label="新建工作区">
+            {sheetStage === 'choose' ? (
+              <>
+                <div className="sh-modal-title">新建工作区</div>
+                <div className="sh-modal-body sh-sheet-choose">
+                  <button type="button" className="sh-sheet-opt" onClick={() => setSheetStage('create')}>
+                    <span className="sh-sheet-opt-t">创建新目录</span>
+                    <span className="sh-sheet-opt-d">在「文档 / 兰台」下按名字建一个新文件夹</span>
+                  </button>
+                  <button type="button" className="sh-sheet-opt" onClick={() => void onPickCommit()}>
+                    <span className="sh-sheet-opt-t">指定已有目录</span>
+                    <span className="sh-sheet-opt-d">选择磁盘上已有的文件夹作为工作区</span>
+                  </button>
+                </div>
+                <div className="sh-modal-foot">
+                  <button type="button" onClick={() => setSheetOpen(false)}>
+                    取消
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="sh-modal-title">创建新目录</div>
+                <div className="sh-modal-body">
+                  <input
+                    ref={createNameInputRef}
+                    className="sh-modal-input"
+                    value={newWsName}
+                    placeholder="工作区名字…"
+                    onChange={(e) => setNewWsName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void onCreateCommit();
+                      }
+                    }}
+                  />
+                  <label className="sh-modal-check">
+                    <input type="checkbox" checked={newWsEngine} onChange={(e) => setNewWsEngine(e.target.checked)} />
+                    分析此目录（代码图谱 + 文件监视）
+                  </label>
+                </div>
+                <div className="sh-modal-foot">
+                  <button type="button" onClick={() => setSheetStage('choose')}>
+                    返回
+                  </button>
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={busy || !newWsName.trim()}
+                    onClick={() => void onCreateCommit()}
+                  >
+                    创建并进入
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 移除工作区模态（2026-08-31 拍板：不做退路、确认做足） */}
+      {removeTarget && (
+        // biome-ignore lint/a11y/noStaticElementInteractions: 模态遮罩点击空白 = 取消
+        <div
+          className="sh-modal-backdrop"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setRemoveTarget(null);
+              setRemoveAck(false);
+            }
+          }}
+        >
+          <div className="sh-modal" role="dialog" aria-modal="true" aria-label="移除工作区">
+            <div className="sh-modal-title">移除工作区「{wsDisplayName(removeTarget)}」</div>
+            <div className="sh-modal-body">
+              <p className="sh-modal-text">
+                将删除该工作区的全部案卷（
+                {removeTarget.session_count > 0 ? `${removeTarget.session_count} 卷` : '当前没有案卷'}
+                ）并从清单移除——此操作不可恢复。
+              </p>
+              <label className="sh-modal-check">
+                <input type="checkbox" checked={removeAck} onChange={(e) => setRemoveAck(e.target.checked)} />
+                我了解{removeTarget.session_count > 0 ? ` ${removeTarget.session_count} 卷案卷` : '该工作区'}
+                将被永久删除且不可恢复
+              </label>
+            </div>
+            <div className="sh-modal-foot">
+              <button
+                type="button"
+                onClick={() => {
+                  setRemoveTarget(null);
+                  setRemoveAck(false);
+                }}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="danger"
+                disabled={!removeAck || busy}
+                onClick={() => void onRemoveConfirmed(removeTarget)}
+              >
+                彻底删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 底部 footer：左 brand 右当前案卷状态 */}
       <footer className="sh-foot">

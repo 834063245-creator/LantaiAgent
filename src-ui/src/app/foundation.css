@@ -577,37 +577,148 @@ body {
 .sh-ws-actions button:hover {
   color: var(--ink-1);
 }
-.sh-ws-remove-confirm {
-  position: absolute;
+
+/* ── 首页模态（2026-08-31）：新建工作区 sheet + 移除确认弹窗 ──
+ * 纸面美学：圆角恒 0、mono 机读、rule-soft 边框、seal-deep 印章色强调。 */
+.sh-modal-backdrop {
+  position: fixed;
   inset: 0;
+  background: color-mix(in oklch, var(--ink-1) 32%, transparent);
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: color-mix(in oklch, var(--paper) 92%, var(--ink-1));
-  z-index: 1;
+  justify-content: center;
+  z-index: 420;
 }
-.sh-ws-remove-confirm span {
-  flex: 1;
-  font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
-  letter-spacing: 0.06em;
+.sh-modal {
+  width: min(420px, calc(100vw - 48px));
+  background: var(--paper);
+  border: var(--rule-soft);
+  border-left: 3px solid var(--seal-deep);
+  box-shadow: 0 18px 48px color-mix(in oklch, var(--ink-1) 28%, transparent);
+  padding: 20px 22px;
+}
+.sh-modal-title {
+  font-family: var(--f-song);
+  font-size: calc(16px * var(--font-scale));
+  font-weight: 600;
   color: var(--ink-1);
 }
-.sh-ws-remove-confirm button {
+.sh-modal-body {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sh-modal-text {
   font-family: var(--f-mono);
-  font-size: calc(11px * var(--font-scale));
-  letter-spacing: 0.06em;
+  font-size: calc(12px * var(--font-scale));
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+  line-height: 1.7;
+}
+.sh-modal-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--f-mono);
+  font-size: calc(12px * var(--font-scale));
+  letter-spacing: 0.04em;
+  color: var(--ink-1);
+  cursor: pointer;
+}
+.sh-modal-check input {
+  accent-color: var(--seal-deep);
+}
+.sh-modal-input {
+  font-family: var(--f-song);
+  font-size: calc(14px * var(--font-scale));
+  color: var(--ink-1);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--seal-deep);
+  padding: 6px 2px;
+  outline: none;
+  width: 100%;
+}
+.sh-modal-foot {
+  margin-top: 18px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.sh-modal-foot button {
+  font-family: var(--f-mono);
+  font-size: calc(12px * var(--font-scale));
+  letter-spacing: 0.08em;
   background: transparent;
   border: var(--rule-soft);
+  color: var(--ink-1);
   cursor: pointer;
-  padding: 4px 10px;
-  white-space: nowrap;
+  padding: 6px 14px;
+  border-radius: 0;
 }
-.sh-ws-remove-confirm button.danger {
+.sh-modal-foot button:hover {
+  background: var(--ink-1);
+  color: var(--paper);
+}
+.sh-modal-foot button.primary,
+.sh-modal-foot button.danger {
   color: var(--paper);
   background: var(--seal-deep);
   border-color: var(--seal-deep);
+}
+.sh-modal-foot button.primary:hover,
+.sh-modal-foot button.danger:hover {
+  background: var(--seal-deep);
+  color: var(--paper);
+  filter: brightness(1.1);
+}
+.sh-modal-foot button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.sh-modal-foot button.primary:disabled,
+.sh-modal-foot button.danger:disabled {
+  background: var(--ink-3);
+  border-color: var(--ink-3);
+  color: var(--paper);
+}
+/* sheet 双路选择（创建新目录 / 指定已有目录） */
+.sh-sheet-choose {
+  gap: 8px;
+}
+.sh-sheet-opt {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: transparent;
+  border: var(--rule-soft);
+  cursor: pointer;
+  padding: 12px 14px;
+  border-radius: 0;
+}
+.sh-sheet-opt:hover {
+  border-color: var(--seal-deep);
+}
+.sh-sheet-opt-t {
+  font-family: var(--f-song);
+  font-size: calc(14px * var(--font-scale));
+  font-weight: 600;
+  color: var(--ink-1);
+}
+.sh-sheet-opt-d {
+  font-family: var(--f-mono);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.05em;
+  color: var(--ink-3);
+}
+/* 目录已丢失的工作区卡（诚实显示 + 禁进） */
+.sh-ws-card--dead {
+  opacity: 0.55;
+}
+.sh-ws-card--dead .sh-ws-card-main {
+  cursor: not-allowed;
 }
 
 .sh-empty-hint {

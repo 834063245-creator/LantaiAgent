@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-08-28T22:40:48.572Z
-> 方法总数：151（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-08-30T17:24:46.498Z
+> 方法总数：153（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -211,7 +211,7 @@
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
-| `workspace_activate` | path | — | `null`（unit） |
+| `workspace_activate` | path | graph_engine | `null`（unit） |
 | `workspace_deactivate` | — | — | `null`（unit） |
 | `workspace_start_watcher` | — | — | `null`（unit） |
 | `get_last_project` | — | — | JSON 字符串 |
@@ -219,6 +219,8 @@
 | `workspace_rename` | path, name | — | `null`（unit） |
 | `workspace_toggle_pin` | path | — | `null`（unit） |
 | `workspace_remove` | path | — | `null`（unit） |
+| `workspace_set_graph_engine` | path | — | `null`（unit） |
+| `workspace_create_dir` | name | — | JSON 字符串 |
 
 ## 会话持久化
 
@@ -276,9 +278,9 @@ payload 类型见 `src-ui/src/rpc-contract.ts` 的 `EventContract`（前端类�
 
 | 事件名 | 发射源 |
 |--------|--------|
-| `analyze-heartbeat` | src-tauri/src/utils/graph_io.rs |
-| `analyze-phase` | src-tauri/src/utils/graph_io.rs |
-| `analyze-progress` | src-tauri/src/utils/graph_io.rs |
+| `analyze-heartbeat` | src-tauri/src/workspace.rs |
+| `analyze-phase` | src-tauri/src/workspace.rs |
+| `analyze-progress` | src-tauri/src/workspace.rs |
 | `composition:changed` | src-tauri/src/composition_watcher.rs |
 | `graph-updated` | src-tauri/src/workspace.rs |
 | `lsp-message` | src-tauri/src/lsp_manager.rs |

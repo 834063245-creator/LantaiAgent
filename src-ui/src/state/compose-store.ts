@@ -45,6 +45,12 @@ export interface ComposeStore {
   setModel: (sessionId: string, providerName: string, model: string) => void;
   /** 热切换思考档位：写会话覆盖 + 发带 sessionId 的 thinking-changed 信号（不写全局）。 */
   setThinking: (sessionId: string, thinking: StoredThinking | undefined) => void;
+  /** 无主态模型切换（开口即开卷 2026-08-31）：直接写「新卷出生默认」
+   *  （activeProvider + 行 model），不建会话覆盖、不发会话信号——
+   *  无句柄可热切，下一卷出生时经工厂吃到新默认。 */
+  setGlobalModel: (providerName: string, model: string) => void;
+  /** 无主态思考档位切换：写 activeProvider 行的 thinking（新卷出生默认）。 */
+  setGlobalThinking: (thinking: StoredThinking | undefined) => void;
   /** 恢复期回填（从卷快照读盘时）：整条覆盖写入，不发包信号。 */
   hydratePrefs: (sessionId: string, prefs: ComposeSessionPrefs) => void;
   /** 移除会话覆盖（合卷/删除时清理）。 */
@@ -59,6 +65,21 @@ function snapshotFromGlobal(): ComposeSessionPrefs {
     return { providerName: act.name, model: act.model, thinking: act.thinking };
   } catch {
     return { providerName: '', model: '', thinking: undefined };
+  }
+}
+
+/** 新卷出生默认写盘（setModel 尾部与无主态 setGlobalModel 共用）：
+ *  定向写「最近使用的 provider + 该行 model」——重新 loadSettings 读改写
+ *  单字段（不整份快照 → A4 clobber 不复活）。 */
+function writeNewSessionDefault(providerName: string, model: string): void {
+  try {
+    const s = loadSettings();
+    const row = s.providers.find((p) => p.name === providerName);
+    if (row && (row.model !== model || s.activeProvider !== providerName)) {
+      saveSettings(updateProvider({ ...s, activeProvider: providerName as ProviderId }, providerName, { model }));
+    }
+  } catch {
+    /* 读/写失败静默——新会话默认保持旧值，不阻断热切换 */
   }
 }
 
@@ -82,20 +103,9 @@ function createComposeStoreImpl() {
       const next: ComposeSessionPrefs = { providerName, model, thinking };
       set((s) => ({ sessions: { ...s.sessions, [sessionId]: next } }));
       // 新会话默认 = 最近使用（2026-08-26）：定向写「最近使用的 provider + 该行
-      // model」——重新 loadSettings 读改写单字段（不整份快照 → A4 clobber 不复活）。
-      // 只影响新卷/未改卷的出生默认；已存在会话走覆盖（方案甲 A1「切一个拖累全部」
-      // 不复发——applyAgentConfig 会话级分支按会话解析，不读 activeProvider）。
-      // 「设为当前」按钮随此语义退役：activeProvider 不再是手动指定的「当前」，
-      // 而是自动跟从最近使用的 provider。
-      try {
-        const s = loadSettings();
-        const row = s.providers.find((p) => p.name === providerName);
-        if (row && (row.model !== model || s.activeProvider !== providerName)) {
-          saveSettings(updateProvider({ ...s, activeProvider: providerName as ProviderId }, providerName, { model }));
-        }
-      } catch {
-        /* 读/写失败静默——新会话默认保持旧值，不阻断热切换 */
-      }
+      // model」。只影响新卷/未改卷的出生默认；已存在会话走覆盖（方案甲 A1
+      // 「切一个拖累全部」不复发——applyAgentConfig 会话级分支按会话解析）。
+      writeNewSessionDefault(providerName, model);
       // 方案甲：信号带 sessionId → applyAgentConfig 只热切换该会话的句柄
       notifyAgentConfigChanged('model-switched', Number(sessionId));
     },
@@ -109,6 +119,23 @@ function createComposeStoreImpl() {
         return { sessions: { ...s.sessions, [sessionId]: { ...base, thinking } } };
       });
       notifyAgentConfigChanged('thinking-changed', Number(sessionId));
+    },
+
+    setGlobalModel: (providerName, model) => {
+      // 无主态（开口即开卷）：只写新卷出生默认，不建会话覆盖、不发会话信号
+      writeNewSessionDefault(providerName, model);
+    },
+
+    setGlobalThinking: (thinking) => {
+      // 无主态：写 activeProvider 行的 thinking（新卷出生默认）。
+      // 发 thinking-changed 信号无意义——无会话句柄可热切，工厂出生时现读。
+      try {
+        const s = loadSettings();
+        const act = getActiveProvider(s);
+        saveSettings(updateProvider(s, act.name, { thinking }));
+      } catch {
+        /* 读/写失败静默 */
+      }
     },
 
     hydratePrefs: (sessionId, prefs) => set((s) => ({ sessions: { ...s.sessions, [sessionId]: prefs } })),
@@ -134,6 +161,12 @@ export const getComposeStore = scoped.getStore;
  *  workspace.applyAgentConfig（settings-saved 逐会话重解析）与工厂共用。 */
 export function resolveComposeEffective(storeId: string, sessionId: number): ComposeSessionPrefs {
   return getComposeStore(storeId).getState().resolveEffective(String(sessionId));
+}
+
+/** 无主态显示面（开口即开卷 2026-08-31）：新卷出生默认（全局活跃 provider 行）。
+ *  创作坞无活跃卷时的模型/思考显示真源——纯 settings 读，不经 store。 */
+export function resolveNewSessionDefault(): ComposeSessionPrefs {
+  return snapshotFromGlobal();
 }
 
 /** 从注册表中移除面板的创作坞状态。 */

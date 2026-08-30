@@ -449,7 +449,7 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
   // 不造零目录会话，改由首页选/建工作区。与「创建工作区必须要有目录」一致。
   const claimWs = ctx.getProjectPath();
   if (!claimWs) {
-    ctx.addNotice('新建案卷需要先绑定目录——请在首页选择或创建工作区', 'warn');
+    ctx.addNotice('新建案卷需要先有工作区——请在首页新建或指定工作区', 'warn');
     return;
   }
   // DSH 形态（2026-08-25）：信封先行——建卷是纯数据操作，立即摊开可见；

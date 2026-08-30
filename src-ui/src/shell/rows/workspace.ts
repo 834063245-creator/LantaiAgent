@@ -36,7 +36,8 @@ async function wsMod(): Promise<typeof import('../../workspace')> {
 
 // ── 文件夹选择器 ──
 
-async function pickFolder(): Promise<string | null> {
+/** 系统目录选择器（首页「指定已有目录」路径与 switchWorkspace 缺省共用）。 */
+export async function pickFolder(): Promise<string | null> {
   try {
     const { open } = await import('@tauri-apps/plugin-dialog');
     const result = await open({ directory: true, multiple: false, title: '选择工作区目录' });
@@ -50,7 +51,10 @@ async function pickFolder(): Promise<string | null> {
 // switchWorkspace — 统一入口
 // ═══════════════════════════════════════════════════════════════
 
-async function switchWorkspace(path?: string): Promise<void> {
+/** opts.graphEngine（2026-08-31 per-workspace 引擎旗标）：true/false = 显式指定
+ *  （新建工作区 sheet 的勾选，随 activate 写入注册表）；null/undefined = 不指定，
+ *  Workspace.open 内部按注册表现值装配（无记录回退全局默认），注册表不被覆写。 */
+async function switchWorkspace(path?: string, opts?: { graphEngine?: boolean | null }): Promise<void> {
   const { workspace, wsMachine } = shellRefs;
   const chatPanel = shellRefs.chatPanel;
   if (!chatPanel) {
@@ -104,7 +108,11 @@ async function switchWorkspace(path?: string): Promise<void> {
     };
     let ws: Workspace;
     try {
-      ws = await WorkspaceCls.open(folder, null, chatPanel, { onStatusChange, onLoadingChange });
+      ws = await WorkspaceCls.open(folder, null, chatPanel, {
+        onStatusChange,
+        onLoadingChange,
+        graphEngine: opts?.graphEngine ?? null,
+      });
     } catch (err) {
       console.error('[switchWorkspace] Workspace.open threw:', err);
       pushStatus(`分析失败: ${err}`);

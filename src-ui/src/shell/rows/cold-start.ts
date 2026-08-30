@@ -8,81 +8,49 @@
 // workspace-session-ownership-rework（2026-08-27）：setupPlaceholderAgent
 // 退役——零目录/占位工作区移除，无恢复信号 = 直接落案卷首页（不装配 Agent，
 // 用户从首页选/建工作区）。
+// per-workspace 引擎旗标（2026-08-31）：恢复信号统一 = .last_project（与图谱
+// 引擎无关，workspace_activate 每次绑定都写）；旧「全局引擎开关二分信号路径」
+// （引擎开 = 缓存图 source_root / 引擎关 = .last_project）随旗标 per-workspace
+// 化退役——该区开不开引擎由 Workspace.open 内部按注册表现值解析。
 //
 // 现职责只剩一件：
-//   有恢复信号（引擎开 = 缓存图 source_root；引擎关 = .last_project）→
-//   switchWorkspace 恢复工作区数据面（Agent 工具的图谱预热 + 会话续开）；
-//   无恢复信号 → 落点首页（不再装配占位 Agent）。
+//   有恢复信号（.last_project）→ switchWorkspace 恢复工作区数据面
+//   （Agent 工具的图谱预热 + 会话 + 画布摊开集）；
+//   无恢复信号 → 落点首页。
 // 视图不再由此行决定——启动落点恒为案卷首页（bootShell 不再开纸面板，
 // 2026-08-22 用户拍板；纸面板由用户的新建/续开动作唤起）。
 
-import { asGraphSnapshot, type GraphSnapshot } from '../../agent/hooks';
 import { isMockMode } from '../../bridge';
 import { typedJsonRpc } from '../../rpc-contract';
-import { graphEngineEnabled, loadSettings } from '../../settings';
 import { pushStatus, type ShellRefs, setLoading } from '../runtime';
 import { workspaceFlow } from './workspace';
 
-// Phase 1.5：冷启动恢复信号 = 聚合快照（node_count + source_root 顶层字段）。
-
 export async function bootColdStart(_refs: ShellRefs): Promise<void> {
   try {
-    // 引擎开关（2026-08-22）：关闭时恢复信号不依赖缓存图——load_graph_json
-    // 的引擎路径会顺手 engine_init（ensure_engine_graph），关图冷启动绝不能碰。
-    // 「最近工作区」记忆 = .last_project（workspace_activate 每次绑定都写，
-    // 与图谱引擎无关）——经 get_last_project RPC 读取。
-    if (!graphEngineEnabled(loadSettings())) {
-      setLoading(false);
-      let lastDir: string | null = null;
-      try {
-        lastDir = await typedJsonRpc<string | null>('get_last_project', {});
-      } catch {
-        /* 无后端通道（浏览器 mock）→ 落点首页 */
-      }
-      if (lastDir) {
-        console.log('[init] cold start (engine off): restoring last workspace', lastDir);
-        await workspaceFlow.switchWorkspace(lastDir);
-        pushStatus('已恢复上次案卷（图谱引擎已停用）');
-      }
-      // 无恢复信号 → 落点案卷首页（不装配 Agent，用户从首页选/建工作区）
-      return;
-    }
-    // Phase 1.5：load_graph_json 返回聚合快照（node_count/source_root 在顶层）。
-    let graph: GraphSnapshot | null = null;
+    let lastDir: string | null = null;
     try {
-      graph = asGraphSnapshot(await typedJsonRpc<unknown>('load_graph_json', {}));
+      lastDir = await typedJsonRpc<string | null>('get_last_project', {});
     } catch {
-      // 无缓存图谱
+      /* 无后端通道（浏览器 mock）→ 落点首页 */
     }
-    if (!graph || graph.node_count <= 0) {
-      // 无缓存图谱 → 落点案卷首页（无工作区上下文不装配 Agent）
+    if (!lastDir) {
+      // 无恢复信号 → 落点案卷首页（不装配 Agent，用户从首页选/建工作区）
       setLoading(false);
       return;
     }
-
-    {
-      const root: string = graph.source_root || '';
-      if (!root) {
-        // 图谱存在但无路径 — 无工作区上下文，落点首页（不装配占位 Agent）
-        pushStatus('⚠️ 缓存图谱已加载，但工作区路径丢失 — 请重新绑定目录');
-        setLoading(false);
-        return;
-      }
-
-      // 使用统一的 switchWorkspace 恢复缓存工作区（数据面：图谱预热 + 会话）
-      console.log('[init] cold start: switching to cached workspace', root);
-      // Phase 1.5：不再传缓存 meta —— 快照装载已内建于 open()（毫秒级）。
-      await workspaceFlow.switchWorkspace(root);
-      console.log('[init] cold start: switchWorkspace done');
-      pushStatus(isMockMode() ? '🎨 Mock 模式 — 所见即所得，秒级刷新' : '已恢复上次案卷');
-      // 引擎预热通过 runCheck → engine_init（SQLite 缓存）完成。不要在此处触发
-      // analyze_project — 它会与 runCheck 的分析回退竞争并阻塞工作区切换。
-      return;
-    }
+    // 使用统一的 switchWorkspace 恢复上次工作区（数据面：图谱预热 + 会话 +
+    // 画布摊开集；该区引擎旗标由 Workspace.open 按注册表现值解析）。
+    // 引擎预热通过 runCheck → engine_init（SQLite 缓存）完成。不要在此处触发
+    // analyze_project — 它会与 runCheck 的分析回退竞争并阻塞工作区切换。
+    console.log('[init] cold start: restoring last workspace', lastDir);
+    await workspaceFlow.switchWorkspace(lastDir);
+    console.log('[init] cold start: switchWorkspace done');
+    pushStatus(isMockMode() ? '🎨 Mock 模式 — 所见即所得，秒级刷新' : '已恢复上次案卷');
+    return;
   } catch {
-    /* 无缓存 */
+    /* 恢复异常 → 落点首页 */
   }
 
-  // 无缓存图谱 / 无恢复信号 — 落点案卷首页（不装配 Agent）
+  // 无恢复信号 / 恢复异常 — 落点案卷首页（不装配 Agent）
   setLoading(false);
 }

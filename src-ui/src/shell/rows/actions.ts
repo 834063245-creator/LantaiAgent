@@ -18,7 +18,7 @@ import type { ShellRefs } from '../runtime';
 
 /** workspace 流函数注入面（workspace 行产出；编排期由 shell/workspace.ts 提供）。 */
 export interface WorkspaceFlowDeps {
-  switchWorkspace: (path?: string) => Promise<void>;
+  switchWorkspace: (path?: string, opts?: { graphEngine?: boolean | null }) => Promise<void>;
   escLayer: () => void;
 }
 
@@ -27,7 +27,7 @@ export function bootActions(_refs: ShellRefs, deps: WorkspaceFlowDeps): void {
     {
       id: 'open',
       group: '操作',
-      label: '绑定目录…（切换工作区）',
+      label: '打开工作区…（指定目录切换）',
       icon: 'folder-open',
       run: () => deps.switchWorkspace(),
     },
