@@ -1,3 +1,54 @@
+# baseline change request — 工具层上下文腰（T-1/T-2）：fs 可见键归一 + 三域描述换代（2026-08-30）
+
+- **日期**: 2026-08-30
+- **请求 Agent**: 工具层人体工学执行 Agent（设计件 `docs/plans/tool-ergonomics/design-1-context-waist.md` rev2 §3 验收 5 / `design-2-session-focus.md` rev2 §3——用户 2026-08-30 拍板「开工」）
+- **涉及快照**: `baseline/phase-0/tool-schemas.full.json`、`baseline/phase-0/tool-schemas.plan.json`、`baseline/preset-minimal/phase-0/` 对应物——同一动因的字节漂移
+- **状态**: **已批准（用户在 design-1/design-2 rev2 全文在库且明示「唯一流程门槛 = baseline 重录」后指令开工；重录为本设计的落地动作）**
+
+## 变更内容
+
+模型可见工具面三处（fs/git/search 三域 + desktop 描述）：
+
+1. **fs 可见键归一**：`filePath`/`projectPath`/`directory` 三枚同义路径键合并为单键 `path`
+   （合并期 canonical 映射）；派发侧 `normalizeArgs` 反向桥保证旧工具仍收原键——
+   Rust 参数名与 hidden 工具 schema 零改动。
+2. **path 族共享描述**：fs/git/search 的 `path` 键描述统一为「相对 = 工作区根相对；
+   允许省缺的 action 省缺 = 工作区根」，取代逐 action 拼接 + `(action: xxx)` 后缀。
+3. **域描述换代**：fs/git/search/desktop 四域描述追加相对路径/省缺/焦点语义
+   （fs(read)/fs(edit) 省缺 = 最近读写文件；desktop uia_* 省缺定位 = 焦点窗口）；
+   各 action 参数逐条描述的 per-action 标注随键归一消失。
+
+## 为什么变
+
+用户反馈「工具参数太多太长」+「工具层智能太低」——绝对路径重复税与 flat schema 键
+混乱税的根治。实现 = JS 平台层参数预处理腰（session-context per-owner 注册表），
+**Rust 零改动**（enforcement 留 Rust 漏斗，resolution 归 JS）；provider seam 契约收纯
+为「provider 恒收解析好的绝对路径」。
+
+## 影响面
+
+- **模型可见表面**：fs 域参数 16 键 → 10 键（路径键归一）；fs/git/search/desktop 四域
+  描述换代；git 全族 path / search directory / fs list、glob、constraints 省缺语义新增
+  （省缺 = workspace root，JS 填充后 Rust 仍收必传形态）。
+- **前缀缓存**：fs/git/search/desktop 四域 schema 字节变化 → 一次性失效（预期内，
+  零外部用户无在途成本）。
+- **Rust 契约**：零改动（rpc.rs / 命令签名 / frontend-rpc-contract.md 全部不变——
+  「cargo diff = 0」列为验收断言）。
+- **重录动作**：`npm run record:convergence`（standard）+ `CONVERGENCE_PRESET=minimal
+  npm run record:convergence`（minimal），随后 `npm run verify:convergence` 必须 exit 0。
+
+## 附带补录：minimal system-prompt 漂移（56fb9285 漏项，非本批动因）
+
+重录时发现 minimal 侧 `system-prompt.fixture.json` 在 HEAD 即已漂移（engineOff 4038 →
+323 字节，withGraph 4816 → 368）——根因 = `56fb9285`（2026-08-28 用户拍板「system prompt
+收缩为极简骨架」）自称 standard+minimal 双录，实际 minimal 侧漏录；此后 minimal 套件
+不在默认门禁（需 CONVERGENCE_PRESET=minimal 显式运行），漏项潜伏两天未被发现。本批
+重录出的 minimal system-prompt 与 56fb9285 的设计目标值逐字节吻合（withGraph 368 /
+engineOff 323），属于**补齐漏项**而非新动因——同款先例 5b5c20a9。已独立 worktree
+在 30acfeec（本批动工前）复现漂移确认与 T-1/T-2 无关。
+
+---
+
 # baseline change request — 三面解耦：system-prompt 夹具 noGraph 拆为 engineOff + noProject（2026-08-25）
 
 - **日期**: 2026-08-25

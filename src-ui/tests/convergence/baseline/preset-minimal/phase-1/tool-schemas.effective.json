@@ -83,7 +83,7 @@
       }
     },
     {
-      "description": "Sub-agent and inter-agent coordination: spawn / status / kill / message / request / reply / inbox / ack / list / merge / discover / lookup / isolation.",
+      "description": "Sub-agent and inter-agent coordination: spawn / status / kill / message / request / reply / inbox / ack / list / merge / discover / lookup / isolation. 委派：agent(spawn) 阻塞到子 Agent 完成，结果即工具返回；同轮发多个可并行。短任务（<1min）用同步 spawn；长任务或互不依赖的并行用 async=true（立即返回 agentId，完成后 result 消息进 inbox——agent(ack) 确认后 agent(merge) 合并）。异步最多 5 并发，池满先 agent(merge) 清理已完成的。 写类任务必须给每个子 Agent 不重叠的文件范围：fork 模式（worktree 隔离，靠 agent(merge) 合并回来）；读/检查类用 fresh 模式（直接改主工作区）。大任务切细、子 Agent 的 prompt 精简、别自己包揽子任务。 agent(merge) 串行合并已完成的 worktree，冲突存为 diff 由你手动应用；合并不可逆，先确认子 Agent 工作无误。 agent(message) 即发（30 分钟过期）；agent(request) 阻塞等回复（30s 默认、最大 120s）。 agent(discover) 发布发现（architecture/bug/pattern/config），agent(lookup) 查他人发现，最新发现每轮自动注入。",
       "name": "agent",
       "parameters": {
         "properties": {

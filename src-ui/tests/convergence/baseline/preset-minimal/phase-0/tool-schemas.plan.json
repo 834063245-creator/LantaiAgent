@@ -1,5 +1,5 @@
 {
-  "count": 14,
+  "count": 17,
   "schemas": [
     {
       "description": "Ask the user one or more questions when you need clarification or confirmation before proceeding. Use when the request is ambiguous, you need to choose between approaches, or you need approval for a destructive action. Supports: single question (question/header/options/multiSelect), multiple questions in one call (questions array — recommended for 2+, asked one at a time), and open-ended questions (omit options — the user types a free-text answer). Returns the user's answer(s).",
@@ -118,7 +118,74 @@
       }
     },
     {
-      "description": "File-system operations: read / write / edit / list / glob / mkdir / move / rename / delete / constraints / write_constraints. Use fs(read) to inspect files, fs(write)/fs(edit) to modify them. fs(constraints) reads hologram.constraints.yaml; fs(write_constraints) replaces it (read first — extend existing rules rather than dropping them).",
+      "description": "Create a visual asset block in the conversation (chart/table/metric/graph/html...) rendered as a component. Use for any deliverable that benefits from spatial layout or needs to be referred/updated later (charts, tables, impact graphs, metric dashboards, SVG/HTML cards). The block enters the chat flow and can be pinned to the canvas by the user. Kinds and their payload schemas are listed by list_block_kinds; presentation selects the visual form within the kind white-list (omit for the default). Check list_block_kinds before your first call.",
+      "name": "show_asset",
+      "parameters": {
+        "additionalProperties": {},
+        "properties": {
+          "kind": {
+            "description": "资产语义 kind（list_block_kinds 可查全量与 schema）",
+            "type": "string"
+          },
+          "payload": {
+            "description": "资产数据（须为 JSON；纯数据，不含回调）"
+          },
+          "presentation": {
+            "description": "表现形态（kind 白名单内；缺省用默认表现）",
+            "type": "string"
+          },
+          "stream": {
+            "description": "append 型 kind 可流式构建（终值仍以本调用为准）",
+            "type": "boolean"
+          },
+          "title": {
+            "description": "短标题（snake_case 风格，可作下载/引用名）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "Update an existing asset block in-place by assetId (payload/presentation replace; the block id and pin position keep unchanged — pinned copies update live). Rules: kind is NOT changeable (changing semantics means creating a new asset with show_asset); presentation is changeable (skin swap, within the same kind white-list). Errors name what went wrong and what to do instead.",
+      "name": "update_asset",
+      "parameters": {
+        "additionalProperties": {},
+        "properties": {
+          "assetId": {
+            "description": "资产 id（show_asset 返回）",
+            "type": "string"
+          },
+          "payload": {
+            "description": "新资产数据（纯 JSON；整体替换）"
+          },
+          "presentation": {
+            "description": "新表现形态（kind 白名单内；缺省保持原表现）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId",
+          "payload"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "description": "List all available asset block kinds with their payload JSON Schema, presentation white-lists, and streaming mode. Call before show_asset to learn what you can generate and how the payload must be shaped; the list reflects the live registry (plugin-contributed kinds appear automatically).",
+      "name": "list_block_kinds",
+      "parameters": {
+        "additionalProperties": {},
+        "properties": {},
+        "type": "object"
+      }
+    },
+    {
+      "description": "File-system operations: read / write / edit / list / glob / mkdir / move / rename / delete / constraints / write_constraints. Use fs(read) to inspect files, fs(write)/fs(edit) to modify them. fs(constraints) reads hologram.constraints.yaml; fs(write_constraints) replaces it (read first — extend existing rules rather than dropping them). Path params accept workspace-root-relative paths (e.g. \"src/agent/tool.ts\"); fs(list)/fs(glob)/fs(constraints) may omit the path — omitted = the workspace root. fs(read)/fs(edit) may also omit the path — omitted = the file from your most recent fs(read)/fs(edit) (results end with a [file: ...] line showing where you landed).",
       "name": "fs",
       "parameters": {
         "properties": {
@@ -145,10 +212,6 @@
           },
           "content": {
             "description": "Full file content to write (action: write); Full YAML content to write (action: write_constraints)",
-            "type": "string"
-          },
-          "filePath": {
-            "description": "Absolute path to the file to read (action: read); Absolute path to the file to create or overwrite (action: write); Absolute path to the file to modify (action: edit)",
             "type": "string"
           },
           "from": {
@@ -180,15 +243,11 @@
             "type": "string"
           },
           "path": {
-            "description": "Absolute path to the directory to list (action: list); Directory to search in. Defaults to the current workspace root. (action: glob); Absolute path to the directory to create (action: mkdir); Absolute path to the file/directory to rename (action: rename); Absolute path to the file or directory to delete (action: delete)",
+            "description": "Target path. Relative paths resolve against the workspace root; where the action allows omitting it, omitted = the workspace root.",
             "type": "string"
           },
           "pattern": {
             "description": "Glob pattern to match file paths against (e.g. \"**/*.rs\", \"src/**/agent*.ts\", \"*.json\")",
-            "type": "string"
-          },
-          "projectPath": {
-            "description": "Project root directory path (action: constraints); Project root directory path (action: write_constraints)",
             "type": "string"
           },
           "replaceAll": {
@@ -264,7 +323,7 @@
       }
     },
     {
-      "description": "Git operations: status / diff / log / stage / commit / push / pull / checkout / branch / stash / unstash / discard / init / blame.",
+      "description": "Git operations: status / diff / log / stage / commit / push / pull / checkout / branch / stash / unstash / discard / init / blame. path may be omitted for every action — omitted = the workspace root.",
       "name": "git",
       "parameters": {
         "properties": {
@@ -316,7 +375,7 @@
             "type": "string"
           },
           "path": {
-            "description": "Absolute path to the git repository root (action: status); Absolute path to the git repository root (action: diff); Absolute path to the git repository root (action: log); Absolute path to the git repository root (action: stage); Absolute path to the git repository root (action: commit); Absolute path to the git repository root (action: push); Absolute path to the git repository root (action: pull); Absolute path to the git repository (action: checkout); Absolute path to the git repository (action: branch); Absolute path to the git repository (action: stash); Absolute path to the git repository (action: unstash); Absolute path to the git repository (action: discard); Absolute path to the directory (action: init)",
+            "description": "Target path. Relative paths resolve against the workspace root; where the action allows omitting it, omitted = the workspace root.",
             "type": "string"
           },
           "staged": {
@@ -332,7 +391,7 @@
       }
     },
     {
-      "description": "Search source text across files: content matches, file lists, or match counts.",
+      "description": "Search source text across files: content matches, file lists, or match counts. directory may be omitted — omitted = the workspace root.",
       "name": "search",
       "parameters": {
         "properties": {
@@ -349,10 +408,6 @@
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
-          },
-          "directory": {
-            "description": "Absolute path to the directory to search in",
-            "type": "string"
           },
           "fileTypes": {
             "description": "Optional comma-separated file extensions to filter (e.g. \".ts,.py,.rs\")",
@@ -393,6 +448,10 @@
             ],
             "type": "string"
           },
+          "path": {
+            "description": "Target path. Relative paths resolve against the workspace root; where the action allows omitting it, omitted = the workspace root.",
+            "type": "string"
+          },
           "pattern": {
             "description": "Text or regex pattern to search for (case-insensitive)",
             "type": "string"
@@ -415,7 +474,7 @@
       }
     },
     {
-      "description": "Sub-agent and inter-agent coordination: spawn / status / kill / message / request / reply / inbox / ack / list / merge / discover / lookup / isolation.",
+      "description": "Sub-agent and inter-agent coordination: spawn / status / kill / message / request / reply / inbox / ack / list / merge / discover / lookup / isolation. 委派：agent(spawn) 阻塞到子 Agent 完成，结果即工具返回；同轮发多个可并行。短任务（<1min）用同步 spawn；长任务或互不依赖的并行用 async=true（立即返回 agentId，完成后 result 消息进 inbox——agent(ack) 确认后 agent(merge) 合并）。异步最多 5 并发，池满先 agent(merge) 清理已完成的。 写类任务必须给每个子 Agent 不重叠的文件范围：fork 模式（worktree 隔离，靠 agent(merge) 合并回来）；读/检查类用 fresh 模式（直接改主工作区）。大任务切细、子 Agent 的 prompt 精简、别自己包揽子任务。 agent(merge) 串行合并已完成的 worktree，冲突存为 diff 由你手动应用；合并不可逆，先确认子 Agent 工作无误。 agent(message) 即发（30 分钟过期）；agent(request) 阻塞等回复（30s 默认、最大 120s）。 agent(discover) 发布发现（architecture/bug/pattern/config），agent(lookup) 查他人发现，最新发现每轮自动注入。",
       "name": "agent",
       "parameters": {
         "properties": {
@@ -531,7 +590,7 @@
       }
     },
     {
-      "description": "依赖图查询与分析（27 语言 AST + 符号级引用边）。**改代码前先问图**：定位符号、评估影响面、判断架构都走这里，grep 只能看到文本，图能看到结构。symbols 搜符号（「XX 在哪」）; semantic 语义检索（向量索引，按含义找符号——不知道确切名字时用，如「内存在哪释放」）; neighbors 谁依赖谁(1跳)（「这个模块被谁依赖」）; impact 改某文件的影响面（改前必查）; path 两符号间依赖路径; inspect 单符号全景; explore 自然语言探索依赖; community 模块所属社区; clusters 全局社区地图; summary 图统计+解析率+SCIP 新鲜度; cycles 循环依赖; coupling 单模块耦合画像(L1-L4); fragile 脆弱模块排名; blindspots 架构盲点; boundaries 边界违规; conflicts 线程冲突; async 异步/时序边; unused 死代码; flows 数据流列表; flow 单条数据流; affected_flows 受影响数据流; dataflow 变量使用统计(语法级,非污点); preflight 改前预检(改文件前必须); grpc gRPC 服务映射; diff 与基线图对比; dataflow_save 保存数据流追踪结果（供面板查看，写动作）; dataflow_query 查询已保存的数据流。",
+      "description": "依赖图查询与分析（27 语言 AST + 符号级引用边）。**改代码前先问图**：定位符号、评估影响面、判断架构都走这里，grep 只能看到文本，图能看到结构。答案带 ⚠️ staleness 横幅 = 图数据落后于当前文件——小改直接读文件确认，大改先 ops(analyze) 刷新；图查不到再退回 search/grep 文本兜底。symbols 搜符号（「XX 在哪」）; semantic 语义检索（向量索引，按含义找符号——不知道确切名字时用，如「内存在哪释放」）; neighbors 谁依赖谁(1跳)（「这个模块被谁依赖」）; impact 改某文件的影响面（改前必查）; path 两符号间依赖路径; inspect 单符号全景; explore 自然语言探索依赖; community 模块所属社区; clusters 全局社区地图; summary 图统计+解析率+SCIP 新鲜度; cycles 循环依赖; coupling 单模块耦合画像(L1-L4); fragile 脆弱模块排名; blindspots 架构盲点; boundaries 边界违规; conflicts 线程冲突; async 异步/时序边; unused 死代码; flows 数据流列表; flow 单条数据流; affected_flows 受影响数据流; dataflow 变量使用统计(语法级,非污点); preflight 改前预检(改文件前必须); grpc gRPC 服务映射; diff 与基线图对比; dataflow_save 保存数据流追踪结果（供面板查看，写动作）; dataflow_query 查询已保存的数据流。",
       "name": "graph",
       "parameters": {
         "properties": {
