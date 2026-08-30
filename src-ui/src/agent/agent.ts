@@ -40,6 +40,7 @@ import {
   type Pricing,
   type ToolEvent,
 } from './agent-types';
+import { generateAssetId } from './asset-kinds';
 import { type CompactionConfig, type CompactionSessionStats, CompactionTracker } from './compaction-model';
 import type { AgentContext } from './context';
 import {
@@ -62,6 +63,7 @@ import { type PlanGate, planGateCheck } from './plan/plan-registry';
 import { backoffDelay, isRetryable, MAX_RETRIES, sleepWithAbort } from './retry';
 import { SessionLog, type SessionResetReason } from './session-log';
 import type { StreamingToolExecutor } from './streaming-executor';
+import { parseAssetEventOutput } from './streaming-executor';
 import type { SubAgentSpawnHost } from './subagent-spawn';
 import { countMessage, countMessages, countTexts, countToolSchemas } from './token-counter';
 import type { ToolRegistry } from './tool';
@@ -306,10 +308,35 @@ export class Agent {
     if (this._isolationId) enriched._agent_id = this._isolationId;
     if (this.id) enriched._owner_id = this.id;
 
+    // 资产通道（executor 同款三件：assetId 注入 / onProgress→AssetDelta /
+    // 终值→Asset 事件）。缺失时嵌套调用的 show_asset/update_asset 只落
+    // asset-store 孤儿记录，聊天流永不渲染（2026-08-30 工具链路审计 C2）。
+    const assetChannel = tool.assetChannel === true;
+    if (assetChannel) enriched._asset_id = generateAssetId();
+    const nestedAssetId = typeof enriched._asset_id === 'string' ? enriched._asset_id : '';
+    const nestedAssetKind = typeof enriched.kind === 'string' ? enriched.kind : '';
+    const onProgress = assetChannel
+      ? (chunk: string) => {
+          this._sink({
+            kind: EventKind.AssetDelta,
+            assetDelta: { assetId: nestedAssetId, kind: nestedAssetKind, chunk },
+          });
+        }
+      : undefined;
+
     return tool
-      .execute(enriched, undefined, this._currentRunSignal ?? undefined)
+      .execute(enriched, onProgress, this._currentRunSignal ?? undefined)
       .then(async (raw) => {
         let output = raw;
+        if (assetChannel) {
+          const assetEvent = parseAssetEventOutput(output);
+          if (assetEvent) {
+            this._sink({ kind: EventKind.Asset, asset: assetEvent });
+          } else if (output?.trim()) {
+            // 终值非资产 JSON = 工具异常路径，留痕不静默（与 executor 同降级）
+            log.warn('agent', '[dispatchNestedTool] assetChannel tool returned non-asset output', { tool: name });
+          }
+        }
         // 工具后钩子富化（与 executor 同降级语义）
         if (this.hooks) {
           try {
@@ -491,6 +518,11 @@ export class Agent {
       this._preflightAttached = true;
       attachPreflightRegistry(this._loopEvents, hooks);
     }
+  }
+
+  /** preflight 注册表只读访问 — 子 Agent 装配继承门禁用（subagent-spawn.ts）。 */
+  getPreflightHooks(): PreflightHookRegistry | null {
+    return this.preflightHooks;
   }
   private _hookAttached = false;
   private _preflightAttached = false;

@@ -25,6 +25,11 @@ export interface Hook {
 
 // ── HookRegistry ──
 
+/** 单 hook 富化超时——hook 是结果路径上的观测增强面，引擎/诊断源卡死
+ *  不得拖住工具结果（超时回落到未富化结果；错误路径已有 catch 降级）。
+ *  3s：graph/诊断富化是毫秒级本地查询的正常量级，超过即视为源不可用。 */
+const HOOK_ENRICH_TIMEOUT_MS = 3_000;
+
 export class HookRegistry {
   private hooks: Hook[] = [];
 
@@ -45,7 +50,10 @@ export class HookRegistry {
     for (const hook of this.hooks) {
       try {
         if (hook.shouldEnrich(toolName, args)) {
-          enriched = await hook.enrich(toolName, args, enriched);
+          enriched = await Promise.race([
+            hook.enrich(toolName, args, enriched),
+            new Promise<string>((resolve) => setTimeout(() => resolve(enriched), HOOK_ENRICH_TIMEOUT_MS)),
+          ]);
         }
       } catch (e) {
         // Hook 崩溃静默降级

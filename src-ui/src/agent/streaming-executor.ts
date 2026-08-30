@@ -483,7 +483,8 @@ export class StreamingToolExecutor {
 
 /* ── 资产通道终值解析（协议 §2.3——assetChannel 工具返回 JSON 的 AssetEventData 形状）── */
 
-function parseAssetEventOutput(output: string): AssetEventData | null {
+/** 导出面：dispatchNestedTool（agent.ts）的嵌套资产通道复用同一解析。 */
+export function parseAssetEventOutput(output: string): AssetEventData | null {
   try {
     const parsed: unknown = JSON.parse(output);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;

@@ -63,7 +63,14 @@ describe('code-run 协议纯函数', () => {
     expect(parseWorkerMessage({ t: 'call', id: 1.5, name: 'x' })).toBeNull();
     expect(parseWorkerMessage({ t: 'call', id: 1, name: 42 })).toBeNull();
     expect(parseWorkerMessage({ t: 'log', text: 1 })).toBeNull();
-    expect(parseWorkerMessage({ t: 'done' })).toBeNull(); // 无 value 无 error
+    // 无值无错 = 「程序完成、无输出」的合法落定（2026-08-30 实机事故修复——
+    // 此前被当垃圾丢弃 → 无 return 的程序永不结算，挂到超时/用户中止）
+    expect(parseWorkerMessage({ t: 'done' })).toMatchObject({ t: 'done' });
+    // worker 实发形态：{t:'done', value: undefined}（structured clone 保留 undefined 属性）
+    expect(parseWorkerMessage({ t: 'done', value: undefined })).toMatchObject({ t: 'done' });
+    // 值/错误在场但形状非法仍然拒
+    expect(parseWorkerMessage({ t: 'done', value: 42 })).toBeNull();
+    expect(parseWorkerMessage({ t: 'done', error: { kind: 42 } })).toBeNull();
     expect(parseWorkerMessage({ t: 'unknown' })).toBeNull();
     expect(parseWorkerMessage({ t: 'call', id: 1, name: 'fs' })).toMatchObject({ t: 'call', id: 1, name: 'fs' });
     expect(parseWorkerMessage({ t: 'log', text: 'hi' })).toMatchObject({ t: 'log', text: 'hi' });
@@ -143,6 +150,20 @@ describe('runCode 全链路（fake worker + 真实 bootstrap 源码）', () => {
     });
     expect(result.error?.kind).toBe('exception');
     expect(result.error?.message).toContain('boom');
+  });
+
+  it('回归（2026-08-30 实机事故）：无 return 的程序正常落定，日志即产出', async () => {
+    // 真实事故形态：scan 类程序只 console.log 不 return——worker 发
+    // {t:'done', value: undefined}，宿主解析器曾把它当垃圾丢弃 →
+    // run 永不结算（挂到 120s 超时或用户中止，体感 = 用了就卡死）
+    const result = await runCode(
+      `console.log('=== 盘点 ===');
+       console.log('  3x 13px');`,
+      { createWorker: makeFakeWorker, bindings: [] },
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.result).toBeUndefined();
+    expect(result.logs).toEqual(['=== 盘点 ===', '  3x 13px']);
   });
 
   it('语法错误 → exception（SyntaxError 前缀）', async () => {
@@ -293,6 +314,18 @@ describe('code_execution 工具本体', () => {
     const out = await tool.execute({ code: `throw new Error('nope')`, description: 'x' });
     expect(out).toContain('[code_execution 失败]');
     expect(out).toContain('exception');
+  });
+
+  it('无 return 程序：日志即产出，不算失败（2026-08-30 实机事故回归）', async () => {
+    const tool = createCodeExecutionTool({
+      bindings: [],
+      createWorker: makeFakeWorker,
+    });
+    const out = await tool.execute({ code: `console.log('a'); console.log('b');`, description: 'x' });
+    expect(out).toContain('── logs ──');
+    expect(out).toContain('a');
+    expect(out).not.toContain('[code_execution 失败]');
+    expect(out).not.toContain('── result ──');
   });
 
   it('schema：defineTool 形状（zod → JSON Schema，required = code+description）', () => {

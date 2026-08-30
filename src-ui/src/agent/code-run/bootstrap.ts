@@ -91,8 +91,6 @@ export const WORKER_BOOTSTRAP_SOURCE = String.raw`
     logEntries++;
     post({ t: 'log', text: text });
   }
-  var usedBytes = 2; // "[]" 空数组序列化形态
-  var logEntries = 0;
 
   // console shim：五方法，inspect 风格渲染（无 util.inspect——降级为
   // JSON.stringify + String 混合，深度封顶防爆炸）

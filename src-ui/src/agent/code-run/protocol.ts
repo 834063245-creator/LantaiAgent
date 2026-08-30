@@ -96,7 +96,13 @@ export function parseWorkerMessage(data: unknown): WorkerToHost | null {
       const err = m.error as Record<string, unknown> | undefined;
       const hasError =
         err !== null && typeof err === 'object' && typeof err.kind === 'string' && typeof err.message === 'string';
-      if (!hasValue && !hasError) return null;
+      // 值/错误在场但形状非法 → 丢弃。注意：worker 落定无返回值程序时发的是
+      // {t:'done', value: undefined}（structured clone 保 undefined 属性）——
+      // 无值无错是「程序完成、无输出」的合法落定，必须放行（2026-08-30 实机
+      // 事故：曾被当垃圾静默丢弃 → 无 return 的程序永不结算，挂到超时/中止）。
+      const valuePresent = m.value !== undefined && m.value !== null;
+      const errorPresent = m.error !== undefined && m.error !== null;
+      if ((valuePresent && !hasValue) || (errorPresent && !hasError)) return null;
       return m as unknown as CodeDoneMessage;
     }
     default:

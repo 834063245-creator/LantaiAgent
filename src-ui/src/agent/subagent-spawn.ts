@@ -46,6 +46,8 @@ export interface SubAgentSpawnHost {
   _currentRunSignal: AbortSignal | null;
   _fileOwnership: FileOwnership | null;
   extractRecentContext(maxMessages: number): string;
+  /** 父 preflight 注册表（null = 主 Agent 未接线）— 子 Agent 门禁继承用。 */
+  getPreflightHooks(): import('./hooks').PreflightHookRegistry | null;
 }
 
 const MAX_SUBAGENT_DEPTH = 3;
@@ -323,6 +325,13 @@ ${subTools
     temperature: 0.3,
     contextWindow: ag.contextWindow,
   });
+
+  // 门禁继承：子 Agent 与主 Agent 同权面跑 preflight（HIGH 风险拦截 + 写前
+  // 告警）。此前 setPreflightHooks 仅主 Agent 接线（runtime.ts），子 Agent 的
+  // executor（eventBus tool/preflight 监听面）与 dispatchNestedTool 双双静默
+  // 免检——fork/fresh 子 Agent 可做破坏性写而零预检（2026-08-30 工具链路审计 C3）。
+  const parentPreflight = ag.getPreflightHooks();
+  if (parentPreflight) subAgent.setPreflightHooks(parentPreflight);
 
   // 注册到 TaskBoard + 文件追踪 hook — 仅 async 模式。
   // Sync 模式不需要 board 追踪（结果直接返回，立即合并）。
