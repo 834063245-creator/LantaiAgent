@@ -425,6 +425,191 @@ export function shrinkWrapUserWidth(
   return Math.max(USER_SHRINK_MIN_W, w);
 }
 
+/* ── 缩远墨迹（P4 LOD）──
+ * InkLayer 在远缩档用 canvas 画「真墨」行条骨架（每行真实行宽），替代整棵
+ * DOM 块树——远看是真卷轴全景，近看回 DOM 正文。inkSourcesFor 是墨迹的文类
+ * 分派单一真源（与 measureBlockHeight 消费同一份 payload 语义与镜像常量）：
+ * 产出每类块的「文本源」清单，行条几何由 paper/ink 的 walkLineRanges 消费。
+ * 改块内容语义/版式常量时两处同改。 */
+
+/** 单个文本源 → 墨条几何输入。cap = 行条数上限（镜像测量端的封顶高度）。 */
+export interface InkSource {
+  text: string;
+  font: string;
+  lineHeight: number;
+  /** 横向内缩（世界单位——墨条起点 = 块左缘 + inset） */
+  inset: number;
+  /** 行条上限（pre/output 族按 PRE_MAX_H/OUT 族镜像，缺省不封顶） */
+  cap?: number;
+}
+
+/** 纸条墨迹常量（.pp-strip 镜像：12.5px 宋体 / 1.7 行距 / padding 12）。 */
+export const STRIP_INK = { font: `12.5px ${SONG_STACK}`, lineHeight: 12.5 * 1.7, inset: 12 };
+
+export function inkSourcesFor(b: SourcedBlock, folded: boolean): InkSource[] {
+  const p = b.payload as PayloadLike;
+  switch (b.kind) {
+    case 'user':
+      // 圈点行宽差 ≤ 椭圆 chrome 量级——远缩墨条按纯文本即可（LOD 抽象层）
+      return p.text && !folded
+        ? [{ text: p.text, font: PAPER_USER_FONT, lineHeight: PAPER_USER_LINE_HEIGHT, inset: USER_TEXT_INSET }]
+        : [];
+    case 'markdown':
+      return p.text ? markdownInkSources(p.text) : [];
+    case 'reasoning':
+      return p.text && !folded
+        ? [
+            {
+              text: p.text,
+              font: PAPER_REASONING_FONT,
+              lineHeight: PAPER_REASONING_LINE_HEIGHT,
+              inset: REASONING_TEXT_INSET,
+            },
+          ]
+        : [];
+    case 'notice':
+      return p.text
+        ? [{ text: p.text, font: PAPER_NOTICE_FONT, lineHeight: PAPER_NOTICE_LINE_HEIGHT, inset: NOTICE_TEXT_INSET }]
+        : [];
+    case 'diff':
+      return p.text
+        ? [
+            {
+              text: p.text,
+              font: PAPER_MONO_FONT,
+              lineHeight: PAPER_MONO_LINE_HEIGHT,
+              inset: DIFF_TEXT_INSET,
+              cap: Math.floor(PRE_MAX_H / PAPER_MONO_LINE_HEIGHT),
+            },
+          ]
+        : [];
+    case 'tool': {
+      if (folded) return [];
+      const out: InkSource[] = [];
+      if (p.args)
+        out.push({
+          text: prettyToolArgs(p.args),
+          font: PAPER_TOOL_FONT,
+          lineHeight: PAPER_TOOL_LINE_HEIGHT,
+          inset: 0,
+          cap: Math.floor(PRE_MAX_H / PAPER_TOOL_LINE_HEIGHT),
+        });
+      if (p.output)
+        out.push({
+          text: p.output,
+          font: PAPER_OUT_FONT,
+          lineHeight: PAPER_OUT_LINE_HEIGHT,
+          inset: 0,
+          cap: Math.floor(OUT_MAX_H / PAPER_OUT_LINE_HEIGHT),
+        });
+      if (p.err)
+        out.push({
+          text: p.err,
+          font: PAPER_OUT_FONT,
+          lineHeight: PAPER_OUT_LINE_HEIGHT,
+          inset: 0,
+          cap: Math.floor(OUT_MAX_H / PAPER_OUT_LINE_HEIGHT),
+        });
+      return out;
+    }
+    case 'code': {
+      if (folded) return [];
+      const out: InkSource[] = [];
+      const src = (b.payload as { code?: string }).code ?? p.args ?? '';
+      if (src)
+        out.push({
+          text: src,
+          font: PAPER_TOOL_FONT,
+          lineHeight: PAPER_TOOL_LINE_HEIGHT,
+          inset: CODE_SRC_INSET,
+          cap: Math.floor((CODE_SRC_MAX_H - CODE_SRC_PAD_V) / PAPER_TOOL_LINE_HEIGHT),
+        });
+      if (p.output)
+        out.push({
+          text: p.output,
+          font: PAPER_OUT_FONT,
+          lineHeight: PAPER_OUT_LINE_HEIGHT,
+          inset: 0,
+          cap: Math.floor(CODE_OUT_TEXT_MAX / PAPER_OUT_LINE_HEIGHT),
+        });
+      if (p.err)
+        out.push({
+          text: p.err,
+          font: PAPER_OUT_FONT,
+          lineHeight: PAPER_OUT_LINE_HEIGHT,
+          inset: 0,
+          cap: Math.floor(CODE_OUT_TEXT_MAX / PAPER_OUT_LINE_HEIGHT),
+        });
+      return out;
+    }
+    case 'plan': {
+      const items = parsePlanItems(p.content ?? '');
+      return items.length === 0
+        ? []
+        : [
+            {
+              text: items.join('\n'),
+              font: PAPER_PLAN_ITEM_FONT,
+              lineHeight: PAPER_PLAN_ITEM_LINE_HEIGHT,
+              inset: PLAN_ITEM_INSET,
+            },
+          ];
+    }
+    default:
+      return []; // 资产/开放 kind：远缩画外框即可（无行条）
+  }
+}
+
+/** markdown 元素 → 墨迹源（parseMarkdown 同源走查：p/h/列表项走正文族字号，
+ *  围栏码走 mono 封顶，引用递归，hr 跳过，表格按行退化）。 */
+function markdownInkSources(text: string): InkSource[] {
+  const out: InkSource[] = [];
+  const push = (t: string, size: number, lh: number): void => {
+    if (t) out.push({ text: t, font: `${size}px ${SONG_STACK}`, lineHeight: lh, inset: 0 });
+  };
+  const walk = (blocks: MdBlock[]): void => {
+    for (const el of blocks) {
+      switch (el.t) {
+        case 'p':
+          push(mdPlainText(el.inl), BODY_SIZE, PAPER_BODY_LINE_HEIGHT);
+          break;
+        case 'h': {
+          const c = MD_H[el.lv - 1];
+          push(mdPlainText(el.inl), c.size, c.size * c.lh);
+          break;
+        }
+        case 'list':
+          for (const it of el.items) {
+            push(mdPlainText(it.inl), BODY_SIZE, PAPER_BODY_LINE_HEIGHT);
+            if (it.sub) walk(it.sub);
+          }
+          break;
+        case 'quote':
+          walk(el.blocks);
+          break;
+        case 'code':
+          if (el.text)
+            out.push({
+              text: el.text,
+              font: PAPER_MONO_FONT,
+              lineHeight: PAPER_MONO_LINE_HEIGHT,
+              inset: MD_CODE_INSET,
+              cap: Math.floor(PRE_MAX_H / PAPER_MONO_LINE_HEIGHT),
+            });
+          break;
+        case 'table':
+          for (const row of [el.head, ...el.rows])
+            push(row.map((c) => mdPlainText(c)).join(' '), MD_TABLE_SIZE, MD_TABLE_LINE_HEIGHT);
+          break;
+        case 'hr':
+          break;
+      }
+    }
+  };
+  walk(parseMarkdown(text));
+  return out;
+}
+
 /* ── markdown 块测量（渲染 MarkdownBody 的逐字镜像——消费同一 parseMarkdown 模型）── */
 
 function tableRowH(cells: MdInline[][], w: number): number {
@@ -596,8 +781,9 @@ export function createBlockMeasureCache(): BlockMeasureCache {
   return { byId: new Map() };
 }
 
-/** 内容签名（决定块高的全部 payload 字段 + 折叠态——签名变 = 高度必须重测）。 */
-function measureSignature(b: SourcedBlock, folded: boolean): string {
+/** 内容签名（决定块高的全部 payload 字段 + 折叠态——签名变 = 高度必须重测）。
+ *  P4：ink 层复用同一签名做墨迹缓存 key（块 id + 签名 + 宽）。 */
+export function measureSignature(b: SourcedBlock, folded: boolean): string {
   const p = b.payload as Record<string, unknown>;
   const f = folded ? 1 : 0;
   switch (b.kind) {

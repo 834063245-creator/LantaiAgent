@@ -42,6 +42,7 @@ import {
   zoomAt,
 } from '../../paper/canvas-math';
 import { defaultFolded, foldLabel, isFoldable } from '../../paper/fold';
+import { createInkCache, type InkCache, inkColorOf, inkForBlock, lodActive } from '../../paper/ink';
 import {
   type BlockMeasureCache,
   clearPaperMeasureCache,
@@ -92,6 +93,7 @@ import { useCoreStore } from '../chat/core-instance';
 import { Icon } from '../Icon';
 import { useShellStore } from '../shell-store';
 import { WinControls } from '../WinControls';
+import { InkLayer } from './InkLayer';
 import { StatusLine } from './StatusLine';
 import './PaperPanel.css';
 
@@ -253,6 +255,9 @@ function MinimapView({
   viewport,
   bottom,
   onJump,
+  activeRegion,
+  foldedOf,
+  inkCache,
 }: {
   content: { x0: number; y0: number; x1: number; y1: number };
   viewport: { x0: number; y0: number; x1: number; y1: number };
@@ -260,6 +265,10 @@ function MinimapView({
   bottom: number;
   /** 点击跳转：视口中心滑到对应世界点（保 zoom） */
   onJump: (worldX: number, worldY: number) => void;
+  /** P4b 小地图真墨：活跃流区的行条墨迹（摊开整卷见真卷轴） */
+  activeRegion?: RegionView;
+  foldedOf?: (b: SourcedBlock) => boolean;
+  inkCache?: InkCache;
 }) {
   const W = 128;
   const H = 96;
@@ -268,6 +277,47 @@ function MinimapView({
   const scale = Math.min((W - 8) / cw, (H - 8) / ch);
   const offX = (W - 8 - cw * scale) / 2;
   const offY = (H - 8 - ch * scale) / 2;
+  const inkCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    const canvas = inkCanvasRef.current;
+    if (!canvas || !activeRegion || !foldedOf || !inkCache) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    const flow = activeRegion.blocks.filter((b) => b.state === 'flow');
+    // 块数 > 50 = 密度档：每块只画首行（缩略不逐行）
+    const density = flow.length > 50;
+    for (const b of flow) {
+      const slot = activeRegion.layout.get(b.id);
+      if (!slot) continue;
+      const ink = inkForBlock(b, foldedOf(b), inkCache);
+      const bar0 = ink.bars[0];
+      if (!bar0) continue;
+      ctx.fillStyle = inkColorOf(b.kind);
+      if (density) {
+        ctx.fillRect(
+          4 + (slot.x + bar0.x0 - content.x0) * scale + offX,
+          4 + (slot.y - content.y0) * scale + offY,
+          Math.max(1, bar0.w * scale),
+          1.5,
+        );
+        continue;
+      }
+      const h = Math.max(0.5, ink.lineH * scale * 0.5);
+      for (const bar of ink.bars) {
+        ctx.fillRect(
+          4 + (slot.x + bar.x0 - content.x0) * scale + offX,
+          4 + (slot.y + bar.dy - content.y0) * scale + offY,
+          Math.max(0.5, bar.w * scale),
+          h,
+        );
+      }
+    }
+  }, [activeRegion, content, foldedOf, inkCache, offX, offY, scale]);
   const toMap = (x: number, y: number) => ({
     left: 4 + (x - content.x0) * scale + offX,
     top: 4 + (y - content.y0) * scale + offY,
@@ -292,6 +342,7 @@ function MinimapView({
         onJump(content.x0 + mx / scale, content.y0 + my / scale);
       }}
     >
+      <canvas ref={inkCanvasRef} className="pp-mm-ink" />
       <div className="pp-mm-viewport" style={vp} />
     </div>
   );
@@ -455,6 +506,8 @@ export function PaperPanel() {
   const translateCacheBySession = useRef(new Map<number, MessageTranslateCache | null>());
   const measureCacheRef = useRef<BlockMeasureCache>(createBlockMeasureCache());
   const opsCacheRef = useRef<Map<string, { msg: ChatMessage; ops: BlockOp[] }>>(new Map());
+  /* P4 缩远墨迹：骨架几何缓存（签名命中零重算） */
+  const inkCacheRef = useRef(createInkCache());
 
   /* ── 折叠态（2026-08-30 会话流渲染专项）──
    * 规则态在 paper/fold.ts（夹注恒折；脚注/程文按状态：running/error 展开、
@@ -520,6 +573,22 @@ export function PaperPanel() {
   const canvasSize = useCanvasViewStore((s) => s.canvasSize);
   const setCanvasSize = useCanvasViewStore((s) => s.setCanvasSize);
   const canvasRef = useRef<HTMLDivElement | null>(null);
+
+  /* ── 缩远墨迹（P4 LOD）：zoom 低于迟滞阈值时块/纸条 DOM 退场，InkLayer 画
+   * 真墨行条骨架——远看真卷轴 + 远缩性能防线（阈值间往返不闪烁）。 ── */
+  const [lod, setLod] = useState(false);
+  const lodRef = useRef(false);
+  useEffect(() => {
+    const sync = () => {
+      const next = lodActive(useCanvasViewStore.getState().view.zoom, lodRef.current);
+      if (next !== lodRef.current) {
+        lodRef.current = next;
+        setLod(next);
+      }
+    };
+    sync();
+    return useCanvasViewStore.subscribe(sync);
+  }, []);
 
   /* 初始视口：锚点对视口下缘（D-R1-3）。画布尺寸变化时保持锚点关系 */
   useEffect(() => {
@@ -731,6 +800,8 @@ export function PaperPanel() {
     }
     return out;
   }, [canvasState.pins, openSessionIds, openBlockIds]);
+  /** 孤儿钉快照块（P4：远缩墨迹层画它们的行条——公共物不连坐，墨也不连坐） */
+  const orphanInkBlocks = useMemo(() => orphanPins.map(([id, pin]) => blockFromSnapshot(id, pin)), [orphanPins]);
   /** 孤儿钉的源卷已删（2026-08-28 会话管理专项）：源卷被删除后「收回」语义
    *  失效——按钮应显示「删除」。来自 deletedSessionIds（deleteSessionFile 标记
    *  + restoreCanvasSpread 播种）。 */
@@ -1357,6 +1428,11 @@ export function PaperPanel() {
     }
     return { content: { x0, y0, x1, y1 }, viewport: viewRect };
   }, [regions, viewRect, canvasStrips, orphanPins]);
+  /* P4b 小地图真墨：活跃流区（自动选中机制同主人） */
+  const activeInkRegion = useMemo(
+    () => regions.find((r) => r.sessionId === activeSessionKey),
+    [regions, activeSessionKey],
+  );
 
   /* ── 抽纸条交互（A 拖拽做正 + B 选中浮钮）──
    * Stage-5：纸条 = 工作区级公共物（拷贝语义快照，独立宿主，不挂会话）——
@@ -1947,80 +2023,83 @@ export function PaperPanel() {
               })}
 
               {/* 纸条（V3a：拷贝语义快照，可拖动、可销毁；工作区级公共物 Stage-5） */}
-              {canvasStrips.map((s) => {
-                const stripDragged = dragStripId === s.id;
-                const stripPos = stripDragged && stripDragPos ? stripDragPos : { x: s.x, y: s.y };
-                const stripW = resizePreview?.id === s.id ? resizePreview.w : s.w;
-                return (
-                  // biome-ignore lint/a11y/noStaticElementInteractions: 纸条拖拽面（D-R2-1 手势族）
-                  <div
-                    key={s.id}
-                    className={`pp-strip${stripDragged ? ' pp-dragging' : ''}`}
-                    style={{ left: stripPos.x, top: stripPos.y, width: stripW }}
-                    onMouseDown={(e) => onStripMouseDown(e, s)}
-                  >
-                    <div className="pp-strip-head">
-                      <span className="pp-strip-tag">纸条</span>
-                      <button
-                        type="button"
-                        className="pp-strip-remove"
-                        title="销毁纸条"
-                        aria-label="销毁纸条"
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onRemoveStrip(s.id);
-                        }}
-                      >
-                        ✕
-                      </button>
+              {!lod &&
+                canvasStrips.map((s) => {
+                  const stripDragged = dragStripId === s.id;
+                  const stripPos = stripDragged && stripDragPos ? stripDragPos : { x: s.x, y: s.y };
+                  const stripW = resizePreview?.id === s.id ? resizePreview.w : s.w;
+                  return (
+                    // biome-ignore lint/a11y/noStaticElementInteractions: 纸条拖拽面（D-R2-1 手势族）
+                    <div
+                      key={s.id}
+                      className={`pp-strip${stripDragged ? ' pp-dragging' : ''}`}
+                      style={{ left: stripPos.x, top: stripPos.y, width: stripW }}
+                      onMouseDown={(e) => onStripMouseDown(e, s)}
+                    >
+                      <div className="pp-strip-head">
+                        <span className="pp-strip-tag">纸条</span>
+                        <button
+                          type="button"
+                          className="pp-strip-remove"
+                          title="销毁纸条"
+                          aria-label="销毁纸条"
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onRemoveStrip(s.id);
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="pp-strip-body">{s.text}</div>
+                      {/* P2b 宽度手调面（右缘拖拽） */}
+                      {/* biome-ignore lint/a11y/noStaticElementInteractions: resize 是拖拽交互面 */}
+                      <div className="pp-resize" onMouseDown={(e) => onResizeMouseDown(e, s.id, 'strip', s.w)} />
                     </div>
-                    <div className="pp-strip-body">{s.text}</div>
-                    {/* P2b 宽度手调面（右缘拖拽） */}
-                    {/* biome-ignore lint/a11y/noStaticElementInteractions: resize 是拖拽交互面 */}
-                    <div className="pp-resize" onMouseDown={(e) => onResizeMouseDown(e, s.id, 'strip', s.w)} />
-                  </div>
-                );
-              })}
+                  );
+                })}
 
               {/* 公共物 · 孤儿钉（源会话未摊开/已删除，Stage-5）：以快照独立渲染——
                * 公共物不绑会话、钉到拔为止。源会话摊开时由下方流区 pass 渲染活块。 */}
-              {orphanPins.map(([pinId, pin]) => {
-                const snapshotBlock = blockFromSnapshot(pinId, pin);
-                const isDragged = draggingId === pinId;
-                const pos = isDragged && dragPos ? dragPos : { x: pin.x, y: pin.y };
-                return (
-                  // biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler
-                  <div
-                    key={pinId}
-                    className={[
-                      'pp-block',
-                      `pp-${snapshotBlock.kind}`,
-                      'pp-pinned',
-                      isDragged ? 'pp-dragging' : '',
-                    ].join(' ')}
-                    style={{ left: pos.x, top: pos.y, width: resizePreview?.id === pinId ? resizePreview.w : pin.w }}
-                    onDragStart={(e) => e.preventDefault()}
-                  >
-                    <BlockView
-                      block={snapshotBlock}
-                      seq="PIN"
-                      ops={EMPTY_OPS}
-                      folded={foldedOf(snapshotBlock)}
-                      onToggleFold={onToggleFold}
-                      onUnpin={onUnpin}
-                      onDragHandleMouseDown={onBlockMouseDown}
-                      unpinLabel={deadOrphanPinIds.has(pinId) ? '删除' : '收回'}
-                    />
-                    {/* P2b 宽度手调面（右缘拖拽） */}
-                    {/* biome-ignore lint/a11y/noStaticElementInteractions: resize 是拖拽交互面 */}
-                    <div className="pp-resize" onMouseDown={(e) => onResizeMouseDown(e, pinId, 'pin', pin.w)} />
-                  </div>
-                );
-              })}
+              {!lod &&
+                orphanPins.map(([pinId, pin]) => {
+                  const snapshotBlock = blockFromSnapshot(pinId, pin);
+                  const isDragged = draggingId === pinId;
+                  const pos = isDragged && dragPos ? dragPos : { x: pin.x, y: pin.y };
+                  return (
+                    // biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler
+                    <div
+                      key={pinId}
+                      className={[
+                        'pp-block',
+                        `pp-${snapshotBlock.kind}`,
+                        'pp-pinned',
+                        isDragged ? 'pp-dragging' : '',
+                      ].join(' ')}
+                      style={{ left: pos.x, top: pos.y, width: resizePreview?.id === pinId ? resizePreview.w : pin.w }}
+                      onDragStart={(e) => e.preventDefault()}
+                    >
+                      <BlockView
+                        block={snapshotBlock}
+                        seq="PIN"
+                        ops={EMPTY_OPS}
+                        folded={foldedOf(snapshotBlock)}
+                        onToggleFold={onToggleFold}
+                        onUnpin={onUnpin}
+                        onDragHandleMouseDown={onBlockMouseDown}
+                        unpinLabel={deadOrphanPinIds.has(pinId) ? '删除' : '收回'}
+                      />
+                      {/* P2b 宽度手调面（右缘拖拽） */}
+                      {/* biome-ignore lint/a11y/noStaticElementInteractions: resize 是拖拽交互面 */}
+                      <div className="pp-resize" onMouseDown={(e) => onResizeMouseDown(e, pinId, 'pin', pin.w)} />
+                    </div>
+                  );
+                })}
 
               {/* 流序列：每流区 flow 块按序渲染（视口窗口化——视口外不进 DOM） */}
               {regions.map((r) => {
+                if (lod) return null; // P4 缩远墨迹：DOM 块树退场，InkLayer 接管
                 return r.blocks.map((b) => {
                   const slot = r.layout.get(b.id);
                   if (!slot || !r.visibleIds.has(b.id)) return null;
@@ -2088,6 +2167,17 @@ export function PaperPanel() {
                 });
               })}
             </div>
+
+            {/* P4 缩远墨迹：远缩档的屏幕空间 canvas 骨架（pointer-events none） */}
+            {lod && (
+              <InkLayer
+                regionsRef={regionsRef}
+                foldedOf={foldedOf}
+                inkCache={inkCacheRef.current}
+                strips={canvasStrips}
+                orphanBlocks={orphanInkBlocks}
+              />
+            )}
           </div>
 
           {/* 小地图（D-R1-1 方位感：全画布内容聚落 + 视口框 + Home 回原点） */}
@@ -2096,6 +2186,9 @@ export function PaperPanel() {
             viewport={minimap.viewport}
             bottom={composerHeight}
             onJump={glideViewTo}
+            activeRegion={activeInkRegion}
+            foldedOf={foldedOf}
+            inkCache={inkCacheRef.current}
           />
 
           {/* 覆盖层贡献行（Stage-4）：创作坞（composer 槽）在底栏，目次带（right-edge 槽）在右缘 */}

@@ -1713,6 +1713,22 @@
   z-index: 5;
 }
 
+/* ── 缩远墨迹层（P4 LOD：远缩档屏幕空间 canvas，画真墨行条骨架）── */
+.pp-ink-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+/* 小地图真墨（P4b：活跃流区行条投影——铺在 minimap 内容盒内、视口框之下） */
+.pp-mm-ink {
+  position: absolute;
+  inset: 4px;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+  pointer-events: none;
+}
+
 /* ── 纸条（V3a 抽纸条：拷贝语义快照——用户层物件；收尾 2026-08-24 完整化）── */
 .pp-strip {
   position: absolute;
