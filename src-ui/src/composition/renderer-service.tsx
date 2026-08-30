@@ -22,7 +22,7 @@
 //     贡献与内置同 id → 内置胜（对齐 panelDefs() 合流纪律）。
 
 import type { ComponentType, ReactNode } from 'react';
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useMemo, useRef, useState } from 'react';
 import { assetKinds } from '../agent/asset-kinds';
 import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan-tools';
 import { type Context, Service } from '../cordis';
@@ -39,6 +39,73 @@ import { assetPresentationDefs } from './asset-renderers';
 export interface BlockRendererProps {
   block: SourcedBlock;
   folded?: boolean;
+}
+
+/* ── 流式增量渐显（streaming-fade-render-plan 2026-08-30）──
+ * 把「新长出来的文本」与「旧文本」分开：旧文本零动画（流式重渲染不闪），
+ * 增量段做一次极轻淡入（0.2s，Claude Code 桌面端同款观感）。
+ *
+ * 识别原理（零数据层侵入）：流式 = 文本在尾部追加。渲染器用 ref 记上一帧
+ * 文本，本帧文本以它为前缀 → 尾部就是增量；非追加（编辑/回填）→ 整块稳定。
+ * 分隔点取「旧文本最后一个换行」：旧部分以完整行收尾，增量段从行首开始，
+ * markdown 结构在边界两侧都不会被腰斩。
+ *
+ * 折叠态（reasoning 收折/展开）会整体重渲染：folded 变化时重置 ref，
+ * 不把已经展示过的内容误判成增量。 */
+
+interface StreamDelta {
+  /** 稳定段文本 = 旧文本全部（已展示内容，零动画、零重复） */
+  stable: string;
+  /** 增量段文本 = 真正新到达的部分（只有它淡入） */
+  delta: string;
+}
+
+/**
+ * 流式增量识别：文本尾部追加 → 增量；否则整块稳定。
+ * 稳定段永远 = 旧文本全部（渲染层镜像：markdown 走 parseMarkdown、纯文本原样）——
+ * 已展示内容不重复、不重淡。增量段 = 新字符（markdown 里作为独立块从行边界开始，
+ * 流式半成型可接受；纯文本里行内接续）。
+ */
+function useStreamDelta(text: string, resetKey: unknown): StreamDelta {
+  const prevRef = useRef<string | null>(null);
+  const lastKeyRef = useRef<unknown>(undefined);
+
+  // resetKey（folded 等）变化 → 重置：整块稳定，不留增量尾巴
+  if (lastKeyRef.current !== resetKey) {
+    lastKeyRef.current = resetKey;
+    prevRef.current = text;
+    return { stable: text, delta: '' };
+  }
+
+  const prev = prevRef.current;
+  if (prev === null || text === prev) {
+    prevRef.current = text;
+    return { stable: text, delta: '' };
+  }
+  if (text.startsWith(prev)) {
+    prevRef.current = text;
+    return { stable: prev, delta: text.slice(prev.length) };
+  }
+  // 非追加（编辑/重置）：整块稳定
+  prevRef.current = text;
+  return { stable: text, delta: '' };
+}
+
+/** 增量段：持久容器不重建（旧文本在 stable，永不重淡），只让 fresh（新到达）淡入。
+ *  block=true：块级 div（markdown——新内容从行边界开始，保结构）；
+ *  block=false：行内 span（纯文本接续——不换行不跳）。
+ *  delta 为空时不渲染（稳定段独占）。 */
+function DeltaZone({ delta, className, block }: { delta: string; className?: string; block?: boolean }) {
+  if (!delta) return null;
+  const inner = (
+    // key 驱动：每次新内容重挂载 → 动画重新触发（旧内容在 stable 不受影响）
+    <span className="pp-ink-delta" key={delta}>
+      {delta}
+    </span>
+  );
+  // 容器只带布局 class（无动画——不重淡）；动画只挂在 fresh span 上
+  if (block) return <div className={className}>{inner}</div>;
+  return <span className={className}>{inner}</span>;
 }
 
 /** 渲染器贡献：一个 kind 一个渲染器（body 渲染组件）。 */
@@ -188,24 +255,26 @@ function InlineRuns({ inl }: { inl: MdInline[] }) {
   );
 }
 
-/** 块序列渲染（quote 内层 / 列表项嵌套递归复用；top = .pp-body 直排面）。 */
-function MdBlocksView({ blocks }: { blocks: MdBlock[] }) {
+/** 块序列渲染（quote 内层 / 列表项嵌套递归复用；top = .pp-body 直排面）。
+ *  tail：流式行内增量（无换行部分）——只落在最后一个块上（字符级接续）。 */
+function MdBlocksView({ blocks, tail }: { blocks: MdBlock[]; tail?: ReactNode }) {
   return (
     <>
       {blocks.map((el, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: 静态解析结果按位渲染
-        <Fragment key={i}>{renderMdBlock(el)}</Fragment>
+        <Fragment key={i}>{renderMdBlock(el, i === blocks.length - 1 ? tail : undefined)}</Fragment>
       ))}
     </>
   );
 }
 
-function renderMdBlock(el: MdBlock): ReactNode {
+function renderMdBlock(el: MdBlock, tail?: ReactNode): ReactNode {
   switch (el.t) {
     case 'p':
       return (
         <p className="pp-md-p">
           <InlineRuns inl={el.inl} />
+          {tail}
         </p>
       );
     case 'h': {
@@ -213,6 +282,7 @@ function renderMdBlock(el: MdBlock): ReactNode {
       return (
         <Tag className={`pp-md-h pp-md-h${el.lv}`}>
           <InlineRuns inl={el.inl} />
+          {tail}
         </Tag>
       );
     }
@@ -240,11 +310,16 @@ function renderMdBlock(el: MdBlock): ReactNode {
     case 'quote':
       return (
         <blockquote className="pp-md-quote">
-          <MdBlocksView blocks={el.blocks} />
+          <MdBlocksView blocks={el.blocks} tail={tail} />
         </blockquote>
       );
     case 'code':
-      return <pre className="pp-md-code">{el.text}</pre>;
+      return (
+        <pre className="pp-md-code">
+          {el.text}
+          {tail}
+        </pre>
+      );
     case 'hr':
       return <hr className="pp-md-hr" />;
     case 'table':
@@ -279,16 +354,34 @@ function renderMdBlock(el: MdBlock): ReactNode {
 }
 
 /** 正文（markdown）：结构化渲染——标题/段落/列表/引用/图码/表格 + 行内强调。
- *  流式友好：parseMarkdown 对未闭合围栏/未配对标记按已闭合/字面量处理。 */
+ *  流式友好：parseMarkdown 对未闭合围栏/未配对标记按已闭合/字面量处理。
+ *  增量渐显（streaming-fade，方案 B 三级切分）：
+ *    - 旧文本（stable）零动画，走完整 parseMarkdown；
+ *    - 增量按首个换行切：换行前 = 行内续写（tail 接进最后一个块，字符级淡入）；
+ *    - 换行后 = 新块（块级 DeltaZone，从行首开始不腰斩 markdown 结构）。
+ *    - stable 为空（首 token）时行内尾也兜底渲染，不丢字。 */
 function MarkdownBody({ block }: BlockRendererProps) {
   const text = (block.payload as { text?: string }).text ?? '';
-  const blocks = useMemo(() => parseMarkdown(text), [text]);
+  const { stable, delta } = useStreamDelta(text, null);
+  const blocks = useMemo(() => parseMarkdown(stable), [stable]);
+  // 三级切分：换行前行内尾 / 换行后新块（剥掉分块换行——它属于块边界非内容）
+  const nl = delta.indexOf('\n');
+  const inlineTail = nl < 0 ? delta : delta.slice(0, nl);
+  const blockDelta = nl < 0 ? '' : delta.slice(nl + 1);
+  const tailNode = inlineTail && <span className="pp-ink-delta">{inlineTail}</span>;
   return (
     <div className="pp-body pp-md">
       {blocks.map((el, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: 同上
-        <Fragment key={i}>{renderMdBlock(el)}</Fragment>
+        <Fragment key={i}>{renderMdBlock(el, i === blocks.length - 1 ? tailNode : undefined)}</Fragment>
       ))}
+      {/* stable 为空（首 token / 全空追加）：行内尾直接落体（不丢字） */}
+      {blocks.length === 0 && inlineTail && (
+        <span className="pp-ink-delta" key={inlineTail}>
+          {inlineTail}
+        </span>
+      )}
+      <DeltaZone delta={blockDelta} block />
     </div>
   );
 }
@@ -296,23 +389,30 @@ function MarkdownBody({ block }: BlockRendererProps) {
 /** 夹注/贴黄体：纯文本单段流（夹注折叠态 = 一行预览，folded 由壳层递下）。 */
 function TextBody({ block, folded }: BlockRendererProps) {
   const text = (block.payload as { text: string }).text ?? '';
+  const { stable, delta } = useStreamDelta(text, folded ?? null);
   if (block.kind === 'reasoning') {
     if (folded) {
       const preview = foldPreviewLine(text);
       return <div className="pp-body">{preview ? <div className="pp-fold-preview">{preview}</div> : null}</div>;
     }
-    return <div className="pp-body">{text}</div>;
   }
-  return <div className="pp-body">{text}</div>;
+  return (
+    <div className="pp-body">
+      {stable}
+      <DeltaZone delta={delta} />
+    </div>
+  );
 }
 
 /** 来文体：圈点解析（C7）——【词】→ 朱砂圈，其余字面。
  *  圈永不拆行由 .pp-circled 的 inline-block 保证（CSS 侧纪律）。
+ *  增量渐显：稳定段走圈点，增量段纯文本淡入（稳定化后并入圈点）。
  *  附件行（C10）：payload.files 独立渲染——石青 mono 小行，不混楷书正文。 */
 function UserBody({ block }: BlockRendererProps) {
   const text = (block.payload as { text: string }).text;
   const files = (block.payload as { files?: Array<{ path: string; name: string }> }).files;
-  const segs = parseCircledSegments(text);
+  const { stable, delta } = useStreamDelta(text ?? '', null);
+  const segs = parseCircledSegments(stable);
   return (
     <div className="pp-body">
       {segs.map((s, i) =>
@@ -326,6 +426,7 @@ function UserBody({ block }: BlockRendererProps) {
           <Fragment key={i}>{s.text}</Fragment>
         ),
       )}
+      <DeltaZone delta={delta} />
       {files && files.length > 0 && (
         <div className="pp-user-files">
           {files.map((f) => (
