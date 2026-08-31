@@ -1,0 +1,7 @@
+{
+  "name": "hologram/renderers",
+  "version": "1.0.0",
+  "description": "第一方内置渲染器插件（P1）——grid/chart/metric/media/graph/tree/html/form 八个资产表现原语；源码构建产物，随包携带，设置面板可重新加载",
+  "entry": "entry.js",
+  "inject": ["renderers"]
+}

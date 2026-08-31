@@ -27,6 +27,7 @@ use crate::llm_proxy::{err_response, full_boxed, BoxBody};
 use hyper::body::Bytes;
 use hyper::{Response, StatusCode};
 use std::path::{Path, PathBuf};
+use tauri::Manager;
 
 /// 单文件读取上限——防无界读入内存（正式实现如需大资产再走流式）。
 const MAX_PLUGIN_FILE_BYTES: u64 = 32 * 1024 * 1024;
@@ -45,6 +46,68 @@ pub(crate) fn plugins_root() -> PathBuf {
         .or_else(|_| std::env::var("HOME"))
         .unwrap_or_else(|_| ".".to_string());
     PathBuf::from(home).join(".lantai").join("plugins")
+}
+
+/// 内置插件根目录（P1d，first-party-hot-reload-plan）——第一方插件产物
+/// （如渲染器插件的 dist-plugins/builtin/renderers）的磁盘回退源。
+///
+/// 解析优先级（缓存一次）：
+///   1. `HOLOGRAM_BUILTIN_PLUGINS_ROOT` 环境变量（测试隔离 / 目录重定位）；
+///   2. 打包态：`resource_dir()/builtin/`（tauri bundle.resources 携带，经
+///      main.rs 的 init_builtin_plugins_dir 注入——webview 资产通道的 fallback）；
+///   3. 开发/测试兜底：仓库 `src-ui/dist-plugins/`（构建脚本产物，cargo test
+///      或 dev 前置构建后可用；未构建时目录不存在 → 无内置插件 → 回退缺席）。
+///
+/// 返回 None = 未初始化且无解析源（索引不合并内置插件，行为退化为纯用户插件面）。
+pub(crate) fn builtin_plugins_root() -> Option<PathBuf> {
+    if let Some(custom) = std::env::var_os("HOLOGRAM_BUILTIN_PLUGINS_ROOT") {
+        if !custom.is_empty() {
+            return Some(PathBuf::from(custom));
+        }
+    }
+    let cached = BUILTIN_PLUGINS_DIR.get();
+    if let Some(dir) = cached {
+        return dir.clone();
+    }
+    // 兜底：仓库 dist-plugins（dev / cargo test —— 打包态由 init 注入缓存）
+    let manifest_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let repo_dist = manifest_root.parent().map(|p| p.join("src-ui").join("dist-plugins"));
+    if let Some(dir) = repo_dist {
+        if dir.is_dir() {
+            let _ = BUILTIN_PLUGINS_DIR.set(Some(dir.clone()));
+            return Some(dir);
+        }
+    }
+    None
+}
+
+/// 内置插件根目录缓存（OnceLock——进程生命期一次解析；main.rs 启动注入）。
+static BUILTIN_PLUGINS_DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+
+/// main.rs 启动注入打包态内置插件根（tauri resource_dir + builtin/）。
+/// 未打包（dev/测试）不调用——builtin_plugins_root 兜底仓库 dist-plugins。
+pub(crate) fn init_builtin_plugins_dir(app: &tauri::AppHandle) {
+    let dir = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|r| r.join("builtin"))
+        .filter(|d| d.is_dir());
+    let _ = BUILTIN_PLUGINS_DIR.set(dir);
+}
+
+/// 内置插件名集合（P1d 回退白名单——只有这些第一方插件的资产可从未初始化
+/// 的内置根回退；普通第三方插件不享受内置回退，避免撞用户同名目录）。
+const BUILTIN_PLUGIN_NAMES: &[&str] = &["hologram/renderers"];
+
+/// 判断 url_path（插件根下相对路径）是否针对内置插件（以白名单插件名开头）。
+/// 插件名可含一段斜杠（scope 风格，如 hologram/renderers）——匹配前两段。
+fn is_builtin_plugin_path(url_path: &str) -> bool {
+    let mut segs = url_path.split('/');
+    let first = segs.next().unwrap_or("");
+    let second = segs.next().unwrap_or("");
+    let head = if second.is_empty() { first } else { &url_path[..first.len() + 1 + second.len()] };
+    BUILTIN_PLUGIN_NAMES.iter().any(|n| n == &head)
 }
 
 /// 组合 patch 根目录（S2-2）：用户主目录下 `.lantai/composition/`。
@@ -160,6 +223,7 @@ enum AssetReadError {
 
 /// 插件资产路由主入口（GET /plugins/&lt;path&gt;）。文件 IO 走 spawn_blocking。
 /// 仅 loopback 由服务器绑定天然保证（14570 只绑 127.0.0.1）。
+/// P1d：用户插件根未命中时，对内置插件路径回退内置根（first-party 产物）。
 pub(crate) async fn serve_plugin_path(url_path: &str) -> Response<BoxBody> {
     // 空路径 = 目录索引（GET /plugins/）——loader 的插件发现端点。
     if url_path.is_empty() {
@@ -170,37 +234,54 @@ pub(crate) async fn serve_plugin_path(url_path: &str) -> Response<BoxBody> {
         ResolveOutcome::Forbidden => {
             json_error(StatusCode::FORBIDDEN, "forbidden", "路径遍历或非法路径被拒绝")
         }
-        ResolveOutcome::Missing => json_error(StatusCode::NOT_FOUND, "not_found", "插件资产不存在"),
-        ResolveOutcome::Found(path) => {
-            let mime = plugin_mime(&path);
-            let read = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, AssetReadError> {
-                let meta = std::fs::metadata(&path).map_err(AssetReadError::Io)?;
-                if !meta.is_file() {
-                    return Err(AssetReadError::NotAFile);
-                }
-                if meta.len() > MAX_PLUGIN_FILE_BYTES {
-                    return Err(AssetReadError::TooLarge);
-                }
-                std::fs::read(&path).map_err(AssetReadError::Io)
-            })
-            .await;
-            match read {
-                Ok(Ok(bytes)) => asset_response(StatusCode::OK, mime, Bytes::from(bytes)),
-                Ok(Err(AssetReadError::NotAFile)) => {
-                    json_error(StatusCode::NOT_FOUND, "not_found", "不是常规文件")
-                }
-                Ok(Err(AssetReadError::TooLarge)) => {
-                    json_error(StatusCode::PAYLOAD_TOO_LARGE, "too_large", "插件资产超过 32MB 上限")
-                }
-                Ok(Err(AssetReadError::Io(e))) => {
-                    eprintln!("[plugin_assets] 插件资产读取失败: {e}");
-                    json_error(StatusCode::INTERNAL_SERVER_ERROR, "internal", "插件资产读取失败")
-                }
-                Err(join_err) => {
-                    eprintln!("[plugin_assets] 插件资产读取任务失败: {join_err}");
-                    json_error(StatusCode::INTERNAL_SERVER_ERROR, "internal", "插件资产读取任务失败")
+        ResolveOutcome::Found(path) => serve_file(&path).await,
+        ResolveOutcome::Missing => {
+            // P1d 回退：内置插件路径（白名单）在用户根缺失 → 尝试内置根。
+            // 用户根权限优先——用户装了同名内置插件（覆盖升级）时已在上面
+            // Found 返回；此处只处理「用户根确实没有」的回退。
+            if is_builtin_plugin_path(url_path) {
+                if let Some(builtin_root) = builtin_plugins_root() {
+                    match resolve_asset(&builtin_root, url_path) {
+                        ResolveOutcome::Forbidden | ResolveOutcome::Missing => {
+                            return json_error(StatusCode::NOT_FOUND, "not_found", "插件资产不存在");
+                        }
+                        ResolveOutcome::Found(path) => return serve_file(&path).await,
+                    }
                 }
             }
+            json_error(StatusCode::NOT_FOUND, "not_found", "插件资产不存在")
+        }
+    }
+}
+
+/// 读取并响应一个已解析的插件资产文件（spawn_blocking + 尺寸护栏 + MIME）。
+async fn serve_file(path: &std::path::Path) -> Response<BoxBody> {
+    let mime = plugin_mime(path);
+    let path_owned = path.to_path_buf();
+    let read = tokio::task::spawn_blocking(move || -> Result<Vec<u8>, AssetReadError> {
+        let meta = std::fs::metadata(&path_owned).map_err(AssetReadError::Io)?;
+        if !meta.is_file() {
+            return Err(AssetReadError::NotAFile);
+        }
+        if meta.len() > MAX_PLUGIN_FILE_BYTES {
+            return Err(AssetReadError::TooLarge);
+        }
+        std::fs::read(&path_owned).map_err(AssetReadError::Io)
+    })
+    .await;
+    match read {
+        Ok(Ok(bytes)) => asset_response(StatusCode::OK, mime, Bytes::from(bytes)),
+        Ok(Err(AssetReadError::NotAFile)) => json_error(StatusCode::NOT_FOUND, "not_found", "不是常规文件"),
+        Ok(Err(AssetReadError::TooLarge)) => {
+            json_error(StatusCode::PAYLOAD_TOO_LARGE, "too_large", "插件资产超过 32MB 上限")
+        }
+        Ok(Err(AssetReadError::Io(e))) => {
+            eprintln!("[plugin_assets] 插件资产读取失败: {e}");
+            json_error(StatusCode::INTERNAL_SERVER_ERROR, "internal", "插件资产读取失败")
+        }
+        Err(join_err) => {
+            eprintln!("[plugin_assets] 插件资产读取任务失败: {join_err}");
+            json_error(StatusCode::INTERNAL_SERVER_ERROR, "internal", "插件资产读取任务失败")
         }
     }
 }
@@ -270,22 +351,35 @@ pub(crate) async fn serve_composition_path(url_path: &str) -> Response<BoxBody> 
 
 /// 目录索引：含 manifest.json 的子目录相对路径（`/` 分隔，排序稳定）。
 /// 名字可含一段斜杠（npm scope 风格，如 hologram/settings 对应嵌套目录），深度 ≤2。
+/// P1d：内置根（builtin_plugins_root）合并进索引——loader 发现第一方产物；
+/// 用户根同目录时用户优先（去重，内置目录不覆盖用户同名目录）。
 async fn serve_index() -> Response<BoxBody> {
     let root = plugins_root();
     let listed = tokio::task::spawn_blocking(move || list_plugin_dirs(&root)).await;
-    match listed {
-        Ok(dirs) => {
-            let body = serde_json::to_string(&dirs).unwrap_or_else(|e| {
-                eprintln!("[plugin_assets] 索引序列化失败: {e}");
-                "[]".to_string()
-            });
-            asset_response(StatusCode::OK, "application/json", Bytes::from(body))
-        }
+    let mut dirs = match listed {
+        Ok(dirs) => dirs,
         Err(join_err) => {
-            eprintln!("[plugin_assets] 索引扫描任务失败: {join_err}");
-            json_error(StatusCode::INTERNAL_SERVER_ERROR, "internal", "插件索引扫描失败")
+            eprintln!("[plugin_assets] 插件索引扫描任务失败: {join_err}");
+            return json_error(StatusCode::INTERNAL_SERVER_ERROR, "internal", "插件索引扫描失败");
+        }
+    };
+    // 内置根合并（去重：用户同名目录优先——用户覆盖升级不被内置目录挤掉）
+    if let Some(builtin_root) = builtin_plugins_root() {
+        let extra = tokio::task::spawn_blocking(move || list_plugin_dirs(&builtin_root)).await;
+        if let Ok(builtin_dirs) = extra {
+            for d in builtin_dirs {
+                if !dirs.iter().any(|x| x == &d) {
+                    dirs.push(d);
+                }
+            }
+            dirs.sort();
         }
     }
+    let body = serde_json::to_string(&dirs).unwrap_or_else(|e| {
+        eprintln!("[plugin_assets] 索引序列化失败: {e}");
+        "[]".to_string()
+    });
+    asset_response(StatusCode::OK, "application/json", Bytes::from(body))
 }
 
 /// 纯函数：列出根目录下含 manifest.json 的子目录（walkdir 深度 ≤2，不跟符号链接）。
@@ -744,5 +838,160 @@ mod tests {
         });
         std::env::remove_var("HOLOGRAM_COMPOSITION_ROOT");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // ── P1d 内置插件回退（first-party-hot-reload-plan）──
+
+    /// 纯函数：内置插件路径白名单判断（首段 ∈ BUILTIN_PLUGIN_NAMES）。
+    #[test]
+    fn builtin_plugin_path_whitelist() {
+        assert!(is_builtin_plugin_path("hologram/renderers/manifest.json"));
+        assert!(is_builtin_plugin_path("hologram/renderers/entry.js"));
+        assert!(!is_builtin_plugin_path("hello/entry.js"));
+        assert!(!is_builtin_plugin_path("plugins.json"));
+        assert!(!is_builtin_plugin_path("hologram/settings/manifest.json"));
+    }
+
+    /// P1d e2e：用户根缺失的内置插件路径 → 回退 HOLOGRAM_BUILTIN_PLUGINS_ROOT
+    /// 提供 manifest/entry（200 + 正确 MIME）；非内置插件路径不回退（404）。
+    /// 同时验证索引合并（内置根目录出现在 /plugins/ 索引）。
+    #[test]
+    fn builtin_plugin_fallback_end_to_end() {
+        use std::io::{Read, Write};
+        let _env_lock = super::PLUGINS_ROOT_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let user_root = make_root("p1d_user");
+        // 内置根：独立临时目录，含渲染器插件（manifest + entry）
+        let builtin_tmp =
+            std::env::temp_dir().join(format!("hologram_plugin_assets_builtin_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&builtin_tmp);
+        let builtin_root = builtin_tmp.join("builtin");
+        std::fs::create_dir_all(builtin_root.join("hologram").join("renderers")).unwrap();
+        std::fs::write(
+            builtin_root.join("hologram").join("renderers").join("manifest.json"),
+            br#"{"name":"hologram/renderers","version":"1.0.0","entry":"entry.js"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            builtin_root.join("hologram").join("renderers").join("entry.js"),
+            b"export const renderers = 1",
+        )
+        .unwrap();
+
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            std::env::set_var("HOLOGRAM_PLUGINS_ROOT", &user_root);
+            std::env::set_var("HOLOGRAM_BUILTIN_PLUGINS_ROOT", &builtin_root);
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let client = reqwest::Client::builder().build().unwrap();
+            let shutdown = std::sync::atomic::AtomicBool::new(false);
+            let server_handle =
+                tokio::spawn(async move { crate::llm_proxy::serve_listener(&listener, client, &shutdown).await });
+
+            let get = |path: &str| {
+                format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nconnection: close\r\n\r\n")
+            };
+            let cases: Vec<(&str, u16, &str)> = vec![
+                // 用户根没有渲染器 → 回退内置根（manifest JSON）
+                ("/plugins/hologram/renderers/manifest.json", 200, "application/json"),
+                // 回退 entry（JS MIME）
+                ("/plugins/hologram/renderers/entry.js", 200, "application/javascript"),
+                // 非内置插件用户根缺失 → 不回退（404）
+                ("/plugins/ghost/entry.js", 404, "application/json"),
+                // 遍历防护在内置根同样生效
+                ("/plugins/hologram/renderers/../../outside.js", 403, "application/json"),
+            ];
+            for (path, want_status, want_mime) in cases {
+                let mut probe = std::net::TcpStream::connect(addr).unwrap();
+                probe.set_read_timeout(Some(std::time::Duration::from_secs(8))).unwrap();
+                probe.write_all(get(path).as_bytes()).unwrap();
+                probe.flush().unwrap();
+                let mut buf = String::new();
+                let res = probe.read_to_string(&mut buf);
+                assert!(res.is_ok(), "{path} 读取超时/失败: {res:?} 已收: {buf}");
+                assert!(
+                    buf.starts_with(&format!("HTTP/1.1 {want_status}")),
+                    "{path} 期望 {want_status}: {buf}"
+                );
+                let lower = buf.to_ascii_lowercase();
+                assert!(lower.contains(&format!("content-type: {want_mime}")), "{path} MIME: {buf}");
+            }
+
+            // 索引合并：内置渲染器插件出现在 /plugins/ 索引
+            let mut probe = std::net::TcpStream::connect(addr).unwrap();
+            probe.set_read_timeout(Some(std::time::Duration::from_secs(8))).unwrap();
+            probe.write_all(get("/plugins/").as_bytes()).unwrap();
+            probe.flush().unwrap();
+            let mut buf = String::new();
+            probe.read_to_string(&mut buf).unwrap();
+            assert!(buf.contains("hologram/renderers"), "索引应含内置渲染器: {buf}");
+
+            server_handle.abort();
+        });
+        std::env::remove_var("HOLOGRAM_PLUGINS_ROOT");
+        std::env::remove_var("HOLOGRAM_BUILTIN_PLUGINS_ROOT");
+        let _ = std::fs::remove_dir_all(user_root.parent().unwrap());
+        let _ = std::fs::remove_dir_all(&builtin_tmp);
+    }
+
+    /// 用户同名目录优先：用户根有渲染器目录时，内置回退不覆盖（用户即权威）。
+    #[test]
+    fn user_plugin_dir_wins_over_builtin() {
+        use std::io::{Read, Write};
+        let _env_lock = super::PLUGINS_ROOT_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let user_root = make_root("p1d_userwin");
+        // 用户根放渲染器（覆盖升级场景）
+        std::fs::create_dir_all(user_root.join("hologram").join("renderers")).unwrap();
+        std::fs::write(
+            user_root.join("hologram").join("renderers").join("manifest.json"),
+            br#"{"name":"hologram/renderers","version":"9.9.9","entry":"entry.js"}"#,
+        )
+        .unwrap();
+        let builtin_tmp =
+            std::env::temp_dir().join(format!("hologram_plugin_assets_builtin_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&builtin_tmp);
+        std::fs::create_dir_all(builtin_tmp.join("hologram").join("renderers")).unwrap();
+        std::fs::write(
+            builtin_tmp.join("hologram").join("renderers").join("manifest.json"),
+            br#"{"name":"hologram/renderers","version":"1.0.0","entry":"entry.js"}"#,
+        )
+        .unwrap();
+
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            std::env::set_var("HOLOGRAM_PLUGINS_ROOT", &user_root);
+            std::env::set_var("HOLOGRAM_BUILTIN_PLUGINS_ROOT", &builtin_tmp);
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let client = reqwest::Client::builder().build().unwrap();
+            let shutdown = std::sync::atomic::AtomicBool::new(false);
+            let server_handle =
+                tokio::spawn(async move { crate::llm_proxy::serve_listener(&listener, client, &shutdown).await });
+
+            let get = |path: &str| {
+                format!("GET {path} HTTP/1.1\r\nHost: {addr}\r\nconnection: close\r\n\r\n")
+            };
+            let mut probe = std::net::TcpStream::connect(addr).unwrap();
+            probe.set_read_timeout(Some(std::time::Duration::from_secs(8))).unwrap();
+            probe.write_all(get("/plugins/hologram/renderers/manifest.json").as_bytes()).unwrap();
+            probe.flush().unwrap();
+            let mut buf = String::new();
+            probe.read_to_string(&mut buf).unwrap();
+            assert!(buf.contains("9.9.9"), "用户目录应优先（版本 9.9.9）: {buf}");
+
+            server_handle.abort();
+        });
+        std::env::remove_var("HOLOGRAM_PLUGINS_ROOT");
+        std::env::remove_var("HOLOGRAM_BUILTIN_PLUGINS_ROOT");
+        let _ = std::fs::remove_dir_all(user_root.parent().unwrap());
+        let _ = std::fs::remove_dir_all(&builtin_tmp);
     }
 }

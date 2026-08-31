@@ -14,6 +14,7 @@ venv/
 # Node / Frontend
 node_modules/
 dist/
+dist-plugins/
 !src-ui/dist/.gitkeep
 src-ui/bun.lock
 

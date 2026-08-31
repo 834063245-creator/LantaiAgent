@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "vite",
     "dev:mock": "vite",
-    "build": "tsc --noEmit && cross-env NODE_OPTIONS=--max-old-space-size=4096 vite build",
+    "build": "node ../scripts/build-renderer-plugins.mjs && tsc --noEmit && cross-env NODE_OPTIONS=--max-old-space-size=4096 vite build",
+    "build:renderer-plugins": "node ../scripts/build-renderer-plugins.mjs",
     "format": "biome format --write .",
     "lint": "biome check --fix .",
     "check": "biome ci .",

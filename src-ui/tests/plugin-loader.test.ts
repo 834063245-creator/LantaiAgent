@@ -7,7 +7,11 @@
 // plugin_assets cargo test 覆盖。
 
 import { beforeEach, describe, expect, it } from 'vitest';
+import { rendererServicePlugin, resolveRenderer } from '../src/composition/renderer-service';
+import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
+import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
+import { assetRendererComponents } from '../src/plugins/builtin/renderers/components';
 import { FIRST_PARTY_MANIFEST } from '../src/plugins/first-party-manifest';
 import {
   activateExternalPlugin,
@@ -635,7 +639,7 @@ describe('loadBuiltinPlugins（第一方插件进插件列表）', () => {
     loadBuiltinPlugins(root);
     const plugins = usePluginStore.getState().plugins;
     expect(plugins).toHaveLength(BUILTIN_PLUGINS.length);
-    expect(BUILTIN_PLUGINS.length).toBe(44); // 43 + hologram/asset-domain（资产块域，2026）
+    expect(BUILTIN_PLUGINS.length).toBe(45); // 44 + hologram/renderers（内置渲染器插件，P1 2026-08-30）
     expect(plugins.every((p) => p.builtin === true)).toBe(true);
     expect(plugins.every((p) => p.meta?.name === p.name)).toBe(true);
     expect(plugins.every((p) => p.status === 'active')).toBe(true);
@@ -688,5 +692,80 @@ describe('loadBuiltinPlugins（第一方插件进插件列表）', () => {
     expect(plugins).toHaveLength(builtinCount + 1);
     expect(plugins.filter((p) => p.builtin === true)).toHaveLength(builtinCount);
     expect(plugins.find((p) => p.name === 'hello')?.builtin).toBeFalsy();
+  });
+});
+
+describe('P1 内置渲染器插件（磁盘产物装载→覆盖行）', () => {
+  beforeEach(() => {
+    usePluginStore.setState({ plugins: [] });
+  });
+
+  /** 装配 renderers 服务 + bundle 渲染器插件（出厂兜底行）的 ctx。 */
+  async function withRenderersCtx(fn: (root: Context) => void | Promise<void>): Promise<void> {
+    const root = new Context();
+    await root.plugin(compositionServicesPlugin);
+    await root.plugin(rendererServicePlugin);
+    await root.plugin(builtinRenderersPlugin);
+    await fn(root);
+    await root.fiber.dispose();
+  }
+
+  it('bundle 行注册后 resolveRenderer(kind) 走 builtin/<kind>（出厂兜底）', async () => {
+    await withRenderersCtx(() => {
+      expect(resolveRenderer('media')?.id).toBe('builtin/media');
+      expect(resolveRenderer('grid')?.id).toBe('builtin/grid');
+      expect(resolveRenderer('html')?.id).toBe('builtin/html');
+    });
+  });
+
+  it('磁盘产物装载（P1）→ 覆盖行 plugin/hologram/renderers/<kind> 生效（resolveRenderer 后注册胜）', async () => {
+    const RENDERERS_MANIFEST = {
+      name: 'hologram/renderers',
+      version: '1.0.0',
+      entry: 'entry.js',
+      inject: ['renderers'],
+    };
+    await withRenderersCtx(async (root) => {
+      // 装载前：bundle 兜底行
+      expect(resolveRenderer('media')?.id).toBe('builtin/media');
+      // 磁盘产物经 activateExternalPlugin 装载（P1e 设置面板「重新加载」路径）。
+      // 真实产物是独立模块（esbuild 编译 + define 注入行前缀），apply 注册
+      // `plugin/hologram/renderers/<kind>` 覆盖行；这里 mock 一个行为等价的
+      // 独立插件对象（不引用源码 apply——源码域 ROW_PREFIX='builtin' 会撞
+      // bundle 行 id，真实产物域 define 注入 plugin/ 前缀）。
+      const diskPlugin = {
+        name: 'hologram/renderers',
+        inject: ['renderers'],
+        apply(ctx: Context) {
+          const components = assetRendererComponents();
+          for (const [kind, component] of Object.entries(components)) {
+            ctx.effect(
+              () =>
+                ctx.renderers.register({
+                  id: `plugin/hologram/renderers/${kind}`,
+                  kind,
+                  component: component as never,
+                }),
+              `disk-renderers/${kind}`,
+            );
+          }
+        },
+      };
+      await loadExternalPlugins(root, {
+        origin: ORIGIN,
+        fetchImpl: mockFetch({
+          [ORIGIN + '/']: ['hologram/renderers'],
+          [ORIGIN + '/plugins.json']: { disabled: [] },
+          [ORIGIN + '/hologram/renderers/manifest.json']: RENDERERS_MANIFEST,
+        }),
+        importModule: async () => ({ default: diskPlugin }),
+      });
+      // 覆盖行生效：同 kind 后注册胜 → 磁盘产物行覆盖 bundle 行
+      expect(resolveRenderer('media')?.id).toBe('plugin/hologram/renderers/media');
+      expect(resolveRenderer('chart')?.id).toBe('plugin/hologram/renderers/chart');
+      // 卸载磁盘覆盖行 → bundle 兜底行自动恢复
+      await deactivateExternalPlugin('hologram/renderers');
+      expect(resolveRenderer('media')?.id).toBe('builtin/media');
+    });
   });
 });

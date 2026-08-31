@@ -77,7 +77,7 @@ shell 后端能力注册表（平台化 Phase 2 · D11；subprocess 并入本 se
 | `ctx.overlays` | `OverlayService` | `src/composition/overlay-service.ts` | `compose-dock` · `toc-strip` | 1 文件 |
 | `ctx.panels` | `PanelsService` | `src/composition/services.ts` | `canvas-sidebar` · `canvas-spine` · `paper` · `settings` | 3 文件 |
 | `ctx.prompts` | `PromptsService` | `src/composition/prompt-service.ts` | — | 1 文件 |
-| `ctx.renderers` | `RenderersService` | `src/composition/renderer-service.tsx` | — | 3 文件 |
+| `ctx.renderers` | `RenderersService` | `src/composition/renderer-service.tsx` | — | 5 文件 |
 | `ctx.tools` | `ToolsService` | `src/composition/services.ts` | `hologram/browser-desktop-domain/tools` · `hologram/engine-domain/tools` | 3 文件 |
 
 ### `ctx.capabilities` — CapabilitiesService（贡献通道）
@@ -134,7 +134,7 @@ system-prompt 段落注册表（A-1 第六贡献通道）——段注册 → dis
 
 - owner：`src/composition/renderer-service.tsx`
 - 默认实现 / 贡献者 id：—
-- 消费面（3）：`src/app/panels/PaperPanel.tsx` · `src/composition/asset-renderers.tsx` · `src/plugins/loader.ts`
+- 消费面（5）：`src/app/panels/PaperPanel.tsx` · `src/composition/asset-renderers.tsx` · `src/plugins/builtin/renderers/components.tsx` · `src/plugins/builtin/renderers/index.tsx` · `src/plugins/loader.ts`
 
 ### `ctx.tools` — ToolsService（贡献通道）
 

@@ -25,3 +25,6 @@ target/
 # Misc runtime scratch
 ../nul
 ../*.tmp
+
+# Frontend 插件产物目录（esbuild 生成；dev watcher 不应因它重启 Rust）
+../src-ui/dist-plugins/

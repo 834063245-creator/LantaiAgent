@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!tests/convergence/baseline", "!tests/convergence/reports"]
+    "includes": ["**", "!tests/convergence/baseline", "!tests/convergence/reports", "!dist-plugins"]
   },
   "formatter": {
     "enabled": true,

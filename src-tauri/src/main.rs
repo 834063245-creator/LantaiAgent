@@ -109,6 +109,9 @@ fn main() {
                 eprintln!("[hologram] OS sandbox 不可用 — 仅权限引擎生效");
             }
             // LLM 反向代理 — 绕开 WebView CORS，让 provider 调用走后端（2026-08-16）
+            // P1d：先注入内置插件产物目录（打包态 resource_dir/builtin——渲染器
+            // 插件等第一方产物回退源）；dev/测试由 builtin_plugins_root 兜底仓库。
+            plugin_assets::init_builtin_plugins_dir(app.handle());
             let _proxy_port = llm_proxy::spawn_llm_proxy();
             // 组合层热重载 watcher（S4-2）：~/.lantai/composition/ 根级
             // roster.patch.yml 变更 → composition:changed 事件 → 前端 reload。

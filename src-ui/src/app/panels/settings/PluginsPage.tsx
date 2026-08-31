@@ -103,17 +103,23 @@ function PluginCard({
   );
 }
 
-/** 第一方插件卡片（元数据来自 first-party-manifest；kind=service 时无开关）。 */
+/** 第一方插件卡片（元数据来自 first-party-manifest；kind=service 时无开关）。
+ *  P1e：内置渲染器插件（hologram/renderers）提供「重新加载」——
+ *  从磁盘产物通道（dist-plugins/builtin/renderers，Rust 资产通道回退）
+ *  重新装载覆盖行（bundle 行始终兜底，磁盘行覆盖——见 loader 装载语义）。 */
 function FirstPartyCard({
   plugin,
   onToggle,
+  onReload,
 }: {
   plugin: PluginRecord;
   onToggle: (name: string, enabled: boolean) => void;
+  onReload?: (name: string) => void;
 }) {
   const meta = plugin.meta;
   const enabled = plugin.status !== 'disabled';
   const badge = statusBadge(plugin.status);
+  const reloadable = plugin.name === 'hologram/renderers';
   return (
     <div className="sp-lsp-card">
       <span className="sp-lsp-card-icon" style={{ color: badge.color }}>
@@ -137,6 +143,11 @@ function FirstPartyCard({
           ) : (
             <button type="button" className="sp-btn-sm" onClick={() => onToggle(plugin.name, !enabled)}>
               {enabled ? '禁用' : '启用'}
+            </button>
+          )}
+          {reloadable && onReload && (
+            <button type="button" className="sp-btn-sm" onClick={() => onReload(plugin.name)}>
+              重新加载
             </button>
           )}
         </div>
@@ -164,14 +175,16 @@ export function PluginsPage() {
     setMessage({ kind: 'ok', text: `${name}——下次启动生效` });
   }
 
-  async function run(key: string, action: () => Promise<string>): Promise<void> {
+  async function run(key: string, action: () => Promise<string>): Promise<string | null> {
     setBusyKey(key);
     setMessage(null);
     try {
       const name = await action();
       setMessage({ kind: 'ok', text: `${name}——运行时已生效（工具面在下次 Agent 装配生效）` });
+      return name;
     } catch (e) {
       setMessage({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
+      return null;
     } finally {
       setBusyKey(null);
     }
@@ -205,6 +218,14 @@ export function PluginsPage() {
     await typedRpc('plugin_uninstall', { name });
     usePluginStore.getState().removePlugin(name);
     return `${name}（已卸载并回收贡献）`;
+  }
+
+  /** P1e：内置渲染器插件重新加载——从磁盘产物通道重新激活覆盖行
+   *  （bundle 行始终兜底；activateExternalPlugin 先 dispose 旧覆盖行再
+   *  重 fetch entry.js 重新装载——D6 链路，秒级生效）。 */
+  async function reloadBuiltin(name: string): Promise<string> {
+    const record = await activateExternalPlugin(name);
+    return `${name}（${record.status === 'active' ? '已从产物通道重载' : `状态 ${record.status}${record.error ? `：${record.error}` : ''}`}）`;
   }
 
   /** 解析安装输入（三形态，设计件 §2.6）：npm 名 / tarball（URL 或本地
@@ -294,13 +315,29 @@ export function PluginsPage() {
         </div>
       )}
 
-      {/* 内置插件（第一方 kind=feature，可禁用） */}
+      {/* 内置插件（第一方 kind=feature，可禁用；P1e 渲染器可重新加载） */}
       {builtinFeatures.length > 0 && (
         <div className="sp-section">
           <div className="sp-section-title">内置插件（{builtinFeatures.length}）</div>
-          <div className="sp-hint-sub">第一方功能插件——禁用/启用下次启动生效。</div>
+          <div className="sp-hint-sub">
+            第一方功能插件——禁用/启用下次启动生效；渲染器插件可经「重新加载」从产物通道热替换（秒级生效）。
+          </div>
           {builtinFeatures.map((p) => (
-            <FirstPartyCard key={p.name} plugin={p} onToggle={toggleBuiltin} />
+            <FirstPartyCard
+              key={p.name}
+              plugin={p}
+              onToggle={toggleBuiltin}
+              onReload={(name) => {
+                // 渲染器重载即时生效——不经 run 的通用后缀（「工具面下次装配」
+                // 语义不适用）；直接执行并展示 reloadBuiltin 的精确文案。
+                setBusyKey(name);
+                setMessage(null);
+                reloadBuiltin(name)
+                  .then((text) => setMessage({ kind: 'ok', text }))
+                  .catch((e) => setMessage({ kind: 'err', text: e instanceof Error ? e.message : String(e) }))
+                  .finally(() => setBusyKey(null));
+              }}
+            />
           ))}
         </div>
       )}

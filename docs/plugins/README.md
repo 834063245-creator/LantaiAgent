@@ -91,6 +91,26 @@ cookbook（`docs/cookbook/`）+ 发布路径（`docs/user/develop/`）是平台�
 3. **外部 MCP server**（§3）：manifest.mcpServers 声明式挂接（见
    `docs/cookbook/adding-an-mcp-server.md`）。
 
+### 第四形态：第一方内置插件（产物通道，P1 2026-08-30）
+
+第一方 UI 扩展点（当前：资产块渲染器）从编译期 bundle 迁为**内置插件产物**——
+源码在仓库（`src-ui/src/plugins/builtin/renderers/`），构建管线（esbuild，
+`scripts/build-renderer-plugins.mjs`，接入 `npm run build`）产出 ESM 产物 +
+manifest，随包携带（`tauri.conf.json` resources `dist-plugins/**`）；运行时经
+**与第三方同一条 D6 装载链路**装载（`/plugins/` 索引含内置根，Rust 资产通道
+回退 `src-ui/dist-plugins` 或打包态 `resource_dir/builtin`），设置面板
+「重新加载」→ 重装载覆盖行（秒级生效，应用不重启）。
+
+- 装载语义：bundle 行（id `builtin/<kind>`，出厂兜底）与磁盘行（id
+  `plugin/<插件名>/<kind>`，覆盖）并存——`resolveRenderer` 同 kind 后注册胜，
+  磁盘行覆盖 bundle 行；磁盘行卸载/失败 → bundle 行自动恢复（JSON 兜底不炸）。
+- 产物构建：`--jsx=automatic --jsx-import-source=./renderer-host` +
+  onResolve 把 `renderer-host` 重定向到 `renderer-host.aliased.ts`（宿主桥取
+  React/hooks/Overlay/rpc）——产物自包含（无裸 import），宿主桥注入面见 §4。
+- 宿主桥扩展（P1a）：`window.__lantai_plugin_host__` 新增 `react`（React
+  全量 + hooks 子集）、`Overlay`、`rpc`——渲染器插件（JSX 组件）从这里取
+  宿主能力，插件自包含契约不破。
+
 ### 契约版本
 
 - 开放面契约版本：`docs/agents/open-surface-contract.md`（seam 接口 / manifest schema /

@@ -9,11 +9,12 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { buildHtmlCardDocument } from '../src/composition/asset-renderers';
 import { rendererServicePlugin, resolveAssetBlock } from '../src/composition/renderer-service';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
 import { createBlock, type SourcedBlock } from '../src/paper/block-model';
+import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
+import { buildHtmlCardDocument } from '../src/plugins/builtin/renderers/components';
 
 async function withRenderers(fn: () => void | Promise<void>): Promise<void> {
   const ctx = new Context();
@@ -21,7 +22,11 @@ async function withRenderers(fn: () => void | Promise<void>): Promise<void> {
   await f1;
   const f2 = ctx.plugin(rendererServicePlugin);
   await f2;
+  // P1：资产表现原语由内置渲染器插件注册（service 不再构造期注册资产 8 行）
+  const f3 = ctx.plugin(builtinRenderersPlugin);
+  await f3;
   await fn();
+  await f3.dispose();
   await f2.dispose();
   await f1.dispose();
 }

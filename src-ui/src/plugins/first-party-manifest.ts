@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT.
 
-// 第一方插件元数据清单（平台化收尾，2026-08-29）——43 个第一方插件的
-// 身份单一真源。
+// 第一方插件元数据清单（平台化收尾，2026-08-29；P1 扩充 2026-08-30）
+// ——45 个第一方插件的身份单一真源。
 //
 // 背景：平台化 P4-P6 之后，第一方插件经 plugins/loader.ts 的 BUILTIN_PLUGINS
 // 表统一装载、经 ctx.* 贡献通道统一装配，但一直缺「清单身份」——没有
@@ -127,6 +127,11 @@ export const FIRST_PARTY_MANIFEST: Record<string, FirstPartyPluginMeta> = {
     'hologram/capability-segments',
     'feature',
     '出厂会话级能力（15 项；禁用 = 出厂能力消失）',
+  ),
+  'hologram/renderers': meta(
+    'hologram/renderers',
+    'feature',
+    '资产表现原语渲染器（grid/chart/metric/media/graph/tree/html/form；P1 插件通道化——禁用 = 资产块走 JSON 兜底）',
   ),
 };
 
