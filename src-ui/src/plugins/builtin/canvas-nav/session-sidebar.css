@@ -25,7 +25,7 @@
   align-items: baseline;
   gap: 10px;
   padding: 12px 12px 10px;
-  border-bottom: var(--rule-soft);
+  border-bottom: var(--rule-hard); /* 浸墨：侧栏书眉底线升硬线 */
   flex-shrink: 0;
 }
 .ss-title {

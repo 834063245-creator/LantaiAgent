@@ -22,6 +22,8 @@ const PANEL_TSX = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'P
 const ICONS_TS = readFileSync(join(SRC, 'ui', 'icons.ts'), 'utf8');
 const MEASURE_TS = readFileSync(join(SRC, 'paper', 'measure.ts'), 'utf8');
 const TYPE_TOKENS_TS = readFileSync(join(SRC, 'paper', 'type-tokens.ts'), 'utf8');
+const TOKENS_CSS = readFileSync(join(SRC, 'app', 'tokens.css'), 'utf8');
+const FONTS_TS = readFileSync(join(SRC, 'app', 'fonts.ts'), 'utf8');
 
 /** 从选择器名截取规则体（到下一个 `}` 为止——纸壳 CSS 规则无嵌套）。 */
 function ruleBody(css: string, selector: string): string {
@@ -56,18 +58,18 @@ describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
     expect(ruleBody(HOME_CSS, '.sh-foot')).toContain('color: var(--ink-2)');
   });
 
-  it('界栏（规格书 §1 锁定件 2026-08-30 落地）：流区左右栏线走墨系不走朱砂', () => {
+  it('界栏（规格书 §1 + 浸墨 §10 双线框）：流区 = 古籍叶，四边 2px 墨框 + 内衬发丝，框走墨系不走朱砂', () => {
     const region = ruleBody(PANEL_CSS, '.pp-region {');
-    // 左右栏线存在
-    expect(region).toContain('border-left-color');
-    expect(region).toContain('border-right-color');
-    // 栏线是墨系结构件——朱砂=人铁律，栏线不沾朱砂
-    expect(region).toContain('var(--ink-2)');
+    // 四边版框：外 2px 墨 + 内衬发丝（古籍双栏线）
+    expect(region).toContain('border: 2px solid');
+    expect(region).toContain('var(--ink-1)');
+    expect(region).toContain('outline-offset: -5px');
+    // 框是墨系结构件——朱砂=人铁律，框不沾朱砂
     expect(region).not.toContain('var(--seal)');
     const active = ruleBody(PANEL_CSS, '.pp-region-active');
-    // 活跃卷示活走洗底朱砂 + 栏线提浓，栏线本体仍是墨
+    // 活跃卷示活走洗底朱砂 + 框提全墨，框本体仍是墨
+    expect(active).toContain('border-color: var(--ink-1)');
     expect(active).toContain('var(--seal) 4%');
-    expect(active).toContain('var(--ink-2) 48%');
   });
 
   it('块入场（2026-08-30 流式生命感）：入场动画单次（尾笔已由用户拍板拆除）', () => {
@@ -122,5 +124,59 @@ describe('卷首 folio-head 钉值（2026-08-30 原型转录：prototype/lantai.
     expect(MEASURE_TS).toContain('export function measureFolioHeadHeight');
     expect(ICONS_TS).toContain('lantai: {');
     expect(ICONS_TS).toContain('M4 9.2 L12 3.4 L20 9.2');
+  });
+});
+
+
+describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', () => {
+  it('法则入宪：tokens 载 --weight-display/--shadow-anchor/--vignette/--laid-lines，字体装载 900', () => {
+    expect(TOKENS_CSS).toContain('--weight-display: 900');
+    expect(TOKENS_CSS).toContain('--shadow-anchor: 2px 3px 0');
+    expect(TOKENS_CSS).toContain('--vignette: radial-gradient');
+    expect(TOKENS_CSS).toContain('--laid-lines: repeating-linear-gradient');
+    expect(FONTS_TS).toContain('noto-serif-sc/900.css');
+  });
+
+  it('墨阶锚点：书眉/列顶/脚线/坞顶升硬线，主钮投影', () => {
+    expect(ruleBody(HOME_CSS, '.sh-head {')).toContain('border-bottom: var(--rule-hard)');
+    expect(ruleBody(HOME_CSS, '.sh-workspaces {')).toContain('border-top: var(--rule-hard)');
+    expect(ruleBody(HOME_CSS, '.sh-foot {')).toContain('border-top: var(--rule-hard)');
+    expect(ruleBody(PANEL_CSS, '.pp-topbar {')).toContain('border-bottom: var(--rule-hard)');
+    expect(ruleBody(PANEL_CSS, '.pp-composer {')).toContain('border-top: var(--rule-hard)');
+    const send = ruleBody(PANEL_CSS, '.pp-composer .pp-send');
+    expect(send).toContain('box-shadow: var(--shadow-anchor)');
+    expect(send).toContain('font-weight: 600');
+  });
+
+  it('版口钮：坞顶 56px 朱砂（全坞唯一暖色件）', () => {
+    const btn = ruleBody(PANEL_CSS, '.pp-composer::before');
+    expect(btn).toContain('width: 56px');
+    expect(btn).toContain('var(--seal)');
+  });
+
+  it('字重极端：题字 900 / 卷首 700 / 卷名 600；句读点朱', () => {
+    expect(ruleBody(HOME_CSS, '.sh-h1')).toContain('var(--weight-display)');
+    expect(ruleBody(HOME_CSS, '.sh-h1 .sh-ju')).toContain('var(--seal)');
+    expect(ruleBody(PANEL_CSS, '.pp-folio-title')).toContain('font-weight: 700');
+    expect(ruleBody(PANEL_CSS, '.pp-composer-target')).toContain('font-weight: 600');
+    expect(ruleBody(PANEL_CSS, '.pp-empty-title')).toContain('var(--weight-display)');
+  });
+
+  it('纸层次：高频噪点 .09 + 边沉帘纹层（sh-root::before）', () => {
+    expect(HOME_CSS).toContain("opacity='0.09'");
+    expect(HOME_CSS).toContain('.sh-root::before');
+    expect(HOME_CSS).toContain('var(--laid-lines)');
+    expect(HOME_CSS).toContain('var(--vignette)');
+  });
+
+  it('选中态墨底反白（禁灰底假选中）', () => {
+    const sel = ruleBody(PANEL_CSS, '.pp-mode-opt.selected');
+    expect(sel).toContain('background: var(--ink-1)');
+    expect(sel).toContain('color: var(--paper)');
+  });
+
+  it('节题墨块锚点（首页）', () => {
+    expect(ruleBody(HOME_CSS, '.sh-section-title .t::before')).toContain('background: var(--ink-1)');
+    expect(ruleBody(HOME_CSS, '.sh-section-title .n')).toContain('var(--seal-deep)');
   });
 });

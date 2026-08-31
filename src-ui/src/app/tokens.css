@@ -49,6 +49,20 @@
   --rule-soft: 1px solid var(--ink-4); /* 弱线：细分隔 */
   --rule-dashed: 1px dashed var(--ink-4); /* 虚线：草稿勾边 / 占位 */
 
+  /* ── 浸墨法则（2026-08-31 全局视觉立宪，细则见规格书 §10）──
+   * 重墨锚点全产品只许三处，余处禁 2px 硬线：
+   *   ① 页缘版框（--rule-frame：古籍双栏线 = 全页最重墨）
+   *   ② 每屏唯一主动作（主钮 / 拟文印）：墨底实色 + --shadow-anchor 硬偏移投影
+   *   ③ 屏级分区线（书眉底线 / 列表顶线 / 脚线 / 坞顶线）：--rule-hard
+   * 字重极端：题字 --weight-display(900)，卷名 600，机读注记 400——中间档禁盘。
+   * 纸层次：--vignette 边沉 + --laid-lines 帘纹 叠全局双频颗粒之上（.paper-depth）。 */
+  --rule-frame: 2px solid var(--ink-1);
+  --frame-hairline: 1px solid var(--ink-4);
+  --weight-display: 900;
+  --shadow-anchor: 2px 3px 0 rgba(38, 34, 28, 0.14), 3px 6px 14px rgba(38, 34, 28, 0.1);
+  --vignette: radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(38, 34, 28, 0.07) 100%);
+  --laid-lines: repeating-linear-gradient(0deg, rgba(38, 34, 28, 0.016) 0 1px, transparent 1px 7px);
+
   /* ── 海拔（硬偏移 letterpress，禁软模糊大投影）── */
   --elev-raise: 2px 3px 0 rgba(38, 34, 28, 0.06), 3px 6px 16px rgba(38, 34, 28, 0.1);
   /* 纸面小菜单海拔（下拉/日志——轻投影，2026-08 UI 大清扫立 token 收编散值） */

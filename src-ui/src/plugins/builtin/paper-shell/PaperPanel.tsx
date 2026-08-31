@@ -416,15 +416,17 @@ type PaperCore = NonNullable<ReturnType<typeof useCoreStore.getState>['core']>;
  * 只在案头态（零摊开卷）渲染；无已存卷/无工作区 = 架空。 */
 function DeskShelf({ core }: { core: PaperCore | null }) {
   const [recent, setRecent] = useState<Array<{ id: number; label: string }>>([]);
+  // 工作区路径（响应式）：进入画布时 projectPath 晚于本组件挂载——路径变化必须重拉
+  // （SessionSidebar P4-1 同款教训）
+  const projectPath = useShellStore((s) => s.projectPath);
   useEffect(() => {
-    if (!core) {
+    if (!core || !projectPath) {
       setRecent([]);
       return;
     }
     let alive = true;
-    const pp = useShellStore.getState().projectPath;
     void core
-      .listSavedSessions(pp)
+      .listSavedSessions(projectPath)
       .then((rows) => {
         if (!alive) return;
         const sorted = [...rows].sort((a, b) => (a.savedAt < b.savedAt ? 1 : -1)).slice(0, 3);
@@ -436,7 +438,7 @@ function DeskShelf({ core }: { core: PaperCore | null }) {
     return () => {
       alive = false;
     };
-  }, [core]);
+  }, [core, projectPath]);
   const onResume = useCallback((sid: string) => {
     activeSpace()?.expand(sid);
     useCanvasViewStore.getState().requestFocus(sid);

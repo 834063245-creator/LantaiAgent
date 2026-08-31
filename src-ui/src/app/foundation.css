@@ -104,7 +104,7 @@ body {
    面板内勿再自挂同款层，叠乘即脏。双频：低频纸纤维晕染 + 高频印刷颗粒；
    各自 opacity 由 SVG rect 内控，元素不再压透明）
    低频 baseFrequency .014 / octaves 3 云状肌理（opacity .10——沉纸档去重后单层），
-   高频 .82 / 2 细密颗粒 */
+   高频 .82 / 2 细密颗粒（浸墨 2026-08-31：.05→.09，纸从底色变材料） */
 .sh-root::after {
   content: "";
   position: fixed;
@@ -113,8 +113,17 @@ body {
   pointer-events: none;
   background-image:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.014' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23m)' opacity='0.10'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.09'/%3E%3C/svg%3E");
   mix-blend-mode: multiply;
+}
+/* 纸层次（浸墨 2026-08-31）：边沉 + 帘纹，垫在颗粒层之下、内容之上 */
+.sh-root::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-grain) - 1);
+  pointer-events: none;
+  background: var(--laid-lines), var(--vignette);
 }
 
 /* ── 顶部书眉（窗口拖拽区 + 品牌 + 设置入口 + 窗口控制）── */
@@ -123,7 +132,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 20px 48px 16px;
-  border-bottom: var(--rule-soft);
+  border-bottom: var(--rule-hard); /* 浸墨：书眉底线升硬线（屏级分区） */
   -webkit-app-region: drag;
   flex-shrink: 0;
 }
@@ -239,6 +248,7 @@ body {
   gap: 6px;
   font-family: var(--f-song);
   font-size: calc(13px * var(--font-scale));
+  font-weight: 600;
   letter-spacing: 0.16em;
   padding: 8px 18px;
   border: 1px solid var(--ink-1);
@@ -246,6 +256,7 @@ body {
   color: var(--paper);
   border-radius: 0;
   cursor: pointer;
+  box-shadow: var(--shadow-anchor); /* 浸墨：主动作硬偏移投影 */
   transition:
     background var(--snap),
     color var(--snap),
@@ -284,13 +295,17 @@ body {
 }
 .sh-h1 {
   font-family: var(--f-song);
-  font-weight: 600;
+  font-weight: var(--weight-display); /* 浸墨：题字极端档 */
   font-size: clamp(40px, 5.4vw, calc(66px * var(--font-scale)));
   line-height: 1.14;
   letter-spacing: -0.015em;
   margin: 22px 0 24px;
   max-width: 18ch;
   color: var(--ink-1);
+}
+/* 句读点朱（浸墨）：题字句号落朱砂——古籍句读遗意，全页唯一红字 */
+.sh-h1 .sh-ju {
+  color: var(--seal);
 }
 .sh-lead {
   color: var(--ink-2);
@@ -313,10 +328,20 @@ body {
   font-weight: 600;
   color: var(--ink-1);
 }
+/* 浸墨：节题前实心方墨锚点 */
+.sh-section-title .t::before {
+  content: "";
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  background: var(--ink-1);
+  margin-right: 12px;
+  transform: translateY(1px);
+}
 .sh-section-title .n {
   font-family: var(--f-mono);
   font-size: calc(11px * var(--font-scale));
-  color: var(--ink-3);
+  color: var(--seal-deep); /* 浸墨：机读卷号朱字 */
   letter-spacing: 0.1em;
 }
 
@@ -411,7 +436,7 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 12px;
-  border-top: var(--rule-strong);
+  border-top: var(--rule-hard); /* 浸墨：列表顶线升硬线 */
   padding-top: 18px;
 }
 .sh-ws-card {
@@ -824,7 +849,7 @@ body {
 
 /* ── 底部 footer ── */
 .sh-foot {
-  border-top: var(--rule-soft);
+  border-top: var(--rule-hard); /* 浸墨：脚线升硬线 */
   padding: 18px 48px;
   display: flex;
   justify-content: space-between;

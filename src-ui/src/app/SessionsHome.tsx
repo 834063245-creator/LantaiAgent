@@ -356,7 +356,9 @@ export function SessionsHome() {
       {/* 主区：kicker + 大标题 + 描述 + 工作区管理列表 + 绑定入口 */}
       <main className="sh-main">
         <p className="sh-kicker">兰台 · 档案</p>
-        <h1 className="sh-h1">与 Agent 协作，应当像在纸上书写。</h1>
+        <h1 className="sh-h1">
+          与 Agent 协作，应当像在纸上书写<span className="sh-ju">。</span>
+        </h1>
         <p className="sh-lead">
           一个工作区就是一张纸：新建或指定一个目录，摊开多少卷都在同一片纸上——可对照、可钉住、可追溯。
         </p>
