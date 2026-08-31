@@ -754,9 +754,26 @@ export function PaperPanel() {
     return () => ro.disconnect();
   }, [setCanvasSize]);
 
+  /* 尺寸变化 = 世界点守恒（2026-09-01 视角抢夺修复）：旧实现任何尺寸变化都把
+   * pan 重置回默认锚点——用户视角被暴力抢回原点（模型下拉开合/窗口缩放/侧栏
+   * 开合等一切引发画布 1px 尺寸差的场景全中招）。新语义：保持「锚点屏幕位置
+   * 下的世界坐标」跨尺寸不动；只有首测（无前尺寸）才落默认锚点 pan。 */
+  const prevCanvasSizeRef = useRef<{ w: number; h: number } | null>(null);
   useEffect(() => {
-    const { panX, panY } = viewForAnchor(canvasSize.w, canvasSize.h);
-    setView((v) => ({ ...v, panX, panY }));
+    const cur = { w: canvasSize.w, h: canvasSize.h };
+    const prev = prevCanvasSizeRef.current;
+    prevCanvasSizeRef.current = cur;
+    if (!prev) {
+      const { panX, panY } = viewForAnchor(cur.w, cur.h);
+      setView((v) => ({ ...v, panX, panY }));
+      return;
+    }
+    if (prev.w === cur.w && prev.h === cur.h) return;
+    const v = useCanvasViewStore.getState().view;
+    const a0 = { x: prev.w / 2, y: viewForAnchor(prev.w, prev.h).panY };
+    const world = { x: (a0.x - v.panX) / v.zoom, y: (a0.y - v.panY) / v.zoom };
+    const a1 = { x: cur.w / 2, y: viewForAnchor(cur.w, cur.h).panY };
+    setView((old) => ({ ...old, panX: a1.x - world.x * old.zoom, panY: a1.y - world.y * old.zoom }));
   }, [canvasSize.w, canvasSize.h, setView]);
 
   /* 画布重挂 = 干净的初始视角：清掉上一轮残留定位请求，回到锚点视口
