@@ -23,6 +23,19 @@
 >    收敛快照同步。通道化后该面迭代环 = 改源码 → esbuild 秒级出产物 → 设置面板重载 → 生效（不重启）。
 > 6. 开工时机：P1 落 commit 后接续（loader.ts / first-party-manifest.ts / PluginsPage.tsx 为其同批
 >    文件，避免在途冲突）；估算与渲染器批同量级（2-3 天）。
+>
+> **增补二（2026-08-31，用户拍板「把工具面也迁了」）**：范围从四面扩为 **feature 全量通道化**——
+> 1. **边界线画在 kind 字段上**：first-party-manifest 的 kind='feature' 全迁（22 个 = 4 UI 面
+>    + 16 工具域 + prompt-segments + capability-segments），kind='service'（21 个平台地基）不迁
+>    ——规则零判断成本，杜绝「这个迁不迁」的逐案争论；renderers 已竣工、space-demo 退役如前。
+> 2. 施工两波（同一批内，设计一次）：**先 UI 四面**（桥面/CSS 方案在此波验证定形），**后工具域
+>    + 段贡献 18 个机械铺开**（无 CSS、无面板桥面增量；zod/agent 依赖随 esbuild 自包含进各自
+>    产物，插件名保持不变——S4-4 甲 patch/preset 寻址 'plugin/hologram/<域>-domain/<工具名>' 零漂移）。
+> 3. **工具面热重载生效语义**：重载影响下一次装配——已开会话的工具注册表是装配期快照，不被中断
+>    （Agent 手中的工具不热换，新会话即用新版）；这是特性非缺陷，语义与装配期真值族 noCache 设计同构。
+> 4. 门禁：gen:tool-contract 按源码生成不受装载路径影响（不变）；verify:convergence 快照重录
+>    **一次** change request（22 插件表变化一并入）；工具域测试直引源码组件与产物双走查（P1f 同款）。
+> 5. 估算：UI 波 + 工具波合计 3-5 天；全量门禁（tsc/biome/vitest/convergence/cargo）收尾一次。
 
 ---
 
