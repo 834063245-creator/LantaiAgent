@@ -8,14 +8,21 @@
 > **增补（2026-08-31，用户拍板）**：用户确认 **dev 模式不可用**（环境所限，原因不论）——
 > P0 对本用户价值归零（竣工件保留不拆），生产包热重载升格为**唯一热更路径 = 必要工程**。影响与排定：
 > 1. P1 基础设施（esbuild 管线 / plugin_assets 兜底解析 / 设置面板重载 / 宿主桥 React 面）转公共设施；
-> 2. **panels/commands 通道化从「后续复刻、本次不做」升格为排定批次**：首迁 canvasNavPlugin 双面板
->    （案卷侧边栏 + 书脊）+ sidebar-toggle 命令。增量 = ①源码迁 builtin 目录 + manifest.json（P1b 同款）
->    ②构建管线扩 canvas-nav 产物（P1c 同款，注意面板携 CSS——渲染器无此问题，需产物带样式或注入）
->    ③宿主桥补 ctx.space / dock-store 消费面（面板比渲染器桥面宽）④first-party-manifest 守护 +
->    收敛快照同步（BUILTIN_PLUGINS 表变化走 baseline change request）；
-> 3. 通道化后该面的迭代环 = 改源码 → esbuild 秒级出产物 → 设置面板重载 → 生效（不重启）——
->    dev 缺位下此即第一方 UI 面的主迭代环；未通道化面仍需整包构建。
-> 4. 开工时机：P1 落 commit 后接续（loader.ts / first-party-manifest.ts 为其同批文件，避免在途冲突）。
+> 2. **范围拍板（同日追问拍板）：不逐个迁，UI 面四面整批一次到位**——canvas-nav（书脊+侧边栏）、
+>    paper-shell（纸壳主界面）、settings-domain（设置面板）、compose-dock（组合停靠面板）。
+>    盘点依据：45 个第一方插件中 21 个 service（平台地基，无视觉迭代，非目标原文明确不外置）与
+>    16 个 Agent 工具域（纯逻辑注册 + 独立工具契约门禁，热替换要多背契约同步）均不迁；
+>    **space-demo（Stage-2 验收脚手架，无产品功能）顺带退役**——其「外部插件消费 ctx.space 写法范本」
+>    价值由迁移后的 canvas-nav 实体接替。
+> 3. 整批理由（解「逐个迁反复返工」）：桥面（React + ctx 消费面）、**面板携 CSS 注入方案**、
+>    BUILTIN_PLUGINS 表变化引发的收敛快照 change request——**各做一次，四面机械复用**；
+>    逐个迁则桥面返工风险×4、收敛快照走四次。
+> 4. 封口规矩：此后**新 UI 面一律以 builtin 插件形态出生**（renderers 为样板），存量清零后不再有迁徙。
+> 5. 迁徙增量 = ①源码迁 builtin 目录 + manifest.json（P1b 同款）②构建管线扩四面产物（P1c 同款，
+>    含 CSS 产物或注入）③宿主桥补 ctx.space / dock-store 等消费面④first-party-manifest 守护 +
+>    收敛快照同步。通道化后该面迭代环 = 改源码 → esbuild 秒级出产物 → 设置面板重载 → 生效（不重启）。
+> 6. 开工时机：P1 落 commit 后接续（loader.ts / first-party-manifest.ts / PluginsPage.tsx 为其同批
+>    文件，避免在途冲突）；估算与渲染器批同量级（2-3 天）。
 
 ---
 
