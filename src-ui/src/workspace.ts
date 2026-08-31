@@ -293,20 +293,34 @@ export class Workspace {
 
     // 2. 连接进度监听器（限定于本工作区）
     let currentPhase = '';
-    const unlistenProgress = await typedListen('analyze-progress', ({ current, total, file }) => {
-      if (!ws._active) return;
-      const basename = file.replace(/.*[/\\]/, '');
-      ws.onStatusChange?.(`${currentPhase ? currentPhase + ' — ' : ''}[${current}/${total}] ${basename}`);
-    });
-    const unlistenPhase = await typedListen('analyze-phase', (p) => {
-      if (!ws._active) return;
-      currentPhase = p.message || p.phase;
-      ws.onStatusChange?.(currentPhase);
-    });
-    const unlistenHeartbeat = await typedListen('analyze-heartbeat', ({ label, elapsed }) => {
-      if (!ws._active) return;
-      ws.onStatusChange?.(`${label} (${elapsed}...)`);
-    });
+    // 2026-09-01 审计：三个监听器逐个 await——中途 reject 时已建者原本永不解除
+    //（此时还没登记进 fiber effect）。创建期任一失败 = 先解已建者再抛。
+    const createdListeners: Array<() => void> = [];
+    let unlistenProgress: () => void;
+    let unlistenPhase: () => void;
+    let unlistenHeartbeat: () => void;
+    try {
+      unlistenProgress = await typedListen('analyze-progress', ({ current, total, file }) => {
+        if (!ws._active) return;
+        const basename = file.replace(/.*[/\\]/, '');
+        ws.onStatusChange?.(`${currentPhase ? currentPhase + ' — ' : ''}[${current}/${total}] ${basename}`);
+      });
+      createdListeners.push(unlistenProgress);
+      unlistenPhase = await typedListen('analyze-phase', (p) => {
+        if (!ws._active) return;
+        currentPhase = p.message || p.phase;
+        ws.onStatusChange?.(currentPhase);
+      });
+      createdListeners.push(unlistenPhase);
+      unlistenHeartbeat = await typedListen('analyze-heartbeat', ({ label, elapsed }) => {
+        if (!ws._active) return;
+        ws.onStatusChange?.(`${label} (${elapsed}...)`);
+      });
+      createdListeners.push(unlistenHeartbeat);
+    } catch (e) {
+      for (const un of createdListeners.splice(0)) un();
+      throw e;
+    }
 
     try {
       if (!ws._graphEngineOn) {
@@ -340,8 +354,12 @@ export class Workspace {
         if (ws._graphWarming) {
           ws.onStatusChange?.('图谱后台预热中——对话已就绪，图工具将在分析完成后可用');
         }
-        typedRpc('analyze_and_load', { path, force: false }).catch(() => {
-          /* 快照路径已降级处理，此处静默 */
+        typedRpc('analyze_and_load', { path, force: false }).catch((e) => {
+          // 2026-09-01 审计：失败要复位预热旗标 + 可见告警——否则 _graphWarming
+          // 恒 true，图谱永不就绪也无人知道（静默卡死）。
+          ws._graphWarming = false;
+          console.warn('[Workspace.open] analyze_and_load 失败（图工具本次不可用）:', e);
+          ws.onStatusChange?.('图谱预热失败——图工具本次不可用（重开工作区可重试）');
         });
       }
 
@@ -390,12 +408,12 @@ export class Workspace {
                 ws._preflightCtx?.invalidate();
               }
               bumpTimelineRefresh();
-            } catch {
-              /* 快照重拉失败 — 保持现状 */
+            } catch (e) {
+              console.warn('[Workspace.open] 图谱快照重拉失败——保持现状:', e);
             }
           }
-        } catch {
-          /* 忽略 */
+        } catch (e) {
+          console.warn('[Workspace.open] graph-updated 载荷解析失败:', e);
         }
       });
       ws._fiber.ctx.effect(() => unlistenGraphUpdated, 'listener:graph-updated');
@@ -1157,18 +1175,6 @@ export class Workspace {
       this.checkTimer = null;
       if (!this.checkRunning) this.runCheck();
     }, 3000);
-  }
-
-  // ═══════════════════════════════════════════════════════════════
-  // doGraphUpdate — 处理来自 watcher 的图谱更新（V5 拆除后纯数据面）
-  // ═══════════════════════════════════════════════════════════════
-  /** 图谱更新通知：数据层合并由调用方（graph-updated 监听器）先行完成，
-   *  此处只收尾——状态提示 + runCheck（简报基线）。渲染面已随星图退役。 */
-  doGraphUpdate(): void {
-    const gd = this.graphData;
-    if (!gd) return;
-    this.onStatusChange?.(`已更新 (${gd.node_count} 节点)`);
-    this.runCheck();
   }
 }
 

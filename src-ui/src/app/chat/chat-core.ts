@@ -84,6 +84,12 @@ export interface MessagesApi {
   bump(): void;
 }
 
+/** 全局 store 订阅登记（2026-09-01 审计）：ChatCore 每次重建都新订四个全局
+ *  store（ask/agent-panel/goal/workspace-switch），此前从不退订——重建即累积
+ *  （同一事件被多个死实例重复消费）。模块级登记上一实例的退订函数，构造时
+ *  先解除再重订；panelId 每实例唯一，全局 store 订阅是唯一跨实例存活的引用面。 */
+const _globalStoreUnsubs: Array<() => void> = [];
+
 export class ChatCore {
   /** 面板唯一实例 ID。自动生成，用于 store 隔离。 */
   readonly panelId: string;
@@ -138,6 +144,9 @@ export class ChatCore {
   // ═══════════════════════════════════════════════════════════
 
   constructor() {
+    // 上一实例的全局 store 订阅先解除（2026-09-01 审计：重建不累积——
+    // 退订函数登记在模块级 _globalStoreUnsubs，声明见类定义上方）
+    for (const unsub of _globalStoreUnsubs.splice(0)) unsub();
     this.panelId = `cp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     this._exec = createExecState();
 
@@ -147,29 +156,37 @@ export class ChatCore {
     // ── ask_user tool → prompt shelf（视图注册后生效）──
     // P1 总线归零：prompt:ask → state/ask-store（callback-in-store：pending 跨
     // chat-core 重建存活——构造时回放；bus 时代 emit 早于订阅即静默丢失）
-    useAskStore.subscribe((s, prev) => {
-      if (s.seq !== prev.seq) this._consumePendingAsk();
-    });
+    _globalStoreUnsubs.push(
+      useAskStore.subscribe((s, prev) => {
+        if (s.seq !== prev.seq) this._consumePendingAsk();
+      }),
+    );
     this._consumePendingAsk(); // 回放在途 pending（chat-core 重建场景）
     // ── 追踪用户焦点已拆除（2026-08-27 死码清扫）：发射点随星图 V5 拆除 /
     // app-shell 死亡而消失——chat-context-store / scene-signal-store 整链删除，
     // @ 自动补全节点名喂给逻辑一并退役（P2 起 starGraph 恒缺席）。
     // P1 总线归零：agent:diag → agent-panel-store.diag（workspace 直写，此处订阅转写）
-    useAgentPanelStore.subscribe((s, prev) => {
-      if (s.diag !== prev.diag && s.diag !== null) {
-        getChatStore(this.panelId).panel.getState().setLastAgentDiag(s.diag.text);
-      }
-    });
+    _globalStoreUnsubs.push(
+      useAgentPanelStore.subscribe((s, prev) => {
+        if (s.diag !== prev.diag && s.diag !== null) {
+          getChatStore(this.panelId).panel.getState().setLastAgentDiag(s.diag.text);
+        }
+      }),
+    );
     // ── Goal strip：状态迁移驱动显隐；切换工作区后重载 ──
     // P1 总线归零：goal:state → state/goal-store（GoalManager 回调直写，此处订阅）
-    useGoalStore.subscribe((s, prev) => {
-      if (s.tick !== prev.tick && s.record !== null) this._updateGoalRecord(s.record);
-    });
+    _globalStoreUnsubs.push(
+      useGoalStore.subscribe((s, prev) => {
+        if (s.tick !== prev.tick && s.record !== null) this._updateGoalRecord(s.record);
+      }),
+    );
     // P1 总线归零：workspace:switched → state/workspace-switch-store
     //（跨工作区触发：_refreshGoalRecord 在途结果按 INVARIANTS #12 epoch 守卫）
-    useWorkspaceSwitchStore.subscribe((s, prev) => {
-      if (s.switchedTick !== prev.switchedTick) void this._refreshGoalRecord();
-    });
+    _globalStoreUnsubs.push(
+      useWorkspaceSwitchStore.subscribe((s, prev) => {
+        if (s.switchedTick !== prev.switchedTick) void this._refreshGoalRecord();
+      }),
+    );
     this._refreshGoalRecord();
 
     // ⚡ ExecutionState → store 同步：订阅活动会话的 execState，会话切换时重绑
@@ -614,8 +631,13 @@ export class ChatCore {
       },
       getProjectPath: () => useShellStore.getState().projectPath,
       getRunning: () => this._activeExec().isRunning,
-      getAbortCtrl: () =>
-        this._activeExec().abortSignal ? ({ signal: this._activeExec().abortSignal } as AbortController) : null,
+      getAbortCtrl: () => {
+        const signal = this._activeExec().abortSignal;
+        if (!signal) return null;
+        // 2026-09-01 审计：此前裸 { signal } 冒充 AbortController——消费方一旦
+        // 调 .abort() 即 TypeError。补转发 abort 的最小实现（真源仍是 execState）。
+        return { signal, abort: () => this._activeExec().stop() } as AbortController;
+      },
       setAbortCtrl: (_c: unknown) => {
         /* 由 execState 管理 */
       },
@@ -728,7 +750,9 @@ export class ChatCore {
           canvas.setActiveRegion(null);
         }
         // 回写清理后的画布（幂等——下次启动已无悬空项，不再重复剪）
-        void saveCanvasToDisk(this.panelId, workspace).catch(() => {});
+        void saveCanvasToDisk(this.panelId, workspace).catch((e) =>
+          console.warn('[chat-core] 画布回写失败（幽灵卷清理未落盘，下次启动重试）:', e),
+        );
       }
       // 已删源会话播种（2026-08-28 会话管理专项）：钉的源卷既不在开卷也不在
       // 有效落盘卷集 = 源已删（或空卷从未落盘）——「收回」语义失效，孤儿钉
@@ -1243,14 +1267,6 @@ export class ChatCore {
 
     // 停止按钮/exec 状态已表达中止意图——不再播报「正在中止…」（2026-08-31）
 
-    // 安全超时：3 秒内若 Agent 没响应，强制复位
-    const safety = setTimeout(() => {
-      if (this._activeExec().isRunning) {
-        this._activeExec().forceReset();
-        this.finishTurn();
-        showToast('已强制中止（超时）', 'warn');
-      }
-    }, 3000);
     // Zustand 订阅代替轮询 — 状态变为 idle 时自动取消超时
     const exec = this._activeExec();
     const unsub = exec.onChange(() => {
@@ -1259,6 +1275,15 @@ export class ChatCore {
         unsub();
       }
     });
+    // 安全超时：3 秒内若 Agent 没响应，强制复位
+    const safety = setTimeout(() => {
+      unsub(); // 2026-09-01 审计：超时路径也退订——监听器不悬空
+      if (this._activeExec().isRunning) {
+        this._activeExec().forceReset();
+        this.finishTurn();
+        showToast('已强制中止（超时）', 'warn');
+      }
+    }, 3000);
   }
 
   // ═══════════════════════════════════════════════════════
@@ -1329,7 +1354,7 @@ export class ChatCore {
   // ── 消息操作回调（视图 ChatMessages 委托）──
 
   copyText(text: string): void {
-    navigator.clipboard.writeText(text).catch(() => {});
+    navigator.clipboard.writeText(text).catch((e) => console.warn('[chat-core] 复制到剪贴板失败:', e));
   }
   navigateToNode(nodeName: string): void {
     if (this.starGraph) this.starGraph.focusNode(nodeName);

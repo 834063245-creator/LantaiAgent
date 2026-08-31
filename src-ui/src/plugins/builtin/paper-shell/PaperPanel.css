@@ -262,7 +262,7 @@
   color: var(--ink-1);
   /* 2026-08-31 浸墨化：大字加 0.4px 渗缘（墨缘毛细扩散模拟，同 alpha 墨第 2 层手法）
      弱 alpha 残影，正文小字不加——面积大可读性不受损 */
-  text-shadow: 0 0 0.4px rgba(38, 34, 28, 0.32);
+  text-shadow: 0 0 0.4px color-mix(in oklch, var(--ink-solid) 32%, transparent);
 }
 .pp-folio-sub {
   font-family: var(--f-mono);
@@ -297,6 +297,7 @@
 .pp-origin {
   position: absolute;
   pointer-events: none;
+  opacity: 0.45; /* 2026-09-01 审计：原点十字降噪——方位感保留，工程感收敛 */
 }
 .pp-origin::before,
 .pp-origin::after {
@@ -1252,19 +1253,19 @@
  *  ⚠ 不用 !important：用更精确的复合选择器压过 .pp-composer button 通配。 */
 .pp-composer .pp-attach {
   flex: 0 0 auto;
-  margin-right: 12px;
+  margin-right: 6px;
   font-family: var(--f-song);
   font-size: 13px;
   letter-spacing: 0;
-  padding: 8px 12px;
+  padding: 8px 6px;
   color: var(--ink-2);
-  border: var(--rule-soft);
+  border: none; /* 2026-09-01 重皮：盒→线——引/夹走 dock-v3 纯文字语言 */
   background: transparent;
 }
 .pp-composer .pp-attach:hover {
-  color: var(--ink-1);
-  border-color: var(--ink-3);
-  background: var(--paper);
+  color: var(--seal-deep);
+  border-color: transparent;
+  background: transparent;
 }
 .pp-attach-list {
   flex: 0 1 auto;
@@ -1275,8 +1276,8 @@
   max-width: 40%;
   scrollbar-width: none;
   /* 右缘渐隐提示可滚（2026-08 UI 大清扫：隐藏滚动条后用户不知道右边还有） */
-  mask-image: linear-gradient(to right, #000 85%, transparent);
-  -webkit-mask-image: linear-gradient(to right, #000 85%, transparent);
+  mask-image: linear-gradient(to right, var(--ink-solid) 85%, transparent);
+  -webkit-mask-image: linear-gradient(to right, var(--ink-solid) 85%, transparent);
 }
 .pp-attach-list::-webkit-scrollbar {
   display: none;
@@ -1466,41 +1467,45 @@
   background: var(--seal);
 }
 /* rework P2-3：权限三档分段控件 */
-.pp-mode-seg {
+/* 2026-09-01 重皮（对照 dock-v3 黄金样本）：分段盒退役——三档走纯文字语言，
+ * 选中 = 重墨 + 2px 朱砂底线（权限=人=朱砂语义）。设置行只留「拟文印」一个
+ * 墨底锚点（浸墨法则②：每屏唯一主动作），黑块分段与之争锚是审计判定的
+ * 「盒装语言」残留。 */
+.pp-composer .pp-mode-seg {
   display: inline-flex;
   margin: 0;
   padding: 0;
-  border: 1px solid var(--rule-soft);
+  border: none;
   border-radius: 0;
-  overflow: hidden;
+  gap: 2px;
   flex-wrap: nowrap;
 }
-.pp-mode-opt {
+/* 复合选择器压 .pp-composer button 通配（印章语言基类）——三档走文字线语言 */
+.pp-composer .pp-mode-opt {
   font-family: var(--f-song);
   font-size: 12px;
   letter-spacing: 0.06em;
-  padding: 3px 10px;
+  padding: 3px 8px 4px;
   border: none;
-  border-right: 1px solid var(--rule-soft);
+  border-bottom: 2px solid transparent;
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
   white-space: nowrap;
-  transition:
-    background var(--snap),
-    color var(--snap);
+  transition: color var(--snap), border-color var(--snap);
 }
-.pp-mode-opt:last-child {
+.pp-composer .pp-mode-opt:last-child {
   border-right: none;
 }
-.pp-mode-opt:hover {
-  background: var(--paper);
+.pp-composer .pp-mode-opt:hover {
+  background: transparent;
   color: var(--ink-1);
 }
-.pp-mode-opt.selected {
-  background: var(--ink-1); /* 浸墨：选中态墨底反白（禁灰底假选中） */
-  color: var(--paper);
-  font-weight: 500;
+.pp-composer .pp-mode-opt.selected {
+  background: transparent;
+  color: var(--ink-1);
+  font-weight: 600; /* 浸墨：选中重墨档（非墨底反白——主动作锚点只留拟文印） */
+  border-bottom-color: var(--seal);
 }
 
 /* rework P2-3 / P0-1：全放二次确认 = 独立居中模态（不内嵌创作坞） */
@@ -1579,24 +1584,21 @@
   align-items: center;
   gap: 5px;
   height: 22px;
-  padding: 0 8px;
+  padding: 0 2px; /* 2026-09-01 重皮：盒→线——思考走纯文字，与权限三档同语言 */
   font-family: var(--f-song);
   font-size: 12px;
   letter-spacing: 0.06em;
-  border: var(--rule-soft);
+  border: none;
   border-radius: 0;
   background: transparent;
   color: var(--ink-2);
   cursor: pointer;
   white-space: nowrap;
-  transition:
-    color var(--snap),
-    border-color var(--snap);
+  transition: color var(--snap);
 }
 .pp-composer-settings .pp-thinking-pill:hover,
 .pp-composer-settings .pp-thinking-pill.open {
   color: var(--seal-deep);
-  border-color: var(--seal);
 }
 .pp-composer-settings .pp-thinking-pill.off {
   color: var(--ink-3);
@@ -1604,7 +1606,6 @@
 .pp-composer-settings .pp-thinking-pill.off:hover,
 .pp-composer-settings .pp-thinking-pill.off.open {
   color: var(--ink-2);
-  border-color: var(--ink-3);
 }
 .pp-composer-settings .pp-thinking-icon {
   flex: 0 0 auto;
@@ -1625,7 +1626,7 @@
   overflow-y: auto;
   background: var(--paper);
   border: 1px solid var(--rule-strong);
-  box-shadow: var(--elev-raise);
+  box-shadow: var(--elev-menu); /* 2026-09-01 审计：弹层海拔统一菜单档 */
   animation: pop-up 0.14s cubic-bezier(0.23, 1, 0.32, 1);
 }
 .pp-composer-settings .pp-thinking-opt {
@@ -1653,8 +1654,9 @@
   color: var(--ink-1);
 }
 .pp-composer-settings .pp-thinking-opt.selected {
-  background: var(--seal-soft);
-  color: var(--seal-deep);
+  background: var(--sel-wash); /* 2026-09-01 审计：去 seal-soft 粉选——统一选中墨洗 */
+  color: var(--ink-1);
+  box-shadow: inset 2px 0 0 var(--seal);
 }
 .pp-composer-settings .pp-thinking-opt-label {
   font-family: var(--f-song);
@@ -1669,13 +1671,13 @@
   white-space: nowrap;
 }
 .pp-composer-settings .pp-thinking-opt.selected .pp-thinking-opt-desc {
-  color: color-mix(in oklch, var(--seal-deep) 70%, var(--ink-3));
+  color: var(--ink-3);
 }
 .pp-composer input,
 .pp-composer textarea {
   flex: 1;
   min-height: 34px;
-  background: color-mix(in oklch, var(--paper) 55%, transparent);
+  background: transparent; /* 2026-09-01 审计：去 paper 55% 半透明——半透明纸叠橄榄舞台出脏粉，走坞底纸色 */
   border: none;
   border-bottom: var(--rule-soft);
   border-radius: 0;
@@ -1765,9 +1767,9 @@
 .pp-composer .pp-dock-tools .pp-tool-btn {
   font-size: calc(12px * var(--font-scale));
   letter-spacing: 0.1em;
-  padding: 3px 9px;
+  padding: 3px 4px;
   background: transparent;
-  border: 1px solid var(--rule-soft);
+  border: none; /* 2026-09-01 重皮：盒→线——翰/律走纯文字 */
   color: var(--ink-2);
   cursor: pointer;
 }
@@ -1775,10 +1777,9 @@
 .pp-composer .pp-dock-tools .pp-tool-btn.open {
   background: transparent;
   color: var(--seal-deep);
-  border-color: var(--seal);
 }
 .pp-composer .pp-dock-tools .pp-tool-btn:active {
-  background: var(--seal-soft);
+  background: transparent;
   transform: translateY(1px);
 }
 /* 律册（快捷键总览浮层）：向上开，右对齐工具对 */
@@ -1790,7 +1791,7 @@
   min-width: 250px;
   background: var(--paper);
   border: 1px solid var(--rule-soft);
-  box-shadow: var(--elev-raise);
+  box-shadow: var(--elev-menu); /* 2026-09-01 审计：弹层海拔统一菜单档 */
   padding: 10px 14px;
   display: flex;
   flex-direction: column;
@@ -1834,7 +1835,7 @@
   max-width: calc(100vw - 96px);
   background: var(--paper);
   border: 1px solid var(--rule-soft);
-  box-shadow: var(--elev-raise);
+  box-shadow: var(--elev-menu); /* 2026-09-01 审计：弹层海拔统一菜单档（raise 硬偏移太弱，浮层弹不起来） */
   z-index: 45;
   display: flex;
   flex-direction: column;
@@ -1879,7 +1880,7 @@
 }
 .pp-yin-item:hover,
 .pp-yin-item.active {
-  background: color-mix(in oklch, var(--indigo) 12%, var(--paper));
+  background: var(--sel-wash); /* 2026-09-01 审计：去 indigo 蓝选——统一选中墨洗 */
 }
 .pp-yin-item.active {
   box-shadow: inset 2px 0 0 var(--seal);
@@ -1905,11 +1906,11 @@
   font-size: calc(12px * var(--font-scale));
   color: var(--ink-3);
 }
-/* 引按钮激活态（与思考 pill 同款 hover 语言） */
+/* 引按钮激活态（2026-09-01 重皮：文字语言——朱砂字 + 2px 底线，非盒） */
 .pp-composer .pp-yin-btn.open {
   color: var(--seal-deep);
-  border-color: var(--seal);
-  background: var(--paper);
+  border-bottom: 2px solid var(--seal);
+  background: transparent;
 }
 
 /* ── 界栏（创作坞 v2 2026-08-31）：拖文件悬停坞体的高亮态──
@@ -2017,7 +2018,7 @@
   overflow-y: auto;
   background: var(--paper);
   border: 1px solid var(--rule-soft);
-  box-shadow: var(--elev-raise);
+  box-shadow: var(--elev-menu); /* 2026-09-01 审计：弹层海拔统一菜单档 */
   z-index: 40;
   padding: 6px 0;
   /* 向上开的弹层自锚点侧托起（全局 pop 关键帧在 foundation.css） */
@@ -2040,7 +2041,7 @@
 }
 .pp-slash-item:hover,
 .pp-slash-item.active {
-  background: color-mix(in oklch, var(--indigo) 12%, var(--paper));
+  background: var(--sel-wash); /* 2026-09-01 审计：去 indigo 蓝选——统一选中墨洗 */
 }
 /* C3（2026-08-27）：键盘导航选中态——与 hover 同底色 + 左缘朱砂指示 */
 .pp-slash-item.active {
@@ -2546,7 +2547,8 @@
   overflow-wrap: anywhere;
 }
 
-/* rework P2-1 + DSH 移植（2026-08-26）：紧凑触发器（收起态 = 厂商 monogram + 人类模型名 + 箭头） */
+/* rework P2-1 + DSH 移植（2026-08-26）：紧凑触发器（收起态 = 厂商 monogram + 人类模型名 + 箭头）
+ * 2026-09-01 重皮：盒→线——触发器走纯文字，与权限三档/思考/翰律同语言 */
 .pp-composer-settings .ms-container .ms-trigger {
   display: inline-flex;
   align-items: center;
@@ -2555,8 +2557,8 @@
   min-width: 0;
   font-family: var(--f-song);
   font-size: 12px;
-  padding: 2px 8px;
-  border: var(--rule-soft);
+  padding: 2px 2px;
+  border: none;
   border-radius: 0;
   background: transparent;
   color: var(--ink-2);
@@ -2566,8 +2568,7 @@
 }
 .pp-composer-settings .ms-container .ms-trigger:hover {
   color: var(--ink-1);
-  border-color: var(--ink-3);
-  background: var(--paper);
+  background: transparent;
 }
 /* DSH ProviderIcon 的 monogram 替代——触发 pill 里的厂商首字 chip */
 .pp-composer-settings .ms-provider-mark {
@@ -2595,15 +2596,13 @@
   color: var(--ink-3);
   font-size: 10px;
 }
-/* DSH 不可用状态（2026-08-26）：会话模型所属 provider 已不在配置里——warn 边框 + ⚠ */
+/* DSH 不可用状态（2026-08-26）：会话模型所属 provider 已不在配置里——warn 字色 + ⚠（重皮后无线可染） */
 .pp-composer-settings .ms-trigger.ms-trigger-unavailable {
   color: var(--warn);
-  border-color: color-mix(in oklch, var(--warn) 50%, var(--paper));
 }
 .pp-composer-settings .ms-trigger.ms-trigger-unavailable:hover {
   color: var(--warn);
-  border-color: var(--warn);
-  background: color-mix(in oklch, var(--warn) 6%, var(--paper));
+  background: transparent;
 }
 .pp-composer-settings .ms-trigger-unavail {
   flex: 0 0 auto;
@@ -2885,18 +2884,18 @@
 .pp-media-preview-overlay {
   position: fixed;
   inset: 0;
-  z-index: 10000;
+  z-index: var(--z-dialog); /* 2026-09-01 审计：10000 散写收编 token（全局模态档 520） */
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.8);
+  background: color-mix(in oklch, var(--ink-solid) 82%, transparent);
   cursor: zoom-out;
 }
 .pp-media-preview {
   max-width: 92vw;
   max-height: 92vh;
   object-fit: contain;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 8px 40px color-mix(in oklch, var(--ink-solid) 45%, transparent);
 }
 
 .pp-graph {

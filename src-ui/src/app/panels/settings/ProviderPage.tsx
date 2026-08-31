@@ -89,6 +89,16 @@ export function ProviderPage({
     setKeyDirtyMap(new Map());
   }, [saveVersion]);
 
+  // 连接测试在途守卫（2026-09-01 审计）：面板关闭后回包不再 setState/落盘
+  // 探针结果——AbortController 只管 15s 超时，不管卸载。
+  const testAliveRef = useRef(true);
+  useEffect(() => {
+    testAliveRef.current = true;
+    return () => {
+      testAliveRef.current = false;
+    };
+  }, []);
+
   const handleFieldChange = useCallback(
     (name: string, field: ProviderField, value: string) => {
       if (field === 'apiKey') {
@@ -199,6 +209,7 @@ export function ProviderPage({
           break;
         }
       }
+      if (!testAliveRef.current) return; // 卸载后回包：不落盘不 setState
       const latencyMs = Math.round(performance.now() - started);
       const msg = received ? formatLatency(latencyMs) : '连接成功（无文本返回，请检查模型行为）';
       const result: ConnectionProbe = { status: 'ok', latencyMs, at: Date.now(), message: msg };
@@ -207,6 +218,7 @@ export function ProviderPage({
       onPersistProbe(name, result);
       setTests((t) => new Map(t).set(name, { phase: 'ok', msg }));
     } catch (e) {
+      if (!testAliveRef.current) return;
       const latencyMs = Math.round(performance.now() - started);
       const msg = e instanceof Error ? e.message || String(e) : String(e);
       const result: ConnectionProbe = { status: 'fail', latencyMs, at: Date.now(), message: msg };

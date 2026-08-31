@@ -14,6 +14,10 @@ import { useEffect, useRef } from 'react';
 import type { BlockInk, InkCache, PaperStrip, RegionView, SourcedBlock } from './host';
 import { inkColorOf, inkForBlock, inkForText, useCanvasViewStore, worldToScreen } from './host';
 
+/** 墨源 rgb 基色（= tokens.css --ink-* 的 rgba(38,34,28,α) 同一瓶墨）。
+ *  canvas 2D 不吃 CSS var，字面量在此单点声明——改墨色时与 tokens.css 同步。 */
+const INK_RGB = '38, 34, 28';
+
 interface InkLayerProps {
   regionsRef: React.MutableRefObject<RegionView[]>;
   /** 有效折叠态（与 DOM 渲染同一 foldedOf——折叠块画桩条） */
@@ -92,15 +96,15 @@ export function InkLayer({ regionsRef, foldedOf, inkCache, strips, orphanBlocks 
       }
       // 孤儿钉快照（公共物：源卷不在纸上也在墨）
       for (const b of orphanBlocks) drawBlock(b, b.x, b.y);
-      // 纸条（外框 + 真文字缩微）——墨色=ink-2 alpha 墨 rgba(38,34,28,.7)
-      ctx.strokeStyle = 'rgba(38, 34, 28, 0.7)';
+      // 纸条（外框 + 真文字缩微）——墨色=ink-2 alpha 墨（墨源 rgb 同 tokens.css，canvas 不吃 CSS var 故字面量在此单点声明）
+      ctx.strokeStyle = `rgba(${INK_RGB}, 0.7)`;
       ctx.lineWidth = 1;
       for (const s of strips) {
         if (s.x > vx1 || s.x + s.w < vx0 || s.y > vy1 || s.y + 160 < vy0) continue;
         const p = worldToScreen(view, s.x, s.y);
         ctx.strokeRect(p.x, p.y, s.w * view.zoom, 96 * view.zoom);
         const ink = inkForText(s.text, s.w);
-        ctx.fillStyle = 'rgba(38, 34, 28, 0.7)';
+        ctx.fillStyle = `rgba(${INK_RGB}, 0.7)`;
         ctx.textBaseline = 'top';
         ctx.font = `${(ink.size * view.zoom).toFixed(2)}px ${ink.stack}`;
         for (const bar of ink.bars) {

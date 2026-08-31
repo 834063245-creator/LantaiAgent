@@ -169,10 +169,11 @@ describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', (
     expect(HOME_CSS).toContain('var(--vignette)');
   });
 
-  it('选中态墨底反白（禁灰底假选中）', () => {
+  it('选中态文字语言：重墨 + 朱砂底线（2026-09-01 重皮拍板：盒装黑块退役——设置行唯一墨底锚点只留拟文印）', () => {
     const sel = ruleBody(PANEL_CSS, '.pp-mode-opt.selected');
-    expect(sel).toContain('background: var(--ink-1)');
-    expect(sel).toContain('color: var(--paper)');
+    expect(sel).toContain('background: transparent');
+    expect(sel).toContain('color: var(--ink-1)');
+    expect(sel).toContain('border-bottom-color: var(--seal)');
   });
 
   it('节题墨块锚点（首页）', () => {

@@ -20,13 +20,13 @@
   margin: 12px 14px 0;
   padding: 9px 12px;
   border: var(--rule-soft);
-  border-left: 3px solid var(--warn);
+  border-left: 3px solid var(--ink-2); /* 2026-09-01 审计：无 Key 是初始常态不是告警——警示金退墨系 */
   border-radius: 0;
-  background: color-mix(in oklch, var(--warn) 8%, transparent);
+  background: var(--paper-deep);
   flex-shrink: 0;
 }
 .pp-ob-icon {
-  color: var(--warn);
+  color: var(--ink-2);
   flex-shrink: 0;
   font-size: 13px;
 }

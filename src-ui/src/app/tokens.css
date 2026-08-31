@@ -24,11 +24,17 @@
   --ink-2: rgba(38, 34, 28, 0.7); /* 次级：规线 / 次级文字 */
   --ink-3: rgba(38, 34, 28, 0.48); /* 三级：注记 / 页码 */
   --ink-4: rgba(38, 34, 28, 0.3); /* 弱规线 / 最弱信号 */
+  --ink-solid: #26221c; /* 墨源实色：遮罩/lightbox/mask 等 alpha 墨不够用的场合唯一豁免（同墨源 #26221c，禁散写） */
 
   /* ── 矿物颜料（语义铁律：朱砂=人，石青=机，石墨=草稿，墨=正文）── */
   --seal: #a63a2e; /* 朱砂：印章 / 来文 / 圈点 / 朱批 */
   --seal-deep: #8c2f26; /* 朱砂深：来文文字 */
   --seal-soft: color-mix(in oklch, var(--seal) 16%, transparent);
+  --sel-wash: color-mix(
+    in oklch,
+    var(--ink-1) 7%,
+    var(--paper)
+  ); /* 选中墨洗：列表行/菜单项全产品唯一选中语言，配朱砂脊线（2026-09-01 审计收编黄绿/亮蓝/粉三套野选中色） */
   --indigo: #3a5b7a; /* 石青：脚注 / 拟策序号 / diff 新增 */
   --graphite: #6f6e68; /* 赭石：夹注 / 擦改 / diff 删除 */
 
@@ -60,8 +66,8 @@
   --frame-hairline: 1px solid var(--ink-4);
   --weight-display: 900;
   --shadow-anchor: 2px 3px 0 rgba(38, 34, 28, 0.14), 3px 6px 14px rgba(38, 34, 28, 0.1);
-  --vignette: radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(38, 34, 28, 0.07) 100%);
-  --laid-lines: repeating-linear-gradient(0deg, rgba(38, 34, 28, 0.016) 0 1px, transparent 1px 7px);
+  --vignette: radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(38, 34, 28, 0.12) 100%);
+  --laid-lines: repeating-linear-gradient(0deg, rgba(38, 34, 28, 0.032) 0 1px, transparent 1px 7px);
 
   /* ── 海拔（硬偏移 letterpress，禁软模糊大投影）── */
   --elev-raise: 2px 3px 0 rgba(38, 34, 28, 0.06), 3px 6px 16px rgba(38, 34, 28, 0.1);

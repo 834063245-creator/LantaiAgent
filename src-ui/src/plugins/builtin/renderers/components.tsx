@@ -409,7 +409,7 @@ export function buildHtmlCardDocument(code: string): string {
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { background: transparent; }
-body { padding: 8px 12px; font-family: var(--f-song, serif); color: var(--ink-1, #2a2622); }
+body { padding: 8px 12px; font-family: var(--f-song, serif); color: var(--ink-1, #26221c); }
 svg { display: block; max-width: 100%; }
 </style>
 </head>

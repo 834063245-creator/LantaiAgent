@@ -604,7 +604,9 @@ export function PaperPanel() {
    *  - opsCache：按块 id 记忆消息操作数组 */
   const translateCacheBySession = useRef(new Map<number, MessageTranslateCache | null>());
   const measureCacheRef = useRef<BlockMeasureCache>(createBlockMeasureCache());
-  const opsCacheRef = useRef<Map<string, { msg: ChatMessage; ops: BlockOp[]; stamp: string }>>(new Map());
+  const opsCacheRef = useRef<Map<string, { msg: ChatMessage; ops: BlockOp[]; stamp: string; regionMsgs: unknown }>>(
+    new Map(),
+  );
   /* P4 缩远墨迹：骨架几何缓存（签名命中零重算） */
   const inkCacheRef = useRef(createInkCache());
 
@@ -1286,11 +1288,14 @@ export function PaperPanel() {
           (msg.role === 'assistant' && lastAsst?._id === msg._id && lastId === msg._id);
         const stamp = stateOps ? '1' : '0';
         const hit = opsCacheRef.current.get(b.id);
-        if (hit && hit.msg === msg && hit.stamp === stamp) {
+        if (hit && hit.msg === msg && hit.stamp === stamp && hit.regionMsgs === regionMsgs) {
+          // 2026-09-01 审计：缓存键补 regionMsgs 同一性——ops 闭包捕获建时的
+          // regionMsgs，消息表换新而 msg/stamp 未变时旧 ops 的 latest() 会读到
+          // 陈旧会话消息表。
           map.set(b.id, hit.ops);
         } else {
           const ops = msgOpsFor(msg, stateOps);
-          opsCacheRef.current.set(b.id, { msg, ops, stamp });
+          opsCacheRef.current.set(b.id, { msg, ops, stamp, regionMsgs });
           map.set(b.id, ops);
         }
       }

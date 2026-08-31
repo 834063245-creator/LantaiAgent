@@ -292,7 +292,10 @@ export function ModelSelector({
     if (key == null || key === '') {
       // 自定义值提交（Enter 无匹配 / blur）：把输入当自定义模型名提交
       const q = state.inputValue.trim();
-      if (q && q !== value) onChange(q);
+      if (q && q !== value) {
+        onChange(q);
+        close(); // 2026-09-01 审计：自定义提交后收起下拉（此前停在打开态）
+      }
       return;
     }
     const m = results.find((r) => itemKey(r) === String(key));

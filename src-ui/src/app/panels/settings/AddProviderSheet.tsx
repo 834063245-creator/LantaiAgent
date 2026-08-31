@@ -164,7 +164,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
               id="aps-kind"
               className="sp-select"
               value={kind}
-              onChange={(e) => setKind(e.target.value as Protocol)}
+              onChange={(e) => setKind(e.target.value === 'anthropic' ? 'anthropic' : 'openai')}
             >
               <option value="openai">OpenAI 兼容</option>
               <option value="anthropic">Anthropic</option>

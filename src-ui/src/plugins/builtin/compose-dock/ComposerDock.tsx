@@ -636,12 +636,21 @@ export const ComposerDock = memo(function ComposerDock() {
     }).then((u) => {
       if (alive) unlisten = u;
       else u?.();
-    });
+    }).catch((e) => console.warn('[composer] 拖放入卷监听注册失败（mock/早期窗口常态）:', e));
     return () => {
       alive = false;
       unlisten?.();
     };
   }, [core, attachPaths]);
+
+  /* ── 浮层互斥（2026-09-01 审计）：思考/翰/律/引 四浮层同屏只开一个——
+   *    此前各 onClick 只关自己认识的兄弟面板，思考菜单与引面板可叠开（截图实证）。 ── */
+  const toggleLayer = useCallback((layer: 'thinking' | 'menu' | 'help' | 'yin') => {
+    setSettingsOpen(layer === 'thinking' ? (v) => !v : false);
+    setMenuOpen(layer === 'menu' ? (v) => !v : false);
+    setHelpOpen(layer === 'help' ? (v) => !v : false);
+    setYinOpen(layer === 'yin' ? (v) => !v : false);
+  }, []);
 
   return (
     <div className={`pp-composer${dragOver ? ' pp-droptarget' : ''}`} ref={dockRef}>
@@ -691,7 +700,7 @@ export const ComposerDock = memo(function ComposerDock() {
               title={`思考档位：${thinkingZhLabel(currentThinking)}`}
               aria-haspopup="listbox"
               aria-expanded={settingsOpen}
-              onClick={() => setSettingsOpen((v) => !v)}
+              onClick={() => toggleLayer('thinking')}
             >
               <svg
                 className="pp-thinking-icon"
@@ -747,11 +756,7 @@ export const ComposerDock = memo(function ComposerDock() {
             title="翰——案卷命令（等价输入 /）"
             aria-haspopup="listbox"
             aria-expanded={menuOpen}
-            onClick={() => {
-              setMenuOpen((v) => !v);
-              setHelpOpen(false);
-              setYinOpen(false);
-            }}
+            onClick={() => toggleLayer('menu')}
           >
             翰
           </button>
@@ -760,10 +765,7 @@ export const ComposerDock = memo(function ComposerDock() {
             className={`pp-tool-btn${helpOpen ? ' open' : ''}`}
             title="律——快捷键总览"
             aria-expanded={helpOpen}
-            onClick={() => {
-              setHelpOpen((v) => !v);
-              setMenuOpen(false);
-            }}
+            onClick={() => toggleLayer('help')}
           >
             律
           </button>
@@ -870,7 +872,7 @@ export const ComposerDock = memo(function ComposerDock() {
           className={`pp-attach pp-yin-btn${yinOpen ? ' open' : ''}`}
           title="引——引用工作区文件入卷"
           aria-label="引：引用文件"
-          onClick={() => setYinOpen((v) => !v)}
+          onClick={() => toggleLayer('yin')}
         >
           引
         </button>

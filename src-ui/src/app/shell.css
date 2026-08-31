@@ -64,9 +64,9 @@
 .pal-box kbd {
   font-family: var(--f-mono);
   font-size: 10px;
-  color: var(--ink-3);
+  color: var(--ink-2);
   border: 1px solid var(--ink-4);
-  background: var(--paper-deep);
+  background: transparent; /* 2026-09-01 审计：去 paper-deep 橄榄底——kbd 走线不走底 */
   border-radius: 0; /* 印刷品无圆角 */
   padding: 0.5px 5px;
 }
@@ -96,7 +96,7 @@
   border: 1px solid var(--ink-2);
   border-radius: 0; /* 印刷品无圆角（2026-08 UI 大清扫） */
   overflow: hidden;
-  box-shadow: var(--elev-raise);
+  box-shadow: var(--elev-menu); /* 2026-09-01 审计：弹层海拔统一菜单档 */
   animation: pop-down 0.16s cubic-bezier(0.23, 1, 0.32, 1);
 }
 html.no-bf .pal-box {
@@ -164,7 +164,7 @@ html.no-bf .pal-box {
 }
 .pal-row:hover,
 .pal-row.active {
-  background: var(--paper-deep);
+  background: var(--sel-wash); /* 2026-09-01 审计：去 paper-deep 黄绿——统一选中墨洗 */
   box-shadow: inset 2px 0 0 var(--seal);
   color: var(--ink-1);
 }

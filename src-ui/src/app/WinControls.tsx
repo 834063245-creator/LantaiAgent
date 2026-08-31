@@ -6,7 +6,7 @@
 // 退役，窗口控制在纸壳书眉（PaperPanel）与案卷首页（SessionsHome）继续
 // 承载。沿用 __TAURI_INTERNALS__ 直调 IPC（不引 @tauri-apps/api 依赖面）。
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface TauriInternals {
   metadata?: { currentWindow?: { label?: string } };
@@ -25,6 +25,8 @@ function winCmd(c: string): void {
 
 export function WinControls() {
   const [maximized, setMaximized] = useState(false);
+  // 最大化按钮点击后的延迟同步 timer（2026-09-01 审计：此前不受清理，卸载后可触发 setState）
+  const syncTimerRef = useRef<number | undefined>(undefined);
   const sync = useCallback(async () => {
     try {
       const ok = await tauri()?.invoke('plugin:window|is_maximized', { label: winLabel() });
@@ -44,6 +46,7 @@ export function WinControls() {
     return () => {
       window.removeEventListener('resize', onResize);
       clearTimeout(timer);
+      clearTimeout(syncTimerRef.current);
     };
   }, [sync]);
   return (
@@ -57,7 +60,8 @@ export function WinControls() {
         title={maximized ? '还原' : '最大化'}
         onClick={() => {
           winCmd('toggle_maximize');
-          setTimeout(sync, 200); // 等窗口动画完成
+          clearTimeout(syncTimerRef.current);
+          syncTimerRef.current = window.setTimeout(sync, 200); // 等窗口动画完成
         }}
       >
         {maximized ? '❐' : '□'}

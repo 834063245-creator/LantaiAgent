@@ -22,8 +22,8 @@ import { useShellStore } from './shell-store';
 function commandContributionActions(): AppAction[] {
   const out: AppAction[] = [];
   for (const c of activeCommandContributions()) {
-    if (c == null || typeof c.id !== 'string' || c.id === '' || typeof c.label !== 'string') {
-      continue; // 无效贡献跳过（插件代码不受编译期类型约束）
+    if (c == null || typeof c.id !== 'string' || c.id === '' || typeof c.label !== 'string' || c.action == null) {
+      continue; // 无效贡献跳过（插件代码不受编译期类型约束；action 缺失会在执行面崩）
     }
     const contribution: CommandContribution = c;
     out.push({

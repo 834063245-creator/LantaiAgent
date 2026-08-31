@@ -219,6 +219,11 @@ export function loadSettings(): AppSettings {
         // apiKey:"null" 字面量——它非空、会被当成真 key 展示并回写凭据库。
         // 加载时即清洗为空，下一次保存自动落回干净状态。
         if (Array.isArray(parsed?.providers)) {
+          // 2026-09-01 审计：元素级校验——[null]/["x"] 腐坏条目此前能穿过空数组
+          // 护栏，后续 find((p) => p.name) 直接 TypeError。非 {name:string} 剔除。
+          parsed.providers = parsed.providers.filter(
+            (p: unknown) => !!p && typeof p === 'object' && typeof (p as { name?: unknown }).name === 'string',
+          );
           for (const p of parsed.providers) {
             if (p && typeof p.apiKey === 'string' && p.apiKey.trim() === 'null') {
               p.apiKey = '';

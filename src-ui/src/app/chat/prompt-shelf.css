@@ -28,7 +28,7 @@
   background: var(--paper);
   border: var(--rule-soft);
   border-top: 2px solid var(--seal);
-  box-shadow: 0 6px 24px rgba(38, 34, 28, 0.16);
+  box-shadow: var(--elev-menu); /* 2026-09-01 审计：散写投影收编 token */
   padding: calc(13px * var(--font-scale)) calc(16px * var(--font-scale));
 }
 
