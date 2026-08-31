@@ -37,7 +37,7 @@ import { EventKind } from '../src/agent/agent-types';
 import { getSessionStore } from '../src/state/session-store';
 import { msgStoreFor, msgStoreForActive } from '../src/ui/chat-store';
 import type { StreamContext } from '../src/ui/chat-stream';
-import { markTurnError, appendUserBubble, finishTurn, renderEvent } from '../src/ui/chat-stream';
+import { appendUserBubble, finishTurn, markTurnError, renderEvent } from '../src/ui/chat-stream';
 import type { AssistantMessage, ChatMessage, MessageId } from '../src/ui/message-model';
 
 const STORE_ID = 'test-panel';

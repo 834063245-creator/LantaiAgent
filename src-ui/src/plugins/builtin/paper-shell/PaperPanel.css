@@ -158,7 +158,7 @@
  * 机 = 石青（语义铁律）；案上「有活气」的纸感信号，与书脊运行点/坞内停止钮
  * 同源（runningIds）。 */
 .pp-canvas.pp-stream-live::after {
-  content: '';
+  content: "";
   position: absolute;
   left: 0;
   right: 0;
@@ -1108,6 +1108,7 @@
   font-size: var(--pp-type-notice-size);
   line-height: var(--pp-type-notice-lh);
   color: var(--ink-2);
+  white-space: pre-line;
 }
 
 /* 钉住态：纸面浮起（硬偏移 letterpress 海拔），无额外内边距——测量与流内一致 */
@@ -1889,7 +1890,7 @@
   background: color-mix(in oklch, var(--seal) 5%, var(--paper-deep));
 }
 .pp-composer.pp-droptarget::after {
-  content: '松手入卷';
+  content: "松手入卷";
   position: absolute;
   top: 6px;
   right: 10px;

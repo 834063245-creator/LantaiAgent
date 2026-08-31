@@ -705,12 +705,7 @@ export async function saveSessionById(ctx: SessionContext, projectPath: string, 
 /** 改名未摊开的已存卷（Stage-3 侧边栏行操作）：磁盘直改 label，不要求
  *  句柄/不摊开卷。读取当前工作区会话根的卷文件 → 保留 messages/tokens
  *  原样 → 重写同一路径（归属 = 存储位置，无字段改写面）。 */
-export async function renameSessionFile(
-  ctx: SessionContext,
-  projectPath: string,
-  sessionId: number,
-  label: string,
-): Promise<void> {
+export async function renameSessionFile(projectPath: string, sessionId: number, label: string): Promise<void> {
   const data = await readVolumeJSON(projectPath, sessionId);
   if (!data) {
     showToast('案卷文件不存在，无法改名', 'error');

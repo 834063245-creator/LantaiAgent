@@ -28,9 +28,9 @@ import { useBgAlertStore } from '../../state/bg-alert-store';
 import { getCanvasStore, loadCanvasFromDisk, saveCanvasToDisk } from '../../state/canvas-store';
 import { useDockStore } from '../../state/dock-store';
 import { broadcastGoalRecord, useGoalStore } from '../../state/goal-store';
+import { showToast, TOAST_LONG_HOLD_MS } from '../../state/toast-store';
 import { bumpTurnDone } from '../../state/turn-done-store';
 import { useWorkspaceSwitchStore } from '../../state/workspace-switch-store';
-import { showToast, TOAST_LONG_HOLD_MS } from '../../state/toast-store';
 import { useAgentPanelStore } from '../../ui/agent-panel-store';
 import * as Session from '../../ui/chat-session';
 import {
@@ -643,7 +643,7 @@ export class ChatCore {
   /** 改名未摊开的已存卷（Stage-3 侧边栏行操作）：磁盘直改，不要求句柄。 */
   async renameSavedSession(id: number, label: string): Promise<void> {
     const pp = useShellStore.getState().projectPath;
-    return Session.renameSessionFile(this._sessionCtx(), pp, id, label);
+    return Session.renameSessionFile(pp, id, label);
   }
 
   // ── 会话持久化（委托给 chat-session.ts）──
@@ -1057,7 +1057,8 @@ export class ChatCore {
           stack: e instanceof Error ? e.stack : undefined,
         });
         showToast(`Agent 装配失败: ${msg}`, 'error', TOAST_LONG_HOLD_MS);
-        return;      }
+        return;
+      }
       if (!this.agent) {
         const detail = getChatStore(this.panelId).panel.getState().lastAgentDiag
           ? `${getChatStore(this.panelId).panel.getState().lastAgentDiag} (factory:${Session.getAgentFactory(this.panelId) ? 'yes' : 'NO'})`

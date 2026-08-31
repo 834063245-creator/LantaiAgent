@@ -474,16 +474,10 @@ function MarkdownBody({
 }
 
 /** 回合错误体（2026-08-31 贴黄拆迁）：纯文本墓碑行，样式由
- *  .pp-block.pp-turn-error 承载（朱砂底线 + 次级墨）。 */
+ *  .pp-block.pp-turn-error 承载（朱砂底线 + 次级墨）；换行由 pre-line 承载。 */
 function TurnErrorBody({ block }: BlockRendererProps) {
   const text = (block.payload as { text: string }).text ?? '';
-  return (
-    <div className="pp-body">
-      {text.split('\n').map((line, i) => (
-        <div key={i}>{line}</div>
-      ))}
-    </div>
-  );
+  return <div className="pp-body">{text}</div>;
 }
 
 /** 夹注/贴黄体：纯文本单段流（夹注折叠态 = 一行预览，folded 由壳层递下）。 */

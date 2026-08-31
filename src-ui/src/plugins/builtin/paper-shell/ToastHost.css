@@ -27,11 +27,13 @@
   color: var(--ink-2);
   box-shadow: var(--elev-raise);
   opacity: 0;
-  animation: pp-toast-in 0.15s ease-out forwards, pp-toast-out 0.4s ease-in var(--pp-toast-hold) forwards;
+  animation:
+    pp-toast-in 0.15s ease-out forwards,
+    pp-toast-out 0.4s ease-in var(--pp-toast-hold) forwards;
 }
 
-.pp-toast-line + .pp-toast-line {
-  margin-top: 2px;
+.pp-toast {
+  white-space: pre-line;
 }
 
 .pp-toast-warn {
