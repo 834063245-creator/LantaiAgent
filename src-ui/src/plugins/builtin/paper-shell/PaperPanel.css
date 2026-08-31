@@ -25,15 +25,18 @@
   text-spacing-trim: space-all;
 }
 
-/* 纸张颗粒（全屏极淡噪点，印刷质感——原型同款 SVG turbulence） */
+/* 纸张颗粒（双频：低频纸纤维晕染 + 高频印刷颗粒——2026-08-31 浸墨化对照
+   ThreeUI Sketchbook 纸感；各自 opacity 由 SVG rect 内控，元素不再压透明）
+   低频 baseFrequency .014 / octaves 3 云状肌理，高频 .82 / 2 细密颗粒 */
 .pp-root::after {
   content: "";
   position: fixed;
   inset: 0;
   z-index: 9998;
   pointer-events: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
-  opacity: 0.05;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.014' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23m)' opacity='0.09'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
   mix-blend-mode: multiply;
 }
 
@@ -1983,8 +1986,9 @@ body.pp-pin-grabbing {
 .pp-minimap {
   position: absolute;
   right: 18px;
-  /* Stage-4：创作坞升级为两段（设置行+输入行），比旧单行高——minimap 上移避开重叠 */
-  bottom: calc(var(--composer-h) + 44px);
+  /* Stage-4：创作坞升级为两段（设置行+输入行），比旧单行高——minimap 上移避开
+   * 重叠（2026-08-31 起读 ComposerDock 实测高，+44px 呼吸） */
+  bottom: calc(var(--composer-h-live, var(--composer-h)) + 44px);
   width: 132px;
   height: 96px;
   background: var(--paper);
@@ -2102,7 +2106,7 @@ body.pp-pin-grabbing {
   position: fixed;
   right: 0;
   top: var(--bar-h);
-  bottom: calc(var(--composer-h) + 30px);
+  bottom: calc(var(--composer-h-live, var(--composer-h)) + 30px);
   width: 44px;
   border-left: var(--rule-soft);
   background: color-mix(in oklch, var(--paper-deep) 45%, transparent);

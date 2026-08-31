@@ -20,7 +20,8 @@ import { getCanvasStore, resetCanvasStoresForTests } from '../src/state/canvas-s
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
 import { getChatStore } from '../src/ui/chat-store';
 
-/** 最小 ChatCore 桩：SpineRack 只消费这几个面。 */
+/** 最小 ChatCore 桩：SpineRack 只消费这几个面。listSavedSessions 供卷序
+ *  合流（spineOrder，对齐侧边栏排序）——空盘 = 未落盘按卷号新者上。 */
 function makeCore(panelId: string) {
   return {
     panelId,
@@ -29,6 +30,7 @@ function makeCore(panelId: string) {
     createNewSession: vi.fn(),
     renameSession: vi.fn(),
     deleteSessionFile: vi.fn(),
+    listSavedSessions: vi.fn(async () => []),
   } as unknown as ChatCore & Record<string, ReturnType<typeof vi.fn>>;
 }
 
@@ -68,7 +70,7 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
     container = null;
   });
 
-  it('恒显：两卷出两条书脊 + 会话侧边栏开关；当前卷 sr-active', () => {
+  it('恒显：两卷出两条书脊 + 会话侧边栏开关；当前卷 sr-active（卷序对齐侧边栏：未落盘按卷号新者上）', async () => {
     bootSpine(
       'sr-t1',
       [
@@ -77,27 +79,28 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
       ],
       0,
     );
-    act(() => {
+    await act(async () => {
       root?.render(<SpineRack />);
     });
     const spines = container!.querySelectorAll('.sr-spine');
     expect(spines).toHaveLength(2);
     expect(container!.querySelector('.sr-sidebar-toggle')).not.toBeNull(); // 会话侧边栏开关
-    expect(spines[0].className).toContain('sr-active');
-    expect(spines[1].className).not.toContain('sr-active');
+    // 卷序 = 侧边栏合流序（savedAt 缺省 → 卷号倒序）：乙(2) 在前，甲(1) 当前
+    expect(spines[0].className).not.toContain('sr-active');
+    expect(spines[1].className).toContain('sr-active');
     const labels = [...container!.querySelectorAll('.sr-label')].map((e) => e.textContent);
-    expect(labels).toEqual(['卷首名甲', '卷首名乙']);
+    expect(labels).toEqual(['卷首名乙', '卷首名甲']);
   });
 
-  it('单卷也是一条脊（恒显语义）', () => {
+  it('单卷也是一条脊（恒显语义）', async () => {
     bootSpine('sr-t2', [{ id: 1, label: '案卷 1' }], 0);
-    act(() => {
+    await act(async () => {
       root?.render(<SpineRack />);
     });
     expect(container!.querySelectorAll('.sr-spine')).toHaveLength(1);
   });
 
-  it('左键 = 定位器：切活跃会话 + 发定位请求（当前卷也飞）', () => {
+  it('左键 = 定位器：切活跃会话 + 发定位请求（当前卷也飞）', async () => {
     const { core } = bootSpine(
       'sr-t3',
       [
@@ -107,7 +110,7 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
       ],
       2,
     );
-    act(() => {
+    await act(async () => {
       root?.render(<SpineRack />);
     });
     const mains = [...container!.querySelectorAll('.sr-spine-main')] as HTMLElement[];
@@ -116,16 +119,16 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
     });
     expect(core.switchSession).toHaveBeenCalledWith(1);
     expect(useCanvasViewStore.getState().pendingFocusId).toBe('2');
-    // 点当前卷（id=3, idx 2）：定位器语义 = 仍发定位请求（飞回当前流区）
+    // 点当前卷（id=3，新序渲染在首位）：定位器语义 = 仍发定位请求（飞回当前流区）
     act(() => {
-      mains[2].click();
+      mains[0].click();
     });
     expect(useCanvasViewStore.getState().pendingFocusId).toBe('3');
   });
 
-  it('右键不弹菜单（书脊右键已移除——改名/删除归侧边栏）', () => {
+  it('右键不弹菜单（书脊右键已移除——改名/删除归侧边栏）', async () => {
     bootSpine('sr-t4', [{ id: 7, label: '旧名' }], 0);
-    act(() => {
+    await act(async () => {
       root?.render(<SpineRack />);
     });
     const main = container!.querySelector('.sr-spine-main') as HTMLElement;
@@ -135,7 +138,7 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
     expect(container!.querySelector('.sr-menu')).toBeNull();
   });
 
-  it('hover 小卡合卷：闲卷 → core.closeSession(idx)', () => {
+  it('hover 小卡合卷：闲卷 → core.closeSession(idx)', async () => {
     const { core } = bootSpine(
       'sr-t5',
       [
@@ -144,18 +147,18 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
       ],
       0,
     );
-    act(() => {
+    await act(async () => {
       root?.render(<SpineRack />);
     });
     const closeBtns = [...container!.querySelectorAll('.sr-close-btn')] as HTMLButtonElement[];
     expect(closeBtns).toHaveLength(2);
     act(() => {
-      closeBtns[1].click(); // id=2 → idx 1
+      closeBtns[0].click(); // 新序 b(id=2) 在前位 → store idx 1
     });
     expect(core.closeSession).toHaveBeenCalledWith(1);
   });
 
-  it('运行中卷：合卷钮禁用（不可半途 dispose agent）', () => {
+  it('运行中卷：合卷钮禁用（不可半途 dispose agent）', async () => {
     const { core } = bootSpine(
       'sr-t6',
       [
@@ -168,16 +171,16 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
     act(() => {
       agentSessionState.setExec('sr-t6', 1, exec);
     });
-    act(() => {
+    await act(async () => {
       root?.render(<SpineRack />);
     });
     act(() => {
       exec.start();
     });
     const closeBtns = [...container!.querySelectorAll('.sr-close-btn')] as HTMLButtonElement[];
-    expect(closeBtns[0].disabled).toBe(true);
+    expect(closeBtns[1].disabled).toBe(true); // 新序：跑着的(id=1) 渲染在后位
     act(() => {
-      closeBtns[0].click();
+      closeBtns[1].click();
     });
     // 运行中点击（disabled 按钮不触发 onClick）不得触达 closeSession
     expect(core.closeSession).not.toHaveBeenCalled();
@@ -186,9 +189,9 @@ describe('SpineRack — 画布空间导航器（定位 / 拖落 / hover 合卷�
     });
   });
 
-  it('拖动落位：抽书放桌——松手 place 到吸附网格空列', () => {
+  it('拖动落位：抽书放桌——松手 place 到吸附网格空列', async () => {
     bootSpine('sr-t7', [{ id: 1, label: 'a' }], 0);
-    act(() => {
+    await act(async () => {
       root?.render(<SpineRack />);
     });
     // 画布坐标源（书脊跨组件读取 .pp-canvas 视口 rect——React root 会清空

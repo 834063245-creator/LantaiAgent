@@ -8,7 +8,7 @@
   position: fixed;
   left: 0;
   top: var(--bar-h);
-  bottom: var(--composer-h);
+  bottom: var(--composer-h-live, var(--composer-h)); /* 实测高优先（ComposerDock 上报） */
   width: 44px;
   display: flex;
   flex-direction: column;
@@ -86,6 +86,10 @@
   border-left: 3px solid var(--seal);
   transform: translateX(4px); /* 抽出一半 */
   box-shadow: var(--elev-raise);
+}
+/* 侧边栏开着（压住书脊右缘）时位移被截断——收回贴队，红左条照旧标记 */
+.sr-rack.sr-sidebar-open .sr-spine.sr-active .sr-spine-main {
+  transform: none;
 }
 
 /* 题签：竖排（从右往左读——线装书脊惯例；mixed=拉丁侧躺，汉字直立） */

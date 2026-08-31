@@ -13,11 +13,14 @@
   --paper-deep: #efe8da; /* 深纸：输入条 / 图版底 */
   --paper-margin: #ede5d5; /* 页边：舞台底色 */
 
-  /* ── 墨阶（四档，松烟墨）── */
-  --ink-1: #26221c; /* 正文 */
-  --ink-2: #55503f; /* 次级：规线 / 次级文字 */
-  --ink-3: #8a8172; /* 三级：注记 / 页码 */
-  --ink-4: #b5ac9a; /* 弱规线 / 最弱信号 */
+  /* ── 墨阶（四档，松烟墨）──
+   * 2026-08-31 浸墨化（对照 ThreeUI Sketchbook 纸感）：ink-2/3/4 由 ink-1 单一墨源
+   * 兑纸（oklch 插值 74%/50%/32%）——色相恒定同一瓶墨，视觉为墨渗进纸面的
+   * 晕染色而非印刷浮色；ink-1 是唯一墨源，勿再散写独立墨灰。 */
+  --ink-1: #26221c; /* 正文（唯一墨源） */
+  --ink-2: color-mix(in oklch, var(--ink-1) 74%, var(--paper)); /* 次级：规线 / 次级文字（≈#56514a） */
+  --ink-3: color-mix(in oklch, var(--ink-1) 50%, var(--paper)); /* 三级：注记 / 页码（≈#868279） */
+  --ink-4: color-mix(in oklch, var(--ink-1) 32%, var(--paper)); /* 弱规线 / 最弱信号（≈#ada89f） */
 
   /* ── 矿物颜料（语义铁律：朱砂=人，石青=机，石墨=草稿，墨=正文）── */
   --seal: #a63a2e; /* 朱砂：印章 / 来文 / 圈点 / 朱批 */
@@ -55,7 +58,10 @@
   /* ── 结构 ── */
   --bar-h: 56px;
   --composer-h: 66px;
-
+  /* --composer-h-live：运行期由 ComposerDock 以 ResizeObserver 写入 :root
+   * （composer 实测高，两段式后恒高于 66px）；不在此声明——消费面一律
+   * var(--composer-h-live, var(--composer-h))，paper 关闭（composer 卸载）时
+   * 自动回退静态 token。 */
   /* ── 海拔层级（z-index 单一事实源——2026-08 UI 大清扫立此存照）──
    * 纸内结构件（块/纸条/书脊/小地图）：10-60，只争纸面内部；
    * 面板内模态（设置面板的 ConfirmDialog / AddProviderSheet）：60——

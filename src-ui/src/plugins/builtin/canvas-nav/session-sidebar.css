@@ -9,7 +9,7 @@
   position: fixed;
   left: 44px; /* 书脊右缘 */
   top: var(--bar-h);
-  bottom: var(--composer-h);
+  bottom: var(--composer-h-live, var(--composer-h)); /* 实测高优先（ComposerDock 上报） */
   width: 264px;
   display: flex;
   flex-direction: column;

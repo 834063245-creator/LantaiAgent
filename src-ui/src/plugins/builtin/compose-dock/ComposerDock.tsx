@@ -395,8 +395,29 @@ export const ComposerDock = memo(function ComposerDock() {
   const onComposerFocus = useCallback(() => setInputLocked(true), [setInputLocked]);
   const onComposerBlur = useCallback(() => setInputLocked(false), [setInputLocked]);
 
+  /* ── 实测高上报（--composer-h-live）：composer 是两段式（设置行+输入行，
+   *  textarea 还会自动长高），静态 token --composer-h: 66px 早已 stale
+   *  （实高 ~114px）——fixed 侧栏/书脊/小地图/牒卡宿主按 token 贴底会压住
+   *  设置行。此处观察根元素实测高写入全局 var，卸载时撤除（消费面以
+   *  var(--composer-h-live, var(--composer-h)) 回退静态 token）。 ── */
+  const dockRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = dockRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return; // jsdom 无 RO——单测环境跳过上报
+    const root = document.documentElement;
+    const report = () =>
+      root.style.setProperty('--composer-h-live', `${Math.round(el.getBoundingClientRect().height)}px`);
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      root.style.removeProperty('--composer-h-live');
+    };
+  }, []);
+
   return (
-    <div className="pp-composer">
+    <div className="pp-composer" ref={dockRef}>
       {/* 设置行：常驻一行只放高频件（模型 + 权限）；思考等进展开（stage-4 §8）。
           开口即开卷（2026-08-31）：控件不再随活跃卷隐藏——无主态操作「新卷出生
           默认」，「发送前顺手拨」在自己的核心场景（开卷前拨好）恒可用。 */}

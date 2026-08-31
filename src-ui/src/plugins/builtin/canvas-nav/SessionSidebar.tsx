@@ -461,7 +461,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
         <input
           type="text"
           value={query}
-          placeholder="检索案卷…"
+          placeholder="卷名或卷号…"
           aria-label="检索案卷"
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onSearchKeyDown}

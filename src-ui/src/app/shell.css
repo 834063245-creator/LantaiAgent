@@ -44,11 +44,12 @@
  *    浮于一切之上；卡片本体样式在 prompt-shelf.css） ───────────
  *    2026-08 UI 大清扫：z 300 → 500（settings 面板 400 之上——Agent 递牒
  *    请示是全应用最紧急交互，任何面板开着都必须可见；bottom 对齐
- *    composer（--composer-h 66px + 30px 呼吸），不再用旧 ChatBeacon 的 96px）。 */
+ *    composer（实测高 --composer-h-live，回退 66px token + 30px 呼吸），
+ *    不再用旧 ChatBeacon 的 96px）。 */
 .psh-host {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--composer-h, 66px) + 30px);
+  bottom: calc(var(--composer-h-live, var(--composer-h, 66px)) + 30px);
   width: min(680px, 92vw);
   transform: translateX(-50%);
   z-index: var(--z-shelf, 500);

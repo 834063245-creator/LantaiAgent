@@ -36,7 +36,9 @@ import {
   useCanvasViewStore,
   useCoreStore,
   useDockStore,
+  useShellStore,
 } from './host';
+import { mergeSessionRows } from './session-sidebar-model';
 import './spine-rack.css';
 
 /** 拖动阈值（px）：超过即视为拖脊（区分点击定位）。 */
@@ -48,18 +50,38 @@ function readRunning(storeId: string, sid: number): boolean {
   return !!exec && exec.isRunning;
 }
 
+/** 书脊卷序 = 侧边栏合流序（摊开组：savedAt 倒序，未落盘按卷号新者上）——
+ *  书脊与侧边栏并陈两份名单，顺序打架是可见 bug（2026-08-31 前
+ *  书脊用内存数组序，与侧边栏「新者上」相反）。 */
+function spineOrder(
+  open: Array<{ id: number; label: string; msgCount: number }>,
+  saved: Parameters<typeof mergeSessionRows>[1],
+): Array<{ id: number; label: string }> {
+  return mergeSessionRows(open, saved)
+    .filter((r) => r.open)
+    .map((r) => ({ id: r.id, label: r.label }));
+}
+
 export const SpineRack = memo(function SpineRack() {
   const core = useCoreStore((s) => s.core);
   const [sessions, setSessions] = useState<Array<{ id: number; label: string }>>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [runningIds, setRunningIds] = useState<Set<number>>(new Set());
+  /* 侧边栏开着时压住书脊右缘（sidebar z:282 > 书脊 z:281）——「抽出一半」
+   * 位移会被侧边栏截断、右缘并入纸底，此时收回贴队（CSS 关位移），
+   * 朱砂左条仍标记当前卷。 */
+  const sidebarOpen = useDockStore((s) => s.open['canvas-sidebar']);
 
   /* 会话列表 + 运行态同步：sess store 订阅 + agentSessionState 版本订阅
-   * + ctx.space 订阅（流区位置/活跃变化）→ 全量重读。 */
+   * + ctx.space 订阅（流区位置/活跃变化）→ 全量重读。卷序走 spineOrder；
+   * 磁盘卷清单缓存在 savedRowsRef——resync 高频触发（运行态跳变即触发），
+   * 不能每次先回内存数组序再等磁盘应答（卷序会肉眼可见地抖动）。 */
+  const savedRowsRef = useRef<Parameters<typeof mergeSessionRows>[1]>([]);
   const resync = useCallback(() => {
     if (!core) return;
     const st = getChatStore(core.panelId).sess.getState();
-    setSessions(st.sessions.map((s) => ({ id: s.id, label: s.label })));
+    const open = st.sessions.map((s) => ({ id: s.id, label: s.label, msgCount: 0 }));
+    setSessions(spineOrder(open, savedRowsRef.current));
     const active = st.sessions[st.activeIdx];
     setActiveId(active ? active.id : null);
     const running = new Set<number>();
@@ -67,6 +89,15 @@ export const SpineRack = memo(function SpineRack() {
       if (readRunning(core.panelId, s.id)) running.add(s.id);
     }
     setRunningIds(running);
+    // 同 SessionSidebar 的 P4-1 教训：工作区路径变化必须重拉 listSavedSessions
+    const pp = useShellStore.getState().projectPath;
+    void core
+      .listSavedSessions(pp)
+      .then((saved) => {
+        savedRowsRef.current = saved;
+        setSessions(spineOrder(open, saved));
+      })
+      .catch(() => {});
   }, [core]);
 
   useEffect(() => {
@@ -75,10 +106,14 @@ export const SpineRack = memo(function SpineRack() {
     const unSess = getChatStore(core.panelId).sess.subscribe(resync);
     const unAgents = agentSessionState.subscribe(resync);
     const unSpace = activeSpace()?.subscribe(resync);
+    const unShell = useShellStore.subscribe((s, prev) => {
+      if (s.projectPath !== prev.projectPath) resync();
+    });
     return () => {
       unSess();
       unAgents();
       unSpace?.();
+      unShell();
     };
   }, [core, resync]);
 
@@ -160,12 +195,16 @@ export const SpineRack = memo(function SpineRack() {
   if (!core) return null;
 
   return (
-    <div className="sr-rack" role="tablist" aria-label="画布书脊（空间导航器）">
+    <div
+      className={['sr-rack', sidebarOpen ? 'sr-sidebar-open' : ''].join(' ').trim()}
+      role="tablist"
+      aria-label="画布书脊（空间导航器）"
+    >
       <button
         type="button"
         className="sr-sidebar-toggle"
         title="案卷侧边栏（可折叠）"
-        onClick={() => useDockStore.getState().openPanel('canvas-sidebar')}
+        onClick={() => useDockStore.getState().togglePanel('canvas-sidebar')}
       >
         <span className="sr-sidebar-toggle-label">案卷</span>
       </button>
