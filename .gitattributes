@@ -11,6 +11,7 @@
 
 # Binary files — never convert line endings
 *.png binary
+*.jpg binary
 *.ico binary
 *.hologram binary
 *.db binary

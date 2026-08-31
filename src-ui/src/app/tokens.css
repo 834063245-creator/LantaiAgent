@@ -61,12 +61,19 @@
    *   ② 每屏唯一主动作（主钮 / 拟文印）：墨底实色 + --shadow-anchor 硬偏移投影
    *   ③ 屏级分区线（书眉底线 / 列表顶线 / 脚线 / 坞顶线）：--rule-hard
    * 字重极端：题字 --weight-display(900)，卷名 600，机读注记 400——中间档禁盘。
-   * 纸层次：--vignette 边沉 + --laid-lines 帘纹 叠全局双频颗粒之上（.paper-depth）。 */
+   * 纸层次（2026-09-01 真纸化）：--light-fall 顶光 + --vignette 边沉 + --laid-lines 帘纹
+   *   叠全局真纸纹理层之上（src/assets/paper/，换图即全局生效）。 */
   --rule-frame: 2px solid var(--ink-1);
   --frame-hairline: 1px solid var(--ink-4);
   --weight-display: 900;
   --shadow-anchor: 2px 3px 0 rgba(38, 34, 28, 0.14), 3px 6px 14px rgba(38, 34, 28, 0.1);
   --vignette: radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(38, 34, 28, 0.12) 100%);
+  --light-fall: linear-gradient(
+    172deg,
+    rgba(255, 250, 238, 0.32) 0%,
+    rgba(255, 250, 238, 0.18) 14%,
+    rgba(255, 250, 238, 0) 38%
+  );
   --laid-lines: repeating-linear-gradient(0deg, rgba(38, 34, 28, 0.032) 0 1px, transparent 1px 7px);
 
   /* ── 海拔（硬偏移 letterpress，禁软模糊大投影）── */
@@ -100,7 +107,7 @@
   --z-shelf: 500; /* 牒卡浮层（ask/权限） */
   --z-palette: 510; /* 命令面板 */
   --z-dialog: 520; /* 全局模态（保留位——当前无消费者；产品决策为面板内模态，勿按旧注释理解） */
-  --z-grain: 9998; /* 纸张颗粒氛围层（纯装饰 pointer-events:none，恒在最上） */
+  --z-grain: 9998; /* 真纸纹理氛围层（src/assets/paper/ 实拍纹 + 微颗粒；纯装饰 pointer-events:none，恒在最上） */
 
   /* ── 迁移收容（C5 --obs-* 退役时原值平移，待换皮归新结构 token）── */
   --snap: 0.12s cubic-bezier(0.23, 1, 0.32, 1);

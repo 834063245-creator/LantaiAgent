@@ -100,11 +100,17 @@ body {
   background: var(--paper);
   overflow: auto;
 }
-/* 纸张颗粒（全局唯一：固定全屏 z 9998，纸壳/案卷首页/面板一律被其覆盖——
-   面板内勿再自挂同款层，叠乘即脏。双频：低频纸纤维晕染 + 高频印刷颗粒；
-   各自 opacity 由 SVG rect 内控，元素不再压透明）
-   低频 baseFrequency .014 / octaves 3 云状肌理（opacity .10——沉纸档去重后单层），
-   高频 .82 / 2 细密颗粒（浸墨 2026-08-31：.05→.09，纸从底色变材料） */
+/* 纸张纹理（全局唯一：固定全屏 z 9998，纸壳/案卷首页/面板一律被其覆盖——
+   面板内勿再自挂同款层，叠乘即脏。2026-09-01 真纸化：feTurbulence 程序噪声
+   换真纸纹理资产（src/assets/paper/，AI 平扫感实拍纹，cover 满屏免铺贴接缝）——
+   高频 paper-grain（细密肌理+斑点）× 低频 paper-fiber（宣纸纤维束+云状晕染）
+   先经 background-blend-mode 乘成一张纸，再随元素 multiply 浸入页面。
+   资产侧已做按通道异权提白（R .55 / G .40 / B .25，暗度压缩 out=1-k(1-in)）：
+   两层相乘黄味会复利，故纹理做成色相中性（暖调由 --paper token carry），
+   复合因子 ~0.89（≈11% 压暗，浸墨 v2 质感档）。顶层保留一层极弱 SVG 微颗粒
+   （.05）抗色带、补 1:1 像素脆度。
+   印面/重墨受纹理同源于此层（顶层 multiply 全局覆盖），局部勿再挂纹理。
+   换纸 = 替换 assets/paper/ 下同名图片，管道不变（预处理脚本参数见规格书 §10）。 */
 .sh-root::after {
   content: "";
   position: fixed;
@@ -112,18 +118,24 @@ body {
   z-index: var(--z-grain);
   pointer-events: none;
   background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.014' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23m)' opacity='0.10'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.09'/%3E%3C/svg%3E");
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E"),
+    url("../assets/paper/paper-grain.jpg"), url("../assets/paper/paper-fiber.jpg");
+  background-size:
+    180px 180px,
+    cover,
+    cover;
+  background-blend-mode: normal, multiply, multiply;
   mix-blend-mode: multiply;
 }
-/* 纸层次（浸墨 2026-08-31）：边沉 + 帘纹，垫在颗粒层之下、内容之上 */
+/* 纸层次（浸墨 2026-08-31；2026-09-01 增方向光）：顶光 + 帘纹 + 边沉，
+   垫在纹理层之下、内容之上——光从上来，边往下沉，纸即是物 */
 .sh-root::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: calc(var(--z-grain) - 1);
   pointer-events: none;
-  background: var(--laid-lines), var(--vignette);
+  background: var(--laid-lines), var(--light-fall), var(--vignette);
 }
 
 /* ── 顶部书眉（窗口拖拽区 + 品牌 + 设置入口 + 窗口控制）── */

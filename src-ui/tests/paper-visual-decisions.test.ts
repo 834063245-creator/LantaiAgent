@@ -127,7 +127,6 @@ describe('卷首 folio-head 钉值（2026-08-30 原型转录：prototype/lantai.
   });
 });
 
-
 describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', () => {
   it('法则入宪：tokens 载 --weight-display/--shadow-anchor/--vignette/--laid-lines，字体装载 900', () => {
     expect(TOKENS_CSS).toContain('--weight-display: 900');
@@ -162,11 +161,20 @@ describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', (
     expect(ruleBody(PANEL_CSS, '.pp-empty-title')).toContain('var(--weight-display)');
   });
 
-  it('纸层次：高频噪点 .09 + 边沉帘纹层（sh-root::before）', () => {
-    expect(HOME_CSS).toContain("opacity='0.09'");
+  it('纸层次（2026-09-01 真纸化）：真纹理双资产乘印 + SVG 微颗粒 + 顶光边沉帘纹（sh-root::before/::after）', () => {
+    // 真纸纹理资产接线（feTurbulence 程序噪声退役——真纤维/斑点，cover 免接缝）
+    expect(HOME_CSS).toContain('../assets/paper/paper-grain.jpg');
+    expect(HOME_CSS).toContain('../assets/paper/paper-fiber.jpg');
+    expect(HOME_CSS).toContain('background-blend-mode: normal, multiply, multiply');
+    expect(HOME_CSS).toContain('mix-blend-mode: multiply');
+    // 极弱 SVG 微颗粒保留（抗色带）
+    expect(HOME_CSS).toContain("opacity='0.05'");
+    // 纸层次：顶光 + 帘纹 + 边沉
     expect(HOME_CSS).toContain('.sh-root::before');
+    expect(HOME_CSS).toContain('var(--light-fall)');
     expect(HOME_CSS).toContain('var(--laid-lines)');
     expect(HOME_CSS).toContain('var(--vignette)');
+    expect(TOKENS_CSS).toContain('--light-fall: linear-gradient');
   });
 
   it('选中态文字语言：重墨 + 朱砂底线（2026-09-01 重皮拍板：盒装黑块退役——设置行唯一墨底锚点只留拟文印）', () => {

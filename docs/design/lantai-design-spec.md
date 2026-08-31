@@ -181,7 +181,7 @@
 1. **墨阶锚点**：重墨全产品只许三处——① 页缘版框（`--rule-frame` 2px 墨线，古籍双栏线）；② 每屏唯一主动作（主钮/拟文印，墨底实色 + `--shadow-anchor` 硬偏移投影）；③ 屏级分区线（书眉底线/列表顶线/脚线/坞顶线，`--rule-hard`）。余处禁 2px 硬线。
 2. **字重极端**：题字 `--weight-display` (900，Noto Serif SC 已装载)，卷名 600，机读注记 400——中间档禁盘。张力全在两极差。
 3. **句读点朱**：题字句号落 `--seal`——古籍句读遗意，每屏至多一处红字。
-4. **纸层次**：全局颗粒高频 .05→.09 + `--vignette` 四边微沉 + `--laid-lines` 帘纹（.sh-root::before）——纸从「底色」变「材料」。
+4. **纸层次**（2026-09-01 真纸化）：全局纹理层（`.sh-root::after`，z `--z-grain`）挂**真纸纹理资产**（`src/assets/paper/paper-grain.jpg` 高频肌理 × `paper-fiber.jpg` 低频纤维晕染，AI 平扫感生成 + 白点提白预处理 `k=0.55`，`background-blend-mode: multiply` 相乘后随元素 `multiply` 浸入页面，`brightness(1.1)` 校暗度，顶层留 .05 SVG 微颗粒抗色带）+ `--light-fall` 顶部方向光 + `--vignette` 四边微沉 + `--laid-lines` 帘纹（`.sh-root::before`）——纸从「底色」变「材料」。印面/重墨受纹理同源于顶层 multiply（全局覆盖），局部禁再挂纹理层；换纸 = 替换 assets/paper/ 同名图片，管道不变。
 5. **完工动作**：选中态墨底反白（禁灰底假选中）、浮层必挂投影（`--elev-raise`/`--elev-menu`）、节题前实心方墨锚点。
 
 **转录位**（铺开批次）：首页（已落地）→ 画布卷首/流区界栏双线框 → 创作坞（prototype/dock-v3.html 已同步浸墨）→ 案卷侧边栏 → 设置面板。法则改动只动 §10 与 tokens，不许散写。
