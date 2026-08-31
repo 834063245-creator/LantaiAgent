@@ -1365,6 +1365,16 @@
   gap: 14px;
   z-index: 6;
 }
+/* 案头无匣（dock-v3 转录收尾）：空态直书于纸——退匣（去 deep 底/顶线/版口钮），
+ * 写字行坐基线，纸即界面；落笔发出首句沉降回常驻匣。 */
+.pp-composer-slot.pp-desk .pp-composer {
+  background: transparent;
+  border-top: none;
+  padding: 6px 2px 0;
+}
+.pp-composer-slot.pp-desk .pp-composer::before {
+  content: none;
+}
 /* 案头签条架：最近三卷「续写」签条（纸色签 + 楷体批注字，hover 朱砂） */
 .pp-desk-shelf {
   display: flex;
@@ -1398,6 +1408,12 @@
 }
 .pp-desk-tag:active {
   transform: translateY(1px);
+}
+.pp-desk-tag:first-child {
+  transform: rotate(-0.5deg); /* 签条微倾——手置纸签的自然感 */
+}
+.pp-desk-tag:last-child {
+  transform: rotate(0.4deg);
 }
 .pp-composer-settings {
   display: flex;

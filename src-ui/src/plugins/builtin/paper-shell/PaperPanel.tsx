@@ -2357,7 +2357,7 @@ export function PaperPanel() {
             {sessions.length === 0 && (
               <div className="pp-empty">
                 <div className="pp-empty-kicker">LANTAI · BLANK SHEET</div>
-                <div className="pp-empty-title">这张纸上还没有案卷</div>
+                <div className="pp-empty-title">案上无卷，落笔即起</div>
                 <div className="pp-empty-rule" />
                 {/* 空态 CTA（2026-08-31 拍板 A）：显式出生入口——不再只是文字指路 */}
                 <button
