@@ -69,15 +69,15 @@ describe('paper/ink LOD 迟滞', () => {
 
 describe('paper/ink INK_COLORS 镜像', () => {
   it('文类→墨色铁律：正文=墨 / 来文=朱砂 / 夹注=赭石 / 脚注族=石青 / 贴黄=次级', () => {
-    expect(INK_COLORS.markdown).toBe('#26221c'); // --ink-1
+    expect(INK_COLORS.markdown).toBe('rgba(38, 34, 28, 0.94)'); // --ink-1 alpha 墨（2026-08-31 浸墨化 v2）
     expect(INK_COLORS.user).toBe('#a63a2e'); // --seal
     expect(INK_COLORS.reasoning).toBe('#6f6e68'); // --graphite
     expect(INK_COLORS.tool).toBe('#3a5b7a'); // --indigo
     expect(INK_COLORS.code).toBe('#3a5b7a');
     expect(INK_COLORS.diff).toBe('#3a5b7a');
     expect(INK_COLORS.plan).toBe('#3a5b7a');
-    expect(INK_COLORS.notice).toBe('#55503f'); // --ink-2
-    expect(inkColorOf('chart')).toBe('#8a8172'); // 资产/未知 → --ink-3
+    expect(INK_COLORS.notice).toBe('rgba(38, 34, 28, 0.7)'); // --ink-2 alpha 墨（2026-08-31 浸墨化 v2）
+    expect(inkColorOf('chart')).toBe('rgba(38, 34, 28, 0.48)'); // 资产/未知 → --ink-3 alpha 墨（2026-08-31 浸墨化 v2）
   });
 });
 

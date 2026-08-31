@@ -92,15 +92,15 @@ export function InkLayer({ regionsRef, foldedOf, inkCache, strips, orphanBlocks 
       }
       // 孤儿钉快照（公共物：源卷不在纸上也在墨）
       for (const b of orphanBlocks) drawBlock(b, b.x, b.y);
-      // 纸条（外框 + 真文字缩微）
-      ctx.strokeStyle = '#55503f';
+      // 纸条（外框 + 真文字缩微）——墨色=ink-2 alpha 墨 rgba(38,34,28,.7)
+      ctx.strokeStyle = 'rgba(38, 34, 28, 0.7)';
       ctx.lineWidth = 1;
       for (const s of strips) {
         if (s.x > vx1 || s.x + s.w < vx0 || s.y > vy1 || s.y + 160 < vy0) continue;
         const p = worldToScreen(view, s.x, s.y);
         ctx.strokeRect(p.x, p.y, s.w * view.zoom, 96 * view.zoom);
         const ink = inkForText(s.text, s.w);
-        ctx.fillStyle = '#55503f';
+        ctx.fillStyle = 'rgba(38, 34, 28, 0.7)';
         ctx.textBaseline = 'top';
         ctx.font = `${(ink.size * view.zoom).toFixed(2)}px ${ink.stack}`;
         for (const bar of ink.bars) {

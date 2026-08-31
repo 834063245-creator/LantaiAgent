@@ -58,18 +58,20 @@ export function lodActive(zoom: number, prev: boolean): boolean {
 /* ── 墨色板（镜像 tokens.css L17-27——canvas 读不了 CSS 变量，字面量进镜像纪律，
  * tests/paper-ink.test.ts 钉死字面量；改 token 两处同步）──
  * 正文=墨 --ink-1 / 来文=朱砂 --seal / 夹注=赭石 --graphite / 脚注·程文·抄录·
- * 拟策=石青 --indigo / 贴黄=次级 --ink-2 / 资产与未知=三级 --ink-3 */
+ * 拟策=石青 --indigo / 贴黄=次级 --ink-2 / 资产与未知=三级 --ink-3
+ * 2026-08-31 浸墨化 v2：墨色改 ink-1 alpha 稀释（正文 .94 / 次级 .7 / 三级 .48），
+ * 镜像是同一瓶墨兑水（rgba）——canvas 叠透明层上再罩纸面，与 DOM 墨同行为。 */
 export const INK_COLORS = {
-  markdown: '#26221c',
+  markdown: 'rgba(38, 34, 28, 0.94)',
   user: '#a63a2e',
   reasoning: '#6f6e68',
   tool: '#3a5b7a',
   code: '#3a5b7a',
   diff: '#3a5b7a',
   plan: '#3a5b7a',
-  notice: '#55503f',
-  _default: '#8a8172',
-  _strip: '#55503f',
+  notice: 'rgba(38, 34, 28, 0.7)',
+  _default: 'rgba(38, 34, 28, 0.48)',
+  _strip: 'rgba(38, 34, 28, 0.7)',
 } as const;
 
 export function inkColorOf(kind: string): string {

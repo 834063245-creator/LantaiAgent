@@ -25,20 +25,9 @@
   text-spacing-trim: space-all;
 }
 
-/* 纸张颗粒（双频：低频纸纤维晕染 + 高频印刷颗粒——2026-08-31 浸墨化对照
-   ThreeUI Sketchbook 纸感；各自 opacity 由 SVG rect 内控，元素不再压透明）
-   低频 baseFrequency .014 / octaves 3 云状肌理，高频 .82 / 2 细密颗粒 */
-.pp-root::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 9998;
-  pointer-events: none;
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.014' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23m)' opacity='0.09'/%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
-  mix-blend-mode: multiply;
-}
+/* 纸张颗粒：全局唯一一份，挂 foundation.css .sh-root::after（fixed 全屏 z 9998，
+   纸壳/案卷首页/面板一律被其覆盖）。2026-08-31 去重——纸壳曾自挂一份同款 ::after，
+   开纸壳时与 .sh-root 的叠乘成两层云斑（脏）；此处不再自挂，防回潮。 */
 
 .pp-root ::selection {
   background: var(--seal-soft);
@@ -230,6 +219,8 @@
   height: 24px;
   margin: 0 auto 12px;
   color: var(--ink-1);
+  /* 2026-08-31 浸墨化：印章图标加 0.35px 微模糊——印泥盖纸的渗开感 */
+  filter: blur(0.35px);
 }
 .pp-folio-eyebrow {
   font-family: var(--f-mono);
@@ -245,6 +236,9 @@
   line-height: 1.2;
   margin-top: 12px;
   color: var(--ink-1);
+  /* 2026-08-31 浸墨化：大字加 0.4px 渗缘（墨缘毛细扩散模拟，同 alpha 墨第 2 层手法）
+     弱 alpha 残影，正文小字不加——面积大可读性不受损 */
+  text-shadow: 0 0 0.4px rgba(38, 34, 28, 0.32);
 }
 .pp-folio-sub {
   font-family: var(--f-mono);
@@ -1882,9 +1876,27 @@
   color: var(--seal-deep);
   border-color: var(--seal);
 }
-/* 眉批拖出中：grab 光标反馈（body 级——纸面多数表面无自设 cursor，可继承） */
-body.pp-pin-grabbing {
-  cursor: grabbing;
+/* 眉批已钉出占位（2026-08-31 移出语义）：快照钉在画布上后，眉批栏原位留洞
+ * （流内 .pp-ghost 同族——虚线框 + 点击拔钉恢复夹注） */
+.pp-marginalia-out {
+  display: block;
+  width: 100%;
+  border: var(--rule-dashed);
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--ink-3);
+  background: none;
+  cursor: pointer;
+  padding: 2px 0;
+  text-align: center;
+  transition:
+    border-color var(--snap),
+    color var(--snap);
+}
+.pp-marginalia-out:hover {
+  border-color: var(--seal);
+  color: var(--seal-deep);
 }
 
 /* ── 流区四角横向缩放柄（P6 宽度自由：角落只开放横向——Y 由内容生长）──

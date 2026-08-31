@@ -100,15 +100,20 @@ body {
   background: var(--paper);
   overflow: auto;
 }
-/* 纸张颗粒（原型 body::after 同款 SVG turbulence） */
+/* 纸张颗粒（全局唯一：固定全屏 z 9998，纸壳/案卷首页/面板一律被其覆盖——
+   面板内勿再自挂同款层，叠乘即脏。双频：低频纸纤维晕染 + 高频印刷颗粒；
+   各自 opacity 由 SVG rect 内控，元素不再压透明）
+   低频 baseFrequency .014 / octaves 3 云状肌理（opacity .10——沉纸档去重后单层），
+   高频 .82 / 2 细密颗粒 */
 .sh-root::after {
   content: "";
   position: fixed;
   inset: 0;
   z-index: var(--z-grain);
   pointer-events: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
-  opacity: 0.05;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.014' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23m)' opacity='0.10'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
   mix-blend-mode: multiply;
 }
 
