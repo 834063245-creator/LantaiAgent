@@ -921,10 +921,14 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   });
   // ponytail: 创建会话级消息 store
   msgStoreFor(ctx.storeId, sid).getState().setMessages([]);
-  // WO-7：若存档带 UI 消息副本，先灌入 store——rebuildMessagesFromMessages
-  // 会保留其中的 BlockPart（资产块），再按 provider 消息重建其余部分。
-  if (Array.isArray(data.uiMessages) && data.uiMessages.length > 0) {
-    msgStoreFor(ctx.storeId, sid).getState().setMessages(data.uiMessages);
+  // 恢复现场选择（2026-08-31 会话流专项）：带 UI 快照的卷直接采信快照渲染——
+  // 运行时字段全保真（工具 err/output/折叠依赖的形状都在其上），不再按 provider
+  // 消息重建（重建是降采样：err 丢弃、output 可能翻不到、_id 重发号，加载后
+  // 与实时「有出入」）。旧存档无 uiMessages → 走 provider 重建兜底（WO-7）。
+  const uiSnapshot = Array.isArray(data.uiMessages) && data.uiMessages.length > 0 ? data.uiMessages : undefined;
+  const hasUiSnapshot = uiSnapshot !== undefined;
+  if (uiSnapshot) {
+    msgStoreFor(ctx.storeId, sid).getState().setMessages(uiSnapshot);
   }
   // 方案甲（2026-08-27）：会话级创作坞覆盖随卷恢复——旧存档无 compose 字段
   // = 无覆盖（实时跟随全局默认）。回填在句柄创建之后（工厂装配时覆盖已在
@@ -945,15 +949,31 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
 
   if (newAgent) {
     try {
-      renderRestoredSession(ctx);
+      if (hasUiSnapshot && uiSnapshot) {
+        // 现场即真相：消息不重建（完整保留磁盘快照字段），只补派生状态——
+        // 轮次表（撤回/重发定位依赖）与资产表（钉住资产块广播依赖）。
+        setTurnPairs(ctx.storeId, sid, rebuildTurnPairsFromProvider(newAgent.getSession()));
+        rebuildAssetTableFromMessages(ctx.storeId, sid, uiSnapshot);
+        bumpSession(ctx.storeId, sid);
+      } else {
+        renderRestoredSession(ctx);
+      }
     } catch (e) {
       console.error('[chat] loadSessionFromDisk: render 崩溃', e);
       ctx.addNotice(`案卷已加载但渲染失败: ${label}`, 'error');
     }
   } else {
-    // 无句柄：纯数据重建内容层（历史卷可见；句柄拟文时补建）
-    rebuildMessagesFromMessages(conv, ctx.storeId, sid);
-    bumpSession(ctx.storeId, sid);
+    // 无句柄：内容层照常摊开（历史卷可见；句柄拟文时补建）
+    if (hasUiSnapshot && uiSnapshot) {
+      // 同上有快照：直接采用 + 派生重建。无句柄时 sessionIndex 以 conv 为基
+      // （补建句柄后撤回/重发经内容兜底与重映射自愈，见 remapTurnPairIndexes）。
+      setTurnPairs(ctx.storeId, sid, rebuildTurnPairsFromProvider(conv));
+      rebuildAssetTableFromMessages(ctx.storeId, sid, uiSnapshot);
+      bumpSession(ctx.storeId, sid);
+    } else {
+      rebuildMessagesFromMessages(conv, ctx.storeId, sid);
+      bumpSession(ctx.storeId, sid);
+    }
     // 后台补建句柄：无 Key → 可见 warn（契约②：缺 Key = 提示不是会话消失）；
     // 配 Key → 拟文时 ensureSessionAgent 直接可用
     hydrateSessionAgentVisible(ctx);
@@ -1188,6 +1208,47 @@ export function _rebuildMessagesFromSession(ctx: SessionContext): void {
   rebuildMessagesFromMessages(agent.getSession(), ctx.storeId, sid);
 }
 
+/** 从 provider 会话推导轮次表（恢复路径直接采用 UI 快照时的派生重建）。
+ *  sessionIndex = provider 会话中该 user 消息的下标（与 retractTurnAt 定位
+ *  同语义，含 system 前缀）；internal 消息（目标/压缩上下文）不建轮次对。
+ *  重发叠出的重复 user 消息会各自成对——撤回/重发经内容兜底与重映射收敛。 */
+function rebuildTurnPairsFromProvider(providerSession: Message[]): TurnPair[] {
+  const pairs: TurnPair[] = [];
+  providerSession.forEach((m, i) => {
+    if (m.role !== 'user' || isInternalMessage(m.content)) return;
+    pairs.push({ userText: m.content || '', userBubble: null, assistantBubble: null, sessionIndex: i });
+  });
+  return pairs;
+}
+
+/** 按 userText 顺序把 turnPairs 的 sessionIndex 重新映射到 agent session
+ *  当前的非 internal user 下标。撤回/重发后会话压缩会让记录的索引漂移——
+ *  不重映射 = 后续按旧索引下刀撤错轮次，旧轮永留底层会话（恢复重复渲染
+ *  的数据根因）。撤回后收敛的标准动作。userText 尾匹配兜底带文件轮次
+ *  （底层会话 content = 焦点前缀 + 文本）。 */
+function remapTurnPairIndexes(agent: ChatAgentHandle, pairs: TurnPair[]): void {
+  const session = agent.getSession();
+  let cursor = 0;
+  for (const pair of pairs) {
+    const found = session.findIndex(
+      (m, i) =>
+        i >= cursor &&
+        m.role === 'user' &&
+        !isInternalMessage(m.content) &&
+        (m.content === pair.userText || (m.content?.endsWith(pair.userText) ?? false)),
+    );
+    if (found >= 0) {
+      pair.sessionIndex = found;
+      cursor = found + 1;
+    }
+  }
+}
+
+/** 内容对位：user 消息在 provider 会话中匹配（精确或带焦点前缀尾匹配）。 */
+function findUserIndexInProvider(session: Message[], text: string): number {
+  return session.findIndex((m) => m.role === 'user' && (m.content === text || (m.content?.endsWith(text) ?? false)));
+}
+
 // ── 轮次撤回 ──
 
 /** 从 DOM 和 agent 会话中撤回一轮对话。返回 userText 或 null。
@@ -1199,32 +1260,22 @@ export function retractTurn(ctx: SessionContext, idx: number): string | null {
   const pair = tp[idx];
   if (!pair) return null;
   // ⚡ React 处理 DOM 移除，只需清理模型
-  // 从 agent 会话中移除 — 若索引已过期（运行中插入），按内容搜索
+  // 从 agent 会话中移除 — 索引失效（负值/越界/位置已非 user 轮）按内容
+  // 兜底对位——索引漂移是撤回撤错轮、底层叠尸的病根（2026-08-31）。
   let sessIdx = pair.sessionIndex;
   const agent = agentSessionState.getAgent(ctx.storeId, activeSid ?? -1);
-  if (sessIdx < 0 && agent) {
+  if (agent) {
     const agentSession = agent.getSession();
-    for (let i = 0; i < agentSession.length; i++) {
-      if (agentSession[i].role === 'user' && agentSession[i].content === pair.userText) {
-        sessIdx = i;
-        break;
-      }
+    if (sessIdx < 0 || sessIdx >= agentSession.length || agentSession[sessIdx]?.role !== 'user') {
+      sessIdx = findUserIndexInProvider(agentSession, pair.userText);
     }
   }
   if (sessIdx >= 0) agent?.retractTurnAt(sessIdx);
   // 从 turnPairs 中移除
   tp.splice(idx, 1);
-  // 从实际会话中重新索引剩余配对的 sessionIndex
-  if (agent) {
-    const agentSession = agent.getSession();
-    const userMsgIndices: number[] = [];
-    for (let i = 0; i < agentSession.length; i++) {
-      if (agentSession[i].role === 'user') userMsgIndices.push(i);
-    }
-    for (let i = 0; i < tp.length && i < userMsgIndices.length; i++) {
-      tp[i].sessionIndex = userMsgIndices[i];
-    }
-  }
+  // 撤回后会话压缩 → 剩余配对的 sessionIndex 全部重映射（内容对位，
+  // 含 internal 过滤——与 _retractUserMessage 共用同一收敛动作）
+  if (agent) remapTurnPairIndexes(agent, tp);
   return pair.userText;
 }
 
@@ -1255,8 +1306,24 @@ export function _retractUserMessage(ctx: SessionContext, msg: UserMessage): void
       .setMessages([...msgs]);
     bumpSession(ctx.storeId, sid);
   }
-  if (msg.sessionIndex >= 0) {
-    agentSessionState.getAgent(ctx.storeId, sid)?.retractTurnAt(msg.sessionIndex);
+  // 底层会话撤回：优先记录的 sessionIndex，失效（负值/越界/位置已非 user
+  // 轮——会话已在途中压缩）按内容兜底对位，绝不裸用漂移索引下刀
+  // （2026-08-31：旧轮撤不净 + 重发叠条 = 恢复重复渲染的数据根因）。
+  const agent = agentSessionState.getAgent(ctx.storeId, sid);
+  if (agent) {
+    const session = agent.getSession();
+    let sessIdx = msg.sessionIndex;
+    if (sessIdx < 0 || sessIdx >= session.length || session[sessIdx]?.role !== 'user') {
+      sessIdx = findUserIndexInProvider(session, msg.text);
+    }
+    if (sessIdx >= 0) agent.retractTurnAt(sessIdx);
+    // 本轮的 turnPair 残留一并移除（重发 = 撤旧轮 + 新轮，旧 pair 不删会叠）；
+    // 剩余配对按新会话形状重映射，两源从此收敛。
+    const tp = getTurnPairs(ctx.storeId, sid);
+    for (let i = tp.length - 1; i >= 0; i--) {
+      if (tp[i].userText === msg.text) tp.splice(i, 1);
+    }
+    remapTurnPairIndexes(agent, tp);
   }
 }
 
