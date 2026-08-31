@@ -1,5 +1,8 @@
-/* SessionSidebar — 当前工作区会话管理侧边栏（Stage-3 DSH 范式）。
- * 布局（Plan A）：书脊恒显最左缘，侧边栏在其右；侧边栏收起 = 只剩书脊。
+/* SessionSidebar — 当前工作区案卷管理侧边栏（2026-08-31 注疏重排）。
+ * 设计语言：prototype/lantai.html 案卷首页列表（.session-row / .home-section-title
+ * / .leader）的窄栏转写——分节头点线引出 + 两行式行（宋体卷名 + 等宽机读注记）
+ * + 当前卷朱砂左条。术语铁律：会话→案卷。全份字号接 --font-scale。
+ * 布局（Plan A）：书脊恒显最左缘，侧边栏在其右；收起 = 只剩书脊。
  * 挂载：DockPanel 上层覆盖（z 高于纸面板 .pp-root z:280），随纸面板开合。 */
 
 .ss-sidebar {
@@ -7,7 +10,7 @@
   left: 44px; /* 书脊右缘 */
   top: var(--bar-h);
   bottom: var(--composer-h);
-  width: 224px;
+  width: 264px;
   display: flex;
   flex-direction: column;
   background: var(--paper);
@@ -16,28 +19,30 @@
   font-family: var(--f-song);
 }
 
+/* ── 书眉：案卷 + 等宽计数 + 折叠钮 ── */
 .ss-head {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  align-items: baseline;
+  gap: 10px;
+  padding: 12px 12px 10px;
   border-bottom: var(--rule-soft);
   flex-shrink: 0;
 }
 .ss-title {
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
   font-weight: 600;
   letter-spacing: 0.1em;
   color: var(--ink-1);
 }
 .ss-count {
   font-family: var(--f-mono);
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-size: calc(10px * var(--font-scale));
+  letter-spacing: 0.1em;
   color: var(--ink-3);
 }
 .ss-fold {
   margin-left: auto;
+  align-self: center;
   width: 24px;
   height: 24px;
   background: none;
@@ -45,7 +50,7 @@
   border-radius: 0;
   color: var(--ink-2);
   cursor: pointer;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   line-height: 1;
   transition:
     background var(--snap),
@@ -55,6 +60,46 @@
   background: var(--paper-deep);
   color: var(--ink-1);
 }
+.ss-fold:active {
+  transform: translateY(1px);
+}
+
+/* ── 检索条（常驻）：等宽签 + 底线输入件（composer/set-control 输入语言）── */
+.ss-search {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 12px 8px;
+  border-bottom: var(--rule-soft);
+  flex-shrink: 0;
+}
+.ss-search-lbl {
+  font-family: var(--f-mono);
+  font-size: calc(10px * var(--font-scale));
+  letter-spacing: 0.2em;
+  color: var(--ink-3);
+}
+.ss-search input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  border-bottom: var(--rule-soft);
+  border-radius: 0;
+  padding: 4px 2px;
+  font-family: var(--f-song);
+  font-size: calc(12px * var(--font-scale));
+  color: var(--ink-1);
+  outline: none;
+  caret-color: var(--seal-deep);
+  transition: border-color var(--snap);
+}
+.ss-search input:focus {
+  border-bottom-color: var(--seal);
+}
+.ss-search input::placeholder {
+  color: var(--ink-4);
+}
 
 .ss-notice {
   margin: 8px 10px 0;
@@ -62,13 +107,14 @@
   background: var(--paper);
   border: var(--rule-strong);
   border-left: 3px solid var(--warn);
-  font-size: 11.5px;
+  font-size: calc(12px * var(--font-scale));
   color: var(--ink-2);
+  flex-shrink: 0;
 }
 .ss-notice button {
   margin-top: 4px;
   font-family: var(--f-song);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale));
   color: var(--ink-1);
   background: none;
   border: var(--rule-soft);
@@ -77,38 +123,81 @@
   cursor: pointer;
 }
 
+/* ── 列表：两节（摊开中 / 已合卷），节头点线引出 + 等宽计数 ── */
 .ss-list {
   flex: 1;
   overflow-y: auto;
-  padding: 4px 0;
+  padding-bottom: 8px;
+}
+.ss-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 12px 12px 6px;
+  border-top: var(--rule-strong);
+  margin-top: 8px;
+}
+/* 首节紧贴检索条底线——不再叠一道强线 */
+.ss-section:first-of-type .ss-section-head {
+  border-top: none;
+  margin-top: 0;
+}
+.ss-section-head .t {
+  font-size: calc(12px * var(--font-scale));
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-1);
+}
+.ss-section-head .leader {
+  flex: 1 1 auto;
+  min-width: 16px;
+  border-bottom: 1px dotted var(--ink-4);
+  transform: translateY(-3px);
+}
+.ss-section-head .n {
+  font-family: var(--f-mono);
+  font-size: calc(9px * var(--font-scale));
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
 }
 
+/* 行：两行式——宋体卷名 / 等宽机读注记；当前卷朱砂左条 + 淡朱砂洗底 */
 .ss-row {
+  position: relative;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
-  padding: 7px 10px;
+  padding: 8px 12px;
   cursor: pointer;
-  border-left: 3px solid transparent;
-  transition:
-    background var(--snap),
-    border-left-color var(--snap),
-    transform var(--snap);
+  transition: background var(--snap);
 }
 .ss-row:hover {
-  background: color-mix(in oklch, var(--indigo) 12%, var(--paper));
-  transform: translateY(-1px);
+  background: var(--paper-deep);
 }
-.ss-row.open {
-  border-left-color: var(--indigo);
+.ss-row:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: -2px;
+}
+.ss-row.current {
+  background: color-mix(in oklch, var(--seal) 7%, var(--paper));
+}
+.ss-row.current::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  background: var(--seal);
 }
 
 /* 状态点：pending=朱砂（交互等待）> running=石青（机）> done=墨（完成）> idle=灰
- * D2（2026-08-29）：方点化——圆角恒 0 纪律收编状态点族（原 50% 圆点豁免退役）。 */
+ * D2（2026-08-29）：方点化——圆角恒 0 纪律收编状态点族。 */
 .ss-dot {
   width: 8px;
   height: 8px;
   flex: 0 0 auto;
+  margin-top: 6px; /* 与首行卷名光学居中 */
 }
 .ss-dot-pending {
   background: var(--seal);
@@ -142,15 +231,21 @@
   gap: 2px;
 }
 .ss-label {
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
+  font-weight: 500;
+  line-height: 1.6;
   color: var(--ink-1);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 已合卷行视觉退后一档（节头已表达状态，行内只留墨阶差） */
+.ss-row:not(.open) .ss-label {
+  color: var(--ink-2);
+}
 .ss-meta {
   font-family: var(--f-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale));
   letter-spacing: 0.05em;
   color: var(--ink-3);
   white-space: nowrap;
@@ -159,90 +254,104 @@
 }
 
 .ss-rename-input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+  margin-top: 2px;
   font-family: var(--f-song);
-  font-size: 12.5px;
+  font-size: calc(13px * var(--font-scale));
   color: var(--ink-1);
   background: var(--paper);
   border: none;
   border-bottom: 2px solid var(--seal);
+  border-radius: 0;
   padding: 2px 0;
   outline: none;
 }
 
+/* 行操作：无边框文字钮（中文钮禁 mono——mono 栈无中文字形），
+ * hover / 键盘聚焦行时显形；hover 墨底反白（btn-text 语言）。 */
 .ss-actions {
+  align-self: center;
   display: flex;
   gap: 2px;
   opacity: 0;
   transition: opacity var(--snap);
 }
-.ss-row:hover .ss-actions {
+.ss-row:hover .ss-actions,
+.ss-row:focus-within .ss-actions {
   opacity: 1;
 }
 .ss-actions button {
-  width: 22px;
-  height: 22px;
+  padding: 2px 5px;
   background: none;
-  border: var(--rule-strong);
+  border: none;
   border-radius: 0;
-  color: var(--ink-2);
-  font-size: 10px;
-  line-height: 1;
+  font-family: var(--f-song);
+  font-size: calc(11px * var(--font-scale));
+  line-height: 1.4;
+  color: var(--ink-3);
   cursor: pointer;
   transition:
     background var(--snap),
     color var(--snap);
 }
 .ss-actions button:hover {
-  background: var(--paper-deep);
-  color: var(--ink-1);
+  background: var(--ink-1);
+  color: var(--paper);
 }
-/* 删除二次确认（2026-08-28 会话管理专项）：武装态 = 朱砂深底白字，视觉上
- * 「这是危险操作」；宽 3 字（确删?），与改/收的单字按钮区分。 */
+.ss-actions button:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 1px;
+}
+/* 删除二次确认（2026-08-28 会话管理专项）：武装态 = 朱砂深底白字。 */
 .ss-actions .ss-danger,
 .ss-actions .ss-danger:hover {
-  width: auto;
-  padding: 0 4px;
   color: var(--paper);
   background: var(--seal-deep);
-  border-color: var(--seal-deep);
 }
 
 .ss-empty {
-  padding: 16px 12px;
-  font-size: 12px;
+  padding: 18px 12px;
+  font-size: calc(12px * var(--font-scale));
   color: var(--ink-3);
   text-align: center;
 }
 
+/* ── 脚部：出生仪式（btn-text 语言——rule-strong 边 + hover 墨底反白）── */
 .ss-foot {
-  padding: 8px 10px;
+  padding: 10px;
   border-top: var(--rule-soft);
   flex-shrink: 0;
 }
 .ss-new {
   width: 100%;
-  padding: 8px 0;
+  padding: 9px 0;
   background: none;
-  border: var(--rule-dashed);
+  border: var(--rule-strong);
   border-radius: 0;
   font-family: var(--f-song);
-  font-size: 12.5px;
-  letter-spacing: 0.12em;
-  color: var(--ink-2);
+  font-size: calc(12px * var(--font-scale));
+  letter-spacing: 0.16em;
+  color: var(--ink-1);
   cursor: pointer;
   transition:
     background var(--snap),
-    border-color var(--snap),
-    color var(--snap),
-    transform var(--snap);
+    color var(--snap);
 }
 .ss-new:hover {
-  background: var(--seal-soft);
-  border-color: var(--seal);
-  color: var(--seal-deep);
+  background: var(--ink-1);
+  color: var(--paper);
 }
 .ss-new:active {
-  background: color-mix(in oklch, var(--seal) 20%, var(--paper));
+  background: var(--ink-2);
+  color: var(--paper);
   transform: translateY(1px);
+}
+.ss-new:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 2px;
+}
+.ss-new:disabled {
+  cursor: default;
+  opacity: 0.6;
 }

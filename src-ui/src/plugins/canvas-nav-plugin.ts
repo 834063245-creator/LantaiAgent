@@ -19,7 +19,7 @@ import { SpineRack } from '../app/panels/SpineRack';
 import type { Context } from '../cordis';
 import { useDockStore } from '../state/dock-store';
 
-/** 画布导航插件——书脊 + 会话侧边栏双面板贡献 + 开合同步 + toggle 命令。 */
+/** 画布导航插件——书脊 + 案卷侧边栏双面板贡献 + 开合同步 + toggle 命令。 */
 export const canvasNavPlugin = {
   name: 'hologram/canvas-nav',
   inject: ['panels', 'commands', 'space'],
@@ -41,7 +41,7 @@ export const canvasNavPlugin = {
         ctx.panels.register({
           id: 'canvas-sidebar',
           side: 'left',
-          title: '会话',
+          title: '案卷',
           icon: 'list',
           unmountOnClose: true,
           component: SessionSidebar,
@@ -74,7 +74,7 @@ export const canvasNavPlugin = {
       () =>
         ctx.commands.register({
           id: 'canvas/sidebar-toggle',
-          label: '会话侧边栏（开/收起）',
+          label: '案卷侧边栏（开/收起）',
           group: '画布',
           shortcut: '/sidebar',
           action: { type: 'local', handler: () => useDockStore.getState().togglePanel('canvas-sidebar') },

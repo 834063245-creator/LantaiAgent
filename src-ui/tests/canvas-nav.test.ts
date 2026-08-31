@@ -7,9 +7,13 @@
 import { describe, expect, it } from 'vitest';
 import { panelDefs } from '../src/app/panels/panel-def';
 import {
+  filterRows,
   mergeSessionRows,
   relativeTime,
   type SessionStatus,
+  type SidebarRow,
+  sessionMeta,
+  splitSections,
   statusLabel,
 } from '../src/app/panels/session-sidebar-model';
 import { compositionServicesPlugin } from '../src/composition/services';
@@ -65,6 +69,39 @@ describe('session-sidebar-model（DSH 合流）', () => {
     expect(statusLabel('running')).toBe('运行中');
     expect(statusLabel('done')).toBe('已完成');
     expect(statusLabel('idle')).toBe('空闲');
+  });
+});
+
+describe('session-sidebar-model（注疏重排：检索/分节/机读注记）', () => {
+  const mk = (id: number, label: string, open: boolean): SidebarRow => ({
+    id,
+    label,
+    savedAt: open ? '' : '2026-08-30T00:00:00Z',
+    open,
+    msgCount: 3,
+    status: 'idle',
+  });
+
+  it('filterRows：空 query 全量；匹配卷名（大小写无关）或卷号', () => {
+    const rows = [mk(1, 'Cordis 生命周期', true), mk(2, '盘卷乙', false)];
+    expect(filterRows(rows, '')).toHaveLength(2);
+    expect(filterRows(rows, '  ')).toHaveLength(2); // 纯空白 = 空 query
+    expect(filterRows(rows, 'cordis').map((r) => r.id)).toEqual([1]); // 大小写无关
+    expect(filterRows(rows, '2').map((r) => r.id)).toEqual([2]); // 卷号数字
+    expect(filterRows(rows, '不存在的卷')).toHaveLength(0);
+  });
+
+  it('splitSections：摊开中在前、已合卷在后，节内保持合流排序', () => {
+    const rows = [mk(1, '甲', true), mk(2, '乙', true), mk(3, '丙', false), mk(4, '丁', false)];
+    const { open, closed } = splitSections(rows);
+    expect(open.map((r) => r.id)).toEqual([1, 2]);
+    expect(closed.map((r) => r.id)).toEqual([3, 4]);
+  });
+
+  it('sessionMeta：Nº · 块数 · 相对时间；未落盘省时间段', () => {
+    const now = Date.parse('2026-08-25T12:00:00Z');
+    expect(sessionMeta({ id: 12, msgCount: 8, savedAt: '2026-08-25T11:00:00Z' }, now)).toBe('Nº 12 · 8 块 · 1 小时前');
+    expect(sessionMeta({ id: 13, msgCount: 0, savedAt: '' }, now)).toBe('Nº 13 · 0 块');
   });
 });
 

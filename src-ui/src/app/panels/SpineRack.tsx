@@ -157,10 +157,10 @@ export const SpineRack = memo(function SpineRack() {
       <button
         type="button"
         className="sr-sidebar-toggle"
-        title="会话侧边栏（可折叠）"
+        title="案卷侧边栏（可折叠）"
         onClick={() => useDockStore.getState().openPanel('canvas-sidebar')}
       >
-        <span className="sr-sidebar-toggle-label">会话</span>
+        <span className="sr-sidebar-toggle-label">案卷</span>
       </button>
 
       {sessions.map((s) => {

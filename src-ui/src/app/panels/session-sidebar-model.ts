@@ -86,3 +86,28 @@ export function statusLabel(status: SessionStatus): string {
       return '空闲';
   }
 }
+
+/** 检索过滤（注疏重排 2026-08-31）：query 空 = 全量；匹配卷名（大小写
+ *  无关）或卷号数字——卷名缺省名「案卷 N」天然可被命中。 */
+export function filterRows(rows: SidebarRow[], query: string): SidebarRow[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter((r) => (r.label || `案卷 ${r.id}`).toLowerCase().includes(q) || String(r.id).includes(q));
+}
+
+/** 分节：摊开中（OPEN）在前、已合卷（CLOSED）在后——节内保持合流排序
+ *  （新者上），不再做摊开优先的扁平混排。 */
+export function splitSections(rows: SidebarRow[]): { open: SidebarRow[]; closed: SidebarRow[] } {
+  return {
+    open: rows.filter((r) => r.open),
+    closed: rows.filter((r) => !r.open),
+  };
+}
+
+/** 行机读注记（注疏版式第二行）：Nº 卷号 · N 块 · 相对时间；未落盘新卷
+ *  （无 savedAt）省时间段，不出「—」占位。 */
+export function sessionMeta(r: Pick<SidebarRow, 'id' | 'msgCount' | 'savedAt'>, now = Date.now()): string {
+  const parts = [`Nº ${r.id}`, `${r.msgCount} 块`];
+  if (r.savedAt) parts.push(relativeTime(r.savedAt, now));
+  return parts.join(' · ');
+}
