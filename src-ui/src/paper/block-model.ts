@@ -30,7 +30,8 @@ export type BuiltinBlockKind =
   | 'code' // 程序执行卡（code_execution 专属：程序体+日志+完成值，P2-A）
   | 'plan' // 计划卡
   | 'toolgroup' // 工具组（同轮并发调用的折叠头，2026-08-30 会话流专项）
-  | 'notice'; // 系统通知
+  | 'notice' // 系统通知（2026-08-31 收窄为「会话事件」：仅压缩等稀缺大事）
+  | 'turn-error'; // 回合错误（2026-08-31 贴黄拆迁：错误贴回合尾的墓碑）
 
 /** 块类型——自 Agent 资产块（WO-3）起开放：内置 8 种强类型保留，
  *  资产 kind（show_asset 的语义 kind）与插件贡献的块类型走开放 string 面。 */
@@ -92,6 +93,9 @@ export interface BlockPayloads {
     items: ToolCallPart[];
   };
   notice: { text: string; level: 'info' | 'warn' | 'error' };
+  /** 回合错误（2026-08-31）：assistant 回合终止失败/暂停时的墓碑行——
+   *  错误不静默 + 不入会话流：贴在该回合正文块的尾部，跟着回合走。 */
+  'turn-error': { text: string; level: 'info' | 'warn' | 'error' };
 }
 
 export type BlockPayload = BlockPayloads[keyof BlockPayloads];

@@ -776,6 +776,10 @@ export function inkSourcesFor(b: SourcedBlock, folded: boolean): InkSource[] {
       return p.text
         ? [{ text: p.text, font: PAPER_NOTICE_FONT, lineHeight: PAPER_NOTICE_LINE_HEIGHT, inset: NOTICE_TEXT_INSET }]
         : [];
+    case 'turn-error':
+      return p.text
+        ? [{ text: p.text, font: PAPER_NOTICE_FONT, lineHeight: PAPER_NOTICE_LINE_HEIGHT, inset: NOTICE_TEXT_INSET }]
+        : [];
     case 'diff':
       return p.text
         ? [
@@ -1035,6 +1039,11 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
         ? NOTICE_CHROME_H +
             measureTextHeight(p.text, b.w - NOTICE_TEXT_INSET, PAPER_NOTICE_FONT, PAPER_NOTICE_LINE_HEIGHT)
         : 0;
+    case 'turn-error':
+      return p.text
+        ? NOTICE_CHROME_H +
+            measureTextHeight(p.text, b.w - NOTICE_TEXT_INSET, PAPER_NOTICE_FONT, PAPER_NOTICE_LINE_HEIGHT)
+        : 0;
     case 'diff': {
       const langH = (b.payload as { lang?: string }).lang ? DIFF_LANG_H : 0;
       const preH = p.text
@@ -1156,6 +1165,8 @@ export function measureSignature(b: SourcedBlock, folded: boolean, sidecarFolded
       return `reasoning|${f}|${p.text ?? ''}`;
     case 'notice':
       return `notice|${p.text ?? ''}`;
+    case 'turn-error':
+      return `turn-error|${p.text ?? ''}|${p.level ?? ''}`;
     case 'diff':
       return `diff|${p.lang ?? ''}|${p.text ?? ''}`;
     case 'tool':

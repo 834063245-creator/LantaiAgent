@@ -12,6 +12,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from '../src/app/shell-store';
+import { useToastStore } from '../src/state/toast-store';
 
 const mockInvoke = vi.fn();
 async function mockRpc(method: string, params?: Record<string, unknown>): Promise<unknown> {
@@ -143,12 +144,10 @@ describe('无 Key 冷启动 → 会话恢复 → 配 Key 不重启可发（死�
     const msgs = msgStoreFor(panel.panelId, 7).getState().messages;
     expect(msgs.some((m) => m.role === 'user' && m.text === '之前的问题')).toBe(true);
 
-    // ② 缺 Key 的表现 = 可见提示（后台补建失败的 warn），不是会话消失
+    // ② 缺 Key 的表现 = toast 可见提示（2026-08-31 贴黄拆迁：不入消息流）
     await drain();
-    const notices = msgStoreFor(panel.panelId, 7)
-      .getState()
-      .messages.filter((m) => m.role === 'notice');
-    expect(notices.some((n) => String((n as { text?: string }).text).includes('卷的 Agent 未就绪'))).toBe(true);
+    const toasts = useToastStore.getState().toasts;
+    expect(toasts.some((t) => t.text.includes('卷的 Agent 未就绪'))).toBe(true);
   });
 
   it('配 Key 后不重启：同一面板直接发送成功（句柄拟文时补建）', async () => {
@@ -187,5 +186,7 @@ describe('无 Key 冷启动 → 会话恢复 → 配 Key 不重启可发（死�
       .getState()
       .messages.filter((m) => m.role === 'notice');
     expect(notices.some((n) => String((n as { text?: string }).text).startsWith('Agent 未就绪 —'))).toBe(false);
+    const toasts = useToastStore.getState().toasts;
+    expect(toasts.some((t) => t.text.startsWith('Agent 未就绪 —'))).toBe(false);
   });
 });

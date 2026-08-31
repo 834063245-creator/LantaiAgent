@@ -15,6 +15,7 @@ import { disposeAssetSessionStore, disposeAssetTables, rebuildAssetTableFromMess
 import { getCanvasStore } from '../state/canvas-store';
 import { type ComposeSessionPrefs, getComposeStore } from '../state/compose-store';
 import { disposeMessagesStores, disposeSessionMessagesStore } from '../state/messages-store';
+import { showToast, TOAST_LONG_HOLD_MS } from '../state/toast-store';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
 import { useAgentPanelStore } from './agent-panel-store';
 import { bumpSession, getChatStore, msgStoreFor } from './chat-store';
@@ -213,7 +214,6 @@ export interface SessionContext {
   abort: () => void;
 
   // 通知与底栏
-  addNotice: (text: string, level?: 'info' | 'warn' | 'error') => void;
   updateFooter: () => void;
 
   // Token 用量
@@ -292,11 +292,11 @@ export function switchSession(ctx: SessionContext, idx: number): void {
 function hydrateSessionAgentVisible(ctx: SessionContext): void {
   void ensureSessionAgent(ctx)
     .then((ok) => {
-      if (!ok) ctx.addNotice('卷的 Agent 未就绪（API Key 未配置？）——拟文时会再试', 'warn');
+      if (!ok) showToast('卷的 Agent 未就绪（API Key 未配置？）——拟文时会再试', 'warn');
     })
     .catch((e) => {
       console.error('[chat] 卷句柄补建失败:', e);
-      ctx.addNotice(`卷的 Agent 补建失败: ${e instanceof Error ? e.message : String(e)}`, 'error');
+      showToast(`卷的 Agent 补建失败: ${e instanceof Error ? e.message : String(e)}`, 'error', TOAST_LONG_HOLD_MS);
     });
 }
 
@@ -368,7 +368,7 @@ export function closeSession(ctx: SessionContext, idx: number): void {
         savedAt: new Date().toISOString(),
         messages,
         tokensUsed,
-      }).catch(() => ctx.addNotice(`合卷落盘失败：${s.label}`, 'error'));
+      }).catch(() => showToast(`合卷落盘失败：${s.label}`, 'error', TOAST_LONG_HOLD_MS));
     }
   }
   removeSessionExecState(ctx.storeId, s.id);
@@ -449,7 +449,7 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
   // 不造零目录会话，改由首页选/建工作区。与「创建工作区必须要有目录」一致。
   const claimWs = ctx.getProjectPath();
   if (!claimWs) {
-    ctx.addNotice('新建案卷需要先有工作区——请在首页新建或指定工作区', 'warn');
+    showToast('新建案卷需要先有工作区——请在首页新建或指定工作区', 'warn');
     return;
   }
   // DSH 形态（2026-08-25）：信封先行——建卷是纯数据操作，立即摊开可见；
@@ -510,7 +510,6 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
     useAgentPanelStore.getState().setCurrentSessionId(String(id));
   }
 
-  ctx.addNotice(`新案卷已创建 — 案卷 ${id}`, 'info');
   ctx.setLastUsageText('');
   ctx.updateFooter();
   // U4/Q1-B：总目记账退役（摊开集重启由磁盘扫描推导）
@@ -714,7 +713,7 @@ export async function renameSessionFile(
 ): Promise<void> {
   const data = await readVolumeJSON(projectPath, sessionId);
   if (!data) {
-    ctx.addNotice('案卷文件不存在，无法改名', 'error');
+    showToast('案卷文件不存在，无法改名', 'error');
     return;
   }
   try {
@@ -753,7 +752,7 @@ export function scheduleAutoSave(ctx: SessionContext, projectPath: string): void
     saveActiveSession(ctx, projectPath).catch((e) => {
       const msg = e instanceof Error ? e.message : String(e);
       console.error('[chat] 自动保存失败:', e);
-      ctx.addNotice(`⚠️ 案卷自动保存失败: ${msg}`, 'error');
+      showToast(`⚠️ 案卷自动保存失败: ${msg}`, 'error', TOAST_LONG_HOLD_MS);
     });
   }, AUTO_SAVE_DELAY_MS);
   _autoSaveTimers.set(ctx.storeId, timer);
@@ -862,7 +861,6 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
     const openIdx = st0.sessions.findIndex((s) => s.id === sessionId);
     if (openIdx >= 0) {
       if (openIdx !== st0.activeIdx) switchSession(ctx, openIdx);
-      ctx.addNotice(`案卷 ${sessionId} 已在案头——已换卷`, 'info');
       return;
     }
   }
@@ -871,7 +869,7 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   // Q-B 后 autoRestore 不再恢复内容，本契约由打开路径（首页点卷）承担。
   data = await readVolumeData(projectPath, sessionId);
   if (!data) {
-    ctx.addNotice('案卷文件读取失败', 'error');
+    showToast('案卷文件读取失败', 'error');
     return;
   }
 
@@ -960,7 +958,7 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
       }
     } catch (e) {
       console.error('[chat] loadSessionFromDisk: render 崩溃', e);
-      ctx.addNotice(`案卷已加载但渲染失败: ${label}`, 'error');
+      showToast(`案卷已加载但渲染失败: ${label}`, 'error', TOAST_LONG_HOLD_MS);
     }
   } else {
     // 无句柄：内容层照常摊开（历史卷可见；句柄拟文时补建）
@@ -981,7 +979,6 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
 
   ctx.setLastUsageText('');
   ctx.updateFooter();
-  ctx.addNotice(`已加载: ${label}`, 'info');
   // U4/Q1-B：总目记账退役（摊开集重启由磁盘扫描推导）
 }
 
@@ -1002,7 +999,7 @@ export async function deleteSessionFile(ctx: SessionContext, projectPath: string
     });
   } catch (e) {
     console.error('[chat] deleteSessionFile failed:', e);
-    ctx.addNotice('删除案卷文件失败', 'error');
+    showToast('删除案卷文件失败', 'error');
     return; // 写入失败则不关闭标签页
   }
   // 标记源会话已删（2026-08-28 会话管理专项）：其孤儿钉的「收回」语义失效——
@@ -1047,7 +1044,6 @@ function renderRestoredSession(ctx: SessionContext): void {
   if (!agent) return;
   _rebuildMessagesFromSession(ctx);
   bumpSession(ctx.storeId, sid);
-  ctx.addNotice(`已恢复 ${sessions.length} 个会话`, 'info');
 }
 
 /** 从 agent 的 getSession() 原始消息填充活跃会话的会话级消息 store + turnPairs。
@@ -1333,7 +1329,7 @@ export async function exportSession(ctx: SessionContext): Promise<void> {
   const { sessions, activeIdx } = getChatStore(ctx.storeId).sess.getState();
   const agent = agentSessionState.getAgent(ctx.storeId, sessions[activeIdx]?.id ?? -1);
   if (!agent) {
-    ctx.addNotice('没有可导出的案卷', 'info');
+    showToast('没有可导出的案卷', 'info');
     return;
   }
 
@@ -1378,7 +1374,6 @@ export async function exportSession(ctx: SessionContext): Promise<void> {
     });
     if (filePath) {
       await typedRpc('write_file_content', { file_path: filePath, content: md });
-      ctx.addNotice(`案卷已导出: ${filePath}`, 'info');
     }
   } catch {
     // 浏览器回退
@@ -1389,6 +1384,5 @@ export async function exportSession(ctx: SessionContext): Promise<void> {
     a.download = `hologram-session-${now.toISOString().slice(0, 10)}.md`;
     a.click();
     URL.revokeObjectURL(url);
-    ctx.addNotice('案卷已下载', 'info');
   }
 }

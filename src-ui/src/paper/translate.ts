@@ -527,4 +527,18 @@ function translateAssistantParts(
         break;
     }
   });
+
+  // 回合墓碑（2026-08-31 贴黄拆迁）：回合终止失败/暂停 → 错误行贴回合尾。
+  // 不入会话流（不是独立消息），而是该回合正文块的附随块——id 锚消息级，
+  // 钉住续命与重转译稳定。finishTurn 尊重 status==='error' 不覆盖，
+  // 墓碑跨流式收尾存活。
+  if (msg.status === 'error' && msg.errorMessage) {
+    const errId = `pb:${msg._id}:err`;
+    const base = {
+      ...createBlock('turn-error', { text: msg.errorMessage, level: 'error' }, { messageId: msg._id, part: null }),
+      id: errId,
+      w: DEFAULT_BLOCK_WIDTH,
+    };
+    out.push(withPin(base, pinned?.get(errId)));
+  }
 }

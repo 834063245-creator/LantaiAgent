@@ -30,6 +30,7 @@ import { useDockStore } from '../../state/dock-store';
 import { broadcastGoalRecord, useGoalStore } from '../../state/goal-store';
 import { bumpTurnDone } from '../../state/turn-done-store';
 import { useWorkspaceSwitchStore } from '../../state/workspace-switch-store';
+import { showToast, TOAST_LONG_HOLD_MS } from '../../state/toast-store';
 import { useAgentPanelStore } from '../../ui/agent-panel-store';
 import * as Session from '../../ui/chat-session';
 import {
@@ -306,7 +307,6 @@ export class ChatCore {
     // 工作区重置：流式标志随会话级消息 store 整体消亡（disposeMessagesStores
     // 已随 resetSessionState 拆除全部卷 store），面板默认槽一并清零兜底。
     getChatStore(this.panelId).msg.getState().setStreamingAssistantId(null);
-    this.addNotice('已连接到当前项目', 'info');
   }
 
   getAgent(): ChatAgentHandle | null {
@@ -499,7 +499,6 @@ export class ChatCore {
       clearPendingToolCards: () => {},
       getRunning: () => this._activeExec().isRunning,
       abort: () => this.abort(),
-      addNotice: (text, level) => this.addNotice(text, level as 'info' | 'warn' | 'error'),
       updateFooter: () => this.updateFooter(),
       getTotalTokensUsed: () => getChatStore(storeId).panel.getState().totalTokensUsed,
       setTotalTokensUsed: (n) => {
@@ -582,7 +581,6 @@ export class ChatCore {
           getChatStore(storeId).panel.getState().setLastUsageText(s);
         }
       },
-      addNotice: (text, level) => this.addNoticeFor(ownerSid, text, level as 'info' | 'warn' | 'error'),
       saveActiveSession: (p) => this.saveActiveSession(p),
       scheduleAutoSave: (p) => Session.scheduleAutoSave(this._sessionCtx(), p),
       bumpPillBadge: () => {
@@ -841,19 +839,22 @@ export class ChatCore {
       (r) => r.status !== 'active' && r.status !== 'paused' && r.status !== 'blocked',
     );
     if (!active && history.length === 0) {
-      this.addNotice('当前没有目标。用法: /goal 目标描述 — Agent 会自主循环直到完成', 'info');
+      showToast('当前没有目标。用法: /goal 目标描述 — Agent 会自主循环直到完成', 'info');
       return;
     }
+    // /goal status 是查询命令——结果以单条多行 toast 呈现（读完即走，不入流）
+    const lines: string[] = [];
     if (active) {
       const label = active.status === 'paused' ? '已暂停' : active.status === 'blocked' ? '已受阻' : '进行中';
       const hint = active.status === 'paused' || active.status === 'blocked' ? ' — /goal resume 继续' : '';
-      this.addNotice(`🎯 ${active.text.slice(0, 60)} · ${label} · 第 ${active.iteration + 1} 轮${hint}`, 'info');
+      lines.push(`🎯 ${active.text.slice(0, 60)} · ${label} · 第 ${active.iteration + 1} 轮${hint}`);
     }
     for (const r of history.slice(-3).reverse()) {
       const icon =
         r.status === 'completed' ? '✅' : r.status === 'failed' ? '❌' : r.status === 'blocked' ? '🚧' : '🚫';
-      this.addNotice(`${icon} ${r.text.slice(0, 50)} — ${(r.summary || r.status).slice(0, 60)}`, 'info');
+      lines.push(`${icon} ${r.text.slice(0, 50)} — ${(r.summary || r.status).slice(0, 60)}`);
     }
+    if (lines.length > 0) showToast(lines.join('\n'), 'info', TOAST_LONG_HOLD_MS);
   }
 
   /** /goal cancel — 取消活体目标(运行中需先停止)。 */
@@ -861,17 +862,17 @@ export class ChatCore {
     const path = useShellStore.getState().projectPath;
     if (!path) return;
     if (this._activeExec().isRunning) {
-      this.addNotice('目标运行中 — 请先点击停止(或状态条上的暂停),再 /goal cancel', 'warn');
+      showToast('目标运行中 — 请先点击停止(或状态条上的暂停),再 /goal cancel', 'warn');
       return;
     }
     const mgr = new GoalManager(path, broadcastGoalRecord);
     const active = await mgr.getActive();
     if (!active) {
-      this.addNotice('没有可取消的目标', 'info');
+      showToast('没有可取消的目标', 'info');
       return;
     }
     await mgr.cancel(active.id);
-    this.addNotice(`🚫 已取消目标: ${active.text.slice(0, 50)}`, 'info');
+    showToast(`🚫 已取消目标: ${active.text.slice(0, 50)}`, 'info');
   }
 
   /** Agent 轮次的共享脚手架。 */
@@ -921,14 +922,16 @@ export class ChatCore {
       const result = await opts.drive(signal);
       if (result) opts.onResult?.(result as GoalRunResult);
     } catch (err: unknown) {
+      // 2026-08-31 贴黄拆迁：回合错误改记入回合自身（墓碑），不再播黄纸条
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('aborted') || msg.includes('AbortError')) {
-        this.addNoticeFor(turnSid, '已中止', 'info');
-      } else if (msg.includes('paused after')) {
-        this.addNoticeFor(turnSid, msg, 'warn');
-      } else {
-        this.addNoticeFor(turnSid, `错误: ${msg}`, 'error');
+      if (!msg.includes('aborted') && !msg.includes('AbortError')) {
+        if (msg.includes('paused after')) {
+          Stream.markTurnError(this._streamCtxFor(turnSid), msg, 'warn');
+        } else {
+          Stream.markTurnError(this._streamCtxFor(turnSid), `错误: ${msg}`, 'error');
+        }
       }
+      // 正常中止（用户主动停止）：exec 状态已表达，不另播报
     } finally {
       // 发起时刻捕获的 exec + signal 守卫（execution-state.done 注释）——
       // 收尾清「发起轮次的卷」的状态，与结算时刻的活跃卷无关
@@ -941,16 +944,18 @@ export class ChatCore {
   }
 
   private _notifyGoalResult(result: GoalRunResult): void {
+    // 2026-08-31 贴黄拆迁：goal 终结播报改 toast（说完即走），goal 状态条
+    // 持续显示运行态——终结结果一句话即可，不留进案卷。
     if (result.status === 'completed') {
-      this.addNotice(`✅ 目标达成: ${result.summary.slice(0, 120)}`, 'info');
+      showToast(`✅ 目标达成: ${result.summary.slice(0, 120)}`, 'info');
     } else if (result.status === 'paused') {
-      this.addNotice(`⏸️ ${result.summary}`, 'info');
+      showToast(`⏸️ ${result.summary}`, 'info');
     } else if (result.status === 'blocked') {
-      this.addNotice(`🚧 目标受阻: ${result.summary.slice(0, 120)}。条件解除后 /goal resume 继续。`, 'warn');
+      showToast(`🚧 目标受阻: ${result.summary.slice(0, 120)}。条件解除后 /goal resume 继续。`, 'warn');
     } else if (result.status === 'failed') {
-      this.addNotice(`❌ 目标失败: ${result.summary.slice(0, 120)}`, 'warn');
+      showToast(`❌ 目标失败: ${result.summary.slice(0, 120)}`, 'warn');
     } else {
-      this.addNotice('目标被中断', 'warn');
+      showToast('目标被中断', 'warn');
     }
   }
 
@@ -1051,14 +1056,13 @@ export class ChatCore {
         log.error('chat', `[DEBUG-send] Agent 装配抛错: ${msg}`, {
           stack: e instanceof Error ? e.stack : undefined,
         });
-        this.addNotice(`Agent 装配失败: ${msg}`, 'error');
-        return;
-      }
+        showToast(`Agent 装配失败: ${msg}`, 'error', TOAST_LONG_HOLD_MS);
+        return;      }
       if (!this.agent) {
         const detail = getChatStore(this.panelId).panel.getState().lastAgentDiag
           ? `${getChatStore(this.panelId).panel.getState().lastAgentDiag} (factory:${Session.getAgentFactory(this.panelId) ? 'yes' : 'NO'})`
           : '请先配置 API Key 或等待项目加载';
-        this.addNotice(`Agent 未就绪 — ${detail}${hydrated ? '（水合后句柄仍缺席）' : ''}`, 'error');
+        showToast(`Agent 未就绪 — ${detail}${hydrated ? '（水合后句柄仍缺席）' : ''}`, 'error', TOAST_LONG_HOLD_MS);
         return;
       }
     }
@@ -1069,7 +1073,7 @@ export class ChatCore {
         const fact = text.slice('/remember '.length).trim();
         getChatStore(this.panelId).input.getState().setInputText('');
         if (!fact) {
-          this.addNotice('用法: /remember 要记住的内容', 'info');
+          showToast('用法: /remember 要记住的内容', 'info');
           return;
         }
         import('../../agent/memory.js').then((m) => m.authorizeFactSave());
@@ -1118,8 +1122,8 @@ export class ChatCore {
       getChatStore(this.panelId).input.getState().setInputText('');
       getChatStore(this.panelId).input.getState().pushInputHistory(text);
       getChatStore(this.panelId).input.getState().setDraftText('');
-      // C1（2026-08-27）：静默注入曾让用户误以为 Enter 被吞——插话落地要有回音
-      this.addNotice('已插入进行中的回合（Agent 运行中，消息将在下轮生效）', 'info');
+      // C1（2026-08-27）：静默注入曾让用户误以为 Enter 被吞——插话落地要有回音（改 toast，不入流）
+      showToast('已插入进行中的回合（Agent 运行中，消息将在下轮生效）', 'info');
       // 纸视图（走查弹）打开时不唤起观测台面板——纸是当前输入面
       if (getChatStore(this.panelId).panel.getState().panelMode === 'input' && !useDockStore.getState().isOpen('paper'))
         this.summonPanel();
@@ -1201,17 +1205,18 @@ export class ChatCore {
     try {
       await this.agent.run(signal, focusPrefix + text);
     } catch (err: unknown) {
+      // 2026-08-31 贴黄拆迁：回合错误写进回合自身（墓碑），不播黄纸条
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('aborted') || msg.includes('AbortError')) {
-        this.addNoticeFor(turnSid, '已中止', 'info');
-      } else if (msg.includes('paused after')) {
-        this.addNoticeFor(turnSid, msg, 'warn');
-      } else {
-        this.addNoticeFor(
-          turnSid,
-          `错误: ${msg}。发送任意消息重试，或输入 /compact 压缩上下文，或输入 /new 新建会话`,
-          'error',
-        );
+      if (!msg.includes('aborted') && !msg.includes('AbortError')) {
+        if (msg.includes('paused after')) {
+          Stream.markTurnError(this._streamCtxFor(turnSid), msg, 'warn');
+        } else {
+          Stream.markTurnError(
+            this._streamCtxFor(turnSid),
+            `错误: ${msg}。发送任意消息重试，或输入 /compact 压缩上下文，或输入 /new 新建会话`,
+            'error',
+          );
+        }
       }
     } finally {
       // 发起时刻捕获的 exec + signal 守卫（execution-state.done 注释）——
@@ -1232,14 +1237,14 @@ export class ChatCore {
     this._activeExec().stop();
     this.agent?.cascadeAbort();
 
-    this.addNotice('正在中止…', 'info');
+    // 停止按钮/exec 状态已表达中止意图——不再播报「正在中止…」（2026-08-31）
 
     // 安全超时：3 秒内若 Agent 没响应，强制复位
     const safety = setTimeout(() => {
       if (this._activeExec().isRunning) {
         this._activeExec().forceReset();
         this.finishTurn();
-        this.addNotice('已强制中止（超时）', 'warn');
+        showToast('已强制中止（超时）', 'warn');
       }
     }, 3000);
     // Zustand 订阅代替轮询 — 状态变为 idle 时自动取消超时
@@ -1255,16 +1260,6 @@ export class ChatCore {
   // ═══════════════════════════════════════════════════════
   // ── 数据驱动的消息模型 — 委托给 chat-stream.ts ──
   // ═══════════════════════════════════════════════════════
-
-  private addNotice(text: string, level: 'info' | 'warn' | 'error'): void {
-    Stream.addNotice(this._streamCtxFor(null), text, level);
-  }
-
-  /** 会话定向通知（并发会话）：notice 落到指定卷的消息流——后台卷的
-   *  中止/错误信息不再串进活跃卷。sid=null = 活跃卷（遗留语义）。 */
-  private addNoticeFor(sid: number | null, text: string, level: 'info' | 'warn' | 'error'): void {
-    Stream.addNotice(this._streamCtxFor(sid), text, level);
-  }
 
   private renderEvent(ev: AgentEvent): void {
     Stream.renderEvent(this._streamCtxFor(null), ev);
@@ -1337,7 +1332,7 @@ export class ChatCore {
   }
   editUserMessage(msg: UserMessage): void {
     if (this._activeExec().isRunning) {
-      this.addNotice('Agent 正在运行，请先停止再编辑', 'warn');
+      showToast('Agent 正在运行，请先停止再编辑', 'warn');
       return;
     }
     getChatStore(this.panelId).input.getState().setInputText(msg.text);
@@ -1347,7 +1342,7 @@ export class ChatCore {
   }
   resendUserMessage(msg: UserMessage): void {
     if (this._activeExec().isRunning) {
-      this.addNotice('Agent 正在运行，请先停止再重发', 'warn');
+      showToast('Agent 正在运行，请先停止再重发', 'warn');
       return;
     }
     getChatStore(this.panelId).input.getState().setInputText(msg.text);
@@ -1356,7 +1351,7 @@ export class ChatCore {
   }
   retryAssistant(assistant: AssistantMessage): void {
     if (this._activeExec().isRunning) {
-      this.addNotice('Agent 正在运行，请先停止再重试', 'warn');
+      showToast('Agent 正在运行，请先停止再重试', 'warn');
       return;
     }
     const userMsg = this.messages.find((m) => m.role === 'user' && m._id === assistant.respondingTo);
@@ -1385,7 +1380,7 @@ export class ChatCore {
       .run(signal, userText)
       .catch((err: Error) => {
         if (!err.message?.includes('aborted')) {
-          this.addNoticeFor(retrySid, `重试失败: ${err.message || String(err)}`, 'error');
+          Stream.markTurnError(this._streamCtxFor(retrySid), `重试失败: ${err.message || String(err)}`, 'error');
         }
       })
       .finally(() => {
@@ -1464,11 +1459,10 @@ export class ChatCore {
       if (!this.agent) return;
       // 守卫：压缩会重写会话 — 与运行中的轮次竞争会损坏数据。
       if (this._activeExec().isRunning) {
-        this.addNotice('Agent 正在运行，请先停止或等待完成后再压缩。', 'warn');
+        showToast('Agent 正在运行，请先停止或等待完成后再压缩。', 'warn');
         return;
       }
       this.appendUserBubble('/compact');
-      this.addNotice('正在压缩上下文…', 'info');
       const exec = this._activeExec();
       const signal = exec.start();
       this.agent
@@ -1484,7 +1478,8 @@ export class ChatCore {
           this._chatMessages?.bump();
         })
         .catch((err: Error) => {
-          this.addNotice(`压缩失败: ${err.message}`, 'error');
+          // 压缩失败：旧内容未动、无对话断层——toast 播报即可（错误不静默）
+          showToast(`压缩失败: ${err.message}`, 'error');
         })
         .finally(() => {
           exec.done();
@@ -1493,7 +1488,6 @@ export class ChatCore {
     override('export', () => this.exportSession());
     override('trail', () => {
       this._onTrailToggle?.();
-      this.addNotice(this._onTrailToggle ? '已切换探索轨迹显示' : '轨迹功能未就绪', 'info');
     });
   }
 

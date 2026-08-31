@@ -473,6 +473,19 @@ function MarkdownBody({
   );
 }
 
+/** 回合错误体（2026-08-31 贴黄拆迁）：纯文本墓碑行，样式由
+ *  .pp-block.pp-turn-error 承载（朱砂底线 + 次级墨）。 */
+function TurnErrorBody({ block }: BlockRendererProps) {
+  const text = (block.payload as { text: string }).text ?? '';
+  return (
+    <div className="pp-body">
+      {text.split('\n').map((line, i) => (
+        <div key={i}>{line}</div>
+      ))}
+    </div>
+  );
+}
+
 /** 夹注/贴黄体：纯文本单段流（夹注折叠态 = 一行预览，folded 由壳层递下）。 */
 function TextBody({ block, folded }: BlockRendererProps) {
   const text = (block.payload as { text: string }).text ?? '';
@@ -753,6 +766,7 @@ export function builtinRendererDefs(): BlockRendererContribution[] {
     { id: 'builtin/tool', kind: 'tool', component: ToolBody },
     { id: 'builtin/code', kind: 'code', component: CodeBody },
     { id: 'builtin/toolgroup', kind: 'toolgroup', component: ToolGroupBody },
+    { id: 'builtin/turn-error', kind: 'turn-error', component: TurnErrorBody },
   ];
 }
 

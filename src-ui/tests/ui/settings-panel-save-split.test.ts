@@ -18,6 +18,7 @@ vi.mock('../../src/bridge', () => ({
   listen: vi.fn(),
   isMockMode: () => true,
   rpc: (...args: unknown[]) => mockRpc(...args),
+  watchFileDragDrop: vi.fn(),
 }));
 vi.mock('../../src/i18n', () => ({ setLang: vi.fn() }));
 vi.mock('../../src/state/agent-config-store', () => ({

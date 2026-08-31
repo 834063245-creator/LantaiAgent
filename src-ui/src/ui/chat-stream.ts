@@ -11,11 +11,12 @@ import { EventKind } from '../agent/agent-types';
 import type { ChatAgentHandle } from '../agent/chat-agent-handle';
 import { getAssetTableStore } from '../state/asset-store';
 import { refreshPinnedAssetSnapshots } from '../state/canvas-store';
+import { showToast, TOAST_HOLD_MS, TOAST_LONG_HOLD_MS } from '../state/toast-store';
 import { autoTitleSessionIfDefault } from './chat-session';
 import { bumpChat, getChatStore, msgStoreFor } from './chat-store';
 import type { StarGraph } from './graph';
 import type { AssistantMessage, ChatMessage, FileAttachment, MessageId, PlanPart, UserMessage } from './message-model';
-import { createAssistantMessage, createNoticeMessage, createUserMessage } from './message-model';
+import { createAssistantMessage, createUserMessage } from './message-model';
 import { applyAssetUpdateToExistingParts, applyEventToParts } from './part-mutator';
 import { isSubagentSpawnTool } from './tool-semantics';
 
@@ -63,7 +64,6 @@ export interface StreamContext {
   // ── 回调 ──
   updateFooter: () => void;
   setLastUsageText: (s: string) => void;
-  addNotice: (text: string, level?: string) => void;
   saveActiveSession: (path: string) => Promise<void>;
   scheduleAutoSave: (path: string) => void;
   bumpPillBadge: () => void;
@@ -163,49 +163,46 @@ function _streamingAssistant(ctx: StreamContext): AssistantMessage {
   return assistant;
 }
 
-/** 推送通知消息到日志。在 10 分钟窗口内去重相同文本。 */
-const NOTICE_DEDUP_MS = 10 * 60 * 1000;
-const _recentNotices = new Map<string, number>(); // storeId:text → 上次显示时间戳
-
-function _addNoticeMessage(ctx: StreamContext, text: string, level: 'info' | 'warn' | 'error'): void {
-  // L3 去重：若相同文本在时间窗口内已显示则跳过（按 storeId 限定作用域，避免跨会话抑制）
-  const now = Date.now();
-  const dedupKey = `${ctx.storeId}:${text}`;
-  const lastShown = _recentNotices.get(dedupKey);
-  if (lastShown != null && now - lastShown < NOTICE_DEDUP_MS) {
-    return;
-  }
-  _recentNotices.set(dedupKey, now);
-  // 清理过期条目，防止无限增长
-  if (_recentNotices.size > 50) {
-    for (const [key, ts] of _recentNotices) {
-      if (now - ts >= NOTICE_DEDUP_MS) _recentNotices.delete(key);
-    }
-  }
-
+/** 回合墓碑（2026-08-31 贴黄拆迁）：把终止失败/暂停写入当前回合的
+ *  assistant 消息（status='error' + errorMessage）。finishTurn 尊重
+ *  error 状态不覆盖——墓碑跨流式收尾存活（translate 渲染为 turn-error
+ *  块，贴在该回合正文尾部）。无流式助手/回合消息缺席（装配期错误）：
+ *  退化为 toast，错误不静默。 */
+export function markTurnError(ctx: StreamContext, text: string, level: 'warn' | 'error' = 'error'): void {
   const sid = ctx.getStreamingAssistantId();
   const target = _resolveSessionTarget(ctx, sid);
-  if (!target) return;
-
-  const msgs = target.messages;
-  if (sid) {
-    const assistIdx = msgs.findIndex((m) => m.role === 'assistant' && (m as AssistantMessage)._id === sid);
-    if (assistIdx >= 0) {
-      msgs.splice(assistIdx, 0, createNoticeMessage(text, level));
+  const msgs = target ? target.messages : ctx.getActiveMessages();
+  const assistant = sid
+    ? (msgs.find((m) => m.role === 'assistant' && m._id === sid) as AssistantMessage | undefined)
+    : undefined;
+  if (assistant) {
+    assistant.status = 'error';
+    assistant.errorMessage = text;
+    const idx = msgs.indexOf(assistant);
+    if (idx >= 0) msgs[idx] = { ...assistant };
+    if (target) {
+      ctx.setSessionMessages(target.sessionId, [...msgs]);
+      ctx.bumpSessionMessages(target.sessionId);
     } else {
-      msgs.push(createNoticeMessage(text, level));
+      bumpChat(ctx.storeId);
     }
-  } else {
-    msgs.push(createNoticeMessage(text, level));
+    return;
   }
-  ctx.setSessionMessages(target.sessionId, [...msgs]);
-  _scheduleSync(ctx);
+  // 回合缺席（装配期/第一个 token 前崩溃）：toast 兜底，错误不静默
+  showToast(text, level === 'warn' ? 'warn' : 'error', level === 'warn' ? TOAST_HOLD_MS : TOAST_LONG_HOLD_MS);
 }
 
-// ── 公共通知 ──
-
-export function addNotice(ctx: StreamContext, text: string, level: 'info' | 'warn' | 'error'): void {
-  _addNoticeMessage(ctx, text, level);
+/** Agent 层系统通知（EventKind.Notice）分流（2026-08-31 贴黄拆迁）：
+ *  - error → 回合墓碑（贴当前回合尾）
+ *  - warn  → toast 长显（说完即走）
+ *  - info  → 丢弃。agent 侧日志已记；goal 轮播/操作反馈是噪音，且 goal
+ *            终结结果由 UI 层 _notifyGoalResult 单独播报，不重复。 */
+export function handleAgentNotice(ctx: StreamContext, text: string, level: string): void {
+  if (level === 'error') {
+    markTurnError(ctx, text || '未知错误', 'error');
+  } else if (level === 'warn') {
+    showToast(text, 'warn', TOAST_LONG_HOLD_MS);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -220,7 +217,9 @@ function _finaliseStreamingAssistant(ctx: StreamContext): void {
 
   const assistant = msgs.find((m) => m.role === 'assistant' && m._id === sid) as AssistantMessage | undefined;
   if (assistant) {
-    assistant.status = 'done';
+    // 回合墓碑（2026-08-31）：status='error' 是终止失败/暂停——finishTurn 不
+    // 覆盖成 done，墓碑跨流式收尾存活（translate 据此渲染 turn-error 块）。
+    if (assistant.status !== 'error') assistant.status = 'done';
     for (const part of assistant.parts) {
       if (part.type === 'text') part.finalised = true;
       if (part.type === 'tool' && (part.status === 'running' || part.status === 'pending')) {
@@ -407,7 +406,7 @@ export function renderEvent(ctx: StreamContext, ev: AgentEvent): void {
       break;
 
     case EventKind.Notice:
-      _addNoticeMessage(ctx, ev.text || '', ev.level || 'info');
+      handleAgentNotice(ctx, ev.text || '', ev.level || 'info');
       break;
 
     case EventKind.SessionChanged:

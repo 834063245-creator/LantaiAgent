@@ -37,7 +37,7 @@ import { EventKind } from '../src/agent/agent-types';
 import { getSessionStore } from '../src/state/session-store';
 import { msgStoreFor, msgStoreForActive } from '../src/ui/chat-store';
 import type { StreamContext } from '../src/ui/chat-stream';
-import { addNotice, appendUserBubble, finishTurn, renderEvent } from '../src/ui/chat-stream';
+import { markTurnError, appendUserBubble, finishTurn, renderEvent } from '../src/ui/chat-stream';
 import type { AssistantMessage, ChatMessage, MessageId } from '../src/ui/message-model';
 
 const STORE_ID = 'test-panel';
@@ -94,7 +94,6 @@ function makeCtx(sessionId: number | null = SESSION_A): StreamContext {
     getStarGraph: () => null,
     updateFooter: vi.fn(),
     setLastUsageText: vi.fn(),
-    addNotice: vi.fn(),
     saveActiveSession: vi.fn(),
     scheduleAutoSave: vi.fn(),
     bumpPillBadge: vi.fn(),
@@ -180,17 +179,37 @@ describe('cross-session streaming leak regression', () => {
     expect(msgsA.length).toBe(2);
   });
 
-  it('routes notice to owning session after tab switch', () => {
+  it('routes turn error to owning session after tab switch', () => {
     const ctx = makeCtx(SESSION_A);
+    // 2026-08-31 贴黄拆迁：错误贴回所属卷的回合消息（墓碑），不跨卷串音
+    appendUserBubble(ctx, 'hello');
+    renderEvent(ctx, textEvent('response'));
+    // 用户切到 B 卷后错误落地——仍贴 A 卷的回合消息
     getSessionStore(STORE_ID).setState({ activeIdx: 1 });
-    addNotice(ctx, 'notice during streaming');
+    markTurnError(ctx, 'boom');
 
     const msgsA = msgStoreFor(STORE_ID, SESSION_A).getState().messages;
     const msgsB = msgStoreFor(STORE_ID, SESSION_B).getState().messages;
+    const fa = msgsA.find((m) => m.role === 'assistant') as AssistantMessage | undefined;
 
-    expect(msgsA.length).toBe(1);
-    expect(msgsA[0].role).toBe('notice');
+    expect(fa).toBeDefined();
+    expect(fa!.status).toBe('error');
+    expect(fa!.errorMessage).toBe('boom');
     expect(msgsB.length).toBe(0);
+  });
+
+  it('finishTurn preserves error status (turn tombstone survives)', () => {
+    const ctx = makeCtx(SESSION_A);
+    appendUserBubble(ctx, 'hello');
+    renderEvent(ctx, textEvent('response'));
+    markTurnError(ctx, 'boom');
+    finishTurn(ctx);
+
+    const msgsA = msgStoreFor(STORE_ID, SESSION_A).getState().messages;
+    const fa = msgsA.find((m) => m.role === 'assistant') as AssistantMessage | undefined;
+    expect(fa).toBeDefined();
+    expect(fa!.status).toBe('error');
+    expect(fa!.errorMessage).toBe('boom');
   });
 
   it('finishes turn in the correct session', () => {
