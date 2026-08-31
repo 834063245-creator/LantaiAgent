@@ -1348,23 +1348,26 @@
   min-height: 34px;
   flex-wrap: wrap; /* rework P3-1：窄窗口下附件条可换行，不溢出 */
 }
-/* rework P3-1：创作坞槽容器（ResizeObserver 量高锚点）不参与 flex 压缩 */
+/* rework P3-1：创作坞槽容器（ResizeObserver 量高锚点）不参与 flex 压缩
+ * 2026-09-01 用户拍板：全宽布局行判死——槽原是 flex 列里的普通行，占一条
+ * 全宽死区（纸到槽顶被切断，屏幕底部横一条「遮挡」）。两态统一改浮层落座：
+ * 纸铺满到屏底，坞浮在纸上，只有坐深不同（常驻贴底 / 案头抬起）。 */
 .pp-composer-slot {
-  flex: 0 0 auto;
-}
-/* ── 案头（创作坞 v2 2026-08-31）：无活跃卷时坞升案头当主角──
- * 空态死白的解法：纸摆案中央（居中抬起），签条架陪衬；落笔发出首句后
- * 坞沉降回底部常驻（React 侧 sessions.length === 0 判定切类）。 */
-.pp-composer-slot.pp-desk {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  bottom: clamp(48px, 12vh, 160px);
+  bottom: 14px;
   width: min(880px, calc(100vw - 48px));
   display: flex;
   flex-direction: column;
   gap: 14px;
   z-index: 6;
+}
+/* ── 案头（创作坞 v2 2026-08-31）：无活跃卷时坞升案头当主角──
+ * 空态死白的解法：纸摆案中央（居中抬起），签条架陪衬；落笔发出首句后
+ * 坞沉降回底部常驻（React 侧 sessions.length === 0 判定切类）。 */
+.pp-composer-slot.pp-desk {
+  bottom: clamp(48px, 12vh, 160px); /* 全态同皮，只有坐深不同 */
 }
 /* 案头无匣（dock-v3 转录收尾）：空态直书于纸——退匣（去 deep 底/顶线/版口钮），
  * 写字行坐基线，纸即界面；落笔发出首句沉降回常驻匣。 */
