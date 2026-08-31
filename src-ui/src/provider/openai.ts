@@ -15,6 +15,7 @@ import {
   thinkingCapability,
 } from './thinking';
 import {
+  ApiError,
   type Chunk,
   ChunkType,
   classifyStreamError,
@@ -30,7 +31,8 @@ const DEFAULT_MAX_TOKENS = 32000; // ponytail：跨提供商的安全上限（GL
 
 /** OpenAI 兼容 API 的 SSE 事件形状（本文件消费的子集）。 */
 interface OpenAiSseEvent extends SseEvent {
-  error?: { message?: string };
+  // 2026-08-31 错误码增强：OpenAI 协议 error 对象带 code/type/message
+  error?: { message?: string; code?: string; type?: string };
   usage?: {
     prompt_tokens: number;
     completion_tokens: number;
@@ -300,9 +302,14 @@ async function* readSSE(body: ReadableStream<Uint8Array>, name: string, signal?:
   for await (const ev of sseEvents<OpenAiSseEvent>(body, name, signal)) {
     // 来自 OpenAI 兼容 API 的流内错误（DeepSeek 过载、限流等）
     if (ev.error) {
+      const raw = ev.error.message || JSON.stringify(ev.error);
+      // 2026-08-31 错误码增强：挂 OpenAI 协议的 error.code ?? error.type
       yield {
         type: ChunkType.Error,
-        err: new Error(classifyStreamError(name, ev.error.message || JSON.stringify(ev.error))),
+        err: new ApiError(classifyStreamError(name, raw), {
+          code: ev.error.code ?? ev.error.type,
+          raw: ev.error.message,
+        }),
       };
       return;
     }

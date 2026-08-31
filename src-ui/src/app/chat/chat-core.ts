@@ -21,6 +21,7 @@ import { log } from '../../agent/logger';
 import type { RuntimePort } from '../../agent/runtime/types';
 import { useShellStore } from '../../app/shell-store';
 import type { ToolSchema } from '../../provider/types';
+import { apiErrorSummary } from '../../provider/types';
 import { typedJsonRpc } from '../../rpc-contract';
 import type { StarGraph } from '../../scene/graph-types';
 import { askSessionOf, useAskStore } from '../../state/ask-store';
@@ -928,7 +929,8 @@ export class ChatCore {
         if (msg.includes('paused after')) {
           Stream.markTurnError(this._streamCtxFor(turnSid), msg, 'warn');
         } else {
-          Stream.markTurnError(this._streamCtxFor(turnSid), `错误: ${msg}`, 'error');
+          const code = apiErrorSummary(err);
+          Stream.markTurnError(this._streamCtxFor(turnSid), `错误: ${msg}${code ? `\n（${code}）` : ''}`, 'error');
         }
       }
       // 正常中止（用户主动停止）：exec 状态已表达，不另播报
@@ -1212,9 +1214,10 @@ export class ChatCore {
         if (msg.includes('paused after')) {
           Stream.markTurnError(this._streamCtxFor(turnSid), msg, 'warn');
         } else {
+          const code = apiErrorSummary(err);
           Stream.markTurnError(
             this._streamCtxFor(turnSid),
-            `错误: ${msg}。发送任意消息重试，或输入 /compact 压缩上下文，或输入 /new 新建会话`,
+            `错误: ${msg}。发送任意消息重试，或输入 /compact 压缩上下文，或输入 /new 新建会话${code ? `\n（${code}）` : ''}`,
             'error',
           );
         }
@@ -1381,7 +1384,12 @@ export class ChatCore {
       .run(signal, userText)
       .catch((err: Error) => {
         if (!err.message?.includes('aborted')) {
-          Stream.markTurnError(this._streamCtxFor(retrySid), `重试失败: ${err.message || String(err)}`, 'error');
+          const code = apiErrorSummary(err);
+          Stream.markTurnError(
+            this._streamCtxFor(retrySid),
+            `重试失败: ${err.message || String(err)}${code ? `\n（${code}）` : ''}`,
+            'error',
+          );
         }
       })
       .finally(() => {

@@ -8,6 +8,7 @@ import { sendWithRetry } from './retry';
 import { extractWritePreview, fetchJsonWithTimeout, prewarmEndpoint, type SseEvent, sseEvents } from './shared';
 import { assertEffortDeclared, type StoredThinking, THINKING_EFFORT_BUDGETS, thinkingCapability } from './thinking';
 import {
+  ApiError,
   type Chunk,
   ChunkType,
   classifyStreamError,
@@ -42,7 +43,8 @@ interface AnthropicSseEvent extends SseEvent {
     stop_reason?: string;
   };
   usage?: { output_tokens: number };
-  error?: { message?: string };
+  // Anthropic 流内 error 事件：{ type, message }——type 即错误码（如 overloaded_error）
+  error?: { message?: string; type?: string };
 }
 /** Anthropic 官方端点 — 字面量唯一事实源；settings.PROVIDER_PROTOCOL_DEFAULTS 引用此值。 */
 export const ANTHROPIC_DEFAULT_BASE_URL = 'https://api.anthropic.com';
@@ -448,7 +450,11 @@ async function* readSSE(body: ReadableStream<Uint8Array>, name: string, signal?:
 
       case 'error': {
         const msg = ev.error?.message || 'stream error';
-        yield { type: ChunkType.Error, err: new Error(classifyStreamError(name, msg)) };
+        // 2026-08-31 错误码增强：挂 Anthropic 的 error.type（overloaded_error 等）
+        yield {
+          type: ChunkType.Error,
+          err: new ApiError(classifyStreamError(name, msg), { code: ev.error?.type, raw: msg }),
+        };
         return;
       }
     }

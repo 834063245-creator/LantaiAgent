@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { backoffDelay, isRetryable, sleepWithAbort } from '../src/agent/retry';
+import { ApiError, apiErrorSummary, errorCodeFromBody, retryAfterSeconds } from '../src/provider/types';
 
 describe('isRetryable', () => {
   it('retries rate limit errors', () => {
@@ -107,5 +108,76 @@ describe('sleepWithAbort', () => {
     ctrl.abort();
     const aborted = await sleepWithAbort(5000, ctrl.signal);
     expect(aborted).toBe(true);
+  });
+});
+
+// ═══ 结构化错误 ApiError（2026-08-31 错误码增强）═══
+
+describe('ApiError', () => {
+  it('带 status/code/retryAfter/raw，message 保持分类文案（isRetryable 兼容）', () => {
+    const err = new ApiError('[服务商限流] "test" 请求过于频繁，稍后自动重试。', {
+      status: 429,
+      code: 'rate_limit_exceeded',
+      retryAfter: 15,
+      raw: '{"error":...}',
+    });
+    expect(err.message).toContain('[服务商限流]');
+    expect(err.status).toBe(429);
+    expect(err.code).toBe('rate_limit_exceeded');
+    expect(err.retryAfter).toBe(15);
+    expect(err.raw).toBe('{"error":...}');
+    expect(err).toBeInstanceOf(Error);
+    expect(err.codeSummary()).toBe('HTTP 429 · rate_limit_exceeded');
+  });
+
+  it('codeSummary 无码时返回空串', () => {
+    const err = new ApiError('[未知错误] plain');
+    expect(err.codeSummary()).toBe('');
+    const statusOnly = new ApiError('x', { status: 500 });
+    expect(statusOnly.codeSummary()).toBe('HTTP 500');
+  });
+});
+
+describe('retryAfterSeconds', () => {
+  it('解析纯秒数', () => {
+    expect(retryAfterSeconds('15')).toBe(15);
+    expect(retryAfterSeconds(' 120 ')).toBe(120);
+  });
+
+  it('解析 HTTP-date', () => {
+    const future = new Date(Date.now() + 30_000).toUTCString();
+    const sec = retryAfterSeconds(future);
+    expect(sec).toBeGreaterThanOrEqual(20);
+    expect(sec).toBeLessThanOrEqual(40);
+  });
+
+  it('空/垃圾值返回 undefined', () => {
+    expect(retryAfterSeconds(undefined)).toBeUndefined();
+    expect(retryAfterSeconds('')).toBeUndefined();
+    expect(retryAfterSeconds('not-a-date')).toBeUndefined();
+  });
+});
+
+describe('errorCodeFromBody', () => {
+  it('提取 error.code；无则 error.type；再无则 error.error', () => {
+    expect(errorCodeFromBody('{"error":{"code":"rate_limit_exceeded","message":"slow down"}}')).toBe(
+      'rate_limit_exceeded',
+    );
+    expect(errorCodeFromBody('{"error":{"type":"invalid_api_key"}}')).toBe('invalid_api_key');
+    expect(errorCodeFromBody('{"error":{"error":"overloaded"}}')).toBe('overloaded');
+  });
+
+  it('非 JSON/无 error 返回 undefined', () => {
+    expect(errorCodeFromBody('not json')).toBeUndefined();
+    expect(errorCodeFromBody('{"foo":1}')).toBeUndefined();
+    expect(errorCodeFromBody('')).toBeUndefined();
+  });
+});
+
+describe('apiErrorSummary', () => {
+  it('ApiError 返回码摘要；普通 Error 返回空串', () => {
+    expect(apiErrorSummary(new ApiError('x', { status: 429, code: 'c' }))).toBe('HTTP 429 · c');
+    expect(apiErrorSummary(new Error('[服务商限流] x'))).toBe('');
+    expect(apiErrorSummary('plain')).toBe('');
   });
 });

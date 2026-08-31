@@ -235,6 +235,79 @@ export function classifyStreamError(name: string, message: string): string {
   return `[未知错误] "${name}" 流式响应中断：${message}。如不确定原因，请截图联系开发者。`;
 }
 
+// ---- 结构化错误（2026-08-31 错误码增强）----
+
+/** 服务商原始错误的结构化元数据——文案保持人类可读（classify* 的 [分类] 面），
+ *  原始码（HTTP status / 服务商 error code / retry-after / 原始响应体）挂在这
+ *  里供墓碑渲染与退避决策消费。message 与普通 Error 兼容（isRetryable 仍读
+ *  [前缀] 分类，不受影响）。 */
+export interface ApiErrorMeta {
+  /** HTTP 状态码；网络层失败为 0。 */
+  status?: number;
+  /** 服务商返回的错误码（如 rate_limit_exceeded / invalid_api_key / 或 SSE 的 type）。 */
+  code?: string;
+  /** 429 等限流响应的 retry-after 秒数（服务商明示，退避应优先于自猜）。 */
+  retryAfter?: number;
+  /** 原始响应体/错误文本（截断到 300 字符）。 */
+  raw?: string;
+}
+
+export class ApiError extends Error {
+  readonly status?: number;
+  readonly code?: string;
+  readonly retryAfter?: number;
+  readonly raw?: string;
+
+  constructor(message: string, meta: ApiErrorMeta = {}) {
+    super(message);
+    this.name = 'ApiError';
+    if (meta.status !== undefined) this.status = meta.status;
+    if (meta.code !== undefined) this.code = meta.code;
+    if (meta.retryAfter !== undefined) this.retryAfter = meta.retryAfter;
+    if (meta.raw !== undefined) this.raw = meta.raw;
+  }
+
+  /** 墓碑/日志用的紧凑错误码摘要：「HTTP 429 · rate_limit_exceeded」；无码时返回空串。 */
+  codeSummary(): string {
+    const parts: string[] = [];
+    if (this.status !== undefined) parts.push(`HTTP ${this.status}`);
+    if (this.code) parts.push(this.code);
+    return parts.join(' · ');
+  }
+}
+
+/** 解析 retry-after 头（秒数或 HTTP-date）→ 秒数；无法解析返回 undefined。 */
+export function retryAfterSeconds(value: string | null | undefined): number | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  // HTTP-date 格式（极少数服务商）——以本地时钟差换算秒数
+  const time = Date.parse(trimmed);
+  if (Number.isNaN(time)) return undefined;
+  const sec = Math.max(0, Math.round((time - Date.now()) / 1000));
+  return Number.isFinite(sec) ? sec : undefined;
+}
+
+/** 从 OpenAI 兼容错误响应体中提取服务商错误码（error.code ?? error.type ?? error.error）。 */
+export function errorCodeFromBody(body: string): string | undefined {
+  if (!body) return undefined;
+  try {
+    const parsed = JSON.parse(body) as {
+      error?: { code?: string; type?: string; error?: string; message?: string };
+      type?: string;
+    };
+    return parsed.error?.code ?? parsed.error?.type ?? parsed.error?.error ?? parsed.type ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** 墓碑/日志显示错误码摘要；非 ApiError 或无码时返回空串（不显示）。 */
+export function apiErrorSummary(err: unknown): string {
+  if (err instanceof ApiError) return err.codeSummary();
+  return '';
+}
+
 // ---- 工具配对清理 ----
 
 const interruptedToolResult = '[no result: the previous turn was interrupted before this tool call completed]';

@@ -8,7 +8,7 @@ import { activeSubagentProviders } from '../composition/subagent-service';
 import { STREAM_IDLE_TIMEOUT_MS, streamWithIdleTimeout } from '../provider/idle-stream';
 import type { StoredThinking } from '../provider/thinking';
 import type { Message, Provider, ToolCall, ToolSchema, Usage } from '../provider/types';
-import { ChunkType } from '../provider/types';
+import { ApiError, apiErrorSummary, ChunkType } from '../provider/types';
 import {
   applyAutoTuneConfigImpl,
   type CompactionHost,
@@ -1281,15 +1281,23 @@ export class Agent {
       // 丢弃失败尝试的所有工具调用
       executor?.discard();
 
-      // 重试前退避
-      const delay = backoffDelay(attempt);
+      // 重试前退避：服务商明示 retry-after 时听它的（封顶 30s——用户等不起
+      // 60s+ 的干等）；没给才按指数退避猜（2026-08-31 错误码增强）。
+      const summary = apiErrorSummary(lastErr);
+      const codePart = summary ? `（${summary}）` : '';
+      const hinted =
+        lastErr instanceof ApiError && lastErr.retryAfter !== undefined
+          ? Math.min(lastErr.retryAfter * 1000, 30_000)
+          : undefined;
+      const delay = hinted ?? backoffDelay(attempt);
       log.info('agent', `stream retry ${attempt + 1}/${MAX_RETRIES} in ${delay}ms`, {
         error: String(lastErr.message || lastErr),
+        code: summary || undefined,
       });
       this._sink({
         kind: EventKind.Notice,
         level: 'warn',
-        text: `模型调用失败，${(delay / 1000).toFixed(1)}s 后重试 (${attempt + 1}/${MAX_RETRIES})…`,
+        text: `模型调用失败${codePart}，${(delay / 1000).toFixed(1)}s 后重试 (${attempt + 1}/${MAX_RETRIES})…`,
       });
 
       const aborted = await sleepWithAbort(delay, signal);
@@ -1298,11 +1306,13 @@ export class Agent {
       }
     }
 
-    // 重试已耗尽
+    // 重试已耗尽——墓碑带原始错误码（第二行，pre-line 渲染）
+    const finalMsg = lastErr?.message || '未知错误';
+    const finalCode = apiErrorSummary(lastErr);
     this._sink({
       kind: EventKind.Notice,
       level: 'error',
-      text: `模型调用失败，已重试 ${MAX_RETRIES} 次：${lastErr?.message || '未知错误'}。请检查网络连接和 API 设置。`,
+      text: `模型调用失败，已重试 ${MAX_RETRIES} 次：${finalMsg}。请检查网络连接和 API 设置。${finalCode ? `\n（${finalCode}）` : ''}`,
     });
     return { text: '', reasoning: '', signature: '', calls: [], usage: undefined, err: lastErr };
   }
@@ -1429,7 +1439,11 @@ export class Agent {
     }
 
     if (err) {
-      this._sink({ kind: EventKind.Notice, level: 'error', text: `模型调用失败: ${err.message || err}` });
+      // 2026-08-31 贴黄拆迁 + 墓碑语义：单次尝试失败不落墓碑（回合可能自动重试
+      // 成功——墓碑残留会把完成的回合标成 error）。降为 warn 瞬时播报；
+      // 最终结局由 stream() 收口：重试耗尽 sink error（→ 回合墓碑）或不可重试
+      // 路径返回 err 由上层处理/UI catch 落墓碑。
+      this._sink({ kind: EventKind.Notice, level: 'warn', text: `模型调用失败: ${err.message || err}` });
       // 交还已收集的 calls（不清空）：流失败时 executor 可能已实时执行部分工具
       // （资产生成等有副作用工具），default-loop 需要真实的 calls 才能把已执行
       // 的结果补 append 进上下文——否则 UI 已渲染、上下文无记录，Agent 下一轮
