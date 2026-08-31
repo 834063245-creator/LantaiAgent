@@ -174,6 +174,8 @@ const BlockView = memo(function BlockView({
   onToggleFold,
   onToggleSidecarFold,
   onSidecarPinMouseDown,
+  sidecarOut,
+  onSidecarRestore,
   onUnpin,
   onDragHandleMouseDown,
   unpinLabel = '收回',
@@ -191,8 +193,12 @@ const BlockView = memo(function BlockView({
   onToggleFold: (b: SourcedBlock) => void;
   /** 眉批折叠切换（壳层 foldOv 持久，key = `${block.id}:sc`） */
   onToggleSidecarFold?: (b: SourcedBlock) => void;
-  /** 眉批拖出钉画布（拷贝语义公共物：独立夹注快照） */
+  /** 眉批拖出钉画布（移出语义：首动建钉跟手，快照从眉批栏原位揭起） */
   onSidecarPinMouseDown?: (e: React.MouseEvent, block: SourcedBlock) => void;
+  /** 眉批已钉出（`:sc` 快照钉在画布）——眉批栏渲染「已移出·点击恢复」占位 */
+  sidecarOut?: boolean;
+  /** 眉批恢复（拔 `:sc` 快照钉，夹注回眉批栏——占位点击手势的语义端） */
+  onSidecarRestore?: (b: SourcedBlock) => void;
   onUnpin: (id: string) => void;
   /** 拖拽手柄（文类签 .pp-kind）——V3a 手势分工：签=整块拖出（D-R2-1） */
   onDragHandleMouseDown: (e: React.MouseEvent, block: SourcedBlock) => void;
@@ -238,6 +244,8 @@ const BlockView = memo(function BlockView({
           sidecarFolded={sidecarFolded}
           onToggleSidecarFold={onToggleSidecarFold}
           onSidecarPinMouseDown={onSidecarPinMouseDown}
+          sidecarOut={sidecarOut}
+          onSidecarRestore={onSidecarRestore}
         />
       ) : (
         <div className="pp-body">{(p as { text?: string }).text ?? ''}</div>
@@ -388,6 +396,8 @@ const REGION_HIT_LABEL_BAND = 40;
 const MANUAL_GUARD_MS = 800;
 /** 流内占位符高度（pinned 块在流原序位的洞——设计文档 §2.3） */
 const GHOST_H = 32;
+/** 眉批快照钉宽（P5：独立夹注快照落纸宽度） */
+const SIDECAR_PIN_W = 320;
 /** 稳定空引用——无会话/无钉住时避免无谓重渲染 */
 const EMPTY_OPS: BlockOp[] = [];
 
@@ -871,6 +881,12 @@ export function PaperPanel() {
     return m;
   }, [canvasState.pins]);
 
+  /* 眉批已钉出检测（P5 → 2026-08-31 移出语义）：`${blockId}:sc` 快照钉存在 =
+   * 眉批栏渲染「已移出·点击恢复」占位（渲染器 + 测高镜像共同消费）。
+   * pinsMap 引用随 canvasState.pins 稳定——regions memo 已依赖 pinsMap，
+   * 建钉/拔钉时占位切换与块高重测同帧生效。 */
+  const sidecarOutOf = useCallback((b: SourcedBlock) => pinsMap[`${b.id}:sc`] != null, [pinsMap]);
+
   /* P2a+P6 宽度自由：块宽适配流区——先 clamp 到流区内容宽（窄流区压版心，
    * 宽流区不放宽：版心有可读上限 720）。2026-08-30 来文标题化：来文不再收缩
    * 宽（纸条隐喻退役），与其他块同走版心宽——标题居中吃版心。WeakMap 以
@@ -924,7 +940,7 @@ export function PaperPanel() {
         id: b.id,
         h:
           b.state === 'flow'
-            ? measureBlockHeightCached(b, measureCacheRef.current, foldedOf(b), sidecarFoldedOf(b))
+            ? measureBlockHeightCached(b, measureCacheRef.current, foldedOf(b), sidecarFoldedOf(b), sidecarOutOf(b))
             : GHOST_H,
         w: b.w,
         kind: b.kind,
@@ -944,7 +960,7 @@ export function PaperPanel() {
           x: b.x,
           y: b.y,
           w: b.w,
-          h: measureBlockHeightCached(b, measureCacheRef.current, foldedOf(b), sidecarFoldedOf(b)),
+          h: measureBlockHeightCached(b, measureCacheRef.current, foldedOf(b), sidecarFoldedOf(b), sidecarOutOf(b)),
         }));
       const flowWindow = visibleFlowWindow(flowGeom, viewRect, OVERSCAN);
       const visiblePinnedSet = new Set(visiblePinnedIds(pinnedGeom, viewRect, OVERSCAN));
@@ -995,6 +1011,7 @@ export function PaperPanel() {
     pinsMap,
     foldedOf,
     sidecarFoldedOf,
+    sidecarOutOf,
     adaptBlocks,
   ]);
 
@@ -1418,6 +1435,10 @@ export function PaperPanel() {
     [core],
   );
   const onGhostClick = onUnpin;
+
+  /* 眉批恢复（P5 → 2026-08-31 移出语义）：拔掉 `${blockId}:sc` 快照钉——
+   * 眉批栏「已移出」占位还原为夹注全文（与流内 ghost 点击恢复同一手势语言） */
+  const onSidecarRestore = useCallback((b: SourcedBlock) => onUnpin(`${b.id}:sc`), [onUnpin]);
 
   /* ── 自动选中（Stage-4 §4.1）：三道闸停留控制器 ──
    * 活跃会话是有记忆的状态，非每帧重算：视口中心命中流区 + 连续停留
@@ -2062,50 +2083,52 @@ export function PaperPanel() {
     };
   }, [core]);
 
-  /* ── 眉批拖出钉画布（P5）：眉批栏「钉」手柄按下 → 跟手（body cursor 反馈）
-   * → 松手落独立夹注快照钉（拷贝语义公共物，composite 不受影响）。 ── */
-  const sidecarPinRef = useRef<{ block: SourcedBlock; sx: number; sy: number } | null>(null);
+  /* ── 眉批拖出钉画布（P5 → 2026-08-31 移出语义修订）：复用整块拖拽机制
+   * （D-R2-1 同款手势语言）——首动即建钉：快照从眉批栏原位跟手揭起（offX/offY
+   * 锚在眉批栏世界位），流内眉批位同帧换「已移出」占位（sidecarOutOf），
+   * 拖回流带松手 = 取消（占位还原）；快照仍是拷贝语义公共物。
+   * 点击（未过阈值）= 无操作，与整块拖拽一致。 ── */
   const onSidecarPinMouseDown = useCallback((e: React.MouseEvent, block: SourcedBlock) => {
     if (e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
-    sidecarPinRef.current = { block, sx: e.clientX, sy: e.clientY };
+    const sidecar = (block.payload as { sidecar?: { text: string } }).sidecar;
+    if (!sidecar?.text) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const v = viewRef.current;
+    const grab = screenToWorld(v, e.clientX - rect.left, e.clientY - rect.top);
+    // 起拖锚点 = 眉批栏左上角世界坐标——快照起拖位与原位重合（「揭起」非跳到光标）
+    const asideEl = (e.currentTarget as HTMLElement).closest('.pp-marginalia');
+    const anchor = asideEl
+      ? screenToWorld(
+          v,
+          asideEl.getBoundingClientRect().left - rect.left,
+          asideEl.getBoundingClientRect().top - rect.top,
+        )
+      : grab;
+    dragRef.current = {
+      id: `${block.id}:sc`,
+      sessionId: blockSessionRef.current.get(block.id),
+      sx: e.clientX,
+      sy: e.clientY,
+      moved: false,
+      wasFlow: true, // 首动 commitPinned 建钉 + 回带取消——与整块拖出同语义
+      bw: SIDECAR_PIN_W,
+      offX: grab.x - anchor.x,
+      offY: grab.y - anchor.y,
+      block: {
+        id: `${block.id}:sc`,
+        kind: 'reasoning',
+        payload: { text: sidecar.text },
+        state: 'flow',
+        x: anchor.x,
+        y: anchor.y,
+        w: SIDECAR_PIN_W,
+        source: block.source,
+      },
+    };
   }, []);
-  useEffect(() => {
-    const move = (e: MouseEvent) => {
-      const d = sidecarPinRef.current;
-      if (!d) return;
-      if (Math.hypot(e.clientX - d.sx, e.clientY - d.sy) > DRAG_THRESHOLD) {
-        document.body.classList.add('pp-pin-grabbing');
-      }
-    };
-    const up = (e: MouseEvent) => {
-      const d = sidecarPinRef.current;
-      sidecarPinRef.current = null;
-      document.body.classList.remove('pp-pin-grabbing');
-      if (!d || !core) return;
-      if (Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < DRAG_THRESHOLD) return; // 点击=无操作
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const w = screenToWorld(viewRef.current, e.clientX - rect.left, e.clientY - rect.top);
-      const sidecar = (d.block.payload as { sidecar?: { text: string } }).sidecar;
-      if (!sidecar?.text) return;
-      getCanvasStore(core.panelId)
-        .getState()
-        .setPin(`${d.block.id}:sc`, {
-          x: w.x,
-          y: w.y,
-          w: 320,
-          snapshot: { kind: 'reasoning', text: sidecar.text },
-        });
-    };
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
-    return () => {
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('mouseup', up);
-    };
-  }, [core]);
 
   /* 世界层 transform */
   const worldStyle = useMemo(
@@ -2425,6 +2448,8 @@ export function PaperPanel() {
                           onToggleFold={onToggleFold}
                           onToggleSidecarFold={onToggleSidecarFold}
                           onSidecarPinMouseDown={onSidecarPinMouseDown}
+                          sidecarOut={sidecarOutOf(b)}
+                          onSidecarRestore={onSidecarRestore}
                           onUnpin={onUnpin}
                           onDragHandleMouseDown={onBlockMouseDown}
                         />
@@ -2463,6 +2488,8 @@ export function PaperPanel() {
                           onToggleFold={onToggleFold}
                           onToggleSidecarFold={onToggleSidecarFold}
                           onSidecarPinMouseDown={onSidecarPinMouseDown}
+                          sidecarOut={sidecarOutOf(b)}
+                          onSidecarRestore={onSidecarRestore}
                           onUnpin={onUnpin}
                           onDragHandleMouseDown={onBlockMouseDown}
                         />

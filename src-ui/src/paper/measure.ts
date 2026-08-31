@@ -974,22 +974,26 @@ export function measureMdBlocks(blocks: MdBlock[], w: number): number {
 
 /** markdown 块体高（渲染 MarkdownBody 的逐字镜像——消费同一结构模型）。
  *  blocks 由调用方解析（全量 parseMarkdown 或增量 parseMarkdownIncremental）
- *  ——增量路径复用同函数，测量与渲染共用单一解析的纪律不变。 */
-function measureMarkdownBody(blocks: MdBlock[], b: SourcedBlock, sidecarFolded = false): number {
+ *  ——增量路径复用同函数，测量与渲染共用单一解析的纪律不变。
+ *  sidecarOut（2026-08-31 移出语义）：`:sc` 快照钉在画布上时眉批栏只剩占位
+ *  一行（.pp-marginalia-out，实高 ~18px）——按折叠态同款「一行夹注」计
+ *  （安全方向超测，与折叠态测高约定一致）。 */
+function measureMarkdownBody(blocks: MdBlock[], b: SourcedBlock, sidecarFolded = false, sidecarOut = false): number {
   const bodyH = measureMdBlocks(blocks, b.w);
   // P5 眉批化：夹注挂侧栏（.pp-marginalia）——复合块高 = max(正文@全宽,
   // 夹注@侧栏内容宽)。眉批恒容于块高内 → 栈几何零变化（方案甲的决定性
   // 优势，见 pretext-typography-plan §三）。折叠态（夹注恒折拍板）只占一行。
   const sidecar = (b.payload as { sidecar?: { text: string } }).sidecar;
   if (!sidecar?.text) return bodyH;
-  const noteH = sidecarFolded
-    ? PAPER_REASONING_LINE_HEIGHT
-    : measureTextHeight(
-        sidecar.text,
-        MARGINALIA_W - MARGINALIA_INSET,
-        PAPER_REASONING_FONT,
-        PAPER_REASONING_LINE_HEIGHT,
-      );
+  const noteH =
+    sidecarOut || sidecarFolded
+      ? PAPER_REASONING_LINE_HEIGHT
+      : measureTextHeight(
+          sidecar.text,
+          MARGINALIA_W - MARGINALIA_INSET,
+          PAPER_REASONING_FONT,
+          PAPER_REASONING_LINE_HEIGHT,
+        );
   return Math.max(bodyH, noteH);
 }
 
@@ -999,7 +1003,7 @@ function measureMarkdownBody(blocks: MdBlock[], b: SourcedBlock, sidecarFolded =
  * folded（2026-08-30 折叠机制）：夹注/脚注/程文的折叠态计高——直接调用缺省
  * 展开（false）；壳层经 measureBlockHeightCached 传有效折叠态（覆盖 ?? 默认规则）。
  */
-export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolded = false): number {
+export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolded = false, sidecarOut = false): number {
   const p = b.payload as PayloadLike;
   switch (b.kind) {
     case 'user': {
@@ -1016,7 +1020,7 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       // markdown 专项（2026-08-30）：消费 parseMarkdown 结构模型逐元素计高
       // （与 MarkdownBody 渲染共用同一解析——结构漂移结构性不成立）。
       if (!p.text) return 0;
-      return measureMarkdownBody(parseMarkdown(p.text), b, sidecarFolded);
+      return measureMarkdownBody(parseMarkdown(p.text), b, sidecarFolded, sidecarOut);
     }
     case 'reasoning': {
       if (!p.text) return FOLD_ROW_H;
@@ -1136,16 +1140,18 @@ export function createBlockMeasureCache(): BlockMeasureCache {
 }
 
 /** 内容签名（决定块高的全部 payload 字段 + 折叠态——签名变 = 高度必须重测）。
- *  P4：ink 层复用同一签名做墨迹缓存 key（块 id + 签名 + 宽）。 */
-export function measureSignature(b: SourcedBlock, folded: boolean, sidecarFolded = false): string {
+ *  P4：ink 层复用同一签名做墨迹缓存 key（块 id + 签名 + 宽）。
+ *  sidecarOut（2026-08-31 移出语义）：眉批已钉出入签——钉/拔钉必重测。 */
+export function measureSignature(b: SourcedBlock, folded: boolean, sidecarFolded = false, sidecarOut = false): string {
   const p = b.payload as Record<string, unknown>;
   const f = folded ? 1 : 0;
   const sf = sidecarFolded ? 1 : 0;
+  const so = sidecarOut ? 1 : 0;
   switch (b.kind) {
     case 'user':
       return `user|${p.text ?? ''}|${(p.files as Array<{ path: string; name: string }> | undefined)?.length ?? 0}`;
     case 'markdown':
-      return `markdown|${p.text ?? ''}|${(p.sidecar as { text?: string } | undefined)?.text ?? ''}|${sf}`;
+      return `markdown|${p.text ?? ''}|${(p.sidecar as { text?: string } | undefined)?.text ?? ''}|${sf}|${so}`;
     case 'reasoning':
       return `reasoning|${f}|${p.text ?? ''}`;
     case 'notice':
@@ -1184,9 +1190,10 @@ export function measureBlockHeightCached(
   cache: BlockMeasureCache,
   folded = false,
   sidecarFolded = false,
+  sidecarOut = false,
 ): number {
   const obs = needsObservedHeight(b.kind, b.asset != null) ? observedBlockHeightOf(b.id, b.w) : undefined;
-  const sig = `${measureSignature(b, folded, sidecarFolded)}|w=${b.w}|obs=${obs ?? ''}`;
+  const sig = `${measureSignature(b, folded, sidecarFolded, sidecarOut)}|w=${b.w}|obs=${obs ?? ''}`;
   const hit = cache.byId.get(b.id);
   if (hit && hit.sig === sig) return hit.h;
   let h: number;
@@ -1201,10 +1208,10 @@ export function measureBlockHeightCached(
       const prev = cache.mdParse.get(b.id) ?? null;
       const res = parseMarkdownIncremental(text, prev);
       cache.mdParse.set(b.id, res.state);
-      h = measureMarkdownBody(res.blocks, b, sidecarFolded);
+      h = measureMarkdownBody(res.blocks, b, sidecarFolded, sidecarOut);
     }
   } else {
-    h = measureBlockHeight(b, folded, sidecarFolded);
+    h = measureBlockHeight(b, folded, sidecarFolded, sidecarOut);
   }
   cache.byId.set(b.id, { sig, h });
   return h;

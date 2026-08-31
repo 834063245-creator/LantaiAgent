@@ -42,8 +42,13 @@ export interface BlockRendererProps {
   sidecarFolded?: boolean;
   /** 眉批折叠切换（壳层 foldOv 持久，key = `${block.id}:sc`） */
   onToggleSidecarFold?: (block: SourcedBlock) => void;
-  /** 眉批拖出钉画布（拷贝语义公共物：独立夹注快照，composite 不受影响） */
+  /** 眉批拖出钉画布（移出语义：首动建钉跟手，快照从眉批栏原位揭起） */
   onSidecarPinMouseDown?: (e: React.MouseEvent, block: SourcedBlock) => void;
+  /** 眉批已钉出（2026-08-31 移出语义）：`:sc` 快照钉在画布上——体渲染换
+   *  「已移出·点击恢复」占位（替代夹注全文/折叠钮/钉手柄）。 */
+  sidecarOut?: boolean;
+  /** 眉批恢复：拔掉 `:sc` 快照钉，夹注回眉批栏（占位点击手势的语义端） */
+  onSidecarRestore?: (block: SourcedBlock) => void;
 }
 
 /* ── 流式增量渐显（streaming-fade-render-plan 2026-08-30）──
@@ -367,7 +372,14 @@ function renderMdBlock(el: MdBlock, tail?: ReactNode): ReactNode {
  *    - 增量按首个换行切：换行前 = 行内续写（tail 接进最后一个块，字符级淡入）；
  *    - 换行后 = 新块（块级 DeltaZone，从行首开始不腰斩 markdown 结构）。
  *    - stable 为空（首 token）时行内尾也兜底渲染，不丢字。 */
-function MarkdownBody({ block, sidecarFolded, onToggleSidecarFold, onSidecarPinMouseDown }: BlockRendererProps) {
+function MarkdownBody({
+  block,
+  sidecarFolded,
+  onToggleSidecarFold,
+  onSidecarPinMouseDown,
+  sidecarOut,
+  onSidecarRestore,
+}: BlockRendererProps) {
   const text = (block.payload as { text?: string }).text ?? '';
   // P5 眉批化：配对吸附的夹注全文 → 右侧眉批栏（.pp-marginalia，绝对定位
   // 锚 .pp-block——世界层块是唯一定位祖先，侧栏在块宽之外不挤正文列）
@@ -393,41 +405,57 @@ function MarkdownBody({ block, sidecarFolded, onToggleSidecarFold, onSidecarPinM
     <div className="pp-body pp-md">
       {sidecar?.text ? (
         <aside className="pp-marginalia">
-          {sidecarFolded ? (
+          {sidecarOut ? (
+            /* 已钉出（移出语义）：眉批栏原位留洞——点击拔 `:sc` 快照钉恢复夹注 */
             <button
               type="button"
-              className="pp-marginalia-toggle"
+              className="pp-marginalia-out"
               onClick={(e) => {
                 e.stopPropagation();
-                onToggleSidecarFold?.(block);
+                onSidecarRestore?.(block);
               }}
             >
-              {foldLabel('reasoning', { text: sidecar.text }, true)}
+              已移出 · 点击恢复
             </button>
           ) : (
             <>
-              {sidecar.text}
+              {sidecarFolded ? (
+                <button
+                  type="button"
+                  className="pp-marginalia-toggle"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleSidecarFold?.(block);
+                  }}
+                >
+                  {foldLabel('reasoning', { text: sidecar.text }, true)}
+                </button>
+              ) : (
+                <>
+                  {sidecar.text}
+                  <button
+                    type="button"
+                    className="pp-marginalia-toggle"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleSidecarFold?.(block);
+                    }}
+                  >
+                    {foldLabel('reasoning', { text: sidecar.text }, false)}
+                  </button>
+                </>
+              )}
+              {/* 拖出钉画布：独立夹注快照（移出语义——钉出后本栏换「已移出」占位） */}
               <button
                 type="button"
-                className="pp-marginalia-toggle"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleSidecarFold?.(block);
-                }}
+                className="pp-marginalia-pin"
+                title="拖出钉上画布"
+                onMouseDown={(e) => onSidecarPinMouseDown?.(e, block)}
               >
-                {foldLabel('reasoning', { text: sidecar.text }, false)}
+                钉
               </button>
             </>
           )}
-          {/* 拖出钉画布：独立夹注快照（拷贝语义公共物，composite 不受影响） */}
-          <button
-            type="button"
-            className="pp-marginalia-pin"
-            title="拖出钉上画布"
-            onMouseDown={(e) => onSidecarPinMouseDown?.(e, block)}
-          >
-            钉
-          </button>
         </aside>
       ) : null}
       {blocks.map((el, i) => (

@@ -29,6 +29,7 @@ import {
   createBlockMeasureCache,
   measureBlockHeight,
   measureBlockHeightCached,
+  PAPER_REASONING_LINE_HEIGHT,
 } from '../src/paper/measure';
 import { translateMessage } from '../src/paper/translate';
 import type { AssistantMessage } from '../src/ui/message-model';
@@ -140,5 +141,25 @@ describe('measure 眉批复合块（P5）', () => {
     (b.payload as { sidecar?: { text: string } }).sidecar = { text: '眉批二' };
     const hit = measureBlockHeightCached(b, cache);
     expect(hit).toBe(36); // 重测成功（mock 恒 36）——关键是不命中旧缓存也不抛
+  });
+
+  /* ═══ 眉批已钉出（2026-08-31 移出语义：`:sc` 快照钉在画布）═══ */
+
+  it('眉批已钉出：眉批栏只剩占位一行（noteH = 一行夹注，占位实高更低）', () => {
+    // 正文很矮（20）→ max(20, 一行夹注) = 一行夹注
+    layoutMock.mockReturnValueOnce({ height: 20, lineCount: 1 });
+    expect(measureBlockHeight(mdBlock('短', { text: '长眉批' }), false, false, true)).toBe(PAPER_REASONING_LINE_HEIGHT);
+  });
+
+  it('钉出/拔钉 → 测量签名失效重测（out 维度入签）', () => {
+    const cache = createBlockMeasureCache();
+    const b = mdBlock('正文', { text: '长眉批' });
+    // 展开态：正文 1 次 + 夹注侧栏 1 次 layout
+    layoutMock.mockReturnValueOnce({ height: 36, lineCount: 2 }).mockReturnValueOnce({ height: 100, lineCount: 2 });
+    expect(measureBlockHeightCached(b, cache, false, false, false)).toBe(100);
+    // 钉出：签名变化必重测——夹注侧不再计高（占位一行，零 layout 调用）
+    const calls = layoutMock.mock.calls.length;
+    expect(measureBlockHeightCached(b, cache, false, false, true)).toBe(Math.max(36, PAPER_REASONING_LINE_HEIGHT));
+    expect(layoutMock.mock.calls.length).toBe(calls + 1);
   });
 });
