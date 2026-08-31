@@ -36,9 +36,12 @@ import {
   PERMISSION_MODES,
   resolveNewSessionDefault,
   thinkingOptionsFor,
+  typedJsonRpc,
   useCoreStore,
   useModeStore,
   usePaperDock,
+  useShellStore,
+  watchFileDragDrop,
 } from './host';
 import { ModelSelector } from './ModelSelector';
 
@@ -69,6 +72,78 @@ export function navigateHistory(
   if (next < 0 || next >= history.length) return { entry: null };
   return { entry: { idx: next, text: history[next] } };
 }
+
+/* ── 引（创作坞 v2 2026-08-31）：工作区文件模糊引用 ── */
+
+/** list_directory 递归项（Rust DirEntry 序列化形状）。 */
+interface YinDirEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  children?: YinDirEntry[] | null;
+}
+
+/** 递归摊平目录树为文件清单（目录不入引——附卷的是文件）。 */
+export function flattenDirEntries(entries: readonly YinDirEntry[]): Array<{ path: string; name: string }> {
+  const out: Array<{ path: string; name: string }> = [];
+  const walk = (list: readonly YinDirEntry[]) => {
+    for (const e of list ?? []) {
+      if (!e.is_dir) out.push({ path: e.path, name: e.name });
+      if (e.children?.length) walk(e.children);
+    }
+  };
+  walk(entries);
+  return out;
+}
+
+/** 引 模糊匹配纯函数：查询词对路径做子序列命中；basename 命中加权靠前，
+ *  路径越短越靠前。空查询 = 清单原序截前 limit（打开即见常拥文件）。 */
+export function fuzzyMatchFiles(
+  files: ReadonlyArray<{ path: string; name: string }>,
+  query: string,
+  limit = 14,
+): Array<{ path: string; name: string }> {
+  const q = query.trim().toLowerCase();
+  if (!q) return files.slice(0, limit);
+  const hits: Array<{ path: string; name: string; score: number }> = [];
+  for (const f of files) {
+    const path = f.path.toLowerCase();
+    const name = f.name.toLowerCase();
+    if (!isSubsequence(q, path)) continue;
+    const score = name.startsWith(q) ? 0 : name.includes(q) ? 1 : 2;
+    hits.push({ ...f, score });
+  }
+  hits.sort((a, b) => a.score - b.score || a.path.length - b.path.length);
+  return hits.slice(0, limit);
+}
+
+function isSubsequence(needle: string, haystack: string): boolean {
+  let i = 0;
+  for (let j = 0; j < haystack.length && i < needle.length; j++) {
+    if (haystack[j] === needle[i]) i++;
+  }
+  return i === needle.length;
+}
+
+/** 律（快捷键总览）行表——键在前、义在后。 */
+const HELP_ROWS: ReadonlyArray<readonly [string, string]> = [
+  ['Enter', '发送'],
+  ['Shift+Enter', '换行'],
+  ['↑ / ↓', '输入历史'],
+  ['/ 或 翰', '命令面板'],
+  ['引 · 夹', '附文件入卷'],
+  ['拖文件到坞', '界栏松手入卷'],
+  ['Alt+↑↓', '块间移动'],
+  ['Alt+←→', '卷间移动'],
+  ['Home', '画布回原点'],
+  ['拖文类签', '移出钉住'],
+  ['拖流区边缘', '移动流区'],
+  ['拖流区四角', '调整宽度'],
+  ['拖选区', '抽纸条'],
+];
+
+/** 历史导航眉批：一次性提示旗标（localStorage，毒化容忍——读写全包 try）。 */
+const HIST_HINT_KEY = 'lantai.hint.historySeen';
 
 /** rework P2-2：思考档位纯中文展示词（创作坞内不再中英混排）。 */
 const THINKING_ZH: Record<string, string> = {
@@ -113,6 +188,17 @@ export const ComposerDock = memo(function ComposerDock() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [localNotice, setLocalNotice] = useState<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  /* ── 创作坞 v2（2026-08-31）本地态：翰（命令面板）/ 律（快捷键）/ 引（文件）
+   *    / 拖放入卷界栏 / 历史眉批。── */
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [yinOpen, setYinOpen] = useState(false);
+  const [yinQuery, setYinQuery] = useState('');
+  const [yinFiles, setYinFiles] = useState<Array<{ path: string; name: string }>>([]);
+  const [yinIdx, setYinIdx] = useState(0);
+  const yinInputRef = useRef<HTMLInputElement | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [histHint, setHistHint] = useState(false);
 
   /* ── 会话面：sess store 订阅（切卷/改名/token 变化自动重渲）── */
   const [sessions, setSessions] = useState<Array<{ id: number; label: string }>>([]);
@@ -182,11 +268,16 @@ export const ComposerDock = memo(function ComposerDock() {
   }, [core]);
 
   /* ── C2（2026-08-27）：切卷清理本地态——localNotice 与思考展开面板
-   *    不跨会话残留（A 卷的提示/展开状态带到 B 卷是认知噪音）。 ── */
+   *    不跨会话残留（A 卷的提示/展开状态带到 B 卷是认知噪音）。
+   *    v2 增补：翰/律/引面板同属本地态，一并清。 ── */
   // biome-ignore lint/correctness/useExhaustiveDependencies: activeSessionId 是刻意的「切卷触发器」——正是要响应它变化清本地态
   useEffect(() => {
     setLocalNotice(null);
     setSettingsOpen(false);
+    setMenuOpen(false);
+    setHelpOpen(false);
+    setYinOpen(false);
+    setHistHint(false);
   }, [activeSessionId]);
 
   const autoGrow = useCallback(() => {
@@ -269,6 +360,10 @@ export const ComposerDock = memo(function ComposerDock() {
   const provider: ProviderSettings | undefined = settings?.providers.find((p) => p.name === providerName);
   const providerKind = provider?.kind ?? 'openai';
   const modelDesc = useMemo(() => getModel(model), [model]);
+  // 墨量线（v2 2026-08-31）：分母 = 目录声明窗口（未知 0 = 不显）；分子 = 本卷
+  // 惰性 token 计数（sess store）。裸数字徽标退役，读数收进线 hover。
+  const inkWindow = modelDesc && modelDesc.contextWindow > 0 ? modelDesc.contextWindow : 0;
+  const inkRatio = inkWindow > 0 && tokenCount > 0 ? Math.min(1, tokenCount / inkWindow) : 0;
   const thinkingOptions = useMemo(() => {
     const declared = thinkingOptionsFor(modelDesc);
     // P14：有目录声明用声明档位表；无声明也给「自动/关闭」协议安全兜底——
@@ -299,7 +394,9 @@ export const ComposerDock = memo(function ComposerDock() {
   // rework P0-1：卸载（含关窗）时清掉全放确认态，避免残留 DOM 参与销毁时序
   useEffect(() => () => setPendingYolo(false), [setPendingYolo]);
 
-  /* ── 斜杠命令（沿用旧 composer 逻辑）── */
+  /* ── 斜杠命令（沿用旧 composer 逻辑）＋ 翰 入口（v2 2026-08-31）：
+   *    命令面板不再只靠盲打 / 发现——设置行「翰」按钮开同一层面板
+   *    （空查询 = 全量命令）。打字优先：手输即散翰面板，/ 触发词接管过滤。 ── */
   const slashQuery = useMemo(() => {
     const v = inputText;
     if (!v) return null;
@@ -308,19 +405,21 @@ export const ComposerDock = memo(function ComposerDock() {
     if (last > 0 && v[last - 1] !== ' ' && v[last - 1] !== '\n') return null;
     return v.slice(last + 1);
   }, [inputText]);
+  /** 生效查询：/ 触发词优先；无触发词且翰面板开着 = 空查询（全量）。 */
+  const effectiveSlashQuery = slashQuery ?? (menuOpen ? '' : null);
   const slashCommands = useMemo(() => {
-    if (slashQuery === null) return [];
-    const q = slashQuery.toLowerCase();
-    return CommandRegistry.instance
-      .getAll()
-      .filter((c) => c.shortcut.toLowerCase().includes(q) || c.label.toLowerCase().includes(q));
-  }, [slashQuery]);
+    if (effectiveSlashQuery === null) return [];
+    const q = effectiveSlashQuery.toLowerCase();
+    const all = CommandRegistry.instance.getAll();
+    if (q === '') return all;
+    return all.filter((c) => c.shortcut.toLowerCase().includes(q) || c.label.toLowerCase().includes(q));
+  }, [effectiveSlashQuery]);
   /* ── C3（2026-08-27）：斜杠面板键盘导航（↑↓ 选、Enter 执行、Esc 关）。 ── */
   const [slashIdx, setSlashIdx] = useState(0);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: slashQuery 是刻意的「查询词变化」触发器——正是要响应它复位高亮
+  // biome-ignore lint/correctness/useExhaustiveDependencies: effectiveSlashQuery 是刻意的「查询词变化」触发器——正是要响应它复位高亮（含翰面板开合）
   useEffect(() => {
     setSlashIdx(0); // 查询词变化 → 高亮复位首项
-  }, [slashQuery]);
+  }, [effectiveSlashQuery]);
   const slashActive = slashCommands.length > 0;
 
   /* ── 附件 ── */
@@ -334,6 +433,102 @@ export const ComposerDock = memo(function ComposerDock() {
     },
     [core],
   );
+
+  /* ── 附文件入卷共用底座（引 / 拖放，v2 2026-08-31）：路径 → input-store。
+   *    size 恒 0 不显示——openFilePicker 同语义（C10：拿不到真大小就不伪造）。 ── */
+  const attachPaths = useCallback(
+    (paths: readonly string[]) => {
+      if (!core || paths.length === 0) return;
+      const input = getChatStore(core.panelId).input.getState();
+      for (const p of paths) {
+        input.addAttachedFile({ path: p, name: p.split(/[\\/]/).pop() || p, size: 0 });
+      }
+    },
+    [core],
+  );
+
+  /* ── 引：工作区文件模糊引用（v2 2026-08-31）。
+   *    数据源 = list_directory 递归（Rust 护栏：深 3 层 / 2000 项 / ignore
+   *    过滤）；打开拉全量缓存在组件态，输入即子序列过滤。 ── */
+  const loadYinFiles = useCallback(async () => {
+    const pp = useShellStore.getState().projectPath;
+    if (!pp) return;
+    try {
+      const entries = await typedJsonRpc<YinDirEntry[]>('list_directory', { path: pp, filter_ignored: true });
+      setYinFiles(Array.isArray(entries) ? flattenDirEntries(entries) : []);
+    } catch {
+      setYinFiles([]);
+    }
+  }, []);
+  // 面板开合副作用：开 = 清查询 + 首开拉清单 + 聚焦输入框。
+  // 依赖含 yinFiles.length：清单从空变非空会重跑本 effect，但此时
+  // length===0 为假不再拉取——无环路；失败保持空 → 也不重跑（无死循环）。
+  useEffect(() => {
+    if (!yinOpen) return;
+    setYinQuery('');
+    setYinIdx(0);
+    setMenuOpen(false);
+    setHelpOpen(false);
+    if (yinFiles.length === 0) void loadYinFiles();
+    yinInputRef.current?.focus();
+  }, [yinOpen, loadYinFiles, yinFiles.length]);
+  const yinMatches = useMemo(() => fuzzyMatchFiles(yinFiles, yinQuery), [yinFiles, yinQuery]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: yinQuery 是刻意的「查询词变化」触发器——正是要响应它复位高亮
+  useEffect(() => {
+    setYinIdx(0);
+  }, [yinQuery]);
+  const onYinAttach = useCallback(
+    (f: { path: string; name: string }) => {
+      attachPaths([f.path]);
+      setYinOpen(false);
+      composerRef.current?.focus();
+    },
+    [attachPaths],
+  );
+  const onYinKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setYinOpen(false);
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setYinIdx((i) => Math.min(i + 1, Math.max(0, yinMatches.length - 1)));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setYinIdx((i) => Math.max(0, i - 1));
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        const hit = yinMatches[yinIdx];
+        if (hit) onYinAttach(hit);
+      }
+    },
+    [yinMatches, yinIdx, onYinAttach],
+  );
+
+  /* ── 历史眉批（v2 2026-08-31）：一次性提示——有历史且从未提示过时，
+   *    首次聚焦浮现 6s（localStorage 旗标，毒化容忍）。提示长在功能
+   *    所在处，不再常驻占位符。 ── */
+  const onComposerFocus = useCallback(() => {
+    setInputLocked(true);
+    if (!core) return;
+    let seen = true;
+    try {
+      seen = localStorage.getItem(HIST_HINT_KEY) === '1';
+    } catch {
+      seen = true; // 存储不可用 = 不提示（宁缺勿噪）
+    }
+    if (seen) return;
+    const input = getChatStore(core.panelId).input.getState();
+    if (input.inputHistory.length === 0) return;
+    try {
+      localStorage.setItem(HIST_HINT_KEY, '1');
+    } catch {
+      // 写不进也照提示一次——本次会话内不再重复（histHint 态兜底）
+    }
+    setHistHint(true);
+    window.setTimeout(() => setHistHint(false), 6000);
+  }, [core, setInputLocked]);
 
   /* ── 发送 ── */
   const onSend = useCallback(async () => {
@@ -391,8 +586,8 @@ export const ComposerDock = memo(function ComposerDock() {
     [core, activeSessionId],
   );
 
-  /* ── 输入锁存：聚焦/输入中关闭自动切换（Stage-4 §4.1）── */
-  const onComposerFocus = useCallback(() => setInputLocked(true), [setInputLocked]);
+  /* ── 输入锁存：聚焦/输入中关闭自动切换（Stage-4 §4.1）。
+   *    onComposerFocus 主体上移至「历史眉批」节（锁存 + 一次性眉批同一入口）。 ── */
   const onComposerBlur = useCallback(() => setInputLocked(false), [setInputLocked]);
 
   /* ── 实测高上报（--composer-h-live）：composer 是两段式（设置行+输入行，
@@ -416,8 +611,40 @@ export const ComposerDock = memo(function ComposerDock() {
     };
   }, []);
 
+  /* ── 拖文件入卷（v2 2026-08-31）：Tauri onDragDropEvent 原生通道——
+   *    T2 WebView dragDropEnabled 默认接管，HTML5 drop 永不触发（C10 尸检）。
+   *    界栏 = 拖拽悬停坞体时高亮；松手命中坞体才入卷（落画布其它处不抢）。
+   *    mock 模式（浏览器 dev / vitest）watch 内部 no-op。 ── */
+  useEffect(() => {
+    if (!core) return;
+    let alive = true;
+    let unlisten: (() => void) | null = null;
+    void watchFileDragDrop((e) => {
+      if (!alive) return;
+      if (e.phase === 'leave') {
+        setDragOver(false);
+        return;
+      }
+      const rect = dockRef.current?.getBoundingClientRect();
+      const inside = rect ? e.x >= rect.left && e.x <= rect.right && e.y >= rect.top && e.y <= rect.bottom : false;
+      if (e.phase === 'drop') {
+        setDragOver(false);
+        if (inside) attachPaths(e.paths);
+        return;
+      }
+      setDragOver(inside);
+    }).then((u) => {
+      if (alive) unlisten = u;
+      else u?.();
+    });
+    return () => {
+      alive = false;
+      unlisten?.();
+    };
+  }, [core, attachPaths]);
+
   return (
-    <div className="pp-composer" ref={dockRef}>
+    <div className={`pp-composer${dragOver ? ' pp-droptarget' : ''}`} ref={dockRef}>
       {/* 设置行：常驻一行只放高频件（模型 + 权限）；思考等进展开（stage-4 §8）。
           开口即开卷（2026-08-31）：控件不再随活跃卷隐藏——无主态操作「新卷出生
           默认」，「发送前顺手拨」在自己的核心场景（开卷前拨好）恒可用。 */}
@@ -427,9 +654,6 @@ export const ComposerDock = memo(function ComposerDock() {
           title={activeSession ? `案卷 ${activeSession.id}` : '无活跃卷——落笔即另起一卷'}
         >
           {activeSession ? activeSession.label || `案卷 ${activeSession.id}` : '新卷'}
-        </span>
-        <span className="pp-composer-tokens" title="本卷 token 计数（惰性读取，切回直接读）">
-          {tokenCount > 0 ? `${tokenCount} tok` : '—'}
         </span>
         {/* DSH 移植（2026-08-26）：运行中守卫——本卷在跑时模型下拉打开被拦
             （DSH onAttemptOpen 语义：流式中不允许切模型），localNotice 提示 */}
@@ -514,6 +738,47 @@ export const ComposerDock = memo(function ComposerDock() {
           </div>
         )}
         <div className="pp-composer-settings-spacer" />
+        {/* v2（2026-08-31）：翰（命令面板入口——/ 的可发现性）+ 律（快捷键总览）。
+            渐进披露：占位符只留一句，键位收进律册在此翻。 */}
+        <div className="pp-dock-tools">
+          <button
+            type="button"
+            className={`pp-tool-btn${menuOpen ? ' open' : ''}`}
+            title="翰——案卷命令（等价输入 /）"
+            aria-haspopup="listbox"
+            aria-expanded={menuOpen}
+            onClick={() => {
+              setMenuOpen((v) => !v);
+              setHelpOpen(false);
+              setYinOpen(false);
+            }}
+          >
+            翰
+          </button>
+          <button
+            type="button"
+            className={`pp-tool-btn${helpOpen ? ' open' : ''}`}
+            title="律——快捷键总览"
+            aria-expanded={helpOpen}
+            onClick={() => {
+              setHelpOpen((v) => !v);
+              setMenuOpen(false);
+            }}
+          >
+            律
+          </button>
+          {helpOpen && (
+            <div className="pp-help-sheet" role="dialog" aria-label="快捷键总览">
+              <div className="pp-help-head">律 · 快捷键</div>
+              {HELP_ROWS.map(([key, desc]) => (
+                <div key={key} className="pp-help-row">
+                  <span className="pp-help-key">{key}</span>
+                  <span className="pp-help-desc">{desc}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         {/* B7（2026-08-27）：后台卷运行指示 + 停止——此前任一后台会话在跑就
             全局阻断发送（chat-core），但创作坞无任何指示、无从停止。 */}
         {bgRunning.length > 0 && (
@@ -543,6 +808,9 @@ export const ComposerDock = memo(function ComposerDock() {
         </div>
       )}
 
+      {/* 历史眉批（一次性，6s 自散）：提示长在功能所在处，不常驻占位符 */}
+      {histHint && <div className="pp-eyebrow-hint">↑ 可回取上文 · ↓ 返回草稿</div>}
+
       {/* 输入行（原 composer 主体） */}
       <div className="pp-composer-row">
         {slashCommands.length > 0 && (
@@ -553,7 +821,10 @@ export const ComposerDock = memo(function ComposerDock() {
                 type="button"
                 className={`pp-slash-item${i === slashIdx ? ' active' : ''}`}
                 onMouseEnter={() => setSlashIdx(i)}
-                onClick={() => core?.executeCommand(c)}
+                onClick={() => {
+                  setMenuOpen(false);
+                  core?.executeCommand(c);
+                }}
               >
                 <span className="pp-slash-shortcut">{c.shortcut}</span>
                 <span className="pp-slash-label">{c.label}</span>
@@ -561,6 +832,48 @@ export const ComposerDock = memo(function ComposerDock() {
             ))}
           </div>
         )}
+        {/* 引（v2）：工作区文件模糊引用——面板 = 查询输入 + 命中清单 */}
+        {yinOpen && (
+          <div className="pp-yin-panel">
+            <input
+              ref={yinInputRef}
+              type="text"
+              value={yinQuery}
+              placeholder="引……（文件名或路径片段 · Enter 入卷 · Esc 散）"
+              aria-label="引：检索工作区文件"
+              onChange={(e) => setYinQuery(e.target.value)}
+              onKeyDown={onYinKeyDown}
+            />
+            <div className="pp-yin-list" role="listbox" aria-label="工作区文件">
+              {yinMatches.map((f, i) => (
+                <button
+                  key={f.path}
+                  type="button"
+                  role="option"
+                  aria-selected={i === yinIdx}
+                  className={`pp-yin-item${i === yinIdx ? ' active' : ''}`}
+                  onMouseEnter={() => setYinIdx(i)}
+                  onClick={() => onYinAttach(f)}
+                >
+                  <span className="pp-yin-name">{f.name}</span>
+                  <span className="pp-yin-path">{f.path}</span>
+                </button>
+              ))}
+              {yinMatches.length === 0 && (
+                <div className="pp-yin-empty">{yinFiles.length === 0 ? '卷宗目录读取中…' : '无匹配文件'}</div>
+              )}
+            </div>
+          </div>
+        )}
+        <button
+          type="button"
+          className={`pp-attach pp-yin-btn${yinOpen ? ' open' : ''}`}
+          title="引——引用工作区文件入卷"
+          aria-label="引：引用文件"
+          onClick={() => setYinOpen((v) => !v)}
+        >
+          引
+        </button>
         <button
           type="button"
           className="pp-attach"
@@ -590,13 +903,10 @@ export const ComposerDock = memo(function ComposerDock() {
           ref={composerRef}
           rows={1}
           value={inputText}
-          placeholder={
-            activeSession
-              ? '拟文…（Enter 发送 · Shift+Enter 换行 · ↑↓ 取历史；拖住任意块可移出钉住；拖流区边缘可移动流区）'
-              : '落笔即另起一卷…（Enter 发送 · Shift+Enter 换行）'
-          }
+          placeholder={activeSession ? '拟文…' : '落笔即另起一卷…'}
           onChange={(e) => {
             setInputText(e.target.value);
+            setMenuOpen(false); // 手输接管：翰面板散（/ 触发词自然接管过滤）
             // 手输 = 退出历史浏览（浏览下标复位；草稿槽保留到下次进入时覆写）
             if (core) {
               const input = getChatStore(core.panelId).input.getState();
@@ -620,17 +930,23 @@ export const ComposerDock = memo(function ComposerDock() {
               }
               if (e.key === 'Enter') {
                 e.preventDefault();
-                core?.executeCommand(slashCommands[slashIdx]);
+                const cmd = slashCommands[slashIdx];
+                setMenuOpen(false);
+                core?.executeCommand(cmd);
                 return;
               }
               if (e.key === 'Escape') {
                 e.preventDefault();
-                // 关 = 保留已输入查询词，去掉行首斜杠触发词即散面板
-                const live = core ? getChatStore(core.panelId).input.getState() : null;
-                if (live) {
-                  const v = live.inputText;
-                  const last = v.lastIndexOf('/');
-                  if (last >= 0) setInputText(v.slice(0, last) + v.slice(last + 1));
+                if (slashQuery !== null) {
+                  // / 触发词开着 = 关面板保留查询词（去行首斜杠）
+                  const live = core ? getChatStore(core.panelId).input.getState() : null;
+                  if (live) {
+                    const v = live.inputText;
+                    const last = v.lastIndexOf('/');
+                    if (last >= 0) setInputText(v.slice(0, last) + v.slice(last + 1));
+                  }
+                } else {
+                  setMenuOpen(false); // 翰面板（无触发词）= 直接散
                 }
                 return;
               }
@@ -687,9 +1003,23 @@ export const ComposerDock = memo(function ComposerDock() {
             停
           </button>
         )}
-        <button type="button" onClick={onSend}>
+        <button type="button" className="pp-send" onClick={onSend}>
           拟文
         </button>
+      </div>
+
+      {/* 墨量线（v2）：坞底 1px——本卷已用 token 占模型窗口比例，近满转朱砂。
+          裸数字徽标退役；读数进 hover。窗口未知（0）或零用量不显。 */}
+      <div
+        className={`pp-inkline${inkRatio > 0.8 ? ' full' : ''}`}
+        style={{ opacity: inkWindow > 0 && tokenCount > 0 ? 1 : 0 }}
+        title={
+          inkWindow > 0 && tokenCount > 0
+            ? `墨量 ${tokenCount} / ${inkWindow} tok（${Math.round(inkRatio * 100)}%）`
+            : '墨量——本卷已用 token 占模型窗口比例（惰性读取，切回直接读）'
+        }
+      >
+        <span style={{ width: `${Math.round(inkRatio * 100)}%` }} />
       </div>
 
       {/* rework P2-3 / P0-1：全放二次确认 = 独立居中模态（不内嵌创作坞，避免高度/关窗竞态） */}

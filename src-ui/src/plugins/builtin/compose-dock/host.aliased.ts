@@ -37,6 +37,10 @@ const impl = host.mods.faceDeps as unknown as typeof import('./host');
 
 export const agentSessionState = impl.agentSessionState;
 export const composerSubmitOnKey = impl.composerSubmitOnKey;
+export const isMockMode = impl.isMockMode;
+export const typedJsonRpc = impl.typedJsonRpc;
+export const useShellStore = impl.useShellStore;
+export const watchFileDragDrop = impl.watchFileDragDrop;
 export const usePaperDock = impl.usePaperDock;
 export const usePaperRegion = impl.usePaperRegion;
 export const buildTurnAnchors = impl.buildTurnAnchors;
@@ -73,6 +77,7 @@ export type PermissionMode = import('./host').PermissionMode;
 export type ModelDescriptor = import('./host').ModelDescriptor;
 export type Protocol = import('./host').Protocol;
 export type TocRange = import('./host').TocRange;
+export type FileDragEvent = import('./host').FileDragEvent;
 
 // ── esbuild automatic JSX 注入面（--jsx=automatic --jsx-import-source=./host）──
 

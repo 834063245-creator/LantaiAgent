@@ -100,6 +100,8 @@ export const activeOverlayContributions = impl.activeOverlayContributions;
 export const subscribeOverlayContributions = impl.subscribeOverlayContributions;
 export const resolveAssetBlock = impl.resolveAssetBlock;
 export const resolveRenderer = impl.resolveRenderer;
+export const activeSpace = impl.activeSpace;
+export const agentSessionState = impl.agentSessionState;
 
 export type SourcedBlock = import('./host').SourcedBlock;
 export type RegionHitRect = import('./host').RegionHitRect;

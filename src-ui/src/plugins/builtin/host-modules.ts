@@ -29,6 +29,7 @@ import { PluginsPage } from '../../app/panels/settings/PluginsPage';
 import { ProviderPage } from '../../app/panels/settings/ProviderPage';
 import { useShellStore } from '../../app/shell-store';
 import { WinControls } from '../../app/WinControls';
+import { isMockMode, watchFileDragDrop } from '../../bridge';
 import { activeOverlayContributions, subscribeOverlayContributions } from '../../composition/overlay-service';
 import { selectPreset } from '../../composition/preset-assembly';
 import { resolveAssetBlock, resolveRenderer } from '../../composition/renderer-service';
@@ -249,6 +250,9 @@ const faceDeps = {
   typedJsonRpc,
   setLang,
   iconHtml,
+  // 创作坞 v2（2026-08-31）：引（typedJsonRpc 文件枚举）/ 拖放入卷（Tauri 原生通道）
+  isMockMode,
+  watchFileDragDrop,
 };
 
 /** 经产物通道薄重导出的工具域插件对象（插件名 = S4-4 甲寻址键，零漂移）。 */

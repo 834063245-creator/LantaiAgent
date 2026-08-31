@@ -108,3 +108,43 @@ export async function rpc<T>(method: string, params?: Record<string, unknown>): 
   }
   return invoke<T>('rpc', { method, params: normalized });
 }
+
+// ── Webview 原生文件拖放（创作坞「拖文件入卷」数据通道，2026-08-31）──
+//
+// 为什么不走 HTML5 drop：T2 WebView dragDropEnabled 默认接管拖放，网页层
+// 永远收不到 drop 事件（C10 尸检结论，baton6——当年因此砍掉假拖放）。真做
+// 只能走 Tauri onDragDropEvent 原生通道；与 invoke/listen 同属 Tauri 路由
+// 面，住本桥（ui/ 封口纪律：不为一个函数开新文件）。
+//
+// 坐标系：Tauri 事件给 PhysicalPosition——除以 devicePixelRatio 转回 CSS
+// 像素，消费方才能与 getBoundingClientRect 直接做命中判定。
+
+export type FileDropPhase = 'enter' | 'over' | 'drop' | 'leave';
+
+export interface FileDragEvent {
+  phase: FileDropPhase;
+  /** OS 拖入的文件绝对路径（leave 相无 paths）。 */
+  paths: string[];
+  /** CSS 像素坐标（物理坐标已按 devicePixelRatio 折算）。 */
+  x: number;
+  y: number;
+}
+
+/** 监听 webview 级文件拖放。返回 unlisten；非 Tauri 环境返回空函数。 */
+export async function watchFileDragDrop(handler: (e: FileDragEvent) => void): Promise<() => void> {
+  if (isMockMode()) return () => {};
+  const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+  const unlisten = await getCurrentWebview().onDragDropEvent((event) => {
+    const p = event.payload;
+    if (p.type !== 'enter' && p.type !== 'over' && p.type !== 'drop' && p.type !== 'leave') return;
+    const dpr = window.devicePixelRatio || 1;
+    const pos = 'position' in p ? p.position : { x: 0, y: 0 };
+    handler({
+      phase: p.type,
+      paths: 'paths' in p && Array.isArray(p.paths) ? p.paths : [],
+      x: pos.x / dpr,
+      y: pos.y / dpr,
+    });
+  });
+  return unlisten;
+}

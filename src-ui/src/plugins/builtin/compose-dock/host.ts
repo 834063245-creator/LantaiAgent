@@ -9,6 +9,9 @@
 
 export { agentSessionState } from '../../../agent/agent-session-state';
 export { useCoreStore } from '../../../app/chat/core-instance';
+export { useShellStore } from '../../../app/shell-store';
+export type { FileDragEvent } from '../../../bridge';
+export { isMockMode, watchFileDragDrop } from '../../../bridge';
 export { composerSubmitOnKey } from '../../../paper/ime';
 export { usePaperDock, usePaperRegion } from '../../../paper/overlay-context';
 export type { TocRange } from '../../../paper/toc';
@@ -27,6 +30,7 @@ export { resolveApiKey } from '../../../provider/credentials';
 export type { StoredThinking, ThinkingMode } from '../../../provider/thinking';
 export { thinkingOptionsFor } from '../../../provider/thinking';
 export type { ModelDescriptor, Protocol } from '../../../provider/types';
+export { typedJsonRpc } from '../../../rpc-contract';
 export type { ProviderSettings } from '../../../settings';
 export { effectiveModels, loadSettings, onSettingsSaved } from '../../../settings';
 export type { ComposeSessionPrefs } from '../../../state/compose-store';

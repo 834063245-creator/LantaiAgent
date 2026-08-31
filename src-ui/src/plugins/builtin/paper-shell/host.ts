@@ -9,6 +9,7 @@
 // 两域形状必须一致（host.aliased.ts 以 `typeof import('./host')` 对拍）：
 // 本文件只做 re-export，不改写任何实现。
 
+export { agentSessionState } from '../../../agent/agent-session-state';
 export { useCoreStore } from '../../../app/chat/core-instance';
 export { Icon } from '../../../app/Icon';
 export { useDialogEscape } from '../../../app/overlay';
@@ -19,6 +20,9 @@ export {
   subscribeOverlayContributions,
 } from '../../../composition/overlay-service';
 export { resolveAssetBlock, resolveRenderer } from '../../../composition/renderer-service';
+/* 创作坞 v2（2026-08-31）：案头签条开卷（activeSpace.expand）+ 流区运行
+ * 呼吸线（agentSessionState exec 订阅）——faceDeps 已含，此处只补开发域出口。 */
+export { activeSpace } from '../../../composition/space-service';
 export type { RegionHitRect } from '../../../paper/active-region';
 export {
   createSettleSelector,

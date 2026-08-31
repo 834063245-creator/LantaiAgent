@@ -45,6 +45,8 @@ import type {
 import {
   ANCHOR,
   activeOverlayContributions,
+  activeSpace,
+  agentSessionState,
   blockFromSnapshot,
   clampRegionW,
   classifyDropZone,
@@ -107,6 +109,7 @@ import {
 } from './host';
 import { InkLayer } from './InkLayer';
 import { StatusLine } from './StatusLine';
+import { ToastHost } from './ToastHost';
 import './PaperPanel.css';
 
 /* ── 文类签（页边注 rubric）：BlockKind → 注疏文类（docs/design/lantai-design-spec.md §4）── */
@@ -121,6 +124,7 @@ const KIND_ZH: Record<string, string> = {
   plan: '拟策',
   toolgroup: '工具组',
   notice: '贴黄',
+  'turn-error': '错因',
   // 资产 kind（WO-4 文类签）：未知名仍回退 block.kind 字面。
   table: '表格',
   chart: '图表',
@@ -140,6 +144,7 @@ const KIND_EN: Record<string, string> = {
   plan: 'PLAN',
   toolgroup: 'TOOLS',
   notice: 'NOTE',
+  'turn-error': 'FAULT',
   table: 'TABLE',
   chart: 'CHART',
   metric: 'METRIC',
@@ -400,6 +405,59 @@ const GHOST_H = 32;
 const SIDECAR_PIN_W = 320;
 /** 稳定空引用——无会话/无钉住时避免无谓重渲染 */
 const EMPTY_OPS: BlockOp[] = [];
+
+/** 面板核类型（useCoreStore 所持 core 的非空形状）——DeskShelf prop 用。 */
+type PaperCore = NonNullable<ReturnType<typeof useCoreStore.getState>['core']>;
+
+/* ── 案头签条架（创作坞 v2 2026-08-31）──
+ * 空态三件套之一：最近三卷「续写」签条（楷体批注字，hover 朱砂——样式见
+ * .pp-desk-shelf）。数据 = listSavedSessions（savedAt 倒序取三）；点击 =
+ * activeSpace().expand 摊开 + requestFocus 定位（SessionSidebar 同款手势）。
+ * 只在案头态（零摊开卷）渲染；无已存卷/无工作区 = 架空。 */
+function DeskShelf({ core }: { core: PaperCore | null }) {
+  const [recent, setRecent] = useState<Array<{ id: number; label: string }>>([]);
+  useEffect(() => {
+    if (!core) {
+      setRecent([]);
+      return;
+    }
+    let alive = true;
+    const pp = useShellStore.getState().projectPath;
+    void core
+      .listSavedSessions(pp)
+      .then((rows) => {
+        if (!alive) return;
+        const sorted = [...rows].sort((a, b) => (a.savedAt < b.savedAt ? 1 : -1)).slice(0, 3);
+        setRecent(sorted.map((r) => ({ id: r.id, label: r.label || `案卷 ${r.id}` })));
+      })
+      .catch(() => {
+        if (alive) setRecent([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [core]);
+  const onResume = useCallback((sid: string) => {
+    activeSpace()?.expand(sid);
+    useCanvasViewStore.getState().requestFocus(sid);
+  }, []);
+  if (recent.length === 0) return null;
+  return (
+    <div className="pp-desk-shelf">
+      {recent.map((r) => (
+        <button
+          key={r.id}
+          type="button"
+          className="pp-desk-tag"
+          title={`续写「${r.label}」——摊开并定位`}
+          onClick={() => onResume(String(r.id))}
+        >
+          续 · {r.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 /** 稳定空画布——core 缺席时 useSyncExternalStore 读面（无核心面板 = 空态，方法 no-op） */
 const EMPTY_CANVAS: CanvasStore = {
@@ -2182,6 +2240,43 @@ export function PaperPanel() {
   const composerOverlays = activeOverlayContributions('composer');
   const edgeOverlays = activeOverlayContributions('right-edge');
 
+  /* ── 案头态（创作坞 v2 2026-08-31）：零摊开卷——坞升案头当主角 + 签条架，
+   * 落笔发出首句（开口即开卷）后坞沉降回底部常驻。 ── */
+  const desk = sessions.length === 0;
+
+  /* ── 运行呼吸线（创作坞 v2 2026-08-31）：任一摊开卷在跑 → 画布底缘
+   *  石青细线呼吸（.pp-canvas.pp-stream-live，机=石青语义）。订阅面 =
+   *  agentSessionState 版本 + 每卷 exec onChange + sess 列表（SpineRack 同款）。 ── */
+  const [streamLive, setStreamLive] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sessions 列表变化 = 新 exec 出现——必须重挂 onChange（agentSessionState 版本订阅只兜 setExec，不兜既有 exec 起停）
+  useEffect(() => {
+    if (!core) {
+      setStreamLive(false);
+      return;
+    }
+    const sync = () => {
+      const st = getChatStore(core.panelId).sess.getState();
+      let any = false;
+      for (const s of st.sessions) {
+        if (agentSessionState.getExec(core.panelId, s.id)?.isRunning) {
+          any = true;
+          break;
+        }
+      }
+      setStreamLive(any);
+    };
+    sync();
+    const unAgents = agentSessionState.subscribe(sync);
+    const unSess = getChatStore(core.panelId).sess.subscribe(sync);
+    const execs = getChatStore(core.panelId).sess.getState().sessions;
+    const unsubs = execs.map((s) => agentSessionState.getExec(core.panelId, s.id)?.onChange(sync) ?? null);
+    return () => {
+      unAgents();
+      unSess();
+      for (const u of unsubs) u?.();
+    };
+  }, [core, sessions]);
+
   /* rework P3-1：创作坞实际高度（动态——思考展开/附件/yolo 都会变高）驱动
    * 目次带/小地图的底部定位，避免硬编码 gap 导致重叠。
    * 用 callback ref（React 19 支持清理）替代 effect+dep，避免 lint 对
@@ -2252,7 +2347,11 @@ export function PaperPanel() {
           )}
 
           {/* biome-ignore lint/a11y/noStaticElementInteractions: 无限画布是鼠标平移/缩放交互面 */}
-          <div ref={canvasRef} className={`pp-canvas${panning ? ' pp-panning' : ''}`} onMouseDown={onCanvasMouseDown}>
+          <div
+            ref={canvasRef}
+            className={`pp-canvas${panning ? ' pp-panning' : ''}${streamLive ? ' pp-stream-live' : ''}`}
+            onMouseDown={onCanvasMouseDown}
+          >
             {sessions.length === 0 && (
               <div className="pp-empty">
                 <div className="pp-empty-kicker">LANTAI · BLANK SHEET</div>
@@ -2267,7 +2366,7 @@ export function PaperPanel() {
                 >
                   ＋ 另起一卷
                 </button>
-                <div className="pp-empty-hint">也可以点左侧「另起一卷」，或直接在下方落笔——开口即开卷</div>
+                <div className="pp-empty-hint">点签条可续写旧卷，或直接在下方案头落笔——开口即开卷</div>
                 <div className="pp-empty-asterism">⁂</div>
               </div>
             )}
@@ -2342,11 +2441,13 @@ export function PaperPanel() {
                     {/* biome-ignore lint/a11y/noStaticElementInteractions: 边缘拖拽面（Stage-2 定案：无手柄条，hover 即拖拽态） */}
                     <div
                       className="pp-region-edge pp-region-edge--l"
+                      title="拖动边缘——移动整个流区"
                       onMouseDown={(e) => onRegionEdgeMouseDown(e, r.sessionId)}
                     />
                     {/* biome-ignore lint/a11y/noStaticElementInteractions: 边缘拖拽面（同左缘——拖右缘移动整个流区） */}
                     <div
                       className="pp-region-edge pp-region-edge--r"
+                      title="拖动边缘——移动整个流区"
                       onMouseDown={(e) => onRegionEdgeMouseDown(e, r.sessionId)}
                     />
                     {/* P6 四角横向缩放柄（角落只开放横向——Y 由内容生长） */}
@@ -2355,6 +2456,7 @@ export function PaperPanel() {
                       <div
                         key={c}
                         className={`pp-region-corner pp-region-corner--${c}`}
+                        title="拖动角柄——调整流区宽度"
                         onMouseDown={(e) => onRegionCornerMouseDown(e, r.sessionId, c)}
                       />
                     ))}
@@ -2537,28 +2639,34 @@ export function PaperPanel() {
             )}
           </div>
 
-          {/* 小地图（D-R1-1 方位感：全画布内容聚落 + 视口框 + Home 回原点） */}
-          <MinimapView
-            content={minimap.content}
-            viewport={minimap.viewport}
-            bottom={composerHeight}
-            onJump={glideViewTo}
-            activeRegion={activeInkRegion}
-            foldedOf={foldedOf}
-            inkCache={inkCacheRef.current}
-          />
+          {/* 小地图（D-R1-1 方位感：全画布内容聚落 + 视口框 + Home 回原点）。
+              案头态架空——零流区无可导航，浮在半空是噪音。 */}
+          {!desk && (
+            <MinimapView
+              content={minimap.content}
+              viewport={minimap.viewport}
+              bottom={composerHeight}
+              onJump={glideViewTo}
+              activeRegion={activeInkRegion}
+              foldedOf={foldedOf}
+              inkCache={inkCacheRef.current}
+            />
+          )}
 
-          {/* 覆盖层贡献行（Stage-4）：创作坞（composer 槽）在底栏，目次带（right-edge 槽）在右缘 */}
-          <div className="pp-composer-slot" ref={composerSlotRef}>
+          {/* 覆盖层贡献行（Stage-4）：创作坞（composer 槽）在底栏，目次带（right-edge 槽）在右缘。
+              案头态（v2）：槽升案头居中，坞下方陪签条架（最近三卷续写）。 */}
+          <div className={`pp-composer-slot${desk ? ' pp-desk' : ''}`} ref={composerSlotRef}>
             {composerOverlays.map((def) => (
               <def.component key={def.id} />
             ))}
+            {desk && <DeskShelf core={core} />}
           </div>
           {edgeOverlays.map((def) => (
             <def.component key={def.id} />
           ))}
         </div>
       </PaperRegionContext.Provider>
+      <ToastHost />
     </PaperDockContext.Provider>
   );
 }
