@@ -1323,7 +1323,7 @@
   justify-content: center;
   gap: 6px;
   padding: 8px 24px;
-  background: var(--paper-deep);
+  background: transparent; /* 2026-09-01 用户拍板：常驻匣退匣——案头直书于纸的形态延伸到常驻态，全态一张皮；分区只留坞顶硬线（浸墨③） */
   border-top: var(--rule-hard); /* 浸墨：坞顶线升硬线（屏级分区） */
   /* 斜杠补全面板（施工单 #7）：.pp-slash 绝对定位于此之上 */
   position: relative;
