@@ -544,7 +544,7 @@ export function PaperPanel() {
    *  - opsCache：按块 id 记忆消息操作数组 */
   const translateCacheBySession = useRef(new Map<number, MessageTranslateCache | null>());
   const measureCacheRef = useRef<BlockMeasureCache>(createBlockMeasureCache());
-  const opsCacheRef = useRef<Map<string, { msg: ChatMessage; ops: BlockOp[] }>>(new Map());
+  const opsCacheRef = useRef<Map<string, { msg: ChatMessage; ops: BlockOp[]; stamp: string }>>(new Map());
   /* P4 缩远墨迹：骨架几何缓存（签名命中零重算） */
   const inkCacheRef = useRef(createInkCache());
 
@@ -1153,10 +1153,13 @@ export function PaperPanel() {
     [],
   );
 
-  /* 消息操作（施工单 #5）：按来源消息构造 user 编辑/重发、assistant 重试、全部抄录。
-   *  ops 按块 id 记忆（opsCacheRef）——点击时经 regionMsgs 取最新消息 */
+  /* 消息操作（施工单 #5 → 2026-08-31 修订）：抄恒有；状态类操作（改/重发/
+   *  重试）只出现在各卷最新一条对应角色消息上——且 assistant 重试要求它是
+   *  全卷最后一条（后面还挂着新来文时回滚语义不可达）。过时块上这些按钮
+   *  是无意义的深回滚入口（用户拍板摘除）。ops 按块 id 记忆（opsCacheRef，
+   *  stamp 随最新消息判定变化失效）——点击时经 regionMsgs 取最新消息 */
   const msgOpsFor = useCallback(
-    (msg: ChatMessage): BlockOp[] => {
+    (msg: ChatMessage, stateOps: boolean): BlockOp[] => {
       if (!core) return [];
       const latest = (): ChatMessage => {
         // 在来源会话的消息流里找最新版本
@@ -1169,24 +1172,28 @@ export function PaperPanel() {
       const latestMsg = latest();
       const ops: BlockOp[] = [];
       if (msg.role === 'user') {
-        const latestUser = (): UserMessage => {
-          for (const r of regionsRef.current) {
-            const m = regionMsgs[r.sessionNum]?.messages.find((x) => x._id === msg._id);
-            if (m && m.role === 'user') return m;
-          }
-          return msg as UserMessage;
-        };
-        ops.push({ key: 'edit', label: '改', run: () => core.editUserMessage(latestUser()) });
-        ops.push({ key: 'resend', label: '重发', run: () => core.resendUserMessage(latestUser()) });
+        if (stateOps) {
+          const latestUser = (): UserMessage => {
+            for (const r of regionsRef.current) {
+              const m = regionMsgs[r.sessionNum]?.messages.find((x) => x._id === msg._id);
+              if (m && m.role === 'user') return m;
+            }
+            return msg as UserMessage;
+          };
+          ops.push({ key: 'edit', label: '改', run: () => core.editUserMessage(latestUser()) });
+          ops.push({ key: 'resend', label: '重发', run: () => core.resendUserMessage(latestUser()) });
+        }
       } else if (msg.role === 'assistant') {
-        const latestAsst = (): AssistantMessage => {
-          for (const r of regionsRef.current) {
-            const m = regionMsgs[r.sessionNum]?.messages.find((x) => x._id === msg._id);
-            if (m && m.role === 'assistant') return m;
-          }
-          return msg as AssistantMessage;
-        };
-        ops.push({ key: 'retry', label: '重试', run: () => core.retryAssistant(latestAsst()) });
+        if (stateOps) {
+          const latestAsst = (): AssistantMessage => {
+            for (const r of regionsRef.current) {
+              const m = regionMsgs[r.sessionNum]?.messages.find((x) => x._id === msg._id);
+              if (m && m.role === 'assistant') return m;
+            }
+            return msg as AssistantMessage;
+          };
+          ops.push({ key: 'retry', label: '重试', run: () => core.retryAssistant(latestAsst()) });
+        }
       }
       const text = messageCopyText(latestMsg);
       if (text.trim()) ops.push({ key: 'copy', label: '抄', run: () => core.copyText(messageCopyText(latest())) });
@@ -1198,17 +1205,32 @@ export function PaperPanel() {
     const map = new Map<string, BlockOp[]>();
     if (!core) return map;
     for (const r of regions) {
+      const msgs = regionMsgs[r.sessionNum]?.messages ?? [];
       const byId = new Map<string, ChatMessage>();
-      for (const m of regionMsgs[r.sessionNum]?.messages ?? []) byId.set(m._id, m);
+      for (const m of msgs) byId.set(m._id, m);
+      // 各卷最新角色消息（倒序首见）——状态类操作按钮的准入判定
+      let lastUser: ChatMessage | undefined;
+      let lastAsst: ChatMessage | undefined;
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i];
+        if (!lastUser && m.role === 'user') lastUser = m;
+        if (!lastAsst && m.role === 'assistant') lastAsst = m;
+        if (lastUser && lastAsst) break;
+      }
+      const lastId = msgs[msgs.length - 1]?._id;
       for (const b of r.blocks) {
         const msg = byId.get(b.source.messageId);
         if (!msg) continue;
+        const stateOps =
+          (msg.role === 'user' && lastUser?._id === msg._id) ||
+          (msg.role === 'assistant' && lastAsst?._id === msg._id && lastId === msg._id);
+        const stamp = stateOps ? '1' : '0';
         const hit = opsCacheRef.current.get(b.id);
-        if (hit && hit.msg === msg) {
+        if (hit && hit.msg === msg && hit.stamp === stamp) {
           map.set(b.id, hit.ops);
         } else {
-          const ops = msgOpsFor(msg);
-          opsCacheRef.current.set(b.id, { msg, ops });
+          const ops = msgOpsFor(msg, stateOps);
+          opsCacheRef.current.set(b.id, { msg, ops, stamp });
           map.set(b.id, ops);
         }
       }

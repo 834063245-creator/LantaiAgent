@@ -351,7 +351,8 @@
 .pp-status,
 .pp-unpin,
 .pp-ghost,
-.pp-fold {
+.pp-fold,
+.pp-msg-ops {
   user-select: none;
 }
 
@@ -1611,40 +1612,43 @@
   transform: translateY(1px);
 }
 
-/* 消息操作条（施工单 #5）：块 hover 浮现——改/重发/重试/抄（结构件，不进选区） */
+/* 消息操作条（施工单 #5 → 2026-08-31 修订）：块左下角、块体之外（底边下方，
+ * 落 48px 块间距带内——不遮正文不压下一块）；hover 浮现，隐没态不吃指针。
+ * 状态类操作（改/重发/重试）只在各卷最新一条对应角色消息上出现（过时块
+ * 深回滚无意义，用户拍板摘除），抄恒有。样式归机读墨色族（同 .pp-marginalia-pin） */
 .pp-msg-ops {
   position: absolute;
-  top: 6px;
-  right: 8px;
+  top: calc(100% + 2px);
+  left: 0;
   display: flex;
-  gap: 4px;
+  gap: 6px;
   opacity: 0;
+  pointer-events: none;
   transition: opacity var(--snap);
   z-index: 5;
 }
 .pp-block:hover .pp-msg-ops,
 .pp-msg-ops:focus-within {
   opacity: 1;
+  pointer-events: auto;
 }
 .pp-msg-ops button {
   padding: 2px 8px;
-  border: 1px solid var(--rule-soft);
+  border: var(--rule-soft);
   background: var(--paper);
-  color: var(--ink-2);
-  font-family: var(--f-song);
-  font-size: 11px;
-  letter-spacing: 0.1em;
+  color: var(--ink-3);
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
   cursor: pointer;
   border-radius: 0;
   transition:
     border-color var(--snap),
-    color var(--snap),
-    background var(--snap);
+    color var(--snap);
 }
 .pp-msg-ops button:hover {
-  border-color: var(--indigo);
-  color: var(--ink-1);
-  background: var(--paper-deep);
+  border-color: var(--seal);
+  color: var(--seal-deep);
 }
 
 /* 斜杠补全面板（施工单 #7）：行首 '/' 时弹出的可用命令列表 */
