@@ -14,7 +14,20 @@
 //   - 装载期不执行任何插件 UI 副作用（apply 只有注册动作；四 service 是 S1）。
 //   - 完全信任模型：不校验插件代码内容，只校验 manifest 形状（Rust 侧负责遍历防护）。
 
-import React, { createElement, useEffect, useRef, useState } from 'react';
+import React, {
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { agentLoopServicePlugin } from '../agent/agent-loop/agent-loop-service';
 import { codeRuntimePlugin } from '../agent/code-run/runtime-service';
 import { dynamicRunnerPlugin } from '../agent/dynamic-runner/dynamic-runner-service';
@@ -41,19 +54,19 @@ import { shellServicePlugin } from '../composition/shell-service';
 import { spaceServicePlugin } from '../composition/space-service';
 import { subagentsServicePlugin } from '../composition/subagent-service';
 import type { Context, Fiber } from '../cordis';
-import { paperPlugin } from '../paper/paper-plugin';
 import { getProxyPort } from '../provider/transport';
 import { typedRpc } from '../rpc-contract';
 import { usePluginPrefs } from '../state/plugin-prefs';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
+import { canvasNavPlugin } from './builtin/canvas-nav';
+import { composeDockPlugin } from './builtin/compose-dock';
+import { pluginHostMods } from './builtin/host-modules';
+import { paperPlugin } from './builtin/paper-shell';
 import { builtinRenderersPlugin } from './builtin/renderers';
-import { canvasNavPlugin } from './canvas-nav-plugin';
-import { composeDockPlugin } from './compose-dock-plugin';
+import { settingsPlugin } from './builtin/settings-domain';
 import { FIRST_PARTY_MANIFEST } from './first-party-manifest';
 import { llmAdaptersPlugin } from './llm-adapters-plugin';
 import { type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
-import { settingsPlugin } from './settings-plugin';
-import { spaceDemoPlugin } from './space-demo-plugin';
 import { mountToolDeclarations } from './tool-declarations';
 import { type LantaiPlugin, type PluginManifest, validateManifest } from './types';
 
@@ -134,7 +147,6 @@ export const BUILTIN_PLUGINS: LantaiPlugin[] = [
   capabilitiesServicePlugin,
   paperPlugin,
   settingsPlugin,
-  spaceDemoPlugin,
   canvasNavPlugin,
   composeDockPlugin,
   ...firstPartyToolPlugins(),
@@ -142,17 +154,37 @@ export const BUILTIN_PLUGINS: LantaiPlugin[] = [
   ...firstPartyCapabilityPlugins(),
 ];
 
-// ── 插件宿主桥（S4-5；P1 扩展 2026-08-30）──
+/** 第一方插件名索引（位移机制的 bundle 行寻址表）。惰性构建：BUILTIN_PLUGINS
+ *  含插件通道 spread（firstPartyToolPlugins() 等），在循环导入链
+ *  （SettingsPanel → PluginsPage → loader）下的模块初始化期可能尚有未完成
+ *  条目——运行期消费（loadOne 位移 / 装载序过滤）时表已定型，与旧行为一致。 */
+let _builtinIndex: { byName: Map<string, LantaiPlugin>; names: Set<string> } | null = null;
+function builtinIndex(): { byName: Map<string, LantaiPlugin>; names: Set<string> } {
+  if (!_builtinIndex) {
+    const byName = new Map<string, LantaiPlugin>();
+    for (const plugin of BUILTIN_PLUGINS) {
+      if (plugin) byName.set(plugin.name, plugin);
+    }
+    _builtinIndex = { byName, names: new Set(byName.keys()) };
+  }
+  return _builtinIndex;
+}
+
+// ── 插件宿主桥（S4-5；P1 扩展 2026-08-30；增补四施工扩面 2026-08-31）──
 // 外部插件经 webview 动态 import 装载——模块语境没有裸 import 解析面
-// （无包管理器、无 import map，平台契约 = 插件自包含）。需要 React 或
-// 通知能力的插件经 window.__lantai_plugin_host__ 取宿主能力：
+// （无包管理器、无 import map，平台契约 = 插件自包含）。需要宿主能力的
+// 插件经 window.__lantai_plugin_host__ 取用：
 //   - createElement：React.createElement（面板组件构造——无 JSX 插件的路由）；
-//   - react：React 全量（jsx-runtime 形状取用——渲染器插件 P1 的 JSX 面）；
-//   - hooks（useState/useEffect/useRef 子集）：渲染器插件的 hooks 面
-//     （P1a——渲染器组件用 JSX + hooks 写的源码，经 esbuild 编译后从这里取）；
+//   - react：React 全量（jsx-runtime 形状取用——渲染器插件 P1 的 JSX 面；
+//     增补四起是 UI 面产物 react 别名桥 react-bridge.cjs 的落点）；
+//   - hooks（完整 hooks 子集）：UI 面产物的 hooks 面（P1a 为 useState/
+//     useEffect/useRef 三件，增补四扩到面组件实际使用全集）；
 //   - Overlay：浮层组件（媒体渲染器预览用，P1a）；
 //   - rpc：typedRpc（媒体渲染器 read_file_base64 用，P1a）；
-//   - notify：状态栏通知（命令动作的最小 UI 反馈面）。
+//   - notify：状态栏通知（命令动作的最小 UI 反馈面）；
+//   - loadCss：产物 CSS 注入（UI 面产物 entry.css——幂等 link 注入）；
+//   - mods：项目模块真实例注册表（pluginHostMods()——面组件依赖的
+//     store/service 单例与工具域/段贡献插件对象，见 builtin/host-modules.ts）。
 // 桥在装载第一方插件前注入（装载期红线：注入是平台动作不是插件副作用）。
 declare global {
   interface Window {
@@ -163,12 +195,34 @@ declare global {
         useState: typeof useState;
         useEffect: typeof useEffect;
         useRef: typeof useRef;
+        useCallback: typeof useCallback;
+        useContext: typeof useContext;
+        useId: typeof useId;
+        useImperativeHandle: typeof useImperativeHandle;
+        useLayoutEffect: typeof useLayoutEffect;
+        useMemo: typeof useMemo;
+        useReducer: typeof useReducer;
+        useSyncExternalStore: typeof useSyncExternalStore;
       };
       Overlay: typeof Overlay;
       rpc: (method: string, params: Record<string, unknown>) => Promise<unknown>;
       notify: (text: string) => void;
+      loadCss: (url: string) => void;
+      mods: Record<string, unknown>;
     };
   }
+}
+
+/** 产物 CSS 注入（幂等——同 URL 只注一次 link；增补四面携 CSS 方案）。 */
+function injectPluginCss(url: string): void {
+  if (typeof document === 'undefined') return;
+  const id = 'lantai-plugin-css:' + url;
+  if (document.getElementById(id)) return;
+  const link = document.createElement('link');
+  link.id = id;
+  link.rel = 'stylesheet';
+  link.href = url;
+  document.head.appendChild(link);
 }
 
 function installPluginHostBridge(): void {
@@ -176,10 +230,24 @@ function installPluginHostBridge(): void {
     (globalThis as { __lantai_plugin_host__?: unknown }).__lantai_plugin_host__ = {
       createElement,
       react: React,
-      hooks: { useState, useEffect, useRef },
+      hooks: {
+        useState,
+        useEffect,
+        useRef,
+        useCallback,
+        useContext,
+        useId,
+        useImperativeHandle,
+        useLayoutEffect,
+        useMemo,
+        useReducer,
+        useSyncExternalStore,
+      },
       Overlay,
       rpc: (method: string, params: Record<string, unknown>) => typedRpc(method as never, params as never),
       notify: (text: string) => useShellStore.getState().pushStatus(text),
+      loadCss: injectPluginCss,
+      mods: pluginHostMods(),
     };
   }
 }
@@ -216,12 +284,30 @@ export function loadBuiltinPlugins(root: Context): Context {
     void Promise.resolve(fiber).catch((err: unknown) => {
       console.error('[plugins] 第一方插件装载失败:', plugin.name, err);
     });
+    // bundle fiber 锚点（增补四位移机制）：同名产物经 manifest.displace 取代
+    // bundle 行时 dispose 此 fiber；产物卸载/装载失败时以此恢复出厂兜底行。
+    void Promise.resolve(fiber).then((f: Fiber) => builtinFibers.set(plugin.name, f));
     records.push({ name: plugin.name, manifest: null, status: 'active', builtin: true, meta });
   }
   // merge 而非 setPlugins：第一方先装载、第三方异步后到不得冲刷第一方记录
   usePluginStore.getState().mergePlugins(records);
   return root;
 }
+
+// ── 位移式装载（增补四施工，2026-08-31）──
+// UI 四面/工具域/段贡献的产物与 bundle 行共享贡献 id（面板 'paper'、工具行
+// 'plugin/hologram/<域>/<工具>'）——重名注册是装载期拒绝，不能像渲染器那样
+// 双行走查（builtin 行 + plugin 行并存后注册胜）。取代语义落在装载器层：
+//   - bundle 域 fiber 恒为出厂兜底（首帧可见、产物缺席/失败时恢复）；
+//   - 产物 manifest 声明 "displace": true 且 bundle fiber 在册 → 先 dispose
+//     bundle fiber 再 import 产物（贡献面单活互换，注册表永不见重名）；
+//   - 产物装载失败 / 被停用 → 重启 bundle 插件（兜底行自动恢复）。
+// 渲染器不走位移（双行寻址 id 分立），displace 缺省 false 行为不变。
+// 模块级可变态归属（CONVENTIONS §1.10 第 3 类）：键控进程级状态，生命
+// 周期 = 进程（与 activeExternalFibers 同款）。
+const builtinFibers = new Map<string, Fiber>();
+/** 已被产物位移、待恢复的 bundle 插件（name → bundle 插件对象）。 */
+const displacedBuiltin = new Map<string, LantaiPlugin>();
 
 /** 惰性解析资产 origin；'' = 无通道（无后端/代理未起 → 静默跳过，非错误）。 */
 async function resolveOrigin(): Promise<string> {
@@ -305,6 +391,8 @@ export function activeExternalPluginNames(): string[] {
 export function resetPluginRuntimeForTests(): void {
   runtime = null;
   activeExternalFibers.clear();
+  builtinFibers.clear();
+  displacedBuiltin.clear();
 }
 
 /** 增量装载一个外部插件（安装/启用后的运行时生效入口）。
@@ -326,13 +414,28 @@ export async function activateExternalPlugin(dirId: string): Promise<PluginRecor
   return record;
 }
 
-/** 增量卸载（卸载/禁用后的运行时生效入口）：dispose fiber → 贡献链式
- *  回收。未活跃 = no-op 返回 false。 */
+/** 增量停用（禁用/卸载后的运行时生效入口）：dispose fiber → 贡献链式
+ *  回收。位移式内置插件的产物停用后重启 bundle 插件（出厂兜底行恢复，
+ *  记录翻回 bundle 形态）。未活跃 = no-op 返回 false。 */
 export async function deactivateExternalPlugin(name: string): Promise<boolean> {
   const fiber = activeExternalFibers.get(name);
   if (!fiber) return false;
   activeExternalFibers.delete(name);
   await fiber.dispose();
+  const bundlePlugin = displacedBuiltin.get(name);
+  if (bundlePlugin && runtime) {
+    displacedBuiltin.delete(name);
+    const restored = await runtime.root.plugin(bundlePlugin);
+    builtinFibers.set(name, restored);
+    const meta = FIRST_PARTY_MANIFEST[name];
+    usePluginStore.getState().upsertPlugin({
+      name,
+      manifest: null,
+      status: 'active',
+      builtin: true,
+      ...(meta ? { meta } : {}),
+    });
+  }
   return true;
 }
 
@@ -351,8 +454,17 @@ export async function loadExternalPlugins(root: Context, opts: LoadExternalPlugi
       return;
     }
     const { disabled, granted } = await readPluginsState(fetchImpl, origin);
+    // 装载序纪律（增补四）：位移式内置产物按 BUILTIN_PLUGINS 表序装载——
+    // 产物重激活的注册序必须与 bundle 序逐位一致（S1 表序字节契约：
+    // 组合解析快照 / 工具契约生成 / DeepSeek 前缀缓存都依赖贡献注册序，
+    // 磁盘索引的字母序会让 assembly 面漂移）。其余用户插件按索引序随后。
+    const indexNames = index.map(String);
+    const builtinFirst = BUILTIN_PLUGINS.map((p) => p.name).filter(
+      (n) => indexNames.includes(n) && builtinIndex().names.has(n),
+    );
+    const rest = indexNames.filter((n) => !builtinFirst.includes(n));
     const records: PluginRecord[] = [];
-    for (const dirId of index) {
+    for (const dirId of [...builtinFirst, ...rest]) {
       const { record, fiber } = await loadOne(root, String(dirId), {
         origin,
         disabled,
@@ -383,7 +495,10 @@ interface LoadOneDeps {
 }
 
 /** 装载单个插件；任何一步失败 → error 记录（失败隔离，永不抛出）。
- *  返回 fiber（D6 运行时热重载的 dispose 锚点——未装载态为 null）。 */
+ *  返回 fiber（D6 运行时热重载的 dispose 锚点——未装载态为 null）。
+ *  位移式内置插件（manifest.displace + bundle fiber 在册）：import 前
+ *  dispose bundle fiber（贡献面单活互换）；import 失败重启 bundle 插件
+ *  （兜底行恢复）。 */
 async function loadOne(
   root: Context,
   dirId: string,
@@ -403,15 +518,33 @@ async function loadOne(
       fiber: null,
     };
   }
+  const bundleMeta = FIRST_PARTY_MANIFEST[manifest.name];
+  const isBuiltinNamed = bundleMeta != null && builtinIndex().names.has(manifest.name);
+  // 2b) 第一方 feature 的用户禁用态（plugin-prefs）对产物通道同样生效
+  //     （bundle 域 boot 跳过 + 产物域装载跳过——两域一致，下次启动语义不变）
+  if (bundleMeta?.kind === 'feature' && usePluginPrefs.getState().isDisabled(manifest.name)) {
+    return {
+      record: { name: manifest.name, manifest, status: 'disabled', builtin: true, meta: bundleMeta },
+      fiber: null,
+    };
+  }
   // 3) inject 依赖存在性（缺 → error 状态，WO-S0B 装载期校验）
   if (manifest.inject) {
     const missing = manifest.inject.filter((name) => root.reflect.get(name) == null);
     if (missing.length > 0)
-      return { record: errorRecord(manifest.name, manifest, '缺少依赖服务: ' + missing.join(', ')), fiber: null };
+      return {
+        record: withBuiltinMeta(manifest.name, manifest, '缺少依赖服务: ' + missing.join(', ')),
+        fiber: null,
+      };
   }
   // 4) disabled 跳过（不 import）
   if (deps.disabled.has(manifest.name)) {
-    return { record: { name: manifest.name, manifest, status: 'disabled' }, fiber: null };
+    return {
+      record: isBuiltinNamed
+        ? { name: manifest.name, manifest, status: 'disabled', builtin: true, meta: bundleMeta }
+        : { name: manifest.name, manifest, status: 'disabled' },
+      fiber: null,
+    };
   }
   // 4b) 权限门禁（C11-2 装载期一票否决）：manifest.permissions 声明的
   //     权限类未被 plugins.json granted 段全覆盖 → 不装载（blocked 状态
@@ -424,6 +557,7 @@ async function loadOne(
     if (missing.length > 0) {
       return {
         record: {
+          ...(isBuiltinNamed ? { builtin: true as const, meta: bundleMeta } : {}),
           name: manifest.name,
           manifest,
           status: 'blocked',
@@ -433,17 +567,37 @@ async function loadOne(
       };
     }
   }
+  // 4c) 位移（增补四）：产物声明 displace 且 bundle fiber 在册 → dispose
+  //     bundle fiber（贡献面让位）。失败路径统一在下方 catch 恢复。
+  let displaced = false;
+  if (manifest.displace === true) {
+    const bundleFiber = builtinFibers.get(manifest.name);
+    const bundlePlugin = builtinIndex().byName.get(manifest.name);
+    if (bundleFiber && bundlePlugin) {
+      builtinFibers.delete(manifest.name);
+      await bundleFiber.dispose();
+      displacedBuiltin.set(manifest.name, bundlePlugin);
+      displaced = true;
+    }
+  }
   // 5) 导入 + 装配（cordis fiber 记录生命周期；apply 抛错 → await reject）
   try {
     const url = origin + '/' + manifest.name + '/' + manifest.entry;
     const mod = await importModule(url);
     const candidate = pickPluginObject(mod);
     if (!isPluginShape(candidate)) {
-      return { record: errorRecord(manifest.name, manifest, '插件入口未导出 { name, apply } 形状的对象'), fiber: null };
+      return {
+        record: withBuiltinMeta(manifest.name, manifest, '插件入口未导出 { name, apply } 形状的对象'),
+        fiber: null,
+      };
     }
     if (candidate.name !== manifest.name) {
       return {
-        record: errorRecord(manifest.name, manifest, '插件对象 name (' + candidate.name + ') 与 manifest.name 不一致'),
+        record: withBuiltinMeta(
+          manifest.name,
+          manifest,
+          '插件对象 name (' + candidate.name + ') 与 manifest.name 不一致',
+        ),
         fiber: null,
       };
     }
@@ -473,10 +627,38 @@ async function loadOne(
           }
         : candidate;
     const fiber = await root.plugin(target);
-    return { record: { name: manifest.name, manifest, status: 'active' }, fiber };
+    return {
+      record: isBuiltinNamed
+        ? { name: manifest.name, manifest, status: 'active', builtin: true, meta: bundleMeta }
+        : { name: manifest.name, manifest, status: 'active' },
+      fiber,
+    };
   } catch (e) {
-    return { record: errorRecord(manifest.name, manifest, errText(e)), fiber: null };
+    // 位移失败恢复：重启 bundle 插件（出厂兜底行自动回位——错误可见且
+    // 功能不缺席）。
+    if (displaced) {
+      displacedBuiltin.delete(manifest.name);
+      const bundlePlugin = builtinIndex().byName.get(manifest.name);
+      if (bundlePlugin) {
+        try {
+          const restored = await root.plugin(bundlePlugin);
+          builtinFibers.set(manifest.name, restored);
+        } catch (restoreErr) {
+          console.error('[plugins] 内置兜底行恢复失败:', manifest.name, restoreErr);
+        }
+      }
+    }
+    return { record: withBuiltinMeta(manifest.name, manifest, errText(e)), fiber: null };
   }
+}
+
+/** 内置插件的 error 记录补 meta（设置面板按 builtin+meta 分组陈列——
+ *  产物域记录不补位会掉进「已安装」组）。 */
+function withBuiltinMeta(name: string, manifest: PluginManifest | null, error: string): PluginRecord {
+  const meta = FIRST_PARTY_MANIFEST[name];
+  return meta != null && builtinIndex().names.has(name)
+    ? { name, manifest, status: 'error', error, builtin: true, meta }
+    : errorRecord(name, manifest, error);
 }
 
 /** 取 default 或模块本身为 plugin 对象（WO-S0B 约定）。 */

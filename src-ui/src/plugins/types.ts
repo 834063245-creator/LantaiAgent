@@ -92,6 +92,13 @@ export const PluginManifestSchema = z.object({
    *  不装载（blocked 状态，设置面板可见缺哪些授权）。声明是安装期信任面
    *  ——逐调用强制仍在 Rust 命令层（声明与否，权限规则与模式照常生效）。 */
   permissions: z.array(PLUGIN_PERMISSION_CLASS).optional(),
+  /** 位移式装载（增补四施工，first-party-hot-reload-plan）：声明 true 的
+   *  内置产物与 bundle 同名行贡献 id 共享（面板/工具行 id 不分立），装载
+   *  前 dispose bundle fiber（贡献面单活互换）；产物失败/停用 → bundle
+   *  兜底行恢复。缺省 false（渲染器双行走查语义：行 id 分立、后注册胜，
+   *  bundle 行恒在）。第三方同名产物声明 true 可覆盖同名内置插件（用户
+   *  目录权威语义与 Rust 资产通道回退一致）。 */
+  displace: z.boolean().optional(),
   /** 声明式工具（C11-1 工具声明可序列化，2026-08-24）：声明是数据
    *  （name/description/parameters JSON Schema/readOnly——与 DSH L1 契约
    *  同构的三字段 + readOnly）；执行函数经 entry 模块的 `toolHandlers`

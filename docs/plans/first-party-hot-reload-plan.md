@@ -1,9 +1,11 @@
 # 第一方代码「改完即生效」——开发热更工作流 + 渲染器插件通道化
 
-> 状态：✅ **已竣工（2026-08-30）**——P0+P1 全量落地 · 面向兰台（HoloGram）
+> 状态：✅ **全计划竣工（2026-08-31：P0+P1+增补一二三四全部落地）**——面向兰台（HoloGram）
 > 一句话：把「改代码 → 重新打包（分钟级、每次都要）」变成「改代码 → 秒级看到效果」：
-> P0 立开发热更工作流（零成本），P1 让渲染器等 UI 扩展点走插件通道（生产包也可热替换）。
-> 落地明细：dev.cmd + docs/dev-workflow.md（P0）；渲染器插件通道化 P1a-f（见下方各节）。
+> P0 立开发热更工作流（零成本），P1 让渲染器等 UI 扩展点走插件通道（生产包也可热替换），
+> 增补一/二把通道化扩到 kind='feature' 全量（23 个内置插件产物），增补三补工具面入批，
+> 增补四（同日施工）落位移式装载机制并全批竣工。落地明细：dev.cmd + docs/dev-workflow.md（P0）；
+> 渲染器插件通道化 P1a-f（下方各节）；UI 四面 + 18 工具/段插件通道化（增补四施工节）。
 >
 > **增补（2026-08-31，用户拍板）**：用户确认 **dev 模式不可用**（环境所限，原因不论）——
 > P0 对本用户价值归零（竣工件保留不拆），生产包热重载升格为**唯一热更路径 = 必要工程**。影响与排定：
@@ -118,3 +120,69 @@
 1. P0：`dev.cmd` 一条命令进开发模式，改渲染器保存即生效；
 2. P1（若批）：生产包中媒体渲染器可在设置面板一键重载，重载后新行为生效；
 3. 全程：`vitest` / `tsc` / `biome ci` / `verify:convergence` / `cargo test` 全绿。
+
+---
+
+## 8. 增补四施工记录（2026-08-31，当日落地）
+
+> 增补一/二/三的施工批：UI 四面 + 16 工具域 + 2 段贡献全量通道化 + space-demo 退役。
+> 与原设计的关键偏差与理由如实记录如下（其余按 P1a-f 样板机械复用）。
+
+### 8.1 位移式装载（对「双行走查」的结构性推广）
+
+渲染器的覆盖语义靠**行 id 分立**（`builtin/<kind>` bundle 兜底行 + `plugin/hologram/renderers/<kind>`
+产物覆盖行，resolveRenderer 后注册胜）。但四面/工具域/段贡献的贡献 id 与 bundle 行**共享**
+（面板 id `'paper'`/`'settings'`、工具行 `'plugin/hologram/<域>/<工具>'`、段 id）——
+ContributionRegistry 重名装载期拒绝，产物行无法与 bundle 行并存。
+
+解法 = **位移（displace）语义**，落在 loader 层（`plugins/loader.ts`）：
+
+- `loadBuiltinPlugins` 给每个 bundle 插件记 fiber 锚点（`builtinFibers`）；
+- 产物 manifest 声明 `"displace": true` 且 bundle fiber 在册 → import 前 dispose bundle fiber
+  （贡献面**单活互换**，注册表永不见重名）；失败路径重启 bundle 插件（兜底行自动回位）；
+- `deactivateExternalPlugin` 对被位移插件重启 bundle 行 + 记录翻回 bundle 形态；
+- 产物记录统一补 `builtin: true + meta`（设置面板「内置插件」分组不错位）；
+- `usePluginPrefs` 的 feature 禁用态对产物通道同样生效（两域一致，下次启动语义不变）；
+- **装载序纪律**：内置产物按 BUILTIN_PLUGINS 表序装载（磁盘索引是字母序，直接用会打乱
+  贡献注册序——组合解析快照/工具契约/前缀缓存依赖表序），用户插件按索引序殿后。
+
+渲染器不改（无 displace 声明，双行走查语义原样保留）。
+
+### 8.2 Wave-2 薄重导出（对「zod/agent 依赖自包含内联」的偏差）
+
+原增补二设想工具域产物把 zod/agent 依赖 esbuild 内联（自包含）。施工时查明**不可行**：
+工具工厂的依赖树携带模块级单例（`composition/graph-service` 的 active 访问器、
+`asset-kinds` 注册表、`ui/command-registry` 单例、provider/catalog 动态拉取态）——产物内联
+副本会分裂状态（产物工具访问影子单例，静默错乱）。改为**薄重导出产物**：
+`builtin/<域>/index.ts` 经宿主桥 mods 取 bundle 域**同一插件对象**（几行 + manifest.json），
+displace 位移 = 同一插件的干净重注册。段贡献（prompt-segments/capability-segments）同形——
+段定义是 convergence 字节契约面，本就不该随产物内联。自包含契约（产物零静态 import）
+仍由构建管线断言；热更语义 = 同一插件重装载，工具面下次装配生效（与拍板 #3 一致）。
+
+### 8.3 UI 四面迁移明细
+
+- 迁移文件：SpineRack/SessionSidebar(+model+css) → `builtin/canvas-nav/`；
+  PaperPanel/InkLayer/StatusLine(+css) → `builtin/paper-shell/`；SettingsPanel →
+  `builtin/settings-domain/`；ComposerDock/TocStrip/ModelSelector → `builtin/compose-dock/`；
+  各面带 `index.ts`（插件对象 + injectFaceArtifactCss）+ `host.ts`（开发/测试域，直连真实模块）
+  + `host.aliased.ts`（产物域，宿主桥 mods 取共享真实例，`typeof import('./host')` 对拍防漂移）。
+- **宿主桥扩面**（`loader.ts` + `builtin/host-modules.ts`）：hooks 扩全集、`loadCss`（产物
+  CSS 幂等注入，define 门控 bundle 域 no-op）、`mods`（faceDeps 依赖真实例 + toolDomains +
+  segments 插件对象）；构建期 `react` 别名桥（`react-bridge.cjs`）保证产物零 React 副本
+  （@react-aria 等内联依赖也落到宿主 React）。
+- **构建管线**：`scripts/build-builtin-plugins.mjs`（原 build-renderer-plugins.mjs 泛化）——
+  23 个产物统一 scope 布局 `dist-plugins/builtin/hologram/<dir>/`（**顺带修 P1 缺陷**：
+  渲染器首版输出 `builtin/renderers` 单段目录，过不了 loader 的 `manifest.name !== dirId`
+  校验，产物实际装不进通道）；产物自包含断言（零静态 import / 零动态裸 import）；
+  面组件 CSS 经 esbuild 抽取为 entry.css 随产物携带。
+- **boot 序**：main.ts 改为产物装载完成后再跑 bootShell（位移在纸面板直落前完成，
+  首帧即终态，无面板闪卸重挂）。
+- **space-demo 退役**：删除插件与测试段（paper-space.test.ts 的 demo 用例）。
+
+### 8.4 门禁结果
+
+- first-party-manifest 44 条（45 − space-demo）守护测试同步；
+- convergence **零漂移**（原预算的快照重录 change request 免除——convergence 只钉通道腰
+  withFirstParty*Channel，bundle 兜底行让装配面与迁移前逐字节一致，实测确认）；
+- gen:tool-contract 不受装载路径影响（按源码生成，未动）；
+- 全量门禁（biome 0/0 / tsc / vitest 全量 / convergence 双 preset / cargo）见施工 commit。

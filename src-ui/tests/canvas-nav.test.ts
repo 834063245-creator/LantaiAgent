@@ -6,6 +6,12 @@
 
 import { describe, expect, it } from 'vitest';
 import { panelDefs } from '../src/app/panels/panel-def';
+import { compositionServicesPlugin } from '../src/composition/services';
+import { spaceServicePlugin } from '../src/composition/space-service';
+import { Context } from '../src/cordis';
+import { identityView, viewFocusRegion } from '../src/paper/canvas-math';
+import { pickDropAnchor } from '../src/paper/space';
+import { canvasNavPlugin } from '../src/plugins/builtin/canvas-nav';
 import {
   filterRows,
   mergeSessionRows,
@@ -15,13 +21,7 @@ import {
   sessionMeta,
   splitSections,
   statusLabel,
-} from '../src/app/panels/session-sidebar-model';
-import { compositionServicesPlugin } from '../src/composition/services';
-import { spaceServicePlugin } from '../src/composition/space-service';
-import { Context } from '../src/cordis';
-import { identityView, viewFocusRegion } from '../src/paper/canvas-math';
-import { pickDropAnchor } from '../src/paper/space';
-import { canvasNavPlugin } from '../src/plugins/canvas-nav-plugin';
+} from '../src/plugins/builtin/canvas-nav/session-sidebar-model';
 import { useDockStore } from '../src/state/dock-store';
 
 async function bootCanvasNav() {

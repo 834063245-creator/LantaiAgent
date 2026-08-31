@@ -22,6 +22,7 @@ import type { AssistantMessage } from '../src/ui/message-model';
 
 const SRC = join(process.cwd(), 'src');
 const APP = join(SRC, 'app');
+const BUILTIN = join(SRC, 'plugins', 'builtin');
 const PLAN_DIR = join(SRC, 'agent', 'plan');
 
 /** 读取文件文本（不存在返回空串，避免测试崩溃）。 */
@@ -114,13 +115,20 @@ const PROBES: DeadLinkProbe[] = [
     id: 'stop-button',
     note: '#4 Agent 运行中无停止入口（chat-core.abort 活着，纸壳没接）——Stage-4 后停止钮在创作坞（ComposerDock）',
     isDead: () =>
-      !read(join(APP, 'panels', 'PaperPanel.tsx')).includes('abort') &&
-      !read(join(APP, 'panels', 'ComposerDock.tsx')).includes('abort'),
+      !read(join(BUILTIN, 'paper-shell', 'PaperPanel.tsx')).includes('abort') &&
+      !read(join(BUILTIN, 'compose-dock', 'ComposerDock.tsx')).includes('abort'),
   },
   {
     id: 'message-ops',
     note: '#5 消息操作（复制/编辑/重发/重试）回调在 chat-core 活着，纸壳无入口',
-    isDead: () => !/editUserMessage|resendUserMessage|retryAssistant|copyText/.test(readAllTs(APP, ['chat-core.ts'])),
+    isDead: () =>
+      !/editUserMessage|resendUserMessage|retryAssistant|copyText/.test(
+        readAllTs(APP, ['chat-core.ts']) +
+          readAllTs(join(BUILTIN, 'paper-shell')) +
+          readAllTs(join(BUILTIN, 'compose-dock')) +
+          readAllTs(join(BUILTIN, 'canvas-nav')) +
+          readAllTs(join(BUILTIN, 'settings-domain')),
+      ),
   },
   {
     id: 'dataflow-display',
@@ -131,8 +139,8 @@ const PROBES: DeadLinkProbe[] = [
     id: 'slash-at-composer',
     note: '#7 斜杠命令 / @提及注册槽"待纸壳复用"未兑现，composer 是裸 textarea——Stage-4 后斜杠在创作坞（ComposerDock）',
     isDead: () => {
-      const pp = read(join(APP, 'panels', 'PaperPanel.tsx'));
-      const dock = read(join(APP, 'panels', 'ComposerDock.tsx'));
+      const pp = read(join(BUILTIN, 'paper-shell', 'PaperPanel.tsx'));
+      const dock = read(join(BUILTIN, 'compose-dock', 'ComposerDock.tsx'));
       return !/slash|AtAuto/i.test(pp) && !/slash|AtAuto/i.test(dock);
     },
   },

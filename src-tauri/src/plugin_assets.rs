@@ -98,7 +98,35 @@ pub(crate) fn init_builtin_plugins_dir(app: &tauri::AppHandle) {
 
 /// 内置插件名集合（P1d 回退白名单——只有这些第一方插件的资产可从未初始化
 /// 的内置根回退；普通第三方插件不享受内置回退，避免撞用户同名目录）。
-const BUILTIN_PLUGIN_NAMES: &[&str] = &["hologram/renderers"];
+/// 增补四（first-party-hot-reload-plan 2026-08-31）：kind=feature 全量
+/// 通道化——渲染器 + UI 四面 + 16 工具域 + 2 段贡献共 23 个（space-demo
+/// 已退役不回退）。与 src-ui/src/plugins/builtin/<dir>/manifest.json 一一
+/// 对应（构建管线 scripts/build-builtin-plugins.mjs 产出 scope 目录）。
+const BUILTIN_PLUGIN_NAMES: &[&str] = &[
+    "hologram/renderers",
+    "hologram/canvas-nav",
+    "hologram/paper-shell",
+    "hologram/settings-domain",
+    "hologram/compose-dock",
+    "hologram/web-domain",
+    "hologram/browser-desktop-domain",
+    "hologram/engine-domain",
+    "hologram/git-domain",
+    "hologram/search-domain",
+    "hologram/fs-domain",
+    "hologram/shell-domain",
+    "hologram/agent-isolation-domain",
+    "hologram/ask-domain",
+    "hologram/skill-domain",
+    "hologram/memory-domain",
+    "hologram/task-domain",
+    "hologram/agent-domain",
+    "hologram/wait-domain",
+    "hologram/cordis-domain",
+    "hologram/asset-domain",
+    "hologram/prompt-segments",
+    "hologram/capability-segments",
+];
 
 /// 判断 url_path（插件根下相对路径）是否针对内置插件（以白名单插件名开头）。
 /// 插件名可含一段斜杠（scope 风格，如 hologram/renderers）——匹配前两段。

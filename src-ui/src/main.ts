@@ -14,10 +14,11 @@ import './app/tokens.css';
 import './app/foundation.css';
 import './app/shell.css';
 import './app/chat/prompt-shelf.css';
-import './app/panels/dock-panels/settings-panel.css';
-import './app/panels/dock-panels/model-selector.css';
 import './app/panels/dock-panels/provider-settings.css';
-import './app/panels/PaperPanel.css';
+import './plugins/builtin/compose-dock/model-selector.css';
+import './plugins/builtin/paper-shell/PaperPanel.css';
+import './plugins/builtin/settings-domain/settings-panel.css';
+import './plugins/builtin/paper-shell/status-line.css';
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { log } from './agent/logger';
@@ -46,9 +47,12 @@ const appRoot = document.getElementById('app-root');
 if (!appRoot) throw new Error('app-root 挂载点不存在——index.html 被破坏');
 createRoot(appRoot).render(createElement(App));
 
-// ── 外部插件装载（WO-S0B）：异步不阻塞首帧；结果只进 plugin-store，不炸应用 ──
-void loadExternalPlugins(pluginKernelRoot);
-
-// ── 壳引导（S2）：引导三件套 + 组合 patch + 壳行按表序执行 +
-//    冷启动收尾（含纸面板直落）。flowDeps 缺省 = 出厂 workspace 流。──
-void bootShell();
+// ── 外部插件装载（WO-S0B）+ 壳引导（S2）：产物装载先于壳行执行——
+//    位移式内置插件（增补四）在纸面板直落前完成 bundle 行 → 产物行互换，
+//    首帧即终态（无面板闪卸重挂）。装载永不 reject（失败隔离，通道失败
+//    退回 bundle 兜底行）；bootShell 的引导三件套 + 组合 patch + 壳行
+//    按表序执行 + 冷启动收尾（含纸面板直落）。flowDeps 缺省 = 出厂流。──
+void (async () => {
+  await loadExternalPlugins(pluginKernelRoot);
+  await bootShell();
+})();

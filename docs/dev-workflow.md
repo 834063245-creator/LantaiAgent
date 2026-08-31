@@ -1,6 +1,8 @@
 # 开发热更工作流（dev 模式）
 
 > 制定 2026-08-30 · 落地 first-party-hot-reload-plan P0
+> 增补四（2026-08-31）：dev 模式对用户不可用（环境所限）——生产包热重载
+> 为唯一热更路径，见文末「生产包热重载（增补四后的主路径）」。
 > 一句话：改前端代码 → 保存 → 秒级看到效果，无需重新打包。
 
 ## 为什么之前「改代码要重打包」
@@ -59,3 +61,26 @@ dev.cmd
 - [ ] 改 `src-ui/src/app/**` 或 `src-ui/src/composition/**` 等前端文件，
       保存后窗口内行为即时更新，无重编译
 - [ ] 生产包可用 `build.cmd` 正常发布（dev 不替代发布门禁）
+
+## 生产包热重载（增补四后的主路径）
+
+dev 模式不可用时的迭代环——`kind='feature'` 全部 23 个第一方插件
+（UI 四面 canvas-nav / paper-shell / settings-domain / compose-dock、16 工具域、
+prompt/capability 段贡献、资产渲染器）都是**内置插件产物**：
+
+```
+1. 改插件源码（src-ui/src/plugins/builtin/<dir>/…，面组件 + CSS 在此）
+2. cd src-ui && npm run build:builtin-plugins   ← esbuild 秒级出产物到 dist-plugins/builtin/hologram/<dir>/
+3. 应用内：设置 → 插件 → 对应插件「重新加载」    ← bundle 兜底行 ↔ 产物行单活互换，不重启
+```
+
+- 生效语义：面板/命令即时生效；工具/prompt/capability 贡献在**下次 Agent
+  装配**生效（已开会话的注册表是装配期快照，不被中断——特性非缺陷）。
+- 兜底：产物缺失/损坏 → bundle 出厂行自动恢复（应用不缺功能，设置面板
+  显示「装载失败」与错误详情）。
+- 重启应用同样生效（boot 时产物按 BUILTIN_PLUGINS 表序装载位移）。
+- 工具域/段贡献是**薄重导出产物**（插件对象真源在 bundle 域）——重载 =
+  干净重注册；要改工具行为本身需改真源（agent/tools/coding.ts 等）并重跑
+  全量构建。UI 四面（PaperPanel 等组件 + CSS）是完整源码产物，改完即热更。
+- Rust 白名单：新增内置插件须同步 `src-tauri/src/plugin_assets.rs` 的
+  `BUILTIN_PLUGIN_NAMES`（资产通道回退寻址）。

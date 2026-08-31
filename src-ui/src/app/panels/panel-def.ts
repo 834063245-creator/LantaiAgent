@@ -6,7 +6,7 @@
 // panelDefs() = 常量 + ctx.panels 贡献（合流点不是改写点；贡献变更经
 // state/panel-defs-store 的 tick 信号即时生效）。
 // S3（2026-08-22）：常量面清空——最后一行 settings 迁为第一方插件贡献
-// （plugins/settings-plugin.ts，面板 + 命令双通道）。常量表保留：内置
+// （plugins/builtin/settings-domain/，面板 + 命令双通道；增补四产物通道化）。常量表保留：内置
 // id 是部署事实（同名贡献内置胜的合流语义仍需要它作权威），未来第一方
 // 面板域继续走贡献通道。
 
@@ -30,8 +30,8 @@ export interface PanelDef {
 
 // V5 拆除（2026-08-22，纸壳唯一主界面）：旧观测台 dock 面板族（check/
 // constraints/dataflow/agents/tasks）随 chrome 退役；纸面板是组合层贡献
-// （paper/paper-plugin.ts）。S3（2026-08-22）：settings 亦迁贡献
-// （plugins/settings-plugin.ts）——常量面自此为空，全量面板走贡献通道
+// （plugins/builtin/paper-shell/）。S3（2026-08-22）：settings 亦迁贡献
+// （plugins/builtin/settings-domain/）——常量面自此为空，全量面板走贡献通道
 // （docs/adr/workspace-concept-ownership.md）。
 export const PANEL_DEFS: PanelDef[] = [];
 

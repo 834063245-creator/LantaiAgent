@@ -9,7 +9,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
-import { CommandsService } from '../src/composition/services';
 import { SpaceService } from '../src/composition/space-service';
 import { Context } from '../src/cordis';
 import { createBlock } from '../src/paper/block-model';
@@ -25,7 +24,6 @@ import {
   STREAM_REGION,
 } from '../src/paper/space';
 import { type RegionFlowGeom, visibleRegionWindows } from '../src/paper/virtualize';
-import { formatSpaceState, spaceDemoPlugin } from '../src/plugins/space-demo-plugin';
 import {
   getCanvasStore,
   resetCanvasStoresForTests,
@@ -289,23 +287,5 @@ describe('ctx.space 通道（SpaceService + demo 插件消费）', () => {
     getCanvasStore(STORE).getState().setRegion('1', { anchorX: 2160, anchorY: 0, width: 1440 });
     expect(calls).toBe(2);
     un();
-  });
-
-  it('demo 插件经 ctx.space 读到画布状态（stage-2 验收：孔可用）', () => {
-    const canvas = getCanvasStore(STORE).getState();
-    canvas.setRegion('1', { anchorX: 2160, anchorY: -300, width: 1440 });
-    getChatStore(STORE).sess.setState({ sessions: [{ id: 1, label: '案卷一' }], activeIdx: 0 });
-
-    const ctx = new Context();
-    new CommandsService(ctx);
-    new SpaceService(ctx);
-    // 插件 apply 不抛（注册订阅 + 命令）
-    spaceDemoPlugin.apply(ctx);
-    // 插件的读面格式函数能看到画布状态
-    const msg = formatSpaceState(ctx.space.getState());
-    expect(msg).toContain('案卷一');
-    expect(msg).toContain('@(2160, -300)');
-    expect(msg).toContain('活跃 1');
-    expect(ctx.commands.get('space/demo-status')).toBeTruthy();
   });
 });

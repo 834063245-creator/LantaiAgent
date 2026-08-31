@@ -13,8 +13,8 @@ import { ACTION_CONTRIBUTION_ALIASES, runAction } from '../src/app/actions';
 import { PANEL_DEFS, panelDefs } from '../src/app/panels/panel-def';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
-import { paperPlugin } from '../src/paper/paper-plugin';
-import { settingsPlugin } from '../src/plugins/settings-plugin';
+import { paperPlugin } from '../src/plugins/builtin/paper-shell';
+import { settingsPlugin } from '../src/plugins/builtin/settings-domain';
 import { useDockStore } from '../src/state/dock-store';
 
 /** 装载四 service + 待测域插件（S3 后装载序：services → plugin）。 */

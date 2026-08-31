@@ -15,7 +15,7 @@
 //   - 空间命令：focus（定位）/ expand（展开）/ collapse（收起）/ place（落位）
 //
 // 本阶段只打孔不消费完整形态：书脊三手势（阶段 3）、目次带（阶段 4）届时
-// 以插件消费本通道；demo 插件（plugins/space-demo-plugin）验证孔真的能用。
+// 以插件消费本通道；写法范本由 plugins/builtin/canvas-nav 实体接替（space-demo 已退役，2026-08-31）。
 //
 // 状态权威不变：流区位置唯一真相 = state/canvas-store（工作区级，随
 // 工作区画布状态文件落盘，Stage-5）；活跃会话唯一权威 = sess store 的

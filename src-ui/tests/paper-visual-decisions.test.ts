@@ -16,9 +16,9 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const SRC = join(__dirname, '..', 'src');
-const PANEL_CSS = readFileSync(join(SRC, 'app', 'panels', 'PaperPanel.css'), 'utf8');
+const PANEL_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'), 'utf8');
 const HOME_CSS = readFileSync(join(SRC, 'app', 'foundation.css'), 'utf8');
-const PANEL_TSX = readFileSync(join(SRC, 'app', 'panels', 'PaperPanel.tsx'), 'utf8');
+const PANEL_TSX = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.tsx'), 'utf8');
 const ICONS_TS = readFileSync(join(SRC, 'ui', 'icons.ts'), 'utf8');
 const MEASURE_TS = readFileSync(join(SRC, 'paper', 'measure.ts'), 'utf8');
 const TYPE_TOKENS_TS = readFileSync(join(SRC, 'paper', 'type-tokens.ts'), 'utf8');

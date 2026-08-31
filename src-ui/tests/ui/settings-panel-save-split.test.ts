@@ -25,7 +25,7 @@ vi.mock('../../src/state/agent-config-store', () => ({
 }));
 vi.mock('../../src/ui/icons', () => ({ iconHtml: () => '' }));
 
-import { SettingsPanel } from '../../src/app/panels/SettingsPanel';
+import { SettingsPanel } from '../../src/plugins/builtin/settings-domain/SettingsPanel';
 
 const STORAGE_KEY = 'hologram_settings';
 const tick = () => new Promise((r) => setTimeout(r, 50));

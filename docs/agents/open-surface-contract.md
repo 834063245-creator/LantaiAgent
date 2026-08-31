@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：6
+当前版本：7
 
-<!-- contract-fingerprint: bc6962cf777b191aee4ba7e186fcfce1f6972e3f8ffe7e8577e038e2070c59c3 -->
+<!-- contract-fingerprint: 23eeeb95d74e2e80ca5feae401928b22859a64c42d1d95f78dfa244d82c402bf -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -26,7 +26,7 @@
 | src/agent/events.ts | D4 事件面（AGENT_EVENT_MAP mode 表 / LoopEventPayload 载荷形状 / 监听契约） |
 | src/agent/dynamic-runner/dynamic-runner-service.ts | ctx.dynamicRunner（D7——define/run/stop/undefine/inspect + 审批门 + 包不可变/回滚语义） |
 | src/agent/dynamic-runner/sandbox.ts | 动态插件沙箱承诺（阴影求值面 / 守卫注册面白名单 / 三预算常量） |
-| src/plugins/types.ts | 插件 manifest schema（name/version/inject/permissions/tools/mcpServers） |
+| src/plugins/types.ts | 插件 manifest schema（name/version/inject/permissions/tools/mcpServers/displace） |
 | src/agent/agent-loop/types.ts | AgentLoop/AgentLoopHost（D13 loop seam 契约） |
 | src/agent/agent-loop/default-loop.ts | 默认 loop 实现（行为逐字节一致，D13） |
 | src/agent/agent-loop/agent-loop-service.ts | ctx.agentLoop 注册表（构造期登记 builtin/default，后注册胜） |
@@ -41,6 +41,7 @@
 | 4 | 2026-08-28 | executor legacy 直调参数拆除（StreamingToolExecutor 构造签名删 hooks/preflightHooks/planGate，guard/preflight/around 全量经 eventBus 监听面——唯一管道）；events.ts 注释同步（去 legacy 表述，无语义变更）；事件目录再生成（attach* 接线点无移动，同指） | 平台化 Phase 5 收尾 / 拆旧清单清零 |
 | 5 | 2026-08-31 | agent loop 契约行为面：default-loop err 分支先补落已执行工具结果（append assistant/text + tool/call 审计 + tool/result 回传上下文）再抛 err——流内失败不再丢已执行副作用记录 | 33dae0f4（该提交漏走契约手续，本行代补） |
 | 6 | 2026-08-31 | default-loop 每步两处 best-effort RPC（drain_bg_notifications / plan read_file_content）包 3s 超时兜底（typedRpcWithTimeout）——Rust 卡死/回包丢失时落回各自跳过分支，run() 不再死等无界 await（运行态挂起修复之一）；无契约形状变更 | 运行态挂起诊断 2026-08-31 |
+| 7 | 2026-08-31 | manifest schema 新增可选 `displace: boolean`（位移式内置插件装载：产物声明 displace 且 bundle 同名行在册 → import 前 dispose bundle fiber 单活互换，失败/停用自动恢复兜底行；缺省 false 行为不变）——kind='feature' 全量通道化（first-party-hot-reload-plan 增补四） | first-party-hot-reload-plan §8 |
 
 ## 变更流程（guard 红 → 修复四步）
 

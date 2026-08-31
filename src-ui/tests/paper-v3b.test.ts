@@ -110,7 +110,7 @@ describe('paper/paper-plugin（V3b 壳装配）', () => {
     const ctx = new Context();
     const f1 = ctx.plugin(compositionServicesPlugin);
     await f1;
-    const { paperPlugin } = await import('../src/paper/paper-plugin');
+    const { paperPlugin } = await import('../src/plugins/builtin/paper-shell');
     const f2 = ctx.plugin(paperPlugin);
     await f2;
     await fn(ctx);
@@ -140,7 +140,7 @@ describe('paper/paper-plugin（V3b 壳装配）', () => {
     const ctx = new Context();
     const f1 = ctx.plugin(compositionServicesPlugin);
     await f1;
-    const { paperPlugin } = await import('../src/paper/paper-plugin');
+    const { paperPlugin } = await import('../src/plugins/builtin/paper-shell');
     const f2 = ctx.plugin(paperPlugin);
     await f2;
     expect(ctx.panels.get('paper')).toBeDefined();

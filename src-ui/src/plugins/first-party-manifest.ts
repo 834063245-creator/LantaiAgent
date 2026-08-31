@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT.
 
-// 第一方插件元数据清单（平台化收尾，2026-08-29；P1 扩充 2026-08-30）
-// ——45 个第一方插件的身份单一真源。
+// 第一方插件元数据清单（平台化收尾，2026-08-29；P1 扩充 2026-08-30；
+// 增补四通道化收编 2026-08-31）
+// ——44 个第一方插件的身份单一真源。
 //
 // 背景：平台化 P4-P6 之后，第一方插件经 plugins/loader.ts 的 BUILTIN_PLUGINS
 // 表统一装载、经 ctx.* 贡献通道统一装配，但一直缺「清单身份」——没有
@@ -84,10 +85,9 @@ export const FIRST_PARTY_MANIFEST: Record<string, FirstPartyPluginMeta> = {
     'Agent 主循环（seam/agentLoop 默认实现）',
   ),
 
-  // ── 功能插件（feature，22）──
+  // ── 功能插件（feature，23）──
   'hologram/settings-domain': meta('hologram/settings-domain', 'feature', '设置面板 + 命令双通道'),
   'hologram/paper-shell': meta('hologram/paper-shell', 'feature', '纸壳面板（写作视图 + toggle 命令）'),
-  'hologram/space-demo': meta('hologram/space-demo', 'feature', '演示用空间面板'),
   'hologram/canvas-nav': meta('hologram/canvas-nav', 'feature', '画布导航命令'),
   'hologram/compose-dock': meta('hologram/compose-dock', 'feature', '组合停靠面板'),
   'hologram/web-domain': meta('hologram/web-domain', 'feature', 'web 域工具（web_fetch）'),

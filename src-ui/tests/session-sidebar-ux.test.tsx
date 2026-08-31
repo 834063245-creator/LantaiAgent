@@ -10,8 +10,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
-import { SessionSidebar } from '../src/app/panels/SessionSidebar';
 import { useShellStore } from '../src/app/shell-store';
+import { SessionSidebar } from '../src/plugins/builtin/canvas-nav/SessionSidebar';
 import { resetCanvasStoresForTests } from '../src/state/canvas-store';
 import { getChatStore } from '../src/ui/chat-store';
 

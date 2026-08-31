@@ -18,6 +18,12 @@
 > **平台化 Phase 3-6（2026-08-27/28）：seam 裁剪域 / 运行时热重载（D6）/
 > 动态插件 cordis 域（D7）/ 信任模型二分（D12）/ 平台契约总览（§0）——
 > 本文件自此为插件面唯一人类契约。**
+> **2026-08-31（增补四，first-party-hot-reload-plan）：kind='feature' 全量
+> 通道化**——23 个内置插件产物（渲染器 + UI 四面 + 16 工具域 + 2 段贡献，
+> space-demo 退役，清单 45→44）；新增**位移式装载**（manifest.displace——
+> bundle 兜底行 ↔ 产物行单活互换，失败自动恢复）与**薄重导出产物**形态
+> （§0 第四形态）；宿主桥扩 mods/loadCss/React 别名桥；设置面板重载按钮
+> 扩到全部 feature 插件。
 > 插件 = 经
 > webview 动态 import 装载的自包含 ES 模块，
 > 向宿主注册**面板 / 命令 / 工具 / 块渲染器 / prompt 段 / 管道钩子 /
@@ -91,31 +97,48 @@ cookbook（`docs/cookbook/`）+ 发布路径（`docs/user/develop/`）是平台�
 3. **外部 MCP server**（§3）：manifest.mcpServers 声明式挂接（见
    `docs/cookbook/adding-an-mcp-server.md`）。
 
-### 第四形态：第一方内置插件（产物通道，P1 2026-08-30）
+### 第四形态：第一方内置插件（产物通道，P1 2026-08-30；增补四全量化 2026-08-31）
 
-第一方 UI 扩展点（当前：资产块渲染器）从编译期 bundle 迁为**内置插件产物**——
-源码在仓库（`src-ui/src/plugins/builtin/renderers/`），构建管线（esbuild，
-`scripts/build-renderer-plugins.mjs`，接入 `npm run build`）产出 ESM 产物 +
+第一方 **kind='feature' 全量**（资产渲染器 + UI 四面 canvas-nav/paper-shell/
+settings-domain/compose-dock + 16 工具域 + prompt/capability 段贡献，共 23 个）
+从编译期 bundle 兜底行扩为**内置插件产物通道**——源码在仓库
+（`src-ui/src/plugins/builtin/<dir>/`），构建管线（esbuild，
+`scripts/build-builtin-plugins.mjs`，接入 `npm run build`）产出 ESM 产物 +
 manifest，随包携带（`tauri.conf.json` resources `dist-plugins/**`）；运行时经
 **与第三方同一条 D6 装载链路**装载（`/plugins/` 索引含内置根，Rust 资产通道
 回退 `src-ui/dist-plugins` 或打包态 `resource_dir/builtin`），设置面板
-「重新加载」→ 重装载覆盖行（秒级生效，应用不重启）。
+「重新加载」→ 重装载（秒级生效，应用不重启；工具面下次装配生效）。
 
-- 装载语义：bundle 行（id `builtin/<kind>`，出厂兜底）与磁盘行（id
-  `plugin/<插件名>/<kind>`，覆盖）并存——`resolveRenderer` 同 kind 后注册胜，
-  磁盘行覆盖 bundle 行；磁盘行卸载/失败 → bundle 行自动恢复（JSON 兜底不炸）。
-- 产物构建：`--jsx=automatic --jsx-import-source=./renderer-host` +
-  onResolve 把 `renderer-host` 重定向到 `renderer-host.aliased.ts`（宿主桥取
-  React/hooks/Overlay/rpc）——产物自包含（无裸 import），宿主桥注入面见 §4。
-- 宿主桥扩展（P1a）：`window.__lantai_plugin_host__` 新增 `react`（React
-  全量 + hooks 子集）、`Overlay`、`rpc`——渲染器插件（JSX 组件）从这里取
-  宿主能力，插件自包含契约不破。
+- **装载语义（两种，按 manifest 声明分流）**：
+  - **覆盖式**（渲染器，无 `displace`）：bundle 行（id `builtin/<kind>`，出厂
+    兜底）与磁盘行（id `plugin/<插件名>/<kind>`，覆盖）并存——`resolveRenderer`
+    同 kind 后注册胜；磁盘行卸载/失败 → bundle 行自动恢复。
+  - **位移式**（manifest 声明 `"displace": true`——其余 22 个 feature：贡献 id
+    与 bundle 行共享，重名装载期拒绝，不能并存）：loader 在 import 产物前
+    dispose 同名 bundle fiber（贡献面**单活互换**）；产物失败/停用 → bundle
+    兜底行重启恢复。`usePluginPrefs` 的 feature 禁用态对产物通道同样生效。
+    内置产物按 BUILTIN_PLUGINS **表序**装载（贡献注册序 = bundle 序——组合
+    快照/前缀缓存依赖此序），用户插件按索引序殿后。
+- **产物形态（两种）**：UI 四面 = 面组件源码真迁移（双走查：bundle 域直引 +
+  esbuild 产物；项目内依赖经 `host.ts` / `host.aliased.ts` 宿主桥对拍面取
+  **共享真实例**——zustand store/service 单例不可内联副本；CSS 抽取为
+  entry.css 经 `loadCss` 注入）；工具域/段贡献 = **薄重导出产物**（插件对象
+  真源留 bundle 域经 `mods` 取用——工具工厂依赖树带模块级单例，内联副本会
+  分裂状态；重载 = 同一插件干净重注册）。
+- 产物构建：`--jsx=automatic --jsx-import-source=./<hostModule>` + onResolve
+  重定向到 `*.aliased.ts` + `react` 别名桥（`react-bridge.cjs`——产物内全部
+  react import 落到宿主注入的同一份 React，零副本）——产物自包含（零静态
+  import / 零动态裸 import，构建断言）。
+- 宿主桥（P1a + 增补四扩面）：`window.__lantai_plugin_host__` 提供 `react`
+  （React 全量）、hooks 全集、`Overlay`、`rpc`、`loadCss`（产物 CSS 幂等注入）、
+  `mods`（faceDeps 依赖真实例 + toolDomains/segments 插件对象）——见 §4。
 
 ### 契约版本
 
 - 开放面契约版本：`docs/agents/open-surface-contract.md`（seam 接口 / manifest schema /
   dynamic runner / agent loop 变更必须升版 + 记录——守护测试红着就是没改完）。
-- 插件 manifest schema 真源：`src/plugins/types.ts`（zod——单一权威）。
+- 插件 manifest schema 真源：`src/plugins/types.ts`（zod——单一权威；`displace`
+  为增补四新增可选字段）。
 
 ### 信任模型二分（详见 §6）
 

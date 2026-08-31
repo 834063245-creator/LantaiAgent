@@ -1,0 +1,8 @@
+{
+  "name": "hologram/skill-domain",
+  "version": "1.0.0",
+  "description": "skill-domain 域工具第一方内置插件（薄重导出产物，displace 位移 bundle 兜底行）",
+  "entry": "entry.js",
+  "inject": ["tools"],
+  "displace": true
+}

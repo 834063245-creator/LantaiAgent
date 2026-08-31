@@ -634,24 +634,28 @@ describe('loadBuiltinPlugins（第一方插件进插件列表）', () => {
     usePluginStore.getState().setPlugins([]);
   });
 
-  it('装载后写入 plugin-store：44 条 builtin 记录 + 元数据 + 状态 active', () => {
+  it('装载后写入 plugin-store：44 条 builtin 记录 + 元数据 + 状态 active', async () => {
     const root = new Context();
     loadBuiltinPlugins(root);
+    // cordis plugin() 是 promise——flush 微任务让四 service 与 bundle 贡献落定
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const plugins = usePluginStore.getState().plugins;
     expect(plugins).toHaveLength(BUILTIN_PLUGINS.length);
-    expect(BUILTIN_PLUGINS.length).toBe(45); // 44 + hologram/renderers（内置渲染器插件，P1 2026-08-30）
+    expect(BUILTIN_PLUGINS.length).toBe(44); // 45 − space-demo（增补四退役，2026-08-31）
     expect(plugins.every((p) => p.builtin === true)).toBe(true);
     expect(plugins.every((p) => p.meta?.name === p.name)).toBe(true);
     expect(plugins.every((p) => p.status === 'active')).toBe(true);
   });
 
-  it('用户禁用的 feature 插件：跳过装载 + 记录 disabled（下次启动生效）', () => {
+  it('用户禁用的 feature 插件：跳过装载 + 记录 disabled（下次启动生效）', async () => {
     const feature = BUILTIN_PLUGINS.find((p) => FIRST_PARTY_MANIFEST[p.name]?.kind === 'feature');
     expect(feature).toBeTruthy();
     if (!feature) return;
     usePluginPrefs.getState().setDisabled(feature.name, true);
     const root = new Context();
     loadBuiltinPlugins(root);
+    // cordis plugin() 是 promise——flush 微任务让四 service 与 bundle 贡献落定
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const rec = usePluginStore.getState().plugins.find((p) => p.name === feature.name);
     expect(rec?.status).toBe('disabled');
     // 其余仍是 active
@@ -661,13 +665,15 @@ describe('loadBuiltinPlugins（第一方插件进插件列表）', () => {
     expect(activeCount).toBe(BUILTIN_PLUGINS.length - 1);
   });
 
-  it('platform（service）无视禁用集——常驻不可禁', () => {
+  it('platform（service）无视禁用集——常驻不可禁', async () => {
     const service = BUILTIN_PLUGINS.find((p) => FIRST_PARTY_MANIFEST[p.name]?.kind === 'service');
     expect(service).toBeTruthy();
     if (!service) return;
     usePluginPrefs.getState().setDisabled(service.name, true);
     const root = new Context();
     loadBuiltinPlugins(root);
+    // cordis plugin() 是 promise——flush 微任务让四 service 与 bundle 贡献落定
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const rec = usePluginStore.getState().plugins.find((p) => p.name === service.name);
     expect(rec?.status).toBe('active');
   });
@@ -676,6 +682,8 @@ describe('loadBuiltinPlugins（第一方插件进插件列表）', () => {
     // 先装载第一方
     const root = new Context();
     loadBuiltinPlugins(root);
+    // cordis plugin() 是 promise——flush 微任务让四 service 与 bundle 贡献落定
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const builtinCount = usePluginStore.getState().plugins.length;
     expect(builtinCount).toBeGreaterThan(0);
     // 再装载一个外部插件——第一方记录必须保留
@@ -769,3 +777,154 @@ describe('P1 内置渲染器插件（磁盘产物装载→覆盖行）', () => {
     });
   });
 });
+
+// ── 增补四：位移式装载（bundle 兜底行 ↔ 产物行单活互换）──
+
+describe('位移式内置插件装载（manifest.displace）', () => {
+  beforeEach(async () => {
+    for (const name of activeExternalPluginNames()) {
+      await deactivateExternalPlugin(name);
+    }
+    resetPluginRuntimeForTests();
+    usePluginStore.getState().setPlugins([]);
+  });
+
+  /** 带 displace manifest 的内置产物装载路由（canvas-nav 为样例——
+   *  贡献 id 与 bundle 行共享，重复注册装载期拒绝，故必须位移）。 */
+  function displaceRoutes(moduleFactory: () => Record<string, unknown>) {
+    return {
+      index: ['hologram/canvas-nav'],
+      manifest: {
+        name: 'hologram/canvas-nav',
+        version: '1.0.0',
+        entry: 'entry.js',
+        inject: ['panels', 'commands', 'space'],
+        displace: true,
+      },
+      importModule: moduleFactory,
+    };
+  }
+
+  it('产物装载 → 位移 bundle 行（同 id 不撞：bundle fiber 先 dispose）', async () => {
+    const root = new Context();
+    loadBuiltinPlugins(root);
+    // cordis plugin() 是 promise——flush 微任务让四 service 与 bundle 贡献落定
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // bundle 行在册（canvas-nav 的开合同步订阅 → dock-store open 面）
+    const routes = displaceRoutes(() => ({
+      default: {
+        name: 'hologram/canvas-nav',
+        inject: ['panels', 'commands', 'space'],
+        apply(ctx: Context) {
+          ctx.effect(
+            () =>
+              ctx.commands.register({
+                id: 'canvas/artifact-probe',
+                label: '产物探针',
+                group: '画布',
+                shortcut: '/probe',
+                action: { type: 'local', handler: () => {} },
+              }),
+            'artifact-probe',
+          );
+        },
+      },
+    }));
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: routes.index,
+        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
+        [ORIGIN + '/hologram/canvas-nav/manifest.json']: routes.manifest,
+      }),
+      importModule: routes.importModule,
+    });
+    // 产物行生效：探针命令在册（bundle 行已让位，无重名冲突）
+    expect(ctxCommands(root).get('canvas/artifact-probe')).toBeTruthy();
+    // bundle 行贡献已随 bundle fiber dispose 回收
+    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeUndefined();
+    // 产物记录翻正：builtin + meta 保留（设置面板分组不错位）
+    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'hologram/canvas-nav');
+    expect(rec?.builtin).toBe(true);
+    expect(rec?.meta?.kind).toBe('feature');
+    expect(rec?.status).toBe('active');
+  });
+
+  it('产物停用 → bundle 兜底行重启恢复（记录翻回 bundle 形态）', async () => {
+    const root = new Context();
+    loadBuiltinPlugins(root);
+    // cordis plugin() 是 promise——flush 微任务让四 service 与 bundle 贡献落定
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const routes = displaceRoutes(() => ({
+      default: {
+        name: 'hologram/canvas-nav',
+        inject: ['panels', 'commands', 'space'],
+        apply(ctx: Context) {
+          ctx.effect(
+            () =>
+              ctx.commands.register({
+                id: 'canvas/artifact-probe',
+                label: '产物探针',
+                group: '画布',
+                shortcut: '/probe',
+                action: { type: 'local', handler: () => {} },
+              }),
+            'artifact-probe',
+          );
+        },
+      },
+    }));
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: routes.index,
+        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
+        [ORIGIN + '/hologram/canvas-nav/manifest.json']: routes.manifest,
+      }),
+      importModule: routes.importModule,
+    });
+    expect(ctxCommands(root).get('canvas/artifact-probe')).toBeTruthy();
+    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeUndefined();
+
+    // 停用产物 → bundle 行重启（兜底恢复）
+    expect(await deactivateExternalPlugin('hologram/canvas-nav')).toBe(true);
+    expect(ctxCommands(root).get('canvas/artifact-probe')).toBeUndefined();
+    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeTruthy();
+    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'hologram/canvas-nav');
+    expect(rec?.status).toBe('active');
+    expect(rec?.builtin).toBe(true);
+    expect(rec?.manifest).toBeNull();
+  });
+
+  it('产物装载失败（import 抛错）→ bundle 兜底行恢复 + error 记录可见', async () => {
+    const root = new Context();
+    loadBuiltinPlugins(root);
+    // cordis plugin() 是 promise——flush 微任务让四 service 与 bundle 贡献落定
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeTruthy();
+    const routes = displaceRoutes(() => {
+      throw new Error('artifact boom');
+    });
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: routes.index,
+        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
+        [ORIGIN + '/hologram/canvas-nav/manifest.json']: routes.manifest,
+      }),
+      importModule: routes.importModule,
+    });
+    // 兜底行回位：bundle 贡献仍可用
+    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeTruthy();
+    // error 记录可见 + builtin 分组不错位
+    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'hologram/canvas-nav');
+    expect(rec?.status).toBe('error');
+    expect(rec?.error).toContain('artifact boom');
+    expect(rec?.builtin).toBe(true);
+  });
+});
+
+/** 从 root Context 取 commands service 注册表（组合层四 service 挂根，类型经 cordis 模块扩充）。 */
+function ctxCommands(root: Context) {
+  return root.commands;
+}

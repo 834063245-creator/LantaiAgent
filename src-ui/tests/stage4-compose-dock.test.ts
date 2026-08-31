@@ -5,13 +5,13 @@
 // 消费 ctx.space 对拍；fiber dispose 干净退出。
 
 import { describe, expect, it } from 'vitest';
-import { ComposerDock } from '../src/app/panels/ComposerDock';
-import { TocStrip } from '../src/app/panels/TocStrip';
 import { activeOverlayContributions, overlayServicePlugin } from '../src/composition/overlay-service';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { spaceServicePlugin } from '../src/composition/space-service';
 import { Context } from '../src/cordis';
-import { composeDockPlugin } from '../src/plugins/compose-dock-plugin';
+import { composeDockPlugin } from '../src/plugins/builtin/compose-dock';
+import { ComposerDock } from '../src/plugins/builtin/compose-dock/ComposerDock';
+import { TocStrip } from '../src/plugins/builtin/compose-dock/TocStrip';
 
 async function bootComposeDock() {
   const root = new Context();

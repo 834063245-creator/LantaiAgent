@@ -8,8 +8,8 @@
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { StatusLine } from '../src/app/panels/StatusLine';
 import { useShellStore } from '../src/app/shell-store';
+import { StatusLine } from '../src/plugins/builtin/paper-shell/StatusLine';
 
 describe('C12 StatusLine — 承接面渲染链', () => {
   let container: HTMLDivElement | null = null;

@@ -6,7 +6,7 @@
 // navigateHistory 接管：↑ 回退 / ↓ 前进 / 越出最新恢复草稿（由调用方处理）。
 
 import { describe, expect, it } from 'vitest';
-import { navigateHistory } from '../src/app/panels/ComposerDock';
+import { navigateHistory } from '../src/plugins/builtin/compose-dock/ComposerDock';
 
 describe('navigateHistory（输入历史导航）', () => {
   const history = ['first', 'second', 'third']; // 旧 → 新（尾部 = 最近）

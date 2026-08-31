@@ -106,7 +106,9 @@ function PluginCard({
 /** 第一方插件卡片（元数据来自 first-party-manifest；kind=service 时无开关）。
  *  P1e：内置渲染器插件（hologram/renderers）提供「重新加载」——
  *  从磁盘产物通道（dist-plugins/builtin/renderers，Rust 资产通道回退）
- *  重新装载覆盖行（bundle 行始终兜底，磁盘行覆盖——见 loader 装载语义）。 */
+ *  重新装载覆盖行（bundle 行始终兜底，磁盘行覆盖——见 loader 装载语义）。
+ *  增补四：kind=feature 全量通道化后，全部功能插件均可重载（位移式内置
+ *  插件重载 = bundle 兜底行 → 产物行单活互换；工具面重载影响下次装配）。 */
 function FirstPartyCard({
   plugin,
   onToggle,
@@ -119,7 +121,7 @@ function FirstPartyCard({
   const meta = plugin.meta;
   const enabled = plugin.status !== 'disabled';
   const badge = statusBadge(plugin.status);
-  const reloadable = plugin.name === 'hologram/renderers';
+  const reloadable = plugin.meta?.kind === 'feature';
   return (
     <div className="sp-lsp-card">
       <span className="sp-lsp-card-icon" style={{ color: badge.color }}>
@@ -320,7 +322,8 @@ export function PluginsPage() {
         <div className="sp-section">
           <div className="sp-section-title">内置插件（{builtinFeatures.length}）</div>
           <div className="sp-hint-sub">
-            第一方功能插件——禁用/启用下次启动生效；渲染器插件可经「重新加载」从产物通道热替换（秒级生效）。
+            第一方功能插件——禁用/启用下次启动生效；功能插件可经「重新加载」从产物通道热替换（秒级生效， 工具面在下次
+            Agent 装配生效）。
           </div>
           {builtinFeatures.map((p) => (
             <FirstPartyCard
