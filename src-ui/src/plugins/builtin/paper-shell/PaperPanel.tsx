@@ -1416,19 +1416,39 @@ export function PaperPanel() {
 
   useEffect(() => {
     if (!panning) return;
+    /* 材质批修复（2026-09-01）：平移 setView 按 rAF 帧合并——mousemove 只累计
+     * 增量，每帧至多一次 setView。此前鼠标事件频率直接打满同步重渲染，区域
+     * 巨大（万级像素高）+ 目次带重渲染时更新嵌套爆 React #185 上限，帧呈现
+     * 饿死 = 整窗冻在旧帧（实机打回「流区透明」即此：新样式永远排不上屏）。 */
+    let raf = 0;
+    let pendX = 0;
+    let pendY = 0;
+    const flush = () => {
+      raf = 0;
+      const dx = pendX;
+      const dy = pendY;
+      pendX = 0;
+      pendY = 0;
+      if (dx !== 0 || dy !== 0) setView((v) => panBy(v, dx, dy));
+    };
     const move = (e: MouseEvent) => {
       const p = panningRef.current;
       if (!p) return;
-      const dx = e.clientX - p.lastX;
-      const dy = e.clientY - p.lastY;
+      pendX += e.clientX - p.lastX;
+      pendY += e.clientY - p.lastY;
       p.lastX = e.clientX;
       p.lastY = e.clientY;
-      if (dx !== 0 || dy !== 0) setView((v) => panBy(v, dx, dy));
+      if (!raf) raf = requestAnimationFrame(flush);
     };
     const up = () => {
       // ⚠ 必须清 panningRef：否则 moving 里 panningRef.current != null 恒 true，
       // 第一次拖画布后自动选中永远被当成“平移中”而取消计时。
       panningRef.current = null;
+      if (raf) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
+      flush(); // 松手把尾巴增量落完，视角精确停在指针下
       setPanning(false);
     };
     window.addEventListener('mousemove', move);
@@ -1436,6 +1456,7 @@ export function PaperPanel() {
     return () => {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
+      if (raf) cancelAnimationFrame(raf);
     };
   }, [panning, setView]);
 
@@ -2363,8 +2384,9 @@ export function PaperPanel() {
       viewRect,
       canvasSize,
       composerHeight,
+      foldedOf,
     }),
-    [regions, activeSessionKey, viewRect, canvasSize, composerHeight],
+    [regions, activeSessionKey, viewRect, canvasSize, composerHeight, foldedOf],
   );
 
   return (
