@@ -122,7 +122,21 @@ export const SessionSidebar = memo(function SessionSidebar() {
     if (!core) return;
     refresh();
     const panelId = core.panelId;
-    const unSess = getChatStore(panelId).sess.subscribe(refresh);
+    // 每卷消息 store 订阅（2026-09-01 面审）：行注记「N 块」数的是消息条数，
+    // 此前只订 sess/ask/agent/space——流式追加/回填后块数恒陈旧（种子注入后
+    // 侧边栏恒「0 块」实锤）。会话集变化时重挂订阅。
+    let unMsgs: Array<() => void> = [];
+    const syncMsgSubs = () => {
+      for (const u of unMsgs) u();
+      unMsgs = [];
+      const st = getChatStore(panelId).sess.getState();
+      for (const s of st.sessions) unMsgs.push(msgStoreFor(panelId, s.id).subscribe(refresh));
+    };
+    syncMsgSubs();
+    const unSess = getChatStore(panelId).sess.subscribe(() => {
+      syncMsgSubs();
+      refresh();
+    });
     const unAgents = agentSessionState.subscribe(refresh);
     const unAsk = useAskStore.subscribe(refresh);
     const unSpace = activeSpace()?.subscribe(refresh);
@@ -133,6 +147,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
       if (s.projectPath !== prev.projectPath) refresh();
     });
     return () => {
+      for (const u of unMsgs) u();
       unSess();
       unAgents();
       unAsk();

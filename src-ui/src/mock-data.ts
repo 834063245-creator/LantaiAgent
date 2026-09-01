@@ -822,6 +822,34 @@ export function mockInvoke(cmd: string, args?: Record<string, unknown>): string 
     return 'null';
   }
 
+  // 首页工作区清单（2026-09-01 三轴面审种子）：浏览器 dev 此前恒空态，
+  // 首页数据态无法取证。两行覆盖面：置顶+活跃 / 非置顶+昨日+无注册名+引擎关。
+  if (cmd === 'workspace_list') {
+    const now = Date.now();
+    return JSON.stringify([
+      {
+        path: 'D:/works/nebula-novel',
+        name: '星云小说',
+        last_opened_at: new Date(now - 40 * 60_000).toISOString(),
+        pinned: true,
+        session_count: 12,
+        latest_saved_at: new Date(now - 8 * 60_000).toISOString(),
+        dir_exists: true,
+        graph_engine: true,
+      },
+      {
+        path: 'D:/works/verse-manuscripts/2026-chapters',
+        name: null,
+        last_opened_at: new Date(now - 26 * 3600_000).toISOString(),
+        pinned: false,
+        session_count: 3,
+        latest_saved_at: new Date(now - 5 * 3600_000).toISOString(),
+        dir_exists: true,
+        graph_engine: false,
+      },
+    ]);
+  }
+
   // hologram_call — 所有 hologram 引擎工具的统一分发
   if (cmd === 'hologram_call') {
     const toolName = args?.tool as string;
