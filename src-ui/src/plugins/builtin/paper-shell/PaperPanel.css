@@ -217,6 +217,8 @@
   background-repeat: repeat;
   background-position: var(--sheet-ox, 0px) var(--sheet-oy, 0px);
   background-blend-mode: multiply;
+  /* 接触落影（--shadow-sheet）：同色纸放同色桌面，全靠纸厚投影读出「一张纸」 */
+  box-shadow: var(--shadow-sheet);
   z-index: 1;
 }
 /* active 只动 background-color——background: 简写会把纸纹层抹掉 */

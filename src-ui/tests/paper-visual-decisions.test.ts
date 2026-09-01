@@ -210,6 +210,9 @@ describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', (
     expect(region).toContain('background-blend-mode: multiply');
     expect(region).toContain('var(--sheet-ox');
     expect(region).toContain('var(--sheet-j');
+    // 接触落影：同色纸放同色桌面，全靠纸厚投影读出「一张纸」
+    expect(region).toContain('box-shadow: var(--shadow-sheet)');
+    expect(TOKENS_CSS).toContain('--shadow-sheet:');
     // active 只动 background-color——background: 简写会把纸纹层抹掉
     const active = ruleBody(PANEL_CSS, '.pp-region-active');
     expect(active).toContain('background-color: color-mix');
