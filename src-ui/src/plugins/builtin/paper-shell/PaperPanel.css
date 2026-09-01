@@ -1953,6 +1953,23 @@
   }
 }
 
+/* 钤印双款字排基座（2026-09-01 包含批废泛框后自立门户）：拟文/停原寄生
+   `.pp-composer button` 泛框的 padding/边宽/字体，废框后归本钮自持。 */
+.pp-composer .pp-send,
+.pp-composer .pp-stop {
+  font-family: var(--f-song);
+  font-size: calc(13px * var(--font-scale));
+  letter-spacing: 0.18em;
+  padding: 10px 26px;
+  border: 1px solid var(--ink-1);
+  border-radius: 0;
+  transition:
+    background var(--snap),
+    color var(--snap),
+    border-color var(--snap),
+    transform var(--snap);
+}
+
 /* 停止按钮（施工单 #4）：运行中才出现，朱砂警示色，区别于拟文 */
 .pp-composer .pp-stop {
   border-color: var(--seal);
