@@ -100,8 +100,8 @@ body {
   background: var(--paper);
   overflow: auto;
 }
-/* 纸张纹理（全局唯一：挂 body::after 文档级 fixed 全屏 z 9998——首页/纸壳/画布/
-   面板一律被其覆盖，面板内勿再自挂同款层，叠乘即脏。2026-09-01 实机打回第二刀：
+/* 纸张纹理（全局唯一：挂 body::after 文档级 fixed 全屏 z 9998——首页/纸壳/面板
+   被其覆盖（画布态例外，见下），面板内勿再自挂同款层，叠乘即脏。2026-09-01 实机打回第二刀：
    原挂 .sh-root，而 .sh-root 是首页自己的 z-30 层叠上下文，纹理被困在首页——
    进画布/开面板全无纹理；上移 body 后 9998 才真文档级。真纸化：feTurbulence
    程序噪声换真纸纹理资产（src/assets/paper/，AI 平扫感实拍纹，cover 满屏免铺贴接缝）——
@@ -134,14 +134,31 @@ body::after {
   background-blend-mode: normal, multiply, multiply;
   mix-blend-mode: multiply;
 }
-/* 纸层次（浸墨 2026-08-31；2026-09-01 增方向光）：顶光 + 帘纹 + 边沉，
-   垫在纹理层之下、内容之上——光从上来，边往下沉，纸即是物；与纹理层同挂 body（文档级） */
+/* 画布态退役文档级纹理（2026-09-01 实机打回第三刀·真因）：fixed 纹理层在画布
+   里以「不动之纹」出卖空间隐喻——拖动时纸走纹不走，材质被判属桌面，流区被读作
+   「透」（视觉透明，实机活体双盲验证：荧光绿/品红桌面均画得出）。画布挂
+   .pp-root 即隐去本层，由世界内桌垫（PaperPanel.css .pp-desk，桌面纹理随
+   拖动/缩放走且只纹理桌面）+ 流区自带纸纹（.pp-region paper-sheet）接管；
+   顶眉/坞/目次带等固定家具随之无纹（家具与内容分层）。首页/面板态不受
+   :has 影响，文档级纹理照旧。 */
+body:has(.pp-root)::after {
+  display: none;
+}
+/* 纸层次（浸墨 2026-08-31；2026-09-01 增方向光；2026-09-02 帘纹移出）：
+   顶光 + 边沉——光照类，视口固定正当（灯在桌上、不在纸里，光滑无纹理归属
+   暗示）。帘纹原混在此层，白纸双盲定位移出：帘纹是纸性（造纸屏纹），视口
+   固定 = 「不动之纹」出卖空间隐喻（纯白实心流区仍被读作透的最后元凶）——
+   画布态归 .pp-desk / .pp-region 各自纸面（随纸走），非画布态（首页/面板，
+   无拖拽空间隐喻）保留文档级帘纹（见下条）。 */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: calc(var(--z-grain) - 1);
   pointer-events: none;
+  background: var(--light-fall), var(--vignette);
+}
+body:not(:has(.pp-root))::before {
   background: var(--laid-lines), var(--light-fall), var(--vignette);
 }
 

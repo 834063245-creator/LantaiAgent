@@ -8,6 +8,8 @@
 //   B3 环1（用户拍板 B 提墨）：信息承载五处 ink-3→ink-2
 //   B4 环1（用户拍板 C）：来文身 18px→16px/1.9（seal-deep 不变，收正文 17 之下）
 //   B5 环2（用户拍板 红绿墨色化）：diff add=松绿(--pass) / del=朱砂深(--seal-deep)+删除线
+//   2026-09-02 贴纸纹理归属批（透明错觉根治）：纹理随纸走——桌面纹/流区纹各有其主；
+//     帘纹不进流区（实机过审「横纹消失」）；文档级纹理/帘纹画布态退役，首页/面板照旧
 
 // @vitest-environment node
 
@@ -24,6 +26,7 @@ const MEASURE_TS = readFileSync(join(SRC, 'paper', 'measure.ts'), 'utf8');
 const TYPE_TOKENS_TS = readFileSync(join(SRC, 'paper', 'type-tokens.ts'), 'utf8');
 const TOKENS_CSS = readFileSync(join(SRC, 'app', 'tokens.css'), 'utf8');
 const FONTS_TS = readFileSync(join(SRC, 'app', 'fonts.ts'), 'utf8');
+const NORMALIZE_PS1 = readFileSync(join(__dirname, '..', '..', 'scripts', 'normalize-paper-texture.ps1'), 'utf8');
 
 /** 从选择器名截取规则体（到下一个 `}` 为止——纸壳 CSS 规则无嵌套）。 */
 function ruleBody(css: string, selector: string): string {
@@ -217,5 +220,71 @@ describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', (
     const active = ruleBody(PANEL_CSS, '.pp-region-active');
     expect(active).toContain('background-color: color-mix');
     expect(active).not.toContain('background:');
+  });
+});
+
+describe('贴纸纹理归属（2026-09-02 透明错觉根治批）', () => {
+  // 真因复盘：流区一直在画（实机活体双盲——荧光绿/品红桌面均画得出），
+  // 「透」= 视口固定层以「不动之纹」出卖空间隐喻：拖动时纸走纹不走。
+  // 三层固定纹：body::after 颗粒 / body::before 帘纹 / （已被材质批移除的流区自纹缺失）。
+
+  it('文档级颗粒层画布退役：body:has(.pp-root)::after 隐去（fixed 纹理 = 不动之纹，出卖拖动）', () => {
+    const retire = ruleBody(HOME_CSS, 'body:has(.pp-root)::after');
+    expect(retire).toContain('display: none');
+    // 文档级配方本体保留（首页/面板照旧）
+    expect(ruleBody(HOME_CSS, 'body::after {')).toContain('mix-blend-mode: multiply');
+  });
+
+  it('帘纹归属：画布态 body::before 只剩光照类（顶光+边沉，光滑无纹）；非画布态保留完整三件', () => {
+    const before = ruleBody(HOME_CSS, 'body::before');
+    expect(before).toContain('var(--light-fall)');
+    expect(before).toContain('var(--vignette)');
+    expect(before).not.toContain('var(--laid-lines)');
+    const home = ruleBody(HOME_CSS, 'body:not(:has(.pp-root))::before');
+    expect(home).toContain('var(--laid-lines)');
+    expect(home).toContain('var(--light-fall)');
+    expect(home).toContain('var(--vignette)');
+  });
+
+  it('桌垫：世界内纸面——四层配方（微颗粒×grain×fiber×帘纹）+ 无界巨幅 + 不与流区混合', () => {
+    const desk = ruleBody(PANEL_CSS, '.pp-desk {');
+    // 桌面纸配方：与 body::after 同源 + 帘纹归桌面
+    expect(desk).toContain('background-color: var(--paper)');
+    expect(desk).toContain('paper-grain.jpg');
+    expect(desk).toContain('paper-fiber.jpg');
+    expect(desk).toContain('var(--laid-lines)');
+    expect(desk).toContain('normal, multiply, multiply, multiply');
+    // 只混自身层（background-blend），不乘盖流区/纸条（无 mix-blend-mode）
+    expect(desk).not.toContain('mix-blend-mode');
+    // 无界近似：±200000px 世界坐标
+    expect(desk).toContain('left: -200000px');
+    expect(desk).toContain('width: 400000px');
+    // 事件穿透（平移命中 .pp-world 语义）
+    expect(desk).toContain('pointer-events: none');
+    // TSX 挂载：world 第一子（DOM 序即层序，垫在一切世界内容之下）
+    expect(PANEL_TSX).toContain('className="pp-desk"');
+  });
+
+  it('流区帘纹退役：单层纸纹（纸性由 paper-sheet 独自承载——帘纹叠乘读作屏纹，实机过审移除）', () => {
+    const region = ruleBody(PANEL_CSS, '.pp-region {');
+    expect(region).not.toContain('var(--laid-lines)');
+    expect(region).toContain('paper-sheet.jpg');
+  });
+
+  it('中间形态退役：不留下任何视口级纹理覆盖层（pp-canvas-grain）', () => {
+    expect(PANEL_CSS).not.toContain('pp-canvas-grain');
+    expect(PANEL_TSX).not.toContain('pp-canvas-grain');
+    expect(PANEL_TSX).not.toContain('grainStyle');
+  });
+
+  it('空态提层：桌垫入场后 pp-empty 须浮于世界单元之上', () => {
+    expect(ruleBody(PANEL_CSS, '.pp-empty {')).toContain('z-index: 2');
+  });
+
+  it('贴纸纹预处理管道：-Sheet 模式线性扩幅回中（a=1.63/b=-0.555——振幅立得住、纸色不动）', () => {
+    expect(NORMALIZE_PS1).toContain('[switch]$Sheet');
+    expect(NORMALIZE_PS1).toContain('[double]$sheetA = 1.63');
+    expect(NORMALIZE_PS1).toContain('[double]$sheetB = -0.555');
+    expect(NORMALIZE_PS1).toContain('a=1.63 / b=-0.555');
   });
 });
