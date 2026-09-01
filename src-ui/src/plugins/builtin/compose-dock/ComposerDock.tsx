@@ -21,6 +21,7 @@
 // 真实例，react 经构建期别名桥。
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { DirEntry } from '../../../rpc-contract';
 import type { ComposeSessionPrefs, PermissionMode, ProviderSettings, StoredThinking, ThinkingMode } from './host';
 import {
   agentSessionState,
@@ -75,13 +76,8 @@ export function navigateHistory(
 
 /* ── 引（创作坞 v2 2026-08-31）：工作区文件模糊引用 ── */
 
-/** list_directory 递归项（Rust DirEntry 序列化形状）。 */
-interface YinDirEntry {
-  name: string;
-  path: string;
-  is_dir: boolean;
-  children?: YinDirEntry[] | null;
-}
+/** list_directory 递归项（Rust DirEntry 序列化形状——schema 推导）。 */
+type YinDirEntry = DirEntry;
 
 /** 递归摊平目录树为文件清单（目录不入引——附卷的是文件）。 */
 export function flattenDirEntries(entries: readonly YinDirEntry[]): Array<{ path: string; name: string }> {
@@ -454,8 +450,8 @@ export const ComposerDock = memo(function ComposerDock() {
     const pp = useShellStore.getState().projectPath;
     if (!pp) return;
     try {
-      const entries = await typedJsonRpc<YinDirEntry[]>('list_directory', { path: pp, filter_ignored: true });
-      setYinFiles(Array.isArray(entries) ? flattenDirEntries(entries) : []);
+      const entries = await typedJsonRpc('list_directory', { path: pp, filter_ignored: true });
+      setYinFiles(flattenDirEntries(entries));
     } catch {
       setYinFiles([]);
     }

@@ -148,8 +148,11 @@ const SettingsPanelApp: React.FC<{
     setLspLoading(true);
 
     const fetchStatus = () => {
-      typedJsonRpc<{ lsp?: LspData }>('hologram_call', { tool: 'engine_status', args: {} })
-        .then((parsed) => {
+      // hologram_call 载荷随工具（边界粗检 z.unknown()）——engine_status 载荷
+      // 形状在此显式收窄（唯一消费点）。
+      typedJsonRpc('hologram_call', { tool: 'engine_status', args: {} })
+        .then((value) => {
+          const parsed = value as { lsp?: LspData } | null;
           if (parsed?.lsp?.servers) {
             setLspStatus(parsed.lsp);
             // 当所有已安装服务器都已确定状态（运行或错误）时停止，

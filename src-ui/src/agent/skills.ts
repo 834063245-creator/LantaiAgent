@@ -7,6 +7,7 @@
 // mid-session and it's immediately available, no restart needed.
 
 import { z } from 'zod';
+import type { DirEntry } from '../rpc-contract';
 import { typedJsonRpc, typedRpc } from '../rpc-contract';
 import type { Tool } from './tool';
 import { defineTool } from './tools/define-tool';
@@ -50,7 +51,9 @@ function parseSkillMd(raw: string): { meta: Record<string, string>; body: string
 async function loadSkills(projectPath: string): Promise<SkillDef[]> {
   const root = projectPath.replace(/\\/g, '/');
   const dir = `${root}/.lantai/skills`;
-  let entries: Array<{ name: string; type: string; path: string }>;
+  // 形状真源 = Rust utils::DirEntry（is_dir 布尔——旧手写 type 字段名与
+  // Rust 不符，曾致全部条目被跳过、项目技能恒不加载，2026-09-01 边界校验批修复）。
+  let entries: DirEntry[];
   try {
     entries = await typedJsonRpc('list_directory_flat', { path: dir, is_agent: false });
   } catch {
@@ -59,7 +62,7 @@ async function loadSkills(projectPath: string): Promise<SkillDef[]> {
 
   const skills: SkillDef[] = [];
   for (const e of entries) {
-    if (e.type !== 'dir') continue;
+    if (!e.is_dir) continue;
     const fp = `${e.path.replace(/\\/g, '/')}/SKILL.md`;
     try {
       const raw = await typedRpc('read_file_content', { file_path: fp, is_agent: false });

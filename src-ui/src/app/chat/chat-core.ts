@@ -730,11 +730,11 @@ export class ChatCore {
     const sessionsDir = `${workspace.replace(/[\\/]+$/, '')}/.lantai/sessions`;
     let listed = false;
     try {
-      const parsed = await typedJsonRpc<Array<{ name: string; is_dir?: boolean }>>('list_directory', {
+      await typedJsonRpc('list_directory', {
         path: sessionsDir,
         filter_ignored: false,
       });
-      listed = Array.isArray(parsed);
+      listed = true;
     } catch {
       /* 目录缺席/列表失败 = 不剪枝 */
     }

@@ -8,7 +8,7 @@
 import { typedJsonRpc } from '../../rpc-contract';
 
 export function bootSandboxProbe(): void {
-  typedJsonRpc<{ degraded: boolean; reason?: string }>('sandbox_status', {})
+  typedJsonRpc('sandbox_status', {})
     .then((s) => {
       if (s.degraded) {
         console.warn(`[sandbox] ⚠ DEGRADED: ${s.reason} — permission engine is the only barrier`);

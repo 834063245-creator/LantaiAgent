@@ -280,13 +280,17 @@ export async function loadEngineSnapshot(ctx: GraphContext, projectPath: string,
     // 引擎快照四路数据的宽松形态（引擎字段名跨版本有别名，保持宽容读取）
     // biome-ignore lint/suspicious/noExplicitAny: 引擎响应宽容读取别名字段，与旧 JSON.parse 返回 any 同宽
     type EngineJson = Record<string, any>;
+    // hologram_call 载荷随工具不恒定（边界粗检 z.unknown()），工具面宽容读取
+    // 收敛在 holo 这一个出口（载荷校验归 define-tool 工具面体系）。
+    const holo = (tool: string, args: Record<string, unknown>): Promise<EngineJson> =>
+      typedJsonRpc('hologram_call', { tool, args }) as Promise<EngineJson>;
     const asSymbols = (v: unknown): Array<{ name?: string; location?: string; file?: string }> =>
       Array.isArray(v) ? (v as Array<{ name?: string; location?: string; file?: string }>) : [];
     const [fragileData, cycleData, healthData, blindspotsData] = await Promise.all([
-      typedJsonRpc<EngineJson>('hologram_call', { tool: 'fragile_modules', args: { limit: 15 } }),
-      typedJsonRpc<EngineJson>('hologram_call', { tool: 'detect_cycles', args: { mode: 'all' } }),
-      typedJsonRpc<EngineJson>('hologram_call', { tool: 'project_health', args: { path: projectPath, days: 30 } }),
-      typedJsonRpc<EngineJson>('hologram_call', { tool: 'arch_blindspots', args: { filter: 'all' } }).catch(
+      holo('fragile_modules', { limit: 15 }),
+      holo('detect_cycles', { mode: 'all' }),
+      holo('project_health', { path: projectPath, days: 30 }),
+      holo('arch_blindspots', { filter: 'all' }).catch(
         (): EngineJson => ({
           blindspots: [],
         }),
@@ -325,9 +329,8 @@ export async function loadEngineSnapshot(ctx: GraphContext, projectPath: string,
     const lspCallers = new Map<string, Array<{ symbol: string; count: number }>>();
     for (const r of fragilityRanks.slice(0, 3)) {
       try {
-        const resolveData = await typedJsonRpc<EngineJson>('hologram_call', {
-          tool: 'resolve_call',
-          args: { file: r.file },
+        const resolveData = await holo('resolve_call', {
+          file: r.file,
         }).catch((): EngineJson => ({}));
         if (resolveData.calls && Array.isArray(resolveData.calls)) {
           const fc = new Map<string, number>();
@@ -352,9 +355,9 @@ export async function loadEngineSnapshot(ctx: GraphContext, projectPath: string,
           ?.replace(/\.[^.]+$/, '') || '';
       if (!symbol) continue;
       try {
-        const searchData = await typedJsonRpc<EngineJson>('hologram_call', {
-          tool: 'search_symbols',
-          args: { query: symbol, limit: 5 },
+        const searchData = await holo('search_symbols', {
+          query: symbol,
+          limit: 5,
         }).catch((): EngineJson => ({ results: [] }));
         const results = asSymbols(searchData.results);
         const neighbors = results

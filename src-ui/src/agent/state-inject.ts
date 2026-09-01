@@ -60,12 +60,7 @@ export async function refreshGitStatus(projectPath: string): Promise<void> {
   if (cached && now - getGitCacheTs() < GIT_CACHE_MS) return;
   const epoch = getCacheEpoch();
   try {
-    const raw = await typedJsonRpc<{
-      branch?: string;
-      ahead?: number;
-      behind?: number;
-      files?: Array<{ file: string; status: string }>;
-    }>('git_status', { path: projectPath });
+    const raw = await typedJsonRpc('git_status', { path: projectPath });
     // 工作区已切换（缓存被 reset）— 旧项目的在途结果直接丢弃
     if (getCacheEpoch() !== epoch) return;
     setGitCache(
@@ -73,8 +68,8 @@ export async function refreshGitStatus(projectPath: string): Promise<void> {
         branch: raw.branch || '',
         ahead: raw.ahead || 0,
         behind: raw.behind || 0,
-        dirtyCount: (raw.files || []).length,
-        dirtyFiles: (raw.files || []).slice(0, 15),
+        dirtyCount: raw.files.length,
+        dirtyFiles: raw.files.slice(0, 15),
       },
       now,
     );
@@ -238,8 +233,10 @@ function eventLabel(type: string): string {
 export function formatGitStatus(): string | null {
   const git = getGitCache();
   if (!git || git.dirtyCount === 0) return null;
+  // 形状真源 = Rust utils::parse_status（键是 path——旧手写 file 字段名与
+  // Rust 不符，曾致有脏文件时 undefined.replace 崩，2026-09-01 边界校验批修复）。
   const fileList = git.dirtyFiles
-    .map((f) => `${f.file.replace(/\\/g, '/').split('/').pop()}(${f.status[0].toUpperCase()})`)
+    .map((f) => `${f.path.replace(/\\/g, '/').split('/').pop()}(${f.status[0].toUpperCase()})`)
     .join(', ');
   return `[Git] ${git.branch}${git.ahead > 0 ? ` ↑${git.ahead}` : ''}${git.behind > 0 ? ` ↓${git.behind}` : ''} | ${git.dirtyCount} 脏: ${fileList}`;
 }

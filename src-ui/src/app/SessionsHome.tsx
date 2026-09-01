@@ -17,6 +17,7 @@
 // 版式对齐 prototype/lantai.html 案卷首页（2026-08-23 视觉迭代）。
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { WorkspaceSummary } from '../rpc-contract';
 import { typedJsonRpc, typedRpc } from '../rpc-contract';
 import { graphEngineEnabled, loadSettings } from '../settings';
 import { pickFolder, workspaceFlow } from '../shell/rows/workspace';
@@ -25,19 +26,8 @@ import { useUpdateStore } from '../state/update-store';
 import { useShellStore } from './shell-store';
 import { WinControls } from './WinControls';
 
-/** 已知工作区行（Rust WorkspaceSummary 同形——注册表 + 会话推导合流）。 */
-interface KnownWorkspace {
-  path: string;
-  name?: string | null;
-  last_opened_at: string;
-  pinned: boolean;
-  session_count: number;
-  latest_saved_at?: string | null;
-  /** 工作区根目录在磁盘上是否仍存在（false = 「目录已丢失」诚实显示并禁进）。 */
-  dir_exists?: boolean;
-  /** per-workspace 图谱引擎旗标（null = 未显式选择，回退全局默认值）。 */
-  graph_engine?: boolean | null;
-}
+/** 已知工作区行（Rust WorkspaceSummary 同形——类型由 workspace_list schema 推导）。 */
+type KnownWorkspace = WorkspaceSummary;
 
 /** 工作区显示名：登记名优先，缺省 = 路径末段。 */
 function wsDisplayName(ws: KnownWorkspace): string {
@@ -144,9 +134,9 @@ export function SessionsHome() {
     let alive = true;
     void (async () => {
       try {
-        const parsed = await typedJsonRpc<KnownWorkspace[]>('workspace_list', {});
+        const parsed = await typedJsonRpc('workspace_list', {});
         if (alive) {
-          setWorkspaces(Array.isArray(parsed) ? parsed : []);
+          setWorkspaces(parsed);
           setListState('ready');
         }
       } catch {
@@ -160,8 +150,8 @@ export function SessionsHome() {
 
   const refreshWorkspaces = useCallback(async (): Promise<void> => {
     try {
-      const parsed = await typedJsonRpc<KnownWorkspace[]>('workspace_list', {});
-      setWorkspaces(Array.isArray(parsed) ? parsed : []);
+      const parsed = await typedJsonRpc('workspace_list', {});
+      setWorkspaces(parsed);
       setListState('ready');
     } catch {
       setListState('error');

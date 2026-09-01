@@ -22,6 +22,8 @@
 // - 新增前端一律用 typedRpc / typedListen，接线错误在编译期暴露；JSON 命令
 //   用 typedJsonRpc（双形态 shim 在那里）。
 
+import { z } from 'zod';
+
 // biome-ignore lint/style/noRestrictedImports: 唯二受权的裸 rpc/listen 出口之一（另一个是 tool.ts 的 agentInvoke 动态分发豁免）
 import { listen, rpc } from './bridge';
 
@@ -453,20 +455,179 @@ export function parseJson<T>(raw: string): T {
   return JSON.parse(raw) as T;
 }
 
-/** JSON 返回命令的类型化调用（rpc Value 化第一步，2026-08-22）：
- *  typedRpc + parseJson 的组合形态——parse 收进本函数，调用点不再手写
- *  双重编码。契约里 result 标 `// JSON` 或 `// "null"` 的方法用这个；
- *  文本命令（`// text`）继续 typedRpc 直通；read_file_content 读 JSON
- *  文件后自行 parse 的属业务语义，不经此。
- *  method 参数与 agentInvoke 同哲学（动态名无编译期校验）——方法面守护
- *  由 gen-rpc-contract-md 生成物与 Rust 测试承担。
- *  第二步（2026-08-22，rpc.rs rpc_result_shape 出口分派）：JsonValue 形态
- *  命令在 Rust 出口已展开为真结构化 Value，此处直接透传；浏览器 mock 模式
- *  仍返 JSON 字符串，双形态兼容（string 走 parse 慢路径，与真机旧形态同）。 */
-export async function typedJsonRpc<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T> {
+/** JSON 返回命令的类型化调用（rpc Value 化两步 + 边界运行时校验层，2026-09-01）：
+ *  parse 收进本函数（调用点不手写双重编码）；result 形状经 rpcResultSchemas
+ *  safeParse，违形即 throw（错误信息带方法名 + zod issue 摘要，宪法四）。
+ *  method 收紧为已收编命令集（keyof typeof rpcResultSchemas）——新调用未入表
+ *  命令 = 编译错，签名即守卫；`// text` 命令继续 typedRpc 直通。
+ *  双形态兼容（Value 化第二步）：JsonValue 形态命令在 Rust 出口已展开为真
+ *  结构化 Value，直接校验；浏览器 mock / 表外形态仍返 JSON 字符串，parse
+ *  慢路径后同样校验。校验规整后返回新对象——同引用透传属性退役。 */
+export async function typedJsonRpc<M extends keyof typeof rpcResultSchemas>(
+  method: M,
+  params?: RpcParamsOf<M>,
+): Promise<RpcSchemaResultOf<M>> {
   const raw = await rpc<unknown>(method, params ?? {});
-  return (typeof raw === 'string' ? parseJson<T>(raw) : raw) as T;
+  const value: unknown = typeof raw === 'string' ? parseJson(raw) : raw;
+  const parsed = rpcResultSchemas[method].safeParse(value);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .slice(0, 3)
+      .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
+      .join('; ');
+    throw new Error(`rpc ${String(method)}: 返回形状违反契约 — ${issues}`);
+  }
+  return parsed.data as RpcSchemaResultOf<M>;
 }
+
+// ─────────────────────────────────────────────────────────────
+// 运行时契约：JSON 命令 result 形状（rpc 边界运行时校验层，2026-09-01）
+// ─────────────────────────────────────────────────────────────
+
+/** DirEntry 递归形状（Rust utils::DirEntry 序列化同形——children 键恒在，
+ *  无子为 null；truncated 截断旗标偶现）。list_directory / list_directory_flat 共用。 */
+export type DirEntry = {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  children: DirEntry[] | null;
+  truncated?: boolean;
+};
+
+const dirEntrySchema: z.ZodType<DirEntry> = z.lazy(() =>
+  z
+    .object({
+      name: z.string(),
+      path: z.string(),
+      is_dir: z.boolean(),
+      children: z.nullable(z.array(dirEntrySchema)),
+      truncated: z.boolean().optional(),
+    })
+    .passthrough(),
+);
+
+/** 运行时契约：`// JSON` 注释命令的 result 形状，与上方 RpcContract 的
+ *  `// JSON` 注释同源维护（后端加/改方法 → 同步本表；schema 是 result 注释的
+ *  运行时投影）。键集 = 已收编命令集；未登记的 `// JSON` 命令 = 当前无
+ *  typedJsonRpc 调用点，未来首个调用者出现时签名强制入表。`// text` 禁入。
+ *  形状档：全检 = 字段级 zod；粗检 = z.unknown()（载荷随工具/体量不可控，
+ *  内容契约归 define-tool 工具面或消费方）。
+ *  字段可选性以 Rust Ok 路径真实形状为准（rpc.rs rpc_result_shape 表 + 命令
+ *  实现/结构体定义双源核对，2026-09-01 实测；object 一律 passthrough——
+ *  边界管形状对错，不做字段集冻结，Rust 加字段不炸前端）。 */
+export const rpcResultSchemas = {
+  // hologram_call 粗检（唯一 z.unknown() 条目）：载荷形状随底层工具（36+ 动态）
+  // 不恒定，内容契约归 define-tool 工具面体系；边界只保「合法 JSON 已解析」
+  // （string 慢路径的 parse 已在 schema 之前完成）。
+  hologram_call: z.unknown(),
+  hologram_tools_list: z.array(
+    z
+      .object({
+        name: z.string(),
+        description: z.string(),
+        // readOnly / properties 元素 description：引擎 mcp_value 恒写，但浏览器
+        // mock 面缺省（历史形状且被 convergence/tool-contract 基线钉住）——optional
+        // 兼容两态；消费方 mcpSchemaToTool 自带回退。
+        readOnly: z.boolean().optional(),
+        inputSchema: z
+          .object({
+            type: z.string(),
+            properties: z.record(
+              z.string(),
+              z
+                .object({
+                  type: z.string(),
+                  description: z.string().optional(),
+                  enum: z.array(z.string()).optional(),
+                })
+                .passthrough(),
+            ),
+            required: z.array(z.string()),
+          })
+          .passthrough(),
+      })
+      .passthrough(),
+  ),
+  load_graph_json: z
+    .object({
+      source_root: z.string(),
+      node_count: z.number(),
+      edge_count: z.number(),
+      file_count: z.number(),
+      class_count: z.number(),
+      kind_counts: z.record(z.string(), z.number()),
+      edge_kind_counts: z.record(z.string(), z.number()),
+      communities: z.array(z.object({ id: z.number(), size: z.number() })),
+      top_fan_in: z.array(z.object({ id: z.string(), name: z.string(), fan_in: z.number() })),
+      top_fan_out: z.array(z.object({ id: z.string(), name: z.string(), fan_out: z.number() })),
+    })
+    .passthrough(),
+  list_directory: z.array(dirEntrySchema),
+  list_directory_flat: z.array(dirEntrySchema),
+  read_memory_batch: z.record(z.string(), z.nullable(z.string())),
+  get_last_project: z.nullable(z.string()),
+  workspace_list: z.array(
+    z
+      .object({
+        path: z.string(),
+        name: z.nullable(z.string()),
+        last_opened_at: z.string(),
+        pinned: z.boolean(),
+        session_count: z.number(),
+        latest_saved_at: z.nullable(z.string()),
+        dir_exists: z.boolean(),
+        graph_engine: z.nullable(z.boolean()),
+      })
+      .passthrough(),
+  ),
+  sandbox_status: z
+    .object({
+      available: z.boolean(),
+      degraded: z.boolean(),
+      reason: z.string(),
+    })
+    .passthrough(),
+  shell_env: z
+    .object({
+      os: z.string(),
+      shell: z.string(),
+      shell_path: z.string(),
+      shell_version: z.string().optional(),
+      bundled: z.boolean().optional(),
+      notes: z.string(),
+    })
+    .passthrough(),
+  git_status: z
+    .object({
+      branch: z.string(),
+      ahead: z.number(),
+      behind: z.number(),
+      files: z.array(
+        z
+          .object({
+            path: z.string(),
+            status: z.string(),
+            staged: z.boolean(),
+            old_path: z.string().optional(),
+          })
+          .passthrough(),
+      ),
+    })
+    .passthrough(),
+  aura_init: z
+    .object({
+      status: z.string(),
+      path: z.string(),
+      record_count: z.number(),
+    })
+    .passthrough(),
+} satisfies Partial<Record<RpcMethodName, z.ZodType>>;
+
+/** 已收编命令的 result 类型（schema 推导——调用点不再手写泛型）。 */
+export type RpcSchemaResultOf<M extends keyof typeof rpcResultSchemas> = z.infer<(typeof rpcResultSchemas)[M]>;
+
+/** workspace_list 元素（Rust WorkspaceSummary 同形）。 */
+export type WorkspaceSummary = RpcSchemaResultOf<'workspace_list'>[number];
 
 export type EventName = keyof EventContract;
 

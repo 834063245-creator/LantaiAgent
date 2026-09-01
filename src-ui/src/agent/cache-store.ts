@@ -13,7 +13,8 @@ export interface GitStatusSummary {
   ahead: number;
   behind: number;
   dirtyCount: number;
-  dirtyFiles: Array<{ file: string; status: string }>;
+  /** git_status files 元素（Rust utils::parse_status 同形——键是 path 非 file）。 */
+  dirtyFiles: Array<{ path: string; status: string; staged: boolean; old_path?: string }>;
 }
 
 export interface CheckStatusSummary {

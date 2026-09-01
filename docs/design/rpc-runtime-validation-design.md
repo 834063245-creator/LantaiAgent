@@ -1,6 +1,6 @@
 # RPC 边界运行时校验层设计（typedJsonRpc schema 第三步）
 
-状态：**Draft 立项设计件（2026-09-01，未施工）**。
+状态：**批一竣工（2026-09-01 worktree 分支 feat/rpc-runtime-validation）**。
 来源：UI 全面审计批「唯一挂起项」的配套立项（`docs/plans/paper-shell/taste-ledger.md` 2026-09-01 批：
 「typedJsonRpc as T 无运行时校验——schema 层架构级，单独立项」）。
 定位：宪法 `docs/adr/project-constitution.md` §与拆弹的关系明列病根一根治 =「RPC `Value` 化 **+ 边界 schema**」——
@@ -10,6 +10,21 @@ Value 化两步已落地（`docs/landmine-map.md` 根治级段，2026-08-22）�
 > 「两阶段重载并存」判死——实测调用面 22 处 / 9 命令 / 方法名全字面量，
 > 兼容期要保护的动态调用面不存在，逃生舱只是让 `as T` 盲转按设计续命。
 > 签名改**一刀切收紧**，详见 §3.2 与 §6-E 否决记录。
+
+> **施工实核（2026-09-01 批一竣工修订）**：①全量普查修正——调用面实为
+> **26 处 / 12 命令**（§3.2 普查 22/9 漏了 shell_env/git_status 各 1 处，
+> hologram_call 实 7 非 8、list_directory 实 6 非 4、workspace_list 实 3 非 2）；
+> 收紧结论不变（方法名全字面量、零动态分发），批一按 12 命令全量入表。
+> ②形状双源核对修正样例：sandbox_status 实有 `available` 且 `reason` 恒在
+> （§3.1 样例 `{degraded,reason?}` 不准）；workspace_list 的 `dir_exists`/
+> `graph_engine` 键恒在（后者 `bool|null`）。③批一顺带修复三处泛型盲转时代
+> 的既有静默断点：load_graph_json 真机结构化后 workspace.ts 仍 parseJson
+> （图谱预热假死）/ skills.ts 读 `e.type`（Rust 发 `is_dir`，项目技能真机恒
+> 不加载）/ formatGitStatus 读 `f.file`（Rust 发 `path`）。④hologram_tools_list
+> 的 `readOnly`/properties.description 取 optional——引擎 mcp_value 恒写但
+> 浏览器 mock 面缺省且被 convergence/tool-contract 基线钉住，schema 兼容两态
+> 而不动模型可见面。⑤mock 补齐 5 命令真实形状（sandbox_status/shell_env/
+> git_status/aura_init/read_memory_batch 此前落 Unhandled 回退垃圾形）。
 
 ## 0. 一句话
 

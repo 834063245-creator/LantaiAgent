@@ -60,7 +60,8 @@ function setupMemFs(fs: MemFS): void {
       }
       case 'list_directory': {
         const dirPath = args.path as string;
-        const entries: { name: string; is_dir: boolean }[] = [];
+        // DirEntry 真形（Rust utils::DirEntry：path 恒带、children 键恒在无子为 null）
+        const entries: { name: string; path: string; is_dir: boolean; children: null }[] = [];
         const seen = new Set<string>();
         for (const fp of fs.files.keys()) {
           // fp = dirPath + '/subdir/...'
@@ -69,7 +70,12 @@ function setupMemFs(fs: MemFS): void {
             const firstSeg = rest.split('/')[0];
             if (!seen.has(firstSeg)) {
               seen.add(firstSeg);
-              entries.push({ name: firstSeg, is_dir: rest.includes('/') });
+              entries.push({
+                name: firstSeg,
+                path: `${dirPath}/${firstSeg}`,
+                is_dir: rest.includes('/'),
+                children: null,
+              });
             }
           }
         }
@@ -79,7 +85,7 @@ function setupMemFs(fs: MemFS): void {
             const firstSeg = rest.split('/')[0];
             if (!seen.has(firstSeg)) {
               seen.add(firstSeg);
-              entries.push({ name: firstSeg, is_dir: true });
+              entries.push({ name: firstSeg, path: `${dirPath}/${firstSeg}`, is_dir: true, children: null });
             }
           }
         }
@@ -476,7 +482,9 @@ describe('P0-6: JsonMessageStore 区分「不存在」与「读错误」', () =>
     mockRpc.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
       switch (cmd) {
         case 'list_directory':
-          return JSON.stringify([{ name: 'agent-x', is_dir: true }]);
+          return JSON.stringify([
+            { name: 'agent-x', path: '/ws/.lantai/agents/agent-x', is_dir: true, children: null },
+          ]);
         case 'read_file_content':
           throw new Error('IPC timeout — 瞬时错误');
         case 'delete_file_or_dir':
@@ -500,7 +508,10 @@ describe('P0-6: JsonMessageStore 区分「不存在」与「读错误」', () =>
       const p = (args.path ?? '') as string;
       switch (cmd) {
         case 'list_directory':
-          if (p.endsWith('/agents')) return JSON.stringify([{ name: 'agent-x', is_dir: true }]);
+          if (p.endsWith('/agents'))
+            return JSON.stringify([
+              { name: 'agent-x', path: '/ws/.lantai/agents/agent-x', is_dir: true, children: null },
+            ]);
           return JSON.stringify([]); // agent 目录列为空 → delete 会继续删目录
         case 'read_file_content':
           throw new Error(`路径不存在: ${(args.file_path ?? '') as string}`);
@@ -523,7 +534,9 @@ describe('P0-6: JsonMessageStore 区分「不存在」与「读错误」', () =>
     mockRpc.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
       switch (cmd) {
         case 'list_directory':
-          return JSON.stringify([{ name: 'agent-x', is_dir: true }]);
+          return JSON.stringify([
+            { name: 'agent-x', path: '/ws/.lantai/agents/agent-x', is_dir: true, children: null },
+          ]);
         case 'read_file_content':
           return '{{corrupted';
         case 'delete_file_or_dir':

@@ -22,7 +22,7 @@ export interface McpSchema {
 
 export async function loadHologramSchemas(): Promise<McpSchema[]> {
   try {
-    return await typedJsonRpc<McpSchema[]>('hologram_tools_list', {});
+    return await typedJsonRpc('hologram_tools_list', {});
   } catch {
     return [];
   }
