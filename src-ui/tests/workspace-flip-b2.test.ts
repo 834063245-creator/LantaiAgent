@@ -35,8 +35,8 @@ describe('工作区会话根路由（workspace-session-ownership-rework）', () 
         // 钉路由：必须打到工作区会话根（不是旧全局位 / 用户级目录）
         expect(req.params.path).toBe('D:/proj/.lantai/sessions');
         return JSON.stringify([
-          { name: '1.json', path: 'x', is_dir: false },
-          { name: '2.json', path: 'y', is_dir: false },
+          { name: '1.json', path: 'D:/proj/.lantai/sessions/1.json', is_dir: false, children: null },
+          { name: '2.json', path: 'D:/proj/.lantai/sessions/2.json', is_dir: false, children: null },
         ]);
       }
       return '[]';

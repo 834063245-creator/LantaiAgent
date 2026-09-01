@@ -270,8 +270,8 @@ export class Workspace {
     let engineFlag: boolean | null = callbacks?.graphEngine ?? null;
     if (engineFlag === null) {
       try {
-        const list = await typedJsonRpc<Array<{ path: string; graph_engine?: boolean | null }>>('workspace_list', {});
-        const hit = Array.isArray(list) ? list.find((w) => isSamePath(w.path, path)) : undefined;
+        const list = await typedJsonRpc('workspace_list', {});
+        const hit = list.find((w) => isSamePath(w.path, path));
         if (hit && typeof hit.graph_engine === 'boolean') engineFlag = hit.graph_engine;
       } catch {
         /* 读失败 → 全局默认（engineFlag 保持 null） */
@@ -338,9 +338,11 @@ export class Workspace {
         // 空集）——会话工厂在会话创建时点读 this.graphData，预热完成后
         // 新会话自动获得完整图工具面。
         try {
-          const raw = await typedJsonRpc<string>('load_graph_json', { path });
-          const snap = parseJson<GraphSnapshot>(raw);
-          if (snap && snap.node_count > 0) {
+          // 形状真源 = engine graph_snapshot_value（schema 全检）。真机 Rust 出口
+          // 已是结构化 Value——旧「string 泛型 + parseJson」在真机恒炸恒吞
+          // （JSON.parse 收到对象）→ 图谱预热假死，2026-09-01 边界校验批修复。
+          const snap = await typedJsonRpc('load_graph_json', { path });
+          if (snap.node_count > 0) {
             ws.graphData = snap;
             ws._health = 'ready';
           }
@@ -395,9 +397,8 @@ export class Workspace {
             try {
               // Phase 1.5：快照重拉（毫秒级轻查询）——diff 本地合并与分页
               // 重载已随全量图形态退役；按需文件索引缓存同步失效。
-              const raw = await typedJsonRpc<string>('load_graph_json', { path: ws.path });
-              const snap = parseJson<GraphSnapshot>(raw);
-              if (snap && snap.node_count > 0) {
+              const snap = await typedJsonRpc('load_graph_json', { path: ws.path });
+              if (snap.node_count > 0) {
                 ws.graphData = snap;
                 if (ws._graphWarming) {
                   ws._graphWarming = false;

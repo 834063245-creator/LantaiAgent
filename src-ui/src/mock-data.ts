@@ -822,6 +822,37 @@ export function mockInvoke(cmd: string, args?: Record<string, unknown>): string 
     return 'null';
   }
 
+  // 边界运行时校验层（2026-09-01）配套：以下命令此前落「Unhandled 回退」垃圾
+  // 形状（{mock:true,…}），typedJsonRpc 校验后必炸——补齐真实形状，
+  // 浏览器 dev 与真机同形（形状真源 = 各 Rust 命令实现）。
+  if (cmd === 'sandbox_status') {
+    return JSON.stringify({ available: true, degraded: false, reason: '' });
+  }
+  if (cmd === 'shell_env') {
+    return JSON.stringify({
+      os: 'windows',
+      shell: 'bash',
+      shell_path: '/mock/bin/bash',
+      shell_version: '5.2.0-mock',
+      bundled: true,
+      notes: 'mock shell 环境——命令跑在 bash 上，用 Unix 语法',
+    });
+  }
+  if (cmd === 'git_status') {
+    return JSON.stringify({
+      branch: 'main',
+      ahead: 0,
+      behind: 0,
+      files: [{ path: 'src/mock.ts', status: 'modified', staged: false }],
+    });
+  }
+  if (cmd === 'aura_init') {
+    return JSON.stringify({ status: 'ok', path: (args?.brain_path as string) || '/mock/aura', record_count: 0 });
+  }
+  if (cmd === 'read_memory_batch') {
+    return JSON.stringify({});
+  }
+
   // 首页工作区清单（2026-09-01 三轴面审种子）：浏览器 dev 此前恒空态，
   // 首页数据态无法取证。两行覆盖面：置顶+活跃 / 非置顶+昨日+无注册名+引擎关。
   if (cmd === 'workspace_list') {

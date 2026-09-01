@@ -9,6 +9,7 @@ import { agentSessionState, type OwnedAgentHandle, type TurnPair } from '../agen
 import type { ChatAgentHandle } from '../agent/chat-agent-handle';
 import { createExecState, type ExecStateInstance } from '../agent/execution-state';
 import type { Message } from '../provider/types';
+import type { DirEntry } from '../rpc-contract';
 import { typedJsonRpc, typedRpc } from '../rpc-contract';
 import { getActiveProvider, loadSettings } from '../settings';
 import { disposeAssetSessionStore, disposeAssetTables, rebuildAssetTableFromMessages } from '../state/asset-store';
@@ -537,13 +538,6 @@ interface StoredSession {
   nextId?: number;
 }
 
-/** list_directory 返回的目录项。 */
-interface DirectoryEntry {
-  name: string;
-  path: string;
-  is_dir?: boolean;
-}
-
 /** 读取会话文件并解析为 JSON。处理 read_file_content 的行号。 */
 async function readSessionJSON(filePath: string): Promise<StoredSession> {
   const raw = await typedRpc('read_file_content', { file_path: filePath });
@@ -581,12 +575,10 @@ async function readVolumeJSON(projectPath: string, id: number): Promise<StoredSe
 export async function scanMaxSessionId(projectPath: string): Promise<number> {
   let maxId = 0;
   try {
-    const parsed: unknown = await typedJsonRpc('list_directory', {
+    const entries = await typedJsonRpc('list_directory', {
       path: workspaceSessionsDir(projectPath),
       filter_ignored: false,
     });
-    if (!Array.isArray(parsed)) return maxId;
-    const entries = parsed as DirectoryEntry[];
     for (const e of entries) {
       if (e.is_dir || !e.name || e.name === '_active.json') continue;
       const sid = parseInt(String(e.name).replace(/\.json$/, ''), 10);
@@ -794,9 +786,9 @@ export async function listSavedSessions(
   projectPath: string,
 ): Promise<Array<{ id: number; label: string; msgCount: number; savedAt: string }>> {
   type SessionEntry = { id: number; label: string; msgCount: number; savedAt: string };
-  let entries: DirectoryEntry[];
+  let entries: DirEntry[];
   try {
-    entries = await typedJsonRpc<DirectoryEntry[]>('list_directory', {
+    entries = await typedJsonRpc('list_directory', {
       path: workspaceSessionsDir(projectPath),
       filter_ignored: false,
     });

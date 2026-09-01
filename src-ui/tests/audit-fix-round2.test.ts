@@ -107,7 +107,9 @@ describe('R1: JsonMessageStore restore passes filter_ignored: false', () => {
     const store = new JsonMessageStore('D:/test');
     mockRpc.mockImplementation((cmd: string) => {
       if (cmd === 'list_directory') {
-        return Promise.resolve(JSON.stringify([{ name: 'agent-1', is_dir: true }]));
+        return Promise.resolve(
+          JSON.stringify([{ name: 'agent-1', path: 'D:/test/.lantai/agents/agent-1', is_dir: true, children: null }]),
+        );
       }
       if (cmd === 'read_file_content') {
         return Promise.resolve(JSON.stringify([{ id: 'm1', from: 'a', type: 'text', payload: 'hi', ts: 1 }]));

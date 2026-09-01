@@ -27,7 +27,7 @@ describe('workspace-flip 批 3：打开流两段化（T0 结构钉 · Phase 1.5 
   it('快照装载先行：load_graph_json 在 analyze_and_load 之前（快照毫秒级即时可用）', () => {
     const anchor = SRC.indexOf('图快照装载（Phase 1.5）');
     const segment = SRC.slice(anchor, anchor + 2400);
-    const snapAt = segment.indexOf("typedJsonRpc<string>('load_graph_json'");
+    const snapAt = segment.indexOf("typedJsonRpc('load_graph_json'");
     const analyzeAt = segment.indexOf("typedRpc('analyze_and_load'");
     expect(snapAt).toBeGreaterThan(0);
     expect(analyzeAt).toBeGreaterThan(snapAt);

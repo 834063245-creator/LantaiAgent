@@ -25,18 +25,23 @@ describe('rpc Value 化第二步：typedJsonRpc 双形态', () => {
     mockRpc.mockReset();
   });
 
-  it('结构化 Value（真机第二步形态）直接透传，零 parse', async () => {
-    const meta = { meta: { node_count: 42 }, total_pages: 3 };
-    mockRpc.mockResolvedValueOnce(meta);
-    const out = await typedJsonRpc<{ meta: { node_count: number } }>('get_graph_meta', {});
-    expect(out).toBe(meta); // 同一引用——透传不拷贝
-    expect(mockRpc).toHaveBeenCalledWith('get_graph_meta', {});
+  it('结构化 Value（真机第二步形态）经 schema 校验返回', async () => {
+    const shape = { available: true, degraded: false, reason: '' };
+    mockRpc.mockResolvedValueOnce(shape);
+    const out = await typedJsonRpc('sandbox_status', {});
+    expect(out).toEqual(shape); // 校验规整后为新对象——同引用透传属性随边界校验层退役
+    expect(mockRpc).toHaveBeenCalledWith('sandbox_status', {});
   });
 
   it('字符串（浏览器 mock / 表外 JSON 命令）走 parse 慢路径', async () => {
-    mockRpc.mockResolvedValueOnce('{"bundled":true}');
-    const out = await typedJsonRpc<{ bundled: boolean }>('shell_env', {});
-    expect(out).toEqual({ bundled: true });
+    mockRpc.mockResolvedValueOnce('{"os":"unknown","shell":"unknown","shell_path":"","notes":""}');
+    const out = await typedJsonRpc('shell_env', {});
+    expect(out).toEqual({ os: 'unknown', shell: 'unknown', shell_path: '', notes: '' });
+  });
+
+  it('result 违形即 throw（错误不静默——错误信息带方法名）', async () => {
+    mockRpc.mockResolvedValueOnce('{"degraded":"yes"}');
+    await expect(typedJsonRpc('sandbox_status', {})).rejects.toThrow(/sandbox_status/);
   });
 
   it('parseJson 语义不变："null" → null', () => {

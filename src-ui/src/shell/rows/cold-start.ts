@@ -29,7 +29,7 @@ export async function bootColdStart(_refs: ShellRefs): Promise<void> {
   try {
     let lastDir: string | null = null;
     try {
-      lastDir = await typedJsonRpc<string | null>('get_last_project', {});
+      lastDir = await typedJsonRpc('get_last_project', {});
     } catch {
       /* 无后端通道（浏览器 mock）→ 落点首页 */
     }

@@ -604,22 +604,18 @@ export class AgentRuntime implements RuntimePort {
       // Agent 第一轮就知道命令跑在哪个解释器上，避免"猜语法"反复踩坑。
       let shellEnvSection = '';
       try {
-        const env = await typedJsonRpc<{
-          shell?: string;
-          bash_version?: string;
-          interpreter_path?: string;
-          os?: string;
-          notes?: string;
-        }>('shell_env', {});
-        if (env && typeof env === 'object' && env.shell) {
+        // shell_env 形状真源 = os_sandbox::shell_env（os/shell/shell_path/notes 恒在；
+        // shell_version/bundled 仅 Windows-bash 分支）
+        const env = await typedJsonRpc('shell_env', {});
+        if (env.shell) {
           if (env.shell === 'bash') {
             shellEnvSection =
-              `- OS: ${env.os ?? 'unknown'}${env.os === 'windows' ? ' (Windows 环境)' : ''}\n` +
+              `- OS: ${env.os}${env.os === 'windows' ? ' (Windows 环境)' : ''}\n` +
               `- Shell: bash (Git Bash)\n` +
               `- 所有命令跑在 bash 上，用 Unix 语法：用 /dev/null 而不是 NUL、路径用正斜杠、用 ls 而不是 dir、变量用 $var`;
           } else {
             shellEnvSection =
-              `- OS: ${env.os ?? 'unknown'}\n` +
+              `- OS: ${env.os}\n` +
               `- Shell: ${env.shell}\n` +
               `- 命令跑在 ${env.shell} 上，用对应语法（bash 用 $var，cmd 用 %var%）`;
           }

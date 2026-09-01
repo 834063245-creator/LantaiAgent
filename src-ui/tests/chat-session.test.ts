@@ -1023,7 +1023,9 @@ describe('ChatPanel session persistence', () => {
         if (method === 'list_directory') {
           // 磁盘只有卷 5 的会话文件——卷 6 是幽灵（画布引用了它但文件不存在）
           return Promise.resolve(
-            JSON.stringify([{ name: '5.json', path: 'D:/restore-test/.lantai/sessions/5.json', is_dir: false }]),
+            JSON.stringify([
+              { name: '5.json', path: 'D:/restore-test/.lantai/sessions/5.json', is_dir: false, children: null },
+            ]),
           );
         }
         if (method === 'read_file_content') {
