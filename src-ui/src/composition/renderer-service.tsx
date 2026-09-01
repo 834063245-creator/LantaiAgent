@@ -30,7 +30,7 @@ import { type BlockKind, parsePlanItems, type SourcedBlock } from '../paper/bloc
 import { foldLabel, foldPreviewLine } from '../paper/fold';
 import { type MdBlock, type MdInline, type MdParseState, parseMarkdownIncremental } from '../paper/markdown';
 import { parseCircledSegments } from '../paper/marks';
-import { prettyToolArgs, hasArgsToShow } from '../paper/tool-text';
+import { hasArgsToShow, prettyToolArgs } from '../paper/tool-text';
 
 /** 渲染器组件入参——渲染器拿到块本体 + 纸壳递下的服务性回调。
  *  folded（2026-08-30 折叠机制）：壳层算好的有效折叠态（用户覆盖 ?? 默认规则，

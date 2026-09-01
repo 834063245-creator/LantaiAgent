@@ -1495,7 +1495,9 @@
   color: var(--ink-2);
   cursor: pointer;
   white-space: nowrap;
-  transition: color var(--snap), border-color var(--snap);
+  transition:
+    color var(--snap),
+    border-color var(--snap);
 }
 .pp-composer .pp-mode-opt:last-child {
   border-right: none;

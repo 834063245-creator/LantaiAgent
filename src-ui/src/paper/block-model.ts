@@ -200,10 +200,12 @@ export const DEFAULT_BLOCK_WIDTH = 720;
 export function parsePlanItems(content: string): string[] {
   return content
     .split('\n')
-    .map((s) => s
-      .replace(/^[-*]\s+|^\d+[.)]\s*/, '')
-      .replace(/^#{1,6}\s+/, '')
-      .trim())
+    .map((s) =>
+      s
+        .replace(/^[-*]\s+|^\d+[.)]\s*/, '')
+        .replace(/^#{1,6}\s+/, '')
+        .trim(),
+    )
     .filter(Boolean);
 }
 

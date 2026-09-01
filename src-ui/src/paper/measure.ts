@@ -34,7 +34,7 @@ import {
   parseMarkdownIncremental,
 } from './markdown';
 import { parseCircledSegments } from './marks';
-import { prettyToolArgs, hasArgsToShow } from './tool-text';
+import { hasArgsToShow, prettyToolArgs } from './tool-text';
 
 /* ── 纸面字体常量（2026-08-30 token 化：单一真源 = type-tokens.ts）──
  * 兰台四体分工（docs/design/lantai-design-spec.md §2）：宋体正文 / 楷书来文 /

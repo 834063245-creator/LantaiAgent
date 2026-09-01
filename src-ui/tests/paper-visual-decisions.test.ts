@@ -127,7 +127,6 @@ describe('卷首 folio-head 钉值（2026-08-30 原型转录：prototype/lantai.
   });
 });
 
-
 describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', () => {
   it('法则入宪：tokens 载 --weight-display/--shadow-anchor/--vignette/--laid-lines，字体装载 900', () => {
     expect(TOKENS_CSS).toContain('--weight-display: 900');
