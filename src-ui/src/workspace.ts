@@ -769,7 +769,8 @@ export class Workspace {
     }
 
     // 初始化 Agent 状态持久化 + goal 生命周期 + skill 注册表
-    this.agentStore = new AgentStore(this.path);
+    // 2026-09-01：AgentStore 已内存化（不再落盘 .lantai/agents，见 agent-store.ts 头注）
+    this.agentStore = new AgentStore();
     this.goalManager = new GoalManager(this.path, broadcastGoalRecord);
     this.goalManager.adoptOrphans().catch((e) => console.warn('[workspace] goal adoption failed:', e));
     this.skillRegistry = new SkillRegistry(this.path);

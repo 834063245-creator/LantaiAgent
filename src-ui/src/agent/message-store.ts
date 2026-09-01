@@ -11,6 +11,20 @@ import { typedJsonRpc, typedRpc } from '../rpc-contract';
 import { stripNums } from './board-persistence';
 import type { AgentMessage, MessageStore } from './message-types';
 
+/** 判断读错误是否为「文件不存在」——此时该 agent 本来就无 inbox（空 inbox 从不落盘），
+ *  属正常状态，静默跳过即可。覆盖 POSIX ENOENT / os error 2 与中英文文案。 */
+function isFileNotFound(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return (
+    msg.includes('os error 2') ||
+    msg.includes('ENOENT') ||
+    msg.includes('系统找不到指定的文件') ||
+    msg.includes('路径不存在') ||
+    msg.includes('not found') ||
+    msg.includes('NotFound')
+  );
+}
+
 // ── JsonMessageStore ──
 
 export class JsonMessageStore implements MessageStore {
@@ -55,7 +69,12 @@ export class JsonMessageStore implements MessageStore {
   }
 
   /** 读取所有 agent 目录下的 inbox.json，组装成 Map 返回。
-   *  空 inbox.json 或不可解析的目录会被当作孤儿清理。 */
+   *  restore 只读不删：`.lantai/agents/{id}/` 目录与 AgentStore 共享（后者写
+   *  state.json/session.ndjson），一个有效 agent 可以只有 state.json 而没有
+   *  inbox.json（空 inbox 从不落盘）。所以「缺失 inbox.json」是完全正常的状态，
+   *  静默跳过；只有真正的意外读错误（IPC 抖动、权限、解析失败）才 warn 保留
+   *  （P0-6 防线：瞬时读错误删 inbox = 静默丢未投递消息）。目录生命周期归
+   *  AgentStore/会话删除管，本 store 不越权清理。 */
   async restore(): Promise<Map<string, AgentMessage[]>> {
     const result = new Map<string, AgentMessage[]>();
     try {
@@ -74,19 +93,14 @@ export class JsonMessageStore implements MessageStore {
           const msgs = JSON.parse(stripNums(rawInbox)) as AgentMessage[];
           if (Array.isArray(msgs) && msgs.length > 0) {
             result.set(agentId, msgs);
-          } else {
-            // 空 inbox.json — 清理孤儿
-            await this.delete(agentId);
           }
+          // 空 inbox.json（文件存在但内容空）不恢复也不删——它属于 AgentStore 目录。
         } catch (e) {
-          // 雷区地图 P0-6：只有「文件不存在」才清理孤儿；
-          // 瞬时读错误（IPC 抖动、权限、磁盘）删 inbox = 静默丢未投递消息
+          // 缺失 inbox.json 是常态（空 inbox 从不落盘），静默跳过；
+          // 其余读错误才 warn 保留待下次恢复。
+          if (isFileNotFound(e)) continue;
           const msg = e instanceof Error ? e.message : String(e);
-          if (msg.includes('路径不存在') || msg.includes('not found') || msg.includes('NotFound')) {
-            await this.delete(agentId);
-          } else {
-            console.warn(`[message-store] ${agentId} 的 inbox.json 读取/解析失败，已保留待下次恢复:`, msg);
-          }
+          console.warn(`[message-store] ${agentId} 的 inbox.json 读取失败，保留待下次恢复:`, msg);
         }
       }
     } catch {

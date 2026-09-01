@@ -412,15 +412,6 @@ export class Agent {
   // 会话持久化
   sessionId: string;
   private _onSessionPersisted: ((sessionId: string, messages: Message[]) => void) | undefined;
-  /** 已持久化到 NDJSON 的消息数（P1-15 增量游标）。saveState 只追加此下标之后的消息。 */
-  private _persistedMsgCount = 0;
-  /** 已持久化到 session-log.ndjson 的最大事件 seq（Phase 5 双写游标）。
-   *  事件只增不减（reset/retract 也是事件）—— 与消息游标不同，永不重置。 */
-  private _persistedEventSeq = 0;
-  /** 事件日志写链 — run() 结尾的 fire-and-forget saveState 与显式/dispose saveState
-   *  并发时，同游标重复追加的事件会让 ndjson 出现重复 seq（回放即拒绝）。按调用序
-   *  串行化（模式参照 AgentStore._indexChain / BoardPersistence._writeChain，P1-13）。 */
-  private _eventAppendChain: Promise<void> = Promise.resolve();
 
   // 压缩成本模型追踪器
   private compactionTracker = new CompactionTracker();
@@ -656,9 +647,6 @@ export class Agent {
     // 会话被替换（恢复/加载）→ 折叠状态失效，从完整历史重新开始
     this._compactSummary = null;
     this._compactTailStart = -1;
-    // P1-15: 增量游标重置 — 替换进来的消息不在本 Agent 的 NDJSON 里，
-    // 下次 saveState 全量重建，保证磁盘与会话一致。
-    this._persistedMsgCount = 0;
     this._execState.bumpVersion();
     this._ui.sessionReplaced?.(this.session);
   }
@@ -852,41 +840,20 @@ export class Agent {
     this._ctx.set('goalManager', mgr);
   }
 
-  /** 将当前状态 + 会话持久化到磁盘。Best-effort — 不抛异常。
-   *  会话走 NDJSON 增量追加（P1-15）：只写 _persistedMsgCount 之后的新消息，
-   *  消除每轮全量重写 session.json 的 O(全量) 写放大。 */
+  /** 将当前身份状态保存到内存注册表（2026-09-01 起不再落盘——见
+   *  agent-store.ts 头注；会话全文由父会话消息层持久化）。Best-effort。 */
   async saveState(status: AgentRecord['status'] = 'running'): Promise<void> {
     if (!this.agentStore) return;
     try {
-      const planSnapshot = this._planState?.toSnapshot() ?? undefined;
       await this.agentStore.save(this.id, {
         parentId: this.parentId,
         description: this.id === 'main' ? '主Agent' : `子Agent (depth ${this._subagentDepth})`,
         status,
         subagentDepth: this._subagentDepth,
-        planSnapshot,
+        planSnapshot: this._planState?.toSnapshot() ?? undefined,
       });
-      // 会话增量：长度收缩（撤回/替换）→ truncate 全量重建；否则 append 新增段
-      if (this.session.length < this._persistedMsgCount) {
-        await this.agentStore.appendMessages(this.id, this.session, true);
-      } else if (this.session.length > this._persistedMsgCount) {
-        await this.agentStore.appendMessages(this.id, this.session.slice(this._persistedMsgCount));
-      }
-      this._persistedMsgCount = this.session.length;
-      // Phase 5 双写：事件日志增量追加（append-only —— reset/retract 也是事件，
-      // 无 rewrite 路径；事件游标与消息游标独立，永不重置）。经写链串行化 —
-      // 并发 saveState（run 结尾 fire-and-forget + 显式/dispose）不得重复追加。
-      const store = this.agentStore;
-      const persistEvents = async (): Promise<void> => {
-        const pendingEvents = this._sessionLog.eventsAfter(this._persistedEventSeq);
-        if (pendingEvents.length === 0) return;
-        await store.appendSessionEvents(this.id, pendingEvents);
-        this._persistedEventSeq = pendingEvents[pendingEvents.length - 1].seq;
-      };
-      this._eventAppendChain = this._eventAppendChain.then(persistEvents, persistEvents);
-      await this._eventAppendChain;
     } catch {
-      /* 持久化是尽力而为 — 绝不阻塞 agent 循环 */
+      /* 尽力而为 — 绝不阻塞 agent 循环 */
     }
   }
 

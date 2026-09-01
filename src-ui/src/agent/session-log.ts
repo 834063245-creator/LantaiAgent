@@ -221,11 +221,6 @@ export class SessionLog {
     return this._events;
   }
 
-  /** seq 之后的事件（saveState 增量持久化取段）。 */
-  eventsAfter(seq: number): SessionEvent[] {
-    return this._events.filter((e) => e.seq > seq);
-  }
-
   /** 日志快照（深拷贝，可 JSON 序列化；与 replay 配对重建）。 */
   snapshot(): SessionSnapshot {
     return { version: 1, events: this._events.map((e) => jsonClone(e) as SessionEvent) };

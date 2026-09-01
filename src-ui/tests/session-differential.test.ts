@@ -25,27 +25,12 @@ import { ensureProductionChannelsBooted } from './helpers/composition-boot';
 // 生产装配复现（平台化 Phase 2 · D11 施工⑥）：builtin/rust-sessions 在册。
 await ensureProductionChannelsBooted();
 
-const appendCalls: Array<{ agentId: string; messages: Message[]; rewrite: boolean }> = [];
-const logAppends: Array<{ path: string; content: string }> = [];
-
 const mockInvoke = vi.fn(async (_cmd: string, payload: { method: string; params: Record<string, unknown> }) => {
-  const { method, params: p } = payload;
+  const { method } = payload;
   switch (method) {
     case 'create_directory':
     case 'write_file_content':
       return '{}';
-    case 'agent_session_append': {
-      appendCalls.push({
-        agentId: p.agent_id as string,
-        messages: p.messages as unknown as Message[],
-        rewrite: !!p.rewrite,
-      });
-      return '{}';
-    }
-    case 'log_append': {
-      logAppends.push({ path: p.path as string, content: p.content as string });
-      return '{}';
-    }
     default:
       // drain_bg_notifications / credential_get 等 — 保持"未模拟即失败"的真实形状，
       // 调用方（runLoop/压缩模型选择）自带静默降级
@@ -437,54 +422,11 @@ describe('T2 差分 — 工具结果批量折叠（window>0）', () => {
   });
 });
 
-describe('T2 差分 — 持久化双写（P1-15 游标不受破坏）', () => {
-  it('saveState 增量追加事件到 session-log.ndjson，消息游标语义不变', async () => {
-    appendCalls.length = 0;
-    logAppends.length = 0;
-    const store = new AgentStore('/p');
-    const { agent } = makeHarness([
-      [text('回答'), done],
-      [text('再答'), done],
-    ]);
-    agent.setAgentStore(store);
-    await agent.run(SIG, '你好');
-    await agent.saveState('running');
-    await agent.run(SIG, '第二句');
-    await agent.saveState('done');
-
-    // P1-15 消息游标不受破坏：两轮各一次增量 append，无 rewrite
-    expect(appendCalls).toHaveLength(2);
-    expect(def(appendCalls[0], 'appendCalls[0]').messages.map((m) => m.content)).toEqual([
-      'sys-fixture',
-      '你好',
-      '回答',
-    ]);
-    expect(def(appendCalls[1], 'appendCalls[1]').messages.map((m) => m.content)).toEqual(['第二句', '再答']);
-    expect(appendCalls.every((c) => !c.rewrite)).toBe(true);
-    // 事件日志双写：全部经 log_append 追加到 session-log.ndjson
-    const logFile = logAppends.filter((l) => l.path === '/p/.lantai/agents/diff-agent/session-log.ndjson');
-    const lines = logFile.flatMap((l) => l.content.split('\n').filter((s) => s.trim().length > 0));
-    const events = lines.map((l) => JSON.parse(l) as { seq: number; kind: string });
-    expect(events.map((e) => e.kind)).toEqual([
-      'session/reset',
-      'preset/selected',
-      'user/message',
-      'turn/start',
-      'assistant/text',
-      'user/message',
-      'turn/start',
-      'assistant/text',
-    ]);
-    // 落盘事件重放可重建投影（seq 严格递增由 appendEvent 保证）
-    const replayed = SessionLog.replay(events.map((e) => e as Parameters<typeof SessionLog.replay>[0][number]));
-    expect(JSON.stringify(replayed.deriveMessages())).toBe(JSON.stringify(agent.getSession()));
-  });
-
-  it('run() 异常路径仍持久化会话（saveState 在 finally 中 — 2026-08 修复回归）', async () => {
+describe('T2 差分 — saveState finally 保底（2026-09-01 AgentStore 内存化后语义保留）', () => {
+  it('run() 异常路径仍走 saveState（finally 保底 — 2026-08 修复回归，内存化后语义保留）', async () => {
     // 修复前：saveState 在 await runLoop 之后 — runLoop 抛错（含 abort）时被跳过，
     // 本轮注入的 inbox 消息（result/bg）只存在于内存 session，崩溃即静默丢失。
-    appendCalls.length = 0;
-    logAppends.length = 0;
+    // 2026-09-01 AgentStore 内存化：持久化只写内存身份，finally 保底语义不变。
     const store = new AgentStore('/p');
     // stream 第一轮直接抛错 → runLoop 冒泡 → run() 必须仍走 saveState
     const prov: Provider = {
@@ -500,12 +442,9 @@ describe('T2 差分 — 持久化双写（P1-15 游标不受破坏）', () => {
     };
     const agent = createTestAgent(prov, new ToolRegistry(), 'sys-fixture', { contextWindow: 100000 });
     agent.setAgentStore(store);
+    const spy = vi.spyOn(agent, 'saveState');
     await expect(agent.run(SIG, 'boom turn')).rejects.toThrow('provider exploded');
-
-    // saveState 在 finally 中 fire-and-forget — 等它落地（修复前此断言永远失败：
-    // throw 路径完全绕过 saveState，内存 session 随崩溃丢失）
-    await vi.waitFor(() => expect(appendCalls.length).toBe(1), { timeout: 2000 });
-    const saved = def(appendCalls[0], 'appendCalls[0]').messages.map((m) => m.content);
-    expect(saved).toContain('boom turn');
+    // saveState 在 finally 中 fire-and-forget — 异常路径也必须保底执行
+    await vi.waitFor(() => expect(spy).toHaveBeenCalled(), { timeout: 2000 });
   });
 });

@@ -501,22 +501,24 @@ describe('P0-6: JsonMessageStore 区分「不存在」与「读错误」', () =>
     expect(deleteCalls).toEqual([]);
   });
 
-  it('文件不存在时仍清理孤儿目录', async () => {
+  it('文件不存在（含 Windows 中文 os error 2 文案）时静默跳过、不删目录', async () => {
     mockRpc.mockReset();
     const deleteCalls: string[] = [];
     mockRpc.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
-      const p = (args.path ?? '') as string;
       switch (cmd) {
         case 'list_directory':
-          if (p.endsWith('/agents'))
-            return JSON.stringify([
-              { name: 'agent-x', path: '/ws/.lantai/agents/agent-x', is_dir: true, children: null },
-            ]);
-          return JSON.stringify([]); // agent 目录列为空 → delete 会继续删目录
+          return JSON.stringify([
+            { name: 'agent-x', path: '/ws/.lantai/agents/agent-x', is_dir: true, children: null },
+            { name: 'agent-win', path: '/ws/.lantai/agents/agent-win', is_dir: true, children: null },
+          ]);
         case 'read_file_content':
+          // agent-x：POSIX 风格；agent-win：Windows 中文 os error 2 文案（用户告警现场）
+          if ((args.file_path as string).includes('agent-win')) {
+            throw new Error('stat (尝试 1 次后失败): 系统找不到指定的文件。 (os error 2)');
+          }
           throw new Error(`路径不存在: ${(args.file_path ?? '') as string}`);
         case 'delete_file_or_dir':
-          deleteCalls.push(p);
+          deleteCalls.push(args.path as string);
           return 'ok';
         default:
           return 'ok';
@@ -524,8 +526,10 @@ describe('P0-6: JsonMessageStore 区分「不存在」与「读错误」', () =>
     });
 
     const store = new JsonMessageStore('/fake/project');
-    await store.restore();
-    expect(deleteCalls.some((p) => p.includes('inbox.json'))).toBe(true);
+    const result = await store.restore();
+    expect(result.size).toBe(0); // 有 state.json 的 agent 目录无 inbox = 常态，不恢复
+    // 目录归属 AgentStore（state.json），缺失 inbox.json 不算孤儿，绝不越权清理
+    expect(deleteCalls).toEqual([]);
   });
 
   it('inbox.json 损坏（JSON 解析失败）时保留文件并告警', async () => {

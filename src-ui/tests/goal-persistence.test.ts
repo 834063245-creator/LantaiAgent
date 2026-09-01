@@ -13,7 +13,6 @@ vi.mock('../src/bridge', () => ({
 }));
 
 import type { Agent } from '../src/agent/agent';
-import { AgentStore } from '../src/agent/agent-store';
 import { GoalManager } from '../src/agent/goal-manager';
 import type { Tool } from '../src/agent/tool';
 import { ToolRegistry } from '../src/agent/tool';
@@ -332,7 +331,6 @@ describe('Pause session isolation', () => {
     const provider = pauseProvider(() => textChunks('好的,收到'));
     const agent = makeAgent(provider);
     const gm = wireGoals(agent);
-    agent.setAgentStore(new AgentStore('/proj'));
 
     const ctrl = new AbortController();
     const resultP = agent.runGoal(ctrl.signal, 'test goal');
@@ -353,12 +351,9 @@ describe('Pause session isolation', () => {
 
     // 暂停后来一句普通聊天 — 旧架构这一句话就把 goal 现场毁了
     await agent.run(new AbortController().signal, '你好');
-    // run() 里的 saveState 是 fire-and-forget,等它落盘
-    await new Promise((r) => setTimeout(r, 20));
 
-    // 普通聊天写它自己的槽(应有),goal 槽纹丝不动(关键断言)
-    const mainSlot = await new AgentStore('/proj').load('test-agent');
-    expect(JSON.stringify(mainSlot?.messages)).toContain('你好');
+    // goal 槽纹丝不动(关键断言)——2026-09-01 起 agent 会话不再落盘
+    // (AgentStore 内存化),「普通聊天写主槽」的磁盘层断言随之退役。
     const snapAfter = JSON.stringify(await gm.loadSession(rec.id));
     expect(snapAfter).toBe(snapBefore);
     expect(snapAfter).not.toContain('你好');
