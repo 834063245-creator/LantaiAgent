@@ -139,6 +139,60 @@ describe('composition/renderer-service — 首发表现原语（WO-6）', () => 
     });
   });
 
+  it('chart 支持对象形状 data（{labels, values}）——回归：此前对象形状静默空白', async () => {
+    await withRenderers(() => {
+      const Comp = resolveAssetBlock('chart', 'chart')!;
+      const html = renderToStaticMarkup(
+        createElement(Comp, {
+          block: assetBlock('chart', 'chart', {
+            type: 'bar',
+            data: { labels: ['feat', 'docs'], values: [148, 144] },
+          }),
+        }),
+      );
+      // 有柱（含高度）而不是空 SVG
+      expect(html).toContain('pp-chart-bar');
+      expect(html).toContain('width="24"');
+      // 标签渲染
+      expect(html).toContain('feat');
+      expect(html).toContain('docs');
+      // "数据不可用"占位不应出现
+      expect(html).not.toContain('pp-chart-empty');
+    });
+  });
+
+  it('chart 无效数据渲染"数据不可用"占位，不静默空白', async () => {
+    await withRenderers(() => {
+      const Comp = resolveAssetBlock('chart', 'chart')!;
+      // 空对象（无 data）
+      const empty = renderToStaticMarkup(createElement(Comp, { block: assetBlock('chart', 'chart', {}) }));
+      expect(empty).toContain('pp-chart-empty');
+      // 形状不符（无 values 的对象）
+      const bad = renderToStaticMarkup(
+        createElement(Comp, { block: assetBlock('chart', 'chart', { type: 'bar', data: { x: 1 } }) }),
+      );
+      expect(bad).toContain('pp-chart-empty');
+      // 空数组
+      const emptyArr = renderToStaticMarkup(
+        createElement(Comp, { block: assetBlock('chart', 'chart', { type: 'bar', data: [] }) }),
+      );
+      expect(emptyArr).toContain('pp-chart-empty');
+    });
+  });
+
+  it('chart [{label,value}] 对象数组形状仍工作（既有契约）', async () => {
+    await withRenderers(() => {
+      const Comp = resolveAssetBlock('chart', 'chart')!;
+      const html = renderToStaticMarkup(
+        createElement(Comp, {
+          block: assetBlock('chart', 'chart', { type: 'bar', data: [{ label: 'a', value: 3 }] }),
+        }),
+      );
+      expect(html).toContain('pp-chart-bar');
+      expect(html).toContain('a');
+    });
+  });
+
   it('metric tone 类名生效', async () => {
     await withRenderers(() => {
       const Comp = resolveAssetBlock('metric', 'metric')!;

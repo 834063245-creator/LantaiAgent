@@ -2762,6 +2762,14 @@
   color: var(--ink-3);
   margin-bottom: var(--pp-asset-chart-typeMarginB);
 }
+.pp-chart-empty {
+  font-family: var(--f-song);
+  font-size: 0.92rem;
+  color: var(--fail);
+  padding: var(--pp-asset-chart-padV) 0;
+  border-left: 2px solid color-mix(in oklch, var(--fail) 45%, transparent);
+  padding-left: 10px;
+}
 .pp-chart-svg {
   width: 100%;
   height: auto;

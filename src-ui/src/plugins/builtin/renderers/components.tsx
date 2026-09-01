@@ -60,26 +60,69 @@ function GridBody({ block }: BlockRendererProps) {
 
 /* ── chart ── */
 
+/** 归一化 chart 数据为数值数组。支持两种形状：
+ *  1. 数组：`[1,2,3]` 或 `[{label,value}]`（value 取数值）
+ *  2. 对象：`{ labels: [...], values: [...] }`（values 取数值，labels 与 values 等长取用）
+ *  无法解析（非数组且无 values 数组）→ 返回 []（渲染层落"数据不可用"占位，不静默空白）。 */
 function chartValues(data: unknown): number[] {
-  if (!Array.isArray(data)) return [];
-  return data.map((d) => {
+  let raw: unknown[] | null = null;
+  if (Array.isArray(data)) {
+    raw = data;
+  } else if (data && typeof data === 'object') {
+    const v = (data as { values?: unknown }).values;
+    if (Array.isArray(v)) raw = v;
+    else return [];
+  } else {
+    return [];
+  }
+  if (raw === null) return [];
+  return raw.map((d) => {
     if (typeof d === 'number') return d;
     if (d && typeof d === 'object') {
       const v = (d as { value?: unknown }).value;
       const n = typeof v === 'number' ? v : Number(v);
       return Number.isFinite(n) ? n : 0;
     }
-    return 0;
+    // 数字字符串（"12.5"）也接受；其余 NaN → 0
+    const n = Number(d);
+    return Number.isFinite(n) ? n : 0;
   });
+}
+
+/** 归一化 chart 标签：数组形状取 {label}，对象形状取 {labels}（与 values 对齐）。 */
+function chartLabels(data: unknown): string[] {
+  let raw: unknown[] | null = null;
+  if (Array.isArray(data)) {
+    raw = data;
+  } else if (data && typeof data === 'object') {
+    const v = (data as { labels?: unknown }).labels;
+    if (Array.isArray(v)) raw = v;
+    else return [];
+  } else {
+    return [];
+  }
+  if (raw === null) return [];
+  return raw.map((d) => {
+    if (d && typeof d === 'object') return String((d as { label?: unknown }).label ?? '');
+    // 字符串标签直接取本身（如 {labels: ['feat','docs']}）
+    return String(d);
+  });
+}
+
+/** data 是否无可用数值（空/形状不符）——驱动"数据不可用"占位（错误不静默纪律）。 */
+function chartEmpty(data: unknown): boolean {
+  return chartValues(data).length === 0;
 }
 
 function ChartBody({ block }: BlockRendererProps) {
   const p = block.payload as { type?: string; data?: unknown; config?: Record<string, unknown> };
   const type = typeof p.type === 'string' ? p.type : 'bar';
   const values = chartValues(p.data);
-  const labels = Array.isArray(p.data)
-    ? p.data.map((d) => (d && typeof d === 'object' ? String((d as { label?: unknown }).label ?? '') : ''))
-    : [];
+  const labels = chartLabels(p.data);
+  if (chartEmpty(p.data)) {
+    // 错误不静默：数据形状不符/为空时渲染占位，不画空白 SVG
+    return <div className="pp-chart pp-chart-empty">数据不可用 · 期望数组或 {`{labels, values}`} 形状</div>;
+  }
   const max = Math.max(1, ...values);
   const n = Math.max(values.length, 1);
 
