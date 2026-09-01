@@ -161,16 +161,18 @@ describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', (
     expect(ruleBody(PANEL_CSS, '.pp-empty-title')).toContain('var(--weight-display)');
   });
 
-  it('纸层次（2026-09-01 真纸化）：真纹理双资产乘印 + SVG 微颗粒 + 顶光边沉帘纹（sh-root::before/::after）', () => {
-    // 真纸纹理资产接线（feTurbulence 程序噪声退役——真纤维/斑点，cover 免接缝）
+  it('纸层次（2026-09-01 真纸化）：真纹理双资产乘印 + SVG 微颗粒 + 顶光边沉帘纹（body 文档级 before/after）', () => {
+    // 真纸纹理资产接线（feTurbulence 程序噪声退役——真纤维/斑点，cover 免接缝；
+    // 挂 body 文档级——2026-09-01 实机打回：错挂 .sh-root 时纹理被困首页，画布/面板无纹理）
     expect(HOME_CSS).toContain('../assets/paper/paper-grain.jpg');
     expect(HOME_CSS).toContain('../assets/paper/paper-fiber.jpg');
     expect(HOME_CSS).toContain('background-blend-mode: normal, multiply, multiply');
     expect(HOME_CSS).toContain('mix-blend-mode: multiply');
+    expect(HOME_CSS).toContain('body::after');
     // 极弱 SVG 微颗粒保留（抗色带）
     expect(HOME_CSS).toContain("opacity='0.05'");
     // 纸层次：顶光 + 帘纹 + 边沉
-    expect(HOME_CSS).toContain('.sh-root::before');
+    expect(HOME_CSS).toContain('body::before');
     expect(HOME_CSS).toContain('var(--light-fall)');
     expect(HOME_CSS).toContain('var(--laid-lines)');
     expect(HOME_CSS).toContain('var(--vignette)');

@@ -25,9 +25,10 @@
   text-spacing-trim: space-all;
 }
 
-/* 纸张颗粒：全局唯一一份，挂 foundation.css .sh-root::after（fixed 全屏 z 9998，
-   纸壳/案卷首页/面板一律被其覆盖）。2026-08-31 去重——纸壳曾自挂一份同款 ::after，
-   开纸壳时与 .sh-root 的叠乘成两层云斑（脏）；此处不再自挂，防回潮。 */
+/* 纸张颗粒：全局唯一一份，挂 foundation.css body::after（文档级 fixed 全屏 z 9998，
+   首页/纸壳/画布/面板一律被其覆盖；2026-09-01 前错挂 .sh-root——首页自己的层叠
+   上下文，画布/面板实际从未被盖到）。2026-08-31 去重——纸壳曾自挂一份同款 ::after，
+   叠乘成两层云斑（脏）；此处不再自挂，防回潮。 */
 
 .pp-root ::selection {
   background: var(--seal-soft);

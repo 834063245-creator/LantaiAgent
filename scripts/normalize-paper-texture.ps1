@@ -1,7 +1,8 @@
-# 纸纹理预处理：暗度压缩提白 out = 1 - k_c*(1-in_c)（仿扫描件白化，不削顶不压结构）
+# 纸纹理预处理：暗度压缩/扩幅 out = 1 - k_c*(1-in_c)（k<1 提白，k>1 扩幅放大振幅）
 # 用途：src-ui/src/assets/paper/*.jpg 换新图后一次性预处理——两层纹理以
-#       background-blend-mode: multiply 相乘（foundation.css .sh-root::after），
-#       黄味会复利，故按通道异权（R .55 / G .40 / B .25）把纹理做成色相中性，
+#       background-blend-mode: multiply 相乘（foundation.css body::after 文档级），
+#       黄味会复利，故先按通道异权（R .55 / G .40 / B .25）把纹理做成色相中性；
+#       再统一扩幅（k=1.6 三通道）补回振幅（提白后方差剩四成）。
 #       暖调交由 --paper token carry。参数依据见 docs/design/lantai-design-spec.md §10 法则4。
 # 用法：pwsh -File scripts/normalize-paper-texture.ps1 -Path <jpg 路径>
 param(

@@ -100,9 +100,11 @@ body {
   background: var(--paper);
   overflow: auto;
 }
-/* 纸张纹理（全局唯一：固定全屏 z 9998，纸壳/案卷首页/面板一律被其覆盖——
-   面板内勿再自挂同款层，叠乘即脏。2026-09-01 真纸化：feTurbulence 程序噪声
-   换真纸纹理资产（src/assets/paper/，AI 平扫感实拍纹，cover 满屏免铺贴接缝）——
+/* 纸张纹理（全局唯一：挂 body::after 文档级 fixed 全屏 z 9998——首页/纸壳/画布/
+   面板一律被其覆盖，面板内勿再自挂同款层，叠乘即脏。2026-09-01 实机打回第二刀：
+   原挂 .sh-root，而 .sh-root 是首页自己的 z-30 层叠上下文，纹理被困在首页——
+   进画布/开面板全无纹理；上移 body 后 9998 才真文档级。真纸化：feTurbulence
+   程序噪声换真纸纹理资产（src/assets/paper/，AI 平扫感实拍纹，cover 满屏免铺贴接缝）——
    高频 paper-grain（细密肌理+斑点）× 低频 paper-fiber（宣纸纤维束+云状晕染）
    先经 background-blend-mode 乘成一张纸，再随元素 multiply 浸入页面。
    资产侧两段预处理（scripts/normalize-paper-texture.ps1）：
@@ -114,7 +116,7 @@ body {
    顶层保留一层极弱 SVG 微颗粒（.05）抗色带、补 1:1 像素脆度。
    印面/重墨受纹理同源于此层（顶层 multiply 全局覆盖），局部勿再挂纹理。
    换纸 = 替换 assets/paper/ 下同名图片并跑预处理脚本，管道不变。 */
-.sh-root::after {
+body::after {
   content: "";
   position: fixed;
   inset: 0;
@@ -132,8 +134,8 @@ body {
   mix-blend-mode: multiply;
 }
 /* 纸层次（浸墨 2026-08-31；2026-09-01 增方向光）：顶光 + 帘纹 + 边沉，
-   垫在纹理层之下、内容之上——光从上来，边往下沉，纸即是物 */
-.sh-root::before {
+   垫在纹理层之下、内容之上——光从上来，边往下沉，纸即是物；与纹理层同挂 body（文档级） */
+body::before {
   content: "";
   position: fixed;
   inset: 0;
