@@ -116,13 +116,14 @@
   transition: all var(--snap);
 }
 .prompt-shelf__option:hover {
-  background: var(--paper-deep);
+  background: var(--sel-wash); /* 2026-09-01 审计：统一行型选中语言 */
   border-color: var(--ink-3);
 }
 .prompt-shelf__option--on {
-  background: var(--seal-soft);
+  background: var(--sel-wash);
   border-color: color-mix(in oklch, var(--seal) 40%, transparent);
-  color: var(--seal-deep);
+  color: var(--ink-1);
+  box-shadow: inset 2px 0 0 var(--seal);
 }
 .prompt-shelf__num {
   flex-shrink: 0;
