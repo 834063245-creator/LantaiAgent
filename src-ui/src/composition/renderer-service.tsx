@@ -30,7 +30,7 @@ import { type BlockKind, parsePlanItems, type SourcedBlock } from '../paper/bloc
 import { foldLabel, foldPreviewLine } from '../paper/fold';
 import { type MdBlock, type MdInline, type MdParseState, parseMarkdownIncremental } from '../paper/markdown';
 import { parseCircledSegments } from '../paper/marks';
-import { prettyToolArgs } from '../paper/tool-text';
+import { prettyToolArgs, hasArgsToShow } from '../paper/tool-text';
 
 /** 渲染器组件入参——渲染器拿到块本体 + 纸壳递下的服务性回调。
  *  folded（2026-08-30 折叠机制）：壳层算好的有效折叠态（用户覆盖 ?? 默认规则，
@@ -689,7 +689,8 @@ function ToolBody({ block, folded }: BlockRendererProps) {
   if (folded) return null; // 折叠态只留壳层折叠行（paper/fold.ts 规则）——参数/输出全收
   return (
     <>
-      {p.args ? <pre>{prettyToolArgs(p.args)}</pre> : null}
+      {/* F1（2026-09-01 三轴审计）：空/无意义参数（`{}` 等 JSON 骨架）不裸奔 */}
+      {hasArgsToShow(p.args) ? <pre>{prettyToolArgs(p.args)}</pre> : null}
       {p.output && <div className="pp-out">{p.output}</div>}
       {p.err && (
         <div className="pp-out" style={{ color: 'var(--fail)' }}>
@@ -748,6 +749,13 @@ function ToolGroupBody(): null {
   return null;
 }
 
+/** 子代理组头（2026-09-01 三轴审计 F4）：与工具组头同构——体恒空，
+ *  信息在壳层折叠行（foldLabel：描述 · 段数 · 在跑/出错），子 parts 是
+ *  独立块（reasoning/text/tool…），折叠摘除复用 collapseToolGroups。 */
+function SubagentGroupBody(): null {
+  return null;
+}
+
 /** 内置渲染器行（默认行——视觉由纸壳 CSS 承载，渲染器只管体结构）。 */
 export function builtinRendererDefs(): BlockRendererContribution[] {
   return [
@@ -760,6 +768,7 @@ export function builtinRendererDefs(): BlockRendererContribution[] {
     { id: 'builtin/tool', kind: 'tool', component: ToolBody },
     { id: 'builtin/code', kind: 'code', component: CodeBody },
     { id: 'builtin/toolgroup', kind: 'toolgroup', component: ToolGroupBody },
+    { id: 'builtin/subagent', kind: 'subagent', component: SubagentGroupBody },
     { id: 'builtin/turn-error', kind: 'turn-error', component: TurnErrorBody },
   ];
 }

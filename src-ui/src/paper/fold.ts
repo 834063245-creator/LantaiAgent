@@ -16,11 +16,11 @@
 // 状态翻转（running→done）自动收回的是「没有用户意志的默认态」。
 
 import type { BlockKind } from './block-model';
-import { toolDigest } from './tool-text';
+import { hasArgsToShow, toolDigest } from './tool-text';
 
 /** 可折叠 kind（渲染器与测量端共用判据）。 */
 export function isFoldable(kind: BlockKind): boolean {
-  return kind === 'reasoning' || kind === 'tool' || kind === 'code' || kind === 'toolgroup';
+  return kind === 'reasoning' || kind === 'tool' || kind === 'code' || kind === 'toolgroup' || kind === 'subagent';
 }
 
 /** 默认折叠态：无用户覆盖时的规则面。 */
@@ -31,6 +31,19 @@ export function defaultFolded(kind: BlockKind, payload: unknown): boolean {
     // 有子调用出错 = 自动展开（错误留面，同 tool/code 纪律）。
     const items = (payload as { items?: Array<{ status?: string }> }).items ?? [];
     return !items.some((i) => i.status === 'error');
+  }
+  if (kind === 'subagent') {
+    // 子代理组（2026-09-01 三轴审计 F4）：过程块收进组内，正文流只留组头一行。
+    // 组内子调用出错 / 组自身出错 / 子拟策待审批（可操作卡不可被折叠藏住）= 张开。
+    const p = payload as {
+      status?: string;
+      items?: Array<{ type?: string; status?: string; _callback?: unknown }>;
+    };
+    if (p.status === 'error') return false;
+    const items = p.items ?? [];
+    const childErrored = items.some((i) => i.status === 'error');
+    const planPending = items.some((i) => i.type === 'plan' && i._callback);
+    return !(childErrored || planPending);
   }
   if (kind === 'tool' || kind === 'code') {
     const status = (payload as { status?: string }).status;
@@ -58,6 +71,7 @@ export function foldLabel(kind: BlockKind, payload: unknown, folded: boolean): s
     description?: string;
     label?: string;
     name?: string;
+    status?: string;
     items?: Array<{ name?: string; status?: string }>;
   };
   const outSuffix = (): string => {
@@ -72,7 +86,8 @@ export function foldLabel(kind: BlockKind, payload: unknown, folded: boolean): s
     // 纯字数没有信息量，不展开不知道卡是什么。
     const who = p.label || p.name || '工具';
     if (!folded) return `▾ 收起 ${who}`;
-    if (!p.args && !p.output && !p.err) return `▸ ${who} · 待执行`;
+    // F1（2026-09-01）：`{}` 骨架与空参数同判——都是「还没带东西来」
+    if (!hasArgsToShow(p.args) && !p.output && !p.err) return `▸ ${who} · 待执行`;
     const digest = toolDigest(p.args ?? '');
     return `▸ ${who}${digest ? ` ${digest}` : ''}${outSuffix()}`;
   }
@@ -81,6 +96,15 @@ export function foldLabel(kind: BlockKind, payload: unknown, folded: boolean): s
     if (!folded) return `▾ 收起 ${who}`;
     if (!p.code && !p.output && !p.err) return `▸ ${who} · 待执行`;
     return `▸ ${who}${outSuffix()}`;
+  }
+  if (kind === 'subagent') {
+    // 子代理组头（2026-09-01 F4）：描述即身份，段数量化；在跑/出错缀状态。
+    const raw = (p.description || '').replace(/\s+/g, ' ').trim() || '子代理';
+    const desc = raw.length > 24 ? `${raw.slice(0, 24)}…` : raw;
+    if (!folded) return `▾ 收起 ${desc}`;
+    const n = (p.items as unknown[] | undefined)?.length ?? 0;
+    const suffix = p.status === 'error' ? ' · 出错' : p.status === 'running' ? ' · 在跑' : '';
+    return `▸ ${desc} · ${n} 段${suffix}`;
   }
   if (kind === 'toolgroup') {
     const items = p.items ?? [];

@@ -34,7 +34,7 @@ import {
   parseMarkdownIncremental,
 } from './markdown';
 import { parseCircledSegments } from './marks';
-import { prettyToolArgs } from './tool-text';
+import { prettyToolArgs, hasArgsToShow } from './tool-text';
 
 /* ── 纸面字体常量（2026-08-30 token 化：单一真源 = type-tokens.ts）──
  * 兰台四体分工（docs/design/lantai-design-spec.md §2）：宋体正文 / 楷书来文 /
@@ -679,6 +679,7 @@ const BUILTIN_MEASURE_KINDS = new Set<string>([
   'code',
   'plan',
   'toolgroup',
+  'subagent',
   'notice',
 ]);
 
@@ -795,7 +796,7 @@ export function inkSourcesFor(b: SourcedBlock, folded: boolean): InkSource[] {
     case 'tool': {
       if (folded) return [];
       const out: InkSource[] = [];
-      if (p.args)
+      if (hasArgsToShow(p.args))
         out.push({
           text: prettyToolArgs(p.args),
           font: PAPER_TOOL_FONT,
@@ -1052,10 +1053,12 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       return langH + preH;
     }
     case 'tool': {
-      // 折叠机制（fold.ts 同款规则镜像）：折叠态只留折叠行——参数/输出/错误全收
-      const argsH = folded
-        ? 0
-        : cappedH(prettyToolArgs(p.args ?? ''), b.w, PAPER_TOOL_FONT, PAPER_TOOL_LINE_HEIGHT, PRE_MAX_H);
+      // 折叠机制（fold.ts 同款规则镜像）：折叠态只留折叠行——参数/输出/错误全收。
+      // F1（2026-09-01 三轴审计）：空/无意义参数（`{}` 骨架）渲染端不画 → 测高镜像同判据。
+      const argsH =
+        folded || !hasArgsToShow(p.args)
+          ? 0
+          : cappedH(prettyToolArgs(p.args ?? ''), b.w, PAPER_TOOL_FONT, PAPER_TOOL_LINE_HEIGHT, PRE_MAX_H);
       const outH = folded
         ? 0
         : p.output
@@ -1111,6 +1114,9 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
     case 'toolgroup':
       // 工具组头恒一行（2026-08-30 会话流专项）：折叠行即本体，注线顶距同脚注族；
       // 子卡是独立 tool 块，收起由壳层摘出布局栈，头高与子卡数无关。
+      return TOOL_PAD_TOP + FOLD_ROW_H;
+    case 'subagent':
+      // 子代理组头（F4 2026-09-01）：与工具组头同构恒一行（文类签+折叠行，体空）。
       return TOOL_PAD_TOP + FOLD_ROW_H;
     default:
       // 资产/开放 kind：按表现原语镜像计高（旧固定 80 是画图族卡片溢出的根因）。
@@ -1181,6 +1187,9 @@ export function measureSignature(b: SourcedBlock, folded: boolean, sidecarFolded
     case 'toolgroup':
       // 子卡数入签（流式追加子卡 → 组头重测；头高本身恒定）
       return `toolgroup|${((p.items as unknown[] | undefined) ?? []).length}`;
+    case 'subagent':
+      // 描述/状态/子段数入签（组头折叠行文案随状态与子块生长变化）
+      return `subagent|${p.description ?? ''}|${p.status ?? ''}|${((p.items as unknown[] | undefined) ?? []).length}`;
     default:
       // 资产/开放 kind：表现名入签；payload 变化由 RO 实测驱动（静态镜像
       // 只服务未挂载块的虚拟化窗口估高，不逐 payload 入签省 stringify）。

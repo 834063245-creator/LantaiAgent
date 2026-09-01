@@ -17,7 +17,8 @@
 //     text      → 1 块 markdown
 //     tool      → 1 块 tool（status/output 直映）
 //     plan      → 1 块 plan
-//     subagent  → 递归展开（其 parts 同上映射；走查弹不建嵌套组）
+//     subagent  → 1 块组头 + 子 parts 块（组内折叠，F4 2026-09-01；
+//                 组内 tool 子块不再被 groupToolRuns 二次成组——不建嵌套组）
 // part → 块保持引用（source.part = part 对象）——外部改动可经消息
 // version 信号触发重转译，块 id 按消息 id+part 索引稳定重建。
 
@@ -61,8 +62,11 @@ export function translateMessage(
   } else if (msg.role === 'notice') {
     out.push(createBlock('notice', { text: msg.text, level: msg.level }, { messageId: msg._id, part: null }));
   } else {
-    translateAssistantParts(msg, out, pinned);
-    return groupToolRuns(out, msg._id, pinned);
+    // F4（2026-09-01 三轴审计）：子代理组内子块登记进 skip 集——groupToolRuns
+    // 不再把组内 tool 子块二次成组（不建嵌套组纪律），显式参数传递非共享状态。
+    const subChildIds = new Set<string>();
+    translateAssistantParts(msg, out, pinned, subChildIds);
+    return groupToolRuns(out, msg._id, pinned, subChildIds);
   }
   return out;
 }
@@ -74,11 +78,13 @@ export function translateMessage(
  * 组头 id 锚在首个子卡 id 上（`${firstId}g`）——流式追加子卡组头 id 稳定，
  * 钉住续命与用户折叠覆盖（foldOv）都不漂。 */
 
-/** 连续 flow 工具块运行 → 组头 + 子卡序列（run < 2 原样，不包组）。 */
+/** 连续 flow 工具块运行 → 组头 + 子卡序列（run < 2 原样，不包组）。
+ *  skipSubIds（F4 2026-09-01）：子代理组内 tool 子块已在组内，不重复成组。 */
 function groupToolRuns(
   blocks: SourcedBlock[],
   messageId: string,
   pinned: ReadonlyMap<string, { x: number; y: number; w?: number }> | undefined,
+  skipSubIds?: ReadonlySet<string>,
 ): SourcedBlock[] {
   const out: SourcedBlock[] = [];
   let run: SourcedBlock[] = [];
@@ -93,7 +99,7 @@ function groupToolRuns(
     run = [];
   };
   for (const b of blocks) {
-    if (b.kind === 'tool' && b.state === 'flow') run.push(b);
+    if (b.kind === 'tool' && b.state === 'flow' && !skipSubIds?.has(b.id)) run.push(b);
     else {
       flush();
       out.push(b);
@@ -104,11 +110,12 @@ function groupToolRuns(
 }
 
 /** 工具组收起摘除（壳层消费）：折叠态组头的 flow 子卡不进布局栈——
- *  钉住子卡不摘（钉住态在世界层，与组收起无关）。 */
+ *  钉住子卡不摘（钉住态在世界层，与组收起无关）。
+ *  subagent 组（F4 2026-09-01）同机制：组头折叠 = 子 parts 摘出布局栈。 */
 export function collapseToolGroups(blocks: SourcedBlock[], isCollapsed: (b: SourcedBlock) => boolean): SourcedBlock[] {
   const hidden = new Set<string>();
   for (const b of blocks) {
-    if (b.kind !== 'toolgroup' || !isCollapsed(b)) continue;
+    if ((b.kind !== 'toolgroup' && b.kind !== 'subagent') || !isCollapsed(b)) continue;
     for (const id of (b.payload as { childIds?: string[] }).childIds ?? []) hidden.add(id);
   }
   if (hidden.size === 0) return blocks;
@@ -296,6 +303,7 @@ function translateAssistantParts(
   msg: AssistantMessage,
   out: SourcedBlock[],
   pinned: ReadonlyMap<string, { x: number; y: number; w?: number }> | undefined,
+  subChildIds: Set<string>,
 ): void {
   /* P5 眉批化配对预扫：连续 reasoning 合并 → 紧随的 text part 吸收为眉批
    * （payload.sidecar，测高 max(正文, 夹注@侧栏)）；无正文后继（tool 结尾/
@@ -427,9 +435,33 @@ function translateAssistantParts(
         out.push(withPin(base, pos));
         break;
       }
-      case 'subagent':
-        // 走查弹：拍平（不建嵌套组）。子 agent parts 顺序展开，
-        // id 带子前缀防与父消息 part 撞号。
+      case 'subagent': {
+        // 子代理组（2026-09-01 三轴审计 F4）：组头一行（描述+状态+段数），
+        // 子 parts 挂组内——折叠摘除/钉住续命全复用工具组机制；不再摊平成
+        // 独立正文块污染主流。组头 id 锚 part 序号（`g` 尾缀，与工具组头
+        // 同族同稳定语义），子块 id 带 `s{n}` 前缀防与父消息 part 撞号。
+        const childIds: string[] = [];
+        for (let sIdx = 0; sIdx < part.parts.length; sIdx++) childIds.push(`pb:${msg._id}:${idx}s${sIdx}`);
+        const headerId = `pb:${msg._id}:${idx}g`;
+        const header = withPin(
+          {
+            ...createBlock(
+              'subagent',
+              {
+                agentId: part.agentId,
+                description: part.description,
+                status: part.status,
+                childIds,
+                items: part.parts,
+              },
+              { messageId: msg._id, part },
+            ),
+            id: headerId,
+            w: 640,
+          },
+          pinned?.get(headerId),
+        );
+        out.push(header);
         part.parts.forEach((sp, sIdx) => {
           const subId = `pb:${msg._id}:${idx}s${sIdx}`;
           const make = (): SourcedBlock => {
@@ -520,9 +552,11 @@ function translateAssistantParts(
             }
           };
           const b = make();
+          subChildIds.add(subId);
           out.push(withPin(b, pinned?.get(subId)));
         });
         break;
+      }
       default:
         break;
     }

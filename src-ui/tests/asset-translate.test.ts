@@ -114,17 +114,19 @@ describe('paper/translate — BlockPart → 资产块映射（WO-3）', () => {
     expect(blocks[0].payload).toEqual({ x: 1 });
   });
 
-  it('子 Agent 内的 BlockPart 拍平为资产块（id 带子前缀）', () => {
+  it('子 Agent 内的 BlockPart 挂组内（F4 2026-09-01）：组头 + 资产子块，id 带子前缀', () => {
     const bp = blockPart({ assetId: 'as_sub', kind: 'metric', presentation: 'metric', payload: { items: [] } });
     const msg = asstMsg('a1', [
       { type: 'subagent', agentId: 'sub-1', description: '子代理', status: 'done', parts: [bp], version: 1 },
     ]);
     const blocks = translateMessages([msg]);
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0].kind).toBe('metric');
-    expect(blocks[0].id).toBe('pb:a1:0s0');
-    expect(blocks[0].source.part).toBe(bp);
-    expect(blocks[0].asset?.assetId).toBe('as_sub');
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0].kind).toBe('subagent');
+    expect(blocks[0].id).toBe('pb:a1:0g');
+    expect(blocks[1].kind).toBe('metric');
+    expect(blocks[1].id).toBe('pb:a1:0s0');
+    expect(blocks[1].source.part).toBe(bp);
+    expect(blocks[1].asset?.assetId).toBe('as_sub');
   });
 
   it('增量转译缓存：资产块消息触碰后重建但 id 稳定、内容取新', () => {

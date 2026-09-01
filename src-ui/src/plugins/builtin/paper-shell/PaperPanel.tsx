@@ -123,6 +123,7 @@ const KIND_ZH: Record<string, string> = {
   code: '程文',
   plan: '拟策',
   toolgroup: '工具组',
+  subagent: '子代理',
   notice: '贴黄',
   'turn-error': '错因',
   // 资产 kind（WO-4 文类签）：未知名仍回退 block.kind 字面。
@@ -143,6 +144,7 @@ const KIND_EN: Record<string, string> = {
   code: 'CODE',
   plan: 'PLAN',
   toolgroup: 'TOOLS',
+  subagent: 'SUBAGENT',
   notice: 'NOTE',
   'turn-error': 'FAULT',
   table: 'TABLE',

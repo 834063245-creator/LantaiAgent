@@ -199,7 +199,7 @@ describe('paper/translate', () => {
     expect(tool.source.part).toBe(msgs[0].parts[1]);
   });
 
-  it('subagent parts 拍平展开，id 带子前缀不撞父消息', () => {
+  it('subagent parts 组内折叠（F4 2026-09-01）：组头 + 子块，不再摊平正文流', () => {
     resetBlockIdCounterForTests();
     const subPart = { type: 'text' as const, text: '子产出', finalised: true };
     const msgs: ChatMessage[] = [
@@ -208,10 +208,21 @@ describe('paper/translate', () => {
       ]),
     ];
     const blocks = translateMessages(msgs);
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0].kind).toBe('markdown');
-    expect(blocks[0].id).toBe('pb:a1:0s0');
-    expect(blocks[0].payload).toEqual({ text: '子产出' });
+    expect(blocks.map((b) => b.kind)).toEqual(['subagent', 'markdown']);
+    // 组头：id 锚 part 序号（g 尾缀），活引用 items，宽同工具组头族
+    const header = blocks[0];
+    expect(header.id).toBe('pb:a1:0g');
+    expect(header.w).toBe(640);
+    expect(header.source.messageId).toBe('a1');
+    expect(header.source.part).toBe(msgs[0].parts[0]);
+    const hp = header.payload as { agentId: string; description: string; status: string; childIds: string[] };
+    expect(hp.agentId).toBe('sub-1');
+    expect(hp.description).toBe('调研');
+    expect(hp.status).toBe('done');
+    expect(hp.childIds).toEqual(['pb:a1:0s0']);
+    // 子块：id 带子前缀不撞父消息，内容直映
+    expect(blocks[1].id).toBe('pb:a1:0s0');
+    expect(blocks[1].payload).toEqual({ text: '子产出' });
   });
 
   it('重转译按稳定 id 续命钉住态（活引用 D-R2-3）', () => {
