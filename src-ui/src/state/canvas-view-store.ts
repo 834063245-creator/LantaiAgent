@@ -40,7 +40,16 @@ export const useCanvasViewStore = create<CanvasViewState>((set) => ({
   canvasSize: { w: 800, h: 600 },
   pendingFocusId: null,
 
-  setView: (updater) => set((s) => ({ view: typeof updater === 'function' ? updater(s.view) : updater })),
+  setView: (updater) =>
+    set((s) => {
+      const next = typeof updater === 'function' ? updater(s.view) : updater;
+      // 同值短路：pan/zoom 都没变时不产生新引用。事件/rAF 末帧、连续 setView
+      // 收敛到同一值时，若仍返回新对象会强制整棵订阅树重渲染（view 是 app 级
+      // 单例，PaperPanel/TocStrip/SpineRack 全订阅）；渲染期间再叠加 store 写
+      // 会滚成 Maximum update depth（2026-09-01 拖画布报错现场）。
+      if (next.zoom === s.view.zoom && next.panX === s.view.panX && next.panY === s.view.panY) return s;
+      return { view: next };
+    }),
 
   setCanvasSize: (w, h) => set((s) => (s.canvasSize.w === w && s.canvasSize.h === h ? s : { canvasSize: { w, h } })),
 
