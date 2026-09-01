@@ -124,12 +124,23 @@ describe('paper/ink inkForBlock', () => {
 
   it('脚注多源：args + output 顺序累计 dy（输出段接在参数段之后）', () => {
     const cache = createInkCache();
-    const b = block('tool', { toolId: 't', name: 'n', label: 'l', args: '{}', status: 'done', output: 'out' });
+    // args 用 JSON 字符串值：对象经 prettyToolArgs 展开成多行，桩「每段恒 2 行」
+    // 的算术就乱了——单行值保住「args 2 行 + output 2 行 = 4 条」的可读账
+    const b = block('tool', { toolId: 't', name: 'n', label: 'l', args: '"x"', status: 'done', output: 'out' });
     b.w = 640;
     const ink = inkForBlock(b, false, cache);
     // args（2 行）+ output（2 行）= 4 条；第 3 条 dy = 2 × 脚注行高
     expect(ink.bars).toHaveLength(4);
     expect(ink.bars[2].dy).toBe(2 * 11.5 * 1.6);
+  });
+
+  it('F1 无意义参数不进脚注：args "{}" 只剩 output 源（镜像 hasArgsToShow 判据）', () => {
+    const cache = createInkCache();
+    const b = block('tool', { toolId: 't', name: 'n', label: 'l', args: '{}', status: 'done', output: 'out' });
+    b.w = 640;
+    const ink = inkForBlock(b, false, cache);
+    // 空骨架参数被砍（2026-09-01 三轴审计 F1）——仅 output（2 行）
+    expect(ink.bars).toHaveLength(2);
   });
 
   it('签名/宽度变化 → 重算（收缩与 resize 改宽必出新墨）', () => {
