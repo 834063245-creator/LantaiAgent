@@ -72,7 +72,18 @@ import {
   REGION_CONTENT_MARGIN,
   STREAM_REGION,
 } from '../../paper/space';
-import { buildTurnAnchors, nearestAnchorAt, viewportMarker } from '../../paper/toc';
+import {
+  buildTurnAnchors,
+  computeSlider,
+  deriveMarks,
+  grabOffsetAt,
+  jumpViewTopAt,
+  nearestAnchorAt,
+  scrubViewTop,
+  stripToWorld,
+  unreadBand,
+  viewportMarker,
+} from '../../paper/toc';
 import { collapseToolGroups, translateMessagesCached } from '../../paper/translate';
 import { injectPaperTokens } from '../../paper/type-tokens';
 import { viewportWorldRect, visibleFlowWindow, visiblePinnedIds } from '../../paper/virtualize';
@@ -181,6 +192,13 @@ const faceDeps = {
   buildTurnAnchors,
   nearestAnchorAt,
   viewportMarker,
+  computeSlider,
+  grabOffsetAt,
+  scrubViewTop,
+  jumpViewTopAt,
+  stripToWorld,
+  deriveMarks,
+  unreadBand,
   classifyDropZone,
   makeStrip,
   selectionMaskRects,

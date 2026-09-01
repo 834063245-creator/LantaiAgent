@@ -2448,6 +2448,10 @@ export function PaperPanel() {
 
             {/* 世界层 */}
             <div ref={worldRef} className="pp-world" style={worldStyle}>
+              {/* 桌垫（材质批修复 2026-09-01 贴纸语义）：世界内巨幅纸面——桌面纹理
+                  随拖动/缩放走且只纹理桌面自身，不再乘盖流区/纸条（贴纸有贴纸的
+                  纹，见 .pp-region 的 paper-sheet；样式见 .pp-desk） */}
+              <div className="pp-desk" />
               {/* 原点十字（方位感） */}
               <div className="pp-origin" style={{ left: 0, top: 0 }}>
                 <span className="pp-origin-label">origin</span>

@@ -12,10 +12,23 @@ export { useCoreStore } from '../../../app/chat/core-instance';
 export { useShellStore } from '../../../app/shell-store';
 export type { FileDragEvent } from '../../../bridge';
 export { isMockMode, watchFileDragDrop } from '../../../bridge';
+export type { SourcedBlock } from '../../../paper/block-model';
 export { composerSubmitOnKey } from '../../../paper/ime';
+export { createInkCache, inkColorOf, inkForBlock } from '../../../paper/ink';
 export { usePaperDock, usePaperRegion } from '../../../paper/overlay-context';
-export type { TocRange } from '../../../paper/toc';
-export { buildTurnAnchors, nearestAnchorAt, viewportMarker } from '../../../paper/toc';
+export type { TocMark, TocMarkInput, TocRange, TocSlider } from '../../../paper/toc';
+export {
+  buildTurnAnchors,
+  computeSlider,
+  deriveMarks,
+  grabOffsetAt,
+  jumpViewTopAt,
+  nearestAnchorAt,
+  scrubViewTop,
+  stripToWorld,
+  unreadBand,
+  viewportMarker,
+} from '../../../paper/toc';
 export {
   findModels,
   getDynamicFetchFailure,
@@ -33,6 +46,7 @@ export type { ModelDescriptor, Protocol } from '../../../provider/types';
 export { typedJsonRpc } from '../../../rpc-contract';
 export type { ProviderSettings } from '../../../settings';
 export { effectiveModels, loadSettings, onSettingsSaved } from '../../../settings';
+export { useCanvasViewStore } from '../../../state/canvas-view-store';
 export type { ComposeSessionPrefs } from '../../../state/compose-store';
 export { getComposeStore, resolveNewSessionDefault } from '../../../state/compose-store';
 export type { PermissionMode } from '../../../state/mode-store';

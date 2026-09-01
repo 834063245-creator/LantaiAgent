@@ -12,6 +12,7 @@
 // 渲染在 PaperPanel 内，因此可安全消费）。
 
 import { createContext, useContext } from 'react';
+import type { SourcedBlock } from './block-model';
 import type { RegionView } from './region-view';
 import type { WorldRect } from './virtualize';
 
@@ -34,6 +35,9 @@ export interface PaperRegionContextValue {
   canvasSize: { w: number; h: number };
   /** 创作坞实际高度（rework P3-1——目次带底部随它定位） */
   composerHeight: number;
+  /** 有效折叠态（2026-09-01 目次带 minimap 化：内容指纹与主渲染同一折叠
+   *  真源——用户覆盖表 + defaultFolded 规则态，PaperPanel 原样下发）。 */
+  foldedOf: (b: SourcedBlock) => boolean;
 }
 
 export const PaperDockContext = createContext<PaperDockContextValue | null>(null);

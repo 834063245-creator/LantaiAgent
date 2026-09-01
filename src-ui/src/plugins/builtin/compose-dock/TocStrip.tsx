@@ -1,112 +1,383 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// app/panels/TocStrip — 目次带（会话内 minimap，Stage-4 §4.4）。
-// （增补四起源码落位 plugins/builtin/compose-dock/——产物通道化。）
+// plugins/builtin/compose-dock/TocStrip — 目次带 v2（2026-09-01 minimap 换血）。
 //
-// 拍板（canvas-space-model-notes.md §5 拍板 10）：右缘窄条、屏幕固定、内容
-// 跟随活跃会话。骨架 = 轮次锚点（每个 user 输入一个刻度，位置映射相对高度）
-// + 点击跳转（视口飞到该轮）+ 位置指示（当前视口在带上的刻度）+ hover 首句
-// 预览。锚点 = 先纯 user 轮次（stage-4 §8 拍板 4）。
-//
+// 底子 = minimap（对齐 VSCode 交互语义），超越 = 语义刻痕/活线/未读区
+// （拍板 10「关键时刻不同标记」后置债一并清偿）。三层结构：
+//   - canvas 内容指纹：paper/ink inkForBlock 行盒骨架 → bar 直绘（镜像
+//     InkLayer/MinimapView 画法；带内缩放比下一行常亚像素，bar 是唯一诚实
+//     原语——真字形 fillText 亚像素不可辨），墨色走 inkColorOf 单一真源；
+//   - DOM 滑块：computeSlider/grabOffsetAt/scrubViewTop 纯几何——拖拽 scrub
+//     （grab offset 锁采样）、点滑块外即跳对中心再顺势拖、fit 全高不可拖；
+//     scrub 直写 canvas-view-store（不走飞行动画——连续 scrub 动画必糊）。
+//     夹紧域 = 可见视口（书眉下缘 → 坞上缘）：拖到底 = 内容底边贴坞顶线，
+//     最新内容完整可见（2026-09-01 实机返工：全视口夹紧会把尾巴藏进坞后）；
+//   - DOM 刻痕/活线/未读/hover 卡：deriveMarks 语义刻痕（点击 = flyToPoint
+//     飞到该轮）、流式 writing head（石青呼吸线）、unreadBand 淡朱未读区、
+//     hover 纸感卡（指哪读哪——行盒原文直出，刻痕/轮次次之）。
+// 几何：带体 fixed 通栏（top:0/bottom:0，z 压书眉 z-30 与坞槽 z-6 之下）；
+// 映射区 = [书眉下缘, 坞上缘]（元素坐标 = 页面坐标），内容恒在可见带内。
 // 挂载：compose-dock 插件以 ctx.overlays 贡献行注册（slot:'right-edge'），
-// 由 PaperPanel 渲染在右缘；经 paper/overlay-context 取活跃流区派生数据与
-// flyToPoint 动作。几何计算在 paper/toc（纯函数，单测覆盖）。
+// 经 paper/overlay-context 取活跃流区派生数据与折叠态（与主渲染同真源）。
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享真实例。
 
-import { memo, useMemo } from 'react';
-import type { TocRange } from './host';
-import { buildTurnAnchors, nearestAnchorAt, usePaperDock, usePaperRegion, viewportMarker } from './host';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import type { SourcedBlock, TocMarkInput, TocRange } from './host';
+import {
+  agentSessionState,
+  buildTurnAnchors,
+  computeSlider,
+  createInkCache,
+  deriveMarks,
+  grabOffsetAt,
+  inkColorOf,
+  inkForBlock,
+  jumpViewTopAt,
+  nearestAnchorAt,
+  scrubViewTop,
+  unreadBand,
+  useCanvasViewStore,
+  useCoreStore,
+  usePaperDock,
+  usePaperRegion,
+} from './host';
 
-/** 带上界 = 书眉高 var(--bar-h)=56px。 */
+/** 映射区顶 = 书眉高 var(--bar-h)=56px（页面坐标）。 */
 const TOC_TOP = 56;
+/** 创作坞槽的坐底抬高（.pp-composer-slot bottom:14px——坞顶线 = 页底 −14 −坞高）。 */
+const COMPOSER_RISE = 14;
+/** 密度档阈值：块数超过后每块只画首行（MinimapView 同款策略）。 */
+const DENSITY_BLOCKS = 80;
+/** 刻痕 hover 命中半径（带内像素）——贴刻痕视觉足迹。 */
+const MARK_HIT_R = 5;
+/** user 轮 hover 命中半径（带内像素）——行盒原文未命中时的兜底。 */
+const TURN_HIT_R = 14;
+/** hover 卡单行原文截断。 */
+const HOVER_TEXT_MAX = 120;
+
+/** 未读账本（进程级瞬态 UI 态，键控自清理语义——不持久化，重启即全读）。 */
+const lastReadBySession = new Map<string, number>();
+
+/** SourcedBlock → 标记派生输入（payload 摘取；组状态 = 子项聚合）。 */
+function markInputOf(b: SourcedBlock): TocMarkInput {
+  const p = b.payload as {
+    text?: string;
+    status?: string;
+    level?: string;
+    label?: string;
+    name?: string;
+    description?: string;
+    title?: string;
+    items?: Array<{ status?: string }>;
+  };
+  let status = p.status;
+  let preview = p.text ?? p.label ?? p.name ?? p.description ?? p.title ?? '';
+  if (b.kind === 'toolgroup' && Array.isArray(p.items)) {
+    status = p.items.some((it) => it?.status === 'error') ? 'error' : 'done';
+    preview = `工具组 ×${p.items.length}`;
+  }
+  return {
+    id: b.id,
+    kind: b.kind,
+    status,
+    level: p.level,
+    worldY: 0, // 由几何槽位回填（layout 是块位置唯一真相）
+    worldH: 0,
+    preview: preview.split('\n')[0] ?? '',
+  };
+}
+
+/** hover 索引：单行原文（带内 y 区间 → 行文）——「指哪读哪」的查找结构。 */
+interface HoverLine {
+  y0: number;
+  y1: number;
+  text: string;
+}
+interface HoverBlock {
+  top: number;
+  bottom: number;
+  lines: HoverLine[];
+}
 
 export const TocStrip = memo(function TocStrip() {
-  const { regions, activeSessionId, viewRect, canvasSize, composerHeight } = usePaperRegion();
+  const { regions, activeSessionId, viewRect, canvasSize, composerHeight, foldedOf } = usePaperRegion();
   const { flyToPoint } = usePaperDock();
+  const core = useCoreStore((s) => s.core);
+  const zoom = useCanvasViewStore((s) => s.view.zoom);
 
   const activeRegion = useMemo(
     () => (activeSessionId != null ? (regions.find((r) => r.sessionId === activeSessionId) ?? null) : null),
     [regions, activeSessionId],
   );
 
+  /* 带体通栏（top:0/bottom:0），映射区 = [书眉下缘, 坞上缘]（元素坐标 = 页面坐标）。 */
+  const mappedBottom = Math.max(TOC_TOP + 1, TOC_TOP + canvasSize.h - COMPOSER_RISE - composerHeight);
   const range: TocRange | null = useMemo(() => {
     if (!activeRegion) return null;
-    // 带内坐标用相对容器的 y；容器 bottom = 创作坞实际高度（rework P3-1）
     return {
       regionTop: activeRegion.regionTop,
       regionBottom: activeRegion.regionBottom,
-      stripTop: 0,
-      stripBottom: Math.max(0, canvasSize.h - TOC_TOP - composerHeight),
+      stripTop: TOC_TOP,
+      stripBottom: mappedBottom,
     };
-  }, [activeRegion, canvasSize.h, composerHeight]);
+  }, [activeRegion, mappedBottom]);
 
-  const anchors = useMemo(() => {
-    if (!activeRegion || !range) return [];
-    // 一次建块索引（O(n)），避免每块 find 造成 O(n²)——目次带随平移高频重渲
+  /* ── 标记/锚点派生（几何槽位回填 worldY/worldH；一次建索引防 O(n²)）── */
+  const markInputs = useMemo<TocMarkInput[]>(() => {
+    if (!activeRegion) return [];
     const byId = new Map(activeRegion.blocks.map((b) => [b.id, b]));
-    const inputs = activeRegion.flowGeom.map((g) => {
+    const out: TocMarkInput[] = [];
+    for (const g of activeRegion.flowGeom) {
       const block = byId.get(g.id);
-      const text =
-        block?.kind === 'user' && typeof (block.payload as { text?: string }).text === 'string'
-          ? ((block.payload as { text: string }).text ?? '')
-          : '';
-      return {
-        blockId: g.id,
-        kind: block?.kind ?? 'markdown',
-        worldY: g.y,
-        worldH: g.h,
-        preview: text,
-      };
-    });
-    return buildTurnAnchors(inputs, range);
-  }, [activeRegion, range]);
+      if (!block) continue;
+      const input = markInputOf(block);
+      input.worldY = g.y;
+      input.worldH = g.h;
+      out.push(input);
+    }
+    return out;
+  }, [activeRegion]);
+  const marks = useMemo(() => (range ? deriveMarks(markInputs, range) : []), [markInputs, range]);
+  const turnAnchors = useMemo(() => (range ? buildTurnAnchors(markInputs, range) : []), [markInputs, range]);
 
-  const marker = useMemo(
-    () => (range ? viewportMarker(viewRect.y0, viewRect.y1, range) : null),
-    [range, viewRect.y0, viewRect.y1],
-  );
+  /* ── 滑块（可见视口 → 带上区间；VSCode 语义）──
+   * 可见视口 = 书眉下缘 → 坞上缘：visY0 = 画布区顶，visY1 = 画布区底 − 坞高。 */
+  const visY0 = viewRect.y0;
+  const visY1 = viewRect.y1 - (COMPOSER_RISE + composerHeight) / Math.max(0.05, zoom);
+  const visH = visY1 - visY0;
+  const slider = useMemo(() => (range ? computeSlider(range, visY0, visY1) : null), [range, visY0, visY1]);
 
-  const onStripClick = (clientY: number) => {
-    if (!activeSessionId || anchors.length === 0) return;
-    const anchor = nearestAnchorAt(clientY, anchors);
-    if (anchor) flyToPoint(activeSessionId, anchor.worldY);
+  /* ── 未读区：lastRead = 已看过的最大视口底（min 可见底封顶）；
+   *  追流时可见底 ≥ regionBottom（流锚留白）→ 自动消化；上翻则欠账累积。 ── */
+  const [, setReadTick] = useState(0);
+  useEffect(() => {
+    if (!activeSessionId || !range) return;
+    const next = Math.min(visY1, range.regionBottom);
+    const cur = lastReadBySession.get(activeSessionId);
+    if (cur !== undefined && next <= cur) return;
+    lastReadBySession.set(activeSessionId, cur === undefined ? next : Math.max(cur, next));
+    setReadTick((t) => t + 1);
+  }, [activeSessionId, range, visY1]);
+  const unread =
+    range && activeSessionId && lastReadBySession.has(activeSessionId)
+      ? unreadBand(lastReadBySession.get(activeSessionId) as number, range)
+      : null;
+
+  /* ── 活线：活跃卷流式运行 → 坞顶线处石青呼吸 writing head ── */
+  const [streaming, setStreaming] = useState(false);
+  useEffect(() => {
+    if (!core || !activeRegion) {
+      setStreaming(false);
+      return;
+    }
+    const exec = agentSessionState.getExec(core.panelId, activeRegion.sessionNum);
+    const sync = () => setStreaming(exec?.isRunning ?? false);
+    sync();
+    const un = exec?.onChange(sync) ?? null;
+    return () => un?.();
+  }, [core, activeRegion]);
+
+  /* ── canvas 内容指纹（镜像 MinimapView 画法：inkForBlock → bar fillRect）── */
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const inkCacheRef = useRef(createInkCache());
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !activeRegion || !range) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    const W = Math.max(1, canvas.clientWidth);
+    const H = Math.max(1, canvas.clientHeight);
+    if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    const contentH = Math.max(1, range.regionBottom - range.regionTop);
+    const ys = (range.stripBottom - range.stripTop) / contentH;
+    const regionW = Math.max(1, activeRegion.anchor.width);
+    const xs = W / regionW;
+    const left = activeRegion.anchor.anchorX - regionW / 2;
+    const flow = activeRegion.blocks.filter((b) => b.state === 'flow');
+    const density = flow.length > DENSITY_BLOCKS;
+    for (const b of flow) {
+      const slot = activeRegion.layout.get(b.id);
+      if (!slot) continue;
+      const ink = inkForBlock(b, foldedOf(b), inkCacheRef.current);
+      const bar0 = ink.bars[0];
+      if (!bar0) continue;
+      ctx.fillStyle = inkColorOf(b.kind);
+      if (density) {
+        ctx.fillRect(
+          (slot.x + bar0.x0 - left) * xs,
+          range.stripTop + (slot.y - range.regionTop) * ys,
+          Math.max(1, bar0.w * xs),
+          1.2,
+        );
+        continue;
+      }
+      const h = Math.max(0.6, ink.lineH * ys * 0.55);
+      for (const bar of ink.bars) {
+        ctx.fillRect(
+          (slot.x + bar.x0 - left) * xs,
+          range.stripTop + (slot.y + bar.dy - range.regionTop) * ys,
+          Math.max(0.5, bar.w * xs),
+          h,
+        );
+      }
+    }
+  }, [activeRegion, range, foldedOf]);
+
+  /* ── hover 索引：行盒原文 → 带内 y 区间（与画笔同一几何、同一缓存）── */
+  const hoverIndex = useMemo<HoverBlock[]>(() => {
+    if (!activeRegion || !range) return [];
+    const ys = (range.stripBottom - range.stripTop) / Math.max(1, range.regionBottom - range.regionTop);
+    const out: HoverBlock[] = [];
+    for (const b of activeRegion.blocks) {
+      if (b.state !== 'flow') continue;
+      const slot = activeRegion.layout.get(b.id);
+      if (!slot) continue;
+      const ink = inkForBlock(b, foldedOf(b), inkCacheRef.current);
+      const lines: HoverLine[] = [];
+      for (const bar of ink.bars) {
+        const y0 = range.stripTop + (slot.y + bar.dy - range.regionTop) * ys;
+        const h = Math.max(0.6, ink.lineH * ys * 0.55);
+        if (bar.text) lines.push({ y0, y1: y0 + h, text: bar.text });
+      }
+      if (lines.length === 0) continue;
+      const lastBar = ink.bars[ink.bars.length - 1];
+      out.push({
+        top: range.stripTop + (slot.y - range.regionTop) * ys,
+        bottom: range.stripTop + (slot.y + lastBar.dy + ink.lineH - range.regionTop) * ys,
+        lines,
+      });
+    }
+    return out;
+  }, [activeRegion, range, foldedOf]);
+
+  /* ── 指针交互：滑块拖拽 scrub / 点带即跳（夹紧域 = 可见视口）── */
+  const dragRef = useRef<{ offset: number } | null>(null);
+  const applyVisTop = (visTop: number): void => {
+    useCanvasViewStore.getState().setView((v) => ({ ...v, panY: -visTop * v.zoom }));
+  };
+  const stripYOf = (clientY: number, el: HTMLElement): number => clientY - el.getBoundingClientRect().top;
+
+  const onPointerDown = (e: React.PointerEvent<HTMLElement>): void => {
+    if (e.button !== 0 || !range || !slider) return;
+    const stripY = stripYOf(e.clientY, e.currentTarget);
+    if (slider.draggable) {
+      const inSlider = stripY >= slider.top && stripY <= slider.top + slider.height;
+      const offset = inSlider ? grabOffsetAt(stripY, slider) : slider.height / 2;
+      if (!inSlider) applyVisTop(scrubViewTop(stripY, offset, range, visH)); // 点外即跳（对中心）再顺势拖
+      dragRef.current = { offset };
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } else {
+      // fit（内容不满可见区）：点击对中心，无可拖
+      applyVisTop(jumpViewTopAt(stripY, range, visH));
+    }
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLElement>): void => {
+    const drag = dragRef.current;
+    if (!drag || !range) return;
+    applyVisTop(scrubViewTop(stripYOf(e.clientY, e.currentTarget), drag.offset, range, visH));
+  };
+  const onPointerUp = (e: React.PointerEvent<HTMLElement>): void => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    e.currentTarget.releasePointerCapture(e.pointerId);
   };
 
-  if (!activeRegion || anchors.length === 0) return null;
+  /* ── hover 预览卡：行盒原文（指哪读哪）> 刻痕 > 最近 user 轮 ── */
+  const [hover, setHover] = useState<{ y: number; text: string } | null>(null);
+  const onMouseMove = (e: React.MouseEvent<HTMLElement>): void => {
+    if (dragRef.current || !range) return;
+    const stripY = stripYOf(e.clientY, e.currentTarget);
+    let text: string | null = null;
+    // 1) 刻痕（贴足迹命中——语义优先于原文）
+    for (const m of marks) {
+      if (Math.abs(m.stripY - stripY) <= MARK_HIT_R) {
+        text = m.preview;
+        break;
+      }
+    }
+    // 2) 光标下的行盒原文（指哪读哪）
+    if (text === null) {
+      for (const hb of hoverIndex) {
+        if (stripY < hb.top || stripY > hb.bottom) continue;
+        let best: HoverLine | null = null;
+        let bestD = Number.POSITIVE_INFINITY;
+        for (const line of hb.lines) {
+          if (stripY >= line.y0 && stripY <= line.y1) {
+            best = line;
+            break;
+          }
+          const d = Math.min(Math.abs(stripY - line.y0), Math.abs(stripY - line.y1));
+          if (d < bestD) {
+            bestD = d;
+            best = line;
+          }
+        }
+        if (best) text = best.text;
+        break;
+      }
+    }
+    // 3) 最近 user 轮首句（行盒间隙兜底）
+    if (text === null) {
+      const a = nearestAnchorAt(stripY, turnAnchors);
+      if (a && Math.abs(a.stripY - stripY) <= TURN_HIT_R) text = a.preview;
+    }
+    text = text === null ? null : text.slice(0, HOVER_TEXT_MAX);
+    setHover((prev) => {
+      if (text === null) return prev === null ? prev : null;
+      return prev && prev.text === text ? prev : { y: stripY, text };
+    });
+  };
+  const onMouseLeave = (): void => setHover(null);
+
+  if (!activeRegion || !range || activeRegion.blocks.length === 0) return null;
 
   return (
     <nav
       className="pp-toc"
-      style={{ bottom: composerHeight + 8 }}
       aria-label="目次带（卷内导航）"
-      onMouseDown={(e) => {
-        if (e.button !== 0) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        onStripClick(e.clientY - rect.top);
-      }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      onMouseMove={onMouseMove}
+      onMouseLeave={onMouseLeave}
     >
-      {marker && (
+      <canvas ref={canvasRef} className="pp-toc-ink" />
+      {unread && <div className="pp-toc-unread" style={{ top: unread.top, height: unread.height }} />}
+      {slider && (
         <div
-          className="pp-toc-viewport"
-          style={{ top: marker.top, bottom: undefined, height: Math.max(2, marker.bottom - marker.top) }}
+          className={`pp-toc-slider${slider.draggable ? '' : ' is-fit'}`}
+          style={{ top: slider.top, height: slider.height }}
         />
       )}
-      {anchors.map((a) => (
+      {marks.map((m) => (
         <button
-          key={a.blockId}
+          key={m.blockId}
           type="button"
-          className="pp-toc-anchor"
-          style={{ top: a.stripY - 3 }}
-          title={a.preview}
-          aria-label={`跳到轮次：${a.preview}`}
+          className={`pp-toc-mark is-${m.kind}`}
+          style={{ top: m.stripY - 4 }}
+          title={m.preview}
+          aria-label={`跳到：${m.preview}`}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
-            if (activeSessionId) flyToPoint(activeSessionId, a.worldY);
+            if (activeSessionId) flyToPoint(activeSessionId, m.worldY);
           }}
         />
       ))}
+      {streaming && <div className="pp-toc-head" style={{ top: mappedBottom - 2 }} />}
+      {hover && (
+        <div className="pp-toc-card" style={{ top: hover.y }} role="tooltip">
+          {hover.text}
+        </div>
+      )}
     </nav>
   );
 });

@@ -61,6 +61,7 @@
   z-index: 30;
   -webkit-app-region: drag;
 }
+
 .pp-topbar button,
 .pp-topbar .wc-btns,
 .pp-topbar .sl-root {
@@ -201,11 +202,16 @@
  * 外框 2px 墨线（未活跃 60% 墨退后、活跃全墨），内衬 1px 发丝（offset -4px）
  * = 古籍双栏线。框走墨系（版式结构件）不走朱砂——朱砂=人铁律；
  * 活跃卷另加朱砂洗底示活。 */
-/* 流区 = 一张真纸（材质批 2026-09-01）：底色不透明化——纸不透光，画布底纸
- * 不再透过；纸纹（paper-sheet.jpg，fiber 提白 k=.7 派生，lum .939）乘印其上。
- * 每卷纸性三参 --sheet-ox/oy/j（src/paper/sheet.ts，seed=卷 id 哈希）：同卷
- * 恒同纸、卷卷不重样。纹理固定 tile 尺寸（1200px 平铺）——cover 会随流区高矮
- * 变缩放，两卷颗粒大小不一就「不像同一批纸」；相位只在 tile 周期内挪取窗。 */
+/* 流区 = 桌面上的贴纸（材质批 2026-09-01；贴纸纹理批同日修档）：底色不透明——
+ * 纸不透光；纸纹乘印其上，纹随区动（贴纸语义：桌面纹归 .pp-desk，流区纹归本层）。
+ * paper-sheet.jpg 由 fiber 线性扩幅回中派生（a=1.63/b=-.555：振幅 .031→.067 立得
+ * 住、均值 .94 不动纸色——原 k=.7 提白档实机不可见，T2 活体验证；派生走
+ * normalize-paper-texture.ps1 -Sheet）。每卷纸性三参 --sheet-ox/oy/j
+ * （src/paper/sheet.ts，seed=卷 id 哈希）：同卷恒同纸、卷卷不重样。纹理固定
+ * tile 尺寸（1200px 平铺）——cover 会随流区高矮变缩放，两卷颗粒大小不一就
+ * 「不像同一批纸」；相位只在 tile 周期内挪取窗。
+ * 帘纹不进流区（2026-09-02 实机验收：单层纸态过审「横纹消失」——贴纸的纸性
+ * 由 paper-sheet 纤维独自承载，帘纹叠乘后读作屏纹；桌面帘纹照留 .pp-desk）。 */
 .pp-region {
   position: absolute;
   border: 2px solid color-mix(in oklch, var(--ink-1) 58%, transparent);
@@ -226,6 +232,36 @@
   border-color: var(--ink-1);
   outline-color: var(--ink-4);
   background-color: color-mix(in oklch, var(--seal) 4%, var(--paper));
+}
+/* ── 桌垫（材质批修复 2026-09-01：贴纸语义两刀之二）──
+ * 真因不是「画不出」（实机活体验证：荧光绿/品红桌面双盲均画得出）——是纹理
+ * 归属错位：①文档级颗粒层 body::after 钉死视口，拖动时纸走纹不走，材质被判属
+ * 桌面，流区读作「透」（第一刀已由 body:has(.pp-root) 退役文档层）；②桌面与
+ * 流区必须各有其纹——桌面是世界本体（.pp-desk，世界坐标系内随拖动/缩放走），
+ * 流区是贴在桌面上的贴纸（.pp-region 自带 paper-sheet，纹随区动）。本层是
+ * world 第一子：配方与 body::after 同款（微颗粒×grain×fiber 元素内 multiply），
+ * 但只纹理桌面自身、不再乘盖流区/纸条（background-blend-mode 只混自身层，
+ * 无 mix-blend-mode）。±200000px 世界坐标近似无界桌面。 */
+.pp-desk {
+  position: absolute;
+  left: -200000px;
+  top: -200000px;
+  width: 400000px;
+  height: 400000px;
+  pointer-events: none;
+  z-index: 0;
+  filter: brightness(1.05);
+  background-color: var(--paper);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E"),
+    url("../../../assets/paper/paper-grain.jpg"), url("../../../assets/paper/paper-fiber.jpg"), var(--laid-lines);
+  background-size:
+    180px 180px,
+    2048px 2048px,
+    2048px 2048px,
+    auto;
+  background-repeat: repeat;
+  background-blend-mode: normal, multiply, multiply, multiply;
 }
 /* ── 卷首（folio-head，2026-08-30 自 prototype/lantai.html .folio-head 族转录）──
  * 玉徽（亭台线稿 icon-lantai）居中钤印 + 机读眉行 + 宋体题字 + 机读档行，
@@ -2426,6 +2462,9 @@
   /* 案头（2026-08-31）：坞升案头当主角后，空态题字上移让位（36% 居上，
    * 案头坞在下方 clamp(48px,12vh,160px) 处——同屏不叠） */
   position: absolute;
+  /* 材质批修复（2026-09-01）：world 内有了不透明桌垫（.pp-desk），空态在 world
+   * 之前且无 z 会被桌垫盖住——提层到世界单元之上 */
+  z-index: 2;
   top: 36%;
   left: 50%;
   transform: translate(-50%, -50%);
@@ -2518,42 +2557,125 @@
   color: var(--ink-4);
 }
 
-/* ── 目次带（Stage-4 §4.4：右缘窄条、屏幕固定、内容跟随活跃会话）── */
+/* ── 目次带 v2（2026-09-01 minimap 换血：右缘窄条、屏幕固定、内容跟随活跃会话）──
+ * 三层：canvas 内容指纹（.pp-toc-ink）/ 滑块与未读区（视口投影）/ 语义刻痕
+ * （user=朱砂横杠 / tool=石青 / plan=石墨 / error=--fail 实心短刻——
+ * 墨色语义铁律朱砂=人不可挪用，报错走语义状态 --fail）。 */
 .pp-toc {
   position: fixed;
   right: 0;
-  top: var(--bar-h);
-  bottom: calc(var(--composer-h-live, var(--composer-h)) + 30px);
-  width: 44px;
+  top: 0;
+  bottom: 0;
+  width: 64px;
   border-left: var(--rule-soft);
   background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
-  z-index: 70;
+  z-index: 5; /* 通栏但居画布之上、坞槽(z-6)/书眉(z-30)之下——头尾被实体件遮住 */
   user-select: none;
+  touch-action: none;
   cursor: pointer;
 }
-.pp-toc-viewport {
+.pp-toc-ink {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+/* 滑块 = 视口投影（VSCode minimap slider 语义：可抓可拖；fit 态全高） */
+.pp-toc-slider {
   position: absolute;
   left: 4px;
   right: 4px;
-  background: color-mix(in oklch, var(--seal) 22%, transparent);
+  background: color-mix(in oklch, var(--seal) 18%, transparent);
   border: 1px solid color-mix(in oklch, var(--seal) 40%, transparent);
   pointer-events: none;
   z-index: 1;
 }
-.pp-toc-anchor {
+.pp-toc-slider.is-fit {
+  background: color-mix(in oklch, var(--seal) 8%, transparent);
+  border-color: color-mix(in oklch, var(--seal) 22%, transparent);
+}
+/* 未读区：上翻欠账的新内容段（多为机来文 → 石青淡染，非朱砂——朱砂=人铁律） */
+.pp-toc-unread {
   position: absolute;
-  left: 12px;
-  right: 12px;
-  height: 6px;
+  left: 0;
+  right: 0;
+  background: color-mix(in oklch, var(--indigo) 14%, transparent);
+  border-top: 1px solid color-mix(in oklch, var(--indigo) 45%, transparent);
+  pointer-events: none;
+  z-index: 2;
+}
+/* 语义刻痕：色 + 形双通道（error 实心满高，其余细横杠） */
+.pp-toc-mark {
+  position: absolute;
+  left: 0;
+  width: 10px;
+  height: 8px;
   padding: 0;
   border: none;
-  background: color-mix(in oklch, var(--ink-2) 45%, transparent);
+  background: transparent;
   cursor: pointer;
-  z-index: 2;
-  transition: background var(--snap);
+  z-index: 3;
 }
-.pp-toc-anchor:hover {
+.pp-toc-mark::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 1px;
+  width: 3px;
+  height: 6px;
+  background: var(--ink-2);
+}
+.pp-toc-mark.is-user::before {
   background: var(--seal);
+}
+.pp-toc-mark.is-tool::before {
+  background: var(--indigo);
+}
+.pp-toc-mark.is-plan::before {
+  background: var(--graphite);
+}
+.pp-toc-mark.is-error::before {
+  left: 0;
+  width: 4px;
+  height: 8px;
+  background: var(--fail);
+}
+.pp-toc-mark:hover::before {
+  background: var(--ink-1);
+}
+.pp-toc-mark.is-error:hover::before {
+  background: var(--fail);
+}
+/* 活线：流式运行 writing head（石青呼吸——机=石青语义，pp-breathe 复用；
+ * 坐标随映射底（坞顶线）由组件内联 top 下发） */
+.pp-toc-head {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--indigo);
+  animation: pp-breathe 1.6s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 4;
+}
+/* hover 预览卡：带左纸感浮层（原生 title 退役） */
+.pp-toc-card {
+  position: absolute;
+  right: calc(100% + 10px);
+  transform: translateY(-50%);
+  max-width: 260px;
+  padding: 6px 10px;
+  background: var(--paper-deep);
+  border: var(--rule-strong);
+  box-shadow: var(--shadow-anchor);
+  font-family: var(--f-song);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-1);
+  pointer-events: none;
+  z-index: 80;
+  overflow-wrap: anywhere;
 }
 
 /* 创作坞设置行内的 ModelSelector 压缩（下拉不撑高输入区；rework P3-1 可收缩） */
