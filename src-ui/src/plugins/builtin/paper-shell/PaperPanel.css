@@ -2417,7 +2417,11 @@
 
 /* 空态（2026-08-30 卷首化）：机读 kicker + 宋体题字 + 注线 + 指引 + 花押三星。
  * 纯排印构图——质感走排印纪律（taste-ledger R4 定案：材质模拟路线判死），
- * 全部墨阶饰件档（ink-3/ink-4），pointer-events:none 不挡画布。 */
+ * 全部墨阶饰件档（ink-3/ink-4）。
+ * 2026-09 修复批：①入场动画换成 pp-empty-in（pp-enter 的 to=transform:none
+ * 会覆盖静态 translate(-50%,-50%)，文字右偏半个块宽——空态独立帧只淡入不动位）；
+ * ②pointer-events 只禁整块，CTA 按钮（.pp-empty-cta）单独开 auto（旧代码整块
+ * none 把新开卷按钮的点击一票否决，完全失灵）。 */
 .pp-empty {
   /* 案头（2026-08-31）：坞升案头当主角后，空态题字上移让位（36% 居上，
    * 案头坞在下方 clamp(48px,12vh,160px) 处——同屏不叠） */
@@ -2428,7 +2432,16 @@
   text-align: center;
   pointer-events: none;
   user-select: none;
-  animation: pp-enter 0.45s cubic-bezier(0.23, 1, 0.32, 1) 0.08s both;
+  animation: pp-empty-in 0.45s cubic-bezier(0.23, 1, 0.32, 1) 0.08s both;
+}
+/* 空态入场：只淡入，不动位（保住 translate(-50%,-50%) 的居中） */
+@keyframes pp-empty-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .pp-empty-kicker {
   font-family: var(--f-mono);
@@ -2450,24 +2463,34 @@
   background: var(--ink-4);
   margin: 16px auto 14px;
 }
-/* 空态 CTA（2026-08-31 拍板 A）：显式出生入口——印章底色 + mono 机读 */
+/* 空态 CTA（2026-08-31 拍板 A：显式出生入口；2026-09 修复批：换墨线描边款撑起
+ * 按钮身份 + 开 pointer-events——旧整块 none 让这里完全点不中）。
+ * 墨线描边天然呼应空态题字（宋体 + 墨阶），比印章实底更贴纸面语言：
+ * 印章是钤在成品上的身份戳，不该出现在空白出生入口；hover 朱砂落笔 =
+ * 墨色语义铁律「朱砂=人」——逼近动作才出人铁律，平时墨线待命。 */
 .pp-empty-cta {
-  font-family: var(--f-mono);
-  font-size: calc(12px * var(--font-scale));
-  letter-spacing: 0.14em;
-  color: var(--paper);
-  background: var(--seal-deep);
-  border: none;
+  display: inline-block;
+  font-family: var(--f-kai);
+  font-size: calc(13px * var(--font-scale));
+  letter-spacing: 0.22em;
+  line-height: 1.4;
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--ink-3);
   border-radius: 0;
   cursor: pointer;
-  padding: 9px 22px;
-  margin: 0 auto 14px;
+  padding: 7px 24px;
+  margin: 0 auto 16px;
+  pointer-events: auto; /* 父盒 pointer-events:none，按钮单独恢复命中 */
   transition:
-    filter var(--snap),
-    transform var(--snap);
+    color var(--snap),
+    border-color var(--snap),
+    background var(--snap);
 }
 .pp-empty-cta:hover {
-  filter: brightness(1.1);
+  color: var(--seal-deep);
+  border-color: var(--seal-deep);
+  background: color-mix(in oklch, var(--seal-soft) 18%, transparent);
 }
 .pp-empty-cta:active {
   transform: translateY(1px);
@@ -2475,6 +2498,10 @@
 .pp-empty-cta:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+  color: var(--ink-3);
+  border-color: var(--ink-4);
+  background: transparent;
+  pointer-events: auto; /* disabled 仍要可命中——否则无 core 时提示无处到达 */
 }
 .pp-empty-hint {
   font-family: var(--f-song);

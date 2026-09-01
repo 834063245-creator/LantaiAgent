@@ -2412,13 +2412,11 @@ export function PaperPanel() {
                 <div className="pp-empty-kicker">LANTAI · BLANK SHEET</div>
                 <div className="pp-empty-title">案上无卷，落笔即起</div>
                 <div className="pp-empty-rule" />
-                {/* 空态 CTA（2026-08-31 拍板 A）：显式出生入口——不再只是文字指路 */}
-                <button
-                  type="button"
-                  className="pp-empty-cta"
-                  disabled={!core}
-                  onClick={() => void core?.createNewSession()}
-                >
+                {/* 空态 CTA（2026-08-31 拍板 A：显式出生入口；2026-09 修复批：
+                 * 不再 disabled 依赖 core——onClick 永远走 createNewSession()，
+                 * 无 core 时其内部守卫会 toast「需要先有工作区」，点按必有反馈，
+                 * 按钮不会出现「点了没反应」。 */}
+                <button type="button" className="pp-empty-cta" onClick={() => void core?.createNewSession()}>
                   ＋ 另起一卷
                 </button>
                 <div className="pp-empty-hint">点签条可续写旧卷，或直接在下方案头落笔——开口即开卷</div>
