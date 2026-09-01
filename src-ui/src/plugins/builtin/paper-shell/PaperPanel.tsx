@@ -783,7 +783,14 @@ export function PaperPanel() {
   /* 尺寸变化 = 世界点守恒（2026-09-01 视角抢夺修复）：旧实现任何尺寸变化都把
    * pan 重置回默认锚点——用户视角被暴力抢回原点（模型下拉开合/窗口缩放/侧栏
    * 开合等一切引发画布 1px 尺寸差的场景全中招）。新语义：保持「锚点屏幕位置
-   * 下的世界坐标」跨尺寸不动；只有首测（无前尺寸）才落默认锚点 pan。 */
+   * 下的世界坐标」跨尺寸不动；只有首测（无前尺寸）才落默认锚点 pan。
+   * ⚠ 首测读 render 闭包值（挂载时 = store 陈旧值/默认 800×600），RO effect
+   * 先跑会同步写入真实尺寸——随后本 effect 二跑守恒从旧锚点 (400,504) 推世界
+   * 点。此自洽链路期间**禁止任何其它 effect 抢先改写 pan**（2026-09-02 首挂
+   * 视角错位尸检：旧「重挂回锚」effect 用 live 尺寸抢先落锚 (632,613)，守恒
+   * 二跑从被改的 pan 反推出虚构世界点 (−232,−109)，把新旧锚差 (+232,+109)
+   * 当用户平移补偿回去 → 首次进画布 pan=(864,722) 偏移，重进（store 尺寸已
+   * 持久）反而正常——间歇性病灶的来源）。 */
   const prevCanvasSizeRef = useRef<{ w: number; h: number } | null>(null);
   useEffect(() => {
     const cur = { w: canvasSize.w, h: canvasSize.h };
@@ -802,16 +809,13 @@ export function PaperPanel() {
     setView((old) => ({ ...old, panX: a1.x - world.x * old.zoom, panY: a1.y - world.y * old.zoom }));
   }, [canvasSize.w, canvasSize.h, setView]);
 
-  /* 画布重挂 = 干净的初始视角：清掉上一轮残留定位请求，回到锚点视口
-   * （不许跨开合残留旧 pan——否则实机「进来视角不知在哪/拖不动」）。
-   * 只用稳定的 store 动作，刻意只在挂载跑一次（空依赖数组）。 */
+  /* 画布重挂 = 干净的定位面：清掉上一轮残留定位请求（2026-09-02 修复：原版
+   * 还在此处 setView 回锚——与上方守恒 effect 首测分支职责重复，且用 live
+   * 尺寸抢先落锚破坏守恒自洽（见上注释尸检）。回锚职责收归守恒 effect：每次
+   * 挂载 prevCanvasSizeRef 归 null，首测分支天然落锚（重挂时闭包 = store
+   * 持久尺寸，即时回锚，语义等价且无竞态）。 */
   useEffect(() => {
     useCanvasViewStore.getState().requestFocus(null);
-    const { panX, panY } = viewForAnchor(
-      useCanvasViewStore.getState().canvasSize.w,
-      useCanvasViewStore.getState().canvasSize.h,
-    );
-    useCanvasViewStore.getState().setView((v) => ({ ...v, panX, panY }));
   }, []);
 
   /* 字体加载后重测：webfont 到位前 canvas 量的是回退字体宽度 */
