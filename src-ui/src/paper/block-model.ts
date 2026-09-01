@@ -16,7 +16,7 @@
 
 /** 块状态：流内（随对话流走）| 钉住（用户主权，世界坐标说了算） */
 import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan-tools';
-import type { ToolCallPart } from '../ui/message-model';
+import type { AssistantPart, ToolCallPart } from '../ui/message-model';
 
 export type BlockState = 'flow' | 'pinned';
 
@@ -30,6 +30,7 @@ export type BuiltinBlockKind =
   | 'code' // 程序执行卡（code_execution 专属：程序体+日志+完成值，P2-A）
   | 'plan' // 计划卡
   | 'toolgroup' // 工具组（同轮并发调用的折叠头，2026-08-30 会话流专项）
+  | 'subagent' // 子代理组（2026-09-01 三轴审计 F4：子过程收进组内，不摊平正文流）
   | 'notice' // 系统通知（2026-08-31 收窄为「会话事件」：仅压缩等稀缺大事）
   | 'turn-error'; // 回合错误（2026-08-31 贴黄拆迁：错误贴回合尾的墓碑）
 
@@ -91,6 +92,16 @@ export interface BlockPayloads {
   toolgroup: {
     childIds: string[];
     items: ToolCallPart[];
+  };
+  /** 子代理组（2026-09-01 三轴审计 F4）：SubAgentPart 的组内折叠形态——
+   *  组头一行（描述+状态），子 parts 是独立块（reasoning/text/tool…），
+   *  折叠/钉住/摘除全复用工具组机制；items 持活 part 引用（流式直读）。 */
+  subagent: {
+    agentId: string;
+    description: string;
+    status: 'running' | 'done' | 'error';
+    childIds: string[];
+    items: AssistantPart[];
   };
   notice: { text: string; level: 'info' | 'warn' | 'error' };
   /** 回合错误（2026-08-31）：assistant 回合终止失败/暂停时的墓碑行——
@@ -184,11 +195,17 @@ export function createBlock<K extends BlockKind>(
 export const DEFAULT_BLOCK_WIDTH = 720;
 
 /** 拟策内容 → 条目列表（渲染 PlanBody 与测量 measureBlockHeight 共用的单一解析：
- * 逐行剥列表标记（- / * / 1. / 1)），剥后为空的行丢弃。 */
+ * 逐行剥列表标记（- / * / 1. / 1)）与标题标记（#{1,6}，2026-09-01 审计：
+ * '### 修整方案' 曾以字面 ### 入条目），剥后为空的行丢弃。 */
 export function parsePlanItems(content: string): string[] {
   return content
     .split('\n')
-    .map((s) => s.replace(/^[-*]\s+|^\d+[.)]\s*/, '').trim())
+    .map((s) =>
+      s
+        .replace(/^[-*]\s+|^\d+[.)]\s*/, '')
+        .replace(/^#{1,6}\s+/, '')
+        .trim(),
+    )
     .filter(Boolean);
 }
 

@@ -462,32 +462,25 @@ const SettingsPanelApp: React.FC<{
                 纸面全硬编码中文——假选项误导用户。真有多语言需求时再恢复）。 */}
             <div className="sp-section" style={{ marginTop: 18 }}>
               <div className="sp-section-title">字体缩放 / Font Scale</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {/* 2026-09-01 三轴面审：原生滑杆回归立法件（sp-slider-row/sp-range——
+                  墨规线 + 方形墨钮，--pct 驱动填充）。旧内联 accentColor indigo
+                  压过样式表「原生控件压回墨色」立法，渲染成系统蓝，退役。 */}
+              <div className="sp-slider-row">
                 <input
                   type="range"
                   name="fontScale"
+                  className="sp-range"
                   min={0.8}
                   max={2.0}
                   step={0.05}
                   value={settings.display.fontScale}
-                  style={{ flex: 1, height: 4, accentColor: 'var(--indigo)' }}
+                  style={{ '--pct': `${((settings.display.fontScale - 0.8) / 1.2) * 100}%` } as React.CSSProperties}
                   onChange={(e) => {
                     const v = parseFloat(e.target.value);
                     commit({ ...settings, display: { ...settings.display, fontScale: v } });
                   }}
                 />
-                <span
-                  className="sp-fs-value"
-                  style={{
-                    fontFamily: 'var(--f-mono)',
-                    fontSize: 'calc(11px * var(--font-scale))',
-                    color: 'var(--indigo)',
-                    minWidth: 40,
-                    textAlign: 'right',
-                  }}
-                >
-                  {settings.display.fontScale.toFixed(2)}x
-                </span>
+                <span className="sp-slider-end">{settings.display.fontScale.toFixed(2)}x</span>
               </div>
             </div>
             <div className="sp-hint">缩放所有界面文字。更改后保存即生效（Terminal / 编辑器需重新打开文件）。</div>

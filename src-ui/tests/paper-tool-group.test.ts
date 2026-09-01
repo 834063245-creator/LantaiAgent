@@ -22,9 +22,9 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
 import { createBlock, resetBlockIdCounterForTests } from '../src/paper/block-model';
 import { defaultFolded, foldLabel, isFoldable } from '../src/paper/fold';
 import { measureBlockHeight, measureSignature } from '../src/paper/measure';
-import { toolDigest } from '../src/paper/tool-text';
+import { hasArgsToShow, toolDigest } from '../src/paper/tool-text';
 import { collapseToolGroups, translateMessages } from '../src/paper/translate';
-import type { AssistantMessage, ToolCallPart } from '../src/ui/message-model';
+import type { AssistantMessage, SubAgentPart, ToolCallPart } from '../src/ui/message-model';
 
 function toolPart(name: string, args: string, status: ToolCallPart['status'] = 'done', output?: string): ToolCallPart {
   return {
@@ -183,6 +183,175 @@ describe('measure/摘除：组头恒一行，收起摘子卡', () => {
     const blocks = [header, c1, c2, pinned];
     const collapsed = collapseToolGroups(blocks, () => true);
     expect(collapsed.map((b) => b.id)).toEqual(['h1', 'c3']); // flow 子卡摘除、钉住保留
+    expect(collapseToolGroups(blocks, () => false)).toEqual(blocks);
+  });
+});
+
+/* ═══ F1（2026-09-01 三轴审计）：空/无意义参数不裸奔 ═══ */
+
+describe('hasArgsToShow：空/无意义参数判据（渲染/测量/墨迹/折叠行四处同源）', () => {
+  it('空串/纯空白/`{}`/`[]`/`null` = 无意义；其余（含原始串、非 JSON）= 有意义', () => {
+    expect(hasArgsToShow('')).toBe(false);
+    expect(hasArgsToShow('   \n ')).toBe(false);
+    expect(hasArgsToShow(undefined)).toBe(false);
+    expect(hasArgsToShow('{}')).toBe(false);
+    expect(hasArgsToShow('{ }')).toBe(false);
+    expect(hasArgsToShow('[]')).toBe(false);
+    expect(hasArgsToShow('null')).toBe(false);
+    expect(hasArgsToShow('{"a":1}')).toBe(true);
+    expect(hasArgsToShow('{"a":""}')).toBe(true); // 空值字段保守保留（可能是流式半程）
+    expect(hasArgsToShow('"raw string"')).toBe(true);
+    expect(hasArgsToShow('{"command": "git sta')).toBe(true); // 流式未完
+  });
+
+  it('折叠行：`{}` 骨架与空参数同判——都是「待执行」', () => {
+    expect(foldLabel('tool', { name: 'edit', label: 'edit', args: '{}', status: 'pending' }, true)).toBe(
+      '▸ edit · 待执行',
+    );
+  });
+
+  it('测量镜像：args 无意义时测高与空参数一致（渲染端不画 → 测高不占）', () => {
+    resetBlockIdCounterForTests();
+    const tool = (args: string) =>
+      createBlock(
+        'tool',
+        { toolId: 't1', name: 'run_build', label: '构建验证', args, readOnly: false, status: 'error', err: 'TS2304' },
+        { messageId: 'm', part: null },
+      );
+    const bare = measureBlockHeight(tool(''));
+    expect(measureBlockHeight(tool('{}'))).toBe(bare); // 骨架不占高
+    expect(measureBlockHeight(tool('{"cmd":"x"}'))).toBeGreaterThan(bare); // 真参数仍占高
+  });
+});
+
+/* ═══ F4（2026-09-01 三轴审计）：子代理组内折叠 ═══ */
+
+function subAgentPart(parts: SubAgentPart['parts'], overrides?: Partial<SubAgentPart>): SubAgentPart {
+  return {
+    type: 'subagent',
+    agentId: 'sa1',
+    description: '校对员：错别字扫描',
+    status: 'done',
+    version: 1,
+    parts,
+    ...overrides,
+  };
+}
+
+describe('translate：subagent → 组头 + 子块（不摊平、不嵌套成组）', () => {
+  beforeEach(() => resetBlockIdCounterForTests());
+
+  it('组内连续 tool 子块不再被二次成组（不建嵌套组）', () => {
+    const msg = asstMsg('a1', [
+      subAgentPart([toolPart('edit', '{"file_path":"a.ts"}'), toolPart('shell', '{"command":"ls"}')]),
+    ]);
+    const blocks = translateMessages([msg]);
+    expect(blocks.map((b) => b.kind)).toEqual(['subagent', 'tool', 'tool']);
+    expect(blocks[0].id).toBe('pb:a1:0g');
+  });
+
+  it('组头不打断父层工具组的连续运行（组间边界照常）', () => {
+    const msg = asstMsg('a1', [
+      toolPart('edit', '{}'),
+      toolPart('shell', '{}'),
+      subAgentPart([{ type: 'text', text: '子产出', finalised: true }]),
+    ]);
+    const blocks = translateMessages([msg]);
+    expect(blocks.map((b) => b.kind)).toEqual(['toolgroup', 'tool', 'tool', 'subagent', 'markdown']);
+  });
+});
+
+describe('fold：subagent 组规则 + 折叠行文案', () => {
+  it('isFoldable 含 subagent；完成/在跑收起，组自身或子调用出错张开，子拟策待审批张开', () => {
+    expect(isFoldable('subagent')).toBe(true);
+    const done = subAgentPart([{ type: 'text', text: 'x', finalised: true }]);
+    expect(
+      defaultFolded('subagent', { agentId: 'a', description: 'd', status: 'done', childIds: [], items: done.parts }),
+    ).toBe(true);
+    const running = {
+      agentId: 'a',
+      description: 'd',
+      status: 'running',
+      childIds: [],
+      items: [toolPart('edit', '{}', 'running')],
+    };
+    expect(defaultFolded('subagent', running)).toBe(true);
+    const selfError = { agentId: 'a', description: 'd', status: 'error', childIds: [], items: [] };
+    expect(defaultFolded('subagent', selfError)).toBe(false);
+    const childError = {
+      agentId: 'a',
+      description: 'd',
+      status: 'done',
+      childIds: [],
+      items: [toolPart('edit', '{}', 'error', 'boom')],
+    };
+    expect(defaultFolded('subagent', childError)).toBe(false);
+    const planPending = {
+      agentId: 'a',
+      description: 'd',
+      status: 'done',
+      childIds: [],
+      items: [{ type: 'plan', planId: 'p1', planFilePath: '', content: '', status: 'pending', _callback: () => {} }],
+    };
+    expect(defaultFolded('subagent', planPending)).toBe(false);
+  });
+
+  it('折叠行：描述即身份 + 段数量化 + 在跑/出错缀', () => {
+    const items = [{ type: 'text', text: 'x', finalised: true }] as SubAgentPart['parts'];
+    const payload = (status: SubAgentPart['status']) => ({
+      agentId: 'a',
+      description: '校对员：错别字扫描',
+      status,
+      childIds: ['c1'],
+      items,
+    });
+    expect(foldLabel('subagent', payload('done'), true)).toBe('▸ 校对员：错别字扫描 · 1 段');
+    expect(foldLabel('subagent', payload('running'), true)).toBe('▸ 校对员：错别字扫描 · 1 段 · 在跑');
+    expect(foldLabel('subagent', payload('error'), true)).toBe('▸ 校对员：错别字扫描 · 1 段 · 出错');
+    expect(foldLabel('subagent', payload('done'), false)).toBe('▾ 收起 校对员：错别字扫描');
+  });
+
+  it('长描述截断 24 字；空描述回落「子代理」', () => {
+    const payload = (description: string) => ({ agentId: 'a', description, status: 'done', childIds: [], items: [] });
+    const long = '这是一段特别长的子代理描述文字超过二十四个字的边界测试用例';
+    expect(foldLabel('subagent', payload(long), true)).toBe(`▸ ${long.slice(0, 24)}… · 0 段`);
+    expect(foldLabel('subagent', payload(''), true)).toBe('▸ 子代理 · 0 段');
+  });
+});
+
+describe('measure/摘除：subagent 组头恒一行，收起摘子块', () => {
+  beforeEach(() => resetBlockIdCounterForTests());
+
+  it('组头测高与工具组头同构（注线顶距 10 + 折叠行 20），签名含描述/状态/段数', () => {
+    const header = createBlock(
+      'subagent',
+      {
+        agentId: 'sa1',
+        description: '调研',
+        status: 'done',
+        childIds: ['c1'],
+        items: [{ type: 'text', text: 'x', finalised: true }],
+      },
+      { messageId: 'm', part: null },
+    );
+    expect(measureBlockHeight(header)).toBe(10 + 20);
+    expect(measureSignature(header, false)).toBe('subagent|调研|done|1');
+  });
+
+  it('collapseToolGroups：subagent 组折叠摘 flow 子块，钉住子块保留', () => {
+    const child = () => createBlock('markdown', { text: '子产出' }, { messageId: 'm', part: null });
+    const c1 = { ...child(), id: 'c1' };
+    const pinned = { ...child(), id: 'c2', state: 'pinned' as const, x: 5, y: 5 };
+    const header = {
+      ...createBlock(
+        'subagent',
+        { agentId: 'a', description: 'd', status: 'done', childIds: ['c1', 'c2'], items: [] },
+        { messageId: 'm', part: null },
+      ),
+      id: 'h1',
+    };
+    const blocks = [header, c1, pinned];
+    expect(collapseToolGroups(blocks, () => true).map((b) => b.id)).toEqual(['h1', 'c2']);
     expect(collapseToolGroups(blocks, () => false)).toEqual(blocks);
   });
 });

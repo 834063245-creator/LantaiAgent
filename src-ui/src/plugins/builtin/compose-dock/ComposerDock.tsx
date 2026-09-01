@@ -633,10 +633,12 @@ export const ComposerDock = memo(function ComposerDock() {
         return;
       }
       setDragOver(inside);
-    }).then((u) => {
-      if (alive) unlisten = u;
-      else u?.();
-    }).catch((e) => console.warn('[composer] 拖放入卷监听注册失败（mock/早期窗口常态）:', e));
+    })
+      .then((u) => {
+        if (alive) unlisten = u;
+        else u?.();
+      })
+      .catch((e) => console.warn('[composer] 拖放入卷监听注册失败（mock/早期窗口常态）:', e));
     return () => {
       alive = false;
       unlisten?.();

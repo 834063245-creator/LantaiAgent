@@ -577,6 +577,13 @@ body::before {
   border: var(--rule-soft);
   padding: 1px 6px;
 }
+/* 省略号必须落在真实文本盒上：flex 容器自身 text-overflow 不生效，
+ * 内层无此盒则长名硬裁、固定徽标被推出卡外不可见（§11 包含轴）。 */
+.sh-ws-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
 .sh-ws-meta {
   font-family: var(--f-mono);
   font-size: calc(11px * var(--font-scale));
@@ -599,11 +606,16 @@ body::before {
   outline: none;
 }
 .sh-ws-actions {
+  /* 操作列绝对定位于卡底右带：随排保留 223px 会把主区挤到 161px、meta 行
+   * 必裁字（.sh-main 恒 880 → 恒两列 386）；底部右带与「进入画布 →」对望
+   * 是卡内唯一空地——悬停显形不占几何，卡高回归内容自适应。 */
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
   display: flex;
   align-items: center;
   gap: 2px;
   padding: 8px 10px;
-  align-self: center;
   opacity: 0;
   transition: opacity var(--snap);
 }

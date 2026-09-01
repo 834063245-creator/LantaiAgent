@@ -422,7 +422,7 @@ export function SessionsHome() {
                         />
                       ) : (
                         <>
-                          {wsDisplayName(w)}
+                          <span className="sh-ws-name-text">{wsDisplayName(w)}</span>
                           {w.pinned && <span className="sh-ws-pin">固定</span>}
                         </>
                       )}
@@ -436,7 +436,7 @@ export function SessionsHome() {
                               : '空工作区 · 还没有案卷'
                           }`}
                     </span>
-                    <span className="sh-ws-enter">进入画布 →</span>
+                    {!isDead && <span className="sh-ws-enter">进入画布 →</span>}
                   </button>
                   {!isRenaming && (
                     <div className="sh-ws-actions">

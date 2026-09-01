@@ -20,6 +20,23 @@ export function prettyToolArgs(args: string): string {
   }
 }
 
+/** 参数是否值得展示（2026-09-01 三轴审计 F1）：空串/纯空白/`{}`/`[]`/`null` =
+ *  空/无意义——错误卡里裸奔的 JSON 骨架是纯噪音。渲染（ToolBody）、测量
+ *  （measure tool argsH）、墨迹（inkSourcesFor）与折叠行（foldLabel 待执行判定）
+ *  四处消费同一判据——镜像纪律，改判据四处同步。 */
+export function hasArgsToShow(args: string | undefined): args is string {
+  if (!args?.trim()) return false;
+  try {
+    const parsed: unknown = JSON.parse(args);
+    if (parsed === null) return false;
+    if (Array.isArray(parsed)) return parsed.length > 0;
+    if (typeof parsed === 'object') return Object.keys(parsed).length > 0;
+    return true;
+  } catch {
+    return true;
+  }
+}
+
 /** 参数摘要键优先级：edit/shell 族的关键目标（file_path/command）按这些键名先取。 */
 const DIGEST_KEY_RE = /path|file|cmd|command|query|url|pattern|skill|description|name/i;
 const DIGEST_MAX = 40;
