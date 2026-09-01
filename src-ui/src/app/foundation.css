@@ -105,18 +105,22 @@ body {
    换真纸纹理资产（src/assets/paper/，AI 平扫感实拍纹，cover 满屏免铺贴接缝）——
    高频 paper-grain（细密肌理+斑点）× 低频 paper-fiber（宣纸纤维束+云状晕染）
    先经 background-blend-mode 乘成一张纸，再随元素 multiply 浸入页面。
-   资产侧已做按通道异权提白（R .55 / G .40 / B .25，暗度压缩 out=1-k(1-in)）：
-   两层相乘黄味会复利，故纹理做成色相中性（暖调由 --paper token carry），
-   复合因子 ~0.89（≈11% 压暗，浸墨 v2 质感档）。顶层保留一层极弱 SVG 微颗粒
-   （.05）抗色带、补 1:1 像素脆度。
+   资产侧两段预处理（scripts/normalize-paper-texture.ps1）：
+   ① 按通道异权提白（R .55 / G .40 / B .25，out=1-k(1-in)）——两层相乘黄味会
+   复利，纹理须色相中性，暖调由 --paper token carry；
+   ② 统一扩幅（k=1.6 三通道）——提白后振幅只剩四成、画布上读不出纹理，
+   扩回 ×2.6 方差让纤维/斑点在内容页也立得住。
+   复合压暗 ~17%，brightness 1.05 校回 ~13%（浸墨 v2 质感档）。
+   顶层保留一层极弱 SVG 微颗粒（.05）抗色带、补 1:1 像素脆度。
    印面/重墨受纹理同源于此层（顶层 multiply 全局覆盖），局部勿再挂纹理。
-   换纸 = 替换 assets/paper/ 下同名图片，管道不变（预处理脚本参数见规格书 §10）。 */
+   换纸 = 替换 assets/paper/ 下同名图片并跑预处理脚本，管道不变。 */
 .sh-root::after {
   content: "";
   position: fixed;
   inset: 0;
   z-index: var(--z-grain);
   pointer-events: none;
+  filter: brightness(1.05);
   background-image:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E"),
     url("../assets/paper/paper-grain.jpg"), url("../assets/paper/paper-fiber.jpg");
