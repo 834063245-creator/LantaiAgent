@@ -6,6 +6,7 @@
 // 无面板级消息数组，无 sessionMessageModels 缓存，无手动同步。
 // 流式写入直接指向会话的 store — 无论哪个标签页活跃都始终正确。
 
+import type { TurnPair } from '../agent/agent-session-state';
 import type { AgentEvent, AssetEventData } from '../agent/agent-types';
 import { EventKind } from '../agent/agent-types';
 import type { ChatAgentHandle } from '../agent/chat-agent-handle';
@@ -20,13 +21,8 @@ import { createAssistantMessage, createUserMessage } from './message-model';
 import { applyAssetUpdateToExistingParts, applyEventToParts } from './part-mutator';
 import { isSubagentSpawnTool } from './tool-semantics';
 
-// ── 轮次配对类型（与 chat-session 共享）──
-type TurnPair = {
-  userText: string;
-  userBubble: HTMLElement | null;
-  assistantBubble: HTMLElement | null;
-  sessionIndex: number;
-};
+// ── 轮次配对类型 ──
+// （权威定义在 agent/agent-session-state.ts——此处只引用，防双源漂移）
 
 // ── StreamContext ──────────────────────────────────────────
 
@@ -72,8 +68,6 @@ export interface StreamContext {
   abort: () => void;
   _updateStatusBar: (state: 'idle' | 'thinking' | 'running' | 'error', detail?: string) => void;
   _recordToolUsage: (toolName: string, args: string) => void;
-  _retractUserMessage: (msg: UserMessage) => void;
-  retractTurn: (idx: number) => string | null;
   sendMessage: () => Promise<void>;
   _updateTokens: (tokensUsed: number) => void;
 
@@ -457,7 +451,7 @@ export function appendUserBubble(
   text: string,
   files?: { path: string; name: string; size: number }[],
   _skipActions?: boolean,
-): void {
+): UserMessage {
   const fileAttachments: FileAttachment[] = (files || []).map((f) => ({
     path: f.path,
     name: f.name,
@@ -478,6 +472,7 @@ export function appendUserBubble(
 
   const pair = ctx.getTurnPairs()[ctx.getTurnPairs().length - 1];
   if (pair) pair.userBubble = null;
+  return userMsg;
 }
 // （2026-08-04 清理：addTurnSep 空操作导出已删 — 视觉分隔由 CSS 处理）
 

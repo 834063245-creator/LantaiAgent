@@ -23,9 +23,25 @@ import { createExecState, type ExecStateInstance } from './execution-state';
 
 export interface TurnPair {
   userText: string;
+  /** 权威身份：本对对应的 UI 用户消息 _id。撤回/重发经它 ID 直达
+   *  （2026-09-01 重发锚点工程）——pair 簿册不再携带可漂移的 sessionIndex。 */
+  uiMsgId?: string;
   userBubble: null;
   assistantBubble: null;
-  sessionIndex: number;
+}
+
+/** 改/重发撤回定位的「沙盒」映射（按会话隔离，非序列化状态）：
+ *  uiMsgId → provider 会话中该 user 消息的下标。内容由 chat-session.ts 的
+ *  尾对齐派生写入（戳失效即整表重算，绝不按内容搜索下刀），本注册器只做
+ *  存取与会话生命周期清理。 */
+export interface TurnIdBridge {
+  /** 派生时 provider 会话数组长度（戳：与现值不符即重派生）。 */
+  sessionLength: number;
+  /** 派生时 UI 用户消息条数（戳）。 */
+  uiUserCount: number;
+  /** 对齐成功的轮次：uiMsgId → provider 下标。对齐不到的轮次不入表
+   *  （改/重发按钮据此降级置灰，绝不猜测撤错轮）。 */
+  byUiId: Map<string, number>;
 }
 
 export type AgentFactory = (sessionId: number) => Promise<OwnedAgentHandle | null>;
@@ -76,6 +92,10 @@ export interface AgentSessionStateApi {
   getTurnPairs(storeId: string, sessionId: number | null): TurnPair[];
   setTurnPairs(storeId: string, sessionId: number | null, pairs: TurnPair[]): void;
 
+  // ── 撤回定位沙盒映射（每会话，见 TurnIdBridge 注释）──
+  getTurnIdBridge(storeId: string, sessionId: number): TurnIdBridge | null;
+  setTurnIdBridge(storeId: string, sessionId: number, bridge: TurnIdBridge | null): void;
+
   // ── 批量操作 ──
   /** 移除并 dispose 面板的所有 agent 句柄，清除 exec 状态。 */
   clearPanelState(storeId: string): void;
@@ -112,6 +132,7 @@ export function createAgentSessionState(): AgentSessionStateApi {
   const _execBySession = new Map<string, ExecStateInstance>();
   const _agentFactoryByPanel = new Map<string, AgentFactory>();
   const _turnPairsBySession = new Map<string, TurnPair[]>();
+  const _turnIdBridgeBySession = new Map<string, TurnIdBridge>();
   const _sessionOfAgentId = new Map<string, { storeId: string; sessionId: number }>();
 
   function _bump(): void {
@@ -148,6 +169,8 @@ export function createAgentSessionState(): AgentSessionStateApi {
         agent.dispose();
         _agentBySession.delete(k);
       }
+      // 句柄消亡 = 旧定位映射全部作废（重开卷由尾对齐重派生）
+      _turnIdBridgeBySession.delete(k);
       _bump();
     },
 
@@ -218,6 +241,16 @@ export function createAgentSessionState(): AgentSessionStateApi {
       _bump();
     },
 
+    getTurnIdBridge(storeId, sessionId): TurnIdBridge | null {
+      return _turnIdBridgeBySession.get(agentKey(storeId, sessionId)) ?? null;
+    },
+
+    setTurnIdBridge(storeId, sessionId, bridge): void {
+      const k = agentKey(storeId, sessionId);
+      if (bridge) _turnIdBridgeBySession.set(k, bridge);
+      else _turnIdBridgeBySession.delete(k);
+    },
+
     // ── 批量操作 ──
 
     clearPanelState(storeId): void {
@@ -236,6 +269,9 @@ export function createAgentSessionState(): AgentSessionStateApi {
       // 轮次对随面板全清（含面板级遗留键）
       for (const k of [..._turnPairsBySession.keys()]) {
         if (k.startsWith(prefix)) _turnPairsBySession.delete(k);
+      }
+      for (const k of [..._turnIdBridgeBySession.keys()]) {
+        if (k.startsWith(prefix)) _turnIdBridgeBySession.delete(k);
       }
       _bump();
     },

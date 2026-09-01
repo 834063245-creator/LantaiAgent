@@ -167,11 +167,15 @@ const KIND_EN: Record<string, string> = {
   confirm: 'CONFIRM',
 };
 
-/** 消息操作项（施工单 #5）：块 hover 出现的操作按钮。 */
+/** 消息操作项（施工单 #5）：块 hover 出现的操作按钮。
+ *  disabled/title：状态类操作（改/重发/重试）在该轮已无法唯一定位撤回时
+ *  置灰降级（2026-09-01 重发锚点工程——绝不撤错轮）。 */
 interface BlockOp {
   key: string;
   label: string;
   run: () => void;
+  disabled?: boolean;
+  title?: string;
 }
 
 /** 从消息提取可复制的正文文本（text part 拼接）。 */
@@ -274,8 +278,12 @@ const BlockView = memo(function BlockView({
             <button
               key={o.key}
               type="button"
+              disabled={o.disabled}
+              title={o.title}
+              style={o.disabled ? { opacity: 0.4, cursor: 'default' } : undefined}
               onClick={(e) => {
                 e.stopPropagation();
+                if (o.disabled) return;
                 o.run();
               }}
             >
@@ -1249,9 +1257,9 @@ export function PaperPanel() {
    *  重试）只出现在各卷最新一条对应角色消息上——且 assistant 重试要求它是
    *  全卷最后一条（后面还挂着新来文时回滚语义不可达）。过时块上这些按钮
    *  是无意义的深回滚入口（用户拍板摘除）。ops 按块 id 记忆（opsCacheRef，
-   *  stamp 随最新消息判定变化失效）——点击时经 regionMsgs 取最新消息 */
+   *  stamp 随最新消息判定与可撤态变化失效）——点击时经 regionMsgs 取最新消息 */
   const msgOpsFor = useCallback(
-    (msg: ChatMessage, stateOps: boolean): BlockOp[] => {
+    (msg: ChatMessage, stateOps: boolean, retrace: boolean): BlockOp[] => {
       if (!core) return [];
       const latest = (): ChatMessage => {
         // 在来源会话的消息流里找最新版本
@@ -1263,6 +1271,12 @@ export function PaperPanel() {
       };
       const latestMsg = latest();
       const ops: BlockOp[] = [];
+      // 可撤态置灰降级（沙盒映射定位失败 = 会话已压缩/上下文已变化——
+      // 按钮可留待重派生自愈，但绝不撤错轮）
+      const gone = (ok: boolean) => ({
+        disabled: !ok,
+        title: ok ? undefined : '该轮已不可重发（会话已压缩）',
+      });
       if (msg.role === 'user') {
         if (stateOps) {
           const latestUser = (): UserMessage => {
@@ -1272,8 +1286,8 @@ export function PaperPanel() {
             }
             return msg as UserMessage;
           };
-          ops.push({ key: 'edit', label: '改', run: () => core.editUserMessage(latestUser()) });
-          ops.push({ key: 'resend', label: '重发', run: () => core.resendUserMessage(latestUser()) });
+          ops.push({ key: 'edit', label: '改', run: () => core.editUserMessage(latestUser()), ...gone(retrace) });
+          ops.push({ key: 'resend', label: '重发', run: () => core.resendUserMessage(latestUser()), ...gone(retrace) });
         }
       } else if (msg.role === 'assistant') {
         if (stateOps) {
@@ -1284,7 +1298,7 @@ export function PaperPanel() {
             }
             return msg as AssistantMessage;
           };
-          ops.push({ key: 'retry', label: '重试', run: () => core.retryAssistant(latestAsst()) });
+          ops.push({ key: 'retry', label: '重试', run: () => core.retryAssistant(latestAsst()), ...gone(retrace) });
         }
       }
       const text = messageCopyText(latestMsg);
@@ -1316,7 +1330,11 @@ export function PaperPanel() {
         const stateOps =
           (msg.role === 'user' && lastUser?._id === msg._id) ||
           (msg.role === 'assistant' && lastAsst?._id === msg._id && lastId === msg._id);
-        const stamp = stateOps ? '1' : '0';
+        // 可撤态入缓存戳——压缩/漂移后置灰态随渲染刷新（不粘旧判定）
+        let retrace = false;
+        if (stateOps && msg.role === 'user') retrace = core.canRetraceUserMessage(msg);
+        else if (stateOps && msg.role === 'assistant') retrace = core.canRetryAssistant(msg);
+        const stamp = stateOps ? (retrace ? '1' : '0') : '';
         const hit = opsCacheRef.current.get(b.id);
         if (hit && hit.msg === msg && hit.stamp === stamp && hit.regionMsgs === regionMsgs) {
           // 2026-09-01 审计：缓存键补 regionMsgs 同一性——ops 闭包捕获建时的
@@ -1324,7 +1342,7 @@ export function PaperPanel() {
           // 陈旧会话消息表。
           map.set(b.id, hit.ops);
         } else {
-          const ops = msgOpsFor(msg, stateOps);
+          const ops = msgOpsFor(msg, stateOps, retrace);
           opsCacheRef.current.set(b.id, { msg, ops, stamp, regionMsgs });
           map.set(b.id, ops);
         }

@@ -92,8 +92,6 @@ function makeCtx(): StreamContext {
     abort: vi.fn(),
     _updateStatusBar: vi.fn(),
     _recordToolUsage: vi.fn(),
-    _retractUserMessage: vi.fn(),
-    retractTurn: () => null,
     sendMessage: vi.fn(),
     _updateTokens: vi.fn(),
     getProjectPath: () => '',

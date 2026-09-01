@@ -146,8 +146,8 @@ describe('concurrent sessions — per-session turnPairs', () => {
   it('two sessions pushing turn pairs stay isolated', () => {
     const tpA = getTurnPairs(STORE_ID, SESSION_A);
     const tpB = getTurnPairs(STORE_ID, SESSION_B);
-    tpA.push({ userText: 'from A', userBubble: null, assistantBubble: null, sessionIndex: 0 });
-    tpB.push({ userText: 'from B', userBubble: null, assistantBubble: null, sessionIndex: 0 });
+    tpA.push({ userText: 'from A', uiMsgId: 'mA', userBubble: null, assistantBubble: null });
+    tpB.push({ userText: 'from B', uiMsgId: 'mB', userBubble: null, assistantBubble: null });
     expect(tpA).toHaveLength(1);
     expect(tpB).toHaveLength(1);
     expect(tpA[0].userText).toBe('from A');
@@ -157,7 +157,7 @@ describe('concurrent sessions — per-session turnPairs', () => {
 
   it('default (no sid) resolves to active session pairs', () => {
     const tpActive = getTurnPairs(STORE_ID);
-    tpActive.push({ userText: 'active', userBubble: null, assistantBubble: null, sessionIndex: 0 });
+    tpActive.push({ userText: 'active', uiMsgId: 'm0', userBubble: null, assistantBubble: null });
     expect(getTurnPairs(STORE_ID, SESSION_A)).toHaveLength(1);
     expect(getTurnPairs(STORE_ID, SESSION_B)).toHaveLength(0);
   });

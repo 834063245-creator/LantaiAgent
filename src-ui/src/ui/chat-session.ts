@@ -950,8 +950,8 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   } else {
     // 无句柄：内容层照常摊开（历史卷可见；句柄拟文时补建）
     if (hasUiSnapshot && uiSnapshot) {
-      // 同上有快照：直接采用 + 派生重建。无句柄时 sessionIndex 以 conv 为基
-      // （补建句柄后撤回/重发经内容兜底与重映射自愈，见 remapTurnPairIndexes）。
+      // 同上有快照：直接采用 + 派生重建。无句柄时撤回/重发不可用（定位需要
+      // agent 会话）——补建句柄后由沙盒映射尾对齐自愈（resolveUserTurnIndex）。
       setTurnPairs(ctx.storeId, sid, rebuildTurnPairsFromProvider(conv));
       rebuildAssetTableFromMessages(ctx.storeId, sid, uiSnapshot);
       bumpSession(ctx.storeId, sid);
@@ -1070,7 +1070,6 @@ export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, se
 
   let pendingUserText: string | null = null;
   let pendingUserId: MessageId | null = null;
-  let pendingSessionIdx = -1;
   let sessionIdx = 0;
 
   for (const m of msgs) {
@@ -1088,14 +1087,13 @@ export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, se
       if (pendingUserText && pendingUserId) {
         getTurnPairs(storeId, sessionId).push({
           userText: pendingUserText,
+          uiMsgId: pendingUserId,
           userBubble: null,
           assistantBubble: null,
-          sessionIndex: pendingSessionIdx,
         });
       }
       pendingUserText = m.content || '';
       pendingUserId = nextMsgId();
-      pendingSessionIdx = idx;
       const um = createUserMessage(m.content || '', undefined, idx);
       rebuilt.push(um);
       pendingUserId = um._id;
@@ -1140,9 +1138,9 @@ export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, se
       if (pendingUserText) {
         getTurnPairs(storeId, sessionId).push({
           userText: pendingUserText,
+          uiMsgId: pendingUserId ?? undefined,
           userBubble: null,
           assistantBubble: null,
-          sessionIndex: pendingSessionIdx,
         });
         pendingUserText = null;
         pendingUserId = null;
@@ -1153,9 +1151,9 @@ export function rebuildMessagesFromMessages(msgs: Message[], storeId: string, se
   if (pendingUserText) {
     getTurnPairs(storeId, sessionId).push({
       userText: pendingUserText,
+      uiMsgId: pendingUserId ?? undefined,
       userBubble: null,
       assistantBubble: null,
-      sessionIndex: pendingSessionIdx,
     });
   }
 
@@ -1192,122 +1190,135 @@ export function _rebuildMessagesFromSession(ctx: SessionContext): void {
 }
 
 /** 从 provider 会话推导轮次表（恢复路径直接采用 UI 快照时的派生重建）。
- *  sessionIndex = provider 会话中该 user 消息的下标（与 retractTurnAt 定位
- *  同语义，含 system 前缀）；internal 消息（目标/压缩上下文）不建轮次对。
- *  重发叠出的重复 user 消息会各自成对——撤回/重发经内容兜底与重映射收敛。 */
+ *  pair 只是轮次簿册（userText + uiMsgId 身份）；撤回/重发的定位权威在
+ *  沙盒映射（resolveUserTurnIndex 尾对齐派生），不在这里。
+ *  internal 消息（目标/压缩上下文）不建轮次对；重发叠出的重复 user 消息
+ *  各自成对，撤回按 uiMsgId 直达互不误删。 */
 function rebuildTurnPairsFromProvider(providerSession: Message[]): TurnPair[] {
   const pairs: TurnPair[] = [];
-  providerSession.forEach((m, i) => {
+  providerSession.forEach((m) => {
     if (m.role !== 'user' || isInternalMessage(m.content)) return;
-    pairs.push({ userText: m.content || '', userBubble: null, assistantBubble: null, sessionIndex: i });
+    pairs.push({ userText: m.content || '', userBubble: null, assistantBubble: null });
   });
   return pairs;
 }
 
-/** 按 userText 顺序把 turnPairs 的 sessionIndex 重新映射到 agent session
- *  当前的非 internal user 下标。撤回/重发后会话压缩会让记录的索引漂移——
- *  不重映射 = 后续按旧索引下刀撤错轮次，旧轮永留底层会话（恢复重复渲染
- *  的数据根因）。撤回后收敛的标准动作。userText 尾匹配兜底带文件轮次
- *  （底层会话 content = 焦点前缀 + 文本）。 */
-function remapTurnPairIndexes(agent: ChatAgentHandle, pairs: TurnPair[]): void {
+// ── 轮次撤回（2026-09-01 重发锚点工程：ID 直达，无内容猜测）──
+// 旧实现的三条猜测路（记录索引直用 / 内容兜底搜索 / 同文本清 pair）全部
+// 退役——provider 会话与 UI 消息本就是两份不同形状的数据，定位唯一权威 =
+// UI 消息 _id 经「沙盒映射」（TurnIdBridge）反查 provider 下标。映射由
+// 尾对齐派生（按顺序配对 + 内容确认），戳失效即整表重算：压缩、外部裁剪、
+// 恢复后统统自愈；对不上的轮次降级置灰，绝不按内容搜索下刀。
+
+/** provider 内容与 UI 文本的对位确认（精确或附件前缀尾匹配——带附件轮次
+ *  底层 content = 附加文件清单 + 正文）。仅用于确认顺序对位，绝不做内容搜索。 */
+function providerContentMatches(providerContent: string, uiText: string): boolean {
+  if (!uiText) return false;
+  return providerContent === uiText || providerContent.endsWith(uiText);
+}
+
+/** 尾对齐：UI 用户消息 ↔ provider 用户消息从最新端按顺序配对，内容确认，
+ *  失配即止（更早的轮次不入映射 → 降级）。同文本多轮按位置各归各位——
+ *  旧「按文本找索引」的同文本撤错轮病根在此拔除。
+ *  尾悬挂容忍一次：UI 末条在 provider 无对应（在途/夭折轮）时不拖累全场。 */
+function alignUserTurns(uiUsers: UserMessage[], provUsers: { index: number; content: string }[]): Map<string, number> {
+  const byUiId = new Map<string, number>();
+  let ui = uiUsers;
+  if (
+    ui.length > provUsers.length &&
+    !providerContentMatches(provUsers[provUsers.length - 1]?.content ?? '', ui[ui.length - 1]?.text ?? '')
+  ) {
+    ui = ui.slice(0, -1);
+  }
+  const n = Math.min(ui.length, provUsers.length);
+  for (let k = 1; k <= n; k++) {
+    const u = ui[ui.length - k];
+    const p = provUsers[provUsers.length - k];
+    if (!u || !p || !providerContentMatches(p.content, u.text)) break;
+    byUiId.set(u._id, p.index);
+  }
+  return byUiId;
+}
+
+/** 重派生本会话的撤回定位映射（沙盒）。戳（会话长度/界面用户数）失效即
+ *  整表重算——不做增量维护，外部改动点（压缩/裁剪/恢复）零接线自愈。 */
+function realignTurnIdBridge(storeId: string, sid: number, session: Message[], uiUsers: UserMessage[]): void {
+  const provUsers: { index: number; content: string }[] = [];
+  session.forEach((m, i) => {
+    if (m.role === 'user' && !isInternalMessage(m.content)) {
+      provUsers.push({ index: i, content: m.content || '' });
+    }
+  });
+  agentSessionState.setTurnIdBridge(storeId, sid, {
+    sessionLength: session.length,
+    uiUserCount: uiUsers.length,
+    byUiId: alignUserTurns(uiUsers, provUsers),
+  });
+}
+
+/** uiMsgId → provider 会话中该 user 轮的下标（ID 直达）。映射缺失/过期先
+ *  尾对齐重派生；仍对不上返回 null——调用方降级，绝不回退内容搜索。 */
+function resolveUserTurnIndex(storeId: string, sid: number, uiMsgId: MessageId): number | null {
+  const agent = agentSessionState.getAgent(storeId, sid);
+  if (!agent) return null;
   const session = agent.getSession();
-  let cursor = 0;
-  for (const pair of pairs) {
-    const found = session.findIndex(
-      (m, i) =>
-        i >= cursor &&
-        m.role === 'user' &&
-        !isInternalMessage(m.content) &&
-        (m.content === pair.userText || (m.content?.endsWith(pair.userText) ?? false)),
-    );
-    if (found >= 0) {
-      pair.sessionIndex = found;
-      cursor = found + 1;
-    }
+  const uiUsers = msgStoreFor(storeId, sid)
+    .getState()
+    .messages.filter((m): m is UserMessage => m.role === 'user');
+  const bridge = agentSessionState.getTurnIdBridge(storeId, sid);
+  if (!bridge || bridge.sessionLength !== session.length || bridge.uiUserCount !== uiUsers.length) {
+    realignTurnIdBridge(storeId, sid, session, uiUsers);
   }
+  const idx = agentSessionState.getTurnIdBridge(storeId, sid)?.byUiId.get(uiMsgId);
+  if (idx == null || idx < 0 || idx >= session.length || session[idx]?.role !== 'user') return null;
+  return idx;
 }
 
-/** 内容对位：user 消息在 provider 会话中匹配（精确或带焦点前缀尾匹配）。 */
-function findUserIndexInProvider(session: Message[], text: string): number {
-  return session.findIndex((m) => m.role === 'user' && (m.content === text || (m.content?.endsWith(text) ?? false)));
+/** 改/重发按钮的准入判定：该轮当前能否被唯一定位撤回（不可 = 置灰降级）。 */
+export function canRetraceUserTurn(storeId: string, sid: number, uiMsgId: MessageId): boolean {
+  return resolveUserTurnIndex(storeId, sid, uiMsgId) != null;
 }
 
-// ── 轮次撤回 ──
-
-/** 从 DOM 和 agent 会话中撤回一轮对话。返回 userText 或 null。
- *  撤回对象 = 活跃卷（编辑/重发/撤回入口都在活跃卷的消息上）。 */
-export function retractTurn(ctx: SessionContext, idx: number): string | null {
-  const { sessions, activeIdx } = getChatStore(ctx.storeId).sess.getState();
-  const activeSid = sessions[activeIdx]?.id;
-  const tp = getTurnPairs(ctx.storeId, activeSid);
-  const pair = tp[idx];
-  if (!pair) return null;
-  // ⚡ React 处理 DOM 移除，只需清理模型
-  // 从 agent 会话中移除 — 索引失效（负值/越界/位置已非 user 轮）按内容
-  // 兜底对位——索引漂移是撤回撤错轮、底层叠尸的病根（2026-08-31）。
-  let sessIdx = pair.sessionIndex;
-  const agent = agentSessionState.getAgent(ctx.storeId, activeSid ?? -1);
-  if (agent) {
-    const agentSession = agent.getSession();
-    if (sessIdx < 0 || sessIdx >= agentSession.length || agentSession[sessIdx]?.role !== 'user') {
-      sessIdx = findUserIndexInProvider(agentSession, pair.userText);
-    }
-  }
-  if (sessIdx >= 0) agent?.retractTurnAt(sessIdx);
-  // 从 turnPairs 中移除
-  tp.splice(idx, 1);
-  // 撤回后会话压缩 → 剩余配对的 sessionIndex 全部重映射（内容对位，
-  // 含 internal 过滤——与 _retractUserMessage 共用同一收敛动作）
-  if (agent) remapTurnPairIndexes(agent, tp);
-  return pair.userText;
-}
-
-/** 从模型中撤回单条用户消息（及其助手回复）。 */
-export function _retractUserMessage(ctx: SessionContext, msg: UserMessage): void {
+/** 以 UI 消息 _id 撤回一轮（ID 直达）。全有或全无：UI 消息或 provider 轮
+ *  任一定位失败 = 两边都原样不动（返回 false）——绝不半撤制造叠尸，
+ *  也绝不按内容猜错轮。撤回区间 = 该 user 消息 + 紧随其后的助手回复
+ *  （respondingTo 关联），子代理/资产随区间连坐（retractTurnAt 语义）。 */
+export function retractUserMessage(ctx: SessionContext, msg: UserMessage): boolean {
   const { sessions, activeIdx } = getChatStore(ctx.storeId).sess.getState();
   const sid = sessions[activeIdx]?.id;
-  if (sid == null) return;
+  if (sid == null) return false;
 
-  const msgs = msgStoreFor(ctx.storeId, sid).getState().messages;
-  const idx = msgs.indexOf(msg);
-  if (idx >= 0) {
-    const toRemove: number[] = [idx];
-    for (let i = idx + 1; i < msgs.length; i++) {
-      const m = msgs[i];
-      if (m.role === 'assistant' && (m as AssistantMessage).respondingTo === msg._id) {
-        toRemove.push(i);
-        break;
-      } else if (m.role === 'user') {
-        break;
-      }
+  // 定位先行（UI + provider 两侧都要命中，缺一整体不动）
+  const store = msgStoreFor(ctx.storeId, sid);
+  const msgs = store.getState().messages;
+  const uiIdx = msgs.findIndex((m) => m.role === 'user' && m._id === msg._id);
+  const sessIdx = resolveUserTurnIndex(ctx.storeId, sid, msg._id);
+  if (uiIdx < 0 || sessIdx == null) return false;
+
+  agentSessionState.getAgent(ctx.storeId, sid)?.retractTurnAt(sessIdx);
+
+  // UI 层清理（_id 直达）：该用户消息 + 紧随其助手回复
+  const toRemove: number[] = [uiIdx];
+  for (let i = uiIdx + 1; i < msgs.length; i++) {
+    const m = msgs[i];
+    if (m.role === 'assistant' && m.respondingTo === msg._id) {
+      toRemove.push(i);
+      break;
+    } else if (m.role === 'user') {
+      break;
     }
-    for (const i of toRemove.reverse()) {
-      msgs.splice(i, 1);
-    }
-    msgStoreFor(ctx.storeId, sid)
-      .getState()
-      .setMessages([...msgs]);
-    bumpSession(ctx.storeId, sid);
   }
-  // 底层会话撤回：优先记录的 sessionIndex，失效（负值/越界/位置已非 user
-  // 轮——会话已在途中压缩）按内容兜底对位，绝不裸用漂移索引下刀
-  // （2026-08-31：旧轮撤不净 + 重发叠条 = 恢复重复渲染的数据根因）。
-  const agent = agentSessionState.getAgent(ctx.storeId, sid);
-  if (agent) {
-    const session = agent.getSession();
-    let sessIdx = msg.sessionIndex;
-    if (sessIdx < 0 || sessIdx >= session.length || session[sessIdx]?.role !== 'user') {
-      sessIdx = findUserIndexInProvider(session, msg.text);
-    }
-    if (sessIdx >= 0) agent.retractTurnAt(sessIdx);
-    // 本轮的 turnPair 残留一并移除（重发 = 撤旧轮 + 新轮，旧 pair 不删会叠）；
-    // 剩余配对按新会话形状重映射，两源从此收敛。
-    const tp = getTurnPairs(ctx.storeId, sid);
-    for (let i = tp.length - 1; i >= 0; i--) {
-      if (tp[i].userText === msg.text) tp.splice(i, 1);
-    }
-    remapTurnPairIndexes(agent, tp);
+  for (const i of toRemove.reverse()) {
+    msgs.splice(i, 1);
   }
+  store.getState().setMessages([...msgs]);
+  bumpSession(ctx.storeId, sid);
+
+  // pair 簿册按 uiMsgId 直达清理（同文本轮次互不误删）
+  const tp = getTurnPairs(ctx.storeId, sid);
+  const pi = tp.findIndex((p) => p.uiMsgId === msg._id);
+  if (pi >= 0) tp.splice(pi, 1);
+  return true;
 }
 
 // ── 对话导出 ──

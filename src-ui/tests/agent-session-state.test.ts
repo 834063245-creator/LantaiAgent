@@ -131,35 +131,27 @@ describe('AgentSessionState', () => {
 
     it('getTurnPairs returns same array reference (mutatable)', () => {
       const tp = state.getTurnPairs('panel-1', 1);
-      tp.push({ userText: 'hello', userBubble: null, assistantBubble: null, sessionIndex: 0 });
+      tp.push({ userText: 'hello', uiMsgId: 'm1', userBubble: null, assistantBubble: null });
       expect(state.getTurnPairs('panel-1', 1)).toHaveLength(1);
     });
 
     it('setTurnPairs replaces the array', () => {
-      const pairs = [{ userText: 'test', userBubble: null, assistantBubble: null, sessionIndex: 5 }];
+      const pairs = [{ userText: 'test', uiMsgId: 'm2', userBubble: null, assistantBubble: null }];
       state.setTurnPairs('panel-1', 1, pairs);
       expect(state.getTurnPairs('panel-1', 1)).toBe(pairs);
     });
 
     it('panels are isolated', () => {
-      state
-        .getTurnPairs('panel-A', 1)
-        .push({ userText: 'A', userBubble: null, assistantBubble: null, sessionIndex: 0 });
-      state
-        .getTurnPairs('panel-B', 1)
-        .push({ userText: 'B', userBubble: null, assistantBubble: null, sessionIndex: 0 });
+      state.getTurnPairs('panel-A', 1).push({ userText: 'A', uiMsgId: 'mA', userBubble: null, assistantBubble: null });
+      state.getTurnPairs('panel-B', 1).push({ userText: 'B', uiMsgId: 'mB', userBubble: null, assistantBubble: null });
       expect(state.getTurnPairs('panel-A', 1)).toHaveLength(1);
       expect(state.getTurnPairs('panel-A', 1)[0].userText).toBe('A');
       expect(state.getTurnPairs('panel-B', 1)[0].userText).toBe('B');
     });
 
     it('sessions are isolated (concurrent turns never cross)', () => {
-      state
-        .getTurnPairs('panel-1', 1)
-        .push({ userText: 's1', userBubble: null, assistantBubble: null, sessionIndex: 0 });
-      state
-        .getTurnPairs('panel-1', 2)
-        .push({ userText: 's2', userBubble: null, assistantBubble: null, sessionIndex: 0 });
+      state.getTurnPairs('panel-1', 1).push({ userText: 's1', uiMsgId: 'm1', userBubble: null, assistantBubble: null });
+      state.getTurnPairs('panel-1', 2).push({ userText: 's2', uiMsgId: 'm2', userBubble: null, assistantBubble: null });
       expect(state.getTurnPairs('panel-1', 1)).toHaveLength(1);
       expect(state.getTurnPairs('panel-1', 1)[0].userText).toBe('s1');
       expect(state.getTurnPairs('panel-1', 2)[0].userText).toBe('s2');

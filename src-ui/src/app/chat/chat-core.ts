@@ -615,8 +615,6 @@ export class ChatCore {
         if (ownerSid == null || ownerSid === this.activeSessionId) this._updateStatusBar(s, d);
       },
       _recordToolUsage: (n, a) => this._recordToolUsage(n, a),
-      _retractUserMessage: (m) => this._retractUserMessage(m),
-      retractTurn: (i) => this.retractTurn(i),
       sendMessage: () => this.sendMessage(),
       _updateTokens: (n) => {
         // token 按卷入账（会话级）；面板显示只跟随活跃卷
@@ -796,13 +794,16 @@ export class ChatCore {
     await saveCanvasToDisk(this.panelId, workspace);
   }
 
-  // ── 轮次撤回（委托给 chat-session.ts）──
+  // ── 轮次撤回定位（委托给 chat-session.ts 沙盒映射，ID 直达）──
 
-  private retractTurn(idx: number): string | null {
-    return Session.retractTurn(this._sessionCtx(), idx);
+  /** 撤回/重发按钮准入：该轮当前能否被唯一定位撤回（不可 = 置灰降级）。 */
+  canRetraceUserMessage(msg: UserMessage): boolean {
+    const sid = this.activeSessionId;
+    return sid != null && Session.canRetraceUserTurn(this.panelId, sid, msg._id);
   }
-  private _retractUserMessage(msg: UserMessage): void {
-    Session._retractUserMessage(this._sessionCtx(), msg);
+  canRetryAssistant(assistant: AssistantMessage): boolean {
+    const userMsg = this.messages.find((m): m is UserMessage => m.role === 'user' && m._id === assistant.respondingTo);
+    return userMsg != null && this.canRetraceUserMessage(userMsg);
   }
 
   private async exportSession(): Promise<void> {
@@ -924,16 +925,15 @@ export class ChatCore {
     // _runAgentTurn 恒由活跃卷发起，turnSid == 活跃卷）
     getChatStore(this.panelId).msg.getState().setUserScrolledUp(false);
 
+    // 先铸气泡拿 _id——轮次簿册以它作权威身份（撤回/重发 ID 直达）
+    const bubble = opts.bubbleLabel ? this.appendUserBubble(opts.bubbleLabel) : null;
     if (opts.userText) {
       Session.getTurnPairs(this.panelId, turnSid).push({
         userText: opts.userText,
+        uiMsgId: bubble?._id,
         userBubble: null,
         assistantBubble: null,
-        sessionIndex: this.agent.nextInsertIndex,
       });
-    }
-    if (opts.bubbleLabel) {
-      this.appendUserBubble(opts.bubbleLabel);
     }
 
     // 3.6: 在 Agent 上设置 UI 会话 ID，使子 Agent 通知能正确路由到对应会话
@@ -1144,7 +1144,6 @@ export class ChatCore {
 
     // ── 插入路径：Agent 运行中，将消息注入会话 ──
     if (this._activeExec().isRunning) {
-      const sessIdx = this.agent.nextInsertIndex;
       this.agent.insertMessage(text);
       getChatStore(this.panelId).input.getState().setInputText('');
       getChatStore(this.panelId).input.getState().pushInputHistory(text);
@@ -1154,13 +1153,13 @@ export class ChatCore {
       // 纸视图（走查弹）打开时不唤起观测台面板——纸是当前输入面
       if (getChatStore(this.panelId).panel.getState().panelMode === 'input' && !useDockStore.getState().isOpen('paper'))
         this.summonPanel();
+      const bubble = this.appendUserBubble(text);
       Session.getTurnPairs(this.panelId, this.activeSessionId ?? undefined).push({
         userText: text,
+        uiMsgId: bubble._id,
         userBubble: null,
         assistantBubble: null,
-        sessionIndex: sessIdx,
       });
-      this.appendUserBubble(text);
       return;
     }
     // 并发会话（2026-08-26）：后台卷闸门拆除——本卷不在跑即可发起新轮次，
@@ -1191,20 +1190,18 @@ export class ChatCore {
     const exec = this._activeExec();
     const signal = exec.start();
 
-    // 重试用轮次对 — sessionIndex 是用户消息将要落地的位置
-    const sessIdx = this.agent.getSession().length;
+    // 用户气泡（原始文本，焦点上下文仅供 Agent 读取）——先铸气泡拿 _id，
+    // 轮次簿册以它作权威身份（撤回/重发 ID 直达）
+    const files = getChatStore(this.panelId).input.getState().attachedFiles;
+    const filesSnapshot = [...files];
+    const bubble = this.appendUserBubble(text, filesSnapshot);
     const turnSidPre = this.activeSessionId;
     Session.getTurnPairs(this.panelId, turnSidPre ?? undefined).push({
       userText: text,
+      uiMsgId: bubble._id,
       userBubble: null,
       assistantBubble: null,
-      sessionIndex: sessIdx,
     });
-
-    // 用户气泡（原始文本，焦点上下文仅供 Agent 读取）
-    const files = getChatStore(this.panelId).input.getState().attachedFiles;
-    const filesSnapshot = [...files];
-    this.appendUserBubble(text, filesSnapshot);
 
     // 焦点上下文前缀已随星图/文件查看器焦点链拆除（2026-08-27 死码清扫）——
     // 仅保留附加文件上下文。
@@ -1343,8 +1340,8 @@ export class ChatCore {
     text: string,
     files?: { path: string; name: string; size: number }[],
     skipActions?: boolean,
-  ): void {
-    Stream.appendUserBubble(this._streamCtxFor(null), text, files, skipActions);
+  ): UserMessage {
+    return Stream.appendUserBubble(this._streamCtxFor(null), text, files, skipActions);
   }
 
   private finishTurn(): void {
@@ -1359,68 +1356,44 @@ export class ChatCore {
   navigateToNode(nodeName: string): void {
     if (this.starGraph) this.starGraph.focusNode(nodeName);
   }
+  /** 「改」：抄文本回输入框 + 撤旧轮（含其回复），用户改完手动发送——不预发送。
+   *  撤回以 msg._id 经沙盒映射 ID 直达；定位失败 = 轮已不可撤（会话已压缩），
+   *  输入框与现场原样不动（绝不半撤制造叠尸）。 */
   editUserMessage(msg: UserMessage): void {
     if (this._activeExec().isRunning) {
       showToast('Agent 正在运行，请先停止再编辑', 'warn');
       return;
     }
+    if (!Session.retractUserMessage(this._sessionCtx(), msg)) {
+      showToast('该轮已不可改（会话已压缩）', 'warn');
+      return;
+    }
     getChatStore(this.panelId).input.getState().setInputText(msg.text);
     this._composer?.focus();
     this._composer?.selectEnd();
-    this._retractUserMessage(msg);
   }
+  /** 「重发」：撤旧轮（含其回复）+ 原文本立即新发。「重试」同轨。 */
   resendUserMessage(msg: UserMessage): void {
     if (this._activeExec().isRunning) {
       showToast('Agent 正在运行，请先停止再重发', 'warn');
       return;
     }
+    if (!Session.retractUserMessage(this._sessionCtx(), msg)) {
+      showToast('该轮已不可重发（会话已压缩）', 'warn');
+      return;
+    }
     getChatStore(this.panelId).input.getState().setInputText(msg.text);
-    this._retractUserMessage(msg);
     this.sendMessage();
   }
+  /** 「重试」：撤旧轮 + 原文本重发——与重发同轨（旧实现不撤轮直接叠一轮）。 */
   retryAssistant(assistant: AssistantMessage): void {
     if (this._activeExec().isRunning) {
       showToast('Agent 正在运行，请先停止再重试', 'warn');
       return;
     }
-    const userMsg = this.messages.find((m) => m.role === 'user' && m._id === assistant.respondingTo);
-    const userText = userMsg && 'text' in userMsg ? (userMsg.text as string) : '';
-    if (!userText) return;
-    getChatStore(this.panelId).input.getState().setInputText('');
-    const exec = this._activeExec();
-    const signal = exec.start();
-    const agent = this.agent;
-    if (!agent) {
-      exec.done(signal); // 早退也必须结算，否则 exec 永卡运行态
-      return;
-    }
-    const sessIdx = agent.getSession().length;
-    const retrySid = this.activeSessionId;
-    Session.getTurnPairs(this.panelId, retrySid ?? undefined).push({
-      userText,
-      userBubble: null,
-      assistantBubble: null,
-      sessionIndex: sessIdx,
-    });
-    if (retrySid != null) {
-      this.agent?.setUiSessionId(retrySid);
-    }
-    agent
-      .run(signal, userText)
-      .catch((err: Error) => {
-        if (!err.message?.includes('aborted')) {
-          const code = apiErrorSummary(err);
-          Stream.markTurnError(
-            this._streamCtxFor(retrySid),
-            `重试失败: ${err.message || String(err)}${code ? `\n（${code}）` : ''}`,
-            'error',
-          );
-        }
-      })
-      .finally(() => {
-        exec.done(signal); // 发起时刻捕获 + signal 守卫（见 execution-state.done）
-        Stream.finishTurn(this._streamCtxFor(retrySid));
-      });
+    const userMsg = this.messages.find((m): m is UserMessage => m.role === 'user' && m._id === assistant.respondingTo);
+    if (!userMsg) return;
+    this.resendUserMessage(userMsg);
   }
 
   // ── @ file reference autocomplete（视图注册控制器，core 转发）──
