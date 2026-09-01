@@ -165,13 +165,16 @@ body::before {
   gap: 16px;
 }
 /* 朱砂印章（蘭臺竖章，微倾——手钤不端正才自然）。
- * D1 印章重制落地（2026-08-29）：CSS 字排章退役，换生图篆刻资产——
- * mask 即形状（sh-seal-mask.png alpha 遮罩，由 assets/seals/seal-zhuwen-vertical.jpeg
- * 去白底生成），background-color 直用 --seal token，色随 token 走不改图。
- * 原始章面比例 540:1314（≈1:2.43），aspect-ratio 钉住防拉伸。 */
+ * D1 印章重制（2026-08-29）：CSS 字排章退役，换生图篆刻资产——mask 即形状
+ * （sh-seal-mask.png alpha 遮罩），background-color 直用 --seal token，色随
+ * token 走不改图。
+ * 遮罩重制（2026-09-01 材质批二）：seedream 生「蘭臺」朱文竖章（用户三选二）
+ * → 红度阈值去白底（R−max(G,B) 12–48 软阈出软边）→ alpha mask——白底 50%
+ * 全透、笔画 42% 实、边缘 8% 软晕。章面比例 427:1051（≈1:2.46），aspect-ratio
+ * 钉住防拉伸。印面另有印泥分材质纹理（见 background-image 注）。 */
 .sh-seal {
   height: 50px;
-  aspect-ratio: 540 / 1314;
+  aspect-ratio: 427 / 1051;
   flex: 0 0 auto;
   transform: rotate(-3deg);
   background-color: var(--seal);
