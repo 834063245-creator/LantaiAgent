@@ -202,16 +202,16 @@
  * = 古籍双栏线。框走墨系（版式结构件）不走朱砂——朱砂=人铁律；
  * 活跃卷另加朱砂洗底示活。 */
 /* 流区 = 一张真纸（材质批 2026-09-01）：底色不透明化——纸不透光，画布底纸
- * 不再透过；纸纹（paper-sheet.jpg，fiber 提白 k=.4 派生）乘印其上。每卷纸性
- * 三参 --sheet-ox/oy/j（src/paper/sheet.ts，seed=卷 id 哈希）：同卷恒同纸、
- * 卷卷不重样。纹理固定 tile 尺寸（1200px 平铺）——cover 会随流区高矮变缩放，
- * 两卷颗粒大小不一就「不像同一批纸」；相位只在 tile 周期内挪取窗。 */
+ * 不再透过；纸纹（paper-sheet.jpg，fiber 提白 k=.7 派生，lum .939）乘印其上。
+ * 每卷纸性三参 --sheet-ox/oy/j（src/paper/sheet.ts，seed=卷 id 哈希）：同卷
+ * 恒同纸、卷卷不重样。纹理固定 tile 尺寸（1200px 平铺）——cover 会随流区高矮
+ * 变缩放，两卷颗粒大小不一就「不像同一批纸」；相位只在 tile 周期内挪取窗。 */
 .pp-region {
   position: absolute;
   border: 2px solid color-mix(in oklch, var(--ink-1) 58%, transparent);
   outline: 1px solid color-mix(in oklch, var(--ink-4) 80%, transparent);
   outline-offset: -5px;
-  background-color: color-mix(in oklch, var(--paper-deep) calc(7% + 6% * var(--sheet-j, 0)), var(--paper));
+  background-color: color-mix(in oklch, var(--paper-deep) calc(10% + 8% * var(--sheet-j, 0)), var(--paper));
   background-image: url("../../../assets/paper/paper-sheet.jpg");
   background-size: 1200px;
   background-repeat: repeat;
