@@ -13,9 +13,11 @@ export interface McpSchema {
   name: string;
   description: string;
   readOnly?: boolean;
+  // properties 元素 description 可选：引擎 mcp_value 恒写但浏览器 mock 面缺省
+  // （与 rpcResultSchemas.hologram_tools_list 的两态兼容口径一致）。
   inputSchema: {
     type: string;
-    properties: Record<string, { type: string; description: string }>;
+    properties: Record<string, { type: string; description?: string }>;
     required: string[];
   };
 }
