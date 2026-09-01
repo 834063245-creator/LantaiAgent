@@ -257,7 +257,6 @@ export function PluginsPage() {
           padding: '8px 10px',
           marginBottom: 12,
           border: '1px solid var(--warn)',
-          borderRadius: 6,
           fontSize: 11,
           lineHeight: 1.6,
         }}
@@ -271,6 +270,7 @@ export function PluginsPage() {
         <div className="sp-field" style={{ display: 'flex', gap: 8 }}>
           <input
             className="sp-input"
+            style={{ flex: 1, minWidth: 0 }}
             placeholder="npm 包名 / tarball URL 或 .tgz 路径 / 本地插件目录"
             value={input}
             disabled={busyKey === 'install'}
