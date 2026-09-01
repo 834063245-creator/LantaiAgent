@@ -63,6 +63,7 @@ import {
 } from '../../paper/measure';
 import { PaperDockContext, PaperRegionContext, usePaperDock, usePaperRegion } from '../../paper/overlay-context';
 import { classifyDropZone, makeStrip, selectionMaskRects, stashStripPositionAt } from '../../paper/selection';
+import { sheetCharacter } from '../../paper/sheet';
 import {
   clampRegionW,
   defaultRegionFor,
@@ -184,6 +185,7 @@ const faceDeps = {
   makeStrip,
   selectionMaskRects,
   stashStripPositionAt,
+  sheetCharacter,
   clampRegionW,
   defaultRegionFor,
   nearestFreeRegion,

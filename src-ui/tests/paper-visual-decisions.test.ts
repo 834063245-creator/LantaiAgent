@@ -203,4 +203,16 @@ describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', (
     const anchor = ruleBody(HOME_CSS, '.sh-section-title .t::before');
     expect(anchor).toContain('box-shadow: 0 0 2px');
   });
+
+  it('流区真纸（2026-09-01 材质批二）：每卷一张纸——不透明底 + 纸纹乘印 + 纸性三参', () => {
+    const region = ruleBody(PANEL_CSS, '.pp-region {');
+    expect(region).toContain('paper-sheet.jpg');
+    expect(region).toContain('background-blend-mode: multiply');
+    expect(region).toContain('var(--sheet-ox');
+    expect(region).toContain('var(--sheet-j');
+    // active 只动 background-color——background: 简写会把纸纹层抹掉
+    const active = ruleBody(PANEL_CSS, '.pp-region-active');
+    expect(active).toContain('background-color: color-mix');
+    expect(active).not.toContain('background:');
+  });
 });

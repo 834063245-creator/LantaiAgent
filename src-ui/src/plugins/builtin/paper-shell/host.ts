@@ -73,6 +73,7 @@ export {
   selectionMaskRects,
   stashStripPositionAt,
 } from '../../../paper/selection';
+export { sheetCharacter } from '../../../paper/sheet';
 export type { StreamRegionState } from '../../../paper/space';
 export {
   clampRegionW,

@@ -23,7 +23,17 @@
 // 书眉：卷名 + 缩放读数 + 设置入口 + 关卷（回案卷首页）+ 窗口控制。
 // 输入条：写 input-store（真相源），提交走 core.sendMessage()。
 
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  type CSSProperties,
+  Fragment,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import type {
   AssistantMessage,
   BlockMeasureCache,
@@ -86,6 +96,7 @@ import {
   scheduleCanvasSave,
   screenToWorld,
   selectionMaskRects,
+  sheetCharacter,
   snapshotFromBlock,
   stashStripPositionAt,
   subscribeObservedBlockHeights,
@@ -2429,17 +2440,23 @@ export function PaperPanel() {
               {regions.map((r) => {
                 if (!visibleRegionIds.has(r.sessionId)) return null;
                 const isActive = r.sessionId === activeSessionKey;
+                const sheet = sheetCharacter(r.sessionId);
                 return (
                   // biome-ignore lint/a11y/noStaticElementInteractions: 流区是可点击交互面（点背景激活流区）
                   <div
                     key={r.sessionId}
                     className={`pp-region${isActive ? ' pp-region-active' : ''}`}
-                    style={{
-                      left: r.anchor.anchorX - r.anchor.width / 2,
-                      top: r.regionTop - r.folioH,
-                      width: r.anchor.width,
-                      height: r.regionHeight + r.folioH,
-                    }}
+                    style={
+                      {
+                        left: r.anchor.anchorX - r.anchor.width / 2,
+                        top: r.regionTop - r.folioH,
+                        width: r.anchor.width,
+                        height: r.regionHeight + r.folioH,
+                        '--sheet-ox': `${sheet.ox}px`,
+                        '--sheet-oy': `${sheet.oy}px`,
+                        '--sheet-j': `${sheet.j}`,
+                      } as CSSProperties
+                    }
                     data-session-id={r.sessionId}
                     onMouseDown={(e) => {
                       if (e.button !== 0) return;

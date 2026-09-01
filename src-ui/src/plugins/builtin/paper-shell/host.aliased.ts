@@ -70,6 +70,7 @@ export const classifyDropZone = impl.classifyDropZone;
 export const makeStrip = impl.makeStrip;
 export const selectionMaskRects = impl.selectionMaskRects;
 export const stashStripPositionAt = impl.stashStripPositionAt;
+export const sheetCharacter = impl.sheetCharacter;
 export const clampRegionW = impl.clampRegionW;
 export const defaultRegionFor = impl.defaultRegionFor;
 export const nearestFreeRegion = impl.nearestFreeRegion;

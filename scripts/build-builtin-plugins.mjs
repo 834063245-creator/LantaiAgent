@@ -130,6 +130,9 @@ async function buildPlugin(spec) {
     plugins: [redirectHostModule(srcDir, spec.hostModule)],
     alias: { react: reactBridge },
     define,
+    // 面组件 CSS 引二进制资产（材质批：paper-sheet.jpg 流区纸纹）——dataurl 内联，
+    // 保产物自包含契约；bundle 域同文件走 vite 自有 jpg loader，两域互不依赖
+    loader: { '.jpg': 'dataurl' },
     metafile: true,
     logLevel: 'warning',
   });
