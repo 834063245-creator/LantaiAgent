@@ -7,7 +7,7 @@
   top: 18px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 900;
+  z-index: var(--z-dialog); /* 2026-09-01 海拔批：900 散写收编 520 全局瞬时层 */
   display: flex;
   flex-direction: column;
   align-items: center;

@@ -15,7 +15,7 @@
   flex-direction: column;
   background: var(--paper);
   border-right: var(--rule-strong);
-  z-index: 282;
+  z-index: var(--z-paper-sidebar);
   font-family: var(--f-song);
 }
 

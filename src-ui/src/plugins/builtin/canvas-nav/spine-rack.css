@@ -15,7 +15,7 @@
   align-items: stretch;
   gap: 6px;
   padding: 12px 0 12px 6px;
-  z-index: 281; /* 纸面板 .pp-root z:280 之上——书脊恒显最左缘 */
+  z-index: var(--z-paper-rack); /* 纸面板 .pp-root z:280 之上——书脊恒显最左缘 */
   pointer-events: none; /* 列容器不挡画布，热区在书脊自身 */
 }
 
@@ -230,7 +230,7 @@
   align-items: center;
   padding: 0 12px;
   pointer-events: none;
-  z-index: 320;
+  z-index: var(--z-dialog); /* 2026-09-01 海拔批：320 散写收编 520 全局瞬时层 */
 }
 .sr-drag-ghost-tag {
   writing-mode: vertical-rl;

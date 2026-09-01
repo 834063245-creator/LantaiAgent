@@ -2102,7 +2102,7 @@
 /* 浮钮：块内选区旁浮现——发现性入口（不依赖手势知识） */
 .pp-strip-fab {
   position: fixed;
-  z-index: 300;
+  z-index: 70; /* 2026-09-01 海拔批：300 散写归浮层带（§11 45-90） */
   font-family: var(--f-song);
   font-size: 11px;
   letter-spacing: 0.14em;

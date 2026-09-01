@@ -72,7 +72,7 @@
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 40;
+  z-index: 45;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -116,7 +116,7 @@
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 40;
+  z-index: 45;
   width: 340px;
   max-height: 260px;
   overflow-y: auto;
