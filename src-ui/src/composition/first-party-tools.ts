@@ -45,10 +45,11 @@ import type { LantaiPlugin } from '../plugins/types';
 import { compositionServicesPlugin } from './services';
 
 /** 经 ctx.tools 贡献工具的第一方域插件（表序 = 贡献注册序 = 装配序；
- *  ①b 后全量十五族：web + browser-desktop（①b 前插，序 = 迁移前行表序）
+ *  ①b 后全量十六族：web + browser-desktop（①b 前插，序 = 迁移前行表序）
  *  + hologram（engine-domain）+ git/search/fs/shell/agent-isolation（B①/②
  *  无状态族）+ wait/ask/memory/skill/task/agent（①c 装配期真值族）
- *  + cordis（平台化 Phase 4 · D7 动态插件面——装配期真值族，表尾追加）。 */
+ *  + cordis（平台化 Phase 4 · D7 动态插件面——装配期真值族，表尾追加）
+ *  + asset（Agent 资产块域——无状态族）。 */
 export function firstPartyToolPlugins(): LantaiPlugin[] {
   return [
     // ①b（序 = 迁移前行表序：web、browser-desktop 原居 builtin 表首两位）

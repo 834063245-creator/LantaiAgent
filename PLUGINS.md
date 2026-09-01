@@ -112,6 +112,7 @@ export default {
 | `permissions` | | 声明所需权限类（`read`/`edit`/`bash`/`git`/`web`），未授予 → 不装载（blocked） |
 | `tools` | | 声明式工具（见下），执行函数在 `entry.js` 的 `toolHandlers` 命名导出 |
 | `mcpServers` | | 声明式挂接外部 MCP server（见下） |
+| `displace` | | `true` = 位移式装载：与 bundle 同名内置插件贡献面单活互换（先 dispose bundle 行再 import 产物；产物失败/停用自动恢复出厂兜底行）。仅对与内置插件同名的产物有意义；缺省 `false`（渲染器族双行走查、后注册胜，不位移） |
 
 ### entry.js 的规则
 
@@ -212,7 +213,7 @@ export const toolHandlers = { hello_status: async () => '装载正常' };
 
 ## 内部：给兰台仓库加第一方插件
 
-兰台内置的 43 个第一方插件与第三方走同一套通道（编译期 bundle 内，经
+兰台内置的 44 个第一方插件与第三方走同一套通道（编译期 bundle 内，经
 `src-ui/src/plugins/loader.ts` 的 `BUILTIN_PLUGINS` 表统一装载），并统一进
 设置面板「插件」tab 三组陈列：**平台服务**（常驻不可禁）/ **内置插件**（可
 禁用，下次启动生效）/ **已安装**（第三方）。

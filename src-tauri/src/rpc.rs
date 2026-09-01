@@ -1272,7 +1272,8 @@ async fn dispatch_rpc(
         // ═══════════════════════════════════════════════════════
         // 插件安装通道（3 个命令，S4-3）：npm tarball 源 / 本地目录 → 下载/解包/
         // tar-slip 防护/原子落盘；卸载/禁用走 plugins.json 读改写。
-        // 生效时机：重启（装载是 boot 期一次性——UI 提示条如实声明）。
+        // 生效时机（D6，2026-08-27）：Rust 侧只管盘面与进程；前端在 RPC 落盘
+        // 成功后即时装卸插件 fiber——装/卸/启/禁运行时生效（工具面下次装配）。
         // ═══════════════════════════════════════════════════════
         "plugin_install" => {
             let source = commands::plugin_install::PluginSource::from_params(&params)?;
