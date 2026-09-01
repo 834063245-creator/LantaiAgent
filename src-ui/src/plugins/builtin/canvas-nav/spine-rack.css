@@ -8,7 +8,8 @@
   position: fixed;
   left: 0;
   top: var(--bar-h);
-  bottom: var(--composer-h-live, var(--composer-h)); /* 实测高优先（ComposerDock 上报） */
+  /* 清坞顶线（2026-09-02 拍板 C）：抬高 + 实测高（ComposerDock 上报） */
+  bottom: calc(var(--composer-rise) + var(--composer-h-live, var(--composer-h)));
   width: 44px;
   display: flex;
   flex-direction: column;

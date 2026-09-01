@@ -92,6 +92,11 @@
   /* ── 结构 ── */
   --bar-h: 56px;
   --composer-h: 66px;
+  /* --composer-rise：创作坞坐底抬高（2026-09-02 拍板 C：两态同位——常驻/
+   * 案头同用此抬高，固定值不再 12vh 随窗口高度浮动）。坞顶线 = 页底 −
+   * 抬高 − 坞高；清坞顶线的消费面一律与 --composer-h-live 成对：
+   * calc(var(--composer-rise) + var(--composer-h-live, var(--composer-h)))。 */
+  --composer-rise: 96px;
   /* --composer-h-live：运行期由 ComposerDock 以 ResizeObserver 写入 :root
    * （composer 实测高，两段式后恒高于 66px）；不在此声明——消费面一律
    * var(--composer-h-live, var(--composer-h))，paper 关闭（composer 卸载）时

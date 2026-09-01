@@ -311,6 +311,10 @@ const BlockView = memo(function BlockView({
 
 /* ── 主组件 ── */
 
+/** 创作坞坐底抬高（--composer-rise token 的 TS 侧镜像——坞顶线 = 页底 −
+ *  抬高 − 坞高。2026-09-02 拍板 C：两态同位，固定值不随窗口高度浮动）。 */
+const COMPOSER_RISE = 96;
+
 /** 小地图（D-R1-1 方位感件——全画布内容包围盒 + 视口框投影，点击跳转）。
  * V3b 欠账接回（2026-08-30）：pointer-events 开启，点击像素反解世界坐标滑过去。 */
 function MinimapView({
@@ -324,7 +328,8 @@ function MinimapView({
 }: {
   content: { x0: number; y0: number; x1: number; y1: number };
   viewport: { x0: number; y0: number; x1: number; y1: number };
-  /** 创作坞实际高度（rework P3-1：minimap 底部随它定位，避免被动态变高的坞遮住） */
+  /** 创作坞实际高度（不含坐底抬高——MinimapView 内部再叠加 COMPOSER_RISE；
+   * rework P3-1：minimap 底部随它定位，避免被动态变高的坞遮住） */
   bottom: number;
   /** 点击跳转：视口中心滑到对应世界点（保 zoom） */
   onJump: (worldX: number, worldY: number) => void;
@@ -394,7 +399,7 @@ function MinimapView({
   return (
     <div
       className="pp-minimap"
-      style={{ bottom: bottom + 18 }}
+      style={{ bottom: bottom + COMPOSER_RISE + 18 }}
       title="小地图 · 点击跳转 · Home 键回原点 · Alt+↑↓ 走块 · Alt+←→ 走卷"
       onPointerDown={(e) => {
         if (e.button !== 0) return;
@@ -2316,8 +2321,9 @@ export function PaperPanel() {
   const composerOverlays = activeOverlayContributions('composer');
   const edgeOverlays = activeOverlayContributions('right-edge');
 
-  /* ── 案头态（创作坞 v2 2026-08-31）：零摊开卷——坞升案头当主角 + 签条架，
-   * 落笔发出首句（开口即开卷）后坞沉降回底部常驻。 ── */
+  /* ── 案头态（创作坞 v2 2026-08-31）：零摊开卷——退匣直书 + 签条架陪衬。
+   * 2026-09-02 拍板 C：两态同位（--composer-rise 恒定抬高）——落笔发出
+   * 首句后坞不再沉降，只换装常驻匣；desk 只再管形态面（退匣/签条架/题字）。 ── */
   const desk = sessions.length === 0;
 
   /* ── 运行呼吸线（创作坞 v2 2026-08-31）：任一摊开卷在跑 → 画布底缘
@@ -2739,8 +2745,11 @@ export function PaperPanel() {
           )}
 
           {/* 覆盖层贡献行（Stage-4）：创作坞（composer 槽）在底栏，目次带（right-edge 槽）在右缘。
-              案头态（v2）：槽升案头居中，坞下方陪签条架（最近三卷续写）。 */}
-          <div className={`pp-composer-slot${desk ? ' pp-desk' : ''}`} ref={composerSlotRef}>
+              案头态（v2 + 2026-09-02 拍板 C）：位置两态恒同，只换形态（退匣直书）；
+              坞下方出流悬挂签条架（最近三卷续写——出没不推坞位）。
+              ⚠ 形态类刻意叫 pp-at-desk 不叫 pp-desk——与世界层桌垫 .pp-desk
+              同名会撞车（桌垫 top/height ±200000 接管槽，坞射出屏外，CSS 注释有案）。 */}
+          <div className={`pp-composer-slot${desk ? ' pp-at-desk' : ''}`} ref={composerSlotRef}>
             {composerOverlays.map((def) => (
               <def.component key={def.id} />
             ))}

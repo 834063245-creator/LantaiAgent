@@ -45,8 +45,10 @@ import {
 
 /** 映射区顶 = 书眉高 var(--bar-h)=56px（页面坐标）。 */
 const TOC_TOP = 56;
-/** 创作坞槽的坐底抬高（.pp-composer-slot bottom:14px——坞顶线 = 页底 −14 −坞高）。 */
-const COMPOSER_RISE = 14;
+/** 创作坞槽的坐底抬高（.pp-composer-slot bottom:var(--composer-rise)=96px——
+ *  坞顶线 = 页底 −96 −坞高；2026-09-02 拍板 C：两态同位，固定值不随窗口高浮动，
+ *  与 tokens.css --composer-rise 同源镜像）。 */
+const COMPOSER_RISE = 96;
 /** 密度档阈值：块数超过后每块只画首行（MinimapView 同款策略）。 */
 const DENSITY_BLOCKS = 80;
 /** 刻痕 hover 命中半径（带内像素）——贴刻痕视觉足迹。 */

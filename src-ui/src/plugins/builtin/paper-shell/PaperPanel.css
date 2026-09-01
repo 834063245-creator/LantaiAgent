@@ -1401,36 +1401,44 @@
 /* rework P3-1：创作坞槽容器（ResizeObserver 量高锚点）不参与 flex 压缩
  * 2026-09-01 用户拍板：全宽布局行判死——槽原是 flex 列里的普通行，占一条
  * 全宽死区（纸到槽顶被切断，屏幕底部横一条「遮挡」）。两态统一改浮层落座：
- * 纸铺满到屏底，坞浮在纸上，只有坐深不同（常驻贴底 / 案头抬起）。 */
+ * 纸铺满到屏底，坞浮在纸上。
+ * 2026-09-02 拍板 C：两态同位——常驻/案头同坐 var(--composer-rise) 固定
+ * 抬高（12vh 退役：坞位不随窗口大小变）；签条架出流悬挂（见 .pp-desk-shelf），
+ * 架出没不推坞位。 */
 .pp-composer-slot {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  bottom: 14px;
+  bottom: var(--composer-rise);
   width: min(880px, calc(100vw - 48px));
   display: flex;
   flex-direction: column;
-  gap: 14px;
   z-index: 6;
 }
-/* ── 案头（创作坞 v2 2026-08-31）：无活跃卷时坞升案头当主角──
- * 空态死白的解法：纸摆案中央（居中抬起），签条架陪衬；落笔发出首句后
- * 坞沉降回底部常驻（React 侧 sessions.length === 0 判定切类）。 */
-.pp-composer-slot.pp-desk {
-  bottom: clamp(48px, 12vh, 160px); /* 全态同皮，只有坐深不同 */
-}
+/* ── 案头（创作坞 v2 2026-08-31）：无摊开卷时坞的形态面──
+ * 空态死白的解法：直书于纸 + 签条架陪衬（位置两态恒同，2026-09-02 拍板 C；
+ * React 侧 sessions.length === 0 判定只再切形态类）。
+ * ⚠ 类名刻意用 pp-at-desk 不用 pp-desk——世界层桌垫（.pp-desk，db397238
+ * ±200000px 巨幅）同名撞车：槽带 pp-desk 会被桌垫的 top/height 接管，
+ * bottom 因过约束被忽略 → 坞整体射出屏外（2026-09-02 CDP 实锤 top:-200000）。 */
 /* 案头无匣（dock-v3 转录收尾）：空态直书于纸——退匣（去 deep 底/顶线/版口钮），
- * 写字行坐基线，纸即界面；落笔发出首句沉降回常驻匣。 */
-.pp-composer-slot.pp-desk .pp-composer {
+ * 写字行坐基线，纸即界面；落笔发出首句换装常驻匣（位置不动）。 */
+.pp-composer-slot.pp-at-desk .pp-composer {
   background: transparent;
   border-top: none;
   padding: 6px 2px 0;
 }
-.pp-composer-slot.pp-desk .pp-composer::before {
+.pp-composer-slot.pp-at-desk .pp-composer::before {
   content: none;
 }
-/* 案头签条架：最近三卷「续写」签条（纸色签 + 楷体批注字，hover 朱砂） */
+/* 案头签条架：最近三卷「续写」签条（纸色签 + 楷体批注字，hover 朱砂）。
+ * 出流悬挂于坞下方 14px（2026-09-02 拍板 C 附带）——架只随案头态出没，
+ * 不进槽内布局流：坞位不因架出没而移。 */
 .pp-desk-shelf {
+  position: absolute;
+  top: calc(100% + 14px);
+  left: 0;
+  right: 0;
   display: flex;
   gap: 10px;
   justify-content: center;
@@ -2411,8 +2419,10 @@
   position: absolute;
   right: 18px;
   /* Stage-4：创作坞升级为两段（设置行+输入行），比旧单行高——minimap 上移避开
-   * 重叠（2026-08-31 起读 ComposerDock 实测高，+44px 呼吸） */
-  bottom: calc(var(--composer-h-live, var(--composer-h)) + 44px);
+   * 重叠（2026-08-31 起读 ComposerDock 实测高，+44px 呼吸；
+   * 2026-09-02 拍板 C 后坞恒抬高，清坞顶线 = 抬高 + 坞高 + 呼吸——
+   * 实际 bottom 由 MinimapView 内联覆写，此行为等值文档） */
+  bottom: calc(var(--composer-rise) + var(--composer-h-live, var(--composer-h)) + 44px);
   width: 132px;
   height: 96px;
   background: var(--paper);
@@ -2460,7 +2470,7 @@
  * none 把新开卷按钮的点击一票否决，完全失灵）。 */
 .pp-empty {
   /* 案头（2026-08-31）：坞升案头当主角后，空态题字上移让位（36% 居上，
-   * 案头坞在下方 clamp(48px,12vh,160px) 处——同屏不叠） */
+   * 案头坞在下方 var(--composer-rise)（96px 固定）处——同屏不叠） */
   position: absolute;
   /* 材质批修复（2026-09-01）：world 内有了不透明桌垫（.pp-desk），空态在 world
    * 之前且无 z 会被桌垫盖住——提层到世界单元之上 */
