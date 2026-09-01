@@ -4,6 +4,8 @@
 #       黄味会复利，故先按通道异权（R .55 / G .40 / B .25）把纹理做成色相中性；
 #       再统一扩幅（k=1.6 三通道）补回振幅（提白后方差剩四成）。
 #       暖调交由 --paper token carry。参数依据见 docs/design/lantai-design-spec.md §10 法则4。
+#       印泥 seal-paste.jpg 同管道另参数：提白 R .306 / G .082 / B .081（成中性灰
+#       T.93，色随 --seal token 走）→ 扩幅 1.75 三通道（均值 0.88 / p10-p90 .11）。
 # 用法：pwsh -File scripts/normalize-paper-texture.ps1 -Path <jpg 路径>
 param(
   [Parameter(Mandatory = $true)][string]$Path,

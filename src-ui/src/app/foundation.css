@@ -115,6 +115,7 @@ body {
    复合压暗 ~17%，brightness 1.05 校回 ~13%（浸墨 v2 质感档）。
    顶层保留一层极弱 SVG 微颗粒（.05）抗色带、补 1:1 像素脆度。
    印面/重墨受纹理同源于此层（顶层 multiply 全局覆盖），局部勿再挂纹理。
+   唯一例外＝印章 .sh-seal 挂印泥分材质（印泥≠纸，见其规则注释）。
    换纸 = 替换 assets/paper/ 下同名图片并跑预处理脚本，管道不变。 */
 body::after {
   content: "";
@@ -174,6 +175,14 @@ body::before {
   flex: 0 0 auto;
   transform: rotate(-3deg);
   background-color: var(--seal);
+  /* 印泥质感（2026-09-01 材质批）：印面乘印泥纹理——朱砂膏体颗粒/纤维留痕，
+   * 与全局纸纹分材质（纸≠印泥）。纹理预处理成色相中性灰，色随 --seal token
+   * 走，multiply 只作明度起伏（均值 0.88 / p10-p90 0.11）。160px 平铺配
+   * 50px 章高：颗粒落 2-4px，与笔画同量级——真实钤印的膏体堆叠感。 */
+  background-image: url("../assets/paper/seal-paste.jpg");
+  background-size: 160px;
+  background-position: center;
+  background-blend-mode: multiply;
   -webkit-mask-image: url("./sh-seal-mask.png");
   -webkit-mask-size: contain;
   -webkit-mask-repeat: no-repeat;
@@ -320,6 +329,8 @@ body::before {
   margin: 22px 0 24px;
   max-width: 18ch;
   color: var(--ink-1);
+  /* 材质批（2026-09-01）：重墨题字洇边——900 重墨压纸，墨沿笔画外渗 1.5px */
+  text-shadow: 0 0 1.5px color-mix(in oklch, var(--ink-solid) 24%, transparent);
 }
 /* 句读点朱（浸墨）：题字句号落朱砂——古籍句读遗意，全页唯一红字 */
 .sh-h1 .sh-ju {
@@ -340,13 +351,7 @@ body::before {
   gap: 14px;
   margin-bottom: 6px;
 }
-.sh-section-title .t {
-  font-family: var(--f-song);
-  font-size: calc(19px * var(--font-scale));
-  font-weight: 600;
-  color: var(--ink-1);
-}
-/* 浸墨：节题前实心方墨锚点 */
+/* 浸墨：节题前实心方墨锚点（材质批 2026-09-01：柔晕洇边——墨沿纸纤维晕开） */
 .sh-section-title .t::before {
   content: "";
   display: inline-block;
@@ -355,6 +360,15 @@ body::before {
   background: var(--ink-1);
   margin-right: 12px;
   transform: translateY(1px);
+  box-shadow: 0 0 2px 0.5px color-mix(in oklch, var(--ink-solid) 30%, transparent);
+}
+/* 节题字微洇（材质批）：1px 极弱字晕——铅字压印的墨渗，非屏幕锐利感 */
+.sh-section-title .t {
+  font-family: var(--f-song);
+  font-size: calc(19px * var(--font-scale));
+  font-weight: 600;
+  color: var(--ink-1);
+  text-shadow: 0 0 1px color-mix(in oklch, var(--ink-solid) 20%, transparent);
 }
 .sh-section-title .n {
   font-family: var(--f-mono);

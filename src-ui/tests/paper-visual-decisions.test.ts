@@ -190,4 +190,17 @@ describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', (
     expect(ruleBody(HOME_CSS, '.sh-section-title .t::before')).toContain('background: var(--ink-1)');
     expect(ruleBody(HOME_CSS, '.sh-section-title .n')).toContain('var(--seal-deep)');
   });
+
+  it('材质批（2026-09-01）：印章印泥分材质 + 墨迹洇边', () => {
+    // 印泥：全局「局部禁挂纹理」的唯一例外——印泥≠纸，中性灰纹理乘 --seal 实色
+    const seal = ruleBody(HOME_CSS, '.sh-seal {');
+    expect(seal).toContain('url("../assets/paper/seal-paste.jpg")');
+    expect(seal).toContain('background-blend-mode: multiply');
+    expect(seal).toContain('background-color: var(--seal)');
+    // 洇边：重墨大字墨渗（同 folio-title 的 ink-solid alpha 残影手法）
+    expect(ruleBody(HOME_CSS, '.sh-h1 {')).toContain('text-shadow: 0 0 1.5px');
+    expect(ruleBody(HOME_CSS, '.sh-section-title .t {')).toContain('text-shadow: 0 0 1px');
+    const anchor = ruleBody(HOME_CSS, '.sh-section-title .t::before');
+    expect(anchor).toContain('box-shadow: 0 0 2px');
+  });
 });
