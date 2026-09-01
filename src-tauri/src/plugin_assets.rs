@@ -53,8 +53,9 @@ pub(crate) fn plugins_root() -> PathBuf {
 ///
 /// 解析优先级（缓存一次）：
 ///   1. `HOLOGRAM_BUILTIN_PLUGINS_ROOT` 环境变量（测试隔离 / 目录重定位）；
-///   2. 打包态：`resource_dir()/builtin/`（tauri bundle.resources 携带，经
-///      main.rs 的 init_builtin_plugins_dir 注入——webview 资产通道的 fallback）；
+///   2. 打包态候选（main.rs 的 init_builtin_plugins_dir 注入缓存——探测
+///      `resource_dir()/builtin` 与 tauri v2 越界资源实际落点
+///      `resource_dir()/_up_/src-ui/dist-plugins/builtin`，命中才锁）；
 ///   3. 开发/测试兜底：仓库 `src-ui/dist-plugins/`（构建脚本产物，cargo test
 ///      或 dev 前置构建后可用；未构建时目录不存在 → 无内置插件 → 回退缺席）。
 ///
@@ -84,16 +85,38 @@ pub(crate) fn builtin_plugins_root() -> Option<PathBuf> {
 /// 内置插件根目录缓存（OnceLock——进程生命期一次解析；main.rs 启动注入）。
 static BUILTIN_PLUGINS_DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
 
-/// main.rs 启动注入打包态内置插件根（tauri resource_dir + builtin/）。
-/// 未打包（dev/测试）不调用——builtin_plugins_root 兜底仓库 dist-plugins。
+/// main.rs 启动注入打包态内置插件根（tauri resource_dir 下的候选探测）。
+/// 未打包（cargo test / 无 tauri 应用态）不调用——builtin_plugins_root 兜底
+/// 仓库 dist-plugins。
+///
+/// 候选路径梯（aura_memory::aura_dll_path 同款多候选纪律——单一期望位置
+/// 不可靠，tauri v2 对 crate 外资源的落点随 conf 形式而变）：
+///   1. `resource_dir()/builtin` ——打包态期望落点（若 tauri.conf.json
+///      resources 用 map 形式把 `dist-plugins/builtin` 重映射到 `builtin/`）；
+///   2. `resource_dir()/_up_/src-ui/dist-plugins/builtin` ——tauri v2 对
+///      crate 外资源（当前 conf 的 `"../src-ui/dist-plugins/**/*"` 字符串
+///      形式）的实际落点：`_up_` 是 bundler 对越界 `../` 路径的转义目录
+///      （debug 与 release 实测一致落此）。
+/// 命中即锁缓存；**全未命中不锁 None**——保留 builtin_plugins_root 的仓库
+/// 兜底分支可走（早先实现遇 `resource_dir()/builtin` 缺席即 `set(None)`，
+/// 把 OnceLock 钉死 None，令兜底分支沦为死代码——dev 下「重新加载全报错」
+/// 的真根因：产物 manifest fetch 经 builtin_plugins_root → None → 无回退
+/// → 404 → 23 个 feature 插件无一可重载）。
 pub(crate) fn init_builtin_plugins_dir(app: &tauri::AppHandle) {
-    let dir = app
-        .path()
-        .resource_dir()
-        .ok()
-        .map(|r| r.join("builtin"))
-        .filter(|d| d.is_dir());
-    let _ = BUILTIN_PLUGINS_DIR.set(dir);
+    let resource = app.path().resource_dir().ok();
+    let candidates: [Option<PathBuf>; 2] = [
+        resource.as_ref().map(|r| r.join("builtin")),
+        resource
+            .as_ref()
+            .map(|r| r.join("_up_").join("src-ui").join("dist-plugins").join("builtin")),
+    ];
+    for candidate in candidates.into_iter().flatten() {
+        if candidate.is_dir() {
+            let _ = BUILTIN_PLUGINS_DIR.set(Some(candidate));
+            return;
+        }
+    }
+    // 全未命中：不锁——builtin_plugins_root 走仓库兜底（dev/cargo test）
 }
 
 /// 内置插件名集合（P1d 回退白名单——只有这些第一方插件的资产可从未初始化
