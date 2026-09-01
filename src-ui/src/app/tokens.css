@@ -52,6 +52,7 @@
   /* ── 规线三式（圆角恒 0，印刷品无圆角）── */
   --rule-hard: 2px solid var(--ink-1); /* 硬线：卷首下划线 / 代码左线 / 计划顶线 */
   --rule-strong: 1px solid var(--ink-2); /* 强线：界栏 / 分隔 */
+  --rule-head: 2px solid var(--ink-2); /* 头线：浮层菜单书眉顶缘（ms-dropdown / sl-log） */
   --rule-soft: 1px solid var(--ink-4); /* 弱线：细分隔 */
   --rule-dashed: 1px dashed var(--ink-4); /* 虚线：草稿勾边 / 占位 */
 
@@ -101,12 +102,14 @@
    * 全局浮层：500（牒卡——最紧急交互，必须盖过一切面板）；
    * 命令面板：510。新浮层一律在此取值，禁散写 magic number。 */
   --z-paper-base: 280; /* 纸壳 */
+  --z-paper-rack: 281; /* 书脊架——恒显纸壳左缘 */
+  --z-paper-sidebar: 282; /* 案卷侧栏 */
   --z-panel-veil: 400; /* settings 遮罩 */
   --z-panel: 401; /* settings 面板体 */
   --z-panel-modal: 60; /* 面板内模态（ConfirmDialog/AddProviderSheet——纸内档位，只争面板内部） */
   --z-shelf: 500; /* 牒卡浮层（ask/权限） */
   --z-palette: 510; /* 命令面板 */
-  --z-dialog: 520; /* 全局模态（保留位——当前无消费者；产品决策为面板内模态，勿按旧注释理解） */
+  --z-dialog: 520; /* 全局瞬时层：Toast/拖拽幽灵（2026-09-01 海拔批收编）；面板内模态走 --z-panel-modal，此处不作模态用 */
   --z-grain: 9998; /* 真纸纹理氛围层（src/assets/paper/ 实拍纹 + 微颗粒；纯装饰 pointer-events:none，恒在最上） */
 
   /* ── 迁移收容（C5 --obs-* 退役时原值平移，待换皮归新结构 token）── */

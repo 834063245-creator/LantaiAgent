@@ -72,7 +72,7 @@
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 40;
+  z-index: 45;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -116,13 +116,13 @@
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 40;
+  z-index: 45;
   width: 340px;
   max-height: 260px;
   overflow-y: auto;
   background: var(--paper);
   border: var(--rule-soft);
-  border-top: 2px solid var(--ink-2);
+  border-top: var(--rule-head);
   box-shadow: var(--elev-menu);
   padding: 6px 0;
   animation: pop-down 0.14s cubic-bezier(0.23, 1, 0.32, 1);

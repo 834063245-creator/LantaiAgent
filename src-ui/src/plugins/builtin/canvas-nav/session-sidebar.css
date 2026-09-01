@@ -15,7 +15,7 @@
   flex-direction: column;
   background: var(--paper);
   border-right: var(--rule-strong);
-  z-index: 282;
+  z-index: var(--z-paper-sidebar);
   font-family: var(--f-song);
 }
 
@@ -232,7 +232,7 @@
 }
 .ss-label {
   font-size: calc(13px * var(--font-scale));
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.6;
   color: var(--ink-1);
   white-space: nowrap;

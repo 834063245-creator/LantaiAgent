@@ -267,7 +267,7 @@
 }
 .pp-folio-title {
   font-family: var(--f-song);
-  font-weight: 700; /* 浸墨：卷名重墨档 */
+  font-weight: 700; /* 浸墨：卷首档（拍板 B 四级：900/700/600/400） */
   font-size: 32px;
   line-height: 1.2;
   margin-top: 12px;
@@ -1727,30 +1727,9 @@
 .pp-composer textarea::placeholder {
   color: var(--ink-3);
 }
-.pp-composer button {
-  font-family: var(--f-song);
-  font-size: calc(13px * var(--font-scale));
-  letter-spacing: 0.18em;
-  padding: 10px 26px;
-  border: var(--rule-strong);
-  border-radius: 0;
-  color: var(--ink-1);
-  background: none;
-  cursor: pointer;
-  transition:
-    background var(--snap),
-    color var(--snap),
-    border-color var(--snap),
-    transform var(--snap);
-}
-.pp-composer button:hover {
-  background: var(--ink-1);
-  color: var(--paper);
-}
-.pp-composer button:active {
-  background: var(--ink-2);
-  transform: translateY(1px);
-}
+/* 泛 .pp-composer button 框已于包含批（2026-09-01）废除：泛选择器强线框
+   会压过坞内嵌套组件（ms-item 等）自身的三边 none——框中框泄漏源；
+   各钮（mode-opt/tool-btn/attach/send）自带样式，不靠泛框。 */
 
 /* ── 钤印拟文（创作坞 v2 2026-08-31）：发送 = 落款钤印──
  * 墨色实心方章 + 硬偏移投影（浸墨 --shadow-anchor），hover 翻朱砂——
@@ -2102,7 +2081,7 @@
 /* 浮钮：块内选区旁浮现——发现性入口（不依赖手势知识） */
 .pp-strip-fab {
   position: fixed;
-  z-index: 300;
+  z-index: 70; /* 2026-09-01 海拔批：300 散写归浮层带（§11 45-90） */
   font-family: var(--f-song);
   font-size: 11px;
   letter-spacing: 0.14em;
@@ -2738,7 +2717,7 @@
 }
 .pp-grid-table th {
   text-align: left;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--ink-3);
   border-bottom: var(--pp-asset-grid-headBorder) solid var(--rule-soft);
   padding: var(--pp-asset-grid-cellPadV) var(--pp-asset-grid-cellPadH);

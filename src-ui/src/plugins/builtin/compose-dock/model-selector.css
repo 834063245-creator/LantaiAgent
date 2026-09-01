@@ -114,7 +114,7 @@
   max-height: 280px;
   overflow-y: auto;
   border: var(--rule-soft);
-  border-top: 2px solid var(--ink-2);
+  border-top: var(--rule-head);
   border-radius: 0;
   box-shadow: var(--elev-menu);
   background: var(--paper);
@@ -211,7 +211,7 @@
 
 .ms-item-name {
   font-size: calc(9px * var(--font-scale));
-  color: var(--ink-2);
+  color: var(--ink-1); /* 2026-09-01 轻重批：行内主读物提墨，与注记分阶 */
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -250,7 +250,7 @@
 .ms-badge-live {
   font-family: var(--f-mono);
   font-size: calc(8px * var(--font-scale));
-  font-weight: 700;
+  font-weight: 600; /* 2026-09-01 轻重批：700 中间档收编，与身份印签族齐 */
   letter-spacing: 0.5px;
   color: var(--indigo);
   background: color-mix(in oklch, var(--indigo) 10%, transparent);
