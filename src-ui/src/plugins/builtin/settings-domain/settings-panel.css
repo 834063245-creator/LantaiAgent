@@ -105,7 +105,7 @@
 .sp-tab {
   font-family: var(--f-song);
   font-size: calc(13px * var(--font-scale));
-  font-weight: 500;
+  font-weight: 400; /* 2026-09-01 轻重批：Tab 基底注记档，选中态靠墨底反白 */
   letter-spacing: 0.06em;
   padding: 6px 16px;
   border: none;
@@ -449,7 +449,7 @@
 .sp-radio-label {
   font-size: calc(13px * var(--font-scale));
   color: var(--ink-1);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 /* ── 注记 ── */
@@ -491,7 +491,7 @@
 .sp-btn {
   font-family: var(--f-song);
   font-size: calc(13px * var(--font-scale));
-  font-weight: 500;
+  font-weight: 600; /* 2026-09-01 轻重批：动作钮=重墨档 */
   letter-spacing: 0.06em;
   padding: 7px 18px;
   border-radius: 0;
@@ -624,7 +624,7 @@ button.sp-btn.sp-btn-ok {
 
 .sp-lsp-card-header .lang-status {
   font-size: calc(11px * var(--font-scale));
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .sp-lsp-card-meta {
@@ -650,7 +650,7 @@ button.sp-btn.sp-btn-ok {
 .sp-install-toggle {
   font-family: var(--f-song);
   font-size: calc(12px * var(--font-scale));
-  font-weight: 500;
+  font-weight: 600; /* 2026-09-01 轻重批：动作钮=重墨档 */
   letter-spacing: 0.04em;
   color: var(--ink-2);
   background: none;
@@ -676,7 +676,7 @@ button.sp-btn.sp-btn-ok {
 
 .sp-install-row .lang-label {
   min-width: 80px;
-  font-weight: 500;
+  font-weight: 400;
   flex-shrink: 0;
   font-size: calc(12px * var(--font-scale));
 }
@@ -928,7 +928,7 @@ button.sp-btn.sp-btn-ok {
 .sp-title .zh {
   font-family: var(--f-song);
   font-size: calc(12.5px * var(--font-scale));
-  font-weight: 500;
+  font-weight: 600; /* 2026-09-01 轻重批：面板题字档 */
   letter-spacing: 0.1em;
   text-transform: none;
   color: var(--ink-1);

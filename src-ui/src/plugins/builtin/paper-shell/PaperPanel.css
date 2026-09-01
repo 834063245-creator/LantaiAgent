@@ -267,7 +267,7 @@
 }
 .pp-folio-title {
   font-family: var(--f-song);
-  font-weight: 700; /* 浸墨：卷名重墨档 */
+  font-weight: 700; /* 浸墨：卷首档（拍板 B 四级：900/700/600/400） */
   font-size: 32px;
   line-height: 1.2;
   margin-top: 12px;
@@ -2738,7 +2738,7 @@
 }
 .pp-grid-table th {
   text-align: left;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--ink-3);
   border-bottom: var(--pp-asset-grid-headBorder) solid var(--rule-soft);
   padding: var(--pp-asset-grid-cellPadV) var(--pp-asset-grid-cellPadH);
