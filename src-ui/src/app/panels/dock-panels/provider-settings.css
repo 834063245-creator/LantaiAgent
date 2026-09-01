@@ -692,7 +692,7 @@
   max-height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--ink-2);
+  border: var(--rule-strong);
   border-radius: 0;
   background: var(--paper);
   box-shadow: var(--elev-raise);

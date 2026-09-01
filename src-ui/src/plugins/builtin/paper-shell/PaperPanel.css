@@ -1727,30 +1727,9 @@
 .pp-composer textarea::placeholder {
   color: var(--ink-3);
 }
-.pp-composer button {
-  font-family: var(--f-song);
-  font-size: calc(13px * var(--font-scale));
-  letter-spacing: 0.18em;
-  padding: 10px 26px;
-  border: var(--rule-strong);
-  border-radius: 0;
-  color: var(--ink-1);
-  background: none;
-  cursor: pointer;
-  transition:
-    background var(--snap),
-    color var(--snap),
-    border-color var(--snap),
-    transform var(--snap);
-}
-.pp-composer button:hover {
-  background: var(--ink-1);
-  color: var(--paper);
-}
-.pp-composer button:active {
-  background: var(--ink-2);
-  transform: translateY(1px);
-}
+/* 泛 .pp-composer button 框已于包含批（2026-09-01）废除：泛选择器强线框
+   会压过坞内嵌套组件（ms-item 等）自身的三边 none——框中框泄漏源；
+   各钮（mode-opt/tool-btn/attach/send）自带样式，不靠泛框。 */
 
 /* ── 钤印拟文（创作坞 v2 2026-08-31）：发送 = 落款钤印──
  * 墨色实心方章 + 硬偏移投影（浸墨 --shadow-anchor），hover 翻朱砂——

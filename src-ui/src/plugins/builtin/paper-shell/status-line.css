@@ -122,7 +122,7 @@
   overflow-y: auto;
   background: var(--paper);
   border: var(--rule-soft);
-  border-top: 2px solid var(--ink-2);
+  border-top: var(--rule-head);
   box-shadow: var(--elev-menu);
   padding: 6px 0;
   animation: pop-down 0.14s cubic-bezier(0.23, 1, 0.32, 1);

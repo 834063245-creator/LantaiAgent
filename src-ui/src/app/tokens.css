@@ -52,6 +52,7 @@
   /* ── 规线三式（圆角恒 0，印刷品无圆角）── */
   --rule-hard: 2px solid var(--ink-1); /* 硬线：卷首下划线 / 代码左线 / 计划顶线 */
   --rule-strong: 1px solid var(--ink-2); /* 强线：界栏 / 分隔 */
+  --rule-head: 2px solid var(--ink-2); /* 头线：浮层菜单书眉顶缘（ms-dropdown / sl-log） */
   --rule-soft: 1px solid var(--ink-4); /* 弱线：细分隔 */
   --rule-dashed: 1px dashed var(--ink-4); /* 虚线：草稿勾边 / 占位 */
 

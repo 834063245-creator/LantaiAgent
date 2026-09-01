@@ -93,7 +93,7 @@
   background: var(--glass-hi);
   backdrop-filter: blur(16px) saturate(1.15);
   -webkit-backdrop-filter: blur(16px) saturate(1.15);
-  border: 1px solid var(--ink-2);
+  border: var(--rule-strong);
   border-radius: 0; /* 印刷品无圆角（2026-08 UI 大清扫） */
   overflow: hidden;
   box-shadow: var(--elev-menu); /* 2026-09-01 审计：弹层海拔统一菜单档 */

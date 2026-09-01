@@ -33,7 +33,7 @@
   max-height: 90vh;
   z-index: var(--z-panel);
   background: var(--paper);
-  border: 1px solid var(--ink-2);
+  border: var(--rule-strong);
   border-radius: 0; /* 印刷品无圆角 */
   transform: translate(-50%, -50%);
   opacity: 0;
