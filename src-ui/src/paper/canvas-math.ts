@@ -69,24 +69,55 @@ export function panBy(v: Viewport, dx: number, dy: number): Viewport {
 export const ANCHOR = {
   /** 流锚窄带半宽（D-R2-4 消极决定 2：流锚独占窄带，对话流纵向轨道不横向蔓延） */
   bandHalfWidth: 400,
-  /** 块间垂直间距（B1：原型节奏 48） */
+  /** 块间垂直间距（B1：原型节奏 48；无节奏信息的兜底档） */
   blockGap: 48,
-  /** 来文块上方额外间距（B1 用户拍板：用户轮次从头顶切分） */
+  /** 来文块上方额外间距（B1 用户拍板：用户轮次从头顶切分——无节奏信息时的兜底） */
   userLeadGap: 24,
   /** 来文块下方间距（B1：asterism 尾距 30 为主，机械间距零头） */
   userTailGap: 8,
   /** 锚点行距屏幕底部的留白（输入条上方） */
   screenBottomMargin: 96,
+  /* stream-rhythm 刀2（2026-09-03，计划 §3）：工作单元节奏档——D1 试值，
+   * taste-ledger 待用户终审。层级：intra 32 < 块距 48 < unit 64 < stage 96。 */
+  /** 单元内间距（同一工作单元的相邻块：行为链紧密纵向连接） */
+  intraUnitGap: 32,
+  /** 单元间间距（同回合内工作单元切换） */
+  unitGap: 64,
+  /** 转折放空（Error 起的恢复单元 / 墓碑前的空间——打破正常节奏） */
+  recoveryLeadGap: 96,
+  /** 阶段间间距（来文开新阶段：留白 + 细线） */
+  stageGap: 96,
 } as const;
+
+/** 节奏档（group.leadOf / unitMembership 的产出映射到间距）。 */
+export type RhythmClass = 'intra' | 'unit' | 'recovery' | 'stage';
+
+/** 节奏档 → 间距值（表驱动：taste-ledger 钉值面）。 */
+export function rhythmGap(r: RhythmClass): number {
+  switch (r) {
+    case 'intra':
+      return ANCHOR.intraUnitGap;
+    case 'unit':
+      return ANCHOR.unitGap;
+    case 'recovery':
+      return ANCHOR.recoveryLeadGap;
+    case 'stage':
+      return ANCHOR.stageGap;
+  }
+}
 
 /** 流布局输出：给每个 flow 块算出世界坐标（x 居中窄带，y 自锚点向上累积）。
  *  B1 垂直节奏：间距看「上面那块是否来文」——
  *    user 头顶（即下方是 user）：blockGap + userLeadGap（用户轮次切分，头顶宽）
  *    user 尾部（即上方是 user）：userTailGap（asterism 已带 30px 视觉尾距，零头）
  *    其余：blockGap（原型 48）。
+ *  stream-rhythm 刀2：块带 rhythm 档时节奏档优先（intra 32 / unit 64 /
+ *    recovery 96 / stage 96）；上方是 user 恒 userTailGap（B1 反转：来文后
+ *    第一块紧贴，asterism 让位）。无 rhythm 的调用面（外部插件 / 旧测试）走
+ *  B1 基线不变。
  *  自底向上遍历：游标减去的间距属于「上方那块」的头部空间。 */
 export function layoutFlow(
-  flowBlocks: Array<{ id: string; h: number; w?: number; kind?: string }>,
+  flowBlocks: Array<{ id: string; h: number; w?: number; kind?: string; rhythm?: RhythmClass }>,
 ): Map<string, { x: number; y: number }> {
   const out = new Map<string, { x: number; y: number }>();
   // 从锚点 (0, 0) 向上：第一个（最旧）块在最上，最新的贴锚点。
@@ -99,18 +130,21 @@ export function layoutFlow(
     const x = -w / 2; // 窄带居中（原点在窄带中轴）
     const y = cursor - b.h; // 块顶 = 游标 - 高度
     out.set(b.id, { x, y });
-    // b 头顶的间距：上方块是 user → 它的尾距规则；否则看 b 自己是不是 user（头部加宽）
-    const gap =
-      upper?.kind === 'user' ? ANCHOR.userTailGap : ANCHOR.blockGap + (b.kind === 'user' ? ANCHOR.userLeadGap : 0);
-    cursor = y - gap;
+    cursor = y - gapAbove(b, upper);
   }
   return out;
 }
 
-/** 相邻块间距查询（B1：虚拟化窗口/测高复用同一套节奏规则）。
+/** 相邻块间距查询（B1 + stream-rhythm 刀2：虚拟化窗口/测高复用同一套节奏规则）。
  *  返回块 b 与其上方（更旧）相邻块之间的总间距。 */
-export function gapAbove(b: { kind?: string }, upper: { kind?: string } | undefined): number {
-  return upper?.kind === 'user' ? ANCHOR.userTailGap : ANCHOR.blockGap + (b.kind === 'user' ? ANCHOR.userLeadGap : 0);
+export function gapAbove(
+  b: { kind?: string; rhythm?: RhythmClass },
+  upper: { kind?: string; rhythm?: RhythmClass } | undefined,
+): number {
+  // B1 反转优先：上方是来文 → 尾距 8（asterism 已带视觉尾距，来文后第一块紧贴）
+  if (upper?.kind === 'user') return ANCHOR.userTailGap;
+  if (b.rhythm !== undefined) return rhythmGap(b.rhythm);
+  return ANCHOR.blockGap + (b.kind === 'user' ? ANCHOR.userLeadGap : 0);
 }
 
 /** 流区锚点（Stage-2 一纸多卷：多会话共享同一视口，各自流）。

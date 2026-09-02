@@ -186,6 +186,16 @@
   }
 }
 
+/* ── 流式重排平滑（2026-09-02 stream-rhythm-smooth）──
+ * 根因：会话流每来一段新字 → 正在写的块变高 → 布局重算 → 上面所有块坐标
+ * 一次性瞬移到新位置（left/top 直接写）——「每几个字整段跳一下」的割裂感。
+ * 药方：流式进行中（.pp-stream-live = 任一卷在跑），flow 块的 transform 有过渡，
+ * 旧块被新块"轻轻推开"而非瞬移；无流式（静止/回填/首屏/导航）零过渡——不闪。
+ * 铁律：只用 transform（合成器属性，GPU 加速，不触发逐帧排版）；
+ *       绝不挂 left/top/height（流式高频必卡）。pinned/拖拽/幽灵零过渡。 */
+.pp-canvas.pp-stream-live .pp-block:not(.pp-pinned):not(.pp-dragging) {
+  transition: transform var(--pp-grow-dur, 150ms) var(--pp-grow-ease, cubic-bezier(0.25, 0.1, 0.25, 1));
+}
 /* 世界层：transform 由 JS 设置（pan/zoom）
  * will-change 只在交互期挂（.pp-world--live）——常驻会让浏览器固定合成层
  * 栅格化分辨率，放大时 GPU 拉伸旧位图导致文字发虚；停止后摘掉 + 强制 reflow
@@ -412,6 +422,24 @@
   user-select: text;
   /* 压在流区容器之上（一纸多卷：流区 z:1，块 z:2——块可交互优先） */
   z-index: 2;
+  /* 流式重排平滑（2026-09-02 stream-rhythm-smooth）：块坐标经 transform 定位，
+   * 过渡只挂在流式进行中的块上（见 .pp-canvas.pp-stream-live .pp-block 规则）。
+   * transform 是合成器属性——过渡不触发逐帧排版重算，流式高频时浏览器打断
+   * 重定向而非堆积（性能安全线：绝不把这个过渡挂到 left/top 上）。 */
+  transform-origin: center center;
+}
+
+/* 阶段细线（stream-rhythm 刀2，2026-09-03——D2 最素形态：留白 + 细线）：
+ * 来文开新阶段的弱线，落在阶段间距 96 的中线（canvas-math ANCHOR.stageGap/2，
+ * 两处值由 tests/paper-visual-decisions.test.ts 钉值对拍）。线不是装饰——
+ * 阶段边界（计划 §6：线表达关系/时间/阶段边界）。钉值同测。 */
+.pp-block.pp-stage-lead::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -48px;
+  border-top: var(--rule-soft);
 }
 
 /* 块体基础（2026-08-30 间距专项）：pre-wrap 镜像测量——measure.ts 的 pretext
@@ -1200,11 +1228,22 @@
   z-index: 50;
 }
 
+/* 拖拽/缩放/卷切换这些手动操作绝不能被重排过渡污染：pinned 块被拖出/收回、
+ * 幽灵占位、resize 手柄全走无过渡路径。（高特异性规则先行，避免降序覆盖警告） */
+.pp-block.pp-ghost,
+.pp-canvas.pp-stream-live .pp-block.pp-pinned,
+.pp-canvas.pp-stream-live .pp-block.pp-dragging {
+  transition: none;
+}
+
 /* ── 流式生命感（2026-08-30）：首见入场 ──
  * pp-enter：块首次进流时淡入上浮一次——类发放由壳层首见集合控制（seenBlocks），
- * 虚拟化平移重挂不重放；transform 动画不碰 left/top 定位，测量零影响。 */
+ * 虚拟化平移重挂不重放；transform 动画不碰 left/top 定位，测量零影响。
+ * 2026-09-02 换装：块定位改内联 transform 后，keyframes 的 to 帧必须留空
+ * transform（不可写 none——both 填充会把内联 translate(x,y) 清成静态位置，
+ * 块全叠左上角）；animation 用 backwards 只保留入场前状态，结束后回落内联值。 */
 .pp-block.pp-enter {
-  animation: pp-enter 0.24s cubic-bezier(0.23, 1, 0.32, 1) both;
+  animation: pp-enter 0.24s cubic-bezier(0.23, 1, 0.32, 1) backwards;
 }
 @keyframes pp-enter {
   from {
@@ -1213,7 +1252,6 @@
   }
   to {
     opacity: 1;
-    transform: none;
   }
 }
 

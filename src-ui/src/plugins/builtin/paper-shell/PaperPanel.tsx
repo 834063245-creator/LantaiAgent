@@ -71,6 +71,7 @@ import {
   foldLabel,
   getCanvasStore,
   getChatStore,
+  groupWorkUnits,
   hitRegionAtWorld,
   Icon,
   injectPaperTokens,
@@ -78,6 +79,7 @@ import {
   inkForBlock,
   isFoldable,
   layoutRegion,
+  leadOf,
   lodActive,
   makeStrip,
   measureBlockHeightCached,
@@ -96,6 +98,7 @@ import {
   STREAM_REGION,
   scheduleCanvasSave,
   screenToWorld,
+  sealedMessageIdsOf,
   selectionMaskRects,
   selInkPaths,
   selSeedOf,
@@ -106,6 +109,7 @@ import {
   subscribeOverlayContributions,
   translateMessagesCached,
   USER_SHRINK_MIN_W,
+  unitMembership,
   useCanvasViewStore,
   useCoreStore,
   useDockStore,
@@ -475,6 +479,8 @@ interface RegionCoreCacheEntry {
     regionTop: number;
     regionHeight: number;
     folioH: number;
+    /** 阶段首块（stream-rhythm 刀2：来文块）——渲染层阶段细线消费。 */
+    stageLeadIds: ReadonlySet<string>;
   };
 }
 
@@ -487,6 +493,7 @@ const STUB_EMPTIES = {
   flowWindow: { first: 0, lastExcl: 0 },
   visibleIds: new Set<string>(),
   seq: new Map<string, string>(),
+  stageLeadIds: new Set<string>() as ReadonlySet<string>,
 } as const;
 
 /** P2-3 复合键等价比较（引用级）——键元素全部引用相同 = 缓存可复用。
@@ -1184,18 +1191,33 @@ export function PaperPanel() {
         const translateCache = translateCacheBySession.current.get(s.id) ?? null;
         const res = translateMessagesCached(msgs, pinsMap, translateCache);
         translateCacheBySession.current.set(s.id, res.cache);
+        // stream-rhythm 刀2（2026-09-03）：工作单元封套 pass——折叠摘除前的全块列
+        // 分组（组头子块强制归组），节奏档喂布局栈（intra 32 / unit 64 / recovery 96
+        // / stage 96）；来文块进 stageLeadIds（阶段细线渲染面）。
+        const sealedIds = sealedMessageIdsOf(msgs);
+        const membership = unitMembership(groupWorkUnits(res.blocks, { isSealedMessage: (id) => sealedIds.has(id) }));
         // 工具组收起摘除（2026-08-30 会话流专项）：折叠态组头的子卡不进布局栈
         const blocks = collapseToolGroups(adaptBlocks(res.blocks, anchor.width), foldedOf);
 
-        const stack = blocks.map((b) => ({
-          id: b.id,
-          h:
-            b.state === 'flow'
-              ? measureBlockHeightCached(b, measureCacheRef.current, foldedOf(b), sidecarFoldedOf(b), sidecarOutOf(b))
-              : GHOST_H,
-          w: b.w,
-          kind: b.kind,
-        }));
+        const stageLeadIds = new Set<string>();
+        const stack = blocks.map((b) => {
+          const m = membership.get(b.id);
+          let rhythm: 'intra' | 'unit' | 'recovery' | 'stage' | undefined;
+          if (m) {
+            rhythm = m.isFirst ? leadOf(m.unit) : 'intra';
+            if (rhythm === 'stage') stageLeadIds.add(b.id);
+          }
+          return {
+            id: b.id,
+            h:
+              b.state === 'flow'
+                ? measureBlockHeightCached(b, measureCacheRef.current, foldedOf(b), sidecarFoldedOf(b), sidecarOutOf(b))
+                : GHOST_H,
+            w: b.w,
+            kind: b.kind,
+            rhythm,
+          };
+        });
         const layout = layoutRegion(stack, { x: anchor.anchorX, y: anchor.anchorY });
         const flowGeom: FlowGeom[] = stack.map((sx) => ({
           id: sx.id,
@@ -1280,6 +1302,7 @@ export function PaperPanel() {
             regionTop,
             regionHeight: Math.max(0, anchor.anchorY - regionTop) + 72,
             folioH,
+            stageLeadIds,
           },
         };
         regionCoreCacheRef.current.set(s.id, entry);
@@ -1307,6 +1330,7 @@ export function PaperPanel() {
         regionBottom: anchor.anchorY,
         regionHeight: c.regionHeight,
         folioH: c.folioH,
+        stageLeadIds: c.stageLeadIds,
       });
     });
     // 合卷/切换后修剪无主核心（与 translateCacheBySession 同款纪律）
@@ -2925,7 +2949,10 @@ export function PaperPanel() {
                         'pp-pinned',
                         isDragged ? 'pp-dragging' : '',
                       ].join(' ')}
-                      style={{ left: pos.x, top: pos.y, width: resizePreview?.id === pinId ? resizePreview.w : pin.w }}
+                      style={{
+                        transform: `translate(${pos.x}px, ${pos.y}px)`,
+                        width: resizePreview?.id === pinId ? resizePreview.w : pin.w,
+                      }}
                       onDragStart={(e) => e.preventDefault()}
                     >
                       <BlockView
@@ -2961,8 +2988,10 @@ export function PaperPanel() {
                       // biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler
                       <div
                         key={b.id}
-                        className={`pp-block pp-${b.kind}${firstSeen ? ' pp-enter' : ''}`}
-                        style={{ left: slot.x, top: slot.y, width: b.w }}
+                        className={`pp-block pp-${b.kind}${firstSeen ? ' pp-enter' : ''}${
+                          r.stageLeadIds.has(b.id) ? ' pp-stage-lead' : ''
+                        }`}
+                        style={{ transform: `translate(${slot.x}px, ${slot.y}px)`, width: b.w }}
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}
                         data-block-observed={needsObservedHeight(b.kind, b.asset != null) ? b.id : undefined}
@@ -3002,7 +3031,7 @@ export function PaperPanel() {
                       {/* biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler */}
                       <div
                         className={['pp-block', `pp-${b.kind}`, 'pp-pinned', isDragged ? 'pp-dragging' : ''].join(' ')}
-                        style={{ left: pos.x, top: pos.y, width: pinW }}
+                        style={{ transform: `translate(${pos.x}px, ${pos.y}px)`, width: pinW }}
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}
                         data-block-observed={needsObservedHeight(b.kind, b.asset != null) ? b.id : undefined}

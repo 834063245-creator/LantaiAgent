@@ -49,6 +49,7 @@ import {
 } from '../../paper/canvas-math';
 import { createFocusFlightScheduler } from '../../paper/focus-flight';
 import { defaultFolded, foldLabel, isFoldable } from '../../paper/fold';
+import { groupWorkUnits, leadOf, sealedMessageIdsOf, unitMembership } from '../../paper/group';
 import { composerSubmitOnKey } from '../../paper/ime';
 import { createInkCache, inkColorOf, inkForBlock, inkForText, lodActive } from '../../paper/ink';
 import {
@@ -183,6 +184,10 @@ const faceDeps = {
   defaultFolded,
   foldLabel,
   isFoldable,
+  groupWorkUnits,
+  leadOf,
+  sealedMessageIdsOf,
+  unitMembership,
   createInkCache,
   inkColorOf,
   inkForBlock,

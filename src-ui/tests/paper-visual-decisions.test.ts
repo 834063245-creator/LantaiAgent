@@ -23,6 +23,8 @@ const HOME_CSS = readFileSync(join(SRC, 'app', 'foundation.css'), 'utf8');
 const PANEL_TSX = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.tsx'), 'utf8');
 const ICONS_TS = readFileSync(join(SRC, 'ui', 'icons.ts'), 'utf8');
 const MEASURE_TS = readFileSync(join(SRC, 'paper', 'measure.ts'), 'utf8');
+const CANVAS_MATH_TS = readFileSync(join(SRC, 'paper', 'canvas-math.ts'), 'utf8');
+const GROUP_TS = readFileSync(join(SRC, 'paper', 'group.ts'), 'utf8');
 const TYPE_TOKENS_TS = readFileSync(join(SRC, 'paper', 'type-tokens.ts'), 'utf8');
 const TOKENS_CSS = readFileSync(join(SRC, 'app', 'tokens.css'), 'utf8');
 const FONTS_TS = readFileSync(join(SRC, 'app', 'fonts.ts'), 'utf8');
@@ -317,5 +319,35 @@ describe('贴纸纹理归属（2026-09-02 透明错觉根治批）', () => {
     expect(NORMALIZE_PS1).toContain('[double]$sheetA = 1.63');
     expect(NORMALIZE_PS1).toContain('[double]$sheetB = -0.555');
     expect(NORMALIZE_PS1).toContain('a=1.63 / b=-0.555');
+  });
+});
+
+describe('会话流版式节奏钉值（stream-rhythm 刀2，2026-09-03——D1 试值待用户真机终审）', () => {
+  it('间距三档 + 转折/阶段放空：canvas-math 真源（intra 32 < 块距 48 < unit 64 < recovery/stage 96）', () => {
+    expect(CANVAS_MATH_TS).toContain('intraUnitGap: 32');
+    expect(CANVAS_MATH_TS).toContain('unitGap: 64');
+    expect(CANVAS_MATH_TS).toContain('recoveryLeadGap: 96');
+    expect(CANVAS_MATH_TS).toContain('stageGap: 96');
+    // B1 基线不动（无节奏信息的外部调用面）：块距 48 / 来文尾距 8
+    expect(CANVAS_MATH_TS).toContain('blockGap: 48');
+    expect(CANVAS_MATH_TS).toContain('userTailGap: 8');
+  });
+
+  it('阶段细线（D2 最素形态）：弱线落阶段间距中线，跨块宽', () => {
+    const rule = ruleBody(PANEL_CSS, '.pp-block.pp-stage-lead::before');
+    expect(rule).toContain('top: -48px');
+    expect(rule).toContain('border-top: var(--rule-soft)');
+    expect(rule).toContain('left: 0');
+    expect(rule).toContain('right: 0');
+  });
+
+  it('接线在册：工作单元 pass 进 PaperPanel 核心，来文块挂阶段类', () => {
+    expect(PANEL_TSX).toContain('groupWorkUnits');
+    expect(PANEL_TSX).toContain('unitMembership');
+    expect(PANEL_TSX).toContain('sealedMessageIdsOf');
+    expect(PANEL_TSX).toContain('pp-stage-lead');
+    // 封口纪律 + 跨消息前瞻禁止（宪法条款在纯函数真源里在册）
+    expect(GROUP_TS).toContain('跨消息前瞻禁止');
+    expect(GROUP_TS).toContain('封口纪律');
   });
 });
