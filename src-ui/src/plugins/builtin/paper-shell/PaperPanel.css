@@ -194,7 +194,7 @@
  * 铁律：只用 transform（合成器属性，GPU 加速，不触发逐帧排版）；
  *       绝不挂 left/top/height（流式高频必卡）。pinned/拖拽/幽灵零过渡。 */
 .pp-canvas.pp-stream-live .pp-block:not(.pp-pinned):not(.pp-dragging) {
-  transition: transform var(--pp-grow-dur, 150ms) var(--pp-grow-ease, cubic-bezier(0.25, 0.1, 0.25, 1));
+  transition: transform var(--pp-grow-dur, 200ms) var(--pp-grow-ease, cubic-bezier(0.25, 0.1, 0.25, 1));
 }
 /* 世界层：transform 由 JS 设置（pan/zoom）
  * will-change 只在交互期挂（.pp-world--live）——常驻会让浏览器固定合成层
