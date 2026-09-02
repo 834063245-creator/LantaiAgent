@@ -353,24 +353,33 @@ export function parseRpcString(raw: unknown): string | null {
   }
 }
 
-/** 从系统加密存储恢复 API Key（仅填充 apiKey 为空的 provider）。loadSettings 后用。 */
+/** 从系统加密存储恢复 API Key（仅填充 apiKey 为空的 provider）。loadSettings 后用。
+ *  P0-2 优化（2026-09-02）：N 个 provider 的 credential_get 从串行改并行——
+ *  Windows DPAPI 解密是独立的文件读+解密，互相无依赖；串行 N 次 = N×(IPC+DPAPI)，
+ *  并行 = max(单次)。长度护栏与失败容忍语义不变。 */
 export async function restoreSecrets(s: AppSettings): Promise<AppSettings> {
   try {
     const { typedRpc } = await import('./rpc-contract');
-    for (const p of s.providers) {
-      if (!p.apiKey || p.apiKey.trim() === '') {
-        try {
-          const stored = await typedRpc('credential_get', { provider: p.name });
-          const key = parseRpcString(stored);
-          // 长度护栏：>4096 的「key」必是编码 bug 毒值（2026-08-08 事故：128MiB 毒值
-          // 经 IPC 回传 256MB 响应击毁 WebView2）——拒收，按无 key 处理
-          if (key?.trim() && key.length <= 4096) {
-            p.apiKey = key.trim();
+    const needKey = s.providers.filter((p) => !p.apiKey || p.apiKey.trim() === '');
+    if (needKey.length > 0) {
+      const keys = await Promise.all(
+        needKey.map(async (p) => {
+          try {
+            const stored = await typedRpc('credential_get', { provider: p.name });
+            const key = parseRpcString(stored);
+            // 长度护栏：>4096 的「key」必是编码 bug 毒值（2026-08-08 事故：128MiB 毒值
+            // 经 IPC 回传 256MB 响应击毁 WebView2）——拒收，按无 key 处理
+            if (key?.trim() && key.length <= 4096) return key.trim();
+            return null;
+          } catch {
+            /* 无加密存储或解密失败 */
+            return null;
           }
-        } catch {
-          /* 无加密存储或解密失败 */
-        }
-      }
+        }),
+      );
+      needKey.forEach((p, i) => {
+        if (keys[i]) p.apiKey = keys[i];
+      });
     }
   } catch {
     /* 动态导入失败 — 继续使用仅 localStorage 的设置 */

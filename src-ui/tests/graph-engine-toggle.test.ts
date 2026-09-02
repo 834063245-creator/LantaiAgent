@@ -37,6 +37,13 @@ vi.mock('../src/rpc-contract', () => ({
   }),
   typedListen: vi.fn(async () => () => {}),
   parseJson: (raw: unknown) => JSON.parse(typeof raw === 'string' ? raw : JSON.stringify(raw)),
+  // P1-2（2026-09-02）：Workspace.open 的引擎旗标查询走缓存入口——mock 提供
+  // 空清单（无注册表命中 → 全局默认），调用记录进 rpcCalls 供断言
+  workspaceListCached: vi.fn(async () => {
+    rpcCalls.push('workspace_list');
+    return [];
+  }),
+  clearWorkspaceListCache: vi.fn(),
 }));
 
 vi.mock('../src/agent/logger', () => ({ initLogger: vi.fn() }));

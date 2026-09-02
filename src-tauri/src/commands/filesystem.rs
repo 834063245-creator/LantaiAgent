@@ -53,11 +53,20 @@ pub(crate) async fn read_file_content(
     limit: Option<usize>,
     is_agent: Option<bool>,
     _agent_id: Option<String>,
+    raw: Option<bool>,
     state: tauri::State<'_, crate::WorkspaceState>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
     let (_, content) = crate::confined_fs::read_text(&file_path, is_agent.unwrap_or(false), _agent_id.as_deref(), &state, &app).await?;
-    Ok(crate::confined_fs::format_lines(&content, offset, limit))
+    // P1-3（2026-09-02）：raw=true 跳过 format_lines 行号——JSON 文件读取面
+    //（canvas.json / 会话卷 / memory）此前每次读都要「加行号 → 前端剥行号」
+    // 双重 O(n) 字符串变换。raw 模式直接返回原文；offset/limit 只对行号模式
+    // 有意义（raw 模式忽略——消费方都是全量读）。
+    if raw.unwrap_or(false) {
+        Ok(content)
+    } else {
+        Ok(crate::confined_fs::format_lines(&content, offset, limit))
+    }
 }
 
 #[tauri::command]

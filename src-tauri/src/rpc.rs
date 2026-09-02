@@ -487,7 +487,8 @@ async fn dispatch_rpc(
             let limit = opt_usize(&params, "limit");
             let is_agent = opt_bool(&params, "is_agent");
             let _agent_id = opt_str(&params, "_agent_id");
-            commands::filesystem::read_file_content(file_path, offset, limit, is_agent, _agent_id, state, app).await
+            let raw = opt_bool(&params, "raw");
+            commands::filesystem::read_file_content(file_path, offset, limit, is_agent, _agent_id, raw, state, app).await
         }
         "read_memory_batch" => {
             let paths: Vec<String> = params.get("paths")

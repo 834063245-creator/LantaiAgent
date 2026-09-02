@@ -6,6 +6,9 @@
 // Phase 1.5（engine-plugin-extraction）更新：分页拉页退役，装载 =
 // 聚合快照（毫秒级）+ analyze_and_load fire-and-forget（缓存过期→
 // 后台重建，graph-updated 事件驱动重拉）——「对话秒进」契约不变。
+// P3-3（2026-09-02）更新：快照装载改门闩——不阻塞 open() 返回，
+// _setupAgentInner 的 buildToolRegistry 前 await 保序；锚点随注释迁移，
+// 结构契约不变（快照先行 / analyze fire-and-forget / 降级提示可见）。
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -14,8 +17,10 @@ import { describe, expect, it } from 'vitest';
 const SRC = readFileSync(join(process.cwd(), 'src/workspace.ts'), 'utf8');
 
 describe('workspace-flip 批 3：打开流两段化（T0 结构钉 · Phase 1.5 快照形态）', () => {
+  const ANCHOR = 'P3-3（2026-09-02）：快照查询不再阻塞 open() 返回';
+
   it('分析路径：analyze_and_load 为 fire-and-forget（不 await——分析出关键路径）', () => {
-    const anchor = SRC.indexOf('图快照装载（Phase 1.5）');
+    const anchor = SRC.indexOf(ANCHOR);
     expect(anchor).toBeGreaterThan(0);
     const segment = SRC.slice(anchor, anchor + 2400);
     // 结构断言：分支内不得出现 await analyze_and_load（fire-and-forget 契约）
@@ -25,7 +30,7 @@ describe('workspace-flip 批 3：打开流两段化（T0 结构钉 · Phase 1.5 
   });
 
   it('快照装载先行：load_graph_json 在 analyze_and_load 之前（快照毫秒级即时可用）', () => {
-    const anchor = SRC.indexOf('图快照装载（Phase 1.5）');
+    const anchor = SRC.indexOf(ANCHOR);
     const segment = SRC.slice(anchor, anchor + 2400);
     const snapAt = segment.indexOf("typedJsonRpc('load_graph_json'");
     const analyzeAt = segment.indexOf("typedRpc('analyze_and_load'");
@@ -34,7 +39,7 @@ describe('workspace-flip 批 3：打开流两段化（T0 结构钉 · Phase 1.5 
   });
 
   it('诚实降级：预热中状态提示存在（不静默——宪法第 4 条）', () => {
-    const anchor = SRC.indexOf('图快照装载（Phase 1.5）');
+    const anchor = SRC.indexOf(ANCHOR);
     const segment = SRC.slice(anchor, anchor + 2400);
     expect(segment).toMatch(/图谱后台预热中/);
   });

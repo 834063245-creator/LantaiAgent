@@ -370,9 +370,12 @@ describe('S4-1a workspace 会话工厂：会话作用域注册表路径（源码
   it('工厂读 resolveCurrentComposition 并做引用不等判定', () => {
     const i = src.indexOf(factoryAnchor);
     expect(i).toBeGreaterThan(0);
-    const window = src.slice(i, i + 1600);
+    // P3-3（2026-09-02）：窗口 1600→2000——比较基准迁到实例字段后行位后移
+    const window = src.slice(i, i + 2000);
     expect(window).toContain('resolveCurrentComposition()');
-    expect(window).toContain('sessionComposition !== composition');
+    // P3-3（2026-09-02）：比较基准从 setupAgent 闭包常量改为实例字段
+    // _assemblyComposition（预热完成 rebuildToolRegistry 更新后新会话生效）
+    expect(window).toContain('sessionComposition !== this._assemblyComposition');
   });
 
   it('覆盖存在时走 buildToolRegistry({toolRows: compositionOverride.tools})', () => {

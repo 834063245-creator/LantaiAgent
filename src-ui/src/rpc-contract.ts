@@ -110,8 +110,8 @@ export interface RpcContract {
     result: string; // JSON
   };
   read_file_content: {
-    params: { file_path: string; offset?: number; limit?: number } & AgentCtx;
-    result: string; // text — 文件内容（可选行号截断）
+    params: { file_path: string; offset?: number; limit?: number; raw?: boolean } & AgentCtx;
+    result: string; // text — 文件内容（默认带行号；raw=true 返回原文——P1-3 JSON 读取面）
   };
   read_memory_batch: {
     params: { paths?: string[] };
@@ -628,6 +628,27 @@ export type RpcSchemaResultOf<M extends keyof typeof rpcResultSchemas> = z.infer
 
 /** workspace_list 元素（Rust WorkspaceSummary 同形）。 */
 export type WorkspaceSummary = RpcSchemaResultOf<'workspace_list'>[number];
+
+/** workspace_list 短期缓存（P1-2，2026-09-02）：SessionsHome 挂载拉一次、
+ *  Workspace.open 查图谱旗标又拉一次——冷启动 10s 内两调全量扫各工作区
+ *  会话根。TTL 内复用同一次结果；过期/写操作（rename/pin/remove/set_graph_engine）
+ *  由调用方显式失效（clearWorkspaceListCache）。只缓存成功结果。 */
+const WORKSPACE_LIST_TTL_MS = 10_000;
+let _wsListCache: { at: number; data: WorkspaceSummary[] } | null = null;
+
+export function clearWorkspaceListCache(): void {
+  _wsListCache = null;
+}
+
+/** 带短期缓存的 workspace_list——读方一律走此入口。 */
+export async function workspaceListCached(): Promise<WorkspaceSummary[]> {
+  if (_wsListCache && Date.now() - _wsListCache.at < WORKSPACE_LIST_TTL_MS) {
+    return _wsListCache.data;
+  }
+  const data = await typedJsonRpc('workspace_list', {});
+  _wsListCache = { at: Date.now(), data };
+  return data;
+}
 
 export type EventName = keyof EventContract;
 

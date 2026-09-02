@@ -229,12 +229,16 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
   // 全部内置族（hologram/web/ask/skill/memory/task/agent/browser-desktop/
   // wait）的工厂与组合序在行表；插件贡献行（plugin/<贡献 id>，composition/
   // plugin-tool-rows 折算）由组合解析产物一并携带（factoryComposition 快照
-  // 收编两类行，序 = builtin 在前、贡献行随后）。单一循环装配，行表源 =
-  // 注入的组合解析产物；缺省 = 出厂组合（当前通道装载态的完整基座）。
+  // 收编两类行，序 = builtin 在前、贡献行随后）。
   // 表序 = 组合序（前缀缓存语义的根基）；行内工具名冲突由
   // ToolRegistry.register 装载期拒绝（duplicate throw）。
-  for (const row of toolRows ?? factoryComposition().tools) {
-    for (const tool of await row.factory(rowCtx)) registry.register(tool);
+  // P2-3 优化（2026-09-02）：行工厂互相独立——Promise.all 并行执行全部
+  // factory（构建工具定义的重活），结果按表序顺序 register（保序契约不变）。
+  // N 行从 N 次串行 await 降到 max(单行)。
+  const rows = toolRows ?? factoryComposition().tools;
+  const rowResults = await Promise.all(rows.map((row) => row.factory(rowCtx)));
+  for (const tools of rowResults) {
+    for (const tool of tools) registry.register(tool);
   }
 
   registry.alias('read_file', 'read_file_content');
