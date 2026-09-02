@@ -82,6 +82,7 @@ import {
   makeStrip,
   measureBlockHeightCached,
   measureFolioHeadHeight,
+  mergeSelectionLines,
   msgStoreFor,
   nearestFreeRegion,
   needsObservedHeight,
@@ -96,6 +97,8 @@ import {
   scheduleCanvasSave,
   screenToWorld,
   selectionMaskRects,
+  selInkPaths,
+  selSeedOf,
   sheetCharacter,
   snapshotFromBlock,
   stashStripPositionAt,
@@ -2361,8 +2364,18 @@ export function PaperPanel() {
     messageId: string | undefined;
     sessionId: string | undefined;
   } | null>(null);
+  /* 划词朱线（2026-09-02 视觉迭代）：选区在画布内即记录（不限块级——跨块选区也要有线）；
+   * Range 存活期随 DOM 变化自刷新矩形，渲染期现取（同 fabPos 范式）。
+   * 折叠/画布外（composer、菜单）清线——原生洗底只在流区外保留。 */
+  const [selInk, setSelInk] = useState<Range | null>(null);
   useEffect(() => {
     const onSelChange = () => {
+      const selAll = window.getSelection();
+      const live = selAll && selAll.rangeCount > 0 ? selAll.getRangeAt(0) : null;
+      const anc = live?.commonAncestorContainer;
+      const ancEl = anc instanceof Element ? anc : (anc?.parentElement ?? null);
+      const inCanvas = !!(ancEl && canvasRef.current?.contains(ancEl));
+      setSelInk(inCanvas && live && !live.collapsed ? live.cloneRange() : null);
       const snap = snapshotBlockSelection();
       if (!snap) {
         setSelAnchor(null);
@@ -2672,6 +2685,15 @@ export function PaperPanel() {
     [regions, activeSessionKey, viewRect, canvasSize, composerHeight, foldedOf],
   );
 
+  /* 划词朱线（2026-09-02 视觉迭代）：行合并 + 手写路径渲染期现算——
+   * Range 活矩形随视口刷新（同 fabPos 范式）；种子 = 选区文本 hash（同选区恒同线）。
+   * 行数封顶 400：超大选区只画前 400 行（SVG 路径量护栏，选区监视不拖垮渲染）。 */
+  let selInkArt: { mains: string[]; echoes: string[] } | null = null;
+  if (selInk) {
+    const inkLines = mergeSelectionLines(selInk.getClientRects());
+    if (inkLines.length > 0 && inkLines.length <= 400) selInkArt = selInkPaths(inkLines, selSeedOf(selInk.toString()));
+  }
+
   return (
     <PaperDockContext.Provider value={dockContext}>
       <PaperRegionContext.Provider value={regionContext}>
@@ -2704,6 +2726,22 @@ export function PaperPanel() {
             <button type="button" className="pp-strip-fab" style={fabPos} onClick={onStripButton}>
               抽纸条
             </button>
+          )}
+
+          {/* 划词朱线（2026-09-02 视觉迭代）：流区选区的手写朱笔下划线——纸不动、只落墨；
+           * 原生 ::selection 洗底在 .pp-region 内退役（CSS 侧）。固定视口层 client 坐标
+           * （Range 活矩形，重渲染即刷新）；朱砂=人——被人手划过的字落朱线，不刷颜料。 */}
+          {selInkArt && (
+            <svg className="pp-sel-ink" aria-hidden="true">
+              {selInkArt.mains.map((d, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: 笔画按位静态渲染（行序稳定），无重排身份
+                <path key={`m${i}`} d={d} />
+              ))}
+              {selInkArt.echoes.map((d, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: 同上（echo 淡墨第二笔）
+                <path key={`e${i}`} d={d} className="pp-sel-ink-echo" />
+              ))}
+            </svg>
           )}
 
           {/* biome-ignore lint/a11y/noStaticElementInteractions: 无限画布是鼠标平移/缩放交互面 */}

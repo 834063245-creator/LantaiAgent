@@ -13,7 +13,7 @@
 
 // @vitest-environment node
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -61,18 +61,46 @@ describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
     expect(ruleBody(HOME_CSS, '.sh-foot')).toContain('color: var(--ink-2)');
   });
 
-  it('界栏（规格书 §1 + 浸墨 §10 双线框）：流区 = 古籍叶，四边 2px 墨框 + 内衬发丝，框走墨系不走朱砂', () => {
+  it('界栏改档（2026-09-02 视觉迭代·用户拍板读法 B）：墨框退役 → 物理包边——纸缘 = 材料不是墨', () => {
     const region = ruleBody(PANEL_CSS, '.pp-region {');
-    // 四边版框：外 2px 墨 + 内衬发丝（古籍双栏线）
-    expect(region).toContain('border: 2px solid');
-    expect(region).toContain('var(--ink-1)');
-    expect(region).toContain('outline-offset: -5px');
-    // 框是墨系结构件——朱砂=人铁律，框不沾朱砂
-    expect(region).not.toContain('var(--seal)');
-    const active = ruleBody(PANEL_CSS, '.pp-region-active');
-    // 活跃卷示活走洗底朱砂 + 框提全墨，框本体仍是墨
-    expect(active).toContain('border-color: var(--ink-1)');
-    expect(active).toContain('var(--seal) 4%');
+    // 墨框全退役（旧案 2px 半墨 border + 飘浮 outline 实机判「难看又简陋」）
+    expect(region).not.toContain('border:');
+    expect(region).not.toContain('outline');
+    // 物理包边：裱边带（纸色深一档）+ 受光缘 + 背光缘 + 接触落影，全走 token
+    expect(region).toContain('var(--sheet-lit)');
+    expect(region).toContain('var(--sheet-shade)');
+    expect(region).toContain('var(--sheet-band)');
+    expect(region).toContain('var(--shadow-sheet)');
+    const active = ruleBody(PANEL_CSS, '.pp-region-active {');
+    // 活跃卷「变色」判死：洗底退役，只走结构墨阶（落影加深一档）
+    expect(active).not.toContain('background');
+    expect(active).not.toContain('var(--seal)');
+    expect(active).toContain('var(--shadow-sheet-active)');
+  });
+
+  it('物理包边 token 载入（tokens.css 真源）：band/lit/shade + 活跃落影一档', () => {
+    expect(TOKENS_CSS).toContain('--sheet-band:');
+    expect(TOKENS_CSS).toContain('--sheet-lit:');
+    expect(TOKENS_CSS).toContain('--sheet-shade:');
+    expect(TOKENS_CSS).toContain('--shadow-sheet-active:');
+    // 剂量钉值（A/B 验证台 prototype/edge-ab.html 定档）：亮线 0.75 / 沉线 0.13
+    expect(TOKENS_CSS).toContain('rgba(255, 250, 238, 0.75)');
+    expect(TOKENS_CSS).toContain('rgba(38, 34, 28, 0.13)');
+  });
+
+  it('划词朱线（2026-09-02 视觉迭代）：流区原生洗底退役——选区以手写朱线呈现（纸不动、只落墨）', () => {
+    // .pp-region 内 ::selection 透明化；UI 面（composer/菜单）照旧 seal-soft
+    const sel = ruleBody(PANEL_CSS, '.pp-region ::selection');
+    expect(sel).toContain('background: transparent');
+    // 朱线层：固定视口层 z 62（纸内件带上沿之上、浮钮 70 之下）
+    const ink = ruleBody(PANEL_CSS, '.pp-sel-ink {');
+    expect(ink).toContain('position: fixed');
+    expect(ink).toContain('pointer-events: none');
+    expect(ink).toContain('z-index: 62');
+    // 纯函数真源在册（行合并 + 手写路径）
+    expect(existsSync(join(SRC, 'paper', 'sel-ink.ts'))).toBe(true);
+    expect(PANEL_TSX).toContain('mergeSelectionLines');
+    expect(PANEL_TSX).toContain('selInkPaths');
   });
 
   it('块入场（2026-08-30 流式生命感）：入场动画单次（尾笔已由用户拍板拆除）', () => {
@@ -84,15 +112,17 @@ describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
 });
 
 describe('卷首 folio-head 钉值（2026-08-30 原型转录：prototype/lantai.html .folio-head 族）', () => {
-  it('卷首结构：玉徽居中钤印 + 硬规线底 + 朱砂版口钮；浮动标签带退役', () => {
-    const head = ruleBody(PANEL_CSS, '.pp-folio-head');
+  it('卷首结构：玉徽居中钤印 + 硬规线底 + 朱砂版口钮（2026-09-02 改档：只挂活跃卷）；浮动标签带退役', () => {
+    const head = ruleBody(PANEL_CSS, '.pp-folio-head {');
     expect(head).toContain('border-bottom: var(--rule-hard)');
     // pointer-events none：点击穿透流区背景，激活语义不变
     expect(head).toContain('pointer-events: none');
     const yuwei = ruleBody(PANEL_CSS, '.pp-yuwei');
     expect(yuwei).toContain('margin: 0 auto 12px');
     expect(yuwei).toContain('width: 24px');
-    const tab = ruleBody(PANEL_CSS, '.pp-folio-head::after');
+    // 版口钮 2026-09-02 改档：只挂活跃卷（.pp-region-active 前缀）——整屏至多一处红，
+    // 红在哪卷即活卷（对原型 .folio-head 的主动偏离：原型卷卷都挂，先于一纸多卷定案）
+    const tab = ruleBody(PANEL_CSS, '.pp-region-active .pp-folio-head::after');
     expect(tab).toContain('width: 56px');
     expect(tab).toContain('height: 3px');
     // 版口钮是朱砂——卷首钤印语义（朱砂=人/仪式），非状态色挪用
@@ -207,19 +237,20 @@ describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', (
     expect(anchor).toContain('box-shadow: 0 0 2px');
   });
 
-  it('流区真纸（2026-09-01 材质批二）：每卷一张纸——不透明底 + 纸纹乘印 + 纸性三参', () => {
+  it('流区真纸（2026-09-01 材质批二 + 2026-09-02 物理包边改档）：每卷一张纸——不透明底 + 纸纹乘印 + 纸性三参', () => {
     const region = ruleBody(PANEL_CSS, '.pp-region {');
     expect(region).toContain('paper-sheet.jpg');
     expect(region).toContain('background-blend-mode: multiply');
     expect(region).toContain('var(--sheet-ox');
     expect(region).toContain('var(--sheet-j');
-    // 接触落影：同色纸放同色桌面，全靠纸厚投影读出「一张纸」
-    expect(region).toContain('box-shadow: var(--shadow-sheet)');
+    // 接触落影仍在列序末位（2026-09-02 起前面叠裱边带/受光缘/背光缘——物理包边）
+    expect(region).toContain('var(--shadow-sheet)');
     expect(TOKENS_CSS).toContain('--shadow-sheet:');
-    // active 只动 background-color——background: 简写会把纸纹层抹掉
-    const active = ruleBody(PANEL_CSS, '.pp-region-active');
-    expect(active).toContain('background-color: color-mix');
-    expect(active).not.toContain('background:');
+    // active 2026-09-02 改档：洗底退役（「变色」判死）——不动任何 background，
+    // 只换落影一档；background 简写禁令延续（会抹纸纹层）
+    const active = ruleBody(PANEL_CSS, '.pp-region-active {');
+    expect(active).not.toContain('background');
+    expect(active).toContain('var(--shadow-sheet-active)');
   });
 });
 

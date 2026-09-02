@@ -33,6 +33,12 @@
 .pp-root ::selection {
   background: var(--seal-soft);
 }
+/* 划词朱线（2026-09-02 视觉迭代）：流区内原生洗底退役——选区以手写朱线呈现
+ * （.pp-sel-ink，PaperPanel 渲染；paper/sel-ink.ts 纯函数）。纸不动、只落墨；
+ * composer/菜单等 UI 面照旧洗底。 */
+.pp-region ::selection {
+  background: transparent;
+}
 .pp-root ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -198,10 +204,9 @@
  * 一纸多卷定案（stage-2 §3.5）：流区宽 1440 / 线性排比间距 720 / 边缘拖动
  * 移动整区（宽度不变，无手柄条——hover 即拖拽态）。z 序：流区底、块之上、
  * 边缘手柄最上（边缘可随时抓）。 */
-/* 界栏（规格书 §1 锁定件 + 浸墨 §10 双线框）：流区 = 古籍「叶」，四边版框。
- * 外框 2px 墨线（未活跃 60% 墨退后、活跃全墨），内衬 1px 发丝（offset -4px）
- * = 古籍双栏线。框走墨系（版式结构件）不走朱砂——朱砂=人铁律；
- * 活跃卷另加朱砂洗底示活。 */
+/* 界栏（2026-09-02 改档）：旧案 = 规格书 §1 锁定件双线框（2px 半墨 + 飘浮发丝），
+ * 实机判「简陋」且与真纸材质打架——用户拍板读法 B 物理包边（见 .pp-region 规则）。
+ * 墨框退役；版框语义移交「印在纸上的墨」叙事，纸缘交还材料。 */
 /* 流区 = 桌面上的贴纸（材质批 2026-09-01；贴纸纹理批同日修档）：底色不透明——
  * 纸不透光；纸纹乘印其上，纹随区动（贴纸语义：桌面纹归 .pp-desk，流区纹归本层）。
  * paper-sheet.jpg 由 fiber 线性扩幅回中派生（a=1.63/b=-.555：振幅 .031→.067 立得
@@ -212,26 +217,37 @@
  * 「不像同一批纸」；相位只在 tile 周期内挪取窗。
  * 帘纹不进流区（2026-09-02 实机验收：单层纸态过审「横纹消失」——贴纸的纸性
  * 由 paper-sheet 纤维独自承载，帘纹叠乘后读作屏纹；桌面帘纹照留 .pp-desk）。 */
+/* 物理包边（2026-09-02 视觉迭代·用户拍板读法 B）：界栏墨框退役——纸缘 = 材料
+ * 不是墨。裱边带（纸色深一档）+ 受光缘（上缘一线）+ 背光缘（下缘沉）+ 接触落影。
+ * 版框是「印在纸上的墨」，流区这张「叶」不印框（WebGL 探针 prototype/webgl-paper.html
+ * 判读定案）；纸缘交还给纸。border/outline 全退役，四至回归背景盒。 */
 .pp-region {
   position: absolute;
-  border: 2px solid color-mix(in oklch, var(--ink-1) 58%, transparent);
-  outline: 1px solid color-mix(in oklch, var(--ink-4) 80%, transparent);
-  outline-offset: -5px;
   background-color: color-mix(in oklch, var(--paper-deep) calc(10% + 8% * var(--sheet-j, 0)), var(--paper));
   background-image: url("../../../assets/paper/paper-sheet.jpg");
   background-size: 1200px;
   background-repeat: repeat;
   background-position: var(--sheet-ox, 0px) var(--sheet-oy, 0px);
   background-blend-mode: multiply;
-  /* 接触落影（--shadow-sheet）：同色纸放同色桌面，全靠纸厚投影读出「一张纸」 */
-  box-shadow: var(--shadow-sheet);
+  /* 物理包边（box-shadow 列序前者叠上层）：受光缘（左上，光自左上）→ 背光缘
+   * （右下沉）→ 裱边带（一圈纸色深带，7px——A/B 台定档）→ 接触落影（纸厚，
+   * 同色纸放同色桌全靠它） */
+  box-shadow:
+    inset 3px 4px 5px var(--sheet-lit),
+    inset -2px -3px 6px var(--sheet-shade),
+    inset 0 0 0 7px var(--sheet-band),
+    var(--shadow-sheet);
   z-index: 1;
 }
-/* active 只动 background-color——background: 简写会把纸纹层抹掉 */
+/* active 只动 box-shadow——朱砂洗底退役（2026-09-02「变色」判死）：活跃 = 接触
+ * 落影加深一档（手里正拿着的纸，离桌面更高一点），结构墨阶不动纸色；
+ * background 简写仍禁——会抹纸纹层。版口钮独挂 = 另一条活跃门控规则（见卷首段）。 */
 .pp-region-active {
-  border-color: var(--ink-1);
-  outline-color: var(--ink-4);
-  background-color: color-mix(in oklch, var(--seal) 4%, var(--paper));
+  box-shadow:
+    inset 3px 4px 5px var(--sheet-lit),
+    inset -2px -3px 6px var(--sheet-shade),
+    inset 0 0 0 7px var(--sheet-band),
+    var(--shadow-sheet-active);
 }
 /* ── 桌垫（材质批修复 2026-09-01：贴纸语义两刀之二）──
  * 真因不是「画不出」（实机活体验证：荧光绿/品红桌面双盲均画得出）——是纹理
@@ -278,7 +294,10 @@
   pointer-events: none;
   user-select: none;
 }
-.pp-folio-head::after {
+/* 活跃卷版口钮（2026-09-02 视觉迭代）：朱砂条从「卷卷都挂」改「只挂活跃卷」——
+ * 整屏至多一处红（浸墨法则 3），红在哪卷即活卷；对原型 .folio-head 的主动偏离
+ * （原型先于真纸材质批与一纸多卷定案）。 */
+.pp-region-active .pp-folio-head::after {
   content: "";
   position: absolute;
   left: 0;
@@ -340,7 +359,8 @@
   right: -3px;
 }
 .pp-region-edge:hover {
-  background: color-mix(in oklch, var(--seal) 24%, transparent);
+  /* 攥边墨洗（2026-09-02 视觉迭代）：朱砂红带退役——边缘随包边走材料语汇，红不进结构缘 */
+  background: color-mix(in oklch, var(--ink-2) 30%, transparent);
 }
 
 /* 原点十字（世界原点方位感 D-R1-1） */
@@ -2162,6 +2182,30 @@
 .pp-strip-fab:hover {
   background: var(--seal);
   color: var(--paper);
+}
+/* ── 划词朱线（2026-09-02 视觉迭代）：流区选区 = 手写朱笔下划线──
+ * 纸不动、只落墨（圈点句读语汇，朱砂=人）；原生洗底在 .pp-region 内退役。
+ * 固定视口层（client 坐标，Range 活矩形），z 62：纸内件带上沿（60）之上、
+ * 浮钮（70）之下——线随字走，不盖交互。主笔 seal 实线 + echo 淡墨第二笔
+ * （浸墨双笔手法）；粗细 1.7px 恒定，手感来自微伏不来自粗细变化。 */
+.pp-sel-ink {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 62;
+}
+.pp-sel-ink path {
+  fill: none;
+  stroke: var(--seal);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  opacity: 0.88;
+}
+.pp-sel-ink path.pp-sel-ink-echo {
+  stroke-width: 1;
+  opacity: 0.32;
 }
 /* 幽灵预览：拖拽过程反馈——带内灰（不成条）/ 带外朱砂（松手成条） */
 .pp-strip-ghost {
