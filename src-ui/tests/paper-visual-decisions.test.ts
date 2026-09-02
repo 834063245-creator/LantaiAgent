@@ -37,6 +37,24 @@ function ruleBody(css: string, selector: string): string {
   return css.slice(i, css.indexOf('}', i));
 }
 
+/** 截取 @keyframes 全体（含 from/to 嵌套块——花括号配平，规则体截取法够不着）。 */
+function keyframesBody(css: string, name: string): string {
+  const i = css.indexOf(`@keyframes ${name}`);
+  if (i < 0) return '';
+  let depth = 0;
+  let started = false;
+  for (let j = i; j < css.length; j++) {
+    if (css[j] === '{') {
+      depth += 1;
+      started = true;
+    } else if (css[j] === '}') {
+      depth -= 1;
+      if (started && depth === 0) return css.slice(i, j + 1);
+    }
+  }
+  return '';
+}
+
 describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
   it('B4：来文 22px/1.65 朱砂深（token 化后守真源 + CSS 变量引用）', () => {
     // 真源钉值（type-tokens.ts）——2026-08-30 标题化：题 > 正文 17
@@ -110,6 +128,19 @@ describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
     expect(ruleBody(PANEL_CSS, '.pp-block.pp-tail')).toBe('');
     const enter = ruleBody(PANEL_CSS, '.pp-block.pp-enter');
     expect(enter).toContain('animation: pp-enter');
+  });
+
+  it('块入场定位纪律（2026-09-03 生产事故立法）：pp-enter 帧内禁 transform——上浮只走独立 translate 属性', () => {
+    // 事故：块定位是内联 transform（2026-09-02 换装），pp-enter 的 from 帧残留
+    // left/top 时代的 transform: translateY(8px)——声明即顶掉内联槽位，新块入场
+    // 被摆到流容器左上角再飞回槽位（发消息后排版乱掉/输入似消失/文字乱飞）。
+    // 纪律：凡打在 transform 定位块上的 keyframes，任何一帧都不得声明 transform；
+    // 相对上浮改走独立 translate 属性（与内联 transform 合成，Chrome 104+）。
+    const kf = keyframesBody(PANEL_CSS, 'pp-enter');
+    expect(kf).not.toBe('');
+    expect(kf).not.toMatch(/transform\s*:/);
+    expect(kf).toContain('translate: 0 8px');
+    expect(kf).toContain('translate: 0 0');
   });
 });
 

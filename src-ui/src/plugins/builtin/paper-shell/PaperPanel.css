@@ -1238,20 +1238,25 @@
 
 /* ── 流式生命感（2026-08-30）：首见入场 ──
  * pp-enter：块首次进流时淡入上浮一次——类发放由壳层首见集合控制（seenBlocks），
- * 虚拟化平移重挂不重放；transform 动画不碰 left/top 定位，测量零影响。
- * 2026-09-02 换装：块定位改内联 transform 后，keyframes 的 to 帧必须留空
- * transform（不可写 none——both 填充会把内联 translate(x,y) 清成静态位置，
- * 块全叠左上角）；animation 用 backwards 只保留入场前状态，结束后回落内联值。 */
+ * 虚拟化平移重挂不重放。
+ * 2026-09-02 换装：块定位改内联 transform 后，keyframes 任何一帧都不得声明
+ * transform——声明即覆盖内联 translate(x,y) 槽位（to 帧 transform:none + both
+ * 填充会把块永久钉在左上角；from 帧 translateY(8px) 会把新块摆到容器左上角
+ * 再飞回槽位——2026-09-03 生产事故：发消息后新块从角落乱飞、文字似消失）。
+ * animation 用 backwards 只保留入场前状态，结束后回落内联值。
+ * 上浮手感改走独立 translate 属性：与 transform 合成（translate 先乘）而非
+ * 覆盖——保住 left/top 时代「相对上浮 8px」的原设计（Chrome 104+）。 */
 .pp-block.pp-enter {
   animation: pp-enter 0.24s cubic-bezier(0.23, 1, 0.32, 1) backwards;
 }
 @keyframes pp-enter {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    translate: 0 8px;
   }
   to {
     opacity: 1;
+    translate: 0 0;
   }
 }
 
