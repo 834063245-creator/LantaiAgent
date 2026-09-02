@@ -24,6 +24,7 @@ import { createRoot } from 'react-dom/client';
 import { log } from './agent/logger';
 import { App } from './app/App';
 import { initCordisKernel } from './cordis/boot';
+import { auditBoot } from './plugins/boot-gate';
 import { loadBuiltinPlugins, loadExternalPlugins } from './plugins/loader';
 import { bootShell } from './shell/boot';
 
@@ -47,12 +48,18 @@ const appRoot = document.getElementById('app-root');
 if (!appRoot) throw new Error('app-root 挂载点不存在——index.html 被破坏');
 createRoot(appRoot).render(createElement(App));
 
-// ── 外部插件装载（WO-S0B）+ 壳引导（S2）：产物装载先于壳行执行——
-//    位移式内置插件（增补四）在纸面板直落前完成 bundle 行 → 产物行互换，
-//    首帧即终态（无面板闪卸重挂）。装载永不 reject（失败隔离，通道失败
-//    退回 bundle 兜底行）；bootShell 的引导三件套 + 组合 patch + 壳行
-//    按表序执行 + 冷启动收尾（含纸面板直落）。flowDeps 缺省 = 出厂流。──
+// ── 外部插件装载（WO-S0B）+ boot 审计（S4）+ 壳引导（S2）：产物装载先于
+//    壳行执行——位移式内置插件（增补四）在纸面板直落前完成 bundle 行 →
+//    产物行互换，首帧即终态（无面板闪卸重挂）。装载永不 reject（失败隔离，
+//    通道失败退回 bundle 兜底行）；S4 起装载后经 boot 审计——全树 settle +
+//    全 ACTIVE 才放行 bootShell（fail-loud：任一 FAILED / PENDING 超时 =
+//    启动不进会话，错误可见）。flowDeps 缺省 = 出厂流。──
 void (async () => {
   await loadExternalPlugins(pluginKernelRoot);
+  const audit = await auditBoot(pluginKernelRoot);
+  if (!audit.ok) {
+    log.error('main', '[boot-gate] 插件装载失败（fail-loud）', { failures: audit.failures });
+    throw new Error('[boot-gate] 插件装载失败:\n' + audit.failures.map((f) => '  - ' + f).join('\n'));
+  }
   await bootShell();
 })();

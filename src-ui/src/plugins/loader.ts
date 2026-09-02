@@ -528,15 +528,10 @@ async function loadOne(
       fiber: null,
     };
   }
-  // 3) inject 依赖存在性（缺 → error 状态，WO-S0B 装载期校验）
-  if (manifest.inject) {
-    const missing = manifest.inject.filter((name) => root.reflect.get(name) == null);
-    if (missing.length > 0)
-      return {
-        record: withBuiltinMeta(manifest.name, manifest, '缺少依赖服务: ' + missing.join(', ')),
-        fiber: null,
-      };
-  }
+  // 3) S4：inject 依赖存在性检查退役——cordis fiber PENDING 挂起语义取代
+  //    一次性存在性拒载。manifest.inject 合并进插件对象 inject（见 5 下方
+  //    target 构造），缺依赖 = fiber PENDING 等待；boot 审计（boot-gate.ts）
+  //    settle 后判全 ACTIVE 才放行——PENDING 且依赖永缺 = 审计 fail-loud。
   // 4) disabled 跳过（不 import）
   if (deps.disabled.has(manifest.name)) {
     return {
@@ -650,24 +645,29 @@ async function loadOne(
     // 合并声明）。C11-1：manifest.tools 的执行函数 = entry 模块的
     // toolHandlers 命名导出（声明数据 + 执行映射一一对应，失配 → 插件
     // error 记录，失败隔离）。
+    // S4：manifest.inject 并入插件对象 inject——cordis fiber PENDING 挂起
+    // 语义（缺依赖不拒载，等 provide；boot 审计判全 ACTIVE）。
     const needsToolDecls = (manifest.tools?.length ?? 0) > 0;
     const needsMcp = (manifest.mcpServers?.length ?? 0) > 0;
-    const target =
-      needsToolDecls || needsMcp
-        ? {
-            name: candidate.name,
-            inject: [...new Set([...((candidate as { inject?: string[] }).inject ?? []), 'tools'])],
-            async apply(ctx: Context) {
-              await candidate.apply(ctx);
-              if (needsToolDecls) {
-                mountToolDeclarations(ctx, manifest.name, manifest.tools ?? [], mod.toolHandlers);
-              }
-              if (needsMcp) {
-                await registerMcpServerTools(ctx, manifest.name, manifest.mcpServers ?? [], deps.mcpBridgeIO);
-              }
-            },
-          }
-        : candidate;
+    const candidateInject = (candidate as { inject?: string[] }).inject ?? [];
+    const manifestInject = manifest.inject ?? [];
+    const extraInject = manifestInject.filter((n) => !candidateInject.includes(n));
+    const needsWrapper = needsToolDecls || needsMcp || extraInject.length > 0;
+    const target = needsWrapper
+      ? {
+          name: candidate.name,
+          inject: [...new Set([...candidateInject, ...extraInject, ...(needsToolDecls || needsMcp ? ['tools'] : [])])],
+          async apply(ctx: Context) {
+            await candidate.apply(ctx);
+            if (needsToolDecls) {
+              mountToolDeclarations(ctx, manifest.name, manifest.tools ?? [], mod.toolHandlers);
+            }
+            if (needsMcp) {
+              await registerMcpServerTools(ctx, manifest.name, manifest.mcpServers ?? [], deps.mcpBridgeIO);
+            }
+          },
+        }
+      : candidate;
     const fiber = await root.plugin(target);
     return {
       record: isBuiltinNamed

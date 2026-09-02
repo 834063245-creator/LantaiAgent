@@ -182,7 +182,7 @@ describe('loadExternalPlugins（失败隔离铁律）', () => {
     expect(plugins[0]?.status).toBe('disabled');
   });
 
-  it('inject 缺失 → error 记录（装载期存在性校验）', async () => {
+  it('S4：inject 缺失 → 不拒载（cordis fiber PENDING 挂起，boot 审计判生死）', async () => {
     const root = new Context();
     await loadExternalPlugins(root, {
       origin: ORIGIN,
@@ -191,13 +191,14 @@ describe('loadExternalPlugins（失败隔离铁律）', () => {
         [ORIGIN + '/plugins.json']: { disabled: [] },
         [ORIGIN + '/hello/manifest.json']: { ...HELLO_MANIFEST, inject: ['nonexistent-service'] },
       }),
-      importModule: async () => {
-        throw new Error('不应被调用');
-      },
+      importModule: async () => ({ default: { name: 'hello', apply() {} } }),
     });
     const plugins = usePluginStore.getState().plugins;
-    expect(plugins[0]?.status).toBe('error');
-    expect(plugins[0]?.error).toContain('nonexistent-service');
+    // S4：装载不再因缺依赖拒载——插件已装载（active），fiber 挂 PENDING
+    // 等依赖 provide（此用例里永缺——boot 审计会判失败，见 boot-gate.test）
+    expect(plugins[0]?.status).toBe('active');
+    // fiber 在册（activeExternalFibers 有记录）
+    expect(activeExternalPluginNames()).toContain('hello');
   });
 
   it('manifest 缺失 / 校验失败 → error 记录（不 import）', async () => {
