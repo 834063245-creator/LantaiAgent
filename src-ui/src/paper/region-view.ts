@@ -36,4 +36,13 @@ export interface RegionView {
   regionHeight: number;
   /** 卷首头高度（世界单位，measureFolioHeadHeight 实测——流区框向上扩展包住卷首） */
   folioH: number;
+  /** P2-2 卷级虚拟化（2026-09-02）：true = 视口外 stub——blocks/flowGeom 为空
+   *  数组，跳过全量派生（translate/adapt/measure/layout）。消费面（小地图
+   *  extent / 孤儿钉 openBlockIds / 页脚块数）用最近一次全量构建值：
+   *  extent / lastBlockIds / lastBlockCount（regionExtentRef 登记）。
+   *  活跃卷与拖拽/缩放中的卷永不 stub。 */
+  stubbed?: boolean;
+  extent?: { x0: number; y0: number; x1: number; y1: number };
+  lastBlockIds?: ReadonlySet<string>;
+  lastBlockCount?: number;
 }

@@ -980,6 +980,15 @@ export function PaperPanel() {
   viewRef.current = view;
   const regionsRef = useRef<RegionView[]>([]);
   const blockSessionRef = useRef<Map<string, string>>(new Map());
+  /** P2-2 卷级虚拟化：每卷最近一次全量构建的包围盒/块 id 集/块数——
+   *  stub 判定的输入 + stub 消费面（小地图 extent / 孤儿钉 openBlockIds /
+   *  页脚块数）的最近已知值真源。离屏后台流增长在回场时刷新。 */
+  const regionExtentRef = useRef<
+    Map<
+      string,
+      { extent: { x0: number; y0: number; x1: number; y1: number }; blockIds: Set<string>; blockCount: number }
+    >
+  >(new Map());
 
   /* 钉住块位置查找表：引用随 canvasState.pins 引用稳定——不变化时 translate
    * 缓存命中（流式增量铁律：纸面不动的会话零重算）。w 一并入表（P2b 宽度
@@ -1023,9 +1032,18 @@ export function PaperPanel() {
     void measureTick;
     const out: RegionView[] = [];
     const blockSession = new Map<string, string>();
+    // P2-2 卷级虚拟化（2026-09-02，审批通过）：视口外（含 stub margin）的卷
+    // 跳过全量派生——translate/adapt/measure/layout 是每帧 O(块) 主消耗，
+    // 100 卷摊开时 memo 重算（pan/zoom 每帧）被全部卷平摊。stub 只带锚点 +
+    // 最近一次全量构建的包围盒/块 id 集。回场恢复全量：translate 缓存增量 +
+    // measure 缓存命中，单次回场成本低。
+    // stub margin 必须大于 InkLayer 的绘制 margin（600/800）——远缩墨迹
+    // （rAF 直读 regionsRef）不因 stub 闪断。活跃卷 + 拖拽/缩放中的卷永不
+    // stub（小地图活跃墨迹 / 跟手不缺）。首见卷（extent 未知）全量构建。
+    const STUB_MX = 900;
+    const STUB_MY = 1200;
     sessions.forEach((s, i) => {
       const sid = String(s.id);
-      const msgs = regionMsgs[s.id]?.messages ?? [];
       const persisted = canvasState.spread[sid];
       const baseAnchor = persisted ?? defaultRegionFor(i);
       // 边缘拖动中：用拖动态锚点覆盖（块/纸条随流区整体平移）；
@@ -1038,6 +1056,44 @@ export function PaperPanel() {
           ? { anchorX: edgeDragPos.x, anchorY: edgeDragPos.y, width: baseAnchor.width }
           : baseAnchor;
 
+      const known = regionExtentRef.current.get(sid);
+      const inStubRange =
+        !!known &&
+        !dragging &&
+        !resizing &&
+        activeSessionKey !== sid &&
+        (known.extent.x1 + STUB_MX < viewRect.x0 ||
+          known.extent.x0 - STUB_MX > viewRect.x1 ||
+          known.extent.y1 + STUB_MY < viewRect.y0 ||
+          known.extent.y0 - STUB_MY > viewRect.y1);
+      if (known && inStubRange) {
+        // stub：锚点 + 最近已知派生值。render 面（visibleRegionIds 之后）不
+        // 渲染 stub；小地图/孤儿钉/页脚计数消费最近已知值。
+        out.push({
+          sessionId: sid,
+          sessionNum: s.id,
+          label: s.label,
+          anchor,
+          blocks: [],
+          layout: new Map(),
+          flowGeom: [],
+          pinnedGeom: [],
+          flowWindow: { first: 0, lastExcl: 0 },
+          visibleIds: new Set(),
+          seq: new Map(),
+          regionTop: known.extent.y0,
+          regionBottom: anchor.anchorY,
+          regionHeight: Math.max(0, anchor.anchorY - known.extent.y0) + 72,
+          folioH: 72,
+          stubbed: true,
+          extent: known.extent,
+          lastBlockIds: known.blockIds,
+          lastBlockCount: known.blockCount,
+        });
+        return;
+      }
+
+      const msgs = regionMsgs[s.id]?.messages ?? [];
       let cache = translateCacheBySession.current.get(s.id) ?? null;
       const res = translateMessagesCached(msgs, pinsMap, cache);
       cache = res.cache;
@@ -1088,6 +1144,42 @@ export function PaperPanel() {
       const regionBottom = anchor.anchorY;
       // 卷首头高度：标题按流区可用宽实测（folio 头左右内距 16×2，镜像 .pp-folio-head padding）
       const folioH = measureFolioHeadHeight(s.label || `案卷 ${s.id}`, anchor.width - 32);
+      // P2-2：全量构建后登记包围盒/块 id 集——stub 判定与 stub 消费面的
+      // 最近已知值真源。空卷（无块）用锚点框兜底（stub 判定不至于盲区）。
+      if (blocks.length > 0) {
+        let ex0 = Infinity;
+        let ey0 = Infinity;
+        let ex1 = -Infinity;
+        let ey1 = -Infinity;
+        for (const g of flowGeom) {
+          ex0 = Math.min(ex0, g.x);
+          ey0 = Math.min(ey0, g.y);
+          ex1 = Math.max(ex1, g.x + g.w);
+          ey1 = Math.max(ey1, g.y + g.h);
+        }
+        for (const g of pinnedGeom) {
+          ex0 = Math.min(ex0, g.x);
+          ey0 = Math.min(ey0, g.y);
+          ex1 = Math.max(ex1, g.x + g.w);
+          ey1 = Math.max(ey1, g.y + g.h);
+        }
+        regionExtentRef.current.set(sid, {
+          extent: { x0: ex0, y0: ey0, x1: ex1, y1: ey1 },
+          blockIds: new Set(blocks.map((b) => b.id)),
+          blockCount: blocks.length,
+        });
+      } else {
+        regionExtentRef.current.set(sid, {
+          extent: {
+            x0: anchor.anchorX - anchor.width / 2,
+            x1: anchor.anchorX + anchor.width / 2,
+            y0: anchor.anchorY - 200,
+            y1: anchor.anchorY + 72,
+          },
+          blockIds: new Set(),
+          blockCount: 0,
+        });
+      }
       out.push({
         sessionId: sid,
         sessionNum: s.id,
@@ -1121,6 +1213,7 @@ export function PaperPanel() {
     foldedOf,
     sidecarFoldedOf,
     sidecarOutOf,
+    activeSessionKey,
     adaptBlocks,
   ]);
 
@@ -1133,7 +1226,15 @@ export function PaperPanel() {
   const openSessionIds = useMemo(() => new Set(sessions.map((s) => String(s.id))), [sessions]);
   const openBlockIds = useMemo(() => {
     const s = new Set<string>();
-    for (const r of regions) for (const b of r.blocks) s.add(b.id);
+    // P2-2：stub 卷用最近已知块 id 集（孤儿钉判定不因离屏误判——
+    // 钉的源块在钉创建时刻必在最近已知集内）
+    for (const r of regions) {
+      if (r.stubbed) {
+        for (const id of r.lastBlockIds ?? []) s.add(id);
+      } else {
+        for (const b of r.blocks) s.add(b.id);
+      }
+    }
     return s;
   }, [regions]);
   const orphanPins = useMemo(() => {
@@ -1813,6 +1914,14 @@ export function PaperPanel() {
     let x1 = -Infinity;
     let y1 = -Infinity;
     for (const r of regions) {
+      // P2-2：stub 卷用最近已知包围盒（离屏不增长——回场刷新）
+      if (r.stubbed && r.extent) {
+        x0 = Math.min(x0, r.extent.x0);
+        y0 = Math.min(y0, r.extent.y0);
+        x1 = Math.max(x1, r.extent.x1);
+        y1 = Math.max(y1, r.extent.y1);
+        continue;
+      }
       for (const g of r.flowGeom) {
         x0 = Math.min(x0, g.x);
         y0 = Math.min(y0, g.y);
@@ -2302,16 +2411,19 @@ export function PaperPanel() {
   );
 
   const zoomLabel = Math.round(view.zoom * 100) + '%';
-  const totalBlocks = regions.reduce((n, r) => n + r.blocks.length, 0);
+  // P2-2：stub 卷用最近已知块数（离屏后台流增长回场刷新）
+  const totalBlocks = regions.reduce((n, r) => n + (r.stubbed ? (r.lastBlockCount ?? 0) : r.blocks.length), 0);
   const totalPinned = Object.keys(canvasState.pins).length;
   const totalStrips = canvasState.strips.length;
 
-  /* 流区容器横向可见性（虚拟化：眼睛看不到的流区不进 DOM） */
+  /* 流区容器横向可见性（虚拟化：眼睛看不到的流区不进 DOM）。
+   *  P2-2：stub 卷不进 DOM（其 margin 大于可见 margin——回场先恢复全量）。 */
   const visibleRegionIds = useMemo(() => {
     const s = new Set<string>();
     const x0 = viewRect.x0 - OVERSCAN;
     const x1 = viewRect.x1 + OVERSCAN;
     for (const r of regions) {
+      if (r.stubbed) continue;
       const half = r.anchor.width / 2;
       if (r.anchor.anchorX + half >= x0 && r.anchor.anchorX - half <= x1) s.add(r.sessionId);
     }
