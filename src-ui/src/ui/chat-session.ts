@@ -460,6 +460,9 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
     showToast('新建案卷需要先有工作区——请在首页新建或指定工作区', 'warn');
     return;
   }
+  // 代际防护（H1 跨工作区串卷，2026-09-02）：与 loadSessionFromDisk 同款——
+  // 工厂装配在途期间切走工作区，迟到的 append 不得落进新工作区 sess store。
+  const epoch = getWorkspaceEpoch();
   // DSH 形态（2026-08-25）：信封先行——建卷是纯数据操作，立即摊开可见；
   // 句柄不是建卷的前置条件（拟文时 ensureSessionAgent 惰性现造）。
   // 工厂在场时顺手现造一个句柄（首次拟文的常见路径提前就绪）；
@@ -475,6 +478,12 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
     } catch {
       /* 装配失败 = 句柄缺席，内容层照常（错误由拟文路径可见） */
     }
+  }
+  // 在途期间已切走工作区 → 丢弃（同 loadSessionFromDisk：句柄就地 dispose，
+  // 旧区新建卷不得 append 进新工作区）
+  if (!isCurrentEpoch(epoch)) {
+    newAgent?.dispose();
+    return;
   }
   // ponytail: 消息在会话级 store 中 — 无需保存/恢复。
   // 只需保存旧会话的 token 计数。
@@ -852,6 +861,11 @@ export async function listSavedSessions(
 /** 从磁盘加载已保存的会话到新标签页（单卷打开路径——首页点卷/侧边栏续开）。
  *  批量摊开集恢复走 batchRestoreSessions（P3-1）——本函数不再承担恢复路径。 */
 export async function loadSessionFromDisk(ctx: SessionContext, projectPath: string, sessionId: number): Promise<void> {
+  // 代际防护（H1 跨工作区串卷，2026-09-02）：摊开是 fire-and-forget（space-service
+  // .expand / 签条架续写），读盘 + 工厂装配在途期间用户可能已切走工作区——迟到的
+  // append 会把旧区卷混进新工作区 sess store（PaperPanel 兜底落位还会把它写进
+  // 新工作区 canvas.json，持久污染）。与 scheduleAutoSave 同款防护面（H5）。
+  const epoch = getWorkspaceEpoch();
   // 续开查重（L1/F2）：该卷已在案头摊开 → 直接换卷不克隆（旧行为：无条件
   // append → 同号双脊，旧句柄被顶掉未 dispose，合卷即变死卷）。
   {
@@ -882,6 +896,13 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
     newAgent = (await getAgentFactory(ctx.storeId)?.(data.id || sessionId)) ?? null;
   } catch {
     /* 装配失败 = 句柄缺席，内容层照常（错误由拟文路径可见） */
+  }
+
+  // 在途期间已切走工作区 → 丢弃（已造句柄就地 dispose，不留孤儿；旧区卷
+  // 不得 append 进新工作区——见函数头代际防护注释）
+  if (!isCurrentEpoch(epoch)) {
+    newAgent?.dispose();
+    return;
   }
 
   const conv = (data.messages as Message[]).filter((m) => m.role !== 'system');

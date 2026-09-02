@@ -73,7 +73,7 @@ import { resetSessionState } from './ui/chat-session';
 import { getDiagnosticsForFile, LspService } from './ui/lsp-client';
 import { createBuilderDeps, createRuntimeAdapter } from './ui/runtime-adapter';
 import { resolveSemanticToolName } from './ui/tool-semantics';
-import { bumpWorkspaceEpoch } from './workspace-scope';
+import { bumpWorkspaceEpoch, getWorkspaceEpoch, isCurrentEpoch } from './workspace-scope';
 
 // ═══════════════════════════════════════════════════════
 // 从引擎注册表动态加载工具
@@ -506,11 +506,23 @@ export class Workspace {
   async deactivate(chatPanel: ChatCore): Promise<void> {
     this._active = false;
 
+    // 跨工作区串染根治（H3，2026-09-02）：deactivate 可能被 switchWorkspace 的
+    // withTimeout(5000) 放弃后仍在后台跑——超时/异常路径的 catch 会调
+    // forceClearState 抢救（推进代际）并继续开新工作区。迟到的保存步骤会
+    // 用「已被新工作区覆盖的 store」快照写进旧工作区文件：saveCanvasState 把
+    // 新工作区摊开集写进旧区 canvas.json（持久污染）；workspace_deactivate
+    // 还会误关新工作区的后端态。每步落盘前校验代际，过期即弃。
+    const epoch = getWorkspaceEpoch();
+
     // 保存聊天会话
     try {
       await chatPanel.saveActiveSession(this.path);
     } catch {
       /* 忽略 */
+    }
+    if (!isCurrentEpoch(epoch)) {
+      console.warn('[Workspace.deactivate] 代际已变（超时被 forceClearState 抢救）——跳过剩余落盘，防跨工作区串写');
+      return;
     }
 
     // Stage-5：切走前落盘工作区画布状态（布局 + 公共物——工作区级，随工作区走）
@@ -519,12 +531,15 @@ export class Workspace {
     } catch {
       /* 忽略 */
     }
+    if (!isCurrentEpoch(epoch)) return;
 
-    // 停止 watcher 并清除后端状态
-    try {
-      await typedRpc('workspace_deactivate', {});
-    } catch {
-      /* 忽略 */
+    // 停止 watcher 并清除后端状态（过期跳过——此 RPC 会误关**新**工作区的后端态）
+    if (isCurrentEpoch(epoch)) {
+      try {
+        await typedRpc('workspace_deactivate', {});
+      } catch {
+        /* 忽略 */
+      }
     }
 
     // 统一释放 fiber 上登记的全部工作区级清理器（dispose-to-quiescence：等待
@@ -768,6 +783,14 @@ export class Workspace {
 
   private async _setupAgentInner(chatPanel: ChatCore): Promise<void> {
     this._storeId = chatPanel.panelId;
+
+    // 跨工作区串卷根治（H2，2026-09-02）：旧工作区会话面清理必须在**任何可抛
+    // 错的装配步骤之前**。此前挂在函数尾部——switchWorkspace 对 setupAgent 的
+    // catch 只 pushStatus 后继续走恢复链（setProjectPath → restoreCanvasSpread），
+    // 装配链任一步抛错即跳过清理 → sess store 残留旧区在内存卷 → 恢复链的
+    // openIds 把撞号卷判「已在案头」，旧区内容渲染到新工作区画布（实机串卷
+    // 根因之二；之一见 chat-session.ts 摊开路径的代际防护）。
+    resetSessionState(chatPanel.panelId);
 
     // P0-4 优化（2026-09-02）：loadSettingsWithSecrets（含 credential_get 并行解密）
     // 与 get_global_memory_dir 互相独立——Promise.all 并行，省 1 次 IPC 往返。
@@ -1194,9 +1217,6 @@ export class Workspace {
     // 经工厂现造；raw Agent 引用面由 factory 内部 agentRef 承担。
     chatPanel.setAgentFactory(factory);
     this._factoryRegistered = true;
-    // 工作区切换的会话面重置（旧工作区句柄/消息 store/纸面清理）——
-    // 原由 setAgent 承担（伴随铺卷），现独立调用（resetSessionState 不铺卷）。
-    resetSessionState(chatPanel.panelId);
     this.onStatusChange?.('[Agent] ✅ 工厂已就绪（拟文时装配）');
   }
 
