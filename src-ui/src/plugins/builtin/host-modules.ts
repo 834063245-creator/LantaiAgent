@@ -62,6 +62,7 @@ import {
   USER_SHRINK_MIN_W,
 } from '../../paper/measure';
 import { PaperDockContext, PaperRegionContext, usePaperDock, usePaperRegion } from '../../paper/overlay-context';
+import { mergeSelectionLines, selInkPaths, selSeedOf } from '../../paper/sel-ink';
 import { classifyDropZone, makeStrip, selectionMaskRects, stashStripPositionAt } from '../../paper/selection';
 import { sheetCharacter } from '../../paper/sheet';
 import {
@@ -203,6 +204,9 @@ const faceDeps = {
   makeStrip,
   selectionMaskRects,
   stashStripPositionAt,
+  mergeSelectionLines,
+  selInkPaths,
+  selSeedOf,
   sheetCharacter,
   clampRegionW,
   defaultRegionFor,
