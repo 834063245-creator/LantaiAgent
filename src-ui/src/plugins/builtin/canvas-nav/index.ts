@@ -93,3 +93,6 @@ export const canvasNavPlugin = {
     );
   },
 };
+
+/** 产物域 default 导出（WO-S0B 契约：pickPluginObject 取 default；缺此导出时位移装载会形状失败）。 */
+export default canvasNavPlugin;

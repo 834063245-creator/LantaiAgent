@@ -568,8 +568,24 @@ async function loadOne(
     }
   }
   // 4c) 位移（增补四）：产物声明 displace 且 bundle fiber 在册 → dispose
-  //     bundle fiber（贡献面让位）。失败路径统一在下方 catch 恢复。
+  //     bundle fiber（贡献面让位）。**位移后产物侧任何失败路径都必须
+  //     恢复 bundle 兜底行**——不只 import/apply 抛错，形状校验/名字
+  //     对拍失败同样要恢复（2026-09-02 生产事故：产物缺 default 导出 →
+  //     形状失败 → 无恢复 → UI 四面永久死亡，位移「单活互换」变成
+  //     「单活互毁」）。
   let displaced = false;
+  const restoreDisplacedBuiltin = async (): Promise<void> => {
+    if (!displaced) return;
+    displacedBuiltin.delete(manifest.name);
+    const bundlePlugin = builtinIndex().byName.get(manifest.name);
+    if (!bundlePlugin) return;
+    try {
+      const restored = await root.plugin(bundlePlugin);
+      builtinFibers.set(manifest.name, restored);
+    } catch (restoreErr) {
+      console.error('[plugins] 内置兜底行恢复失败:', manifest.name, restoreErr);
+    }
+  };
   if (manifest.displace === true) {
     const bundleFiber = builtinFibers.get(manifest.name);
     const bundlePlugin = builtinIndex().byName.get(manifest.name);
@@ -586,12 +602,14 @@ async function loadOne(
     const mod = await importModule(url);
     const candidate = pickPluginObject(mod);
     if (!isPluginShape(candidate)) {
+      await restoreDisplacedBuiltin();
       return {
         record: withBuiltinMeta(manifest.name, manifest, '插件入口未导出 { name, apply } 形状的对象'),
         fiber: null,
       };
     }
     if (candidate.name !== manifest.name) {
+      await restoreDisplacedBuiltin();
       return {
         record: withBuiltinMeta(
           manifest.name,
@@ -636,18 +654,7 @@ async function loadOne(
   } catch (e) {
     // 位移失败恢复：重启 bundle 插件（出厂兜底行自动回位——错误可见且
     // 功能不缺席）。
-    if (displaced) {
-      displacedBuiltin.delete(manifest.name);
-      const bundlePlugin = builtinIndex().byName.get(manifest.name);
-      if (bundlePlugin) {
-        try {
-          const restored = await root.plugin(bundlePlugin);
-          builtinFibers.set(manifest.name, restored);
-        } catch (restoreErr) {
-          console.error('[plugins] 内置兜底行恢复失败:', manifest.name, restoreErr);
-        }
-      }
-    }
+    await restoreDisplacedBuiltin();
     return { record: withBuiltinMeta(manifest.name, manifest, errText(e)), fiber: null };
   }
 }

@@ -922,6 +922,40 @@ describe('位移式内置插件装载（manifest.displace）', () => {
     expect(rec?.error).toContain('artifact boom');
     expect(rec?.builtin).toBe(true);
   });
+
+  it('产物形状失败（缺 default 导出）→ bundle 兜底行恢复（2026-09-02 生产事故形态）', async () => {
+    const root = new Context();
+    loadBuiltinPlugins(root);
+    // cordis plugin() 是 promise——flush 微任务让四 service 与 bundle 贡献落定
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeTruthy();
+    // 形态对拍 2026-09-02 事故：四个 UI 面产物只有命名导出、无 default——
+    // pickPluginObject 取到 namespace 对象，形状校验失败。位移已拆 bundle
+    // 行，此路径若不恢复兜底行 → 贡献面永久丢失（UI 四面全死）。
+    const routes = displaceRoutes(() => ({
+      canvasNavPlugin: {
+        name: 'hologram/canvas-nav',
+        inject: ['panels', 'commands', 'space'],
+        apply() {},
+      },
+    }));
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: routes.index,
+        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
+        [ORIGIN + '/hologram/canvas-nav/manifest.json']: routes.manifest,
+      }),
+      importModule: routes.importModule,
+    });
+    // 兜底行必须回位：bundle 贡献仍可用（修复前这里全灭）
+    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeTruthy();
+    // error 记录可见（形状失败语义）
+    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'hologram/canvas-nav');
+    expect(rec?.status).toBe('error');
+    expect(rec?.error).toContain('形状');
+    expect(rec?.builtin).toBe(true);
+  });
 });
 
 /** 从 root Context 取 commands service 注册表（组合层四 service 挂根，类型经 cordis 模块扩充）。 */
