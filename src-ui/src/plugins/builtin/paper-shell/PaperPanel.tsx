@@ -346,6 +346,7 @@ function MinimapView({
   const offX = (W - 8 - cw * scale) / 2;
   const offY = (H - 8 - ch * scale) / 2;
   const inkCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: P2-3（2026-09-02 拖动卡顿专项）有意收窄——依赖挂 activeRegion/content 对象引用则每 pan 帧换引用 → 活跃卷全部块 inkForBlock + 逐 bar fillRect 每帧全量重画；此处以稳定内层引用（blocks/layout）+ bbox 原语入依赖：平移帧零重画，内容/几何变化（流式/挪卷/改宽）仍即时重画
   useEffect(() => {
     const canvas = inkCanvasRef.current;
     if (!canvas || !activeRegion || !foldedOf || !inkCache) return;
@@ -385,7 +386,19 @@ function MinimapView({
         );
       }
     }
-  }, [activeRegion, content, foldedOf, inkCache, offX, offY, scale]);
+  }, [
+    activeRegion?.blocks,
+    activeRegion?.layout,
+    content.x0,
+    content.y0,
+    content.x1,
+    content.y1,
+    foldedOf,
+    inkCache,
+    offX,
+    offY,
+    scale,
+  ]);
   const toMap = (x: number, y: number) => ({
     left: 4 + (x - content.x0) * scale + offX,
     top: 4 + (y - content.y0) * scale + offY,
@@ -431,6 +444,60 @@ const GHOST_H = 32;
 const SIDECAR_PIN_W = 320;
 /** 稳定空引用——无会话/无钉住时避免无谓重渲染 */
 const EMPTY_OPS: BlockOp[] = [];
+
+/* ── P2-3 平移零重算（2026-09-02 拖动卡顿专项）── 卷级布局核心缓存条目：
+ * inputs = 失效键（消息快照/锚点/钉表/折叠谓词/测量代——全部内容侧输入，
+ * 不含视口），core = O(块) 派生物（translate/adapt/measure/layout/seq/
+ * extent）。平移/缩放帧 regions memo 仍重跑（flowWindow/visibleIds 是视口
+ * 派生），但每卷核心命中复用、内层引用稳定——TocStrip 的 markInputs/hover
+ * 索引与 MinimapView 的墨迹重画以 blocks/layout/flowGeom 等内层引用为依赖
+ * （见两消费面改造），平移帧零重算。 */
+interface RegionCoreCacheEntry {
+  msgs: readonly ChatMessage[];
+  anchorX: number;
+  anchorY: number;
+  width: number;
+  pinsMap: Record<string, { x: number; y: number; w?: number }>;
+  foldedOf: (b: SourcedBlock) => boolean;
+  sidecarFoldedOf: (b: SourcedBlock) => boolean;
+  sidecarOutOf: (b: SourcedBlock) => boolean;
+  paperTick: number;
+  measureTick: number;
+  core: {
+    blocks: SourcedBlock[];
+    layout: Map<string, { x: number; y: number }>;
+    flowGeom: FlowGeom[];
+    pinnedGeom: PinnedGeom[];
+    seq: Map<string, string>;
+    regionTop: number;
+    regionHeight: number;
+    folioH: number;
+  };
+}
+
+/** stub 卷共享空容器（P2-3：只读消费——渲染/孤儿钉/页脚计数只读不写，零分配）。 */
+const STUB_EMPTIES = {
+  blocks: [] as SourcedBlock[],
+  layout: new Map<string, { x: number; y: number }>(),
+  flowGeom: [] as FlowGeom[],
+  pinnedGeom: [] as PinnedGeom[],
+  flowWindow: { first: 0, lastExcl: 0 },
+  visibleIds: new Set<string>(),
+  seq: new Map<string, string>(),
+} as const;
+
+/** P2-3 复合键等价比较（引用级）——键元素全部引用相同 = 缓存可复用。
+ *  消费面：每帧 O(块) 的派生 Map/Set（opsByBlock / blockSession /
+ *  openBlockIds / minimap 包围盒）以「内容侧引用清单」为键——regions 包装
+ *  每帧换引用，但内层 blocks/flowGeom 引用在 P2-3 核心缓存下稳定，键不变
+ *  = 上一帧产物直接复用（平移帧零重建 + 引用稳定喂给下游 memo 链）。 */
+function sameKey(a: readonly unknown[], b: readonly unknown[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
 
 /** 面板核类型（useCoreStore 所持 core 的非空形状）——DeskShelf prop 用。 */
 type PaperCore = NonNullable<ReturnType<typeof useCoreStore.getState>['core']>;
@@ -980,6 +1047,10 @@ export function PaperPanel() {
   viewRef.current = view;
   const regionsRef = useRef<RegionView[]>([]);
   const blockSessionRef = useRef<Map<string, string>>(new Map());
+  /* P2-3：块→卷索引的复合键缓存——O(块) 合并只在核心集变化时发生（平移帧零重建）。 */
+  const blockSessionCacheRef = useRef<{ key: unknown[]; map: Map<string, string> } | null>(null);
+  /* P2-3：卷级布局核心缓存（per panel，挂载期存活——卷关闭由 memo 尾部修剪）。 */
+  const regionCoreCacheRef = useRef(new Map<number, RegionCoreCacheEntry>());
   /** P2-2 卷级虚拟化：每卷最近一次全量构建的包围盒/块 id 集/块数——
    *  stub 判定的输入 + stub 消费面（小地图 extent / 孤儿钉 openBlockIds /
    *  页脚块数）的最近已知值真源。离屏后台流增长在回场时刷新。 */
@@ -1031,7 +1102,8 @@ export function PaperPanel() {
     void paperTick;
     void measureTick;
     const out: RegionView[] = [];
-    const blockSession = new Map<string, string>();
+    // P2-3：非 stub 卷的 (sid, blocks) 引用清单——blockSession 复合键（见尾部）。
+    const coreKey: unknown[] = [];
     // P2-2 卷级虚拟化（2026-09-02，审批通过）：视口外（含 stub margin）的卷
     // 跳过全量派生——translate/adapt/measure/layout 是每帧 O(块) 主消耗，
     // 100 卷摊开时 memo 重算（pan/zoom 每帧）被全部卷平摊。stub 只带锚点 +
@@ -1068,19 +1140,14 @@ export function PaperPanel() {
           known.extent.y0 - STUB_MY > viewRect.y1);
       if (known && inStubRange) {
         // stub：锚点 + 最近已知派生值。render 面（visibleRegionIds 之后）不
-        // 渲染 stub；小地图/孤儿钉/页脚计数消费最近已知值。
+        // 渲染 stub；小地图/孤儿钉/页脚计数消费最近已知值。空容器走共享只读
+        // 常量（P2-3——零分配）。
         out.push({
           sessionId: sid,
           sessionNum: s.id,
           label: s.label,
           anchor,
-          blocks: [],
-          layout: new Map(),
-          flowGeom: [],
-          pinnedGeom: [],
-          flowWindow: { first: 0, lastExcl: 0 },
-          visibleIds: new Set(),
-          seq: new Map(),
+          ...STUB_EMPTIES,
           regionTop: known.extent.y0,
           regionBottom: anchor.anchorY,
           regionHeight: Math.max(0, anchor.anchorY - known.extent.y0) + 72,
@@ -1093,112 +1160,173 @@ export function PaperPanel() {
         return;
       }
 
+      // P2-3 布局核心命中判定：内容输入全同 = 复用（平移/缩放帧只重算视口
+      // 派生 flowWindow/visibleIds）。布局核心（translate/adapt/measure/
+      // layout/seq/extent）是 O(块) 主消耗——原实现对每个非 stub 卷每帧重跑。
       const msgs = regionMsgs[s.id]?.messages ?? [];
-      let cache = translateCacheBySession.current.get(s.id) ?? null;
-      const res = translateMessagesCached(msgs, pinsMap, cache);
-      cache = res.cache;
-      translateCacheBySession.current.set(s.id, cache);
-      // 工具组收起摘除（2026-08-30 会话流专项）：折叠态组头的子卡不进布局栈
-      const blocks = collapseToolGroups(adaptBlocks(res.blocks, anchor.width), foldedOf);
+      let entry = regionCoreCacheRef.current.get(s.id);
+      if (
+        !entry ||
+        entry.msgs !== msgs ||
+        entry.anchorX !== anchor.anchorX ||
+        entry.anchorY !== anchor.anchorY ||
+        entry.width !== anchor.width ||
+        entry.pinsMap !== pinsMap ||
+        entry.foldedOf !== foldedOf ||
+        entry.sidecarFoldedOf !== sidecarFoldedOf ||
+        entry.sidecarOutOf !== sidecarOutOf ||
+        entry.paperTick !== paperTick ||
+        entry.measureTick !== measureTick
+      ) {
+        const translateCache = translateCacheBySession.current.get(s.id) ?? null;
+        const res = translateMessagesCached(msgs, pinsMap, translateCache);
+        translateCacheBySession.current.set(s.id, res.cache);
+        // 工具组收起摘除（2026-08-30 会话流专项）：折叠态组头的子卡不进布局栈
+        const blocks = collapseToolGroups(adaptBlocks(res.blocks, anchor.width), foldedOf);
 
-      const stack = blocks.map((b) => ({
-        id: b.id,
-        h:
-          b.state === 'flow'
-            ? measureBlockHeightCached(b, measureCacheRef.current, foldedOf(b), sidecarFoldedOf(b), sidecarOutOf(b))
-            : GHOST_H,
-        w: b.w,
-        kind: b.kind,
-      }));
-      const layout = layoutRegion(stack, { x: anchor.anchorX, y: anchor.anchorY });
-      const flowGeom: FlowGeom[] = stack.map((sx) => ({
-        id: sx.id,
-        y: layout.get(sx.id)?.y ?? 0,
-        h: sx.h,
-        x: layout.get(sx.id)?.x ?? 0,
-        w: sx.w,
-      }));
-      const pinnedGeom: PinnedGeom[] = blocks
-        .filter((b) => b.state === 'pinned')
-        .map((b) => ({
+        const stack = blocks.map((b) => ({
           id: b.id,
-          x: b.x,
-          y: b.y,
+          h:
+            b.state === 'flow'
+              ? measureBlockHeightCached(b, measureCacheRef.current, foldedOf(b), sidecarFoldedOf(b), sidecarOutOf(b))
+              : GHOST_H,
           w: b.w,
-          h: measureBlockHeightCached(b, measureCacheRef.current, foldedOf(b), sidecarFoldedOf(b), sidecarOutOf(b)),
+          kind: b.kind,
         }));
-      const flowWindow = visibleFlowWindow(flowGeom, viewRect, OVERSCAN);
-      const visiblePinnedSet = new Set(visiblePinnedIds(pinnedGeom, viewRect, OVERSCAN));
-      const visibleIds = new Set(visiblePinnedSet);
-      for (let j = flowWindow.first; j < flowWindow.lastExcl; j++) visibleIds.add(flowGeom[j].id);
+        const layout = layoutRegion(stack, { x: anchor.anchorX, y: anchor.anchorY });
+        const flowGeom: FlowGeom[] = stack.map((sx) => ({
+          id: sx.id,
+          y: layout.get(sx.id)?.y ?? 0,
+          h: sx.h,
+          x: layout.get(sx.id)?.x ?? 0,
+          w: sx.w,
+        }));
+        const pinnedGeom: PinnedGeom[] = blocks
+          .filter((b) => b.state === 'pinned')
+          .map((b) => ({
+            id: b.id,
+            x: b.x,
+            y: b.y,
+            w: b.w,
+            h: measureBlockHeightCached(b, measureCacheRef.current, foldedOf(b), sidecarFoldedOf(b), sidecarOutOf(b)),
+          }));
 
-      const seq = new Map<string, string>();
-      for (let bi = 0; bi < blocks.length; bi++) {
-        seq.set(blocks[bi].id, String(bi + 1).padStart(3, '0'));
-      }
-      for (const b of blocks) blockSession.set(b.id, sid);
+        const seq = new Map<string, string>();
+        for (let bi = 0; bi < blocks.length; bi++) {
+          seq.set(blocks[bi].id, String(bi + 1).padStart(3, '0'));
+        }
 
-      let top = 0;
-      for (const g of flowGeom) top = Math.min(top, g.y);
-      const regionTop = top;
-      const regionBottom = anchor.anchorY;
-      // 卷首头高度：标题按流区可用宽实测（folio 头左右内距 16×2，镜像 .pp-folio-head padding）
-      const folioH = measureFolioHeadHeight(s.label || `案卷 ${s.id}`, anchor.width - 32);
-      // P2-2：全量构建后登记包围盒/块 id 集——stub 判定与 stub 消费面的
-      // 最近已知值真源。空卷（无块）用锚点框兜底（stub 判定不至于盲区）。
-      if (blocks.length > 0) {
-        let ex0 = Infinity;
-        let ey0 = Infinity;
-        let ex1 = -Infinity;
-        let ey1 = -Infinity;
-        for (const g of flowGeom) {
-          ex0 = Math.min(ex0, g.x);
-          ey0 = Math.min(ey0, g.y);
-          ex1 = Math.max(ex1, g.x + g.w);
-          ey1 = Math.max(ey1, g.y + g.h);
+        let top = 0;
+        for (const g of flowGeom) top = Math.min(top, g.y);
+        const regionTop = top;
+        // 卷首头高度：标题按流区可用宽实测（folio 头左右内距 16×2，镜像 .pp-folio-head padding）
+        const folioH = measureFolioHeadHeight(s.label || `案卷 ${s.id}`, anchor.width - 32);
+        // P2-2：全量构建后登记包围盒/块 id 集——stub 判定与 stub 消费面的
+        // 最近已知值真源。空卷（无块）用锚点框兜底（stub 判定不至于盲区）。
+        if (blocks.length > 0) {
+          let ex0 = Infinity;
+          let ey0 = Infinity;
+          let ex1 = -Infinity;
+          let ey1 = -Infinity;
+          for (const g of flowGeom) {
+            ex0 = Math.min(ex0, g.x);
+            ey0 = Math.min(ey0, g.y);
+            ex1 = Math.max(ex1, g.x + g.w);
+            ey1 = Math.max(ey1, g.y + g.h);
+          }
+          for (const g of pinnedGeom) {
+            ex0 = Math.min(ex0, g.x);
+            ey0 = Math.min(ey0, g.y);
+            ex1 = Math.max(ex1, g.x + g.w);
+            ey1 = Math.max(ey1, g.y + g.h);
+          }
+          regionExtentRef.current.set(sid, {
+            extent: { x0: ex0, y0: ey0, x1: ex1, y1: ey1 },
+            blockIds: new Set(blocks.map((b) => b.id)),
+            blockCount: blocks.length,
+          });
+        } else {
+          regionExtentRef.current.set(sid, {
+            extent: {
+              x0: anchor.anchorX - anchor.width / 2,
+              x1: anchor.anchorX + anchor.width / 2,
+              y0: anchor.anchorY - 200,
+              y1: anchor.anchorY + 72,
+            },
+            blockIds: new Set(),
+            blockCount: 0,
+          });
         }
-        for (const g of pinnedGeom) {
-          ex0 = Math.min(ex0, g.x);
-          ey0 = Math.min(ey0, g.y);
-          ex1 = Math.max(ex1, g.x + g.w);
-          ey1 = Math.max(ey1, g.y + g.h);
-        }
-        regionExtentRef.current.set(sid, {
-          extent: { x0: ex0, y0: ey0, x1: ex1, y1: ey1 },
-          blockIds: new Set(blocks.map((b) => b.id)),
-          blockCount: blocks.length,
-        });
-      } else {
-        regionExtentRef.current.set(sid, {
-          extent: {
-            x0: anchor.anchorX - anchor.width / 2,
-            x1: anchor.anchorX + anchor.width / 2,
-            y0: anchor.anchorY - 200,
-            y1: anchor.anchorY + 72,
+        entry = {
+          msgs,
+          anchorX: anchor.anchorX,
+          anchorY: anchor.anchorY,
+          width: anchor.width,
+          pinsMap,
+          foldedOf,
+          sidecarFoldedOf,
+          sidecarOutOf,
+          paperTick,
+          measureTick,
+          core: {
+            blocks,
+            layout,
+            flowGeom,
+            pinnedGeom,
+            seq,
+            regionTop,
+            regionHeight: Math.max(0, anchor.anchorY - regionTop) + 72,
+            folioH,
           },
-          blockIds: new Set(),
-          blockCount: 0,
-        });
+        };
+        regionCoreCacheRef.current.set(s.id, entry);
       }
+      const c = entry.core;
+      // 视口派生（每帧必要）：flow 块是单调栈 → 二分窗口 O(log n)+O(可见)。
+      const flowWindow = visibleFlowWindow(c.flowGeom, viewRect, OVERSCAN);
+      const visibleIds = new Set(visiblePinnedIds(c.pinnedGeom, viewRect, OVERSCAN));
+      for (let j = flowWindow.first; j < flowWindow.lastExcl; j++) visibleIds.add(c.flowGeom[j].id);
+      coreKey.push(sid, c.blocks);
+
       out.push({
         sessionId: sid,
         sessionNum: s.id,
         label: s.label,
         anchor,
-        blocks,
-        layout,
-        flowGeom,
-        pinnedGeom,
+        blocks: c.blocks,
+        layout: c.layout,
+        flowGeom: c.flowGeom,
+        pinnedGeom: c.pinnedGeom,
         flowWindow,
         visibleIds,
-        seq,
-        regionTop,
-        regionBottom,
-        regionHeight: Math.max(0, regionBottom - regionTop) + 72,
-        folioH,
+        seq: c.seq,
+        regionTop: c.regionTop,
+        regionBottom: anchor.anchorY,
+        regionHeight: c.regionHeight,
+        folioH: c.folioH,
       });
     });
-    blockSessionRef.current = blockSession;
+    // 合卷/切换后修剪无主核心（与 translateCacheBySession 同款纪律）
+    if (regionCoreCacheRef.current.size !== sessions.length) {
+      const live = new Set(sessions.map((s) => s.id));
+      for (const k of regionCoreCacheRef.current.keys()) {
+        if (!live.has(k)) regionCoreCacheRef.current.delete(k);
+      }
+    }
+    // P2-3：块→卷索引复合键复用——核心集不变（平移帧）零重建零分配；消费面
+    // （拖块手势等）读 .current 即时值，引用替换语义不变。
+    const prevBS = blockSessionCacheRef.current;
+    if (prevBS && sameKey(prevBS.key, coreKey)) {
+      blockSessionRef.current = prevBS.map;
+      return out;
+    }
+    const merged = new Map<string, string>();
+    for (const r of out) {
+      if (r.stubbed) continue;
+      for (const b of r.blocks) merged.set(b.id, r.sessionId);
+    }
+    blockSessionCacheRef.current = { key: coreKey, map: merged };
+    blockSessionRef.current = merged;
     return out;
   }, [
     sessions,
@@ -1224,7 +1352,14 @@ export function PaperPanel() {
   /* 公共物 · 孤儿钉：源会话未摊开/已删除，或源块当前不在摊开会话的转译结果里
    * （消息撤回等）——以快照渲染的独立钉层（公共物不绑会话，钉到拔为止） */
   const openSessionIds = useMemo(() => new Set(sessions.map((s) => String(s.id))), [sessions]);
+  const openBlockIdsCacheRef = useRef<{ key: unknown[]; set: Set<string> } | null>(null);
   const openBlockIds = useMemo(() => {
+    // P2-3：复合键复用——blocks/lastBlockIds 引用在核心缓存下稳定，平移帧
+    // 零重建；引用稳定喂给 orphanPins → orphanInkBlocks → minimap 整条链。
+    const key: unknown[] = [];
+    for (const r of regions) key.push(r.blocks, r.lastBlockIds);
+    const prev = openBlockIdsCacheRef.current;
+    if (prev && sameKey(prev.key, key)) return prev.set;
     const s = new Set<string>();
     // P2-2：stub 卷用最近已知块 id 集（孤儿钉判定不因离屏误判——
     // 钉的源块在钉创建时刻必在最近已知集内）
@@ -1235,6 +1370,7 @@ export function PaperPanel() {
         for (const b of r.blocks) s.add(b.id);
       }
     }
+    openBlockIdsCacheRef.current = { key, set: s };
     return s;
   }, [regions]);
   const orphanPins = useMemo(() => {
@@ -1417,9 +1553,20 @@ export function PaperPanel() {
     },
     [core, regionMsgs],
   );
+  const opsByBlockCacheRef = useRef<{ key: unknown[]; map: Map<string, BlockOp[]> } | null>(null);
   const opsByBlock = useMemo(() => {
+    // P2-3：复合键复用——输入不变（平移帧：blocks 引用稳定 + regionMsgs 同一
+    // 性）时整 Map 原样复用，O(总块数) 的 byId 建表/最新角色扫尾/缓存比对
+    // 全免。retrace 判定只在内容变化时重算（stamp 语义不变）。
+    const key: unknown[] = [regionMsgs, core, msgOpsFor];
+    for (const r of regions) key.push(r.sessionNum, r.blocks);
+    const prev = opsByBlockCacheRef.current;
+    if (prev && sameKey(prev.key, key)) return prev.map;
     const map = new Map<string, BlockOp[]>();
-    if (!core) return map;
+    if (!core) {
+      opsByBlockCacheRef.current = { key, map };
+      return map;
+    }
     for (const r of regions) {
       const msgs = regionMsgs[r.sessionNum]?.messages ?? [];
       const byId = new Map<string, ChatMessage>();
@@ -1458,6 +1605,7 @@ export function PaperPanel() {
         }
       }
     }
+    opsByBlockCacheRef.current = { key, map };
     return map;
   }, [regions, regionMsgs, core, msgOpsFor]);
 
@@ -1907,8 +2055,18 @@ export function PaperPanel() {
   }, [core]);
 
   /* 小地图（D-R1-1 方位感：全画布内容聚落 + 视口框）——跨流区包围盒。
-   * Stage-5：公共物（纸条 + 孤儿钉快照）同样计入画布范围。 */
-  const minimap = useMemo(() => {
+   * Stage-5：公共物（纸条 + 孤儿钉快照）同样计入画布范围。
+   * P2-3：包围盒只依赖内容侧（几何/纸条/孤儿钉）——复合键缓存，平移帧
+   * 零重扫（O(总块数) 降为 O(卷数) 键比较）；视口框随帧轻包装。 */
+  const minimapContentCacheRef = useRef<{
+    key: unknown[];
+    content: { x0: number; y0: number; x1: number; y1: number };
+  } | null>(null);
+  const minimapContent = useMemo(() => {
+    const key: unknown[] = [canvasStrips, orphanPins];
+    for (const r of regions) key.push(r.flowGeom, r.pinnedGeom, r.extent);
+    const prev = minimapContentCacheRef.current;
+    if (prev && sameKey(prev.key, key)) return prev.content;
     let x0 = Infinity;
     let y0 = Infinity;
     let x1 = -Infinity;
@@ -1953,8 +2111,11 @@ export function PaperPanel() {
       y0 = -200;
       y1 = 0;
     }
-    return { content: { x0, y0, x1, y1 }, viewport: viewRect };
-  }, [regions, viewRect, canvasStrips, orphanPins]);
+    const content = { x0, y0, x1, y1 };
+    minimapContentCacheRef.current = { key, content };
+    return content;
+  }, [regions, canvasStrips, orphanPins]);
+  const minimap = useMemo(() => ({ content: minimapContent, viewport: viewRect }), [minimapContent, viewRect]);
   /* P4b 小地图真墨：活跃流区（自动选中机制同主人） */
   const activeInkRegion = useMemo(
     () => regions.find((r) => r.sessionId === activeSessionKey),

@@ -115,22 +115,31 @@ export const TocStrip = memo(function TocStrip() {
 
   /* 带体通栏（top:0/bottom:0），映射区 = [书眉下缘, 坞上缘]（元素坐标 = 页面坐标）。 */
   const mappedBottom = Math.max(TOC_TOP + 1, TOC_TOP + canvasSize.h - COMPOSER_RISE - composerHeight);
+  /* ── 标记/锚点派生（几何槽位回填 worldY/worldH；一次建索引防 O(n²)）──
+   * P2-3（2026-09-02 拖动卡顿专项）：依赖收窄到内容侧原语/稳定内层引用——
+   * 原实现挂 activeRegion 对象引用，regions memo 每 pan 帧换引用 → 全部
+   * O(块) 派生（markInputs/marks/turnAnchors/hover 索引/带体 canvas 重画）
+   * 每帧重算。平移不改内容：regionTop/Bottom、blocks、flowGeom 在 P2-3
+   * 布局核心缓存下引用稳定 = 平移帧零重算；内容/几何变化仍即时重算。 */
+  const activeRegionTop = activeRegion?.regionTop;
+  const activeRegionBottom = activeRegion?.regionBottom;
   const range: TocRange | null = useMemo(() => {
-    if (!activeRegion) return null;
+    if (activeRegionTop == null || activeRegionBottom == null) return null;
     return {
-      regionTop: activeRegion.regionTop,
-      regionBottom: activeRegion.regionBottom,
+      regionTop: activeRegionTop,
+      regionBottom: activeRegionBottom,
       stripTop: TOC_TOP,
       stripBottom: mappedBottom,
     };
-  }, [activeRegion, mappedBottom]);
+  }, [activeRegionTop, activeRegionBottom, mappedBottom]);
 
-  /* ── 标记/锚点派生（几何槽位回填 worldY/worldH；一次建索引防 O(n²)）── */
+  const activeBlocks = activeRegion?.blocks;
+  const activeFlowGeom = activeRegion?.flowGeom;
   const markInputs = useMemo<TocMarkInput[]>(() => {
-    if (!activeRegion) return [];
-    const byId = new Map(activeRegion.blocks.map((b) => [b.id, b]));
+    if (!activeBlocks || !activeFlowGeom) return [];
+    const byId = new Map(activeBlocks.map((b) => [b.id, b]));
     const out: TocMarkInput[] = [];
-    for (const g of activeRegion.flowGeom) {
+    for (const g of activeFlowGeom) {
       const block = byId.get(g.id);
       if (!block) continue;
       const input = markInputOf(block);
@@ -139,7 +148,7 @@ export const TocStrip = memo(function TocStrip() {
       out.push(input);
     }
     return out;
-  }, [activeRegion]);
+  }, [activeBlocks, activeFlowGeom]);
   const marks = useMemo(() => (range ? deriveMarks(markInputs, range) : []), [markInputs, range]);
   const turnAnchors = useMemo(() => (range ? buildTurnAnchors(markInputs, range) : []), [markInputs, range]);
 
@@ -166,26 +175,35 @@ export const TocStrip = memo(function TocStrip() {
       ? unreadBand(lastReadBySession.get(activeSessionId) as number, range)
       : null;
 
-  /* ── 活线：活跃卷流式运行 → 坞顶线处石青呼吸 writing head ── */
+  /* ── 活线：活跃卷流式运行 → 坞顶线处石青呼吸 writing head ──
+   *  P2-3：依赖收窄到卷号原语——activeRegion 引用每 pan 帧换，exec 订阅
+   *  不随平移重挂。 */
   const [streaming, setStreaming] = useState(false);
+  const activeSessionNum = activeRegion?.sessionNum;
   useEffect(() => {
-    if (!core || !activeRegion) {
+    if (!core || activeSessionNum == null) {
       setStreaming(false);
       return;
     }
-    const exec = agentSessionState.getExec(core.panelId, activeRegion.sessionNum);
+    const exec = agentSessionState.getExec(core.panelId, activeSessionNum);
     const sync = () => setStreaming(exec?.isRunning ?? false);
     sync();
     const un = exec?.onChange(sync) ?? null;
     return () => un?.();
-  }, [core, activeRegion]);
+  }, [core, activeSessionNum]);
 
-  /* ── canvas 内容指纹（镜像 MinimapView 画法：inkForBlock → bar fillRect）── */
+  /* ── canvas 内容指纹（镜像 MinimapView 画法：inkForBlock → bar fillRect）──
+   *  P2-3（2026-09-02 拖动卡顿专项）：依赖收窄到稳定内层引用 + 几何原语——
+   *  平移帧不重画（regions memo P2-3 核心缓存下 blocks/layout 引用稳定、
+   *  anchor 原语不变）；内容/挪卷/改宽仍即时重画。 */
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const inkCacheRef = useRef(createInkCache());
+  const activeLayout = activeRegion?.layout;
+  const activeAnchorX = activeRegion?.anchor.anchorX;
+  const activeAnchorW = activeRegion?.anchor.width;
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !activeRegion || !range) return;
+    if (!canvas || !activeBlocks || !activeLayout || activeAnchorX == null || activeAnchorW == null || !range) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const dpr = window.devicePixelRatio || 1;
@@ -199,13 +217,13 @@ export const TocStrip = memo(function TocStrip() {
     ctx.clearRect(0, 0, W, H);
     const contentH = Math.max(1, range.regionBottom - range.regionTop);
     const ys = (range.stripBottom - range.stripTop) / contentH;
-    const regionW = Math.max(1, activeRegion.anchor.width);
+    const regionW = Math.max(1, activeAnchorW);
     const xs = W / regionW;
-    const left = activeRegion.anchor.anchorX - regionW / 2;
-    const flow = activeRegion.blocks.filter((b) => b.state === 'flow');
+    const left = activeAnchorX - regionW / 2;
+    const flow = activeBlocks.filter((b) => b.state === 'flow');
     const density = flow.length > DENSITY_BLOCKS;
     for (const b of flow) {
-      const slot = activeRegion.layout.get(b.id);
+      const slot = activeLayout.get(b.id);
       if (!slot) continue;
       const ink = inkForBlock(b, foldedOf(b), inkCacheRef.current);
       const bar0 = ink.bars[0];
@@ -230,16 +248,16 @@ export const TocStrip = memo(function TocStrip() {
         );
       }
     }
-  }, [activeRegion, range, foldedOf]);
+  }, [activeBlocks, activeLayout, activeAnchorX, activeAnchorW, range, foldedOf]);
 
   /* ── hover 索引：行盒原文 → 带内 y 区间（与画笔同一几何、同一缓存）── */
   const hoverIndex = useMemo<HoverBlock[]>(() => {
-    if (!activeRegion || !range) return [];
+    if (!activeBlocks || !activeLayout || !range) return [];
     const ys = (range.stripBottom - range.stripTop) / Math.max(1, range.regionBottom - range.regionTop);
     const out: HoverBlock[] = [];
-    for (const b of activeRegion.blocks) {
+    for (const b of activeBlocks) {
       if (b.state !== 'flow') continue;
-      const slot = activeRegion.layout.get(b.id);
+      const slot = activeLayout.get(b.id);
       if (!slot) continue;
       const ink = inkForBlock(b, foldedOf(b), inkCacheRef.current);
       const lines: HoverLine[] = [];
@@ -257,7 +275,7 @@ export const TocStrip = memo(function TocStrip() {
       });
     }
     return out;
-  }, [activeRegion, range, foldedOf]);
+  }, [activeBlocks, activeLayout, range, foldedOf]);
 
   /* ── 指针交互：滑块拖拽 scrub / 点带即跳（夹紧域 = 可见视口）── */
   const dragRef = useRef<{ offset: number } | null>(null);
