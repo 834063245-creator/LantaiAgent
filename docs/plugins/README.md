@@ -1,29 +1,22 @@
 # HoloGram 插件指南（docs/plugins/README.md）
 
 > S4 竣工（2026-08-20）；S3 第一方行化（2026-08-22）；P4 A-1 prompt 段贡献
-> 通道（2026-08-23）；P4 B④ 第一方 prompt 段迁移收官（2026-08-23，13 段全量
-> 经 ctx.prompts 贡献）；S4-4 甲：贡献行/段进组合解析域（2026-08-23）；
-> S4-4 乙：MCP 机器桥——manifest.mcpServers 声明式挂接（2026-08-23）；
+> 通道（2026-08-23）；P4 B④ 第一方 prompt 段迁移收官（2026-08-23）；S4-4
+> 甲：贡献行/段进组合解析域（2026-08-23）；S4-4 乙：MCP 机器桥（2026-08-23）；
 > ①b：builtin 工具行表退役——十四族全量经 ctx.tools 贡献（2026-08-23）；
-> P4 A-2：hooks/preflight 贡献通道（2026-08-24，ctx.hooks）；
-> P4 A-3：capability 贡献通道（2026-08-24，ctx.capabilities——会话级
-> 能力的插件装载）；P4 B⑤ 收官：十五项第一方 capability 迁经
-> ctx.capabilities 贡献，出厂 builtinCapabilities() 退役（2026-08-24，
-> plugins/capability-segments-plugin.ts + composition/first-party-
-> capabilities.ts 装配腰）。
-> **2026-08-29：第一方插件收编插件列表**——43 个第一方插件获得清单身份
-> （`plugins/first-party-manifest.ts`：version/description/kind）并进入设置
-> 面板插件 tab（平台服务/内置插件分组，feature 类可启用/禁用，下次启动
-> 生效；装载结果统一收 `state/plugin-store.ts`）。
-> **平台化 Phase 3-6（2026-08-27/28）：seam 裁剪域 / 运行时热重载（D6）/
-> 动态插件 cordis 域（D7）/ 信任模型二分（D12）/ 平台契约总览（§0）——
-> 本文件自此为插件面唯一人类契约。**
-> **2026-08-31（增补四，first-party-hot-reload-plan）：kind='feature' 全量
-> 通道化**——23 个内置插件产物（渲染器 + UI 四面 + 16 工具域 + 2 段贡献，
-> space-demo 退役，清单 45→44）；新增**位移式装载**（manifest.displace——
-> bundle 兜底行 ↔ 产物行单活互换，失败自动恢复）与**薄重导出产物**形态
-> （§0 第四形态）；宿主桥扩 mods/loadCss/React 别名桥；设置面板重载按钮
-> 扩到全部 feature 插件。
+> P4 A-2：hooks/preflight 贡献通道（2026-08-24）；P4 A-3：capability
+> 贡献通道（2026-08-24）；P4 B⑤ 收官（2026-08-24）。
+> **2026-08-29：第一方插件收编插件列表**（44 个清单身份 + 设置面板）。
+> **平台化 Phase 3-6（2026-08-27/28）：本文件为插件面唯一人类契约。**
+> **2026-08-31（增补四）：kind='feature' 全量通道化（23 个产物 + 位移机制）。**
+> **2026-09-03（plugin-bundle-retirement S2-S5 竣工）：bundle 双轨拆除**——
+> 44 个第一方插件分家为 **15 内核**（exe 编译态：14 注册表/运行时 +
+> agent-loop-service 暂缓）+ **29 出厂产物**（磁盘通道：6 供应商 + 5 既有 +
+> 16 工具域 + 2 段贡献，真源全部在 plugins/builtin/&lt;name&gt;/ 目录）。
+> displace 位移机制退役（产物是唯一装载面，无 bundle 兜底）；dev 模式走源码
+> 路径（import.meta.env.DEV 分支，vite HMR），产物仅发布形态。
+> 装载调度 = 依赖图 + boot 全 ACTIVE 审计（plugins/boot-gate.ts——
+> cordis fiber PENDING 挂起语义 + fail-loud，不带病运行）。
 > 插件 = 经
 > webview 动态 import 装载的自包含 ES 模块，
 > 向宿主注册**面板 / 命令 / 工具 / 块渲染器 / prompt 段 / 管道钩子 /
@@ -32,12 +25,10 @@
 > 完全信任模型——安装前必读 §6。从零到跑通的最短路径：
 > `examples/plugins/hello/README.md`；发布路径见
 > `docs/user/develop/publishing-plugins.md`；各 seam cookbook 见 `docs/cookbook/`。
-> 第一方插件先例（编译期 bundle 内，不走磁盘通道）：`paper/paper-plugin.ts`
-> （面板 + 命令）、`plugins/settings-plugin.ts`（面板 + 命令，S3 样板）、
-> `plugins/coding-domain-plugins.ts`（工具域，P4 B①+② 五族样板：
-> git/search/fs/shell/agent-isolation）、
-> `plugins/prompt-segments-plugin.ts`（prompt 段，P4 B④ 样板）、
-> `plugins/capability-segments-plugin.ts`（capability，P4 B⑤ 样板）。
+> 第一方插件先例（产物域真源目录 plugins/builtin/&lt;name&gt;/）：
+> `paper-shell/`（面板 + 命令）、`settings-domain/`（面板 + 命令）、
+> `fs-domain/`（工具域）、`llm-adapters/`（seam provider）、
+> `prompt-segments/`（prompt 段）、`capability-segments/`（capability）。
 
 ## 目录
 
