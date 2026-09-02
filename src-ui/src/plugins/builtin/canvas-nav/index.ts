@@ -7,9 +7,11 @@
 // （ctx.panels 注册 'canvas-spine' / 'canvas-sidebar'），消费 ctx.space
 // （activeSpace() 读面 + focus/expand/place/collapse 四命令），不新增核心 API。
 //
-// 布局方案 A（stage-3 §3.5）：书脊恒显最左缘 + 侧边栏在其右（可折叠，
-// 收起 = 只剩书脊）。两个面板随纸面板开合同步（paper 开 → 全开；
-// paper 关 → 全关——侧边栏/书脊只在画布上下文有意义）。
+// 互斥两态（2026-09-02 用户拍板）：书脊列 = 侧边栏的收起态——左缘任一
+// 时刻只留一个。侧边栏展开 → 书脊整列退场；收起 → 书脊回场。开侧栏期间
+// 书脊的空间手势由侧栏行承接（行点击定位 + 行拖放落位，SpineRack 手势
+// 同族）。paper 是两个覆盖层的生命周期锚（paper 开 → 书脊态起步；paper
+// 关 → 两者全退）。
 //
 // 双走查形态（增补四，first-party-hot-reload-plan）：本目录同时是
 //   A. 编译期 bundle 域（BUILTIN_PLUGINS 表项——出厂兜底行）；
@@ -28,7 +30,7 @@ import { useDockStore } from './host';
 import { SessionSidebar } from './SessionSidebar';
 import { SpineRack } from './SpineRack';
 
-/** 画布导航插件——书脊 + 案卷侧边栏双面板贡献 + 开合同步 + toggle 命令。 */
+/** 画布导航插件——书脊 + 案卷侧边栏双面板贡献 + 开合同步（互斥两态）+ toggle 命令。 */
 export const canvasNavPlugin = {
   name: 'hologram/canvas-nav',
   inject: ['panels', 'commands', 'space'],
@@ -59,9 +61,9 @@ export const canvasNavPlugin = {
       'canvas-sidebar-panel',
     );
 
-    // 开合同步：纸面板是这两个覆盖层的生命周期锚（纸关 = 画布上下文退场）。
-    // 只在 paper 开合状态翻转时同步——侧边栏自身的收起/展开不重新拉回
-    // （否则 collapse 会被订阅回调立即推翻）。
+    // 开合同步：纸面板是两个覆盖层的生命周期锚（纸关 = 画布上下文退场）。
+    // 纸开 → 书脊态起步（侧栏不自动展开——用户经「案卷」toggle 或 /sidebar
+    // 命令唤出）；纸关 → 两者全关。只在 paper 开合翻转时同步。
     let prevPaperOpen = useDockStore.getState().open.paper === true;
     const syncPanels = (): void => {
       const paperOpen = useDockStore.getState().open.paper === true;
@@ -69,15 +71,29 @@ export const canvasNavPlugin = {
       prevPaperOpen = paperOpen;
       if (paperOpen) {
         useDockStore.getState().openPanel('canvas-spine');
-        useDockStore.getState().openPanel('canvas-sidebar');
       } else {
         useDockStore.getState().closePanel('canvas-spine');
         useDockStore.getState().closePanel('canvas-sidebar');
       }
     };
+    // 互斥不变量（终态裁决，任何 dock 写入后跑一遍）：侧栏与书脊不并陈——
+    // 并陈 → 书脊退（侧栏胜）；纸开着而两者皆关 → 书脊回场（收起态默认）。
+    // 终态式对热替换自愈：旧版「paper 开 = 双开」遗留态在装载首跑即被收敛。
+    const enforceExclusivity = (): void => {
+      const st = useDockStore.getState();
+      if (st.open['canvas-sidebar'] === true && st.open['canvas-spine'] === true) {
+        st.closePanel('canvas-spine');
+      } else if (st.open['canvas-sidebar'] !== true && st.open['canvas-spine'] !== true && st.open.paper === true) {
+        st.openPanel('canvas-spine');
+      }
+    };
     ctx.effect(() => {
       syncPanels();
-      return useDockStore.subscribe(syncPanels);
+      enforceExclusivity();
+      return useDockStore.subscribe(() => {
+        syncPanels();
+        enforceExclusivity();
+      });
     }, 'canvas-nav-sync');
 
     ctx.effect(

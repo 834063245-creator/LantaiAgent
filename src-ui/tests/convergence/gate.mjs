@@ -76,7 +76,9 @@ const T0_RULES = [
     label: 'phase-6 T0: AgentConfig 字段面冻结 + 装配本体零组合面直调',
     check: () => {
       const failures = [];
-      // AgentConfig 字段面冻结（31）——组合扩展走 blueprint capability，不再扩 config
+      // AgentConfig 字段面冻结（30）——组合扩展走 blueprint capability，不再扩 config
+      // （c7866c32 拆除 AURA 语义记忆后字段 31→30；spec phase-6.test.ts 已同步，
+      //  本 gate 断言补齐对齐——历史债非新改动引入）
       if (!T0_EXEMPTIONS.has('types.ts:AgentConfig-fields')) {
         const types = readFileSync(path.resolve(pkgRoot, 'src/agent/runtime/types.ts'), 'utf8');
         const m = types.match(/export interface AgentConfig \{[\s\S]*?\n\}/);
@@ -84,9 +86,9 @@ const T0_RULES = [
           failures.push('未找到 AgentConfig interface（runtime/types.ts）');
         } else {
           const count = (m[0].match(/^\s+[A-Za-z_][A-Za-z0-9_]*\??:/gm) || []).length;
-          if (count !== 31) {
+          if (count !== 30) {
             failures.push(
-              `AgentConfig 字段数 ${count}（冻结 31）——新增工具/hook 走 blueprint capability；` +
+              `AgentConfig 字段数 ${count}（冻结 30）——新增工具/hook 走 blueprint capability；` +
                 '确需新增 config 字段须登记豁免并更新 specs/phase-6 断言',
             );
           }

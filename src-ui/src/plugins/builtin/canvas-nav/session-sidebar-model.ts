@@ -104,10 +104,51 @@ export function splitSections(rows: SidebarRow[]): { open: SidebarRow[]; closed:
   };
 }
 
+/** 已合卷时间桶（2026-09-02 UX 批）：大卷量下的可扫性分桶。 */
+export type ClosedBucket = 'today' | 'week' | 'earlier';
+
+/** 判桶：同本地日历日 = 今天；7 天内 = week；更早。savedAt 缺省/坏值归
+ *  更早桶（防御位——合卷行来自磁盘必有 savedAt，理论上走不到）。 */
+export function closedBucket(savedAt: string, now = Date.now()): ClosedBucket {
+  const t = new Date(savedAt).getTime();
+  if (!Number.isNaN(t)) {
+    const d = new Date(t);
+    const n = new Date(now);
+    if (d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate()) {
+      return 'today';
+    }
+    if (now - t < 7 * 24 * 3600_000) return 'week';
+  }
+  return 'earlier';
+}
+
+/** 桶中文标签（节头文案单一真源；机读码另由消费面拼）。 */
+export const CLOSED_BUCKET_LABEL: Record<ClosedBucket, string> = {
+  today: '今天',
+  week: '7 天内',
+  earlier: '更早',
+};
+
+/** 已合卷分桶：桶序固定（今天 → 7 天内 → 更早），空桶不出场；
+ *  返回长度 ≤1 时消费面不立桶头（单桶立头是噪音）。 */
+export function bucketClosed(
+  closed: SidebarRow[],
+  now = Date.now(),
+): Array<{ bucket: ClosedBucket; rows: SidebarRow[] }> {
+  const by: Record<ClosedBucket, SidebarRow[]> = { today: [], week: [], earlier: [] };
+  for (const r of closed) by[closedBucket(r.savedAt, now)].push(r);
+  const out: Array<{ bucket: ClosedBucket; rows: SidebarRow[] }> = [];
+  for (const b of ['today', 'week', 'earlier'] as const) {
+    if (by[b].length > 0) out.push({ bucket: b, rows: by[b] });
+  }
+  return out;
+}
+
 /** 行机读注记（注疏版式第二行）：Nº 卷号 · N 块 · 相对时间；未落盘新卷
- *  （无 savedAt）省时间段，不出「—」占位。 */
+ *  （无 savedAt）出「未存」段——显式标记比缺段诚实（自动存失败可据此发现）。 */
 export function sessionMeta(r: Pick<SidebarRow, 'id' | 'msgCount' | 'savedAt'>, now = Date.now()): string {
   const parts = [`Nº ${r.id}`, `${r.msgCount} 块`];
   if (r.savedAt) parts.push(relativeTime(r.savedAt, now));
+  else parts.push('未存');
   return parts.join(' · ');
 }

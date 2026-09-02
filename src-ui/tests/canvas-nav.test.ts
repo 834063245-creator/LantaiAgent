@@ -13,6 +13,9 @@ import { identityView, viewFocusRegion } from '../src/paper/canvas-math';
 import { pickDropAnchor } from '../src/paper/space';
 import { canvasNavPlugin } from '../src/plugins/builtin/canvas-nav';
 import {
+  bucketClosed,
+  CLOSED_BUCKET_LABEL,
+  closedBucket,
   filterRows,
   mergeSessionRows,
   relativeTime,
@@ -98,10 +101,51 @@ describe('session-sidebar-model（注疏重排：检索/分节/机读注记）',
     expect(closed.map((r) => r.id)).toEqual([3, 4]);
   });
 
-  it('sessionMeta：Nº · 块数 · 相对时间；未落盘省时间段', () => {
+  it('sessionMeta：Nº · 块数 · 相对时间；未落盘出「未存」段（2026-09-02）', () => {
     const now = Date.parse('2026-08-25T12:00:00Z');
     expect(sessionMeta({ id: 12, msgCount: 8, savedAt: '2026-08-25T11:00:00Z' }, now)).toBe('Nº 12 · 8 块 · 1 小时前');
-    expect(sessionMeta({ id: 13, msgCount: 0, savedAt: '' }, now)).toBe('Nº 13 · 0 块');
+    expect(sessionMeta({ id: 13, msgCount: 0, savedAt: '' }, now)).toBe('Nº 13 · 0 块 · 未存');
+  });
+});
+
+describe('session-sidebar-model（已合卷时间分桶，2026-09-02 UX 批）', () => {
+  const mk = (id: number, savedAt: string): SidebarRow => ({
+    id,
+    label: `卷${id}`,
+    savedAt,
+    open: false,
+    msgCount: 1,
+    status: 'idle',
+  });
+
+  it('closedBucket：同日历日 = today；7 天内 = week；更早/坏值 = earlier', () => {
+    const now = new Date(2026, 8, 2, 12, 0, 0).getTime(); // 2026-09-02 本地午
+    expect(closedBucket(new Date(2026, 8, 2, 0, 0, 1).toISOString(), now)).toBe('today'); // 同日历日（跨午夜也算今天）
+    expect(closedBucket(new Date(2026, 8, 1, 23, 0, 0).toISOString(), now)).toBe('week'); // 昨天
+    expect(closedBucket(new Date(2026, 7, 28).toISOString(), now)).toBe('week'); // 6 天前
+    expect(closedBucket(new Date(2026, 7, 20).toISOString(), now)).toBe('earlier'); // 13 天前
+    expect(closedBucket('', now)).toBe('earlier'); // 缺省防御位
+    expect(closedBucket('bad', now)).toBe('earlier'); // 坏值防御位
+  });
+
+  it('bucketClosed：桶序固定（今天 → 7 天内 → 更早），空桶不出场', () => {
+    const now = new Date(2026, 8, 2, 12, 0, 0).getTime();
+    const rows = [
+      mk(4, new Date(2026, 7, 20).toISOString()), // earlier
+      mk(1, new Date(2026, 8, 2, 9, 0, 0).toISOString()), // today
+      mk(2, new Date(2026, 8, 1).toISOString()), // week
+      mk(3, new Date(2026, 8, 2, 8, 0, 0).toISOString()), // today
+    ];
+    const buckets = bucketClosed(rows, now);
+    expect(buckets.map((b) => b.bucket)).toEqual(['today', 'week', 'earlier']);
+    expect(buckets[0].rows.map((r) => r.id)).toEqual([1, 3]); // 桶内保持传入序（合流排序）
+    expect(bucketClosed([], now)).toEqual([]); // 全空 → 无桶
+  });
+
+  it('CLOSED_BUCKET_LABEL：三桶中文标签', () => {
+    expect(CLOSED_BUCKET_LABEL.today).toBe('今天');
+    expect(CLOSED_BUCKET_LABEL.week).toBe('7 天内');
+    expect(CLOSED_BUCKET_LABEL.earlier).toBe('更早');
   });
 });
 
@@ -141,7 +185,7 @@ describe('paper/canvas-math viewFocusRegion（定位器视口）', () => {
   });
 });
 
-describe('plugins/canvas-nav-plugin（贡献行 + 纸开合同步）', () => {
+describe('plugins/canvas-nav-plugin（贡献行 + 互斥两态开合，2026-09-02）', () => {
   it('注册书脊/会话侧边栏双面板 + toggle 命令', async () => {
     useDockStore.setState({
       open: { ...useDockStore.getState().open, 'canvas-spine': false, 'canvas-sidebar': false },
@@ -162,22 +206,35 @@ describe('plugins/canvas-nav-plugin（贡献行 + 纸开合同步）', () => {
     await f1.dispose();
   });
 
-  it('纸开 → 书脊/侧边栏开；纸关 → 全关（收起只剩书脊的生命周期锚）', async () => {
+  it('互斥两态：纸开 → 书脊态起步（侧栏不开）；侧栏开 → 书脊退；侧栏收 → 书脊回；纸关 → 全退', async () => {
     useDockStore.setState({
       open: { ...useDockStore.getState().open, paper: false, 'canvas-spine': false, 'canvas-sidebar': false },
     });
     const { f1, f2, f3 } = await bootCanvasNav();
     useDockStore.getState().openPanel('paper');
-    expect(useDockStore.getState().open['canvas-spine']).toBe(true);
+    expect(useDockStore.getState().open['canvas-spine']).toBe(true); // 书脊态起步
+    expect(useDockStore.getState().open['canvas-sidebar']).toBe(false); // 侧栏不自动展开
+    useDockStore.getState().openPanel('canvas-sidebar'); // 用户经「案卷」toggle 唤出
     expect(useDockStore.getState().open['canvas-sidebar']).toBe(true);
-    // 侧边栏收起（折叠只剩书脊）：paper 状态未变 → 不重新拉回
-    useDockStore.getState().closePanel('canvas-sidebar');
-    expect(useDockStore.getState().open['canvas-sidebar']).toBe(false);
-    expect(useDockStore.getState().open['canvas-spine']).toBe(true);
+    expect(useDockStore.getState().open['canvas-spine']).toBe(false); // 并陈 → 书脊退场
+    useDockStore.getState().closePanel('canvas-sidebar'); // 收起侧栏
+    expect(useDockStore.getState().open['canvas-spine']).toBe(true); // 书脊回场（收起态默认）
     expect(useDockStore.getState().open.paper).toBe(true);
-    useDockStore.getState().closePanel('paper');
+    useDockStore.getState().closePanel('paper'); // 纸关 → 两者全退
     expect(useDockStore.getState().open['canvas-spine']).toBe(false);
     expect(useDockStore.getState().open['canvas-sidebar']).toBe(false);
+    await f3.dispose();
+    await f2.dispose();
+    await f1.dispose();
+  });
+
+  it('热替换自愈：装载时遗留「双开」旧态 → 互斥不变量收敛（书脊退场）', async () => {
+    useDockStore.setState({
+      open: { ...useDockStore.getState().open, paper: true, 'canvas-spine': true, 'canvas-sidebar': true },
+    });
+    const { f1, f2, f3 } = await bootCanvasNav();
+    expect(useDockStore.getState().open['canvas-sidebar']).toBe(true);
+    expect(useDockStore.getState().open['canvas-spine']).toBe(false);
     await f3.dispose();
     await f2.dispose();
     await f1.dispose();

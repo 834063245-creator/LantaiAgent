@@ -1,68 +1,129 @@
-/* SessionSidebar — 当前工作区案卷管理侧边栏（2026-08-31 注疏重排）。
- * 设计语言：prototype/lantai.html 案卷首页列表（.session-row / .home-section-title
- * / .leader）的窄栏转写——分节头点线引出 + 两行式行（宋体卷名 + 等宽机读注记）
- * + 当前卷朱砂左条。术语铁律：会话→案卷。全份字号接 --font-scale。
- * 布局（Plan A）：书脊恒显最左缘，侧边栏在其右；收起 = 只剩书脊。
+/* SessionSidebar — 当前工作区案卷管理侧边栏（2026-08-31 注疏重排 + 2026-09-02
+ * UX/浸墨批）。
+ * 设计语言：prototype/lantai.html 案卷首页列表（.session-row / .sh-section-title
+ * / .leader）的窄栏转写——节头点线引出 + 两行式行（宋体卷名 + 等宽机读注记）
+ * + 当前卷朱砂左脊。术语铁律：会话→案卷。全份字号接 --font-scale。
+ * 浸墨（§10 法则）：书眉/节头实心方墨锚 + 洇边、机读计数朱字、唯一主动作
+ * （另起一卷）墨底实色 + --shadow-anchor（拟文印同款 hover 翻朱砂深）。
+ * 选中语言（§11 分型）：行型 = --sel-wash 墨洗 + 朱砂左脊（当前卷/多选共用）。
+ * 互斥两态（2026-09-02 拍板）：本栏展开时独占左缘（left:0，书脊整列退场），
+ * 宽度右缘可拖（240–420px，localStorage 持久）。
  * 挂载：DockPanel 上层覆盖（z 高于纸面板 .pp-root z:280），随纸面板开合。 */
 
 .ss-sidebar {
   position: fixed;
-  left: 44px; /* 书脊右缘 */
+  left: 0; /* 互斥两态：独占左缘（书脊 = 本栏收起态，展开时退场） */
   top: var(--bar-h);
   /* 清坞顶线（2026-09-02 拍板 C）：抬高 + 实测高（ComposerDock 上报） */
   bottom: calc(var(--composer-rise) + var(--composer-h-live, var(--composer-h)));
-  width: 264px;
+  width: 264px; /* 兜底值——实际宽度由组件 inline style 写入（右缘拖拽） */
   display: flex;
   flex-direction: column;
   background: var(--paper);
   border-right: var(--rule-strong);
   z-index: var(--z-paper-sidebar);
   font-family: var(--f-song);
+  /* 展场动画：从左缘滑入 + 内容级联浮现（sh-rise 曲线家族） */
+  animation: ss-slide-in 0.18s cubic-bezier(0.23, 1, 0.32, 1);
+}
+@keyframes ss-slide-in {
+  from {
+    transform: translateX(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
-/* ── 书眉：案卷 + 等宽计数 + 折叠钮 ── */
+/* ── 宽度拖拽柄（右缘）：面板架零投影纪律——纯热区 + hover 显形 ── */
+.ss-resize {
+  position: absolute;
+  right: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  cursor: col-resize;
+  z-index: 1;
+}
+.ss-resize::after {
+  content: "";
+  position: absolute;
+  right: 2px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+  transition: background var(--snap);
+}
+.ss-resize:hover::after,
+.ss-resize:focus-visible::after {
+  background: var(--ink-2);
+}
+.ss-resize:focus-visible {
+  outline: none; /* 显形走 ::after 墨条（外扩 1px 描边在 6px 热区外会裁切） */
+}
+
+/* ── 书眉：案卷（墨锚 + 洇边）+ 等宽朱字计数 + 折叠钮 ── */
 .ss-head {
   display: flex;
   align-items: baseline;
   gap: 10px;
   padding: 12px 12px 10px;
-  border-bottom: var(--rule-hard); /* 浸墨：侧栏书眉底线升硬线 */
+  border-bottom: var(--rule-hard); /* 浸墨③：屏级分区线（书眉底线） */
   flex-shrink: 0;
 }
 .ss-title {
-  font-size: calc(13px * var(--font-scale));
-  font-weight: 600;
+  font-size: calc(14px * var(--font-scale));
+  font-weight: 700;
   letter-spacing: 0.1em;
   color: var(--ink-1);
+  text-shadow: 0 0 1px color-mix(in oklch, var(--ink-solid) 20%, transparent);
+}
+/* 浸墨法则 5：节题前实心方墨锚点（首页 .sh-section-title 同款，窄栏缩一号） */
+.ss-title::before {
+  content: "";
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  background: var(--ink-1);
+  margin-right: 8px;
+  transform: translateY(0.5px);
+  box-shadow: 0 0 2px 0.5px color-mix(in oklch, var(--ink-solid) 30%, transparent);
 }
 .ss-count {
   font-family: var(--f-mono);
   font-size: calc(10px * var(--font-scale));
   letter-spacing: 0.1em;
-  color: var(--ink-3);
+  color: var(--seal-deep); /* 浸墨：机读计数朱字（对齐首页节头 .n） */
 }
 .ss-fold {
   margin-left: auto;
   align-self: center;
-  width: 24px;
-  height: 24px;
+  padding: 4px 8px;
   background: none;
-  border: var(--rule-soft);
+  border: none;
   border-radius: 0;
-  color: var(--ink-2);
+  color: var(--ink-3);
   cursor: pointer;
-  font-size: calc(11px * var(--font-scale));
+  font-size: calc(12px * var(--font-scale));
   line-height: 1;
   transition:
     background var(--snap),
     color var(--snap);
 }
 .ss-fold:hover {
-  background: var(--paper-deep);
-  color: var(--ink-1);
+  background: var(--ink-1);
+  color: var(--paper);
 }
-.ss-fold:active {
-  transform: translateY(1px);
+.ss-fold:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 1px;
 }
 
 /* ── 检索条（常驻）：等宽签 + 底线输入件（composer/set-control 输入语言）── */
@@ -124,7 +185,7 @@
   cursor: pointer;
 }
 
-/* ── 列表：两节（摊开中 / 已合卷），节头点线引出 + 等宽计数 ── */
+/* ── 列表：两节（摊开中 / 已合卷），节头点线引出 + 等宽朱字计数 ── */
 .ss-list {
   flex: 1;
   overflow-y: auto;
@@ -134,9 +195,18 @@
   display: flex;
   align-items: baseline;
   gap: 10px;
+  width: 100%;
   padding: 12px 12px 6px;
   border-top: var(--rule-strong);
   margin-top: 8px;
+  background: none;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  border-radius: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 /* 首节紧贴检索条底线——不再叠一道强线 */
 .ss-section:first-of-type .ss-section-head {
@@ -148,6 +218,23 @@
   font-weight: 600;
   letter-spacing: 0.08em;
   color: var(--ink-1);
+  text-shadow: 0 0 1px color-mix(in oklch, var(--ink-solid) 20%, transparent);
+}
+/* 浸墨：节题墨锚——展开 = 实心方墨（内容在场），收起 = 空心框（内容收档） */
+.ss-section-head .t::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--ink-1);
+  margin-right: 8px;
+  transform: translateY(0.5px);
+  box-shadow: 0 0 2px 0.5px color-mix(in oklch, var(--ink-solid) 30%, transparent);
+  transition: background var(--snap);
+}
+.ss-section-head.folded .t::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--ink-2);
 }
 .ss-section-head .leader {
   flex: 1 1 auto;
@@ -159,10 +246,72 @@
   font-family: var(--f-mono);
   font-size: calc(9px * var(--font-scale));
   letter-spacing: 0.12em;
-  color: var(--ink-3);
+  color: var(--seal-deep); /* 浸墨：机读计数朱字 */
+}
+.ss-section-head:hover .t {
+  color: var(--ink-solid);
+}
+.ss-section-head:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: -2px;
 }
 
-/* 行：两行式——宋体卷名 / 等宽机读注记；当前卷朱砂左条 + 淡朱砂洗底 */
+/* ── 时间桶头（已合卷节内，次级：缩一号 + 空心锚起手）── */
+.ss-bucket-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px 4px 30px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ss-bucket-head .t {
+  font-size: calc(11px * var(--font-scale));
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+}
+.ss-bucket-head .t::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: var(--ink-2);
+  margin-right: 7px;
+  transform: translateY(0.5px);
+  transition: background var(--snap);
+}
+.ss-bucket-head.folded .t::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--ink-3);
+}
+.ss-bucket-head .leader {
+  flex: 1 1 auto;
+  min-width: 12px;
+  border-bottom: 1px dotted var(--ink-4);
+  transform: translateY(-3px);
+}
+.ss-bucket-head .n {
+  font-family: var(--f-mono);
+  font-size: calc(9px * var(--font-scale));
+  letter-spacing: 0.12em;
+  color: var(--seal-deep);
+}
+.ss-bucket-head:hover .t {
+  color: var(--ink-1);
+}
+.ss-bucket-head:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: -2px;
+}
+
+/* 行：两行式——宋体卷名 / 等宽机读注记；当前卷 = 墨洗 + 朱砂左脊
+ * （§11 行型选中语言，2026-09-02 拍板 B）；user-select 关闭给拖行让路。 */
 .ss-row {
   position: relative;
   display: flex;
@@ -170,6 +319,7 @@
   gap: 8px;
   padding: 8px 12px;
   cursor: pointer;
+  user-select: none;
   transition: background var(--snap);
 }
 .ss-row:hover {
@@ -180,7 +330,7 @@
   outline-offset: -2px;
 }
 .ss-row.current {
-  background: color-mix(in oklch, var(--seal) 7%, var(--paper));
+  background: var(--sel-wash);
 }
 .ss-row.current::before {
   content: "";
@@ -191,6 +341,54 @@
   width: 3px;
   background: var(--seal);
 }
+/* 多选选中行：同款行型选中语言（墨洗 + 朱砂左脊——状态语汇每件至多一条） */
+.ss-row.selected {
+  background: var(--sel-wash);
+}
+.ss-row.selected::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  background: var(--seal);
+}
+
+/* ── 勾选格（多选）：hover/选中时替换状态点位显形；完工动作 = 墨底反白 ── */
+.ss-check {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin-top: 4px;
+  padding: 0;
+  background: transparent;
+  border: 1.5px solid var(--ink-3);
+  border-radius: 0;
+  cursor: pointer;
+  visibility: hidden;
+  transition:
+    background var(--snap),
+    border-color var(--snap);
+}
+/* 勾选格显形（hover/选中）——状态点的让位规则见 .ss-dot 族之后（特异性序） */
+.ss-row:hover .ss-check,
+.ss-row:focus-within .ss-check,
+.ss-row.selected .ss-check {
+  visibility: visible;
+}
+.ss-check:hover {
+  border-color: var(--ink-1);
+}
+.ss-check.on,
+.ss-check.on:hover {
+  background: var(--ink-1);
+  border-color: var(--ink-1);
+}
+.ss-check:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 1px;
+}
 
 /* 状态点：pending=朱砂（交互等待）> running=石青（机）> done=墨（完成）> idle=灰
  * D2（2026-08-29）：方点化——圆角恒 0 纪律收编状态点族。 */
@@ -198,7 +396,7 @@
   width: 8px;
   height: 8px;
   flex: 0 0 auto;
-  margin-top: 6px; /* 与首行卷名光学居中 */
+  margin-top: 7px;
 }
 .ss-dot-pending {
   background: var(--seal);
@@ -222,6 +420,12 @@
   50% {
     opacity: 1;
   }
+}
+/* 勾选格显形 = 状态点让位（一槽一点，防双点并陈；置 .ss-dot 族后保特异性序） */
+.ss-row:hover .ss-dot,
+.ss-row:focus-within .ss-dot,
+.ss-row.selected .ss-dot {
+  display: none;
 }
 
 .ss-row-main {
@@ -270,7 +474,8 @@
 }
 
 /* 行操作：无边框文字钮（中文钮禁 mono——mono 栈无中文字形），
- * hover / 键盘聚焦行时显形；hover 墨底反白（btn-text 语言）。 */
+ * hover / 键盘聚焦行时显形；hover 墨底反白（btn-text 语言）；
+ * 热区 ≥24px（2026-09-02 UX 批——原 2×5px 热区不足平台底线）。 */
 .ss-actions {
   align-self: center;
   display: flex;
@@ -283,7 +488,9 @@
   opacity: 1;
 }
 .ss-actions button {
-  padding: 2px 5px;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 3px 6px;
   background: none;
   border: none;
   border-radius: 0;
@@ -318,7 +525,8 @@
   text-align: center;
 }
 
-/* ── 脚部：出生仪式（btn-text 语言——rule-strong 边 + hover 墨底反白）── */
+/* ── 脚部：出生仪式（浸墨法则 1②：本屏唯一主动作 = 墨底实色 + 硬偏移投影，
+ * 拟文印 .pp-send 同款语言——hover 翻朱砂深，按压沉朱砂） ── */
 .ss-foot {
   padding: 10px;
   border-top: var(--rule-soft);
@@ -327,25 +535,27 @@
 .ss-new {
   width: 100%;
   padding: 9px 0;
-  background: none;
-  border: var(--rule-strong);
+  background: var(--ink-1);
+  border: none;
   border-radius: 0;
   font-family: var(--f-song);
   font-size: calc(12px * var(--font-scale));
+  font-weight: 600;
   letter-spacing: 0.16em;
-  color: var(--ink-1);
+  color: var(--paper);
   cursor: pointer;
+  box-shadow: var(--shadow-anchor);
   transition:
     background var(--snap),
-    color var(--snap);
+    color var(--snap),
+    transform var(--snap);
 }
 .ss-new:hover {
-  background: var(--ink-1);
+  background: var(--seal-deep);
   color: var(--paper);
 }
 .ss-new:active {
-  background: var(--ink-2);
-  color: var(--paper);
+  background: var(--seal);
   transform: translateY(1px);
 }
 .ss-new:focus-visible {
@@ -355,4 +565,97 @@
 .ss-new:disabled {
   cursor: default;
   opacity: 0.6;
+}
+
+/* ── 批量条（多选态替换脚部）：计数 + 两击确认删除 + 取消 ── */
+.ss-batch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border-top: var(--rule-soft);
+  flex-shrink: 0;
+}
+.ss-batch-n {
+  font-family: var(--f-mono);
+  font-size: calc(10px * var(--font-scale));
+  letter-spacing: 0.08em;
+  color: var(--seal-deep);
+}
+.ss-batch-del {
+  flex: 1;
+  min-height: 30px;
+  background: none;
+  border: var(--rule-strong);
+  border-radius: 0;
+  font-family: var(--f-song);
+  font-size: calc(12px * var(--font-scale));
+  color: var(--ink-1);
+  cursor: pointer;
+  transition:
+    background var(--snap),
+    color var(--snap);
+}
+.ss-batch-del:hover {
+  background: var(--ink-1);
+  color: var(--paper);
+}
+.ss-batch-del:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 1px;
+}
+/* 批量武装态 = 朱砂深底白字（行内 ss-danger 同款语义） */
+.ss-batch-del.ss-danger,
+.ss-batch-del.ss-danger:hover {
+  background: var(--seal-deep);
+  border-color: var(--seal-deep);
+  color: var(--paper);
+}
+.ss-batch-cancel {
+  background: none;
+  border: none;
+  border-radius: 0;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 3px 6px;
+  font-family: var(--f-song);
+  font-size: calc(11px * var(--font-scale));
+  color: var(--ink-3);
+  cursor: pointer;
+  transition:
+    background var(--snap),
+    color var(--snap);
+}
+.ss-batch-cancel:hover {
+  background: var(--ink-1);
+  color: var(--paper);
+}
+.ss-batch-cancel:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: 1px;
+}
+
+/* ── 拖行落位幽灵预览（屏幕坐标浮层——抽卷放桌的即时应答；书脊同款） ── */
+.ss-drag-ghost {
+  position: fixed;
+  transform: translate(8px, 8px);
+  width: 120px;
+  height: 56px;
+  background: color-mix(in oklch, var(--seal) 8%, var(--paper));
+  border: var(--rule-dashed);
+  border-left: 3px solid var(--seal);
+  box-shadow: var(--elev-raise);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  pointer-events: none;
+  z-index: var(--z-dialog);
+}
+.ss-drag-ghost-tag {
+  writing-mode: vertical-rl;
+  font-family: var(--f-song);
+  font-size: 10.5px;
+  letter-spacing: 0.2em;
+  color: var(--seal-deep);
+  white-space: nowrap;
 }

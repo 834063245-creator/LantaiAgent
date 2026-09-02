@@ -67,10 +67,6 @@ export const SpineRack = memo(function SpineRack() {
   const [sessions, setSessions] = useState<Array<{ id: number; label: string }>>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [runningIds, setRunningIds] = useState<Set<number>>(new Set());
-  /* 侧边栏开着时压住书脊右缘（sidebar z:282 > 书脊 z:281）——「抽出一半」
-   * 位移会被侧边栏截断、右缘并入纸底，此时收回贴队（CSS 关位移），
-   * 朱砂左条仍标记当前卷。 */
-  const sidebarOpen = useDockStore((s) => s.open['canvas-sidebar']);
 
   /* 会话列表 + 运行态同步：sess store 订阅 + agentSessionState 版本订阅
    * + ctx.space 订阅（流区位置/活跃变化）→ 全量重读。卷序走 spineOrder；
@@ -195,11 +191,7 @@ export const SpineRack = memo(function SpineRack() {
   if (!core) return null;
 
   return (
-    <div
-      className={['sr-rack', sidebarOpen ? 'sr-sidebar-open' : ''].join(' ').trim()}
-      role="tablist"
-      aria-label="画布书脊（空间导航器）"
-    >
+    <div className="sr-rack" role="tablist" aria-label="画布书脊（空间导航器）">
       <button
         type="button"
         className="sr-sidebar-toggle"

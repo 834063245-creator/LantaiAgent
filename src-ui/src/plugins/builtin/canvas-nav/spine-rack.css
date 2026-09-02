@@ -2,7 +2,8 @@
  * 视觉契约同 PaperPanel.css：兰台 token（paper / ink / seal 系）、圆角恒 0、
  * 无软投影（硬偏移可用 --elev-raise）。书脊 = 函套立视图抽象：
  * 宽 36px 常态、hover 展宽露出全文（题签竖排，writing-mode 竖排）。
- * 挂载：DockPanel 上层覆盖（z 高于纸面板），随纸面板开合。 */
+ * 挂载：DockPanel 上层覆盖（z 高于纸面板），随纸面板开合；
+ * 互斥两态（2026-09-02）= 侧栏的收起态，侧栏展开时整列卸载退场。 */
 
 .sr-rack {
   position: fixed;
@@ -16,8 +17,20 @@
   align-items: stretch;
   gap: 6px;
   padding: 12px 0 12px 6px;
-  z-index: var(--z-paper-rack); /* 纸面板 .pp-root z:280 之上——书脊恒显最左缘 */
+  z-index: var(--z-paper-rack); /* 纸面板 .pp-root z:280 之上——互斥两态下独占左缘 */
   pointer-events: none; /* 列容器不挡画布，热区在书脊自身 */
+  /* 互斥两态回场（2026-09-02）：侧栏收起 → 书脊重挂载，从左缘轻滑入 */
+  animation: sr-slide-in 0.16s cubic-bezier(0.23, 1, 0.32, 1);
+}
+@keyframes sr-slide-in {
+  from {
+    transform: translateX(-12px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 .sr-sidebar-toggle {
@@ -87,10 +100,6 @@
   border-left: 3px solid var(--seal);
   transform: translateX(4px); /* 抽出一半 */
   box-shadow: var(--elev-raise);
-}
-/* 侧边栏开着（压住书脊右缘）时位移被截断——收回贴队，红左条照旧标记 */
-.sr-rack.sr-sidebar-open .sr-spine.sr-active .sr-spine-main {
-  transform: none;
 }
 
 /* 题签：竖排（从右往左读——线装书脊惯例；mixed=拉丁侧躺，汉字直立） */
