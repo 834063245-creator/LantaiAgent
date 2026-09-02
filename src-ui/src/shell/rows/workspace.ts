@@ -131,7 +131,12 @@ async function switchWorkspace(path?: string, opts?: { graphEngine?: boolean | n
     };
 
     shellRefs.workspace = ws;
-    wsMachine.transition(ws._health === 'degraded' ? 'degraded' : 'active');
+    // 竞态根治（2026-09-02 实机事故）：状态机此前在 open() 返回后即转
+    // 'active'——但 setupAgent + 摊开集恢复还在后面跑数秒。该窗口内 isBusy
+    // = false，第二次点击（用户见画布空/慢再点一次）绕过 #4 守卫触发并发
+    // switchWorkspace：后到的 activate 覆写前一个的根句柄 → 前一个的恢复
+    // 全部越界被拒 + 双方 setupAgent 互拆 runtime/core → 画布/设置面板全死。
+    // 修复：'switching' 持有到整个 switch 完成（含恢复），finally 兜底不变。
 
     // Phase 1.5：graphData = 聚合快照（不再有全量 nodes/edges 计数）
     const gd = ws.graphData;
@@ -192,8 +197,12 @@ async function switchWorkspace(path?: string, opts?: { graphEngine?: boolean | n
       // watcher 的增量分析链（engine_try_incremental）会在后台把引擎拉起来。
       pushStatus('图谱引擎已停用——跳过简报与文件监视');
     }
+    // 竞态根治：全部恢复落定后才离开 'switching'（isBusy 期间二次点击
+    // 被 switchWorkspace 入口 + #4 守卫拦截）。switching → active/degraded
+    // 均为合法转移。
+    wsMachine.transition(ws._health === 'degraded' ? 'degraded' : 'active');
   } finally {
-    // 确保状态机未卡在 'switching' 状态
+    // 兜底：异常路径（open 抛错已 forceState('idle')）外不得卡 'switching'
     if (wsMachine.state === 'switching') {
       wsMachine.forceState(
         shellRefs.workspace?._health === 'degraded' ? 'degraded' : shellRefs.workspace ? 'active' : 'idle',
