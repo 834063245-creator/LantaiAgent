@@ -316,13 +316,10 @@ describe('ChatPanel session persistence', () => {
 
       mockInvoke
         .mockResolvedValueOnce(JSON.stringify([{ name: '46.json', path: '/s/46.json', is_dir: false, children: null }]))
-        // read_file_content returns cat -n format: line numbers prepended
-        .mockResolvedValueOnce(
-          rawJSON
-            .split('\n')
-            .map((l, i) => `${String(i + 1).padStart(6)}\t${l}`)
-            .join('\n'),
-        );
+        // P1-3（2026-09-02）：readSessionJSON 改 raw 模式——后端 raw=true 跳过
+        // format_lines，直接返回原文。mock 模拟新契约（原文直返）。
+        // 旧契约（cat -n 格式）的剥行号路径由 stripLineNumbers 单测覆盖。
+        .mockResolvedValueOnce(rawJSON);
 
       const result = await panel.listSavedSessions('D:/test');
       expect(result).toHaveLength(1);

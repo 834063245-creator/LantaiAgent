@@ -43,7 +43,12 @@ describe('SessionsHome × workspace_list 边界校验接线（§8 验收降维�
   let container: HTMLDivElement;
   let root: Root | null = null;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // P1-2：workspace_list 短期缓存（rpc-contract 模块级）跨测试泄漏——
+    // mock 的结果会被下一测试拿到。动态 import 清空（静态 import 会在
+    // vi.mock 注册前实例化真 bridge）。
+    const { clearWorkspaceListCache } = await import('../src/rpc-contract');
+    clearWorkspaceListCache();
     mockRpc.mockReset();
     container = document.createElement('div');
     document.body.appendChild(container);

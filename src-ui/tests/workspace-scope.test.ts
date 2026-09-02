@@ -53,9 +53,9 @@ describe('Workspace bag 接线（T0 静态断言）', () => {
     expect(bumpIdx).toBeGreaterThan(-1);
   });
 
-  it('forceClearState 含 fiber.dispose（快通道，不等 settle）', () => {
-    const body = windowOf('forceClearState(): void {');
-    expect(body).toContain('void this._fiber.dispose()');
+  it('forceClearState 含 fiber.dispose（await settle，防竞态）', () => {
+    const body = windowOf('async forceClearState(): Promise<void> {');
+    expect(body).toContain('await this._fiber.dispose()');
     expect(body).toContain('bumpWorkspaceEpoch()');
   });
 

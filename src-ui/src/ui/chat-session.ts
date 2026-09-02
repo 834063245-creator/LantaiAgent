@@ -237,11 +237,18 @@ export interface SessionContext {
 // ── 辅助函数 ──
 
 /** 去除 read_file_content 的 cat -n 行号。Rust 后端始终返回
- *  "{:>6}\t{content}" 格式。会话 JSON 文件在解析前需去除行号。 */
+ *  "{:>6}\t{content}" 格式（右对齐 6 字符 + tab）。
+ *  #11 修复（2026-09-02）：旧正则 `^\s*\d+\t` 过于宽松——理论上能匹配
+ *  JSON 内容中恰好以「空格+数字+tab」开头的行。新实现精确匹配 format_lines
+ *  的输出格式：前 6 字符全是空格/数字、第 7 字符是 tab → 剥前 7 字符；
+ *  否则原样保留（不误剥 JSON 内容）。 */
 export function stripLineNumbers(text: string): string {
   return text
     .split('\n')
-    .map((l) => l.replace(/^\s*\d+\t/, ''))
+    .map((l) => {
+      if (l.length >= 7 && l[6] === '\t' && /^\s*\d+$/.test(l.slice(0, 6))) return l.slice(7);
+      return l;
+    })
     .join('\n');
 }
 
@@ -522,7 +529,7 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
  *  Stage-5 起不再含 paper（钉住块/纸条/流区位置已升格工作区级——
  *  随 {workspace}/.lantai/canvas.json，不再随卷快照）。
  *  workspace-session-ownership-rework：不再写 workspace 字段——存储位置即归属。 */
-interface StoredSession {
+export interface StoredSession {
   id: number;
   label?: string;
   savedAt?: string;
@@ -538,10 +545,11 @@ interface StoredSession {
   nextId?: number;
 }
 
-/** 读取会话文件并解析为 JSON。处理 read_file_content 的行号。 */
+/** 读取会话文件并解析为 JSON。raw 模式跳过行号（P1-3——Rust 侧 raw=true
+ *  不做 format_lines，前端不剥行号，省双重 O(n) 字符串变换）。 */
 async function readSessionJSON(filePath: string): Promise<StoredSession> {
-  const raw = await typedRpc('read_file_content', { file_path: filePath });
-  return JSON.parse(stripLineNumbers(raw)) as StoredSession;
+  const raw = await typedRpc('read_file_content', { file_path: filePath, raw: true });
+  return JSON.parse(raw) as StoredSession;
 }
 
 // ── 工作区会话根（workspace-session-ownership-rework 2026-08-27）────────────
@@ -756,9 +764,10 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
   // 代际防护（H5）：对账在途期间可能切换工作区 — 写入前校验，过期丢弃。
   const epoch = getWorkspaceEpoch();
 
-  const sessions = await listSavedSessions(ctx, projectPath);
-  // 发号对账：next = max(内存, 磁盘最大档号 + 1)——撞号裂缝闭合（F5 语义承继）
-  const scanMax = sessions.reduce((m, r) => Math.max(m, r.id), 0);
+  // #5 修复：用 scanMaxSessionId（仅 list_directory，不读文件内容）替代
+  // listSavedSessions（读全部卷文件）——避免与 restoreCanvasSpread 的
+  // listSavedSessions 调用双倍 I/O。发号对账只需最大档号，不需读内容。
+  const scanMax = await scanMaxSessionId(projectPath);
   const memNext = getChatStore(ctx.storeId).sess.getState().nextSessionId;
   const next = Math.max(memNext, scanMax + 1);
   if (!isCurrentEpoch(epoch)) return;
@@ -768,8 +777,9 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
 // ── 摊开集多卷恢复（扫描推导；session-ledger L0 语义承继面）─────────────
 
 /** 恢复路径的卷数据（workspace-session-ownership-rework：工作区会话根单读
- *  + 墓碑/空卷过滤；localStorage 覆盖已拆——磁盘是唯一事实源）。 */
-async function readVolumeData(projectPath: string, id: number): Promise<StoredSession | null> {
+ *  + 墓碑/空卷过滤；localStorage 覆盖已拆——磁盘是唯一事实源）。
+ *  P0-3（2026-09-02）导出：restoreCanvasSpread 两阶段恢复的并行读面。 */
+export async function readVolumeData(projectPath: string, id: number): Promise<StoredSession | null> {
   const data = await readVolumeJSON(projectPath, id);
   if (!data || data.deleted) return null;
   // 空卷（无任何非系统消息）不进摊开集——与「空卷不落盘」同规，
@@ -839,7 +849,8 @@ export async function listSavedSessions(
   return result;
 }
 
-/** 从磁盘加载已保存的会话到新标签页。 */
+/** 从磁盘加载已保存的会话到新标签页（单卷打开路径——首页点卷/侧边栏续开）。
+ *  批量摊开集恢复走 batchRestoreSessions（P3-1）——本函数不再承担恢复路径。 */
 export async function loadSessionFromDisk(ctx: SessionContext, projectPath: string, sessionId: number): Promise<void> {
   // 续开查重（L1/F2）：该卷已在案头摊开 → 直接换卷不克隆（旧行为：无条件
   // append → 同号双脊，旧句柄被顶掉未 dispose，合卷即变死卷）。
@@ -898,12 +909,12 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
     newAgent.bindSession?.(String(sid));
     agentSessionState.setExec(ctx.storeId, sid, createExecState());
   }
-  getChatStore(ctx.storeId).sess.setState({
-    sessions: [...st1.sessions, { id: sid, label }],
-    activeIdx: st1.sessions.length,
+  getChatStore(ctx.storeId).sess.setState((s) => ({
+    sessions: [...s.sessions, { id: sid, label }],
+    activeIdx: s.sessions.length,
     // 发号下限（F5）：续开大号卷后，另起一卷不得发出 ≤ 已存在档号的号
-    nextSessionId: Math.max(st1.nextSessionId, sid + 1),
-  });
+    nextSessionId: Math.max(s.nextSessionId, sid + 1),
+  }));
   // ponytail: 创建会话级消息 store
   msgStoreFor(ctx.storeId, sid).getState().setMessages([]);
   // 恢复现场选择（2026-08-31 会话流专项）：带 UI 快照的卷直接采信快照渲染——
@@ -967,6 +978,84 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   ctx.setLastUsageText('');
   ctx.updateFooter();
   // U4/Q1-B：总目记账退役（摊开集重启由磁盘扫描推导）
+}
+
+// ── 摊开集批量恢复应用（P3-1，2026-09-02）──────────────────────────
+
+/** 批量摊开已读卷：一次 setState 铺全部卷（sessions append + 发号合并 +
+ *  activeIdx 保存），随后逐卷填内容层（msgStore / compose / tokens / 轮次表 /
+ *  资产表）。替代恢复循环里逐卷 loadSessionFromDisk 的 N 次 setState——
+ *  sess store 订阅（PaperPanel sessions 同步 + 消息订阅 effect 重建）从
+ *  N 次降为 1 次。
+ *  逐卷失败隔离：单卷应用抛错不影响其他卷，返回失败数（调用方可见化）。
+ *  不造 Agent（同 loadSessionFromDisk restore 模式）；活跃卷的句柄由
+ *  restoreCanvasSpread 末尾 switchSession 的惰性补建承担。 */
+export async function batchRestoreSessions(
+  ctx: SessionContext,
+  items: Array<{ sid: number; data: StoredSession }>,
+): Promise<number> {
+  // 防御：读阶段在途时用户可能手动开卷——已开的跳过（不重复摊开）
+  const openNow = new Set(
+    getChatStore(ctx.storeId)
+      .sess.getState()
+      .sessions.map((s) => s.id),
+  );
+  const batch = items.filter(({ sid }) => !openNow.has(sid));
+  if (batch.length === 0) return 0;
+
+  // 标签派生（与 loadSessionFromDisk 同规：命名卷直采 / 首条用户消息截断 / 案卷序号兜底）
+  const baseCount = getChatStore(ctx.storeId).sess.getState().sessions.length;
+  const labeled = batch.map(({ sid, data }, i) => {
+    const conv = (data.messages as Message[]).filter((m) => m.role !== 'system');
+    const firstUser = conv.find((m) => m.role === 'user' && !isInternalMessage(m.content));
+    const label =
+      data.label &&
+      !/^(?:会话|案卷) /.test(data.label) &&
+      data.label !== '已恢复的会话' &&
+      data.label !== '已恢复的案卷'
+        ? data.label
+        : firstUser
+          ? firstUser.content?.slice(0, 28) + (firstUser.content?.length > 28 ? '…' : '')
+          : `案卷 ${baseCount + i + 1}`;
+    return { sid: data.id || sid, label, data, conv };
+  });
+
+  // 一次 setState：全部卷 append + 发号合并 + activeIdx 保存（#8 语义）
+  getChatStore(ctx.storeId).sess.setState((s) => {
+    const sessions = [...s.sessions];
+    let nextSessionId = s.nextSessionId;
+    for (const { sid: id, label } of labeled) {
+      sessions.push({ id, label });
+      nextSessionId = Math.max(nextSessionId, id + 1);
+    }
+    return { sessions, activeIdx: s.activeIdx, nextSessionId };
+  });
+
+  // 逐卷内容层（会话级 store——不触 sess 订阅，失败隔离）
+  let failed = 0;
+  for (const { sid, data, conv } of labeled) {
+    try {
+      const uiSnapshot = Array.isArray(data.uiMessages) && data.uiMessages.length > 0 ? data.uiMessages : undefined;
+      if (uiSnapshot) {
+        msgStoreFor(ctx.storeId, sid).getState().setMessages(uiSnapshot);
+        setTurnPairs(ctx.storeId, sid, rebuildTurnPairsFromProvider(conv));
+        rebuildAssetTableFromMessages(ctx.storeId, sid, uiSnapshot);
+      } else {
+        rebuildMessagesFromMessages(conv, ctx.storeId, sid);
+      }
+      if (data.compose) {
+        getComposeStore(ctx.storeId).getState().hydratePrefs(String(sid), data.compose);
+      }
+      getChatStore(ctx.storeId)
+        .sess.getState()
+        .setSessionTokens(sid, typeof data.tokensUsed === 'number' ? data.tokensUsed : 0);
+      bumpSession(ctx.storeId, sid);
+    } catch (e) {
+      failed += 1;
+      console.error('[chat] batchRestoreSessions: 单卷应用失败', sid, e);
+    }
+  }
+  return failed;
 }
 
 /** 将磁盘上的会话文件标记为已删除。workspace-session-ownership-rework：

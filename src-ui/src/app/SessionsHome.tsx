@@ -18,9 +18,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { WorkspaceSummary } from '../rpc-contract';
-import { typedJsonRpc, typedRpc } from '../rpc-contract';
+import { clearWorkspaceListCache, typedRpc, workspaceListCached } from '../rpc-contract';
 import { graphEngineEnabled, loadSettings } from '../settings';
 import { pickFolder, workspaceFlow } from '../shell/rows/workspace';
+import { shellRefs } from '../shell/runtime';
 import { useDockStore } from '../state/dock-store';
 import { useUpdateStore } from '../state/update-store';
 import { useShellStore } from './shell-store';
@@ -134,7 +135,7 @@ export function SessionsHome() {
     let alive = true;
     void (async () => {
       try {
-        const parsed = await typedJsonRpc('workspace_list', {});
+        const parsed = await workspaceListCached();
         if (alive) {
           setWorkspaces(parsed);
           setListState('ready');
@@ -150,7 +151,9 @@ export function SessionsHome() {
 
   const refreshWorkspaces = useCallback(async (): Promise<void> => {
     try {
-      const parsed = await typedJsonRpc('workspace_list', {});
+      // 写操作后刷新：显式清缓存（避免 TTL 内拿到旧数据）
+      clearWorkspaceListCache();
+      const parsed = await workspaceListCached();
       setWorkspaces(parsed);
       setListState('ready');
     } catch {
@@ -160,10 +163,18 @@ export function SessionsHome() {
 
   /** 进入工作区画布：打开纸面板 + （必要时）切到该工作区。
    *  摊开集由画布状态文件恢复（Stage-5 拍板 11）。
-   *  目录已丢失的工作区禁进（调用侧守卫）。 */
+   *  目录已丢失的工作区禁进（调用侧守卫）。
+   *  #4 修复（2026-09-02）：冷启动期间 switchWorkspace 仍在跑（setupAgent +
+   *  restoreCanvasSpread）——wsMachine.isBusy 时拦截，防止纸面板开了但卷
+   *  还没恢复完。 */
   const onEnterWorkspace = useCallback(
     (ws: string) => {
       setRemoveTarget(null);
+      // 冷启动恢复未完成时不进画布——卷还没铺开，进去看到的是空纸
+      if (shellRefs.wsMachine.isBusy) {
+        setNotice('工作区正在恢复中，请稍候…');
+        return;
+      }
       openPanel('paper');
       const current = useShellStore.getState().projectPath;
       if (!isSamePath(ws, current)) {
@@ -191,6 +202,8 @@ export function SessionsHome() {
     setNotice(null);
     try {
       const path = await typedRpc('workspace_create_dir', { name });
+      // 写操作后清缓存——回首页时 workspaceListCached 重新拉（不拿 TTL 内旧表）
+      clearWorkspaceListCache();
       setSheetOpen(false);
       openPanel('paper');
       await workspaceFlow.switchWorkspace(path, { graphEngine: newWsEngine });
@@ -211,6 +224,8 @@ export function SessionsHome() {
     setNotice(null);
     setBusy(true);
     try {
+      // activate 会登记新工作区——同样清缓存
+      clearWorkspaceListCache();
       openPanel('paper');
       await workspaceFlow.switchWorkspace(folder, { graphEngine: newWsEngine });
     } catch (e) {

@@ -89,11 +89,12 @@ async function switchWorkspace(path?: string, opts?: { graphEngine?: boolean | n
       try {
         await withTimeout(workspace.deactivate(chatPanel), 5000, () => {
           console.warn('[switchWorkspace] deactivate timed out, forcing clear');
-          shellRefs.workspace?.forceClearState();
         });
       } catch (e) {
         console.error('[switchWorkspace] deactivate error:', e);
-        shellRefs.workspace?.forceClearState();
+        // #13 修复：await forceClearState——旧工作区的异步清理器（canvas flush
+        // 等）在新工作区创建前 settle，防竞态
+        await shellRefs.workspace?.forceClearState();
       }
       shellRefs.workspace = null;
     }
@@ -140,7 +141,9 @@ async function switchWorkspace(path?: string, opts?: { graphEngine?: boolean | n
       nodes: nodeCount,
       edges: gd?.edge_count ?? 0,
     });
-    setLoading(false);
+    // #2 修复（2026-09-02）：setLoading(false) 原在此处调用——但 setupAgent +
+    // restoreCanvasSpread 尚未完成。用户看到 analyzing 已清除、认为工作区就绪，
+    // 实际卷还在恢复。移到 restoreCanvasSpread 之后。这里保留 pushStatus 进度。
     bumpWorkspaceSwitched(); // P1 总线归零：workspace:switched → state/workspace-switch-store
 
     try {
@@ -178,6 +181,9 @@ async function switchWorkspace(path?: string, opts?: { graphEngine?: boolean | n
       console.error('[switchWorkspace] restoreCanvasSpread failed:', e);
       pushStatus(`⚠️ 画布布局恢复失败: ${e instanceof Error ? e.message : String(e)}`);
     });
+    // #2 修复：恢复完成后才清除加载态——用户在此前不能进入纸面板（analyzing
+    // 状态仍在，onEnterWorkspace 的 wsMachine.isBusy 守卫也拦截）
+    setLoading(false);
     if (ws._graphEngineOn) {
       ws.runCheck();
       await typedRpc('workspace_start_watcher', {}).catch(() => {});

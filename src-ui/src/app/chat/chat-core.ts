@@ -717,71 +717,118 @@ export class ChatCore {
    *  剪枝只在目录列表**成功**时进行（列表失败 = 保守不剪，避免误删真实卷）。 */
   async restoreCanvasSpread(workspace: string): Promise<void> {
     await loadCanvasFromDisk(this.panelId, workspace);
-    const canvas = getCanvasStore(this.panelId).getState();
     const st = getChatStore(this.panelId).sess.getState();
     const openIds = new Set(st.sessions.map((s) => s.id));
 
     // 磁盘已落盘卷集（目录缺席/列表失败 = 不剪枝，保守）。
-    // 用 listSavedSessions 取**有效**卷集（过滤墓碑 deleted:true / 坏 JSON /
-    // 空卷）——不能按文件名收集（墓碑/坏文件会被误判为有效卷，导致已删卷的
-    // 摊开项不剪枝、每次启动弹「案卷文件读取失败」）。
+    // P1-1（2026-09-02）：剪枝改为「文件名级 + 读结果级」双面——不再调
+    // listSavedSessions（全量读 T 个卷文件）。文件名在目录里 = 存在；读阶段
+    // readVolumeData null = 墓碑/空卷/坏 JSON（从摊开集剪掉，不弹失败 toast）。
     const sessionsDir = `${workspace.replace(/[\\/]+$/, '')}/.lantai/sessions`;
-    let listed = false;
+    let dirEntries: import('../../rpc-contract').DirEntry[] | null = null;
     try {
-      await typedJsonRpc('list_directory', {
+      dirEntries = await typedJsonRpc('list_directory', {
         path: sessionsDir,
         filter_ignored: false,
       });
-      listed = true;
     } catch {
       /* 目录缺席/列表失败 = 不剪枝 */
     }
-    if (listed) {
-      const validIds = new Set<number>([...openIds]);
-      const saved = await this.listSavedSessions(workspace);
-      for (const s of saved) validIds.add(s.id);
-      const phantom = Object.keys(canvas.spread).filter((sid) => !validIds.has(Number(sid)));
+
+    // P0-3 两阶段恢复 + P1-1 去冗余（2026-09-02）：
+    //   读阶段——并行读全部摊开卷 + 钉源卷（readVolumeData 互相独立），
+    //   替代旧「先 listSavedSessions 全量读 T 卷、再恢复循环串行读 spread 卷」
+    //   的双倍 I/O。读结果 null = 墓碑/空卷/缺失（读阶段即发现，不弹 toast）。
+    //   应用阶段——串行 setState/消息重建（并行会触发全局 msgId 计数器重置
+    //   竞态与 sessions append 覆盖）。
+    const canvasState0 = getCanvasStore(this.panelId).getState();
+    const readTargets = new Set<number>();
+    for (const sid of Object.keys(canvasState0.spread)) {
+      const n = Number(sid);
+      if (!openIds.has(n)) readTargets.add(n);
+    }
+    // 钉源卷不在摊开集也要读（孤儿钉「收回/删除」按钮判定需要知道源是否已删）
+    for (const pin of Object.values(canvasState0.pins)) {
+      if (pin.source && !openIds.has(pin.source.sessionId)) readTargets.add(pin.source.sessionId);
+    }
+    const readResults = await Promise.all(
+      [...readTargets].map((sid) =>
+        Session.readVolumeData(workspace, sid)
+          .then((data) => ({ sid, data }))
+          .catch((e) => {
+            console.error('[canvas] 恢复摊开卷预读失败', sid, e);
+            return { sid, data: null as null };
+          }),
+      ),
+    );
+    const readBySid = new Map<number, import('../../ui/chat-session').StoredSession | null>();
+    for (const { sid, data } of readResults) readBySid.set(sid, data);
+
+    if (dirEntries) {
+      // 文件名级存在性（剪枝面 1）：摊开/钉源卷的 .json 文件不在目录里 = 幽灵。
+      // #1 修复的保守语义保留：目录列表失败 = 不剪枝（避免误删真实卷）。
+      const fileIds = new Set<number>();
+      for (const e of dirEntries) {
+        if (e.is_dir || !e.name.endsWith('.json') || e.name.startsWith('_')) continue;
+        const n = parseInt(e.name.replace('.json', ''), 10);
+        if (!Number.isNaN(n)) fileIds.add(n);
+      }
+      // 读结果级有效性（剪枝面 2）：文件在但 readVolumeData null = 墓碑/空卷——
+      // 从摊开集剪掉（替代旧 listSavedSessions 的墓碑过滤，不再弹读取失败 toast）
+      const phantom = Object.keys(canvasState0.spread).filter((sid) => {
+        const n = Number(sid);
+        if (openIds.has(n)) return false; // 已在案头 = 有效
+        return !fileIds.has(n) || readBySid.get(n) === null;
+      });
       if (phantom.length > 0) {
-        for (const sid of phantom) canvas.removeRegion(sid);
+        for (const sid of phantom) getCanvasStore(this.panelId).getState().removeRegion(sid);
         // 活跃会话指向若落在被剪的幽灵卷 → 一并清掉（不残留失效指向）
-        if (canvas.activeSessionId != null && phantom.includes(canvas.activeSessionId)) {
-          canvas.setActiveRegion(null);
+        const curActive = getCanvasStore(this.panelId).getState().activeSessionId;
+        if (curActive != null && phantom.includes(curActive)) {
+          getCanvasStore(this.panelId).getState().setActiveRegion(null);
         }
         // 回写清理后的画布（幂等——下次启动已无悬空项，不再重复剪）
         void saveCanvasToDisk(this.panelId, workspace).catch((e) =>
           console.warn('[chat-core] 画布回写失败（幽灵卷清理未落盘，下次启动重试）:', e),
         );
       }
-      // 已删源会话播种（2026-08-28 会话管理专项）：钉的源卷既不在开卷也不在
-      // 有效落盘卷集 = 源已删（或空卷从未落盘）——「收回」语义失效，孤儿钉
+      // 已删源会话播种（2026-08-28 会话管理专项）：钉的源卷既不在开卷、也
+      // 读不出有效数据（墓碑/空卷/文件没了）——「收回」语义失效，孤儿钉
       // 按钮应显示「删除」。deleteSessionFile 运行时另做增量标记。
       const dead = new Set<number>();
-      for (const pin of Object.values(canvas.pins)) {
-        if (pin.source && !validIds.has(pin.source.sessionId)) dead.add(pin.source.sessionId);
+      for (const pin of Object.values(getCanvasStore(this.panelId).getState().pins)) {
+        const src = pin.source?.sessionId;
+        if (src == null || openIds.has(src)) continue;
+        const read = readBySid.get(src);
+        if (read === null || !fileIds.has(src)) dead.add(src);
       }
-      if (dead.size > 0) canvas.replaceDeletedSessionIds(dead);
+      if (dead.size > 0) getCanvasStore(this.panelId).getState().replaceDeletedSessionIds(dead);
     }
 
-    let restoreFailed = 0;
-    for (const sid of Object.keys(getCanvasStore(this.panelId).getState().spread)) {
-      const n = Number(sid);
-      if (!openIds.has(n)) {
-        try {
-          await this.loadSessionFromDisk(workspace, n);
-        } catch (e) {
-          restoreFailed += 1;
-          console.error('[canvas] 恢复摊开卷失败', n, e);
-        }
-      }
+    // 应用阶段（P3-1，2026-09-02）：批量铺开——一次 setState 摊全部卷（读数据
+    // 已在 readBySid，不再触盘），随后逐卷填内容层（会话级 store 不触 sess 订阅）。
+    // 替代旧「逐卷 loadSessionFromDisk = N 次 setState append」——sess 订阅
+    // （PaperPanel sessions 同步 + 消息订阅 effect）从 N 次降为 1 次。
+    // 活跃卷句柄：末尾 switchSession 的惰性补建承担（批量应用不造 Agent）。
+    const batchItems: Array<{ sid: number; data: import('../../ui/chat-session').StoredSession }> = [];
+    for (const sid of readTargets) {
+      // 钉源补充读的卷可能不在摊开集（只供孤儿钉判定用）——不摊开
+      if (!Object.hasOwn(canvasState0.spread, String(sid))) continue;
+      // 墓碑/空卷/缺失（read null）——剪枝阶段已从摊开集移除，不进批量
+      const data = readBySid.get(sid);
+      if (data != null) batchItems.push({ sid, data });
     }
+    const restoreFailed = await Session.batchRestoreSessions(this._sessionCtx(), batchItems);
     // D5（拍板 C）：恢复失败可见——StatusLine 警告档 + 一次性提示条
     if (restoreFailed > 0) {
       useBgAlertStore.getState().pushBgAlert('restore-open', `有 ${restoreFailed} 卷恢复失败——可在左侧栏手动展开`);
     } else {
       useBgAlertStore.getState().clearBgAlert('restore-open');
     }
-    // 恢复活跃会话指向（画布状态文件的 activeSessionId——创作坞/输入条跟随）
-    const activeSid = canvas.activeSessionId ? Number(canvas.activeSessionId) : null;
+    // #6 修复：恢复活跃会话指向——重新取 state（上方剪枝已产生新 state，
+    // 旧 canvas 快照的 activeSessionId 可能已过期）
+    const freshActive = getCanvasStore(this.panelId).getState().activeSessionId;
+    const activeSid = freshActive ? Number(freshActive) : null;
     if (activeSid != null) {
       const st2 = getChatStore(this.panelId).sess.getState();
       const idx = st2.sessions.findIndex((s) => s.id === activeSid);

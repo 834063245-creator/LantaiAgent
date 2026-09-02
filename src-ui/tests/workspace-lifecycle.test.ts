@@ -22,7 +22,7 @@ function windowOf(anchor: string, span = 4000): string {
 }
 
 describe('forceClearState 紧急路径清理（H3）', () => {
-  const body = windowOf('forceClearState(): void {');
+  const body = windowOf('async forceClearState(): Promise<void> {');
 
   it('disposeAll 在 runtime = null 之前调用（同步），且委托 bag 统一释放', () => {
     const dispose = body.indexOf('.disposeAll()');
@@ -31,7 +31,8 @@ describe('forceClearState 紧急路径清理（H3）', () => {
     expect(detach).toBeGreaterThan(-1);
     expect(dispose, 'disposeAll 必须先于 runtime 解绑').toBeLessThan(detach);
     // 其余清理（aura/cache）走 fiber effect 单一机制 — forceClearState 委托 _fiber.dispose()
-    expect(body).toContain('void this._fiber.dispose()');
+    // #13 修复：fiber.dispose() 改为 await（防与新工作区创建竞态）
+    expect(body).toContain('await this._fiber.dispose()');
     expect(body).toContain('bumpWorkspaceEpoch()');
   });
 
