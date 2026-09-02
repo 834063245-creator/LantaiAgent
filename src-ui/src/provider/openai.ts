@@ -5,6 +5,7 @@
 // 手写 fetch() + SSE 解析，零第三方 SDK
 
 import { clampMaxTokens, getModel } from './catalog';
+import { classifyProviderError } from './error-catalog';
 import { sendWithRetry } from './retry';
 import { extractWritePreview, fetchJsonWithTimeout, prewarmEndpoint, type SseEvent, sseEvents } from './shared';
 import {
@@ -304,12 +305,16 @@ async function* readSSE(body: ReadableStream<Uint8Array>, name: string, signal?:
     if (ev.error) {
       const raw = ev.error.message || JSON.stringify(ev.error);
       // 2026-08-31 错误码增强：挂 OpenAI 协议的 error.code ?? error.type
+      // Phase 1：经 classifyProviderError 编织（附 kind——上层可语义分流）
       yield {
         type: ChunkType.Error,
-        err: new ApiError(classifyStreamError(name, raw), {
-          code: ev.error.code ?? ev.error.type,
-          raw: ev.error.message,
-        }),
+        err: classifyProviderError(
+          new ApiError(classifyStreamError(name, raw), {
+            code: ev.error.code ?? ev.error.type,
+            raw: ev.error.message,
+          }),
+          name,
+        ),
       };
       return;
     }

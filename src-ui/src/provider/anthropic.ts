@@ -4,6 +4,7 @@
 // Anthropic Messages API provider — 手写 fetch() + SSE 解析，零第三方 SDK
 
 import { clampMaxTokens, getModel } from './catalog';
+import { classifyProviderError } from './error-catalog';
 import { sendWithRetry } from './retry';
 import { extractWritePreview, fetchJsonWithTimeout, prewarmEndpoint, type SseEvent, sseEvents } from './shared';
 import { assertEffortDeclared, type StoredThinking, THINKING_EFFORT_BUDGETS, thinkingCapability } from './thinking';
@@ -451,9 +452,13 @@ async function* readSSE(body: ReadableStream<Uint8Array>, name: string, signal?:
       case 'error': {
         const msg = ev.error?.message || 'stream error';
         // 2026-08-31 错误码增强：挂 Anthropic 的 error.type（overloaded_error 等）
+        // Phase 1：经 classifyProviderError 编织（附 kind——上层可语义分流）
         yield {
           type: ChunkType.Error,
-          err: new ApiError(classifyStreamError(name, msg), { code: ev.error?.type, raw: msg }),
+          err: classifyProviderError(
+            new ApiError(classifyStreamError(name, msg), { code: ev.error?.type, raw: msg }),
+            name,
+          ),
         };
         return;
       }

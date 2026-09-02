@@ -309,6 +309,57 @@ fn panic_to_rpc_error(payload: Box<dyn std::any::Any + Send>) -> String {
     format!("命令内部错误（panic）: {}", msg)
 }
 
+/// P1-15: agent 会话增量追加（NDJSON）— 与 session_append 同构，但写到
+/// .lantai/agents/{agent_id}/session.ndjson。rewrite=true 时 truncate 重写
+/// （会话被撤回/替换后全量重建），否则 append-only（每轮对话只写增量，
+/// 消除旧 saveState 全量重写 session.json 的 O(全量) 写放大）。
+///
+/// 从 dispatch_rpc 的 match 分支原样提取（行为逐字节不变，2026-09-02 平台
+/// 补课 Phase 2）——dispatch_rpc 依赖 tauri::State/AppHandle，单元测试无法
+/// 构造；本函数零状态、纯 fs，是会话 NDJSON 落盘的唯一实现，持久化行为
+/// 序列（round-trip / 空会话 / 损坏容忍 / 并发 / 覆盖）以此为钉测锚点。
+fn agent_session_append(
+    project_path: &str,
+    agent_id: &str,
+    messages: &Value,
+    rewrite: bool,
+) -> Result<(), String> {
+    crate::utils::sanitize_path_id(agent_id, "agent_id")?;
+    let file = std::path::Path::new(project_path)
+        .join(".lantai/agents")
+        .join(agent_id)
+        .join("session.ndjson");
+    if let Some(parent) = file.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("agent_session_append: cannot create dir: {e}"))?;
+    }
+    let arr = messages
+        .as_array()
+        .ok_or("agent_session_append: 'messages' must be an array")?;
+    use std::io::Write;
+    let mut f = if rewrite {
+        // truncate 重写（撤回/替换后全量重建）
+        std::fs::File::create(&file).map_err(|e| format!("agent_session_append: create: {e}"))?
+    } else {
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&file)
+            .map_err(|e| format!("agent_session_append: open: {e}"))?
+    };
+    for msg in arr {
+        let line = serde_json::to_string(msg)
+            .map_err(|e| format!("agent_session_append: serialize: {e}"))?;
+        f.write_all(line.as_bytes())
+            .map_err(|e| format!("agent_session_append: write: {e}"))?;
+        f.write_all(b"\n")
+            .map_err(|e| format!("agent_session_append: write: {e}"))?;
+    }
+    f.flush()
+        .map_err(|e| format!("agent_session_append: flush: {e}"))?;
+    Ok(())
+}
+
 async fn dispatch_rpc(
     method: String,
     params: Value,
@@ -1477,45 +1528,14 @@ async fn dispatch_rpc(
         "agent_session_append" => {
             let project_path = req_str(&params, "project_path", "agent_session_append")?;
             let agent_id = req_str(&params, "agent_id", "agent_session_append")?;
-            crate::utils::sanitize_path_id(&agent_id, "agent_id")?;
-            let messages = params.get("messages")
+            let messages = params
+                .get("messages")
                 .ok_or("agent_session_append: missing 'messages'")?;
-            let rewrite = params.get("rewrite")
+            let rewrite = params
+                .get("rewrite")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            let file = std::path::Path::new(&project_path)
-                .join(".lantai/agents")
-                .join(&agent_id)
-                .join("session.ndjson");
-            if let Some(parent) = file.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| format!("agent_session_append: cannot create dir: {e}"))?;
-            }
-            let arr = messages.as_array()
-                .ok_or("agent_session_append: 'messages' must be an array")?;
-            use std::io::Write;
-            let mut f = if rewrite {
-                // truncate 重写（撤回/替换后全量重建）
-                std::fs::File::create(&file)
-                    .map_err(|e| format!("agent_session_append: create: {e}"))?
-            } else {
-                std::fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(&file)
-                    .map_err(|e| format!("agent_session_append: open: {e}"))?
-            };
-            for msg in arr {
-                let line = serde_json::to_string(msg)
-                    .map_err(|e| format!("agent_session_append: serialize: {e}"))?;
-                f.write_all(line.as_bytes())
-                    .map_err(|e| format!("agent_session_append: write: {e}"))?;
-                f.write_all(b"\n")
-                    .map_err(|e| format!("agent_session_append: write: {e}"))?;
-            }
-            f.flush()
-                .map_err(|e| format!("agent_session_append: flush: {e}"))?;
-            ok_unit(Ok(()))
+            ok_unit(agent_session_append(&project_path, &agent_id, messages, rewrite))
         }
 
         // ═══════════════════════════════════════════════════════
@@ -1976,5 +1996,224 @@ mod tests {
         // _agent_id 直通
         let p4 = json!({ "_agent_id": "agent-7" });
         assert_eq!(self_or_agent(&p4).as_deref(), Some("agent-7"));
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // 会话持久化行为序列钉测（2026-09-02 平台补课 Phase 2）——
+    // agent_session_append 是 .lantai/agents/{agent_id}/session.ndjson
+    // 的唯一落盘实现；以下断言当前真实行为，不美化。
+    // ═══════════════════════════════════════════════════════════════
+
+    use super::agent_session_append;
+
+    /// 每测独立的临时项目根（isolation.rs spill 测试同款模式）。
+    fn session_test_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("hologram_rpc_session_test_{tag}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn session_file(project: &std::path::Path, agent_id: &str) -> std::path::PathBuf {
+        project
+            .join(".lantai/agents")
+            .join(agent_id)
+            .join("session.ndjson")
+    }
+
+    /// ① 保存 → 重新加载 → 内容一致（round-trip）。
+    /// NDJSON 契约：每条消息一行合法 JSON、行尾换行；重载按行 parse。
+    #[test]
+    fn agent_session_round_trip_preserves_messages() {
+        let project = session_test_dir("roundtrip");
+        let messages = json!([
+            { "role": "user", "content": "你好，兰台" },
+            { "role": "assistant", "content": "收到", "tool_calls": [] }
+        ]);
+        agent_session_append(project.to_str().unwrap(), "agent-rt", &messages, false).unwrap();
+
+        let content = std::fs::read_to_string(session_file(&project, "agent-rt")).unwrap();
+        assert!(content.ends_with('\n'), "NDJSON 每行以换行结尾");
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 2, "两条消息两行");
+        for (i, line) in lines.iter().enumerate() {
+            let parsed: serde_json::Value = serde_json::from_str(line).unwrap();
+            assert_eq!(parsed, messages[i], "重载内容与保存内容逐字节等价");
+        }
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    /// ② 空会话（空消息数组）与仅元数据会话可正常保存/加载。
+    #[test]
+    fn agent_session_empty_and_metadata_only_round_trip() {
+        let project = session_test_dir("emptymeta");
+
+        // 空消息数组：文件被创建（OpenOptions create）但零行——不报错
+        agent_session_append(project.to_str().unwrap(), "agent-empty", &json!([]), false).unwrap();
+        let empty_file = session_file(&project, "agent-empty");
+        assert!(empty_file.exists(), "空会话也要落盘建文件");
+        assert_eq!(
+            std::fs::read_to_string(&empty_file).unwrap(),
+            "",
+            "空会话 = 零字节文件"
+        );
+
+        // 仅元数据（单条 system 消息）的会话 round-trip
+        let meta = json!([{ "role": "system", "content": "meta only" }]);
+        agent_session_append(project.to_str().unwrap(), "agent-meta", &meta, false).unwrap();
+        let content = std::fs::read_to_string(session_file(&project, "agent-meta")).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        assert_eq!(parsed, meta[0]);
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    /// ③ 损坏 JSON 文件 → 现状恢复路径（不美化）：
+    /// 追加路径不解析、不清洗既有内容——
+    ///   场景 A（损坏带尾换行）：垃圾字节原样保留，新合法行续尾；
+    ///   场景 B（损坏不带尾换行）：新记录与垃圾尾熔接成非法行（现状不补换行）；
+    ///   真恢复 = rewrite=true 截断重写（前端全量重建）。
+    #[test]
+    fn agent_session_corrupted_file_tolerated_on_append_rebuilt_on_rewrite() {
+        let project = session_test_dir("corrupt");
+
+        // 场景 A：损坏带尾换行
+        let file = session_file(&project, "agent-c");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, "not json at all\n").unwrap();
+        agent_session_append(
+            project.to_str().unwrap(),
+            "agent-c",
+            &json!([{ "role": "user", "content": "after corruption" }]),
+            false,
+        )
+        .unwrap();
+        let content = std::fs::read_to_string(&file).unwrap();
+        assert!(
+            content.starts_with("not json at all\n"),
+            "损坏字节必须原样保留（现状不清洗）"
+        );
+        let last_line = content.lines().last().unwrap();
+        assert!(
+            serde_json::from_str::<serde_json::Value>(last_line).is_ok(),
+            "新增行仍是合法 JSON：{last_line}"
+        );
+
+        // 场景 B：损坏不带尾换行 → 熔接
+        let fused = session_file(&project, "agent-f");
+        std::fs::create_dir_all(fused.parent().unwrap()).unwrap();
+        std::fs::write(&fused, "{\"broken\": ").unwrap();
+        agent_session_append(
+            project.to_str().unwrap(),
+            "agent-f",
+            &json!([{ "role": "user", "content": "fused" }]),
+            false,
+        )
+        .unwrap();
+        let fused_content = std::fs::read_to_string(&fused).unwrap();
+        let fused_line = fused_content.lines().last().unwrap();
+        assert!(
+            serde_json::from_str::<serde_json::Value>(fused_line).is_err(),
+            "现状：无尾换行的损坏文件会把新记录熔接成非法行（不补换行）：{fused_line}"
+        );
+
+        // 恢复路径 = rewrite=true 截断重写：损坏历史被清除
+        agent_session_append(
+            project.to_str().unwrap(),
+            "agent-c",
+            &json!([{ "role": "user", "content": "rebuilt" }]),
+            true,
+        )
+        .unwrap();
+        let rebuilt = std::fs::read_to_string(&file).unwrap();
+        assert_eq!(rebuilt.lines().count(), 1, "rewrite 后只剩新内容");
+        assert!(rebuilt.contains("rebuilt"));
+        assert!(!rebuilt.contains("not json"), "损坏历史被截断清除");
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    /// ④ 并发写入 → 现状完整性（无进程内锁）：
+    /// 并发安全完全依赖 OS 追加句柄语义——Windows FILE_APPEND_DATA 下每次
+    /// WriteFile 原子续尾（本测试每行为一次 write_all，小缓冲单次系统调用
+    /// 即完成），因此字节零丢失、标记零丢失、换行数守恒；行级原子性（一条
+    /// 消息的 line 与 \n 两次 write_all 之间可能被他线程插入）不保证——故
+    /// 不断言行结构，只断言字节面完整性。
+    #[test]
+    fn agent_session_concurrent_appends_preserve_all_bytes() {
+        let project = session_test_dir("concurrent");
+        let threads: Vec<_> = (0..8)
+            .map(|t| {
+                let project = project.clone();
+                std::thread::spawn(move || {
+                    for j in 0..10 {
+                        let msg = json!({ "thread": t, "seq": j, "marker": format!("M{t:02}x{j:02}") });
+                        agent_session_append(
+                            project.to_str().unwrap(),
+                            "agent-cc",
+                            &json!([msg]),
+                            false,
+                        )
+                        .unwrap();
+                    }
+                })
+            })
+            .collect();
+        for h in threads {
+            h.join().unwrap();
+        }
+
+        let content = std::fs::read_to_string(session_file(&project, "agent-cc")).unwrap();
+        for t in 0..8 {
+            for j in 0..10 {
+                let marker = format!("\"M{t:02}x{j:02}\"");
+                assert!(content.contains(&marker), "标记 {marker} 字节丢失");
+            }
+        }
+        assert_eq!(
+            content.matches('\n').count(),
+            80,
+            "80 次追加 = 80 个换行（零丢字节）"
+        );
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    /// ⑤ 同会话重复保存：append 累积、rewrite=true 覆盖（truncate）。
+    #[test]
+    fn agent_session_repeat_save_append_accumulates_rewrite_overwrites() {
+        let project = session_test_dir("overwrite");
+
+        // 追加语义：历史行累积不丢
+        agent_session_append(project.to_str().unwrap(), "agent-o", &json!([{ "role": "user", "content": "first" }]), false).unwrap();
+        agent_session_append(project.to_str().unwrap(), "agent-o", &json!([{ "role": "assistant", "content": "second" }]), false).unwrap();
+        let content = std::fs::read_to_string(session_file(&project, "agent-o")).unwrap();
+        assert_eq!(content.lines().count(), 2, "重复保存（append）= 历史累积");
+        assert!(content.contains("first") && content.contains("second"));
+
+        // 覆盖语义：rewrite=true → File::create 截断重写
+        agent_session_append(project.to_str().unwrap(), "agent-o", &json!([{ "role": "user", "content": "third" }]), true).unwrap();
+        let content = std::fs::read_to_string(session_file(&project, "agent-o")).unwrap();
+        assert_eq!(content.lines().count(), 1, "rewrite 保存 = 覆盖");
+        assert!(content.contains("third"));
+        assert!(!content.contains("first"), "旧历史被覆盖清除");
+        let _ = std::fs::remove_dir_all(&project);
+    }
+
+    /// 附加钉：持久化入口的路径穿越守卫（sanitize_path_id）——
+    /// agent_id 含 / \\ .. \0 一律拒绝，不落盘、不建目录。
+    #[test]
+    fn agent_session_rejects_path_traversal_agent_id() {
+        let project = session_test_dir("traversal");
+        let err = agent_session_append(
+            project.to_str().unwrap(),
+            "../evil",
+            &json!([{ "role": "user", "content": "x" }]),
+            false,
+        )
+        .unwrap_err();
+        assert!(err.contains("非法字符"), "穿越 agent_id 必须拒绝: {err}");
+        assert!(
+            !project.join(".lantai/agents").exists(),
+            "拒绝时不得创建任何目录"
+        );
+        let _ = std::fs::remove_dir_all(&project);
     }
 }
