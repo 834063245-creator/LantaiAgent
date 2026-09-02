@@ -22,7 +22,8 @@
 //     即用落点位） / 摊开卷再落位——书脊手势同族（互斥两态下书脊退场，
 //     空间手势由本栏承接）。
 //   - 宽度可拖：右缘拖拽 240–420px（localStorage 持久）。
-//   - 新建按钮（出生仪式：createNewSession，自动落位画布线性排比）。
+//   - 新建按钮（出生仪式：createNewSession，自动落位画布线性排比）——
+//     检索条下常驻（2026-09-02 用户拍板：上移，沉底翻屏才能开新卷）。
 //   - 互斥两态（2026-09-02 拍板）：书脊列 = 本栏的收起态（canvas-nav 插件
 //     互斥守卫），本栏展开时独占左缘（left:0）。
 //
@@ -794,6 +795,19 @@ export const SessionSidebar = memo(function SessionSidebar() {
         />
       </div>
 
+      {/* 出生仪式（2026-09-02 用户拍板：上移检索条下常驻——沉底要翻一整屏才能开新卷） */}
+      <div className="ss-new-row">
+        <button
+          type="button"
+          className="ss-new"
+          onClick={onNew}
+          disabled={newBusy}
+          title={newBusy ? '正在创建…' : undefined}
+        >
+          ＋ 另起一卷
+        </button>
+      </div>
+
       {localNotice && (
         <div className="ss-notice">
           {localNotice}
@@ -840,7 +854,7 @@ export const SessionSidebar = memo(function SessionSidebar() {
         {rows.length > 0 && visible.length === 0 && <div className="ss-empty">无匹配案卷</div>}
       </div>
 
-      {selectedIds.size > 0 ? (
+      {selectedIds.size > 0 && (
         <div className="ss-batch">
           <span className="ss-batch-n">已选 {selectedIds.size} 卷</span>
           {batchArmed ? (
@@ -871,18 +885,6 @@ export const SessionSidebar = memo(function SessionSidebar() {
             }}
           >
             取消
-          </button>
-        </div>
-      ) : (
-        <div className="ss-foot">
-          <button
-            type="button"
-            className="ss-new"
-            onClick={onNew}
-            disabled={newBusy}
-            title={newBusy ? '正在创建…' : undefined}
-          >
-            ＋ 另起一卷
           </button>
         </div>
       )}

@@ -9,8 +9,7 @@
   position: fixed;
   left: 0;
   top: var(--bar-h);
-  /* 清坞顶线（2026-09-02 拍板 C）：抬高 + 实测高（ComposerDock 上报） */
-  bottom: calc(var(--composer-rise) + var(--composer-h-live, var(--composer-h)));
+  bottom: 0; /* 拉通屏幕底（2026-09-02 用户拍板：与侧栏一致，不再给清坞顶线让位） */
   width: 44px;
   display: flex;
   flex-direction: column;
