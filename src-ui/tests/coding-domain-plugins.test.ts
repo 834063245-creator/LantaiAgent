@@ -35,24 +35,22 @@ import { pluginToolRows } from '../src/composition/plugin-tool-rows';
 import { activeToolContributions, compositionServicesPlugin } from '../src/composition/services';
 import { shellServicePlugin } from '../src/composition/shell-service';
 import { Context } from '../src/cordis';
+import { agentDomainPlugin } from '../src/plugins/builtin/agent-domain';
+import { agentIsolationDomainPlugin } from '../src/plugins/builtin/agent-isolation-domain';
+import { askDomainPlugin } from '../src/plugins/builtin/ask-domain';
+import { browserDesktopDomainPlugin } from '../src/plugins/builtin/browser-desktop-domain';
+import { hologramDomainPlugin } from '../src/plugins/builtin/engine-domain';
 import { builtinFsPlugin } from '../src/plugins/builtin/fs-builtin';
+import { fsDomainPlugin } from '../src/plugins/builtin/fs-domain';
+import { gitDomainPlugin } from '../src/plugins/builtin/git-domain';
+import { memoryDomainPlugin } from '../src/plugins/builtin/memory-domain';
+import { searchDomainPlugin } from '../src/plugins/builtin/search-domain';
 import { builtinShellPlugin } from '../src/plugins/builtin/shell-builtin';
-import {
-  agentDomainPlugin,
-  agentIsolationDomainPlugin,
-  askDomainPlugin,
-  browserDesktopDomainPlugin,
-  fsDomainPlugin,
-  gitDomainPlugin,
-  hologramDomainPlugin,
-  memoryDomainPlugin,
-  searchDomainPlugin,
-  shellDomainPlugin,
-  skillDomainPlugin,
-  taskDomainPlugin,
-  waitDomainPlugin,
-  webDomainPlugin,
-} from '../src/plugins/coding-domain-plugins';
+import { shellDomainPlugin } from '../src/plugins/builtin/shell-domain';
+import { skillDomainPlugin } from '../src/plugins/builtin/skill-domain';
+import { taskDomainPlugin } from '../src/plugins/builtin/task-domain';
+import { waitDomainPlugin } from '../src/plugins/builtin/wait-domain';
+import { webDomainPlugin } from '../src/plugins/builtin/web-domain';
 
 /** web 族工具名序（①b 迁入，单工具）。 */
 const WEB_TOOL_ORDER = ['web_fetch'];

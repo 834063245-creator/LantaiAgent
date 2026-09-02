@@ -95,7 +95,7 @@ function pluginSpecs() {
       define: { 'globalThis.__LANTAI_RENDERER_ROW_PREFIX__': '"plugin/hologram/renderers"' },
     },
     ...UI_FACES.map((dir) => ({ dir, hostModule: 'host', entry: 'index.ts', face: true })),
-    ...[...TOOL_DOMAINS, ...SEGMENTS].map((dir) => ({ dir, hostModule: 'host', entry: 'index.ts', thin: true })),
+    ...[...TOOL_DOMAINS, ...SEGMENTS].map((dir) => ({ dir, hostModule: 'host', entry: 'index.ts' })),
     ...PROVIDERS.map((dir) => ({ dir, hostModule: 'host', entry: 'index.ts' })),
   ];
 }

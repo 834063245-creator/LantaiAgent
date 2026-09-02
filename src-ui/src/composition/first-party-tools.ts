@@ -23,24 +23,22 @@
 // 的 tools 域 = 空行表（行寻址解析须在通道腰内做）。
 
 import { Context } from '../cordis';
-import {
-  agentDomainPlugin,
-  agentIsolationDomainPlugin,
-  askDomainPlugin,
-  assetDomainPlugin,
-  browserDesktopDomainPlugin,
-  cordisDomainPlugin,
-  fsDomainPlugin,
-  gitDomainPlugin,
-  hologramDomainPlugin,
-  memoryDomainPlugin,
-  searchDomainPlugin,
-  shellDomainPlugin,
-  skillDomainPlugin,
-  taskDomainPlugin,
-  waitDomainPlugin,
-  webDomainPlugin,
-} from '../plugins/coding-domain-plugins';
+import { agentDomainPlugin } from '../plugins/builtin/agent-domain';
+import { agentIsolationDomainPlugin } from '../plugins/builtin/agent-isolation-domain';
+import { askDomainPlugin } from '../plugins/builtin/ask-domain';
+import { assetDomainPlugin } from '../plugins/builtin/asset-domain';
+import { browserDesktopDomainPlugin } from '../plugins/builtin/browser-desktop-domain';
+import { cordisDomainPlugin } from '../plugins/builtin/cordis-domain';
+import { hologramDomainPlugin } from '../plugins/builtin/engine-domain';
+import { fsDomainPlugin } from '../plugins/builtin/fs-domain';
+import { gitDomainPlugin } from '../plugins/builtin/git-domain';
+import { memoryDomainPlugin } from '../plugins/builtin/memory-domain';
+import { searchDomainPlugin } from '../plugins/builtin/search-domain';
+import { shellDomainPlugin } from '../plugins/builtin/shell-domain';
+import { skillDomainPlugin } from '../plugins/builtin/skill-domain';
+import { taskDomainPlugin } from '../plugins/builtin/task-domain';
+import { waitDomainPlugin } from '../plugins/builtin/wait-domain';
+import { webDomainPlugin } from '../plugins/builtin/web-domain';
 import type { LantaiPlugin } from '../plugins/types';
 import { compositionServicesPlugin } from './services';
 

@@ -1,13 +1,24 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// asset-DomainPlugin 域内置插件 · 产物入口（增补二/增补四，first-party-hot-reload-plan）。
-//
-// 薄重导出形态：kind=feature 全量通道化的结构收编——插件对象真源留
-// bundle 域（coding-domain-plugins.ts，工具工厂经 rowCtx 注入装配期真值，
-// 无产物内联副本），产物域经宿主桥取同一对象走磁盘通道装载 +
-// manifest.displace 位移 bundle 兜底行（语义 = 同一插件的干净重注册，
-// 工具面重载影响下次装配）。
+// asset 域工具插件 · 真源产物（S3，plugin-bundle-retirement）。
 
-import { assetDomainPlugin } from './host';
+import type { Context } from '../../../cordis';
+import { familyContributions, registerFamily } from '../contribution-helpers';
+import { createAssetTools } from './host';
+
+/** asset 域插件（Agent 资产块，2026 资产协议）——show_asset / update_asset /
+ *  list_block_kinds 三工具。无状态族：只依赖模块级 kind 注册表与 args meta。 */
+export const assetDomainPlugin = {
+  name: 'hologram/asset-domain',
+  inject: ['tools'],
+  apply(ctx: Context) {
+    registerFamily(
+      ctx,
+      'asset-domain-tools',
+      familyContributions('hologram/asset-domain', () => createAssetTools()),
+    );
+  },
+};
+
 export default assetDomainPlugin;

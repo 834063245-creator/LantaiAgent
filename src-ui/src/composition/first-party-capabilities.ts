@@ -27,7 +27,7 @@
 // 子 Agent 不自动继承（spawnSubAgent 手工装配不经 blueprint——既有语义）。
 
 import { Context } from '../cordis';
-import { capabilitySegmentsPlugin } from '../plugins/capability-segments-plugin';
+import { capabilitySegmentsPlugin } from '../plugins/builtin/capability-segments';
 import type { LantaiPlugin } from '../plugins/types';
 import { capabilitiesServicePlugin } from './capability-service';
 

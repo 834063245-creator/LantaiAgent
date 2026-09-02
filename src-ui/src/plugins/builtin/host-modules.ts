@@ -20,9 +20,32 @@
 // 里的 PluginsPage 反向引用 loader 的 activate/deactivate——三处都是运行期
 // 取用（组件渲染 / 按钮回调），无模块初始化期解引用，ESM 循环安全。
 
+import { z } from 'zod';
 import { agentSessionState } from '../../agent/agent-session-state';
+// S3：工具域/段贡献插件对象导入已拆除——产物域真源自带；此处只导工具工厂
+// 运行时值（faceDeps 取用面）。z 从 zod 包直入（宿主桥共享同一实例）。
+import { firstPartyCapabilities } from '../../agent/blueprint';
+import { createMemoryTools } from '../../agent/memory';
+import { createSkillTool } from '../../agent/skills';
 import { spawnSubAgentImpl } from '../../agent/subagent-spawn';
+import { createTaskTools } from '../../agent/task';
 import { agentInvoke } from '../../agent/tool';
+import { createBrowserTools, createDesktopTools } from '../../agent/tools/browser';
+import {
+  createAgentIsolationTools,
+  createAskUserTools,
+  createFsTools,
+  createGitTools,
+  createSearchTools,
+  createShellTools,
+  createWebTools,
+} from '../../agent/tools/coding';
+import { CORDIS_TOOL_NAMES, createCordisTools } from '../../agent/tools/cordis';
+import { defineTool } from '../../agent/tools/define-tool';
+import { loadHologramSchemas, mcpSchemaToTool } from '../../agent/tools/hologram';
+import { createAssetTools } from '../../agent/tools/show-asset';
+import { createAgentStatusTool, createSubAgentTool } from '../../agent/tools/subagent';
+import { createWaitTool } from '../../agent/tools/wait';
 import { useCoreStore } from '../../app/chat/core-instance';
 import { Icon } from '../../app/Icon';
 import { useDialogEscape } from '../../app/overlay';
@@ -33,8 +56,10 @@ import { ProviderPage } from '../../app/panels/settings/ProviderPage';
 import { useShellStore } from '../../app/shell-store';
 import { WinControls } from '../../app/WinControls';
 import { isMockMode, watchFileDragDrop } from '../../bridge';
+import { graphExecute } from '../../composition/graph-service';
 import { activeOverlayContributions, subscribeOverlayContributions } from '../../composition/overlay-service';
 import { selectPreset } from '../../composition/preset-assembly';
+import { firstPartyPromptSections } from '../../composition/prompt-sections';
 import { resolveAssetBlock, resolveRenderer } from '../../composition/renderer-service';
 import { activeSpace } from '../../composition/space-service';
 import { setLang } from '../../i18n';
@@ -92,26 +117,6 @@ import {
 import { collapseToolGroups, translateMessagesCached } from '../../paper/translate';
 import { injectPaperTokens } from '../../paper/type-tokens';
 import { viewportWorldRect, visibleFlowWindow, visiblePinnedIds } from '../../paper/virtualize';
-import { capabilitySegmentsPlugin } from '../../plugins/capability-segments-plugin';
-import {
-  agentDomainPlugin,
-  agentIsolationDomainPlugin,
-  askDomainPlugin,
-  assetDomainPlugin,
-  browserDesktopDomainPlugin,
-  cordisDomainPlugin,
-  fsDomainPlugin,
-  gitDomainPlugin,
-  hologramDomainPlugin,
-  memoryDomainPlugin,
-  searchDomainPlugin,
-  shellDomainPlugin,
-  skillDomainPlugin,
-  taskDomainPlugin,
-  waitDomainPlugin,
-  webDomainPlugin,
-} from '../../plugins/coding-domain-plugins';
-import { promptSegmentsPlugin } from '../../plugins/prompt-segments-plugin';
 import { createAnthropicProvider } from '../../provider/anthropic';
 import {
   findModels,
@@ -164,7 +169,25 @@ type FaceBridgeSeal = Record<keyof typeof import('./canvas-nav/host'), unknown> 
   Record<keyof typeof import('./sessions-builtin/host'), unknown> &
   Record<keyof typeof import('./graph-builtin/host'), unknown> &
   Record<keyof typeof import('./subagent-in-process/host'), unknown> &
-  Record<keyof typeof import('./llm-adapters/host'), unknown>;
+  Record<keyof typeof import('./llm-adapters/host'), unknown> &
+  Record<keyof typeof import('./web-domain/host'), unknown> &
+  Record<keyof typeof import('./browser-desktop-domain/host'), unknown> &
+  Record<keyof typeof import('./engine-domain/host'), unknown> &
+  Record<keyof typeof import('./git-domain/host'), unknown> &
+  Record<keyof typeof import('./search-domain/host'), unknown> &
+  Record<keyof typeof import('./fs-domain/host'), unknown> &
+  Record<keyof typeof import('./shell-domain/host'), unknown> &
+  Record<keyof typeof import('./agent-isolation-domain/host'), unknown> &
+  Record<keyof typeof import('./ask-domain/host'), unknown> &
+  Record<keyof typeof import('./skill-domain/host'), unknown> &
+  Record<keyof typeof import('./memory-domain/host'), unknown> &
+  Record<keyof typeof import('./task-domain/host'), unknown> &
+  Record<keyof typeof import('./agent-domain/host'), unknown> &
+  Record<keyof typeof import('./wait-domain/host'), unknown> &
+  Record<keyof typeof import('./cordis-domain/host'), unknown> &
+  Record<keyof typeof import('./asset-domain/host'), unknown> &
+  Record<keyof typeof import('./prompt-segments/host'), unknown> &
+  Record<keyof typeof import('./capability-segments/host'), unknown>;
 
 /** 四面组件共享依赖（bundle 域真实例）。key = 产物 host.aliased 取用名。 */
 const faceDeps = {
@@ -308,38 +331,38 @@ const faceDeps = {
   // 创作坞 v2（2026-08-31）：引（typedJsonRpc 文件枚举）/ 拖放入卷（Tauri 原生通道）
   isMockMode,
   watchFileDragDrop,
+  // S3 工具域真源产物运行时依赖（经宿主桥 mods.faceDeps 取用）
+  createWebTools,
+  createGitTools,
+  createSearchTools,
+  createFsTools,
+  createShellTools,
+  createAgentIsolationTools,
+  createAskUserTools,
+  createBrowserTools,
+  createDesktopTools,
+  createSkillTool,
+  createMemoryTools,
+  createTaskTools,
+  createSubAgentTool,
+  createAgentStatusTool,
+  createWaitTool,
+  createCordisTools,
+  CORDIS_TOOL_NAMES,
+  createAssetTools,
+  z,
+  defineTool,
+  loadHologramSchemas,
+  mcpSchemaToTool,
+  graphExecute,
+  firstPartyPromptSections,
+  firstPartyCapabilities,
 } satisfies FaceBridgeSeal;
 
-/** 经产物通道薄重导出的工具域插件对象（插件名 = S4-4 甲寻址键，零漂移）。 */
-const toolDomains = {
-  'hologram/web-domain': webDomainPlugin,
-  'hologram/browser-desktop-domain': browserDesktopDomainPlugin,
-  'hologram/engine-domain': hologramDomainPlugin,
-  'hologram/git-domain': gitDomainPlugin,
-  'hologram/search-domain': searchDomainPlugin,
-  'hologram/fs-domain': fsDomainPlugin,
-  'hologram/shell-domain': shellDomainPlugin,
-  'hologram/agent-isolation-domain': agentIsolationDomainPlugin,
-  'hologram/ask-domain': askDomainPlugin,
-  'hologram/skill-domain': skillDomainPlugin,
-  'hologram/memory-domain': memoryDomainPlugin,
-  'hologram/task-domain': taskDomainPlugin,
-  'hologram/agent-domain': agentDomainPlugin,
-  'hologram/wait-domain': waitDomainPlugin,
-  'hologram/cordis-domain': cordisDomainPlugin,
-  'hologram/asset-domain': assetDomainPlugin,
-};
-
-/** 段贡献插件对象（B④ prompt 段 / B⑤ capability 段——真源留组合层/蓝图层，
- *  产物域薄重导出走通道）。 */
-const segments = {
-  'hologram/prompt-segments': promptSegmentsPlugin,
-  'hologram/capability-segments': capabilitySegmentsPlugin,
-};
-
-/** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。 */
+/** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。
+ *  S3：toolDomains/segments 薄重导出已拆除——产物域真源自带插件对象。 */
 export function pluginHostMods(): Record<string, unknown> {
-  return { faceDeps, toolDomains, segments };
+  return { faceDeps };
 }
 
 /** 运行时宿主面键集（保险丝 a 对拍真源，2026-09-03 生产事故立法）：

@@ -23,12 +23,15 @@ import { describe, expect, it } from 'vitest';
 const SRC = join(__dirname, '..', 'src');
 const FACES = ['canvas-nav', 'paper-shell', 'settings-domain', 'compose-dock'];
 
-/** host-modules.ts → faceDeps 对象字面量的 key 集合（`const faceDeps = {` 起至闭 `};`）。 */
+/** host-modules.ts → faceDeps 对象字面量的 key 集合（`const faceDeps = {` 起至闭）。 */
 function faceDepsKeys(): Set<string> {
   const src = readFileSync(join(SRC, 'plugins', 'builtin', 'host-modules.ts'), 'utf8');
   const start = src.indexOf('const faceDeps = {');
   if (start === -1) throw new Error('host-modules.ts 找不到 faceDeps 字面量（结构变了？）');
-  const end = src.indexOf('\n};', start);
+  // S3 后 faceDeps 尾行是 `} satisfies FaceBridgeSeal;`（S2 前的 toolDomains
+  // `\n};` 闭合已拆除）——两种闭合形态都兼容。
+  let end = src.indexOf('\n} satisfies', start);
+  if (end === -1) end = src.indexOf('\n};', start);
   if (end === -1) throw new Error('faceDeps 字面量未闭合');
   const body = src.slice(start, end);
   return new Set([...body.matchAll(/^\s{2}(\w+),$/gm)].map((m) => m[1]));

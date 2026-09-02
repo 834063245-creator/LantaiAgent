@@ -33,7 +33,7 @@ import {
 } from '../src/composition/capability-service';
 import { factoryComposition, resolveRoster } from '../src/composition/roster';
 import { Context } from '../src/cordis';
-import { capabilitySegmentsPlugin } from '../src/plugins/capability-segments-plugin';
+import { capabilitySegmentsPlugin } from '../src/plugins/builtin/capability-segments';
 
 const firstPartyKeys = (): string[] => firstPartyCapabilities().map((c) => c.key);
 

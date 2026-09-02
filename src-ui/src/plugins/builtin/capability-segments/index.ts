@@ -1,10 +1,25 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// capability-segments 内置插件 · 产物入口（增补二/增补四，first-party-hot-reload-plan）。
-// 薄重导出形态：插件对象真源留 bundle 域（段定义是 convergence 字节契约
-// 面，不随产物内联）；产物域经宿主桥取同一对象走磁盘通道装载 +
-// manifest.displace 位移 bundle 兜底行。
+// 出厂 capability 段插件 · 真源产物（S3，plugin-bundle-retirement）。
+// 原 plugins/capability-segments-plugin.ts 整体迁入。
 
-import { capabilitySegmentsPlugin } from './host';
+import type { Context } from '../../../cordis';
+import { firstPartyCapabilities } from './host';
+
+/** 第一方 capability 插件——装载 firstPartyCapabilities()（十五项全量）。
+ *  注册序 = 清单序 = 迁移前出厂表序（装配字节零漂移按构造）。 */
+export const capabilitySegmentsPlugin = {
+  name: 'hologram/capability-segments',
+  inject: ['capabilities'],
+  apply(ctx: Context) {
+    ctx.effect(() => {
+      const disposers = firstPartyCapabilities().map((cap) => ctx.capabilities.register(cap));
+      return () => {
+        for (let i = disposers.length - 1; i >= 0; i--) disposers[i]();
+      };
+    }, 'capability-segments');
+  },
+};
+
 export default capabilitySegmentsPlugin;

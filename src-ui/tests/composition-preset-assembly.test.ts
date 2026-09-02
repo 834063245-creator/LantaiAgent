@@ -35,7 +35,7 @@ import {
   syncPresetSelectionFromSettings,
 } from '../src/composition/preset-assembly';
 import { factoryComposition, type ResolvedComposition, resolveRoster } from '../src/composition/roster';
-import { capabilitySegmentsPlugin } from '../src/plugins/capability-segments-plugin';
+import { capabilitySegmentsPlugin } from '../src/plugins/builtin/capability-segments';
 import { useCompositionStore } from '../src/state/composition-store';
 import { usePresetStore } from '../src/state/preset-store';
 import { readOnlyTool, scriptedProvider } from './convergence/helpers/fixtures';

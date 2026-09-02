@@ -19,7 +19,7 @@ import { withFirstPartyPromptChannel } from '../src/composition/first-party-prom
 import { assembleSystemPrompt, firstPartyPromptSections } from '../src/composition/prompt-sections';
 import { activePromptContributions, promptsServicePlugin } from '../src/composition/prompt-service';
 import { Context } from '../src/cordis';
-import { promptSegmentsPlugin } from '../src/plugins/prompt-segments-plugin';
+import { promptSegmentsPlugin } from '../src/plugins/builtin/prompt-segments';
 
 const FULL_CTX = {
   graphData: { nodes: [] },

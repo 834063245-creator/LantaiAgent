@@ -1,13 +1,24 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// ask-DomainPlugin 域内置插件 · 产物入口（增补二/增补四，first-party-hot-reload-plan）。
-//
-// 薄重导出形态：kind=feature 全量通道化的结构收编——插件对象真源留
-// bundle 域（coding-domain-plugins.ts，工具工厂经 rowCtx 注入装配期真值，
-// 无产物内联副本），产物域经宿主桥取同一对象走磁盘通道装载 +
-// manifest.displace 位移 bundle 兜底行（语义 = 同一插件的干净重注册，
-// 工具面重载影响下次装配）。
+// ask 域工具插件 · 真源产物（S3，plugin-bundle-retirement）。
 
-import { askDomainPlugin } from './host';
+import type { Context } from '../../../cordis';
+import { noCacheContributions, registerFamily } from '../contribution-helpers';
+import { createAskUserTools } from './host';
+
+/** ask 域插件——常驻 ask_user（ui 回调每次装配换新；缺帐时工具仍注册、
+ *  execute 返回「UI 未接线」错误——原行语义保留）。 */
+export const askDomainPlugin = {
+  name: 'hologram/ask-domain',
+  inject: ['tools'],
+  apply(ctx: Context) {
+    registerFamily(
+      ctx,
+      'ask-domain-tools',
+      noCacheContributions('hologram/ask-domain', (rowCtx) => createAskUserTools(rowCtx.ui), ['ask_user']),
+    );
+  },
+};
+
 export default askDomainPlugin;

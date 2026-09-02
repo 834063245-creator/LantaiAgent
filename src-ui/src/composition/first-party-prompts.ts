@@ -23,7 +23,7 @@
 // 动态插值段（graph-snapshot/memory/claude-md）无跨装配串扰面。
 
 import { Context } from '../cordis';
-import { promptSegmentsPlugin } from '../plugins/prompt-segments-plugin';
+import { promptSegmentsPlugin } from '../plugins/builtin/prompt-segments';
 import type { LantaiPlugin } from '../plugins/types';
 import { promptsServicePlugin } from './prompt-service';
 

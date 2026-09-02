@@ -1,10 +1,25 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// prompt-segments 内置插件 · 产物入口（增补二/增补四，first-party-hot-reload-plan）。
-// 薄重导出形态：插件对象真源留 bundle 域（段定义是 convergence 字节契约
-// 面，不随产物内联）；产物域经宿主桥取同一对象走磁盘通道装载 +
-// manifest.displace 位移 bundle 兜底行。
+// 出厂 prompt 段插件 · 真源产物（S3，plugin-bundle-retirement）。
+// 原 plugins/prompt-segments-plugin.ts 整体迁入。
 
-import { promptSegmentsPlugin } from './host';
+import type { Context } from '../../../cordis';
+import { firstPartyPromptSections } from './host';
+
+/** 第一方 prompt 段插件——装载 firstPartyPromptSections()（13 段全量）。
+ *  注册序 = 段清单序 = 迁移前出厂表序（拼装字节零漂移按构造）。 */
+export const promptSegmentsPlugin = {
+  name: 'hologram/prompt-segments',
+  inject: ['prompts'],
+  apply(ctx: Context) {
+    ctx.effect(() => {
+      const disposers = firstPartyPromptSections().map((section) => ctx.prompts.register(section));
+      return () => {
+        for (let i = disposers.length - 1; i >= 0; i--) disposers[i]();
+      };
+    }, 'prompt-segments');
+  },
+};
+
 export default promptSegmentsPlugin;
