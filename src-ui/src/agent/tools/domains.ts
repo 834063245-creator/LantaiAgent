@@ -355,11 +355,10 @@ export const DOMAIN_SPECS: DomainSpec[] = [
   },
   {
     name: 'memory',
-    description: 'Persistent project memory: save / read / search / list / delete.',
+    description: 'Persistent project memory: save / read / list / delete.',
     actions: {
       save: 'hologram_memory_save',
       read: 'hologram_memory_read',
-      search: 'hologram_memory_search',
       list: 'hologram_memory_list',
       delete: 'hologram_memory_delete',
     },

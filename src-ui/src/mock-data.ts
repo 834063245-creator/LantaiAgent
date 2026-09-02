@@ -846,9 +846,6 @@ export function mockInvoke(cmd: string, args?: Record<string, unknown>): string 
       files: [{ path: 'src/mock.ts', status: 'modified', staged: false }],
     });
   }
-  if (cmd === 'aura_init') {
-    return JSON.stringify({ status: 'ok', path: (args?.brain_path as string) || '/mock/aura', record_count: 0 });
-  }
   if (cmd === 'read_memory_batch') {
     return JSON.stringify({});
   }

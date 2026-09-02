@@ -10,7 +10,6 @@
 #[cfg(windows)] use std::os::windows::process::CommandExt;
 
 mod agent_isolation;
-mod aura_memory;
 mod engine_transport;
 mod pty_manager;
 mod lsp_manager;
@@ -144,7 +143,6 @@ fn main() {
             ledger.register(Box::new(lifecycle::PtyService));
             ledger.register(Box::new(lifecycle::LspService));
             ledger.register(Box::new(lifecycle::UiaService));
-            ledger.register(Box::new(lifecycle::AuraService));
             ledger.register(Box::new(lifecycle::MemoryBundleService));
             ledger.register(Box::new(lifecycle::LoggingService));
             app.manage(std::sync::Mutex::new(ledger));

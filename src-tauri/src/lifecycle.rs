@@ -15,6 +15,7 @@ pub enum ShutdownStatus {
     #[allow(dead_code)]
     Forced,
     /// 服务在关闭过程中遇到错误。
+    #[allow(dead_code)]
     Failed(String),
     /// 服务无需清理状态（如无状态包装器）。
     NotApplicable,
@@ -159,20 +160,6 @@ impl LifecycleService for UiaService {
             ShutdownStatus::Clean
         } else {
             ShutdownStatus::Forced
-        }
-    }
-}
-
-/// AuraSDK 记忆引擎 — 关闭句柄并释放资源。
-pub struct AuraService;
-
-impl LifecycleService for AuraService {
-    fn name(&self) -> &'static str { "aura_memory" }
-
-    fn shutdown(&self, _deadline: Instant) -> ShutdownStatus {
-        match crate::aura_memory::aura_shutdown() {
-            Ok(()) => ShutdownStatus::Clean,
-            Err(e) => ShutdownStatus::Failed(e),
         }
     }
 }

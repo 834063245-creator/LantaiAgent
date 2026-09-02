@@ -21,7 +21,7 @@ HoloGram 的 Agent 在「单仓库多工人协同」垂直场景比 DSH 更深�
 | 委派权限 | 子级 approval 钉 never + 沙箱范围固化 + 不可扩权声明 | permissions.json 静态规则；本次剥离 ask_user / plan 工具 + 边界提示词 | 已收口（P2-10） |
 | 循环守卫 | guard（无效模式 + per-call 预算） | storm breaker（同错 3 连发强制换策略） | 大部分已覆盖；per-call 预算未做 |
 | 后台任务 | 通用 JobRegistry（stream/final 输出、job_output/kill/list） | shell 队列 + bash_wait + wait 工具 | **未落地**（见 §4 P2-8） |
-| 记忆 | 无独立记忆包 | 置信度分级 + /remember 授权 + AuraSDK 语义检索 | HoloGram 强 |
+| 记忆 | 无独立记忆包 | 置信度分级 + /remember 授权 | HoloGram 强 |
 | 黑板/消息 | 无 free-form 黑板 | TaskBoard/DiscoveryBoard/agent_message/topology | HoloGram 强 |
 
 ## 3. 本次落地清单（6 项，均验证后提交）

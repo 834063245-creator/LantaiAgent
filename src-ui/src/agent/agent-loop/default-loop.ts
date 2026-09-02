@@ -52,11 +52,8 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
 
     for (let step = 0; ; step++) {
       host.loopEvents.emitLoopEvent('step/start', { agentId: host.id, step });
-      // 清除上一步的临时提醒 — 仅当前步骤的
-      // 提醒应对本轮 LLM 可见。
-      // Step 0 跳过清除: run() 可能已将 preRunHook
-      // （aura recall）结果推入 _transientReminders 后才调用 runLoop。
-      if (step > 0) host.transientReminders = [];
+      // 清除上一步的临时提醒 — 提醒只应对本轮 LLM 可见。
+      host.transientReminders = [];
 
       // Plan 模式提醒注入 — 去重逻辑在 PlanModeInjector 内部
       if (host.planState && host.planInjector) {

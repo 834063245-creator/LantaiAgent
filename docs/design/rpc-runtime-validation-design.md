@@ -24,7 +24,7 @@ Value 化两步已落地（`docs/landmine-map.md` 根治级段，2026-08-22）�
 > 的 `readOnly`/properties.description 取 optional——引擎 mcp_value 恒写但
 > 浏览器 mock 面缺省且被 convergence/tool-contract 基线钉住，schema 兼容两态
 > 而不动模型可见面。⑤mock 补齐 5 命令真实形状（sandbox_status/shell_env/
-> git_status/aura_init/read_memory_batch 此前落 Unhandled 回退垃圾形）。
+> git_status/read_memory_batch 此前落 Unhandled 回退垃圾形）。
 
 ## 0. 一句话
 
@@ -117,7 +117,7 @@ export async function typedJsonRpc<M extends keyof typeof rpcResultSchemas>(
   = 编译错，签名即守卫（§3.4 的人工收编账由此退役）。
 - **判由（2026-09-01 实测全库）**：typedJsonRpc 调用共 22 处 / 9 命令
   （hologram_call×8、list_directory×4、workspace_list×2、load_graph_json×2、
-  list_directory_flat/aura_init/read_memory_batch/hologram_tools_list/
+  list_directory_flat/read_memory_batch/hologram_tools_list/
   get_last_project/sandbox_status 各 1），方法名**全为字面量、零动态分发**——
   收紧即编译器逐个点名全部迁移点，兼容期一寸工都省不下（完整否决论证见 §6-E）。
 - **迁移 = 9 个 schema + 22 处删手写泛型**：调用点改动几乎全是
@@ -162,7 +162,7 @@ export async function typedJsonRpc<M extends keyof typeof rpcResultSchemas>(
 | list_directory | 4 | 全检 |
 | workspace_list | 2 | 全检 |
 | load_graph_json | 2 | 视体量全检或粗检（批一实测定） |
-| list_directory_flat / aura_init / read_memory_batch / hologram_tools_list / get_last_project / sandbox_status | 各 1 | 全检 |
+| list_directory_flat / read_memory_batch / hologram_tools_list / get_last_project / sandbox_status | 各 1 | 全检 |
 
 形状均须双源核对后落笔（Rust `rpc_result_shape`/结构体 + 真机 CDP 实测，见 §7）。
 

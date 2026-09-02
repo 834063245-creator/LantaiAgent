@@ -74,7 +74,6 @@ function buildFullRegistry(): { registry: ToolRegistry; allNames: Set<string> } 
     'hologram_memory_read',
     'hologram_memory_save',
     'hologram_memory_delete',
-    'hologram_memory_search',
   ]) {
     registry.register({
       name: () => name,

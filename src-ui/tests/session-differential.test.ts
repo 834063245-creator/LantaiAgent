@@ -10,7 +10,7 @@
 //   3. retract / setSession / newSession / insertMessage 安全边界后的投影。
 //
 // 折叠层覆盖（交接文档 §6）：压缩折叠、工具结果批量折叠（window>0 方法级差分）、
-// 临时提醒（本夹具 Agent 无 plan/bus/preRunHook — transients 恒空，请求 = 载荷）、
+// 临时提醒（本夹具 Agent 无 plan/bus — transients 恒空，请求 = 载荷）、
 // retract 后折叠状态保留 + tailStart 钳制。
 //
 // 边界镜像说明：_toolFoldBoundary 是 payloadMessages 调用序列的累积态（不在事件流内）。

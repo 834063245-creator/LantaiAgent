@@ -75,10 +75,10 @@ describe('composition-store 引导期新鲜度（①b boot 序洞）', () => {
       expect(prompt.map((s) => s.id)).toContain('identity-brief');
       expect(prompt.map((s) => s.id)).toContain('identity');
       expect(prompt).toHaveLength(9);
-      // capabilities 域：15 第一方能力全量（第三处毒害）
+      // capabilities 域：14 第一方能力全量（第三处毒害）
       expect(capabilities.map((c) => c.key)).toContain('plan-tools');
       expect(capabilities.map((c) => c.key)).toContain('spawn-tool');
-      expect(capabilities).toHaveLength(15);
+      expect(capabilities).toHaveLength(14);
       // 修复后快照与初始空表不再是同一引用
       expect(useCompositionStore.getState().resolved).not.toBe(initialResolved);
     } finally {

@@ -217,11 +217,6 @@ export class Agent {
   // Preflight hooks — 破坏性写入前告警（edit_file / write_file）
   private preflightHooks: PreflightHookRegistry | null = null;
 
-  // Pre-run hook — 在每条用户消息推入会话前调用。
-  // 返回可选的上下文文本，作为 <system-reminder> 注入到消息前。
-  // 由 workspace 设置，用于每轮 AuraSDK 语义记忆检索。
-  private _preRunHook: ((input: string) => Promise<string | null>) | null = null;
-
   // Storm breaker — 检测重复失败的工具调用
   stormSig = '';
   stormCount = 0;
@@ -596,13 +591,6 @@ export class Agent {
     this._uiSessionId = sid;
   }
 
-  /** 设置在每条用户消息进入会话前触发的 hook。
-   *  返回可选的上下文，作为 <system-reminder> 注入到消息前。
-   *  用于每轮 AuraSDK 语义记忆检索。 */
-  setPreRunHook(hook: (input: string) => Promise<string | null>): void {
-    this._preRunHook = hook;
-  }
-
   // ---- 公共 API ----
 
   getSession(): Message[] {
@@ -870,7 +858,7 @@ export class Agent {
 
   /** 在安全边界应用排队的记忆更新。
    *  作为临时 system-reminder 注入，使 Agent 在会话中途看到更新的记忆。
-   *  不持久化到会话 — Aura 系统独立存储记忆。 */
+   *  不持久化到会话 — 记忆文件本身是持久层。 */
   private _applyPendingMemoryUpdates(): void {
     if (!this._pendingMemoryUpdates?.length) return;
     const text = this._pendingMemoryUpdates.join('\n');
@@ -1015,7 +1003,7 @@ export class Agent {
   }
 
   /** 运行一轮: 追加用户输入，驱动工具循环。
-   *  空输入（bus 唤醒）跳过 preRunHook 和用户消息 — runLoop
+   *  空输入（bus 唤醒）跳过用户消息 — runLoop
    *  从 _injectInbox() 开始，将 inbox 消息作为唯一输入。 */
   // ── D4 loop 事件监听面（平台化 Phase 1）──
   // 发射点：runLoop 的 turn/step/request 边界 + spawnSubAgent 漏斗（能力域首批）。
@@ -1036,16 +1024,6 @@ export class Agent {
   async run(signal: AbortSignal, input: string): Promise<void> {
     this._isRunning = true;
     this._ui.onStatusChange?.(true);
-    if (this._preRunHook && input) {
-      try {
-        const recallCtx = await this._preRunHook(input);
-        if (recallCtx) {
-          this._transientReminders.push(`<system-reminder>\n${recallCtx}\n</system-reminder>`);
-        }
-      } catch {
-        /* pre-run hook 失败非致命 */
-      }
-    }
     if (input) {
       this._appendMessage('user/message', { role: 'user', content: input });
       // 用户发新消息 → 重置 plan 提醒计数（下一轮注入全量提醒）

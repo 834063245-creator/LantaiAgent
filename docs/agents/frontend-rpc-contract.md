@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-08-30T17:24:46.498Z
-> 方法总数：153（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-09-02T10:04:45.021Z
+> 方法总数：146（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -58,7 +58,7 @@
 |------|----------|----------|------|
 | `list_directory` | path | is_agent, filter_ignored, _agent_id | JSON 字符串 |
 | `list_directory_flat` | path | is_agent, _agent_id | JSON 字符串 |
-| `read_file_content` | file_path | offset, limit, is_agent, _agent_id | 字符串 |
+| `read_file_content` | file_path | offset, limit, is_agent, _agent_id, raw | 字符串 |
 | `read_memory_batch` | — | paths | 字符串 |
 | `read_file_base64` | file_path | is_agent, _agent_id | 字符串 |
 | `write_file_content` | file_path, content | is_agent, _agent_id | 字符串 |
@@ -226,7 +226,7 @@
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
-| `agent_session_append` | project_path, agent_id, messages, rewrite | — | `null`（unit） |
+| `agent_session_append` | project_path, agent_id | — | `null`（unit） |
 
 ## 约束
 
@@ -242,18 +242,6 @@
 | `dataflow_save` | query | content, explore_result, dataflow_result | 字符串 |
 | `dataflow_query` | — | trace_id, list | 字符串 |
 | `dataflow_delete` | trace_id | — | 字符串 |
-
-## Aura 记忆
-
-| 方法 | 必选参数 | 可选参数 | 返回 |
-|------|----------|----------|------|
-| `aura_init` | brain_path | — | 字符串 |
-| `aura_recall` | query | top_k | 字符串 |
-| `aura_recall_text` | query | token_budget | 字符串 |
-| `aura_store` | content | tags, namespace, level | 字符串 |
-| `aura_count` | — | — | 字符串 |
-| `aura_maintenance` | — | — | `null`（unit） |
-| `aura_shutdown` | — | — | `null`（unit） |
 
 ## PTY
 

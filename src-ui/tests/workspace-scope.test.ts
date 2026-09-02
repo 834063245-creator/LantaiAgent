@@ -74,7 +74,6 @@ describe('Workspace bag 接线（T0 静态断言）', () => {
       "'listener:tool-done'",
       "'runtime-dispose'",
       "'reset-agent-caches'",
-      "'aura-shutdown'",
       "'agent-panel-store-clear'",
       "'checkTimer-clear'",
       "'engine-snapshot-refresh-cancel'",

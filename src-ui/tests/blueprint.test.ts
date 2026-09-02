@@ -115,7 +115,6 @@ describe('AgentBlueprint T1 — 原语行为', () => {
       'graph-hooks',
       'board-tracking-hook',
       'plan-injector',
-      'pre-run-hook',
       'auto-tune',
     ];
     expect(firstPartyCapabilities().map((c) => c.key)).toEqual(expected);

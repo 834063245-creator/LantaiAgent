@@ -30,15 +30,10 @@ describe('forceClearState 紧急路径清理（H3）', () => {
     expect(dispose, 'forceClearState 必须调 disposeAll').toBeGreaterThan(-1);
     expect(detach).toBeGreaterThan(-1);
     expect(dispose, 'disposeAll 必须先于 runtime 解绑').toBeLessThan(detach);
-    // 其余清理（aura/cache）走 fiber effect 单一机制 — forceClearState 委托 _fiber.dispose()
+    // 其余清理（cache）走 fiber effect 单一机制 — forceClearState 委托 _fiber.dispose()
     // #13 修复：fiber.dispose() 改为 await（防与新工作区创建竞态）
     expect(body).toContain('await this._fiber.dispose()');
     expect(body).toContain('bumpWorkspaceEpoch()');
-  });
-
-  it('aura 单例释放登记进 bag（aura-shutdown 清理器）', () => {
-    expect(src).toContain("'aura-shutdown'");
-    expect(src).toContain('auraShutdown');
   });
 
   it('agent 注入缓存清理登记进 bag（reset-agent-caches 清理器）', () => {

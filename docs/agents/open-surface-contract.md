@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：7
+当前版本：8
 
-<!-- contract-fingerprint: 23eeeb95d74e2e80ca5feae401928b22859a64c42d1d95f78dfa244d82c402bf -->
+<!-- contract-fingerprint: 3ead40dfd7a7fea6330a306fa55c000e31fe87eeb49c3d36e72183f6f39c28ce -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -42,6 +42,7 @@
 | 5 | 2026-08-31 | agent loop 契约行为面：default-loop err 分支先补落已执行工具结果（append assistant/text + tool/call 审计 + tool/result 回传上下文）再抛 err——流内失败不再丢已执行副作用记录 | 33dae0f4（该提交漏走契约手续，本行代补） |
 | 6 | 2026-08-31 | default-loop 每步两处 best-effort RPC（drain_bg_notifications / plan read_file_content）包 3s 超时兜底（typedRpcWithTimeout）——Rust 卡死/回包丢失时落回各自跳过分支，run() 不再死等无界 await（运行态挂起修复之一）；无契约形状变更 | 运行态挂起诊断 2026-08-31 |
 | 7 | 2026-08-31 | manifest schema 新增可选 `displace: boolean`（位移式内置插件装载：产物声明 displace 且 bundle 同名行在册 → import 前 dispose bundle fiber 单活互换，失败/停用自动恢复兜底行；缺省 false 行为不变）——kind='feature' 全量通道化（first-party-hot-reload-plan 增补四） | first-party-hot-reload-plan §8 |
+| 8 | 2026-09-02 | AURA SDK 语义记忆系统整体拆除——default-loop step0 临时提醒清除的保留特判退役（原特判仅服务 preRunHook 的 run 前预注入，载体已删，改每步无条件清除）；无契约形状变更 | AURA SDK 拆除（用户拍板） |
 
 ## 变更流程（guard 红 → 修复四步）
 

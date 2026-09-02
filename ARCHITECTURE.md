@@ -89,7 +89,7 @@
 - **Engine 多实例（L1/L2）**：`Engine::open(root)` 绑定单根终身不变（宿主开 StoreHost 注入，返回即 Ready）；`new_shared` = open + Arc + Weak 自引用 + 自动 watcher。全局槽 `ENGINE: RwLock<Option<Arc<Engine>>>` 仅作无决议信息调用（engine 二进制 / MCP serve）的回退锚点；壳层每次 ensure 上下文都把全局槽指向同一 Arc（杜绝同根双实例漂移）。
 - **引擎决议链（L1）**：图命令族（hologram_call / get_graph_* / engine_impact / run_check / 时间线）按「显式 path → `_session_id`（agentInvoke 恒注入活跃会话）→ 焦点会话 → 单槽工作区 → 全局兜底」决议引擎实例；hologram_call 在 spawn_blocking 线程经 `with_current`（线程局部当前引擎）绑定 dispatch——ToolRegistry 处理器自动吃到正确实例，跨工作区并行零锁串行零换绑竞态。壳层全局函数直连点由白名单守卫测试钉死。
 - **WorkspaceHandle（Rust）**：持有单个打开项目的壳层状态（权限上下文、watcher、审计、上下文引擎句柄）；壳层 watcher 增量落本实例（不吃全局）。
-- **ResourceLedger**：统一生命周期管理。所有有生命周期需求的后端服务（LlmProxy、BgJobs、Mcp、Pty、Lsp、UiaWorker、Aura、MemoryBundle、Logging 共 9 个）实现 `LifecycleService` trait 并注册，退出时按序 drain（总预算 2s + 3s 强退）。
+- **ResourceLedger**：统一生命周期管理。所有有生命周期需求的后端服务（LlmProxy、BgJobs、Mcp、Pty、Lsp、UiaWorker、MemoryBundle、Logging 共 8 个）实现 `LifecycleService` trait 并注册，退出时按序 drain（总预算 2s + 3s 强退）。
 - **Workspace（前端）**：统一状态容器，替代 18+ 个模块级全局变量；原子化工作区切换（`old.deactivate()` → `Workspace.open()` → 注入）。生命周期原语已内核化为 vendored cordis（`src-ui/src/cordis/`，同 DSH 做法）：工作区级资源以 fiber effect 登记（获取点就地），Agent 挂身份 fiber（`hologram/agent`，清理仍走 DisposerBag 同步快通道），子系统以 Service 挂树（`LspService` 样板）；`deactivate()` = fiber dispose-to-quiescence + epoch 推进。epoch 代际防护永久保留——fiber 管所有权，epoch 管逃逸所有权的在途回调（详见 `docs/archive/cordis-migration/`）。
 
 ---
@@ -258,7 +258,6 @@ Tool Results → 注入会话 → 下一轮 LLM Stream
 |----|------|------|
 | **会话记忆** | Agent session JSON（`.lantai/agents/{id}/`） | 当前对话上下文，支持压缩 |
 | **项目记忆** | `MemoryManager` → `.lantai/memory/*.md` + 全局 `~/.lantai/global_memory/`，MEMORY.md 索引 + confidence 分级（fact/reference/background/suppressed） | 跨会话项目知识 |
-| **Aura 记忆** | `aura_memory.rs` FFI 到 `aura.dll`（SDR + MinHash 语义召回） | 跨会话语义记忆，稀疏分布式表征 |
 | **Memory Bundle** | 外部进程 `memory-bundle.exe` + 前端 HTTP 客户端（127.0.0.1:9600，Dockerized FirstBeat 记忆服务） | 进程隔离的记忆服务（ingest 已接线，health/analyze/recall/portrait 待集成） |
 
 ### 4.6 上下文压缩（成本模型驱动）
@@ -483,15 +482,15 @@ Engine 作为独立 MCP Server 运行，通过 JSON-RPC over stdin/stdout 对外
 
 ### 7.1 RPC 单一入口
 
-`rpc.rs` 一个 `#[tauri::command] rpc(method, params)` + 157 个方法分支是全部前端能力的单一 IPC 入口；**命令实现是薄壳**（参数提取 + State 转换 + 横切），业务编排在应用层 `app/services/`。分类（由生成物 `docs/agents/frontend-rpc-contract.md` 实测为准，`scripts/gen-rpc-contract-md.cjs` 再生）：应用层（数据上下文/会话 attach）、Engine 调度、Graph、Git、文件系统、搜索、Web、CDP 浏览器控制、Shell（含协议桥）、编辑器、身份认证/权限、**插件安装通道**（plugin_install/uninstall/set_enabled/dir）、Agent 隔离（worktree）、外部服务、Hologram 遗留、工作区、会话持久化、约束、数据流、Aura 记忆、PTY、LSP、desktop/UIA（进程内 COM：probe/screenshot/tree/find/read/wait/click/…/audit）。
+`rpc.rs` 一个 `#[tauri::command] rpc(method, params)` + 146 个方法分支是全部前端能力的单一 IPC 入口；**命令实现是薄壳**（参数提取 + State 转换 + 横切），业务编排在应用层 `app/services/`。分类（由生成物 `docs/agents/frontend-rpc-contract.md` 实测为准，`scripts/gen-rpc-contract-md.cjs` 再生）：应用层（数据上下文/会话 attach）、Engine 调度、Graph、Git、文件系统、搜索、Web、CDP 浏览器控制、Shell（含协议桥）、编辑器、身份认证/权限、**插件安装通道**（plugin_install/uninstall/set_enabled/dir）、Agent 隔离（worktree）、外部服务、Hologram 遗留、工作区、会话持久化、约束、数据流、Aura 记忆、PTY、LSP、desktop/UIA（进程内 COM：probe/screenshot/tree/find/read/wait/click/…/audit）。
 
 ### 7.2 ResourceLedger（统一生命周期）
 
-`lifecycle.rs`：`LifecycleService` trait + `ResourceLedger` 中央注册表。注册的服务：LlmProxy、BgJobs、Mcp、Pty、Lsp、UiaWorker、Aura、MemoryBundle、Logging 共 9 个。退出时按注册顺序 drain，每服务带截止时间（Clean / Forced / Failed / NotApplicable 状态）。替代 main.rs Destroyed 里分散的清理逻辑 + `process::exit(0)`。
+`lifecycle.rs`：`LifecycleService` trait + `ResourceLedger` 中央注册表。注册的服务：LlmProxy、BgJobs、Mcp、Pty、Lsp、UiaWorker、MemoryBundle、Logging 共 8 个。退出时按注册顺序 drain，每服务带截止时间（Clean / Forced / Failed / NotApplicable 状态）。替代 main.rs Destroyed 里分散的清理逻辑 + `process::exit(0)`。
 
 ### 7.3 凭证与外部进程
 
-- **credential.rs**：加密凭证存储（libloading FFI 模式，同 aura_memory），`credential_store/get/delete/clear` + `permission_ask_response` 校验 allow/remember/rule_to_add/rule_behavior
+- **credential.rs**：加密凭证存储（libloading FFI 模式），`credential_store/get/delete/clear` + `permission_ask_response` 校验 allow/remember/rule_to_add/rule_behavior
 - **McpManager**：Engine 子进程管理——ready 信号等待（最长 600s，大项目布局计算）、崩溃追踪（60s 内 3 次 → 永久降级 CLI）、Job Object 随父退出
 - **memory-bundle.exe**：独立进程，主进程 setup 时 spawn，ResourceLedger 关停
 
@@ -504,7 +503,7 @@ Engine 作为独立 MCP Server 运行，通过 JSON-RPC over stdin/stdout 对外
 | 依赖 | 用途 |
 |------|------|
 | `tree-sitter` + 27 语言语法 | 多语言 AST 解析（18 种专用结构查询 + 通用兜底） |
-| `libloading` | 动态语法 DLL + Aura SDK FFI 加载 |
+| `libloading` | 动态语法 DLL 加载 |
 | `rusqlite` (bundled) | SQLite 持久化 + FTS5 全文搜索 |
 | `parking_lot` | 高性能 RwLock |
 | `rayon` | 并行文件解析 |
@@ -525,7 +524,7 @@ Engine 作为独立 MCP Server 运行，通过 JSON-RPC over stdin/stdout 对外
 | `tauri-plugin-dialog` / `tauri-plugin-updater` / `tauri-plugin-window-state` | 对话框 / 自动更新 / 窗口状态 |
 | `portable-pty` | PTY 终端管理 |
 | `ureq` / `url` / `regex` / `glob` | HTTP / URL / 模式 |
-| `libloading` | Aura SDK + 凭证库 FFI 加载 |
+| `libloading` | 凭证库 FFI 加载 |
 | `tokio` (sync/time) | 异步通道、超时 |
 | `engine_transport`（壳内模块） | 引擎进程外消费（每工作区一个 `engine serve` 子进程，stdio MCP；Phase 3 起无 hologram-engine path 依赖） |
 | `base64` | 编码 |
@@ -561,7 +560,6 @@ Engine 作为独立 MCP Server 运行，通过 JSON-RPC over stdin/stdout 对外
 
 | 组件 | 用途 |
 |------|------|
-| `aura.dll` (AuraSDK) | SDR + MinHash 语义记忆（FFI 加载） |
 | `memory-bundle.exe` | 进程隔离的记忆服务（FirstBeat） |
 | `onnxruntime.dll` + MiniLM 模型 | 本地语义嵌入（384 维） |
 | LSP 服务器 | 原生类型解析（rust-analyzer / gopls / pyright 等） |
@@ -611,12 +609,11 @@ HoloGram/
 │   │   ├── sandbox.rs           # 路径沙箱 (resolve_read/write)
 │   │   ├── confined_fs.rs       # 统一受限文件系统 (读写上限/超时/重试/原子写)
 │   │   ├── os_sandbox.rs        # OS 层沙箱 (Job Object/sandbox-exec/bubblewrap + 捆绑 MSYS2 bash vendor)
-│   │   ├── aura_memory.rs       # Aura SDK FFI 桥接
 │   │   ├── credential.rs        # 加密凭证存储
 │   │   ├── pty_manager.rs       # PTY 终端管理
 │   │   ├── llm_proxy.rs         # LLM 本地反向代理 (绕 CORS, SSE 透传)
 │   │   ├── audit.rs             # 审计日志
-│   │   ├── rpc.rs               # 单一 RPC 入口 (153 个方法)
+│   │   ├── rpc.rs               # 单一 RPC 入口 (146 个方法)
 │   │   └── main.rs              # Tauri 应用入口 (模块声明权威清单)
 │   └── Cargo.toml
 │
@@ -637,7 +634,7 @@ HoloGram/
 │   │   │   ├── hooks.ts          # Hook/PreflightHook 系统
 │   │   │   ├── goal-manager.ts   # 目标生命周期管理
 │   │   │   ├── skills.ts         # 技能热加载
-│   │   │   ├── memory.ts / aura-memory.ts / memory-bundle-client.ts  # 记忆三层
+│   │   │   ├── memory.ts / memory-bundle-client.ts  # 记忆两层
 │   │   │   ├── code-run/          # code_execution 执行原语 (P2/P3: 协议腰线 + Worker 沙箱 + 预算)
 │   │   │   ├── compaction-model.ts  # 上下文压缩成本模型
 │   │   │   ├── runtime/          # AgentRuntime + AgentBuilder (零 UI 依赖)

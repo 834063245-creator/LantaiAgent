@@ -30,7 +30,7 @@ Security-relevant areas of HoloGram include:
 
 1. **Agent tool execution** — The built-in Agent can execute shell commands and read/write files. Permission escalation bugs, sandbox escapes, or privilege bypasses in the tool guard layer (permission engine / sandbox / confined fs) are critical.
 2. **Engine subprocess IPC** — The shell communicates with the Rust analysis engine (`hologram-engine`) via JSON-RPC over stdio / TCP :9777. Injection vectors in IPC messages that could cause arbitrary code execution, or path/command smuggling that escapes the project boundary.
-3. **Dynamic grammar loading** — `grammars/*.dll` (tree-sitter Kotlin / Markdown / TOML) and `aura.dll` are loaded at runtime via `libloading`; supply-chain attacks via compromised grammar/sdk artifacts or release attachments.
+3. **Dynamic grammar loading** — `grammars/*.dll` (tree-sitter Kotlin / Markdown / TOML) are loaded at runtime via `libloading`; supply-chain attacks via compromised grammar artifacts or release attachments.
 4. **Graph serialization deserialization** — Malformed JSON/SQLite graph files or `.lantai/` state (sessions, boards, goals, permissions.json) could trigger memory corruption or code execution in the native Rust layer.
 5. **LLM API keys & credentials** — API keys are stored in system-encrypted credential storage (Windows DPAPI / macOS Keychain / Linux secret-tool). Any vector that leaks these keys (including through the loopback LLM proxy or logs) is in scope.
 

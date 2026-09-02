@@ -36,7 +36,6 @@ const SECTIONS = [
   '会话持久化',
   '约束',
   '数据流',
-  'Aura 记忆',
   'PTY',
   'LSP',
 ];

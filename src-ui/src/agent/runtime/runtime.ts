@@ -522,7 +522,6 @@ export class AgentRuntime implements RuntimePort {
       pricing: config.pricing,
       toolResultWindow: config.toolResultWindow,
       onSessionPersisted: config.onSessionPersisted,
-      preRunHook: config.preRunHook,
     };
     return { ctx, inputs };
   }

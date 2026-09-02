@@ -89,7 +89,7 @@ static BUILTIN_PLUGINS_DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::On
 /// 未打包（cargo test / 无 tauri 应用态）不调用——builtin_plugins_root 兜底
 /// 仓库 dist-plugins。
 ///
-/// 候选路径梯（aura_memory::aura_dll_path 同款多候选纪律——单一期望位置
+/// 候选路径梯（多候选纪律——单一期望位置
 /// 不可靠，tauri v2 对 crate 外资源的落点随 conf 形式而变）：
 ///   1. `resource_dir()/builtin` ——打包态期望落点（若 tauri.conf.json
 ///      resources 用 map 形式把 `dist-plugins/builtin` 重映射到 `builtin/`）；

@@ -53,8 +53,9 @@ describe('phase-3 T0 结构门禁 — 装配收敛', () => {
     ).toEqual([]);
   });
 
-  it('config 消费面完整迁移 — Phase 0 基线的全部 26 个字段都在翻译层消费', () => {
-    // 防字段漏配：旧 createAgent 消费的 26 个 config 字段（phase-0 wiring 基线）
+  it('config 消费面完整迁移 — Phase 0 基线的全部 25 个字段都在翻译层消费', () => {
+    // 防字段漏配：旧 createAgent 消费的 25 个 config 字段（phase-0 wiring 基线，
+    // 2026-09-02 随 AURA SDK 拆除去 preRunHook 后 26→25）
     // 必须全部出现在 _contextFromConfig 的翻译面里。漏一个 = 该字段被静默丢弃
     // （execState 漏配就是以此方式被人工发现的，此断言把这类回归挡在门禁）。
     const w = extractRuntimeMethodWiring(['_contextFromConfig']);
@@ -85,7 +86,6 @@ describe('phase-3 T0 结构门禁 — 装配收敛', () => {
       'subAgentSpawner',
       'graphContext',
       'hooksEnabled',
-      'preRunHook',
     ];
     const missing = expected.filter((f) => !translated.has(f));
     expect(missing, `翻译层漏掉了 config 字段：${missing.join(', ')}`).toEqual([]);

@@ -119,8 +119,6 @@ export interface AgentConfig {
   collaborationMode?: 'normal' | 'plan';
   /** 系统提示词（如果已预构建） */
   systemPrompt?: string;
-  /** 预运行钩子（语义记忆召回） */
-  preRunHook?: (input: string) => Promise<string | null>;
   /** 会话持久化回调 */
   onSessionPersisted?: (sessionId: string, messages: Message[]) => void;
   /** 通信总线（可选 — 无则为 headless 无通信能力） */
@@ -156,7 +154,6 @@ export interface AgentAssemblyInputs {
   pricing?: Pricing;
   toolResultWindow?: number;
   onSessionPersisted?: (sessionId: string, messages: Message[]) => void;
-  preRunHook?: (input: string) => Promise<string | null>;
 }
 
 // ── Agent 句柄 ──

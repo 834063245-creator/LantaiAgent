@@ -68,7 +68,6 @@ const TASK_TOOL_NAMES = ['task_create', 'task_update', 'task_list', 'task_get', 
 const MEMORY_TOOL_NAMES = [
   'hologram_memory_list',
   'hologram_memory_read',
-  'hologram_memory_search',
   'hologram_memory_save',
   'hologram_memory_delete',
 ];

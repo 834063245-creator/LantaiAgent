@@ -14,7 +14,6 @@
 import type { Agent } from './agent/agent';
 import { agentSessionState } from './agent/agent-session-state';
 import { AgentStore } from './agent/agent-store';
-import { auraShutdown } from './agent/aura-memory';
 import { resetAgentCaches } from './agent/cache-store';
 import { SubAgentPool } from './agent/coordinator';
 import { GoalManager } from './agent/goal-manager';
@@ -842,7 +841,7 @@ export class Workspace {
     let memorySection = '';
     // setupAgent 有序拆除组（cordis-migration P1）：每次调用一个 DisposerBag，
     // 作为单个 fiber effect 登记。组内保持 DisposerBag 的串行逆序契约 —
-    // 「先拆 runtime 再清缓存」「aura 晚于 runtime 拆除」等顺序依赖不变。
+    // 「先拆 runtime 再清缓存」等顺序依赖不变。
     // 组创建即登记 effect（而非收集完再登记）：setupAgent 中途异常时已登记的
     // 部分清理器同样随 fiber dispose 释放（与旧 _bag 行为一致）。
     const teardown = new DisposerBag();
@@ -857,34 +856,20 @@ export class Workspace {
       'setupAgent-teardown',
     );
     this.memoryManager = new MemoryManager(this.path, globalDir);
-    // 获取即登记：停用时释放记忆 + 关闭 Aura 全局单例（逆序释放时晚于 runtime disposeAll）。
+    // 获取即登记：停用时释放记忆。
     teardown.add(() => {
       this.memoryManager = null;
     }, 'memory-manager-null');
-    teardown.add(async () => {
-      try {
-        await auraShutdown();
-      } catch {
-        /* 未初始化无妨 */
-      }
-    }, 'aura-shutdown');
     this.memoryManager.onSaved = (info) => {
       // raw Agent 引用（agentRef）承担非接口能力面——接口层无 notifyMemorySaved
       this._lastRawAgent?.notifyMemorySaved(
         `记忆已更新: **${info.description || info.name}** (${info.confidence || 'reference'})`,
       );
     };
-    const auraReady = this.memoryManager.initAura();
-    // P0-4 优化：loadPromptSection（读记忆文件）与 auraReady（Aura 初始化）
-    // 互相独立——Promise.all 并行，不阻塞后续步骤
-    const [memorySectionResult] = await Promise.allSettled([
-      this.memoryManager.loadPromptSection(extractGraphNodeNames(this.graphData)),
-      auraReady,
-    ]);
-    if (memorySectionResult.status === 'fulfilled') {
-      memorySection = memorySectionResult.value;
-    } else {
-      console.error('[setupAgent] loadPromptSection failed:', memorySectionResult.reason);
+    try {
+      memorySection = await this.memoryManager.loadPromptSection(extractGraphNodeNames(this.graphData));
+    } catch (err) {
+      console.error('[setupAgent] loadPromptSection failed:', err);
     }
 
     // 初始化 Agent 状态持久化 + goal 生命周期 + skill 注册表
@@ -894,7 +879,6 @@ export class Workspace {
     this.goalManager.adoptOrphans().catch((e) => console.warn('[workspace] goal adoption failed:', e));
     this.skillRegistry = new SkillRegistry(this.path);
 
-    // auraReady 已在上方与 loadPromptSection 并行 settle（P0-4）
     if (memorySection.trim()) {
       const memLines = memorySection.split('\n').filter((l) => l.startsWith('- ')).length;
       const globalCount = this.memoryManager?.scopes?.().includes('global') ? ' (含全局)' : '';
@@ -1143,23 +1127,6 @@ export class Workspace {
             // 导致压缩在 110K 就触发；压缩已根治为只影响发送载荷，cap 无必要。
             // 方案甲：按会话生效模型 + provider 行覆盖计算。
             contextWindow: this._contextWindowFor(row, eff.model),
-            preRunHook: this.memoryManager
-              ? async (input: string) => {
-                  const mm = this.memoryManager;
-                  if (!mm?.auraReady) return null;
-                  try {
-                    const records = await mm.auraSemanticRecall(input, 5);
-                    if (records.length === 0) return null;
-                    const lines = records.map((r) => {
-                      const t = r.tags?.length ? `[${r.tags.join(', ')}] ` : '';
-                      return `- ${t}${r.content.slice(0, 250)}`;
-                    });
-                    return `AuraSDK 语义记忆召回：\n${lines.join('\n')}`;
-                  } catch {
-                    return null;
-                  }
-                }
-              : undefined,
             onSessionPersisted: (_sid: string, messages: Array<{ role: string; content: unknown }>) => {
               memoryBundleIngest(
                 messages.map((m) => ({
@@ -1208,7 +1175,6 @@ export class Workspace {
       }
       agentRef.current = agent;
       this._lastRawAgent = agent;
-      this.memoryManager?.prewarmAura();
       return handle;
     };
 

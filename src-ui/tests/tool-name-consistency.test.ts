@@ -51,7 +51,6 @@ const HOLOGRAM_TOOL_NAMES = new Set([
   'hologram_memory_read',
   'hologram_memory_save',
   'hologram_memory_delete',
-  'hologram_memory_search',
   // task tools
   'hologram_task_create',
   'hologram_task_update',

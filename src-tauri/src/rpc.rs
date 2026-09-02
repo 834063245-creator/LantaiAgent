@@ -225,11 +225,6 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // agentInvoke 兜底链自处理）。save/delete 同域同待遇，不单独展开。
         // dataflow_save | dataflow_query | dataflow_delete → Text
 
-        // ── Aura ──
-        // aura_init：json! 构造恒 JSON。aura_recall：DLL 返回 json_str，空可能——
-        // 前端有 || '[]' 业务兑底，保守 Text。其余 recall_text/store/count 文本，Text。
-        "aura_init" => RpcResultShape::JsonValue,
-
         // ── LSP ──
         // lsp_request：ok_json(serde 序列化)，恒 JSON。
         "lsp_request" => RpcResultShape::JsonValue,
@@ -1570,34 +1565,6 @@ async fn dispatch_rpc(
             let trace_id = req_str(&params, "trace_id", "dataflow_delete")?;
             commands::dataflow::dataflow_delete(trace_id, state).await
         }
-
-        // ═══════════════════════════════════════════════════════
-        // Aura 记忆（7 个命令）
-        // ═══════════════════════════════════════════════════════
-        "aura_init" => {
-            let brain_path = req_str(&params, "brain_path", "aura_init")?;
-            crate::aura_memory::aura_init(brain_path)
-        }
-        "aura_recall" => {
-            let query = req_str(&params, "query", "aura_recall")?;
-            let top_k = opt_i32(&params, "top_k").unwrap_or(0);
-            crate::aura_memory::aura_recall(query, top_k)
-        }
-        "aura_recall_text" => {
-            let query = req_str(&params, "query", "aura_recall_text")?;
-            let token_budget = opt_i32(&params, "token_budget").unwrap_or(0);
-            crate::aura_memory::aura_recall_text(query, token_budget)
-        }
-        "aura_store" => {
-            let content = req_str(&params, "content", "aura_store")?;
-            let level = params.get("level").and_then(|v| v.as_u64()).map(|n| n as u8).unwrap_or(0);
-            let tags = opt_str(&params, "tags").unwrap_or_default();
-            let namespace = opt_str(&params, "namespace").unwrap_or_default();
-            crate::aura_memory::aura_store(content, level, tags, namespace)
-        }
-        "aura_count" => crate::aura_memory::aura_count().map(|n| n.to_string()),
-        "aura_maintenance" => ok_unit(crate::aura_memory::aura_maintenance()),
-        "aura_shutdown" => ok_unit(crate::aura_memory::aura_shutdown()),
 
         // ═══════════════════════════════════════════════════════
         // PTY（4 个命令）

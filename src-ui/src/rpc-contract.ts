@@ -312,18 +312,6 @@ export interface RpcContract {
   dataflow_query: { params: { trace_id?: string; list?: boolean }; result: string }; // JSON
   dataflow_delete: { params: { trace_id: string }; result: string }; // text
 
-  // ── Aura 记忆 ────────────────────────────────────────────
-  aura_init: { params: { brain_path: string }; result: string }; // JSON — {status,path,record_count}（Value 化：Rust 出口已展开）
-  aura_recall: { params: { query: string; top_k?: number }; result: string }; // JSON
-  aura_recall_text: { params: { query: string; token_budget?: number }; result: string }; // text
-  aura_store: {
-    params: { content: string; level?: number; tags?: string; namespace?: string };
-    result: string; // text
-  };
-  aura_count: { params: Record<string, never>; result: string }; // text — 数字字符串
-  aura_maintenance: { params: Record<string, never>; result: string }; // "null"
-  aura_shutdown: { params: Record<string, never>; result: string }; // "null"
-
   // ── PTY ──────────────────────────────────────────────────
   pty_spawn: {
     params: { cwd: string; shell?: string; cols: number; rows: number };
@@ -612,13 +600,6 @@ export const rpcResultSchemas = {
           })
           .passthrough(),
       ),
-    })
-    .passthrough(),
-  aura_init: z
-    .object({
-      status: z.string(),
-      path: z.string(),
-      record_count: z.number(),
     })
     .passthrough(),
 } satisfies Partial<Record<RpcMethodName, z.ZodType>>;

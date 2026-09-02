@@ -29,7 +29,6 @@ const MOCK_SAMPLE_PARAMS: Record<keyof typeof rpcResultSchemas, Record<string, u
   sandbox_status: {},
   shell_env: {},
   git_status: {},
-  aura_init: { brain_path: '/mock/aura' },
 };
 
 describe('rpc 边界校验层：mock 同源自检（mock ↔ schema 漂移即红）', () => {

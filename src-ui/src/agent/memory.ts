@@ -15,9 +15,6 @@
 
 import { z } from 'zod';
 import { typedJsonRpc, typedRpc } from '../rpc-contract';
-import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
-import type { AuraRecord } from './aura-memory';
-import { auraCount, auraInit, auraRecall, auraShutdown, auraStore } from './aura-memory';
 import type { Tool } from './tool';
 import { defineTool } from './tools/define-tool';
 
@@ -64,8 +61,6 @@ export interface MemoryFile {
 export class MemoryManager {
   private _projectDirReady = false;
   private _globalDirReady = false;
-  private _auraReady = false;
-  private _auraInitPromise: Promise<void> | null = null;
   private globalDirPath: string | null = null;
 
   /** 记忆保存后触发（由 workspace 接线 — 扇出到
@@ -79,103 +74,6 @@ export class MemoryManager {
     globalPath?: string,
   ) {
     this.globalDirPath = globalPath || null;
-  }
-
-  /** AuraSDK 语义检索是否已初始化。 */
-  get auraReady(): boolean {
-    return this._auraReady;
-  }
-
-  /** 初始化 AuraSDK 语义检索引擎。
-   *  在项目根目录的 .lantai/aura-brain/ 下创建或打开 brain。
-   *  可安全多次调用 — 后续调用为空操作。 */
-  async initAura(): Promise<void> {
-    if (this._auraReady) return;
-    if (this._auraInitPromise) return this._auraInitPromise;
-    this._auraInitPromise = (async () => {
-      try {
-        // ponytail: 原生 Aura 是全局单例 — 初始化新 brain 前先关闭旧的（工作区切换）
-        try {
-          await auraShutdown();
-        } catch {
-          /* 尚未初始化，无妨 */
-        }
-        const brainPath = this.projectPath.replace(/\\/g, '/') + '/.lantai/aura-brain';
-        // 代际防护：initAura 在途期间可能已切换工作区 —
-        // 过期后这个 brain 属于旧项目，初始化结果直接丢弃并关闭，防跨项目串味。
-        const epoch = getWorkspaceEpoch();
-        await auraInit(brainPath);
-        if (!isCurrentEpoch(epoch)) {
-          await auraShutdown();
-          return;
-        }
-        this._auraReady = true;
-      } catch (e) {
-        console.warn('[aura] init failed (semantic recall disabled):', e);
-      } finally {
-        this._auraInitPromise = null;
-      }
-    })();
-    return this._auraInitPromise;
-  }
-
-  /** 对自然语言查询执行 AuraSDK 语义检索。
-   *  返回评分记录，过滤掉源记忆已删除的记录。Aura 不可用时优雅降级为空数组。 */
-  async auraSemanticRecall(query: string, topK: number = 20): Promise<AuraRecord[]> {
-    if (!this._auraReady) return [];
-    try {
-      const records = await auraRecall(query, topK);
-      return await this._filterOrphaned(records);
-    } catch (e) {
-      console.warn('[aura] recall failed:', e);
-      return [];
-    }
-  }
-
-  /** 发起一次空查询以预加载 SDR 索引到内存。
-   *  在启动阶段调用以避免首条用户消息的冷启动延迟。
-   *  若 initAura() 仍在进行中则先等待完成，再预热。 */
-  prewarmAura(): void {
-    this.initAura()
-      .then(() => {
-        if (this._auraReady) {
-          this.auraSemanticRecall('warmup', 1).catch(() => {});
-        }
-      })
-      .catch(() => {});
-  }
-
-  /** 过滤掉源记忆文件已不存在的 Aura 记录。
-   *  没有 [memory:NAME] 标记的记录（迁移前）予以保留。 */
-  private async _filterOrphaned(records: AuraRecord[]): Promise<AuraRecord[]> {
-    if (records.length === 0) return records;
-    // 收集所有范围内活跃记忆名称（含 .md 扩展名用于直接查找）
-    const active = new Set<string>();
-    for (const scope of this.scopes()) {
-      try {
-        const entries = await this.list(scope);
-        for (const e of entries) active.add(e.name + '.md');
-      } catch {
-        /* 范围尚未就绪 */
-      }
-    }
-    if (active.size === 0) return records; // 无法验证，全部保留
-    const markerRe = /^\[memory:([^\]]+)\]/;
-    return records.filter((r) => {
-      const m = r.content.match(markerRe);
-      if (!m) return true; // 无标记 → 迁移前记录，保留
-      return active.has(m[1] + '.md');
-    });
-  }
-
-  /** 获取 Aura 记录数量。 */
-  async auraRecordCount(): Promise<number> {
-    if (!this._auraReady) return 0;
-    try {
-      return await auraCount();
-    } catch {
-      return 0;
-    }
   }
 
   private get projectDir(): string {
@@ -469,15 +367,6 @@ export class MemoryManager {
     const title = description.length > 40 ? description.slice(0, 39) + '…' : description;
     await this.upsertIndex(title, name + '.md', description, scope);
 
-    // 双写到 AuraSDK 用于语义检索
-    if (this._auraReady) {
-      const tagList = [type, confidence, scope];
-      // ponytail: 以 [memory:NAME] 标记为前缀，使 recall 能检测孤儿记录
-      auraStore(`[memory:${name}] ${description}\n\n${content}`, 0, tagList, scope).catch((e: unknown) => {
-        console.warn('[aura] dual-write failed:', e);
-      });
-    }
-
     this._promptSectionCache = null;
   }
 
@@ -700,39 +589,6 @@ export function createMemoryTools(mm: MemoryManager): Tool[] {
           '',
           mf.content,
         ].join('\n');
-      },
-    }),
-    defineTool({
-      name: 'hologram_memory_search',
-      description:
-        '语义搜索记忆库（AuraSDK SDR 引擎）。用自然语言描述你想要的上下文，返回最相关的记忆文本。\n' +
-        '适合：不确定是否有相关记忆时先搜一下、需要跨记忆关联信息、当前问题需要历史决策上下文。\n' +
-        '注意：搜索结果基于语义相似度，不一定精确匹配关键词。空结果 = 确实没有相关记忆。',
-      schema: z.object({
-        query: z
-          .string()
-          .describe(
-            '自然语言查询，描述你需要什么信息。例如："用户之前对 UI 布局的偏好"、"为什么选了 React 而不是 Vue"',
-          ),
-        topK: z.coerce.number().optional().describe('返回条数上限（默认 10）。'),
-      }),
-      readOnly: true,
-      execute: async (args) => {
-        const query = args.query;
-        const topK = args.topK || 10;
-        const records = await mm.auraSemanticRecall(query, topK);
-        if (records.length === 0) {
-          const count = await mm.auraRecordCount();
-          return count > 0
-            ? `未找到与 "${query}" 语义相关的记忆（记忆库共 ${count} 条）。尝试换一种表述。`
-            : '记忆库为空。用 hologram_memory_save 存一条记忆后即可语义搜索。';
-        }
-        const lines = records.map((r) => {
-          const tagStr = r.tags?.length ? ` [${r.tags.join(', ')}]` : '';
-          const scoreStr = ` (相关度: ${(r.score * 100).toFixed(0)}%)`;
-          return `-${tagStr}${scoreStr}\n  ${r.content.slice(0, 300)}`;
-        });
-        return `### 语义搜索: "${query}"\n找到 ${records.length} 条相关记忆:\n\n${lines.join('\n\n')}`;
       },
     }),
     defineTool({

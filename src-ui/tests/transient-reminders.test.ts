@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Tests for transient reminder system — verifies that per-turn injections
-// (bg notifications, discoveries, memory updates, aura recall) are NOT
+// (bg notifications, discoveries, memory updates) are NOT
 // persisted in this.session, keeping the session history clean for stable
 // cache prefixes across all LLM providers.
 
@@ -117,24 +117,6 @@ describe('Transient reminders', () => {
     expect(withTransient).toBeGreaterThan(baseTokens);
   });
 
-  it('run() preRunHook pushes to transient, not session', async () => {
-    const a = asAny(agent);
-    a.setPreRunHook(async () => 'aura recall: relevant memory');
-
-    // We need to call run() but it will try to stream — the mock provider
-    // yields Done immediately, so runLoop will exit after one step.
-    // However, rpc mock for drain_bg_notifications needs to return empty.
-    mockRpc.mockResolvedValue('');
-
-    const signal = new AbortController().signal;
-    await agent.run(signal, 'test input');
-
-    // The aura recall should be in transient, not in session
-    const session = agent.getSession();
-    const auraInSession = session.some((m) => typeof m.content === 'string' && m.content.includes('aura recall'));
-    expect(auraInSession).toBe(false);
-  });
-
   it('extractRecentContext does not include transient reminders', () => {
     const a = asAny(agent);
     // Add a real message to session
@@ -172,26 +154,5 @@ describe('Transient reminders', () => {
     expect(reminderMsgs).toHaveLength(0);
     // system + 5 user + 5 assistant = 11
     expect(session).toHaveLength(11);
-  });
-
-  it('runLoop step 0 does NOT clear transient (preRunHook survives)', async () => {
-    const a = asAny(agent);
-    a.setPreRunHook(async () => 'aura recall: important context');
-
-    // Mock provider yields Done immediately, rpc returns empty for drain_bg_notifications
-    mockRpc.mockResolvedValue('');
-
-    const signal = new AbortController().signal;
-    await agent.run(signal, 'test input');
-
-    // After run() completes, the aura recall should have been visible to the LLM
-    // (it was in _transientReminders when streamOnce was called on step 0).
-    // The key assertion: the aura recall did NOT get wiped by step 0's clear.
-    // We verify by checking that the run completed successfully — if the aura
-    // recall was wiped, the mock provider would still work, but we can verify
-    // the flow by checking session doesn't contain it (it was transient).
-    const session = agent.getSession();
-    const auraInSession = session.some((m) => typeof m.content === 'string' && m.content.includes('aura recall'));
-    expect(auraInSession).toBe(false);
   });
 });

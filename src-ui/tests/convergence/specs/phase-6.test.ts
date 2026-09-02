@@ -83,13 +83,12 @@ const FORBIDDEN_COMPOSITION = [
   'loadEngineSnapshot',
   'setCompactionConfigPath',
   'setPlanState',
-  'setPreRunHook',
   'PlanModeInjector',
   'applyAutoTuneConfig',
 ];
 
 describe('phase-6 T0 结构门禁 — 组合面收敛到 blueprint capability 表', () => {
-  it('AgentConfig 字段面冻结（31 字段 — 新增工具/hook 不再扩 config）', () => {
+  it('AgentConfig 字段面冻结（30 字段 — 新增工具/hook 不再扩 config）', () => {
     expect(
       agentConfigFieldNames(),
       'AgentConfig 字段面漂移——组合扩展走 blueprint capability；确需新增 config 字段须改此断言并登记 progress.md',
@@ -120,7 +119,6 @@ describe('phase-6 T0 结构门禁 — 组合面收敛到 blueprint capability �
       'toolResultWindow',
       'collaborationMode',
       'systemPrompt',
-      'preRunHook',
       'onSessionPersisted',
       'messageBus',
       'taskBoard',

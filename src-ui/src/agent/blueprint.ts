@@ -392,17 +392,6 @@ export function firstPartyCapabilities(): AgentCapability[] {
       },
     },
     {
-      // pre-run hook（AuraSDK 语义检索）
-      key: 'pre-run-hook',
-      phase: 'agent',
-      when: ({ inputs }) => !!inputs.preRunHook,
-      install: (scope) => {
-        const agent = requireAgent(scope);
-        const hook = scope.inputs.preRunHook;
-        if (hook) agent.setPreRunHook(hook);
-      },
-    },
-    {
       // 自动调优 — fire-and-forget
       key: 'auto-tune',
       phase: 'agent',

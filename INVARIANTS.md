@@ -250,7 +250,7 @@ io: 'input' 视图必须保留：让 defaulted 字段不进 required，
 ❌ 错误：模块级 let 存跨工作区全局态 + 切换靠手写清理清单 + 在途 resolve 不校验代际
 ```
 
-**炸过**: 本家族已炸 N 次 —— chat store ×6（INVARIANTS #1）、cache-store（`176f4873`）、LSP diagnosticsCache / 会话表（H1/H2）、runCheck 在途写 dock（H4）、forceClearState 漏 disposeAll（H3）、autoRestore/autoSave 旧项目串写（H5）、Aura init 竞态（M3）、agent panel 2s 轮询旧 runtime（M1）。
+**炸过**: 本家族已炸 N 次 —— chat store ×6（INVARIANTS #1）、cache-store（`176f4873`）、LSP diagnosticsCache / 会话表（H1/H2）、runCheck 在途写 dock（H4）、forceClearState 漏 disposeAll（H3）、autoRestore/autoSave 旧项目串写（H5）、agent panel 2s 轮询旧 runtime（M1）。
 
 **守护**: `tests/workspace-lifecycle.test.ts`（T0：forceClearState/disposeAll/fiber）、`tests/workspace-scope.test.ts`（epoch 语义 + fiber 标签 T0）、`tests/workspace-fiber.test.ts`（P1 运行时：effect 释放/quiescence/停注册）、`tests/lsp-diagnostics.test.ts` / `tests/lsp-session.test.ts`（LSP 在途）、`tests/chat-epoch-guard.test.ts`（会话 epoch 外科手术）
 

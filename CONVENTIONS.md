@@ -292,7 +292,7 @@ DOM 所有权按层划分，不要跨层抢 DOM：
    凡 Workspace 在 open/setupAgent 里获取的资源（事件监听器 / 计时器 / runtime /
    subAgentPool / agentSessionState / useAgentPanelStore / 引擎快照刷新 …）
    一律在获取点就地 this._fiber.ctx.effect(() => disposer, 'label') 登记（独立清理器）；
-   有顺序依赖的成组清理（setupAgent 拆除链：先拆 runtime 再清缓存、aura 晚于 runtime）
+   有顺序依赖的成组清理（setupAgent 拆除链：先拆 runtime 再清缓存）
    打包为 DisposerBag、作为单个 effect 登记 — 组内串行逆序契约不变。
    deactivate/forceClearState 只调 fiber.dispose() + bumpWorkspaceEpoch()，不再人肉枚举。
    没登记 = review 可见的错。new 一个全局状态却没有 effect 登记，就是漏网的雷。
@@ -311,7 +311,7 @@ DOM 所有权按层划分，不要跨层抢 DOM：
 
 ✅ 跨工作区的 fire-and-forget 写共享态必须 epoch 校验：
    入口记 getWorkspaceEpoch()，async resolve 后 isCurrentEpoch(epoch) 校验，
-   过期立即丢弃（LSP 在途 / autoRestore / autoSave / initAura / runCheck 同族）。
+   过期立即丢弃（LSP 在途 / autoRestore / autoSave / runCheck 同族）。
    Workspace 停用/强清时 bumpWorkspaceEpoch() 让所有在途回调生效过期。
    （epoch 不随 fiber 化消失：fiber 管所有权，epoch 管逃逸所有权的在途回调 —
    cordis-migration P4 收口定案：epoch 为**永久互补机制**，消费方 = lsp-client

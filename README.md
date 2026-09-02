@@ -235,7 +235,6 @@ Python · JavaScript/TypeScript/TSX · Rust · Go · Java · C/C++ · C# · Ruby
 |---|---|
 | 会话记忆 | Agent session JSON（事件溯源） |
 | 项目记忆 | `MemoryManager` → `.lantai/memory/*.md`，MEMORY.md 索引 + confidence 四档分级 |
-| Aura 记忆 | `aura.dll` FFI（SDR + MinHash 语义召回），跨会话语义记忆 |
 | Memory Bundle | 独立进程 + HTTP 客户端，进程隔离的记忆服务 |
 | 技能系统 | `.lantai/skills/<name>/SKILL.md` 热加载，无需重启 |
 
