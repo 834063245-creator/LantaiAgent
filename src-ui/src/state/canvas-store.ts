@@ -275,7 +275,52 @@ export function canvasFilePath(workspace: string): string {
   return `${norm}/.lantai/canvas.json`;
 }
 
-/** 从当前 store 状态快照磁盘形状。 */
+/** 公共物分片路径（P3-2，2026-09-02）：canvas.json 只存布局面（spread +
+ *  activeSessionId——恒小）；钉住块/纸条分片到独立文件（大工作区的钉快照
+ *  payload 不再阻塞布局面的读写）。 */
+export function canvasPinsFilePath(workspace: string): string {
+  const norm = normWs(workspace);
+  if (!norm) return '';
+  return `${norm}/.lantai/canvas-pins.json`;
+}
+
+export function canvasStripsFilePath(workspace: string): string {
+  const norm = normWs(workspace);
+  if (!norm) return '';
+  return `${norm}/.lantai/canvas-strips.json`;
+}
+
+/** 磁盘布局面 v2（分片格式）：canvas.json 本体形状。 */
+interface StoredCanvasLayoutV2 {
+  version: 2;
+  spread: StoredWorkspaceCanvas['spread'];
+  activeSessionId: number | null;
+}
+
+/** 钉住块分片形状。 */
+interface StoredCanvasPins {
+  version: 1;
+  pinned: Record<string, WorkspacePin>;
+}
+
+/** 纸条分片形状。 */
+interface StoredCanvasStrips {
+  version: 1;
+  strips: PaperStrip[];
+}
+
+/** 读一个 JSON 文件（raw 模式）。缺失/毒化返回 null（容忍——INVARIANTS #11.2）。 */
+async function readJsonOrNull(path: string): Promise<unknown> {
+  try {
+    const text = await typedRpc('read_file_content', { file_path: path, raw: true });
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+/** 从当前 store 状态快照磁盘形状（内存复合形状——loadCanvas 的对偶；
+ *  磁盘分片在 saveCanvasToDisk 拆开写）。 */
 export function snapshotCanvas(storeId: string): StoredWorkspaceCanvas {
   const st = getCanvasStore(storeId).getState();
   const spread = Object.entries(st.spread).map(([sid, r]) => ({
@@ -292,39 +337,73 @@ export function snapshotCanvas(storeId: string): StoredWorkspaceCanvas {
   };
 }
 
-/** 读工作区画布状态（容忍缺失/毒化：缺失/坏 JSON = 空画布，不炸）。 */
+/** 读工作区画布状态（容忍缺失/毒化：缺失/坏 JSON = 空画布，不炸）。
+ *  P3-2（2026-09-02）：三文件并行读——canvas.json（布局面）+ canvas-pins.json
+ *  + canvas-strips.json（公共物分片）。v2 = 分片格式（分片缺失 = 空）；
+ *  v1 旧格式（publics 内联）仍可读（迁移面——下次落盘自然写 v2 分片）。 */
 export async function loadCanvasFromDisk(storeId: string, workspace: string): Promise<void> {
   const path = canvasFilePath(workspace);
   if (!path) {
     getCanvasStore(storeId).getState().loadCanvas(null);
     return;
   }
-  try {
-    const raw = await typedRpc('read_file_content', { file_path: path });
-    // read_file_content 返回带行号文本——剥行号后解析
-    const text = raw
-      .split('\n')
-      .map((l) => l.replace(/^\s*\d+\t/, ''))
-      .join('\n');
-    const parsed = JSON.parse(text) as StoredWorkspaceCanvas;
-    if (!parsed || typeof parsed !== 'object' || parsed.version !== 1) {
-      getCanvasStore(storeId).getState().loadCanvas(null);
-      return;
-    }
-    getCanvasStore(storeId).getState().loadCanvas(parsed);
-  } catch {
-    // 缺失（首启常态）/毒化（INVARIANTS #11.2：读取容忍，不把坏文件变每次启动必崩）
+  const [canvasRaw, pinsRaw, stripsRaw] = await Promise.all([
+    readJsonOrNull(path),
+    readJsonOrNull(canvasPinsFilePath(workspace)),
+    readJsonOrNull(canvasStripsFilePath(workspace)),
+  ]);
+  const canvas = canvasRaw as StoredCanvasLayoutV2 | StoredWorkspaceCanvas | null;
+  if (!canvas || typeof canvas !== 'object') {
     getCanvasStore(storeId).getState().loadCanvas(null);
+    return;
   }
+  if (canvas.version === 2) {
+    // 分片格式：布局面 + 分片合成内存复合形状
+    const pins = (pinsRaw as StoredCanvasPins | null)?.pinned ?? {};
+    const strips = (stripsRaw as StoredCanvasStrips | null)?.strips ?? [];
+    getCanvasStore(storeId)
+      .getState()
+      .loadCanvas({
+        version: 1,
+        spread: canvas.spread ?? [],
+        activeSessionId: canvas.activeSessionId ?? null,
+        publics: { pinned: pins, strips },
+      });
+    return;
+  }
+  if (canvas.version === 1) {
+    // 旧格式：publics 内联（迁移读——下次落盘写 v2 分片）
+    getCanvasStore(storeId).getState().loadCanvas(canvas);
+    return;
+  }
+  getCanvasStore(storeId).getState().loadCanvas(null);
 }
 
-/** 写工作区画布状态到盘（原子写，经 write_file_content）。失败必须可见（warn）。 */
+/** 写工作区画布状态到盘（原子写，经 write_file_content）。失败必须可见（warn）。
+ *  P3-2（2026-09-02）：分片写——分片先写、canvas.json（v2）最后落盘（v2 在盘
+ *  = 分片是权威——中断最坏情况 = 旧 v2 布局 + 略旧分片，不产生布局/公共物
+ *  互相矛盾的混合态）。全空分片也写（防「删光钉后旧分片复活」）。 */
 export async function saveCanvasToDisk(storeId: string, workspace: string): Promise<boolean> {
   const path = canvasFilePath(workspace);
   if (!path) return false;
   const payload = snapshotCanvas(storeId);
   try {
-    await typedRpc('write_file_content', { file_path: path, content: JSON.stringify(payload) });
+    await typedRpc('write_file_content', {
+      file_path: canvasPinsFilePath(workspace),
+      content: JSON.stringify({ version: 1, pinned: payload.publics.pinned } satisfies StoredCanvasPins),
+    });
+    await typedRpc('write_file_content', {
+      file_path: canvasStripsFilePath(workspace),
+      content: JSON.stringify({ version: 1, strips: payload.publics.strips } satisfies StoredCanvasStrips),
+    });
+    await typedRpc('write_file_content', {
+      file_path: path,
+      content: JSON.stringify({
+        version: 2,
+        spread: payload.spread,
+        activeSessionId: payload.activeSessionId ?? null,
+      } satisfies StoredCanvasLayoutV2),
+    });
     // D5（拍板 C）：成功解除警报——下次失败重新弹
     useBgAlertStore.getState().clearBgAlert('canvas-save');
     return true;
