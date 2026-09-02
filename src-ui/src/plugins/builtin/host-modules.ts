@@ -146,6 +146,16 @@ import { getChatStore, msgStoreFor } from '../../ui/chat-store';
 import { CommandRegistry } from '../../ui/command-registry';
 import { iconHtml } from '../../ui/icons';
 
+/** 宿主桥供面封蜡（2026-09-02 划词白屏事故立法）：faceDeps 此前是手抄清单，
+ *  host.ts 加出口漏注册时 tsc/测试全绿（两域测试都直连真身）、exe 里才炸
+ *  （产物域 impl.X = undefined → TypeError → 整树卸载）。satisfies 四面
+ *  host 形状后，漏注册在本文件保存即 tsc 红——失败从「用户 exe 运行时」
+ *  搬回「写代码时」。 */
+type FaceBridgeSeal = Record<keyof typeof import('./canvas-nav/host'), unknown> &
+  Record<keyof typeof import('./compose-dock/host'), unknown> &
+  Record<keyof typeof import('./paper-shell/host'), unknown> &
+  Record<keyof typeof import('./settings-domain/host'), unknown>;
+
 /** 四面组件共享依赖（bundle 域真实例）。key = 产物 host.aliased 取用名。 */
 const faceDeps = {
   // agent / composition 服务读面
@@ -277,7 +287,7 @@ const faceDeps = {
   // 创作坞 v2（2026-08-31）：引（typedJsonRpc 文件枚举）/ 拖放入卷（Tauri 原生通道）
   isMockMode,
   watchFileDragDrop,
-};
+} satisfies FaceBridgeSeal;
 
 /** 经产物通道薄重导出的工具域插件对象（插件名 = S4-4 甲寻址键，零漂移）。 */
 const toolDomains = {

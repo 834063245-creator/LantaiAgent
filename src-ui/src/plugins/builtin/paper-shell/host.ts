@@ -8,6 +8,9 @@
 // 产物域构建期重定向到 './host.aliased.ts'（宿主桥 mods 共享真实例）。
 // 两域形状必须一致（host.aliased.ts 以 `typeof import('./host')` 对拍）：
 // 本文件只做 re-export，不改写任何实现。
+// 加出口三处同步：① 本文件 ② host.aliased.ts 镜像（漏了产物构建 esbuild 红）
+// ③ host-modules.ts faceDeps（漏了 satisfies 封蜡 tsc 红）——2026-09-02
+// 划词白屏事故即漏了第 ③ 处，exe 里才炸出。
 
 export { agentSessionState } from '../../../agent/agent-session-state';
 export { useCoreStore } from '../../../app/chat/core-instance';
