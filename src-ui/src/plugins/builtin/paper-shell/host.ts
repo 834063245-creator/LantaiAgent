@@ -16,6 +16,9 @@ export { agentSessionState } from '../../../agent/agent-session-state';
 export { useCoreStore } from '../../../app/chat/core-instance';
 export { Icon } from '../../../app/Icon';
 export { useDialogEscape } from '../../../app/overlay';
+/* 保险丝 b（2026-09-03 生产事故立法）：渲染面错误边界——面组件/块渲染器
+ * 的崩溃隔离（单插件渲染崩溃只死自己那格，React 整树卸载绝迹）。 */
+export { PluginBoundary } from '../../../app/PluginBoundary';
 export { useShellStore } from '../../../app/shell-store';
 export { WinControls } from '../../../app/WinControls';
 export {

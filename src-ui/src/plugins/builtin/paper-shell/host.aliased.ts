@@ -110,6 +110,7 @@ export const resolveAssetBlock = impl.resolveAssetBlock;
 export const resolveRenderer = impl.resolveRenderer;
 export const activeSpace = impl.activeSpace;
 export const agentSessionState = impl.agentSessionState;
+export const PluginBoundary = impl.PluginBoundary;
 
 export type SourcedBlock = import('./host').SourcedBlock;
 export type RegionHitRect = import('./host').RegionHitRect;

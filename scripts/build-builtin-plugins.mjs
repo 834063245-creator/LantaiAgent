@@ -42,6 +42,7 @@ import { build } from '../src-ui/node_modules/esbuild/lib/main.js';
 import { cpSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { extractFaceKeys } from './lib/face-keys.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -156,9 +157,17 @@ async function buildPlugin(spec) {
     process.exit(1);
   }
   const hasCss = readdirSync(outDir).some((f) => f.endsWith('.css'));
+  // face.json（保险丝 a，2026-09-03 生产事故立法）：产物实际引用的宿主面
+  // 键集——装载器 import 前对拍运行时 faceDeps，缺键拒载（防 exe↔产物版本
+  // 偏斜在渲染期炸成整树卸载）。无 faceDeps 面（renderers 走 renderer-host）
+  // 不产出。
+  const faceKeys = extractFaceKeys(entrySrc);
+  if (faceKeys.length > 0) {
+    await fsp.writeFile(join(outDir, 'face.json'), JSON.stringify({ faceDeps: faceKeys }, null, 2) + '\n');
+  }
   const inputCount = result.metafile ? Object.keys(result.metafile.inputs).length : 0;
   console.log(
-    `[build-builtin-plugins] ${spec.dir} → hologram/${spec.dir}（${inputCount} 输入${hasCss ? ' + entry.css' : ''}）`,
+    `[build-builtin-plugins] ${spec.dir} → hologram/${spec.dir}（${inputCount} 输入${hasCss ? ' + entry.css' : ''}${faceKeys.length > 0 ? ` + face.json（${faceKeys.length} 键）` : ''}）`,
   );
 }
 

@@ -24,6 +24,7 @@ import { agentSessionState } from '../../agent/agent-session-state';
 import { useCoreStore } from '../../app/chat/core-instance';
 import { Icon } from '../../app/Icon';
 import { useDialogEscape } from '../../app/overlay';
+import { PluginBoundary } from '../../app/PluginBoundary';
 import { ConfirmDialog } from '../../app/panels/settings/ConfirmDialog';
 import { PluginsPage } from '../../app/panels/settings/PluginsPage';
 import { ProviderPage } from '../../app/panels/settings/ProviderPage';
@@ -264,6 +265,7 @@ const faceDeps = {
   useDialogEscape,
   useShellStore,
   WinControls,
+  PluginBoundary,
   ConfirmDialog,
   PluginsPage,
   ProviderPage,
@@ -324,4 +326,11 @@ const segments = {
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。 */
 export function pluginHostMods(): Record<string, unknown> {
   return { faceDeps, toolDomains, segments };
+}
+
+/** 运行时宿主面键集（保险丝 a 对拍真源，2026-09-03 生产事故立法）：
+ *  产物 face.json 声明的需求键以此为对拍面——缺键 = 产物与 exe 版本偏斜，
+ *  装载器拒载（bundle 兜底行不位移），渲染期整树卸载的偏斜类事故绝迹。 */
+export function faceDepsKeys(): ReadonlySet<string> {
+  return new Set(Object.keys(faceDeps));
 }

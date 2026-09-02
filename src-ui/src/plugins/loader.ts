@@ -60,7 +60,7 @@ import { usePluginPrefs } from '../state/plugin-prefs';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
 import { canvasNavPlugin } from './builtin/canvas-nav';
 import { composeDockPlugin } from './builtin/compose-dock';
-import { pluginHostMods } from './builtin/host-modules';
+import { faceDepsKeys, pluginHostMods } from './builtin/host-modules';
 import { paperPlugin } from './builtin/paper-shell';
 import { builtinRenderersPlugin } from './builtin/renderers';
 import { settingsPlugin } from './builtin/settings-domain';
@@ -563,6 +563,30 @@ async function loadOne(
           status: 'blocked',
           missingPermissions: missing,
         },
+        fiber: null,
+      };
+    }
+  }
+  // 4b') 宿主面键集对拍（保险丝 a，2026-09-03 生产事故立法）：产物 face.json
+  //       声明的需求键在运行时 faceDeps 缺席 = 产物与 exe 版本偏斜——装载期
+  //       拒载，bundle 兜底行不位移（displace 在后，永不发生）。此前此类
+  //       偏斜渲染期才炸：impl.X undefined → TypeError → React 整树卸载，
+  //       装载层失败隔离够不着渲染期。face.json 缺席/坏形状 = 零需求
+  //       （旧产物 / 第三方 / renderers 走 renderer-host 面）——回退兼容。
+  const faceDoc = await fetchJson(fetchImpl, origin + '/' + manifest.name + '/face.json');
+  if (faceDoc != null && typeof faceDoc === 'object' && Array.isArray((faceDoc as { faceDeps?: unknown }).faceDeps)) {
+    const required = (faceDoc as { faceDeps: unknown[] }).faceDeps.filter((k): k is string => typeof k === 'string');
+    const have = faceDepsKeys();
+    const missing = required.filter((k) => !have.has(k));
+    if (missing.length > 0) {
+      return {
+        record: withBuiltinMeta(
+          manifest.name,
+          manifest,
+          '宿主面缺键（产物与 exe 版本偏斜，拒载防渲染期整树卸载）: ' +
+            missing.join(', ') +
+            ' —— 用与 exe 同源的源码树重建产物，或更新 exe',
+        ),
         fiber: null,
       };
     }

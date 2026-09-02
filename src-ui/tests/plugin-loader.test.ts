@@ -962,3 +962,114 @@ describe('位移式内置插件装载（manifest.displace）', () => {
 function ctxCommands(root: Context) {
   return root.commands;
 }
+
+// ── 保险丝 a：face 键集对拍门禁（2026-09-03 生产事故立法）──
+// 起因：新树构建的产物丢进旧 exe → faceDeps 缺键 → 渲染期 TypeError →
+// React 整树卸载。装载器在 displace 之前对拍 face.json，缺键拒载。
+
+describe('face 键集对拍门禁（保险丝 a）', () => {
+  beforeEach(async () => {
+    for (const name of activeExternalPluginNames()) {
+      await deactivateExternalPlugin(name);
+    }
+    resetPluginRuntimeForTests();
+    usePluginStore.getState().setPlugins([]);
+  });
+
+  const CANVAS_NAV_MANIFEST = {
+    name: 'hologram/canvas-nav',
+    version: '1.0.0',
+    entry: 'entry.js',
+    inject: ['panels', 'commands', 'space'],
+    displace: true,
+  };
+
+  it('face.json 缺键（版本偏斜）→ 拒载：import 不发生，bundle 兜底行不位移', async () => {
+    const root = new Context();
+    loadBuiltinPlugins(root);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeTruthy();
+    let imported = false;
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['hologram/canvas-nav'],
+        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
+        [ORIGIN + '/hologram/canvas-nav/manifest.json']: CANVAS_NAV_MANIFEST,
+        [ORIGIN + '/hologram/canvas-nav/face.json']: { faceDeps: ['layoutRegion', '__lantai_never_key__'] },
+      }),
+      importModule: async () => {
+        imported = true;
+        return { default: { name: 'hologram/canvas-nav', apply() {} } };
+      },
+    });
+    // 产物代码未执行（拒载发生在 import 之前）
+    expect(imported).toBe(false);
+    // bundle 兜底行未被位移（渲染期整树卸载的病根拔除）
+    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeTruthy();
+    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'hologram/canvas-nav');
+    expect(rec?.status).toBe('error');
+    expect(rec?.error).toContain('宿主面缺键');
+    expect(rec?.error).toContain('__lantai_never_key__');
+    expect(rec?.builtin).toBe(true);
+  });
+
+  it('face.json 全键在 → 正常装载（位移照常发生，产物行生效）', async () => {
+    const root = new Context();
+    loadBuiltinPlugins(root);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['hologram/canvas-nav'],
+        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
+        [ORIGIN + '/hologram/canvas-nav/manifest.json']: CANVAS_NAV_MANIFEST,
+        // layoutRegion / ANCHOR 是运行时 faceDeps 实有键（同源产物）
+        [ORIGIN + '/hologram/canvas-nav/face.json']: { faceDeps: ['layoutRegion', 'ANCHOR'] },
+      }),
+      importModule: async () => ({
+        default: {
+          name: 'hologram/canvas-nav',
+          inject: ['panels', 'commands', 'space'],
+          apply(ctx: Context) {
+            ctx.effect(
+              () =>
+                ctx.commands.register({
+                  id: 'canvas/artifact-probe',
+                  label: '产物探针',
+                  group: '画布',
+                  shortcut: '/probe',
+                  action: { type: 'local', handler: () => {} },
+                }),
+              'artifact-probe',
+            );
+          },
+        },
+      }),
+    });
+    expect(ctxCommands(root).get('canvas/artifact-probe')).toBeTruthy();
+    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeUndefined();
+    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'hologram/canvas-nav');
+    expect(rec?.status).toBe('active');
+  });
+
+  it('face.json 坏形状（faceDeps 非数组）→ 视为零需求照常装载（毒化容忍）', async () => {
+    const root = new Context();
+    loadBuiltinPlugins(root);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['hologram/canvas-nav'],
+        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
+        [ORIGIN + '/hologram/canvas-nav/manifest.json']: CANVAS_NAV_MANIFEST,
+        [ORIGIN + '/hologram/canvas-nav/face.json']: { faceDeps: 'not-an-array' },
+      }),
+      importModule: async () => ({
+        default: { name: 'hologram/canvas-nav', inject: ['panels', 'commands', 'space'], apply() {} },
+      }),
+    });
+    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'hologram/canvas-nav');
+    expect(rec?.status).toBe('active');
+  });
+});

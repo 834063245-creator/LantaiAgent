@@ -186,3 +186,18 @@ displace 位移 = 同一插件的干净重注册。段贡献（prompt-segments/c
   withFirstParty*Channel，bundle 兜底行让装配面与迁移前逐字节一致，实测确认）；
 - gen:tool-contract 不受装载路径影响（按源码生成，未动）；
 - 全量门禁（biome 0/0 / tsc / vitest 全量 / convergence 双 preset / cargo）见施工 commit。
+### 8.5 保险丝两根（2026-09-03 生产事故立法——产物↔exe 版本偏斜）
+
+**事故**：新树构建的 paper-shell 产物挪进旧 exe 的插件目录 → 产物引用 faceDeps 新键（stream-rhythm 批的 groupWorkUnits 等四个）而旧宿主无此键 → `impl.X undefined` → 渲染期 TypeError → 应用零错误边界 → React 整树卸载（全 UI 消失）。位移机制本身按设计工作（删产物即恢复），但装载期隔离够不着渲染期——同族病：2026-09-02 划词白屏（开发态 faceDeps 漏注册），这次是跨构建版本偏斜，封蜡 `satisfies` 只保开发态同源，管不了 exe↔产物配对。
+
+**保险丝 a——face 键集对拍门禁（装载期治本）**：
+- 构建侧 `scripts/lib/face-keys.mjs`：从产物 entry.js 锚定 `.mods.faceDeps` 声明反查变量名，收集全部属性访问 = 产物实际依赖的宿主面键集（精确到用没用，非 host.ts 全导出清单）；`build-builtin-plugins` 写 `face.json`（无 faceDeps 面——renderers——不产出）。
+- 装载侧 `loader.ts loadOne` 4b'：import 前（displace 前，永不位移 bundle 兜底行）对拍运行时 `faceDepsKeys()`（host-modules 新导出）——缺键拒载，error 记录含缺键清单与指引；face.json 缺席/坏形状 = 零需求（旧产物/第三方，毒化容忍回退兼容）。
+- 效果：版本偏斜从「渲染期整树卸载」降级为「该产物拒载 + 设置面板可见 + bundle 兜底行不倒」。
+
+**保险丝 b——PluginBoundary 渲染面错误边界（渲染期保险）**：
+- `app/PluginBoundary.tsx`（自持内联样式——崩溃面不依赖任何可能正在崩溃的样式面）：崩溃面（标签 + 错误首行 + 重试钮）。
+- 三处挂载点：DockPanel PanelSlot（面板贡献——paper 面板本体在此，事故的正面）、PaperPanel 覆盖层/边缘层槽（overlay 贡献）、BlockView 渲染器消费点（块渲染器——含资产/插件贡献渲染器）。host 三处同步（host.ts / host.aliased.ts / host-modules faceDeps）。
+- 效果：任何渲染期崩溃（偏斜/产物 bug/插件 bug）只死自己那格，宿主永生。
+
+**验证**：face-keys.test.ts 4 用例（提取器）+ plugin-loader 门禁 3 用例（拒载/放行/毒化容忍——拒载断言 import 不发生 + 兜底行存活）+ plugin-boundary.test.tsx 6 用例（捕获/重试重挂/再崩再捕获/直通/接线钉）+ host 三处同步源级钉；paper-shell 产物 face.json 实测含新键（71 键 → 72 键含 PluginBoundary）。

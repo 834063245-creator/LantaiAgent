@@ -90,6 +90,7 @@ import {
   needsObservedHeight,
   PaperDockContext,
   PaperRegionContext,
+  PluginBoundary,
   panBy,
   REGION_CONTENT_MARGIN,
   reportObservedBlockHeight,
@@ -267,15 +268,19 @@ const BlockView = memo(function BlockView({
         </button>
       )}
       {Body ? (
-        <Body
-          block={block}
-          folded={folded}
-          sidecarFolded={sidecarFolded}
-          onToggleSidecarFold={onToggleSidecarFold}
-          onSidecarPinMouseDown={onSidecarPinMouseDown}
-          sidecarOut={sidecarOut}
-          onSidecarRestore={onSidecarRestore}
-        />
+        /* 保险丝 b（2026-09-03）：块渲染器（内置 + 资产/插件贡献面）包边界——
+         * 单块渲染崩溃只死该块，纸壳与整树永生。 */
+        <PluginBoundary label={`块 ${block.kind}`}>
+          <Body
+            block={block}
+            folded={folded}
+            sidecarFolded={sidecarFolded}
+            onToggleSidecarFold={onToggleSidecarFold}
+            onSidecarPinMouseDown={onSidecarPinMouseDown}
+            sidecarOut={sidecarOut}
+            onSidecarRestore={onSidecarRestore}
+          />
+        </PluginBoundary>
       ) : (
         <div className="pp-body">{(p as { text?: string }).text ?? ''}</div>
       )}
@@ -3095,12 +3100,17 @@ export function PaperPanel() {
               同名会撞车（桌垫 top/height ±200000 接管槽，坞射出屏外，CSS 注释有案）。 */}
           <div className={`pp-composer-slot${desk ? ' pp-at-desk' : ''}`} ref={composerSlotRef}>
             {composerOverlays.map((def) => (
-              <def.component key={def.id} />
+              /* 保险丝 b：覆盖层贡献行（插件面）包边界——创作坞崩溃不卸整树 */
+              <PluginBoundary key={def.id} label={`覆盖层 ${def.id}`}>
+                <def.component />
+              </PluginBoundary>
             ))}
             {desk && <DeskShelf core={core} />}
           </div>
           {edgeOverlays.map((def) => (
-            <def.component key={def.id} />
+            <PluginBoundary key={def.id} label={`边缘层 ${def.id}`}>
+              <def.component />
+            </PluginBoundary>
           ))}
         </div>
       </PaperRegionContext.Provider>
