@@ -2,12 +2,18 @@
 # 索引侧全仓 blob 已是 LF；eol=lf 让 checkout/smudge 不再回写 CRLF，
 # 消除「盘上 CRLF vs biome formatter LF」的幻影 format error。
 # Windows 专属脚本保留 CRLF（cmd.exe 对 LF 的 goto/label 解析不可靠）。
-*.cmd text eol=crlf
-*.bat text eol=crlf
-*.ps1 text eol=crlf
+# ⚠ 规则后置（2026-09-02 实测教训）：gitattributes 后行优先——此前
+# *.cmd/*.bat/*.ps1 块写在 catch-all 之前，被 `* text=auto eol=lf`
+# 覆盖，dev.cmd/build.cmd 检出成 LF，cmd.exe 解析错乱（REM 行碎片
+# 被当命令执行、行合并）。Windows 脚本行必须放在默认行之后才生效。
 
 # 默认：文本文件统一 LF
 * text=auto eol=lf
+
+# Windows 专属脚本保留 CRLF（后置覆盖默认 LF）
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
 
 # Binary files — never convert line endings
 *.png binary
