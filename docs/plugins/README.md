@@ -10,7 +10,7 @@
 > **平台化 Phase 3-6（2026-08-27/28）：本文件为插件面唯一人类契约。**
 > **2026-08-31（增补四）：kind='feature' 全量通道化（23 个产物 + 位移机制）。**
 > **2026-09-03（plugin-bundle-retirement S2-S5 竣工）：bundle 双轨拆除**——
-> 44 个第一方插件分家为 **15 内核**（exe 编译态：14 注册表/运行时 +
+> 44 个第一方插件分家为 **14 内核**（exe 编译态：14 注册表/运行时 +
 > agent-loop-service 暂缓）+ **29 出厂产物**（磁盘通道：6 供应商 + 5 既有 +
 > 16 工具域 + 2 段贡献，真源全部在 plugins/builtin/&lt;name&gt;/ 目录）。
 > displace 位移机制退役（产物是唯一装载面，无 bundle 兜底）；dev 模式走源码
@@ -88,34 +88,35 @@ cookbook（`docs/cookbook/`）+ 发布路径（`docs/user/develop/`）是平台�
 3. **外部 MCP server**（§3）：manifest.mcpServers 声明式挂接（见
    `docs/cookbook/adding-an-mcp-server.md`）。
 
-### 第四形态：第一方内置插件（产物通道，P1 2026-08-30；增补四全量化 2026-08-31）
+### 第四形态：第一方出厂产物（磁盘通道真源，S5 竣工 2026-09-03）
 
-第一方 **kind='feature' 全量**（资产渲染器 + UI 四面 canvas-nav/paper-shell/
-settings-domain/compose-dock + 16 工具域 + prompt/capability 段贡献，共 23 个）
-从编译期 bundle 兜底行扩为**内置插件产物通道**——源码在仓库
-（`src-ui/src/plugins/builtin/<dir>/`），构建管线（esbuild，
+兰台的 30 个出厂插件（7 seam 供应商 + 5 既有 + 16 工具域 + 2 段贡献）——
+真源在仓库 `src-ui/src/plugins/builtin/<name>/` 目录，构建管线（esbuild，
 `scripts/build-builtin-plugins.mjs`，接入 `npm run build`）产出 ESM 产物 +
 manifest，随包携带（`tauri.conf.json` resources `dist-plugins/**`）；运行时经
 **与第三方同一条 D6 装载链路**装载（`/plugins/` 索引含内置根，Rust 资产通道
 回退 `src-ui/dist-plugins` 或打包态 `resource_dir/builtin`），设置面板
 「重新加载」→ 重装载（秒级生效，应用不重启；工具面下次装配生效）。
 
-- **装载语义（两种，按 manifest 声明分流）**：
-  - **覆盖式**（渲染器，无 `displace`）：bundle 行（id `builtin/<kind>`，出厂
-    兜底）与磁盘行（id `plugin/<插件名>/<kind>`，覆盖）并存——`resolveRenderer`
-    同 kind 后注册胜；磁盘行卸载/失败 → bundle 行自动恢复。
-  - **位移式**（manifest 声明 `"displace": true`——其余 22 个 feature：贡献 id
-    与 bundle 行共享，重名装载期拒绝，不能并存）：loader 在 import 产物前
-    dispose 同名 bundle fiber（贡献面**单活互换**）；产物失败/停用 → bundle
-    兜底行重启恢复。`usePluginPrefs` 的 feature 禁用态对产物通道同样生效。
-    内置产物按 BUILTIN_PLUGINS **表序**装载（贡献注册序 = bundle 序——组合
-    快照/前缀缓存依赖此序），用户插件按索引序殿后。
-- **产物形态（两种）**：UI 四面 = 面组件源码真迁移（双走查：bundle 域直引 +
-  esbuild 产物；项目内依赖经 `host.ts` / `host.aliased.ts` 宿主桥对拍面取
-  **共享真实例**——zustand store/service 单例不可内联副本；CSS 抽取为
-  entry.css 经 `loadCss` 注入）；工具域/段贡献 = **薄重导出产物**（插件对象
-  真源留 bundle 域经 `mods` 取用——工具工厂依赖树带模块级单例，内联副本会
-  分裂状态；重载 = 同一插件干净重注册）。
+**改插件 = 换产物，永不重编译 exe**——编辑 `plugins/builtin/<name>/` 源码 →
+重跑构建 → 替换 `dist-plugins` 产物 → 重启应用即生效。
+
+- **装载形态（S5 后单一）**：产物从磁盘通道装载（exe 只留 14 内核装配台——
+  displace 位移机制已退役，产物是唯一装载面，无 bundle 兜底行）。装载序 =
+  `factoryProductPlugins()` 表序（贡献注册序 = 原 bundle 序——组合快照/
+  前缀缓存依赖此序），用户插件按索引序殿后。
+- **dev/prod 双态**：dev 模式经 `import.meta.env.DEV` 分支走源码路径
+  （`plugins/factory-products.ts`——vite HMR 热重载，产物通道的磁盘副本被
+  过滤防覆盖热重载）；生产端该分支经 vite define DCE 消除，产物只从磁盘
+  通道装载。
+- **装载调度（S4，2026-09-03）**：cordis fiber PENDING 挂起语义（manifest
+  `inject` 缺依赖不拒载——等 provide）+ `plugins/boot-gate.ts` 全树 settle
+  审计——全 ACTIVE 才放行 bootShell（fail-loud，不带病运行）。
+- **产物形态**：全部产物 = 真源编译（插件对象代码在产物内，不薄重导出——
+  S3 已拆薄壳）；UI 面 = 组件源码真迁移（项目内依赖经 `host.ts` /
+  `host.aliased.ts` 宿主桥对拍面取**共享真实例**——zustand store/service
+  单例不可内联副本；CSS 抽取为 entry.css 经 `loadCss` 注入）；供应商/工具
+  域 = 运行时依赖（工具工厂/RPC/seam 函数）经 faceDeps 桥取用。
 - 产物构建：`--jsx=automatic --jsx-import-source=./<hostModule>` + onResolve
   重定向到 `*.aliased.ts` + `react` 别名桥（`react-bridge.cjs`——产物内全部
   react import 落到宿主注入的同一份 React，零副本）——产物自包含（零静态
@@ -129,7 +130,7 @@ manifest，随包携带（`tauri.conf.json` resources `dist-plugins/**`）；运
 - 开放面契约版本：`docs/agents/open-surface-contract.md`（seam 接口 / manifest schema /
   dynamic runner / agent loop 变更必须升版 + 记录——守护测试红着就是没改完）。
 - 插件 manifest schema 真源：`src/plugins/types.ts`（zod——单一权威；`displace`
-  为增补四新增可选字段）。
+  为历史字段，S5 后已无装载语义——留作解析兼容）。
 
 ### 信任模型二分（详见 §6）
 
@@ -291,7 +292,7 @@ ctx.effect(
 
 ### ctx.llm —— LLM adapter seam（平台化 Phase 1 · D2 修订版）
 
-第一方 `llm-adapters-plugin`（loadBuiltinPlugins 表序第二行）贡献内核
+第一方 `plugins/builtin/llm-adapters/`（loadBuiltinPlugins 表序第二行）贡献内核
 anthropic/openai 两条默认 adapter（`{ id, kind, create }`）；外部插件按同 kind
 **后注册胜**覆盖（仪器化 wrapper / 替换协议实现），dispose 分层回落。消费入口 =
 `createProvider(settings)` 方言解析器（provider/index.ts 只查本通道，零内核回落
@@ -395,9 +396,9 @@ ctx.effect(
 第六贡献通道（P4 A-1，2026-08-23）：向 Agent 系统提示词追加段落——工具指导、
 领域约定、团队规范等静态文本面。
 
-第一方同走此通道（P4 B④ 收官，2026-08-23）：**全部 13 段**出厂段（试点
+第一方同走此通道（P4 B④ 收官，2026-08-23；S3 产物化 2026-09-03）：**全部 13 段**出厂段（试点
 memory/claude-md → 续批 graph-snapshot → 收官批剩余 10 段）已迁
-`src-ui/src/plugins/prompt-segments-plugin.ts` 经 `ctx.prompts` 贡献
+`src-ui/src/plugins/builtin/prompt-segments/` 经 `ctx.prompts` 贡献
 （装载 `firstPartyPromptSections()`，贡献序 = 迁移前出厂表序，拼装字节
 零漂移；定义留 `prompt-sections.ts` 单一真源；出厂段表
 `builtinPromptSections()` 已退役，本通道是出厂段唯一来源）——全部
@@ -486,8 +487,8 @@ ctx.effect(
 **capability**——会话级能力的组合单元（工具 + hooks + ctx 服务 + Agent 接线一把抓）。
 这是**深集成通道**：install 拿到与第一方 capability 完全同一的装配视图
 （BlueprintScope——ctx/inputs/tools/hooks/preflightHooks/deps/agent），与
-`firstPartyCapabilities()` 十五项（B⑤ 起同样经通道注册——plugins/
-capability-segments-plugin.ts 装载）在同一张 blueprint 表上竞争。设计件：
+`firstPartyCapabilities()` 十五项（B⑤ 起同样经通道注册——真源
+`plugins/builtin/capability-segments/`）在同一张 blueprint 表上竞争。设计件：
 `docs/plans/composition-architecture/designs/A3-capability-contribution-channel.md`。
 
 ```js

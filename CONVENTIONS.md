@@ -137,8 +137,8 @@ React 靠引用比较观察变化。store 是唯一提交口：
    行内工具名冲突由 ToolRegistry.register 装载期拒绝
 ✅ 第一方工具域插件（P4 B① git/search + ② fs/shell/agent-isolation）：
    只依赖无状态装配依赖（codingExec 类）的族走
-   ctx.tools 贡献通道——plugins/coding-domain-plugins.ts 域插件形状（一域一插件，
-   disposer 经 ctx.effect 登记）+
+   ctx.tools 贡献通道——真源 plugins/builtin/<domain>/index.ts（一域一插件，
+   disposer 经 ctx.effect 登记；共享助手 plugins/builtin/contribution-helpers.ts）+
    composition/first-party-tools.ts 清单单一真源（loader 表尾装载 + 测试/文档
    生成经 withFirstPartyToolChannel 复现生产装配）。**缓存分家**：无状态族
    （只依赖 codingExec）走默认实例缓存；装配期真值族（wait 的 subAgentPool /
@@ -150,7 +150,7 @@ React 靠引用比较观察变化。store 是唯一提交口：
    composition/prompt-sections.ts 段清单加一段（id + applicable + render；
    render 产出含自身前导分隔符的完整文本——\n/\n\n 混用是现行拼装的机械事实，
    禁"顺手规整分隔符"，会击穿 fixture 快照与前缀缓存）。P4 B④ 收官：13 段
-   全量经 plugins/prompt-segments-plugin.ts（装载 firstPartyPromptSections()）
+   全量经 plugins/builtin/prompt-segments/（装载 firstPartyPromptSections()）
    走 ctx.prompts 通道贡献——出厂段表退役，新段直接进清单
 ✅ 插件 prompt 段贡献（P4 A-1 起）：ctx.prompts 通道（composition/
    prompt-service.ts，第六 service）——PromptContribution 形状即 PromptSection
@@ -238,12 +238,14 @@ preset realm + 热重载 + 消费闭环（S4，2026-08-20 起生效）：
 ✅ 插件/组合面变更同步 docs/plugins/README.md（通道 API/生效语义/
    信任模型的单一人类契约）
 ✅ 第一方插件清单（2026-08-29）：plugins/first-party-manifest.ts = 43 个
-   第一方插件身份单一真源（service 平台服务常驻不可禁 / feature 功能插件
-   可禁用）；设置「插件」tab 三组陈列（平台服务/内置插件/已安装）；
-   feature 启用/禁用经 state/plugin-prefs.ts（localStorage）**下次启动生效**
-   （loader boot 跳过）；装载统一收 state/plugin-store.ts（builtin+meta，
-   mergePlugins 按 name 合并——第一方 boot 与第三方异步装载互不冲刷）。
-   **新增第一方插件 = BUILTIN_PLUGINS 加行 + 本清单加条目**（守护
+   第一方插件身份单一真源（kind = 展示分组标签——service 内核不可禁 /
+   feature 出厂产物可禁用）；设置「插件」tab 三组陈列（平台服务/内置插件/
+   已安装）；feature 启用/禁用经 state/plugin-prefs.ts（localStorage）
+   **下次启动生效**（loader boot 跳过）；装载统一收 state/plugin-store.ts
+   （builtin+meta，mergePlugins 按 name 合并——第一方 boot 与第三方异步装载
+   互不冲刷）。
+   **新增出厂产物 = 产品目录建 index.ts + manifest.json +
+   factory-products.ts 加行 + 本清单加条目**（守护
    tests/first-party-manifest.test.ts 钉死覆盖，漏条目 = loader 跳过 + error）
 ```
 

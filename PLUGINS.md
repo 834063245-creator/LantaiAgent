@@ -112,7 +112,6 @@ export default {
 | `permissions` | | 声明所需权限类（`read`/`edit`/`bash`/`git`/`web`），未授予 → 不装载（blocked） |
 | `tools` | | 声明式工具（见下），执行函数在 `entry.js` 的 `toolHandlers` 命名导出 |
 | `mcpServers` | | 声明式挂接外部 MCP server（见下） |
-| `displace` | | `true` = 位移式装载：与 bundle 同名内置插件贡献面单活互换（先 dispose bundle 行再 import 产物；产物失败/停用自动恢复出厂兜底行）。仅对与内置插件同名的产物有意义；缺省 `false`（渲染器族双行走查、后注册胜，不位移） |
 
 ### entry.js 的规则
 
@@ -211,19 +210,25 @@ export const toolHandlers = { hello_status: async () => '装载正常' };
 | 发布到 registry | `docs/user/develop/publishing-plugins.md` |
 | 契约版本（manifest schema 变更须升版） | `docs/agents/open-surface-contract.md` |
 
-## 内部：给兰台仓库加第一方插件
+## 内部：给兰台仓库加第一方出厂产物
 
-兰台内置的 44 个第一方插件与第三方走同一套通道（编译期 bundle 内，经
-`src-ui/src/plugins/loader.ts` 的 `BUILTIN_PLUGINS` 表统一装载），并统一进
-设置面板「插件」tab 三组陈列：**平台服务**（常驻不可禁）/ **内置插件**（可
-禁用，下次启动生效）/ **已安装**（第三方）。
+兰台内置的 44 个第一方插件（**14 内核 + 30 出厂产物**）与第三方走同一套通道。
+内核 14 件编译进 exe（注册表/运行时——`src-ui/src/plugins/loader.ts` 的
+`BUILTIN_PLUGINS` 表装载）；出厂产物 30 件真源在 `plugins/builtin/<name>/`
+目录（磁盘通道装载，**改插件 = 换产物，不重编译 exe**）。设置面板
+「插件」tab 三组陈列：**平台服务**（内核，不可禁）/ **内置插件**（产物，
+可禁用）/ **已安装**（第三方）。
 
-新增第一方插件 = **两步**：
+新增出厂产物 = **四步**：
 
-1. `BUILTIN_PLUGINS` 表加行（插件对象）；
-2. `src-ui/src/plugins/first-party-manifest.ts` 清单加条目（name →
-   version/description/kind）——守护测试 `tests/first-party-manifest.test.ts`
-   钉死覆盖，漏一条测试就红。
+1. `plugins/builtin/<name>/` 建目录（`index.ts` 插件对象 + `manifest.json` +
+   可选 `host.ts`/`host.aliased.ts` 运行时依赖桥）；
+2. `src-ui/src/plugins/factory-products.ts` 加行（表序 = 贡献注册序，字节契约）；
+3. `src-ui/src/plugins/first-party-manifest.ts` 清单加条目（守护测试
+   `tests/first-party-manifest.test.ts` 钉死覆盖，漏一条测试就红）；
+4. `scripts/build-builtin-plugins.mjs` 的规格表加条目 + `src-tauri/src/
+   plugin_assets.rs` 白名单加名。
 
-第一方禁用经 `src-ui/src/state/plugin-prefs.ts`（localStorage）持久化、下次
-启动生效。详细纪律见 `CONVENTIONS.md` §1.7 与 `AGENTS.md`。
+产物可禁用（`state/plugin-prefs.ts`，localStorage 持久化、下次启动生效）。
+开发模式下产物走源码路径（`import.meta.env.DEV` 分支——vite HMR 热重载，
+产物仅发布形态）。详细纪律见 `CONVENTIONS.md` §1.7 与 `AGENTS.md`。
