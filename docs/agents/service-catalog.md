@@ -25,7 +25,7 @@ fs 后端能力注册表（平台化 Phase 2 · D11）——默认 provider = bu
 
 - owner：`src/composition/fs-service.ts`
 - 默认实现 / 贡献者 id：—
-- 消费面（2）：`src/agent/fs-provider.ts` · `src/composition/contract-version.ts`
+- 消费面（2）：`src/composition/contract-version.ts` · `src/plugins/builtin/fs-builtin/index.ts`
 
 ### `ctx.graph` — GraphService（swappable seam（可换实现））
 
@@ -33,7 +33,7 @@ fs 后端能力注册表（平台化 Phase 2 · D11）——默认 provider = bu
 
 - owner：`src/composition/graph-service.ts`
 - 默认实现 / 贡献者 id：`builtin/rust-graph`
-- 消费面（2）：`src/agent/graph-provider.ts` · `src/composition/contract-version.ts`
+- 消费面（2）：`src/composition/contract-version.ts` · `src/plugins/builtin/graph-builtin/index.ts`
 
 ### `ctx.llm` — LlmService（swappable seam（可换实现））
 
@@ -41,7 +41,7 @@ LLM adapter 注册表（S1-1 起；平台化 Phase 1 升格为 ctx.llm seam）�
 
 - owner：`src/composition/services.ts`
 - 默认实现 / 贡献者 id：`builtin/anthropic` · `builtin/openai`
-- 消费面（2）：`src/composition/contract-version.ts` · `src/plugins/llm-adapters-plugin.ts`
+- 消费面（2）：`src/composition/contract-version.ts` · `src/plugins/builtin/llm-adapters/index.ts`
 
 ### `ctx.sessionPersistence` — SessionPersistenceService（swappable seam（可换实现））
 
@@ -49,7 +49,7 @@ LLM adapter 注册表（S1-1 起；平台化 Phase 1 升格为 ctx.llm seam）�
 
 - owner：`src/composition/session-persistence-service.ts`
 - 默认实现 / 贡献者 id：—
-- 消费面（2）：`src/agent/sessions-provider.ts` · `src/composition/contract-version.ts`
+- 消费面（2）：`src/composition/contract-version.ts` · `src/plugins/builtin/sessions-builtin/index.ts`
 
 ### `ctx.shell` — ShellService（swappable seam（可换实现））
 
@@ -57,7 +57,7 @@ shell 后端能力注册表（平台化 Phase 2 · D11；subprocess 并入本 se
 
 - owner：`src/composition/shell-service.ts`
 - 默认实现 / 贡献者 id：—
-- 消费面（2）：`src/agent/shell-provider.ts` · `src/composition/contract-version.ts`
+- 消费面（2）：`src/composition/contract-version.ts` · `src/plugins/builtin/shell-builtin/index.ts`
 
 ### `ctx.subagents` — SubagentsService（swappable seam（可换实现））
 
@@ -65,7 +65,7 @@ shell 后端能力注册表（平台化 Phase 2 · D11；subprocess 并入本 se
 
 - owner：`src/composition/subagent-service.ts`
 - 默认实现 / 贡献者 id：`builtin/in-process`
-- 消费面（2）：`src/agent/subagent-provider.ts` · `src/composition/contract-version.ts`
+- 消费面（2）：`src/composition/contract-version.ts` · `src/plugins/builtin/subagent-in-process/index.ts`
 
 ## 贡献通道
 

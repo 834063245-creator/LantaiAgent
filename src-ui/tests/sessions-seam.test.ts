@@ -9,8 +9,8 @@
 // agent-store 磁盘 CRUD，见 agent-store.ts 头注）。①② 保留守护 seam 自身
 // 契约；seam 骨架的拆除与否另行立案（动它会牵动平台化七 seam 骨架）。
 
-import { SESSIONS_COMMAND_BY_ACTION } from '../src/agent/sessions-provider';
 import { sessionExecute } from '../src/composition/session-persistence-service';
+import { SESSIONS_COMMAND_BY_ACTION } from '../src/plugins/builtin/sessions-builtin';
 
 describe('sessionPersistence seam（D11 施工⑥）', () => {
   it('① 裸路径：无装配 → SESSION_PERSISTENCE_PROVIDER 响亮报错', async () => {

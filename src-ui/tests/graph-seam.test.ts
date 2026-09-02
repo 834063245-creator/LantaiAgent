@@ -23,9 +23,9 @@ vi.mock('../src/agent/tool', async (importOriginal) => {
   };
 });
 
-import { builtinGraphProvider } from '../src/agent/graph-provider';
 import type { GraphProvider } from '../src/composition/graph-service';
 import { graphExecute } from '../src/composition/graph-service';
+import { builtinGraphProvider } from '../src/plugins/builtin/graph-builtin';
 import { ensureProductionChannelsBooted } from './helpers/composition-boot';
 
 describe('graph seam（ctx.graph · D11 施工⑦）', () => {

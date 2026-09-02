@@ -73,6 +73,17 @@ const TOOL_DOMAINS = [
 ];
 const SEGMENTS = ['prompt-segments', 'capability-segments'];
 
+/** 七个 seam 供应商（S2 真源产物化，plugin-bundle-retirement-plan）。
+ *  agent-loop-service 暂缓（模块级状态与 runtime.ts 共生，S5 拆）。 */
+const PROVIDERS = [
+  'fs-builtin',
+  'shell-builtin',
+  'sessions-builtin',
+  'graph-builtin',
+  'subagent-in-process',
+  'llm-adapters',
+];
+
 /** 插件构建规格表。 */
 function pluginSpecs() {
   return [
@@ -85,6 +96,7 @@ function pluginSpecs() {
     },
     ...UI_FACES.map((dir) => ({ dir, hostModule: 'host', entry: 'index.ts', face: true })),
     ...[...TOOL_DOMAINS, ...SEGMENTS].map((dir) => ({ dir, hostModule: 'host', entry: 'index.ts', thin: true })),
+    ...PROVIDERS.map((dir) => ({ dir, hostModule: 'host', entry: 'index.ts' })),
   ];
 }
 

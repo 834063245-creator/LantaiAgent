@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
 import type { LlmAdapterContribution } from '../src/composition/services';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
-import { llmAdaptersPlugin } from '../src/plugins/llm-adapters-plugin';
+import { llmAdaptersPlugin } from '../src/plugins/builtin/llm-adapters';
 import { createProvider } from '../src/provider/index';
 import type { Provider, ProviderRuntimeArgs } from '../src/provider/types';
 

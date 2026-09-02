@@ -14,11 +14,6 @@
 
 import { agentLoopServicePlugin } from '../../src/agent/agent-loop/agent-loop-service';
 import { dynamicRunnerPlugin } from '../../src/agent/dynamic-runner/dynamic-runner-service';
-import { builtinFsPlugin } from '../../src/agent/fs-provider';
-import { builtinGraphPlugin } from '../../src/agent/graph-provider';
-import { builtinSessionsPlugin } from '../../src/agent/sessions-provider';
-import { builtinShellPlugin } from '../../src/agent/shell-provider';
-import { inProcessSubagentPlugin } from '../../src/agent/subagent-provider';
 import { fsServicePlugin } from '../../src/composition/fs-service';
 import { graphServicePlugin } from '../../src/composition/graph-service';
 import { compositionServicesPlugin } from '../../src/composition/services';
@@ -26,7 +21,12 @@ import { sessionPersistenceServicePlugin } from '../../src/composition/session-p
 import { shellServicePlugin } from '../../src/composition/shell-service';
 import { subagentsServicePlugin } from '../../src/composition/subagent-service';
 import { Context } from '../../src/cordis';
-import { llmAdaptersPlugin } from '../../src/plugins/llm-adapters-plugin';
+import { builtinFsPlugin } from '../../src/plugins/builtin/fs-builtin';
+import { builtinGraphPlugin } from '../../src/plugins/builtin/graph-builtin';
+import { llmAdaptersPlugin } from '../../src/plugins/builtin/llm-adapters';
+import { builtinSessionsPlugin } from '../../src/plugins/builtin/sessions-builtin';
+import { builtinShellPlugin } from '../../src/plugins/builtin/shell-builtin';
+import { inProcessSubagentPlugin } from '../../src/plugins/builtin/subagent-in-process';
 
 let bootRoot: Context | null = null;
 

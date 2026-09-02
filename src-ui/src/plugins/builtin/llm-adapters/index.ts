@@ -2,18 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 // 第一方 LLM adapter 插件（agent-platformization-plan Phase 1 · D2 修订版，2026-08-27）——
-// 内核两种协议方言 anthropic/openai 经 ctx.llm 贡献为默认 adapter，取代
-// resolveProviderDialect 的内核回落分支（建新必拆旧：本插件落地同段删除旧分支）。
+// 真源产物化（plugin-bundle-retirement S2，2026-09-03）。原 plugins/llm-adapters-plugin.ts
+// 整体迁入；运行时依赖 createAnthropicProvider/createOpenAIProvider 经宿主桥取用。
 //
-// 注册纪律（settings-plugin 同款）：disposer 经 ctx.effect 登记；装载在四 service
-// 之后（loadBuiltinPlugins 表序紧随 compositionServicesPlugin），ctx.llm 可解析；
-// 排在外部插件装载之前——外部方言按「后注册胜」覆盖内核（覆盖方向 = 第三方
-// wrapper 可以仪器化/替换内核协议实现，provider-dialect 守护测试钉住）。
+// 注册纪律：disposer 经 ctx.effect 登记；装载在四 service 之后（loadBuiltinPlugins
+// 表序紧随 compositionServicesPlugin），ctx.llm 可解析；排在外部插件装载之前——
+// 外部方言按「后注册胜」覆盖内核。
 
-import type { Context } from '../cordis';
-import { createAnthropicProvider } from '../provider/anthropic';
-import { createOpenAIProvider } from '../provider/openai';
-import type { ProviderRuntimeArgs } from '../provider/types';
+import type { Context } from '../../../cordis';
+import type { ProviderRuntimeArgs } from '../../../provider/types';
+import { createAnthropicProvider, createOpenAIProvider } from './host';
 
 /** 第一方 LLM adapter 插件 —— anthropic/openai 内核方言两条默认 adapter 贡献。 */
 export const llmAdaptersPlugin = {
@@ -40,3 +38,5 @@ export const llmAdaptersPlugin = {
     );
   },
 };
+
+export default llmAdaptersPlugin;

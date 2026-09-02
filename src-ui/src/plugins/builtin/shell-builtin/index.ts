@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 内置 shell provider（平台化 Phase 2 · D11 默认实现，2026-08-27）——
-// 现有 Rust shell 命令的薄包装：动作→命令恒等映射经注入的 dispatch 腰转发，
-// 零逻辑改动（行为与现状逐字节一致，由既有工具套件钉住）。
+// 内置 shell provider（平台化 Phase 2 · D11 默认实现）——真源产物化
+// （plugin-bundle-retirement S2，2026-09-03）。原 agent/shell-provider.ts
+// 整体迁入；零运行时依赖（类型导入经 esbuild 擦除，产物自包含）。
 
-import type { ShellAction, ShellProvider } from '../composition/shell-service';
-import type { Context } from '../cordis';
+import type { ShellAction, ShellProvider } from '../../../composition/shell-service';
+import type { Context } from '../../../cordis';
 
 /** shell 动作 → Rust 命令绑定（现状恒等映射）。 */
 export const SHELL_COMMAND_BY_ACTION: Record<ShellAction, string> = {
@@ -32,3 +32,5 @@ export const builtinShellPlugin = {
     ctx.effect(() => ctx.shell.register(builtinShellProvider), 'shell-builtin');
   },
 };
+
+export default builtinShellPlugin;

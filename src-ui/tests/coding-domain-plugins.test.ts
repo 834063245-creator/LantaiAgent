@@ -20,8 +20,6 @@
 
 import { describe, expect, it } from 'vitest';
 import { SubAgentPool } from '../src/agent/coordinator';
-import { builtinFsPlugin } from '../src/agent/fs-provider';
-import { builtinShellPlugin } from '../src/agent/shell-provider';
 import { TaskManager } from '../src/agent/task';
 import type { Tool, ToolExecutor, ToolRegistry, ToolRowContext } from '../src/agent/tool';
 import {
@@ -37,6 +35,8 @@ import { pluginToolRows } from '../src/composition/plugin-tool-rows';
 import { activeToolContributions, compositionServicesPlugin } from '../src/composition/services';
 import { shellServicePlugin } from '../src/composition/shell-service';
 import { Context } from '../src/cordis';
+import { builtinFsPlugin } from '../src/plugins/builtin/fs-builtin';
+import { builtinShellPlugin } from '../src/plugins/builtin/shell-builtin';
 import {
   agentDomainPlugin,
   agentIsolationDomainPlugin,

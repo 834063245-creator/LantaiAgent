@@ -1,13 +1,12 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 内置 fs provider（平台化 Phase 2 · D11 默认实现，2026-08-27）——
-// 现有 Rust fs 命令的薄包装：动作→命令恒等映射经注入的 dispatch 腰转发，
-// 零逻辑改动（P2-C1 行为与现状逐字节一致，由既有工具套件钉住）。
-// 替代 provider（JS 内存 / MCP / 远程）实现同一 FsProvider 接口即插即用。
+// 内置 fs provider（平台化 Phase 2 · D11 默认实现）——真源产物化
+// （plugin-bundle-retirement S2，2026-09-03）。原 agent/fs-provider.ts
+// 整体迁入；零运行时依赖（类型导入经 esbuild 擦除，产物自包含）。
 
-import type { FsAction, FsProvider } from '../composition/fs-service';
-import type { Context } from '../cordis';
+import type { FsAction, FsProvider } from '../../../composition/fs-service';
+import type { Context } from '../../../cordis';
 
 /** fs 动作 → Rust 命令绑定（现状恒等映射；rename 的 path/new_name→filePath/newName
  *  键名改写留在工具层——行为不变，见 coding.ts rename_file）。 */
@@ -41,3 +40,5 @@ export const builtinFsPlugin = {
     ctx.effect(() => ctx.fs.register(builtinFsProvider), 'fs-builtin');
   },
 };
+
+export default builtinFsPlugin;

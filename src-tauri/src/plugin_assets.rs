@@ -149,6 +149,13 @@ const BUILTIN_PLUGIN_NAMES: &[&str] = &[
     "hologram/asset-domain",
     "hologram/prompt-segments",
     "hologram/capability-segments",
+    // S2 供应商产物（plugin-bundle-retirement，2026-09-03；agent-loop-service 暂缓）
+    "hologram/fs-builtin",
+    "hologram/shell-builtin",
+    "hologram/sessions-builtin",
+    "hologram/graph-builtin",
+    "hologram/subagent-in-process",
+    "hologram/llm-adapters",
 ];
 
 /// 判断 url_path（插件根下相对路径）是否针对内置插件（以白名单插件名开头）。

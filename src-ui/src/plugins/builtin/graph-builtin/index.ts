@@ -1,13 +1,13 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 内置 graph 分析 provider（平台化 Phase 2 · D11 默认实现，2026-08-27）——
-// 现有 engine RPC 的薄包装：invoke 经 hologram_call 派发（tool = engine 分析
-// 工具名），零逻辑改动（与 hologramDomainPlugin 旧 holoExec 逐字节等价）。
+// 内置 graph 分析 provider（平台化 Phase 2 · D11 默认实现）——真源产物化
+// （plugin-bundle-retirement S2，2026-09-03）。原 agent/graph-provider.ts
+// 整体迁入；运行时依赖 agentInvoke 经宿主桥取用。
 
-import type { GraphProvider } from '../composition/graph-service';
-import type { Context } from '../cordis';
-import { agentInvoke } from './tool';
+import type { GraphProvider } from '../../../composition/graph-service';
+import type { Context } from '../../../cordis';
+import { agentInvoke } from './host';
 
 /** 默认 Rust/engine 图分析 provider（id 'builtin/rust-graph'）。 */
 export const builtinGraphProvider: GraphProvider = {
@@ -25,3 +25,5 @@ export const builtinGraphPlugin = {
     ctx.effect(() => ctx.graph.register(builtinGraphProvider), 'graph-builtin');
   },
 };
+
+export default builtinGraphPlugin;

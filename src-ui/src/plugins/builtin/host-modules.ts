@@ -21,6 +21,8 @@
 // 取用（组件渲染 / 按钮回调），无模块初始化期解引用，ESM 循环安全。
 
 import { agentSessionState } from '../../agent/agent-session-state';
+import { spawnSubAgentImpl } from '../../agent/subagent-spawn';
+import { agentInvoke } from '../../agent/tool';
 import { useCoreStore } from '../../app/chat/core-instance';
 import { Icon } from '../../app/Icon';
 import { useDialogEscape } from '../../app/overlay';
@@ -110,6 +112,7 @@ import {
   webDomainPlugin,
 } from '../../plugins/coding-domain-plugins';
 import { promptSegmentsPlugin } from '../../plugins/prompt-segments-plugin';
+import { createAnthropicProvider } from '../../provider/anthropic';
 import {
   findModels,
   getDynamicFetchFailure,
@@ -120,8 +123,9 @@ import {
   searchModels,
 } from '../../provider/catalog';
 import { resolveApiKey } from '../../provider/credentials';
+import { createOpenAIProvider } from '../../provider/openai';
 import { thinkingOptionsFor } from '../../provider/thinking';
-import { typedJsonRpc } from '../../rpc-contract';
+import { typedJsonRpc, typedRpc } from '../../rpc-contract';
 import {
   autoUpdateCheckEnabled,
   effectiveModels,
@@ -156,7 +160,11 @@ import { iconHtml } from '../../ui/icons';
 type FaceBridgeSeal = Record<keyof typeof import('./canvas-nav/host'), unknown> &
   Record<keyof typeof import('./compose-dock/host'), unknown> &
   Record<keyof typeof import('./paper-shell/host'), unknown> &
-  Record<keyof typeof import('./settings-domain/host'), unknown>;
+  Record<keyof typeof import('./settings-domain/host'), unknown> &
+  Record<keyof typeof import('./sessions-builtin/host'), unknown> &
+  Record<keyof typeof import('./graph-builtin/host'), unknown> &
+  Record<keyof typeof import('./subagent-in-process/host'), unknown> &
+  Record<keyof typeof import('./llm-adapters/host'), unknown>;
 
 /** 四面组件共享依赖（bundle 域真实例）。key = 产物 host.aliased 取用名。 */
 const faceDeps = {
@@ -289,6 +297,12 @@ const faceDeps = {
   resolveApiKey,
   thinkingOptionsFor,
   typedJsonRpc,
+  // S2 供应商产物运行时依赖（经宿主桥 mods.faceDeps 取用）
+  typedRpc,
+  agentInvoke,
+  spawnSubAgentImpl,
+  createAnthropicProvider,
+  createOpenAIProvider,
   setLang,
   iconHtml,
   // 创作坞 v2（2026-08-31）：引（typedJsonRpc 文件枚举）/ 拖放入卷（Tauri 原生通道）

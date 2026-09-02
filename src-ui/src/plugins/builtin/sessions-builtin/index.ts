@@ -1,15 +1,18 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 内置会话持久化 provider（平台化 Phase 2 · D11 默认实现，2026-08-27）——
-// 现有 Rust 文件/追加命令的薄包装：动作→命令恒等映射，args 原样透传
-// （snake_case，与 agent-store 既有调用形状逐字节一致）。
+// 内置会话持久化 provider（平台化 Phase 2 · D11 默认实现）——真源产物化
+// （plugin-bundle-retirement S2，2026-09-03）。原 agent/sessions-provider.ts
+// 整体迁入；运行时依赖 typedRpc 经宿主桥取用。
 
-import type { SessionPersistAction, SessionPersistenceProvider } from '../composition/session-persistence-service';
-import { typedRpc } from '../rpc-contract';
+import type {
+  SessionPersistAction,
+  SessionPersistenceProvider,
+} from '../../../composition/session-persistence-service';
+import type { Context } from '../../../cordis';
+import { typedRpc } from './host';
 
-/** 会话持久化动作 → Rust 命令绑定（现状恒等映射）。方法名类型收窄到
- *  RpcContract 合法键（typedRpc 泛型约束，零 as）。 */
+/** 会话持久化动作 → Rust 命令绑定的类型（typedRpc 泛型约束）。 */
 type SessionRpcMethod = Parameters<typeof typedRpc>[0];
 
 /** 会话持久化动作 → Rust 命令绑定（现状恒等映射）。 */
@@ -31,8 +34,6 @@ export const builtinSessionsProvider: SessionPersistenceProvider = {
   },
 };
 
-import type { Context } from '../cordis';
-
 /** builtin 会话持久化 provider 贡献插件（loader 表序：sessionPersistenceServicePlugin 之后）。 */
 export const builtinSessionsPlugin = {
   name: 'hologram/sessions-builtin',
@@ -41,3 +42,5 @@ export const builtinSessionsPlugin = {
     ctx.effect(() => ctx.sessionPersistence.register(builtinSessionsProvider), 'sessions-builtin');
   },
 };
+
+export default builtinSessionsPlugin;
