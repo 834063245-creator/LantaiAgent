@@ -11,7 +11,6 @@ import { rendererServicePlugin, resolveRenderer } from '../src/composition/rende
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
-import { assetRendererComponents } from '../src/plugins/builtin/renderers/components';
 import { FIRST_PARTY_MANIFEST } from '../src/plugins/first-party-manifest';
 import {
   activateExternalPlugin,
@@ -727,7 +726,7 @@ describe('P1 内置渲染器插件（磁盘产物装载→覆盖行）', () => {
     });
   });
 
-  it('磁盘产物装载（P1）→ 覆盖行 plugin/hologram/renderers/<kind> 生效（resolveRenderer 后注册胜）', async () => {
+  it('S5 dev 模式：出厂产物在通道索引中被过滤（源码域已装载，防重复/覆盖热重载）', async () => {
     const RENDERERS_MANIFEST = {
       name: 'hologram/renderers',
       version: '1.0.0',
@@ -735,31 +734,10 @@ describe('P1 内置渲染器插件（磁盘产物装载→覆盖行）', () => {
       inject: ['renderers'],
     };
     await withRenderersCtx(async (root) => {
-      // 装载前：bundle 兜底行
+      // 装载前：bundle 兜底行（dev 模式下 BUILTIN_PLUGINS 含 renderers 源码行）
       expect(resolveRenderer('media')?.id).toBe('builtin/media');
-      // 磁盘产物经 activateExternalPlugin 装载（P1e 设置面板「重新加载」路径）。
-      // 真实产物是独立模块（esbuild 编译 + define 注入行前缀），apply 注册
-      // `plugin/hologram/renderers/<kind>` 覆盖行；这里 mock 一个行为等价的
-      // 独立插件对象（不引用源码 apply——源码域 ROW_PREFIX='builtin' 会撞
-      // bundle 行 id，真实产物域 define 注入 plugin/ 前缀）。
-      const diskPlugin = {
-        name: 'hologram/renderers',
-        inject: ['renderers'],
-        apply(ctx: Context) {
-          const components = assetRendererComponents();
-          for (const [kind, component] of Object.entries(components)) {
-            ctx.effect(
-              () =>
-                ctx.renderers.register({
-                  id: `plugin/hologram/renderers/${kind}`,
-                  kind,
-                  component: component as never,
-                }),
-              `disk-renderers/${kind}`,
-            );
-          }
-        },
-      };
+      // dev 模式 loadExternalPlugins 过滤出厂产物名——通道里的磁盘副本跳过
+      let imported = false;
       await loadExternalPlugins(root, {
         origin: ORIGIN,
         fetchImpl: mockFetch({
@@ -767,197 +745,19 @@ describe('P1 内置渲染器插件（磁盘产物装载→覆盖行）', () => {
           [ORIGIN + '/plugins.json']: { disabled: [] },
           [ORIGIN + '/hologram/renderers/manifest.json']: RENDERERS_MANIFEST,
         }),
-        importModule: async () => ({ default: diskPlugin }),
+        importModule: async () => {
+          imported = true;
+          return { default: { name: 'hologram/renderers', apply() {} } };
+        },
       });
-      // 覆盖行生效：同 kind 后注册胜 → 磁盘产物行覆盖 bundle 行
-      expect(resolveRenderer('media')?.id).toBe('plugin/hologram/renderers/media');
-      expect(resolveRenderer('chart')?.id).toBe('plugin/hologram/renderers/chart');
-      // 卸载磁盘覆盖行 → bundle 兜底行自动恢复
-      await deactivateExternalPlugin('hologram/renderers');
+      expect(imported).toBe(false); // 通道里的 renderers 未被 import（dev 过滤）
+      // 兜底行未被覆盖（源码域装载的行是唯一行）
       expect(resolveRenderer('media')?.id).toBe('builtin/media');
     });
   });
 });
 
-// ── 增补四：位移式装载（bundle 兜底行 ↔ 产物行单活互换）──
-
-describe('位移式内置插件装载（manifest.displace）', () => {
-  beforeEach(async () => {
-    for (const name of activeExternalPluginNames()) {
-      await deactivateExternalPlugin(name);
-    }
-    resetPluginRuntimeForTests();
-    usePluginStore.getState().setPlugins([]);
-  });
-
-  /** 带 displace manifest 的内置产物装载路由（canvas-nav 为样例——
-   *  贡献 id 与 bundle 行共享，重复注册装载期拒绝，故必须位移）。 */
-  function displaceRoutes(moduleFactory: () => Record<string, unknown>) {
-    return {
-      index: ['hologram/canvas-nav'],
-      manifest: {
-        name: 'hologram/canvas-nav',
-        version: '1.0.0',
-        entry: 'entry.js',
-        inject: ['panels', 'commands', 'space'],
-        displace: true,
-      },
-      importModule: moduleFactory,
-    };
-  }
-
-  it('产物装载 → 位移 bundle 行（同 id 不撞：bundle fiber 先 dispose）', async () => {
-    const root = new Context();
-    loadBuiltinPlugins(root);
-    // cordis plugin() 是 promise——flush 微任务让四 service 与 bundle 贡献落定
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    // bundle 行在册（canvas-nav 的开合同步订阅 → dock-store open 面）
-    const routes = displaceRoutes(() => ({
-      default: {
-        name: 'hologram/canvas-nav',
-        inject: ['panels', 'commands', 'space'],
-        apply(ctx: Context) {
-          ctx.effect(
-            () =>
-              ctx.commands.register({
-                id: 'canvas/artifact-probe',
-                label: '产物探针',
-                group: '画布',
-                shortcut: '/probe',
-                action: { type: 'local', handler: () => {} },
-              }),
-            'artifact-probe',
-          );
-        },
-      },
-    }));
-    await loadExternalPlugins(root, {
-      origin: ORIGIN,
-      fetchImpl: mockFetch({
-        [ORIGIN + '/']: routes.index,
-        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
-        [ORIGIN + '/hologram/canvas-nav/manifest.json']: routes.manifest,
-      }),
-      importModule: routes.importModule,
-    });
-    // 产物行生效：探针命令在册（bundle 行已让位，无重名冲突）
-    expect(ctxCommands(root).get('canvas/artifact-probe')).toBeTruthy();
-    // bundle 行贡献已随 bundle fiber dispose 回收
-    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeUndefined();
-    // 产物记录翻正：builtin + meta 保留（设置面板分组不错位）
-    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'hologram/canvas-nav');
-    expect(rec?.builtin).toBe(true);
-    expect(rec?.meta?.kind).toBe('feature');
-    expect(rec?.status).toBe('active');
-  });
-
-  it('产物停用 → bundle 兜底行重启恢复（记录翻回 bundle 形态）', async () => {
-    const root = new Context();
-    loadBuiltinPlugins(root);
-    // cordis plugin() 是 promise——flush 微任务让四 service 与 bundle 贡献落定
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const routes = displaceRoutes(() => ({
-      default: {
-        name: 'hologram/canvas-nav',
-        inject: ['panels', 'commands', 'space'],
-        apply(ctx: Context) {
-          ctx.effect(
-            () =>
-              ctx.commands.register({
-                id: 'canvas/artifact-probe',
-                label: '产物探针',
-                group: '画布',
-                shortcut: '/probe',
-                action: { type: 'local', handler: () => {} },
-              }),
-            'artifact-probe',
-          );
-        },
-      },
-    }));
-    await loadExternalPlugins(root, {
-      origin: ORIGIN,
-      fetchImpl: mockFetch({
-        [ORIGIN + '/']: routes.index,
-        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
-        [ORIGIN + '/hologram/canvas-nav/manifest.json']: routes.manifest,
-      }),
-      importModule: routes.importModule,
-    });
-    expect(ctxCommands(root).get('canvas/artifact-probe')).toBeTruthy();
-    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeUndefined();
-
-    // 停用产物 → bundle 行重启（兜底恢复）
-    expect(await deactivateExternalPlugin('hologram/canvas-nav')).toBe(true);
-    expect(ctxCommands(root).get('canvas/artifact-probe')).toBeUndefined();
-    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeTruthy();
-    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'hologram/canvas-nav');
-    expect(rec?.status).toBe('active');
-    expect(rec?.builtin).toBe(true);
-    expect(rec?.manifest).toBeNull();
-  });
-
-  it('产物装载失败（import 抛错）→ bundle 兜底行恢复 + error 记录可见', async () => {
-    const root = new Context();
-    loadBuiltinPlugins(root);
-    // cordis plugin() 是 promise——flush 微任务让四 service 与 bundle 贡献落定
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeTruthy();
-    const routes = displaceRoutes(() => {
-      throw new Error('artifact boom');
-    });
-    await loadExternalPlugins(root, {
-      origin: ORIGIN,
-      fetchImpl: mockFetch({
-        [ORIGIN + '/']: routes.index,
-        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
-        [ORIGIN + '/hologram/canvas-nav/manifest.json']: routes.manifest,
-      }),
-      importModule: routes.importModule,
-    });
-    // 兜底行回位：bundle 贡献仍可用
-    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeTruthy();
-    // error 记录可见 + builtin 分组不错位
-    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'hologram/canvas-nav');
-    expect(rec?.status).toBe('error');
-    expect(rec?.error).toContain('artifact boom');
-    expect(rec?.builtin).toBe(true);
-  });
-
-  it('产物形状失败（缺 default 导出）→ bundle 兜底行恢复（2026-09-02 生产事故形态）', async () => {
-    const root = new Context();
-    loadBuiltinPlugins(root);
-    // cordis plugin() 是 promise——flush 微任务让四 service 与 bundle 贡献落定
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeTruthy();
-    // 形态对拍 2026-09-02 事故：四个 UI 面产物只有命名导出、无 default——
-    // pickPluginObject 取到 namespace 对象，形状校验失败。位移已拆 bundle
-    // 行，此路径若不恢复兜底行 → 贡献面永久丢失（UI 四面全死）。
-    const routes = displaceRoutes(() => ({
-      canvasNavPlugin: {
-        name: 'hologram/canvas-nav',
-        inject: ['panels', 'commands', 'space'],
-        apply() {},
-      },
-    }));
-    await loadExternalPlugins(root, {
-      origin: ORIGIN,
-      fetchImpl: mockFetch({
-        [ORIGIN + '/']: routes.index,
-        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
-        [ORIGIN + '/hologram/canvas-nav/manifest.json']: routes.manifest,
-      }),
-      importModule: routes.importModule,
-    });
-    // 兜底行必须回位：bundle 贡献仍可用（修复前这里全灭）
-    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeTruthy();
-    // error 记录可见（形状失败语义）
-    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'hologram/canvas-nav');
-    expect(rec?.status).toBe('error');
-    expect(rec?.error).toContain('形状');
-    expect(rec?.builtin).toBe(true);
-  });
-});
+// ── S5：位移式装载已退役（bundle 兜底行拆除，产物是唯一装载面）──
 
 /** 从 root Context 取 commands service 注册表（组合层四 service 挂根，类型经 cordis 模块扩充）。 */
 function ctxCommands(root: Context) {
@@ -977,100 +777,93 @@ describe('face 键集对拍门禁（保险丝 a）', () => {
     usePluginStore.getState().setPlugins([]);
   });
 
-  const CANVAS_NAV_MANIFEST = {
-    name: 'hologram/canvas-nav',
+  // S5：face 键测试改用第三方插件名（出厂产物名在 dev 模式被 loadExternalPlugins
+  // 过滤——源码域已装载，不测通道路径）。face 键集对拍机制对任何插件一律生效。
+  const FACE_TEST_MANIFEST = {
+    name: 'acme/face-probe',
     version: '1.0.0',
     entry: 'entry.js',
-    inject: ['panels', 'commands', 'space'],
-    displace: true,
+    inject: ['commands'],
   };
 
-  it('face.json 缺键（版本偏斜）→ 拒载：import 不发生，bundle 兜底行不位移', async () => {
+  it('face.json 缺键（版本偏斜）→ 拒载：import 不发生', async () => {
     const root = new Context();
-    loadBuiltinPlugins(root);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeTruthy();
+    await root.plugin(compositionServicesPlugin);
     let imported = false;
     await loadExternalPlugins(root, {
       origin: ORIGIN,
       fetchImpl: mockFetch({
-        [ORIGIN + '/']: ['hologram/canvas-nav'],
+        [ORIGIN + '/']: ['acme/face-probe'],
         [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
-        [ORIGIN + '/hologram/canvas-nav/manifest.json']: CANVAS_NAV_MANIFEST,
-        [ORIGIN + '/hologram/canvas-nav/face.json']: { faceDeps: ['layoutRegion', '__lantai_never_key__'] },
+        [ORIGIN + '/acme/face-probe/manifest.json']: FACE_TEST_MANIFEST,
+        [ORIGIN + '/acme/face-probe/face.json']: { faceDeps: ['layoutRegion', '__lantai_never_key__'] },
       }),
       importModule: async () => {
         imported = true;
-        return { default: { name: 'hologram/canvas-nav', apply() {} } };
+        return { default: { name: 'acme/face-probe', apply() {} } };
       },
     });
     // 产物代码未执行（拒载发生在 import 之前）
     expect(imported).toBe(false);
-    // bundle 兜底行未被位移（渲染期整树卸载的病根拔除）
-    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeTruthy();
-    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'hologram/canvas-nav');
+    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'acme/face-probe');
     expect(rec?.status).toBe('error');
     expect(rec?.error).toContain('宿主面缺键');
     expect(rec?.error).toContain('__lantai_never_key__');
-    expect(rec?.builtin).toBe(true);
   });
 
-  it('face.json 全键在 → 正常装载（位移照常发生，产物行生效）', async () => {
+  it('face.json 全键在 → 正常装载', async () => {
     const root = new Context();
-    loadBuiltinPlugins(root);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await root.plugin(compositionServicesPlugin);
     await loadExternalPlugins(root, {
       origin: ORIGIN,
       fetchImpl: mockFetch({
-        [ORIGIN + '/']: ['hologram/canvas-nav'],
+        [ORIGIN + '/']: ['acme/face-probe'],
         [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
-        [ORIGIN + '/hologram/canvas-nav/manifest.json']: CANVAS_NAV_MANIFEST,
+        [ORIGIN + '/acme/face-probe/manifest.json']: FACE_TEST_MANIFEST,
         // layoutRegion / ANCHOR 是运行时 faceDeps 实有键（同源产物）
-        [ORIGIN + '/hologram/canvas-nav/face.json']: { faceDeps: ['layoutRegion', 'ANCHOR'] },
+        [ORIGIN + '/acme/face-probe/face.json']: { faceDeps: ['layoutRegion', 'ANCHOR'] },
       }),
       importModule: async () => ({
         default: {
-          name: 'hologram/canvas-nav',
-          inject: ['panels', 'commands', 'space'],
+          name: 'acme/face-probe',
+          inject: ['commands'],
           apply(ctx: Context) {
             ctx.effect(
               () =>
                 ctx.commands.register({
-                  id: 'canvas/artifact-probe',
-                  label: '产物探针',
-                  group: '画布',
+                  id: 'acme/probe',
+                  label: '探针',
+                  group: '测试',
                   shortcut: '/probe',
                   action: { type: 'local', handler: () => {} },
                 }),
-              'artifact-probe',
+              'acme-probe',
             );
           },
         },
       }),
     });
-    expect(ctxCommands(root).get('canvas/artifact-probe')).toBeTruthy();
-    expect(ctxCommands(root).get('canvas/sidebar-toggle')).toBeUndefined();
-    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'hologram/canvas-nav');
+    expect(ctxCommands(root).get('acme/probe')).toBeTruthy();
+    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'acme/face-probe');
     expect(rec?.status).toBe('active');
   });
 
   it('face.json 坏形状（faceDeps 非数组）→ 视为零需求照常装载（毒化容忍）', async () => {
     const root = new Context();
-    loadBuiltinPlugins(root);
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await root.plugin(compositionServicesPlugin);
     await loadExternalPlugins(root, {
       origin: ORIGIN,
       fetchImpl: mockFetch({
-        [ORIGIN + '/']: ['hologram/canvas-nav'],
+        [ORIGIN + '/']: ['acme/face-probe'],
         [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
-        [ORIGIN + '/hologram/canvas-nav/manifest.json']: CANVAS_NAV_MANIFEST,
-        [ORIGIN + '/hologram/canvas-nav/face.json']: { faceDeps: 'not-an-array' },
+        [ORIGIN + '/acme/face-probe/manifest.json']: FACE_TEST_MANIFEST,
+        [ORIGIN + '/acme/face-probe/face.json']: { faceDeps: 'not-an-array' },
       }),
       importModule: async () => ({
-        default: { name: 'hologram/canvas-nav', inject: ['panels', 'commands', 'space'], apply() {} },
+        default: { name: 'acme/face-probe', inject: ['commands'], apply() {} },
       }),
     });
-    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'hologram/canvas-nav');
+    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'acme/face-probe');
     expect(rec?.status).toBe('active');
   });
 });

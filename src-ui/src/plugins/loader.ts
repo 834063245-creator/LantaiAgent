@@ -34,9 +34,6 @@ import { dynamicRunnerPlugin } from '../agent/dynamic-runner/dynamic-runner-serv
 import { Overlay } from '../app/overlay';
 import { useShellStore } from '../app/shell-store';
 import { capabilitiesServicePlugin } from '../composition/capability-service';
-import { firstPartyCapabilityPlugins } from '../composition/first-party-capabilities';
-import { firstPartyPromptPlugins } from '../composition/first-party-prompts';
-import { firstPartyToolPlugins } from '../composition/first-party-tools';
 import { fsServicePlugin } from '../composition/fs-service';
 import { graphServicePlugin } from '../composition/graph-service';
 import { hooksServicePlugin } from '../composition/hook-service';
@@ -53,18 +50,8 @@ import { getProxyPort } from '../provider/transport';
 import { typedRpc } from '../rpc-contract';
 import { usePluginPrefs } from '../state/plugin-prefs';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
-import { canvasNavPlugin } from './builtin/canvas-nav';
-import { composeDockPlugin } from './builtin/compose-dock';
-import { builtinFsPlugin } from './builtin/fs-builtin';
-import { builtinGraphPlugin } from './builtin/graph-builtin';
 import { faceDepsKeys, pluginHostMods } from './builtin/host-modules';
-import { llmAdaptersPlugin } from './builtin/llm-adapters';
-import { paperPlugin } from './builtin/paper-shell';
-import { builtinRenderersPlugin } from './builtin/renderers';
-import { builtinSessionsPlugin } from './builtin/sessions-builtin';
-import { settingsPlugin } from './builtin/settings-domain';
-import { builtinShellPlugin } from './builtin/shell-builtin';
-import { inProcessSubagentPlugin } from './builtin/subagent-in-process';
+import { factoryProductNames, factoryProductPlugins } from './factory-products';
 import { FIRST_PARTY_MANIFEST } from './first-party-manifest';
 import { type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
 import { mountToolDeclarations } from './tool-declarations';
@@ -119,56 +106,34 @@ export function pluginAssetsOrigin(port: number): string {
  * capabilities.ts，贡献序 = 清单序 = 迁移前出厂表序；出厂
  * builtinCapabilities() 退役，本通道是出厂 capability 面唯一来源）。
  * 2026-08-29 起 export（守护测试对拍 first-party-manifest 完备性）。 */
+/** S5（plugin-bundle-retirement）：bundle 双轨拆除——
+ *  生产形态：BUILTIN_PLUGINS 只装 15 内核（14 注册表/运行时 + agent-loop-service
+ *  暂缓产物化）；29 个出厂产物从磁盘产物通道（loadExternalPlugins）装载。
+ *  开发形态：`import.meta.env.DEV` 分支展开 29 个出厂产物（源码路径，
+ *  vite HMR 热重载；产物仅发布形态）——分支经 vite define 在生产端展开为
+ *  `false ? [...] : []`，rollup 死代码消除后 factory-products.ts 及其
+ *  传递导入不进生产 bundle。
+ *  表序 = 贡献注册序 = 字节契约（组合解析快照/工具契约生成/DeepSeek 前缀
+ *  缓存依赖此序，不得重排）。 */
 export const BUILTIN_PLUGINS: LantaiPlugin[] = [
   compositionServicesPlugin,
-  llmAdaptersPlugin,
   subagentsServicePlugin,
-  inProcessSubagentPlugin,
   fsServicePlugin,
-  builtinFsPlugin,
   shellServicePlugin,
-  builtinShellPlugin,
   sessionPersistenceServicePlugin,
-  builtinSessionsPlugin,
   graphServicePlugin,
-  builtinGraphPlugin,
   spaceServicePlugin,
   overlayServicePlugin,
   codeRuntimePlugin,
   dynamicRunnerPlugin,
   agentLoopServicePlugin,
   rendererServicePlugin,
-  // P1（2026-08-30）：内置渲染器插件——资产表现原语 8 行从编译期 bundle
-  // 迁为第一方插件（可热重载）。置于 rendererServicePlugin 之后：ctx.renderers
-  // 服务现身后注册资产行（同 k字段后注册胜语义——插件行晚于灰框行）。
-  builtinRenderersPlugin,
   promptsServicePlugin,
   hooksServicePlugin,
   capabilitiesServicePlugin,
-  paperPlugin,
-  settingsPlugin,
-  canvasNavPlugin,
-  composeDockPlugin,
-  ...firstPartyToolPlugins(),
-  ...firstPartyPromptPlugins(),
-  ...firstPartyCapabilityPlugins(),
+  // dev-only：出厂产物源码路径（生产端被 vite define DCE 消除）
+  ...(import.meta.env.DEV ? factoryProductPlugins() : []),
 ];
-
-/** 第一方插件名索引（位移机制的 bundle 行寻址表）。惰性构建：BUILTIN_PLUGINS
- *  含插件通道 spread（firstPartyToolPlugins() 等），在循环导入链
- *  （SettingsPanel → PluginsPage → loader）下的模块初始化期可能尚有未完成
- *  条目——运行期消费（loadOne 位移 / 装载序过滤）时表已定型，与旧行为一致。 */
-let _builtinIndex: { byName: Map<string, LantaiPlugin>; names: Set<string> } | null = null;
-function builtinIndex(): { byName: Map<string, LantaiPlugin>; names: Set<string> } {
-  if (!_builtinIndex) {
-    const byName = new Map<string, LantaiPlugin>();
-    for (const plugin of BUILTIN_PLUGINS) {
-      if (plugin) byName.set(plugin.name, plugin);
-    }
-    _builtinIndex = { byName, names: new Set(byName.keys()) };
-  }
-  return _builtinIndex;
-}
 
 // ── 插件宿主桥（S4-5；P1 扩展 2026-08-30；增补四施工扩面 2026-08-31）──
 // 外部插件经 webview 动态 import 装载——模块语境没有裸 import 解析面
@@ -284,30 +249,12 @@ export function loadBuiltinPlugins(root: Context): Context {
     void Promise.resolve(fiber).catch((err: unknown) => {
       console.error('[plugins] 第一方插件装载失败:', plugin.name, err);
     });
-    // bundle fiber 锚点（增补四位移机制）：同名产物经 manifest.displace 取代
-    // bundle 行时 dispose 此 fiber；产物卸载/装载失败时以此恢复出厂兜底行。
-    void Promise.resolve(fiber).then((f: Fiber) => builtinFibers.set(plugin.name, f));
     records.push({ name: plugin.name, manifest: null, status: 'active', builtin: true, meta });
   }
   // merge 而非 setPlugins：第一方先装载、第三方异步后到不得冲刷第一方记录
   usePluginStore.getState().mergePlugins(records);
   return root;
 }
-
-// ── 位移式装载（增补四施工，2026-08-31）──
-// UI 四面/工具域/段贡献的产物与 bundle 行共享贡献 id（面板 'paper'、工具行
-// 'plugin/hologram/<域>/<工具>'）——重名注册是装载期拒绝，不能像渲染器那样
-// 双行走查（builtin 行 + plugin 行并存后注册胜）。取代语义落在装载器层：
-//   - bundle 域 fiber 恒为出厂兜底（首帧可见、产物缺席/失败时恢复）；
-//   - 产物 manifest 声明 "displace": true 且 bundle fiber 在册 → 先 dispose
-//     bundle fiber 再 import 产物（贡献面单活互换，注册表永不见重名）；
-//   - 产物装载失败 / 被停用 → 重启 bundle 插件（兜底行自动恢复）。
-// 渲染器不走位移（双行寻址 id 分立），displace 缺省 false 行为不变。
-// 模块级可变态归属（CONVENTIONS §1.10 第 3 类）：键控进程级状态，生命
-// 周期 = 进程（与 activeExternalFibers 同款）。
-const builtinFibers = new Map<string, Fiber>();
-/** 已被产物位移、待恢复的 bundle 插件（name → bundle 插件对象）。 */
-const displacedBuiltin = new Map<string, LantaiPlugin>();
 
 /** 惰性解析资产 origin；'' = 无通道（无后端/代理未起 → 静默跳过，非错误）。 */
 async function resolveOrigin(): Promise<string> {
@@ -391,8 +338,6 @@ export function activeExternalPluginNames(): string[] {
 export function resetPluginRuntimeForTests(): void {
   runtime = null;
   activeExternalFibers.clear();
-  builtinFibers.clear();
-  displacedBuiltin.clear();
 }
 
 /** 增量装载一个外部插件（安装/启用后的运行时生效入口）。
@@ -422,20 +367,6 @@ export async function deactivateExternalPlugin(name: string): Promise<boolean> {
   if (!fiber) return false;
   activeExternalFibers.delete(name);
   await fiber.dispose();
-  const bundlePlugin = displacedBuiltin.get(name);
-  if (bundlePlugin && runtime) {
-    displacedBuiltin.delete(name);
-    const restored = await runtime.root.plugin(bundlePlugin);
-    builtinFibers.set(name, restored);
-    const meta = FIRST_PARTY_MANIFEST[name];
-    usePluginStore.getState().upsertPlugin({
-      name,
-      manifest: null,
-      status: 'active',
-      builtin: true,
-      ...(meta ? { meta } : {}),
-    });
-  }
   return true;
 }
 
@@ -454,14 +385,16 @@ export async function loadExternalPlugins(root: Context, opts: LoadExternalPlugi
       return;
     }
     const { disabled, granted } = await readPluginsState(fetchImpl, origin);
-    // 装载序纪律（增补四）：位移式内置产物按 BUILTIN_PLUGINS 表序装载——
-    // 产物重激活的注册序必须与 bundle 序逐位一致（S1 表序字节契约：
+    // 装载序纪律（增补四 + S5）：出厂产物按 factoryProductPlugins() 表序装载——
+    // 产物重激活的注册序必须与原 bundle 序逐位一致（S1 表序字节契约：
     // 组合解析快照 / 工具契约生成 / DeepSeek 前缀缓存都依赖贡献注册序，
     // 磁盘索引的字母序会让 assembly 面漂移）。其余用户插件按索引序随后。
-    const indexNames = index.map(String);
-    const builtinFirst = BUILTIN_PLUGINS.map((p) => p.name).filter(
-      (n) => indexNames.includes(n) && builtinIndex().names.has(n),
-    );
+    // dev 模式过滤：出厂产物已在源码域装载（BUILTIN_PLUGINS 的 DEV 分支），
+    // 产物通道的磁盘副本是过期缓存——跳过防重复装载/覆盖热重载。
+    const factoryNames = factoryProductNames();
+    const indexNames = import.meta.env.DEV ? index.map(String).filter((n) => !factoryNames.has(n)) : index.map(String);
+    const factoryOrder = factoryProductPlugins().map((p) => p.name);
+    const builtinFirst = factoryOrder.filter((n) => indexNames.includes(n));
     const rest = indexNames.filter((n) => !builtinFirst.includes(n));
     const records: PluginRecord[] = [];
     for (const dirId of [...builtinFirst, ...rest]) {
@@ -519,7 +452,7 @@ async function loadOne(
     };
   }
   const bundleMeta = FIRST_PARTY_MANIFEST[manifest.name];
-  const isBuiltinNamed = bundleMeta != null && builtinIndex().names.has(manifest.name);
+  const isBuiltinNamed = bundleMeta != null;
   // 2b) 第一方 feature 的用户禁用态（plugin-prefs）对产物通道同样生效
   //     （bundle 域 boot 跳过 + 产物域装载跳过——两域一致，下次启动语义不变）
   if (bundleMeta?.kind === 'feature' && usePluginPrefs.getState().isDisabled(manifest.name)) {
@@ -586,49 +519,19 @@ async function loadOne(
       };
     }
   }
-  // 4c) 位移（增补四）：产物声明 displace 且 bundle fiber 在册 → dispose
-  //     bundle fiber（贡献面让位）。**位移后产物侧任何失败路径都必须
-  //     恢复 bundle 兜底行**——不只 import/apply 抛错，形状校验/名字
-  //     对拍失败同样要恢复（2026-09-02 生产事故：产物缺 default 导出 →
-  //     形状失败 → 无恢复 → UI 四面永久死亡，位移「单活互换」变成
-  //     「单活互毁」）。
-  let displaced = false;
-  const restoreDisplacedBuiltin = async (): Promise<void> => {
-    if (!displaced) return;
-    displacedBuiltin.delete(manifest.name);
-    const bundlePlugin = builtinIndex().byName.get(manifest.name);
-    if (!bundlePlugin) return;
-    try {
-      const restored = await root.plugin(bundlePlugin);
-      builtinFibers.set(manifest.name, restored);
-    } catch (restoreErr) {
-      console.error('[plugins] 内置兜底行恢复失败:', manifest.name, restoreErr);
-    }
-  };
-  if (manifest.displace === true) {
-    const bundleFiber = builtinFibers.get(manifest.name);
-    const bundlePlugin = builtinIndex().byName.get(manifest.name);
-    if (bundleFiber && bundlePlugin) {
-      builtinFibers.delete(manifest.name);
-      await bundleFiber.dispose();
-      displacedBuiltin.set(manifest.name, bundlePlugin);
-      displaced = true;
-    }
-  }
   // 5) 导入 + 装配（cordis fiber 记录生命周期；apply 抛错 → await reject）
+  //    S5：displace 位移机制退役——bundle 兜底行已拆，产物是唯一装载面。
   try {
     const url = origin + '/' + manifest.name + '/' + manifest.entry;
     const mod = await importModule(url);
     const candidate = pickPluginObject(mod);
     if (!isPluginShape(candidate)) {
-      await restoreDisplacedBuiltin();
       return {
         record: withBuiltinMeta(manifest.name, manifest, '插件入口未导出 { name, apply } 形状的对象'),
         fiber: null,
       };
     }
     if (candidate.name !== manifest.name) {
-      await restoreDisplacedBuiltin();
       return {
         record: withBuiltinMeta(
           manifest.name,
@@ -676,9 +579,7 @@ async function loadOne(
       fiber,
     };
   } catch (e) {
-    // 位移失败恢复：重启 bundle 插件（出厂兜底行自动回位——错误可见且
-    // 功能不缺席）。
-    await restoreDisplacedBuiltin();
+    // 装载失败：error 记录可见（S5：位移恢复已退役——产物是唯一装载面）。
     return { record: withBuiltinMeta(manifest.name, manifest, errText(e)), fiber: null };
   }
 }
@@ -687,7 +588,7 @@ async function loadOne(
  *  产物域记录不补位会掉进「已安装」组）。 */
 function withBuiltinMeta(name: string, manifest: PluginManifest | null, error: string): PluginRecord {
   const meta = FIRST_PARTY_MANIFEST[name];
-  return meta != null && builtinIndex().names.has(name)
+  return meta != null
     ? { name, manifest, status: 'error', error, builtin: true, meta }
     : errorRecord(name, manifest, error);
 }

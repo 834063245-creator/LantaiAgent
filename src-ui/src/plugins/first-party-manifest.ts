@@ -12,14 +12,15 @@
 // profile bundles 清单同构（DSH 第一方插件在设置页可见、可管理，这里对齐）。
 //
 // 铁律：
-//   - 本表必须覆盖 BUILTIN_PLUGINS 全部条目（多/缺条目 = 装配断层，
-//     守护测试 tests/first-party-manifest.test.ts 钉死；loader 运行时
-//     缺条目 = 跳过装载 + error 记录，错误不静默）。
-//   - kind 分两类：
-//       service  = 平台服务本体（组合层 service / seam provider / 运行体）——
-//                  常驻，UI 不提供禁用开关（禁了应用就散架）；
-//       feature  = 功能插件（域工具族 / 面板 / 段贡献）——用户可禁用
-//                  （下次启动生效，见 plugin-prefs + loader 跳过语义）。
+//   - 本表必须覆盖全部第一方插件（多/缺条目 = 装配断层，守护测试
+//     tests/first-party-manifest.test.ts 钉死；loader 运行时缺条目 = 跳过
+//     装载 + error 记录，错误不静默）。
+//   - kind 分两类（S5 降级为展示分组标签——不再决定装载语义）：
+//       service  = 内核插件（S5 后 = 15 件：14 注册表/运行时 + agent-loop-service
+//                  暂缓产物化）——不提供禁用开关（用户禁了核心就散架）；
+//       feature  = 出厂产物（S5 后 = 29 件：6 供应商 + 5 既有 + 18 工具域/段）
+//                  ——可禁用（plugin-prefs，下次启动生效），装载面 = 产物
+//                  通道（dev 模式下走源码路径）。
 //
 // 使用方：plugins/loader.ts（装载时折算记录）、state/plugin-store.ts
 // （PluginRecord.meta 类型）、app/panels/settings/PluginsPage.tsx（分组渲染）。
@@ -53,26 +54,26 @@ export const FIRST_PARTY_MANIFEST: Record<string, FirstPartyPluginMeta> = {
     '组合层四 service 本体（panels/commands/tools/llm 注册表）',
   ),
   'hologram/subagents-service': meta('hologram/subagents-service', 'service', '子代理服务注册表（seam/subagents）'),
-  'hologram/subagent-in-process': meta('hologram/subagent-in-process', 'service', '进程内子代理默认实现'),
+  'hologram/subagent-in-process': meta('hologram/subagent-in-process', 'feature', '进程内子代理默认实现'),
   'hologram/fs-service': meta('hologram/fs-service', 'service', '文件域服务注册表（seam/fs）'),
-  'hologram/fs-builtin': meta('hologram/fs-builtin', 'service', 'Rust 文件后端（11 动作）'),
+  'hologram/fs-builtin': meta('hologram/fs-builtin', 'feature', 'Rust 文件后端（11 动作）'),
   'hologram/shell-service': meta('hologram/shell-service', 'service', '命令域服务注册表（seam/shell）'),
-  'hologram/shell-builtin': meta('hologram/shell-builtin', 'service', 'Rust 命令后端（shell 域四动作）'),
+  'hologram/shell-builtin': meta('hologram/shell-builtin', 'feature', 'Rust 命令后端（shell 域四动作）'),
   'hologram/session-persistence-service': meta(
     'hologram/session-persistence-service',
     'service',
     '会话持久化服务注册表（seam/sessionPersistence）',
   ),
-  'hologram/sessions-builtin': meta('hologram/sessions-builtin', 'service', '会话存储后端（agent-store）'),
+  'hologram/sessions-builtin': meta('hologram/sessions-builtin', 'feature', '会话存储后端（agent-store）'),
   'hologram/graph-service': meta('hologram/graph-service', 'service', '图谱域服务注册表（seam/graph）'),
-  'hologram/graph-builtin': meta('hologram/graph-builtin', 'service', 'Rust 图谱后端（hologram 域）'),
+  'hologram/graph-builtin': meta('hologram/graph-builtin', 'feature', 'Rust 图谱后端（hologram 域）'),
   'hologram/composition-space': meta('hologram/composition-space', 'service', '空间服务（工作区/会话空间）'),
   'hologram/composition-overlays': meta('hologram/composition-overlays', 'service', '覆盖层服务'),
   'hologram/renderer-service': meta('hologram/renderer-service', 'service', '块渲染器注册表（第五贡献通道，后注册胜）'),
   'hologram/prompts-service': meta('hologram/prompts-service', 'service', 'system-prompt 段贡献注册表（第六通道）'),
   'hologram/hook-services': meta('hologram/hook-services', 'service', '工具管道钩子注册表（第七通道）'),
   'hologram/capability-services': meta('hologram/capability-services', 'service', '会话级能力贡献注册表（第八通道）'),
-  'hologram/llm-adapters': meta('hologram/llm-adapters', 'service', 'LLM 协议方言适配（seam/llm 默认实现）'),
+  'hologram/llm-adapters': meta('hologram/llm-adapters', 'feature', 'LLM 协议方言适配（seam/llm 默认实现）'),
   'hologram/code-runtime': meta('hologram/code-runtime', 'service', 'code_execution 执行腰沙箱'),
   'hologram/dynamic-runner': meta(
     'hologram/dynamic-runner',
