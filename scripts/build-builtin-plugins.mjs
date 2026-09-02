@@ -74,7 +74,7 @@ const TOOL_DOMAINS = [
 const SEGMENTS = ['prompt-segments', 'capability-segments'];
 
 /** 七个 seam 供应商（S2 真源产物化，plugin-bundle-retirement-plan）。
- *  agent-loop-service 暂缓（模块级状态与 runtime.ts 共生，S5 拆）。 */
+ *  S5b：agent-loop-service 产物化（模块级状态拆到 agent-loop-active.ts）。 */
 const PROVIDERS = [
   'fs-builtin',
   'shell-builtin',
@@ -82,6 +82,7 @@ const PROVIDERS = [
   'graph-builtin',
   'subagent-in-process',
   'llm-adapters',
+  'agent-loop-service',
 ];
 
 /** 插件构建规格表。 */

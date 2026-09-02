@@ -10,7 +10,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { Agent } from '../src/agent/agent';
-import { resetAgentLoopForTests } from '../src/agent/agent-loop/agent-loop-service';
+import { resetAgentLoopForTests } from '../src/agent/agent-loop/agent-loop-active';
 import { AgentContext } from '../src/agent/context';
 import type { SubAgentSpawnHost } from '../src/agent/subagent-spawn';
 import type { ToolExecutor, ToolRegistry } from '../src/agent/tool';

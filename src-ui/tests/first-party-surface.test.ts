@@ -16,7 +16,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { resolveAgentLoop } from '../src/agent/agent-loop/agent-loop-service';
+import { resolveAgentLoop } from '../src/agent/agent-loop/agent-loop-active';
 import { activeDynamicRunner } from '../src/agent/dynamic-runner/dynamic-runner-service';
 import { DOMAIN_SPECS } from '../src/agent/tools/domains';
 import { activeFsProviders } from '../src/composition/fs-service';

@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 出厂产物清单（S5，plugin-bundle-retirement）——
-// 29 个出厂插件产物的源码域插件对象（dev/vitest 域装载用）+ 名单
+// 出厂产物清单（S5/S5b，plugin-bundle-retirement）——
+// 30 个出厂插件产物的源码域插件对象（dev/vitest 域装载用）+ 名单
 // （loadExternalPlugins 在 dev 模式下过滤产物通道重复装载用）。
 //
 // 生产形态：这些插件从磁盘产物通道（loadExternalPlugins）装载——本清单
@@ -15,6 +15,7 @@
 import { firstPartyCapabilityPlugins } from '../composition/first-party-capabilities';
 import { firstPartyPromptPlugins } from '../composition/first-party-prompts';
 import { firstPartyToolPlugins } from '../composition/first-party-tools';
+import { agentLoopServicePlugin } from './builtin/agent-loop-service';
 import { canvasNavPlugin } from './builtin/canvas-nav';
 import { composeDockPlugin } from './builtin/compose-dock';
 import { builtinFsPlugin } from './builtin/fs-builtin';
@@ -28,7 +29,7 @@ import { builtinShellPlugin } from './builtin/shell-builtin';
 import { inProcessSubagentPlugin } from './builtin/subagent-in-process';
 import type { LantaiPlugin } from './types';
 
-/** 29 个出厂产物插件对象（表序 = 原 BUILTIN_PLUGINS 贡献注册序）。 */
+/** 30 个出厂产物插件对象（表序 = 原 BUILTIN_PLUGINS 贡献注册序）。 */
 export function factoryProductPlugins(): LantaiPlugin[] {
   return [
     // S2 供应商（6）
@@ -44,6 +45,8 @@ export function factoryProductPlugins(): LantaiPlugin[] {
     settingsPlugin,
     canvasNavPlugin,
     composeDockPlugin,
+    // S5b：agent-loop-service（类+插件产物化，模块态留内核 agent-loop-active.ts）
+    agentLoopServicePlugin,
     // S3 工具域 + 段贡献（18）
     ...firstPartyToolPlugins(),
     ...firstPartyPromptPlugins(),
@@ -51,7 +54,7 @@ export function factoryProductPlugins(): LantaiPlugin[] {
   ];
 }
 
-/** 29 个出厂产物名（dev 模式 loadExternalPlugins 过滤用——防止产物通道
+/** 30 个出厂产物名（dev 模式 loadExternalPlugins 过滤用——防止产物通道
  *  重复装载已在源码域装载的出厂插件）。 */
 export function factoryProductNames(): Set<string> {
   return new Set(factoryProductPlugins().map((p) => p.name));

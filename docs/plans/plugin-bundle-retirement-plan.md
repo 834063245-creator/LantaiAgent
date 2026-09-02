@@ -1,15 +1,13 @@
 # 插件 bundle 退役 — 施工图纸（30 个出厂插件全产物化 + 双轨废除）
 
-> 状态：**✅ 已竣工（2026-09-03，S1-S6 六步全部落地）**
-> 竣工摘要：S2 六供应商真源产物化（fs/shell/sessions/graph/subagent/llm-adapters
-> 迁入 plugins/builtin/&lt;name&gt;/）；S3 十六工具域 + 两段贡献薄壳→真源
-> （coding-domain-plugins.ts 退役）；S4 装载调度层（loadOne inject PENDING 挂起
-> + boot-gate 全 ACTIVE 审计 fail-loud）；S5 bundle 双轨拆除（BUILTIN_PLUGINS
-> 44→15 内核 + 29 出厂产物走磁盘通道，displace 退役，dev/prod 双态）；
-> S6 文档收尾。
-> **唯一偏差**：agent-loop-service 暂缓产物化（模块级 _activeService 与
-> runtime.ts resolveAgentLoop() 共生——需先拆状态归属，属 S4 装载调度层的
-> 后续工程项；内核 14 + agent-loop = 15 而非计划的 14）。
+> 状态：**✅ 已竣工（2026-09-03，S1-S6 + S5b 七步全部落地）**
+> 竣工摘要：S2 六供应商真源产物化；S3 十六工具域 + 两段贡献薄壳→真源；
+> S4 装载调度层（PENDING 挂起 + boot 全 ACTIVE 审计 fail-loud）；S5 bundle
+> 双轨拆除（BUILTIN_PLUGINS 44→14 内核，displace 退役，dev/prod 双态）；
+> **S5b agent-loop-service 产物化**（模块级 _activeService 拆到内核
+> agent-loop-active.ts，类+插件产物化——setActiveAgentLoop 经宿主桥
+> faceDeps 回写内核态，runtime.ts resolveAgentLoop 零改动）；
+> S6 文档收尾。**终态：14 内核 + 30 出厂产物。**
 > **真机验收清单**（§4 五项，用户跑）：①改产物重启生效不重编译 ②冷启动
 > boot 审计 ③依赖缺失 fail-loud ④禁用 feature 下次启动跳过 ⑤三层源覆盖。
 > 决策点（§4）已定案（2026-09-03 DSH cordis 调研）。

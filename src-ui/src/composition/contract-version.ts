@@ -40,10 +40,10 @@ export const OPEN_SURFACE_CONTRACT_FILES: readonly string[] = [
   // 动态插件运行时（D7——define/run/stop/undefine/inspect + 沙箱承诺）
   'src/agent/dynamic-runner/dynamic-runner-service.ts',
   'src/agent/dynamic-runner/sandbox.ts',
-  // agent loop seam（D13——AgentLoop/AgentLoopHost 契约 + 默认实现）
+  // agent loop seam（D13——AgentLoop/AgentLoopHost 契约 + 默认实现 + 活动面）
   'src/agent/agent-loop/types.ts',
   'src/agent/agent-loop/default-loop.ts',
-  'src/agent/agent-loop/agent-loop-service.ts',
+  'src/agent/agent-loop/agent-loop-active.ts',
   // 插件 manifest 契约（loader 装载面）
   'src/plugins/types.ts',
 ];

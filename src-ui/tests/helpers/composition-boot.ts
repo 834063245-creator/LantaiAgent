@@ -12,7 +12,6 @@
 // 裸路径（不调本函数）的显式降级语义由 provider-dialect / subagent-seam /
 // fs-seam / shell-seam / sessions-seam / graph-seam 钉住。
 
-import { agentLoopServicePlugin } from '../../src/agent/agent-loop/agent-loop-service';
 import { dynamicRunnerPlugin } from '../../src/agent/dynamic-runner/dynamic-runner-service';
 import { fsServicePlugin } from '../../src/composition/fs-service';
 import { graphServicePlugin } from '../../src/composition/graph-service';
@@ -21,6 +20,7 @@ import { sessionPersistenceServicePlugin } from '../../src/composition/session-p
 import { shellServicePlugin } from '../../src/composition/shell-service';
 import { subagentsServicePlugin } from '../../src/composition/subagent-service';
 import { Context } from '../../src/cordis';
+import { agentLoopServicePlugin } from '../../src/plugins/builtin/agent-loop-service';
 import { builtinFsPlugin } from '../../src/plugins/builtin/fs-builtin';
 import { builtinGraphPlugin } from '../../src/plugins/builtin/graph-builtin';
 import { llmAdaptersPlugin } from '../../src/plugins/builtin/llm-adapters';

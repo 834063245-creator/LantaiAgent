@@ -19,7 +19,7 @@ import type { StoredThinking } from '../../provider/thinking';
 import type { Message, Provider } from '../../provider/types';
 import { typedJsonRpc, typedRpc } from '../../rpc-contract';
 import { Agent } from '../agent';
-import { resolveAgentLoop } from '../agent-loop/agent-loop-service';
+import { resolveAgentLoop } from '../agent-loop/agent-loop-active';
 import type { AgentUINotifier, EventSink, Pricing } from '../agent-types';
 import { EventKind } from '../agent-types';
 import { AgentBlueprint, type BlueprintScope } from '../blueprint';

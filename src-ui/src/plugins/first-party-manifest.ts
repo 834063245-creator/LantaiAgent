@@ -16,9 +16,8 @@
 //     tests/first-party-manifest.test.ts 钉死；loader 运行时缺条目 = 跳过
 //     装载 + error 记录，错误不静默）。
 //   - kind 分两类（S5 降级为展示分组标签——不再决定装载语义）：
-//       service  = 内核插件（S5 后 = 15 件：14 注册表/运行时 + agent-loop-service
-//                  暂缓产物化）——不提供禁用开关（用户禁了核心就散架）；
-//       feature  = 出厂产物（S5 后 = 29 件：6 供应商 + 5 既有 + 18 工具域/段）
+//       service  = 内核插件（S5b 后 = 14 件注册表/运行时）——不提供禁用开关；
+//       feature  = 出厂产物（S5b 后 = 30 件：6 供应商 + 5 既有 + 1 agent-loop + 18 工具域/段）
 //                  ——可禁用（plugin-prefs，下次启动生效），装载面 = 产物
 //                  通道（dev 模式下走源码路径）。
 //
@@ -82,7 +81,7 @@ export const FIRST_PARTY_MANIFEST: Record<string, FirstPartyPluginMeta> = {
   ),
   'hologram/agent-loop-service': meta(
     'hologram/agent-loop-service',
-    'service',
+    'feature',
     'Agent 主循环（seam/agentLoop 默认实现）',
   ),
 

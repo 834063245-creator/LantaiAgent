@@ -21,6 +21,8 @@
 // 取用（组件渲染 / 按钮回调），无模块初始化期解引用，ESM 循环安全。
 
 import { z } from 'zod';
+import { setActiveAgentLoop } from '../../agent/agent-loop/agent-loop-active';
+import { defaultAgentLoop } from '../../agent/agent-loop/default-loop';
 import { agentSessionState } from '../../agent/agent-session-state';
 // S3：工具域/段贡献插件对象导入已拆除——产物域真源自带；此处只导工具工厂
 // 运行时值（faceDeps 取用面）。z 从 zod 包直入（宿主桥共享同一实例）。
@@ -61,7 +63,9 @@ import { activeOverlayContributions, subscribeOverlayContributions } from '../..
 import { selectPreset } from '../../composition/preset-assembly';
 import { firstPartyPromptSections } from '../../composition/prompt-sections';
 import { resolveAssetBlock, resolveRenderer } from '../../composition/renderer-service';
+import { ContributionRegistry } from '../../composition/services';
 import { activeSpace } from '../../composition/space-service';
+import { Service } from '../../cordis';
 import { setLang } from '../../i18n';
 import { createSettleSelector, hitRegionAtWorld, viewportCenterWorld } from '../../paper/active-region';
 import {
@@ -187,7 +191,8 @@ type FaceBridgeSeal = Record<keyof typeof import('./canvas-nav/host'), unknown> 
   Record<keyof typeof import('./cordis-domain/host'), unknown> &
   Record<keyof typeof import('./asset-domain/host'), unknown> &
   Record<keyof typeof import('./prompt-segments/host'), unknown> &
-  Record<keyof typeof import('./capability-segments/host'), unknown>;
+  Record<keyof typeof import('./capability-segments/host'), unknown> &
+  Record<keyof typeof import('./agent-loop-service/host'), unknown>;
 
 /** 四面组件共享依赖（bundle 域真实例）。key = 产物 host.aliased 取用名。 */
 const faceDeps = {
@@ -357,6 +362,11 @@ const faceDeps = {
   graphExecute,
   firstPartyPromptSections,
   firstPartyCapabilities,
+  // S5b agent-loop-service 产物运行时依赖
+  ContributionRegistry,
+  Service,
+  defaultAgentLoop,
+  setActiveAgentLoop,
 } satisfies FaceBridgeSeal;
 
 /** 宿主桥 mods 注册表（loader installPluginHostBridge 注入）。

@@ -156,6 +156,8 @@ const BUILTIN_PLUGIN_NAMES: &[&str] = &[
     "hologram/graph-builtin",
     "hologram/subagent-in-process",
     "hologram/llm-adapters",
+    // S5b agent-loop-service 产物化
+    "hologram/agent-loop-service",
 ];
 
 /// 判断 url_path（插件根下相对路径）是否针对内置插件（以白名单插件名开头）。

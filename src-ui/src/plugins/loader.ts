@@ -28,7 +28,6 @@ import React, {
   useState,
   useSyncExternalStore,
 } from 'react';
-import { agentLoopServicePlugin } from '../agent/agent-loop/agent-loop-service';
 import { codeRuntimePlugin } from '../agent/code-run/runtime-service';
 import { dynamicRunnerPlugin } from '../agent/dynamic-runner/dynamic-runner-service';
 import { Overlay } from '../app/overlay';
@@ -126,7 +125,6 @@ export const BUILTIN_PLUGINS: LantaiPlugin[] = [
   overlayServicePlugin,
   codeRuntimePlugin,
   dynamicRunnerPlugin,
-  agentLoopServicePlugin,
   rendererServicePlugin,
   promptsServicePlugin,
   hooksServicePlugin,

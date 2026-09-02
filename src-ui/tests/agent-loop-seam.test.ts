@@ -9,17 +9,13 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { Agent } from '../src/agent/agent';
-import {
-  AgentLoopService,
-  agentLoopServicePlugin,
-  resetAgentLoopForTests,
-  resolveAgentLoop,
-} from '../src/agent/agent-loop/agent-loop-service';
+import { resetAgentLoopForTests, resolveAgentLoop } from '../src/agent/agent-loop/agent-loop-active';
 import { DEFAULT_AGENT_LOOP_ID, defaultAgentLoop } from '../src/agent/agent-loop/default-loop';
 import type { AgentLoop, AgentLoopHost } from '../src/agent/agent-loop/types';
 import { AgentContext } from '../src/agent/context';
 import type { ToolRegistry } from '../src/agent/tool';
 import { Context } from '../src/cordis';
+import { AgentLoopService, agentLoopServicePlugin } from '../src/plugins/builtin/agent-loop-service';
 import type { Provider } from '../src/provider/types';
 
 afterEach(() => {
