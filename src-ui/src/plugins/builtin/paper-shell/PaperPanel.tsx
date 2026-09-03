@@ -412,6 +412,7 @@ function MinimapView({
   const proj = useMemo(() => minimapProject(content, W, H), [content, W, H]);
   const { scale, offX, offY } = proj;
   const inkCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const mmBoxRef = useRef<HTMLDivElement | null>(null);
   /* 拖动状态（R3.5）：按下空白区记起点，move 换算 right/bottom 增量；
    * 松手位移 < DRAG_THRESHOLD = 点击 → 跳转到该世界点（原 V3b 手势保留）。 */
   const dragRef = useRef<{ sx: number; sy: number; right: number; bottom: number; moved: boolean } | null>(null);
@@ -420,6 +421,9 @@ function MinimapView({
       if (e.button !== 0) return;
       // 卷框 / 视口框有自己的 handler（stopPropagation），空白区和 canvas 才走到这
       e.stopPropagation();
+      // R3.5 收尾：preventDefault 掐断拖动时的原生文本选择（配合 CSS user-select:none，
+      // 双保险——WebView 下 pointerdown 选择在 capture 阶段就启动了）
+      e.preventDefault();
       const rect = e.currentTarget.getBoundingClientRect();
       dragRef.current = { sx: e.clientX, sy: e.clientY, right: pref.right, bottom: pref.bottom, moved: false };
       const onMove = (ev: PointerEvent) => {
@@ -451,19 +455,25 @@ function MinimapView({
     },
     [pref, persistPref, offX, offY, scale, content.x0, content.y0, onJump],
   );
-  /* 滚轮缩放（R3.5）：在 minimap 上滚动改尺寸（120–280 × 90–220） */
-  const onWheelResize = useCallback(
-    (e: React.WheelEvent) => {
-      e.stopPropagation();
+  /* 滚轮缩放（R3.5，2026-09-05 收尾）：原生 wheel 监听（passive:false）——
+   * React 合成 onWheel 在 WebView 是 passive，preventDefault 失效且事件会被
+   * 画布原生 wheel 监听器吞掉 → 缩放「没实装」的根因。原生监听保证
+   * preventDefault 生效，并阻断冒泡（minimap 上滚轮 = 只缩放 minimap）。 */
+  useEffect(() => {
+    const el = mmBoxRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      e.stopPropagation();
       const step = e.deltaY > 0 ? -16 : 16;
       const w = Math.min(280, Math.max(120, pref.w + step));
       // 等比缩放（保持宽高比近似原 156:116）
       const h = Math.min(220, Math.max(90, Math.round((w * pref.h) / pref.w)));
       persistPref({ ...pref, w, h });
-    },
-    [pref, persistPref],
-  );
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [pref, persistPref]);
   useEffect(() => {
     const canvas = inkCanvasRef.current;
     if (!canvas || inkRegions.length === 0 || !foldedOf || !inkCache) return;
@@ -542,11 +552,11 @@ function MinimapView({
   );
   return (
     <div
+      ref={mmBoxRef}
       className="pp-minimap"
       style={{ right: pref.right, bottom: pref.bottom, width: W, height: H }}
       title="小地图 · 点击跳转 · Home 键回原点 · Alt+↑↓ 走块 · Alt+←→ 走卷 · 拖动移动 · 滚轮缩放"
       onPointerDown={onContainerPointerDown}
-      onWheel={onWheelResize}
     >
       <canvas ref={inkCanvasRef} className="pp-mm-ink" />
       {volFrames.map((v) => (
