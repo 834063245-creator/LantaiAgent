@@ -111,7 +111,6 @@ import {
   subscribeOverlayContributions,
   translateMessagesCached,
   USER_SHRINK_MIN_W,
-  unitMembership,
   useCanvasViewStore,
   useCoreStore,
   useDockStore,
@@ -489,6 +488,10 @@ interface RegionCoreCacheEntry {
     units: WorkUnit[];
     /** 阶段首块（stream-rhythm 刀2：来文块）——渲染层阶段细线消费。 */
     stageLeadIds: ReadonlySet<string>;
+    /** 单元界首块（刀5 D）——渲染层单元界短规线消费。 */
+    unitLeadIds: ReadonlySet<string>;
+    /** 验证链毕块（刀5 C）——渲染层「✓ 阶段完成」锚消费。 */
+    verifyDoneIds: ReadonlySet<string>;
   };
 }
 
@@ -503,6 +506,8 @@ const STUB_EMPTIES = {
   seq: new Map<string, string>(),
   units: [] as WorkUnit[],
   stageLeadIds: new Set<string>() as ReadonlySet<string>,
+  unitLeadIds: new Set<string>() as ReadonlySet<string>,
+  verifyDoneIds: new Set<string>() as ReadonlySet<string>,
 } as const;
 
 /** P2-3 复合键等价比较（引用级）——键元素全部引用相同 = 缓存可复用。
@@ -1207,10 +1212,11 @@ export function PaperPanel() {
         // 目次带阶段导航消费）。
         const sealedIds = sealedMessageIdsOf(msgs);
         const units = groupWorkUnits(res.blocks, { isSealedMessage: (id) => sealedIds.has(id) });
-        const membership = unitMembership(units);
         // 工具组收起摘除（2026-08-30 会话流专项）：折叠态组头的子卡不进布局栈
         const blocks = collapseToolGroups(adaptBlocks(res.blocks, anchor.width), foldedOf);
-        const { rhythmOf, stageLeadIds } = rhythmAssign(blocks, membership);
+        // stream-rhythm 刀5：族边界切单元（读→写→验证→落款是不同的工作行为）
+        // + 单元界短规线 / 验证链毕锚的派生——单一真源（与布局级封口测试共用）
+        const { rhythmOf, stageLeadIds, unitLeadIds, verifyDoneIds } = rhythmAssign(blocks, units);
         const stack = blocks.map((b) => {
           return {
             id: b.id,
@@ -1309,6 +1315,8 @@ export function PaperPanel() {
             folioH,
             units,
             stageLeadIds,
+            unitLeadIds,
+            verifyDoneIds,
           },
         };
         regionCoreCacheRef.current.set(s.id, entry);
@@ -1338,6 +1346,8 @@ export function PaperPanel() {
         folioH: c.folioH,
         units: c.units,
         stageLeadIds: c.stageLeadIds,
+        unitLeadIds: c.unitLeadIds,
+        verifyDoneIds: c.verifyDoneIds,
       });
     });
     // 合卷/切换后修剪无主核心（与 translateCacheBySession 同款纪律）
@@ -2997,6 +3007,8 @@ export function PaperPanel() {
                         key={b.id}
                         className={`pp-block pp-${b.kind}${firstSeen ? ' pp-enter' : ''}${
                           r.stageLeadIds.has(b.id) ? ' pp-stage-lead' : ''
+                        }${r.unitLeadIds.has(b.id) ? ' pp-unit-lead' : ''}${
+                          r.verifyDoneIds.has(b.id) ? ' pp-verify-done' : ''
                         }`}
                         style={{ transform: `translate(${slot.x}px, ${slot.y}px)`, width: b.w }}
                         data-message-id={b.source.messageId}

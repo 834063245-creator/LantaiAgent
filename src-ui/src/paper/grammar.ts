@@ -170,3 +170,47 @@ export function toolFamilyOfBlock(block: { kind: string; payload: unknown }): To
   if (typeof p.name !== 'string') return null;
   return classifyTool(p.name, typeof p.args === 'string' ? p.args : undefined);
 }
+
+/* ── 节律族（stream-rhythm 刀5：族边界切单元的判据面）──
+ * 用户真机反馈「整个会话流还是瀑布」的根因之一：刀1 的四族推导没有布局面
+ * 消费。节律族 = 版式语法真正用来切节奏的族——other 不表态（观察不到关系
+ * 就不断节奏；远端 MCP / 未知名不破语法铁律的节奏层延伸）。 */
+
+/** 节律族：参与单元切分的四族（读 / 写 / 验 / 落款）。 */
+export type RhythmFamily = 'read' | 'write' | 'verify' | 'commit';
+
+/** 已表态族才参与节奏；other 收敛为 null（不表态）。 */
+export function rhythmFamily(f: ToolFamily): RhythmFamily | null {
+  return f === 'other' ? null : f;
+}
+
+/** 工具调用 → 节律族（translate 组切分与 group 单元切分共用的判据入口）。 */
+export function rhythmFamilyOfTool(name: string, argsJson: string | undefined, readOnly = false): RhythmFamily | null {
+  return rhythmFamily(classifyTool(name, argsJson, readOnly));
+}
+
+/** 块 → 节律族（布局消费单一入口）：
+ *  tool → 自身节律族；toolgroup → 子项末位已表态族（组按族切开后恒同族，
+ *  历史混组兜底取末位）；其余 kind（code / subagent / 夹注…）→ null 不表态。 */
+export function rhythmFamilyOfBlock(block: { kind: string; payload: unknown }): RhythmFamily | null {
+  const p = block.payload as {
+    name?: string;
+    args?: string;
+    readOnly?: boolean;
+    items?: Array<{ name?: string; args?: string; readOnly?: boolean }>;
+  };
+  if (block.kind === 'tool') {
+    if (typeof p.name !== 'string') return null;
+    return rhythmFamilyOfTool(p.name, typeof p.args === 'string' ? p.args : undefined, p.readOnly === true);
+  }
+  if (block.kind === 'toolgroup') {
+    let last: RhythmFamily | null = null;
+    for (const it of p.items ?? []) {
+      if (typeof it?.name !== 'string') continue;
+      const f = rhythmFamilyOfTool(it.name, typeof it.args === 'string' ? it.args : undefined, it.readOnly === true);
+      if (f) last = f;
+    }
+    return last;
+  }
+  return null;
+}

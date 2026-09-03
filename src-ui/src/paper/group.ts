@@ -15,8 +15,11 @@
 //
 // 单元种类（版式语义，非工具语义）：
 //   user       来文——工作起点，自成单元（新阶段）
-//   work       工作单元——tool / toolgroup / code / subagent 连续运行（含挂靠夹注）
-//   recovery   恢复单元——error 块起的头（Error → Retry），布局给转折放空
+//   work       工作单元——tool / toolgroup / code / subagent 连续运行（含挂靠夹注）；
+//              刀5 A：节律族变（读→写→验证→落款）即切新单元——回合内出现
+//              「读包 / 写包 / 验证包」，单元间留白在族间开火
+//   recovery   恢复单元——error 块起的头（Error → Retry），布局给转折放空；
+//              同族重试续收，异族即切出（重试以外的行为是新阶段）
 //   narrative  叙述单元——markdown / diff 连续段（正文 / 围栏）
 //   anchor     锚点——plan 卡（工作阶段落款语义）
 //   annotation 注疏——notice（稀缺大事）
@@ -25,6 +28,7 @@
 
 import type { ChatMessage } from '../ui/message-model';
 import type { SourcedBlock } from './block-model';
+import { type RhythmFamily, rhythmFamilyOfBlock } from './grammar';
 
 export type UnitKind = 'user' | 'work' | 'recovery' | 'narrative' | 'anchor' | 'annotation' | 'terminal' | 'artifact';
 
@@ -36,6 +40,10 @@ export interface WorkUnit {
   memberIds: string[];
   /** 封口 = 全部成员来自非 streaming 消息（回顾性稳定的边界）。 */
   sealed: boolean;
+  /** 节律族（刀5 A）：work/recovery 单元已表态的工具族（读/写/验证/落款）；
+   *  未表态（null）= 开放单元尚未被已知族认领——族不切节奏（other 兜底延伸）。
+   *  verify 工作单元的链毕「阶段完成」锚（刀5 C）以此判据。 */
+  family?: RhythmFamily | null;
 }
 
 /** 消息是否已封口（user/notice 到达即整条封口；assistant 待 status 离开 streaming）。 */
@@ -109,8 +117,9 @@ export function groupWorkUnits(blocks: readonly SourcedBlock[], opts?: GroupOpts
     assigned.set(b.id, u);
   };
 
-  /** 工作/恢复类单元开启：同消息后缀夹注吸入（挂靠），单元保持开放续收。 */
-  const startWorkUnit = (k: 'work' | 'recovery', b: SourcedBlock): void => {
+  /** 工作/恢复类单元开启：同消息后缀夹注吸入（挂靠），单元保持开放续收；
+   *  family 随开启块表态（null = 未认领，后续已知族可认领）。 */
+  const startWorkUnit = (k: 'work' | 'recovery', b: SourcedBlock, family: RhythmFamily | null): void => {
     const msg = b.source.messageId;
     let split = hosts.length; // 后缀同消息的起点
     while (split > 0 && msgOf.get(hosts[split - 1]) === msg) split -= 1;
@@ -119,7 +128,7 @@ export function groupWorkUnits(blocks: readonly SourcedBlock[], opts?: GroupOpts
     flushHosts();
     closeUnit();
     const memberIds = [...absorbed, b.id];
-    cur = { id: `u:${memberIds[0]}`, kind: k, memberIds, sealed: false };
+    cur = { id: `u:${memberIds[0]}`, kind: k, memberIds, sealed: false, family };
     for (const m of memberIds) assigned.set(m, cur);
   };
 
@@ -182,16 +191,25 @@ export function groupWorkUnits(blocks: readonly SourcedBlock[], opts?: GroupOpts
       case 'toolgroup':
       case 'subagent': {
         const errorish = isErrorishBlock(b);
+        // 刀5 A：族边界判据（code/subagent 恒 null 不表态；tool 看名+参；
+        // toolgroup 取子项族——B 切组后恒同族）
+        const f = rhythmFamilyOfBlock(b);
         if (cur && (cur.kind === 'work' || cur.kind === 'recovery')) {
           if (errorish && cur.kind === 'work') {
-            // 转折：error 起新恢复单元（Error → Retry 工作单元 B）
-            startWorkUnit('recovery', b);
+            // 转折：error 起新恢复单元（Error → Retry 工作单元 B）——转折
+            // 优先于族边界（错误即重起，无论族）
+            startWorkUnit('recovery', b, f);
+          } else if (f != null && cur.family != null && f !== cur.family) {
+            // 族边界（刀5 A）：读→写→验证→落款是不同的工作行为——封口旧
+            // 单元开新工作单元（单元间留白在族间开火，族内收紧）
+            startWorkUnit('work', b, f);
           } else {
             cur.memberIds.push(b.id);
             assigned.set(b.id, cur);
+            if (f != null && cur.family == null) cur.family = f; // 未认领单元被已知族认领
           }
         } else {
-          startWorkUnit(errorish ? 'recovery' : 'work', b);
+          startWorkUnit(errorish ? 'recovery' : 'work', b, f);
         }
         break;
       }
@@ -240,23 +258,44 @@ export interface RhythmAssign {
   rhythmOf: Map<string, 'intra' | 'unit' | 'recovery' | 'stage'>;
   /** 阶段首块（leadOf = stage 的来文块）——渲染层阶段细线消费。 */
   stageLeadIds: ReadonlySet<string>;
+  /** 单元界短规线锚（刀5 D）：work 单元首成员且上方非来文——来文后首块是
+   *  B1 尾距反转区（asterism 让位，8px 无线位）。叙述/恢复/墓碑不发线
+   *  （散文不碎、转折自宣告）。 */
+  unitLeadIds: ReadonlySet<string>;
+  /** 验证链毕锚（刀5 C）：verify 工作单元末成员——「✓ 阶段完成」。
+   *  发线判据（时间不能骗人）：链毕 = 后继单元存在且非 recovery（失败转折
+   *  自我宣告，✓ 不说谎），或无后继而单元已封口；流式在跑的末位链不发。 */
+  verifyDoneIds: ReadonlySet<string>;
 }
 
-/** 块序列 + 单元归属 → 节奏档分派（刀3：单一真源——PaperPanel 布局栈与
- *  布局级封口测试共用同一映射，防测试/生产漂移）。blocks 传**布局栈实排
- *  序列**（折叠摘除后的——组头子块被摘时不需要节奏档，缺席即无键）。 */
+/** 块序列 + 工作单元 → 节奏档与结构锚分派（单一真源——PaperPanel 布局栈
+ *  与布局级封口测试共用，防测试/生产漂移）。blocks 传**布局栈实排序列**
+ *  （折叠摘除后的——组头子块被摘时不需要节奏档，缺席即无键）。 */
 export function rhythmAssign(
-  blocks: ReadonlyArray<{ id: string }>,
-  membership: ReadonlyMap<string, { unit: WorkUnit; isFirst: boolean }>,
+  blocks: ReadonlyArray<{ id: string; kind: string }>,
+  units: readonly WorkUnit[],
 ): RhythmAssign {
+  const membership = unitMembership(units);
   const rhythmOf = new Map<string, 'intra' | 'unit' | 'recovery' | 'stage'>();
   const stageLeadIds = new Set<string>();
-  for (const b of blocks) {
+  const unitLeadIds = new Set<string>();
+  for (const [i, b] of blocks.entries()) {
     const m = membership.get(b.id);
     if (!m) continue;
     const rhythm = m.isFirst ? leadOf(m.unit) : 'intra';
     rhythmOf.set(b.id, rhythm);
     if (rhythm === 'stage') stageLeadIds.add(b.id);
+    // 单元界短规线：work 单元首成员，且上方不是来文（B1 反转区无线位）
+    if (rhythm === 'unit' && m.unit.kind === 'work' && blocks[i - 1]?.kind !== 'user') unitLeadIds.add(b.id);
   }
-  return { rhythmOf, stageLeadIds };
+  const verifyDoneIds = new Set<string>();
+  for (let i = 0; i < units.length; i++) {
+    const u = units[i];
+    if (u?.kind !== 'work' || u.family !== 'verify') continue;
+    const next = units[i + 1];
+    const done = next == null ? u.sealed : next.kind !== 'recovery';
+    const lastMember = u.memberIds[u.memberIds.length - 1];
+    if (done && lastMember != null) verifyDoneIds.add(lastMember);
+  }
+  return { rhythmOf, stageLeadIds, unitLeadIds, verifyDoneIds };
 }

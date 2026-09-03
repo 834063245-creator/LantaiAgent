@@ -16,6 +16,7 @@
 // 状态翻转（running→done）自动收回的是「没有用户意志的默认态」。
 
 import type { BlockKind } from './block-model';
+import { type RhythmFamily, rhythmFamilyOfTool } from './grammar';
 import { hasArgsToShow, toolDigest } from './tool-text';
 
 /** 可折叠 kind（渲染器与测量端共用判据）。 */
@@ -72,7 +73,7 @@ export function foldLabel(kind: BlockKind, payload: unknown, folded: boolean): s
     label?: string;
     name?: string;
     status?: string;
-    items?: Array<{ name?: string; args?: string; status?: string }>;
+    items?: Array<{ name?: string; args?: string; readOnly?: boolean; status?: string }>;
   };
   const outSuffix = (): string => {
     const out = (p.output?.length ?? 0) + (p.err?.length ?? 0);
@@ -142,7 +143,25 @@ export function foldLabel(kind: BlockKind, payload: unknown, folded: boolean): s
             })
             .join(' · ')}${entries.length > 3 ? ` · 等 ${entries.length} 种` : ''}`
         : '';
-    return `▸ 工具 ×${items.length}${detail}${runningSuffix}`;
+    // 族签（stream-rhythm 刀5 D）：子项已表态族全同 → 前缀族字（读/写/验/落）
+    // ——小字 mono 行里扫一眼读出阶段节奏；混族 / 无表态 → 维持「工具」旧文案
+    // （B 按族切组后恒同族，混组只剩流式半程过渡态）。
+    const FAMILY_ZH: Record<RhythmFamily, string> = { read: '读', write: '写', verify: '验', commit: '落' };
+    let famZh: string | null = null;
+    {
+      let first: RhythmFamily | null = null;
+      let uniform = true;
+      for (const it of items) {
+        if (typeof it?.name !== 'string') continue;
+        const f = rhythmFamilyOfTool(it.name, typeof it.args === 'string' ? it.args : undefined, it.readOnly === true);
+        if (f == null) continue;
+        if (first == null) first = f;
+        else if (f !== first) uniform = false;
+      }
+      if (first != null && uniform) famZh = FAMILY_ZH[first];
+    }
+    const who = famZh ?? '工具';
+    return `▸ ${who} ×${items.length}${detail}${runningSuffix}`;
   }
   return '';
 }

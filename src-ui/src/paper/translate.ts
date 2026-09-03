@@ -25,6 +25,7 @@
 import type { AssistantMessage, ChatMessage, ToolCallPart, UserMessage } from '../ui/message-model';
 import type { SourcedBlock } from './block-model';
 import { createBlock, DEFAULT_BLOCK_WIDTH } from './block-model';
+import { type RhythmFamily, rhythmFamilyOfBlock } from './grammar';
 
 /** 稳定块 id：同一消息同一 part 在重转译后得到同一 id（React key 稳定 +
  *  钉住状态可跨转译保持——pinned 块按 id 续命）。 */
@@ -79,7 +80,11 @@ export function translateMessage(
  * 钉住续命与用户折叠覆盖（foldOv）都不漂。 */
 
 /** 连续 flow 工具块运行 → 组头 + 子卡序列（run < 2 原样，不包组）。
- *  skipSubIds（F4 2026-09-01）：子代理组内 tool 子块已在组内，不重复成组。 */
+ *  skipSubIds（F4 2026-09-01）：子代理组内 tool 子块已在组内，不重复成组。
+ *  族切分（stream-rhythm 刀5 B）：连续工具按节律族切 run——读→写→验证是
+ *  不同的工作行为，族变即断组（「读 ×3」「写 ×2」「验 ×1」各自成行，判别量
+ *  各露各的，单元边界随之可见）；未表态族（other / 流式半程）并入当前 run
+ *  不断组——不破语法铁律的组层延伸。 */
 function groupToolRuns(
   blocks: SourcedBlock[],
   messageId: string,
@@ -88,6 +93,7 @@ function groupToolRuns(
 ): SourcedBlock[] {
   const out: SourcedBlock[] = [];
   let run: SourcedBlock[] = [];
+  let runF: RhythmFamily | null = null; // 当前 run 的节律族（null = 未表态，混入不断组）
   const flush = (): void => {
     if (run.length >= 2) {
       const items = run.map((b) => b.source.part as ToolCallPart);
@@ -97,10 +103,15 @@ function groupToolRuns(
     }
     out.push(...run);
     run = [];
+    runF = null;
   };
   for (const b of blocks) {
-    if (b.kind === 'tool' && b.state === 'flow' && !skipSubIds?.has(b.id)) run.push(b);
-    else {
+    if (b.kind === 'tool' && b.state === 'flow' && !skipSubIds?.has(b.id)) {
+      const f = rhythmFamilyOfBlock(b);
+      if (runF != null && f != null && f !== runF) flush(); // 族变断组
+      if (runF == null && f != null) runF = f; // 首个已表态成员定 run 族
+      run.push(b);
+    } else {
       flush();
       out.push(b);
     }

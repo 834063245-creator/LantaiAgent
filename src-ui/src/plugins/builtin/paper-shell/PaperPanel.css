@@ -442,6 +442,39 @@
   border-top: var(--rule-soft);
 }
 
+/* 单元界短规线（stream-rhythm 刀5 D，2026-09-03）：work 单元首成员上方的
+ * 短线（96px，版心约 1/8——比阶段全宽线弱一档），落在单元间距 64 的中线
+ * （ANCHOR.unitGap/2 = -32）。线语法同族：全宽 = 阶段界，短线 = 单元界，
+ * 无线 = 同单元收紧。只发 work 单元（叙述不碎、转折自宣告），来文后首块
+ * 是 B1 尾距反转区（8px）无线位——rhythmAssign.unitLeadIds 判据在册。 */
+.pp-block.pp-unit-lead::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: 96px;
+  top: -32px;
+  border-top: var(--rule-soft);
+}
+
+/* 验证链毕锚（stream-rhythm 刀5 C，2026-09-03）：verify 工作单元链毕的
+ * 「✓ 阶段完成」小字（规则表「验证链毕出标记」原案落地）。ink-3 辅助墨阶
+ * ——最素形态（D2 同判：真机看效果再判升级）；挂在链末块下方、单元间距
+ * 中带，不占块高（测高镜像零变化）。判据 rhythmAssign.verifyDoneIds：
+ * 流式在跑不发、失败转折（后继 recovery）不发——✓ 不说谎。 */
+.pp-block.pp-verify-done::after {
+  content: "✓ 阶段完成";
+  position: absolute;
+  left: 0;
+  top: 100%;
+  margin-top: 8px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
 /* 块体基础（2026-08-30 间距专项）：pre-wrap 镜像测量——measure.ts 的 pretext
  * 一律按 whiteSpace:'pre-wrap' 计行，而此处旧缺省 normal 把换行折叠掉，
  * 「测得多、渲染少」= 绝对定位块之间出现幻影大间距（流内间距不均的根因）。
@@ -2501,29 +2534,48 @@
   word-break: break-word;
 }
 
-/* ── 小地图（D-R1-1 方位感件）── */
+/* ── 小地图（D-R1-1 方位感件；R3 多卷版 2026-09-05）── */
 .pp-minimap {
   position: absolute;
   right: 18px;
-  /* Stage-4：创作坞升级为两段（设置行+输入行），比旧单行高——minimap 上移避开
-   * 重叠（2026-08-31 起读 ComposerDock 实测高，+44px 呼吸；
-   * 2026-09-02 拍板 C 后坞恒抬高，清坞顶线 = 抬高 + 坞高 + 呼吸——
-   * 实际 bottom 由 MinimapView 内联覆写，此行为等值文档） */
-  bottom: calc(var(--composer-rise) + var(--composer-h-live, var(--composer-h)) + 44px);
-  width: 132px;
-  height: 96px;
-  background: var(--paper);
+  /* R3.5 浮动化（2026-09-05）：位置/尺寸由 MinimapView 内联 style 控制（可拖动/滚轮缩放，
+   * localStorage 记忆）；height 固定由 JSX 设置——此块只留定位与外观。 */
+  background: color-mix(in oklch, var(--paper) 92%, transparent);
   border: var(--rule-soft);
   border-radius: 0;
   padding: 6px;
   z-index: 60;
   /* V3b 欠账接回（2026-08-30）：点击跳转——不再是只读装饰 */
   pointer-events: auto;
-  cursor: pointer;
+  cursor: grab;
   transition: border-color var(--snap);
 }
 .pp-minimap:hover {
   border-color: var(--ink-3);
+}
+.pp-minimap:active {
+  cursor: grabbing;
+}
+/* 卷框 DOM 层（R3）：hover 高亮 + 点击跳卷；canvas 墨条之下、视口框之上 */
+.pp-mm-vol {
+  position: absolute;
+  z-index: 2;
+  pointer-events: auto;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition:
+    border-color var(--snap),
+    box-shadow var(--snap);
+}
+.pp-mm-vol:hover {
+  border-color: var(--seal-deep);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--seal-deep) 40%, transparent);
+}
+.pp-mm-vol-active {
+  border-color: color-mix(in oklch, var(--seal-deep) 70%, transparent);
+}
+.pp-mm-vol-active:hover {
+  border-color: var(--seal-deep);
 }
 /* 空卷题字（2026-08-30）：零块流区的版心竖排占位——古籍虚卷俟补页 */
 .pp-region-empty {

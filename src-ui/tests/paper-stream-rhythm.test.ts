@@ -321,10 +321,12 @@ describe('group：封口不变性专项', () => {
     const sealedSlice = (us: WorkUnit[]) => us.filter((u) => u.sealed);
     expect(sealedSlice(p1)).toEqual(sealedSlice(p2));
     expect(sealedSlice(p2)).toEqual(sealedSlice(p3));
-    // 活尾允许演化：夹注自叙述 → 工作单元（id 锚夹注稳定）→ 错误后成恢复单元
+    // 活尾允许演化：夹注自叙述 → 工作单元（id 锚夹注稳定）→ 错误后成恢复单元。
+    // 刀5 B 后读工具与出错 shell 按族切分不再并成一个错误组——读包保持 work，
+    // 错误 shell 独立成恢复单元（转折自宣告）
     expect(shapes(p1).slice(-1)).toEqual(['narrative#1@u:pb:a2:0']);
     expect(shapes(p2).slice(-1)).toEqual(['work#2@u:pb:a2:0']);
-    expect(shapes(p3).slice(-2)).toEqual(['recovery#4@u:pb:a2:0', 'narrative#1@u:pb:a2:3']);
+    expect(shapes(p3).slice(-3)).toEqual(['work#2@u:pb:a2:0', 'recovery#1@u:pb:a2:2', 'narrative#1@u:pb:a2:3']);
     // a2 单元未封口
     for (const u of p3) if (!u.sealed) expect(u.memberIds.some((m) => m.startsWith('pb:a2'))).toBe(true);
   });
@@ -480,16 +482,26 @@ function layoutOf(msgs: ChatMessage[]): {
   units: WorkUnit[];
   rhythmOf: Map<string, RhythmClass>;
   stageLeadIds: ReadonlySet<string>;
+  unitLeadIds: ReadonlySet<string>;
+  verifyDoneIds: ReadonlySet<string>;
   layout: Map<string, { x: number; y: number }>;
 } {
   const translated = translateMessages(msgs);
   const sealed = sealedMessageIdsOf(msgs);
   const units = groupWorkUnits(translated, { isSealedMessage: (id) => sealed.has(id) });
-  const membership = unitMembership(units);
   const blocks = collapseToolGroups(translated, (b) => defaultFolded(b.kind, b.payload));
-  const { rhythmOf, stageLeadIds } = rhythmAssign(blocks, membership);
+  const { rhythmOf, stageLeadIds, unitLeadIds, verifyDoneIds } = rhythmAssign(blocks, units);
   const stack = blocks.map((b) => ({ id: b.id, h: synthH(b.id), w: b.w, kind: b.kind, rhythm: rhythmOf.get(b.id) }));
-  return { blocks, translated, units, rhythmOf, stageLeadIds, layout: layoutFlow(stack) };
+  return {
+    blocks,
+    translated,
+    units,
+    rhythmOf,
+    stageLeadIds,
+    unitLeadIds,
+    verifyDoneIds,
+    layout: layoutFlow(stack),
+  };
 }
 
 /** 封口前缀指纹：栈序封口块的 {id, 节奏档, 相对锚块 y}——刚体不变性的比较面。 */
@@ -696,6 +708,139 @@ describe('组原子性（刀3）：折叠组 = 布局栈单条目，展开组连
         expect(isHeader || !groupHeaders.includes(`${id}g`)).toBe(true);
       }
     }
+  });
+});
+
+/* ═══ 族边界切单元（刀5 A+B）：读→写→验证是不同的工作行为 ═══ */
+
+describe('族边界切单元（刀5 A+B）', () => {
+  beforeEach(() => resetBlockIdCounterForTests());
+
+  it('translate：连续工具按族切组——读 ×2 / 写 ×2 各自成行（组头锚各族首工具，前缀稳定）', () => {
+    const p1 = translateMessages([asstMsg('a1', [toolPart('fs', '{"action":"read","path":"a.ts"}')])]);
+    const p2 = translateMessages([
+      asstMsg('a1', [
+        toolPart('fs', '{"action":"read","path":"a.ts"}'),
+        toolPart('fs', '{"action":"read","path":"b.ts"}'),
+      ]),
+    ]);
+    const p3 = translateMessages([
+      asstMsg('a1', [
+        toolPart('fs', '{"action":"read","path":"a.ts"}'),
+        toolPart('fs', '{"action":"read","path":"b.ts"}'),
+        toolPart('fs', '{"action":"write","path":"c.ts"}'),
+      ]),
+    ]);
+    // 前缀稳定：lone → 读组头 pb:a1:0g → 写族不并入读组（写族 lone）
+    expect(p1.some((b) => b.kind === 'toolgroup')).toBe(false);
+    expect(p2.find((b) => b.kind === 'toolgroup')?.id).toBe('pb:a1:0g');
+    const headers = p3.filter((b) => b.kind === 'toolgroup');
+    expect(headers.map((b) => b.id)).toEqual(['pb:a1:0g']);
+    expect((headers[0]!.payload as { childIds: string[] }).childIds).toEqual(['pb:a1:0', 'pb:a1:1']);
+  });
+
+  it('group：族切换封口旧单元——读包 / 写包各自工作单元（family 在册）', () => {
+    const units = groupOf([
+      asstMsg('a1', [
+        toolPart('fs', '{"action":"read","path":"a.ts"}'),
+        toolPart('fs', '{"action":"read","path":"b.ts"}'),
+        toolPart('fs', '{"action":"write","path":"c.ts"}'),
+        toolPart('fs', '{"action":"write","path":"d.ts"}'),
+      ]),
+    ]);
+    expect(shapes(units)).toEqual(['work#3@u:pb:a1:0g', 'work#3@u:pb:a1:2g']);
+    expect(units[0]!.family).toBe('read');
+    expect(units[1]!.family).toBe('write');
+  });
+
+  it('未表态族不切节奏：other 并入当前 run / 单元（不破语法铁律的节奏层延伸）', () => {
+    // other 夹在已知族之间：并入读包（run 不断），写族才切
+    const units = groupOf([
+      asstMsg('a1', [
+        toolPart('fs', '{"action":"read","path":"a.ts"}'),
+        toolPart('browser_click', '{}'),
+        toolPart('fs', '{"action":"write","path":"c.ts"}'),
+      ]),
+    ]);
+    expect(shapes(units)).toEqual(['work#3@u:pb:a1:0g', 'work#1@u:pb:a1:2']);
+    expect(units[0]!.family).toBe('read');
+    // other 打头：未认领单元被首个已知族认领（不切）——run ≥2 成组，族取末位表态
+    const units2 = groupOf([
+      asstMsg('a1', [toolPart('browser_click', '{}'), toolPart('fs', '{"action":"read","path":"a.ts"}')]),
+    ]);
+    expect(shapes(units2)).toEqual(['work#3@u:pb:a1:0g']);
+    expect(units2[0]!.family).toBe('read');
+  });
+
+  it('recovery：同族重试续收恢复单元，异族切出新工作单元', () => {
+    const units = groupOf([
+      asstMsg('a1', [
+        toolPart('shell', '{"action":"run","command":"cargo test"}', 'error'),
+        toolPart('shell', '{"action":"run","command":"cargo test"}'),
+        toolPart('fs', '{"action":"write","path":"fix.ts"}'),
+      ]),
+    ]);
+    // 验证错误 + 同族重试 → 恢复单元（verify）；写修复 → 族界切出新工作单元
+    expect(shapes(units)).toEqual(['recovery#3@u:pb:a1:0g', 'work#1@u:pb:a1:2']);
+    expect(units[0]!.family).toBe('verify');
+    expect(units[1]!.family).toBe('write');
+  });
+});
+
+/* ═══ 单元界短规线 + 验证链毕锚（刀5 C+D）═══ */
+
+describe('单元界短规线 + 验证链毕锚（刀5 C+D）', () => {
+  beforeEach(() => resetBlockIdCounterForTests());
+
+  it('验证链毕锚：链毕（后继非恢复 / sealed 末位）发；流式在跑与失败转折不发', () => {
+    // ① verify 后随叙述（done 消息）→ 链末块发锚
+    const r1 = layoutOf([
+      asstMsg('a1', [
+        toolPart('shell', '{"action":"run","command":"cargo test"}'),
+        { type: 'text', text: '结论', finalised: true },
+      ]),
+    ]);
+    expect(r1.verifyDoneIds.has('pb:a1:0')).toBe(true);
+    // ② verify 后随 recovery（失败转折）→ 不发（✓ 不说谎）
+    const r2 = layoutOf([
+      asstMsg('a1', [
+        toolPart('shell', '{"action":"run","command":"cargo test"}'),
+        toolPart('fs', '{"action":"write","path":"c.ts"}', 'error'),
+        { type: 'text', text: '修后结论', finalised: true },
+      ]),
+    ]);
+    expect(r2.verifyDoneIds.size).toBe(0);
+    // ③ 流式在跑：verify 是流末开放单元 → 不发
+    const r3 = layoutOf([asstMsg('a1', [toolPart('shell', '{"action":"run","command":"cargo test"}')], 'streaming')]);
+    expect(r3.verifyDoneIds.size).toBe(0);
+    // ④ sealed 末位 verify（回合以验证收尾）→ 发
+    const r4 = layoutOf([asstMsg('a1', [toolPart('shell', '{"action":"run","command":"cargo test"}')])]);
+    expect(r4.verifyDoneIds.has('pb:a1:0')).toBe(true);
+  });
+
+  it('单元界短规线：work 首且上方非来文才发；叙述 / 恢复 / 来文后不发', () => {
+    const r1 = layoutOf([
+      userMsg('u1'),
+      asstMsg('a1', [
+        toolPart('fs', '{"action":"read","path":"a.ts"}'),
+        toolPart('fs', '{"action":"read","path":"b.ts"}'),
+        toolPart('fs', '{"action":"write","path":"c.ts"}'),
+        { type: 'text', text: '结论', finalised: true },
+      ]),
+    ]);
+    // 栈：user → 读组头 → 写 lone → 叙述
+    expect(r1.unitLeadIds.has('pb:a1:0g')).toBe(false); // 来文后首包：B1 反转区（尾距 8）无线位
+    expect(r1.unitLeadIds.has('pb:a1:2')).toBe(true); // 写包首（上方是读组头）
+    expect(r1.unitLeadIds.has('pb:a1:3')).toBe(false); // 叙述不发线
+    // 恢复首不发（转折自宣告）；流首 work 首（上方无块）发
+    const r2 = layoutOf([
+      asstMsg('a1', [
+        toolPart('fs', '{"action":"write","path":"c.ts"}'),
+        toolPart('shell', '{"action":"run","command":"cargo test"}', 'error'),
+      ]),
+    ]);
+    expect(r2.unitLeadIds.has('pb:a1:0')).toBe(true);
+    expect(r2.unitLeadIds.has('pb:a1:1')).toBe(false);
   });
 });
 

@@ -30,6 +30,8 @@ const TOKENS_CSS = readFileSync(join(SRC, 'app', 'tokens.css'), 'utf8');
 const FONTS_TS = readFileSync(join(SRC, 'app', 'fonts.ts'), 'utf8');
 const NORMALIZE_PS1 = readFileSync(join(__dirname, '..', '..', 'scripts', 'normalize-paper-texture.ps1'), 'utf8');
 const RENDERER_TS = readFileSync(join(SRC, 'composition', 'renderer-service.tsx'), 'utf8');
+const TRANSLATE_TS = readFileSync(join(SRC, 'paper', 'translate.ts'), 'utf8');
+const GRAMMAR_TS = readFileSync(join(SRC, 'paper', 'grammar.ts'), 'utf8');
 
 /** 从选择器名截取规则体（到下一个 `}` 为止——纸壳 CSS 规则无嵌套）。 */
 function ruleBody(css: string, selector: string): string {
@@ -375,7 +377,8 @@ describe('会话流版式节奏钉值（stream-rhythm 刀2，2026-09-03——D1 
 
   it('接线在册：工作单元 pass 进 PaperPanel 核心，来文块挂阶段类', () => {
     expect(PANEL_TSX).toContain('groupWorkUnits');
-    expect(PANEL_TSX).toContain('unitMembership');
+    // 刀5 演进：membership 内化进 rhythmAssign(blocks, units)——分派单一真源
+    expect(PANEL_TSX).toContain('rhythmAssign(blocks, units)');
     expect(PANEL_TSX).toContain('sealedMessageIdsOf');
     expect(PANEL_TSX).toContain('pp-stage-lead');
     // 封口纪律 + 跨消息前瞻禁止（宪法条款在纯函数真源里在册）
@@ -404,5 +407,38 @@ describe('Error 墨色家族（stream-rhythm 刀4c 确认，2026-09-03——现�
     expect(ruleBody(PANEL_CSS, '.pp-status.pp-error')).toContain('color: var(--fail)');
     // 渲染器错误输出恒两处（tool / code 同构）——新增错误面须过此钉改账
     expect(RENDERER_TS.match(/color: 'var\(--fail\)'/g)?.length).toBe(2);
+  });
+});
+
+describe('会话流族节奏（stream-rhythm 刀5，2026-09-03——族边界切单元后真机判「瀑布未破」的根治批）', () => {
+  it('族边界切单元在册：group 消费节律族 + translate 按族切组 + grammar 节律族面', () => {
+    expect(GROUP_TS).toContain('族边界（刀5 A）');
+    expect(GROUP_TS).toContain('family?: RhythmFamily | null');
+    expect(TRANSLATE_TS).toContain('族变断组');
+    expect(GRAMMAR_TS).toContain('rhythmFamilyOfBlock');
+  });
+
+  it('单元界短规线（D）：比阶段全宽线弱一档——top -32（unitGap/2）/ 宽 96 / rule-soft', () => {
+    const rule = ruleBody(PANEL_CSS, '.pp-block.pp-unit-lead::before');
+    expect(rule).toContain('top: -32px');
+    expect(rule).toContain('width: 96px');
+    expect(rule).toContain('border-top: var(--rule-soft)');
+    expect(rule).toContain('left: 0');
+    // 阶段线仍是全宽（两级线语法：全宽 = 阶段界，短线 = 单元界）
+    expect(ruleBody(PANEL_CSS, '.pp-block.pp-stage-lead::before')).toContain('right: 0');
+  });
+
+  it('验证链毕锚（C）：「✓ 阶段完成」小字 ink-3 mono（最素形态）', () => {
+    const rule = ruleBody(PANEL_CSS, '.pp-block.pp-verify-done::after');
+    expect(rule).toContain('content: "✓ 阶段完成"');
+    expect(rule).toContain('color: var(--ink-3)');
+    expect(rule).toContain('var(--f-mono)');
+  });
+
+  it('接线在册：unitLeadIds / verifyDoneIds 进壳层与 RegionView', () => {
+    expect(PANEL_TSX).toContain('pp-unit-lead');
+    expect(PANEL_TSX).toContain('pp-verify-done');
+    expect(PANEL_TSX).toContain('unitLeadIds');
+    expect(PANEL_TSX).toContain('verifyDoneIds');
   });
 });
