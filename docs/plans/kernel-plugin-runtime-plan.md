@@ -59,7 +59,7 @@ Rust 壳从「巨型工具包」变成「带安全边界的插件运行时」：
 | **Phase 0**（本窗） | 契约三件 + 注册表 + `tool_call`/`plugin_tool_manifests` RPC + 内核模块 `tool_plugins/` | cargo test 新增单测；注册表重名拒绝 |
 | **Phase 1**（本窗起） | `builtin.search` 插件自 `commands/search.rs` 拆出（search_content）；TS search 域改 manifest 驱动；旧分支退役 | vitest/convergence/build/biome/doc-sync 全绿，baseline 零漂移 |
 | Phase 1 续（已落地 2026-09-04） | `builtin.web`（web_search/web_fetch 自 `commands/web.rs`，含并行窗口 64b56542 的 max_results 批转录）；`commands/web.rs` 整文件退役；coding.ts 旧 zod 版 search/web 死码清理；web_fetch 文本结果经分派处 `Value::String` 直通（Text 铁律） | 同上 |
-| Phase 2 | fs / git / shell / editor / constraints 五域 + glob + 进度流设计件 + `permissions::Tool::name` 放宽 | 每域独立批 |
+| Phase 2 | fs / git / shell / editor / constraints 五域 + glob + 进度流设计件 + `permissions::Tool::name` 放宽 | 每域独立批；拆解与机制见 [`kernel-plugin-runtime-phase2-design.md`](kernel-plugin-runtime-phase2-design.md)（2026-09-04 自查模式设计件：P2-0 基建 → P2-1 constraints/editor → P2-2 fs 主体 → P2-3 git → P2-4 shell+进度流） |
 | Phase 3 | browser / uia / pty / lsp 高权限插件（trust: system） | 每域独立批 |
 | Phase 4 | 插件管理 UI（列表/启停/卸载/信任/能力/审计入口）+ 第三方插件装载 + 能力授予持久化 | UI 验收 |
 | 终态 | rpc.rs 只余 `tool_call` + 生命周期族（workspace_/plugin_/credential_/permission_/audit_/sandbox_status）；`commands/` 业务目录退役 | 守卫测试钉死分支上限 |
