@@ -1180,6 +1180,11 @@
   gap: var(--pp-ch-plan-actionsGap);
   margin-top: var(--pp-ch-plan-actionsMarginTop);
 }
+/* ── 拟策三钮：钤印同构（2026-09-03 设计语言归位）──
+ * 规格 docs/design/lantai-design-spec.md §10：每屏唯一主动作 = 墨底实色 +
+ * --shadow-anchor 硬投影；动作钮 600 字重；色相即语义（墨=人的落款、朱=人的
+ * 否定、石墨=机）。拟策审批 = 人的决策：主动作走拟文印同款墨印（hover 翻朱砂
+ * = 人的落笔）；拒绝=朱线；修改=墨线。石青退守机读域（序号/脚注），不碰人手动作。 */
 .pp-pc-btn {
   padding: var(--pp-ch-plan-actionsPadV) 14px;
   border: var(--pp-ch-plan-actionsBorder) solid var(--ink-4);
@@ -1188,12 +1193,16 @@
   font-family: var(--f-song);
   font-size: var(--pp-ch-plan-actionsSize);
   line-height: var(--pp-ch-plan-actionsLh);
+  font-weight: 600; /* 规格：动作钮 600（字重上墨） */
+  letter-spacing: 0.12em;
   color: var(--ink-2);
   cursor: pointer;
   transition:
+    background var(--snap),
     color var(--snap),
     border-color var(--snap),
-    background var(--snap);
+    box-shadow var(--snap),
+    transform var(--snap);
 }
 .pp-pc-btn:hover {
   color: var(--ink-1);
@@ -1202,22 +1211,27 @@
 }
 .pp-pc-btn:active {
   background: color-mix(in oklch, var(--ink-1) 8%, transparent);
+  transform: translateY(1px);
 }
-/* 主操作（批准/提交）：石青实底纸白字——与石青序号同一瓶墨 */
+/* 主印（批准/提交可用时）：墨底方章 + 硬投影，hover 翻朱砂——拟文印同款 */
 .pp-pc-btn--primary {
-  border-color: var(--indigo);
-  background: var(--indigo);
+  background: var(--ink-1);
+  border-color: var(--ink-1);
   color: var(--paper);
+  box-shadow: var(--shadow-anchor);
 }
 .pp-pc-btn--primary:hover {
-  border-color: var(--indigo);
-  background: color-mix(in oklch, var(--indigo) 84%, var(--paper));
+  background: var(--seal-deep);
+  border-color: var(--seal-deep);
   color: var(--paper);
 }
 .pp-pc-btn--primary:active {
-  background: color-mix(in oklch, var(--indigo) 92%, var(--paper));
+  background: var(--seal);
+  border-color: var(--seal);
+  transform: translateY(1px);
+  box-shadow: none; /* 压印：投影塌缩，章沉进纸面（同 .pp-stop） */
 }
-/* 拒绝：朱砂边字，hover 浸朱砂淡底 */
+/* 拒绝：朱线（人的否定批改），hover 浸朱砂淡底 */
 .pp-pc-btn--reject {
   border-color: var(--seal-deep);
   color: var(--seal-deep);
@@ -1227,17 +1241,19 @@
   background: color-mix(in oklch, var(--seal) 10%, transparent);
   color: var(--seal-deep);
 }
-/* 未就绪态：虚线墨淡，保持可读——不透明度糊钮不是纸面语言 */
+/* 未就绪态：虚线墨淡——不透明度糊钮不是纸面语言 */
 .pp-pc-btn:disabled {
   border-style: dashed;
   border-color: var(--ink-4);
   color: var(--ink-3);
   background: transparent;
+  box-shadow: none;
   cursor: default;
 }
 .pp-pc-btn--primary:disabled {
-  border-color: color-mix(in oklch, var(--indigo) 38%, var(--paper));
-  color: color-mix(in oklch, var(--indigo) 46%, var(--paper));
+  border-style: dashed;
+  border-color: var(--ink-3);
+  color: var(--ink-3);
   background: transparent;
 }
 .pp-pc-feedback {
@@ -2612,6 +2628,10 @@
   /* V3b 欠账接回（2026-08-30）：点击跳转——不再是只读装饰 */
   pointer-events: auto;
   cursor: grab;
+  /* R3.5 拖动不选字（2026-09-05 收尾）：用户拖 minimap 时鼠标框选不该选中
+   * 画布文字——user-select 掐断原生选择，配合 pointerdown preventDefault 双保险 */
+  user-select: none;
+  -webkit-user-select: none;
   transition: border-color var(--snap);
 }
 .pp-minimap:hover {
