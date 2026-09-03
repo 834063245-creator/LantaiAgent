@@ -259,6 +259,17 @@
     inset 0 0 0 7px var(--sheet-band),
     var(--shadow-sheet-active);
 }
+/* 带显形（2026-09-05 松手定夺改造）：拖拽进行时来源流区提落影至 lift 档
+ * ——「这张纸是当前手势的领域」（块拖回带内 = 回流；纸条拖出带外 = 成条，
+ * 400px 窄带从暗判变可见边界）。变色判死（09-02 活跃卷先例）：只动落影不动
+ * 纸色；active 与 band 叠加时 lift 档胜出（后者声明序在后）。 */
+.pp-region--band {
+  box-shadow:
+    inset 3px 4px 5px var(--sheet-lit),
+    inset -2px -3px 6px var(--sheet-shade),
+    inset 0 0 0 7px var(--sheet-band),
+    var(--shadow-sheet-lift);
+}
 /* ── 桌垫（材质批修复 2026-09-01：贴纸语义两刀之二）──
  * 真因不是「画不出」（实机活体验证：荧光绿/品红桌面双盲均画得出）——是纹理
  * 归属错位：①文档级颗粒层 body::after 钉死视口，拖动时纸走纹不走，材质被判属
@@ -506,6 +517,7 @@
 .pp-kind,
 .pp-status,
 .pp-unpin,
+.pp-pin-hint,
 .pp-ghost,
 .pp-fold,
 .pp-msg-ops {
@@ -1312,21 +1324,87 @@
   white-space: pre-line;
 }
 
-/* 钉住态：纸面浮起（硬偏移 letterpress 海拔），无额外内边距——测量与流内一致 */
+/* 钉住块 = 盖章剪报（2026-09-05 换装，plan：pin-strip-rework）：桌面纸制品
+ * ——outline 画框（14px 悬空细框）随流区界栏同理由退役（「框是画在纸上的
+ * 线，真纸的缘是材料」——09-02 真纸化批的判例延伸，产品曾漏扫）。物理包边
+ * 轻量档：流区四层配方的缩放版（受光缘/背光缘收半档 + 裱边带 4px + 接触
+ * 落影），材料与流区同源（paper-sheet 纹理——从同一张纸上剪下来的）。
+ * 剂量 D2 待真机 A/B 微调（plan §4）。 */
 .pp-block.pp-pinned {
-  background: var(--paper);
-  outline: var(--rule-soft);
-  outline-offset: 14px;
-  box-shadow: var(--elev-raise);
+  background-color: var(--paper);
+  background-image: url("../../../assets/paper/paper-sheet.jpg");
+  background-size: 1200px;
+  background-repeat: repeat;
+  background-blend-mode: multiply;
+  box-shadow:
+    inset 2px 2px 3px var(--sheet-lit),
+    inset -1px -2px 4px var(--sheet-shade),
+    inset 0 0 0 4px var(--sheet-band),
+    var(--shadow-sheet);
   z-index: 30;
 }
+/* hover = 落影提一档（手里拿起端详）——变色/描边判死（09-02 同判例），
+ * 朱砂信号让位给竖排身份签与收回钮。 */
 .pp-block.pp-pinned:hover {
-  outline-color: var(--seal);
+  box-shadow:
+    inset 2px 2px 3px var(--sheet-lit),
+    inset -1px -2px 4px var(--sheet-shade),
+    inset 0 0 0 4px var(--sheet-band),
+    var(--shadow-sheet-active);
 }
+/* 拖拽携带态（松手定夺 2026-09-05）：拿起 = 揭起成纸片——flow 块拖动中
+ * 仍在流分支（透明底），携带态补钉住材料与松手后的钉住态无缝衔接；
+ * 微抬 2px + 落影提至 lift 档（手里正拿着）。opacity .92 退役（半透明
+ * 假海拔）；translate 独立属性与 transform 合成（pp-enter 先例——不占
+ * 内联 translate(x,y) 槽位）。 */
 .pp-block.pp-dragging {
   cursor: grabbing;
-  opacity: 0.92;
+  translate: 0 -2px;
+  background-color: var(--paper);
+  background-image: url("../../../assets/paper/paper-sheet.jpg");
+  background-size: 1200px;
+  background-repeat: repeat;
+  background-blend-mode: multiply;
+  box-shadow:
+    inset 2px 2px 3px var(--sheet-lit),
+    inset -1px -2px 4px var(--sheet-shade),
+    inset 0 0 0 4px var(--sheet-band),
+    var(--shadow-sheet-lift);
   z-index: 50;
+}
+/* 回流预览（松手定夺 2026-09-05）：拖动中块影悬回来源带内——松手即取消
+ * 回槽。降不透明度 + 「松手回流」批注（楷体朱砂深——「松手入卷」同族，
+ * 手势后果预告语言）。 */
+.pp-block.pp-drag-returning {
+  opacity: 0.55;
+}
+.pp-block.pp-drag-returning::after {
+  content: "松手回流";
+  position: absolute;
+  top: -24px;
+  left: 0;
+  font-family: var(--f-kai);
+  font-size: calc(12px * var(--font-scale));
+  line-height: 1;
+  color: var(--seal-deep);
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* 落定 settle（手感批 2026-09-05）：松手定夺的「按下」一拍——块从提起
+ * 位压落（translate 从 -3px 归 0，落影从 lift 档塌回 sheet 档）；from-only
+ * keyframes（to 缺省回落元素计算值——钉住/纸条各自的静息落影）。 */
+@keyframes pp-settle-pin {
+  from {
+    translate: 0 -3px;
+    box-shadow:
+      inset 2px 2px 3px var(--sheet-lit),
+      inset -1px -2px 4px var(--sheet-shade),
+      inset 0 0 0 4px var(--sheet-band),
+      var(--shadow-sheet-lift);
+  }
+}
+.pp-block.pp-settle {
+  animation: pp-settle-pin var(--glide) both;
 }
 
 /* 拖拽/缩放/卷切换这些手动操作绝不能被重排过渡污染：pinned 块被拖出/收回、
@@ -1388,11 +1466,34 @@
   color: var(--seal-deep);
   border-color: var(--seal);
 }
+/* 竖排「钉住」身份签（2026-09-05 补抄原型 lantai.html .pin-hint——盖章剪报
+ * 隐喻的落地件；产品此前漏抄，钉住态没有「我已被钉住」的身份标记）。右缘
+ * 竖排、朱砂深（钉住是用户的动作——人语汇）、hover 显形与收回钮同族。 */
+.pp-pin-hint {
+  position: absolute;
+  top: 0;
+  right: -36px;
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.24em;
+  color: var(--seal-deep);
+  background: var(--paper);
+  writing-mode: vertical-rl;
+  padding: 8px 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--snap);
+}
+.pp-block.pp-pinned:hover .pp-pin-hint {
+  opacity: 1;
+}
 
-/* 流内占位（块被拖出后流里留洞——原生 button，点击恢复手势） */
+/* 流内占位（块被拖出后流里留洞——原生 button，点击恢复手势）。2026-09-05
+ * 弱化一档：洞是流内的疤不是主角——虚线语义保留（占位/草稿铁律），墨量
+ * 收一档让位正文节奏（plan：pin-strip-rework 刀2）。 */
 .pp-ghost {
   position: absolute;
-  border: var(--rule-dashed);
+  border: 1px dashed color-mix(in oklch, var(--ink-4) 62%, transparent);
   border-radius: 0;
   display: flex;
   align-items: center;
@@ -1400,7 +1501,7 @@
   font-family: var(--f-mono);
   font-size: 10px;
   letter-spacing: 0.1em;
-  color: var(--ink-3);
+  color: var(--ink-4);
   background: none;
   cursor: pointer;
   padding: 0;
@@ -2148,6 +2249,14 @@
   animation: pp-hint-fade 6s both;
   pointer-events: none;
 }
+/* 钉住可发现性一次性眉批（2026-09-05）：.pp-eyebrow-hint 族的画布落位
+ * ——书眉下方左缘（文类签列所在侧，提示长在功能所在处）。 */
+.pp-hint-canvas {
+  position: absolute;
+  left: 28px;
+  top: 76px;
+  z-index: 65;
+}
 @keyframes pp-hint-fade {
   0% {
     opacity: 0;
@@ -2548,9 +2657,12 @@
 }
 
 /* ── 纸条（V3a 抽纸条：拷贝语义快照——用户层物件；收尾 2026-08-24 完整化）── */
+/* 纸条 = 桌面纸片（2026-09-05 换装，plan：pin-strip-rework）：虚线框退役
+ * ——线级语义里虚线 = 草稿/占位，纸条是真实物件（快照已落盘）穿草稿的衣服
+ * 是语义错位；且纸条样式从未过审美账本（原型无此物件，产品自创）。物理缘
+ * 比钉住块再收半档（更小更薄的纸片）+ 接触落影。 */
 .pp-strip {
   position: absolute;
-  border: var(--rule-dashed);
   background: var(--paper);
   border-radius: 0;
   padding: var(--pp-ch-strip-padV) var(--pp-ch-strip-padH);
@@ -2560,12 +2672,44 @@
   cursor: grab;
   user-select: none;
   z-index: 40;
-  box-shadow: var(--elev-raise);
+  box-shadow:
+    inset 1px 1px 2px var(--sheet-lit),
+    inset -1px -1px 3px var(--sheet-shade),
+    inset 0 0 0 3px var(--sheet-band),
+    var(--shadow-sheet);
 }
 .pp-strip.pp-dragging {
   cursor: grabbing;
-  opacity: 0.92;
+  translate: 0 -2px;
+  box-shadow:
+    inset 1px 1px 2px var(--sheet-lit),
+    inset -1px -1px 3px var(--sheet-shade),
+    inset 0 0 0 3px var(--sheet-band),
+    var(--shadow-sheet-lift);
   z-index: 50;
+}
+/* 落定 settle（放下）：轻落归位（手感批——纸条成条/移位的「放下」一拍）。 */
+@keyframes pp-settle-drop {
+  from {
+    translate: 0 -2px;
+    box-shadow:
+      inset 1px 1px 2px var(--sheet-lit),
+      inset -1px -1px 3px var(--sheet-shade),
+      inset 0 0 0 3px var(--sheet-band),
+      var(--shadow-sheet-lift);
+  }
+}
+.pp-strip.pp-settle {
+  animation: pp-settle-drop var(--glide) both;
+}
+/* 两击销毁确认态（2026-09-05，plan §1.2）：首击变「确认？」——常显（不受
+ * hover 门控）+ 朱砂深（销毁是不可逆的用户动作）；3s 超时回退（JSX 状态
+ * 机）。中文文案走楷体（mono 栈无中文字形——P4 教训）。 */
+.pp-strip-remove--confirm {
+  opacity: 1;
+  font-family: var(--f-kai);
+  font-size: 10px;
+  color: var(--seal-deep);
 }
 /* 头部：题签 + 销毁钮（两端对齐——销毁钮只在 hover 时显形，不搅纸面） */
 .pp-strip-head {

@@ -147,6 +147,98 @@ describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
   });
 });
 
+describe('钉住与纸条换装（pin-strip-rework，2026-09-05——松手定夺 + 盖章剪报）', () => {
+  it('钉住块 = 盖章剪报：outline 画框退役 → 物理包边轻量档 + 纸材（流区判例延伸）', () => {
+    const pin = ruleBody(PANEL_CSS, '.pp-block.pp-pinned {');
+    // 画框语言退役（09-02 真纸化批判例延伸——框是画在纸上的线，真纸的缘是材料）
+    expect(pin).not.toContain('outline');
+    expect(pin).not.toContain('border');
+    // 物理包边轻量档：受光缘/背光缘/裱边带 + 接触落影，全走 token
+    expect(pin).toContain('var(--sheet-lit)');
+    expect(pin).toContain('var(--sheet-shade)');
+    expect(pin).toContain('var(--sheet-band)');
+    expect(pin).toContain('var(--shadow-sheet)');
+    // 材料与流区同源（paper-sheet 纹理——从同一张纸上剪下来的）
+    expect(pin).toContain('paper-sheet.jpg');
+    // hover = 落影提一档（变色/描边判死——09-02 同判例）
+    const hover = ruleBody(PANEL_CSS, '.pp-block.pp-pinned:hover {');
+    expect(hover).toContain('var(--shadow-sheet-active)');
+    expect(hover).not.toContain('var(--seal)');
+  });
+
+  it('竖排「钉住」身份签（原型 .pin-hint 补抄——此前漏抄）：右缘竖排朱砂深 + hover 显形', () => {
+    const hint = ruleBody(PANEL_CSS, '.pp-pin-hint {');
+    expect(hint).toContain('writing-mode: vertical-rl');
+    expect(hint).toContain('right: -36px');
+    expect(hint).toContain('color: var(--seal-deep)');
+    expect(hint).toContain('font-family: var(--f-mono)');
+    expect(ruleBody(PANEL_CSS, '.pp-block.pp-pinned:hover .pp-pin-hint')).toContain('opacity: 1');
+    // JSX 接线（BlockView 钉住态）
+    expect(PANEL_TSX).toContain('className="pp-pin-hint"');
+  });
+
+  it('纸条 = 桌面纸片：虚线框退役（虚线 = 草稿/占位语义，真实物件不穿草稿的衣服）→ 物理缘轻档', () => {
+    const strip = ruleBody(PANEL_CSS, '.pp-strip {');
+    expect(strip).not.toContain('border:');
+    expect(strip).toContain('var(--sheet-lit)');
+    expect(strip).toContain('var(--shadow-sheet)');
+    // 两击销毁确认态：楷体（mono 栈无中文字形——P4 教训）+ 常显 + 朱砂深
+    const confirm = ruleBody(PANEL_CSS, '.pp-strip-remove--confirm');
+    expect(confirm).toContain('opacity: 1');
+    expect(confirm).toContain('var(--f-kai)');
+    expect(confirm).toContain('var(--seal-deep)');
+  });
+
+  it('洞弱化一档：虚线语义保留（占位铁律），墨量收一档让位正文', () => {
+    const ghost = ruleBody(PANEL_CSS, '.pp-ghost {');
+    expect(ghost).toContain('dashed');
+    expect(ghost).toContain('color-mix');
+    expect(ghost).toContain('var(--ink-4)');
+  });
+
+  it('带显形：拖拽领域 = 接触落影第三档（lift token）——变色判死判例延续', () => {
+    expect(TOKENS_CSS).toContain('--shadow-sheet-lift:');
+    const band = ruleBody(PANEL_CSS, '.pp-region--band {');
+    expect(band).toContain('var(--shadow-sheet-lift)');
+    expect(band).not.toContain('background');
+    expect(band).not.toContain('var(--seal)');
+    // JSX 挂类（region 容器）
+    expect(PANEL_TSX).toContain('pp-region--band');
+  });
+
+  it('松手定夺：路径 B（拖选跨带成条）退役——拖选只做选择，抽纸条唯二入口', () => {
+    // pressStartRef/ghostRef 是路径 B 的手势状态，随路径 B 一并退役
+    expect(PANEL_TSX).not.toContain('pressStartRef');
+    expect(PANEL_TSX).not.toContain('ghostRef');
+    // instant 旗标分流在册：眉批撕出族保留首动建钉（携带预览 = 孤儿钉跟手）
+    expect(PANEL_TSX).toContain('instant: true');
+    expect(PANEL_TSX).toContain('instant: false');
+  });
+
+  it('可发现性一次性眉批：localStorage 旗标 + eyebrow 族落位', () => {
+    expect(PANEL_TSX).toContain("const PIN_HINT_KEY = 'lantai.hint.pinDragSeen'");
+    expect(PANEL_TSX).toContain('pp-eyebrow-hint pp-hint-canvas');
+    expect(ruleBody(PANEL_CSS, '.pp-hint-canvas')).toContain('position: absolute');
+  });
+
+  it('settle 动画纪律（同 pp-enter 事故立法）：keyframes 任何一帧不得声明 transform', () => {
+    const pin = keyframesBody(PANEL_CSS, 'pp-settle-pin');
+    expect(pin).not.toBe('');
+    expect(pin).not.toMatch(/transform\s*:/);
+    expect(pin).toContain('translate: 0 -3px');
+    const drop = keyframesBody(PANEL_CSS, 'pp-settle-drop');
+    expect(drop).not.toBe('');
+    expect(drop).not.toMatch(/transform\s*:/);
+    expect(drop).toContain('translate: 0 -2px');
+    // 拿起态走 translate 独立属性（不占内联 transform 槽位）；opacity .92 退役
+    const drag = ruleBody(PANEL_CSS, '.pp-block.pp-dragging {');
+    expect(drag).toContain('translate: 0 -2px');
+    expect(drag).not.toContain('opacity');
+    // 回流预览态批注在册
+    expect(ruleBody(PANEL_CSS, '.pp-block.pp-drag-returning::after')).toContain('松手回流');
+  });
+});
+
 describe('卷首 folio-head 钉值（2026-08-30 原型转录：prototype/lantai.html .folio-head 族）', () => {
   it('卷首结构：玉徽居中钤印 + 硬规线底 + 朱砂版口钮（2026-09-02 改档：只挂活跃卷）；浮动标签带退役', () => {
     const head = ruleBody(PANEL_CSS, '.pp-folio-head {');

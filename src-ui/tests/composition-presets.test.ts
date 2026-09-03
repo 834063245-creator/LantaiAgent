@@ -62,7 +62,9 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
         expect(toolIds).not.toContain(WEB_ROW);
         // 其余行保序保留（标准解析产物减去 minimal 禁用行）
         expect(toolIds).toEqual(
-          ids(resolvePresetComposition('standard').tools).filter((id) => id !== BROWSER_DESKTOP_ROW && id !== WEB_ROW && id !== WEB_FETCH_ROW),
+          ids(resolvePresetComposition('standard').tools).filter(
+            (id) => id !== BROWSER_DESKTOP_ROW && id !== WEB_ROW && id !== WEB_FETCH_ROW,
+          ),
         );
         expect(r.capabilities.map((c) => c.key)).not.toContain('graph-hooks');
         // 诊断按表序收集（web 行居表首——与 patch 声明序无关）

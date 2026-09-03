@@ -33,6 +33,7 @@
 - **Stage-5 收尾（2026-08-26）：工作区画布状态**——布局（摊开集合 + 流区位置 + 活跃会话）与公共物（钉住块 `WorkspacePin` = 活引用 + 内容快照、纸条）升格工作区级：`state/canvas-store.ts`（per-panelId scoped store），随 `{workspace}/.lantai/canvas.json`（`StoredWorkspaceCanvas`）落盘/恢复（`loadCanvasFromDisk`/`scheduleCanvasSave`/`flushCanvasSave`）；会话快照不再含 paper；公共物不绑会话、会话退场不连坐、钉到拔为止
 - 待定 #8 测量引擎 → `measure.ts`（上游 `@chenglou/pretext` 取代内部 `lib/pretext` 快照——已退役删除；`ui/pretext-cache.ts` 观测台侧同步切上游包）
 - 待定 #10 抽纸条 → `selection.ts`：选中文字拖离流 = 纸条（拷贝、可拖动、可销毁），空选区手势落空
+- **pin-strip-rework（2026-09-05，docs/plans/pin-strip-rework-plan.md）**——手势面修订：抽纸条入口收敛为「按住已有选区拖出 + 选中浮钮」两路（**拖选跨带成条退役**——拖选只做选择；壳层手势状态随路径 B 一并拆除）；块拖出改**松手定夺**（拖动全程纯预览，带外松手落钉 / 带内取消回槽，流内挖洞后移至 commit 帧；眉批撕出为 instant 例外——首动建钉保携带预览）；拖拽中来源流区带显形（`--shadow-sheet-lift` 落影档）。`selection.ts` 纯函数零改动（classifyDropZone 两路共用）。
 
 ## 测试
 
