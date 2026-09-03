@@ -52,6 +52,9 @@ async function mountDock(
     sessionTokens: {},
     nextSessionId: 2,
   });
+  // 清输入草稿槽——上个用例可能残留（运行态单钮三态用例手输过），
+  // 否则 mount 时本地 inputText 同步到旧值，三态判定被污染
+  getChatStore(panelId).input.getState().setInputText('');
   // 播种会话覆盖：deepseek-v4-pro + thinking 档位（方案甲：覆盖制——
   // setThinking 自带「以当前生效配置为底落覆盖」，不再需要 ensurePrefs 预热）
   getComposeStore(panelId).getState().setThinking('1', thinking);
@@ -186,6 +189,97 @@ describe('ComposerDock 运行中守卫（DSH 移植）', () => {
     expect(container.querySelector('.ms-dropdown')).toBeNull(); // 没打开（DSH onAttemptOpen veto）
     expect(container.querySelector('.pp-local-notice')?.textContent).toContain('正在运行');
     // 停止 exec 会触发运行态订阅更新——须在 act 内，否则 React 报未包裹更新
+    act(() => exec.stop());
+  });
+});
+
+describe('钤印单钮三态（2026-09-03：运行态按钮随输入翻转）', () => {
+  let container: HTMLDivElement;
+  let root: Root | null = null;
+
+  beforeEach(() => {
+    resetComposeStoresForTests();
+    resetCanvasStoresForTests();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+  afterEach(() => {
+    act(() => root?.unmount());
+    container.remove();
+    root = null;
+    agentSessionState.removeExec('seal', 1);
+  });
+
+  it('空闲 = 拟文；运行中空输入 = 停；打字立即翻回拟文且点它走 sendMessage（插话路径）', async () => {
+    const exec = createExecState();
+    exec.start();
+    agentSessionState.setExec('seal', 1, exec);
+    await mountDock('seal', container, (r) => {
+      root = r;
+    });
+
+    // 态一：运行中空输入 → 只有停（朱印），拟文不渲染
+    expect(container.querySelector('.pp-stop')).not.toBeNull();
+    expect(container.querySelector('.pp-send')).toBeNull();
+
+    // 态二：运行中打字 → 拟文回来、停消失（React 受控 textarea：原型 setter + input 事件）
+    const ta = container.querySelector<HTMLTextAreaElement>('textarea');
+    expect(ta).not.toBeNull();
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(ta, '插一句');
+      ta?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {});
+    expect(container.querySelector('.pp-stop')).toBeNull();
+    expect(container.querySelector('.pp-send')).not.toBeNull();
+
+    // 态三：点拟文 = sendMessage（运行中 = 内部走 agent.insertMessage 插入下轮生效）
+    const core = useCoreStore.getState().core;
+    act(() => {
+      container.querySelector<HTMLButtonElement>('.pp-send')?.click();
+    });
+    await act(async () => {});
+    expect(core?.sendMessage).toHaveBeenCalled();
+    act(() => exec.stop());
+  });
+
+  it('mount 后进入运行态：拟文翻停；停钮点了走 abort；清空输入回拟文', async () => {
+    const exec = createExecState();
+    agentSessionState.setExec('seal', 1, exec); // 先挂 exec（未运行）——mount 时运行态 effect 才会订阅它
+    await mountDock('seal', container, (r) => {
+      root = r;
+    });
+    expect(container.querySelector('.pp-send')).not.toBeNull();
+    expect(container.querySelector('.pp-stop')).toBeNull();
+
+    // mount 后 start → 订阅活着 → 翻成停
+    act(() => exec.start());
+    await act(async () => {});
+    expect(container.querySelector('.pp-stop')).not.toBeNull();
+    expect(container.querySelector('.pp-send')).toBeNull();
+
+    // 停钮 = abort
+    const core = useCoreStore.getState().core;
+    act(() => {
+      container.querySelector<HTMLButtonElement>('.pp-stop')?.click();
+    });
+    expect(core?.abort).toHaveBeenCalled();
+
+    // 打字（拟文）→ 清空（回停）——插话草稿清空后中止意图恢复
+    const ta = container.querySelector<HTMLTextAreaElement>('textarea');
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(ta, '准备插话');
+      ta?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {});
+    expect(container.querySelector('.pp-send')).not.toBeNull();
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(ta, '');
+      ta?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => {});
+    expect(container.querySelector('.pp-stop')).not.toBeNull();
+    expect(container.querySelector('.pp-send')).toBeNull();
     act(() => exec.stop());
   });
 });

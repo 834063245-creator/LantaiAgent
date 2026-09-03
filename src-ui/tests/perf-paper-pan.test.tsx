@@ -50,11 +50,23 @@ vi.mock('../src/bridge', () => ({
 const inkStats = { fillRect: 0 };
 class Fake2dCtx {
   fillStyle = '';
+  strokeStyle = '';
+  lineWidth = 1;
   setTransform(): void {}
   clearRect(): void {}
   fillRect(): void {
     inkStats.fillRect++;
   }
+  // 2026-09-03 补全 stroke 系（卷入 PaperPanel.tsx 进行中改动）：卷框
+  // strokeRect + 原点十字 beginPath→moveTo→lineTo→stroke——缺 stub 会
+  // TypeError 整测红。墨迹重画计数语义不变（fillRect 专属），stroke 系
+  // 是卷框/十字的常量开销，不计入平移期零重画信号。
+  beginPath(): void {}
+  moveTo(): void {}
+  lineTo(): void {}
+  stroke(): void {}
+  strokeRect(): void {}
+  closePath(): void {}
 }
 HTMLCanvasElement.prototype.getContext = function fakeGetContext() {
   return new Fake2dCtx();

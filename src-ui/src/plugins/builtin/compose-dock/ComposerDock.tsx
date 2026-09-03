@@ -992,7 +992,7 @@ export const ComposerDock = memo(function ComposerDock() {
             }
           }}
         />
-        {running && (
+        {running && !inputText.trim() ? (
           <button
             type="button"
             className="pp-stop"
@@ -1002,10 +1002,16 @@ export const ComposerDock = memo(function ComposerDock() {
           >
             停
           </button>
+        ) : (
+          <button
+            type="button"
+            className="pp-send"
+            title={running ? '插入进行中的回合（Agent 运行中，下轮生效）' : '发送本轮输入'}
+            onClick={onSend}
+          >
+            拟文
+          </button>
         )}
-        <button type="button" className="pp-send" onClick={onSend}>
-          拟文
-        </button>
       </div>
 
       {/* 墨量线（v2）：坞底 1px——本卷已用 token 占模型窗口比例，近满转朱砂。

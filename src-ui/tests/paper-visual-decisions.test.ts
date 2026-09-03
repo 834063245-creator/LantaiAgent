@@ -214,6 +214,13 @@ describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', (
     const send = ruleBody(PANEL_CSS, '.pp-composer .pp-send');
     expect(send).toContain('box-shadow: var(--shadow-anchor)');
     expect(send).toContain('font-weight: 600');
+
+    // 钤印单钮三态（2026-09-03）：停 = 朱砂实心章同构（实心 + 硬投影），
+    // 与拟文墨印同形却不同色相——色相即语义（墨=落款/插话，朱=中止警示）
+    // 注：ruleBody 会命中更早的钤印基座（公共选择器），故钉整块主规则文本
+    expect(PANEL_CSS).toContain(
+      '.pp-composer .pp-stop {\n  background: var(--seal);\n  border-color: var(--seal);\n  color: var(--paper);\n  box-shadow: var(--shadow-anchor);',
+    );
   });
 
   it('版口钮：坞顶 56px 朱砂（全坞唯一暖色件）', () => {
