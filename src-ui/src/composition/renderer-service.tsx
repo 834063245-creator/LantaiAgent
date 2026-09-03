@@ -28,7 +28,13 @@ import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan
 import { type Context, Service } from '../cordis';
 import { type BlockKind, parsePlanItems, type SourcedBlock } from '../paper/block-model';
 import { foldLabel, foldPreviewLine } from '../paper/fold';
-import { type MdBlock, type MdInline, type MdParseState, parseMarkdownIncremental } from '../paper/markdown';
+import {
+  type MdBlock,
+  type MdInline,
+  type MdParseState,
+  parseInline,
+  parseMarkdownIncremental,
+} from '../paper/markdown';
 import { parseCircledSegments } from '../paper/marks';
 import { hasArgsToShow, prettyToolArgs } from '../paper/tool-text';
 
@@ -585,7 +591,7 @@ function PlanBody({ block }: BlockRendererProps) {
   const [done, setDone] = useState(false);
 
   if (!cb) {
-    // 只读态（历史块 / 无审批回调）：维持拟策展示
+    // 只读态（历史块 / 无审批回调）：维持拟策展示（条目行内解析——裸 markdown 修复）
     return (
       <div className="pp-pc">
         <div className="pp-pc-head">
@@ -595,7 +601,9 @@ function PlanBody({ block }: BlockRendererProps) {
           <ol>
             {items.map((item, i) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: 静态列表逐行渲染，序号即身份
-              <li key={i}>{item}</li>
+              <li key={i}>
+                <InlineRuns inl={parseInline(item)} />
+              </li>
             ))}
           </ol>
         )}
@@ -620,7 +628,9 @@ function PlanBody({ block }: BlockRendererProps) {
         <ol>
           {items.map((item, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: 静态列表逐行渲染，序号即身份
-            <li key={i}>{item}</li>
+            <li key={i}>
+              <InlineRuns inl={parseInline(item)} />
+            </li>
           ))}
         </ol>
       )}
@@ -649,10 +659,12 @@ function PlanBody({ block }: BlockRendererProps) {
             </div>
           )}
           <div className="pp-pc-actions">
+            {/* 主操作随态让位：反馈框展开时「提交」当家，批准退行（避免双主钮） */}
             <button
               type="button"
-              className="pp-pc-btn pp-pc-btn--primary"
+              className={`pp-pc-btn${feedbackOpen ? '' : ' pp-pc-btn--primary'}`}
               disabled={!canApprove}
+              title={canApprove ? undefined : '先选择方案'}
               onClick={() => settle({ decision: 'approved', selectedLabel: selected ?? undefined })}
             >
               批准
@@ -665,6 +677,7 @@ function PlanBody({ block }: BlockRendererProps) {
                 type="button"
                 className="pp-pc-btn pp-pc-btn--primary"
                 disabled={!canRevise}
+                title={canRevise ? undefined : '先填写修改意见'}
                 onClick={() => settle({ decision: 'revise', feedback: feedback.trim() })}
               >
                 提交
@@ -673,6 +686,7 @@ function PlanBody({ block }: BlockRendererProps) {
             <button
               type="button"
               className="pp-pc-btn pp-pc-btn--reject"
+              title="回绝此拟策"
               onClick={() => settle({ decision: 'rejected' })}
             >
               拒绝

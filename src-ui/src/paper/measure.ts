@@ -30,6 +30,7 @@ import {
   type MdParseState,
   mdHasRichInline,
   mdPlainText,
+  parseInline,
   parseMarkdown,
   parseMarkdownIncremental,
 } from './markdown';
@@ -1087,13 +1088,22 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
     }
     case 'plan': {
       const items = parsePlanItems(p.content ?? '');
+      // 行内富文本镜像（2026-09-03 裸 markdown 修复）：条目经 parseInline 解析，
+      // 含加粗/行内码/链接等富行内时逐片段精确测高（measureInlineHeight）——
+      // 与渲染端 InlineRuns 同一解析，防渲染变宽后块高低估压下一块。
       const itemsH =
         items.length === 0
           ? 0
           : items.reduce(
               (sum, it) =>
                 sum +
-                measureTextHeight(it, b.w - PLAN_ITEM_INSET, PAPER_PLAN_ITEM_FONT, PAPER_PLAN_ITEM_LINE_HEIGHT) +
+                measureInlineHeight(
+                  parseInline(it),
+                  b.w - PLAN_ITEM_INSET,
+                  PAPER_TYPE.planItem.size,
+                  SONG_STACK,
+                  PAPER_PLAN_ITEM_LINE_HEIGHT,
+                ) +
                 PLAN_ITEM_GAP,
               0,
             ) - PLAN_ITEM_GAP;

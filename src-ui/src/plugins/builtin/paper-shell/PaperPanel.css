@@ -846,20 +846,23 @@
 .pp-md del {
   color: var(--graphite);
 }
-.pp-md-ci {
+.pp-md-ci,
+.pp-pc .pp-md-ci {
   font-family: var(--f-mono);
   font-size: 0.82em;
   padding: 1px var(--pp-md-ciPadH);
   border: var(--pp-md-ciBorder) solid var(--rule-soft);
   background: color-mix(in oklch, var(--paper-deep) 65%, transparent);
 }
-.pp-md-a {
+.pp-md-a,
+.pp-pc .pp-md-a {
   color: var(--indigo);
   text-decoration: underline;
   text-decoration-color: color-mix(in oklch, var(--indigo) 45%, transparent);
   text-underline-offset: 3px;
 }
-.pp-md-a:hover {
+.pp-md-a:hover,
+.pp-pc .pp-md-a:hover {
   color: var(--seal-deep);
   text-decoration-color: var(--seal);
 }
@@ -1060,7 +1063,11 @@
   color: var(--ink-3);
 }
 
-/* ── 拟策（plan）：顶硬线 + 石青序号 ── */
+/* ── 拟策（plan）：顶硬线 + 石青序号 ──
+ * 版式数值全部经 var(--pp-*) 引用 type-tokens.ts 注入（injectPaperTokens 挂
+ * .pp-root）：标题/选项区 = ASSET_TOKENS.plan（--pp-asset-plan-*，测高真源），
+ * 卡片 chrome/条目/操作行 = CHROME_TOKENS.plan（--pp-ch-plan-*）。改数值只动
+ * type-tokens.ts 一处，测量与渲染自动跟随；paper-token-audit 守护零悬空。 */
 .pp-pc {
   border-top: var(--rule-hard);
   border-bottom: var(--rule-soft);
@@ -1070,7 +1077,7 @@
   display: flex;
   align-items: baseline;
   gap: var(--pp-ch-plan-headGap);
-  margin-bottom: var(--pp-ch-plan-headMarginB);
+  margin-bottom: var(--pp-asset-plan-headMarginB);
 }
 .pp-pc-head .pp-pc-t {
   font-family: var(--f-song);
@@ -1111,39 +1118,33 @@
   color: var(--indigo);
 }
 
+/* 拟策条目行内码/链接：复用正文同款（InlineRuns 吐 pp-md-ci / pp-md-a 类，
+ * 选择器并组在 .pp-md 段——单一真源，拟策/正文共用）。 */
+
 /* 拟策审批（paper-interaction-handoff #2）：方案选择 + 操作行 */
 .pp-pc-options {
-  margin-top: var(--pp-ch-plan-optionsMarginTop);
+  margin-top: var(--pp-asset-plan-optionsMarginTop);
   border-top: var(--rule-soft);
-  padding-top: var(--pp-ch-plan-optionsPadTop);
+  padding-top: var(--pp-asset-plan-optionsPadTop);
 }
 .pp-pc-option {
   display: block;
   width: 100%;
   text-align: left;
-  padding: var(--pp-ch-plan-optionPadV) var(--pp-ch-plan-optionPadH);
-  margin-bottom: var(--pp-ch-plan-optionGap);
-  border: var(--pp-ch-plan-optionBorder) solid var(--rule-soft);
+  padding: var(--pp-asset-plan-optionPadV) var(--pp-asset-plan-optionPadH);
+  margin-bottom: var(--pp-asset-plan-optionGap);
+  border: var(--pp-asset-plan-optionBorder) solid transparent; /* 预留边框宽，hover/选中换色不抖版 */
   border-radius: 0;
   cursor: pointer;
   background: transparent;
   font-family: var(--f-song);
-  font-size: var(--pp-ch-plan-optionSize);
+  font-size: var(--pp-asset-plan-optionSize);
   color: var(--ink-2);
   transition:
     border-color var(--snap),
     color var(--snap),
-    background var(--snap);
-}
-.pp-pc-option:hover {
-  border-color: var(--indigo);
-  color: var(--ink-1);
-}
-.pp-pc-option--on {
-  border-color: var(--indigo);
-  color: var(--ink-1);
-  background: color-mix(in oklch, var(--indigo) 8%, var(--paper));
-  box-shadow: inset 2px 0 0 var(--indigo);
+    background var(--snap),
+    box-shadow var(--snap);
 }
 .pp-pc-option-label {
   display: block;
@@ -1151,9 +1152,28 @@
 }
 .pp-pc-option-desc {
   display: block;
-  font-size: var(--pp-ch-plan-optionDescSize);
+  font-size: var(--pp-asset-plan-optionDescSize);
+  line-height: 1.8;
   color: var(--ink-3);
-  margin-top: var(--pp-ch-plan-optionDescMarginTop);
+  margin-top: var(--pp-asset-plan-optionDescMarginTop);
+  transition: color var(--snap);
+}
+.pp-pc-option:hover {
+  border-color: var(--ink-3);
+  background: color-mix(in oklch, var(--ink-1) 4%, transparent);
+  color: var(--ink-1);
+}
+.pp-pc-option:hover .pp-pc-option-desc {
+  color: var(--ink-2);
+}
+.pp-pc-option--on {
+  border-color: var(--indigo);
+  color: var(--ink-1);
+  background: color-mix(in oklch, var(--indigo) 7%, var(--paper));
+  box-shadow: inset 2px 0 0 var(--indigo);
+}
+.pp-pc-option--on .pp-pc-option-label {
+  color: var(--indigo);
 }
 .pp-pc-actions {
   display: flex;
@@ -1162,32 +1182,63 @@
 }
 .pp-pc-btn {
   padding: var(--pp-ch-plan-actionsPadV) 14px;
-  border: var(--pp-ch-plan-actionsBorder) solid var(--rule-soft);
+  border: var(--pp-ch-plan-actionsBorder) solid var(--ink-4);
   border-radius: 0;
   background: transparent;
   font-family: var(--f-song);
   font-size: var(--pp-ch-plan-actionsSize);
+  line-height: var(--pp-ch-plan-actionsLh);
   color: var(--ink-2);
   cursor: pointer;
   transition:
     color var(--snap),
-    border-color var(--snap);
+    border-color var(--snap),
+    background var(--snap);
 }
 .pp-pc-btn:hover {
   color: var(--ink-1);
   border-color: var(--ink-3);
+  background: color-mix(in oklch, var(--ink-1) 4%, transparent);
 }
-.pp-pc-btn:disabled {
-  opacity: 0.45;
-  cursor: default;
+.pp-pc-btn:active {
+  background: color-mix(in oklch, var(--ink-1) 8%, transparent);
 }
+/* 主操作（批准/提交）：石青实底纸白字——与石青序号同一瓶墨 */
 .pp-pc-btn--primary {
-  border-color: var(--pass);
-  color: var(--pass);
+  border-color: var(--indigo);
+  background: var(--indigo);
+  color: var(--paper);
 }
+.pp-pc-btn--primary:hover {
+  border-color: var(--indigo);
+  background: color-mix(in oklch, var(--indigo) 84%, var(--paper));
+  color: var(--paper);
+}
+.pp-pc-btn--primary:active {
+  background: color-mix(in oklch, var(--indigo) 92%, var(--paper));
+}
+/* 拒绝：朱砂边字，hover 浸朱砂淡底 */
 .pp-pc-btn--reject {
   border-color: var(--seal-deep);
   color: var(--seal-deep);
+}
+.pp-pc-btn--reject:hover {
+  border-color: var(--seal-deep);
+  background: color-mix(in oklch, var(--seal) 10%, transparent);
+  color: var(--seal-deep);
+}
+/* 未就绪态：虚线墨淡，保持可读——不透明度糊钮不是纸面语言 */
+.pp-pc-btn:disabled {
+  border-style: dashed;
+  border-color: var(--ink-4);
+  color: var(--ink-3);
+  background: transparent;
+  cursor: default;
+}
+.pp-pc-btn--primary:disabled {
+  border-color: color-mix(in oklch, var(--indigo) 38%, var(--paper));
+  color: color-mix(in oklch, var(--indigo) 46%, var(--paper));
+  background: transparent;
 }
 .pp-pc-feedback {
   margin-top: 10px;
@@ -1199,6 +1250,7 @@
   padding: 8px 10px;
   font-family: var(--f-song);
   font-size: 13px;
+  line-height: 1.8;
   color: var(--ink-1);
   background: transparent;
   border: 1px solid var(--rule-soft);
@@ -1875,7 +1927,9 @@
 
 /* ── 钤印拟文（创作坞 v2 2026-08-31）：发送 = 落款钤印──
  * 墨色实心方章 + 硬偏移投影（浸墨 --shadow-anchor），hover 翻朱砂——
- * 人=朱砂语义：这是用户的动作；运行中「停」仍是朱砂描边款（.pp-stop 不动）。 */
+ * 人=朱砂语义：这是用户的动作。钤印单钮三态（2026-09-03）：空闲=墨印，
+ * 运行中空输入=朱印（停），运行中有输入=墨印（拟文=插话，下轮生效）——
+ * 两枚印同构（实心 + 硬投影），色相即语义：墨=落款 / 朱=中止。 */
 .pp-composer .pp-send {
   font-weight: 600;
   background: var(--ink-1);
@@ -2107,21 +2161,31 @@
     background var(--snap),
     color var(--snap),
     border-color var(--snap),
+    box-shadow var(--snap),
     transform var(--snap);
 }
 
-/* 停止按钮（施工单 #4）：运行中才出现，朱砂警示色，区别于拟文 */
+/* 停止按钮（施工单 #4 → v2 升级 2026-09-03）：运行中空输入才出现，朱砂钤印——
+ * 与拟文同构（实心方章 + 硬偏移投影），色相即语义：墨印=拟文（落款/插话），
+ * 朱印=停（中止警示）；hover 加深一档（警示加重），active 压印投影塌缩。
+ * 运行中有输入时本钮消失、拟文回来（chat-core 插入路径 = 插话下轮生效）。 */
 .pp-composer .pp-stop {
+  background: var(--seal);
   border-color: var(--seal);
-  color: var(--seal-deep);
+  color: var(--paper);
+  box-shadow: var(--shadow-anchor);
 }
 .pp-composer .pp-stop:hover {
-  background: var(--seal);
+  background: var(--seal-deep);
+  border-color: var(--seal-deep);
   color: var(--paper);
 }
 .pp-composer .pp-stop:active {
   background: var(--seal-deep);
+  border-color: var(--seal-deep);
+  color: var(--paper);
   transform: translateY(1px);
+  box-shadow: none; /* 压印：投影塌缩，章沉进纸面 */
 }
 
 /* 消息操作条（施工单 #5 → 2026-08-31 修订）：块左下角、块体之外（底边下方，

@@ -115,7 +115,6 @@ export const CHROME_TOKENS = {
     borderBottom: 1,
     padV: 14,
     headGap: 10,
-    headMarginB: 12,
     headSize: 15,
     headLh: 1.8,
     itemPadL: 36,
@@ -124,16 +123,9 @@ export const CHROME_TOKENS = {
     itemGap: 7,
     numTop: 2,
     numSize: 10,
-    optionsMarginTop: 14,
-    optionsBorderTop: 1,
-    optionsPadTop: 10,
-    optionPadV: 7,
-    optionPadH: 10,
-    optionGap: 6,
-    optionBorder: 1,
-    optionSize: 13,
-    optionDescSize: 12,
-    optionDescMarginTop: 2,
+    // 选项区数值（options*/option*）与标题字号归 ASSET_TOKENS.plan 单一真源
+    // （2026-09-03 双组去重：此前的 optionBorder 1vs2 分歧即双源漂移产物）；
+    // CSS 引用 --pp-asset-plan-*，测高派生 ASSET_DERIVED.plan*。
     actionsGap: 8,
     actionsMarginTop: 14,
     actionsSize: 13,
