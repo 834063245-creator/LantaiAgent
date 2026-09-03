@@ -20,6 +20,7 @@ import {
   snapshotCanvas,
   snapshotFromBlock,
 } from '../src/state/canvas-store';
+import { useCanvasViewStore } from '../src/state/canvas-view-store';
 
 // P3-2 分片测试：mock typedRpc 走内存假文件系统（真实 store + 真实序列化）
 const fakeFs = new Map<string, string>();
@@ -315,5 +316,41 @@ describe('canvas-store 磁盘分片（P3-2，2026-09-02）', () => {
     expect(await saveCanvasToDisk(STORE, WS)).toBe(true);
     expect(JSON.parse(fakeFs.get(`${WS}/.lantai/canvas-pins.json`) ?? '{}')).toEqual({ version: 1, pinned: {} });
     expect(JSON.parse(fakeFs.get(`${WS}/.lantai/canvas-strips.json`) ?? '{}')).toEqual({ version: 1, strips: [] });
+  });
+
+  it('R2 视口持久化：view 落盘 + 重启恢复（canvas.json view 字段 round-trip）', async () => {
+    // 前置：视图 store 清成身份态
+    const vs = useCanvasViewStore.getState();
+    vs.restoreView({ panX: 864, panY: 722, zoom: 1.25 });
+    expect(useCanvasViewStore.getState().restoredView).toEqual({ panX: 864, panY: 722, zoom: 1.25 });
+
+    const st = getCanvasStore(STORE).getState();
+    st.setRegion('7', { anchorX: 6480, anchorY: -1200, width: 1440 });
+    expect(await saveCanvasToDisk(STORE, WS)).toBe(true);
+    // 布局面带 view
+    const layout = JSON.parse(fakeFs.get(`${WS}/.lantai/canvas.json`) ?? '{}');
+    expect(layout.view).toEqual({ panX: 864, panY: 722, zoom: 1.25 });
+
+    // 模拟重启：清空视图 store + canvas → 读回 → view 恢复 + restoredView 置位
+    resetCanvasStoresForTests();
+    useCanvasViewStore.setState({ view: { panX: 0, panY: 0, zoom: 1 }, restoredView: null });
+    await loadCanvasFromDisk(STORE, WS);
+    expect(useCanvasViewStore.getState().view).toEqual({ panX: 864, panY: 722, zoom: 1.25 });
+    expect(useCanvasViewStore.getState().restoredView).toEqual({ panX: 864, panY: 722, zoom: 1.25 });
+  });
+
+  it('R2 视口持久化：旧 v2 无 view 字段照读不恢复（restoredView 保持 null）', async () => {
+    fakeFs.set(
+      `${WS}/.lantai/canvas.json`,
+      JSON.stringify({
+        version: 2,
+        spread: [{ sessionId: 1, anchorX: 0, anchorY: 0, width: 1440 }],
+        activeSessionId: 1,
+      }),
+    );
+    useCanvasViewStore.setState({ view: { panX: 0, panY: 0, zoom: 1 }, restoredView: null });
+    await loadCanvasFromDisk(STORE, WS);
+    expect(useCanvasViewStore.getState().restoredView).toBeNull();
+    expect(useCanvasViewStore.getState().view).toEqual({ panX: 0, panY: 0, zoom: 1 });
   });
 });

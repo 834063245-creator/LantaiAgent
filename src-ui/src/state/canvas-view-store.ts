@@ -25,6 +25,9 @@ interface CanvasViewState {
   view: Viewport;
   /** 画布视口尺寸（屏幕像素；PaperPanel 挂载期 ResizeObserver 写） */
   canvasSize: { w: number; h: number };
+  /** 从 canvas.json 恢复的视口（R2 冷启动聚焦：loadCanvasFromDisk 写 view 时置位，
+   *  PaperPanel 首测 effect 用它，用户动视口（setView）即清除——只服务恢复一跳）。 */
+  restoredView: Viewport | null;
   /** 在途定位请求（sessionId）；null = 无。 */
   pendingFocusId: string | null;
   /** 更新视口（PaperPanel 平移/缩放/动画共用）。 */
@@ -33,11 +36,14 @@ interface CanvasViewState {
   setCanvasSize: (w: number, h: number) => void;
   /** 发起/清空定位请求（书脊左键 / 侧边栏行点击）。 */
   requestFocus: (sessionId: string | null) => void;
+  /** 恢复视口（loadCanvasFromDisk 读回 canvas.json 的 view 字段时调用）。 */
+  restoreView: (v: Viewport) => void;
 }
 
 export const useCanvasViewStore = create<CanvasViewState>((set) => ({
   view: identityView(),
   canvasSize: { w: 800, h: 600 },
+  restoredView: null,
   pendingFocusId: null,
 
   setView: (updater) =>
@@ -48,7 +54,13 @@ export const useCanvasViewStore = create<CanvasViewState>((set) => ({
       // 单例，PaperPanel/TocStrip/SpineRack 全订阅）；渲染期间再叠加 store 写
       // 会滚成 Maximum update depth（2026-09-01 拖画布报错现场）。
       if (next.zoom === s.view.zoom && next.panX === s.view.panX && next.panY === s.view.panY) return s;
-      return { view: next };
+      return { view: next, restoredView: null };
+    }),
+
+  restoreView: (v) =>
+    set((s) => {
+      if (s.view.zoom === v.zoom && s.view.panX === v.panX && s.view.panY === v.panY) return s;
+      return { view: v, restoredView: v };
     }),
 
   setCanvasSize: (w, h) => set((s) => (s.canvasSize.w === w && s.canvasSize.h === h ? s : { canvasSize: { w, h } })),

@@ -26,6 +26,7 @@ import type { StreamRegionState } from '../paper/space';
 import { typedRpc } from '../rpc-contract';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
 import { useBgAlertStore } from './bg-alert-store';
+import { useCanvasViewStore } from './canvas-view-store';
 import { createScopedStore } from './scoped-store';
 
 // ── 类型 ──
@@ -290,11 +291,14 @@ export function canvasStripsFilePath(workspace: string): string {
   return `${norm}/.lantai/canvas-strips.json`;
 }
 
-/** 磁盘布局面 v2（分片格式）：canvas.json 本体形状。 */
+/** 磁盘布局面 v2（分片格式）：canvas.json 本体形状。
+ *  view 字段（R2 冷启动聚焦，2026-09-05）：视口 pan/zoom 持久化——重启回到
+ *  上次视野；旧文件无此字段照读（老数据由 restoreCanvasSpread 兜底聚焦）。 */
 interface StoredCanvasLayoutV2 {
   version: 2;
   spread: StoredWorkspaceCanvas['spread'];
   activeSessionId: number | null;
+  view?: { panX: number; panY: number; zoom: number };
 }
 
 /** 钉住块分片形状。 */
@@ -369,6 +373,15 @@ export async function loadCanvasFromDisk(storeId: string, workspace: string): Pr
         activeSessionId: canvas.activeSessionId ?? null,
         publics: { pinned: pins, strips },
       });
+    // R2 冷启动聚焦：恢复上次视口（restoreView 置位 restoredView——
+    // PaperPanel 首测 effect 优先用它，用户动视口即清除）
+    if (canvas.view && Number.isFinite(canvas.view.panX) && Number.isFinite(canvas.view.panY) && canvas.view.zoom > 0) {
+      useCanvasViewStore.getState().restoreView({
+        panX: canvas.view.panX,
+        panY: canvas.view.panY,
+        zoom: canvas.view.zoom,
+      });
+    }
     return;
   }
   if (canvas.version === 1) {
@@ -402,6 +415,9 @@ export async function saveCanvasToDisk(storeId: string, workspace: string): Prom
         version: 2,
         spread: payload.spread,
         activeSessionId: payload.activeSessionId ?? null,
+        // R2 冷启动聚焦：视口随画布布局面一起落盘（一个工作区一张纸——
+        // view 随工作区走，语义自洽；视口变化经 PaperPanel 订阅防抖落盘）
+        view: useCanvasViewStore.getState().view,
       } satisfies StoredCanvasLayoutV2),
     });
     // D5（拍板 C）：成功解除警报——下次失败重新弹
