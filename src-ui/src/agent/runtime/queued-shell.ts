@@ -18,6 +18,8 @@ import { agentInvoke } from '../tool';
 const SHELL_TIMEOUT = 600_000;
 /** 流式累积上限：只保留末尾，防止超长输出在 WebView/Agent 上下文里无界膨胀。 */
 const STREAM_OUTPUT_CAP = 64 * 1024;
+/** shell:done 丢失自愈的探测周期 —— ledger 查询（bash_output 三态判定）。 */
+const SHELL_DONE_PROBE_MS = 10_000;
 
 /** streamId → 事件解绑函数 — resolveOnce 时统一清理 */
 const _shellCleanups = new Map<string, Array<() => void>>();
@@ -70,11 +72,16 @@ export async function execStreamedShell(
       let streamTruncated = false;
       let resolvedCwd: string | null = null;
       let timer: ReturnType<typeof setTimeout> | null = null;
+      let probeTimer: ReturnType<typeof setInterval> | null = null;
       let settled = false;
       const cleanup = () => {
         if (timer) {
           clearTimeout(timer);
           timer = null;
+        }
+        if (probeTimer) {
+          clearInterval(probeTimer);
+          probeTimer = null;
         }
         const fns = _shellCleanups.get(streamId);
         if (fns) {
@@ -151,6 +158,35 @@ export async function execStreamedShell(
         if (signal?.aborted && jobId != null) {
           void agentInvoke('bash_kill', { jobId, agentId }).catch(() => {});
           resolveOnce(withTruncationNote(`[已取消] 命令执行被中止（agent 运行被中断）。\n${fullOutput}`));
+        }
+        // ── shell:done 丢失自愈（2026-09-03「跑完挂起」症状类修复）──
+        // Rust 侧命令结束即 remove_job + emit done；done 偶发未达 WebView 时，
+        // 本地只剩 600s 兜底（用户体感 = 永久挂起）。探测通道 = ledger 查询
+        // （bash_output）：任务仍在 = Ok("[任务运行中]") → 继续等；探测撞上
+        // 「进程刚退、monitor 未移除」窗口 = Ok("[任务已完成, exit code: N]")
+        // 连终值一并带回 → 直接结算；job 已从 ledger 消失 = done 已发出但
+        // 丢失 → 用本地累积输出合成结果。其它错误视为瞬时 → 下周期再探。
+        // 所有失败模式都退化为「维持现状」，不引入新挂点。
+        if (jobId != null) {
+          probeTimer = setInterval(() => {
+            void agentInvoke<string>('bash_output', { jobId })
+              .then((out) => {
+                if (settled) return;
+                if (out.includes('[任务已完成')) resolveOnce(withCwdEcho(withTruncationNote(out)));
+              })
+              .catch((e: unknown) => {
+                if (settled) return;
+                const msg = e instanceof Error ? e.message : String(e);
+                if (!msg.includes('不存在')) return;
+                resolveOnce(
+                  withCwdEcho(
+                    withTruncationNote(
+                      `[exit ?] shell:done 事件未到达（任务已从 ledger 移除），按已累积输出结算\n${fullOutput}`,
+                    ),
+                  ),
+                );
+              });
+          }, SHELL_DONE_PROBE_MS);
         }
       } catch (e: unknown) {
         resolveOnce('错误: ' + e);
