@@ -7,6 +7,8 @@
 //
 // 覆盖清单（新生成器在此登记——漏登记 = 目录不受门禁保护）：
 //   - model-tool-contract.md（工具面契约，gen-tool-contract-md）
+//   - kernel-manifests.generated.ts（内核插件 manifest TS 镜像，gen-plugin-manifests；
+//     kernel-plugin-runtime 2026-09-03 挂入门禁）
 //   - service-catalog.md（ctx 服务目录，gen-service-catalog）
 //   - event-catalog.md（事件目录，gen-event-catalog）
 //   - open-surface-contract.md 指纹（契约版本化，gen-contract-fingerprint）
@@ -23,6 +25,7 @@ const SRC_UI = path.join(ROOT, 'src-ui');
 
 const generators = [
   { name: 'model-tool-contract', script: path.join(ROOT, 'scripts', 'gen-tool-contract-md.cjs') },
+  { name: 'plugin-manifests', script: path.join(ROOT, 'scripts', 'gen-plugin-manifests.cjs') },
   { name: 'service-catalog', script: path.join(ROOT, 'scripts', 'gen-service-catalog.cjs') },
   { name: 'event-catalog', script: path.join(ROOT, 'scripts', 'gen-event-catalog.cjs') },
   { name: 'contract-fingerprint', script: path.join(ROOT, 'scripts', 'gen-contract-fingerprint.cjs') },

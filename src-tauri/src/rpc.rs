@@ -12,6 +12,7 @@
 use serde_json::Value;
 
 use crate::permissions::Tool;
+use tauri::Manager;
 
 // ── 参数辅助函数 ──
 
@@ -593,25 +594,19 @@ async fn dispatch_rpc(
         // ═══════════════════════════════════════════════════════
         // 搜索（3 个命令）
         // ═══════════════════════════════════════════════════════
-        "search_content" => {
-            let directory = req_str(&params, "directory", "search_content")?;
-            let pattern = req_str(&params, "pattern", "search_content")?;
-            let file_types = opt_str(&params, "file_types");
-            let max_results = opt_usize(&params, "max_results");
-            let use_regex = opt_bool(&params, "use_regex");
-            let context_lines = opt_usize(&params, "context_lines");
-            let output_mode = opt_str(&params, "output_mode");
-            let show_line_numbers = opt_bool(&params, "show_line_numbers");
-            let head_limit = opt_usize(&params, "head_limit");
-            let offset = opt_usize(&params, "offset");
-            let glob_filter = opt_str(&params, "glob_filter");
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::search::search_content(
-                directory, pattern, file_types, max_results, use_regex,
-                context_lines, output_mode, show_line_numbers, head_limit,
-                offset, glob_filter, is_agent, _agent_id, state, app,
-            ).await
+        "tool_call" => {
+            // 内核插件运行时统一入口（kernel-plugin-runtime）。
+            // args 说 manifest schema 的语言（camelCase）；_agent_id meta 嵌在 args 内。
+            let plugin = req_str(&params, "plugin", "tool_call")?;
+            let tool = req_str(&params, "tool", "tool_call")?;
+            let args = params.get("args").cloned().unwrap_or_else(|| serde_json::json!({}));
+            let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
+            let registry = app.state::<std::sync::Arc<crate::tool_plugins::PluginRegistry>>();
+            crate::tool_plugins::dispatch_tool_call(&registry, &plugin, &tool, args, is_agent, &state, &app).await
+        }
+        "plugin_tool_manifests" => {
+            let registry = app.state::<std::sync::Arc<crate::tool_plugins::PluginRegistry>>();
+            Ok(crate::tool_plugins::registry_manifests(&registry).to_string())
         }
         "glob" => {
             let pattern = req_str(&params, "pattern", "glob")?;

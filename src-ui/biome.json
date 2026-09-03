@@ -6,7 +6,13 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!tests/convergence/baseline", "!tests/convergence/reports", "!dist-plugins"]
+    "includes": [
+      "**",
+      "!tests/convergence/baseline",
+      "!tests/convergence/reports",
+      "!dist-plugins",
+      "!src/agent/tools/kernel-manifests.generated.ts"
+    ]
   },
   "formatter": {
     "enabled": true,

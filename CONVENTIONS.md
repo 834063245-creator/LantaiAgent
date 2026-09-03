@@ -113,6 +113,11 @@ React 靠引用比较观察变化。store 是唯一提交口：
 ✅ 新增/修改模型可见工具必须走 src-ui/src/agent/tools/define-tool.ts：
    一个 zod schema 同时产出 JSON Schema（z.toJSONSchema draft-7 + io:'input'）、
    运行时参数校验、z.infer 类型化 execute 参数
+✅ **例外（kernel-plugin-runtime，2026-09-03）**：Rust 内核插件的工具面来自
+   manifest（src-tauri/src/tool_plugins/<name>/manifest.json，真源），前端经
+   agent/tools/manifest-tools.ts 生成 Tool（execute 走统一 tool_call RPC）——
+   schema 字节 = manifest 字节，键序 = zod 发射序勿规整；镜像用
+   npm run gen:plugin-manifests 再生成（doc-sync 门禁）
 ✅ 工具内部统一 .passthrough()：_forceGate 在 schema 里声明（LLM 要看得见）；
    _callId / _agent_id 不声明（executor 内部注入）
 ✅ execute 必须全量透传 args，禁止重建参数对象（fork 子 Agent 的 _agent_id 会丢）

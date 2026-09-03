@@ -63,7 +63,7 @@
 │  │ workspace/dataflow）+ 决议链（显式 path →        │   │
 │  │ _session_id → 焦点会话 → 单槽 → 全局兜底）        │   │
 │  └──────────────────────────────────────────────┘   │
-│         单一 RPC 入口 (rpc.rs 157 个方法薄壳)          │
+│         单一 RPC 入口 (rpc.rs 147 个方法薄壳)          │
 └──────────────────────┬──────────────────────────────┘
                        │ Tauri IPC (invoke)
 ┌──────────────────────┴──────────────────────────────┐
@@ -482,7 +482,7 @@ Engine 作为独立 MCP Server 运行，通过 JSON-RPC over stdin/stdout 对外
 
 ### 7.1 RPC 单一入口
 
-`rpc.rs` 一个 `#[tauri::command] rpc(method, params)` + 146 个方法分支是全部前端能力的单一 IPC 入口；**命令实现是薄壳**（参数提取 + State 转换 + 横切），业务编排在应用层 `app/services/`。分类（由生成物 `docs/agents/frontend-rpc-contract.md` 实测为准，`scripts/gen-rpc-contract-md.cjs` 再生）：应用层（数据上下文/会话 attach）、Engine 调度、Graph、Git、文件系统、搜索、Web、CDP 浏览器控制、Shell（含协议桥）、编辑器、身份认证/权限、**插件安装通道**（plugin_install/uninstall/set_enabled/dir）、Agent 隔离（worktree）、外部服务、Hologram 遗留、工作区、会话持久化、约束、数据流、Aura 记忆、PTY、LSP、desktop/UIA（进程内 COM：probe/screenshot/tree/find/read/wait/click/…/audit）。
+`rpc.rs` 一个 `#[tauri::command] rpc(method, params)` + 147 个方法分支是全部前端能力的单一 IPC 入口（2026-09-03 起含内核插件运行时统一入口 `tool_call` + `plugin_tool_manifests`——工具业务按 kernel-plugin-runtime 计划逐批从细粒度分支迁入内核插件注册表）；**命令实现是薄壳**（参数提取 + State 转换 + 横切），业务编排在应用层 `app/services/`。分类（由生成物 `docs/agents/frontend-rpc-contract.md` 实测为准，`scripts/gen-rpc-contract-md.cjs` 再生）：应用层（数据上下文/会话 attach）、Engine 调度、Graph、Git、文件系统、搜索、Web、CDP 浏览器控制、Shell（含协议桥）、编辑器、身份认证/权限、**插件安装通道**（plugin_install/uninstall/set_enabled/dir）、Agent 隔离（worktree）、外部服务、Hologram 遗留、工作区、会话持久化、约束、数据流、Aura 记忆、PTY、LSP、desktop/UIA（进程内 COM：probe/screenshot/tree/find/read/wait/click/…/audit）。
 
 ### 7.2 ResourceLedger（统一生命周期）
 
@@ -680,7 +680,7 @@ Engine 编译为独立的 `hologram-engine.exe`。兰台（Phase 3 起）每工�
 
 ### 10.2 为什么 Tauri 壳只做通道
 
-Tauri Shell 的 `rpc.rs` 有 157 个方法但均为薄壳（L3 起业务编排在 `app/services/` 应用层）。所有图谱操作经数据上下文决议到工作区专属 Engine 实例，Shell 专注于通道、权限裁决、沙箱隔离、插件安装通道。这种分离使得：
+Tauri Shell 的 `rpc.rs` 有 147 个方法但均为薄壳（L3 起业务编排在 `app/services/` 应用层；工具业务自 2026-09-03 起经 `tool_call` 走内核插件注册表）。所有图谱操作经数据上下文决议到工作区专属 Engine 实例，Shell 专注于通道、权限裁决、沙箱隔离、插件安装通道。这种分离使得：
 - 权限引擎在 Engine 不可用时仍然生效
 - Engine 的测试可以完全不涉及 Tauri
 - 非 Tauri 的 Engine 消费者（纯 MCP 客户端）也能获得完整图谱能力

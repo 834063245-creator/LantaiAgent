@@ -165,22 +165,19 @@ export interface RpcContract {
     result: string; // "null"
   };
 
-  // ── 搜索 ─────────────────────────────────────────────────
-  search_content: {
+  // ── 内核插件运行时（kernel-plugin-runtime，2026-09-03）──────────
+  // 统一工具入口：args 说 manifest schema 的语言（camelCase 键）；_agent_id meta 嵌在 args 内。
+  tool_call: {
     params: {
-      directory: string;
-      pattern: string;
-      file_types?: string;
-      max_results?: number;
-      use_regex?: boolean;
-      context_lines?: number;
-      output_mode?: string;
-      show_line_numbers?: boolean;
-      head_limit?: number;
-      offset?: number;
-      glob_filter?: string;
+      plugin: string;
+      tool: string;
+      args?: Record<string, unknown>;
     } & AgentCtx;
     result: string; // JSON
+  };
+  plugin_tool_manifests: {
+    params: Record<string, never>;
+    result: string; // JSON（全量 ToolManifest 数组）
   };
   glob: {
     params: { pattern: string; path?: string } & AgentCtx;

@@ -176,6 +176,7 @@ flowchart LR
 - session 变异（Phase 5 立规）：只走 `_appendMessage / _replaceSession / _retractSessionRange` 三入口（spec AST 白名单 + gate 计数双层门禁）；改工具折叠逻辑必须同步 `session-log.ts` 的 `derivePayload`。
 - 改 `src-ui/src/agent/**` 或 `src-ui/src/composition/**` 必过 `npm run verify:convergence`（T0 静态 + 8 baseline 对拍；不设 `CONVERGENCE_PRESET` 直接跑——standard 快照逐字节零漂移是组合层的硬门禁）；record 永不上 CI，baseline 变更走 `docs/archive/agent-core-convergence/baseline-change-request.md` 审批。
 - 新增 RPC：`src-tauri/src/rpc.rs` 分支 + 前端 `RpcContract`；`docs/agents/frontend-rpc-contract.md` 由 `scripts/gen-rpc-contract-md.cjs` 生成，勿手改。
+- **工具业务一律走内核插件运行时（kernel-plugin-runtime，2026-09-03 起）**：新工具 = `src-tauri/src/tool_plugins/<name>/`（manifest.json + ToolPlugin 实现）+ `tool_call` 统一入口，不再新增细粒度 RPC 分支；前端工具面从 manifest 生成（`agent/tools/manifest-tools.ts` + `npm run gen:plugin-manifests` 镜像，doc-sync 门禁）。契约与阶段见 `docs/plans/kernel-plugin-runtime-plan.md`。
 
 ## 8. 多 Agent 并发纪律（事故报告：docs/agents/platform-bugs-2026-08-13.md）
 

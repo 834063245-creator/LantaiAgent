@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-09-02T10:04:45.021Z
-> 方法总数：146（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-09-03T15:53:46.792Z
+> 方法总数：147（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -73,14 +73,15 @@
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
-| `search_content` | directory, pattern | file_types, max_results, use_regex, context_lines, output_mode, show_line_numbers, head_limit, offset, glob_filter, is_agent, _agent_id | 字符串 |
+| `tool_call` | plugin, tool | is_agent, args | 字符串 |
+| `plugin_tool_manifests` | — | — | 字符串 |
 | `glob` | pattern | path, is_agent, _agent_id | 字符串 |
 
 ## Web
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
-| `web_search` | query | _agent_id | 字符串 |
+| `web_search` | query | _agent_id, max_results | 字符串 |
 | `web_fetch` | url | _agent_id | 字符串 |
 
 ## CDP 浏览器控制
