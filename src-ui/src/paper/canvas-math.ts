@@ -122,13 +122,19 @@ export function layoutFlow(
   const out = new Map<string, { x: number; y: number }>();
   // 从锚点 (0, 0) 向上：第一个（最旧）块在最上，最新的贴锚点。
   // 自底向上累积：游标从 0 出发向 -y 走，最后一块（最新）底边贴 y=0。
+  // ⚠ 防御（2026-09-03 级联排查）：h/w 非有限数（NaN/Infinity/负）会从该块起
+  //  向上游整体污染游标（cursor = y - h - gap），让「从坏点起全乱」——
+  //  非有限 h 按 0 兜底（宁可压扁单块，不级联全卷）；w 非有限用默认宽。
   let cursor = 0;
   for (let i = flowBlocks.length - 1; i >= 0; i--) {
     const b = flowBlocks[i];
     const upper = flowBlocks[i - 1]; // 上方（更旧）相邻块
-    const w = b.w ?? 720;
+    const rawH = b.h;
+    const h = Number.isFinite(rawH) && rawH >= 0 ? rawH : 0;
+    const rawW = b.w ?? 720;
+    const w = Number.isFinite(rawW) && rawW > 0 ? rawW : 720;
     const x = -w / 2; // 窄带居中（原点在窄带中轴）
-    const y = cursor - b.h; // 块顶 = 游标 - 高度
+    const y = cursor - h; // 块顶 = 游标 - 高度
     out.set(b.id, { x, y });
     cursor = y - gapAbove(b, upper);
   }

@@ -146,6 +146,31 @@ describe('paper/canvas-math', () => {
     for (const p of laid.values()) expect(p.x).toBe(-360); // 默认宽 720
   });
 
+  it('layoutFlow：单块高 NaN → 按 0 兜底不级联（「从坏点起全乱」的防御）', () => {
+    // 回归：坏块（h=NaN）在中间，上方旧块必须仍拿到有限坐标
+    const laid = layoutFlow([
+      { id: 'old', h: 100 },
+      { id: 'bad', h: Number.NaN }, // 测量异常的来文块
+      { id: 'mid', h: 80 },
+      { id: 'new', h: 60 },
+    ]);
+    const ys = ['old', 'bad', 'mid', 'new'].map((id) => laid.get(id)?.y);
+    for (const y of ys) expect(Number.isFinite(y)).toBe(true);
+    // 坏块按 0 高：mid 底边 = new 顶 - gap，bad 落在 mid 顶 - gap，old 再往上
+    expect(laid.get('bad')?.y).toBe(laid.get('mid')!.y - ANCHOR.blockGap);
+    // 坏块宽也兜底默认 720（x 不 NaN）
+    for (const p of laid.values()) expect(Number.isFinite(p.x)).toBe(true);
+  });
+
+  it('layoutFlow：块宽 NaN → 兜底默认宽（x 不污染）', () => {
+    const laid = layoutFlow([
+      { id: 'a', h: 50, w: Number.NaN },
+      { id: 'b', h: 50, w: 720 },
+    ]);
+    expect(laid.get('a')?.x).toBe(-360); // 默认宽 720
+    expect(laid.get('b')?.x).toBe(-360);
+  });
+
   it('viewForAnchor：锚点位于视口下缘上方、水平居中', () => {
     const { panX, panY } = viewForAnchor(1000, 800);
     // 世界 (0,0) 应映射到屏幕 (500, 800-96)

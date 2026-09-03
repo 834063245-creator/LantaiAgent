@@ -22,7 +22,7 @@ import { create } from 'zustand';
 import type { BlockAssetMeta, BlockKind, SourcedBlock } from '../paper/block-model';
 import { createBlock } from '../paper/block-model';
 import type { PaperStrip } from '../paper/selection';
-import type { StreamRegionState } from '../paper/space';
+import { REGION_MAX_W, REGION_MIN_W, STREAM_REGION, type StreamRegionState } from '../paper/space';
 import { typedRpc } from '../rpc-contract';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
 import { useBgAlertStore } from './bg-alert-store';
@@ -228,7 +228,17 @@ function createCanvasStoreImpl() {
         if (!canvas) return { spread: {}, pins: {}, strips: [], activeSessionId: null, deletedSessionIds: new Set() };
         const spread: Record<string, StreamRegionState> = {};
         for (const r of canvas.spread ?? []) {
-          spread[String(r.sessionId)] = { anchorX: r.anchorX, anchorY: r.anchorY, width: r.width };
+          // ⚠ 恢复校验（2026-09-03 级联排查）：磁盘脏数据（width/anchor 缺失、
+          // null/字符串/NaN/Infinity）直接透传会让流区宽变 NaN → 块宽 NaN →
+          // 测高 NaN → 布局从该块起级联打碎（「从坏点起全坏」症状的磁盘侧根因）。
+          // 非有限数/越界一律回落默认（stdWidth 1440 / 锚点 0）——宁可位置重排，不污染布局。
+          const w =
+            Number.isFinite(r.width) && r.width >= REGION_MIN_W && r.width <= REGION_MAX_W
+              ? r.width
+              : STREAM_REGION.width;
+          const ax = Number.isFinite(r.anchorX) ? r.anchorX : 0;
+          const ay = Number.isFinite(r.anchorY) ? r.anchorY : 0;
+          spread[String(r.sessionId)] = { anchorX: ax, anchorY: ay, width: w };
         }
         return {
           spread,

@@ -9,7 +9,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createBlock } from '../src/paper/block-model';
 import { makeStrip, resetStripIdCounterForTests } from '../src/paper/selection';
-import { defaultRegionFor } from '../src/paper/space';
+import { defaultRegionFor, STREAM_REGION } from '../src/paper/space';
 import {
   blockFromSnapshot,
   getCanvasStore,
@@ -185,6 +185,37 @@ describe('canvas-store 快照互转与持久化往返', () => {
     expect(restored.pins[block.id]).toMatchObject({ x: 100, y: -200 });
     expect(restored.strips).toHaveLength(1);
     expect(restored.activeSessionId).toBe('7');
+  });
+
+  it('loadCanvas 脏数据校验：width/anchor 非有限数回落默认（NaN 级联防御）', () => {
+    getCanvasStore(STORE)
+      .getState()
+      .loadCanvas({
+        version: 1,
+        spread: [
+          { sessionId: 1, anchorX: 100, anchorY: -200, width: 1440 }, // 正常
+          { sessionId: 2, anchorX: Number.NaN, anchorY: -300, width: 1440 }, // anchorX 脏
+          { sessionId: 3, anchorX: 300, anchorY: -400, width: Number.NaN }, // width 脏
+          { sessionId: 4, anchorX: 400, anchorY: -500, width: 99999999 }, // 越界
+        ],
+        activeSessionId: 1,
+        publics: { pinned: {}, strips: [] },
+      });
+    const st = getCanvasStore(STORE).getState();
+    // 正常卷：原样
+    expect(st.spread['1']).toEqual({ anchorX: 100, anchorY: -200, width: 1440 });
+    // anchorX 脏 → 回落 0
+    expect(st.spread['2']).toEqual({ anchorX: 0, anchorY: -300, width: 1440 });
+    // width 脏 → 回落默认宽
+    expect(st.spread['3'].width).toBe(STREAM_REGION.width);
+    // 越界宽 → 回落默认宽（> REGION_MAX_W 的脏数据不进布局）
+    expect(st.spread['4'].width).toBe(STREAM_REGION.width);
+    // 所有恢复值必须是有限数（布局级联底线）
+    for (const r of Object.values(st.spread)) {
+      expect(Number.isFinite(r.anchorX)).toBe(true);
+      expect(Number.isFinite(r.anchorY)).toBe(true);
+      expect(Number.isFinite(r.width)).toBe(true);
+    }
   });
 
   it('loadCanvas(null) = 空画布，不炸（旧存档/缺失）', () => {
