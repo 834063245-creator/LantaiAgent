@@ -45,6 +45,7 @@
 | 23 | `src-tauri/src/audit.rs:34-45` | 审计日志写失败静默 → deny/审批不留痕，安全功能失效无法取证 | S（eprintln + 计数） | ✅ 已拆（eprintln 告警含丢失记录摘要 + AtomicU64 计数；测试×2） |
 | 24 | `ui/FileTranslatorPanel.tsx:352` | read_file_content 缓存路径漏 stripLineNumbers → 翻译缓存 100% 不命中（已在坏，无声烧钱） | S | ✅ 已拆（stripLineNumbers + 顺带拆 computeStats 身份导致的 IPC 热循环；测试×1） |
 | 25 | `ui/react/ChatFooter.tsx` × `settings.ts:saveSettings` × `events.ts:agent:config-changed` | **持久化函数兼职控制总线**：模式按钮靠 saveSettings 生效，但 Agent 重建链挂在独立槽 getOnSettingsSave——两条订阅通道并存，任何新增 saveSettings 调用点都可能漏重建链 | 规划按钮高亮但 Agent 不变只读（已真实引爆）；同类调用点会静默失效，单测全绿拦不住 | ✅ 已根治：`saveSettings` 回归纯持久化；设置面板/模型切换/模式按钮统一发 `agent:config-changed`，main.ts 单一监听 → `Workspace.applyAgentConfig` 决定是否重建（重建前先存会话）；权限模式不发事件 | S~M |
+| 26 | `paper/canvas-math.ts` `layoutFlow` × `state/canvas-store.ts` `loadCanvas` × `PaperPanel.tsx` `adaptBlocks` | **NaN 布局级联**：流区宽脏（磁盘恢复透传无校验 / 运行态异常）→ 块宽 NaN → 测高 NaN → 布局游标被污染 → **坏块及其上方所有块 y 全 NaN** → 虚拟化二分失效、块消失、排版打碎（症状：「追加输入后来文消失 + 从坏点起全乱」，合卷重摊开自愈） | 偶发，触发源未 100% 锁定（运行态 NaN 来源存疑；磁盘侧已封） | ✅ 已拆（三层兜底：loadCanvas 恢复校验 width∈[720,2160]/anchor 有限数；adaptBlocks 宽兜底；layoutFlow h/w 兜底宁可压扁单块不级联全卷）。排查全档见 `docs/paper-stream-region-cascade-bug.md`（含取证手册——再复现先抓证据） | S |
 
 ## P2 — 存疑/低危（记录在案，暂不拆）
 
