@@ -374,19 +374,24 @@ describe('paper/selection', () => {
 
 describe('paper/ime', () => {
   it('合成中的 Enter（候选确认）不提交', () => {
-    expect(composerSubmitOnKey('Enter', true)).toBe(false);
+    expect(composerSubmitOnKey('Enter', true, false)).toBe(false);
   });
   it('合成结束后的 Enter 正常提交', () => {
-    expect(composerSubmitOnKey('Enter', false)).toBe(true);
+    expect(composerSubmitOnKey('Enter', false, false)).toBe(true);
   });
   it('Safari 反序时序（compositionend 先于 keydown）也安全：keydown 时 isComposing 已 false → 提交', () => {
     // 反序场景下用户意图就是换行/提交，谓词判据是 keydown 当刻标志——正确放行
-    expect(composerSubmitOnKey('Enter', false)).toBe(true);
+    expect(composerSubmitOnKey('Enter', false, false)).toBe(true);
+  });
+  it('Shift+Enter 不提交（留给 textarea 原生换行，2026-09-03 补判）', () => {
+    expect(composerSubmitOnKey('Enter', false, true)).toBe(false);
+    // IME 组合中按 Shift+Enter 同样不提交（双保险）
+    expect(composerSubmitOnKey('Enter', true, true)).toBe(false);
   });
   it('非 Enter 键一律不提交（含 IME 导航键）', () => {
-    expect(composerSubmitOnKey('ArrowDown', false)).toBe(false);
-    expect(composerSubmitOnKey('Escape', false)).toBe(false);
-    expect(composerSubmitOnKey('Enter', true)).toBe(false);
+    expect(composerSubmitOnKey('ArrowDown', false, false)).toBe(false);
+    expect(composerSubmitOnKey('Escape', false, false)).toBe(false);
+    expect(composerSubmitOnKey('Enter', true, false)).toBe(false);
   });
 });
 

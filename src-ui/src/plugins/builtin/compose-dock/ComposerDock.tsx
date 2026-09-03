@@ -928,7 +928,7 @@ export const ComposerDock = memo(function ComposerDock() {
                 setSlashIdx((i) => Math.max(i - 1, 0));
                 return;
               }
-              if (e.key === 'Enter') {
+              if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 const cmd = slashCommands[slashIdx];
                 setMenuOpen(false);
@@ -951,7 +951,7 @@ export const ComposerDock = memo(function ComposerDock() {
                 return;
               }
             }
-            if (composerSubmitOnKey(e.key, e.nativeEvent.isComposing)) {
+            if (composerSubmitOnKey(e.key, e.nativeEvent.isComposing, e.shiftKey)) {
               e.preventDefault();
               onSend();
               return;

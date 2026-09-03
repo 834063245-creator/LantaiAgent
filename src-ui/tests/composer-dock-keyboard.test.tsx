@@ -75,9 +75,9 @@ async function mountDock(
 }
 
 /** 在 textarea 上触发 keydown（React 合成事件；isComposing 默认 false = 非 IME）。 */
-function keyOn(ta: HTMLTextAreaElement, key: string): void {
+function keyOn(ta: HTMLTextAreaElement, key: string, shiftKey = false): void {
   act(() => {
-    ta.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    ta.dispatchEvent(new KeyboardEvent('keydown', { key, shiftKey, bubbles: true, cancelable: true }));
   });
 }
 
@@ -242,6 +242,21 @@ describe('ComposerDock 斜杠命令键盘导航', () => {
     keyOn(ta!, 'Enter');
     expect(core.executeCommand).toHaveBeenCalledWith(expect.objectContaining({ id: 'alpha' }));
     expect(core.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('斜杠面板激活时 Shift+Enter 不执行命令也不发送（换行留给 textarea，2026-09-03）', async () => {
+    const core = await mountDock('slash-shift', container, { inputText: '/' }, (r) => {
+      root = r;
+    });
+    const ta = container.querySelector<HTMLTextAreaElement>('.pp-composer-row textarea');
+    expect(container.querySelector('.pp-slash')).not.toBeNull();
+
+    // Shift+Enter → 不执行命令、不发送、面板保持
+    keyOn(ta!, 'Enter', true);
+    await act(async () => {});
+    expect(core.executeCommand).not.toHaveBeenCalled();
+    expect(core.sendMessage).not.toHaveBeenCalled();
+    expect(container.querySelector('.pp-slash')).not.toBeNull();
   });
 
   it('Esc 关闭斜杠面板并去掉触发词', async () => {

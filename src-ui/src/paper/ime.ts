@@ -29,7 +29,9 @@
  * 输入条提交守卫（纯谓词——壳层 onKeyDown 消费）。
  * keydown 事件的 isComposing 标志是唯一判据（含 229 keyCode 语义——
  * 合成中按键现代浏览器统一置 isComposing，不必再看 keyCode）。
+ * shiftKey=true（Shift+Enter）不放行——留给 textarea 原生换行
+ * （2026-09-03：此前漏判 shiftKey，Shift+Enter 被吞；快捷键表本声明换行）。
  */
-export function composerSubmitOnKey(key: string, isComposing: boolean): boolean {
-  return key === 'Enter' && !isComposing;
+export function composerSubmitOnKey(key: string, isComposing: boolean, shiftKey: boolean): boolean {
+  return key === 'Enter' && !isComposing && !shiftKey;
 }
