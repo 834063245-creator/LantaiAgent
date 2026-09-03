@@ -1,14 +1,15 @@
-# 内核插件运行时 Phase 2 设计件 —— 五域批次拆解 + tool_call:progress 进度流 + Tool::name() 放宽
+# 内核插件运行时 Phase 2 设计件 —— 工具域全量批次拆解 + tool_call:progress 进度流 + Tool::name() 放宽
 
 > 状态：**自查模式设计件**（2026-09-04；按 2026-08-24 拍板 #4 纪律——agent 对代码库逐条自查设计断言，用户面只保留白话摘要，不产待批长文）。
 > 性质：kernel-plugin-runtime-plan §4 Phase 2 前置设计。前批先例：builtin.search（Phase 1）/ builtin.web（Phase 1 续，4778cd5f）——本件沿用其全部已验证模式，只裁决新面。
+> 范围：Phase 2 = 工具域全量迁移（2026-09-04 拍板合并原 Phase 2/3——fs/git/shell/editor/constraints/browser/uia/pty/lsp 九域同质工作按风险排序，域界即批界）。P2-5/P2-6（browser/uia/pty/lsp）只立批位，权限形状增补节起工前补。
 > 本文所有「实查」数据均于 2026-09-04 对 HEAD=4778cd5f 验证。
 
 ## 1. 现状审计（2026-09-04 实查）
 
 ### 1.1 分支存量
 
-RPC 145 分支（frontend-rpc-contract.md 生成物计数）。Phase 2 待迁五域合计 **39 个分支**：
+RPC 145 分支（frontend-rpc-contract.md 生成物计数）。前五域（P2-1~P2-4 面，即原 Phase 2 域）待迁合计 **39 个分支**：
 
 | 域 | Rust 模块（行数） | RPC 分支 | 模型可见工具（TS 族） |
 |---|---|---|---|
@@ -64,8 +65,10 @@ RPC 145 分支（frontend-rpc-contract.md 生成物计数）。Phase 2 待迁五
 | **P2-2** | builtin.fs 主体（filesystem.rs 9 模型工具 + glob 出 search.rs）+ TS fs 族换源（§5.1/§5.2）+ 内部直呼换源（§5.3，canvas/chat/compaction/renderer 共 4 文件）+ search.rs 空文件退役（web.rs 先例） | 面最大的一批；P2-1 已验证 provider 表跨插件寻址 |
 | **P2-3** | builtin.git（16 分支）+ TS git 族换源 | 直 exec 族机械迁移（search/web 同款）；GitTool 语义按子命令进插件 |
 | **P2-4** | builtin.shell（7 分支）+ tool_call:progress 落地（§4）+ queued-shell/agent-builder 换源 | 进度流主场；watchdog 链路保护裁决（§4.3） |
+| **P2-5** | builtin.browser（37 分支）+ builtin.uia（desktop_* 族）——原 Phase 3 域并批（2026-09-04 拍板合并，同质工作无相界） | 权限路径最特殊：`check_browser_permission` 是 rpc.rs 里的独立包装器（37 分支共享 + ADR 0003 D6 L3 三级动作规则），uia 有三级动作分类（physical/grant/pattern）——**起工前先在本件补权限形状增补节**（family 化 vs in-plugin ctx.check_permission 的裁决），browser_sessions 按 agent_id 键控的会话注册表访问同期进 ToolContext |
+| **P2-6** | builtin.pty（4 分支）+ builtin.lsp（3 分支） | pty/lsp 挂进程/服务器生命周期注册表；TS 直 exec 族（createBrowserTools 同款路径）；权限走 in-plugin check（家族无既有对应，Passthrough + 域内真权） |
 
-非目标：browser/uia/pty/lsp（Phase 3）；isolation（独立域，随多 Agent 线裁决）；
+非目标：isolation（独立域，随多 Agent 线裁决）；
 workspace_*/plugin_*/credential_/permission_/audit_（终态生命周期族，不迁）。
 
 ## 3. 权限模型升级（P2-0）
@@ -203,7 +206,7 @@ git-domain/host.ts 换源 manifest-tools；createGitTools 迁 manifest-driven。
 
 ## 7. 自查记录
 
-- 分支计数与五域清单：frontend-rpc-contract.md 生成物 + commands/*.rs `pub async fn` 逐文件核（2026-09-04）。
+- 分支计数与九域清单：frontend-rpc-contract.md 生成物 + commands/*.rs `pub async fn` 逐文件核（2026-09-04）；browser 37 分支 + desktop/pty/lsp 计数来自 rpc.rs 分区实查（P2-5/P2-6 起工前增补节重核）。
 - TS 三类消费面：fs-builtin/shell-builtin index.ts、coding.ts 族工厂、`agentInvoke|typedRpc + 旧名`
   全仓 rg 逐一列举（queued-shell / agent-builder / canvas-store / chat-session / agent-compaction / renderer-host）。
 - 权限管线：permissions/mod.rs（trait + has_permission_to_use_tool 全文）、tools/mod.rs 七实现、
