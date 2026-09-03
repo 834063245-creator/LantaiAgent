@@ -9,6 +9,112 @@ import type { KernelToolManifest } from './manifest-tools';
 
 export const KERNEL_MANIFESTS: readonly KernelToolManifest[] = [
   {
+    "id": "builtin.constraints",
+    "version": "1.0.0",
+    "trust": "system",
+    "description": "约束配置读写（自 commands/constraints.rs 拆出，kernel-plugin-runtime P2-1）",
+    "capabilities": [
+      "filesystem_read",
+      "filesystem_write"
+    ],
+    "tools": [
+      {
+        "name": "read_constraints",
+        "description": "Read the current constraint configuration (hologram.constraints.yaml) for the project. Returns the YAML content. Use to check routing rules, thresholds, and allowlist/denylist settings.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "projectPath": {
+              "type": "string",
+              "description": "Project root directory path"
+            }
+          },
+          "required": [
+            "projectPath"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "write_constraints",
+        "description": "Write the constraint configuration (hologram.constraints.yaml) for the project — replaces the whole file. Use after check_boundaries (graph domain) reveals violations worth encoding as standing rules: routing rules, thresholds, allowlist/denylist. Read the current config with fs(constraints) first so you extend existing rules rather than drop them.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "projectPath": {
+              "type": "string",
+              "description": "Project root directory path"
+            },
+            "content": {
+              "type": "string",
+              "description": "Full YAML content to write"
+            }
+          },
+          "required": [
+            "projectPath",
+            "content"
+          ],
+          "additionalProperties": {}
+        }
+      }
+    ]
+  },
+  {
+    "id": "builtin.editor",
+    "version": "1.0.0",
+    "trust": "system",
+    "description": "代码编辑器（自 commands/editor.rs 拆出，kernel-plugin-runtime P2-1）",
+    "capabilities": [
+      "filesystem_read",
+      "filesystem_write"
+    ],
+    "tools": [
+      {
+        "name": "edit_file",
+        "description": "Perform exact string replacement in a file. The old_string must match exactly (including indentation and whitespace) and must be unique in the file (unless replace_all is true). This is the preferred way to modify code — safer and cheaper than rewriting the entire file.",
+        "read_only": false,
+        "permission": {
+          "family": "Edit",
+          "path_key": "filePath"
+        },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "filePath": {
+              "type": "string",
+              "description": "Absolute path to the file to modify"
+            },
+            "oldString": {
+              "type": "string",
+              "description": "The exact text to find and replace (must match the file exactly, including whitespace)"
+            },
+            "newString": {
+              "type": "string",
+              "description": "The text to replace it with (must be different from oldString)"
+            },
+            "replaceAll": {
+              "default": false,
+              "description": "Replace all occurrences instead of just the first (default: false). Use when the old_string appears multiple times.",
+              "type": "boolean"
+            },
+            "_forceGate": {
+              "description": "Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "filePath",
+            "oldString",
+            "newString"
+          ],
+          "additionalProperties": {}
+        }
+      }
+    ]
+  },
+  {
     "id": "builtin.search",
     "version": "1.0.0",
     "trust": "system",

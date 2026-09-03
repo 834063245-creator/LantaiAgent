@@ -208,10 +208,7 @@ export interface RpcContract {
   drain_bg_notifications: { params: { agent_id: string }; result: string }; // JSON — 只排干该 agent 自己的后台任务通知
 
   // ── 编辑器 ───────────────────────────────────────────────
-  edit_file: {
-    params: { file_path: string; old_string: string; new_string: string; replace_all?: boolean } & AgentCtx;
-    result: string; // text — 编辑结果/错误信息
-  };
+  // （edit_file 已迁内核插件 builtin.editor，走 tool_call——kernel-plugin-runtime P2-1）
 
   // ── 身份认证 / 权限 ──────────────────────────────────────
   permission_ask_response: {
@@ -294,8 +291,8 @@ export interface RpcContract {
   };
 
   // ── 约束 ─────────────────────────────────────────────────
-  read_constraints: { params: { project_path: string }; result: string }; // JSON
-  write_constraints: { params: { project_path: string; content: string }; result: string }; // "null"
+  // （read_constraints / write_constraints 已迁内核插件 builtin.constraints，
+  //   走 tool_call——kernel-plugin-runtime P2-1）
 
   // ── 数据流 ───────────────────────────────────────────────
   dataflow_save: {

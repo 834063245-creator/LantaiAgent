@@ -1,8 +1,63 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
-// Code editor: edit_file + 真实行级 diff（build_line_diff）.
 
-use hologram_graph::is_ignored_path;
+//! builtin.editor 插件——内核插件运行时 Phase 2 首批（自 commands/editor.rs 拆出）。
+//! 工具面（名称/描述/schema）真源 = 同目录 manifest.json（双端共享）。
+//! edit_file 声明 `permission {family Edit, path_key filePath}`——工具级权限门
+//! 在 dispatch 侧 PluginToolAdapter（Edit 家族规则 + Ask + auto 白名单经家族回退），
+//! 插件内业务用免检解析（resolve_write_unchecked / read_text_unchecked），
+//! checked_write_atomic 进程级锁与命令内重试环原样保留。
+
+use serde_json::Value;
+
+use super::manifest::ToolManifest;
+use super::plugin::{ToolContext, ToolError, ToolPlugin};
+
+pub struct EditorPlugin {
+    manifest: ToolManifest,
+}
+
+impl EditorPlugin {
+    pub fn new() -> Self {
+        let manifest: ToolManifest = serde_json::from_str(include_str!("manifest.json"))
+            .expect("builtin.editor manifest 是随 exe 编译的静态资源");
+        Self { manifest }
+    }
+}
+
+impl Default for EditorPlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ToolPlugin for EditorPlugin {
+    fn id(&self) -> &str {
+        "builtin.editor"
+    }
+
+    fn manifest(&self) -> &ToolManifest {
+        &self.manifest
+    }
+
+    fn execute<'a>(
+        &'a self,
+        ctx: &'a ToolContext<'a>,
+        tool_name: &'a str,
+        args: Value,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Value, ToolError>> + Send + 'a>,
+    > {
+        Box::pin(async move {
+            match tool_name {
+                "edit_file" => edit_file(ctx, &args).await,
+                other => Err(ToolError::InvalidArgs(format!(
+                    "builtin.editor: 未知工具 '{other}'"
+                ))),
+            }
+        })
+    }
+}
 
 /// 进程级编辑写锁 — 序列化「重读校验 → 原子写入」临界区。
 /// 否则两个并发 edit_file 可双双通过乐观检查后互相覆盖（TOCTOU），
@@ -46,7 +101,7 @@ fn record_edit_side_effects(state: &crate::WorkspaceState, file_path: &str) {
     let Some(changed_files) = changed_files else {
         return;
     };
-    if is_ignored_path(file_path) {
+    if hologram_graph::is_ignored_path(file_path) {
         return;
     }
     let short = file_path.rsplit(['/', '\\']).next().unwrap_or(file_path);
@@ -86,19 +141,21 @@ fn truncate_err_key(first_line: &str) -> &str {
     &first_line[..end]
 }
 
-#[tauri::command]
-pub(crate) async fn edit_file(
-    file_path: String,
-    old_string: String,
-    new_string: String,
-    replace_all: Option<bool>,
-    is_agent: Option<bool>,
-    _agent_id: Option<String>,
-    state: tauri::State<'_, crate::WorkspaceState>,
-    app: tauri::AppHandle,
-) -> Result<String, String> {
-    let is_agent = is_agent.unwrap_or(false);
-    let resolved = crate::utils::resolve_write_dispatch(&file_path, is_agent, _agent_id.as_deref(), &state, &app).await?;
+/// edit_file — 精确字符串替换 + 真实行级 diff（业务自 commands/editor.rs 原样
+/// 迁入；参数键改说 manifest schema 的语言，camelCase；解析走免检变体——
+/// Edit 家族工具级门已在 dispatch 侧过闸）。
+async fn edit_file(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolError> {
+    let missing = |k: &str| ToolError::InvalidArgs(format!("edit_file: missing '{k}'"));
+    let file_path = super::plugin::arg_str(args, "filePath").ok_or_else(|| missing("filePath"))?;
+    let old_string = super::plugin::arg_str(args, "oldString").ok_or_else(|| missing("oldString"))?;
+    let new_string = super::plugin::arg_str(args, "newString").ok_or_else(|| missing("newString"))?;
+    let replace_all = super::plugin::arg_bool(args, "replaceAll").unwrap_or(false);
+    let is_agent = ctx.is_agent;
+    let agent_id = ctx.agent_id.as_deref();
+    let state = ctx.state;
+
+    let resolved = crate::utils::resolve_write_unchecked(&file_path, is_agent, agent_id, state)
+        .map_err(ToolError::Tool)?;
     let file_path = resolved.to_string_lossy().to_string();
 
     // 并发门禁摘除（2026-08-30 用户拍板：拒绝+模型重试 = 往返/token 浪费）：
@@ -110,11 +167,10 @@ pub(crate) async fn edit_file(
     const EDIT_RACE_ATTEMPTS: usize = 3;
     'retry: for attempt in 0..EDIT_RACE_ATTEMPTS {
     // 循环体保持原缩进（机械包裹，避免整段重排的 diff 噪声）
-    let (_, content) = crate::confined_fs::read_text(&file_path, is_agent, _agent_id.as_deref(), &state, &app).await?;
+    let (_, content) = crate::confined_fs::read_text_unchecked(&file_path, is_agent, agent_id, state).await.map_err(ToolError::Tool)?;
 
-    let replace_all = replace_all.unwrap_or(false);
     if old_string.is_empty() {
-        return Err("old_string 不能为空".to_string());
+        return Err(ToolError::InvalidArgs("old_string 不能为空".to_string()));
     }
 
     // 容错模式的替换执行（写回 out 后返回 diff 快照）
@@ -168,15 +224,15 @@ pub(crate) async fn edit_file(
                             {
                                 continue 'retry;
                             }
-                            Err(e) => return Err(e),
+                            Err(e) => return Err(ToolError::Tool(e)),
                         }
-                        record_edit_side_effects(&state, &file_path);
+                        record_edit_side_effects(state, &file_path);
                         let match_line = start + 1;
                         let ds = build_line_diff(&content, &out);
-                        return Ok(format!(
+                        return Ok(Value::String(format!(
                             "已替换 1 处匹配（容错模式：逐行对齐）— {} (第 {} 行附近)\n```diff\n{}\n```",
                             file_path, match_line, ds
-                        ));
+                        )));
                     }
                     break;
                 }
@@ -184,18 +240,18 @@ pub(crate) async fn edit_file(
             let first_line = old_string.lines().next().unwrap_or("(empty)");
             let best = crate::utils::fuzzy_find(&content, first_line);
             let hint = match best {
-                Some((ln, ctx)) => format!("line {}: {}", ln, ctx),
+                Some((ln, ctxx)) => format!("line {}: {}", ln, ctxx),
                 None => format!("file starts: {}",
                     content.lines().take(3).collect::<Vec<_>>().join(" | ")),
             };
             let key = truncate_err_key(first_line);
-            return Err(format!("not found: \"{}\" | {}", key, hint));
+            return Err(ToolError::Tool(format!("not found: \"{}\" | {}", key, hint)));
         }
         if c > 1 {
-            return Err(format!(
+            return Err(ToolError::Tool(format!(
                 "old_string 在文件中出现了 {} 次，不是唯一的。请添加更多上下文使其唯一，或设置 replace_all: true。",
                 c
-            ));
+            )));
         }
         c
     };
@@ -215,10 +271,10 @@ pub(crate) async fn edit_file(
         {
             continue 'retry;
         }
-        Err(e) => return Err(e),
+        Err(e) => return Err(ToolError::Tool(e)),
     }
 
-    record_edit_side_effects(&state, &file_path);
+    record_edit_side_effects(state, &file_path);
 
     let first_match_line = content.lines()
         .enumerate()
@@ -235,7 +291,7 @@ pub(crate) async fn edit_file(
     // （此前按 old_string 伪造的 snippet 在行内替换/replace_all 时会误导）。
     let diff_snippet = build_line_diff(&content, &new_content);
 
-    return Ok(if replace_all {
+    return Ok(Value::String(if replace_all {
         format!(
             "已替换 {} 处匹配 — {}{}\n```diff\n{}\n```",
             count, file_path, line_info, diff_snippet
@@ -245,10 +301,10 @@ pub(crate) async fn edit_file(
             "已替换 1 处匹配 — {}{}\n```diff\n{}\n```",
             file_path, line_info, diff_snippet
         )
-    });
+    }));
     }
     // 防御性不可达：每轮必以 return/continue 收束；末轮并发拒绝也直返 Err。
-    Err("文件被高频并发修改，编辑未落地，请重读后重试".to_string())
+    Err(ToolError::Tool("文件被高频并发修改，编辑未落地，请重读后重试".to_string()))
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -447,6 +503,21 @@ fn build_line_diff(before: &str, after: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn manifest_json_parses_and_matches_id() {
+        let m: ToolManifest = serde_json::from_str(include_str!("manifest.json"))
+            .expect("出厂 manifest 是编译期静态资源");
+        assert_eq!(m.id, "builtin.editor");
+        assert_eq!(m.trust, super::super::manifest::TrustLevel::System);
+        let tool = m.tools.iter().find(|t| t.name == "edit_file").expect("edit_file 在清单内");
+        assert!(!tool.read_only);
+        // Edit 家族权限声明：adapter 承载工具级门（family 委托 + 家族回退）。
+        let perm = tool.permission.as_ref().expect("edit_file 声明 permission");
+        assert_eq!(perm.family, "Edit");
+        assert_eq!(perm.path_key.as_deref(), Some("filePath"));
+        assert_eq!(tool.schema["required"][0].as_str(), Some("filePath"));
+    }
 
     fn diff_of(before: &str, after: &str) -> String {
         build_line_diff(before, after)

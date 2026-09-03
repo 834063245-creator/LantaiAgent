@@ -306,6 +306,43 @@ pub(crate) async fn resolve_write_dispatch(
     }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// 免检解析（kernel-plugin-runtime P2-0 §3.5）——权限门在 dispatch 侧
+// PluginToolAdapter（manifest 声明 permission.family）的工具专用：
+// 与今日命令 is_agent 分流的差别只是省去规则引擎检查（同一语义已在
+// dispatch 过闸），forward-map 与沙箱决议逐字保留。
+// ═══════════════════════════════════════════════════════════════
+
+/// 读路径免检解析：agent = forward-map + canonicalize（require_read 的收尾
+/// 语义）；用户 = resolve_path_user_read（forward-map(None) + 沙箱）。
+pub(crate) fn resolve_read_unchecked(
+    file_path: &str,
+    is_agent: bool,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+) -> Result<PathBuf, String> {
+    if !is_agent {
+        return resolve_path_user_read(file_path, state);
+    }
+    let ctx = get_ctx(state)?;
+    let physical = ctx.forward_map_path(std::path::Path::new(file_path), agent_id);
+    std::fs::canonicalize(&physical)
+        .map_err(|e| format!("无法解析路径 {}: {}", file_path, e))
+}
+
+/// 写路径免检解析：forward-map（agent 带归属）+ sandbox resolve_write。
+pub(crate) fn resolve_write_unchecked(
+    file_path: &str,
+    is_agent: bool,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+) -> Result<PathBuf, String> {
+    let ctx = get_ctx(state)?;
+    let agent = if is_agent { agent_id } else { None };
+    let physical = ctx.forward_map_path(std::path::Path::new(file_path), agent);
+    ctx.resolve_write(&physical.to_string_lossy())
+}
+
 /// ponytail: 根据 _agent 标志选择 git 权限检查方式
 pub(crate) async fn require_git_dispatch(
     repo_path: &str,

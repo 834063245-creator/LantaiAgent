@@ -91,6 +91,24 @@ pub(crate) async fn read_text(
     app: &AppHandle,
 ) -> Result<(PathBuf, String), String> {
     let real_path = crate::utils::resolve_read_dispatch(file_path, is_agent, agent_id, state, app).await?;
+    read_text_resolved(real_path, file_path).await
+}
+
+/// read_text 的免检变体（kernel-plugin-runtime P2-1）：权限门在 dispatch 侧
+/// adapter（manifest 声明 permission.family）的工具专用——解析走
+/// resolve_read_unchecked（forward-map + agent 路径 canonicalize），
+/// guards（大小/超时/重试）与原版完全一致。
+pub(crate) async fn read_text_unchecked(
+    file_path: &str,
+    is_agent: bool,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+) -> Result<(PathBuf, String), String> {
+    let real_path = crate::utils::resolve_read_unchecked(file_path, is_agent, agent_id, state)?;
+    read_text_resolved(real_path, file_path).await
+}
+
+async fn read_text_resolved(real_path: PathBuf, file_path: &str) -> Result<(PathBuf, String), String> {
     let rp = real_path.clone();
     let fp = file_path.to_string();
 
@@ -125,6 +143,21 @@ pub(crate) async fn read_bytes(
     app: &AppHandle,
 ) -> Result<(PathBuf, Vec<u8>), String> {
     let real_path = crate::utils::resolve_read_dispatch(file_path, is_agent, agent_id, state, app).await?;
+    read_bytes_resolved(real_path, file_path).await
+}
+
+/// read_bytes 的免检变体（kernel-plugin-runtime P2-2）：权限门在 dispatch 侧 adapter。
+pub(crate) async fn read_bytes_unchecked(
+    file_path: &str,
+    is_agent: bool,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+) -> Result<(PathBuf, Vec<u8>), String> {
+    let real_path = crate::utils::resolve_read_unchecked(file_path, is_agent, agent_id, state)?;
+    read_bytes_resolved(real_path, file_path).await
+}
+
+async fn read_bytes_resolved(real_path: PathBuf, file_path: &str) -> Result<(PathBuf, Vec<u8>), String> {
     let rp = real_path.clone();
     let fp = file_path.to_string();
 
@@ -164,6 +197,25 @@ pub(crate) async fn write_text(
     state: &tauri::State<'_, WorkspaceState>,
     app: &AppHandle,
 ) -> Result<PathBuf, String> {
+    guard_write_size(content)?;
+    let real_path = crate::utils::resolve_write_dispatch(file_path, is_agent, agent_id, state, app).await?;
+    write_text_resolved(real_path, content)
+}
+
+/// write_text 的免检变体（kernel-plugin-runtime P2-1）：同 read_text_unchecked。
+pub(crate) async fn write_text_unchecked(
+    file_path: &str,
+    content: &str,
+    is_agent: bool,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+) -> Result<PathBuf, String> {
+    guard_write_size(content)?;
+    let real_path = crate::utils::resolve_write_unchecked(file_path, is_agent, agent_id, state)?;
+    write_text_resolved(real_path, content)
+}
+
+fn guard_write_size(content: &str) -> Result<(), String> {
     if content.len() > MAX_WRITE_BYTES {
         return Err(format!(
             "内容过大 ({} MiB)，超过写入上限 ({} MiB)",
@@ -171,7 +223,10 @@ pub(crate) async fn write_text(
             MAX_WRITE_BYTES / (1024 * 1024)
         ));
     }
-    let real_path = crate::utils::resolve_write_dispatch(file_path, is_agent, agent_id, state, app).await?;
+    Ok(())
+}
+
+fn write_text_resolved(real_path: PathBuf, content: &str) -> Result<PathBuf, String> {
     let rp = real_path.to_string_lossy().to_string();
     if let Some(parent) = real_path.parent() {
         std::fs::create_dir_all(parent)
@@ -190,6 +245,21 @@ pub(crate) async fn create_dir(
     app: &AppHandle,
 ) -> Result<PathBuf, String> {
     let resolved = crate::utils::resolve_write_dispatch(path, is_agent, agent_id, state, app).await?;
+    create_dir_resolved(resolved, path)
+}
+
+/// create_dir 的免检变体（kernel-plugin-runtime P2-2）。
+pub(crate) async fn create_dir_unchecked(
+    path: &str,
+    is_agent: bool,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+) -> Result<PathBuf, String> {
+    let resolved = crate::utils::resolve_write_unchecked(path, is_agent, agent_id, state)?;
+    create_dir_resolved(resolved, path)
+}
+
+fn create_dir_resolved(resolved: PathBuf, path: &str) -> Result<PathBuf, String> {
     std::fs::create_dir_all(&resolved)
         .map_err(|e| format!("无法创建目录 {}: {}", path, e))?;
     Ok(resolved)
@@ -204,6 +274,21 @@ pub(crate) async fn delete(
     app: &AppHandle,
 ) -> Result<PathBuf, String> {
     let real = crate::utils::resolve_write_dispatch(path, is_agent, agent_id, state, app).await?;
+    delete_resolved(real, path)
+}
+
+/// delete 的免检变体（kernel-plugin-runtime P2-2）。
+pub(crate) async fn delete_unchecked(
+    path: &str,
+    is_agent: bool,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+) -> Result<PathBuf, String> {
+    let real = crate::utils::resolve_write_unchecked(path, is_agent, agent_id, state)?;
+    delete_resolved(real, path)
+}
+
+fn delete_resolved(real: PathBuf, path: &str) -> Result<PathBuf, String> {
     if !real.exists() {
         return Err(format!("路径不存在: {}", path));
     }

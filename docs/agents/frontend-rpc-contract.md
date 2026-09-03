@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-09-03T16:34:32.850Z
-> 方法总数：145（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-09-03T18:18:38.450Z
+> 方法总数：142（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -151,12 +151,6 @@
 | `protocol_bridge_write` | id, line | — | 字符串 |
 | `protocol_bridge_kill` | id | — | 字符串 |
 
-## 编辑器
-
-| 方法 | 必选参数 | 可选参数 | 返回 |
-|------|----------|----------|------|
-| `edit_file` | file_path, old_string, new_string | replace_all, is_agent, _agent_id | 字符串 |
-
 ## 身份认证 / 权限
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
@@ -221,13 +215,6 @@
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
 | `agent_session_append` | project_path, agent_id | — | `null`（unit） |
-
-## 约束
-
-| 方法 | 必选参数 | 可选参数 | 返回 |
-|------|----------|----------|------|
-| `read_constraints` | project_path | — | 字符串 |
-| `write_constraints` | project_path, content | — | `null`（unit） |
 
 ## 数据流
 

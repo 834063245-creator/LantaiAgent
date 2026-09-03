@@ -232,8 +232,8 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // 其余 desktop_uia_*：树/快照/结果文本，Text（probe 是诊断文案）。
         "desktop_status" | "desktop_audit" => RpcResultShape::JsonValue,
 
-        // ── 其余（含 ok_unit "null" 家族、read_file_content、edit_file、
-        // exec_command、浏览器命令、PTY、会话持久化、约束、workspace、
+        // ── 其余（含 ok_unit "null" 家族、read_file_content、
+        // exec_command、浏览器命令、PTY、会话持久化、workspace、
         // protocol_bridge、llm_proxy_port 等）──
         // 默认 Text：字节精确优先，形态不恒定或体量不可控的一律不展开。
         _ => RpcResultShape::Text,
@@ -1217,19 +1217,6 @@ async fn dispatch_rpc(
         }
 
         // ═══════════════════════════════════════════════════════
-        // 编辑器（1 个命令）
-        // ═══════════════════════════════════════════════════════
-        "edit_file" => {
-            let file_path = req_str(&params, "file_path", "edit_file")?;
-            let old_string = req_str(&params, "old_string", "edit_file")?;
-            let new_string = req_str(&params, "new_string", "edit_file")?;
-            let replace_all = opt_bool(&params, "replace_all");
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::editor::edit_file(file_path, old_string, new_string, replace_all, is_agent, _agent_id, state, app).await
-        }
-
-        // ═══════════════════════════════════════════════════════
         // 身份认证（5 个命令）
         // ═══════════════════════════════════════════════════════
         "permission_ask_response" => {
@@ -1509,19 +1496,6 @@ async fn dispatch_rpc(
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
             ok_unit(agent_session_append(&project_path, &agent_id, messages, rewrite))
-        }
-
-        // ═══════════════════════════════════════════════════════
-        // 约束（2 个命令）
-        // ═══════════════════════════════════════════════════════
-        "read_constraints" => {
-            let project_path = req_str(&params, "project_path", "read_constraints")?;
-            commands::constraints::read_constraints(project_path).await
-        }
-        "write_constraints" => {
-            let project_path = req_str(&params, "project_path", "write_constraints")?;
-            let content = req_str(&params, "content", "write_constraints")?;
-            ok_unit(commands::constraints::write_constraints(project_path, content).await)
         }
 
         // ═══════════════════════════════════════════════════════
@@ -1908,7 +1882,6 @@ mod tests {
         assert_eq!(v, json!({"bundled": true}));
         let v = dispatch_result_to_value("get_graph_snapshot", Ok(r#"{"total_nodes":42}"#.into())).unwrap();
         assert_eq!(v, json!({"total_nodes": 42}));
-        // JsonValue 命令返回非合法 JSON：违反契约转 Err（错误可见，不静默）
         let bad = dispatch_result_to_value("shell_env", Ok("not json".into()));
         assert!(bad.is_err(), "JsonValue 命令 Ok 输出非合法 JSON 必须转 Err");
         // Text 命令（含默认路径）：字节精确，JSON 形状的文本也不展开
@@ -1919,6 +1892,8 @@ mod tests {
         assert_eq!(v, serde_json::Value::String(raw.to_string()));
         // Err 路径：原样传播，不包 Ok（前端 catch 语义不变）
         let e = dispatch_result_to_value("shell_env", Err("boom".into()));
+        assert_eq!(e, Err("boom".to_string()));
+        let e = dispatch_result_to_value("read_file_content", Err("boom".into()));
         assert_eq!(e, Err("boom".to_string()));
         let e = dispatch_result_to_value("read_file_content", Err("boom".into()));
         assert_eq!(e, Err("boom".to_string()));

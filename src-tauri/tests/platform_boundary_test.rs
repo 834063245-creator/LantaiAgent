@@ -35,9 +35,7 @@ fn capability_command_modules_are_frozen() {
     let src = fs::read_to_string(commands_mod_path()).expect("src/commands/mod.rs must exist");
     let actual = parse_command_modules(&src);
     let expected = vec![
-        "constraints",
         "dataflow",
-        "editor",
         "engine_dispatch",
         "external",
         "filesystem",

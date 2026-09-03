@@ -505,32 +505,6 @@ class MiddlewareChain {
     return ctx.response;
   }
 }`,
-  read_constraints: `# 全息仓约束配置 (mock)
-constraints:
-  routing:
-    l5_irreversible: true
-    l4_silent: true
-    l3_delayed: true
-    l2_blast: true
-    l1_visible: false
-  thresholds:
-    blast_radius_max: 20
-    cross_community_tolerance: 5
-    api_signature_tolerance: 3
-    l4_penetration_tolerance: 2
-    l4_threshold_change_tolerance: 5
-  allowlist:
-    modules:
-      - "nebula.utils.logger"
-      - "nebula.utils.tokenizer"
-    files:
-      - "*.test.ts"
-      - "*.spec.ts"
-  denylist:
-    keywords:
-      - "deprecated"
-      - "internal-only"
-`,
   exec_command: `(mock terminal output)
 C:\\mock\\nebula-project> echo hello
 hello
@@ -540,7 +514,8 @@ nebula/  package.json  tsconfig.json  README.md`,
   hologram_diff: JSON.stringify(MOCK_DIFF),
 
   // 写入命令（mock 中为空操作）
-  write_constraints: '(mock: constraints saved)',
+  // （read_constraints / write_constraints 已迁 builtin.constraints 插件——
+  //   浏览器 mock 模式经 tool_call，不走旧名；kernel-plugin-runtime P2-1）
   write_file_content: '(mock: file saved)',
 
   // ── 文件树 ──

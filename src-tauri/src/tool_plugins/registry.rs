@@ -31,6 +31,10 @@ impl PluginRegistry {
     /// 注册序 = tool_plugins/ 目录序（gen-plugin-manifests 的镜像装载序锚）。
     pub fn with_system_defaults() -> Self {
         let mut registry = PluginRegistry::default();
+        let constraints: Arc<dyn ToolPlugin> = Arc::new(super::constraints::ConstraintsPlugin::new());
+        registry.register(constraints).expect("出厂插件清单装载失败");
+        let editor: Arc<dyn ToolPlugin> = Arc::new(super::editor::EditorPlugin::new());
+        registry.register(editor).expect("出厂插件清单装载失败");
         let search: Arc<dyn ToolPlugin> = Arc::new(super::search::SearchPlugin::new());
         registry.register(search).expect("出厂插件清单装载失败");
         let web: Arc<dyn ToolPlugin> = Arc::new(super::web::WebPlugin::new());
