@@ -63,6 +63,7 @@ export interface BootAudit {
 export async function auditBoot(root: Context, timeoutMs: number = BOOT_SETTLE_TIMEOUT_MS): Promise<BootAudit> {
   const fibers = collectFibers(root);
   const failures: string[] = [];
+  const settleT0 = performance.now();
 
   if (fibers.length > 0) {
     // 等 settle（超时保底——惯性中的 LOADING fiber 可能永不结束）
@@ -71,6 +72,12 @@ export async function auditBoot(root: Context, timeoutMs: number = BOOT_SETTLE_T
       Promise.allSettled(fibers.map((f) => f.await())),
       new Promise<typeof timeout>((resolve) => setTimeout(() => resolve(timeout), timeoutMs)),
     ]);
+    const settleMs = performance.now() - settleT0;
+    if (import.meta.env.MODE !== 'test') {
+      console.log(
+        `[boot-timing] auditBoot settle：${fibers.length} 条 fiber 整树 ${settleMs.toFixed(1)}ms（含全部异步 apply 完成）`,
+      );
+    }
 
     if (settled === timeout) {
       // 超时——所有非 ACTIVE fiber 都算失败（含 LOADING 卡死 + PENDING 依赖缺）

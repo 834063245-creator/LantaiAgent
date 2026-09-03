@@ -51,7 +51,7 @@ import { usePluginPrefs } from '../state/plugin-prefs';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
 import { faceDepsKeys, pluginHostMods } from './builtin/host-modules';
 import { factoryProductNames, factoryProductPlugins } from './factory-products';
-import { FIRST_PARTY_MANIFEST } from './first-party-manifest';
+import { FIRST_PARTY_MANIFEST, type FirstPartyPluginMeta } from './first-party-manifest';
 import { type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
 import { mountToolDeclarations } from './tool-declarations';
 import { type LantaiPlugin, type PluginManifest, validateManifest } from './types';
@@ -114,6 +114,11 @@ export function pluginAssetsOrigin(port: number): string {
  *  传递导入不进生产 bundle。
  *  表序 = 贡献注册序 = 字节契约（组合解析快照/工具契约生成/DeepSeek 前缀
  *  缓存依赖此序，不得重排）。 */
+/** dev 强制产物通道（boot 性能测量，2026-09-03）：置 1 时 dev 下也不展开
+ *  源码工厂产物、不过滤产物通道工厂名——装载形态与生产逐位一致（磁盘
+ *  产物 HTTP import），用于测量真实 I/O 耗时。默认关，行为与开关前一致。 */
+const forceProductChannel = (import.meta.env as Record<string, unknown>).VITE_FORCE_PRODUCT_CHANNEL === '1';
+
 export const BUILTIN_PLUGINS: LantaiPlugin[] = [
   compositionServicesPlugin,
   subagentsServicePlugin,
@@ -129,8 +134,9 @@ export const BUILTIN_PLUGINS: LantaiPlugin[] = [
   promptsServicePlugin,
   hooksServicePlugin,
   capabilitiesServicePlugin,
-  // dev-only：出厂产物源码路径（生产端被 vite define DCE 消除）
-  ...(import.meta.env.DEV ? factoryProductPlugins() : []),
+  // dev-only：出厂产物源码路径（生产端被 vite define DCE 消除；
+  // forceProductChannel=1 时也不展开——产物通道是唯一装载面，形态同生产）
+  ...(import.meta.env.DEV && !forceProductChannel ? factoryProductPlugins() : []),
 ];
 
 // ── 插件宿主桥（S4-5；P1 扩展 2026-08-30；增补四施工扩面 2026-08-31）──
@@ -226,6 +232,7 @@ function installPluginHostBridge(): void {
  * （错误不静默；守护测试拦死，这里兜底）。 */
 export function loadBuiltinPlugins(root: Context): Context {
   installPluginHostBridge();
+  const bootT0 = performance.now();
   const records: PluginRecord[] = [];
   for (const plugin of BUILTIN_PLUGINS) {
     const meta = FIRST_PARTY_MANIFEST[plugin.name];
@@ -251,6 +258,11 @@ export function loadBuiltinPlugins(root: Context): Context {
   }
   // merge 而非 setPlugins：第一方先装载、第三方异步后到不得冲刷第一方记录
   usePluginStore.getState().mergePlugins(records);
+  if (import.meta.env.MODE !== 'test') {
+    console.log(
+      `[boot-timing] loadBuiltinPlugins：${records.length} 条目同步调度 ${(performance.now() - bootT0).toFixed(1)}ms（异步 apply 完成见 boot-gate settle）`,
+    );
+  }
   return root;
 }
 
@@ -349,11 +361,13 @@ export async function activateExternalPlugin(dirId: string): Promise<PluginRecor
   const { root, deps } = runtime;
   // 重装载路径：旧 fiber 先拆（dispose 链式回收全部贡献）
   await deactivateExternalPlugin(dirId);
+  bootTiming.length = 0; // 增量装载计时独立汇总（loadOne 会写采集器）
   // 权限门禁读最新 granted 段（plugins.json 可被授权流手改——不 boot 缓存）
   const { granted } = await readPluginsState(deps.fetchImpl, deps.origin);
   const { record, fiber } = await loadOne(root, dirId, { ...deps, disabled: new Set(), granted });
   if (fiber) activeExternalFibers.set(record.name, fiber);
   usePluginStore.getState().upsertPlugin(record);
+  reportBootTiming('activateExternalPlugin(' + dirId + ')');
   return record;
 }
 
@@ -368,12 +382,36 @@ export async function deactivateExternalPlugin(name: string): Promise<boolean> {
   return true;
 }
 
+/** boot 计时汇总（诊断 2026-09-03）；vitest 环境跳过不刷屏。
+ *  串行装载下各段 Σ ≈ 总墙钟，慢插件定位看各行。 */
+function reportBootTiming(tag: string): void {
+  if (import.meta.env.MODE === 'test') return;
+  if (bootTiming.length === 0) return;
+  const sum = (key: 'manifestMs' | 'faceMs' | 'importMs' | 'applyMs'): number =>
+    bootTiming.reduce((acc, t) => acc + (t[key] ?? 0), 0);
+  // 总墙钟 = max(totalMs)（并发下 Σ totalMs 重复计数虚高——2026-09-03 修正：
+  // 串行时 max ≈ Σ，并发时 max = 从首波启动到最晚装配完成的真实时间）。
+  const total = bootTiming.reduce((acc, t) => Math.max(acc, t.totalMs), 0);
+  console.group(`[boot-timing] ${tag}：${bootTiming.length} 插件，总 ${total.toFixed(1)}ms`);
+  for (const t of bootTiming) {
+    console.log(
+      `${t.name.padEnd(32)} manifest=${(t.manifestMs ?? 0).toFixed(1)}ms face=${(t.faceMs ?? 0).toFixed(1)}ms import=${(t.importMs ?? 0).toFixed(1)}ms apply=${(t.applyMs ?? 0).toFixed(1)}ms total=${t.totalMs.toFixed(1)}ms [${t.status}]`,
+    );
+  }
+  console.log(
+    `Σ manifest=${sum('manifestMs').toFixed(1)}ms face=${sum('faceMs').toFixed(1)}ms import=${sum('importMs').toFixed(1)}ms apply=${sum('applyMs').toFixed(1)}ms`,
+  );
+  console.groupEnd();
+  bootTiming.length = 0;
+}
+
 /** 外部插件装载主入口（main.ts 引导期调用；永不 reject）。 */
 export async function loadExternalPlugins(root: Context, opts: LoadExternalPluginsOptions = {}): Promise<void> {
   const fetchImpl: FetchLike = opts.fetchImpl ?? fetch;
   const importModule = opts.importModule ?? ((url: string) => import(/* @vite-ignore */ url));
   const mcpBridgeIO = opts.mcpBridgeIO;
   try {
+    bootTiming.length = 0; // 清上一轮残留（activate 增量装载也写采集器），本轮独立汇总
     const origin = opts.origin ?? (await resolveOrigin());
     if (!origin) return; // 无后端通道（浏览器 mock / 代理未起）——非错误
     runtime = { root, deps: { origin, fetchImpl, importModule, mcpBridgeIO } };
@@ -389,29 +427,64 @@ export async function loadExternalPlugins(root: Context, opts: LoadExternalPlugi
     // 磁盘索引的字母序会让 assembly 面漂移）。其余用户插件按索引序随后。
     // dev 模式过滤：出厂产物已在源码域装载（BUILTIN_PLUGINS 的 DEV 分支），
     // 产物通道的磁盘副本是过期缓存——跳过防重复装载/覆盖热重载。
+    // forceProductChannel=1（性能测量）：不过滤——产物通道是唯一装载面
+    // （BUILTIN_PLUGINS 同步不展开源码工厂产物，形态与生产一致）。
     const factoryNames = factoryProductNames();
-    const indexNames = import.meta.env.DEV ? index.map(String).filter((n) => !factoryNames.has(n)) : index.map(String);
+    const indexNames =
+      import.meta.env.DEV && !forceProductChannel
+        ? index.map(String).filter((n) => !factoryNames.has(n))
+        : index.map(String);
     const factoryOrder = factoryProductPlugins().map((p) => p.name);
     const builtinFirst = factoryOrder.filter((n) => indexNames.includes(n));
     const rest = indexNames.filter((n) => !builtinFirst.includes(n));
+    // 三波并行装载（2026-09-03 性能重构，保序契约不变）：
+    //   波 1 并发拉全部 manifest + face（阶段 1——本地校验与拒载分支，无副作用）
+    //   波 2 并发 import 全部通过产物（阶段 2——模块解析/形状校验，无副作用）
+    //   波 3 按表序串行 apply（root.plugin——注册贡献，字节契约依赖此序）
+    // 串行 → 三波后：总墙钟从 Σ全部段（≈2s）降到最慢单条链（≈0.5s）。
+    const order = [...builtinFirst, ...rest];
+    const bootT0 = performance.now();
+    const deps: LoadOneDeps = { origin, disabled, granted, fetchImpl, importModule, mcpBridgeIO };
+    const stage1 = await Promise.all(order.map((dirId) => manifestStage(String(dirId), deps)));
+    const stage2 = await Promise.all(stage1.map((s1) => (s1.ok ? moduleStage(s1, deps) : s1)));
     const records: PluginRecord[] = [];
-    for (const dirId of [...builtinFirst, ...rest]) {
-      const { record, fiber } = await loadOne(root, String(dirId), {
-        origin,
-        disabled,
-        granted,
-        fetchImpl,
-        importModule,
-        mcpBridgeIO,
-      });
-      if (fiber) activeExternalFibers.set(record.name, fiber);
+    for (const s2 of stage2) {
+      if (!s2.ok) {
+        s2.tim.totalMs = performance.now() - bootT0;
+        s2.tim.status = s2.record.status;
+        bootTiming.push(s2.tim);
+        records.push(s2.record);
+        continue;
+      }
+      let fiber: Fiber | null = null;
+      try {
+        const tApply = performance.now();
+        fiber = await root.plugin(s2.target);
+        s2.tim.applyMs = performance.now() - tApply;
+        s2.tim.status = 'active';
+      } catch (e) {
+        // apply 抛错 → 装载失败记录（失败隔离：单个失败不影响后续）
+        s2.tim.status = 'error';
+        s2.tim.totalMs = performance.now() - bootT0;
+        bootTiming.push(s2.tim);
+        records.push(withBuiltinMeta(s2.manifest.name, s2.manifest, errText(e)));
+        continue;
+      }
+      s2.tim.totalMs = performance.now() - bootT0;
+      bootTiming.push(s2.tim);
+      const record: PluginRecord = s2.isBuiltinNamed
+        ? { name: s2.manifest.name, manifest: s2.manifest, status: 'active', builtin: true, meta: s2.bundleMeta }
+        : { name: s2.manifest.name, manifest: s2.manifest, status: 'active' };
       records.push(record);
+      activeExternalFibers.set(record.name, fiber);
     }
     // merge 而非 setPlugins：外部插件装载不得冲刷第一方 boot 记录
     usePluginStore.getState().mergePlugins(records);
+    reportBootTiming('loadExternalPlugins');
   } catch (e) {
     // 通道级失败（内部已全捕获，理论不可达；防御性兜底防未处理拒绝）
     console.warn('[plugins] 装载通道失败:', e);
+    reportBootTiming('loadExternalPlugins(失败)');
   }
 }
 
@@ -425,28 +498,77 @@ interface LoadOneDeps {
   mcpBridgeIO?: McpBridgeIO;
 }
 
-/** 装载单个插件；任何一步失败 → error 记录（失败隔离，永不抛出）。
- *  返回 fiber（D6 运行时热重载的 dispose 锚点——未装载态为 null）。
- *  位移式内置插件（manifest.displace + bundle fiber 在册）：import 前
- *  dispose bundle fiber（贡献面单活互换）；import 失败重启 bundle 插件
- *  （兜底行恢复）。 */
-async function loadOne(
-  root: Context,
-  dirId: string,
-  deps: LoadOneDeps,
-): Promise<{ record: PluginRecord; fiber: Fiber | null }> {
-  const { origin, fetchImpl, importModule } = deps;
-  // 1) manifest 获取 + 校验
-  const raw = await fetchJson(fetchImpl, origin + '/' + dirId + '/manifest.json');
-  if (raw == null) return { record: errorRecord(dirId, null, 'manifest.json 缺失或不可解析'), fiber: null };
+/** 插件装载段耗时（boot 计时诊断，2026-09-03——只进日志，不改装载语义）。 */
+interface LoadTimingEntry {
+  name: string;
+  manifestMs: number | null;
+  faceMs: number | null;
+  importMs: number | null;
+  applyMs: number | null;
+  totalMs: number;
+  status: string;
+}
+/** boot 计时采集器（模块级可变态；loadExternalPlugins / activateExternalPlugin
+ *  各自清空 + 汇总；vitest 环境不打印不刷屏）。 */
+const bootTiming: LoadTimingEntry[] = [];
+
+/** manifestStage 成功结果（阶段 1 通过）。 */
+interface ManifestStageOk {
+  ok: true;
+  dirId: string;
+  manifest: PluginManifest;
+  bundleMeta: FirstPartyPluginMeta | undefined;
+  isBuiltinNamed: boolean;
+  tim: LoadTimingEntry;
+}
+type ManifestStageResult = ManifestStageOk | { ok: false; record: PluginRecord; tim: LoadTimingEntry };
+
+/** moduleStage 成功结果（阶段 2 通过）。 */
+interface ModuleStageOk {
+  ok: true;
+  manifest: PluginManifest;
+  bundleMeta: FirstPartyPluginMeta | undefined;
+  isBuiltinNamed: boolean;
+  target: LantaiPlugin;
+  tim: LoadTimingEntry;
+}
+type ModuleStageResult = ModuleStageOk | { ok: false; record: PluginRecord; tim: LoadTimingEntry };
+
+/** 阶段 1：manifest + face 拉取与全部拒载分支判定（并发安全、无副作用）。
+ *  face 与 manifest 并发拉（双 URL 均按 dirId 寻址——第 2 步强制
+ *  manifest.name === dirId，故等价原 manifest.name 寻址）；4b' 宿主面键
+ *  对拍在 import 前完成（保险丝语义保持——偏斜产物不 import）。 */
+async function manifestStage(dirId: string, deps: LoadOneDeps): Promise<ManifestStageResult> {
+  const { origin, fetchImpl } = deps;
+  const tim: LoadTimingEntry = {
+    name: dirId,
+    manifestMs: null,
+    faceMs: null,
+    importMs: null,
+    applyMs: null,
+    totalMs: 0,
+    status: 'error',
+  };
+  const t0 = performance.now();
+  // 并发拉 manifest + face（同一并发窗——manifestMs/faceMs 记窗长）
+  const [raw, faceDoc] = await Promise.all([
+    fetchJson(fetchImpl, origin + '/' + dirId + '/manifest.json'),
+    fetchJson(fetchImpl, origin + '/' + dirId + '/face.json'),
+  ]);
+  tim.manifestMs = performance.now() - t0;
+  tim.faceMs = performance.now() - t0;
+  if (raw == null) return { ok: false, record: errorRecord(dirId, null, 'manifest.json 缺失或不可解析'), tim };
   const validated = validateManifest(raw);
-  if (!validated.ok) return { record: errorRecord(dirId, null, 'manifest 校验失败: ' + validated.error), fiber: null };
+  if (!validated.ok) {
+    return { ok: false, record: errorRecord(dirId, null, 'manifest 校验失败: ' + validated.error), tim };
+  }
   const manifest = validated.manifest;
   // 2) 名字与目录一致（URL 按名字寻址磁盘目录，不一致 = 装不上）
   if (manifest.name !== dirId) {
     return {
+      ok: false,
       record: errorRecord(dirId, manifest, 'manifest.name (' + manifest.name + ') 与目录名 (' + dirId + ') 不一致'),
-      fiber: null,
+      tim,
     };
   }
   const bundleMeta = FIRST_PARTY_MANIFEST[manifest.name];
@@ -455,21 +577,23 @@ async function loadOne(
   //     （bundle 域 boot 跳过 + 产物域装载跳过——两域一致，下次启动语义不变）
   if (bundleMeta?.kind === 'feature' && usePluginPrefs.getState().isDisabled(manifest.name)) {
     return {
+      ok: false,
       record: { name: manifest.name, manifest, status: 'disabled', builtin: true, meta: bundleMeta },
-      fiber: null,
+      tim,
     };
   }
   // 3) S4：inject 依赖存在性检查退役——cordis fiber PENDING 挂起语义取代
-  //    一次性存在性拒载。manifest.inject 合并进插件对象 inject（见 5 下方
+  //    一次性存在性拒载。manifest.inject 合并进插件对象 inject（见阶段 2
   //    target 构造），缺依赖 = fiber PENDING 等待；boot 审计（boot-gate.ts）
   //    settle 后判全 ACTIVE 才放行——PENDING 且依赖永缺 = 审计 fail-loud。
   // 4) disabled 跳过（不 import）
   if (deps.disabled.has(manifest.name)) {
     return {
+      ok: false,
       record: isBuiltinNamed
         ? { name: manifest.name, manifest, status: 'disabled', builtin: true, meta: bundleMeta }
         : { name: manifest.name, manifest, status: 'disabled' },
-      fiber: null,
+      tim,
     };
   }
   // 4b) 权限门禁（C11-2 装载期一票否决）：manifest.permissions 声明的
@@ -482,6 +606,7 @@ async function loadOne(
     const missing = declaredPerms.filter((p) => !grantedFor.has(p));
     if (missing.length > 0) {
       return {
+        ok: false,
         record: {
           ...(isBuiltinNamed ? { builtin: true as const, meta: bundleMeta } : {}),
           name: manifest.name,
@@ -489,23 +614,21 @@ async function loadOne(
           status: 'blocked',
           missingPermissions: missing,
         },
-        fiber: null,
+        tim,
       };
     }
   }
   // 4b') 宿主面键集对拍（保险丝 a，2026-09-03 生产事故立法）：产物 face.json
   //       声明的需求键在运行时 faceDeps 缺席 = 产物与 exe 版本偏斜——装载期
-  //       拒载，bundle 兜底行不位移（displace 在后，永不发生）。此前此类
-  //       偏斜渲染期才炸：impl.X undefined → TypeError → React 整树卸载，
-  //       装载层失败隔离够不着渲染期。face.json 缺席/坏形状 = 零需求
+  //       拒载（偏斜产物不 import）。face.json 缺席/坏形状 = 零需求
   //       （旧产物 / 第三方 / renderers 走 renderer-host 面）——回退兼容。
-  const faceDoc = await fetchJson(fetchImpl, origin + '/' + manifest.name + '/face.json');
   if (faceDoc != null && typeof faceDoc === 'object' && Array.isArray((faceDoc as { faceDeps?: unknown }).faceDeps)) {
     const required = (faceDoc as { faceDeps: unknown[] }).faceDeps.filter((k): k is string => typeof k === 'string');
     const have = faceDepsKeys();
     const missing = required.filter((k) => !have.has(k));
     if (missing.length > 0) {
       return {
+        ok: false,
         record: withBuiltinMeta(
           manifest.name,
           manifest,
@@ -513,30 +636,40 @@ async function loadOne(
             missing.join(', ') +
             ' —— 用与 exe 同源的源码树重建产物，或更新 exe',
         ),
-        fiber: null,
+        tim,
       };
     }
   }
-  // 5) 导入 + 装配（cordis fiber 记录生命周期；apply 抛错 → await reject）
-  //    S5：displace 位移机制退役——bundle 兜底行已拆，产物是唯一装载面。
+  return { ok: true, dirId, manifest, bundleMeta, isBuiltinNamed, tim };
+}
+
+/** 阶段 2：模块 import + 形状校验 + 声明式包装（并发安全、无副作用）。
+ *  仅 manifest（阶段 1 通过）驱动；wrapper 构造归这里，apply 执行归阶段 3。 */
+async function moduleStage(entry: ManifestStageOk, deps: LoadOneDeps): Promise<ModuleStageResult> {
+  const { origin, importModule } = deps;
+  const { manifest, bundleMeta, isBuiltinNamed, tim } = entry;
   try {
+    // 5) 导入（S5：displace 位移机制退役——产物是唯一装载面）
     const url = origin + '/' + manifest.name + '/' + manifest.entry;
+    const tImport = performance.now();
     const mod = await importModule(url);
     const candidate = pickPluginObject(mod);
     if (!isPluginShape(candidate)) {
       return {
+        ok: false,
         record: withBuiltinMeta(manifest.name, manifest, '插件入口未导出 { name, apply } 形状的对象'),
-        fiber: null,
+        tim,
       };
     }
     if (candidate.name !== manifest.name) {
       return {
+        ok: false,
         record: withBuiltinMeta(
           manifest.name,
           manifest,
           '插件对象 name (' + candidate.name + ') 与 manifest.name 不一致',
         ),
-        fiber: null,
+        tim,
       };
     }
     // 声明式挂接（S4-4 乙机器桥 + C11-1 工具声明）：manifest 声明
@@ -569,16 +702,55 @@ async function loadOne(
           },
         }
       : candidate;
-    const fiber = await root.plugin(target);
+    tim.importMs = performance.now() - tImport;
+    return { ok: true, manifest, bundleMeta, isBuiltinNamed, target, tim };
+  } catch (e) {
+    // 装载失败：error 记录可见（S5：位移恢复已退役——产物是唯一装载面）。
+    return { ok: false, record: withBuiltinMeta(manifest.name, manifest, errText(e)), tim };
+  }
+}
+
+/** 装载单个插件（阶段 1→2→3 串行组合；给 activateExternalPlugin 增量装载用）。
+ *  任何一步失败 → error 记录（失败隔离，永不抛出）。返回 fiber
+ *  （D6 运行时热重载的 dispose 锚点——未装载态为 null）。 */
+async function loadOne(
+  root: Context,
+  dirId: string,
+  deps: LoadOneDeps,
+): Promise<{ record: PluginRecord; fiber: Fiber | null }> {
+  const t0 = performance.now();
+  const s1 = await manifestStage(dirId, deps);
+  if (!s1.ok) {
+    s1.tim.totalMs = performance.now() - t0;
+    s1.tim.status = s1.record.status;
+    bootTiming.push(s1.tim);
+    return { record: s1.record, fiber: null };
+  }
+  const s2 = await moduleStage(s1, deps);
+  if (!s2.ok) {
+    s2.tim.totalMs = performance.now() - t0;
+    s2.tim.status = s2.record.status;
+    bootTiming.push(s2.tim);
+    return { record: s2.record, fiber: null };
+  }
+  try {
+    const tApply = performance.now();
+    const fiber = await root.plugin(s2.target);
+    s2.tim.applyMs = performance.now() - tApply;
+    s2.tim.totalMs = performance.now() - t0;
+    s2.tim.status = 'active';
+    bootTiming.push(s2.tim);
     return {
-      record: isBuiltinNamed
-        ? { name: manifest.name, manifest, status: 'active', builtin: true, meta: bundleMeta }
-        : { name: manifest.name, manifest, status: 'active' },
+      record: s2.isBuiltinNamed
+        ? { name: s2.manifest.name, manifest: s2.manifest, status: 'active', builtin: true, meta: s2.bundleMeta }
+        : { name: s2.manifest.name, manifest: s2.manifest, status: 'active' },
       fiber,
     };
   } catch (e) {
-    // 装载失败：error 记录可见（S5：位移恢复已退役——产物是唯一装载面）。
-    return { record: withBuiltinMeta(manifest.name, manifest, errText(e)), fiber: null };
+    // apply 抛错 → 装载失败记录（失败隔离）
+    s2.tim.totalMs = performance.now() - t0;
+    bootTiming.push(s2.tim);
+    return { record: withBuiltinMeta(s2.manifest.name, s2.manifest, errText(e)), fiber: null };
   }
 }
 
