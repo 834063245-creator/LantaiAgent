@@ -1,35 +1,118 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
-// SPDX-License-Identifier: MIT
-// Shell 执行：exec_command、bash_output、bash_wait、bash_kill、shell_env。
+// SPDX-License-Identifier: MIT.
+
+//! builtin.shell 插件——内核插件运行时 Phase 4（自 commands/shell.rs 拆出）。
+//! 工具面真源 = 同目录 manifest.json（`npm run gen:kernel-manifest shell` 发射）。
+//!
+//! 权限形状：**全族业务自检**（v1 形态，无 manifest permission 声明）——
+//! exec_command 的检查是双检查不对称结构：前台 require_command（Ask 可弹）
+//! + resolve_read_dispatch；后台 require_command_sync + require_read_sync
+//! （sync 变体刻意免 Ask——后台任务不能挂等弹窗）。dispatch 侧单键 adapter
+//! 表达不了该不对称（agent+bg 会引入旧路没有的 Ask），故权限检查整体留在
+//! 业务内（fs 的 rename/move/log_append 同款业务自检形态；Bash 家族用户
+//! 规则仍经业务内 BashTool 检查生效）。bash_output/bash_kill/bash_wait/
+//! shell_env/background_activity/drain_bg_notifications 本就无命令级检查。
+//!
+//! 流式通道（§4.3 裁决）：shell:output / shell:done 双事件 + streamToolId 键控
+//! 原样保留（queued-shell 消费闭环不动）；_callId / tool_call:progress 是正交
+//! 的增量输出通道（P2-4 机制落地，见 tool_plugins/plugin.rs emit_progress），
+//! shell 不迁——自有流式已是完整闭环。
 
 use std::thread;
 use std::time::Duration;
 
+use serde_json::Value;
 use tauri::Emitter;
 
+use super::manifest::ToolManifest;
+use super::plugin::{ToolContext, ToolError, ToolPlugin};
 use crate::utils::truncate_output_spill;
 
-/// 当前 shell 环境 — 前端注入 Agent system prompt 用（见 os_sandbox::shell_env）。
-#[tauri::command]
-pub(crate) fn shell_env() -> String {
-    serde_json::to_string(&crate::os_sandbox::shell_env())
-        .unwrap_or_else(|_| r#"{"os":"unknown","shell":"unknown","shell_path":"","notes":""}"#.into())
+pub struct ShellPlugin {
+    manifest: ToolManifest,
 }
 
-#[tauri::command]
-pub(crate) async fn exec_command(
-    command: String,
-    cwd: Option<String>,
-    timeout_ms: Option<u64>,
-    run_in_background: Option<bool>,
-    is_agent: Option<bool>,
-    stream_tool_id: Option<String>,
-    agent_id: Option<String>,
-    interpreter: Option<String>,
-    owner_id: Option<String>,
-    state: tauri::State<'_, crate::WorkspaceState>,
-    app: tauri::AppHandle,
-) -> Result<String, String> {
+impl ShellPlugin {
+    pub fn new() -> Self {
+        let manifest: ToolManifest = serde_json::from_str(include_str!("manifest.json"))
+            .expect("builtin.shell manifest 是随 exe 编译的静态资源");
+        Self { manifest }
+    }
+}
+
+impl Default for ShellPlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ToolPlugin for ShellPlugin {
+    fn id(&self) -> &str {
+        "builtin.shell"
+    }
+
+    fn manifest(&self) -> &ToolManifest {
+        &self.manifest
+    }
+
+    fn execute<'a>(
+        &'a self,
+        ctx: &'a ToolContext<'a>,
+        tool_name: &'a str,
+        args: Value,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Value, ToolError>> + Send + 'a>,
+    > {
+        Box::pin(async move {
+            match tool_name {
+                "exec_command" => exec_command(ctx, &args).await,
+                "bash_output" => bash_output(&args),
+                "bash_kill" => bash_kill(&args),
+                "bash_wait" => bash_wait(&args),
+                "shell_env" => shell_env(),
+                "background_activity" => background_activity(),
+                "drain_bg_notifications" => drain_bg_notifications(&args),
+                other => Err(ToolError::InvalidArgs(format!(
+                    "builtin.shell: 未知工具 '{other}'"
+                ))),
+            }
+        })
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 业务（自 commands/shell.rs 原样迁入；参数键 = manifest 语言 camelCase，
+// meta 键 _agent_id/_owner_id 依 INVARIANTS #9 原样透传；权限检查在业务内）
+// ═══════════════════════════════════════════════════════════════
+
+/// 当前 shell 环境 — 前端注入 Agent system prompt 用（见 os_sandbox::shell_env）。
+fn shell_env() -> Result<Value, ToolError> {
+    Ok(Value::String(
+        serde_json::to_string(&crate::os_sandbox::shell_env())
+            .unwrap_or_else(|_| r#"{"os":"unknown","shell":"unknown","shell_path":"","notes":""}"#.into()),
+    ))
+}
+
+async fn exec_command(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolError> {
+    let missing = |k: &str| ToolError::InvalidArgs(format!("exec_command: missing '{k}'"));
+    let command = super::plugin::arg_str(args, "command").ok_or_else(|| missing("command"))?;
+    let cwd = super::plugin::arg_str(args, "cwd");
+    let timeout_ms = super::plugin::arg_usize(args, "timeoutMs").map(|n| n as u64);
+    let run_in_background = super::plugin::arg_bool(args, "runInBackground");
+    let stream_tool_id = super::plugin::arg_str(args, "streamToolId");
+    let interpreter = super::plugin::arg_str(args, "interpreter");
+    // 通知路由身份（bus agent id）— 与 _agent_id（worktree 隔离 id）分离
+    let owner_id = super::plugin::arg_str(args, "_owner_id");
+    // agent 归属：_agent_id meta（dispatch 已抽入 ctx）回退显式 agentId
+    let agent_id = ctx
+        .agent_id
+        .clone()
+        .or_else(|| super::plugin::arg_str(args, "agentId"));
+    let is_agent = ctx.is_agent;
+
+    let state = ctx.state;
+    let app = ctx.app;
+
     // P5：解释器选择（"pwsh" → PowerShell；其余/缺省 → 捆绑 bash 阶梯）
     let shell_kind = match interpreter.as_deref() {
         Some("pwsh") => crate::os_sandbox::ShellInterpreter::Pwsh,
@@ -41,23 +124,26 @@ pub(crate) async fn exec_command(
     let dir = crate::utils::sticky_cwd::resolve(
         cwd.as_deref(),
         owner_key.as_deref(),
-        crate::utils::workspace_path(&state)?,
+        crate::utils::workspace_path(state).map_err(ToolError::Tool)?,
     );
     let cwd_gen = crate::utils::sticky_cwd::generation();
     let is_bg = run_in_background.unwrap_or(false);
     let physical_dir = if is_bg {
-        crate::utils::require_command_sync(&command, &state)?;
-        crate::utils::require_read_sync(&dir, agent_id.as_deref(), &state)?
+        crate::utils::require_command_sync(&command, state).map_err(ToolError::Tool)?;
+        crate::utils::require_read_sync(&dir, agent_id.as_deref(), state).map_err(ToolError::Tool)?
     } else {
-        crate::utils::require_command(&command, &state, &app).await?;
-        crate::utils::resolve_read_dispatch(&dir, is_agent.unwrap_or(false), agent_id.as_deref(), &state, &app).await?
+        crate::utils::require_command(&command, state, app).await.map_err(ToolError::Tool)?;
+        crate::utils::resolve_read_dispatch(&dir, is_agent, agent_id.as_deref(), state, app)
+            .await
+            .map_err(ToolError::Tool)?
     };
     let physical_dir_str = physical_dir.to_string_lossy().to_string();
 
     // ── BuildLock：原子检查+注册（Tauri 单进程 + Mutex，无 TOCTOU）──
     // 冲突 → 打回（带路径错误，LLM 决策）；无冲突 → 持锁执行，随 job 释放。
     let job_id = crate::utils::next_job_id();
-    let lock_key = crate::utils::acquire_build_lock(&command, &physical_dir_str, job_id, agent_id.clone())?;
+    let lock_key = crate::utils::acquire_build_lock(&command, &physical_dir_str, job_id, agent_id.clone())
+        .map_err(ToolError::Tool)?;
 
     // P4 护栏：cmd 语法 `cd /d X:` 混入捆绑 bash（日志实证 19 次必失败重试）。
     // 不拦截 — 输出顶部注入纠偏提示，模型看得到失败原因与正确写法。
@@ -74,9 +160,10 @@ pub(crate) async fn exec_command(
         // owner 优先 _owner_id（bus agent id — 前端 executor 注入，通知路由 + kill
         // 所有权）；回退 _agent_id（worktree 隔离 id）兼容旧前端 / 直连 RPC。
         // 后台任务不参与粘性 cwd（长驻命令的落点意义小，且完成时机被动）。
-        let id = crate::utils::spawn_bg_with(job_id, &command, &physical_dir_str, shell_kind, owner_id.or(agent_id), lock_key, Some(app))?;
+        let id = crate::utils::spawn_bg_with(job_id, &command, &physical_dir_str, shell_kind, owner_id.or(agent_id), lock_key, Some(app.clone()))
+            .map_err(ToolError::Tool)?;
         let hint = cmd_syntax_hint.unwrap_or_default();
-        return Ok(format!("{hint}[后台任务已启动, ID: {}]\n使用 bash_output({}) 查看输出, bash_wait({}) 等待完成, bash_kill({}) 终止任务", id, id, id, id));
+        return Ok(Value::String(format!("{hint}[后台任务已启动, ID: {}]\n使用 bash_output({}) 查看输出, bash_wait({}) 等待完成, bash_kill({}) 终止任务", id, id, id, id)));
     }
 
     // ── 粘性 cwd 落点捕获包装（权限检查与构建锁之后，spawn 之前）──
@@ -99,7 +186,7 @@ pub(crate) async fn exec_command(
         Ok(c) => c,
         Err(e) => {
             crate::utils::release_build_lock(&lock_key);
-            return Err(format!("无法执行命令: {e}"));
+            return Err(ToolError::Tool(format!("无法执行命令: {e}")));
         }
     };
 
@@ -352,7 +439,7 @@ pub(crate) async fn exec_command(
             "job_id": job_id,
             // 本次命令的生效起始目录 — 前端拼进结果尾部回显（粘性 cwd 可见性）
             "resolvedCwd": physical_dir_str,
-        }).to_string());
+        }));
     }
 
     // ── 非流式路径（原始阻塞行为） ──
@@ -386,12 +473,57 @@ pub(crate) async fn exec_command(
         r
     })
     .await
-    .map_err(|e| format!("命令等待任务异常: {e}"))?;
-    let out = result?;
-    Ok(match cmd_syntax_hint {
+    .map_err(|e| ToolError::Tool(format!("命令等待任务异常: {e}")))?;
+    let out = result.map_err(ToolError::Tool)?;
+    Ok(Value::String(match cmd_syntax_hint {
         Some(hint) => format!("{hint}{out}"),
         None => out,
-    })
+    }))
+}
+
+fn bash_output(args: &Value) -> Result<Value, ToolError> {
+    let job_id = super::plugin::arg_usize(args, "jobId")
+        .ok_or_else(|| ToolError::InvalidArgs("bash_output: missing 'jobId'".into()))? as u32;
+    crate::utils::read_bg_output(job_id)
+        .map(|s| truncate_output_spill(&s, &format!("bg-job-{job_id}")))
+        .map(Value::String)
+        .map_err(ToolError::Tool)
+}
+
+fn bash_kill(args: &Value) -> Result<Value, ToolError> {
+    let job_id = super::plugin::arg_usize(args, "jobId")
+        .ok_or_else(|| ToolError::InvalidArgs("bash_kill: missing 'jobId'".into()))? as u32;
+    // kill 所有权身份优先 _owner_id（与 spawn 时 job owner 对齐），回退 agentId
+    // （bash_kill 工具层已折 _owner_id → agentId；两形都收）
+    let agent_id = super::plugin::arg_str(args, "_owner_id").or_else(|| super::plugin::arg_str(args, "agentId"));
+    crate::utils::kill_bg(job_id, agent_id.as_deref())
+        .map(Value::String)
+        .map_err(ToolError::Tool)
+}
+
+fn bash_wait(args: &Value) -> Result<Value, ToolError> {
+    let job_id = super::plugin::arg_usize(args, "jobId")
+        .ok_or_else(|| ToolError::InvalidArgs("bash_wait: missing 'jobId'".into()))? as u32;
+    let timeout_ms = super::plugin::arg_usize(args, "timeoutMs").map(|n| n as u64);
+    crate::utils::wait_bg(job_id, timeout_ms.unwrap_or(60_000))
+        .map(|s| truncate_output_spill(&s, &format!("bg-job-{job_id}")))
+        .map(Value::String)
+        .map_err(ToolError::Tool)
+}
+
+/// 状态栏 HUD 只读聚合：正在运行的 shell 后台任务 + 浏览器会话。
+/// 不经过 Agent 权限引擎（本机 UI 查询，不含命令输出/页面内容）。
+fn background_activity() -> Result<Value, ToolError> {
+    let shells = crate::utils::bg_jobs_snapshot();
+    let browsers = crate::cdp::cdp_browser_activity();
+    Ok(serde_json::json!({ "shells": shells, "browsers": browsers }))
+}
+
+fn drain_bg_notifications(args: &Value) -> Result<Value, ToolError> {
+    let agent_id = super::plugin::arg_str(args, "agentId");
+    Ok(Value::String(crate::utils::drain_bg_notifications(
+        agent_id.as_deref(),
+    )))
 }
 
 /// 为子进程管道起 drainer 线程：read_to_end 后经 channel 送回，避免管道写满阻塞子进程。
@@ -557,25 +689,6 @@ fn wait_child_blocking(
     }
 }
 
-#[tauri::command]
-pub(crate) async fn bash_output(job_id: u32) -> Result<String, String> {
-    crate::utils::read_bg_output(job_id).map(|s| truncate_output_spill(&s, &format!("bg-job-{job_id}")))
-}
-
-#[tauri::command]
-pub(crate) async fn bash_kill(job_id: u32, agent_id: Option<String>) -> Result<String, String> {
-    crate::utils::kill_bg(job_id, agent_id.as_deref())
-}
-
-#[tauri::command]
-pub(crate) async fn bash_wait(job_id: u32, timeout_ms: Option<u64>) -> Result<String, String> {
-    crate::utils::wait_bg(job_id, timeout_ms.unwrap_or(60_000)).map(|s| truncate_output_spill(&s, &format!("bg-job-{job_id}")))
-}
-
-#[tauri::command]
-pub(crate) async fn drain_bg_notifications(agent_id: Option<String>) -> Result<String, String> {
-    Ok(crate::utils::drain_bg_notifications(agent_id.as_deref()))
-}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -745,5 +858,29 @@ mod tests {
             crate::utils::lock_or_recover(&crate::utils::BG_JOBS).get(&job_id).is_none(),
             "job {job_id} 应已从 ledger 移除"
         );
+    }
+
+    /// manifest 钉子（P2-4 裁决）：7 工具、全族业务自检（无 permission 声明——
+    /// exec_command 的 bg/fg 双检查不对称留在业务内）。
+    #[test]
+    fn manifest_json_parses_and_matches_id() {
+        let m: ToolManifest = serde_json::from_str(include_str!("manifest.json"))
+            .expect("出厂 manifest 是编译期静态资源");
+        assert_eq!(m.id, "builtin.shell");
+        assert_eq!(m.trust, super::super::manifest::TrustLevel::System);
+        assert_eq!(m.tools.len(), 7);
+        for t in &m.tools {
+            assert!(
+                t.permission.is_none(),
+                "{}: shell 全族业务自检（无 manifest permission 声明）",
+                t.name
+            );
+        }
+        let exec = m.tools.iter().find(|t| t.name == "exec_command").expect("exec_command 在清单内");
+        assert!(!exec.read_only);
+        for name in ["bash_output", "bash_wait", "shell_env", "background_activity", "drain_bg_notifications"] {
+            let t = m.tools.iter().find(|t| t.name == name).unwrap_or_else(|| panic!("{name} 在清单内"));
+            assert!(t.read_only, "{name} 应只读");
+        }
     }
 }

@@ -12,6 +12,29 @@
 import type { Tool, ToolExecutor } from '../tool';
 import { KERNEL_MANIFESTS } from './kernel-manifests.generated';
 
+/** tool_call:progress 自持订阅（P2-4 §4.2，kernel-plugin-runtime 设计件）：
+ *  execute 开始且 args._callId 存在且 onProgress 非空时订阅 tool_call:progress
+ *  事件按 callId 过滤转发到 onProgress；settle（成功/异常）即解绑。事件不会
+ *  早于 execute 开始（emit 只发生在插件执行期），无竞态窗口——不依赖 exec
+ *  链透传 onProgress（生产链在 provider seam 处丢弃它是已知现状）。 */
+export async function withProgressStream<T>(
+  args: Record<string, unknown>,
+  onProgress: ((chunk: string) => void) | undefined,
+  run: () => Promise<T>,
+): Promise<T> {
+  const callId = typeof args._callId === 'string' ? args._callId : undefined;
+  if (!callId || !onProgress) return run();
+  const { typedListen } = await import('../../rpc-contract');
+  const unlisten = await typedListen('tool_call:progress', (e) => {
+    if (e.callId === callId) onProgress(e.chunk);
+  });
+  try {
+    return await run();
+  } finally {
+    unlisten();
+  }
+}
+
 /** manifest 单工具声明（生成物镜像的类型面）。 */
 export interface KernelToolSpec {
   name: string;
@@ -56,7 +79,9 @@ export function manifestTool(manifestId: string, toolName: string, exec: ToolExe
     parameters: () => parameters,
     readOnly: () => spec.read_only ?? false,
     execute: (args, onProgress, signal) =>
-      exec('tool_call', { plugin: manifestId, tool: spec.name, args }, onProgress, signal),
+      withProgressStream(args, onProgress, () =>
+        exec('tool_call', { plugin: manifestId, tool: spec.name, args }, onProgress, signal),
+      ),
   };
 }
 

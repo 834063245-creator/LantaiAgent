@@ -65,11 +65,18 @@ describe('shell seam（ctx.shell · D11 施工⑤）', () => {
     const meta = { command: 'cargo test', _agent_id: 'agent-42' };
     const out = await toolByName('run_shell', spyExec).execute(meta);
     expect(out).toBe('ok:rust');
-    // run_shell schema 带 default（timeoutMs/runInBackground）——zod 解析后 args
-    // 含默认值字段，故按关键键断言而非整对象 deep equal
     expect(dispatchCalls).toHaveLength(1);
-    expect(dispatchCalls[0]?.name).toBe('exec_command');
-    expect(dispatchCalls[0]?.args).toMatchObject({ command: 'cargo test', _agent_id: 'agent-42' });
+    // P2-4 信封化：恒等保证的载体从命令名移到信封——plugin.tool 寻址
+    // builtin.shell.exec_command，args 原样透传（含 _agent_id）。
+    expect(dispatchCalls[0]?.name).toBe('tool_call');
+    const env = dispatchCalls[0]?.args as {
+      plugin?: string;
+      tool?: string;
+      args?: Record<string, unknown>;
+    };
+    expect(env.plugin).toBe('builtin.shell');
+    expect(env.tool).toBe('exec_command');
+    expect(env.args).toMatchObject({ command: 'cargo test', _agent_id: 'agent-42' });
   });
 
   it('③ fake 替换：内存 shell 零消费面改动，dispatch 腰不被触碰（P2-C2）', async () => {

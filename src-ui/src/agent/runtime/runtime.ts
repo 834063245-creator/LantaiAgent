@@ -17,7 +17,14 @@ import { factoryComposition, type ResolvedComposition } from '../../composition/
 import type { Context } from '../../cordis';
 import type { StoredThinking } from '../../provider/thinking';
 import type { Message, Provider } from '../../provider/types';
-import { kernelDeleteFile, kernelReadFile, kernelWriteFile, typedJsonRpc } from '../../rpc-contract';
+import {
+  kernelDeleteFile,
+  kernelReadFile,
+  kernelShellCall,
+  kernelWriteFile,
+  parseJson,
+  typedJsonRpc,
+} from '../../rpc-contract';
 import { Agent } from '../agent';
 import { resolveAgentLoop } from '../agent-loop/agent-loop-active';
 import type { AgentUINotifier, EventSink, Pricing } from '../agent-types';
@@ -601,8 +608,13 @@ export class AgentRuntime implements RuntimePort {
       let shellEnvSection = '';
       try {
         // shell_env 形状真源 = os_sandbox::shell_env（os/shell/shell_path/notes 恒在；
-        // shell_version/bundled 仅 Windows-bash 分支）
-        const env = await typedJsonRpc('shell_env', {});
+        // shell_version/bundled 仅 Windows-bash 分支）。P2-4 信封化：经
+        // tool_call 寻址 builtin.shell（kernelShellCall + parseJson）。
+        const env = parseJson(await kernelShellCall('shell_env', {})) as {
+          os?: string;
+          shell?: string;
+          notes?: string;
+        };
         if (env.shell) {
           if (env.shell === 'bash') {
             shellEnvSection =

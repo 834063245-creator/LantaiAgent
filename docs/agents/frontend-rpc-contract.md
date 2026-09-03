@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-09-03T21:10:56.400Z
-> 方法总数：113（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-09-03T22:11:23.234Z
+> 方法总数：106（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -96,23 +96,11 @@
 | `browser_wait` | — | selector, ms | 字符串 |
 | `browser_eval` | expr | _agent_id | 字符串 |
 | `browser_status` | — | — | 字符串 |
-
-## CDP 浏览器控制
-
-| 方法 | 必选参数 | 可选参数 | 返回 |
-|------|----------|----------|------|
-| `exec_command` | command | cwd, timeout_ms, run_in_background, is_agent, _agent_id, agent_id, _owner_id, stream_tool_id, interpreter | 字符串 |
-| `bash_output` | job_id | — | 字符串 |
-| `bash_kill` | job_id | _owner_id, agent_id | 字符串 |
-| `bash_wait` | job_id | timeout_ms | 字符串 |
-| `shell_env` | — | — | 字符串 |
-| `background_activity` | — | — | 字符串 |
-| `drain_bg_notifications` | — | agent_id | 字符串 |
 | `protocol_bridge_spawn` | id, command, args | — | 字符串 |
 | `protocol_bridge_write` | id, line | — | 字符串 |
 | `protocol_bridge_kill` | id | — | 字符串 |
 
-## Shell
+## CDP 浏览器控制
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -217,7 +205,7 @@ payload 类型见 `src-ui/src/rpc-contract.ts` 的 `EventContract`（前端类�
 | `permission-ask` | src-tauri/src/utils/path_resolve.rs |
 | `protocol-bridge:exit` | src-tauri/src/commands/protocol_bridge.rs |
 | `pty-output` | src-tauri/src/pty_manager.rs |
-| `shell:done` | src-tauri/src/commands/shell.rs |
-| `shell:output` | src-tauri/src/commands/shell.rs |
+| `shell:done` | src-tauri/src/tool_plugins/shell/mod.rs |
+| `shell:output` | src-tauri/src/tool_plugins/shell/mod.rs |
 
 > `goal:state` 等事件为前端内部 EventBus（非 IPC），不走 listen。

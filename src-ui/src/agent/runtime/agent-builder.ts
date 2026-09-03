@@ -142,70 +142,22 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
   // abort 取消保留：bash_kill 携带 agent_id 身份，只能 kill 自己发起的 job。
 
   // ── Coding tools ──
-  // 后台任务等待总上限:后台 job 若卡死(如 cargo 等待 target 文件锁)可能无限期运行,
-  // 无总上限时下面的 for(;;) 循环永远 pending,Agent 会话表现为"无限等待 shell 结果"。
-  const BG_WAIT_TIMEOUT = 30 * 60 * 1000;
+  // 后台任务语义：run_shell(runInBackground) 启动即返 ID，模型经 bash_output
+  // 自轮询（run_shell 描述如此引导）——通用路径直通即可。
   const codingExec: ToolExecutor = async (name, args, onProgress, signal) => {
-    if (name === 'run_shell' && args.runInBackground) {
-      // 命令名必须是 exec_command(run_shell 不是 Tauri 命令),args 已含 runInBackground: true
-      const raw = await agentInvoke<string>('exec_command', args);
-      const m = /ID:\s*(\d+)/.exec(raw);
-      if (!m) return raw; // 启动失败 — 把 Rust 返回的消息直接给 agent（含构建锁打回）
-      const jobId = m[1];
-      let last = '';
-      const bgDeadline = Date.now() + BG_WAIT_TIMEOUT;
-      for (;;) {
-        try {
-          last = await agentInvoke<string>('bash_wait', { job_id: jobId, timeout_ms: 60_000 });
-        } catch (e) {
-          const msg = errText(e);
-          if (msg.includes('等待超时')) {
-            // 任务仍在跑 — 检查总超时,超时则放弃等待并把控制权交还 Agent
-            if (Date.now() >= bgDeadline) {
-              return `[exit -1] 后台任务已等待 ${BG_WAIT_TIMEOUT / 1000}s 仍未完成,已放弃等待(可能卡在文件锁或等待输入)。当前输出:\n${last}\n可用 bash_output(${jobId}) 查看进度, bash_kill(${jobId}) 终止任务。`;
-            }
-            if (onProgress) onProgress(`[后台任务运行中, job_id: ${jobId}]`);
-            continue;
-          }
-          // 任务已被清理(完成或 kill)— 带最后已知输出返回
-          return last ? `[后台任务结束]\n${last}` : `后台任务查询失败: ${msg}`;
-        }
-        if (last.includes('[任务已完成')) return last;
-        if (onProgress) onProgress(last); // 每 60s 报一次进度
+    // P2-4 信封化：shell 域经 tool_call 寻址 builtin.shell——codingExec 的特殊面
+    // （前台流式执行）从外层命令名匹配改为解信封按 plugin.tool 寻址（外层名恒
+    // 'tool_call'；解封形态与 tests/ab/ab-tools.ts 的 kernelExec 互为镜像）。
+    // 此前的 run_shell 后台等待环与 TIMEOUT_TOOLS 名字面匹配是 seam 化/
+    // 插件化以来的死代码（外层名从 Phase 1 起不再到达），随本批清理——行为零变化。
+    if (name === 'tool_call') {
+      const env = args as { plugin?: string; tool?: string; args?: Record<string, unknown> };
+      if (env.plugin === 'builtin.shell' && env.tool === 'exec_command' && !env.args?.runInBackground) {
+        // 直连流式执行（取消语义 + 600s 兜底）— 实现见 queued-shell.ts。
+        // 构建锁冲突由 Rust 打回（错误信息直接返回，模型据此重试/等待）。
+        return execStreamedShell(env.args ?? {}, onProgress, signal);
       }
     }
-    if (name === 'exec_command' && !args.runInBackground) {
-      // 直连流式执行（取消语义 + 600s 兜底）— 实现见 queued-shell.ts。
-      // 构建锁冲突由 Rust 打回（错误信息直接返回，模型据此重试/等待）。
-      return execStreamedShell(args, onProgress, signal);
-    }
-    // ── Timeout wrapper for search/list tools — prevent stuck Tauri invokes ──
-    const TOOL_TIMEOUT = 120_000;
-    const TIMEOUT_TOOLS = new Set(['search_content', 'glob', 'list_directory']);
-    if (TIMEOUT_TOOLS.has(name)) {
-      return new Promise<string>((resolve) => {
-        let settled = false;
-        const timer = setTimeout(() => {
-          if (settled) return;
-          settled = true;
-          resolve(`(工具 ${name} 超时 (${TOOL_TIMEOUT / 1000}s)，请缩小搜索范围或使用更精确的模式)`);
-        }, TOOL_TIMEOUT);
-        agentInvoke<string>(name, args)
-          .then((result) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            resolve(typeof result === 'string' ? result : JSON.stringify(result));
-          })
-          .catch((e) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            resolve(`错误: ${errText(e)}`);
-          });
-      });
-    }
-
     const result = await agentInvoke<string>(name, args);
     return typeof result === 'string' ? result : JSON.stringify(result);
   };

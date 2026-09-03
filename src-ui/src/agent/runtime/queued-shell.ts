@@ -64,6 +64,10 @@ export async function execStreamedShell(
   const agentId = typeof args._owner_id === 'string' ? args._owner_id : undefined;
   /** Rust 侧 ledger job_id — started 响应到达前为 null（此窗口内 abort 无进程可杀） */
   let jobId: number | null = null;
+  // P2-4 信封化：shell 命令经 tool_call 寻址 builtin.shell——恒走 agentInvoke
+  // （isAgent 注入 = agent 沙箱/权限路径，与旧 RPC 语义逐字一致）。
+  const shellInvoke = (tool: string, callArgs: Record<string, unknown>) =>
+    agentInvoke<string>('tool_call', { plugin: 'builtin.shell', tool, args: callArgs });
 
   const streamId = `shell-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   return await new Promise<string>((resolve) => {
@@ -141,7 +145,7 @@ export async function execStreamedShell(
       //    卡片停在"执行中"，且 runLoop 会追加误导性的 "did not produce a result"。
       const onAbort = () => {
         if (jobId != null) {
-          void agentInvoke('bash_kill', { jobId, agentId }).catch(() => {});
+          void shellInvoke('bash_kill', { jobId, agentId }).catch(() => {});
         }
         resolveOnce(withTruncationNote(`[已取消] 命令执行被中止（agent 运行被中断）。\n${fullOutput}`));
       };
@@ -151,12 +155,12 @@ export async function execStreamedShell(
         onAbort();
       }
       try {
-        const startedRaw = await agentInvoke<string>('exec_command', { ...args, streamToolId: streamId });
+        const startedRaw = await shellInvoke('exec_command', { ...args, streamToolId: streamId });
         jobId = parseStartedJobId(startedRaw);
         resolvedCwd = parseResolvedCwd(startedRaw);
         // started 响应已返回：若此刻已 aborted（invoke 期间被中止），补一次 kill 并立即 resolve。
         if (signal?.aborted && jobId != null) {
-          void agentInvoke('bash_kill', { jobId, agentId }).catch(() => {});
+          void shellInvoke('bash_kill', { jobId, agentId }).catch(() => {});
           resolveOnce(withTruncationNote(`[已取消] 命令执行被中止（agent 运行被中断）。\n${fullOutput}`));
         }
         // ── shell:done 丢失自愈（2026-09-03「跑完挂起」症状类修复）──
@@ -169,7 +173,7 @@ export async function execStreamedShell(
         // 所有失败模式都退化为「维持现状」，不引入新挂点。
         if (jobId != null) {
           probeTimer = setInterval(() => {
-            void agentInvoke<string>('bash_output', { jobId })
+            void shellInvoke('bash_output', { jobId })
               .then((out) => {
                 if (settled) return;
                 if (out.includes('[任务已完成')) resolveOnce(withCwdEcho(withTruncationNote(out)));

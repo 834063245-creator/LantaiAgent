@@ -39,6 +39,9 @@ pub struct ToolContext<'a> {
     pub agent_id: Option<String>,
     /// 是否来自 Agent 工具链（agentInvoke 恒注入；用户 UI 路径为 false）。
     pub is_agent: bool,
+    /// 工具调用关联键（args._callId，INVARIANTS #9 meta——streaming-executor 注入，
+    /// 子 Agent 工具卡事件关联）。None = 用户路径 / 无关联，进度发射 no-op。
+    pub call_id: Option<String>,
     pub(crate) state: &'a tauri::State<'a, crate::WorkspaceState>,
     pub(crate) app: &'a tauri::AppHandle,
 }
@@ -61,6 +64,23 @@ impl<'a> ToolContext<'a> {
     pub async fn check_permission(&self, tool: &dyn crate::permissions::Tool) -> Result<(), String> {
         let perm_ctx = crate::utils::get_ctx(self.state)?;
         crate::utils::check_permission(tool, &perm_ctx, self.app).await
+    }
+
+    /// 增量输出型工具的进度发射（P2-4 §4.1）：`tool_call:progress` 事件按
+    /// `_callId` 键控回推（与 shell 自有的 shell:output 通道正交——shell 不迁，
+    /// 见 §4.3 裁决）。call_id 为 None（用户路径 / 无关联）时 no-op。
+    /// TS 侧由 manifest 工具的 withProgressStream 自持订阅转发到 onProgress。
+    // 首个生产消费者 = editor 大 diff 读 / fs 长扫描等增量输出型工具（P2-4
+    // 落地机制，消费者随后续需求进场）。
+    #[allow(dead_code)]
+    pub fn emit_progress(&self, chunk: &str) {
+        use tauri::Emitter;
+        if let Some(call_id) = &self.call_id {
+            let _ = self.app.emit(
+                "tool_call:progress",
+                serde_json::json!({ "callId": call_id, "chunk": chunk }),
+            );
+        }
     }
 }
 

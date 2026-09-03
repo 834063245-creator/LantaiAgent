@@ -110,6 +110,14 @@ const LEGACY_METHOD_OF: Record<string, string> = {
   'builtin.git.git_stash_pop': 'git_stash_pop',
   'builtin.git.git_discard': 'git_discard',
   'builtin.git.git_blame': 'git_blame',
+  // builtin.shell（P2-4，manifest 7 工具 = 旧 RPC 方法名）
+  'builtin.shell.exec_command': 'exec_command',
+  'builtin.shell.bash_output': 'bash_output',
+  'builtin.shell.bash_kill': 'bash_kill',
+  'builtin.shell.bash_wait': 'bash_wait',
+  'builtin.shell.shell_env': 'shell_env',
+  'builtin.shell.background_activity': 'background_activity',
+  'builtin.shell.drain_bg_notifications': 'drain_bg_notifications',
 };
 
 /** camelCase → snake_case（浅层，只动顶层键；与 bridge rpc() 同款 ponytail 正则）。 */

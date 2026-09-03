@@ -17,6 +17,7 @@ pub mod manifest;
 pub mod plugin;
 pub mod registry;
 pub mod search;
+pub mod shell;
 pub mod web;
 
 pub use plugin::ToolContext;
@@ -46,9 +47,14 @@ pub async fn dispatch_tool_call(
         .find(|t| t.name == tool_name)
         .ok_or_else(|| format!("tool_call: 插件 '{plugin_id}' 无工具 '{tool_name}'"))?;
 
-    // meta 抽取：_agent_id 嵌在 args 内（INVARIANTS #9 透传纪律），其余原样交插件。
+    // meta 抽取：_agent_id / _callId 嵌在 args 内（INVARIANTS #9 透传纪律），
+    // 其余原样交插件。
     let agent_id = args
         .get("_agent_id")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let call_id = args
+        .get("_callId")
         .and_then(|v| v.as_str())
         .map(String::from);
 
@@ -67,6 +73,7 @@ pub async fn dispatch_tool_call(
     let ctx = ToolContext {
         agent_id,
         is_agent,
+        call_id,
         state,
         app,
     };

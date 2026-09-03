@@ -181,7 +181,6 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // bash_output/bash_kill/bash_wait：输出文本，Text。
         // drain_bg_notifications：无通知返回空串（非 JSON），Text。
         // background_activity：json! 构造恒 JSON。
-        "shell_env" | "background_activity" => RpcResultShape::JsonValue,
 
         // ── 身份认证/权限 ──
         // credential_get：Option<String> serde 序列化，恒 "key"/null JSON。
@@ -955,52 +954,6 @@ async fn dispatch_rpc(
             Ok(crate::cdp::cdp_status(agent_id.as_deref()))
         }
 
-        // ═══════════════════════════════════════════════════════
-        // Shell（3 个命令）
-        // ═══════════════════════════════════════════════════════
-        "exec_command" => {
-            let command = req_str(&params, "command", "exec_command")?;
-            let cwd = opt_str(&params, "cwd");
-            let timeout_ms = opt_u64(&params, "timeout_ms");
-            let run_in_background = opt_bool(&params, "run_in_background");
-            let is_agent = opt_bool(&params, "is_agent");
-            let agent_id = opt_str(&params, "_agent_id").or_else(|| opt_str(&params, "agent_id"));
-            // 通知路由身份（bus agent id）— 与 _agent_id（worktree 隔离 id）分离
-            let owner_id = opt_str(&params, "_owner_id");
-            let stream_tool_id = opt_str(&params, "stream_tool_id");
-            let interpreter = opt_str(&params, "interpreter");
-            commands::shell::exec_command(command, cwd, timeout_ms, run_in_background, is_agent, stream_tool_id, agent_id, interpreter, owner_id, state, app).await
-        }
-        "bash_output" => {
-            let job_id = params.get("job_id").and_then(|v| v.as_u64()).map(|n| n as u32)
-                .ok_or_else(|| "bash_output: missing 'job_id'".to_string())?;
-            commands::shell::bash_output(job_id).await
-        }
-                "bash_kill" => {
-            let job_id = params.get("job_id").and_then(|v| v.as_u64()).map(|n| n as u32)
-                .ok_or_else(|| "bash_kill: missing 'job_id'".to_string())?;
-            // kill 所有权身份优先 _owner_id（与 spawn 时 job owner 对齐），回退 agent_id
-            let agent_id = opt_str(&params, "_owner_id").or_else(|| opt_str(&params, "agent_id"));
-            commands::shell::bash_kill(job_id, agent_id).await
-        }
-        "bash_wait" => {
-            let job_id = params.get("job_id").and_then(|v| v.as_u64()).map(|n| n as u32)
-                .ok_or_else(|| "bash_wait: missing 'job_id'".to_string())?;
-            let timeout_ms = opt_u64(&params, "timeout_ms");
-            commands::shell::bash_wait(job_id, timeout_ms).await
-        }
-        "shell_env" => Ok(commands::shell::shell_env()),
-        "background_activity" => {
-            // 状态栏 HUD 只读聚合：正在运行的 shell 后台任务 + 浏览器会话。
-            // 不经过 Agent 权限引擎（本机 UI 查询，不含命令输出/页面内容）。
-            let shells = crate::utils::bg_jobs_snapshot();
-            let browsers = crate::cdp::cdp_browser_activity();
-            Ok(serde_json::json!({ "shells": shells, "browsers": browsers }).to_string())
-        }
-        "drain_bg_notifications" => {
-            let agent_id = opt_str(&params, "agent_id");
-            commands::shell::drain_bg_notifications(agent_id).await
-        }
         "protocol_bridge_spawn" => {
             let id = req_str(&params, "id", "protocol_bridge_spawn")?;
             let command = req_str(&params, "command", "protocol_bridge_spawn")?;
@@ -1668,7 +1621,9 @@ mod tests {
     fn dispatch_result_to_value_shapes() {
         use serde_json::json;
         // 形态表钉死：小样命令 = JsonValue，未列命令默认 Text
-        assert_eq!(rpc_result_shape("shell_env"), RpcResultShape::JsonValue);
+        // （shell_env / exec_command 已随 builtin.shell 迁 tool_call 退表——
+        //  workspace_list 接任 JsonValue 小样，kernel-plugin-runtime P2-4）
+        assert_eq!(rpc_result_shape("workspace_list"), RpcResultShape::JsonValue);
         // Phase 1.5：load_graph_json/get_graph_snapshot = 聚合快照（JsonValue 恒定）；
         // 分页双命令（get_graph_meta/get_graph_page）与 get_full_graph 已拆除。
         assert_eq!(rpc_result_shape("load_graph_json"), RpcResultShape::JsonValue);
@@ -1678,21 +1633,22 @@ mod tests {
         assert_eq!(rpc_result_shape("get_graph_page"), RpcResultShape::Text);
         assert_eq!(rpc_result_shape("exec_command"), RpcResultShape::Text);
         assert_eq!(rpc_result_shape("anything_else"), RpcResultShape::Text);
-        // JsonValue 命令：真结构化展开（小样 shell_env / get_graph_snapshot）
-        let v = dispatch_result_to_value("shell_env", Ok(r#"{"bundled":true}"#.into())).unwrap();
+        // JsonValue 命令：真结构化展开（小样 workspace_list / get_graph_snapshot）
+        let v = dispatch_result_to_value("workspace_list", Ok(r#"{"bundled":true}"#.into())).unwrap();
         assert_eq!(v, json!({"bundled": true}));
         let v = dispatch_result_to_value("get_graph_snapshot", Ok(r#"{"total_nodes":42}"#.into())).unwrap();
         assert_eq!(v, json!({"total_nodes": 42}));
-        let bad = dispatch_result_to_value("shell_env", Ok("not json".into()));
+        let bad = dispatch_result_to_value("workspace_list", Ok("not json".into()));
         assert!(bad.is_err(), "JsonValue 命令 Ok 输出非合法 JSON 必须转 Err");
         // Text 命令（含默认路径）：字节精确，JSON 形状的文本也不展开
+        // （exec_command 已退表——按未列命令默认 Text 走，仍可当 Text 小样）
         let raw = r#"{"looks":"like json"}"#;
         let v = dispatch_result_to_value("exec_command", Ok(raw.into())).unwrap();
         assert_eq!(v, serde_json::Value::String(raw.to_string()));
         let v = dispatch_result_to_value("unlisted_unknown_cmd", Ok(raw.into())).unwrap();
         assert_eq!(v, serde_json::Value::String(raw.to_string()));
         // Err 路径：原样传播，不包 Ok（前端 catch 语义不变）
-        let e = dispatch_result_to_value("shell_env", Err("boom".into()));
+        let e = dispatch_result_to_value("workspace_list", Err("boom".into()));
         assert_eq!(e, Err("boom".to_string()));
         let e = dispatch_result_to_value("exec_command", Err("boom".into()));
         assert_eq!(e, Err("boom".to_string()));

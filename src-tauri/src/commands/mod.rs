@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 pub mod engine_dispatch;
-pub mod shell;
 pub mod filesystem;
 pub mod graph;
 pub mod identity;

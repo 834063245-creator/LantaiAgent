@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：9
+当前版本：10
 
-<!-- contract-fingerprint: 51474237afd86936841adb42f883169070037c07c7cc9c3d8c380c8862d02cc2 -->
+<!-- contract-fingerprint: cdfe528387f97394eb12d905d373e68edaad8562baf972d8b88dbc8c8d168abe -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -44,6 +44,7 @@
 | 7 | 2026-08-31 | manifest schema 新增可选 `displace: boolean`（位移式内置插件装载：产物声明 displace 且 bundle 同名行在册 → import 前 dispose bundle fiber 单活互换，失败/停用自动恢复兜底行；缺省 false 行为不变）——kind='feature' 全量通道化（first-party-hot-reload-plan 增补四） | first-party-hot-reload-plan §8 |
 | 8 | 2026-09-02 | AURA SDK 语义记忆系统整体拆除——default-loop step0 临时提醒清除的保留特判退役（原特判仅服务 preRunHook 的 run 前预注入，载体已删，改每步无条件清除）；无契约形状变更 | AURA SDK 拆除（用户拍板） |
 | 9 | 2026-09-04 | default-loop step0 计划提醒读取换 tool_call 信封（kernelReadFileRaw 寻址 builtin.fs.read_file_content，旧 RPC 分支随 P2-2 退役）；无契约形状变更 | kernel-plugin-runtime P2-2 |
+| 10 | 2026-09-04 | default-loop 每步 drain_bg_notifications 换 tool_call 信封（kernelShellCall 寻址 builtin.shell.drain_bg_notifications，旧 RPC 分支随 P2-4 退役）；无契约形状变更 | kernel-plugin-runtime P2-4 |
 
 ## 变更流程（guard 红 → 修复四步）
 

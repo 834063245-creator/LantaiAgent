@@ -4,17 +4,18 @@
 // ═══════════════════════════════════════════════════════
 // MCP 动态工具工厂 — Step 1: 从 MCP tools/list 自动生成
 // ═══════════════════════════════════════════════════════
-// Coding Tools — Shell / Git（fs/search/web 已迁内核插件，见 manifest-tools.ts
-// 与下方 createFsTools 的 manifest 驱动形态——kernel-plugin-runtime P2-2）
+// Coding Tools（fs/git/shell/search/web 全部已迁内核插件，见 manifest-tools.ts
+// 与下方各 manifest 驱动形态——kernel-plugin-runtime P2-2/P2-3/P2-4）
 // ═══════════════════════════════════════════════════════
 
 import { z } from 'zod';
 import { activeFsProviders, type FsAction } from '../../composition/fs-service';
 import { activeShellProviders, type ShellAction } from '../../composition/shell-service';
 import { FS_PLUGIN_TOOL_BY_ACTION } from '../../plugins/builtin/fs-builtin';
+import { SHELL_PLUGIN_TOOL_BY_ACTION } from '../../plugins/builtin/shell-builtin';
 import type { Tool, ToolExecutor } from '../tool';
 import { defineTool } from './define-tool';
-import { kernelManifestOf } from './manifest-tools';
+import { kernelManifestOf, withProgressStream } from './manifest-tools';
 
 /** fs 域消费面（平台化 Phase 2 · D11，2026-08-27）：经 ctx.fs 注册表解析 provider
  *  （后注册胜取默认），默认 builtin/rust-fs 借注入的 dispatch 腰转发既有 Rust 命令。
@@ -103,7 +104,8 @@ function fsManifestTool(action: FsAction, localName: string, exec: ToolExecutor)
     description: () => spec.description,
     parameters: () => parameters,
     readOnly: () => spec.read_only ?? false,
-    execute: (args, onProgress, signal) => fsExecute(action, args, exec, onProgress, signal),
+    execute: (args, onProgress, signal) =>
+      withProgressStream(args, onProgress, () => fsExecute(action, args, exec, onProgress, signal)),
   };
 }
 
@@ -135,96 +137,37 @@ export function createFsTools(exec: ToolExecutor): Tool[] {
   ];
 }
 
-/** shell 域工具族（S1-2 从 createCodingTools 迁出）——纯机械移动，定义零改写。
- *  迁出动机同 createFsTools：工具定义与装配分离，行化铺路。*/
+/** manifest 驱动的 shell 域工具（kernel-plugin-runtime P2-4）：schema/description/
+ *  readOnly = manifest 字节；TS 工具名保持历史名（模型面契约，非 manifest 工具名——
+ *  run_shell → exec_command 等）；execute 仍走 shellExecute → provider seam
+ *  （平台化 D11 开放面不动——provider 表已换 tool_call 信封）。 */
+function shellManifestTool(action: ShellAction, localName: string, exec: ToolExecutor): Tool {
+  const target = SHELL_PLUGIN_TOOL_BY_ACTION[action];
+  const manifest = kernelManifestOf(target.plugin);
+  const spec = manifest.tools.find((t) => t.name === target.tool);
+  if (!spec) throw new Error(`manifest-tools: 插件 '${target.plugin}' 无工具 '${target.tool}'`);
+  const parameters = spec.schema;
+  return {
+    name: () => localName,
+    description: () => spec.description,
+    parameters: () => parameters,
+    readOnly: () => spec.read_only ?? false,
+    execute: (args, onProgress, signal) =>
+      withProgressStream(args, onProgress, () => shellExecute(action, args, exec, onProgress, signal)),
+  };
+}
+
+/** shell 域工具族（S1-2 从 createCodingTools 迁出；P2-4 起 manifest 驱动）。
+ *  声明序 = 领域合并/装配的字节契约序——勿重排。*/
 export function createShellTools(exec: ToolExecutor): Tool[] {
   return [
     // ── Shell ──
-    defineTool({
-      name: 'run_shell',
-      description:
-        'Execute a shell command in the bundled bash (Unix syntax) and return stdout + stderr. ' +
-        'The working directory is STICKY per agent: a successful `cd` in one call carries over to later calls, and every result ends with a `[cwd: ...]` line showing where you landed. ' +
-        'Pass the `cwd` parameter to set the directory explicitly for one call. ' +
-        "Do NOT write `cd /d X:\\...` (cmd syntax — fails in bash); write `cd /x/path` or `cd 'X:/path'`. " +
-        'Default timeout 5 min (max 10 min). Long output is truncated head+tail, but the FULL log is spilled to a file whose path is always printed in the result. To find output the truncation cut (e.g. a buried error), do NOT re-run the command with pipes (`| head`, `| tail`, `| grep`) — that wastes build/test time. Grep the spill file directly with the bundled bash instead (`grep -n -iE "error|failed" <path>`), or read its tail via fs(read) with offset; explicit-path grep bypasses search/glob ignore rules. ' +
-        'For long or iterative work (builds, test loops, watch modes) set runInBackground: true and poll with bash_output — it returns ONLY output produced since your last read, so repeated polls cost no extra tokens. ' +
-        'Commands run from the current sticky cwd by default. IMPORTANT: Do NOT use run_shell for file search, code search, or git operations — use glob (file patterns), search_content (text search), list_directory (directory listing), and the dedicated git_* tools instead. run_shell is ONLY for building and testing commands (npm test, cargo build, pytest, etc.).',
-      schema: z.object({
-        command: z.string().describe('The shell command to run (e.g. "npm test", "cargo build", "pytest -x")'),
-        cwd: z
-          .string()
-          .optional()
-          .describe('Optional working directory for the command. Defaults to the current workspace root.'),
-        timeoutMs: z.coerce
-          .number()
-          .int()
-          .max(600000)
-          .optional()
-          .default(300000)
-          .describe('Timeout in milliseconds (default: 300000 = 5 min, max: 600000 = 10 min)'),
-        runInBackground: z
-          .boolean()
-          .optional()
-          .default(false)
-          .describe(
-            'Set to true to run in background (returns job ID immediately). Use bash_output(id) to check progress, bash_wait(id) to wait for completion, bash_kill(id) to stop.',
-          ),
-        interpreter: z
-          .enum(['bash', 'pwsh'])
-          .optional()
-          .describe(
-            'Optional interpreter. Default/omit = bundled bash (Unix syntax). Set "pwsh" ONLY for Windows-native tasks bash cannot do (registry queries, ACL, MSI, COM, WMI) — PowerShell syntax required.',
-          ),
-      }),
-      execute: (args, onProgress, signal) => shellExecute('run', args, exec, onProgress, signal),
-    }),
+    shellManifestTool('run', 'run_shell', exec),
 
     // ── Shell: 后台任务管理 ──
-    defineTool({
-      name: 'bash_output',
-      description:
-        'Read NEW output from a background shell job — only bytes produced since your previous bash_output call are returned (incremental; old output is never re-sent, so repeated polling of watch modes/dev servers is cheap). The header reports whether the job is still running ([任务运行中...]) or finished ([任务已完成, exit code: N...]).',
-      schema: z.object({
-        jobId: z.coerce.number().int().describe('The job ID returned by run_shell with runInBackground: true'),
-      }),
-      readOnly: true,
-      execute: (args, onProgress) => shellExecute('output', { jobId: args.jobId }, exec, onProgress),
-    }),
-    defineTool({
-      name: 'bash_kill',
-      description: 'Kill a running background shell job and return any accumulated output.',
-      schema: z.object({
-        jobId: z.coerce.number().int().describe('The job ID returned by run_shell with runInBackground: true'),
-      }),
-      execute: (args, onProgress) =>
-        // 所有权身份：bus id（_owner_id — 与 spawn 时的 job owner 对齐）。
-        shellExecute(
-          'kill',
-          {
-            jobId: args.jobId,
-            agentId: (args as { _owner_id?: string })._owner_id,
-          },
-          exec,
-          onProgress,
-        ),
-    }),
-    defineTool({
-      name: 'bash_wait',
-      description:
-        'Block until a background shell job completes (or timeout), then return full output + exit code. Use after run_shell with runInBackground: true to wait for a long-running task.',
-      schema: z.object({
-        jobId: z.coerce.number().int().describe('The job ID returned by run_shell with runInBackground: true'),
-        timeoutMs: z.coerce
-          .number()
-          .int()
-          .optional()
-          .describe('Maximum wait time in milliseconds (default: 60000 = 60s, max: 600000 = 10min)'),
-      }),
-      readOnly: true,
-      execute: (args, onProgress) =>
-        shellExecute('wait', { jobId: args.jobId, timeoutMs: args.timeoutMs }, exec, onProgress),
-    }),
+    shellManifestTool('output', 'bash_output', exec),
+    shellManifestTool('kill', 'bash_kill', exec),
+    shellManifestTool('wait', 'bash_wait', exec),
   ];
 }
 
@@ -246,7 +189,9 @@ function gitManifestTool(rustTool: string, localName: string, exec: ToolExecutor
     parameters: () => parameters,
     readOnly: () => spec.read_only ?? false,
     execute: (args, onProgress, signal) =>
-      exec('tool_call', { plugin: 'builtin.git', tool: rustTool, args }, onProgress, signal),
+      withProgressStream(args, onProgress, () =>
+        exec('tool_call', { plugin: 'builtin.git', tool: rustTool, args }, onProgress, signal),
+      ),
   };
 }
 

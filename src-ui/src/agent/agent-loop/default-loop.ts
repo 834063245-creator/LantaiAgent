@@ -15,7 +15,7 @@
 // 替换契约：ctx.agentLoop 注册表后注册胜——替换实现只需满足 AgentLoop
 // 接口（拿到同一宿主面即可接管全生命周期）。
 
-import { typedRpcWithTimeout } from '../../rpc-contract';
+import { kernelShellCall, typedRpcWithTimeout } from '../../rpc-contract';
 import { type AgentEvent, EventKind } from '../agent-types';
 import { log } from '../logger';
 import { finishReasonMessage, parseFilePathArg } from '../loop-helpers';
@@ -93,7 +93,12 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
       // 轮次结束后进度更新无价值）。按 agent_id 路由排干：全局排干会把
       // 其他 agent（含并行子 Agent）的后台任务通知吸进本 agent 上下文。
       try {
-        const notes = await typedRpcWithTimeout('drain_bg_notifications', { agent_id: host.id }, STEP_RPC_TIMEOUT_MS);
+        // P2-4 信封化：drain_bg_notifications 经 tool_call 寻址 builtin.shell
+        const notes = await typedRpcWithTimeout(
+          'tool_call',
+          { plugin: 'builtin.shell', tool: 'drain_bg_notifications', args: { agentId: host.id } },
+          STEP_RPC_TIMEOUT_MS,
+        );
         if (notes) {
           host.transientReminders = [...host.transientReminders, `<system-reminder>\n${notes}\n</system-reminder>`];
         }

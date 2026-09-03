@@ -4,6 +4,8 @@
 // 按 ledger 状态（bash_output 三态）合成结算。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { legacyRpcShim } from './helpers/kernel-envelope';
+
 const mockRpc = vi.fn();
 /** 按事件名捕获 listener —— 测试侧模拟 shell:output / shell:done 事件到达。 */
 const handlers: Record<string, (e: { payload: unknown }) => void> = {};
@@ -33,25 +35,29 @@ beforeEach(() => {
   bashCalls = 0;
   bashScript = [];
   mockRpc.mockReset();
-  mockRpc.mockImplementation(async (name: string, params: Record<string, unknown>) => {
-    if (name === 'exec_command') {
-      capturedSid = String(params.streamToolId ?? '');
-      return JSON.stringify({
-        streamId: capturedSid,
-        status: 'started',
-        job_id: 7,
-        resolvedCwd: 'D:/ws-x',
-      });
-    }
-    if (name === 'bash_output') {
-      const step = bashScript[Math.min(bashCalls, bashScript.length - 1)];
-      bashCalls++;
-      const r = step ? step() : '[任务运行中, 已运行: 1s]\n';
-      if (r.startsWith('ERR:')) throw new Error(r.slice(4));
-      return r;
-    }
-    return '';
-  });
+  // P2-4 信封化：shell 命令经 tool_call 寻址 builtin.shell——shim 翻译回旧
+  // (method, params) 形状（args 键 snake 化：streamToolId → stream_tool_id）
+  mockRpc.mockImplementation(
+    legacyRpcShim(async (name: string, params: Record<string, unknown>) => {
+      if (name === 'exec_command') {
+        capturedSid = String(params.stream_tool_id ?? '');
+        return JSON.stringify({
+          streamId: capturedSid,
+          status: 'started',
+          job_id: 7,
+          resolvedCwd: 'D:/ws-x',
+        });
+      }
+      if (name === 'bash_output') {
+        const step = bashScript[Math.min(bashCalls, bashScript.length - 1)];
+        bashCalls++;
+        const r = step ? step() : '[任务运行中, 已运行: 1s]\n';
+        if (r.startsWith('ERR:')) throw new Error(r.slice(4));
+        return r;
+      }
+      return '';
+    }),
+  );
 });
 
 afterEach(() => {

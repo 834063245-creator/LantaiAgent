@@ -34,9 +34,11 @@ describe('rpc Value 化第二步：typedJsonRpc 双形态', () => {
   });
 
   it('字符串（浏览器 mock / 表外 JSON 命令）走 parse 慢路径', async () => {
-    mockRpc.mockResolvedValueOnce('{"os":"unknown","shell":"unknown","shell_path":"","notes":""}');
-    const out = await typedJsonRpc('shell_env', {});
-    expect(out).toEqual({ os: 'unknown', shell: 'unknown', shell_path: '', notes: '' });
+    // （原 shell_env 小样已随 builtin.shell 迁 tool_call 退役——P2-4；
+    //  sandbox_status 接任慢路径小样，同走 rpcResultSchemas 表内校验）
+    mockRpc.mockResolvedValueOnce('{"available":true,"degraded":false,"reason":"mock"}');
+    const out = await typedJsonRpc('sandbox_status', {});
+    expect(out).toEqual({ available: true, degraded: false, reason: 'mock' });
   });
 
   it('result 违形即 throw（错误不静默——错误信息带方法名）', async () => {

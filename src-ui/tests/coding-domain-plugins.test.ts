@@ -231,8 +231,9 @@ describe('codingExec 无状态族域第一方插件（P4 B① git/search + ② f
       tool: 'read_file_content',
       args: { filePath: 'D:/proj/a.ts' },
     });
-    // run_shell 委托旧名 exec_command（runInBackground 缺省走前台执行）
-    expect(log.map((e) => e.name)).toContain('exec_command');
+    // run_shell 经 tool_call 信封穿透（P2-4：plugin.tool 寻址
+    // builtin.shell.exec_command，runInBackground 缺省走前台执行）
+    expect(log.filter((e) => e.name === 'tool_call').map((e) => e.args?.tool)).toContain('exec_command');
     await disposeAll(fibers);
   });
 

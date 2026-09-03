@@ -101,6 +101,11 @@ async function gitToolsFactory(): Promise<Tool[]> {
   return createGitTools(dummyExec);
 }
 
+async function shellToolsFactory(): Promise<Tool[]> {
+  const { createShellTools } = await import('../src/agent/tools/coding');
+  return createShellTools(dummyExec);
+}
+
 const DOMAINS: DomainSpec[] = [
   // ── builtin.fs（P2-2 已落地——本域 TS 面已 manifest 驱动，--check 验证
   //    发射格式 + 装配接线与既有文件逐字节一致；内部 5 工具无 TS zod 面，手写）──
@@ -275,6 +280,58 @@ const DOMAINS: DomainSpec[] = [
             file: { type: 'string', description: 'File to blame (relative to the repository root)' },
           },
           required: ['path', 'file'],
+          additionalProperties: {},
+        },
+      },
+    ],
+  },
+  // ── builtin.shell（P2-4）——4 TS 面直出（run→exec_command 等动作映射）+
+  //    3 内部消费工具手写（shell_env/background_activity/drain_bg_notifications）。
+  //    权限形状：全族业务自检（exec_command 的 bg/fg 双检查不对称——bg 走 sync
+  //    免 Ask，dispatch 侧单键 adapter 表达不了，v1 形态不声明 permission）──
+  {
+    domain: 'shell',
+    id: 'builtin.shell',
+    description: 'Shell 执行与后台任务管理（自 commands/shell.rs 拆出，kernel-plugin-runtime P2-4）',
+    capabilities: ['shell_exec'],
+    factory: shellToolsFactory,
+    tools: [
+      { name: 'exec_command', tsTool: 'run_shell' },
+      { name: 'bash_output', tsTool: 'bash_output' },
+      { name: 'bash_kill', tsTool: 'bash_kill' },
+      { name: 'bash_wait', tsTool: 'bash_wait' },
+      {
+        name: 'shell_env',
+        description:
+          'Return the current shell environment (OS, shell, path, bundled notes) for prompt injection. Internal consumer tool (not model-facing).',
+        read_only: true,
+        schema: {
+          type: 'object',
+          properties: {},
+          additionalProperties: {},
+        },
+      },
+      {
+        name: 'background_activity',
+        description:
+          'Aggregate read-only snapshot of running shell background jobs and browser sessions (status-bar HUD). Internal consumer tool (not model-facing).',
+        read_only: true,
+        schema: {
+          type: 'object',
+          properties: {},
+          additionalProperties: {},
+        },
+      },
+      {
+        name: 'drain_bg_notifications',
+        description:
+          'Drain pending background-job notifications (done/stalled notes) for an agent and return them as JSON. Internal consumer tool (not model-facing).',
+        read_only: true,
+        schema: {
+          type: 'object',
+          properties: {
+            agentId: { type: 'string', description: 'Owner agent id whose notifications to drain' },
+          },
           additionalProperties: {},
         },
       },

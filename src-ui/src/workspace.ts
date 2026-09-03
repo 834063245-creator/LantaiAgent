@@ -48,6 +48,7 @@ import { createLiveProvider } from './provider/live';
 import type { Provider } from './provider/types';
 import {
   kernelGlobalMemoryDir,
+  kernelShellCall,
   parseJson,
   typedJsonRpc,
   typedListen,
@@ -967,7 +968,8 @@ export class Workspace {
       if (!owner || !bgNoteBus.isRegistered(owner)) return;
       void (async () => {
         try {
-          const notes = await typedRpc('drain_bg_notifications', { agent_id: owner });
+          // P2-4 信封化：drain_bg_notifications 经 tool_call 寻址 builtin.shell
+          const notes = await kernelShellCall('drain_bg_notifications', { agentId: owner });
           if (notes) bgNoteBus.systemNotify(owner, 'bg', notes);
         } catch {
           /* best-effort — 通知丢失时 bash_output(jobId) 仍可主动拉取 */

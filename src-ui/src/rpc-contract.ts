@@ -3,7 +3,7 @@
 //
 // RPC 契约 — 前后端 IPC 的单一类型事实源（前端侧投影）。
 //
-// 后端唯一权威源：src-tauri/src/rpc.rs（当前 135 个 RPC 方法，由
+// 后端唯一权威源：src-tauri/src/rpc.rs（当前 106 个 RPC 方法，由
 // scripts/gen-rpc-contract-md.cjs 生成目录）。本文件的 RpcContract 是
 // typedRpc 可见的 UI 子集；Agent 工具调用走 agent/tool.ts 的 agentInvoke 动态分发。
 // 维护纪律：后端加/改方法 → 同步更新本文件 RpcContract；
@@ -127,27 +127,10 @@ export interface RpcContract {
   };
 
   // ── Shell ────────────────────────────────────────────────
-  exec_command: {
-    params: {
-      command: string;
-      cwd?: string;
-      timeout_ms?: number;
-      run_in_background?: boolean;
-      is_agent?: boolean;
-      /** worktree 隔离 id（executor 注入 _agent_id 时的别名） */
-      agent_id?: string;
-      /** 通知路由身份（bus agent id）— 后台任务通知 owner 与 kill 所有权，优先于 agent_id */
-      _owner_id?: string;
-      stream_tool_id?: string;
-      interpreter?: 'bash' | 'pwsh';
-    };
-    result: string; // text 或 JSON（流式 started 响应）
-  };
-  bash_output: { params: { job_id: number }; result: string }; // text
-  bash_kill: { params: { job_id: number; agent_id?: string; _owner_id?: string }; result: string }; // text
-  bash_wait: { params: { job_id: number; timeout_ms?: number }; result: string }; // text
-  shell_env: { params: Record<string, never>; result: string }; // JSON
-  drain_bg_notifications: { params: { agent_id: string }; result: string }; // JSON — 只排干该 agent 自己的后台任务通知
+  // （exec_command / bash_output / bash_kill / bash_wait / shell_env /
+  //   background_activity / drain_bg_notifications 已迁内核插件 builtin.shell，
+  //   走 tool_call——kernel-plugin-runtime P2-4。内部直呼统一经下方 kernelShellCall
+  //   助手；shell:output / shell:done 事件双通道原样保留（§4.3 裁决）。）
 
   // ── 编辑器 ───────────────────────────────────────────────
   // （edit_file 已迁内核插件 builtin.editor，走 tool_call——kernel-plugin-runtime P2-1）
@@ -267,10 +250,8 @@ export interface RpcContract {
     params: { agent?: string; limit?: number };
     result: string; // JSON — { count, entries: string[] }（entries 为审计 JSON 字符串）
   };
-  background_activity: {
-    params: Record<string, never>;
-    result: string; // JSON — { shells: BgJobSnapshot[], browsers: BrowserActivity[] }
-  };
+  // （background_activity 已迁内核插件 builtin.shell——状态栏 HUD 经
+  //   kernelShellCall('background_activity') 信封消费，kernel-plugin-runtime P2-4）
 
   // ── MCP / ACP stdio 桥 ────────────────────────────────────
   protocol_bridge_spawn: {
@@ -314,6 +295,10 @@ export interface EventContract {
   'shell:output': { streamId: string; kind: 'stdout' | 'stderr'; chunk: string };
   /** 前台 shell 结束 */
   'shell:done': { streamId: string; exitCode: number; error?: string };
+  /** 内核插件工具的增量输出流（P2-4 §4.1：ToolContext::emit_progress 按
+   *  _callId 键控回推；TS 侧 manifest 工具经 withProgressStream 自持订阅
+   *  转发到 onProgress。与 shell:output/shell:done 正交——shell 不迁自有流式） */
+  'tool_call:progress': { callId: string; chunk: string };
   /** 图变更摘要（workspace.rs 发射，分析完成后触发前端重载分页图） */
   'graph-updated': string;
   /** PTY 输出（src-tauri 发射；旧前端未监听，新前端用 PTY 时需要） */
@@ -488,6 +473,17 @@ export function kernelGitCall(tool: string, args: Record<string, unknown>): Prom
   return typedRpc('tool_call', { plugin: 'builtin.git', tool, args });
 }
 
+// ── builtin.shell 直呼便捷封装（kernel-plugin-runtime P2-4）──
+// 内部消费方（queued-shell / agent-builder 的执行链、runtime 的 shell_env
+// 注入、workspace/default-loop 的 drain_bg_notifications、状态栏 HUD）的统一
+// 出口：tool_call 信封寻址 builtin.shell（旧 RPC 分支随迁退役）。args 说
+// manifest 语言（camelCase；_owner_id 等 meta 原样嵌 args 内）。
+
+/** shell 域通用信封调用（text 形态结果直通；JSON 形态消费方自行 parseJson）。 */
+export function kernelShellCall(tool: string, args: Record<string, unknown>): Promise<string> {
+  return typedRpc('tool_call', { plugin: 'builtin.shell', tool, args });
+}
+
 /** list_directory 的 JSON 形状版（typedJsonRpc 旧消费面等价迁移；
  *  形状校验 = dirEntrySchema 数组，递归树/截断旗标同契约）。 */
 export async function kernelListDirectory(path: string, filterIgnored?: boolean): Promise<DirEntry[]> {
@@ -600,18 +596,10 @@ export const rpcResultSchemas = {
       reason: z.string(),
     })
     .passthrough(),
-  shell_env: z
-    .object({
-      os: z.string(),
-      shell: z.string(),
-      shell_path: z.string(),
-      shell_version: z.string().optional(),
-      bundled: z.boolean().optional(),
-      notes: z.string(),
-    })
-    .passthrough(),
-  // （git_status 已迁内核插件 builtin.git——state-inject 经 kernelGitCall +
-  //   parseJson 消费，rpcResultSchemas 表行随之退役，kernel-plugin-runtime P2-3。）
+  // （shell_env 已迁内核插件 builtin.shell——runtime 经 kernelShellCall +
+  //   parseJson 消费，rpcResultSchemas 表行随之退役，kernel-plugin-runtime P2-4。
+  //   git_status 已迁内核插件 builtin.git——state-inject 经 kernelGitCall +
+  //   parseJson 消费，表行退役，kernel-plugin-runtime P2-3。）
 } satisfies Partial<Record<RpcMethodName, z.ZodType>>;
 
 /** 已收编命令的 result 类型（schema 推导——调用点不再手写泛型）。 */

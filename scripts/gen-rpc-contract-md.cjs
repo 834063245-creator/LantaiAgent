@@ -23,7 +23,6 @@ const SECTIONS = [
   '文件系统',
   '搜索',
   'CDP 浏览器控制',
-  'Shell',
   '身份认证 / 权限',
   '插件安装通道',
   'Agent 隔离（worktree）',

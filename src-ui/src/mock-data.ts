@@ -483,17 +483,12 @@ const MOCK_TOOL_RESPONSES: Record<string, MockToolResponse> = {
     top_changed: ['middleware.ts', 'cache.ts'],
     issues: ['L4 封装穿透增加'],
   }),
-  exec_command: `(mock terminal output)
-C:\\mock\\nebula-project> echo hello
-hello
-
-C:\\mock\\nebula-project> dir
-nebula/  package.json  tsconfig.json  README.md`,
   hologram_diff: JSON.stringify(MOCK_DIFF),
 
   // （read_file_content / write_file_content / list_directory /
   //   list_directory_flat 等 fs 命令已迁 builtin.fs 插件——浏览器 mock
-  //   模式经 tool_call，不走旧名；kernel-plugin-runtime P2-2）
+  //   模式经 tool_call，不走旧名；kernel-plugin-runtime P2-2。
+  //   exec_command / shell_env 等 shell 命令已迁 builtin.shell，同 P2-4。）
 };
 
 // ── Mock invoke 分发器 ──
@@ -554,16 +549,6 @@ export function mockInvoke(cmd: string, args?: Record<string, unknown>): string 
   // 浏览器 dev 与真机同形（形状真源 = 各 Rust 命令实现）。
   if (cmd === 'sandbox_status') {
     return JSON.stringify({ available: true, degraded: false, reason: '' });
-  }
-  if (cmd === 'shell_env') {
-    return JSON.stringify({
-      os: 'windows',
-      shell: 'bash',
-      shell_path: '/mock/bin/bash',
-      shell_version: '5.2.0-mock',
-      bundled: true,
-      notes: 'mock shell 环境——命令跑在 bash 上，用 Unix 语法',
-    });
   }
 
   // 首页工作区清单（2026-09-01 三轴面审种子）：浏览器 dev 此前恒空态，
