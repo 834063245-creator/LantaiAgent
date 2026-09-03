@@ -60,7 +60,7 @@ Rust 壳从「巨型工具包」变成「带安全边界的插件运行时」：
 | **Phase 1**（本窗起） | `builtin.search` 插件自 `commands/search.rs` 拆出（search_content）；TS search 域改 manifest 驱动；旧分支退役 | vitest/convergence/build/biome/doc-sync 全绿，baseline 零漂移 |
 | Phase 1 续（已落地 2026-09-04） | `builtin.web`（web_search/web_fetch 自 `commands/web.rs`，含并行窗口 64b56542 的 max_results 批转录）；`commands/web.rs` 整文件退役；coding.ts 旧 zod 版 search/web 死码清理；web_fetch 文本结果经分派处 `Value::String` 直通（Text 铁律） | 同上 |
 | Phase 2 | 工具域全量迁移：fs / git / shell / editor / constraints / browser / uia / pty / lsp 九域 + glob + 进度流 + `permissions::Tool::name` 放宽（2026-09-04 拍板合并原 Phase 2/3——同质工作按风险排序，域界即批界，无相界） | 每域独立批；拆解与机制见 [`kernel-plugin-runtime-phase2-design.md`](kernel-plugin-runtime-phase2-design.md)（P2-0 基建 → P2-1 constraints/editor → P2-2 fs 主体 → P2-3 git → P2-4 shell+进度流 → P2-5 browser/uia → P2-6 pty/lsp；P2-5 起工前在设计件补权限形状增补节） |
-| Phase 3 | 插件管理 UI（列表/启停/卸载/信任/能力/审计入口）+ 第三方插件装载 + 能力授予持久化 | UI 验收 |
+| Phase 3 | **内核插件管理面 = 扩展现有设置面板「插件」tab（非另起 UI）**——S5 已有的 tab（三组陈列/启停/卸载/第三方安装通道，`plugin_set_enabled`/`plugin_uninstall` 消费方是 PluginsPage）管的是 TS/cordis 体系；本相给内核 Rust ToolPlugin 注册表补管理面：内核插件分组消费 `plugin_tool_manifests`（今日零消费方）+ 启停持久化（`is_enabled` 从信任级硬编码接 `plugin_*` 通道；禁用语义 = 装配期工具面移除 + tool_call 拒绝双闸，TS 镜像是编译期生成）+ 能力展示/授予 + 审计入口；第三方内核插件装载通道（manifest 目录装载，对齐 TS 出厂产物磁盘通道先例） | 现有 tab 内验收；第三方内核插件端到端可装可卸可审计 |
 | 终态 | rpc.rs 只余 `tool_call` + 生命周期族（workspace_/plugin_/credential_/permission_/audit_/sandbox_status）；`commands/` 业务目录退役 | 守卫测试钉死分支上限 |
 
 ## 5. 本窗已知残留（非挂起，均有下落）
