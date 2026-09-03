@@ -1,14 +1,10 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 受限文件 I/O — 统一包装器，在每次文件读/写前强制执行权限检查。
-// 替代 tools.rs 中裸露的 std::fs 调用，使新工具
-// 不会遗漏安全检查。该包装器是每个文件操作的唯一入口；
-// 没有任何工具命令直接调用 std::fs。
-//
-// ponytail: 之所以存在，是因为安全审计发现 read_file_content /
-// write_file_content / edit_file 都需要先执行 resolve_*_dispatch 再单独执行 std::fs
-// — 每个命令都得记住这两步。现在不会遗忘了。
+// 受限文件 I/O — 统一包装器：解析（免检版 = forward-map + 沙箱决议，权限门
+// 在 dispatch 侧 PluginToolAdapter——kernel-plugin-runtime P2-2）+ 大小/超时/
+// 重试 guards。rename 保留检查版（双路径 read(from)+write(to) 自检形态）。
+// 展示辅助（format_lines/preview）无 I/O。
 
 use std::io;
 use std::path::PathBuf;
@@ -81,23 +77,9 @@ where
 // 读取操作 — 权限检查 + I/O 合为一步
 // ═══════════════════════════════════════════════════════════════
 
-/// 带超时和大小限制的文本文件读取。将阻塞式 I/O 包装在
-/// spawn_blocking 中，使卡住的 NFS 挂载不会阻塞异步运行时。
-pub(crate) async fn read_text(
-    file_path: &str,
-    is_agent: bool,
-    agent_id: Option<&str>,
-    state: &tauri::State<'_, WorkspaceState>,
-    app: &AppHandle,
-) -> Result<(PathBuf, String), String> {
-    let real_path = crate::utils::resolve_read_dispatch(file_path, is_agent, agent_id, state, app).await?;
-    read_text_resolved(real_path, file_path).await
-}
-
-/// read_text 的免检变体（kernel-plugin-runtime P2-1）：权限门在 dispatch 侧
-/// adapter（manifest 声明 permission.family）的工具专用——解析走
-/// resolve_read_unchecked（forward-map + agent 路径 canonicalize），
-/// guards（大小/超时/重试）与原版完全一致。
+/// 带超时和大小限制的文本文件读取（kernel-plugin-runtime P2-2 起：工具业务
+/// 已全部经 dispatch 侧 adapter 过闸，检查版 read_text 随消费者退役——本函数
+/// 即唯一形态；guards（大小/超时/重试）与迁移前完全一致）。
 pub(crate) async fn read_text_unchecked(
     file_path: &str,
     is_agent: bool,
@@ -134,19 +116,8 @@ async fn read_text_resolved(real_path: PathBuf, file_path: &str) -> Result<(Path
     Ok((real_path, content))
 }
 
-/// 带超时和大小限制的二进制文件读取。
-pub(crate) async fn read_bytes(
-    file_path: &str,
-    is_agent: bool,
-    agent_id: Option<&str>,
-    state: &tauri::State<'_, WorkspaceState>,
-    app: &AppHandle,
-) -> Result<(PathBuf, Vec<u8>), String> {
-    let real_path = crate::utils::resolve_read_dispatch(file_path, is_agent, agent_id, state, app).await?;
-    read_bytes_resolved(real_path, file_path).await
-}
-
-/// read_bytes 的免检变体（kernel-plugin-runtime P2-2）：权限门在 dispatch 侧 adapter。
+/// 带超时和大小限制的二进制文件读取（同 read_text_unchecked——检查版随
+/// 消费者退役，本函数即唯一形态）。
 pub(crate) async fn read_bytes_unchecked(
     file_path: &str,
     is_agent: bool,
@@ -189,20 +160,8 @@ async fn read_bytes_resolved(real_path: PathBuf, file_path: &str) -> Result<(Pat
 
 /// 原子地写入文件（临时文件 → 重命名）。如需要则创建父目录。
 /// 内容大小会与 MAX_WRITE_BYTES 比较以防止 OOM。
-pub(crate) async fn write_text(
-    file_path: &str,
-    content: &str,
-    is_agent: bool,
-    agent_id: Option<&str>,
-    state: &tauri::State<'_, WorkspaceState>,
-    app: &AppHandle,
-) -> Result<PathBuf, String> {
-    guard_write_size(content)?;
-    let real_path = crate::utils::resolve_write_dispatch(file_path, is_agent, agent_id, state, app).await?;
-    write_text_resolved(real_path, content)
-}
-
-/// write_text 的免检变体（kernel-plugin-runtime P2-1）：同 read_text_unchecked。
+/// （kernel-plugin-runtime P2-2 起：检查版 write_text 随消费者退役，
+/// 权限门在 dispatch 侧 adapter，本函数即唯一形态。）
 pub(crate) async fn write_text_unchecked(
     file_path: &str,
     content: &str,
@@ -236,19 +195,7 @@ fn write_text_resolved(real_path: PathBuf, content: &str) -> Result<PathBuf, Str
     Ok(real_path)
 }
 
-/// 创建目录（及其所有父目录）。
-pub(crate) async fn create_dir(
-    path: &str,
-    is_agent: bool,
-    agent_id: Option<&str>,
-    state: &tauri::State<'_, WorkspaceState>,
-    app: &AppHandle,
-) -> Result<PathBuf, String> {
-    let resolved = crate::utils::resolve_write_dispatch(path, is_agent, agent_id, state, app).await?;
-    create_dir_resolved(resolved, path)
-}
-
-/// create_dir 的免检变体（kernel-plugin-runtime P2-2）。
+/// 创建目录（及其所有父目录）。（检查版随消费者退役——P2-2。）
 pub(crate) async fn create_dir_unchecked(
     path: &str,
     is_agent: bool,
@@ -265,19 +212,7 @@ fn create_dir_resolved(resolved: PathBuf, path: &str) -> Result<PathBuf, String>
     Ok(resolved)
 }
 
-/// 删除文件或目录树。
-pub(crate) async fn delete(
-    path: &str,
-    is_agent: bool,
-    agent_id: Option<&str>,
-    state: &tauri::State<'_, WorkspaceState>,
-    app: &AppHandle,
-) -> Result<PathBuf, String> {
-    let real = crate::utils::resolve_write_dispatch(path, is_agent, agent_id, state, app).await?;
-    delete_resolved(real, path)
-}
-
-/// delete 的免检变体（kernel-plugin-runtime P2-2）。
+/// 删除文件或目录树。（检查版随消费者退役——P2-2。）
 pub(crate) async fn delete_unchecked(
     path: &str,
     is_agent: bool,

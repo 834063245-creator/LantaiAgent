@@ -9,6 +9,8 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { legacyRpcShim, toolCallArgsOf } from './helpers/kernel-envelope';
+
 const mockRpc = vi.fn();
 vi.mock('../src/bridge', () => ({
   rpc: (...args: unknown[]) => mockRpc(...args),
@@ -30,33 +32,39 @@ describe('P1-22: BoardPersistence._ensureDir 假成功', () => {
   it('create_directory 失败不锁存 _dirReady，下次 flush 重试', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     let failDir = true;
-    mockRpc.mockImplementation(async (cmd: string) => {
-      if (cmd === 'create_directory' && failDir) throw new Error('磁盘只读');
-      return undefined;
-    });
+    // P2-2 信封化：create_directory/write_file_content 经 tool_call 寻址 builtin.fs
+    // ——shim 翻译回旧 (method, params)，下方 handler 的旧名分支零改动。
+    mockRpc.mockImplementation(
+      legacyRpcShim(async (cmd: string) => {
+        if (cmd === 'create_directory' && failDir) throw new Error('磁盘只读');
+        return undefined;
+      }),
+    );
 
     const bp = makeBoard();
     await bp.flush('{"v":1}');
     // 第一次失败：create_directory 被调，write_file_content 未调，有 warn
-    expect(mockRpc.mock.calls.filter((c) => c[0] === 'create_directory').length).toBe(1);
-    expect(mockRpc.mock.calls.some((c) => c[0] === 'write_file_content')).toBe(false);
+    expect(toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'create_directory').length).toBe(1);
+    expect(toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'write_file_content').length).toBe(0);
     expect(warn).toHaveBeenCalledTimes(1);
 
     // 恢复后第二次 flush：必须重试 create_directory（修复前因 _dirReady 锁存而直接写文件）
     failDir = false;
     await bp.flush('{"v":2}');
-    expect(mockRpc.mock.calls.filter((c) => c[0] === 'create_directory').length).toBe(2);
-    expect(mockRpc.mock.calls.some((c) => c[0] === 'write_file_content')).toBe(true);
+    expect(toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'create_directory').length).toBe(2);
+    expect(toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'write_file_content').length).toBe(1);
     warn.mockRestore();
   });
 
   it('连续失败只 warn 一次，成功落盘后复位', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     let fail = true;
-    mockRpc.mockImplementation(async (cmd: string) => {
-      if (fail && (cmd === 'create_directory' || cmd === 'write_file_content')) throw new Error('IO 错误');
-      return undefined;
-    });
+    mockRpc.mockImplementation(
+      legacyRpcShim(async (cmd: string) => {
+        if (fail && (cmd === 'create_directory' || cmd === 'write_file_content')) throw new Error('IO 错误');
+        return undefined;
+      }),
+    );
 
     const bp = makeBoard();
     await bp.flush('a');

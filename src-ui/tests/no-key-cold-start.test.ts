@@ -14,6 +14,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from '../src/app/shell-store';
 import { useToastStore } from '../src/state/toast-store';
 
+import { legacyDispatchShim } from './helpers/kernel-envelope';
+
 const mockInvoke = vi.fn();
 async function mockRpc(method: string, params?: Record<string, unknown>): Promise<unknown> {
   const normalized: Record<string, unknown> = {};
@@ -95,24 +97,27 @@ function volumeJson(): string {
  *  不再读总目/tracker——list_directory 路由卷清单）。 */
 function mockWorkspaceDisk(): void {
   mockInvoke.mockReset();
-  mockInvoke.mockImplementation((_cmd: string, payload: { method: string; params: Record<string, unknown> }) => {
-    const { method, params } = payload;
-    if (method === 'list_directory') {
-      const p = params.path as string;
-      if (p === WS_SESSIONS) {
-        return Promise.resolve(
-          JSON.stringify([{ name: '7.json', path: `${WS_SESSIONS}/7.json`, is_dir: false, children: null }]),
-        );
+  // P2-2 信封化：fs 命令经 tool_call 寻址 builtin.fs——shim 翻译回旧 (method, params)
+  mockInvoke.mockImplementation(
+    legacyDispatchShim((_cmd: string, payload: { method: string; params: Record<string, unknown> }) => {
+      const { method, params } = payload;
+      if (method === 'list_directory') {
+        const p = params.path as string;
+        if (p === WS_SESSIONS) {
+          return Promise.resolve(
+            JSON.stringify([{ name: '7.json', path: `${WS_SESSIONS}/7.json`, is_dir: false, children: null }]),
+          );
+        }
+        return Promise.resolve(JSON.stringify([]));
       }
-      return Promise.resolve(JSON.stringify([]));
-    }
-    if (method === 'read_file_content') {
-      const fp = params.file_path as string;
-      if (fp === `${WS_SESSIONS}/7.json`) return Promise.resolve(volumeJson());
-      return Promise.reject(new Error('文件不存在'));
-    }
-    return Promise.resolve(null);
-  });
+      if (method === 'read_file_content') {
+        const fp = params.file_path as string;
+        if (fp === `${WS_SESSIONS}/7.json`) return Promise.resolve(volumeJson());
+        return Promise.reject(new Error('文件不存在'));
+      }
+      return Promise.resolve(null);
+    }),
+  );
 }
 
 async function drain(times = 10): Promise<void> {

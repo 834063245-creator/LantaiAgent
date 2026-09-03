@@ -84,24 +84,29 @@ import { ChatCore } from '../src/app/chat/chat-core';
 import * as Session from '../src/ui/chat-session';
 import { msgStoreFor } from '../src/ui/chat-store';
 
+import { legacyDispatchShim } from './helpers/kernel-envelope';
+
 /** 实现式磁盘 mock：read/write/list 三路由 + 内存文件表。 */
 function memDisk() {
   const files: Record<string, string> = {};
   mockInvoke.mockReset();
-  mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-    const { method, params } = payload;
-    if (method === 'read_file_content') {
-      const fp = params.file_path as string;
-      if (fp in files) return Promise.resolve(files[fp]);
-      return Promise.reject(new Error('文件不存在'));
-    }
-    if (method === 'write_file_content') {
-      files[params.file_path as string] = params.content as string;
-      return Promise.resolve('ok');
-    }
-    if (method === 'list_directory') return Promise.resolve(JSON.stringify([]));
-    return Promise.resolve(null);
-  });
+  // P2-2 信封化：fs 命令经 tool_call 寻址 builtin.fs——shim 翻译回旧 (method, params)
+  mockInvoke.mockImplementation(
+    legacyDispatchShim((_cmd: string, payload: any) => {
+      const { method, params } = payload;
+      if (method === 'read_file_content') {
+        const fp = params.file_path as string;
+        if (fp in files) return Promise.resolve(files[fp]);
+        return Promise.reject(new Error('文件不存在'));
+      }
+      if (method === 'write_file_content') {
+        files[params.file_path as string] = params.content as string;
+        return Promise.resolve('ok');
+      }
+      if (method === 'list_directory') return Promise.resolve(JSON.stringify([]));
+      return Promise.resolve(null);
+    }),
+  );
   return files;
 }
 

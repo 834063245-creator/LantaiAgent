@@ -12,6 +12,8 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
+import { legacyRpcShim, toolCallArgsOf } from './helpers/kernel-envelope';
+
 // ── bridge mock — 内存文件系统 ──
 
 const mockRpc = vi.fn();
@@ -43,69 +45,72 @@ function createMemFS(): MemFS {
 
 /** 设置 mockRpc 为内存文件系统模式 */
 function setupMemFs(fs: MemFS): void {
-  mockRpc.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
-    switch (cmd) {
-      case 'create_directory': {
-        fs.dirs.add(args.path as string);
-        return 'ok';
-      }
-      case 'write_file_content': {
-        fs.files.set(args.file_path as string, args.content as string);
-        return 'ok';
-      }
-      case 'read_file_content': {
-        const content = fs.files.get(args.file_path as string);
-        if (content === undefined) throw new Error('file not found');
-        return content;
-      }
-      case 'list_directory': {
-        const dirPath = args.path as string;
-        // DirEntry 真形（Rust utils::DirEntry：path 恒带、children 键恒在无子为 null）
-        const entries: { name: string; path: string; is_dir: boolean; children: null }[] = [];
-        const seen = new Set<string>();
-        for (const fp of fs.files.keys()) {
-          // fp = dirPath + '/subdir/...'
-          if (fp.startsWith(dirPath + '/')) {
-            const rest = fp.slice(dirPath.length + 1);
-            const firstSeg = rest.split('/')[0];
-            if (!seen.has(firstSeg)) {
-              seen.add(firstSeg);
-              entries.push({
-                name: firstSeg,
-                path: `${dirPath}/${firstSeg}`,
-                is_dir: rest.includes('/'),
-                children: null,
-              });
+  // P2-2 信封化：fs 命令经 tool_call 寻址 builtin.fs——shim 翻译回旧 (method, params)
+  mockRpc.mockImplementation(
+    legacyRpcShim(async (cmd: string, args: Record<string, unknown>) => {
+      switch (cmd) {
+        case 'create_directory': {
+          fs.dirs.add(args.path as string);
+          return 'ok';
+        }
+        case 'write_file_content': {
+          fs.files.set(args.file_path as string, args.content as string);
+          return 'ok';
+        }
+        case 'read_file_content': {
+          const content = fs.files.get(args.file_path as string);
+          if (content === undefined) throw new Error('file not found');
+          return content;
+        }
+        case 'list_directory': {
+          const dirPath = args.path as string;
+          // DirEntry 真形（Rust utils::DirEntry：path 恒带、children 键恒在无子为 null）
+          const entries: { name: string; path: string; is_dir: boolean; children: null }[] = [];
+          const seen = new Set<string>();
+          for (const fp of fs.files.keys()) {
+            // fp = dirPath + '/subdir/...'
+            if (fp.startsWith(dirPath + '/')) {
+              const rest = fp.slice(dirPath.length + 1);
+              const firstSeg = rest.split('/')[0];
+              if (!seen.has(firstSeg)) {
+                seen.add(firstSeg);
+                entries.push({
+                  name: firstSeg,
+                  path: `${dirPath}/${firstSeg}`,
+                  is_dir: rest.includes('/'),
+                  children: null,
+                });
+              }
             }
           }
-        }
-        for (const d of fs.dirs) {
-          if (d.startsWith(dirPath + '/')) {
-            const rest = d.slice(dirPath.length + 1);
-            const firstSeg = rest.split('/')[0];
-            if (!seen.has(firstSeg)) {
-              seen.add(firstSeg);
-              entries.push({ name: firstSeg, path: `${dirPath}/${firstSeg}`, is_dir: true, children: null });
+          for (const d of fs.dirs) {
+            if (d.startsWith(dirPath + '/')) {
+              const rest = d.slice(dirPath.length + 1);
+              const firstSeg = rest.split('/')[0];
+              if (!seen.has(firstSeg)) {
+                seen.add(firstSeg);
+                entries.push({ name: firstSeg, path: `${dirPath}/${firstSeg}`, is_dir: true, children: null });
+              }
             }
           }
+          return JSON.stringify(entries);
         }
-        return JSON.stringify(entries);
-      }
-      case 'agent_isolation_diff': {
-        // 孤儿 worktree 的 diff 保全 — 只对 iso-orphan 返回有变更
-        const agentId = (args.agent_id ?? '') as string;
-        if (agentId === 'iso-orphan') {
-          return JSON.stringify({ has_changes: true, diff: 'partial-diff-from-crash' });
+        case 'agent_isolation_diff': {
+          // 孤儿 worktree 的 diff 保全 — 只对 iso-orphan 返回有变更
+          const agentId = (args.agent_id ?? '') as string;
+          if (agentId === 'iso-orphan') {
+            return JSON.stringify({ has_changes: true, diff: 'partial-diff-from-crash' });
+          }
+          return JSON.stringify({ has_changes: false, diff: '' });
         }
-        return JSON.stringify({ has_changes: false, diff: '' });
+        case 'agent_isolation_discard': {
+          return 'discarded';
+        }
+        default:
+          return 'ok';
       }
-      case 'agent_isolation_discard': {
-        return 'discarded';
-      }
-      default:
-        return 'ok';
-    }
-  });
+    }),
+  );
 }
 
 /** 设置 mockRpc 为全部 reject 模式（模拟无文件） */
@@ -149,10 +154,10 @@ describe('MessageBus — flush/restore 往返一致性', () => {
     await bus.flush();
 
     // 验证 mockRpc 被调了 write_file_content，路径含 .lantai/agents/{agentId}/inbox.json
-    const writeCalls = mockRpc.mock.calls.filter((c: any[]) => c[0] === 'write_file_content');
-    expect(writeCalls.length).toBeGreaterThanOrEqual(1);
+    const writeArgs = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'write_file_content');
+    expect(writeArgs.length).toBeGreaterThanOrEqual(1);
 
-    const writtenPaths = writeCalls.map((c: any[]) => (c[1] as Record<string, unknown>).file_path as string);
+    const writtenPaths = writeArgs.map((a) => String(a.filePath));
     // agent-a 和 agent-b 的 inbox 都应该被写入
     expect(writtenPaths.some((p) => p.includes('.lantai/agents/agent-a/inbox.json'))).toBe(true);
     expect(writtenPaths.some((p) => p.includes('.lantai/agents/agent-b/inbox.json'))).toBe(true);
@@ -233,13 +238,11 @@ describe('TaskBoard — flush/restore 往返一致性', () => {
     await board.flush();
 
     // 验证 mockRpc 被调了 write_file_content，路径含 .lantai/taskboard/default.json
-    const writeCalls = mockRpc.mock.calls.filter((c: any[]) => c[0] === 'write_file_content');
-    expect(writeCalls.length).toBeGreaterThanOrEqual(1);
-    const boardWrite = writeCalls.find((c: any[]) =>
-      ((c[1] as Record<string, unknown>).file_path as string).includes('.lantai/taskboard/default.json'),
-    );
+    const writeArgs = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'write_file_content');
+    expect(writeArgs.length).toBeGreaterThanOrEqual(1);
+    const boardWrite = writeArgs.find((a) => String(a.filePath).includes('.lantai/taskboard/default.json'));
     expect(boardWrite).toBeDefined();
-    const boardPath = (boardWrite![1] as Record<string, unknown>).file_path as string;
+    const boardPath = String(boardWrite!.filePath);
     expect(boardPath).toContain('.lantai/taskboard/default.json');
 
     // 验证内容是合法 JSON 数组
@@ -309,7 +312,7 @@ describe('debounced flush — 定时器 pending 时 flush 不丢数据', () => {
     // 手动 flush — 应写入当前全部状态
     await board.flush();
 
-    const writeCallsBefore = mockRpc.mock.calls.filter((c: any[]) => c[0] === 'write_file_content');
+    const writeCallsBefore = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'write_file_content');
     expect(writeCallsBefore.length).toBeGreaterThanOrEqual(1);
 
     // 验证 JSON 内容包含该条目
@@ -323,7 +326,7 @@ describe('debounced flush — 定时器 pending 时 flush 不丢数据', () => {
     // 继续推进到 2 秒 — debounced flush 触发，再次写入
     await vi.advanceTimersByTimeAsync(2000);
 
-    const writeCallsAfter = mockRpc.mock.calls.filter((c: any[]) => c[0] === 'write_file_content');
+    const writeCallsAfter = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'write_file_content');
     // 至少被调了 2 次
     expect(writeCallsAfter.length).toBeGreaterThanOrEqual(2);
 
@@ -333,9 +336,9 @@ describe('debounced flush — 定时器 pending 时 flush 不丢数据', () => {
 
     // clearFlushTimer() 后不再有额外 flush
     board.clearFlushTimer();
-    const countBefore = mockRpc.mock.calls.filter((c: any[]) => c[0] === 'write_file_content').length;
+    const countBefore = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'write_file_content').length;
     await vi.advanceTimersByTimeAsync(5000);
-    const countAfter = mockRpc.mock.calls.filter((c: any[]) => c[0] === 'write_file_content').length;
+    const countAfter = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'write_file_content').length;
     expect(countAfter).toBe(countBefore);
 
     vi.useRealTimers();
@@ -361,13 +364,13 @@ describe('debounced flush — 定时器 pending 时 flush 不丢数据', () => {
     bus.clearFlushTimer();
     await bus.flush();
 
-    const writeCount = mockRpc.mock.calls.filter((c: any[]) => c[0] === 'write_file_content').length;
+    const writeCount = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'write_file_content').length;
     expect(writeCount).toBeGreaterThanOrEqual(1);
 
     // 推进 3 秒，验证没有额外的 write_file_content 调用（定时器已被 clear）
     await vi.advanceTimersByTimeAsync(3000);
 
-    const writeCountAfter = mockRpc.mock.calls.filter((c: any[]) => c[0] === 'write_file_content').length;
+    const writeCountAfter = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'write_file_content').length;
     expect(writeCountAfter).toBe(writeCount);
 
     vi.useRealTimers();

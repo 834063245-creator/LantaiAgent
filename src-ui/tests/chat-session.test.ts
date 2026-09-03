@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from '../src/app/shell-store';
 
+import { legacyDispatchShim } from './helpers/kernel-envelope';
+
 // ── Mock bridge — all Tauri backend calls route through here ──
 const mockInvoke = vi.fn();
 // ponytail: rpc() wrapper converts camelCase→snake_case, then calls invoke('rpc', ...)
@@ -557,15 +559,17 @@ describe('ChatPanel session persistence', () => {
 
       // 归零重建：从首页打开历史卷 = 工作区会话根单读（归属即存储位置）
       const vol1 = mockSessionFile(1, mockSessionMessages, '测试会话', undefined, 'D:/test');
-      mockInvoke.mockImplementation((_cmd: string, payload: { method: string; params: Record<string, unknown> }) => {
-        const { method, params } = payload;
-        if (method === 'read_file_content') {
-          const fp = params.file_path as string;
-          if (fp === 'D:/test/.lantai/sessions/1.json') return Promise.resolve(vol1);
-          return Promise.reject(new Error('文件不存在'));
-        }
-        return Promise.resolve(null);
-      });
+      mockInvoke.mockImplementation(
+        legacyDispatchShim((_cmd: string, payload: { method: string; params: Record<string, unknown> }) => {
+          const { method, params } = payload;
+          if (method === 'read_file_content') {
+            const fp = params.file_path as string;
+            if (fp === 'D:/test/.lantai/sessions/1.json') return Promise.resolve(vol1);
+            return Promise.reject(new Error('文件不存在'));
+          }
+          return Promise.resolve(null);
+        }),
+      );
 
       return panel.loadSessionFromDisk('D:/test', 1);
     }
@@ -650,13 +654,15 @@ describe('ChatPanel session persistence', () => {
 
       const writes: Array<{ file_path: string; content: string }> = [];
       mockInvoke.mockReset();
-      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-        const { method, params } = payload;
-        if (method === 'write_file_content') {
-          writes.push({ file_path: params.file_path as string, content: params.content as string });
-        }
-        return Promise.resolve('ok');
-      });
+      mockInvoke.mockImplementation(
+        legacyDispatchShim((_cmd: string, payload: any) => {
+          const { method, params } = payload;
+          if (method === 'write_file_content') {
+            writes.push({ file_path: params.file_path as string, content: params.content as string });
+          }
+          return Promise.resolve('ok');
+        }),
+      );
       // DSH 形态：两卷都走工厂现造（工厂依次返回 agent1、agent2）
       let call = 0;
       panel.setAgentFactory(async () => (call++ === 0 ? agent1 : agent2) as any);
@@ -720,13 +726,15 @@ describe('ChatPanel session persistence', () => {
       panel.setAgentFactory(async () => (call++ === 0 ? emptyAgent : contentAgent) as any);
       const writes: Array<{ file_path: string; content: string }> = [];
       mockInvoke.mockReset();
-      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-        const { method, params } = payload;
-        if (method === 'write_file_content') {
-          writes.push({ file_path: params.file_path as string, content: params.content as string });
-        }
-        return Promise.resolve('ok');
-      });
+      mockInvoke.mockImplementation(
+        legacyDispatchShim((_cmd: string, payload: any) => {
+          const { method, params } = payload;
+          if (method === 'write_file_content') {
+            writes.push({ file_path: params.file_path as string, content: params.content as string });
+          }
+          return Promise.resolve('ok');
+        }),
+      );
       await panel.createNewSession(); // 卷 1（空卷）
       await panel.createNewSession(); // 卷 2（有内容）
 
@@ -742,13 +750,15 @@ describe('ChatPanel session persistence', () => {
       panel.setProjectPath(PROJ);
       const writes: Array<{ file_path: string; content: string }> = [];
       mockInvoke.mockReset();
-      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-        const { method, params } = payload;
-        if (method === 'write_file_content') {
-          writes.push({ file_path: params.file_path as string, content: params.content as string });
-        }
-        return Promise.resolve('ok');
-      });
+      mockInvoke.mockImplementation(
+        legacyDispatchShim((_cmd: string, payload: any) => {
+          const { method, params } = payload;
+          if (method === 'write_file_content') {
+            writes.push({ file_path: params.file_path as string, content: params.content as string });
+          }
+          return Promise.resolve('ok');
+        }),
+      );
       const agent = makeAgent('最后一卷的内容');
       panel.setAgentFactory(async () => agent as any);
       await panel.createNewSession();
@@ -799,13 +809,15 @@ describe('ChatPanel session persistence', () => {
           }) as any,
       );
       mockInvoke.mockReset();
-      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-        const { method, params } = payload;
-        if (method === 'write_file_content') {
-          writes.push({ file_path: params.file_path as string, content: params.content as string });
-        }
-        return Promise.resolve('ok');
-      });
+      mockInvoke.mockImplementation(
+        legacyDispatchShim((_cmd: string, payload: any) => {
+          const { method, params } = payload;
+          if (method === 'write_file_content') {
+            writes.push({ file_path: params.file_path as string, content: params.content as string });
+          }
+          return Promise.resolve('ok');
+        }),
+      );
       await panel.createNewSession();
       return panel;
     }
@@ -896,30 +908,32 @@ describe('ChatPanel session persistence', () => {
       };
       panel.setAgentFactory(async () => agent2 as any);
       mockInvoke.mockReset();
-      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-        const { method, params } = payload;
-        if (method === 'read_file_content') {
-          // 模拟磁盘上的会话文件（带旧 paper 字段——归零世界卷恒带归属）
-          return Promise.resolve(
-            JSON.stringify({
-              id: 5,
-              label: '带纸面的卷',
-              savedAt: new Date().toISOString(),
-              workspace: PROJ,
-              messages: [
-                { role: 'system', content: 'sys' },
-                { role: 'user', content: '旧消息' },
-              ],
-              paper: {
-                pinned: { 'pb:m9:0': { x: 42, y: -42 } },
-                strips: [{ id: 'strip1', text: '旧纸条', x: 10, y: -10, w: 480 }],
-              },
-            }),
-          );
-        }
-        void params;
-        return Promise.resolve('ok');
-      });
+      mockInvoke.mockImplementation(
+        legacyDispatchShim((_cmd: string, payload: any) => {
+          const { method, params } = payload;
+          if (method === 'read_file_content') {
+            // 模拟磁盘上的会话文件（带旧 paper 字段——归零世界卷恒带归属）
+            return Promise.resolve(
+              JSON.stringify({
+                id: 5,
+                label: '带纸面的卷',
+                savedAt: new Date().toISOString(),
+                workspace: PROJ,
+                messages: [
+                  { role: 'system', content: 'sys' },
+                  { role: 'user', content: '旧消息' },
+                ],
+                paper: {
+                  pinned: { 'pb:m9:0': { x: 42, y: -42 } },
+                  strips: [{ id: 'strip1', text: '旧纸条', x: 10, y: -10, w: 480 }],
+                },
+              }),
+            );
+          }
+          void params;
+          return Promise.resolve('ok');
+        }),
+      );
 
       await panel.loadSessionFromDisk(PROJ, 5);
 
@@ -955,36 +969,38 @@ describe('ChatPanel session persistence', () => {
       };
       panel.setAgentFactory(async () => agent2 as any);
       mockInvoke.mockReset();
-      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-        const { method, params } = payload;
-        if (method === 'read_file_content') {
-          const fp = params.file_path as string;
-          if (fp.endsWith('/.lantai/canvas.json')) {
-            return Promise.resolve(
-              JSON.stringify({
-                version: 1,
-                spread: [{ sessionId: 5, anchorX: 6480, anchorY: -1200, width: 1440 }],
-                activeSessionId: 5,
-                publics: { pinned: {}, strips: [] },
-              }),
-            );
+      mockInvoke.mockImplementation(
+        legacyDispatchShim((_cmd: string, payload: any) => {
+          const { method, params } = payload;
+          if (method === 'read_file_content') {
+            const fp = params.file_path as string;
+            if (fp.endsWith('/.lantai/canvas.json')) {
+              return Promise.resolve(
+                JSON.stringify({
+                  version: 1,
+                  spread: [{ sessionId: 5, anchorX: 6480, anchorY: -1200, width: 1440 }],
+                  activeSessionId: 5,
+                  publics: { pinned: {}, strips: [] },
+                }),
+              );
+            }
+            if (fp.endsWith('/5.json')) {
+              return Promise.resolve(
+                JSON.stringify({
+                  id: 5,
+                  label: '卷五',
+                  workspace: PROJ,
+                  messages: [
+                    { role: 'system', content: 'sys' },
+                    { role: 'user', content: 'hi' },
+                  ],
+                }),
+              );
+            }
           }
-          if (fp.endsWith('/5.json')) {
-            return Promise.resolve(
-              JSON.stringify({
-                id: 5,
-                label: '卷五',
-                workspace: PROJ,
-                messages: [
-                  { role: 'system', content: 'sys' },
-                  { role: 'user', content: 'hi' },
-                ],
-              }),
-            );
-          }
-        }
-        return Promise.resolve('ok');
-      });
+          return Promise.resolve('ok');
+        }),
+      );
 
       await panel.restoreCanvasSpread(PROJ);
 
@@ -1015,37 +1031,39 @@ describe('ChatPanel session persistence', () => {
       };
       panel.setAgentFactory(async () => agent2 as any);
       mockInvoke.mockReset();
-      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-        const { method, params } = payload;
-        if (method === 'list_directory') {
-          // 磁盘只有卷 5 的会话文件——卷 6 是幽灵（画布引用了它但文件不存在）
-          return Promise.resolve(
-            JSON.stringify([
-              { name: '5.json', path: 'D:/restore-test/.lantai/sessions/5.json', is_dir: false, children: null },
-            ]),
-          );
-        }
-        if (method === 'read_file_content') {
-          const fp = params.file_path as string;
-          if (fp.endsWith('/.lantai/canvas.json')) {
+      mockInvoke.mockImplementation(
+        legacyDispatchShim((_cmd: string, payload: any) => {
+          const { method, params } = payload;
+          if (method === 'list_directory') {
+            // 磁盘只有卷 5 的会话文件——卷 6 是幽灵（画布引用了它但文件不存在）
             return Promise.resolve(
-              JSON.stringify({
-                version: 1,
-                spread: [
-                  { sessionId: 5, anchorX: 6480, anchorY: -1200, width: 1440 },
-                  { sessionId: 6, anchorX: 0, anchorY: 0, width: 1440 },
-                ],
-                activeSessionId: 5,
-                publics: { pinned: {}, strips: [] },
-              }),
+              JSON.stringify([
+                { name: '5.json', path: 'D:/restore-test/.lantai/sessions/5.json', is_dir: false, children: null },
+              ]),
             );
           }
-          if (fp.endsWith('/5.json')) {
-            return Promise.resolve(mockSessionFile(5, [{ role: 'user', content: 'hi' }], '卷五', undefined, PROJ));
+          if (method === 'read_file_content') {
+            const fp = params.file_path as string;
+            if (fp.endsWith('/.lantai/canvas.json')) {
+              return Promise.resolve(
+                JSON.stringify({
+                  version: 1,
+                  spread: [
+                    { sessionId: 5, anchorX: 6480, anchorY: -1200, width: 1440 },
+                    { sessionId: 6, anchorX: 0, anchorY: 0, width: 1440 },
+                  ],
+                  activeSessionId: 5,
+                  publics: { pinned: {}, strips: [] },
+                }),
+              );
+            }
+            if (fp.endsWith('/5.json')) {
+              return Promise.resolve(mockSessionFile(5, [{ role: 'user', content: 'hi' }], '卷五', undefined, PROJ));
+            }
           }
-        }
-        return Promise.resolve('ok');
-      });
+          return Promise.resolve('ok');
+        }),
+      );
 
       await panel.restoreCanvasSpread(PROJ);
 
@@ -1072,24 +1090,26 @@ describe('ChatPanel session persistence', () => {
           }) as any,
       );
       mockInvoke.mockReset();
-      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-        const { method, params } = payload;
-        if (method === 'read_file_content') {
-          return Promise.resolve(
-            JSON.stringify({
-              id: 7,
-              label: '卷七',
-              workspace: PROJ,
-              messages: [
-                { role: 'system', content: 'sys' },
-                { role: 'user', content: 'hi' },
-              ],
-            }),
-          );
-        }
-        void params;
-        return Promise.resolve('ok');
-      });
+      mockInvoke.mockImplementation(
+        legacyDispatchShim((_cmd: string, payload: any) => {
+          const { method, params } = payload;
+          if (method === 'read_file_content') {
+            return Promise.resolve(
+              JSON.stringify({
+                id: 7,
+                label: '卷七',
+                workspace: PROJ,
+                messages: [
+                  { role: 'system', content: 'sys' },
+                  { role: 'user', content: 'hi' },
+                ],
+              }),
+            );
+          }
+          void params;
+          return Promise.resolve('ok');
+        }),
+      );
       await panel.createNewSession();
       const canvas = getCanvasStore(panel.panelId).getState();
       const sid = Session.getSessions(panel.panelId)[0].id;
@@ -1292,22 +1312,24 @@ describe('ChatPanel session persistence', () => {
             return { name, path: p, is_dir: false, children: null };
           });
       mockInvoke.mockReset();
-      mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-        const { method, params } = payload;
-        if (method === 'read_file_content') {
-          const fp = params.file_path as string;
-          if (fp in files) return Promise.resolve(files[fp]);
-          return Promise.reject(new Error('文件不存在'));
-        }
-        if (method === 'write_file_content') {
-          files[params.file_path as string] = params.content as string;
-          return Promise.resolve('ok');
-        }
-        if (method === 'list_directory') {
-          return Promise.resolve(JSON.stringify(listDir(params.path as string)));
-        }
-        return Promise.resolve(null);
-      });
+      mockInvoke.mockImplementation(
+        legacyDispatchShim((_cmd: string, payload: any) => {
+          const { method, params } = payload;
+          if (method === 'read_file_content') {
+            const fp = params.file_path as string;
+            if (fp in files) return Promise.resolve(files[fp]);
+            return Promise.reject(new Error('文件不存在'));
+          }
+          if (method === 'write_file_content') {
+            files[params.file_path as string] = params.content as string;
+            return Promise.resolve('ok');
+          }
+          if (method === 'list_directory') {
+            return Promise.resolve(JSON.stringify(listDir(params.path as string)));
+          }
+          return Promise.resolve(null);
+        }),
+      );
       return files;
     }
 

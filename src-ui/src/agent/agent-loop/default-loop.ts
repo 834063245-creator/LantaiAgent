@@ -61,10 +61,11 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
         if (host.planState.state.active && host.planState.state.planFilePath) {
           try {
             const raw = await typedRpcWithTimeout(
-              'read_file_content',
+              'tool_call',
               {
-                file_path: host.planState.state.planFilePath,
-                is_agent: false,
+                plugin: 'builtin.fs',
+                tool: 'read_file_content',
+                args: { filePath: host.planState.state.planFilePath },
               },
               STEP_RPC_TIMEOUT_MS,
             );

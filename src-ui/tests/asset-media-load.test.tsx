@@ -75,7 +75,12 @@ describe('composition/asset-renderers — 媒体图片经 read_file_base64 加�
       expect(img).not.toBeNull();
       expect(img?.getAttribute('src')).toBe('data:image/png;base64,QUJD');
       expect(img?.getAttribute('alt')).toBe('图');
-      expect(typedRpc).toHaveBeenCalledWith('read_file_base64', { file_path: 'D:/a.png' });
+      // P2-2 信封化：read_file_base64 经 tool_call 寻址 builtin.fs
+      expect(typedRpc).toHaveBeenCalledWith('tool_call', {
+        plugin: 'builtin.fs',
+        tool: 'read_file_base64',
+        args: { filePath: 'D:/a.png' },
+      });
     });
   });
 

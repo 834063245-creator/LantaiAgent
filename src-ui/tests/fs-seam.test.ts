@@ -68,7 +68,11 @@ describe('fs seam（ctx.fs · D11）', () => {
     const meta = { filePath: '/x/a.ts', _agent_id: 'agent-42' };
     const out = await toolByName('read_file_content', spyExec).execute(meta);
     expect(out).toBe('ok:rust');
-    expect(dispatchCalls).toEqual([{ name: 'read_file_content', args: meta }]);
+    // P2-2 信封化：恒等保证的载体从命令名移到信封——plugin.tool 寻址
+    // builtin.fs.read_file_content，args 原样（含 _agent_id）。
+    expect(dispatchCalls).toEqual([
+      { name: 'tool_call', args: { plugin: 'builtin.fs', tool: 'read_file_content', args: meta } },
+    ]);
   });
 
   it('③ rename 键名改写保持（path/new_name → filePath/newName）', async () => {
@@ -79,8 +83,12 @@ describe('fs seam（ctx.fs · D11）', () => {
       return 'ok';
     };
     await toolByName('rename_file', spyExec).execute({ path: '/x/a.ts', new_name: 'b.ts', _agent_id: 'w1' });
-    expect(dispatchCalls[0]?.name).toBe('rename_file_or_dir');
-    expect(dispatchCalls[0]?.args).toMatchObject({ filePath: '/x/a.ts', newName: 'b.ts', _agent_id: 'w1' });
+    // P2-2 信封化：折写后的 filePath/newName 在信封 args 内（manifest 语言）
+    expect(dispatchCalls[0]?.name).toBe('tool_call');
+    const env = dispatchCalls[0]?.args as { plugin?: string; tool?: string; args?: Record<string, unknown> };
+    expect(env.plugin).toBe('builtin.fs');
+    expect(env.tool).toBe('rename_file_or_dir');
+    expect(env.args).toMatchObject({ filePath: '/x/a.ts', newName: 'b.ts', _agent_id: 'w1' });
   });
 
   it('④ fake 替换：内存 fs 零消费面改动，dispatch 腰不被触碰（P2-C2）', async () => {

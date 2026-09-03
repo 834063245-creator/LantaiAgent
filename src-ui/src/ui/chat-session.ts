@@ -10,7 +10,13 @@ import type { ChatAgentHandle } from '../agent/chat-agent-handle';
 import { createExecState, type ExecStateInstance } from '../agent/execution-state';
 import type { Message } from '../provider/types';
 import type { DirEntry } from '../rpc-contract';
-import { typedJsonRpc, typedRpc } from '../rpc-contract';
+import {
+  kernelListDirectory,
+  kernelReadFileRaw,
+  kernelWriteFile,
+  typedJsonRpc,
+  typedRpc,
+} from '../rpc-contract';
 import { getActiveProvider, loadSettings } from '../settings';
 import { disposeAssetSessionStore, disposeAssetTables, rebuildAssetTableFromMessages } from '../state/asset-store';
 import { getCanvasStore } from '../state/canvas-store';
@@ -557,7 +563,7 @@ export interface StoredSession {
 /** 读取会话文件并解析为 JSON。raw 模式跳过行号（P1-3——Rust 侧 raw=true
  *  不做 format_lines，前端不剥行号，省双重 O(n) 字符串变换）。 */
 async function readSessionJSON(filePath: string): Promise<StoredSession> {
-  const raw = await typedRpc('read_file_content', { file_path: filePath, raw: true });
+  const raw = await kernelReadFileRaw(filePath);
   return JSON.parse(raw) as StoredSession;
 }
 
@@ -592,10 +598,7 @@ async function readVolumeJSON(projectPath: string, id: number): Promise<StoredSe
 export async function scanMaxSessionId(projectPath: string): Promise<number> {
   let maxId = 0;
   try {
-    const entries = await typedJsonRpc('list_directory', {
-      path: workspaceSessionsDir(projectPath),
-      filter_ignored: false,
-    });
+    const entries = await kernelListDirectory(workspaceSessionsDir(projectPath), false);
     for (const e of entries) {
       if (e.is_dir || !e.name || e.name === '_active.json') continue;
       const sid = parseInt(String(e.name).replace(/\.json$/, ''), 10);
@@ -634,10 +637,7 @@ async function writeSessionSnapshot(projectPath: string, data: SessionSnapshotDa
   const json = JSON.stringify(data);
   // 原子磁盘写入（tmp → rename；目标 = 工作区会话根）
   try {
-    await typedRpc('write_file_content', {
-      file_path: `${workspaceSessionsDir(projectPath)}/${data.id}.json`,
-      content: json,
-    });
+    await kernelWriteFile(`${workspaceSessionsDir(projectPath)}/${data.id}.json`, json);
   } catch (e) {
     console.error('[chat] 会话落盘失败:', e);
     throw e;
@@ -807,10 +807,7 @@ export async function listSavedSessions(
   type SessionEntry = { id: number; label: string; msgCount: number; savedAt: string };
   let entries: DirEntry[];
   try {
-    entries = await typedJsonRpc('list_directory', {
-      path: workspaceSessionsDir(projectPath),
-      filter_ignored: false,
-    });
+    entries = await kernelListDirectory(workspaceSessionsDir(projectPath), false);
   } catch (e) {
     console.error('[chat] listSavedSessions: list_directory failed', e);
     return [];
@@ -1084,16 +1081,16 @@ export async function batchRestoreSessions(
 export async function deleteSessionFile(ctx: SessionContext, projectPath: string, sessionId: number): Promise<void> {
   // 用删除标记覆盖 — listSavedSessions 会过滤掉这些
   try {
-    await typedRpc('write_file_content', {
-      file_path: `${workspaceSessionsDir(projectPath)}/${sessionId}.json`,
-      content: JSON.stringify({
+    await kernelWriteFile(
+      `${workspaceSessionsDir(projectPath)}/${sessionId}.json`,
+      JSON.stringify({
         id: sessionId,
         deleted: true,
         label: '',
         messages: [],
         savedAt: '',
       }),
-    });
+    );
   } catch (e) {
     console.error('[chat] deleteSessionFile failed:', e);
     showToast('删除案卷文件失败', 'error');
@@ -1481,7 +1478,7 @@ export async function exportSession(ctx: SessionContext): Promise<void> {
       filters: [{ name: 'Markdown', extensions: ['md'] }],
     });
     if (filePath) {
-      await typedRpc('write_file_content', { file_path: filePath, content: md });
+      await kernelWriteFile(filePath, md);
     }
   } catch {
     // 浏览器回退

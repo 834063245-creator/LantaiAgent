@@ -46,7 +46,14 @@ import { markDynamicFetchStart, mergeDynamicModels, recordDynamicFetchResult } f
 import { resolveApiKey } from './provider/credentials';
 import { createLiveProvider } from './provider/live';
 import type { Provider } from './provider/types';
-import { parseJson, typedJsonRpc, typedListen, typedRpc, workspaceListCached } from './rpc-contract';
+import {
+  kernelGlobalMemoryDir,
+  parseJson,
+  typedJsonRpc,
+  typedListen,
+  typedRpc,
+  workspaceListCached,
+} from './rpc-contract';
 // Phase 1.5：全量图形状（GraphJSON/GraphNode/…）随分页栈退役；graphData = GraphSnapshot（agent/hooks）
 import {
   type AppSettings,
@@ -795,7 +802,7 @@ export class Workspace {
     // 与 get_global_memory_dir 互相独立——Promise.all 并行，省 1 次 IPC 往返。
     let globalDir: string | undefined;
     const settingsPromise = loadSettingsWithSecrets();
-    const globalDirPromise = typedRpc('get_global_memory_dir', {})
+    const globalDirPromise = kernelGlobalMemoryDir()
       .then((d) => {
         globalDir = d;
       })

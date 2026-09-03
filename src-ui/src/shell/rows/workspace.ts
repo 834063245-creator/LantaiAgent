@@ -18,7 +18,7 @@
 
 import { log } from '../../agent/logger';
 import { withTimeout } from '../../lifecycle/timeout';
-import { typedRpc } from '../../rpc-contract';
+import { kernelCreateDirectory, typedRpc } from '../../rpc-contract';
 import { useDockStore } from '../../state/dock-store';
 import { bumpWorkspaceSwitched } from '../../state/workspace-switch-store';
 import { useAgentPanelStore } from '../../ui/agent-panel-store';
@@ -169,7 +169,7 @@ async function switchWorkspace(path?: string, opts?: { graphEngine?: boolean | n
     // 幂等），使随后的 autoRestoreLastSession 读路径确定性（编号对账可靠）。
     // 建目录失败不阻断进工作区——写路径仍会按需创建父目录，失败 console 可见。
     try {
-      await typedRpc('create_directory', { path: `${folder.replace(/[\\/]+$/, '')}/.lantai/sessions` });
+      await kernelCreateDirectory(`${folder.replace(/[\\/]+$/, '')}/.lantai/sessions`);
     } catch (e) {
       console.warn('[switchWorkspace] 会话根目录创建失败:', folder, e);
     }

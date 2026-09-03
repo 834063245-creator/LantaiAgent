@@ -17,7 +17,7 @@ import { factoryComposition, type ResolvedComposition } from '../../composition/
 import type { Context } from '../../cordis';
 import type { StoredThinking } from '../../provider/thinking';
 import type { Message, Provider } from '../../provider/types';
-import { typedJsonRpc, typedRpc } from '../../rpc-contract';
+import { kernelDeleteFile, kernelReadFile, kernelWriteFile, typedJsonRpc } from '../../rpc-contract';
 import { Agent } from '../agent';
 import { resolveAgentLoop } from '../agent-loop/agent-loop-active';
 import type { AgentUINotifier, EventSink, Pricing } from '../agent-types';
@@ -419,7 +419,7 @@ export class AgentRuntime implements RuntimePort {
     // 迁移全局 discoveries.json
     const oldDiscPath = `${base}/.lantai/discoveries.json`;
     try {
-      const raw = await typedRpc('read_file_content', { file_path: oldDiscPath });
+      const raw = await kernelReadFile(oldDiscPath);
       const arr = JSON.parse(raw.replace(/^\s*\d+\t/gm, ''));
       if (Array.isArray(arr) && arr.length > 0) {
         const db = this._getOrCreateDiscoveryBoard('default');
@@ -429,25 +429,22 @@ export class AgentRuntime implements RuntimePort {
         await db.flush();
       }
       // 迁移后删除旧文件
-      await typedRpc('delete_file_or_dir', { path: oldDiscPath }).catch(() => {});
+      await kernelDeleteFile(oldDiscPath).catch(() => {});
     } catch {
       /* 文件不存在 — 无需迁移 */
     }
     // 迁移全局 taskboard.json
     const oldTaskPath = `${base}/.lantai/taskboard.json`;
     try {
-      const raw = await typedRpc('read_file_content', { file_path: oldTaskPath });
+      const raw = await kernelReadFile(oldTaskPath);
       const arr = JSON.parse(raw.replace(/^\s*\d+\t/gm, ''));
       if (Array.isArray(arr) && arr.length > 0) {
         const _tb = this._getOrCreateTaskBoard('default');
         // 直接将迁移的条目写入新路径
-        await typedRpc('write_file_content', {
-          file_path: `${base}/.lantai/taskboard/default.json`,
-          content: JSON.stringify(arr, null, 2),
-        });
+        await kernelWriteFile(`${base}/.lantai/taskboard/default.json`, JSON.stringify(arr, null, 2));
       }
       // 迁移后删除旧文件
-      await typedRpc('delete_file_or_dir', { path: oldTaskPath }).catch(() => {});
+      await kernelDeleteFile(oldTaskPath).catch(() => {});
     } catch {
       /* 文件不存在 — 无需迁移 */
     }
@@ -594,7 +591,7 @@ export class AgentRuntime implements RuntimePort {
       }
       let claudeMd = '';
       try {
-        claudeMd = await typedRpc('read_file_content', { file_path: `${ctx.projectPath}/CLAUDE.md` });
+        claudeMd = await kernelReadFile(`${ctx.projectPath}/CLAUDE.md`);
       } catch {}
       const snapshot = asGraphSnapshot(inputs.graphData);
       const snap = snapshot ? formatGraphSnapshot(snapshot) : '';

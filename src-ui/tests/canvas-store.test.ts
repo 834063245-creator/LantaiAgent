@@ -22,24 +22,31 @@ import {
 } from '../src/state/canvas-store';
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
 
-// P3-2 分片测试：mock typedRpc 走内存假文件系统（真实 store + 真实序列化）
+// P3-2 分片测试：mock bridge rpc 走内存假文件系统（真实 store + 真实序列化）。
+// P2-2 后 canvas 持久化经 kernelWriteFile/kernelReadFileRaw（rpc-contract 内部
+// 直呼 typedRpc）——mock typedRpc 导出拦不住这些助手（内部闭包真绑定），必须
+// 拦在 bridge rpc 层；信封由 legacyRpcShim 翻译回旧 (method, params) 形状。
 const fakeFs = new Map<string, string>();
-vi.mock('../src/rpc-contract', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/rpc-contract')>();
+vi.mock('../src/bridge', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/bridge')>();
+  const { legacyRpcShim } = await import('./helpers/kernel-envelope');
   return {
     ...actual,
-    typedRpc: vi.fn(async (method: string, params: Record<string, unknown>) => {
-      if (method === 'write_file_content') {
-        fakeFs.set(String(params.file_path), String(params.content));
-        return 'null';
-      }
-      if (method === 'read_file_content') {
-        const hit = fakeFs.get(String(params.file_path));
-        if (hit === undefined) throw new Error('文件不存在');
-        return hit;
-      }
-      throw new Error(`未 mock 的 RPC: ${method}`);
-    }),
+    isMockMode: () => false,
+    rpc: vi.fn(
+      legacyRpcShim(async (method: string, params: Record<string, unknown>) => {
+        if (method === 'write_file_content') {
+          fakeFs.set(String(params.file_path), String(params.content));
+          return 'null';
+        }
+        if (method === 'read_file_content') {
+          const hit = fakeFs.get(String(params.file_path));
+          if (hit === undefined) throw new Error('文件不存在');
+          return hit;
+        }
+        throw new Error(`未 mock 的 RPC: ${method}`);
+      }),
+    ),
   };
 });
 

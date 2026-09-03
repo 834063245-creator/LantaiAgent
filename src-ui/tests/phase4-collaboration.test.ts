@@ -31,6 +31,7 @@ import type { AgentAddress } from '../src/agent/message-types';
 import { createDiscoveryTools } from '../src/agent/tools/discovery';
 import { createRequestTool } from '../src/agent/tools/request';
 import { MeshTopology } from '../src/agent/topology';
+import { legacyRpcShim } from './helpers/kernel-envelope';
 
 // ── Helpers ──
 
@@ -92,17 +93,20 @@ describe('DiscoveryBoard', () => {
     // Hardcoded fallback runs afoul of vitest v4 vi.mock hoisting where
     // the factory's mockRpc closure points at a different fn instance.
     let savedContent = '';
-    mockRpc.mockImplementation(async (method: string, args: any) => {
-      if (method === 'create_directory') return;
-      if (method === 'write_file_content') {
-        savedContent = args?.content || '';
-        return;
-      }
-      if (method === 'read_file_content') {
-        return savedContent;
-      }
-      return '';
-    });
+    // P2-2 信封化：fs 命令经 tool_call 寻址 builtin.fs——shim 翻译回旧 (method, args)
+    mockRpc.mockImplementation(
+      legacyRpcShim(async (method: string, args: any) => {
+        if (method === 'create_directory') return;
+        if (method === 'write_file_content') {
+          savedContent = args?.content || '';
+          return;
+        }
+        if (method === 'read_file_content') {
+          return savedContent;
+        }
+        return '';
+      }),
+    );
 
     const board = new DiscoveryBoard(projectPath);
     board.post('agent-a', 'test-key', 'test-value', 'architecture');

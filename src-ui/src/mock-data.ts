@@ -483,28 +483,6 @@ const MOCK_TOOL_RESPONSES: Record<string, MockToolResponse> = {
     top_changed: ['middleware.ts', 'cache.ts'],
     issues: ['L4 封装穿透增加'],
   }),
-  read_file_content: `// nebula/core/middleware.ts (mock)
-import { Request } from './request';
-import { Response } from './response';
-import { AuthProvider } from './auth';
-
-class MiddlewareChain {
-  private handlers: Middleware[] = [];
-
-  use(handler: Middleware): this {
-    this.handlers.push(handler);
-    return this;
-  }
-
-  async process(req: Request): Promise<Response | null> {
-    let ctx = new RequestContext(req);
-    for (const handler of this.handlers) {
-      ctx = await handler(ctx);
-      if (ctx.aborted) return null;
-    }
-    return ctx.response;
-  }
-}`,
   exec_command: `(mock terminal output)
 C:\\mock\\nebula-project> echo hello
 hello
@@ -513,235 +491,9 @@ C:\\mock\\nebula-project> dir
 nebula/  package.json  tsconfig.json  README.md`,
   hologram_diff: JSON.stringify(MOCK_DIFF),
 
-  // 写入命令（mock 中为空操作）
-  // （read_constraints / write_constraints 已迁 builtin.constraints 插件——
-  //   浏览器 mock 模式经 tool_call，不走旧名；kernel-plugin-runtime P2-1）
-  write_file_content: '(mock: file saved)',
-
-  // ── 文件树 ──
-  list_directory: [
-    {
-      name: 'nebula',
-      path: '/mock/nebula-project/nebula',
-      is_dir: true,
-      children: [
-        {
-          name: 'core',
-          path: '/mock/nebula-project/nebula/core',
-          is_dir: true,
-          children: [
-            { name: 'router.ts', path: '/mock/nebula-project/nebula/core/router.ts', is_dir: false, children: null },
-            {
-              name: 'middleware.ts',
-              path: '/mock/nebula-project/nebula/core/middleware.ts',
-              is_dir: false,
-              children: null,
-            },
-            { name: 'request.ts', path: '/mock/nebula-project/nebula/core/request.ts', is_dir: false, children: null },
-            {
-              name: 'response.ts',
-              path: '/mock/nebula-project/nebula/core/response.ts',
-              is_dir: false,
-              children: null,
-            },
-            { name: 'server.ts', path: '/mock/nebula-project/nebula/core/server.ts', is_dir: false, children: null },
-            { name: 'config.ts', path: '/mock/nebula-project/nebula/core/config.ts', is_dir: false, children: null },
-            { name: 'plugins.ts', path: '/mock/nebula-project/nebula/core/plugins.ts', is_dir: false, children: null },
-            { name: 'errors.ts', path: '/mock/nebula-project/nebula/core/errors.ts', is_dir: false, children: null },
-            { name: 'parser.ts', path: '/mock/nebula-project/nebula/core/parser.ts', is_dir: false, children: null },
-            { name: 'mime.ts', path: '/mock/nebula-project/nebula/core/mime.ts', is_dir: false, children: null },
-            { name: 'auth.ts', path: '/mock/nebula-project/nebula/core/auth.ts', is_dir: false, children: null },
-            { name: 'session.ts', path: '/mock/nebula-project/nebula/core/session.ts', is_dir: false, children: null },
-          ],
-        },
-        {
-          name: 'data',
-          path: '/mock/nebula-project/nebula/data',
-          is_dir: true,
-          children: [
-            {
-              name: 'database.ts',
-              path: '/mock/nebula-project/nebula/data/database.ts',
-              is_dir: false,
-              children: null,
-            },
-            { name: 'query.ts', path: '/mock/nebula-project/nebula/data/query.ts', is_dir: false, children: null },
-            { name: 'model.ts', path: '/mock/nebula-project/nebula/data/model.ts', is_dir: false, children: null },
-            {
-              name: 'migrations.ts',
-              path: '/mock/nebula-project/nebula/data/migrations.ts',
-              is_dir: false,
-              children: null,
-            },
-            { name: 'cache.ts', path: '/mock/nebula-project/nebula/data/cache.ts', is_dir: false, children: null },
-            { name: 'redis.ts', path: '/mock/nebula-project/nebula/data/redis.ts', is_dir: false, children: null },
-            { name: 'storage.ts', path: '/mock/nebula-project/nebula/data/storage.ts', is_dir: false, children: null },
-            { name: 'queue.ts', path: '/mock/nebula-project/nebula/data/queue.ts', is_dir: false, children: null },
-          ],
-        },
-        {
-          name: 'utils',
-          path: '/mock/nebula-project/nebula/utils',
-          is_dir: true,
-          children: [
-            { name: 'logger.ts', path: '/mock/nebula-project/nebula/utils/logger.ts', is_dir: false, children: null },
-            {
-              name: 'validate.ts',
-              path: '/mock/nebula-project/nebula/utils/validate.ts',
-              is_dir: false,
-              children: null,
-            },
-            {
-              name: 'serialize.ts',
-              path: '/mock/nebula-project/nebula/utils/serialize.ts',
-              is_dir: false,
-              children: null,
-            },
-            { name: 'token.ts', path: '/mock/nebula-project/nebula/utils/token.ts', is_dir: false, children: null },
-            {
-              name: 'ratelimit.ts',
-              path: '/mock/nebula-project/nebula/utils/ratelimit.ts',
-              is_dir: false,
-              children: null,
-            },
-            { name: 'crypto.ts', path: '/mock/nebula-project/nebula/utils/crypto.ts', is_dir: false, children: null },
-            { name: 'email.ts', path: '/mock/nebula-project/nebula/utils/email.ts', is_dir: false, children: null },
-          ],
-        },
-        {
-          name: 'temporal',
-          path: '/mock/nebula-project/nebula/temporal',
-          is_dir: true,
-          children: [
-            {
-              name: 'scheduler.ts',
-              path: '/mock/nebula-project/nebula/temporal/scheduler.ts',
-              is_dir: false,
-              children: null,
-            },
-            {
-              name: 'worker.ts',
-              path: '/mock/nebula-project/nebula/temporal/worker.ts',
-              is_dir: false,
-              children: null,
-            },
-            { name: 'cron.ts', path: '/mock/nebula-project/nebula/temporal/cron.ts', is_dir: false, children: null },
-            {
-              name: 'events.ts',
-              path: '/mock/nebula-project/nebula/temporal/events.ts',
-              is_dir: false,
-              children: null,
-            },
-            { name: 'timer.ts', path: '/mock/nebula-project/nebula/temporal/timer.ts', is_dir: false, children: null },
-            { name: 'pool.ts', path: '/mock/nebula-project/nebula/temporal/pool.ts', is_dir: false, children: null },
-          ],
-        },
-        {
-          name: 'adapters',
-          path: '/mock/nebula-project/nebula/adapters',
-          is_dir: true,
-          children: [
-            {
-              name: 'payment.ts',
-              path: '/mock/nebula-project/nebula/adapters/payment.ts',
-              is_dir: false,
-              children: null,
-            },
-            { name: 's3.ts', path: '/mock/nebula-project/nebula/adapters/s3.ts', is_dir: false, children: null },
-            { name: 'smtp.ts', path: '/mock/nebula-project/nebula/adapters/smtp.ts', is_dir: false, children: null },
-            { name: 'oauth.ts', path: '/mock/nebula-project/nebula/adapters/oauth.ts', is_dir: false, children: null },
-            { name: 'ws.ts', path: '/mock/nebula-project/nebula/adapters/ws.ts', is_dir: false, children: null },
-          ],
-        },
-      ],
-    },
-    { name: 'package.json', path: '/mock/nebula-project/package.json', is_dir: false, children: null },
-    { name: 'tsconfig.json', path: '/mock/nebula-project/tsconfig.json', is_dir: false, children: null },
-    { name: 'README.md', path: '/mock/nebula-project/README.md', is_dir: false, children: null },
-  ],
-  // 懒加载文件树的扁平列表（args.path → 一级子项）
-  list_directory_flat: (args?: Record<string, unknown>) => {
-    const p = (args?.path as string) || '/mock/nebula-project';
-    const flatMap: Record<string, Array<{ name: string; path: string; is_dir: boolean; children: null }>> = {
-      '/mock/nebula-project': [
-        { name: 'nebula', path: '/mock/nebula-project/nebula', is_dir: true, children: null },
-        { name: 'package.json', path: '/mock/nebula-project/package.json', is_dir: false, children: null },
-        { name: 'tsconfig.json', path: '/mock/nebula-project/tsconfig.json', is_dir: false, children: null },
-        { name: 'README.md', path: '/mock/nebula-project/README.md', is_dir: false, children: null },
-      ],
-      '/mock/nebula-project/nebula': [
-        { name: 'core', path: '/mock/nebula-project/nebula/core', is_dir: true, children: null },
-        { name: 'data', path: '/mock/nebula-project/nebula/data', is_dir: true, children: null },
-        { name: 'utils', path: '/mock/nebula-project/nebula/utils', is_dir: true, children: null },
-        { name: 'temporal', path: '/mock/nebula-project/nebula/temporal', is_dir: true, children: null },
-        { name: 'adapters', path: '/mock/nebula-project/nebula/adapters', is_dir: true, children: null },
-      ],
-      '/mock/nebula-project/nebula/core': [
-        { name: 'router.ts', path: '/mock/nebula-project/nebula/core/router.ts', is_dir: false, children: null },
-        {
-          name: 'middleware.ts',
-          path: '/mock/nebula-project/nebula/core/middleware.ts',
-          is_dir: false,
-          children: null,
-        },
-        { name: 'request.ts', path: '/mock/nebula-project/nebula/core/request.ts', is_dir: false, children: null },
-        { name: 'response.ts', path: '/mock/nebula-project/nebula/core/response.ts', is_dir: false, children: null },
-        { name: 'server.ts', path: '/mock/nebula-project/nebula/core/server.ts', is_dir: false, children: null },
-        { name: 'config.ts', path: '/mock/nebula-project/nebula/core/config.ts', is_dir: false, children: null },
-        { name: 'plugins.ts', path: '/mock/nebula-project/nebula/core/plugins.ts', is_dir: false, children: null },
-        { name: 'errors.ts', path: '/mock/nebula-project/nebula/core/errors.ts', is_dir: false, children: null },
-        { name: 'parser.ts', path: '/mock/nebula-project/nebula/core/parser.ts', is_dir: false, children: null },
-        { name: 'mime.ts', path: '/mock/nebula-project/nebula/core/mime.ts', is_dir: false, children: null },
-        { name: 'auth.ts', path: '/mock/nebula-project/nebula/core/auth.ts', is_dir: false, children: null },
-        { name: 'session.ts', path: '/mock/nebula-project/nebula/core/session.ts', is_dir: false, children: null },
-      ],
-      '/mock/nebula-project/nebula/data': [
-        { name: 'database.ts', path: '/mock/nebula-project/nebula/data/database.ts', is_dir: false, children: null },
-        { name: 'query.ts', path: '/mock/nebula-project/nebula/data/query.ts', is_dir: false, children: null },
-        { name: 'model.ts', path: '/mock/nebula-project/nebula/data/model.ts', is_dir: false, children: null },
-        {
-          name: 'migrations.ts',
-          path: '/mock/nebula-project/nebula/data/migrations.ts',
-          is_dir: false,
-          children: null,
-        },
-        { name: 'cache.ts', path: '/mock/nebula-project/nebula/data/cache.ts', is_dir: false, children: null },
-        { name: 'redis.ts', path: '/mock/nebula-project/nebula/data/redis.ts', is_dir: false, children: null },
-        { name: 'storage.ts', path: '/mock/nebula-project/nebula/data/storage.ts', is_dir: false, children: null },
-        { name: 'queue.ts', path: '/mock/nebula-project/nebula/data/queue.ts', is_dir: false, children: null },
-      ],
-      '/mock/nebula-project/nebula/utils': [
-        { name: 'logger.ts', path: '/mock/nebula-project/nebula/utils/logger.ts', is_dir: false, children: null },
-        { name: 'validate.ts', path: '/mock/nebula-project/nebula/utils/validate.ts', is_dir: false, children: null },
-        { name: 'serialize.ts', path: '/mock/nebula-project/nebula/utils/serialize.ts', is_dir: false, children: null },
-        { name: 'token.ts', path: '/mock/nebula-project/nebula/utils/token.ts', is_dir: false, children: null },
-        { name: 'ratelimit.ts', path: '/mock/nebula-project/nebula/utils/ratelimit.ts', is_dir: false, children: null },
-        { name: 'crypto.ts', path: '/mock/nebula-project/nebula/utils/crypto.ts', is_dir: false, children: null },
-        { name: 'email.ts', path: '/mock/nebula-project/nebula/utils/email.ts', is_dir: false, children: null },
-      ],
-      '/mock/nebula-project/nebula/temporal': [
-        {
-          name: 'scheduler.ts',
-          path: '/mock/nebula-project/nebula/temporal/scheduler.ts',
-          is_dir: false,
-          children: null,
-        },
-        { name: 'worker.ts', path: '/mock/nebula-project/nebula/temporal/worker.ts', is_dir: false, children: null },
-        { name: 'cron.ts', path: '/mock/nebula-project/nebula/temporal/cron.ts', is_dir: false, children: null },
-        { name: 'events.ts', path: '/mock/nebula-project/nebula/temporal/events.ts', is_dir: false, children: null },
-        { name: 'timer.ts', path: '/mock/nebula-project/nebula/temporal/timer.ts', is_dir: false, children: null },
-        { name: 'pool.ts', path: '/mock/nebula-project/nebula/temporal/pool.ts', is_dir: false, children: null },
-      ],
-      '/mock/nebula-project/nebula/adapters': [
-        { name: 'payment.ts', path: '/mock/nebula-project/nebula/adapters/payment.ts', is_dir: false, children: null },
-        { name: 's3.ts', path: '/mock/nebula-project/nebula/adapters/s3.ts', is_dir: false, children: null },
-        { name: 'smtp.ts', path: '/mock/nebula-project/nebula/adapters/smtp.ts', is_dir: false, children: null },
-        { name: 'oauth.ts', path: '/mock/nebula-project/nebula/adapters/oauth.ts', is_dir: false, children: null },
-        { name: 'ws.ts', path: '/mock/nebula-project/nebula/adapters/ws.ts', is_dir: false, children: null },
-      ],
-    };
-    return flatMap[p] || [];
-  },
+  // （read_file_content / write_file_content / list_directory /
+  //   list_directory_flat 等 fs 命令已迁 builtin.fs 插件——浏览器 mock
+  //   模式经 tool_call，不走旧名；kernel-plugin-runtime P2-2）
 };
 
 // ── Mock invoke 分发器 ──
@@ -821,9 +573,6 @@ export function mockInvoke(cmd: string, args?: Record<string, unknown>): string 
       files: [{ path: 'src/mock.ts', status: 'modified', staged: false }],
     });
   }
-  if (cmd === 'read_memory_batch') {
-    return JSON.stringify({});
-  }
 
   // 首页工作区清单（2026-09-01 三轴面审种子）：浏览器 dev 此前恒空态，
   // 首页数据态无法取证。两行覆盖面：置顶+活跃 / 非置顶+昨日+无注册名+引擎关。
@@ -858,8 +607,7 @@ export function mockInvoke(cmd: string, args?: Record<string, unknown>): string 
     const toolName = args?.tool as string;
     if (toolName && toolName in MOCK_TOOL_RESPONSES) {
       const v = MOCK_TOOL_RESPONSES[toolName];
-      // 部分 mock（list_directory 等）直接返回对象而非 JSON 字符串 — 既有行为，保持原样
-      return (typeof v === 'function' ? v(args?.args as Record<string, unknown>) : v) as string;
+      return v as string;
     }
     console.warn(`[mock] hologram_call — no mock for tool: ${toolName}`, args);
     return JSON.stringify({ mock: true, cmd: 'hologram_call', tool: toolName, note: 'No mock data for this tool' });
@@ -1062,7 +810,7 @@ export function mockInvoke(cmd: string, args?: Record<string, unknown>): string 
   // 在 mock 响应中查找
   if (cmd in MOCK_TOOL_RESPONSES) {
     const v = MOCK_TOOL_RESPONSES[cmd];
-    return (typeof v === 'function' ? v(args) : v) as string;
+    return v as string;
   }
 
   // 回退

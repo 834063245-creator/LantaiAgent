@@ -5,7 +5,7 @@
 // 模型拿到 locator + 预览，用 read_file 读全量。对标 DSH spill 的
 // 「bounded preview + retrieval locator」语义 — 截断即丢信息，溢写不丢。
 
-import { typedRpc } from '../rpc-contract';
+import { kernelCreateDirectory, kernelWriteFile } from '../rpc-contract';
 
 export interface SpillOutcome {
   /** 展示给模型的文本：小内容 = 原文；大内容 = 预览 + locator 提示 */
@@ -36,8 +36,8 @@ export async function spillToFile(opts: {
   const ts = Date.now();
   const path = `${dir}/${name}-${ts}.${extension ?? 'txt'}`;
   try {
-    await typedRpc('create_directory', { path: dir });
-    await typedRpc('write_file_content', { file_path: path, content: text });
+    await kernelCreateDirectory(dir);
+    await kernelWriteFile(path, text);
   } catch (e) {
     // 尽力而为但不静默 — 退回截断并标明溢写失败
     const preview = fallbackTruncate(text, maxInline);

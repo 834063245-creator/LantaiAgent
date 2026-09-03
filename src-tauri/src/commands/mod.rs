@@ -4,7 +4,6 @@
 pub mod engine_dispatch;
 pub mod shell;
 pub mod filesystem;
-pub mod search;
 pub mod graph;
 pub mod git_cmds;
 pub mod identity;

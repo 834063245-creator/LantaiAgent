@@ -53,6 +53,15 @@ vi.mock('../src/rpc-contract', () => ({
   }),
   typedListen: vi.fn(async () => () => {}),
   parseJson: (raw: unknown) => JSON.parse(typeof raw === 'string' ? raw : JSON.stringify(raw ?? 'null')),
+  // P2-2 信封化：workspace 装配链经 kernelGlobalMemoryDir（内部直呼 typedRpc）——
+  // 模块桩必须带上，否则装配期 "No kernelGlobalMemoryDir" 假错顶替注入错误。
+  kernelGlobalMemoryDir: async () => {
+    rpcCalls.push({
+      method: 'tool_call',
+      params: { plugin: 'builtin.fs', tool: 'get_global_memory_dir', args: {} },
+    });
+    return 'D:/mock/global-memory';
+  },
   workspaceListCached: vi.fn(async () => {
     rpcCalls.push({ method: 'workspace_list', params: {} });
     return [];

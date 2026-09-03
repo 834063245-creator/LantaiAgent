@@ -3,6 +3,8 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { legacyRpcShim } from './helpers/kernel-envelope';
+
 // ── Mock bridge ──
 
 const rpcMock = vi.fn();
@@ -19,27 +21,30 @@ import { GoalManager, type GoalRecord } from '../src/agent/goal-manager';
 function mockLiveFs(initial: Record<string, string> = {}): Map<string, string> {
   const files = new Map<string, string>(Object.entries(initial));
   rpcMock.mockReset();
-  rpcMock.mockImplementation(async (method: string, params: Record<string, unknown>) => {
-    if (method === 'create_directory') return null;
-    if (method === 'write_file_content') {
-      files.set(params.file_path as string, params.content as string);
-      return '(mock: file saved)';
-    }
-    if (method === 'read_file_content') {
-      const v = files.get(params.file_path as string);
-      if (v === undefined) throw new Error(`ENOENT: ${params.file_path}`);
-      return v;
-    }
-    if (method === 'delete_file_or_dir') {
-      const p = params.path as string;
-      for (const k of [...files.keys()]) {
-        if (k === p || k.startsWith(p + '/')) files.delete(k);
+  // P2-2 信封化：fs 命令经 tool_call 寻址 builtin.fs——shim 翻译回旧 (method, params)
+  rpcMock.mockImplementation(
+    legacyRpcShim(async (method: string, params: Record<string, unknown>) => {
+      if (method === 'create_directory') return null;
+      if (method === 'write_file_content') {
+        files.set(params.file_path as string, params.content as string);
+        return '(mock: file saved)';
       }
-      return null;
-    }
-    if (method === 'list_directory') return '[]';
-    throw new Error(`unexpected rpc: ${method}`);
-  });
+      if (method === 'read_file_content') {
+        const v = files.get(params.file_path as string);
+        if (v === undefined) throw new Error(`ENOENT: ${params.file_path}`);
+        return v;
+      }
+      if (method === 'delete_file_or_dir') {
+        const p = params.path as string;
+        for (const k of [...files.keys()]) {
+          if (k === p || k.startsWith(p + '/')) files.delete(k);
+        }
+        return null;
+      }
+      if (method === 'list_directory') return '[]';
+      throw new Error(`unexpected rpc: ${method}`);
+    }),
+  );
   return files;
 }
 

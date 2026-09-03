@@ -6,6 +6,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { toolCallArgsOfBridge } from './helpers/kernel-envelope';
+
 // ── Mock bridge ──
 const mockInvoke = vi.fn();
 async function mockRpc(method: string, params?: Record<string, unknown>): Promise<any> {
@@ -141,14 +143,14 @@ describe('#1 exportSession parameter name', () => {
 
     await exportSession(ctx);
 
-    // Find the write_file_content rpc call
-    const calls = mockInvoke.mock.calls.filter((c: any[]) => c[1]?.method === 'write_file_content');
-    expect(calls.length).toBe(1);
-    const params = calls[0][1].params;
-    // Must have file_path, NOT path
-    expect(params).toHaveProperty('file_path');
-    expect(params).not.toHaveProperty('path');
-    expect(params.file_path).toBe('/tmp/test-export.md');
+    // Find the write_file_content rpc call（P2-2 信封化：经 tool_call 寻址 builtin.fs）
+    const writeArgs = toolCallArgsOfBridge(mockInvoke.mock.calls, 'builtin.fs', 'write_file_content');
+    expect(writeArgs.length).toBe(1);
+    const args = writeArgs[0];
+    // Must have filePath (manifest 语言), NOT path
+    expect(args).toHaveProperty('filePath');
+    expect(args).not.toHaveProperty('path');
+    expect(args.filePath).toBe('/tmp/test-export.md');
   });
 });
 
@@ -227,15 +229,15 @@ describe('#10 scheduleAutoSave per-panel isolation', () => {
     await vi.advanceTimersByTimeAsync(600);
 
     // Both panels should have written to disk (at least the session file)
-    const writeCalls = mockInvoke.mock.calls.filter((c: any[]) => c[1]?.method === 'write_file_content');
+    const writeArgs = toolCallArgsOfBridge(mockInvoke.mock.calls, 'builtin.fs', 'write_file_content');
     // L3（session-ledger）：_active.json tracker 写入退役（总目接任）——
     // 每面板至少 1 份卷文件，两面板合计 ≥ 2
-    expect(writeCalls.length).toBeGreaterThanOrEqual(2);
+    expect(writeArgs.length).toBeGreaterThanOrEqual(2);
 
     // Verify both panels' saves appear — workspace-session-ownership-rework 后
     // 归属 = 存储位置：面板 A/B 写各自 {workspace}/.lantai/sessions/{id}.json
     // （workspace 字段标签已退役——同一 storeId 跨面板隔离仍由复合键保证）
-    const paths = writeCalls.map((c: any[]) => String(c[1]?.params?.file_path || ''));
+    const paths = writeArgs.map((a) => String(a.filePath ?? ''));
     expect(paths.some((p: string) => p === '/a/.lantai/sessions/1.json')).toBe(true);
     expect(paths.some((p: string) => p === '/b/.lantai/sessions/1.json')).toBe(true);
   });

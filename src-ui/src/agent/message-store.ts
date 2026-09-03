@@ -7,7 +7,13 @@
 // 模式参照 agent-store.ts：rpc 文件 I/O、ensureDir、stripNums。
 // 所有操作 best-effort — 永不抛异常阻塞主流程。
 
-import { typedJsonRpc, typedRpc } from '../rpc-contract';
+import {
+  kernelCreateDirectory,
+  kernelDeleteFile,
+  kernelListDirectory,
+  kernelReadFile,
+  kernelWriteFile,
+} from '../rpc-contract';
 import { stripNums } from './board-persistence';
 import type { AgentMessage, MessageStore } from './message-types';
 
@@ -43,7 +49,7 @@ export class JsonMessageStore implements MessageStore {
   private async ensureDir(): Promise<void> {
     if (this.dirReady) return;
     try {
-      await typedRpc('create_directory', { path: this.baseDir });
+      await kernelCreateDirectory(this.baseDir);
     } catch {
       /* already exists */
     }
@@ -57,11 +63,8 @@ export class JsonMessageStore implements MessageStore {
       try {
         // 空 inbox 不写文件
         if (msgs.length === 0) continue;
-        await typedRpc('create_directory', { path: `${this.baseDir}/${agentId}` });
-        await typedRpc('write_file_content', {
-          file_path: this.inboxPath(agentId),
-          content: JSON.stringify(msgs, null, 2),
-        });
+        await kernelCreateDirectory(`${this.baseDir}/${agentId}`);
+        await kernelWriteFile(this.inboxPath(agentId), JSON.stringify(msgs, null, 2));
       } catch {
         /* best-effort — 单个 inbox 写失败不影响其他 */
       }
@@ -78,18 +81,13 @@ export class JsonMessageStore implements MessageStore {
   async restore(): Promise<Map<string, AgentMessage[]>> {
     const result = new Map<string, AgentMessage[]>();
     try {
-      const entries = await typedJsonRpc('list_directory', {
-        path: this.baseDir,
-        filter_ignored: false,
-      });
+      const entries = await kernelListDirectory(this.baseDir, false);
 
       for (const entry of entries) {
         if (!entry.is_dir) continue;
         const agentId = entry.name;
         try {
-          const rawInbox = await typedRpc('read_file_content', {
-            file_path: this.inboxPath(agentId),
-          });
+          const rawInbox = await kernelReadFile(this.inboxPath(agentId));
           const msgs = JSON.parse(stripNums(rawInbox)) as AgentMessage[];
           if (Array.isArray(msgs) && msgs.length > 0) {
             result.set(agentId, msgs);
@@ -115,12 +113,12 @@ export class JsonMessageStore implements MessageStore {
     try {
       const dirPath = `${this.baseDir}/${agentId}`;
       // 删 inbox.json
-      await typedRpc('delete_file_or_dir', { path: this.inboxPath(agentId) });
+      await kernelDeleteFile(this.inboxPath(agentId));
       // 尝试删 agent 目录（如果为空）
       try {
-        const entries = await typedJsonRpc('list_directory', { path: dirPath, filter_ignored: false });
+        const entries = await kernelListDirectory(dirPath, false);
         if (entries.length === 0) {
-          await typedRpc('delete_file_or_dir', { path: dirPath });
+          await kernelDeleteFile(dirPath);
         }
       } catch {
         // 目录已不存在或不可访问 — 无需处理

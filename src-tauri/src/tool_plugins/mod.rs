@@ -11,6 +11,7 @@
 
 pub mod constraints;
 pub mod editor;
+pub mod fs;
 pub mod manifest;
 pub mod plugin;
 pub mod registry;

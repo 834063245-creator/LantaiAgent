@@ -23,7 +23,7 @@ import type { BlockAssetMeta, BlockKind, SourcedBlock } from '../paper/block-mod
 import { createBlock } from '../paper/block-model';
 import type { PaperStrip } from '../paper/selection';
 import { REGION_MAX_W, REGION_MIN_W, STREAM_REGION, type StreamRegionState } from '../paper/space';
-import { typedRpc } from '../rpc-contract';
+import { kernelReadFileRaw, kernelWriteFile } from '../rpc-contract';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
 import { useBgAlertStore } from './bg-alert-store';
 import { useCanvasViewStore } from './canvas-view-store';
@@ -326,7 +326,7 @@ interface StoredCanvasStrips {
 /** 读一个 JSON 文件（raw 模式）。缺失/毒化返回 null（容忍——INVARIANTS #11.2）。 */
 async function readJsonOrNull(path: string): Promise<unknown> {
   try {
-    const text = await typedRpc('read_file_content', { file_path: path, raw: true });
+    const text = await kernelReadFileRaw(path);
     return JSON.parse(text);
   } catch {
     return null;
@@ -411,17 +411,17 @@ export async function saveCanvasToDisk(storeId: string, workspace: string): Prom
   if (!path) return false;
   const payload = snapshotCanvas(storeId);
   try {
-    await typedRpc('write_file_content', {
-      file_path: canvasPinsFilePath(workspace),
-      content: JSON.stringify({ version: 1, pinned: payload.publics.pinned } satisfies StoredCanvasPins),
-    });
-    await typedRpc('write_file_content', {
-      file_path: canvasStripsFilePath(workspace),
-      content: JSON.stringify({ version: 1, strips: payload.publics.strips } satisfies StoredCanvasStrips),
-    });
-    await typedRpc('write_file_content', {
-      file_path: path,
-      content: JSON.stringify({
+    await kernelWriteFile(
+      canvasPinsFilePath(workspace),
+      JSON.stringify({ version: 1, pinned: payload.publics.pinned } satisfies StoredCanvasPins),
+    );
+    await kernelWriteFile(
+      canvasStripsFilePath(workspace),
+      JSON.stringify({ version: 1, strips: payload.publics.strips } satisfies StoredCanvasStrips),
+    );
+    await kernelWriteFile(
+      path,
+      JSON.stringify({
         version: 2,
         spread: payload.spread,
         activeSessionId: payload.activeSessionId ?? null,
@@ -429,7 +429,7 @@ export async function saveCanvasToDisk(storeId: string, workspace: string): Prom
         // view 随工作区走，语义自洽；视口变化经 PaperPanel 订阅防抖落盘）
         view: useCanvasViewStore.getState().view,
       } satisfies StoredCanvasLayoutV2),
-    });
+    );
     // D5（拍板 C）：成功解除警报——下次失败重新弹
     useBgAlertStore.getState().clearBgAlert('canvas-save');
     return true;

@@ -22,7 +22,7 @@ import type { RuntimePort } from '../../agent/runtime/types';
 import { useShellStore } from '../../app/shell-store';
 import type { ToolSchema } from '../../provider/types';
 import { apiErrorSummary } from '../../provider/types';
-import { typedJsonRpc } from '../../rpc-contract';
+import { kernelListDirectory } from '../../rpc-contract';
 import type { StarGraph } from '../../scene/graph-types';
 import { askSessionOf, useAskStore } from '../../state/ask-store';
 import { useBgAlertStore } from '../../state/bg-alert-store';
@@ -735,10 +735,7 @@ export class ChatCore {
     const sessionsDir = `${workspace.replace(/[\\/]+$/, '')}/.lantai/sessions`;
     let dirEntries: import('../../rpc-contract').DirEntry[] | null = null;
     try {
-      dirEntries = await typedJsonRpc('list_directory', {
-        path: sessionsDir,
-        filter_ignored: false,
-      });
+      dirEntries = await kernelListDirectory(sessionsDir, false);
     } catch {
       /* 目录缺席/列表失败 = 不剪枝 */
     }

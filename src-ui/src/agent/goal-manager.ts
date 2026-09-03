@@ -11,7 +11,13 @@
 // Pattern follows AgentStore: rpc file I/O, lazy ensureDir, stripLineNumbers.
 
 import type { Message } from '../provider/types';
-import { typedRpc } from '../rpc-contract';
+import {
+  kernelCreateDirectory,
+  kernelDeleteFile,
+  kernelReadFile,
+  kernelWriteFile,
+  typedRpc,
+} from '../rpc-contract';
 import { stripNums } from './board-persistence';
 
 // ── Types ──
@@ -67,7 +73,7 @@ export class GoalManager {
   private async ensureDir(): Promise<void> {
     if (this.dirReady) return;
     try {
-      await typedRpc('create_directory', { path: this.baseDir });
+      await kernelCreateDirectory(this.baseDir);
     } catch {
       /* already exists */
     }
@@ -77,7 +83,7 @@ export class GoalManager {
   private async ensureGoalDir(id: string): Promise<void> {
     await this.ensureDir();
     try {
-      await typedRpc('create_directory', { path: `${this.baseDir}/${id}` });
+      await kernelCreateDirectory(`${this.baseDir}/${id}`);
     } catch {
       /* already exists */
     }
@@ -109,7 +115,7 @@ export class GoalManager {
   async get(id: string): Promise<GoalRecord | null> {
     await this.ensureDir();
     try {
-      const raw = await typedRpc('read_file_content', { file_path: this.recordPath(id) });
+      const raw = await kernelReadFile(this.recordPath(id));
       return JSON.parse(stripNums(raw)) as GoalRecord;
     } catch {
       return null;
@@ -130,7 +136,7 @@ export class GoalManager {
   async list(): Promise<GoalRecord[]> {
     await this.ensureDir();
     try {
-      const raw = await typedRpc('read_file_content', { file_path: this.indexPath() });
+      const raw = await kernelReadFile(this.indexPath());
       // ⚠️ JSON.parse(null) 返回 null 而不抛错 — 必须显式校验数组，
       // 否则损坏/空 index.json 会让调用方 `all.filter` 崩溃。
       const parsed = JSON.parse(stripNums(raw)) as unknown;
@@ -163,7 +169,7 @@ export class GoalManager {
   /** 彻底删除目标记录与快照。 */
   async delete(id: string): Promise<void> {
     try {
-      await typedRpc('delete_file_or_dir', { path: `${this.baseDir}/${id}` });
+      await kernelDeleteFile(`${this.baseDir}/${id}`);
     } catch {
       /* best effort */
     }
@@ -171,10 +177,7 @@ export class GoalManager {
     const filtered = all.filter((r) => r.id !== id);
     if (filtered.length < all.length) {
       try {
-        await typedRpc('write_file_content', {
-          file_path: this.indexPath(),
-          content: JSON.stringify(filtered, null, 2),
-        });
+        await kernelWriteFile(this.indexPath(), JSON.stringify(filtered, null, 2));
       } catch {
         /* index write is best-effort */
       }
@@ -186,17 +189,14 @@ export class GoalManager {
   /** 保存 goal 的对话现场到独立槽。 */
   async saveSession(id: string, messages: Message[]): Promise<void> {
     await this.ensureGoalDir(id);
-    await typedRpc('write_file_content', {
-      file_path: this.sessionPath(id),
-      content: JSON.stringify(messages, null, 2),
-    });
+    await kernelWriteFile(this.sessionPath(id), JSON.stringify(messages, null, 2));
   }
 
   /** 加载 goal 的对话现场。无快照返回 null。 */
   async loadSession(id: string): Promise<Message[] | null> {
     await this.ensureDir();
     try {
-      const raw = await typedRpc('read_file_content', { file_path: this.sessionPath(id) });
+      const raw = await kernelReadFile(this.sessionPath(id));
       return JSON.parse(stripNums(raw)) as Message[];
     } catch {
       return null;
@@ -223,10 +223,7 @@ export class GoalManager {
 
   private async _write(record: GoalRecord): Promise<void> {
     await this.ensureGoalDir(record.id);
-    await typedRpc('write_file_content', {
-      file_path: this.recordPath(record.id),
-      content: JSON.stringify(record, null, 2),
-    });
+    await kernelWriteFile(this.recordPath(record.id), JSON.stringify(record, null, 2));
     await this._upsertIndex(record);
     this.onState?.(record);
   }
@@ -240,7 +237,7 @@ export class GoalManager {
       all.push(record);
     }
     try {
-      await typedRpc('write_file_content', { file_path: this.indexPath(), content: JSON.stringify(all, null, 2) });
+      await kernelWriteFile(this.indexPath(), JSON.stringify(all, null, 2));
     } catch {
       /* best effort */
     }

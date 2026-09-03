@@ -70,6 +70,8 @@ import { useShellStore } from '../src/app/shell-store';
 import * as Session from '../src/ui/chat-session';
 import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
 
+import { legacyDispatchShim } from './helpers/kernel-envelope';
+
 const PROJ = 'D:/snapshot-proj';
 
 function createChatPanel(): ChatCore {
@@ -160,14 +162,16 @@ describe('会话恢复采信现场快照（2026-08-31 会话流专项）', () =>
     panel.setProjectPath(PROJ);
     const { factory } = storingFactory();
     panel.setAgentFactory(factory);
-    mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-      const { method, params } = payload;
-      if (method === 'read_file_content' && params.file_path?.endsWith('/71.json')) {
-        return Promise.resolve(snapshotVolumeFile());
-      }
-      void params;
-      return Promise.resolve('ok');
-    });
+    mockInvoke.mockImplementation(
+      legacyDispatchShim((_cmd: string, payload: any) => {
+        const { method, params } = payload;
+        if (method === 'read_file_content' && params.file_path?.endsWith('/71.json')) {
+          return Promise.resolve(snapshotVolumeFile());
+        }
+        void params;
+        return Promise.resolve('ok');
+      }),
+    );
 
     await panel.loadSessionFromDisk(PROJ, 71);
 
@@ -186,14 +190,16 @@ describe('会话恢复采信现场快照（2026-08-31 会话流专项）', () =>
     panel.setProjectPath(PROJ);
     const { factory } = storingFactory();
     panel.setAgentFactory(factory);
-    mockInvoke.mockImplementation((_cmd: string, payload: any) => {
-      const { method, params } = payload;
-      if (method === 'read_file_content' && params.file_path?.endsWith('/72.json')) {
-        return Promise.resolve(legacyVolumeFile());
-      }
-      void params;
-      return Promise.resolve('ok');
-    });
+    mockInvoke.mockImplementation(
+      legacyDispatchShim((_cmd: string, payload: any) => {
+        const { method, params } = payload;
+        if (method === 'read_file_content' && params.file_path?.endsWith('/72.json')) {
+          return Promise.resolve(legacyVolumeFile());
+        }
+        void params;
+        return Promise.resolve('ok');
+      }),
+    );
 
     await panel.loadSessionFromDisk(PROJ, 72);
 

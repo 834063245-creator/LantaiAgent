@@ -14,16 +14,16 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { mockInvoke } from '../src/mock-data';
-import { parseJson, rpcResultSchemas } from '../src/rpc-contract';
+import { dirEntryArraySchema, parseJson, rpcResultSchemas } from '../src/rpc-contract';
 
-/** 每个已收编命令的 mock 取样参数（取 mockInvoke 已登记的命令面）。 */
+/** 每个已收编命令的 mock 取样参数（取 mockInvoke 已登记的命令面）。
+ *  （list_directory / list_directory_flat / read_memory_batch 已迁 builtin.fs——
+ *  走 tool_call 信封 + kernelListDirectory 内的 dirEntryArraySchema 校验，
+ *  不再是 rpcResultSchemas 收编面，kernel-plugin-runtime P2-2。） */
 const MOCK_SAMPLE_PARAMS: Record<keyof typeof rpcResultSchemas, Record<string, unknown>> = {
   hologram_call: { tool: 'fragile_modules', args: {} },
   hologram_tools_list: {},
   load_graph_json: { path: '/mock/nebula-project' },
-  list_directory: { path: '/mock/nebula-project' },
-  list_directory_flat: { path: '/mock/nebula-project' },
-  read_memory_batch: { paths: [] },
   get_last_project: {},
   workspace_list: {},
   sandbox_status: {},
@@ -74,7 +74,9 @@ describe('rpc 边界校验层：schema 四态', () => {
     expect(ws.safeParse([{ ...validWs, pinned: 'yes' }]).success).toBe(false);
   });
 
-  const dir = rpcResultSchemas.list_directory;
+  // P2-2：list_directory 返回形状守护迁 dirEntryArraySchema（信封化后由
+  // kernelListDirectory 内联消费，不再走 rpcResultSchemas 表行）
+  const dir = dirEntryArraySchema;
   const leaf = { name: 'a.ts', path: '/mock/a.ts', is_dir: false, children: null };
 
   it('list_directory 合法：嵌套 children 递归通过', () => {

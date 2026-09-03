@@ -35,6 +35,8 @@ impl PluginRegistry {
         registry.register(constraints).expect("出厂插件清单装载失败");
         let editor: Arc<dyn ToolPlugin> = Arc::new(super::editor::EditorPlugin::new());
         registry.register(editor).expect("出厂插件清单装载失败");
+        let fs: Arc<dyn ToolPlugin> = Arc::new(super::fs::FsPlugin::new());
+        registry.register(fs).expect("出厂插件清单装载失败");
         let search: Arc<dyn ToolPlugin> = Arc::new(super::search::SearchPlugin::new());
         registry.register(search).expect("出厂插件清单装载失败");
         let web: Arc<dyn ToolPlugin> = Arc::new(super::web::WebPlugin::new());

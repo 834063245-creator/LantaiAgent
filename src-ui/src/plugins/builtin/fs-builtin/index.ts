@@ -8,31 +8,23 @@
 import type { FsAction, FsProvider } from '../../../composition/fs-service';
 import type { Context } from '../../../cordis';
 
-/** fs 动作 → tool_call 信封目标（kernel-plugin-runtime P2-1 起：已迁内核插件的
- *  动作换信封寻址 builtin.<插件>.<工具>；表随各域批推进逐步填满，P2-2 收满）。
+/** fs 动作 → tool_call 信封目标（kernel-plugin-runtime P2-2 收满：fs/editor/
+ *  constraints 三域全部经信封寻址 builtin.<插件>.<工具>，旧 RPC 分支退役）。
  *  信封外层键（plugin/tool/args）单字无大小写歧义，args 原样（camelCase 不
- *  经 bridge 转换——manifest schema 的语言）。 */
-export const FS_PLUGIN_TOOL_BY_ACTION: Partial<Record<FsAction, { plugin: string; tool: string }>> = {
+ *  经 bridge 转换——manifest schema 的语言）。
+ *  该表同时是 coding.ts manifest 驱动工具面的 schema 寻址真源。 */
+export const FS_PLUGIN_TOOL_BY_ACTION: Record<FsAction, { plugin: string; tool: string }> = {
+  read: { plugin: 'builtin.fs', tool: 'read_file_content' },
+  write: { plugin: 'builtin.fs', tool: 'write_file_content' },
   edit: { plugin: 'builtin.editor', tool: 'edit_file' },
+  list: { plugin: 'builtin.fs', tool: 'list_directory' },
+  glob: { plugin: 'builtin.fs', tool: 'glob' },
+  mkdir: { plugin: 'builtin.fs', tool: 'create_directory' },
+  move: { plugin: 'builtin.fs', tool: 'move_file' },
+  rename: { plugin: 'builtin.fs', tool: 'rename_file_or_dir' },
+  delete: { plugin: 'builtin.fs', tool: 'delete_file_or_dir' },
   constraints: { plugin: 'builtin.constraints', tool: 'read_constraints' },
   write_constraints: { plugin: 'builtin.constraints', tool: 'write_constraints' },
-};
-
-/** fs 动作 → Rust 命令绑定（尚未迁移插件的动作仍旧名直呼；rename 的
- *  path/new_name→filePath/newName 键名改写留在工具层——行为不变，
- *  见 coding.ts rename_file）。 */
-export const FS_COMMAND_BY_ACTION: Record<FsAction, string> = {
-  read: 'read_file_content',
-  write: 'write_file_content',
-  edit: 'edit_file',
-  list: 'list_directory',
-  glob: 'glob',
-  mkdir: 'create_directory',
-  move: 'move_file',
-  rename: 'rename_file_or_dir',
-  delete: 'delete_file_or_dir',
-  constraints: 'read_constraints',
-  write_constraints: 'write_constraints',
 };
 
 /** 默认 Rust fs provider（id 'builtin/rust-fs'）。 */
@@ -40,15 +32,12 @@ export const builtinFsProvider: FsProvider = {
   id: 'builtin/rust-fs',
   execute(action, args, opts) {
     const envelope = FS_PLUGIN_TOOL_BY_ACTION[action];
-    if (envelope) {
-      return opts.dispatch(
-        'tool_call',
-        { plugin: envelope.plugin, tool: envelope.tool, args },
-        opts.onProgress,
-        opts.signal,
-      );
-    }
-    return opts.dispatch(FS_COMMAND_BY_ACTION[action], args, opts.onProgress, opts.signal);
+    return opts.dispatch(
+      'tool_call',
+      { plugin: envelope.plugin, tool: envelope.tool, args },
+      opts.onProgress,
+      opts.signal,
+    );
   },
 };
 

@@ -4,7 +4,7 @@
 // 面板式 store 的共享持久化基础设施（TaskBoard、DiscoveryBoard）。
 // 处理目录创建、防抖文件 I/O 和生命周期管理（destroy/flush/restore）。
 
-import { typedRpc } from '../rpc-contract';
+import { kernelCreateDirectory, kernelDeleteFile, kernelReadFile, kernelWriteFile } from '../rpc-contract';
 
 /** 去除行号前缀（如 "42\t"）— Tauri read_file_content 会添加行号。 */
 export function stripNums(text: string): string {
@@ -59,9 +59,7 @@ export class BoardPersistence {
     if (this._dirReady) return;
     // 后端 create_dir_all 幂等——目录已存在不会报错，任何抛错都是真实失败。
     // 失败时不置 _dirReady：下次 flush 会重试，而不是永久静默丢盘。
-    await typedRpc('create_directory', {
-      path: normalizePath(this._projectPath) + '/.lantai/' + this._dirName,
-    });
+    await kernelCreateDirectory(normalizePath(this._projectPath) + '/.lantai/' + this._dirName);
     this._dirReady = true;
   }
 
@@ -73,7 +71,7 @@ export class BoardPersistence {
     this._writeChain = this._writeChain.then(async () => {
       try {
         await this._ensureDir();
-        await typedRpc('write_file_content', { file_path: this._boardPath, content: snapshot });
+        await kernelWriteFile(this._boardPath, snapshot);
         this._flushWarned = false;
       } catch (e) {
         // 尽力而为但不静默：每段连续失败只 warn 一次，成功落盘后复位
@@ -90,7 +88,7 @@ export class BoardPersistence {
   async restore(): Promise<string | null> {
     if (!this._projectPath) return null;
     try {
-      const raw = await typedRpc('read_file_content', { file_path: this._boardPath });
+      const raw = await kernelReadFile(this._boardPath);
       return stripNums(raw);
     } catch {
       return null;
@@ -121,7 +119,7 @@ export class BoardPersistence {
     this._destroyed = true;
     this.clearFlushTimer();
     try {
-      await typedRpc('delete_file_or_dir', { path: this._boardPath });
+      await kernelDeleteFile(this._boardPath);
     } catch {
       /* 尽力而为 */
     }

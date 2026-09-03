@@ -263,7 +263,7 @@ function useMediaData(filePath: string | undefined): MediaLoadState {
     let cancelled = false;
     setState({ status: filePath ? 'loading' : 'idle' });
     if (!filePath) return;
-    rendererRpc('read_file_base64', { file_path: filePath })
+    rendererRpc('tool_call', { plugin: 'builtin.fs', tool: 'read_file_base64', args: { filePath } })
       .then((b64) => {
         if (!cancelled) setState({ status: 'ready', data: String(b64) });
       })

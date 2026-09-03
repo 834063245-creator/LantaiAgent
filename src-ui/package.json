@@ -17,6 +17,8 @@
     "test": "vitest run",
     "gen:tool-contract": "node ../scripts/gen-tool-contract-md.cjs",
     "check:tool-contract": "node ../scripts/gen-tool-contract-md.cjs --check",
+    "gen:kernel-manifest": "node ../scripts/gen-kernel-manifest.cjs",
+    "check:kernel-manifest": "node ../scripts/gen-kernel-manifest.cjs --check",
     "gen:plugin-manifests": "node ../scripts/gen-plugin-manifests.cjs",
     "check:plugin-manifests": "node ../scripts/gen-plugin-manifests.cjs --check",
     "gen:engine-contract": "node ../scripts/gen-engine-plugin-contract.cjs",

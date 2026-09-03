@@ -12,10 +12,10 @@ kind 三分规则（机械推导）：ctx 键 ∈ SEAM_DOMAINS（seam-resolution
 
 | ctx 键 | Service | owner | 默认实现 / 贡献者 | 消费面 |
 |---|---|---|---|---|
-| `ctx.fs` | `FsService` | `src/composition/fs-service.ts` | — | 2 文件 |
+| `ctx.fs` | `FsService` | `src/composition/fs-service.ts` | `builtin/rust-fs` | 2 文件 |
 | `ctx.graph` | `GraphService` | `src/composition/graph-service.ts` | `builtin/rust-graph` | 2 文件 |
 | `ctx.llm` | `LlmService` | `src/composition/services.ts` | `builtin/anthropic` · `builtin/openai` | 2 文件 |
-| `ctx.sessionPersistence` | `SessionPersistenceService` | `src/composition/session-persistence-service.ts` | — | 2 文件 |
+| `ctx.sessionPersistence` | `SessionPersistenceService` | `src/composition/session-persistence-service.ts` | `builtin/rust-sessions` | 2 文件 |
 | `ctx.shell` | `ShellService` | `src/composition/shell-service.ts` | — | 2 文件 |
 | `ctx.subagents` | `SubagentsService` | `src/composition/subagent-service.ts` | `builtin/in-process` | 2 文件 |
 
@@ -24,7 +24,7 @@ kind 三分规则（机械推导）：ctx 键 ∈ SEAM_DOMAINS（seam-resolution
 fs 后端能力注册表（平台化 Phase 2 · D11）——默认 provider = builtin/rust-fs（agent/fs-provider.ts）；消费面 = agent/tools/coding.ts fs 域。
 
 - owner：`src/composition/fs-service.ts`
-- 默认实现 / 贡献者 id：—
+- 默认实现 / 贡献者 id：`builtin/rust-fs`
 - 消费面（2）：`src/composition/contract-version.ts` · `src/plugins/builtin/fs-builtin/index.ts`
 
 ### `ctx.graph` — GraphService（swappable seam（可换实现））
@@ -48,7 +48,7 @@ LLM adapter 注册表（S1-1 起；平台化 Phase 1 升格为 ctx.llm seam）�
 会话持久化注册表（平台化 Phase 2 · D11）——默认 provider = builtin/rust-sessions（agent/sessions-provider.ts）；消费面 = agent-store。
 
 - owner：`src/composition/session-persistence-service.ts`
-- 默认实现 / 贡献者 id：—
+- 默认实现 / 贡献者 id：`builtin/rust-sessions`
 - 消费面（2）：`src/composition/contract-version.ts` · `src/plugins/builtin/sessions-builtin/index.ts`
 
 ### `ctx.shell` — ShellService（swappable seam（可换实现））

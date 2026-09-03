@@ -8,7 +8,7 @@
 // 由 chat-stream 创建 PlanPart 卡片（不是弹窗），用户在卡片上审批。
 
 import { z } from 'zod';
-import { typedRpc } from '../../rpc-contract';
+import { kernelReadFile } from '../../rpc-contract';
 import type { EventSink } from '../agent-types';
 import { EventKind } from '../agent-types';
 import type { Tool } from '../tool';
@@ -105,7 +105,7 @@ export function createExitPlanModeTool(planState: PlanStateManager, eventSink?: 
       // 读取计划文件内容
       let planContent: string;
       try {
-        planContent = await typedRpc('read_file_content', { file_path: planPath });
+        planContent = await kernelReadFile(planPath);
         planContent = planContent.replace(/^\s*\d+\t/gm, '');
       } catch {
         return `错误：计划文件不存在。先用 fs 的 write 动作写计划到 ${planPath}，再调 exit_plan_mode。`;

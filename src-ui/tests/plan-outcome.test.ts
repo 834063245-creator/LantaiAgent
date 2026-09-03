@@ -3,22 +3,35 @@
 // execute=默认，批准即切换执行模式。UI 可用 response.outcome 显式覆盖。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// mock typedRpc：exit_plan_mode 通过它读计划文件
+// mock bridge rpc：exit_plan_mode 经 kernelReadFile（rpc-contract 内部直呼
+// typedRpc）读计划文件——mock typedRpc 导出拦不住这些助手（内部闭包真绑定，
+// P2-2 换源后），必须拦在 bridge 层；信封由 legacyRpcShim 翻译回旧形状。
 // 计划文件路径格式：{project}/.lantai/plans/plan-<ts>-<rand>.md
-vi.mock('../src/rpc-contract', () => ({
-  typedRpc: vi.fn(async (method: string, args: { file_path: string }) => {
-    if (method === 'read_file_content' && args.file_path.includes('.lantai/plans/') && args.file_path.endsWith('.md')) {
-      return '1\t# 计划\n2\t正文';
-    }
-    throw new Error(`unexpected rpc: ${method}`);
-  }),
-}));
+vi.mock('../src/bridge', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/bridge')>();
+  const { legacyRpcShim } = await import('./helpers/kernel-envelope');
+  return {
+    ...actual,
+    isMockMode: () => false,
+    rpc: vi.fn(
+      legacyRpcShim(async (method: string, args: { file_path: string }) => {
+        if (
+          method === 'read_file_content' &&
+          args.file_path.includes('.lantai/plans/') &&
+          args.file_path.endsWith('.md')
+        ) {
+          return '1\t# 计划\n2\t正文';
+        }
+        throw new Error(`unexpected rpc: ${method}`);
+      }),
+    ),
+  };
+});
 
 import type { EventSink } from '../src/agent/agent-types';
 import { PlanStateManager } from '../src/agent/plan/plan-state';
 import type { PlanReviewRequest } from '../src/agent/plan/plan-tools';
 import { createExitPlanModeTool } from '../src/agent/plan/plan-tools';
-import { typedRpc } from '../src/rpc-contract';
 
 /** 捕获型 eventSink + 执行器：execute() 后通过 lastRequest 拿到 PlanReview 请求 */
 function setup(plan: PlanStateManager) {
@@ -29,10 +42,11 @@ function setup(plan: PlanStateManager) {
   const tool = createExitPlanModeTool(plan, sink);
   return {
     tool,
-    /** 触发 exit_plan_mode；typedRpc await 后 eventSink 才发事件，故 flush 微任务再取请求 */
+    /** 触发 exit_plan_mode；kernelReadFile→typedRpc→rpc 多跳微任务后才发事件，
+     *  flush 到宏任务边界再取请求（P2-2 后读取链多一跳，单微任务不够冲）。 */
     run: async (args: Record<string, unknown> = {}) => {
       const p = tool.execute(args) as Promise<string>;
-      await Promise.resolve(); // flush typedRpc 微任务
+      await new Promise((r) => setTimeout(r, 0)); // flush 微任务链
       if (!captured) throw new Error('eventSink 未捕获到 PlanReview 请求');
       return { request: captured, promise: p };
     },
@@ -40,7 +54,7 @@ function setup(plan: PlanStateManager) {
 }
 
 beforeEach(() => {
-  vi.mocked(typedRpc).mockClear();
+  vi.clearAllMocks();
 });
 
 describe('exit_plan_mode — outcome 语义', () => {

@@ -22,6 +22,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DirEntry } from '../../../rpc-contract';
+import { kernelListDirectory } from '../../../rpc-contract';
 import type { ComposeSessionPrefs, PermissionMode, ProviderSettings, StoredThinking, ThinkingMode } from './host';
 import {
   agentSessionState,
@@ -450,7 +451,7 @@ export const ComposerDock = memo(function ComposerDock() {
     const pp = useShellStore.getState().projectPath;
     if (!pp) return;
     try {
-      const entries = await typedJsonRpc('list_directory', { path: pp, filter_ignored: true });
+      const entries = await kernelListDirectory(pp, true);
       setYinFiles(flattenDirEntries(entries));
     } catch {
       setYinFiles([]);

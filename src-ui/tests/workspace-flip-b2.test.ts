@@ -26,21 +26,26 @@ vi.mock('../src/bridge', () => ({
 
 import { scanMaxSessionId } from '../src/ui/chat-session';
 
+import { legacyDispatchShim } from './helpers/kernel-envelope';
+
 // rpc-contract 的 typedRpc 经 bridge.rpc 路由——mock 已覆盖。
 
 describe('工作区会话根路由（workspace-session-ownership-rework）', () => {
   it('scanMaxSessionId(projectPath) 扫 {projectPath}/.lantai/sessions（单一路径）', async () => {
-    mockInvoke.mockImplementation(async (_: string, req: any) => {
-      if (req.method === 'list_directory') {
-        // 钉路由：必须打到工作区会话根（不是旧全局位 / 用户级目录）
-        expect(req.params.path).toBe('D:/proj/.lantai/sessions');
-        return JSON.stringify([
-          { name: '1.json', path: 'D:/proj/.lantai/sessions/1.json', is_dir: false, children: null },
-          { name: '2.json', path: 'D:/proj/.lantai/sessions/2.json', is_dir: false, children: null },
-        ]);
-      }
-      return '[]';
-    });
+    // P2-2 信封化：list_directory 经 tool_call 寻址 builtin.fs——shim 翻译回旧形状
+    mockInvoke.mockImplementation(
+      legacyDispatchShim(async (_: string, req: any) => {
+        if (req.method === 'list_directory') {
+          // 钉路由：必须打到工作区会话根（不是旧全局位 / 用户级目录）
+          expect(req.params.path).toBe('D:/proj/.lantai/sessions');
+          return JSON.stringify([
+            { name: '1.json', path: 'D:/proj/.lantai/sessions/1.json', is_dir: false, children: null },
+            { name: '2.json', path: 'D:/proj/.lantai/sessions/2.json', is_dir: false, children: null },
+          ]);
+        }
+        return '[]';
+      }),
+    );
     const max = await scanMaxSessionId('D:/proj');
     expect(max).toBe(2);
   });

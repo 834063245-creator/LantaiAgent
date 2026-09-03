@@ -222,7 +222,14 @@ describe('codingExec 无状态族域第一方插件（P4 B① git/search + ② f
       tool: 'web_fetch',
       args: { url: 'https://example.com' },
     });
-    expect(log.map((e) => e.name)).toContain('read_file_content');
+    // fs 域已迁 builtin.fs 插件（P2-2）——同样经 tool_call 信封穿透
+    expect(log.filter((e) => e.name === 'tool_call').map((e) => e.args?.tool)).toContain('read_file_content');
+    const readCall = log.find((e) => e.name === 'tool_call' && e.args?.tool === 'read_file_content')?.args;
+    expect(readCall).toMatchObject({
+      plugin: 'builtin.fs',
+      tool: 'read_file_content',
+      args: { filePath: 'D:/proj/a.ts' },
+    });
     // run_shell 委托旧名 exec_command（runInBackground 缺省走前台执行）
     expect(log.map((e) => e.name)).toContain('exec_command');
     await disposeAll(fibers);

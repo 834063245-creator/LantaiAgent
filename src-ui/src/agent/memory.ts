@@ -14,7 +14,12 @@
 //   Agent 自己主动存的记忆最高只能给 reference。fact 级别只有用户通过 /remember 明确要求时才能使用。
 
 import { z } from 'zod';
-import { typedJsonRpc, typedRpc } from '../rpc-contract';
+import {
+  kernelCreateDirectory,
+  kernelReadFile,
+  kernelReadMemoryBatch,
+  kernelWriteFile,
+} from '../rpc-contract';
 import type { Tool } from './tool';
 import { defineTool } from './tools/define-tool';
 
@@ -111,7 +116,7 @@ export class MemoryManager {
     if (scope === 'project' && this._projectDirReady) return;
     if (scope === 'global' && this._globalDirReady) return;
     try {
-      await typedRpc('create_directory', { path: this.dirFor(scope) });
+      await kernelCreateDirectory(this.dirFor(scope));
     } catch {
       // 目录可能已存在或创建不可用 — 安全继续
     }
@@ -130,7 +135,7 @@ export class MemoryManager {
   async loadIndexText(scope: 'project' | 'global' = 'project'): Promise<string> {
     await this.ensureDir(scope);
     try {
-      const numbered = await typedRpc('read_file_content', { file_path: this.indexPath(scope) });
+      const numbered = await kernelReadFile(this.indexPath(scope));
       // read_file_content 返回 cat -n 格式（含行号）；去除行号。
       return numbered.replace(/^\s*\d+\t/gm, '');
     } catch {
@@ -168,16 +173,13 @@ export class MemoryManager {
   async read(name: string, scope: 'project' | 'global' = 'project', incrementHit = false): Promise<MemoryFile | null> {
     await this.ensureDir(scope);
     try {
-      const raw = await typedRpc('read_file_content', { file_path: this.filePath(name, scope) });
+      const raw = await kernelReadFile(this.filePath(name, scope));
       const mf = parseFrontmatter(raw);
 
       if (incrementHit) {
         mf.hit_count = (mf.hit_count || 0) + 1;
         mf.raw = rebuildRaw(mf);
-        typedRpc('write_file_content', {
-          file_path: this.filePath(name, scope),
-          content: mf.raw,
-        }).catch((e: unknown) => {
+        kernelWriteFile(this.filePath(name, scope), mf.raw).catch((e: unknown) => {
           console.warn(`[memory] hit_count write failed for "${name}":`, e);
         });
       }
@@ -214,7 +216,7 @@ export class MemoryManager {
 
       if (filePaths.length > 1) {
         try {
-          batchResults = await typedJsonRpc('read_memory_batch', { paths: filePaths });
+          batchResults = await kernelReadMemoryBatch(filePaths);
         } catch {
           // 降级为逐个读取
         }
@@ -359,10 +361,7 @@ export class MemoryManager {
     };
     const frontmatter = rebuildRaw(mf);
 
-    await typedRpc('write_file_content', {
-      file_path: this.filePath(name, scope),
-      content: frontmatter,
-    });
+    await kernelWriteFile(this.filePath(name, scope), frontmatter);
 
     const title = description.length > 40 ? description.slice(0, 39) + '…' : description;
     await this.upsertIndex(title, name + '.md', description, scope);
@@ -384,16 +383,10 @@ export class MemoryManager {
       .trim();
     if (index) index += '\n';
 
-    await typedRpc('write_file_content', {
-      file_path: this.indexPath(scope),
-      content: index,
-    });
+    await kernelWriteFile(this.indexPath(scope), index);
 
     try {
-      await typedRpc('write_file_content', {
-        file_path: this.filePath(name, scope),
-        content: JSON.stringify({ deleted: true }),
-      });
+      await kernelWriteFile(this.filePath(name, scope), JSON.stringify({ deleted: true }));
     } catch (e) {
       console.warn(`[memory] failed to delete file for "${name}":`, e);
     }
@@ -423,10 +416,7 @@ export class MemoryManager {
       index += newLine + '\n';
     }
 
-    await typedRpc('write_file_content', {
-      file_path: this.indexPath(scope),
-      content: index,
-    });
+    await kernelWriteFile(this.indexPath(scope), index);
   }
 }
 

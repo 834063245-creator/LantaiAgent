@@ -20,6 +20,7 @@ import type { Chunk, Provider, ToolCall } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
 import { createTestAgent } from './helpers/agent';
 import { ensureProductionChannelsBooted } from './helpers/composition-boot';
+import { legacyRpcShim } from './helpers/kernel-envelope';
 
 // 生产装配复现（平台化 Phase 2 · D11 施工⑥）：builtin/rust-sessions 在册。
 await ensureProductionChannelsBooted();
@@ -81,35 +82,38 @@ function makeAgent(prov?: Provider): Agent {
 function mockLiveFs(initial: Record<string, string> = {}): Map<string, string> {
   const files = new Map<string, string>(Object.entries(initial));
   rpcMock.mockReset();
-  rpcMock.mockImplementation(async (method: string, params: Record<string, unknown>) => {
-    if (method === 'create_directory') return null;
-    if (method === 'write_file_content') {
-      files.set(params.file_path as string, params.content as string);
-      return '(mock: file saved)';
-    }
-    if (method === 'read_file_content') {
-      const v = files.get(params.file_path as string);
-      if (v === undefined) throw new Error(`ENOENT: ${params.file_path}`);
-      return v;
-    }
-    if (method === 'delete_file_or_dir') {
-      const p = params.path as string;
-      for (const k of [...files.keys()]) {
-        if (k === p || k.startsWith(p + '/')) files.delete(k);
+  // P2-2 信封化：fs 命令经 tool_call 寻址 builtin.fs——shim 翻译回旧 (method, params)
+  rpcMock.mockImplementation(
+    legacyRpcShim(async (method: string, params: Record<string, unknown>) => {
+      if (method === 'create_directory') return null;
+      if (method === 'write_file_content') {
+        files.set(params.file_path as string, params.content as string);
+        return '(mock: file saved)';
       }
-      return null;
-    }
-    if (method === 'list_directory') return '[]';
-    if (method === 'agent_session_append') {
-      // P1-15: 模拟后端 — rewrite → truncate 重建；否则 append-only
-      const p = params as any;
-      const nds = `${p.project_path}/.lantai/agents/${p.agent_id}/session.ndjson`;
-      const block = (p.messages as any[]).map((m) => JSON.stringify(m)).join('\n') + '\n';
-      files.set(nds, p.rewrite ? block : (files.get(nds) ?? '') + block);
-      return null;
-    }
-    throw new Error(`unexpected rpc: ${method}`);
-  });
+      if (method === 'read_file_content') {
+        const v = files.get(params.file_path as string);
+        if (v === undefined) throw new Error(`ENOENT: ${params.file_path}`);
+        return v;
+      }
+      if (method === 'delete_file_or_dir') {
+        const p = params.path as string;
+        for (const k of [...files.keys()]) {
+          if (k === p || k.startsWith(p + '/')) files.delete(k);
+        }
+        return null;
+      }
+      if (method === 'list_directory') return '[]';
+      if (method === 'agent_session_append') {
+        // P1-15: 模拟后端 — rewrite → truncate 重建；否则 append-only
+        const p = params as any;
+        const nds = `${p.project_path}/.lantai/agents/${p.agent_id}/session.ndjson`;
+        const block = (p.messages as any[]).map((m) => JSON.stringify(m)).join('\n') + '\n';
+        files.set(nds, p.rewrite ? block : (files.get(nds) ?? '') + block);
+        return null;
+      }
+      throw new Error(`unexpected rpc: ${method}`);
+    }),
+  );
   return files;
 }
 

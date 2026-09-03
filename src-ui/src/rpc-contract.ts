@@ -101,22 +101,11 @@ export interface RpcContract {
   git_blame: { params: { path: string; file: string; _agent_id?: string }; result: string }; // JSON
 
   // ── 文件系统 ─────────────────────────────────────────────
-  list_directory: {
-    params: { path: string; filter_ignored?: boolean } & AgentCtx;
-    result: string; // JSON
-  };
-  list_directory_flat: {
-    params: { path: string } & AgentCtx;
-    result: string; // JSON
-  };
-  read_file_content: {
-    params: { file_path: string; offset?: number; limit?: number; raw?: boolean } & AgentCtx;
-    result: string; // text — 文件内容（默认带行号；raw=true 返回原文——P1-3 JSON 读取面）
-  };
-  read_memory_batch: {
-    params: { paths?: string[] };
-    result: string; // JSON — {path: content|null} 映射（Value 化：Rust 出口已展开）
-  };
+  // （list_directory / list_directory_flat / read_file_content / read_memory_batch /
+  //   read_file_base64 / write_file_content / log_append / create_directory /
+  //   get_global_memory_dir / delete_file_or_dir / rename_file_or_dir / move_file /
+  //   glob 已迁内核插件 builtin.fs，走 tool_call——kernel-plugin-runtime P2-2。
+  //   内部直呼统一经下方 kernelFsCall 助手。）
   get_last_project: {
     params: Record<string, never>;
     result: string; // JSON — 最近工作区路径 "path"/null（冷启动恢复信号，与图谱引擎无关）
@@ -132,38 +121,6 @@ export interface RpcContract {
   workspace_set_graph_engine: { params: { path: string; enabled: boolean }; result: string }; // "null"
   /** 新建工作区目录：~/Documents/兰台/<名字>，返回归一化路径。只建目录不登记（登记随后续 activate）。 */
   workspace_create_dir: { params: { name: string }; result: string }; // JSON — 归一化路径字符串
-  read_file_base64: {
-    params: { file_path: string } & AgentCtx;
-    result: string; // text — base64
-  };
-  write_file_content: {
-    params: { file_path: string; content: string } & AgentCtx;
-    result: string; // text
-  };
-  log_append: {
-    params: { path: string; content: string; _agent_id?: string };
-    result: string; // "null"
-  };
-  create_directory: {
-    params: { path: string } & AgentCtx;
-    result: string; // "null"
-  };
-  get_global_memory_dir: {
-    params: Record<string, never>;
-    result: string; // text — 目录路径
-  };
-  delete_file_or_dir: {
-    params: { path: string } & AgentCtx;
-    result: string; // "null"
-  };
-  rename_file_or_dir: {
-    params: { file_path: string; new_name: string } & AgentCtx;
-    result: string; // "null"
-  };
-  move_file: {
-    params: { from: string; to: string } & AgentCtx;
-    result: string; // "null"
-  };
 
   // ── 内核插件运行时（kernel-plugin-runtime，2026-09-03）──────────
   // 统一工具入口：args 说 manifest schema 的语言（camelCase 键）；_agent_id meta 嵌在 args 内。
@@ -178,10 +135,6 @@ export interface RpcContract {
   plugin_tool_manifests: {
     params: Record<string, never>;
     result: string; // JSON（全量 ToolManifest 数组）
-  };
-  glob: {
-    params: { pattern: string; path?: string } & AgentCtx;
-    result: string; // JSON
   };
 
   // ── Shell ────────────────────────────────────────────────
@@ -484,6 +437,90 @@ const dirEntrySchema: z.ZodType<DirEntry> = z.lazy(() =>
     .passthrough(),
 );
 
+/** list_directory / list_directory_flat 信封化后的返回形状校验（导出供
+ *  rpc-result-schemas.test.ts 四态守护——旧 rpcResultSchemas 行已随 RPC 退役）。 */
+export const dirEntryArraySchema = z.array(dirEntrySchema);
+
+// ─────────────────────────────────────────────────────────────
+// 内核插件直呼便捷封装（kernel-plugin-runtime P2-2）
+// ─────────────────────────────────────────────────────────────
+// 内部持久化 I/O（canvas / 会话卷 / 记忆 / 技能 / 日志 / 渲染资产）的统一
+// 出口：tool_call 信封寻址 builtin.fs（fs 域批迁移后旧 RPC 分支退役）。
+// args 说 manifest schema 的语言（camelCase；信封外层键单字，bridge 的
+// camel→snake 转换不触及嵌套 args）。调用方一律用户路径（is_agent 缺省
+// false——工具级权限门只对 Agent 工具链路径生效）。
+
+/** 通用信封调用（text 形态结果直通）。 */
+export function kernelFsCall(tool: string, args: Record<string, unknown>): Promise<string> {
+  return typedRpc('tool_call', { plugin: 'builtin.fs', tool, args });
+}
+
+/** 文本读（offset/limit 行号分页；raw=true 返回原文——P1-3 JSON 读取面）。 */
+export function kernelReadFile(filePath: string, opts?: { raw?: boolean }): Promise<string> {
+  return kernelFsCall('read_file_content', { filePath, ...opts });
+}
+
+/** 全量原文读（canvas / 会话卷等 JSON 消费面的惯用形）。 */
+export function kernelReadFileRaw(filePath: string): Promise<string> {
+  return kernelReadFile(filePath, { raw: true });
+}
+
+/** 原子写入（父目录自动创建；返回 Rust 侧的「已写入」回执）。 */
+export function kernelWriteFile(filePath: string, content: string): Promise<string> {
+  return kernelFsCall('write_file_content', { filePath, content });
+}
+
+/** 创建目录（含父目录）。 */
+export function kernelCreateDirectory(path: string): Promise<string> {
+  return kernelFsCall('create_directory', { path });
+}
+
+/** 删除文件或目录树（不可逆）。 */
+export function kernelDeleteFile(path: string): Promise<string> {
+  return kernelFsCall('delete_file_or_dir', { path });
+}
+
+/** 日志追加（内部工具——Rust 侧保留同步权限检查语义）。 */
+export function kernelLogAppend(path: string, content: string): Promise<string> {
+  return kernelFsCall('log_append', { path, content });
+}
+
+/** 全局记忆目录路径。 */
+export function kernelGlobalMemoryDir(): Promise<string> {
+  return kernelFsCall('get_global_memory_dir', {});
+}
+
+/** list_directory 的 JSON 形状版（typedJsonRpc 旧消费面等价迁移；
+ *  形状校验 = dirEntrySchema 数组，递归树/截断旗标同契约）。 */
+export async function kernelListDirectory(path: string, filterIgnored?: boolean): Promise<DirEntry[]> {
+  const raw = await kernelFsCall('list_directory', { path, filterIgnored });
+  const parsed = dirEntryArraySchema.safeParse(parseJson(raw));
+  if (!parsed.success) {
+    throw new Error(`kernelListDirectory: 返回形状违反契约 — ${parsed.error.issues[0]?.message ?? ''}`);
+  }
+  return parsed.data;
+}
+
+/** list_directory_flat 的 JSON 形状版（非递归单层）。 */
+export async function kernelListDirectoryFlat(path: string): Promise<DirEntry[]> {
+  const raw = await kernelFsCall('list_directory_flat', { path });
+  const parsed = dirEntryArraySchema.safeParse(parseJson(raw));
+  if (!parsed.success) {
+    throw new Error(`kernelListDirectoryFlat: 返回形状违反契约 — ${parsed.error.issues[0]?.message ?? ''}`);
+  }
+  return parsed.data;
+}
+
+/** read_memory_batch 的 JSON 形状版（.lantai 内多文件批量读）。 */
+export async function kernelReadMemoryBatch(paths: string[]): Promise<Record<string, string | null>> {
+  const raw = await kernelFsCall('read_memory_batch', { paths });
+  const parsed = z.record(z.string(), z.nullable(z.string())).safeParse(parseJson(raw));
+  if (!parsed.success) {
+    throw new Error(`kernelReadMemoryBatch: 返回形状违反契约 — ${parsed.error.issues[0]?.message ?? ''}`);
+  }
+  return parsed.data;
+}
+
 /** 运行时契约：`// JSON` 注释命令的 result 形状，与上方 RpcContract 的
  *  `// JSON` 注释同源维护（后端加/改方法 → 同步本表；schema 是 result 注释的
  *  运行时投影）。键集 = 已收编命令集；未登记的 `// JSON` 命令 = 当前无
@@ -540,9 +577,9 @@ export const rpcResultSchemas = {
       top_fan_out: z.array(z.object({ id: z.string(), name: z.string(), fan_out: z.number() })),
     })
     .passthrough(),
-  list_directory: z.array(dirEntrySchema),
-  list_directory_flat: z.array(dirEntrySchema),
-  read_memory_batch: z.record(z.string(), z.nullable(z.string())),
+  // （list_directory / list_directory_flat / read_memory_batch 已迁 builtin.fs
+  //  插件走 tool_call——JSON 形状消费面统一经 kernelListDirectory /
+  //  kernelListDirectoryFlat / kernelReadMemoryBatch 助手（kernel-plugin-runtime P2-2）。）
   get_last_project: z.nullable(z.string()),
   workspace_list: z.array(
     z

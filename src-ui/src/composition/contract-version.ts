@@ -22,7 +22,7 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 8;
+export const OPEN_SURFACE_CONTRACT_VERSION = 9;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。 */
 export const OPEN_SURFACE_CONTRACT_FILES: readonly string[] = [

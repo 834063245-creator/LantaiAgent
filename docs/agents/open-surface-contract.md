@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：8
+当前版本：9
 
-<!-- contract-fingerprint: 96f834a0b1d1d61d1c6315acea02d8151ea7fd347217edabf7e987b00b53c3dc -->
+<!-- contract-fingerprint: 51474237afd86936841adb42f883169070037c07c7cc9c3d8c380c8862d02cc2 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -43,6 +43,7 @@
 | 6 | 2026-08-31 | default-loop 每步两处 best-effort RPC（drain_bg_notifications / plan read_file_content）包 3s 超时兜底（typedRpcWithTimeout）——Rust 卡死/回包丢失时落回各自跳过分支，run() 不再死等无界 await（运行态挂起修复之一）；无契约形状变更 | 运行态挂起诊断 2026-08-31 |
 | 7 | 2026-08-31 | manifest schema 新增可选 `displace: boolean`（位移式内置插件装载：产物声明 displace 且 bundle 同名行在册 → import 前 dispose bundle fiber 单活互换，失败/停用自动恢复兜底行；缺省 false 行为不变）——kind='feature' 全量通道化（first-party-hot-reload-plan 增补四） | first-party-hot-reload-plan §8 |
 | 8 | 2026-09-02 | AURA SDK 语义记忆系统整体拆除——default-loop step0 临时提醒清除的保留特判退役（原特判仅服务 preRunHook 的 run 前预注入，载体已删，改每步无条件清除）；无契约形状变更 | AURA SDK 拆除（用户拍板） |
+| 9 | 2026-09-04 | default-loop step0 计划提醒读取换 tool_call 信封（kernelReadFileRaw 寻址 builtin.fs.read_file_content，旧 RPC 分支随 P2-2 退役）；无契约形状变更 | kernel-plugin-runtime P2-2 |
 
 ## 变更流程（guard 红 → 修复四步）
 

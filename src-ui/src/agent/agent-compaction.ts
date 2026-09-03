@@ -10,7 +10,7 @@ import { getAllModels } from '../provider/catalog';
 import { streamWithIdleTimeout } from '../provider/idle-stream';
 import type { Message, Provider, Usage } from '../provider/types';
 import { ChunkType } from '../provider/types';
-import { typedRpc } from '../rpc-contract';
+import { kernelReadFile, kernelWriteFile } from '../rpc-contract';
 import { loadSettingsWithSecrets } from '../settings';
 import { type AgentEvent, EventKind, type Pricing } from './agent-types';
 import type { CompactionConfig, CompactionEvent, CompactionTracker } from './compaction-model';
@@ -109,7 +109,7 @@ export function setCompactionConfigPathImpl(host: CompactionHost, projectPath: s
 export async function loadCompactionTrackerImpl(host: CompactionHost): Promise<void> {
   if (!host._compactionTrackerPath) return;
   try {
-    const raw = await typedRpc('read_file_content', { file_path: host._compactionTrackerPath });
+    const raw = await kernelReadFile(host._compactionTrackerPath);
     const stripped = raw.replace(/^\s*\d+\t/gm, '');
     host.compactionTracker.deserializeState(stripped);
     const stats = host.compactionTracker.getStats(host.pricing);
@@ -128,10 +128,7 @@ export async function loadCompactionTrackerImpl(host: CompactionHost): Promise<v
 async function saveCompactionTracker(host: CompactionHost): Promise<void> {
   if (!host._compactionTrackerPath) return;
   try {
-    await typedRpc('write_file_content', {
-      file_path: host._compactionTrackerPath,
-      content: host.compactionTracker.serializeState(),
-    });
+    await kernelWriteFile(host._compactionTrackerPath, host.compactionTracker.serializeState());
   } catch {
     /* 尽力而为 */
   }
@@ -141,7 +138,7 @@ async function saveCompactionTracker(host: CompactionHost): Promise<void> {
 export async function loadCompactionConfigImpl(host: CompactionHost): Promise<CompactionConfig | null> {
   if (!host._compactionConfigPath) return null;
   try {
-    const raw = await typedRpc('read_file_content', { file_path: host._compactionConfigPath });
+    const raw = await kernelReadFile(host._compactionConfigPath);
     // 去除 cat -n 行号
     const stripped = raw.replace(/^\s*\d+\t/gm, '');
     return JSON.parse(stripped);
@@ -200,10 +197,7 @@ async function tryAutoTune(host: CompactionHost): Promise<void> {
   // 持久化供下次会话使用
   if (host._compactionConfigPath) {
     try {
-      await typedRpc('write_file_content', {
-        file_path: host._compactionConfigPath,
-        content: JSON.stringify(config, null, 2),
-      });
+      await kernelWriteFile(host._compactionConfigPath, JSON.stringify(config, null, 2));
     } catch {
       // 尽力而为
     }

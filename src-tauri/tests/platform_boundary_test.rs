@@ -46,7 +46,6 @@ fn capability_command_modules_are_frozen() {
         "isolation",
         "plugin_install",
         "protocol_bridge",
-        "search",
         "shell",
         "workspace",
     ];

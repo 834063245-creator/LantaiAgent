@@ -165,21 +165,19 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         "git_status" | "git_log" => RpcResultShape::JsonValue,
 
         // ── 文件系统 ──
-        // list_directory/list_directory_flat：ok_json(DirEntry 数组) 恒 JSON。
-        // read_file_content/read_file_base64/read_memory_batch：字节精确/内容
-        // 不可控，Text 铁律。workspace_list：ok_json(注册表+各工作区会话计数) 恒 JSON。
+        // （list_directory/list_directory_flat/read_file_content 等已迁 builtin.fs
+        //  插件走 tool_call——kernel-plugin-runtime P2-2，无需本表条目。）
+        // workspace_list：ok_json(注册表+各工作区会话计数) 恒 JSON。
         // workspace_create_dir：ok_json(归一化路径字符串) 恒 JSON 字符串。
         // （workspace-session-ownership-rework 2026-08-27：user_sessions_list 退役——
         //  首页工作区清单由 workspace_list 承担，计数扫各工作区会话根。）
-        "list_directory" | "list_directory_flat" | "workspace_list" | "workspace_create_dir" => {
+        "workspace_list" | "workspace_create_dir" => {
             RpcResultShape::JsonValue
         }
 
         // ── 搜索 ──
-        // search_content（search_code 已并入）/glob：output_val/json! 构造恒 JSON。
-        // （search_content 已迁 builtin.search 插件走 tool_call——其 JSON 形态
-        //  由前端 agentInvoke 字符串世界兜底，无需本表条目。）
-        "glob" => RpcResultShape::JsonValue,
+        // （search_content 已迁 builtin.search / glob 已迁 builtin.fs，均走
+        //  tool_call——其 JSON 形态由前端 agentInvoke 字符串世界兜底，无需本表条目。）
 
         // ── Shell ──
         // shell_env：serde 序列化恒 JSON（兑底也是合法 JSON 字面量）。
@@ -510,85 +508,6 @@ async fn dispatch_rpc(
         }
 
         // ═══════════════════════════════════════════════════════
-        // 文件系统（13 个命令）
-        // ═══════════════════════════════════════════════════════
-        "list_directory" => {
-            let path = req_str(&params, "path", "list_directory")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let filter_ignored = opt_bool(&params, "filter_ignored");
-            let _agent_id = opt_str(&params, "_agent_id");
-            ok_json(commands::filesystem::list_directory(path, is_agent, filter_ignored, _agent_id, state, app).await)
-        }
-        "list_directory_flat" => {
-            let path = req_str(&params, "path", "list_directory_flat")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            ok_json(commands::filesystem::list_directory_flat(path, is_agent, _agent_id, state, app).await)
-        }
-        "read_file_content" => {
-            let file_path = req_str(&params, "file_path", "read_file_content")?;
-            let offset = opt_usize(&params, "offset");
-            let limit = opt_usize(&params, "limit");
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            let raw = opt_bool(&params, "raw");
-            commands::filesystem::read_file_content(file_path, offset, limit, is_agent, _agent_id, raw, state, app).await
-        }
-        "read_memory_batch" => {
-            let paths: Vec<String> = params.get("paths")
-                .and_then(|v| v.as_array())
-                .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-                .unwrap_or_default();
-            commands::filesystem::read_memory_batch(paths)
-        }
-        "read_file_base64" => {
-            let file_path = req_str(&params, "file_path", "read_file_base64")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::filesystem::read_file_base64(file_path, is_agent, _agent_id, state, app).await
-        }
-        "write_file_content" => {
-            let file_path = req_str(&params, "file_path", "write_file_content")?;
-            let content = req_str(&params, "content", "write_file_content")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::filesystem::write_file_content(file_path, content, is_agent, _agent_id, state, app).await
-        }
-        "log_append" => {
-            let path = req_str(&params, "path", "log_append")?;
-            let content = req_str(&params, "content", "log_append")?;
-            let _agent_id = opt_str(&params, "_agent_id");
-            ok_unit(commands::filesystem::log_append(path, content, _agent_id, state))
-        }
-        "create_directory" => {
-            let path = req_str(&params, "path", "create_directory")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            ok_unit(commands::filesystem::create_directory(path, is_agent, _agent_id, state, app).await)
-        }
-        "get_global_memory_dir" => Ok(commands::filesystem::get_global_memory_dir()),
-        "delete_file_or_dir" => {
-            let path = req_str(&params, "path", "delete_file_or_dir")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            ok_unit(commands::filesystem::delete_file_or_dir(path, is_agent, _agent_id, state, app).await)
-        }
-        "rename_file_or_dir" => {
-            let file_path = req_str(&params, "file_path", "rename_file_or_dir")?;
-            let new_name = req_str(&params, "new_name", "rename_file_or_dir")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            ok_unit(commands::filesystem::rename_file_or_dir(file_path, new_name, is_agent, _agent_id, state, app).await)
-        }
-        "move_file" => {
-            let from = req_str(&params, "from", "move_file")?;
-            let to = req_str(&params, "to", "move_file")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            ok_unit(commands::filesystem::move_file(from, to, is_agent, _agent_id, state, app).await)
-        }
-
-        // ═══════════════════════════════════════════════════════
         // 搜索（3 个命令）
         // ═══════════════════════════════════════════════════════
         "tool_call" => {
@@ -604,13 +523,6 @@ async fn dispatch_rpc(
         "plugin_tool_manifests" => {
             let registry = app.state::<std::sync::Arc<crate::tool_plugins::PluginRegistry>>();
             Ok(crate::tool_plugins::registry_manifests(&registry).to_string())
-        }
-        "glob" => {
-            let pattern = req_str(&params, "pattern", "glob")?;
-            let path = opt_str(&params, "path");
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::search::glob(pattern, path, is_agent, _agent_id, state, app).await
         }
 
         // ═══════════════════════════════════════════════════════
@@ -1875,7 +1787,7 @@ mod tests {
         assert_eq!(rpc_result_shape("hologram_file_nodes"), RpcResultShape::JsonValue);
         assert_eq!(rpc_result_shape("get_graph_meta"), RpcResultShape::Text);
         assert_eq!(rpc_result_shape("get_graph_page"), RpcResultShape::Text);
-        assert_eq!(rpc_result_shape("read_file_content"), RpcResultShape::Text);
+        assert_eq!(rpc_result_shape("exec_command"), RpcResultShape::Text);
         assert_eq!(rpc_result_shape("anything_else"), RpcResultShape::Text);
         // JsonValue 命令：真结构化展开（小样 shell_env / get_graph_snapshot）
         let v = dispatch_result_to_value("shell_env", Ok(r#"{"bundled":true}"#.into())).unwrap();
@@ -1886,14 +1798,14 @@ mod tests {
         assert!(bad.is_err(), "JsonValue 命令 Ok 输出非合法 JSON 必须转 Err");
         // Text 命令（含默认路径）：字节精确，JSON 形状的文本也不展开
         let raw = r#"{"looks":"like json"}"#;
-        let v = dispatch_result_to_value("read_file_content", Ok(raw.into())).unwrap();
+        let v = dispatch_result_to_value("exec_command", Ok(raw.into())).unwrap();
         assert_eq!(v, serde_json::Value::String(raw.to_string()));
         let v = dispatch_result_to_value("unlisted_unknown_cmd", Ok(raw.into())).unwrap();
         assert_eq!(v, serde_json::Value::String(raw.to_string()));
         // Err 路径：原样传播，不包 Ok（前端 catch 语义不变）
         let e = dispatch_result_to_value("shell_env", Err("boom".into()));
         assert_eq!(e, Err("boom".to_string()));
-        let e = dispatch_result_to_value("read_file_content", Err("boom".into()));
+        let e = dispatch_result_to_value("exec_command", Err("boom".into()));
         assert_eq!(e, Err("boom".to_string()));
         let e = dispatch_result_to_value("read_file_content", Err("boom".into()));
         assert_eq!(e, Err("boom".to_string()));

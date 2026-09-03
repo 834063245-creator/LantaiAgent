@@ -8,7 +8,7 @@
 
 import { z } from 'zod';
 import type { DirEntry } from '../rpc-contract';
-import { typedJsonRpc, typedRpc } from '../rpc-contract';
+import { kernelListDirectoryFlat, kernelReadFile } from '../rpc-contract';
 import type { Tool } from './tool';
 import { defineTool } from './tools/define-tool';
 
@@ -55,7 +55,7 @@ async function loadSkills(projectPath: string): Promise<SkillDef[]> {
   // Rust 不符，曾致全部条目被跳过、项目技能恒不加载，2026-09-01 边界校验批修复）。
   let entries: DirEntry[];
   try {
-    entries = await typedJsonRpc('list_directory_flat', { path: dir, is_agent: false });
+    entries = await kernelListDirectoryFlat(dir);
   } catch {
     return [];
   }
@@ -65,7 +65,7 @@ async function loadSkills(projectPath: string): Promise<SkillDef[]> {
     if (!e.is_dir) continue;
     const fp = `${e.path.replace(/\\/g, '/')}/SKILL.md`;
     try {
-      const raw = await typedRpc('read_file_content', { file_path: fp, is_agent: false });
+      const raw = await kernelReadFile(fp);
       const { meta, body } = parseSkillMd(raw);
       if (!body) continue;
       skills.push({

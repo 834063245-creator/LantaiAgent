@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-09-03T18:18:38.450Z
-> 方法总数：142（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-09-03T18:52:54.240Z
+> 方法总数：129（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -56,28 +56,10 @@
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
-| `list_directory` | path | is_agent, filter_ignored, _agent_id | JSON 字符串 |
-| `list_directory_flat` | path | is_agent, _agent_id | JSON 字符串 |
-| `read_file_content` | file_path | offset, limit, is_agent, _agent_id, raw | 字符串 |
-| `read_memory_batch` | — | paths | 字符串 |
-| `read_file_base64` | file_path | is_agent, _agent_id | 字符串 |
-| `write_file_content` | file_path, content | is_agent, _agent_id | 字符串 |
-| `log_append` | path, content | _agent_id | `null`（unit） |
-| `create_directory` | path | is_agent, _agent_id | `null`（unit） |
-| `get_global_memory_dir` | — | — | 字符串 |
-| `delete_file_or_dir` | path | is_agent, _agent_id | `null`（unit） |
-| `rename_file_or_dir` | file_path, new_name | is_agent, _agent_id | `null`（unit） |
-| `move_file` | from, to | is_agent, _agent_id | `null`（unit） |
-
-## 搜索
-
-| 方法 | 必选参数 | 可选参数 | 返回 |
-|------|----------|----------|------|
 | `tool_call` | plugin, tool | is_agent, args | 字符串 |
 | `plugin_tool_manifests` | — | — | 字符串 |
-| `glob` | pattern | path, is_agent, _agent_id | 字符串 |
 
-## CDP 浏览器控制
+## 搜索
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -136,7 +118,7 @@
 | `browser_eval` | expr | _agent_id | 字符串 |
 | `browser_status` | — | — | 字符串 |
 
-## Shell
+## CDP 浏览器控制
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -151,7 +133,7 @@
 | `protocol_bridge_write` | id, line | — | 字符串 |
 | `protocol_bridge_kill` | id | — | 字符串 |
 
-## 身份认证 / 权限
+## Shell
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -162,7 +144,7 @@
 | `credential_delete` | provider | — | `null`（unit） |
 | `llm_proxy_port` | — | — | 字符串 |
 
-## 插件安装通道
+## 身份认证 / 权限
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -171,7 +153,7 @@
 | `plugin_dir` | name | — | JSON 字符串 |
 | `plugin_set_enabled` | name, enabled | — | `null`（unit） |
 
-## Agent 隔离（worktree）
+## 插件安装通道
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -182,20 +164,20 @@
 | `agent_isolation_status` | — | — | 字符串 |
 | `agent_isolation_force_purge` | agent_id | — | 字符串 |
 
-## 外部服务
+## Agent 隔离（worktree）
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
 | `sandbox_status` | — | — | 字符串 |
 
-## Hologram 遗留命令
+## 外部服务
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
 | `hologram_run_check` | — | path | 字符串 |
 | `hologram_record_event` | event_type, summary | file | `null`（unit） |
 
-## 工作区
+## Hologram 遗留命令
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -210,13 +192,13 @@
 | `workspace_set_graph_engine` | path | — | `null`（unit） |
 | `workspace_create_dir` | name | — | JSON 字符串 |
 
-## 会话持久化
+## 工作区
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
 | `agent_session_append` | project_path, agent_id | — | `null`（unit） |
 
-## 数据流
+## 会话持久化
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -224,7 +206,7 @@
 | `dataflow_query` | — | trace_id, list | 字符串 |
 | `dataflow_delete` | trace_id | — | 字符串 |
 
-## PTY
+## 数据流
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -233,7 +215,7 @@
 | `pty_resize` | cols, rows, session_id | — | `null`（unit） |
 | `pty_kill` | session_id | — | `null`（unit） |
 
-## LSP
+## PTY
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|

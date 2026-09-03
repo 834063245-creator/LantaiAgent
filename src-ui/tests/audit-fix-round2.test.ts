@@ -12,6 +12,8 @@ import { DiscoveryBoard } from '../src/agent/discovery-board';
 import { JsonMessageStore } from '../src/agent/message-store';
 import { TaskBoard } from '../src/agent/task-board';
 
+import { legacyRpcShim, toolCallArgsOf } from './helpers/kernel-envelope';
+
 // ── Mock RPC ──
 const mockRpc = vi.fn();
 vi.mock('../src/bridge', () => ({
@@ -105,26 +107,29 @@ describe('CompactionTracker deserializeState replaces not appends', () => {
 describe('R1: JsonMessageStore restore passes filter_ignored: false', () => {
   it('restore lists .lantai/agents with filter_ignored: false and recovers messages', async () => {
     const store = new JsonMessageStore('D:/test');
-    mockRpc.mockImplementation((cmd: string) => {
-      if (cmd === 'list_directory') {
-        return Promise.resolve(
-          JSON.stringify([{ name: 'agent-1', path: 'D:/test/.lantai/agents/agent-1', is_dir: true, children: null }]),
-        );
-      }
-      if (cmd === 'read_file_content') {
-        return Promise.resolve(JSON.stringify([{ id: 'm1', from: 'a', type: 'text', payload: 'hi', ts: 1 }]));
-      }
-      return Promise.resolve(undefined);
-    });
+    // P2-2 信封化：fs 命令经 tool_call 寻址 builtin.fs——shim 翻译回旧 (method, params)
+    mockRpc.mockImplementation(
+      legacyRpcShim((cmd: string) => {
+        if (cmd === 'list_directory') {
+          return Promise.resolve(
+            JSON.stringify([{ name: 'agent-1', path: 'D:/test/.lantai/agents/agent-1', is_dir: true, children: null }]),
+          );
+        }
+        if (cmd === 'read_file_content') {
+          return Promise.resolve(JSON.stringify([{ id: 'm1', from: 'a', type: 'text', payload: 'hi', ts: 1 }]));
+        }
+        return Promise.resolve(undefined);
+      }),
+    );
 
     const restored = await store.restore();
 
-    // Every list_directory call must carry filter_ignored: false — otherwise
+    // Every list_directory call must carry filterIgnored: false — otherwise
     // .lantai is filtered by is_ignored_path and inbox recovery silently dies.
-    const listCalls = mockRpc.mock.calls.filter((c) => c[0] === 'list_directory');
-    expect(listCalls.length).toBeGreaterThan(0);
-    for (const c of listCalls) {
-      expect(c[1]).toMatchObject({ filter_ignored: false });
+    const listArgs = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'list_directory');
+    expect(listArgs.length).toBeGreaterThan(0);
+    for (const a of listArgs) {
+      expect(a).toMatchObject({ filterIgnored: false });
     }
     // And the message actually round-trips
     expect(restored.get('agent-1')?.length).toBe(1);
@@ -143,12 +148,13 @@ describe('A6: two sessions flush to separate board files', () => {
     await boardA.flush();
     await boardB.flush();
 
-    const writes = mockRpc.mock.calls.filter((c) => c[0] === 'write_file_content');
-    const paths = writes.map((c) => (c[1] as { file_path: string }).file_path);
+    // P2-2 信封化：write_file_content 经 tool_call 寻址 builtin.fs（args 键 = manifest 语言）
+    const writeArgs = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'write_file_content');
+    const paths = writeArgs.map((a) => String(a.filePath));
     expect(paths.some((p) => p.endsWith('.lantai/taskboard/session-a.json'))).toBe(true);
     expect(paths.some((p) => p.endsWith('.lantai/taskboard/session-b.json'))).toBe(true);
     // No cross-contamination: session-a's board never written to session-b's path
-    const aWrites = writes.filter((c) => (c[1] as { file_path: string }).file_path.includes('session-a'));
-    expect(aWrites.every((c) => !(c[1] as { file_path: string }).file_path.includes('session-b'))).toBe(true);
+    const aWrites = writeArgs.filter((a) => String(a.filePath).includes('session-a'));
+    expect(aWrites.every((a) => !String(a.filePath).includes('session-b'))).toBe(true);
   });
 });
