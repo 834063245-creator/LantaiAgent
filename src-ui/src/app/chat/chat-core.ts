@@ -130,6 +130,14 @@ export class ChatCore {
   // ── exec 状态广播（视图订阅 stop 按钮/运行态）──
   private _execListeners = new Set<() => void>();
 
+  /** 每卷最新轮次代数（sid → gen）——轮次收尾的身份守卫。
+   *  停止后用户立刻发新消息的窗口里，旧轮 finally（abort 传播到挂起工具后
+   *  迟到落地）不得终结新轮刚建立的流式助手（finishTurn 会清
+   *  streamingAssistantId 并把新轮助手标 done——「停止后新输入无响应/劈开」
+   *  的次因）。gen 不匹配 = 该卷已有更新轮次，收尾让位给新轮自己的
+   *  TurnStarted/finally。无会话（null sid）共用 -1 槽。 */
+  private _turnGenBySid = new Map<number, number>();
+
   private get messages(): ChatMessage[] {
     const store = msgStoreForActive(this.panelId);
     return store?.getState().messages ?? [];
@@ -967,6 +975,9 @@ export class ChatCore {
       const sessStore = getChatStore(this.panelId).sess.getState();
       turnSid = sessStore.sessions[sessStore.activeIdx]?.id ?? null;
     }
+    // 轮次代数 bump —— 本轮成为该卷最新轮次（finally 收尾身份守卫，见下）
+    const turnGen = (this._turnGenBySid.get(turnSid ?? -1) ?? 0) + 1;
+    this._turnGenBySid.set(turnSid ?? -1, turnGen);
 
     // 为新轮次重置自动滚动（视图级状态——只在本轮卷即活跃卷时才有意义；
     // _runAgentTurn 恒由活跃卷发起，turnSid == 活跃卷）
@@ -1009,9 +1020,15 @@ export class ChatCore {
       // 发起时刻捕获的 exec + signal 守卫（execution-state.done 注释）——
       // 收尾清「发起轮次的卷」的状态，与结算时刻的活跃卷无关
       exec.done(signal);
-      // 轮次收尾按轮次所属卷路由（后台卷跑完 finalize 自己的流式助手 +
-      // 自动命名自己；用户中途切走不影响）
-      Stream.finishTurn(this._streamCtxFor(turnSid));
+      // 轮次代数守卫（2026-09-03「停止后会话坏掉」次因）：本轮仍是该卷最新
+      // 轮次时才 finalize——停止后用户立刻发新消息的窗口里，旧轮 finally 迟到
+      // 落地会把新轮刚建立的流式助手误终结。让位时新轮自己的
+      // TurnStarted/finally 承担终结（语义无缺口）。
+      if ((this._turnGenBySid.get(turnSid ?? -1) ?? 0) === turnGen) {
+        // 轮次收尾按轮次所属卷路由（后台卷跑完 finalize 自己的流式助手 +
+        // 自动命名自己；用户中途切走不影响）
+        Stream.finishTurn(this._streamCtxFor(turnSid));
+      }
       bumpTurnDone(turnSid ?? undefined);
     }
   }
@@ -1268,6 +1285,9 @@ export class ChatCore {
     // 追踪启动本次运行的会话 — 事件路由身份已由工厂绑定的 eventSinkFor
     // 携带；这里只管子 Agent 通知路由的 agent._uiSessionId。
     const turnSid: number | null = this.activeSessionId;
+    // 轮次代数 bump —— 本轮成为该卷最新轮次（finally 收尾身份守卫，见下）
+    const turnGen = (this._turnGenBySid.get(turnSid ?? -1) ?? 0) + 1;
+    this._turnGenBySid.set(turnSid ?? -1, turnGen);
     if (turnSid != null) {
       this.agent?.setUiSessionId(turnSid);
     }
@@ -1294,8 +1314,14 @@ export class ChatCore {
       // 发起时刻捕获的 exec + signal 守卫（execution-state.done 注释）——
       // 收尾清「发起轮次的卷」的状态，与结算时刻的活跃卷无关
       exec.done(signal);
-      // 轮次收尾按轮次所属卷路由（用户中途切卷，后台卷 finalize 自己的流）
-      Stream.finishTurn(this._streamCtxFor(turnSid));
+      // 轮次代数守卫（2026-09-03「停止后会话坏掉」次因）：本轮仍是该卷最新
+      // 轮次时才 finalize——停止后用户立刻发新消息的窗口里，旧轮 finally 迟到
+      // 落地会把新轮刚建立的流式助手误终结（streamingAssistantId 被清、新轮
+      // 响应丢失/劈开）。让位时新轮自己的 TurnStarted/finally 承担终结。
+      if ((this._turnGenBySid.get(turnSid ?? -1) ?? 0) === turnGen) {
+        // 轮次收尾按轮次所属卷路由（用户中途切卷，后台卷 finalize 自己的流）
+        Stream.finishTurn(this._streamCtxFor(turnSid));
+      }
     }
     // 通知持久化链（P1 总线归零：chat:turn-done → state/turn-done-store 信号；
     // L2：携带跑完的会话 id——谁跑完存谁）
@@ -1303,31 +1329,39 @@ export class ChatCore {
   }
 
   abort(): void {
-    if (!this._activeExec().isRunning) return;
+    const stopped = this._activeExec();
+    if (!stopped.isRunning) return;
 
-    // ⚡ 统一状态管理：停止主Agent + 级联子Agent + 清权限队列
-    this._activeExec().stop();
-    this.agent?.cascadeAbort();
+    // 捕获被停止轮次的 signal —— 安全网的身份锚（只对这一轮负责）。
+    const stoppedSignal = stopped.abortSignal;
 
-    // 停止按钮/exec 状态已表达中止意图——不再播报「正在中止…」（2026-08-31）
-
-    // Zustand 订阅代替轮询 — 状态变为 idle 时自动取消超时
-    const exec = this._activeExec();
-    const unsub = exec.onChange(() => {
-      if (!exec.isBusy) {
-        clearTimeout(safety);
-        unsub();
-      }
-    });
-    // 安全超时：3 秒内若 Agent 没响应，强制复位
+    // 安全超时：3 秒内若 Agent 没响应，强制复位。
+    // 2026-09-03 修复（「停止后会话坏掉」主因）：订阅必须先于 stop() 注册——
+    // stop() 同步置 idle，晚注册的订阅等不到「已过去」的转变 → safety 永不
+    // 清除 → 3s 后把用户停止后新发的轮次 forceReset 掉（aborted 被 catch
+    // 静默吞 → 「新输入无任何响应」）。注册在前，stop 的同步 setState 即刻
+    // 触发监听清网；fire 时再做身份守卫（busy 仍来自被停止的那一轮才复位），
+    // 双保险下新轮次（signal 已换新）永不被误杀。
     const safety = setTimeout(() => {
-      unsub(); // 2026-09-01 审计：超时路径也退订——监听器不悬空
-      if (this._activeExec().isRunning) {
-        this._activeExec().forceReset();
+      unsub();
+      const exec = this._activeExec();
+      if (exec.isRunning && exec.abortSignal === stoppedSignal) {
+        exec.forceReset();
         this.finishTurn();
         showToast('已强制中止（超时）', 'warn');
       }
     }, 3000);
+    // Zustand 订阅代替轮询 — 状态变为 idle 时自动取消超时
+    const unsub = stopped.onChange(() => {
+      if (!stopped.isBusy) {
+        clearTimeout(safety);
+        unsub();
+      }
+    });
+
+    // ⚡ 统一状态管理：停止主Agent + 级联子Agent + 清权限队列
+    stopped.stop();
+    this.agent?.cascadeAbort();
   }
 
   // ═══════════════════════════════════════════════════════
