@@ -53,6 +53,16 @@ impl PluginRegistry {
             if tool.schema.get("type").is_none() {
                 return Err(format!("工具 {}.{} 的 schema 缺 type 形", manifest.id, tool.name));
             }
+            // 权限声明装载期校验：未知 family fail-loud（拼错家族名 = 权限门
+            // 静默降级为 Passthrough，不可静默放过）。
+            if let Some(perm) = &tool.permission {
+                if super::manifest::parse_family(&perm.family).is_none() {
+                    return Err(format!(
+                        "工具 {}.{} 的 permission.family 非法: '{}'（合法值 {:?}）",
+                        manifest.id, tool.name, perm.family, super::manifest::KNOWN_FAMILIES
+                    ));
+                }
+            }
             if self.tool_index.contains_key(&tool.name) {
                 let owner = &self.tool_index[&tool.name];
                 return Err(format!(
@@ -116,6 +126,7 @@ mod tests {
                     description: "fake".into(),
                     schema: serde_json::json!({"type": "object"}),
                     read_only: true,
+                    permission: None,
                 })
                 .collect(),
         }
@@ -169,6 +180,23 @@ mod tests {
             .register(std::sync::Arc::new(FakePlugin { manifest }))
             .expect_err("缺 type 形必须拒绝");
         assert!(err.contains("schema"), "err = {err}");
+    }
+
+    /// P2-0：permission.family 未知 → 装载期拒绝（静默 Passthrough 不可接受）。
+    #[test]
+    fn register_rejects_unknown_permission_family() {
+        let mut manifest = fake_manifest("a.perm", &["t"]);
+        manifest.tools[0].permission = Some(super::super::manifest::ToolPermission {
+            family: "Writeln".into(),
+            path_key: Some("filePath".into()),
+            command_key: None,
+            subcommand: None,
+        });
+        let mut r = PluginRegistry::default();
+        let err = r
+            .register(std::sync::Arc::new(FakePlugin { manifest }))
+            .expect_err("未知 family 必须拒绝");
+        assert!(err.contains("Writeln"), "err = {err}");
     }
 
     #[test]

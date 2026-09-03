@@ -34,6 +34,40 @@ pub struct ToolSpec {
     pub schema: serde_json::Value,
     #[serde(default)]
     pub read_only: bool,
+    /// 权限声明（可选，非模型面——schema 字节不动）。声明了 permission 的
+    /// 工具，dispatch 侧 PluginToolAdapter 即是其工具级权限门（family 委托 +
+    /// `plugin:<id>.<tool>` 精确规则寻址 + 家族回退）；未声明保持 v1 语义
+    /// （adapter Passthrough，真权在插件内的路径级授权——resolve_read_dispatch 等）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission: Option<ToolPermission>,
+}
+
+/// 工具级权限声明（P2-0 §3.2）。family 是权限家族名（"Read"/"Edit"/"Bash"/"Git"）；
+/// path_key/command_key 声明从 args 提取目标的键，subcommand 是 Git 家族的
+/// 子命令（require_git_dispatch 的 subcommand 位）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolPermission {
+    pub family: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subcommand: Option<String>,
+}
+
+/// 已知权限家族全集（registry 装载期校验 manifest 声明用）。
+pub const KNOWN_FAMILIES: &[&str] = &["Read", "Edit", "Bash", "Git"];
+
+/// 家族名字符串 → 静态家族名。未知家族返回 None（装载期拒绝）。
+pub fn parse_family(family: &str) -> Option<&'static str> {
+    match family {
+        "Read" => Some("Read"),
+        "Edit" => Some("Edit"),
+        "Bash" => Some("Bash"),
+        "Git" => Some("Git"),
+        _ => None,
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

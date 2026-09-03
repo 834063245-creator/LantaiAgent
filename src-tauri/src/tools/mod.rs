@@ -4,6 +4,7 @@
 // Tool 实现 — 每个 Tauri command 对应一个 Tool (spec §4.2 映射表)
 // 实现 crate::permissions::Tool trait，委托给 permissions/* 辅助函数。
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 
 use crate::permissions::{
@@ -21,8 +22,8 @@ pub struct ReadTool {
 }
 
 impl Tool for ReadTool {
-    fn name(&self) -> &'static str {
-        "Read"
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Read")
     }
 
     fn get_path(&self) -> Option<PathBuf> {
@@ -61,8 +62,8 @@ pub struct EditTool {
 }
 
 impl Tool for EditTool {
-    fn name(&self) -> &'static str {
-        "Edit"
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Edit")
     }
 
     fn get_path(&self) -> Option<PathBuf> {
@@ -99,8 +100,8 @@ pub struct BashTool {
 }
 
 impl Tool for BashTool {
-    fn name(&self) -> &'static str {
-        "Bash"
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Bash")
     }
 
     fn get_path(&self) -> Option<PathBuf> {
@@ -133,8 +134,8 @@ pub struct GitTool {
 }
 
 impl Tool for GitTool {
-    fn name(&self) -> &'static str {
-        "Git"
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Git")
     }
 
     fn get_path(&self) -> Option<PathBuf> {
@@ -179,8 +180,8 @@ pub struct BrowserTool {
 }
 
 impl Tool for BrowserTool {
-    fn name(&self) -> &'static str {
-        "Browser"
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Browser")
     }
 
     fn get_path(&self) -> Option<PathBuf> {
@@ -282,8 +283,8 @@ pub struct DesktopTool {
 }
 
 impl Tool for DesktopTool {
-    fn name(&self) -> &'static str {
-        "Desktop"
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Desktop")
     }
 
     fn get_path(&self) -> Option<PathBuf> {
@@ -529,8 +530,8 @@ pub struct WebFetchTool {
 }
 
 impl Tool for WebFetchTool {
-    fn name(&self) -> &'static str {
-        "WebFetch"
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("WebFetch")
     }
 
     fn get_path(&self) -> Option<PathBuf> {

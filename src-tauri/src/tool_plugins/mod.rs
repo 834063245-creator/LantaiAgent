@@ -48,13 +48,17 @@ pub async fn dispatch_tool_call(
         .and_then(|v| v.as_str())
         .map(String::from);
 
-    // 权限引擎过闸（PluginToolAdapter）。读路径真权在插件内 resolve_read_dispatch，
-    // 与迁移前命令的权限语义一致（kernel-plugin-runtime §3 裁决）。
-    let adapter = plugin::PluginToolAdapter {
-        read_only: spec.read_only,
-    };
-    let perm_ctx = crate::utils::get_ctx(state)?;
-    crate::utils::check_permission(&adapter, &perm_ctx, app).await?;
+    // 权限引擎过闸（PluginToolAdapter）。P2-0 §3.5：仅 Agent 工具链路径过闸——
+    // 用户 UI 路径（内部直呼 canvas/chat 持久化等）零规则零弹窗，插件内按
+    // ctx.is_agent 分流用户态解析。声明了 permission 的工具由 adapter 承载
+    // 工具级门（family 委托 + plugin:<id>.<tool> 精确规则寻址）；未声明的
+    // 保持 v1 Passthrough（真权在插件内路径级授权，search/web 同款）。
+    if is_agent {
+        let perm_ctx = crate::utils::get_ctx(state)?;
+        let adapter =
+            plugin::PluginToolAdapter::build(plugin_id, tool_name, spec, &args, agent_id.as_deref(), &perm_ctx);
+        crate::utils::check_permission(&adapter, &perm_ctx, app).await?;
+    }
 
     let ctx = ToolContext {
         agent_id,

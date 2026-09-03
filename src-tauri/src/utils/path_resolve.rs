@@ -142,9 +142,17 @@ pub(crate) async fn check_permission(
             // 「挂起 5 分钟后报权限超时」。注册先行后该窗口结构性关闭
             // （回包不可能早于事件本身到达）。
             let rx = register_ask(request_id.clone());
+            // Ask 载荷的工具名（P2-0 §3.4）：有家族回退用家族名——前端
+            // AUTO_WHITELIST 按家族名匹配 auto 模式白名单（"Edit"），插件
+            // 精确名（"plugin:builtin.fs.write_file"）会让 auto 静默失效；
+            // 无回退保持原名（七家族工具本名即家族名，字节不变）。
+            let ask_tool = match tool.rule_fallback_name() {
+                Some(f) => f.to_string(),
+                None => tool.name().to_string(),
+            };
             let _ = app.emit("permission-ask", serde_json::json!({
                 "requestId": request_id,
-                "tool": tool.name(),
+                "tool": ask_tool,
                 "path": tool.get_path().map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
                 "reason": reason,
                 "danger": danger,
@@ -161,7 +169,7 @@ pub(crate) async fn check_permission(
                         .get_path()
                         .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_default();
-                    ctx.audit_allow(tool.name(), &target);
+                    ctx.audit_allow(&tool.name(), &target);
                     Ok(())
                 }
                 Ok(Ok(false)) | Ok(Err(_)) => {
@@ -169,7 +177,7 @@ pub(crate) async fn check_permission(
                         .get_path()
                         .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_default();
-                    ctx.audit_deny(tool.name(), &target, "用户在确认弹窗中拒绝");
+                    ctx.audit_deny(&tool.name(), &target, "用户在确认弹窗中拒绝");
                     Err("用户拒绝了此操作".into())
                 }
                 Err(_) => {
@@ -180,7 +188,7 @@ pub(crate) async fn check_permission(
                         .get_path()
                         .map(|p| p.to_string_lossy().to_string())
                         .unwrap_or_default();
-                    ctx.audit_deny(tool.name(), &target, "权限请求超时（300s）自动拒绝");
+                    ctx.audit_deny(&tool.name(), &target, "权限请求超时（300s）自动拒绝");
                     Err("权限请求超时".into())
                 }
             }
@@ -204,14 +212,20 @@ pub(crate) fn check_permission_sync(
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
             let mode = permissions::current_permission_mode();
+            // auto 白名单两级（P2-0 §3.4）：插件工具的精确名不在白名单，
+            // 经 rule_fallback_name 家族回退命中——否则 fs 写工具迁移后
+            // auto 模式对它们静默失效（path_resolve L209 静默失效点）。
             if mode == permissions::PermissionMode::Yolo
                 || (mode == permissions::PermissionMode::Auto
-                    && permissions::auto_mode_allows(tool.name()))
+                    && (permissions::auto_mode_allows(&tool.name())
+                        || tool
+                            .rule_fallback_name()
+                            .is_some_and(permissions::auto_mode_allows)))
             {
-                ctx.audit_allow(tool.name(), &target);
+                ctx.audit_allow(&tool.name(), &target);
                 return Ok(());
             }
-            ctx.audit_deny(tool.name(), &target, &format!("后台任务无法交互，自动拒绝: {}", reason));
+            ctx.audit_deny(&tool.name(), &target, &format!("后台任务无法交互，自动拒绝: {}", reason));
             let hint = match suggestions.first() {
                 Some(s) => format!("\n建议在 .lantai/permissions.json 添加: \"allow\": [\"{}\"]", s.rule),
                 None => String::new(),

@@ -18,6 +18,14 @@ export interface KernelToolSpec {
   description: string;
   schema: Record<string, unknown>;
   read_only?: boolean;
+  /** 权限声明（Rust 侧 dispatch adapter 构造用；非模型面——TS 消费面不读它，
+   *  类型面仅为生成物整包序列化镜像的字段覆盖）。 */
+  permission?: {
+    family: string;
+    path_key?: string;
+    command_key?: string;
+    subcommand?: string;
+  };
 }
 
 /** 内核插件 manifest（生成物镜像的类型面）。 */

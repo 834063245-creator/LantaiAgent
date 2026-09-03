@@ -11,6 +11,7 @@ pub mod rule;
 pub mod safety;
 pub mod web;
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU8, Ordering};
@@ -73,7 +74,16 @@ pub fn auto_mode_allows(tool_name: &str) -> bool {
 // ═══════════════════════════════════════════════════════════════
 
 pub trait Tool: Sync {
-    fn name(&self) -> &'static str;
+    /// 工具名（规则寻址第一级 + 审计名）。七家族实现返回家族名（"Edit" 等，
+    /// Cow::Borrowed 零开销）；PluginToolAdapter 返回 "plugin:<id>.<tool>"
+    /// 精确名（Cow::Owned，dispatch 构造期一次）。
+    fn name(&self) -> Cow<'static, str>;
+    /// 家族名回退（规则寻址第二级 + auto 白名单）。仅 manifest 声明了
+    /// permission.family 的插件工具返回 Some——既有用户规则（"Edit" deny 等）
+    /// 与 auto 白名单经家族回退继续生效；家族工具本体 name() 即家族名，不回退。
+    fn rule_fallback_name(&self) -> Option<&'static str> {
+        None
+    }
     fn get_path(&self) -> Option<PathBuf>;
     #[allow(dead_code)] // ponytail: 在后续阶段用于基于模式的决策
     fn is_read_only(&self) -> bool;
@@ -309,31 +319,41 @@ impl PermissionContext {
 /// 中央权限检查 — 编排工具级规则 → 工具自检 → 安全检查 → 模式。
 /// 锁作用域: 工具级检查在调用 tool.check_permissions() 前释放规则锁，
 /// 后者内部会获取自己的读锁。这避免了非 Windows 平台上的递归读锁死锁。
+/// 规则寻址两级（kernel-plugin-runtime P2-0 §3.3）：先 tool.name() 精确名
+/// （"plugin:<id>.<tool>"——插件工具的精确寻址新能力），未中再
+/// rule_fallback_name() 家族名——既有用户规则（"Edit" deny 等）不静默失效。
 pub fn has_permission_to_use_tool(
     tool: &dyn Tool,
     ctx: &PermissionContext,
 ) -> PermissionDecision {
     let tool_name = tool.name();
+    let fallback = tool.rule_fallback_name();
 
-    // ① 工具级 Deny — 最高优先级，立即拒绝
+    // ① 工具级 Deny — 最高优先级，立即拒绝（两级：精确名 → 家族回退）
     {
         let rules = crate::utils::read_or_recover(&ctx.rules);
-        if let Some(rule) = rules.find_deny(tool_name, None) {
+        if let Some(rule) = rules
+            .find_deny(&tool_name, None)
+            .or_else(|| fallback.and_then(|f| rules.find_deny(f, None)))
+        {
             let reason = format!("{} 工具被规则禁止使用", rule.explain());
             let target = tool
                 .get_path()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
             drop(rules); // 在审计前释放锁（审计不需要规则）
-            ctx.audit_deny(tool_name, &target, &reason);
+            ctx.audit_deny(&tool_name, &target, &reason);
             return PermissionDecision::Deny { reason };
         }
     } // 规则锁已释放
 
-    // ② 工具级 Ask — 强制弹窗
+    // ② 工具级 Ask — 强制弹窗（两级：精确名 → 家族回退）
     {
         let rules = crate::utils::read_or_recover(&ctx.rules);
-        if let Some(rule) = rules.find_ask(tool_name, None) {
+        if let Some(rule) = rules
+            .find_ask(&tool_name, None)
+            .or_else(|| fallback.and_then(|f| rules.find_ask(f, None)))
+        {
             let suggestion_rule = match &rule.value.content {
                 Some(content) => format!("{}({})", rule.value.tool_name, content),
                 None => rule.value.tool_name.clone(),
@@ -358,7 +378,7 @@ pub fn has_permission_to_use_tool(
                 .get_path()
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();
-            ctx.audit_deny(tool_name, &target, &reason);
+            ctx.audit_deny(&tool_name, &target, &reason);
             return PermissionDecision::Deny { reason };
         }
         PermissionResult::Ask {
@@ -378,7 +398,7 @@ pub fn has_permission_to_use_tool(
             // 且所有 deny/safety/ask 检查已通过）。立即允许
             // — 不落入默认 Ask。
             let target = tool.get_path().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
-            ctx.audit_allow(tool_name, &target);
+            ctx.audit_allow(&tool_name, &target);
             return PermissionDecision::Allow;
         }
         PermissionResult::Passthrough => {
@@ -389,12 +409,16 @@ pub fn has_permission_to_use_tool(
     // ④ 模式决策（简化: 默认模式 — 项目内读取自动允许）
     // Ponytail: 完整模式切换 (bypass/acceptEdits) 是 Phase 3+
 
-    // ⑤ 工具级 Allow — 不带内容的裸 "Read" / "Bash" 等
+    // ⑤ 工具级 Allow — 不带内容的裸 "Read" / "Bash" 等（两级：精确名 → 家族回退）
     {
         let rules = crate::utils::read_or_recover(&ctx.rules);
-        if rules.find_allow(tool_name, None).is_some() {
+        if rules
+            .find_allow(&tool_name, None)
+            .or_else(|| fallback.and_then(|f| rules.find_allow(f, None)))
+            .is_some()
+        {
             let target = tool.get_path().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
-            ctx.audit_allow(tool_name, &target);
+            ctx.audit_allow(&tool_name, &target);
             return PermissionDecision::Allow;
         }
     }
@@ -402,7 +426,7 @@ pub fn has_permission_to_use_tool(
     // ⑥ 无规则匹配，工具无意见 (Passthrough) → Allow
     // ponytail: Passthrough 意为"我检查过了，没问题"。不弹窗。
     let target = tool.get_path().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
-    ctx.audit_allow(tool_name, &target);
+    ctx.audit_allow(&tool_name, &target);
     PermissionDecision::Allow
 }
 
@@ -957,5 +981,97 @@ mod regression {
         crate::utils::check_permission_sync(&tool, &ctx).unwrap_err();
         // 恢复默认 ask — 否则并行测试 r9 会读到残留的 yolo 而失败
         set_permission_mode("ask");
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // kernel-plugin-runtime P2-0 回归 — PluginToolAdapter 家族语义
+    // ═══════════════════════════════════════════════════════════
+
+    fn plugin_adapter(path: Option<String>, family: Option<&'static str>) -> crate::tool_plugins::plugin::PluginToolAdapter {
+        crate::tool_plugins::plugin::PluginToolAdapter {
+            full_name: "plugin:builtin.fs.write_file".into(),
+            read_only: false,
+            path,
+            agent_id: None,
+            family,
+            command: None,
+            subcommand: None,
+        }
+    }
+
+    /// 回归（P2-0 §3.4 静默失效点）— auto 白名单经 family 回退仍生效。
+    /// 修前: adapter 的 name() 是 "plugin"（v1 共享常量），auto_mode_allows
+    ///       只认 "Edit" → fs 写工具迁移后 auto 模式对它们静默失效。
+    /// 修后: check_permission_sync 的 auto 匹配加 rule_fallback_name() 第二级。
+    #[test]
+    fn r13_auto_whitelist_via_family_fallback() {
+        let _mode_guard = PERMISSION_MODE_LOCK.lock().unwrap();
+        let root = tmp_project();
+        let ctx = PermissionContext::new(&root);
+        // 项目外写 → Edit 家族语义 = Ask（ask 模式下 sync 路径自动拒绝）
+        let adapter = plugin_adapter(
+            Some(root.join("../outside_p20.txt").to_string_lossy().to_string()),
+            Some("Edit"),
+        );
+        set_permission_mode("ask");
+        crate::utils::check_permission_sync(&adapter, &ctx).unwrap_err();
+        // auto → 白名单（Edit）经 family 回退放行——修前这里失败
+        set_permission_mode("auto");
+        crate::utils::check_permission_sync(&adapter, &ctx)
+            .expect("auto 白名单必须经 family 回退放行");
+        // 恢复默认，防污染并行测试
+        set_permission_mode("ask");
+    }
+
+    /// 回归（P2-0 §3.3）— plugin:<id>.<tool> 精确规则寻址（两级匹配第一级）。
+    /// 精确名 deny 只拦该插件工具，家族名不受影响。
+    #[test]
+    fn r14_plugin_precise_rule_addressing_denies() {
+        let root = tmp_project();
+        let ctx = PermissionContext::new(&root);
+        let in_project = Some(root.join("src/ok.rs").to_string_lossy().to_string());
+        // 无规则：项目内写 → Allow
+        let adapter = plugin_adapter(in_project.clone(), Some("Edit"));
+        assert!(matches!(
+            has_permission_to_use_tool(&adapter, &ctx),
+            PermissionDecision::Allow
+        ));
+        // 精确名 deny → 拦截（家族规则寻址之外的新能力）
+        ctx.add_session_rule("plugin:builtin.fs.write_file", "deny");
+        let dec = has_permission_to_use_tool(&adapter, &ctx);
+        assert!(
+            matches!(dec, PermissionDecision::Deny { .. }),
+            "精确名 deny 必须拦截，got: {:?}",
+            dec
+        );
+    }
+
+    /// 回归（P2-0 §3.3）— 家族回退：既有 "Edit" 系统规则对插件工具仍生效。
+    /// .lantai/settings.json 有系统级 Edit deny（load_system_rules）——
+    /// adapter（family Edit）必须经 rule_fallback_name 命中它。
+    #[test]
+    fn r15_family_fallback_hits_existing_edit_deny() {
+        let root = tmp_project();
+        let ctx = PermissionContext::new(&root);
+        let adapter = plugin_adapter(
+            Some(root.join(".lantai/settings.json").to_string_lossy().to_string()),
+            Some("Edit"),
+        );
+        assert!(
+            matches!(
+                has_permission_to_use_tool(&adapter, &ctx),
+                PermissionDecision::Deny { .. }
+            ),
+            "系统级 Edit(.lantai/settings.json) deny 必须经家族回退拦截插件工具"
+        );
+        // 对照：无 family 的 adapter（v1 语义）不拦——真权在插件内路径级授权
+        let bare = plugin_adapter(
+            Some(root.join(".lantai/settings.json").to_string_lossy().to_string()),
+            None,
+        );
+        assert!(matches!(
+            has_permission_to_use_tool(&bare, &ctx),
+            PermissionDecision::Allow
+        ));
     }
 }

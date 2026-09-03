@@ -80,21 +80,82 @@ pub trait ToolPlugin: Send + Sync {
 }
 
 /// 权限引擎适配器：把「插件工具」投给 `permissions::Tool` 面。
-/// v1 只携带只读性——check 恒 Passthrough，真权在插件内的路径级授权
-/// （resolve_read_dispatch 等），与迁移前 search 命令的权限语义一致。
-/// Phase 2 fs 写工具进场时引入 `plugin:<id>.<tool>` 规则寻址与 Agent 归属字段
-/// （需放宽 `Tool::name()` 到 Cow，见计划 §3）。
+/// P2-0 起为**请求级形态**（dispatch 构造期生成，不再共享常量）：
+/// - `name()` = `"plugin:<id>.<tool>"` 精确名——规则寻址第一级 + 审计名；
+/// - `rule_fallback_name()` = manifest 声明的家族名——既有用户规则（"Edit" deny
+///   等）与 auto 白名单经家族回退继续生效（§3.3/§3.4）；
+/// - `check_permissions` 按 family 委托到家族检查函数（Edit→check_write_permission、
+///   Read→check_read_permission、Bash→bash::check、Git→git::check+子命令）；
+///   未声明 family = Passthrough（v1 语义，真权在插件内路径级授权——
+///   resolve_read_dispatch / ctx.check_permission）。
 pub(crate) struct PluginToolAdapter {
+    /// "plugin:builtin.fs.write_file"（dispatch 构造期一次）。
+    pub full_name: String,
     pub read_only: bool,
+    /// manifest permission.path_key 从 args 提取并 forward-map 后的物理路径
+    /// （agent worktree 隔离下的执行真路径；规则匹配在 check_permissions 内
+    /// 经 reverse_map 回逻辑路径——与 EditTool/ReadTool 同款，spec §5.6）。
+    pub path: Option<String>,
+    pub agent_id: Option<String>,
+    /// manifest 声明的家族名（"Edit"/"Read"/"Bash"/"Git"）。
+    pub family: Option<&'static str>,
+    /// manifest permission.command_key 从 args 提取的命令原文（Bash 家族）。
+    pub command: Option<String>,
+    /// manifest permission.subcommand 声明（Git 家族）。
+    pub subcommand: Option<String>,
+}
+
+impl PluginToolAdapter {
+    /// dispatch 侧构造：按 manifest 声明从 args 抽 path/command；path 过
+    /// forward-map（与 require_write 的取路一致——先映射物理路径再过检查）。
+    pub(crate) fn build(
+        plugin_id: &str,
+        tool_name: &str,
+        spec: &super::manifest::ToolSpec,
+        args: &serde_json::Value,
+        agent_id: Option<&str>,
+        perm_ctx: &crate::permissions::PermissionContext,
+    ) -> Self {
+        let perm = spec.permission.as_ref();
+        let family = perm.and_then(|p| super::manifest::parse_family(&p.family));
+        let path = perm
+            .and_then(|p| p.path_key.as_deref())
+            .and_then(|k| args.get(k))
+            .and_then(|v| v.as_str())
+            .map(|p| {
+                perm_ctx
+                    .forward_map_path(std::path::Path::new(p), agent_id)
+                    .to_string_lossy()
+                    .to_string()
+            });
+        let command = perm
+            .and_then(|p| p.command_key.as_deref())
+            .and_then(|k| args.get(k))
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        Self {
+            full_name: format!("plugin:{plugin_id}.{tool_name}"),
+            read_only: spec.read_only,
+            path,
+            agent_id: agent_id.map(String::from),
+            family,
+            command,
+            subcommand: perm.and_then(|p| p.subcommand.clone()),
+        }
+    }
 }
 
 impl crate::permissions::Tool for PluginToolAdapter {
-    fn name(&self) -> &'static str {
-        "plugin"
+    fn name(&self) -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Owned(self.full_name.clone())
+    }
+
+    fn rule_fallback_name(&self) -> Option<&'static str> {
+        self.family
     }
 
     fn get_path(&self) -> Option<std::path::PathBuf> {
-        None
+        self.path.as_ref().map(std::path::PathBuf::from)
     }
 
     fn is_read_only(&self) -> bool {
@@ -102,14 +163,63 @@ impl crate::permissions::Tool for PluginToolAdapter {
     }
 
     fn is_destructive(&self) -> bool {
-        false
+        matches!(self.family, Some("Edit") | Some("Bash") | Some("Git"))
+    }
+
+    fn agent_id(&self) -> Option<&str> {
+        self.agent_id.as_deref()
     }
 
     fn check_permissions(
         &self,
-        _ctx: &crate::permissions::PermissionContext,
+        ctx: &crate::permissions::PermissionContext,
     ) -> crate::permissions::PermissionResult {
-        crate::permissions::PermissionResult::Passthrough
+        use crate::permissions::{PermissionResult, bash, filesystem, git};
+
+        let rules = ctx.read_rules();
+        let Some(family) = self.family else {
+            return PermissionResult::Passthrough;
+        };
+        match family {
+            "Read" => {
+                let Some(path) = self.path.as_deref() else {
+                    return PermissionResult::Passthrough;
+                };
+                let logical =
+                    ctx.reverse_map_path(std::path::Path::new(path), self.agent_id.as_deref());
+                let logical_str = logical.to_string_lossy().replace('\\', "/");
+                filesystem::check_read_permission(path, &ctx.sandbox, &rules, Some(&logical_str))
+            }
+            "Edit" => {
+                let Some(path) = self.path.as_deref() else {
+                    return PermissionResult::Passthrough;
+                };
+                let logical =
+                    ctx.reverse_map_path(std::path::Path::new(path), self.agent_id.as_deref());
+                let logical_str = logical.to_string_lossy().replace('\\', "/");
+                filesystem::check_write_permission(path, &ctx.sandbox, &rules, Some(&logical_str))
+            }
+            "Bash" => {
+                let Some(command) = self.command.as_deref() else {
+                    return PermissionResult::Passthrough;
+                };
+                bash::check(command, &ctx.sandbox, &rules)
+            }
+            "Git" => {
+                // GitTool 同款两段：仓库路径读检查 + 子命令规则。
+                let (Some(path), Some(sub)) =
+                    (self.path.as_deref(), self.subcommand.as_deref())
+                else {
+                    return PermissionResult::Passthrough;
+                };
+                let path_check = filesystem::check_read_permission(path, &ctx.sandbox, &rules, None);
+                if let PermissionResult::Deny { .. } = path_check {
+                    return path_check;
+                }
+                git::check(sub, &rules)
+            }
+            _ => PermissionResult::Passthrough,
+        }
     }
 }
 
