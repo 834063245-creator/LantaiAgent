@@ -20,7 +20,6 @@ const SECTIONS = [
   '应用层：数据上下文 / 会话 attach',
   'Engine 调度',
   'Graph',
-  'Git',
   '文件系统',
   '搜索',
   'CDP 浏览器控制',

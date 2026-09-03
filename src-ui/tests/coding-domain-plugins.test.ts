@@ -109,8 +109,9 @@ const ALL_PLUGIN_TOOL_IDS = [
 
 /** 录制型 exec：记录调用并返回空串。 */
 function recordingExec(log: Array<{ name: string }>): ToolExecutor {
-  return async (name) => {
-    log.push({ name });
+  return async (name, args) => {
+    // P2-3 信封化后 git 族断言需要信封 args（tool 字段路由）——args 可选记录
+    (log as Array<{ name: string; args?: unknown }>).push({ name, args });
     return '';
   };
 }
@@ -244,12 +245,17 @@ describe('codingExec 无状态族域第一方插件（P4 B① git/search + ② f
     const gitDiff = activeToolContributions().find((c) => c.id.endsWith('git_diff'));
     if (!gitStatus || !gitDiff) throw new Error('git_status/git_diff 贡献未注册');
     // 首贡献装配用 execA——族随之锁存；次贡献即使换 execB 也复用族（execA）。
-    // git_diff 委托旧名 git_diff_unstaged（staged:false 分支）
+    // P2-3 信封化：git 族经 tool_call 信封寻址 builtin.git——git_diff 缺省路由
+    // git_diff_unstaged（staged:false 分支），守护点改为信封 tool 字段。
     const toolA = gitStatus.factory(makeRowCtx(recordingExec(logA)));
     const toolB = gitDiff.factory(makeRowCtx(recordingExec(logB)));
     await toolA.execute({ path: 'D:/proj' });
     await toolB.execute({ path: 'D:/proj' });
-    expect(logA.map((e) => e.name)).toEqual(['git_status', 'git_diff_unstaged']);
+    expect(logA.map((e) => e.name)).toEqual(['tool_call', 'tool_call']);
+    expect(logA.map((e) => (e as { args?: { tool?: string } }).args?.tool)).toEqual([
+      'git_status',
+      'git_diff_unstaged',
+    ]);
     expect(logB).toEqual([]);
     await disposeAll(fibers);
   });

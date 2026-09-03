@@ -83,22 +83,11 @@ export interface RpcContract {
   };
 
   // ── Git ──────────────────────────────────────────────────
-  git_status: { params: { path: string } & AgentCtx; result: string }; // JSON
-  git_diff_unstaged: { params: { path: string; file: string } & AgentCtx; result: string }; // text — git stdout（truncate 截断）
-  git_diff_staged: { params: { path: string; file: string } & AgentCtx; result: string }; // text — git stdout（truncate 截断）
-  git_stage: { params: { path: string; files: string[] } & AgentCtx; result: string }; // JSON
-  git_stage_all: { params: { path: string } & AgentCtx; result: string }; // JSON
-  git_commit: { params: { path: string; message: string } & AgentCtx; result: string }; // JSON
-  git_push: { params: { path: string } & AgentCtx; result: string }; // JSON
-  git_pull: { params: { path: string } & AgentCtx; result: string }; // JSON
-  git_log: { params: { path: string; limit?: number } & AgentCtx; result: string }; // JSON
-  git_init: { params: { path: string } & AgentCtx; result: string }; // JSON
-  git_checkout: { params: { path: string; branch: string } & AgentCtx; result: string }; // JSON
-  git_create_branch: { params: { path: string; name: string } & AgentCtx; result: string }; // JSON
-  git_stash_push: { params: { path: string } & AgentCtx; result: string }; // JSON
-  git_stash_pop: { params: { path: string } & AgentCtx; result: string }; // JSON
-  git_discard: { params: { path: string; file: string } & AgentCtx; result: string }; // JSON
-  git_blame: { params: { path: string; file: string; _agent_id?: string }; result: string }; // JSON
+  // （git_status / git_diff_unstaged / git_diff_staged / git_log / git_stage /
+  //   git_stage_all / git_commit / git_push / git_pull / git_init / git_checkout /
+  //   git_create_branch / git_stash_push / git_stash_pop / git_discard / git_blame
+  //   已迁内核插件 builtin.git，走 tool_call——kernel-plugin-runtime P2-3。
+  //   内部直呼统一经下方 kernelGitCall 助手。）
 
   // ── 文件系统 ─────────────────────────────────────────────
   // （list_directory / list_directory_flat / read_file_content / read_memory_batch /
@@ -490,6 +479,15 @@ export function kernelGlobalMemoryDir(): Promise<string> {
   return kernelFsCall('get_global_memory_dir', {});
 }
 
+// ── builtin.git 直呼便捷封装（kernel-plugin-runtime P2-3）──
+// 内部消费方（state-inject 的 git_status 状态栏 / git_blame 行级归属缓存）
+// 的统一出口：tool_call 信封寻址 builtin.git（旧 RPC 分支随迁退役）。
+
+/** git 域通用信封调用（text 形态结果直通；JSON 形态消费方自行 parseJson）。 */
+export function kernelGitCall(tool: string, args: Record<string, unknown>): Promise<string> {
+  return typedRpc('tool_call', { plugin: 'builtin.git', tool, args });
+}
+
 /** list_directory 的 JSON 形状版（typedJsonRpc 旧消费面等价迁移；
  *  形状校验 = dirEntrySchema 数组，递归树/截断旗标同契约）。 */
 export async function kernelListDirectory(path: string, filterIgnored?: boolean): Promise<DirEntry[]> {
@@ -612,23 +610,8 @@ export const rpcResultSchemas = {
       notes: z.string(),
     })
     .passthrough(),
-  git_status: z
-    .object({
-      branch: z.string(),
-      ahead: z.number(),
-      behind: z.number(),
-      files: z.array(
-        z
-          .object({
-            path: z.string(),
-            status: z.string(),
-            staged: z.boolean(),
-            old_path: z.string().optional(),
-          })
-          .passthrough(),
-      ),
-    })
-    .passthrough(),
+  // （git_status 已迁内核插件 builtin.git——state-inject 经 kernelGitCall +
+  //   parseJson 消费，rpcResultSchemas 表行随之退役，kernel-plugin-runtime P2-3。）
 } satisfies Partial<Record<RpcMethodName, z.ZodType>>;
 
 /** 已收编命令的 result 类型（schema 推导——调用点不再手写泛型）。 */

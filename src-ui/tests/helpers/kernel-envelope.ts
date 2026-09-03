@@ -93,6 +93,23 @@ const LEGACY_METHOD_OF: Record<string, string> = {
   // builtin.constraints（P2-1）
   'builtin.constraints.read_constraints': 'read_constraints',
   'builtin.constraints.write_constraints': 'write_constraints',
+  // builtin.git（P2-3，manifest 16 工具 = 旧 RPC 方法名）
+  'builtin.git.git_status': 'git_status',
+  'builtin.git.git_diff_unstaged': 'git_diff_unstaged',
+  'builtin.git.git_diff_staged': 'git_diff_staged',
+  'builtin.git.git_log': 'git_log',
+  'builtin.git.git_stage': 'git_stage',
+  'builtin.git.git_stage_all': 'git_stage_all',
+  'builtin.git.git_commit': 'git_commit',
+  'builtin.git.git_push': 'git_push',
+  'builtin.git.git_pull': 'git_pull',
+  'builtin.git.git_init': 'git_init',
+  'builtin.git.git_checkout': 'git_checkout',
+  'builtin.git.git_create_branch': 'git_create_branch',
+  'builtin.git.git_stash_push': 'git_stash_push',
+  'builtin.git.git_stash_pop': 'git_stash_pop',
+  'builtin.git.git_discard': 'git_discard',
+  'builtin.git.git_blame': 'git_blame',
 };
 
 /** camelCase → snake_case（浅层，只动顶层键；与 bridge rpc() 同款 ponytail 正则）。 */

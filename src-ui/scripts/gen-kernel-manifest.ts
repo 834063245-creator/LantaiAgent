@@ -226,17 +226,15 @@ const DOMAINS: DomainSpec[] = [
     tools: [
       { name: 'git_status', tsTool: 'git_status', permission: readPerm('path') },
       {
+        // 描述不覆盖：保持 git_diff 原文——TS git_diff 工具读本条，模型可见
+        // 字节与迁移前零漂移（schema 内 staged 参数自述双目标语义）
         name: 'git_diff_unstaged',
         tsTool: 'git_diff',
-        descriptionOverride:
-          'Show the git diff for unstaged changes. Returns unified diff output. Use to review changes before staging/committing.',
         permission: readPerm('path'),
       },
       {
         name: 'git_diff_staged',
         tsTool: 'git_diff',
-        descriptionOverride:
-          'Show the git diff for staged changes. Returns unified diff output. Use to review what is about to be committed.',
         permission: readPerm('path'),
       },
       { name: 'git_log', tsTool: 'git_log', permission: readPerm('path') },

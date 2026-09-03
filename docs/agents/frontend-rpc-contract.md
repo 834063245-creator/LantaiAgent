@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-09-03T18:52:54.240Z
-> 方法总数：129（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-09-03T21:10:56.400Z
+> 方法总数：113（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -30,27 +30,6 @@
 | `analyze_and_load` | path | force | 字符串 |
 | `get_graph_snapshot` | — | — | 字符串 |
 | `hologram_file_nodes` | file | — | 字符串 |
-
-## Git
-
-| 方法 | 必选参数 | 可选参数 | 返回 |
-|------|----------|----------|------|
-| `git_status` | path | is_agent, _agent_id | 字符串 |
-| `git_diff_unstaged` | path, file | is_agent, _agent_id | 字符串 |
-| `git_diff_staged` | path, file | is_agent, _agent_id | 字符串 |
-| `git_stage` | path, files | is_agent, _agent_id | 字符串 |
-| `git_stage_all` | path | is_agent, _agent_id | 字符串 |
-| `git_commit` | path, message | is_agent, _agent_id | 字符串 |
-| `git_push` | path | is_agent, _agent_id | 字符串 |
-| `git_pull` | path | is_agent, _agent_id | 字符串 |
-| `git_log` | path | limit, is_agent, _agent_id | 字符串 |
-| `git_init` | path | is_agent, _agent_id | 字符串 |
-| `git_checkout` | path, branch | is_agent, _agent_id | 字符串 |
-| `git_create_branch` | path, name | is_agent, _agent_id | 字符串 |
-| `git_stash_push` | path | is_agent, _agent_id | 字符串 |
-| `git_stash_pop` | path | is_agent, _agent_id | 字符串 |
-| `git_discard` | path, file | is_agent, _agent_id | 字符串 |
-| `git_blame` | path, file | _agent_id | 字符串 |
 
 ## 文件系统
 

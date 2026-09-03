@@ -10,7 +10,8 @@
 - **P2-0 已落地**（commit 08c5466f，全门禁绿）：Tool trait Cow 放宽 + rule_fallback_name + 两级规则寻址 + adapter 请求级形态 + manifest permission 字段 + dispatch 过闸条件化；回归钉 r13/r14/r15。
 - **P2-1 已落地**（commit 87ab054a，全门禁绿）：builtin.constraints + builtin.editor；confined_fs 免检变体与 path_resolve unchecked 助手；rpc 142 methods；fs-builtin provider 表三动作先换信封。
 - **P2-2 已落地**（commit fcd120b4，2026-09-04 收尾窗全门禁绿）：builtin.fs 13 工具 + rpc 129 methods + search.rs 退役 + 15 内部直呼换源 + sessions-builtin 信封化 + kernelFsCall 助手族；测试面 25 文件经基建 A（tests/helpers/kernel-envelope.ts 的 legacyDispatchShim/legacyRpcShim 信封翻译层）适配；mock-data 死 fs 条目清理。**基建 B 同批落地**：`npm run gen:kernel-manifest` 生成器（src-ui/scripts/gen-kernel-manifest.ts）——manifest schema 唯一转录通道，P2-3 起禁手写新工具 schema；fs/editor/constraints --check 对拍一致（人工转录审计通过），git 域 16 工具 TOOLS_SPEC 就位待发射。
-- P2-3~P2-6 未动工。
+- **P2-3 已落地**（2026-09-04 收尾窗续批，全门禁绿）：builtin.git 16 工具（生成器发射 manifest；13 TS 面直出 + diff_unstaged/diff_staged 共享 git_diff schema + stage_all/blame 手写 spec）；权限声明 status/diff/log/blame=Read 家族、其余=Git 家族+subcommand（原 require_git_dispatch 第二参）；业务免检化——require_git_dispatch/require_git 随消费者退役，保留 git_exec_path+run_git；rpc 113 methods（-16）；git_cmds.rs 整文件退役；TS createGitTools 换 manifest 驱动（git_diff 双目标路由/git_stage 拆单保留工具层）+ state-inject 换 kernelGitCall 信封 + shim 表扩 builtin.git 16 行。**单键语言裁决落地**：模型面键 = manifest 键 = 插件实收键——随迁修复两处存量静默丢参（git_log 的 count 旧 RPC 读 limit 恒被丢；git_create_branch 的 branch 旧 RPC 读 name 必报 missing）。
+- P2-4~P2-6 未动工。
 
 
 ## 1. 现状审计（2026-09-04 实查）

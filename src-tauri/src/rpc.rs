@@ -34,9 +34,6 @@ fn req_bool(params: &Value, name: &str, method: &str) -> Result<bool, String> {
         .and_then(|v| v.as_bool())
         .ok_or_else(|| format!("{method}: missing '{name}'"))
 }
-fn opt_i32(params: &Value, name: &str) -> Option<i32> {
-    params.get(name).and_then(|v| v.as_i64()).map(|n| n as i32)
-}
 fn opt_u32(params: &Value, name: &str) -> Option<u32> {
     params.get(name).and_then(|v| v.as_u64()).map(|n| n as u32)
 }
@@ -162,7 +159,6 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // status（json! 构造）/log（commits 数组）恒 JSON；
         // diff/stage/commit/push/pull/init/checkout/branch/stash/discard/blame
         // 是 git 子进程 stdout 文本（run_git 直通），保持 Text。
-        "git_status" | "git_log" => RpcResultShape::JsonValue,
 
         // ── 文件系统 ──
         // （list_directory/list_directory_flat/read_file_content 等已迁 builtin.fs
@@ -399,113 +395,6 @@ async fn dispatch_rpc(
             commands::graph::hologram_file_nodes(file, state, app_ctx).await
         }
 
-        // ═══════════════════════════════════════════════════════
-        // Git（23 个命令）
-        // ═══════════════════════════════════════════════════════
-        "git_status" => {
-            let path = req_str(&params, "path", "git_status")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::git_cmds::git_status(path, is_agent, _agent_id, state, app).await
-        }
-        "git_diff_unstaged" => {
-            let path = req_str(&params, "path", "git_diff_unstaged")?;
-            let file = req_str(&params, "file", "git_diff_unstaged")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::git_cmds::git_diff_unstaged(path, file, is_agent, _agent_id, state, app).await
-        }
-        "git_diff_staged" => {
-            let path = req_str(&params, "path", "git_diff_staged")?;
-            let file = req_str(&params, "file", "git_diff_staged")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::git_cmds::git_diff_staged(path, file, is_agent, _agent_id, state, app).await
-        }
-        "git_stage" => {
-            let path = req_str(&params, "path", "git_stage")?;
-            let files = req_strs(&params, "files", "git_stage")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::git_cmds::git_stage(path, files, is_agent, _agent_id, state, app).await
-        }
-        "git_stage_all" => {
-            let path = req_str(&params, "path", "git_stage_all")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::git_cmds::git_stage_all(path, is_agent, _agent_id, state, app).await
-        }
-        "git_commit" => {
-            let path = req_str(&params, "path", "git_commit")?;
-            let message = req_str(&params, "message", "git_commit")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::git_cmds::git_commit(path, message, is_agent, _agent_id, state, app).await
-        }
-        "git_push" => {
-            let path = req_str(&params, "path", "git_push")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::git_cmds::git_push(path, is_agent, _agent_id, state, app).await
-        }
-        "git_pull" => {
-            let path = req_str(&params, "path", "git_pull")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::git_cmds::git_pull(path, is_agent, _agent_id, state, app).await
-        }
-        "git_log" => {
-            let path = req_str(&params, "path", "git_log")?;
-            let limit = opt_i32(&params, "limit");
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::git_cmds::git_log(path, limit, is_agent, _agent_id, state, app).await
-        }
-        "git_init" => {
-            let path = req_str(&params, "path", "git_init")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::git_cmds::git_init(path, is_agent, _agent_id, state, app).await
-        }
-        "git_checkout" => {
-            let path = req_str(&params, "path", "git_checkout")?;
-            let branch = req_str(&params, "branch", "git_checkout")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::git_cmds::git_checkout(path, branch, is_agent, _agent_id, state, app).await
-        }
-        "git_create_branch" => {
-            let path = req_str(&params, "path", "git_create_branch")?;
-            let name = req_str(&params, "name", "git_create_branch")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::git_cmds::git_create_branch(path, name, is_agent, _agent_id, state, app).await
-        }
-        "git_stash_push" => {
-            let path = req_str(&params, "path", "git_stash_push")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::git_cmds::git_stash_push(path, is_agent, _agent_id, state, app).await
-        }
-        "git_stash_pop" => {
-            let path = req_str(&params, "path", "git_stash_pop")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::git_cmds::git_stash_pop(path, is_agent, _agent_id, state, app).await
-        }
-        "git_discard" => {
-            let path = req_str(&params, "path", "git_discard")?;
-            let file = req_str(&params, "file", "git_discard")?;
-            let is_agent = opt_bool(&params, "is_agent");
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::git_cmds::git_discard(path, file, is_agent, _agent_id, state, app).await
-        }
-        "git_blame" => {
-            let path = req_str(&params, "path", "git_blame")?;
-            let file = req_str(&params, "file", "git_blame")?;
-            let _agent_id = opt_str(&params, "_agent_id");
-            commands::git_cmds::git_blame(path, file, _agent_id, state, app).await
-        }
 
         // ═══════════════════════════════════════════════════════
         // 搜索（3 个命令）

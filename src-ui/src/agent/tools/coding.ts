@@ -228,188 +228,83 @@ export function createShellTools(exec: ToolExecutor): Tool[] {
   ];
 }
 
-/** git 域巧具族（S1-2 从 createCodingTools 迁出）——纯机械移动，定义零改写。
- *  两段按原声明序拼接（主 Git 段 → Phase 2b 段）；迁出动机同 createFsTools。*/
+/** manifest 驱动的 git 域工具（kernel-plugin-runtime P2-3）：schema/description/
+ *  readOnly = manifest 字节（convergence 零漂移——生成器发射 = zod 发射序）；
+ *  TS 工具名保持历史名（模型面契约，非 manifest 工具名）；execute 经 tool_call
+ *  信封寻址 builtin.git（search/web 同款直 exec 族，无 provider seam）。
+ *  git_diff 双目标路由（staged → git_diff_staged / 缺省 → git_diff_unstaged）
+ *  与 git_stage 拆单（'.'/'all' → git_stage_all）保留在工具层——模型面
+ *  schema 与插件实收形状之间的既有折写。 */
+function gitManifestTool(rustTool: string, localName: string, exec: ToolExecutor): Tool {
+  const manifest = kernelManifestOf('builtin.git');
+  const spec = manifest.tools.find((t) => t.name === rustTool);
+  if (!spec) throw new Error(`manifest-tools: 插件 'builtin.git' 无工具 '${rustTool}'`);
+  const parameters = spec.schema;
+  return {
+    name: () => localName,
+    description: () => spec.description,
+    parameters: () => parameters,
+    readOnly: () => spec.read_only ?? false,
+    execute: (args, onProgress, signal) =>
+      exec('tool_call', { plugin: 'builtin.git', tool: rustTool, args }, onProgress, signal),
+  };
+}
+
+/** git 域工具族（S1-2 从 createCodingTools 迁出；P2-3 起 manifest 驱动）。
+ *  声明序 = 领域合并/装配的字节契约序——勿重排。 */
 export function createGitTools(exec: ToolExecutor): Tool[] {
   return [
-    // ── Git ──
-    defineTool({
-      name: 'git_status',
-      description:
-        'Get the current git status — branch name, ahead/behind count, and list of changed files with their status (modified, added, deleted, untracked).',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository root'),
-      }),
-      readOnly: true,
-      execute: (args, onProgress) => exec('git_status', args, onProgress),
-    }),
-    defineTool({
-      name: 'git_diff',
-      description:
-        'Show the git diff for changed files. Returns unified diff output. Use to review changes before committing.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository root'),
-        file: z
-          .string()
-          .optional()
-          .default('.')
-          .describe('Optional: specific file to diff. If omitted, shows all unstaged changes.'),
-        staged: z
-          .boolean()
-          .optional()
-          .default(false)
-          .describe('Set to true to show staged changes instead of unstaged'),
-      }),
-      readOnly: true,
-      execute: async (args, onProgress) => {
-        const staged = args.staged;
+    gitManifestTool('git_status', 'git_status', exec),
+    {
+      ...gitManifestTool('git_diff_unstaged', 'git_diff', exec),
+      execute: (args, onProgress, signal) => {
+        const { staged, ...rest } = args as { staged?: boolean };
         return exec(
-          staged ? 'git_diff_staged' : 'git_diff_unstaged',
-          {
-            path: args.path,
-            file: args.file,
-          },
+          'tool_call',
+          { plugin: 'builtin.git', tool: staged ? 'git_diff_staged' : 'git_diff_unstaged', args: rest },
           onProgress,
+          signal,
         );
       },
-    }),
-    defineTool({
-      name: 'git_log',
-      description:
-        'Show recent git commit history. Returns structured JSON with commit hash, message, author, and date for each commit.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository root'),
-        count: z.coerce
-          .number()
-          .int()
-          .optional()
-          .default(10)
-          .describe('Number of recent commits to show (default: 10)'),
-      }),
-      readOnly: true,
-      execute: (args, onProgress) => exec('git_log', { path: args.path, count: args.count }, onProgress),
-    }),
-    defineTool({
-      name: 'git_stage',
-      description: 'Stage files for commit. Use before git_commit to add changes to the staging area.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository root'),
-        files: z.string().describe('File path(s) to stage, separated by commas. Use "." to stage all.'),
-      }),
-      execute: async (args, onProgress) => {
-        const files = args.files.trim();
+    },
+    gitManifestTool('git_log', 'git_log', exec),
+    {
+      ...gitManifestTool('git_stage', 'git_stage', exec),
+      execute: async (args, onProgress, signal) => {
+        const files = String((args as { files?: string }).files ?? '').trim();
         if (files === '.' || files === 'all') {
-          return exec('git_stage_all', { path: args.path }, onProgress);
+          return exec(
+            'tool_call',
+            { plugin: 'builtin.git', tool: 'git_stage_all', args: { path: (args as { path?: string }).path } },
+            onProgress,
+            signal,
+          );
         }
-        // 暂存单个文件
+        // 暂存单个文件（逐个派发——与既有行为一致）
         const fileList = files.split(',').map((f) => f.trim());
         const results: string[] = [];
         for (const f of fileList) {
-          const r = await exec('git_stage', { path: args.path, files: [f] }, onProgress);
+          const r = await exec(
+            'tool_call',
+            { plugin: 'builtin.git', tool: 'git_stage', args: { path: (args as { path?: string }).path, files: [f] } },
+            onProgress,
+            signal,
+          );
           results.push(r);
         }
         return results.join('\n');
       },
-    }),
-    defineTool({
-      name: 'git_commit',
-      description:
-        'Commit staged changes with a message. Files must be staged first with git_stage. Returns the commit hash.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository root'),
-        message: z.string().describe('Commit message (conventional commits format recommended)'),
-        _forceGate: z
-          .boolean()
-          .optional()
-          .describe(
-            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
-          ),
-      }),
-      execute: (args, onProgress) => exec('git_commit', { path: args.path, message: args.message }, onProgress),
-    }),
-    defineTool({
-      name: 'git_push',
-      description: 'Push committed changes to the remote repository.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository root'),
-      }),
-      execute: (args, onProgress) => exec('git_push', { path: args.path }, onProgress),
-    }),
-    defineTool({
-      name: 'git_pull',
-      description: 'Pull latest changes from the remote repository (fast-forward only, no merge conflicts).',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository root'),
-      }),
-      execute: (args, onProgress) => exec('git_pull', { path: args.path }, onProgress),
-    }),
-
-    // ── Phase 2b: Git 操作（Tauri 命令已存在） ──
-    defineTool({
-      name: 'git_init',
-      description: 'Initialize a new git repository in the given directory.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the directory'),
-      }),
-      execute: (args, onProgress) => exec('git_init', args, onProgress),
-    }),
-    defineTool({
-      name: 'git_checkout',
-      description: 'Switch to a different branch. Use git_create_branch first if the branch does not exist.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository'),
-        branch: z.string().describe('Branch name to switch to'),
-        _forceGate: z
-          .boolean()
-          .optional()
-          .describe(
-            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
-          ),
-      }),
-      execute: (args, onProgress) => exec('git_checkout', args, onProgress),
-    }),
-    defineTool({
-      name: 'git_create_branch',
-      description: 'Create a new git branch from the current HEAD. Does NOT switch to it — use git_checkout after.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository'),
-        branch: z.string().describe('New branch name'),
-      }),
-      execute: (args, onProgress) => exec('git_create_branch', args, onProgress),
-    }),
-    defineTool({
-      name: 'git_discard',
-      description: 'Discard unstaged changes to a file (git checkout -- <file>). Loses all uncommitted modifications.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository'),
-        file: z.string().describe('File path to discard changes for (relative to repo root)'),
-        _forceGate: z
-          .boolean()
-          .optional()
-          .describe(
-            'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
-          ),
-      }),
-      execute: (args, onProgress) => exec('git_discard', args, onProgress),
-    }),
-    defineTool({
-      name: 'git_stash_push',
-      description: 'Stash current uncommitted changes. Use before switching branches with dirty working tree.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository'),
-        message: z.string().optional().describe('Optional stash message for identification'),
-      }),
-      execute: (args, onProgress) => exec('git_stash_push', args, onProgress),
-    }),
-    defineTool({
-      name: 'git_stash_pop',
-      description:
-        'Restore the most recently stashed changes. Pops the stash — the changes are applied and the stash entry is removed.',
-      schema: z.object({
-        path: z.string().describe('Absolute path to the git repository'),
-      }),
-      execute: (args, onProgress) => exec('git_stash_pop', args, onProgress),
-    }),
+    },
+    gitManifestTool('git_commit', 'git_commit', exec),
+    gitManifestTool('git_push', 'git_push', exec),
+    gitManifestTool('git_pull', 'git_pull', exec),
+    // ── Phase 2b: Git 操作 ──
+    gitManifestTool('git_init', 'git_init', exec),
+    gitManifestTool('git_checkout', 'git_checkout', exec),
+    gitManifestTool('git_create_branch', 'git_create_branch', exec),
+    gitManifestTool('git_discard', 'git_discard', exec),
+    gitManifestTool('git_stash_push', 'git_stash_push', exec),
+    gitManifestTool('git_stash_pop', 'git_stash_pop', exec),
   ];
 }
 

@@ -343,23 +343,11 @@ pub(crate) fn resolve_write_unchecked(
     ctx.resolve_write(&physical.to_string_lossy())
 }
 
-/// ponytail: 根据 _agent 标志选择 git 权限检查方式
-pub(crate) async fn require_git_dispatch(
-    repo_path: &str,
-    subcommand: &str,
-    is_agent: bool,
-    agent_id: Option<&str>,
-    state: &tauri::State<'_, WorkspaceState>,
-    app: &tauri::AppHandle,
-) -> Result<(), String> {
-    if is_agent {
-        require_git(repo_path, subcommand, agent_id, state, app).await
-    } else {
-        Ok(())  // 用户 UI git 操作不受限制
-    }
-}
+// （require_git_dispatch / require_git 已随 commands/git_cmds.rs 退役——
+//  kernel-plugin-runtime P2-3：git 域权限检查移到 dispatch 侧 adapter 的
+//  Git 家族委托（tool_plugins/plugin.rs），业务免检化只留 git_exec_path。）
 
-/// git 命令的执行路径换算 — 权限检查（require_git_dispatch / resolve_read_dispatch）
+/// git 命令的执行路径换算 — 权限检查（dispatch 侧 Git/Read 家族 adapter）
 /// 保持现状不动；本函数只解决「权限检查按 _agent_id 映射进 worktree 做规则匹配，
 /// 执行却在主仓」的错位：agent 有活跃 worktree 隔离时返回 worktree 内对应路径，
 /// 否则原样返回（无隔离 / 非 agent 的用户 UI 操作均幂等，不触碰工作区状态）。
@@ -400,12 +388,4 @@ pub(crate) fn require_read_sync(file_path: &str, agent_id: Option<&str>, state: 
     check_permission_sync(&tool, &ctx)?;
     std::fs::canonicalize(&physical)
         .map_err(|e| format!("无法解析路径 {}: {}", physical_str, e))
-}
-
-pub(crate) async fn require_git(repo_path: &str, subcommand: &str, agent_id: Option<&str>, state: &tauri::State<'_, WorkspaceState>, app: &tauri::AppHandle) -> Result<(), String> {
-    let ctx = get_ctx(state)?;
-    // Phase 3：隔离时将仓库路径前向映射到 worktree (spec §5.6)
-    let physical = ctx.forward_map_path(std::path::Path::new(repo_path), agent_id);
-    let tool = tools::GitTool { repo_path: physical.to_string_lossy().to_string(), subcommand: subcommand.to_string() };
-    check_permission(&tool, &ctx, app).await
 }

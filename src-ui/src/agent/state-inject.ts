@@ -11,7 +11,7 @@
 //
 // 所有调用都能优雅降级 — 数据不可用时不注入任何内容。
 
-import { typedJsonRpc, typedRpc } from '../rpc-contract';
+import { kernelGitCall, parseJson, typedRpc } from '../rpc-contract';
 import type { BuildResult, CheckStatusSummary } from './cache-store';
 import {
   getBlameCache,
@@ -60,7 +60,14 @@ export async function refreshGitStatus(projectPath: string): Promise<void> {
   if (cached && now - getGitCacheTs() < GIT_CACHE_MS) return;
   const epoch = getCacheEpoch();
   try {
-    const raw = await typedJsonRpc('git_status', { path: projectPath });
+    // P2-3 信封化：git_status 经 tool_call 寻址 builtin.git（kernelGitCall）。
+    // 形状 = 旧 rpcResultSchemas.git_status 行（Rust utils::parse_status 同形）。
+    const raw = parseJson(await kernelGitCall('git_status', { path: projectPath })) as {
+      branch?: string;
+      ahead?: number;
+      behind?: number;
+      files?: Array<{ path: string; status: string; staged: boolean; old_path?: string }>;
+    };
     // 工作区已切换（缓存被 reset）— 旧项目的在途结果直接丢弃
     if (getCacheEpoch() !== epoch) return;
     setGitCache(
@@ -68,8 +75,8 @@ export async function refreshGitStatus(projectPath: string): Promise<void> {
         branch: raw.branch || '',
         ahead: raw.ahead || 0,
         behind: raw.behind || 0,
-        dirtyCount: raw.files.length,
-        dirtyFiles: raw.files.slice(0, 15),
+        dirtyCount: (raw.files ?? []).length,
+        dirtyFiles: (raw.files ?? []).slice(0, 15),
       },
       now,
     );
@@ -91,7 +98,8 @@ export async function refreshGitBlame(projectPath: string, filePath: string): Pr
   if (!filePath.match(/\.(ts|tsx|js|jsx|rs|py|go|java|rb|cs|kt|swift|php|lua|css|html)$/)) return;
   const epoch = getCacheEpoch();
   try {
-    const raw = await typedRpc('git_blame', { path: projectPath, file: filePath });
+    // P2-3 信封化：git_blame 经 tool_call 寻址 builtin.git（kernelGitCall）
+    const raw = await kernelGitCall('git_blame', { path: projectPath, file: filePath });
     // 工作区已切换（缓存被 reset）— 旧项目的在途结果直接丢弃
     if (getCacheEpoch() !== epoch) return;
     const lines = raw.split('\n');

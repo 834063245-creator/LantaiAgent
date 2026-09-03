@@ -565,14 +565,6 @@ export function mockInvoke(cmd: string, args?: Record<string, unknown>): string 
       notes: 'mock shell 环境——命令跑在 bash 上，用 Unix 语法',
     });
   }
-  if (cmd === 'git_status') {
-    return JSON.stringify({
-      branch: 'main',
-      ahead: 0,
-      behind: 0,
-      files: [{ path: 'src/mock.ts', status: 'modified', staged: false }],
-    });
-  }
 
   // 首页工作区清单（2026-09-01 三轴面审种子）：浏览器 dev 此前恒空态，
   // 首页数据态无法取证。两行覆盖面：置顶+活跃 / 非置顶+昨日+无注册名+引擎关。

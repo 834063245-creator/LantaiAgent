@@ -119,11 +119,14 @@ describe('迁移样板: read_file_content / git_log', () => {
     });
   });
 
-  it('git_log: count 默认 10 + 字符串 coerce', async () => {
+  it('git_log: manifest 驱动后 count 原样透传（默认/校验回归插件侧）', async () => {
     const t = tools.find((x) => x.name() === 'git_log')!;
+    // P2-3 起 git 族 manifest 驱动：zod default/coerce 退役（INVARIANTS #8 修订——
+    // 运行时校验回归插件侧参数提取），信封 args 原样透传；count 缺省由
+    // 插件 unwrap_or(10) 承接（与 Rust 命令同强度）。
     const out = JSON.parse(await t.execute({ path: 'D:/p' }));
-    expect(out.args.count).toBe(10);
+    expect(out.args.args).toEqual({ path: 'D:/p' });
     const out2 = JSON.parse(await t.execute({ path: 'D:/p', count: '3' }));
-    expect(out2.args.count).toBe(3);
+    expect(out2.args.args).toEqual({ path: 'D:/p', count: '3' });
   });
 });

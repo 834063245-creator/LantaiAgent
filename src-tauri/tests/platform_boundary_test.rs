@@ -39,7 +39,6 @@ fn capability_command_modules_are_frozen() {
         "engine_dispatch",
         "external",
         "filesystem",
-        "git_cmds",
         "graph",
         "hologram",
         "identity",
