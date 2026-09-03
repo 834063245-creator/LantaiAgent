@@ -29,7 +29,8 @@ import { type CompositionPatch, factoryComposition } from '../src/composition/ro
 const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r.id);
 
 /** ①b 后 minimal 的寻址行（web/browser-desktop 迁插件通道）。 */
-const WEB_ROW = 'plugin/hologram/web-domain/web_fetch';
+const WEB_ROW = 'plugin/hologram/web-domain/web_search';
+const WEB_FETCH_ROW = 'plugin/hologram/web-domain/web_fetch';
 const BROWSER_DESKTOP_ROW = 'plugin/hologram/browser-desktop-domain/tools';
 
 describe('composition/presets（S4-0 preset 数据模型）', () => {
@@ -57,14 +58,15 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
         const r = resolvePresetComposition('minimal');
         const toolIds = ids(r.tools);
         expect(toolIds).not.toContain(BROWSER_DESKTOP_ROW);
+        expect(toolIds).not.toContain(WEB_FETCH_ROW);
         expect(toolIds).not.toContain(WEB_ROW);
         // 其余行保序保留（标准解析产物减去 minimal 禁用行）
         expect(toolIds).toEqual(
-          ids(resolvePresetComposition('standard').tools).filter((id) => id !== BROWSER_DESKTOP_ROW && id !== WEB_ROW),
+          ids(resolvePresetComposition('standard').tools).filter((id) => id !== BROWSER_DESKTOP_ROW && id !== WEB_ROW && id !== WEB_FETCH_ROW),
         );
         expect(r.capabilities.map((c) => c.key)).not.toContain('graph-hooks');
         // 诊断按表序收集（web 行居表首——与 patch 声明序无关）
-        expect(r.diagnostics.disabled).toEqual([WEB_ROW, BROWSER_DESKTOP_ROW, 'graph-hooks']);
+        expect(r.diagnostics.disabled).toEqual([WEB_ROW, WEB_FETCH_ROW, BROWSER_DESKTOP_ROW, 'graph-hooks']);
       }),
     );
   });

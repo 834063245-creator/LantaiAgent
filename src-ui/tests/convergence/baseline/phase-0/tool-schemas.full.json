@@ -1,7 +1,31 @@
 {
-  "count": 18,
+  "count": 19,
   "note": "引擎动态工具（hologram_tools_list）测试环境恒为空，不在本快照内；本快照钉住静态注册面",
   "schemas": [
+    {
+      "description": "Search the internet for real-time information. Uses a free anonymous search API first; if it fails, automatically falls back to Bing/DuckDuckGo scraping. No API key required.",
+      "name": "web_search",
+      "parameters": {
+        "additionalProperties": {},
+        "properties": {
+          "maxResults": {
+            "default": 10,
+            "description": "Number of results to return (default 10, max 10)",
+            "maximum": 10,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "query": {
+            "description": "Search keywords",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      }
+    },
     {
       "description": "Ask the user one or more questions when you need clarification or confirmation before proceeding. Use when the request is ambiguous, you need to choose between approaches, or you need approval for a destructive action. Supports: single question (question/header/options/multiSelect), multiple questions in one call (questions array — recommended for 2+, asked one at a time), and open-ended questions (omit options — the user types a free-text answer). Returns the user's answer(s).",
       "name": "ask_user",

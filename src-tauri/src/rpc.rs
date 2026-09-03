@@ -627,7 +627,8 @@ async fn dispatch_rpc(
         "web_search" => {
             let query = req_str(&params, "query", "web_search")?;
             let agent_id = opt_str(&params, "_agent_id");
-            commands::web::web_search(query, agent_id, state, app).await
+            let max_results = opt_usize(&params, "max_results");
+            commands::web::web_search(query, agent_id, max_results, state, app).await
         }
         "web_fetch" => {
             let url = req_str(&params, "url", "web_fetch")?;

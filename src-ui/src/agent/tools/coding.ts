@@ -605,13 +605,22 @@ export function createSearchTools(exec: ToolExecutor): Tool[] {
 }
 
 /** web 域工具族（S1-2 从 createCodingTools 迁出）——纯机械移动，定义零改写。
- *  含原位的 Web Search 已禁用历史注释；迁出动机同 createFsTools。*/
+ *  含 Web Search：AnySearch 免费 API + Bing/DuckDuckGo 抓取兜底；迁出动机同 createFsTools。*/
 export function createWebTools(exec: ToolExecutor): Tool[] {
   return [
-    // ── Web Search — 已禁用 (2026-07)
-    // DDG HTML scrape 被反爬封锁，Bing 中文结果不可用，国内无免费搜索 API。
-    // 保留代码骨架，待有可用后端时恢复。
-    // 启用步骤: 1) 取消注释 2) Rust 端接 Brave/Tavily/SearXNG API
+    // ── Web Search ──
+    // 先走 AnySearch 匿名免费 API，失败/空结果自动降级 Bing / DuckDuckGo 抓取。
+    defineTool({
+      name: 'web_search',
+      description:
+        'Search the internet for real-time information. Uses a free anonymous search API first; if it fails, automatically falls back to Bing/DuckDuckGo scraping. No API key required.',
+      schema: z.object({
+        query: z.string().describe('Search keywords'),
+        maxResults: z.coerce.number().int().min(1).max(10).optional().default(10).describe('Number of results to return (default 10, max 10)'),
+      }),
+      readOnly: true,
+      execute: (args, onProgress) => exec('web_search', args, onProgress),
+    }),
 
     // ── Web 抓取 ──
     defineTool({

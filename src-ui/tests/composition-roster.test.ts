@@ -39,9 +39,10 @@ import { builtinShellRows } from '../src/composition/shell-rows';
 const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r.id);
 const capKeys = (): string[] => firstPartyCapabilities().map((c) => c.key);
 
-/** ①b 后 tools 域唯一可寻址行：plugin 贡献行（web/browser-desktop 是
- *  行序前两行——①b 前插保装配序，零漂移按构造）。 */
-const WEB_ROW = 'plugin/hologram/web-domain/web_fetch';
+/** ①b 后 tools 域唯一可寻址行：plugin 贡献行（web/web_fetch/browser-desktop 是
+ *  行序前三行——①b 前插保装配序，零漂移按构造）。 */
+const WEB_ROW = 'plugin/hologram/web-domain/web_search';
+const WEB_FETCH_ROW = 'plugin/hologram/web-domain/web_fetch';
 const BROWSER_DESKTOP_ROW = 'plugin/hologram/browser-desktop-domain/tools';
 
 describe('composition/roster（S2-0 组合引擎）', () => {
@@ -80,7 +81,8 @@ describe('composition/roster（S2-0 组合引擎）', () => {
           // 前插保迁移前行表序——①b 零漂移按构造）
           expect(ids(f.tools)).toEqual(pluginToolRows().map((r) => r.id));
           expect(f.tools[0]?.id).toBe(WEB_ROW);
-          expect(f.tools[1]?.id).toBe(BROWSER_DESKTOP_ROW);
+          expect(f.tools[1]?.id).toBe(WEB_FETCH_ROW);
+          expect(f.tools[2]?.id).toBe(BROWSER_DESKTOP_ROW);
           expect(f.tools.some((r) => r.id === 'plugin/hologram/git-domain/git_status')).toBe(true);
           // prompt 域：通道段贡献快照（注册序）
           expect(f.prompt.map((s) => s.id)).toEqual(activePromptContributions().map((s) => s.id));

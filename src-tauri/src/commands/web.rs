@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
-// Web 搜索与抓取 — Bing + DuckDuckGo + URL 抓取。
+// Web 搜索与抓取 — AnySearch 免费 API + Bing/DuckDuckGo 抓取 + URL 抓取。
 
 
 const CHROME_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36";
@@ -12,28 +12,102 @@ fn search_backend() -> &'static str {
     }
 }
 
+
+const ANYSEARCH_SEARCH_URL: &str = "https://api.anysearch.com/v1/search";
+
+/// AnySearch 匿名免费搜索：不需要 API key。
+/// 返回统一 [{ title, url, snippet }] 结构；失败时上层会 fallback。
+fn anysearch_free_search(query: &str, max_results: usize) -> Result<Vec<serde_json::Value>, String> {
+    let body = serde_json::json!({
+        "query": query,
+        "max_results": max_results,
+        "language": "zh-CN",
+    });
+
+    let agent = ureq::Agent::new_with_config(
+        ureq::config::Config::builder()
+            .timeout_per_call(Some(std::time::Duration::from_secs(8)))
+            .timeout_global(Some(std::time::Duration::from_secs(15)))
+            .build()
+    );
+
+    let resp = agent.post(ANYSEARCH_SEARCH_URL)
+        .header("Content-Type", "application/json")
+        .header("User-Agent", CHROME_UA)
+        .send(body.to_string())
+        .map_err(|e| format!("AnySearch request failed: {}", e))?;
+
+    let status = resp.status().as_u16();
+    let mut body = resp.into_body();
+    let text = body.read_to_string().map_err(|e| format!("AnySearch read error: {}", e))?;
+
+    if status != 200 {
+        return Err(format!("AnySearch API {}", status));
+    }
+
+    let data: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("AnySearch parse error: {}", e))?;
+
+    let items = data
+        .get("data")
+        .and_then(|d| d.get("results"))
+        .or_else(|| data.get("results"))
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let mut results = Vec::new();
+    for item in items.into_iter().take(max_results) {
+        let title = item.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let url = item.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let snippet = item.get("content")
+            .and_then(|v| v.as_str())
+            .or_else(|| item.get("description").and_then(|v| v.as_str()))
+            .or_else(|| item.get("snippet").and_then(|v| v.as_str()))
+            .unwrap_or("")
+            .to_string();
+
+        if !title.is_empty() && !url.is_empty() {
+            results.push(serde_json::json!({
+                "title": title,
+                "url": url,
+                "snippet": snippet,
+            }));
+        }
+    }
+    Ok(results)
+}
+
 #[tauri::command]
 pub(crate) async fn web_search(
     query: String,
     agent_id: Option<String>,
+    max_results: Option<usize>,
     state: tauri::State<'_, crate::WorkspaceState>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
     let ctx = crate::utils::get_ctx(&state)?;
+    let max_results = max_results.unwrap_or(10).clamp(1, 10);
+
+    // 权限检查沿用原有搜索页 URL（AnySearch 是后端 API，仍受同一 Web 域权限约束）。
     let backend = search_backend();
-    let (search_url, q) = (match backend {
+    let fallback_url = match backend {
         "bing" => format!("https://www.bing.com/search?q={}&setlang=en", crate::utils::urlencoding(&query)),
         _ => format!("https://html.duckduckgo.com/html/?q={}", crate::utils::urlencoding(&query)),
-    }, query.clone());
-
+    };
     {
-        let tool = crate::tools::WebFetchTool { url: search_url.clone(), agent_id: agent_id.clone() };
+        let tool = crate::tools::WebFetchTool { url: fallback_url.clone(), agent_id: agent_id.clone() };
         crate::utils::check_permission(&tool, &ctx, &app).await?;
     }
 
-    let results = match backend {
-        "bing" => bing_search(&q)?,
-        _ => duckduckgo_search(&q)?,
+    // 1) 先尝试 AnySearch 匿名免费 API（无需用户配置任何 key）
+    // 2) 失败/空结果时自动降级到 Bing / DuckDuckGo 页面抓取
+    let results = match anysearch_free_search(&query, max_results) {
+        Ok(results) if !results.is_empty() => results,
+        _ => match backend {
+            "bing" => bing_search(&query)?,
+            _ => duckduckgo_search(&query)?,
+        },
     };
 
     if results.is_empty() {
@@ -46,7 +120,7 @@ pub(crate) async fn web_search(
 
     Ok(serde_json::json!({
         "query": query,
-        "results": &results[..results.len().min(10)],
+        "results": &results[..results.len().min(max_results)],
     }).to_string())
 }
 

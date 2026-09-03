@@ -8,7 +8,7 @@ import type { Context } from '../../../cordis';
 import { familyContributions, registerFamily } from '../contribution-helpers';
 import { createWebTools } from './host';
 
-/** web 域插件（①b 迁入，2026-08-23）——贡献 web_fetch 单工具。 */
+/** web 域插件（①b 迁入，2026-08-23）——贡献 web_search + web_fetch 双工具。 */
 export const webDomainPlugin = {
   name: 'hologram/web-domain',
   inject: ['tools'],

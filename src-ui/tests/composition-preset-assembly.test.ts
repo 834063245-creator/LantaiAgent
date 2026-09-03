@@ -43,7 +43,8 @@ import { readOnlyTool, scriptedProvider } from './convergence/helpers/fixtures';
 const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r.id);
 
 /** ①b 后 minimal 的寻址行（web/browser-desktop 迁插件通道）。 */
-const WEB_ROW = 'plugin/hologram/web-domain/web_fetch';
+const WEB_ROW = 'plugin/hologram/web-domain/web_search';
+const WEB_FETCH_ROW = 'plugin/hologram/web-domain/web_fetch';
 const BROWSER_DESKTOP_ROW = 'plugin/hologram/browser-desktop-domain/tools';
 
 /** minimal preset 的解析产物（穿线效果样本）——plugin 行 + capability 行寻址，
@@ -57,6 +58,7 @@ async function minimalComposition(): Promise<ResolvedComposition> {
             tools: [
               { id: BROWSER_DESKTOP_ROW, disabled: true },
               { id: WEB_ROW, disabled: true },
+              { id: WEB_FETCH_ROW, disabled: true },
             ],
             capabilities: [{ id: 'graph-hooks', disabled: true }],
           },

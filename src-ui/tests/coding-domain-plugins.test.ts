@@ -52,8 +52,8 @@ import { taskDomainPlugin } from '../src/plugins/builtin/task-domain';
 import { waitDomainPlugin } from '../src/plugins/builtin/wait-domain';
 import { webDomainPlugin } from '../src/plugins/builtin/web-domain';
 
-/** web 族工具名序（①b 迁入，单工具）。 */
-const WEB_TOOL_ORDER = ['web_fetch'];
+/** web 族工具名序（①b 迁入，双工具：搜索 + 抓取）。 */
+const WEB_TOOL_ORDER = ['web_search', 'web_fetch'];
 
 /** git 族工具名序（手写清单——对拍插件贡献序，防声明序漂移无人知）。 */
 const GIT_TOOL_ORDER = [
@@ -192,6 +192,7 @@ describe('codingExec 无状态族域第一方插件（P4 B① git/search + ② f
     const fibers = await applyPlugins(root);
     for (const suffix of [
       'web_fetch',
+      'web_search',
       'git_status',
       'search_content',
       'read_file_content',

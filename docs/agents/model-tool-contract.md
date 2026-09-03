@@ -4,7 +4,7 @@
 > 从 `buildToolRegistry` 出厂行表装配产物生成 — 勿手改；工具面变更后重新生成并同 commit。
 > 本文档不含时间戳：字节稳定是 `--check` 构建守护的前提。
 
-可见工具 18 个（域折叠形态 + 常驻件）；隐藏旧名 144 个（附录）。
+可见工具 19 个（域折叠形态 + 常驻件）；隐藏旧名 144 个（附录）。
 
 装配说明：标准注册表 = composition 行表出厂序；hologram 动态族（graph/ops/lsp 引擎侧
 schema）在本生成环境（无 Tauri bridge / 无引擎连接）恒为空集，引擎侧工具面以引擎
@@ -17,6 +17,7 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 
 | 工具 | 只读 | 动作数 | 说明（首行） |
 |------|------|--------|--------------|
+| [`web_search`](#web_search) | ✓ | — | Search the internet for real-time information. Uses a free anonymous search API first; if it fails, automatically falls back to Bing/DuckDuckGo scraping. No API key required. |
 | [`ask_user`](#ask_user) | ✓ | — | Ask the user one or more questions when you need clarification or confirmation before proceeding. Use when the request is ambiguous, you need to choose between approaches, or you need approval for a destructive action. Supports: single question (question/header/options/multiSelect), multiple questions in one call (questions array — recommended for 2+, asked one at a time), and open-ended questions (omit options — the user types a free-text answer). Returns the user's answer(s). |
 | [`wait`](#wait) | ✓ | — | Block until a target completes, then return immediately — event-driven, NOT a fixed sleep. Pass agentId to wait for that sub-agent to finish: returns its final status the moment it completes (no polling loops, no guessing durations). For background shell jobs use bash_wait (dedicated tool). Omit agentId and pass durationMs ONLY as a fallback for non-event waits (watcher re-analysis, file appearance). Max 10 minutes per call. |
 | [`show_asset`](#show_asset) | ✓ | — | Create a visual asset block in the conversation (chart/table/metric/graph/html...) rendered as a component. Use for any deliverable that benefits from spatial layout or needs to be referred/updated later (charts, tables, impact graphs, metric dashboards, SVG/HTML cards). The block enters the chat flow and can be pinned to the canvas by the user. Kinds and their payload schemas are listed by list_block_kinds; presentation selects the visual form within the kind white-list (omit for the default). Check list_block_kinds before your first call. |
@@ -37,6 +38,17 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 | [`cordis`](#cordis) | — | 6 | Dynamic-plugin runtime (shapes mirror DSH tool-cordis): define an immutable package (plain-JS factory returning { name?, apply(ctx) }; sandboxed — dangerous globals are undefined, contributions via guarded ctx.register), run it (first activation asks user approval), stop (chain-recycle contributions), undefine (delete all packages), inspect_list / inspect_self (source + diagnostics, rebuildable trail). |
 
 ## 工具明细
+
+### `web_search`
+
+> Search the internet for real-time information. Uses a free anonymous search API first; if it fails, automatically falls back to Bing/DuckDuckGo scraping. No API key required.
+
+- 只读：是
+
+| 参数 | 必选 | 类型 | 说明 |
+|------|------|------|------|
+| `query` | ✓ | string | Search keywords |
+| `maxResults` | — | integer | Number of results to return (default 10, max 10) |
 
 ### `ask_user`
 
