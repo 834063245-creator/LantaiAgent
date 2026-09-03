@@ -25,9 +25,20 @@ export interface PlanStateSnapshot {
   id: string | null;
 }
 
+/** 路径归一化：反斜杠 → 正斜杠，剥离 `\\?\` verbatim 前缀，去 `./` 前缀与尾部斜杠。 */
+function normalizePath(p: string): string {
+  return p
+    .replace(/^\\\\\?\\/, '')
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '')
+    .replace(/\/+$/, '');
+}
+
 export class PlanStateManager {
   private _state: PlanState = { active: false, id: null, planFilePath: null };
   private _listeners = new Set<(s: PlanState) => void>();
+  /** 归一化后的项目根 — enter/fromSnapshot 时记录，供 isPlanFile 解析相对路径。 */
+  private _projectPath = '';
 
   get state(): PlanState {
     return this._state;
@@ -36,7 +47,8 @@ export class PlanStateManager {
   /** 进入 plan 模式。返回计划文件路径。 */
   enter(projectPath: string): string {
     const id = `plan-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const planFilePath = this._derivePlanPath(id, projectPath);
+    this._projectPath = normalizePath(projectPath);
+    const planFilePath = this._derivePlanPath(id, this._projectPath);
     this._state = { active: true, id, planFilePath };
     this._notify();
     return planFilePath;
@@ -45,19 +57,24 @@ export class PlanStateManager {
   /** 退出 plan 模式（审批通过）。plan 文件保留。 */
   exit(): void {
     this._state = { active: false, id: null, planFilePath: null };
+    this._projectPath = '';
     this._notify();
   }
 
   /** 取消 plan 模式（用户手动退出，非审批）。plan 文件保留。 */
   cancel(): void {
     this._state = { active: false, id: null, planFilePath: null };
+    this._projectPath = '';
     this._notify();
   }
 
-  /** 检查路径是否为当前计划文件（用于 plan 模式下的写入放行）。 */
+  /** 检查路径是否为当前计划文件（用于 plan 模式下的写入放行）。
+   *  支持绝对路径与相对路径（相对项目根解析）；均先归一化再比较。 */
   isPlanFile(filePath: string): boolean {
     if (!this._state.planFilePath) return false;
-    return filePath.replace(/\\/g, '/') === this._state.planFilePath.replace(/\\/g, '/');
+    const norm = normalizePath(filePath);
+    const abs = norm.startsWith('/') || /^[A-Za-z]:/.test(norm) ? norm : `${this._projectPath}/${norm}`;
+    return abs === this._state.planFilePath;
   }
 
   /** 注册状态变更监听器，返回取消函数。 */
@@ -79,10 +96,11 @@ export class PlanStateManager {
    *  planFilePath 从 id 重新派生（不持久化路径）。 */
   fromSnapshot(snapshot: PlanStateSnapshot | null, projectPath: string): void {
     if (snapshot?.active && snapshot.id) {
+      this._projectPath = normalizePath(projectPath);
       this._state = {
         active: true,
         id: snapshot.id,
-        planFilePath: this._derivePlanPath(snapshot.id, projectPath),
+        planFilePath: this._derivePlanPath(snapshot.id, this._projectPath),
       };
     } else {
       this._state = { active: false, id: null, planFilePath: null };
@@ -93,8 +111,8 @@ export class PlanStateManager {
   // ── 内部 ──
 
   private _derivePlanPath(id: string, projectPath: string): string {
-    const base = projectPath.replace(/\\/g, '/').replace(/\/$/, '');
-    return `${base}/.lantai/plans/${id}.md`;
+    // 入参已由 normalizePath 归一化（enter/fromSnapshot 传入）
+    return `${projectPath}/.lantai/plans/${id}.md`;
   }
 
   private _notify(): void {

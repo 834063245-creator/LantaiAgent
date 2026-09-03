@@ -123,6 +123,36 @@ describe('planGate — 执行层 plan 门禁（schema 不切换）', () => {
     expect(executed).toEqual(['write', 'edit']);
   });
 
+  it('plan 激活：fs(write) 相对路径命中也豁免（回归 bug：第一次写入被拦）', async () => {
+    const executed: string[] = [];
+    const ps = new PlanStateManager();
+    ps.enter('D:/proj');
+    const planFile = ps.state.planFilePath!; // D:/proj/.lantai/plans/plan-xxx.md
+    const rel = planFile.replace('D:/proj/', ''); // .lantai/plans/plan-xxx.md
+    const ex = setup(ps, fsDomainTool(executed));
+    // 相对路径：.lantai/plans/plan-xxx.md（模型第一次写入常见形态）
+    ex.addTool({
+      id: 'c1',
+      name: 'fs',
+      arguments: JSON.stringify({ action: 'write', path: `./${rel}` }),
+    });
+    // 正斜杠相对 + filePath 别名
+    ex.addTool({
+      id: 'c2',
+      name: 'fs',
+      arguments: JSON.stringify({ action: 'write', filePath: rel }),
+    });
+    // 反斜杠绝对（Windows verbatim 前缀）
+    ex.addTool({
+      id: 'c3',
+      name: 'fs',
+      arguments: JSON.stringify({ action: 'write', filePath: `\\\\?\\D:\\proj\\${rel.replace(/\//g, '\\')}` }),
+    });
+    const results = await ex.awaitRemaining();
+    expect(results.map((r) => r.output)).toEqual(['ok', 'ok', 'ok']);
+    expect(executed).toEqual(['write', 'write', 'write']);
+  });
+
   it('plan 激活：非只读非领域工具（analyze_project）拦截', async () => {
     const executed: string[] = [];
     const ps = new PlanStateManager();
