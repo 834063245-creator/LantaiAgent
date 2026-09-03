@@ -188,21 +188,31 @@ export function unreadBand(lastReadWorldY: number, range: TocRange): { top: numb
   return { top, height: Math.max(2, bottom - top) };
 }
 
-/* ── user 轮次锚点（hover 预览解析用）── */
+/* ── 阶段导航锚（stream-rhythm 刀4：目次带消费工作单元）──
+ * 阶段 = user 工作单元（来文开新阶段）——与流的阶段间距 / 阶段细线同一
+ * 真源（group.WorkUnit）。锚点按单元派生（不再按裸块 kind 扫描）：
+ * 单元升级（阶段标题继承 plan/commit 显式信号等）时此处跟着长，锚不漂。 */
 
-export interface TurnAnchorInput {
-  /** 块 id */
-  id: string;
+/** 阶段锚派生的最小输入——组件从 WorkUnit + 几何槽位摘取，本模块不碰单元内部形状。 */
+export interface StageUnitInput {
+  /** 工作单元 id（`u:{blockId}`——前缀稳定的身份键） */
+  unitId: string;
+  /** 单元 kind（user = 阶段首；其余不上阶段锚） */
   kind: string;
-  /** 块顶 y（世界） */
+  /** 首成员块 id（阶段跳转落点） */
+  blockId: string;
+  /** 首成员块顶 y（世界） */
   worldY: number;
-  /** 块高（世界） */
+  /** 首成员块高（世界） */
   worldH: number;
-  /** 首句缩略（hover 预览用） */
+  /** hover 预览（来文首句——组件从 payload 摘取） */
   preview?: string;
 }
 
-export interface TurnAnchor {
+export interface StageAnchor {
+  /** 阶段序（1 起——卷内第 N 个阶段） */
+  stageIndex: number;
+  unitId: string;
   blockId: string;
   /** 锚点刻度在带内的 y（像素）——取块中心 */
   stripY: number;
@@ -211,29 +221,31 @@ export interface TurnAnchor {
   preview: string;
 }
 
-/** 只取 user 轮次块，构建带内锚点（按块中心映射）。 */
-export function buildTurnAnchors(blocks: TurnAnchorInput[], range: TocRange): TurnAnchor[] {
+/** 工作单元序列 → 阶段锚（按单元序编号，块中心映射）。 */
+export function buildStageAnchors(units: StageUnitInput[], range: TocRange): StageAnchor[] {
   const map = tocMapper(range);
-  const out: TurnAnchor[] = [];
-  for (const b of blocks) {
-    if (b.kind !== 'user') continue;
-    const worldY = b.worldY + b.worldH / 2;
+  const out: StageAnchor[] = [];
+  let stageIndex = 0;
+  for (const u of units) {
+    if (u.kind !== 'user') continue;
+    stageIndex += 1;
+    const worldY = u.worldY + u.worldH / 2;
     out.push({
-      blockId: b.id,
+      stageIndex,
+      unitId: u.unitId,
+      blockId: u.blockId,
       stripY: map(worldY),
       worldY,
-      preview: (b.preview ?? '').slice(0, 24) || '（空轮次）',
+      preview: (u.preview ?? '').slice(0, 24) || `阶段 ${stageIndex}`,
     });
   }
-  // 按带内序（旧 → 新）——blocks 已是消息序，保持即可
   return out;
 }
 
-/** 点带反查最近锚点（hover 预览解析）；无锚点 = null。 */
-export function nearestAnchorAt(stripY: number, anchors: TurnAnchor[]): TurnAnchor | null {
-  if (anchors.length === 0) return null;
-  let best = anchors[0];
-  let bestD = Math.abs(anchors[0].stripY - stripY);
+/** 点带反查最近锚点（hover 预览解析）；无锚点 = null。同距取先见（带内序旧→新）。 */
+export function nearestAnchorAt<T extends { stripY: number }>(stripY: number, anchors: readonly T[]): T | null {
+  let best: T | null = null;
+  let bestD = Number.POSITIVE_INFINITY;
   for (const a of anchors) {
     const d = Math.abs(a.stripY - stripY);
     if (d < bestD) {

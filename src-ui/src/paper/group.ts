@@ -233,3 +233,30 @@ export function leadOf(unit: WorkUnit): RhythmLead {
   if (unit.kind === 'recovery' || unit.kind === 'terminal') return 'recovery';
   return 'unit';
 }
+
+/** 布局栈节奏档（canvas-math.RhythmClass 的块级映射结果）。 */
+export interface RhythmAssign {
+  /** 块 id → 节奏档（intra = 单元内非首成员；首成员档由 leadOf 定）。 */
+  rhythmOf: Map<string, 'intra' | 'unit' | 'recovery' | 'stage'>;
+  /** 阶段首块（leadOf = stage 的来文块）——渲染层阶段细线消费。 */
+  stageLeadIds: ReadonlySet<string>;
+}
+
+/** 块序列 + 单元归属 → 节奏档分派（刀3：单一真源——PaperPanel 布局栈与
+ *  布局级封口测试共用同一映射，防测试/生产漂移）。blocks 传**布局栈实排
+ *  序列**（折叠摘除后的——组头子块被摘时不需要节奏档，缺席即无键）。 */
+export function rhythmAssign(
+  blocks: ReadonlyArray<{ id: string }>,
+  membership: ReadonlyMap<string, { unit: WorkUnit; isFirst: boolean }>,
+): RhythmAssign {
+  const rhythmOf = new Map<string, 'intra' | 'unit' | 'recovery' | 'stage'>();
+  const stageLeadIds = new Set<string>();
+  for (const b of blocks) {
+    const m = membership.get(b.id);
+    if (!m) continue;
+    const rhythm = m.isFirst ? leadOf(m.unit) : 'intra';
+    rhythmOf.set(b.id, rhythm);
+    if (rhythm === 'stage') stageLeadIds.add(b.id);
+  }
+  return { rhythmOf, stageLeadIds };
+}

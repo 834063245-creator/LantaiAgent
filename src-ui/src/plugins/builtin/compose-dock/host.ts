@@ -16,9 +16,9 @@ export type { SourcedBlock } from '../../../paper/block-model';
 export { composerSubmitOnKey } from '../../../paper/ime';
 export { createInkCache, inkColorOf, inkForBlock } from '../../../paper/ink';
 export { usePaperDock, usePaperRegion } from '../../../paper/overlay-context';
-export type { TocMark, TocMarkInput, TocRange, TocSlider } from '../../../paper/toc';
+export type { StageUnitInput, TocMark, TocMarkInput, TocRange, TocSlider } from '../../../paper/toc';
 export {
-  buildTurnAnchors,
+  buildStageAnchors,
   computeSlider,
   deriveMarks,
   grabOffsetAt,

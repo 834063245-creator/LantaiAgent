@@ -53,6 +53,7 @@ export const foldLabel = impl.foldLabel;
 export const isFoldable = impl.isFoldable;
 export const groupWorkUnits = impl.groupWorkUnits;
 export const leadOf = impl.leadOf;
+export const rhythmAssign = impl.rhythmAssign;
 export const sealedMessageIdsOf = impl.sealedMessageIdsOf;
 export const unitMembership = impl.unitMembership;
 export const createInkCache = impl.createInkCache;

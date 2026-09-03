@@ -9,6 +9,7 @@
 // 的循环 import）。
 
 import type { SourcedBlock } from './block-model';
+import type { WorkUnit } from './group';
 import type { StreamRegionState } from './space';
 import type { FlowGeom, PinnedGeom } from './virtualize';
 
@@ -36,6 +37,9 @@ export interface RegionView {
   regionHeight: number;
   /** 卷首头高度（世界单位，measureFolioHeadHeight 实测——流区框向上扩展包住卷首） */
   folioH: number;
+  /** 工作单元（stream-rhythm 刀3：groupWorkUnits 产出原样进核心缓存）——
+   *  目次带阶段导航（刀4）与阶段语义的消费源；stub 卷为空。 */
+  units: readonly WorkUnit[];
   /** 阶段首块（stream-rhythm 刀2：来文块）——渲染层给阶段细线 + 阶段开卷语义。 */
   stageLeadIds: ReadonlySet<string>;
   /** P2-2 卷级虚拟化（2026-09-02）：true = 视口外 stub——blocks/flowGeom 为空

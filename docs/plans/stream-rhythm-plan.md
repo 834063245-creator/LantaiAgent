@@ -1,8 +1,9 @@
 # 会话流版式语法（stream-rhythm）计划
 
-> 状态：**In progress——刀1+刀2 已落地（2026-09-03），门禁全绿，真机验收待用户跑；刀3+刀4 下一窗**
+> 状态：**In progress——刀1-刀4 全部落地（2026-09-03 两窗连推），门禁全绿；真机验收五项 + D1 间距值 / D2 细线形态终审待用户跑**
 > 一句话：把会话流从「等价块瀑布」变成有节奏的工作记录——事件语义分类 + 跨块工作单元 + 版式语法表（数据化）+ 节奏渲染 + 封口纪律。
 > 施工史：2026-09-03 刀1+刀2 一窗完成——刀1：`paper/grammar.ts`（classifyTool 派生族：领域名经 resolveSemanticToolName 反查旧名入族表，run_shell 按 command 判验证族，未知名 readOnly 兜底）+ `paper/group.ts`（工作单元封套 pass；两宪法落地：封口纪律 + 跨消息前瞻禁止）+ tests/paper-stream-rhythm.test.ts 25 用例（含封口不变性专项——tsc 抓到首版「散块永不成组」真 bug、测试抓到「跨消息后向并入破坏封口」真问题，均以「单元不跨消息，消息边界即收口」修法收口）。刀2：canvas-math 节奏档（ANCHOR 增 intraUnitGap 32 / unitGap 64 / recoveryLeadGap 96 / stageGap 96 + rhythmGap 表驱动；B1 基线保留为无节奏调用面兜底，上方是 user 恒尾距 8）+ PaperPanel 接线（regionCoreCache memo 内 groupWorkUnits→unitMembership→rhythm 喂布局栈；host 三处同步 host.ts / host.aliased.ts / host-modules.ts faceDeps）+ 阶段细线（`.pp-stage-lead::before` 弱线 --rule-soft 落 stageGap 中线）+ taste-ledger 落账 + 规格书 §4.2 立法 + paper-visual-decisions 钉值三断言。
+> 施工史（续）：2026-09-03 刀3+刀4 一窗完成——刀3：布局级活尾重排限定钉死（封口前缀 = 刚体：七档前缀演化谱系下封口块节奏档/相对位置逐字段不变、绝对位移全体同值；分派走新 `group.rhythmAssign` 单一真源防测试/生产漂移）+ 组原子性（折叠组 = 布局栈单条目——虚拟化窗口不腰斩折叠组的结构性保证；展开组成员栈内连续）+ 长流性能烟测（~1265 转译块全链 1.5s 预算，实测几十 ms；regionCoreCache 缓存纪律不破）+ 滚动锚定 DOM 面核可（`pp-stream-live` transform 过渡 200ms 在案 + 入场动画残帧根治 8a5823f2——零新 CSS）。刀4：foldLabel 判别量（工具组折叠行露路径/命令——`▸ 工具 ×3 · read_file a.ts / b.ts / c.ts`；截断/去重补 ×N；无判别字段回退旧计数；FOLD_ROW_H 恒一行测高镜像零变化）+ 目次带阶段导航（`buildTurnAnchors` 退役换代 `buildStageAnchors` 消费工作单元——阶段 = user 单元同真源，锚带 stageIndex；hover 兜底 `阶段 N · 首句`；units 进 RegionView/regionCoreCache）+ Error 墨色家族确认（零改动：`--fail` #a9443f 墨浓红 + 墓碑贴黄款 seal 7% 纸晕 + err 输出 --fail 单一真源——朱砂=人铁律复核通过，钉值三断言防漂移）。规格书 §4.2 补记 + §4 折叠机制翻新 + taste-ledger 落账。
 > 来源：用户 2026-09-02 方案《兰台 Agent 会话流：版式系统方案》（全文存附录 A，原文在微信临时目录会腐烂）+ 同日 agent 对审修正四条（§2.4）。原方案 §3 / §4A / §4C 描述的大半是**已建成**现状（谱系见 §1.1），本计划的真实增量 = 跨块事件组（工作单元）+ 阶段节奏 + 语法表数据化 + 封口语义。
 
 ## 0. 为什么做 / 目标

@@ -81,7 +81,7 @@ import {
 } from '../../paper/canvas-math';
 import { createFocusFlightScheduler } from '../../paper/focus-flight';
 import { defaultFolded, foldLabel, isFoldable } from '../../paper/fold';
-import { groupWorkUnits, leadOf, sealedMessageIdsOf, unitMembership } from '../../paper/group';
+import { groupWorkUnits, leadOf, rhythmAssign, sealedMessageIdsOf, unitMembership } from '../../paper/group';
 import { composerSubmitOnKey } from '../../paper/ime';
 import { createInkCache, inkColorOf, inkForBlock, inkForText, lodActive } from '../../paper/ink';
 import {
@@ -107,7 +107,7 @@ import {
   STREAM_REGION,
 } from '../../paper/space';
 import {
-  buildTurnAnchors,
+  buildStageAnchors,
   computeSlider,
   deriveMarks,
   grabOffsetAt,
@@ -223,6 +223,7 @@ const faceDeps = {
   isFoldable,
   groupWorkUnits,
   leadOf,
+  rhythmAssign,
   sealedMessageIdsOf,
   unitMembership,
   createInkCache,
@@ -242,7 +243,7 @@ const faceDeps = {
   PaperRegionContext,
   usePaperDock,
   usePaperRegion,
-  buildTurnAnchors,
+  buildStageAnchors,
   nearestAnchorAt,
   viewportMarker,
   computeSlider,

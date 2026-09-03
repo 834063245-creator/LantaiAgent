@@ -23,10 +23,10 @@
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享真实例。
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import type { SourcedBlock, TocMarkInput, TocRange } from './host';
+import type { SourcedBlock, StageUnitInput, TocMarkInput, TocRange } from './host';
 import {
   agentSessionState,
-  buildTurnAnchors,
+  buildStageAnchors,
   computeSlider,
   createInkCache,
   deriveMarks,
@@ -150,7 +150,30 @@ export const TocStrip = memo(function TocStrip() {
     return out;
   }, [activeBlocks, activeFlowGeom]);
   const marks = useMemo(() => (range ? deriveMarks(markInputs, range) : []), [markInputs, range]);
-  const turnAnchors = useMemo(() => (range ? buildTurnAnchors(markInputs, range) : []), [markInputs, range]);
+  /* ── 阶段导航锚（stream-rhythm 刀4）：目次带消费工作单元——阶段 = user 单元，
+   *  与流的阶段间距/阶段细线同真源（group.WorkUnit）。markInputs 供几何槽位
+   *  （worldY/worldH），单元供身份（unitId/阶段界）。P2-3 依赖收窄：activeUnits
+   *  是核心缓存下的稳定内层引用，平移帧零重算。 */
+  const activeUnits = activeRegion?.units;
+  const stageAnchors = useMemo(() => {
+    if (!range || !activeUnits) return [];
+    const geomById = new Map(markInputs.map((m) => [m.id, m]));
+    const inputs: StageUnitInput[] = [];
+    for (const u of activeUnits) {
+      if (u.kind !== 'user') continue;
+      const m = geomById.get(u.memberIds[0]);
+      if (!m) continue;
+      inputs.push({
+        unitId: u.id,
+        kind: u.kind,
+        blockId: m.id,
+        worldY: m.worldY,
+        worldH: m.worldH,
+        preview: m.preview,
+      });
+    }
+    return buildStageAnchors(inputs, range);
+  }, [activeUnits, markInputs, range]);
 
   /* ── 滑块（可见视口 → 带上区间；VSCode 语义）──
    * 可见视口 = 书眉下缘 → 坞上缘：visY0 = 画布区顶，visY1 = 画布区底 − 坞高。 */
@@ -343,10 +366,10 @@ export const TocStrip = memo(function TocStrip() {
         break;
       }
     }
-    // 3) 最近 user 轮首句（行盒间隙兜底）
+    // 3) 最近阶段锚（行盒间隙兜底）——带阶段序（stream-rhythm 刀4）
     if (text === null) {
-      const a = nearestAnchorAt(stripY, turnAnchors);
-      if (a && Math.abs(a.stripY - stripY) <= TURN_HIT_R) text = a.preview;
+      const a = nearestAnchorAt(stripY, stageAnchors);
+      if (a && Math.abs(a.stripY - stripY) <= TURN_HIT_R) text = `阶段 ${a.stageIndex} · ${a.preview}`;
     }
     text = text === null ? null : text.slice(0, HOVER_TEXT_MAX);
     setHover((prev) => {

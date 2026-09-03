@@ -29,6 +29,7 @@ const TYPE_TOKENS_TS = readFileSync(join(SRC, 'paper', 'type-tokens.ts'), 'utf8'
 const TOKENS_CSS = readFileSync(join(SRC, 'app', 'tokens.css'), 'utf8');
 const FONTS_TS = readFileSync(join(SRC, 'app', 'fonts.ts'), 'utf8');
 const NORMALIZE_PS1 = readFileSync(join(__dirname, '..', '..', 'scripts', 'normalize-paper-texture.ps1'), 'utf8');
+const RENDERER_TS = readFileSync(join(SRC, 'composition', 'renderer-service.tsx'), 'utf8');
 
 /** 从选择器名截取规则体（到下一个 `}` 为止——纸壳 CSS 规则无嵌套）。 */
 function ruleBody(css: string, selector: string): string {
@@ -380,5 +381,28 @@ describe('会话流版式节奏钉值（stream-rhythm 刀2，2026-09-03——D1 
     // 封口纪律 + 跨消息前瞻禁止（宪法条款在纯函数真源里在册）
     expect(GROUP_TS).toContain('跨消息前瞻禁止');
     expect(GROUP_TS).toContain('封口纪律');
+  });
+});
+
+describe('Error 墨色家族（stream-rhythm 刀4c 确认，2026-09-03——现状合规零改动，钉防漂移）', () => {
+  it('错误状态色 = --fail 墨浓红（非纯红、非朱砂——朱砂=人铁律不挪用）', () => {
+    expect(TOKENS_CSS).toContain('--fail: #a9443f');
+    // 纯红字面量不进纸面（B5 红绿墨色化纪律的延伸）
+    expect(TOKENS_CSS).not.toMatch(/#f00;|#ff0000/i);
+    expect(PANEL_CSS).not.toMatch(/#f00;|#ff0000/i);
+  });
+
+  it('错因墓碑（turn-error）：贴黄款——朱砂淡底只作纸晕（7%），墨身走 ink-2', () => {
+    const rule = ruleBody(PANEL_CSS, '.pp-block.pp-turn-error {');
+    expect(rule).toContain('color-mix(in oklch, var(--seal) 7%, var(--paper))');
+    const body = ruleBody(PANEL_CSS, '.pp-block.pp-turn-error .pp-body');
+    expect(body).toContain('color: var(--ink-2)');
+    expect(body).not.toContain('var(--seal)');
+  });
+
+  it('工具/程文错误输出与状态签：--fail 单一真源（渲染器两处 err 行内）', () => {
+    expect(ruleBody(PANEL_CSS, '.pp-status.pp-error')).toContain('color: var(--fail)');
+    // 渲染器错误输出恒两处（tool / code 同构）——新增错误面须过此钉改账
+    expect(RENDERER_TS.match(/color: 'var\(--fail\)'/g)?.length).toBe(2);
   });
 });

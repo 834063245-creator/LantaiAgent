@@ -121,6 +121,51 @@ describe('fold：工具组规则 + 折叠行关键信息', () => {
     expect(foldLabel('toolgroup', { childIds: [], items }, true)).toBe('▸ 工具 ×5 · a · b · c · 等 5 种');
   });
 
+  it('组头判别量（stream-rhythm 刀4a）：read_file ×3 露三个文件路径，不只计数', () => {
+    const items = [
+      toolPart('fs', '{"action":"read","path":"src/a.ts"}'),
+      toolPart('fs', '{"action":"read","path":"src/b.ts"}'),
+      toolPart('fs', '{"action":"read","path":"src/c.ts"}'),
+    ];
+    expect(foldLabel('toolgroup', { childIds: [], items }, true)).toBe('▸ 工具 ×3 · fs src/a.ts / src/b.ts / src/c.ts');
+  });
+
+  it('组头判别量：截断 / 同值去重时计数补位（×N，总账不失真）', () => {
+    // 5 个不同路径：露前 3 个判别值 + ×5
+    const five = [1, 2, 3, 4, 5].map((k) => toolPart('fs', `{"action":"read","path":"f${k}.ts"}`));
+    expect(foldLabel('toolgroup', { childIds: [], items: five }, true)).toBe('▸ 工具 ×5 · fs ×5 f1.ts / f2.ts / f3.ts');
+    // 两次同路径：判别值去重露一个 + ×2
+    const dup = [toolPart('fs', '{"action":"read","path":"a.ts"}'), toolPart('fs', '{"action":"read","path":"a.ts"}')];
+    expect(foldLabel('toolgroup', { childIds: [], items: dup }, true)).toBe('▸ 工具 ×2 · fs ×2 a.ts');
+  });
+
+  it('组头判别量：混合族各露各的（读露路径 / shell 露命令），无参名回退旧计数文案', () => {
+    const items = [
+      toolPart('fs', '{"action":"read","path":"a.ts"}'),
+      toolPart('fs', '{"action":"read","path":"b.ts"}'),
+      toolPart('shell', '{"command":"cargo test"}'),
+      toolPart('edit', '{"action":"write","path":"w.ts"}'),
+      toolPart('notify', '{}'),
+    ];
+    expect(foldLabel('toolgroup', { childIds: [], items }, true)).toBe(
+      '▸ 工具 ×5 · fs a.ts / b.ts · shell cargo test · edit w.ts · 等 4 种',
+    );
+  });
+
+  it('组头判别量：流式半程 JSON（toolDigest 原串兜底）不炸，计数补位兜总账', () => {
+    const half = [toolPart('fs', '{"action":"read","path":"a.ts"'), toolPart('fs', '{"action":"read"}')];
+    // 半程 JSON 的判别值走原串兜底（与单工具折叠行同语义）；可解析无目标键 → 值兜底
+    const label = foldLabel('toolgroup', { childIds: [], items: half }, true);
+    expect(label.startsWith('▸ 工具 ×2 · fs')).toBe(true);
+    expect(label).toContain('read');
+  });
+
+  it('组头判别量：同族部分无判别值（无参）→ 计数补位不失总账', () => {
+    const items = [toolPart('fs', '{"action":"read","path":"a.ts"}'), toolPart('fs', '{}')];
+    // 一枚露路径、一枚无参：digests(1) < count(2) → ×2 补位
+    expect(foldLabel('toolgroup', { childIds: [], items }, true)).toBe('▸ 工具 ×2 · fs ×2 a.ts');
+  });
+
   it('工具卡折叠行带名字+参数摘要（旧「参数 N 字」退役）', () => {
     const p = { name: 'edit', label: 'edit', args: '{"file_path":"src/x.ts"}', status: 'done', output: 'ok' };
     expect(foldLabel('tool', p, true)).toBe('▸ edit src/x.ts · 输出 2 字');

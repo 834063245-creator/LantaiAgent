@@ -51,6 +51,7 @@ import type {
   StreamRegionState,
   TextPart,
   UserMessage,
+  WorkUnit,
 } from './host';
 import {
   ANCHOR,
@@ -79,7 +80,6 @@ import {
   inkForBlock,
   isFoldable,
   layoutRegion,
-  leadOf,
   lodActive,
   makeStrip,
   measureBlockHeightCached,
@@ -96,6 +96,7 @@ import {
   reportObservedBlockHeight,
   resolveAssetBlock,
   resolveRenderer,
+  rhythmAssign,
   STREAM_REGION,
   scheduleCanvasSave,
   screenToWorld,
@@ -484,6 +485,8 @@ interface RegionCoreCacheEntry {
     regionTop: number;
     regionHeight: number;
     folioH: number;
+    /** 工作单元（stream-rhythm 刀3 入核心缓存；刀4 目次带阶段导航消费）。 */
+    units: WorkUnit[];
     /** 阶段首块（stream-rhythm 刀2：来文块）——渲染层阶段细线消费。 */
     stageLeadIds: ReadonlySet<string>;
   };
@@ -498,6 +501,7 @@ const STUB_EMPTIES = {
   flowWindow: { first: 0, lastExcl: 0 },
   visibleIds: new Set<string>(),
   seq: new Map<string, string>(),
+  units: [] as WorkUnit[],
   stageLeadIds: new Set<string>() as ReadonlySet<string>,
 } as const;
 
@@ -1198,20 +1202,16 @@ export function PaperPanel() {
         translateCacheBySession.current.set(s.id, res.cache);
         // stream-rhythm 刀2（2026-09-03）：工作单元封套 pass——折叠摘除前的全块列
         // 分组（组头子块强制归组），节奏档喂布局栈（intra 32 / unit 64 / recovery 96
-        // / stage 96）；来文块进 stageLeadIds（阶段细线渲染面）。
+        // / stage 96）；来文块进 stageLeadIds（阶段细线渲染面）。刀3：分派走
+        // rhythmAssign 单一真源（与布局级封口测试共用），units 进核心缓存（刀4
+        // 目次带阶段导航消费）。
         const sealedIds = sealedMessageIdsOf(msgs);
-        const membership = unitMembership(groupWorkUnits(res.blocks, { isSealedMessage: (id) => sealedIds.has(id) }));
+        const units = groupWorkUnits(res.blocks, { isSealedMessage: (id) => sealedIds.has(id) });
+        const membership = unitMembership(units);
         // 工具组收起摘除（2026-08-30 会话流专项）：折叠态组头的子卡不进布局栈
         const blocks = collapseToolGroups(adaptBlocks(res.blocks, anchor.width), foldedOf);
-
-        const stageLeadIds = new Set<string>();
+        const { rhythmOf, stageLeadIds } = rhythmAssign(blocks, membership);
         const stack = blocks.map((b) => {
-          const m = membership.get(b.id);
-          let rhythm: 'intra' | 'unit' | 'recovery' | 'stage' | undefined;
-          if (m) {
-            rhythm = m.isFirst ? leadOf(m.unit) : 'intra';
-            if (rhythm === 'stage') stageLeadIds.add(b.id);
-          }
           return {
             id: b.id,
             h:
@@ -1220,7 +1220,7 @@ export function PaperPanel() {
                 : GHOST_H,
             w: b.w,
             kind: b.kind,
-            rhythm,
+            rhythm: rhythmOf.get(b.id),
           };
         });
         const layout = layoutRegion(stack, { x: anchor.anchorX, y: anchor.anchorY });
@@ -1307,6 +1307,7 @@ export function PaperPanel() {
             regionTop,
             regionHeight: Math.max(0, anchor.anchorY - regionTop) + 72,
             folioH,
+            units,
             stageLeadIds,
           },
         };
@@ -1335,6 +1336,7 @@ export function PaperPanel() {
         regionBottom: anchor.anchorY,
         regionHeight: c.regionHeight,
         folioH: c.folioH,
+        units: c.units,
         stageLeadIds: c.stageLeadIds,
       });
     });

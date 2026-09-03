@@ -51,9 +51,11 @@ export {
 } from '../../../paper/canvas-math';
 export { createFocusFlightScheduler } from '../../../paper/focus-flight';
 export { defaultFolded, foldLabel, isFoldable } from '../../../paper/fold';
+export type { WorkUnit } from '../../../paper/group';
 /* stream-rhythm 刀2（2026-09-03）：工作单元 pass——节奏档的产出面
- * （groupWorkUnits → unitMembership/leadOf 喂布局；sealedMessageIdsOf 定封口）。 */
-export { groupWorkUnits, leadOf, sealedMessageIdsOf, unitMembership } from '../../../paper/group';
+ * （groupWorkUnits → unitMembership/leadOf/rhythmAssign 喂布局；
+ * sealedMessageIdsOf 定封口）。 */
+export { groupWorkUnits, leadOf, rhythmAssign, sealedMessageIdsOf, unitMembership } from '../../../paper/group';
 export type { BlockInk, InkCache } from '../../../paper/ink';
 export {
   createInkCache,

@@ -1,19 +1,33 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// paper 版式语法专项（stream-rhythm 刀1：docs/plans/stream-rhythm-plan.md）：
+// paper 版式语法专项（stream-rhythm 刀1+刀3：docs/plans/stream-rhythm-plan.md）：
 //   - grammar：工具调用 → 版式族推导（领域名经 resolveSemanticToolName 反查旧名，
 //     run_shell 按 command 内容判验证族；未知名兜底不破语法）；
 //   - group：块序列 → 工作单元（封口纪律 + 跨消息前瞻禁止两条宪法的执行面）；
-//   - 封口不变性专项：任意前缀下，全部成员来自封口消息的单元逐字段不变。
+//   - 封口不变性专项：任意前缀下，全部成员来自封口消息的单元逐字段不变；
+//   - 活尾重排限定（刀3 布局级）：封口前缀 = 刚体——追加事件只许整体平移，
+//     节奏档/间距/相对位置逐字段不变（滚动锚定的数学面）；
+//   - 组原子性（刀3 长会话）：折叠组 = 布局栈单条目，展开组成员连续——
+//     虚拟化窗口对组只能整取整舍/切在边缘，永不交错；
+//   - 长流性能烟测（刀3 旧卷回放）：单卷千块级全链预算。
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { createBlock, resetBlockIdCounterForTests } from '../src/paper/block-model';
-import { ANCHOR, gapAbove, layoutFlow, rhythmGap } from '../src/paper/canvas-math';
+import { ANCHOR, gapAbove, layoutFlow, type RhythmClass, rhythmGap } from '../src/paper/canvas-math';
+import { defaultFolded } from '../src/paper/fold';
 import { classifyTool } from '../src/paper/grammar';
 import type { WorkUnit } from '../src/paper/group';
-import { groupWorkUnits, isErrorishBlock, leadOf, sealedMessageIdsOf, unitMembership } from '../src/paper/group';
-import { translateMessages } from '../src/paper/translate';
+import {
+  groupWorkUnits,
+  isErrorishBlock,
+  leadOf,
+  rhythmAssign,
+  sealedMessageIdsOf,
+  unitMembership,
+} from '../src/paper/group';
+import { collapseToolGroups, translateMessages } from '../src/paper/translate';
+import { visibleFlowWindow } from '../src/paper/virtualize';
 import type { AssistantMessage, ChatMessage, ToolCallPart, UserMessage } from '../src/ui/message-model';
 
 function toolPart(name: string, args: string, status: ToolCallPart['status'] = 'done'): ToolCallPart {
@@ -445,5 +459,272 @@ describe('canvas-math：节奏档间距（刀2 布局面）', () => {
     expect(lay.get('u')?.y).toBe(-100 - 64 - 30 - 32 - 40 - 8 - 50);
     // a 顶 = -324 - 96(stage) - 100
     expect(lay.get('a')?.y).toBe(-100 - 64 - 30 - 32 - 40 - 8 - 50 - 96 - 100);
+  });
+});
+
+/* ═══ 活尾重排限定（刀3 布局级）：封口前缀 = 刚体 ═══ */
+
+/** 合成块高（确定性哈希——判别量在分组/节奏层；真实测高由 measure 签名保证
+ *  封口内容不变，此处只需「同一 id 恒同高」）。 */
+function synthH(id: string): number {
+  let n = 7;
+  for (const c of id) n = (n * 31 + c.charCodeAt(0)) % 97;
+  return 24 + (n % 60);
+}
+
+/** 生产同款布局栈（纯函数链，与 PaperPanel regions memo 同源——折叠摘除 +
+ *  rhythmAssign 分派 + layoutFlow）：布局级封口测试的对象。 */
+function layoutOf(msgs: ChatMessage[]): {
+  blocks: ReturnType<typeof collapseToolGroups>;
+  translated: ReturnType<typeof translateMessages>;
+  units: WorkUnit[];
+  rhythmOf: Map<string, RhythmClass>;
+  stageLeadIds: ReadonlySet<string>;
+  layout: Map<string, { x: number; y: number }>;
+} {
+  const translated = translateMessages(msgs);
+  const sealed = sealedMessageIdsOf(msgs);
+  const units = groupWorkUnits(translated, { isSealedMessage: (id) => sealed.has(id) });
+  const membership = unitMembership(units);
+  const blocks = collapseToolGroups(translated, (b) => defaultFolded(b.kind, b.payload));
+  const { rhythmOf, stageLeadIds } = rhythmAssign(blocks, membership);
+  const stack = blocks.map((b) => ({ id: b.id, h: synthH(b.id), w: b.w, kind: b.kind, rhythm: rhythmOf.get(b.id) }));
+  return { blocks, translated, units, rhythmOf, stageLeadIds, layout: layoutFlow(stack) };
+}
+
+/** 封口前缀指纹：栈序封口块的 {id, 节奏档, 相对锚块 y}——刚体不变性的比较面。 */
+function sealedFingerprint(l: ReturnType<typeof layoutOf>): Array<{ id: string; rhythm: RhythmClass; relY: number }> {
+  const sealedIds = new Set<string>();
+  for (const u of l.units) if (u.sealed) for (const m of u.memberIds) sealedIds.add(m);
+  const anchorId = l.blocks[0]!.id; // 栈首（最旧块）——所有前缀下的同一稳定锚
+  const anchorY = l.layout.get(anchorId)!.y;
+  return l.blocks
+    .filter((b) => sealedIds.has(b.id))
+    .map((b) => {
+      const rhythm = l.rhythmOf.get(b.id);
+      if (!rhythm) throw new Error(`栈块 ${b.id} 无节奏档`);
+      return { id: b.id, rhythm, relY: Math.round((l.layout.get(b.id)!.y - anchorY) * 1000) / 1000 };
+    });
+}
+
+describe('活尾重排限定（刀3 布局级）：封口前缀 = 刚体', () => {
+  beforeEach(() => resetBlockIdCounterForTests());
+
+  it('活尾演化全谱（夹注→工具→成组→组内错误→重试→收尾→新来文）：封口前缀的节奏档与相对位置逐字段不变', () => {
+    const head: ChatMessage[] = [
+      userMsg('u1'),
+      asstMsg('a1', [
+        { type: 'reasoning', text: '先想' },
+        toolPart('fs', '{"action":"read","path":"a.ts"}'),
+        toolPart('fs', '{"action":"read","path":"b.ts"}'),
+        toolPart('search', '{"action":"content","pattern":"x"}'),
+        { type: 'text', text: '第一轮结论', finalised: true },
+      ]),
+      userMsg('u2'),
+    ];
+    const tailStages: Array<{ status: 'streaming' | 'done'; parts: AssistantMessage['parts'] }> = [
+      { status: 'streaming', parts: [{ type: 'reasoning', text: '再想' }] },
+      {
+        status: 'streaming',
+        parts: [{ type: 'reasoning', text: '再想' }, toolPart('fs', '{"action":"read","path":"c.ts"}')],
+      },
+      {
+        status: 'streaming',
+        parts: [
+          { type: 'reasoning', text: '再想' },
+          toolPart('fs', '{"action":"read","path":"c.ts"}'),
+          toolPart('fs', '{"action":"read","path":"d.ts"}'),
+        ],
+      },
+      {
+        status: 'streaming',
+        parts: [
+          { type: 'reasoning', text: '再想' },
+          toolPart('fs', '{"action":"read","path":"c.ts"}'),
+          toolPart('fs', '{"action":"read","path":"d.ts"}'),
+          toolPart('shell', '{"action":"run","command":"make"}', 'error'),
+        ],
+      },
+      {
+        status: 'streaming',
+        parts: [
+          { type: 'reasoning', text: '再想' },
+          toolPart('fs', '{"action":"read","path":"c.ts"}'),
+          toolPart('fs', '{"action":"read","path":"d.ts"}'),
+          toolPart('shell', '{"action":"run","command":"make"}', 'error'),
+          toolPart('shell', '{"action":"run","command":"make"}'),
+        ],
+      },
+      {
+        status: 'done',
+        parts: [
+          { type: 'reasoning', text: '再想' },
+          toolPart('fs', '{"action":"read","path":"c.ts"}'),
+          toolPart('fs', '{"action":"read","path":"d.ts"}'),
+          toolPart('shell', '{"action":"run","command":"make"}', 'error'),
+          toolPart('shell', '{"action":"run","command":"make"}'),
+          { type: 'text', text: '恢复后结论', finalised: true },
+        ],
+      },
+    ];
+    const layouts = tailStages.map((t) => layoutOf([...head, asstMsg('a2', t.parts, t.status)]));
+    // 活尾确实在演化（非平凡测试：尾块节奏档在阶段间有变化）
+    const tailRhythms = layouts.map((l) => l.rhythmOf.get('pb:a2:1g') ?? l.rhythmOf.get('pb:a2:1'));
+    expect(new Set(tailRhythms).size).toBeGreaterThan(1);
+    // 头部封口前缀在全部前缀下逐字段一致（刚体）——前缀比对：封口集单调只增，
+    // 已封块冻结后永不改值，新封块只许追加在尾部（P6 收尾封口 = 指纹变长）
+    const base = sealedFingerprint(layouts[0]!);
+    expect(base.length).toBeGreaterThanOrEqual(4);
+    for (const l of layouts) expect(sealedFingerprint(l).slice(0, base.length)).toEqual(base);
+    // 新来文到达后再看：a2 收尾后封口的块也冻结（finalised 后永不再动）
+    const after = layoutOf([
+      ...head,
+      asstMsg('a2', tailStages[5]!.parts, 'done'),
+      userMsg('u3'),
+      asstMsg('a3', [{ type: 'reasoning', text: '新阶段' }], 'streaming'),
+    ]);
+    const a2Frozen = sealedFingerprint(layouts[5]!);
+    expect(sealedFingerprint(after).slice(0, a2Frozen.length)).toEqual(a2Frozen);
+  });
+
+  it('刚体平移：封口块的绝对位移在两前缀间同值（滚动锚定——视口上方无相对跳动）', () => {
+    const head: ChatMessage[] = [userMsg('u1'), asstMsg('a1', [toolPart('fs', '{"action":"read","path":"a.ts"}')])];
+    const p1 = layoutOf([...head, asstMsg('a2', [{ type: 'reasoning', text: '想' }], 'streaming')]);
+    const p2 = layoutOf([
+      ...head,
+      asstMsg(
+        'a2',
+        [{ type: 'reasoning', text: '想' }, toolPart('fs', '{"action":"read","path":"b.ts"}')],
+        'streaming',
+      ),
+    ]);
+    const deltas = new Set<number>();
+    for (const b of p1.blocks) {
+      const y1 = p1.layout.get(b.id)!.y;
+      const y2 = p2.layout.get(b.id)!.y;
+      deltas.add(Math.round((y2 - y1) * 1000) / 1000);
+    }
+    // 封口块全体同 Δ（刚体平移）；活尾块（夹注被吸入工作单元）不在此约束内
+    const sealedIds = new Set(p1.units.filter((u) => u.sealed).flatMap((u) => u.memberIds));
+    const sealedDeltas = new Set<number>();
+    for (const b of p1.blocks) {
+      if (!sealedIds.has(b.id)) continue;
+      sealedDeltas.add(Math.round((p2.layout.get(b.id)!.y - p1.layout.get(b.id)!.y) * 1000) / 1000);
+    }
+    expect(sealedDeltas.size).toBe(1);
+    expect(deltas.size).toBeGreaterThan(0);
+  });
+});
+
+/* ═══ 组原子性（刀3 长会话）：虚拟化窗口不腰斩折叠组 ═══ */
+
+describe('组原子性（刀3）：折叠组 = 布局栈单条目，展开组连续', () => {
+  beforeEach(() => resetBlockIdCounterForTests());
+
+  it('折叠组（无错默认收起）：子卡不进布局栈——任何窗口对它只能整取整舍', () => {
+    const l = layoutOf([
+      asstMsg('a1', [
+        toolPart('fs', '{"action":"read","path":"a.ts"}'),
+        toolPart('fs', '{"action":"read","path":"b.ts"}'),
+        toolPart('fs', '{"action":"read","path":"c.ts"}'),
+        { type: 'text', text: '收尾', finalised: true },
+      ]),
+    ]);
+    const headers = l.blocks.filter((b) => b.kind === 'toolgroup');
+    expect(headers).toHaveLength(1);
+    const childIds = (headers[0]!.payload as { childIds: string[] }).childIds;
+    expect(childIds).toHaveLength(3);
+    // 原子性：子卡全部不在布局栈（几何/渲染/窗口面对组只有一个条目）
+    for (const c of childIds) {
+      expect(l.blocks.some((b) => b.id === c)).toBe(false);
+      expect(l.layout.has(c)).toBe(false);
+    }
+    // 组头有节奏档（恢复/工作单元成员面）
+    expect(l.rhythmOf.has(headers[0]!.id)).toBe(true);
+  });
+
+  it('展开组（组内出错自动张开）：组头 + 子卡在栈内连续（窗口切不出交错序）', () => {
+    const l = layoutOf([
+      asstMsg('a1', [
+        { type: 'reasoning', text: '想' },
+        toolPart('fs', '{"action":"read","path":"a.ts"}'),
+        toolPart('fs', '{"action":"read","path":"b.ts"}', 'error'),
+        toolPart('search', '{}'),
+        { type: 'text', text: '收尾', finalised: true },
+      ]),
+    ]);
+    const headers = l.blocks.filter((b) => b.kind === 'toolgroup');
+    expect(headers).toHaveLength(1);
+    const childIds = (headers[0]!.payload as { childIds: string[] }).childIds;
+    expect(childIds).toHaveLength(3);
+    // 展开组：子卡在栈内，且组头与子卡构成连续 run（无外来块插入）
+    const memberIds = [headers[0]!.id, ...childIds];
+    const idx = l.blocks.findIndex((b) => b.id === headers[0]!.id);
+    expect(idx).toBeGreaterThanOrEqual(0);
+    expect(l.blocks.slice(idx, idx + memberIds.length).map((b) => b.id)).toEqual(memberIds);
+  });
+
+  it('长流窗口二分过节奏栈：窗口只按栈序连续取段，折叠组原子存活', () => {
+    // 两段折叠组夹叙述块的长流
+    const msgs: ChatMessage[] = [userMsg('u1')];
+    for (let t = 0; t < 6; t++) {
+      msgs.push(
+        asstMsg(`a${t}`, [
+          toolPart('fs', `{"action":"read","path":"f${t}.ts"}`),
+          toolPart('fs', `{"action":"read","path":"g${t}.ts"}`),
+          { type: 'text', text: `结论 ${t}`, finalised: true },
+        ]),
+      );
+    }
+    const l = layoutOf(msgs);
+    const geom = l.blocks.map((b) => ({
+      id: b.id,
+      y: l.layout.get(b.id)!.y,
+      h: synthH(b.id),
+      x: 0,
+      w: 720,
+    }));
+    const groupHeaders = l.blocks.filter((b) => b.kind === 'toolgroup').map((b) => b.id);
+    expect(groupHeaders).toHaveLength(6);
+    // 逐档视口：任取一段窗口，命中折叠组必是组头条目本身（子卡不在栈——不可能半截）
+    for (let k = 0; k < geom.length; k += 3) {
+      const mid = geom[k]!;
+      const win = visibleFlowWindow(geom, { x0: 0, y0: mid.y - 10, x1: 100, y1: mid.y + 10 }, 200);
+      for (let i = win.first; i < win.lastExcl; i++) {
+        const id = geom[i]!.id;
+        const isHeader = groupHeaders.includes(id);
+        expect(isHeader || !groupHeaders.includes(`${id}g`)).toBe(true);
+      }
+    }
+  });
+});
+
+/* ═══ 长流性能烟测（刀3 旧卷回放）═══ */
+
+describe('长流性能烟测（刀3）：单卷千块级全链预算', () => {
+  beforeEach(() => resetBlockIdCounterForTests());
+
+  it('~2200 块全链（translate→group→rhythm→layout）远低于预算（预算 1.5s，防回放回归）', () => {
+    const msgs: ChatMessage[] = [];
+    for (let t = 0; t < 55; t++) {
+      msgs.push(userMsg(`u${t}`, `回合 ${t}`));
+      const parts: AssistantMessage['parts'] = [{ type: 'reasoning', text: `回合 ${t} 思考` }];
+      for (let k = 0; k < 20; k++) parts.push(toolPart('fs', `{"action":"read","path":"src/f${t}_${k}.ts"}`));
+      parts.push(toolPart('shell', '{"action":"run","command":"cargo test"}'));
+      parts.push({ type: 'text', text: `回合 ${t} 结论`, finalised: true });
+      msgs.push(asstMsg(`a${t}`, parts));
+    }
+    const t0 = Date.now();
+    const l = layoutOf(msgs);
+    const elapsed = Date.now() - t0;
+    // 正确性面：全封口、组头成型、节奏档齐备（栈块数被折叠组压缩——判别量
+    // 看转译总数；折叠组是原子单条目，见组原子性组）
+    expect(l.translated.length).toBeGreaterThan(1200);
+    expect(l.blocks.length).toBeGreaterThan(200);
+    expect(l.units.every((u) => u.sealed)).toBe(true);
+    expect(l.units.filter((u) => u.kind === 'work').length).toBeGreaterThan(50);
+    for (const b of l.blocks) expect(l.rhythmOf.has(b.id)).toBe(true);
+    // 性能面：宽松预算防环境抖动（实测 ~几十 ms 量级；此断言护的是数量级回归）
+    expect(elapsed).toBeLessThan(1500);
   });
 });

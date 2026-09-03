@@ -3,21 +3,21 @@
 
 // Stage-4 §4.4 目次带纯几何 v2（minimap 换血）：线性映射 / 滑块数学
 // （grab offset scrub、点外即跳、fit 全高）/ 语义标记派生 / 未读区 /
-// 视口指示 / user 轮次锚点。
+// 视口指示 / 阶段导航锚（stream-rhythm 刀4：消费工作单元）。
 
 import { describe, expect, it } from 'vitest';
 import {
-  buildTurnAnchors,
+  buildStageAnchors,
   computeSlider,
   deriveMarks,
   grabOffsetAt,
   jumpViewTopAt,
   nearestAnchorAt,
+  type StageUnitInput,
   scrubViewTop,
   stripToWorld,
   type TocMarkInput,
   type TocRange,
-  type TurnAnchorInput,
   tocMapper,
   unreadBand,
   viewportMarker,
@@ -176,39 +176,46 @@ describe('paper/toc unreadBand（未读区）', () => {
   });
 });
 
-describe('paper/toc buildTurnAnchors（纯 user 轮次锚点）', () => {
-  const blocks: TurnAnchorInput[] = [
-    { id: 'u1', kind: 'user', worldY: -900, worldH: 60, preview: '第一条来文' },
-    { id: 'a1', kind: 'markdown', worldY: -700, worldH: 120, preview: '正文不应成为锚点' },
-    { id: 'u2', kind: 'user', worldY: -200, worldH: 60, preview: '第二条来文' },
+describe('paper/toc buildStageAnchors（阶段导航锚，stream-rhythm 刀4：消费工作单元）', () => {
+  const units: StageUnitInput[] = [
+    { unitId: 'u:u1', kind: 'user', blockId: 'u1', worldY: -900, worldH: 60, preview: '第一条来文' },
+    { unitId: 'u:a1', kind: 'work', blockId: 'a1', worldY: -700, worldH: 120, preview: '工作单元不上锚' },
+    { unitId: 'u:u2', kind: 'user', blockId: 'u2', worldY: -200, worldH: 60, preview: '第二条来文' },
   ];
 
-  it('只取 user 块，按块中心映射到带内刻度', () => {
-    const anchors = buildTurnAnchors(blocks, RANGE);
+  it('只取 user 单元，按序编号（stageIndex）+ 块中心映射', () => {
+    const anchors = buildStageAnchors(units, RANGE);
     expect(anchors.map((a) => a.blockId)).toEqual(['u1', 'u2']);
+    expect(anchors.map((a) => a.stageIndex)).toEqual([1, 2]);
+    expect(anchors.map((a) => a.unitId)).toEqual(['u:u1', 'u:u2']);
     // u1 中心 worldY=-870 → (-870+1000)/1000*400+80 = 132
-    expect(anchors[0].stripY).toBeCloseTo(132, 2);
+    expect(anchors[0]!.stripY).toBeCloseTo(132, 2);
     // u2 中心 worldY=-170 → 412
-    expect(anchors[1].stripY).toBeCloseTo(412, 2);
-    expect(anchors[1].preview).toBe('第二条来文');
+    expect(anchors[1]!.stripY).toBeCloseTo(412, 2);
+    expect(anchors[1]!.preview).toBe('第二条来文');
   });
 
-  it('无 user 块 → 空锚点', () => {
-    const anchors = buildTurnAnchors([{ id: 'a1', kind: 'markdown', worldY: -100, worldH: 10, preview: 'x' }], RANGE);
-    expect(anchors).toEqual([]);
+  it('无 user 单元 → 空锚点；空预览回退阶段序', () => {
+    const none = buildStageAnchors(
+      [{ unitId: 'u:a1', kind: 'work', blockId: 'a1', worldY: -100, worldH: 10, preview: 'x' }],
+      RANGE,
+    );
+    expect(none).toEqual([]);
+    const empty = buildStageAnchors([{ unitId: 'u:u9', kind: 'user', blockId: 'u9', worldY: -100, worldH: 10 }], RANGE);
+    expect(empty[0]!.preview).toBe('阶段 1');
   });
 });
 
-describe('paper/toc nearestAnchorAt（hover 反查）', () => {
-  const anchors = buildTurnAnchors(
+describe('paper/toc nearestAnchorAt（hover 反查，泛型锚面）', () => {
+  const anchors = buildStageAnchors(
     [
-      { id: 'u1', kind: 'user', worldY: -900, worldH: 60, preview: '一' },
-      { id: 'u2', kind: 'user', worldY: -200, worldH: 60, preview: '二' },
+      { unitId: 'u:u1', kind: 'user', blockId: 'u1', worldY: -900, worldH: 60, preview: '一' },
+      { unitId: 'u:u2', kind: 'user', blockId: 'u2', worldY: -200, worldH: 60, preview: '二' },
     ],
     RANGE,
   );
 
-  it('取最近的轮次锚点', () => {
+  it('取最近的阶段锚点', () => {
     expect(nearestAnchorAt(100, anchors)?.blockId).toBe('u1');
     expect(nearestAnchorAt(300, anchors)?.blockId).toBe('u2');
     expect(nearestAnchorAt(500, anchors)?.blockId).toBe('u2'); // 超出取最末

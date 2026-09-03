@@ -72,7 +72,7 @@ export function foldLabel(kind: BlockKind, payload: unknown, folded: boolean): s
     label?: string;
     name?: string;
     status?: string;
-    items?: Array<{ name?: string; status?: string }>;
+    items?: Array<{ name?: string; args?: string; status?: string }>;
   };
   const outSuffix = (): string => {
     const out = (p.output?.length ?? 0) + (p.err?.length ?? 0);
@@ -111,18 +111,35 @@ export function foldLabel(kind: BlockKind, payload: unknown, folded: boolean): s
     const running = items.filter((i) => i.status === 'running' || i.status === 'pending').length;
     const runningSuffix = running > 0 ? ` · ${running} 在跑` : '';
     if (!folded) return `▾ 收起工具 ×${items.length}${runningSuffix}`;
-    // 名字摘要：按出现序去重计数（≤3 种逐个列，更多折「等 N 种」）
-    const counts = new Map<string, number>();
+    // 判别量摘要（stream-rhythm 刀4a）：压缩的是重复，不是信息——组头一行就能
+    // 分辨「动了哪些文件 / 跑了什么命令」。按名分组，每组露前 3 个判别字段
+    // （toolDigest：read_file 露路径 / shell 露命令；同判别值去重）；无判别
+    // 字段（无参 / 流式半程）回退旧计数文案。判别值截 20 字：折叠行是 10px
+    // mono 单行（FOLD_ROW_H 恒一行，测高镜像零变化），3 值 × 20 字在 640
+    // 版心内放得下。
+    const GROUP_DIGEST_MAX = 20;
+    const groups = new Map<string, { count: number; digests: string[] }>();
     for (const it of items) {
       const n = it.name || 'tool';
-      counts.set(n, (counts.get(n) ?? 0) + 1);
+      const g = groups.get(n) ?? { count: 0, digests: [] };
+      g.count += 1;
+      const d = toolDigest(it.args ?? '', GROUP_DIGEST_MAX);
+      if (d && !g.digests.includes(d)) g.digests.push(d);
+      groups.set(n, g);
     }
-    const entries = [...counts.entries()];
+    const entries = [...groups.entries()];
     const detail =
       entries.length > 0
         ? ` · ${entries
             .slice(0, 3)
-            .map(([n, c]) => (c > 1 ? `${n} ×${c}` : n))
+            .map(([n, g]) => {
+              // 无判别字段：旧计数文案原样（×N 只在多枚时挂）
+              if (g.digests.length === 0) return g.count > 1 ? `${n} ×${g.count}` : n;
+              // 计数补位：只露部分判别值（截断 / 同值去重）时补 ×N，总账不失真
+              const truncated = g.digests.length > 3;
+              const countTag = truncated || g.count > g.digests.length ? ` ×${g.count}` : '';
+              return `${n}${countTag} ${g.digests.slice(0, 3).join(' / ')}`;
+            })
             .join(' · ')}${entries.length > 3 ? ` · 等 ${entries.length} 种` : ''}`
         : '';
     return `▸ 工具 ×${items.length}${detail}${runningSuffix}`;
