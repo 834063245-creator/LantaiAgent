@@ -21,6 +21,7 @@ import { composeDockPlugin } from './builtin/compose-dock';
 import { builtinFsPlugin } from './builtin/fs-builtin';
 import { builtinGraphPlugin } from './builtin/graph-builtin';
 import { llmAdaptersPlugin } from './builtin/llm-adapters';
+import { paperMinimapPlugin } from './builtin/paper-minimap';
 import { paperPlugin } from './builtin/paper-shell';
 import { builtinRenderersPlugin } from './builtin/renderers';
 import { builtinSessionsPlugin } from './builtin/sessions-builtin';
@@ -45,6 +46,7 @@ export function factoryProductPlugins(): LantaiPlugin[] {
     settingsPlugin,
     canvasNavPlugin,
     composeDockPlugin,
+    paperMinimapPlugin,
     // S5b：agent-loop-service（类+插件产物化，模块态留内核 agent-loop-active.ts）
     agentLoopServicePlugin,
     // S3 工具域 + 段贡献（18）

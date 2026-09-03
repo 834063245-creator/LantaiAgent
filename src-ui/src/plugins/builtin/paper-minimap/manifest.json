@@ -1,0 +1,8 @@
+{
+  "name": "hologram/paper-minimap",
+  "version": "1.0.0",
+  "description": "画布小地图（方位感 + 点击跳转 + 拖动缩放）第一方内置插件——源码构建产物，随包携带；displace 位移 bundle 兜底行，设置面板可重新加载",
+  "entry": "entry.js",
+  "inject": ["overlays"],
+  "displace": true
+}

@@ -90,6 +90,7 @@ export const FIRST_PARTY_MANIFEST: Record<string, FirstPartyPluginMeta> = {
   'hologram/paper-shell': meta('hologram/paper-shell', 'feature', '纸壳面板（写作视图 + toggle 命令）'),
   'hologram/canvas-nav': meta('hologram/canvas-nav', 'feature', '画布导航命令'),
   'hologram/compose-dock': meta('hologram/compose-dock', 'feature', '组合停靠面板'),
+  'hologram/paper-minimap': meta('hologram/paper-minimap', 'feature', '画布小地图（方位感 + 点击跳转 + 拖动缩放）'),
   'hologram/web-domain': meta('hologram/web-domain', 'feature', 'web 域工具（web_fetch）'),
   'hologram/browser-desktop-domain': meta(
     'hologram/browser-desktop-domain',

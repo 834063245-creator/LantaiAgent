@@ -34,20 +34,13 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
-import {
-  clampViewportFrame,
-  inkBarsFor,
-  type MinimapRegionInput,
-  minimapProject,
-  regionFrame,
-} from '../../../paper/minimap-core';
+import type { MinimapRegionInput } from '../../../paper/minimap-core';
 import type {
   AssistantMessage,
   BlockMeasureCache,
   CanvasStore,
   ChatMessage,
   FlowGeom,
-  InkCache,
   MaskRect,
   MessageTranslateCache,
   PaperStrip,
@@ -83,7 +76,6 @@ import {
   hitRegionAtWorld,
   Icon,
   injectPaperTokens,
-  inkColorOf,
   isFoldable,
   layoutRegion,
   lodActive,
@@ -329,256 +321,6 @@ const BlockView = memo(function BlockView({
 
 /* ── 主组件 ── */
 
-/** 创作坞坐底抬高（--composer-rise token 的 TS 侧镜像——坞顶线 = 页底 −
- *  抬高 − 坞高。2026-09-02 拍板 C：两态同位，固定值不随窗口高度浮动）。 */
-const COMPOSER_RISE = 96;
-
-/** 小地图（D-R1-1 方位感件——全画布内容包围盒 + 视口框投影，点击跳转）。
- * V3b 欠账接回（2026-08-30）：pointer-events 开启，点击像素反解世界坐标滑过去。
- * R3 多卷版（2026-09-05）：全量摊开卷墨条 + 每卷卷框（活跃卷朱砂加粗）+
- * 原点十字。纯几何抽离到 paper/minimap-core（可单测）。重画依赖沿用 P2-3
- * 纪律：以 blocks/layout/extent 内层引用为依赖 → 平移帧零重画。 */
-function MinimapView({
-  content,
-  viewport,
-  bottom,
-  onJump,
-  regions,
-  inkRegions,
-  activeSessionId,
-  foldedOf,
-  inkCache,
-}: {
-  content: { x0: number; y0: number; x1: number; y1: number };
-  viewport: { x0: number; y0: number; x1: number; y1: number };
-  /** 创作坞实际高度（不含坐底抬高——MinimapView 内部再叠加 COMPOSER_RISE；
-   * rework P3-1：minimap 底部随它定位，避免被动态变高的坞遮住） */
-  bottom: number;
-  /** 点击跳转：视口中心滑到对应世界点（保 zoom） */
-  onJump: (worldX: number, worldY: number) => void;
-  /** 全量摊开卷（R3：不像旧版只画活跃卷一册——多卷并陈见真方位） */
-  regions: RegionView[];
-  /** 墨迹稳定快照（PaperPanel sameKey 缓存：pan 帧引用稳定，内容/stub 变化才换）——
-   *  canvas 重画唯一依赖源：平移到零重画，stub 切换/流式/挪卷/改宽仍即时。 */
-  inkRegions: MinimapRegionInput[];
-  /** 活跃会话 id（卷框高亮 + hover title） */
-  activeSessionId?: string | null;
-  foldedOf?: (b: SourcedBlock) => boolean;
-  inkCache?: InkCache;
-}) {
-  /* R3.5 浮动化（2026-09-05）：可拖动 + 可缩放 + localStorage 记忆。
-   * 默认右下角（bottom 由调用方传创作坞高），拖动改 right/bottom 偏移，
-   * 滚轮改尺寸；偏好存 localStorage（组件级，非工作区数据）。 */
-  const MM_PREF_KEY = 'lantai.minimap.pref';
-  const defaultPref = (b: number) => ({ right: 18, bottom: Math.max(18, b + COMPOSER_RISE + 18), w: 156, h: 116 });
-  const [pref, setPref] = useState(() => {
-    try {
-      const raw = localStorage.getItem(MM_PREF_KEY);
-      if (raw) {
-        const p = JSON.parse(raw) as { right?: number; bottom?: number; w?: number; h?: number };
-        const base = defaultPref(bottom);
-        return {
-          right: typeof p.right === 'number' ? p.right : base.right,
-          bottom: typeof p.bottom === 'number' ? p.bottom : base.bottom,
-          w: typeof p.w === 'number' ? Math.min(280, Math.max(120, p.w)) : base.w,
-          h: typeof p.h === 'number' ? Math.min(220, Math.max(90, p.h)) : base.h,
-        };
-      }
-      return defaultPref(bottom);
-    } catch {
-      return defaultPref(bottom);
-    }
-  });
-  const persistPref = useCallback((next: typeof pref) => {
-    setPref(next);
-    try {
-      localStorage.setItem(MM_PREF_KEY, JSON.stringify(next));
-    } catch {
-      /* localStorage 不可用（隐私模式等）——不持久化，不影响使用 */
-    }
-  }, []);
-  /* 首帧校正：挂载时 composerHeight 可能尚未实测（0）——若用户未曾持久化过，
-   * 用真实 bottom 把默认位置补正（只跑一次；didInitRef 保证幂等）。 */
-  const didInitRef = useRef(false);
-  useEffect(() => {
-    if (didInitRef.current) return;
-    didInitRef.current = true;
-    if (!localStorage.getItem(MM_PREF_KEY)) {
-      persistPref({ ...pref, bottom: Math.max(18, bottom + COMPOSER_RISE + 18) });
-    }
-  }, [bottom, persistPref, pref]);
-  const W = pref.w;
-  const H = pref.h;
-  const proj = useMemo(() => minimapProject(content, W, H), [content, W, H]);
-  const { scale, offX, offY } = proj;
-  const inkCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const mmBoxRef = useRef<HTMLDivElement | null>(null);
-  /* 拖动状态（R3.5）：按下空白区记起点，move 换算 right/bottom 增量；
-   * 松手位移 < DRAG_THRESHOLD = 点击 → 跳转到该世界点（原 V3b 手势保留）。 */
-  const dragRef = useRef<{ sx: number; sy: number; right: number; bottom: number; moved: boolean } | null>(null);
-  const onContainerPointerDown = useCallback(
-    (e: React.PointerEvent) => {
-      if (e.button !== 0) return;
-      // 卷框 / 视口框有自己的 handler（stopPropagation），空白区和 canvas 才走到这
-      e.stopPropagation();
-      // R3.5 收尾：preventDefault 掐断拖动时的原生文本选择（配合 CSS user-select:none，
-      // 双保险——WebView 下 pointerdown 选择在 capture 阶段就启动了）
-      e.preventDefault();
-      const rect = e.currentTarget.getBoundingClientRect();
-      dragRef.current = { sx: e.clientX, sy: e.clientY, right: pref.right, bottom: pref.bottom, moved: false };
-      const onMove = (ev: PointerEvent) => {
-        const d = dragRef.current;
-        if (!d) return;
-        if (!d.moved && Math.hypot(ev.clientX - d.sx, ev.clientY - d.sy) < DRAG_THRESHOLD) return;
-        d.moved = true;
-        // 相对画布容器（.pp-canvas）右下角的偏移增量
-        const crect = (document.querySelector('.pp-canvas') as HTMLElement | null)?.getBoundingClientRect();
-        if (!crect) return;
-        const right = Math.min(crect.width - 8, Math.max(8, d.right - (ev.clientX - d.sx)));
-        const bottom = Math.min(crect.height - 8, Math.max(8, d.bottom - (ev.clientY - d.sy)));
-        persistPref({ ...pref, right, bottom });
-      };
-      const onUp = (ev: PointerEvent) => {
-        const d = dragRef.current;
-        dragRef.current = null;
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onUp);
-        // 未拖动 = 点击跳转：像素反解世界坐标
-        if (d && !d.moved) {
-          const mx = ev.clientX - rect.left - 4 - offX;
-          const my = ev.clientY - rect.top - 4 - offY;
-          onJump(content.x0 + mx / scale, content.y0 + my / scale);
-        }
-      };
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
-    },
-    [pref, persistPref, offX, offY, scale, content.x0, content.y0, onJump],
-  );
-  /* 滚轮缩放（R3.5，2026-09-05 收尾）：原生 wheel 监听（passive:false）——
-   * React 合成 onWheel 在 WebView 是 passive，preventDefault 失效且事件会被
-   * 画布原生 wheel 监听器吞掉 → 缩放「没实装」的根因。原生监听保证
-   * preventDefault 生效，并阻断冒泡（minimap 上滚轮 = 只缩放 minimap）。 */
-  useEffect(() => {
-    const el = mmBoxRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const step = e.deltaY > 0 ? -16 : 16;
-      const w = Math.min(280, Math.max(120, pref.w + step));
-      // 等比缩放（保持宽高比近似原 156:116）
-      const h = Math.min(220, Math.max(90, Math.round((w * pref.h) / pref.w)));
-      persistPref({ ...pref, w, h });
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, [pref, persistPref]);
-  useEffect(() => {
-    const canvas = inkCanvasRef.current;
-    if (!canvas || inkRegions.length === 0 || !foldedOf || !inkCache) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const { scale, offX, offY } = proj;
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = W * dpr;
-    canvas.height = H * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, W, H);
-
-    for (const r of inkRegions) {
-      // 全卷墨条：真墨（非 stub）/ 占位砖（stub 离屏卷）
-      const bars = inkBarsFor(r, foldedOf, inkCache, content, proj);
-      for (const b of bars) {
-        ctx.fillStyle = b.kind === 'stub' ? 'rgba(38, 34, 28, 0.16)' : inkColorOf(b.kind);
-        ctx.fillRect(b.x, b.y, Math.max(0.5, b.w), Math.max(0.5, b.h));
-      }
-      // 卷框（活跃卷朱砂加粗）
-      const frame = regionFrame(r, content, proj);
-      if (frame) {
-        const isActive = activeSessionId != null && r.sessionId === activeSessionId;
-        ctx.strokeStyle = isActive ? '#a63a2e' : 'rgba(38, 34, 28, 0.28)';
-        ctx.lineWidth = isActive ? 1.5 : 1;
-        ctx.strokeRect(frame.x - 1.5, frame.y - 1.5, frame.w + 3, frame.h + 3);
-      }
-    }
-
-    // 原点十字（方位感：无限画布的锚）
-    const ox = 4 + (0 - content.x0) * scale + offX;
-    const oy = 4 + (0 - content.y0) * scale + offY;
-    ctx.strokeStyle = 'rgba(166, 58, 46, 0.6)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(ox - 4, oy);
-    ctx.lineTo(ox + 4, oy);
-    ctx.moveTo(ox, oy - 4);
-    ctx.lineTo(ox, oy + 4);
-    ctx.stroke();
-    // P2-3（2026-09-02）平移零重画纪律，R3 多卷化（2026-09-03）延续：依赖全为
-    // 内容/stub 侧稳定引用——inkRegions（sameKey 缓存，pan 帧不换）、content/proj
-    // （minimapContent 同款缓存 + W/H 派生，pan 稳定）、W/H（尺寸 state）、
-    // foldedOf/inkCache（稳定引用）、activeSessionId（卷框色）。唯 pan 变化的
-    // regions 外层不在此列 → 平移帧零重画，内容/几何/stub 切换即时重画。
-  }, [inkRegions, content, proj, foldedOf, inkCache, W, H, activeSessionId]);
-  const toMap = (x: number, y: number) => ({
-    left: 4 + (x - content.x0) * scale + offX,
-    top: 4 + (y - content.y0) * scale + offY,
-  });
-  // 视口框投影——clamp 到容器内（防止 content 极小/视口极大时红框溢出，
-  // 2026-09-05 空卷红框事故的保险丝；clamp 逻辑抽在 minimap-core 可测）
-  const vp = clampViewportFrame(
-    {
-      left: toMap(viewport.x0, viewport.y0).left,
-      top: toMap(viewport.x0, viewport.y0).top,
-      width: (viewport.x1 - viewport.x0) * scale,
-      height: (viewport.y1 - viewport.y0) * scale,
-    },
-    W,
-    H,
-  );
-  // 卷框 DOM 层（hover 高亮 + 点击跳该卷）：canvas 只画墨，交互框叠 div——
-  // 命中与语义天然合一（R3 多卷导航）
-  const volFrames = useMemo(
-    () =>
-      regions
-        .map((r) => {
-          const f = regionFrame(r, content, proj);
-          return f
-            ? { sessionId: r.sessionId, label: r.label, frame: f, active: r.sessionId === activeSessionId }
-            : null;
-        })
-        .filter((x): x is NonNullable<typeof x> => x != null),
-    [regions, content, proj, activeSessionId],
-  );
-  return (
-    <div
-      ref={mmBoxRef}
-      className="pp-minimap"
-      style={{ right: pref.right, bottom: pref.bottom, width: W, height: H }}
-      title="小地图 · 点击跳转 · Home 键回原点 · Alt+↑↓ 走块 · Alt+←→ 走卷 · 拖动移动 · 滚轮缩放"
-      onPointerDown={onContainerPointerDown}
-    >
-      <canvas ref={inkCanvasRef} className="pp-mm-ink" />
-      {volFrames.map((v) => (
-        <div
-          key={v.sessionId}
-          className={`pp-mm-vol${v.active ? ' pp-mm-vol-active' : ''}`}
-          style={{ left: v.frame.x, top: v.frame.y, width: v.frame.w, height: v.frame.h }}
-          title={v.label}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            // 跳卷：把卷包围盒中心滑到视口中心
-            const wx = content.x0 + (v.frame.x + v.frame.w / 2 - 4 - offX) / scale;
-            const wy = content.y0 + (v.frame.y + v.frame.h / 2 - 4 - offY) / scale;
-            onJump(wx, wy);
-          }}
-        />
-      ))}
-      <div className="pp-mm-viewport" style={vp} />
-    </div>
-  );
-}
-
 /** 拖动阈值（px）：超过即视为拖块（区分点击） */
 const DRAG_THRESHOLD = 6;
 /** 自动选中命中区向上外扩余量（px，世界单位）：卷首头（folio-head）在
@@ -590,6 +332,9 @@ const REGION_HIT_LABEL_BAND = 40;
 const MANUAL_GUARD_MS = 800;
 /** 流内占位符高度（pinned 块在流原序位的洞——设计文档 §2.3） */
 const GHOST_H = 32;
+/** 块宽兜底（2026-09-03 级联防御）：流区宽脏/NaN 时回落默认版心宽
+ *  （与 paper/block-model DEFAULT_BLOCK_WIDTH 同值，本地不引 host）。 */
+const FALLBACK_BLOCK_W = 720;
 /** 眉批快照钉宽（P5：独立夹注快照落纸宽度） */
 const SIDECAR_PIN_W = 320;
 /** 稳定空引用——无会话/无钉住时避免无谓重渲染 */
@@ -1286,10 +1031,14 @@ export function PaperPanel() {
   const shrinkCopyCacheRef = useRef(new WeakMap<SourcedBlock, { w: number; copy: SourcedBlock }>());
   const adaptBlocks = useCallback((blocks: SourcedBlock[], regionW: number): SourcedBlock[] => {
     const cache = shrinkCopyCacheRef.current;
-    const contentW = Math.max(USER_SHRINK_MIN_W, regionW - REGION_CONTENT_MARGIN);
+    // ⚠ 防御（2026-09-03 级联排查）：regionW 非有限数（流区宽脏/NaN）会让本卷
+    // 全部块宽变 NaN → 测高 NaN → 布局级联打碎。实测优先无签名守卫，宁可回落
+    // 默认版心宽，也不让 NaN 进测量链。
+    const safeRegionW = Number.isFinite(regionW) && regionW > 0 ? regionW : FALLBACK_BLOCK_W + REGION_CONTENT_MARGIN;
+    const contentW = Math.max(USER_SHRINK_MIN_W, safeRegionW - REGION_CONTENT_MARGIN);
     return blocks.map((b) => {
       const cappedW = Math.min(b.w, contentW);
-      const targetW = cappedW;
+      const targetW = Number.isFinite(cappedW) && cappedW > 0 ? cappedW : FALLBACK_BLOCK_W;
       if (targetW === b.w) return b;
       const hit = cache.get(b);
       if (hit && hit.w === targetW) return hit.copy;
@@ -2389,7 +2138,6 @@ export function PaperPanel() {
     minimapContentCacheRef.current = { key, content };
     return content;
   }, [regions, canvasStrips, orphanPins, viewRect]);
-  const minimap = useMemo(() => ({ content: minimapContent, viewport: viewRect }), [minimapContent, viewRect]);
 
   /* ── 抽纸条交互（A 拖拽做正 + B 选中浮钮）──
    * Stage-5：纸条 = 工作区级公共物（拷贝语义快照，独立宿主，不挂会话）——
@@ -2929,15 +2677,18 @@ export function PaperPanel() {
   }, []);
 
   /* ── 覆盖层上下文（Stage-4）：创作坞消费低频（动作/活跃/锁存），
-   * 目次带消费高频（流区几何）。拆两 context 避免创作坞随平移重渲。 ── */
+   * 目次带消费高频（流区几何）。拆两 context 避免创作坞随平移重渲。
+   * 2026-09-05 插件化：小地图（paper-minimap）经 minimap 数据面 + glideTo
+   * 消费（P2-3 缓存原样下发——引用稳定纪律不破）。 ── */
   const dockContext = useMemo(
     () => ({
       activeSessionId: activeSessionKey,
       inputLocked,
       setInputLocked,
       flyToPoint,
+      glideTo: glideViewTo,
     }),
-    [activeSessionKey, inputLocked, flyToPoint],
+    [activeSessionKey, inputLocked, flyToPoint, glideViewTo],
   );
   const regionContext = useMemo(
     () => ({
@@ -2947,8 +2698,10 @@ export function PaperPanel() {
       canvasSize,
       composerHeight,
       foldedOf,
+      minimap: { content: minimapContent, geo: minimapGeo },
+      inkCache: inkCacheRef.current,
     }),
-    [regions, activeSessionKey, viewRect, canvasSize, composerHeight, foldedOf],
+    [regions, activeSessionKey, viewRect, canvasSize, composerHeight, foldedOf, minimapContent, minimapGeo],
   );
 
   /* 划词朱线（2026-09-02 视觉迭代）：行合并 + 手写路径渲染期现算——
@@ -3318,21 +3071,8 @@ export function PaperPanel() {
             )}
           </div>
 
-          {/* 小地图（D-R1-1 方位感：全画布内容聚落 + 视口框 + Home 回原点）。
-              案头态架空——零流区无可导航，浮在半空是噪音。 */}
-          {!desk && (
-            <MinimapView
-              content={minimap.content}
-              viewport={minimap.viewport}
-              bottom={composerHeight}
-              onJump={glideViewTo}
-              regions={regions}
-              inkRegions={minimapGeo}
-              activeSessionId={activeSessionKey}
-              foldedOf={foldedOf}
-              inkCache={inkCacheRef.current}
-            />
-          )}
+          {/* 小地图已插件化（2026-09-05）：paper-minimap 插件经 overlays right-edge 槽贡献，
+              本处不再渲染——见 plugins/builtin/paper-minimap/ */}
 
           {/* 覆盖层贡献行（Stage-4）：创作坞（composer 槽）在底栏，目次带（right-edge 槽）在右缘。
               案头态（v2 + 2026-09-02 拍板 C）：位置两态恒同，只换形态（退匣直书）；

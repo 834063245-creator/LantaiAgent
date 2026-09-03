@@ -93,6 +93,7 @@ import {
   subscribeObservedBlockHeights,
   USER_SHRINK_MIN_W,
 } from '../../paper/measure';
+import { clampViewportFrame, inkBarsFor, minimapProject, regionFrame } from '../../paper/minimap-core';
 import { PaperDockContext, PaperRegionContext, usePaperDock, usePaperRegion } from '../../paper/overlay-context';
 import { mergeSelectionLines, selInkPaths, selSeedOf } from '../../paper/sel-ink';
 import { classifyDropZone, makeStrip, selectionMaskRects, stashStripPositionAt } from '../../paper/selection';
@@ -167,6 +168,7 @@ import { iconHtml } from '../../ui/icons';
  *  搬回「写代码时」。 */
 type FaceBridgeSeal = Record<keyof typeof import('./canvas-nav/host'), unknown> &
   Record<keyof typeof import('./compose-dock/host'), unknown> &
+  Record<keyof typeof import('./paper-minimap/host'), unknown> &
   Record<keyof typeof import('./paper-shell/host'), unknown> &
   Record<keyof typeof import('./settings-domain/host'), unknown> &
   Record<keyof typeof import('./sessions-builtin/host'), unknown> &
@@ -207,6 +209,11 @@ const faceDeps = {
   createSettleSelector,
   hitRegionAtWorld,
   viewportCenterWorld,
+  // paper-minimap 插件（2026-09-05）：minimap-core 纯几何（inkColorOf 已在下）
+  clampViewportFrame,
+  inkBarsFor,
+  minimapProject,
+  regionFrame,
   ANCHOR,
   layoutRegion,
   panBy,

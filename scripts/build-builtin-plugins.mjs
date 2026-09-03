@@ -51,7 +51,7 @@ const outRoot = join(repoRoot, 'src-ui', 'dist-plugins', 'builtin', 'hologram');
 const reactBridge = join(builtinSrcRoot, 'react-bridge.cjs');
 
 /** UI 四面（增补一批次；displace 位移式装载） */
-const UI_FACES = ['canvas-nav', 'paper-shell', 'settings-domain', 'compose-dock'];
+const UI_FACES = ['canvas-nav', 'paper-shell', 'settings-domain', 'compose-dock', 'paper-minimap'];
 /** 工具域 + 段贡献（增补二批次；薄重导出产物，displace 同款） */
 const TOOL_DOMAINS = [
   'web-domain',

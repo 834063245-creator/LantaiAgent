@@ -35,8 +35,9 @@ describe('first-party-manifest（清单完备性守护）', () => {
     }
   });
 
-  it('计数快照（44 = 25 直列 + 16 工具域 + 1 prompt 段 + 1 capability 段 + 1 渲染器插件）', () => {
-    expect(Object.keys(FIRST_PARTY_MANIFEST)).toHaveLength(44); // 45 − space-demo（增补四退役，2026-08-31）
+  it('计数快照（45 = 26 直列 + 16 工具域 + 1 prompt 段 + 1 capability 段 + 1 渲染器插件）', () => {
+    // paper-minimap 插件化（2026-09-05）：44 → 45
+    expect(Object.keys(FIRST_PARTY_MANIFEST)).toHaveLength(45);
   });
 
   it('两类都有存量：service 平台服务（常驻）与 feature 功能插件（可禁用）', () => {

@@ -1,0 +1,63 @@
+/* Copyright (c) 2026 Wenbing Jing. MIT License.
+ * SPDX-License-Identifier: MIT */
+
+/* ── 小地图（D-R1-1 方位感件；R3 多卷版 2026-09-05；插件化 2026-09-05 从
+ * PaperPanel.css 迁出）── */
+.pp-minimap {
+  position: absolute;
+  right: 18px;
+  /* R3.5 浮动化（2026-09-05）：位置/尺寸由 MinimapView 内联 style 控制（可拖动/滚轮缩放，
+   * localStorage 记忆）；height 固定由 JSX 设置——此块只留定位与外观。 */
+  background: color-mix(in oklch, var(--paper) 92%, transparent);
+  border: var(--rule-soft);
+  border-radius: 0;
+  padding: 6px;
+  z-index: 60;
+  /* V3b 欠账接回（2026-08-30）：点击跳转——不再是只读装饰 */
+  pointer-events: auto;
+  cursor: grab;
+  /* R3.5 拖动不选字（2026-09-05 收尾）：用户拖 minimap 时鼠标框选不该选中
+   * 画布文字——user-select 掐断原生选择，配合 pointerdown preventDefault 双保险 */
+  user-select: none;
+  -webkit-user-select: none;
+  transition: border-color var(--snap);
+}
+.pp-minimap:hover {
+  border-color: var(--ink-3);
+}
+.pp-minimap:active {
+  cursor: grabbing;
+}
+/* 小地图真墨（P4b：活跃流区行条投影——铺在 minimap 内容盒内、视口框之下） */
+.pp-mm-ink {
+  position: absolute;
+  inset: 4px;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+  pointer-events: none;
+}
+/* 卷框 DOM 层（R3）：hover 高亮 + 点击跳卷；canvas 墨条之下、视口框之上 */
+.pp-mm-vol {
+  position: absolute;
+  z-index: 2;
+  pointer-events: auto;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition:
+    border-color var(--snap),
+    box-shadow var(--snap);
+}
+.pp-mm-vol:hover {
+  border-color: var(--seal-deep);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--seal-deep) 40%, transparent);
+}
+.pp-mm-vol-active {
+  border-color: color-mix(in oklch, var(--seal-deep) 70%, transparent);
+}
+.pp-mm-vol-active:hover {
+  border-color: var(--seal-deep);
+}
+.pp-mm-viewport {
+  position: absolute;
+  border: 1px solid var(--seal);
+}
