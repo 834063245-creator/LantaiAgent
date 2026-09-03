@@ -1,0 +1,54 @@
+{
+  "id": "builtin.web",
+  "version": "1.0.0",
+  "trust": "system",
+  "description": "Web 搜索与抓取（自 commands/web.rs 拆出，kernel-plugin-runtime Phase 1 续批）",
+  "capabilities": [
+    "network"
+  ],
+  "tools": [
+    {
+      "name": "web_search",
+      "description": "Search the internet for real-time information. Uses a free anonymous search API first; if it fails, automatically falls back to Bing/DuckDuckGo scraping. No API key required.",
+      "read_only": true,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search keywords"
+          },
+          "maxResults": {
+            "default": 10,
+            "description": "Number of results to return (default 10, max 10)",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": {}
+      }
+    },
+    {
+      "name": "web_fetch",
+      "description": "Fetch a URL and return its text content. HTML pages are reduced to readable text (scripts, styles, tags stripped). JSON / plain text / markdown pass through verbatim. Use to read documentation, API responses, or source files hosted on the web. 15s timeout, 1 MiB max.",
+      "read_only": true,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The URL to fetch (HTTPS or HTTP only)"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "additionalProperties": {}
+      }
+    }
+  ]
+}

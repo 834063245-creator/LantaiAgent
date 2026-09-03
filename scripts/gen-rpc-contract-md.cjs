@@ -23,7 +23,6 @@ const SECTIONS = [
   'Git',
   '文件系统',
   '搜索',
-  'Web',
   'CDP 浏览器控制',
   'Shell',
   '编辑器',

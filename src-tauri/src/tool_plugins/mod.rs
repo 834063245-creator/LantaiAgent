@@ -13,6 +13,7 @@ pub mod manifest;
 pub mod plugin;
 pub mod registry;
 pub mod search;
+pub mod web;
 
 pub use plugin::ToolContext;
 pub use registry::PluginRegistry;
@@ -64,7 +65,13 @@ pub async fn dispatch_tool_call(
     plugin
         .execute(&ctx, tool_name, args)
         .await
-        .map(|v| v.to_string())
+        // 值形态分流：文本结果（如 web_fetch 的网页文本）字节精确直通——
+        // Value::String 的 to_string() 会多包一层 JSON 引号，破坏 Text 铁律；
+        // 结构化结果照常 JSON 序列化。
+        .map(|v| match v {
+            serde_json::Value::String(s) => s,
+            other => other.to_string(),
+        })
         .map_err(|e| e.message())
 }
 

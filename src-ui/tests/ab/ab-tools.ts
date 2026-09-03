@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { type ToolExecutor, ToolRegistry } from '../../src/agent/tool';
 import { createCodingTools } from '../../src/agent/tools/coding';
 import { defineTool } from '../../src/agent/tools/define-tool';
+import { createSearchTools, createWebTools } from '../../src/agent/tools/manifest-tools';
 import type { TrialGraphData } from './ab-graph';
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'target', '.lantai', 'dist', '.cache', 'build', 'out']);
@@ -295,9 +296,23 @@ export function buildTrialRegistry(wt: string, graph: TrialGraphData): ToolRegis
     }
   };
 
-  for (const tool of createCodingTools(exec, {
-    askUser: (req) => req.callback(['继续']),
-  })) {
+  // search/web 已迁内核插件（builtin.search/builtin.web）——manifest 工具 execute
+  // 走 tool_call 信封；试验 harness 的 exec 是本地 mock（无 RPC），在此解信封路由回 mock。
+  const kernelExec: ToolExecutor = (name, args, onProgress, signal) => {
+    if (name === 'tool_call') {
+      const inner = String(args.tool ?? '');
+      return exec(inner, (args.args ?? {}) as Record<string, unknown>, onProgress, signal);
+    }
+    return exec(name, args, onProgress, signal);
+  };
+
+  for (const tool of [
+    ...createCodingTools(exec, {
+      askUser: (req) => req.callback(['继续']),
+    }),
+    ...createSearchTools(kernelExec),
+    ...createWebTools(kernelExec),
+  ]) {
     registry.register(tool);
   }
 

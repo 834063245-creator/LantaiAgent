@@ -6,7 +6,6 @@ pub mod shell;
 pub mod filesystem;
 pub mod search;
 pub mod editor;
-pub mod web;
 pub mod constraints;
 pub mod graph;
 pub mod git_cmds;

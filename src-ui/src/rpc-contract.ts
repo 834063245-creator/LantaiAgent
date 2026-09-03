@@ -184,10 +184,6 @@ export interface RpcContract {
     result: string; // JSON
   };
 
-  // ── Web ──────────────────────────────────────────────────
-  web_search: { params: { query: string; max_results?: number; _agent_id?: string }; result: string }; // JSON
-  web_fetch: { params: { url: string; _agent_id?: string }; result: string }; // JSON
-
   // ── Shell ────────────────────────────────────────────────
   exec_command: {
     params: {

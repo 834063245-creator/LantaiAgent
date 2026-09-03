@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { Tool, ToolExecutor } from '../src/agent/tool';
-import { createSearchTools, kernelManifestOf } from '../src/agent/tools/manifest-tools';
+import { createSearchTools, createWebTools, kernelManifestOf } from '../src/agent/tools/manifest-tools';
 
 function captureExec(): { calls: Array<{ name: string; args: Record<string, unknown> }>; exec: ToolExecutor } {
   const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
@@ -67,5 +67,52 @@ describe('kernel manifest tools', () => {
 
   it('未知插件 id 响亮报错', () => {
     expect(() => kernelManifestOf('builtin.nope')).toThrow(/不在生成物清单内/);
+  });
+});
+
+describe('kernel manifest tools — web 域（builtin.web，Phase 1 续批）', () => {
+  it('createWebTools 贡献 web_search/web_fetch，形状与 manifest 对齐', () => {
+    const { exec } = captureExec();
+    const tools: Tool[] = createWebTools(exec);
+    expect(tools.map((t) => t.name())).toEqual(['web_search', 'web_fetch']);
+    const manifest = kernelManifestOf('builtin.web');
+    expect(manifest.trust).toBe('system');
+    expect(manifest.capabilities).toContain('network');
+    for (const tool of tools) {
+      const spec = manifest.tools.find((t) => t.name === tool.name());
+      expect(spec).toBeDefined();
+      expect(tool.description()).toBe(spec!.description);
+      expect(tool.parameters()).toEqual(spec!.schema);
+      expect(tool.readOnly()).toBe(true);
+    }
+  });
+
+  it('web_search schema 键序锚：maxResults 并入转录（zod 发射序）', () => {
+    const { exec } = captureExec();
+    const search = createWebTools(exec)[0];
+    const schema = search.parameters() as Record<string, unknown>;
+    expect(Object.keys(schema)).toEqual(['type', 'properties', 'required', 'additionalProperties']);
+    const props = schema.properties as Record<string, Record<string, unknown>>;
+    expect(Object.keys(props)).toEqual(['query', 'maxResults']);
+    expect(props.maxResults).toEqual({
+      default: 10,
+      description: 'Number of results to return (default 10, max 10)',
+      type: 'integer',
+      minimum: 1,
+      maximum: 10,
+    });
+    expect(schema.required).toEqual(['query']);
+  });
+
+  it('web_fetch execute 走 tool_call：args 原样透传（含 _agent_id meta）', async () => {
+    const { calls, exec } = captureExec();
+    const fetch = createWebTools(exec)[1];
+    const args = { url: 'https://example.com', _agent_id: 'sub-2' } as Record<string, unknown>;
+    await fetch.execute(args);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].name).toBe('tool_call');
+    expect(calls[0].args.plugin).toBe('builtin.web');
+    expect(calls[0].args.tool).toBe('web_fetch');
+    expect(calls[0].args.args).toEqual(args);
   });
 });

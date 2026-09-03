@@ -22,14 +22,8 @@ import { describe, expect, it } from 'vitest';
 import { SubAgentPool } from '../src/agent/coordinator';
 import { TaskManager } from '../src/agent/task';
 import type { Tool, ToolExecutor, ToolRegistry, ToolRowContext } from '../src/agent/tool';
-import {
-  createAgentIsolationTools,
-  createFsTools,
-  createGitTools,
-  createSearchTools,
-  createShellTools,
-  createWebTools,
-} from '../src/agent/tools/coding';
+import { createAgentIsolationTools, createFsTools, createGitTools, createShellTools } from '../src/agent/tools/coding';
+import { createSearchTools, createWebTools } from '../src/agent/tools/manifest-tools';
 import { fsServicePlugin } from '../src/composition/fs-service';
 import { pluginToolRows } from '../src/composition/plugin-tool-rows';
 import { activeToolContributions, compositionServicesPlugin } from '../src/composition/services';
@@ -209,8 +203,11 @@ describe('codingExec 无状态族域第一方插件（P4 B① git/search + ② f
   it('factory 收 rowCtx：工具可执行且经 rowCtx.codingExec 穿透（web/fs/shell 抽查）', async () => {
     const root = new Context();
     const fibers = await applyPlugins(root);
-    const log: Array<{ name: string }> = [];
-    const ctx = makeRowCtx(recordingExec(log));
+    const log: Array<{ name: string; args?: Record<string, unknown> }> = [];
+    const ctx = makeRowCtx(async (name, args) => {
+      log.push({ name, args });
+      return '';
+    });
     const tools = activeToolContributions().map((c) => c.factory(ctx));
     const fetch = tools.find((t) => t.name() === 'web_fetch');
     const read = tools.find((t) => t.name() === 'read_file_content');
@@ -219,7 +216,12 @@ describe('codingExec 无状态族域第一方插件（P4 B① git/search + ② f
     await fetch.execute({ url: 'https://example.com' });
     await read.execute({ filePath: 'D:/proj/a.ts' });
     await runShell.execute({ command: 'ls' });
-    expect(log.map((e) => e.name)).toContain('web_fetch');
+    // web 域已迁 builtin.web 插件——execute 经 tool_call 信封穿透（plugin/tool 路由）
+    expect(log.find((e) => e.name === 'tool_call')?.args).toMatchObject({
+      plugin: 'builtin.web',
+      tool: 'web_fetch',
+      args: { url: 'https://example.com' },
+    });
     expect(log.map((e) => e.name)).toContain('read_file_content');
     // run_shell 委托旧名 exec_command（runInBackground 缺省走前台执行）
     expect(log.map((e) => e.name)).toContain('exec_command');

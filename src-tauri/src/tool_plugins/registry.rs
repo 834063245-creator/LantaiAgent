@@ -28,10 +28,13 @@ impl Default for PluginRegistry {
 impl PluginRegistry {
     /// 出厂装配：system/official 信任级插件随 exe 分发，启动时注册。
     /// 出厂清单是编译期常量——装载失败即构建错误，fail-loud。
+    /// 注册序 = tool_plugins/ 目录序（gen-plugin-manifests 的镜像装载序锚）。
     pub fn with_system_defaults() -> Self {
         let mut registry = PluginRegistry::default();
         let search: Arc<dyn ToolPlugin> = Arc::new(super::search::SearchPlugin::new());
         registry.register(search).expect("出厂插件清单装载失败");
+        let web: Arc<dyn ToolPlugin> = Arc::new(super::web::WebPlugin::new());
+        registry.register(web).expect("出厂插件清单装载失败");
         registry
     }
 
