@@ -616,7 +616,14 @@ export function createWebTools(exec: ToolExecutor): Tool[] {
         'Search the internet for real-time information. Uses a free anonymous search API first; if it fails, automatically falls back to Bing/DuckDuckGo scraping. No API key required.',
       schema: z.object({
         query: z.string().describe('Search keywords'),
-        maxResults: z.coerce.number().int().min(1).max(10).optional().default(10).describe('Number of results to return (default 10, max 10)'),
+        maxResults: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(10)
+          .optional()
+          .default(10)
+          .describe('Number of results to return (default 10, max 10)'),
       }),
       readOnly: true,
       execute: (args, onProgress) => exec('web_search', args, onProgress),
