@@ -311,6 +311,11 @@ const BlockView = memo(function BlockView({
         </div>
       )}
       {block.state === 'pinned' && (
+        <span className="pp-pin-hint" aria-hidden="true">
+          钉住
+        </span>
+      )}
+      {block.state === 'pinned' && (
         <button
           type="button"
           className="pp-unpin"
@@ -581,6 +586,9 @@ function MinimapView({
 
 /** 拖动阈值（px）：超过即视为拖块（区分点击） */
 const DRAG_THRESHOLD = 6;
+/** 钉住可发现性一次性眉批的 localStorage 旗标（毒化容忍——读写全包 try，
+ * 命名同创作坞 lantai.hint.historySeen 族）。 */
+const PIN_HINT_KEY = 'lantai.hint.pinDragSeen';
 /** 自动选中命中区向上外扩余量（px，世界单位）：卷首头（folio-head）在
  *  regionTop 之上实测 folioH——命中区再外扩 40px 兜住卷首上缘的呼吸带，
  *  用户常把视口中心对准卷首，不扩会“空白保持当前”不切 */
@@ -1299,6 +1307,18 @@ export function PaperPanel() {
     });
   }, []);
 
+  /* ── 拖动渲染态（声明在 regions memo 之前——memo 消费拖拽保活/带显形输入）── */
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
+  /* 拖拽语义（渲染面消费）：来源卷（带显形/回流判据）+ 是否自流内拖出——
+   * 「回流」预览只对 wasFlow 有意义（已钉块移位不存在取消语义）。 */
+  const [dragSource, setDragSource] = useState<{ sessionId: string | undefined; wasFlow: boolean } | null>(null);
+  /* 带显形（拖拽中来源流区边界信号）：块拖出与选区揭起共用；纸条拖动是
+   * 纯公共物移位，无带语义不挂。 */
+  const [bandSessionId, setBandSessionId] = useState<string | null>(null);
+  /* 落定 settle 标记（手感批）：commit 后一帧挂 pp-settle 播放「按下/放下」 */
+  const [settleId, setSettleId] = useState<string | null>(null);
+
   const regions: RegionView[] = useMemo(() => {
     // paperTick/measureTick 是显式失效信号：测量缓存清空后必须重算本 memo——
     // void 引用使依赖声明与闭包语义一致（canvasState 变化本身就是触发源）。
@@ -1337,6 +1357,7 @@ export function PaperPanel() {
         !dragging &&
         !resizing &&
         activeSessionKey !== sid &&
+        dragSource?.sessionId !== sid &&
         (known.extent.x1 + STUB_MX < viewRect.x0 ||
           known.extent.x0 - STUB_MX > viewRect.x1 ||
           known.extent.y1 + STUB_MY < viewRect.y0 ||
@@ -1505,6 +1526,9 @@ export function PaperPanel() {
       const flowWindow = visibleFlowWindow(c.flowGeom, viewRect, OVERSCAN);
       const visibleIds = new Set(visiblePinnedIds(c.pinnedGeom, viewRect, OVERSCAN));
       for (let j = flowWindow.first; j < flowWindow.lastExcl; j++) visibleIds.add(c.flowGeom[j].id);
+      // 拖拽保活（松手定夺改造 2026-09-05）：拖动中的块 slot 可能滑出视口窗口，
+      // 但块影必须全程跟手不闪断——拖拽期间强制进可见集。
+      if (draggingId != null) visibleIds.add(draggingId);
       coreKey.push(sid, c.blocks);
 
       out.push({
@@ -1566,6 +1590,8 @@ export function PaperPanel() {
     sidecarOutOf,
     activeSessionKey,
     adaptBlocks,
+    draggingId,
+    dragSource,
   ]);
 
   regionsRef.current = regions;
@@ -1981,7 +2007,10 @@ export function PaperPanel() {
     };
   }, [panning, setView]);
 
-  /* ── 拖块（D-R2-1 拖出钉住）：阈值即脱流 → 全程跟手 → 松手判位 ──
+  /* ── 拖块（D-R2-1 拖出钉住，2026-09-05 松手定夺改造）：阈值起纯预览 →
+   * 全程跟手 → 松手定夺（带外落钉 / 带内取消回槽）。拖动中 flow 块 state
+   * 不变（仍在流分支渲染），transform 覆盖为跟手位；来源流区挂带显形
+   * （pp-region--band），落点悬回带内时块影转「回流」态（pp-drag-returning）。
    * Stage-5：钉住块 = 工作区级公共物。源会话未摊开的孤儿钉（快照块）同样
    * 可拖（sessionId 缺省）——拖动更新 canvas.pins 位置，不重新钉。 */
   const dragRef = useRef<{
@@ -1991,13 +2020,16 @@ export function PaperPanel() {
     sy: number;
     moved: boolean;
     wasFlow: boolean;
+    /** instant = 首动即建钉（眉批撕出族——携带预览依赖孤儿钉渲染，纯预览
+     *  会全程无像；取消端 = up 里 commitPinned(null) 拔钉还原）。 */
+    instant: boolean;
     bw: number;
     offX: number;
     offY: number;
     block: SourcedBlock | null;
   } | null>(null);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
+  /* 拖动渲染态（draggingId/dragPos/dragSource/bandSessionId/settleId）声明
+   * 在 regions memo 之前——memo 消费拖拽保活/带显形输入（声明序约束）。 */
 
   const onBlockMouseDown = useCallback((e: React.MouseEvent, block: SourcedBlock) => {
     if (e.button !== 0) return;
@@ -2019,6 +2051,7 @@ export function PaperPanel() {
       sy: e.clientY,
       moved: false,
       wasFlow: block.state === 'flow',
+      instant: false, // 整块拖出 = 松手定夺（纯预览 → 带外落钉/带内取消）
       bw: block.w,
       offX: w.x - rx,
       offY: w.y - ry,
@@ -2026,8 +2059,8 @@ export function PaperPanel() {
     };
   }, []);
 
-  /** 落定钉住：新钉 = 捕获快照 + 活引用源；已钉 = 移位置；pos null = 收回。
-   *  源会话缺省（孤儿钉）= 只移动既有钉，不新建。 */
+  /** 落定钉住：新钉 = 捕获快照 + 活引用源；已钉 = 移位置；pos null = 收回
+   *  （眉批 instant 路径的取消端）。源会话缺省（孤儿钉）= 只移动既有钉，不新建。 */
   const commitPinned = useCallback(
     (
       sessionId: string | undefined,
@@ -2069,7 +2102,11 @@ export function PaperPanel() {
       if (!d.moved) {
         d.moved = true;
         setDraggingId(d.id);
-        if (d.wasFlow) {
+        setDragSource({ sessionId: d.sessionId, wasFlow: d.wasFlow });
+        setBandSessionId(d.sessionId ?? null);
+        // 眉批 instant 族：首动即建钉（携带预览 = 孤儿钉跟手，眉批位同帧
+        // 换「已移出」占位）——撕出批注的揭起手感，与抽纸条 lift mask 同族。
+        if (d.instant) {
           commitPinned(d.sessionId, d.id, { x: w.x - d.offX, y: w.y - d.offY }, d.block);
         }
       }
@@ -2079,6 +2116,9 @@ export function PaperPanel() {
       const d = dragRef.current;
       dragRef.current = null;
       setDraggingId(null);
+      setDragSource(null);
+      setBandSessionId(null);
+      setDragPos(null);
       if (!d?.moved) return;
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
@@ -2087,13 +2127,19 @@ export function PaperPanel() {
       const fy = w.y - d.offY;
       const region = d.sessionId ? regionsRef.current.find((r) => r.sessionId === d.sessionId) : undefined;
       const bandCenter = region?.anchor.anchorX ?? 0;
-      // 松手判位：落在来源流区窄带内且原为 flow → 回流（不钉）；孤儿钉不回流
+      // 松手定夺（2026-09-05）：带外落钉（新钉 = 快照 + 活引用源；已钉 =
+      // 移位置）；带内且原为 flow → 取消回槽——非 instant 族纯预览结束，无
+      // 状态变更（不建钉、不挖洞、流布局全程未动）；instant 族（眉批）首动
+      // 已建钉，取消端 = 拔钉还原占位。孤儿钉无来源带，恒落钉。
       if (d.wasFlow && d.sessionId && Math.abs(fx - bandCenter) <= ANCHOR.bandHalfWidth) {
-        commitPinned(d.sessionId, d.id, null);
-      } else {
-        commitPinned(d.sessionId, d.id, { x: fx, y: fy }, d.block);
+        if (d.instant) commitPinned(d.sessionId, d.id, null);
+        return;
       }
-      setDragPos(null);
+      commitPinned(d.sessionId, d.id, { x: fx, y: fy }, d.block);
+      if (!d.instant) {
+        setSettleId(d.id);
+        window.setTimeout(() => setSettleId((cur) => (cur === d.id ? null : cur)), 400);
+      }
     };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
@@ -2146,6 +2192,30 @@ export function PaperPanel() {
     [core],
   );
   activateRegionRef.current = activateRegion;
+
+  /* ── 钉住可发现性（一次性眉批，2026-09-05）：有摊开卷且从未提示过 →
+   * 浮现 6s（localStorage 旗标，毒化容忍——创作坞历史眉批同款范式）。
+   * 提示长在功能所在处：文类签 = 块左缘拖出把手。 ── */
+  const [pinHint, setPinHint] = useState(false);
+  const pinHintShownRef = useRef(false);
+  useEffect(() => {
+    if (sessions.length === 0 || pinHintShownRef.current) return;
+    pinHintShownRef.current = true;
+    let seen = true;
+    try {
+      seen = localStorage.getItem(PIN_HINT_KEY) === '1';
+    } catch {
+      seen = true; // 存储不可用 = 不提示（宁缺勿噪）
+    }
+    if (seen) return;
+    try {
+      localStorage.setItem(PIN_HINT_KEY, '1');
+    } catch {
+      // 写不进也照提示一次（ref 兜底本会话不再重复）
+    }
+    setPinHint(true);
+    window.setTimeout(() => setPinHint(false), 6000);
+  }, [sessions.length]);
 
   /* ── 键盘走卷（2026-08-30 中期件）：Alt+↑↓ 块间 / Alt+←→ 卷间 ──
    * 画布对键盘党此前是黑洞。块序 = 流序（尾=最新），以「视口中心最近块」为
@@ -2409,12 +2479,6 @@ export function PaperPanel() {
     rect: DOMRect | null;
   } | null>(null);
   const [ghost, setGhost] = useState<{ x: number; y: number; zone: 'flow' | 'strip' } | null>(null);
-  const pressStartRef = useRef<{
-    sx: number;
-    sy: number;
-    sessionId: string | undefined;
-    blockEl: Element | null;
-  } | null>(null);
 
   /* ── lift 遮罩（P1 抽纸条手感 2026-08-30）：拖出选区时原地「被揭起」占位。
    * rects = 捕获时刻选区的世界矩形快照（世界层渲染，随视口变换跟手）；
@@ -2443,6 +2507,8 @@ export function PaperPanel() {
       void sessionId; // 纸条 = 工作区级公共物（Stage-5），源会话只作溯源展示
       const strip = makeStrip(trimmed, x, y, 480, messageId ? { messageId } : undefined);
       getCanvasStore(core.panelId).getState().addStrip(strip);
+      setSettleId(strip.id); // 成条落定「放下」手感（刀3）
+      window.setTimeout(() => setSettleId((cur) => (cur === strip.id ? null : cur)), 400);
     },
     [core],
   );
@@ -2480,11 +2546,6 @@ export function PaperPanel() {
     };
   }, []);
 
-  const ghostRef = useRef<{ x: number; y: number; zone: 'flow' | 'strip' } | null>(null);
-  useEffect(() => {
-    ghostRef.current = ghost;
-  }, [ghost]);
-
   const restoreSelectionByRect = useCallback((rect: DOMRect) => {
     if (rect.width === 0 || rect.height === 0) return;
     const lineProbe = Math.min(rect.height, 22) / 2;
@@ -2515,17 +2576,13 @@ export function PaperPanel() {
     return regionsRef.current.find((r) => r.sessionId === sessionId)?.anchor.anchorX ?? 0;
   }, []);
 
-  /* A：拖拽路径（mousedown/mousemove/mouseup 全局通道） */
+  /* A：拖拽路径（mousedown/mousemove/mouseup 全局通道）。2026-09-05 路径 B
+   * 退役（plan：pin-strip-rework §0 用户拍板）：拖选跨带松手不再成条——拖选
+   * 只做选择（划大段字复制绝无误触）；抽纸条唯二入口 = 按住已有选区拖出
+   * （本路径）+ 选中浮钮（B 段）。拖选幽灵同步效果一并退役（它只服务路径 B）。 */
   useEffect(() => {
     const down = (e: MouseEvent) => {
       if (e.button !== 0) return;
-      const blockEl = e.target instanceof Element ? e.target.closest('.pp-block') : null;
-      pressStartRef.current = {
-        sx: e.clientX,
-        sy: e.clientY,
-        sessionId: blockEl?.getAttribute('data-session-id') ?? undefined,
-        blockEl,
-      };
       if (dragRef.current || stripDragRef.current || resizeRef.current) {
         liftRef.current = null;
         return;
@@ -2548,60 +2605,37 @@ export function PaperPanel() {
         rect: range.getBoundingClientRect(),
       };
       if (worldRects.length > 0) showLiftMask(worldRects);
+      setBandSessionId(snap.sessionId ?? null); // 带显形：揭起即亮来源流区
       sel.removeAllRanges();
       e.preventDefault();
     };
 
     const move = (e: MouseEvent) => {
       const w = toWorldInCanvas(e.clientX, e.clientY);
-      if (!w) {
+      if (!w || !liftRef.current) {
         setGhost(null);
         return;
       }
-      const center = bandCenterOf(liftRef.current?.sessionId ?? pressStartRef.current?.sessionId);
+      const center = bandCenterOf(liftRef.current.sessionId);
       const zone = classifyDropZone(w.x - center, ANCHOR.bandHalfWidth);
-      if (liftRef.current) {
-        setGhost({ x: w.x, y: w.y, zone });
-        return;
-      }
-      const start = pressStartRef.current;
-      if (!start?.blockEl || Math.hypot(e.clientX - start.sx, e.clientY - start.sy) < DRAG_THRESHOLD) return;
-      if (zone === 'flow') {
-        setGhost(null);
-        return;
-      }
-      const snap = snapshotBlockSelection();
-      if (!snap) return;
       setGhost({ x: w.x, y: w.y, zone });
     };
 
     const up = (e: MouseEvent) => {
-      const start = pressStartRef.current;
-      pressStartRef.current = null;
-      const g = ghostRef.current;
       setGhost(null);
+      setBandSessionId(null);
       const lift = liftRef.current;
       liftRef.current = null;
-      if (lift) {
-        const w = toWorldInCanvas(e.clientX, e.clientY);
-        const center = bandCenterOf(lift.sessionId);
-        if (w && lift.sessionId && classifyDropZone(w.x - center, ANCHOR.bandHalfWidth) === 'strip') {
-          spawnStrip(lift.sessionId, lift.text, lift.messageId, w.x, w.y);
-          completeLiftMask(); // 成条：原地遮罩淡出（揭走动作完成）
-        } else if (lift.rect) {
-          restoreSelectionByRect(lift.rect);
-          clearLiftMask(); // 取消：选区原样恢复，遮罩即撤（无事发生）
-        }
-        return;
-      }
-      if (g?.zone !== 'strip' || !start?.blockEl || !start.sessionId) return;
-      const snap = snapshotBlockSelection();
-      if (!snap) return;
+      if (!lift) return;
       const w = toWorldInCanvas(e.clientX, e.clientY);
-      const center = bandCenterOf(start.sessionId);
-      if (!w || classifyDropZone(w.x - center, ANCHOR.bandHalfWidth) !== 'strip') return;
-      window.getSelection()?.removeAllRanges();
-      spawnStrip(start.sessionId, snap.text, snap.messageId, w.x, w.y);
+      const center = bandCenterOf(lift.sessionId);
+      if (w && lift.sessionId && classifyDropZone(w.x - center, ANCHOR.bandHalfWidth) === 'strip') {
+        spawnStrip(lift.sessionId, lift.text, lift.messageId, w.x, w.y);
+        completeLiftMask(); // 成条：原地遮罩淡出（揭走动作完成）
+      } else if (lift.rect) {
+        restoreSelectionByRect(lift.rect);
+        clearLiftMask(); // 取消：选区原样恢复，遮罩即撤（无事发生）
+      }
     };
 
     window.addEventListener('mousedown', down);
@@ -2744,12 +2778,25 @@ export function PaperPanel() {
     };
   }, [view, core]);
 
+  /* 纸条销毁两击确认（2026-09-05，plan §1.2）：快照语义删了即没了——首击
+   * 进确认态（按钮变「确认？」），3s 超时回退，再击才真删。 */
+  const [stripConfirmId, setStripConfirmId] = useState<string | null>(null);
+  const stripConfirmTimerRef = useRef(0);
+  useEffect(() => () => window.clearTimeout(stripConfirmTimerRef.current), []);
   const onRemoveStrip = useCallback(
     (id: string) => {
+      if (stripConfirmId !== id) {
+        setStripConfirmId(id);
+        window.clearTimeout(stripConfirmTimerRef.current);
+        stripConfirmTimerRef.current = window.setTimeout(() => setStripConfirmId(null), 3000);
+        return;
+      }
+      window.clearTimeout(stripConfirmTimerRef.current);
+      setStripConfirmId(null);
       if (!core) return;
       getCanvasStore(core.panelId).getState().removeStrip(id);
     },
-    [core],
+    [stripConfirmId, core],
   );
 
   /* ── 宽度手调（P2b）：钉住块/纸条右缘 resize 面——hover 即拖拽态（同流区
@@ -2827,7 +2874,8 @@ export function PaperPanel() {
       sx: e.clientX,
       sy: e.clientY,
       moved: false,
-      wasFlow: true, // 首动 commitPinned 建钉 + 回带取消——与整块拖出同语义
+      wasFlow: true, // 回带取消端 = up 拔钉还原占位（见拖块 effect 注）
+      instant: true, // 眉批撕出族：携带预览 = 孤儿钉跟手（见拖块 effect 注）
       bw: SIDECAR_PIN_W,
       offX: grab.x - anchor.x,
       offY: grab.y - anchor.y,
@@ -2960,6 +3008,12 @@ export function PaperPanel() {
     if (inkLines.length > 0 && inkLines.length <= 400) selInkArt = selInkPaths(inkLines, selSeedOf(selInk.toString()));
   }
 
+  /* 拖拽回流判据（渲染面）：来源流区中轴——dragPos 悬回带内且 wasFlow = 松手取消 */
+  const dragBandCenter =
+    dragSource?.sessionId != null
+      ? (regions.find((r) => r.sessionId === dragSource.sessionId)?.anchor.anchorX ?? null)
+      : null;
+
   return (
     <PaperDockContext.Provider value={dockContext}>
       <PaperRegionContext.Provider value={regionContext}>
@@ -2986,6 +3040,10 @@ export function PaperPanel() {
             </button>
             <WinControls />
           </div>
+
+          {/* 钉住可发现性（一次性眉批）：提示长在功能所在处——左缘即文类签列。
+           * 视觉走 .pp-eyebrow-hint 族（6s 淡出自散动画）+ .pp-hint-canvas 落位。 */}
+          {pinHint && <div className="pp-eyebrow-hint pp-hint-canvas">按住块左侧文类签，可把任意块拖出钉在案上</div>}
 
           {/* B 选中浮钮：块内有选区时现身（锚点随视口现算），点击成条（落来源流区右侧空地） */}
           {selAnchor && !ghost && fabPos && (
@@ -3074,7 +3132,9 @@ export function PaperPanel() {
                   // biome-ignore lint/a11y/noStaticElementInteractions: 流区是可点击交互面（点背景激活流区）
                   <div
                     key={r.sessionId}
-                    className={`pp-region${isActive ? ' pp-region-active' : ''}`}
+                    className={`pp-region${isActive ? ' pp-region-active' : ''}${
+                      bandSessionId === r.sessionId ? ' pp-region--band' : ''
+                    }`}
                     style={
                       {
                         left: r.anchor.anchorX - r.anchor.width / 2,
@@ -3146,7 +3206,7 @@ export function PaperPanel() {
                     // biome-ignore lint/a11y/noStaticElementInteractions: 纸条拖拽面（D-R2-1 手势族）
                     <div
                       key={s.id}
-                      className={`pp-strip${stripDragged ? ' pp-dragging' : ''}`}
+                      className={`pp-strip${stripDragged ? ' pp-dragging' : ''}${settleId === s.id ? ' pp-settle' : ''}`}
                       style={{ left: stripPos.x, top: stripPos.y, width: stripW }}
                       onMouseDown={(e) => onStripMouseDown(e, s)}
                     >
@@ -3154,16 +3214,16 @@ export function PaperPanel() {
                         <span className="pp-strip-tag">纸条</span>
                         <button
                           type="button"
-                          className="pp-strip-remove"
-                          title="销毁纸条"
-                          aria-label="销毁纸条"
+                          className={`pp-strip-remove${stripConfirmId === s.id ? ' pp-strip-remove--confirm' : ''}`}
+                          title={stripConfirmId === s.id ? '再击一次确认销毁' : '销毁纸条'}
+                          aria-label={stripConfirmId === s.id ? '再击一次确认销毁纸条' : '销毁纸条'}
                           onMouseDown={(e) => e.stopPropagation()}
                           onClick={(e) => {
                             e.stopPropagation();
                             onRemoveStrip(s.id);
                           }}
                         >
-                          ✕
+                          {stripConfirmId === s.id ? '确认？' : '✕'}
                         </button>
                       </div>
                       <div className="pp-strip-body">{s.text}</div>
@@ -3226,16 +3286,27 @@ export function PaperPanel() {
                   if (b.state === 'flow') {
                     const firstSeen = !seenBlocksRef.current.has(b.id);
                     if (firstSeen) seenBlocksRef.current.add(b.id);
+                    /* 松手定夺（2026-09-05）：拖动中的 flow 块 state 不变——仍在流
+                     * 分支渲染，transform 覆盖为跟手位（slot 布局全程不动）；悬回
+                     * 带内时块影转「回流」预览态（松手 = 取消回槽）。 */
+                    const isDragged = draggingId === b.id;
+                    const dragX = isDragged && dragPos ? dragPos.x : slot.x;
+                    const dragY = isDragged && dragPos ? dragPos.y : slot.y;
+                    const inBand =
+                      isDragged &&
+                      dragSource?.wasFlow === true &&
+                      dragBandCenter != null &&
+                      Math.abs(dragX - dragBandCenter) <= ANCHOR.bandHalfWidth;
                     return (
                       // biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler
                       <div
                         key={b.id}
                         className={`pp-block pp-${b.kind}${firstSeen ? ' pp-enter' : ''}${
-                          r.stageLeadIds.has(b.id) ? ' pp-stage-lead' : ''
-                        }${r.unitLeadIds.has(b.id) ? ' pp-unit-lead' : ''}${
-                          r.verifyDoneIds.has(b.id) ? ' pp-verify-done' : ''
-                        }`}
-                        style={{ transform: `translate(${slot.x}px, ${slot.y}px)`, width: b.w }}
+                          isDragged ? ' pp-dragging' : ''
+                        }${inBand ? ' pp-drag-returning' : ''}${r.stageLeadIds.has(b.id) ? ' pp-stage-lead' : ''}${
+                          r.unitLeadIds.has(b.id) ? ' pp-unit-lead' : ''
+                        }${r.verifyDoneIds.has(b.id) ? ' pp-verify-done' : ''}`}
+                        style={{ transform: `translate(${dragX}px, ${dragY}px)`, width: b.w }}
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}
                         data-block-observed={needsObservedHeight(b.kind, b.asset != null) ? b.id : undefined}
@@ -3274,7 +3345,9 @@ export function PaperPanel() {
                       </button>
                       {/* biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler */}
                       <div
-                        className={['pp-block', `pp-${b.kind}`, 'pp-pinned', isDragged ? 'pp-dragging' : ''].join(' ')}
+                        className={`pp-block pp-${b.kind} pp-pinned${isDragged ? ' pp-dragging' : ''}${
+                          settleId === b.id ? ' pp-settle' : ''
+                        }`}
                         style={{ transform: `translate(${pos.x}px, ${pos.y}px)`, width: pinW }}
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}
