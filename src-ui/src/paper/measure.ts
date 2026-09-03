@@ -694,6 +694,15 @@ export function clearObservedBlockHeights(): void {
   observedHeights.clear();
 }
 
+/** 会话销毁/工作区重置时清理实测残留（2026-09-03 撞号污染修复）：
+ *  实测表是模块级、跨会话存活——会话 store 拆除后旧实测记录若不清，
+ *  后续块 id 复用（合卷重摊开/跨工作区撞号）会无条件吃旧实测高
+ *  （实测优先无签名守卫），导致布局错乱（块消失/压扁/打碎）。
+ *  与 disposeSessionMessagesStore/disposeMessagesStores 同步调用。 */
+export function clearObservedHeightsForSession(): void {
+  observedHeights.clear();
+}
+
 /** 来文测高（P3 2026-08-30）：含圈点候选（【】）的文本按行拆解（pre-wrap 硬
  *  换行语义），逐行走 rich 精确——圈点段 = 原子件 + CIRCLE_EXTRA 横向 chrome，
  *  其余段 = 来文楷体；空行仍占一行。纯文本（无【】）保持旧路整体 layout。 */
