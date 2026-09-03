@@ -39,12 +39,11 @@ import {
   createFsTools,
   createGitTools,
   createShellTools,
-  createWebTools,
 } from '../../agent/tools/coding';
 import { CORDIS_TOOL_NAMES, createCordisTools } from '../../agent/tools/cordis';
 import { defineTool } from '../../agent/tools/define-tool';
 import { loadHologramSchemas, mcpSchemaToTool } from '../../agent/tools/hologram';
-import { createSearchTools } from '../../agent/tools/manifest-tools';
+import { createSearchTools, createWebTools } from '../../agent/tools/manifest-tools';
 import { createAssetTools } from '../../agent/tools/show-asset';
 import { createAgentStatusTool, createSubAgentTool } from '../../agent/tools/subagent';
 import { createWaitTool } from '../../agent/tools/wait';

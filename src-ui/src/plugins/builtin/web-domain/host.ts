@@ -1,4 +1,4 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-export { createWebTools } from '../../../agent/tools/coding';
+export { createWebTools } from '../../../agent/tools/manifest-tools';

@@ -1,6 +1,6 @@
 # 内核插件运行时（kernel-plugin-runtime）
 
-> 状态：**In progress**（2026-09-03 立项并开工；Phase 0 + Phase 1 首个插件本窗落地）
+> 状态：**In progress**（2026-09-03 立项并开工；Phase 0 + Phase 1 首插件 + Phase 1 续批 builtin.web 已落地）
 > 拍板源：用户 2026-09-03 完整方案（核心判断原文：「不再区分内核工具/特权工具/普通插件，只有不同权限声明的插件。内核保留的是安全能力和插件运行时，而不是工具业务」）。
 > 本文是该方案对本仓现状的落地映射；方案未逐字复述，只记录裁决点。
 
@@ -13,7 +13,8 @@ Rust 壳从「巨型工具包」变成「带安全边界的插件运行时」：
 
 ## 1. 现状审计（2026-09-03 实测）
 
-- RPC 单入口 `src-tauri/src/rpc.rs`：迁移前 **146 个方法分支**（生成物 frontend-rpc-contract.md 计数；本批 −1 +2 → **147**），
+- RPC 单入口 `src-tauri/src/rpc.rs`：迁移前 **146 个方法分支**（生成物 frontend-rpc-contract.md 计数；
+  Phase 1 首批 −1 +2 → 147；本批 web −2 → **145**），
   业务实现散在 `commands/` 18 个文件 + `app/services/`。用户方案所述「168」为约数，以生成物计数为准。
 - 工具执行链现状：模型 → TS `ToolRegistry`（zod 定义工具面）→ `agentInvoke` → rpc.rs 细粒度分支
   → commands/*.rs 业务。**schema 真源在 TS，执行真源在 Rust，同一工具双端维护**——
@@ -46,7 +47,7 @@ Rust 壳从「巨型工具包」变成「带安全边界的插件运行时」：
 |---|---|
 | INVARIANTS #8「工具定义必须 defineTool+zod」 | **修订**：单一真源原则不变，真源从「TS zod」改为「Rust manifest」。manifest 驱动的工具不走路由 zod（zod v4 无 JSON-Schema→zod 反向）；运行时校验回归插件侧参数提取（与今日 Rust 命令同强度）。TS 手写 schema + `as` 解包的禁令对非 manifest 工具继续生效 |
 | convergence 字节契约 | Phase 1 迁移的 manifest schema = 原 zod 发射字节逐字转录（发射管线 `z.toJSONSchema(draft-7, io:'input')` + `.passthrough()` + 去 `$schema`），三层表序不动 → baseline **零重录**。后续批次 schema 有意变更时走 baseline-change-request 审批 |
-| 旧细粒度 RPC 分支 | 迁一批、删一批（分支 + TS 契约行同 commit 删，不留双路）。今日批：`search_content` 退役；`glob` 属 fs 域工具，随 Phase 2 fs 批 |
+| 旧细粒度 RPC 分支 | 迁一批、删一批（分支 + TS 契约行同 commit 删，不留双路）。已退役：search_content、web_search、web_fetch；glob 属 fs 域工具，随 Phase 2 fs 批 |
 | 权限模型 | v1 `PluginToolAdapter` 过权限引擎返回 Passthrough（与今日 search 命令无 tool 级门一致），真权在 `resolve_read_dispatch`。Phase 2 fs 写工具进场时引入 `plugin:<id>.<tool>` 规则寻址（需把 `permissions::Tool::name()` 从 `&'static str` 放宽为 `Cow`，已列 Phase 2 首项） |
 | 信任分级 | manifest `trust: system/official/third_party`；v1 只注册 system。第三方 + 用户装/卸/能力授予 = Phase 4（持久化接 `plugin_*` 通道） |
 | 进度流（onProgress） | v1 search 无流式需求。shell/browser 批进场时经 `tool_call:progress` 事件（`_callId` 键控）回推——Phase 2 设计件，未预建 |
@@ -57,7 +58,7 @@ Rust 壳从「巨型工具包」变成「带安全边界的插件运行时」：
 |---|---|---|
 | **Phase 0**（本窗） | 契约三件 + 注册表 + `tool_call`/`plugin_tool_manifests` RPC + 内核模块 `tool_plugins/` | cargo test 新增单测；注册表重名拒绝 |
 | **Phase 1**（本窗起） | `builtin.search` 插件自 `commands/search.rs` 拆出（search_content）；TS search 域改 manifest 驱动；旧分支退役 | vitest/convergence/build/biome/doc-sync 全绿，baseline 零漂移 |
-| Phase 1 续 | `builtin.web`（web_search/web_fetch 自 `commands/web.rs`）——立项日并行窗口正在改 web.rs（max_results），避让顺延 | 同上 |
+| Phase 1 续（已落地 2026-09-04） | `builtin.web`（web_search/web_fetch 自 `commands/web.rs`，含并行窗口 64b56542 的 max_results 批转录）；`commands/web.rs` 整文件退役；coding.ts 旧 zod 版 search/web 死码清理；web_fetch 文本结果经分派处 `Value::String` 直通（Text 铁律） | 同上 |
 | Phase 2 | fs / git / shell / editor / constraints 五域 + glob + 进度流设计件 + `permissions::Tool::name` 放宽 | 每域独立批 |
 | Phase 3 | browser / uia / pty / lsp 高权限插件（trust: system） | 每域独立批 |
 | Phase 4 | 插件管理 UI（列表/启停/卸载/信任/能力/审计入口）+ 第三方插件装载 + 能力授予持久化 | UI 验收 |
@@ -65,9 +66,9 @@ Rust 壳从「巨型工具包」变成「带安全边界的插件运行时」：
 
 ## 5. 本窗已知残留（非挂起，均有下落）
 
-- `commands/web.rs` 拆出顺延（并行窗口在途，见 Phase 1 续）。
-- `agent/tools/coding.ts` 旧 `createSearchTools`（zod 版）成为死码——coding.ts 当日被并行窗口在途占用，
-  下窗删除并同步 `coding-domain-plugins.test.ts`。
+- ~~`commands/web.rs` 拆出顺延~~（已落地，见 §4 Phase 1 续行）。
+- ~~`agent/tools/coding.ts` 旧 `createSearchTools`（zod 版）成为死码~~（已删，web 域 zod 版同批清理；A/B 试验 harness 经 tool_call 解信封适配器续用 manifest 工具）。
+- `commands/search.rs` 仅余 glob（fs 域，随 Phase 2 fs 批迁移）。
 - 生成器 `gen:plugin-manifests` 已挂 doc-sync 门禁。
 
 ## 6. 终止条件

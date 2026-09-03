@@ -50,7 +50,6 @@ fn capability_command_modules_are_frozen() {
         "protocol_bridge",
         "search",
         "shell",
-        "web",
         "workspace",
     ];
     assert_eq!(

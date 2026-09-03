@@ -177,12 +177,9 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
 
         // ── 搜索 ──
         // search_content（search_code 已并入）/glob：output_val/json! 构造恒 JSON。
-        "search_content" | "glob" => RpcResultShape::JsonValue,
-
-        // ── Web ──
-        // web_search：json! 构造恒 JSON（空结果也是 {query,results,error}）。
-        // web_fetch：网页文本，Text 铁律。
-        "web_search" => RpcResultShape::JsonValue,
+        // （search_content 已迁 builtin.search 插件走 tool_call——其 JSON 形态
+        //  由前端 agentInvoke 字符串世界兜底，无需本表条目。）
+        "glob" => RpcResultShape::JsonValue,
 
         // ── Shell ──
         // shell_env：serde 序列化恒 JSON（兑底也是合法 JSON 字面量）。
@@ -614,21 +611,6 @@ async fn dispatch_rpc(
             let is_agent = opt_bool(&params, "is_agent");
             let _agent_id = opt_str(&params, "_agent_id");
             commands::search::glob(pattern, path, is_agent, _agent_id, state, app).await
-        }
-
-        // ═══════════════════════════════════════════════════════
-        // Web（2 个命令）
-        // ═══════════════════════════════════════════════════════
-        "web_search" => {
-            let query = req_str(&params, "query", "web_search")?;
-            let agent_id = opt_str(&params, "_agent_id");
-            let max_results = opt_usize(&params, "max_results");
-            commands::web::web_search(query, agent_id, max_results, state, app).await
-        }
-        "web_fetch" => {
-            let url = req_str(&params, "url", "web_fetch")?;
-            let agent_id = opt_str(&params, "_agent_id");
-            commands::web::web_fetch(url, agent_id, state, app).await
         }
 
         // ═══════════════════════════════════════════════════════

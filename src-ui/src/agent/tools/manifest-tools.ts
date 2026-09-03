@@ -56,3 +56,8 @@ export function manifestTool(manifestId: string, toolName: string, exec: ToolExe
 export function createSearchTools(exec: ToolExecutor): Tool[] {
   return [manifestTool('builtin.search', 'search_content', exec)];
 }
+
+/** web 域工具族（builtin.web）——原 zod 定义的逐字节转录，表序不变。 */
+export function createWebTools(exec: ToolExecutor): Tool[] {
+  return [manifestTool('builtin.web', 'web_search', exec), manifestTool('builtin.web', 'web_fetch', exec)];
+}

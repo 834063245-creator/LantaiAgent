@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════
 // MCP 动态工具工厂 — Step 1: 从 MCP tools/list 自动生成
 // ═══════════════════════════════════════════════════════
-// Coding Tools — 文件 / Shell / 搜索 / Git / Web
+// Coding Tools — 文件 / Shell / Git（search/web 已迁内核插件，见 manifest-tools.ts）
 // ═══════════════════════════════════════════════════════
 
 import { z } from 'zod';
@@ -533,108 +533,9 @@ export function createGitTools(exec: ToolExecutor): Tool[] {
   ];
 }
 
-/** search 域工具族（S1-2 从 createCodingTools 迁出）——纯机械移动，定义零改写。
- *  迁出动机同 createFsTools。*/
-export function createSearchTools(exec: ToolExecutor): Tool[] {
-  return [
-    // ── 代码搜索 ──
-    defineTool({
-      name: 'search_content',
-      description:
-        'Search for a text pattern across all source files. Supports literal substring (default, case-insensitive) and regex. Returns matching lines with optional context lines, file lists, or counts. Skips binary files, hidden dirs, and build artifacts. Prefer this over run_shell grep — it is faster and respects .gitignore-style exclusions.',
-      schema: z.object({
-        directory: z.string().describe('Absolute path to the directory to search in'),
-        pattern: z.string().describe('Text or regex pattern to search for (case-insensitive)'),
-        fileTypes: z
-          .string()
-          .optional()
-          .describe('Optional comma-separated file extensions to filter (e.g. ".ts,.py,.rs")'),
-        maxResults: z.coerce
-          .number()
-          .int()
-          .max(200)
-          .optional()
-          .default(50)
-          .describe('Maximum number of results to return (default: 50, max: 200)'),
-        useRegex: z
-          .boolean()
-          .optional()
-          .default(false)
-          .describe(
-            'Set to true to interpret pattern as a regex (e.g. "function\\\\s+\\\\w+"). Default: false (literal substring)',
-          ),
-        contextLines: z.coerce
-          .number()
-          .int()
-          .optional()
-          .default(0)
-          .describe('Number of context lines before and after each match (like grep -C). Default: 0. Max: 10.'),
-        outputMode: z
-          .enum(['content', 'files_with_matches', 'count'])
-          .optional()
-          .default('content')
-          .describe(
-            'Output mode: "content" = matching lines with context, "files_with_matches" = just file paths, "count" = match counts per file. Default: content.',
-          ),
-        showLineNumbers: z
-          .boolean()
-          .optional()
-          .default(true)
-          .describe('Include line numbers in output (default: true)'),
-        headLimit: z.coerce
-          .number()
-          .int()
-          .optional()
-          .default(250)
-          .describe('Max results/files to return (default: 250, 0 = unlimited)'),
-        offset: z.coerce
-          .number()
-          .int()
-          .optional()
-          .default(0)
-          .describe('Skip first N results for pagination (default: 0)'),
-        globFilter: z
-          .string()
-          .optional()
-          .describe('Additional glob filter on file paths (e.g. "**/*.rs", "src/**/*.ts")'),
-      }),
-      readOnly: true,
-      execute: (args, onProgress) => exec('search_content', args, onProgress),
-    }),
-  ];
-}
-
-/** web 域工具族（S1-2 从 createCodingTools 迁出）——纯机械移动，定义零改写。
- *  含 Web Search：AnySearch 免费 API + Bing/DuckDuckGo 抓取兜底；迁出动机同 createFsTools。*/
-export function createWebTools(exec: ToolExecutor): Tool[] {
-  return [
-    // ── Web Search ──
-    // 先走 AnySearch 匿名免费 API，失败/空结果自动降级 Bing / DuckDuckGo 抓取。
-    defineTool({
-      name: 'web_search',
-      description:
-        'Search the internet for real-time information. Uses a free anonymous search API first; if it fails, automatically falls back to Bing/DuckDuckGo scraping. No API key required.',
-      schema: z.object({
-        query: z.string().describe('Search keywords'),
-        maxResults: z.coerce.number().int().min(1).max(10).optional().default(10).describe('Number of results to return (default 10, max 10)'),
-      }),
-      readOnly: true,
-      execute: (args, onProgress) => exec('web_search', args, onProgress),
-    }),
-
-    // ── Web 抓取 ──
-    defineTool({
-      name: 'web_fetch',
-      description:
-        'Fetch a URL and return its text content. HTML pages are reduced to readable text (scripts, styles, tags stripped). JSON / plain text / markdown pass through verbatim. Use to read documentation, API responses, or source files hosted on the web. 15s timeout, 1 MiB max.',
-      schema: z.object({
-        url: z.string().describe('The URL to fetch (HTTPS or HTTP only)'),
-      }),
-      readOnly: true,
-      execute: (args, onProgress) => exec('web_fetch', args, onProgress),
-    }),
-  ];
-}
+// search/web 两域已迁内核插件（builtin.search / builtin.web，kernel-plugin-runtime
+// Phase 1）：zod 版定义删除，真源 = src-tauri/src/tool_plugins/*/manifest.json，
+// TS 面经 agent/tools/manifest-tools.ts 生成。
 
 /** agent-isolation 工具族（S1-2 从 createCodingTools 迁出）——纯机械移动，定义零改写。*/
 export function createAgentIsolationTools(exec: ToolExecutor): Tool[] {
@@ -817,10 +718,6 @@ export function createCodingTools(exec: ToolExecutor, ui?: CodingToolsUI): Tool[
     ...createShellTools(exec),
     // Git 域工具族（S1-2 迁出至 createGitTools）
     ...createGitTools(exec),
-    // 代码搜索（search 域工具族，S1-2 迁出至 createSearchTools）
-    ...createSearchTools(exec),
-    // Web 抓取（web 域工具族，S1-2 迁出至 createWebTools）
-    ...createWebTools(exec),
     // Agent Worktree 隔离（agent-isolation 族，S1-2 迁出至 createAgentIsolationTools）
     ...createAgentIsolationTools(exec),
     // 用户交互（ask 族，S1-2 迁出至 createAskUserTools）

@@ -55,6 +55,13 @@ impl<'a> ToolContext<'a> {
         )
         .await
     }
+
+    /// 工具级权限过闸（与旧命令 `check_permission` 同路径——Ask 事件 + 回包等待）。
+    /// 插件内的二次真权用：如 web 域的 WebFetchTool（域名规则 + SSRF）。
+    pub async fn check_permission(&self, tool: &dyn crate::permissions::Tool) -> Result<(), String> {
+        let perm_ctx = crate::utils::get_ctx(self.state)?;
+        crate::utils::check_permission(tool, &perm_ctx, self.app).await
+    }
 }
 
 /// 进程内 Rust 插件接口。工具业务的家；内核只做注册表/权限/审计/分派。
