@@ -9,6 +9,7 @@
 //! 查注册表 → 启用校验（信任分级）→ 工具存在 → 权限引擎（PluginToolAdapter）→
 //! 插件 execute（内部走既有路径级真权）→ 返回。
 
+pub mod browser;
 pub mod constraints;
 pub mod editor;
 pub mod fs;
@@ -18,6 +19,7 @@ pub mod plugin;
 pub mod registry;
 pub mod search;
 pub mod shell;
+pub mod uia;
 pub mod web;
 
 pub use plugin::ToolContext;

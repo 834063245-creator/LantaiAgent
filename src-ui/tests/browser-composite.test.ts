@@ -39,11 +39,16 @@ describe('browser_fill', () => {
       ],
     });
     expect(out).toContain('browser_fill 完成 2 个字段');
-    expect(invokeMock).toHaveBeenCalledWith('browser_type', expect.objectContaining({ selector: '12', text: 'alice' }));
-    expect(invokeMock).toHaveBeenCalledWith(
-      'browser_type',
-      expect.objectContaining({ selector: '#pw', text: 'secret', replace: true }),
-    );
+    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
+      plugin: 'builtin.browser',
+      tool: 'browser_type',
+      args: expect.objectContaining({ selector: '12', text: 'alice' }),
+    });
+    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
+      plugin: 'builtin.browser',
+      tool: 'browser_type',
+      args: expect.objectContaining({ selector: '#pw', text: 'secret', replace: true }),
+    });
     expect(invokeMock).toHaveBeenCalledTimes(2);
   });
 
@@ -62,11 +67,16 @@ describe('browser_navigate_snapshot', () => {
     const out = await reg('browser_navigate_snapshot').execute({ url: 'https://example.com/', maxResults: 40 });
     expect(out).toContain('== navigation ==');
     expect(out).toContain('== snapshot ==');
-    expect(invokeMock).toHaveBeenCalledWith(
-      'browser_navigate',
-      expect.objectContaining({ url: 'https://example.com/' }),
-    );
-    expect(invokeMock).toHaveBeenCalledWith('browser_snapshot', expect.objectContaining({ maxResults: 40 }));
+    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
+      plugin: 'builtin.browser',
+      tool: 'browser_navigate',
+      args: expect.objectContaining({ url: 'https://example.com/' }),
+    });
+    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
+      plugin: 'builtin.browser',
+      tool: 'browser_snapshot',
+      args: expect.objectContaining({ maxResults: 40 }),
+    });
     expect(invokeMock).toHaveBeenCalledTimes(2);
   });
 

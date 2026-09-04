@@ -244,14 +244,10 @@ export interface RpcContract {
   };
   lsp_stop: { params: { session_id: number }; result: string }; // "null"
 
-  // ── 浏览器审计 / 后台活动（UI 展示层）────────────────────
-  // Agent 工具走 agentInvoke 动态分发；UI 组件只读查询用本条目。
-  browser_audit: {
-    params: { agent?: string; limit?: number };
-    result: string; // JSON — { count, entries: string[] }（entries 为审计 JSON 字符串）
-  };
   // （background_activity 已迁内核插件 builtin.shell——状态栏 HUD 经
-  //   kernelShellCall('background_activity') 信封消费，kernel-plugin-runtime P2-4）
+  //   kernelShellCall('background_activity') 信封消费，kernel-plugin-runtime P2-4。
+  //   browser_audit 已迁 builtin.browser——审计查询经浏览器域工具信封消费，
+  //   无 typedRpc 直呼点，RpcContract 行随 RPC 分支退役，kernel-plugin-runtime P2-5。）
 
   // ── MCP / ACP stdio 桥 ────────────────────────────────────
   protocol_bridge_spawn: {

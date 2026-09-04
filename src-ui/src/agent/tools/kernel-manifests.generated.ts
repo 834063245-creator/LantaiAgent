@@ -9,6 +9,852 @@ import type { KernelToolManifest } from './manifest-tools';
 
 export const KERNEL_MANIFESTS: readonly KernelToolManifest[] = [
   {
+    "id": "builtin.browser",
+    "version": "1.0.0",
+    "trust": "system",
+    "description": "CDP 浏览器控制（自 rpc.rs CDP 分区拆出，kernel-plugin-runtime P2-5）",
+    "capabilities": [
+      "network"
+    ],
+    "tools": [
+      {
+        "name": "browser_launch",
+        "description": "Launch a controlled Chrome/Edge instance (isolated profile, never touches the user's daily browser data). Use before inspecting/operating external pages. Returns the debug port. If already running with the same launch shape, reuses it; changing port/headless/windowSize/profile/proxy restarts with the new shape. Pass url to open a specific page. headless mode runs with no visible UI. profile is a NAMED persistent profile (e.g. \"work\" or \"personal\"): each name is an isolated account session with its own cookies/logins, kept across kill/relaunch, and switchable with browser_switch_session. Omit profile for the default temporary profile that is deleted on kill. proxy uses Chrome --proxy-server (e.g. \"socks5://127.0.0.1:1080\"); proxyBypass sets --proxy-bypass-list.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "description": "Optional URL to open in the controlled browser",
+              "type": "string"
+            },
+            "port": {
+              "description": "Debug port (default: auto-probe from 9223; 9222 is reserved for 兰台 webview)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "headless": {
+              "description": "Run Chrome without a visible window (default false)",
+              "type": "boolean"
+            },
+            "windowSize": {
+              "description": "Launch window size (--window-size=width,height)",
+              "type": "object",
+              "properties": {
+                "width": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 16384,
+                  "description": "Window width in pixels"
+                },
+                "height": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 16384,
+                  "description": "Window height in pixels"
+                }
+              },
+              "required": [
+                "width",
+                "height"
+              ]
+            },
+            "profile": {
+              "description": "Named persistent account profile/session slot (e.g. \"work\"); omit for temporary default profile",
+              "type": "string",
+              "maxLength": 48
+            },
+            "proxy": {
+              "description": "Chrome --proxy-server value (e.g. \"socks5://127.0.0.1:1080\")",
+              "type": "string"
+            },
+            "proxyBypass": {
+              "description": "Chrome --proxy-bypass-list value (e.g. \"localhost;127.0.0.1\")",
+              "type": "string"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_connect",
+        "description": "Connect to a browser instance the USER has already started with a remote debugging port (Chrome/Edge launched with --remote-debugging-port=NNNN, or a Chromium-based app exposing one). If the user did not provide a port, call browser_discover first to list instances and let the user pick one. Takes over that live instance with its real logins and data — requires user approval. After connect: targets → attach → snapshot/click as usual. session optionally registers the external instance as a named account slot for browser_switch_session. kill only disconnects (never kills a browser this agent did not launch). 9222 is refused (兰台 webview, read-only self channel).",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "port": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991,
+              "description": "Debug port of the running browser instance (e.g. 9223)"
+            },
+            "session": {
+              "description": "Optional account slot name to register this instance under (default: default)",
+              "type": "string",
+              "maxLength": 48
+            }
+          },
+          "required": [
+            "port"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_sessions",
+        "description": "List this agent's browser account sessions (slots) and which one is active. Each named profile launched with browser_launch(profile:...) is an isolated account session with its own cookies/logins. Returns {active, sessions:[{slot,active,port,chromeRunning,external,attached,headless,windowSize,proxy}]}.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_switch_session",
+        "description": "Switch the active browser account session by slot name (the profile name passed to browser_launch, or session passed to browser_connect). The previous session keeps running with its own cookies/logins; switch back to resume it. Use browser_sessions to see available slots first. To create a new account session use browser_launch(profile: \"name\").",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "session": {
+              "type": "string",
+              "maxLength": 48,
+              "description": "Account session slot name to activate"
+            }
+          },
+          "required": [
+            "session"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_cookies",
+        "description": "Inspect or modify cookies in the active browser session. list: read cookies (all, or filtered by urls). set: write one cookie (url or domain required). delete: remove one cookie (name + url/domain required). Cookie values are truncated to 300 chars in list output; writing/deleting cookies changes login state and requires approval.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "list",
+                "set",
+                "delete"
+              ],
+              "description": "Cookie operation"
+            },
+            "urls": {
+              "description": "list: only return cookies for these URLs (default all cookies in this browser context)",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "url": {
+              "description": "set/delete: cookie URL (either url or domain is required)",
+              "type": "string"
+            },
+            "name": {
+              "description": "set/delete: cookie name",
+              "type": "string"
+            },
+            "value": {
+              "description": "set: cookie value",
+              "type": "string"
+            },
+            "domain": {
+              "description": "set/delete: cookie domain (either url or domain is required)",
+              "type": "string"
+            },
+            "path": {
+              "description": "set/delete: cookie path (default /)",
+              "type": "string"
+            },
+            "httpOnly": {
+              "description": "set: HttpOnly flag",
+              "type": "boolean"
+            },
+            "secure": {
+              "description": "set: Secure flag",
+              "type": "boolean"
+            },
+            "sameSite": {
+              "description": "set: SameSite restriction",
+              "type": "string",
+              "enum": [
+                "Strict",
+                "Lax",
+                "None"
+              ]
+            },
+            "expires": {
+              "description": "set: expiration time in Unix seconds (default session cookie)",
+              "type": "number"
+            }
+          },
+          "required": [
+            "op"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_kill",
+        "description": "Terminate the controlled Chrome instance launched by this agent in the ACTIVE account session. Only kills the Chrome this agent launched. Named profile directories are kept so the login state can be relaunched/restored.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_targets",
+        "description": "List all page targets available on the CDP port — [{id, title, url}]. Use after launch to see what pages exist, then attach to one.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_discover",
+        "description": "Discover Chromium-based instances on this machine that have a debug port open — queries the process table, so the USER does not need to know or report any port. Returns {instances:[{browser, port, pages:[{id,title,url}]}]}. Use BEFORE browser_connect when the user says \"operate my browser\" without a port: list the instances to the user, let them pick, then connect(port). 兰台 webview (9222) is filtered out.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_attach",
+        "description": "Attach to a specific page target (by id from browser_targets) so subsequent inspect/click/type/press/scroll/eval act on it. This is also how you switch between open tabs: pick another targetId from browser_targets and attach. This takes control of an external page — requires user approval. Note: targetId is the CDP target id; the \"target\" parameter (self vs external) is separate.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "targetId": {
+              "type": "string",
+              "description": "CDP target id from browser(targets) — not \"self\""
+            }
+          },
+          "required": [
+            "targetId"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_inspect",
+        "description": "Read element geometry/style/text/contrast from the attached page using a CSS selector (or snapshot ref number). Returns JSON array: {tag, id, rect{x,y,width,height}, visible, scrollable, style{color,background,fontSize,...}, text, contrast}. props: optional subset of [\"geometry\",\"style\",\"text\",\"contrast\"]. maxResults caps elements (default 20). Use to verify visual details after UI changes.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "selector": {
+              "type": "string",
+              "description": "CSS selector (or ref number from snapshot) of element(s) to inspect"
+            },
+            "props": {
+              "description": "Optional subset: geometry/style/text/contrast",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "maxResults": {
+              "description": "Max elements (default 20)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "target": {
+              "description": "\"self\" = 兰台 webview（只读）；省略 = 已 attach 的外部页面",
+              "type": "string"
+            }
+          },
+          "required": [
+            "selector"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_report",
+        "description": "Visual lint report on the attached page (or scope selector) — checks contrast (WCAG 4.5:1), spacing scale (4/8/12/16/24/32), alignment, hierarchy (overused shadows), overflow. Returns {issues:[{rule,severity,detail,selector}], ok}. Use AFTER modifying UI code to self-review the rendered result.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "description": "Optional CSS selector to limit the scan (default: whole page)",
+              "type": "string"
+            },
+            "target": {
+              "description": "\"self\" = 兰台 webview（只读）；省略 = 已 attach 的外部页面",
+              "type": "string"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_snapshot",
+        "description": "Snapshot interactive elements on the attached page — returns {source, refs:[{ref,tag,role,name,text,type?,id?}], count, total, offset, truncated}. Prefers Chrome Accessibility.getFullAXTree (source:\"ax\"); falls back to an enhanced DOM probe that traverses same-origin iframes and shadow DOM and computes accessible names (aria-label/labelledby/label/alt/title/placeholder). Marks elements with ref numbers; use these ref numbers in click/type/select/hover/scroll (e.g. selector: \"37\"). Refs are valid until the DOM changes — if an operation fails with \"target gone\", re-snapshot. If truncated is true there are more elements below — call again with offset to page (e.g. offset: 80 for page 2, 160 for page 3). PREFERRED over hand-written CSS selectors.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "description": "Optional CSS selector to limit the snapshot (default: whole page)",
+              "type": "string"
+            },
+            "maxResults": {
+              "description": "Max elements per page (default 80)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "offset": {
+              "description": "Skip this many interactive elements (for paging; default 0)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "target": {
+              "description": "\"self\" = 兰台 webview（只读）；省略 = 已 attach 的外部页面",
+              "type": "string"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_content",
+        "description": "Extract page text content from the attached page — always returns {title, url, format}. format \"text\" (default) returns cleaned innerText; \"markdown\" returns a lightweight markdown conversion (headings/lists/links/images/tables). scope limits extraction to a CSS selector. Pagination is character-based: maxChars (default 8000, max 20000) + offset reads the next chunk. Use instead of browser_eval for readable page body.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "description": "Optional CSS selector to limit extraction (default: whole page)",
+              "type": "string"
+            },
+            "format": {
+              "description": "Output format: text (default) or markdown",
+              "type": "string",
+              "enum": [
+                "text",
+                "markdown"
+              ]
+            },
+            "maxChars": {
+              "description": "Max content characters per page (default 8000)",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20000
+            },
+            "offset": {
+              "description": "Skip this many content characters (for paging; default 0)",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "target": {
+              "description": "\"self\" = 兰台 webview（只读）；省略 = 已 attach 的外部页面",
+              "type": "string"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_console",
+        "description": "Read recent page console events (console.log/error, exceptions, Log.entryAdded) from the attached page. Use after UI changes or operations to check for new errors. Returns {entries:[{type,text}]}.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "limit": {
+              "description": "Max entries (default 30)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "target": {
+              "description": "\"self\" = 兰台 webview（只读）；省略 = 已 attach 的外部页面",
+              "type": "string"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_network",
+        "description": "Read recent network events (requests/responses/failures) from the attached page. Requests and responses are paired by requestId: one entry has method/url/status/mimeType/error, with status null while pending and error set on load failure. Returns {entries:[{requestId,method,url,status,mimeType,resourceType,error}], paired:true}.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "limit": {
+              "description": "Max entries (default 30)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "target": {
+              "description": "\"self\" = 兰台 webview（只读）；省略 = 已 attach 的外部页面",
+              "type": "string"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_network_detail",
+        "description": "Read full detail for one observed network request by requestId (from browser_network): complete URL, method, status/statusText/mimeType, request+response headers, postData (capped), error. Only requests still inside the 200-entry event buffer are available. HAR export is not implemented yet.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "requestId": {
+              "type": "string",
+              "description": "requestId from browser(network) entries"
+            },
+            "target": {
+              "description": "\"self\" = 兰台 webview（只读）；省略 = 已 attach 的外部页面",
+              "type": "string"
+            }
+          },
+          "required": [
+            "requestId"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_network_har",
+        "description": "Export recently observed network events from the attached page to a HAR 1.2 file in the temp directory. Returns {path, bytes, entries}. Includes URL, request/response headers, queryString, postData, status and mimeType; timing fields are -1 because the event observer does not sample timings. Use fs(read) or hand the path to the user when a full request archive is needed.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "limit": {
+              "description": "Max entries to export (default 100; max 200)",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            },
+            "target": {
+              "description": "\"self\" = 兰台 webview（只读）；省略 = 已 attach 的外部页面",
+              "type": "string"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_screenshot",
+        "description": "Capture a screenshot of the attached page — saved to a temp file, returns {path, bytes}. With a text-only model the image content is not visible; hand the path to the user for confirmation.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "fullPage": {
+              "description": "Capture beyond the viewport (full scrollable page, default false)",
+              "type": "boolean"
+            },
+            "inline": {
+              "description": "Return a base64 data URL directly when <= 3MB (default false)",
+              "type": "boolean"
+            },
+            "target": {
+              "description": "\"self\" = 兰台 webview（只读）；省略 = 已 attach 的外部页面",
+              "type": "string"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_viewport",
+        "description": "Set viewport metrics on the attached page via Emulation.setDeviceMetricsOverride: width/height in CSS px, deviceScaleFactor (0.5-3, default 1) and mobile emulation flag (default false). This is the CDP viewport override, separate from browser_launch windowSize (the physical window).",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "width": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16384,
+              "description": "Viewport width in CSS pixels"
+            },
+            "height": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 16384,
+              "description": "Viewport height in CSS pixels"
+            },
+            "deviceScaleFactor": {
+              "description": "Device pixel ratio (default 1)",
+              "type": "number",
+              "minimum": 0.5,
+              "maximum": 3
+            },
+            "mobile": {
+              "description": "Emulate a mobile viewport (default false)",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "width",
+            "height"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_audit",
+        "description": "Read the browser operation audit log — which agent did what (click/type/launch/attach), when, and the outcome. Use to review what the Agent has done in the browser.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "limit": {
+              "description": "Max entries (default 50)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_click",
+        "description": "Click an element in the attached page by snapshot ref number (e.g. selector: \"37\") or CSS selector. Waits for the element to be actionable (visible/unobscured/stable) before clicking. Returns world-change feedback (URL/DOM changes, new errors). Sensitive targets (submit buttons, download links, confirm/pay/delete text) trigger a separate approval.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "selector": {
+              "type": "string",
+              "description": "Ref number from snapshot or CSS selector of element to click"
+            }
+          },
+          "required": [
+            "selector"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_type",
+        "description": "Type text into an input in the attached page by snapshot ref number (e.g. selector: \"37\") or CSS selector. Focuses the element then inserts text (Chinese/IME friendly). Set replace:true to clear the existing value first (dispatches input/change events). Typing into a pre-filled input or password field triggers a separate approval.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "selector": {
+              "type": "string",
+              "description": "Ref number from snapshot or CSS selector of input/textarea/contenteditable to focus"
+            },
+            "text": {
+              "type": "string",
+              "description": "Text to type"
+            },
+            "replace": {
+              "description": "Replace existing value before typing (clears then dispatches input/change events)",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "selector",
+            "text"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_press",
+        "description": "Press a key in the attached page: Enter / Tab / Escape / Backspace / Arrow keys / single characters.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string",
+              "description": "Key name (Enter/Tab/Escape/ArrowUp/ArrowDown/... or single char)"
+            },
+            "modifiers": {
+              "description": "Modifier keys held during the press (e.g. [\"ctrl\"] + key \"a\" = Ctrl+A)",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "ctrl",
+                  "alt",
+                  "shift",
+                  "meta"
+                ]
+              }
+            }
+          },
+          "required": [
+            "key"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_hover",
+        "description": "Hover the mouse over an element in the attached page by ref number or CSS selector. Waits for the element to be actionable, then moves the mouse to its center (for hover menus/tooltips/:hover styles).",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "selector": {
+              "type": "string",
+              "description": "Ref number from snapshot or CSS selector of element to hover"
+            }
+          },
+          "required": [
+            "selector"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_dialog",
+        "description": "Inspect or handle a JavaScript dialog (alert/confirm/prompt) on the attached page. Call without accept to query recent dialogs and whether one is pending. Call with accept:true to accept, accept:false to dismiss; promptText answers a prompt.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "accept": {
+              "description": "Omit to query pending dialogs; true = accept, false = dismiss",
+              "type": "boolean"
+            },
+            "promptText": {
+              "description": "Text to enter for a prompt dialog",
+              "type": "string"
+            },
+            "limit": {
+              "description": "Max dialog entries when querying (default 10)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_upload",
+        "description": "Set files on an <input type=file> in the attached page. If a file chooser was recently opened, its intercepted backend node is used; otherwise pass a CSS selector (or ref) to the input. files are local absolute paths.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Absolute local file paths to set"
+            },
+            "selector": {
+              "description": "CSS selector (or ref) of the file input, required if no recent file chooser event",
+              "type": "string"
+            }
+          },
+          "required": [
+            "files"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_new_tab",
+        "description": "Open a new tab in the current browser session and auto-attach to it. Pass url to open a page (default about:blank). Use browser_targets + browser_attach to switch tabs later.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "description": "URL to open in the new tab (default about:blank)",
+              "type": "string"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_close_tab",
+        "description": "Close a browser tab by targetId (from browser_targets). If it is the currently attached tab, the session becomes unattached — list targets and attach another.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "targetId": {
+              "type": "string",
+              "description": "CDP target id of the tab to close"
+            }
+          },
+          "required": [
+            "targetId"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_scroll",
+        "description": "Scroll the attached page: pass selector (ref number or CSS selector) to scroll element into view, or direction (down/up/top) for page scroll.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "selector": {
+              "description": "Ref number or CSS selector to scroll into view",
+              "type": "string"
+            },
+            "direction": {
+              "description": "Page scroll direction: down/up/top",
+              "type": "string"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_navigate",
+        "description": "Navigate the attached page to a URL (Page.navigate). Returns world-change feedback after the navigation settles. Use for normal page navigation after attach.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "description": "URL to navigate to"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_back",
+        "description": "Go back one entry in the attached page navigation history. Returns {navigated:\"back\", url, change}.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_forward",
+        "description": "Go forward one entry in the attached page navigation history. Returns {navigated:\"forward\", url, change}.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_reload",
+        "description": "Reload the attached page (Page.reload). Returns {reloaded:true, url, change}.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_select",
+        "description": "Select an <option> in a <select> element on the attached page by ref number or CSS selector. value matches option value first, then visible option text. Dispatches input/change events. Returns {selected, value, change}.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "selector": {
+              "type": "string",
+              "description": "Ref number from snapshot or CSS selector of the <select> element"
+            },
+            "value": {
+              "type": "string",
+              "description": "Option value (preferred) or visible option text"
+            }
+          },
+          "required": [
+            "selector",
+            "value"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_wait",
+        "description": "Wait — either wait a fixed number of ms, or wait until a CSS selector appears and is visible (default 10s timeout). Use after clicking an async-triggering button when the result takes a moment to load. Pass ms for a fixed sleep; pass selector to poll for it to become visible. Returns {found, selector?, waited_ms}. Does not change state.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "selector": {
+              "description": "CSS selector to wait for (appears + visible)",
+              "type": "string"
+            },
+            "ms": {
+              "description": "Fixed sleep in milliseconds (capped at 30000)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_eval",
+        "description": "Execute a JS expression in the attached page (read-oriented; network/storage/new-window calls blocked by whitelist). Returns the value as JSON. Prefer browser_inspect for DOM reading.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "expr": {
+              "type": "string",
+              "description": "JS expression to evaluate"
+            }
+          },
+          "required": [
+            "expr"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "browser_status",
+        "description": "Current browser session status — port, attached target, controlled Chrome running, observer alive, pending dialog/file chooser.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": {}
+        }
+      }
+    ]
+  },
+  {
     "id": "builtin.constraints",
     "version": "1.0.0",
     "trust": "system",
@@ -1126,6 +1972,672 @@ export const KERNEL_MANIFESTS: readonly KernelToolManifest[] = [
               "description": "Owner agent id whose notifications to drain"
             }
           },
+          "additionalProperties": {}
+        }
+      }
+    ]
+  },
+  {
+    "id": "builtin.uia",
+    "version": "1.0.0",
+    "trust": "system",
+    "description": "Windows 桌面 UIA 控制（自 rpc.rs desktop 分区拆出，kernel-plugin-runtime P2-5）",
+    "capabilities": [
+      "desktop"
+    ],
+    "tools": [
+      {
+        "name": "desktop_probe",
+        "description": "Snapshot current machine process tree + top-level windows + visible console windows, WITH per-window channel routing advice (route.channel: \"cdp\" for Chromium windows → browser tools; \"uia\" for standard-control windows → desktop_uia_*; \"vision\" for self-drawn apps → uia_window_shot + multimodal). Returns {processes:[{pid,ppid,name,is_chromium}], windows:[{pid,name,title,visible,hwnd,route}], visible_console_windows}. route:false param skips UIA probing for a faster bare snapshot. Use to find which window to operate and HOW to operate it. Read-only; no persistent monitoring. Privacy: only process names (not full command lines); no cross-session/RDP probing.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "route": {
+              "description": "Attach per-window channel routing advice (default true); false = bare snapshot, faster",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "desktop_screenshot",
+        "description": "Capture a full-screen screenshot of the current desktop (requires an interactive desktop session). Saved to a temp file; returns {path, bytes, note}. High-privacy: may contain arbitrary on-screen content, so this asks for approval EVERY time. With a text-only model the image is not visible; hand the path to the user for confirmation.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "desktop_uia_tree",
+        "description": "Read the Windows UI Automation control tree of a desktop window — interactive controls only by default (buttons, inputs, lists, menus...), paginated. Returns {window:{pid,title,hwnd}, refs, generation, total, offset, count, truncated, tree:\"[ref] Type \\\"Name\\\"\", controls:[{ref,name,type,automation_id,enabled,rect,depth}]}. Locate the window by ONE of: hwnd (exact, from desktop_probe), pid, title (fuzzy), or omit all for the foreground window. all:true includes non-interactive layout elements; depth:N limits tree levels; offset/max_results paginate (default 80/page). refs index the FULL tree and stay reusable across actions and pages; if the window changed and a ref went stale, the action auto-refreshes once — only re-read the tree when that fails. Reading never touches focus or cursor. Self-drawn controls (WeChat/QQ/DingTalk etc.) expose an empty tree — use desktop_uia_window_shot + a vision model instead.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "hwnd": {
+              "description": "Window handle from desktop_probe (hwnd field)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "pid": {
+              "description": "Process id - resolves to its main window",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "title": {
+              "description": "Window title substring (fuzzy, first match)",
+              "type": "string"
+            },
+            "depth": {
+              "description": "Limit tree to N levels (real hierarchy with indentation)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "all": {
+              "description": "Include non-interactive layout elements (default false = interactive only)",
+              "type": "boolean"
+            },
+            "offset": {
+              "description": "Skip this many listed controls (for paging; default 0)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "max_results": {
+              "description": "Max controls per page (default 80)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "desktop_uia_find",
+        "description": "Find controls inside a desktop window by criteria (name fuzzy / control_type / automation_id / enabled). Interactive controls only by default (all:true for everything). Returns matching controls with their refs for later actions. Use instead of a full tree when you already know what kind of control you need — cheaper than uia_tree.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "hwnd": {
+              "description": "Window handle from desktop_probe",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "pid": {
+              "description": "Process id",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "title": {
+              "description": "Window title substring",
+              "type": "string"
+            },
+            "name": {
+              "description": "Control name substring (case-insensitive)",
+              "type": "string"
+            },
+            "control_type": {
+              "description": "e.g. Button, Edit, ListItem, MenuItem, CheckBox",
+              "type": "string"
+            },
+            "automation_id": {
+              "description": "Exact automation id",
+              "type": "string"
+            },
+            "enabled": {
+              "description": "Filter by enabled state",
+              "type": "boolean"
+            },
+            "all": {
+              "description": "Include non-interactive elements (default false)",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "desktop_uia_read",
+        "description": "Read full detail of ONE control: value (password-masked), toggle state, expand state, scroll percents, rect, and the list of patterns it supports. Use after an action to verify the result (feedback loop), or before acting to see which patterns are available. Locate by ref or selector, same as the action tools. Read-only.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "description": "Control ref from desktop_uia_tree/find",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "name": {
+              "description": "Control name, exact match case-insensitive",
+              "type": "string"
+            },
+            "automation_id": {
+              "description": "Exact automation id",
+              "type": "string"
+            },
+            "control_type": {
+              "description": "ControlType, e.g. Button, Edit",
+              "type": "string"
+            },
+            "hwnd": {
+              "description": "Window handle",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "pid": {
+              "description": "Process id",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "title": {
+              "description": "Window title substring",
+              "type": "string"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "desktop_uia_wait",
+        "description": "Wait until a control satisfies a condition: until \"exists\" (appears), \"enabled\", or \"value\" (equals the given value). Polls every 150ms up to timeout_ms (default 10000, max 30000). Returns {found, until, waited_ms} — found:false on timeout is NOT an error. Use after clicking async-triggering buttons (e.g. dialogs that take a moment).",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "until": {
+              "type": "string",
+              "enum": [
+                "exists",
+                "enabled",
+                "value"
+              ],
+              "description": "Condition to wait for"
+            },
+            "value": {
+              "description": "Expected value (required when until=value)",
+              "type": "string"
+            },
+            "timeout_ms": {
+              "description": "Max wait in ms (default 10000, max 30000)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "ref": {
+              "description": "Control ref from desktop_uia_tree/find",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "name": {
+              "description": "Control name, exact match case-insensitive",
+              "type": "string"
+            },
+            "automation_id": {
+              "description": "Exact automation id",
+              "type": "string"
+            },
+            "control_type": {
+              "description": "ControlType",
+              "type": "string"
+            },
+            "hwnd": {
+              "description": "Window handle",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "pid": {
+              "description": "Process id",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "title": {
+              "description": "Window title substring",
+              "type": "string"
+            }
+          },
+          "required": [
+            "until"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "desktop_uia_click",
+        "description": "Click a control in a desktop window. Locate by EITHER ref (from desktop_uia_tree/find) OR selector: name/automation_id/control_type - any combination. Triggers via InvokePattern/TogglePattern/SelectionItemPattern when available (no focus stealing), else real coordinate click (physical input). Returns world-change feedback: {done, method, target, changed:{window_title/focused/value/toggle before→after}, hint}. Permissions: first write into a window asks once (window takeover); sensitive targets (submit/pay/delete/confirm text) and coordinate clicks ask separately every time. Check \"changed\" to verify the click did what you expected; use desktop_uia_read/wait to double-check.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "description": "Control ref from desktop_uia_tree/find (use instead of name/automation_id/control_type)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "name": {
+              "description": "Control name, exact match case-insensitive (e.g. \"Equals\", \"Seven\")",
+              "type": "string"
+            },
+            "automation_id": {
+              "description": "Exact automation id (e.g. \"equalButton\", \"num7Button\")",
+              "type": "string"
+            },
+            "control_type": {
+              "description": "ControlType, e.g. Button, Edit, ListItem, MenuItem, CheckBox",
+              "type": "string"
+            },
+            "hwnd": {
+              "description": "Window handle (re-locate if tree changed)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "pid": {
+              "description": "Process id",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "title": {
+              "description": "Window title substring",
+              "type": "string"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "desktop_uia_right_click",
+        "description": "Right-click a control — opens the context menu at the control center. Pure physical input (no UIA pattern for right-click), always asks. Locate by ref or selector (see desktop_uia_click). After the menu opens, read it with desktop_uia_tree and click items by ref.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "description": "Control ref from desktop_uia_tree/find",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "name": {
+              "description": "Control name, exact match case-insensitive",
+              "type": "string"
+            },
+            "automation_id": {
+              "description": "Exact automation id",
+              "type": "string"
+            },
+            "control_type": {
+              "description": "ControlType, e.g. Button, Edit, ListItem",
+              "type": "string"
+            },
+            "hwnd": {
+              "description": "Window handle",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "pid": {
+              "description": "Process id",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "title": {
+              "description": "Window title substring",
+              "type": "string"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "desktop_uia_type",
+        "description": "Type text into a control. ValuePattern.SetValue when supported (instant, no focus), else focus + clipboard paste (physical input, asks separately). Returns world-change feedback incl. value before→after (password fields masked). Typing into a pre-filled input or a password field is classified sensitive and asks separately.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "description": "Control ref (usually an Edit/ComboBox)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "text": {
+              "type": "string",
+              "description": "Text to type"
+            },
+            "name": {
+              "description": "Control name, exact match case-insensitive",
+              "type": "string"
+            },
+            "automation_id": {
+              "description": "Exact automation id",
+              "type": "string"
+            },
+            "control_type": {
+              "description": "ControlType, e.g. Edit, ComboBox",
+              "type": "string"
+            },
+            "hwnd": {
+              "description": "Window handle",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "pid": {
+              "description": "Process id",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "title": {
+              "description": "Window title substring",
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "desktop_uia_scroll",
+        "description": "Scroll a scrollable control (ScrollPattern when available, else mouse wheel — wheel is physical input and asks separately). Returns world-change feedback incl. scroll percents before→after. Scroll itself is non-destructive; with window takeover granted it flows without asking.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "description": "Control ref (scrollable pane/list)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "direction": {
+              "type": "string",
+              "enum": [
+                "up",
+                "down",
+                "left",
+                "right"
+              ],
+              "description": "Scroll direction"
+            },
+            "amount": {
+              "description": "Scroll amount (>=1 large step, <1 small step; wheel ticks); default 1",
+              "type": "number"
+            },
+            "name": {
+              "description": "Control name, exact match case-insensitive",
+              "type": "string"
+            },
+            "automation_id": {
+              "description": "Exact automation id",
+              "type": "string"
+            },
+            "control_type": {
+              "description": "ControlType, e.g. Pane, List, ScrollBar",
+              "type": "string"
+            },
+            "hwnd": {
+              "description": "Window handle",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "pid": {
+              "description": "Process id",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "title": {
+              "description": "Window title substring",
+              "type": "string"
+            }
+          },
+          "required": [
+            "direction"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "desktop_uia_select",
+        "description": "Explicitly select a list item / tree item / tab (SelectionItemPattern.Select). Cleaner than clicking list entries — use for ListItems, TreeItems, TabItems, radio-like items. Returns world-change feedback.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "description": "Control ref (the ListItem/TreeItem/TabItem to select)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "name": {
+              "description": "Item name, exact match case-insensitive",
+              "type": "string"
+            },
+            "automation_id": {
+              "description": "Exact automation id",
+              "type": "string"
+            },
+            "control_type": {
+              "description": "ControlType: ListItem, TreeItem, TabItem...",
+              "type": "string"
+            },
+            "hwnd": {
+              "description": "Window handle",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "pid": {
+              "description": "Process id",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "title": {
+              "description": "Window title substring",
+              "type": "string"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "desktop_uia_expand",
+        "description": "Expand/collapse a ComboBox dropdown or tree node (ExpandCollapsePattern, idempotent toggle: expanded→collapse, collapsed→expand). After expanding a combo, read the item list with desktop_uia_tree/find and select with desktop_uia_select. Returns world-change feedback incl. expand state before→after.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "description": "Control ref (the ComboBox/TreeItem to toggle)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "name": {
+              "description": "Control name, exact match case-insensitive",
+              "type": "string"
+            },
+            "automation_id": {
+              "description": "Exact automation id",
+              "type": "string"
+            },
+            "control_type": {
+              "description": "ControlType: ComboBox, TreeItem...",
+              "type": "string"
+            },
+            "hwnd": {
+              "description": "Window handle",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "pid": {
+              "description": "Process id",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "title": {
+              "description": "Window title substring",
+              "type": "string"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "desktop_uia_keys",
+        "description": "Send a hotkey to a window (SendInput, real keyboard injection): key + modifiers (ctrl/alt/shift/meta). Examples: Ctrl+A, Delete, Enter, F5. Physical input — asks every time and is serialized globally (input lease) so concurrent agents cannot interleave keystrokes. Prefer pattern actions (click/type/select) whenever possible; use keys only for shortcuts UIA cannot reach.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "key": {
+              "type": "string",
+              "description": "Key name (Enter/Tab/Escape/Backspace/Delete/ArrowUp/F1-F12/single char)"
+            },
+            "modifiers": {
+              "description": "Modifier keys held (e.g. [\"ctrl\"] + key \"a\" = Ctrl+A)",
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "ctrl",
+                  "alt",
+                  "shift",
+                  "meta"
+                ]
+              }
+            },
+            "hwnd": {
+              "description": "Window handle",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "pid": {
+              "description": "Process id",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "title": {
+              "description": "Window title substring",
+              "type": "string"
+            }
+          },
+          "required": [
+            "key"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "desktop_uia_activate",
+        "description": "Bring a window to the foreground (restore if minimized + SetForegroundWindow). Physical input — asks every time. Needed before coordinate clicks / clipboard paste into apps that require focus; pattern actions (Invoke/SetValue/Select) work without activation.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "hwnd": {
+              "description": "Window handle from desktop_probe",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "pid": {
+              "description": "Process id",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "title": {
+              "description": "Window title substring",
+              "type": "string"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "desktop_uia_window_shot",
+        "description": "Capture a screenshot of a single window rect (not the full screen) - smaller privacy surface than desktop_screenshot, read-only. Locate window as in desktop_uia_tree (hwnd/pid/title/foreground). Returns {path, bytes, rect, window}. With a text-only model hand the path to the user; with a vision model read the image to see self-drawn controls that UIA cannot see.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "hwnd": {
+              "description": "Window handle from desktop_probe",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "pid": {
+              "description": "Process id",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "title": {
+              "description": "Window title substring",
+              "type": "string"
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "desktop_audit",
+        "description": "Read the desktop operation audit log — which agent did what (click/type/keys/activate), when, against which control/window, and the outcome. Mirrors browser_audit. Use to review what the Agent has done on the desktop.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "limit": {
+              "description": "Max entries (default 50)",
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "desktop_status",
+        "description": "Current desktop control state: active window-takeover grants per agent (with TTL) and the global input lease holder. Use to check who is currently allowed to operate which windows, or who holds the physical input lease.",
+        "read_only": true,
+        "schema": {
+          "type": "object",
+          "properties": {},
           "additionalProperties": {}
         }
       }

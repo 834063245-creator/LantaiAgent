@@ -47,10 +47,11 @@ describe('desktop 新动作：定位条件必填校验（不触 Rust 即拒绝�
   it('desktop_uia_wait 有 until + ref 时正常路由', async () => {
     invokeMock.mockClear();
     await reg('desktop_uia_wait').execute({ until: 'exists', ref: 3, timeout_ms: 500 });
-    expect(invokeMock).toHaveBeenCalledWith(
-      'desktop_uia_wait',
-      expect.objectContaining({ until: 'exists', ref: 3, timeout_ms: 500, isAgent: true }),
-    );
+    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
+      plugin: 'builtin.uia',
+      tool: 'desktop_uia_wait',
+      args: expect.objectContaining({ until: 'exists', ref: 3, timeout_ms: 500 }),
+    });
   });
 });
 
@@ -58,16 +59,21 @@ describe('desktop 新观察参数透传', () => {
   it('uia_tree 的 all/offset/max_results 传到 Rust', async () => {
     invokeMock.mockClear();
     await reg('desktop_uia_tree').execute({ hwnd: 123, all: true, offset: 80, max_results: 40 });
-    expect(invokeMock).toHaveBeenCalledWith(
-      'desktop_uia_tree',
-      expect.objectContaining({ hwnd: 123, all: true, offset: 80, max_results: 40 }),
-    );
+    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
+      plugin: 'builtin.uia',
+      tool: 'desktop_uia_tree',
+      args: expect.objectContaining({ hwnd: 123, all: true, offset: 80, max_results: 40 }),
+    });
   });
 
   it('probe 的 route 开关传到 Rust', async () => {
     invokeMock.mockClear();
     await reg('desktop_probe').execute({ route: false });
-    expect(invokeMock).toHaveBeenCalledWith('desktop_probe', expect.objectContaining({ route: false }));
+    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
+      plugin: 'builtin.uia',
+      tool: 'desktop_probe',
+      args: expect.objectContaining({ route: false }),
+    });
   });
 
   it('audit/status 只读', () => {
@@ -87,14 +93,16 @@ describe('desktop_uia_fill 复合编排', () => {
       ],
     });
     expect(out).toContain('desktop_uia_fill 完成 2 个字段');
-    expect(invokeMock).toHaveBeenCalledWith(
-      'desktop_uia_type',
-      expect.objectContaining({ hwnd: 4242, ref: 1, text: 'alice' }),
-    );
-    expect(invokeMock).toHaveBeenCalledWith(
-      'desktop_uia_type',
-      expect.objectContaining({ hwnd: 4242, name: '密码', text: 'secret' }),
-    );
+    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
+      plugin: 'builtin.uia',
+      tool: 'desktop_uia_type',
+      args: expect.objectContaining({ hwnd: 4242, ref: 1, text: 'alice' }),
+    });
+    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
+      plugin: 'builtin.uia',
+      tool: 'desktop_uia_type',
+      args: expect.objectContaining({ hwnd: 4242, name: '密码', text: 'secret' }),
+    });
   });
 
   it('缺定位条件的字段被跳过（其余照常）', async () => {
@@ -112,15 +120,20 @@ describe('desktop_uia_keys / activate 路由', () => {
   it('keys 透传 modifiers + key', async () => {
     invokeMock.mockClear();
     await reg('desktop_uia_keys').execute({ key: 'a', modifiers: ['ctrl'], hwnd: 7 });
-    expect(invokeMock).toHaveBeenCalledWith(
-      'desktop_uia_keys',
-      expect.objectContaining({ key: 'a', modifiers: ['ctrl'], hwnd: 7 }),
-    );
+    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
+      plugin: 'builtin.uia',
+      tool: 'desktop_uia_keys',
+      args: expect.objectContaining({ key: 'a', modifiers: ['ctrl'], hwnd: 7 }),
+    });
   });
 
   it('activate 只需窗口定位', async () => {
     invokeMock.mockClear();
     await reg('desktop_uia_activate').execute({ hwnd: 7 });
-    expect(invokeMock).toHaveBeenCalledWith('desktop_uia_activate', expect.objectContaining({ hwnd: 7 }));
+    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
+      plugin: 'builtin.uia',
+      tool: 'desktop_uia_activate',
+      args: expect.objectContaining({ hwnd: 7 }),
+    });
   });
 });

@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-09-03T22:11:23.234Z
-> 方法总数：106（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-09-04T10:26:35.630Z
+> 方法总数：52（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -37,70 +37,11 @@
 |------|----------|----------|------|
 | `tool_call` | plugin, tool | is_agent, args | 字符串 |
 | `plugin_tool_manifests` | — | — | 字符串 |
-
-## 搜索
-
-| 方法 | 必选参数 | 可选参数 | 返回 |
-|------|----------|----------|------|
-| `browser_launch` | — | _agent_id, url, port, headless, profile, proxy, proxy_bypass | 字符串 |
-| `browser_connect` | port | _agent_id, session, profile | 字符串 |
-| `browser_sessions` | — | _agent_id | 字符串 |
-| `browser_switch_session` | — | _agent_id, session, profile | 字符串 |
-| `browser_cookies` | op | url, name, value, domain, path, http_only, secure, same_site, urls | 字符串 |
-| `browser_kill` | — | _agent_id | 字符串 |
-| `browser_targets` | — | _agent_id | 字符串 |
-| `browser_discover` | — | — | 字符串 |
-| `desktop_probe` | — | _agent_id, route | 字符串 |
-| `desktop_screenshot` | — | _agent_id | 字符串 |
-| `desktop_uia_tree` | — | _agent_id, title, pid, hwnd, depth, all, offset, max_results | 字符串 |
-| `desktop_uia_find` | — | _agent_id, title, pid, hwnd, name, control_type, automation_id, enabled | 字符串 |
-| `desktop_uia_read` | — | _agent_id, title, pid, hwnd, ref, name, automation_id, control_type | 字符串 |
-| `desktop_uia_wait` | until | _agent_id, title, pid, hwnd, ref, name, automation_id, control_type, value, timeout_ms | 字符串 |
-| `desktop_uia_click` | — | — | 字符串 |
-| `desktop_uia_right_click` | — | — | 字符串 |
-| `desktop_uia_type` | — | — | 字符串 |
-| `desktop_uia_scroll` | — | — | 字符串 |
-| `desktop_uia_select` | — | — | 字符串 |
-| `desktop_uia_expand` | — | — | 字符串 |
-| `desktop_uia_keys` | — | — | 字符串 |
-| `desktop_uia_activate` | — | — | 字符串 |
-| `desktop_uia_window_shot` | — | _agent_id, title, pid, hwnd | 字符串 |
-| `desktop_audit` | — | _agent_id, limit | 字符串 |
-| `desktop_status` | — | _agent_id | 字符串 |
-| `browser_attach` | target_id | _agent_id | 字符串 |
-| `browser_inspect` | selector | max_results, props | 字符串 |
-| `browser_report` | — | scope | 字符串 |
-| `browser_snapshot` | — | scope, max_results, offset | 字符串 |
-| `browser_content` | — | scope, format, max_chars, offset | 字符串 |
-| `browser_console` | — | limit | 字符串 |
-| `browser_network` | — | limit | 字符串 |
-| `browser_network_detail` | request_id | — | 字符串 |
-| `browser_network_har` | — | limit | 字符串 |
-| `browser_screenshot` | — | full_page, inline | 字符串 |
-| `browser_viewport` | width, height | mobile, device_scale_factor | 字符串 |
-| `browser_audit` | — | agent, limit | 字符串 |
-| `browser_click` | selector | — | 字符串 |
-| `browser_type` | selector, text | replace | 字符串 |
-| `browser_press` | key | — | 字符串 |
-| `browser_hover` | selector | — | 字符串 |
-| `browser_dialog` | — | accept, prompt_text, limit | 字符串 |
-| `browser_upload` | files | selector | 字符串 |
-| `browser_new_tab` | — | url | 字符串 |
-| `browser_close_tab` | target_id | — | 字符串 |
-| `browser_scroll` | — | selector, direction | 字符串 |
-| `browser_navigate` | url | — | 字符串 |
-| `browser_back` | — | — | 字符串 |
-| `browser_forward` | — | — | 字符串 |
-| `browser_reload` | — | — | 字符串 |
-| `browser_select` | selector, value | — | 字符串 |
-| `browser_wait` | — | selector, ms | 字符串 |
-| `browser_eval` | expr | _agent_id | 字符串 |
-| `browser_status` | — | — | 字符串 |
 | `protocol_bridge_spawn` | id, command, args | — | 字符串 |
 | `protocol_bridge_write` | id, line | — | 字符串 |
 | `protocol_bridge_kill` | id | — | 字符串 |
 
-## CDP 浏览器控制
+## 搜索
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|

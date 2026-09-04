@@ -69,7 +69,11 @@ describe('desktop 动作路由（走 Rust desktop_probe）', () => {
     const registry = buildRegistry();
     const t = registry.get('desktop')!;
     await t.execute({ action: 'probe' });
-    expect(invokeMock).toHaveBeenCalledWith('desktop_probe', expect.objectContaining({}));
+    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
+      plugin: 'builtin.uia',
+      tool: 'desktop_probe',
+      args: expect.objectContaining({}),
+    });
   });
 
   it('desktop_probe 细粒度工具标记只读', () => {
@@ -82,9 +86,16 @@ describe('desktop 动作路由（走 Rust desktop_probe）', () => {
     const registry = buildRegistry();
     const t = registry.get('desktop')!;
     await t.execute({ action: 'screenshot' });
-    expect(invokeMock).toHaveBeenCalledWith('desktop_screenshot', expect.objectContaining({}));
+    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
+      plugin: 'builtin.uia',
+      tool: 'desktop_screenshot',
+      args: expect.objectContaining({}),
+    });
     // 不误路由到 browser_screenshot
-    expect(invokeMock).not.toHaveBeenCalledWith('browser_screenshot', expect.anything());
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      'tool_call',
+      expect.objectContaining({ plugin: 'builtin.browser', tool: 'browser_screenshot' }),
+    );
   });
 
   it('desktop_screenshot 细粒度工具存在且只读', () => {
@@ -100,17 +111,29 @@ describe('desktop UIA 动作参数校验', () => {
     const t = registry.get('desktop')!;
     const result = await t.execute({ action: 'uia_click' });
     expect(result).toContain('至少要给一个定位条件');
-    expect(invokeMock).not.toHaveBeenCalledWith('desktop_uia_click', expect.anything());
+    // 无定位条件 → 守卫在 TS 工具层拦截，不经信封发后端
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      'tool_call',
+      expect.objectContaining({ plugin: 'builtin.uia', tool: 'desktop_uia_click' }),
+    );
   });
 
   it('uia_click 给 ref 或 name 时正常放行', async () => {
     const registry = buildRegistry();
     const t = registry.get('desktop')!;
     await t.execute({ action: 'uia_click', ref: 3 });
-    expect(invokeMock).toHaveBeenCalledWith('desktop_uia_click', expect.objectContaining({ ref: 3 }));
+    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
+      plugin: 'builtin.uia',
+      tool: 'desktop_uia_click',
+      args: expect.objectContaining({ ref: 3 }),
+    });
     invokeMock.mockClear();
     await t.execute({ action: 'uia_click', name: 'OK' });
-    expect(invokeMock).toHaveBeenCalledWith('desktop_uia_click', expect.objectContaining({ name: 'OK' }));
+    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
+      plugin: 'builtin.uia',
+      tool: 'desktop_uia_click',
+      args: expect.objectContaining({ name: 'OK' }),
+    });
   });
 
   it('uia_type 无定位条件时报错，有 text + name 时放行', async () => {
@@ -119,19 +142,21 @@ describe('desktop UIA 动作参数校验', () => {
     const bad = await t.execute({ action: 'uia_type', text: 'hello' });
     expect(bad).toContain('至少要给一个定位条件');
     await t.execute({ action: 'uia_type', text: 'hello', name: '输入框' });
-    expect(invokeMock).toHaveBeenCalledWith(
-      'desktop_uia_type',
-      expect.objectContaining({ text: 'hello', name: '输入框' }),
-    );
+    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
+      plugin: 'builtin.uia',
+      tool: 'desktop_uia_type',
+      args: expect.objectContaining({ text: 'hello', name: '输入框' }),
+    });
   });
 
   it('uia_tree 支持 depth 参数透传', async () => {
     const registry = buildRegistry();
     const t = registry.get('desktop')!;
     await t.execute({ action: 'uia_tree', depth: 2, title: 'Notepad' });
-    expect(invokeMock).toHaveBeenCalledWith(
-      'desktop_uia_tree',
-      expect.objectContaining({ depth: 2, title: 'Notepad' }),
-    );
+    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
+      plugin: 'builtin.uia',
+      tool: 'desktop_uia_tree',
+      args: expect.objectContaining({ depth: 2, title: 'Notepad' }),
+    });
   });
 });
