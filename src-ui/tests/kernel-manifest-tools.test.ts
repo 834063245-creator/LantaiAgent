@@ -14,11 +14,14 @@ import { describe, expect, it } from 'vitest';
 import type { Tool, ToolExecutor } from '../src/agent/tool';
 import { createSearchTools, createWebTools, kernelManifestOf } from '../src/agent/tools/manifest-tools';
 
-function captureExec(): { calls: Array<{ name: string; args: Record<string, unknown> }>; exec: ToolExecutor } {
+function captureExec(reply = '{"ok":1}'): {
+  calls: Array<{ name: string; args: Record<string, unknown> }>;
+  exec: ToolExecutor;
+} {
   const calls: Array<{ name: string; args: Record<string, unknown> }> = [];
   const exec: ToolExecutor = (name, args) => {
     calls.push({ name, args });
-    return Promise.resolve('{"ok":1}');
+    return Promise.resolve(reply);
   };
   return { calls, exec };
 }
@@ -91,8 +94,31 @@ describe('kernel manifest tools — search 域（R2-d(1) zod 真源）', () => {
     expect((props.maxResults as Record<string, unknown>).minimum).toBe(-9007199254740991);
   });
 
-  it('execute 直呼能力口 search_cap + camelCase→snake_case 键映射（R2-a 键位断层修复）', async () => {
-    const { calls, exec } = captureExec();
+  it('execute 直呼能力口 search_cap：编排键折算收窄键 + 原始命中集组装（R2-d(2)）', async () => {
+    const raw = JSON.stringify({
+      pattern: 'hello',
+      scanned_files: 12,
+      budget_truncated: false,
+      files: [
+        {
+          file: 'D:/x/src/a.ts',
+          match_count: 2,
+          matches: [
+            {
+              line: 3,
+              content: 'hello world',
+              context: [
+                { line: 2, content: 'x' },
+                { line: 3, content: 'hello world' },
+                { line: 4, content: 'y' },
+              ],
+            },
+            { line: 7, content: 'say hello', context: [{ line: 7, content: 'say hello' }] },
+          ],
+        },
+      ],
+    });
+    const { calls, exec } = captureExec(raw);
     const tool = createSearchTools(exec)[0];
     const args = {
       directory: 'D:/x',
@@ -101,33 +127,64 @@ describe('kernel manifest tools — search 域（R2-d(1) zod 真源）', () => {
       maxResults: 100,
       useRegex: true,
       contextLines: 2,
-      outputMode: 'count',
-      showLineNumbers: false,
+      outputMode: 'content',
+      showLineNumbers: true,
       headLimit: 10,
-      offset: 5,
+      offset: 0,
       globFilter: 'src/**',
       _agent_id: 'sub-1',
     } as Record<string, unknown>;
-    await tool.execute(args);
+    const out = JSON.parse(await tool.execute(args)) as Record<string, unknown>;
     expect(calls).toHaveLength(1);
     expect(calls[0].name).toBe('search_cap');
     // schema 面 camelCase（模型可见契约零漂移）→ RPC 面 snake_case——
-    // bridge.rpc() 顶层转换只作用于已 snake 的键（幂等），可选参数不再被吞。
-    // 单字键（directory/pattern/offset）不经映射直通；meta _agent_id 保留下划线。
+    // R2-d(2)：编排键（outputMode/showLineNumbers/headLimit/offset）不下沉
+    // 能力口，由 toScanParams 折算为收窄键（content → max_matches 行级断 +
+    // collect_lines 携行）；meta _agent_id 保留下划线。
     expect(calls[0].args).toEqual({
       directory: 'D:/x',
       pattern: 'hello',
-      file_types: '.ts',
-      max_results: 100,
-      use_regex: true,
       context_lines: 2,
-      output_mode: 'count',
-      show_line_numbers: false,
-      head_limit: 10,
-      offset: 5,
+      file_types: '.ts',
+      use_regex: true,
       glob_filter: 'src/**',
+      max_matches: 100,
+      collect_lines: true,
       _agent_id: 'sub-1',
     });
+    // 组装层（search-assembly.ts）：原始命中集 → content 形态，
+    // 键序 = R2-d(2) 前 Rust 组装分支的 serde_json 构造序。
+    expect(Object.keys(out)).toEqual([
+      'pattern',
+      'count',
+      'truncated',
+      'scanned_files',
+      'budget_truncated',
+      'context_lines',
+      'results',
+    ]);
+    expect(out.count).toBe(2);
+    expect(out.truncated).toBe(false);
+    expect(out.scanned_files).toBe(12);
+    expect(out.context_lines).toBe(2);
+    const results = out.results as Array<Record<string, unknown>>;
+    expect(results.length).toBe(2);
+    const first = results[0] as {
+      file: string;
+      match_line: number;
+      match_content: string;
+      context: number;
+      context_block: Array<{ line: number | null; content: string; is_match: boolean }>;
+    };
+    expect(first.file).toBe('D:/x/src/a.ts');
+    expect(first.match_line).toBe(3);
+    expect(first.match_content).toBe('hello world');
+    expect(first.context).toBe(2);
+    expect(first.context_block).toEqual([
+      { line: 2, content: 'x', is_match: false },
+      { line: 3, content: 'hello world', is_match: true },
+      { line: 4, content: 'y', is_match: false },
+    ]);
   });
 });
 

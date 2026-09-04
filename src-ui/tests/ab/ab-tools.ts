@@ -351,17 +351,45 @@ export function buildTrialRegistry(wt: string, graph: TrialGraphData): ToolRegis
 
   // search/web 已迁内核插件（builtin.search/builtin.web）——manifest 工具 execute
   // 走 tool_call 信封；试验 harness 的 exec 是本地 mock（无 RPC），在此解信封路由回 mock。
-  // R2 后 search 直呼 search_cap 能力口（camelCase→snake_case 键映射后直呼）——
-  // kernelExec 把 search_cap 路由回同一 search mock（case 'search_content'）。
+  // R2 后 search 直呼 search_cap 能力口（snake 键映射后直呼）；R2-d(2) 收窄后
+  // 能力口返回统一原始命中集——kernelExec 把本地 search mock 的 {matches}
+  // 包成 raw 形状，供 TS 组装层（search-assembly.ts）消费。
   const kernelExec: ToolExecutor = (name, args, onProgress, signal) => {
     if (name === 'tool_call') {
       const inner = String(args.tool ?? '');
       return exec(inner, (args.args ?? {}) as Record<string, unknown>, onProgress, signal);
     }
     if (name === 'search_cap') {
-      // 能力口直呼（R2）：search mock 语义不变——snake_case 键里单字键
-      // directory/pattern 原样保留，mock case 'search_content' 读的就是它们。
-      return exec('search_content', args, onProgress, signal);
+      // search mock 语义不变——单字键 directory/pattern 原样保留（mock 读的就是
+      // 它们）；命中按文件分组成 {file, match_count, matches} 原始命中集形状。
+      return exec('search_content', args, onProgress, signal).then((raw) => {
+        const parsed = JSON.parse(raw) as {
+          matches?: Array<{ file: string; line: number; match_content: string }>;
+        };
+        const byFile = new Map<
+          string,
+          Array<{ line: number; content: string; context: Array<{ line: number; content: string }> }>
+        >();
+        for (const m of parsed.matches ?? []) {
+          const bucket = byFile.get(m.file) ?? [];
+          bucket.push({
+            line: m.line,
+            content: m.match_content,
+            context: [{ line: m.line, content: m.match_content }],
+          });
+          byFile.set(m.file, bucket);
+        }
+        return JSON.stringify({
+          pattern: String(args.pattern ?? ''),
+          scanned_files: byFile.size,
+          budget_truncated: false,
+          files: Array.from(byFile.entries()).map(([file, matches]) => ({
+            file,
+            match_count: matches.length,
+            matches,
+          })),
+        });
+      });
     }
     return exec(name, args, onProgress, signal);
   };

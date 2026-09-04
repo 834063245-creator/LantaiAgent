@@ -1,7 +1,7 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-09-04T21:22:51.536Z
+> 生成时间：2026-09-04T22:02:15.809Z
 > 方法总数：49（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
@@ -42,7 +42,7 @@
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
-| `search_cap` | directory, pattern | is_agent, agent_id, _agent_id, file_types, use_regex, output_mode, show_line_numbers, glob_filter, max_results, context_lines, head_limit, offset | 字符串 |
+| `search_cap` | directory, pattern | is_agent, agent_id, _agent_id, file_types, use_regex, collect_lines, glob_filter, max_matches, max_files, context_lines | 字符串 |
 
 ## 能力口（fs_cap）
 

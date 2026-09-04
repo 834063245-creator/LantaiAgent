@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT.
 
 // search 能力口（R2 试点，kernel-capability-r2-search-pilot.md）——内核能力层的
 // search 变体（v3 §4：search/glob 的全文扫描 = fs 能力族实现）。
@@ -7,8 +7,17 @@
 // 能力口语义：被 TS 工具经 RPC 直呼（不再 tool_call 信封 / PluginRegistry /
 // PluginToolAdapter）。入口即裁决：directory 走 resolve_read_dispatch（Agent =
 // require_read 过闸 + Ask，UI = 只解析），扫描/预算/忽略/向量召回归本口物理实现。
-// 编排（参数缺省/输出形态/分页）仍在 TS 侧（R2-d 迁）；本口返回与 builtin.search
-// 现 search_content 相同的 JSON 形状，保证换轨期行为零漂移。
+//
+// R2-d(2)（输出组装编排回 TS，r2-search-pilot §8）：能力口收窄为**纯扫描返回
+// 统一原始命中集**——不再认识 output_mode/show_line_numbers/head_limit/offset
+// （三形态组装/行号显示/分页/截断判定全部在 TS 编排层
+// src/agent/tools/search-assembly.ts，与 schema 真源同域）。口收两组收窄键：
+//   - max_matches：总命中条数上限（content 形态的扫描终止位）
+//   - max_files：命中文件数上限（files/count 形态的扫描终止位——触顶即
+//     budget_truncated=true，与退役前「file_sets.len() >= max」同款语义）
+//   - collect_lines：是否随行携带命中内容与上下文（content 形态 true）
+// 逐行为等价于退役前的模式分派扫描（content：行循环在总命中达 max 处断；
+// files/count：文件循环在命中文件数达 max 处断并置 truncated）。
 //
 // 真权路径与 builtin.search::search_content 相同（resolve_read_dispatch），权限
 // 回归 = 同一闸；search 无 permission 声明（v1 Passthrough），无家族规则差异。
@@ -17,20 +26,17 @@ use hologram_graph::is_ignored_path;
 use serde_json::Value;
 use tauri::State;
 
-/// search_content 能力口（R2-a 从 builtin.search::search_content 迁扫描体；
-/// 参数说 manifest schema 的语言 camelCase；_agent_id 由调用方显式传 agent_id）。
+/// search_content 能力口（纯扫描：返回统一原始命中集；编排归 TS）。
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn search_content_cap(
     directory: String,
     pattern: String,
     file_types: Option<String>,
-    max_results: Option<usize>,
+    max_matches: Option<usize>,
+    max_files: Option<usize>,
     use_regex: Option<bool>,
     context_lines: Option<usize>,
-    output_mode: Option<String>,
-    show_line_numbers: Option<bool>,
-    head_limit: Option<usize>,
-    offset: Option<usize>,
+    collect_lines: Option<bool>,
     glob_filter: Option<String>,
     is_agent: bool,
     agent_id: Option<String>,
@@ -67,21 +73,18 @@ pub(crate) async fn search_content_cap(
         .map(|s| s.trim().trim_start_matches('.').to_lowercase())
         .filter(|s| !s.is_empty())
         .collect();
-    let max = max_results.unwrap_or(50).min(200);
+    // 上下文行数（收集命中邻居——物理读盘范畴；上限 10 与退役前口内 clamp 同款）
     let ctx_lines = context_lines.unwrap_or(0).min(10);
-    let mode = output_mode.unwrap_or_else(|| "content".into());
-    let show_ln = show_line_numbers.unwrap_or(true);
-    let head = head_limit.unwrap_or(250);
-    let skip = offset.unwrap_or(0);
+    let collect = collect_lines.unwrap_or(false);
     let glob_re = glob_filter.as_deref().and_then(glob_filter_to_regex);
 
     let pat = pattern.clone();
     let root = root.clone();
 
     tokio::task::spawn_blocking(move || {
-        let mut results: Vec<Value> = Vec::new();
-        let mut file_sets: std::collections::HashSet<String> = std::collections::HashSet::new();
-        let mut file_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        // ── 统一原始命中集：per-file {file, match_count, matches[]} ──
+        let mut files: Vec<Value> = Vec::new();
+        let mut total_matches: usize = 0;
         let skip_extensions: Vec<&str> = vec![
             "exe", "dll", "so", "dylib", "bin", "o", "a",
             "png", "jpg", "jpeg", "gif", "ico", "svg",
@@ -114,7 +117,7 @@ pub(crate) async fn search_content_cap(
                         &e.path().to_string_lossy().replace('\\', "/"),
                     )
             });
-        for entry in builder.build() {
+        'walk: for entry in builder.build() {
             if scanned_files >= MAX_SCAN_FILES || std::time::Instant::now() > deadline {
                 truncated_by_budget = true;
                 break;
@@ -153,94 +156,64 @@ pub(crate) async fn search_content_cap(
             };
             let lines: Vec<&str> = content.lines().collect();
 
-            let mut file_has_match = false;
+            let mut file_match_count: usize = 0;
+            let mut file_matches: Vec<Value> = Vec::new();
             for (line_no, line) in lines.iter().enumerate() {
-                let matched = if let Some(ref re) = regex {
+                let matched = if let Some(ref re) = &regex {
                     re.is_match(line)
                 } else {
                     let line_lower = line.to_lowercase();
                     sub_patterns.iter().any(|p| line_lower.contains(p))
                 };
                 if matched {
-                    file_has_match = true;
-                    *file_counts.entry(fp_str.clone()).or_insert(0) += 1;
-
-                    if mode == "content" {
+                    file_match_count += 1;
+                    total_matches += 1;
+                    if collect {
+                        // 上下文邻居（含命中行自身——ctx=0 时即单行块）
                         let start = line_no.saturating_sub(ctx_lines);
                         let end = (line_no + ctx_lines + 1).min(lines.len());
-                        let context_block: Vec<Value> = lines[start..end].iter().enumerate().map(|(i, l)| {
-                            let ln = start + i + 1;
-                            serde_json::json!({
-                                "line": if show_ln { Some(ln) } else { None },
-                                "content": l,
-                                "is_match": ln == line_no + 1,
-                            })
+                        let context: Vec<Value> = lines[start..end].iter().enumerate().map(|(i, l)| {
+                            serde_json::json!({ "line": start + i + 1, "content": l })
                         }).collect();
-                        results.push(serde_json::json!({
-                            "file": fp_str,
-                            "match_line": line_no + 1,
-                            "match_content": line,
-                            "context": ctx_lines,
-                            "context_block": context_block,
+                        file_matches.push(serde_json::json!({
+                            "line": line_no + 1,
+                            "content": line,
+                            "context": context,
                         }));
                     }
-                    if results.len() >= max { break; }
+                    // content 形态的行级断（退役前 results.len() >= max 同款）
+                    if let Some(m) = max_matches {
+                        if total_matches >= m { break; }
+                    }
                 }
             }
-            if file_has_match { file_sets.insert(fp_str.clone()); }
-            if mode != "content" && file_sets.len() >= max {
-                truncated_by_budget = true;
-                break;
+            if file_match_count > 0 {
+                files.push(serde_json::json!({
+                    "file": fp_str,
+                    "match_count": file_match_count,
+                    "matches": file_matches,
+                }));
+                // files/count 形态的文件级断（退役前 file_sets.len() >= max 同款
+                // ——触顶置 truncated，分页截断判定在 TS）
+                if let Some(mf) = max_files {
+                    if files.len() >= mf {
+                        truncated_by_budget = true;
+                        break 'walk;
+                    }
+                }
             }
-            if results.len() >= max { break; }
+            // content 形态的文件级断（不置 truncated——同退役前）
+            if let Some(m) = max_matches {
+                if total_matches >= m { break; }
+            }
         }
 
-        let output = match mode.as_str() {
-            "files_with_matches" => {
-                let mut files: Vec<&String> = file_sets.iter().collect();
-                files.sort();
-                let total = files.len();
-                let files = if head > 0 { files.into_iter().skip(skip).take(head).collect::<Vec<_>>() } else { files };
-                serde_json::json!({
-                    "pattern": pat,
-                    "count": total,
-                    "truncated": (head > 0 && skip + head < total) || truncated_by_budget,
-                    "scanned_files": scanned_files,
-                    "budget_truncated": truncated_by_budget,
-                    "files": files,
-                })
-            }
-            "count" => {
-                let mut counts: Vec<(&String, &usize)> = file_counts.iter().collect();
-                counts.sort_by(|a, b| b.1.cmp(a.1));
-                let total = counts.len();
-                let counts = if head > 0 { counts.into_iter().skip(skip).take(head).collect::<Vec<_>>() } else { counts };
-                serde_json::json!({
-                    "pattern": pat,
-                    "total_matches": file_counts.values().sum::<usize>(),
-                    "file_count": total,
-                    "truncated": (head > 0 && skip + head < total) || truncated_by_budget,
-                    "scanned_files": scanned_files,
-                    "budget_truncated": truncated_by_budget,
-                    "files": counts.into_iter().map(|(f, c)| serde_json::json!({"file": f, "matches": c})).collect::<Vec<_>>(),
-                })
-            }
-            _ => {
-                let total = results.len();
-                let results = if head > 0 { results.into_iter().skip(skip).take(head).collect::<Vec<_>>() } else { results };
-                serde_json::json!({
-                    "pattern": pat,
-                    "count": total,
-                    "truncated": (head > 0 && skip + head < total) || truncated_by_budget,
-                    "scanned_files": scanned_files,
-                    "budget_truncated": truncated_by_budget,
-                    "context_lines": ctx_lines,
-                    "results": results,
-                })
-            }
-        };
-
-        let mut output_val = output;
+        let mut output_val = serde_json::json!({
+            "pattern": pat,
+            "scanned_files": scanned_files,
+            "budget_truncated": truncated_by_budget,
+            "files": files,
+        });
         if !is_regex {
             append_vector_hits(&mut output_val, &root, &pat);
         }

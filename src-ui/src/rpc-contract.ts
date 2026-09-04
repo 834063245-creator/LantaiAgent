@@ -157,28 +157,33 @@ export interface RpcContract {
 
   // ── 能力口（R2 试点，kernel-capability-r2-search-pilot.md）──────────
   // search_cap：search 全文扫描能力口（fs 能力族变体，v3 §4）——不经 tool_call
-  // 信封 / PluginRegistry。参数键 = 顶层 snake_case（bridge.rpc() 会把 camelCase
-  // 转 snake——工具 execute 侧必须先把 schema 的 camelCase 参数映射为 snake_case
-  // 再直呼；R2-a 曾直接摊 camelCase 导致可选参数全被转换吞掉，键位修复见
-  // manifest-tools searchCapTool）。is_agent/agent_id 显式传（Agent 过 require_read
-  // 闸 / UI 只解析；resolve_read_dispatch 需要 agent_id 做 worktree 前向映射）。
+  // 信封 / PluginRegistry。R2-d(2) 收窄：口只做纯扫描返回**统一原始命中集**
+  // {pattern, scanned_files, budget_truncated, files:[{file, match_count,
+  // matches:[{line, content, context}]}]}（可选 vector_hits/vector_backend 尾键）
+  // ——三形态组装/分页/行号显示归 TS 编排层（agent/tools/search-assembly.ts）。
+  // 收窄键：max_matches（总命中上限，content 形态行级断）/ max_files（命中文件
+  // 上限，files/count 形态文件级断——触顶置 budget_truncated）/ collect_lines
+  // （携带命中行与上下文邻居，仅 content）。参数键 = 顶层 snake_case
+  // （bridge.rpc() 会把 camelCase 转 snake——工具 execute 侧必须先把 schema 的
+  // camelCase 参数映射为 snake_case 再直呼；R2-a 曾直接摊 camelCase 导致可选
+  // 参数全被转换吞掉，键位修复见 manifest-tools searchCapTool）。is_agent/
+  // agent_id 显式传（Agent 过 require_read 闸 / UI 只解析；resolve_read_dispatch
+  // 需要 agent_id 做 worktree 前向映射）。
   search_cap: {
     params: {
       directory: string;
       pattern: string;
       file_types?: string;
-      max_results?: number;
+      max_matches?: number;
+      max_files?: number;
       use_regex?: boolean;
       context_lines?: number;
-      output_mode?: 'content' | 'files_with_matches' | 'count';
-      show_line_numbers?: boolean;
-      head_limit?: number;
-      offset?: number;
+      collect_lines?: boolean;
       glob_filter?: string;
       is_agent?: boolean;
       agent_id?: string | null;
     };
-    result: string; // JSON — 与 builtin.search search_content 同形状
+    result: string; // JSON — 统一原始命中集（组装归 TS search-assembly.ts）
   };
 
   // ── 能力口（R3-a + 收口，kernel-capability-c3-design.md）──────────

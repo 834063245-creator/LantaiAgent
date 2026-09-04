@@ -370,8 +370,11 @@ async fn dispatch_rpc(
         // 能力口（R2 试点，kernel-capability-r2-search-pilot.md）——
         // 内核能力层直呼入口，不经 tool_call 信封 / PluginRegistry。
         // search_cap：search 全文扫描能力口（fs 能力族变体，v3 §4）。
-        // 参数说 manifest schema 的语言（camelCase）；is_agent/agent_id 显式
-        // 传参（resolve_read_dispatch 分流 Agent 过闸 / UI 只解析）。
+        // R2-d(2) 收窄：口只做纯扫描返回统一原始命中集（max_matches/
+        // max_files 两组收窄键 + collect_lines 携行开关）——三形态组装/分页/
+        // 行号显示归 TS 编排层（search-assembly.ts）。
+        // 参数说顶层 snake_case（bridge.rpc() 转换幂等）；is_agent/agent_id
+        // 显式传（resolve_read_dispatch 分流 Agent 过闸 / UI 只解析）。
         // ═══════════════════════════════════════════════════════
         "search_cap" => {
             let directory = req_str(&params, "directory", "search_cap")?;
@@ -387,13 +390,11 @@ async fn dispatch_rpc(
                 directory,
                 pattern,
                 opt_str(&params, "file_types"),
-                params.get("max_results").and_then(|v| v.as_u64()).map(|n| n as usize),
+                params.get("max_matches").and_then(|v| v.as_u64()).map(|n| n as usize),
+                params.get("max_files").and_then(|v| v.as_u64()).map(|n| n as usize),
                 opt_bool(&params, "use_regex"),
                 params.get("context_lines").and_then(|v| v.as_u64()).map(|n| n as usize),
-                opt_str(&params, "output_mode"),
-                opt_bool(&params, "show_line_numbers"),
-                params.get("head_limit").and_then(|v| v.as_u64()).map(|n| n as usize),
-                params.get("offset").and_then(|v| v.as_u64()).map(|n| n as usize),
+                opt_bool(&params, "collect_lines"),
                 opt_str(&params, "glob_filter"),
                 is_agent,
                 agent_id,
