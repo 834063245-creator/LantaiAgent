@@ -120,7 +120,11 @@ shell spawn）/ credential / 会话句柄（browser/uia/pty/lsp）。**口内不
 
 ## 6. 待执行时定的点
 
-- TS 策略层复用现前端 Ask/permissions.json 生态 vs 重写为 Claude Code 分层规则
-  （user/project/local/policy）——R1 定。
+- ~~TS 策略层复用现前端 Ask/permissions.json 生态 vs 重写为 Claude Code 分层规则
+  （user/project/local/policy）~~ —— **已拍板（2026-09-04，R1）：选项 A = 复用现状 +
+  收拢双份名单**。裁决与完整设计见 `kernel-permission-strategy-layer-r1.md`。
+  简短理由：现状 Ask/remember/PromptShelf/模式链路已在产线形态（非雏形）；按
+  AGENTS.md 默认「拆旧不造新」，四层堆叠/参数通配/八层 source 是 Claude Code 在
+  Node 直碰模型下的表达需求，兰台强制层在 Rust 能力口，TS 策略层不必一步到齐。
 - 物理沙箱形态（os_sandbox 现状够不够 read-only/workspace-write 两档承诺）——
   R2 起核。
