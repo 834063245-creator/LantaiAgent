@@ -137,3 +137,23 @@ webview 越不过的最后闸）——不是业务命令，不在「走开放面
 - commit message 显式标注「强制层改动 + v3 能力口宪法依据」；
 - v3 后的新能力口（fs_cap/process_cap 等）同样按此更新基线，禁止向 commands/
   塞业务命令。
+
+## 8. 施工进度（2026-09-04 窗，本窗收口）
+
+| 步 | 状态 | commit | 说明 |
+|---|---|---|---|
+| R2-a | ✅ 已落地 | 789aef86 | search 能力口建立：commands/search_cap.rs + rpc.rs search_cap 分支 + shape 表（JsonValue）+ rpc-contract 类型；platform_boundary 冻结清单更新（§7）。扫描体从 builtin.search 迁入，含预算/忽略/glob/向量召回。 |
+| R2-b | ✅ 已落地 | 789aef86 | TS 换轨：manifest-tools searchCapTool + createSearchTools 换源（execute 从 tool_call 信封换 search_cap 直呼）。schema 仍取 manifest 字节（零漂移）。 |
+| R2-c | ⬜ 未做 | — | builtin.search 退役（mod.rs/manifest.json/registry/generated 镜像条目删 + doc-sync 对拍）。**前置 = R2-d(1) schema zod 化**（searchCapTool 当前从镜像取 schema，镜像条目删前 schema 真源必须先落 TS zod）。 |
+| R2-d | ⬜ 未做 | — | (1) schema zod 转录（探针已证逐字节等价于 manifest：键序/default/minimum 负值/enum/additionalProperties 全对齐）；(2) 编排（glob_filter 编译/输出三形态/分页）回 TS——search-domain 从薄重导出产物改真源域。 |
+
+**R2-d/c 的推进障碍（下窗注意）**：search-domain 是薄重导出产物（host.aliased 经宿主桥
+faceDeps 取 manifest-tools 的 createSearchTools），schema zod 化需把真源从
+kernel-manifests.generated.ts 迁到域内实现——牵动 esbuild 产物重建（build:builtin-plugins）、
+宿主桥 faceDeps、convergence 快照（理论零漂移：zod 发射 = manifest 字节，已实测）、
+doc-sync 生成器（builtin.search 目录删后镜像自动少条目）。建议下窗独立开批，勿与本窗
+R2-a/b 混合。
+
+**本窗 R2 交付价值**：能力口 = v3 强制层落地范式（search 先例：入口即裁决 + 物理执行 +
+审计位）；信封换直呼验证 tool_call 可被能力口取代（R5 拆 tool_call/PluginRegistry 的前置
+证据）。门禁全绿：cargo bin 443 + integration 1、vitest 2441、biome 0/0、convergence 零漂移。
