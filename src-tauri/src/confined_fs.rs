@@ -1,85 +1,31 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 受限文件 I/O — 统一包装器：解析（免检版 = forward-map + 沙箱决议，权限门
-// 在 dispatch 侧 PluginToolAdapter——kernel-plugin-runtime P2-2）+ 大小/超时/
-// 重试 guards。rename 保留检查版（双路径 read(from)+write(to) 自检形态）。
-// 展示辅助（format_lines/preview）无 I/O。
+// 受限文件 I/O — 统一包装器（拆壳 D2 后形态）：**裁决留 exe，字节执行走后端进程**。
+//
+// 每个函数 = 两步：
+//   1. 裁决（resolve_read/write_unchecked：worktree forward-map + 沙箱决议，
+//      权限门在 dispatch 侧 PluginToolAdapter——P2-2 起免检变体即唯一形态）；
+//   2. 把**已授权的物理路径**交给 primitives_client（受信后端进程）做字节执行。
+//
+// rename 保留双路径检查版（read(from)+write(to) 自检形态）——裁决仍在 exe，
+// 后端只执行已裁决的 rename。
+//
+// 拆壳史：D0 把字节执行（read/write_atomic/list_dir_*/format_lines/preview/glob）
+// 原样搬进 primitives-server（错误文案/guards 逐字一致），本文件退役字节层只留
+// 裁决 + 转发。
 
-use std::io;
 use std::path::PathBuf;
-use std::time::Duration;
 use tauri::AppHandle;
 
 use crate::WorkspaceState;
 
 // ═══════════════════════════════════════════════════════════════
-// Guards — 文件大小限制、读取超时、重试预算
+// 读取 — 裁决（exe）→ 后端字节执行
 // ═══════════════════════════════════════════════════════════════
 
-/// 读取文件的最大大小 (100 MiB)。防止读取大文件导致 OOM。
-const MAX_READ_BYTES: u64 = 100 * 1024 * 1024;
-
-/// 写入内容的最大大小 (100 MiB)。
-const MAX_WRITE_BYTES: usize = 100 * 1024 * 1024;
-
-/// 读取超时 — 卡住的 NFS 挂载不能阻塞 agent。
-const READ_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// 瞬态 I/O 错误的重试次数（Interrupted、TimedOut、WouldBlock）。
-const IO_RETRY_COUNT: u32 = 3;
-
-/// 重试之间的延迟，每次翻倍。
-const IO_RETRY_BASE_DELAY: Duration = Duration::from_millis(100);
-
-// ═══════════════════════════════════════════════════════════════
-// I/O 重试辅助函数
-// ═══════════════════════════════════════════════════════════════
-
-/// 在瞬态错误时最多重试 IO_RETRY_COUNT 次 I/O 闭包。
-/// 瞬态 = Interrupted、TimedOut、WouldBlock。永久错误（NotFound、
-/// PermissionDenied 等）立即失败。
-fn with_io_retry<T, F>(mut op: F, label: &str) -> Result<T, String>
-where
-    F: FnMut() -> io::Result<T>,
-{
-    let mut last_err: Option<io::Error> = None;
-    for attempt in 0..=IO_RETRY_COUNT {
-        match op() {
-            Ok(v) => return Ok(v),
-            Err(e) => {
-                let retryable = matches!(
-                    e.kind(),
-                    io::ErrorKind::Interrupted | io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
-                );
-                if !retryable || attempt == IO_RETRY_COUNT {
-                    return Err(format!("{} (尝试 {} 次后失败): {}", label, attempt + 1, e));
-                }
-                let delay = IO_RETRY_BASE_DELAY * 2u32.pow(attempt);
-                eprintln!(
-                    "[confined_fs] {}: retryable error, attempt {}/{} — {:?} (retrying in {:?})",
-                    label, attempt + 1, IO_RETRY_COUNT, e, delay
-                );
-                std::thread::sleep(delay);
-                last_err = Some(e);
-            }
-        }
-    }
-    Err(format!(
-        "{} (尝试 {} 次后失败): {}",
-        label,
-        IO_RETRY_COUNT + 1,
-        last_err.map(|e| e.to_string()).unwrap_or_else(|| "未知 I/O 错误".to_string())
-    ))
-}
-
-// ═══════════════════════════════════════════════════════════════
-// 读取操作 — 权限检查 + I/O 合为一步
-// ═══════════════════════════════════════════════════════════════
-
-/// 带超时和大小限制的文本文件读取（kernel-plugin-runtime P2-2 起：工具业务
-/// 已全部经 dispatch 侧 adapter 过闸，检查版 read_text 随消费者退役——本函数
-/// 即唯一形态；guards（大小/超时/重试）与迁移前完全一致）。
+/// 文本读取。裁决后走后端 fs.read_text。
+/// offset/limit/line_numbers 只对行号模式有意义（raw 模式后端直接返回原文）。
 pub(crate) async fn read_text_unchecked(
     file_path: &str,
     is_agent: bool,
@@ -87,37 +33,25 @@ pub(crate) async fn read_text_unchecked(
     state: &tauri::State<'_, WorkspaceState>,
 ) -> Result<(PathBuf, String), String> {
     let real_path = crate::utils::resolve_read_unchecked(file_path, is_agent, agent_id, state)?;
-    read_text_resolved(real_path, file_path).await
-}
-
-async fn read_text_resolved(real_path: PathBuf, file_path: &str) -> Result<(PathBuf, String), String> {
-    let rp = real_path.clone();
-    let fp = file_path.to_string();
-
-    // 读取前检查文件大小 — 防止大文件导致 OOM
-    let meta = with_io_retry(|| std::fs::metadata(&rp), "stat")?;
-    if meta.len() > MAX_READ_BYTES {
-        return Err(format!(
-            "文件过大 ({} MiB)，超过读取上限 ({} MiB): {}",
-            meta.len() / (1024 * 1024),
-            MAX_READ_BYTES / (1024 * 1024),
-            file_path
-        ));
-    }
-
-    let content = tokio::time::timeout(READ_TIMEOUT, tokio::task::spawn_blocking(move || {
-        with_io_retry(|| std::fs::read_to_string(&rp), "read_to_string")
-    }))
-    .await
-    .map_err(|_| format!("读取文件超时 ({}s): {}", READ_TIMEOUT.as_secs(), fp))?
-    .map_err(|e| format!("读取任务失败: {}", e))?
-    .map_err(|e| format!("无法读取文件 {}: {}", fp, e))?;
-
+    let real = real_path.to_string_lossy().to_string();
+    // 透传 raw/offset/limit 决策：read_text_unchecked 保持「原文」语义
+    // （行号格式化由调用方 raw 分支决定，见 tool_plugins/fs read_file_content——
+    // 那里 raw=false 时走后端 lineNumbers 一次成型）。
+    let resp = crate::primitives_client::call_async(
+        "fs.read_text",
+        &serde_json::json!({ "path": real, "lineNumbers": false }),
+    )
+    .await?;
+    let content = resp
+        .get("result")
+        .and_then(|r| r.get("content"))
+        .and_then(|c| c.as_str())
+        .ok_or_else(|| format!("primitives-server fs.read_text 响应缺 content: {resp}"))?
+        .to_string();
     Ok((real_path, content))
 }
 
-/// 带超时和大小限制的二进制文件读取（同 read_text_unchecked——检查版随
-/// 消费者退役，本函数即唯一形态）。
+/// 二进制读取（裁决 + 后端 fs.read_bytes → base64 壳侧解码）。
 pub(crate) async fn read_bytes_unchecked(
     file_path: &str,
     is_agent: bool,
@@ -125,43 +59,26 @@ pub(crate) async fn read_bytes_unchecked(
     state: &tauri::State<'_, WorkspaceState>,
 ) -> Result<(PathBuf, Vec<u8>), String> {
     let real_path = crate::utils::resolve_read_unchecked(file_path, is_agent, agent_id, state)?;
-    read_bytes_resolved(real_path, file_path).await
-}
-
-async fn read_bytes_resolved(real_path: PathBuf, file_path: &str) -> Result<(PathBuf, Vec<u8>), String> {
-    let rp = real_path.clone();
-    let fp = file_path.to_string();
-
-    let meta = with_io_retry(|| std::fs::metadata(&rp), "stat")?;
-    if meta.len() > MAX_READ_BYTES {
-        return Err(format!(
-            "文件过大 ({} MiB)，超过读取上限 ({} MiB): {}",
-            meta.len() / (1024 * 1024),
-            MAX_READ_BYTES / (1024 * 1024),
-            file_path
-        ));
-    }
-
-    let bytes = tokio::time::timeout(READ_TIMEOUT, tokio::task::spawn_blocking(move || {
-        with_io_retry(|| std::fs::read(&rp), "read_bytes")
-    }))
-    .await
-    .map_err(|_| format!("读取文件超时 ({}s): {}", READ_TIMEOUT.as_secs(), fp))?
-    .map_err(|e| format!("读取任务失败: {}", e))?
-    .map_err(|e| format!("无法读取文件 {}: {}", fp, e))?;
-
+    let real = real_path.to_string_lossy().to_string();
+    let resp =
+        crate::primitives_client::call_async("fs.read_bytes", &serde_json::json!({ "path": real })).await?;
+    let b64 = resp
+        .get("result")
+        .and_then(|r| r.get("base64"))
+        .and_then(|c| c.as_str())
+        .ok_or_else(|| format!("primitives-server fs.read_bytes 响应缺 base64: {resp}"))?;
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| format!("base64 解码失败: {e}"))?;
     Ok((real_path, bytes))
 }
-// （2026-08-04 清理：verify_read_path 前端零调用，已删）
 
 // ═══════════════════════════════════════════════════════════════
-// 写入操作 — 权限检查 + I/O 合为一步
+// 写入 — 裁决（exe）→ 后端字节执行
 // ═══════════════════════════════════════════════════════════════
 
-/// 原子地写入文件（临时文件 → 重命名）。如需要则创建父目录。
-/// 内容大小会与 MAX_WRITE_BYTES 比较以防止 OOM。
-/// （kernel-plugin-runtime P2-2 起：检查版 write_text 随消费者退役，
-/// 权限门在 dispatch 侧 adapter，本函数即唯一形态。）
+/// 原子写文本（裁决 + 后端 fs.write_text——原子 tmp→rename 在后端）。
 pub(crate) async fn write_text_unchecked(
     file_path: &str,
     content: &str,
@@ -169,33 +86,20 @@ pub(crate) async fn write_text_unchecked(
     agent_id: Option<&str>,
     state: &tauri::State<'_, WorkspaceState>,
 ) -> Result<PathBuf, String> {
-    guard_write_size(content)?;
     let real_path = crate::utils::resolve_write_unchecked(file_path, is_agent, agent_id, state)?;
-    write_text_resolved(real_path, content)
-}
-
-fn guard_write_size(content: &str) -> Result<(), String> {
-    if content.len() > MAX_WRITE_BYTES {
-        return Err(format!(
-            "内容过大 ({} MiB)，超过写入上限 ({} MiB)",
-            content.len() / (1024 * 1024),
-            MAX_WRITE_BYTES / (1024 * 1024)
-        ));
+    let real = real_path.to_string_lossy().to_string();
+    let resp = crate::primitives_client::call_async(
+        "fs.write_text",
+        &serde_json::json!({ "path": real, "content": content }),
+    )
+    .await?;
+    if resp.get("error").is_some() {
+        return Err(format!("primitives-server fs.write_text 失败: {resp}"));
     }
-    Ok(())
-}
-
-fn write_text_resolved(real_path: PathBuf, content: &str) -> Result<PathBuf, String> {
-    let rp = real_path.to_string_lossy().to_string();
-    if let Some(parent) = real_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("无法创建目录: {}", e))?;
-    }
-    crate::utils::write_atomic(&rp, content)?;
     Ok(real_path)
 }
 
-/// 创建目录（及其所有父目录）。（检查版随消费者退役——P2-2。）
+/// 创建目录（裁决 + 后端 fs.create_dir）。
 pub(crate) async fn create_dir_unchecked(
     path: &str,
     is_agent: bool,
@@ -203,16 +107,16 @@ pub(crate) async fn create_dir_unchecked(
     state: &tauri::State<'_, WorkspaceState>,
 ) -> Result<PathBuf, String> {
     let resolved = crate::utils::resolve_write_unchecked(path, is_agent, agent_id, state)?;
-    create_dir_resolved(resolved, path)
-}
-
-fn create_dir_resolved(resolved: PathBuf, path: &str) -> Result<PathBuf, String> {
-    std::fs::create_dir_all(&resolved)
-        .map_err(|e| format!("无法创建目录 {}: {}", path, e))?;
+    let real = resolved.to_string_lossy().to_string();
+    let resp =
+        crate::primitives_client::call_async("fs.create_dir", &serde_json::json!({ "path": real })).await?;
+    if resp.get("error").is_some() {
+        return Err(format!("primitives-server fs.create_dir 失败: {resp}"));
+    }
     Ok(resolved)
 }
 
-/// 删除文件或目录树。（检查版随消费者退役——P2-2。）
+/// 删除（裁决 + 后端 fs.delete）。
 pub(crate) async fn delete_unchecked(
     path: &str,
     is_agent: bool,
@@ -220,25 +124,17 @@ pub(crate) async fn delete_unchecked(
     state: &tauri::State<'_, WorkspaceState>,
 ) -> Result<PathBuf, String> {
     let real = crate::utils::resolve_write_unchecked(path, is_agent, agent_id, state)?;
-    delete_resolved(real, path)
-}
-
-fn delete_resolved(real: PathBuf, path: &str) -> Result<PathBuf, String> {
-    if !real.exists() {
-        return Err(format!("路径不存在: {}", path));
-    }
-    if real.is_dir() {
-        std::fs::remove_dir_all(&real)
-            .map_err(|e| format!("无法删除目录 {}: {}", path, e))?;
-    } else {
-        std::fs::remove_file(&real)
-            .map_err(|e| format!("无法删除文件 {}: {}", path, e))?;
+    let real_str = real.to_string_lossy().to_string();
+    let resp =
+        crate::primitives_client::call_async("fs.delete", &serde_json::json!({ "path": real_str })).await?;
+    if resp.get("error").is_some() {
+        return Err(format!("primitives-server fs.delete 失败: {resp}"));
     }
     Ok(real)
 }
 
-/// 重命名/移动文件或目录。`from` 和 `to` 都通过写入
-/// 权限检查，`from` 还需通过读取检查 (spec §4.7)。
+/// 重命名/移动。`from`/`to` 裁决在 exe（read(from) + write(to) 双路径检查）；
+/// 后端只执行已裁决的 rename。
 pub(crate) async fn rename(
     from: &str,
     to: &str,
@@ -249,97 +145,15 @@ pub(crate) async fn rename(
 ) -> Result<(PathBuf, PathBuf), String> {
     let resolved_from = crate::utils::resolve_read_dispatch(from, is_agent, agent_id, state, app).await?;
     let resolved_to = crate::utils::resolve_write_dispatch(to, is_agent, agent_id, state, app).await?;
-    let rf = resolved_from.clone();
-    let rt = resolved_to.clone();
-    with_io_retry(
-        || std::fs::rename(&rf, &rt),
-        &format!("rename {} -> {}", from, to),
-    )?;
+    let rf = resolved_from.to_string_lossy().to_string();
+    let rt = resolved_to.to_string_lossy().to_string();
+    let resp = crate::primitives_client::call_async(
+        "fs.rename",
+        &serde_json::json!({ "from": rf, "to": rt }),
+    )
+    .await?;
+    if resp.get("error").is_some() {
+        return Err(format!("primitives-server fs.rename 失败: {resp}"));
+    }
     Ok((resolved_from, resolved_to))
-}
-
-// ═══════════════════════════════════════════════════════════════
-// 展示辅助函数 — 格式化，非 I/O
-// ═══════════════════════════════════════════════════════════════
-
-/// 将内容格式化为 cat -n 风格的带行号输出，支持 offset/limit。
-pub(crate) fn format_lines(
-    content: &str,
-    offset: Option<usize>,
-    limit: Option<usize>,
-) -> String {
-    let lines: Vec<&str> = content.lines().collect();
-    let start = offset.unwrap_or(0).min(lines.len());
-    let end = limit
-        .map(|l| (start + l).min(lines.len()))
-        .unwrap_or(lines.len());
-    let numbered: Vec<String> = lines[start..end]
-        .iter()
-        .enumerate()
-        .map(|(i, l)| format!("{:>6}\t{}", start + i + 1, l))
-        .collect();
-    numbered.join("\n")
-}
-
-/// 预览内容的前 `max_lines` 行，每行截断为 `max_width` 个字符。
-pub(crate) fn preview(content: &str, max_width: usize, max_lines: usize) -> String {
-    content
-        .lines()
-        .take(max_lines)
-        .map(|l| {
-            if l.len() <= max_width {
-                l.to_string()
-            } else {
-                let truncated: String = l.chars().take(max_width).collect();
-                format!("{}…", truncated)
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-// ═══════════════════════════════════════════════════════════════
-// 测试 — 从 tools.rs 迁移（preview_content 原先在那里）
-// ═══════════════════════════════════════════════════════════════
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn preview_ascii_short_lines_passthrough() {
-        let input = "hello\nworld\nfoo bar baz";
-        let out = preview(input, 80, 20);
-        assert_eq!(out, input);
-    }
-
-    #[test]
-    fn preview_truncates_long_ascii_line() {
-        let input = "a".repeat(100);
-        let out = preview(&input, 80, 20);
-        assert!(out.ends_with('\u{2026}'), "should end with ellipsis: {out:?}");
-        assert_eq!(out.chars().count(), 81); // 80 字符 + U+2026 (3 字节)
-    }
-
-    #[test]
-    fn preview_does_not_panic_on_multibyte_utf8() {
-        let input = "x".repeat(79) + "\u{7ed9}\u{4e2d}\u{6587}\u{5185}\u{5bb9}\u{6d4b}\u{8bd5}";
-        let out = preview(&input, 80, 20);
-        assert!(out.ends_with('\u{2026}'), "should truncate safely at char boundary: {out:?}");
-    }
-
-    #[test]
-    fn preview_all_cjk_line_truncated() {
-        let input = "\u{4e2d}".repeat(100);
-        let out = preview(&input, 80, 20);
-        assert!(out.ends_with('\u{2026}'), "should truncate CJK-only line: {out:?}");
-        assert_eq!(out.chars().count(), 81);
-    }
-
-    #[test]
-    fn preview_respects_max_lines() {
-        let input = "a\nb\nc\nd\ne\nf";
-        let out = preview(input, 80, 2);
-        assert_eq!(out.lines().count(), 2);
-    }
 }

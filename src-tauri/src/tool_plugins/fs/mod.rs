@@ -14,8 +14,6 @@
 //! 消费方是 renderer-host / memory / 日志内部链——manifest 声明但 TS 不注册进
 //! 模型族（manifest 驱动的注册面是白名单式）。
 
-use std::io::Write;
-
 use base64::Engine;
 use hologram_graph::is_ignored_path;
 use serde_json::Value;
@@ -63,7 +61,7 @@ impl ToolPlugin for FsPlugin {
                 "list_directory" => list_directory(ctx, &args).await,
                 "list_directory_flat" => list_directory_flat(ctx, &args).await,
                 "read_file_content" => read_file_content(ctx, &args).await,
-                "read_memory_batch" => read_memory_batch(&args),
+                "read_memory_batch" => read_memory_batch(&args).await,
                 "read_file_base64" => read_file_base64(ctx, &args).await,
                 "write_file_content" => write_file_content(ctx, &args).await,
                 "log_append" => log_append(ctx, &args),
@@ -92,17 +90,22 @@ async fn list_directory(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, To
     let filter_ignored = super::plugin::arg_bool(args, "filterIgnored").unwrap_or(true);
     let root = crate::utils::resolve_read_unchecked(&path, ctx.is_agent, ctx.agent_id.as_deref(), ctx.state)
         .map_err(ToolError::Tool)?;
-    let filter = filter_ignored;
-    let entries = tokio::task::spawn_blocking(move || {
-        if !root.is_dir() {
-            return Err(format!("不是有效目录: {}", path));
-        }
-        Ok(crate::utils::list_dir_recursive(&root, filter))
-    })
+    if !root.is_dir() {
+        return Err(ToolError::Tool(format!("不是有效目录: {}", path)));
+    }
+    let real = root.to_string_lossy().to_string();
+    let resp = crate::primitives_client::call_async(
+        "fs.list_dir",
+        &serde_json::json!({ "path": real, "recursive": true, "filterIgnored": filter_ignored }),
+    )
     .await
-    .map_err(|e| ToolError::Tool(format!("目录列表任务失败: {e}")))?
     .map_err(ToolError::Tool)?;
-    serde_json::to_value(entries).map_err(|e| ToolError::Tool(format!("序列化失败: {e}")))
+    let entries = resp
+        .get("result")
+        .and_then(|r| r.get("entries"))
+        .ok_or_else(|| ToolError::Tool(format!("primitives-server fs.list_dir 响应缺 entries: {resp}")))?
+        .clone();
+    Ok(entries)
 }
 
 async fn list_directory_flat(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolError> {
@@ -110,43 +113,65 @@ async fn list_directory_flat(ctx: &ToolContext<'_>, args: &Value) -> Result<Valu
     let path = super::plugin::arg_str(args, "path").ok_or_else(|| missing("path"))?;
     let root = crate::utils::resolve_read_unchecked(&path, ctx.is_agent, ctx.agent_id.as_deref(), ctx.state)
         .map_err(ToolError::Tool)?;
-    let entries = tokio::task::spawn_blocking(move || {
-        if !root.is_dir() {
-            return Err(format!("不是有效目录: {}", path));
-        }
-        Ok(crate::utils::list_dir_flat(&root))
-    })
+    if !root.is_dir() {
+        return Err(ToolError::Tool(format!("不是有效目录: {}", path)));
+    }
+    let real = root.to_string_lossy().to_string();
+    let resp = crate::primitives_client::call_async(
+        "fs.list_dir",
+        &serde_json::json!({ "path": real, "recursive": false, "filterIgnored": false }),
+    )
     .await
-    .map_err(|e| ToolError::Tool(format!("目录列表任务失败: {e}")))?
     .map_err(ToolError::Tool)?;
-    serde_json::to_value(entries).map_err(|e| ToolError::Tool(format!("序列化失败: {e}")))
+    let entries = resp
+        .get("result")
+        .and_then(|r| r.get("entries"))
+        .ok_or_else(|| ToolError::Tool(format!("primitives-server fs.list_dir 响应缺 entries: {resp}")))?
+        .clone();
+    Ok(entries)
 }
 
 /// read_file_content — 文本读（cat -n 行号格式 / raw 原文）。
 /// raw 是 IPC 内部参数（P1-3 JSON 读取面）——不在 manifest schema 里声明，
 /// args 透传（INVARIANTS #8 修订：manifest 是模型契约不是 IPC 硬边界）。
+/// 拆壳 D2：裁决（resolve_read_unchecked，exe）→ 后端 fs.read_text 一次成型
+/// （lineNumbers/offset/limit 传后端——内容在后端，避免大文件往返两次）。
 async fn read_file_content(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolError> {
     let missing = |k: &str| ToolError::InvalidArgs(format!("read_file_content: missing '{k}'"));
     let file_path = super::plugin::arg_str(args, "filePath").ok_or_else(|| missing("filePath"))?;
     let offset = super::plugin::arg_usize(args, "offset");
     let limit = super::plugin::arg_usize(args, "limit");
-    let (_, content) =
-        crate::confined_fs::read_text_unchecked(&file_path, ctx.is_agent, ctx.agent_id.as_deref(), ctx.state)
-            .await
+    let real_path =
+        crate::utils::resolve_read_unchecked(&file_path, ctx.is_agent, ctx.agent_id.as_deref(), ctx.state)
             .map_err(ToolError::Tool)?;
-    // P1-3（2026-09-02）：raw=true 跳过 format_lines 行号——JSON 文件读取面
-    //（canvas.json / 会话卷 / memory）此前每次读都要「加行号 → 前端剥行号」
-    // 双重 O(n) 字符串变换。raw 模式直接返回原文；offset/limit 只对行号模式
-    // 有意义（raw 模式忽略——消费方都是全量读）。
-    if super::plugin::arg_bool(args, "raw").unwrap_or(false) {
-        Ok(Value::String(content))
-    } else {
-        Ok(Value::String(crate::confined_fs::format_lines(&content, offset, limit)))
-    }
+    let real = real_path.to_string_lossy().to_string();
+    // P1-3：raw=true 跳过 format_lines 行号（JSON 文件读取面）——后端 lineNumbers=false
+    // 直接返回原文；offset/limit 只对行号模式有意义。
+    let raw = super::plugin::arg_bool(args, "raw").unwrap_or(false);
+    let resp = crate::primitives_client::call_async(
+        "fs.read_text",
+        &serde_json::json!({
+            "path": real,
+            "lineNumbers": !raw,
+            "offset": offset,
+            "limit": limit,
+        }),
+    )
+    .await
+    .map_err(ToolError::Tool)?;
+    let content = resp
+        .get("result")
+        .and_then(|r| r.get("content"))
+        .and_then(|c| c.as_str())
+        .ok_or_else(|| ToolError::Tool(format!("primitives-server fs.read_text 响应缺 content: {resp}")))?
+        .to_string();
+    Ok(Value::String(content))
 }
 
-/// read_memory_batch — .lantai 内多文件批量读（内部工具；业务原样迁入）。
-fn read_memory_batch(args: &Value) -> Result<Value, ToolError> {
+/// read_memory_batch — .lantai 内多文件批量读（内部工具；拆壳 D2 走后端）。
+/// 这些路径是 .lantai 内部（memory/会话），本工具无权限检查（内部消费链）——
+/// 路径已过 validate_hologram_path 围栏，直接交后端读；单个失败置 null（原语义）。
+async fn read_memory_batch(args: &Value) -> Result<Value, ToolError> {
     let paths: Vec<String> = args
         .get("paths")
         .and_then(|v| v.as_array())
@@ -155,13 +180,19 @@ fn read_memory_batch(args: &Value) -> Result<Value, ToolError> {
     let mut map = serde_json::Map::new();
     for path in &paths {
         crate::utils::validate_hologram_path(path).map_err(ToolError::InvalidArgs)?;
-        match std::fs::read_to_string(path) {
-            Ok(content) => {
-                map.insert(path.clone(), Value::String(content));
-            }
-            Err(_) => {
-                map.insert(path.clone(), Value::Null);
-            }
+        let resp = crate::primitives_client::call_async("fs.read_text", &serde_json::json!({ "path": path }))
+            .await
+            .map_err(ToolError::Tool)?;
+        if resp.get("error").is_some() {
+            map.insert(path.clone(), Value::Null);
+        } else {
+            let content = resp
+                .get("result")
+                .and_then(|r| r.get("content"))
+                .and_then(|c| c.as_str())
+                .map(String::from)
+                .unwrap_or_default();
+            map.insert(path.clone(), Value::String(content));
         }
     }
     serde_json::to_value(map).map_err(|e| ToolError::Tool(format!("序列化失败: {}", e)))
@@ -238,7 +269,9 @@ async fn write_file_content(ctx: &ToolContext<'_>, args: &Value) -> Result<Value
     }
 
     let size = content.len();
-    let preview = crate::confined_fs::preview(&content, 80, 20);
+    // preview 是纯展示（无 I/O），content 已在壳侧（要写的内容）——本地算，
+    // 不走后端往返。语义 = confined_fs::preview 原样（拆壳前同款）。
+    let preview = preview_text(&content, 80, 20);
     Ok(Value::String(format!(
         "已写入 {} ({})\n```\n{}\n```",
         rp,
@@ -247,24 +280,45 @@ async fn write_file_content(ctx: &ToolContext<'_>, args: &Value) -> Result<Value
     )))
 }
 
+/// 纯展示：预览前 max_lines 行，每行截断 max_width（原 confined_fs::preview——拆壳 D2 后
+/// confined_fs 只剩裁决+转发，纯展示函数随唯一消费者内联于此）。
+fn preview_text(content: &str, max_width: usize, max_lines: usize) -> String {
+    content
+        .lines()
+        .take(max_lines)
+        .map(|l| {
+            if l.len() <= max_width {
+                l.to_string()
+            } else {
+                let truncated: String = l.chars().take(max_width).collect();
+                format!("{}…", truncated)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// log_append — 日志追加（内部工具；业务原样迁入——同步权限检查保持：
 /// 后台日志链无弹窗可等，Ask 在 ask/auto 模式下同步自动拒绝）。
 fn log_append(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolError> {
     let missing = |k: &str| ToolError::InvalidArgs(format!("log_append: missing '{k}'"));
     let path = super::plugin::arg_str(args, "path").ok_or_else(|| missing("path"))?;
     let content = super::plugin::arg_str(args, "content").ok_or_else(|| missing("content"))?;
+    // 权限裁决留 exe：EditTool 同步过闸（后台日志链无弹窗可等，Ask 同步自动拒绝）
     let perm_ctx = crate::utils::get_ctx(ctx.state).map_err(ToolError::Tool)?;
     let physical = perm_ctx.forward_map_path(std::path::Path::new(&path), ctx.agent_id.as_deref());
     let physical_str = physical.to_string_lossy().to_string();
     let tool = crate::tools::EditTool { path: physical_str.clone(), agent_id: ctx.agent_id.clone() };
     crate::utils::check_permission_sync(&tool, &perm_ctx).map_err(ToolError::Tool)?;
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&physical)
-        .map_err(|e| ToolError::Tool(format!("log_append: cannot open {}: {}", path, e)))?;
-    file.write_all(content.as_bytes())
-        .map_err(|e| ToolError::Tool(format!("log_append: write failed: {}", e)))?;
+    // 字节 append 走受信后端（拆壳 D2）
+    let resp = crate::primitives_client::call(
+        "fs.append",
+        &serde_json::json!({ "path": physical_str, "content": content }),
+    )
+    .map_err(ToolError::Tool)?;
+    if resp.get("error").is_some() {
+        return Err(ToolError::Tool(format!("primitives-server fs.append 失败: {resp}")));
+    }
     Ok(Value::Null)
 }
 
@@ -379,96 +433,50 @@ async fn move_file(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolErr
 }
 
 // ═══════════════════════════════════════════════════════════════
-// glob（自 commands/search.rs 原样迁入；path 键 camelCase，解析走免检变体）
+// glob（拆壳 D2：裁决留 exe，字节匹配走后端 fs.glob）
 // ═══════════════════════════════════════════════════════════════
 
-/// 展开 glob 模式中的花括号表达式。
-/// "**/*.{ts,rs}" → ["**/*.ts", "**/*.rs"]
-/// 支持嵌套花括号："a/{b,c}/{d,e}" 可正确展开。
-fn expand_braces(pattern: &str) -> Vec<String> {
-    if let Some(start) = pattern.find('{') {
-        if let Some(end) = pattern[start..].find('}') {
-            let end = start + end;
-            let prefix = &pattern[..start];
-            let suffix = &pattern[end + 1..];
-            let alternatives: Vec<&str> = pattern[start + 1..end].split(',').collect();
-            let mut result = Vec::new();
-            for alt in &alternatives {
-                let expanded = format!("{}{}{}", prefix, alt, suffix);
-                result.extend(expand_braces(&expanded));
-            }
-            return result;
-        }
-    }
-    vec![pattern.to_string()]
-}
-
+/// glob — 裁决（exe）→ 后端 fs.glob 执行（拆壳 D2）。
+/// 返回形状 = 原件（pattern/count/truncated/results 字符串 JSON）——保持 Text 语义。
 async fn glob(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolError> {
     let missing = |k: &str| ToolError::InvalidArgs(format!("glob: missing '{k}'"));
     let pattern = super::plugin::arg_str(args, "pattern").ok_or_else(|| missing("pattern"))?;
     let path = super::plugin::arg_str(args, "path");
-    // 默认搜索目录 = 当前工作区根（而非应用安装目录 project_root()），理由同 exec_command。
+    // 默认搜索目录 = 当前工作区根（理由同 exec_command）。
     let dir = match path {
         Some(p) => p,
         None => crate::utils::workspace_path(ctx.state).map_err(ToolError::Tool)?,
     };
     let root = crate::utils::resolve_read_unchecked(&dir, ctx.is_agent, ctx.agent_id.as_deref(), ctx.state)
         .map_err(ToolError::Tool)?;
-
-    // 展开花括号表达式 ({a,b,c}) — glob crate 不支持它们。
-    let expanded = expand_braces(&pattern);
-    let glob_patterns: Vec<glob::Pattern> = expanded.iter()
-        .map(|p| glob::Pattern::new(p).map_err(|e| ToolError::InvalidArgs(format!("无效的 glob 模式 '{}': {}", p, e))))
-        .collect::<Result<Vec<_>, _>>()?;
-    let pat = pattern.clone();
-
-    let out = tokio::task::spawn_blocking(move || {
-        if !root.is_dir() {
-            return Err(format!("不是有效目录: {}", dir));
-        }
-        let mut results: Vec<crate::utils::GlobEntry> = Vec::new();
-        let max = 200;
-
-        for entry in walkdir::WalkDir::new(&root)
-            .max_depth(12)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
-            if !entry.file_type().is_file() { continue; }
-            let entry_path = entry.path();
-            let eps = entry_path.to_string_lossy();
-            if eps.contains("/.git/") || eps.contains("\\.git\\")
-                || eps.contains("/node_modules/") || eps.contains("\\node_modules\\")
-                || eps.contains("/target/") || eps.contains("\\target\\")
-                || eps.contains("/dist/") || eps.contains("\\dist\\")
-                || eps.contains("/build/") || eps.contains("\\build\\")
-                || eps.contains("/.lantai/") || eps.contains("\\.lantai\\")
-            { continue; }
-
-            let rel = entry_path.strip_prefix(&root).unwrap_or(entry_path);
-            let rel_str = rel.to_string_lossy().replace('\\', "/");
-
-            if glob_patterns.iter().any(|gp| gp.matches(&rel_str)) {
-                results.push(crate::utils::GlobEntry {
-                    path: entry_path.to_string_lossy().to_string(),
-                    name: rel.file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .unwrap_or_else(|| rel_str.clone()),
-                });
-            }
-            if results.len() >= max { break; }
-        }
-
-        Ok(serde_json::json!({
-            "pattern": pat,
-            "count": results.len(),
-            "truncated": results.len() >= max,
-            "results": results,
-        }).to_string())
-    })
+    if !root.is_dir() {
+        return Err(ToolError::Tool(format!("不是有效目录: {}", dir)));
+    }
+    let real = root.to_string_lossy().to_string();
+    let resp = crate::primitives_client::call_async(
+        "fs.glob",
+        &serde_json::json!({ "path": real, "patterns": [pattern.clone()] }),
+    )
     .await
-    .map_err(|e| ToolError::Tool(format!("glob 任务失败: {e}")))?
     .map_err(ToolError::Tool)?;
+    // 错误透传（含「无效的 glob 模式」——后端 fs_ops::glob 编译期报错文案与原件一致）
+    if let Some(err) = resp.get("error") {
+        let msg = err.get("message").and_then(|m| m.as_str()).unwrap_or("glob 失败");
+        return Err(ToolError::Tool(msg.to_string()));
+    }
+    let results = resp
+        .get("result")
+        .and_then(|r| r.get("results"))
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!([]));
+    let count = results.as_array().map(|a| a.len()).unwrap_or(0);
+    let out = serde_json::json!({
+        "pattern": pattern,
+        "count": count,
+        "truncated": count >= 200,
+        "results": results,
+    })
+    .to_string();
     Ok(Value::String(out))
 }
 
@@ -494,50 +502,5 @@ mod tests {
             let t = m.tools.iter().find(|t| t.name == name).unwrap_or_else(|| panic!("{name} 在清单内"));
             assert!(t.permission.is_none(), "{name} 应无权限声明（业务自检/无检查形态）");
         }
-    }
-
-    #[test]
-    fn test_expand_braces_simple() {
-        let result = expand_braces("**/*.{ts,rs}");
-        assert_eq!(result, vec!["**/*.ts".to_string(), "**/*.rs".to_string()]);
-    }
-
-    #[test]
-    fn test_expand_braces_no_brace() {
-        let result = expand_braces("**/*.ts");
-        assert_eq!(result, vec!["**/*.ts".to_string()]);
-    }
-
-    #[test]
-    fn test_expand_braces_many_extensions() {
-        let result = expand_braces("**/*.{ts,js,py,rs,html,css,vue,svelte,json,toml,yaml,yml,md}");
-        assert_eq!(result.len(), 13);
-        assert!(result.contains(&"**/*.ts".to_string()));
-        assert!(result.contains(&"**/*.json".to_string()));
-        assert!(result.contains(&"**/*.yaml".to_string()));
-    }
-
-    #[test]
-    fn test_expand_braces_nested() {
-        let result = expand_braces("a/{b,c}/{d,e}");
-        assert_eq!(result, vec!["a/b/d".to_string(), "a/b/e".to_string(), "a/c/d".to_string(), "a/c/e".to_string()]);
-    }
-
-    #[test]
-    fn test_expand_braces_single_alternative() {
-        let result = expand_braces("src/{x}");
-        assert_eq!(result, vec!["src/x".to_string()]);
-    }
-
-    #[test]
-    fn test_expand_braces_empty_braces() {
-        let result = expand_braces("src/{}");
-        assert_eq!(result, vec!["src/".to_string()]);
-    }
-
-    #[test]
-    fn test_expand_braces_at_start() {
-        let result = expand_braces("{a,b}.ts");
-        assert_eq!(result, vec!["a.ts".to_string(), "b.ts".to_string()]);
     }
 }

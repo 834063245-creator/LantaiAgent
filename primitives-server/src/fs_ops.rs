@@ -164,6 +164,19 @@ pub(crate) fn delete(real_path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// 追加内容到文件（不存在则创建；real_path 已裁决）。log_append 用。
+pub(crate) fn append_text(real_path: &str, content: &str) -> Result<(), String> {
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(real_path)
+        .map_err(|e| format!("log_append: cannot open {}: {}", real_path, e))?;
+    file.write_all(content.as_bytes())
+        .map_err(|e| format!("log_append: write failed: {}", e))?;
+    Ok(())
+}
+
 /// 重命名/移动（from/to 均已由壳裁决；confined_fs::rename 的 I/O 段原样）。
 pub(crate) fn rename(from: &str, to: &str) -> Result<(), String> {
     with_io_retry(
@@ -191,7 +204,7 @@ pub(crate) struct DirEntry {
 // glob — utils GlobEntry + fs 插件 glob 纯执行段（无权限/无 workspace 决议）
 // ═══════════════════════════════════════════════════════════════
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Debug)]
 pub(crate) struct GlobEntry {
     pub(crate) path: String,
     pub(crate) name: String,
@@ -397,4 +410,135 @@ pub(crate) fn preview(content: &str, max_width: usize, max_lines: usize) -> Stri
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── glob 花括号展开（自壳 fs 插件随字节层迁入）──
+
+    #[test]
+    fn expand_braces_simple() {
+        let result = expand_braces("**/*.{ts,rs}");
+        assert_eq!(result, vec!["**/*.ts".to_string(), "**/*.rs".to_string()]);
+    }
+
+    #[test]
+    fn expand_braces_no_brace() {
+        let result = expand_braces("**/*.ts");
+        assert_eq!(result, vec!["**/*.ts".to_string()]);
+    }
+
+    #[test]
+    fn expand_braces_many_extensions() {
+        let result = expand_braces("**/*.{ts,js,py,rs,html,css,vue,svelte,json,toml,yaml,yml,md}");
+        assert_eq!(result.len(), 13);
+        assert!(result.contains(&"**/*.ts".to_string()));
+        assert!(result.contains(&"**/*.json".to_string()));
+        assert!(result.contains(&"**/*.yaml".to_string()));
+    }
+
+    #[test]
+    fn expand_braces_nested() {
+        let result = expand_braces("a/{b,c}/{d,e}");
+        assert_eq!(
+            result,
+            vec!["a/b/d".to_string(), "a/b/e".to_string(), "a/c/d".to_string(), "a/c/e".to_string()]
+        );
+    }
+
+    #[test]
+    fn expand_braces_at_start() {
+        let result = expand_braces("{a,b}.ts");
+        assert_eq!(result, vec!["a.ts".to_string(), "b.ts".to_string()]);
+    }
+
+    #[test]
+    fn expand_braces_empty_braces() {
+        let result = expand_braces("src/{}");
+        assert_eq!(result, vec!["src/".to_string()]);
+    }
+
+    // ── 目录列表（utils::list_dir_* 迁入的字节层锚定）──
+
+    fn make_tree(tag: &str) -> std::path::PathBuf {
+        let tmp = std::env::temp_dir().join(format!("primitives_fsops_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("sub")).unwrap();
+        std::fs::create_dir_all(tmp.join(".git")).unwrap();
+        std::fs::write(tmp.join("a.txt"), "a").unwrap();
+        std::fs::write(tmp.join("b.txt"), "b").unwrap();
+        std::fs::write(tmp.join("sub").join("c.txt"), "c").unwrap();
+        std::fs::write(tmp.join(".git").join("config"), "x").unwrap();
+        tmp
+    }
+
+    #[test]
+    fn list_dir_flat_lists_direct_children_only() {
+        let tmp = make_tree("flat");
+        let entries = list_dir_flat(&tmp);
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(names.contains(&"a.txt"));
+        assert!(names.contains(&"sub"));
+        assert!(!names.contains(&"c.txt"), "sub/ 内不应出现在平铺层");
+        assert!(!names.contains(&".git"), ".git 应被隐藏");
+        assert!(entries.iter().all(|e| e.children.is_none()), "平铺无 children");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn list_dir_recursive_descends_and_filters_ignored() {
+        let tmp = make_tree("rec");
+        let entries = list_dir_recursive(&tmp, true);
+        let flat_names: Vec<String> = {
+            fn walk(e: &DirEntry, out: &mut Vec<String>) {
+                out.push(e.name.clone());
+                if let Some(ch) = &e.children {
+                    for c in ch {
+                        walk(c, out);
+                    }
+                }
+            }
+            let mut v = Vec::new();
+            for e in &entries {
+                walk(e, &mut v);
+            }
+            v
+        };
+        assert!(flat_names.iter().any(|n| n == "a.txt"));
+        assert!(flat_names.iter().any(|n| n == "c.txt"), "递归应含 sub/c.txt");
+        assert!(!flat_names.iter().any(|n| n == "config"), ".git 应被 is_ignored_path 过滤");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn glob_matches_pattern_and_skips_excluded() {
+        let tmp = make_tree("glob");
+        let results = glob(&tmp.to_string_lossy(), &["**/*.txt".to_string()]).unwrap();
+        assert_eq!(results.len(), 3, "a/b/sub/c 三 txt: {results:?}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn glob_invalid_pattern_errors() {
+        let tmp = make_tree("globerr");
+        let err = glob(&tmp.to_string_lossy(), &["[".to_string()]).unwrap_err();
+        assert!(err.contains("无效的 glob 模式"), "err = {err}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ── 展示辅助 ──
+
+    #[test]
+    fn format_lines_numbers() {
+        assert_eq!(format_lines("aa\nbb\ncc", None, None), "     1\taa\n     2\tbb\n     3\tcc");
+        assert_eq!(format_lines("aa\nbb\ncc", Some(1), Some(1)), "     2\tbb");
+    }
+
+    #[test]
+    fn preview_truncates_and_respects_lines() {
+        let p = preview(&"x".repeat(100), 10, 2);
+        assert!(p.contains('\u{2026}'), "截断应带省略号: {p}");
+    }
 }

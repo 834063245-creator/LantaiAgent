@@ -56,5 +56,21 @@ re-export）+ Rust builtin.*（执行真源但零 UI）；引擎走独立通道�
 
 ## 5. 施工史
 
-- **D0 已落地**：primitives-server crate（lib + fs_ops + protocol + main），
+- **D0 已落地**（commit bd37e286）：primitives-server crate（lib + fs_ops + protocol + main），
   confined_fs/utils 字节层搬出、剥裁决，错误文案/guards 原样；6 协议用例全绿。
+- **D1 已落地**（commit 50e6d904）：壳侧 primitives_client.rs——spawn primitives-server
+  + stdio JSON-RPC + initialize + 崩溃重启一次；env HOLOGRAM_PRIMITIVES_EXE → exe 同目录
+  → 上一级解析；Job Object 归属。真进程 e2e（spawn → initialize → fs.read_text 往返）
+  全绿，二进制缺席自动跳过（引擎 e2e 同款纪律）。模块尚无生产消费者（D2 接线），
+  allow(dead_code) 过渡标注。
+- **D2 已落地**：fs 域字节执行全部切后端 client——confined_fs 从「裁决+字节」改为
+  「裁决（exe）→ call_async 转发后端」；fs 插件 13 工具（read/write/list/glob/
+  read_memory_batch/log_append/delete/mkdir/rename/move/base64/editor 共用）字节层
+  全外置。raw/lineNumbers/offset/limit 决策下沉后端（read_text 一次成型，免大文件
+  往返两次）；read_memory_batch/log_append 从 std::fs 直读直写改走后端 fs.read_text/
+  fs.append。utils.rs 的 DirEntry/list_dir_*/GlobEntry 字节层退役（随消费者删除，
+  不留双真源），glob 花括号展开测试迁后端。primitives_client 并发模型重构为引擎
+  transport 同构（锁只盖 spawn/短写，等响应在锁外——多调用并发复用同一进程），
+  call_async 包装 spawn_blocking 不阻塞 tokio worker。真进程全方法 e2e
+  （write/read/list/mkdir/rename/glob/delete 往返）全绿。门禁：后端 19 用例 +
+  壳 433+1 全绿，壳零警告。

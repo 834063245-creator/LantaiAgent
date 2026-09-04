@@ -50,8 +50,20 @@ pub fn handle_line(line: &str) -> Vec<String> {
                 Ok(p) => p,
                 Err(e) => return vec![error(&id, -32602, &e)],
             };
+            // lineNumbers=true → 读后本地 format_lines（offset/limit 只对行号模式
+            // 有意义）——内容在后端，一次 IPC 返回格式化结果，避免大文件往返两次。
+            let line_numbers = params.get("lineNumbers").and_then(|v| v.as_bool()).unwrap_or(false);
+            let offset = params.get("offset").and_then(|v| v.as_u64()).map(|n| n as usize);
+            let limit = params.get("limit").and_then(|v| v.as_u64()).map(|n| n as usize);
             match fs_ops::read_text(&path) {
-                Ok(content) => vec![success(&id, json!({ "content": content }))],
+                Ok(content) => {
+                    let content = if line_numbers {
+                        fs_ops::format_lines(&content, offset, limit)
+                    } else {
+                        content
+                    };
+                    vec![success(&id, json!({ "content": content }))]
+                }
                 Err(e) => vec![error(&id, -32000, &e)],
             }
         }
@@ -77,6 +89,16 @@ pub fn handle_line(line: &str) -> Vec<String> {
                 (Err(e), _) | (_, Err(e)) => return vec![error(&id, -32602, &e)],
             };
             match fs_ops::write_text(&path, &content) {
+                Ok(()) => vec![success(&id, json!({}))],
+                Err(e) => vec![error(&id, -32000, &e)],
+            }
+        }
+        "fs.append" => {
+            let (path, content) = match (req_str(&params, "path"), req_str(&params, "content")) {
+                (Ok(p), Ok(c)) => (p, c),
+                (Err(e), _) | (_, Err(e)) => return vec![error(&id, -32602, &e)],
+            };
+            match fs_ops::append_text(&path, &content) {
                 Ok(()) => vec![success(&id, json!({}))],
                 Err(e) => vec![error(&id, -32000, &e)],
             }
@@ -279,6 +301,25 @@ mod tests {
         let out = handle_line(&req.to_string());
         let v: Value = serde_json::from_str(&out[0]).unwrap();
         assert!(v["error"].is_object(), "missing file → error: {v}");
+    }
+
+    #[test]
+    fn read_text_line_numbers_mode() {
+        let tmp = std::env::temp_dir().join(format!("primitives_proto_ln_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let f = tmp.join("n.txt");
+        std::fs::write(&f, "aa\nbb\ncc\n").unwrap();
+
+        let req = json!({
+            "jsonrpc": "2.0", "id": 5,
+            "method": "fs.read_text",
+            "params": { "path": f.to_string_lossy(), "lineNumbers": true, "offset": 1, "limit": 1 }
+        });
+        let out = handle_line(&req.to_string());
+        let v: Value = serde_json::from_str(&out[0]).unwrap();
+        assert_eq!(v["result"]["content"], "     2\tbb");
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
