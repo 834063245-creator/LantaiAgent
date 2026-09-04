@@ -111,9 +111,58 @@
   **裁定：独立方法**（R2 search_cap 先例——tool_call 信封是 P0-2 脚手架，v3 拆除令要退役；
   能力口 = 极少数稳定面，独立 RPC 真源清晰、rpc-contract 类型化、与信封解耦）。
 - **D-B**：builtin.* 模块退役时机。
-  **裁定：随各自能力口落地即退役**（fs 域 R3-b 首批退役；git/shell 随 R3-c/d；
-  句柄域 browser/uia/pty/lsp 留 R4）。
+  **裁定（2026-09-04 修订——R3-b 实测修正）**：builtin.fs **不整体退役**——UI 内部
+  helper（kernelFsCall 系：kernelReadFile/kernelWriteFile/kernelCreateDirectory/
+  kernelDeleteFile/kernelListDirectory）与内部工具（read_file_base64/read_memory_batch/
+  log_append/get_global_memory_dir）仍经 tool_call 信封消费 builtin.fs（72 处 UI +
+  内部链），模型族 execute 已换 fs_cap。builtin.fs 保留（服务 UI/内部），R4/R5 随
+  UI helper 换轨再退役；git/shell 同型（模型族换轨后插件保留给内部消费）。
 - **D-C**：编排回 TS 时 manifest 生成器/镜像去留。
   **裁定：schema 真源回 TS zod**（search R2-d 先例——逐字节转录零漂移已证）；
   R3 起 fs 域随 execute 换轨回 zod，镜像/生成器条目随 builtin.* 退役逐步删；
   全量脚手架拆除（manifest.rs/registry/生成器）收在 R5。
+
+## 8. R3-c/d/e 施工输入（2026-09-04 勘察定稿，下窗开工点）
+
+> 两份勘察报告（R3 fs/git/shell 迁移 + R3-c/d git/shell 能力口）已收齐，结论沉淀如下。
+
+### git_cap（R3-c）——可行，形态定稿
+- `git_cap { repo_path, subcommand, args, is_agent, agent_id }`：**subcommand 位必须
+  保留**（Git 家族两段闸 = filesystem::check_read_permission(repo) + git::check(subcommand)，
+  精确子命令 deny/allow/ask 规则依赖它；plugin:builtin.git.git_commit deny 不失义）。
+  read_only 5 工具（status/diff/log/blame）走 Read 家族闸分流。
+- Rust 执行体 = utils::run_git（纯同步进程封装，无流式/job）；git_exec_path（worktree
+  forward-map）是执行侧唯一物理换算点——能力口显式收 is_agent/agent_id（search_cap
+  先例双键读取已解决）。
+- 编排回 TS：porcelain 解析 3 处纯文本（status 头 + parse_status utils.rs:174 + log
+  \x00 split）——TS 拿 run_git stdout 自 split 可行（webview 无盘权不构成障碍，输出
+  字符串经 RPC 回传）。
+- 测试钉面：permissions/git.rs:93-160 + permissions/mod.rs:730-841（Git 子命令规则 +
+  forward-map worktree 端到端）；git/mod.rs tests:331-368（manifest 权限形状）；
+  kernel-envelope.ts LEGACY_METHOD_OF git 16 行换轨须处理。
+
+### process_cap（R3-d）——可行，切割面大
+- `process_cap { command, cwd?, interpreter?, bg?, streamToolId? }` + 口内保留
+  fg/bg 双检查不对称（fg = require_command 可 Ask + resolve_read_dispatch / bg =
+  require_command_sync + require_read_sync 免 Ask——shell 域自检形态，manifest 单键
+  permission 表达不了，不能进 adapter）。
+- **保留 shell:output/shell:done 事件形状 + started 回 {streamId,job_id}**——queued-
+  shell.ts 已完整收双事件闭环，换 invoke 目标即可零改（shell-done-watchdog.test 仅换
+  shim 目标）。bg 三工具（bash_output 增量游标/wait/kill）依赖 Rust BG_JOBS ledger，
+  TS 无法自实现——留口内 action。
+- **新增风险（勘察发现）**：粘性 cwd 状态（sticky_cwd.rs：marker 截流 + generation
+  换代 + per-agent 存储）全在 Rust 静态态——编排回 TS 需裁定状态归属（能力口带 cwd
+  参数 vs 保留 Rust 小状态口）。比流式更深的切割决策。
+- R2-d(2) 并入本批：search_cap 输出组装编排回 TS（统一命中集收窄）。
+
+### R3-e（权限）——风险最高
+- 六步裁决迁 TS 策略层 vs 「TS 判 + Rust 口最小强制」双轨过渡：按回归测试结果定
+  （v3 §1：口内最小必要校验不信任 TS 授权）。
+- Rust 侧 PERMISSION_MODE/auto_mode_allows 消费点仅两处同步路径（check_permission_sync
+  后台 + check_mcp_permission）——TS 闸覆盖不到的同步路径是盲区，需保留 Rust 最小
+  强制或改同步旁路协议。
+- worktree forward-map 两跳依赖（adapter path forward-map + 家族 check reverse-map）
+  若拆散 = fork 子 Agent 直写主仓事故复发（regression r4/r5/r7 守卫）——隔离映射
+  必须整体搬或保 Rust 强制层。
+- audit_deny/allow、Ask oneshot（register_ask/resolve_ask 300s 超时）由 TS 闸承接
+  或明确保留。
