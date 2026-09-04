@@ -144,17 +144,17 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
   // 后台任务语义：run_shell(runInBackground) 启动即返 ID，模型经 bash_output
   // 自轮询（run_shell 描述如此引导）——通用路径直通即可。
   const codingExec: ToolExecutor = async (name, args, onProgress, signal) => {
-    // P2-4 信封化：shell 域经 tool_call 寻址 builtin.shell——codingExec 的特殊面
-    // （前台流式执行）从外层命令名匹配改为解信封按 plugin.tool 寻址（外层名恒
-    // 'tool_call'；解封形态与 tests/ab/ab-tools.ts 的 kernelExec 互为镜像）。
-    // 此前的 run_shell 后台等待环与 TIMEOUT_TOOLS 名字面匹配是 seam 化/
-    // 插件化以来的死代码（外层名从 Phase 1 起不再到达），随本批清理——行为零变化。
-    if (name === 'tool_call') {
-      const env = args as { plugin?: string; tool?: string; args?: Record<string, unknown> };
-      if (env.plugin === 'builtin.shell' && env.tool === 'exec_command' && !env.args?.runInBackground) {
+    // R3-d（shell 域收口，kernel-capability-c3-design.md）：shell 域经
+    // process_cap 能力口直呼（builtin.shell 信封退役）——codingExec 的特殊面
+    // （前台流式执行）按 action + run_in_background 寻址（外层名恒
+    // 'process_cap'；args 是 provider 映射后的顶层 snake 形，与 tests/ab/
+    // ab-tools.ts 的 kernelExec 互为镜像）。后台三动词直通 ledger。
+    if (name === 'process_cap') {
+      const env = args as { action?: string; run_in_background?: boolean };
+      if (env.action === 'exec_command' && !env.run_in_background) {
         // 直连流式执行（取消语义 + 600s 兜底）— 实现见 queued-shell.ts。
         // 构建锁冲突由 Rust 打回（错误信息直接返回，模型据此重试/等待）。
-        return execStreamedShell(env.args ?? {}, onProgress, signal);
+        return execStreamedShell(args, onProgress, signal);
       }
     }
     const result = await agentInvoke<string>(name, args);

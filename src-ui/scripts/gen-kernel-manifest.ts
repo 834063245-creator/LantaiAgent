@@ -96,10 +96,10 @@ async function fsToolsFactory(): Promise<Tool[]> {
 //  R3-c：git 13 模型族 schema 真源回 TS zod（coding.ts GIT_CAP_SCHEMA），
 //  execute 换 git_cap 能力口直呼，反向生成源随插件一并拆除；fs 域同款先例。）
 
-async function shellToolsFactory(): Promise<Tool[]> {
-  const { createShellTools } = await import('../src/agent/tools/coding');
-  return createShellTools(dummyExec);
-}
+// （builtin.shell 域已随 shell 域收口退役——2026-09-05，kernel-capability-
+//  c3-design.md R3-d：shell 4 模型族 schema 真源回 TS zod（coding.ts
+//  SHELL_CAP_SCHEMA），execute 换 process_cap 能力口直呼，反向生成源随插件
+//  一并拆除；fs/git 域同款先例。）
 
 async function browserToolsFactory(): Promise<Tool[]> {
   const { createBrowserTools } = await import('../src/agent/tools/browser');
@@ -147,58 +147,9 @@ const DOMAINS: DomainSpec[] = [
   //    （coding.ts GIT_CAP_SCHEMA），execute 走 git_cap 能力口直呼；域条目随
   //    tool_plugins/git/ 一并拆除，fs 域收口同款先例）──
 
-  // ── builtin.shell（P2-4）——4 TS 面直出（run→exec_command 等动作映射）+
-  //    3 内部消费工具手写（shell_env/background_activity/drain_bg_notifications）。
-  //    权限形状：全族业务自检（exec_command 的 bg/fg 双检查不对称——bg 走 sync
-  //    免 Ask，dispatch 侧单键 adapter 表达不了，v1 形态不声明 permission）──
-  {
-    domain: 'shell',
-    id: 'builtin.shell',
-    description: 'Shell 执行与后台任务管理（自 commands/shell.rs 拆出，kernel-plugin-runtime P2-4）',
-    capabilities: ['shell_exec'],
-    factory: shellToolsFactory,
-    tools: [
-      { name: 'exec_command', tsTool: 'run_shell' },
-      { name: 'bash_output', tsTool: 'bash_output' },
-      { name: 'bash_kill', tsTool: 'bash_kill' },
-      { name: 'bash_wait', tsTool: 'bash_wait' },
-      {
-        name: 'shell_env',
-        description:
-          'Return the current shell environment (OS, shell, path, bundled notes) for prompt injection. Internal consumer tool (not model-facing).',
-        read_only: true,
-        schema: {
-          type: 'object',
-          properties: {},
-          additionalProperties: {},
-        },
-      },
-      {
-        name: 'background_activity',
-        description:
-          'Aggregate read-only snapshot of running shell background jobs and browser sessions (status-bar HUD). Internal consumer tool (not model-facing).',
-        read_only: true,
-        schema: {
-          type: 'object',
-          properties: {},
-          additionalProperties: {},
-        },
-      },
-      {
-        name: 'drain_bg_notifications',
-        description:
-          'Drain pending background-job notifications (done/stalled notes) for an agent and return them as JSON. Internal consumer tool (not model-facing).',
-        read_only: true,
-        schema: {
-          type: 'object',
-          properties: {
-            agentId: { type: 'string', description: 'Owner agent id whose notifications to drain' },
-          },
-          additionalProperties: {},
-        },
-      },
-    ],
-  },
+  // ── builtin.shell 域已退役（shell 域收口 2026-09-05，R3-d——schema 真源回
+  //    TS zod（coding.ts SHELL_CAP_SCHEMA），execute 走 process_cap 能力口直呼；
+  //    域条目随 tool_plugins/shell/ 一并拆除，fs/git 域收口同款先例）──
 
   // ── builtin.browser（P2-5）——37 RPC 分支信封化。权限形状（§8 已拍板）：
   //    不进 manifest permission——插件内 ctx.check_permission(BrowserTool{action})

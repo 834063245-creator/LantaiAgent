@@ -46,8 +46,9 @@ impl PluginRegistry {
         registry.register(lsp).expect("出厂插件清单装载失败");
         let pty: Arc<dyn ToolPlugin> = Arc::new(super::pty::PtyPlugin::new());
         registry.register(pty).expect("出厂插件清单装载失败");
-        let shell: Arc<dyn ToolPlugin> = Arc::new(super::shell::ShellPlugin::new());
-        registry.register(shell).expect("出厂插件清单装载失败");
+        // （builtin.shell 已随 shell 域收口退役——2026-09-05，kernel-capability-
+        //  c3-design.md R3-d：模型族/内部消费全量换 process_cap 能力口直呼，
+        //  插件信封无消费方整目录退役；fs/git 域收口同款先例。）
         let web: Arc<dyn ToolPlugin> = Arc::new(super::web::WebPlugin::new());
         registry.register(web).expect("出厂插件清单装载失败");
         registry

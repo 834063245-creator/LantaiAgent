@@ -98,7 +98,6 @@ export function buildTrialRegistry(wt: string, graph: TrialGraphData): ToolRegis
   const registry = new ToolRegistry();
   const EXEC_ALIAS: Record<string, string> = {
     write_file_content: 'write_file',
-    exec_command: 'run_shell',
     rename_file_or_dir: 'rename_file',
     delete_file_or_dir: 'delete_file',
     git_stage: 'git_stage',
@@ -151,6 +150,21 @@ export function buildTrialRegistry(wt: string, graph: TrialGraphData): ToolRegis
           default:
             return `错误: fs_cap 未知 action ${action}`;
         }
+      }
+      case 'process_cap': {
+        // R3-d 能力口直呼（kernel-capability-c3-design.md）：shell 域 execute 经
+        // process_cap action 分派——路由回本地 mock 的 shell 工具语义（顶参是
+        // process_cap snake 键，mock 读 command 原键；后台三动词不收，
+        // run_in_background 映回 run_shell 的 runInBackground）。
+        const action = String(args.action ?? '');
+        const { action: _a, job_id: _j, run_in_background: _rb, ...rest } = args as Record<string, unknown>;
+        const mapped: Record<string, unknown> = { ...rest };
+        if (typeof _rb === 'boolean') mapped.runInBackground = _rb;
+        if (action === 'exec_command') return exec('run_shell', mapped, onProgress);
+        if (action === 'bash_output' || action === 'bash_kill' || action === 'bash_wait') {
+          return exec(action, { ...mapped, jobId: _j }, onProgress);
+        }
+        return `错误: process_cap 未知 action ${action}`;
       }
       case 'read_file_content': {
         const p = resolveInWorktree(wt, fp('filePath') || fp('file_path'));

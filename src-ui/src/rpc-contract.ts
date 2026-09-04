@@ -60,6 +60,17 @@ export type GitCapAction =
   | 'git_discard'
   | 'git_blame';
 
+/** process_cap 能力口 action（R3-d shell 域收口）——退役前 builtin.shell 7 工具名
+ *  一一位（与历史精确规则寻址名 plugin:builtin.shell.<action> 同构）。 */
+export type ProcessCapAction =
+  | 'exec_command'
+  | 'bash_output'
+  | 'bash_kill'
+  | 'bash_wait'
+  | 'shell_env'
+  | 'background_activity'
+  | 'drain_bg_notifications';
+
 export interface RpcContract {
   // ── 应用层：数据上下文（L1）────────────────────────────
   // （workspace-session-ownership-rework 2026-08-27：session_attach/detach/
@@ -231,11 +242,41 @@ export interface RpcContract {
     result: string; // text — run_git stdout（git_status 失败回空串；diff/blame 口内 32K 截断）
   };
 
-  // ── Shell ────────────────────────────────────────────────
+  // ── 能力口（R3-d，kernel-capability-c3-design.md §8/§9）──────────
+  // process_cap：process 能力族直呼入口（builtin.shell 插件随 shell 域收口
+  // 退役）——不经 tool_call 信封 / PluginRegistry / PluginToolAdapter。action =
+  // 退役前 builtin.shell 7 工具名（ProcessCapAction）；口内闸 = fg/bg 双检查
+  // 不对称（Bash 家族命令串规则面）；粘性 cwd 归 TS（cwd 显式 + sticky_cwd
+  // 候选——盘上不存在时口内跳过自愈）。capture_cwd=true 时口内按方言包装命令，
+  // 粘性 marker 字节原样流经 shell:output 事件/结果——TS 截流/提交/回显。
+  // 事件形状零改：shell:output / shell:done 双事件 + started 回
+  // {streamId, job_id, resolvedCwd}（见 EventContract）。
+  process_cap: {
+    params: {
+      action: ProcessCapAction;
+      command?: string;
+      cwd?: string;
+      sticky_cwd?: string;
+      timeout_ms?: number;
+      run_in_background?: boolean;
+      stream_tool_id?: string;
+      interpreter?: string;
+      capture_cwd?: boolean;
+      job_id?: number;
+      wait_timeout_ms?: number;
+      is_agent?: boolean;
+      agent_id?: string | null;
+      owner_id?: string | null;
+    };
+    result: string; // text — stdout 文本 / started JSON（含粘性 marker 字节，TS 截流）/ job 输出
+  };
+
+  // ── Shell（retired）────────────────────────────────────────
   // （exec_command / bash_output / bash_kill / bash_wait / shell_env /
-  //   background_activity / drain_bg_notifications 已迁内核插件 builtin.shell，
-  //   走 tool_call——kernel-plugin-runtime P2-4。内部直呼统一经下方 kernelShellCall
-  //   助手；shell:output / shell:done 事件双通道原样保留（§4.3 裁决）。）
+  //   background_activity / drain_bg_notifications 已随 shell 域收口
+  //   （2026-09-05，R3-d）换 process_cap 能力口直呼——builtin.shell 信封退役，
+  //   契约见上方 process_cap。内部直呼统一经下方 kernelProcessCall 助手；
+  //   shell:output / shell:done 事件双通道原样保留（§4.3 裁决）。）
 
   // ── 编辑器 ───────────────────────────────────────────────
   // （edit_file 已迁内核插件 builtin.editor，走 tool_call——kernel-plugin-runtime P2-1）
@@ -339,8 +380,9 @@ export interface RpcContract {
   //   信封消费（kernelLspCall），lsp-message 事件行仍在本文件 EventContract，
   //   kernel-plugin-runtime P2-6。）
 
-  // （background_activity 已迁内核插件 builtin.shell——状态栏 HUD 经
-  //   kernelShellCall('background_activity') 信封消费，kernel-plugin-runtime P2-4。
+  // （background_activity 已随 shell 域收口（R3-d）换 process_cap 直呼——状态栏
+  //   HUD 消费点经 kernelProcessCall('background_activity')；当前无生产消费点
+  //   （HUD 面），action 留口内备用。
   //   browser_audit 已迁 builtin.browser——审计查询经浏览器域工具信封消费，
   //   无 typedRpc 直呼点，RpcContract 行随 RPC 分支退役，kernel-plugin-runtime P2-5。）
 
@@ -664,15 +706,19 @@ export function kernelGitCall(
   return typedRpc('git_cap', { ...args, action, is_agent: false });
 }
 
-// ── builtin.shell 直呼便捷封装（kernel-plugin-runtime P2-4）──
-// 内部消费方（queued-shell / agent-builder 的执行链、runtime 的 shell_env
-// 注入、workspace/default-loop 的 drain_bg_notifications、状态栏 HUD）的统一
-// 出口：tool_call 信封寻址 builtin.shell（旧 RPC 分支随迁退役）。args 说
-// manifest 语言（camelCase；_owner_id 等 meta 原样嵌 args 内）。
+// ── process_cap 直呼便捷封装（shell 域收口，kernel-capability-c3-design.md R3-d）──
+// 内部消费方（runtime 的 shell_env 注入、workspace/default-loop 的
+// drain_bg_notifications、状态栏 HUD background_activity）的统一出口：
+// process_cap 能力口直呼（tool_call 信封寻址 builtin.shell 随插件退役）。
+// args 说 process_cap 顶层契约语言（snake_case；_owner_id 等 meta 原样透传）。
 
-/** shell 域通用信封调用（text 形态结果直通；JSON 形态消费方自行 parseJson）。 */
-export function kernelShellCall(tool: string, args: Record<string, unknown>): Promise<string> {
-  return typedRpc('tool_call', { plugin: 'builtin.shell', tool, args });
+/** process 能力口调用（用户路径 is_agent=false——口内只解析零弹窗）。
+ *  action = 退役前 builtin.shell 工具名。 */
+export function kernelProcessCall(
+  action: ProcessCapAction,
+  args: Omit<RpcParamsOf<'process_cap'>, 'action' | 'is_agent'> = {},
+): Promise<string> {
+  return typedRpc('process_cap', { ...args, action, is_agent: false });
 }
 
 // ── builtin.pty 直呼便捷封装（kernel-plugin-runtime P2-6）──
@@ -782,8 +828,8 @@ export const rpcResultSchemas = {
       reason: z.string(),
     })
     .passthrough(),
-  // （shell_env 已迁内核插件 builtin.shell——runtime 经 kernelShellCall +
-  //   parseJson 消费，rpcResultSchemas 表行随之退役，kernel-plugin-runtime P2-4。
+  // （shell_env 已随 shell 域收口（R3-d）换 process_cap 直呼——runtime 经
+  //   kernelProcessCall + parseJson 消费，Text 形态无 rpcResultSchemas 收编面。
   //   git_status 已随 git 域收口（R3-c）换 git_cap 直呼——state-inject 经
   //   kernelGitCall + git-porcelain.ts 解析 stdout，无 rpcResultSchemas 收编面。）
 } satisfies Partial<Record<RpcMethodName, z.ZodType>>;

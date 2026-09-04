@@ -226,7 +226,7 @@ describe('codingExec 无状态族域第一方插件（P4 B① git/search + ② f
     });
     // fs 域已迁 fs_cap 能力口直呼（R3-b，kernel-capability-c3-design.md）——
     // read_file_content execute 经 builtinFsProvider → fs_cap read（不再
-    // tool_call 信封寻址 builtin.fs）。web 仍信封；shell 仍信封（P2-4）。
+    // tool_call 信封寻址 builtin.fs）。web 仍信封。
     const fsCalls = log.filter((e) => e.name === 'fs_cap');
     expect(fsCalls.length).toBe(1);
     expect(fsCalls[0].args).toMatchObject({
@@ -234,9 +234,15 @@ describe('codingExec 无状态族域第一方插件（P4 B① git/search + ② f
       file_path: 'D:/proj/a.ts',
       line_numbers: true,
     });
-    // run_shell 经 tool_call 信封穿透（P2-4：plugin.tool 寻址
-    // builtin.shell.exec_command，runInBackground 缺省走前台执行）
-    expect(log.filter((e) => e.name === 'tool_call').map((e) => e.args?.tool)).toContain('exec_command');
+    // shell 域已迁 process_cap 能力口直呼（R3-d，kernel-capability-c3-design.md
+    // §8/§9）——run_shell execute 经 builtinShellProvider → process_cap
+    // exec_command（action 位寻址，run_in_background 缺省走前台执行）。
+    const shellCalls = log.filter((e) => e.name === 'process_cap');
+    expect(shellCalls.length).toBe(1);
+    expect(shellCalls[0].args).toMatchObject({
+      action: 'exec_command',
+      command: 'ls',
+    });
     await disposeAll(fibers);
   });
 

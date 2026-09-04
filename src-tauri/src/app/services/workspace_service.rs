@@ -82,8 +82,8 @@ pub(crate) async fn deactivate(old_path: String, app_ctx: Arc<AppContexts>) -> R
     crate::utils::kill_all_bg();
     crate::pty_manager::kill_all();
     crate::lsp_manager::stop_all();
-    // 粘性 cwd 全清 — 旧项目的目录状态不得带进新工作区（代际递增使
-    // 在途捕获不落新账）。
-    crate::utils::sticky_cwd::clear_all();
+    // （粘性 cwd 的 Rust 全清已随 shell 域收口退役——2026-09-05，R3-d §9：
+    //  粘性 cwd 归 TS 编排层 per-owner 注册表，切工作区即随 agent 拆卸重置，
+    //  Rust 侧无状态可清。）
     Ok(())
 }

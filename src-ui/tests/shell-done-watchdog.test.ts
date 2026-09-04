@@ -4,8 +4,6 @@
 // 按 ledger 状态（bash_output 三态）合成结算。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { legacyRpcShim } from './helpers/kernel-envelope';
-
 const mockRpc = vi.fn();
 /** 按事件名捕获 listener —— 测试侧模拟 shell:output / shell:done 事件到达。 */
 const handlers: Record<string, (e: { payload: unknown }) => void> = {};
@@ -23,6 +21,8 @@ vi.mock('../src/bridge', () => ({
 }));
 
 import { execStreamedShell } from '../src/agent/runtime/queued-shell';
+import { clearOwnerContextsForTest, registerOwnerContext, stickyCwdOf } from '../src/agent/session-context';
+import { CWD_MARKER_END, CWD_MARKER_START } from '../src/agent/sticky-cwd';
 
 let capturedSid = '';
 let bashCalls = 0;
@@ -35,33 +35,33 @@ beforeEach(() => {
   bashCalls = 0;
   bashScript = [];
   mockRpc.mockReset();
-  // P2-4 信封化：shell 命令经 tool_call 寻址 builtin.shell——shim 翻译回旧
-  // (method, params) 形状（args 键 snake 化：streamToolId → stream_tool_id）
-  mockRpc.mockImplementation(
-    legacyRpcShim(async (name: string, params: Record<string, unknown>) => {
-      if (name === 'exec_command') {
-        capturedSid = String(params.stream_tool_id ?? '');
-        return JSON.stringify({
-          streamId: capturedSid,
-          status: 'started',
-          job_id: 7,
-          resolvedCwd: 'D:/ws-x',
-        });
-      }
-      if (name === 'bash_output') {
-        const step = bashScript[Math.min(bashCalls, bashScript.length - 1)];
-        bashCalls++;
-        const r = step ? step() : '[任务运行中, 已运行: 1s]\n';
-        if (r.startsWith('ERR:')) throw new Error(r.slice(4));
-        return r;
-      }
-      return '';
-    }),
-  );
+  // R3-d 能力口直呼：process_cap 单方法 action 分派（builtin.shell 信封退役）。
+  // 参数 = 顶层 snake（stream_tool_id / capture_cwd 由 queued-shell 附加）。
+  mockRpc.mockImplementation(async (name: string, params: Record<string, unknown>) => {
+    if (name === 'process_cap' && params.action === 'exec_command') {
+      capturedSid = String(params.stream_tool_id ?? '');
+      expect(params.capture_cwd).toBe(true);
+      return JSON.stringify({
+        streamId: capturedSid,
+        status: 'started',
+        job_id: 7,
+        resolvedCwd: 'D:/ws-x',
+      });
+    }
+    if (name === 'process_cap' && params.action === 'bash_output') {
+      const step = bashScript[Math.min(bashCalls, bashScript.length - 1)];
+      bashCalls++;
+      const r = step ? step() : '[任务运行中, 已运行: 1s]\n';
+      if (r.startsWith('ERR:')) throw new Error(r.slice(4));
+      return r;
+    }
+    return '';
+  });
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  clearOwnerContextsForTest();
 });
 
 async function flush(times = 5): Promise<void> {
@@ -75,6 +75,26 @@ function withSentinel(p: Promise<string>): Promise<string> {
 }
 
 describe('execStreamedShell 的 shell:done 丢失自愈', () => {
+  it('粘性 marker 截流（R3-d）：marker 不进结果/进度、捕获落点提交 per-owner 注册表', async () => {
+    const dispose = registerOwnerContext('owner-1', 'D:/ws-x');
+    const p = execStreamedShell({ command: 'cd sub', _owner_id: 'owner-1' });
+    await flush();
+    handlers['shell:output']({
+      payload: { streamId: capturedSid, chunk: `out-line\n${CWD_MARKER_START}/d/ws-x/sub${CWD_MARKER_END}` },
+    });
+    handlers['shell:done']({ payload: { streamId: capturedSid, exitCode: 0 } });
+    await flush();
+    const result = await p;
+    // marker 被截流（OSC 序列不进模型可见结果）
+    expect(result).not.toContain('lantaicwd');
+    expect(result).toContain('out-line');
+    // 捕获落点已提交注册表（MSYS 归一化为 Windows 风格）
+    expect(stickyCwdOf('owner-1')).toBe('d:/ws-x/sub');
+    // started 回显目录（resolvedCwd）仍出现在结果尾部（粘性可见性）
+    expect(result).toContain('[cwd: D:/ws-x]');
+    dispose();
+  });
+
   it('done 事件丢失 + ledger 已无任务 → 探测周期内按累积输出结算，不等 600s', async () => {
     bashScript = [() => '[任务运行中, 已运行: 5s]\n', () => 'ERR:后台任务不存在或已完成'];
     const p = execStreamedShell({ command: 'echo hi' });

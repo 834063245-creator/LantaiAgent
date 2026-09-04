@@ -113,10 +113,10 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
       // 轮次结束后进度更新无价值）。按 agent_id 路由排干：全局排干会把
       // 其他 agent（含并行子 Agent）的后台任务通知吸进本 agent 上下文。
       try {
-        // P2-4 信封化：drain_bg_notifications 经 tool_call 寻址 builtin.shell
+        // R3-d 信封退役：drain_bg_notifications 经 process_cap 能力口直呼
         const notes = await typedRpcWithTimeout(
-          'tool_call',
-          { plugin: 'builtin.shell', tool: 'drain_bg_notifications', args: { agentId: host.id } },
+          'process_cap',
+          { action: 'drain_bg_notifications', agent_id: host.id },
           STEP_RPC_TIMEOUT_MS,
         );
         if (notes) {

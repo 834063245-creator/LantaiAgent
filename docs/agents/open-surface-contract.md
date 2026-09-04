@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：11
+当前版本：12
 
-<!-- contract-fingerprint: 1d7a19e83c196b8daeffccbfbda985aae721fd54888df8264328aa58a3842f8e -->
+<!-- contract-fingerprint: 8d5688762604b764e1f49854362804488b0ff74b06b5da899e778d0228bd6671 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -46,6 +46,7 @@
 | 9 | 2026-09-04 | default-loop step0 计划提醒读取换 tool_call 信封（kernelReadFileRaw 寻址 builtin.fs.read_file_content，旧 RPC 分支随 P2-2 退役）；无契约形状变更 | kernel-plugin-runtime P2-2 |
 | 10 | 2026-09-04 | default-loop 每步 drain_bg_notifications 换 tool_call 信封（kernelShellCall 寻址 builtin.shell.drain_bg_notifications，旧 RPC 分支随 P2-4 退役）；无契约形状变更 | kernel-plugin-runtime P2-4 |
 | 11 | 2026-09-04 | default-loop 死 import 清理（删 kernelShellCall 未用导入；R1 biome 0/0 收口连带）；无契约形状变更 | R1 TS 权限策略层（permission-policy 单真源） |
+| 12 | 2026-09-05 | default-loop 每步 drain_bg_notifications 换 process_cap 能力口直呼（kernelProcessCall，builtin.shell 信封随 shell 域收口退役）；无契约形状变更 | kernel-capability-c3-design.md R3-d（shell 域收口） |
 
 ## 变更流程（guard 红 → 修复四步）
 

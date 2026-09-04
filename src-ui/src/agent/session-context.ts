@@ -30,6 +30,10 @@ export interface OwnerContext {
   focusPath?: string;
   /** desktop 焦点窗口——最近一次显式定位 / uia_activate 成功的窗口。 */
   focusWindow?: WindowLocator;
+  /** shell 粘性 cwd——最近一次 fg 命令的落点目录（物理绝对路径，marker 捕获）。
+   *  R3-d（c3 §9）：粘性 cwd 归 TS 编排层，per-owner 注册 + 随 agent 拆卸重置
+   *  = 切工作区即重置；失效自愈在 Rust 口（sticky_cwd 候选盘上不存在即跳过）。 */
+  stickyCwd?: string;
 }
 
 const registry = new Map<string, OwnerContext>();
@@ -86,6 +90,19 @@ export function setFocusWindow(ownerId: string | undefined | null, loc: WindowLo
 export function clearFocusWindow(ownerId: string | undefined | null): void {
   const c = ownerContext(ownerId);
   if (c) c.focusWindow = undefined;
+}
+
+// ── shell 粘性 cwd（R3-d，c3 §9：编排记忆归 TS——marker 截流提交写本表）──
+
+/** 粘性 cwd 读取（shell 派发候选源）。未注册 owner → undefined。 */
+export function stickyCwdOf(ownerId: string | undefined | null): string | undefined {
+  return ownerContext(ownerId)?.stickyCwd;
+}
+
+/** 粘性 cwd 设置（fg 命令 marker 捕获成功后调用；存物理绝对路径）。 */
+export function setStickyCwd(ownerId: string | undefined | null, physicalPath: string): void {
+  const c = ownerContext(ownerId);
+  if (c) c.stickyCwd = physicalPath;
 }
 
 /** 绝对性判定：盘符（C:\ / C:/）、UNC（\\srv\share）、根相对（/x 或 \x）。

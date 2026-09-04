@@ -129,7 +129,9 @@ export async function runCompileTest(entry: BoardEntry, opts: MergeGateOptions):
   const cwd = `${opts.projectPath}/.lantai/worktrees/${entry.isolationId}`;
   try {
     // 直连流式执行（队列已退役，2026-08-10）— 构建锁冲突由 Rust BuildLock 打回。
-    const out = await execStreamedShell({ command, cwd, timeoutMs: opts.compileTimeoutMs ?? 600_000 });
+    // R3-d：execStreamedShell 收 process_cap 顶层 snake 形（无 owner——用户路径，
+    // 不参与粘性 cwd 捕获）。
+    const out = await execStreamedShell({ command, cwd, timeout_ms: opts.compileTimeoutMs ?? 600_000 });
     const passed = !/^\[exit [^0]\]/m.test(out.trimStart());
     return { passed, quiet: false, report: passed ? '✅ 编译测试通过' : `⚠️ 编译测试失败:\n${out.slice(0, 2000)}` };
   } catch (e) {

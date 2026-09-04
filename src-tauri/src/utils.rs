@@ -47,7 +47,10 @@ pub(crate) mod encoding;
 pub(crate) mod graph_io;
 pub(crate) mod ipc_guard;
 pub(crate) mod path_resolve;
-pub(crate) mod sticky_cwd;
+// （sticky_cwd 已随 shell 域收口退役——2026-09-05，kernel-capability-c3-design.md
+//  R3-d §9 裁定：粘性 cwd 归 TS 编排层（session-context per-owner 注册表 +
+//  agent/sticky-cwd.ts 截流），Rust 口只收 cwd/sticky_cwd 显式参数——
+//  commands/process_cap.rs resolve_effective_cwd。）
 pub(crate) use bg_jobs::*;
 pub(crate) use build_lock::*;
 pub(crate) use encoding::*;

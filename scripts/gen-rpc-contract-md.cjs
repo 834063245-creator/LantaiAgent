@@ -19,6 +19,7 @@ const OUT_MD = path.join(ROOT, 'docs', 'agents', 'frontend-rpc-contract.md');
 // 2026-09-05 git 域收口（R3-c）重对齐：此前 R3-a 加 fs_cap 箱线组后本表
 // 未同步——identity 错挂「插件安装通道」、dataflow 三方法被分区溢出整行
 // 丢弃（存量缺陷随本批一并修复）；git_cap 箱线组 + 协议桥箱线组补位。
+// 2026-09-05 shell 域收口（R3-d）：process_cap 箱线组插 git_cap 之后。
 const SECTIONS = [
   '应用层：数据上下文（L1）',
   'Engine 调度',
@@ -27,6 +28,7 @@ const SECTIONS = [
   '能力口（search_cap）',
   '能力口（fs_cap）',
   '能力口（git_cap）',
+  '能力口（process_cap）',
   'MCP / ACP stdio 桥',
   '身份认证 / 权限',
   '插件安装通道',
@@ -228,7 +230,8 @@ function main() {
     }
   }
   if (open !== null) sepBlocks.push([open]);
-  let md = '';  md += '# 前端 RPC 契约（生成物）\n\n';
+  let md = '';
+  md += '# 前端 RPC 契约（生成物）\n\n';
   md += '> 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。\n';
   md += '> 生成时间：' + new Date().toISOString() + '\n';
   md += '> 方法总数：' + branchBlocks.length + '（rpc.rs 头注释为历史数字，以此表为准）\n\n';
@@ -239,7 +242,7 @@ function main() {
   let warned = false;
   branchBlocks.forEach((b, i) => {
     const lineNo = src.slice(0, b.pos).split('\n').length - 1;
-    const section = sepBlocks.filter((blk) => blk[blk.length - 1] < lineNo).length - 1; 
+    const section = sepBlocks.filter((blk) => blk[blk.length - 1] < lineNo).length - 1;
     if (section >= SECTIONS.length) {
       if (!warned) {
         console.warn('[warn] 分支行号超过分区数，请检查 SECTIONS 与 rpc.rs 是否同步');

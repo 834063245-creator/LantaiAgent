@@ -487,7 +487,8 @@ const MOCK_TOOL_RESPONSES: Record<string, MockToolResponse> = {
 
   // （fs 工具域已收敛到 fs_cap 能力口直呼（2026-09-04 fs 域收口）——浏览器
   //   mock 模式经 fs_cap，不走旧名。exec_command / shell_env 等 shell 命令
-  //   已迁 builtin.shell，走 tool_call，同 kernel-plugin-runtime P2-4。）
+  //   已随 shell 域收口（2026-09-05，R3-d）换 process_cap 能力口直呼，
+  //   builtin.shell 信封退役。）
 };
 
 // ── Mock invoke 分发器 ──

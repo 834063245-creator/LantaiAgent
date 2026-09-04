@@ -66,17 +66,18 @@ describe('shell seam（ctx.shell · D11 施工⑤）', () => {
     const out = await toolByName('run_shell', spyExec).execute(meta);
     expect(out).toBe('ok:rust');
     expect(dispatchCalls).toHaveLength(1);
-    // P2-4 信封化：恒等保证的载体从命令名移到信封——plugin.tool 寻址
-    // builtin.shell.exec_command，args 原样透传（含 _agent_id）。
-    expect(dispatchCalls[0]?.name).toBe('tool_call');
+    // R3-d 能力口直呼（builtin.shell 信封退役）：恒等保证的载体从信封
+    // plugin.tool 寻址换 process_cap action 位——exec_command，args 键顶层
+    // snake 化（command 直通），meta 原样透传（含 _agent_id）。
+    expect(dispatchCalls[0]?.name).toBe('process_cap');
     const env = dispatchCalls[0]?.args as {
-      plugin?: string;
-      tool?: string;
-      args?: Record<string, unknown>;
+      action?: string;
+      command?: string;
+      _agent_id?: string;
     };
-    expect(env.plugin).toBe('builtin.shell');
-    expect(env.tool).toBe('exec_command');
-    expect(env.args).toMatchObject({ command: 'cargo test', _agent_id: 'agent-42' });
+    expect(env.action).toBe('exec_command');
+    expect(env.command).toBe('cargo test');
+    expect(env._agent_id).toBe('agent-42');
   });
 
   it('③ fake 替换：内存 shell 零消费面改动，dispatch 腰不被触碰（P2-C2）', async () => {
