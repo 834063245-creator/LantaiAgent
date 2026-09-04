@@ -604,3 +604,160 @@ pub(crate) fn glob_entries(root: &str, patterns: &[String]) -> Result<Vec<GlobEn
     }
     Ok(results)
 }
+
+// ═══════════════════════════════════════════════════════════════
+// fs_cap 能力口入口（R3-a，kernel-capability-c3-design.md）——
+// 与 *_unchecked 的区别：口内过 resolve_*_dispatch（Agent 过闸 + Ask /
+// UI 只解析），因为 fs_cap 直呼不经 PluginToolAdapter（search_cap 同款：
+// 能力口入口即裁决）。unchecked 变体保留给 builtin.fs 插件（dispatch
+// adapter 已在别处过闸）——R3-b TS 换轨后插件退役，unchecked 随之删。
+// ═══════════════════════════════════════════════════════════════
+
+/// fs_cap.read 文本读（能力口入口：dispatch 闸 + 行号格式化）。
+pub(crate) async fn read_text_cap(
+    file_path: &str,
+    is_agent: bool,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+    app: &AppHandle,
+    line_numbers: bool,
+    offset: Option<usize>,
+    limit: Option<usize>,
+) -> Result<(PathBuf, String), String> {
+    let real_path = crate::utils::resolve_read_dispatch(file_path, is_agent, agent_id, state, app).await?;
+    let rp = real_path.clone();
+    let meta = with_io_retry(|| std::fs::metadata(&rp), "stat")?;
+    if meta.len() > MAX_READ_BYTES {
+        return Err(format!(
+            "文件过大 ({} MiB)，超过读取上限 ({} MiB): {}",
+            meta.len() / (1024 * 1024),
+            MAX_READ_BYTES / (1024 * 1024),
+            file_path
+        ));
+    }
+    let content = tokio::time::timeout(READ_TIMEOUT, tokio::task::spawn_blocking(move || {
+        with_io_retry(|| std::fs::read_to_string(&rp), "read_to_string")
+    }))
+    .await
+    .map_err(|_| format!("读取文件超时 ({}s): {}", READ_TIMEOUT.as_secs(), file_path))?
+    .map_err(|e| format!("读取任务失败: {}", e))?
+    .map_err(|e| format!("无法读取文件 {}: {}", file_path, e))?;
+    let content = if line_numbers {
+        format_lines(&content, offset, limit)
+    } else {
+        content
+    };
+    Ok((real_path, content))
+}
+
+/// fs_cap.write 文本写（能力口入口：dispatch 闸 + 原子写）。返回解析后路径。
+pub(crate) async fn write_text_cap(
+    file_path: &str,
+    content: &str,
+    is_agent: bool,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+    app: &AppHandle,
+) -> Result<PathBuf, String> {
+    if content.len() > MAX_WRITE_BYTES {
+        return Err(format!(
+            "内容过大 ({} MiB)，超过写入上限 ({} MiB)",
+            content.len() / (1024 * 1024),
+            MAX_WRITE_BYTES / (1024 * 1024)
+        ));
+    }
+    let real_path = crate::utils::resolve_write_dispatch(file_path, is_agent, agent_id, state, app).await?;
+    let rp = real_path.to_string_lossy().to_string();
+    if let Some(parent) = real_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("无法创建目录: {}", e))?;
+    }
+    write_atomic(&rp, content)?;
+    Ok(real_path)
+}
+
+/// fs_cap.list 目录树（能力口入口：dispatch 闸 + list_dir_recursive）。
+pub(crate) async fn list_tree_cap(
+    path: &str,
+    is_agent: bool,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+    app: &AppHandle,
+    filter_ignored: bool,
+) -> Result<Vec<DirEntry>, String> {
+    let root = crate::utils::resolve_read_dispatch(path, is_agent, agent_id, state, app).await?;
+    if !root.is_dir() {
+        return Err(format!("不是有效目录: {}", path));
+    }
+    let entries = tokio::task::spawn_blocking(move || list_dir_recursive(&root, filter_ignored))
+        .await
+        .map_err(|e| format!("目录列表任务失败: {}", e))?;
+    Ok(entries)
+}
+
+/// fs_cap.delete（能力口入口：dispatch 写闸 + 删）。返回解析后路径。
+pub(crate) async fn delete_cap(
+    path: &str,
+    is_agent: bool,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+    app: &AppHandle,
+) -> Result<PathBuf, String> {
+    let real = crate::utils::resolve_write_dispatch(path, is_agent, agent_id, state, app).await?;
+    if !real.exists() {
+        return Err(format!("路径不存在: {}", path));
+    }
+    let rp = real.clone();
+    if real.is_dir() {
+        tokio::task::spawn_blocking(move || std::fs::remove_dir_all(&rp))
+            .await
+            .map_err(|e| format!("删除任务失败: {}", e))?
+            .map_err(|e| format!("无法删除目录 {}: {}", path, e))?;
+    } else {
+        tokio::task::spawn_blocking(move || std::fs::remove_file(&rp))
+            .await
+            .map_err(|e| format!("删除任务失败: {}", e))?
+            .map_err(|e| format!("无法删除文件 {}: {}", path, e))?;
+    }
+    Ok(real)
+}
+
+/// fs_cap.rename（能力口入口：read+write 双 dispatch 闸 + rename）。
+pub(crate) async fn rename_cap(
+    from: &str,
+    to: &str,
+    is_agent: bool,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+    app: &AppHandle,
+) -> Result<(PathBuf, PathBuf), String> {
+    rename(from, to, is_agent, agent_id, state, app).await
+}
+
+/// fs_cap.glob（能力口入口：dispatch 读闸解析 root 后 glob_entries）。
+pub(crate) async fn glob_cap(
+    pattern: &str,
+    dir: Option<&str>,
+    workspace_root: Option<&str>,
+    is_agent: bool,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+    app: &AppHandle,
+) -> Result<Vec<GlobEntry>, String> {
+    let dir = match dir {
+        Some(p) => p.to_string(),
+        None => workspace_root
+            .map(String::from)
+            .ok_or_else(|| "glob: 无目录参数且无工作区根".to_string())?,
+    };
+    let root = crate::utils::resolve_read_dispatch(&dir, is_agent, agent_id, state, app).await?;
+    if !root.is_dir() {
+        return Err(format!("不是有效目录: {}", dir));
+    }
+    let real = root.to_string_lossy().to_string();
+    let pat_owned = pattern.to_string();
+    let results = tokio::task::spawn_blocking(move || glob_entries(&real, &[pat_owned]))
+        .await
+        .map_err(|e| format!("glob 任务失败: {}", e))??;
+    Ok(results)
+}

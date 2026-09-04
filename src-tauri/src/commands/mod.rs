@@ -13,3 +13,4 @@ pub mod workspace;
 pub mod protocol_bridge;
 pub mod plugin_install;
 pub mod search_cap;
+pub mod fs_cap;

@@ -152,6 +152,32 @@ export interface RpcContract {
     result: string; // JSON — 与 builtin.search search_content 同形状
   };
 
+  // ── 能力口（R3-a，kernel-capability-c3-design.md）──────────
+  // fs_cap：fs 能力族直呼入口（read/list/glob/write/delete/rename/create_dir/
+  // append）——不经 tool_call 信封 / PluginRegistry / PluginToolAdapter。参数键
+  // 顶层 snake_case（bridge.rpc() 转换幂等）；is_agent/agent_id 显式传（Agent 过
+  // resolve_*_dispatch 闸 / UI 只解析）。编排（缺省/输出格式）归 TS（R3-b 迁）。
+  fs_cap: {
+    params: {
+      action: 'read' | 'list' | 'glob' | 'write' | 'delete' | 'rename' | 'create_dir' | 'append';
+      path?: string;
+      from?: string;
+      to?: string;
+      file_path?: string;
+      pattern?: string;
+      dir?: string;
+      content?: string;
+      offset?: number;
+      limit?: number;
+      line_numbers?: boolean;
+      filter_ignored?: boolean;
+      workspace_root?: string;
+      is_agent?: boolean;
+      agent_id?: string | null;
+    };
+    result: string; // JSON — action 相关形状（read={path,content} / list={entries} / glob={pattern,count,truncated,results} / 写类={path}）
+  };
+
   // ── Shell ────────────────────────────────────────────────
   // （exec_command / bash_output / bash_kill / bash_wait / shell_env /
   //   background_activity / drain_bg_notifications 已迁内核插件 builtin.shell，

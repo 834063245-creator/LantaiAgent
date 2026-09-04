@@ -39,6 +39,7 @@ fn capability_command_modules_are_frozen() {
         "engine_dispatch",
         "external",
         "filesystem",
+        "fs_cap",
         "graph",
         "hologram",
         "identity",
@@ -58,6 +59,9 @@ fn capability_command_modules_are_frozen() {
          2) 在 commit message 显式标注「强制层改动 + 宪法审查」。\n\
          search_cap = v3 能力口（kernel-plugin-architecture-decision.md §3：fs 能力族\n\
          变体 + resolve_read 强制闸 + 物理扫描/向量召回）——合法强制层模块，见\n\
-         docs/plans/kernel-capability-r2-search-pilot.md §7。"
+         docs/plans/kernel-capability-r2-search-pilot.md §7。\n\
+         fs_cap = v3 能力口（kernel-capability-c3-design.md R3-a：fs 能力族 + \n\
+         resolve_*_dispatch 强制闸 + confined_fs 字节执行）——合法强制层模块，\n\
+         编排归 TS（R3-b 起），禁止向 commands/ 塞业务命令。"
     );
 }

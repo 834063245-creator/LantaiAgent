@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-09-04T10:44:01.569Z
-> 方法总数：45（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-09-04T15:22:34.307Z
+> 方法总数：47（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -37,11 +37,23 @@
 |------|----------|----------|------|
 | `tool_call` | plugin, tool | is_agent, args | 字符串 |
 | `plugin_tool_manifests` | — | — | 字符串 |
+
+## 搜索
+
+| 方法 | 必选参数 | 可选参数 | 返回 |
+|------|----------|----------|------|
+| `search_cap` | directory, pattern | is_agent, agent_id, _agent_id, file_types, use_regex, output_mode, show_line_numbers, glob_filter, max_results, context_lines, head_limit, offset | 字符串 |
+
+## 身份认证 / 权限
+
+| 方法 | 必选参数 | 可选参数 | 返回 |
+|------|----------|----------|------|
+| `fs_cap` | action | is_agent, agent_id, _agent_id, path, from, to, file_path, pattern, dir, content, line_numbers, filter_ignored, workspace_root | 字符串 |
 | `protocol_bridge_spawn` | id, command, args | — | 字符串 |
 | `protocol_bridge_write` | id, line | — | 字符串 |
 | `protocol_bridge_kill` | id | — | 字符串 |
 
-## 搜索
+## 插件安装通道
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -52,7 +64,7 @@
 | `credential_delete` | provider | — | `null`（unit） |
 | `llm_proxy_port` | — | — | 字符串 |
 
-## 身份认证 / 权限
+## Agent 隔离（worktree）
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -61,7 +73,7 @@
 | `plugin_dir` | name | — | JSON 字符串 |
 | `plugin_set_enabled` | name, enabled | — | `null`（unit） |
 
-## 插件安装通道
+## 外部服务
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -72,20 +84,20 @@
 | `agent_isolation_status` | — | — | 字符串 |
 | `agent_isolation_force_purge` | agent_id | — | 字符串 |
 
-## Agent 隔离（worktree）
+## Hologram 遗留命令
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
 | `sandbox_status` | — | — | 字符串 |
 
-## 外部服务
+## 工作区
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
 | `hologram_run_check` | — | path | 字符串 |
 | `hologram_record_event` | event_type, summary | file | `null`（unit） |
 
-## Hologram 遗留命令
+## 会话持久化
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -100,19 +112,11 @@
 | `workspace_set_graph_engine` | path | — | `null`（unit） |
 | `workspace_create_dir` | name | — | JSON 字符串 |
 
-## 工作区
+## 数据流
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
 | `agent_session_append` | project_path, agent_id | — | `null`（unit） |
-
-## 会话持久化
-
-| 方法 | 必选参数 | 可选参数 | 返回 |
-|------|----------|----------|------|
-| `dataflow_save` | query | content, explore_result, dataflow_result | 字符串 |
-| `dataflow_query` | — | trace_id, list | 字符串 |
-| `dataflow_delete` | trace_id | — | 字符串 |
 
 ## 事件（Rust 侧 emit → 前端 listen）
 

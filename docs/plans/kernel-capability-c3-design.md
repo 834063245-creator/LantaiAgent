@@ -1,7 +1,10 @@
 # 内核能力化 C-3/C-4 —— 工具编排回 TS 设计件
 
-> 状态：**设计件（待用户审）**。前提：C 模型定稿（kernel-plugin-architecture-decision.md）。
-> 本文设计「编排从 builtin.* Rust 模块回迁 TS 域插件」的完整形态，审过再动代码。
+> 状态：**R3 执行蓝本（2026-09-04 拍板定稿）**。C 模型定稿（kernel-plugin-architecture-decision.md v3）。
+> 决策史：本件初为「待用户审」设计稿；R2 试点（search 域）已落地独立能力口 search_cap + schema 回 zod
+> （commit 789aef86/fe91f016/d524f124）。2026-09-04 用户拍板「主线 R2+R3 推进，R2-d(2) 并入 R3 统一做」。
+> 本件即 R3 执行蓝本——D-A/D-B/D-C 按 R2 先例裁定，批序 = v3 执行序表 R3 行的分解，并把 R2-d(2)
+> （search_cap 输出组装编排回 TS）并入统一能力口收窄批。
 
 ## 0. 目标形态（C 模型收敛后）
 
@@ -81,21 +84,36 @@
   的收敛接口（如 browser.act {session, action, params}）。
 - 单独设计件（D4），不在 C-3 范围。
 
-## 6. 批序（每批独立 commit 全门禁绿）
+## 6. 批序（每批独立 commit 全门禁绿；= v3 执行序表 R3 行的分解）
+
+> 裁决先记：D-A 独立能力口方法（search_cap 先例）；D-B 纯编排域随各自能力口
+> 落地即退役（fs 域第一批）；D-C schema 真源回 TS zod（search R2-d 先例）——
+> 但 R3 的 schema 回迁与 R5 脚手架拆除分工：**R3 只迁「能力口直呼域」的 schema
+> 随 execute 换轨一起回 zod（fs 域为第一范式），git/shell 若换轨重可留 manifest
+> 到 R5**。实际执行序（2026-09-04 定稿，域界 = 批界）：
 
 | 批 | 内容 | 验收 |
 |---|---|---|
-| C-3a | rpc.rs 加 fs_cap.read/write/list/delete/rename 能力口（复用 resolve_*_dispatch + confined_fs）；rpc-contract + 生成物同步 | cargo 全绿；能力口单元过闸测试 |
-| C-3b | TS fs 域插件 execute 从 tool_call 换 fs_cap.*（provider 表换源）；git/shell 同批评估 | vitest/convergence 零漂移（工具面字节不动） |
-| C-3c | 编排回迁：git porcelain 解析等从 builtin.git 迁 TS；builtin.fs/git 模块瘦身为能力口转发或退役 | 全门禁 |
-| C-3d | process.run 能力口（shell/git spawn 收敛） | 全门禁 |
-| C-4 | 句柄域（browser/uia/pty/lsp）能力口设计 + 编排回 TS | 独立设计件 |
-| 收口 | tool_call/PluginRegistry 去留裁定；tool_plugins 工具域退役；内核=能力口+闸+应用壳 | 全门禁 |
+| **R3-a** | fs 能力口 RPC 面建立：`fs_cap`（read/list/glob/write/delete/rename/create_dir/append + 补 confined_fs 缺的 dispatch 闸 cap 变体）；rpc.rs 分支 + rpc-contract 类型 + shape 表；platform_boundary 冻结清单更新 | ✅ **已落地（2026-09-04）**：confined_fs 增 read_text_cap/write_text_cap/list_tree_cap/delete_cap/rename_cap/glob_cap（口内 resolve_*_dispatch 闸）；commands/fs_cap.rs 单方法 action 分派（返回 Value）；rpc.rs fs_cap 分支 + JsonValue shape；platform_boundary 加 fs_cap（宪法依据注释）；rpc-contract fs_cap 类型；frontend-rpc-contract.md 重生成（47 methods）。cargo bin 437 passed + boundary 通过 |
+| **R3-b** | TS fs 域换轨：createFsTools/fsExecute 从 provider seam（tool_call 信封）换 fs_cap 直呼（camel→snake 映射表 + UI 内部直呼 kernelFsCall 覆盖）；fs 域 schema 回 zod（R2-d 范式）；builtin.fs 退役（manifest/registry/镜像/生成器） | vitest/convergence 零漂移；kernelFsCall 消费方全绿 |
+| **R3-c** | git 域同型：git_cap 能力口（run_git + 家族闸？评估）或 process_cap 先行；git 编排（porcelain 解析）回 TS；builtin.git 退役 | 全门禁 |
+| **R3-d** | shell 域同型 + R2-d(2) 并入：process_cap（spawn 收敛）+ exec_command 编排回 TS（流式闭环处置）；search_cap 输出组装编排回 TS（统一命中集收窄） | 全门禁 |
+| **R3-e（权限）** | TS 策略闸接管：六步裁决迁 TS 策略层（规则/mode/Ask 在 TS 判）；Rust dispatch 权限逻辑退役（PluginToolAdapter/has_permission_to_use_tool 的去留裁定）；同步路径（check_permission_sync/后台）旁路处置；audit/Ask oneshot/票据协议 | 权限回归专项全绿 |
+| 收口 | tool_call/PluginRegistry 去留裁定；builtin.* 残余域退役或留 R4/R5；内核=能力口+闸+应用壳 | 全门禁 |
 
-## 7. 待拍板决策点
+> R3-e 权限迁移是风险最高的批——六步裁决 + Ask 链路 + worktree 两跳映射都依赖
+> Rust 现状；是否本批全迁 TS 或「TS 判 + Rust 口最小强制」双轨过渡，施工时按
+> 回归测试结果定（v3 §1：口内最小必要校验不信任 TS 授权）。
 
-- **D-A**：能力口 RPC 用独立 `fs_cap.*` 方法 vs 改造 tool_call 单入口内按 capability 分派。
-- **D-B**：builtin.* 模块退役时机——C-3c 即退役纯编排域（fs/git/shell），还是留到全量
-  并轨。
-- **D-C**：编排回 TS 时，manifest 生成器/收敛镜像是否保留（schema 仍是 manifest 字节）
-  还是 schema 回 TS zod（推翻 P0-2 的单一真源在 manifest）。
+## 7. 待拍板决策点（2026-09-04 按 R2 先例裁定）
+
+- **D-A**：能力口 RPC 用独立方法（`search_cap`/`fs_cap.*`）vs 改造 tool_call 单入口内分派。
+  **裁定：独立方法**（R2 search_cap 先例——tool_call 信封是 P0-2 脚手架，v3 拆除令要退役；
+  能力口 = 极少数稳定面，独立 RPC 真源清晰、rpc-contract 类型化、与信封解耦）。
+- **D-B**：builtin.* 模块退役时机。
+  **裁定：随各自能力口落地即退役**（fs 域 R3-b 首批退役；git/shell 随 R3-c/d；
+  句柄域 browser/uia/pty/lsp 留 R4）。
+- **D-C**：编排回 TS 时 manifest 生成器/镜像去留。
+  **裁定：schema 真源回 TS zod**（search R2-d 先例——逐字节转录零漂移已证）；
+  R3 起 fs 域随 execute 换轨回 zod，镜像/生成器条目随 builtin.* 退役逐步删；
+  全量脚手架拆除（manifest.rs/registry/生成器）收在 R5。

@@ -125,6 +125,11 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // search_cap（R2 能力口试点）：返回与 builtin.search search_content 相同的
         // JSON 形状（json! 构造，恒合法 JSON）。
         "search_cap" => RpcResultShape::JsonValue,
+        // fs_cap（R3-a 能力口）：每个 action 返回 JSON 结构（read = {path, content}
+        // 其中 content 是 JSON 字符串值——出口 parse 无损；write/delete/rename/
+        // create_dir = {path}；list = {entries}；glob = {pattern,count,truncated,
+        // results}）。恒合法 JSON。
+        "fs_cap" => RpcResultShape::JsonValue,
 
         // ── Shell ──
         // shell_env：serde 序列化恒 JSON（兑底也是合法 JSON 字面量）。
@@ -387,6 +392,41 @@ async fn dispatch_rpc(
                 opt_str(&params, "glob_filter"),
                 is_agent,
                 agent_id,
+                &state,
+                &app,
+            )
+            .await?;
+            ok_json::<Value>(Ok(r))
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // fs_cap（R3-a，kernel-capability-c3-design.md）——fs 能力口直呼入口，
+        // 不经 tool_call 信封 / PluginRegistry / PluginToolAdapter。参数顶层
+        // snake_case（bridge.rpc() 转换幂等）；is_agent/agent_id 显式传。
+        // action 分派在 commands/fs_cap.rs；每个 action 口内 resolve_*_dispatch
+        // 过闸（Agent 过 Ask / UI 只解析）。返回 JSON 字符串（JsonValue shape）。
+        // ═══════════════════════════════════════════════════════
+        "fs_cap" => {
+            let action = req_str(&params, "action", "fs_cap")?;
+            let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
+            let agent_id = opt_str(&params, "agent_id").or_else(|| opt_str(&params, "_agent_id"));
+            let usize_opt = |k: &str| params.get(k).and_then(|v| v.as_u64()).map(|n| n as usize);
+            let r = commands::fs_cap::fs_cap(
+                action,
+                opt_str(&params, "path"),
+                opt_str(&params, "from"),
+                opt_str(&params, "to"),
+                opt_str(&params, "file_path"),
+                opt_str(&params, "pattern"),
+                opt_str(&params, "dir"),
+                opt_str(&params, "content"),
+                usize_opt("offset"),
+                usize_opt("limit"),
+                opt_bool(&params, "line_numbers"),
+                opt_bool(&params, "filter_ignored"),
+                is_agent,
+                agent_id,
+                opt_str(&params, "workspace_root"),
                 &state,
                 &app,
             )
