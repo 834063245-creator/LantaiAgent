@@ -53,8 +53,8 @@ fn record_fs_side_effect(
     }
 }
 
-/// fs_cap 能力口分派。action ∈ {read, list, glob, write, delete, rename,
-/// create_dir, append}——纯能力面（编排/输出格式归 TS，R3-b 迁）。
+/// fs_cap 能力口分派。action ∈ {read, list, list_flat, glob, write, delete,
+/// rename, create_dir, append, read_base64, memory_batch, global_memory_dir}。
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn fs_cap(
     action: String,
@@ -95,10 +95,20 @@ pub(crate) async fn fs_cap(
                 "content": text,
             }))
         }
+        "read_base64" => {
+            let fp = file_path.or(path).ok_or_else(|| "fs_cap read_base64: missing 'file_path'".to_string())?;
+            let b64 = crate::confined_fs::read_base64_cap(&fp, is_agent, agent_id.as_deref(), state, app).await?;
+            Ok(json!({ "path": fp, "base64": b64 }))
+        }
         "list" => {
             let p = path.ok_or_else(|| "fs_cap list: missing 'path'".to_string())?;
             let filter = filter_ignored.unwrap_or(true);
             let entries = crate::confined_fs::list_tree_cap(&p, is_agent, agent_id.as_deref(), state, app, filter).await?;
+            Ok(json!({ "entries": entries }))
+        }
+        "list_flat" => {
+            let p = path.ok_or_else(|| "fs_cap list_flat: missing 'path'".to_string())?;
+            let entries = crate::confined_fs::list_flat_cap(&p, is_agent, agent_id.as_deref(), state, app).await?;
             Ok(json!({ "entries": entries }))
         }
         "glob" => {
@@ -119,6 +129,12 @@ pub(crate) async fn fs_cap(
                 "truncated": results.len() >= 200,
                 "results": results,
             }))
+        }
+        "global_memory_dir" => {
+            let home = std::env::var("USERPROFILE")
+                .or_else(|_| std::env::var("HOME"))
+                .unwrap_or_else(|_| ".".to_string());
+            Ok(json!({ "path": format!("{}/.lantai/global_memory", home.replace('\\', "/")) }))
         }
         "write" => {
             let fp = file_path.or(path).ok_or_else(|| "fs_cap write: missing 'file_path'".to_string())?;

@@ -761,3 +761,59 @@ pub(crate) async fn glob_cap(
         .map_err(|e| format!("glob 任务失败: {}", e))??;
     Ok(results)
 }
+
+/// fs_cap 读字节并 base64（媒体渲染消费——8MiB 源上限防 IPC 击穿 WebView2）。
+pub(crate) async fn read_base64_cap(
+    file_path: &str,
+    is_agent: bool,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+    app: &AppHandle,
+) -> Result<String, String> {
+    use base64::Engine;
+    let real_path = crate::utils::resolve_read_dispatch(file_path, is_agent, agent_id, state, app).await?;
+    let rp = real_path.clone();
+    let meta = with_io_retry(|| std::fs::metadata(&rp), "stat")?;
+    if meta.len() > MAX_READ_BYTES {
+        return Err(format!(
+            "文件过大 ({} MiB)，超过读取上限 ({} MiB): {}",
+            meta.len() / (1024 * 1024),
+            MAX_READ_BYTES / (1024 * 1024),
+            file_path
+        ));
+    }
+    let bytes = tokio::time::timeout(READ_TIMEOUT, tokio::task::spawn_blocking(move || {
+        with_io_retry(|| std::fs::read(&rp), "read_bytes")
+    }))
+    .await
+    .map_err(|_| format!("读取文件超时 ({}s): {}", READ_TIMEOUT.as_secs(), file_path))?
+    .map_err(|e| format!("读取任务失败: {}", e))?
+    .map_err(|e| format!("无法读取文件 {}: {}", file_path, e))?;
+    const MAX_BASE64_SOURCE_BYTES: usize = 8 * 1024 * 1024;
+    if bytes.len() > MAX_BASE64_SOURCE_BYTES {
+        return Err(format!(
+            "文件 {}MiB 超过预览上限 {}MiB——base64 编码后 IPC 传不动",
+            bytes.len() / (1024 * 1024),
+            MAX_BASE64_SOURCE_BYTES / (1024 * 1024),
+        ));
+    }
+    Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
+}
+
+/// fs_cap.list_flat 平铺列目录（dispatch 读闸 + list_dir_flat）。
+pub(crate) async fn list_flat_cap(
+    path: &str,
+    is_agent: bool,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+    app: &AppHandle,
+) -> Result<Vec<DirEntry>, String> {
+    let root = crate::utils::resolve_read_dispatch(path, is_agent, agent_id, state, app).await?;
+    if !root.is_dir() {
+        return Err(format!("不是有效目录: {}", path));
+    }
+    let entries = tokio::task::spawn_blocking(move || list_dir_flat(&root))
+        .await
+        .map_err(|e| format!("目录列表任务失败: {}", e))?;
+    Ok(entries)
+}
