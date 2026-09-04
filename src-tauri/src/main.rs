@@ -36,6 +36,7 @@ mod llm_proxy;
 mod plugin_assets;
 mod composition_watcher;
 mod tool_plugins;
+mod primitives_client;
 
 use std::sync::Arc;
 use std::sync::Mutex;
