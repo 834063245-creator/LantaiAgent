@@ -108,14 +108,16 @@ describe('迁移样板: read_file_content / git_log', () => {
     const params = t.parameters() as { properties: Record<string, unknown>; required?: string[] };
     expect(Object.keys(params.properties)).toEqual(['filePath', 'offset', 'limit']);
     expect(params.required).toEqual(['filePath']);
-    // 透传执行 — 原样转发, 不手打包（P2-2 起 read 动作经 tool_call 信封寻址
-    // builtin.fs.read_file_content；守护点不变：信封 args 的键 = schema key）
+    // R3-b 换轨：read 动作经 builtin/rust-fs → fs_cap（kernel-capability-
+    // c3-design.md）；schema key 仍 camelCase（模型面零漂移），execute 出口
+    // 映射 fs_cap snake（file_path/line_numbers——read 缺省 raw 补行号）。
     const out = JSON.parse(await t.execute({ filePath: 'D:/a.ts', offset: 3 }));
-    expect(out.name).toBe('tool_call');
+    expect(out.name).toBe('fs_cap');
     expect(out.args).toEqual({
-      plugin: 'builtin.fs',
-      tool: 'read_file_content',
-      args: { filePath: 'D:/a.ts', offset: 3 },
+      action: 'read',
+      file_path: 'D:/a.ts',
+      line_numbers: true,
+      offset: 3,
     });
   });
 

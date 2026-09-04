@@ -120,7 +120,7 @@ describe('全量工具 schema key 契约', () => {
 });
 
 describe('rename_file 三处契约端到端', () => {
-  it('schema new_name → 工具层折写 filePath/newName → 信封 args 透传（P2-2 后 Rust 插件实收 manifest 键）', async () => {
+  it('schema new_name → 工具层折写 filePath/newName → fs_cap rename 直呼（R3-b 换轨）', async () => {
     mockInvoke.mockReset();
     mockInvoke.mockResolvedValue('ok');
     const exec: ToolExecutor = (name, args) => agentInvoke(name, args);
@@ -130,14 +130,16 @@ describe('rename_file 三处契约端到端', () => {
     await tool!.execute({ path: 'D:/a', new_name: 'b' });
     const [cmd, payload] = mockInvoke.mock.calls[0];
     expect(cmd).toBe('rpc');
-    // P2-2 信封化：折写后的 filePath/newName 在信封 args 内（manifest 语言，
-    // 嵌套 args 不经 bridge 转换）；_agent_id 经 agentInvoke 的 isAgent 注入。
+    // R3-b 换轨（kernel-capability-c3-design.md）：模型键 path/new_name 经
+    // 工具层折写 filePath/newName（coding.ts）→ builtinFsProvider 映射为
+    // fs_cap rename {from,to}（模型面 camelCase → 能力口 snake 顶层；meta
+    // is_agent 由 agentInvoke 注入，与 search_cap 直呼同构）。
     expect(payload).toEqual({
-      method: 'tool_call',
+      method: 'fs_cap',
       params: {
-        plugin: 'builtin.fs',
-        tool: 'rename_file_or_dir',
-        args: { filePath: 'D:/a', newName: 'b' },
+        action: 'rename',
+        from: 'D:/a',
+        to: 'b',
         is_agent: true,
       },
     });

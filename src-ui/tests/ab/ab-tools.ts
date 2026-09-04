@@ -113,6 +113,38 @@ export function buildTrialRegistry(wt: string, graph: TrialGraphData): ToolRegis
     const name = EXEC_ALIAS[nameRaw] ?? nameRaw;
     const fp = (k: string) => String(args[k] ?? '');
     switch (name) {
+      case 'fs_cap': {
+        // R3-b 能力口直呼（kernel-capability-c3-design.md）：fs 域 execute 经
+        // fs_cap action 分派——路由回本地 mock 的旧工具语义（file_path/from/to
+        // 是 fs_cap snake 键，mock 读 filePath 等旧键，这里折回）。
+        const action = String(args.action ?? '');
+        const dispatch = (inner: string, map: Record<string, string>) => {
+          const mapped: Record<string, string> = {};
+          for (const [k, v] of Object.entries(args)) {
+            if (k === 'action' || k.startsWith('_')) continue;
+            mapped[map[k] ?? k] = String(v);
+          }
+          return exec(inner, mapped, onProgress);
+        };
+        switch (action) {
+          case 'read':
+            return dispatch('read_file_content', { file_path: 'filePath' });
+          case 'write':
+            return dispatch('write_file', { file_path: 'filePath' });
+          case 'delete':
+            return dispatch('delete_file', { path: 'path' });
+          case 'create_dir':
+            return dispatch('create_directory', { path: 'path' });
+          case 'rename':
+            return dispatch('rename_file', { from: 'filePath', to: 'newPath' });
+          case 'glob':
+            return dispatch('glob', { dir: 'directory' });
+          case 'list':
+            return dispatch('list_directory', { path: 'path' });
+          default:
+            return `错误: fs_cap 未知 action ${action}`;
+        }
+      }
       case 'read_file_content': {
         const p = resolveInWorktree(wt, fp('filePath') || fp('file_path'));
         try {

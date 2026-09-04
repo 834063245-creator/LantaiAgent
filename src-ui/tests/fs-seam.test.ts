@@ -68,14 +68,19 @@ describe('fs seam（ctx.fs · D11）', () => {
     const meta = { filePath: '/x/a.ts', _agent_id: 'agent-42' };
     const out = await toolByName('read_file_content', spyExec).execute(meta);
     expect(out).toBe('ok:rust');
-    // P2-2 信封化：恒等保证的载体从命令名移到信封——plugin.tool 寻址
-    // builtin.fs.read_file_content，args 原样（含 _agent_id）。
+    // R3-b 能力口直呼（kernel-capability-c3-design.md）：builtin/rust-fs
+    // execute 经 fs_cap——模型键 filePath 映射 file_path、read 缺省 raw 补
+    // line_numbers:true（旧 read_file_content 默认行号格式）；_agent_id meta
+    // 原样透传（executor 身份）。
     expect(dispatchCalls).toEqual([
-      { name: 'tool_call', args: { plugin: 'builtin.fs', tool: 'read_file_content', args: meta } },
+      {
+        name: 'fs_cap',
+        args: { action: 'read', file_path: '/x/a.ts', line_numbers: true, _agent_id: 'agent-42' },
+      },
     ]);
   });
 
-  it('③ rename 键名改写保持（path/new_name → filePath/newName）', async () => {
+  it('③ rename 键名改写保持（path/new_name → filePath/newName → fs_cap rename）', async () => {
     await ensureProductionChannelsBooted();
     const dispatchCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
     const spyExec: ToolExecutor = async (name, args) => {
@@ -83,12 +88,15 @@ describe('fs seam（ctx.fs · D11）', () => {
       return 'ok';
     };
     await toolByName('rename_file', spyExec).execute({ path: '/x/a.ts', new_name: 'b.ts', _agent_id: 'w1' });
-    // P2-2 信封化：折写后的 filePath/newName 在信封 args 内（manifest 语言）
-    expect(dispatchCalls[0]?.name).toBe('tool_call');
-    const env = dispatchCalls[0]?.args as { plugin?: string; tool?: string; args?: Record<string, unknown> };
-    expect(env.plugin).toBe('builtin.fs');
-    expect(env.tool).toBe('rename_file_or_dir');
-    expect(env.args).toMatchObject({ filePath: '/x/a.ts', newName: 'b.ts', _agent_id: 'w1' });
+    // R3-b 换轨：工具层折写 path/new_name → filePath/newName（coding.ts）→
+    // builtinFsProvider 映射 fs_cap rename {from,to}（snake 顶层）。
+    expect(dispatchCalls[0]?.name).toBe('fs_cap');
+    expect(dispatchCalls[0]?.args).toMatchObject({
+      action: 'rename',
+      from: '/x/a.ts',
+      to: 'b.ts',
+      _agent_id: 'w1',
+    });
   });
 
   it('④ fake 替换：内存 fs 零消费面改动，dispatch 腰不被触碰（P2-C2）', async () => {

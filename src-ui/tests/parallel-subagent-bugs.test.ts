@@ -98,19 +98,15 @@ describe('edit/rename 透传 _agent_id（worktree 路由）', () => {
     });
 
     expect(calls).toHaveLength(1);
-    // P2-2 信封化：rename 折写后经 tool_call 寻址 builtin.fs.rename_file_or_dir——
-    // 守护点不变：_agent_id 必须随信封 args（折写后的 filePath/newName 同乘）透传。
-    expect(calls[0].name).toBe('tool_call');
-    const env = calls[0].args as {
-      plugin?: string;
-      tool?: string;
-      args?: { filePath?: string; newName?: string; _agent_id?: string };
-    };
-    expect(env.plugin).toBe('builtin.fs');
-    expect(env.tool).toBe('rename_file_or_dir');
-    expect(env.args?.filePath).toBe('D:/p/a.ts');
-    expect(env.args?.newName).toBe('b.ts');
-    expect(env.args?._agent_id).toBe('agent-123');
+    // R3-b 换轨：rename 折写（path/new_name → filePath/newName）后经
+    // builtin/rust-fs → fs_cap rename {from,to}（kernel-capability-c3-design.md）——
+    // 守护点不变：_agent_id 必须随 fs_cap 顶层透传（worktree 路由）。
+    expect(calls[0].name).toBe('fs_cap');
+    const env = calls[0].args as { action?: string; from?: string; to?: string; _agent_id?: string };
+    expect(env.action).toBe('rename');
+    expect(env.from).toBe('D:/p/a.ts');
+    expect(env.to).toBe('b.ts');
+    expect(env._agent_id).toBe('agent-123');
   });
 
   it('fs(edit) 领域工具路径同样保留 _agent_id', async () => {

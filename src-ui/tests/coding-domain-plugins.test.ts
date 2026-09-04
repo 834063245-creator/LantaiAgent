@@ -223,13 +223,15 @@ describe('codingExec 无状态族域第一方插件（P4 B① git/search + ② f
       tool: 'web_fetch',
       args: { url: 'https://example.com' },
     });
-    // fs 域已迁 builtin.fs 插件（P2-2）——同样经 tool_call 信封穿透
-    expect(log.filter((e) => e.name === 'tool_call').map((e) => e.args?.tool)).toContain('read_file_content');
-    const readCall = log.find((e) => e.name === 'tool_call' && e.args?.tool === 'read_file_content')?.args;
-    expect(readCall).toMatchObject({
-      plugin: 'builtin.fs',
-      tool: 'read_file_content',
-      args: { filePath: 'D:/proj/a.ts' },
+    // fs 域已迁 fs_cap 能力口直呼（R3-b，kernel-capability-c3-design.md）——
+    // read_file_content execute 经 builtinFsProvider → fs_cap read（不再
+    // tool_call 信封寻址 builtin.fs）。web 仍信封；shell 仍信封（P2-4）。
+    const fsCalls = log.filter((e) => e.name === 'fs_cap');
+    expect(fsCalls.length).toBe(1);
+    expect(fsCalls[0].args).toMatchObject({
+      action: 'read',
+      file_path: 'D:/proj/a.ts',
+      line_numbers: true,
     });
     // run_shell 经 tool_call 信封穿透（P2-4：plugin.tool 寻址
     // builtin.shell.exec_command，runInBackground 缺省走前台执行）
