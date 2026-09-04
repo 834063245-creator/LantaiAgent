@@ -40,24 +40,31 @@ plugin_assets。
 
 ## 2. 终态能力原语面（极少数，与工具数无关）
 
-| 能力 | 原语口（RPC） | 闸（口内，现成） |
+| 能力族 | 口内实现（在内核，可复杂） | 闸（口内，现成） |
 |---|---|---|
-| 盘 | fs.read/write/list/delete/rename | resolve_read/write_dispatch（Agent 过 require_* Ask+规则，UI 只解析） |
-| 进程 | process.run | BashTool/git 家族 + 命令规则 |
+| fs（含 search/glob 变体） | 字节 I/O + 全文扫描/向量召回 | resolve_read/write_dispatch（Agent 过 require_* Ask+规则，UI 只解析） |
+| process（含 git/shell spawn） | spawn 子进程收输出 | BashTool/git 家族 + 命令规则 |
 | 凭据 | credential_* | 已存在 |
 | Ask/UI | permission_ask_response | 已存在 |
-| 会话句柄（browser/uia/pty/lsp 若留壳） | 待 D4 定（句柄不可进 webview） | BrowserTool/DesktopTool 多层语义 |
+| 会话句柄（browser/uia/pty/lsp 若留壳） | CDP/COM/PTY/LSP 注册表操作 | BrowserTool/DesktopTool 多层语义 |
+
+**精化（2026-09-04 定案：能力 vs 业务界）**：search/glob 的全文扫描+向量召回
+**是 fs 能力族的实现，不是「工具业务」**——留在内核能力口（fs.search 变体），
+TS 只做编排+schema。原则：**「回 TS」的是用户可见工具编排（工具名/参数组合/
+结果呈现）；能力的实现永远在内核能力口**。能力口数量 = 能力族数，与工具名数
+无关——search 是 fs 族一个变体，不是每工具一个口。
 
 ## 3. 域归属终态
 
-- 兰台自己实现的工具（fs/git/shell/browser/uia/pty/search/web/editor/constraints）：
-  schema+zod 回 TS + 编排回 TS 域插件，碰资源经能力原语。
+- 用户可见工具编排（fs/git/shell/search/web/editor/constraints/browser/uia/pty 的
+  工具名/schema/组合/呈现）→ TS 域插件（schema 回 zod）。
+- 能力实现（字节 I/O / 全文搜索 / spawn / CDP/COM/PTY 句柄操作）→ 内核能力口。
 - 引擎自有（graph/ops）：随引擎 serve 暴露，壳只 MCP client 转发，不定义 schema。
 - 原生引用（LSP）：起用户机器 language server + 转发，留内核（无编排业务）。
 - 外部第三方：MCP server，已有通道。
 
 ## 4. 执行序（批 = commit 界，门禁全绿）
 
-R1 勘察 TS 域插件装配 → R2 薄域先退役 → R3 fs/git/shell 编排回 TS →
-R4 browser/uia 句柄域 → R5 拆 manifest 脚手架 + tool_call/PluginRegistry →
-收口全门禁 + 落账。
+R1 勘察 TS 域插件装配 → R2 薄域编排先回 TS（schema zod）+ 能力实现并入口 →
+R3 fs/git/shell 编排回 TS → R4 browser/uia 句柄域 → R5 拆 manifest 脚手架 +
+tool_call/PluginRegistry → 收口全门禁 + 落账。
