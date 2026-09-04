@@ -228,3 +228,83 @@ git-domain/host.ts 换源 manifest-tools；createGitTools 迁 manifest-driven。
   shell:output 行；onProgress 在 agentInvoke 处被丢弃经 coding.ts fsExecute → provider → dispatch
   链路核（provider execute 透传 opts.onProgress，dispatch=agentInvoke 不收）。
 - raw 参数语义：filesystem.rs L56-70（P1-3 注记——跳过行号的 JSON 读取面）。
+
+## 8. 权限形状增补节（P2-5/P2-6 起工前裁决，2026-09-04 续窗实查）
+
+### 8.1 裁决结论
+
+**browser/uia 不走 manifest permission 声明；权限整体留插件内业务自检（shell 先例同构）。**
+PTY/LSP 同理，不进 manifest permission（原本就无工具级家族对应）。
+
+理由（逐条实查，详见 §8.2）：
+
+- browser 的 BrowserTool 分层包含「只读放行 / L2 普通动作放行 / 高危动作 Ask /
+  敏感目标动态升级 Ask」四层语义；`click_sensitive`/`type_sensitive` 是插件内根据
+  selector/目标状态**运行时**判断后调用的第二把权限闸，manifest 单键 adapter 无法表达。
+- uia 的 DesktopTool 分层更强：写动作先做只读 `resolve` 拿控件名/patterns/hwnd/密码态，
+  经 `classify_uia_action` 归为 `uia_grant` / `uia_pattern` / `uia_click_sensitive` /
+  `uia_type_sensitive` / `uia_physical` / `uia_keys` / `uia_activate` 后才构造 Tool 过闸；
+  是否放行还依赖运行期 `has_grant(agent, hwnd)` 窗口授权状态——不是静态单键能表达的。
+- browser_sessions / UIA grants / PTY sessions / LSP servers 都是全局进程内注册表；
+  插件不直接持有原始锁，而是继续走既有高层函数（`cdp_*` / `uia::*` /
+  `pty_manager::*` / `lsp_manager::*`），ToolContext 不需要新增裸注册表句柄。
+- DesktopInputLease / DesktopGrant 语义完全保留在 uia 模块与 `tools/mod.rs` DesktopTool
+  原链，迁移只换「rpc 分支 → tool_call 分派」的外皮，不换权限/租约真源。
+
+### 8.2 权限形状实查（2026-09-04 对 HEAD=b74d18c6 验证）
+
+| 面 | 现状权限闸 | 是否可压成单键 | 裁决 |
+|---|---|---|---|
+| browser 只读（targets/inspect/report/snapshot/content/console/network/…/wait/cookies_list） | BrowserTool::is_read_only → Passthrough；但 Browser=deny 仍最高优先 | 表面可声明 Read/ReadOnly？否——Browser 家族规则/Ask 语义要保留 | 插件内 `ctx.check_permission(BrowserTool{action})` |
+| browser L2（navigate/back/forward/reload/click/hover/type/select/upload/dialog/press/scroll/viewport/new_tab/close_tab/switch_session） | BrowserTool 内直接 Passthrough（attach 后免重复 Ask） | 可声明？否——不能丢失 attach 后免弹语义 | 插件内同链 |
+| browser 高危（launch/kill/attach/connect/eval/cookies_set/cookies_delete） | BrowserTool → Ask | 可声明 Ask？否——Ask 文案/建议规则在 BrowserTool 内 | 插件内同链 |
+| browser 敏感（click_sensitive/type_sensitive） | rpc 层先 `check_sensitive` 命中后再 `check_browser_permission("…_sensitive")` | 单键 adapter 完全无法表达 | 插件内运行时二次 Ask |
+| uia 只读（probe/uia_tree/find/read/wait/window_shot/audit） | DesktopTool is_read_only → Passthrough | 否 | 插件内 `ctx.check_permission(DesktopTool{action})` |
+| uia 写 | resolve → classify_uia_action → DesktopTool{action=…} | 否（依赖运行期 resolve/classify/grant） | 插件内保留完整编排 |
+| uia screenshot | DesktopTool screenshot → Ask | 否 | 插件内同链 |
+| pty/lsp | 无家族规则，仅生命周期注册表 | 不必声明 | 插件内 Passthrough + 原函数 |
+
+### 8.3 browser/uia 插件内权限调用形态
+
+- 插件模块**不**在 dispatch 侧声明 `permission`，故 PluginToolAdapter 恒 Passthrough。
+- 各业务函数内部照旧调用 `ctx.check_permission(&crate::tools::BrowserTool{…})` 或
+  `ctx.check_permission(&crate::tools::DesktopTool{…})`；`ctx.check_permission` 已存在且
+  与旧 `crate::utils::check_permission` 同一真权路径（Ask 事件 + 回包等待）。
+- browser 的 self 路由、`check_sensitive` 二次 Ask、`desktop_uia_write` 的 resolve →
+  classify → grant → lease 全链原样迁入插件，不做机制改动。
+- 插件业务中不再使用 rpc.rs 的 `check_browser_permission` / `desktop_check` /
+  `desktop_uia_write` 壳函数；它们随 rpc.rs 分支退役。
+
+### 8.4 注册表访问裁决
+
+- **不向 ToolContext 暴露内部 Mutex/静态表**。既有高层封装已经是正确边界：
+  - browser：`cdp::cdp_*` 系列内部用 `session_key/active_session_key/ACTIVE_SLOTS/SESSIONS`；
+    插件直接调用 `cdp_sessions/cdp_switch_session/cdp_browser_activity` 等公开函数即可。
+  - uia：`uia::grant/has_grant/list_grants/lease_holder/acquire_input_lease` 已是
+    grants 模块的公开封装，插件不需要直接摸 `grants` 内部。
+  - pty/lsp：`pty_manager::pty_*` / `lsp_manager::lsp_*` 已是公开封装。
+- 设计件 §2 P2-5 行原话「browser_sessions 注册表访问进 ToolContext」**修订为**：
+  browser_sessions 的**既有高层查询函数**继续留在 cdp 模块，插件经 `crate::cdp::` 调用；
+  ToolContext 不新增浏览器会话句柄字段。结论依据：注册表形态是全局静态
+  `SESSIONS: LazyLock<Mutex<HashMap<String, CdpSession>>>`，直接暴露给插件等于
+  把内核内部锁/会话结构体泄漏出模块边界；而插件业务需要的只是 `cdp_sessions(agent_id)`
+  这类高层只读查询，无新增能力需求。
+
+### 8.5 P2-6 权限/注册表裁决
+
+- PTY：`pty_spawn/write/resize/kill` 无家族对应；Passthrough + 原 `pty_manager::*` 调用。
+  生命周期注册表（`pty_manager::SESSIONS`）不暴露给 ToolContext，插件只走高层函数。
+- LSP：`lsp_start/request/stop` 无家族对应；Passthrough + 原 `lsp_manager::*` 调用。
+  `lsp-message` 事件通道原样保留（Rust 侧 `app.emit("lsp-message", …)` 不变；
+  TS `ui/lsp-client.ts` 继续 `typedListen('lsp-message')` 消费）。
+- 二者都不在 manifest 写 permission；也不新增 ToolContext 注册表字段。
+
+### 8.6 对后续实施的影响
+
+- 生成器 `gen-kernel-manifest.ts` 的 browser/uia/pty/lsp TOOLS_SPEC 中：
+  **不写 permission 字段**；只写 `tsTool`/手写 schema/description/read_only。
+- Rust 插件 mod.rs 需**原样搬入权限编排代码**，不能照 fs/git 的“dispatch 侧免检化”模式
+  省略插件内权限检查。
+- rpc.rs 退役后，`tools/mod.rs` 的 BrowserTool/DesktopTool 七家族实现**保留不动**——
+  它们是插件内真权检查的依赖，不是死码。
+
