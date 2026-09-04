@@ -1,0 +1,26 @@
+# Copyright (c) 2026 Wenbing Jing. MIT License.
+# SPDX-License-Identifier: MIT
+#
+# primitives-server — 内核工具原语后端进程（kernel-plugin-runtime 拆壳第一刀）。
+#
+# 形态：独立二进制（与 hologram-engine 同构，见 engine/Cargo.toml 先例），
+# 由壳 exe spawn 为受信子进程，stdio JSON-RPC。**本进程没有权限裁决权**：
+# 壳裁决通过后把「已授权的物理路径 + 动作」发来，本进程只做字节执行。
+# 安全模型（用户 2026-09-04 拍板）：裁决留 exe，执行外置。
+#
+# 不依赖 tauri / hologram-storage / hologram-vector——纯 I/O + 目录遍历。
+
+[package]
+name = "primitives-server"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+walkdir = "2"
+ignore = "0.4"
+glob = "0.3"
+base64 = "0.22"
+hologram-graph = { path = "../hologram-graph" }
