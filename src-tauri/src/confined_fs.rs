@@ -1,57 +1,121 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 受限文件 I/O — 统一包装器（拆壳 D2 后形态）：**裁决留 exe，字节执行走后端进程**。
+// 受限文件 I/O — 内核 fs 能力口（C 模型定稿形态，2026-09-04）。
 //
-// 每个函数 = 两步：
-//   1. 裁决（resolve_read/write_unchecked：worktree forward-map + 沙箱决议，
-//      权限门在 dispatch 侧 PluginToolAdapter——P2-2 起免检变体即唯一形态）；
-//   2. 把**已授权的物理路径**交给 primitives_client（受信后端进程）做字节执行。
+// 架构史：
+//   Phase 0-2  每个工具一 Rust 模块（工具业务仍在内核）——用户否决
+//   D0-D2      字节执行搬 primitives-server 进程 + 每工具一后端接口——
+//              用户否决（「要给每个工具准备接口？」）→ 终态 = C 模型
+//   C 模型     内核留极少数能力口，每个口内嵌闸门（认能力+目标），工具
+//              代码（schema/编排/解析）回 TS。本文件 = fs 能力口的实现：
+//              裁决（resolve_*_unchecked：worktree 映射 + 沙箱）+ 字节执行一体。
 //
-// rename 保留双路径检查版（read(from)+write(to) 自检形态）——裁决仍在 exe，
-// 后端只执行已裁决的 rename。
+// 语义：每个能力口函数被 TS 工具经 RPC 调用，入口即裁决（Read/Edit 家族门
+// 在 dispatch 侧 adapter 或口内 Tool 构造）——「不管什么工具调，都过同一闸」。
 //
-// 拆壳史：D0 把字节执行（read/write_atomic/list_dir_*/format_lines/preview/glob）
-// 原样搬进 primitives-server（错误文案/guards 逐字一致），本文件退役字节层只留
-// 裁决 + 转发。
+// 本文件与 D2 前 confined_fs 同构（字节执行回迁自退役的 primitives-server
+// fs_ops——错误文案/guards 逐字一致），不再转发子进程：webview 无盘权但 exe
+// 有，TS 工具经本能力口碰盘即可，无需第二个进程（C 模型 §6）。
 
+use std::io;
 use std::path::PathBuf;
+use std::time::Duration;
 use tauri::AppHandle;
 
 use crate::WorkspaceState;
 
 // ═══════════════════════════════════════════════════════════════
-// 读取 — 裁决（exe）→ 后端字节执行
+// Guards — 文件大小限制、读取超时、重试预算（confined_fs 原样）
 // ═══════════════════════════════════════════════════════════════
 
-/// 文本读取。裁决后走后端 fs.read_text。
-/// offset/limit/line_numbers 只对行号模式有意义（raw 模式后端直接返回原文）。
+/// 读取文件的最大大小 (100 MiB)。
+const MAX_READ_BYTES: u64 = 100 * 1024 * 1024;
+/// 写入内容的最大大小 (100 MiB)。
+const MAX_WRITE_BYTES: usize = 100 * 1024 * 1024;
+/// 读取超时。
+const READ_TIMEOUT: Duration = Duration::from_secs(30);
+/// 瞬态 I/O 错误重试次数。
+const IO_RETRY_COUNT: u32 = 3;
+/// 重试间延迟（翻倍）。
+const IO_RETRY_BASE_DELAY: Duration = Duration::from_millis(100);
+
+/// 在瞬态错误时最多重试 IO_RETRY_COUNT 次。
+fn with_io_retry<T, F>(mut op: F, label: &str) -> Result<T, String>
+where
+    F: FnMut() -> io::Result<T>,
+{
+    let mut last_err: Option<io::Error> = None;
+    for attempt in 0..=IO_RETRY_COUNT {
+        match op() {
+            Ok(v) => return Ok(v),
+            Err(e) => {
+                let retryable = matches!(
+                    e.kind(),
+                    io::ErrorKind::Interrupted | io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+                );
+                if !retryable || attempt == IO_RETRY_COUNT {
+                    return Err(format!("{} (尝试 {} 次后失败): {}", label, attempt + 1, e));
+                }
+                let delay = IO_RETRY_BASE_DELAY * 2u32.pow(attempt);
+                eprintln!(
+                    "[confined_fs] {}: retryable error, attempt {}/{} — {:?} (retrying in {:?})",
+                    label, attempt + 1, IO_RETRY_COUNT, e, delay
+                );
+                std::thread::sleep(delay);
+                last_err = Some(e);
+            }
+        }
+    }
+    Err(format!(
+        "{} (尝试 {} 次后失败): {}",
+        label,
+        IO_RETRY_COUNT + 1,
+        last_err.map(|e| e.to_string()).unwrap_or_else(|| "未知 I/O 错误".to_string())
+    ))
+}
+
+// ═══════════════════════════════════════════════════════════════
+// fs 能力口 — 读取（裁决 + 字节执行一体）
+// ═══════════════════════════════════════════════════════════════
+
+/// 文本读取（行号格式化可选）。裁决（resolve_read_unchecked）→ 就地字节执行。
 pub(crate) async fn read_text_unchecked(
     file_path: &str,
     is_agent: bool,
     agent_id: Option<&str>,
     state: &tauri::State<'_, WorkspaceState>,
+    line_numbers: bool,
+    offset: Option<usize>,
+    limit: Option<usize>,
 ) -> Result<(PathBuf, String), String> {
     let real_path = crate::utils::resolve_read_unchecked(file_path, is_agent, agent_id, state)?;
-    let real = real_path.to_string_lossy().to_string();
-    // 透传 raw/offset/limit 决策：read_text_unchecked 保持「原文」语义
-    // （行号格式化由调用方 raw 分支决定，见 tool_plugins/fs read_file_content——
-    // 那里 raw=false 时走后端 lineNumbers 一次成型）。
-    let resp = crate::primitives_client::call_async(
-        "fs.read_text",
-        &serde_json::json!({ "path": real, "lineNumbers": false }),
-    )
-    .await?;
-    let content = resp
-        .get("result")
-        .and_then(|r| r.get("content"))
-        .and_then(|c| c.as_str())
-        .ok_or_else(|| format!("primitives-server fs.read_text 响应缺 content: {resp}"))?
-        .to_string();
+    let rp = real_path.clone();
+    let meta = with_io_retry(|| std::fs::metadata(&rp), "stat")?;
+    if meta.len() > MAX_READ_BYTES {
+        return Err(format!(
+            "文件过大 ({} MiB)，超过读取上限 ({} MiB): {}",
+            meta.len() / (1024 * 1024),
+            MAX_READ_BYTES / (1024 * 1024),
+            file_path
+        ));
+    }
+    let content = tokio::time::timeout(READ_TIMEOUT, tokio::task::spawn_blocking(move || {
+        with_io_retry(|| std::fs::read_to_string(&rp), "read_to_string")
+    }))
+    .await
+    .map_err(|_| format!("读取文件超时 ({}s): {}", READ_TIMEOUT.as_secs(), file_path))?
+    .map_err(|e| format!("读取任务失败: {}", e))?
+    .map_err(|e| format!("无法读取文件 {}: {}", file_path, e))?;
+    let content = if line_numbers {
+        format_lines(&content, offset, limit)
+    } else {
+        content
+    };
     Ok((real_path, content))
 }
 
-/// 二进制读取（裁决 + 后端 fs.read_bytes → base64 壳侧解码）。
+/// 二进制读取（裁决 + 就地执行）。返回字节。
 pub(crate) async fn read_bytes_unchecked(
     file_path: &str,
     is_agent: bool,
@@ -59,26 +123,31 @@ pub(crate) async fn read_bytes_unchecked(
     state: &tauri::State<'_, WorkspaceState>,
 ) -> Result<(PathBuf, Vec<u8>), String> {
     let real_path = crate::utils::resolve_read_unchecked(file_path, is_agent, agent_id, state)?;
-    let real = real_path.to_string_lossy().to_string();
-    let resp =
-        crate::primitives_client::call_async("fs.read_bytes", &serde_json::json!({ "path": real })).await?;
-    let b64 = resp
-        .get("result")
-        .and_then(|r| r.get("base64"))
-        .and_then(|c| c.as_str())
-        .ok_or_else(|| format!("primitives-server fs.read_bytes 响应缺 base64: {resp}"))?;
-    use base64::Engine;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(b64)
-        .map_err(|e| format!("base64 解码失败: {e}"))?;
+    let rp = real_path.clone();
+    let meta = with_io_retry(|| std::fs::metadata(&rp), "stat")?;
+    if meta.len() > MAX_READ_BYTES {
+        return Err(format!(
+            "文件过大 ({} MiB)，超过读取上限 ({} MiB): {}",
+            meta.len() / (1024 * 1024),
+            MAX_READ_BYTES / (1024 * 1024),
+            file_path
+        ));
+    }
+    let bytes = tokio::time::timeout(READ_TIMEOUT, tokio::task::spawn_blocking(move || {
+        with_io_retry(|| std::fs::read(&rp), "read_bytes")
+    }))
+    .await
+    .map_err(|_| format!("读取文件超时 ({}s): {}", READ_TIMEOUT.as_secs(), file_path))?
+    .map_err(|e| format!("读取任务失败: {}", e))?
+    .map_err(|e| format!("无法读取文件 {}: {}", file_path, e))?;
     Ok((real_path, bytes))
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 写入 — 裁决（exe）→ 后端字节执行
+// fs 能力口 — 写入（裁决 + 字节执行一体）
 // ═══════════════════════════════════════════════════════════════
 
-/// 原子写文本（裁决 + 后端 fs.write_text——原子 tmp→rename 在后端）。
+/// 原子写文本（tmp → rename；含 .bak 备份）。裁决 → 就地执行。
 pub(crate) async fn write_text_unchecked(
     file_path: &str,
     content: &str,
@@ -86,20 +155,67 @@ pub(crate) async fn write_text_unchecked(
     agent_id: Option<&str>,
     state: &tauri::State<'_, WorkspaceState>,
 ) -> Result<PathBuf, String> {
-    let real_path = crate::utils::resolve_write_unchecked(file_path, is_agent, agent_id, state)?;
-    let real = real_path.to_string_lossy().to_string();
-    let resp = crate::primitives_client::call_async(
-        "fs.write_text",
-        &serde_json::json!({ "path": real, "content": content }),
-    )
-    .await?;
-    if resp.get("error").is_some() {
-        return Err(format!("primitives-server fs.write_text 失败: {resp}"));
+    if content.len() > MAX_WRITE_BYTES {
+        return Err(format!(
+            "内容过大 ({} MiB)，超过写入上限 ({} MiB)",
+            content.len() / (1024 * 1024),
+            MAX_WRITE_BYTES / (1024 * 1024)
+        ));
     }
+    let real_path = crate::utils::resolve_write_unchecked(file_path, is_agent, agent_id, state)?;
+    let rp = real_path.to_string_lossy().to_string();
+    if let Some(parent) = real_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("无法创建目录: {}", e))?;
+    }
+    write_atomic(&rp, content)?;
     Ok(real_path)
 }
 
-/// 创建目录（裁决 + 后端 fs.create_dir）。
+/// 原子写入：tmp → rename（含 .bak 备份与失败恢复）。
+fn write_atomic(file_path: &str, content: &str) -> Result<(), String> {
+    static TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp_path = format!("{}.tmp.{}", file_path, seq);
+    let bak_path = format!("{}.bak", file_path);
+
+    with_io_retry(|| std::fs::write(&tmp_path, content), "write_atomic(tmp)")?;
+
+    let had_original = std::path::Path::new(file_path).exists();
+    if had_original {
+        let _ = std::fs::remove_file(&bak_path);
+        let _ = std::fs::rename(file_path, &bak_path);
+    }
+    match std::fs::rename(&tmp_path, file_path) {
+        Ok(()) => {
+            if had_original {
+                let _ = std::fs::remove_file(&bak_path);
+            }
+            Ok(())
+        }
+        Err(e) => {
+            if had_original && std::path::Path::new(&bak_path).exists() {
+                let _ = std::fs::rename(&bak_path, file_path);
+            }
+            Err(format!("write_atomic(rename): {}", e))
+        }
+    }
+}
+
+/// 追加内容到文件（不存在则创建）。log_append 用。
+pub(crate) fn append_text_unchecked(real_path: &str, content: &str) -> Result<(), String> {
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(real_path)
+        .map_err(|e| format!("log_append: cannot open {}: {}", real_path, e))?;
+    file.write_all(content.as_bytes())
+        .map_err(|e| format!("log_append: write failed: {}", e))?;
+    Ok(())
+}
+
+/// 创建目录（含父目录）。裁决 → 就地执行。
 pub(crate) async fn create_dir_unchecked(
     path: &str,
     is_agent: bool,
@@ -107,16 +223,12 @@ pub(crate) async fn create_dir_unchecked(
     state: &tauri::State<'_, WorkspaceState>,
 ) -> Result<PathBuf, String> {
     let resolved = crate::utils::resolve_write_unchecked(path, is_agent, agent_id, state)?;
-    let real = resolved.to_string_lossy().to_string();
-    let resp =
-        crate::primitives_client::call_async("fs.create_dir", &serde_json::json!({ "path": real })).await?;
-    if resp.get("error").is_some() {
-        return Err(format!("primitives-server fs.create_dir 失败: {resp}"));
-    }
+    std::fs::create_dir_all(&resolved)
+        .map_err(|e| format!("无法创建目录 {}: {}", path, e))?;
     Ok(resolved)
 }
 
-/// 删除（裁决 + 后端 fs.delete）。
+/// 删除文件或目录树。裁决 → 就地执行。
 pub(crate) async fn delete_unchecked(
     path: &str,
     is_agent: bool,
@@ -124,17 +236,20 @@ pub(crate) async fn delete_unchecked(
     state: &tauri::State<'_, WorkspaceState>,
 ) -> Result<PathBuf, String> {
     let real = crate::utils::resolve_write_unchecked(path, is_agent, agent_id, state)?;
-    let real_str = real.to_string_lossy().to_string();
-    let resp =
-        crate::primitives_client::call_async("fs.delete", &serde_json::json!({ "path": real_str })).await?;
-    if resp.get("error").is_some() {
-        return Err(format!("primitives-server fs.delete 失败: {resp}"));
+    if !real.exists() {
+        return Err(format!("路径不存在: {}", path));
+    }
+    if real.is_dir() {
+        std::fs::remove_dir_all(&real)
+            .map_err(|e| format!("无法删除目录 {}: {}", path, e))?;
+    } else {
+        std::fs::remove_file(&real)
+            .map_err(|e| format!("无法删除文件 {}: {}", path, e))?;
     }
     Ok(real)
 }
 
-/// 重命名/移动。`from`/`to` 裁决在 exe（read(from) + write(to) 双路径检查）；
-/// 后端只执行已裁决的 rename。
+/// 重命名/移动。`from`/`to` 双路径检查（read+write）→ 就地执行。
 pub(crate) async fn rename(
     from: &str,
     to: &str,
@@ -145,15 +260,347 @@ pub(crate) async fn rename(
 ) -> Result<(PathBuf, PathBuf), String> {
     let resolved_from = crate::utils::resolve_read_dispatch(from, is_agent, agent_id, state, app).await?;
     let resolved_to = crate::utils::resolve_write_dispatch(to, is_agent, agent_id, state, app).await?;
-    let rf = resolved_from.to_string_lossy().to_string();
-    let rt = resolved_to.to_string_lossy().to_string();
-    let resp = crate::primitives_client::call_async(
-        "fs.rename",
-        &serde_json::json!({ "from": rf, "to": rt }),
-    )
-    .await?;
-    if resp.get("error").is_some() {
-        return Err(format!("primitives-server fs.rename 失败: {resp}"));
-    }
+    let rf = resolved_from.clone();
+    let rt = resolved_to.clone();
+    with_io_retry(
+        || std::fs::rename(&rf, &rt),
+        &format!("rename {} -> {}", from, to),
+    )?;
     Ok((resolved_from, resolved_to))
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 目录条目与展示辅助（utils.rs 迁回——字节执行随能力口回 exe）
+// ═══════════════════════════════════════════════════════════════
+
+#[derive(serde::Serialize)]
+pub(crate) struct DirEntry {
+    pub(crate) name: String,
+    pub(crate) path: String,
+    pub(crate) is_dir: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) children: Option<Vec<DirEntry>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) truncated: Option<bool>,
+}
+
+/// 递归列出目录内容（深度受限）。filter_ignored 用 hologram-graph 排除规则。
+pub(crate) fn list_dir_recursive(root: &std::path::Path, filter_ignored: bool) -> Vec<DirEntry> {
+    fn recurse(
+        dir: &std::path::Path,
+        depth: usize,
+        entries: &mut Vec<DirEntry>,
+        entry_count: &mut usize,
+        truncated: &mut bool,
+        filter_ignored: bool,
+    ) {
+        const MAX_DEPTH: usize = 3;
+        const MAX_ENTRIES: usize = 2000;
+
+        if depth > MAX_DEPTH || *entry_count >= MAX_ENTRIES {
+            *truncated = true;
+            return;
+        }
+        let readdir = match std::fs::read_dir(dir) {
+            Ok(r) => r,
+            Err(_) => return,
+        };
+        for entry in readdir.flatten() {
+            if *entry_count >= MAX_ENTRIES {
+                *truncated = true;
+                break;
+            }
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            let is_dir = path.is_dir();
+            if filter_ignored && is_dir
+                && hologram_graph::is_ignored_path(&path.to_string_lossy().replace('\\', "/"))
+            {
+                continue;
+            }
+            let children = if is_dir {
+                let mut child_entries = Vec::new();
+                recurse(&path, depth + 1, &mut child_entries, entry_count, truncated, filter_ignored);
+                if child_entries.is_empty() { None } else { Some(child_entries) }
+            } else {
+                None
+            };
+            *entry_count += 1;
+            entries.push(DirEntry {
+                name,
+                path: path.to_string_lossy().to_string(),
+                is_dir,
+                children,
+                truncated: None,
+            });
+        }
+    }
+
+    let mut entries: Vec<DirEntry> = Vec::new();
+    let mut entry_count = 0usize;
+    let mut truncated = false;
+    recurse(root, 0, &mut entries, &mut entry_count, &mut truncated, filter_ignored);
+    if truncated && !entries.is_empty() {
+        entries[0].truncated = Some(true);
+    }
+    entries
+}
+
+/// 平铺列出（只隐藏 VCS 内部目录）。
+pub(crate) fn list_dir_flat(root: &std::path::Path) -> Vec<DirEntry> {
+    let mut entries: Vec<DirEntry> = Vec::new();
+    let skip_dirs: std::collections::HashSet<&str> = [".git", ".hg", ".svn"].iter().cloned().collect();
+    let readdir = match std::fs::read_dir(root) {
+        Ok(r) => r,
+        Err(_) => return entries,
+    };
+    for entry in readdir.flatten() {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+        let is_dir = path.is_dir();
+        if is_dir && skip_dirs.contains(name.as_str()) {
+            continue;
+        }
+        entries.push(DirEntry {
+            name,
+            path: path.to_string_lossy().to_string(),
+            is_dir,
+            children: None,
+            truncated: None,
+        });
+    }
+    entries.sort_by(|a, b| {
+        b.is_dir.cmp(&a.is_dir)
+            .then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+    entries
+}
+
+/// cat -n 风格行号输出（offset/limit）。
+pub(crate) fn format_lines(content: &str, offset: Option<usize>, limit: Option<usize>) -> String {
+    let lines: Vec<&str> = content.lines().collect();
+    let start = offset.unwrap_or(0).min(lines.len());
+    let end = limit
+        .map(|l| (start + l).min(lines.len()))
+        .unwrap_or(lines.len());
+    let numbered: Vec<String> = lines[start..end]
+        .iter()
+        .enumerate()
+        .map(|(i, l)| format!("{:>6}\t{}", start + i + 1, l))
+        .collect();
+    numbered.join("\n")
+}
+
+/// 预览前 max_lines 行，每行截断 max_width。
+pub(crate) fn preview(content: &str, max_width: usize, max_lines: usize) -> String {
+    content
+        .lines()
+        .take(max_lines)
+        .map(|l| {
+            if l.len() <= max_width {
+                l.to_string()
+            } else {
+                let truncated: String = l.chars().take(max_width).collect();
+                format!("{}…", truncated)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 测试 — 字节层（自 primitives-server fs_ops 测试迁回）
+// ═══════════════════════════════════════════════════════════════
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── glob 花括号展开（字节层随能力口回 exe）──
+
+    #[test]
+    fn expand_braces_simple() {
+        let result = expand_braces("**/*.{ts,rs}");
+        assert_eq!(result, vec!["**/*.ts".to_string(), "**/*.rs".to_string()]);
+    }
+
+    #[test]
+    fn expand_braces_nested() {
+        let result = expand_braces("a/{b,c}/{d,e}");
+        assert_eq!(
+            result,
+            vec!["a/b/d".to_string(), "a/b/e".to_string(), "a/c/d".to_string(), "a/c/e".to_string()]
+        );
+    }
+
+    #[test]
+    fn expand_braces_at_start() {
+        let result = expand_braces("{a,b}.ts");
+        assert_eq!(result, vec!["a.ts".to_string(), "b.ts".to_string()]);
+    }
+
+    // ── 目录列表 ──
+
+    fn make_tree(tag: &str) -> std::path::PathBuf {
+        let tmp = std::env::temp_dir().join(format!("confined_fs_{tag}_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("sub")).unwrap();
+        std::fs::create_dir_all(tmp.join(".git")).unwrap();
+        std::fs::write(tmp.join("a.txt"), "a").unwrap();
+        std::fs::write(tmp.join("b.txt"), "b").unwrap();
+        std::fs::write(tmp.join("sub").join("c.txt"), "c").unwrap();
+        std::fs::write(tmp.join(".git").join("config"), "x").unwrap();
+        tmp
+    }
+
+    #[test]
+    fn list_dir_flat_lists_direct_children_only() {
+        let tmp = make_tree("flat");
+        let entries = list_dir_flat(&tmp);
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(names.contains(&"a.txt"));
+        assert!(names.contains(&"sub"));
+        assert!(!names.contains(&"c.txt"), "sub/ 内不应出现在平铺层");
+        assert!(!names.contains(&".git"), ".git 应被隐藏");
+        assert!(entries.iter().all(|e| e.children.is_none()), "平铺无 children");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn list_dir_recursive_descends_and_filters_ignored() {
+        let tmp = make_tree("rec");
+        let entries = list_dir_recursive(&tmp, true);
+        let flat_names: Vec<String> = {
+            fn walk(e: &DirEntry, out: &mut Vec<String>) {
+                out.push(e.name.clone());
+                if let Some(ch) = &e.children {
+                    for c in ch {
+                        walk(c, out);
+                    }
+                }
+            }
+            let mut v = Vec::new();
+            for e in &entries {
+                walk(e, &mut v);
+            }
+            v
+        };
+        assert!(flat_names.iter().any(|n| n == "a.txt"));
+        assert!(flat_names.iter().any(|n| n == "c.txt"), "递归应含 sub/c.txt");
+        assert!(!flat_names.iter().any(|n| n == "config"), ".git 应被 is_ignored_path 过滤");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn glob_matches_pattern_and_skips_excluded() {
+        let tmp = make_tree("glob");
+        let results = glob_entries(&tmp.to_string_lossy(), &["**/*.txt".to_string()]).unwrap();
+        assert_eq!(results.len(), 3, "a/b/sub/c 三 txt: {results:?}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn glob_invalid_pattern_errors() {
+        let tmp = make_tree("globerr");
+        let err = glob_entries(&tmp.to_string_lossy(), &["[".to_string()]).unwrap_err();
+        assert!(err.contains("无效的 glob 模式"), "err = {err}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ── 展示辅助 ──
+
+    #[test]
+    fn format_lines_numbers() {
+        assert_eq!(format_lines("aa\nbb\ncc", None, None), "     1\taa\n     2\tbb\n     3\tcc");
+        assert_eq!(format_lines("aa\nbb\ncc", Some(1), Some(1)), "     2\tbb");
+    }
+
+    #[test]
+    fn preview_truncates_and_respects_lines() {
+        let p = preview(&"x".repeat(100), 10, 2);
+        assert!(p.contains('\u{2026}'), "截断应带省略号: {p}");
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// glob — 字节层（花括号展开 + 目录遍历匹配；自 fs 插件随能力口回迁）
+// ═══════════════════════════════════════════════════════════════
+
+#[derive(serde::Serialize, Debug)]
+pub(crate) struct GlobEntry {
+    pub(crate) path: String,
+    pub(crate) name: String,
+}
+
+/// 展开 glob 模式中的花括号表达式。
+fn expand_braces(pattern: &str) -> Vec<String> {
+    if let Some(start) = pattern.find('{') {
+        if let Some(end) = pattern[start..].find('}') {
+            let end = start + end;
+            let prefix = &pattern[..start];
+            let suffix = &pattern[end + 1..];
+            let alternatives: Vec<&str> = pattern[start + 1..end].split(',').collect();
+            let mut result = Vec::new();
+            for alt in &alternatives {
+                let expanded = format!("{}{}{}", prefix, alt, suffix);
+                result.extend(expand_braces(&expanded));
+            }
+            return result;
+        }
+    }
+    vec![pattern.to_string()]
+}
+
+/// 目录遍历 + glob 匹配（root 已裁决）。
+pub(crate) fn glob_entries(root: &str, patterns: &[String]) -> Result<Vec<GlobEntry>, String> {
+    let p = std::path::Path::new(root);
+    if !p.is_dir() {
+        return Err(format!("不是有效目录: {}", root));
+    }
+    let expanded: Vec<String> = patterns.iter().flat_map(|pat| expand_braces(pat)).collect();
+    let compiled: Vec<glob::Pattern> = expanded
+        .iter()
+        .map(|pat| {
+            glob::Pattern::new(pat)
+                .map_err(|e| format!("无效的 glob 模式 '{}': {}", pat, e))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut results: Vec<GlobEntry> = Vec::new();
+    let max = 200;
+    for entry in walkdir::WalkDir::new(p)
+        .max_depth(12)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let entry_path = entry.path();
+        let eps = entry_path.to_string_lossy();
+        if eps.contains("/.git/") || eps.contains("\\.git\\")
+            || eps.contains("/node_modules/") || eps.contains("\\node_modules\\")
+            || eps.contains("/target/") || eps.contains("\\target\\")
+            || eps.contains("/dist/") || eps.contains("\\dist\\")
+            || eps.contains("/build/") || eps.contains("\\build\\")
+            || eps.contains("/.lantai/") || eps.contains("\\.lantai\\")
+        {
+            continue;
+        }
+        let rel = entry_path.strip_prefix(p).unwrap_or(entry_path);
+        let rel_str = rel.to_string_lossy().replace('\\', "/");
+        if compiled.iter().any(|gp| gp.matches(&rel_str)) {
+            results.push(GlobEntry {
+                path: entry_path.to_string_lossy().to_string(),
+                name: rel
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| rel_str.clone()),
+            });
+        }
+        if results.len() >= max {
+            break;
+        }
+    }
+    Ok(results)
 }

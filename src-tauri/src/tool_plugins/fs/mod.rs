@@ -61,7 +61,7 @@ impl ToolPlugin for FsPlugin {
                 "list_directory" => list_directory(ctx, &args).await,
                 "list_directory_flat" => list_directory_flat(ctx, &args).await,
                 "read_file_content" => read_file_content(ctx, &args).await,
-                "read_memory_batch" => read_memory_batch(&args).await,
+                "read_memory_batch" => read_memory_batch(&args),
                 "read_file_base64" => read_file_base64(ctx, &args).await,
                 "write_file_content" => write_file_content(ctx, &args).await,
                 "log_append" => log_append(ctx, &args),
@@ -93,19 +93,10 @@ async fn list_directory(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, To
     if !root.is_dir() {
         return Err(ToolError::Tool(format!("不是有效目录: {}", path)));
     }
-    let real = root.to_string_lossy().to_string();
-    let resp = crate::primitives_client::call_async(
-        "fs.list_dir",
-        &serde_json::json!({ "path": real, "recursive": true, "filterIgnored": filter_ignored }),
-    )
-    .await
-    .map_err(ToolError::Tool)?;
-    let entries = resp
-        .get("result")
-        .and_then(|r| r.get("entries"))
-        .ok_or_else(|| ToolError::Tool(format!("primitives-server fs.list_dir 响应缺 entries: {resp}")))?
-        .clone();
-    Ok(entries)
+    let entries = tokio::task::spawn_blocking(move || crate::confined_fs::list_dir_recursive(&root, filter_ignored))
+        .await
+        .map_err(|e| ToolError::Tool(format!("目录列表任务失败: {e}")))?;
+    serde_json::to_value(entries).map_err(|e| ToolError::Tool(format!("序列化失败: {e}")))
 }
 
 async fn list_directory_flat(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolError> {
@@ -116,19 +107,10 @@ async fn list_directory_flat(ctx: &ToolContext<'_>, args: &Value) -> Result<Valu
     if !root.is_dir() {
         return Err(ToolError::Tool(format!("不是有效目录: {}", path)));
     }
-    let real = root.to_string_lossy().to_string();
-    let resp = crate::primitives_client::call_async(
-        "fs.list_dir",
-        &serde_json::json!({ "path": real, "recursive": false, "filterIgnored": false }),
-    )
-    .await
-    .map_err(ToolError::Tool)?;
-    let entries = resp
-        .get("result")
-        .and_then(|r| r.get("entries"))
-        .ok_or_else(|| ToolError::Tool(format!("primitives-server fs.list_dir 响应缺 entries: {resp}")))?
-        .clone();
-    Ok(entries)
+    let entries = tokio::task::spawn_blocking(move || crate::confined_fs::list_dir_flat(&root))
+        .await
+        .map_err(|e| ToolError::Tool(format!("目录列表任务失败: {e}")))?;
+    serde_json::to_value(entries).map_err(|e| ToolError::Tool(format!("序列化失败: {e}")))
 }
 
 /// read_file_content — 文本读（cat -n 行号格式 / raw 原文）。
@@ -141,37 +123,27 @@ async fn read_file_content(ctx: &ToolContext<'_>, args: &Value) -> Result<Value,
     let file_path = super::plugin::arg_str(args, "filePath").ok_or_else(|| missing("filePath"))?;
     let offset = super::plugin::arg_usize(args, "offset");
     let limit = super::plugin::arg_usize(args, "limit");
-    let real_path =
-        crate::utils::resolve_read_unchecked(&file_path, ctx.is_agent, ctx.agent_id.as_deref(), ctx.state)
-            .map_err(ToolError::Tool)?;
-    let real = real_path.to_string_lossy().to_string();
-    // P1-3：raw=true 跳过 format_lines 行号（JSON 文件读取面）——后端 lineNumbers=false
-    // 直接返回原文；offset/limit 只对行号模式有意义。
     let raw = super::plugin::arg_bool(args, "raw").unwrap_or(false);
-    let resp = crate::primitives_client::call_async(
-        "fs.read_text",
-        &serde_json::json!({
-            "path": real,
-            "lineNumbers": !raw,
-            "offset": offset,
-            "limit": limit,
-        }),
+    // C 模型：能力口 = confined_fs::read_text_unchecked（裁决 + 字节一体）。
+    // raw=true 跳过 format_lines（P1-3 JSON 读取面）；offset/limit 只对行号模式有意义。
+    let (_, content) = crate::confined_fs::read_text_unchecked(
+        &file_path,
+        ctx.is_agent,
+        ctx.agent_id.as_deref(),
+        ctx.state,
+        !raw,
+        offset,
+        limit,
     )
     .await
     .map_err(ToolError::Tool)?;
-    let content = resp
-        .get("result")
-        .and_then(|r| r.get("content"))
-        .and_then(|c| c.as_str())
-        .ok_or_else(|| ToolError::Tool(format!("primitives-server fs.read_text 响应缺 content: {resp}")))?
-        .to_string();
     Ok(Value::String(content))
 }
 
-/// read_memory_batch — .lantai 内多文件批量读（内部工具；拆壳 D2 走后端）。
-/// 这些路径是 .lantai 内部（memory/会话），本工具无权限检查（内部消费链）——
-/// 路径已过 validate_hologram_path 围栏，直接交后端读；单个失败置 null（原语义）。
-async fn read_memory_batch(args: &Value) -> Result<Value, ToolError> {
+/// read_memory_batch — .lantai 内多文件批量读（内部工具，非 Agent 工具链）。
+/// C 模型：内部消费链（memory/会话）读 .lantai 内存文件，无权限闸语义——
+/// 直接 std::fs 读（原实现；不经能力口，能力口是给 Agent 工具碰资源的受信口）。
+fn read_memory_batch(args: &Value) -> Result<Value, ToolError> {
     let paths: Vec<String> = args
         .get("paths")
         .and_then(|v| v.as_array())
@@ -180,19 +152,13 @@ async fn read_memory_batch(args: &Value) -> Result<Value, ToolError> {
     let mut map = serde_json::Map::new();
     for path in &paths {
         crate::utils::validate_hologram_path(path).map_err(ToolError::InvalidArgs)?;
-        let resp = crate::primitives_client::call_async("fs.read_text", &serde_json::json!({ "path": path }))
-            .await
-            .map_err(ToolError::Tool)?;
-        if resp.get("error").is_some() {
-            map.insert(path.clone(), Value::Null);
-        } else {
-            let content = resp
-                .get("result")
-                .and_then(|r| r.get("content"))
-                .and_then(|c| c.as_str())
-                .map(String::from)
-                .unwrap_or_default();
-            map.insert(path.clone(), Value::String(content));
+        match std::fs::read_to_string(path) {
+            Ok(content) => {
+                map.insert(path.clone(), Value::String(content));
+            }
+            Err(_) => {
+                map.insert(path.clone(), Value::Null);
+            }
         }
     }
     serde_json::to_value(map).map_err(|e| ToolError::Tool(format!("序列化失败: {}", e)))
@@ -269,9 +235,8 @@ async fn write_file_content(ctx: &ToolContext<'_>, args: &Value) -> Result<Value
     }
 
     let size = content.len();
-    // preview 是纯展示（无 I/O），content 已在壳侧（要写的内容）——本地算，
-    // 不走后端往返。语义 = confined_fs::preview 原样（拆壳前同款）。
-    let preview = preview_text(&content, 80, 20);
+    // C 模型：预览 = 能力口的纯展示辅助（confined_fs::preview）。
+    let preview = crate::confined_fs::preview(&content, 80, 20);
     Ok(Value::String(format!(
         "已写入 {} ({})\n```\n{}\n```",
         rp,
@@ -280,45 +245,20 @@ async fn write_file_content(ctx: &ToolContext<'_>, args: &Value) -> Result<Value
     )))
 }
 
-/// 纯展示：预览前 max_lines 行，每行截断 max_width（原 confined_fs::preview——拆壳 D2 后
-/// confined_fs 只剩裁决+转发，纯展示函数随唯一消费者内联于此）。
-fn preview_text(content: &str, max_width: usize, max_lines: usize) -> String {
-    content
-        .lines()
-        .take(max_lines)
-        .map(|l| {
-            if l.len() <= max_width {
-                l.to_string()
-            } else {
-                let truncated: String = l.chars().take(max_width).collect();
-                format!("{}…", truncated)
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 /// log_append — 日志追加（内部工具；业务原样迁入——同步权限检查保持：
 /// 后台日志链无弹窗可等，Ask 在 ask/auto 模式下同步自动拒绝）。
 fn log_append(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolError> {
     let missing = |k: &str| ToolError::InvalidArgs(format!("log_append: missing '{k}'"));
     let path = super::plugin::arg_str(args, "path").ok_or_else(|| missing("path"))?;
     let content = super::plugin::arg_str(args, "content").ok_or_else(|| missing("content"))?;
-    // 权限裁决留 exe：EditTool 同步过闸（后台日志链无弹窗可等，Ask 同步自动拒绝）
+    // C 模型：能力口内过闸 + 字节执行一体。EditTool 同步过闸（后台日志链无
+    // 弹窗可等，Ask 同步自动拒绝），就地 append。
     let perm_ctx = crate::utils::get_ctx(ctx.state).map_err(ToolError::Tool)?;
     let physical = perm_ctx.forward_map_path(std::path::Path::new(&path), ctx.agent_id.as_deref());
     let physical_str = physical.to_string_lossy().to_string();
     let tool = crate::tools::EditTool { path: physical_str.clone(), agent_id: ctx.agent_id.clone() };
     crate::utils::check_permission_sync(&tool, &perm_ctx).map_err(ToolError::Tool)?;
-    // 字节 append 走受信后端（拆壳 D2）
-    let resp = crate::primitives_client::call(
-        "fs.append",
-        &serde_json::json!({ "path": physical_str, "content": content }),
-    )
-    .map_err(ToolError::Tool)?;
-    if resp.get("error").is_some() {
-        return Err(ToolError::Tool(format!("primitives-server fs.append 失败: {resp}")));
-    }
+    crate::confined_fs::append_text_unchecked(&physical_str, &content).map_err(ToolError::Tool)?;
     Ok(Value::Null)
 }
 
@@ -453,28 +393,15 @@ async fn glob(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolError> {
         return Err(ToolError::Tool(format!("不是有效目录: {}", dir)));
     }
     let real = root.to_string_lossy().to_string();
-    let resp = crate::primitives_client::call_async(
-        "fs.glob",
-        &serde_json::json!({ "path": real, "patterns": [pattern.clone()] }),
-    )
-    .await
-    .map_err(ToolError::Tool)?;
-    // 错误透传（含「无效的 glob 模式」——后端 fs_ops::glob 编译期报错文案与原件一致）
-    if let Some(err) = resp.get("error") {
-        let msg = err.get("message").and_then(|m| m.as_str()).unwrap_or("glob 失败");
-        return Err(ToolError::Tool(msg.to_string()));
-    }
-    let results = resp
-        .get("result")
-        .and_then(|r| r.get("results"))
-        .cloned()
-        .unwrap_or_else(|| serde_json::json!([]));
-    let count = results.as_array().map(|a| a.len()).unwrap_or(0);
+    let results = crate::confined_fs::glob_entries(&real, &[pattern.clone()])
+        .map_err(ToolError::Tool)?;
+    let results_val = serde_json::to_value(&results).map_err(|e| ToolError::Tool(format!("序列化失败: {e}")))?;
+    let count = results.len();
     let out = serde_json::json!({
         "pattern": pattern,
         "count": count,
         "truncated": count >= 200,
-        "results": results,
+        "results": results_val,
     })
     .to_string();
     Ok(Value::String(out))

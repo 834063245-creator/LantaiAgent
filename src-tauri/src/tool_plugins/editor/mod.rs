@@ -167,7 +167,9 @@ async fn edit_file(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolErr
     const EDIT_RACE_ATTEMPTS: usize = 3;
     'retry: for attempt in 0..EDIT_RACE_ATTEMPTS {
     // 循环体保持原缩进（机械包裹，避免整段重排的 diff 噪声）
-    let (_, content) = crate::confined_fs::read_text_unchecked(&file_path, is_agent, agent_id, state).await.map_err(ToolError::Tool)?;
+    let (_, content) = crate::confined_fs::read_text_unchecked(&file_path, is_agent, agent_id, state, false, None, None)
+        .await
+        .map_err(ToolError::Tool)?;
 
     if old_string.is_empty() {
         return Err(ToolError::InvalidArgs("old_string 不能为空".to_string()));

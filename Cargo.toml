@@ -3,4 +3,4 @@
 
 [workspace]
 resolver = "2"
-members = ["engine", "src-tauri", "hologram-graph", "hologram-storage", "hologram-vector", "primitives-server"]
+members = ["engine", "src-tauri", "hologram-graph", "hologram-storage", "hologram-vector"]
