@@ -19,7 +19,6 @@ pub mod manifest;
 pub mod plugin;
 pub mod pty;
 pub mod registry;
-pub mod search;
 pub mod shell;
 pub mod uia;
 pub mod web;

@@ -47,18 +47,6 @@ pub struct ToolContext<'a> {
 }
 
 impl<'a> ToolContext<'a> {
-    /// 路径级读授权 + 沙箱决议（与旧命令 `resolve_read_dispatch` 同一真权路径）。
-    pub async fn resolve_read(&self, directory: &str) -> Result<std::path::PathBuf, String> {
-        crate::utils::resolve_read_dispatch(
-            directory,
-            self.is_agent,
-            self.agent_id.as_deref(),
-            self.state,
-            self.app,
-        )
-        .await
-    }
-
     /// 工具级权限过闸（与旧命令 `check_permission` 同路径——Ask 事件 + 回包等待）。
     /// 插件内的二次真权用：如 web 域的 WebFetchTool（域名规则 + SSRF）。
     pub async fn check_permission(&self, tool: &dyn crate::permissions::Tool) -> Result<(), String> {
