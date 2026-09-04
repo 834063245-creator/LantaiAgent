@@ -138,7 +138,7 @@ webview 越不过的最后闸）——不是业务命令，不在「走开放面
 - v3 后的新能力口（fs_cap/process_cap 等）同样按此更新基线，禁止向 commands/
   塞业务命令。
 
-## 8. 施工进度（2026-09-04 窗，R2-d(1)+R2-c 收口；R2-d(2) 余量交接）
+## 8. 施工进度（2026-09-04 窗 R2-d(1)+R2-c 收口；2026-09-05 R2-d(2) 并入 R3-d 窗竣工）
 
 | 步 | 状态 | commit | 说明 |
 |---|---|---|---|
@@ -146,7 +146,7 @@ webview 越不过的最后闸）——不是业务命令，不在「走开放面
 | R2-b | ✅ 已落地 | 789aef86 | TS 换轨：manifest-tools searchCapTool + createSearchTools 换源（execute 从 tool_call 信封换 search_cap 直呼）。schema 仍取 manifest 字节（零漂移）。 |
 | R2-c | ✅ 已落地 | d524f124 | builtin.search 退役：Rust tool_plugins/search/ 删（mod.rs 467 行 + manifest.json）、registry.rs 注册行删、tool_plugins/mod.rs 模块声明删、manifest.rs 出厂锚测试改指向 builtin.fs；连带清 ToolContext::resolve_read 死代码（search 唯一消费方）；gen-plugin-manifests 重跑（镜像 10 个 manifest，builtin.search 条目消失）；doc-sync 全对拍。 |
 | R2-d(1) | ✅ 已落地 | fe91f016 | schema zod 真源回 TS：search_content schema 在 manifest-tools 域内 zod 转录（不再读 kernel-manifests 镜像），逐键等价退役前 manifest 发射，收敛零漂移。**连带修复 R2-a 键位回归**（见下）。 |
-| R2-d(2) | ⬜ 未做 | — | 编排真回 TS：glob_filter 编译/输出三形态/分页目前**仍整体在 Rust search_cap.rs**（R2-a 把 builtin.search 扫描体整套迁入能力口，含编排；设计 §1.2「编排回 TS」的分类与实际代码不符——能力口返回的是最终输出形状而非原始命中）。本步 = 能力口收窄为纯扫描返回原始命中 + TS 域内重建编排（schema 真源 + 编排同域），**能力口契约变更**，独立开批。 |
+| R2-d(2) | ✅ 已落地（2026-09-05） | 5e563923 | 编排真回 TS（并入 R3-d 窗，2026-09-04 用户拍板「R2-d(2) 并入 R3 统一做」）：search_cap 收窄为**纯扫描返回统一原始命中集**（不再认识 output_mode/show_line_numbers/head_limit/offset——改收 max_matches/max_files 收窄键 + collect_lines 携行开关，扫描终止位逐行为等价）；三形态组装/行号显示/分页/截断判定回 TS 编排层 **search-assembly.ts**（schema 真源 + 编排同域；输出键序 = 原 Rust 组装序，消费方 parseJson 语义不变）；glob_filter 编译与向量召回留口内（物理过滤/物理索引）。测试：search-assembly.test.ts 全用例 + kernel-manifest-tools execute 换组装管线断言 + ab-tools raw 形状包装。cargo 428 / vitest 2468 / convergence 双档零漂移 / doc-sync 全绿 |
 
 **R2-a 键位回归（2026-09-04 发现并修复，fe91f016）**：searchCapTool 曾摊平 camelCase
 参数直呼 search_cap——bridge.rpc()（src-ui/src/bridge.ts）顶层把 camelCase 键强制转
@@ -157,11 +157,13 @@ Agent 路径 search 全部可选参数 + agent_id 静默丢失（仅单字键 di
 （worktree 隔离子 Agent 身份不丢）。R2-a 门禁全绿是测试停在 exec 桩层、未穿透真
 rpc() 所致——本修复补了穿透断言（kernel-manifest-tools execute 钉测 snake 键）。
 
-**R2-d(2) 推进障碍（下窗注意）**：编排回 TS 需要能力口收窄 + 结果形状调整，牵动
+**R2-d(2) 推进障碍（下窗注意）**：~~编排回 TS 需要能力口收窄 + 结果形状调整，牵动
 search_cap.rs 重构 + rpc-contract 结果面 + 输出消费方（search 域工具 execute 组装）+
 Rust 能力口单测重写。建议独立开批，与本窗 R2-d(1)/R2-c（schema 真源 + 信封退役）
 不混合——本窗已把「schema 真源回 TS zod」与「builtin.search 信封退役」做成可独立
-交付的试点成果。
+交付的试点成果。~~ **已清（2026-09-05）**：独立开批建议照办（R3-d 窗批 4，5e563923），
+Rust 能力口单测以 glob_filter 既有测试保留 + TS 组装层全用例（search-assembly.test.ts）
+承接——扫描体无 State 不可单测的形态未变。
 
 **本窗 R2 交付价值**：能力口 = v3 强制层落地范式（search 先例：入口即裁决 + 物理执行 +
 审计位）；信封换直呼验证 tool_call 可被能力口取代（R5 拆 tool_call/PluginRegistry 的前置

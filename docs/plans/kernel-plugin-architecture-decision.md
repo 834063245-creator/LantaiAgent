@@ -61,16 +61,25 @@ TS 被攻破（恶意插件 / XSS / 供应链投毒）时，Rust 口是最后防
 - **物理沙箱兜底**：os_sandbox 进程文件效应（read-only/workspace-write）——能力口
   之上的纵深防御。
 
-## 2. 拆除令（用户拍板）
+## 2. 拆除令（用户拍板；终态改判注记 2026-09-05）
 
 **退役**：
 - 11 个 builtin.* Rust 模块（5631 行编排）——编排迁 TS 域插件。
+  （进度：search/fs/git/shell 四域已退役——残余 browser/uia/pty/lsp/web/editor/
+  constraints 七域走 R4/R5。）
 - 11 份 manifest.json + include_str! + 生成器 + generated 镜像 + doc-sync 对拍——
   schema 真源回 TS zod（回 INVARIANTS #8 原版：defineTool + zod）。
-- tool_call 信封 + PluginRegistry + PluginToolAdapter——被「TS 策略闸 + 能力口 RPC」取代。
+  （进度：四域条目已删——镜像剩 7 manifest。）
+- tool_call 信封 + PluginRegistry——被「TS 策略闸 + 能力口 RPC」取代。
+  **PluginToolAdapter 终态改判（2026-09-05，R3-e 裁定的自然推论）**：不随 tool_call
+  整体退役——权限裁决不迁 TS 后，它就是 Rust 强制层的**闸构造形状**（能力口内直接
+  构造过 check_permission，git_cap 先例；dispatch 侧 adapter 的存续形态随残余域
+  tool_call 在 R5 一并定）。原文「被 TS 策略闸取代」的表述对 adapter 不再成立。
 - Rust 权限裁决（PluginToolAdapter family 寻址、dispatch 侧 check_permission）——
-  权限策略归 TS；Rust 只留 permissions/ 的**物理执行辅助**（sandbox 判定、路径
-  canonical、审计落盘点）。
+  **终态改判（2026-09-05，R3-e 裁定）**：六步裁决留 Rust 强制层（c3 §9——webview
+  无盘权，Rust 口是恶意 TS 越不过的物理闸；整体迁 TS 是零行为收益的风险重构）。
+  TS 收拢的是策略数据面（规则/mode/Ask 记忆，R1 已落地）；Rust 侧 permissions/
+  的物理执行辅助（sandbox 判定、路径 canonical、审计落盘点）+ 口内闸照留。
 - 引擎域壳半截桥（hologram_call 工具侧）——归引擎 serve（壳只 client 转发）。
 
 **保留（Rust 能力层本体）**：
@@ -112,10 +121,10 @@ shell spawn）/ credential / 会话句柄（browser/uia/pty/lsp）。**口内不
 | 批 | 内容 | 验收 |
 |---|---|---|
 | R1 | TS 权限策略层设计（规则/mode/Ask 落点——现 permissions.json + 前端 Ask 已是雏形，评估复用 vs 重写为 Claude Code 同构） | ✅ 已拍板 + 设计（kernel-permission-strategy-layer-r1.md）+ 代码落地（commit a185f096） |
-| R2 | 薄域编排先回 TS（search/web/constraints/editor：schema zod + 编排迁域插件）+ 能力实现并入 Rust 能力口 | 🔶 R2-a/b 已落地（commit 789aef86：search 能力口 + 信封换直呼）；R2-d(1) schema zod 真源回 TS + R2-c builtin.search 退役已落地（fe91f016/d524f124，含 R2-a 键位回归修复）；**R2-d(2) 编排真回 TS（能力口收窄）余量**见 kernel-capability-r2-search-pilot.md §8 |
-| R3 | fs/git/shell 编排回 TS；TS 策略闸接管权限；Rust dispatch 权限逻辑退役 | 🔶 **fs + git 两域全链路闭环（fs：2026-09-05 收口 a681adc7/8bce6ffb/cd15fdcb/a107e4e2；git：2026-09-05 收口 f3add174/c5acb876/8b006be2）**：fs 域 UI helper + 模型族全量换 fs_cap、builtin.fs 退役、fs 8 工具 zod 转录、测试层 18 文件迁移；git 域 git_cap 能力口（口内两段闸 + subcommand 位）+ 模型族/内部消费换轨 + builtin.git 退役 + git 13 工具 zod 转录 + porcelain 解析回 TS（git-porcelain.ts）。shell 为 R3-d 余批（见 kernel-capability-c3-design.md §6/§8/§9）；**「TS 策略闸接管六步裁决」不迁（agent 裁定 2026-09-05，见 c3 §9）**——维持 Rust 口强制双层 |
+| R2 | 薄域编排先回 TS（search/web/constraints/editor：schema zod + 编排迁域插件）+ 能力实现并入 Rust 能力口 | ✅ **全批竣工**：R2-a/b（789aef86：search 能力口 + 信封换直呼）；R2-d(1) schema zod 真源回 TS + R2-c builtin.search 退役（fe91f016/d524f124，含 R2-a 键位回归修复）；R2-d(2) 编排真回 TS（5e563923：能力口收窄为纯扫描 + search-assembly.ts 组装同域）——见 kernel-capability-r2-search-pilot.md §8 |
+| R3 | fs/git/shell 编排回 TS；TS 策略闸接管权限；Rust dispatch 权限逻辑退役 | ✅ **fs + git + shell 三域全链路闭环（fs：a681adc7/8bce6ffb/cd15fdcb/a107e4e2；git：f3add174/c5acb876/8b006be2；shell：5edb9c28/86d0d659/bd9b9712——process_cap 7 action 口内 fg/bg 双检查不对称 + 粘性 cwd 归 TS（c3 §9）+ builtin.shell/sticky_cwd 退役 + shell 4 工具 zod 转录 + 内部消费换轨 kernelProcessCall）**；**「TS 策略闸接管六步裁决」不迁（agent 裁定 2026-09-05，见 c3 §9）**——维持 Rust 口强制双层，R3-e 收口 = 清点随迁 dead_code（零新增，全绿实证） |
 | R4 | browser/uia 句柄域编排回 TS + 句柄能力口 | 全门禁 |
-| R5 | 拆 manifest 脚手架 + tool_call/PluginRegistry + Rust 权限裁决 | 全门禁（fs/git 的脚手架条目已随各自收口删除：镜像 8 manifest、gen-kernel-manifest fs/git DOMAIN） |
+| R5 | 拆 manifest 脚手架 + tool_call/PluginRegistry（~~Rust 权限裁决~~——R3-e 裁定不拆：六步裁决留 Rust 强制层，PluginToolAdapter 是口内闸构造非待拆脚手架，见 §2 改判） | 全门禁（fs/git/shell 的脚手架条目已随各自收口删除：镜像 7 manifest、gen-kernel-manifest fs/git/shell DOMAIN） |
 | 收口 | 全门禁 + 交接/决策落账 | — |
 
 ## 6. 待执行时定的点
@@ -127,8 +136,9 @@ shell spawn）/ credential / 会话句柄（browser/uia/pty/lsp）。**口内不
   AGENTS.md 默认「拆旧不造新」，四层堆叠/参数通配/八层 source 是 Claude Code 在
   Node 直碰模型下的表达需求，兰台强制层在 Rust 能力口，TS 策略层不必一步到齐。
 - 物理沙箱形态（os_sandbox 现状够不够 read-only/workspace-write 两档承诺）——
-  R2/R3 起核。**核验中（fs_cap 各 action 全程走 resolve_*_dispatch + sandbox，
-  2026-09-05 收口未发现缺口）**——随 R3-c/d 换轨继续盯。
+  R2/R3 起核。**已核（2026-09-05，fs/git/shell 三域换轨全程盯完）**：fs_cap 各
+  action 全程走 resolve_*_dispatch + sandbox、process_cap 的 spawn 全程走
+  os_sandbox::spawn_shell_with（Job Object）+ BuildLock——三域收口未发现缺口。
 - 权限规则持久化层级（原 #3/#4 待定，2026-09-05 澄清后由 agent 执行，见
   kernel-capability-c3-design.md §9）：「永久记忆」（append_project_rule 接线）攒着、
   用户级规则文件（RuleSource::User）不做（YAGNI）。两者与 agent 记忆
