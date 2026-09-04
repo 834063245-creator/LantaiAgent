@@ -1734,6 +1734,197 @@ export const KERNEL_MANIFESTS: readonly KernelToolManifest[] = [
     ]
   },
   {
+    "id": "builtin.lsp",
+    "version": "1.0.0",
+    "trust": "system",
+    "description": "LSP 语言服务器会话（自 rpc.rs LSP 分区拆出，kernel-plugin-runtime P2-6）",
+    "capabilities": [
+      "lsp"
+    ],
+    "tools": [
+      {
+        "name": "lsp_start",
+        "description": "Start an LSP server for a language over a workspace root. Returns the numeric session id.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "language": {
+              "type": "string",
+              "description": "Language id (e.g. typescript, rust, python)"
+            },
+            "root_uri": {
+              "type": "string",
+              "description": "Workspace root file:// URI"
+            }
+          },
+          "required": [
+            "language",
+            "root_uri"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "lsp_request",
+        "description": "Send a JSON-RPC request/notification to an LSP session. Returns the JSON-RPC result.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "session_id": {
+              "type": "integer",
+              "description": "LSP session id"
+            },
+            "method": {
+              "type": "string",
+              "description": "JSON-RPC method"
+            },
+            "params": {
+              "type": "object",
+              "description": "JSON-RPC params (optional for notifications)"
+            }
+          },
+          "required": [
+            "session_id",
+            "method"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "lsp_stop",
+        "description": "Stop an LSP server session.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "session_id": {
+              "type": "integer",
+              "description": "LSP session id"
+            }
+          },
+          "required": [
+            "session_id"
+          ],
+          "additionalProperties": {}
+        }
+      }
+    ]
+  },
+  {
+    "id": "builtin.pty",
+    "version": "1.0.0",
+    "trust": "system",
+    "description": "PTY 终端会话（自 rpc.rs PTY 分区拆出，kernel-plugin-runtime P2-6）",
+    "capabilities": [
+      "pty"
+    ],
+    "tools": [
+      {
+        "name": "pty_spawn",
+        "description": "Spawn an interactive PTY shell session. Returns the numeric session id.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "cwd": {
+              "type": "string",
+              "description": "Working directory for the shell"
+            },
+            "shell": {
+              "type": "string",
+              "description": "Optional shell command (default: cmd.exe on Windows)"
+            },
+            "cols": {
+              "type": "integer",
+              "description": "Initial terminal width in columns"
+            },
+            "rows": {
+              "type": "integer",
+              "description": "Initial terminal height in rows"
+            }
+          },
+          "required": [
+            "cwd",
+            "cols",
+            "rows"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "pty_write",
+        "description": "Write raw input data to a PTY session.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "session_id": {
+              "type": "integer",
+              "description": "PTY session id"
+            },
+            "data": {
+              "type": "string",
+              "description": "Input data to write"
+            }
+          },
+          "required": [
+            "session_id",
+            "data"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "pty_resize",
+        "description": "Resize a PTY session terminal window.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "session_id": {
+              "type": "integer",
+              "description": "PTY session id"
+            },
+            "cols": {
+              "type": "integer",
+              "description": "New width in columns"
+            },
+            "rows": {
+              "type": "integer",
+              "description": "New height in rows"
+            }
+          },
+          "required": [
+            "session_id",
+            "cols",
+            "rows"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      {
+        "name": "pty_kill",
+        "description": "Terminate a PTY session and its child process tree.",
+        "read_only": false,
+        "schema": {
+          "type": "object",
+          "properties": {
+            "session_id": {
+              "type": "integer",
+              "description": "PTY session id"
+            }
+          },
+          "required": [
+            "session_id"
+          ],
+          "additionalProperties": {}
+        }
+      }
+    ]
+  },
+  {
     "id": "builtin.search",
     "version": "1.0.0",
     "trust": "system",

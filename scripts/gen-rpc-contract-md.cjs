@@ -30,8 +30,6 @@ const SECTIONS = [
   '工作区',
   '会话持久化',
   '数据流',
-  'PTY',
-  'LSP',
 ];
 
 function readLines(file) {

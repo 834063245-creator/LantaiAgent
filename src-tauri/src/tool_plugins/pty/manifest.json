@@ -1,0 +1,112 @@
+{
+  "id": "builtin.pty",
+  "version": "1.0.0",
+  "trust": "system",
+  "description": "PTY 终端会话（自 rpc.rs PTY 分区拆出，kernel-plugin-runtime P2-6）",
+  "capabilities": [
+    "pty"
+  ],
+  "tools": [
+    {
+      "name": "pty_spawn",
+      "description": "Spawn an interactive PTY shell session. Returns the numeric session id.",
+      "read_only": false,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Working directory for the shell"
+          },
+          "shell": {
+            "type": "string",
+            "description": "Optional shell command (default: cmd.exe on Windows)"
+          },
+          "cols": {
+            "type": "integer",
+            "description": "Initial terminal width in columns"
+          },
+          "rows": {
+            "type": "integer",
+            "description": "Initial terminal height in rows"
+          }
+        },
+        "required": [
+          "cwd",
+          "cols",
+          "rows"
+        ],
+        "additionalProperties": {}
+      }
+    },
+    {
+      "name": "pty_write",
+      "description": "Write raw input data to a PTY session.",
+      "read_only": false,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "integer",
+            "description": "PTY session id"
+          },
+          "data": {
+            "type": "string",
+            "description": "Input data to write"
+          }
+        },
+        "required": [
+          "session_id",
+          "data"
+        ],
+        "additionalProperties": {}
+      }
+    },
+    {
+      "name": "pty_resize",
+      "description": "Resize a PTY session terminal window.",
+      "read_only": false,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "integer",
+            "description": "PTY session id"
+          },
+          "cols": {
+            "type": "integer",
+            "description": "New width in columns"
+          },
+          "rows": {
+            "type": "integer",
+            "description": "New height in rows"
+          }
+        },
+        "required": [
+          "session_id",
+          "cols",
+          "rows"
+        ],
+        "additionalProperties": {}
+      }
+    },
+    {
+      "name": "pty_kill",
+      "description": "Terminate a PTY session and its child process tree.",
+      "read_only": false,
+      "schema": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "integer",
+            "description": "PTY session id"
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "additionalProperties": {}
+      }
+    }
+  ]
+}

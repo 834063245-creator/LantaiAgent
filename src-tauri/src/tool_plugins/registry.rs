@@ -43,6 +43,10 @@ impl PluginRegistry {
         registry.register(fs).expect("出厂插件清单装载失败");
         let git: Arc<dyn ToolPlugin> = Arc::new(super::git::GitPlugin::new());
         registry.register(git).expect("出厂插件清单装载失败");
+        let lsp: Arc<dyn ToolPlugin> = Arc::new(super::lsp::LspPlugin::new());
+        registry.register(lsp).expect("出厂插件清单装载失败");
+        let pty: Arc<dyn ToolPlugin> = Arc::new(super::pty::PtyPlugin::new());
+        registry.register(pty).expect("出厂插件清单装载失败");
         let search: Arc<dyn ToolPlugin> = Arc::new(super::search::SearchPlugin::new());
         registry.register(search).expect("出厂插件清单装载失败");
         let shell: Arc<dyn ToolPlugin> = Arc::new(super::shell::ShellPlugin::new());

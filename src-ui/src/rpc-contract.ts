@@ -227,22 +227,12 @@ export interface RpcContract {
   dataflow_query: { params: { trace_id?: string; list?: boolean }; result: string }; // JSON
   dataflow_delete: { params: { trace_id: string }; result: string }; // text
 
-  // ── PTY ──────────────────────────────────────────────────
-  pty_spawn: {
-    params: { cwd: string; shell?: string; cols: number; rows: number };
-    result: string; // text — session id
-  };
-  pty_write: { params: { session_id: number; data: string }; result: string }; // "null"
-  pty_resize: { params: { session_id: number; cols: number; rows: number }; result: string }; // "null"
-  pty_kill: { params: { session_id: number }; result: string }; // "null"
+  // （pty_spawn/write/resize/kill 已迁内核插件 builtin.pty——PTY 会话经 tool_call
+  //   信封消费，kernel-plugin-runtime P2-6；pty-output 事件行仍在本文件 EventContract。）
 
-  // ── LSP ──────────────────────────────────────────────────
-  lsp_start: { params: { language: string; root_uri: string }; result: string }; // text — session id
-  lsp_request: {
-    params: { session_id: number; method: string; params?: Record<string, unknown> };
-    result: string; // JSON
-  };
-  lsp_stop: { params: { session_id: number }; result: string }; // "null"
+  // （lsp_start/request/stop 已迁内核插件 builtin.lsp——LSP 会话经 tool_call
+  //   信封消费（kernelLspCall），lsp-message 事件行仍在本文件 EventContract，
+  //   kernel-plugin-runtime P2-6。）
 
   // （background_activity 已迁内核插件 builtin.shell——状态栏 HUD 经
   //   kernelShellCall('background_activity') 信封消费，kernel-plugin-runtime P2-4。
@@ -478,6 +468,35 @@ export function kernelGitCall(tool: string, args: Record<string, unknown>): Prom
 /** shell 域通用信封调用（text 形态结果直通；JSON 形态消费方自行 parseJson）。 */
 export function kernelShellCall(tool: string, args: Record<string, unknown>): Promise<string> {
   return typedRpc('tool_call', { plugin: 'builtin.shell', tool, args });
+}
+
+// ── builtin.pty 直呼便捷封装（kernel-plugin-runtime P2-6）──
+// PTY 会话（旧 rpc.rs PTY 分区）：pty-output 事件仍在 EventContract；
+// UI/内部消费方经本封装信封寻址 builtin.pty。
+
+/** pty 域通用信封调用。 */
+export function kernelPtyCall(tool: string, args: Record<string, unknown>): Promise<string> {
+  return typedRpc('tool_call', { plugin: 'builtin.pty', tool, args });
+}
+
+// ── builtin.lsp 直呼便捷封装（kernel-plugin-runtime P2-6）──
+// LSP 会话（ui/lsp-client.ts 消费）：lsp-message 事件仍在 EventContract。
+// lsp_request 返回 JSON 字符串——调用方 parseJson 后消费（与旧 typedRpc
+// 自动展开 JSON 不同——信封统一 text 形态）。
+
+/** lsp 域通用信封调用（text 形态结果直通；JSON 形态调用方自行 parseJson）。 */
+export function kernelLspCall(tool: string, args: Record<string, unknown>): Promise<string> {
+  return typedRpc('tool_call', { plugin: 'builtin.lsp', tool, args });
+}
+
+/** lsp_request 信封调用 + JSON 解析（旧 rpc lsp_request 是 JsonValue 形态，Rust
+ *  出口自动展开成对象——信封统一 text 形态后调用方 parseJson 恢复同语义）。 */
+export async function kernelLspRequest<T = unknown>(args: {
+  session_id: number;
+  method: string;
+  params?: Record<string, unknown>;
+}): Promise<T> {
+  return parseJson<T>(await kernelLspCall('lsp_request', args));
 }
 
 /** list_directory 的 JSON 形状版（typedJsonRpc 旧消费面等价迁移；

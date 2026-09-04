@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-09-04T10:26:35.630Z
-> 方法总数：52（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-09-04T10:44:01.569Z
+> 方法总数：45（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -113,23 +113,6 @@
 | `dataflow_save` | query | content, explore_result, dataflow_result | 字符串 |
 | `dataflow_query` | — | trace_id, list | 字符串 |
 | `dataflow_delete` | trace_id | — | 字符串 |
-
-## 数据流
-
-| 方法 | 必选参数 | 可选参数 | 返回 |
-|------|----------|----------|------|
-| `pty_spawn` | cwd, cols, rows | shell | 字符串 |
-| `pty_write` | data, session_id | — | `null`（unit） |
-| `pty_resize` | cols, rows, session_id | — | `null`（unit） |
-| `pty_kill` | session_id | — | `null`（unit） |
-
-## PTY
-
-| 方法 | 必选参数 | 可选参数 | 返回 |
-|------|----------|----------|------|
-| `lsp_start` | language, root_uri | — | 字符串 |
-| `lsp_request` | method, session_id | params | JSON 字符串 |
-| `lsp_stop` | session_id | — | `null`（unit） |
 
 ## 事件（Rust 侧 emit → 前端 listen）
 

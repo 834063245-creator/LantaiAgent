@@ -33,19 +33,12 @@ fn req_bool(params: &Value, name: &str, method: &str) -> Result<bool, String> {
         .and_then(|v| v.as_bool())
         .ok_or_else(|| format!("{method}: missing '{name}'"))
 }
-fn opt_u32(params: &Value, name: &str) -> Option<u32> {
-    params.get(name).and_then(|v| v.as_u64()).map(|n| n as u32)
-}
 /// browser 命令的 agent 路由：target="self" 走自家 webview 只读会话，
 
 fn req_strs(params: &Value, name: &str, method: &str) -> Result<Vec<String>, String> {
     params.get(name)
         .and_then(|v| v.as_array())
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-        .ok_or_else(|| format!("{method}: missing '{name}'"))
-}
-fn req_u16(params: &Value, name: &str, method: &str) -> Result<u16, String> {
-    params.get(name).and_then(|v| v.as_u64()).map(|n| n as u16)
         .ok_or_else(|| format!("{method}: missing '{name}'"))
 }
 
@@ -171,12 +164,9 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // agentInvoke 兜底链自处理）。save/delete 同域同待遇，不单独展开。
         // dataflow_save | dataflow_query | dataflow_delete → Text
 
-        // ── LSP ──
-        // lsp_request：ok_json(serde 序列化)，恒 JSON。
-        "lsp_request" => RpcResultShape::JsonValue,
-
+        
         // ── 其余（含 ok_unit "null" 家族、read_file_content、
-        // exec_command、浏览器命令、PTY、会话持久化、workspace、
+        // exec_command、会话持久化、workspace、
         // protocol_bridge、llm_proxy_port 等）──
         // 默认 Text：字节精确优先，形态不恒定或体量不可控的一律不展开。
         _ => RpcResultShape::Text,
@@ -682,57 +672,7 @@ async fn dispatch_rpc(
             commands::dataflow::dataflow_delete(trace_id, state).await
         }
 
-        // ═══════════════════════════════════════════════════════
-        // PTY（4 个命令）
-        // ═══════════════════════════════════════════════════════
-        "pty_spawn" => {
-            let cwd = req_str(&params, "cwd", "pty_spawn")?;
-            let shell = opt_str(&params, "shell");
-            let cols = req_u16(&params, "cols", "pty_spawn")?;
-            let rows = req_u16(&params, "rows", "pty_spawn")?;
-            let id = crate::pty_manager::pty_spawn(app, cwd, shell, cols, rows).await?;
-            Ok(id.to_string())
-        }
-        "pty_write" => {
-            let session_id = opt_u32(&params, "session_id")
-                .ok_or_else(|| "pty_write: missing 'session_id'".to_string())?;
-            let data = req_str(&params, "data", "pty_write")?;
-            ok_unit(crate::pty_manager::pty_write(session_id, data).await)
-        }
-        "pty_resize" => {
-            let session_id = opt_u32(&params, "session_id")
-                .ok_or_else(|| "pty_resize: missing 'session_id'".to_string())?;
-            let cols = req_u16(&params, "cols", "pty_resize")?;
-            let rows = req_u16(&params, "rows", "pty_resize")?;
-            ok_unit(crate::pty_manager::pty_resize(session_id, cols, rows).await)
-        }
-        "pty_kill" => {
-            let session_id = opt_u32(&params, "session_id")
-                .ok_or_else(|| "pty_kill: missing 'session_id'".to_string())?;
-            ok_unit(crate::pty_manager::pty_kill(session_id).await)
-        }
 
-        // ═══════════════════════════════════════════════════════
-        // LSP（3 个命令）
-        // ═══════════════════════════════════════════════════════
-        "lsp_start" => {
-            let language = req_str(&params, "language", "lsp_start")?;
-            let root_uri = req_str(&params, "root_uri", "lsp_start")?;
-            let id = crate::lsp_manager::lsp_start(app, language, root_uri).await?;
-            Ok(id.to_string())
-        }
-        "lsp_request" => {
-            let session_id = opt_u32(&params, "session_id")
-                .ok_or_else(|| "lsp_request: missing 'session_id'".to_string())?;
-            let method = req_str(&params, "method", "lsp_request")?;
-            let lsp_params = params.get("params").cloned().unwrap_or(Value::Null);
-            ok_json(crate::lsp_manager::lsp_request(session_id, method, lsp_params).await)
-        }
-        "lsp_stop" => {
-            let session_id = opt_u32(&params, "session_id")
-                .ok_or_else(|| "lsp_stop: missing 'session_id'".to_string())?;
-            ok_unit(crate::lsp_manager::lsp_stop(session_id).await)
-        }
 
         _ => Err(format!("rpc: unknown method '{}'", method)),
     }

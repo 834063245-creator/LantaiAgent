@@ -20,7 +20,7 @@
 import type { editor, IDisposable, IRange, languages } from 'monaco-editor';
 import { listen } from '../bridge';
 import { Context, Service } from '../cordis';
-import { typedRpc } from '../rpc-contract';
+import { kernelLspCall, kernelLspRequest } from '../rpc-contract';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../workspace-scope';
 
 declare module '../cordis/context' {
@@ -223,7 +223,7 @@ export class LspService extends Service {
     this.diagnosticsCache.clear();
     this.lspWarned.clear();
     for (const [, sid] of this.lspSessions) {
-      void typedRpc('lsp_stop', { session_id: sid }).catch(() => {});
+      void kernelLspCall('lsp_stop', { session_id: sid }).catch(() => {});
     }
     this.lspSessions.clear();
   }
@@ -241,9 +241,9 @@ export class LspService extends Service {
     // 过期 resolve 的 sid 属于旧项目，直接 lsp_stop 丢弃，防把 A 项目文件发进 B 的 tsserver。
     const epoch = getWorkspaceEpoch();
     try {
-      const sid = Number(await typedRpc('lsp_start', { language, root_uri: rootUri }));
+      const sid = Number(await kernelLspCall('lsp_start', { language, root_uri: rootUri }));
       if (!isCurrentEpoch(epoch)) {
-        await typedRpc('lsp_stop', { session_id: sid }).catch(() => {});
+        await kernelLspCall('lsp_stop', { session_id: sid }).catch(() => {});
         return null;
       }
       this.lspSessions.set(language, sid);
@@ -259,7 +259,7 @@ export class LspService extends Service {
 
   /** 通知 LSP 文档已打开。在 Monaco 中打开文件时调用。 */
   didOpen(sessionId: number, uri: string, language: string, text: string): void {
-    typedRpc('lsp_request', {
+    kernelLspRequest({
       session_id: sessionId,
       method: 'textDocument/didOpen',
       params: {
@@ -270,7 +270,7 @@ export class LspService extends Service {
 
   /** 通知 LSP 文档已变更。从 model.onDidChangeContent 调用。 */
   didChange(sessionId: number, uri: string, text: string): void {
-    typedRpc('lsp_request', {
+    kernelLspRequest({
       session_id: sessionId,
       method: 'textDocument/didChange',
       params: {
@@ -282,7 +282,7 @@ export class LspService extends Service {
 
   /** 通知 LSP 文档已关闭。关闭标签页时调用。 */
   didClose(sessionId: number, uri: string): void {
-    typedRpc('lsp_request', {
+    kernelLspRequest({
       session_id: sessionId,
       method: 'textDocument/didClose',
       params: { textDocument: { uri } },
@@ -300,7 +300,7 @@ export class LspService extends Service {
     this.definitionProviders = [];
     this.referenceProviders = [];
     for (const [, sid] of this.lspSessions) {
-      await typedRpc('lsp_stop', { session_id: sid }).catch(() => {});
+      await kernelLspCall('lsp_stop', { session_id: sid }).catch(() => {});
     }
     this.lspSessions.clear();
     // 切换工作区后旧项目的诊断缓存/静默提示不得带入新项目（landmine-map H1）
@@ -317,7 +317,7 @@ export class LspService extends Service {
           // 注：Rust 侧 lsp_request 经 ok_json 返回 JSON 字符串，此处按对象消费是既有行为
           // （潜在 parse 缺失属 LSP 功能专项，不在本批次行为改动范围）
           const result = lspPayload<LspCompletionItem[] | LspCompletionList>(
-            await typedRpc('lsp_request', {
+            await kernelLspRequest({
               session_id: sessionId,
               method: 'textDocument/completion',
               params: {
@@ -354,7 +354,7 @@ export class LspService extends Service {
             contents?: string | LspMarkupContent | LspMarkupContent[];
             range?: LspRange;
           }>(
-            await typedRpc('lsp_request', {
+            await kernelLspRequest({
               session_id: sessionId,
               method: 'textDocument/hover',
               params: {
@@ -401,7 +401,7 @@ export class LspService extends Service {
       provideDefinition: async (model, position) => {
         try {
           const result = lspPayload<LspLocation | LspLocation[] | null>(
-            await typedRpc('lsp_request', {
+            await kernelLspRequest({
               session_id: sessionId,
               method: 'textDocument/definition',
               params: {
@@ -446,7 +446,7 @@ export class LspService extends Service {
       provideReferences: async (model, position, _context) => {
         try {
           const result = lspPayload<LspLocation[] | null>(
-            await typedRpc('lsp_request', {
+            await kernelLspRequest({
               session_id: sessionId,
               method: 'textDocument/references',
               params: {
