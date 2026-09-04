@@ -40,6 +40,7 @@ fn capability_command_modules_are_frozen() {
         "external",
         "filesystem",
         "fs_cap",
+        "git_cap",
         "graph",
         "hologram",
         "identity",
@@ -62,6 +63,10 @@ fn capability_command_modules_are_frozen() {
          docs/plans/kernel-capability-r2-search-pilot.md §7。\n\
          fs_cap = v3 能力口（kernel-capability-c3-design.md R3-a：fs 能力族 + \n\
          resolve_*_dispatch 强制闸 + confined_fs 字节执行）——合法强制层模块，\n\
-         编排归 TS（R3-b 起），禁止向 commands/ 塞业务命令。"
+         编排归 TS（R3-b 起），禁止向 commands/ 塞业务命令。\n\
+         git_cap = v3 能力口（kernel-capability-c3-design.md R3-c：git 能力族 +\n\
+         PluginToolAdapter 两段闸（Read 家族/Git 家族 subcommand 位）+ git_exec_path\n\
+         worktree forward-map + run_git 执行体）——合法强制层模块，porcelain 解析\n\
+         归 TS（git 域收口起），禁止向 commands/ 塞业务命令。"
     );
 }

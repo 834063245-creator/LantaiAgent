@@ -104,9 +104,12 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         | "analyze_and_load" => RpcResultShape::JsonValue,
 
         // ── Git ──
-        // status（json! 构造）/log（commits 数组）恒 JSON；
-        // diff/stage/commit/push/pull/init/checkout/branch/stash/discard/blame
-        // 是 git 子进程 stdout 文本（run_git 直通），保持 Text。
+        // （旧 git_* RPC 分支已随 kernel-plugin-runtime P2-3 迁 builtin.git 插件；
+        //  插件又随 git 域收口退役（2026-09-05，c3 §8）——git_cap 能力口承接。
+        //  git_cap：返回 run_git stdout 文本（porcelain 解析归 TS 编排层
+        //  git-porcelain.ts；diff/blame 的 32K 截断在口内）。保持 Text：git
+        //  子进程 stdout 字节直通。）
+        "git_cap" => RpcResultShape::Text,
 
         // ── 文件系统 ──
         // （fs 工具域已收敛到 fs_cap 能力口直呼（2026-09-04 fs 域收口，builtin.fs
@@ -437,6 +440,38 @@ async fn dispatch_rpc(
             ok_json::<Value>(Ok(r))
         }
 
+        // ═══════════════════════════════════════════════════════
+        // git_cap（R3-c，kernel-capability-c3-design.md §8）——git 能力口直呼入口，
+        // 不经 tool_call 信封 / PluginRegistry / PluginToolAdapter（builtin.git
+        // 插件随 git 域收口退役）。action = 退役前 builtin.git 工具名（16 工具
+        // 一一位，与历史精确规则寻址名同构）；口内闸：Agent 路径构造
+        // PluginToolAdapter（只读五动作 Read 家族 / 写动作 Git 家族两段闸 +
+        // subcommand 位），用户路径只解析。执行体 = git_exec_path（worktree
+        // forward-map）+ run_git；porcelain 解析归 TS 编排层（c3 §8）。
+        // ═══════════════════════════════════════════════════════
+        "git_cap" => {
+            let action = req_str(&params, "action", "git_cap")?;
+            let repo_path = req_str(&params, "repo_path", "git_cap")?;
+            let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
+            let agent_id = opt_str(&params, "agent_id").or_else(|| opt_str(&params, "_agent_id"));
+            let files = params.get("files").and_then(|v| v.as_array()).map(|arr| {
+                arr.iter().filter_map(|x| x.as_str().map(String::from)).collect::<Vec<String>>()
+            });
+            commands::git_cap::git_cap(
+                action,
+                repo_path,
+                opt_str(&params, "file"),
+                files,
+                opt_str(&params, "message"),
+                opt_str(&params, "branch"),
+                params.get("count").and_then(|v| v.as_u64()).map(|n| n as usize),
+                is_agent,
+                agent_id,
+                &state,
+                &app,
+            )
+            .await
+        }
 
         "protocol_bridge_spawn" => {
             let id = req_str(&params, "id", "protocol_bridge_spawn")?;
