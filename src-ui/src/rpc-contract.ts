@@ -128,22 +128,24 @@ export interface RpcContract {
 
   // ── 能力口（R2 试点，kernel-capability-r2-search-pilot.md）──────────
   // search_cap：search 全文扫描能力口（fs 能力族变体，v3 §4）——不经 tool_call
-  // 信封 / PluginRegistry。参数说 manifest schema 的语言（camelCase）；
-  // is_agent 显式传（Agent 过 require_read 闸 / UI 只解析）；_agent_id 经
-  // agent_id 显式参数（resolve_read_dispatch 需要）。
+  // 信封 / PluginRegistry。参数键 = 顶层 snake_case（bridge.rpc() 会把 camelCase
+  // 转 snake——工具 execute 侧必须先把 schema 的 camelCase 参数映射为 snake_case
+  // 再直呼；R2-a 曾直接摊 camelCase 导致可选参数全被转换吞掉，键位修复见
+  // manifest-tools searchCapTool）。is_agent/agent_id 显式传（Agent 过 require_read
+  // 闸 / UI 只解析；resolve_read_dispatch 需要 agent_id 做 worktree 前向映射）。
   search_cap: {
     params: {
       directory: string;
       pattern: string;
-      fileTypes?: string;
-      maxResults?: number;
-      useRegex?: boolean;
-      contextLines?: number;
-      outputMode?: 'content' | 'files_with_matches' | 'count';
-      showLineNumbers?: boolean;
-      headLimit?: number;
+      file_types?: string;
+      max_results?: number;
+      use_regex?: boolean;
+      context_lines?: number;
+      output_mode?: 'content' | 'files_with_matches' | 'count';
+      show_line_numbers?: boolean;
+      head_limit?: number;
       offset?: number;
-      globFilter?: string;
+      glob_filter?: string;
       is_agent?: boolean;
       agent_id?: string | null;
     };

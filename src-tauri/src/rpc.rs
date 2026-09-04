@@ -367,19 +367,24 @@ async fn dispatch_rpc(
             let directory = req_str(&params, "directory", "search_cap")?;
             let pattern = req_str(&params, "pattern", "search_cap")?;
             let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
-            let agent_id = opt_str(&params, "agent_id");
+            // agent_id 兼容两种键：rpc-contract 面显式传 agent_id；executor 注入的
+            // _agent_id（bridge.rpc() snake 化后保留下划线）也认——R2-a 曾只读
+            // agent_id 导致隔离子 Agent 的搜索身份丢失（resolve_read_dispatch
+            // agent_id=None → 越过 worktree 映射）。能力口统一收 snake_case 键
+            // （bridge.rpc() 顶层转换契约），详见 rpc-contract search_cap 注释。
+            let agent_id = opt_str(&params, "agent_id").or_else(|| opt_str(&params, "_agent_id"));
             let r = commands::search_cap::search_content_cap(
                 directory,
                 pattern,
-                opt_str(&params, "fileTypes"),
-                params.get("maxResults").and_then(|v| v.as_u64()).map(|n| n as usize),
-                opt_bool(&params, "useRegex"),
-                params.get("contextLines").and_then(|v| v.as_u64()).map(|n| n as usize),
-                opt_str(&params, "outputMode"),
-                opt_bool(&params, "showLineNumbers"),
-                params.get("headLimit").and_then(|v| v.as_u64()).map(|n| n as usize),
+                opt_str(&params, "file_types"),
+                params.get("max_results").and_then(|v| v.as_u64()).map(|n| n as usize),
+                opt_bool(&params, "use_regex"),
+                params.get("context_lines").and_then(|v| v.as_u64()).map(|n| n as usize),
+                opt_str(&params, "output_mode"),
+                opt_bool(&params, "show_line_numbers"),
+                params.get("head_limit").and_then(|v| v.as_u64()).map(|n| n as usize),
                 params.get("offset").and_then(|v| v.as_u64()).map(|n| n as usize),
-                opt_str(&params, "globFilter"),
+                opt_str(&params, "glob_filter"),
                 is_agent,
                 agent_id,
                 &state,

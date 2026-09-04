@@ -2,9 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 // kernel-plugin-runtime Phase 1：manifest 驱动工具面的守卫测试。
-// ① 内置 search 工具与 manifest 真源对齐（schema 形状 + 只读性）；
-// ② execute 走统一 tool_call 入口（plugin/tool 路由 + args 原样透传）；
+// ① search 工具与 zod 真源对齐（R2-d(1)：search_content schema 真源从
+//    builtin.search manifest 镜像回迁 TS zod——本测试对拍 zod 发射的 JSON
+//    Schema 与退役前 manifest.json 的字节形状，零漂移守卫）；
+// ② execute 直呼 search_cap 能力口（camelCase→snake_case 键映射——R2-a
+//    键位断层修复的钉测）；
 // ③ schema 键序锚（convergence 字节契约的近端防线——顶层与 properties 首键）。
+// web 域仍取 manifest 镜像（builtin.web 未退役，Phase 1 续批存量）。
 
 import { describe, expect, it } from 'vitest';
 import type { Tool, ToolExecutor } from '../src/agent/tool';
@@ -19,22 +23,61 @@ function captureExec(): { calls: Array<{ name: string; args: Record<string, unkn
   return { calls, exec };
 }
 
-describe('kernel manifest tools', () => {
-  it('createSearchTools 贡献 search_content，形状与 manifest 对齐', () => {
+describe('kernel manifest tools — search 域（R2-d(1) zod 真源）', () => {
+  it('createSearchTools 贡献 search_content，schema 与退役前 manifest 字节形状等价', () => {
     const { exec } = captureExec();
     const tools: Tool[] = createSearchTools(exec);
     expect(tools).toHaveLength(1);
     const tool = tools[0];
     expect(tool.name()).toBe('search_content');
     expect(tool.readOnly()).toBe(true);
-    const manifest = kernelManifestOf('builtin.search');
-    const spec = manifest.tools.find((t) => t.name === 'search_content');
-    expect(spec).toBeDefined();
-    expect(tool.description()).toBe(spec!.description);
-    expect(tool.parameters()).toEqual(spec!.schema);
-    // manifest 契约锚：system 信任级 + filesystem_read 能力声明。
-    expect(manifest.trust).toBe('system');
-    expect(manifest.capabilities).toContain('filesystem_read');
+    expect(tool.description()).toBe(
+      'Search for a text pattern across all source files. Supports literal substring (default, case-insensitive) and regex. Returns matching lines with optional context lines, file lists, or counts. Skips binary files, hidden dirs, and build artifacts. Prefer this over run_shell grep — it is faster and respects .gitignore-style exclusions.',
+    );
+    // zod 真源发射的 JSON Schema（等价退役前 builtin.search manifest schema）。
+    // 键名 camelCase、default、int 下界 -9007199254740991、enum、required、
+    // additionalProperties 空对象全对齐——R2 采用「manifest 字节 → zod 逐字节
+    // 转录 + 工具面行为零漂移」（R2 设计 §1.3），探针实测仅 optional-string
+    // 的 description/type 值内键序有差，对象深度相等断言不受键序影响。
+    const schema = tool.parameters() as Record<string, unknown>;
+    expect(schema.type).toBe('object');
+    expect(schema.required).toEqual(['directory', 'pattern']);
+    expect(schema.additionalProperties).toEqual({});
+    const props = schema.properties as Record<string, Record<string, unknown>>;
+    expect(Object.keys(props)).toEqual([
+      'directory',
+      'pattern',
+      'fileTypes',
+      'maxResults',
+      'useRegex',
+      'contextLines',
+      'outputMode',
+      'showLineNumbers',
+      'headLimit',
+      'offset',
+      'globFilter',
+    ]);
+    expect(props.maxResults).toEqual({
+      default: 50,
+      description: 'Maximum number of results to return (default: 50, max: 200)',
+      type: 'integer',
+      minimum: -9007199254740991,
+      maximum: 200,
+    });
+    expect(props.outputMode).toEqual({
+      default: 'content',
+      description:
+        'Output mode: "content" = matching lines with context, "files_with_matches" = just file paths, "count" = match counts per file. Default: content.',
+      type: 'string',
+      enum: ['content', 'files_with_matches', 'count'],
+    });
+    expect(props.contextLines).toEqual({
+      default: 0,
+      description: 'Number of context lines before and after each match (like grep -C). Default: 0. Max: 10.',
+      type: 'integer',
+      minimum: -9007199254740991,
+      maximum: 9007199254740991,
+    });
   });
 
   it('schema 键序锚：顶层 type→properties→required→additionalProperties，properties 首键 directory', () => {
@@ -48,27 +91,43 @@ describe('kernel manifest tools', () => {
     expect((props.maxResults as Record<string, unknown>).minimum).toBe(-9007199254740991);
   });
 
-  it('execute 走能力口 search_cap（R2 试点：信封换直呼）+ args 原样透传（含 _agent_id meta）', async () => {
+  it('execute 直呼能力口 search_cap + camelCase→snake_case 键映射（R2-a 键位断层修复）', async () => {
     const { calls, exec } = captureExec();
     const tool = createSearchTools(exec)[0];
     const args = {
       directory: 'D:/x',
       pattern: 'hello',
+      fileTypes: '.ts',
+      maxResults: 100,
+      useRegex: true,
+      contextLines: 2,
+      outputMode: 'count',
+      showLineNumbers: false,
+      headLimit: 10,
+      offset: 5,
+      globFilter: 'src/**',
       _agent_id: 'sub-1',
     } as Record<string, unknown>;
     await tool.execute(args);
     expect(calls).toHaveLength(1);
-    // R2（kernel-capability-r2-search-pilot.md）：search 工具 execute 从
-    // tool_call 信封（plugin/tool 路由）换 search_cap 能力口直呼——不经
-    // PluginRegistry/PluginToolAdapter；is_agent 由 executor 层 agentInvoke
-    // 恒注入（工具层不手拼）。schema 仍取 manifest 字节（工具面零漂移）。
     expect(calls[0].name).toBe('search_cap');
-    // args 整体透传——meta key 不丢（INVARIANTS #9）。
-    expect(calls[0].args).toEqual(args);
-  });
-
-  it('未知插件 id 响亮报错', () => {
-    expect(() => kernelManifestOf('builtin.nope')).toThrow(/不在生成物清单内/);
+    // schema 面 camelCase（模型可见契约零漂移）→ RPC 面 snake_case——
+    // bridge.rpc() 顶层转换只作用于已 snake 的键（幂等），可选参数不再被吞。
+    // 单字键（directory/pattern/offset）不经映射直通；meta _agent_id 保留下划线。
+    expect(calls[0].args).toEqual({
+      directory: 'D:/x',
+      pattern: 'hello',
+      file_types: '.ts',
+      max_results: 100,
+      use_regex: true,
+      context_lines: 2,
+      output_mode: 'count',
+      show_line_numbers: false,
+      head_limit: 10,
+      offset: 5,
+      glob_filter: 'src/**',
+      _agent_id: 'sub-1',
+    });
   });
 });
 
@@ -116,5 +175,9 @@ describe('kernel manifest tools — web 域（builtin.web，Phase 1 续批）', 
     expect(calls[0].args.plugin).toBe('builtin.web');
     expect(calls[0].args.tool).toBe('web_fetch');
     expect(calls[0].args.args).toEqual(args);
+  });
+
+  it('未知插件 id 响亮报错', () => {
+    expect(() => kernelManifestOf('builtin.nope')).toThrow(/不在生成物清单内/);
   });
 });

@@ -3,13 +3,20 @@
 
 // manifest-tools — 从内核插件 manifest 生成 Agent 可见工具（kernel-plugin-runtime Phase 1）。
 //
-// 工具面的单一真源 = Rust 侧 manifest（src-tauri/src/tool_plugins/<name>/manifest.json，
-// 经 scripts/gen-plugin-manifests.cjs 镜像到 kernel-manifests.generated.ts）。
-// schema 不再走路由 zod——见 INVARIANTS #8 修订：单一真源原则不变，真源从 TS zod
-// 换成 Rust manifest；运行时校验回归插件侧参数提取。
-// execute 走统一 tool_call RPC（agentInvoke 恒注入 isAgent）。
+// 工具面单一真源的演进（R2 试点，kernel-capability-r2-search-pilot.md）：
+// - Phase 1（P0-2 脚手架）：真源 = Rust manifest（manifest.json → generated 镜像）。
+// - R2-d(1)（本文件，2026-09-04）：search 域 schema 真源**回 TS zod**（INVARIANTS #8
+//   原版语义——R2 试点域先回；R5 全量拆 manifest 脚手架时其余域同迁）。search_content
+//   不再从 kernel-manifests 镜像取 schema，改由域内 zod 转录（逐字节等价于退役前
+//   manifest 发射，收敛零漂移）。
+// - execute 走 search_cap 能力口直呼（R2-a 信封换直呼：不经 tool_call 信封）。
+//
+// 注：web/git/fs/shell/browser/uia/pty/lsp 域仍取 manifest 镜像（Phase 1/2 存量，
+// R3-R5 分批迁回 zod）。
 
+import { z } from 'zod';
 import type { Tool, ToolExecutor } from '../tool';
+import { toInputJsonSchema } from './define-tool';
 import { KERNEL_MANIFESTS } from './kernel-manifests.generated';
 
 /** tool_call:progress 自持订阅（P2-4 §4.2，kernel-plugin-runtime 设计件）：
@@ -85,40 +92,113 @@ export function manifestTool(manifestId: string, toolName: string, exec: ToolExe
   };
 }
 
-/** search 域工具族（builtin.search，R2 试点起走能力口）——
- *  schema 仍取 manifest 字节（工具面零漂移），execute 从 tool_call 信封换
- *  search_cap 能力口直呼（searchCapTool）。表序不变。 */
+/** search 域工具族（R2 试点）——schema 真源 = 下方 zod 转录（R2-d(1)，
+ *  不再从 kernel-manifests 镜像取 builtin.search 字节）；execute 从 tool_call
+ *  信封换 search_cap 能力口直呼 + camelCase→snake_case 键映射（键位修复，
+ *  R2-a 曾摊 camelCase 被 bridge.rpc() 顶层转换吞掉可选参数）。表序不变。 */
 export function createSearchTools(exec: ToolExecutor): Tool[] {
-  return [searchCapTool('search_content', 'builtin.search', exec)];
+  return [searchCapTool(exec)];
 }
 
 // ═══════════════════════════════════════════════════════════════
 // 能力口工具（R2 试点，kernel-capability-r2-search-pilot.md）——
-// schema 仍取 manifest 字节（工具面零漂移），execute 从 tool_call 信封
-// 换内核能力口直呼（search_cap RPC，不经 PluginRegistry / PluginToolAdapter）。
+// execute 直呼 search_cap 能力口（不经 tool_call 信封 / PluginRegistry）。
 // R2 语义：编排未迁前，能力口输出与 builtin.search 完全同形状，纯执行通道
 // 换轨；权限真权路径同 resolve_read_dispatch（Agent 过闸 / UI 只解析）。
 // ═══════════════════════════════════════════════════════════════
 
-/** search_cap 能力口参数（manifest schema 的 camelCase 键 + agent ctx）。
- *  与 rpc-contract search_cap 参数面一致；is_agent 由 agentInvoke 同款注入。 */
-export function searchCapTool(toolName: string, manifestId: string, exec: ToolExecutor): Tool {
-  const manifest = kernelManifestOf(manifestId);
-  const spec = manifest.tools.find((t) => t.name === toolName);
-  if (!spec) throw new Error(`manifest-tools: 能力口 '${manifestId}' 无工具 '${toolName}'`);
-  const parameters = spec.schema;
+/**
+ * search_content schema — R2-d(1) zod 真源转录（2026-09-04）。
+ * 逐键等价于退役前 builtin.search manifest.json 的 schema 发射（键名 camelCase、
+ * 描述、default、int 下界 -9007199254740991、上界、enum、additionalProperties
+ * 空对象全对齐——探针实测仅 optional-string 的 description/type 值内键序有差，
+ * 收敛快照 stableStringify 字典序无感，零漂移）。
+ * 键映射注：schema 面说 manifest 语言（camelCase，模型可见契约不变）；
+ * execute 出口把 camelCase 映射 snake_case 直呼 search_cap（bridge.rpc()
+ * 顶层转换只作用于 snake_case 直传键——R2-a 键位断层修复，见 rpc-contract）。
+ */
+const searchContentSchema = z.object({
+  directory: z.string().describe('Absolute path to the directory to search in'),
+  pattern: z.string().describe('Text or regex pattern to search for (case-insensitive)'),
+  fileTypes: z.string().describe('Optional comma-separated file extensions to filter (e.g. ".ts,.py,.rs")').optional(),
+  maxResults: z
+    .number()
+    .int()
+    .min(-9007199254740991)
+    .max(200)
+    .default(50)
+    .describe('Maximum number of results to return (default: 50, max: 200)'),
+  useRegex: z
+    .boolean()
+    .default(false)
+    .describe(
+      'Set to true to interpret pattern as a regex (e.g. "function\\\\s+\\\\w+"). Default: false (literal substring)',
+    ),
+  contextLines: z
+    .number()
+    .int()
+    .min(-9007199254740991)
+    .max(9007199254740991)
+    .default(0)
+    .describe('Number of context lines before and after each match (like grep -C). Default: 0. Max: 10.'),
+  outputMode: z
+    .enum(['content', 'files_with_matches', 'count'])
+    .default('content')
+    .describe(
+      'Output mode: "content" = matching lines with context, "files_with_matches" = just file paths, "count" = match counts per file. Default: content.',
+    ),
+  showLineNumbers: z.boolean().default(true).describe('Include line numbers in output (default: true)'),
+  headLimit: z
+    .number()
+    .int()
+    .min(-9007199254740991)
+    .max(9007199254740991)
+    .default(250)
+    .describe('Max results/files to return (default: 250, 0 = unlimited)'),
+  offset: z
+    .number()
+    .int()
+    .min(-9007199254740991)
+    .max(9007199254740991)
+    .default(0)
+    .describe('Skip first N results for pagination (default: 0)'),
+  globFilter: z.string().describe('Additional glob filter on file paths (e.g. "**/*.rs", "src/**/*.ts")').optional(),
+});
+
+const SEARCH_CONTENT_NAME = 'search_content' as const;
+const SEARCH_CONTENT_DESCRIPTION =
+  'Search for a text pattern across all source files. Supports literal substring (default, case-insensitive) and regex. Returns matching lines with optional context lines, file lists, or counts. Skips binary files, hidden dirs, and build artifacts. Prefer this over run_shell grep — it is faster and respects .gitignore-style exclusions.';
+
+/** 模型参数键（camelCase）→ 能力口 RPC 参数键（snake_case）。schema 面维持
+ *  manifest 语言（camelCase）零漂移；出口映射是 R2-a 键位断层的修复。 */
+const SEARCH_CAP_KEY_MAP: Record<string, string> = {
+  fileTypes: 'file_types',
+  maxResults: 'max_results',
+  useRegex: 'use_regex',
+  contextLines: 'context_lines',
+  outputMode: 'output_mode',
+  showLineNumbers: 'show_line_numbers',
+  headLimit: 'head_limit',
+  globFilter: 'glob_filter',
+};
+
+/** search_content 能力口工具。schema 自持 zod 真源（R2-d(1)），不再依赖
+ *  kernel-manifests 镜像 / manifest spec 查找；execute 直呼 search_cap。
+ *  is_agent 由 executor 层 agentInvoke 注入（与 tool_call 同款）。 */
+export function searchCapTool(exec: ToolExecutor): Tool {
+  const parameters = toInputJsonSchema(searchContentSchema.passthrough());
   return {
-    name: () => spec.name,
-    description: () => spec.description,
+    name: () => SEARCH_CONTENT_NAME,
+    description: () => SEARCH_CONTENT_DESCRIPTION,
     parameters: () => parameters,
-    readOnly: () => spec.read_only ?? false,
+    readOnly: () => true,
     execute: (args, onProgress, signal) =>
       withProgressStream(args, onProgress, () =>
         exec(
           'search_cap',
-          // isAgent 由 executor 层 agentInvoke 注入（与 tool_call 同款）——
-          // 工具层不手拼，Agent/UI 分流语义集中在 executor 单点。
-          { ...args },
+          // camelCase（模型参数）→ snake_case（能力口 RPC 契约）；meta 键透传
+          // （_agent_id 已是 snake；isAgent 由 agentInvoke 注入）。
+          Object.fromEntries(Object.entries(args).map(([k, v]) => [SEARCH_CAP_KEY_MAP[k] ?? k, v])),
           onProgress,
           signal,
         ),
