@@ -1,21 +1,26 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
-// SPDX-License-Identifier: MIT.
+// SPDX-License-Identifier: MIT
 
 // 真机复现（2026-08-25 痞老板实测）：重启 → 首页点开旧卷 → 书脊出现
 // 「旧卷 + 案卷 1」两条。本测试钉住该序列：冷启动装配（setAgent）→
 // 续开旧卷（loadSessionFromDisk）→ 摊开集必须恰好一卷（旧卷本身）。
 // 归零重建契约：setAgent 不铺卷；任何「案卷 1」伴随出现即红。
 
+// fs 域收口（2026-09-04）：会话卷 I/O 经 kernelListDirectory/kernelReadFileRaw/
+// kernelWriteFile（rpc-contract 具名 helper，内部直呼 fs_cap）——mock 站到
+// helper 层（不再拦 bridge + legacyDispatchShim 翻信封）。
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mockInvoke = vi.hoisted(() => vi.fn());
-
-vi.mock('../src/bridge', () => ({
-  invoke: (...args: unknown[]) => mockInvoke(...args),
-  rpc: (method: string, params?: Record<string, unknown>) => mockInvoke('rpc', { method, params }),
-  listen: vi.fn(async () => () => {}),
-  isMockMode: () => false,
+const H = vi.hoisted(() => ({
+  kernelFs: null as null | ReturnType<typeof import('./helpers/kernel-fs').createKernelFsMock>,
 }));
+
+vi.mock('../src/rpc-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/rpc-contract')>();
+  H.kernelFs = (await import('./helpers/kernel-fs')).createKernelFsMock();
+  return { ...actual, ...H.kernelFs.overrides };
+});
 
 vi.mock('highlight.js', () => ({ default: { highlightElement: vi.fn() } }));
 
@@ -24,16 +29,16 @@ import { useShellStore } from '../src/app/shell-store';
 import * as Session from '../src/ui/chat-session';
 import { msgStoreFor } from '../src/ui/chat-store';
 
-import { legacyDispatchShim } from './helpers/kernel-envelope';
-
 describe('实机复现：冷启动装配后点开旧卷不得凭空多卷', () => {
   let panel: ChatCore;
 
   beforeEach(() => {
     localStorage.clear();
-    mockInvoke.mockReset();
-    mockInvoke.mockResolvedValue(null);
     useShellStore.setState({ projectPath: '' });
+    H.kernelFs!.fs.files.clear();
+    H.kernelFs!.fs.dirs.clear();
+    H.kernelFs!.fs.writes.length = 0;
+    H.kernelFs!.fs.fail = {};
   });
 
   afterEach(() => {
@@ -43,29 +48,16 @@ describe('实机复现：冷启动装配后点开旧卷不得凭空多卷', () =
   it('setAgent（冷启动装配）→ loadSessionFromDisk（点旧卷）→ 摊开集恰一卷', async () => {
     // 磁盘：本工作区会话根一卷旧卷（id 7）——workspace-session-ownership-rework
     // 归属 = 存储位置（{ws}/.lantai/sessions/7.json）
-    // P2-2 信封化：fs 命令经 tool_call 寻址 builtin.fs——shim 翻译回旧形状
-    mockInvoke.mockImplementation(
-      legacyDispatchShim((_cmd: string, payload: any) => {
-        const { method, params } = payload ?? {};
-        if (method === 'read_file_content') {
-          const fp = params.file_path as string;
-          if (fp === 'D:/real-ws/.lantai/sessions/7.json') {
-            return Promise.resolve(
-              JSON.stringify({
-                id: 7,
-                label: '旧卷',
-                savedAt: '2026-08-25T09:00:00.000Z',
-                messages: [
-                  { role: 'system', content: 'sys' },
-                  { role: 'user', content: '旧卷内容' },
-                ],
-              }),
-            );
-          }
-          return Promise.reject(new Error('文件不存在'));
-        }
-        if (method === 'list_directory') return Promise.resolve(JSON.stringify([]));
-        return Promise.resolve(null);
+    H.kernelFs!.fs.setFile(
+      'D:/real-ws/.lantai/sessions/7.json',
+      JSON.stringify({
+        id: 7,
+        label: '旧卷',
+        savedAt: '2026-08-25T09:00:00.000Z',
+        messages: [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content: '旧卷内容' },
+        ],
       }),
     );
 
@@ -99,15 +91,6 @@ describe('实机复现：冷启动装配后点开旧卷不得凭空多卷', () =
   });
 
   it('setAgent（冷启动装配）→ createNewSession（首页新建）→ 摊开集恰一卷', async () => {
-    mockInvoke.mockImplementation(
-      legacyDispatchShim((_cmd: string, payload: any) => {
-        const { method } = payload;
-        if (method === 'list_directory') return Promise.resolve(JSON.stringify([]));
-        if (method === 'write_file_content') return Promise.resolve('ok');
-        return Promise.resolve(null);
-      }),
-    );
-
     panel = new ChatCore();
     panel.setProjectPath('D:/real-ws');
     panel.setAgent({

@@ -3,51 +3,41 @@
 
 // spill — 大输出溢写：小内容原样、大内容落盘 + locator、失败退回截断不静默。
 
+// fs 域收口（2026-09-04）：spillToFile 经 kernelCreateDirectory/kernelWriteFile
+// （rpc-contract 具名 helper，内部直呼 fs_cap）——mock 站到 helper 层（不再
+// 拦 bridge + legacyRpcShim 翻信封）。
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const rpcMock = vi.fn();
-vi.mock('../src/bridge', () => ({
-  rpc: (...args: any[]) => rpcMock(...args),
-  listen: vi.fn(() => () => {}),
-  isMockMode: () => false,
+const H = vi.hoisted(() => ({
+  kernelFs: null as null | ReturnType<typeof import('./helpers/kernel-fs').createKernelFsMock>,
 }));
+
+vi.mock('../src/rpc-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/rpc-contract')>();
+  H.kernelFs = (await import('./helpers/kernel-fs')).createKernelFsMock();
+  return { ...actual, ...H.kernelFs.overrides };
+});
 
 import { parseIsolationDiff, spillToFile } from '../src/agent/spill';
 
-import { legacyRpcShim } from './helpers/kernel-envelope';
-
-function mockFsWrite(): Map<string, string> {
-  const files = new Map<string, string>();
-  rpcMock.mockReset();
-  // P2-2 信封化：fs 命令经 tool_call 寻址 builtin.fs——shim 翻译回旧 (method, params)
-  rpcMock.mockImplementation(
-    legacyRpcShim(async (method: string, params: Record<string, unknown>) => {
-      if (method === 'create_directory') return null;
-      if (method === 'write_file_content') {
-        files.set(params.file_path as string, params.content as string);
-        return 'ok';
-      }
-      throw new Error(`unexpected rpc: ${method}`);
-    }),
-  );
-  return files;
-}
-
 beforeEach(() => {
-  rpcMock.mockReset();
+  const k = H.kernelFs!;
+  k.fs.files.clear();
+  k.fs.dirs.clear();
+  k.fs.writes.length = 0;
+  k.fs.fail = {};
 });
 
 describe('spillToFile', () => {
   it('passes small text through without writing', async () => {
-    mockFsWrite();
     const out = await spillToFile({ projectPath: '/proj', name: 'x', text: 'short', maxInline: 100 });
     expect(out.spilled).toBe(false);
     expect(out.display).toBe('short');
-    expect(rpcMock).not.toHaveBeenCalled();
+    expect(H.kernelFs!.fs.writes.length).toBe(0);
   });
 
   it('writes large text to .lantai/spill and returns a locator + preview', async () => {
-    const files = mockFsWrite();
     const big = 'x'.repeat(5000);
     const out = await spillToFile({ projectPath: '/proj', name: 'd', text: big, maxInline: 100, extension: 'diff' });
     expect(out.spilled).toBe(true);
@@ -56,14 +46,12 @@ describe('spillToFile', () => {
     expect(out.display).toContain('已溢写 5000 字符');
     expect(out.display).toContain('read_file 读取全量');
     // 全量内容必须无损落盘
-    const written = files.get(out.path!);
+    const written = H.kernelFs!.fs.files.get(out.path!);
     expect(written).toBe(big);
   });
 
   it('falls back to truncation with a failure marker when the write fails', async () => {
-    rpcMock.mockImplementation(async () => {
-      throw new Error('disk full');
-    });
+    H.kernelFs!.fs.fail.write = 'disk full';
     const out = await spillToFile({ projectPath: '/proj', name: 'd', text: 'x'.repeat(5000), maxInline: 100 });
     expect(out.spilled).toBe(false);
     expect(out.display).toContain('spill 溢写失败');

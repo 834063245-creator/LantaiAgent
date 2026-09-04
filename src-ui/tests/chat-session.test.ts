@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from '../src/app/shell-store';
 
-import { legacyDispatchShim } from './helpers/kernel-envelope';
-
 // ── Mock bridge — all Tauri backend calls route through here ──
 const mockInvoke = vi.fn();
 // ponytail: rpc() wrapper converts camelCase→snake_case, then calls invoke('rpc', ...)
@@ -95,6 +93,40 @@ import { scanMaxSessionId, stripLineNumbers } from '../src/ui/chat-session';
 import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
 
 // ── Helpers ──
+
+// fs 域收口（kernel-capability-c3-design.md）：UI 持久化 helper（kernelReadFile/
+// kernelWriteFile/kernelListDirectory…）已从 tool_call 信封（builtin.fs）换
+// fs_cap 能力口直呼。本文件 mock 面在 bridge.rpc 层（真 helper → fs_cap →
+// mockInvoke）——下方 fsCapAware 把 fs_cap 调用翻译回各用例旧 (method, params)
+// 形状交给 impl（旧 if 链零改动），使 mock 分派面理解当前真实 RPC 通道。
+// 等价返回形状：fs_cap read 真实现返 {path,content}（kernelReadFileRaw 对非
+// {content} 回退原文）；本层只翻译参数不包装返回——impl 的原文返回被
+// kernel* helper 的解析兜底接受（非 JSON/无 content 字段 → 原文直通）。
+function fsCapAware(
+  impl: (cmd: string, payload: { method: string; params?: Record<string, unknown> }) => unknown,
+): (cmd: string, payload: { method: string; params?: Record<string, unknown> }) => unknown {
+  return (cmd: string, payload: { method: string; params?: Record<string, unknown> }) => {
+    const { method, params } = payload;
+    if (method !== 'fs_cap') return impl(cmd, payload);
+    const action = (params?.action as string | undefined) ?? '';
+    const legacy: Record<string, string> = {
+      read: 'read_file_content',
+      write: 'write_file_content',
+      list: 'list_directory',
+      create_dir: 'create_directory',
+      delete: 'delete_file_or_dir',
+    };
+    const name = legacy[action];
+    if (!name) throw new Error(`chat-session mock: 未处理的 fs_cap action '${action}'`);
+    // fs_cap 顶层 snake 键 = 旧 RPC 参数键（file_path/content/path/filter_ignored
+    // 等）——直传即可（旧 impl 按 file_path/path 读）
+    const { action: _action, is_agent: _isAgent, agent_id: _agentId, ...rest } = params ?? {};
+    void _action;
+    void _isAgent;
+    void _agentId;
+    return impl(cmd, { method: name, params: rest });
+  };
+}
 
 /** Create a minimal headless ChatCore (no DOM needed). */
 function createChatPanel(): ChatCore {
@@ -560,7 +592,7 @@ describe('ChatPanel session persistence', () => {
       // 归零重建：从首页打开历史卷 = 工作区会话根单读（归属即存储位置）
       const vol1 = mockSessionFile(1, mockSessionMessages, '测试会话', undefined, 'D:/test');
       mockInvoke.mockImplementation(
-        legacyDispatchShim((_cmd: string, payload: { method: string; params: Record<string, unknown> }) => {
+        fsCapAware((_cmd: string, payload: { method: string; params: Record<string, unknown> }) => {
           const { method, params } = payload;
           if (method === 'read_file_content') {
             const fp = params.file_path as string;
@@ -655,7 +687,7 @@ describe('ChatPanel session persistence', () => {
       const writes: Array<{ file_path: string; content: string }> = [];
       mockInvoke.mockReset();
       mockInvoke.mockImplementation(
-        legacyDispatchShim((_cmd: string, payload: any) => {
+        fsCapAware((_cmd: string, payload: any) => {
           const { method, params } = payload;
           if (method === 'write_file_content') {
             writes.push({ file_path: params.file_path as string, content: params.content as string });
@@ -727,7 +759,7 @@ describe('ChatPanel session persistence', () => {
       const writes: Array<{ file_path: string; content: string }> = [];
       mockInvoke.mockReset();
       mockInvoke.mockImplementation(
-        legacyDispatchShim((_cmd: string, payload: any) => {
+        fsCapAware((_cmd: string, payload: any) => {
           const { method, params } = payload;
           if (method === 'write_file_content') {
             writes.push({ file_path: params.file_path as string, content: params.content as string });
@@ -751,7 +783,7 @@ describe('ChatPanel session persistence', () => {
       const writes: Array<{ file_path: string; content: string }> = [];
       mockInvoke.mockReset();
       mockInvoke.mockImplementation(
-        legacyDispatchShim((_cmd: string, payload: any) => {
+        fsCapAware((_cmd: string, payload: any) => {
           const { method, params } = payload;
           if (method === 'write_file_content') {
             writes.push({ file_path: params.file_path as string, content: params.content as string });
@@ -810,7 +842,7 @@ describe('ChatPanel session persistence', () => {
       );
       mockInvoke.mockReset();
       mockInvoke.mockImplementation(
-        legacyDispatchShim((_cmd: string, payload: any) => {
+        fsCapAware((_cmd: string, payload: any) => {
           const { method, params } = payload;
           if (method === 'write_file_content') {
             writes.push({ file_path: params.file_path as string, content: params.content as string });
@@ -909,7 +941,7 @@ describe('ChatPanel session persistence', () => {
       panel.setAgentFactory(async () => agent2 as any);
       mockInvoke.mockReset();
       mockInvoke.mockImplementation(
-        legacyDispatchShim((_cmd: string, payload: any) => {
+        fsCapAware((_cmd: string, payload: any) => {
           const { method, params } = payload;
           if (method === 'read_file_content') {
             // 模拟磁盘上的会话文件（带旧 paper 字段——归零世界卷恒带归属）
@@ -970,7 +1002,7 @@ describe('ChatPanel session persistence', () => {
       panel.setAgentFactory(async () => agent2 as any);
       mockInvoke.mockReset();
       mockInvoke.mockImplementation(
-        legacyDispatchShim((_cmd: string, payload: any) => {
+        fsCapAware((_cmd: string, payload: any) => {
           const { method, params } = payload;
           if (method === 'read_file_content') {
             const fp = params.file_path as string;
@@ -1032,7 +1064,7 @@ describe('ChatPanel session persistence', () => {
       panel.setAgentFactory(async () => agent2 as any);
       mockInvoke.mockReset();
       mockInvoke.mockImplementation(
-        legacyDispatchShim((_cmd: string, payload: any) => {
+        fsCapAware((_cmd: string, payload: any) => {
           const { method, params } = payload;
           if (method === 'list_directory') {
             // 磁盘只有卷 5 的会话文件——卷 6 是幽灵（画布引用了它但文件不存在）
@@ -1091,7 +1123,7 @@ describe('ChatPanel session persistence', () => {
       );
       mockInvoke.mockReset();
       mockInvoke.mockImplementation(
-        legacyDispatchShim((_cmd: string, payload: any) => {
+        fsCapAware((_cmd: string, payload: any) => {
           const { method, params } = payload;
           if (method === 'read_file_content') {
             return Promise.resolve(
@@ -1313,7 +1345,7 @@ describe('ChatPanel session persistence', () => {
           });
       mockInvoke.mockReset();
       mockInvoke.mockImplementation(
-        legacyDispatchShim((_cmd: string, payload: any) => {
+        fsCapAware((_cmd: string, payload: any) => {
           const { method, params } = payload;
           if (method === 'read_file_content') {
             const fp = params.file_path as string;

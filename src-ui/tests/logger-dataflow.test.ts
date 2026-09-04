@@ -12,19 +12,29 @@
 //   - flush --triggers--> appendToFile
 //
 // 此测试通过 mock Tauri invoke 来验证整条链路的实际运行时行为。
+//
+// fs 域收口（2026-09-04）：appendToFile 经 kernelLogAppend（rpc-contract 具名
+// helper，内部直呼 fs_cap）——mock 站到 helper 层（不再拦 bridge + shim 翻
+// 信封）。append 内容记录在共享内存 fs 的文件表里（log_append = 追加语义）。
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { toolCallArgsOf } from './helpers/kernel-envelope';
+// 顶层触发 rpc-contract 的 vi.mock 工厂求值（vi.mock 惰性执行于首个 import
+// 目标模块时——本文件 logger 全动态 import，不在文件加载期触发则 beforeEach
+// 时 H.kernelFs 仍 null）。
+import { kernelLogAppend } from '../src/rpc-contract';
 
-// 顶层 mockRpc 供 vi.mock 工厂闭包引用；vi.mock 是 hoisted 的，可拦截动态 import()
-const mockRpc = vi.fn();
+void kernelLogAppend;
 
-vi.mock('../src/bridge', () => ({
-  rpc: (...args: any[]) => mockRpc(...args),
-  listen: vi.fn(),
-  isMockMode: () => false,
+const H = vi.hoisted(() => ({
+  kernelFs: null as null | ReturnType<typeof import('./helpers/kernel-fs').createKernelFsMock>,
 }));
+
+vi.mock('../src/rpc-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/rpc-contract')>();
+  H.kernelFs = (await import('./helpers/kernel-fs')).createKernelFsMock();
+  return { ...actual, ...H.kernelFs.overrides };
+});
 
 // flush 是 fire-and-forget：appendToFile 内动态 import rpc-contract（vi.resetModules
 // 后冷装载，实测首调可达 ~100ms）——固定 10ms 等待在该窗口内断言会假红（存量
@@ -42,12 +52,15 @@ describe('Logger 数据流链路验证', () => {
   let initLogger: any;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
-    mockRpc.mockResolvedValue('ok');
+    const k = H.kernelFs!;
+    k.fs.files.clear();
+    k.fs.dirs.clear();
+    k.fs.writes.length = 0;
+    k.fs.fail = {};
     // 重置模块缓存以确保每次测试从干净的 logBuffer 开始
     vi.resetModules();
 
-    // 动态导入 — vi.mock 已拦截 bridge，logger 内部 await import('../bridge') 会拿到 mock
+    // 动态导入 — vi.mock 已拦截 rpc-contract，logger 内部动态 import 拿到 mock
     const mod = await import('../src/agent/logger.js');
     log = mod.log;
     initLogger = mod.initLogger;
@@ -72,8 +85,8 @@ describe('Logger 数据流链路验证', () => {
     // 验证：flush 应该被 write 内部的 >= MAX_BUFFER 条件触发
     // 这里 4 条 < 50，所以不会自动 flush —— 证明 buffer 在积累
     // 4 条日志 < MAX_BUFFER(50)，不会触发自动 flush
-    // 因此 rpc 不应该被调用
-    expect(mockRpc).not.toHaveBeenCalled();
+    // 因此 appendToFile 不应该被调用
+    expect(H.kernelFs!.fs.files.size).toBe(0);
   });
 
   it('write → 达到阈值 → 自动触发 flush', async () => {
@@ -84,16 +97,14 @@ describe('Logger 数据流链路验证', () => {
       log.info('mod', `msg ${i}`);
     }
     // flush() 是 fire-and-forget 异步，等调用真正落地（冷 import 可达 ~100ms）
-    await waitFor(() => mockRpc.mock.calls.length >= 1);
+    await waitFor(() => H.kernelFs!.fs.files.size >= 1);
 
     // 第 50 条写入时，logBuffer.length >= MAX_BUFFER → write 内部调用 flush
-    // flush → appendToFile → P2-2 信封化：tool_call 寻址 builtin.fs.log_append
-    const logCalls = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'log_append');
-    expect(logCalls.length).toBeGreaterThanOrEqual(1);
-    expect(logCalls[0]).toMatchObject({
-      path: expect.stringContaining('ui.log'),
-      content: expect.any(String),
-    });
+    // flush → appendToFile → kernelLogAppend(path, content)
+    const logFiles = [...H.kernelFs!.fs.files.entries()].filter(([p]) => p.includes('ui.log'));
+    expect(logFiles.length).toBeGreaterThanOrEqual(1);
+    expect(logFiles[0][0]).toContain('ui.log');
+    expect(logFiles[0][1].length).toBeGreaterThan(0);
   });
 
   it('手动触发 flush → 清空 logBuffer → appendToFile 接收完整批次', async () => {
@@ -110,12 +121,14 @@ describe('Logger 数据流链路验证', () => {
       log.debug('mod', `batch msg ${i}`);
     }
     // flush() 是 fire-and-forget 异步，等调用真正落地（冷 import 可达 ~100ms）
-    await waitFor(() => mockRpc.mock.calls.length >= 1);
+    await waitFor(() => H.kernelFs!.fs.files.size >= 1);
 
-    expect(mockRpc).toHaveBeenCalledTimes(1);
+    // 文件表只应有 1 个 ui.log（单次追加——kernelLogAppend 追加语义）
+    const logFiles = [...H.kernelFs!.fs.files.entries()].filter(([p]) => p.includes('ui.log'));
+    expect(logFiles.length).toBe(1);
 
-    // P2-2 信封化：log_append 在 tool_call 信封 args 内
-    const content: string = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'log_append')[0].content as string;
+    // append 内容 = 完整批次（50 条，log_append 的 content 是单批全量）
+    const content: string = logFiles[0][1];
     const lines = content.trim().split('\n');
     // 2 条手动 + 48 条循环 = 50 条，flush 将其全部 splice 出来
     expect(lines.length).toBe(50);
@@ -145,10 +158,11 @@ describe('Logger 数据流链路验证', () => {
       log.info('fill', `padding ${i}`);
     }
     // flush() 是 fire-and-forget 异步，等调用真正落地（冷 import 可达 ~100ms）
-    await waitFor(() => mockRpc.mock.calls.length >= 1);
+    await waitFor(() => H.kernelFs!.fs.files.size >= 1);
 
-    // P2-2 信封化：log_append 在 tool_call 信封 args 内
-    const content: string = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'log_append')[0].content as string;
+    // 读回 ui.log 内容，解析全部条目
+    const logFiles = [...H.kernelFs!.fs.files.entries()].filter(([p]) => p.includes('ui.log'));
+    const content: string = logFiles[0][1];
     const allEntries = content
       .trim()
       .split('\n')
@@ -177,8 +191,11 @@ describe('Logger 工作区切换', () => {
   let log: any;
 
   beforeEach(async () => {
-    vi.clearAllMocks();
-    mockRpc.mockResolvedValue('ok');
+    const k = H.kernelFs!;
+    k.fs.files.clear();
+    k.fs.dirs.clear();
+    k.fs.writes.length = 0;
+    k.fs.fail = {};
     vi.resetModules();
 
     const mod = await import('../src/agent/logger.js');
@@ -195,17 +212,13 @@ describe('Logger 工作区切换', () => {
     await initLogger('/project-a');
     log.info('mod', 'msg from A');
 
-    const callCountAfterA = mockRpc.mock.calls.length;
-
     // 工作区 B：initLogger 应该先 flush 旧缓冲
     await initLogger('/project-b');
 
     // 旧缓冲（包含 "msg from A"）应该在 initLogger 内部被 flush 到 project-a 的日志文件
-    expect(mockRpc).toHaveBeenCalledTimes(callCountAfterA + 1);
-    // P2-2 信封化：log_append 在 tool_call 信封 args 内
-    const lastCall = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'log_append').at(-1)!;
-    expect(lastCall.path).toContain('/project-a/.lantai/logs/ui.log');
-    expect(lastCall.content).toContain('msg from A');
+    const logFiles = [...H.kernelFs!.fs.files.entries()].filter(([p]) => p.includes('/project-a/.lantai/logs/ui.log'));
+    expect(logFiles.length).toBeGreaterThanOrEqual(1);
+    expect(logFiles[0][1]).toContain('msg from A');
   });
 
   it('initLogger 切换工作区时清除旧 setInterval', async () => {
@@ -224,7 +237,7 @@ describe('Logger 工作区切换', () => {
 
   it('initLogger 后日志写入新工作区路径', async () => {
     await initLogger('/project-a');
-    mockRpc.mockClear();
+    H.kernelFs!.fs.files.clear();
 
     await initLogger('/project-b');
 
@@ -233,12 +246,10 @@ describe('Logger 工作区切换', () => {
       log.info('mod', `msg ${i}`);
     }
     // flush() 是 fire-and-forget，等调用真正落地（冷 import 可达 ~100ms）
-    await waitFor(() => mockRpc.mock.calls.length >= 1);
+    await waitFor(() => H.kernelFs!.fs.files.size >= 1);
 
-    // 验证写入的是 project-b 的日志路径（P2-2 信封化：toolCallArgsOf 解信封）
-    const calls = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'log_append');
-    expect(calls.length).toBeGreaterThanOrEqual(1);
-    const lastLogCall = calls[calls.length - 1];
-    expect(lastLogCall.path).toContain('/project-b/.lantai/logs/ui.log');
+    // 验证写入的是 project-b 的日志路径
+    const logFiles = [...H.kernelFs!.fs.files.entries()].filter(([p]) => p.includes('/project-b/.lantai/logs/ui.log'));
+    expect(logFiles.length).toBeGreaterThanOrEqual(1);
   });
 });

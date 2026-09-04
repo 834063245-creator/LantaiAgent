@@ -22,33 +22,25 @@ import {
 } from '../src/state/canvas-store';
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
 
-// P3-2 分片测试：mock bridge rpc 走内存假文件系统（真实 store + 真实序列化）。
-// P2-2 后 canvas 持久化经 kernelWriteFile/kernelReadFileRaw（rpc-contract 内部
-// 直呼 typedRpc）——mock typedRpc 导出拦不住这些助手（内部闭包真绑定），必须
-// 拦在 bridge rpc 层；信封由 legacyRpcShim 翻译回旧 (method, params) 形状。
-const fakeFs = new Map<string, string>();
-vi.mock('../src/bridge', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/bridge')>();
-  const { legacyRpcShim } = await import('./helpers/kernel-envelope');
-  return {
-    ...actual,
-    isMockMode: () => false,
-    rpc: vi.fn(
-      legacyRpcShim(async (method: string, params: Record<string, unknown>) => {
-        if (method === 'write_file_content') {
-          fakeFs.set(String(params.file_path), String(params.content));
-          return 'null';
-        }
-        if (method === 'read_file_content') {
-          const hit = fakeFs.get(String(params.file_path));
-          if (hit === undefined) throw new Error('文件不存在');
-          return hit;
-        }
-        throw new Error(`未 mock 的 RPC: ${method}`);
-      }),
-    ),
-  };
+// fs 域收口（2026-09-04）：canvas 持久化经 kernelWriteFile/kernelReadFileRaw
+// （rpc-contract 具名 helper，内部直呼 fs_cap）——mock 站到 helper 层（不再
+// 拦 bridge + legacyRpcShim 翻信封）。共享内存 fs 的 files Map = fakeFs。
+const H = vi.hoisted(() => ({
+  kernelFs: null as null | ReturnType<typeof import('./helpers/kernel-fs').createKernelFsMock>,
+}));
+
+vi.mock('../src/rpc-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/rpc-contract')>();
+  H.kernelFs = (await import('./helpers/kernel-fs')).createKernelFsMock();
+  return { ...actual, ...H.kernelFs.overrides };
 });
+
+/** fakeFs 别名（测试主体沿用旧断言面的 Map 语义——helper fs.files 即盘）。 */
+function fakeFs(): Map<string, string> {
+  const k = H.kernelFs;
+  if (!k) throw new Error('kernelFs mock 未就绪（vi.mock 工厂未执行）');
+  return k.fs.files;
+}
 
 const STORE = 'test-panel';
 
@@ -266,7 +258,14 @@ describe('canvas-store 磁盘分片（P3-2，2026-09-02）', () => {
   beforeEach(() => {
     resetCanvasStoresForTests();
     resetStripIdCounterForTests();
-    fakeFs.clear();
+    fakeFs().clear();
+    const k = H.kernelFs;
+    if (k) {
+      k.fs.dirs.clear();
+      k.fs.writes.length = 0;
+      k.fs.lists.length = 0;
+      k.fs.fail = {};
+    }
   });
 
   it('saveCanvasToDisk 写三文件：v2 布局面 + pins/strips 分片；load 往返一致', async () => {
@@ -285,15 +284,15 @@ describe('canvas-store 磁盘分片（P3-2，2026-09-02）', () => {
 
     expect(await saveCanvasToDisk(STORE, WS)).toBe(true);
     // 三文件齐 + 形状正确（v2 布局面不含 publics；分片各含 version）
-    const layout = JSON.parse(fakeFs.get(`${WS}/.lantai/canvas.json`) ?? '{}');
+    const layout = JSON.parse(fakeFs().get(`${WS}/.lantai/canvas.json`) ?? '{}');
     expect(layout.version).toBe(2);
     expect(layout.spread).toEqual([{ sessionId: 7, anchorX: 6480, anchorY: -1200, width: 1440 }]);
     expect(layout.activeSessionId).toBe(7);
     expect(layout.publics).toBeUndefined();
-    const pinsShard = JSON.parse(fakeFs.get(`${WS}/.lantai/canvas-pins.json`) ?? '{}');
+    const pinsShard = JSON.parse(fakeFs().get(`${WS}/.lantai/canvas-pins.json`) ?? '{}');
     expect(pinsShard.version).toBe(1);
     expect(Object.keys(pinsShard.pinned)).toHaveLength(1);
-    const stripsShard = JSON.parse(fakeFs.get(`${WS}/.lantai/canvas-strips.json`) ?? '{}');
+    const stripsShard = JSON.parse(fakeFs().get(`${WS}/.lantai/canvas-strips.json`) ?? '{}');
     expect(stripsShard.version).toBe(1);
     expect(stripsShard.strips).toHaveLength(1);
 
@@ -308,7 +307,7 @@ describe('canvas-store 磁盘分片（P3-2，2026-09-02）', () => {
   });
 
   it('v1 旧格式（publics 内联）迁移读——下次落盘自然写 v2 分片', async () => {
-    fakeFs.set(
+    fakeFs().set(
       `${WS}/.lantai/canvas.json`,
       JSON.stringify({
         version: 1,
@@ -329,12 +328,12 @@ describe('canvas-store 磁盘分片（P3-2，2026-09-02）', () => {
 
     // 下次落盘 = v2 分片（迁移落定）
     expect(await saveCanvasToDisk(STORE, WS)).toBe(true);
-    expect(JSON.parse(fakeFs.get(`${WS}/.lantai/canvas.json`) ?? '{}').version).toBe(2);
-    expect(fakeFs.has(`${WS}/.lantai/canvas-strips.json`)).toBe(true);
+    expect(JSON.parse(fakeFs().get(`${WS}/.lantai/canvas.json`) ?? '{}').version).toBe(2);
+    expect(fakeFs().has(`${WS}/.lantai/canvas-strips.json`)).toBe(true);
   });
 
   it('v2 + 分片缺失 = 空公共物（不炸、不复活幽灵）', async () => {
-    fakeFs.set(
+    fakeFs().set(
       `${WS}/.lantai/canvas.json`,
       JSON.stringify({
         version: 2,
@@ -352,8 +351,8 @@ describe('canvas-store 磁盘分片（P3-2，2026-09-02）', () => {
   it('全空也写分片（防「删光钉后旧分片复活」）', async () => {
     getCanvasStore(STORE).getState().setRegion('1', defaultRegionFor(0));
     expect(await saveCanvasToDisk(STORE, WS)).toBe(true);
-    expect(JSON.parse(fakeFs.get(`${WS}/.lantai/canvas-pins.json`) ?? '{}')).toEqual({ version: 1, pinned: {} });
-    expect(JSON.parse(fakeFs.get(`${WS}/.lantai/canvas-strips.json`) ?? '{}')).toEqual({ version: 1, strips: [] });
+    expect(JSON.parse(fakeFs().get(`${WS}/.lantai/canvas-pins.json`) ?? '{}')).toEqual({ version: 1, pinned: {} });
+    expect(JSON.parse(fakeFs().get(`${WS}/.lantai/canvas-strips.json`) ?? '{}')).toEqual({ version: 1, strips: [] });
   });
 
   it('R2 视口持久化：view 落盘 + 重启恢复（canvas.json view 字段 round-trip）', async () => {
@@ -366,7 +365,7 @@ describe('canvas-store 磁盘分片（P3-2，2026-09-02）', () => {
     st.setRegion('7', { anchorX: 6480, anchorY: -1200, width: 1440 });
     expect(await saveCanvasToDisk(STORE, WS)).toBe(true);
     // 布局面带 view
-    const layout = JSON.parse(fakeFs.get(`${WS}/.lantai/canvas.json`) ?? '{}');
+    const layout = JSON.parse(fakeFs().get(`${WS}/.lantai/canvas.json`) ?? '{}');
     expect(layout.view).toEqual({ panX: 864, panY: 722, zoom: 1.25 });
 
     // 模拟重启：清空视图 store + canvas → 读回 → view 恢复 + restoredView 置位
@@ -378,7 +377,7 @@ describe('canvas-store 磁盘分片（P3-2，2026-09-02）', () => {
   });
 
   it('R2 视口持久化：旧 v2 无 view 字段照读不恢复（restoredView 保持 null）', async () => {
-    fakeFs.set(
+    fakeFs().set(
       `${WS}/.lantai/canvas.json`,
       JSON.stringify({
         version: 2,

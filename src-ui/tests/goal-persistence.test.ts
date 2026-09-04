@@ -4,13 +4,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ── Mock bridge and events ──
+// fs 域收口（2026-09-04）：GoalManager 持久化经 kernelCreateDirectory/
+// kernelWriteFile/kernelReadFile/kernelDeleteFile（rpc-contract 具名 helper，
+// 内部直呼 fs_cap）——mock 站到 helper 层（不再拦 bridge + legacyRpcShim 翻
+// 信封）。agent_session_append 分支已随 AgentStore 内存化退役（见 agent-store.ts
+// 头注——saveState 纯内存，不再写 session.ndjson）。
 
-const rpcMock = vi.fn();
-vi.mock('../src/bridge', () => ({
-  rpc: (...args: any[]) => rpcMock(...args),
-  listen: vi.fn(() => () => {}),
-  isMockMode: () => false,
+const H = vi.hoisted(() => ({
+  kernelFs: null as null | ReturnType<typeof import('./helpers/kernel-fs').createKernelFsMock>,
 }));
+
+vi.mock('../src/rpc-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/rpc-contract')>();
+  H.kernelFs = (await import('./helpers/kernel-fs')).createKernelFsMock();
+  return { ...actual, ...H.kernelFs.overrides };
+});
 
 import type { Agent } from '../src/agent/agent';
 import { GoalManager } from '../src/agent/goal-manager';
@@ -20,7 +28,6 @@ import type { Chunk, Provider, ToolCall } from '../src/provider/types';
 import { ChunkType } from '../src/provider/types';
 import { createTestAgent } from './helpers/agent';
 import { ensureProductionChannelsBooted } from './helpers/composition-boot';
-import { legacyRpcShim } from './helpers/kernel-envelope';
 
 // 生产装配复现（平台化 Phase 2 · D11 施工⑥）：builtin/rust-sessions 在册。
 await ensureProductionChannelsBooted();
@@ -78,43 +85,18 @@ function makeAgent(prov?: Provider): Agent {
   return createTestAgent(prov ?? steppedProvider([[DONE]]), reg, 'system', { agentId: 'test-agent' });
 }
 
-/** Live in-memory FS(同 rpc 面,状态真实流转) */
-function mockLiveFs(initial: Record<string, string> = {}): Map<string, string> {
-  const files = new Map<string, string>(Object.entries(initial));
-  rpcMock.mockReset();
-  // P2-2 信封化：fs 命令经 tool_call 寻址 builtin.fs——shim 翻译回旧 (method, params)
-  rpcMock.mockImplementation(
-    legacyRpcShim(async (method: string, params: Record<string, unknown>) => {
-      if (method === 'create_directory') return null;
-      if (method === 'write_file_content') {
-        files.set(params.file_path as string, params.content as string);
-        return '(mock: file saved)';
-      }
-      if (method === 'read_file_content') {
-        const v = files.get(params.file_path as string);
-        if (v === undefined) throw new Error(`ENOENT: ${params.file_path}`);
-        return v;
-      }
-      if (method === 'delete_file_or_dir') {
-        const p = params.path as string;
-        for (const k of [...files.keys()]) {
-          if (k === p || k.startsWith(p + '/')) files.delete(k);
-        }
-        return null;
-      }
-      if (method === 'list_directory') return '[]';
-      if (method === 'agent_session_append') {
-        // P1-15: 模拟后端 — rewrite → truncate 重建；否则 append-only
-        const p = params as any;
-        const nds = `${p.project_path}/.lantai/agents/${p.agent_id}/session.ndjson`;
-        const block = (p.messages as any[]).map((m) => JSON.stringify(m)).join('\n') + '\n';
-        files.set(nds, p.rewrite ? block : (files.get(nds) ?? '') + block);
-        return null;
-      }
-      throw new Error(`unexpected rpc: ${method}`);
-    }),
-  );
-  return files;
+/** Live in-memory FS（同 rpc 面，状态真实流转——fs 域收口后经共享
+ *  kernel-fs mock：GoalManager 落盘 = helper 写内存盘）。agent_session_append
+ *  分支随 AgentStore 内存化退役（agent-store.ts 头注：saveState 纯内存，
+ *  不再写 session.ndjson）。 */
+function mockLiveFs(initial: Record<string, string> = {}): void {
+  const k = H.kernelFs!;
+  k.fs.files.clear();
+  k.fs.dirs.clear();
+  k.fs.writes.length = 0;
+  k.fs.lists.length = 0;
+  k.fs.fail = {};
+  for (const [p, v] of Object.entries(initial)) k.fs.setFile(p, v);
 }
 
 function wireGoals(agent: Agent): GoalManager {

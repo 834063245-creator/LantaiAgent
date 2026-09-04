@@ -1,37 +1,35 @@
 // exit_plan_mode 审批 outcome 语义（execute / archive）—
 // option 可携带 outcome 标记：archive=批准留档不执行（保持规划模式），
 // execute=默认，批准即切换执行模式。UI 可用 response.outcome 显式覆盖。
+
+// fs 域收口（2026-09-04）：exit_plan_mode 经 kernelReadFile（rpc-contract 具名
+// helper，内部直呼 fs_cap）读计划文件——mock 站到 helper 层（不再拦 bridge +
+// legacyRpcShim 翻信封）。返回带行号文本（plan-tools 内 replace 剥行号），
+// 与旧 read_file_content 行为逐字一致。
+
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// mock bridge rpc：exit_plan_mode 经 kernelReadFile（rpc-contract 内部直呼
-// typedRpc）读计划文件——mock typedRpc 导出拦不住这些助手（内部闭包真绑定，
-// P2-2 换源后），必须拦在 bridge 层；信封由 legacyRpcShim 翻译回旧形状。
-// 计划文件路径格式：{project}/.lantai/plans/plan-<ts>-<rand>.md
-vi.mock('../src/bridge', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/bridge')>();
-  const { legacyRpcShim } = await import('./helpers/kernel-envelope');
-  return {
-    ...actual,
-    isMockMode: () => false,
-    rpc: vi.fn(
-      legacyRpcShim(async (method: string, args: { file_path: string }) => {
-        if (
-          method === 'read_file_content' &&
-          args.file_path.includes('.lantai/plans/') &&
-          args.file_path.endsWith('.md')
-        ) {
-          return '1\t# 计划\n2\t正文';
-        }
-        throw new Error(`unexpected rpc: ${method}`);
-      }),
-    ),
-  };
+const H = vi.hoisted(() => ({
+  kernelFs: null as null | ReturnType<typeof import('./helpers/kernel-fs').createKernelFsMock>,
+}));
+
+vi.mock('../src/rpc-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/rpc-contract')>();
+  H.kernelFs = (await import('./helpers/kernel-fs')).createKernelFsMock();
+  return { ...actual, ...H.kernelFs.overrides };
 });
 
 import type { EventSink } from '../src/agent/agent-types';
 import { PlanStateManager } from '../src/agent/plan/plan-state';
 import type { PlanReviewRequest } from '../src/agent/plan/plan-tools';
 import { createExitPlanModeTool } from '../src/agent/plan/plan-tools';
+
+// 计划文件路径格式：{project}/.lantai/plans/plan-<ts>-<rand>.md
+function seedPlanFile(planPath: string | undefined): void {
+  if (!planPath) return;
+  // 带行号格式（旧 read_file_content 默认）——plan-tools 剥行号后得原文
+  H.kernelFs!.fs.setFile(planPath, '1\t# 计划\n2\t正文');
+}
 
 /** 捕获型 eventSink + 执行器：execute() 后通过 lastRequest 拿到 PlanReview 请求 */
 function setup(plan: PlanStateManager) {
@@ -42,8 +40,8 @@ function setup(plan: PlanStateManager) {
   const tool = createExitPlanModeTool(plan, sink);
   return {
     tool,
-    /** 触发 exit_plan_mode；kernelReadFile→typedRpc→rpc 多跳微任务后才发事件，
-     *  flush 到宏任务边界再取请求（P2-2 后读取链多一跳，单微任务不够冲）。 */
+    /** 触发 exit_plan_mode；kernelReadFile→typedRpc 多跳微任务后才发事件，
+     *  flush 到宏任务边界再取请求（读取链多一跳，单微任务不够冲）。 */
     run: async (args: Record<string, unknown> = {}) => {
       const p = tool.execute(args) as Promise<string>;
       await new Promise((r) => setTimeout(r, 0)); // flush 微任务链
@@ -54,13 +52,17 @@ function setup(plan: PlanStateManager) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  H.kernelFs!.fs.files.clear();
+  H.kernelFs!.fs.dirs.clear();
+  H.kernelFs!.fs.writes.length = 0;
+  H.kernelFs!.fs.fail = {};
 });
 
 describe('exit_plan_mode — outcome 语义', () => {
   it('默认（option 无 outcome）：批准即退出规划模式', async () => {
     const ps = new PlanStateManager();
     ps.enter('/proj');
+    seedPlanFile(ps.state.planFilePath ?? undefined);
     const { run } = setup(ps);
     const { request, promise } = await run({
       options: [
@@ -79,6 +81,7 @@ describe('exit_plan_mode — outcome 语义', () => {
   it('选中 option 带 outcome=archive：批准留档，保持规划模式', async () => {
     const ps = new PlanStateManager();
     ps.enter('/proj');
+    seedPlanFile(ps.state.planFilePath ?? undefined);
     const { run } = setup(ps);
     const { request, promise } = await run({
       options: [
@@ -100,6 +103,7 @@ describe('exit_plan_mode — outcome 语义', () => {
   it('UI 显式 outcome=archive 覆盖 option 默认 execute', async () => {
     const ps = new PlanStateManager();
     ps.enter('/proj');
+    seedPlanFile(ps.state.planFilePath ?? undefined);
     const { run } = setup(ps);
     const { request, promise } = await run({
       options: [
@@ -116,6 +120,7 @@ describe('exit_plan_mode — outcome 语义', () => {
   it('UI 显式 outcome=execute 覆盖 option 标记 archive', async () => {
     const ps = new PlanStateManager();
     ps.enter('/proj');
+    seedPlanFile(ps.state.planFilePath ?? undefined);
     const { run } = setup(ps);
     const { request, promise } = await run({
       options: [
@@ -132,6 +137,7 @@ describe('exit_plan_mode — outcome 语义', () => {
   it('revise / rejected 不受 outcome 影响，保持规划模式', async () => {
     const ps = new PlanStateManager();
     ps.enter('/proj');
+    seedPlanFile(ps.state.planFilePath ?? undefined);
     const { run } = setup(ps);
     const r1 = await run();
     r1.request.callback({ decision: 'revise', feedback: '改小范围' });
@@ -159,6 +165,7 @@ describe('exit_plan_mode — outcome 语义', () => {
   it('无 eventSink（headless）：自动批准并退出规划模式', async () => {
     const ps = new PlanStateManager();
     ps.enter('/proj');
+    seedPlanFile(ps.state.planFilePath ?? undefined);
     const tool = createExitPlanModeTool(ps, undefined);
     const out = await tool.execute({});
     expect(out).toContain('自动批准');

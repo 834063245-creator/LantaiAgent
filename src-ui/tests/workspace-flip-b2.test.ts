@@ -5,54 +5,47 @@
 // 会话**物理归属工作区**——scanMaxSessionId 扫 `{projectPath}/.lantai/sessions`
 // 单一存储位。零目录路由（ensureUserSessionsDir / '' 用户级目录兜底）已退役。
 
-import { describe, expect, it, vi } from 'vitest';
+// fs 域收口（2026-09-04）：scanMaxSessionId 经 kernelListDirectory（rpc-contract
+// 具名 helper，内部直呼 fs_cap）读盘——mock 站到 helper 层（不再拦 bridge +
+// legacyDispatchShim 翻信封）。路由正确性由行为断言承载：扫错目录 → 读空 →
+// max 0 → 红。
 
-const mockInvoke = vi.fn();
-async function mockRpc(method: string, params?: Record<string, unknown>): Promise<any> {
-  const normalized: Record<string, unknown> = {};
-  if (params) {
-    for (const [key, value] of Object.entries(params)) {
-      normalized[key.replace(/[A-Z]/g, (m) => '_' + m.toLowerCase())] = value;
-    }
-  }
-  return mockInvoke('rpc', { method, params: normalized });
-}
-vi.mock('../src/bridge', () => ({
-  invoke: (...args: any[]) => mockInvoke(...args),
-  rpc: (method: string, params?: Record<string, unknown>) => mockRpc(method, params),
-  listen: vi.fn(),
-  isMockMode: () => false,
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const H = vi.hoisted(() => ({
+  kernelFs: null as null | ReturnType<typeof import('./helpers/kernel-fs').createKernelFsMock>,
 }));
+
+vi.mock('../src/rpc-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/rpc-contract')>();
+  H.kernelFs = (await import('./helpers/kernel-fs')).createKernelFsMock();
+  return { ...actual, ...H.kernelFs.overrides };
+});
 
 import { scanMaxSessionId } from '../src/ui/chat-session';
 
-import { legacyDispatchShim } from './helpers/kernel-envelope';
-
-// rpc-contract 的 typedRpc 经 bridge.rpc 路由——mock 已覆盖。
-
 describe('工作区会话根路由（workspace-session-ownership-rework）', () => {
+  beforeEach(() => {
+    H.kernelFs!.fs.files.clear();
+    H.kernelFs!.fs.dirs.clear();
+    H.kernelFs!.fs.writes.length = 0;
+    H.kernelFs!.fs.fail = {};
+  });
+
   it('scanMaxSessionId(projectPath) 扫 {projectPath}/.lantai/sessions（单一路径）', async () => {
-    // P2-2 信封化：list_directory 经 tool_call 寻址 builtin.fs——shim 翻译回旧形状
-    mockInvoke.mockImplementation(
-      legacyDispatchShim(async (_: string, req: any) => {
-        if (req.method === 'list_directory') {
-          // 钉路由：必须打到工作区会话根（不是旧全局位 / 用户级目录）
-          expect(req.params.path).toBe('D:/proj/.lantai/sessions');
-          return JSON.stringify([
-            { name: '1.json', path: 'D:/proj/.lantai/sessions/1.json', is_dir: false, children: null },
-            { name: '2.json', path: 'D:/proj/.lantai/sessions/2.json', is_dir: false, children: null },
-          ]);
-        }
-        return '[]';
-      }),
-    );
+    // 预置两卷在工作区会话根——若扫错目录（旧全局位 / 用户级目录）则读空 → 0
+    H.kernelFs!.fs.setFile('D:/proj/.lantai/sessions/1.json', '{}');
+    H.kernelFs!.fs.setFile('D:/proj/.lantai/sessions/2.json', '{}');
     const max = await scanMaxSessionId('D:/proj');
     expect(max).toBe(2);
   });
 
   it('目录缺席 / 读失败 → 0（首启常态，不抛）', async () => {
-    mockInvoke.mockRejectedValueOnce(new Error('no dir'));
-    const max = await scanMaxSessionId('D:/proj');
-    expect(max).toBe(0);
+    // 目录缺席：无预置文件 → list 空
+    expect(await scanMaxSessionId('D:/proj')).toBe(0);
+    // 读失败（list 抛错）：scanMaxSessionId 自身 catch → 0
+    H.kernelFs!.fs.fail.list = 'no dir';
+    expect(await scanMaxSessionId('D:/proj')).toBe(0);
+    H.kernelFs!.fs.fail.list = undefined;
   });
 });

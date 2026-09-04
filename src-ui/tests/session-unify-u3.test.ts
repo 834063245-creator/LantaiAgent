@@ -10,23 +10,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from '../src/app/shell-store';
 
-const mockInvoke = vi.fn();
-async function mockRpc(method: string, params?: Record<string, unknown>): Promise<any> {
-  const normalized: Record<string, unknown> = {};
-  if (params) {
-    for (const [key, value] of Object.entries(params)) {
-      const snakeKey = key.replace(/[A-Z]/g, (m) => '_' + m.toLowerCase());
-      normalized[snakeKey] = value;
-    }
-  }
-  return mockInvoke('rpc', { method, params: normalized });
-}
-vi.mock('../src/bridge', () => ({
-  invoke: (...args: any[]) => mockInvoke(...args),
-  rpc: (method: string, params?: Record<string, unknown>) => mockRpc(method, params),
-  listen: vi.fn(),
-  isMockMode: () => false,
+// fs 域收口（2026-09-04）：会话卷 I/O 经 kernelReadFileRaw/kernelWriteFile/
+// kernelListDirectory（rpc-contract 具名 helper，内部直呼 fs_cap）——mock 站
+// 到 helper 层（不再拦 bridge + legacyDispatchShim 翻信封）。内存盘 = 共享
+// kernel-fs mock 的 MockFs 实例。
+
+const H = vi.hoisted(() => ({
+  kernelFs: null as null | ReturnType<typeof import('./helpers/kernel-fs').createKernelFsMock>,
 }));
+
+vi.mock('../src/rpc-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/rpc-contract')>();
+  H.kernelFs = (await import('./helpers/kernel-fs')).createKernelFsMock();
+  return { ...actual, ...H.kernelFs.overrides };
+});
 
 vi.mock('../src/ui/graph', () => ({ StarGraph: class {} }));
 vi.mock('../src/ui/icons', () => ({ iconHtml: () => '', iconSvg: () => '' }));
@@ -84,30 +81,17 @@ import { ChatCore } from '../src/app/chat/chat-core';
 import * as Session from '../src/ui/chat-session';
 import { msgStoreFor } from '../src/ui/chat-store';
 
-import { legacyDispatchShim } from './helpers/kernel-envelope';
-
-/** 实现式磁盘 mock：read/write/list 三路由 + 内存文件表。 */
+/** 内存盘 = 共享 kernel-fs mock 的 MockFs（read/write/list 由 helper 覆写
+ *  承载；文件表经 setFile 预置 / files.entries 读回）。 */
 function memDisk() {
-  const files: Record<string, string> = {};
-  mockInvoke.mockReset();
-  // P2-2 信封化：fs 命令经 tool_call 寻址 builtin.fs——shim 翻译回旧 (method, params)
-  mockInvoke.mockImplementation(
-    legacyDispatchShim((_cmd: string, payload: any) => {
-      const { method, params } = payload;
-      if (method === 'read_file_content') {
-        const fp = params.file_path as string;
-        if (fp in files) return Promise.resolve(files[fp]);
-        return Promise.reject(new Error('文件不存在'));
-      }
-      if (method === 'write_file_content') {
-        files[params.file_path as string] = params.content as string;
-        return Promise.resolve('ok');
-      }
-      if (method === 'list_directory') return Promise.resolve(JSON.stringify([]));
-      return Promise.resolve(null);
-    }),
-  );
-  return files;
+  const k = H.kernelFs;
+  if (!k) throw new Error('kernelFs mock 未就绪（vi.mock 工厂未执行）');
+  k.fs.files.clear();
+  k.fs.dirs.clear();
+  k.fs.writes.length = 0;
+  k.fs.lists.length = 0;
+  k.fs.fail = {};
+  return k.fs;
 }
 
 function storingFactory() {
@@ -124,8 +108,7 @@ function storingFactory() {
 
 beforeEach(() => {
   localStorage.clear();
-  mockInvoke.mockReset();
-  mockInvoke.mockResolvedValue(null);
+  memDisk();
   useShellStore.setState({ projectPath: '' });
 });
 
@@ -135,16 +118,19 @@ afterEach(() => {
 
 describe('同工作区多卷语义（workspace-session-ownership-rework 重写）', () => {
   it('① 同工作区多卷并存：既有卷 1 + 续开卷 7（同一工作区会话根）', async () => {
-    const files = memDisk();
-    files['D:/ws-b/.lantai/sessions/7.json'] = JSON.stringify({
-      id: 7,
-      label: '本区卷',
-      savedAt: '2026-08-24T00:00:00Z',
-      messages: [
-        { role: 'system', content: 'sys' },
-        { role: 'user', content: '本区卷内容' },
-      ],
-    });
+    const fs = memDisk();
+    fs.setFile(
+      'D:/ws-b/.lantai/sessions/7.json',
+      JSON.stringify({
+        id: 7,
+        label: '本区卷',
+        savedAt: '2026-08-24T00:00:00Z',
+        messages: [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content: '本区卷内容' },
+        ],
+      }),
+    );
 
     const panel = new ChatCore();
     panel.setProjectPath('D:/ws-b');
@@ -182,7 +168,7 @@ describe('同工作区多卷语义（workspace-session-ownership-rework 重写�
   });
 
   it('③ 关闭卷 → 落盘写工作区会话根（无 workspace 字段）→ 卷文件可读回', async () => {
-    const files = memDisk();
+    const fs = memDisk();
     const panel = new ChatCore();
     panel.setProjectPath('D:/ws-b');
     // DSH 形态：工厂现造带内容的句柄（合卷自动存的快照源）
@@ -206,13 +192,13 @@ describe('同工作区多卷语义（workspace-session-ownership-rework 重写�
 
     // 写目标 = 工作区会话根（归属 = 存储位置，无 workspace 字段）
     await new Promise((r) => setTimeout(r, 0)); // 写目标异步消解——排干微任务
-    const write = Object.entries(files).find(([p]) => p.endsWith('/1.json'));
+    const write = [...fs.files.entries()].find(([p]) => p.endsWith('/1.json'));
     expect(write?.[0]).toBe('D:/ws-b/.lantai/sessions/1.json');
     const parsed = JSON.parse(write![1]);
     expect(parsed).not.toHaveProperty('workspace'); // 归属 = 存储位置，无字段标签
     expect(parsed.messages.some((m: any) => m.content === '待合卷的内容')).toBe(true);
 
     // 回目录可见：工作区会话根卷文件成立（list 层由本工作区扫描承担）
-    expect(files['D:/ws-b/.lantai/sessions/1.json']).toBeTruthy();
+    expect(fs.files.get('D:/ws-b/.lantai/sessions/1.json')).toBeTruthy();
   });
 });

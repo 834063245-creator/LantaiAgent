@@ -4,28 +4,38 @@
 // Tests for the 15-issue audit fix batch.
 // Grouped by concern area, matching existing test conventions.
 
+// fs 域收口（2026-09-04）：exportSession/scheduleAutoSave 落盘经 kernelWriteFile
+// （rpc-contract 具名 helper，内部直呼 fs_cap）——mock 站到 helper 层（不再
+// 拦 bridge + toolCallArgsOfBridge 翻信封）。
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { toolCallArgsOfBridge } from './helpers/kernel-envelope';
+// 顶层触发 rpc-contract 的 vi.mock 工厂求值：vitest 的 vi.mock 惰性执行于
+// 首个 import 目标模块时——本文件用例全动态 import，若不在文件加载期触发，
+// H.kernelFs 会在首个用例的 beforeEach 仍是 null。静态 import 一个经
+// rpc-contract 的模块即可（仅作求值触发，模块本身被 vi.mock 拦截无害）。
+import { kernelReadFileRaw } from '../src/rpc-contract';
 
-// ── Mock bridge ──
-const mockInvoke = vi.fn();
-async function mockRpc(method: string, params?: Record<string, unknown>): Promise<any> {
-  const normalized: Record<string, unknown> = {};
-  if (params) {
-    for (const [key, value] of Object.entries(params)) {
-      const snakeKey = key.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase();
-      normalized[snakeKey] = value;
-    }
-  }
-  return mockInvoke('rpc', { method, params: normalized });
-}
+void kernelReadFileRaw;
+
+const H = vi.hoisted(() => ({
+  kernelFs: null as null | ReturnType<typeof import('./helpers/kernel-fs').createKernelFsMock>,
+  invoke: null as null | ReturnType<typeof vi.fn>,
+}));
+
+// bridge mock：承载非 fs 的 invoke 兜底（dialog 之外无其它 rpc 需要——
+// kernelWriteFile 已被 helper 覆写拦截，不进 bridge）
 vi.mock('../src/bridge', () => ({
-  invoke: (...args: any[]) => mockInvoke(...args),
-  rpc: (method: string, params?: Record<string, unknown>) => mockRpc(method, params),
+  rpc: (...args: unknown[]) => H.invoke?.(...args),
   listen: vi.fn(),
   isMockMode: () => false,
 }));
+
+vi.mock('../src/rpc-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/rpc-contract')>();
+  H.kernelFs = (await import('./helpers/kernel-fs')).createKernelFsMock();
+  return { ...actual, ...H.kernelFs.overrides };
+});
 
 vi.mock('../src/ui/graph', () => ({ StarGraph: class {} }));
 vi.mock('../src/ui/icons', () => ({ iconHtml: () => '', iconSvg: () => '' }));
@@ -74,8 +84,12 @@ vi.mock('highlight.js', () => ({ default: { highlightElement: vi.fn() } }));
 
 describe('#1 exportSession parameter name', () => {
   beforeEach(() => {
-    mockInvoke.mockReset();
-    mockInvoke.mockResolvedValue('ok');
+    const k = H.kernelFs!;
+    k.fs.files.clear();
+    k.fs.dirs.clear();
+    k.fs.writes.length = 0;
+    k.fs.fail = {};
+    H.invoke = vi.fn(async () => 'ok');
   });
 
   it('sends file_path (not path) to write_file_content rpc', async () => {
@@ -143,14 +157,13 @@ describe('#1 exportSession parameter name', () => {
 
     await exportSession(ctx);
 
-    // Find the write_file_content rpc call（P2-2 信封化：经 tool_call 寻址 builtin.fs）
-    const writeArgs = toolCallArgsOfBridge(mockInvoke.mock.calls, 'builtin.fs', 'write_file_content');
-    expect(writeArgs.length).toBe(1);
-    const args = writeArgs[0];
-    // Must have filePath (manifest 语言), NOT path
-    expect(args).toHaveProperty('filePath');
-    expect(args).not.toHaveProperty('path');
-    expect(args.filePath).toBe('/tmp/test-export.md');
+    // fs 域收口：export 写盘 = kernelWriteFile(filePath, content)——mock 层
+    // 断言第一参即文件路径（旧「write_file_content 的 filePath 而非 path」
+    // 的语义由 helper 签名天然保证——文件路径恒为第一参）。
+    const writes = H.kernelFs!.fs.writes;
+    expect(writes.length).toBe(1);
+    // 导出到对话框返回的路径（filePath 键语义 = 第一参）
+    expect(writes[0].file_path).toBe('/tmp/test-export.md');
   });
 });
 
@@ -161,8 +174,12 @@ describe('#1 exportSession parameter name', () => {
 describe('#10 scheduleAutoSave per-panel isolation', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    mockInvoke.mockReset();
-    mockInvoke.mockResolvedValue('ok');
+    const k = H.kernelFs!;
+    k.fs.files.clear();
+    k.fs.dirs.clear();
+    k.fs.writes.length = 0;
+    k.fs.fail = {};
+    H.invoke = vi.fn(async () => 'ok');
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -229,15 +246,15 @@ describe('#10 scheduleAutoSave per-panel isolation', () => {
     await vi.advanceTimersByTimeAsync(600);
 
     // Both panels should have written to disk (at least the session file)
-    const writeArgs = toolCallArgsOfBridge(mockInvoke.mock.calls, 'builtin.fs', 'write_file_content');
+    const writes = H.kernelFs!.fs.writes;
     // L3（session-ledger）：_active.json tracker 写入退役（总目接任）——
     // 每面板至少 1 份卷文件，两面板合计 ≥ 2
-    expect(writeArgs.length).toBeGreaterThanOrEqual(2);
+    expect(writes.length).toBeGreaterThanOrEqual(2);
 
     // Verify both panels' saves appear — workspace-session-ownership-rework 后
     // 归属 = 存储位置：面板 A/B 写各自 {workspace}/.lantai/sessions/{id}.json
     // （workspace 字段标签已退役——同一 storeId 跨面板隔离仍由复合键保证）
-    const paths = writeArgs.map((a) => String(a.filePath ?? ''));
+    const paths = writes.map((w) => w.file_path);
     expect(paths.some((p: string) => p === '/a/.lantai/sessions/1.json')).toBe(true);
     expect(paths.some((p: string) => p === '/b/.lantai/sessions/1.json')).toBe(true);
   });

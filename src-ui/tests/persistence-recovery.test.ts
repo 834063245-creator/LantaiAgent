@@ -9,113 +9,82 @@
 //   3.3 debounced flush 不丢数据
 //   3.4 空启动恢复不报错
 //   3.5 孤儿检测（running 条目 → stop + discard）
+//
+// fs 域收口（2026-09-04）：持久化 I/O 经 rpc-contract 具名 helper
+// （kernelReadFile/kernelWriteFile/kernelCreateDirectory/kernelListDirectory/
+// kernelDeleteFile——内部直呼 fs_cap）——mock 站到 helper 层；agent_isolation_*
+// 是 agentInvoke 动态分发（bridge.rpc 直达），走 bridge mock 面。两轨并存。
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { legacyRpcShim, toolCallArgsOf } from './helpers/kernel-envelope';
+import type { AgentAddress } from '../src/agent/message-types';
 
-// ── bridge mock — 内存文件系统 ──
+const H = vi.hoisted(() => ({
+  kernelFs: null as null | ReturnType<typeof import('./helpers/kernel-fs').createKernelFsMock>,
+  invoke: null as null | ReturnType<typeof vi.fn>,
+}));
 
-const mockRpc = vi.fn();
+// bridge mock：只承载 agentInvoke 动态分发（agent_isolation_* 等非 fs 命令）；
+// fs 域经 rpc-contract 具名 helper 覆写拦截，不进 bridge。
 vi.mock('../src/bridge', () => ({
-  rpc: (...args: any[]) => mockRpc(...args),
+  rpc: (...args: unknown[]) => H.invoke?.(...args),
   listen: vi.fn(),
   isMockMode: () => false,
 }));
 
+vi.mock('../src/rpc-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/rpc-contract')>();
+  H.kernelFs = (await import('./helpers/kernel-fs')).createKernelFsMock();
+  return { ...actual, ...H.kernelFs.overrides };
+});
+
 import { MessageBus } from '../src/agent/message-bus';
 import { JsonMessageStore } from '../src/agent/message-store';
-import type { AgentAddress } from '../src/agent/message-types';
 import { AgentRuntime } from '../src/agent/runtime/runtime';
 import { TaskBoard } from '../src/agent/task-board';
 import { MeshTopology } from '../src/agent/topology';
 
 // ═══════════════════════════════════════════════════════
-// 内存文件系统 helper
+// 内存文件系统 helper（fs 域走共享 kernel-fs mock）
 // ═══════════════════════════════════════════════════════
 
-interface MemFS {
-  files: Map<string, string>;
-  dirs: Set<string>;
+/** 全量清空共享内存 fs（每用例独立起测）。 */
+function freshFs(): void {
+  const k = H.kernelFs!;
+  k.fs.files.clear();
+  k.fs.dirs.clear();
+  k.fs.writes.length = 0;
+  k.fs.lists.length = 0;
+  k.fs.fail = {};
 }
 
-function createMemFS(): MemFS {
-  return { files: new Map(), dirs: new Set() };
-}
-
-/** 设置 mockRpc 为内存文件系统模式 */
-function setupMemFs(fs: MemFS): void {
-  // P2-2 信封化：fs 命令经 tool_call 寻址 builtin.fs——shim 翻译回旧 (method, params)
-  mockRpc.mockImplementation(
-    legacyRpcShim(async (cmd: string, args: Record<string, unknown>) => {
-      switch (cmd) {
-        case 'create_directory': {
-          fs.dirs.add(args.path as string);
-          return 'ok';
-        }
-        case 'write_file_content': {
-          fs.files.set(args.file_path as string, args.content as string);
-          return 'ok';
-        }
-        case 'read_file_content': {
-          const content = fs.files.get(args.file_path as string);
-          if (content === undefined) throw new Error('file not found');
-          return content;
-        }
-        case 'list_directory': {
-          const dirPath = args.path as string;
-          // DirEntry 真形（Rust utils::DirEntry：path 恒带、children 键恒在无子为 null）
-          const entries: { name: string; path: string; is_dir: boolean; children: null }[] = [];
-          const seen = new Set<string>();
-          for (const fp of fs.files.keys()) {
-            // fp = dirPath + '/subdir/...'
-            if (fp.startsWith(dirPath + '/')) {
-              const rest = fp.slice(dirPath.length + 1);
-              const firstSeg = rest.split('/')[0];
-              if (!seen.has(firstSeg)) {
-                seen.add(firstSeg);
-                entries.push({
-                  name: firstSeg,
-                  path: `${dirPath}/${firstSeg}`,
-                  is_dir: rest.includes('/'),
-                  children: null,
-                });
-              }
-            }
-          }
-          for (const d of fs.dirs) {
-            if (d.startsWith(dirPath + '/')) {
-              const rest = d.slice(dirPath.length + 1);
-              const firstSeg = rest.split('/')[0];
-              if (!seen.has(firstSeg)) {
-                seen.add(firstSeg);
-                entries.push({ name: firstSeg, path: `${dirPath}/${firstSeg}`, is_dir: true, children: null });
-              }
-            }
-          }
-          return JSON.stringify(entries);
-        }
-        case 'agent_isolation_diff': {
-          // 孤儿 worktree 的 diff 保全 — 只对 iso-orphan 返回有变更
-          const agentId = (args.agent_id ?? '') as string;
-          if (agentId === 'iso-orphan') {
-            return JSON.stringify({ has_changes: true, diff: 'partial-diff-from-crash' });
-          }
-          return JSON.stringify({ has_changes: false, diff: '' });
-        }
-        case 'agent_isolation_discard': {
-          return 'discarded';
-        }
-        default:
-          return 'ok';
-      }
-    }),
-  );
-}
-
-/** 设置 mockRpc 为全部 reject 模式（模拟无文件） */
+/** 设置全部 fs 操作 reject 模式（模拟无文件——空启动 / 读错误路径）。 */
 function setupRejectAll(): void {
-  mockRpc.mockRejectedValue(new Error('not found'));
+  freshFs();
+  const k = H.kernelFs!;
+  k.fs.fail.read = 'not found';
+  k.fs.fail.list = 'not found';
+  k.fs.fail.delete = 'not found';
+}
+
+/** agentInvoke 动态分发 mock：agent_isolation_* 等非 fs 命令。 */
+function setupIsolation(): void {
+  H.invoke = vi.fn(async (method: string, _params: unknown) => {
+    switch (method) {
+      case 'agent_isolation_diff': {
+        // 孤儿 worktree 的 diff 保全 — 只对 iso-orphan 返回有变更
+        const agentId = (_params as { agent_id?: string })?.agent_id ?? '';
+        if (agentId === 'iso-orphan') {
+          return JSON.stringify({ has_changes: true, diff: 'partial-diff-from-crash' });
+        }
+        return JSON.stringify({ has_changes: false, diff: '' });
+      }
+      case 'agent_isolation_discard':
+        return 'discarded';
+      default:
+        return 'ok';
+    }
+  });
 }
 
 function addr(agentId: string, parentId: string | null = null, depth = 0): AgentAddress {
@@ -128,8 +97,8 @@ function addr(agentId: string, parentId: string | null = null, depth = 0): Agent
 
 describe('MessageBus — flush/restore 往返一致性', () => {
   it('flush 写入 inbox.json，restore 后消息完全一致', async () => {
-    const fs = createMemFS();
-    setupMemFs(fs);
+    freshFs();
+    setupIsolation();
 
     // 构造 MessageBus + store
     const store = new JsonMessageStore('/fake/project');
@@ -141,7 +110,6 @@ describe('MessageBus — flush/restore 往返一致性', () => {
     bus.register(addr('agent-b'));
 
     // 发送 3 条消息：send / reply / broadcast
-    // send: agent-a → agent-b
     const msgId1 = bus.send({ from: 'agent-a', to: 'agent-b', type: 'task', payload: 'hello-b' });
 
     // reply: agent-b 回复 agent-a
@@ -153,17 +121,14 @@ describe('MessageBus — flush/restore 往返一致性', () => {
     // 手动 flush
     await bus.flush();
 
-    // 验证 mockRpc 被调了 write_file_content，路径含 .lantai/agents/{agentId}/inbox.json
-    const writeArgs = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'write_file_content');
-    expect(writeArgs.length).toBeGreaterThanOrEqual(1);
-
-    const writtenPaths = writeArgs.map((a) => String(a.filePath));
-    // agent-a 和 agent-b 的 inbox 都应该被写入
+    // 验证写入了 inbox 文件，路径含 .lantai/agents/{agentId}/inbox.json
+    const writtenPaths = H.kernelFs!.fs.writes.map((w) => w.file_path);
+    expect(writtenPaths.length).toBeGreaterThanOrEqual(1);
     expect(writtenPaths.some((p) => p.includes('.lantai/agents/agent-a/inbox.json'))).toBe(true);
     expect(writtenPaths.some((p) => p.includes('.lantai/agents/agent-b/inbox.json'))).toBe(true);
 
     // 验证写入的内容是合法 JSON 数组
-    const inboxAFile = fs.files.get('/fake/project/.lantai/agents/agent-a/inbox.json');
+    const inboxAFile = H.kernelFs!.fs.files.get('/fake/project/.lantai/agents/agent-a/inbox.json');
     expect(inboxAFile).toBeDefined();
     const inboxAMsgs = JSON.parse(inboxAFile!);
     expect(Array.isArray(inboxAMsgs)).toBe(true);
@@ -207,8 +172,8 @@ describe('MessageBus — flush/restore 往返一致性', () => {
 
 describe('TaskBoard — flush/restore 往返一致性', () => {
   it('flush 写入 taskboard.json，restore 后所有字段完全一致', async () => {
-    const fs = createMemFS();
-    setupMemFs(fs);
+    freshFs();
+    setupIsolation();
 
     const board = new TaskBoard('/fake/project', 'default');
 
@@ -237,16 +202,14 @@ describe('TaskBoard — flush/restore 往返一致性', () => {
     // flush
     await board.flush();
 
-    // 验证 mockRpc 被调了 write_file_content，路径含 .lantai/taskboard/default.json
-    const writeArgs = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'write_file_content');
-    expect(writeArgs.length).toBeGreaterThanOrEqual(1);
-    const boardWrite = writeArgs.find((a) => String(a.filePath).includes('.lantai/taskboard/default.json'));
+    // 验证写入了 taskboard/default.json
+    const writes = H.kernelFs!.fs.writes;
+    const boardWrite = writes.find((w) => w.file_path.includes('.lantai/taskboard/default.json'));
     expect(boardWrite).toBeDefined();
-    const boardPath = String(boardWrite!.filePath);
-    expect(boardPath).toContain('.lantai/taskboard/default.json');
+    expect(boardWrite!.file_path).toContain('.lantai/taskboard/default.json');
 
     // 验证内容是合法 JSON 数组
-    const raw = fs.files.get('/fake/project/.lantai/taskboard/default.json');
+    const raw = H.kernelFs!.fs.files.get('/fake/project/.lantai/taskboard/default.json');
     expect(raw).toBeDefined();
     const arr = JSON.parse(raw!);
     expect(Array.isArray(arr)).toBe(true);
@@ -292,9 +255,8 @@ describe('TaskBoard — flush/restore 往返一致性', () => {
 describe('debounced flush — 定时器 pending 时 flush 不丢数据', () => {
   it('TaskBoard: 手动 flush 在定时器 pending 时写入全部状态，之后定时器触发不丢数据', async () => {
     vi.useFakeTimers();
-
-    const fs = createMemFS();
-    setupMemFs(fs);
+    freshFs();
+    setupIsolation();
 
     const board = new TaskBoard('/fake/project', 'default');
     board.register({
@@ -312,11 +274,10 @@ describe('debounced flush — 定时器 pending 时 flush 不丢数据', () => {
     // 手动 flush — 应写入当前全部状态
     await board.flush();
 
-    const writeCallsBefore = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'write_file_content');
-    expect(writeCallsBefore.length).toBeGreaterThanOrEqual(1);
+    expect(H.kernelFs!.fs.writes.length).toBeGreaterThanOrEqual(1);
 
     // 验证 JSON 内容包含该条目
-    const raw = fs.files.get('/fake/project/.lantai/taskboard/default.json');
+    const raw = H.kernelFs!.fs.files.get('/fake/project/.lantai/taskboard/default.json');
     expect(raw).toBeDefined();
     const arr = JSON.parse(raw!);
     expect(arr.some((e: [string, unknown]) => e[0] === 'sub-1')).toBe(true);
@@ -326,19 +287,18 @@ describe('debounced flush — 定时器 pending 时 flush 不丢数据', () => {
     // 继续推进到 2 秒 — debounced flush 触发，再次写入
     await vi.advanceTimersByTimeAsync(2000);
 
-    const writeCallsAfter = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'write_file_content');
-    // 至少被调了 2 次
-    expect(writeCallsAfter.length).toBeGreaterThanOrEqual(2);
+    // 至少被写 2 次
+    expect(H.kernelFs!.fs.writes.length).toBeGreaterThanOrEqual(2);
 
     // 两次内容一致（不丢数据）
-    const secondWriteContent = fs.files.get('/fake/project/.lantai/taskboard/default.json');
+    const secondWriteContent = H.kernelFs!.fs.files.get('/fake/project/.lantai/taskboard/default.json');
     expect(secondWriteContent).toBe(firstWriteContent);
 
     // clearFlushTimer() 后不再有额外 flush
     board.clearFlushTimer();
-    const countBefore = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'write_file_content').length;
+    const countBefore = H.kernelFs!.fs.writes.length;
     await vi.advanceTimersByTimeAsync(5000);
-    const countAfter = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'write_file_content').length;
+    const countAfter = H.kernelFs!.fs.writes.length;
     expect(countAfter).toBe(countBefore);
 
     vi.useRealTimers();
@@ -346,9 +306,8 @@ describe('debounced flush — 定时器 pending 时 flush 不丢数据', () => {
 
   it('MessageBus: clearFlushTimer + flush 后不再有额外写入', async () => {
     vi.useFakeTimers();
-
-    const fs = createMemFS();
-    setupMemFs(fs);
+    freshFs();
+    setupIsolation();
 
     const store = new JsonMessageStore('/fake/project');
     const bus = new MessageBus(undefined, store);
@@ -364,14 +323,12 @@ describe('debounced flush — 定时器 pending 时 flush 不丢数据', () => {
     bus.clearFlushTimer();
     await bus.flush();
 
-    const writeCount = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'write_file_content').length;
+    const writeCount = H.kernelFs!.fs.writes.length;
     expect(writeCount).toBeGreaterThanOrEqual(1);
 
-    // 推进 3 秒，验证没有额外的 write_file_content 调用（定时器已被 clear）
+    // 推进 3 秒，验证没有额外的写入（定时器已被 clear）
     await vi.advanceTimersByTimeAsync(3000);
-
-    const writeCountAfter = toolCallArgsOf(mockRpc.mock.calls, 'builtin.fs', 'write_file_content').length;
-    expect(writeCountAfter).toBe(writeCount);
+    expect(H.kernelFs!.fs.writes.length).toBe(writeCount);
 
     vi.useRealTimers();
   });
@@ -392,7 +349,6 @@ describe('空启动恢复 — 无持久化文件时不报错', () => {
   });
 
   it('MessageBus.restore() 后 inbox 为空', async () => {
-    mockRpc.mockReset();
     setupRejectAll();
 
     const store = new JsonMessageStore('/fake/project');
@@ -402,7 +358,6 @@ describe('空启动恢复 — 无持久化文件时不报错', () => {
   });
 
   it('TaskBoard.restore() 后无条目', async () => {
-    mockRpc.mockReset();
     setupRejectAll();
 
     const board = new TaskBoard('/fake/project', 'default');
@@ -411,8 +366,8 @@ describe('空启动恢复 — 无持久化文件时不报错', () => {
   });
 
   it('AgentRuntime.ready() 不抛异常，bus/board 为空', async () => {
-    mockRpc.mockReset();
     setupRejectAll();
+    setupIsolation();
 
     const runtime = new AgentRuntime('/fake/project');
     await runtime.ready();
@@ -429,8 +384,8 @@ describe('空启动恢复 — 无持久化文件时不报错', () => {
 
 describe('孤儿检测 — running 条目 → stop + diff 保全', () => {
   it('restore 后 running 条目变 stopped，diff 保全到 board，worktree 不销毁', async () => {
-    const fs = createMemFS();
-    setupMemFs(fs);
+    freshFs();
+    setupIsolation();
 
     // 构造 TaskBoard，写入 2 个条目
     const board = new TaskBoard('/fake/project', 'default');
@@ -469,7 +424,9 @@ describe('孤儿检测 — running 条目 → stop + diff 保全', () => {
     expect(completedEntry!.status).toBe('completed');
 
     // worktree 保留现场 — 不得调用 agent_isolation_discard（无记录不销毁）
-    const discardCalls = mockRpc.mock.calls.filter((c: any[]) => c[0] === 'agent_isolation_discard');
+    const discardCalls = (H.invoke!.mock.calls as Array<[string, unknown]>).filter(
+      (c) => c[0] === 'agent_isolation_discard',
+    );
     expect(discardCalls.length).toBe(0);
   });
 });
@@ -480,83 +437,43 @@ describe('孤儿检测 — running 条目 → stop + diff 保全', () => {
 
 describe('P0-6: JsonMessageStore 区分「不存在」与「读错误」', () => {
   it('瞬时读错误（IPC 抖动）时 inbox.json 必须保留', async () => {
-    mockRpc.mockReset();
-    const deleteCalls: string[] = [];
-    mockRpc.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
-      switch (cmd) {
-        case 'list_directory':
-          return JSON.stringify([
-            { name: 'agent-x', path: '/ws/.lantai/agents/agent-x', is_dir: true, children: null },
-          ]);
-        case 'read_file_content':
-          throw new Error('IPC timeout — 瞬时错误');
-        case 'delete_file_or_dir':
-          deleteCalls.push(args.path as string);
-          return 'ok';
-        default:
-          return 'ok';
-      }
-    });
+    freshFs();
+    setupIsolation();
+    // 读抛错（list 正常返回 agent-x 目录）
+    const k = H.kernelFs!;
+    k.fs.setFile('D:/ws/.lantai/agents/agent-x/inbox.json', '[]');
+    k.fs.fail.read = 'IPC timeout — 瞬时错误';
 
-    const store = new JsonMessageStore('/fake/project');
+    const store = new JsonMessageStore('D:/ws');
     const result = await store.restore();
     expect(result.size).toBe(0); // 读不到就不返回，但绝不可删
-    expect(deleteCalls).toEqual([]);
+    // 内存 fs 无 delete 记录（restore 只读不删）
+    expect(k.fs.files.has('D:/ws/.lantai/agents/agent-x/inbox.json')).toBe(true);
   });
 
   it('文件不存在（含 Windows 中文 os error 2 文案）时静默跳过、不删目录', async () => {
-    mockRpc.mockReset();
-    const deleteCalls: string[] = [];
-    mockRpc.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
-      switch (cmd) {
-        case 'list_directory':
-          return JSON.stringify([
-            { name: 'agent-x', path: '/ws/.lantai/agents/agent-x', is_dir: true, children: null },
-            { name: 'agent-win', path: '/ws/.lantai/agents/agent-win', is_dir: true, children: null },
-          ]);
-        case 'read_file_content':
-          // agent-x：POSIX 风格；agent-win：Windows 中文 os error 2 文案（用户告警现场）
-          if ((args.file_path as string).includes('agent-win')) {
-            throw new Error('stat (尝试 1 次后失败): 系统找不到指定的文件。 (os error 2)');
-          }
-          throw new Error(`路径不存在: ${(args.file_path ?? '') as string}`);
-        case 'delete_file_or_dir':
-          deleteCalls.push(args.path as string);
-          return 'ok';
-        default:
-          return 'ok';
-      }
-    });
+    freshFs();
+    setupIsolation();
+    // inbox 缺失（isFileNotFound → 静默跳过）——无文件即 ENOENT
+    const k = H.kernelFs!;
+    k.fs.setFile('D:/ws/.lantai/agents/agent-win/state.json', '{}'); // 只 state 无 inbox
+    k.fs.setFile('D:/ws/.lantai/agents/agent-x/state.json', '{}');
 
-    const store = new JsonMessageStore('/fake/project');
+    const store = new JsonMessageStore('D:/ws');
     const result = await store.restore();
     expect(result.size).toBe(0); // 有 state.json 的 agent 目录无 inbox = 常态，不恢复
-    // 目录归属 AgentStore（state.json），缺失 inbox.json 不算孤儿，绝不越权清理
-    expect(deleteCalls).toEqual([]);
+    expect([...k.fs.files.keys()].some((p) => p.includes('agent-x/inbox.json'))).toBe(false);
   });
 
   it('inbox.json 损坏（JSON 解析失败）时保留文件并告警', async () => {
-    mockRpc.mockReset();
-    const deleteCalls: string[] = [];
-    mockRpc.mockImplementation(async (cmd: string, args: Record<string, unknown>) => {
-      switch (cmd) {
-        case 'list_directory':
-          return JSON.stringify([
-            { name: 'agent-x', path: '/ws/.lantai/agents/agent-x', is_dir: true, children: null },
-          ]);
-        case 'read_file_content':
-          return '{{corrupted';
-        case 'delete_file_or_dir':
-          deleteCalls.push(args.path as string);
-          return 'ok';
-        default:
-          return 'ok';
-      }
-    });
+    freshFs();
+    setupIsolation();
+    const k = H.kernelFs!;
+    k.fs.setFile('D:/ws/.lantai/agents/agent-x/inbox.json', '{{corrupted');
 
-    const store = new JsonMessageStore('/fake/project');
+    const store = new JsonMessageStore('D:/ws');
     const result = await store.restore();
     expect(result.size).toBe(0);
-    expect(deleteCalls).toEqual([]);
+    expect(k.fs.files.has('D:/ws/.lantai/agents/agent-x/inbox.json')).toBe(true);
   });
 });

@@ -12,17 +12,19 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-// ── bridge mock ──
-// vi.hoisted: vitest v4 hoists vi.mock factories above module-level code,
-// so mockRpc must be hoisted too or the factory references undefined.
-const { mockRpc } = vi.hoisted(() => ({
-  mockRpc: vi.fn(),
+// fs 域收口（2026-09-04）：DiscoveryBoard 持久化经 kernelCreateDirectory/
+// kernelWriteFile/kernelReadFile（rpc-contract 具名 helper，内部直呼 fs_cap）——
+// mock 站到 helper 层（不再拦 bridge + legacyRpcShim 翻信封）。
+
+const H = vi.hoisted(() => ({
+  kernelFs: null as null | ReturnType<typeof import('./helpers/kernel-fs').createKernelFsMock>,
 }));
-vi.mock('../src/bridge', () => ({
-  rpc: (...args: any[]) => mockRpc(...args),
-  listen: vi.fn(),
-  isMockMode: () => false,
-}));
+
+vi.mock('../src/rpc-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/rpc-contract')>();
+  H.kernelFs = (await import('./helpers/kernel-fs')).createKernelFsMock();
+  return { ...actual, ...H.kernelFs.overrides };
+});
 
 import { SubAgentPool, SubAgentStatus } from '../src/agent/coordinator';
 import { DiscoveryBoard } from '../src/agent/discovery-board';
@@ -31,7 +33,6 @@ import type { AgentAddress } from '../src/agent/message-types';
 import { createDiscoveryTools } from '../src/agent/tools/discovery';
 import { createRequestTool } from '../src/agent/tools/request';
 import { MeshTopology } from '../src/agent/topology';
-import { legacyRpcShim } from './helpers/kernel-envelope';
 
 // ── Helpers ──
 
@@ -88,25 +89,12 @@ describe('DiscoveryBoard', () => {
 
   it('test_discovery_persistence — flush → restore 往返', async () => {
     const projectPath = '/tmp/test-phase4';
-    mockRpc.mockReset();
-    // ponytail: capture what flush writes, echo it back on restore.
-    // Hardcoded fallback runs afoul of vitest v4 vi.mock hoisting where
-    // the factory's mockRpc closure points at a different fn instance.
-    let savedContent = '';
-    // P2-2 信封化：fs 命令经 tool_call 寻址 builtin.fs——shim 翻译回旧 (method, args)
-    mockRpc.mockImplementation(
-      legacyRpcShim(async (method: string, args: any) => {
-        if (method === 'create_directory') return;
-        if (method === 'write_file_content') {
-          savedContent = args?.content || '';
-          return;
-        }
-        if (method === 'read_file_content') {
-          return savedContent;
-        }
-        return '';
-      }),
-    );
+    // fs 域收口：flush 写 helper（kernelCreateDirectory + kernelWriteFile 落
+    // 内存盘）、restore 经 kernelReadFile 读回——共享内存 fs 即往返载体。
+    H.kernelFs!.fs.files.clear();
+    H.kernelFs!.fs.dirs.clear();
+    H.kernelFs!.fs.writes.length = 0;
+    H.kernelFs!.fs.fail = {};
 
     const board = new DiscoveryBoard(projectPath);
     board.post('agent-a', 'test-key', 'test-value', 'architecture');

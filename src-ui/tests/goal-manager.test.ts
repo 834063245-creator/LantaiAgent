@@ -3,49 +3,33 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { legacyRpcShim } from './helpers/kernel-envelope';
+// fs 域收口（2026-09-04）：GoalManager 持久化经 kernelCreateDirectory/
+// kernelWriteFile/kernelReadFile/kernelDeleteFile（rpc-contract 具名 helper，
+// 内部直呼 fs_cap）——mock 站到 helper 层（不再拦 bridge + legacyRpcShim
+// 翻信封）。内存 Map 即磁盘（状态真实流转，与旧 rpc 面同语义）。
 
-// ── Mock bridge ──
-
-const rpcMock = vi.fn();
-vi.mock('../src/bridge', () => ({
-  rpc: (...args: any[]) => rpcMock(...args),
-  listen: vi.fn(() => () => {}),
-  isMockMode: () => false,
+const H = vi.hoisted(() => ({
+  kernelFs: null as null | ReturnType<typeof import('./helpers/kernel-fs').createKernelFsMock>,
 }));
+
+vi.mock('../src/rpc-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/rpc-contract')>();
+  H.kernelFs = (await import('./helpers/kernel-fs')).createKernelFsMock();
+  return { ...actual, ...H.kernelFs.overrides };
+});
 
 import { GoalManager, type GoalRecord } from '../src/agent/goal-manager';
 
-// ── Live in-memory FS(同 rpc 面,状态真实流转) ──
+const GOALS = '/proj/.lantai/goals';
 
-function mockLiveFs(initial: Record<string, string> = {}): Map<string, string> {
-  const files = new Map<string, string>(Object.entries(initial));
-  rpcMock.mockReset();
-  // P2-2 信封化：fs 命令经 tool_call 寻址 builtin.fs——shim 翻译回旧 (method, params)
-  rpcMock.mockImplementation(
-    legacyRpcShim(async (method: string, params: Record<string, unknown>) => {
-      if (method === 'create_directory') return null;
-      if (method === 'write_file_content') {
-        files.set(params.file_path as string, params.content as string);
-        return '(mock: file saved)';
-      }
-      if (method === 'read_file_content') {
-        const v = files.get(params.file_path as string);
-        if (v === undefined) throw new Error(`ENOENT: ${params.file_path}`);
-        return v;
-      }
-      if (method === 'delete_file_or_dir') {
-        const p = params.path as string;
-        for (const k of [...files.keys()]) {
-          if (k === p || k.startsWith(p + '/')) files.delete(k);
-        }
-        return null;
-      }
-      if (method === 'list_directory') return '[]';
-      throw new Error(`unexpected rpc: ${method}`);
-    }),
-  );
-  return files;
+/** 重置为空白内存 fs（同旧 mockLiveFs 语义——空盘起测）。 */
+function mockLiveFs(initial: Record<string, string> = {}): void {
+  const k = H.kernelFs!;
+  k.fs.files.clear();
+  k.fs.dirs.clear();
+  k.fs.writes.length = 0;
+  k.fs.fail = {};
+  for (const [p, v] of Object.entries(initial)) k.fs.setFile(p, v);
 }
 
 function makeRecord(partial: Partial<GoalRecord> = {}): GoalRecord {
@@ -61,8 +45,6 @@ function makeRecord(partial: Partial<GoalRecord> = {}): GoalRecord {
     ...partial,
   };
 }
-
-const GOALS = '/proj/.lantai/goals';
 
 // ── CRUD ──
 
@@ -160,14 +142,13 @@ describe('GoalManager CRUD', () => {
   });
 
   it('delete removes record from index and files', async () => {
-    const files = mockLiveFs();
     const gm = new GoalManager('/proj');
     const rec = await gm.create('delete me');
     await gm.delete(rec.id);
 
     expect(await gm.get(rec.id)).toBeNull();
     expect((await gm.list()).length).toBe(0);
-    expect([...files.keys()].some((k) => k.includes(rec.id))).toBe(false);
+    expect([...H.kernelFs!.fs.files.keys()].some((k) => k.includes(rec.id))).toBe(false);
   });
 });
 

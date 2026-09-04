@@ -14,25 +14,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from '../src/app/shell-store';
 import { useToastStore } from '../src/state/toast-store';
 
-import { legacyDispatchShim } from './helpers/kernel-envelope';
+// fs 域收口（2026-09-04）：会话恢复 I/O 经 kernelListDirectory/kernelReadFileRaw
+// （rpc-contract 具名 helper，内部直呼 fs_cap）——mock 站到 helper 层（不再
+// 拦 bridge + legacyDispatchShim 翻信封）。工作区会话根卷预置进共享内存 fs。
 
-const mockInvoke = vi.fn();
-async function mockRpc(method: string, params?: Record<string, unknown>): Promise<unknown> {
-  const normalized: Record<string, unknown> = {};
-  if (params) {
-    for (const [key, value] of Object.entries(params)) {
-      const snakeKey = key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
-      normalized[snakeKey] = value;
-    }
-  }
-  return mockInvoke('rpc', { method, params: normalized });
-}
-vi.mock('../src/bridge', () => ({
-  invoke: (...args: unknown[]) => mockInvoke(...args),
-  rpc: (method: string, params?: Record<string, unknown>) => mockRpc(method, params),
-  listen: vi.fn(),
-  isMockMode: () => false,
+const H = vi.hoisted(() => ({
+  kernelFs: null as null | ReturnType<typeof import('./helpers/kernel-fs').createKernelFsMock>,
 }));
+
+vi.mock('../src/rpc-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/rpc-contract')>();
+  H.kernelFs = (await import('./helpers/kernel-fs')).createKernelFsMock();
+  return { ...actual, ...H.kernelFs.overrides };
+});
 
 vi.mock('../src/ui/graph', () => ({ StarGraph: class {} }));
 vi.mock('../src/ui/icons', () => ({ iconHtml: () => '', iconSvg: () => '' }));
@@ -93,31 +87,17 @@ function volumeJson(): string {
   });
 }
 
-/** 工作区会话根磁盘 mock：{WS}/.lantai/sessions 有 7.json（恢复 = 扫描推导，
- *  不再读总目/tracker——list_directory 路由卷清单）。 */
+/** 工作区会话根磁盘预置：{WS}/.lantai/sessions 有 7.json（恢复 = 扫描推导，
+ *  不再读总目/tracker——list 层由共享 helper 的 listFlat 从文件表推导）。 */
 function mockWorkspaceDisk(): void {
-  mockInvoke.mockReset();
-  // P2-2 信封化：fs 命令经 tool_call 寻址 builtin.fs——shim 翻译回旧 (method, params)
-  mockInvoke.mockImplementation(
-    legacyDispatchShim((_cmd: string, payload: { method: string; params: Record<string, unknown> }) => {
-      const { method, params } = payload;
-      if (method === 'list_directory') {
-        const p = params.path as string;
-        if (p === WS_SESSIONS) {
-          return Promise.resolve(
-            JSON.stringify([{ name: '7.json', path: `${WS_SESSIONS}/7.json`, is_dir: false, children: null }]),
-          );
-        }
-        return Promise.resolve(JSON.stringify([]));
-      }
-      if (method === 'read_file_content') {
-        const fp = params.file_path as string;
-        if (fp === `${WS_SESSIONS}/7.json`) return Promise.resolve(volumeJson());
-        return Promise.reject(new Error('文件不存在'));
-      }
-      return Promise.resolve(null);
-    }),
-  );
+  const k = H.kernelFs;
+  if (!k) throw new Error('kernelFs mock 未就绪（vi.mock 工厂未执行）');
+  k.fs.files.clear();
+  k.fs.dirs.clear();
+  k.fs.writes.length = 0;
+  k.fs.lists.length = 0;
+  k.fs.fail = {};
+  k.fs.setFile(`${WS_SESSIONS}/7.json`, volumeJson());
 }
 
 async function drain(times = 10): Promise<void> {
@@ -126,6 +106,7 @@ async function drain(times = 10): Promise<void> {
 
 beforeEach(() => {
   localStorage.clear();
+  mockWorkspaceDisk();
   useShellStore.setState({ projectPath: WS });
 });
 

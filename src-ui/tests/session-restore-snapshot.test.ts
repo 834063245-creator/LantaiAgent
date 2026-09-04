@@ -9,24 +9,19 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// ── Mock bridge — 与 chat-session.test.ts 同款（Tauri invoke 通道）──
-const mockInvoke = vi.fn();
-async function mockRpc(method: string, params?: Record<string, unknown>): Promise<any> {
-  const normalized: Record<string, unknown> = {};
-  if (params) {
-    for (const [key, value] of Object.entries(params)) {
-      const snakeKey = key.replace(/[A-Z]/g, (m) => '_' + m.toLowerCase());
-      normalized[snakeKey] = value;
-    }
-  }
-  return mockInvoke('rpc', { method, params: normalized });
-}
-vi.mock('../src/bridge', () => ({
-  invoke: (...args: any[]) => mockInvoke(...args),
-  rpc: (method: string, params?: Record<string, unknown>) => mockRpc(method, params),
-  listen: vi.fn(),
-  isMockMode: () => false,
+// fs 域收口（2026-09-04）：会话卷读经 kernelReadFileRaw（rpc-contract 具名
+// helper，内部直呼 fs_cap）——mock 站到 helper 层（不再拦 bridge +
+// legacyDispatchShim 翻信封）。恢复卷预置进共享内存 fs。
+
+const H = vi.hoisted(() => ({
+  kernelFs: null as null | ReturnType<typeof import('./helpers/kernel-fs').createKernelFsMock>,
 }));
+
+vi.mock('../src/rpc-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/rpc-contract')>();
+  H.kernelFs = (await import('./helpers/kernel-fs')).createKernelFsMock();
+  return { ...actual, ...H.kernelFs.overrides };
+});
 
 // ── Mock DOM-heavy libs（照 chat-session.test.ts，最小化）──
 vi.mock('../src/ui/graph', () => ({ StarGraph: class {} }));
@@ -70,9 +65,18 @@ import { useShellStore } from '../src/app/shell-store';
 import * as Session from '../src/ui/chat-session';
 import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
 
-import { legacyDispatchShim } from './helpers/kernel-envelope';
-
 const PROJ = 'D:/snapshot-proj';
+
+/** 清空共享内存盘（每用例独立起测）。 */
+function freshFs(): void {
+  const k = H.kernelFs;
+  if (!k) throw new Error('kernelFs mock 未就绪（vi.mock 工厂未执行）');
+  k.fs.files.clear();
+  k.fs.dirs.clear();
+  k.fs.writes.length = 0;
+  k.fs.lists.length = 0;
+  k.fs.fail = {};
+}
 
 function createChatPanel(): ChatCore {
   return new ChatCore();
@@ -148,8 +152,7 @@ describe('会话恢复采信现场快照（2026-08-31 会话流专项）', () =>
 
   beforeEach(() => {
     localStorage.clear();
-    mockInvoke.mockReset();
-    mockInvoke.mockResolvedValue(null);
+    freshFs();
     useShellStore.setState({ projectPath: '' });
   });
 
@@ -158,20 +161,13 @@ describe('会话恢复采信现场快照（2026-08-31 会话流专项）', () =>
   });
 
   it('带 UI 快照的卷恢复直接采信快照：工具 err/error 态/label 不被降采样', async () => {
+    // 预置快照卷 71（恢复路径 = 工作区会话根单读——kernelReadFileRaw 命中）
+    H.kernelFs!.fs.setFile(`${PROJ}/.lantai/sessions/71.json`, snapshotVolumeFile());
+
     panel = createChatPanel();
     panel.setProjectPath(PROJ);
     const { factory } = storingFactory();
     panel.setAgentFactory(factory);
-    mockInvoke.mockImplementation(
-      legacyDispatchShim((_cmd: string, payload: any) => {
-        const { method, params } = payload;
-        if (method === 'read_file_content' && params.file_path?.endsWith('/71.json')) {
-          return Promise.resolve(snapshotVolumeFile());
-        }
-        void params;
-        return Promise.resolve('ok');
-      }),
-    );
 
     await panel.loadSessionFromDisk(PROJ, 71);
 
@@ -186,20 +182,13 @@ describe('会话恢复采信现场快照（2026-08-31 会话流专项）', () =>
   });
 
   it('旧档（无 uiMessages）仍走 provider 重建兜底，不炸', async () => {
+    // 预置旧档卷 72
+    H.kernelFs!.fs.setFile(`${PROJ}/.lantai/sessions/72.json`, legacyVolumeFile());
+
     panel = createChatPanel();
     panel.setProjectPath(PROJ);
     const { factory } = storingFactory();
     panel.setAgentFactory(factory);
-    mockInvoke.mockImplementation(
-      legacyDispatchShim((_cmd: string, payload: any) => {
-        const { method, params } = payload;
-        if (method === 'read_file_content' && params.file_path?.endsWith('/72.json')) {
-          return Promise.resolve(legacyVolumeFile());
-        }
-        void params;
-        return Promise.resolve('ok');
-      }),
-    );
 
     await panel.loadSessionFromDisk(PROJ, 72);
 
@@ -215,8 +204,7 @@ describe('撤回/重发 ID 直达（2026-09-01 重发锚点工程）', () => {
 
   beforeEach(() => {
     localStorage.clear();
-    mockInvoke.mockReset();
-    mockInvoke.mockResolvedValue(null);
+    freshFs();
     useShellStore.setState({ projectPath: '' });
   });
 
@@ -470,8 +458,7 @@ describe('改/重发/重试三操作语义（ChatCore 级，2026-09-01 重发锚
 
   beforeEach(() => {
     localStorage.clear();
-    mockInvoke.mockReset();
-    mockInvoke.mockResolvedValue(null);
+    freshFs();
     useShellStore.setState({ projectPath: '' });
   });
 
