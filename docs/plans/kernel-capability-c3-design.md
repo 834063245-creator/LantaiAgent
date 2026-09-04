@@ -1,6 +1,6 @@
 # 内核能力化 C-3/C-4 —— 工具编排回 TS 设计件
 
-> 状态：**R3 执行蓝本（2026-09-04 拍板定稿；2026-09-05 fs 域收口竣工后刷新）**。C 模型定稿（kernel-plugin-architecture-decision.md v3）。
+> 状态：**R3 执行蓝本（2026-09-04 拍板定稿；2026-09-05 fs + git 域收口竣工后刷新）**。C 模型定稿（kernel-plugin-architecture-decision.md v3）。
 > 决策史：本件初为「待用户审」设计稿；R2 试点（search 域）已落地独立能力口 search_cap + schema 回 zod
 > （commit 789aef86/fe91f016/d524f124）。2026-09-04 用户拍板「主线 R2+R3 推进，R2-d(2) 并入 R3 统一做」。
 > 本件即 R3 执行蓝本——D-A/D-B/D-C 按 R2 先例裁定，批序 = v3 执行序表 R3 行的分解，并把 R2-d(2)
@@ -15,6 +15,19 @@
 > （coding.ts FS_CAP_SCHEMA，收敛零漂移）；测试层 18 文件 mock 站 rpc-contract 具名
 > helper。**R3 批表 fs 行（含 UI/内部消费）由此全数兑现**，C-3 §6 批表仅余 git/shell/
 > 权限三行 + 收口。
+>
+> **2026-09-05 git 域收口竣工（agent 执行批，f3add174/c5acb876/8b006be2）**：
+> git 域全链路闭环（§8 形态定稿逐条兑现）：git_cap 能力口（批 1——commands/git_cap.rs
+> 单方法 action 分派 + 口内 PluginToolAdapter 闸：只读五动作 Read 家族 / 写动作 Git
+> 家族两段闸 subcommand 位；精确名寻址保留 plugin:builtin.git.<action>，用户既有规则
+> 不失义；执行体 git_exec_path + run_git）；模型族 gitCapTool zod 转录 + git_cap 直呼
+> （批 2——coding.ts GIT_CAP_SCHEMA，diff 双路由/stage 拆单保留在工具层）+ 内部消费
+> kernelGitCall 换轨（state-inject 用户路径 is_agent=false）；porcelain 三处解析
+> （status 头 / parse_status / log \x00 split）迁 src-ui/src/agent/git-porcelain.ts；
+> builtin.git 整目录退役（Rust 注册/镜像/gen-kernel-manifest git DOMAIN 全清）；
+> convergence 双档零漂移。附带修复 frontend-rpc-contract 生成器 SECTIONS 存量错位
+> （R3-a fs_cap 箱线组加入后未同步——identity 错挂「插件安装通道」、dataflow 三方法
+> 被分区溢出整行丢弃）。**C-3 §6 批表仅余 shell/权限两行 + 收口**。
 
 ## 0. 目标形态（C 模型收敛后）
 
@@ -106,7 +119,7 @@
 |---|---|---|
 | **R3-a** | fs 能力口 RPC 面建立：`fs_cap`（read/list/glob/write/delete/rename/create_dir/append + 补 confined_fs 缺的 dispatch 闸 cap 变体）；rpc.rs 分支 + rpc-contract 类型 + shape 表；platform_boundary 冻结清单更新 | ✅ **已落地（2026-09-04）**：confined_fs 增 read_text_cap/write_text_cap/list_tree_cap/delete_cap/rename_cap/glob_cap（口内 resolve_*_dispatch 闸）；commands/fs_cap.rs 单方法 action 分派（返回 Value）；rpc.rs fs_cap 分支 + JsonValue shape；platform_boundary 加 fs_cap（宪法依据注释）；rpc-contract fs_cap 类型；frontend-rpc-contract.md 重生成（47 methods）。cargo bin 437 passed + boundary 通过 |
 | **R3-b** | TS fs 域换轨：模型族 execute 从 provider seam（tool_call 信封）换 fs_cap 直呼（builtinFsProvider 换轨 + read 形状解包/line_numbers 反相 + camel→snake 映射）；fs_cap 承接 write/delete/rename 副作用（timeline/changed_files 从 fs 插件迁入）；git/shell 同批评估 | ✅ **已落地（2026-09-04，模型族换轨；2026-09-05 fs 域收口全闭环）**：builtinFsProvider.execute 换 fs_cap（8 动作 read/list/glob/write/delete/mkdir/move/rename；edit/constraints 留信封）；fs_cap.rs write/delete/rename 补 record_fs_side_effect（ignored 路径跳过，与插件原语义一致）；read 形状层（fs_cap {path,content} → content 解包 + raw→line_numbers 反相——旧 read 默认行号）；6 个测试文件更新（fs-seam/define-tool/parallel-subagent/coding-domain/tool-param/ab-tools）。**范围注记已兑现（2026-09-05）**：UI helper 全量换 fs_cap、builtin.fs 退役——见状态头。vitest 2441 + convergence 零漂移 + biome 0/0 |
-| **R3-c** | git 域同型：git_cap 能力口（run_git + 家族闸）；git 编排（porcelain 解析）回 TS；builtin.git 退役 | 全门禁（下窗口执行批；形态见 §8） |
+| **R3-c** | git 域同型：git_cap 能力口（run_git + 家族闸）；git 编排（porcelain 解析）回 TS；builtin.git 退役 | ✅ **已落地（2026-09-05，f3add174/c5acb876/8b006be2）**：git_cap 单方法 action 分派（16 工具名一位；口内 PluginToolAdapter 闸——只读五动作 Read 家族 / 写动作 Git 家族两段闸 subcommand 位，精确名寻址保留 plugin:builtin.git.<action>）；模型族 13 工具 zod 转录 + 直呼（diff 双路由/stage 拆单留工具层）；内部消费 kernelGitCall 换轨（is_agent=false 用户路径）；porcelain 三处解析迁 git-porcelain.ts；builtin.git 整目录退役 + 镜像/生成器条目清；vitest 2442 + convergence 双档零漂移 + biome 0/0 + doc-sync 全绿。附带修复 frontend-rpc-contract 生成器 SECTIONS 存量错位（dataflow 三方法此前被溢出丢弃） |
 | **R3-d** | shell 域同型 + R2-d(2) 并入：process_cap（spawn 收敛）+ exec_command 编排回 TS（流式闭环处置）；search_cap 输出组装编排回 TS（统一命中集收窄） | 全门禁（§8 process_cap；粘性 cwd 归属裁定见 §9） |
 | **R3-e（权限）** | ~~TS 策略闸接管六步裁决~~ **不迁（agent 裁定 2026-09-05，见 §9）**：六步裁决留 Rust 强制层；R1 已收拢的双份名单（auto 白名单/系统规则数据面归 TS）是策略数据面，与裁决执行序解耦——R3-e 收口 = 维持「Rust 口最小强制 + TS 策略建议」双层现状，删除随迁的 dead_code（append_project_rule 接线等按需） | 权限回归专项全绿 |
 | 收口 | tool_call/PluginRegistry 去留裁定；builtin.* 残余域退役或留 R4/R5；内核=能力口+闸+应用壳 | 全门禁 |
@@ -131,7 +144,8 @@
 - **D-C**：编排回 TS 时 manifest 生成器/镜像去留。
   **裁定：schema 真源回 TS zod**（search R2-d 先例——逐字节转录零漂移已证）；
   R3 起 fs 域随 execute 换轨回 zod，镜像/生成器条目随 builtin.* 退役逐步删
-  （fs 已删：kernel-manifests.generated 9 manifest + gen-kernel-manifest fs DOMAIN）；
+  （fs/git 已删：kernel-manifests.generated 8 manifest + gen-kernel-manifest
+  fs/git DOMAIN）；
   全量脚手架拆除（manifest.rs/registry/生成器）收在 R5。
 
 ## 9. R3-c/d/e 执行裁定（2026-09-05 agent 裁定——用户确认技术决策由 agent 定、测试兜底）
