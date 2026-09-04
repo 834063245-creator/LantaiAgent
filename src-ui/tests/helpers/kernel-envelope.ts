@@ -74,21 +74,15 @@ export function toolCallArgsOfBridge(
 /** 旧名翻译表：'plugin.tool' → 旧 RPC 方法名（恒等映射为主）。
  *  （builtin.git 16 行已随 git 域收口退役——2026-09-05，R3-c：模型族/内部
  *  消费全量换 git_cap 直呼后无测试再翻 builtin.git 信封；builtin.fs 同款
- *  先例 a107e4e2。） */
+ *  先例 a107e4e2。builtin.shell 7 行已随 shell 域收口退役——2026-09-05，
+ *  R3-d：模型族/内部消费全量换 process_cap 直呼后无测试再翻 builtin.shell
+ *  信封。） */
 const LEGACY_METHOD_OF: Record<string, string> = {
   // builtin.editor（P2-1）
   'builtin.editor.edit_file': 'edit_file',
   // builtin.constraints（P2-1）
   'builtin.constraints.read_constraints': 'read_constraints',
   'builtin.constraints.write_constraints': 'write_constraints',
-  // builtin.shell（P2-4，manifest 7 工具 = 旧 RPC 方法名）
-  'builtin.shell.exec_command': 'exec_command',
-  'builtin.shell.bash_output': 'bash_output',
-  'builtin.shell.bash_kill': 'bash_kill',
-  'builtin.shell.bash_wait': 'bash_wait',
-  'builtin.shell.shell_env': 'shell_env',
-  'builtin.shell.background_activity': 'background_activity',
-  'builtin.shell.drain_bg_notifications': 'drain_bg_notifications',
 };
 
 /** camelCase → snake_case（浅层，只动顶层键；与 bridge rpc() 同款 ponytail 正则）。 */
