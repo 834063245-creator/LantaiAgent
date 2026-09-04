@@ -38,7 +38,6 @@ import {
   PERMISSION_MODES,
   resolveNewSessionDefault,
   thinkingOptionsFor,
-  typedJsonRpc,
   useCoreStore,
   useModeStore,
   usePaperDock,

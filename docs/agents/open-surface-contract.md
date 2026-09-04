@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：10
+当前版本：11
 
-<!-- contract-fingerprint: cdfe528387f97394eb12d905d373e68edaad8562baf972d8b88dbc8c8d168abe -->
+<!-- contract-fingerprint: 082dc0b6eefe2e510b5cb8c5852e456870c4800db09de0e248bdc7021b96b4ae -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -45,6 +45,7 @@
 | 8 | 2026-09-02 | AURA SDK 语义记忆系统整体拆除——default-loop step0 临时提醒清除的保留特判退役（原特判仅服务 preRunHook 的 run 前预注入，载体已删，改每步无条件清除）；无契约形状变更 | AURA SDK 拆除（用户拍板） |
 | 9 | 2026-09-04 | default-loop step0 计划提醒读取换 tool_call 信封（kernelReadFileRaw 寻址 builtin.fs.read_file_content，旧 RPC 分支随 P2-2 退役）；无契约形状变更 | kernel-plugin-runtime P2-2 |
 | 10 | 2026-09-04 | default-loop 每步 drain_bg_notifications 换 tool_call 信封（kernelShellCall 寻址 builtin.shell.drain_bg_notifications，旧 RPC 分支随 P2-4 退役）；无契约形状变更 | kernel-plugin-runtime P2-4 |
+| 11 | 2026-09-04 | default-loop 死 import 清理（删 kernelShellCall 未用导入；R1 biome 0/0 收口连带）；无契约形状变更 | R1 TS 权限策略层（permission-policy 单真源） |
 
 ## 变更流程（guard 红 → 修复四步）
 

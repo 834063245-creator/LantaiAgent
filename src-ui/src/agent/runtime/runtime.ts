@@ -17,14 +17,7 @@ import { factoryComposition, type ResolvedComposition } from '../../composition/
 import type { Context } from '../../cordis';
 import type { StoredThinking } from '../../provider/thinking';
 import type { Message, Provider } from '../../provider/types';
-import {
-  kernelDeleteFile,
-  kernelReadFile,
-  kernelShellCall,
-  kernelWriteFile,
-  parseJson,
-  typedJsonRpc,
-} from '../../rpc-contract';
+import { kernelDeleteFile, kernelReadFile, kernelShellCall, kernelWriteFile, parseJson } from '../../rpc-contract';
 import { Agent } from '../agent';
 import { resolveAgentLoop } from '../agent-loop/agent-loop-active';
 import type { AgentUINotifier, EventSink, Pricing } from '../agent-types';

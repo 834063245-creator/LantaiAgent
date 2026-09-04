@@ -19,6 +19,7 @@ import { agentSessionState } from '../../agent/agent-session-state';
 import type { RuntimePort } from '../../agent/runtime/types';
 import { typedListen, typedRpc } from '../../rpc-contract';
 import { useModeStore } from '../../state/mode-store';
+import { shouldAutoApprove } from '../../state/permission-policy';
 import { useAgentPanelStore } from '../../ui/agent-panel-store';
 import type { ShellRefs } from '../runtime';
 
@@ -28,18 +29,16 @@ export async function bootBridges(refs: ShellRefs): Promise<void> {
   // bridge.listen 返回空操作 unlisten（权限卡在 mock 下不会出现）
   try {
     // ── 后端权限请求 → 前端提示卡桥接 ──
-    // 白名单按后端 Tool.name() 匹配（payload.tool）：
-    // "Edit" = edit_file/write_file/delete_file/move_file/create_directory/log_append。
-    // 注意与 src-tauri permissions::auto_mode_allows 保持同一份名单（两端镜像）。
-    const AUTO_WHITELIST = new Set(['Edit']);
+    // 自动旁路判定真源 = state/permission-policy（R1 收拢；白名单原散两端镜像
+    // ——bridges AUTO_WHITELIST × Rust auto_mode_allows——已并单真源）。
     const timedOutRequests = new Set<string>();
     await typedListen('permission-ask', (p) => {
       if (!chatPanel) return;
-      // 权限模式旁路：yolo → 全部自动，auto → 仅安全编辑。
+      // 权限模式旁路：yolo → 全部自动，auto → 仅白名单（真源 permission-policy）。
       // 单一真相 = mode-store（C11 重设计，2026-08-22）：app 级单例，
       // 切换时已同步镜像 Rust + 落盘；不再读 per-panel 的旧字段。
       const permMode = useModeStore.getState().permissionMode;
-      if (permMode === 'yolo' || (permMode === 'auto' && AUTO_WHITELIST.has(p.tool))) {
+      if (shouldAutoApprove(permMode, p.tool)) {
         void typedRpc('permission_ask_response', {
           request_id: p.requestId,
           allow: true,

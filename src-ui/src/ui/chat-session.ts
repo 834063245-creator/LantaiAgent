@@ -10,13 +10,7 @@ import type { ChatAgentHandle } from '../agent/chat-agent-handle';
 import { createExecState, type ExecStateInstance } from '../agent/execution-state';
 import type { Message } from '../provider/types';
 import type { DirEntry } from '../rpc-contract';
-import {
-  kernelListDirectory,
-  kernelReadFileRaw,
-  kernelWriteFile,
-  typedJsonRpc,
-  typedRpc,
-} from '../rpc-contract';
+import { kernelListDirectory, kernelReadFileRaw, kernelWriteFile } from '../rpc-contract';
 import { getActiveProvider, loadSettings } from '../settings';
 import { disposeAssetSessionStore, disposeAssetTables, rebuildAssetTableFromMessages } from '../state/asset-store';
 import { getCanvasStore } from '../state/canvas-store';

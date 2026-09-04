@@ -19,7 +19,6 @@ import { typedJsonRpc } from '../../rpc-contract';
 import type { Agent } from '../agent';
 import { createCompactionTools } from '../compaction-model';
 import type { GraphContext, GraphSnapshot } from '../hooks';
-import { errText } from '../loop-helpers';
 import { type McpClient, registerMcpTools } from '../mcp';
 import type { ToolExecutor } from '../tool';
 import { agentInvoke, ToolRegistry } from '../tool';

@@ -11,13 +11,7 @@
 // Pattern follows AgentStore: rpc file I/O, lazy ensureDir, stripLineNumbers.
 
 import type { Message } from '../provider/types';
-import {
-  kernelCreateDirectory,
-  kernelDeleteFile,
-  kernelReadFile,
-  kernelWriteFile,
-  typedRpc,
-} from '../rpc-contract';
+import { kernelCreateDirectory, kernelDeleteFile, kernelReadFile, kernelWriteFile } from '../rpc-contract';
 import { stripNums } from './board-persistence';
 
 // ── Types ──

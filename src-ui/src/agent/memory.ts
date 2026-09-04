@@ -14,12 +14,7 @@
 //   Agent 自己主动存的记忆最高只能给 reference。fact 级别只有用户通过 /remember 明确要求时才能使用。
 
 import { z } from 'zod';
-import {
-  kernelCreateDirectory,
-  kernelReadFile,
-  kernelReadMemoryBatch,
-  kernelWriteFile,
-} from '../rpc-contract';
+import { kernelCreateDirectory, kernelReadFile, kernelReadMemoryBatch, kernelWriteFile } from '../rpc-contract';
 import type { Tool } from './tool';
 import { defineTool } from './tools/define-tool';
 

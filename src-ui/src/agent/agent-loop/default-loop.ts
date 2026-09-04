@@ -15,7 +15,7 @@
 // 替换契约：ctx.agentLoop 注册表后注册胜——替换实现只需满足 AgentLoop
 // 接口（拿到同一宿主面即可接管全生命周期）。
 
-import { kernelShellCall, typedRpcWithTimeout } from '../../rpc-contract';
+import { typedRpcWithTimeout } from '../../rpc-contract';
 import { type AgentEvent, EventKind } from '../agent-types';
 import { log } from '../logger';
 import { finishReasonMessage, parseFilePathArg } from '../loop-helpers';
