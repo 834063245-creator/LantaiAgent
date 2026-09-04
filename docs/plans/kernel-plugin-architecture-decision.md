@@ -1,70 +1,106 @@
-# 内核最小化 —— 从零设计定稿（拆除 P0-2 架构脚手架）
+# 内核最小化 —— 从零设计定稿（v2：权限策略层在 TS，不进 Rust）
 
-> 状态：**定稿**（2026-09-04 用户思想实验定案）。本页取代前几页的「逐步反向拆」——
-> 用户指出我触发了「不敢拆」的模型惯性，每一步都要拍板。思想实验：
-> **假设没有内核，从零设计这套系统，会纠结把什么给什么吗？** 答案：不会。
-> 从零设计的形态是干净且无歧义的——反向拆之所以难，是因为 P0-2 把工具硬塞进
-> Rust 时造的脚手架（builtin.* / manifest 双端镜像 / tool_call 信封 / PluginRegistry）
-> 给「工具住在 Rust」圆场。**从零设计减去现状，剩下全拆。**
+> 状态：**定稿**（2026-09-04）。v2 修正：权限**策略**层放 TS（对齐 Claude Code
+> `permissions.ts` / DSH `pre-execute` waterfall 两个主流先例），Rust 能力口只做
+> 已授权调用的执行 + 物理沙箱兜底。本页取代 v1 的「能力口内嵌权限闸」表述。
+>
+> 溯源：用户思想实验（「假设没有内核从零设计，会纠结吗」→ 不会）指出 P0-2 的
+> 脚手架（builtin.* / manifest 双端镜像 / tool_call 信封 / PluginRegistry）是为
+> 「工具住在 Rust」圆场。用户读 DSH + Claude Code 泄露源码（jeecg-cc）后确认：
+> **两个主流 agent 系统都是 TS 定义工具 + TS 实现权限策略，原生层只做物理执行与
+> 沙箱——没有任何一个把工具 schema 或权限策略焊进原生二进制。** v1 把「闸」写进
+> Rust 能力口仍是分层错误残留，v2 修正。
 
-## 0. 从零设计的系统形态（无争议基准）
+## 0. 从零设计的系统形态（四层，权限策略在 TS）
 
-| 层 | 内容 | 位置 |
-|---|---|---|
-| 产品本体 | 会话/编排/UI/多 Agent/**工具（schema+代码）** | webview TS（44 hologram/* 域插件就是家） |
-| 系统能力 | 盘/进程/网络/凭据/Ask/UI——webview 碰不了、且是受信原语 | exe（极少数能力原语口 + 口内权限闸） |
-| 图谱引擎 | 独立进程 hologram-engine serve（自有工具随它暴露） | 进程外，壳只 MCP client 转发 |
-| LSP | 用户机器原生 language server | 起原生进程转发，薄，留内核无编排业务 |
-| 外部第三方 | MCP server | 进程外既有通道 |
+| 层 | 内容 | 位置 | 对应先例 |
+|---|---|---|---|
+| 产品 + 工具 | 会话/编排/UI/多 Agent/工具 schema+zod + 编排 | webview TS（44 域插件） | Claude Code tools.ts / DSH defineTool |
+| **权限策略层** | 规则 allow/deny/ask + mode 分发 + Ask UI + 规则记忆 | **TS**（不进 Rust） | Claude Code `utils/permissions/permissions.ts` / DSH `tools/pre-execute` waterfall + guards + approval |
+| 能力执行 | 盘字节/搜索/spawn/句柄操作——webview 碰不了的受信执行 | Rust 能力口（**薄，只执行已授权调用**） | Node 直碰 + landlock/seatbelt 兜底 |
+| 物理沙箱 | 进程文件效应兜底（read-only/workspace-write） | Rust/native | Claude Code sandbox / DSH native landlock-run |
 
 **从零设计里不存在**：builtin.* Rust 工具模块、manifest.json 双端镜像、生成器、
-PluginRegistry、tool_call {plugin} 信封、PluginToolAdapter family 寻址——全是 P0-2
-把工具塞进 Rust 的脚手架。
+PluginRegistry、tool_call {plugin} 信封、PluginToolAdapter family 寻址、以及
+**Rust 内的权限裁决逻辑**——全是 P0-2 把工具与策略塞进 Rust 的脚手架。
 
-## 1. 拆除令（用户拍板：拆干净，不再逐项征求意见）
+## 1. 修正后的分层原则（本页核心）
 
-**退役（工具业务离开 exe）**：
-- 11 个 builtin.* Rust 模块（fs/git/shell/browser/uia/pty/lsp/search/web/editor/
-  constraints，共 5631 行）——编排迁 TS 域插件；字节执行走内核能力原语。
-- 11 份 manifest.json + include_str! + gen-kernel-manifest/gen-plugin-manifests
-  生成器 + kernel-manifests.generated.ts 镜像 + doc-sync 对拍——**schema 真源回
-  TS zod**（P0-2 的「单一真源在 manifest」裁决废除，回 INVARIANTS #8 原版：
-  工具定义 = defineTool + zod）。
-- tool_call 信封 + PluginRegistry + PluginToolAdapter——被能力原语 RPC 取代。
+> **权限策略层不改进 Rust。** 它和工具定义一样是产品逻辑——规则怎么配、谁允许谁
+> 拒绝、Ask 怎么弹、mode 怎么分发、规则怎么记忆——这些全在 TS。Claude Code 的
+> `permissions.ts`、DSH 的 pre-execute/guards/approval 是同一层的两个成熟实现。
+>
+> Rust 只留**执行**：能力口收到「已被 TS 策略层裁决放行」的调用就执行；外加物理
+> 沙箱兜底（即使 TS 策略被绕过，进程也受 OS 级文件效应约束）。Rust 不读规则、
+> 不判 allow/deny/ask、不弹 Ask。
+
+### 为什么必须这样（对照先例）
+
+- **TS 策略**：规则层叠（user/project/local/policy）、Ask 记忆写回、mode 切换、
+  审批文案、审计——全是高频演化的产品逻辑，放 TS 可热改、可审计、与 UI 同进程。
+- **Rust 只执行**：webview 无盘权/进程权，碰资源必须经原生；但「能不能碰」已由
+  TS 判定，Rust 不重复判——只执行 + 沙箱兜底（防 TS 层被攻破后越权碰盘）。
+- Claude Code 的 Bun/Node 宿主 + DSH 的 Node 宿主都是「TS 直碰资源 + 沙箱约束」；
+  兰台 webview 不可信，故中间加 Rust 能力口——这是 Tauri 架构差异，不是分层差异。
+  策略仍在 TS，只有执行因架构必须经原生。
+
+## 2. 拆除令（用户拍板）
+
+**退役**：
+- 11 个 builtin.* Rust 模块（5631 行编排）——编排迁 TS 域插件。
+- 11 份 manifest.json + include_str! + 生成器 + generated 镜像 + doc-sync 对拍——
+  schema 真源回 TS zod（回 INVARIANTS #8 原版：defineTool + zod）。
+- tool_call 信封 + PluginRegistry + PluginToolAdapter——被「TS 策略闸 + 能力口 RPC」取代。
+- Rust 权限裁决（PluginToolAdapter family 寻址、dispatch 侧 check_permission）——
+  权限策略归 TS；Rust 只留 permissions/ 的**物理执行辅助**（sandbox 判定、路径
+  canonical、审计落盘点）。
 - 引擎域壳半截桥（hologram_call 工具侧）——归引擎 serve（壳只 client 转发）。
 
-**保留（本来就是内核）**：permissions/sandbox/audit/credential/os_sandbox（能力闸）、
-confined_fs 字节执行（作为 fs 能力原语的实现，裁决+字节一体已就绪）、
-workspace/session 应用壳、engine_transport（MCP client）、LSP 原生转发、llm_proxy/
-plugin_assets。
+**保留（Rust 能力层本体）**：
+- confined_fs 字节执行（fs 能力口实现；**不含**权限裁决——物理路径由 TS 策略层
+  经 resolve 传给口）。
+- os_sandbox / sandbox（物理沙箱兜底）。
+- credential 存储、audit 落盘、workspace/session 应用壳、engine_transport（MCP
+  client）、LSP 原生转发、llm_proxy/plugin_assets。
 
-## 2. 终态能力原语面（极少数，与工具数无关）
+## 3. 终态调用链（一层闸，在 TS）
 
-| 能力族 | 口内实现（在内核，可复杂） | 闸（口内，现成） |
+```
+模型/UI 工具调用
+  → TS 工具（schema zod + 编排，44 域插件）
+  → TS 权限策略闸（规则 allow/deny/ask + mode + Ask + 记忆——Claude Code 同构）
+  → Rust 能力口 RPC（薄：resolve 物理路径 + 执行已授权调用）
+  → （可选）物理沙箱兜底（read-only/workspace-write）
+```
+
+能力口面（极少数，与工具数无关）：fs（含 search/glob 变体）/ process（含 git/
+shell spawn）/ credential / 会话句柄（browser/uia/pty/lsp）。**口内无策略**——
+「已授权」由 TS 层保证，口只执行 + 报审计。
+
+## 4. 域归属终态
+
+- 工具编排 + **权限策略**：TS。
+- 能力实现（字节/搜索/spawn/句柄操作）：Rust 能力口（执行）——能力口数量 =
+  能力族数，与工具名无关（search 是 fs 族变体，非每工具一口）。
+- 物理沙箱：Rust/native（read-only/workspace-write 文件效应）。
+- 引擎自有（graph/ops）：随引擎 serve 暴露，壳只 MCP client 转发。
+- 原生引用（LSP）：起用户机器 language server + 转发，留 Rust（无编排业务）。
+- 外部第三方：MCP server，进程外。
+
+## 5. 执行序（批 = commit 界，门禁全绿）
+
+| 批 | 内容 | 验收 |
 |---|---|---|
-| fs（含 search/glob 变体） | 字节 I/O + 全文扫描/向量召回 | resolve_read/write_dispatch（Agent 过 require_* Ask+规则，UI 只解析） |
-| process（含 git/shell spawn） | spawn 子进程收输出 | BashTool/git 家族 + 命令规则 |
-| 凭据 | credential_* | 已存在 |
-| Ask/UI | permission_ask_response | 已存在 |
-| 会话句柄（browser/uia/pty/lsp 若留壳） | CDP/COM/PTY/LSP 注册表操作 | BrowserTool/DesktopTool 多层语义 |
+| R1 | TS 权限策略层设计（规则/mode/Ask 落点——现 permissions.json + 前端 Ask 已是雏形，评估复用 vs 重写为 Claude Code 同构） | 设计 + 勘察 |
+| R2 | 薄域编排先回 TS（search/web/constraints/editor：schema zod + 编排迁域插件）+ 能力实现并入 Rust 能力口 | 全门禁 |
+| R3 | fs/git/shell 编排回 TS；TS 策略闸接管权限；Rust dispatch 权限逻辑退役 | 权限回归专项 |
+| R4 | browser/uia 句柄域编排回 TS + 句柄能力口 | 全门禁 |
+| R5 | 拆 manifest 脚手架 + tool_call/PluginRegistry + Rust 权限裁决 | 全门禁 |
+| 收口 | 全门禁 + 交接/决策落账 | — |
 
-**精化（2026-09-04 定案：能力 vs 业务界）**：search/glob 的全文扫描+向量召回
-**是 fs 能力族的实现，不是「工具业务」**——留在内核能力口（fs.search 变体），
-TS 只做编排+schema。原则：**「回 TS」的是用户可见工具编排（工具名/参数组合/
-结果呈现）；能力的实现永远在内核能力口**。能力口数量 = 能力族数，与工具名数
-无关——search 是 fs 族一个变体，不是每工具一个口。
+## 6. 待执行时定的点
 
-## 3. 域归属终态
-
-- 用户可见工具编排（fs/git/shell/search/web/editor/constraints/browser/uia/pty 的
-  工具名/schema/组合/呈现）→ TS 域插件（schema 回 zod）。
-- 能力实现（字节 I/O / 全文搜索 / spawn / CDP/COM/PTY 句柄操作）→ 内核能力口。
-- 引擎自有（graph/ops）：随引擎 serve 暴露，壳只 MCP client 转发，不定义 schema。
-- 原生引用（LSP）：起用户机器 language server + 转发，留内核（无编排业务）。
-- 外部第三方：MCP server，已有通道。
-
-## 4. 执行序（批 = commit 界，门禁全绿）
-
-R1 勘察 TS 域插件装配 → R2 薄域编排先回 TS（schema zod）+ 能力实现并入口 →
-R3 fs/git/shell 编排回 TS → R4 browser/uia 句柄域 → R5 拆 manifest 脚手架 +
-tool_call/PluginRegistry → 收口全门禁 + 落账。
+- TS 策略层复用现前端 Ask/permissions.json 生态 vs 重写为 Claude Code 分层规则
+  （user/project/local/policy）——R1 定。
+- 物理沙箱形态（os_sandbox 现状够不够 read-only/workspace-write 两档承诺）——
+  R2 起核。
