@@ -263,9 +263,19 @@ function useMediaData(filePath: string | undefined): MediaLoadState {
     let cancelled = false;
     setState({ status: filePath ? 'loading' : 'idle' });
     if (!filePath) return;
-    rendererRpc('tool_call', { plugin: 'builtin.fs', tool: 'read_file_base64', args: { filePath } })
-      .then((b64) => {
-        if (!cancelled) setState({ status: 'ready', data: String(b64) });
+    // fs 域收口（kernel-capability-c3-design.md）：read_file_base64 从 tool_call
+    // 信封换 fs_cap read_base64 能力口直呼（用户路径 is_agent=false）——返回
+    // JSON {path, base64}，取 base64 字段喂 data: URI。
+    rendererRpc('fs_cap', { action: 'read_base64', file_path: filePath, is_agent: false })
+      .then((res) => {
+        if (cancelled) return;
+        const raw = typeof res === 'string' ? res : JSON.stringify(res);
+        try {
+          const parsed = JSON.parse(raw) as { base64?: unknown };
+          setState({ status: 'ready', data: String(parsed.base64 ?? raw) });
+        } catch {
+          setState({ status: 'ready', data: raw });
+        }
       })
       .catch((e) => {
         if (!cancelled) {

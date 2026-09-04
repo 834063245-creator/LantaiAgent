@@ -90,11 +90,8 @@ export interface RpcContract {
   //   内部直呼统一经下方 kernelGitCall 助手。）
 
   // ── 文件系统 ─────────────────────────────────────────────
-  // （list_directory / list_directory_flat / read_file_content / read_memory_batch /
-  //   read_file_base64 / write_file_content / log_append / create_directory /
-  //   get_global_memory_dir / delete_file_or_dir / rename_file_or_dir / move_file /
-  //   glob 已迁内核插件 builtin.fs，走 tool_call——kernel-plugin-runtime P2-2。
-  //   内部直呼统一经下方 kernelFsCall 助手。）
+  // （fs 工具域已收敛到 fs_cap 能力口直呼——2026-09-04 fs 域收口，builtin.fs
+  //   信封退役。内部 I/O 统一经下方 fsCapCall 一族助手，is_agent=false 用户路径。）
   get_last_project: {
     params: Record<string, never>;
     result: string; // JSON — 最近工作区路径 "path"/null（冷启动恢复信号，与图谱引擎无关）
@@ -152,14 +149,27 @@ export interface RpcContract {
     result: string; // JSON — 与 builtin.search search_content 同形状
   };
 
-  // ── 能力口（R3-a，kernel-capability-c3-design.md）──────────
-  // fs_cap：fs 能力族直呼入口（read/list/glob/write/delete/rename/create_dir/
-  // append）——不经 tool_call 信封 / PluginRegistry / PluginToolAdapter。参数键
-  // 顶层 snake_case（bridge.rpc() 转换幂等）；is_agent/agent_id 显式传（Agent 过
-  // resolve_*_dispatch 闸 / UI 只解析）。编排（缺省/输出格式）归 TS（R3-b 迁）。
+  // ── 能力口（R3-a + 收口，kernel-capability-c3-design.md）──────────
+  // fs_cap：fs 能力族直呼入口（read/list/list_flat/glob/write/delete/rename/
+  // create_dir/append/read_base64/memory_batch/global_memory_dir）——不经
+  // tool_call 信封 / PluginRegistry / PluginToolAdapter。参数键顶层 snake_case
+  // （bridge.rpc() 转换幂等）；is_agent/agent_id 显式传（Agent 过
+  // resolve_*_dispatch 闸 / UI 只解析）。编排（缺省/输出格式）归 TS。
   fs_cap: {
     params: {
-      action: 'read' | 'list' | 'glob' | 'write' | 'delete' | 'rename' | 'create_dir' | 'append';
+      action:
+        | 'read'
+        | 'list'
+        | 'list_flat'
+        | 'glob'
+        | 'write'
+        | 'delete'
+        | 'rename'
+        | 'create_dir'
+        | 'append'
+        | 'read_base64'
+        | 'memory_batch'
+        | 'global_memory_dir';
       path?: string;
       from?: string;
       to?: string;
@@ -171,11 +181,12 @@ export interface RpcContract {
       limit?: number;
       line_numbers?: boolean;
       filter_ignored?: boolean;
+      paths?: string[];
       workspace_root?: string;
       is_agent?: boolean;
       agent_id?: string | null;
     };
-    result: string; // JSON — action 相关形状（read={path,content} / list={entries} / glob={pattern,count,truncated,results} / 写类={path}）
+    result: string; // JSON — read={path,content} / read_base64={path,base64} / list|list_flat={entries} / glob={pattern,count,truncated,results} / memory_batch=Record<path,content|null> / 写类={path}
   };
 
   // ── Shell ────────────────────────────────────────────────
@@ -454,52 +465,146 @@ const dirEntrySchema: z.ZodType<DirEntry> = z.lazy(() =>
 export const dirEntryArraySchema = z.array(dirEntrySchema);
 
 // ─────────────────────────────────────────────────────────────
-// 内核插件直呼便捷封装（kernel-plugin-runtime P2-2）
+// fs 能力口直呼便捷封装（kernel-capability-c3-design.md fs 域收口）
 // ─────────────────────────────────────────────────────────────
 // 内部持久化 I/O（canvas / 会话卷 / 记忆 / 技能 / 日志 / 渲染资产）的统一
-// 出口：tool_call 信封寻址 builtin.fs（fs 域批迁移后旧 RPC 分支退役）。
-// args 说 manifest schema 的语言（camelCase；信封外层键单字，bridge 的
-// camel→snake 转换不触及嵌套 args）。调用方一律用户路径（is_agent 缺省
-// false——工具级权限门只对 Agent 工具链路径生效）。
+// 出口：fs_cap 能力口直呼（builtin.fs 信封已退役——2026-09-04 fs 域收口）。
+// 参数键 = fs_cap 顶层 snake_case（bridge.rpc() 转换幂等）；调用方一律用户
+// 路径（is_agent=false 显式传——resolve_*_dispatch 只解析不过 Ask）。
+// 返回 = fs_cap JSON 字符串，各 helper 解析取所需字段。
 
-/** 通用信封调用（text 形态结果直通）。 */
-export function kernelFsCall(tool: string, args: Record<string, unknown>): Promise<string> {
-  return typedRpc('tool_call', { plugin: 'builtin.fs', tool, args });
+/** fs_cap 能力口直呼（返回 JSON 字符串）。is_agent=false = 用户路径。 */
+function fsCapCall(params: RpcParamsOf<'fs_cap'>): Promise<string> {
+  return typedRpc('fs_cap', params);
+}
+
+/** fs_cap read 统一：raw=true → 原文（line_numbers=false）；缺省/raw=false →
+ *  行号格式（与旧 read_file_content 默认一致）。返回解析后的实际文件文本。 */
+async function fsCapReadText(
+  filePath: string,
+  opts?: { raw?: boolean; offset?: number; limit?: number },
+): Promise<string> {
+  const raw = await fsCapCall({
+    action: 'read',
+    file_path: filePath,
+    line_numbers: opts?.raw !== true,
+    ...(opts?.offset !== undefined ? { offset: opts.offset } : {}),
+    ...(opts?.limit !== undefined ? { limit: opts.limit } : {}),
+    is_agent: false,
+  });
+  try {
+    const parsed = parseJson<{ path?: string; content?: unknown }>(raw);
+    if (typeof parsed.content === 'string') return parsed.content;
+  } catch {
+    // 非 JSON（测试 mock / 异常文本）——直通
+  }
+  return raw;
 }
 
 /** 文本读（offset/limit 行号分页；raw=true 返回原文——P1-3 JSON 读取面）。 */
 export function kernelReadFile(filePath: string, opts?: { raw?: boolean }): Promise<string> {
-  return kernelFsCall('read_file_content', { filePath, ...opts });
+  return fsCapReadText(filePath, opts);
 }
 
 /** 全量原文读（canvas / 会话卷等 JSON 消费面的惯用形）。 */
 export function kernelReadFileRaw(filePath: string): Promise<string> {
-  return kernelReadFile(filePath, { raw: true });
+  return fsCapReadText(filePath, { raw: true });
 }
 
-/** 原子写入（父目录自动创建；返回 Rust 侧的「已写入」回执）。 */
-export function kernelWriteFile(filePath: string, content: string): Promise<string> {
-  return kernelFsCall('write_file_content', { filePath, content });
+/** fs_cap 写类 action 返回解析：取 {path} 的 path；非 JSON/无 path（测试 mock
+ *  旧文案等）直通 raw——消费端多为 await 丢弃返回，容错直通等价。 */
+function fsCapPathOf(raw: string): string {
+  try {
+    const parsed = parseJson<{ path?: unknown }>(raw);
+    if (typeof parsed.path === 'string') return parsed.path;
+  } catch {
+    // 非 JSON——直通
+  }
+  return raw;
+}
+
+/** 原子写入（父目录自动创建；fs_cap write 返回解析后路径）。 */
+export async function kernelWriteFile(filePath: string, content: string): Promise<string> {
+  const raw = await fsCapCall({ action: 'write', file_path: filePath, content, is_agent: false });
+  return fsCapPathOf(raw);
 }
 
 /** 创建目录（含父目录）。 */
-export function kernelCreateDirectory(path: string): Promise<string> {
-  return kernelFsCall('create_directory', { path });
+export async function kernelCreateDirectory(path: string): Promise<string> {
+  const raw = await fsCapCall({ action: 'create_dir', path, is_agent: false });
+  return fsCapPathOf(raw);
 }
 
 /** 删除文件或目录树（不可逆）。 */
-export function kernelDeleteFile(path: string): Promise<string> {
-  return kernelFsCall('delete_file_or_dir', { path });
+export async function kernelDeleteFile(path: string): Promise<string> {
+  const raw = await fsCapCall({ action: 'delete', path, is_agent: false });
+  return fsCapPathOf(raw);
 }
 
-/** 日志追加（内部工具——Rust 侧保留同步权限检查语义）。 */
-export function kernelLogAppend(path: string, content: string): Promise<string> {
-  return kernelFsCall('log_append', { path, content });
+/** 日志追加（fs_cap append——resolve_write_dispatch 用户路径只解析；旧
+ *  builtin.fs log_append 的 EditTool sync 检查对 .lantai 内部写本放行，
+ *  语义等价：UI 写 .lantai/logs 不受规则拦）。 */
+export async function kernelLogAppend(path: string, content: string): Promise<string> {
+  const raw = await fsCapCall({ action: 'append', path, content, is_agent: false });
+  return fsCapPathOf(raw);
 }
 
 /** 全局记忆目录路径。 */
-export function kernelGlobalMemoryDir(): Promise<string> {
-  return kernelFsCall('get_global_memory_dir', {});
+export async function kernelGlobalMemoryDir(): Promise<string> {
+  const raw = await fsCapCall({ action: 'global_memory_dir', is_agent: false });
+  return fsCapPathOf(raw);
+}
+
+/** list_directory 的 JSON 形状版（递归树/截断旗标同 dirEntrySchema 契约）。
+ *  兼容双形状：fs_cap 真返回 {entries} 包装；测试 mock / 旧形态直返裸数组
+ *  （mock 模拟 list_directory 返回 DirEntry[]）。 */
+export async function kernelListDirectory(path: string, filterIgnored?: boolean): Promise<DirEntry[]> {
+  const raw = await fsCapCall({ action: 'list', path, filter_ignored: filterIgnored ?? true, is_agent: false });
+  const parsed = dirEntryArraySchema.safeParse(listPayloadOf(raw));
+  if (!parsed.success) {
+    throw new Error(`kernelListDirectory: 返回形状违反契约 — ${parsed.error.issues[0]?.message ?? ''}`);
+  }
+  return parsed.data;
+}
+
+/** list_directory_flat 的 JSON 形状版（非递归单层）。兼容双形状同 list。 */
+export async function kernelListDirectoryFlat(path: string): Promise<DirEntry[]> {
+  const raw = await fsCapCall({ action: 'list_flat', path, is_agent: false });
+  const parsed = dirEntryArraySchema.safeParse(listPayloadOf(raw));
+  if (!parsed.success) {
+    throw new Error(`kernelListDirectoryFlat: 返回形状违反契约 — ${parsed.error.issues[0]?.message ?? ''}`);
+  }
+  return parsed.data;
+}
+
+/** list action 返回载荷提取：{entries} 包装取 entries；裸数组（测试 mock /
+ *  旧形态）直用。非 JSON 返回 null（调用方 zod 校验兜错）。 */
+function listPayloadOf(raw: string): unknown {
+  try {
+    const parsed = parseJson<{ entries?: unknown } | unknown[]>(raw);
+    if (Array.isArray(parsed)) return parsed;
+    return (parsed as { entries?: unknown }).entries ?? null;
+  } catch {
+    return raw; // 非 JSON——zod safeParse 兜错（字符串非数组 → 失败）
+  }
+}
+
+/** read_memory_batch 的 JSON 形状版（.lantai 内多文件批量读）。 */
+export async function kernelReadMemoryBatch(paths: string[]): Promise<Record<string, string | null>> {
+  const raw = await fsCapCall({ action: 'memory_batch', paths, is_agent: false });
+  const parsed = z.record(z.string(), z.nullable(z.string())).safeParse(parseJson(raw));
+  if (!parsed.success) {
+    throw new Error(`kernelReadMemoryBatch: 返回形状违反契约 — ${parsed.error.issues[0]?.message ?? ''}`);
+  }
+  return parsed.data;
+}
+
+/** 媒体渲染二进制读（read_file_base64——renderer 消费，8MiB 源上限）。 */
+export async function kernelReadFileBase64(filePath: string): Promise<string> {
+  const raw = await fsCapCall({ action: 'read_base64', file_path: filePath, is_agent: false });
+  const parsed = parseJson<{ base64?: string }>(raw);
+  if (typeof parsed.base64 !== 'string') return raw;
+  return parsed.base64;
 }
 
 // ── builtin.git 直呼便捷封装（kernel-plugin-runtime P2-3）──
@@ -549,37 +654,6 @@ export async function kernelLspRequest<T = unknown>(args: {
   params?: Record<string, unknown>;
 }): Promise<T> {
   return parseJson<T>(await kernelLspCall('lsp_request', args));
-}
-
-/** list_directory 的 JSON 形状版（typedJsonRpc 旧消费面等价迁移；
- *  形状校验 = dirEntrySchema 数组，递归树/截断旗标同契约）。 */
-export async function kernelListDirectory(path: string, filterIgnored?: boolean): Promise<DirEntry[]> {
-  const raw = await kernelFsCall('list_directory', { path, filterIgnored });
-  const parsed = dirEntryArraySchema.safeParse(parseJson(raw));
-  if (!parsed.success) {
-    throw new Error(`kernelListDirectory: 返回形状违反契约 — ${parsed.error.issues[0]?.message ?? ''}`);
-  }
-  return parsed.data;
-}
-
-/** list_directory_flat 的 JSON 形状版（非递归单层）。 */
-export async function kernelListDirectoryFlat(path: string): Promise<DirEntry[]> {
-  const raw = await kernelFsCall('list_directory_flat', { path });
-  const parsed = dirEntryArraySchema.safeParse(parseJson(raw));
-  if (!parsed.success) {
-    throw new Error(`kernelListDirectoryFlat: 返回形状违反契约 — ${parsed.error.issues[0]?.message ?? ''}`);
-  }
-  return parsed.data;
-}
-
-/** read_memory_batch 的 JSON 形状版（.lantai 内多文件批量读）。 */
-export async function kernelReadMemoryBatch(paths: string[]): Promise<Record<string, string | null>> {
-  const raw = await kernelFsCall('read_memory_batch', { paths });
-  const parsed = z.record(z.string(), z.nullable(z.string())).safeParse(parseJson(raw));
-  if (!parsed.success) {
-    throw new Error(`kernelReadMemoryBatch: 返回形状违反契约 — ${parsed.error.issues[0]?.message ?? ''}`);
-  }
-  return parsed.data;
 }
 
 /** 运行时契约：`// JSON` 注释命令的 result 形状，与上方 RpcContract 的
@@ -638,9 +712,6 @@ export const rpcResultSchemas = {
       top_fan_out: z.array(z.object({ id: z.string(), name: z.string(), fan_out: z.number() })),
     })
     .passthrough(),
-  // （list_directory / list_directory_flat / read_memory_batch 已迁 builtin.fs
-  //  插件走 tool_call——JSON 形状消费面统一经 kernelListDirectory /
-  //  kernelListDirectoryFlat / kernelReadMemoryBatch 助手（kernel-plugin-runtime P2-2）。）
   get_last_project: z.nullable(z.string()),
   workspace_list: z.array(
     z

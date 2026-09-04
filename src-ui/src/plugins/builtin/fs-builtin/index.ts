@@ -5,32 +5,28 @@
 // （plugin-bundle-retirement S2，2026-09-03）。原 agent/fs-provider.ts
 // 整体迁入；零运行时依赖（类型导入经 esbuild 擦除，产物自包含）。
 //
-// R3-b（kernel-capability-c3-design.md）：execute 从 tool_call 信封（寻址
-// builtin.fs 插件）换 fs_cap 能力口直呼——dispatch 即 exec（executor 注入
-// is_agent 到 fs_cap 顶层，与 searchCapTool 同构：R2 search_cap 先例）。schema
-// 仍取 manifest 镜像（builtin.fs 条目 R3-b 退役前不动，工具面零漂移）。
+// fs 域收口（kernel-capability-c3-design.md）：execute 从 tool_call 信封
+// （寻址 builtin.fs 插件——已退役）换 fs_cap 能力口直呼——dispatch 即 exec
+// （executor 注入 is_agent 到 fs_cap 顶层，与 searchCapTool 同构）。模型族
+// 工具 schema 真源已回 TS zod（coding.ts FS_CAP_SCHEMA）；本文件的
+// FS_PLUGIN_TOOL_BY_ACTION 仅剩留信封动作（edit/constraints/write_constraints
+// 属 builtin.editor / builtin.constraints 域）。
 //
 // 双表职责：
-//   FS_PLUGIN_TOOL_BY_ACTION —— coding.ts 的 schema 寻址真源（manifest 驱动
-//   工具面的 schema/description 取镜像；R3-b 首批仍保留，退役时删）。
+//   FS_PLUGIN_TOOL_BY_ACTION —— 留信封动作 → tool_call 目标
+//   （edit/constraints/write_constraints 属 editor/constraints 域）。
 //   FS_ACTION_TO_CAP —— execute 换轨动作→fs_cap action + 模型键→snake 键映射。
 
 import type { FsAction, FsProvider } from '../../../composition/fs-service';
 import type { Context } from '../../../cordis';
 
-/** fs 动作 → tool_call 信封目标（schema 寻址真源——coding.ts fsManifestTool
- *  经 kernelManifestOf(target.plugin) 取 manifest 镜像的 schema/description；
- *  R3-b 首批 execute 已换 fs_cap，本表仅剩寻址职责，builtin.fs 退役时删）。 */
-export const FS_PLUGIN_TOOL_BY_ACTION: Record<FsAction, { plugin: string; tool: string }> = {
-  read: { plugin: 'builtin.fs', tool: 'read_file_content' },
-  write: { plugin: 'builtin.fs', tool: 'write_file_content' },
+/** fs 动作 → tool_call 信封目标（仅留信封动作——edit/constraints/
+ *  write_constraints 属 builtin.editor/builtin.constraints 域，fs 域收口后
+ *  builtin.fs 已退役；fs 域 8 模型族动作 schema 真源已回 TS zod
+ *  （coding.ts FS_CAP_SCHEMA），不经本表。本表只服务 fsManifestTool 的
+ *  edit/constraints 寻址与 builtinFsProvider 的留信封分支。 */
+export const FS_PLUGIN_TOOL_BY_ACTION: Partial<Record<FsAction, { plugin: string; tool: string }>> = {
   edit: { plugin: 'builtin.editor', tool: 'edit_file' },
-  list: { plugin: 'builtin.fs', tool: 'list_directory' },
-  glob: { plugin: 'builtin.fs', tool: 'glob' },
-  mkdir: { plugin: 'builtin.fs', tool: 'create_directory' },
-  move: { plugin: 'builtin.fs', tool: 'move_file' },
-  rename: { plugin: 'builtin.fs', tool: 'rename_file_or_dir' },
-  delete: { plugin: 'builtin.fs', tool: 'delete_file_or_dir' },
   constraints: { plugin: 'builtin.constraints', tool: 'read_constraints' },
   write_constraints: { plugin: 'builtin.constraints', tool: 'write_constraints' },
 };
@@ -87,9 +83,11 @@ export const builtinFsProvider: FsProvider = {
     if (!cap.action) {
       // 留信封动作——按原动作路由（edit → builtin.editor；constraints 族 →
       // builtin.constraints）
+      const envelope = FS_PLUGIN_TOOL_BY_ACTION[action];
+      if (!envelope) throw new Error(`fs-builtin: 动作 '${action}' 无信封目标（fs 域收口后非信封动作应走 fs_cap）`);
       return opts.dispatch(
         'tool_call',
-        { plugin: FS_PLUGIN_TOOL_BY_ACTION[action].plugin, tool: FS_PLUGIN_TOOL_BY_ACTION[action].tool, args },
+        { plugin: envelope.plugin, tool: envelope.tool, args },
         opts.onProgress,
         opts.signal,
       );

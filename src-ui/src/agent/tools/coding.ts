@@ -14,7 +14,7 @@ import { activeShellProviders, type ShellAction } from '../../composition/shell-
 import { FS_PLUGIN_TOOL_BY_ACTION } from '../../plugins/builtin/fs-builtin';
 import { SHELL_PLUGIN_TOOL_BY_ACTION } from '../../plugins/builtin/shell-builtin';
 import type { Tool, ToolExecutor } from '../tool';
-import { defineTool } from './define-tool';
+import { defineTool, toInputJsonSchema } from './define-tool';
 import { kernelManifestOf, withProgressStream } from './manifest-tools';
 
 /** fs 域消费面（平台化 Phase 2 · D11，2026-08-27）：经 ctx.fs 注册表解析 provider
@@ -88,13 +88,165 @@ export interface CodingToolsUI {
   askUser?: (req: AskUserRequest) => void;
 }
 
-/** manifest 驱动的 fs 域工具（kernel-plugin-runtime P2-2）：schema/description/
- *  readOnly = manifest 字节（convergence 零漂移——schema 字节转录纪律）；TS 工具名
- *  保持历史名（write_file/edit_file/delete_file/rename_file——领域收敛与守护测试
- *  的既有契约，非 manifest 工具名）；execute 仍走 fsExecute → provider seam
- *  （平台化 D11 开放面不动——provider 表已全量换 tool_call 信封）。 */
+// ═══════════════════════════════════════════════════════════════
+// fs 域模型族 zod 真源（kernel-capability-c3-design.md fs 域收口 R3-b 后，
+// 2026-09-04）：builtin.fs 插件信封退役，fs 域 8 工具（read/write/list/glob/
+// mkdir/move/rename/delete）schema 真源回 TS zod——逐键等价于退役前 manifest
+// 的 schema 发射（键名 camelCase/snake_case 模型面契约、description 字节，
+// convergence 快照 stableStringify 字典序下零漂移）。
+// edit/constraints/write_constraints 仍经 manifest 镜像（builtin.editor /
+// builtin.constraints 未退役——见 fsManifestTool）。
+// ═══════════════════════════════════════════════════════════════
+
+/** read_file_content schema——manifest 字节转录（filePath/offset/limit）。 */
+const readFileContentSchema = z.object({
+  filePath: z.string().describe('Absolute path to the file to read'),
+  offset: z
+    .number()
+    .int()
+    .min(-9007199254740991)
+    .max(9007199254740991)
+    .optional()
+    .describe('Line number to start reading from (0-indexed, default: 0)'),
+  limit: z
+    .number()
+    .int()
+    .min(-9007199254740991)
+    .max(9007199254740991)
+    .optional()
+    .describe('Maximum number of lines to return (default: all lines)'),
+});
+
+/** write_file_content schema——manifest 字节转录（filePath/content/_forceGate）。 */
+const writeFileSchema = z.object({
+  filePath: z.string().describe('Absolute path to the file to create or overwrite'),
+  content: z.string().describe('Full file content to write'),
+  _forceGate: z
+    .boolean()
+    .optional()
+    .describe(
+      'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+    ),
+});
+
+/** list_directory schema——manifest 字节转录（path）。 */
+const listDirectorySchema = z.object({
+  path: z.string().describe('Absolute path to the directory to list'),
+});
+
+/** glob schema——manifest 字节转录（pattern/path）。 */
+const globSchema = z.object({
+  pattern: z
+    .string()
+    .describe('Glob pattern to match file paths against (e.g. "**/*.rs", "src/**/agent*.ts", "*.json")'),
+  path: z.string().optional().describe('Directory to search in. Defaults to the current workspace root.'),
+});
+
+/** create_directory schema——manifest 字节转录（path）。 */
+const createDirectorySchema = z.object({
+  path: z.string().describe('Absolute path to the directory to create'),
+});
+
+/** move_file schema——manifest 字节转录（from/to/_forceGate）。 */
+const moveFileSchema = z.object({
+  from: z.string().describe('Source path'),
+  to: z.string().describe('Destination path'),
+  _forceGate: z
+    .boolean()
+    .optional()
+    .describe(
+      'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+    ),
+});
+
+/** rename_file_or_dir schema——manifest 字节转录（path/new_name/_forceGate，
+ *  模型面历史契约——工具层 execute 折写 filePath/newName 后派发）。 */
+const renameFileSchema = z.object({
+  path: z.string().describe('Absolute path to the file/directory to rename'),
+  new_name: z.string().describe('New name (not path, just the name)'),
+  _forceGate: z
+    .boolean()
+    .optional()
+    .describe(
+      'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+    ),
+});
+
+/** delete_file_or_dir schema——manifest 字节转录（path/_forceGate）。 */
+const deleteFileSchema = z.object({
+  path: z.string().describe('Absolute path to the file or directory to delete'),
+  _forceGate: z
+    .boolean()
+    .optional()
+    .describe(
+      'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+    ),
+});
+
+/** fs 域动作 → zod schema（schema 真源表）。 */
+const FS_CAP_SCHEMA: Record<string, z.ZodObject<z.ZodRawShape>> = {
+  read: readFileContentSchema,
+  write: writeFileSchema,
+  list: listDirectorySchema,
+  glob: globSchema,
+  mkdir: createDirectorySchema,
+  move: moveFileSchema,
+  rename: renameFileSchema,
+  delete: deleteFileSchema,
+};
+
+/** fs 域动作 → 模型面 description（manifest 字节转录）。 */
+const FS_CAP_DESCRIPTION: Record<string, string> = {
+  read: 'Read the content of a file on disk. Returns text in cat -n format (6-digit line number + tab + content). Use offset and limit to read a specific range of lines (0-indexed). Use to inspect source code files when analyzing dependencies or investigating violations.',
+  write:
+    'Create or overwrite a file with the given content. Creates parent directories if needed. Use to write new files or modify existing ones.',
+  list: 'List files and subdirectories in a directory (recursive up to 4 levels deep). Returns name, path, type (file/dir), and size for each entry.',
+  glob: 'Fast file pattern matching using glob patterns. Returns matching file paths sorted by modification time. Supports ** for recursive matching (e.g. "**/*.rs", "src/**/*.ts", "*.json"). Use this instead of run_shell to find files by name pattern — it is faster and respects .gitignore-style exclusions.',
+  mkdir:
+    'Create a new directory (and any missing parent directories). Use before writing new files into a directory that may not exist yet.',
+  move: 'Move or rename a file or directory. The destination path determines the new name/location.',
+  rename:
+    'Rename a file or directory (keep it in the same parent directory). For moving to a different directory, use move_file instead.',
+  delete:
+    'Delete a file or directory at the specified path. Use to clean up temporary files or remove unwanted code. DANGEROUS — cannot be undone. Verify with user if deleting important files.',
+};
+
+/** fs 域动作 → readOnly（manifest 字节转录）。 */
+const FS_CAP_READONLY: Record<string, boolean> = {
+  read: true,
+  write: false,
+  list: true,
+  glob: true,
+  mkdir: false,
+  move: false,
+  rename: false,
+  delete: false,
+};
+
+/** fs 域模型族工具（fs 域收口后 schema/description/readOnly 自持 zod 真源，
+ *  不再查 builtin.fs 镜像）；TS 工具名保持历史名（write_file/edit_file/
+ *  delete_file/rename_file——领域收敛与守护测试的既有契约）；execute 仍走
+ *  fsExecute → provider seam（builtinFsProvider → fs_cap 直呼）。 */
+function fsCapTool(action: FsAction, localName: string, exec: ToolExecutor): Tool {
+  const schema = FS_CAP_SCHEMA[action];
+  const parameters = toInputJsonSchema(schema.passthrough());
+  return {
+    name: () => localName,
+    description: () => FS_CAP_DESCRIPTION[action],
+    parameters: () => parameters,
+    readOnly: () => FS_CAP_READONLY[action] ?? false,
+    execute: (args, onProgress, signal) =>
+      withProgressStream(args, onProgress, () => fsExecute(action, args, exec, onProgress, signal)),
+  };
+}
+
+/** manifest 驱动的 fs 域工具（kernel-plugin-runtime P2-2 遗留面）——仅
+ *  edit/constraints/write_constraints（builtin.editor / builtin.constraints
+ *  未退役，仍从镜像取 schema/description）；schema/description/readOnly =
+ *  manifest 字节；TS 工具名保持历史名。 */
 function fsManifestTool(action: FsAction, localName: string, exec: ToolExecutor): Tool {
   const target = FS_PLUGIN_TOOL_BY_ACTION[action];
+  if (!target) throw new Error(`coding: 动作 '${action}' 无 manifest 信封目标（fs 域收口后应走 fsCapTool zod 面）`);
   const manifest = kernelManifestOf(target.plugin);
   const spec = manifest.tools.find((t) => t.name === target.tool);
   if (!spec) throw new Error(`manifest-tools: 插件 '${target.plugin}' 无工具 '${target.tool}'`);
@@ -109,21 +261,22 @@ function fsManifestTool(action: FsAction, localName: string, exec: ToolExecutor)
   };
 }
 
-/** fs 域工具族（S1-2 从 createCodingTools 迁出；P2-2 起 manifest 驱动）。
+/** fs 域工具族（S1-2 从 createCodingTools 迁出；fs 域收口后 8 模型族 zod 真源
+ *  + edit/constraints 仍 manifest 驱动）。
  *  声明序 = 领域合并/装配的字节契约序——勿重排。 */
 export function createFsTools(exec: ToolExecutor): Tool[] {
-  const rename = fsManifestTool('rename', 'rename_file', exec);
+  const rename = fsCapTool('rename', 'rename_file', exec);
   return [
-    fsManifestTool('read', 'read_file_content', exec),
-    fsManifestTool('write', 'write_file', exec),
+    fsCapTool('read', 'read_file_content', exec),
+    fsCapTool('write', 'write_file', exec),
     fsManifestTool('edit', 'edit_file', exec),
-    fsManifestTool('list', 'list_directory', exec),
+    fsCapTool('list', 'list_directory', exec),
     fsManifestTool('constraints', 'read_constraints', exec),
     fsManifestTool('write_constraints', 'write_constraints', exec),
-    fsManifestTool('glob', 'glob', exec),
-    fsManifestTool('delete', 'delete_file', exec),
-    fsManifestTool('mkdir', 'create_directory', exec),
-    fsManifestTool('move', 'move_file', exec),
+    fsCapTool('glob', 'glob', exec),
+    fsCapTool('delete', 'delete_file', exec),
+    fsCapTool('mkdir', 'create_directory', exec),
+    fsCapTool('move', 'move_file', exec),
     // rename：模型面 schema 键是 path/new_name（历史契约），派发前折到
     // filePath/newName（插件契约键）——键名改写保留在工具层（行为不变；
     // 信封内 args 不经 bridge 转换，必须显式折写）。

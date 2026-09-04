@@ -485,10 +485,9 @@ const MOCK_TOOL_RESPONSES: Record<string, MockToolResponse> = {
   }),
   hologram_diff: JSON.stringify(MOCK_DIFF),
 
-  // （read_file_content / write_file_content / list_directory /
-  //   list_directory_flat 等 fs 命令已迁 builtin.fs 插件——浏览器 mock
-  //   模式经 tool_call，不走旧名；kernel-plugin-runtime P2-2。
-  //   exec_command / shell_env 等 shell 命令已迁 builtin.shell，同 P2-4。）
+  // （fs 工具域已收敛到 fs_cap 能力口直呼（2026-09-04 fs 域收口）——浏览器
+  //   mock 模式经 fs_cap，不走旧名。exec_command / shell_env 等 shell 命令
+  //   已迁 builtin.shell，走 tool_call，同 kernel-plugin-runtime P2-4。）
 };
 
 // ── Mock invoke 分发器 ──

@@ -15,7 +15,7 @@
 // 替换契约：ctx.agentLoop 注册表后注册胜——替换实现只需满足 AgentLoop
 // 接口（拿到同一宿主面即可接管全生命周期）。
 
-import { typedRpcWithTimeout } from '../../rpc-contract';
+import { kernelReadFile, typedRpcWithTimeout } from '../../rpc-contract';
 import { type AgentEvent, EventKind } from '../agent-types';
 import { log } from '../logger';
 import { finishReasonMessage, parseFilePathArg } from '../loop-helpers';
@@ -30,6 +30,26 @@ export const DEFAULT_AGENT_LOOP_ID = 'builtin/default';
  *  3s 只在 Rust 侧卡死或回包丢失时触发——落回各自的跳过分支，
  *  循环不死等在无界 await 上（run() 永不 settle = UI 永卡运行态）。 */
 const STEP_RPC_TIMEOUT_MS = 3_000;
+
+/** promise 超时兜底（fs 域收口后 kernelReadFile 等 helper 直呼不经
+ *  typedRpcWithTimeout——需保持超时的调用点本地包一层）。超时后底层
+ *  promise 仍可能在途：调用方须保证超时分支的跳过是安全的（同
+ *  typedRpcWithTimeout 语义）。 */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label}（${ms}ms）`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
 
 /** 默认 agent loop（出厂实现——AgentOptions 缺省 + ctx.agentLoop 构造期登记）。 */
 export const defaultAgentLoop: import('./types').AgentLoop = {
@@ -60,14 +80,14 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
         let planContent = '';
         if (host.planState.state.active && host.planState.state.planFilePath) {
           try {
-            const raw = await typedRpcWithTimeout(
-              'tool_call',
-              {
-                plugin: 'builtin.fs',
-                tool: 'read_file_content',
-                args: { filePath: host.planState.state.planFilePath },
-              },
+            // fs 域收口（kernel-capability-c3-design.md）：plan 文件读取从
+            // tool_call 信封（builtin.fs.read_file_content）换 kernelReadFile
+            // 直呼（fs_cap read，用户路径 is_agent=false）。超时兜底保留——
+            // 读卡死只丢 plan 提醒不拖 run（本段 try/catch 已兜 skip）。
+            const raw = await withTimeout(
+              kernelReadFile(host.planState.state.planFilePath),
               STEP_RPC_TIMEOUT_MS,
+              'plan 文件读取超时',
             );
             planContent = raw.replace(/^\s*\d+\t/gm, '');
           } catch {
