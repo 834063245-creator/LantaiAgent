@@ -112,7 +112,7 @@ shell spawn）/ credential / 会话句柄（browser/uia/pty/lsp）。**口内不
 | 批 | 内容 | 验收 |
 |---|---|---|
 | R1 | TS 权限策略层设计（规则/mode/Ask 落点——现 permissions.json + 前端 Ask 已是雏形，评估复用 vs 重写为 Claude Code 同构） | ✅ 已拍板 + 设计（kernel-permission-strategy-layer-r1.md）+ 代码落地（commit a185f096） |
-| R2 | 薄域编排先回 TS（search/web/constraints/editor：schema zod + 编排迁域插件）+ 能力实现并入 Rust 能力口 | 🔶 R2-a/b 已落地（commit 789aef86：search 能力口 + 信封换直呼）；R2-d/c（zod/编排/退役）余量见 kernel-capability-r2-search-pilot.md §8 |
+| R2 | 薄域编排先回 TS（search/web/constraints/editor：schema zod + 编排迁域插件）+ 能力实现并入 Rust 能力口 | 🔶 R2-a/b 已落地（commit 789aef86：search 能力口 + 信封换直呼）；R2-d(1) schema zod 真源回 TS + R2-c builtin.search 退役已落地（fe91f016/d524f124，含 R2-a 键位回归修复）；**R2-d(2) 编排真回 TS（能力口收窄）余量**见 kernel-capability-r2-search-pilot.md §8 |
 | R3 | fs/git/shell 编排回 TS；TS 策略闸接管权限；Rust dispatch 权限逻辑退役 | 权限回归专项 |
 | R4 | browser/uia 句柄域编排回 TS + 句柄能力口 | 全门禁 |
 | R5 | 拆 manifest 脚手架 + tool_call/PluginRegistry + Rust 权限裁决 | 全门禁 |
