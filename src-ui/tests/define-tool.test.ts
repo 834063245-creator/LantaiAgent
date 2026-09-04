@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { ToolExecutor } from '../src/agent/tool';
 import { createCodingTools } from '../src/agent/tool';
+import { createGitTools } from '../src/agent/tools/coding';
 import { defineTool, toInputJsonSchema } from '../src/agent/tools/define-tool';
 import { ensureProductionChannelsBooted } from './helpers/composition-boot';
 
@@ -121,14 +122,23 @@ describe('迁移样板: read_file_content / git_log', () => {
     });
   });
 
-  it('git_log: manifest 驱动后 count 原样透传（默认/校验回归插件侧）', async () => {
-    const t = tools.find((x) => x.name() === 'git_log')!;
-    // P2-3 起 git 族 manifest 驱动：zod default/coerce 退役（INVARIANTS #8 修订——
-    // 运行时校验回归插件侧参数提取），信封 args 原样透传；count 缺省由
-    // 插件 unwrap_or(10) 承接（与 Rust 命令同强度）。
-    const out = JSON.parse(await t.execute({ path: 'D:/p' }));
-    expect(out.args.args).toEqual({ path: 'D:/p' });
-    const out2 = JSON.parse(await t.execute({ path: 'D:/p', count: '3' }));
-    expect(out2.args.args).toEqual({ path: 'D:/p', count: '3' });
+  it('git_log: 能力口直呼后 count 原样透传（默认/校验归 git_cap 口内）', async () => {
+    // R3-c 换轨（kernel-capability-c3-design.md）：git 族 schema 自持 zod 真源
+    // （default 仅 schema 发射面，无运行时 parse），execute 经 git_cap 直呼——
+    // args 原样透传，count 缺省由 git_cap 口内 unwrap_or(10) 承接。git_log 的
+    // 输出整形（parseGitLogCommits 消费 stdout）使返回值不再是 exec 原文——
+    // 观察点从返回值换成 exec 调用记录。
+    const calls: Array<[string, Record<string, unknown>]> = [];
+    const logExec: ToolExecutor = async (name, args) => {
+      calls.push([name, args]);
+      return '';
+    };
+    const t = createGitTools(logExec).find((x) => x.name() === 'git_log')!;
+    await t.execute({ path: 'D:/p' });
+    await t.execute({ path: 'D:/p', count: '3' });
+    expect(calls).toEqual([
+      ['git_cap', { action: 'git_log', repo_path: 'D:/p' }],
+      ['git_cap', { action: 'git_log', repo_path: 'D:/p', count: '3' }],
+    ]);
   });
 });

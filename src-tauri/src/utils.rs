@@ -170,50 +170,9 @@ pub(crate) async fn run_git(dir: String, args: Vec<String>) -> Result<String, St
         .map_err(|e| format!("git 任务失败: {e}"))?
 }
 
-/// 将 `git status --porcelain` 解析为结构化 JSON。
-pub(crate) fn parse_status(raw: &str) -> serde_json::Value {
-    let files: Vec<serde_json::Value> = raw
-        .lines()
-        .filter(|l| !l.is_empty())
-        .map(|line| {
-            let (st, path) = if line.len() >= 4 {
-                (&line[..2], line[3..].trim())
-            } else {
-                ("  ", line)
-            };
-            let status = match st.trim() {
-                "M" => "modified",
-                "A" => "added",
-                "D" => "deleted",
-                "R" => "renamed",
-                "C" => "copied",
-                "?" => "untracked",
-                _ if st.starts_with(' ') && st.ends_with('M') => "modified",
-                _ if st.starts_with(' ') && st.ends_with('D') => "deleted",
-                _ => "modified",
-            };
-            let staged = !st.starts_with(' ') && st != "??";
-            let is_rename = st.contains('R');
-            // 对于重命名，路径格式为 "old -> new"
-            let (display_path, old_path) = if is_rename && path.contains(" -> ") {
-                let parts: Vec<&str> = path.split(" -> ").collect();
-                (parts[1].to_string(), Some(parts[0].to_string()))
-            } else {
-                (path.to_string(), None)
-            };
-            let mut obj = serde_json::json!({
-                "path": display_path,
-                "status": status,
-                "staged": staged,
-            });
-            if let Some(old) = old_path {
-                obj["old_path"] = serde_json::json!(old);
-            }
-            obj
-        })
-        .collect();
-    serde_json::json!(files)
-}
+// （parse_status 已随 git 域收口退役——2026-09-05，kernel-capability-c3-design.md
+//  R3-c：porcelain 解析归 TS 编排层（src-ui/src/agent/git-porcelain.ts，逐行
+//  转录同语义），唯一消费方 builtin.git 插件整目录退役。）
 
 /// 原子写入：临时文件再重命名。
 /// 原子地写入文件（tmp → rename），当原文件已存在时创建 .bak 备份。

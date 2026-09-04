@@ -76,13 +76,9 @@ interface DomainSpec {
 // 权限声明助手（照 P2-2 模式）
 // ─────────────────────────────────────────────────────────────
 
-const readPerm = (pathKey: string): ManifestPermission => ({ family: 'Read', path_key: pathKey });
 const editPerm = (pathKey: string): ManifestPermission => ({ family: 'Edit', path_key: pathKey });
-const gitPerm = (subcommand: string): ManifestPermission => ({
-  family: 'Git',
-  path_key: 'path',
-  subcommand,
-});
+// （readPerm 已随 git 域收口退役——Read 家族唯一消费方是 builtin.git 的只读
+//  五工具，2026-09-05 R3-c；editPerm 的消费方是 builtin.editor。）
 
 // ─────────────────────────────────────────────────────────────
 // 域配置表（TOOLS_SPEC——生成器的手写部分：permission 声明、TS 名→Rust 名
@@ -96,10 +92,9 @@ async function fsToolsFactory(): Promise<Tool[]> {
   return createFsTools(dummyExec);
 }
 
-async function gitToolsFactory(): Promise<Tool[]> {
-  const { createGitTools } = await import('../src/agent/tools/coding');
-  return createGitTools(dummyExec);
-}
+// （builtin.git 域已随 git 域收口退役——2026-09-05，kernel-capability-c3-design.md
+//  R3-c：git 13 模型族 schema 真源回 TS zod（coding.ts GIT_CAP_SCHEMA），
+//  execute 换 git_cap 能力口直呼，反向生成源随插件一并拆除；fs 域同款先例。）
 
 async function shellToolsFactory(): Promise<Tool[]> {
   const { createShellTools } = await import('../src/agent/tools/coding');
@@ -148,71 +143,10 @@ const DOMAINS: DomainSpec[] = [
       { name: 'write_constraints', tsTool: 'write_constraints' },
     ],
   },
-  // ── builtin.git（P2-3 用——createGitTools 今日仍是 zod 面（真实发射源）；
-  //    13 TS 面直出 + diff 双目标共享 git_diff schema + stage_all/blame 手写 ──
-  {
-    domain: 'git',
-    id: 'builtin.git',
-    description: 'Git 仓库操作（自 commands/git_cmds.rs 拆出，kernel-plugin-runtime P2-3）',
-    capabilities: ['git_read', 'git_write'],
-    factory: gitToolsFactory,
-    tools: [
-      { name: 'git_status', tsTool: 'git_status', permission: readPerm('path') },
-      {
-        // 描述不覆盖：保持 git_diff 原文——TS git_diff 工具读本条，模型可见
-        // 字节与迁移前零漂移（schema 内 staged 参数自述双目标语义）
-        name: 'git_diff_unstaged',
-        tsTool: 'git_diff',
-        permission: readPerm('path'),
-      },
-      {
-        name: 'git_diff_staged',
-        tsTool: 'git_diff',
-        permission: readPerm('path'),
-      },
-      { name: 'git_log', tsTool: 'git_log', permission: readPerm('path') },
-      { name: 'git_stage', tsTool: 'git_stage', permission: gitPerm('stage') },
-      {
-        name: 'git_stage_all',
-        description: 'Stage all changes (including untracked files) for commit. Equivalent of `git add .`.',
-        read_only: false,
-        permission: gitPerm('stage'),
-        schema: {
-          type: 'object',
-          properties: {
-            path: { type: 'string', description: 'Absolute path to the git repository root' },
-          },
-          required: ['path'],
-          additionalProperties: {},
-        },
-      },
-      { name: 'git_commit', tsTool: 'git_commit', permission: gitPerm('commit') },
-      { name: 'git_push', tsTool: 'git_push', permission: gitPerm('push') },
-      { name: 'git_pull', tsTool: 'git_pull', permission: gitPerm('pull') },
-      { name: 'git_init', tsTool: 'git_init', permission: gitPerm('init') },
-      { name: 'git_checkout', tsTool: 'git_checkout', permission: gitPerm('checkout') },
-      { name: 'git_create_branch', tsTool: 'git_create_branch', permission: gitPerm('create_branch') },
-      { name: 'git_stash_push', tsTool: 'git_stash_push', permission: gitPerm('stash_push') },
-      { name: 'git_stash_pop', tsTool: 'git_stash_pop', permission: gitPerm('stash_pop') },
-      { name: 'git_discard', tsTool: 'git_discard', permission: gitPerm('discard') },
-      {
-        name: 'git_blame',
-        description:
-          'Show who last modified each line of a file (git blame). Output is porcelain-format and truncated for very large results.',
-        read_only: true,
-        permission: readPerm('path'),
-        schema: {
-          type: 'object',
-          properties: {
-            path: { type: 'string', description: 'Absolute path to the git repository root' },
-            file: { type: 'string', description: 'File to blame (relative to the repository root)' },
-          },
-          required: ['path', 'file'],
-          additionalProperties: {},
-        },
-      },
-    ],
-  },
+  // ── builtin.git 域已退役（git 域收口 2026-09-05，R3-c——schema 真源回 TS zod
+  //    （coding.ts GIT_CAP_SCHEMA），execute 走 git_cap 能力口直呼；域条目随
+  //    tool_plugins/git/ 一并拆除，fs 域收口同款先例）──
+
   // ── builtin.shell（P2-4）——4 TS 面直出（run→exec_command 等动作映射）+
   //    3 内部消费工具手写（shell_env/background_activity/drain_bg_notifications）。
   //    权限形状：全族业务自检（exec_command 的 bg/fg 双检查不对称——bg 走 sync

@@ -40,6 +40,26 @@ interface AgentCtx {
   [key: string]: unknown;
 }
 
+/** git_cap 能力口 action（R3-c git 域收口）——退役前 builtin.git 16 工具名
+ *  一一位（与历史精确规则寻址名 plugin:builtin.git.<action> 同构）。 */
+export type GitCapAction =
+  | 'git_status'
+  | 'git_diff_unstaged'
+  | 'git_diff_staged'
+  | 'git_log'
+  | 'git_stage'
+  | 'git_stage_all'
+  | 'git_commit'
+  | 'git_push'
+  | 'git_pull'
+  | 'git_init'
+  | 'git_checkout'
+  | 'git_create_branch'
+  | 'git_stash_push'
+  | 'git_stash_pop'
+  | 'git_discard'
+  | 'git_blame';
+
 export interface RpcContract {
   // ── 应用层：数据上下文（L1）────────────────────────────
   // （workspace-session-ownership-rework 2026-08-27：session_attach/detach/
@@ -86,8 +106,9 @@ export interface RpcContract {
   // （git_status / git_diff_unstaged / git_diff_staged / git_log / git_stage /
   //   git_stage_all / git_commit / git_push / git_pull / git_init / git_checkout /
   //   git_create_branch / git_stash_push / git_stash_pop / git_discard / git_blame
-  //   已迁内核插件 builtin.git，走 tool_call——kernel-plugin-runtime P2-3。
-  //   内部直呼统一经下方 kernelGitCall 助手。）
+  //   已迁内核插件 builtin.git（P2-3）→ 又随 git 域收口（2026-09-05，R3-c）
+  //   换 git_cap 能力口直呼——builtin.git 信封退役，契约见下方 git_cap。内部
+  //   直呼统一经下方 kernelGitCall 助手。）
 
   // ── 文件系统 ─────────────────────────────────────────────
   // （fs 工具域已收敛到 fs_cap 能力口直呼——2026-09-04 fs 域收口，builtin.fs
@@ -187,6 +208,27 @@ export interface RpcContract {
       agent_id?: string | null;
     };
     result: string; // JSON — read={path,content} / read_base64={path,base64} / list|list_flat={entries} / glob={pattern,count,truncated,results} / memory_batch=Record<path,content|null> / 写类={path}
+  };
+
+  // ── 能力口（R3-c，kernel-capability-c3-design.md §8）──────────
+  // git_cap：git 能力族直呼入口（builtin.git 插件随 git 域收口退役）——不经
+  // tool_call 信封 / PluginRegistry / PluginToolAdapter。action = 退役前
+  // builtin.git 工具名（GitCapAction）；repo_path 必填；porcelain 解析归 TS
+  // （agent/git-porcelain.ts）。口内闸：Agent 路径 Read 家族（只读五动作）/
+  // Git 家族两段闸（subcommand 位）；is_agent/agent_id 显式传（用户路径只解析）。
+  git_cap: {
+    params: {
+      action: GitCapAction;
+      repo_path: string;
+      file?: string;
+      files?: string[];
+      message?: string;
+      branch?: string;
+      count?: number;
+      is_agent?: boolean;
+      agent_id?: string | null;
+    };
+    result: string; // text — run_git stdout（git_status 失败回空串；diff/blame 口内 32K 截断）
   };
 
   // ── Shell ────────────────────────────────────────────────
@@ -607,13 +649,19 @@ export async function kernelReadFileBase64(filePath: string): Promise<string> {
   return parsed.base64;
 }
 
-// ── builtin.git 直呼便捷封装（kernel-plugin-runtime P2-3）──
+// ── git_cap 直呼便捷封装（git 域收口，kernel-capability-c3-design.md R3-c）──
 // 内部消费方（state-inject 的 git_status 状态栏 / git_blame 行级归属缓存）
-// 的统一出口：tool_call 信封寻址 builtin.git（旧 RPC 分支随迁退役）。
+// 的统一出口：git_cap 能力口直呼（tool_call 信封寻址 builtin.git 随插件退役）。
+// 返回 run_git stdout 文本（porcelain 解析归 agent/git-porcelain.ts）。
 
-/** git 域通用信封调用（text 形态结果直通；JSON 形态消费方自行 parseJson）。 */
-export function kernelGitCall(tool: string, args: Record<string, unknown>): Promise<string> {
-  return typedRpc('tool_call', { plugin: 'builtin.git', tool, args });
+/** git 域能力口调用（用户路径 is_agent=false——口内只解析零弹窗）。
+ *  action = 退役前 builtin.git 工具名；args 说 git_cap 顶层契约语言
+ *  （repo_path/file/file/message/branch/count）。 */
+export function kernelGitCall(
+  action: GitCapAction,
+  args: Omit<RpcParamsOf<'git_cap'>, 'action' | 'is_agent'>,
+): Promise<string> {
+  return typedRpc('git_cap', { ...args, action, is_agent: false });
 }
 
 // ── builtin.shell 直呼便捷封装（kernel-plugin-runtime P2-4）──
@@ -736,8 +784,8 @@ export const rpcResultSchemas = {
     .passthrough(),
   // （shell_env 已迁内核插件 builtin.shell——runtime 经 kernelShellCall +
   //   parseJson 消费，rpcResultSchemas 表行随之退役，kernel-plugin-runtime P2-4。
-  //   git_status 已迁内核插件 builtin.git——state-inject 经 kernelGitCall +
-  //   parseJson 消费，表行退役，kernel-plugin-runtime P2-3。）
+  //   git_status 已随 git 域收口（R3-c）换 git_cap 直呼——state-inject 经
+  //   kernelGitCall + git-porcelain.ts 解析 stdout，无 rpcResultSchemas 收编面。）
 } satisfies Partial<Record<RpcMethodName, z.ZodType>>;
 
 /** 已收编命令的 result 类型（schema 推导——调用点不再手写泛型）。 */

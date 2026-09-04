@@ -347,7 +347,7 @@ async fn dispatch_rpc(
 
 
         // ═══════════════════════════════════════════════════════
-        // 搜索（3 个命令）
+        // 内核插件运行时（tool_call 统一入口 + manifests 清单，2 个命令）
         // ═══════════════════════════════════════════════════════
         "tool_call" => {
             // 内核插件运行时统一入口（kernel-plugin-runtime）。
@@ -473,6 +473,9 @@ async fn dispatch_rpc(
             .await
         }
 
+        // ═══════════════════════════════════════════════════════
+        // MCP / ACP stdio 桥（进程桥原语——stdio 行协议，与工具域无关）
+        // ═══════════════════════════════════════════════════════
         "protocol_bridge_spawn" => {
             let id = req_str(&params, "id", "protocol_bridge_spawn")?;
             let command = req_str(&params, "command", "protocol_bridge_spawn")?;

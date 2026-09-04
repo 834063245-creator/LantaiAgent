@@ -15,13 +15,19 @@ const ROOT = path.resolve(__dirname, '..');
 const RPC_RS = path.join(ROOT, 'src-tauri', 'src', 'rpc.rs');
 const OUT_MD = path.join(ROOT, 'docs', 'agents', 'frontend-rpc-contract.md');
 
-// 与 rpc.rs 中分区注释顺序一致（仅用于 md 标题；序号与文件行序绑定）
+// 与 rpc.rs 中分区注释顺序一致（仅用于 md 标题；序号与文件行序绑定）。
+// 2026-09-05 git 域收口（R3-c）重对齐：此前 R3-a 加 fs_cap 箱线组后本表
+// 未同步——identity 错挂「插件安装通道」、dataflow 三方法被分区溢出整行
+// 丢弃（存量缺陷随本批一并修复）；git_cap 箱线组 + 协议桥箱线组补位。
 const SECTIONS = [
-  '应用层：数据上下文 / 会话 attach',
+  '应用层：数据上下文（L1）',
   'Engine 调度',
   'Graph',
-  '文件系统',
-  '搜索',
+  '内核插件运行时（tool_call）',
+  '能力口（search_cap）',
+  '能力口（fs_cap）',
+  '能力口（git_cap）',
+  'MCP / ACP stdio 桥',
   '身份认证 / 权限',
   '插件安装通道',
   'Agent 隔离（worktree）',

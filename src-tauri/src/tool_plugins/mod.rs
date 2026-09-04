@@ -12,7 +12,6 @@
 pub mod browser;
 pub mod constraints;
 pub mod editor;
-pub mod git;
 pub mod lsp;
 pub mod manifest;
 pub mod plugin;

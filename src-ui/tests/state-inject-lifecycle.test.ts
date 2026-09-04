@@ -68,10 +68,13 @@ describe('resetAgentCaches（工作区切换清理）', () => {
 });
 
 describe('refreshGitStatus stale-resolve 防护', () => {
-  const gitJson = JSON.stringify({ branch: 'main', ahead: 0, behind: 0, files: [] });
+  // git 域收口（R3-c）：kernelGitCall → git_cap 直呼返回 run_git stdout
+  // porcelain 文本，state-inject 经 git-porcelain.ts 解析——mock 面从旧
+  // 结构化 JSON 换成 porcelain 原文（业务断言不变：branch='main'）。
+  const gitPorcelain = '## main\n';
 
   it('工作区未切换时正常写入缓存', async () => {
-    mockRpc.mockResolvedValue(gitJson);
+    mockRpc.mockResolvedValue(gitPorcelain);
     await refreshGitStatus('/p');
     expect(getGitStatusCached()?.branch).toBe('main');
   });
@@ -86,7 +89,7 @@ describe('refreshGitStatus stale-resolve 防护', () => {
     );
     const pending = refreshGitStatus('/old-project');
     resetAgentCaches(); // 模拟工作区切换（deactivate 清缓存 + 推进代际）
-    resolveRpc(gitJson);
+    resolveRpc(gitPorcelain);
     await pending;
     expect(getGitStatusCached()).toBeNull();
   });

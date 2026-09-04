@@ -39,8 +39,9 @@ impl PluginRegistry {
         registry.register(constraints).expect("出厂插件清单装载失败");
         let editor: Arc<dyn ToolPlugin> = Arc::new(super::editor::EditorPlugin::new());
         registry.register(editor).expect("出厂插件清单装载失败");
-        let git: Arc<dyn ToolPlugin> = Arc::new(super::git::GitPlugin::new());
-        registry.register(git).expect("出厂插件清单装载失败");
+        // （builtin.git 已随 git 域收口退役——2026-09-05，kernel-capability-c3-
+        //  design.md R3-c：模型族/内部消费全量换 git_cap 能力口直呼，插件信封
+        //  无消费方整目录退役；fs 域收口 a681adc7 同款先例。）
         let lsp: Arc<dyn ToolPlugin> = Arc::new(super::lsp::LspPlugin::new());
         registry.register(lsp).expect("出厂插件清单装载失败");
         let pty: Arc<dyn ToolPlugin> = Arc::new(super::pty::PtyPlugin::new());

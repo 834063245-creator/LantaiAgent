@@ -5,7 +5,9 @@
 // MCP 动态工具工厂 — Step 1: 从 MCP tools/list 自动生成
 // ═══════════════════════════════════════════════════════
 // Coding Tools（fs/git/shell/search/web 全部已迁内核插件，见 manifest-tools.ts
-// 与下方各 manifest 驱动形态——kernel-plugin-runtime P2-2/P2-3/P2-4）
+// 与下方各域形态——kernel-plugin-runtime P2-2/P2-3/P2-4；域收口后 fs 8 模型族
+// （R3-b）/ git 13 模型族（R3-c）schema 真源回 TS zod（FS_CAP_SCHEMA /
+// GIT_CAP_SCHEMA），execute 各自换 fs_cap/git_cap 能力口直呼）
 // ═══════════════════════════════════════════════════════
 
 import { z } from 'zod';
@@ -13,6 +15,7 @@ import { activeFsProviders, type FsAction } from '../../composition/fs-service';
 import { activeShellProviders, type ShellAction } from '../../composition/shell-service';
 import { FS_PLUGIN_TOOL_BY_ACTION } from '../../plugins/builtin/fs-builtin';
 import { SHELL_PLUGIN_TOOL_BY_ACTION } from '../../plugins/builtin/shell-builtin';
+import { parseGitLogCommits, parseGitStatusPorcelain } from '../git-porcelain';
 import type { Tool, ToolExecutor } from '../tool';
 import { defineTool, toInputJsonSchema } from './define-tool';
 import { kernelManifestOf, withProgressStream } from './manifest-tools';
@@ -324,56 +327,247 @@ export function createShellTools(exec: ToolExecutor): Tool[] {
   ];
 }
 
-/** manifest 驱动的 git 域工具（kernel-plugin-runtime P2-3）：schema/description/
- *  readOnly = manifest 字节（convergence 零漂移——生成器发射 = zod 发射序）；
- *  TS 工具名保持历史名（模型面契约，非 manifest 工具名）；execute 经 tool_call
- *  信封寻址 builtin.git（search/web 同款直 exec 族，无 provider seam）。
- *  git_diff 双目标路由（staged → git_diff_staged / 缺省 → git_diff_unstaged）
- *  与 git_stage 拆单（'.'/'all' → git_stage_all）保留在工具层——模型面
- *  schema 与插件实收形状之间的既有折写。 */
-function gitManifestTool(rustTool: string, localName: string, exec: ToolExecutor): Tool {
-  const manifest = kernelManifestOf('builtin.git');
-  const spec = manifest.tools.find((t) => t.name === rustTool);
-  if (!spec) throw new Error(`manifest-tools: 插件 'builtin.git' 无工具 '${rustTool}'`);
-  const parameters = spec.schema;
+// ═══════════════════════════════════════════════════════════════
+// git 域模型族 zod 真源（kernel-capability-c3-design.md git 域收口 R3-c，
+// 2026-09-05）：builtin.git 插件信封退役，git 域 13 模型族工具 schema 真源
+// 回 TS zod——逐键等价于退役前 manifest 的 schema 发射（键名/description/
+// default/int 界/additionalProperties 全对齐，convergence 快照
+// stableStringify 字典序下零漂移；fs 域 R3-b 同款范式）。git_blame 无模型面
+// （state-inject 内部消费）；git_diff_staged 由 git_diff 工具层双目标路由
+// 派发（schema 同 unstaged，不经本表模型面）。
+// ═══════════════════════════════════════════════════════════════
+
+/** git_status schema——manifest 字节转录（path）。 */
+const gitStatusSchema = z.object({
+  path: z.string().describe('Absolute path to the git repository root'),
+});
+
+/** git_diff_unstaged schema——manifest 字节转录（path/file default "."/staged
+ *  default false；staged 由工具层消费做双目标路由，不下沉能力口）。 */
+const gitDiffSchema = z.object({
+  path: z.string().describe('Absolute path to the git repository root'),
+  file: z.string().default('.').describe('Optional: specific file to diff. If omitted, shows all unstaged changes.'),
+  staged: z.boolean().default(false).describe('Set to true to show staged changes instead of unstaged'),
+});
+
+/** git_log schema——manifest 字节转录（path/count default 10）。 */
+const gitLogSchema = z.object({
+  path: z.string().describe('Absolute path to the git repository root'),
+  count: z
+    .number()
+    .int()
+    .min(-9007199254740991)
+    .max(9007199254740991)
+    .default(10)
+    .describe('Number of recent commits to show (default: 10)'),
+});
+
+/** git_stage schema——manifest 字节转录（path/files 逗号串——模型面契约，
+ *  工具层拆单后以 files 数组派发）。 */
+const gitStageSchema = z.object({
+  path: z.string().describe('Absolute path to the git repository root'),
+  files: z.string().describe('File path(s) to stage, separated by commas. Use "." to stage all.'),
+});
+
+/** git_commit schema——manifest 字节转录（path/message/_forceGate）。 */
+const gitCommitSchema = z.object({
+  path: z.string().describe('Absolute path to the git repository root'),
+  message: z.string().describe('Commit message (conventional commits format recommended)'),
+  _forceGate: z
+    .boolean()
+    .optional()
+    .describe(
+      'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+    ),
+});
+
+/** git_push schema——manifest 字节转录（path）。 */
+const gitPushSchema = z.object({
+  path: z.string().describe('Absolute path to the git repository root'),
+});
+
+/** git_pull schema——manifest 字节转录（path）。 */
+const gitPullSchema = z.object({
+  path: z.string().describe('Absolute path to the git repository root'),
+});
+
+/** git_init schema——manifest 字节转录（path——manifest 原文是目录语义）。 */
+const gitInitSchema = z.object({
+  path: z.string().describe('Absolute path to the directory'),
+});
+
+/** git_checkout schema——manifest 字节转录（path/branch/_forceGate）。 */
+const gitCheckoutSchema = z.object({
+  path: z.string().describe('Absolute path to the git repository'),
+  branch: z.string().describe('Branch name to switch to'),
+  _forceGate: z
+    .boolean()
+    .optional()
+    .describe(
+      'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+    ),
+});
+
+/** git_create_branch schema——manifest 字节转录（path/branch）。 */
+const gitCreateBranchSchema = z.object({
+  path: z.string().describe('Absolute path to the git repository'),
+  branch: z.string().describe('New branch name'),
+});
+
+/** git_discard schema——manifest 字节转录（path/file/_forceGate）。 */
+const gitDiscardSchema = z.object({
+  path: z.string().describe('Absolute path to the git repository'),
+  file: z.string().describe('File path to discard changes for (relative to repo root)'),
+  _forceGate: z
+    .boolean()
+    .optional()
+    .describe(
+      'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+    ),
+});
+
+/** git_stash_push schema——manifest 字节转录（path/message 可选识别位——退役前
+ *  业务即不传给 git，保持原样）。 */
+const gitStashPushSchema = z.object({
+  path: z.string().describe('Absolute path to the git repository'),
+  message: z.string().optional().describe('Optional stash message for identification'),
+});
+
+/** git_stash_pop schema——manifest 字节转录（path）。 */
+const gitStashPopSchema = z.object({
+  path: z.string().describe('Absolute path to the git repository'),
+});
+
+/** git 域动作 → zod schema（schema 真源表；键 = 能力口 action = 退役前
+ *  builtin.git 工具名）。 */
+const GIT_CAP_SCHEMA: Record<string, z.ZodObject<z.ZodRawShape>> = {
+  git_status: gitStatusSchema,
+  git_diff_unstaged: gitDiffSchema,
+  git_log: gitLogSchema,
+  git_stage: gitStageSchema,
+  git_commit: gitCommitSchema,
+  git_push: gitPushSchema,
+  git_pull: gitPullSchema,
+  git_init: gitInitSchema,
+  git_checkout: gitCheckoutSchema,
+  git_create_branch: gitCreateBranchSchema,
+  git_stash_push: gitStashPushSchema,
+  git_stash_pop: gitStashPopSchema,
+  git_discard: gitDiscardSchema,
+};
+
+/** git 域动作 → 模型面 description（manifest 字节转录）。 */
+const GIT_CAP_DESCRIPTION: Record<string, string> = {
+  git_status:
+    'Get the current git status — branch name, ahead/behind count, and list of changed files with their status (modified, added, deleted, untracked).',
+  git_diff_unstaged:
+    'Show the git diff for unstaged changes. Returns unified diff output. Use to review changes before staging/committing.',
+  git_log:
+    'Show recent git commit history. Returns structured JSON with commit hash, message, author, and date for each commit.',
+  git_stage: 'Stage files for commit. Use before git_commit to add changes to the staging area.',
+  git_commit:
+    'Commit staged changes with a message. Files must be staged first with git_stage. Returns the commit hash.',
+  git_push: 'Push committed changes to the remote repository.',
+  git_pull: 'Pull latest changes from the remote repository (fast-forward only, no merge conflicts).',
+  git_init: 'Initialize a new git repository in the given directory.',
+  git_checkout: 'Switch to a different branch. Use git_create_branch first if the branch does not exist.',
+  git_create_branch: 'Create a new git branch from the current HEAD. Does NOT switch to it — use git_checkout after.',
+  git_stash_push: 'Stash current uncommitted changes. Use before switching branches with dirty working tree.',
+  git_stash_pop:
+    'Restore the most recently stashed changes. Pops the stash — the changes are applied and the stash entry is removed.',
+  git_discard: 'Discard unstaged changes to a file (git checkout -- <file>). Loses all uncommitted modifications.',
+};
+
+/** git 域动作 → readOnly（manifest 字节转录）。 */
+const GIT_CAP_READONLY: Record<string, boolean> = {
+  git_status: true,
+  git_diff_unstaged: true,
+  git_log: true,
+  git_stage: false,
+  git_commit: false,
+  git_push: false,
+  git_pull: false,
+  git_init: false,
+  git_checkout: false,
+  git_create_branch: false,
+  git_stash_push: false,
+  git_stash_pop: false,
+  git_discard: false,
+};
+
+/** 模型面键（manifest 语言）→ git_cap 顶层契约键：path → repo_path 是唯一
+ *  折写（c3 §8 repo_path 位）；file/files/message/branch/count 恒等；meta 键
+ *  （_agent_id/_forceGate/_callId）原样透传（executor 注入身份）。 */
+function toGitCapArgs(action: string, args: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { action };
+  for (const [k, v] of Object.entries(args)) {
+    if (k === 'path') out.repo_path = v;
+    else out[k] = v;
+  }
+  return out;
+}
+
+/** git_cap stdout → 模型面输出形状（退役前插件原形状——行为零漂移）：
+ *  git_status → JSON {branch,ahead,behind,files}（porcelain 解析，git-porcelain.ts）；
+ *  git_log → commits JSON 数组（\x00 split）；其余动作 stdout 直通（diff/blame
+ *  的 32K 截断已在能力口内）。 */
+function shapeGitCapOutput(action: string, raw: string): string {
+  if (action === 'git_status') return JSON.stringify(parseGitStatusPorcelain(raw));
+  if (action === 'git_log') return JSON.stringify(parseGitLogCommits(raw));
+  return raw;
+}
+
+/** git 域模型族工具（git 域收口后 schema/description/readOnly 自持 zod 真源，
+ *  不再查 builtin.git 镜像）；TS 工具名保持历史名（模型面契约，非能力口
+ *  action 名）；execute 走 git_cap 能力口直呼（信封退役；is_agent 由
+ *  executor 层 agentInvoke 注入——与 searchCapTool 同构）。 */
+function gitCapTool(action: string, localName: string, exec: ToolExecutor): Tool {
+  const schema = GIT_CAP_SCHEMA[action];
+  const parameters = toInputJsonSchema(schema.passthrough());
   return {
     name: () => localName,
-    description: () => spec.description,
+    description: () => GIT_CAP_DESCRIPTION[action],
     parameters: () => parameters,
-    readOnly: () => spec.read_only ?? false,
+    readOnly: () => GIT_CAP_READONLY[action] ?? false,
     execute: (args, onProgress, signal) =>
-      withProgressStream(args, onProgress, () =>
-        exec('tool_call', { plugin: 'builtin.git', tool: rustTool, args }, onProgress, signal),
+      withProgressStream(args, onProgress, async () =>
+        shapeGitCapOutput(action, await exec('git_cap', toGitCapArgs(action, args), onProgress, signal)),
       ),
   };
 }
 
-/** git 域工具族（S1-2 从 createCodingTools 迁出；P2-3 起 manifest 驱动）。
+/** git 域工具族（S1-2 从 createCodingTools 迁出；P2-3 起 manifest 驱动 →
+ *  R3-c git 域收口后 zod 真源 + git_cap 直呼）。
  *  声明序 = 领域合并/装配的字节契约序——勿重排。 */
 export function createGitTools(exec: ToolExecutor): Tool[] {
   return [
-    gitManifestTool('git_status', 'git_status', exec),
+    gitCapTool('git_status', 'git_status', exec),
     {
-      ...gitManifestTool('git_diff_unstaged', 'git_diff', exec),
+      ...gitCapTool('git_diff_unstaged', 'git_diff', exec),
+      // git_diff 双目标路由（staged → git_diff_staged / 缺省 →
+      // git_diff_unstaged）保留在工具层——staged 由本层消费做路由，
+      // 不下沉能力口（模型面 schema 与能力口 action 之间的既有折写）。
       execute: (args, onProgress, signal) => {
         const { staged, ...rest } = args as { staged?: boolean };
         return exec(
-          'tool_call',
-          { plugin: 'builtin.git', tool: staged ? 'git_diff_staged' : 'git_diff_unstaged', args: rest },
+          'git_cap',
+          toGitCapArgs(staged ? 'git_diff_staged' : 'git_diff_unstaged', rest),
           onProgress,
           signal,
-        );
+        ).then((raw) => shapeGitCapOutput('git_diff_unstaged', raw));
       },
     },
-    gitManifestTool('git_log', 'git_log', exec),
+    gitCapTool('git_log', 'git_log', exec),
     {
-      ...gitManifestTool('git_stage', 'git_stage', exec),
+      ...gitCapTool('git_stage', 'git_stage', exec),
+      // git_stage 拆单（'.'/'all' → git_stage_all；逗号分隔逐文件派发）——
+      // 模型面 schema（files 逗号串）与能力口 action 之间的既有折写。
       execute: async (args, onProgress, signal) => {
         const files = String((args as { files?: string }).files ?? '').trim();
         if (files === '.' || files === 'all') {
           return exec(
-            'tool_call',
-            { plugin: 'builtin.git', tool: 'git_stage_all', args: { path: (args as { path?: string }).path } },
+            'git_cap',
+            toGitCapArgs('git_stage_all', { path: (args as { path?: string }).path }),
             onProgress,
             signal,
           );
@@ -383,8 +577,8 @@ export function createGitTools(exec: ToolExecutor): Tool[] {
         const results: string[] = [];
         for (const f of fileList) {
           const r = await exec(
-            'tool_call',
-            { plugin: 'builtin.git', tool: 'git_stage', args: { path: (args as { path?: string }).path, files: [f] } },
+            'git_cap',
+            toGitCapArgs('git_stage', { path: (args as { path?: string }).path, files: [f] }),
             onProgress,
             signal,
           );
@@ -393,16 +587,16 @@ export function createGitTools(exec: ToolExecutor): Tool[] {
         return results.join('\n');
       },
     },
-    gitManifestTool('git_commit', 'git_commit', exec),
-    gitManifestTool('git_push', 'git_push', exec),
-    gitManifestTool('git_pull', 'git_pull', exec),
+    gitCapTool('git_commit', 'git_commit', exec),
+    gitCapTool('git_push', 'git_push', exec),
+    gitCapTool('git_pull', 'git_pull', exec),
     // ── Phase 2b: Git 操作 ──
-    gitManifestTool('git_init', 'git_init', exec),
-    gitManifestTool('git_checkout', 'git_checkout', exec),
-    gitManifestTool('git_create_branch', 'git_create_branch', exec),
-    gitManifestTool('git_discard', 'git_discard', exec),
-    gitManifestTool('git_stash_push', 'git_stash_push', exec),
-    gitManifestTool('git_stash_pop', 'git_stash_pop', exec),
+    gitCapTool('git_init', 'git_init', exec),
+    gitCapTool('git_checkout', 'git_checkout', exec),
+    gitCapTool('git_create_branch', 'git_create_branch', exec),
+    gitCapTool('git_discard', 'git_discard', exec),
+    gitCapTool('git_stash_push', 'git_stash_push', exec),
+    gitCapTool('git_stash_pop', 'git_stash_pop', exec),
   ];
 }
 

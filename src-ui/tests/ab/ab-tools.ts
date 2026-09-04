@@ -113,6 +113,13 @@ export function buildTrialRegistry(wt: string, graph: TrialGraphData): ToolRegis
     const name = EXEC_ALIAS[nameRaw] ?? nameRaw;
     const fp = (k: string) => String(args[k] ?? '');
     switch (name) {
+      case 'git_cap': {
+        // R3-c 能力口直呼（kernel-capability-c3-design.md）：git 域 execute 经
+        // git_cap action 分派——路由回本地 mock 的 git_* 工具语义（repo_path
+        // 是 git_cap 键，mock 读 path，这里折回；action = 退役前工具名）。
+        const { action, repo_path, ...rest } = args as Record<string, unknown>;
+        return exec(String(action ?? ''), { ...rest, path: repo_path }, onProgress);
+      }
       case 'fs_cap': {
         // R3-b 能力口直呼（kernel-capability-c3-design.md）：fs 域 execute 经
         // fs_cap action 分派——路由回本地 mock 的旧工具语义（file_path/from/to

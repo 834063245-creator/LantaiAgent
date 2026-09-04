@@ -44,7 +44,8 @@ pub struct ToolSpec {
 
 /// 工具级权限声明（P2-0 §3.2）。family 是权限家族名（"Read"/"Edit"/"Bash"/"Git"）；
 /// path_key/command_key 声明从 args 提取目标的键，subcommand 是 Git 家族的
-/// 子命令（require_git_dispatch 的 subcommand 位）。
+/// 子命令位（现役消费方 = git_cap 能力口闸，commands/git_cap.rs——plugin:builtin.git
+/// 清单已随 git 域收口退役，字段保留给在册/第三方 manifest）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolPermission {
     pub family: String,

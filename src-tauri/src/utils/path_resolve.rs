@@ -344,8 +344,9 @@ pub(crate) fn resolve_write_unchecked(
 }
 
 // （require_git_dispatch / require_git 已随 commands/git_cmds.rs 退役——
-//  kernel-plugin-runtime P2-3：git 域权限检查移到 dispatch 侧 adapter 的
-//  Git 家族委托（tool_plugins/plugin.rs），业务免检化只留 git_exec_path。）
+//  kernel-plugin-runtime P2-3 权限检查移 dispatch 侧 adapter；git 域收口
+//  （2026-09-05，R3-c）后 git 权限闸在 git_cap 能力口内（PluginToolAdapter
+//  构造——commands/git_cap.rs），本文件只留 git_exec_path。）
 
 /// git 命令的执行路径换算 — 权限检查（dispatch 侧 Git/Read 家族 adapter）
 /// 保持现状不动；本函数只解决「权限检查按 _agent_id 映射进 worktree 做规则匹配，

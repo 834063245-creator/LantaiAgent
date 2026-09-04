@@ -19,7 +19,8 @@ import { dirEntryArraySchema, parseJson, rpcResultSchemas } from '../src/rpc-con
 /** 每个已收编命令的 mock 取样参数（取 mockInvoke 已登记的命令面）。
  *  （list_directory / list_directory_flat / read_memory_batch 已迁 builtin.fs——
  *  走 tool_call 信封 + kernelListDirectory 内的 dirEntryArraySchema 校验，
- *  不再是 rpcResultSchemas 收编面，kernel-plugin-runtime P2-2。） */
+ *  不再是 rpcResultSchemas 收编面，kernel-plugin-runtime P2-2；git_status
+ *  同理随 git 域收口退役——走 git_cap + git-porcelain.ts 解析，R3-c。） */
 const MOCK_SAMPLE_PARAMS: Record<keyof typeof rpcResultSchemas, Record<string, unknown>> = {
   hologram_call: { tool: 'fragile_modules', args: {} },
   hologram_tools_list: {},
@@ -28,7 +29,6 @@ const MOCK_SAMPLE_PARAMS: Record<keyof typeof rpcResultSchemas, Record<string, u
   workspace_list: {},
   sandbox_status: {},
   shell_env: {},
-  git_status: {},
 };
 
 describe('rpc 边界校验层：mock 同源自检（mock ↔ schema 漂移即红）', () => {
