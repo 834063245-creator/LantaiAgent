@@ -8,8 +8,8 @@
 // 原有写法，只换比较器。
 //
 // 用法（mock 分派处）：
-//   const hit = unpackToolCall(method, params, 'builtin.fs', 'write_file_content');
-//   if (hit) { /* hit.args.filePath / hit.args.content … */ }
+//   const hit = unpackToolCall(method, params, 'builtin.editor', 'edit_file');
+//   if (hit) { /* hit.args.filePath / hit.args.oldString … */ }
 
 /** 匹配 tool_call 信封 (method, params) → 命中时返回其 args，未命中返回 null。 */
 export function unpackToolCall(
@@ -74,20 +74,6 @@ export function toolCallArgsOfBridge(
 /** 旧名翻译表：'plugin.tool' → 旧 RPC 方法名（恒等映射为主）。
  *  P2-3 builtin.git 起在此表追加行——一处扩表，13 个 git 测试文件 mock 面零改动。 */
 const LEGACY_METHOD_OF: Record<string, string> = {
-  // builtin.fs（P2-2，manifest 13 工具）
-  'builtin.fs.list_directory': 'list_directory',
-  'builtin.fs.list_directory_flat': 'list_directory_flat',
-  'builtin.fs.read_file_content': 'read_file_content',
-  'builtin.fs.read_memory_batch': 'read_memory_batch',
-  'builtin.fs.read_file_base64': 'read_file_base64',
-  'builtin.fs.write_file_content': 'write_file_content',
-  'builtin.fs.log_append': 'log_append',
-  'builtin.fs.create_directory': 'create_directory',
-  'builtin.fs.get_global_memory_dir': 'get_global_memory_dir',
-  'builtin.fs.delete_file_or_dir': 'delete_file_or_dir',
-  'builtin.fs.rename_file_or_dir': 'rename_file_or_dir',
-  'builtin.fs.move_file': 'move_file',
-  'builtin.fs.glob': 'glob',
   // builtin.editor（P2-1）
   'builtin.editor.edit_file': 'edit_file',
   // builtin.constraints（P2-1）
