@@ -46,6 +46,7 @@ fn capability_command_modules_are_frozen() {
         "identity",
         "isolation",
         "plugin_install",
+        "process_cap",
         "protocol_bridge",
         "search_cap",
         "workspace",
@@ -67,6 +68,11 @@ fn capability_command_modules_are_frozen() {
          git_cap = v3 能力口（kernel-capability-c3-design.md R3-c：git 能力族 +\n\
          PluginToolAdapter 两段闸（Read 家族/Git 家族 subcommand 位）+ git_exec_path\n\
          worktree forward-map + run_git 执行体）——合法强制层模块，porcelain 解析\n\
-         归 TS（git 域收口起），禁止向 commands/ 塞业务命令。"
+         归 TS（git 域收口起），禁止向 commands/ 塞业务命令。\n\
+         process_cap = v3 能力口（kernel-capability-c3-design.md R3-d：process\n\
+         能力族 + fg/bg 双检查不对称闸（require_command 可 Ask / sync 免 Ask，\n\
+         Bash 家族命令串规则面直用 BashTool）+ BG_JOBS ledger 执行体）——合法\n\
+         强制层模块，粘性 cwd 状态归 TS 编排层（c3 §9，口只收 cwd/sticky_cwd\n\
+         显式参数），禁止向 commands/ 塞业务命令。"
     );
 }

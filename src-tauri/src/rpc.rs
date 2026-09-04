@@ -134,12 +134,14 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // results}）。恒合法 JSON。
         "fs_cap" => RpcResultShape::JsonValue,
 
-        // ── Shell ──
-        // shell_env：serde 序列化恒 JSON（兑底也是合法 JSON 字面量）。
-        // exec_command：前台=命令 stdout 文本 / 流式=started JSON，动态形态，Text。
-        // bash_output/bash_kill/bash_wait：输出文本，Text。
-        // drain_bg_notifications：无通知返回空串（非 JSON），Text。
-        // background_activity：json! 构造恒 JSON。
+        // ── Shell / process ──
+        // （旧 shell RPC 分支已随 kernel-plugin-runtime P2-4 迁 builtin.shell 插件；
+        //  process_cap 能力口（R3-d，c3 §8）承接：exec_command 前台=命令 stdout
+        //  文本（含粘性 marker 字节——截流归 TS）/ 流式=started JSON，动态形态；
+        //  bash_output/bash_kill/bash_wait：输出文本；drain_bg_notifications：无通知
+        //  返回空串（非 JSON）；shell_env/background_activity 恒 JSON 但形态不要求
+        //  统一——与 git_cap 同判：字节精确优先，一律 Text。）
+        "process_cap" => RpcResultShape::Text,
 
         // ── 身份认证/权限 ──
         // credential_get：Option<String> serde 序列化，恒 "key"/null JSON。
@@ -467,6 +469,45 @@ async fn dispatch_rpc(
                 params.get("count").and_then(|v| v.as_u64()).map(|n| n as usize),
                 is_agent,
                 agent_id,
+                &state,
+                &app,
+            )
+            .await
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // process_cap（R3-d，kernel-capability-c3-design.md §8/§9）——process
+        // 能力口直呼入口，不经 tool_call 信封 / PluginRegistry /
+        // PluginToolAdapter（builtin.shell 插件随 shell 域收口退役）。action =
+        // 退役前 builtin.shell 7 工具名；口内闸：fg/bg 双检查不对称（fg =
+        // require_command 可 Ask + resolve_read_dispatch / bg =
+        // require_command_sync + require_read_sync 免 Ask——Bash 家族命令串
+        // 规则面，直用 BashTool）。粘性 cwd 归 TS（c3 §9）：cwd 显式 + sticky_cwd
+        // 候选（盘上存在才用）；落点捕获 marker 原样流经 shell:output/结果，
+        // 截流/提交/回显在 TS 编排层（capture_cwd=true 时口内按方言包装）。
+        // 参数顶层 snake_case（bridge.rpc() 转换幂等）；is_agent/agent_id
+        // 显式传；owner_id 兼容 _owner_id（bg:note 通知路由身份）。
+        // ═══════════════════════════════════════════════════════
+        "process_cap" => {
+            let action = req_str(&params, "action", "process_cap")?;
+            let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
+            let agent_id = opt_str(&params, "agent_id").or_else(|| opt_str(&params, "_agent_id"));
+            let owner_id = opt_str(&params, "owner_id").or_else(|| opt_str(&params, "_owner_id"));
+            commands::process_cap::process_cap(
+                action,
+                opt_str(&params, "command"),
+                opt_str(&params, "cwd"),
+                opt_str(&params, "sticky_cwd"),
+                params.get("timeout_ms").and_then(|v| v.as_u64()),
+                opt_bool(&params, "run_in_background").unwrap_or(false),
+                opt_str(&params, "stream_tool_id"),
+                opt_str(&params, "interpreter"),
+                opt_bool(&params, "capture_cwd").unwrap_or(false),
+                params.get("job_id").and_then(|v| v.as_u64()).map(|n| n as u32),
+                params.get("wait_timeout_ms").and_then(|v| v.as_u64()),
+                is_agent,
+                agent_id,
+                owner_id,
                 &state,
                 &app,
             )

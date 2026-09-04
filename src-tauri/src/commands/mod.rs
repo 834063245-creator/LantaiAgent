@@ -15,3 +15,4 @@ pub mod plugin_install;
 pub mod search_cap;
 pub mod fs_cap;
 pub mod git_cap;
+pub mod process_cap;
