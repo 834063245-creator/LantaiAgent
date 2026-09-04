@@ -1,10 +1,20 @@
 # 内核能力化 C-3/C-4 —— 工具编排回 TS 设计件
 
-> 状态：**R3 执行蓝本（2026-09-04 拍板定稿）**。C 模型定稿（kernel-plugin-architecture-decision.md v3）。
+> 状态：**R3 执行蓝本（2026-09-04 拍板定稿；2026-09-05 fs 域收口竣工后刷新）**。C 模型定稿（kernel-plugin-architecture-decision.md v3）。
 > 决策史：本件初为「待用户审」设计稿；R2 试点（search 域）已落地独立能力口 search_cap + schema 回 zod
 > （commit 789aef86/fe91f016/d524f124）。2026-09-04 用户拍板「主线 R2+R3 推进，R2-d(2) 并入 R3 统一做」。
 > 本件即 R3 执行蓝本——D-A/D-B/D-C 按 R2 先例裁定，批序 = v3 执行序表 R3 行的分解，并把 R2-d(2)
 > （search_cap 输出组装编排回 TS）并入统一能力口收窄批。
+>
+> **2026-09-05 fs 域收口竣工（agent 执行批，a681adc7/8bce6ffb/cd15fdcb/a107e4e2）**：
+> R3-b 的「范围注记」（UI helper 保留 builtin.fs 信封、插件不退役）**已推翻兑现**——
+> fs 域全链路闭环：UI 内部 helper（kernelReadFile/kernelWriteFile/kernelCreateDirectory/
+> kernelDeleteFile/kernelListDirectory/kernelLogAppend/kernelGlobalMemoryDir/
+> kernelReadMemoryBatch/kernelReadFileBase64）全量换 fs_cap 能力口直呼；builtin.fs 插件
+> 整目录退役（Rust 注册/镜像/schema 镜像全清）；fs 8 模型族 schema zod 转录回 TS
+> （coding.ts FS_CAP_SCHEMA，收敛零漂移）；测试层 18 文件 mock 站 rpc-contract 具名
+> helper。**R3 批表 fs 行（含 UI/内部消费）由此全数兑现**，C-3 §6 批表仅余 git/shell/
+> 权限三行 + 收口。
 
 ## 0. 目标形态（C 模型收敛后）
 
@@ -95,10 +105,10 @@
 | 批 | 内容 | 验收 |
 |---|---|---|
 | **R3-a** | fs 能力口 RPC 面建立：`fs_cap`（read/list/glob/write/delete/rename/create_dir/append + 补 confined_fs 缺的 dispatch 闸 cap 变体）；rpc.rs 分支 + rpc-contract 类型 + shape 表；platform_boundary 冻结清单更新 | ✅ **已落地（2026-09-04）**：confined_fs 增 read_text_cap/write_text_cap/list_tree_cap/delete_cap/rename_cap/glob_cap（口内 resolve_*_dispatch 闸）；commands/fs_cap.rs 单方法 action 分派（返回 Value）；rpc.rs fs_cap 分支 + JsonValue shape；platform_boundary 加 fs_cap（宪法依据注释）；rpc-contract fs_cap 类型；frontend-rpc-contract.md 重生成（47 methods）。cargo bin 437 passed + boundary 通过 |
-| **R3-b** | TS fs 域换轨：模型族 execute 从 provider seam（tool_call 信封）换 fs_cap 直呼（builtinFsProvider 换轨 + read 形状解包/line_numbers 反相 + camel→snake 映射）；fs_cap 承接 write/delete/rename 副作用（timeline/changed_files 从 fs 插件迁入）；git/shell 同批评估 | ✅ **已落地（2026-09-04，模型族换轨）**：builtinFsProvider.execute 换 fs_cap（8 动作 read/list/glob/write/delete/mkdir/move/rename；edit/constraints 留信封）；fs_cap.rs write/delete/rename 补 record_fs_side_effect（ignored 路径跳过，与插件原语义一致）；read 形状层（fs_cap {path,content} → content 解包 + raw→line_numbers 反相——旧 read 默认行号）；6 个测试文件更新（fs-seam/define-tool/parallel-subagent/coding-domain/tool-param/ab-tools）。**范围注记**：UI 内部 helper（kernelFsCall 系：kernelReadFile/kernelWriteFile/kernelCreateDirectory/kernelDeleteFile/kernelListDirectory + 内部工具 read_file_base64/read_memory_batch/log_append/get_global_memory_dir）**保留 builtin.fs 信封**（72 处 UI 消费 + 内部链；builtin.fs 插件不退役）——双实现过渡（模型走 fs_cap / UI 走 builtin.fs），UI helper 换 fs_cap 为 R3-b 后续或 R4。vitest 2441 + convergence 零漂移 + biome 0/0 |
-| **R3-c** | git 域同型：git_cap 能力口（run_git + 家族闸？评估）或 process_cap 先行；git 编排（porcelain 解析）回 TS；builtin.git 退役 | 全门禁 |
-| **R3-d** | shell 域同型 + R2-d(2) 并入：process_cap（spawn 收敛）+ exec_command 编排回 TS（流式闭环处置）；search_cap 输出组装编排回 TS（统一命中集收窄） | 全门禁 |
-| **R3-e（权限）** | TS 策略闸接管：六步裁决迁 TS 策略层（规则/mode/Ask 在 TS 判）；Rust dispatch 权限逻辑退役（PluginToolAdapter/has_permission_to_use_tool 的去留裁定）；同步路径（check_permission_sync/后台）旁路处置；audit/Ask oneshot/票据协议 | 权限回归专项全绿 |
+| **R3-b** | TS fs 域换轨：模型族 execute 从 provider seam（tool_call 信封）换 fs_cap 直呼（builtinFsProvider 换轨 + read 形状解包/line_numbers 反相 + camel→snake 映射）；fs_cap 承接 write/delete/rename 副作用（timeline/changed_files 从 fs 插件迁入）；git/shell 同批评估 | ✅ **已落地（2026-09-04，模型族换轨；2026-09-05 fs 域收口全闭环）**：builtinFsProvider.execute 换 fs_cap（8 动作 read/list/glob/write/delete/mkdir/move/rename；edit/constraints 留信封）；fs_cap.rs write/delete/rename 补 record_fs_side_effect（ignored 路径跳过，与插件原语义一致）；read 形状层（fs_cap {path,content} → content 解包 + raw→line_numbers 反相——旧 read 默认行号）；6 个测试文件更新（fs-seam/define-tool/parallel-subagent/coding-domain/tool-param/ab-tools）。**范围注记已兑现（2026-09-05）**：UI helper 全量换 fs_cap、builtin.fs 退役——见状态头。vitest 2441 + convergence 零漂移 + biome 0/0 |
+| **R3-c** | git 域同型：git_cap 能力口（run_git + 家族闸）；git 编排（porcelain 解析）回 TS；builtin.git 退役 | 全门禁（下窗口执行批；形态见 §8） |
+| **R3-d** | shell 域同型 + R2-d(2) 并入：process_cap（spawn 收敛）+ exec_command 编排回 TS（流式闭环处置）；search_cap 输出组装编排回 TS（统一命中集收窄） | 全门禁（§8 process_cap；粘性 cwd 归属裁定见 §9） |
+| **R3-e（权限）** | ~~TS 策略闸接管六步裁决~~ **不迁（agent 裁定 2026-09-05，见 §9）**：六步裁决留 Rust 强制层；R1 已收拢的双份名单（auto 白名单/系统规则数据面归 TS）是策略数据面，与裁决执行序解耦——R3-e 收口 = 维持「Rust 口最小强制 + TS 策略建议」双层现状，删除随迁的 dead_code（append_project_rule 接线等按需） | 权限回归专项全绿 |
 | 收口 | tool_call/PluginRegistry 去留裁定；builtin.* 残余域退役或留 R4/R5；内核=能力口+闸+应用壳 | 全门禁 |
 
 > R3-e 权限迁移是风险最高的批——六步裁决 + Ask 链路 + worktree 两跳映射都依赖
@@ -111,16 +121,43 @@
   **裁定：独立方法**（R2 search_cap 先例——tool_call 信封是 P0-2 脚手架，v3 拆除令要退役；
   能力口 = 极少数稳定面，独立 RPC 真源清晰、rpc-contract 类型化、与信封解耦）。
 - **D-B**：builtin.* 模块退役时机。
-  **裁定（2026-09-04 修订——R3-b 实测修正）**：builtin.fs **不整体退役**——UI 内部
-  helper（kernelFsCall 系：kernelReadFile/kernelWriteFile/kernelCreateDirectory/
-  kernelDeleteFile/kernelListDirectory）与内部工具（read_file_base64/read_memory_batch/
-  log_append/get_global_memory_dir）仍经 tool_call 信封消费 builtin.fs（72 处 UI +
-  内部链），模型族 execute 已换 fs_cap。builtin.fs 保留（服务 UI/内部），R4/R5 随
-  UI helper 换轨再退役；git/shell 同型（模型族换轨后插件保留给内部消费）。
+  **裁定（2026-09-04 初判「builtin.fs 保留服务 UI/内部」；2026-09-05 兑现推翻——fs 域收口）**：
+  UI 内部 helper 与内部工具随 fs_cap 能力口扩展（memory_batch/read_base64/append/
+  global_memory_dir 迁入）**全量换轨直呼**，builtin.fs 信封无消费方整目录退役
+  （a681adc7）——「插件保留给内部消费」的过渡形态不需要：内部消费与模型族同走
+  能力口（is_agent=false 用户路径，resolve_*_dispatch 只解析不过 Ask，语义等价）。
+  git/shell 同型结论沿用此经验：能力口需覆盖内部消费工具（git 的 status/blame、
+  shell 的 shell_env/background_activity/drain_bg_notifications）后整体退役。
 - **D-C**：编排回 TS 时 manifest 生成器/镜像去留。
   **裁定：schema 真源回 TS zod**（search R2-d 先例——逐字节转录零漂移已证）；
-  R3 起 fs 域随 execute 换轨回 zod，镜像/生成器条目随 builtin.* 退役逐步删；
+  R3 起 fs 域随 execute 换轨回 zod，镜像/生成器条目随 builtin.* 退役逐步删
+  （fs 已删：kernel-manifests.generated 9 manifest + gen-kernel-manifest fs DOMAIN）；
   全量脚手架拆除（manifest.rs/registry/生成器）收在 R5。
+
+## 9. R3-c/d/e 执行裁定（2026-09-05 agent 裁定——用户确认技术决策由 agent 定、测试兜底）
+
+> 背景：用户 2026-09-05 明示「技术上的东西我自己也不一定拍得好」——技术执行决策
+> 由 agent 按先例/风险裁定并落档，测试工程兜底；有产品味道的决策才端用户。
+
+- **R3-e（权限）——裁定：不迁六步裁决**。维持 v3 双层现状（Rust 能力口强制 +
+  TS 策略建议）：webview 无盘权，Rust 口是恶意 TS 越不过的物理闸——把六步裁决整体
+  迁 TS 是「为架构整洁的重构」，行为零收益、风险实打实（worktree 两跳映射拆散 =
+  fork 子 Agent 直写主仓事故复发，有守卫测试盯着）。R1 已收拢的是**策略数据面**
+  （auto 白名单/系统规则/danger 归 TS 单真源），与裁决执行序解耦——数据面收拢完成
+  即 R3-e 的实际收益，裁决序迁移不做。残留收口 = 删随迁 dead_code（如
+  append_project_rule 的接线按需评估），按 R3-e 行验收。
+- **R3-d 粘性 cwd——裁定：归 TS，Rust 口无状态**。粘性 cwd 是「编排记忆」，与
+  tool-ergonomics 焦点文件（session-context.ts，per-owner 上下文、Rust 零改动）同类；
+  放 Rust 静态态需防跨工作区串味（本仓库反复炸的雷区形态）。process_cap 显式带 cwd，
+  编排层维护 per-agent cwd（切工作区即重置）。Rust sticky_cwd.rs 随 builtin.shell
+  退役拆除。
+- **权限规则持久化层级（原 #3/#4 待定，2026-09-05 澄清后收起）**：与 agent 记忆
+  （/remember + hologram_memory，在用在产）无关——指权限规则落点。
+  - #3「永久记忆」= append_project_rule（写 .lantai/permissions.json）接线：**攒着**，
+    会话级 remember 日常够用；永久键 = 一行 UI + 落盘，真实需求出现再加。
+  - #4 用户级规则文件（~/.lantai/ 规则，RuleSource::User）：**不做**（YAGNI——
+    兰台单机桌面无多项目场景，Claude Code 式 user/policy 层用不上）。
+    两条均非待拍板，agent 按此执行，改主意随时可开。
 
 ## 8. R3-c/d/e 施工输入（2026-09-04 勘察定稿，下窗开工点）
 

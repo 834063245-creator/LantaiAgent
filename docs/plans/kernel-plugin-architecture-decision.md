@@ -113,9 +113,9 @@ shell spawn）/ credential / 会话句柄（browser/uia/pty/lsp）。**口内不
 |---|---|---|
 | R1 | TS 权限策略层设计（规则/mode/Ask 落点——现 permissions.json + 前端 Ask 已是雏形，评估复用 vs 重写为 Claude Code 同构） | ✅ 已拍板 + 设计（kernel-permission-strategy-layer-r1.md）+ 代码落地（commit a185f096） |
 | R2 | 薄域编排先回 TS（search/web/constraints/editor：schema zod + 编排迁域插件）+ 能力实现并入 Rust 能力口 | 🔶 R2-a/b 已落地（commit 789aef86：search 能力口 + 信封换直呼）；R2-d(1) schema zod 真源回 TS + R2-c builtin.search 退役已落地（fe91f016/d524f124，含 R2-a 键位回归修复）；**R2-d(2) 编排真回 TS（能力口收窄）余量**见 kernel-capability-r2-search-pilot.md §8 |
-| R3 | fs/git/shell 编排回 TS；TS 策略闸接管权限；Rust dispatch 权限逻辑退役 | 权限回归专项 |
+| R3 | fs/git/shell 编排回 TS；TS 策略闸接管权限；Rust dispatch 权限逻辑退役 | 🔶 **fs 域全链路闭环（2026-09-05 fs 域收口，a681adc7/8bce6ffb/cd15fdcb/a107e4e2）**：UI helper + 模型族全量换 fs_cap、builtin.fs 退役、fs 8 工具 zod 转录、测试层 18 文件迁移。git/shell 两域为 R3-c/d 余批（见 kernel-capability-c3-design.md §6/§8/§9）；**「TS 策略闸接管六步裁决」不迁（agent 裁定 2026-09-05，见 c3 §9）**——维持 Rust 口强制双层 |
 | R4 | browser/uia 句柄域编排回 TS + 句柄能力口 | 全门禁 |
-| R5 | 拆 manifest 脚手架 + tool_call/PluginRegistry + Rust 权限裁决 | 全门禁 |
+| R5 | 拆 manifest 脚手架 + tool_call/PluginRegistry + Rust 权限裁决 | 全门禁（fs 的脚手架条目已随 fs 收口删除：镜像 9 manifest、gen-kernel-manifest fs DOMAIN） |
 | 收口 | 全门禁 + 交接/决策落账 | — |
 
 ## 6. 待执行时定的点
@@ -127,4 +127,9 @@ shell spawn）/ credential / 会话句柄（browser/uia/pty/lsp）。**口内不
   AGENTS.md 默认「拆旧不造新」，四层堆叠/参数通配/八层 source 是 Claude Code 在
   Node 直碰模型下的表达需求，兰台强制层在 Rust 能力口，TS 策略层不必一步到齐。
 - 物理沙箱形态（os_sandbox 现状够不够 read-only/workspace-write 两档承诺）——
-  R2 起核。
+  R2/R3 起核。**核验中（fs_cap 各 action 全程走 resolve_*_dispatch + sandbox，
+  2026-09-05 收口未发现缺口）**——随 R3-c/d 换轨继续盯。
+- 权限规则持久化层级（原 #3/#4 待定，2026-09-05 澄清后由 agent 执行，见
+  kernel-capability-c3-design.md §9）：「永久记忆」（append_project_rule 接线）攒着、
+  用户级规则文件（RuleSource::User）不做（YAGNI）。两者与 agent 记忆
+  （/remember + hologram_memory）无关——后者在用在产，不受影响。
