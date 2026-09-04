@@ -69,6 +69,7 @@ pub(crate) async fn fs_cap(
     limit: Option<usize>,
     line_numbers: Option<bool>,
     filter_ignored: Option<bool>,
+    paths: Option<Vec<String>>,
     is_agent: bool,
     agent_id: Option<String>,
     workspace_root: Option<String>,
@@ -135,6 +136,32 @@ pub(crate) async fn fs_cap(
                 .or_else(|_| std::env::var("HOME"))
                 .unwrap_or_else(|_| ".".to_string());
             Ok(json!({ "path": format!("{}/.lantai/global_memory", home.replace('\\', "/")) }))
+        }
+        "memory_batch" => {
+            // 自 builtin.fs read_memory_batch 迁入（内部消费：memory/会话读 .lantai
+            // 内存文件）。安全语义保留：validate_hologram_path（拒绝 .. 穿越与非
+            // .lantai 路径）+ std::fs 批量读——读失败路径记 null（原实现）。
+            let paths = paths.ok_or_else(|| "fs_cap memory_batch: missing 'paths'".to_string())?;
+            let mut map = serde_json::Map::new();
+            for p in &paths {
+                crate::utils::validate_hologram_path(p)
+                    .map_err(|e| format!("fs_cap memory_batch: {e}"))?;
+                match tokio::task::spawn_blocking({
+                    let p = p.clone();
+                    move || std::fs::read_to_string(&p)
+                })
+                .await
+                .map_err(|e| format!("fs_cap memory_batch 任务失败: {e}"))?
+                {
+                    Ok(content) => {
+                        map.insert(p.clone(), Value::String(content));
+                    }
+                    Err(_) => {
+                        map.insert(p.clone(), Value::Null);
+                    }
+                }
+            }
+            Ok(Value::Object(map))
         }
         "write" => {
             let fp = file_path.or(path).ok_or_else(|| "fs_cap write: missing 'file_path'".to_string())?;

@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
-// 文件系统命令的会话扫描助手——工具业务已迁内核插件 builtin.fs
-// （tool_plugins/fs/，kernel-plugin-runtime P2-2）；本文件保留工作区
-// 注册表消费的内部助手（非 #[tauri::command]）。
+// 文件系统命令的会话扫描助手——fs 工具业务已迁 fs_cap 能力口直呼
+// （commands/fs_cap.rs；builtin.fs 插件已退役，kernel-capability-c3-design.md
+// fs 域收口）。本文件保留工作区注册表消费的内部助手（非 #[tauri::command]）。
 
 /// 用户级数据根：~/.lantai（会话/工作区注册表等用户数据的共同家目录）。
 /// 独立于 workspace 根——用户级数据不随项目走。

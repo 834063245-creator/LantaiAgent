@@ -115,62 +115,9 @@ pub(crate) async fn read_text_unchecked(
     Ok((real_path, content))
 }
 
-/// 二进制读取（裁决 + 就地执行）。返回字节。
-pub(crate) async fn read_bytes_unchecked(
-    file_path: &str,
-    is_agent: bool,
-    agent_id: Option<&str>,
-    state: &tauri::State<'_, WorkspaceState>,
-) -> Result<(PathBuf, Vec<u8>), String> {
-    let real_path = crate::utils::resolve_read_unchecked(file_path, is_agent, agent_id, state)?;
-    let rp = real_path.clone();
-    let meta = with_io_retry(|| std::fs::metadata(&rp), "stat")?;
-    if meta.len() > MAX_READ_BYTES {
-        return Err(format!(
-            "文件过大 ({} MiB)，超过读取上限 ({} MiB): {}",
-            meta.len() / (1024 * 1024),
-            MAX_READ_BYTES / (1024 * 1024),
-            file_path
-        ));
-    }
-    let bytes = tokio::time::timeout(READ_TIMEOUT, tokio::task::spawn_blocking(move || {
-        with_io_retry(|| std::fs::read(&rp), "read_bytes")
-    }))
-    .await
-    .map_err(|_| format!("读取文件超时 ({}s): {}", READ_TIMEOUT.as_secs(), file_path))?
-    .map_err(|e| format!("读取任务失败: {}", e))?
-    .map_err(|e| format!("无法读取文件 {}: {}", file_path, e))?;
-    Ok((real_path, bytes))
-}
-
 // ═══════════════════════════════════════════════════════════════
 // fs 能力口 — 写入（裁决 + 字节执行一体）
 // ═══════════════════════════════════════════════════════════════
-
-/// 原子写文本（tmp → rename；含 .bak 备份）。裁决 → 就地执行。
-pub(crate) async fn write_text_unchecked(
-    file_path: &str,
-    content: &str,
-    is_agent: bool,
-    agent_id: Option<&str>,
-    state: &tauri::State<'_, WorkspaceState>,
-) -> Result<PathBuf, String> {
-    if content.len() > MAX_WRITE_BYTES {
-        return Err(format!(
-            "内容过大 ({} MiB)，超过写入上限 ({} MiB)",
-            content.len() / (1024 * 1024),
-            MAX_WRITE_BYTES / (1024 * 1024)
-        ));
-    }
-    let real_path = crate::utils::resolve_write_unchecked(file_path, is_agent, agent_id, state)?;
-    let rp = real_path.to_string_lossy().to_string();
-    if let Some(parent) = real_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("无法创建目录: {}", e))?;
-    }
-    write_atomic(&rp, content)?;
-    Ok(real_path)
-}
 
 /// 原子写入：tmp → rename（含 .bak 备份与失败恢复）。
 fn write_atomic(file_path: &str, content: &str) -> Result<(), String> {
@@ -202,7 +149,7 @@ fn write_atomic(file_path: &str, content: &str) -> Result<(), String> {
     }
 }
 
-/// 追加内容到文件（不存在则创建）。log_append 用。
+/// 追加内容到文件（不存在则创建）。fs_cap append（log_append 语义）用。
 pub(crate) fn append_text_unchecked(real_path: &str, content: &str) -> Result<(), String> {
     use std::io::Write;
     let mut file = std::fs::OpenOptions::new()
@@ -213,40 +160,6 @@ pub(crate) fn append_text_unchecked(real_path: &str, content: &str) -> Result<()
     file.write_all(content.as_bytes())
         .map_err(|e| format!("log_append: write failed: {}", e))?;
     Ok(())
-}
-
-/// 创建目录（含父目录）。裁决 → 就地执行。
-pub(crate) async fn create_dir_unchecked(
-    path: &str,
-    is_agent: bool,
-    agent_id: Option<&str>,
-    state: &tauri::State<'_, WorkspaceState>,
-) -> Result<PathBuf, String> {
-    let resolved = crate::utils::resolve_write_unchecked(path, is_agent, agent_id, state)?;
-    std::fs::create_dir_all(&resolved)
-        .map_err(|e| format!("无法创建目录 {}: {}", path, e))?;
-    Ok(resolved)
-}
-
-/// 删除文件或目录树。裁决 → 就地执行。
-pub(crate) async fn delete_unchecked(
-    path: &str,
-    is_agent: bool,
-    agent_id: Option<&str>,
-    state: &tauri::State<'_, WorkspaceState>,
-) -> Result<PathBuf, String> {
-    let real = crate::utils::resolve_write_unchecked(path, is_agent, agent_id, state)?;
-    if !real.exists() {
-        return Err(format!("路径不存在: {}", path));
-    }
-    if real.is_dir() {
-        std::fs::remove_dir_all(&real)
-            .map_err(|e| format!("无法删除目录 {}: {}", path, e))?;
-    } else {
-        std::fs::remove_file(&real)
-            .map_err(|e| format!("无法删除文件 {}: {}", path, e))?;
-    }
-    Ok(real)
 }
 
 /// 重命名/移动。`from`/`to` 双路径检查（read+write）→ 就地执行。
@@ -391,23 +304,6 @@ pub(crate) fn format_lines(content: &str, offset: Option<usize>, limit: Option<u
     numbered.join("\n")
 }
 
-/// 预览前 max_lines 行，每行截断 max_width。
-pub(crate) fn preview(content: &str, max_width: usize, max_lines: usize) -> String {
-    content
-        .lines()
-        .take(max_lines)
-        .map(|l| {
-            if l.len() <= max_width {
-                l.to_string()
-            } else {
-                let truncated: String = l.chars().take(max_width).collect();
-                format!("{}…", truncated)
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 // ═══════════════════════════════════════════════════════════════
 // 测试 — 字节层（自 primitives-server fs_ops 测试迁回）
 // ═══════════════════════════════════════════════════════════════
@@ -514,12 +410,6 @@ mod tests {
         assert_eq!(format_lines("aa\nbb\ncc", None, None), "     1\taa\n     2\tbb\n     3\tcc");
         assert_eq!(format_lines("aa\nbb\ncc", Some(1), Some(1)), "     2\tbb");
     }
-
-    #[test]
-    fn preview_truncates_and_respects_lines() {
-        let p = preview(&"x".repeat(100), 10, 2);
-        assert!(p.contains('\u{2026}'), "截断应带省略号: {p}");
-    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -609,8 +499,9 @@ pub(crate) fn glob_entries(root: &str, patterns: &[String]) -> Result<Vec<GlobEn
 // fs_cap 能力口入口（R3-a，kernel-capability-c3-design.md）——
 // 与 *_unchecked 的区别：口内过 resolve_*_dispatch（Agent 过闸 + Ask /
 // UI 只解析），因为 fs_cap 直呼不经 PluginToolAdapter（search_cap 同款：
-// 能力口入口即裁决）。unchecked 变体保留给 builtin.fs 插件（dispatch
-// adapter 已在别处过闸）——R3-b TS 换轨后插件退役，unchecked 随之删。
+// 能力口入口即裁决）。builtin.fs 插件已随 fs 域收口退役（2026-09-04）——
+// 残余 unchecked 变体：read_text_unchecked（builtin.editor 插件用）、
+// append_text_unchecked（fs_cap append 用）。
 // ═══════════════════════════════════════════════════════════════
 
 /// fs_cap.read 文本读（能力口入口：dispatch 闸 + 行号格式化）。

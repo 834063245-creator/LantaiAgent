@@ -91,17 +91,17 @@ mod tests {
 
     #[test]
     fn manifest_json_parses_and_matches_id() {
-        // 出厂锚改指向 builtin.fs（builtin.search 已于 R2-c 退役——
-        // kernel-capability-r2-search-pilot.md §8：schema 真源回 TS zod，
-        // Rust manifest 随搜索信封退役）。fs 同为 filesystem_read 能力 +
+        // 出厂锚（builtin.fs 已随 fs 域收口退役——2026-09-04，kernel-capability-
+        // c3-design.md R3-b 后 UI/模型族全量换 fs_cap 能力口直呼，插件信封无
+        // 消费方）。锚改指向 builtin.editor——同为 filesystem_read/write 能力 +
         // 只读 object schema 工具，锚语义等价。
         let m: ToolManifest =
-            serde_json::from_str(include_str!("fs/manifest.json")).expect("出厂 manifest 是编译期静态资源");
-        assert_eq!(m.id, "builtin.fs");
+            serde_json::from_str(include_str!("editor/manifest.json")).expect("出厂 manifest 是编译期静态资源");
+        assert_eq!(m.id, "builtin.editor");
         assert_eq!(m.trust, TrustLevel::System);
         assert_eq!(m.capabilities, vec!["filesystem_read".to_string(), "filesystem_write".to_string()]);
-        let tool = m.tools.iter().find(|t| t.name == "read_file_content").expect("read_file_content 在清单内");
-        assert!(tool.read_only);
+        let tool = m.tools.iter().find(|t| t.name == "edit_file").expect("edit_file 在清单内");
+        assert!(!tool.read_only);
         // 契约锚：schema 必须是 object 形（模型面）。
         assert_eq!(tool.schema.get("type").and_then(|v| v.as_str()), Some("object"));
     }

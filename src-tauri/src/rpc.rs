@@ -109,8 +109,8 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // 是 git 子进程 stdout 文本（run_git 直通），保持 Text。
 
         // ── 文件系统 ──
-        // （list_directory/list_directory_flat/read_file_content 等已迁 builtin.fs
-        //  插件走 tool_call——kernel-plugin-runtime P2-2，无需本表条目。）
+        // （fs 工具域已收敛到 fs_cap 能力口直呼（2026-09-04 fs 域收口，builtin.fs
+        //  插件退役）——本表 fs_cap 条目见下；list_directory 等旧 RPC 分支随迁退役。）
         // workspace_list：ok_json(注册表+各工作区会话计数) 恒 JSON。
         // workspace_create_dir：ok_json(归一化路径字符串) 恒 JSON 字符串。
         // （workspace-session-ownership-rework 2026-08-27：user_sessions_list 退役——
@@ -120,8 +120,8 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         }
 
         // ── 搜索 ──
-        // （search_content 已迁 builtin.search / glob 已迁 builtin.fs，均走
-        //  tool_call——其 JSON 形态由前端 agentInvoke 字符串世界兜底，无需本表条目。）
+        // （search_content 已随 builtin.search 退役（R2-c），R2-d(1) schema 回 TS zod；
+        //  glob 随 builtin.fs 退役——fs 域收口后能力口 fs_cap.glob 承接。）
         // search_cap（R2 能力口试点）：返回与 builtin.search search_content 相同的
         // JSON 形状（json! 构造，恒合法 JSON）。
         "search_cap" => RpcResultShape::JsonValue,
@@ -424,6 +424,9 @@ async fn dispatch_rpc(
                 usize_opt("limit"),
                 opt_bool(&params, "line_numbers"),
                 opt_bool(&params, "filter_ignored"),
+                params.get("paths").and_then(|v| v.as_array()).map(|arr| {
+                    arr.iter().filter_map(|x| x.as_str().map(String::from)).collect()
+                }),
                 is_agent,
                 agent_id,
                 opt_str(&params, "workspace_root"),
