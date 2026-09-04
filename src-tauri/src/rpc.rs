@@ -122,6 +122,9 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // ── 搜索 ──
         // （search_content 已迁 builtin.search / glob 已迁 builtin.fs，均走
         //  tool_call——其 JSON 形态由前端 agentInvoke 字符串世界兜底，无需本表条目。）
+        // search_cap（R2 能力口试点）：返回与 builtin.search search_content 相同的
+        // JSON 形状（json! 构造，恒合法 JSON）。
+        "search_cap" => RpcResultShape::JsonValue,
 
         // ── Shell ──
         // shell_env：serde 序列化恒 JSON（兑底也是合法 JSON 字面量）。
@@ -351,6 +354,39 @@ async fn dispatch_rpc(
         "plugin_tool_manifests" => {
             let registry = app.state::<std::sync::Arc<crate::tool_plugins::PluginRegistry>>();
             Ok(crate::tool_plugins::registry_manifests(&registry).to_string())
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // 能力口（R2 试点，kernel-capability-r2-search-pilot.md）——
+        // 内核能力层直呼入口，不经 tool_call 信封 / PluginRegistry。
+        // search_cap：search 全文扫描能力口（fs 能力族变体，v3 §4）。
+        // 参数说 manifest schema 的语言（camelCase）；is_agent/agent_id 显式
+        // 传参（resolve_read_dispatch 分流 Agent 过闸 / UI 只解析）。
+        // ═══════════════════════════════════════════════════════
+        "search_cap" => {
+            let directory = req_str(&params, "directory", "search_cap")?;
+            let pattern = req_str(&params, "pattern", "search_cap")?;
+            let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
+            let agent_id = opt_str(&params, "agent_id");
+            let r = commands::search_cap::search_content_cap(
+                directory,
+                pattern,
+                opt_str(&params, "fileTypes"),
+                params.get("maxResults").and_then(|v| v.as_u64()).map(|n| n as usize),
+                opt_bool(&params, "useRegex"),
+                params.get("contextLines").and_then(|v| v.as_u64()).map(|n| n as usize),
+                opt_str(&params, "outputMode"),
+                opt_bool(&params, "showLineNumbers"),
+                params.get("headLimit").and_then(|v| v.as_u64()).map(|n| n as usize),
+                params.get("offset").and_then(|v| v.as_u64()).map(|n| n as usize),
+                opt_str(&params, "globFilter"),
+                is_agent,
+                agent_id,
+                &state,
+                &app,
+            )
+            .await?;
+            ok_json::<Value>(Ok(r))
         }
 
 

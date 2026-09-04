@@ -85,9 +85,45 @@ export function manifestTool(manifestId: string, toolName: string, exec: ToolExe
   };
 }
 
-/** search 域工具族（builtin.search）——原 zod 定义的逐字节转录，表序不变。 */
+/** search 域工具族（builtin.search，R2 试点起走能力口）——
+ *  schema 仍取 manifest 字节（工具面零漂移），execute 从 tool_call 信封换
+ *  search_cap 能力口直呼（searchCapTool）。表序不变。 */
 export function createSearchTools(exec: ToolExecutor): Tool[] {
-  return [manifestTool('builtin.search', 'search_content', exec)];
+  return [searchCapTool('search_content', 'builtin.search', exec)];
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 能力口工具（R2 试点，kernel-capability-r2-search-pilot.md）——
+// schema 仍取 manifest 字节（工具面零漂移），execute 从 tool_call 信封
+// 换内核能力口直呼（search_cap RPC，不经 PluginRegistry / PluginToolAdapter）。
+// R2 语义：编排未迁前，能力口输出与 builtin.search 完全同形状，纯执行通道
+// 换轨；权限真权路径同 resolve_read_dispatch（Agent 过闸 / UI 只解析）。
+// ═══════════════════════════════════════════════════════════════
+
+/** search_cap 能力口参数（manifest schema 的 camelCase 键 + agent ctx）。
+ *  与 rpc-contract search_cap 参数面一致；is_agent 由 agentInvoke 同款注入。 */
+export function searchCapTool(toolName: string, manifestId: string, exec: ToolExecutor): Tool {
+  const manifest = kernelManifestOf(manifestId);
+  const spec = manifest.tools.find((t) => t.name === toolName);
+  if (!spec) throw new Error(`manifest-tools: 能力口 '${manifestId}' 无工具 '${toolName}'`);
+  const parameters = spec.schema;
+  return {
+    name: () => spec.name,
+    description: () => spec.description,
+    parameters: () => parameters,
+    readOnly: () => spec.read_only ?? false,
+    execute: (args, onProgress, signal) =>
+      withProgressStream(args, onProgress, () =>
+        exec(
+          'search_cap',
+          // isAgent 由 executor 层 agentInvoke 注入（与 tool_call 同款）——
+          // 工具层不手拼，Agent/UI 分流语义集中在 executor 单点。
+          { ...args },
+          onProgress,
+          signal,
+        ),
+      ),
+  };
 }
 
 /** web 域工具族（builtin.web）——原 zod 定义的逐字节转录，表序不变。 */

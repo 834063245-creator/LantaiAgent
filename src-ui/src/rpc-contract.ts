@@ -126,6 +126,30 @@ export interface RpcContract {
     result: string; // JSON（全量 ToolManifest 数组）
   };
 
+  // ── 能力口（R2 试点，kernel-capability-r2-search-pilot.md）──────────
+  // search_cap：search 全文扫描能力口（fs 能力族变体，v3 §4）——不经 tool_call
+  // 信封 / PluginRegistry。参数说 manifest schema 的语言（camelCase）；
+  // is_agent 显式传（Agent 过 require_read 闸 / UI 只解析）；_agent_id 经
+  // agent_id 显式参数（resolve_read_dispatch 需要）。
+  search_cap: {
+    params: {
+      directory: string;
+      pattern: string;
+      fileTypes?: string;
+      maxResults?: number;
+      useRegex?: boolean;
+      contextLines?: number;
+      outputMode?: 'content' | 'files_with_matches' | 'count';
+      showLineNumbers?: boolean;
+      headLimit?: number;
+      offset?: number;
+      globFilter?: string;
+      is_agent?: boolean;
+      agent_id?: string | null;
+    };
+    result: string; // JSON — 与 builtin.search search_content 同形状
+  };
+
   // ── Shell ────────────────────────────────────────────────
   // （exec_command / bash_output / bash_kill / bash_wait / shell_env /
   //   background_activity / drain_bg_notifications 已迁内核插件 builtin.shell，

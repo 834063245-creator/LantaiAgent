@@ -48,7 +48,7 @@ describe('kernel manifest tools', () => {
     expect((props.maxResults as Record<string, unknown>).minimum).toBe(-9007199254740991);
   });
 
-  it('execute 走 tool_call：plugin/tool 路由 + args 原样透传（含 _agent_id meta）', async () => {
+  it('execute 走能力口 search_cap（R2 试点：信封换直呼）+ args 原样透传（含 _agent_id meta）', async () => {
     const { calls, exec } = captureExec();
     const tool = createSearchTools(exec)[0];
     const args = {
@@ -58,11 +58,13 @@ describe('kernel manifest tools', () => {
     } as Record<string, unknown>;
     await tool.execute(args);
     expect(calls).toHaveLength(1);
-    expect(calls[0].name).toBe('tool_call');
-    expect(calls[0].args.plugin).toBe('builtin.search');
-    expect(calls[0].args.tool).toBe('search_content');
+    // R2（kernel-capability-r2-search-pilot.md）：search 工具 execute 从
+    // tool_call 信封（plugin/tool 路由）换 search_cap 能力口直呼——不经
+    // PluginRegistry/PluginToolAdapter；is_agent 由 executor 层 agentInvoke
+    // 恒注入（工具层不手拼）。schema 仍取 manifest 字节（工具面零漂移）。
+    expect(calls[0].name).toBe('search_cap');
     // args 整体透传——meta key 不丢（INVARIANTS #9）。
-    expect(calls[0].args.args).toEqual(args);
+    expect(calls[0].args).toEqual(args);
   });
 
   it('未知插件 id 响亮报错', () => {

@@ -45,6 +45,7 @@ fn capability_command_modules_are_frozen() {
         "isolation",
         "plugin_install",
         "protocol_bridge",
+        "search_cap",
         "workspace",
     ];
     assert_eq!(
@@ -54,6 +55,9 @@ fn capability_command_modules_are_frozen() {
          新能力必须走开放面（前端 seam / 外部 MCP / 动态插件），禁止新增 Rust 命令。\n\
          若确属强制层（权限/沙箱/审计/IPC/组合引擎）改动，必须：\n\
          1) 在本测试基线中加入该模块；\n\
-         2) 在 commit message 显式标注「强制层改动 + 宪法审查」。"
+         2) 在 commit message 显式标注「强制层改动 + 宪法审查」。\n\
+         search_cap = v3 能力口（kernel-plugin-architecture-decision.md §3：fs 能力族\n\
+         变体 + resolve_read 强制闸 + 物理扫描/向量召回）——合法强制层模块，见\n\
+         docs/plans/kernel-capability-r2-search-pilot.md §7。"
     );
 }
