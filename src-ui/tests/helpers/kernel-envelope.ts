@@ -72,30 +72,15 @@ export function toolCallArgsOfBridge(
 //    照 parallel-subagent-bugs.test.ts 的 raw 信封断言处理
 
 /** 旧名翻译表：'plugin.tool' → 旧 RPC 方法名（恒等映射为主）。
- *  P2-3 builtin.git 起在此表追加行——一处扩表，13 个 git 测试文件 mock 面零改动。 */
+ *  （builtin.git 16 行已随 git 域收口退役——2026-09-05，R3-c：模型族/内部
+ *  消费全量换 git_cap 直呼后无测试再翻 builtin.git 信封；builtin.fs 同款
+ *  先例 a107e4e2。） */
 const LEGACY_METHOD_OF: Record<string, string> = {
   // builtin.editor（P2-1）
   'builtin.editor.edit_file': 'edit_file',
   // builtin.constraints（P2-1）
   'builtin.constraints.read_constraints': 'read_constraints',
   'builtin.constraints.write_constraints': 'write_constraints',
-  // builtin.git（P2-3，manifest 16 工具 = 旧 RPC 方法名）
-  'builtin.git.git_status': 'git_status',
-  'builtin.git.git_diff_unstaged': 'git_diff_unstaged',
-  'builtin.git.git_diff_staged': 'git_diff_staged',
-  'builtin.git.git_log': 'git_log',
-  'builtin.git.git_stage': 'git_stage',
-  'builtin.git.git_stage_all': 'git_stage_all',
-  'builtin.git.git_commit': 'git_commit',
-  'builtin.git.git_push': 'git_push',
-  'builtin.git.git_pull': 'git_pull',
-  'builtin.git.git_init': 'git_init',
-  'builtin.git.git_checkout': 'git_checkout',
-  'builtin.git.git_create_branch': 'git_create_branch',
-  'builtin.git.git_stash_push': 'git_stash_push',
-  'builtin.git.git_stash_pop': 'git_stash_pop',
-  'builtin.git.git_discard': 'git_discard',
-  'builtin.git.git_blame': 'git_blame',
   // builtin.shell（P2-4，manifest 7 工具 = 旧 RPC 方法名）
   'builtin.shell.exec_command': 'exec_command',
   'builtin.shell.bash_output': 'bash_output',
