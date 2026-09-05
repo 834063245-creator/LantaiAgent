@@ -121,18 +121,11 @@ const DOMAINS: DomainSpec[] = [
     factory: fsToolsFactory,
     tools: [{ name: 'edit_file', tsTool: 'edit_file', permission: editPerm('filePath') }],
   },
-  // ── builtin.constraints（P2-1 已落地；TS 面经 createFsTools——manifest 驱动）──
-  {
-    domain: 'constraints',
-    id: 'builtin.constraints',
-    description: '约束配置读写（自 commands/constraints.rs 拆出，kernel-plugin-runtime P2-1）',
-    capabilities: ['filesystem_read', 'filesystem_write'],
-    factory: fsToolsFactory,
-    tools: [
-      { name: 'read_constraints', tsTool: 'read_constraints' },
-      { name: 'write_constraints', tsTool: 'write_constraints' },
-    ],
-  },
+  // ── builtin.constraints 域已退役（R4-4 小面清偿 2026-09-05——constraints
+  //    两模型族 schema 真源回 TS zod（coding.ts constraintsCapTool），execute
+  //    经 provider seam → constraints_cap 直呼；域条目随 tool_plugins/
+  //    constraints/ 一并拆除）──
+
   // ── builtin.git 域已退役（git 域收口 2026-09-05，R3-c——schema 真源回 TS zod
   //    （coding.ts GIT_CAP_SCHEMA），execute 走 git_cap 能力口直呼；域条目随
   //    tool_plugins/git/ 一并拆除，fs 域收口同款先例）──
@@ -151,132 +144,10 @@ const DOMAINS: DomainSpec[] = [
   //    能力口直呼；域条目随 tool_plugins/uia/ 一并拆除，fs/git/shell/browser
   //    域收口同款先例）──
 
-  // ── builtin.pty（P2-6）——4 RPC 分支信封化。权限形状（§8.5）：无家族规则，
-  //    不进 manifest permission（原本就无工具级家族对应）；Passthrough +
-  //    pty_manager::* 原函数（生命周期注册表不暴露 ToolContext）。
-  //    TS 面无模型工具（pty 由 UI/内部消费）——schema 手写声明。──
-  {
-    domain: 'pty',
-    id: 'builtin.pty',
-    description: 'PTY 终端会话（自 rpc.rs PTY 分区拆出，kernel-plugin-runtime P2-6）',
-    capabilities: ['pty'],
-    factory: ptyToolsFactory,
-    tools: [
-      {
-        name: 'pty_spawn',
-        description: 'Spawn an interactive PTY shell session. Returns the numeric session id.',
-        read_only: false,
-        schema: {
-          type: 'object',
-          properties: {
-            cwd: { type: 'string', description: 'Working directory for the shell' },
-            shell: { type: 'string', description: 'Optional shell command (default: cmd.exe on Windows)' },
-            cols: { type: 'integer', description: 'Initial terminal width in columns' },
-            rows: { type: 'integer', description: 'Initial terminal height in rows' },
-          },
-          required: ['cwd', 'cols', 'rows'],
-          additionalProperties: {},
-        },
-      },
-      {
-        name: 'pty_write',
-        description: 'Write raw input data to a PTY session.',
-        read_only: false,
-        schema: {
-          type: 'object',
-          properties: {
-            session_id: { type: 'integer', description: 'PTY session id' },
-            data: { type: 'string', description: 'Input data to write' },
-          },
-          required: ['session_id', 'data'],
-          additionalProperties: {},
-        },
-      },
-      {
-        name: 'pty_resize',
-        description: 'Resize a PTY session terminal window.',
-        read_only: false,
-        schema: {
-          type: 'object',
-          properties: {
-            session_id: { type: 'integer', description: 'PTY session id' },
-            cols: { type: 'integer', description: 'New width in columns' },
-            rows: { type: 'integer', description: 'New height in rows' },
-          },
-          required: ['session_id', 'cols', 'rows'],
-          additionalProperties: {},
-        },
-      },
-      {
-        name: 'pty_kill',
-        description: 'Terminate a PTY session and its child process tree.',
-        read_only: false,
-        schema: {
-          type: 'object',
-          properties: {
-            session_id: { type: 'integer', description: 'PTY session id' },
-          },
-          required: ['session_id'],
-          additionalProperties: {},
-        },
-      },
-    ],
-  },
-  // ── builtin.lsp（P2-6）——3 RPC 分支信封化。权限形状（§8.5）：无家族规则，
-  //    不进 manifest permission；Passthrough + lsp_manager::* 原函数。
-  //    lsp-message 事件通道原样保留（Rust 侧 app.emit 不变，TS typedListen 消费）。
-  //    TS 面无模型工具——lsp-client.ts 经信封内部消费；schema 手写声明。──
-  {
-    domain: 'lsp',
-    id: 'builtin.lsp',
-    description: 'LSP 语言服务器会话（自 rpc.rs LSP 分区拆出，kernel-plugin-runtime P2-6）',
-    capabilities: ['lsp'],
-    factory: lspToolsFactory,
-    tools: [
-      {
-        name: 'lsp_start',
-        description: 'Start an LSP server for a language over a workspace root. Returns the numeric session id.',
-        read_only: false,
-        schema: {
-          type: 'object',
-          properties: {
-            language: { type: 'string', description: 'Language id (e.g. typescript, rust, python)' },
-            root_uri: { type: 'string', description: 'Workspace root file:// URI' },
-          },
-          required: ['language', 'root_uri'],
-          additionalProperties: {},
-        },
-      },
-      {
-        name: 'lsp_request',
-        description: 'Send a JSON-RPC request/notification to an LSP session. Returns the JSON-RPC result.',
-        read_only: false,
-        schema: {
-          type: 'object',
-          properties: {
-            session_id: { type: 'integer', description: 'LSP session id' },
-            method: { type: 'string', description: 'JSON-RPC method' },
-            params: { type: 'object', description: 'JSON-RPC params (optional for notifications)' },
-          },
-          required: ['session_id', 'method'],
-          additionalProperties: {},
-        },
-      },
-      {
-        name: 'lsp_stop',
-        description: 'Stop an LSP server session.',
-        read_only: false,
-        schema: {
-          type: 'object',
-          properties: {
-            session_id: { type: 'integer', description: 'LSP session id' },
-          },
-          required: ['session_id'],
-          additionalProperties: {},
-        },
-      },
-    ],
-  },
+  // ── builtin.pty / builtin.lsp 域已退役（R4-4 小面清偿 2026-09-05——
+  //    pty 4 / lsp 3 内部消费工具换 pty_cap / lsp_cap 直呼（rpc-contract.ts
+  //    kernelPtyCall/kernelLspCall）；两域无模型面工具，手写 spec 随
+  //    tool_plugins/pty|lsp/ 一并拆除）──
 ];
 
 // ─────────────────────────────────────────────────────────────

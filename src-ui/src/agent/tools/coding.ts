@@ -98,8 +98,9 @@ export interface CodingToolsUI {
 // mkdir/move/rename/delete）schema 真源回 TS zod——逐键等价于退役前 manifest
 // 的 schema 发射（键名 camelCase/snake_case 模型面契约、description 字节，
 // convergence 快照 stableStringify 字典序下零漂移）。
-// edit/constraints/write_constraints 仍经 manifest 镜像（builtin.editor /
-// builtin.constraints 未退役——见 fsManifestTool）。
+// edit 仍经 manifest 镜像（builtin.editor 未退役——见 fsManifestTool）；
+// constraints 两工具 R4-4 起 zod 真源（constraintsCapTool，经 provider seam
+// → constraints_cap 直呼）。
 // ═══════════════════════════════════════════════════════════════
 
 /** read_file_content schema——manifest 字节转录（filePath/offset/limit）。 */
@@ -245,9 +246,9 @@ function fsCapTool(action: FsAction, localName: string, exec: ToolExecutor): Too
 }
 
 /** manifest 驱动的 fs 域工具（kernel-plugin-runtime P2-2 遗留面）——仅
- *  edit/constraints/write_constraints（builtin.editor / builtin.constraints
- *  未退役，仍从镜像取 schema/description）；schema/description/readOnly =
- *  manifest 字节；TS 工具名保持历史名。 */
+ *  edit（builtin.editor 未退役——R5 拆信封前最后在册插件，仍从镜像取
+ *  schema/description）；schema/description/readOnly = manifest 字节；
+ *  TS 工具名保持历史名。 */
 function fsManifestTool(action: FsAction, localName: string, exec: ToolExecutor): Tool {
   const target = FS_PLUGIN_TOOL_BY_ACTION[action];
   if (!target) throw new Error(`coding: 动作 '${action}' 无 manifest 信封目标（fs 域收口后应走 fsCapTool zod 面）`);
@@ -265,6 +266,53 @@ function fsManifestTool(action: FsAction, localName: string, exec: ToolExecutor)
   };
 }
 
+// ═══════════════════════════════════════════════════════════════
+// constraints 域模型族 zod 真源（kernel-capability-d4-handle-design.md R4-4
+// 小面清偿，2026-09-05）：builtin.constraints 插件退役，2 工具 schema 真源
+// 回 TS zod（逐键等价退役前 manifest 发射）；execute 经 fsExecute → provider
+// seam（D11 开放面不动）→ builtinFsProvider 换 constraints_cap 直呼。
+// ═══════════════════════════════════════════════════════════════
+
+const readConstraintsSchema = z.object({
+  projectPath: z.string().describe('Project root directory path'),
+});
+
+const writeConstraintsSchema = z.object({
+  projectPath: z.string().describe('Project root directory path'),
+  content: z.string().describe('Full YAML content to write'),
+});
+
+/** constraints 域动作 → 模型面 description（manifest 字节转录）。 */
+const CONSTRAINTS_CAP_DESCRIPTION = {
+  read_constraints:
+    'Read the current constraint configuration (hologram.constraints.yaml) for the project. Returns the YAML content. Use to check routing rules, thresholds, and allowlist/denylist settings.',
+  write_constraints:
+    'Write the constraint configuration (hologram.constraints.yaml) for the project — replaces the whole file. Use after check_boundaries (graph domain) reveals violations worth encoding as standing rules: routing rules, thresholds, allowlist/denylist. Read the current config with fs(constraints) first so you extend existing rules rather than drop them.',
+} as const;
+
+/** constraints 域模型族工具（R4-4 起 zod 真源，不查 builtin.constraints 镜像）；
+ *  TS 工具名保持历史名（模型面契约）；execute 经 provider seam
+ *  （constraints/write_constraints 动作 → builtinFsProvider → constraints_cap）。 */
+function constraintsCapTool(
+  action: keyof typeof CONSTRAINTS_CAP_DESCRIPTION,
+  localName: string,
+  schema: z.ZodObject<z.ZodRawShape>,
+  exec: ToolExecutor,
+): Tool {
+  const parameters = toInputJsonSchema(schema.passthrough());
+  const readOnly = action === 'read_constraints';
+  return {
+    name: () => localName,
+    description: () => CONSTRAINTS_CAP_DESCRIPTION[action],
+    parameters: () => parameters,
+    readOnly: () => readOnly,
+    execute: (args, onProgress, signal) =>
+      withProgressStream(args, onProgress, () =>
+        fsExecute(action === 'read_constraints' ? 'constraints' : 'write_constraints', args, exec, onProgress, signal),
+      ),
+  };
+}
+
 /** fs 域工具族（S1-2 从 createCodingTools 迁出；fs 域收口后 8 模型族 zod 真源
  *  + edit/constraints 仍 manifest 驱动）。
  *  声明序 = 领域合并/装配的字节契约序——勿重排。 */
@@ -275,8 +323,8 @@ export function createFsTools(exec: ToolExecutor): Tool[] {
     fsCapTool('write', 'write_file', exec),
     fsManifestTool('edit', 'edit_file', exec),
     fsCapTool('list', 'list_directory', exec),
-    fsManifestTool('constraints', 'read_constraints', exec),
-    fsManifestTool('write_constraints', 'write_constraints', exec),
+    constraintsCapTool('read_constraints', 'read_constraints', readConstraintsSchema, exec),
+    constraintsCapTool('write_constraints', 'write_constraints', writeConstraintsSchema, exec),
     fsCapTool('glob', 'glob', exec),
     fsCapTool('delete', 'delete_file', exec),
     fsCapTool('mkdir', 'create_directory', exec),

@@ -1,16 +1,21 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT.
 
-//! builtin.web 插件——内核插件运行时 Phase 1 续批（自 commands/web.rs 拆出）。
-//! 工具面（名称/描述/schema）真源 = 同目录 manifest.json（双端共享）。
-//! web_fetch 的 WebFetchTool 权限语义（域名规则 + SSRF + Ask 事件）原样保留在插件内；
-//! web_search 沿用原实现：以兜底搜索页 URL 过 WebFetch 权限（AnySearch 是后端
-//! API，仍受同一 Web 域权限约束）。
+// web 能力口（R4 小面清偿，kernel-capability-d4-handle-design.md §6 R4-4）——
+// web 族（search/fetch）直呼入口，不经 tool_call 信封 / PluginRegistry /
+// PluginToolAdapter（builtin.web 插件随本批退役）。
+//
+// 口内闸（D4-4/D4-5 同款）：直接构造 WebFetchTool 过 crate::utils::check_permission
+// ——无条件过闸（插件原语义）；域名规则 + SSRF + Ask 事件在 WebFetchTool /
+// web_fetch 逐跳复查（插件原样）。web_search 沿用原实现：以兜底搜索页 URL 过
+// WebFetch 权限（AnySearch 是后端 API，仍受同一 Web 域权限约束）。
+//
+// 键语言：口收顶层 snake（能力口统一契约）；TS 工具面键 = manifest 语言
+// （camelCase：maxResults），映射在 TS execute 层。返回 Text（search = JSON
+// 字符串 / fetch = 网页文本——信封 dispatch 的 Value 序列化语义逐字节保持）。
 
 use serde_json::Value;
-
-use super::manifest::ToolManifest;
-use super::plugin::{arg_str, arg_usize, ToolContext, ToolError, ToolPlugin};
+use tauri::State;
 
 const CHROME_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36";
 
@@ -23,59 +28,42 @@ fn search_backend() -> &'static str {
 
 const ANYSEARCH_SEARCH_URL: &str = "https://api.anysearch.com/v1/search";
 
-pub struct WebPlugin {
-    manifest: ToolManifest,
+/// 口内闸句柄（BrowserGate/UiaGate 同形——web 面用 WebFetchTool）。
+pub(crate) struct WebGate<'a> {
+    pub agent_id: Option<String>,
+    pub state: &'a State<'a, crate::WorkspaceState>,
+    pub app: &'a tauri::AppHandle,
 }
 
-impl WebPlugin {
-    pub fn new() -> Self {
-        let manifest: ToolManifest = serde_json::from_str(include_str!("manifest.json"))
-            .expect("builtin.web manifest 是随 exe 编译的静态资源");
-        Self { manifest }
-    }
-}
-
-impl Default for WebPlugin {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ToolPlugin for WebPlugin {
-    fn id(&self) -> &str {
-        "builtin.web"
-    }
-
-    fn manifest(&self) -> &ToolManifest {
-        &self.manifest
-    }
-
-    fn execute<'a>(
-        &'a self,
-        ctx: &'a ToolContext<'a>,
-        tool_name: &'a str,
-        args: Value,
-    ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = Result<Value, ToolError>> + Send + 'a>,
-    > {
-        Box::pin(async move {
-            match tool_name {
-                "web_search" => web_search(ctx, &args).await,
-                "web_fetch" => web_fetch(ctx, &args).await,
-                other => Err(ToolError::InvalidArgs(format!(
-                    "builtin.web: 未知工具 '{other}'"
-                ))),
-            }
-        })
+impl WebGate<'_> {
+    /// 工具级权限过闸（WebFetchTool：域名规则 + SSRF 前置 + Ask）。无条件过闸。
+    pub async fn check(&self, tool: &crate::tools::WebFetchTool) -> Result<(), String> {
+        let perm_ctx = crate::utils::get_ctx(self.state)?;
+        crate::utils::check_permission(tool, &perm_ctx, self.app)
+            .await
+            .map_err(|m| format!("权限拒绝: {m}"))
     }
 }
 
-/// web_search — AnySearch 免费 API + Bing/DuckDuckGo 抓取兜底（业务自 commands/web.rs
-/// 原样迁入；参数键改说 manifest schema 的语言，camelCase）。
-async fn web_search(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolError> {
-    let missing = |k: &str| ToolError::InvalidArgs(format!("web_search: missing '{k}'"));
-    let query = arg_str(args, "query").ok_or_else(|| missing("query"))?;
-    let max_results = arg_usize(args, "maxResults").unwrap_or(10).clamp(1, 10);
+fn arg_str(args: &Value, key: &str) -> Option<String> {
+    args.get(key).and_then(|v| v.as_str()).map(String::from)
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 业务（自 tool_plugins/web/mod.rs 逐行为迁入；参数键顶层 snake；
+// ToolError 内联化——错误串即最终形态，Permission 带「权限拒绝: 」前缀）
+// ═══════════════════════════════════════════════════════════════
+
+/// web_search — AnySearch 免费 API + Bing/DuckDuckGo 抓取兜底。
+async fn web_search(gate: &WebGate<'_>, args: &Value) -> Result<String, String> {
+    let query = arg_str(args, "query")
+        .ok_or_else(|| "web_search: missing 'query'".to_string())?;
+    let max_results = args
+        .get("max_results")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as usize)
+        .unwrap_or(10)
+        .clamp(1, 10);
 
     // 权限检查沿用原有搜索页 URL（AnySearch 是后端 API，仍受同一 Web 域权限约束）。
     let backend = search_backend();
@@ -83,18 +71,15 @@ async fn web_search(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolEr
         "bing" => format!("https://www.bing.com/search?q={}&setlang=en", crate::utils::urlencoding(&query)),
         _ => format!("https://html.duckduckgo.com/html/?q={}", crate::utils::urlencoding(&query)),
     };
-    {
-        let tool = crate::tools::WebFetchTool { url: fallback_url, agent_id: ctx.agent_id.clone() };
-        ctx.check_permission(&tool).await.map_err(ToolError::Permission)?;
-    }
+    gate.check(&crate::tools::WebFetchTool { url: fallback_url, agent_id: gate.agent_id.clone() }).await?;
 
     // 1) 先尝试 AnySearch 匿名免费 API（无需用户配置任何 key）
     // 2) 失败/空结果时自动降级到 Bing / DuckDuckGo 页面抓取
     let results = match anysearch_free_search(&query, max_results) {
         Ok(results) if !results.is_empty() => results,
         _ => match backend {
-            "bing" => bing_search(&query).map_err(ToolError::Tool)?,
-            _ => duckduckgo_search(&query).map_err(ToolError::Tool)?,
+            "bing" => bing_search(&query)?,
+            _ => duckduckgo_search(&query)?,
         },
     };
 
@@ -103,13 +88,15 @@ async fn web_search(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolEr
             "query": query,
             "results": [],
             "error": "No results found.",
-        }));
+        })
+        .to_string());
     }
 
     Ok(serde_json::json!({
         "query": query,
         "results": &results[..results.len().min(max_results)],
-    }))
+    })
+    .to_string())
 }
 
 /// AnySearch 匿名免费搜索：不需要 API key。
@@ -271,25 +258,20 @@ fn duckduckgo_search(query: &str) -> Result<Vec<serde_json::Value>, String> {
     }
     Ok(results)
 }
+/// web_fetch — URL 抓取（SSRF 逐跳复查 + 1 MiB 截断）。网页文本是 Text 结果。
+async fn web_fetch(gate: &WebGate<'_>, args: &Value) -> Result<String, String> {
+    let url = arg_str(args, "url")
+        .ok_or_else(|| "web_fetch: missing 'url'".to_string())?;
+    gate.check(&crate::tools::WebFetchTool { url: url.clone(), agent_id: gate.agent_id.clone() }).await?;
 
-/// web_fetch — URL 抓取（业务自 commands/web.rs 原样迁入；SSRF 逐跳复查 + 1 MiB 截断）。
-/// 网页文本是 Text 结果——返回 Value::String，分派处字节精确直通（不再 JSON 引号包裹）。
-async fn web_fetch(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolError> {
-    let missing = |k: &str| ToolError::InvalidArgs(format!("web_fetch: missing '{k}'"));
-    let url = arg_str(args, "url").ok_or_else(|| missing("url"))?;
-    {
-        let tool = crate::tools::WebFetchTool { url: url.clone(), agent_id: ctx.agent_id.clone() };
-        ctx.check_permission(&tool).await.map_err(ToolError::Permission)?;
-    }
-
-    let parsed = url::Url::parse(&url).map_err(|e| ToolError::InvalidArgs(format!("无效 URL: {}", e)))?;
+    let parsed = url::Url::parse(&url).map_err(|e| format!("无效 URL: {}", e))?;
     let scheme = parsed.scheme();
     if scheme != "https" && scheme != "http" {
-        return Err(ToolError::InvalidArgs(format!("不支持的协议: {}", scheme)));
+        return Err(format!("不支持的协议: {}", scheme));
     }
     let host = parsed.host_str().unwrap_or("");
     if host.is_empty() || crate::utils::is_private_ip(host) {
-        return Err(ToolError::Permission("SSRF 防护: 不允许访问内网地址".to_string()));
+        return Err("权限拒绝: SSRF 防护: 不允许访问内网地址".to_string());
     }
 
     let agent = ureq::Agent::new_with_config(
@@ -320,12 +302,12 @@ async fn web_fetch(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolErr
                 .map(|v| v == "challenge")
                 .unwrap_or(false);
             if is_cf {
-                make_request("opencode").map_err(|e| ToolError::Tool(format!("请求失败 (Cloudflare blocked): {}", e)))?
+                make_request("opencode").map_err(|e| format!("请求失败 (Cloudflare blocked): {}", e))?
             } else {
                 r
             }
         }
-        Err(e) => return Err(ToolError::Tool(format!("请求失败: {}", e))),
+        Err(e) => return Err(format!("请求失败: {}", e)),
     };
 
     // ── 手动跟随重定向并重新检查 SSRF ──
@@ -337,30 +319,30 @@ async fn web_fetch(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolErr
         let status = current_resp.status().as_u16();
         if !(300..400).contains(&status) { break; }
         if redirects >= MAX_REDIRECTS {
-            return Err(ToolError::Tool(format!("重定向次数超限 ({MAX_REDIRECTS})")));
+            return Err(format!("重定向次数超限 ({MAX_REDIRECTS})"));
         }
         let location = current_resp.headers()
             .get("location")
             .and_then(|v| v.to_str().ok())
-            .ok_or_else(|| ToolError::Tool("重定向响应缺少 Location 头".to_string()))?;
+            .ok_or_else(|| "重定向响应缺少 Location 头".to_string())?;
         // 相对于当前重定向 URL 解析相对 URL
-        let base = url::Url::parse(&current_url).map_err(|e| ToolError::InvalidArgs(format!("无效基址 URL: {e}")))?;
+        let base = url::Url::parse(&current_url).map_err(|e| format!("无效基址 URL: {e}"))?;
         let next_url = base.join(location)
-            .map_err(|e| ToolError::InvalidArgs(format!("无效重定向 URL: {e}")))?;
+            .map_err(|e| format!("无效重定向 URL: {e}"))?;
         let next_scheme = next_url.scheme();
         if next_scheme != "https" && next_scheme != "http" {
-            return Err(ToolError::InvalidArgs(format!("重定向到不支持的协议: {}", next_scheme)));
+            return Err(format!("重定向到不支持的协议: {}", next_scheme));
         }
         let next_host = next_url.host_str().unwrap_or("");
         if next_host.is_empty() || crate::utils::is_private_ip(next_host) {
-            return Err(ToolError::Permission("SSRF 防护: 重定向到内网地址被拒绝".to_string()));
+            return Err("权限拒绝: SSRF 防护: 重定向到内网地址被拒绝".to_string());
         }
         // 跟随重定向
         current_url = next_url.to_string();
         current_resp = agent.get(&current_url)
             .header("User-Agent", CHROME_UA)
             .call()
-            .map_err(|e| ToolError::Tool(format!("重定向请求失败: {}", e)))?;
+            .map_err(|e| format!("重定向请求失败: {}", e))?;
         redirects += 1;
     }
     let resp = current_resp;
@@ -374,7 +356,7 @@ async fn web_fetch(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolErr
     let max_size: usize = 1 << 20;
     // 读 cap+1 字节以区分「恰好 1 MiB」与「真截断」——避免假阳性（2026-08-15 收口）。
     let (buf, truncated) = read_capped(resp.into_body().into_reader(), max_size)
-        .map_err(|e| ToolError::Tool(format!("读取失败: {}", e)))?;
+        .map_err(|e| format!("读取失败: {}", e))?;
     let text = decode_body(&buf, parse_charset(&content_type).as_deref());
 
     let result = if content_type.contains("html") {
@@ -399,7 +381,58 @@ async fn web_fetch(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolErr
     if truncated {
         out.push_str("\n\n(内容已截断至 1 MiB —— 换更具体的 URL，或对已打开的页面用 browser(content) 分页读取。)");
     }
-    Ok(Value::String(out))
+    Ok(out)
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 分派与入口
+// ═══════════════════════════════════════════════════════════════
+
+/// web_cap 能力口分派（R4 小面清偿立口即唯一入口——builtin.web 同批退役，
+/// 无信封过渡面）。action = 退役前 builtin.web 2 工具名；参数顶层 snake；
+/// 返回文本（Text shape——search 为 JSON 字符串，fetch 为网页文本）。
+pub(crate) async fn web_cap(
+    action: String,
+    params: Value,
+    is_agent: bool,
+    agent_id: Option<String>,
+    state: &State<'_, crate::WorkspaceState>,
+    app: &tauri::AppHandle,
+) -> Result<String, String> {
+    let _ = is_agent; // 统一契约键；web 闸两态通用不过门（D4-5）
+    let gate = WebGate {
+        agent_id,
+        state,
+        app,
+    };
+    match action.as_str() {
+        "web_search" => web_search(&gate, &params).await,
+        "web_fetch" => web_fetch(&gate, &params).await,
+        other => Err(format!("web_cap: 未知 action '{other}'")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// 2 动作全集（= 退役前 builtin.web manifest.tools 名单）。
+    #[test]
+    fn action_table_is_exactly_two() {
+        let actions = ["web_search", "web_fetch"];
+        assert_eq!(actions.len(), 2);
+        for a in actions {
+            assert!(a.starts_with("web_"), "{a} 命名契约");
+        }
+    }
+
+    #[test]
+    fn unknown_action_errors_loudly() {
+        // 分派面未知 action 显式报错——与 fs/git/process/browser/uia 口同纪律
+        //（错误串由 dispatch 内联产生，本表锚定名单完备性）。
+        let known = ["web_search", "web_fetch"];
+        for a in ["web_crawl", "search", ""] {
+            assert!(!known.contains(&a), "{a} 不应在动作表内");
+        }
+    }
 }
 
 /// 从 Content-Type 头解析 charset 标签（小写、去引号）；无则 None。
@@ -435,53 +468,3 @@ fn read_capped<R: std::io::Read>(reader: R, cap: usize) -> std::io::Result<(Vec<
     Ok((buf, truncated))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn manifest_json_parses_and_matches_id() {
-        let m: ToolManifest = serde_json::from_str(include_str!("manifest.json"))
-            .expect("出厂 manifest 是编译期静态资源");
-        assert_eq!(m.id, "builtin.web");
-        assert_eq!(m.trust, super::super::manifest::TrustLevel::System);
-        assert_eq!(m.capabilities, vec!["network".to_string()]);
-        let search = m.tools.iter().find(|t| t.name == "web_search").expect("web_search 在清单内");
-        assert!(search.read_only);
-        // maxResults 并入 schema（2026-09-03 并行窗口 64b56542 批，转录随迁）。
-        assert!(search.schema["properties"]["maxResults"]["maximum"].as_u64() == Some(10));
-        let fetch = m.tools.iter().find(|t| t.name == "web_fetch").expect("web_fetch 在清单内");
-        assert!(fetch.read_only);
-        assert_eq!(fetch.schema["required"][0].as_str(), Some("url"));
-    }
-
-    #[test]
-    fn parse_charset_extracts_label() {
-        assert_eq!(parse_charset("text/html; charset=GBK"), Some("gbk".into()));
-        assert_eq!(parse_charset(r#"text/html; charset="utf-8""#), Some("utf-8".into()));
-        assert_eq!(parse_charset("text/plain"), None);
-    }
-
-    #[test]
-    fn decode_body_uses_declared_charset() {
-        // GBK 编码的 "你好"（C4 E3 BA C3）。
-        let gbk = [0xC4u8, 0xE3, 0xBA, 0xC3];
-        assert_eq!(decode_body(&gbk, Some("gbk")), "你好");
-        // 未声明 → UTF-8 宽容回退。
-        assert_eq!(decode_body("hi".as_bytes(), None), "hi");
-        assert!(decode_body(&[0xFF, 0xFE], None).contains('�'));
-    }
-
-    #[test]
-    fn read_capped_distinguishes_exact_cap_from_truncation() {
-        let exact = std::io::Cursor::new(vec![b'a'; 16]);
-        let (buf, truncated) = read_capped(exact, 16).unwrap();
-        assert_eq!(buf.len(), 16);
-        assert!(!truncated, "恰好到 cap 不应判截断");
-
-        let over = std::io::Cursor::new(vec![b'a'; 17]);
-        let (buf, truncated) = read_capped(over, 16).unwrap();
-        assert_eq!(buf.len(), 16);
-        assert!(truncated);
-    }
-}

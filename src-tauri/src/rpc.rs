@@ -153,6 +153,18 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // world-diff/审计报表文本直通，INVARIANTS #13 lease/grant 链在口内）。
         "uia_cap" => RpcResultShape::Text,
 
+        // ── R4 小面清偿（kernel-capability-d4-handle-design.md §6 R4-4）──
+        // web_cap：search = JSON 字符串 / fetch = 网页文本（信封 dispatch 的
+        // Value 序列化语义逐字节保持）——Text。
+        "web_cap" => RpcResultShape::Text,
+        // constraints_cap：read = YAML 原文 / write = "null"——Text。
+        "constraints_cap" => RpcResultShape::Text,
+        // pty_cap：spawn = 会话 id / 其余 = "null"——Text。
+        "pty_cap" => RpcResultShape::Text,
+        // lsp_cap：start = 会话 id / request = JSON 字符串（TS parseJson）/
+        // stop = "null"——Text。
+        "lsp_cap" => RpcResultShape::Text,
+
         // ── 身份认证/权限 ──
         // credential_get：Option<String> serde 序列化，恒 "key"/null JSON。
         // get_last_project：同款 Option<String> serde 序列化，恒 "path"/null。
@@ -561,6 +573,40 @@ async fn dispatch_rpc(
             let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
             let agent_id = opt_str(&params, "agent_id").or_else(|| opt_str(&params, "_agent_id"));
             commands::uia_cap::uia_cap(action, params, is_agent, agent_id, &state, &app).await
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // R4 小面清偿（kernel-capability-d4-handle-design.md §6 R4-4）——
+        // web/constraints/pty/lsp 四族能力口直呼入口，不经 tool_call 信封 /
+        // PluginRegistry / PluginToolAdapter（四插件同批退役，无信封过渡面）。
+        // action = 退役前各插件工具名；参数顶层 snake_case；is_agent/agent_id
+        // 统一契约键（四族无家族闸——web 的 WebFetchTool 口内无条件过闸，
+        // constraints/pty/lsp 原语义 Passthrough）。均返回 Text。
+        // ═══════════════════════════════════════════════════════
+        "web_cap" => {
+            let action = req_str(&params, "action", "web_cap")?;
+            let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
+            let agent_id = opt_str(&params, "agent_id").or_else(|| opt_str(&params, "_agent_id"));
+            commands::web_cap::web_cap(action, params, is_agent, agent_id, &state, &app).await
+        }
+        "constraints_cap" => {
+            let action = req_str(&params, "action", "constraints_cap")?;
+            let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
+            let agent_id = opt_str(&params, "agent_id").or_else(|| opt_str(&params, "_agent_id"));
+            commands::constraints_cap::constraints_cap(action, params, is_agent, agent_id, &state, &app)
+                .await
+        }
+        "pty_cap" => {
+            let action = req_str(&params, "action", "pty_cap")?;
+            let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
+            let agent_id = opt_str(&params, "agent_id").or_else(|| opt_str(&params, "_agent_id"));
+            commands::pty_cap::pty_cap(action, params, is_agent, agent_id, &state, &app).await
+        }
+        "lsp_cap" => {
+            let action = req_str(&params, "action", "lsp_cap")?;
+            let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
+            let agent_id = opt_str(&params, "agent_id").or_else(|| opt_str(&params, "_agent_id"));
+            commands::lsp_cap::lsp_cap(action, params, is_agent, agent_id, &state, &app).await
         }
 
         // ═══════════════════════════════════════════════════════

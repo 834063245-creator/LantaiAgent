@@ -37,22 +37,14 @@ impl PluginRegistry {
         // （builtin.uia 已随 browser 域收口退役——2026-09-05，同设计件 R4-3：
         //  模型族全量换 uia_cap 能力口直呼（resolve→classify→grant→lease 全链
         //  在口内），插件信封无消费方整目录退役。）
-        let constraints: Arc<dyn ToolPlugin> = Arc::new(super::constraints::ConstraintsPlugin::new());
-        registry.register(constraints).expect("出厂插件清单装载失败");
+        // （builtin.constraints/web/pty/lsp 已随 browser 域收口同批退役——
+        //  2026-09-05，kernel-capability-d4-handle-design.md R4-4 小面清偿：
+        //  各族换 constraints_cap/web_cap/pty_cap/lsp_cap 能力口直呼，插件信封
+        //  无消费方整目录退役。builtin.editor 仍留（R5 拆信封前最后在册插件）；
+        //  builtin.fs/git/shell/browser/uia/search 已随各自域收口退役——
+        //  c3 R3-b/c/d 与 d4 R4-2/R4-3 先例。）
         let editor: Arc<dyn ToolPlugin> = Arc::new(super::editor::EditorPlugin::new());
         registry.register(editor).expect("出厂插件清单装载失败");
-        // （builtin.git 已随 git 域收口退役——2026-09-05，kernel-capability-c3-
-        //  design.md R3-c：模型族/内部消费全量换 git_cap 能力口直呼，插件信封
-        //  无消费方整目录退役；fs 域收口 a681adc7 同款先例。）
-        let lsp: Arc<dyn ToolPlugin> = Arc::new(super::lsp::LspPlugin::new());
-        registry.register(lsp).expect("出厂插件清单装载失败");
-        let pty: Arc<dyn ToolPlugin> = Arc::new(super::pty::PtyPlugin::new());
-        registry.register(pty).expect("出厂插件清单装载失败");
-        // （builtin.shell 已随 shell 域收口退役——2026-09-05，kernel-capability-
-        //  c3-design.md R3-d：模型族/内部消费全量换 process_cap 能力口直呼，
-        //  插件信封无消费方整目录退役；fs/git 域收口同款先例。）
-        let web: Arc<dyn ToolPlugin> = Arc::new(super::web::WebPlugin::new());
-        registry.register(web).expect("出厂插件清单装载失败");
         registry
     }
 

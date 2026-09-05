@@ -18,3 +18,7 @@ pub mod git_cap;
 pub mod process_cap;
 pub mod browser_cap;
 pub mod uia_cap;
+pub mod web_cap;
+pub mod constraints_cap;
+pub mod pty_cap;
+pub mod lsp_cap;

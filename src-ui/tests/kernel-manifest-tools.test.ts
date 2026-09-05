@@ -188,20 +188,14 @@ describe('kernel manifest tools — search 域（R2-d(1) zod 真源）', () => {
   });
 });
 
-describe('kernel manifest tools — web 域（builtin.web，Phase 1 续批）', () => {
-  it('createWebTools 贡献 web_search/web_fetch，形状与 manifest 对齐', () => {
+describe('web 域模型族（R4-4：builtin.web 退役，zod 真源 + web_cap 直呼）', () => {
+  it('createWebTools 贡献 web_search/web_fetch，zod 真源自持（不查镜像）', () => {
     const { exec } = captureExec();
     const tools: Tool[] = createWebTools(exec);
     expect(tools.map((t) => t.name())).toEqual(['web_search', 'web_fetch']);
-    const manifest = kernelManifestOf('builtin.web');
-    expect(manifest.trust).toBe('system');
-    expect(manifest.capabilities).toContain('network');
     for (const tool of tools) {
-      const spec = manifest.tools.find((t) => t.name === tool.name());
-      expect(spec).toBeDefined();
-      expect(tool.description()).toBe(spec!.description);
-      expect(tool.parameters()).toEqual(spec!.schema);
       expect(tool.readOnly()).toBe(true);
+      expect(tool.description().length).toBeGreaterThan(20);
     }
   });
 
@@ -222,16 +216,14 @@ describe('kernel manifest tools — web 域（builtin.web，Phase 1 续批）', 
     expect(schema.required).toEqual(['query']);
   });
 
-  it('web_fetch execute 走 tool_call：args 原样透传（含 _agent_id meta）', async () => {
+  it('web_fetch execute 走 web_cap 直呼：meta 原样透传', async () => {
     const { calls, exec } = captureExec();
     const fetch = createWebTools(exec)[1];
     const args = { url: 'https://example.com', _agent_id: 'sub-2' } as Record<string, unknown>;
     await fetch.execute(args);
     expect(calls).toHaveLength(1);
-    expect(calls[0].name).toBe('tool_call');
-    expect(calls[0].args.plugin).toBe('builtin.web');
-    expect(calls[0].args.tool).toBe('web_fetch');
-    expect(calls[0].args.args).toEqual(args);
+    expect(calls[0].name).toBe('web_cap');
+    expect(calls[0].args).toEqual({ action: 'web_fetch', url: 'https://example.com', _agent_id: 'sub-2' });
   });
 
   it('未知插件 id 响亮报错', () => {

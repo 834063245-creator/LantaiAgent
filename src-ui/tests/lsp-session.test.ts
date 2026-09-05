@@ -21,7 +21,6 @@ vi.mock('../src/bridge', () => ({
 
 import { getLspSession, startLsp, stopAllLsp } from '../src/ui/lsp-client';
 import { bumpWorkspaceEpoch } from '../src/workspace-scope';
-import { toolCallArgsOf } from './helpers/kernel-envelope';
 
 describe('LSP 会话单一事实源 + 在途代际防护（H2）', () => {
   beforeEach(async () => {
@@ -48,9 +47,12 @@ describe('LSP 会话单一事实源 + 在途代际防护（H2）', () => {
     const sid = await p;
     expect(sid).toBeNull();
     // 过期 sid 必须被 lsp_stop（防把旧项目文件发进新项目的 tsserver）
-    const stopArgs = toolCallArgsOf(mockRpc.mock.calls, 'builtin.lsp', 'lsp_stop');
-    expect(stopArgs).toHaveLength(1);
-    expect(stopArgs[0]).toEqual({ session_id: 42 });
+    // （R4-4：kernelLspCall 已换 lsp_cap 直呼——观察点为 ('lsp_cap', {action,…})。）
+    const stopCalls = mockRpc.mock.calls.filter(
+      ([m, p]) => m === 'lsp_cap' && (p as { action?: string })?.action === 'lsp_stop',
+    );
+    expect(stopCalls).toHaveLength(1);
+    expect(stopCalls[0][1]).toMatchObject({ action: 'lsp_stop', session_id: 42 });
     // 不写会话表 — 调用方拿 null 就不会注册 provider
     expect(getLspSession('rust')).toBeUndefined();
   });
@@ -65,6 +67,9 @@ describe('LSP 会话单一事实源 + 在途代际防护（H2）', () => {
     mockRpc.mockResolvedValueOnce('11');
     const sid = await startLsp('go', 'file:///D:/projA');
     expect(sid).toBe(11);
-    expect(toolCallArgsOf(mockRpc.mock.calls, 'builtin.lsp', 'lsp_start')).toHaveLength(2);
+    const startCalls = mockRpc.mock.calls.filter(
+      ([m, p]) => m === 'lsp_cap' && (p as { action?: string })?.action === 'lsp_start',
+    );
+    expect(startCalls).toHaveLength(2);
   });
 });

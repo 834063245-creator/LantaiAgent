@@ -218,15 +218,15 @@ describe('codingExec 无状态族域第一方插件（P4 B① git/search + ② f
     await fetch.execute({ url: 'https://example.com' });
     await read.execute({ filePath: 'D:/proj/a.ts' });
     await runShell.execute({ command: 'ls' });
-    // web 域已迁 builtin.web 插件——execute 经 tool_call 信封穿透（plugin/tool 路由）
-    expect(log.find((e) => e.name === 'tool_call')?.args).toMatchObject({
-      plugin: 'builtin.web',
-      tool: 'web_fetch',
-      args: { url: 'https://example.com' },
+    // web 域已迁 web_cap 能力口直呼（R4-4，kernel-capability-d4-handle-design.md）
+    // ——web_fetch execute 直呼 web_cap（action 位寻址）。
+    expect(log.find((e) => e.name === 'web_cap')?.args).toMatchObject({
+      action: 'web_fetch',
+      url: 'https://example.com',
     });
     // fs 域已迁 fs_cap 能力口直呼（R3-b，kernel-capability-c3-design.md）——
     // read_file_content execute 经 builtinFsProvider → fs_cap read（不再
-    // tool_call 信封寻址 builtin.fs）。web 仍信封。
+    // tool_call 信封寻址 builtin.fs）。
     const fsCalls = log.filter((e) => e.name === 'fs_cap');
     expect(fsCalls.length).toBe(1);
     expect(fsCalls[0].args).toMatchObject({

@@ -36,6 +36,7 @@ fn capability_command_modules_are_frozen() {
     let actual = parse_command_modules(&src);
     let expected = vec![
         "browser_cap",
+        "constraints_cap",
         "dataflow",
         "engine_dispatch",
         "external",
@@ -46,11 +47,14 @@ fn capability_command_modules_are_frozen() {
         "hologram",
         "identity",
         "isolation",
+        "lsp_cap",
         "plugin_install",
         "process_cap",
         "protocol_bridge",
+        "pty_cap",
         "search_cap",
         "uia_cap",
+        "web_cap",
         "workspace",
     ];
     assert_eq!(
@@ -85,6 +89,11 @@ fn capability_command_modules_are_frozen() {
          desktop 句柄域 + DesktopTool 口内闸（无条件过闸 + 六层语义）+\n\
          resolve→classify→grant→lease 全链执行体（INVARIANTS #13：COM 只活\n\
          worker 线程、物理输入必经租约））——合法强制层模块，grants/审计/\n\
-         敏感词表是句柄层本体，禁止向 commands/ 塞业务命令。"
+         敏感词表是句柄层本体，禁止向 commands/ 塞业务命令。\n\
+         web_cap/constraints_cap/pty_cap/lsp_cap = v3 能力口（同设计件 R4-4\n\
+         小面清偿：web 族（WebFetchTool 口内闸 + SSRF 逐跳复查）/ constraints\n\
+         读写（原语义无闸 + 路径校验）/ pty、lsp 会话族（Passthrough 原语义，\n\
+         pty_manager/lsp_manager 本体留 Rust——v3 §4 原生引用不迁））——合法\n\
+         强制层模块，禁止向 commands/ 塞业务命令。"
     );
 }

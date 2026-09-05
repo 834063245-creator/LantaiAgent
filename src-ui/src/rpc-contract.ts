@@ -380,6 +380,67 @@ export interface RpcContract {
     result: string; // text — 17 action 全文本直通（树/控件读写/world-diff/审计）
   };
 
+  // ── 能力口（R4-4 小面清偿，kernel-capability-d4-handle-design.md）──────
+  // web_cap/constraints_cap/pty_cap/lsp_cap：四族直呼入口（对应 builtin.*
+  // 插件退役）——不经 tool_call 信封 / PluginRegistry / PluginToolAdapter。
+  // 均 Text：web search = JSON 字符串 / fetch = 网页文本；constraints read =
+  // YAML 原文 / write = "null"；pty spawn = 会话 id；lsp request = JSON 字符串
+  // （kernelLspRequest parseJson）。web 口内 WebFetchTool 无条件过闸（域名
+  // 规则 + SSRF 逐跳复查）；constraints/pty/lsp 原语义 Passthrough；
+  // pty-output / lsp-message 事件通道零改（manager 内部 emit）。
+  web_cap: {
+    params: {
+      action: 'web_search' | 'web_fetch';
+      query?: string;
+      max_results?: number;
+      url?: string;
+      is_agent?: boolean;
+      agent_id?: string | null;
+      [key: string]: unknown;
+    };
+    result: string; // text — search JSON / fetch 网页文本
+  };
+  constraints_cap: {
+    params: {
+      action: 'read_constraints' | 'write_constraints';
+      project_path?: string;
+      content?: string;
+      is_agent?: boolean;
+      agent_id?: string | null;
+      [key: string]: unknown;
+    };
+    result: string; // text — YAML 原文 / "null"
+  };
+  pty_cap: {
+    params: {
+      action: 'pty_spawn' | 'pty_write' | 'pty_resize' | 'pty_kill';
+      cwd?: string;
+      shell?: string;
+      cols?: number;
+      rows?: number;
+      session_id?: number;
+      data?: string;
+      is_agent?: boolean;
+      agent_id?: string | null;
+      [key: string]: unknown;
+    };
+    result: string; // text — 会话 id / "null"
+  };
+  lsp_cap: {
+    params: {
+      action: 'lsp_start' | 'lsp_request' | 'lsp_stop';
+      language?: string;
+      root_uri?: string;
+      session_id?: number;
+      method?: string;
+      params?: Record<string, unknown>;
+      is_agent?: boolean;
+      agent_id?: string | null;
+      [key: string]: unknown;
+    };
+    result: string; // text — 会话 id / JSON 字符串 / "null"
+  };
+
   // ── Shell（retired）────────────────────────────────────────
   // （exec_command / bash_output / bash_kill / bash_wait / shell_env /
   //   background_activity / drain_bg_notifications 已随 shell 域收口
@@ -482,10 +543,10 @@ export interface RpcContract {
   dataflow_query: { params: { trace_id?: string; list?: boolean }; result: string }; // JSON
   dataflow_delete: { params: { trace_id: string }; result: string }; // text
 
-  // （pty_spawn/write/resize/kill 已迁内核插件 builtin.pty——PTY 会话经 tool_call
+  // （pty_spawn/write/resize/kill 已随 R4-4 小面清偿换 pty_cap 能力口直呼
   //   信封消费，kernel-plugin-runtime P2-6；pty-output 事件行仍在本文件 EventContract。）
 
-  // （lsp_start/request/stop 已迁内核插件 builtin.lsp——LSP 会话经 tool_call
+  // （lsp_start/request/stop 已随 R4-4 小面清偿换 lsp_cap 能力口直呼
   //   信封消费（kernelLspCall），lsp-message 事件行仍在本文件 EventContract，
   //   kernel-plugin-runtime P2-6。）
 
@@ -830,23 +891,27 @@ export function kernelProcessCall(
   return typedRpc('process_cap', { ...args, action, is_agent: false });
 }
 
-// ── builtin.pty 直呼便捷封装（kernel-plugin-runtime P2-6）──
+// ── pty 直呼便捷封装（R4-4 小面清偿：builtin.pty 退役换 pty_cap 直呼）──
 // PTY 会话（旧 rpc.rs PTY 分区）：pty-output 事件仍在 EventContract；
-// UI/内部消费方经本封装信封寻址 builtin.pty。
+// UI/内部消费方经本封装直呼（tool 名 = pty_cap action，一位）。
 
-/** pty 域通用信封调用。 */
+/** pty 域通用直呼。 */
 export function kernelPtyCall(tool: string, args: Record<string, unknown>): Promise<string> {
-  return typedRpc('tool_call', { plugin: 'builtin.pty', tool, args });
+  return typedRpc('pty_cap', {
+    ...args,
+    action: tool as 'pty_spawn' | 'pty_write' | 'pty_resize' | 'pty_kill',
+    is_agent: false,
+  });
 }
 
-// ── builtin.lsp 直呼便捷封装（kernel-plugin-runtime P2-6）──
+// ── lsp 直呼便捷封装（R4-4 小面清偿：builtin.lsp 退役换 lsp_cap 直呼）──
 // LSP 会话（ui/lsp-client.ts 消费）：lsp-message 事件仍在 EventContract。
-// lsp_request 返回 JSON 字符串——调用方 parseJson 后消费（与旧 typedRpc
-// 自动展开 JSON 不同——信封统一 text 形态）。
+// lsp_request 返回 JSON 字符串——调用方 parseJson 后消费（直呼统一 text
+// 形态）。
 
-/** lsp 域通用信封调用（text 形态结果直通；JSON 形态调用方自行 parseJson）。 */
+/** lsp 域通用直呼（text 形态结果直通；JSON 形态调用方自行 parseJson）。 */
 export function kernelLspCall(tool: string, args: Record<string, unknown>): Promise<string> {
-  return typedRpc('tool_call', { plugin: 'builtin.lsp', tool, args });
+  return typedRpc('lsp_cap', { ...args, action: tool as 'lsp_start' | 'lsp_request' | 'lsp_stop', is_agent: false });
 }
 
 /** lsp_request 信封调用 + JSON 解析（旧 rpc lsp_request 是 JsonValue 形态，Rust

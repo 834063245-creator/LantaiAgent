@@ -8,27 +8,23 @@
 // fs 域收口（kernel-capability-c3-design.md）：execute 从 tool_call 信封
 // （寻址 builtin.fs 插件——已退役）换 fs_cap 能力口直呼——dispatch 即 exec
 // （executor 注入 is_agent 到 fs_cap 顶层，与 searchCapTool 同构）。模型族
-// 工具 schema 真源已回 TS zod（coding.ts FS_CAP_SCHEMA）；本文件的
-// FS_PLUGIN_TOOL_BY_ACTION 仅剩留信封动作（edit/constraints/write_constraints
-// 属 builtin.editor / builtin.constraints 域）。
+// 工具 schema 真源已回 TS zod（coding.ts FS_CAP_SCHEMA）。
+// R4-4 小面清偿（kernel-capability-d4-handle-design.md）：constraints 两动作
+// 换 constraints_cap 直呼（builtin.constraints 退役）；edit 仍留信封
+// （builtin.editor——R5 拆信封前最后在册插件）。
 //
 // 双表职责：
-//   FS_PLUGIN_TOOL_BY_ACTION —— 留信封动作 → tool_call 目标
-//   （edit/constraints/write_constraints 属 editor/constraints 域）。
-//   FS_ACTION_TO_CAP —— execute 换轨动作→fs_cap action + 模型键→snake 键映射。
+//   FS_PLUGIN_TOOL_BY_ACTION —— 留信封动作 → tool_call 目标（仅 edit）。
+//   FS_ACTION_TO_CAP —— execute 换轨动作→fs_cap action + 模型键→snake 键映射；
+//   constraints 两动作在本文件内直呼 constraints_cap（见 execute 分支）。
 
 import type { FsAction, FsProvider } from '../../../composition/fs-service';
 import type { Context } from '../../../cordis';
 
-/** fs 动作 → tool_call 信封目标（仅留信封动作——edit/constraints/
- *  write_constraints 属 builtin.editor/builtin.constraints 域，fs 域收口后
- *  builtin.fs 已退役；fs 域 8 模型族动作 schema 真源已回 TS zod
- *  （coding.ts FS_CAP_SCHEMA），不经本表。本表只服务 fsManifestTool 的
- *  edit/constraints 寻址与 builtinFsProvider 的留信封分支。 */
+/** fs 动作 → tool_call 信封目标（仅 edit——builtin.editor，R4-4 起 constraints
+ *  两动作已换 constraints_cap 直呼不经信封）。 */
 export const FS_PLUGIN_TOOL_BY_ACTION: Partial<Record<FsAction, { plugin: string; tool: string }>> = {
   edit: { plugin: 'builtin.editor', tool: 'edit_file' },
-  constraints: { plugin: 'builtin.constraints', tool: 'read_constraints' },
-  write_constraints: { plugin: 'builtin.constraints', tool: 'write_constraints' },
 };
 
 /** fs 动作 → fs_cap 能力口动作 + 模型面键（camelCase）→ fs_cap 顶层 snake 键。
@@ -45,8 +41,8 @@ const FS_ACTION_TO_CAP: Record<FsAction, { action: string; keys: Record<string, 
   move: { action: 'rename', keys: { from: 'from', to: 'to' } },
   rename: { action: 'rename', keys: { filePath: 'from', newName: 'to' } },
   delete: { action: 'delete', keys: { path: 'path' } },
-  constraints: { action: '', keys: {} }, // 独立内部工具（留信封）
-  write_constraints: { action: '', keys: {} }, // 独立内部工具（留信封）
+  constraints: { action: '', keys: {} }, // R4-4：constraints_cap 直呼（见 execute 分支）
+  write_constraints: { action: '', keys: {} }, // R4-4：constraints_cap 直呼（见 execute 分支）
 };
 
 /** 把模型面 args（camelCase + meta）映射为 fs_cap 顶层 snake 参数。
@@ -81,8 +77,23 @@ export const builtinFsProvider: FsProvider = {
   async execute(action, args, opts) {
     const cap = FS_ACTION_TO_CAP[action];
     if (!cap.action) {
-      // 留信封动作——按原动作路由（edit → builtin.editor；constraints 族 →
-      // builtin.constraints）
+      // constraints 族（R4-4）：constraints_cap 直呼（builtin.constraints 插件
+      // 退役——模型面键 projectPath/content 顶层映射 snake；meta 透传）。
+      if (action === 'constraints' || action === 'write_constraints') {
+        const keys: Record<string, string> = { projectPath: 'project_path', content: 'content' };
+        const out: Record<string, unknown> = {
+          action: action === 'constraints' ? 'read_constraints' : 'write_constraints',
+        };
+        for (const [k, v] of Object.entries(args)) {
+          if (k.startsWith('_')) {
+            out[k] = v; // meta 透传
+            continue;
+          }
+          out[keys[k] ?? k] = v;
+        }
+        return opts.dispatch('constraints_cap', out, opts.onProgress, opts.signal);
+      }
+      // 留信封动作——按原动作路由（edit → builtin.editor）
       const envelope = FS_PLUGIN_TOOL_BY_ACTION[action];
       if (!envelope) throw new Error(`fs-builtin: 动作 '${action}' 无信封目标（fs 域收口后非信封动作应走 fs_cap）`);
       return opts.dispatch(
