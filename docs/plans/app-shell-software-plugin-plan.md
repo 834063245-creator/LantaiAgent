@@ -1,6 +1,6 @@
 # 软件级插件（app shell）— 立案与施工图纸
 
-> 状态：**Proposed·Draft（2026-09-03 立案；2026-09-05 决策点全定稿，待开工）**
+> 状态：**In progress（2026-09-03 立案；2026-09-05 决策点全定稿；2026-09-06 开工，S0 基线已录）**
 > 一句话：为兰台补「软件级插件」能力——四件套（窗口原语 / 插件数据目录 /
 > 受治进程生命周期治理 / 后台唤醒回调），让完整软件能以插件形态住进兰台、
 > 被 Agent 协议驱动；附端到端软件示例 `examples/plugins/notes-app/`
@@ -206,6 +206,14 @@ toolHandlers——实现跑在宿主 webview，用宿主设施）与 MCP 路（m
 - 确认 `tests/plugin-loader.test.ts` / `tests/first-party-manifest.test.ts` /
   `tests/face-keys.test.ts` / `tests/plugin-boundary.test.tsx` 覆盖面。
 - **验收**：基线数字记录在案。
+- **竣工（2026-09-06）**：基线在案——vitest 全量 257 文件（255 passed / 2
+  skipped）、2527 用例（2523 passed / 4 skipped、0 failed）；`npm run build` 绿；
+  `biome ci .` 679 files 0 errors；`verify:convergence` standard+minimal 通过；
+  `cargo test`（src-tauri）423 bin + 1 集成 = 424 passed、0 failed。四守护测试
+  覆盖面确认：plugin-loader（zod 校验 / mcpServers 形状 / 失败隔离 / C11
+  工具与权限门禁 / fiber 生命周期 / D6 热重载 / face 对拍门禁）、
+  first-party-manifest（清单完备性）、face-keys（面键提取）、plugin-boundary
+  （渲染崩溃隔离）。基线 HEAD `1a6b1496`、工作树干净。
 
 ### S1 插件数据目录（最薄，先建，B 是 A/C/D 的公共底座）
 - `types.ts`：manifest 加 `dataDir: true`（schema + 校验，缺省 false 不分配）。
