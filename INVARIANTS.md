@@ -154,21 +154,17 @@ camelCase→snake_case 转换。工具参数的完整链路是：
   - parameters() 返回手写对象字面量
   - execute 里 as 强转 / 手写解包 / 静默兜底（x || 默认值）
 
-**修订（kernel-plugin-runtime，2026-09-03）**：单一真源原则不变，真源从
-「TS zod」扩为「Rust 内核插件 manifest」——manifest 驱动的工具（工具面来自
-`src-tauri/src/tool_plugins/<name>/manifest.json`，TS 侧经
-`agent/tools/manifest-tools.ts` 生成 Tool 对象）不走 zod：
-  - schema/描述字节 = manifest 字节（convergence 逐字节对拍，见
-    `tests/kernel-manifest-tools.test.ts` 键序锚）
-  - 运行时校验回归插件侧参数提取（与 Rust 命令同强度）
-  - execute 走统一 `tool_call` RPC，args 原样透传（含 _agent_id）
-manifest 镜像由 `npm run gen:plugin-manifests` 生成，doc-sync 门禁防漂移，
-勿手改 `kernel-manifests.generated.ts`。非 manifest 工具的 defineTool 纪律照旧。
+**修订（kernel-plugin-runtime，2026-09-03 起；2026-09-05 R5 拆除后通道退役）**：
+manifest 例外通道（tool_call 信封 + kernel-manifests 镜像 + 生成器）已随 R5
+脚手架拆除整清——单一真源回到「TS zod」，全域无例外（十一能力口模型族 schema
+均为域内 zod 转录：fs/git/shell/editor/constraints 在 coding.ts、search/web
+在 manifest-tools.ts、browser/uia 在 browser.ts）。历史形态见
+docs/plans/kernel-plugin-runtime-plan.md（历史记录）。
 ```
 
 **为什么**: 字段名契约曾靠人肉三处同步（schema key ↔ execute key ↔ Rust camelCase），出过 isAgent 静默失败事故（见第 7 条）。zod 单一来源后，schema key 就是唯一事实。
 
-**守护**: `tests/define-tool.test.ts`（10 个工厂行为守护：JSON Schema 形状 / 校验报错 / default+coerce / meta key 透传）、`tests/kernel-manifest-tools.test.ts`（manifest 驱动工具面）
+**守护**: `tests/define-tool.test.ts`（10 个工厂行为守护：JSON Schema 形状 / 校验报错 / default+coerce / meta key 透传）、`tests/kernel-manifest-tools.test.ts`（search/web zod 真源键序锚 + 能力口直呼钉测；文件名为历史名）
 
 ---
 

@@ -69,12 +69,19 @@ TS 被攻破（恶意插件 / XSS / 供应链投毒）时，Rust 口是最后防
   constraints 七域走 R4/R5。）
 - 11 份 manifest.json + include_str! + 生成器 + generated 镜像 + doc-sync 对拍——
   schema 真源回 TS zod（回 INVARIANTS #8 原版：defineTool + zod）。
-  （进度：四域条目已删——镜像剩 7 manifest。）
+  （进度：**全清（2026-09-05）**——R3/R4 各域随收口删条目；R4-5（8bb4dcc5）
+  清 kernel-manifests 镜像/gen 双生成器/npm 脚本/doc-sync 登记项；R5 批 2
+  （6819d63e）删 Rust 侧 manifest.rs include_str! 装载面。）
 - tool_call 信封 + PluginRegistry——被「TS 策略闸 + 能力口 RPC」取代。
   **PluginToolAdapter 终态改判（2026-09-05，R3-e 裁定的自然推论）**：不随 tool_call
   整体退役——权限裁决不迁 TS 后，它就是 Rust 强制层的**闸构造形状**（能力口内直接
   构造过 check_permission，git_cap 先例；dispatch 侧 adapter 的存续形态随残余域
   tool_call 在 R5 一并定）。原文「被 TS 策略闸取代」的表述对 adapter 不再成立。
+  （进度：**拆除完成（2026-09-05，R5）**——批 2（6819d63e）删 rpc.rs 两分支 +
+  tool_plugins/ 整目录 + main.rs 注册表全局态，PluginToolAdapter 迁
+  permissions/adapter.rs（口内闸构造，git_cap/editor_cap 消费），ToolError 随唯一
+  消费者 editor_cap 本地化；批 3（44ba5429）清 TS 契约条目 + tool_call:progress
+  事件 + sessions-builtin 信封消费——Rust+TS 双侧零残留。）
 - Rust 权限裁决（PluginToolAdapter family 寻址、dispatch 侧 check_permission）——
   **终态改判（2026-09-05，R3-e 裁定）**：六步裁决留 Rust 强制层（c3 §9——webview
   无盘权，Rust 口是恶意 TS 越不过的物理闸；整体迁 TS 是零行为收益的风险重构）。
@@ -124,7 +131,7 @@ shell spawn）/ credential / 会话句柄（browser/uia/pty/lsp）。**口内不
 | R2 | 薄域编排先回 TS（search/web/constraints/editor：schema zod + 编排迁域插件）+ 能力实现并入 Rust 能力口 | ✅ **全批竣工**：R2-a/b（789aef86：search 能力口 + 信封换直呼）；R2-d(1) schema zod 真源回 TS + R2-c builtin.search 退役（fe91f016/d524f124，含 R2-a 键位回归修复）；R2-d(2) 编排真回 TS（5e563923：能力口收窄为纯扫描 + search-assembly.ts 组装同域）——见 kernel-capability-r2-search-pilot.md §8 |
 | R3 | fs/git/shell 编排回 TS；TS 策略闸接管权限；Rust dispatch 权限逻辑退役 | ✅ **fs + git + shell 三域全链路闭环（fs：a681adc7/8bce6ffb/cd15fdcb/a107e4e2；git：f3add174/c5acb876/8b006be2；shell：5edb9c28/86d0d659/bd9b9712——process_cap 7 action 口内 fg/bg 双检查不对称 + 粘性 cwd 归 TS（c3 §9）+ builtin.shell/sticky_cwd 退役 + shell 4 工具 zod 转录 + 内部消费换轨 kernelProcessCall）**；**「TS 策略闸接管六步裁决」不迁（agent 裁定 2026-09-05，见 c3 §9）**——维持 Rust 口强制双层，R3-e 收口 = 清点随迁 dead_code（零新增，全绿实证） |
 | R4 | browser/uia 句柄域编排回 TS + 句柄能力口 | ✅ **全批竣工（2026-09-05，e8e9fb6d/b5540255/506dc7e3/a3eec0ee/f6b74343）**：D4 设计件（kernel-capability-d4-handle-design.md，agent 裁定落款——action 化/边界/闸形态/键语言）+ browser_cap（37）/uia_cap（17）/web_cap/constraints_cap/pty_cap/lsp_cap/editor_cap 六新口（单方法 action 分派 + 口内业务自检闸——BrowserTool/DesktopTool/WebFetchTool 无条件过闸、editor 沿 dispatch adapter 语义仅 Agent 路径）+ 54+4 模型族 zod 转录（convergence 双档零漂移）+ 信封消费面清零（builtin.* 11 插件整目录退役、出厂清单空）+ 事件零改（INVARIANTS #13 零触碰）+ 镜像/生成器死面拆除 |
-| R5 | 拆 manifest 脚手架 + tool_call/PluginRegistry（~~Rust 权限裁决~~——R3-e 裁定不拆：六步裁决留 Rust 强制层，PluginToolAdapter 是口内闸构造非待拆脚手架，见 §2 改判） | 🔶 **R4 窗已先行（2026-09-05，f6b74343）**：TS 镜像 kernel-manifests.generated 空清单后整删 + gen-plugin-manifests/gen-kernel-manifest 生成器与 npm 脚本/doc-sync 登记项清 + 信封翻译死表清；**余量（下窗 R5 主体）**：Rust 侧 tool_plugins/{manifest,plugin,registry}.rs + rpc.rs tool_call/plugin_tool_manifests 分支 + TS plugin_tool_manifests 契约——PluginToolAdapter 随改判迁口内闸构造（git_cap/editor_cap 消费中）不动 |
+| R5 | 拆 manifest 脚手架 + tool_call/PluginRegistry（~~Rust 权限裁决~~——R3-e 裁定不拆：六步裁决留 Rust 强制层，PluginToolAdapter 是口内闸构造非待拆脚手架，见 §2 改判） | ✅ **全批竣工（2026-09-05）**：R4-5 先行（f6b74343/8bb4dcc5——TS 镜像/生成器/npm 脚本/doc-sync 登记 + 信封翻译死表）；R5 主体批 2（6819d63e）——tool_plugins/ 整目录（manifest/registry/dispatch + 6 随迁单测，bin 427→421）+ rpc.rs tool_call/plugin_tool_manifests 两分支（56→54 methods）+ PluginToolAdapter git mv 迁 permissions/adapter.rs + ToolError editor_cap 本地化 + platform_boundary 零触碰（tool_plugins 非 commands 模块）；批 3（44ba5429）——TS 契约两条目/tool_call:progress 事件/withProgressStream/sessions-builtin 信封消费清零 + kernel-envelope 测试助手整删 + agentInvoke 裁定保留为通用动态分派入口。内核终态 = 十一能力口 + 口内闸 + 应用壳，§2 拆除令全文兑现 |
 | 收口 | 全门禁 + 交接/决策落账 | — |
 
 ## 6. 待执行时定的点

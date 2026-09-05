@@ -56,7 +56,8 @@
 模型/UI 工具调用
    │  TS 域插件（44 hologram/*）：schema + 编排 + 解析（工具业务的家）
    ▼
-能力口 RPC（极少数，≈5 类，过闸在口内）
+能力口 RPC（十一口——search/fs/git/process/browser/uia/web/constraints/
+pty/lsp/editor，过闸在口内；R4/R5 收口后实测）
    │  fs.read/write/list…  process.run  credential  ask/audit
    ▼
 内核（裁决 resolve_*_dispatch + 字节/spawn 执行）

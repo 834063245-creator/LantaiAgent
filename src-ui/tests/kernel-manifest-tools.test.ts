@@ -8,7 +8,8 @@
 // ② execute 直呼 search_cap 能力口（camelCase→snake_case 键映射——R2-a
 //    键位断层修复的钉测）；
 // ③ schema 键序锚（convergence 字节契约的近端防线——顶层与 properties 首键）。
-// web 域仍取 manifest 镜像（builtin.web 未退役，Phase 1 续批存量）。
+// web 域同型（R4-4 起 zod 真源断言 + web_cap 观察点；manifest 镜像真源已随
+// R5 脚手架拆除退役——文件名为历史名）。
 
 import { describe, expect, it } from 'vitest';
 import type { Tool, ToolExecutor } from '../src/agent/tool';
