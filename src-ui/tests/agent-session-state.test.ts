@@ -7,6 +7,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { type AgentSessionStateApi, createAgentSessionState } from '../src/agent/agent-session-state';
+import { createExecState } from '../src/agent/execution-state';
 
 // ── Mock OwnedAgentHandle — minimal shape for testing ──
 function mockAgent(cascadeAbort: () => void = () => {}): any {
@@ -269,6 +270,107 @@ describe('AgentSessionState', () => {
       unsub();
       state.setAgent('panel-1', 2, mockAgent());
       expect(fired).toBe(firedAfterFirst);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════
+  // subscribeExecAll — 运行态同步原语（2026-09-06 运行态割裂根治）
+  // ═══════════════════════════════════════════════════════════════
+
+  describe('subscribeExecAll', () => {
+    it('订阅即初始触发一次（消费者免自调初始同步）', () => {
+      let fired = 0;
+      const unsub = state.subscribeExecAll('panel-1', () => {
+        fired++;
+      });
+      expect(fired).toBe(1);
+      unsub();
+    });
+
+    it('既有实例起停触发（exec.onChange 面）', () => {
+      const es = state.getOrCreateExec('panel-1', 1);
+      let fired = 0;
+      const unsub = state.subscribeExecAll('panel-1', () => {
+        fired++;
+      });
+      fired = 0; // 挖掉初始触发
+      es.start();
+      expect(fired).toBe(1);
+      es.done();
+      expect(fired).toBe(2);
+      unsub();
+    });
+
+    it('迟到实例可见（回归钉——割裂病根）：订阅后才 getOrCreateExec 出生 的实例，其 start() 必须触发', () => {
+      let fired = 0;
+      const unsub = state.subscribeExecAll('panel-1', () => {
+        fired++;
+      });
+      fired = 0;
+      // 惰性水合/拟文路径：实例在订阅之后才出生（捕获式订阅在此永聋）
+      const late = state.getOrCreateExec('panel-1', 7);
+      expect(fired).toBe(1); // 实例表变更（版本 bump）→ 重挂 + 重算
+      late.start();
+      expect(fired).toBe(2); // ← 旧「挂载时刻挂一次 onChange」形态在此必失灵
+      unsub();
+    });
+
+    it('实例更换可见：setExec 换新实例后新实例起停触发、退场实例不再触发', () => {
+      const old = createExecState();
+      state.setExec('panel-1', 1, old);
+      let fired = 0;
+      const unsub = state.subscribeExecAll('panel-1', () => {
+        fired++;
+      });
+      fired = 0;
+      const fresh = createExecState();
+      state.setExec('panel-1', 1, fresh); // 切卷惰性水合 setExec 换实例
+      expect(fired).toBe(1); // 重挂 + 重算
+      fresh.start();
+      expect(fired).toBe(2); // 新实例起停可见
+      const before = fired;
+      old.start(); // 旧实例已退场——不再触发
+      expect(fired).toBe(before);
+      unsub();
+    });
+
+    it('removeExec 触发重算（后台停卷/删卷路径）', () => {
+      state.getOrCreateExec('panel-1', 1);
+      let fired = 0;
+      const unsub = state.subscribeExecAll('panel-1', () => {
+        fired++;
+      });
+      fired = 0;
+      state.removeExec('panel-1', 1);
+      // 恰两次：临终实例 stop() 的 onChange 通知 + 版本 bump 重挂重算。
+      // 钉精确值顺带钉「无重挂死循环」——超 2 即 rehang 递归。
+      expect(fired).toBe(2);
+      unsub();
+    });
+
+    it('面板隔离：他面板 exec 起停不触发本面板订阅', () => {
+      const other = state.getOrCreateExec('panel-2', 1);
+      let fired = 0;
+      const unsub = state.subscribeExecAll('panel-1', () => {
+        fired++;
+      });
+      fired = 0;
+      other.start();
+      other.done();
+      expect(fired).toBe(0);
+      unsub();
+    });
+
+    it('退订后不再触发（含此后迟到的实例）', () => {
+      let fired = 0;
+      const unsub = state.subscribeExecAll('panel-1', () => {
+        fired++;
+      });
+      fired = 0;
+      unsub();
+      const es = state.getOrCreateExec('panel-1', 1);
+      es.start();
+      expect(fired).toBe(0);
     });
   });
 });

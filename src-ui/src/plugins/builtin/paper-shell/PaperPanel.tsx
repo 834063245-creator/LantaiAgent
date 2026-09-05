@@ -2680,9 +2680,9 @@ export function PaperPanel() {
 
   /* ── 运行呼吸线（创作坞 v2 2026-08-31）：任一摊开卷在跑 → 画布底缘
    *  石青细线呼吸（.pp-canvas.pp-stream-live，机=石青语义）。订阅面 =
-   *  agentSessionState 版本 + 每卷 exec onChange + sess 列表（SpineRack 同款）。 ── */
+   *  subscribeExecAll（exec 实例表变更 → 全部重挂 + 既有实例起停——实例
+   *  迟到/被换时捕获式订阅指空对象，start() 不可见）+ sess 列表。 ── */
   const [streamLive, setStreamLive] = useState(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: sessions 列表变化 = 新 exec 出现——必须重挂 onChange（agentSessionState 版本订阅只兜 setExec，不兜既有 exec 起停）
   useEffect(() => {
     if (!core) {
       setStreamLive(false);
@@ -2699,17 +2699,13 @@ export function PaperPanel() {
       }
       setStreamLive(any);
     };
-    sync();
-    const unAgents = agentSessionState.subscribe(sync);
+    const unExecAll = agentSessionState.subscribeExecAll(core.panelId, sync);
     const unSess = getChatStore(core.panelId).sess.subscribe(sync);
-    const execs = getChatStore(core.panelId).sess.getState().sessions;
-    const unsubs = execs.map((s) => agentSessionState.getExec(core.panelId, s.id)?.onChange(sync) ?? null);
     return () => {
-      unAgents();
+      unExecAll();
       unSess();
-      for (const u of unsubs) u?.();
     };
-  }, [core, sessions]);
+  }, [core]);
 
   /* rework P3-1：创作坞实际高度（动态——思考展开/附件/yolo 都会变高）驱动
    * 目次带/小地图的底部定位，避免硬编码 gap 导致重叠。

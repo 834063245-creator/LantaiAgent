@@ -284,6 +284,54 @@ describe('钤印单钮三态（2026-09-03：运行态按钮随输入翻转）', 
   });
 });
 
+describe('ComposerDock 运行态同步（2026-09-06 exec 实例迟到订阅根治）', () => {
+  let container: HTMLDivElement;
+  let root: Root | null = null;
+
+  beforeEach(() => {
+    resetComposeStoresForTests();
+    resetCanvasStoresForTests();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+  });
+  afterEach(() => {
+    act(() => root?.unmount());
+    container.remove();
+    root = null;
+    agentSessionState.removeExec('sync', 1);
+  });
+
+  it('mount 时 exec 尚未出生（惰性水合在途）：水合 setExec 后 start，停钮必须出现', async () => {
+    // 重启摊开集恢复 → 点卷 → ensureSessionAgent 异步水合未完成的现场：
+    // mount 时该卷无任何 exec 实例
+    await mountDock('sync', container, (r) => {
+      root = r;
+    });
+    expect(container.querySelector('.pp-stop')).toBeNull();
+    expect(container.querySelector('.pp-send')).not.toBeNull();
+
+    // 惰性水合完成——exec 实例迟到（旧捕获式订阅从此永聋的现场）
+    const exec = createExecState();
+    act(() => {
+      agentSessionState.setExec('sync', 1, exec);
+    });
+    await act(async () => {});
+    expect(container.querySelector('.pp-stop')).toBeNull(); // 实例在但未运行——仍是拟文
+
+    // 拟文 → 本卷开始跑 → 停钮出现（回归钉：旧实现 start() 无人通知）
+    act(() => exec.start());
+    await act(async () => {});
+    expect(container.querySelector('.pp-stop')).not.toBeNull();
+    expect(container.querySelector('.pp-send')).toBeNull();
+
+    // 跑完 → 回拟文
+    act(() => exec.done());
+    await act(async () => {});
+    expect(container.querySelector('.pp-stop')).toBeNull();
+    expect(container.querySelector('.pp-send')).not.toBeNull();
+  });
+});
+
 describe('ComposerDock 返工 P2-3（权限分段 + 全放模态）', () => {
   let container: HTMLDivElement;
   let root: Root | null = null;

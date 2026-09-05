@@ -12,7 +12,7 @@
 // 全部原样保留 —— 会话 ctx 的 DOM 字段由分离桩元素吸收（写入不可见但兼容）。
 // ═══════════════════════════════════════════════════════════════
 
-import type { OwnedAgentHandle } from '../../agent/agent-session-state';
+import { agentSessionState, type OwnedAgentHandle } from '../../agent/agent-session-state';
 import type { AgentEvent } from '../../agent/agent-types';
 import type { ChatAgentHandle, GoalRunResult } from '../../agent/chat-agent-handle';
 import { createExecState, type ExecStateInstance } from '../../agent/execution-state';
@@ -197,8 +197,16 @@ export class ChatCore {
     );
     this._refreshGoalRecord();
 
-    // ⚡ ExecutionState → store 同步：订阅活动会话的 execState，会话切换时重绑
+    // ⚡ ExecutionState → store 同步：订阅活动会话的 execState。
+    // 重绑触发面（2026-09-06 运行态同步根治）：会话切换（sess 表）+ exec
+    // 实例表变更（agentSessionState 版本 bump——切卷惰性水合 setExec、拟文
+    // getOrCreateExec、removeExec 重建都会换掉订阅目标实例，捕获式订阅指向
+    // 孤儿实例，活跃卷起停从此不可见：状态栏不切「分析中」/停止不回焦点）。
+    // 版本重绑只重挂订阅不做初始同步——实例表变更时活跃卷的 isRunning 值
+    // 未变（换实例必经 stop/新造，二者都是 false 起步），初始同步的
+    // dismiss/focus 副作用只由真起停与切卷触发。
     let _execUnsub: (() => void) | null = null;
+    let _rebinding = false;
     const _onExecChange = (exec: ExecStateInstance) => {
       if (exec.isRunning) {
         this._updateStatusBar('thinking', '分析中…');
@@ -209,18 +217,30 @@ export class ChatCore {
       }
       for (const cb of this._execListeners) cb();
     };
-    const _bindExecState = () => {
-      if (_execUnsub) {
-        _execUnsub();
-        _execUnsub = null;
+    const _bindExecState = (initialSync = true) => {
+      // 重入守卫：_activeExec() 的 getOrCreateExec 在实例缺席时会 bump 版本
+      // → 同步触发版本监听递归重绑——递归层让位（外层完成同一次绑定即可，
+      // 否则内层挂的订阅被外层覆盖句柄 = 漏退订）。
+      if (_rebinding) return;
+      _rebinding = true;
+      try {
+        if (_execUnsub) {
+          _execUnsub();
+          _execUnsub = null;
+        }
+        const exec = this._activeExec();
+        _execUnsub = exec.onChange(() => _onExecChange(exec));
+        if (initialSync) _onExecChange(exec); // 初始同步
+      } finally {
+        _rebinding = false;
       }
-      const exec = this._activeExec();
-      _execUnsub = exec.onChange(() => _onExecChange(exec));
-      _onExecChange(exec); // 初始同步
     };
     _bindExecState();
-    // 用户切换活动会话时重新绑定
-    getChatStore(this.panelId).sess.subscribe(() => _bindExecState());
+    // 用户切换活动会话时重新绑定（含初始同步——换卷即呈现新卷状态）；
+    // 退订入 _globalStoreUnsubs（此前漏收——旧实例的订阅永不解除）
+    _globalStoreUnsubs.push(getChatStore(this.panelId).sess.subscribe(() => _bindExecState()));
+    // exec 实例表变更 → 只重挂订阅（不做副作用式初始同步）
+    _globalStoreUnsubs.push(agentSessionState.subscribe(() => _bindExecState(false)));
 
     // ── Agent 事件通过 eventSink 直接投递 → renderEvent ──
     // (4.2: 取消总线中转 — Agent → ChatCore 是 1:1，无需总线)

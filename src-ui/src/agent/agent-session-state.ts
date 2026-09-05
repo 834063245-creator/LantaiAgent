@@ -110,6 +110,14 @@ export interface AgentSessionStateApi {
   // ── 订阅 ──
   /** 订阅状态变更。返回取消订阅函数。 */
   subscribe(fn: () => void): () => void;
+  /** 订阅本面板全部 exec 的运行态变化。返回取消订阅函数。
+   *  触发面 = ①exec 实例表任何变更（setExec/getOrCreateExec/removeExec/setAgent
+   *  … 版本 bump）→ 拆旧订阅全部重挂 + 重算；②既有实例起停（exec.onChange）。
+   *  收拢此前各组件「挂载时刻对现存实例挂一次 onChange」的订阅——exec 实例
+   *  会迟到/被换（切卷惰性水合 setExec、拟文 getOrCreateExec、removeExec 后
+   *  重建），捕获式订阅指向孤儿实例，新实例起停不可见（会话在跑而创作坞无
+   *  停钮/呼吸线不亮——运行态割裂的病根，2026-09-06）。 */
+  subscribeExecAll(storeId: string, fn: () => void): () => void;
   /** 当前版本计数器。 */
   readonly version: number;
 }
@@ -294,6 +302,30 @@ export function createAgentSessionState(): AgentSessionStateApi {
 
     subscribe(fn): () => void {
       return store.subscribe(fn);
+    },
+
+    subscribeExecAll(storeId, fn): () => void {
+      let unsubs: Array<() => void> = [];
+      // 版本 bump = exec 实例表已变（迟到/更换/移除）——旧订阅全部作废，
+      // 按当前实例表重挂后重算。实例在两次 bump 之间恒定，其起停由
+      // onChange 覆盖——两触发面合起来无死角。
+      const rehang = () => {
+        for (const u of unsubs) u();
+        unsubs = [];
+        const prefix = storeId + ':';
+        for (const [k, es] of _execBySession) {
+          if (!k.startsWith(prefix)) continue;
+          unsubs.push(es.onChange(fn));
+        }
+        fn();
+      };
+      rehang();
+      const unVersion = store.subscribe(rehang);
+      return () => {
+        unVersion();
+        for (const u of unsubs) u();
+        unsubs = [];
+      };
     },
 
     get version(): number {

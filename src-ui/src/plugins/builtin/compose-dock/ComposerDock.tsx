@@ -311,12 +311,16 @@ export const ComposerDock = memo(function ComposerDock() {
       setRunning(activeRun);
       setBgRunning(bg);
     };
-    syncAll();
-    // 订阅全部会话的 exec（不只活跃卷）——任何一卷起停都重算运行态
-    const sess = getChatStore(core.panelId).sess.getState().sessions;
-    const unsubs = sess.map((s) => agentSessionState.getExec(core.panelId, s.id)?.onChange(syncAll) ?? null);
+    // 运行态同步根治（2026-09-06）：订阅面 = exec 实例表变更（版本 bump——
+    // 惰性水合/拟文期迟到的实例、removeExec 后的重建，subscribeExecAll 内
+    // 全部重挂）+ 既有实例起停 + sess 表（改名/增删 → 重算后台清单）。
+    // 旧实现只对「effect 挂载时刻已存在」的实例挂 onChange——迟到的 exec
+    // 实例永远无订阅，起停不可见（会话在跑而停钮不出现）。
+    const unExecAll = agentSessionState.subscribeExecAll(core.panelId, syncAll);
+    const unSess = getChatStore(core.panelId).sess.subscribe(syncAll);
     return () => {
-      for (const u of unsubs) u?.();
+      unExecAll();
+      unSess();
     };
   }, [core, activeSidNum]);
 

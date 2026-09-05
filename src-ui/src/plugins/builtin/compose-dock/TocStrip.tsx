@@ -200,7 +200,9 @@ export const TocStrip = memo(function TocStrip() {
 
   /* ── 活线：活跃卷流式运行 → 坞顶线处石青呼吸 writing head ──
    *  P2-3：依赖收窄到卷号原语——activeRegion 引用每 pan 帧换，exec 订阅
-   *  不随平移重挂。 */
+   *  不随平移重挂。运行态同步根治（2026-09-06）：捕获式单实例订阅在 exec
+   *  迟到/被换（惰性水合/拟文 getOrCreateExec）时指空对象——改
+   *  subscribeExecAll（实例表变更全部重挂），sync 每次现读活跃卷 exec。 */
   const [streaming, setStreaming] = useState(false);
   const activeSessionNum = activeRegion?.sessionNum;
   useEffect(() => {
@@ -208,11 +210,9 @@ export const TocStrip = memo(function TocStrip() {
       setStreaming(false);
       return;
     }
-    const exec = agentSessionState.getExec(core.panelId, activeSessionNum);
-    const sync = () => setStreaming(exec?.isRunning ?? false);
-    sync();
-    const un = exec?.onChange(sync) ?? null;
-    return () => un?.();
+    const sync = () => setStreaming(agentSessionState.getExec(core.panelId, activeSessionNum)?.isRunning ?? false);
+    const un = agentSessionState.subscribeExecAll(core.panelId, sync);
+    return () => un();
   }, [core, activeSessionNum]);
 
   /* ── canvas 内容指纹（镜像 MinimapView 画法：inkForBlock → bar fillRect）──
