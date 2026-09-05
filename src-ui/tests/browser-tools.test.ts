@@ -1,15 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// browser 工具全量走 Rust CDP（ADR 0003 D4 统一后端）——mock agentInvoke 捕获路由，
-// 其余导出（ToolRegistry 等）保留真实实现
-vi.mock('../src/agent/tool', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/agent/tool')>();
-  return { ...actual, agentInvoke: vi.fn(async () => '{"ok":true}') };
+// browser 模型族已迁 browser_cap 能力口直呼（R4-2，kernel-capability-d4-handle-
+// design.md：builtin.browser 信封退役）——mock typedRpc 捕获直呼路由，其余
+// 导出（ToolRegistry 等）保留真实实现
+vi.mock('../src/rpc-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/rpc-contract')>();
+  return { ...actual, typedRpc: vi.fn(async () => '{"ok":true}') };
 });
 
-import { agentInvoke, ToolRegistry } from '../src/agent/tool';
+import { ToolRegistry } from '../src/agent/tool';
 import { createBrowserTools, parseBrowserError } from '../src/agent/tools/browser';
 import { convergeRegistry } from '../src/agent/tools/domains';
+import { typedRpc } from '../src/rpc-contract';
 
 function buildBrowserRegistry(): ToolRegistry {
   const registry = new ToolRegistry();
@@ -18,7 +20,7 @@ function buildBrowserRegistry(): ToolRegistry {
   return registry;
 }
 
-const invokeMock = agentInvoke as unknown as ReturnType<typeof vi.fn>;
+const rpcMock = typedRpc as unknown as ReturnType<typeof vi.fn>;
 
 describe('browser 领域工具注册', () => {
   it('领域工具 browser 可见，细粒度 browser_* 被隐藏', () => {
@@ -80,11 +82,10 @@ describe('browser 领域工具注册', () => {
     const registry = buildBrowserRegistry();
     const t = registry.get('browser')!;
     await t.execute({ action: 'wait', selector: '#done', ms: 5000 });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_wait',
-      args: expect.objectContaining({ selector: '#done', ms: 5000 }),
-    });
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_wait', is_agent: true, selector: '#done', ms: 5000 }),
+    );
   });
 
   it('未知 action 返回错误提示', async () => {
@@ -113,23 +114,22 @@ describe('browser 动作路由（统一走 Rust CDP）', () => {
     const registry = buildBrowserRegistry();
     const t = registry.get('browser')!;
     await t.execute({ action: 'snapshot', scope: '#main', maxResults: 50 });
-    // 领域工具剥掉 action；camelCase→snake 转换发生在 bridge.rpc() 层，不在 agentInvoke 内
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_snapshot',
-      args: expect.objectContaining({ scope: '#main', maxResults: 50 }),
-    });
+    // 工具面 maxResults（camelCase）由 browserCapCall 顶层映射为口键 max_results
+    // （BROWSER_CAP_SNAKE_KEYS——bridge.rpc() 转换不再承担工具参数翻译）
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_snapshot', scope: '#main', max_results: 50 }),
+    );
   });
 
   it('self=true 透传 self 标记（webview 只读会话由 Rust 路由）', async () => {
     const registry = buildBrowserRegistry();
     const t = registry.get('browser')!;
     await t.execute({ action: 'inspect', target: 'self', selector: '.card' });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_inspect',
-      args: expect.objectContaining({ target: 'self', selector: '.card' }),
-    });
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_inspect', target: 'self', selector: '.card' }),
+    );
   });
 
   it('console/network/screenshot/audit 路由到对应 RPC', async () => {
@@ -141,36 +141,27 @@ describe('browser 动作路由（统一走 Rust CDP）', () => {
     await t.execute({ action: 'network_har', limit: 50 });
     await t.execute({ action: 'screenshot' });
     await t.execute({ action: 'audit', limit: 20 });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_console',
-      args: expect.objectContaining({ limit: 10 }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_network',
-      args: expect.objectContaining({ limit: 5 }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_network_detail',
-      args: expect.objectContaining({ requestId: 'r1' }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_network_har',
-      args: expect.objectContaining({ limit: 50 }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_screenshot',
-      args: expect.any(Object),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_audit',
-      args: expect.objectContaining({ limit: 20 }),
-    });
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_console', limit: 10 }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_network', limit: 5 }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_network_detail', request_id: 'r1' }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_network_har', limit: 50 }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith('browser_cap', expect.objectContaining({ action: 'browser_screenshot' }));
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_audit', limit: 20 }),
+    );
   });
 
   it('click/type 路由并透传 selector（支持 ref 编号）', async () => {
@@ -178,16 +169,14 @@ describe('browser 动作路由（统一走 Rust CDP）', () => {
     const t = registry.get('browser')!;
     await t.execute({ action: 'click', selector: '37' });
     await t.execute({ action: 'type', selector: '12', text: 'hello', replace: true });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_click',
-      args: expect.objectContaining({ selector: '37' }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_type',
-      args: expect.objectContaining({ selector: '12', text: 'hello', replace: true }),
-    });
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_click', selector: '37' }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_type', selector: '12', text: 'hello', replace: true }),
+    );
   });
 
   it('navigate/content/select 路由到新增 RPC', async () => {
@@ -196,21 +185,18 @@ describe('browser 动作路由（统一走 Rust CDP）', () => {
     await t.execute({ action: 'navigate', url: 'https://example.com' });
     await t.execute({ action: 'content', scope: '#main', format: 'markdown', maxChars: 2000 });
     await t.execute({ action: 'select', selector: '42', value: 'option-a' });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_navigate',
-      args: expect.objectContaining({ url: 'https://example.com' }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_content',
-      args: expect.objectContaining({ scope: '#main', format: 'markdown', maxChars: 2000 }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_select',
-      args: expect.objectContaining({ selector: '42', value: 'option-a' }),
-    });
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_navigate', url: 'https://example.com' }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_content', scope: '#main', format: 'markdown', max_chars: 2000 }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_select', selector: '42', value: 'option-a' }),
+    );
   });
 
   it('profile/proxy 与 sessions/switch_session/cookies 路由到第五批 RPC', async () => {
@@ -223,41 +209,42 @@ describe('browser 动作路由（统一走 Rust CDP）', () => {
     await t.execute({ action: 'cookies', op: 'list', urls: ['https://example.com'] });
     await t.execute({ action: 'cookies', op: 'set', name: 'sid', value: 'x', domain: '.example.com' });
     await t.execute({ action: 'cookies', op: 'delete', name: 'sid', url: 'https://example.com' });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_launch',
-      args: expect.objectContaining({ profile: 'work', proxy: 'socks5://127.0.0.1:1080', proxyBypass: 'localhost' }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_connect',
-      args: expect.objectContaining({ port: 9223, session: 'work' }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_sessions',
-      args: expect.any(Object),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_switch_session',
-      args: expect.objectContaining({ session: 'personal' }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_cookies',
-      args: expect.objectContaining({ op: 'list', urls: ['https://example.com'] }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_cookies',
-      args: expect.objectContaining({ op: 'set', name: 'sid', value: 'x', domain: '.example.com' }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_cookies',
-      args: expect.objectContaining({ op: 'delete', name: 'sid', url: 'https://example.com' }),
-    });
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({
+        action: 'browser_launch',
+        profile: 'work',
+        proxy: 'socks5://127.0.0.1:1080',
+        proxy_bypass: 'localhost',
+      }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_connect', port: 9223, session: 'work' }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith('browser_cap', expect.objectContaining({ action: 'browser_sessions' }));
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_switch_session', session: 'personal' }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_cookies', op: 'list', urls: ['https://example.com'] }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({
+        action: 'browser_cookies',
+        op: 'set',
+        name: 'sid',
+        value: 'x',
+        domain: '.example.com',
+      }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_cookies', op: 'delete', name: 'sid', url: 'https://example.com' }),
+    );
   });
 
   it('launch headless/windowSize 与 network_detail 路由到新增 RPC', async () => {
@@ -265,27 +252,30 @@ describe('browser 动作路由（统一走 Rust CDP）', () => {
     const t = registry.get('browser')!;
     await t.execute({ action: 'launch', headless: true, windowSize: { width: 800, height: 600 } });
     await t.execute({ action: 'network_detail', requestId: 'r-1' });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_launch',
-      args: expect.objectContaining({ headless: true, windowSize: { width: 800, height: 600 } }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_network_detail',
-      args: expect.objectContaining({ requestId: 'r-1' }),
-    });
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_launch', headless: true, window_size: { width: 800, height: 600 } }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_network_detail', request_id: 'r-1' }),
+    );
   });
 
   it('viewport 路由到 browser_viewport 并透传 DPR/mobile', async () => {
     const registry = buildBrowserRegistry();
     const t = registry.get('browser')!;
     await t.execute({ action: 'viewport', width: 800, height: 600, deviceScaleFactor: 2, mobile: true });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_viewport',
-      args: expect.objectContaining({ width: 800, height: 600, deviceScaleFactor: 2, mobile: true }),
-    });
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({
+        action: 'browser_viewport',
+        width: 800,
+        height: 600,
+        device_scale_factor: 2,
+        mobile: true,
+      }),
+    );
   });
 
   it('tab/dialog/upload/hover/组合键/截图参数路由到新增 RPC', async () => {
@@ -298,41 +288,34 @@ describe('browser 动作路由（统一走 Rust CDP）', () => {
     await t.execute({ action: 'upload', files: ['C:/tmp/a.txt'], selector: '#file' });
     await t.execute({ action: 'press', key: 'a', modifiers: ['ctrl'] });
     await t.execute({ action: 'screenshot', fullPage: true, inline: true });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_new_tab',
-      args: expect.objectContaining({ url: 'https://example.com' }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_close_tab',
-      args: expect.objectContaining({ targetId: 'tab-1' }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_hover',
-      args: expect.objectContaining({ selector: '17' }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_dialog',
-      args: expect.objectContaining({ accept: true, promptText: 'ok' }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_upload',
-      args: expect.objectContaining({ files: ['C:/tmp/a.txt'], selector: '#file' }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_press',
-      args: expect.objectContaining({ key: 'a', modifiers: ['ctrl'] }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.browser',
-      tool: 'browser_screenshot',
-      args: expect.objectContaining({ fullPage: true, inline: true }),
-    });
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_new_tab', url: 'https://example.com' }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_close_tab', target_id: 'tab-1' }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_hover', selector: '17' }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_dialog', accept: true, prompt_text: 'ok' }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_upload', files: ['C:/tmp/a.txt'], selector: '#file' }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_press', key: 'a', modifiers: ['ctrl'] }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      'browser_cap',
+      expect.objectContaining({ action: 'browser_screenshot', full_page: true, inline: true }),
+    );
   });
 });
 
@@ -352,14 +335,14 @@ describe('结构化错误 code（2026-08-15 收口）', () => {
   it('Rust 错误经领域工具透传时 code 保留、模型可读', async () => {
     const registry = buildBrowserRegistry();
     const t = registry.get('browser')!;
-    invokeMock.mockRejectedValueOnce(
+    rpcMock.mockRejectedValueOnce(
       new Error('[CDP_REF_STALE] 目标不存在或已失效（37）——页面可能已变化，请重新 browser(snapshot)'),
     );
     const result = await t.execute({ action: 'click', selector: '37' });
     expect(result).toContain('[browser] click 失败 [CDP_REF_STALE]:');
     expect(result).toContain('请重新 browser(snapshot)');
     // 无 code 的旧错误回退原文（不丢信息）
-    invokeMock.mockRejectedValueOnce(new Error('legacy error'));
+    rpcMock.mockRejectedValueOnce(new Error('legacy error'));
     const result2 = await t.execute({ action: 'click', selector: '37' });
     expect(result2).toBe('[browser] click 失败: legacy error');
   });

@@ -101,11 +101,6 @@ async function fsToolsFactory(): Promise<Tool[]> {
 //  SHELL_CAP_SCHEMA），execute 换 process_cap 能力口直呼，反向生成源随插件
 //  一并拆除；fs/git 域同款先例。）
 
-async function browserToolsFactory(): Promise<Tool[]> {
-  const { createBrowserTools } = await import('../src/agent/tools/browser');
-  return createBrowserTools();
-}
-
 async function desktopToolsFactory(): Promise<Tool[]> {
   const { createDesktopTools } = await import('../src/agent/tools/browser');
   return createDesktopTools();
@@ -151,58 +146,11 @@ const DOMAINS: DomainSpec[] = [
   //    TS zod（coding.ts SHELL_CAP_SCHEMA），execute 走 process_cap 能力口直呼；
   //    域条目随 tool_plugins/shell/ 一并拆除，fs/git 域收口同款先例）──
 
-  // ── builtin.browser（P2-5）——37 RPC 分支信封化。权限形状（§8 已拍板）：
-  //    不进 manifest permission——插件内 ctx.check_permission(BrowserTool{action})
-  //    业务自检（四层语义 + click_sensitive/type_sensitive 运行时二次 Ask 单键
-  //    adapter 表达不了）。TS 面 createBrowserTools() 直出 39 名（含复合工具
-  //    browser_fill / browser_navigate_snapshot 无独立 RPC 分支——manifest 只
-  //    发射 37 个有 RPC 分支的工具）。──
-  {
-    domain: 'browser',
-    id: 'builtin.browser',
-    description: 'CDP 浏览器控制（自 rpc.rs CDP 分区拆出，kernel-plugin-runtime P2-5）',
-    capabilities: ['network'],
-    factory: browserToolsFactory,
-    tools: [
-      { name: 'browser_launch', tsTool: 'browser_launch' },
-      { name: 'browser_connect', tsTool: 'browser_connect' },
-      { name: 'browser_sessions', tsTool: 'browser_sessions' },
-      { name: 'browser_switch_session', tsTool: 'browser_switch_session' },
-      { name: 'browser_cookies', tsTool: 'browser_cookies' },
-      { name: 'browser_kill', tsTool: 'browser_kill' },
-      { name: 'browser_targets', tsTool: 'browser_targets' },
-      { name: 'browser_discover', tsTool: 'browser_discover' },
-      { name: 'browser_attach', tsTool: 'browser_attach' },
-      { name: 'browser_inspect', tsTool: 'browser_inspect' },
-      { name: 'browser_report', tsTool: 'browser_report' },
-      { name: 'browser_snapshot', tsTool: 'browser_snapshot' },
-      { name: 'browser_content', tsTool: 'browser_content' },
-      { name: 'browser_console', tsTool: 'browser_console' },
-      { name: 'browser_network', tsTool: 'browser_network' },
-      { name: 'browser_network_detail', tsTool: 'browser_network_detail' },
-      { name: 'browser_network_har', tsTool: 'browser_network_har' },
-      { name: 'browser_screenshot', tsTool: 'browser_screenshot' },
-      { name: 'browser_viewport', tsTool: 'browser_viewport' },
-      { name: 'browser_audit', tsTool: 'browser_audit' },
-      { name: 'browser_click', tsTool: 'browser_click' },
-      { name: 'browser_type', tsTool: 'browser_type' },
-      { name: 'browser_press', tsTool: 'browser_press' },
-      { name: 'browser_hover', tsTool: 'browser_hover' },
-      { name: 'browser_dialog', tsTool: 'browser_dialog' },
-      { name: 'browser_upload', tsTool: 'browser_upload' },
-      { name: 'browser_new_tab', tsTool: 'browser_new_tab' },
-      { name: 'browser_close_tab', tsTool: 'browser_close_tab' },
-      { name: 'browser_scroll', tsTool: 'browser_scroll' },
-      { name: 'browser_navigate', tsTool: 'browser_navigate' },
-      { name: 'browser_back', tsTool: 'browser_back' },
-      { name: 'browser_forward', tsTool: 'browser_forward' },
-      { name: 'browser_reload', tsTool: 'browser_reload' },
-      { name: 'browser_select', tsTool: 'browser_select' },
-      { name: 'browser_wait', tsTool: 'browser_wait' },
-      { name: 'browser_eval', tsTool: 'browser_eval' },
-      { name: 'browser_status', tsTool: 'browser_status' },
-    ],
-  },
+  // ── builtin.browser 域已退役（browser 域收口 2026-09-05，R4-2——schema
+  //    真源回 TS zod（agent/tools/browser.ts BROWSER_CAP_SCHEMA），execute 走
+  //    browser_cap 能力口直呼；域条目随 tool_plugins/browser/ 一并拆除，
+  //    fs/git/shell 域收口同款先例）──
+
   // ── builtin.uia（P2-5）——desktop_* 17 RPC 分支信封化。权限形状（§8）：
   //    同 browser——插件内 ctx.check_permission(DesktopTool{action}) 业务自检，
   //    desktop_uia_write 的 resolve→classify→grant→lease 全链迁入插件。

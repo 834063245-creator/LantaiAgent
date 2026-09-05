@@ -572,60 +572,9 @@ pub(crate) async fn browser_cap(
     dispatch_action(&gate, &action, &params).await
 }
 
-// ── R4-1 过渡面：tool_call 信封委托（builtin.browser 随 R4-2 退役时同删）──
-
-/// 信封 args 顶层 camelCase → snake_case（仅键名，值与嵌套结构不动）。
-/// 表 = 设计件 §5 的 11 键；其余键（单词小写 / meta `_agent_id` 等）不命中
-/// 原样保留。TS 直呼路径不需要本翻译（execute 层已映射），仅供 R4-1
-/// 过渡期信封 args（manifest camelCase 语言）进同一套业务。
-fn snake_top_key(k: &str) -> &str {
-    match k {
-        "windowSize" => "window_size",
-        "proxyBypass" => "proxy_bypass",
-        "httpOnly" => "http_only",
-        "sameSite" => "same_site",
-        "targetId" => "target_id",
-        "maxResults" => "max_results",
-        "maxChars" => "max_chars",
-        "requestId" => "request_id",
-        "fullPage" => "full_page",
-        "deviceScaleFactor" => "device_scale_factor",
-        "promptText" => "prompt_text",
-        other => other,
-    }
-}
-
-fn snake_args(args: &Value) -> Value {
-    match args {
-        Value::Object(map) => map
-            .iter()
-            .map(|(k, v)| (snake_top_key(k).to_string(), v.clone()))
-            .collect(),
-        other => other.clone(),
-    }
-}
-
-/// tool_call 信封委托面（R4-1）：插件薄壳把 (agent_id, tool_name, args) 原样
-/// 转交能力口——单一实现无双份。错误串已是最终形态（含「权限拒绝: 」前缀），
-/// 映射 ToolError::Tool 后 message() 恒等（信封路径 TS 所见字节零漂移）。
-pub(crate) async fn envelope_execute(
-    ctx: &crate::tool_plugins::ToolContext<'_>,
-    tool_name: &str,
-    args: Value,
-) -> Result<Value, crate::tool_plugins::plugin::ToolError> {
-    let snake = snake_args(&args);
-    browser_cap(
-        tool_name.to_string(),
-        snake,
-        ctx.is_agent,
-        ctx.agent_id.clone(),
-        ctx.state,
-        ctx.app,
-    )
-    .await
-    .map(Value::String)
-    .map_err(crate::tool_plugins::plugin::ToolError::Tool)
-}
+// ── 信封过渡面（R4-1）随 builtin.browser 退役（R4-2）删除：snake_args /
+//    snake_top_key / envelope_execute 不再有消费方——TS 直呼路径的 camel→snake
+//    映射在 TS execute 层（BROWSER_CAP_SNAKE_KEYS）。
 
 #[cfg(test)]
 mod tests {
@@ -688,55 +637,5 @@ mod tests {
         for a in ["browser_frobnicate", "launch", "browser_", ""] {
             assert!(!known.contains(a), "{a} 不应在 37 动作表内");
         }
-    }
-
-    /// camel→snake 映射表锚（设计件 §5 的 11 键）。
-    #[test]
-    fn snake_top_key_covers_eleven_camel_keys() {
-        let expected: &[(&str, &str)] = &[
-            ("windowSize", "window_size"),
-            ("proxyBypass", "proxy_bypass"),
-            ("httpOnly", "http_only"),
-            ("sameSite", "same_site"),
-            ("targetId", "target_id"),
-            ("maxResults", "max_results"),
-            ("maxChars", "max_chars"),
-            ("requestId", "request_id"),
-            ("fullPage", "full_page"),
-            ("deviceScaleFactor", "device_scale_factor"),
-            ("promptText", "prompt_text"),
-        ];
-        assert_eq!(expected.len(), 11);
-        for (camel, snake) in expected {
-            assert_eq!(snake_top_key(camel), *snake);
-        }
-    }
-
-    #[test]
-    fn snake_top_key_is_noop_for_snake_and_meta() {
-        for k in ["url", "port", "target", "selector", "_agent_id", "_owner_id", "offset"] {
-            assert_eq!(snake_top_key(k), k, "{k} 应原样保留");
-        }
-    }
-
-    #[test]
-    fn snake_args_renames_top_level_only_keeps_values() {
-        let args = serde_json::json!({
-            "windowSize": { "width": 1280, "height": 800 },
-            "targetId": "abc",
-            "fullPage": true,
-            "_agent_id": "agent-1",
-            "url": "https://x",
-        });
-        let out = snake_args(&args);
-        assert_eq!(out["window_size"]["width"], 1280);
-        assert_eq!(out["window_size"]["height"], 800);
-        assert_eq!(out["target_id"], "abc");
-        assert_eq!(out["full_page"], true);
-        assert_eq!(out["_agent_id"], "agent-1");
-        assert_eq!(out["url"], "https://x");
-        assert!(out.get("windowSize").is_none());
-        assert!(out.get("targetId").is_none());
-        assert!(out.get("fullPage").is_none());
     }
 }

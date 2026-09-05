@@ -31,8 +31,9 @@ impl PluginRegistry {
     /// 注册序 = tool_plugins/ 目录序（gen-plugin-manifests 的镜像装载序锚）。
     pub fn with_system_defaults() -> Self {
         let mut registry = PluginRegistry::default();
-        let browser: Arc<dyn ToolPlugin> = Arc::new(super::browser::BrowserPlugin::new());
-        registry.register(browser).expect("出厂插件清单装载失败");
+        // （builtin.browser 已随 browser 域收口退役——2026-09-05，kernel-capability-
+        //  d4-handle-design.md R4-2：模型族全量换 browser_cap 能力口直呼，插件
+        //  信封无消费方整目录退役；git 域收口 c5acb876 同款先例。）
         let uia: Arc<dyn ToolPlugin> = Arc::new(super::uia::UiaPlugin::new());
         registry.register(uia).expect("出厂插件清单装载失败");
         let constraints: Arc<dyn ToolPlugin> = Arc::new(super::constraints::ConstraintsPlugin::new());

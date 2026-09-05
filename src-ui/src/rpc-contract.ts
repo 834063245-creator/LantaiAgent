@@ -71,6 +71,49 @@ export type ProcessCapAction =
   | 'background_activity'
   | 'drain_bg_notifications';
 
+/** browser_cap 能力口 action（R4 browser 域收口）——退役前 builtin.browser 37
+ *  工具名一一位（D4-1：action 化，git_cap 同构）。各 action 参数形状的真源 =
+ *  agent/tools/browser.ts 的 BROWSER_CAP_SCHEMA（zod 转录，工具面 camelCase），
+ *  能力口收顶层 snake（11 键映射 BROWSER_CAP_SNAKE_KEYS）。 */
+export type BrowserCapAction =
+  | 'browser_launch'
+  | 'browser_connect'
+  | 'browser_sessions'
+  | 'browser_switch_session'
+  | 'browser_cookies'
+  | 'browser_kill'
+  | 'browser_targets'
+  | 'browser_discover'
+  | 'browser_attach'
+  | 'browser_inspect'
+  | 'browser_report'
+  | 'browser_snapshot'
+  | 'browser_content'
+  | 'browser_console'
+  | 'browser_network'
+  | 'browser_network_detail'
+  | 'browser_network_har'
+  | 'browser_screenshot'
+  | 'browser_viewport'
+  | 'browser_audit'
+  | 'browser_click'
+  | 'browser_type'
+  | 'browser_press'
+  | 'browser_hover'
+  | 'browser_dialog'
+  | 'browser_upload'
+  | 'browser_new_tab'
+  | 'browser_close_tab'
+  | 'browser_scroll'
+  | 'browser_navigate'
+  | 'browser_back'
+  | 'browser_forward'
+  | 'browser_reload'
+  | 'browser_select'
+  | 'browser_wait'
+  | 'browser_eval'
+  | 'browser_status';
+
 export interface RpcContract {
   // ── 应用层：数据上下文（L1）────────────────────────────
   // （workspace-session-ownership-rework 2026-08-27：session_attach/detach/
@@ -274,6 +317,25 @@ export interface RpcContract {
       owner_id?: string | null;
     };
     result: string; // text — stdout 文本 / started JSON（含粘性 marker 字节，TS 截流）/ job 输出
+  };
+
+  // ── 能力口（R4，kernel-capability-d4-handle-design.md）──────────
+  // browser_cap：browser 句柄域直呼入口（builtin.browser 插件随 browser 域
+  // 收口退役）——不经 tool_call 信封 / PluginRegistry / PluginToolAdapter。
+  // action = 退役前 builtin.browser 37 工具名（BrowserCapAction）；各 action
+  // 参数形状真源 = BROWSER_CAP_SCHEMA（zod），口收顶层 snake（11 键映射）。
+  // 口内闸：BrowserTool 无条件过闸（多层语义 + click/type_sensitive 二次
+  // Ask——Rust 强制层）；target="self" 只读路由在口内。返回文本（TS 工具层
+  // 做 truncate/结构化错误整形）。
+  browser_cap: {
+    params: {
+      action: BrowserCapAction;
+      is_agent?: boolean;
+      agent_id?: string | null;
+      // 各 action 参数（顶层 snake；形状按 action 见 BROWSER_CAP_SCHEMA）
+      [key: string]: unknown;
+    };
+    result: string; // text — 37 action 全文本直通（浏览器会话状态/快照/操作反馈）
   };
 
   // ── Shell（retired）────────────────────────────────────────

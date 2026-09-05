@@ -3,15 +3,15 @@
 
 //! tool_plugins — Rust 内核插件运行时（kernel-plugin-runtime，docs/plans/kernel-plugin-runtime-plan.md）。
 //!
-//! 内核保留「安全能力和插件运行时」，不保留工具业务：web/fs/git/shell/browser/uia/pty/lsp
+//! 内核保留「安全能力和插件运行时」，不保留工具业务：search/fs/git/shell/browser
 //! 等工具域已按能力口收口（search→search_cap / fs→fs_cap / git→git_cap /
-//! shell→process_cap，kernel-capability-c3-design.md）或以 ToolPlugin 形态
-//! 注册（web/browser/uia/pty/lsp/editor/constraints），rpc.rs 的细粒度分支
-//! 逐批退役。执行流：
+//! shell→process_cap，kernel-capability-c3-design.md；browser→browser_cap，
+//! kernel-capability-d4-handle-design.md R4-2）或以 ToolPlugin 形态注册
+//! （web/uia/pty/lsp/editor/constraints），rpc.rs 的细粒度分支逐批退役。
+//! 执行流：
 //! 查注册表 → 启用校验（信任分级）→ 工具存在 → 权限引擎（PluginToolAdapter）→
 //! 插件 execute（内部走既有路径级真权）→ 返回。
 
-pub mod browser;
 pub mod constraints;
 pub mod editor;
 pub mod lsp;
