@@ -31,6 +31,7 @@
 
 import type { Tool } from '../agent/tool';
 import type { Context } from '../cordis';
+import { bindPluginTask, nextPluginTaskId } from './deferred';
 import type { ToolManifestDecl } from './types';
 
 /** 运行时工具声明：数据面（模型面三字段 + readOnly）+ 执行函数。
@@ -75,6 +76,28 @@ export function declarationOf(tool: Tool): Omit<ToolDeclaration, 'execute'> {
 /** toolHandlers 映射形状（entry 模块命名导出：工具名 → 执行函数）。 */
 export type ToolHandlerMap = Record<string, ToolDeclaration['execute']>;
 
+/** async:true 工具的 execute 包装（S4 app shell 件 D——工具口）：
+ *  宿主生成 taskId 注入 args._task_id（插件回执卡片引用同一键）+ 调用期
+ *  登记发起者（executor 注入的 args._owner_id——bus id；缺席 = 无 Agent
+ *  语境，完成时无唤醒面）；执行立即返回（卡片语义归插件 handler），
+ *  插件后台完成后经宿主桥 deferred.complete 唤醒发起 Agent。 */
+function asyncAwareExecute(
+  pluginName: string,
+  toolName: string,
+  inner: ToolDeclaration['execute'],
+): ToolDeclaration['execute'] {
+  return (args, onProgress, signal) => {
+    const taskId = nextPluginTaskId();
+    bindPluginTask(taskId, {
+      ownerId: typeof args._owner_id === 'string' ? args._owner_id : undefined,
+      plugin: pluginName,
+      tool: toolName,
+    });
+    const enriched = { ...args, _task_id: taskId };
+    return inner(enriched, onProgress, signal);
+  };
+}
+
 /**
  * 挂接一个插件声明的全部工具（loader 装载期调用）。
  *
@@ -115,7 +138,17 @@ export function mountToolDeclarations(
     const disposers = decls.map((d) =>
       ctx.tools.register({
         id: `${pluginName}/${d.name}`,
-        factory: () => declarationToTool({ ...d, execute: map[d.name] as ToolDeclaration['execute'] }),
+        factory: () => {
+          const raw = map[d.name] as ToolDeclaration['execute'];
+          const execute = d.async === true ? asyncAwareExecute(pluginName, d.name, raw) : raw;
+          return declarationToTool({
+            name: d.name,
+            description: d.description,
+            parameters: d.parameters,
+            ...(d.readOnly !== undefined ? { readOnly: d.readOnly } : {}),
+            execute,
+          });
+        },
       }),
     );
     return () => {

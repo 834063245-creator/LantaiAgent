@@ -50,7 +50,14 @@ import { createTauriProcIO } from '../agent/mcp/tauri-io';
 import type { Tool } from '../agent/tool';
 import type { Context } from '../cordis';
 import { typedRpc } from '../rpc-contract';
+import { bindMcpDeferredToken, completeMcpDeferred, type PluginDeferredStatus } from './deferred';
 import type { McpServerDecl } from './types';
+
+/** S4（app shell 件 D）——server 完成通知 method：调用期发出的 deferred
+ *  progressToken 在 params.progressToken 回带，taskId/status 是 server 自订
+ *  任务键。MCP 通知面标准语义（server 主动发、无 id、client dispatch 到
+ *  onNotification 面）。 */
+const MCP_DEFERRED_NOTIFICATION = 'lantai/deferred';
 
 /** 宿主 IO 能力（生产 = Rust 桥；测试注入 fake）。 */
 export interface McpBridgeIO {
@@ -172,6 +179,23 @@ async function connectServer(
   return client;
 }
 
+/** S4（app shell 件 D · MCP 路翻译）：client 挂 lantai/deferred 完成通知
+ *  监听——progressToken → 发起者 → 同一唤醒。返回退订（client 生命周期
+ *  归属方持有）。 */
+function attachDeferredNotifications(client: McpClient): () => void {
+  return client.onNotification((msg) => {
+    if (msg.method !== MCP_DEFERRED_NOTIFICATION) return;
+    const params = (msg.params ?? {}) as Record<string, unknown>;
+    const rawToken = params.progressToken;
+    const token = typeof rawToken === 'string' ? rawToken : typeof rawToken === 'number' ? String(rawToken) : undefined;
+    if (!token) return;
+    const taskId = typeof params.taskId === 'string' ? params.taskId : '';
+    const status: PluginDeferredStatus = params.status === 'failed' ? 'failed' : 'completed';
+    const message = typeof params.message === 'string' ? params.message : undefined;
+    completeMcpDeferred(token, { taskId, status, message });
+  });
+}
+
 // ── 受治进程治理器（app shell 件 C · S2 本体）──
 
 type GovernorState = 'not-running' | 'starting' | 'ready';
@@ -232,6 +256,8 @@ class ServerGovernor {
   private client: McpClient | null = null;
   private proc: ProcIO | null = null;
   private unsubExit: (() => void) | null = null;
+  /** S4：lantai/deferred 完成通知监听退订（随 client 生命周期）。 */
+  private unsubNotify: (() => void) | null = null;
   private startPromise: Promise<void> | null = null;
   /** 启动途中的立即判负口（启动途中进程退出/被停止——不等就绪时限）。 */
   private failStart: ((err: Error) => void) | null = null;
@@ -301,6 +327,8 @@ class ServerGovernor {
       this.client = opened.client;
       this.proc = opened.proc;
       this.unsubExit = unsubExit;
+      // S4：完成通知翻译随 client 上线（每代重启重挂——旧代 client 已死）
+      this.unsubNotify = attachDeferredNotifications(opened.client);
       connectP = opened.client.connect();
       await this.raceStartupDeadline(connectP, exitFail);
       this.schemas = opened.client.listRemoteTools();
@@ -485,6 +513,8 @@ class ServerGovernor {
   private teardownProc(): void {
     this.unsubExit?.();
     this.unsubExit = null;
+    this.unsubNotify?.();
+    this.unsubNotify = null;
     const client = this.client;
     const proc = this.proc;
     this.client = null;
@@ -537,7 +567,13 @@ function governedTool(governor: ServerGovernor, schema: McpToolSchema): Tool {
         );
       }
       const client = acquired.client;
-      const token = onProgress ? `tok-${rawName}-${Date.now()}` : undefined;
+      // S4：Agent 发起的调用绑 deferred token（server 完成通知回带关联唤醒；
+      // 无 _owner_id = 无 Agent 语境，不绑）。onProgress 语境沿用进度 token。
+      const ownerId = typeof args._owner_id === 'string' ? args._owner_id : undefined;
+      const dfToken = ownerId
+        ? bindMcpDeferredToken({ ownerId, plugin: governor.pluginName, tool: qualified })
+        : undefined;
+      const token = dfToken ?? (onProgress ? `tok-${rawName}-${Date.now()}` : undefined);
       const res = await client.callTool(rawName, args, signal, token);
       if (res.isError) {
         return `[MCP ${qualified} ERROR] ${res.text}`;
@@ -631,14 +667,25 @@ export async function registerMcpServerTools(
     }
     // 惰性连接（lazy 缺省 / startup-error 急连接复用）：首装配建连 + tools/list
     let client: McpClient | null = eager;
+    // S4：lantai/deferred 完成通知翻译随 client 生命周期挂/摘
+    let unsubNotify: (() => void) | null = eager != null ? attachDeferredNotifications(eager) : null;
     const contribId = `${pluginName}/mcp/${server.name}`;
     const dispose = ctx.tools.register({
       id: contribId,
       factory: async () => {
         try {
-          if (!client) client = await connectServer(server, pluginName, io, env);
+          if (!client) {
+            client = await connectServer(server, pluginName, io, env);
+            unsubNotify?.();
+            unsubNotify = attachDeferredNotifications(client);
+          }
           if (!client.isConnected) await client.connect();
-          return client.listRemoteTools().map((schema) => mcpClientTool(client as McpClient, schema));
+          return client.listRemoteTools().map((schema) =>
+            mcpClientTool(client as McpClient, schema, undefined, {
+              plugin: pluginName,
+              bindToken: bindMcpDeferredToken,
+            }),
+          );
         } catch (e) {
           // lazy 语义：瞬态机器不炸装配——空集 + 可见 warn；空集不缓存
           // （pluginToolRows），下次装配重试
@@ -651,6 +698,8 @@ export async function registerMcpServerTools(
     ctx.effect(
       () => () => {
         dispose();
+        unsubNotify?.();
+        unsubNotify = null;
         if (client) {
           void client.ownedDisposer()();
           client = null;

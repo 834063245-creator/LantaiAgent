@@ -783,6 +783,13 @@ export class AgentRuntime implements RuntimePort {
     return this.agents.get(id) ?? null;
   }
 
+  /** Agent 所属会话 id（未登记回 'default'）。S4（app shell 件 D）插件
+   *  deferred 唤醒路由用——workspace 唤醒路由器按发起 Agent 解析所属会话，
+   *  组 minimal 定位键 {status, taskId, sessionId}。 */
+  sessionIdOf(agentId: string): string {
+    return this._agentSessions.get(agentId) ?? 'default';
+  }
+
   /** 返回某 Agent 实例专属的待办 TaskManager（每会话主 Agent 一个实例）。
    *  UI 的 TasksPanel 用它订阅 / 读写当前会话主 Agent 的待办清单。 */
   getAgentTaskManager(agentId: string): TaskManager | null {

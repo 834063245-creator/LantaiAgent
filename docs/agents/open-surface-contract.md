@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：16
+当前版本：17
 
-<!-- contract-fingerprint: d47faccbdc56ee45806d2d39a861651fac065bd349d558a79cdab4fbf908087a -->
+<!-- contract-fingerprint: 3b5d3b1b580239277b1a19c09200b3e9a46f0da54cdb83a8438b2ce3a5b17913 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -51,6 +51,7 @@
 | 14 | 2026-09-06 | manifest schema 新增可选 `dataDir: boolean`（插件数据地盘：声明 true 装载即分配专属数据目录 `<dataRoot>/<名>/`，宿主桥 fs 面 ensure/list/read/write/delete，卸载随 plugin_uninstall 整体挪 `.trash` 回收；缺省/false 行为不变） | app-shell-software-plugin-plan.md §5-S1 |
 | 15 | 2026-09-06 | manifest.mcpServers 条目新增可选治理字段 `restart: 'off'\|'on-crash'` 与 `lifecycle: 'lazy'\|'eager'\|'with-window'`（app shell 件 C 受治进程治理：任一在场 = 该 server 进受治面——就绪 = initialize 握手完成带时限、崩溃退避重启、三档生命周期/空闲回收、未就绪调用立即报 service_not_ready；http 条目声明治理字段拒绝——无受治进程面；两字段皆缺席 = 旧形态现行为不变） | app-shell-software-plugin-plan.md §5-S2（决策 1/4/7/8） |
 | 16 | 2026-09-06 | manifest schema 新增可选 `app` 字段（app shell 件 A 应用视图通道：`{ entry: './' 前缀相对 HTML, mode: 'floating'\|'dock'\|'fullscreen', title }`——声明 = 插件以软件形态住进兰台：装载只登记窗口定义（数据），开窗才实例化 iframe 视口；窗内向宿主要能力走 postMessage 白名单桥（默认最小集 fs 数据目录 + notify）；卸载收口 = 摘定义 + 关窗；缺省不声明 = 行为不变） | app-shell-software-plugin-plan.md §5-S3 |
+| 17 | 2026-09-06 | manifest.tools 条目新增可选 `async: boolean`（app shell 件 D 后台唤醒回调 · 工具口：声明 true = 执行即返回卡片——宿主生成 taskId 注入 `args._task_id` 并登记发起者（executor 注入的 `_owner_id`），插件后台完成后经宿主桥 `deferred.complete(taskId, status)` 唤醒发起 Agent，唤醒体 minimal 定位键 {status, taskId, sessionId}、内容凭 taskId 调插件工具按需取；MCP 路对位 = server 完成通知 `lantai/deferred`（params.progressToken 回带调用期 token）由桥翻译成同一唤醒；缺省 false = 同步语义不变） | app-shell-software-plugin-plan.md §5-S4（决策 7/8） |
 
 ## 变更流程（guard 红 → 修复四步）
 

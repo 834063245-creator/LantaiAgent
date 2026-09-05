@@ -20,8 +20,22 @@ interface RawMcpSchema {
   };
 }
 
+/** deferred 语境（S4 app shell 件 D）：插件声明的 server 才带——调用期
+ *  （args._owner_id 在场）绑 progressToken 登记发起者，server 完成通知
+ *  经此关联唤醒。非插件面（用户自配 server）不传 = 行为不变。 */
+export interface McpDeferredContext {
+  plugin: string;
+  /** token 登记面（注入隔离——registry 不直接依赖 plugins 层）。 */
+  bindToken: (owner: { ownerId: string; plugin: string; tool: string }) => string | undefined;
+}
+
 /** 把远端 schema 包装成本地 Tool（执行经 McpClient，signal 透传支持取消）。 */
-export function mcpClientTool(client: McpClient, schema: RawMcpSchema, execOverrides?: Partial<Tool>): Tool {
+export function mcpClientTool(
+  client: McpClient,
+  schema: RawMcpSchema,
+  execOverrides?: Partial<Tool>,
+  deferred?: McpDeferredContext,
+): Tool {
   const rawName = schema.name;
   const qualified = client.qualifiedName(rawName);
   const inputSchema = schema.inputSchema ?? { type: 'object', properties: {} };
@@ -36,8 +50,12 @@ export function mcpClientTool(client: McpClient, schema: RawMcpSchema, execOverr
     }),
     readOnly: () => true,
     execute: async (args: Record<string, unknown>, onProgress?: (chunk: string) => void, signal?: AbortSignal) => {
+      // deferred 语境 + Agent 发起（executor 注入 _owner_id）→ 绑 token
+      // （S4：server 完成通知 lantai/deferred 回带此 token，桥翻译成唤醒）；
       // 请求带 progressToken 触发服务器进度推送，桥接成 onProgress 文本块。
-      const token = onProgress ? `tok-${rawName}-${Date.now()}` : undefined;
+      const ownerId = deferred && typeof args._owner_id === 'string' ? args._owner_id : undefined;
+      const dfToken = ownerId ? deferred?.bindToken({ ownerId, plugin: deferred.plugin, tool: qualified }) : undefined;
+      const token = dfToken ?? (onProgress ? `tok-${rawName}-${Date.now()}` : undefined);
       const res = await client.callTool(rawName, args, signal, token);
       if (res.isError) {
         return `[MCP ${qualified} ERROR] ${res.text}`;

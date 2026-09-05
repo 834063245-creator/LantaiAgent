@@ -1,6 +1,8 @@
 # 软件级插件（app shell）— 立案与施工图纸
 
-> 状态：**In progress（2026-09-03 立案；2026-09-05 决策点全定稿；2026-09-06 开工，S0 基线已录）**
+> 状态：**In progress（2026-09-03 立案；2026-09-05 决策点全定稿；2026-09-06 开工，
+> S0-S4 竣工——S1 数据目录 / S2 受治治理 / S3 窗口原语 / S4 唤醒回调已落地；
+> 余 S5 notes-app 范本 + S6 文档收口 + 管理 UI 面（设计定稿后）**
 > 一句话：为兰台补「软件级插件」能力——四件套（窗口原语 / 插件数据目录 /
 > 受治进程生命周期治理 / 后台唤醒回调），让完整软件能以插件形态住进兰台、
 > 被 Agent 协议驱动；附端到端软件示例 `examples/plugins/notes-app/`
@@ -397,6 +399,47 @@ toolHandlers——实现跑在宿主 webview，用宿主设施）与 MCP 路（m
 - **验证**：新测试：a) 异步提交立即返回；b) 完成后台唤醒带 minimal 键；
   c) 失败唤醒带定位键；d) 唤醒不占上下文（回调体极小，测试钉死形状）；
   e) MCP 完成通知 → 唤醒的翻译路径。
+- **竣工（2026-09-06）**：落地面——唤醒底座盘点结论：**复用 MessageBus
+  systemNotify(type:'bg') 通道**（Rust 后台任务 bg:note 的同一条链——投递
+  发起 Agent inbox + idle wake 回调触发，Agent 循环边界 _injectInbox 消费注入
+  system-reminder；`agent_spawn async:true` → bus result 是同构先例），不造
+  新轮子。宿主侧包装 `plugins/deferred.ts`：双注册表（工具口 taskId →
+  发起者 / MCP 路 progressToken → 发起者，各有界 500 超限丢最旧——server
+  永不发通知/插件忘 complete 是常驻泄漏面）+ **wake handler 扇出面**
+  （runtime 层注入——plugins 层不持 bus，多工作区各注册各的、不认领返回
+  false 交下一个；无 runtime 认领 = warn 可见，丢失兜底是插件查询工具凭
+  taskId 主动取）+ `formatDeferredWakeNote` minimal 定位键格式化。
+  **工具口**：manifest.tools `async: true`（开放面契约升 **v17**，四步流程
+  走全）→ mountToolDeclarations 包装 execute：宿主生成 taskId
+  （`ptask-<ts>-<seq>`）注入 `args._task_id`（插件回执引用同一键）+ 调用期
+  登记发起者（executor 注入的 `args._owner_id`——bus id；缺席 = 无 Agent
+  语境，完成时降级 warn+false 不炸）；执行立即返回（卡片语义归插件
+  handler）；完成经宿主桥新键 `deferred.complete(taskId, status, message?)`。
+  缺省 false 同步语义不变（无注入无登记——测试钉死）。**MCP 路**：
+  McpClient 加公开 `onNotification` 订阅面（onMessageCbs 原私有）；两路
+  （governedTool + legacy mcpClientTool——后者加可选 McpDeferredContext 参，
+  bindToken 注入使 registry 不依赖 plugins 层）调用期绑 `dftok-<ts>-<seq>`
+  token（`_owner_id` 在场才绑——无 Agent 语境不绑，行为不变），请求经
+  `_meta.progressToken` 发出；server 完成通知 **method `lantai/deferred`**
+  （params `{progressToken, taskId, status, message?}`——progressToken 是 MCP
+  请求↔通知关联的标准锚点，server 原样回带）→ `attachDeferredNotifications`
+  翻译成同一唤醒（受治路随 startOnce 挂/teardownProc 摘——每代重启重挂；
+  legacy 路随 connectServer 挂/effect 摘）；progress 通知面维持原语义
+  （onProgress 转发），未登记 token 的通知静默忽略。**runtime 层接线**：
+  `AgentRuntime.sessionIdOf(agentId)` 公开访问器（_agentSessions 查表回
+  'default'）；workspace.ts setupAgent 在 bg:note 监听旁
+  `registerDeferredWakeHandler`——受理检查（bus.isRegistered）+ sessionId
+  解析 + minimal note 经 systemNotify('bg') 注入；teardown 注销
+  （`listener:plugin-deferred-wake`）。测试 a–e 10 例
+  `tests/plugin-deferred.test.ts`：a 提交即回卡片 + _task_id 注入 + 调用期
+  登记；b complete('completed') → bus bg 注入体恰含定位键 JSON + idle wake
+  触发 + 唤醒即消费登记；c 'failed' 同链路；d formatDeferredWakeNote 形状
+  钉死（JSON 恰三键 / 归因前缀 / message 截 160 / 全长 <200）；e MCP 路
+  fake server 捕获 token → lantai/deferred 回带 → 同一唤醒（含归因工具名
+  mcp__engine__notes_export）；+ 无 Agent 语境降级 + async 缺省不变 +
+  server 乱发通知静默忽略。门禁全绿：vitest 262 文件（2586 passed / 4
+  skipped——基线 2576 + 新增 10 对账吻合）、build、biome ci 694 files 0
+  errors、convergence standard+minimal 零漂移（无 Rust 改动，cargo 不适用）。
 
 ### S5 示例：`examples/plugins/notes-app/`（软件级插件范本，用户验收主件）
 - 按 §2.3 规格落地：app 窗口 + server.cjs（MCP 面 + 窗 HTTP 面）+ 数据目录 +

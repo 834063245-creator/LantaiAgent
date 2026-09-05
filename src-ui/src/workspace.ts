@@ -42,6 +42,7 @@ import { resolveCurrentComposition } from './composition/preset-assembly';
 import type { ResolvedComposition } from './composition/roster';
 import type { Context, Fiber } from './cordis';
 import { initCordisKernel } from './cordis/boot';
+import { formatDeferredWakeNote, registerDeferredWakeHandler } from './plugins/deferred';
 import { markDynamicFetchStart, mergeDynamicModels, recordDynamicFetchResult } from './provider/catalog';
 import { resolveApiKey } from './provider/credentials';
 import { createLiveProvider } from './provider/live';
@@ -977,6 +978,19 @@ export class Workspace {
       })();
     });
     teardown.add(unBgNote, 'listener:bg-note');
+    // ── 插件 deferred 唤醒路由（app shell 件 D · S4）──
+    // 插件后台任务完成（工具口 host.deferred.complete / MCP 路 lantai/deferred
+    // 通知翻译）→ plugins/deferred 扇出到各 runtime 的唤醒路由器；本路由器
+    // 认领本 runtime 注册的发起 Agent：systemNotify('bg') 投递 minimal 定位键
+    // （{status, taskId, sessionId}——与 bg:note 同一注入/唤醒通道，内容凭
+    // taskId 调插件工具按需取）。多工作区各注册各的，不认领返回 false。
+    const unDeferredWake = registerDeferredWakeHandler((ownerId, key) => {
+      const bus = runtime.getBus();
+      if (!bus.isRegistered(ownerId)) return false;
+      bus.systemNotify(ownerId, 'bg', formatDeferredWakeNote(key, runtime.sessionIdOf(ownerId)));
+      return true;
+    });
+    teardown.add(unDeferredWake, 'listener:plugin-deferred-wake');
     // agentSessionState 解除本面板的全部会话句柄（dispose + 清表）— 拆 audit 中危：
     // 清理不再挂在下一个 setupAgent 上。
     teardown.add(() => agentSessionState.clearPanelState(this._storeId), 'session-state-clear');

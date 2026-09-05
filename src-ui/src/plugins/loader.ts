@@ -51,6 +51,7 @@ import { usePluginPrefs } from '../state/plugin-prefs';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
 import { faceDepsKeys, pluginHostMods } from './builtin/host-modules';
 import { ensurePluginDataDir, type PluginDataFs, pluginDataFs } from './data-fs';
+import { completePluginTask } from './deferred';
 import { factoryProductNames, factoryProductPlugins } from './factory-products';
 import { FIRST_PARTY_MANIFEST, type FirstPartyPluginMeta } from './first-party-manifest';
 import { type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
@@ -173,6 +174,9 @@ export function allBuiltinPlugins(): LantaiPlugin[] {
 //     插件的专属数据地盘，桥面插件名是参数——全信任区，S3 窗口面才绑定）；
 //   - windows：窗口设施 API（S3 app shell 件 A——开/关/聚焦/模式/查询，
 //     宿主能力面非工具面；工具语义归插件：插件工具执行体调它开自己的窗）；
+//   - deferred：后台唤醒回调（S4 app shell 件 D——async:true 工具的后台
+//     完成口：complete(taskId, status, message?) 唤醒发起 Agent + minimal
+//     定位键；MCP 路走 server 完成通知不经此面）；
 //   - mods：项目模块真实例注册表（pluginHostMods()——面组件依赖的
 //     store/service 单例与工具域/段贡献插件对象，见 builtin/host-modules.ts）。
 // 桥在装载第一方插件前注入（装载期红线：注入是平台动作不是插件副作用）。
@@ -200,6 +204,7 @@ declare global {
       loadCss: (url: string) => void;
       fs: PluginDataFs;
       windows: PluginWindowFacility;
+      deferred: { complete: typeof completePluginTask };
       mods: Record<string, unknown>;
     };
   }
@@ -241,6 +246,7 @@ function installPluginHostBridge(): void {
       loadCss: injectPluginCss,
       fs: pluginDataFs,
       windows: pluginWindowFacility,
+      deferred: { complete: completePluginTask },
       mods: pluginHostMods(),
     };
   }

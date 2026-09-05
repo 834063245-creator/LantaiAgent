@@ -98,6 +98,12 @@ const ToolManifestDeclSchema = z.strictObject({
   }),
   /** 是否只读（可安全并行）；缺省 false。 */
   readOnly: z.boolean().optional(),
+  /** 异步工具（app shell 件 D · S4，决策 8 两张门之一——工具口）：声明
+   *  true = 执行即返回卡片（宿主注入 `args._task_id`——插件回执里可引
+   *  用），插件后台完成后经宿主桥 `deferred.complete(taskId, status)` 唤醒
+   *  发起 Agent（minimal 定位键 {status, taskId, sessionId}——内容凭
+   *  taskId 调插件自己的查询工具按需取）。缺省 false = 同步语义不变。 */
+  async: z.boolean().optional(),
 });
 
 /** 权限类枚举（C11-2）——Rust 权限咽喉的五个域（PascalCase 规则名的

@@ -104,6 +104,15 @@ export class McpClient {
   /** 运维日志。 */
   public onLog?: (msg: string) => void;
 
+  /** 订阅服务端主动通知（未知 method 的 message——progress 已有单独转发
+   *  面，此面收其余全部）。返回退订函数。
+   *  S4（app shell 件 D）：server 完成通知 lantai/deferred 经此面到达桥层
+   *  翻译成插件后台唤醒。 */
+  onNotification(cb: (msg: { method?: string; params?: Record<string, unknown> }) => void): () => void {
+    this.onMessageCbs.add(cb);
+    return () => this.onMessageCbs.delete(cb);
+  }
+
   constructor(config: McpClientConfig) {
     this.serverName = config.serverName;
     if (config.transport) {
