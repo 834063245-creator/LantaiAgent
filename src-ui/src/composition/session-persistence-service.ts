@@ -4,28 +4,42 @@
 // 会话持久化后端能力注册表（平台化 Phase 2 · D11，2026-08-27）——
 // ctx.sessionPersistence seam。
 //
-// 裁定（D11）：agent/会话状态的持久化（状态文件 + NDJSON 增量 + 索引）从前端
-// 的 Rust 文件/追加命令直派生为可替换 seam——默认 provider = 现有 Rust 命令薄
-// 包装（agent/sessions-provider.ts，动作→命令恒等映射）；替代 provider 可以是
-// SQLite 后端、远程会话仓等。消费面 = agent/agent-store.ts 单一权威源。
+// 动作面重设计（session-persistence-seam-wiring-plan C 定案，2026-09-05）：
+// 旧六动作（read/write/append/appendLog/mkdir/delete）照抄 agent-store 磁盘
+// CRUD 形状，对不上今天的会话模型（全量快照/目录扫描/墓碑删除）且无产线
+// 消费方——agent-store 已内存化退役、agent_session_append RPC 零 TS 调用方。
+// 换成**四动作、会话语义**（存储布局不进接口）：
+//   read_volume {root,id}    → 卷 JSON 串或 'null'（缺失/坏文件——消费方判空）
+//   list_volumes {root}      → 文件名 JSON 数组（provider 侧滤目录；保留
+//                              _active.json 不过滤——消费方各自 parse id/墓碑判别）
+//   save_volume {root,id,data}（快照 JSON 串）→ 'null'
+//   delete_volume {root,id}  → 'null'（语义动作：默认 provider 墓碑重写
+//                              deleted:true——消费方过滤契约依赖此形态；SQLite
+//                              provider 可真删）。StoredSession 形状（含 deleted
+//                              字段）留在消费方 chat-session——provider 存取不透明。
+// root = 会话根目录（{ws}/.lantai/sessions——chat-session.ts:570 唯一权威拼接点）。
 //
-// 范围注记（施工⑥）：chat-session.ts 的卷落盘写链（autoSave/导出）保持
-// typedRpc 直连不动——冻结文件 + 非工具基础设施消费面，P5 全量挂 seam 时统一。
+// 消费面（C 做实）：chat-session.ts / chat-core.ts 的产品会话卷持久化全链经
+// sessionExecute 单点——插件注册 SessionPersistenceProvider 即接管产品会话
+// 持久化（sessions-seam.test ③ fake provider 端到端 = 承诺的可执行证明）。
 //
 // 无腰设计：本 seam 的调用方是基础设施（非模型工具管道），args 为 snake_case
-// RPC 参数直传，不带 _agent_id 等 meta——默认 provider 直调 typedRpc，不经
-// executor 派发腰（强制层 gate 管模型工具调用，不 管 store 内部落盘）。
+// RPC 参数直传，不带 _agent_id 等 meta——默认 provider 直调 kernel* helper，
+// 不经 executor 派发腰（强制层 gate 管模型工具调用，不管 store 内部落盘）。
 
 import { type Context, Service } from '../cordis';
 import { seamDisabled } from './seam-resolution';
 import { ContributionRegistry } from './services';
 
-/** 会话持久化动作（与 agent-store.ts 消费动词一一对应；appendLog = 会话事件
- *  日志 session-log.ndjson 追加，append = 当前消息投影 NDJSON 增量）。 */
-export type SessionPersistAction = 'read' | 'write' | 'append' | 'appendLog' | 'mkdir' | 'delete';
+/** 会话持久化动作（会话语义四动作——D-1；消费动词与 chat-session 卷 CRUD
+ *  一一对应：全量快照读写 / 目录扫描 / 墓碑删除）。运行时单一真源
+ *  （sessions-seam.test ② 钉形与类型共用；变更 = 加数组元素 + provider 实现）。 */
+export const SESSION_PERSIST_ACTIONS = ['read_volume', 'list_volumes', 'save_volume', 'delete_volume'] as const;
 
-/** 会话持久化 provider：一个「agent/会话状态存储后端」。args 为 snake_case
- *  RPC 参数（与现有 agent-store 调用形状逐字节一致）。 */
+export type SessionPersistAction = (typeof SESSION_PERSIST_ACTIONS)[number];
+
+/** 会话持久化 provider：一个「会话存储后端」。args 为 snake_case RPC 参数
+ *  （root = 会话根目录；data = 快照 JSON 串——provider 存取不透明 JSON）。 */
 export interface SessionPersistenceProvider {
   /** 注册表寻址 id（稳定行标识）。 */
   id: string;
@@ -51,6 +65,20 @@ export class SessionPersistenceService extends Service {
   list(): SessionPersistenceProvider[] {
     return this.registry.list();
   }
+
+  /** Service 表面执行单点（D-6）：与模块级 sessionExecute 同一注册表决议——
+   *  动态插件守卫白名单（sandbox.ts REQUIRED_FN_MEMBERS）声明
+   *  sessionPersistence: ['execute']，本方法使该声明指向真实可调面。 */
+  async execute(action: SessionPersistAction, args: Record<string, unknown>): Promise<string> {
+    const providers = activeSessionPersistenceProviders();
+    const provider = providers[providers.length - 1];
+    if (!provider) {
+      throw new Error(
+        'SESSION_PERSISTENCE_PROVIDER: 无已注册会话持久化 provider——请确认 sessionPersistence 通道装配（生产 = loadBuiltinPlugins）',
+      );
+    }
+    return provider.execute(action, args);
+  }
 }
 
 // ── 消费读取面（模块级可变态归属 CONVENTIONS §1.10 第 3 类）──
@@ -67,14 +95,15 @@ export function registeredSessionPersistenceProviders(): SessionPersistenceProvi
   return _activeSessions?.list() ?? [];
 }
 
-/** 当前会话持久化 provider 贡献（无服务/无注册 = 空集——agent-store 的「后注册胜」扫描源）。
+/** 当前会话持久化 provider 贡献（无服务/无注册 = 空集——「后注册胜」扫描源）。
  *  裁剪面（平台化 Phase 3）：组合 `seam/sessionPersistence` 域禁用的 id 从视图剔除。 */
 export function activeSessionPersistenceProviders(): SessionPersistenceProvider[] {
   const disabled = seamDisabled('sessionPersistence');
   return registeredSessionPersistenceProviders().filter((p) => !disabled.has(p.id));
 }
 
-/** 会话持久化消费单点（agent-store 唯一入口；无注册响亮报错——错误不静默）。 */
+/** 会话持久化消费单点（产品会话卷持久化唯一入口——chat-session/chat-core；
+ *  无 provider 响亮报错——错误不静默）。 */
 export function sessionExecute(action: SessionPersistAction, args: Record<string, unknown>): Promise<string> {
   const providers = activeSessionPersistenceProviders();
   const provider = providers[providers.length - 1];
@@ -93,7 +122,8 @@ export function sessionExecute(action: SessionPersistAction, args: Record<string
 declare module '../cordis/context' {
   interface Context {
     /** 会话持久化注册表（平台化 Phase 2 · D11）——默认 provider =
-     *  builtin/rust-sessions（agent/sessions-provider.ts）；消费面 = agent-store。 */
+     *  builtin/rust-sessions（plugins/builtin/sessions-builtin）；消费面 =
+     *  产品会话卷持久化（chat-session/chat-core 四动作）。 */
     sessionPersistence: SessionPersistenceService;
   }
 }

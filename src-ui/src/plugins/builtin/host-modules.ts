@@ -134,7 +134,7 @@ import {
 import { resolveApiKey } from '../../provider/credentials';
 import { createOpenAIProvider } from '../../provider/openai';
 import { thinkingOptionsFor } from '../../provider/thinking';
-import { typedJsonRpc, typedRpc } from '../../rpc-contract';
+import { kernelListDirectory, kernelReadFileRaw, kernelWriteFile, typedJsonRpc } from '../../rpc-contract';
 import {
   autoUpdateCheckEnabled,
   effectiveModels,
@@ -332,8 +332,14 @@ const faceDeps = {
   resolveApiKey,
   thinkingOptionsFor,
   typedJsonRpc,
-  // S2 供应商产物运行时依赖（经宿主桥 mods.faceDeps 取用）
-  typedRpc,
+  // sessions-builtin（2026-09-05 seam 动作面重设计）：默认 provider 换
+  // kernel* 具名 helper（D-3/D-4——行为与今日直连逐字节一致 + 测试 mock 面
+  // 零迁移）。graph-builtin agentInvoke 先例：宿主桥 faceDeps 取用。
+  // （typedRpc 孤儿键随 sessions-builtin 换轨移除——旧默认 provider 走 RPC
+  //  直呼的唯一供给源；现无任何产物 host 面消费它。）
+  kernelReadFileRaw,
+  kernelListDirectory,
+  kernelWriteFile,
   agentInvoke,
   spawnSubAgentImpl,
   createAnthropicProvider,

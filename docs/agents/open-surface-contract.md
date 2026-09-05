@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：12
+当前版本：13
 
-<!-- contract-fingerprint: 8d5688762604b764e1f49854362804488b0ff74b06b5da899e778d0228bd6671 -->
+<!-- contract-fingerprint: 677baa3a97eefede8eeed6f44c0f44865bf69393ce284bb3ac5bc51f78eb7d0c -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -19,7 +19,7 @@
 | `src/composition/services.ts` | `ctx.llm`（`LlmAdapterContribution`）+ ContributionRegistry 内核 + panels/commands/tools 通道 def 形状 |
 | `src/composition/fs-service.ts` | `ctx.fs`（`FsProvider` / `FsAction` 11 动作 / `FsCallOptions` dispatch 腰） |
 | `src/composition/shell-service.ts` | `ctx.shell`（`ShellProvider` / `ShellAction` 四动作；subprocess 并入） |
-| `src/composition/session-persistence-service.ts` | `ctx.sessionPersistence`（六动词 provider + `sessionExecute` 消费单点） |
+| `src/composition/session-persistence-service.ts` | `ctx.sessionPersistence`（`SessionPersistenceProvider` 四动词 read_volume/list_volumes/save_volume/delete_volume + `sessionExecute` 消费单点 + Service.execute） |
 | `src/composition/graph-service.ts` | `ctx.graph`（`GraphProvider.invoke` + `graphExecute` 消费单点） |
 | `src/composition/subagent-service.ts` | `ctx.subagents`（`SubagentProvider` / `SubAgentSpawnArgs·Outcome`） |
 | `src/composition/seam-resolution.ts` | seam 裁剪面（`SEAM_DOMAINS` 七域 / `SeamDisabledMap` / patch `seam/<域>` 域契约） |
@@ -47,6 +47,7 @@
 | 10 | 2026-09-04 | default-loop 每步 drain_bg_notifications 换 tool_call 信封（kernelShellCall 寻址 builtin.shell.drain_bg_notifications，旧 RPC 分支随 P2-4 退役）；无契约形状变更 | kernel-plugin-runtime P2-4 |
 | 11 | 2026-09-04 | default-loop 死 import 清理（删 kernelShellCall 未用导入；R1 biome 0/0 收口连带）；无契约形状变更 | R1 TS 权限策略层（permission-policy 单真源） |
 | 12 | 2026-09-05 | default-loop 每步 drain_bg_notifications 换 process_cap 能力口直呼（kernelProcessCall，builtin.shell 信封随 shell 域收口退役）；无契约形状变更 | kernel-capability-c3-design.md R3-d（shell 域收口） |
+| 13 | 2026-09-05 | 会话持久化 seam 动作面重设计（C 定案）：六动词（read/write/append/appendLog/mkdir/delete——旧 agent-store 磁盘 CRUD 形状）→ 四动词会话语义（read_volume/list_volumes/save_volume/delete_volume）；Service 增 execute 方法（模块级 sessionExecute 保留为产品代码消费单点） | session-persistence-seam-wiring-plan.md（D-1/D-5/D-6/D-8） |
 
 ## 变更流程（guard 红 → 修复四步）
 

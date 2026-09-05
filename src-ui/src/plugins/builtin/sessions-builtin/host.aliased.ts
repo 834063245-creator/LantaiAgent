@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // 会话持久化 provider · 宿主依赖面 · 构建产物域。
-// 运行时依赖 typedRpc 经宿主桥 mods.faceDeps 取用。
+// 运行时依赖 kernel* 具名 helper 经宿主桥 mods.faceDeps 取用。
 
 /* eslint-disable */
 interface PluginHostBridge {
@@ -19,4 +19,6 @@ function requireHost(): PluginHostBridge {
 
 const impl = requireHost().mods.faceDeps as unknown as typeof import('./host');
 
-export const typedRpc = impl.typedRpc;
+export const kernelReadFileRaw = impl.kernelReadFileRaw;
+export const kernelListDirectory = impl.kernelListDirectory;
+export const kernelWriteFile = impl.kernelWriteFile;

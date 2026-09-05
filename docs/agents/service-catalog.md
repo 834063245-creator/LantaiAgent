@@ -45,7 +45,7 @@ LLM adapter 注册表（S1-1 起；平台化 Phase 1 升格为 ctx.llm seam）�
 
 ### `ctx.sessionPersistence` — SessionPersistenceService（swappable seam（可换实现））
 
-会话持久化注册表（平台化 Phase 2 · D11）——默认 provider = builtin/rust-sessions（agent/sessions-provider.ts）；消费面 = agent-store。
+会话持久化注册表（平台化 Phase 2 · D11）——默认 provider = builtin/rust-sessions（plugins/builtin/sessions-builtin）；消费面 = 产品会话卷持久化（chat-session/chat-core 四动作）。
 
 - owner：`src/composition/session-persistence-service.ts`
 - 默认实现 / 贡献者 id：`builtin/rust-sessions`

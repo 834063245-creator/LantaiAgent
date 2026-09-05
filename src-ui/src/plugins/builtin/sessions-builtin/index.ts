@@ -3,57 +3,79 @@
 
 // 内置会话持久化 provider（平台化 Phase 2 · D11 默认实现）——真源产物化
 // （plugin-bundle-retirement S2，2026-09-03）。原 agent/sessions-provider.ts
-// 整体迁入；运行时依赖 typedRpc 经宿主桥取用。
-// P2-2 曾把 fs 域动作（read/write/appendLog/mkdir/delete）改走 tool_call 信封
-// 寻址 builtin.fs；R5 脚手架拆除（2026-09-05）信封退役——fs 域动作换 fs_cap
-// 能力口直呼。seam 的 args 本就是 snake_case RPC 参数（无腰设计，无键映射，
-// 顶层透传）；append（会话 NDJSON 增量 agent_session_append）保留 RPC 直呼
-// ——非 fs 域命令。
+// 整体迁入；运行时依赖 kernel* 具名 helper 经宿主桥取用。
+//
+// 动作面重设计（session-persistence-seam-wiring-plan C 定案，2026-09-05）：
+// 旧 SESSIONS_FS_CAP_BY_ACTION 六动作表（fs 域五动作 + append 走 RPC 直呼）
+// 整表退役——动作面全换，无保留面。四动作会话语义（read_volume/list_volumes/
+// save_volume/delete_volume）直接转发 kernel* 具名 helper（kernelReadFileRaw/
+// kernelListDirectory/kernelWriteFile——既有 fs_cap 用户路径包装）：
+//   · 行为与今日直连（chat-session kernel* 直呼）逐字节一致（D-3 理由 ①）；
+//   · 测试 mock 面（tests/helpers/kernel-fs.ts 站到 rpc-contract 具名 helper 上）
+//     零迁移——会话族测试 mock 命中的就是本 provider 走的同一层（D-3 理由 ②，
+//     三命运黄金标准：换轨 commit 测试 diff 零 = 行为零漂移最强证据）。
+// append/appendLog 从动作面删除（D-5——目标 RPC agent_session_append 零 TS
+// 产线调用方）；agent_session_append RPC 本体留 Rust 不动（TS 死链标注，退役
+// 另立——rpc-contract.ts:524-534）。
 
 import type {
   SessionPersistAction,
   SessionPersistenceProvider,
 } from '../../../composition/session-persistence-service';
 import type { Context } from '../../../cordis';
-import { typedRpc } from './host';
+import { kernelListDirectory, kernelReadFileRaw, kernelWriteFile } from './host';
 
-/** 会话持久化动作 → fs_cap 能力口动作（fs 域五动作；append 走 RPC 直呼，
- *  见 builtinSessionsProvider——会话 NDJSON 增量非 fs 域命令）。
- *  导出供 sessions-seam.test.ts 形状钉（P2-C1 惯例，同 fs-builtin
- *  FS_ACTION_TO_CAP）。read 即 fs_cap 原文语义（缺省 line_numbers=false——
- *  JSON 消费面惯用形，kernelReadFileRaw/canvas 先例；信封时代 read_file_content
- *  默认行号文本由旧消费面 agent-store 自剥，该消费面已内存化退役，无字节级
- *  保真对象）。 */
-export const SESSIONS_FS_CAP_BY_ACTION: Partial<
-  Record<SessionPersistAction, 'read' | 'write' | 'append' | 'create_dir' | 'delete'>
-> = {
-  read: 'read',
-  write: 'write',
-  appendLog: 'append',
-  mkdir: 'create_dir',
-  delete: 'delete',
-};
+/** 动作 → kernel* helper 的 args 组装。args 已是 snake_case RPC 参数直传
+ *  （无腰设计）；helper 返回已解析路径/原文。消费方各自 parse（见 D-1：
+ *  read_volume 返 JSON 串或 'null'；list_volumes 返文件名 JSON 数组——helper
+ *  返回 DirEntry[]，本层把文件名抽出序列化，目录由 DirEntry.is_dir 滤掉）。 */
+async function executeViaKernel(action: SessionPersistAction, args: Record<string, unknown>): Promise<string> {
+  const root = String(args.root ?? '');
+  const id = String(args.id ?? '');
+  switch (action) {
+    case 'read_volume': {
+      try {
+        return await kernelReadFileRaw(`${root}/${id}.json`);
+      } catch {
+        // 缺失/坏文件 = 卷不存在（readVolumeData 判空语义——与今日
+        // readSessionJSONOrNull 同源；错误不静默在消费方 catch 面）
+        return 'null';
+      }
+    }
+    case 'list_volumes': {
+      let names: string[] = [];
+      try {
+        const entries = await kernelListDirectory(root, false);
+        // provider 侧滤目录；保留 _active.json 不过滤（消费方各自 parse id /
+        // 墓碑判别——scanMaxSessionId 与 listSavedSessions 现过滤 _active.json，
+        // 语义在消费方保真，不在本层）
+        names = entries.filter((e) => !e.is_dir).map((e) => e.name);
+      } catch {
+        /* 目录缺席/读失败 = 空（首启常态） */
+      }
+      return JSON.stringify(names);
+    }
+    case 'save_volume': {
+      await kernelWriteFile(`${root}/${id}.json`, String(args.data ?? ''));
+      return 'null';
+    }
+    case 'delete_volume': {
+      // 墓碑重写 deleted:true（D-2）——listSavedSessions 过滤契约与恢复剪枝
+      // 消费方依赖此形态，行为字节不变；SQLite provider 可真删
+      await kernelWriteFile(
+        `${root}/${id}.json`,
+        JSON.stringify({ id: Number(id), deleted: true, label: '', messages: [], savedAt: '' }),
+      );
+      return 'null';
+    }
+  }
+}
 
 /** 默认 Rust 会话持久化 provider（id 'builtin/rust-sessions'）。 */
 export const builtinSessionsProvider: SessionPersistenceProvider = {
   id: 'builtin/rust-sessions',
-  async execute(action, args) {
-    const capAction = SESSIONS_FS_CAP_BY_ACTION[action];
-    if (!capAction) {
-      return (await typedRpc('agent_session_append', args as never)) ?? ''; // append（NDJSON 增量）
-    }
-    const raw = await typedRpc('fs_cap', { ...args, action: capAction } as never);
-    if (action === 'read') {
-      // fs_cap read 返回 {path, content}——解包 content 原文（fs-builtin read 分支
-      // 同款；非 JSON（异常文本）直通）。
-      try {
-        const parsed = JSON.parse(raw) as { content?: unknown };
-        if (typeof parsed.content === 'string') return parsed.content;
-      } catch {
-        // 非 JSON——直通
-      }
-    }
-    return raw ?? '';
+  execute(action, args) {
+    return executeViaKernel(action, args);
   },
 };
 
