@@ -1,8 +1,8 @@
 # 软件级插件（app shell）— 立案与施工图纸
 
 > 状态：**In progress（2026-09-03 立案；2026-09-05 决策点全定稿；2026-09-06 开工，
-> S0-S4 竣工——S1 数据目录 / S2 受治治理 / S3 窗口原语 / S4 唤醒回调已落地；
-> 余 S5 notes-app 范本 + S6 文档收口 + 管理 UI 面（设计定稿后）**
+> S0-S5 竣工——S1 数据目录 / S2 受治治理 / S3 窗口原语 / S4 唤醒回调 / S5
+> notes-app 范本已落地；余 S6 文档收口 + 管理 UI 面（设计定稿后）+ 用户真机验收**
 > 一句话：为兰台补「软件级插件」能力——四件套（窗口原语 / 插件数据目录 /
 > 受治进程生命周期治理 / 后台唤醒回调），让完整软件能以插件形态住进兰台、
 > 被 Agent 协议驱动；附端到端软件示例 `examples/plugins/notes-app/`
@@ -450,6 +450,52 @@ toolHandlers——实现跑在宿主 webview，用宿主设施）与 MCP 路（m
   （对位 first-party-manifest / hello 的守护套路）。
 - **验收**：真机跑通端到端（用户）：装载 → 开窗 → Agent 调 notes_create →
   窗内可见 → notes_export 异步完成唤醒 → 关窗进程回收 → 卸载回收。
+- **竣工（2026-09-06）**：落地面——`examples/plugins/notes-app/` 五件：
+  manifest（app `{entry: "./app/index.html", mode: floating, title: 便签}` +
+  dataDir true + mcpServers `{notes, stdio, node ./server.cjs, lifecycle:
+  lazy}` + tools notes_open——§2.3 草案逐字段落地）；entry.js（工具口执行体
+  notes_open：调宿主桥 `windows.open('notes-app')`，宿主桥缺席降级文本；
+  apply 零副作用——四件套挂接全由 wrapper 承担）；server.cjs（零依赖
+  Node，**两副面孔**：MCP stdio——initialize / tools/list 数据四工具 /
+  tools/call / **lantai/deferred 完成通知**（progressToken 回带 + 自订
+  taskId）；窗 HTTP——127.0.0.1 动态端口 + **CORS `*`**（窗是 sandbox
+  iframe 的 opaque origin）+ 端口落 `port.json` 进数据地盘（窗经桥 fs 读到
+  再直连）；**数据权威单点 = server 进程**（notes.json 单写者——窗与工具
+  都经它不并发打架）；`LANTAI_PLUGIN_DATA_DIR` env 定位地盘（独立裸跑回退
+  插件目录 .data/）；notes_export 双模：无 taskId 提交（卡片 +
+  `{taskId, progressToken}` 挂账，1.2s 后写导出文件 + 发完成通知），带
+  taskId **取结果**（凭定位键按需取——内容不进唤醒体））；app/index.html
+  （自包含窗页：桥 SDK——call/result reqId 关联 + bridge-ready 引导 +
+  window-closing 告警语义；启动时 fs.read port.json 重试环（lazy 档开窗
+  触发拉起，server 可能还在起）；增删经 HTTP 直连 server；notify 演示桥
+  面能力）；README（宿主四件套逐件对照表 / 插件自己的责任 / 两张门各放
+  什么 / 复制范本改哪五处 / 三档启动策略差异 / 真机验收路径）。守护测试
+  两文件 7 例（环境按原生面拆分——真进程集成 node、loader 集成 jsdom）：
+  `tests/notes-app-example.test.ts`（@vitest-environment node——**真
+  server.cjs 进程集成**：child_process spawn 非 fake IO，lazy 装配触发拉起
+  → 握手就绪 → 数据四工具随 tools/list 进 registry（`mcp__notes__*` 四名
+  钉死）→ notes_create 落数据地盘 notes.json → notes_list 可见 →
+  notes_export 提交即回卡片 + **真 server 发 lantai/deferred → 桥翻译成
+  唤醒**（归因 `notes-app · mcp__notes__notes_export` 钉死）→ 凭 taskId
+  取导出内容 → 删；窗 HTTP 面：port.json 落盘 + /notes CORS `*` 应答 +
+  OPTIONS 预检 204）+ `tests/notes-app-loader.test.ts`（jsdom——真
+  manifest + 真 entry 模块装载：ensure 以插件名调用 / 窗口定义登记
+  entryUrl / notes_open 行 `plugin/notes-app/notes_open` → 执行调宿主桥
+  windows 设施开窗 / 停用摘定义）。**踩坑实录**：①src/bridge.ts 模块顶层
+  裸引用 `window`（`'__TAURI_INTERNALS__' in window`）——node 环境真进程
+  测试炸，加 `typeof window !== 'undefined' &&` 守卫（webview/jsdom 语义
+  逐字节不变，node 回落 mock 通道）；②真 entry 导入：examples 在 src-ui
+  根外，file URL 被 vite fs.allow 拒——自包含 ESM（零 import）经 data URL
+  装载，逐字节是范本真身；③loader 测试裸 `new Context()` 下 wrapper
+  `inject ['tools']` fiber PENDING、apply 静默不跑（交接踩坑 ④ 重现）——
+  根先挂 compositionServicesPlugin。**顺带修复**：bridge.ts node 守卫是
+  真进程集成测试（任何插件 server.cjs 走 child_process 直测）的地基。
+  门禁全绿：vitest 264 文件（2593 passed / 4 skipped——基线 2586 + 新增
+  7 对账吻合，bridge 守卫零回归）、build、biome ci 696 files 0 errors、
+  convergence standard+minimal 零漂移（示例不进装配面——convergence 夹具
+  自持，表序字节契约不受扰动）。**真机验收清单（用户跑）**：装载 → 开窗
+  → Agent 调 notes_create 窗内可见 → notes_export 异步唤醒 → 关窗空闲
+  回收 → 卸载 `.trash`。
 
 ### S6 文档收口
 - `docs/plugins/README.md`：平台契约补「软件级插件（app shell）」章：

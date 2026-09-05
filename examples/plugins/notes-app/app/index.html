@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>便签</title>
+  <!--
+    notes-app 窗内容（app shell 范本 · S5）——插件自包含 HTML（iframe 载体，
+    sandbox 无 allow-same-origin：opaque origin，拿不到宿主桥
+    window.__lantai_plugin_host__）。宿主能力经 postMessage 白名单桥按需取：
+      - fs.read：读数据地盘 port.json 找后端 HTTP 面（fs 是白名单默认最小集）；
+      - notify：增删后向宿主发一条状态通知（宿主状态栏）。
+    宿主 → 窗广播只有 bridge-ready / window-closing 两种（加载完成/卸载告警）。
+    数据不落窗：增删直经后端 HTTP API（数据权威单点 = server 进程），窗关
+    无损。
+  -->
+  <style>
+    /* 窗内渲染完全归插件——本范本自带一套轻量便签皮（不依赖宿主 CSS token） */
+    :root {
+      --paper: #ece7dc;
+      --paper-deep: #e3dcc9;
+      --ink: rgba(38, 34, 28, 0.94);
+      --ink-2: rgba(38, 34, 28, 0.7);
+      --ink-3: rgba(38, 34, 28, 0.48);
+      --seal: #a63a2e;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      font-family: "EB Garamond", "Noto Serif SC", "Songti SC", serif;
+      background: var(--paper);
+      color: var(--ink);
+      font-size: 14px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .head {
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(38, 34, 28, 0.3);
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex: none;
+    }
+    .head .t { font-size: 15px; font-weight: 600; }
+    .head .m { font-family: Consolas, monospace; font-size: 10.5px; color: var(--ink-3); margin-left: auto; }
+    .list { flex: 1; overflow-y: auto; padding: 10px 14px; }
+    .note {
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      background: rgba(255, 250, 238, 0.55);
+      border-left: 2px solid rgba(38, 34, 28, 0.5);
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+    }
+    .note .text { flex: 1; white-space: pre-wrap; line-height: 1.65; }
+    .note .meta { font-family: Consolas, monospace; font-size: 10px; color: var(--ink-3); flex: none; }
+    .note .del {
+      flex: none; border: none; background: transparent; color: var(--ink-3);
+      cursor: pointer; font-size: 13px; padding: 0 2px;
+    }
+    .note .del:hover { color: var(--seal); }
+    .empty { color: var(--ink-3); padding: 18px 0; text-align: center; font-size: 12.5px; }
+    .composer {
+      flex: none; display: flex; gap: 8px; padding: 10px 14px;
+      border-top: 1px solid rgba(38, 34, 28, 0.3); background: var(--paper-deep);
+    }
+    .composer textarea {
+      flex: 1; resize: none; height: 44px; padding: 6px 8px;
+      font: inherit; color: var(--ink); background: rgba(255, 250, 238, 0.7);
+      border: 1px solid rgba(38, 34, 28, 0.4); outline: none;
+    }
+    .composer button {
+      flex: none; padding: 0 14px; font: inherit; cursor: pointer;
+      color: #fff; background: var(--ink); border: none;
+    }
+    .composer button:hover { background: var(--seal); }
+    .boot { padding: 20px 16px; color: var(--ink-3); font-size: 12.5px; line-height: 1.8; }
+  </style>
+</head>
+<body>
+  <div class="head">
+    <span class="t">便签</span>
+    <span class="m">notes-app · 范本</span>
+  </div>
+  <div class="boot" id="boot">正在连接后端…（受治进程 lazy 档：开窗触发拉起，稍候）</div>
+  <div class="list" id="list" hidden></div>
+  <div class="composer" id="composer" hidden>
+    <textarea id="text" placeholder="写一条便签…（Ctrl+Enter 保存）"></textarea>
+    <button id="save" type="button">存</button>
+  </div>
+
+  <script>
+    'use strict';
+    // ── 桥 SDK（协议与宿主 plugins/window-bridge.ts 对拍） ──
+    var PROTO = 'lantai-plugin-bridge';
+    var reqSeq = 0;
+    var pending = new Map();
+    window.addEventListener('message', function (ev) {
+      var d = ev.data;
+      if (!d || d.protocol !== PROTO) return;
+      if (d.op === 'result' && pending.has(d.reqId)) {
+        var p = pending.get(d.reqId);
+        pending.delete(d.reqId);
+        if (d.ok) p.resolve(d.result);
+        else p.reject(new Error(d.error));
+        return;
+      }
+      if (d.op === 'event' && d.event === 'bridge-ready') boot();
+      if (d.op === 'event' && d.event === 'window-closing') {
+        // 告警语义（收到无保证）：本范本数据都在后端，无需冲写
+        document.getElementById('boot').textContent = '窗口即将关闭…';
+      }
+    });
+    function call(method, params) {
+      return new Promise(function (resolve, reject) {
+        var reqId = ++reqSeq;
+        pending.set(reqId, { resolve: resolve, reject: reject });
+        window.parent.postMessage({ protocol: PROTO, op: 'call', reqId: reqId, method: method, params: params || {} }, '*');
+      });
+    }
+
+    // ── 连接后端：fs 读 port.json（数据地盘）→ HTTP 面 ──
+    var api = null;
+    function boot() {
+      connectLoop(0);
+    }
+    function connectLoop(attempt) {
+      call('fs.read', { path: 'port.json' }).then(
+        function (content) {
+          var port = JSON.parse(content).port;
+          api = 'http://127.0.0.1:' + port;
+          document.getElementById('boot').hidden = true;
+          document.getElementById('list').hidden = false;
+          document.getElementById('composer').hidden = false;
+          refresh();
+        },
+        function () {
+          if (attempt < 100) setTimeout(function () { connectLoop(attempt + 1); }, 200);
+          else document.getElementById('boot').textContent = '后端连接失败：port.json 不可读（数据目录未分配或 server 未起——重开窗口重试）';
+        }
+      );
+    }
+    function refresh() {
+      fetch(api + '/notes').then(function (r) { return r.json(); }).then(function (data) { render(data.notes || []); });
+    }
+    function render(notes) {
+      var list = document.getElementById('list');
+      list.textContent = '';
+      if (notes.length === 0) {
+        var e = document.createElement('div');
+        e.className = 'empty';
+        e.textContent = '暂无便签——下方写第一条。';
+        list.appendChild(e);
+        return;
+      }
+      notes.forEach(function (n) {
+        var row = document.createElement('div');
+        row.className = 'note';
+        var text = document.createElement('div');
+        text.className = 'text';
+        text.textContent = n.text;
+        var meta = document.createElement('div');
+        meta.className = 'meta';
+        meta.textContent = (n.createdAt || '').slice(0, 16).replace('T', ' ');
+        var del = document.createElement('button');
+        del.className = 'del';
+        del.type = 'button';
+        del.title = '删除';
+        del.textContent = '✕';
+        del.onclick = function () {
+          fetch(api + '/notes/' + encodeURIComponent(n.id), { method: 'DELETE' }).then(function () {
+            notify('便签已删除');
+            refresh();
+          });
+        };
+        row.appendChild(text); row.appendChild(meta); row.appendChild(del);
+        list.appendChild(row);
+      });
+    }
+    function notify(text) {
+      call('notify', { text: text }).catch(function () { /* 桥面降级——不炸 UI */ });
+    }
+    function save() {
+      var box = document.getElementById('text');
+      var text = box.value.trim();
+      if (text === '') return;
+      fetch(api + '/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text }),
+      }).then(function (r) {
+        if (r.ok) { box.value = ''; notify('便签已保存'); refresh(); }
+      });
+    }
+    document.getElementById('save').onclick = save;
+    document.getElementById('text').addEventListener('keydown', function (ev) {
+      if ((ev.ctrlKey || ev.metaKey) && ev.key === 'Enter') save();
+    });
+  </script>
+</body>
+</html>

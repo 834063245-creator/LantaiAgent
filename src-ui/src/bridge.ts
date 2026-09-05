@@ -3,8 +3,10 @@
 
 // Bridge — 检测 Tauri 与浏览器环境，将 invoke/listen 路由到真实或 mock 实现
 // 用此模块替代 '@tauri-apps/api/core' / '@tauri-apps/api/event'
+// typeof 守卫：node 环境（真进程集成测试 @vitest-environment node）无
+// window——回落 mock 通道（与浏览器 mock 模式同路），webview/jsdom 语义不变。
 
-const IS_TAURI = '__TAURI_INTERNALS__' in window;
+const IS_TAURI = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 import { log } from './agent/logger';
 

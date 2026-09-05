@@ -1,0 +1,29 @@
+{
+  "name": "notes-app",
+  "version": "1.0.0",
+  "description": "软件级插件范本（app shell 四件套闭环 · S5）：完整软件以插件形态住进兰台——开窗即视图（iframe 真隔离 + postMessage 白名单桥）、装载即数据地盘（dataDir）、后端 = 零工具可拉起的受治 MCP server（lazy）、Agent 经两张门驱动五工具、异步导出走后台唤醒（minimal 定位键）。",
+  "entry": "entry.js",
+  "app": {
+    "entry": "./app/index.html",
+    "mode": "floating",
+    "title": "便签"
+  },
+  "dataDir": true,
+  "mcpServers": [
+    {
+      "name": "notes",
+      "transport": "stdio",
+      "command": "node",
+      "args": ["./server.cjs"],
+      "lifecycle": "lazy"
+    }
+  ],
+  "tools": [
+    {
+      "name": "notes_open",
+      "description": "打开便签软件窗口（工具口示例：窗口开合的工具语义归插件——本工具的执行体住在宿主 webview（entry.js），调宿主桥窗口设施开自己的窗；数据四工具住在 server.cjs 进程里，走 MCP 路随 tools/list 进注册表）。",
+      "parameters": { "type": "object", "properties": {}, "required": [] },
+      "readOnly": true
+    }
+  ]
+}
