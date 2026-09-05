@@ -789,7 +789,7 @@ mod tests {
         let path = write_manifest(
             &base,
             "lang.yml",
-            "manifest_version: 1\nkind: language\nname: mylang\nextensions: [\".MyL\", \"myli\"]\ngrammar:\n  builtin: python\nqueries:\n  structure: ./queries/s.scm\n  dataflow: ./queries/d.scm\n  skip_names: [\"builtins\"]\nfunc_kinds: [function_definition]\nclass_kinds: []\n",
+            "manifest_version: 1\nkind: language\nname: mylang\nextensions: [\".MyLP\", \"mylpi\"]\ngrammar:\n  builtin: python\nqueries:\n  structure: ./queries/s.scm\n  dataflow: ./queries/d.scm\n  skip_names: [\"builtins\"]\nfunc_kinds: [function_definition]\nclass_kinds: []\n",
         );
 
         let outcome = parse_manifest_file(&path, &base, &[]).unwrap();
@@ -797,7 +797,7 @@ mod tests {
             panic!("expected language outcome");
         };
         assert_eq!(lang.name, "mylang");
-        assert_eq!(lang.extensions, vec!["myl", "myli"]);
+        assert_eq!(lang.extensions, vec!["mylp", "mylpi"]);
         assert_eq!(lang.entry.structure_query, Some("(function_definition) @fn\n"));
         assert_eq!(lang.dataflow.len(), 2); // 每扩展名一条
         assert_eq!(lang.dataflow[0].config.skip_names, &["builtins"][..]);
