@@ -45,6 +45,7 @@ import { hasArgsToShow, prettyToolArgs } from './tool-text';
 
 import {
   ASSET_DERIVED,
+  ASSET_TOKENS,
   CHROME_DERIVED,
   CHROME_TOKENS,
   FOLIO_TOKENS,
@@ -307,9 +308,31 @@ const FORM_OPT_DESC_LINE = ASSET_DERIVED.formOptDescLine;
 const FORM_OPT_DESC_INSET = ASSET_DERIVED.formOptDescInset; // padding 左右 10×2
 const FORM_OPT_GAP = ASSET_DERIVED.formOptGap; // .pp-form-options row-gap
 const FORM_SECTION_GAP = ASSET_DERIVED.formSectionGap; // body/options margin-bottom
-const FORM_ACTIONS_H = ASSET_DERIVED.formActionsH; // .pp-form-confirm 行
+const FORM_ACTIONS_H = ASSET_DERIVED.formActionsH; // 操作行（.pp-pc-actions + 钤印钮面）
 const FORM_BODY_FONT = `${ASSET_DERIVED.formBodySize}px ${SONG_STACK}`;
 const FORM_DESC_FONT = `${ASSET_DERIVED.formDescSize}px ${SONG_STACK}`;
+
+const BOARD_PAD_V = ASSET_DERIVED.boardPadV; // .pp-board padding 2×2
+const BOARD_COL_RULE = ASSET_DERIVED.boardColRule; // 列顶规线 + padding-top 6（结构计入列高）
+const BOARD_COL_TITLE_H = ASSET_DERIVED.boardColTitleH; // .pp-board-col-title + margin-bottom
+const BOARD_CARD_BORDER = ASSET_DERIVED.boardCardBorder;
+const BOARD_CARD_PAD_V = ASSET_DERIVED.boardCardPadV; // 卡 padding 6×2
+const BOARD_CARD_GAP = ASSET_DERIVED.boardCardGap;
+const BOARD_CARD_LABEL_H = ASSET_DERIVED.boardCardLabelH;
+const BOARD_CARD_BODY_H = ASSET_DERIVED.boardCardBodyH;
+const BOARD_CARD_FONT = `${ASSET_TOKENS.board.cardBodySize}px ${SONG_STACK}`;
+
+const TIMELINE_PAD_V = ASSET_DERIVED.timelinePadV; // .pp-timeline padding 2×2
+const TIMELINE_INSET = ASSET_DERIVED.timelineInset; // 节点轨 + 时标列 + 两道列距（正文宽 = w - inset）
+const TIMELINE_ITEM_GAP = ASSET_DERIVED.timelineItemGap; // 行距（轨线接续用同一值）
+const TIMELINE_NODE_H = ASSET_DERIVED.timelineNodeH; // 节点方块（含边框）
+const TIMELINE_TS_LINE = ASSET_DERIVED.timelineTsLine;
+const TIMELINE_TS_W = ASSET_DERIVED.timelineTsW;
+const TIMELINE_TS_FONT = ASSET_DERIVED.timelineTsFont;
+const TIMELINE_TITLE_LINE = ASSET_DERIVED.timelineTitleLine;
+const TIMELINE_BODY_LINE = ASSET_DERIVED.timelineBodyLine;
+const TIMELINE_TITLE_FONT = ASSET_DERIVED.timelineTitleFont;
+const TIMELINE_BODY_FONT = ASSET_DERIVED.timelineBodyFont;
 
 /* ── 拟策测高镜像（2026-08-30 溢出修复：PLAN_OPTIONS_H 118 / PLAN_HEAD_H 39 退役）──
  * 旧固定预算装不下两枚带描述的方案（实况 ≈163）+ 操作行按钮实高 49.4（旧 40）
@@ -509,7 +532,7 @@ function gridBodyH(p: { columns?: unknown; rows?: unknown; caption?: unknown }, 
   return h;
 }
 
-/** graph/tree 体高：确定性树布局几何镜像（GraphTreeBody 同款深度/规模公式）。 */
+/** tree 体高：确定性树布局几何镜像（GraphTreeBody 同款深度/规模公式）。 */
 function graphBodyH(payload: unknown, w: number): number {
   const p = payload as {
     nodes?: Array<{ id?: unknown; children?: Array<{ id?: unknown }> }>;
@@ -587,6 +610,104 @@ function assetPresentationOf(b: SourcedBlock): string | undefined {
   return pres && def.presentations.includes(pres) ? pres : def.defaultPresentation;
 }
 
+/** graph 分层布局体高（GraphLayeredBody 同款几何镜像）：最长路径分层，
+ *  行高 = 最宽层的节点数。空 nodes（查询式/空数据）= 「数据不可用」单行占位。 */
+function graphLayeredBodyH(payload: unknown, w: number): number {
+  const p = payload as { nodes?: Array<{ id?: unknown }>; edges?: Array<{ from?: unknown; to?: unknown }> };
+  const nodes = Array.isArray(p.nodes) ? p.nodes.filter((n) => typeof n?.id === 'string') : [];
+  if (nodes.length === 0) return GRAPH_PAD_V + 30;
+  const edges = Array.isArray(p.edges)
+    ? p.edges.filter((e) => typeof e?.from === 'string' && typeof e?.to === 'string')
+    : [];
+  const layer = new Map<string, number>();
+  for (const n of nodes) layer.set(n.id as string, 0);
+  const maxPasses = edges.length + 2;
+  for (let pass = 0; pass < maxPasses; pass++) {
+    let changed = false;
+    for (const e of edges) {
+      const from = layer.get(e.from as string);
+      const to = layer.get(e.to as string);
+      if (from === undefined || to === undefined) continue;
+      if (from + 1 > to) {
+        layer.set(e.to as string, from + 1);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  const rowsInLayer = new Map<number, number>();
+  for (const l of layer.values()) rowsInLayer.set(l, (rowsInLayer.get(l) ?? 0) + 1);
+  const maxLayer = Math.max(...rowsInLayer.keys());
+  const maxRows = Math.max(...rowsInLayer.values());
+  const W = Math.max(GRAPH_MIN_W, (maxLayer + 1) * GRAPH_COL_W + GRAPH_ORIGIN);
+  const H = Math.max(GRAPH_MIN_H, maxRows * GRAPH_ROW_H + 30);
+  return GRAPH_PAD_V + Math.min((w * H) / W, GRAPH_SVG_MAX_H);
+}
+
+/** board 体高：横排等高列（flex 行）——列高 = 列题 + Σ 卡高，取最大列。 */
+function boardBodyH(p: { columns?: unknown }, w: number): number {
+  const columns = Array.isArray(p.columns)
+    ? p.columns.filter((c): c is Record<string, unknown> => c != null && typeof c === 'object')
+    : [];
+  if (columns.length === 0) return BOARD_PAD_V + 30;
+  const colGapTotal = (columns.length - 1) * ASSET_TOKENS.board.colGap;
+  const cardW = Math.max(60, (w - colGapTotal) / columns.length - 20); // -20 = 卡内 padding 10×2
+  let maxColH = 0;
+  for (const col of columns) {
+    let h = BOARD_COL_RULE + 6 + BOARD_COL_TITLE_H; // 顶规线 + padding-top + 列题
+    const cards = Array.isArray(col.cards)
+      ? (col.cards as Array<Record<string, unknown>>).filter((c) => c != null && typeof c === 'object')
+      : [];
+    for (const card of cards) {
+      h += BOARD_CARD_BORDER + BOARD_CARD_PAD_V + BOARD_CARD_LABEL_H + BOARD_CARD_GAP;
+      const body = card.body;
+      if (typeof body === 'string' && body) {
+        h += measureTextHeight(body, cardW, BOARD_CARD_FONT, BOARD_CARD_BODY_H) + 2;
+      }
+    }
+    maxColH = Math.max(maxColH, h);
+  }
+  return BOARD_PAD_V + maxColH;
+}
+
+/** timeline 体高：逐项时标/标题/正文实测行数 + 行距（正文宽 = w - 轨/时标 inset）。 */
+function timelineBodyH(p: { items?: unknown }, w: number): number {
+  const items = Array.isArray(p.items)
+    ? p.items.filter((c): c is Record<string, unknown> => c != null && typeof c === 'object')
+    : [];
+  if (items.length === 0) return TIMELINE_PAD_V + 30;
+  const mainW = Math.max(80, w - TIMELINE_INSET);
+  let h = TIMELINE_PAD_V;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    const ts = typeof it.ts === 'string' ? it.ts : '';
+    const title = typeof it.title === 'string' ? it.title : '';
+    const body = typeof it.body === 'string' ? it.body : '';
+    // 行高 = max(标题行, 时标列行)；时标按其列宽换行实测
+    let lineH = TIMELINE_TITLE_LINE;
+    if (ts) {
+      const tsLines = Math.max(
+        1,
+        Math.ceil(
+          measureTextHeight(ts, Math.max(40, TIMELINE_TS_W), TIMELINE_TS_FONT, TIMELINE_TS_LINE) / TIMELINE_TS_LINE,
+        ),
+      );
+      lineH = Math.max(lineH, tsLines * TIMELINE_TS_LINE);
+    }
+    let itemH = Math.max(lineH, TIMELINE_NODE_H);
+    if (title) {
+      const titleLines = Math.max(
+        1,
+        Math.ceil(measureTextHeight(title, mainW, TIMELINE_TITLE_FONT, TIMELINE_TITLE_LINE) / TIMELINE_TITLE_LINE),
+      );
+      itemH = Math.max(itemH, titleLines * TIMELINE_TITLE_LINE);
+    }
+    if (body) itemH += measureTextHeight(body, mainW, TIMELINE_BODY_FONT, TIMELINE_BODY_LINE) + 2;
+    h += itemH + (i < items.length - 1 ? TIMELINE_ITEM_GAP : 0);
+  }
+  return h;
+}
+
 /** 资产/开放 kind 块体高（按表现原语分派；无注册表现 → JSON 兜底视图）。 */
 function measureAssetBlockHeight(b: SourcedBlock): number {
   const pres = assetPresentationOf(b);
@@ -601,8 +722,13 @@ function measureAssetBlockHeight(b: SourcedBlock): number {
     case 'grid':
       return gridBodyH(p as { columns?: unknown; rows?: unknown; caption?: unknown }, b.w);
     case 'graph':
+      return graphLayeredBodyH(p, b.w);
     case 'tree':
       return graphBodyH(p, b.w);
+    case 'board':
+      return boardBodyH(p as { columns?: unknown }, b.w);
+    case 'timeline':
+      return timelineBodyH(p as { items?: unknown }, b.w);
     case 'html':
       return HTML_BODY_PAD_V + HTML_FRAME_DEFAULT_H;
     case 'form':

@@ -159,6 +159,8 @@ function applyAssetFinal(parts: AssistantPart[], asset: AssetEventData): boolean
     ...(asset.title !== undefined ? { title: asset.title } : {}),
     payload: asset.payload,
     finalised: true,
+    // confirm 实时卡：决议回调随事件挂进 part（瞬态——重载后无回调 = 只读态）
+    ...(asset.onResponse ? { _confirmCallback: asset.onResponse } : {}),
   };
   const idx = parts.findIndex((p) => p.type === 'block' && p.assetId === asset.assetId);
   if (idx >= 0) parts[idx] = part;
@@ -203,6 +205,9 @@ export function applyAssetUpdateToExistingParts(parts: AssistantPart[], asset: A
         ...(asset.title !== undefined ? { title: asset.title } : {}),
         payload: asset.payload,
         finalised: true,
+        // 确认卡的活回调跨 update 存续（协议：update 只碰 payload/presentation；
+        // 无回调的新事件顶掉表决入口 = 待决议卡按钮猝死）
+        ...(p._confirmCallback ? { _confirmCallback: p._confirmCallback } : {}),
       };
       changed = true;
     } else if (p.type === 'subagent') {

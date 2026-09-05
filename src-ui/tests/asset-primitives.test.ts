@@ -49,6 +49,8 @@ describe('composition/renderer-service — 首发表现原语（WO-6）', () => 
     ['deps_impact', 'tree', { nodes: [{ id: 'a' }], edges: [] }, 'pp-graph'],
     ['confirm', 'form', { title: '确认', options: [] }, 'pp-form'],
     ['html', 'html', { code: '<b>hi</b>' }, 'pp-html'],
+    ['board', 'board', { columns: [{ title: '待办', cards: [{ label: 'x' }] }] }, 'pp-board'],
+    ['timeline', 'timeline', { items: [{ ts: 'v1', title: '发布' }] }, 'pp-timeline'],
   ];
 
   it.each(cases)('kind=%s presentation=%s 渲染 %s 不崩', async (kind, pres, payload, cls) => {
@@ -97,7 +99,7 @@ describe('composition/renderer-service — 首发表现原语（WO-6）', () => 
     });
   });
 
-  it('畸形 payload 不崩：空表格/空图/空指标/无字段媒体/空图/空表单/空 html', async () => {
+  it('畸形 payload 不崩：空表格/空图/空指标/无字段媒体/空图/空表单/空 html/空看板/空时间轴', async () => {
     await withRenderers(() => {
       const cases: Array<[string, string, unknown, string]> = [
         ['table', 'grid', {}, 'pp-grid'],
@@ -107,6 +109,8 @@ describe('composition/renderer-service — 首发表现原语（WO-6）', () => 
         ['deps_impact', 'graph', {}, 'pp-graph'],
         ['confirm', 'form', {}, 'pp-form'],
         ['html', 'html', {}, 'pp-html'],
+        ['board', 'board', {}, 'pp-board'],
+        ['timeline', 'timeline', {}, 'pp-timeline'],
       ];
       for (const [kind, pres, payload, cls] of cases) {
         const Comp = resolveAssetBlock(kind, pres);
@@ -205,17 +209,20 @@ describe('composition/renderer-service — 首发表现原语（WO-6）', () => 
     });
   });
 
-  it('form 渲染 options 与 confirmLabel', async () => {
+  it('form 渲染 options 与 confirmLabel（实时卡带活回调）', async () => {
     await withRenderers(() => {
       const Comp = resolveAssetBlock('confirm', 'form')!;
       const html = renderToStaticMarkup(
         createElement(Comp, {
-          block: assetBlock('confirm', 'form', {
-            title: '请确认',
-            body: '正文',
-            options: [{ label: 'A', description: 'desc' }],
-            confirmLabel: '执行',
-          }),
+          block: {
+            ...assetBlock('confirm', 'form', {
+              title: '请确认',
+              body: '正文',
+              options: [{ label: 'A', description: 'desc' }],
+              confirmLabel: '执行',
+            }),
+            asset: { assetId: 'as_1', presentation: 'form', title: 't', finalised: true, _confirm: () => {} },
+          },
         }),
       );
       expect(html).toContain('请确认');
@@ -242,6 +249,140 @@ describe('composition/renderer-service — 首发表现原语（WO-6）', () => 
       const h2 = renderToStaticMarkup(createElement(Comp, { block }));
       expect(h1).toBe(h2);
       expect(h1).toContain('pp-graph-edge');
+    });
+  });
+
+  it('graph 分层布局（A5 二期）：链式 DAG 按层排布、节点/边齐全、确定性', async () => {
+    await withRenderers(() => {
+      const Comp = resolveAssetBlock('deps_impact', 'graph')!;
+      const block = assetBlock('deps_impact', 'graph', {
+        nodes: [
+          { id: 'a', label: 'A' },
+          { id: 'b', label: 'B' },
+          { id: 'c', label: 'C' },
+          { id: 'd', label: 'D' },
+        ],
+        edges: [
+          { from: 'a', to: 'b' },
+          { from: 'b', to: 'c' },
+          { from: 'a', to: 'd' },
+        ],
+      });
+      const h1 = renderToStaticMarkup(createElement(Comp, { block }));
+      const h2 = renderToStaticMarkup(createElement(Comp, { block }));
+      expect(h1).toBe(h2);
+      // 4 节点 3 边全渲染
+      expect(h1.match(/pp-graph-node-box/g)?.length).toBe(4);
+      expect(h1.match(/class="pp-graph-edge"/g)?.length).toBe(3);
+      // 分层几何：A 第 0 层、B/D 第 1 层、C 第 2 层——translate x 断言层号
+      // （x = 层号×160+40；同层 B/D x 相同、y 不同）
+      expect(h1).toContain('translate(40, 26)'); // A：层 0 行 0
+      expect(h1).toContain('translate(200, 26)'); // B：层 1 行 0（表序先于 D）
+      expect(h1).toContain('translate(200, 78)'); // D：层 1 行 1
+      expect(h1).toContain('translate(360, 26)'); // C：层 2 行 0
+    });
+  });
+
+  it('graph 查询式/空数据：渲染「数据不可用」占位，不画空白 SVG（2026-09-06 项 b 回归）', async () => {
+    await withRenderers(() => {
+      const graph = resolveAssetBlock('deps_impact', 'graph')!;
+      // 查询式 payload（只有 nodeId/depth，无直通数据）
+      const query = renderToStaticMarkup(
+        createElement(graph, { block: assetBlock('deps_impact', 'graph', { nodeId: 'core.ts', depth: 2 }) }),
+      );
+      expect(query).toContain('pp-graph-empty');
+      expect(query).toContain('数据不可用');
+      expect(query).not.toContain('<line');
+      // 空 nodes 数组
+      const empty = renderToStaticMarkup(
+        createElement(graph, { block: assetBlock('deps_impact', 'graph', { nodes: [], edges: [] }) }),
+      );
+      expect(empty).toContain('pp-graph-empty');
+      // tree 表现同款占位
+      const tree = resolveAssetBlock('deps_impact', 'tree')!;
+      const treeEmpty = renderToStaticMarkup(
+        createElement(tree, { block: assetBlock('deps_impact', 'tree', { nodeId: 'x' }) }),
+      );
+      expect(treeEmpty).toContain('pp-graph-empty');
+    });
+  });
+
+  it('board 渲染列/卡/tone 类名', async () => {
+    await withRenderers(() => {
+      const Comp = resolveAssetBlock('board', 'board')!;
+      const html = renderToStaticMarkup(
+        createElement(Comp, {
+          block: assetBlock('board', 'board', {
+            columns: [
+              { title: '待办', cards: [{ label: '梳理需求', body: '周三前' }] },
+              { title: '完成', cards: [{ label: '立项', tone: 'green' }] },
+            ],
+          }),
+        }),
+      );
+      expect(html).toContain('待办');
+      expect(html).toContain('梳理需求');
+      expect(html).toContain('pp-board-card-green');
+    });
+  });
+
+  it('timeline 渲染时标/标题/正文', async () => {
+    await withRenderers(() => {
+      const Comp = resolveAssetBlock('timeline', 'timeline')!;
+      const html = renderToStaticMarkup(
+        createElement(Comp, {
+          block: assetBlock('timeline', 'timeline', {
+            items: [
+              { ts: 'v0.1', title: '立项', body: '首个可用版' },
+              { ts: 'v0.2', title: '插件化' },
+            ],
+          }),
+        }),
+      );
+      expect(html).toContain('v0.1');
+      expect(html).toContain('立项');
+      expect(html).toContain('首个可用版');
+      expect(html).toContain('pp-timeline-node');
+    });
+  });
+
+  it('form 实时卡（活回调）：选项可点 + 三钮在位；历史卡（无回调）：只读无操作钮', async () => {
+    await withRenderers(() => {
+      const Comp = resolveAssetBlock('confirm', 'form')!;
+      const payload = {
+        title: '上线确认',
+        body: '发布 v2？',
+        options: [
+          { label: '方案甲', description: '快' },
+          { label: '方案乙', description: '稳' },
+        ],
+        confirmLabel: '发布',
+      };
+      // 实时卡：asset._confirm 活回调在 → 选项 button + 确认/修改/拒绝钮
+      const live = renderToStaticMarkup(
+        createElement(Comp, {
+          block: {
+            ...assetBlock('confirm', 'form', payload),
+            asset: {
+              assetId: 'as_1',
+              presentation: 'form',
+              title: 't',
+              finalised: true,
+              _confirm: () => {},
+            },
+          },
+        }),
+      );
+      expect(live).toContain('发布');
+      expect(live).toContain('方案甲');
+      expect(live).toContain('拒绝');
+      expect(live).toContain('<button');
+      // 历史卡：无回调 → 只读信息面，无操作钮
+      const hist = renderToStaticMarkup(createElement(Comp, { block: assetBlock('confirm', 'form', payload) }));
+      expect(hist).toContain('上线确认');
+      expect(hist).toContain('方案甲');
+      expect(hist).not.toContain('拒绝');
+      expect(hist).not.toContain('<button');
     });
   });
 

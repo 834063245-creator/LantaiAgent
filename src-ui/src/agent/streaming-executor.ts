@@ -17,6 +17,7 @@
 import type { ToolCall } from '../provider/types';
 import { type AgentEvent, type AssetEventData, EventKind, type ToolPipelineContext } from './agent-types';
 import { generateAssetId } from './asset-kinds';
+import { markConfirmEmitted, resolveConfirm } from './confirm-registry';
 import type { AgentEventBus } from './events';
 import type { Tool, ToolRegistry } from './tool';
 import { resolveGuardToolName, retireRedirect } from './tools/domains';
@@ -394,7 +395,25 @@ export class StreamingToolExecutor {
     // 资产通道：预生成 assetId 注入（工具以 args._asset_id 为准；AssetDelta 路由
     // 需要它——工具内部 onProgress 时 executor 已经知道目标资产）
     if (tool.assetChannel === true) {
-      args._asset_id = generateAssetId();
+      const assetId = generateAssetId();
+      args._asset_id = assetId;
+      // confirm kind：执行前预发卡（终值事件常规通道从工具输出解析，而 confirm
+      // 阻塞等用户决议——卡必须先于决议存在，否则死锁）。预发卡标记 UI 通道，
+      // 决议回调经事件 onResponse 挂进 BlockPart（重载后历史卡无回调 = 只读态）。
+      if (args.kind === 'confirm') {
+        markConfirmEmitted(assetId);
+        this.emit({
+          kind: EventKind.Asset,
+          asset: {
+            assetId,
+            kind: 'confirm',
+            presentation: typeof args.presentation === 'string' ? args.presentation : 'form',
+            ...(typeof args.title === 'string' ? { title: args.title } : {}),
+            payload: args.payload,
+            onResponse: (r) => resolveConfirm(assetId, r),
+          },
+        });
+      }
     }
 
     try {
@@ -430,7 +449,9 @@ export class StreamingToolExecutor {
 
       // 资产通道：终值解析 → Asset 事件（必须在 runAround/前缀拼接之前——
       // 返回的 JSON 不能被富化文本污染；解析失败 = 工具异常路径，错误不静默）
-      if (tool.assetChannel === true) {
+      // confirm 例外：卡已执行前预发（含决议回调），终值解析跳过——若再发会
+      // 用无回调的 part 顶掉活卡（applyAssetFinal 按 assetId 原位替换）。
+      if (tool.assetChannel === true && args.kind !== 'confirm') {
         const assetEvent = parseAssetEventOutput(output);
         if (assetEvent) {
           this.emit({ kind: EventKind.Asset, asset: assetEvent });

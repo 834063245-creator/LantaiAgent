@@ -3470,16 +3470,157 @@
   font-size: var(--pp-asset-form-optDescSize);
   color: var(--ink-3);
 }
-.pp-form-actions {
-  display: flex;
-  gap: 8px;
-}
-.pp-form-confirm {
-  font-family: var(--f-mono);
-  font-size: 11px;
-  padding: 4px 12px;
-  border: 1px solid var(--seal);
+/* 选项可交互态（实时确认卡）：button 化 + 选中朱砂框；历史卡（无回调）仍是
+ * 静态 div 行（button.pp-form-option 的 reset 只作用于可点形态）。
+ * 操作区（确认/修改/拒绝钮 + 反馈框 + 已处理）复用拟策卡钤印语言
+ * （.pp-pc-actions / .pp-pc-btn / .pp-pc-feedback / .pp-pc-done）——
+ * 确认卡 = plan 审批模式泛化，同为人手决策同一钮面，零重复实现。 */
+button.pp-form-option {
   background: none;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    border-color var(--snap),
+    background var(--snap);
+}
+button.pp-form-option:hover {
+  border-color: var(--ink-3);
+}
+button.pp-form-option:disabled {
+  cursor: default;
+}
+.pp-form-option--on {
+  border-color: var(--seal);
+  background: color-mix(in oklch, var(--seal) 5%, var(--paper));
+}
+.pp-form-option--on .pp-form-option-label {
   color: var(--seal-deep);
-  cursor: pointer; /* 2026-08-30 走查：确认钮 default 是笔误（不可点观感） */
+}
+
+/* ── graph 空数据占位（错误不静默——查询式/空 nodes 不画空白 SVG）── */
+.pp-graph-empty {
+  font-family: var(--f-song);
+  font-size: 0.92rem;
+  color: var(--fail);
+  padding: var(--pp-asset-graph-padV) 0;
+  border-left: 2px solid color-mix(in oklch, var(--fail) 45%, transparent);
+  padding-left: 10px;
+}
+
+/* ── board（看板——列+卡，§2.9 原语补齐）── */
+.pp-board {
+  padding: var(--pp-asset-board-padV) 0;
+  display: flex;
+  gap: var(--pp-asset-board-colGap);
+  overflow-x: auto;
+}
+.pp-board-col {
+  flex: 1 1 0;
+  min-width: var(--pp-asset-board-colMinW);
+  border-top: var(--pp-asset-board-colRule) solid var(--rule-soft);
+  padding-top: 6px;
+}
+.pp-board-col-title {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-board-colTitleSize);
+  color: var(--ink-3);
+  margin-bottom: var(--pp-asset-board-colTitleMarginB);
+}
+.pp-board-card {
+  border: var(--pp-asset-board-cardBorder) solid var(--rule-soft);
+  background: color-mix(in oklch, var(--paper-deep) 40%, transparent);
+  padding: var(--pp-asset-board-cardPadV) 10px;
+  margin-bottom: var(--pp-asset-board-cardGap);
+}
+.pp-board-card-label {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-board-cardLabelSize);
+  color: var(--ink-1);
+}
+.pp-board-card-body {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-board-cardBodySize);
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+.pp-board-card-accent .pp-board-card-label {
+  color: var(--seal-deep);
+}
+.pp-board-card-green .pp-board-card-label {
+  color: var(--pass);
+}
+.pp-board-card-danger .pp-board-card-label {
+  color: var(--fail);
+}
+.pp-board-card-muted .pp-board-card-label {
+  color: var(--ink-3);
+}
+.pp-board-empty {
+  font-family: var(--f-song);
+  font-size: 0.92rem;
+  color: var(--fail);
+  padding: var(--pp-asset-board-padV) 0;
+  border-left: 2px solid color-mix(in oklch, var(--fail) 45%, transparent);
+  padding-left: 10px;
+}
+
+/* ── timeline（时间轴——事件流，§2.9 原语补齐）──
+ * 结构：三栏网格（节点轨 / 时标 / 正文），竖线接续到下一项节点。 */
+.pp-timeline {
+  padding: var(--pp-asset-timeline-padV) 0;
+}
+.pp-timeline-item {
+  display: grid;
+  grid-template-columns: var(--pp-asset-timeline-railW) var(--pp-asset-timeline-tsW) 1fr;
+  column-gap: var(--pp-asset-timeline-colGap);
+  position: relative;
+  padding-bottom: var(--pp-asset-timeline-itemGap);
+}
+.pp-timeline-item::before {
+  content: '';
+  position: absolute;
+  left: var(--pp-asset-timeline-railMid);
+  top: 8px;
+  bottom: calc(-1 * var(--pp-asset-timeline-itemGap));
+  border-left: var(--pp-asset-timeline-ruleW) solid var(--rule-soft);
+}
+.pp-timeline-item:last-child::before {
+  display: none;
+}
+.pp-timeline-node {
+  width: var(--pp-asset-timeline-nodeSize);
+  height: var(--pp-asset-timeline-nodeSize);
+  margin-left: var(--pp-asset-timeline-nodeOffset);
+  background: var(--paper);
+  border: var(--pp-asset-timeline-nodeBorder) solid var(--indigo);
+  transform: translateY(3px); /* 与标题首行基线对齐 */
+  position: relative; /* 盖在轨线之上 */
+}
+.pp-timeline-ts {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-timeline-tsSize);
+  color: var(--ink-3);
+  padding-top: 1px;
+  word-break: break-all;
+}
+.pp-timeline-title {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-timeline-titleSize);
+  color: var(--ink-1);
+}
+.pp-timeline-body {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-timeline-bodySize);
+  line-height: 1.7;
+  color: var(--ink-2);
+  margin-top: 2px;
+}
+.pp-timeline-empty {
+  font-family: var(--f-song);
+  font-size: 0.92rem;
+  color: var(--fail);
+  padding: var(--pp-asset-timeline-padV) 0;
+  border-left: 2px solid color-mix(in oklch, var(--fail) 45%, transparent);
+  padding-left: 10px;
 }

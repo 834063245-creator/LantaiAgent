@@ -110,6 +110,12 @@ export interface BlockPart {
   title?: string;
   payload: unknown;
   finalised: boolean;
+  /** 确认卡决议回调（confirm kind 实时卡；PlanPart._callback 同构）——瞬态
+   *  函数不持久化（JSON 序列化自然丢弃），重载后历史确认卡只读态。 */
+  _confirmCallback?: (response: import('../agent/agent-types').ConfirmCardResponse) => void;
+  /** 确认卡已决议的终态（决议时写入；纯 JSON 随会话持久化）——重挂载/重载后
+   *  卡片保持「已处理」态，不复挂操作钮。 */
+  confirmResolution?: import('../agent/agent-types').ConfirmCardResponse;
 }
 
 export type AssistantPart = ReasonPart | TextPart | ToolCallPart | SubAgentPart | PlanPart | BlockPart;

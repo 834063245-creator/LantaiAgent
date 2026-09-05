@@ -478,6 +478,37 @@ export async function loadExternalPlugins(root: Context, opts: LoadExternalPlugi
       records.push(record);
       activeExternalFibers.set(record.name, fiber);
     }
+    // 装配断层对账（2026-09-06）：S5 起产物通道是唯一装载面（位移/bundle 兜底
+    // 退役），boot 审计只看 fiber——从未装载的产物（索引缺条目）根本不进审计，
+    // 面会静默缺行（renderers 缺席 = 资产块全部落 JSON 兜底）。此处对第一方
+    // 清单逐名对账：既无 active 也无 error/disabled 记录 = 断层，补 error 记录
+    // （设置页可见）+ console.error（错误不静默）。产物通道激活时才跑：
+    // origin 空 = 无通道环境；MODE 'test' = vitest 的 mock 通道（部分索引是
+    // 夹具常态，不是断层——对账会淹没测试断言面）。
+    if (origin && import.meta.env.MODE !== 'test') {
+      const seen = new Set<string>([
+        ...records.map((r) => r.name),
+        ...usePluginStore.getState().plugins.map((r) => r.name),
+      ]);
+      for (const [name, meta] of Object.entries(FIRST_PARTY_MANIFEST)) {
+        if (meta.kind !== 'feature' || seen.has(name)) continue;
+        console.error(
+          '[plugins] 装配断层：第一方产物在装载通道无记录（' +
+            name +
+            '）' +
+            '——磁盘 dist-plugins 索引缺条目或装载被静默跳过；对应功能面将缺行（错误不静默）',
+        );
+        records.push({
+          name,
+          manifest: null,
+          status: 'error',
+          builtin: true,
+          meta,
+          error:
+            '装配断层：产物通道索引无此条目（dist-plugins 缺失或过旧）——用与 exe 同源的源码树重建产物（build:builtin-plugins），或更新应用版本',
+        });
+      }
+    }
     // merge 而非 setPlugins：外部插件装载不得冲刷第一方 boot 记录
     usePluginStore.getState().mergePlugins(records);
     reportBootTiming('loadExternalPlugins');

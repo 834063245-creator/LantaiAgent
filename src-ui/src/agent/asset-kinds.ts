@@ -187,7 +187,9 @@ export function registerBuiltinAssetKinds(): void {
 
   assetKinds.register({
     id: 'confirm',
-    description: '确认卡（plan 审批模式泛化：选项/批准/修改/拒绝）',
+    description:
+      '确认卡（plan 审批模式泛化：选项/批准/修改/拒绝）——show_asset 挂起等待用户在卡上表决，' +
+      '表决结果作为工具结果返回后继续；5 分钟无响应超时放行（嵌套/无界面环境立即放行）',
     schema: objectSchema(
       {
         title: { type: 'string' },
@@ -202,6 +204,61 @@ export function registerBuiltinAssetKinds(): void {
     ),
     presentations: ['form'],
     defaultPresentation: 'form',
+    streamable: 'atomic',
+  });
+
+  assetKinds.register({
+    id: 'board',
+    description: '看板（列+卡）——任务状态板/流程阶段/分组清单',
+    schema: objectSchema(
+      {
+        columns: {
+          type: 'array',
+          items: objectSchema({
+            title: { type: 'string', description: '列标题' },
+            cards: {
+              type: 'array',
+              items: objectSchema({
+                label: { type: 'string', description: '卡标题' },
+                body: { type: 'string', description: '卡内容（可空）' },
+                tone: {
+                  type: 'string',
+                  enum: ['accent', 'green', 'danger', 'muted'],
+                  description: '卡色（可空）',
+                },
+              }),
+              description: '列内卡片',
+            },
+          }),
+          description: '看板列',
+        },
+      },
+      ['columns'],
+    ),
+    presentations: ['board'],
+    defaultPresentation: 'board',
+    streamable: 'atomic',
+  });
+
+  assetKinds.register({
+    id: 'timeline',
+    description: '时间轴/事件流——里程碑、变更历史、阶段演进',
+    schema: objectSchema(
+      {
+        items: {
+          type: 'array',
+          items: objectSchema({
+            ts: { type: 'string', description: '时间标记（自由文本：日期/版本号/阶段名）' },
+            title: { type: 'string', description: '事件标题' },
+            body: { type: 'string', description: '事件内容（可空）' },
+          }),
+          description: '事件序列（按时间序）',
+        },
+      },
+      ['items'],
+    ),
+    presentations: ['timeline'],
+    defaultPresentation: 'timeline',
     streamable: 'atomic',
   });
 }

@@ -151,6 +151,8 @@ const KIND_ZH: Record<string, string> = {
   deps_impact: '影响',
   html: '卡片',
   confirm: '确认',
+  board: '看板',
+  timeline: '时间轴',
 };
 const KIND_EN: Record<string, string> = {
   user: 'USER',
@@ -171,6 +173,8 @@ const KIND_EN: Record<string, string> = {
   deps_impact: 'GRAPH',
   html: 'HTML',
   confirm: 'CONFIRM',
+  board: 'BOARD',
+  timeline: 'TIMELINE',
 };
 
 /** 消息操作项（施工单 #5）：块 hover 出现的操作按钮。

@@ -14,6 +14,7 @@
 import { z } from 'zod';
 import { assetKinds, generateAssetId, requireKind, requirePresentation } from '../asset-kinds';
 import { type AssetRecord, getAsset, listAssets, upsertAsset } from '../asset-store';
+import { waitForConfirm } from '../confirm-registry';
 import type { Tool } from '../tool';
 import { defineTool } from './define-tool';
 
@@ -75,6 +76,22 @@ export function createShowAssetTool(): Tool {
         ts: Date.now(),
       };
       upsertAsset(scopeOf(args), record);
+
+      // confirm kind：阻塞等待用户在卡上表决（executor 已预发卡；决议作为工具
+      // 结果回传——plan 审批模式的资产化泛化）。无 UI 通道（嵌套/headless 未
+      // 预发卡）立即 no_ui 放行，不空等超时。
+      if (def.id === 'confirm') {
+        const response = await waitForConfirm(assetId);
+        const out: AssetToolOutput & { confirmResponse: typeof response } = {
+          assetId,
+          kind: def.id,
+          presentation,
+          ...(record.title ? { title: record.title } : {}),
+          payload: args.payload,
+          confirmResponse: response,
+        };
+        return JSON.stringify(out);
+      }
 
       // append 型 + 字符串 payload + stream → 分段 onProgress（executor 路由为 AssetDelta，
       // 终端渐进渲染；以下返回的终值 JSON 仍是权威替换）

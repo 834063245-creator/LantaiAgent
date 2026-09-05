@@ -129,7 +129,7 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
     expect(measureBlockHeight(b)).toBe(4 + headRow + 2 * bodyRow);
   });
 
-  it('graph：确定性树布局几何（深度/规模公式同 GraphTreeBody）+ 360 封顶', () => {
+  it('graph 分层布局（A5 二期）：层宽×最宽层行高公式同 GraphLayeredBody', () => {
     const b = assetBlock('deps_impact', {
       nodes: [{ id: 'r' }, { id: 'a' }, { id: 'b' }],
       edges: [
@@ -137,8 +137,67 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
         { from: 'r', to: 'b' },
       ],
     });
+    // 分层：r 层 0，{a,b} 层 1 → W = 2×160+40 = 360；最宽层 2 行 → H = 2×52+30 = 134
+    // → 720×134/360 = 268（360 封顶未触）
+    expect(measureBlockHeight(b)).toBe(8 + 268);
+  });
+
+  it('tree 表现保留深度列树公式：全节点行高 + 360 封顶', () => {
+    const b = assetBlock(
+      'deps_impact',
+      {
+        nodes: [{ id: 'r' }, { id: 'a' }, { id: 'b' }],
+        edges: [
+          { from: 'r', to: 'a' },
+          { from: 'r', to: 'b' },
+        ],
+      },
+      'tree',
+    );
     // 深度 1 → W = 2×160+40 = 360；H = 3×52+30 = 186 → 720×186/360=372 → 封顶 360
     expect(measureBlockHeight(b)).toBe(8 + 360);
+  });
+
+  it('graph 查询式/空数据：占位单行（不再按 SVG 计高）', () => {
+    expect(measureBlockHeight(assetBlock('deps_impact', { nodeId: 'x' }))).toBe(8 + 30);
+    expect(measureBlockHeight(assetBlock('deps_impact', { nodes: [], edges: [] }))).toBe(8 + 30);
+  });
+
+  it('board：横排列高中取最大列（列题 + Σ卡高）', () => {
+    const b = assetBlock('board', {
+      columns: [
+        { title: '待办', cards: [{ label: 'a' }] },
+        { title: '完成', cards: [{ label: 'b', body: 'd' }] },
+      ],
+    });
+    // 卡体文本 mock 36：带 body 卡 +38；列高 = 规线 2 + padding-top 6 + 列题 29.4 + 卡 42.4
+    const colMax = 2 + 6 + (13 * 1.8 + 6) + (1 + 12 + 13 * 1.8 + 6) + 36 + 2;
+    expect(measureBlockHeight(b)).toBe(4 + colMax);
+  });
+
+  it('board 空数据：占位单行', () => {
+    expect(measureBlockHeight(assetBlock('board', {}))).toBe(4 + 30);
+  });
+
+  it('timeline：逐项 max(标题/时标行) + 正文实测 + 行距', () => {
+    const b = assetBlock('timeline', {
+      items: [
+        { ts: 'v1', title: 't1', body: 'b1' },
+        { ts: 'v2', title: 't2' },
+      ],
+    });
+    // 文本 mock 恒 36：时标列 96 宽 → 2 行×18=36；标题 → ceil(36/23.4)=2 行×23.4=46.8
+    const titleLineH = 2 * (13 * 1.8);
+    const tsTwoLines = 2 * (10 * 1.8);
+    const nodeH = 9 + 4;
+    const headMax = Math.max(Math.max(titleLineH, tsTwoLines), nodeH); // 46.8
+    const item1 = headMax + 36 + 2; // 正文实测 36 + 2
+    const item2 = headMax; // 无正文
+    expect(measureBlockHeight(b)).toBe(4 + item1 + 10 + item2);
+  });
+
+  it('timeline 空数据：占位单行', () => {
+    expect(measureBlockHeight(assetBlock('timeline', { items: [] }))).toBe(4 + 30);
   });
 
   it('html：内距 4 + iframe 初始 240（上报后由实测回写抬到实际上报值）', () => {
@@ -146,11 +205,10 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
     expect(measureBlockHeight(b)).toBe(4 + 240);
   });
 
-  it('form：题/文/选项列（desc 实测）/操作行', () => {
+  it('form：题/文/选项列（desc 实测）/操作行（钤印钮面同拟策：13px 宋体 + margin-top 14）', () => {
     const b = assetBlock('confirm', { title: 't', body: 'b', options: [{ label: 'l', description: 'd' }] });
-    expect(measureBlockHeight(b)).toBe(
-      4 + (15 * 1.8 + 4) + (36 + 8) + (2 + 12 + 13 * 1.8 + 36) + 8 + (11 * 1.8 + 8 + 2),
-    );
+    const actionsH = 13 * 1.8 + 5 * 2 + 1 * 2 + 14; // .pp-pc-btn 行（CHROME_TOKENS.plan.actions*）
+    expect(measureBlockHeight(b)).toBe(4 + (15 * 1.8 + 4) + (36 + 8) + (2 + 12 + 13 * 1.8 + 36) + 8 + actionsH);
   });
 
   it('随表现切换变高：media 图与文件行不同款（presentation 是高度信号）', () => {

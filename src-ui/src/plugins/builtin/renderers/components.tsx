@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 //
-// 内置渲染器插件（P1，first-party-hot-reload-plan）——8 个资产表现原语
-// （grid/chart/metric/media/graph/tree/html/form）的唯一真源。
+// 内置渲染器插件（P1，first-party-hot-reload-plan）——10 个资产表现原语
+// （grid/chart/metric/media/graph/tree/html/form/board/timeline）的唯一真源。
 //
 // 原位置 src-ui/src/composition/asset-renderers.tsx（已迁移，薄壳 re-export）。
 // 双走查设计：
@@ -13,10 +13,16 @@
 // 纪律（协议 §2.9，自 asset-renderers.tsx 沿用）：
 //   - 全部纯 CSS+SVG 自绘，零新依赖；纸壳墨色体系由 PaperPanel.css 承载。
 //   - 渲染器只渲染块体；壳件（签/手柄/钉住/占位）不进注册表。
-//   - graph/tree 用确定性树布局（A5：tree 布局首发，力导向不做）。
+//   - graph = 确定性分层布局（A5 二期）、tree = 深度列树布局（A5 首发；
+//     力导向不做）；空数据一律「数据不可用」占位，不画空白 SVG。
 //   - html 走沙箱 iframe（WO-8）：sandbox + 文档内 CSP，网络全 never。
+//   - form（confirm kind）带活决议回调时全交互（选项/确认/修改/拒绝）；
+//     无回调（历史卡/重载）只读态——回调不持久化（PlanPart._callback 先例）。
+//
+// 类型导入纪律：type-only import 编译期擦除（esbuild 产物无裸运行时 import）。
 
 import type { CSSProperties, ReactNode } from 'react';
+import type { ConfirmCardResponse } from '../../../agent/agent-types';
 import type { BlockRendererProps } from '../../../composition/renderer-service';
 import { rendererHooks, rendererOverlay, rendererRpc } from './renderer-host';
 
@@ -346,7 +352,7 @@ function MediaBody({ block }: BlockRendererProps) {
   );
 }
 
-/* ── graph / tree（确定性 SVG tree 布局，A5）── */
+/* ── graph / tree（确定性 SVG 布局，A5：tree 首发 + layered 二期）── */
 
 interface GraphNode {
   id: string;
@@ -376,8 +382,80 @@ function normalizeGraph(payload: unknown): { nodes: GraphNode[]; edges: GraphEdg
   return { nodes, edges };
 }
 
+/** 几何常量（镜像 ASSET_TOKENS.graph：colW/rowH/origin——measure.ts 同源取数） */
+const GRAPH_COL_W = 160;
+const GRAPH_ROW_H = 52;
+const GRAPH_ORIGIN_X = 40;
+const GRAPH_ROW_Y = 26;
+
+/** 空数据占位（错误不静默——查询式 {nodeId, depth} 无直通数据/空 nodes 不画空白 SVG） */
+function graphEmptyPlaceholder(): ReactNode {
+  return (
+    <div className="pp-graph pp-graph-empty">
+      数据不可用 · 期望 nodes/edges 直通数据（查询式 nodeId 请改用 trace_impact 输出的 nodes/edges）
+    </div>
+  );
+}
+
+/** 共享 SVG 视图：pos 以「列号/行号」为单位的网格坐标，此处乘几何常量落位。 */
+function GraphBodySvg({
+  nodes,
+  edges,
+  pos,
+  cols,
+  rows,
+}: {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  pos: Map<string, { x: number; y: number }>;
+  cols: number;
+  rows: number;
+}) {
+  const W = Math.max(320, cols * GRAPH_COL_W + GRAPH_ORIGIN_X);
+  const H = Math.max(80, rows * GRAPH_ROW_H + 30);
+  return (
+    <div className="pp-graph">
+      <svg className="pp-graph-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="graph">
+        {edges.map((e) => {
+          const a = pos.get(e.from);
+          const b = pos.get(e.to);
+          if (!a || !b) return null;
+          return (
+            <line
+              key={`${e.from}->${e.to}`}
+              x1={a.x * GRAPH_COL_W + GRAPH_ORIGIN_X}
+              y1={a.y * GRAPH_ROW_H + GRAPH_ROW_Y}
+              x2={b.x * GRAPH_COL_W + GRAPH_ORIGIN_X}
+              y2={b.y * GRAPH_ROW_H + GRAPH_ROW_Y}
+              className="pp-graph-edge"
+            />
+          );
+        })}
+        {nodes.map((n) => {
+          const p = pos.get(n.id);
+          if (!p) return null;
+          return (
+            <g
+              key={n.id}
+              transform={`translate(${p.x * GRAPH_COL_W + GRAPH_ORIGIN_X}, ${p.y * GRAPH_ROW_H + GRAPH_ROW_Y})`}
+              className="pp-graph-node"
+            >
+              <rect x={-36} y={-14} width={72} height={28} rx={0} className="pp-graph-node-box" />
+              <text textAnchor="middle" dominantBaseline="middle" className="pp-graph-node-text">
+                {n.label ?? n.id}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+/** tree 表现：深度列布局（无父节点起 DFS，逐行下探——A5 首发形态）。 */
 function GraphTreeBody({ block }: BlockRendererProps) {
   const { nodes, edges } = normalizeGraph(block.payload);
+  if (nodes.length === 0) return graphEmptyPlaceholder();
   const children = new Map<string, string[]>();
   const hasParent = new Set<string>();
   for (const e of edges) {
@@ -398,44 +476,51 @@ function GraphTreeBody({ block }: BlockRendererProps) {
   if (roots.length === 0) for (const n of nodes) place(n.id, 0);
   else for (const r of roots) place(r.id, 0);
   const maxDepth = Math.max(0, ...nodes.map((n) => pos.get(n.id)?.x ?? 0));
-  const W = Math.max(320, (maxDepth + 1) * 160 + 40);
-  const H = Math.max(80, nodes.length * 52 + 30);
-  const lines = edges
-    .map((e) => {
-      const a = pos.get(e.from);
-      const b = pos.get(e.to);
-      if (!a || !b) return null;
-      return (
-        <line
-          key={`${e.from}->${e.to}`}
-          x1={a.x * 160 + 40}
-          y1={a.y * 52 + 26}
-          x2={b.x * 160 + 40}
-          y2={b.y * 52 + 26}
-          className="pp-graph-edge"
-        />
-      );
-    })
-    .filter(Boolean);
-  return (
-    <div className="pp-graph">
-      <svg className="pp-graph-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="graph">
-        {lines}
-        {nodes.map((n) => {
-          const p = pos.get(n.id);
-          if (!p) return null;
-          return (
-            <g key={n.id} transform={`translate(${p.x * 160 + 40}, ${p.y * 52 + 26})`} className="pp-graph-node">
-              <rect x={-36} y={-14} width={72} height={28} rx={0} className="pp-graph-node-box" />
-              <text textAnchor="middle" dominantBaseline="middle" className="pp-graph-node-text">
-                {n.label ?? n.id}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-  );
+  return <GraphBodySvg nodes={nodes} edges={edges} pos={pos} cols={maxDepth + 1} rows={nodes.length} />;
+}
+
+/** graph 表现：确定性分层布局（A5 二期）——最长路径分层（无入边 = 第 0 层），
+ *  同层按 nodes 表序排布；环防御 = 松弛轮数封顶（edges+2 轮，环上节点确定性铺开，
+ *  不崩不循环）。无交叉优化——轻量易读即可（交互留给纸壳钉住/拖出）。 */
+function GraphLayeredBody({ block }: BlockRendererProps) {
+  const { nodes, edges } = normalizeGraph(block.payload);
+  if (nodes.length === 0) return graphEmptyPlaceholder();
+  // 层号松弛：layer(n) = 0（无入边）| max(layer(parent)+1)，迭代至稳定
+  const layer = new Map<string, number>();
+  for (const n of nodes) layer.set(n.id, 0);
+  const maxPasses = edges.length + 2;
+  for (let pass = 0; pass < maxPasses; pass++) {
+    let changed = false;
+    for (const e of edges) {
+      const from = layer.get(e.from);
+      const to = layer.get(e.to);
+      if (from === undefined || to === undefined) continue;
+      if (from + 1 > to) {
+        layer.set(e.to, from + 1);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  // 同层按 nodes 表序排 y，层号排 x——输入序即输出序（确定性断言可钉）
+  const byLayer = new Map<number, string[]>();
+  for (const n of nodes) {
+    const l = layer.get(n.id) ?? 0;
+    const list = byLayer.get(l);
+    if (list) list.push(n.id);
+    else byLayer.set(l, [n.id]);
+  }
+  const pos = new Map<string, { x: number; y: number }>();
+  let maxLayer = 0;
+  let maxRows = 0;
+  for (const [l, ids] of byLayer) {
+    maxLayer = Math.max(maxLayer, l);
+    maxRows = Math.max(maxRows, ids.length);
+    ids.forEach((id, i) => {
+      pos.set(id, { x: l, y: i });
+    });
+  }
+  return <GraphBodySvg nodes={nodes} edges={edges} pos={pos} cols={maxLayer + 1} rows={maxRows} />;
 }
 
 /* ── html 沙箱（WO-8）── */
@@ -535,6 +620,47 @@ function FormBody({ block }: BlockRendererProps) {
     confirmLabel?: string;
   };
   const options = Array.isArray(p.options) ? p.options : [];
+  // 决议回调（executor 预发卡经事件管道挂进 asset；PlanPart._callback 同构）。
+  // 无回调 = 历史卡（重载只读态）/无界面通道卡——维持信息展示，不出操作钮。
+  const cb = block.asset?._confirm;
+  const [selected, setSelected] = useState<string | null>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedback, setFeedback] = useState('');
+  const [done, setDone] = useState(false);
+  // 已决议终态（活引用 part 上随决议写入，纯 JSON 持久化）——重挂载/重载后
+  // 仍「已处理」，不复挂操作钮；比本地 done 态优先（本地态只管当帧观感）。
+  // BlockSource.part 是宽型 object（block-model 不引 BlockPart 类型）——守卫边界收窄。
+  const part = block.source.part as { type?: string; confirmResolution?: ConfirmCardResponse } | null;
+  const resolution = part && part.type === 'block' ? part.confirmResolution : undefined;
+
+  if (!cb) {
+    return (
+      <div className="pp-form">
+        <div className="pp-form-title">{p.title || '确认'}</div>
+        {p.body && <div className="pp-form-body">{p.body}</div>}
+        {options.length > 0 && (
+          <div className="pp-form-options">
+            {options.map((o) => (
+              <div key={o.label} className="pp-form-option">
+                <span className="pp-form-option-label">{o.label}</span>
+                {o.description && <span className="pp-form-option-desc">{o.description}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+        {resolution && <div className="pp-pc-done">已处理</div>}
+      </div>
+    );
+  }
+
+  const hasOptions = options.length >= 2;
+  const canApprove = !hasOptions || selected !== null;
+  const canRevise = feedback.trim().length > 0;
+  const settle = (response: ConfirmCardResponse) => {
+    cb(response);
+    if (part && part.type === 'block') part.confirmResolution = response;
+    setDone(true);
+  };
   return (
     <div className="pp-form">
       <div className="pp-form-title">{p.title || '确认'}</div>
@@ -542,24 +668,135 @@ function FormBody({ block }: BlockRendererProps) {
       {options.length > 0 && (
         <div className="pp-form-options">
           {options.map((o) => (
-            <div key={o.label} className="pp-form-option">
+            <button
+              key={o.label}
+              type="button"
+              className={`pp-form-option${selected === o.label ? ' pp-form-option--on' : ''}`}
+              disabled={!hasOptions}
+              onClick={() => setSelected(o.label)}
+            >
               <span className="pp-form-option-label">{o.label}</span>
               {o.description && <span className="pp-form-option-desc">{o.description}</span>}
-            </div>
+            </button>
           ))}
         </div>
       )}
-      <div className="pp-form-actions">
-        <button type="button" className="pp-form-confirm" disabled>
-          {p.confirmLabel || '确认'}
-        </button>
-      </div>
+      {done || resolution ? (
+        <div className="pp-pc-done">已处理</div>
+      ) : (
+        <>
+          {feedbackOpen && (
+            <div className="pp-pc-feedback">
+              <textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="修改意见…" />
+            </div>
+          )}
+          {/* 操作区复用拟策卡钤印语言（确认卡 = plan 审批模式泛化——同为人手
+           * 决策，同一钮面；主操作随态让位同拟策：反馈框展开时「提交」当家） */}
+          <div className="pp-pc-actions">
+            <button
+              type="button"
+              className={`pp-pc-btn${feedbackOpen ? '' : ' pp-pc-btn--primary'}`}
+              disabled={!canApprove}
+              title={canApprove ? undefined : '先选择方案'}
+              onClick={() => settle({ decision: 'approved', ...(selected ? { selectedLabel: selected } : {}) })}
+            >
+              {p.confirmLabel || '确认'}
+            </button>
+            <button type="button" className="pp-pc-btn" onClick={() => setFeedbackOpen((v) => !v)}>
+              修改
+            </button>
+            {feedbackOpen && (
+              <button
+                type="button"
+                className="pp-pc-btn pp-pc-btn--primary"
+                disabled={!canRevise}
+                title={canRevise ? undefined : '先填写修改意见'}
+                onClick={() => settle({ decision: 'revise', feedback: feedback.trim() })}
+              >
+                提交
+              </button>
+            )}
+            <button
+              type="button"
+              className="pp-pc-btn pp-pc-btn--reject"
+              title="回绝此确认"
+              onClick={() => settle({ decision: 'rejected' })}
+            >
+              拒绝
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
-/** 8 个资产表现原语的注册表入口（供渲染器 cordis 插件装载）。 */
-export type AssetRendererKind = 'grid' | 'chart' | 'metric' | 'media' | 'graph' | 'tree' | 'html' | 'form';
+/* ── board（看板——列+卡，§2.9 原语补齐）── */
+
+function BoardBody({ block }: BlockRendererProps) {
+  const p = block.payload as {
+    columns?: Array<{ title?: string; cards?: Array<{ label?: string; body?: string; tone?: string }> }>;
+  };
+  const columns = Array.isArray(p.columns) ? p.columns : [];
+  if (columns.length === 0) {
+    return <div className="pp-board pp-board-empty">数据不可用 · 期望 columns: [{`{title, cards}`}] 形状</div>;
+  }
+  return (
+    <div className="pp-board">
+      {columns.map((col, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: 看板列按数据序渲染，列序即身份
+        <div key={i} className="pp-board-col">
+          <div className="pp-board-col-title">{col.title ?? ''}</div>
+          {(col.cards ?? []).map((card, j) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 卡按列内序渲染
+            <div key={j} className={`pp-board-card${card.tone ? ` pp-board-card-${card.tone}` : ''}`}>
+              <div className="pp-board-card-label">{card.label ?? ''}</div>
+              {card.body && <div className="pp-board-card-body">{card.body}</div>}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── timeline（时间轴——事件流，§2.9 原语补齐）── */
+
+function TimelineBody({ block }: BlockRendererProps) {
+  const p = block.payload as { items?: Array<{ ts?: string; title?: string; body?: string }> };
+  const items = Array.isArray(p.items) ? p.items : [];
+  if (items.length === 0) {
+    return <div className="pp-timeline pp-timeline-empty">数据不可用 · 期望 items: [{`{ts, title, body?}`}] 形状</div>;
+  }
+  return (
+    <div className="pp-timeline">
+      {items.map((it, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: 时间轴按事件序渲染，序即身份
+        <div key={i} className="pp-timeline-item">
+          <span className="pp-timeline-node" aria-hidden="true" />
+          <div className="pp-timeline-ts">{it.ts ?? ''}</div>
+          <div className="pp-timeline-main">
+            <div className="pp-timeline-title">{it.title ?? ''}</div>
+            {it.body && <div className="pp-timeline-body">{it.body}</div>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 10 个资产表现原语的注册表入口（供渲染器 cordis 插件装载）。 */
+export type AssetRendererKind =
+  | 'grid'
+  | 'chart'
+  | 'metric'
+  | 'media'
+  | 'graph'
+  | 'tree'
+  | 'html'
+  | 'form'
+  | 'board'
+  | 'timeline';
 
 export function assetRendererComponents(): Record<AssetRendererKind, (props: BlockRendererProps) => ReactNode> {
   return {
@@ -567,9 +804,11 @@ export function assetRendererComponents(): Record<AssetRendererKind, (props: Blo
     chart: ChartBody,
     metric: MetricBody,
     media: MediaBody,
-    graph: GraphTreeBody,
+    graph: GraphLayeredBody,
     tree: GraphTreeBody,
     html: HtmlBody,
     form: FormBody,
+    board: BoardBody,
+    timeline: TimelineBody,
   };
 }

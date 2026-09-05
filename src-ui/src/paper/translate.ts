@@ -439,6 +439,7 @@ function translateAssistantParts(
             presentation: part.presentation,
             ...(part.title !== undefined ? { title: part.title } : {}),
             finalised: part.finalised,
+            ...(part._confirmCallback ? { _confirm: part._confirmCallback } : {}),
           },
           w: DEFAULT_BLOCK_WIDTH,
         };
@@ -556,6 +557,7 @@ function translateAssistantParts(
                     presentation: sp.presentation,
                     ...(sp.title !== undefined ? { title: sp.title } : {}),
                     finalised: sp.finalised,
+                    ...(sp._confirmCallback ? { _confirm: sp._confirmCallback } : {}),
                   },
                 };
               default:

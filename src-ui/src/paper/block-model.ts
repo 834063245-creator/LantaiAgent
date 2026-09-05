@@ -122,6 +122,9 @@ export interface BlockAssetMeta {
   title?: string;
   /** 流式最终化标记（对齐 TextPart.finalised 语义） */
   finalised: boolean;
+  /** 确认卡决议回调（confirm kind 实时卡；PlanPart._callback 同构）——瞬态
+   *  函数不持久化（快照 JSON 序列化自然丢弃），重载/重拍的历史卡只读态。 */
+  _confirm?: (response: import('../agent/agent-types').ConfirmCardResponse) => void;
 }
 
 /** 块物件——真相层唯一实体。

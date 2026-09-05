@@ -233,9 +233,38 @@ export const ASSET_TOKENS = {
     optDescPadH: 10,
     optGap: 4,
     sectionGap: 8,
-    confirmSize: 11,
-    confirmPadV: 4,
-    confirmBorder: 1, // border 1×2（上下各 1）
+    // 操作区（确认/修改/拒绝 + 反馈框 + 已处理）2026-09-06 起复用拟策卡钤印
+    // 语言（.pp-pc-actions/.pp-pc-btn 族）——确认卡 = plan 审批模式泛化，
+    // 同为人手决策同一钮面；操作行测高改由 CHROME_DERIVED.planActionsH 承载，
+    // 本组不再持钮面数值。
+  },
+  board: {
+    padV: 2,
+    colGap: 10,
+    colMinW: 140,
+    colRule: 2,
+    colTitleSize: 13,
+    colTitleMarginB: 6,
+    cardBorder: 1,
+    cardPadV: 6,
+    cardGap: 6,
+    cardLabelSize: 13,
+    cardBodySize: 11,
+  },
+  timeline: {
+    padV: 2,
+    railW: 18,
+    railMid: 8,
+    tsW: 96,
+    colGap: 10,
+    itemGap: 10,
+    ruleW: 1,
+    nodeSize: 9,
+    nodeBorder: 2,
+    nodeOffset: 2,
+    tsSize: 10,
+    titleSize: 13,
+    bodySize: 12,
   },
   plan: {
     titleSize: 15,
@@ -319,10 +348,37 @@ export const ASSET_DERIVED = {
   formOptDescInset: ASSET_TOKENS.form.optDescPadH * 2, // padding 左右 10×2
   formOptGap: ASSET_TOKENS.form.optGap,
   formSectionGap: ASSET_TOKENS.form.sectionGap,
+  // 操作行 = 拟策卡钤印钮面（.pp-pc-btn 族）——高度同源 CHROME_TOKENS.plan
   formActionsH:
-    ASSET_TOKENS.form.confirmSize * 1.8 + ASSET_TOKENS.form.confirmPadV * 2 + ASSET_TOKENS.form.confirmBorder * 2,
+    CHROME_TOKENS.plan.actionsSize * CHROME_TOKENS.plan.actionsLh +
+    CHROME_TOKENS.plan.actionsPadV * 2 +
+    CHROME_TOKENS.plan.actionsBorder * 2 +
+    CHROME_TOKENS.plan.actionsMarginTop,
   formBodySize: ASSET_TOKENS.form.bodySize,
   formDescSize: ASSET_TOKENS.form.optDescSize,
+
+  boardPadV: ASSET_TOKENS.board.padV * 2, // .pp-board padding 2×2
+  boardColGap: ASSET_TOKENS.board.colGap,
+  boardColMinW: ASSET_TOKENS.board.colMinW,
+  boardColRule: ASSET_TOKENS.board.colRule, // 列顶规线 + padding-top 6
+  boardColTitleH: ASSET_TOKENS.board.colTitleSize * 1.8 + ASSET_TOKENS.board.colTitleMarginB,
+  boardCardBorder: ASSET_TOKENS.board.cardBorder,
+  boardCardPadV: ASSET_TOKENS.board.cardPadV * 2,
+  boardCardGap: ASSET_TOKENS.board.cardGap,
+  boardCardLabelH: ASSET_TOKENS.board.cardLabelSize * 1.8,
+  boardCardBodyH: ASSET_TOKENS.board.cardBodySize * 1.8,
+
+  timelinePadV: ASSET_TOKENS.timeline.padV * 2, // .pp-timeline padding 2×2
+  timelineInset: ASSET_TOKENS.timeline.railW + ASSET_TOKENS.timeline.tsW + ASSET_TOKENS.timeline.colGap * 2, // 节点轨+时标+两道列距
+  timelineItemGap: ASSET_TOKENS.timeline.itemGap,
+  timelineNodeH: ASSET_TOKENS.timeline.nodeSize + ASSET_TOKENS.timeline.nodeBorder * 2,
+  timelineTsLine: ASSET_TOKENS.timeline.tsSize * 1.8,
+  timelineTitleLine: ASSET_TOKENS.timeline.titleSize * 1.8,
+  timelineBodyLine: ASSET_TOKENS.timeline.bodySize * 1.7,
+  timelineTsW: ASSET_TOKENS.timeline.tsW,
+  timelineTsFont: `${ASSET_TOKENS.timeline.tsSize}px ${FONT_STACKS.mono}`,
+  timelineTitleFont: `${ASSET_TOKENS.timeline.titleSize}px ${FONT_STACKS.song}`,
+  timelineBodyFont: `${ASSET_TOKENS.timeline.bodySize}px ${FONT_STACKS.song}`,
 
   planTitleSize: ASSET_TOKENS.plan.titleSize,
   planTitleLh: ASSET_TOKENS.plan.titleLh,

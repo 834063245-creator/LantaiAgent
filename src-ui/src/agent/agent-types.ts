@@ -54,6 +54,17 @@ export interface PlanReviewEvent {
   callback: (response: import('./plan/plan-tools').PlanApprovalResponse) => void;
 }
 
+/** 确认卡决议（confirm kind，plan 审批语义的资产化泛化）：
+ *  approved=用户点了确认（选了某个选项则带 selectedLabel）；
+ *  revise=用户要求修改（带反馈）；rejected=用户拒绝；
+ *  no_ui=无界面通道（嵌套/headless 环境）立即放行；timeout=等待超时放行。 */
+export type ConfirmCardResponse =
+  | { decision: 'approved'; selectedLabel?: string }
+  | { decision: 'revise'; feedback: string }
+  | { decision: 'rejected' }
+  | { decision: 'no_ui' }
+  | { decision: 'timeout' };
+
 /** 资产块终值载荷（EventKind.Asset）——BlockPart 的权威来源；payload 必须纯 JSON。
  *  presentation 缺省时由渲染层回落 kind 的 defaultPresentation（协议 §2.2）。 */
 export interface AssetEventData {
@@ -67,6 +78,10 @@ export interface AssetEventData {
   title?: string;
   /** 完整 payload（纯 JSON） */
   payload: unknown;
+  /** 确认卡决议回调（confirm kind 实时卡专用；PlanReview.callback 同构）。
+   *  瞬态函数——只经事件管道进 BlockPart，永不持久化（JSON 序列化自然丢弃，
+   *  重载后的历史确认卡只读态）。非 confirm 资产恒缺省。 */
+  onResponse?: (response: ConfirmCardResponse) => void;
 }
 
 /** 资产块增量载荷（EventKind.AssetDelta）——append 型 kind 的流式 chunk。 */

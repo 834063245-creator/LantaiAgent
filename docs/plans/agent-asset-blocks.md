@@ -1,6 +1,8 @@
 # Agent 资产块（block as asset）— Agent 生成块的协议与通道
 
-> 状态：**实施中（设计定稿 + 拍板全齐；WO-1 ✅ / WO-2 ✅ / WO-3 ✅ / WO-4 ✅ / WO-5 ✅ / WO-6 ✅ / WO-7 ✅ / WO-8 ✅ 已竣工，计划收口）**
+> 状态：**WO-1..8 竣工 + 渲染跟上批（2026-09-06）落地**——本批五项：confirm 真实回调面
+> （WO-7 欠账清偿）/ deps_impact 空数据占位 / board+timeline 两表现原语（§2.9 补齐）/
+> graph 分层布局（A5 二期兑现）/ 产物通道装配断层对账（装载失败可见性）。
 > 性质：纸壳块协议（「一张纸」§3.2）的闭环设计——补上「Agent → 块」这条缺失通路：
 > Agent 随时生成**可被引用/更新的资产块**（一块 = 一个组件实例），语义与表现双维度正交，
 > 渲染层插件化承接。
@@ -42,6 +44,7 @@
 | WO-6 | ✅ | asset-renderers.tsx（grid/chart/metric/media/graph/tree/html/form 纯 CSS+SVG 表现原语）+ resolveAssetBlock + PaperPanel 接入；tests/asset-primitives.test.ts（12 用例） |
 | WO-7 | ✅ | 会话快照新增 uiMessages（含 BlockPart）+ rebuildMessagesFromMessages 保留资产块 + 资产表重建；tests/asset-persistence.test.ts（2 用例） |
 | WO-8 | ✅ | HtmlBody 沙箱 iframe + buildHtmlCardDocument（sandbox + 文档 CSP，network never）+ 高度上报 + 512KB 上限 + spike 结论落档；tests/asset-primitives.test.ts 含 html 沙箱断言 |
+| 渲染跟上批（2026-09-06） | ✅ | ①confirm 真实回调面：executor 执行前预发卡（onResponse 随 Asset 事件进 BlockPart._confirmCallback）+ confirm-registry 阻塞决议（5 分钟超时，无 UI 通道立即 no_ui）+ FormBody 三钮交互（复用拟策卡钤印语言）+ 决议终态 confirmResolution 持久化（重载只读态）；tests/asset-confirm.test.ts（8 用例）②deps_impact 查询式/空数据 → 「数据不可用」占位（不再空白 SVG）；③board/timeline 两表现原语 + kind + CSS + measure 镜像 + 文类签；④graph 表现换确定性分层布局（tree 保留树布局）+ measure 镜像；⑤plugins/loader.ts 装配断层对账（第一方 feature 清单逐名对账，缺记录 → error 记录 + console.error——boot 审计只见 fiber，从未装载的产物原是盲区） |
 
 ---
 
@@ -244,38 +247,60 @@ pinnedPositions 机制，零改动红利）。用户随手拖出的任意坐标�
 
 ### 2.9 表现原语（presentation 注册表——有限集，一次性施工）
 
-| 原语 | 画什么 | payload 抽象（草） | streamable |
+> 交付状态（2026-09-06 渲染跟上批后）：grid/board/tree/timeline/chart/metric/form/graph/media/html
+> **10 原语全部在仓**（text/code/diff 是内置文类块的自留地，不走资产通道）。
+> timeline 的 streamable 原稿标 append，实装为 **atomic**——append 通道当前只对
+> 字符串 payload 有意义（AssetDelta 字符串累加器），对象 payload 的行级增量留
+> §7.4 扩展位，不为不存在的通道谎报契约。
+
+| 原语 | 画什么 | payload 抽象 | streamable（实装） |
 |---|---|---|---|
-| text | 长文/散文 | {text} | append |
-| code | 程序/配置块 | {lang, code} | append |
-| diff | 增删行着色 | {lang?, text} | append |
+| text | 长文/散文 | {text} | append（内置文类，非资产原语） |
+| code | 程序/配置块 | {lang, code} | append（同上） |
+| diff | 增删行着色 | {lang?, text} | append（同上） |
 | grid | 表格（二维数据） | {columns?, rows, caption?} | append |
-| board | 看板（列+卡） | {columns: [{title, cards}]} | atomic |
+| board | 看板（列+卡） | {columns: [{title, cards: [{label, body?, tone?}]}]} | atomic |
 | tree | 文件树/任意嵌套 | {nodes, root?} | atomic |
-| timeline | 时间轴/事件流 | {items: [{ts, title, body?}]} | append |
+| timeline | 时间轴/事件流 | {items: [{ts, title, body?}]} | atomic |
 | chart | 柱/线/饼/散点 | {type, data, config?} | atomic |
 | metric | 指标卡组 | {items: [{label, value, unit?, tone?}]} | atomic |
-| form | 表单（schema + 回调重绑） | {fields, actions?} | atomic |
-| graph | 有向图/树（轻量 SVG） | {nodes, edges} | atomic |
+| form | 确认卡（选项+三钮） | {title, body, options?, confirmLabel?} | atomic |
+| graph | 有向图/依赖链 | {nodes, edges} | atomic |
 | media | 图片/视频/文件引用 | 会话文件引用 | atomic |
 | html | 任意 HTML/SVG 片段（沙箱） | {code} | atomic |
 
 > 初心纪律：chart/graph/tree/board/timeline 全部**纯 CSS+SVG 自绘，零新依赖**（纸壳
 > 墨色体系可控、不拖 bundle、测试可钉死）。graph 不做力导向、不做重交互——「Agent 读了
 > 顺便画出来」的场景里，好看易读即可；交互留给纸壳的钉住/拖出。
+> graph/tree 双布局（2026-09-06 A5 二期兑现）：'tree' 表现 = 深度列树布局（首发形态）；
+> 'graph' 表现 = 确定性分层布局（最长路径分层 + 表序排布，环防御 = 松弛轮数封顶）。
+> 空数据（查询式 {nodeId, depth} 无直通数据 / 空 nodes）→ 「数据不可用」占位，
+> 不画空白 SVG（错误不静默——chart 同款先例）。
 
-### 2.10 首发 kind 绑定（注册表增量——v1 交付面）
+### 2.10 首发 kind 绑定（注册表增量——v1 交付面 + 2026-09-06 增补）
 
 | kind | schema（草） | presentations | default | streamable |
 |---|---|---|---|---|
 | table | {columns?: string[], rows: unknown[][], caption?} | [grid] | grid | append |
 | chart | {type: 'bar'/'line'/'pie'/'scatter', data, config?} | [chart] | chart | atomic |
 | metric | {items: [...], caption?} | [metric, grid] | metric | atomic |
-| image / file | 会话文件引用 | [media] | media | atomic |
+| file | 会话文件引用（fileId/filePath/label/ext） | [media] | media | atomic |
 | deps_impact | {nodeId, depth?} 或引擎 nodes/edges 直通 | [graph, tree, table] | graph | atomic |
 | html | {code} | [html] | html | atomic |
 | confirm | {title, body, options?, confirmLabel?} | [form] | form | atomic |
+| board | {columns: [{title, cards: [{label, body?, tone?}]}]} | [board] | board | atomic |
+| timeline | {items: [{ts, title, body?}]} | [timeline] | timeline | atomic |
 
+> **confirm kind 阻塞语义（2026-09-06 起生效，plan 审批模式泛化的完整兑现）**：
+> show_asset(kind=confirm) 由 executor **执行前预发卡**（终值事件常规通道从工具输出
+> 解析，而 confirm 阻塞等决议——卡必须先于决议存在）；卡面带活回调
+> （Asset 事件 onResponse → BlockPart._confirmCallback → block.asset._confirm），
+> 用户表决（选项/确认/修改/拒绝）→ confirm-registry 决议送达等待中的工具 →
+> **决议作为工具结果回传模型**。等待上限 5 分钟（plan 同款防死锁）；无 UI 通道
+> （嵌套 dispatch / headless）立即 no_ui 放行，不空等。决议终态写
+> BlockPart.confirmResolution（纯 JSON 随会话持久化——重载后「已处理」只读态）；
+> 活回调本身不持久化（PlanPart._callback 先例，历史卡只读）。
+>
 > 增量纪律：新 kind 只靠两条路长——插件贡献（进 list_block_kinds 发现面）、首发清单
 > 迭代（用户拍板）。不为「穷举所有场景」建目录（访谈 R1 结论：范式不靠穷举靠结构）。
 > 游戏规则：**想 100 种就有 100 种，每个成本一行，全部自动可发现**。
@@ -348,8 +373,9 @@ export function resolveAssetBlock(kind: string, presentation: string | undefined
 | WO-4 | 兜底渲染器升级（漂亮 JSON） + PaperPanel 文类签 | renderer-service.tsx / PaperPanel.tsx + css | **✅ 已竣工**——未知 kind 显示 JSON 视图不崩；签不破版；tests/asset-render.test.ts（4 用例） |
 | WO-5 | **会话级资产表（A7）**：assetId 索引 + update 广播 + pinned 孤儿刷新 | 会话 store / 持久化服务 / 纸壳消费面 | **✅ 已竣工**——更新流内块与孤儿钉同刷；坐标/钉住不变；资产表可从日志重建；tests/asset-broadcast.test.ts（9 用例） |
 | WO-6 | 首发渲染器：grid → chart → metric → media → graph（SVG tree）→ html → form(confirm) | renderer-service.tsx + 组件（每原语一个） | **✅ 已竣工**——每原语渲染单测 + schema 生效；graph 树布局确定性强断言；tests/asset-primitives.test.ts（12 用例） |
-| WO-7 | 持久化/回放 | 会话持久化服务 | **✅ 已竣工**——重启后资产块还原（StoredSession.uiMessages + rebuild 保留 BlockPart）；payload 纯 JSON 断言；tests/asset-persistence.test.ts（2 用例）；form 回调重绑留待 confirm 真实回调面（协议回调不进 payload） |
+| WO-7 | 持久化/回放 | 会话持久化服务 | **✅ 已竣工**——重启后资产块还原（StoredSession.uiMessages + rebuild 保留 BlockPart）；payload 纯 JSON 断言；tests/asset-persistence.test.ts（2 用例）；~~form 回调重绑留待 confirm 真实回调面~~（2026-09-06 渲染跟上批清偿——决议终态 confirmResolution 持久化 + 活回调瞬态，见渲染跟上批行） |
 | WO-8 | html 沙箱卡（逃生舱）独立施工单 | 新渲染器 + 沙箱面 | **✅ 已竣工**——spike 结论落档；安全审计三要素 + 高度上报 + 限高/pinned 语义 + capability 行注册（HTML_CARD_CAPABILITY network: never） |
+| 渲染跟上批（2026-09-06） | ①confirm 真实回调面 ②deps_impact 空数据占位 ③board/timeline 原语 ④graph 分层布局 ⑤产物通道装配断层对账 | agent/confirm-registry.ts（新）+ streaming-executor 预发卡 + show-asset confirm 分支 + part-mutator 回调挂接 + components.tsx（FormBody 交互化/GraphLayeredBody/BoardBody/TimelineBody/空数据占位）+ asset-kinds.ts（board/timeline）+ measure/type-tokens/PaperPanel.css/PaperPanel 文类签 + plugins/loader.ts 对账 | **✅ 已竣工**——tests/asset-confirm.test.ts（8 用例：注册表 no_ui/决议/幂等 + executor 预发卡事件序/决议回传 + part-mutator 挂接/回调存续/持久化契约）+ asset-primitives 增批（graph 分层几何断言/空数据占位/board/timeline/form 双态）；tsc 全绿 |
 
 ## 4. 铁律
 
@@ -391,12 +417,14 @@ export function resolveAssetBlock(kind: string, presentation: string | undefined
 ## 7. 开放问题（实施期边做边定，不阻塞开工）
 
 1. **html 沙箱载体 spike（WO-8 前置）**：Tauri webview 下 srcdoc/CSP 行为实验
-   （openhanako 的「真实 http origin」教训为对照；三选一方案见 §2.12）。
-2. 高度上报协议细节（载荷形状、ping 周期）——施工自决，命名对齐兰台（lantai.*）。
-3. 主题变量注入清单（--ink/--paper/--accent/--pass/--fail 全量枚举）——施工自决。
-4. 流式类型化增量（行/点级 append）——留扩展位，有真实需求再实现。
-5. graph layered 布局（二期）：确定性分层排布算法选型（Sugiyama 简化/分层环排）。
+   （openhanako 的「真实 http origin」教训为对照；三选一方案见 §2.12）——✅ 已结（WO-8 结论落档 §2.12）。
+2. 高度上报协议细节（载荷形状、ping 周期）——施工自决，命名对齐兰台（lantai.*）——✅ 已结（lantai.card-resize / lantai.card-ping）。
+3. 主题变量注入清单（--ink/--paper/--accent/--pass/--fail 全量枚举）——施工自决——✅ 已结（buildHtmlCardDocument 内置基础款：--f-song/--ink-1；全量注入待真实需求）。
+4. 流式类型化增量（行/点级 append）——留扩展位，有真实需求再实现（timeline 实装 atomic 的原因即此——见 §2.9 注记）。
+5. ~~graph layered 布局（二期）：确定性分层排布算法选型（Sugiyama 简化/分层环排）~~——✅ 已结（2026-09-06 渲染跟上批）：选型 = 最长路径分层（Sugiyama 去交叉前半段）+ 表序排布 + 松弛轮数封顶环防御；无交叉优化（A5 轻量裁决不变）。
 6. 文本引用资产的交互形态（A6 解冻时）：scrollIntoView / 纸面聚焦 / 高亮。
+7. ACP 宿主的 confirm 卡转发（session/update 协议扩展）——ACP 面当前不转发 Asset 事件，
+   ACP 会话里的 confirm 走 5 分钟超时放行（与 plan 审批同款行为）；真实 ACP 需求出现再立。
 
 ## 8. 对照先例（openhanako，可读源码）
 
