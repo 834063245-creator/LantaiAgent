@@ -264,6 +264,32 @@ export function registerBuiltinAssetKinds(): void {
 }
 
 // ═══════════════════════════════════════════════════════
+// 资产通道终值解析（协议 §2.3——assetChannel 工具返回 JSON 的 AssetEventData 形状）
+// ═══════════════════════════════════════════════════════
+
+/** 解析工具输出的资产终值 JSON（AssetToolOutput 形状）。单一解析真源：
+ *  executor 终值事件、dispatchNestedTool 嵌套通道、asset-store 会话重建
+ *  共用（schema 键/事件键/重建键三处一源——再漂移类事故的预防）。
+ *  非资产 JSON / 截断文本 / 畸形 → null（调用方各按其语义处理）。 */
+export function parseAssetEventOutput(output: string): import('./agent-types').AssetEventData | null {
+  try {
+    const parsed: unknown = JSON.parse(output);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const o = parsed as Record<string, unknown>;
+    if (typeof o.assetId !== 'string' || typeof o.kind !== 'string' || !('payload' in o)) return null;
+    return {
+      assetId: o.assetId,
+      kind: o.kind,
+      ...(typeof o.presentation === 'string' ? { presentation: o.presentation } : {}),
+      ...(typeof o.title === 'string' && o.title.length > 0 ? { title: o.title } : {}),
+      payload: o.payload,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════
 // 校验辅助（报错即导航——协议 §2.7）
 // ═══════════════════════════════════════════════════════
 

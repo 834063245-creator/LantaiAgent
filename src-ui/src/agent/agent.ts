@@ -41,6 +41,7 @@ import {
   type ToolEvent,
 } from './agent-types';
 import { generateAssetId } from './asset-kinds';
+import { rebuildAssetsFromSession } from './asset-store';
 import { type CompactionConfig, type CompactionSessionStats, CompactionTracker } from './compaction-model';
 import type { AgentContext } from './context';
 import {
@@ -622,6 +623,10 @@ export class Agent {
       reason,
     });
     this.session = messages;
+    // 资产表随会话重建（索引镜像真源——四边界共用此点）：恢复后 update_asset
+    // 对旧资产照常寻址（此前无重建路径，重启后 U 面断）；newSession/清场后表
+    // 随会话归空。scope = 本 Agent 的 _owner_id（executor 注入语义同源）。
+    rebuildAssetsFromSession(this.id, this.session);
   }
 
   /** 区间撤回（[fromIndex, toIndex) splice 语义 — retractTurnAt / goal 暂停裁剪）。 */

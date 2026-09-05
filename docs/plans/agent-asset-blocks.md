@@ -45,6 +45,7 @@
 | WO-7 | ✅ | 会话快照新增 uiMessages（含 BlockPart）+ rebuildMessagesFromMessages 保留资产块 + 资产表重建；tests/asset-persistence.test.ts（2 用例） |
 | WO-8 | ✅ | HtmlBody 沙箱 iframe + buildHtmlCardDocument（sandbox + 文档 CSP，network never）+ 高度上报 + 512KB 上限 + spike 结论落档；tests/asset-primitives.test.ts 含 html 沙箱断言 |
 | 渲染跟上批（2026-09-06） | ✅ | ①confirm 真实回调面：executor 执行前预发卡（onResponse 随 Asset 事件进 BlockPart._confirmCallback）+ confirm-registry 阻塞决议（5 分钟超时，无 UI 通道立即 no_ui）+ FormBody 三钮交互（复用拟策卡钤印语言）+ 决议终态 confirmResolution 持久化（重载只读态）；tests/asset-confirm.test.ts（8 用例）②deps_impact 查询式/空数据 → 「数据不可用」占位（不再空白 SVG）；③board/timeline 两表现原语 + kind + CSS + measure 镜像 + 文类签；④graph 表现换确定性分层布局（tree 保留树布局）+ measure 镜像；⑤plugins/loader.ts 装配断层对账（第一方 feature 清单逐名对账，缺记录 → error 记录 + console.error——boot 审计只见 fiber，从未装载的产物原是盲区） |
+| 渲染跟上批·续（2026-09-06） | ✅ | ⑥资产表会话重建：parseAssetEventOutput 单一解析真源迁 asset-kinds.ts（executor/嵌套通道/重建三处一源）+ rebuildAssetsFromSession（agent/asset-store.ts）挂 Agent._replaceSession 四边界——重启/恢复后 update_asset 对旧资产照常寻址（U 面跨重启续命，兑现「可从日志重建」承诺）；tests/asset-tools.test.ts 增 4 用例（重建/更新后者胜/confirm 输出入表/整体替换 + Agent.setSession 接线） |
 
 ---
 
@@ -171,6 +172,14 @@ payload 随 show_asset 进会话 JSONL（持久化现成），资产表只是「
 索引——**可从日志重建，不是第二真相**；块依然活引用（引用目标从「消息 part」扩展为
 「资产记录」）。
 
+- **重建钩子（2026-09-06 渲染跟上批·续）**：`rebuildAssetsFromSession(scope, messages)`
+  挂在 `Agent._replaceSession` 单点（构造 init / setSession 恢复 / newSession / goal
+  清场四边界共用）——从会话工具结果 JSONL 里保存的 AssetToolOutput 全量 JSON 扫描重建，
+  同一 assetId 会话序后者胜；截断/畸形结果跳过（该资产 UI 块仍渲染，只失去 update
+  寻址——诚实降级）。此前无重建路径：重启后 update_asset 对旧资产误报「不存在于当前
+  会话」——CRUD 的 U 面跨重启断，本钩子兑现「可从日志重建」的既有承诺。压缩
+  （compaction）不走 replace 边界 → 表在压缩后存活（被压缩掉源消息的资产仍可寻址，
+  UI 侧孤儿钉刷新承接显示——A7 语义）。
 - 路由：show_asset → 写资产表 + emit Asset 事件（part-mutator 建块）；
   update_asset → 替换资产记录 + 广播 assetId 变更信号 → 渲染层按 assetId 找到所有引用
   它的块（流内的 + **pinned 孤儿**——源 part 已被压缩清理的钉住块，PaperPanel 孤儿钉
@@ -376,6 +385,7 @@ export function resolveAssetBlock(kind: string, presentation: string | undefined
 | WO-7 | 持久化/回放 | 会话持久化服务 | **✅ 已竣工**——重启后资产块还原（StoredSession.uiMessages + rebuild 保留 BlockPart）；payload 纯 JSON 断言；tests/asset-persistence.test.ts（2 用例）；~~form 回调重绑留待 confirm 真实回调面~~（2026-09-06 渲染跟上批清偿——决议终态 confirmResolution 持久化 + 活回调瞬态，见渲染跟上批行） |
 | WO-8 | html 沙箱卡（逃生舱）独立施工单 | 新渲染器 + 沙箱面 | **✅ 已竣工**——spike 结论落档；安全审计三要素 + 高度上报 + 限高/pinned 语义 + capability 行注册（HTML_CARD_CAPABILITY network: never） |
 | 渲染跟上批（2026-09-06） | ①confirm 真实回调面 ②deps_impact 空数据占位 ③board/timeline 原语 ④graph 分层布局 ⑤产物通道装配断层对账 | agent/confirm-registry.ts（新）+ streaming-executor 预发卡 + show-asset confirm 分支 + part-mutator 回调挂接 + components.tsx（FormBody 交互化/GraphLayeredBody/BoardBody/TimelineBody/空数据占位）+ asset-kinds.ts（board/timeline）+ measure/type-tokens/PaperPanel.css/PaperPanel 文类签 + plugins/loader.ts 对账 | **✅ 已竣工**——tests/asset-confirm.test.ts（8 用例：注册表 no_ui/决议/幂等 + executor 预发卡事件序/决议回传 + part-mutator 挂接/回调存续/持久化契约）+ asset-primitives 增批（graph 分层几何断言/空数据占位/board/timeline/form 双态）；tsc 全绿 |
+| 渲染跟上批·续（2026-09-06） | ⑥资产表会话重建——重启/恢复后 update_asset 的 U 面续命（「可从日志重建」承诺兑现，此前无重建路径） | asset-kinds.ts（parseAssetEventOutput 单一解析真源迁入——executor/嵌套通道/重建三处一源）+ asset-store.ts（rebuildAssetsFromSession）+ agent.ts（_replaceSession 四边界接线：init/restore/newSession/清场） | **✅ 已竣工**——tests/asset-tools.test.ts 增 4 用例（重建+更新后者胜/截断畸形跳过/confirm 决议输出入表/整体替换语义 + Agent.setSession 接线：恢复可寻址、清场归空）；压缩不经 replace 边界 → 表压缩后存活（孤儿钉刷新承接显示，A7 语义） |
 
 ## 4. 铁律
 

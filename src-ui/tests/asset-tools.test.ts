@@ -307,3 +307,128 @@ describe('executor 资产通道 — assetChannel 工具的事件路由', () => {
     expect(kinds).toContain(EventKind.ToolResult);
   });
 });
+
+describe('资产表会话重建 — 重启/恢复后 update_asset 的 U 面续命', () => {
+  let getAsset: StoreModule['getAsset'];
+  let upsertAsset: StoreModule['upsertAsset'];
+  let rebuildAssetsFromSession: StoreModule['rebuildAssetsFromSession'];
+  let clearAssetTablesForTests: StoreModule['clearAssetTablesForTests'];
+  let listAssets: StoreModule['listAssets'];
+
+  beforeEach(async () => {
+    const st = await import('../src/agent/asset-store');
+    getAsset = st.getAsset;
+    upsertAsset = st.upsertAsset;
+    rebuildAssetsFromSession = st.rebuildAssetsFromSession;
+    clearAssetTablesForTests = st.clearAssetTablesForTests;
+    listAssets = st.listAssets;
+    clearAssetTablesForTests();
+  });
+
+  it('从工具结果 JSONL 重建：同一 assetId 更新后者胜（会话序 = 时间序）', () => {
+    rebuildAssetsFromSession('owner-r', [
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: '画个图' },
+      {
+        role: 'tool',
+        content: JSON.stringify({
+          assetId: 'as_a',
+          kind: 'chart',
+          presentation: 'chart',
+          title: 'q4',
+          payload: { v: 1 },
+        }),
+      },
+      {
+        role: 'tool',
+        content: JSON.stringify({ assetId: 'as_a', kind: 'chart', presentation: 'chart', payload: { v: 2 } }),
+      },
+      { role: 'tool', content: '普通工具的文本输出（非 JSON）' },
+      { role: 'tool', content: '{"assetId": "as_trunc", "kind": "chart", "payload": {"v": 1' },
+    ]);
+    const a = getAsset('owner-r', 'as_a');
+    expect(a?.kind).toBe('chart');
+    expect(a?.presentation).toBe('chart');
+    expect(a?.payload).toEqual({ v: 2 }); // 更新后者胜
+    // 非 JSON 输出与截断 JSON 跳过——不炸、不误入
+    expect(getAsset('owner-r', 'as_trunc')).toBeUndefined();
+    expect(listAssets('owner-r')).toHaveLength(1);
+  });
+
+  it('confirm 决议输出也入表（confirmResponse 字段被解析器丢弃，payload 纯数据）', () => {
+    rebuildAssetsFromSession('owner-c', [
+      {
+        role: 'tool',
+        content: JSON.stringify({
+          assetId: 'as_c',
+          kind: 'confirm',
+          presentation: 'form',
+          payload: { title: 't' },
+          confirmResponse: { decision: 'approved' },
+        }),
+      },
+    ]);
+    const c = getAsset('owner-c', 'as_c') as Record<string, unknown>;
+    expect(c.kind).toBe('confirm');
+    expect(c.payload).toEqual({ title: 't' });
+    expect('confirmResponse' in c).toBe(false);
+  });
+
+  it('整体替换语义：会话说了算——不在会话里的旧记录随 rebuild 清场', () => {
+    upsertAsset('owner-r2', { assetId: 'as_stale', kind: 'chart', presentation: 'chart', payload: {}, ts: 1 });
+    rebuildAssetsFromSession('owner-r2', [
+      {
+        role: 'tool',
+        content: JSON.stringify({ assetId: 'as_live', kind: 'table', presentation: 'grid', payload: { rows: [] } }),
+      },
+    ]);
+    expect(getAsset('owner-r2', 'as_stale')).toBeUndefined();
+    expect(getAsset('owner-r2', 'as_live')).toBeDefined();
+    // 空会话（newSession/清场）→ 表随会话归空
+    rebuildAssetsFromSession('owner-r2', [{ role: 'system', content: 'sys' }]);
+    expect(listAssets('owner-r2')).toHaveLength(0);
+  });
+
+  it('Agent._replaceSession 接线：setSession 恢复后 agent 能按旧 assetId 寻址（重启场景）', async () => {
+    const { Agent } = await import('../src/agent/agent');
+    const { AgentContext } = await import('../src/agent/context');
+    const { ToolRegistry: TR } = await import('../src/agent/tool');
+    type Provider = import('../src/provider/types').Provider;
+
+    const provider = {
+      name: () => 'mock',
+      stream: async function* () {
+        /* 不跑流——只测会话边界 */
+      },
+    } as unknown as Provider;
+    const ctx = new AgentContext({ agentId: 'owner-agent-r' }, {
+      provider,
+      tools: new TR(),
+    } as Parameters<typeof AgentContext>[1]);
+    const agent = new Agent(ctx, 'sys');
+
+    // 模拟重启前的会话卷：工具结果里躺着旧资产的完整 JSON
+    agent.setSession([
+      { role: 'system', content: 'sys' },
+      { role: 'user', content: '画影响面' },
+      {
+        role: 'tool',
+        content: JSON.stringify({
+          assetId: 'as_reboot',
+          kind: 'deps_impact',
+          presentation: 'graph',
+          title: 'impact',
+          payload: { nodes: [{ id: 'a' }], edges: [] },
+        }),
+      } as never,
+    ]);
+
+    // U 面续命判据：恢复后 update_asset 能寻址（表索引已从会话重建）
+    const rec = getAsset('owner-agent-r', 'as_reboot');
+    expect(rec?.kind).toBe('deps_impact');
+    expect(rec?.title).toBe('impact');
+    // 会话清场 → 表归空（同 scope 随会话）
+    agent.setSession([{ role: 'system', content: 'sys' }] as never);
+    expect(getAsset('owner-agent-r', 'as_reboot')).toBeUndefined();
+  });
+});

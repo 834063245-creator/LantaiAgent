@@ -15,8 +15,8 @@
 // CC 参考：StreamingToolExecutor, query.ts:1366-1408
 
 import type { ToolCall } from '../provider/types';
-import { type AgentEvent, type AssetEventData, EventKind, type ToolPipelineContext } from './agent-types';
-import { generateAssetId } from './asset-kinds';
+import { type AgentEvent, EventKind, type ToolPipelineContext } from './agent-types';
+import { generateAssetId, parseAssetEventOutput } from './asset-kinds';
 import { markConfirmEmitted, resolveConfirm } from './confirm-registry';
 import type { AgentEventBus } from './events';
 import type { Tool, ToolRegistry } from './tool';
@@ -548,21 +548,6 @@ export class StreamingToolExecutor {
 
 /* ── 资产通道终值解析（协议 §2.3——assetChannel 工具返回 JSON 的 AssetEventData 形状）── */
 
-/** 导出面：dispatchNestedTool（agent.ts）的嵌套资产通道复用同一解析。 */
-export function parseAssetEventOutput(output: string): AssetEventData | null {
-  try {
-    const parsed: unknown = JSON.parse(output);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-    const o = parsed as Record<string, unknown>;
-    if (typeof o.assetId !== 'string' || typeof o.kind !== 'string' || !('payload' in o)) return null;
-    return {
-      assetId: o.assetId,
-      kind: o.kind,
-      ...(typeof o.presentation === 'string' ? { presentation: o.presentation } : {}),
-      ...(typeof o.title === 'string' && o.title.length > 0 ? { title: o.title } : {}),
-      payload: o.payload,
-    };
-  } catch {
-    return null;
-  }
-}
+// 解析器单一真源在 asset-kinds.ts（资产协议域）；此处 re-export 保持
+// dispatchNestedTool（agent.ts）等既有 import 面零改动。
+export { parseAssetEventOutput } from './asset-kinds';
