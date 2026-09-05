@@ -14,10 +14,12 @@
 // 语义）；checked_write_atomic 进程级锁 + 命令内重试环原样保留
 // （INVARIANTS：并发安全在 Rust 临界区）。
 //
-// 键语言：manifest 键 = camelCase（filePath/oldString/newString/replaceAll），
-// 口收顶层 snake（file_path/old_string/new_string/replace_all）——映射在 TS
-// execute 层。_forceGate 为模型面 schema 声明键（架构门禁），executor 消费，
-// 原样透传不映射。返回 Text（diff 快照文本直通）。
+// 键语言：模型面 schema 键 = camelCase（filePath/oldString/newString/
+// replaceAll）；口收与业务解析统一顶层 snake（file_path/old_string/
+// new_string/replace_all）——映射在 TS execute 层完成（R4-4b 后信封的 bridge
+// camelCase 化已不存在，camelCase 是死语言，业务解析不读）。_forceGate 为
+// 模型面 schema 声明键（架构门禁），executor 消费，原样透传不映射。
+// 返回 Text（diff 快照文本直通）。
 
 use serde_json::Value;
 use tauri::State;
@@ -140,15 +142,48 @@ fn truncate_err_key(first_line: &str) -> &str {
     &first_line[..end]
 }
 
-/// edit_file — 精确字符串替换 + 真实行级 diff（业务自 commands/editor.rs 原样
-/// 迁入；参数键改说 manifest schema 的语言，camelCase；解析走免检变体——
-/// Edit 家族工具级门已在 dispatch 侧过闸）。
-async fn edit_file(ctx: &EditorCtx<'_>, args: &Value) -> Result<Value, ToolError> {
+/// edit_file 参数（口收顶层 snake 键——契约见 editor_cap 分派头注；键名与本
+/// 文件头注「口收顶层 snake（file_path/old_string/new_string/replace_all）」
+/// 同源。R4-4b 从 builtin.editor 插件迁入时业务逐行照搬、把插件 manifest 的
+/// camelCase 键（filePath/oldString/…）原样留在了解析点——信封时代 args 经
+/// bridge camelCase 化，能力口时代 TS execute 直映 snake，键语言已切换，业务
+/// 解析必须说 snake。2026-09 bug 报告：fs(edit) 三种写法全报
+/// "edit_file: missing 'filePath'"（file_path 明明已传）——分派侧读 snake 过
+/// 闸、业务侧读 camelCase 全空。
+#[derive(Debug)]
+struct EditArgs {
+    file_path: String,
+    old_string: String,
+    new_string: String,
+    replace_all: bool,
+}
+
+/// 免检解析 edit_file 参数（键 = snake，能力口契约语言）。业务与回归测试共用
+/// ——参数契约的单一解析点，防「schema 键 / 口收键 / 业务键」三处再漂移。
+fn parse_edit_args(args: &Value) -> Result<EditArgs, ToolError> {
     let missing = |k: &str| ToolError::InvalidArgs(format!("edit_file: missing '{k}'"));
-    let file_path = arg_str(args, "filePath").ok_or_else(|| missing("filePath"))?;
-    let old_string = arg_str(args, "oldString").ok_or_else(|| missing("oldString"))?;
-    let new_string = arg_str(args, "newString").ok_or_else(|| missing("newString"))?;
-    let replace_all = arg_bool(args, "replaceAll").unwrap_or(false);
+    let file_path = arg_str(args, "file_path").ok_or_else(|| missing("file_path"))?;
+    let old_string = arg_str(args, "old_string").ok_or_else(|| missing("old_string"))?;
+    let new_string = arg_str(args, "new_string").ok_or_else(|| missing("new_string"))?;
+    let replace_all = arg_bool(args, "replace_all").unwrap_or(false);
+    Ok(EditArgs {
+        file_path,
+        old_string,
+        new_string,
+        replace_all,
+    })
+}
+
+/// edit_file — 精确字符串替换 + 真实行级 diff（业务自 commands/editor.rs 原样
+/// 迁入；参数键说能力口顶层 snake 的语言——见 parse_edit_args；解析走免检变体
+/// ——Edit 家族工具级门已在 dispatch 侧过闸）。
+async fn edit_file(ctx: &EditorCtx<'_>, args: &Value) -> Result<Value, ToolError> {
+    let EditArgs {
+        file_path,
+        old_string,
+        new_string,
+        replace_all,
+    } = parse_edit_args(args)?;
     let is_agent = ctx.is_agent;
     let agent_id = ctx.agent_id.as_deref();
     let state = ctx.state;
@@ -523,7 +558,7 @@ pub(crate) async fn editor_cap(
     // plugin:builtin.editor.edit_file（用户既有规则不失义）。
     if is_agent {
         let file_path = arg_str(&params, "file_path")
-            .ok_or_else(|| "edit_file: missing 'filePath'".to_string())?;
+            .ok_or_else(|| "edit_file: missing 'file_path'".to_string())?;
         let perm_ctx = crate::utils::get_ctx(state)?;
         let physical =
             perm_ctx.forward_map_path(std::path::Path::new(&file_path), agent_id.as_deref());
@@ -580,6 +615,59 @@ mod tests {
         let line = "fn short_call() {".repeat(10);
         assert_eq!(truncate_err_key(&line), &line[..60]);
         assert_eq!(truncate_err_key("short"), "short");
+    }
+
+    /// 回归（2026-09 fs(edit) bug 报告）：能力口契约 = 顶层 snake 键，业务解析
+    /// 必须说 snake。R4-4b 从 builtin.editor 插件迁入时把插件 manifest 的
+    /// camelCase 键（filePath/oldString/…）原样留在了解析点——TS execute 直映
+    /// snake（file_path/old_string/…），业务侧读 camelCase 全空 →
+    /// "edit_file: missing 'filePath'"（file_path 明明已传）。契约语言锚死：
+    /// snake 键必须解析出全量参数；camelCase 键是死语言（信封已拆，不得复活）。
+    #[test]
+    fn parse_edit_args_reads_snake_keys() {
+        let args = serde_json::json!({
+            "action": "edit_file",
+            "file_path": "D:/proj/a.ts",
+            "old_string": "foo",
+            "new_string": "bar",
+            "replace_all": true,
+            "_agent_id": "agent-123", // meta 原样透传，不参与业务解析
+        });
+        let parsed = parse_edit_args(&args).expect("snake 键必须解析成功");
+        assert_eq!(parsed.file_path, "D:/proj/a.ts");
+        assert_eq!(parsed.old_string, "foo");
+        assert_eq!(parsed.new_string, "bar");
+        assert!(parsed.replace_all);
+    }
+
+    #[test]
+    fn parse_edit_args_rejects_camel_case_and_missing() {
+        // camelCase 是信封时代死语言——能力口直呼后不得复活
+        let camel = serde_json::json!({
+            "filePath": "D:/proj/a.ts",
+            "oldString": "foo",
+            "newString": "bar",
+        });
+        let err = parse_edit_args(&camel).unwrap_err();
+        assert!(
+            err.message().contains("missing 'file_path'"),
+            "got: {}",
+            err.message()
+        );
+        // 缺键响亮报错（schema 之外的契约违规），不静默兜底
+        let none = serde_json::json!({});
+        let err2 = parse_edit_args(&none).unwrap_err();
+        assert!(
+            err2.message().contains("missing 'file_path'"),
+            "got: {}",
+            err2.message()
+        );
+        // replace_all 缺省 false
+        let minimal = serde_json::json!({
+            "file_path": "a.ts", "old_string": "x", "new_string": "y",
+        });
+        let parsed = parse_edit_args(&minimal).expect("snake 最小集必须解析成功");
+        assert!(!parsed.replace_all);
     }
 
     #[test]
