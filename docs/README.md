@@ -30,7 +30,7 @@
 | [`docs/composition/README.md`](composition/README.md) | 当前（2026-08-20 S4 校准） | 组合层用户指南：patch 语法/preset/热重载/涟漪表 |
 | [docs/plugins/README.md](plugins/README.md) | 当前（2026-08-28 平台化 P6 平台契约校准） | 插件契约 = 平台契约总览（§0）：贡献通道/seam provider/动态插件/MCP 面/契约版本/信任模型二分 |
 | [`docs/agents/engine-plugin-contract.md`](agents/engine-plugin-contract.md) | 当前（契约 v4，2026-08-29） | 引擎开放面契约：模型工具面 / 11 壳专属方法（hidden tools）/ 免编译扩展面（`HOLOGRAM_PLUGIN_DIR` manifest，三类扩展；示例 `examples/engine-plugins/`） |
-| [docs/cookbook/](cookbook/) | 当前（2026-08-28 平台化 P6） | 各 seam 指南：llm adapter / subagent provider / fs / shell / session / graph 后端 / 动态插件 / MCP server |
+| [docs/cookbook/](cookbook/) | 当前（2026-09-06 app shell 增补） | 各 seam 指南：llm adapter / subagent provider / fs / shell / session / graph 后端 / 动态插件 / MCP server / **软件级插件（app shell 四件套）** |
 | [docs/user/develop/publishing-plugins.md](user/develop/publishing-plugins.md) | 当前（2026-08-28 平台化 P6） | 三方发布路径（registry 发布 + 安装 + 信任面） |
 | [`docs/MULTI_AGENT_ROADMAP.md`](MULTI_AGENT_ROADMAP.md) | 工作台 | 多 Agent 路线图与已落地能力 |
 | [`docs/landmine-map.md`](landmine-map.md) | 当前 | 雷区地图、拆弹批次状态 |

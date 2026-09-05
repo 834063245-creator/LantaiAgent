@@ -42,6 +42,7 @@
 7. [KV-cache 注意事项](#7-kv-cache-注意事项)
 8. [preset（行组合预设）](#8-preset行组合预设)
 9. [未决项（如实声明）](#9-未决项如实声明)
+10. [软件级插件（app shell 四件套）](#10-软件级插件app-shell-四件套)
 
 ## 0. 平台契约总览
 
@@ -203,6 +204,9 @@ inject 依赖存在性 → webview 动态 import → `root.plugin(obj)`。任何
 声明 `tools` / `mcpServers` 时装载器包装插件（entry.apply 之后挂接声明
 面——工具贡献注册 / 桥进程启动；贡献注销与进程 kill 挂同一 fiber——插件
 卸载即链式停，见 §3「manifest.tools」与「MCP 机器桥」）。
+
+软件级字段（`dataDir` / `app` / mcpServers 条目的 `restart`·`lifecycle` 治理
+字段 / tools 条目的 `async`）见 **§10 软件级插件（app shell）**。
 
 ## 3. 通道 API
 
@@ -748,10 +752,65 @@ factory（出厂表，代码真源）
   （已装版本 vs registry latest 的角标）属增强。
 - **preset 的 UI 选择面**：当前只有设置面板默认值 + 新会话携带默认
   （DSH 四面砍到最小——新会话 chip / 会话头标签 / 管理节留给 V5 壳）。
-- **机器桥断线重连监督**：lazy 的装配期重试已落地；DSH reconnect loop
-  同构的定时退避重连 + 工具面动态重注册属增强（v1 未做，如实声明）。
+- **机器桥断线重连监督**：lazy 的装配期重试已落地；受治面（治理字段在场）
+  已由 `restart: "on-crash"` 承担（S2）——旧形态（无治理字段）的定时退避
+  重连 + 工具面动态重注册属增强（v1 未做，如实声明）。
 - ~~**mcpServers http 传输鉴权**~~：headers 明文进 manifest——插件目录是
   全信任区，与 command 同级，不做加密仪式（既定立场维持）。
+- **软件级插件的管理 UI 面**（启动器/任务栏）：窗口原语（§10）已落地，
+  管理面（第一方产物形态，与 canvas-nav 并列走产物流）**待用户参与设计
+  定稿后另批施工**——只 gate 该子件，装载/开窗/工具链路不依赖它（当前开窗
+  走插件工具如 `notes_open` 或测试面）。
+
+## 10. 软件级插件（app shell 四件套）
+
+「贡献零件」（面板/命令/工具/prompt 段）之上的形态：**完整软件以插件形态
+住进兰台**——装载即给数据地盘、开窗即视图、工具驱动即干活、卸载即整体
+回收。软件插进来 = 在画布上开一扇窗，窗带三样契约：空间所有权、开合即
+生命周期、窗后地盘（2026-09-03 形态判断）。全程范本：
+`examples/plugins/notes-app/`（分步指南见
+[`docs/cookbook/plugin-as-software.md`](../cookbook/plugin-as-software.md)）。
+
+### 10.1 责任切分（协议面是插件作者的义务）
+
+宿主只提供基础设施，不为「软件不配合」负责。插件作者可选择不开放协议面
+（纯 GUI 软件）——**允许装载但不进 Agent 主路**（没工具 = Agent 驱动不了，
+不承诺视觉兜底进编排；manifest 无 tools 时装载不告警不拦截）。
+
+### 10.2 四件套（宿主基础设施 × manifest 字段）
+
+| 件 | manifest 字段 | 宿主给什么 |
+|---|---|---|
+| **A 窗口原语** | `app: { entry: "./app/index.html", mode?: "floating"\|"dock"\|"fullscreen", title? }` | 装载只登记窗口定义；开窗才实例化 iframe 视口（**真隔离**：sandbox 无 allow-same-origin，窗内容拿不到宿主桥）。窗内向宿主要能力走 **postMessage 白名单桥**（协议 `lantai-plugin-bridge`，call/result 按 reqId 关联；默认最小集 `fs.list/read/write/delete` + `notify`，方法级白名单克制开面；**插件身份由容器侧绑定**——窗内消息不携带也不可信插件名）。宿主→窗广播限 `bridge-ready` / `window-closing` 两种。窗口设施（开/关/聚焦/模式/查询）经宿主桥 `windows` 键暴露——**宿主能力面非工具面**：工具语义归插件（插件在 tools 声明「开窗」工具，执行体调设施） |
+| **B 数据目录** | `dataDir: true` | 装载即分配 `<数据根>/<插件名>/`（幂等 ensure）；受治进程经 spawn env `LANTAI_PLUGIN_DATA_DIR` 拿到路径；窗经桥 fs 读写（Rust 侧名字 + rel 双围栏 + canonicalize 前缀锁死插件根）；卸载随 `plugin_uninstall` 整体挪 `.trash` 回收（备份一个目录全家走） |
+| **C 受治进程** | `mcpServers` 条目 `restart?: "off"\|"on-crash"` / `lifecycle?: "lazy"\|"eager"\|"with-window"`（任一在场 = 受治面；皆缺席 = 旧形态不变；http 条目声明治理字段拒绝） | 就绪 = initialize 握手 + tools/list 限窗完成（缺省 60s，到点判启动失败 + 杀挂壁进程）；on-crash 指数退避重启（1s×2 封顶 30s）；三档生命周期（lazy：装配/调用/开窗拉起 + 空闲回收 5min，无窗才计时；eager：装载即拉起卸载才停；with-window：随窗开合，关窗默认杀）；未就绪调用立即报 `service_not_ready` + 触发拉起（宿主永不阻塞等待）；进程树终止（Windows taskkill /T；kill 挂插件 fiber） |
+| **D 后台唤醒** | tools 条目 `async: true`（工具口） | 执行即返回卡片（宿主生成 taskId 注入 `args._task_id` + 登记发起者）；完成唤醒发起 Agent + **minimal 定位键 `{status, taskId, sessionId}`**（内容不进唤醒体——凭 taskId 调插件工具按需取）；MCP 路对位：server 完成通知 `lantai/deferred`（params.progressToken 回带调用期 token）由桥翻译成同一唤醒 |
+
+### 10.3 两张门规则（决策 8——没有第三张门）
+
+工具进 Agent 主路只有两张既有门：
+
+- **工具口**（`manifest.tools` + entry 的 `toolHandlers`）：实现必须住在宿主
+  webview（窗口设施这类宿主能力——Node 进程碰不到）；
+- **MCP 路**（`mcpServers` + tools/list）：实现住在进程里——需要进程的软件，
+  后端就是 MCP server（对宿主说 MCP，对自己的窗说自己的 HTTP API——
+  **app 内部的事宿主不掺和**；纯 GUI 软件的后端 = 零工具 MCP server）。
+
+不做的：「工具执行体 fetch 自己进程」的代理层、服务地址注入、raw（非 MCP）
+进程形态——真出现拒绝 MCP 形状的后端需求再扩 manifest，不预建。
+
+### 10.4 装载 / 回收语义
+
+- **装载**：manifest 校验（软件级字段见上表）→ 数据目录 ensure（失败 = 插件
+  error 记录）→ entry.apply → 工具声明挂接 → MCP 注册（eager 档装载期拉起
+  到就绪，失败 = 插件 error）→ 窗口定义登记（纯数据，开窗才实例化）。
+- **开窗 / 关窗**：开 = iframe 视口实例化 + 受治进程拉起（lazy/with-window）
+  + 空闲回收计时清零（lazy）；关 = 实例回收 + with-window 计数归零即杀。
+- **卸载**：fiber dispose 链式——工具贡献注销 + 受治进程树终止 + 窗全关 +
+  定义摘除；数据目录随 `plugin_uninstall` 挪 `.trash`（回收失败降级 warn
+  不阻断卸载——数据留原位是安全方向）。
+- **契约版本**：软件级字段全在开放面契约（v14-v17，`docs/agents/
+  open-surface-contract.md` 变更记录逐版在案）。
 
 ---
 
