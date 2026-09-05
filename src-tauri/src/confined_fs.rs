@@ -191,7 +191,11 @@ pub(crate) struct DirEntry {
     pub(crate) name: String,
     pub(crate) path: String,
     pub(crate) is_dir: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// 线格式契约（TS rpc-contract.ts dirEntrySchema 立约）：**children 键恒在，
+    /// 无子为 null**——禁止加 skip_serializing_if。键缺席会让前端 zod 边界
+    /// 校验对每个文件条目整体拒收，目录列表全链路静默变空（2026-09-05
+    /// 会话列表/发号对账回归根因，712fda8d 引入，见
+    /// dir_entry_wire_format_children_key_always_present 测试）。
     pub(crate) children: Option<Vec<DirEntry>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) truncated: Option<bool>,
@@ -336,6 +340,40 @@ mod tests {
     }
 
     // ── 目录列表 ──
+
+    /// 线格式契约钉（TS dirEntrySchema 对拍）：children 键恒在，无子为 null。
+    /// 712fda8d 曾加 skip_serializing_if 使文件条目缺席 children 键，前端 zod
+    /// 边界校验整体拒收 → 会话列表/发号对账/画布恢复全链路静默空（2026-09-05
+    /// 「加载不出历史会话」回归根因）。本测试站在真实序列化输出一侧，
+    /// 防止形状再次漂移而前端契约测试的 mock 察觉不到。
+    #[test]
+    fn dir_entry_wire_format_children_key_always_present() {
+        let file = DirEntry {
+            name: "a.txt".into(),
+            path: "/x/a.txt".into(),
+            is_dir: false,
+            children: None,
+            truncated: None,
+        };
+        let dir = DirEntry {
+            name: "sub".into(),
+            path: "/x/sub".into(),
+            is_dir: true,
+            children: Some(vec![]),
+            truncated: None,
+        };
+        let file_json = serde_json::to_value(&file).unwrap();
+        let dir_json = serde_json::to_value(&dir).unwrap();
+        assert!(
+            file_json.get("children").is_some(),
+            "文件条目必须携带 children 键（null）：{file_json}"
+        );
+        assert!(file_json["children"].is_null(), "无子必须序列化为 null：{file_json}");
+        assert!(
+            dir_json.get("children").is_some(),
+            "目录条目必须携带 children 键：{dir_json}"
+        );
+    }
 
     fn make_tree(tag: &str) -> std::path::PathBuf {
         let tmp = std::env::temp_dir().join(format!("confined_fs_{tag}_{}", std::process::id()));
