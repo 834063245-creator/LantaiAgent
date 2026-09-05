@@ -1,6 +1,13 @@
 # RPC 边界运行时校验层设计（typedJsonRpc schema 第三步）
 
-状态：**批一竣工（2026-09-01 worktree 分支 feat/rpc-runtime-validation）**。
+状态：**已竣工合入 main（批一 2026-09-01 当日设计当日施工，commit ea1606b6；worktree 分支合入后已删）**。
+批二（§4 长尾）按定案无施工日——未来首个调用者被签名强制入表。
+**批后演化（2026-09-05 kernel-capability R 批次）**：收编面 12→6 命令——list_directory /
+list_directory_flat / read_memory_batch 随 fs 域收口迁 fs_cap 助手内联 zod（dirEntryArraySchema，
+kernelListDirectory 族内消费）；shell_env / git_status 随 shell/git 域收口迁 process_cap /
+git_cap 文本路径（消费方 parseJson / porcelain 解析；aura_init 更早已随 AURA 记忆系统拆除退役）。
+校验面随命令迁移不消失；签名守卫与三重守护测试（tests/rpc-result-schemas.test.ts）原样存续，
+§8 验收全项达成（CDP 项降维组件测试 sessions-home-fault.test.tsx——违形 → 首页显式报错态）。
 来源：UI 全面审计批「唯一挂起项」的配套立项（`docs/plans/paper-shell/taste-ledger.md` 2026-09-01 批：
 「typedJsonRpc as T 无运行时校验——schema 层架构级，单独立项」）。
 定位：宪法 `docs/adr/project-constitution.md` §与拆弹的关系明列病根一根治 =「RPC `Value` 化 **+ 边界 schema**」——
