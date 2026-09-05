@@ -11,6 +11,10 @@
 //   ④ default provider（builtin/rust-sessions）对 kernel-fs 内存盘 roundtrip——
 //      D-3 实证：默认 provider 走 kernel* 具名 helper（测试 mock 面零迁移面）
 //
+// 注（2026-09-05 seam 接线 C 竣工销账）：旧头注「seam 骨架的拆除与否另行立案」
+// 的立案随 C 定案闭环——承诺做实（消费面 = chat-session/chat-core 产品会话卷
+// 持久化，全链经本 seam），seam 骨架保留并成为产品会话存储的可替换边界。
+//
 // 用例次序：① 必须先于任何 ensureProductionChannelsBooted() 调用。
 
 import { describe, expect, it, vi } from 'vitest';

@@ -63,7 +63,11 @@ export const FIRST_PARTY_MANIFEST: Record<string, FirstPartyPluginMeta> = {
     'service',
     '会话持久化服务注册表（seam/sessionPersistence）',
   ),
-  'hologram/sessions-builtin': meta('hologram/sessions-builtin', 'feature', '会话存储后端（agent-store）'),
+  'hologram/sessions-builtin': meta(
+    'hologram/sessions-builtin',
+    'feature',
+    '会话卷存储后端（Rust 卷文件——seam/sessionPersistence 默认）',
+  ),
   'hologram/graph-service': meta('hologram/graph-service', 'service', '图谱域服务注册表（seam/graph）'),
   'hologram/graph-builtin': meta('hologram/graph-builtin', 'feature', 'Rust 图谱后端（hologram 域）'),
   'hologram/composition-space': meta('hologram/composition-space', 'service', '空间服务（工作区/会话空间）'),

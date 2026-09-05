@@ -71,7 +71,7 @@ cookbook（`docs/cookbook/`）+ 发布路径（`docs/user/develop/`）是平台�
 | `ctx.subagents` | `builtin/in-process` | Agent.spawnSubAgent | `seam/subagents` |
 | `ctx.fs` | `builtin/rust-fs` | fsExecute（fs 域 11 动作） | `seam/fs` |
 | `ctx.shell` | `builtin/rust-shell` | shellExecute（shell 域四动作；subprocess 并入） | `seam/shell` |
-| `ctx.sessionPersistence` | `builtin/rust-sessions` | sessionExecute（agent-store） | `seam/sessionPersistence` |
+| `ctx.sessionPersistence` | `builtin/rust-sessions` | sessionExecute（会话卷四动作 read_volume/list_volumes/save_volume/delete_volume——chat-session/chat-core 产品会话持久化全链） | `seam/sessionPersistence` |
 | `ctx.graph` | `builtin/rust-graph` | graphExecute（hologram 域） | `seam/graph` |
 | `ctx.agentLoop` | `builtin/default` | Agent.runLoop | —（契约可替换，patch 域未开） |
 | 事件面 | —（D4 表） | emitLoopEvent 开关 | `seam/loopEvents` |
