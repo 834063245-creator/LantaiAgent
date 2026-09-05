@@ -121,6 +121,41 @@
   animation: pop-down 0.14s cubic-bezier(0.23, 1, 0.32, 1);
 }
 
+/* ── 2026-09-06 收口：compact 弹层 = 搜索行 + 列表滚动区（DSH chip 形态）。
+ *  触发器恒驻在行内不被顶替；搜索进弹层且钉顶不随滚动跑——滚动收进
+ *  .ms-listbox，弹层本体不滚。── */
+.ms-container.ms-compact .ms-dropdown {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.ms-container.ms-compact .ms-dropdown .ms-input-row {
+  flex: 0 0 auto;
+  padding: 2px 4px;
+}
+
+.ms-container.ms-compact .ms-listbox {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 232px;
+  overflow-y: auto;
+}
+
+.ms-container.ms-compact .ms-listbox::-webkit-scrollbar {
+  width: 4px;
+}
+
+.ms-container.ms-compact .ms-listbox::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ink-2) 35%, transparent);
+  border-radius: 0;
+}
+
+.ms-container.ms-compact .ms-empty {
+  padding: 10px 14px;
+}
+
 .ms-dropdown.ms-empty {
   max-height: none;
   padding: 10px 14px;

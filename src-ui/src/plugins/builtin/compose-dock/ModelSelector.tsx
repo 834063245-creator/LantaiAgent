@@ -2,13 +2,26 @@
 // SPDX-License-Identifier: MIT
 
 // ModelSelector — 可搜索的下拉组合框，用于从目录中选择模型。
-// 支持自由输入目录中不存在的自定义模型名称。
+// 支持自由输入目录中不存在的自定义模型名称（设置页字段形态）。
 // 从 API 动态获取的模型会标记 "live" 徽章。
 //
 // 2026-08-29 frontend-overlay-a11y-plan 档位 C：手写 combobox（handleKeyDown /
 // role=listbox/option/aria-activedescendant 手工接线）整体换成 @react-aria/combobox
 // 的 useComboBox + useListBox/useOption。保留：分组表头 / compact 触发按钮 /
 // 元数据徽标 / 空态文案 / 目录获取失败态。DOM 类名与布局不变。
+//
+// 2026-09-06 创作坞 UX 收口（compact 形态重做）：
+//   - 触发器恒驻：打开时不再被搜索输入框整体顶替（旧形态触发 pill 消失、
+//     空输入顶上——「当前模型被清空」的视觉错觉根因）；
+//   - 搜索输入移进弹层（弹层 = 搜索行 + 列表滚动区，DSH chip 形态）；
+//   - 外点关闭：document mousedown 兜底——画布空白处 mousedown preventDefault
+//     （平移手势）拦得掉 blur，react-aria 的 blur 关闭永不触发，必须显式听
+//     （DSH ModelSelect closeOutside 同款）；
+//   - 触发器再点 = toggle 收起；Escape 收起并回焦触发器；
+//   - compact 下 onSelectionChange 忽略空键：外点/blur 的 react-aria
+//     commitCustomValue 会以半截查询回调 onChange——弹层取消语义，不误写库
+//     （自定义模型名提交仍属设置页字段形态）。
+// 非 compact（设置页字段）形态零改动。
 //
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享
 // 真实例；@react-aria/* react-stately 由 esbuild 内联（其 react import 经
@@ -114,6 +127,7 @@ export function ModelSelector({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listBoxRef = useRef<HTMLElement | null>(null);
   const popoverRef = useRef<Element | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   const results = useMemo(() => {
     const q = query.toLowerCase().trim();
@@ -260,7 +274,13 @@ export function ModelSelector({
   const close = useCallback(() => {
     setQuery('');
     state.setOpen(false);
-  }, [state]);
+    // compact：搜索框随弹层卸载 → 无真实 blur 事件 → react-aria 的 isFocused
+    // 持高，react-stately「聚焦中 + inputValue 变化」effect 会拿重置后的空查询
+    // 重新开菜单（实测：带半截查询时外点/触发器再点/Escape 都「关了又开」）。
+    // 手动降焦位切断重开路。触发的 commitValue 回调被 compact 空键忽略拦下，
+    // 半截查询不落库。非 compact（设置页字段）保 react-aria 原生语义零改动。
+    if (compact) state.setFocused(false);
+  }, [state, compact]);
 
   /* ── DSH 移植（2026-08-26）：运行中守卫——流式中不允许切模型（onAttemptOpen
    *    语义）。拦下时回调 onBlocked，宿主弹提示；打开本身被 veto。 ── */
@@ -287,9 +307,14 @@ export function ModelSelector({
     [compact, value, providerName, onChange, close],
   );
 
-  /** react-aria onSelectionChange：真实键 → 模型选择；null/空 → 自定义值提交。 */
+  /** react-aria onSelectionChange：真实键 → 模型选择；null/空 → 自定义值提交。
+   *  2026-09-06 收口：compact 忽略空键——外点/blur 时 react-aria 的
+   *  commitCustomValue 会以「半截查询」回调到这里（setValue(null) 在受控
+   *  下仍触发 onSelectionChange），弹层取消语义 = 不写库；自定义模型名提交
+   *  仍属设置页字段形态（非 compact）。 */
   function handleSelectionChange(key: unknown) {
     if (key == null || key === '') {
+      if (compact) return;
       // 自定义值提交（Enter 无匹配 / blur）：把输入当自定义模型名提交
       const q = state.inputValue.trim();
       if (q && q !== value) {
@@ -302,12 +327,13 @@ export function ModelSelector({
     if (m) handleSelect(m);
   }
 
-  // 打开期间焦点跟随滚动（react-aria 虚拟焦点，滚动交给宿主）
+  // 打开期间焦点跟随滚动（react-aria 虚拟焦点，滚动交给宿主；optional-call——
+  // jsdom 无 scrollIntoView，2026-09-06 接上 listRef 后测试环境首跑即踩）
   // biome-ignore lint/correctness/useExhaustiveDependencies: focusedKey 是刻意的「触发器」依赖——仅用于滚动跟随，非响应值
   useEffect(() => {
     if (!state.isOpen) return;
     const el = listRef.current?.querySelector('.ms-item.active') as HTMLElement | null;
-    el?.scrollIntoView({ block: 'nearest' });
+    el?.scrollIntoView?.({ block: 'nearest' });
   }, [state.isOpen, state.selectionManager.focusedKey]);
 
   // compact 触发器路径打开后把焦点送入输入框（ARIA combobox 语义：触发弹出 → 焦点在输入；
@@ -325,139 +351,219 @@ export function ModelSelector({
     [attemptOpen, state],
   );
 
+  /* ── 2026-09-06 收口：外点关闭。画布空白处 mousedown preventDefault（平移
+   *    手势）拦得掉 blur——react-aria 的 blur 关闭永不触发，菜单收不回（实锤：
+   *    PaperPanel.onCanvasMouseDown L1704）。document mousedown 兜底（preventDefault
+   *    不阻监听器本身）；容器（触发器 + 弹层）内按下不算外点。仅 compact 挂。 ── */
+  useEffect(() => {
+    if (!state.isOpen || !compact) return;
+    const closeOutside = (e: MouseEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) close();
+    };
+    document.addEventListener('mousedown', closeOutside);
+    return () => document.removeEventListener('mousedown', closeOutside);
+  }, [state.isOpen, compact, close]);
+
+  /** 触发器点击 = toggle（开→关 / 关→开）——触发器恒驻后必须有自闭合路径。
+   *  关闭路径回焦触发器（输入框随弹层卸载，焦点会坠回 body）。 */
+  const handleTriggerClick = useCallback(() => {
+    if (state.isOpen) {
+      close();
+      requestAnimationFrame(() => triggerRef.current?.focus());
+      return;
+    }
+    handleTriggerOpen();
+  }, [state.isOpen, close, handleTriggerOpen]);
+
+  /** 空态文案（两形态共用逻辑，落位不同）。 */
+  const emptyText = query
+    ? `无匹配模型「${query}」`
+    : hasDynamicFetchInflight()
+      ? '目录获取中…'
+      : compact
+        ? '没有可用模型——去 设置 → Provider 添加'
+        : '目录为空，点击刷新从 API 获取';
+
+  /** 搜索输入（两形态共用）。isField = 设置页字段形态：收起时显当前 id + 清除钮；
+   *  compact（弹层内搜索行）只在打开时存在，值恒为查询词，无清除钮。 */
+  const renderInput = (isField: boolean) => (
+    <div className="ms-input-row">
+      <div className="ms-input-wrap">
+        <span
+          className="ms-input-icon"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG，无外部输入
+          dangerouslySetInnerHTML={{ __html: iconHtml('search', 12) }}
+        />
+        <input
+          type="text"
+          className="sp-input ms-input"
+          ref={inputRef}
+          placeholder={compact ? '搜索模型…' : undefined}
+          {...inputProps}
+          value={isField ? (state.isOpen ? state.inputValue : value) : state.inputValue}
+          onFocus={(e) => {
+            // 对齐旧行为（字段形态）：聚焦预填当前模型 id
+            if (isField && !state.isOpen) setQuery(value);
+            inputProps.onFocus?.(e);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              // Escape = 取消关闭，不提交自定义值（react-aria 默认 revert 会提交，拦截掉）
+              e.preventDefault();
+              close();
+              // 2026-09-06 收口：收起后焦点回触发器（combobox 惯例：取消回到收起态控件）
+              if (compact) requestAnimationFrame(() => triggerRef.current?.focus());
+              return;
+            }
+            inputProps.onKeyDown?.(e);
+          }}
+        />
+        {isField && value && !state.isOpen && (
+          <button
+            type="button"
+            className="ms-input-clear"
+            title="清除"
+            onClick={() => onChange('')}
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG，无外部输入
+            dangerouslySetInnerHTML={{ __html: iconHtml('close', 10) }}
+          />
+        )}
+      </div>
+    </div>
+  );
+
+  /** 列表行（分组头 + 模型行）——两形态共用。 */
+  const renderRows = () =>
+    displayRows.map((row) =>
+      row.type === 'header' ? (
+        <div key={`h-${row.vendor}`} className="ms-group-head" role="presentation">
+          <ProviderMark vendor={row.vendor} className="ms-group-mark" />
+          <span className="ms-group-name">{row.vendor}</span>
+          {noKeyVendors.has(row.vendor) && <span className="ms-group-nokey">未配置 Key</span>}
+          {fetchFlags.inflight.has(row.vendor) && <span className="ms-group-fetch">目录获取中…</span>}
+          {fetchFlags.failed.has(row.vendor) && (
+            <span className="ms-group-fail" title={getDynamicFetchFailure(row.vendor)}>
+              目录获取失败
+            </span>
+          )}
+        </div>
+      ) : (
+        <ModelRow key={itemKey(row.m)} state={state} m={row.m} value={value} />
+      ),
+    );
+
   return (
     <div className={`ms-container${state.isOpen ? ' ms-open' : ''}${compact ? ' ms-compact' : ''}`} ref={containerRef}>
-      {compact && !state.isOpen ? (
-        <button
-          type="button"
-          className={`ms-trigger${providerUnavailable ? ' ms-trigger-unavailable' : ''}`}
-          title={
-            providerUnavailable
-              ? `⚠ 提供方「${providerName}」不可用（已移除？）——从下拉选择可用模型`
-              : `${providerName} · ${triggerLabel}（点击选择模型）`
-          }
-          aria-haspopup="listbox"
-          aria-expanded={state.isOpen}
-          onClick={() => handleTriggerOpen()}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowDown') {
-              e.preventDefault();
-              handleTriggerOpen('first');
+      {compact ? (
+        <>
+          {/* 触发器恒驻（2026-09-06 收口）：打开时仍显示当前模型，不被搜索框顶替。
+           *  DSH ProviderIcon 的轻量替代：厂商 monogram（首字大写 seal chip） */}
+          <button
+            type="button"
+            ref={triggerRef}
+            className={`ms-trigger${providerUnavailable ? ' ms-trigger-unavailable' : ''}`}
+            title={
+              providerUnavailable
+                ? `⚠ 提供方「${providerName}」不可用（已移除？）——从下拉选择可用模型`
+                : `${providerName} · ${triggerLabel}（点击选择模型）`
             }
-          }}
-        >
-          {/* DSH ProviderIcon 的轻量替代：厂商 monogram（首字大写 seal chip） */}
-          <ProviderMark vendor={providerName} className="ms-trigger-mark" />
-          <span className="ms-trigger-name">{triggerLabel}</span>
-          {providerUnavailable && (
-            <span className="ms-trigger-unavail" aria-hidden="true">
-              ⚠
-            </span>
-          )}
-          <span className="ms-trigger-caret" aria-hidden="true">
-            ▾
-          </span>
-        </button>
-      ) : (
-        <div className="ms-input-row">
-          <div className="ms-input-wrap">
-            <span
-              className="ms-input-icon"
-              // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG，无外部输入
-              dangerouslySetInnerHTML={{ __html: iconHtml('search', 12) }}
-            />
-            <input
-              type="text"
-              className="sp-input ms-input"
-              ref={inputRef}
-              {...inputProps}
-              value={state.isOpen ? state.inputValue : value}
-              onFocus={(e) => {
-                // 对齐旧行为：聚焦预填当前模型 id（compact 触发器路径已置空 query）
-                if (!state.isOpen) setQuery(value);
-                inputProps.onFocus?.(e);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') {
-                  // Escape = 取消关闭，不提交自定义值（react-aria 默认 revert 会提交，拦截掉）
-                  e.preventDefault();
-                  close();
-                  return;
-                }
-                inputProps.onKeyDown?.(e);
-              }}
-            />
-            {value && !state.isOpen && (
-              <button
-                type="button"
-                className="ms-input-clear"
-                title="清除"
-                onClick={() => onChange('')}
-                // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG，无外部输入
-                dangerouslySetInnerHTML={{ __html: iconHtml('close', 10) }}
-              />
-            )}
-          </div>
-        </div>
-      )}
-      {state.isOpen &&
-        (results.length === 0 ? (
-          <div className="ms-dropdown ms-empty">
-            <span className="ms-empty-text">
-              {query
-                ? `无匹配模型「${query}」`
-                : hasDynamicFetchInflight()
-                  ? '目录获取中…'
-                  : compact
-                    ? '没有可用模型——去 设置 → Provider 添加'
-                    : '目录为空，点击刷新从 API 获取'}
-            </span>
-          </div>
-        ) : (
-          <div
-            ref={(el) => {
-              popoverRef.current = el;
-              listBoxRef.current = el;
+            aria-haspopup="listbox"
+            aria-expanded={state.isOpen}
+            onMouseDown={(e) => {
+              // 防抢焦竞态（DSH ModelSelect 同款注释）：打开态下 mousedown 触发器会
+              // 把焦点从搜索框拽走 → blur 不在弹层内 → react-aria commitValue 抢先
+              // 关菜单，随后 click 又重开（toggle 失效 + 闪烁）。preventDefault 拦掉
+              // mousedown 的默认抢焦，toggle 交给 click 一次做完。
+              e.preventDefault();
             }}
-            className="ms-dropdown"
-            {...listBoxProps}
+            onClick={handleTriggerClick}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                handleTriggerOpen('first');
+              }
+            }}
           >
-            {displayRows.map((row) =>
-              row.type === 'header' ? (
-                <div key={`h-${row.vendor}`} className="ms-group-head" role="presentation">
-                  <ProviderMark vendor={row.vendor} className="ms-group-mark" />
-                  <span className="ms-group-name">{row.vendor}</span>
-                  {noKeyVendors.has(row.vendor) && <span className="ms-group-nokey">未配置 Key</span>}
-                  {fetchFlags.inflight.has(row.vendor) && <span className="ms-group-fetch">目录获取中…</span>}
-                  {fetchFlags.failed.has(row.vendor) && (
-                    <span className="ms-group-fail" title={getDynamicFetchFailure(row.vendor)}>
-                      目录获取失败
-                    </span>
-                  )}
+            <ProviderMark vendor={providerName} className="ms-trigger-mark" />
+            <span className="ms-trigger-name">{triggerLabel}</span>
+            {providerUnavailable && (
+              <span className="ms-trigger-unavail" aria-hidden="true">
+                ⚠
+              </span>
+            )}
+            <span className="ms-trigger-caret" aria-hidden="true">
+              ▾
+            </span>
+          </button>
+          {/* 弹层 = 搜索行 + 列表（2026-09-06 收口）：搜索进弹层，触发 pill 不动
+           *  ——行宽恒定，不推挤同行控件 */}
+          {state.isOpen && (
+            <div
+              ref={(el) => {
+                popoverRef.current = el;
+              }}
+              className="ms-dropdown"
+            >
+              {renderInput(false)}
+              {results.length === 0 ? (
+                <div className="ms-empty">
+                  <span className="ms-empty-text">{emptyText}</span>
                 </div>
               ) : (
-                <ModelRow key={itemKey(row.m)} state={state} m={row.m} value={value} />
-              ),
-            )}
-          </div>
-        ))}
-      {selectedDesc && !state.isOpen && !compact && (
-        <div className="ms-meta">
-          {selectedDesc.reasoning && <span className="ms-meta-tag ms-meta-reason">推理</span>}
-          {selectedDesc.contextWindow > 0 && (
-            <span className="ms-meta-tag">{(selectedDesc.contextWindow / 1000).toFixed(0)}k 上下文</span>
-          )}
-          {selectedDesc.cost.input > 0 && (
-            <>
-              <span className="ms-meta-tag">输入 ${selectedDesc.cost.input}/M</span>
-              <span className="ms-meta-tag">输出 ${selectedDesc.cost.output}/M</span>
-              {selectedDesc.cost.cacheRead > 0 && (
-                <span className="ms-meta-tag">缓存 ${selectedDesc.cost.cacheRead}/M</span>
+                <div
+                  ref={(el) => {
+                    listRef.current = el;
+                    listBoxRef.current = el;
+                  }}
+                  className="ms-listbox"
+                  {...listBoxProps}
+                >
+                  {renderRows()}
+                </div>
               )}
-            </>
+            </div>
           )}
-          {!hasMetadata(selectedDesc) && <span className="ms-meta-tag ms-meta-live">来自 API</span>}
-        </div>
+        </>
+      ) : (
+        <>
+          {renderInput(true)}
+          {state.isOpen &&
+            (results.length === 0 ? (
+              <div className="ms-dropdown ms-empty">
+                <span className="ms-empty-text">{emptyText}</span>
+              </div>
+            ) : (
+              <div
+                ref={(el) => {
+                  popoverRef.current = el;
+                  listRef.current = el;
+                  listBoxRef.current = el;
+                }}
+                className="ms-dropdown"
+                {...listBoxProps}
+              >
+                {renderRows()}
+              </div>
+            ))}
+          {selectedDesc && !state.isOpen && (
+            <div className="ms-meta">
+              {selectedDesc.reasoning && <span className="ms-meta-tag ms-meta-reason">推理</span>}
+              {selectedDesc.contextWindow > 0 && (
+                <span className="ms-meta-tag">{(selectedDesc.contextWindow / 1000).toFixed(0)}k 上下文</span>
+              )}
+              {selectedDesc.cost.input > 0 && (
+                <>
+                  <span className="ms-meta-tag">输入 ${selectedDesc.cost.input}/M</span>
+                  <span className="ms-meta-tag">输出 ${selectedDesc.cost.output}/M</span>
+                  {selectedDesc.cost.cacheRead > 0 && (
+                    <span className="ms-meta-tag">缓存 ${selectedDesc.cost.cacheRead}/M</span>
+                  )}
+                </>
+              )}
+              {!hasMetadata(selectedDesc) && <span className="ms-meta-tag ms-meta-live">来自 API</span>}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

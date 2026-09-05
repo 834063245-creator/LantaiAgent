@@ -1764,8 +1764,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 0 1 auto;
-  max-width: 180px;
+  flex: 0 0 132px; /* 2026-09-06 收口：定宽——换卷/改名不推挤同行控件，超长截断 */
 }
 /* ── 墨量线（创作坞 v2 2026-08-31）：坞底 1px 墨线──
  * 本卷已用 token 占模型目录窗口的比例；裸数字徽标退役（[0] 是噪音），
@@ -1943,6 +1942,13 @@
   color: var(--ink-3);
   font-family: var(--f-mono);
   font-size: 10px;
+}
+/* 2026-09-06 收口：档位词定宽——「低/中/高」单字档与「自动/极限」两字档
+   同宽（min-width 5em 盖住「思考 · 两字」全宽），切档不推挤同行控件 */
+.pp-composer-settings .pp-thinking-pill-label {
+  display: inline-block;
+  min-width: 5em;
+  text-align: left;
 }
 .pp-composer-settings .pp-thinking-menu {
   position: absolute;
@@ -2999,11 +3005,10 @@
   overflow-wrap: anywhere;
 }
 
-/* 创作坞设置行内的 ModelSelector 压缩（下拉不撑高输入区；rework P3-1 可收缩） */
+/* 创作坞设置行内的 ModelSelector 压缩（2026-09-06 收口：定宽 150——开合/
+   换模型名不推挤同行控件，「固定住不跳动」；超长名触发器内截断，全名在 title） */
 .pp-composer-settings .ms-container {
-  min-width: 150px;
-  max-width: 280px;
-  flex: 0 1 auto;
+  flex: 0 0 150px;
 }
 .pp-composer-settings .ms-input-wrap input {
   font-size: 12px;
@@ -3038,7 +3043,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: 240px;
+  width: 100%; /* 2026-09-06 收口：填满定宽容器——pill 宽恒定 */
   min-width: 0;
   font-family: var(--f-song);
   font-size: 12px;
@@ -3578,7 +3583,7 @@ button.pp-form-option:disabled {
   padding-bottom: var(--pp-asset-timeline-itemGap);
 }
 .pp-timeline-item::before {
-  content: '';
+  content: "";
   position: absolute;
   left: var(--pp-asset-timeline-railMid);
   top: 8px;

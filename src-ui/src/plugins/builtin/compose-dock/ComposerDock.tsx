@@ -9,6 +9,10 @@
 // 权限/思考强度，展开收起），发送前顺手拨。空白画布无活跃会话时处于无主
 // 待命态。
 //
+// 2026-09-06 收口：行序 = 输入行在上、设置行在下（DSH InputBar 排布）——
+// 模型/权限/思考不占坞顶行，落位「下方一行」；设置行控件定宽防跳动
+// （详 PaperPanel.css）；模型选择器触发器恒驻 + 弹层内搜索（详 ModelSelector 头注）。
+//
 // 归属铁律：创作坞是视图不是容器，不拥有任何会话状态，只"指向"当前活跃
 // 会话。草稿按会话隔离 = input-store 既有 sessionDrafts 机制（chat-session
 // 切卷时 save/restore，本组件只读写 live inputText）；模型/思考 = compose-store
@@ -656,153 +660,6 @@ export const ComposerDock = memo(function ComposerDock() {
 
   return (
     <div className={`pp-composer${dragOver ? ' pp-droptarget' : ''}`} ref={dockRef}>
-      {/* 设置行：常驻一行只放高频件（模型 + 权限）；思考等进展开（stage-4 §8）。
-          开口即开卷（2026-08-31）：控件不再随活跃卷隐藏——无主态操作「新卷出生
-          默认」，「发送前顺手拨」在自己的核心场景（开卷前拨好）恒可用。 */}
-      <div className="pp-composer-settings">
-        <span
-          className="pp-composer-target"
-          title={activeSession ? `案卷 ${activeSession.id}` : '无活跃卷——落笔即另起一卷'}
-        >
-          {activeSession ? activeSession.label || `案卷 ${activeSession.id}` : '新卷'}
-        </span>
-        {/* DSH 移植（2026-08-26）：运行中守卫——本卷在跑时模型下拉打开被拦
-            （DSH onAttemptOpen 语义：流式中不允许切模型），localNotice 提示 */}
-        <ModelSelector
-          value={model}
-          onChange={onModelChange}
-          providerName={providerName}
-          kind={providerKind}
-          compact
-          isStreaming={running}
-          onBlocked={() => setLocalNotice('Agent 正在运行——本回合结束后才能切换模型。')}
-        />
-        {/* rework P2-3：权限三档分段控件（不随 DSH 迁移——权限是工作区级单一真相） */}
-        <fieldset className="pp-mode-seg" aria-label="权限模式">
-          {PERMISSION_MODES.map((m) => (
-            <button
-              key={m}
-              type="button"
-              className={`pp-mode-opt${permissionMode === m ? ' selected' : ''}`}
-              title={MODE_DESCRIPTIONS[m]}
-              aria-pressed={permissionMode === m}
-              onClick={() => selectMode(m)}
-            >
-              {MODE_LABELS[m]}
-            </button>
-          ))}
-        </fieldset>
-        {/* DSH 移植（2026-08-26）：思考档位 = 图标 pill 下拉（brain 图标，
-                off 划横线；选项带档位说明），不再是「思考·档」文本按钮 + 展开分段行 */}
-        {thinkingOptions.length > 0 && (
-          <div className="pp-thinking-sel">
-            <button
-              type="button"
-              className={`pp-thinking-pill${(currentThinking ?? '') === 'off' ? ' off' : ''}${settingsOpen ? ' open' : ''}`}
-              title={`思考档位：${thinkingZhLabel(currentThinking)}`}
-              aria-haspopup="listbox"
-              aria-expanded={settingsOpen}
-              onClick={() => toggleLayer('thinking')}
-            >
-              <svg
-                className="pp-thinking-icon"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M9 18h6" />
-                <path d="M10 22h4" />
-                <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5.76.76 1.23 1.52 1.41 2.5" />
-                {(currentThinking ?? '') === 'off' && <line x1="4" y1="4" x2="20" y2="20" strokeWidth="1.5" />}
-              </svg>
-              <span className="pp-thinking-pill-label">思考 · {thinkingZhLabel(currentThinking)}</span>
-              <span className="pp-thinking-pill-caret" aria-hidden="true">
-                ▾
-              </span>
-            </button>
-            {settingsOpen && (
-              <div className="pp-thinking-menu" role="listbox" aria-label="思考档位">
-                {thinkingOptions.map((o) => (
-                  <button
-                    key={o.value}
-                    type="button"
-                    role="option"
-                    aria-selected={(currentThinking ?? '') === o.value}
-                    className={`pp-thinking-opt${(currentThinking ?? '') === o.value ? ' selected' : ''}`}
-                    onClick={() => {
-                      onThinkingChange(o.value);
-                      setSettingsOpen(false);
-                    }}
-                  >
-                    <span className="pp-thinking-opt-label">{thinkingZhLabel(o.value)}</span>
-                    <span className="pp-thinking-opt-desc">{THINKING_DESC[o.value] ?? ''}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        <div className="pp-composer-settings-spacer" />
-        {/* v2（2026-08-31）：翰（命令面板入口——/ 的可发现性）+ 律（快捷键总览）。
-            渐进披露：占位符只留一句，键位收进律册在此翻。 */}
-        <div className="pp-dock-tools">
-          <button
-            type="button"
-            className={`pp-tool-btn${menuOpen ? ' open' : ''}`}
-            title="翰——案卷命令（等价输入 /）"
-            aria-haspopup="listbox"
-            aria-expanded={menuOpen}
-            onClick={() => toggleLayer('menu')}
-          >
-            翰
-          </button>
-          <button
-            type="button"
-            className={`pp-tool-btn${helpOpen ? ' open' : ''}`}
-            title="律——快捷键总览"
-            aria-expanded={helpOpen}
-            onClick={() => toggleLayer('help')}
-          >
-            律
-          </button>
-          {helpOpen && (
-            <div className="pp-help-sheet" role="dialog" aria-label="快捷键总览">
-              <div className="pp-help-head">律 · 快捷键</div>
-              {HELP_ROWS.map(([key, desc]) => (
-                <div key={key} className="pp-help-row">
-                  <span className="pp-help-key">{key}</span>
-                  <span className="pp-help-desc">{desc}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        {/* B7（2026-08-27）：后台卷运行指示 + 停止——此前任一后台会话在跑就
-            全局阻断发送（chat-core），但创作坞无任何指示、无从停止。 */}
-        {bgRunning.length > 0 && (
-          <span className="pp-bg-running" title={bgRunning.map((s) => s.label).join('、')}>
-            ⟳ 后台 {bgRunning.length} 卷运行中
-            <button
-              type="button"
-              className="pp-bg-stop"
-              title={`停止后台卷：${bgRunning.map((s) => s.label).join('、')}`}
-              onClick={() => {
-                if (!core) return;
-                for (const s of bgRunning) agentSessionState.removeExec(core.panelId, s.id);
-              }}
-            >
-              停止
-            </button>
-          </span>
-        )}
-      </div>
-
       {localNotice && (
         <div className="pp-local-notice">
           {localNotice}
@@ -1015,6 +872,154 @@ export const ComposerDock = memo(function ComposerDock() {
           >
             拟文
           </button>
+        )}
+      </div>
+
+      {/* 设置行（2026-09-06 收口：行序下沉）——模型/权限/思考强度不再占坞顶行，
+          落位输入行之下的「下方一行」（DSH InputBar 同款排布：输入面在上、
+          控件行在下）。开口即开卷（2026-08-31）：控件不随活跃卷隐藏——无主态
+          操作「新卷出生默认」。常驻一行只放高频件（模型 + 权限 + 思考 + 翰律）。 */}
+      <div className="pp-composer-settings">
+        <span
+          className="pp-composer-target"
+          title={activeSession ? `案卷 ${activeSession.id}` : '无活跃卷——落笔即另起一卷'}
+        >
+          {activeSession ? activeSession.label || `案卷 ${activeSession.id}` : '新卷'}
+        </span>
+        {/* DSH 移植（2026-08-26）：运行中守卫——本卷在跑时模型下拉打开被拦
+            （DSH onAttemptOpen 语义：流式中不允许切模型），localNotice 提示 */}
+        <ModelSelector
+          value={model}
+          onChange={onModelChange}
+          providerName={providerName}
+          kind={providerKind}
+          compact
+          isStreaming={running}
+          onBlocked={() => setLocalNotice('Agent 正在运行——本回合结束后才能切换模型。')}
+        />
+        {/* rework P2-3：权限三档分段控件（不随 DSH 迁移——权限是工作区级单一真相） */}
+        <fieldset className="pp-mode-seg" aria-label="权限模式">
+          {PERMISSION_MODES.map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={`pp-mode-opt${permissionMode === m ? ' selected' : ''}`}
+              title={MODE_DESCRIPTIONS[m]}
+              aria-pressed={permissionMode === m}
+              onClick={() => selectMode(m)}
+            >
+              {MODE_LABELS[m]}
+            </button>
+          ))}
+        </fieldset>
+        {/* DSH 移植（2026-08-26）：思考档位 = 图标 pill 下拉（brain 图标，
+                off 划横线；选项带档位说明），不再是「思考·档」文本按钮 + 展开分段行 */}
+        {thinkingOptions.length > 0 && (
+          <div className="pp-thinking-sel">
+            <button
+              type="button"
+              className={`pp-thinking-pill${(currentThinking ?? '') === 'off' ? ' off' : ''}${settingsOpen ? ' open' : ''}`}
+              title={`思考档位：${thinkingZhLabel(currentThinking)}`}
+              aria-haspopup="listbox"
+              aria-expanded={settingsOpen}
+              onClick={() => toggleLayer('thinking')}
+            >
+              <svg
+                className="pp-thinking-icon"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M9 18h6" />
+                <path d="M10 22h4" />
+                <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5.76.76 1.23 1.52 1.41 2.5" />
+                {(currentThinking ?? '') === 'off' && <line x1="4" y1="4" x2="20" y2="20" strokeWidth="1.5" />}
+              </svg>
+              <span className="pp-thinking-pill-label">思考 · {thinkingZhLabel(currentThinking)}</span>
+              <span className="pp-thinking-pill-caret" aria-hidden="true">
+                ▾
+              </span>
+            </button>
+            {settingsOpen && (
+              <div className="pp-thinking-menu" role="listbox" aria-label="思考档位">
+                {thinkingOptions.map((o) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    role="option"
+                    aria-selected={(currentThinking ?? '') === o.value}
+                    className={`pp-thinking-opt${(currentThinking ?? '') === o.value ? ' selected' : ''}`}
+                    onClick={() => {
+                      onThinkingChange(o.value);
+                      setSettingsOpen(false);
+                    }}
+                  >
+                    <span className="pp-thinking-opt-label">{thinkingZhLabel(o.value)}</span>
+                    <span className="pp-thinking-opt-desc">{THINKING_DESC[o.value] ?? ''}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        <div className="pp-composer-settings-spacer" />
+        {/* v2（2026-08-31）：翰（命令面板入口——/ 的可发现性）+ 律（快捷键总览）。
+            渐进披露：占位符只留一句，键位收进律册在此翻。 */}
+        <div className="pp-dock-tools">
+          <button
+            type="button"
+            className={`pp-tool-btn${menuOpen ? ' open' : ''}`}
+            title="翰——案卷命令（等价输入 /）"
+            aria-haspopup="listbox"
+            aria-expanded={menuOpen}
+            onClick={() => toggleLayer('menu')}
+          >
+            翰
+          </button>
+          <button
+            type="button"
+            className={`pp-tool-btn${helpOpen ? ' open' : ''}`}
+            title="律——快捷键总览"
+            aria-expanded={helpOpen}
+            onClick={() => toggleLayer('help')}
+          >
+            律
+          </button>
+          {helpOpen && (
+            <div className="pp-help-sheet" role="dialog" aria-label="快捷键总览">
+              <div className="pp-help-head">律 · 快捷键</div>
+              {HELP_ROWS.map(([key, desc]) => (
+                <div key={key} className="pp-help-row">
+                  <span className="pp-help-key">{key}</span>
+                  <span className="pp-help-desc">{desc}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        {/* B7（2026-08-27）：后台卷运行指示 + 停止——此前任一后台会话在跑就
+            全局阻断发送（chat-core），但创作坞无任何指示、无从停止。 */}
+        {bgRunning.length > 0 && (
+          <span className="pp-bg-running" title={bgRunning.map((s) => s.label).join('、')}>
+            ⟳ 后台 {bgRunning.length} 卷运行中
+            <button
+              type="button"
+              className="pp-bg-stop"
+              title={`停止后台卷：${bgRunning.map((s) => s.label).join('、')}`}
+              onClick={() => {
+                if (!core) return;
+                for (const s of bgRunning) agentSessionState.removeExec(core.panelId, s.id);
+              }}
+            >
+              停止
+            </button>
+          </span>
         )}
       </div>
 

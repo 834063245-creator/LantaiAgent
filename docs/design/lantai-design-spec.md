@@ -195,6 +195,8 @@
 7. **翰**：命令面板入口钮（设置行右端）——斜杠命令不再只靠盲打 `/` 发现；与 `/` 触发词共用同一层面板，打字接管即散。
 8. **运行呼吸线**：任一摊开卷在跑 → 画布底缘 2px **石青**细线呼吸（`.pp-stream-live`，机=石青铁律）；与书脊运行点、坞内停止钮、后台卷指示同源（exec 订阅）。
 
+**2026-09-06 收口（行序 + 模型选择器弹层重做）**：① **行序下沉**——输入行在上、设置行在下（DSH InputBar 排布：输入面在上、控件行在下），模型/权限/思考不再占坞顶行；② **设置行定宽**——目标签 132px / 模型 pill 容器 150px / 思考档词 min-width 5em（单字档与两字档同宽），开合、换模型、换思考档、换卷名不再推挤同行件；③ **模型选择器 compact 形态**——触发器恒驻（打开时仍显示当前模型，不再被空搜索框顶替——「模型被清空」错觉根因），搜索进弹层（搜索行钉顶 + `.ms-listbox` 滚动区），document mousedown 外点关闭（画布空白 mousedown preventDefault 是平移手势，拦得掉 blur——react-aria 的 blur 关闭路永不触发，必须显式听），触发器 mousedown preventDefault 防「blur 抢先关 + click 重开」竞态，再点 = toggle，Escape 收起并回焦触发器；compact 下空选择键忽略——外点/Enter 无匹配的 commitCustomValue 半截查询不落库（自定义模型名提交仍属设置页字段形态）。门禁：tsc / biome(0-0) / vitest 全量（新增 `model-selector-popover` + `composer-dock-row-order` 两文件）。
+
 门禁：tsc / biome(0-0) / vitest（创作坞 6 文件 37+16 用例，含新增 `composer-dock-desk.test.tsx`）/ build:builtin-plugins（23 插件自包含）/ vite build / verify:convergence 全绿。
 
 ---
