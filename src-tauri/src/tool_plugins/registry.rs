@@ -34,8 +34,9 @@ impl PluginRegistry {
         // （builtin.browser 已随 browser 域收口退役——2026-09-05，kernel-capability-
         //  d4-handle-design.md R4-2：模型族全量换 browser_cap 能力口直呼，插件
         //  信封无消费方整目录退役；git 域收口 c5acb876 同款先例。）
-        let uia: Arc<dyn ToolPlugin> = Arc::new(super::uia::UiaPlugin::new());
-        registry.register(uia).expect("出厂插件清单装载失败");
+        // （builtin.uia 已随 browser 域收口退役——2026-09-05，同设计件 R4-3：
+        //  模型族全量换 uia_cap 能力口直呼（resolve→classify→grant→lease 全链
+        //  在口内），插件信封无消费方整目录退役。）
         let constraints: Arc<dyn ToolPlugin> = Arc::new(super::constraints::ConstraintsPlugin::new());
         registry.register(constraints).expect("出厂插件清单装载失败");
         let editor: Arc<dyn ToolPlugin> = Arc::new(super::editor::EditorPlugin::new());

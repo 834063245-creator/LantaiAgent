@@ -148,6 +148,11 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // 截断/结构化错误整形在 TS 工具层）。与 git_cap 同判：字节精确优先。
         "browser_cap" => RpcResultShape::Text,
 
+        // uia_cap（R4，kernel-capability-d4-handle-design.md）：句柄域 desktop
+        // 族直呼——17 action 全部返回文本（同 browser_cap 判：字节精确优先；
+        // world-diff/审计报表文本直通，INVARIANTS #13 lease/grant 链在口内）。
+        "uia_cap" => RpcResultShape::Text,
+
         // ── 身份认证/权限 ──
         // credential_get：Option<String> serde 序列化，恒 "key"/null JSON。
         // get_last_project：同款 Option<String> serde 序列化，恒 "path"/null。
@@ -538,6 +543,24 @@ async fn dispatch_rpc(
             let agent_id = opt_str(&params, "agent_id").or_else(|| opt_str(&params, "_agent_id"));
             commands::browser_cap::browser_cap(action, params, is_agent, agent_id, &state, &app)
                 .await
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // uia_cap（R4，kernel-capability-d4-handle-design.md）——desktop 句柄域
+        // 能力口直呼入口，不经 tool_call 信封 / PluginRegistry /
+        // PluginToolAdapter（builtin.uia 插件随 R4-3 同批退役，无信封过渡面）。
+        // action = 退役前 builtin.uia 17 工具名；参数顶层 snake_case（manifest
+        // 键本就 snake，无映射）；is_agent/agent_id 显式传（_agent_id meta
+        // 兼容）。口内闸：直接构造 DesktopTool 过 check_permission（无条件
+        // 过闸 + 六层语义）；desktop_uia_write 的 resolve→classify→grant→
+        // lease→审计全链在口内（INVARIANTS #13 铁律面，D4-4/D4-5）。
+        // 返回 Text（17 action 全文本直通）。
+        // ═══════════════════════════════════════════════════════
+        "uia_cap" => {
+            let action = req_str(&params, "action", "uia_cap")?;
+            let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
+            let agent_id = opt_str(&params, "agent_id").or_else(|| opt_str(&params, "_agent_id"));
+            commands::uia_cap::uia_cap(action, params, is_agent, agent_id, &state, &app).await
         }
 
         // ═══════════════════════════════════════════════════════

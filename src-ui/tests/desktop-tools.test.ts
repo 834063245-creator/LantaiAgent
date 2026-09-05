@@ -1,15 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// desktop 领域工具全量走 Rust desktop_probe（只读进程/窗口/控制台快照）。
-// mock agentInvoke 捕获路由；其余导出保留真实实现。
-vi.mock('../src/agent/tool', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/agent/tool')>();
-  return { ...actual, agentInvoke: vi.fn(async () => '{"process_count":0,"processes":[]}') };
+// desktop 领域工具已迁 uia_cap 能力口直呼（R4-3，kernel-capability-d4-handle-
+// design.md：builtin.uia 信封退役）——mock typedRpc 捕获直呼路由；其余导出
+// 保留真实实现。
+vi.mock('../src/rpc-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/rpc-contract')>();
+  return { ...actual, typedRpc: vi.fn(async () => '{"process_count":0,"processes":[]}') };
 });
 
-import { agentInvoke, ToolRegistry } from '../src/agent/tool';
+import { ToolRegistry } from '../src/agent/tool';
 import { createBrowserTools, createDesktopTools } from '../src/agent/tools/browser';
 import { convergeRegistry } from '../src/agent/tools/domains';
+import { typedRpc } from '../src/rpc-contract';
 
 function buildRegistry(): ToolRegistry {
   const registry = new ToolRegistry();
@@ -19,7 +21,7 @@ function buildRegistry(): ToolRegistry {
   return registry;
 }
 
-const invokeMock = agentInvoke as unknown as ReturnType<typeof vi.fn>;
+const rpcMock = typedRpc as unknown as ReturnType<typeof vi.fn>;
 
 describe('desktop 领域工具注册', () => {
   it('领域工具 desktop 可见，细粒度 desktop_probe 被隐藏但可解析', () => {
@@ -64,16 +66,15 @@ describe('desktop 领域工具注册', () => {
   });
 });
 
-describe('desktop 动作路由（走 Rust desktop_probe）', () => {
+describe('desktop 动作路由（走 uia_cap 直呼）', () => {
   it('probe 路由到 desktop_probe 并透传空参数', async () => {
     const registry = buildRegistry();
     const t = registry.get('desktop')!;
     await t.execute({ action: 'probe' });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.uia',
-      tool: 'desktop_probe',
-      args: expect.objectContaining({}),
-    });
+    expect(rpcMock).toHaveBeenCalledWith(
+      'uia_cap',
+      expect.objectContaining({ action: 'desktop_probe', is_agent: true }),
+    );
   });
 
   it('desktop_probe 细粒度工具标记只读', () => {
@@ -86,16 +87,9 @@ describe('desktop 动作路由（走 Rust desktop_probe）', () => {
     const registry = buildRegistry();
     const t = registry.get('desktop')!;
     await t.execute({ action: 'screenshot' });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.uia',
-      tool: 'desktop_screenshot',
-      args: expect.objectContaining({}),
-    });
+    expect(rpcMock).toHaveBeenCalledWith('uia_cap', expect.objectContaining({ action: 'desktop_screenshot' }));
     // 不误路由到 browser_screenshot
-    expect(invokeMock).not.toHaveBeenCalledWith(
-      'tool_call',
-      expect.objectContaining({ plugin: 'builtin.browser', tool: 'browser_screenshot' }),
-    );
+    expect(rpcMock).not.toHaveBeenCalledWith('uia_cap', expect.objectContaining({ action: 'browser_screenshot' }));
   });
 
   it('desktop_screenshot 细粒度工具存在且只读', () => {
@@ -111,29 +105,21 @@ describe('desktop UIA 动作参数校验', () => {
     const t = registry.get('desktop')!;
     const result = await t.execute({ action: 'uia_click' });
     expect(result).toContain('至少要给一个定位条件');
-    // 无定位条件 → 守卫在 TS 工具层拦截，不经信封发后端
-    expect(invokeMock).not.toHaveBeenCalledWith(
-      'tool_call',
-      expect.objectContaining({ plugin: 'builtin.uia', tool: 'desktop_uia_click' }),
-    );
+    // 无定位条件 → 守卫在 TS 工具层拦截，不直呼发后端
+    expect(rpcMock).not.toHaveBeenCalledWith('uia_cap', expect.objectContaining({ action: 'desktop_uia_click' }));
   });
 
   it('uia_click 给 ref 或 name 时正常放行', async () => {
     const registry = buildRegistry();
     const t = registry.get('desktop')!;
     await t.execute({ action: 'uia_click', ref: 3 });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.uia',
-      tool: 'desktop_uia_click',
-      args: expect.objectContaining({ ref: 3 }),
-    });
-    invokeMock.mockClear();
+    expect(rpcMock).toHaveBeenCalledWith('uia_cap', expect.objectContaining({ action: 'desktop_uia_click', ref: 3 }));
+    rpcMock.mockClear();
     await t.execute({ action: 'uia_click', name: 'OK' });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.uia',
-      tool: 'desktop_uia_click',
-      args: expect.objectContaining({ name: 'OK' }),
-    });
+    expect(rpcMock).toHaveBeenCalledWith(
+      'uia_cap',
+      expect.objectContaining({ action: 'desktop_uia_click', name: 'OK' }),
+    );
   });
 
   it('uia_type 无定位条件时报错，有 text + name 时放行', async () => {
@@ -142,21 +128,19 @@ describe('desktop UIA 动作参数校验', () => {
     const bad = await t.execute({ action: 'uia_type', text: 'hello' });
     expect(bad).toContain('至少要给一个定位条件');
     await t.execute({ action: 'uia_type', text: 'hello', name: '输入框' });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.uia',
-      tool: 'desktop_uia_type',
-      args: expect.objectContaining({ text: 'hello', name: '输入框' }),
-    });
+    expect(rpcMock).toHaveBeenCalledWith(
+      'uia_cap',
+      expect.objectContaining({ action: 'desktop_uia_type', text: 'hello', name: '输入框' }),
+    );
   });
 
   it('uia_tree 支持 depth 参数透传', async () => {
     const registry = buildRegistry();
     const t = registry.get('desktop')!;
     await t.execute({ action: 'uia_tree', depth: 2, title: 'Notepad' });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.uia',
-      tool: 'desktop_uia_tree',
-      args: expect.objectContaining({ depth: 2, title: 'Notepad' }),
-    });
+    expect(rpcMock).toHaveBeenCalledWith(
+      'uia_cap',
+      expect.objectContaining({ action: 'desktop_uia_tree', depth: 2, title: 'Notepad' }),
+    );
   });
 });

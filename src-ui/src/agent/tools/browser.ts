@@ -35,9 +35,7 @@ import { z } from 'zod';
 import { typedRpc } from '../../rpc-contract';
 import { errText } from '../loop-helpers';
 import type { Tool } from '../tool';
-import { agentInvoke } from '../tool';
 import { defineTool, toInputJsonSchema } from './define-tool';
-import { kernelManifestOf } from './manifest-tools';
 import { parseStructuredError } from './structured-error';
 
 // ═══════════════════════════════════════════════════════════
@@ -523,8 +521,226 @@ export function createBrowserTools(): Tool[] {
 // 与 CDP 刻意不同：不连浏览器、不做持续 observer、不订阅事件。
 // 按需取一帧快照，用于定位「某进程带了可见控制台窗口」这类问题
 // （如语言服务器启动弹 cmd 窗口）。probe 只读放行；screenshot 高隐私面，
-// 需单独权限确认（Rust 侧 DesktopTool 强制 Ask——P2-5 起在 builtin.uia 插件内）。
+// 需单独权限确认（Rust 侧 DesktopTool 强制 Ask——R4-3 起 uia_cap 口内）。
 
+// R4-3（kernel-capability-d4-handle-design.md）：builtin.uia 插件随 browser
+// 域收口退役——17 模型族工具 schema 真源回 TS zod（UIA_CAP_SCHEMA，逐键等价
+// 退役前 manifest 发射；desktop 面 schema 键本就是 snake_case，无映射）；
+// execute 换 uia_cap 能力口直呼。口内闸 = DesktopTool 六层语义 +
+// resolve→classify→grant→lease 全链（Rust 强制层，INVARIANTS #13 铁律面）。
+
+/** uia_cap 契约见 rpc-contract.ts；action = 退役前 builtin.uia 17 工具名。 */
+type UiaCapAction = keyof typeof UIA_CAP_SCHEMA;
+
+/** uia_cap 直呼：is_agent 恒注入；meta 键（_agent_id/_owner_id）原样透传
+ *  （desktop 面键本就 snake_case——bridge.rpc() 幂等无感）。 */
+async function uiaCapCall(action: UiaCapAction, args: Record<string, unknown>): Promise<string> {
+  return typedRpc('uia_cap', { action, is_agent: true, ...args });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// desktop 域模型族 zod 真源（R4-3：builtin.uia 退役，schema/description/
+// readOnly 自持——逐键等价退役前 manifest 发射，声明序 = createDesktopTools
+// 装配字节契约序）。运行时校验回归能力口参数提取（Rust 口逐 action
+// ok_or + 定位条件自检）；zod 只产 JSON Schema（模型面）。
+// ═══════════════════════════════════════════════════════════════
+
+const UIA_CAP_SCHEMA = {
+  desktop_probe: z.object({
+    route: z
+      .boolean()
+      .optional()
+      .describe('Attach per-window channel routing advice (default true); false = bare snapshot, faster'),
+  }),
+  desktop_screenshot: z.object({}),
+  desktop_uia_tree: z.object({
+    hwnd: z.number().int().optional().describe('Window handle from desktop_probe (hwnd field)'),
+    pid: z.number().int().optional().describe('Process id - resolves to its main window'),
+    title: z.string().optional().describe('Window title substring (fuzzy, first match)'),
+    depth: z.number().int().optional().describe('Limit tree to N levels (real hierarchy with indentation)'),
+    all: z.boolean().optional().describe('Include non-interactive layout elements (default false = interactive only)'),
+    offset: z.number().int().optional().describe('Skip this many listed controls (for paging; default 0)'),
+    max_results: z.number().int().optional().describe('Max controls per page (default 80)'),
+  }),
+  desktop_uia_find: z.object({
+    hwnd: z.number().int().optional().describe('Window handle from desktop_probe'),
+    pid: z.number().int().optional().describe('Process id'),
+    title: z.string().optional().describe('Window title substring'),
+    name: z.string().optional().describe('Control name substring (case-insensitive)'),
+    control_type: z.string().optional().describe('e.g. Button, Edit, ListItem, MenuItem, CheckBox'),
+    automation_id: z.string().optional().describe('Exact automation id'),
+    enabled: z.boolean().optional().describe('Filter by enabled state'),
+    all: z.boolean().optional().describe('Include non-interactive elements (default false)'),
+  }),
+  desktop_uia_read: z.object({
+    ref: z.number().int().optional().describe('Control ref from desktop_uia_tree/find'),
+    name: z.string().optional().describe('Control name, exact match case-insensitive'),
+    automation_id: z.string().optional().describe('Exact automation id'),
+    control_type: z.string().optional().describe('ControlType, e.g. Button, Edit'),
+    hwnd: z.number().int().optional().describe('Window handle'),
+    pid: z.number().int().optional().describe('Process id'),
+    title: z.string().optional().describe('Window title substring'),
+  }),
+  desktop_uia_wait: z.object({
+    until: z.enum(['exists', 'enabled', 'value']).describe('Condition to wait for'),
+    value: z.string().optional().describe('Expected value (required when until=value)'),
+    timeout_ms: z.number().int().optional().describe('Max wait in ms (default 10000, max 30000)'),
+    ref: z.number().int().optional().describe('Control ref from desktop_uia_tree/find'),
+    name: z.string().optional().describe('Control name, exact match case-insensitive'),
+    automation_id: z.string().optional().describe('Exact automation id'),
+    control_type: z.string().optional().describe('ControlType'),
+    hwnd: z.number().int().optional().describe('Window handle'),
+    pid: z.number().int().optional().describe('Process id'),
+    title: z.string().optional().describe('Window title substring'),
+  }),
+  desktop_uia_click: z.object({
+    ref: z
+      .number()
+      .int()
+      .optional()
+      .describe('Control ref from desktop_uia_tree/find (use instead of name/automation_id/control_type)'),
+    name: z.string().optional().describe('Control name, exact match case-insensitive (e.g. "Equals", "Seven")'),
+    automation_id: z.string().optional().describe('Exact automation id (e.g. "equalButton", "num7Button")'),
+    control_type: z.string().optional().describe('ControlType, e.g. Button, Edit, ListItem, MenuItem, CheckBox'),
+    hwnd: z.number().int().optional().describe('Window handle (re-locate if tree changed)'),
+    pid: z.number().int().optional().describe('Process id'),
+    title: z.string().optional().describe('Window title substring'),
+  }),
+  desktop_uia_right_click: z.object({
+    ref: z.number().int().optional().describe('Control ref from desktop_uia_tree/find'),
+    name: z.string().optional().describe('Control name, exact match case-insensitive'),
+    automation_id: z.string().optional().describe('Exact automation id'),
+    control_type: z.string().optional().describe('ControlType, e.g. Button, Edit, ListItem'),
+    hwnd: z.number().int().optional().describe('Window handle'),
+    pid: z.number().int().optional().describe('Process id'),
+    title: z.string().optional().describe('Window title substring'),
+  }),
+  desktop_uia_type: z.object({
+    ref: z.number().int().optional().describe('Control ref (usually an Edit/ComboBox)'),
+    text: z.string().describe('Text to type'),
+    name: z.string().optional().describe('Control name, exact match case-insensitive'),
+    automation_id: z.string().optional().describe('Exact automation id'),
+    control_type: z.string().optional().describe('ControlType, e.g. Edit, ComboBox'),
+    hwnd: z.number().int().optional().describe('Window handle'),
+    pid: z.number().int().optional().describe('Process id'),
+    title: z.string().optional().describe('Window title substring'),
+  }),
+  desktop_uia_scroll: z.object({
+    ref: z.number().int().optional().describe('Control ref (scrollable pane/list)'),
+    direction: z.enum(['up', 'down', 'left', 'right']).describe('Scroll direction'),
+    amount: z.number().optional().describe('Scroll amount (>=1 large step, <1 small step; wheel ticks); default 1'),
+    name: z.string().optional().describe('Control name, exact match case-insensitive'),
+    automation_id: z.string().optional().describe('Exact automation id'),
+    control_type: z.string().optional().describe('ControlType, e.g. Pane, List, ScrollBar'),
+    hwnd: z.number().int().optional().describe('Window handle'),
+    pid: z.number().int().optional().describe('Process id'),
+    title: z.string().optional().describe('Window title substring'),
+  }),
+  desktop_uia_select: z.object({
+    ref: z.number().int().optional().describe('Control ref (the ListItem/TreeItem/TabItem to select)'),
+    name: z.string().optional().describe('Item name, exact match case-insensitive'),
+    automation_id: z.string().optional().describe('Exact automation id'),
+    control_type: z.string().optional().describe('ControlType: ListItem, TreeItem, TabItem...'),
+    hwnd: z.number().int().optional().describe('Window handle'),
+    pid: z.number().int().optional().describe('Process id'),
+    title: z.string().optional().describe('Window title substring'),
+  }),
+  desktop_uia_expand: z.object({
+    ref: z.number().int().optional().describe('Control ref (the ComboBox/TreeItem to toggle)'),
+    name: z.string().optional().describe('Control name, exact match case-insensitive'),
+    automation_id: z.string().optional().describe('Exact automation id'),
+    control_type: z.string().optional().describe('ControlType: ComboBox, TreeItem...'),
+    hwnd: z.number().int().optional().describe('Window handle'),
+    pid: z.number().int().optional().describe('Process id'),
+    title: z.string().optional().describe('Window title substring'),
+  }),
+  desktop_uia_keys: z.object({
+    key: z.string().describe('Key name (Enter/Tab/Escape/Backspace/Delete/ArrowUp/F1-F12/single char)'),
+    modifiers: z
+      .array(z.enum(['ctrl', 'alt', 'shift', 'meta']))
+      .optional()
+      .describe('Modifier keys held (e.g. ["ctrl"] + key "a" = Ctrl+A)'),
+    hwnd: z.number().int().optional().describe('Window handle'),
+    pid: z.number().int().optional().describe('Process id'),
+    title: z.string().optional().describe('Window title substring'),
+  }),
+  desktop_uia_activate: z.object({
+    hwnd: z.number().int().optional().describe('Window handle from desktop_probe'),
+    pid: z.number().int().optional().describe('Process id'),
+    title: z.string().optional().describe('Window title substring'),
+  }),
+  desktop_uia_window_shot: z.object({
+    hwnd: z.number().int().optional().describe('Window handle from desktop_probe'),
+    pid: z.number().int().optional().describe('Process id'),
+    title: z.string().optional().describe('Window title substring'),
+  }),
+  desktop_audit: z.object({
+    limit: z.number().int().optional().describe('Max entries (default 50)'),
+  }),
+  desktop_status: z.object({}),
+} satisfies Record<string, z.ZodObject<z.ZodRawShape>>;
+
+/** desktop 域动作 → 模型面 description（manifest 字节转录）。 */
+const UIA_CAP_DESCRIPTION: Record<UiaCapAction, string> = {
+  desktop_probe:
+    'Snapshot current machine process tree + top-level windows + visible console windows, WITH per-window channel routing advice (route.channel: "cdp" for Chromium windows → browser tools; "uia" for standard-control windows → desktop_uia_*; "vision" for self-drawn apps → uia_window_shot + multimodal). Returns {processes:[{pid,ppid,name,is_chromium}], windows:[{pid,name,title,visible,hwnd,route}], visible_console_windows}. route:false param skips UIA probing for a faster bare snapshot. Use to find which window to operate and HOW to operate it. Read-only; no persistent monitoring. Privacy: only process names (not full command lines); no cross-session/RDP probing.',
+  desktop_screenshot:
+    'Capture a full-screen screenshot of the current desktop (requires an interactive desktop session). Saved to a temp file; returns {path, bytes, note}. High-privacy: may contain arbitrary on-screen content, so this asks for approval EVERY time. With a text-only model the image is not visible; hand the path to the user for confirmation.',
+  desktop_uia_tree:
+    'Read the Windows UI Automation control tree of a desktop window — interactive controls only by default (buttons, inputs, lists, menus...), paginated. Returns {window:{pid,title,hwnd}, refs, generation, total, offset, count, truncated, tree:"[ref] Type \\"Name\\"", controls:[{ref,name,type,automation_id,enabled,rect,depth}]}. Locate the window by ONE of: hwnd (exact, from desktop_probe), pid, title (fuzzy), or omit all for the foreground window. all:true includes non-interactive layout elements; depth:N limits tree levels; offset/max_results paginate (default 80/page). refs index the FULL tree and stay reusable across actions and pages; if the window changed and a ref went stale, the action auto-refreshes once — only re-read the tree when that fails. Reading never touches focus or cursor. Self-drawn controls (WeChat/QQ/DingTalk etc.) expose an empty tree — use desktop_uia_window_shot + a vision model instead.',
+  desktop_uia_find:
+    'Find controls inside a desktop window by criteria (name fuzzy / control_type / automation_id / enabled). Interactive controls only by default (all:true for everything). Returns matching controls with their refs for later actions. Use instead of a full tree when you already know what kind of control you need — cheaper than uia_tree.',
+  desktop_uia_read:
+    'Read full detail of ONE control: value (password-masked), toggle state, expand state, scroll percents, rect, and the list of patterns it supports. Use after an action to verify the result (feedback loop), or before acting to see which patterns are available. Locate by ref or selector, same as the action tools. Read-only.',
+  desktop_uia_wait:
+    'Wait until a control satisfies a condition: until "exists" (appears), "enabled", or "value" (equals the given value). Polls every 150ms up to timeout_ms (default 10000, max 30000). Returns {found, until, waited_ms} — found:false on timeout is NOT an error. Use after clicking async-triggering buttons (e.g. dialogs that take a moment).',
+  desktop_uia_click:
+    'Click a control in a desktop window. Locate by EITHER ref (from desktop_uia_tree/find) OR selector: name/automation_id/control_type - any combination. Triggers via InvokePattern/TogglePattern/SelectionItemPattern when available (no focus stealing), else real coordinate click (physical input). Returns world-change feedback: {done, method, target, changed:{window_title/focused/value/toggle before→after}, hint}. Permissions: first write into a window asks once (window takeover); sensitive targets (submit/pay/delete/confirm text) and coordinate clicks ask separately every time. Check "changed" to verify the click did what you expected; use desktop_uia_read/wait to double-check.',
+  desktop_uia_right_click:
+    'Right-click a control — opens the context menu at the control center. Pure physical input (no UIA pattern for right-click), always asks. Locate by ref or selector (see desktop_uia_click). After the menu opens, read it with desktop_uia_tree and click items by ref.',
+  desktop_uia_type:
+    'Type text into a control. ValuePattern.SetValue when supported (instant, no focus), else focus + clipboard paste (physical input, asks separately). Returns world-change feedback incl. value before→after (password fields masked). Typing into a pre-filled input or a password field is classified sensitive and asks separately.',
+  desktop_uia_scroll:
+    'Scroll a scrollable control (ScrollPattern when available, else mouse wheel — wheel is physical input and asks separately). Returns world-change feedback incl. scroll percents before→after. Scroll itself is non-destructive; with window takeover granted it flows without asking.',
+  desktop_uia_select:
+    'Explicitly select a list item / tree item / tab (SelectionItemPattern.Select). Cleaner than clicking list entries — use for ListItems, TreeItems, TabItems, radio-like items. Returns world-change feedback.',
+  desktop_uia_expand:
+    'Expand/collapse a ComboBox dropdown or tree node (ExpandCollapsePattern, idempotent toggle: expanded→collapse, collapsed→expand). After expanding a combo, read the item list with desktop_uia_tree/find and select with desktop_uia_select. Returns world-change feedback incl. expand state before→after.',
+  desktop_uia_keys:
+    'Send a hotkey to a window (SendInput, real keyboard injection): key + modifiers (ctrl/alt/shift/meta). Examples: Ctrl+A, Delete, Enter, F5. Physical input — asks every time and is serialized globally (input lease) so concurrent agents cannot interleave keystrokes. Prefer pattern actions (click/type/select) whenever possible; use keys only for shortcuts UIA cannot reach.',
+  desktop_uia_activate:
+    'Bring a window to the foreground (restore if minimized + SetForegroundWindow). Physical input — asks every time. Needed before coordinate clicks / clipboard paste into apps that require focus; pattern actions (Invoke/SetValue/Select) work without activation.',
+  desktop_uia_window_shot:
+    'Capture a screenshot of a single window rect (not the full screen) - smaller privacy surface than desktop_screenshot, read-only. Locate window as in desktop_uia_tree (hwnd/pid/title/foreground). Returns {path, bytes, rect, window}. With a text-only model hand the path to the user; with a vision model read the image to see self-drawn controls that UIA cannot see.',
+  desktop_audit:
+    'Read the desktop operation audit log — which agent did what (click/type/keys/activate), when, against which control/window, and the outcome. Mirrors browser_audit. Use to review what the Agent has done on the desktop.',
+  desktop_status:
+    'Current desktop control state: active window-takeover grants per agent (with TTL) and the global input lease holder. Use to check who is currently allowed to operate which windows, or who holds the physical input lease.',
+};
+
+/** desktop 域动作 → readOnly（manifest 字节转录）。 */
+const UIA_CAP_READONLY: Record<UiaCapAction, boolean> = {
+  desktop_probe: true,
+  desktop_screenshot: true,
+  desktop_uia_tree: true,
+  desktop_uia_find: true,
+  desktop_uia_read: true,
+  desktop_uia_wait: true,
+  desktop_uia_click: false,
+  desktop_uia_right_click: false,
+  desktop_uia_type: false,
+  desktop_uia_scroll: false,
+  desktop_uia_select: false,
+  desktop_uia_expand: false,
+  desktop_uia_keys: false,
+  desktop_uia_activate: false,
+  desktop_uia_window_shot: true,
+  desktop_audit: true,
+  desktop_status: true,
+};
+
+/** 域短动作名 → 工具名（路由）；反向表供错误消息取短名（字节契约——
+ *  [desktop] uia_click 失败…）。 */
 const DESKTOP_ACTION_TOOL: Record<string, string> = {
   probe: 'desktop_probe',
   screenshot: 'desktop_screenshot',
@@ -545,25 +761,25 @@ const DESKTOP_ACTION_TOOL: Record<string, string> = {
   status: 'desktop_status',
 };
 
-/** 信封化执行（P2-5）：agentInvoke('tool_call', { plugin, tool, args })——
- *  args 键 = manifest schema 键（desktop snake_case，原样透传）；
- *  isAgent 由 agentInvoke 恒注入。（builtin.uia 随 R4-3 换 uia_cap 直呼。） */
-async function envelopeCall(plugin: string, tool: string, args: Record<string, unknown>): Promise<string> {
-  return agentInvoke<string>('tool_call', { plugin, tool, args });
-}
+/** 工具名 → 域短动作名（错误消息字节契约——[desktop] uia_click 失败…）。 */
+const DESKTOP_ACTION_TOOL_NAME_OF: Record<string, string> = Object.fromEntries(
+  Object.entries(DESKTOP_ACTION_TOOL).map(([short, name]) => [name, short]),
+);
 
-/** manifest 驱动的桌面域工具（builtin.uia）——desktop 面 schema 键为 snake_case。 */
-function desktopManifestTool(toolName: string, run: (args: Record<string, unknown>) => Promise<string>): Tool {
-  const manifest = kernelManifestOf('builtin.uia');
-  const spec = manifest.tools.find((t) => t.name === toolName);
-  if (!spec) throw new Error(`manifest-tools: 插件 'builtin.uia' 无工具 '${toolName}'`);
-  const parameters = spec.schema;
+/** desktop 域模型族工具（R4-3 起 zod 真源，不查 builtin.uia 镜像）；
+ *  TS 工具名保持历史名（模型面契约）；execute 走 uia_cap 直呼。
+ *  run 缺省 = runDesktopAction 短名路由（消息字节契约保持）；带定位条件
+ *  自检的工具传自定义 run（退役前包装原样保留）。 */
+function uiaCapTool(action: UiaCapAction, run?: (args: Record<string, unknown>) => Promise<string>): Tool {
+  const schema = UIA_CAP_SCHEMA[action];
+  const parameters = toInputJsonSchema(schema.passthrough());
+  const short = DESKTOP_ACTION_TOOL_NAME_OF[action];
   return {
-    name: () => toolName,
-    description: () => spec.description,
+    name: () => action,
+    description: () => UIA_CAP_DESCRIPTION[action],
     parameters: () => parameters,
-    readOnly: () => spec.read_only ?? false,
-    execute: (args, _onProgress, _signal) => run(args as Record<string, unknown>),
+    readOnly: () => UIA_CAP_READONLY[action] ?? false,
+    execute: (args, _onProgress, _signal) => (run ? run(args) : runDesktopAction(short, args)),
   };
 }
 
@@ -573,7 +789,7 @@ async function runDesktopAction(action: string, args: Record<string, unknown>): 
   const pageHint =
     action === 'uia_tree' ? '用 uia_tree 的 offset/max_results 翻页、depth 限层或 name 查找收窄' : undefined;
   try {
-    const result = await envelopeCall('builtin.uia', toolName, args);
+    const result = await uiaCapCall(toolName as UiaCapAction, args);
     return truncate(result ?? '', pageHint);
   } catch (e) {
     const raw = errText(e);
@@ -585,60 +801,60 @@ async function runDesktopAction(action: string, args: Record<string, unknown>): 
 export function createDesktopTools(): Tool[] {
   const run = (action: string, args: Record<string, unknown>) => runDesktopAction(action, args);
   return [
-    desktopManifestTool('desktop_probe', (args) => run('probe', args)),
-    desktopManifestTool('desktop_screenshot', (args) => run('screenshot', args)),
-    desktopManifestTool('desktop_uia_tree', (args) => run('uia_tree', args)),
-    desktopManifestTool('desktop_uia_find', (args) => run('uia_find', args)),
-    desktopManifestTool('desktop_uia_read', async (a) => {
+    uiaCapTool('desktop_probe'),
+    uiaCapTool('desktop_screenshot'),
+    uiaCapTool('desktop_uia_tree'),
+    uiaCapTool('desktop_uia_find'),
+    uiaCapTool('desktop_uia_read', async (a) => {
       if (a.ref === undefined && !a.name && !a.automation_id && !a.control_type) {
         return '[desktop_uia_read] 至少要给一个定位条件: ref / name / automation_id / control_type';
       }
       return run('uia_read', a);
     }),
-    desktopManifestTool('desktop_uia_wait', async (a) => {
+    uiaCapTool('desktop_uia_wait', async (a) => {
       if (a.ref === undefined && !a.name && !a.automation_id && !a.control_type) {
         return '[desktop_uia_wait] 至少要给一个定位条件: ref / name / automation_id / control_type';
       }
       return run('uia_wait', a);
     }),
-    desktopManifestTool('desktop_uia_click', async (a) => {
+    uiaCapTool('desktop_uia_click', async (a) => {
       if (a.ref === undefined && !a.name && !a.automation_id && !a.control_type) {
         return '[desktop_uia_click] 至少要给一个定位条件: ref / name / automation_id / control_type';
       }
       return run('uia_click', a);
     }),
-    desktopManifestTool('desktop_uia_right_click', async (a) => {
+    uiaCapTool('desktop_uia_right_click', async (a) => {
       if (a.ref === undefined && !a.name && !a.automation_id && !a.control_type) {
         return '[desktop_uia_right_click] 至少要给一个定位条件: ref / name / automation_id / control_type';
       }
       return run('uia_right_click', a);
     }),
-    desktopManifestTool('desktop_uia_type', async (a) => {
+    uiaCapTool('desktop_uia_type', async (a) => {
       if (a.ref === undefined && !a.name && !a.automation_id && !a.control_type) {
         return '[desktop_uia_type] 至少要给一个定位条件: ref / name / automation_id / control_type';
       }
       return run('uia_type', a);
     }),
-    desktopManifestTool('desktop_uia_select', async (a) => {
+    uiaCapTool('desktop_uia_select', async (a) => {
       if (a.ref === undefined && !a.name && !a.automation_id && !a.control_type) {
         return '[desktop_uia_select] 至少要给一个定位条件: ref / name / automation_id / control_type';
       }
       return run('uia_select', a);
     }),
-    desktopManifestTool('desktop_uia_expand', async (a) => {
+    uiaCapTool('desktop_uia_expand', async (a) => {
       if (a.ref === undefined && !a.name && !a.automation_id && !a.control_type) {
         return '[desktop_uia_expand] 至少要给一个定位条件: ref / name / automation_id / control_type';
       }
       return run('uia_expand', a);
     }),
-    desktopManifestTool('desktop_uia_scroll', async (a) => {
+    uiaCapTool('desktop_uia_scroll', async (a) => {
       if (a.ref === undefined && !a.name && !a.automation_id && !a.control_type) {
         return '[desktop_uia_scroll] 至少要给一个定位条件: ref / name / automation_id / control_type';
       }
       return run('uia_scroll', a);
     }),
-    desktopManifestTool('desktop_uia_keys', (args) => run('uia_keys', args)),
-    desktopManifestTool('desktop_uia_activate', (args) => run('uia_activate', args)),
+    uiaCapTool('desktop_uia_keys'),
+    uiaCapTool('desktop_uia_activate'),
     defineTool({
       name: 'desktop_uia_fill',
       description:
@@ -686,8 +902,8 @@ export function createDesktopTools(): Tool[] {
       },
     }),
 
-    desktopManifestTool('desktop_uia_window_shot', (args) => run('uia_window_shot', args)),
-    desktopManifestTool('desktop_audit', (args) => run('audit', args)),
-    desktopManifestTool('desktop_status', (args) => run('status', args)),
+    uiaCapTool('desktop_uia_window_shot'),
+    uiaCapTool('desktop_audit'),
+    uiaCapTool('desktop_status'),
   ];
 }

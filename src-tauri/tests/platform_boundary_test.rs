@@ -50,6 +50,7 @@ fn capability_command_modules_are_frozen() {
         "process_cap",
         "protocol_bridge",
         "search_cap",
+        "uia_cap",
         "workspace",
     ];
     assert_eq!(
@@ -79,6 +80,11 @@ fn capability_command_modules_are_frozen() {
          browser 句柄域 + BrowserTool 口内闸（无条件过闸 + 多层语义 +\n\
          click/type_sensitive 二次 Ask——D4-4/D4-5）+ CDP 会话执行体）——合法\n\
          强制层模块，CDP 会话注册表/审计环/敏感词表是句柄层本体，禁止向\n\
-         commands/ 塞业务命令。"
+         commands/ 塞业务命令。\n\
+         uia_cap = v3 能力口（kernel-capability-d4-handle-design.md R4-3：\n\
+         desktop 句柄域 + DesktopTool 口内闸（无条件过闸 + 六层语义）+\n\
+         resolve→classify→grant→lease 全链执行体（INVARIANTS #13：COM 只活\n\
+         worker 线程、物理输入必经租约））——合法强制层模块，grants/审计/\n\
+         敏感词表是句柄层本体，禁止向 commands/ 塞业务命令。"
     );
 }

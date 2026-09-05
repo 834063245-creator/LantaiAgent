@@ -6,16 +6,18 @@
 //   - 新观察参数（tree 分页 all/offset/max_results、probe route）透传
 //   - keys/activate/audit/status 的路由与 schema
 //   - desktop_uia_fill 复合编排（逐字段路由 + 缺定位字段跳过）
+// （R4-3：desktop 族已迁 uia_cap 直呼——观察点为 typedRpc('uia_cap')。）
 
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('../src/agent/tool', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/agent/tool')>();
-  return { ...actual, agentInvoke: vi.fn(async () => '{"done":true}') };
+vi.mock('../src/rpc-contract', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/rpc-contract')>();
+  return { ...actual, typedRpc: vi.fn(async () => '{"done":true}') };
 });
 
-import { agentInvoke, ToolRegistry } from '../src/agent/tool';
+import { ToolRegistry } from '../src/agent/tool';
 import { createDesktopTools } from '../src/agent/tools/browser';
+import { typedRpc } from '../src/rpc-contract';
 
 function buildRegistry(): ToolRegistry {
   const registry = new ToolRegistry();
@@ -23,7 +25,7 @@ function buildRegistry(): ToolRegistry {
   return registry;
 }
 
-const invokeMock = agentInvoke as unknown as ReturnType<typeof vi.fn>;
+const rpcMock = typedRpc as unknown as ReturnType<typeof vi.fn>;
 
 function reg(name: string) {
   const t = buildRegistry().get(name);
@@ -37,43 +39,37 @@ describe('desktop 新动作：定位条件必填校验（不触 Rust 即拒绝�
     ['desktop_uia_wait', { until: 'exists' }],
     ['desktop_uia_select', {}],
     ['desktop_uia_expand', {}],
-  ])('%s 无定位条件返回提示且不 invoke', async (name, base) => {
-    invokeMock.mockClear();
+  ])('%s 无定位条件返回提示且不直呼', async (name, base) => {
+    rpcMock.mockClear();
     const out = await reg(name).execute(base);
     expect(out).toContain('至少要给一个定位条件');
-    expect(invokeMock).not.toHaveBeenCalled();
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 
   it('desktop_uia_wait 有 until + ref 时正常路由', async () => {
-    invokeMock.mockClear();
+    rpcMock.mockClear();
     await reg('desktop_uia_wait').execute({ until: 'exists', ref: 3, timeout_ms: 500 });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.uia',
-      tool: 'desktop_uia_wait',
-      args: expect.objectContaining({ until: 'exists', ref: 3, timeout_ms: 500 }),
-    });
+    expect(rpcMock).toHaveBeenCalledWith(
+      'uia_cap',
+      expect.objectContaining({ action: 'desktop_uia_wait', is_agent: true, until: 'exists', ref: 3, timeout_ms: 500 }),
+    );
   });
 });
 
 describe('desktop 新观察参数透传', () => {
   it('uia_tree 的 all/offset/max_results 传到 Rust', async () => {
-    invokeMock.mockClear();
+    rpcMock.mockClear();
     await reg('desktop_uia_tree').execute({ hwnd: 123, all: true, offset: 80, max_results: 40 });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.uia',
-      tool: 'desktop_uia_tree',
-      args: expect.objectContaining({ hwnd: 123, all: true, offset: 80, max_results: 40 }),
-    });
+    expect(rpcMock).toHaveBeenCalledWith(
+      'uia_cap',
+      expect.objectContaining({ action: 'desktop_uia_tree', hwnd: 123, all: true, offset: 80, max_results: 40 }),
+    );
   });
 
   it('probe 的 route 开关传到 Rust', async () => {
-    invokeMock.mockClear();
+    rpcMock.mockClear();
     await reg('desktop_probe').execute({ route: false });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.uia',
-      tool: 'desktop_probe',
-      args: expect.objectContaining({ route: false }),
-    });
+    expect(rpcMock).toHaveBeenCalledWith('uia_cap', expect.objectContaining({ action: 'desktop_probe', route: false }));
   });
 
   it('audit/status 只读', () => {
@@ -84,7 +80,7 @@ describe('desktop 新观察参数透传', () => {
 
 describe('desktop_uia_fill 复合编排', () => {
   it('逐字段路由到 desktop_uia_type 并透传窗口定位', async () => {
-    invokeMock.mockClear();
+    rpcMock.mockClear();
     const out = await reg('desktop_uia_fill').execute({
       hwnd: 4242,
       fields: [
@@ -93,47 +89,43 @@ describe('desktop_uia_fill 复合编排', () => {
       ],
     });
     expect(out).toContain('desktop_uia_fill 完成 2 个字段');
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.uia',
-      tool: 'desktop_uia_type',
-      args: expect.objectContaining({ hwnd: 4242, ref: 1, text: 'alice' }),
-    });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.uia',
-      tool: 'desktop_uia_type',
-      args: expect.objectContaining({ hwnd: 4242, name: '密码', text: 'secret' }),
-    });
+    expect(rpcMock).toHaveBeenCalledWith(
+      'uia_cap',
+      expect.objectContaining({ action: 'desktop_uia_type', hwnd: 4242, ref: 1, text: 'alice' }),
+    );
+    expect(rpcMock).toHaveBeenCalledWith(
+      'uia_cap',
+      expect.objectContaining({ action: 'desktop_uia_type', hwnd: 4242, name: '密码', text: 'secret' }),
+    );
   });
 
   it('缺定位条件的字段被跳过（其余照常）', async () => {
-    invokeMock.mockClear();
+    rpcMock.mockClear();
     const out = await reg('desktop_uia_fill').execute({
       fields: [{ text: '孤儿字段' }, { automation_id: 'e2eEdit', text: 'ok' }],
     });
     expect(out).toContain('[skip]');
     expect(out).toContain('2 个字段');
-    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(rpcMock).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('desktop_uia_keys / activate 路由', () => {
   it('keys 透传 modifiers + key', async () => {
-    invokeMock.mockClear();
+    rpcMock.mockClear();
     await reg('desktop_uia_keys').execute({ key: 'a', modifiers: ['ctrl'], hwnd: 7 });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.uia',
-      tool: 'desktop_uia_keys',
-      args: expect.objectContaining({ key: 'a', modifiers: ['ctrl'], hwnd: 7 }),
-    });
+    expect(rpcMock).toHaveBeenCalledWith(
+      'uia_cap',
+      expect.objectContaining({ action: 'desktop_uia_keys', key: 'a', modifiers: ['ctrl'], hwnd: 7 }),
+    );
   });
 
   it('activate 只需窗口定位', async () => {
-    invokeMock.mockClear();
+    rpcMock.mockClear();
     await reg('desktop_uia_activate').execute({ hwnd: 7 });
-    expect(invokeMock).toHaveBeenCalledWith('tool_call', {
-      plugin: 'builtin.uia',
-      tool: 'desktop_uia_activate',
-      args: expect.objectContaining({ hwnd: 7 }),
-    });
+    expect(rpcMock).toHaveBeenCalledWith(
+      'uia_cap',
+      expect.objectContaining({ action: 'desktop_uia_activate', hwnd: 7 }),
+    );
   });
 });

@@ -101,11 +101,6 @@ async function fsToolsFactory(): Promise<Tool[]> {
 //  SHELL_CAP_SCHEMA），execute 换 process_cap 能力口直呼，反向生成源随插件
 //  一并拆除；fs/git 域同款先例。）
 
-async function desktopToolsFactory(): Promise<Tool[]> {
-  const { createDesktopTools } = await import('../src/agent/tools/browser');
-  return createDesktopTools();
-}
-
 async function ptyToolsFactory(): Promise<Tool[]> {
   // pty/lsp 无模型面 TS zod 工具（lsp-client 经 typedRpc 内部消费）——
   // 工具面经本生成器以手写 spec 发射（内部消费工具：schema 非模型面契约）。
@@ -151,37 +146,10 @@ const DOMAINS: DomainSpec[] = [
   //    browser_cap 能力口直呼；域条目随 tool_plugins/browser/ 一并拆除，
   //    fs/git/shell 域收口同款先例）──
 
-  // ── builtin.uia（P2-5）——desktop_* 17 RPC 分支信封化。权限形状（§8）：
-  //    同 browser——插件内 ctx.check_permission(DesktopTool{action}) 业务自检，
-  //    desktop_uia_write 的 resolve→classify→grant→lease 全链迁入插件。
-  //    TS 面 createDesktopTools() 直出 17 名（desktop_uia_fill 复合工具无独立
-  //    RPC 分支不发射）。──
-  {
-    domain: 'uia',
-    id: 'builtin.uia',
-    description: 'Windows 桌面 UIA 控制（自 rpc.rs desktop 分区拆出，kernel-plugin-runtime P2-5）',
-    capabilities: ['desktop'],
-    factory: desktopToolsFactory,
-    tools: [
-      { name: 'desktop_probe', tsTool: 'desktop_probe' },
-      { name: 'desktop_screenshot', tsTool: 'desktop_screenshot' },
-      { name: 'desktop_uia_tree', tsTool: 'desktop_uia_tree' },
-      { name: 'desktop_uia_find', tsTool: 'desktop_uia_find' },
-      { name: 'desktop_uia_read', tsTool: 'desktop_uia_read' },
-      { name: 'desktop_uia_wait', tsTool: 'desktop_uia_wait' },
-      { name: 'desktop_uia_click', tsTool: 'desktop_uia_click' },
-      { name: 'desktop_uia_right_click', tsTool: 'desktop_uia_right_click' },
-      { name: 'desktop_uia_type', tsTool: 'desktop_uia_type' },
-      { name: 'desktop_uia_scroll', tsTool: 'desktop_uia_scroll' },
-      { name: 'desktop_uia_select', tsTool: 'desktop_uia_select' },
-      { name: 'desktop_uia_expand', tsTool: 'desktop_uia_expand' },
-      { name: 'desktop_uia_keys', tsTool: 'desktop_uia_keys' },
-      { name: 'desktop_uia_activate', tsTool: 'desktop_uia_activate' },
-      { name: 'desktop_uia_window_shot', tsTool: 'desktop_uia_window_shot' },
-      { name: 'desktop_audit', tsTool: 'desktop_audit' },
-      { name: 'desktop_status', tsTool: 'desktop_status' },
-    ],
-  },
+  // ── builtin.uia 域已退役（browser 域收口 2026-09-05，R4-3——schema 真源
+  //    回 TS zod（agent/tools/browser.ts UIA_CAP_SCHEMA），execute 走 uia_cap
+  //    能力口直呼；域条目随 tool_plugins/uia/ 一并拆除，fs/git/shell/browser
+  //    域收口同款先例）──
 
   // ── builtin.pty（P2-6）——4 RPC 分支信封化。权限形状（§8.5）：无家族规则，
   //    不进 manifest permission（原本就无工具级家族对应）；Passthrough +

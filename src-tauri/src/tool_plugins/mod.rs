@@ -19,7 +19,6 @@ pub mod manifest;
 pub mod plugin;
 pub mod pty;
 pub mod registry;
-pub mod uia;
 pub mod web;
 
 pub use plugin::ToolContext;

@@ -114,6 +114,29 @@ export type BrowserCapAction =
   | 'browser_eval'
   | 'browser_status';
 
+/** uia_cap 能力口 action（R4 browser 域收口）——退役前 builtin.uia 17 工具名
+ *  一一位（D4-1：action 化，git_cap 同构）。各 action 参数形状的真源 =
+ *  agent/tools/browser.ts 的 UIA_CAP_SCHEMA（zod 转录；desktop 面键本就
+ *  snake_case，无映射）。 */
+export type UiaCapAction =
+  | 'desktop_probe'
+  | 'desktop_screenshot'
+  | 'desktop_uia_tree'
+  | 'desktop_uia_find'
+  | 'desktop_uia_read'
+  | 'desktop_uia_wait'
+  | 'desktop_uia_click'
+  | 'desktop_uia_right_click'
+  | 'desktop_uia_type'
+  | 'desktop_uia_scroll'
+  | 'desktop_uia_select'
+  | 'desktop_uia_expand'
+  | 'desktop_uia_keys'
+  | 'desktop_uia_activate'
+  | 'desktop_uia_window_shot'
+  | 'desktop_audit'
+  | 'desktop_status';
+
 export interface RpcContract {
   // ── 应用层：数据上下文（L1）────────────────────────────
   // （workspace-session-ownership-rework 2026-08-27：session_attach/detach/
@@ -336,6 +359,25 @@ export interface RpcContract {
       [key: string]: unknown;
     };
     result: string; // text — 37 action 全文本直通（浏览器会话状态/快照/操作反馈）
+  };
+
+  // ── 能力口（R4，kernel-capability-d4-handle-design.md）──────────
+  // uia_cap：desktop 句柄域直呼入口（builtin.uia 插件随 browser 域收口退役）
+  // ——不经 tool_call 信封 / PluginRegistry / PluginToolAdapter。action =
+  // 退役前 builtin.uia 17 工具名（UiaCapAction）；各 action 参数形状真源 =
+  // UIA_CAP_SCHEMA（zod，键本就 snake_case 无映射）。口内闸：DesktopTool
+  // 无条件过闸（六层语义）+ resolve→classify→grant→lease 全链（INVARIANTS
+  // #13：COM 只活 worker 线程、物理输入必经租约）。返回文本（world-diff/
+  // 审计报表直通）。
+  uia_cap: {
+    params: {
+      action: UiaCapAction;
+      is_agent?: boolean;
+      agent_id?: string | null;
+      // 各 action 参数（顶层 snake；形状按 action 见 UIA_CAP_SCHEMA）
+      [key: string]: unknown;
+    };
+    result: string; // text — 17 action 全文本直通（树/控件读写/world-diff/审计）
   };
 
   // ── Shell（retired）────────────────────────────────────────

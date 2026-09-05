@@ -17,3 +17,4 @@ pub mod fs_cap;
 pub mod git_cap;
 pub mod process_cap;
 pub mod browser_cap;
+pub mod uia_cap;
