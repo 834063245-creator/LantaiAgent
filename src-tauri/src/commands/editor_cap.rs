@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: MIT.
 
 // editor 能力口（R4 小面清偿收官，kernel-capability-d4-handle-design.md §6
-// R4-4b）——edit_file 直呼入口，不经 tool_call 信封 / PluginRegistry
-// （builtin.editor 插件随本批退役——R5 拆信封前最后在册插件，本批后
-// PluginRegistry 出厂清单为空）。
+// R4-4b）——edit_file 直呼入口，不经 tool_call 信封（信封与 PluginRegistry
+// 脚手架已随 R5 拆除；builtin.editor 插件随 R4-4b 退役）。
 //
 // 口内闸（git_cap 同形——editor 的权限门本在 dispatch 侧 adapter）：Agent
 // 路径构造 PluginToolAdapter（Edit 家族 + 精确名寻址保留
@@ -23,7 +22,26 @@
 use serde_json::Value;
 use tauri::State;
 
-use crate::tool_plugins::plugin::ToolError;
+/// 编辑业务错误信封（自 tool_plugins/plugin.rs 本地化，R5 脚手架拆除——
+/// editor_cap 是唯一消费者）。边界上经 `message()` 折成 RPC 错误字符串。
+#[derive(Debug)]
+enum ToolError {
+    /// 参数缺失/非法（schema 之外的契约违规）。
+    InvalidArgs(String),
+    /// 工具业务失败。
+    /// （Permission 变体已随 R4-4b builtin.* 插件全退役删除——能力口错误串
+    ///  自带「权限拒绝: 」前缀，不再经 ToolError 折叠。）
+    Tool(String),
+}
+
+impl ToolError {
+    fn message(&self) -> String {
+        match self {
+            ToolError::InvalidArgs(m) => m.clone(),
+            ToolError::Tool(m) => m.clone(),
+        }
+    }
+}
 
 /// 口内业务上下文（ToolContext 的 editor 面投影——业务只消费身份与 state）。
 pub(crate) struct EditorCtx<'a> {
@@ -509,7 +527,7 @@ pub(crate) async fn editor_cap(
         let perm_ctx = crate::utils::get_ctx(state)?;
         let physical =
             perm_ctx.forward_map_path(std::path::Path::new(&file_path), agent_id.as_deref());
-        let adapter = crate::tool_plugins::plugin::PluginToolAdapter {
+        let adapter = crate::permissions::adapter::PluginToolAdapter {
             full_name: "plugin:builtin.editor.edit_file".to_string(),
             read_only: false,
             path: Some(physical.to_string_lossy().to_string()),

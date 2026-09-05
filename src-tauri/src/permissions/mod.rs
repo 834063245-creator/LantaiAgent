@@ -4,6 +4,7 @@
 // 权限系统中央入口 — has_permission_to_use_tool() (spec §4.6)
 // Tool trait 定义 + PermissionContext + 裁决编排
 
+pub mod adapter;
 pub mod bash;
 pub mod filesystem;
 pub mod git;
@@ -987,8 +988,8 @@ mod regression {
     // kernel-plugin-runtime P2-0 回归 — PluginToolAdapter 家族语义
     // ═══════════════════════════════════════════════════════════
 
-    fn plugin_adapter(path: Option<String>, family: Option<&'static str>) -> crate::tool_plugins::plugin::PluginToolAdapter {
-        crate::tool_plugins::plugin::PluginToolAdapter {
+    fn plugin_adapter(path: Option<String>, family: Option<&'static str>) -> crate::permissions::adapter::PluginToolAdapter {
+        crate::permissions::adapter::PluginToolAdapter {
             full_name: "plugin:builtin.fs.write_file".into(),
             read_only: false,
             path,

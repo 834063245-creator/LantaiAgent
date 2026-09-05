@@ -83,7 +83,7 @@ pub(crate) async fn git_cap(
         let perm_ctx = crate::utils::get_ctx(state)?;
         let physical =
             perm_ctx.forward_map_path(std::path::Path::new(&repo_path), agent_id.as_deref());
-        let adapter = crate::tool_plugins::plugin::PluginToolAdapter {
+        let adapter = crate::permissions::adapter::PluginToolAdapter {
             full_name: format!("plugin:builtin.git.{action}"),
             read_only,
             path: Some(physical.to_string_lossy().to_string()),

@@ -11,8 +11,6 @@
 
 use serde_json::Value;
 
-use tauri::Manager;
-
 // ── 参数辅助函数 ──
 
 fn req_str(params: &Value, name: &str, method: &str) -> Result<String, String> {
@@ -369,25 +367,6 @@ async fn dispatch_rpc(
         "hologram_file_nodes" => {
             let file = req_str(&params, "file", "hologram_file_nodes")?;
             commands::graph::hologram_file_nodes(file, state, app_ctx).await
-        }
-
-
-        // ═══════════════════════════════════════════════════════
-        // 内核插件运行时（tool_call 统一入口 + manifests 清单，2 个命令）
-        // ═══════════════════════════════════════════════════════
-        "tool_call" => {
-            // 内核插件运行时统一入口（kernel-plugin-runtime）。
-            // args 说 manifest schema 的语言（camelCase）；_agent_id meta 嵌在 args 内。
-            let plugin = req_str(&params, "plugin", "tool_call")?;
-            let tool = req_str(&params, "tool", "tool_call")?;
-            let args = params.get("args").cloned().unwrap_or_else(|| serde_json::json!({}));
-            let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
-            let registry = app.state::<std::sync::Arc<crate::tool_plugins::PluginRegistry>>();
-            crate::tool_plugins::dispatch_tool_call(&registry, &plugin, &tool, args, is_agent, &state, &app).await
-        }
-        "plugin_tool_manifests" => {
-            let registry = app.state::<std::sync::Arc<crate::tool_plugins::PluginRegistry>>();
-            Ok(crate::tool_plugins::registry_manifests(&registry).to_string())
         }
 
         // ═══════════════════════════════════════════════════════

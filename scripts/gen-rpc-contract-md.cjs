@@ -20,11 +20,12 @@ const OUT_MD = path.join(ROOT, 'docs', 'agents', 'frontend-rpc-contract.md');
 // 未同步——identity 错挂「插件安装通道」、dataflow 三方法被分区溢出整行
 // 丢弃（存量缺陷随本批一并修复）；git_cap 箱线组 + 协议桥箱线组补位。
 // 2026-09-05 shell 域收口（R3-d）：process_cap 箱线组插 git_cap 之后。
+// 2026-09-05 R5 脚手架拆除：「内核插件运行时（tool_call）」分区随
+// tool_call/plugin_tool_manifests 两分支退役整删。
 const SECTIONS = [
   '应用层：数据上下文（L1）',
   'Engine 调度',
   'Graph',
-  '内核插件运行时（tool_call）',
   '能力口（search_cap）',
   '能力口（fs_cap）',
   '能力口（git_cap）',

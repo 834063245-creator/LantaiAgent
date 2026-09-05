@@ -307,10 +307,11 @@ pub(crate) async fn resolve_write_dispatch(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 免检解析（kernel-plugin-runtime P2-0 §3.5）——权限门在 dispatch 侧
-// PluginToolAdapter（manifest 声明 permission.family）的工具专用：
-// 与今日命令 is_agent 分流的差别只是省去规则引擎检查（同一语义已在
-// dispatch 过闸），forward-map 与沙箱决议逐字保留。
+// 免检解析（kernel-plugin-runtime P2-0 §3.5）——口内已过闸的工具专用：
+// 能力口（editor_cap 等）的权限门在口内构造 PluginToolAdapter 过
+// check_permission（permissions/adapter.rs），口内业务走免检解析——
+// 与命令 is_agent 分流的差别只是省去规则引擎检查（同一语义已在口内
+// 过闸），forward-map 与沙箱决议逐字保留。
 // ═══════════════════════════════════════════════════════════════
 
 /// 读路径免检解析：agent = forward-map + canonicalize（require_read 的收尾

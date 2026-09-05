@@ -35,7 +35,6 @@ mod sensitive;
 mod llm_proxy;
 mod plugin_assets;
 mod composition_watcher;
-mod tool_plugins;
 
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -58,9 +57,6 @@ fn main() {
     let workspace_state: WorkspaceState = Arc::new(Mutex::new(None));
     // L1 应用层：按工作区实例化的数据上下文注册表（会话 attach 的家）。
     let app_contexts: std::sync::Arc<app::AppContexts> = std::sync::Arc::new(app::AppContexts::new());
-    // 内核插件运行时（kernel-plugin-runtime）：Rust 侧工具插件注册表。
-    let plugin_registry: std::sync::Arc<tool_plugins::PluginRegistry> =
-        std::sync::Arc::new(tool_plugins::PluginRegistry::with_system_defaults());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -69,7 +65,6 @@ fn main() {
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .manage(workspace_state)
         .manage(app_contexts)
-        .manage(plugin_registry)
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 // Phase 1: Drain — 后台线程执行，3s 超时保护避免 shutdown 阻塞导致僵尸进程

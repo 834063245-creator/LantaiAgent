@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-09-05T11:00:17.472Z
-> 方法总数：56（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-09-05T12:51:50.346Z
+> 方法总数：54（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -30,13 +30,6 @@
 | `analyze_and_load` | path | force | 字符串 |
 | `get_graph_snapshot` | — | — | 字符串 |
 | `hologram_file_nodes` | file | — | 字符串 |
-
-## 内核插件运行时（tool_call）
-
-| 方法 | 必选参数 | 可选参数 | 返回 |
-|------|----------|----------|------|
-| `tool_call` | plugin, tool | is_agent, args | 字符串 |
-| `plugin_tool_manifests` | — | — | 字符串 |
 
 ## 能力口（search_cap）
 
