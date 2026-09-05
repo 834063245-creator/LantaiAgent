@@ -1742,6 +1742,19 @@
 .pp-desk-tag:last-child {
   transform: rotate(0.4deg);
 }
+/* ── 书眉行（2026-09-06 续批：三行制之顶行）——卷名左端 + 翰/律/后台卷指示
+ *    右端；坞的顶行恒是书眉，三控件（模型/权限/思考）归设置行垫底。 ── */
+.pp-composer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  row-gap: 6px;
+  min-height: 30px;
+  flex-wrap: wrap; /* 窄窗口同设置行纪律：换行不溢出 */
+}
+.pp-composer-header > * {
+  min-width: 0;
+}
 .pp-composer-settings {
   display: flex;
   align-items: center;
