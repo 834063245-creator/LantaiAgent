@@ -572,7 +572,14 @@ export interface RpcContract {
 
   // ── MCP / ACP stdio 桥 ────────────────────────────────────
   protocol_bridge_spawn: {
-    params: { id: string; command: string; args?: string[] };
+    params: {
+      id: string;
+      command: string;
+      args?: string[];
+      /** env 追加注入（app shell S2）：受治进程的宿主寻址面——键值对追加进
+       *  子进程环境（继承不替换）；LANTAI_PLUGIN_DATA_DIR = 插件数据目录。 */
+      env?: Record<string, string>;
+    };
     result: string;
   };
   protocol_bridge_write: {

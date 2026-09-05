@@ -40,6 +40,32 @@ fn req_strs(params: &Value, name: &str, method: &str) -> Result<Vec<String>, Str
         .ok_or_else(|| format!("{method}: missing '{name}'"))
 }
 
+/// 可选 env 注入映射（protocol_bridge_spawn，app shell S2）：缺省/Null → None；
+/// 对象逐键值须字符串；键禁空/含 '=' 或 NUL（Windows env 块歧义防线——名字
+/// 里的 '=' 会被系统折进值），值禁 NUL。
+fn opt_str_map(params: &Value, name: &str) -> Result<Option<std::collections::HashMap<String, String>>, String> {
+    match params.get(name) {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => {
+            let obj = v.as_object().ok_or_else(|| format!("参数 '{name}' 必须是字符串到字符串的对象"))?;
+            let mut map = std::collections::HashMap::new();
+            for (k, val) in obj {
+                let s = val
+                    .as_str()
+                    .ok_or_else(|| format!("参数 '{name}' 的键 {k} 对应值必须是字符串"))?;
+                if k.is_empty() || k.contains('=') || k.contains('\0') {
+                    return Err(format!("参数 '{name}' 非法 env 键（空/含 '=' 或 NUL）: {k}"));
+                }
+                if s.contains('\0') {
+                    return Err(format!("参数 '{name}' 的键 {k} 对应值含 NUL"));
+                }
+                map.insert(k.clone(), s.to_string());
+            }
+            Ok(Some(map))
+        }
+    }
+}
+
 // ── 结果辅助函数（将类型化的 Ok 转换为 JSON 字符串）──
 
 fn ok_json<T: serde::Serialize>(r: Result<T, String>) -> Result<String, String> {
@@ -620,7 +646,10 @@ async fn dispatch_rpc(
             let id = req_str(&params, "id", "protocol_bridge_spawn")?;
             let command = req_str(&params, "command", "protocol_bridge_spawn")?;
             let args = req_strs(&params, "args", "protocol_bridge_spawn")?;
-            commands::protocol_bridge::protocol_bridge_spawn(id, command, args, app)
+            // env 注入（app shell S2）：受治进程 spawn 的宿主寻址面（如
+            // LANTAI_PLUGIN_DATA_DIR——插件数据目录路径，TS mcp-bridge 构造）。
+            let env = opt_str_map(&params, "env")?;
+            commands::protocol_bridge::protocol_bridge_spawn(id, command, args, env, app)
         }
         "protocol_bridge_write" => {
             let id = req_str(&params, "id", "protocol_bridge_write")?;

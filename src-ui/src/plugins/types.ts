@@ -30,7 +30,13 @@ function isSafeEntry(value: string): boolean {
 
 /** MCP server 声明（manifest.mcpServers 条目，S4-4 乙机器桥）：stdio（command
  *  相对插件目录解析）| http（url 直连）二选一；failurePolicy 缺省 lazy——瞬态
- *  机器不是装载失败的合格理由（进程挂了工具报错/空集，不炸装载）。 */
+ *  机器不是装载失败的合格理由（进程挂了工具报错/空集，不炸装载）。
+ *
+ *  治理字段（app shell 件 C · S2，受治进程生命周期治理）：restart / lifecycle
+ *  任一在场 = 该条目进入受治面（mcp-bridge 治理器接管：就绪 = initialize 握手
+ *  完成带时限、崩溃退避重启、三档生命周期、空闲回收——failurePolicy 对该条目
+ *  退役）。两字段皆缺席 = 旧形态，现行为逐字节不变（兼容钉死）。治理字段只对
+ *  stdio 进程有意义——http 条目无受治进程面，声明即拒。 */
 const McpServerDeclSchema = z
   .strictObject({
     /** server 名——工具名前缀 `mcp__<name>__*` + 行 id 尾段。 */
@@ -47,11 +53,23 @@ const McpServerDeclSchema = z
     /** http：请求头（明文进 manifest——插件目录是全信任区，与 command 同级）。 */
     headers: z.record(z.string(), z.string()).optional(),
     /** startup-error：装载期急连接验证，失败 → 插件 error 记录；
-     *  lazy（缺省）：首装配连接，失败 → 空集 + warn（下次装配重试）。 */
+     *  lazy（缺省）：首装配连接，失败 → 空集 + warn（下次装配重试）。
+     *  治理字段在场时对本条目退役（治理面接管失败语义）。 */
     failurePolicy: z.enum(['startup-error', 'lazy']).optional(),
+    /** 崩溃重启策略（S2 治理字段）：off（缺省）= 不自动重启（下次装配/调用
+     *  兜底拉起）；on-crash = 进程意外退出后指数退避自动重启。 */
+    restart: z.enum(['off', 'on-crash']).optional(),
+    /** 生命周期三档（S2 治理字段，决策 1/4）：lazy（缺省）= 首次装配/调用/开窗
+     *  拉起，无窗且空闲超时回收，再调用再拉起；eager = 装载即拉起，卸载才停
+     *  （装配/调用发现未就绪时兜底拉起）；with-window = 随窗开合（开窗拉起，
+     *  关窗即杀——keep-alive 属 S3 窗口面扩展位）。 */
+    lifecycle: z.enum(['lazy', 'eager', 'with-window']).optional(),
   })
   .refine((v) => (v.transport === 'stdio' ? !!v.command && !v.url : !!v.url && !v.command), {
     message: 'mcpServers 条目：stdio 必须 command（禁 url）；http 必须 url（禁 command）',
+  })
+  .refine((v) => !(v.transport === 'http' && (v.restart !== undefined || v.lifecycle !== undefined)), {
+    message: 'mcpServers 条目：治理字段（restart/lifecycle）只对 stdio 受治进程有意义——http 无进程面',
   });
 
 /** manifest.tools 条目 schema（C11-1 工具声明可序列化）：模型面三字段与
@@ -116,7 +134,9 @@ export const PluginManifestSchema = z.object({
   /** 声明式挂接外部 MCP server（S4-4 乙机器桥，设计件 S4 §2.7）：装载期逐个
    *  折算为工具行贡献（行 id `plugin/<插件名>/mcp/<server名>`）——patch/preset
    *  可寻址禁用某插件的某个 MCP server，组合均匀性不破。进程 kill 归插件
-   *  fiber disposer。 */
+   *  fiber disposer。条目声明治理字段（restart/lifecycle，app shell 件 C · S2）
+   *  = 受治进程：就绪 = initialize 握手完成（带时限）、崩溃退避重启、三档
+   *  生命周期、空闲回收（见 mcp-bridge.ts 治理器）。 */
   mcpServers: z.array(McpServerDeclSchema).optional(),
 });
 

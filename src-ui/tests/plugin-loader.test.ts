@@ -108,6 +108,34 @@ describe('manifest 校验（zod 单一来源）', () => {
       }).ok,
     ).toBe(false);
   });
+
+  it('S2 受治治理字段：restart/lifecycle 枚举 + http 不得声明（无受治进程面）', () => {
+    const STDIO = { name: 's', transport: 'stdio', command: 'node' } as const;
+    // 合法：治理字段组合（任一在场 = 该条目进受治面）
+    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, restart: 'on-crash' }] }).ok).toBe(true);
+    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, lifecycle: 'lazy' }] }).ok).toBe(true);
+    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, restart: 'off' }] }).ok).toBe(true);
+    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, lifecycle: 'eager' }] }).ok).toBe(true);
+    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, lifecycle: 'with-window' }] }).ok).toBe(true);
+    // 坏枚举拒绝（枚举闭集——「写了但不生效」是手误，错误不静默）
+    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, restart: 'always' }] }).ok).toBe(false);
+    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO, lifecycle: 'always' }] }).ok).toBe(false);
+    // http 条目声明治理字段 = 拒绝（进程不是宿主起的——无受治进程面）
+    expect(
+      validateManifest({
+        ...HELLO_MANIFEST,
+        mcpServers: [{ name: 'r', transport: 'http', url: 'http://x', lifecycle: 'lazy' }],
+      }).ok,
+    ).toBe(false);
+    expect(
+      validateManifest({
+        ...HELLO_MANIFEST,
+        mcpServers: [{ name: 'r', transport: 'http', url: 'http://x', restart: 'on-crash' }],
+      }).ok,
+    ).toBe(false);
+    // 旧形态（无治理字段）不受影响——兼容钉死
+    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO }] }).ok).toBe(true);
+  });
 });
 
 describe('loadExternalPlugins（失败隔离铁律）', () => {
@@ -468,6 +496,94 @@ describe('loadExternalPlugins（失败隔离铁律）', () => {
     // （root 的 asyncDispose 不级联 plugin fibers——此处不重复断言）
     expect(kills).toEqual([]);
     await root[Symbol.asyncDispose]?.();
+  });
+
+  it('S2 数据目录衔接：dataDir + mcpServers → ensure 先行捕获路径 → spawn 注入 env', async () => {
+    const events: string[] = [];
+    const spawns: Array<{ id: string; env?: Record<string, string> }> = [];
+    const io = {
+      createProcIO: async (id: string, _command: string, _args: string[], env?: Record<string, string>) => {
+        spawns.push({ id, env });
+        const outCbs = new Set<(line: string) => void>();
+        const exitCbs = new Set<(code: number | null) => void>();
+        return {
+          writeLine: (line: string) => {
+            const msg = JSON.parse(line) as { id?: number; method?: string };
+            if (msg.id === undefined) return;
+            const result =
+              msg.method === 'initialize'
+                ? { protocolVersion: '2024-11-05', capabilities: {}, serverInfo: { name: 'f', version: '1' } }
+                : msg.method === 'tools/list'
+                  ? { tools: [] }
+                  : {};
+            for (const cb of outCbs) cb(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }));
+          },
+          onStdoutLine: (cb: (line: string) => void) => {
+            outCbs.add(cb);
+            return () => {
+              outCbs.delete(cb);
+            };
+          },
+          onExit: (cb: (code: number | null) => void) => {
+            exitCbs.add(cb);
+            return () => {
+              exitCbs.delete(cb);
+            };
+          },
+          kill: () => {
+            for (const cb of exitCbs) cb(0);
+          },
+        };
+      },
+      pluginDir: async (name: string) => `C:/plugins/${name}`,
+    } as const;
+
+    const root = new Context();
+    // 四 service 先挂（wrapper inject 'tools' 可解析——否则 fiber PENDING，apply 不跑）
+    const { compositionServicesPlugin } = await import('../src/composition/services');
+    await root.plugin(compositionServicesPlugin);
+    const { pluginToolRows } = await import('../src/composition/plugin-tool-rows');
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      mcpBridgeIO: io,
+      pluginDataEnsure: async (name: string) => {
+        events.push('ensure:' + name);
+        return `C:/data-root/${name}`;
+      },
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['acme/data-app'],
+        [ORIGIN + '/plugins.json']: { disabled: [] },
+        [ORIGIN + '/acme/data-app/manifest.json']: {
+          name: 'acme/data-app',
+          version: '1.0.0',
+          entry: 'entry.js',
+          dataDir: true,
+          mcpServers: [{ name: 'engine', transport: 'stdio', command: './bin/engine', lifecycle: 'lazy' }],
+        },
+      }),
+      importModule: async () => ({
+        default: {
+          name: 'acme/data-app',
+          apply() {
+            events.push('apply');
+          },
+        },
+      }),
+    });
+    expect(usePluginStore.getState().plugins[0]?.status).toBe('active');
+    // wrapper ensure 先于插件代码（S1 语义），路径捕获传桥（S2 衔接）
+    expect(events[0]).toBe('ensure:acme/data-app');
+    expect(events[1]).toBe('apply');
+    // 受治 lazy：装配触发拉起 → spawn env 注入 LANTAI_PLUGIN_DATA_DIR
+    const row = pluginToolRows().find((r) => r.id === 'plugin/acme/data-app/mcp/engine');
+    if (!row) throw new Error('受治 mcp 行未注册');
+    await row.factory({} as never);
+    const deadline = Date.now() + 1000;
+    while (spawns.length === 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(spawns[0]?.env).toEqual({ LANTAI_PLUGIN_DATA_DIR: 'C:/data-root/acme/data-app' });
+    await deactivateExternalPlugin('acme/data-app');
   });
 });
 

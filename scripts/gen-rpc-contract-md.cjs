@@ -62,7 +62,8 @@ function isBoxLine(rawUtf8Line) {
   return /^\s*\/\/\s*\u2550{30,}/.test(rawUtf8Line);
 }
 
-const OPT_HELPERS = /opt_(str|bool|i32|u32|u64|usize)\(\s*&params,\s*"([a-z_]+)"/g;
+// opt_str_map（app shell S2）：protocol_bridge_spawn 的 env 注入映射（可选）。
+const OPT_HELPERS = /opt_(str|str_map|bool|i32|u32|u64|usize)\(\s*&params,\s*"([a-z_]+)"/g;
 const REQ_HELPERS = /req_(str|strs|u16)\(\s*&params,\s*"([a-z_]+)"/g;
 
 function extractParams(branch) {

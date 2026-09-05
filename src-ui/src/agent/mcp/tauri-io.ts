@@ -9,9 +9,16 @@ import { typedListen, typedRpc } from '../../rpc-contract';
 import type { AcpLineIO } from '../acp/server';
 import type { ProcIO } from './transport';
 
-/** 用 Rust protocol_bridge 起子进程并返回 ProcIO（webview 用）。spawn 完成后 resolve。 */
-export async function createTauriProcIO(bridgeId: string, command: string, args: string[]): Promise<ProcIO> {
-  await typedRpc('protocol_bridge_spawn', { id: bridgeId, command, args: args ?? [] });
+/** 用 Rust protocol_bridge 起子进程并返回 ProcIO（webview 用）。spawn 完成后 resolve。
+ *  env：追加注入的子进程环境变量（app shell S2——受治进程的宿主寻址面，
+ *  如 LANTAI_PLUGIN_DATA_DIR；缺省 undefined = 不注入，行为与 S2 前一致）。 */
+export async function createTauriProcIO(
+  bridgeId: string,
+  command: string,
+  args: string[],
+  env?: Record<string, string>,
+): Promise<ProcIO> {
+  await typedRpc('protocol_bridge_spawn', { id: bridgeId, command, args, env });
   const lineCbs: Set<(line: string) => void> = new Set();
   const exitCbs: Set<(code: number | null) => void> = new Set();
   let closed = false;

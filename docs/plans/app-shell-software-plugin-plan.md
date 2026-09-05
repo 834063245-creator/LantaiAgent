@@ -265,6 +265,52 @@ toolHandlers——实现跑在宿主 webview，用宿主设施）与 MCP 路（m
   lazy 首调报错时已触发拉起、重试可成（决策 7 钉死）；e) 三档启动策略各自
   回收出口（with-window 关窗回收 / eager 卸载回收 / lazy 空闲回收）；f) 旧
   manifest（无治理字段）行为不变。
+- **竣工（2026-09-06）**：落地面——治理分岔：mcpServers 条目声明治理字段
+  （restart/lifecycle 任一在场）= 受治面（`ServerGovernor` 接管，failurePolicy
+  对该条目退役；http 条目声明治理字段 schema 层拒绝——无受治进程面）；皆
+  缺席 = 旧形态逐字节不变（mcp-bridge.test.ts 既有套件零改动全绿 = f 钉死，
+  dataflow-mcp/hello 示例不经治理面）。开放面契约升 **v15**（治理字段 + http
+  拒绝，四步流程走全）。就绪 = initialize 握手 + tools/list 同窗口完成
+  （缺省 60s，`raceStartupDeadline`；tools/list 是工具面产出必需，与握手同
+  connect() 流——时限覆盖两者）；到点判启动失败 + 清场杀挂壁进程（实测踩中
+  `McpClient.disconnect` 在 connect 未完成时早退不杀——治理器对 proc 直杀
+  兜底）+ 状态回落 not-running；启动途中进程退出 = `failStart` 口立即判负
+  在途 start（不等时限）。崩溃重启（on-crash）：指数退避基值 1s ×2 封顶
+  30s（就绪清零）；**退避监管中装配/调用触发面不拉起**（调用触发不得绕过
+  退避——防快速崩环 spawn 风暴）；with-window 无窗态崩溃不重启（不该在跑）。
+  三档接线（决策 1/4）：lazy（缺省）= 装配/调用/开窗三触发面拉起 + 空闲回收
+  **定 5min**（无窗才计时，窗开不回收——「idle 默认值随 S2 定」落定）；
+  eager = 装载期 await 拉起（失败 → registerMcpServerTools 抛出 → 插件
+  error）+ 卸载才停 + 崩溃无监督时装配/调用**兜底拉起**（实现补充——计划
+  只写「装载即拉起，卸载才停」，不加兜底则 eager+restart:off 崩溃即死局）；
+  with-window = 随窗开合（开窗拉起/关窗即杀/多窗计数全关才杀）——S2 合成
+  事件 `notifyPluginWindowOpened/Closed`（mcp-bridge 导出面，S3 窗口注册表
+  接真实开合）。决策 7 fail-fast：未就绪调用立即抛 `service_not_ready`（带
+  **调用时**状态 starting/not-running——捕获于触发拉起前，触发会把状态同步
+  翻成 starting）+ 触发拉起；受治行 **noCache**（①c 纪律：每装配真打治理器
+  ——否则实例缓存挡住装配兜底拉起）。数据目录注入**定形 env**（§2.2「env
+  或 initialize 参数」落 env）：`LANTAI_PLUGIN_DATA_DIR` = S1
+  plugin_data_ensure 路径，loader wrapper 捕获传入，受治/旧形态 spawn 同注
+  （dataDir 契约与治理正交；未声明 dataDir 不注入行为不变）；理由：任意语言
+  后端可用 + 握手前即可读（窗 HTTP 面同源消费）+ MCP initialize 参数是协议
+  面不掺宿主私货（dataflow-mcp 的 DATAFLOW_ROOT 先例同构）。Rust 侧：
+  protocol_bridge_spawn 加 env（**追加非替换** + 键围栏：空/含 '=' 或 NUL
+  拒）；kill 升级**进程树终止**——Windows `taskkill /PID /T /F`（孙进程树
+  杀 PowerShell PassThru PID 法 cargo 测试钉死）；unix process_group(0) +
+  kill -9 -PGID 实现在案但本机无 unix 环境**未实测**（Windows 是本产品验证
+  路径）；spawn_process/kill_process_tree 抽无 AppHandle 纯函数（cargo 直测
+  面）；rpc 分发 + opt_str_map 帮助函数 + gen-rpc-contract-md OPT_HELPERS
+  收编 str_map（契约文档重生成，env 进可选列）。受治 bridgeId **代次后缀
+  （#N）**：重启换代不覆盖 Rust PROCS 注册表行——旧代 exit/stdout 事件不
+  误伤新代（legacy bridgeId 逐字节不变）。测试 a–f：a/b/d/e + env 注入 +
+  with-window 合成事件 + 卸载不复活 = `tests/mcp-bridge-governance.test.ts`
+  14 例（时序参数 opts.timing 注入小值——生产缺省单测不可等待）；f 兼容 =
+  mcp-bridge.test.ts 既有套件零改动 + plugin-loader schema 兼容用例；loader
+  补治理字段 schema 校验 + ensure→env 注入集成用例；c 进程树 = cargo
+  `kill_process_tree_reaps_grandchildren`（孙进程存活断言）+ TS 侧 dispose
+  杀进程。门禁全绿：vitest 260 文件（2551 passed / 4 skipped）、build、
+  biome ci 683 files 0 errors、convergence standard+minimal 零漂移、cargo
+  432 bin + 1 集成 passed（含 protocol_bridge 2 新例）。
 
 ### S3 窗口原语（A，最厚）
 - `types.ts`：manifest 加 `app` 字段（entry/mode/title）。

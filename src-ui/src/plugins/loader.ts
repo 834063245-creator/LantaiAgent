@@ -767,9 +767,12 @@ async function moduleStage(entry: ManifestStageOk, deps: LoadOneDeps): Promise<M
             // S1（app shell 件 B）：数据地盘先于插件代码到位（装载期基础设施
             // 动作；manifest.dataDir 声明 = 要地盘的显式契约）。分配失败 =
             // 装载失败记录（失败隔离——apply 抛错走 error 路径，设置面板可见）。
+            // 路径捕获传给 MCP 机器桥（S2——受治进程 spawn 注入
+            // LANTAI_PLUGIN_DATA_DIR，进程用自身 fs 读写自己的地盘）。
+            let dataDirPath: string | undefined;
             if (needsDataDir) {
               try {
-                await deps.pluginDataEnsure(manifest.name);
+                dataDirPath = await deps.pluginDataEnsure(manifest.name);
               } catch (e) {
                 throw new Error('插件数据目录分配失败: ' + errText(e));
               }
@@ -779,7 +782,9 @@ async function moduleStage(entry: ManifestStageOk, deps: LoadOneDeps): Promise<M
               mountToolDeclarations(ctx, manifest.name, manifest.tools ?? [], mod.toolHandlers);
             }
             if (needsMcp) {
-              await registerMcpServerTools(ctx, manifest.name, manifest.mcpServers ?? [], deps.mcpBridgeIO);
+              await registerMcpServerTools(ctx, manifest.name, manifest.mcpServers ?? [], deps.mcpBridgeIO, {
+                dataDirPath,
+              });
             }
           },
         }
