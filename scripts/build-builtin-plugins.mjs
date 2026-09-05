@@ -39,7 +39,7 @@
 //     声明 displace。
 
 import { build } from '../src-ui/node_modules/esbuild/lib/main.js';
-import { cpSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractFaceKeys } from './lib/face-keys.mjs';
@@ -50,55 +50,19 @@ const builtinSrcRoot = join(repoRoot, 'src-ui', 'src', 'plugins', 'builtin');
 const outRoot = join(repoRoot, 'src-ui', 'dist-plugins', 'builtin', 'hologram');
 const reactBridge = join(builtinSrcRoot, 'react-bridge.cjs');
 
-/** UI 四面（增补一批次；displace 位移式装载） */
-const UI_FACES = ['canvas-nav', 'paper-shell', 'settings-domain', 'compose-dock', 'paper-minimap'];
-/** 工具域 + 段贡献（增补二批次；薄重导出产物，displace 同款） */
-const TOOL_DOMAINS = [
-  'web-domain',
-  'browser-desktop-domain',
-  'engine-domain',
-  'git-domain',
-  'search-domain',
-  'fs-domain',
-  'shell-domain',
-  'agent-isolation-domain',
-  'ask-domain',
-  'skill-domain',
-  'memory-domain',
-  'task-domain',
-  'agent-domain',
-  'wait-domain',
-  'cordis-domain',
-  'asset-domain',
-];
-const SEGMENTS = ['prompt-segments', 'capability-segments'];
+// ── 名册单一真源（2026-09-06）：31 个内置产物的清单事实唯一在
+// src-ui/src/plugins/builtin-roster.json（dir/buildOrder/entry/hostModule/face/
+// define/description）。build 规格从名册派生——本文件不再手抄任何分组/名单。
+// 旧的分组常量（UI_FACES/TOOL_DOMAINS/SEGMENTS/PROVIDERS/renderers 特例）
+// 已删除：加/删产物只许改名册一处。 ──
+const roster = JSON.parse(readFileSync(join(repoRoot, 'src-ui', 'src', 'plugins', 'builtin-roster.json'), 'utf8'));
 
-/** 七个 seam 供应商（S2 真源产物化，plugin-bundle-retirement-plan）。
- *  S5b：agent-loop-service 产物化（模块级状态拆到 agent-loop-active.ts）。 */
-const PROVIDERS = [
-  'fs-builtin',
-  'shell-builtin',
-  'sessions-builtin',
-  'graph-builtin',
-  'subagent-in-process',
-  'llm-adapters',
-  'agent-loop-service',
-];
-
-/** 插件构建规格表。 */
+/** 插件构建规格表（名册 buildOrder 升序——与装载序字节契约同源）。
+ *  每条含名册完整事实 + 派生 scope 名（产物 manifest 生成用）。 */
 function pluginSpecs() {
-  return [
-    // P1 渲染器：行 id 分立双走查（非位移），ROW_PREFIX define 注入
-    {
-      dir: 'renderers',
-      hostModule: 'renderer-host',
-      entry: 'index.tsx',
-      define: { 'globalThis.__LANTAI_RENDERER_ROW_PREFIX__': '"plugin/hologram/renderers"' },
-    },
-    ...UI_FACES.map((dir) => ({ dir, hostModule: 'host', entry: 'index.ts', face: true })),
-    ...[...TOOL_DOMAINS, ...SEGMENTS].map((dir) => ({ dir, hostModule: 'host', entry: 'index.ts' })),
-    ...PROVIDERS.map((dir) => ({ dir, hostModule: 'host', entry: 'index.ts' })),
-  ];
+  return [...roster]
+    .sort((a, b) => a.buildOrder - b.buildOrder)
+    .map((e) => ({ ...e, name: 'hologram/' + e.dir }));
 }
 
 /** esbuild onResolve 钩子工厂：把 `./<hostModule>` 及其 jsx-runtime 子路径
@@ -151,7 +115,23 @@ async function buildPlugin(spec) {
     logLevel: 'warning',
   });
 
-  cpSync(join(srcDir, 'manifest.json'), join(outDir, 'manifest.json'));
+  // 产物 manifest 从名册生成（2026-09-06 起不再 cp 源目录 manifest——源目录
+  // manifest.json 已退役，名册是唯一真源）。字段：name（派生）、version（随包
+  // 统一 1.0.0）、description（名册文案）、entry（产物入口 entry.js）、inject
+  // （名册——与源码插件对象对拍由 builtin-roster.test.ts 守护）。displace 死
+  // 字段（S5 已退役位移）不再生成。
+  const outManifest = {
+    name: spec.name,
+    version: '1.0.0',
+    description: spec.description,
+    entry: 'entry.js',
+    inject: spec.inject ?? [],
+  };
+  await (await import('node:fs/promises')).writeFile(
+    join(outDir, 'manifest.json'),
+    JSON.stringify(outManifest, null, 2) + '\n',
+    'utf8',
+  );
 
   // 自包含校验：产物内不得出现静态 import（全 bundle 内联——宿主依赖经
   // host.aliased 从 window 取，react 经别名桥取）与动态裸 import。

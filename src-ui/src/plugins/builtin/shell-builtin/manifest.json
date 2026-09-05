@@ -1,8 +1,0 @@
-{
-  "name": "hologram/shell-builtin",
-  "version": "1.0.0",
-  "description": "Rust 命令后端（shell 域四动作）",
-  "entry": "entry.js",
-  "inject": ["shell"],
-  "displace": true
-}

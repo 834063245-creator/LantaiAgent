@@ -1,0 +1,258 @@
+[
+  {
+    "dir": "llm-adapters",
+    "buildOrder": 0,
+    "description": "LLM 协议方言适配（seam/llm 默认实现）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["llm"]
+  },
+  {
+    "dir": "subagent-in-process",
+    "buildOrder": 1,
+    "description": "进程内子代理默认实现",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["subagents"]
+  },
+  {
+    "dir": "fs-builtin",
+    "buildOrder": 2,
+    "description": "Rust 文件后端（11 动作）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["fs"]
+  },
+  {
+    "dir": "shell-builtin",
+    "buildOrder": 3,
+    "description": "Rust 命令后端（shell 域四动作）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["shell"]
+  },
+  {
+    "dir": "sessions-builtin",
+    "buildOrder": 4,
+    "description": "会话卷存储后端（Rust 卷文件——seam/sessionPersistence 默认）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["sessionPersistence"]
+  },
+  {
+    "dir": "graph-builtin",
+    "buildOrder": 5,
+    "description": "Rust 图谱后端（hologram 域）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["graph"]
+  },
+  {
+    "dir": "renderers",
+    "buildOrder": 6,
+    "description": "资产表现原语渲染器（grid/chart/metric/media/graph/tree/html/form；P1 插件通道化——禁用 = 资产块走 JSON 兜底）",
+    "entry": "index.tsx",
+    "hostModule": "renderer-host",
+    "inject": ["renderers"],
+    "define": {
+      "globalThis.__LANTAI_RENDERER_ROW_PREFIX__": "\"plugin/hologram/renderers\""
+    }
+  },
+  {
+    "dir": "paper-shell",
+    "buildOrder": 7,
+    "description": "纸壳面板（写作视图 + toggle 命令）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["panels", "commands"],
+    "face": true
+  },
+  {
+    "dir": "settings-domain",
+    "buildOrder": 8,
+    "description": "设置面板 + 命令双通道",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["panels", "commands"],
+    "face": true
+  },
+  {
+    "dir": "canvas-nav",
+    "buildOrder": 9,
+    "description": "画布导航命令",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["panels", "commands", "space"],
+    "face": true
+  },
+  {
+    "dir": "compose-dock",
+    "buildOrder": 10,
+    "description": "组合停靠面板",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["overlays", "commands", "space"],
+    "face": true
+  },
+  {
+    "dir": "paper-minimap",
+    "buildOrder": 11,
+    "description": "画布小地图（方位感 + 点击跳转 + 拖动缩放）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["overlays"],
+    "face": true
+  },
+  {
+    "dir": "agent-loop-service",
+    "buildOrder": 12,
+    "description": "Agent 主循环（seam/agentLoop 默认实现）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": []
+  },
+  {
+    "dir": "web-domain",
+    "buildOrder": 13,
+    "description": "web 域工具（web_fetch）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["tools"]
+  },
+  {
+    "dir": "browser-desktop-domain",
+    "buildOrder": 14,
+    "description": "浏览器/桌面自动化域工具（browser_*/desktop_*）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["tools"]
+  },
+  {
+    "dir": "engine-domain",
+    "buildOrder": 15,
+    "description": "图谱引擎域工具（graph/ops/lsp 域动作）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["tools"]
+  },
+  {
+    "dir": "git-domain",
+    "buildOrder": 16,
+    "description": "git 域工具（status/diff/log/stage/commit…）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["tools"]
+  },
+  {
+    "dir": "search-domain",
+    "buildOrder": 17,
+    "description": "搜索域工具（search_content）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["tools"]
+  },
+  {
+    "dir": "fs-domain",
+    "buildOrder": 18,
+    "description": "文件域工具（读改写/目录/约束）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["tools"]
+  },
+  {
+    "dir": "shell-domain",
+    "buildOrder": 19,
+    "description": "命令域工具（run_shell/bash_*）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["tools"]
+  },
+  {
+    "dir": "agent-isolation-domain",
+    "buildOrder": 20,
+    "description": "隔离工作树域工具（create/diff/merge/discard/status）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["tools"]
+  },
+  {
+    "dir": "ask-domain",
+    "buildOrder": 21,
+    "description": "ask_user 工具（向用户提问）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["tools"]
+  },
+  {
+    "dir": "skill-domain",
+    "buildOrder": 22,
+    "description": "技能域工具（Skill）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["tools"]
+  },
+  {
+    "dir": "memory-domain",
+    "buildOrder": 23,
+    "description": "记忆域工具（memory_*）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["tools"]
+  },
+  {
+    "dir": "task-domain",
+    "buildOrder": 24,
+    "description": "任务域工具（task_*）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["tools"]
+  },
+  {
+    "dir": "agent-domain",
+    "buildOrder": 25,
+    "description": "子代理域工具（spawn/kill/status/通信）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["tools"]
+  },
+  {
+    "dir": "wait-domain",
+    "buildOrder": 26,
+    "description": "wait 工具（人工等待/确认）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["tools"]
+  },
+  {
+    "dir": "cordis-domain",
+    "buildOrder": 27,
+    "description": "运行时插件域工具（define/run/stop/inspect）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["tools"]
+  },
+  {
+    "dir": "asset-domain",
+    "buildOrder": 28,
+    "description": "资产块域工具（show_asset/update_asset/list_block_kinds——Agent 生成可引用/更新的资产块）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["tools"]
+  },
+  {
+    "dir": "prompt-segments",
+    "buildOrder": 29,
+    "description": "出厂 system-prompt 段（13 段；禁用 = Agent 无出厂提示词）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["prompts"]
+  },
+  {
+    "dir": "capability-segments",
+    "buildOrder": 30,
+    "description": "出厂会话级能力（15 项；禁用 = 出厂能力消失）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["capabilities"]
+  }
+]

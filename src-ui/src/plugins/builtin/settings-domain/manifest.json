@@ -1,8 +1,0 @@
-{
-  "name": "hologram/settings-domain",
-  "version": "1.0.0",
-  "description": "设置面板 + 命令双通道第一方内置插件——源码构建产物，随包携带；displace 位移 bundle 兜底行，设置面板可重新加载",
-  "entry": "entry.js",
-  "inject": ["panels", "commands"],
-  "displace": true
-}

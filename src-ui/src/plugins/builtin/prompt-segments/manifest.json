@@ -1,8 +1,0 @@
-{
-  "name": "hologram/prompt-segments",
-  "version": "1.0.0",
-  "description": "prompt-segments 段贡献第一方内置插件（薄重导出产物，displace 位移 bundle 兜底行）",
-  "entry": "entry.js",
-  "inject": ["prompts"],
-  "displace": true
-}

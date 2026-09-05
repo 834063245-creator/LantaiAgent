@@ -1,8 +1,0 @@
-{
-  "name": "hologram/fs-builtin",
-  "version": "1.0.0",
-  "description": "Rust 文件后端（11 动作）",
-  "entry": "entry.js",
-  "inject": ["fs"],
-  "displace": true
-}

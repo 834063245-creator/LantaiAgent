@@ -1,8 +1,0 @@
-{
-  "name": "hologram/paper-shell",
-  "version": "1.0.0",
-  "description": "纸壳主界面（流区注疏工作台）第一方内置插件——源码构建产物，随包携带；displace 位移 bundle 兜底行，设置面板可重新加载",
-  "entry": "entry.js",
-  "inject": ["panels", "commands"],
-  "displace": true
-}

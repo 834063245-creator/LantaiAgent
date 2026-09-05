@@ -119,58 +119,6 @@ pub(crate) fn init_builtin_plugins_dir(app: &tauri::AppHandle) {
     // 全未命中：不锁——builtin_plugins_root 走仓库兜底（dev/cargo test）
 }
 
-/// 内置插件名集合（P1d 回退白名单——只有这些第一方插件的资产可从未初始化
-/// 的内置根回退；普通第三方插件不享受内置回退，避免撞用户同名目录）。
-/// 增补四（first-party-hot-reload-plan 2026-08-31）：kind=feature 全量
-/// 通道化——渲染器 + UI 四面 + 16 工具域 + 2 段贡献共 23 个（space-demo
-/// 已退役不回退）。与 src-ui/src/plugins/builtin/<dir>/manifest.json 一一
-/// 对应（构建管线 scripts/build-builtin-plugins.mjs 产出 scope 目录）。
-const BUILTIN_PLUGIN_NAMES: &[&str] = &[
-    "hologram/renderers",
-    "hologram/canvas-nav",
-    "hologram/paper-shell",
-    "hologram/settings-domain",
-    "hologram/compose-dock",
-    "hologram/paper-minimap",
-    "hologram/web-domain",
-    "hologram/browser-desktop-domain",
-    "hologram/engine-domain",
-    "hologram/git-domain",
-    "hologram/search-domain",
-    "hologram/fs-domain",
-    "hologram/shell-domain",
-    "hologram/agent-isolation-domain",
-    "hologram/ask-domain",
-    "hologram/skill-domain",
-    "hologram/memory-domain",
-    "hologram/task-domain",
-    "hologram/agent-domain",
-    "hologram/wait-domain",
-    "hologram/cordis-domain",
-    "hologram/asset-domain",
-    "hologram/prompt-segments",
-    "hologram/capability-segments",
-    // S2 供应商产物（plugin-bundle-retirement，2026-09-03；agent-loop-service 暂缓）
-    "hologram/fs-builtin",
-    "hologram/shell-builtin",
-    "hologram/sessions-builtin",
-    "hologram/graph-builtin",
-    "hologram/subagent-in-process",
-    "hologram/llm-adapters",
-    // S5b agent-loop-service 产物化
-    "hologram/agent-loop-service",
-];
-
-/// 判断 url_path（插件根下相对路径）是否针对内置插件（以白名单插件名开头）。
-/// 插件名可含一段斜杠（scope 风格，如 hologram/renderers）——匹配前两段。
-fn is_builtin_plugin_path(url_path: &str) -> bool {
-    let mut segs = url_path.split('/');
-    let first = segs.next().unwrap_or("");
-    let second = segs.next().unwrap_or("");
-    let head = if second.is_empty() { first } else { &url_path[..first.len() + 1 + second.len()] };
-    BUILTIN_PLUGIN_NAMES.iter().any(|n| n == &head)
-}
-
 /// 组合 patch 根目录（S2-2）：用户主目录下 `.lantai/composition/`。
 /// 用户层 roster.patch.yml 的通道根；`HOLOGRAM_COMPOSITION_ROOT` 环境变量
 /// 可覆盖（镜像 HOLOGRAM_PLUGINS_ROOT 的测试隔离/重定位语义）。
@@ -297,17 +245,18 @@ pub(crate) async fn serve_plugin_path(url_path: &str) -> Response<BoxBody> {
         }
         ResolveOutcome::Found(path) => serve_file(&path).await,
         ResolveOutcome::Missing => {
-            // P1d 回退：内置插件路径（白名单）在用户根缺失 → 尝试内置根。
+            // P1d 回退：用户根缺失 → 试内置根（第一方产物随包携带）。
             // 用户根权限优先——用户装了同名内置插件（覆盖升级）时已在上面
             // Found 返回；此处只处理「用户根确实没有」的回退。
-            if is_builtin_plugin_path(url_path) {
-                if let Some(builtin_root) = builtin_plugins_root() {
-                    match resolve_asset(&builtin_root, url_path) {
-                        ResolveOutcome::Forbidden | ResolveOutcome::Missing => {
-                            return json_error(StatusCode::NOT_FOUND, "not_found", "插件资产不存在");
-                        }
-                        ResolveOutcome::Found(path) => return serve_file(&path).await,
+            // 2026-09-06：白名单（BUILTIN_PLUGIN_NAMES）删除——内置根只装第一方
+            // 产物，「用户同名目录优先」由先查用户根保证，无需名字清单预筛；
+            // 文件在内置根本不存在时 resolve_asset 自然 Missing → 404。
+            if let Some(builtin_root) = builtin_plugins_root() {
+                match resolve_asset(&builtin_root, url_path) {
+                    ResolveOutcome::Forbidden | ResolveOutcome::Missing => {
+                        return json_error(StatusCode::NOT_FOUND, "not_found", "插件资产不存在");
                     }
+                    ResolveOutcome::Found(path) => return serve_file(&path).await,
                 }
             }
             json_error(StatusCode::NOT_FOUND, "not_found", "插件资产不存在")
@@ -901,67 +850,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    // ── P1d 内置插件回退（first-party-hot-reload-plan）──
-
-    /// 纯函数：内置插件路径白名单判断（首段 ∈ BUILTIN_PLUGIN_NAMES）。
-    #[test]
-    fn builtin_plugin_path_whitelist() {
-        assert!(is_builtin_plugin_path("hologram/renderers/manifest.json"));
-        assert!(is_builtin_plugin_path("hologram/renderers/entry.js"));
-        assert!(is_builtin_plugin_path("hologram/paper-minimap/manifest.json"));
-        assert!(!is_builtin_plugin_path("hello/entry.js"));
-        assert!(!is_builtin_plugin_path("plugins.json"));
-        assert!(!is_builtin_plugin_path("hologram/settings/manifest.json"));
-    }
-
-    /// 白名单 ↔ 源码 manifest 全量对拍（2026-09-06 事故立法）：BUILTIN_PLUGIN_NAMES
-    /// 是打包态资产回退白名单——漏一个第一方产物名 = 该插件 manifest/entry 从
-    /// 内置根永远 404 → 产物通道装载 error（hologram/paper-minimap 前科：前端
-    /// 四处登记点齐、Rust 白名单漏 → 小地图整体消失）。
-    /// 双向断言：每个源码 manifest.name 必须入白名单（漏 = 404），每个白名单名
-    /// 必须能在源码树找到同名单（残留 = 死白名单条目——插件退役后白名单不同步
-    /// 移除会让同名第三方插件误享内置回退）。
-    #[test]
-    fn builtin_whitelist_matches_source_manifests() {
-        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().expect("src-tauri 应有父目录");
-        let builtin_src = repo_root.join("src-ui").join("src").join("plugins").join("builtin");
-        let mut source_names: Vec<String> = Vec::new();
-        if let Ok(entries) = std::fs::read_dir(&builtin_src) {
-            for entry in entries.flatten() {
-                let manifest_path = entry.path().join("manifest.json");
-                if !manifest_path.is_file() {
-                    continue;
-                }
-                let raw = std::fs::read_to_string(&manifest_path).expect("manifest.json 应可读");
-                let parsed: serde_json::Value = serde_json::from_str(&raw).expect("manifest.json 应为合法 JSON");
-                if let Some(name) = parsed.get("name").and_then(|n| n.as_str()) {
-                    source_names.push(name.to_string());
-                }
-            }
-        }
-        source_names.sort();
-        assert!(
-            !source_names.is_empty(),
-            "源码 builtin 目录应有 manifest（{} 扫描为空——路径假设错了？）",
-            builtin_src.display()
-        );
-        let whitelist: Vec<&str> = BUILTIN_PLUGIN_NAMES.to_vec();
-        let missing: Vec<&String> = source_names.iter().filter(|n| !whitelist.contains(&n.as_str())).collect();
-        assert!(
-            missing.is_empty(),
-            "BUILTIN_PLUGIN_NAMES 缺内置产物名（打包态回退将 404，插件装载失败）: {}",
-            missing.iter().map(|n| n.as_str()).collect::<Vec<_>>().join(", ")
-        );
-        let stale: Vec<&&str> = whitelist.iter().filter(|n| !source_names.contains(&n.to_string())).collect();
-        assert!(
-            stale.is_empty(),
-            "BUILTIN_PLUGIN_NAMES 含已退役/未同步的死条目（令同名第三方误享内置回退）: {}",
-            stale.iter().map(|n| **n).collect::<Vec<_>>().join(", ")
-        );
-    }
+    // ── P1d 内置插件回退（first-party-hot-reload-plan；2026-09-06 白名单消灭
+    // ── 用户根缺失无条件回退内置根——名单真源 = src-ui 名册，Rust 不再持有）──
 
     /// P1d e2e：用户根缺失的内置插件路径 → 回退 HOLOGRAM_BUILTIN_PLUGINS_ROOT
-    /// 提供 manifest/entry（200 + 正确 MIME）；非内置插件路径不回退（404）。
+    /// 提供 manifest/entry（200 + 正确 MIME）；内置根也无 → 404。
     /// 同时验证索引合并（内置根目录出现在 /plugins/ 索引）。
     #[test]
     fn builtin_plugin_fallback_end_to_end() {
@@ -1008,7 +901,8 @@ mod tests {
                 ("/plugins/hologram/renderers/manifest.json", 200, "application/json"),
                 // 回退 entry（JS MIME）
                 ("/plugins/hologram/renderers/entry.js", 200, "application/javascript"),
-                // 非内置插件用户根缺失 → 不回退（404）
+                // 白名单消灭后（2026-09-06）：任意路径用户根缺失都试内置根，
+                // 内置根也无该文件（ghost）→ 404（与白名单时代终态等价）
                 ("/plugins/ghost/entry.js", 404, "application/json"),
                 // 遍历防护在内置根同样生效
                 ("/plugins/hologram/renderers/../../outside.js", 403, "application/json"),

@@ -5,8 +5,9 @@
 // 覆盖：
 //   - 插件对象形状（name/apply/inject——WO-S0B 契约）
 //   - apply 后经 ctx.overlays 注册到 right-edge 槽（mock overlays service）
-//   - manifest.json 与插件 name 一致（产物域寻址契约）
-//   - 四大登记点完备（factory-products 表 + first-party-manifest 清单）
+//   - 登记点完备（名册 + factory-products + first-party-manifest；2026-09-06
+//     名册单一真源后，源目录 manifest.json 已退役——旧「manifest 一致」断言
+//     由 builtin-roster.test.ts 的「名册 === index.ts 对象」守护取代）
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -22,25 +23,23 @@ describe('paper-minimap 插件对象形状（WO-S0B 契约）', () => {
     expect(typeof PLUGIN.apply).toBe('function');
     expect(PLUGIN.inject).toEqual(['overlays']);
   });
-
-  it('manifest.json 与插件 name 一致（产物域寻址契约）', () => {
-    const manifestPath = resolve(__dirname, '../src/plugins/builtin/paper-minimap/manifest.json');
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as { name: string; inject: string[] };
-    expect(manifest.name).toBe(PLUGIN.name);
-    expect(manifest.inject).toEqual(['overlays']);
-  });
 });
 
-describe('paper-minimap 登记完备性（四大登记点）', () => {
-  it('factory-products.ts 表含 paper-minimap（源码断言——避免循环 import loader 链）', () => {
+describe('paper-minimap 登记完备性', () => {
+  it('factory-products.ts 装配面含 paper-minimap（源码断言——避免循环 import loader 链）', () => {
     const src = readFileSync(resolve(__dirname, '../src/plugins/factory-products.ts'), 'utf8');
     expect(src).toContain("from './builtin/paper-minimap'");
     expect(src).toContain('paperMinimapPlugin,');
   });
 
-  it('build-builtin-plugins.mjs UI_FACES 含 paper-minimap（产物域装载面）', () => {
-    const src = readFileSync(resolve(__dirname, '../../scripts/build-builtin-plugins.mjs'), 'utf8');
-    expect(src).toContain("'paper-minimap'");
+  it('builtin-roster 名册含 paper-minimap（产物域装载面——2026-09-06 起 build 规格从名册派生）', () => {
+    const roster = JSON.parse(readFileSync(resolve(__dirname, '../src/plugins/builtin-roster.json'), 'utf8')) as Array<{
+      dir: string;
+      face?: boolean;
+    }>;
+    const entry = roster.find((e) => e.dir === 'paper-minimap');
+    expect(entry).toBeDefined();
+    expect(entry?.face).toBe(true); // UI 面——产物需 entry.css
   });
 
   it('first-party-manifest 清单含 paper-minimap（feature 可禁用）', () => {
@@ -48,18 +47,6 @@ describe('paper-minimap 登记完备性（四大登记点）', () => {
     expect(meta).toBeDefined();
     expect(meta?.kind).toBe('feature');
     expect(meta?.description.length).toBeGreaterThan(0);
-  });
-
-  it('Rust plugin_assets 回退白名单含 paper-minimap（打包态资产回退第五登记点）', () => {
-    // 2026-09-06 事故立法：前端四处登记点（factory-products / build UI_FACES /
-    // first-party-manifest / host-modules）齐备但 Rust BUILTIN_PLUGIN_NAMES 漏加
-    // → 产物通道 manifest fetch 404 → 装载 error → 小地图整体消失。
-    // 守护：白名单 ↔ 源码 manifest 全量对拍在 Rust 侧（builtin_whitelist_matches_
-    // source_manifests），此处钉住本插件名已在白名单内。
-    const src = readFileSync(resolve(__dirname, '../../src-tauri/src/plugin_assets.rs'), 'utf8');
-    const whitelistMatch = src.match(/const BUILTIN_PLUGIN_NAMES: &\[&str\] = &\[([\s\S]*?)\];/);
-    expect(whitelistMatch).not.toBeNull();
-    expect(whitelistMatch![1]).toContain('"hologram/paper-minimap"');
   });
 });
 

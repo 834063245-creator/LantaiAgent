@@ -1,8 +1,0 @@
-{
-  "name": "hologram/task-domain",
-  "version": "1.0.0",
-  "description": "task-domain 域工具第一方内置插件（薄重导出产物，displace 位移 bundle 兜底行）",
-  "entry": "entry.js",
-  "inject": ["tools"],
-  "displace": true
-}

@@ -1,8 +1,0 @@
-{
-  "name": "hologram/llm-adapters",
-  "version": "1.0.0",
-  "description": "LLM 协议方言适配（seam/llm 默认实现）",
-  "entry": "entry.js",
-  "inject": ["llm"],
-  "displace": true
-}

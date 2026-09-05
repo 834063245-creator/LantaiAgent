@@ -8,19 +8,19 @@
 
 import { describe, expect, it } from 'vitest';
 import { FIRST_PARTY_MANIFEST, FIRST_PARTY_VERSION } from '../src/plugins/first-party-manifest';
-import { BUILTIN_PLUGINS } from '../src/plugins/loader';
+import { allBuiltinPlugins } from '../src/plugins/loader';
 
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
 
 describe('first-party-manifest（清单完备性守护）', () => {
-  it('BUILTIN_PLUGINS 全部条目在清单中（无遗漏——缺一条 loader 就断层）', () => {
-    const names = BUILTIN_PLUGINS.map((p) => p.name);
+  it('全部第一方插件在清单中（无遗漏——缺一条 loader 就断层）', () => {
+    const names = allBuiltinPlugins().map((p) => p.name);
     const missing = names.filter((n) => !(n in FIRST_PARTY_MANIFEST));
     expect(missing).toEqual([]);
   });
 
-  it('清单无孤儿条目（清单内的 name 都在 BUILTIN_PLUGINS 里）', () => {
-    const names = new Set(BUILTIN_PLUGINS.map((p) => p.name));
+  it('清单无孤儿条目（清单内的 name 都在第一方插件里）', () => {
+    const names = new Set(allBuiltinPlugins().map((p) => p.name));
     const orphans = Object.keys(FIRST_PARTY_MANIFEST).filter((n) => !names.has(n));
     expect(orphans).toEqual([]);
   });

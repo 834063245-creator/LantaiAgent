@@ -1,8 +1,0 @@
-{
-  "name": "hologram/sessions-builtin",
-  "version": "1.0.0",
-  "description": "会话卷存储后端（Rust 卷文件——seam/sessionPersistence 默认）",
-  "entry": "entry.js",
-  "inject": ["sessionPersistence"],
-  "displace": true
-}

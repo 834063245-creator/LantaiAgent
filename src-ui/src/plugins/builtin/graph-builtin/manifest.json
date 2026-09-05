@@ -1,8 +1,0 @@
-{
-  "name": "hologram/graph-builtin",
-  "version": "1.0.0",
-  "description": "Rust 图谱后端（hologram 域）",
-  "entry": "entry.js",
-  "inject": ["graph"],
-  "displace": true
-}

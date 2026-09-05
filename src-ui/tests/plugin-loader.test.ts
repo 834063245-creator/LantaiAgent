@@ -15,7 +15,7 @@ import { FIRST_PARTY_MANIFEST } from '../src/plugins/first-party-manifest';
 import {
   activateExternalPlugin,
   activeExternalPluginNames,
-  BUILTIN_PLUGINS,
+  allBuiltinPlugins,
   deactivateExternalPlugin,
   loadBuiltinPlugins,
   loadExternalPlugins,
@@ -26,6 +26,9 @@ import { usePluginPrefs } from '../src/state/plugin-prefs';
 import { usePluginStore } from '../src/state/plugin-store';
 
 const ORIGIN = 'http://127.0.0.1:14570/plugins';
+
+/** 全部第一方插件（14 内核 + dev 出厂产物源码——loadBuiltinPlugins 装载面）。 */
+const ALL_PLUGINS = allBuiltinPlugins();
 
 interface MockResponse {
   ok: boolean;
@@ -640,15 +643,15 @@ describe('loadBuiltinPlugins（第一方插件进插件列表）', () => {
     // cordis plugin() 是 promise——flush 微任务让四 service 与 bundle 贡献落定
     await new Promise((resolve) => setTimeout(resolve, 0));
     const plugins = usePluginStore.getState().plugins;
-    expect(plugins).toHaveLength(BUILTIN_PLUGINS.length);
-    expect(BUILTIN_PLUGINS.length).toBe(45); // paper-minimap 插件化（2026-09-05）：44 → 45
+    expect(plugins).toHaveLength(ALL_PLUGINS.length);
+    expect(ALL_PLUGINS.length).toBe(45); // paper-minimap 插件化（2026-09-05）：44 → 45
     expect(plugins.every((p) => p.builtin === true)).toBe(true);
     expect(plugins.every((p) => p.meta?.name === p.name)).toBe(true);
     expect(plugins.every((p) => p.status === 'active')).toBe(true);
   });
 
   it('用户禁用的 feature 插件：跳过装载 + 记录 disabled（下次启动生效）', async () => {
-    const feature = BUILTIN_PLUGINS.find((p) => FIRST_PARTY_MANIFEST[p.name]?.kind === 'feature');
+    const feature = ALL_PLUGINS.find((p) => FIRST_PARTY_MANIFEST[p.name]?.kind === 'feature');
     expect(feature).toBeTruthy();
     if (!feature) return;
     usePluginPrefs.getState().setDisabled(feature.name, true);
@@ -662,11 +665,11 @@ describe('loadBuiltinPlugins（第一方插件进插件列表）', () => {
     const activeCount = usePluginStore
       .getState()
       .plugins.filter((p) => p.name !== feature.name && p.status === 'active').length;
-    expect(activeCount).toBe(BUILTIN_PLUGINS.length - 1);
+    expect(activeCount).toBe(ALL_PLUGINS.length - 1);
   });
 
   it('platform（service）无视禁用集——常驻不可禁', async () => {
-    const service = BUILTIN_PLUGINS.find((p) => FIRST_PARTY_MANIFEST[p.name]?.kind === 'service');
+    const service = ALL_PLUGINS.find((p) => FIRST_PARTY_MANIFEST[p.name]?.kind === 'service');
     expect(service).toBeTruthy();
     if (!service) return;
     usePluginPrefs.getState().setDisabled(service.name, true);
@@ -734,7 +737,7 @@ describe('P1 内置渲染器插件（磁盘产物装载→覆盖行）', () => {
       inject: ['renderers'],
     };
     await withRenderersCtx(async (root) => {
-      // 装载前：bundle 兜底行（dev 模式下 BUILTIN_PLUGINS 含 renderers 源码行）
+      // 装载前：bundle 兜底行（dev 模式下 ALL_PLUGINS 含 renderers 源码行）
       expect(resolveRenderer('media')?.id).toBe('builtin/media');
       // dev 模式 loadExternalPlugins 过滤出厂产物名——通道里的磁盘副本跳过
       let imported = false;

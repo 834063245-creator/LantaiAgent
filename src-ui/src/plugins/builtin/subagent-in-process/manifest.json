@@ -1,8 +1,0 @@
-{
-  "name": "hologram/subagent-in-process",
-  "version": "1.0.0",
-  "description": "进程内子代理默认实现",
-  "entry": "entry.js",
-  "inject": ["subagents"],
-  "displace": true
-}

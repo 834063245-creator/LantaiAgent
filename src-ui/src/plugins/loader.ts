@@ -134,10 +134,21 @@ export const BUILTIN_PLUGINS: LantaiPlugin[] = [
   promptsServicePlugin,
   hooksServicePlugin,
   capabilitiesServicePlugin,
-  // dev-only：出厂产物源码路径（生产端被 vite define DCE 消除；
-  // forceProductChannel=1 时也不展开——产物通道是唯一装载面，形态同生产）
-  ...(import.meta.env.DEV && !forceProductChannel ? factoryProductPlugins() : []),
 ];
+
+/** 全部第一方插件（14 内核 + dev 出厂产物源码路径）。
+ *  ⚠ 2026-09-06：出厂产物展开从 BUILTIN_PLUGINS 顶层挪到本函数——顶层展开会在
+ *  模块加载期调用 factoryProductPlugins()，而 settings-domain → SettingsPanel →
+ *  PluginsPage → loader 的循环 import 使插件对象在加载期未初始化（TDZ/undefined
+ *  ——s3-settings-domain 实测炸）。运行期调用（loadBuiltinPlugins / 测试）时
+ *  模块图已闭合。
+ *  生产形态：import.meta.env.DEV=false → 仅 14 内核（产物走磁盘通道装载）；
+ *  dev 形态：追加 factoryProductPlugins()（vite HMR 源码热重载；forceProductChannel
+ *  =1 时不追加——产物通道是唯一装载面，形态同生产）。 */
+export function allBuiltinPlugins(): LantaiPlugin[] {
+  const factory = import.meta.env.DEV && !forceProductChannel ? factoryProductPlugins() : [];
+  return factory.length > 0 ? [...BUILTIN_PLUGINS, ...factory] : BUILTIN_PLUGINS;
+}
 
 // ── 插件宿主桥（S4-5；P1 扩展 2026-08-30；增补四施工扩面 2026-08-31）──
 // 外部插件经 webview 动态 import 装载——模块语境没有裸 import 解析面
@@ -234,7 +245,7 @@ export function loadBuiltinPlugins(root: Context): Context {
   installPluginHostBridge();
   const bootT0 = performance.now();
   const records: PluginRecord[] = [];
-  for (const plugin of BUILTIN_PLUGINS) {
+  for (const plugin of allBuiltinPlugins()) {
     const meta = FIRST_PARTY_MANIFEST[plugin.name];
     if (!meta) {
       records.push({

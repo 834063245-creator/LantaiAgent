@@ -1,6 +1,0 @@
-{
-  "name": "hologram/agent-loop-service",
-  "version": "1.0.0",
-  "description": "Agent 主循环（seam/agentLoop 默认实现）",
-  "entry": "entry.js"
-}
