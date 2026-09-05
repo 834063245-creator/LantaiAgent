@@ -35,6 +35,7 @@ fn capability_command_modules_are_frozen() {
     let src = fs::read_to_string(commands_mod_path()).expect("src/commands/mod.rs must exist");
     let actual = parse_command_modules(&src);
     let expected = vec![
+        "browser_cap",
         "dataflow",
         "engine_dispatch",
         "external",
@@ -73,6 +74,11 @@ fn capability_command_modules_are_frozen() {
          能力族 + fg/bg 双检查不对称闸（require_command 可 Ask / sync 免 Ask，\n\
          Bash 家族命令串规则面直用 BashTool）+ BG_JOBS ledger 执行体）——合法\n\
          强制层模块，粘性 cwd 状态归 TS 编排层（c3 §9，口只收 cwd/sticky_cwd\n\
-         显式参数），禁止向 commands/ 塞业务命令。"
+         显式参数），禁止向 commands/ 塞业务命令。\n\
+         browser_cap = v3 能力口（kernel-capability-d4-handle-design.md R4-1：\n\
+         browser 句柄域 + BrowserTool 口内闸（无条件过闸 + 多层语义 +\n\
+         click/type_sensitive 二次 Ask——D4-4/D4-5）+ CDP 会话执行体）——合法\n\
+         强制层模块，CDP 会话注册表/审计环/敏感词表是句柄层本体，禁止向\n\
+         commands/ 塞业务命令。"
     );
 }

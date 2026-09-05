@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-09-04T22:02:15.809Z
-> 方法总数：49（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-09-05T09:06:22.272Z
+> 方法总数：50（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -61,6 +61,12 @@
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
 | `process_cap` | action | is_agent, agent_id, _agent_id, owner_id, _owner_id, command, cwd, sticky_cwd, run_in_background, stream_tool_id, interpreter, capture_cwd, timeout_ms, job_id, wait_timeout_ms | 字符串 |
+
+## 能力口（browser_cap）
+
+| 方法 | 必选参数 | 可选参数 | 返回 |
+|------|----------|----------|------|
+| `browser_cap` | action | is_agent, agent_id, _agent_id | 字符串 |
 
 ## MCP / ACP stdio 桥
 

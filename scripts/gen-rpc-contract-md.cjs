@@ -29,6 +29,7 @@ const SECTIONS = [
   '能力口（fs_cap）',
   '能力口（git_cap）',
   '能力口（process_cap）',
+  '能力口（browser_cap）',
   'MCP / ACP stdio 桥',
   '身份认证 / 权限',
   '插件安装通道',

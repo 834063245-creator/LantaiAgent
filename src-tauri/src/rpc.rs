@@ -143,6 +143,11 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         //  统一——与 git_cap 同判：字节精确优先，一律 Text。）
         "process_cap" => RpcResultShape::Text,
 
+        // browser_cap（R4，kernel-capability-d4-handle-design.md）：句柄域
+        // browser 族直呼——37 action 全部返回文本（插件 text() 直通原文语义，
+        // 截断/结构化错误整形在 TS 工具层）。与 git_cap 同判：字节精确优先。
+        "browser_cap" => RpcResultShape::Text,
+
         // ── 身份认证/权限 ──
         // credential_get：Option<String> serde 序列化，恒 "key"/null JSON。
         // get_last_project：同款 Option<String> serde 序列化，恒 "path"/null。
@@ -513,6 +518,26 @@ async fn dispatch_rpc(
                 &app,
             )
             .await
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // browser_cap（R4，kernel-capability-d4-handle-design.md）——browser
+        // 句柄域能力口直呼入口，不经 tool_call 信封 / PluginRegistry /
+        // PluginToolAdapter（builtin.browser 插件随 R4-2 退役；R4-1 过渡期
+        // 插件 execute 委托口内——业务单一实现在 commands/browser_cap.rs）。
+        // action = 退役前 builtin.browser 37 工具名；参数顶层 snake_case
+        // （bridge.rpc() 转换幂等）；is_agent/agent_id 显式传（_agent_id
+        // meta 兼容）。口内闸：直接构造 BrowserTool 过 check_permission
+        // （无条件过闸 + 多层语义 + click/type_sensitive 二次 Ask——D4-4/D4-5，
+        // 不构造 adapter：manifest 零 permission 无精确名寻址面）。
+        // 返回 Text（37 action 全文本直通）。
+        // ═══════════════════════════════════════════════════════
+        "browser_cap" => {
+            let action = req_str(&params, "action", "browser_cap")?;
+            let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
+            let agent_id = opt_str(&params, "agent_id").or_else(|| opt_str(&params, "_agent_id"));
+            commands::browser_cap::browser_cap(action, params, is_agent, agent_id, &state, &app)
+                .await
         }
 
         // ═══════════════════════════════════════════════════════

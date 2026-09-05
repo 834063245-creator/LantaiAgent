@@ -16,3 +16,4 @@ pub mod search_cap;
 pub mod fs_cap;
 pub mod git_cap;
 pub mod process_cap;
+pub mod browser_cap;
