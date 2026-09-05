@@ -30,6 +30,8 @@ const MOCK_SAMPLE_PARAMS: Record<keyof typeof rpcResultSchemas, Record<string, u
   get_last_project: {},
   workspace_list: {},
   sandbox_status: {},
+  plugin_data_ensure: { name: 'mock-plugin' },
+  plugin_data_list: { name: 'mock-plugin', path: '' },
 };
 
 describe('rpc 边界校验层：mock 同源自检（mock ↔ schema 漂移即红）', () => {

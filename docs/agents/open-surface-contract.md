@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：13
+当前版本：14
 
-<!-- contract-fingerprint: 677baa3a97eefede8eeed6f44c0f44865bf69393ce284bb3ac5bc51f78eb7d0c -->
+<!-- contract-fingerprint: e53269a77c96690f147d2f8b4cd4ed19f1259c17e230329c20ee82944379d048 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -26,7 +26,7 @@
 | src/agent/events.ts | D4 事件面（AGENT_EVENT_MAP mode 表 / LoopEventPayload 载荷形状 / 监听契约） |
 | src/agent/dynamic-runner/dynamic-runner-service.ts | ctx.dynamicRunner（D7——define/run/stop/undefine/inspect + 审批门 + 包不可变/回滚语义） |
 | src/agent/dynamic-runner/sandbox.ts | 动态插件沙箱承诺（阴影求值面 / 守卫注册面白名单 / 三预算常量） |
-| src/plugins/types.ts | 插件 manifest schema（name/version/inject/permissions/tools/mcpServers/displace） |
+| src/plugins/types.ts | 插件 manifest schema（name/version/inject/permissions/tools/mcpServers/displace/dataDir） |
 | src/agent/agent-loop/types.ts | AgentLoop/AgentLoopHost（D13 loop seam 契约） |
 | src/agent/agent-loop/default-loop.ts | 默认 loop 实现（行为逐字节一致，D13） |
 | src/agent/agent-loop/agent-loop-service.ts | ctx.agentLoop 注册表（构造期登记 builtin/default，后注册胜） |
@@ -48,6 +48,7 @@
 | 11 | 2026-09-04 | default-loop 死 import 清理（删 kernelShellCall 未用导入；R1 biome 0/0 收口连带）；无契约形状变更 | R1 TS 权限策略层（permission-policy 单真源） |
 | 12 | 2026-09-05 | default-loop 每步 drain_bg_notifications 换 process_cap 能力口直呼（kernelProcessCall，builtin.shell 信封随 shell 域收口退役）；无契约形状变更 | kernel-capability-c3-design.md R3-d（shell 域收口） |
 | 13 | 2026-09-05 | 会话持久化 seam 动作面重设计（C 定案）：六动词（read/write/append/appendLog/mkdir/delete——旧 agent-store 磁盘 CRUD 形状）→ 四动词会话语义（read_volume/list_volumes/save_volume/delete_volume）；Service 增 execute 方法（模块级 sessionExecute 保留为产品代码消费单点） | session-persistence-seam-wiring-plan.md（D-1/D-5/D-6/D-8） |
+| 14 | 2026-09-06 | manifest schema 新增可选 `dataDir: boolean`（插件数据地盘：声明 true 装载即分配专属数据目录 `<dataRoot>/<名>/`，宿主桥 fs 面 ensure/list/read/write/delete，卸载随 plugin_uninstall 整体挪 `.trash` 回收；缺省/false 行为不变） | app-shell-software-plugin-plan.md §5-S1 |
 
 ## 变更流程（guard 红 → 修复四步）
 

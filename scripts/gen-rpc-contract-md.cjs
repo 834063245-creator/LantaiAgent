@@ -22,6 +22,11 @@ const OUT_MD = path.join(ROOT, 'docs', 'agents', 'frontend-rpc-contract.md');
 // 2026-09-05 shell 域收口（R3-d）：process_cap 箱线组插 git_cap 之后。
 // 2026-09-05 R5 脚手架拆除：「内核插件运行时（tool_call）」分区随
 // tool_call/plugin_tool_manifests 两分支退役整删。
+// 2026-09-06 app shell S1 双修：plugin_data_* 箱线组插插件安装通道之后；
+// 同时清偿 R4-4 遗留 off-by-4——web/constraints/pty/lsp 四命令在 rpc.rs
+// 共用一个箱线块（单分区），SECTIONS 却按四个分区登记，editor_cap 起全部
+// 错挂（editor→constraints 节、protocol_bridge→pty 节……）。收敛为本表
+// 与真实块序 1:1（21 项），web_cap 行承担四小面标题。
 const SECTIONS = [
   '应用层：数据上下文（L1）',
   'Engine 调度',
@@ -32,14 +37,12 @@ const SECTIONS = [
   '能力口（process_cap）',
   '能力口（browser_cap）',
   '能力口（uia_cap）',
-  '能力口（web_cap）',
-  '能力口（constraints_cap）',
-  '能力口（pty_cap）',
-  '能力口（lsp_cap）',
+  '能力口（web_cap / constraints_cap / pty_cap / lsp_cap）',
   '能力口（editor_cap）',
   'MCP / ACP stdio 桥',
   '身份认证 / 权限',
   '插件安装通道',
+  '插件数据目录',
   'Agent 隔离（worktree）',
   '外部服务',
   'Hologram 遗留命令',

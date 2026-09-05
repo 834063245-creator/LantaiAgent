@@ -50,6 +50,7 @@ import { typedRpc } from '../rpc-contract';
 import { usePluginPrefs } from '../state/plugin-prefs';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
 import { faceDepsKeys, pluginHostMods } from './builtin/host-modules';
+import { ensurePluginDataDir, type PluginDataFs, pluginDataFs } from './data-fs';
 import { factoryProductNames, factoryProductPlugins } from './factory-products';
 import { FIRST_PARTY_MANIFEST, type FirstPartyPluginMeta } from './first-party-manifest';
 import { type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
@@ -69,6 +70,9 @@ export interface LoadExternalPluginsOptions {
   importModule?: (url: string) => Promise<Record<string, unknown>>;
   /** MCP 机器桥宿主 IO（S4-4 乙；缺省 Rust protocol_bridge / plugin_dir RPC）。 */
   mcpBridgeIO?: McpBridgeIO;
+  /** 数据目录 ensure 注入面（S1；缺省真源 typedJsonRpc plugin_data_ensure——
+   *  vitest 用 mock 隔离 RPC 通道）。 */
+  pluginDataEnsure?: (name: string) => Promise<string>;
 }
 
 /** 插件静态资源 origin 构造（端口运行时解析；WO-S0A spike 验证过的通道）。 */
@@ -163,6 +167,9 @@ export function allBuiltinPlugins(): LantaiPlugin[] {
 //   - rpc：typedRpc（媒体渲染器 read_file_base64 用，P1a）；
 //   - notify：状态栏通知（命令动作的最小 UI 反馈面）；
 //   - loadCss：产物 CSS 注入（UI 面产物 entry.css——幂等 link 注入）；
+//   - fs：插件数据目录面（S1——ensure/list/read/write/delete 锁
+//     <dataRoot>/<插件名>/，Rust plugin_data 围栏；manifest.dataDir 声明
+//     插件的专属数据地盘，桥面插件名是参数——全信任区，S3 窗口面才绑定）；
 //   - mods：项目模块真实例注册表（pluginHostMods()——面组件依赖的
 //     store/service 单例与工具域/段贡献插件对象，见 builtin/host-modules.ts）。
 // 桥在装载第一方插件前注入（装载期红线：注入是平台动作不是插件副作用）。
@@ -188,6 +195,7 @@ declare global {
       rpc: (method: string, params: Record<string, unknown>) => Promise<unknown>;
       notify: (text: string) => void;
       loadCss: (url: string) => void;
+      fs: PluginDataFs;
       mods: Record<string, unknown>;
     };
   }
@@ -227,6 +235,7 @@ function installPluginHostBridge(): void {
       rpc: (method: string, params: Record<string, unknown>) => typedRpc(method as never, params as never),
       notify: (text: string) => useShellStore.getState().pushStatus(text),
       loadCss: injectPluginCss,
+      fs: pluginDataFs,
       mods: pluginHostMods(),
     };
   }
@@ -344,6 +353,7 @@ interface PluginRuntime {
     fetchImpl: FetchLike;
     importModule: (url: string) => Promise<Record<string, unknown>>;
     mcpBridgeIO?: McpBridgeIO;
+    pluginDataEnsure: (name: string) => Promise<string>;
   };
 }
 let runtime: PluginRuntime | null = null;
@@ -425,7 +435,16 @@ export async function loadExternalPlugins(root: Context, opts: LoadExternalPlugi
     bootTiming.length = 0; // 清上一轮残留（activate 增量装载也写采集器），本轮独立汇总
     const origin = opts.origin ?? (await resolveOrigin());
     if (!origin) return; // 无后端通道（浏览器 mock / 代理未起）——非错误
-    runtime = { root, deps: { origin, fetchImpl, importModule, mcpBridgeIO } };
+    runtime = {
+      root,
+      deps: {
+        origin,
+        fetchImpl,
+        importModule,
+        mcpBridgeIO,
+        pluginDataEnsure: opts.pluginDataEnsure ?? ensurePluginDataDir,
+      },
+    };
     const index = await fetchJson(fetchImpl, origin + '/');
     if (!Array.isArray(index)) {
       console.warn('[plugins] 装载通道索引不可用');
@@ -455,7 +474,15 @@ export async function loadExternalPlugins(root: Context, opts: LoadExternalPlugi
     // 串行 → 三波后：总墙钟从 Σ全部段（≈2s）降到最慢单条链（≈0.5s）。
     const order = [...builtinFirst, ...rest];
     const bootT0 = performance.now();
-    const deps: LoadOneDeps = { origin, disabled, granted, fetchImpl, importModule, mcpBridgeIO };
+    const deps: LoadOneDeps = {
+      origin,
+      disabled,
+      granted,
+      fetchImpl,
+      importModule,
+      mcpBridgeIO,
+      pluginDataEnsure: opts.pluginDataEnsure ?? ensurePluginDataDir,
+    };
     const stage1 = await Promise.all(order.map((dirId) => manifestStage(String(dirId), deps)));
     const stage2 = await Promise.all(stage1.map((s1) => (s1.ok ? moduleStage(s1, deps) : s1)));
     const records: PluginRecord[] = [];
@@ -538,6 +565,8 @@ interface LoadOneDeps {
   fetchImpl: FetchLike;
   importModule: (url: string) => Promise<Record<string, unknown>>;
   mcpBridgeIO?: McpBridgeIO;
+  /** 数据目录分配（S1——dataDir 插件的 wrapper apply 先行调用）。 */
+  pluginDataEnsure: (name: string) => Promise<string>;
 }
 
 /** 插件装载段耗时（boot 计时诊断，2026-09-03——只进日志，不改装载语义）。 */
@@ -725,15 +754,26 @@ async function moduleStage(entry: ManifestStageOk, deps: LoadOneDeps): Promise<M
     // 语义（缺依赖不拒载，等 provide；boot 审计判全 ACTIVE）。
     const needsToolDecls = (manifest.tools?.length ?? 0) > 0;
     const needsMcp = (manifest.mcpServers?.length ?? 0) > 0;
+    const needsDataDir = manifest.dataDir === true;
     const candidateInject = (candidate as { inject?: string[] }).inject ?? [];
     const manifestInject = manifest.inject ?? [];
     const extraInject = manifestInject.filter((n) => !candidateInject.includes(n));
-    const needsWrapper = needsToolDecls || needsMcp || extraInject.length > 0;
+    const needsWrapper = needsToolDecls || needsMcp || needsDataDir || extraInject.length > 0;
     const target = needsWrapper
       ? {
           name: candidate.name,
           inject: [...new Set([...candidateInject, ...extraInject, ...(needsToolDecls || needsMcp ? ['tools'] : [])])],
           async apply(ctx: Context) {
+            // S1（app shell 件 B）：数据地盘先于插件代码到位（装载期基础设施
+            // 动作；manifest.dataDir 声明 = 要地盘的显式契约）。分配失败 =
+            // 装载失败记录（失败隔离——apply 抛错走 error 路径，设置面板可见）。
+            if (needsDataDir) {
+              try {
+                await deps.pluginDataEnsure(manifest.name);
+              } catch (e) {
+                throw new Error('插件数据目录分配失败: ' + errText(e));
+              }
+            }
             await candidate.apply(ctx);
             if (needsToolDecls) {
               mountToolDeclarations(ctx, manifest.name, manifest.tools ?? [], mod.toolHandlers);

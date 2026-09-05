@@ -49,6 +49,7 @@ fn capability_command_modules_are_frozen() {
         "identity",
         "isolation",
         "lsp_cap",
+        "plugin_data",
         "plugin_install",
         "process_cap",
         "protocol_bridge",
@@ -95,6 +96,11 @@ fn capability_command_modules_are_frozen() {
          小面清偿：web 族（WebFetchTool 口内闸 + SSRF 逐跳复查）/ constraints\n\
          读写（原语义无闸 + 路径校验）/ pty、lsp 会话族（Passthrough 原语义，\n\
          pty_manager/lsp_manager 本体留 Rust——v3 §4 原生引用不迁））——合法\n\
-         强制层模块，禁止向 commands/ 塞业务命令。"
+         强制层模块，禁止向 commands/ 塞业务命令。\n\
+         plugin_data = 应用壳基础设施（app-shell 四件套 · 件 B，docs/plans/\n\
+         app-shell-software-plugin-plan.md §5-S1）：webview 无盘权 → 插件数据\n\
+         目录 I/O 必须 Rust（v3 决策「应用壳」保留面）；名字 + rel 双围栏 +\n\
+         canonicalize 前缀锁死 <dataRoot>/<插件名>/ 属沙箱族安全件；非能力口\n\
+         ——不进 Agent 工具面（装载期 ensure + 宿主桥 fs 面 + 卸载 .trash 钩）。"
     );
 }

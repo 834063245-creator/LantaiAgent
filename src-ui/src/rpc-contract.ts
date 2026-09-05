@@ -3,8 +3,9 @@
 //
 // RPC 契约 — 前后端 IPC 的单一类型事实源（前端侧投影）。
 //
-// 后端唯一权威源：src-tauri/src/rpc.rs（当前 106 个 RPC 方法，由
-// scripts/gen-rpc-contract-md.cjs 生成目录）。本文件的 RpcContract 是
+// 后端唯一权威源：src-tauri/src/rpc.rs（方法总数与分区以生成表为准——
+// docs/agents/frontend-rpc-contract.md，gen-rpc-contract-md.cjs 同步生成）。
+// 本文件的 RpcContract 是
 // typedRpc 可见的 UI 子集；Agent 工具调用走 agent/tool.ts 的 agentInvoke 动态分发。
 // 维护纪律：后端加/改方法 → 同步更新本文件 RpcContract；
 // docs/agents/frontend-rpc-contract.md 由 scripts/gen-rpc-contract-md.cjs
@@ -494,6 +495,18 @@ export interface RpcContract {
   /** 插件目录绝对路径（S4-4 乙机器桥：manifest mcpServers 的 stdio command
    *  相对插件目录解析）。名字围栏同 uninstall；目录不存在 = 错误。 */
   plugin_dir: { params: { name: string }; result: string }; // 绝对路径
+
+  // ── 插件数据目录（app shell 四件套 · 件 B，S1）─────────────
+  // manifest.dataDir 插件的专属数据地盘：装载期 loader 调 ensure 分配（幂等），
+  // 宿主桥 fs 面（window.__lantai_plugin_host__.fs）读写列删，卸载回收是
+  // plugin_uninstall 内钩（数据挪 .trash，不在本段）。路径锁死
+  // <dataRoot>/<插件名>/（Rust commands/plugin_data.rs 双围栏 + canonicalize
+  // 前缀——越界/junction 逃逸拒绝）。
+  plugin_data_ensure: { params: { name: string }; result: string }; // JSON — {path}
+  plugin_data_list: { params: { name: string; path?: string }; result: string }; // JSON — {entries:[{name,is_dir,size}]}
+  plugin_data_read: { params: { name: string; path: string }; result: string }; // text — 文件内容（UTF-8）
+  plugin_data_write: { params: { name: string; path: string; content: string }; result: string }; // "null"
+  plugin_data_delete: { params: { name: string; path: string }; result: string }; // "null"
 
   // ── Agent 隔离（worktree）────────────────────────────────
   agent_isolation_create: { params: { agent_id: string }; result: string }; // JSON
@@ -1024,6 +1037,13 @@ export const rpcResultSchemas = {
       })
       .passthrough(),
   ),
+  // plugin_data_*（app shell 件 B，S1）：ensure={path}；list={entries:[…]}。
+  plugin_data_ensure: z.object({ path: z.string() }).passthrough(),
+  plugin_data_list: z
+    .object({
+      entries: z.array(z.object({ name: z.string(), is_dir: z.boolean(), size: z.number() }).passthrough()),
+    })
+    .passthrough(),
   sandbox_status: z
     .object({
       available: z.boolean(),

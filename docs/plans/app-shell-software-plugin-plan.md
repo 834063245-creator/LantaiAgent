@@ -224,6 +224,26 @@ toolHandlers——实现跑在宿主 webview，用宿主设施）与 MCP 路（m
 - 宿主桥：加 `fs` 数据目录面（读/写/列/删，锁定 plugin 根）。
 - **验证**：新测试：a) 装载即目录存在；b) 卸载回收（trash）；c) 越界路径拒绝；
   d) 缺省不分配不侵入。
+- **竣工（2026-09-06）**：落地面——数据根 `~/.lantai/plugins-data/`（与代码
+  安装根分立；`HOLOGRAM_PLUGIN_DATA_ROOT` 测试隔离，env 锁串行纪律同
+  PLUGINS_ROOT_TEST_LOCK）；Rust `commands/plugin_data.rs`（ensure/list/read/
+  write/delete/recycle——名字 + rel 双围栏 + canonicalize 前缀**锚定插件目录**
+  而非数据根：根外与跨插件 junction 逃逸同拒；写入路径用「最深已存在祖先」
+  围栏——目标不存在时祖先即安全边界）；rpc 分发 5 臂 + 形态表（ensure/
+  list = JsonValue，read 文本 / write/delete unit）；**卸载回收锚点修正**：
+  hook 进 `plugin_uninstall`（非计划原文的 fiber disposer——app 退出全量
+  dispose fiber，挂 disposer 会把数据目录在每次退出时误删；决策 2「随插件」
+  的真实语义 = install↔uninstall 跨度，回收失败降级 warn 不阻断卸载——数据
+  留原位是安全方向）；宿主桥 `fs` 面（`data-fs.ts` 真源 pluginDataFs，桥面
+  插件名是参数——已装插件全信任区，S3 iframe 窗口面才由容器侧绑定）；
+  wrapper apply ensure 先于插件代码、失败 = error 记录（失败隔离）；开放面
+  契约升 **v14**（dataDir 字段四步流程走全）；mock 同源 + rpcResultSchemas
+  收编 + gen-rpc-contract-md SECTIONS 对齐（顺带清偿 R4-4 遗留的分区
+  off-by-4 存量错挂——editor/protocol_bridge/plugin_install 起全部归位）；
+  platform_boundary_test 基线按宪法流程更新（「强制层改动 + 宪法审查」标注
+  随 commit message）。门禁全绿：vitest 259 文件（2535 passed / 4 skipped）、
+  build、biome 682 files 0 errors、convergence 双档零漂移、cargo 431 passed
+  （含 plugin_data 7 例 + 卸载钩子端到端）。
 
 ### S2 受治进程治理（C：mcp-bridge 升级；决策 8 收敛，不另立 service-manager）
 - `types.ts`：`mcpServers` 条目扩治理字段（`restart` / `lifecycle`）+ 校验；

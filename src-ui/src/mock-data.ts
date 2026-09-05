@@ -551,6 +551,23 @@ export function mockInvoke(cmd: string, args?: Record<string, unknown>): string 
     return JSON.stringify({ available: true, degraded: false, reason: '' });
   }
 
+  // app shell 件 B（S1）：插件数据目录 mock（浏览器 dev 无盘权——虚拟地盘
+  // 形状，形状真源 = commands/plugin_data.rs；mock↔schema 同源自检钉住）。
+  if (cmd === 'plugin_data_ensure') {
+    const name = args?.name;
+    return JSON.stringify({
+      path: 'mock://plugin-data/' + (typeof name === 'string' ? name : 'unknown'),
+    });
+  }
+  if (cmd === 'plugin_data_list') {
+    return JSON.stringify({
+      entries: [
+        { name: 'notes.json', is_dir: false, size: 128 },
+        { name: 'backups', is_dir: true, size: 0 },
+      ],
+    });
+  }
+
   // 首页工作区清单（2026-09-01 三轴面审种子）：浏览器 dev 此前恒空态，
   // 首页数据态无法取证。两行覆盖面：置顶+活跃 / 非置顶+昨日+无注册名+引擎关。
   if (cmd === 'workspace_list') {

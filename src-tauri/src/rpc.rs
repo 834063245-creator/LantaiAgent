@@ -193,6 +193,11 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // ok_unit "null"，ok_unit 家族统一 Text（见下）。
         "plugin_install" => RpcResultShape::JsonValue,
 
+        // ── 插件数据目录（app shell 件 B，S1）──
+        // ensure：ok_json({path}) 恒 JSON 对象；list：ok_json({entries}) 恒 JSON。
+        // read = 文件内容文本 / write/delete = ok_unit "null"——Text（默认臂）。
+        "plugin_data_ensure" | "plugin_data_list" => RpcResultShape::JsonValue,
+
         // ── 数据流 ──
         // dataflow_query 的 trace_id 路径直通磁盘 .json 文件原文——磁盘文件
         // 可能被写坏，出口 parse 会把业务错变成协议错，保持 Text（前端
@@ -735,6 +740,54 @@ async fn dispatch_rpc(
             let r = tokio::task::spawn_blocking(move || commands::plugin_install::plugin_set_enabled(&name, enabled))
                 .await
                 .map_err(|e| format!("plugin_set_enabled 任务失败: {e}"))?;
+            ok_unit(r)
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // 插件数据目录（app shell 四件套 · 件 B，S1，5 个命令）：manifest.dataDir
+        // 插件的专属数据地盘——装载期 loader 调 ensure 分配（幂等）；读写列删经
+        // 宿主桥 fs 面（window.__lantai_plugin_host__.fs）；卸载回收是
+        // plugin_uninstall 内钩（数据挪 .trash，不在本表）。路径双围栏 +
+        // canonicalize 前缀锁死 <dataRoot>/<插件名>/（命令体 commands/
+        // plugin_data.rs——越界/junction 逃逸拒绝，测试钉死）。
+        // ═══════════════════════════════════════════════════════
+        "plugin_data_ensure" => {
+            let name = req_str(&params, "name", "plugin_data_ensure")?;
+            let r = tokio::task::spawn_blocking(move || commands::plugin_data::plugin_data_ensure(&name))
+                .await
+                .map_err(|e| format!("plugin_data_ensure 任务失败: {e}"))?;
+            ok_json(r)
+        }
+        "plugin_data_list" => {
+            let name = req_str(&params, "name", "plugin_data_list")?;
+            let path = opt_str(&params, "path").unwrap_or_default();
+            let r = tokio::task::spawn_blocking(move || commands::plugin_data::plugin_data_list(&name, &path))
+                .await
+                .map_err(|e| format!("plugin_data_list 任务失败: {e}"))?;
+            ok_json(r)
+        }
+        "plugin_data_read" => {
+            let name = req_str(&params, "name", "plugin_data_read")?;
+            let path = req_str(&params, "path", "plugin_data_read")?;
+            tokio::task::spawn_blocking(move || commands::plugin_data::plugin_data_read(&name, &path))
+                .await
+                .map_err(|e| format!("plugin_data_read 任务失败: {e}"))?
+        }
+        "plugin_data_write" => {
+            let name = req_str(&params, "name", "plugin_data_write")?;
+            let path = req_str(&params, "path", "plugin_data_write")?;
+            let content = req_str(&params, "content", "plugin_data_write")?;
+            let r = tokio::task::spawn_blocking(move || commands::plugin_data::plugin_data_write(&name, &path, &content))
+                .await
+                .map_err(|e| format!("plugin_data_write 任务失败: {e}"))?;
+            ok_unit(r)
+        }
+        "plugin_data_delete" => {
+            let name = req_str(&params, "name", "plugin_data_delete")?;
+            let path = req_str(&params, "path", "plugin_data_delete")?;
+            let r = tokio::task::spawn_blocking(move || commands::plugin_data::plugin_data_delete(&name, &path))
+                .await
+                .map_err(|e| format!("plugin_data_delete 任务失败: {e}"))?;
             ok_unit(r)
         }
 

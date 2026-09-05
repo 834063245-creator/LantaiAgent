@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-09-05T12:51:50.346Z
-> 方法总数：54（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-09-05T20:20:53.575Z
+> 方法总数：59（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -67,7 +67,7 @@
 |------|----------|----------|------|
 | `uia_cap` | action | is_agent, agent_id, _agent_id | 字符串 |
 
-## 能力口（web_cap）
+## 能力口（web_cap / constraints_cap / pty_cap / lsp_cap）
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -76,13 +76,13 @@
 | `pty_cap` | action | is_agent, agent_id, _agent_id | 字符串 |
 | `lsp_cap` | action | is_agent, agent_id, _agent_id | 字符串 |
 
-## 能力口（constraints_cap）
+## 能力口（editor_cap）
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
 | `editor_cap` | action | is_agent, agent_id, _agent_id | 字符串 |
 
-## 能力口（pty_cap）
+## MCP / ACP stdio 桥
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -90,7 +90,7 @@
 | `protocol_bridge_write` | id, line | — | 字符串 |
 | `protocol_bridge_kill` | id | — | 字符串 |
 
-## 能力口（lsp_cap）
+## 身份认证 / 权限
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -101,7 +101,7 @@
 | `credential_delete` | provider | — | `null`（unit） |
 | `llm_proxy_port` | — | — | 字符串 |
 
-## 能力口（editor_cap）
+## 插件安装通道
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -110,7 +110,17 @@
 | `plugin_dir` | name | — | JSON 字符串 |
 | `plugin_set_enabled` | name, enabled | — | `null`（unit） |
 
-## MCP / ACP stdio 桥
+## 插件数据目录
+
+| 方法 | 必选参数 | 可选参数 | 返回 |
+|------|----------|----------|------|
+| `plugin_data_ensure` | name | — | JSON 字符串 |
+| `plugin_data_list` | name | path | JSON 字符串 |
+| `plugin_data_read` | name, path | — | 字符串 |
+| `plugin_data_write` | name, path, content | — | `null`（unit） |
+| `plugin_data_delete` | name, path | — | `null`（unit） |
+
+## Agent 隔离（worktree）
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -121,20 +131,20 @@
 | `agent_isolation_status` | — | — | 字符串 |
 | `agent_isolation_force_purge` | agent_id | — | 字符串 |
 
-## 身份认证 / 权限
+## 外部服务
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
 | `sandbox_status` | — | — | 字符串 |
 
-## 插件安装通道
+## Hologram 遗留命令
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
 | `hologram_run_check` | — | path | 字符串 |
 | `hologram_record_event` | event_type, summary | file | `null`（unit） |
 
-## Agent 隔离（worktree）
+## 工作区
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -149,13 +159,13 @@
 | `workspace_set_graph_engine` | path | — | `null`（unit） |
 | `workspace_create_dir` | name | — | JSON 字符串 |
 
-## 外部服务
+## 会话持久化
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
 | `agent_session_append` | project_path, agent_id | — | `null`（unit） |
 
-## Hologram 遗留命令
+## 数据流
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|

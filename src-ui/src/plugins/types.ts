@@ -99,6 +99,13 @@ export const PluginManifestSchema = z.object({
    *  bundle 行恒在）。第三方同名产物声明 true 可覆盖同名内置插件（用户
    *  目录权威语义与 Rust 资产通道回退一致）。 */
   displace: z.boolean().optional(),
+  /** 数据地盘（app shell 四件套 · 件 B，S1）：声明 true 的插件装载即分配
+   *  专属数据目录 `<dataRoot>/<名>/`（幂等 ensure——wrapper apply 先于插件
+   *  代码调用，失败 = 装载失败记录）；宿主桥 fs 面（ensure/list/read/
+   *  write/delete）读写列删，路径锁死在插件根（Rust plugin_data 双围栏 +
+   *  canonicalize 前缀）；卸载随 plugin_uninstall 整体挪 `.trash` 回收
+   *  （备份一个目录全家走——决策 2）。缺省/false 不分配不侵入。 */
+  dataDir: z.boolean().optional(),
   /** 声明式工具（C11-1 工具声明可序列化，2026-08-24）：声明是数据
    *  （name/description/parameters JSON Schema/readOnly——与 DSH L1 契约
    *  同构的三字段 + readOnly）；执行函数经 entry 模块的 `toolHandlers`

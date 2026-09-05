@@ -547,6 +547,12 @@ pub(crate) fn plugin_uninstall(name: &str) -> Result<(), String> {
     if name.contains("..") || name.contains('/') || name.contains('\\') || name.contains(':') {
         return Err(format!("非法插件名（含路径段/回溯）: {name}"));
     }
+    // S1（app shell 件 B，决策 2——数据目录随卸载整体回收）：先把数据目录
+    // 挪进 <dataRoot>/.trash（默认安全网——备份一个目录全家走）；失败不
+    // 阻断卸载——数据留在原位是安全方向（warn 可见，用户可手清）。
+    if let Err(e) = crate::commands::plugin_data::recycle_on_uninstall(name) {
+        eprintln!("[plugin_uninstall] 数据目录回收失败（不阻断卸载）: {e}");
+    }
     let plugins_root = crate::plugin_assets::plugins_root();
     let dir = plugins_root.join(name);
     if !dir.exists() {
