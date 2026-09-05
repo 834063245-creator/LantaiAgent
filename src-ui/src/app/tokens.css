@@ -130,6 +130,7 @@
   --z-paper-sidebar: 282; /* 案卷侧栏 */
   --z-panel-veil: 400; /* settings 遮罩 */
   --z-panel: 401; /* settings 面板体 */
+  --z-plugin-window: 460; /* 插件应用窗（app shell 件 A · S3）——软件窗盖面板，让位于牒卡/命令面板 */
   --z-panel-modal: 60; /* 面板内模态（ConfirmDialog/AddProviderSheet——纸内档位，只争面板内部） */
   --z-shelf: 500; /* 牒卡浮层（ask/权限） */
   --z-palette: 510; /* 命令面板 */

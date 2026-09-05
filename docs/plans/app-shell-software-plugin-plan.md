@@ -335,6 +335,57 @@ toolHandlers——实现跑在宿主 webview，用宿主设施）与 MCP 路（m
   e) 窗口内容不炸宿主（内容异常隔离，不 fail-loud 宿主）；f) 插件工具经
   窗口设施开窗可用（Agent 调 notes_open → 设施 → 窗口出现）端到端样例
   测试；g) 管理 UI 面走产物流装载（与 canvas-nav 同通道守护）。
+- **竣工（2026-09-06）**：落地面——manifest `app` 字段（strictObject：
+  entry `./` 前缀相对 HTML + 字符白名单 + 无回溯段，围栏只收 `.html`——
+  草案同形；mode 三枚举缺省 floating；title 缺省插件名；未知键拒绝）；
+  开放面契约升 **v16**（四步流程走全）。窗口注册表 `state/plugin-window-
+  store.ts`（照 dock-store 形态）：defs（装载期登记的定义数据——启动器/
+  设施寻址源）+ windows（开着实例——视口渲染源）；**openWindow 返回
+  {windowId, opened}**——聚焦已有窗 opened=false（v1 每插件单窗，计划
+  「按插件 id 与 role 寻址」的 v1 收缩；多窗计数机制保留在治理器侧）。
+  设施 API `plugins/window-facility.ts`：open/close/focus/setMode/list/
+  isOpen 六面（宿主桥 `windows` 键真源）+ `mountPluginApp`（装载挂接：
+  登记定义 + ctx.effect 卸载收口——摘定义 + 关窗 + 逐窗通知治理器）。
+  **真缺陷实测修复**：聚焦已开窗若也发 Opened 事件，治理器窗口计数虚增
+  → with-window 关窗不杀（计数归不到零）——openPluginWindow 只在
+  opened=true 时 notifyPluginWindowOpened，计数与真实开窗恒等。S2 合成
+  事件面就此接上真实开合：开窗拉起（with-window）/ 关窗即杀（决策 4）/
+  lazy 窗开不空闲回收。postMessage 白名单桥 `plugins/window-bridge.ts`：
+  协议 `lantai-plugin-bridge`（call/result reqId 关联）；**容器侧身份绑定**
+  （绑定表 contentWindow → 插件名——消息不携带也不可信插件名，S1
+  data-fs「S3 窗口面才由宿主容器侧绑定」承诺兑现；未绑定 source 静默
+  丢弃）；方法级白名单默认最小集 fs.list/read/write/delete + notify（其余
+  按需申请，白名单外 error 回执不静默）；宿主→窗广播限 bridge-ready /
+  window-closing 两种（window-closing 同拍移除尽力而为——收到无保证，
+  告警为限，可靠持久化是插件自担「改动即存」）；deps 可注入（fs/notify
+  ——测试隔离 RPC 通道）。视口层 `app/plugin-windows/`：PluginWindowsHost
+  （body portal——ToastHost 同款纪律避 transform 包含块；无开窗零渲染；
+  三模式分流：floating 直渲 / dock 进右栏 .pw-dock（底带让位创作坞
+  composer-rise+composer-h-live）/ fullscreen 盖满）；PluginWindowFrame
+  （iframe **sandbox="allow-scripts allow-forms allow-modals" 无
+  allow-same-origin**——opaque origin 真隔离，窗内容拿不到宿主桥、
+  localStorage 等同源存储面不开，数据地盘走桥 fs；书眉拖拽 document 级
+  监听 + 视口夹持；帧内指针事件 stopPropagation——pan 抢占防线第二道；
+  PluginBoundary 包帧体）；plugin-windows.css（纸面物件三件套：裱边带 +
+  活跃落影 + 书眉行；圆角恒 0；token 全走 --paper/--ink/--sheet/--shadow-
+  sheet-active；新海拔档 `--z-plugin-window: 460` 进 tokens.css 海拔目录
+  ——盖面板、让位牒卡/命令面板）。loader 接线：wrapper needsApp →
+  mountPluginApp（origin 闭包捕获）；宿主桥加 `windows` 键。Rust
+  plugin_assets.rs：`plugin_mime` 补 html/htm → `text/html; charset=utf-8`
+  （iframe 载体渲染必需——octet-stream 被 webview 拒渲染；无新增命令
+  模块，platform_boundary 基线不变），traversal 测试补深路径 .html 断言
+  （同一 canonicalize 围栏无深度特判）。测试 a–f 全落（g 管理 UI 面
+  **gated 待用户设计定稿**，只 gate 该子件）：a/b/c/d/f/e = 三个新测试
+  文件 25 例——`tests/plugin-window-store.test.ts`（schema 围栏 + 注册表
+  + 设施×治理器集成：开窗 spawn/关窗杀/卸载收口/重开换代 windowId +
+  loader 装载接线：装载登记 entryUrl/停用摘除/重装恢复）、
+  `tests/plugin-window-bridge.test.ts`（身份绑定/白名单/reqId 关联/垃圾
+  输入不炸/广播）、`tests/plugin-windows-host.test.tsx`（开窗渲染 iframe
+  src+sandbox/✕ 回收/三模式布局/mousedown 不冒泡 document/书眉拖拽写回
+  夹持）。门禁全绿：vitest 261 文件（2576 passed / 4 skipped，基线 2551
+  + 新增 25 对账吻合）、build、biome ci 692 files 0 errors、convergence
+  standard+minimal 零漂移、cargo 432 bin + 1 集成 passed（MIME 断言并入
+  既有两测试，例数持平）。
 
 ### S4 后台唤醒回调（D，复用包装）
 - 盘点现有唤醒链路（子任务完成唤醒父 Agent / goal 反馈 / emitLoopEvent），

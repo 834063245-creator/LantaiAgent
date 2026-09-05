@@ -28,6 +28,17 @@ function isSafeEntry(value: string): boolean {
   return segments.every((seg) => seg !== '' && seg !== '.' && seg !== '..');
 }
 
+/** app 窗口入口合法性（app shell 件 A · S3）：`./` 前缀的相对 HTML 路径
+ *  （插件自包含——段非空且不为 . / ..，以 .html 结尾）。强制 `./` 前缀让
+ *  「相对插件目录」显式化（与 mcpServers args 的 `./` 约定同构）；绝对路径
+ *  与回溯段拒绝。 */
+function isSafeAppEntry(value: string): boolean {
+  if (!value.startsWith('./') || !/\.html$/.test(value)) return false;
+  if (!ENTRY_CHARS_RE.test(value)) return false;
+  const segments = value.slice(2).split('/');
+  return segments.every((seg) => seg !== '' && seg !== '.' && seg !== '..');
+}
+
 /** MCP server 声明（manifest.mcpServers 条目，S4-4 乙机器桥）：stdio（command
  *  相对插件目录解析）| http（url 直连）二选一；failurePolicy 缺省 lazy——瞬态
  *  机器不是装载失败的合格理由（进程挂了工具报错/空集，不炸装载）。
@@ -94,6 +105,25 @@ const ToolManifestDeclSchema = z.strictObject({
  *  ——「写了但不生效」的类名是手误，错误不静默）。 */
 const PLUGIN_PERMISSION_CLASS = z.enum(['read', 'edit', 'bash', 'git', 'web']);
 
+/** manifest.app 声明（app shell 件 A · S3，应用视图通道）：插件声明自己的
+ *  窗内容入口与窗模式——装载只登记窗口定义（注册表数据），开窗才实例化
+ *  iframe 视口（宿主窗口注册表 + postMessage 白名单桥，见 state/
+ *  plugin-window-store.ts 与 plugins/window-bridge.ts）。窗内渲染完全归
+ *  插件（iframe 真隔离，§4-3 拍板）。 */
+const APP_WINDOW_MODE = z.enum(['floating', 'dock', 'fullscreen']);
+
+const AppDeclSchema = z.strictObject({
+  /** 窗内容入口：`./` 前缀相对插件目录的 HTML（资产通道寻址）。 */
+  entry: z.string().refine(isSafeAppEntry, {
+    message: 'app.entry 必须是 "./" 前缀的相对 HTML 路径（如 ./app/index.html），禁止绝对路径/回溯段',
+  }),
+  /** 窗模式：floating（缺省，画布上浮动窗）/ dock（右侧停靠栏）/ fullscreen
+   *  （盖满视口）。 */
+  mode: APP_WINDOW_MODE.optional(),
+  /** 窗标题（书眉显示；缺省用插件名）。 */
+  title: z.string().min(1).optional(),
+});
+
 export const PluginManifestSchema = z.object({
   name: z.string().regex(PLUGIN_NAME_RE, 'name 必须是 npm scope 风格 id（如 hologram/settings）'),
   version: z.string().regex(SEMVER_RE, 'version 必须是 semver（如 1.0.0）'),
@@ -124,6 +154,12 @@ export const PluginManifestSchema = z.object({
    *  canonicalize 前缀）；卸载随 plugin_uninstall 整体挪 `.trash` 回收
    *  （备份一个目录全家走——决策 2）。缺省/false 不分配不侵入。 */
   dataDir: z.boolean().optional(),
+  /** 应用窗声明（app shell 四件套 · 件 A，S3）：声明 = 插件以软件形态住进
+   *  兰台——装载只登记窗口定义（数据），开窗才实例化视口。窗内容 = 插件
+   *  自包含 HTML 经 iframe 载体渲染（真隔离）；窗内向宿主要能力走
+   *  postMessage 白名单桥（默认最小集 fs 数据目录 + notify）。卸载随插件
+   *  收口：定义注销 + 开着窗口全关（受治进程 with-window 档随关窗杀）。 */
+  app: AppDeclSchema.optional(),
   /** 声明式工具（C11-1 工具声明可序列化，2026-08-24）：声明是数据
    *  （name/description/parameters JSON Schema/readOnly——与 DSH L1 契约
    *  同构的三字段 + readOnly）；执行函数经 entry 模块的 `toolHandlers`
@@ -150,6 +186,12 @@ export type PluginPermissionClass = z.infer<typeof PLUGIN_PERMISSION_CLASS>;
 
 /** manifest.mcpServers 条目（S4-4 乙机器桥）。 */
 export type McpServerDecl = z.infer<typeof McpServerDeclSchema>;
+
+/** manifest.app 声明（app shell 件 A · S3）。 */
+export type AppDecl = z.infer<typeof AppDeclSchema>;
+
+/** 窗模式（app shell 件 A · S3）——窗口注册表/设施面共用。 */
+export type PluginWindowMode = z.infer<typeof APP_WINDOW_MODE>;
 
 /** 插件对象：apply 只做注册动作；本阶段可注册的只有 cordis 原生能力（effect 等），
  * 四 service 是 S1。装载期禁止任何 UI 副作用（WO-S0B 红线）。 */

@@ -1,0 +1,131 @@
+/* ── 插件应用窗（app shell 件 A · S3）：iframe 载体视口 ──
+ * 软件插进来 = 在画布上开一扇窗：纸面物件三件套——裱边带 + 接触落影 +
+ * 书眉行。圆角恒 0；墨色/纸色全走 token（禁散写）；浮动窗即画布上可拖
+ * 物件（贴合画布底座——pan 抢占防线在组件层 stopPropagation，这里不管）。
+ * 窗内内容是 iframe 独立 document，宿主只出这张「纸」。 */
+
+.pw-frame-floating {
+  position: fixed;
+  width: 460px;
+  height: 360px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+}
+
+.pw-frame-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-plugin-window) + 1);
+}
+
+.pw-frame-dock {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.pw-frame-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  /* 物理包边（token：裱边带 + 受光缘 + 背光缘）+ 活跃落影——手里正拿的纸 */
+  background:
+    linear-gradient(var(--sheet-lit), var(--sheet-lit)) padding-box,
+    linear-gradient(var(--sheet-shade), var(--sheet-shade)) border-box,
+    var(--sheet-band);
+  border: 1px solid var(--sheet-band);
+  box-shadow: var(--shadow-sheet-active);
+}
+
+.pw-frame-fullscreen .pw-frame-inner,
+.pw-frame-dock .pw-frame-inner {
+  position: relative;
+}
+
+.pw-frame-dock .pw-frame-inner {
+  border-bottom: 0;
+}
+
+.pw-titlebar {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px 0 12px;
+  border-bottom: var(--rule-soft);
+  font-family: var(--f-song);
+  user-select: none;
+  flex: none;
+}
+
+.pw-frame-floating .pw-titlebar {
+  cursor: grab;
+}
+
+.pw-frame-floating .pw-titlebar:active {
+  cursor: grabbing;
+}
+
+.pw-title {
+  font-size: 13.5px;
+  font-weight: 600; /* 卷名档 */
+  color: var(--ink-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pw-title-plugin {
+  margin-left: auto;
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+.pw-close {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-left: 4px;
+  background: transparent;
+  border: none;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.pw-close:hover {
+  color: var(--seal); /* 朱砂：人来关闭 */
+}
+
+.pw-frame-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  background: var(--paper-margin); /* 窗内容未载入时的地台色 */
+}
+
+.pw-iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: var(--paper);
+}
+
+/* dock 停靠栏：右侧竖栏（画布右缘），底带让位创作坞（composer 常驻带） */
+.pw-dock {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  bottom: calc(12px + var(--composer-rise) + var(--composer-h-live, var(--composer-h)));
+  width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: var(--z-plugin-window);
+}

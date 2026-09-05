@@ -205,6 +205,8 @@ fn resolve_asset(root: &Path, url_path: &str) -> ResolveOutcome {
 
 /// MIME 映射——ES module import 对 MIME 严格，`.js`/`.mjs` 必须是
 /// `application/javascript`，否则 webview 拒绝执行模块。
+/// `.html`/`.htm` 是 app shell 件 A（S3）的窗内容入口——iframe 载体渲染
+/// 需要 `text/html`（octet-stream 会被 webview 拒渲染）。
 /// `.wasm` 为前瞻映射（WO-S0B），本阶段无消费者。
 fn plugin_mime(path: &Path) -> &'static str {
     match path
@@ -216,6 +218,7 @@ fn plugin_mime(path: &Path) -> &'static str {
         Some("js") | Some("mjs") => "application/javascript",
         Some("json") => "application/json",
         Some("css") => "text/css",
+        Some("html") | Some("htm") => "text/html; charset=utf-8",
         Some("wasm") => "application/wasm",
         // 组合 patch 文件（S2-2）：loader 自行 parse 文本，无严格 MIME 消费方
         Some("yml") | Some("yaml") => "text/plain; charset=utf-8",
@@ -523,6 +526,11 @@ mod tests {
 
         assert!(matches!(resolve_asset(&root, "hello/entry.js"), ResolveOutcome::Found(_)));
         assert!(matches!(resolve_asset(&root, "plugins.json"), ResolveOutcome::Found(_)));
+        // app shell 件 A（S3）：窗内容入口是插件目录深处的 .html——深路径照常
+        // 解析（同一 canonicalize 围栏，无深度特判）。
+        std::fs::create_dir_all(root.join("hello").join("app")).unwrap();
+        std::fs::write(root.join("hello").join("app").join("index.html"), b"<!doctype html>").unwrap();
+        assert!(matches!(resolve_asset(&root, "hello/app/index.html"), ResolveOutcome::Found(_)));
         assert!(matches!(resolve_asset(&root, "../outside/secret.js"), ResolveOutcome::Forbidden));
         assert!(matches!(resolve_asset(&root, "hello/../../outside/secret.js"), ResolveOutcome::Forbidden));
         assert!(matches!(resolve_asset(&root, "%2e%2e/outside/secret.js"), ResolveOutcome::Forbidden));
@@ -534,7 +542,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(root.parent().unwrap());
     }
 
-    /// WO-S0B 测试 2：MIME 映射（含 .wasm 前瞻）。
+    /// WO-S0B 测试 2：MIME 映射（含 .wasm 前瞻；.html 是 app shell 件 A 的
+    /// 窗内容入口——iframe 载体渲染必需）。
     #[test]
     fn mime_mapping() {
         use std::path::Path;
@@ -542,6 +551,8 @@ mod tests {
         assert_eq!(plugin_mime(Path::new("hello/entry.mjs")), "application/javascript");
         assert_eq!(plugin_mime(Path::new("hello/manifest.json")), "application/json");
         assert_eq!(plugin_mime(Path::new("hello/style.css")), "text/css");
+        assert_eq!(plugin_mime(Path::new("hello/app/index.html")), "text/html; charset=utf-8");
+        assert_eq!(plugin_mime(Path::new("hello/old.HTM")), "text/html; charset=utf-8");
         assert_eq!(plugin_mime(Path::new("hello/mod.wasm")), "application/wasm");
         assert_eq!(plugin_mime(Path::new("hello/icon.png")), "application/octet-stream");
         assert_eq!(plugin_mime(Path::new("hello/noext")), "application/octet-stream");

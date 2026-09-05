@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：15
+当前版本：16
 
-<!-- contract-fingerprint: 4267a27e1aff031d7b5fd0fc9186f91d0803ae2bc35fc0d82f44748549bed49d -->
+<!-- contract-fingerprint: d47faccbdc56ee45806d2d39a861651fac065bd349d558a79cdab4fbf908087a -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -26,7 +26,7 @@
 | src/agent/events.ts | D4 事件面（AGENT_EVENT_MAP mode 表 / LoopEventPayload 载荷形状 / 监听契约） |
 | src/agent/dynamic-runner/dynamic-runner-service.ts | ctx.dynamicRunner（D7——define/run/stop/undefine/inspect + 审批门 + 包不可变/回滚语义） |
 | src/agent/dynamic-runner/sandbox.ts | 动态插件沙箱承诺（阴影求值面 / 守卫注册面白名单 / 三预算常量） |
-| src/plugins/types.ts | 插件 manifest schema（name/version/inject/permissions/tools/mcpServers/displace/dataDir） |
+| src/plugins/types.ts | 插件 manifest schema（name/version/inject/permissions/tools/mcpServers/displace/dataDir/app） |
 | src/agent/agent-loop/types.ts | AgentLoop/AgentLoopHost（D13 loop seam 契约） |
 | src/agent/agent-loop/default-loop.ts | 默认 loop 实现（行为逐字节一致，D13） |
 | src/agent/agent-loop/agent-loop-service.ts | ctx.agentLoop 注册表（构造期登记 builtin/default，后注册胜） |
@@ -50,6 +50,7 @@
 | 13 | 2026-09-05 | 会话持久化 seam 动作面重设计（C 定案）：六动词（read/write/append/appendLog/mkdir/delete——旧 agent-store 磁盘 CRUD 形状）→ 四动词会话语义（read_volume/list_volumes/save_volume/delete_volume）；Service 增 execute 方法（模块级 sessionExecute 保留为产品代码消费单点） | session-persistence-seam-wiring-plan.md（D-1/D-5/D-6/D-8） |
 | 14 | 2026-09-06 | manifest schema 新增可选 `dataDir: boolean`（插件数据地盘：声明 true 装载即分配专属数据目录 `<dataRoot>/<名>/`，宿主桥 fs 面 ensure/list/read/write/delete，卸载随 plugin_uninstall 整体挪 `.trash` 回收；缺省/false 行为不变） | app-shell-software-plugin-plan.md §5-S1 |
 | 15 | 2026-09-06 | manifest.mcpServers 条目新增可选治理字段 `restart: 'off'\|'on-crash'` 与 `lifecycle: 'lazy'\|'eager'\|'with-window'`（app shell 件 C 受治进程治理：任一在场 = 该 server 进受治面——就绪 = initialize 握手完成带时限、崩溃退避重启、三档生命周期/空闲回收、未就绪调用立即报 service_not_ready；http 条目声明治理字段拒绝——无受治进程面；两字段皆缺席 = 旧形态现行为不变） | app-shell-software-plugin-plan.md §5-S2（决策 1/4/7/8） |
+| 16 | 2026-09-06 | manifest schema 新增可选 `app` 字段（app shell 件 A 应用视图通道：`{ entry: './' 前缀相对 HTML, mode: 'floating'\|'dock'\|'fullscreen', title }`——声明 = 插件以软件形态住进兰台：装载只登记窗口定义（数据），开窗才实例化 iframe 视口；窗内向宿主要能力走 postMessage 白名单桥（默认最小集 fs 数据目录 + notify）；卸载收口 = 摘定义 + 关窗；缺省不声明 = 行为不变） | app-shell-software-plugin-plan.md §5-S3 |
 
 ## 变更流程（guard 红 → 修复四步）
 

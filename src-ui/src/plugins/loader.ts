@@ -56,6 +56,7 @@ import { FIRST_PARTY_MANIFEST, type FirstPartyPluginMeta } from './first-party-m
 import { type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
 import { mountToolDeclarations } from './tool-declarations';
 import { type LantaiPlugin, type PluginManifest, validateManifest } from './types';
+import { mountPluginApp, type PluginWindowFacility, pluginWindowFacility } from './window-facility';
 
 /** loader 消费的最小 fetch 形状（测试可用普通对象实现，不依赖 Response 全局）。 */
 export type FetchLike = (url: string) => Promise<{ ok: boolean; json(): Promise<unknown> }>;
@@ -170,6 +171,8 @@ export function allBuiltinPlugins(): LantaiPlugin[] {
 //   - fs：插件数据目录面（S1——ensure/list/read/write/delete 锁
 //     <dataRoot>/<插件名>/，Rust plugin_data 围栏；manifest.dataDir 声明
 //     插件的专属数据地盘，桥面插件名是参数——全信任区，S3 窗口面才绑定）；
+//   - windows：窗口设施 API（S3 app shell 件 A——开/关/聚焦/模式/查询，
+//     宿主能力面非工具面；工具语义归插件：插件工具执行体调它开自己的窗）；
 //   - mods：项目模块真实例注册表（pluginHostMods()——面组件依赖的
 //     store/service 单例与工具域/段贡献插件对象，见 builtin/host-modules.ts）。
 // 桥在装载第一方插件前注入（装载期红线：注入是平台动作不是插件副作用）。
@@ -196,6 +199,7 @@ declare global {
       notify: (text: string) => void;
       loadCss: (url: string) => void;
       fs: PluginDataFs;
+      windows: PluginWindowFacility;
       mods: Record<string, unknown>;
     };
   }
@@ -236,6 +240,7 @@ function installPluginHostBridge(): void {
       notify: (text: string) => useShellStore.getState().pushStatus(text),
       loadCss: injectPluginCss,
       fs: pluginDataFs,
+      windows: pluginWindowFacility,
       mods: pluginHostMods(),
     };
   }
@@ -755,10 +760,11 @@ async function moduleStage(entry: ManifestStageOk, deps: LoadOneDeps): Promise<M
     const needsToolDecls = (manifest.tools?.length ?? 0) > 0;
     const needsMcp = (manifest.mcpServers?.length ?? 0) > 0;
     const needsDataDir = manifest.dataDir === true;
+    const needsApp = manifest.app != null;
     const candidateInject = (candidate as { inject?: string[] }).inject ?? [];
     const manifestInject = manifest.inject ?? [];
     const extraInject = manifestInject.filter((n) => !candidateInject.includes(n));
-    const needsWrapper = needsToolDecls || needsMcp || needsDataDir || extraInject.length > 0;
+    const needsWrapper = needsToolDecls || needsMcp || needsDataDir || needsApp || extraInject.length > 0;
     const target = needsWrapper
       ? {
           name: candidate.name,
@@ -785,6 +791,12 @@ async function moduleStage(entry: ManifestStageOk, deps: LoadOneDeps): Promise<M
               await registerMcpServerTools(ctx, manifest.name, manifest.mcpServers ?? [], deps.mcpBridgeIO, {
                 dataDirPath,
               });
+            }
+            // S3（app shell 件 A）：manifest.app 声明 → 窗口定义登记（装载只
+            // 登记数据，开窗才实例化视口；卸载收口挂 ctx.effect——摘定义 +
+            // 关窗 + 治理器关窗通知）。
+            if (needsApp && manifest.app) {
+              mountPluginApp(ctx, manifest.name, manifest.app, deps.origin);
             }
           },
         }
