@@ -722,10 +722,15 @@ export const dirEntryArraySchema = z.array(dirEntrySchema);
 // 出口：fs_cap 能力口直呼（builtin.fs 信封已退役——2026-09-04 fs 域收口）。
 // 参数键 = fs_cap 顶层 snake_case（bridge.rpc() 转换幂等）；调用方一律用户
 // 路径（is_agent=false 显式传——resolve_*_dispatch 只解析不过 Ask）。
-// 返回 = fs_cap JSON 字符串，各 helper 解析取所需字段。
+// 返回 = 双形态（2026-09-05 会话列表回归修复）：fs_cap 是 JsonValue 形态
+// 命令——真实 Tauri 运行时 Rust 出口已展开为真结构化 Value（对象）；浏览器
+// mock / 测试 mock 返 JSON 字符串。各 helper 自行解包取字段时必须先判形态
+// （typeof raw === 'string' 才允许 parseJson），禁止对返回值直接 JSON.parse
+// （结构化对象会被 String() 成 "[object Object]" 再炸——712fda8d/8bce6ffb
+// 窗口内会话卷读取全链路静默 null 的根因；回归钉 tests/fs-cap-dual-shape.test.ts）。
 
-/** fs_cap 能力口直呼（返回 JSON 字符串）。is_agent=false = 用户路径。 */
-function fsCapCall(params: RpcParamsOf<'fs_cap'>): Promise<string> {
+/** fs_cap 能力口直呼（双形态，见上）。is_agent=false = 用户路径。 */
+function fsCapCall(params: RpcParamsOf<'fs_cap'>): Promise<unknown> {
   return typedRpc('fs_cap', params);
 }
 
@@ -743,13 +748,20 @@ async function fsCapReadText(
     ...(opts?.limit !== undefined ? { limit: opts.limit } : {}),
     is_agent: false,
   });
+  if (raw !== null && typeof raw === 'object') {
+    // 结构化 Value（真实运行时）：{path, content} 信封取 content。
+    const content = (raw as { content?: unknown }).content;
+    return typeof content === 'string' ? content : '';
+  }
+  // 字符串形态（mock）：{content} 信封取 content；非 JSON / 无 content 字段
+  // （异常文本、原文直通 mock）——原文直通。
   try {
-    const parsed = parseJson<{ path?: string; content?: unknown }>(raw);
+    const parsed = parseJson<{ path?: string; content?: unknown }>(raw as string);
     if (typeof parsed.content === 'string') return parsed.content;
   } catch {
-    // 非 JSON（测试 mock / 异常文本）——直通
+    // 非 JSON——直通
   }
-  return raw;
+  return raw as string;
 }
 
 /** 文本读（offset/limit 行号分页；raw=true 返回原文——P1-3 JSON 读取面）。 */
@@ -764,14 +776,18 @@ export function kernelReadFileRaw(filePath: string): Promise<string> {
 
 /** fs_cap 写类 action 返回解析：取 {path} 的 path；非 JSON/无 path（测试 mock
  *  旧文案等）直通 raw——消费端多为 await 丢弃返回，容错直通等价。 */
-function fsCapPathOf(raw: string): string {
+function fsCapPathOf(raw: unknown): string {
+  if (raw !== null && typeof raw === 'object') {
+    const p = (raw as { path?: unknown }).path;
+    return typeof p === 'string' ? p : '';
+  }
   try {
-    const parsed = parseJson<{ path?: unknown }>(raw);
+    const parsed = parseJson<{ path?: unknown }>(raw as string);
     if (typeof parsed.path === 'string') return parsed.path;
   } catch {
     // 非 JSON——直通
   }
-  return raw;
+  return raw as string;
 }
 
 /** 原子写入（父目录自动创建；fs_cap write 返回解析后路径）。 */
@@ -829,21 +845,29 @@ export async function kernelListDirectoryFlat(path: string): Promise<DirEntry[]>
 }
 
 /** list action 返回载荷提取：{entries} 包装取 entries；裸数组（测试 mock /
- *  旧形态）直用。非 JSON 返回 null（调用方 zod 校验兜错）。 */
-function listPayloadOf(raw: string): unknown {
-  try {
-    const parsed = parseJson<{ entries?: unknown } | unknown[]>(raw);
+ *  旧形态）直用。双形态兼容同 fsCapPayloadOf；非 JSON 字符串返回 null
+ *  （调用方 zod 校验兜错）。 */
+function listPayloadOf(raw: unknown): unknown {
+  const unwrap = (parsed: unknown): unknown => {
     if (Array.isArray(parsed)) return parsed;
-    return (parsed as { entries?: unknown }).entries ?? null;
+    if (parsed !== null && typeof parsed === 'object') {
+      return (parsed as { entries?: unknown }).entries ?? null;
+    }
+    return null;
+  };
+  if (typeof raw !== 'string') return unwrap(raw);
+  try {
+    return unwrap(parseJson<unknown>(raw));
   } catch {
-    return raw; // 非 JSON——zod safeParse 兜错（字符串非数组 → 失败）
+    return null;
   }
 }
 
 /** read_memory_batch 的 JSON 形状版（.lantai 内多文件批量读）。 */
 export async function kernelReadMemoryBatch(paths: string[]): Promise<Record<string, string | null>> {
   const raw = await fsCapCall({ action: 'memory_batch', paths, is_agent: false });
-  const parsed = z.record(z.string(), z.nullable(z.string())).safeParse(parseJson(raw));
+  const payload = raw !== null && typeof raw === 'object' ? raw : parseJson<unknown>(raw as string);
+  const parsed = z.record(z.string(), z.nullable(z.string())).safeParse(payload);
   if (!parsed.success) {
     throw new Error(`kernelReadMemoryBatch: 返回形状违反契约 — ${parsed.error.issues[0]?.message ?? ''}`);
   }
@@ -853,9 +877,17 @@ export async function kernelReadMemoryBatch(paths: string[]): Promise<Record<str
 /** 媒体渲染二进制读（read_file_base64——renderer 消费，8MiB 源上限）。 */
 export async function kernelReadFileBase64(filePath: string): Promise<string> {
   const raw = await fsCapCall({ action: 'read_base64', file_path: filePath, is_agent: false });
-  const parsed = parseJson<{ base64?: string }>(raw);
-  if (typeof parsed.base64 !== 'string') return raw;
-  return parsed.base64;
+  if (raw !== null && typeof raw === 'object') {
+    const b64 = (raw as { base64?: unknown }).base64;
+    return typeof b64 === 'string' ? b64 : '';
+  }
+  try {
+    const parsed = parseJson<{ base64?: string }>(raw as string);
+    if (typeof parsed.base64 === 'string') return parsed.base64;
+  } catch {
+    // 非 JSON——直通
+  }
+  return raw as string;
 }
 
 // ── git_cap 直呼便捷封装（git 域收口，kernel-capability-c3-design.md R3-c）──
