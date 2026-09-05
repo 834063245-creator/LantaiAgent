@@ -8,9 +8,9 @@
 import { agentSessionState, type OwnedAgentHandle, type TurnPair } from '../agent/agent-session-state';
 import type { ChatAgentHandle } from '../agent/chat-agent-handle';
 import { createExecState, type ExecStateInstance } from '../agent/execution-state';
+import { sessionExecute } from '../composition/session-persistence-service';
 import type { Message } from '../provider/types';
-import type { DirEntry } from '../rpc-contract';
-import { kernelListDirectory, kernelReadFileRaw, kernelWriteFile } from '../rpc-contract';
+import { kernelWriteFile } from '../rpc-contract';
 import { getActiveProvider, loadSettings } from '../settings';
 import { disposeAssetSessionStore, disposeAssetTables, rebuildAssetTableFromMessages } from '../state/asset-store';
 import { getCanvasStore } from '../state/canvas-store';
@@ -554,48 +554,55 @@ export interface StoredSession {
   nextId?: number;
 }
 
-/** 读取会话文件并解析为 JSON。raw 模式跳过行号（P1-3——Rust 侧 raw=true
- *  不做 format_lines，前端不剥行号，省双重 O(n) 字符串变换）。 */
-async function readSessionJSON(filePath: string): Promise<StoredSession> {
-  const raw = await kernelReadFileRaw(filePath);
-  return JSON.parse(raw) as StoredSession;
-}
-
 // ── 工作区会话根（workspace-session-ownership-rework 2026-08-27）────────────
 // 会话**物理归属工作区**：唯一存储位 = {workspace}/.lantai/sessions/{id}.json。
 // 归属 = 存储位置，无需 workspace 字段标签/路径归一匹配；零目录会话已退役，
 // projectPath 恒为真实目录，不存在第二存储位。
+//
+// seam 接线（session-persistence-seam-wiring-plan C 定案，2026-09-05）：
+// 卷 CRUD 全链经 sessionExecute 四动作（read_volume/list_volumes/save_volume/
+// delete_volume）——默认 provider builtin/rust-sessions 内部转发 kernel* helper，
+// 行为与今日直连逐字节一致（测试 mock 面零迁移）；换 provider（SQLite/远程仓）
+// 即整链换存储，产品代码零改动。root = 本工作区会话根（下方唯一权威拼接点）。
 
-/** 工作区会话目录（唯一权威存储位）。 */
-function workspaceSessionsDir(projectPath: string): string {
+/** 工作区会话目录（唯一权威存储位——消费方（chat-session/chat-core）一律
+ *  经本导出拼 root，路径构造收敛单点）。 */
+export function workspaceSessionsDir(projectPath: string): string {
   return `${projectPath.replace(/[\\/]+$/, '')}/.lantai/sessions`;
 }
 
-/** 读卷文件，缺失/坏文件返回 null（不抛——双读与存在性探测共用）。 */
-async function readSessionJSONOrNull(filePath: string): Promise<StoredSession | null> {
+/** 读卷：工作区目录单一路径。缺失/坏文件返回 null——卷不在本工作区
+ *  会话目录 = 不存在（无回退面）。read_volume 缺卷返回 'null'（判空语义与
+ *  旧 readSessionJSONOrNull catch 等价——错误不静默在消费方 catch 面）。 */
+async function readVolumeJSON(projectPath: string, id: number): Promise<StoredSession | null> {
   try {
-    return await readSessionJSON(filePath);
+    const raw = await sessionExecute('read_volume', {
+      root: workspaceSessionsDir(projectPath),
+      id: String(id),
+    });
+    if (raw === 'null') return null;
+    return JSON.parse(raw) as StoredSession;
   } catch {
     return null;
   }
 }
 
-/** 读卷：工作区目录单一路径。缺失/坏文件返回 null——卷不在本工作区
- *  会话目录 = 不存在（无回退面）。 */
-async function readVolumeJSON(projectPath: string, id: number): Promise<StoredSession | null> {
-  return readSessionJSONOrNull(`${workspaceSessionsDir(projectPath)}/${id}.json`);
-}
-
 /** 扫描本工作区会话目录，查找最大的数字会话 ID。无会话时返回 0。
  *  每工作区独立发号（workspace-session-ownership-rework 2026-08-27）——
- *  跨工作区撞号在结构上不可能（不同目录，天然隔离）。 */
+ *  跨工作区撞号在结构上不可能（不同目录，天然隔离）。
+ *  list_volumes 返回文件名数组（provider 侧滤目录）；_active.json 等保留名
+ *  在消费方过滤（scanMax/listSavedSessions 既有语义保真）。 */
 export async function scanMaxSessionId(projectPath: string): Promise<number> {
   let maxId = 0;
   try {
-    const entries = await kernelListDirectory(workspaceSessionsDir(projectPath), false);
-    for (const e of entries) {
-      if (e.is_dir || !e.name || e.name === '_active.json') continue;
-      const sid = parseInt(String(e.name).replace(/\.json$/, ''), 10);
+    const root = workspaceSessionsDir(projectPath);
+    const raw = await sessionExecute('list_volumes', { root });
+    const names: unknown = JSON.parse(raw);
+    if (!Array.isArray(names)) return maxId;
+    for (const n of names) {
+      const name = typeof n === 'string' ? n : '';
+      if (!name || name === '_active.json' || name.startsWith('_')) continue;
+      const sid = parseInt(String(name).replace(/\.json$/, ''), 10);
       if (!Number.isNaN(sid) && sid > maxId) maxId = sid;
     }
   } catch {
@@ -620,18 +627,21 @@ interface SessionSnapshotData {
   compose?: ComposeSessionPrefs;
 }
 
-/** 将已捕获的会话快照写入盘（原子磁盘写：tmp → rename）。
+/** 将已捕获的会话快照写入存储（save_volume——默认 provider 落工作区会话根
+ *  {projectPath}/.lantai/sessions/{id}.json；替代 provider 自管存储）。
  *  C8 合卷自动存从 saveActiveSession 离体出来的共享写盘函数——调用方负责
  *  在 agent 句柄消亡前完成数据捕获（messages 属引用，序列化在首次 await 前）。
  *  workspace-session-ownership-rework（2026-08-27）：落盘目标 = 工作区会话根
- *  `{projectPath}/.lantai/sessions/{id}.json`（workspace 字段标签退役；
- *  localStorage 备份早已拆除——磁盘是唯一事实源）。
+ *  （workspace 字段标签退役；localStorage 备份早已拆除——磁盘是唯一事实源）。
  *  失败：console.error 后上抛——调用方决定可见等级（autosave 容忍、合卷告警）。 */
 async function writeSessionSnapshot(projectPath: string, data: SessionSnapshotData): Promise<void> {
   const json = JSON.stringify(data);
-  // 原子磁盘写入（tmp → rename；目标 = 工作区会话根）
   try {
-    await kernelWriteFile(`${workspaceSessionsDir(projectPath)}/${data.id}.json`, json);
+    await sessionExecute('save_volume', {
+      root: workspaceSessionsDir(projectPath),
+      id: String(data.id),
+      data: json,
+    });
   } catch (e) {
     console.error('[chat] 会话落盘失败:', e);
     throw e;
@@ -793,39 +803,43 @@ export async function readVolumeData(projectPath: string, id: number): Promise<S
 
 /** 扫描本工作区会话根 — 无需 Agent。单目录（{workspace}/.lantai/sessions/），
  *  目录内文件天然属于本工作区（归属 = 存储位置，无 workspace 字段过滤）；
- *  墓碑与坏卷过滤。恢复推导与发号对账共用。 */
+ *  墓碑与坏卷过滤。恢复推导与发号对账共用。
+ *  seam：list_volumes 取文件名数组（provider 滤目录）→ 逐 id read_volume
+ *  （同旧「list 后逐文件读」链——路径构造收敛在 provider 内部）。 */
 export async function listSavedSessions(
   _ctx: SessionContext,
   projectPath: string,
 ): Promise<Array<{ id: number; label: string; msgCount: number; savedAt: string }>> {
   type SessionEntry = { id: number; label: string; msgCount: number; savedAt: string };
-  let entries: DirEntry[];
+  let names: string[];
   try {
-    entries = await kernelListDirectory(workspaceSessionsDir(projectPath), false);
+    const root = workspaceSessionsDir(projectPath);
+    const raw = await sessionExecute('list_volumes', { root });
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      console.error('[chat] listSavedSessions: unexpected result', typeof parsed);
+      return [];
+    }
+    names = parsed.filter((n): n is string => typeof n === 'string');
   } catch (e) {
-    console.error('[chat] listSavedSessions: list_directory failed', e);
-    return [];
-  }
-  if (!Array.isArray(entries)) {
-    console.error('[chat] listSavedSessions: unexpected result', typeof entries);
+    console.error('[chat] listSavedSessions: list_volumes failed', e);
     return [];
   }
 
-  // 过滤有效的 JSON 会话文件（跳过目录与下划线开头的保留名）
-  const targets = entries.filter(
-    (e) =>
-      !e.is_dir &&
-      e.name.endsWith('.json') &&
-      !e.name.startsWith('_') &&
-      !Number.isNaN(parseInt(e.name.replace('.json', ''), 10)),
-  );
+  // 过滤有效的 JSON 会话文件（跳过下划线开头的保留名；provider 已滤目录）
+  const targets = names
+    .filter((name) => name.endsWith('.json') && !name.startsWith('_'))
+    .map((name) => {
+      const sid = parseInt(name.replace('.json', ''), 10);
+      return { name, sid: Number.isNaN(sid) ? null : sid };
+    })
+    .filter((t): t is { name: string; sid: number } => t.sid !== null);
 
   const TIMEOUT_MS = 10_000;
-  const readPromises: Promise<SessionEntry | null>[] = targets.map(async (e) => {
+  const readPromises: Promise<SessionEntry | null>[] = targets.map(async ({ name, sid }) => {
     try {
-      const d = await readSessionJSON(e.path);
-      if (d.deleted) return null;
-      const sid = parseInt(e.name.replace('.json', ''), 10);
+      const d = await readVolumeJSON(projectPath, sid);
+      if (!d || d.deleted) return null;
       return {
         id: d.id || sid,
         label: d.label || `案卷 ${sid}`,
@@ -833,7 +847,7 @@ export async function listSavedSessions(
         savedAt: d.savedAt || '',
       };
     } catch (err) {
-      console.error(`[chat] listSavedSessions: failed to read ${e.name}`, err);
+      console.error(`[chat] listSavedSessions: failed to read ${name}`, err);
       return null;
     }
   });
@@ -1071,20 +1085,15 @@ export async function batchRestoreSessions(
 }
 
 /** 将磁盘上的会话文件标记为已删除。workspace-session-ownership-rework：
- *  墓碑写工作区会话根（归属即存储位置，无 workspace 字段）。 */
+ *  墓碑写工作区会话根（归属即存储位置，无 workspace 字段）。
+ *  seam：delete_volume（D-2 语义动作——默认 provider 墓碑重写 deleted:true，
+ *  消费方过滤契约依赖此形态，行为字节不变；SQLite provider 可真删）。 */
 export async function deleteSessionFile(ctx: SessionContext, projectPath: string, sessionId: number): Promise<void> {
-  // 用删除标记覆盖 — listSavedSessions 会过滤掉这些
   try {
-    await kernelWriteFile(
-      `${workspaceSessionsDir(projectPath)}/${sessionId}.json`,
-      JSON.stringify({
-        id: sessionId,
-        deleted: true,
-        label: '',
-        messages: [],
-        savedAt: '',
-      }),
-    );
+    await sessionExecute('delete_volume', {
+      root: workspaceSessionsDir(projectPath),
+      id: String(sessionId),
+    });
   } catch (e) {
     console.error('[chat] deleteSessionFile failed:', e);
     showToast('删除案卷文件失败', 'error');
@@ -1472,6 +1481,8 @@ export async function exportSession(ctx: SessionContext): Promise<void> {
       filters: [{ name: 'Markdown', extensions: ['md'] }],
     });
     if (filePath) {
+      // 豁免（session-persistence-seam-wiring-plan 表 1.1 #9）：用户自选路径的
+      // .md 导出，非会话存储语义——直连 kernelWriteFile，不进 sessionExecute。
       await kernelWriteFile(filePath, md);
     }
   } catch {

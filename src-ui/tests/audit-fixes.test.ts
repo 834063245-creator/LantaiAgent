@@ -9,6 +9,20 @@
 // 拦 bridge + toolCallArgsOfBridge 翻信封）。
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { SessionPersistenceService } from '../src/composition/session-persistence-service';
+// 会话持久化 seam 装配（seam 接线 C 批 3）：scheduleAutoSave 落盘已换轨
+// sessionExecute——builtin provider 需在册（走 kernel-fs mock 内存盘）。
+// 只挂 sessionPersistence service + builtin provider（本文件仅消费该 seam，
+// 不必 boot 全通道——composition-boot 全通道含 agentLoop/dynamicRunner 等
+// 与本文件 mock 面无关联的插件，避免 mock 环境纠缠）。
+import { Context } from '../src/cordis';
+import { builtinSessionsPlugin } from '../src/plugins/builtin/sessions-builtin';
+
+{
+  const root = new Context();
+  new SessionPersistenceService(root);
+  await root.plugin(builtinSessionsPlugin);
+}
 
 // 顶层触发 rpc-contract 的 vi.mock 工厂求值：vitest 的 vi.mock 惰性执行于
 // 首个 import 目标模块时——本文件用例全动态 import，若不在文件加载期触发，
@@ -184,11 +198,22 @@ describe('#10 scheduleAutoSave per-panel isolation', () => {
   afterEach(() => {
     vi.useRealTimers();
   });
-
   it('panel A timer is NOT cleared when panel B schedules', async () => {
     const { scheduleAutoSave } = await import('../src/ui/chat-session');
     const { getChatStore } = await import('../src/ui/chat-store');
     const { agentSessionState } = await import('../src/agent/agent-session-state');
+    // 用例 1 的 vi.resetModules 已重置模块缓存——动态 import 的 service 是新
+    // 实例（无 provider）。此处动态 import 注册（builtin provider 走 kernel-fs
+    // mock 内存盘；dup 注册拒绝：同模块实例重复跑本用例只注册一次）。
+    const { SessionPersistenceService } = await import('../src/composition/session-persistence-service');
+    const { builtinSessionsProvider } = await import('../src/plugins/builtin/sessions-builtin');
+    const { Context } = await import('../src/cordis');
+    const { activeSessionPersistenceProviders } = await import('../src/composition/session-persistence-service');
+    if (activeSessionPersistenceProviders().length === 0) {
+      const root = new Context();
+      const svc = new SessionPersistenceService(root);
+      svc.register(builtinSessionsProvider);
+    }
 
     const storeA = 'panel-A';
     const storeB = 'panel-B';

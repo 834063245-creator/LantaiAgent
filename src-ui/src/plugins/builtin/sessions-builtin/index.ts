@@ -43,17 +43,14 @@ async function executeViaKernel(action: SessionPersistAction, args: Record<strin
       }
     }
     case 'list_volumes': {
-      let names: string[] = [];
-      try {
-        const entries = await kernelListDirectory(root, false);
-        // provider 侧滤目录；保留 _active.json 不过滤（消费方各自 parse id /
-        // 墓碑判别——scanMaxSessionId 与 listSavedSessions 现过滤 _active.json，
-        // 语义在消费方保真，不在本层）
-        names = entries.filter((e) => !e.is_dir).map((e) => e.name);
-      } catch {
-        /* 目录缺席/读失败 = 空（首启常态） */
-      }
-      return JSON.stringify(names);
+      // provider 滤目录；保留 _active.json 不过滤（消费方各自 parse id /
+      // 墓碑判别——scanMaxSessionId 与 listSavedSessions 现过滤 _active.json，
+      // 语义在消费方保真，不在本层）。目录缺席由 fs 层返回空集（不抛——
+      // 与 kernel-fs mock「read_dir Err → 空」同语义）；**真错误上抛**让消费方
+      // catch 降级（restoreCanvasSpread 的「列表失败 = 不剪枝」保守语义依赖
+      // 失败可见——吞成 [] 会把失败误判为空目录而误剪幽灵卷）。
+      const entries = await kernelListDirectory(root, false);
+      return JSON.stringify(entries.filter((e) => !e.is_dir).map((e) => e.name));
     }
     case 'save_volume': {
       await kernelWriteFile(`${root}/${id}.json`, String(args.data ?? ''));

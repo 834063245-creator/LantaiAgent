@@ -168,6 +168,9 @@ async function switchWorkspace(path?: string, opts?: { graphEngine?: boolean | n
     // 恢复/剪枝/发号对账全走错误兜底路径；这里 await 建目录（create_dir_all
     // 幂等），使随后的 autoRestoreLastSession 读路径确定性（编号对账可靠）。
     // 建目录失败不阻断进工作区——写路径仍会按需创建父目录，失败 console 可见。
+    // 豁免（session-persistence-seam-wiring-plan 表 1.1 #10）：工作区脚手架结构
+    // op——壳行执行时序早于插件装载，不可依赖 seam；默认 provider save 走
+    // kernelWriteFile 自带父目录自动创建兜底。
     try {
       await kernelCreateDirectory(`${folder.replace(/[\\/]+$/, '')}/.lantai/sessions`);
     } catch (e) {

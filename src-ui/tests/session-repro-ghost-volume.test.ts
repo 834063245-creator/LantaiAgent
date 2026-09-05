@@ -28,6 +28,11 @@ import { ChatCore } from '../src/app/chat/chat-core';
 import { useShellStore } from '../src/app/shell-store';
 import * as Session from '../src/ui/chat-session';
 import { msgStoreFor } from '../src/ui/chat-store';
+import { ensureProductionChannelsBooted } from './helpers/composition-boot';
+
+// 会话持久化 seam 装配（seam 接线 C 批 3）：卷 CRUD 已换轨 sessionExecute——
+// builtin provider 需在册（走 kernel-fs mock 内存盘）。
+await ensureProductionChannelsBooted();
 
 describe('实机复现：冷启动装配后点开旧卷不得凭空多卷', () => {
   let panel: ChatCore;

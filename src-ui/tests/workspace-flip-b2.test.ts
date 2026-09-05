@@ -23,6 +23,11 @@ vi.mock('../src/rpc-contract', async (importOriginal) => {
 });
 
 import { scanMaxSessionId } from '../src/ui/chat-session';
+import { ensureProductionChannelsBooted } from './helpers/composition-boot';
+
+// 会话持久化 seam 装配（seam 接线 C 批 3）：scanMaxSessionId 已换轨
+// sessionExecute——builtin provider 需在册（走 kernel-fs mock 内存盘）。
+await ensureProductionChannelsBooted();
 
 describe('工作区会话根路由（workspace-session-ownership-rework）', () => {
   beforeEach(() => {

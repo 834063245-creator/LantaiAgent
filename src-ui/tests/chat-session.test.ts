@@ -78,6 +78,12 @@ vi.mock('gsap', () => {
 
 vi.mock('highlight.js', () => ({ default: { highlightElement: vi.fn() } }));
 
+// 会话持久化 seam 装配（seam 接线 C 批 3）：会话卷 CRUD 已换轨 sessionExecute
+// ——builtin provider 需在册（走 bridge.mock → fs_cap → mockInvoke 原链）。
+import { ensureProductionChannelsBooted } from './helpers/composition-boot';
+
+await ensureProductionChannelsBooted();
+
 import { ChatCore } from '../src/app/chat/chat-core';
 import { createBlock } from '../src/paper/block-model';
 import { makeStrip } from '../src/paper/selection';

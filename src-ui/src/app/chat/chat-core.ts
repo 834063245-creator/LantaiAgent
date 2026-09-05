@@ -20,9 +20,9 @@ import { GoalManager, type GoalRecord } from '../../agent/goal-manager';
 import { log } from '../../agent/logger';
 import type { RuntimePort } from '../../agent/runtime/types';
 import { useShellStore } from '../../app/shell-store';
+import { sessionExecute } from '../../composition/session-persistence-service';
 import type { ToolSchema } from '../../provider/types';
 import { apiErrorSummary } from '../../provider/types';
-import { kernelListDirectory } from '../../rpc-contract';
 import type { StarGraph } from '../../scene/graph-types';
 import { askSessionOf, useAskStore } from '../../state/ask-store';
 import { useBgAlertStore } from '../../state/bg-alert-store';
@@ -732,10 +732,15 @@ export class ChatCore {
     // P1-1（2026-09-02）：剪枝改为「文件名级 + 读结果级」双面——不再调
     // listSavedSessions（全量读 T 个卷文件）。文件名在目录里 = 存在；读阶段
     // readVolumeData null = 墓碑/空卷/坏 JSON（从摊开集剪掉，不弹失败 toast）。
-    const sessionsDir = `${workspace.replace(/[\\/]+$/, '')}/.lantai/sessions`;
-    let dirEntries: import('../../rpc-contract').DirEntry[] | null = null;
+    // seam（C 定案）：目录枚举换 list_volumes（provider 滤目录——文件名数组，
+    // 目录缺席/读失败 = 不剪枝的保守语义保留）。
+    // root 拼接收敛：workspaceSessionsDir（chat-session 唯一权威——消费方复用）
+    const sessionsDir = Session.workspaceSessionsDir(workspace);
+    let volumeNames: string[] | null = null;
     try {
-      dirEntries = await kernelListDirectory(sessionsDir, false);
+      const raw = await sessionExecute('list_volumes', { root: sessionsDir });
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(parsed)) volumeNames = parsed.filter((n): n is string => typeof n === 'string');
     } catch {
       /* 目录缺席/列表失败 = 不剪枝 */
     }
@@ -769,13 +774,13 @@ export class ChatCore {
     const readBySid = new Map<number, import('../../ui/chat-session').StoredSession | null>();
     for (const { sid, data } of readResults) readBySid.set(sid, data);
 
-    if (dirEntries) {
+    if (volumeNames) {
       // 文件名级存在性（剪枝面 1）：摊开/钉源卷的 .json 文件不在目录里 = 幽灵。
       // #1 修复的保守语义保留：目录列表失败 = 不剪枝（避免误删真实卷）。
       const fileIds = new Set<number>();
-      for (const e of dirEntries) {
-        if (e.is_dir || !e.name.endsWith('.json') || e.name.startsWith('_')) continue;
-        const n = parseInt(e.name.replace('.json', ''), 10);
+      for (const name of volumeNames) {
+        if (!name.endsWith('.json') || name.startsWith('_')) continue;
+        const n = parseInt(name.replace('.json', ''), 10);
         if (!Number.isNaN(n)) fileIds.add(n);
       }
       // 读结果级有效性（剪枝面 2）：文件在但 readVolumeData null = 墓碑/空卷——
