@@ -18,7 +18,7 @@ import { parseGitLogCommits, parseGitStatusPorcelain } from '../git-porcelain';
 import { stickyCwdOf } from '../session-context';
 import type { Tool, ToolExecutor } from '../tool';
 import { defineTool, toInputJsonSchema } from './define-tool';
-import { kernelManifestOf, withProgressStream } from './manifest-tools';
+import { withProgressStream } from './manifest-tools';
 
 /** fs 域消费面（平台化 Phase 2 · D11，2026-08-27）：经 ctx.fs 注册表解析 provider
  *  （后注册胜取默认），默认 builtin/rust-fs 借注入的 dispatch 腰转发既有 Rust 命令。

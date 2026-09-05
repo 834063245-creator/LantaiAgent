@@ -12,7 +12,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { Tool, ToolExecutor } from '../src/agent/tool';
-import { createSearchTools, createWebTools, kernelManifestOf } from '../src/agent/tools/manifest-tools';
+import { createSearchTools, createWebTools } from '../src/agent/tools/manifest-tools';
 
 function captureExec(reply = '{"ok":1}'): {
   calls: Array<{ name: string; args: Record<string, unknown> }>;
@@ -224,9 +224,5 @@ describe('web 域模型族（R4-4：builtin.web 退役，zod 真源 + web_cap �
     expect(calls).toHaveLength(1);
     expect(calls[0].name).toBe('web_cap');
     expect(calls[0].args).toEqual({ action: 'web_fetch', url: 'https://example.com', _agent_id: 'sub-2' });
-  });
-
-  it('未知插件 id 响亮报错', () => {
-    expect(() => kernelManifestOf('builtin.nope')).toThrow(/不在生成物清单内/);
   });
 });

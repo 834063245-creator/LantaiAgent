@@ -20,7 +20,6 @@
 import { z } from 'zod';
 import type { Tool, ToolExecutor } from '../tool';
 import { toInputJsonSchema } from './define-tool';
-import { KERNEL_MANIFESTS } from './kernel-manifests.generated';
 import { assembleSearchOutput, parseScanOutput, type SearchToolArgs, toScanParams } from './search-assembly';
 
 /** tool_call:progress 自持订阅（P2-4 §4.2，kernel-plugin-runtime 设计件）：
@@ -44,56 +43,6 @@ export async function withProgressStream<T>(
   } finally {
     unlisten();
   }
-}
-
-/** manifest 单工具声明（生成物镜像的类型面）。 */
-export interface KernelToolSpec {
-  name: string;
-  description: string;
-  schema: Record<string, unknown>;
-  read_only?: boolean;
-  /** 权限声明（Rust 侧 dispatch adapter 构造用；非模型面——TS 消费面不读它，
-   *  类型面仅为生成物整包序列化镜像的字段覆盖）。 */
-  permission?: {
-    family: string;
-    path_key?: string;
-    command_key?: string;
-    subcommand?: string;
-  };
-}
-
-/** 内核插件 manifest（生成物镜像的类型面）。 */
-export interface KernelToolManifest {
-  id: string;
-  version: string;
-  trust: 'system' | 'official' | 'third_party';
-  description?: string;
-  capabilities?: string[];
-  tools: KernelToolSpec[];
-}
-
-export function kernelManifestOf(id: string): KernelToolManifest {
-  const manifest = KERNEL_MANIFESTS.find((m) => m.id === id);
-  if (!manifest) throw new Error(`manifest-tools: 内核插件 '${id}' 不在生成物清单内`);
-  return manifest;
-}
-
-/** 从 manifest 生成 Tool——名称/描述/schema 字节 = manifest 字节（convergence 纪律）。 */
-export function manifestTool(manifestId: string, toolName: string, exec: ToolExecutor): Tool {
-  const manifest = kernelManifestOf(manifestId);
-  const spec = manifest.tools.find((t) => t.name === toolName);
-  if (!spec) throw new Error(`manifest-tools: 插件 '${manifestId}' 无工具 '${toolName}'`);
-  const parameters = spec.schema;
-  return {
-    name: () => spec.name,
-    description: () => spec.description,
-    parameters: () => parameters,
-    readOnly: () => spec.read_only ?? false,
-    execute: (args, onProgress, signal) =>
-      withProgressStream(args, onProgress, () =>
-        exec('tool_call', { plugin: manifestId, tool: spec.name, args }, onProgress, signal),
-      ),
-  };
 }
 
 /** search 域工具族（R2 试点）——schema 真源 = 下方 zod 转录（R2-d(1)，

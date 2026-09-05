@@ -143,11 +143,11 @@ meta：`_agent_id`/`_owner_id` 已是 snake，bridge.rpc() 转换幂等原样到
 
 | 批 | 内容 | 验收 |
 |---|---|---|
-| R4-1 | D4 设计件（本件）+ browser_cap 口建立（业务函数自插件迁入为单一实现，插件 execute 委托口内——不退役）+ rpc.rs 分支/shape + platform_boundary + 口内 action 表单测 | cargo 全绿；插件行为零漂移（委托 = 同一实现） |
-| R4-2 | browser 模型族 37 工具 zod 转录 + browser_cap 直呼（camel→snake 表）+ builtin.browser 整目录退役 + 生成物（kernel-manifests.generated / gen-kernel-manifest browser DOMAIN / frontend-rpc-contract.md）+ rpc-contract 契约 + 测试换轨 | vitest + convergence 双档 + biome + build + doc-sync 全绿；cargo 全绿 |
-| R4-3 | uia_cap 口 + uia 换轨 + 17 工具 zod + builtin.uia 整目录退役 + 生成物 + 测试换轨 | 同 R4-2 |
-| R4-4 | 小面清偿（web/editor/constraints/pty/lsp 立口换轨或落账余量） | 按容量如实落账 |
-| R4-5 | R5 可先行部分 + v3/c3 执行序勾销落账 | — |
+| R4-1 | D4 设计件（本件）+ browser_cap 口建立（业务函数自插件迁入为单一实现，插件 execute 委托口内——不退役）+ rpc.rs 分支/shape + platform_boundary + 口内 action 表单测 | ✅ e8e9fb6d（cargo 433+boundary 1；插件委托零漂移） |
+| R4-2 | browser 模型族 37 工具 zod 转录 + browser_cap 直呼（camel→snake 表）+ builtin.browser 整目录退役 + 生成物 + rpc-contract 契约 + 测试换轨 | ✅ b5540255（convergence 双档零漂移；全门禁绿） |
+| R4-3 | uia_cap 口 + uia 换轨 + 17 工具 zod + builtin.uia 整目录退役 + 生成物 + 测试换轨 | ✅ 506dc7e3（立口与退役同批——desktop 面键本就 snake，信封无过渡收益；全门禁绿） |
+| R4-4 | 小面清偿：web/constraints/pty/lsp 四口 + builtin.* 四插件退役（a3eec0ee）+ editor_cap 收官 + 信封死面清偿（f6b74343）——**四族 tool_call 信封 TS/Rust 业务消费面清零，出厂插件清单空** | ✅ 全门禁绿；tool_call 残余面仅剩 Rust 脚手架本体（R5 主体） |
+| R4-5 | R5 可先行部分（TS 镜像整删 + 生成器/脚本/doc-sync 登记清 + 信封翻译死表清）+ v3/c3 执行序勾销落账 | ✅ 见 v3 §5 R4/R5 行注记 |
 
 ## 7. 自查清单（设计断言 × 代码验证）
 
