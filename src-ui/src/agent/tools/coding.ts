@@ -14,7 +14,6 @@
 import { z } from 'zod';
 import { activeFsProviders, type FsAction } from '../../composition/fs-service';
 import { activeShellProviders, type ShellAction } from '../../composition/shell-service';
-import { FS_PLUGIN_TOOL_BY_ACTION } from '../../plugins/builtin/fs-builtin';
 import { parseGitLogCommits, parseGitStatusPorcelain } from '../git-porcelain';
 import { stickyCwdOf } from '../session-context';
 import type { Tool, ToolExecutor } from '../tool';
@@ -98,9 +97,8 @@ export interface CodingToolsUI {
 // mkdir/move/rename/delete）schema 真源回 TS zod——逐键等价于退役前 manifest
 // 的 schema 发射（键名 camelCase/snake_case 模型面契约、description 字节，
 // convergence 快照 stableStringify 字典序下零漂移）。
-// edit 仍经 manifest 镜像（builtin.editor 未退役——见 fsManifestTool）；
-// constraints 两工具 R4-4 起 zod 真源（constraintsCapTool，经 provider seam
-// → constraints_cap 直呼）。
+// edit/constraints 全部 R4-4/4b 起 zod 真源（经 provider seam →
+// editor_cap / constraints_cap 直呼）——manifest 镜像消费面清零。
 // ═══════════════════════════════════════════════════════════════
 
 /** read_file_content schema——manifest 字节转录（filePath/offset/limit）。 */
@@ -245,26 +243,37 @@ function fsCapTool(action: FsAction, localName: string, exec: ToolExecutor): Too
   };
 }
 
-/** manifest 驱动的 fs 域工具（kernel-plugin-runtime P2-2 遗留面）——仅
- *  edit（builtin.editor 未退役——R5 拆信封前最后在册插件，仍从镜像取
- *  schema/description）；schema/description/readOnly = manifest 字节；
- *  TS 工具名保持历史名。 */
-function fsManifestTool(action: FsAction, localName: string, exec: ToolExecutor): Tool {
-  const target = FS_PLUGIN_TOOL_BY_ACTION[action];
-  if (!target) throw new Error(`coding: 动作 '${action}' 无 manifest 信封目标（fs 域收口后应走 fsCapTool zod 面）`);
-  const manifest = kernelManifestOf(target.plugin);
-  const spec = manifest.tools.find((t) => t.name === target.tool);
-  if (!spec) throw new Error(`manifest-tools: 插件 '${target.plugin}' 无工具 '${target.tool}'`);
-  const parameters = spec.schema;
-  return {
-    name: () => localName,
-    description: () => spec.description,
-    parameters: () => parameters,
-    readOnly: () => spec.read_only ?? false,
-    execute: (args, onProgress, signal) =>
-      withProgressStream(args, onProgress, () => fsExecute(action, args, exec, onProgress, signal)),
-  };
-}
+// ═══════════════════════════════════════════════════════════════
+// editor 域模型族 zod 真源（kernel-capability-d4-handle-design.md R4-4b 小面
+// 清偿收官，2026-09-05）：builtin.editor 插件退役（R5 拆信封前最后在册），
+// edit_file schema 真源回 TS zod（逐键等价退役前 manifest 发射，含
+// _forceGate 模型面声明键——INVARIANTS #9）；execute 经 fsExecute → provider
+// seam（D11 开放面不动）→ builtinFsProvider 换 editor_cap 直呼。
+// ═══════════════════════════════════════════════════════════════
+
+const editFileSchema = z.object({
+  filePath: z.string().describe('Absolute path to the file to modify'),
+  oldString: z
+    .string()
+    .describe('The exact text to find and replace (must match the file exactly, including whitespace)'),
+  newString: z.string().describe('The text to replace it with (must be different from oldString)'),
+  replaceAll: z
+    .boolean()
+    .default(false)
+    .describe(
+      'Replace all occurrences instead of just the first (default: false). Use when the old_string appears multiple times.',
+    ),
+  _forceGate: z
+    .boolean()
+    .optional()
+    .describe(
+      'Bypass the architecture gate for HIGH-risk writes. Set to true only after confirming safety via trace_impact.',
+    ),
+});
+
+/** editor 域模型面 description（manifest 字节转录）。 */
+const EDITOR_CAP_DESCRIPTION =
+  'Perform exact string replacement in a file. The old_string must match exactly (including indentation and whitespace) and must be unique in the file (unless replace_all is true). This is the preferred way to modify code — safer and cheaper than rewriting the entire file.';
 
 // ═══════════════════════════════════════════════════════════════
 // constraints 域模型族 zod 真源（kernel-capability-d4-handle-design.md R4-4
@@ -313,6 +322,21 @@ function constraintsCapTool(
   };
 }
 
+/** editor 域模型族工具（R4-4b 起 zod 真源，不查 builtin.editor 镜像）；
+ *  TS 工具名保持历史名（模型面契约）；execute 经 provider seam
+ *  （edit 动作 → builtinFsProvider → editor_cap 直呼）。 */
+function editCapTool(localName: string, exec: ToolExecutor): Tool {
+  const parameters = toInputJsonSchema(editFileSchema.passthrough());
+  return {
+    name: () => localName,
+    description: () => EDITOR_CAP_DESCRIPTION,
+    parameters: () => parameters,
+    readOnly: () => false,
+    execute: (args, onProgress, signal) =>
+      withProgressStream(args, onProgress, () => fsExecute('edit', args, exec, onProgress, signal)),
+  };
+}
+
 /** fs 域工具族（S1-2 从 createCodingTools 迁出；fs 域收口后 8 模型族 zod 真源
  *  + edit/constraints 仍 manifest 驱动）。
  *  声明序 = 领域合并/装配的字节契约序——勿重排。 */
@@ -321,7 +345,7 @@ export function createFsTools(exec: ToolExecutor): Tool[] {
   return [
     fsCapTool('read', 'read_file_content', exec),
     fsCapTool('write', 'write_file', exec),
-    fsManifestTool('edit', 'edit_file', exec),
+    editCapTool('edit_file', exec),
     fsCapTool('list', 'list_directory', exec),
     constraintsCapTool('read_constraints', 'read_constraints', readConstraintsSchema, exec),
     constraintsCapTool('write_constraints', 'write_constraints', writeConstraintsSchema, exec),

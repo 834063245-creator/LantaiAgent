@@ -498,8 +498,6 @@ pub(crate) async fn uia_cap(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     /// 17 动作全集（= 退役前 builtin.uia manifest.tools 名单，D4-1）。
     const ACTIONS: &[&str] = &[
         "desktop_probe",

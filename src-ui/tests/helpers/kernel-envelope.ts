@@ -72,18 +72,11 @@ export function toolCallArgsOfBridge(
 //    照 parallel-subagent-bugs.test.ts 的 raw 信封断言处理
 
 /** 旧名翻译表：'plugin.tool' → 旧 RPC 方法名（恒等映射为主）。
- *  （builtin.git 16 行已随 git 域收口退役——2026-09-05，R3-c：模型族/内部
- *  消费全量换 git_cap 直呼后无测试再翻 builtin.git 信封；builtin.fs 同款
- *  先例 a107e4e2。builtin.shell 7 行已随 shell 域收口退役——2026-09-05，
- *  R3-d：模型族/内部消费全量换 process_cap 直呼后无测试再翻 builtin.shell
- *  信封。） */
-const LEGACY_METHOD_OF: Record<string, string> = {
-  // builtin.editor（P2-1）
-  'builtin.editor.edit_file': 'edit_file',
-  // builtin.constraints（P2-1）
-  'builtin.constraints.read_constraints': 'read_constraints',
-  'builtin.constraints.write_constraints': 'write_constraints',
-};
+ *  （各域条目已随各自收口逐批退役：builtin.git 16 行 R3-c / builtin.fs 同款
+ *  a107e4e2 / builtin.shell 7 行 R3-d / builtin.editor 1 行 + builtin.constraints
+ *  2 行 R4-4/4b——2026-09-05 全部能力口直呼后无测试再翻信封。当前空表：
+ *  本 helper 仅存 unpackToolCall/toolCallArgsOf 通用解包面。） */
+const LEGACY_METHOD_OF: Record<string, string> = {};
 
 /** camelCase → snake_case（浅层，只动顶层键；与 bridge rpc() 同款 ponytail 正则）。 */
 const snakeKey = (k: string) => k.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase();

@@ -58,7 +58,9 @@ pub struct ToolPermission {
 }
 
 /// 已知权限家族全集（registry 装载期校验 manifest 声明用）。
-pub const KNOWN_FAMILIES: &[&str] = &["Read", "Edit", "Bash", "Git"];
+/// （R4-4b 后无出厂插件——仅 register 校验面与单测消费；R5 随脚手架拆除。）
+#[allow(dead_code)]
+pub(crate) const KNOWN_FAMILIES: &[&str] = &["Read", "Edit", "Bash", "Git"];
 
 /// 家族名字符串 → 静态家族名。未知家族返回 None（装载期拒绝）。
 pub fn parse_family(family: &str) -> Option<&'static str> {
@@ -89,23 +91,6 @@ pub struct ToolManifest {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn manifest_json_parses_and_matches_id() {
-        // 出厂锚（builtin.fs 已随 fs 域收口退役——2026-09-04，kernel-capability-
-        // c3-design.md R3-b 后 UI/模型族全量换 fs_cap 能力口直呼，插件信封无
-        // 消费方）。锚改指向 builtin.editor——同为 filesystem_read/write 能力 +
-        // 只读 object schema 工具，锚语义等价。
-        let m: ToolManifest =
-            serde_json::from_str(include_str!("editor/manifest.json")).expect("出厂 manifest 是编译期静态资源");
-        assert_eq!(m.id, "builtin.editor");
-        assert_eq!(m.trust, TrustLevel::System);
-        assert_eq!(m.capabilities, vec!["filesystem_read".to_string(), "filesystem_write".to_string()]);
-        let tool = m.tools.iter().find(|t| t.name == "edit_file").expect("edit_file 在清单内");
-        assert!(!tool.read_only);
-        // 契约锚：schema 必须是 object 形（模型面）。
-        assert_eq!(tool.schema.get("type").and_then(|v| v.as_str()), Some("object"));
-    }
 
     #[test]
     fn trust_level_serializes_snake_case() {

@@ -17,9 +17,9 @@ use super::manifest::ToolManifest;
 pub enum ToolError {
     /// 参数缺失/非法（manifest schema 之外的契约违规）。
     InvalidArgs(String),
-    /// 权限/沙箱拒绝。
-    Permission(String),
     /// 工具业务失败。
+    /// （Permission 变体已随 R4-4b builtin.* 插件全退役删除——能力口错误串
+    ///  自带「权限拒绝: 」前缀，不再经 ToolError 折叠。）
     Tool(String),
 }
 
@@ -27,13 +27,16 @@ impl ToolError {
     pub fn message(&self) -> String {
         match self {
             ToolError::InvalidArgs(m) => m.clone(),
-            ToolError::Permission(m) => format!("权限拒绝: {m}"),
             ToolError::Tool(m) => m.clone(),
         }
     }
 }
 
 /// 内核提供给插件的受限能力上下文。
+/// （R4-4b 后出厂插件清单为空——本结构仅剩 dispatch 构造面，字段读取面随
+///  插件退役消失；整个 ToolPlugin/ToolContext 脚手架收在 R5 拆除，届时
+///  本警告面随之消亡。）
+#[allow(dead_code)]
 pub struct ToolContext<'a> {
     /// Agent 归属（显式传参，无共享状态——并行子 Agent 不串扰，见 INVARIANTS/权限引擎纪律）。
     pub agent_id: Option<String>,
@@ -44,32 +47,6 @@ pub struct ToolContext<'a> {
     pub call_id: Option<String>,
     pub(crate) state: &'a tauri::State<'a, crate::WorkspaceState>,
     pub(crate) app: &'a tauri::AppHandle,
-}
-
-impl<'a> ToolContext<'a> {
-    /// 工具级权限过闸（与旧命令 `check_permission` 同路径——Ask 事件 + 回包等待）。
-    /// 插件内的二次真权用：如 web 域的 WebFetchTool（域名规则 + SSRF）。
-    pub async fn check_permission(&self, tool: &dyn crate::permissions::Tool) -> Result<(), String> {
-        let perm_ctx = crate::utils::get_ctx(self.state)?;
-        crate::utils::check_permission(tool, &perm_ctx, self.app).await
-    }
-
-    /// 增量输出型工具的进度发射（P2-4 §4.1）：`tool_call:progress` 事件按
-    /// `_callId` 键控回推（与 shell 自有的 shell:output 通道正交——shell 不迁，
-    /// 见 §4.3 裁决）。call_id 为 None（用户路径 / 无关联）时 no-op。
-    /// TS 侧由 manifest 工具的 withProgressStream 自持订阅转发到 onProgress。
-    // 首个生产消费者 = editor 大 diff 读 / fs 长扫描等增量输出型工具（P2-4
-    // 落地机制，消费者随后续需求进场）。
-    #[allow(dead_code)]
-    pub fn emit_progress(&self, chunk: &str) {
-        use tauri::Emitter;
-        if let Some(call_id) = &self.call_id {
-            let _ = self.app.emit(
-                "tool_call:progress",
-                serde_json::json!({ "callId": call_id, "chunk": chunk }),
-            );
-        }
-    }
 }
 
 /// 进程内 Rust 插件接口。工具业务的家；内核只做注册表/权限/审计/分派。
@@ -231,16 +208,3 @@ impl crate::permissions::Tool for PluginToolAdapter {
     }
 }
 
-// ── args 提取辅助（manifest 驱动工具的参数抽取，键 = schema 声明键）──
-
-pub(crate) fn arg_str(args: &serde_json::Value, key: &str) -> Option<String> {
-    args.get(key).and_then(|v| v.as_str()).map(String::from)
-}
-
-pub(crate) fn arg_bool(args: &serde_json::Value, key: &str) -> Option<bool> {
-    args.get(key).and_then(|v| v.as_bool())
-}
-
-pub(crate) fn arg_usize(args: &serde_json::Value, key: &str) -> Option<usize> {
-    args.get(key).and_then(|v| v.as_u64()).map(|n| n as usize)
-}

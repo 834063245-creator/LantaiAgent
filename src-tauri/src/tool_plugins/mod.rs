@@ -7,12 +7,12 @@
 //! browser 及 web/constraints/pty/lsp 等工具域已按能力口收口（search→search_cap /
 //! fs→fs_cap / git→git_cap / shell→process_cap，kernel-capability-c3-design.md；
 //! browser→browser_cap / uia→uia_cap / web→web_cap / constraints→constraints_cap /
-//! pty→pty_cap / lsp→lsp_cap，kernel-capability-d4-handle-design.md）或以
-//! ToolPlugin 形态注册（editor——R5 拆信封前最后在册插件）。执行流：
+//! pty→pty_cap / lsp→lsp_cap / editor→editor_cap，kernel-capability-d4-handle-
+//! design.md）。ToolPlugin 出厂清单已空（R5 拆 registry/manifest 脚手架）。
+//! 执行流（残余动态注册路径）：
 //! 查注册表 → 启用校验（信任分级）→ 工具存在 → 权限引擎（PluginToolAdapter）→
 //! 插件 execute（内部走既有路径级真权）→ 返回。
 
-pub mod editor;
 pub mod manifest;
 pub mod plugin;
 pub mod registry;

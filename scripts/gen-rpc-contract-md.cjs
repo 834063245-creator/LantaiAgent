@@ -35,6 +35,7 @@ const SECTIONS = [
   '能力口（constraints_cap）',
   '能力口（pty_cap）',
   '能力口（lsp_cap）',
+  '能力口（editor_cap）',
   'MCP / ACP stdio 桥',
   '身份认证 / 权限',
   '插件安装通道',

@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-09-05T10:27:10.227Z
-> 方法总数：55（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-09-05T11:00:17.472Z
+> 方法总数：56（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -87,11 +87,17 @@
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
+| `editor_cap` | action | is_agent, agent_id, _agent_id | 字符串 |
+
+## 能力口（pty_cap）
+
+| 方法 | 必选参数 | 可选参数 | 返回 |
+|------|----------|----------|------|
 | `protocol_bridge_spawn` | id, command, args | — | 字符串 |
 | `protocol_bridge_write` | id, line | — | 字符串 |
 | `protocol_bridge_kill` | id | — | 字符串 |
 
-## 能力口（pty_cap）
+## 能力口（lsp_cap）
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
@@ -102,7 +108,7 @@
 | `credential_delete` | provider | — | `null`（unit） |
 | `llm_proxy_port` | — | — | 字符串 |
 
-## 能力口（lsp_cap）
+## 能力口（editor_cap）
 
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|

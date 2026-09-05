@@ -77,13 +77,13 @@ describe('edit/rename 透传 _agent_id（worktree 路由）', () => {
     });
 
     expect(calls).toHaveLength(1);
-    // P2-1 起 edit 动作经 tool_call 信封寻址 builtin.editor.edit_file——
-    // 守护点不变：_agent_id 必须随信封 args 原样透传（worktree 路由）。
-    expect(calls[0].name).toBe('tool_call');
-    const env = calls[0].args as { plugin?: string; tool?: string; args?: { _agent_id?: string } };
-    expect(env.plugin).toBe('builtin.editor');
-    expect(env.tool).toBe('edit_file');
-    expect(env.args?._agent_id).toBe('agent-123');
+    // R4-4b 起 edit 动作经 editor_cap 直呼（builtin.editor 信封退役）——
+    // 守护点不变：_agent_id 必须原样透传（worktree 路由）。
+    expect(calls[0].name).toBe('editor_cap');
+    const env = calls[0].args as { action?: string; file_path?: string; _agent_id?: string };
+    expect(env.action).toBe('edit_file');
+    expect(env.file_path).toBe('D:/p/a.ts');
+    expect(env._agent_id).toBe('agent-123');
   });
 
   it('rename_file 保留 _agent_id', async () => {
@@ -125,12 +125,12 @@ describe('edit/rename 透传 _agent_id（worktree 路由）', () => {
     });
 
     expect(calls).toHaveLength(1);
-    // P2-1 信封化后守护点不变：tool=edit_file 且 _agent_id 随 args 透传。
-    expect(calls[0].name).toBe('tool_call');
-    const env = calls[0].args as { plugin?: string; tool?: string; args?: { _agent_id?: string } };
-    expect(env.plugin).toBe('builtin.editor');
-    expect(env.tool).toBe('edit_file');
-    expect(env.args?._agent_id).toBe('agent-123');
+    // R4-4b 直呼后守护点不变：action=edit_file 且 _agent_id 原样透传。
+    expect(calls[0].name).toBe('editor_cap');
+    const env = calls[0].args as { action?: string; file_path?: string; _agent_id?: string };
+    expect(env.action).toBe('edit_file');
+    expect(env.file_path).toBe('D:/p/a.ts');
+    expect(env._agent_id).toBe('agent-123');
   });
 });
 
@@ -217,11 +217,10 @@ describe('R13 所有权不被领域工具绕过', () => {
   it('两个 fresh 子 Agent 并发 fs(edit) 同一文件：先写者落盘，后写者收到 [已拒绝]', async () => {
     const editCalls: string[] = [];
     const exec: ToolExecutor = async (name, args) => {
-      // P2-1 起 fs(edit) 经 tool_call 信封寻址 builtin.editor.edit_file。
-      const envelope = name === 'tool_call' ? (args as { tool?: string }) : null;
-      if (envelope?.tool === 'edit_file') {
-        const inner = (args as { args?: { filePath?: string } }).args;
-        editCalls.push(inner?.filePath ?? '');
+      // R4-4b 起 fs(edit) 经 editor_cap 直呼（builtin.editor 信封退役）。
+      const cap = name === 'editor_cap' ? (args as { file_path?: string }) : null;
+      if (cap) {
+        editCalls.push(cap.file_path ?? '');
         await new Promise((r) => setTimeout(r, 10)); // 拉宽交错窗口
       }
       return 'ok';

@@ -14,18 +14,15 @@
 // （builtin.editor——R5 拆信封前最后在册插件）。
 //
 // 双表职责：
-//   FS_PLUGIN_TOOL_BY_ACTION —— 留信封动作 → tool_call 目标（仅 edit）。
 //   FS_ACTION_TO_CAP —— execute 换轨动作→fs_cap action + 模型键→snake 键映射；
-//   constraints 两动作在本文件内直呼 constraints_cap（见 execute 分支）。
+//   constraints（R4-4）与 edit（R4-4b）两分支在本文件内直呼对应能力口。
 
 import type { FsAction, FsProvider } from '../../../composition/fs-service';
 import type { Context } from '../../../cordis';
 
-/** fs 动作 → tool_call 信封目标（仅 edit——builtin.editor，R4-4 起 constraints
- *  两动作已换 constraints_cap 直呼不经信封）。 */
-export const FS_PLUGIN_TOOL_BY_ACTION: Partial<Record<FsAction, { plugin: string; tool: string }>> = {
-  edit: { plugin: 'builtin.editor', tool: 'edit_file' },
-};
+// （FS_PLUGIN_TOOL_BY_ACTION 信封目标表已随 R4-4b builtin.editor 退役删除——
+//  edit 动作换 editor_cap 直呼（见 execute 分支）；tool_call 信封的 TS 消费面
+//  清零。）
 
 /** fs 动作 → fs_cap 能力口动作 + 模型面键（camelCase）→ fs_cap 顶层 snake 键。
  *  edit/constraints/write_constraints 不经 fs_cap：edit_file 属 builtin.editor
@@ -93,15 +90,27 @@ export const builtinFsProvider: FsProvider = {
         }
         return opts.dispatch('constraints_cap', out, opts.onProgress, opts.signal);
       }
-      // 留信封动作——按原动作路由（edit → builtin.editor）
-      const envelope = FS_PLUGIN_TOOL_BY_ACTION[action];
-      if (!envelope) throw new Error(`fs-builtin: 动作 '${action}' 无信封目标（fs 域收口后非信封动作应走 fs_cap）`);
-      return opts.dispatch(
-        'tool_call',
-        { plugin: envelope.plugin, tool: envelope.tool, args },
-        opts.onProgress,
-        opts.signal,
-      );
+      // edit（R4-4b）：editor_cap 直呼（builtin.editor 插件退役——模型面键
+      // filePath/oldString/newString/replaceAll 顶层映射 snake；meta（含
+      // _forceGate/_agent_id）原样透传）。
+      if (action === 'edit') {
+        const keys: Record<string, string> = {
+          filePath: 'file_path',
+          oldString: 'old_string',
+          newString: 'new_string',
+          replaceAll: 'replace_all',
+        };
+        const out: Record<string, unknown> = { action: 'edit_file' };
+        for (const [k, v] of Object.entries(args)) {
+          if (k.startsWith('_')) {
+            out[k] = v; // meta 透传（snake 已保留下划线）
+            continue;
+          }
+          out[keys[k] ?? k] = v;
+        }
+        return opts.dispatch('editor_cap', out, opts.onProgress, opts.signal);
+      }
+      throw new Error(`fs-builtin: 动作 '${action}' 无能力口目标（fs 域收口后非 edit/constraints 动作应走 fs_cap）`);
     }
     const raw = await opts.dispatch('fs_cap', toCapArgs(action, args), opts.onProgress, opts.signal);
     // read：fs_cap 返回 {path, content}——解包 content（旧 read_file_content

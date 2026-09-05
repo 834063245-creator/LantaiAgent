@@ -164,6 +164,8 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // lsp_cap：start = 会话 id / request = JSON 字符串（TS parseJson）/
         // stop = "null"——Text。
         "lsp_cap" => RpcResultShape::Text,
+        // editor_cap：edit_file = diff 快照文本——Text。
+        "editor_cap" => RpcResultShape::Text,
 
         // ── 身份认证/权限 ──
         // credential_get：Option<String> serde 序列化，恒 "key"/null JSON。
@@ -607,6 +609,24 @@ async fn dispatch_rpc(
             let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
             let agent_id = opt_str(&params, "agent_id").or_else(|| opt_str(&params, "_agent_id"));
             commands::lsp_cap::lsp_cap(action, params, is_agent, agent_id, &state, &app).await
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // editor_cap（R4-4b，kernel-capability-d4-handle-design.md）——edit_file
+        // 直呼入口（builtin.editor 插件随本批退役——R5 拆信封前最后在册插件，
+        // 本批后 PluginRegistry 出厂清单为空）。action = edit_file 一位；参数
+        // 顶层 snake（file_path/old_string/new_string/replace_all——TS execute
+        // 层映射，_forceGate 模型面声明键原样透传）。口内闸（仅 Agent 路径，
+        // dispatch adapter 原语义）：PluginToolAdapter Edit 家族 + 精确名
+        // plugin:builtin.editor.edit_file（用户既有规则不失义）；业务免检解析
+        // （闸在口内已过）+ checked_write_atomic 临界区原样。返回 Text。
+        // ═══════════════════════════════════════════════════════
+        "editor_cap" => {
+            let action = req_str(&params, "action", "editor_cap")?;
+            let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
+            let agent_id = opt_str(&params, "agent_id").or_else(|| opt_str(&params, "_agent_id"));
+            commands::editor_cap::editor_cap(action, params, is_agent, agent_id, &state, &app)
+                .await
         }
 
         // ═══════════════════════════════════════════════════════

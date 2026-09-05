@@ -1,62 +1,43 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT.
 
-//! builtin.editor 插件——内核插件运行时 Phase 2 首批（自 commands/editor.rs 拆出）。
-//! 工具面（名称/描述/schema）真源 = 同目录 manifest.json（双端共享）。
-//! edit_file 声明 `permission {family Edit, path_key filePath}`——工具级权限门
-//! 在 dispatch 侧 PluginToolAdapter（Edit 家族规则 + Ask + auto 白名单经家族回退），
-//! 插件内业务用免检解析（resolve_write_unchecked / read_text_unchecked），
-//! checked_write_atomic 进程级锁与命令内重试环原样保留。
+// editor 能力口（R4 小面清偿收官，kernel-capability-d4-handle-design.md §6
+// R4-4b）——edit_file 直呼入口，不经 tool_call 信封 / PluginRegistry
+// （builtin.editor 插件随本批退役——R5 拆信封前最后在册插件，本批后
+// PluginRegistry 出厂清单为空）。
+//
+// 口内闸（git_cap 同形——editor 的权限门本在 dispatch 侧 adapter）：Agent
+// 路径构造 PluginToolAdapter（Edit 家族 + 精确名寻址保留
+// plugin:builtin.editor.edit_file——用户既有规则不失义；path =
+// forward_map_path 物理路径，worktree 隔离规则经 adapter 内部 reverse-map）；
+// 用户路径零规则零弹窗（dispatch P2-0 §3.5 同款）。口内业务用免检解析
+// （resolve_write_unchecked / read_text_unchecked——闸已在口内过，插件原
+// 语义）；checked_write_atomic 进程级锁 + 命令内重试环原样保留
+// （INVARIANTS：并发安全在 Rust 临界区）。
+//
+// 键语言：manifest 键 = camelCase（filePath/oldString/newString/replaceAll），
+// 口收顶层 snake（file_path/old_string/new_string/replace_all）——映射在 TS
+// execute 层。_forceGate 为模型面 schema 声明键（架构门禁），executor 消费，
+// 原样透传不映射。返回 Text（diff 快照文本直通）。
 
 use serde_json::Value;
+use tauri::State;
 
-use super::manifest::ToolManifest;
-use super::plugin::{ToolContext, ToolError, ToolPlugin};
+use crate::tool_plugins::plugin::ToolError;
 
-pub struct EditorPlugin {
-    manifest: ToolManifest,
+/// 口内业务上下文（ToolContext 的 editor 面投影——业务只消费身份与 state）。
+pub(crate) struct EditorCtx<'a> {
+    pub is_agent: bool,
+    pub agent_id: Option<String>,
+    pub state: &'a State<'a, crate::WorkspaceState>,
 }
 
-impl EditorPlugin {
-    pub fn new() -> Self {
-        let manifest: ToolManifest = serde_json::from_str(include_str!("manifest.json"))
-            .expect("builtin.editor manifest 是随 exe 编译的静态资源");
-        Self { manifest }
-    }
+fn arg_str(args: &Value, key: &str) -> Option<String> {
+    args.get(key).and_then(|v| v.as_str()).map(String::from)
 }
 
-impl Default for EditorPlugin {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ToolPlugin for EditorPlugin {
-    fn id(&self) -> &str {
-        "builtin.editor"
-    }
-
-    fn manifest(&self) -> &ToolManifest {
-        &self.manifest
-    }
-
-    fn execute<'a>(
-        &'a self,
-        ctx: &'a ToolContext<'a>,
-        tool_name: &'a str,
-        args: Value,
-    ) -> std::pin::Pin<
-        Box<dyn std::future::Future<Output = Result<Value, ToolError>> + Send + 'a>,
-    > {
-        Box::pin(async move {
-            match tool_name {
-                "edit_file" => edit_file(ctx, &args).await,
-                other => Err(ToolError::InvalidArgs(format!(
-                    "builtin.editor: 未知工具 '{other}'"
-                ))),
-            }
-        })
-    }
+fn arg_bool(args: &Value, key: &str) -> Option<bool> {
+    args.get(key).and_then(|v| v.as_bool())
 }
 
 /// 进程级编辑写锁 — 序列化「重读校验 → 原子写入」临界区。
@@ -144,12 +125,12 @@ fn truncate_err_key(first_line: &str) -> &str {
 /// edit_file — 精确字符串替换 + 真实行级 diff（业务自 commands/editor.rs 原样
 /// 迁入；参数键改说 manifest schema 的语言，camelCase；解析走免检变体——
 /// Edit 家族工具级门已在 dispatch 侧过闸）。
-async fn edit_file(ctx: &ToolContext<'_>, args: &Value) -> Result<Value, ToolError> {
+async fn edit_file(ctx: &EditorCtx<'_>, args: &Value) -> Result<Value, ToolError> {
     let missing = |k: &str| ToolError::InvalidArgs(format!("edit_file: missing '{k}'"));
-    let file_path = super::plugin::arg_str(args, "filePath").ok_or_else(|| missing("filePath"))?;
-    let old_string = super::plugin::arg_str(args, "oldString").ok_or_else(|| missing("oldString"))?;
-    let new_string = super::plugin::arg_str(args, "newString").ok_or_else(|| missing("newString"))?;
-    let replace_all = super::plugin::arg_bool(args, "replaceAll").unwrap_or(false);
+    let file_path = arg_str(args, "filePath").ok_or_else(|| missing("filePath"))?;
+    let old_string = arg_str(args, "oldString").ok_or_else(|| missing("oldString"))?;
+    let new_string = arg_str(args, "newString").ok_or_else(|| missing("newString"))?;
+    let replace_all = arg_bool(args, "replaceAll").unwrap_or(false);
     let is_agent = ctx.is_agent;
     let agent_id = ctx.agent_id.as_deref();
     let state = ctx.state;
@@ -502,24 +483,59 @@ fn build_line_diff(before: &str, after: &str) -> String {
     out.trim_end().to_string()
 }
 
+// ═══════════════════════════════════════════════════════════════
+// 分派与入口
+// ═══════════════════════════════════════════════════════════════
+
+/// editor_cap 能力口分派（R4-4b 立口即唯一入口——builtin.editor 同批退役，
+/// 无信封过渡面）。action = 退役前 builtin.editor 唯一工具名 edit_file；
+/// 参数顶层 snake；返回文本（diff 快照）。
+pub(crate) async fn editor_cap(
+    action: String,
+    params: Value,
+    is_agent: bool,
+    agent_id: Option<String>,
+    state: &State<'_, crate::WorkspaceState>,
+    app: &tauri::AppHandle,
+) -> Result<String, String> {
+    if action != "edit_file" {
+        return Err(format!("editor_cap: 未知 action '{action}'"));
+    }
+    // 口内闸（仅 Agent 路径——dispatch adapter 原语义）：Edit 家族 + 精确名
+    // plugin:builtin.editor.edit_file（用户既有规则不失义）。
+    if is_agent {
+        let file_path = arg_str(&params, "file_path")
+            .ok_or_else(|| "edit_file: missing 'filePath'".to_string())?;
+        let perm_ctx = crate::utils::get_ctx(state)?;
+        let physical =
+            perm_ctx.forward_map_path(std::path::Path::new(&file_path), agent_id.as_deref());
+        let adapter = crate::tool_plugins::plugin::PluginToolAdapter {
+            full_name: "plugin:builtin.editor.edit_file".to_string(),
+            read_only: false,
+            path: Some(physical.to_string_lossy().to_string()),
+            agent_id: agent_id.clone(),
+            family: Some("Edit"),
+            command: None,
+            subcommand: None,
+        };
+        crate::utils::check_permission(&adapter, &perm_ctx, app).await?;
+    }
+    let ctx = EditorCtx {
+        is_agent,
+        agent_id,
+        state,
+    };
+    let out = edit_file(&ctx, &params).await.map_err(|e| e.message())?;
+    // 值形态分流（dispatch 原语义）：文本字节直通，结构化 JSON 序列化。
+    Ok(match out {
+        Value::String(s) => s,
+        other => other.to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn manifest_json_parses_and_matches_id() {
-        let m: ToolManifest = serde_json::from_str(include_str!("manifest.json"))
-            .expect("出厂 manifest 是编译期静态资源");
-        assert_eq!(m.id, "builtin.editor");
-        assert_eq!(m.trust, super::super::manifest::TrustLevel::System);
-        let tool = m.tools.iter().find(|t| t.name == "edit_file").expect("edit_file 在清单内");
-        assert!(!tool.read_only);
-        // Edit 家族权限声明：adapter 承载工具级门（family 委托 + 家族回退）。
-        let perm = tool.permission.as_ref().expect("edit_file 声明 permission");
-        assert_eq!(perm.family, "Edit");
-        assert_eq!(perm.path_key.as_deref(), Some("filePath"));
-        assert_eq!(tool.schema["required"][0].as_str(), Some("filePath"));
-    }
 
     fn diff_of(before: &str, after: &str) -> String {
         build_line_diff(before, after)

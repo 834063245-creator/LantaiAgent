@@ -72,25 +72,8 @@ interface DomainSpec {
   tools: ToolSpec[];
 }
 
-// ─────────────────────────────────────────────────────────────
-// 权限声明助手（照 P2-2 模式）
-// ─────────────────────────────────────────────────────────────
-
-const editPerm = (pathKey: string): ManifestPermission => ({ family: 'Edit', path_key: pathKey });
-// （readPerm 已随 git 域收口退役——Read 家族唯一消费方是 builtin.git 的只读
-//  五工具，2026-09-05 R3-c；editPerm 的消费方是 builtin.editor。）
-
-// ─────────────────────────────────────────────────────────────
-// 域配置表（TOOLS_SPEC——生成器的手写部分：permission 声明、TS 名→Rust 名
-// 映射、无 TS zod 面工具的完整定义）
-// ─────────────────────────────────────────────────────────────
-
-const dummyExec = async () => 'gen-kernel-manifest:dummy';
-
-async function fsToolsFactory(): Promise<Tool[]> {
-  const { createFsTools } = await import('../src/agent/tools/coding');
-  return createFsTools(dummyExec);
-}
+// （权限声明助手 editPerm/readPerm 已随 builtin.editor/builtin.git 退役删除
+//  ——2026-09-05 R3-c / R4-4b；生成器不再发射任何 manifest。）
 
 // （builtin.git 域已随 git 域收口退役——2026-09-05，kernel-capability-c3-design.md
 //  R3-c：git 13 模型族 schema 真源回 TS zod（coding.ts GIT_CAP_SCHEMA），
@@ -112,38 +95,29 @@ async function lspToolsFactory(): Promise<Tool[]> {
 }
 
 const DOMAINS: DomainSpec[] = [
-  // ── builtin.editor（P2-1 已落地；TS 面经 createFsTools('edit')——manifest 驱动）──
-  {
-    domain: 'editor',
-    id: 'builtin.editor',
-    description: '代码编辑器（自 commands/editor.rs 拆出，kernel-plugin-runtime P2-1）',
-    capabilities: ['filesystem_read', 'filesystem_write'],
-    factory: fsToolsFactory,
-    tools: [{ name: 'edit_file', tsTool: 'edit_file', permission: editPerm('filePath') }],
-  },
+  // ── builtin.editor 域已退役（R4-4b 小面清偿收官 2026-09-05——edit_file
+  //    schema 真源回 TS zod（coding.ts editFileSchema），execute 经 provider
+  //    seam → editor_cap 直呼（Edit 家族闸 + 精确名寻址在口内）；域条目随
+  //    tool_plugins/editor/ 一并拆除。至此出厂 manifest 全部退役——
+  //    kernel-manifests.generated 空清单，manifest 脚手架收在 R5 拆除）──
   // ── builtin.constraints 域已退役（R4-4 小面清偿 2026-09-05——constraints
   //    两模型族 schema 真源回 TS zod（coding.ts constraintsCapTool），execute
   //    经 provider seam → constraints_cap 直呼；域条目随 tool_plugins/
   //    constraints/ 一并拆除）──
-
   // ── builtin.git 域已退役（git 域收口 2026-09-05，R3-c——schema 真源回 TS zod
   //    （coding.ts GIT_CAP_SCHEMA），execute 走 git_cap 能力口直呼；域条目随
   //    tool_plugins/git/ 一并拆除，fs 域收口同款先例）──
-
   // ── builtin.shell 域已退役（shell 域收口 2026-09-05，R3-d——schema 真源回
   //    TS zod（coding.ts SHELL_CAP_SCHEMA），execute 走 process_cap 能力口直呼；
   //    域条目随 tool_plugins/shell/ 一并拆除，fs/git 域收口同款先例）──
-
   // ── builtin.browser 域已退役（browser 域收口 2026-09-05，R4-2——schema
   //    真源回 TS zod（agent/tools/browser.ts BROWSER_CAP_SCHEMA），execute 走
   //    browser_cap 能力口直呼；域条目随 tool_plugins/browser/ 一并拆除，
   //    fs/git/shell 域收口同款先例）──
-
   // ── builtin.uia 域已退役（browser 域收口 2026-09-05，R4-3——schema 真源
   //    回 TS zod（agent/tools/browser.ts UIA_CAP_SCHEMA），execute 走 uia_cap
   //    能力口直呼；域条目随 tool_plugins/uia/ 一并拆除，fs/git/shell/browser
   //    域收口同款先例）──
-
   // ── builtin.pty / builtin.lsp 域已退役（R4-4 小面清偿 2026-09-05——
   //    pty 4 / lsp 3 内部消费工具换 pty_cap / lsp_cap 直呼（rpc-contract.ts
   //    kernelPtyCall/kernelLspCall）；两域无模型面工具，手写 spec 随

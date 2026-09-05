@@ -13,6 +13,8 @@ use super::plugin::ToolPlugin;
 pub struct PluginRegistry {
     plugins: Vec<Arc<dyn ToolPlugin>>,
     /// 工具名 → 插件 id（跨插件全局唯一索引）。
+    /// （R4-4b 后无出厂插件——register/tool_index 仅单测消费；R5 随脚手架拆除。）
+    #[allow(dead_code)]
     tool_index: HashMap<String, String>,
 }
 
@@ -26,28 +28,16 @@ impl Default for PluginRegistry {
 }
 
 impl PluginRegistry {
-    /// 出厂装配：system/official 信任级插件随 exe 分发，启动时注册。
-    /// 出厂清单是编译期常量——装载失败即构建错误，fail-loud。
-    /// 注册序 = tool_plugins/ 目录序（gen-plugin-manifests 的镜像装载序锚）。
+    /// 出厂装配（R4-4b 后清单为空）。builtin.search/fs/git/shell（c3 R3-b/c/d）
+    /// 与 builtin.browser/uia（d4 R4-2/R4-3）、builtin.web/constraints/pty/lsp/
+    /// editor（d4 R4-4/R4-4b 小面清偿）全部随各自域收口退役——各族换
+    /// 独立能力口直呼。本脚手架（PluginRegistry/manifest/dispatch）收在 R5 拆除。
     pub fn with_system_defaults() -> Self {
-        let mut registry = PluginRegistry::default();
-        // （builtin.browser 已随 browser 域收口退役——2026-09-05，kernel-capability-
-        //  d4-handle-design.md R4-2：模型族全量换 browser_cap 能力口直呼，插件
-        //  信封无消费方整目录退役；git 域收口 c5acb876 同款先例。）
-        // （builtin.uia 已随 browser 域收口退役——2026-09-05，同设计件 R4-3：
-        //  模型族全量换 uia_cap 能力口直呼（resolve→classify→grant→lease 全链
-        //  在口内），插件信封无消费方整目录退役。）
-        // （builtin.constraints/web/pty/lsp 已随 browser 域收口同批退役——
-        //  2026-09-05，kernel-capability-d4-handle-design.md R4-4 小面清偿：
-        //  各族换 constraints_cap/web_cap/pty_cap/lsp_cap 能力口直呼，插件信封
-        //  无消费方整目录退役。builtin.editor 仍留（R5 拆信封前最后在册插件）；
-        //  builtin.fs/git/shell/browser/uia/search 已随各自域收口退役——
-        //  c3 R3-b/c/d 与 d4 R4-2/R4-3 先例。）
-        let editor: Arc<dyn ToolPlugin> = Arc::new(super::editor::EditorPlugin::new());
-        registry.register(editor).expect("出厂插件清单装载失败");
-        registry
+        PluginRegistry::default()
     }
 
+    /// 装载期注册防线（R4-4b 后无出厂调用方——仅单测消费；R5 随脚手架拆除）。
+    #[allow(dead_code)]
     pub fn register(&mut self, plugin: Arc<dyn ToolPlugin>) -> Result<(), String> {
         let manifest = plugin.manifest();
         if manifest.id.is_empty() {

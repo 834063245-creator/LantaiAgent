@@ -38,6 +38,7 @@ fn capability_command_modules_are_frozen() {
         "browser_cap",
         "constraints_cap",
         "dataflow",
+        "editor_cap",
         "engine_dispatch",
         "external",
         "filesystem",

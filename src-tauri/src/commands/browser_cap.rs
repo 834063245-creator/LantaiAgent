@@ -578,8 +578,6 @@ pub(crate) async fn browser_cap(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     /// 37 动作全集（= 退役前 builtin.browser manifest.tools 名单，D4-1）。
     const ACTIONS: &[&str] = &[
         "browser_launch",

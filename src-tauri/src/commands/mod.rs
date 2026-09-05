@@ -22,3 +22,4 @@ pub mod web_cap;
 pub mod constraints_cap;
 pub mod pty_cap;
 pub mod lsp_cap;
+pub mod editor_cap;

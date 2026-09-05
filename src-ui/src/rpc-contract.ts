@@ -440,6 +440,20 @@ export interface RpcContract {
     };
     result: string; // text — 会话 id / JSON 字符串 / "null"
   };
+  editor_cap: {
+    params: {
+      action: 'edit_file';
+      file_path?: string;
+      old_string?: string;
+      new_string?: string;
+      replace_all?: boolean;
+      is_agent?: boolean;
+      agent_id?: string | null;
+      // _forceGate/_agent_id 等 meta 键原样透传（INVARIANTS #9）
+      [key: string]: unknown;
+    };
+    result: string; // text — diff 快照
+  };
 
   // ── Shell（retired）────────────────────────────────────────
   // （exec_command / bash_output / bash_kill / bash_wait / shell_env /

@@ -57,10 +57,8 @@ function emit(manifests) {
 function main() {
   const check = process.argv.includes('--check');
   const manifests = collectManifests();
-  if (manifests.length === 0) {
-    console.error('[gen-plugin-manifests] 未发现任何 manifest——src-tauri/src/tool_plugins/ 至少应有一个内核插件');
-    process.exit(1);
-  }
+  // （R4-4b 后出厂 manifest 全部退役——零清单是合法终态，发射空镜像；
+  //  本生成器与镜像整个脚手架收在 R5 拆除，届时 doc-sync 登记项同步清。）
   const content = emit(manifests);
   if (check) {
     const existing = fs.existsSync(OUT_FILE) ? fs.readFileSync(OUT_FILE, 'utf8') : '';
