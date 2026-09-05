@@ -131,6 +131,7 @@ const BUILTIN_PLUGIN_NAMES: &[&str] = &[
     "hologram/paper-shell",
     "hologram/settings-domain",
     "hologram/compose-dock",
+    "hologram/paper-minimap",
     "hologram/web-domain",
     "hologram/browser-desktop-domain",
     "hologram/engine-domain",
@@ -907,9 +908,56 @@ mod tests {
     fn builtin_plugin_path_whitelist() {
         assert!(is_builtin_plugin_path("hologram/renderers/manifest.json"));
         assert!(is_builtin_plugin_path("hologram/renderers/entry.js"));
+        assert!(is_builtin_plugin_path("hologram/paper-minimap/manifest.json"));
         assert!(!is_builtin_plugin_path("hello/entry.js"));
         assert!(!is_builtin_plugin_path("plugins.json"));
         assert!(!is_builtin_plugin_path("hologram/settings/manifest.json"));
+    }
+
+    /// 白名单 ↔ 源码 manifest 全量对拍（2026-09-06 事故立法）：BUILTIN_PLUGIN_NAMES
+    /// 是打包态资产回退白名单——漏一个第一方产物名 = 该插件 manifest/entry 从
+    /// 内置根永远 404 → 产物通道装载 error（hologram/paper-minimap 前科：前端
+    /// 四处登记点齐、Rust 白名单漏 → 小地图整体消失）。
+    /// 双向断言：每个源码 manifest.name 必须入白名单（漏 = 404），每个白名单名
+    /// 必须能在源码树找到同名单（残留 = 死白名单条目——插件退役后白名单不同步
+    /// 移除会让同名第三方插件误享内置回退）。
+    #[test]
+    fn builtin_whitelist_matches_source_manifests() {
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().expect("src-tauri 应有父目录");
+        let builtin_src = repo_root.join("src-ui").join("src").join("plugins").join("builtin");
+        let mut source_names: Vec<String> = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(&builtin_src) {
+            for entry in entries.flatten() {
+                let manifest_path = entry.path().join("manifest.json");
+                if !manifest_path.is_file() {
+                    continue;
+                }
+                let raw = std::fs::read_to_string(&manifest_path).expect("manifest.json 应可读");
+                let parsed: serde_json::Value = serde_json::from_str(&raw).expect("manifest.json 应为合法 JSON");
+                if let Some(name) = parsed.get("name").and_then(|n| n.as_str()) {
+                    source_names.push(name.to_string());
+                }
+            }
+        }
+        source_names.sort();
+        assert!(
+            !source_names.is_empty(),
+            "源码 builtin 目录应有 manifest（{} 扫描为空——路径假设错了？）",
+            builtin_src.display()
+        );
+        let whitelist: Vec<&str> = BUILTIN_PLUGIN_NAMES.to_vec();
+        let missing: Vec<&String> = source_names.iter().filter(|n| !whitelist.contains(&n.as_str())).collect();
+        assert!(
+            missing.is_empty(),
+            "BUILTIN_PLUGIN_NAMES 缺内置产物名（打包态回退将 404，插件装载失败）: {}",
+            missing.iter().map(|n| n.as_str()).collect::<Vec<_>>().join(", ")
+        );
+        let stale: Vec<&&str> = whitelist.iter().filter(|n| !source_names.contains(&n.to_string())).collect();
+        assert!(
+            stale.is_empty(),
+            "BUILTIN_PLUGIN_NAMES 含已退役/未同步的死条目（令同名第三方误享内置回退）: {}",
+            stale.iter().map(|n| **n).collect::<Vec<_>>().join(", ")
+        );
     }
 
     /// P1d e2e：用户根缺失的内置插件路径 → 回退 HOLOGRAM_BUILTIN_PLUGINS_ROOT

@@ -49,6 +49,18 @@ describe('paper-minimap 登记完备性（四大登记点）', () => {
     expect(meta?.kind).toBe('feature');
     expect(meta?.description.length).toBeGreaterThan(0);
   });
+
+  it('Rust plugin_assets 回退白名单含 paper-minimap（打包态资产回退第五登记点）', () => {
+    // 2026-09-06 事故立法：前端四处登记点（factory-products / build UI_FACES /
+    // first-party-manifest / host-modules）齐备但 Rust BUILTIN_PLUGIN_NAMES 漏加
+    // → 产物通道 manifest fetch 404 → 装载 error → 小地图整体消失。
+    // 守护：白名单 ↔ 源码 manifest 全量对拍在 Rust 侧（builtin_whitelist_matches_
+    // source_manifests），此处钉住本插件名已在白名单内。
+    const src = readFileSync(resolve(__dirname, '../../src-tauri/src/plugin_assets.rs'), 'utf8');
+    const whitelistMatch = src.match(/const BUILTIN_PLUGIN_NAMES: &\[&str\] = &\[([\s\S]*?)\];/);
+    expect(whitelistMatch).not.toBeNull();
+    expect(whitelistMatch![1]).toContain('"hologram/paper-minimap"');
+  });
 });
 
 describe('paper-minimap apply 注册到 overlays right-edge 槽', () => {
