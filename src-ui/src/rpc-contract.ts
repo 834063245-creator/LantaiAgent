@@ -206,21 +206,6 @@ export interface RpcContract {
   /** 新建工作区目录：~/Documents/兰台/<名字>，返回归一化路径。只建目录不登记（登记随后续 activate）。 */
   workspace_create_dir: { params: { name: string }; result: string }; // JSON — 归一化路径字符串
 
-  // ── 内核插件运行时（kernel-plugin-runtime，2026-09-03）──────────
-  // 统一工具入口：args 说 manifest schema 的语言（camelCase 键）；_agent_id meta 嵌在 args 内。
-  tool_call: {
-    params: {
-      plugin: string;
-      tool: string;
-      args?: Record<string, unknown>;
-    } & AgentCtx;
-    result: string; // JSON
-  };
-  plugin_tool_manifests: {
-    params: Record<string, never>;
-    result: string; // JSON（全量 ToolManifest 数组）
-  };
-
   // ── 能力口（R2 试点，kernel-capability-r2-search-pilot.md）──────────
   // search_cap：search 全文扫描能力口（fs 能力族变体，v3 §4）——不经 tool_call
   // 信封 / PluginRegistry。R2-d(2) 收窄：口只做纯扫描返回**统一原始命中集**
@@ -463,7 +448,8 @@ export interface RpcContract {
   //   shell:output / shell:done 事件双通道原样保留（§4.3 裁决）。）
 
   // ── 编辑器 ───────────────────────────────────────────────
-  // （edit_file 已迁内核插件 builtin.editor，走 tool_call——kernel-plugin-runtime P2-1）
+  // （edit_file 已随 R4-4b（2026-09-05）换 editor_cap 能力口直呼——builtin.editor
+  //   退役，契约见上方 editor_cap。信封面已随 R5 脚手架拆除。）
 
   // ── 身份认证 / 权限 ──────────────────────────────────────
   permission_ask_response: {
@@ -546,8 +532,9 @@ export interface RpcContract {
   };
 
   // ── 约束 ─────────────────────────────────────────────────
-  // （read_constraints / write_constraints 已迁内核插件 builtin.constraints，
-  //   走 tool_call——kernel-plugin-runtime P2-1）
+  // （read_constraints / write_constraints 已随 R4-4（2026-09-05）换 constraints_cap
+  //   能力口直呼——builtin.constraints 退役，契约见上方 constraints_cap。信封面
+  //   已随 R5 脚手架拆除。）
 
   // ── 数据流 ───────────────────────────────────────────────
   dataflow_save: {
@@ -567,8 +554,8 @@ export interface RpcContract {
   // （background_activity 已随 shell 域收口（R3-d）换 process_cap 直呼——状态栏
   //   HUD 消费点经 kernelProcessCall('background_activity')；当前无生产消费点
   //   （HUD 面），action 留口内备用。
-  //   browser_audit 已迁 builtin.browser——审计查询经浏览器域工具信封消费，
-  //   无 typedRpc 直呼点，RpcContract 行随 RPC 分支退役，kernel-plugin-runtime P2-5。）
+  //   browser_audit 已随 R4 换 browser_cap 能力口直呼（浏览器域模型族工具消费），
+  //   无 typedRpc 直呼点，RpcContract 行随 RPC 分支退役。）
 
   // ── MCP / ACP stdio 桥 ────────────────────────────────────
   protocol_bridge_spawn: {
@@ -612,10 +599,6 @@ export interface EventContract {
   'shell:output': { streamId: string; kind: 'stdout' | 'stderr'; chunk: string };
   /** 前台 shell 结束 */
   'shell:done': { streamId: string; exitCode: number; error?: string };
-  /** 内核插件工具的增量输出流（P2-4 §4.1：ToolContext::emit_progress 按
-   *  _callId 键控回推；TS 侧 manifest 工具经 withProgressStream 自持订阅
-   *  转发到 onProgress。与 shell:output/shell:done 正交——shell 不迁自有流式） */
-  'tool_call:progress': { callId: string; chunk: string };
   /** 图变更摘要（workspace.rs 发射，分析完成后触发前端重载分页图） */
   'graph-updated': string;
   /** PTY 输出（src-tauri 发射；旧前端未监听，新前端用 PTY 时需要） */

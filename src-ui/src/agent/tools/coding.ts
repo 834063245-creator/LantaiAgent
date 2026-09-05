@@ -18,7 +18,6 @@ import { parseGitLogCommits, parseGitStatusPorcelain } from '../git-porcelain';
 import { stickyCwdOf } from '../session-context';
 import type { Tool, ToolExecutor } from '../tool';
 import { defineTool, toInputJsonSchema } from './define-tool';
-import { withProgressStream } from './manifest-tools';
 
 /** fs 域消费面（平台化 Phase 2 · D11，2026-08-27）：经 ctx.fs 注册表解析 provider
  *  （后注册胜取默认），默认 builtin/rust-fs 借注入的 dispatch 腰转发既有 Rust 命令。
@@ -238,8 +237,7 @@ function fsCapTool(action: FsAction, localName: string, exec: ToolExecutor): Too
     description: () => FS_CAP_DESCRIPTION[action],
     parameters: () => parameters,
     readOnly: () => FS_CAP_READONLY[action] ?? false,
-    execute: (args, onProgress, signal) =>
-      withProgressStream(args, onProgress, () => fsExecute(action, args, exec, onProgress, signal)),
+    execute: (args, onProgress, signal) => fsExecute(action, args, exec, onProgress, signal),
   };
 }
 
@@ -316,9 +314,7 @@ function constraintsCapTool(
     parameters: () => parameters,
     readOnly: () => readOnly,
     execute: (args, onProgress, signal) =>
-      withProgressStream(args, onProgress, () =>
-        fsExecute(action === 'read_constraints' ? 'constraints' : 'write_constraints', args, exec, onProgress, signal),
-      ),
+      fsExecute(action === 'read_constraints' ? 'constraints' : 'write_constraints', args, exec, onProgress, signal),
   };
 }
 
@@ -332,8 +328,7 @@ function editCapTool(localName: string, exec: ToolExecutor): Tool {
     description: () => EDITOR_CAP_DESCRIPTION,
     parameters: () => parameters,
     readOnly: () => false,
-    execute: (args, onProgress, signal) =>
-      withProgressStream(args, onProgress, () => fsExecute('edit', args, exec, onProgress, signal)),
+    execute: (args, onProgress, signal) => fsExecute('edit', args, exec, onProgress, signal),
   };
 }
 
@@ -486,9 +481,7 @@ function shellCapTool(action: ShellAction, localName: string, exec: ToolExecutor
     parameters: () => parameters,
     readOnly: () => SHELL_CAP_READONLY[action] ?? false,
     execute: (args, onProgress, signal) =>
-      withProgressStream(args, onProgress, () =>
-        shellExecute(action, action === 'run' ? withStickyCwd(args) : args, exec, onProgress, signal),
-      ),
+      shellExecute(action, action === 'run' ? withStickyCwd(args) : args, exec, onProgress, signal),
   };
 }
 
@@ -708,10 +701,8 @@ function gitCapTool(action: string, localName: string, exec: ToolExecutor): Tool
     description: () => GIT_CAP_DESCRIPTION[action],
     parameters: () => parameters,
     readOnly: () => GIT_CAP_READONLY[action] ?? false,
-    execute: (args, onProgress, signal) =>
-      withProgressStream(args, onProgress, async () =>
-        shapeGitCapOutput(action, await exec('git_cap', toGitCapArgs(action, args), onProgress, signal)),
-      ),
+    execute: async (args, onProgress, signal) =>
+      shapeGitCapOutput(action, await exec('git_cap', toGitCapArgs(action, args), onProgress, signal)),
   };
 }
 
@@ -779,9 +770,9 @@ export function createGitTools(exec: ToolExecutor): Tool[] {
   ];
 }
 
-// search/web 两域已迁内核插件（builtin.search / builtin.web，kernel-plugin-runtime
-// Phase 1）：zod 版定义删除，真源 = src-tauri/src/tool_plugins/*/manifest.json，
-// TS 面经 agent/tools/manifest-tools.ts 生成。
+// （search/web 两域工具族不在本文件：search/web 的 schema zod 真源 + 编排
+//  在 agent/tools/manifest-tools.ts——R2/R4 收口后与 fs/git/shell 同为
+//  能力口直呼 + zod 真源形态。manifest 真源已随 R5 脚手架拆除。）
 
 /** agent-isolation 工具族（S1-2 从 createCodingTools 迁出）——纯机械移动，定义零改写。*/
 export function createAgentIsolationTools(exec: ToolExecutor): Tool[] {

@@ -10,8 +10,9 @@
 // （executor 注入 is_agent 到 fs_cap 顶层，与 searchCapTool 同构）。模型族
 // 工具 schema 真源已回 TS zod（coding.ts FS_CAP_SCHEMA）。
 // R4-4 小面清偿（kernel-capability-d4-handle-design.md）：constraints 两动作
-// 换 constraints_cap 直呼（builtin.constraints 退役）；edit 仍留信封
-// （builtin.editor——R5 拆信封前最后在册插件）。
+// 换 constraints_cap 直呼（builtin.constraints 退役）；R4-4b：edit 换
+// editor_cap 直呼（builtin.editor 退役——R4 窗最后在册插件）。tool_call 信封
+// 的 TS 消费面随 R5 脚手架拆除清零。
 //
 // 双表职责：
 //   FS_ACTION_TO_CAP —— execute 换轨动作→fs_cap action + 模型键→snake 键映射；
@@ -25,13 +26,13 @@ import type { Context } from '../../../cordis';
 //  清零。）
 
 /** fs 动作 → fs_cap 能力口动作 + 模型面键（camelCase）→ fs_cap 顶层 snake 键。
- *  edit/constraints/write_constraints 不经 fs_cap：edit_file 属 builtin.editor
- *  （编辑含 diff 应用语义，editor 能力口后续批）；constraints 读写是
- *  hologram.constraints.yaml 域（独立内部工具，暂留信封）。 */
+ *  edit/constraints/write_constraints 不经 fs_cap：edit_file 走 editor_cap
+ *  （编辑含 diff 应用语义）；constraints 读写是 hologram.constraints.yaml 域
+ *  （constraints_cap）。三者在 execute 分支直呼对应能力口。 */
 const FS_ACTION_TO_CAP: Record<FsAction, { action: string; keys: Record<string, string> }> = {
   read: { action: 'read', keys: { filePath: 'file_path', offset: 'offset', limit: 'limit' } },
   write: { action: 'write', keys: { filePath: 'file_path', content: 'content' } },
-  edit: { action: '', keys: {} }, // 留信封 → builtin.editor（本批不动）
+  edit: { action: '', keys: {} }, // editor_cap 直呼（见 execute 分支）
   list: { action: 'list', keys: { path: 'path', filterIgnored: 'filter_ignored' } },
   glob: { action: 'glob', keys: { pattern: 'pattern', path: 'dir' } },
   mkdir: { action: 'create_dir', keys: { path: 'path' } },

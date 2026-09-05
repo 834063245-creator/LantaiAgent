@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// manifest-tools — 从内核插件 manifest 生成 Agent 可见工具（kernel-plugin-runtime Phase 1）。
+// manifest-tools — search/web 两域模型族工具的家（schema zod 真源 + 编排）。
 //
 // 工具面单一真源的演进（R2 试点，kernel-capability-r2-search-pilot.md）：
 // - Phase 1（P0-2 脚手架）：真源 = Rust manifest（manifest.json → generated 镜像）。
@@ -13,37 +13,16 @@
 //   命中集 + max_matches/max_files 收窄键），三形态组装/分页/行号显示回本域
 //   search-assembly.ts 重建（schema 真源 + 编排同域，r2-search-pilot §8）。
 // - execute 走 search_cap 能力口直呼（R2-a 信封换直呼：不经 tool_call 信封）。
-//
-// 注：web/browser/uia/pty/lsp 域仍取 manifest 镜像（Phase 1/2 存量，R3-R5
-// 分批迁回 zod）。
+// - R4-4（2026-09-05）：web 域 zod 转录 + web_cap 直呼；R5（2026-09-05）：
+//   kernel-manifests 镜像 / tool_call 信封（含 tool_call:progress 进度事件）
+//   脚手架整拆——全模型族 schema 真源已在 TS zod（fs/git/shell/editor/
+//   constraints 在 coding.ts，browser/uia 在 browser.ts），文件名 manifest-tools
+//   为历史名。
 
 import { z } from 'zod';
 import type { Tool, ToolExecutor } from '../tool';
 import { toInputJsonSchema } from './define-tool';
 import { assembleSearchOutput, parseScanOutput, type SearchToolArgs, toScanParams } from './search-assembly';
-
-/** tool_call:progress 自持订阅（P2-4 §4.2，kernel-plugin-runtime 设计件）：
- *  execute 开始且 args._callId 存在且 onProgress 非空时订阅 tool_call:progress
- *  事件按 callId 过滤转发到 onProgress；settle（成功/异常）即解绑。事件不会
- *  早于 execute 开始（emit 只发生在插件执行期），无竞态窗口——不依赖 exec
- *  链透传 onProgress（生产链在 provider seam 处丢弃它是已知现状）。 */
-export async function withProgressStream<T>(
-  args: Record<string, unknown>,
-  onProgress: ((chunk: string) => void) | undefined,
-  run: () => Promise<T>,
-): Promise<T> {
-  const callId = typeof args._callId === 'string' ? args._callId : undefined;
-  if (!callId || !onProgress) return run();
-  const { typedListen } = await import('../../rpc-contract');
-  const unlisten = await typedListen('tool_call:progress', (e) => {
-    if (e.callId === callId) onProgress(e.chunk);
-  });
-  try {
-    return await run();
-  } finally {
-    unlisten();
-  }
-}
 
 /** search 域工具族（R2 试点）——schema 真源 = 下方 zod 转录（R2-d(1)，
  *  不再从 kernel-manifests 镜像取 builtin.search 字节）；execute 从 tool_call
@@ -134,21 +113,20 @@ export function searchCapTool(exec: ToolExecutor): Tool {
     description: () => SEARCH_CONTENT_DESCRIPTION,
     parameters: () => parameters,
     readOnly: () => true,
-    execute: (args, onProgress, signal) =>
-      withProgressStream(args, onProgress, async () => {
-        // camelCase（模型参数）→ snake_case（能力口 RPC 契约）；meta 键透传
-        // （_agent_id 已是 snake；isAgent 由 agentInvoke 注入）。编排键
-        // （outputMode/showLineNumbers/headLimit/offset）不下沉能力口——由
-        // toScanParams 折算为收窄键（max_matches/max_files/collect_lines）。
-        const scanParams: Record<string, unknown> = {
-          ...toScanParams(args as SearchToolArgs),
-        };
-        for (const [k, v] of Object.entries(args)) {
-          if (k.startsWith('_')) scanParams[k] = v;
-        }
-        const raw = await exec('search_cap', scanParams, onProgress, signal);
-        return assembleSearchOutput(args as SearchToolArgs, parseScanOutput(raw));
-      }),
+    execute: async (args, onProgress, signal) => {
+      // camelCase（模型参数）→ snake_case（能力口 RPC 契约）；meta 键透传
+      // （_agent_id 已是 snake；isAgent 由 agentInvoke 注入）。编排键
+      // （outputMode/showLineNumbers/headLimit/offset）不下沉能力口——由
+      // toScanParams 折算为收窄键（max_matches/max_files/collect_lines）。
+      const scanParams: Record<string, unknown> = {
+        ...toScanParams(args as SearchToolArgs),
+      };
+      for (const [k, v] of Object.entries(args)) {
+        if (k.startsWith('_')) scanParams[k] = v;
+      }
+      const raw = await exec('search_cap', scanParams, onProgress, signal);
+      return assembleSearchOutput(args as SearchToolArgs, parseScanOutput(raw));
+    },
   };
 }
 
@@ -202,7 +180,7 @@ export function createWebTools(exec: ToolExecutor): Tool[] {
       description: () => WEB_CAP_DESCRIPTION[action],
       parameters: () => parameters,
       readOnly: () => true,
-      execute: (args, onProgress) => withProgressStream(args, onProgress, () => webCapCall(exec, action, args)),
+      execute: (args) => webCapCall(exec, action, args),
     };
   };
   return [capTool('web_search'), capTool('web_fetch')];

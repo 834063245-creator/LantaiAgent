@@ -349,16 +349,14 @@ export function buildTrialRegistry(wt: string, graph: TrialGraphData): ToolRegis
     }
   };
 
-  // search/web 已迁内核插件（builtin.search/builtin.web）——manifest 工具 execute
-  // 走 tool_call 信封；试验 harness 的 exec 是本地 mock（无 RPC），在此解信封路由回 mock。
-  // R2 后 search 直呼 search_cap 能力口（snake 键映射后直呼）；R2-d(2) 收窄后
+  // search/web 能力口直呼路由：试验 harness 的 exec 是本地 mock（无 RPC），
+  // 能力口名在 mock 面不存在——在此按 action/编排键路由回本地 mock。
+  // R2 后 search 直呼 search_cap（snake 键映射后直呼）；R2-d(2) 收窄后
   // 能力口返回统一原始命中集——kernelExec 把本地 search mock 的 {matches}
   // 包成 raw 形状，供 TS 组装层（search-assembly.ts）消费。
+  // R4-4 后 web 直呼 web_cap——按 action 路由回 mock（信封时代经 tool_call
+  // 解包的同款落点；R5 信封拆除后 tool_call 分支随脚手架退役）。
   const kernelExec: ToolExecutor = (name, args, onProgress, signal) => {
-    if (name === 'tool_call') {
-      const inner = String(args.tool ?? '');
-      return exec(inner, (args.args ?? {}) as Record<string, unknown>, onProgress, signal);
-    }
     if (name === 'search_cap') {
       // search mock 语义不变——单字键 directory/pattern 原样保留（mock 读的就是
       // 它们）；命中按文件分组成 {file, match_count, matches} 原始命中集形状。
@@ -390,6 +388,15 @@ export function buildTrialRegistry(wt: string, graph: TrialGraphData): ToolRegis
           })),
         });
       });
+    }
+    if (name === 'web_cap') {
+      // web_cap {action, ...} → 本地 mock 原生工具名（信封时代解包落点同款，
+      // R4-4 直呼换轨后按 action 路由——mock 面 web_search/web_fetch 报
+      // 「测试环境无网络工具」原语义）。
+      const inner = String(args.action ?? '');
+      const rest: Record<string, unknown> = { ...args };
+      delete rest.action;
+      return exec(inner, rest, onProgress, signal);
     }
     return exec(name, args, onProgress, signal);
   };
