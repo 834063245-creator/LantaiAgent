@@ -35,13 +35,21 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
 import { createBlock, resetBlockIdCounterForTests } from '../src/paper/block-model';
 import {
   createInkCache,
+  INK_BAR_COLORS,
   INK_COLORS,
+  inkBarColorOf,
   inkColorOf,
   inkForBlock,
   inkForText,
+  LOD_BAR_ENTER,
+  LOD_BAR_EXIT,
   LOD_ENTER,
   LOD_EXIT,
+  LOD_SIL_ENTER,
+  LOD_SIL_EXIT,
   lodActive,
+  lodFarActive,
+  lodTierOf,
 } from '../src/paper/ink';
 import { clearPaperMeasureCache } from '../src/paper/measure';
 
@@ -62,6 +70,48 @@ describe('paper/ink LOD 迟滞', () => {
     expect(lodActive(0.619, true)).toBe(true);
     expect(lodActive(LOD_EXIT, true)).toBe(false); // 退出阈半开：≥ 即退
     expect(lodActive(0.7, true)).toBe(false);
+  });
+});
+
+/* ═══ 远景三档（P4c，2026-09-06）——档位判定与迟滞 ═══ */
+
+describe('paper/ink 远景三档（P4c）', () => {
+  it('文字档 → 行影档：跌破 0.36 进，回升越过 0.39 才出（阈值间保持不闪档）', () => {
+    expect(lodTierOf(0.55, 'text')).toBe('text');
+    expect(lodTierOf(LOD_BAR_ENTER, 'text')).toBe('text'); // 半开：< 才进
+    expect(lodTierOf(0.35, 'text')).toBe('bar');
+    // 0.36-0.39 之间保持行影（迟滞带）
+    expect(lodTierOf(0.37, 'bar')).toBe('bar');
+    expect(lodTierOf(LOD_BAR_EXIT, 'bar')).toBe('text'); // ≥ 即回文字
+  });
+  it('行影档 → 剪影档：跌破 0.14 进，回升越过 0.16 才出', () => {
+    expect(lodTierOf(0.2, 'bar')).toBe('bar');
+    expect(lodTierOf(LOD_SIL_ENTER, 'bar')).toBe('bar');
+    expect(lodTierOf(0.13, 'bar')).toBe('silhouette');
+    expect(lodTierOf(0.15, 'silhouette')).toBe('silhouette'); // 迟滞带
+    expect(lodTierOf(LOD_SIL_EXIT, 'silhouette')).toBe('bar');
+  });
+  it('剪影档直跨：极远回升到 0.4 一步回文字档（跨档不粘滞）', () => {
+    expect(lodTierOf(0.5, 'silhouette')).toBe('bar'); // 先出剪影档
+    expect(lodTierOf(0.5, 'bar')).toBe('text'); // 再出行影档
+  });
+  it('lodFarActive（DOM 退场旗标）：与行影档同边界同迟滞', () => {
+    expect(lodFarActive(0.5, false)).toBe(false);
+    expect(lodFarActive(0.35, false)).toBe(true);
+    expect(lodFarActive(0.37, true)).toBe(true); // 迟滞带保持
+    expect(lodFarActive(LOD_BAR_EXIT, true)).toBe(false);
+  });
+});
+
+/* ═══ 行影档墨色（P4c 距离墨量补偿——字面量钉死）═══ */
+
+describe('paper/ink INK_BAR_COLORS 行影档镜像（P4c）', () => {
+  it('条面 alpha ≈ 文字色面 × 0.45 兑水（远看应有的灰度，非黑墙）', () => {
+    expect(INK_BAR_COLORS.markdown).toBe('rgba(38, 34, 28, 0.42)');
+    expect(INK_BAR_COLORS.user).toBe('rgba(166, 58, 46, 0.58)'); // 朱砂 landmark 略提亮
+    expect(INK_BAR_COLORS.reasoning).toBe('rgba(111, 110, 104, 0.38)');
+    expect(INK_BAR_COLORS.tool).toBe('rgba(58, 91, 122, 0.44)');
+    expect(inkBarColorOf('chart')).toBe('rgba(38, 34, 28, 0.24)'); // 未知/资产 → 最淡
   });
 });
 

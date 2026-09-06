@@ -83,7 +83,21 @@ import { createFocusFlightScheduler } from '../../paper/focus-flight';
 import { defaultFolded, foldLabel, isFoldable } from '../../paper/fold';
 import { groupWorkUnits, leadOf, rhythmAssign, sealedMessageIdsOf, unitMembership } from '../../paper/group';
 import { composerSubmitOnKey } from '../../paper/ime';
-import { createInkCache, inkColorOf, inkForBlock, inkForText, lodActive } from '../../paper/ink';
+import {
+  createInkCache,
+  INK_LABEL_ALPHA,
+  INK_LABEL_MIN_PX,
+  INK_SIL_ACCENT_ALPHA,
+  INK_SIL_MASS_ALPHA,
+  inkBarColorOf,
+  inkColorOf,
+  inkForBlock,
+  inkForText,
+  LOD_TEXT_MIN_PX,
+  lodActive,
+  lodFarActive,
+  lodTierOf,
+} from '../../paper/ink';
 import {
   clearPaperMeasureCache,
   createBlockMeasureCache,
@@ -235,10 +249,18 @@ const faceDeps = {
   sealedMessageIdsOf,
   unitMembership,
   createInkCache,
+  inkBarColorOf,
   inkColorOf,
   inkForBlock,
   inkForText,
   lodActive,
+  lodFarActive,
+  lodTierOf,
+  LOD_TEXT_MIN_PX,
+  INK_SIL_MASS_ALPHA,
+  INK_SIL_ACCENT_ALPHA,
+  INK_LABEL_MIN_PX,
+  INK_LABEL_ALPHA,
   clearPaperMeasureCache,
   createBlockMeasureCache,
   measureBlockHeightCached,

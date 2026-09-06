@@ -12,6 +12,7 @@ import {
   getCanvasStore,
   injectPaperTokens,
   lodActive,
+  lodFarActive,
   panBy,
   scheduleCanvasSave,
   useCanvasViewStore,
@@ -52,6 +53,24 @@ export function usePaperViewport(core: PaperCore | null) {
       if (next !== lodRef.current) {
         lodRef.current = next;
         setLod(next);
+      }
+    };
+    sync();
+    return useCanvasViewStore.subscribe(sync);
+  }, []);
+
+  /* ── 远档旗标（P4c 远景三档，2026-09-06）：zoom 進入行影档后卷首头/
+   *  边缘手柄等 DOM 杂项退场（缩糊的 DOM 文本不如无——卷名由 InkLayer
+   *  地志标签接管）。与 InkLayer 内部 tier 同边界同迟滞（paper/ink.ts 单一
+   *  真源），订阅模式同上。 ── */
+  const [lodFar, setLodFar] = useState(false);
+  const lodFarRef = useRef(false);
+  useEffect(() => {
+    const sync = () => {
+      const next = lodFarActive(useCanvasViewStore.getState().view.zoom, lodFarRef.current);
+      if (next !== lodFarRef.current) {
+        lodFarRef.current = next;
+        setLodFar(next);
       }
     };
     sync();
@@ -311,6 +330,7 @@ export function usePaperViewport(core: PaperCore | null) {
     paperRootRef,
     worldRef,
     lod,
+    lodFar,
     viewRect,
     viewRef,
     panning,

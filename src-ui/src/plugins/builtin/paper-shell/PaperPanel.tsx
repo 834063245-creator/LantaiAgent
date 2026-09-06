@@ -104,6 +104,7 @@ const KIND_ZH: Record<string, string> = {
   confirm: '确认',
   board: '看板',
   timeline: '时间轴',
+  citation: '引用',
 };
 const KIND_EN: Record<string, string> = {
   user: 'USER',
@@ -126,6 +127,7 @@ const KIND_EN: Record<string, string> = {
   confirm: 'CONFIRM',
   board: 'BOARD',
   timeline: 'TIMELINE',
+  citation: 'CITATION',
 };
 
 /** 工具/程文卡状态签（2026-09-06 纸面运行态）：running = 石青「行」+行走秒
@@ -381,6 +383,7 @@ export function PaperPanel() {
     focusRafRef,
     focusFlightRef,
     onCanvasMouseDown,
+    lodFar,
   } = usePaperViewport(core);
 
   /* ── 拖拽渲染态（声明在 usePaperRegions 之前——regions memo 消费拖拽
@@ -731,20 +734,24 @@ export function PaperPanel() {
                      * 玉徽（亭台线稿）居中钤印 + 机读眉行 + 宋体题字 + 机读档行，
                      * 底部硬规线 + 左缘朱砂版口钮。框体向上扩展包住卷首（界栏护持）。
                      * pointer-events none——点击穿透流区背景，激活语义不变；
-                     * 原浮动标签带退役（卷首即卷名，不重复播报）。 */}
-                    <div className="pp-folio-head">
-                      <span className="pp-yuwei">
-                        <Icon name="lantai" size={24} />
-                      </span>
-                      <p className="pp-folio-eyebrow">兰台 · 案卷 Nº {r.sessionNum}</p>
-                      <h2 className="pp-folio-title">{r.label || `案卷 ${r.sessionNum}`}</h2>
-                      <p className="pp-folio-sub">
-                        案卷 #{r.sessionNum} · {r.blocks.length} 块
-                      </p>
-                    </div>
+                     * 原浮动标签带退役（卷首即卷名，不重复播报）。
+                     * 远档（P4c 三档）退场：缩糊的 DOM 卷首不如无——卷名由
+                     * InkLayer 地志标签接管（地图标签逻辑，字号有下限）。 */}
+                    {!lodFar && (
+                      <div className="pp-folio-head">
+                        <span className="pp-yuwei">
+                          <Icon name="lantai" size={24} />
+                        </span>
+                        <p className="pp-folio-eyebrow">兰台 · 案卷 Nº {r.sessionNum}</p>
+                        <h2 className="pp-folio-title">{r.label || `案卷 ${r.sessionNum}`}</h2>
+                        <p className="pp-folio-sub">
+                          案卷 #{r.sessionNum} · {r.blocks.length} 块
+                        </p>
+                      </div>
+                    )}
                     {/* 空卷题字：零块流区的版心竖排占位（pointer-events none——
                      * 点击穿透到流区背景激活） */}
-                    {r.blocks.length === 0 && <div className="pp-region-empty">此卷未落墨</div>}
+                    {!lodFar && r.blocks.length === 0 && <div className="pp-region-empty">此卷未落墨</div>}
                     {/* 落笔点（2026-09-06 纸面运行态）：本卷在跑且尾部无湿墨
                      * （模型思考中/工具执行中——下一块墨将落此处）→ 卷轴线
                      * 锚线下方石青方点呼吸。湿墨尾点在场时让位（书写中的正文
@@ -753,28 +760,34 @@ export function PaperPanel() {
                     {!lod && runningSessions.has(r.sessionNum) && !r.writingBlockId && (
                       <div className="pp-quill" aria-hidden="true" />
                     )}
-                    {/* biome-ignore lint/a11y/noStaticElementInteractions: 边缘拖拽面（Stage-2 定案：无手柄条，hover 即拖拽态） */}
-                    <div
-                      className="pp-region-edge pp-region-edge--l"
-                      title="拖动边缘——移动整个流区"
-                      onMouseDown={(e) => onRegionEdgeMouseDown(e, r.sessionId)}
-                    />
-                    {/* biome-ignore lint/a11y/noStaticElementInteractions: 边缘拖拽面（同左缘——拖右缘移动整个流区） */}
-                    <div
-                      className="pp-region-edge pp-region-edge--r"
-                      title="拖动边缘——移动整个流区"
-                      onMouseDown={(e) => onRegionEdgeMouseDown(e, r.sessionId)}
-                    />
-                    {/* P6 四角横向缩放柄（角落只开放横向——Y 由内容生长） */}
-                    {(['nw', 'ne', 'sw', 'se'] as const).map((c) => (
-                      // biome-ignore lint/a11y/noStaticElementInteractions: 角柄是拖拽交互面
-                      <div
-                        key={c}
-                        className={`pp-region-corner pp-region-corner--${c}`}
-                        title="拖动角柄——调整流区宽度"
-                        onMouseDown={(e) => onRegionCornerMouseDown(e, r.sessionId, c)}
-                      />
-                    ))}
+                    {/* 边缘拖拽面（Stage-2 定案：无手柄条，hover 即拖拽态）——
+                     * 远档退场：亚像素交互柄只剩噪点（P4c）。 */}
+                    {!lodFar && (
+                      <>
+                        {/* biome-ignore lint/a11y/noStaticElementInteractions: 边缘拖拽面（Stage-2 定案：无手柄条，hover 即拖拽态） */}
+                        <div
+                          className="pp-region-edge pp-region-edge--l"
+                          title="拖动边缘——移动整个流区"
+                          onMouseDown={(e) => onRegionEdgeMouseDown(e, r.sessionId)}
+                        />
+                        {/* biome-ignore lint/a11y/noStaticElementInteractions: 边缘拖拽面（同左缘——拖右缘移动整个流区） */}
+                        <div
+                          className="pp-region-edge pp-region-edge--r"
+                          title="拖动边缘——移动整个流区"
+                          onMouseDown={(e) => onRegionEdgeMouseDown(e, r.sessionId)}
+                        />
+                        {/* P6 四角横向缩放柄（角落只开放横向——Y 由内容生长） */}
+                        {(['nw', 'ne', 'sw', 'se'] as const).map((c) => (
+                          // biome-ignore lint/a11y/noStaticElementInteractions: 角柄是拖拽交互面
+                          <div
+                            key={c}
+                            className={`pp-region-corner pp-region-corner--${c}`}
+                            title="拖动角柄——调整流区宽度"
+                            onMouseDown={(e) => onRegionCornerMouseDown(e, r.sessionId, c)}
+                          />
+                        ))}
+                      </>
+                    )}
                   </div>
                 );
               })}

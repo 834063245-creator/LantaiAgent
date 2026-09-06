@@ -59,13 +59,21 @@ export type { WorkUnit } from '../../../paper/group';
  * （groupWorkUnits → unitMembership/leadOf/rhythmAssign 喂布局；
  * sealedMessageIdsOf 定封口）。 */
 export { groupWorkUnits, leadOf, rhythmAssign, sealedMessageIdsOf, unitMembership } from '../../../paper/group';
-export type { BlockInk, InkCache } from '../../../paper/ink';
+export type { BlockInk, InkCache, LodTier } from '../../../paper/ink';
 export {
   createInkCache,
+  INK_LABEL_ALPHA,
+  INK_LABEL_MIN_PX,
+  INK_SIL_ACCENT_ALPHA,
+  INK_SIL_MASS_ALPHA,
+  inkBarColorOf,
   inkColorOf,
   inkForBlock,
   inkForText,
+  LOD_TEXT_MIN_PX,
   lodActive,
+  lodFarActive,
+  lodTierOf,
 } from '../../../paper/ink';
 export type { BlockMeasureCache } from '../../../paper/measure';
 export {
