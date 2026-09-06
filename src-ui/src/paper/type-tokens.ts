@@ -66,6 +66,17 @@ export const MD_TOKENS = {
   ciSizeRatio: 0.82, // 行内码 mono 0.82em
   ciPadH: 5, // 行内码横向 padding
   ciBorder: 1, // 行内码 border
+  /* ── 数学（科研 LaTeX，2026-09 scientific-rendering）──
+   * 块级公式（.pp-md-math）KaTeX .katex-display 自带上下 margin（KaTeX 内部
+   * .katex-display margin 1em 0——此处不再重复加，只用块级 gap 与测量预算）；
+   * 行内公式（.pp-md-math-inline）零 chrome（KaTeX 原子随行）。 */
+  mathGap: 12, // .pp-md-math margin-bottom（块与下一元素距）
+  mathSizeRatio: 1.06, // KaTeX 公式字号 = 正文 17px × 1.06 ≈ 18px（display 略大）
+  /* 静态测量预算（虚拟化未挂载窗口期估高——挂载后 RO 实测回写优先）：
+   * display 公式单行保守估高 = 正文行高 × 2（KaTeX 上下标/分数线把行撑到
+   * 1.5-2 行高；分式/矩阵更高由 RO 纠正）。超长公式溢出横向滚动不增行数。 */
+  mathDisplayLineH: 2.2, // 单位 = 正文行高倍数（单行 display 公式预算）
+  mathDisplayMaxLines: 3, // 跨行公式预算行数上限（超长不无限膨胀——RO 兜底）
 } as const;
 
 /* ── markdown 子版式组合派生（measure 用；CSS 引用 MD_TOKENS 原始值）──
@@ -464,9 +475,15 @@ function collectCssVars(): VarSpec[] {
     ['md-tableLh', MD_TOKENS.tableLh],
     ['md-ciPadH', MD_TOKENS.ciPadH],
     ['md-ciBorder', MD_TOKENS.ciBorder],
+    ['md-mathGap', MD_TOKENS.mathGap],
+    ['md-mathSizeRatio', MD_TOKENS.mathSizeRatio],
+    ['md-mathDisplayLineH', MD_TOKENS.mathDisplayLineH],
+    ['md-mathDisplayMaxLines', MD_TOKENS.mathDisplayMaxLines],
   ];
   for (const [key, v] of mdFlat) {
-    push(key, key === 'md-tableLh' ? String(v) : px(v));
+    // math 系数（sizeRatio/lineH/maxLines）无单位；其余 px
+    const unitless = key.startsWith('md-math') && !key.endsWith('Gap');
+    push(key, unitless ? String(v) : px(v));
   }
 
   const chromeFlat: Array<[string, string]> = [];

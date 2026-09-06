@@ -33,6 +33,7 @@ import {
   parseInline,
   parseMarkdown,
   parseMarkdownIncremental,
+  textHasMath,
 } from './markdown';
 import { parseCircledSegments } from './marks';
 import { hasArgsToShow, prettyToolArgs } from './tool-text';
@@ -125,6 +126,12 @@ const MD_TABLE_CELL_PAD_V = MD_DERIVED.tableCellPadV; // th/td 上下 padding 4�
 const MD_TABLE_ROW_BORDER = MD_TOKENS.tableRowBorder; // th 行底规线
 /** 表格单元字体：等宽 11.5px/1.5（.pp-md-table） */
 const MD_TABLE_SIZE = MD_TOKENS.tableSize;
+/** 数学块版式（科研 LaTeX；CSS 侧 .pp-md-math / .pp-md-math-inline 镜像）。
+ *  静态预算只服务虚拟化未挂载窗口——含公式 markdown 挂载后由 RO 实测回写
+ *  优先（needsObservedHeight 内容感知，见下）。预算宁可略高不叠字（风险 1）。 */
+const MD_MATH_GAP = MD_TOKENS.mathGap; // .pp-md-math margin-bottom
+const MD_MATH_DISPLAY_LINE_H = MD_TOKENS.mathDisplayLineH; // display 公式预算行高系数
+const MD_MATH_DISPLAY_MAX_LINES = MD_TOKENS.mathDisplayMaxLines; // 预算行数上限
 const MD_TABLE_LINE_HEIGHT = MD_TOKENS.tableSize * MD_TOKENS.tableLh;
 
 /* ── 富行内精确测量（P3 2026-08-30：@chenglou/pretext/rich-inline）──
@@ -174,11 +181,22 @@ function measureRichItemsHeight(items: RichInlineItem[], maxWidth: number, lineH
   return measureRichInlineStats(prepared, maxWidth).lineCount * lineHeight;
 }
 
-/** md 行内序列 → rich items（标志位 → 字体映射，镜像规则见上节注释）。 */
+/** md 行内序列 → rich items（标志位 → 字体映射，镜像规则见上节注释）。
+ *  行内公式 = 不可折行原子（break:'never'）：KaTeX 原子在行内整体移动不腰斩。
+ *  宽度按公式源码近似（KaTeX 渲染宽 ≠ 源码宽，但短公式同一量级；溢出风险
+ *  由「宁可高估行数」吸收——富行内已触发精确测量路径）。 */
 function mdRichItems(inl: MdInline[], size: number, stack: string): RichInlineItem[] {
   return inl.map((seg) => {
     const weight = seg.b ? '600 ' : '';
     const style = seg.i ? 'italic ' : '';
+    if (seg.math !== undefined) {
+      // 公式：正文字号（KaTeX 内联 ≈ body），不可折行；文本 = 源码近似宽
+      return {
+        text: seg.math,
+        font: `${size}px ${stack}`,
+        break: 'never',
+      };
+    }
     if (seg.c) {
       return {
         text: seg.text,
@@ -810,9 +828,13 @@ const BUILTIN_MEASURE_KINDS = new Set<string>([
   'notice',
 ]);
 
-/** 壳层观察判据（与上方实测优先家族同源——只挂 RO 不回写是白挂）。 */
-export function needsObservedHeight(kind: BlockKind, hasAsset: boolean): boolean {
-  return hasAsset || kind === 'plan' || !BUILTIN_MEASURE_KINDS.has(kind);
+/** 壳层观察判据（与上方实测优先家族同源——只挂 RO 不回写是白挂）。
+ *  text（2026-09 科研数学）：含公式的 markdown 块也挂 RO——公式高取决于
+ *  KaTeX 结构（分式/矩阵/求和堆叠）无法从源码可靠静态镜像，挂载后实测回写。 */
+export function needsObservedHeight(kind: BlockKind, hasAsset: boolean, text?: string): boolean {
+  if (hasAsset || kind === 'plan' || !BUILTIN_MEASURE_KINDS.has(kind)) return true;
+  if (kind === 'markdown' && text != null && textHasMath(text)) return true;
+  return false;
 }
 
 /** 测试复位（生产不调用）。 */
@@ -1043,6 +1065,11 @@ function markdownInkSources(text: string): InkSource[] {
               cap: Math.floor(PRE_MAX_H / PAPER_MONO_LINE_HEIGHT),
             });
           break;
+        case 'math':
+          // 公式墨迹：源文本当正文行条（远缩只求「这里有内容」的痕迹）；
+          // 行数封顶同静态预算（公式结构不按行折——墨迹不展开）。
+          if (el.text) push(el.text.slice(0, 160), BODY_SIZE, PAPER_BODY_LINE_HEIGHT * MD_MATH_DISPLAY_LINE_H);
+          break;
         case 'table':
           for (const row of [el.head, ...el.rows])
             push(row.map((c) => mdPlainText(c)).join(' '), MD_TABLE_SIZE, MD_TABLE_LINE_HEIGHT);
@@ -1095,6 +1122,17 @@ function measureMdElement(el: MdBlock, w: number, last: boolean): number {
       if (!el.text) return 0;
       const h = cappedH(el.text, w - MD_CODE_INSET, PAPER_MONO_FONT, PAPER_MONO_LINE_HEIGHT, PRE_MAX_H);
       return MD_CODE_PAD_V + h + (last ? 0 : MD_CODE_GAP);
+    }
+    case 'math': {
+      // 块级公式静态预算（虚拟化未挂载窗口估高；挂载后 RO 实测优先）。
+      // 预算 = 源码显式行数（截 maxLines 防长公式无限膨胀）× 正文行高 ×
+      // display 行高系数。单行短公式（无换行）= 1 × 34 × 2.2 ≈ 75px，
+      // 覆盖 KaTeX display margin（上下 1em）+ glyph 区，安全方向高估。
+      if (!el.text) return 0;
+      const explicitLines = el.text.split('\n').length;
+      const lines = Math.min(explicitLines, MD_MATH_DISPLAY_MAX_LINES);
+      const h = lines * PAPER_BODY_LINE_HEIGHT * MD_MATH_DISPLAY_LINE_H;
+      return h + (last ? 0 : MD_MATH_GAP);
     }
     case 'hr':
       return last ? MD_HR_LAST_H : MD_HR_H;
@@ -1357,7 +1395,9 @@ export function measureBlockHeightCached(
   sidecarFolded = false,
   sidecarOut = false,
 ): number {
-  const obs = needsObservedHeight(b.kind, b.asset != null) ? observedBlockHeightOf(b.id, b.w) : undefined;
+  const obs = needsObservedHeight(b.kind, b.asset != null, (b.payload as { text?: string }).text)
+    ? observedBlockHeightOf(b.id, b.w)
+    : undefined;
   const sig = `${measureSignature(b, folded, sidecarFolded, sidecarOut)}|w=${b.w}|obs=${obs ?? ''}`;
   const hit = cache.byId.get(b.id);
   if (hit && hit.sig === sig) return hit.h;

@@ -3126,7 +3126,11 @@ export function PaperPanel() {
                         style={{ transform: `translate(${dragX}px, ${dragY}px)`, width: b.w }}
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}
-                        data-block-observed={needsObservedHeight(b.kind, b.asset != null) ? b.id : undefined}
+                        data-block-observed={
+                          needsObservedHeight(b.kind, b.asset != null, (b.payload as { text?: string }).text)
+                            ? b.id
+                            : undefined
+                        }
                         ref={blockRootRef}
                         onDragStart={(e) => e.preventDefault()}
                       >
@@ -3174,7 +3178,11 @@ export function PaperPanel() {
                         style={{ transform: `translate(${pos.x}px, ${pos.y}px)`, width: pinW }}
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}
-                        data-block-observed={needsObservedHeight(b.kind, b.asset != null) ? b.id : undefined}
+                        data-block-observed={
+                          needsObservedHeight(b.kind, b.asset != null, (b.payload as { text?: string }).text)
+                            ? b.id
+                            : undefined
+                        }
                         ref={blockRootRef}
                         onDragStart={(e) => e.preventDefault()}
                       >

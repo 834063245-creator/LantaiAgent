@@ -21,6 +21,7 @@
 //   - 内置灰框渲染器 = 默认行（本文件 registerBuiltinRenderers，装载期注册）；
 //     贡献与内置同 id → 内置胜（对齐 panelDefs() 合流纪律）。
 
+import katex from 'katex';
 import type { ComponentType, ReactNode } from 'react';
 import { Fragment, useMemo, useRef, useState } from 'react';
 import { assetKinds } from '../agent/asset-kinds';
@@ -247,13 +248,41 @@ export function resolveAssetBlock(
  * 两边结构必须同源）。视觉版式常量在 PaperPanel.css .pp-md-*，测量镜像在
  * measure.ts MD_* 常量——改版式三处同步（CSS/measure/此处类名契约）。 */
 
+/** 数学渲染（科研 LaTeX）：KaTeX renderToString——确定性 HTML，离线无网络。
+ *  throwOnError=false：流式半成型/未知命令公式不崩块，落 KaTeX 错误标记
+ *  （红色源码，用户一眼看出公式没写完）；块渲染崩溃保险丝在壳层 PluginBoundary。 */
+function mathHtml(source: string, displayMode: boolean): string {
+  try {
+    return katex.renderToString(source, {
+      displayMode,
+      throwOnError: false,
+      output: 'html',
+      strict: false,
+    });
+  } catch {
+    // renderToString 理论上不 throw（throwOnError:false）；兜底不静默：落源码
+    return source;
+  }
+}
+
+/** 行内公式不可折行原子（KaTeX span + 包裹 span.pp-md-math-inline 防行内被拆） */
+function MathInline({ source }: { source: string }) {
+  const html = mathHtml(source, false);
+  return (
+    // KaTeX 输出 span 自带 .katex；外层 span 提供行内垂直对齐 + 侧距
+    // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX 输出为可信本地渲染（非模型 HTML）
+    <span className="pp-md-math-inline" dangerouslySetInnerHTML={{ __html: html }} />
+  );
+}
+
 /** 行内片段 → 节点（标志位解析期已打平，无嵌套结构）。 */
 function InlineRuns({ inl }: { inl: MdInline[] }) {
   return (
     <>
       {inl.map((seg, i) => {
         let node: ReactNode = seg.text;
-        if (seg.c) node = <code className="pp-md-ci">{seg.text}</code>;
+        if (seg.math !== undefined) node = <MathInline source={seg.math} />;
+        else if (seg.c) node = <code className="pp-md-ci">{seg.text}</code>;
         else if (seg.href) {
           node = (
             <a className="pp-md-a" href={seg.href} target="_blank" rel="noreferrer">
@@ -338,6 +367,14 @@ function renderMdBlock(el: MdBlock, tail?: ReactNode): ReactNode {
           {tail}
         </pre>
       );
+    case 'math': {
+      // 块级 display 公式（KaTeX .katex-display 自带上下留白与居中）
+      const html = mathHtml(el.text, true);
+      return (
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX 输出为可信本地渲染（非模型 HTML）
+        <div className="pp-md-math" dangerouslySetInnerHTML={{ __html: html }} />
+      );
+    }
     case 'hr':
       return <hr className="pp-md-hr" />;
     case 'table':

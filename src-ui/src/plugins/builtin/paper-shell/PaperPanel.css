@@ -922,6 +922,49 @@
   text-decoration-color: var(--seal);
 }
 
+/* ── 数学（科研 LaTeX，2026-09 scientific-rendering）──
+ * KaTeX 输出 .katex / .katex-display；纸壳只做容器与墨色协调。
+ * 版式数字 token：--pp-md-mathGap（块下距）/--pp-md-mathSizeRatio（字号系数）/
+ * --pp-md-mathDisplayLineH·MaxLines（measure 静态预算，CSS 不用）。 */
+.pp-md-math {
+  /* 块级 display 公式：KaTeX display 自带 margin 1em 0——归零，统一走
+   * margin-bottom: mathGap（与其它 md 块同一「末元素归零」测高模型镜像）。
+   * 超宽长公式横向滚动不增行数（预算与 RO 实测同此假设）。 */
+  margin: 0 0 var(--pp-md-mathGap);
+  overflow-x: auto;
+  overflow-y: hidden;
+  font-size: calc(var(--pp-type-body-size) * var(--pp-md-mathSizeRatio));
+}
+.pp-md-math:last-child {
+  margin-bottom: 0;
+}
+.pp-md-math .katex-display {
+  margin: 0;
+  padding: 0.4em 0; /* display 上下呼吸（KaTeX glyph 区之外），预算系数已含 */
+}
+.pp-md-math .katex {
+  color: var(--ink-1); /* 公式墨随正文墨（KaTeX 默认纯黑——纸面协调降为 ink-1） */
+}
+/* 行内公式原子：随行不腰斩（测量侧 break:never 镜像）；垂直对齐中线，
+ * 左右微距与正文呼吸。字号 = body × sizeRatio（KaTeX 内联默认当前字号）。 */
+.pp-md-math-inline {
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0 0.15em;
+  font-size: calc(var(--pp-type-body-size) * var(--pp-md-mathSizeRatio) * 0.92);
+  white-space: nowrap;
+}
+.pp-md-math-inline .katex {
+  color: var(--ink-1);
+}
+/* KaTeX 错误兜底（throwOnError:false 的 .katex-error）：纸壳给弱朱——流式
+ * 半成型公式可见是「没写完」而非排版故障。 */
+.pp-md-math .katex-error,
+.pp-md-math-inline .katex-error {
+  color: var(--fail);
+  background: color-mix(in oklch, var(--fail) 8%, transparent);
+}
+
 /* ── 折叠行（2026-08-30 折叠机制）：夹注/脚注/程文块顶的展开/收起面 ──
  * 折叠规则与字数文案在 paper/fold.ts；行高 14 + margin 6 = FOLD_ROW_H 20
  * （测量镜像）。mono 小字 + 墨三级——是界面注记，不搅正文墨色。 */

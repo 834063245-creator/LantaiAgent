@@ -30,6 +30,9 @@ export interface MdInline {
   c?: boolean;
   /** 链接目标（href 存在时 text 为链接文字） */
   href?: string;
+  /** 行内数学（LaTeX 源码，不含 `$` 定界符；text 同存源码供测量近似）。
+   *  KaTeX 渲染为不可折行原子（break:never）——见 renderer/measure 镜像。 */
+  math?: string;
 }
 
 export type MdBlock =
@@ -38,6 +41,7 @@ export type MdBlock =
   | { t: 'list'; ord: boolean; start: number; items: MdListItem[] }
   | { t: 'quote'; blocks: MdBlock[] }
   | { t: 'code'; lang?: string; text: string }
+  | { t: 'math'; text: string }
   | { t: 'hr' }
   | { t: 'table'; head: MdInline[][]; rows: MdInline[][][] };
 
@@ -64,7 +68,8 @@ function mergeInline(out: MdInline[], seg: MdInline): void {
     !!last.i === !!seg.i &&
     !!last.s === !!seg.s &&
     !!last.c === !!seg.c &&
-    last.href === seg.href
+    last.href === seg.href &&
+    last.math === seg.math // math 段按源码隔离（相邻两公式不合并——渲染不可折行原子）
   ) {
     last.text += seg.text;
     return;
@@ -92,7 +97,7 @@ function parseInlineInner(raw: string, flags: InlineFlags): MdInline[] {
   while (i < raw.length) {
     const ch = raw[i];
     // 转义：下一字符字面量
-    if (ch === '\\' && i + 1 < raw.length && /[`*_~[\]\\]/.test(raw[i + 1])) {
+    if (ch === '\\' && i + 1 < raw.length && /[`*_~[\]\\$]/.test(raw[i + 1])) {
       buf += raw[i + 1];
       i += 2;
       continue;
@@ -153,6 +158,43 @@ function parseInlineInner(raw: string, flags: InlineFlags): MdInline[] {
         continue;
       }
     }
+    // 行内数学 $...$（Pandoc 风格界约束防误伤）：
+    //   - 开标记：ch === '$'，且前一字符不是字母/数字/反斜杠/美元（`$$` 属块级候选不在此开）
+    //   - 内容：到下一个非转义 '$' 之间非空
+    //   - 闭标记：`$` 后一字符不是字母/数字（货币 $5、变量 $foo、snake_$x 不误伤）
+    //   界约束不查开标记后的空白——`$ E=mc^2 $`（公式内空格）是合法 LaTeX 惯用。
+    if (ch === '$') {
+      const prevCh = i > 0 ? raw[i - 1] : '\n';
+      if (!/[\w\\$]/.test(prevCh)) {
+        // 找下一个未转义的 $
+        let end = -1;
+        for (let k = i + 1; k < raw.length; k++) {
+          if (raw[k] === '\\' && raw[k + 1] === '$') {
+            k++;
+            continue;
+          }
+          if (raw[k] === '$') {
+            end = k;
+            break;
+          }
+        }
+        if (end > i + 1) {
+          const nextCh = end < raw.length - 1 ? raw[end + 1] : '\n';
+          if (!/[\w]/.test(nextCh)) {
+            const body = raw.slice(i + 1, end).trim();
+            if (body.length > 0) {
+              flush();
+              mergeInline(out, { text: body, math: body });
+              i = end + 1;
+              continue;
+            }
+          }
+        }
+      }
+      buf += ch;
+      i++;
+      continue;
+    }
     // 链接 [text](url)
     if (ch === '[') {
       const m = /^\[([^\]]+)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/.exec(raw.slice(i));
@@ -175,14 +217,22 @@ export function parseInline(raw: string): MdInline[] {
   return parseInlineInner(raw, {});
 }
 
+/** 文本是否含数学定界符（块级 `$$` 或行内 `$`）——壳层 RO 判据（含公式的
+ *  markdown 块走 ResizeObserver 实测回写，公式高不被静态镜像限制）。
+ *  快扫近似（不等同精确解析——`textHasMath('x $5 预算')` 会误报真，但方向
+ *  安全：多挂 RO 无副作用，漏挂才会高估错位）。 */
+export function textHasMath(text: string): boolean {
+  return text.includes('$$') || text.includes('$');
+}
+
 /** 片段序列 → 纯文本（测量端用：pretext 只测纯文本）。 */
 export function mdPlainText(inl: MdInline[]): string {
   return inl.map((s) => s.text).join('');
 }
 
-/** 富行内判定（测量端偏窄宽度计高——行内码/加粗/链接改变字宽，宁可多计行）。 */
+/** 富行内判定（测量端偏窄宽度计高——行内码/加粗/链接/公式改变字宽，宁可多计行）。 */
 export function mdHasRichInline(inl: MdInline[]): boolean {
-  return inl.some((s) => s.c || s.b || s.i || s.s || s.href !== undefined);
+  return inl.some((s) => s.c || s.b || s.i || s.s || s.href !== undefined || s.math !== undefined);
 }
 
 /* ── 块级解析 ── */
@@ -327,6 +377,46 @@ function parseDetailed(text: string): MdDetailed {
       }
       blocks.push({ t: 'code', lang, text: code.join('\n') });
       starts.push(blockStart);
+      continue;
+    }
+    // 块级数学：$$ 起行的公式块（单行 `$$x=y$$` 或跨行 `$$\n…\n$$`——
+    // 未闭合按到文末，流式容忍同围栏码）。模型科学输出惯用形态：
+    //   $$
+    //   \hat{y} = \sigma(Wx + b)
+    //   $$
+    // 单行闭合（$$...$$ 同行首尾）也收——LaTeX display 习惯可省换行。
+    if (trimmed.startsWith('$$')) {
+      const rest = trimmed.slice(2);
+      // 同行闭：`$$ 内容 $$`（首行内同时有开与闭）
+      const sameLineClose = rest.lastIndexOf('$$');
+      if (sameLineClose > 0) {
+        const body = rest.slice(0, sameLineClose).trim();
+        if (body.length > 0) {
+          blocks.push({ t: 'math', text: body });
+          starts.push(blockStart);
+          i++;
+          continue;
+        }
+      }
+      // 跨行闭：收集到含 $$ 的行 / 文末
+      const body: string[] = [];
+      i++;
+      while (i < lines.length) {
+        const inner = lines[i].trim();
+        if (inner.startsWith('$$')) {
+          const tail = inner.slice(2).trim();
+          if (tail) body.push(tail);
+          i++;
+          break;
+        }
+        body.push(lines[i]);
+        i++;
+      }
+      const joined = body.join('\n').trim();
+      if (joined.length > 0) {
+        blocks.push({ t: 'math', text: joined });
+        starts.push(blockStart);
+      }
       continue;
     }
     // 标题（5/6 级按 4 级收）

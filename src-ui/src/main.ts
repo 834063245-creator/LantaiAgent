@@ -20,6 +20,9 @@ import './plugins/builtin/compose-dock/model-selector.css';
 import './plugins/builtin/paper-shell/PaperPanel.css';
 import './plugins/builtin/settings-domain/settings-panel.css';
 import './plugins/builtin/paper-shell/status-line.css';
+// KaTeX 排版 + 字体（科研数学渲染；renderer-service 用 katex.renderToString，
+// CSS 集中在此导入——测试直接 import renderer-service 不碰 CSS 面）
+import 'katex/dist/katex.min.css';
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { log } from './agent/logger';
