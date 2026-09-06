@@ -261,6 +261,42 @@ export function registerBuiltinAssetKinds(): void {
     defaultPresentation: 'timeline',
     streamable: 'atomic',
   });
+
+  // ═══════════════════════════════════════════════════════
+  // 科研引用卡（scientific-rendering 4B，2026-09）
+  // ═══════════════════════════════════════════════════════
+  // BibTeX 字段集（title/authors/year/venue/doi/pmid/arxiv/url/bibtex）——
+  // 字段均为字符串、整卡 atomic（模型一次给出完整元数据，无流式行累积语义）。
+  // 表现原语 citation-card 在 plugins/builtin/renderers/components.tsx。
+  assetKinds.register({
+    id: 'citation',
+    description:
+      '学术引用卡（BibTeX/DOI/PMID/arXiv 等元数据）——参考文献条目的结构化呈现：' +
+      '标题/作者/年份/venue/标识号，可展开 BibTeX 原文。模型从检索/知识中整理出条目即可交付',
+    schema: objectSchema(
+      {
+        title: { type: 'string', description: '文献标题' },
+        authors: {
+          oneOf: [
+            { type: 'string', description: '作者串（自由文本：A, B and C / 甲、乙、丙）' },
+            { type: 'array', items: { type: 'string' }, description: '作者表（每作者一个条目）' },
+          ],
+          description: '作者（字符串或数组）',
+        },
+        year: { type: ['string', 'number'], description: '发表年份' },
+        venue: { type: 'string', description: '发表载体（期刊/会议名，可空）' },
+        doi: { type: 'string', description: 'DOI 标识（可空）' },
+        pmid: { type: 'string', description: 'PubMed ID（可空）' },
+        arxiv: { type: 'string', description: 'arXiv 编号（如 2401.00001，可空）' },
+        url: { type: 'string', description: '其它来源 URL（可空）' },
+        bibtex: { type: 'string', description: '完整 BibTeX 原文（可空；折叠展示）' },
+      },
+      [],
+    ),
+    presentations: ['citation'],
+    defaultPresentation: 'citation',
+    streamable: 'atomic',
+  });
 }
 
 // ═══════════════════════════════════════════════════════

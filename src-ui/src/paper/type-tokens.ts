@@ -277,6 +277,36 @@ export const ASSET_TOKENS = {
     titleSize: 13,
     bodySize: 12,
   },
+  // 学术引用卡（scientific-rendering 4B，2026-09）。行高全用**显式 px 行高 token**
+  // （titleLine 等）而非单位系数——asset 组 token 注入时全部带 px 后缀（见
+  // collectCssVars），`line-height: var(--pp-asset-*Lh)` 会拿到 "1.5px" 一类
+  // 绝对值（既有 form/metric 的 *Lh 键同此行为，属于沿用而非新造）；引用卡要
+  // CSS ↔ measure 行高严格同值，故存显式 px。measure 侧 ASSET_DERIVED 同名派生。
+  citation: {
+    padV: 2,
+    titleSize: 14,
+    titleLine: 21,
+    authorSize: 12,
+    authorLine: 19,
+    authorGap: 3, // .pp-citation-authors margin-top
+    venueSize: 11,
+    venueLine: 17,
+    venueGap: 3, // .pp-citation-venue margin-top
+    idsSize: 11,
+    idsLine: 17,
+    idsMarginTop: 6,
+    summarySize: 10,
+    summaryLine: 18,
+    bibMarginTop: 8,
+    bibBorderTop: 1, // .pp-citation-bib border-top（折叠区上规线）
+    bibPadTop: 4, // .pp-citation-bib padding-top
+    bibPreMarginTop: 4, // .pp-citation-bibtex margin-top
+    bibSize: 11,
+    bibLine: 18,
+    bibPadV: 6,
+    bibPadH: 10,
+    bibMaxH: 240,
+  },
   plan: {
     titleSize: 15,
     titleLh: 1.8,
@@ -390,6 +420,22 @@ export const ASSET_DERIVED = {
   timelineTsFont: `${ASSET_TOKENS.timeline.tsSize}px ${FONT_STACKS.mono}`,
   timelineTitleFont: `${ASSET_TOKENS.timeline.titleSize}px ${FONT_STACKS.song}`,
   timelineBodyFont: `${ASSET_TOKENS.timeline.bodySize}px ${FONT_STACKS.song}`,
+
+  citationPadV: ASSET_TOKENS.citation.padV * 2, // .pp-citation padding 2×2
+  citationTitleFont: `${ASSET_TOKENS.citation.titleSize}px ${FONT_STACKS.song}`,
+  citationTitleLine: ASSET_TOKENS.citation.titleLine, // 显式 px 行高（token 注入即 px）
+  citationAuthorFont: `${ASSET_TOKENS.citation.authorSize}px ${FONT_STACKS.song}`,
+  citationAuthorLine: ASSET_TOKENS.citation.authorLine,
+  citationAuthorGap: ASSET_TOKENS.citation.authorGap, // .pp-citation-authors margin-top
+  citationVenueFont: `${ASSET_TOKENS.citation.venueSize}px ${FONT_STACKS.song}`,
+  citationVenueLine: ASSET_TOKENS.citation.venueLine,
+  citationVenueGap: ASSET_TOKENS.citation.venueGap, // .pp-citation-venue margin-top
+  citationIdsFont: `${ASSET_TOKENS.citation.idsSize}px ${FONT_STACKS.mono}`,
+  citationIdsLine: ASSET_TOKENS.citation.idsLine,
+  citationIdsMarginTop: ASSET_TOKENS.citation.idsMarginTop,
+  citationSummaryLine: ASSET_TOKENS.citation.summaryLine, // BibTeX summary 恒单行（字号不入测高）
+  citationBibMarginTop: ASSET_TOKENS.citation.bibMarginTop,
+  citationBibTopChrome: ASSET_TOKENS.citation.bibBorderTop + ASSET_TOKENS.citation.bibPadTop, // .pp-citation-bib border-top + padding-top（默认折叠态计入）
 
   planTitleSize: ASSET_TOKENS.plan.titleSize,
   planTitleLh: ASSET_TOKENS.plan.titleLh,

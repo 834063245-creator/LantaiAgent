@@ -352,6 +352,22 @@ const TIMELINE_BODY_LINE = ASSET_DERIVED.timelineBodyLine;
 const TIMELINE_TITLE_FONT = ASSET_DERIVED.timelineTitleFont;
 const TIMELINE_BODY_FONT = ASSET_DERIVED.timelineBodyFont;
 
+const CITATION_PAD_V = ASSET_DERIVED.citationPadV; // .pp-citation padding 2×2
+const CITATION_TITLE_FONT = ASSET_DERIVED.citationTitleFont;
+const CITATION_TITLE_LINE = ASSET_DERIVED.citationTitleLine;
+const CITATION_AUTHOR_FONT = ASSET_DERIVED.citationAuthorFont;
+const CITATION_AUTHOR_LINE = ASSET_DERIVED.citationAuthorLine;
+const CITATION_AUTHOR_GAP = ASSET_DERIVED.citationAuthorGap;
+const CITATION_VENUE_FONT = ASSET_DERIVED.citationVenueFont;
+const CITATION_VENUE_LINE = ASSET_DERIVED.citationVenueLine;
+const CITATION_VENUE_GAP = ASSET_DERIVED.citationVenueGap;
+const CITATION_IDS_FONT = ASSET_DERIVED.citationIdsFont;
+const CITATION_IDS_LINE = ASSET_DERIVED.citationIdsLine;
+const CITATION_IDS_MARGIN_TOP = ASSET_DERIVED.citationIdsMarginTop;
+const CITATION_SUMMARY_LINE = ASSET_DERIVED.citationSummaryLine; // BibTeX summary 恒单行（字号不入测高）
+const CITATION_BIB_MARGIN_TOP = ASSET_DERIVED.citationBibMarginTop;
+const CITATION_BIB_TOP_CHROME = ASSET_DERIVED.citationBibTopChrome; // border-top 1 + padding-top 4
+
 /* ── 拟策测高镜像（2026-08-30 溢出修复：PLAN_OPTIONS_H 118 / PLAN_HEAD_H 39 退役）──
  * 旧固定预算装不下两枚带描述的方案（实况 ≈163）+ 操作行按钮实高 49.4（旧 40）
  * + 标题换行未计 → 交互拟策块恒比测高高 50~120px，下一块压字。选项描述文本
@@ -726,6 +742,88 @@ function timelineBodyH(p: { items?: unknown }, w: number): number {
   return h;
 }
 
+/** citation 体高（CitationBody 逐字镜像）：
+ *  - 标题一行实测（可换行——宽标题按正文宽折行）→ 实高 = 行数 × titleLine；
+ *  - 作者区：joined 文本一行（或按数组折行）实测——authors 逐条以 ", " 拼为
+ *    一段（渲染端 span 流内联，折行由浏览器 auto 完成）→ 按整段实测；
+ *  - venue 行：单行固定高；
+ *  - ids 行：flex-wrap 自动折行——标识少时单行；多时按可用宽折行实测
+ *    （按 w - 零 inset，列间距 14 由 flex column-gap 消耗——预算略高，
+ *    挂载后 RO 实测兜底）；
+ *  - BibTeX：summary 恒一行；展开后的 <pre> 按 bibMaxH 封顶 + bibInset。
+ *  BibTeX 默认折叠（details 收起态）→ 只计 summary 行；折叠交互态由壳层
+ *  RO 实测回写兜底（citation 属资产族，needsObservedHeight 恒 true）。 */
+function citationBodyH(p: Record<string, unknown>, w: number): number {
+  const title = typeof p.title === 'string' ? p.title : '';
+  const authorsRaw = p.authors;
+  const authors = Array.isArray(authorsRaw)
+    ? authorsRaw.filter((a): a is string => typeof a === 'string')
+    : typeof authorsRaw === 'string'
+      ? [authorsRaw]
+      : [];
+  const venue = typeof p.venue === 'string' ? p.venue : '';
+  const year = p.year != null ? String(p.year) : '';
+  const hasIds = ['doi', 'pmid', 'arxiv', 'url'].some((k) => typeof p[k] === 'string' && !!p[k]);
+  const bibtex = typeof p.bibtex === 'string' ? p.bibtex : '';
+  const empty = !title && authors.length === 0 && !hasIds && !bibtex;
+  if (empty) return CITATION_PAD_V + 30; // 「数据不可用」占位单行
+
+  let h = CITATION_PAD_V;
+  if (title)
+    h +=
+      Math.max(
+        1,
+        Math.ceil(measureTextHeight(title, w, CITATION_TITLE_FONT, CITATION_TITLE_LINE) / CITATION_TITLE_LINE),
+      ) * CITATION_TITLE_LINE;
+  if (authors.length > 0) {
+    h += CITATION_AUTHOR_GAP;
+    const authorText = authors.join(', ');
+    h +=
+      Math.max(
+        1,
+        Math.ceil(measureTextHeight(authorText, w, CITATION_AUTHOR_FONT, CITATION_AUTHOR_LINE) / CITATION_AUTHOR_LINE),
+      ) * CITATION_AUTHOR_LINE;
+  }
+  if (venue || year) {
+    h += CITATION_VENUE_GAP;
+    h +=
+      Math.max(
+        1,
+        Math.ceil(
+          measureTextHeight(
+            `${venue}${venue && year ? ' · ' : ''}${year}`,
+            w,
+            CITATION_VENUE_FONT,
+            CITATION_VENUE_LINE,
+          ) / CITATION_VENUE_LINE,
+        ),
+      ) * CITATION_VENUE_LINE;
+  }
+  if (hasIds) {
+    h += CITATION_IDS_MARGIN_TOP;
+    // 标识行（.pp-citation-ids flex-wrap + column-gap 14）：各标识是内联原子，
+    // 折行只能发生在标识之间。静态镜像按「可宽 = w − (n−1)×14 列距」测整段
+    // （宁略高不叠字；真实折行由挂载后 RO 实测回写兜底——资产族恒挂 RO）。
+    const idParts: string[] = [];
+    for (const k of ['doi', 'pmid', 'arxiv', 'url'] as const) {
+      const v = p[k];
+      if (typeof v === 'string' && v) idParts.push(v);
+    }
+    const idsW = Math.max(80, w - Math.max(0, idParts.length - 1) * 14);
+    h +=
+      Math.max(
+        1,
+        Math.ceil(measureTextHeight(idParts.join(' '), idsW, CITATION_IDS_FONT, CITATION_IDS_LINE) / CITATION_IDS_LINE),
+      ) * CITATION_IDS_LINE;
+  }
+  if (bibtex) {
+    // BibTeX 默认折叠：只计 summary 行 + 折叠区上规线 chrome（展开后 <pre>
+    // 高度由 RO 实测兜底——citation 属资产族恒挂 RO）。
+    h += CITATION_BIB_MARGIN_TOP + CITATION_BIB_TOP_CHROME + CITATION_SUMMARY_LINE;
+  }
+  return h;
+}
+
 /** 资产/开放 kind 块体高（按表现原语分派；无注册表现 → JSON 兜底视图）。 */
 function measureAssetBlockHeight(b: SourcedBlock): number {
   const pres = assetPresentationOf(b);
@@ -751,6 +849,8 @@ function measureAssetBlockHeight(b: SourcedBlock): number {
       return HTML_BODY_PAD_V + HTML_FRAME_DEFAULT_H;
     case 'form':
       return formBodyH(p as { title?: unknown; body?: unknown; options?: unknown }, b.w);
+    case 'citation':
+      return citationBodyH(p as Record<string, unknown>, b.w);
     default:
       // 未知 kind / 表现名无注册渲染器（'*' 兜底 JsonBody；插件若覆盖 '*' 行，
       // 静态估高失准由挂载后 RO 实测兜底）。

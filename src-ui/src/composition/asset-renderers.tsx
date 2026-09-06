@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 //
-// composition/asset-renderers — 资产块表现原语（WO-6/WO-8 + §2.9 补齐）的兼容薄壳。
+// composition/asset-renderers — 资产块表现原语（WO-6/WO-8 + §2.9 补齐 + 4B
+// citation）的兼容薄壳。
 //
-// **P1 迁移（first-party-hot-reload-plan）**：资产渲染器组件本体（10 原语）已迁至
+// **P1 迁移（first-party-hot-reload-plan）**：资产渲染器组件本体（11 原语）已迁至
 // `src-ui/src/plugins/builtin/renderers/components.tsx`（唯一真源），并随
 // 「内置渲染器插件」（plugins/builtin/renderers/index.tsx）经 ctx.renderers
 // 通道注册（BUILTIN_PLUGINS 表项，可热重载）。
@@ -12,7 +13,7 @@
 // assetPresentationDefs）供既有引用方（测试 / 历史 import 面）零改动兼容：
 //   - buildHtmlCardDocument / HTML_CARD_CAPABILITY：从新真源 re-export；
 //   - assetPresentationDefs：**已退役**（renderer-service 不再构造期注册
-//     资产行）——保留实现为从新真源取 10 组件组表（供需要者自建行）。
+//     资产行）——保留实现为从新真源取 11 组件组表（供需要者自建行）。
 //
 // 纪律（协议 §2.9）由新真源承载，此处只是转发壳，不重复实现。
 
@@ -42,6 +43,7 @@ export function assetPresentationDefs(): BlockRendererContribution[] {
     ['form', components.form],
     ['board', components.board],
     ['timeline', components.timeline],
+    ['citation', components.citation],
   ];
   return kinds.map(([kind, component]) => ({ id: `builtin/${kind}`, kind: kind as never, component }));
 }

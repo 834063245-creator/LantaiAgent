@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 //
-// 内置渲染器插件（P1，first-party-hot-reload-plan）——10 个资产表现原语
-// （grid/chart/metric/media/graph/tree/html/form/board/timeline）的唯一真源。
+// 内置渲染器插件（P1，first-party-hot-reload-plan）——11 个资产表现原语
+// （grid/chart/metric/media/graph/tree/html/form/board/timeline/citation）的唯一真源。
 //
 // 原位置 src-ui/src/composition/asset-renderers.tsx（已迁移，薄壳 re-export）。
 // 双走查设计：
@@ -785,7 +785,79 @@ function TimelineBody({ block }: BlockRendererProps) {
   );
 }
 
-/** 10 个资产表现原语的注册表入口（供渲染器 cordis 插件装载）。 */
+/* ── citation（学术引用卡——scientific-rendering 4B，2026-09）──
+ * 文献元数据的结构化呈现：标题 / 作者 / 年份·venue / 标识行（DOI/PMID/arXiv/
+ * URL 一律纯文本 mono——本会话不做外部浏览器跳转，等 opener RPC 机制落地再
+ * 链接化）＋ 可折叠 BibTeX 原文（<details> 语义；details/summary 原生折叠，
+ * 无 JS 状态，历史卡与实时卡同构只读——引用是既成事实，没有交互回调）。 */
+
+function CitationBody({ block }: BlockRendererProps) {
+  const p = block.payload as {
+    title?: string;
+    authors?: string | string[];
+    year?: string | number;
+    venue?: string;
+    doi?: string;
+    pmid?: string;
+    arxiv?: string;
+    url?: string;
+    bibtex?: string;
+  };
+  const title = typeof p.title === 'string' ? p.title : '';
+  const authors = Array.isArray(p.authors) ? p.authors : typeof p.authors === 'string' ? [p.authors] : [];
+  const venue = typeof p.venue === 'string' ? p.venue : '';
+  const year = p.year != null ? String(p.year) : '';
+  const ids: Array<[string, string]> = [];
+  if (typeof p.doi === 'string' && p.doi) ids.push(['DOI', p.doi]);
+  if (typeof p.pmid === 'string' && p.pmid) ids.push(['PMID', p.pmid]);
+  if (typeof p.arxiv === 'string' && p.arxiv) ids.push(['arXiv', p.arxiv]);
+  if (typeof p.url === 'string' && p.url) ids.push(['URL', p.url]);
+  const bibtex = typeof p.bibtex === 'string' ? p.bibtex : '';
+  const empty = !title && authors.length === 0 && ids.length === 0 && !bibtex;
+  if (empty) {
+    return (
+      <div className="pp-citation pp-citation-empty">
+        数据不可用 · 期望引用元数据（title/authors/year/venue/doi/pmid/arxiv/bibtex 之一）
+      </div>
+    );
+  }
+  const venueLine = venue || year ? `${venue}${venue && year ? ' · ' : ''}${year}` : '';
+  return (
+    <div className="pp-citation">
+      {title && <div className="pp-citation-title">{title}</div>}
+      {authors.length > 0 && (
+        <div className="pp-citation-authors">
+          {authors.map((a, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 作者按数据序渲染，静态内容无重排身份
+            <span key={i} className="pp-citation-author">
+              {a}
+              {i < authors.length - 1 ? ', ' : ''}
+            </span>
+          ))}
+        </div>
+      )}
+      {venueLine && <div className="pp-citation-venue">{venueLine}</div>}
+      {ids.length > 0 && (
+        <div className="pp-citation-ids">
+          {ids.map(([tag, val]) => (
+            <span key={tag} className="pp-citation-id">
+              <span className="pp-citation-tag">{tag}</span>
+              {val}
+            </span>
+          ))}
+        </div>
+      )}
+      {bibtex && (
+        <details className="pp-citation-bib">
+          <summary>BibTeX</summary>
+          <pre className="pp-citation-bibtex">{bibtex}</pre>
+        </details>
+      )}
+    </div>
+  );
+}
+
+/** 11 个资产表现原语的注册表入口（供渲染器 cordis 插件装载）。 */
 export type AssetRendererKind =
   | 'grid'
   | 'chart'
@@ -796,7 +868,8 @@ export type AssetRendererKind =
   | 'html'
   | 'form'
   | 'board'
-  | 'timeline';
+  | 'timeline'
+  | 'citation';
 
 export function assetRendererComponents(): Record<AssetRendererKind, (props: BlockRendererProps) => ReactNode> {
   return {
@@ -810,5 +883,6 @@ export function assetRendererComponents(): Record<AssetRendererKind, (props: Blo
     form: FormBody,
     board: BoardBody,
     timeline: TimelineBody,
+    citation: CitationBody,
   };
 }

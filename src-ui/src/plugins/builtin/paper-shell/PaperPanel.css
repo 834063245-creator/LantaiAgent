@@ -3752,3 +3752,93 @@ button.pp-form-option:disabled {
   border-left: 2px solid color-mix(in oklch, var(--fail) 45%, transparent);
   padding-left: 10px;
 }
+
+/* ── citation（学术引用卡——scientific-rendering 4B，2026-09）──
+ * 引用元数据的结构化呈现。全部行高用 --pp-asset-citation-*Line（显式 px——
+ * asset 组 token 注入带 px 后缀，行高存单位系数会退化成 "1.5px" 绝对值，
+ * 故 citation 不沿用 form/metric 的 *Lh 系数键，CSS ↔ measure 同值钉死）。 */
+.pp-citation {
+  padding: var(--pp-asset-citation-padV) 0;
+}
+.pp-citation-title {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-citation-titleSize);
+  font-weight: 600;
+  line-height: var(--pp-asset-citation-titleLine);
+  color: var(--ink-1);
+}
+.pp-citation-authors {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-citation-authorSize);
+  line-height: var(--pp-asset-citation-authorLine);
+  color: var(--ink-2);
+  margin-top: var(--pp-asset-citation-authorGap);
+  word-break: break-word;
+}
+.pp-citation-venue {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-citation-venueSize);
+  line-height: var(--pp-asset-citation-venueLine);
+  color: var(--ink-3);
+  margin-top: var(--pp-asset-citation-venueGap);
+  font-style: italic;
+}
+.pp-citation-ids {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 14px;
+  row-gap: 2px;
+  margin-top: var(--pp-asset-citation-idsMarginTop);
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-citation-idsSize);
+  line-height: var(--pp-asset-citation-idsLine);
+  color: var(--ink-2);
+}
+.pp-citation-id {
+  word-break: break-all;
+}
+.pp-citation-tag {
+  color: var(--indigo);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-right: 4px;
+  font-size: 0.92em;
+}
+.pp-citation-bib {
+  margin-top: var(--pp-asset-citation-bibMarginTop);
+  border-top: var(--pp-asset-citation-bibBorderTop) solid var(--rule-soft);
+  padding-top: var(--pp-asset-citation-bibPadTop);
+}
+.pp-citation-bib summary {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-citation-summarySize);
+  line-height: var(--pp-asset-citation-summaryLine);
+  color: var(--ink-3);
+  cursor: pointer;
+  user-select: none;
+}
+.pp-citation-bib summary:hover {
+  color: var(--seal-deep);
+}
+.pp-citation-bibtex {
+  margin: var(--pp-asset-citation-bibPreMarginTop) 0 0;
+  padding: var(--pp-asset-citation-bibPadV) var(--pp-asset-citation-bibPadH);
+  background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
+  border-left: 3px solid var(--indigo);
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-citation-bibSize);
+  line-height: var(--pp-asset-citation-bibLine);
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: var(--pp-asset-citation-bibMaxH);
+  overflow: auto;
+}
+.pp-citation-empty {
+  font-family: var(--f-song);
+  font-size: 0.92rem;
+  color: var(--fail);
+  padding: var(--pp-asset-citation-padV) 0;
+  border-left: 2px solid color-mix(in oklch, var(--fail) 45%, transparent);
+  padding-left: 10px;
+}

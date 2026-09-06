@@ -181,8 +181,9 @@ export class RenderersService extends Service {
     // '*' 兜底行：未知/资产 kind 未接表现原语时显示漂亮 JSON（WO-4）。
     // 不并入 builtinRendererDefs()，保持「八 kind 全谱」的既有契约面。
     this.registry.register({ id: 'builtin/*', kind: '*', component: JsonBody });
-    // 资产表现原语（WO-6 → P1 插件通道化）：grid/chart/metric/media/
-    // graph/tree/html/form 由「内置渲染器插件」（plugins/builtin/renderers，
+    // 资产表现原语（WO-6 → P1 插件通道化 → 4B citation）：grid/chart/metric/
+    // media/graph/tree/html/form/board/timeline/citation 由「内置渲染器插件」
+    // （plugins/builtin/renderers，
     // BUILTIN_PLUGINS 表项）经 ctx.renderers 注册——本 service 不再构造期
     // 内置注册（P1 起从编译期 bundle 迁为可热重载的第一方插件行）。
     // 测试直引本 service 时需要先装载渲染器插件（asset-primitives.test /

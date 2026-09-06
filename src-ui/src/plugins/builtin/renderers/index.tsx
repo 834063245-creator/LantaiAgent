@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 //
 // 内置渲染器插件工厂（P1，first-party-hot-reload-plan）——资产表现原语
-// （grid/chart/metric/media/graph/tree/html/form）从编译期 bundle 迁出：
-// 同一份源码两个运行时形态（双走查）：
+// （grid/chart/metric/media/graph/tree/html/form/board/timeline/citation）从编译期
+// bundle 迁出：同一份源码两个运行时形态（双走查）：
 //
 //   A. 编译期 bundle 域（BUILTIN_PLUGINS 表项，loader 直引本模块）：
 //      行 id = `builtin/<kind>`（出厂兜底行，永远可用；测试直引此形态）。
