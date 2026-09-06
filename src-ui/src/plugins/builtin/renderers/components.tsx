@@ -33,6 +33,7 @@
 // SSR/测试无 effect → 空盒占位（measure 固定盒镜像 + RO 实测兜底）。体积
 // +219KB gzip 进共享产物（用户拍板接受——交互科研图表是 #16 硬缺口）。
 
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { BarChart, LineChart, PieChart, ScatterChart } from 'echarts/charts';
 import {
   DataZoomComponent,
@@ -68,11 +69,32 @@ const { useEffect, useRef, useState } = rendererHooks;
 
 /* ── grid ── */
 
+/** 大表虚拟滚动触发阈值（科研渲染 #11，2026-09）：≤1000 行全量平铺（现状
+ *  零变化——DOM/交互/measure 语义同旧）；>1000 行转虚拟滚动（div 网格：
+ *  表头固定 + 行窗口化，浏览几千行 CSV 不卡）。阈值与 token 分离——是性能
+ *  语义常量不是版式数字，放组件侧。 */
+const GRID_VIRTUAL_THRESHOLD = 1000;
+
+/** 虚拟滚动行高（镜像 ASSET_TOKENS.grid.virtualRowH 29——CSS
+ *  .pp-grid-virtual-row height 走 var(--pp-asset-grid-virtualRowH)；
+ *  virtualizer estimateSize 需 JS 数值，graph 组件同款几何常量模式）。 */
+const GRID_VIRTUAL_ROW_H = 29;
+
+/** 单元格字符串化（number/string/null/对象 → 文本；null/undefined → ''）。 */
+function cellText(v: unknown): string {
+  if (v == null) return '';
+  return typeof v === 'object' ? JSON.stringify(v) : String(v);
+}
+
 function GridBody({ block }: BlockRendererProps) {
   const p = block.payload as { columns?: unknown[]; rows?: unknown[][]; caption?: string };
   const rows = Array.isArray(p.rows) ? p.rows : [];
   const first = rows[0];
   const cols = Array.isArray(p.columns) ? p.columns.map(String) : first ? first.map((_, i) => `#${i + 1}`) : [];
+  // 大表（>1000 行）转虚拟滚动（hooks 不能条件调——独立组件 VirtualGridBody）
+  if (rows.length > GRID_VIRTUAL_THRESHOLD) {
+    return <VirtualGridBody rows={rows} cols={cols} caption={typeof p.caption === 'string' ? p.caption : ''} />;
+  }
   return (
     <div className="pp-grid">
       {p.caption && <div className="pp-grid-caption">{p.caption}</div>}
@@ -92,12 +114,72 @@ function GridBody({ block }: BlockRendererProps) {
             <tr key={i}>
               {row.map((cell, j) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: 单元格按行列位置渲染
-                <td key={j}>{String(cell)}</td>
+                <td key={j}>{cellText(cell)}</td>
               ))}
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/* ── grid 大表虚拟滚动（科研渲染 #11，2026-09）──
+ * >GRID_VIRTUAL_THRESHOLD 行时启用：table 结构（thead 固定 + tbody 滚动 +
+ * 绝对定位虚拟行窗口）——CSS table 在几千行下布局/滚动都慢，虚拟化只渲染
+ * 可视窗口 ± overscan。固定行高（GRID_VIRTUAL_ROW_H——单行截断语义，长单元
+ * 格省略号，.pp-grid-virtual td 的 nowrap 约束）。table-layout: fixed 列宽
+ * 稳定 → 绝对定位行与表头列对齐。tbody 自持滚动条（纸面页式隐喻：大表 =
+ * "卷内长物"，滚动浏览）。SSR/无布局期 getVirtualItems 空 → 只出总高容器，
+ * 挂载后 effect 填充可视行（虚拟列表标准行为）。 */
+
+function VirtualGridBody({ rows, cols, caption }: { rows: unknown[][]; cols: string[]; caption: string }) {
+  const scrollRef = useRef<HTMLTableSectionElement | null>(null);
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => GRID_VIRTUAL_ROW_H,
+    overscan: 8,
+  });
+  const items = virtualizer.getVirtualItems();
+  return (
+    <div className="pp-grid pp-grid-virtual">
+      {caption && <div className="pp-grid-caption">{caption}</div>}
+      <table className="pp-grid-virtual-table">
+        {cols.length > 0 && (
+          <thead>
+            <tr>
+              {cols.map((c) => (
+                <th key={c}>{c}</th>
+              ))}
+            </tr>
+          </thead>
+        )}
+      </table>
+      {/* tbody 自持滚动：thead 固定在外（table 拆两半——上半表头无 body，
+          下半 body 无表头，table-layout fixed 保证列宽同源） */}
+      <div className="pp-grid-virtual-scroll">
+        <table className="pp-grid-virtual-table pp-grid-virtual-table--body">
+          <tbody ref={scrollRef} className="pp-grid-virtual-tbody">
+            <tr className="pp-grid-virtual-total" style={{ height: `${virtualizer.getTotalSize()}px` }}>
+              <td />
+            </tr>
+            {items.map((vi) => {
+              const row = rows[vi.index];
+              return (
+                <tr key={vi.key} className="pp-grid-virtual-row" style={{ transform: `translateY(${vi.start}px)` }}>
+                  {Array.isArray(row)
+                    ? row.map((cell, j) => (
+                        // biome-ignore lint/suspicious/noArrayIndexKey: 单元格按列位置渲染
+                        <td key={j}>{cellText(cell)}</td>
+                      ))
+                    : null}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

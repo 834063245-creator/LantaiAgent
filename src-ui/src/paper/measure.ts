@@ -303,6 +303,7 @@ const GRID_ROW_LINE = ASSET_DERIVED.gridRowLine; // .pp-grid-table 11px（行距
 const GRID_HEAD_BORDER = ASSET_DERIVED.gridHeadBorder; // th border-bottom
 const GRID_ROW_BORDER = ASSET_DERIVED.gridRowBorder; // td border-bottom
 const GRID_MEASURE_ROW_CAP = ASSET_DERIVED.gridMeasureRowCap; // 逐行文字测量上限
+const GRID_VIRTUAL_VIEWPORT_H = ASSET_DERIVED.gridVirtualViewportH; // .pp-grid-virtual-scroll 可视区高（#11）
 const GRID_FONT = `${ASSET_DERIVED.gridSize}px ${MONO_STACK}`;
 
 const GRAPH_PAD_V = ASSET_DERIVED.graphPadV; // .pp-graph padding 4×2
@@ -554,12 +555,24 @@ function metricBodyH(p: { items?: unknown; caption?: unknown }, w: number): numb
 
 /** grid 表格体高：caption + 逐行文字测量（前 50 行精测、其余单行估——表格列宽
  *  是浏览器 auto 分配，偶数分列只是近似，挂载后 RO 实测兜底）。 */
+/** grid 体高（GridBody 逐字镜像）：pad + caption + 表头行 + 数据行。
+ *  数据行：前 GRID_MEASURE_ROW_CAP 行按单元格文本实测折行，其余按单行高估
+ *  （GRID_ROW_LINE + padV + border）延伸——全量平铺语义。
+ *  大表（>1000 行，镜像组件 GRID_VIRTUAL_THRESHOLD）转虚拟滚动镜像：pad +
+ *  caption + 表头行 + 可视区固定高（不再全高延伸——滚动浏览，行数不增高）。 */
+const GRID_VIRTUAL_THRESHOLD_MEASURE = 1000;
+
 function gridBodyH(p: { columns?: unknown; rows?: unknown; caption?: unknown }, w: number): number {
   const rows = Array.isArray(p.rows) ? p.rows : [];
   const first = rows[0];
   const colCount = Array.isArray(p.columns) ? p.columns.length : Array.isArray(first) ? first.length : 0;
   const head = GRID_PAD_V + (p.caption ? GRID_CAPTION_H : 0);
   if (colCount === 0) return head;
+  // 大表虚拟滚动（>1000 行）：表头行（th padding 上下合计 + 行高 1.8）+ 固定可视区
+  if (rows.length > GRID_VIRTUAL_THRESHOLD_MEASURE) {
+    const headH = GRID_CELL_PAD_V + GRID_ROW_LINE + GRID_HEAD_BORDER;
+    return head + headH + GRID_VIRTUAL_VIEWPORT_H;
+  }
   const colW = Math.max(40, w / colCount - 8);
   const rowH = (cells: unknown[], border: number): number => {
     let lines = 1;

@@ -239,6 +239,12 @@ export const ASSET_TOKENS = {
     headBorder: 1,
     rowBorder: 0.5,
     measureRowCap: 50,
+    // 大表虚拟滚动（科研渲染 #11，2026-09）：>1000 行触发（阈值是组件常量）。
+    // virtualRowH = 虚拟滚动单行固定高（cellPadV×2 + rowSize×1.8 + rowBorder，
+    // 取整 29——CSS .pp-grid-virtual td 单行截断 + 该行高，measure 同值）；
+    // virtualViewportH = 可视区固定高（滚动容器，表头在外固定）。
+    virtualRowH: 29,
+    virtualViewportH: 240,
   },
   graph: { padV: 4, svgMaxH: 360, colW: 160, rowH: 52, origin: 40, minW: 320, minH: 80 },
   html: { padV: 2, frameDefaultH: 240 },
@@ -395,6 +401,8 @@ export const ASSET_DERIVED = {
   gridHeadBorder: ASSET_TOKENS.grid.headBorder,
   gridRowBorder: ASSET_TOKENS.grid.rowBorder,
   gridMeasureRowCap: ASSET_TOKENS.grid.measureRowCap,
+  gridVirtualRowH: ASSET_TOKENS.grid.virtualRowH, // .pp-grid-virtual td 固定行高（#11）
+  gridVirtualViewportH: ASSET_TOKENS.grid.virtualViewportH, // .pp-grid-virtual 可视区高（#11）
   gridSize: ASSET_TOKENS.grid.rowSize,
 
   graphPadV: ASSET_TOKENS.graph.padV * 2, // .pp-graph padding 4×2

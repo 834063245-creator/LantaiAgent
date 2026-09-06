@@ -3430,6 +3430,65 @@
   border-bottom: none;
 }
 
+/* ── grid 大表虚拟滚动（科研渲染 #11，2026-09）──
+ * >1000 行触发（组件常量 GRID_VIRTUAL_THRESHOLD）：table 拆两半——thead 固定
+ * + tbody 滚动区（virtualViewportH）+ 绝对定位虚拟行。table-layout: fixed 列宽
+ * 稳定（两半同款）→ 虚拟行与表头对齐。行高固定（virtualRowH——单行截断 +
+ * 省略号）。小表仍走 .pp-grid-table 全量平铺，不受本款影响。 */
+.pp-grid-virtual-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-grid-rowSize);
+  color: var(--ink-1);
+}
+.pp-grid-virtual-table th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--ink-3);
+  border-bottom: var(--pp-asset-grid-headBorder) solid var(--rule-soft);
+  padding: var(--pp-asset-grid-cellPadV) var(--pp-asset-grid-cellPadH);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pp-grid-virtual-scroll {
+  overflow-y: auto;
+  height: var(--pp-asset-grid-virtualViewportH);
+}
+.pp-grid-virtual-table--body {
+  /* tbody 滚动区从 0 起：总高行占满可视高，虚拟行 absolute 于 tbody */
+}
+.pp-grid-virtual-tbody {
+  position: relative;
+  display: block;
+}
+.pp-grid-virtual-total {
+  /* 总高占位行（虚拟滚动条高度来源）——不可见 */
+  visibility: hidden;
+  border: none;
+}
+.pp-grid-virtual-table--body .pp-grid-virtual-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: var(--pp-asset-grid-virtualRowH);
+  box-sizing: border-box;
+  display: table;
+  table-layout: fixed;
+}
+.pp-grid-virtual-table--body td {
+  padding: 0 var(--pp-asset-grid-cellPadH);
+  border-bottom: var(--pp-asset-grid-rowBorder) solid color-mix(in oklch, var(--ink-3) 18%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  line-height: var(--pp-asset-grid-virtualRowH);
+}
+
 .pp-chart {
   padding: var(--pp-asset-chart-padV) 0;
 }
