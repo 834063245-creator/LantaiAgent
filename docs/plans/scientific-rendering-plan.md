@@ -1,9 +1,9 @@
 # 科研渲染（scientific-rendering）计划
 
-> 状态：**In progress：4A 正文 LaTeX 完成且真机验收通过（2026-09-07 用户实机确认效果良好）；4B 引用卡施工完成（2026-09）待真机验收（§7 项 3-5）**
+> 状态：**In progress：4A 正文 LaTeX 完成且真机验收通过（2026-09-07 用户实机确认效果良好）；4B 引用卡施工完成（2026-09）待真机验收（§7 项 3-5）；#5 代码高亮 + #15 任务列表 checkbox 已落地（2026-09，§5.6 批次推进）**
 > 一句话：按「科研 Agent 渲染 20 种清单」倒查兰台现状，确立**双通道决策模型**（正文 markdown 通道 / 产物资产通道），前置治理渲染↔测量人肉镜像债，首期并行落地 **正文 LaTeX 数学** 与 **引用卡资产 kind** 两条通道样板。
 > 决策记录：2026-09 用户拍板——文档范围=完整立项；镜像策略=**优先重构收口镜像**（不是"先上新渲染再补债"）；首期=**数学（markdown 通道）+ 引用卡（资产通道）两项并行**；D1=**不保守（行内 `$...$` 直接上）**；D2=**KaTeX 进场**。**4B 回卷（2026-09）：引用卡链接打开不在本回合考虑**——DOI/PMID/arXiv 以 mono 纯文本标识呈现，等 opener RPC 机制落地再链接化。
-> 施工史：2026-09-06 4A 落地——markdown.ts 数学单一解析（块级 `$$` fence 流式容忍 + 行内 `$...$` 界约束不误伤货币/变量/转义）+ renderer-service KaTeX renderToString（.pp-md-math 块级 / .pp-md-math-inline 行内原子，throwOnError:false 错误可见不崩块）+ type-tokens 数学版式 token + measure 静态预算（显式行数 × maxLines 封顶）+ **含公式 markdown 挂 RO**（needsObservedHeight 内容感知，三参向后兼容）+ KaTeX CSS 集中 main.ts 导入。新增 `tests/paper-math-rendering.test.ts` 17 用例（parse/render/measure 三侧对拍）。门禁：vitest 2627 passed · convergence 0 漂移 · biome 0/0 · build ✓（KaTeX 字体资产正确打包）。真机验收清单见 §7。**同日 §5 轮子策略定稿**——现有 9 kind 无一需换 wheel（chart 加 `interactive` 表现而非换）；选型核验表 + 进场路径 + 后续批次见 §5。**2026-09 4B 落地**——asset-kinds.ts 新增 kind `citation`（BibTeX 字段集 schema，atomic，表现 citation）+ components.tsx citation-card 表现原语（标题/作者/venue·年/标识行/<details> 折叠 BibTeX，空数据占位）+ type-tokens 引用卡版式 token（显式 px 行高——asset 组 token 注入带 px 后缀，行高不沿用 *Lh 系数键）+ PaperPanel.css 引用卡款 + measure 静态测高镜像（行高 × 折行数；BibTeX 默认折叠只计 summary 行，展开态 RO 实测兜底——citation 属资产族恒挂 RO）+ PaperPanel KIND_ZH/EN（引用/CITATION）+ asset-renderers 兼容壳。新增 `tests/citation-card.test.ts` 14 用例（kind 注册/render/measure/签名/RO）。门禁：vitest 2650 passed（4B 后全量）· convergence 0 漂移 · biome 0/0 · build ✓ · doc-sync 全对拍。
+> 施工史：2026-09-06 4A 落地——markdown.ts 数学单一解析（块级 `$$` fence 流式容忍 + 行内 `$...$` 界约束不误伤货币/变量/转义）+ renderer-service KaTeX renderToString（.pp-md-math 块级 / .pp-md-math-inline 行内原子，throwOnError:false 错误可见不崩块）+ type-tokens 数学版式 token + measure 静态预算（显式行数 × maxLines 封顶）+ **含公式 markdown 挂 RO**（needsObservedHeight 内容感知，三参向后兼容）+ KaTeX CSS 集中 main.ts 导入。新增 `tests/paper-math-rendering.test.ts` 17 用例（parse/render/measure 三侧对拍）。门禁：vitest 2627 passed · convergence 0 漂移 · biome 0/0 · build ✓（KaTeX 字体资产正确打包）。真机验收清单见 §7。**同日 §5 轮子策略定稿**——现有 9 kind 无一需换 wheel（chart 加 `interactive` 表现而非换）；选型核验表 + 进场路径 + 后续批次见 §5。**2026-09 4B 落地**——asset-kinds.ts 新增 kind `citation`（BibTeX 字段集 schema，atomic，表现 citation）+ components.tsx citation-card 表现原语（标题/作者/venue·年/标识行/<details> 折叠 BibTeX，空数据占位）+ type-tokens 引用卡版式 token（显式 px 行高——asset 组 token 注入带 px 后缀，行高不沿用 *Lh 系数键）+ PaperPanel.css 引用卡款 + measure 静态测高镜像（行高 × 折行数；BibTeX 默认折叠只计 summary 行，展开态 RO 实测兜底——citation 属资产族恒挂 RO）+ PaperPanel KIND_ZH/EN（引用/CITATION）+ asset-renderers 兼容壳。新增 `tests/citation-card.test.ts` 14 用例（kind 注册/render/measure/签名/RO）。门禁：vitest 2650 passed（4B 后全量）· convergence 0 漂移 · biome 0/0 · build ✓ · doc-sync 全对拍。**2026-09 #5 代码高亮落地**——markdown.ts 围栏 lang 早已捕获只此消费：renderer-service code case 拆独立 `MdCodeBlock` 组件（hooks 纪律——switch case 不调 hook）接 hljs `lib/common`（36 语言主流集 + 补注册科研语言 matlab/julia/scala/haskell/clojure/latex/scheme/dockerfile），`hljs.highlight(text,{language,ignoreIllegals:true})`（半成型流式容忍）dangerouslySetInnerHtml；高亮只包 span 不改行数/折行 → **measure 零改动**（镜像零变化测试钉死）；无 lang / 未知 lang → 原文纯 mono 不误着色；hljs 类名在 `.pp-md-code` 作用域映射纸面 token（CSS 侧，石青关键字/朱砂字符串/石墨类型/ink-3 注释）。新增 `tests/paper-code-highlight.test.ts` 6 用例。**同日 #15 任务列表落地**——markdown.ts MdListItem 加 `check?: boolean`（GFM `- [ ]`/`- [x]`/`- [X]` 剥为 check 语义，仅吃项首非首位 `[x]` 是普通文本）；renderer list case 有 check 用纯 CSS 自绘方框 span `.pp-md-check`（绝对定位标记列 `.pp-md-mark` 同位，完成态 `.pp-md-check--on` 朱砂深钩，无原生控件）；type-tokens 加 `checkBorderW`；CSS `calc(var(--pp-type-body-size) * var(--pp-type-body-lh))` min-height 撑纯 `- [ ]` 无尾文项（框 absolute 不占行盒，measure 空项给 body 行高同值）；measure list case 空文本+check 项补最小行高。新增 `tests/paper-checklist.test.ts` 11 用例。
 
 ## 0. 为什么做 / 目标
 
@@ -16,6 +16,7 @@
 > 倒查基准：2026-09 代码现状（`paper/markdown.ts` 解析子集 · `renderer-service.tsx` 双通道 · `agent/asset-kinds.ts` kind 注册表 · `plugins/builtin/renderers/components.tsx` 表现原语 · `paper/fold.ts` 折叠 · `paper/type-tokens.ts` 版式真源）。
 > 图例：✅ 已覆盖 · ⚠️ 半覆盖（有基础缺关键）· ❌ 硬缺口。
 > 4A/4B 落地后计数：✅ 7 · ⚠️ 9 · ❌ 4（见 §0.1 小结）。
+> #5/#15 落地后计数：✅ 9 · ⚠️ 7 · ❌ 4（见 §0.1 小结）。
 
 ### 一、基础渲染（8 种，科研会话底线）
 
@@ -25,7 +26,7 @@
 | 2 | Markdown 富文本（粗/斜/行内码/链接/删） | ✅ | `InlineRuns` 五标志位（renderer-service.tsx:251） |
 | 3 | Markdown 结构（标题/列表/分隔线） | ⚠️ 有限 | h1-4（5/6 收 4）+ ul/ol + hr；列表仅一层嵌套（markdown.ts:335,256） |
 | 4 | **LaTeX 数学** | ❌ | 解析无 `$`/`$$`/`\(\)` 分支，公式字面量进纸；无 KaTeX/MathJax 依赖。**4A 首期** |
-| 5 | **代码块 + 语法高亮** | ⚠️ | 围栏码渲染 ✅（markdown.ts:314）；**lang 捕获但丢弃**，`<pre>` 纯 mono 无 token 着色；highlight.js ^11 依赖躺在 package.json **全仓零引用** |
+| 5 | **代码块 + 语法高亮** | ✅ | 围栏码渲染 ✅（markdown.ts:314）；**lang 捕获并消费（2026-09 #5）**——hljs `lib/common` + 补科研语言，`.pp-md-code` 内 token span（墨色协调），measure 零改动；无 lang/未知 lang 纯 mono 原文 |
 | 6 | 表格 | ✅ | markdown GFM 表格 + 资产 grid 双通道 |
 | 7 | **图片** | ⚠️ | 资产 media 表现 ✅（本地文件 base64 data URI，components.tsx:299）；**markdown `![]()` 语法缺失**——`[` 链接分支吞成 `!`+链接（markdown.ts:157） |
 | 8 | **引用块 / 提示框** | ⚠️ | blockquote ✅（`pp-md-quote`）；**callout/警告箱 ❌**——notice kind 只承载会话事件（压缩等），非模型正文可产出 |
@@ -40,7 +41,7 @@
 | 12 | **流程图 / 模型图** | ⚠️ | graph（分层）/tree（深列树）资产 ✅——但走**结构化 nodes/edges 直通 JSON**（components.tsx:369,485）；**mermaid 文本语法 ❌**（markdown 里是普通围栏码，无 mermaid 依赖） |
 | 13 | 统计表 / 模型输出表 | ⚠️ 够用 | grid/GFM 表格能呈现回归表/metrics 表；无显著性/对齐统计语义，不构成阻塞 |
 | 14 | 折叠块 / 长输出截断 | ✅ | fold.ts 自有机制（状态派生+用户覆盖，比静态 details 强）+ CSS cap 截断 + truncate.ts 提示 |
-| 15 | **任务列表 / 进度** | ⚠️ 部分 | board/timeline 资产 ✅、task 原语 ✅（pending/in_progress/completed）、TaskBoard ✅；**markdown `- [ ]` checkbox ❌、进度条视觉 ❌** |
+| 15 | **任务列表 / 进度** | ✅ | board/timeline 资产 ✅、task 原语 ✅（pending/in_progress/completed）、TaskBoard ✅；**markdown `- [ ]` checkbox ✅（2026-09 #15）**——GFM 复选框剥为 MdListItem.check + 纯 CSS 自绘方框（完成态朱砂深钩），只读展示态；「进度条视觉」归 task/board 资产通道承载（不属正文渲染缺口） |
 
 ### 三、高级 / 可扩展（5+ 种，高阶价值）
 
@@ -54,8 +55,8 @@
 
 ### 对拍小结
 
-- ✅ 已覆盖 7：文本、富文本、LaTeX（4A ✅）、表格、参考文献/引用卡（4B ✅）、折叠截断、（统计表半满足）
-- ⚠️ 半覆盖 9：结构、代码高亮、图片、提示框、数据预览、流程图、任务列表、widget、嵌入
+- ✅ 已覆盖 9：文本、富文本、LaTeX（4A ✅）、表格、参考文献/引用卡（4B ✅）、折叠截断、**代码高亮（#5 ✅）**、**任务列表 checkbox（#15 ✅ 部分）**、（统计表半满足）
+- ⚠️ 半覆盖 7：结构、图片、提示框、数据预览、流程图、widget、嵌入
 - ❌ 硬缺口 4：化学式、交互图表、分子查看器、地理图
 
 **架构判断**：缺口大多不是渲染管线问题，是**科研 kind/presentation 目录**缺失。必须动 A 通道（测量镜像面）的只有正文内科学内容（LaTeX），其余全可落 B 资产通道零镜像风险。
@@ -235,10 +236,11 @@ Agent 想要交互图用 `show_asset(kind:'chart', presentation:'interactive')`�
 ### 5.6 后续批次（挂起，按需立——每项开工前重查维护状态/体积）
 
 - #9 引用卡（kind `citation`）——**✅ 2026-09 已落地**（解析未借 citation-js——本期模型直接交付结构化字段；DOI/PMID/arXiv 链接化待 opener RPC 机制）；剩余：链接化 + 可选 citation-js 兜底解析
+- #5 代码高亮——**✅ 2026-09 已落地**（markdown code 块补 hljs token 层，measure 零镜像；剩余：无——Shiki 更准留档不追）
+- #15 任务列表 checkbox——**✅ 2026-09 已落地**（GFM `- [ ]` 解析 + CSS 自绘框；进度条视觉走 task/board 资产通道，按需另立）
 - #10 化学式（kind `chem`）：SMILES→2D 借 smiles-drawer
 - #16 交互图表：chart 加 `interactive` 表现（ECharts 按需 import），静态默认不动
 - #11 大表虚拟滚动：grid 增强表现（先量化真需求）
-- #5 代码高亮：markdown code 块补 hljs token 层（A 通道，测高镜像同 4A 纪律）
 - #20 嵌入 PDF/Office：media 表现增强
 - #17/18 分子 3D / 地理图：后置（重资产 + 网络约束）
 
