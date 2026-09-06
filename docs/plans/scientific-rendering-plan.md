@@ -3,7 +3,7 @@
 > 状态：**In progress：4A 正文 LaTeX 施工完成（2026-09-06，门禁全绿，真机验收待跑）；4B 引用卡待开工**
 > 一句话：按「科研 Agent 渲染 20 种清单」倒查兰台现状，确立**双通道决策模型**（正文 markdown 通道 / 产物资产通道），前置治理渲染↔测量人肉镜像债，首期并行落地 **正文 LaTeX 数学** 与 **引用卡资产 kind** 两条通道样板。
 > 决策记录：2026-09 用户拍板——文档范围=完整立项；镜像策略=**优先重构收口镜像**（不是"先上新渲染再补债"）；首期=**数学（markdown 通道）+ 引用卡（资产通道）两项并行**；D1=**不保守（行内 `$...$` 直接上）**；D2=**KaTeX 进场**。
-> 施工史：2026-09-06 4A 落地——markdown.ts 数学单一解析（块级 `$$` fence 流式容忍 + 行内 `$...$` 界约束不误伤货币/变量/转义）+ renderer-service KaTeX renderToString（.pp-md-math 块级 / .pp-md-math-inline 行内原子，throwOnError:false 错误可见不崩块）+ type-tokens 数学版式 token + measure 静态预算（显式行数 × maxLines 封顶）+ **含公式 markdown 挂 RO**（needsObservedHeight 内容感知，三参向后兼容）+ KaTeX CSS 集中 main.ts 导入。新增 `tests/paper-math-rendering.test.ts` 17 用例（parse/render/measure 三侧对拍）。门禁：vitest 2627 passed · convergence 0 漂移 · biome 0/0 · build ✓（KaTeX 字体资产正确打包）。真机验收清单见 §7。
+> 施工史：2026-09-06 4A 落地——markdown.ts 数学单一解析（块级 `$$` fence 流式容忍 + 行内 `$...$` 界约束不误伤货币/变量/转义）+ renderer-service KaTeX renderToString（.pp-md-math 块级 / .pp-md-math-inline 行内原子，throwOnError:false 错误可见不崩块）+ type-tokens 数学版式 token + measure 静态预算（显式行数 × maxLines 封顶）+ **含公式 markdown 挂 RO**（needsObservedHeight 内容感知，三参向后兼容）+ KaTeX CSS 集中 main.ts 导入。新增 `tests/paper-math-rendering.test.ts` 17 用例（parse/render/measure 三侧对拍）。门禁：vitest 2627 passed · convergence 0 漂移 · biome 0/0 · build ✓（KaTeX 字体资产正确打包）。真机验收清单见 §7。**同日 §5 轮子策略定稿**——现有 9 kind 无一需换 wheel（chart 加 `interactive` 表现而非换）；选型核验表 + 进场路径 + 后续批次见 §5。
 
 ## 0. 为什么做 / 目标
 
@@ -162,13 +162,74 @@ show_asset(kind, presentation, payload) → BlockPart → SourcedBlock(asset 元
 
 **新增测试**：kind 注册 + schema 校验（asset-kinds.test 同款）+ 渲染器用例（link 化 + 折叠 + 无数据占位）。
 
-## 5. 后续批次（挂起，按需立）
+## 5. 轮子策略：换 vs 加 vs 补（2026-09 用户问询 + 选型核验）
 
-- #9 参考文献列表/引用索引（资产 kind `reference-list` 或 citation 聚合表现）
-- #10 化学式/反应式（mhchem 渲染 / SMILES 转 2D——渲染器依赖决策）
-- #16-18 交互图表 / 分子查看器 / 地理图（全资产通道 kind + 渲染器扩展）
-- #20 嵌入 PDF/Office 内嵌查看（media 表现增强）
-- #11 大表分页 / 虚拟滚动（grid 表现增强）
+> 用户问：现有 kind 是否需要换现成 wheel？结论：**不需要换**。9 个 kind 无一需要替换——
+> 换 = 体积 + 网页风重调 + 测高镜像重做，纯负收益。真缺口是「补」不是「换」。
+
+### 5.1 判定标准：换 wheel 的三个正当理由
+
+1. **功能自绘做不到 / 做起来极贵**（交互缩放、3D 结构、领域格式解析）
+2. **性能不够**（几千行大表、大量数据点）
+3. **是「领域格式解析」不是「渲染」**（SMILES→2D、BibTeX→结构化——解析该借库，渲染形态仍自绘）
+
+**不成立的动机**：有轮子、别人都用、显得高级。现有实现是「纯 CSS/SVG 自绘 + 纸面墨色 token + 测高镜像 + 确定性布局」，换通用库会全丢。
+
+### 5.2 现有 9 kind 判定表（逐项过）
+
+| kind / 表现 | 现状 | 判 | 理由 |
+|---|---|---|---|
+| metric / board / timeline | 纯 CSS 排版件 | **不换** | 是排版不是图表，轮子不如 CSS，纸面风格是它的一部分 |
+| file / media | base64 本地预览 | **不换** | 无 wheel 可换，走 Rust fs 能力口 |
+| confirm / form | 审批表决卡 | **不换** | 产品语义（plan 审批泛化）——表决/回调/持久化是领域形状，轮子做不了 |
+| html | 沙箱 iframe | **不换** | 已经是最强轮子（浏览器内核）+ 自包含沙箱，是独有资产 |
+| deps_impact / graph / tree | 确定性 SVG 分层布局 | **不换** | **核心差异**——确定性布局 = 布局级测试可钉 + 流式刚体可保；通用图库力导向自布局会丢确定性，纯负收益 |
+| table / grid | CSS 表格 | **暂不换** | 渲染 CSV/结果集够；真需求是「几千行大表」→ **加虚拟滚动层**，不是替换 grid |
+| **chart** | 自绘 SVG 四件套 | **加表现，不换** | 唯一值得动的——协议支持同 kind 多表现（见 5.3） |
+
+### 5.3 chart 的正确姿势：加 presentation，不动 kind
+
+`agent-asset-blocks.md` 的 kind 语义 × presentation 表现**双维度正交**给免费能力——换表现不动 kind 契约 / payload / 历史块：
+
+```
+chart kind（payload {type, data, config} 不变）
+  ├─ presentation: 'chart'        → 现自绘静态 SVG（默认，纸面风格零依赖，保持）
+  └─ presentation: 'interactive'  → ECharts（新增：tooltip/缩放/图例交互）
+```
+
+Agent 想要交互图用 `show_asset(kind:'chart', presentation:'interactive')`，否则落默认静态。静态 SVG 不受打扰、历史块不重渲；ECharts 只在该表现里按需 import。
+
+### 5.4 选型核验表（2026-09 联网核验，落项前再查维护状态/体积）
+
+| 科研类型 | 轮子 | 通道 | 核验结论 |
+|---|---|---|---|
+| #5 代码高亮 | **highlight.js**（已在依赖，零引用） | A markdown（code 块补 token 层） | 轻量/易设/离线 ✓（[PkgPulse 对比](https://www.pkgpulse.com/guides/shiki-vs-prismjs-vs-highlightjs-syntax-highlighting-2026)）；Shiki 更准但要 WASM 偏重（[mdBook 讨论](https://github.com/rust-lang/mdBook/issues/2467)）——**接 hljs 先满足，Shiki 留档** |
+| #9 引用卡 | **citation-js**（解析/转换） | B 资产 kind | BibTeX/DOI → CSL-JSON → 各格式，浏览器/sever 均可（[Citation.js](https://citation.js.org/) / [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC7924481/)）；**解析借它，卡形态仍自绘** |
+| #10 化学式 | **smiles-drawer**（SMILES→2D） | B 资产 kind | 小/高性能/MIT（[smilesDrawer](https://github.com/reymond-group/smilesDrawer)）；Kekule.js 老牌但重（[ResearchGate](https://www.researchgate.net/publication/303707990_Kekulejs_An_Open_Source_JavaScript_Chemoinformatics_Toolkit)）——**smiles-drawer 优先** |
+| #12 流程图 | **mermaid**（文本→图） | B 资产 kind（D3） | 活跃、文本定义正对模型输出（[mermaid](https://github.com/mermaid-js/mermaid)） |
+| #16 交互图表 | **ECharts**（echarts-for-react） | B chart 加表现（5.3） | 开箱功能多（[对比](https://www.reddit.com/r/vuejs/comments/1mjaix1/chart_library_chartjs_or_apache_echarts/)），模块化按需 import 压体积（[echarts-for-react](https://www.npmjs.com/package/echarts-for-react)）；静态够用就不上 |
+| #11 大表 | **TanStack 虚拟化** | B grid 增强 | 处理大表滚动（[SO](https://stackoverflow.com/questions/78443179/how-to-improve-scroll-performance-of-react-tanstack-table-with-virtualization)）；先量化需求再动 |
+| #17 分子 3D | **3Dmol.js / Mol*** | B kind | 重资产（WebGL 大包）；Mol* 最全但大（[指南](https://www.linkedin.com/pulse/web-3d-molecular-viewers-short-guide-joshua-reuben-2am7f)）——**后置** |
+| #18 地理图 | **Leaflet / MapLibre** | B kind | 都要瓦片源；兰台 html 沙箱禁网络 → 特殊处理——**后置** |
+
+### 5.5 进场路径（两个渲染域都能用轮子，不用手写）
+
+| 渲染域 | 代表 | 第三方依赖怎么进 | 证据 |
+|---|---|---|---|
+| 内核渲染器（bundle 域） | renderer-service.tsx | vite 直接 import，打包进应用 | KaTeX 已如此进场（4A） |
+| 资产渲染器（esbuild 产物域） | plugins/builtin/renderers/ | esbuild `bundle:true` npm 依赖**自动内联** | react-bridge.cjs 注释（@react-aria 先例）+ 构建脚本自包含校验只禁静态裸 import |
+
+约束三条：走 A 通道的轮子高度不可测要 RO；插件产物自包含（依赖内联 OK）但 html 沙箱禁网络；轮子网页风要包墨色 token 协调（4A 给 KaTeX 的做法）。
+
+### 5.6 后续批次（挂起，按需立——每项开工前重查维护状态/体积）
+
+- #9 引用卡（kind `citation`）：解析借 citation-js，卡形态自绘（DOI/PMID/arXiv 链接 + BibTeX 折叠）
+- #10 化学式（kind `chem`）：SMILES→2D 借 smiles-drawer
+- #16 交互图表：chart 加 `interactive` 表现（ECharts 按需 import），静态默认不动
+- #11 大表虚拟滚动：grid 增强表现（先量化真需求）
+- #5 代码高亮：markdown code 块补 hljs token 层（A 通道，测高镜像同 4A 纪律）
+- #20 嵌入 PDF/Office：media 表现增强
+- #17/18 分子 3D / 地理图：后置（重资产 + 网络约束）
 
 ## 6. 验证门禁（不过不交付）
 
@@ -201,6 +262,7 @@ show_asset(kind, presentation, payload) → BlockPart → SourcedBlock(asset 元
 | 项 | 谁判断 |
 |---|---|
 | 镜像治理范围（第 3 节动作 1-3 vs 4） | Agent 建议 + 用户拍板动作 4 取舍 |
+| wheel 选型（§5 表——每项开工前重查维护/体积） | Agent 调研 + 用户拍板进场（4A KaTeX 先例） |
 | 依赖进场（KaTeX 等，D2） | 用户（**已拍板：KaTeX 进场**） |
 | D1/D3/D4 策略 | 用户（D1 **已拍板：不保守，行内 `$...$` 直接上**；D3/D4 真机反馈驱动） |
 | 施工与门禁 | Agent |
