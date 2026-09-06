@@ -368,6 +368,15 @@ const CITATION_SUMMARY_LINE = ASSET_DERIVED.citationSummaryLine; // BibTeX summa
 const CITATION_BIB_MARGIN_TOP = ASSET_DERIVED.citationBibMarginTop;
 const CITATION_BIB_TOP_CHROME = ASSET_DERIVED.citationBibTopChrome; // border-top 1 + padding-top 4
 
+const CHEM_PAD_V = ASSET_DERIVED.chemPadV; // .pp-chem padding 2×2
+const CHEM_NAME_FONT = ASSET_DERIVED.chemNameFont;
+const CHEM_NAME_LINE = ASSET_DERIVED.chemNameLine;
+const CHEM_NAME_MARGIN_B = ASSET_DERIVED.chemNameMarginB; // .pp-chem-name margin-bottom
+const CHEM_BOX_H = ASSET_DERIVED.chemBoxH; // .pp-chem-box 固定盒高（含 border）
+const CHEM_BOX_MARGIN_B = ASSET_DERIVED.chemBoxMarginB; // .pp-chem-box margin-bottom
+const CHEM_META_FONT = ASSET_DERIVED.chemMetaFont;
+const CHEM_META_LINE = ASSET_DERIVED.chemMetaLine;
+
 /* ── 拟策测高镜像（2026-08-30 溢出修复：PLAN_OPTIONS_H 118 / PLAN_HEAD_H 39 退役）──
  * 旧固定预算装不下两枚带描述的方案（实况 ≈163）+ 操作行按钮实高 49.4（旧 40）
  * + 标题换行未计 → 交互拟策块恒比测高高 50~120px，下一块压字。选项描述文本
@@ -824,6 +833,42 @@ function citationBodyH(p: Record<string, unknown>, w: number): number {
   return h;
 }
 
+/** chem 体高（ChemBody 逐字镜像）：
+ *  - name 行：宋体实测（可换行——长名按正文宽折行）→ 实高 = 行数 × nameLine；
+ *  - 结构区（.pp-chem-box）：**固定盒高**（boxH 含 border，CSS box-sizing:
+ *    border-box）——smiles-drawer SVG 只写 viewBox，盒内 100%×100% meet 居中，
+ *    盒高与分子形状无关恒为 boxH → 静态镜像精确（非媒体图那类动态高）；
+ *  - meta（formula）：mono 实测（可换行）；err 静态未知（smiles 解析失败只在
+ *    渲染期出现）→ 由挂载后 RO 实测兜底（chem 属资产族恒挂 RO）。 */
+function chemBodyH(p: Record<string, unknown>, w: number): number {
+  const name = typeof p.name === 'string' ? p.name : '';
+  const formula = typeof p.formula === 'string' ? p.formula : '';
+  const smiles = typeof p.smiles === 'string' ? p.smiles : '';
+  const empty = !name && !formula && !smiles;
+  if (empty) return CHEM_PAD_V + 30; // 「数据不可用」占位单行
+
+  let h = CHEM_PAD_V;
+  const hasName = name.length > 0;
+  const hasBox = smiles.length > 0;
+  const hasFormula = formula.length > 0;
+  if (hasName) {
+    h +=
+      Math.max(1, Math.ceil(measureTextHeight(name, w, CHEM_NAME_FONT, CHEM_NAME_LINE) / CHEM_NAME_LINE)) *
+      CHEM_NAME_LINE;
+    if (hasBox || hasFormula) h += CHEM_NAME_MARGIN_B;
+  }
+  if (hasBox) {
+    h += CHEM_BOX_H;
+    if (hasFormula) h += CHEM_BOX_MARGIN_B;
+  }
+  if (hasFormula) {
+    h +=
+      Math.max(1, Math.ceil(measureTextHeight(formula, w, CHEM_META_FONT, CHEM_META_LINE) / CHEM_META_LINE)) *
+      CHEM_META_LINE;
+  }
+  return h;
+}
+
 /** 资产/开放 kind 块体高（按表现原语分派；无注册表现 → JSON 兜底视图）。 */
 function measureAssetBlockHeight(b: SourcedBlock): number {
   const pres = assetPresentationOf(b);
@@ -851,6 +896,8 @@ function measureAssetBlockHeight(b: SourcedBlock): number {
       return formBodyH(p as { title?: unknown; body?: unknown; options?: unknown }, b.w);
     case 'citation':
       return citationBodyH(p as Record<string, unknown>, b.w);
+    case 'chem':
+      return chemBodyH(p as Record<string, unknown>, b.w);
     default:
       // 未知 kind / 表现名无注册渲染器（'*' 兜底 JsonBody；插件若覆盖 '*' 行，
       // 静态估高失准由挂载后 RO 实测兜底）。

@@ -308,6 +308,23 @@ export const ASSET_TOKENS = {
     bibPadH: 10,
     bibMaxH: 240,
   },
+  // 化学式/反应卡（scientific-rendering #10，2026-09）。行高沿用 citation 的
+  // 显式 px 做法（asset 组 token 注入全带 px 后缀）。结构区（.pp-chem-box）为
+  // **固定盒**（boxH）——smiles-drawer SVG 只写 viewBox 不写 width/height，
+  // 盒内 svg 100%×100% + meet 居中 → 盒高恒定、测量镜像精确（不像媒体图
+  // 有加载态/自然高差），RO 恒挂仅兜底。
+  chem: {
+    padV: 2,
+    nameSize: 13,
+    nameLine: 20,
+    nameMarginB: 6, // .pp-chem-name margin-bottom
+    boxH: 180, // .pp-chem-box 固定盒高（结构渲染区）
+    boxBorder: 1, // .pp-chem-box border（周框）
+    boxMarginB: 6, // .pp-chem-box margin-bottom
+    metaSize: 11,
+    metaLine: 17, // formula / err 共用行高
+    metaMarginB: 2, // .pp-chem-formula + .pp-chem-err 间距
+  },
   plan: {
     titleSize: 15,
     titleLh: 1.8,
@@ -437,6 +454,15 @@ export const ASSET_DERIVED = {
   citationSummaryLine: ASSET_TOKENS.citation.summaryLine, // BibTeX summary 恒单行（字号不入测高）
   citationBibMarginTop: ASSET_TOKENS.citation.bibMarginTop,
   citationBibTopChrome: ASSET_TOKENS.citation.bibBorderTop + ASSET_TOKENS.citation.bibPadTop, // .pp-citation-bib border-top + padding-top（默认折叠态计入）
+
+  chemPadV: ASSET_TOKENS.chem.padV * 2, // .pp-chem padding 2×2
+  chemNameFont: `${ASSET_TOKENS.chem.nameSize}px ${FONT_STACKS.song}`,
+  chemNameLine: ASSET_TOKENS.chem.nameLine,
+  chemNameMarginB: ASSET_TOKENS.chem.nameMarginB, // .pp-chem-name margin-bottom
+  chemBoxH: ASSET_TOKENS.chem.boxH, // .pp-chem-box 固定盒高（含 border——box-sizing）
+  chemBoxMarginB: ASSET_TOKENS.chem.boxMarginB, // .pp-chem-box margin-bottom
+  chemMetaFont: `${ASSET_TOKENS.chem.metaSize}px ${FONT_STACKS.mono}`,
+  chemMetaLine: ASSET_TOKENS.chem.metaLine,
 
   planTitleSize: ASSET_TOKENS.plan.titleSize,
   planTitleLh: ASSET_TOKENS.plan.titleLh,

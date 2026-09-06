@@ -3925,3 +3925,67 @@ button.pp-form-option:disabled {
   border-left: 2px solid color-mix(in oklch, var(--fail) 45%, transparent);
   padding-left: 10px;
 }
+
+/* ── chem 化学式/反应卡（scientific-rendering #10，2026-09）──
+ * name/formula/smiles 的结构化呈现。结构区 .pp-chem-box 是固定盒
+ * （boxH + border 周框）：smiles-drawer SVG 只写 viewBox、CSS 100%×100% +
+ * 默认 preserveAspectRatio meet → 分子在盒内等比居中，盒高恒定（测量镜像精确，
+ * RO 恒挂仅兜底）。全行高用 --pp-asset-chem-*（显式 px，同 citation 纪律）。 */
+.pp-chem {
+  padding: var(--pp-asset-chem-padV) 0;
+}
+.pp-chem-name {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-chem-nameSize);
+  font-weight: 600;
+  line-height: var(--pp-asset-chem-nameLine);
+  color: var(--ink-1);
+  margin-bottom: var(--pp-asset-chem-nameMarginB);
+  word-break: break-word;
+}
+.pp-chem-box {
+  /* box-sizing: border-box → 盒高恒 boxH（含 border），与 measure 预算一致 */
+  box-sizing: border-box;
+  height: var(--pp-asset-chem-boxH);
+  border: var(--pp-asset-chem-boxBorder) solid var(--rule-soft);
+  background: color-mix(in oklch, var(--paper-deep) 30%, transparent);
+  margin-bottom: var(--pp-asset-chem-boxMarginB);
+  /* 内边距避免分子贴框（smiles-drawer 自带 padding 8，此处置零防双 padding） */
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pp-chem-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.pp-chem-meta {
+  display: block;
+}
+.pp-chem-formula,
+.pp-chem-err {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-chem-metaSize);
+  line-height: var(--pp-asset-chem-metaLine);
+  color: var(--ink-2);
+  word-break: break-word;
+}
+.pp-chem-formula {
+  color: var(--indigo);
+}
+.pp-chem-formula + .pp-chem-err {
+  margin-top: var(--pp-asset-chem-metaMarginB);
+}
+.pp-chem-err {
+  color: var(--fail);
+}
+.pp-chem-empty {
+  font-family: var(--f-song);
+  font-size: 0.92rem;
+  color: var(--fail);
+  padding: var(--pp-asset-chem-padV) 0;
+  border-left: 2px solid color-mix(in oklch, var(--fail) 45%, transparent);
+  padding-left: 10px;
+}

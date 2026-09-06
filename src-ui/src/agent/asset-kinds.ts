@@ -263,6 +263,31 @@ export function registerBuiltinAssetKinds(): void {
   });
 
   // ═══════════════════════════════════════════════════════
+  // 科研化学式（scientific-rendering #10，2026-09）
+  // ═══════════════════════════════════════════════════════
+  // 分子/反应呈现字段集（name/formula/smiles）——name = 展示名（可空），
+  // formula = 分子式文本（可空，无 smiles 时兜底展示），smiles = 结构式
+  // （SMILES，可含反应 'A>>B'）。整卡 atomic（一次给出）。
+  // 表现原语 chem-body 在 plugins/builtin/renderers/components.tsx。
+  assetKinds.register({
+    id: 'chem',
+    description:
+      '化学物质/反应卡（分子式 + SMILES 结构式）——化学式与结构的结构化呈现：' +
+      '名称/分子式/结构式。模型给出 SMILES（含反应式 A>>B）即渲染 2D 结构',
+    schema: objectSchema(
+      {
+        name: { type: 'string', description: '物质展示名（如 阿司匹林，可空）' },
+        formula: { type: 'string', description: '分子式文本（如 C9H8O4，可空）' },
+        smiles: { type: 'string', description: 'SMILES 结构式（如 CC(=O)Oc1ccccc1C(=O)O；可含反应 A>>B）' },
+      },
+      [],
+    ),
+    presentations: ['chem'],
+    defaultPresentation: 'chem',
+    streamable: 'atomic',
+  });
+
+  // ═══════════════════════════════════════════════════════
   // 科研引用卡（scientific-rendering 4B，2026-09）
   // ═══════════════════════════════════════════════════════
   // BibTeX 字段集（title/authors/year/venue/doi/pmid/arxiv/url/bibtex）——

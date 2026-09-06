@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 //
-// 内置渲染器插件（P1，first-party-hot-reload-plan）——11 个资产表现原语
-// （grid/chart/metric/media/graph/tree/html/form/board/timeline/citation）的唯一真源。
+// 内置渲染器插件（P1，first-party-hot-reload-plan）——12 个资产表现原语
+// （grid/chart/metric/media/graph/tree/html/form/board/timeline/citation/chem）
+// 的唯一真源。
 //
 // 原位置 src-ui/src/composition/asset-renderers.tsx（已迁移，薄壳 re-export）。
 // 双走查设计：
@@ -20,8 +21,14 @@
 //     无回调（历史卡/重载）只读态——回调不持久化（PlanPart._callback 先例）。
 //
 // 类型导入纪律：type-only import 编译期擦除（esbuild 产物无裸运行时 import）。
+// smiles-drawer（scientific-rendering #10，2026-09）：npm 依赖，esbuild 产物域
+// bundle:true 自动内联（react-bridge.cjs 注释 @react-aria 先例；本包零 react
+// 依赖——chroma-js 一并内联，不进宿主桥）。vitest 域真实加载本包：parse 是纯
+// 字符串处理不碰 DOM，SvgDrawer/ReactionDrawer 只在组件 effect 挂载后 draw 时
+// 才碰 svg DOM。类型：包自带 dist/types（SmilesDrawerNS 默认导出）。
 
 import type { CSSProperties, ReactNode } from 'react';
+import SmilesDrawer from 'smiles-drawer';
 import type { ConfirmCardResponse } from '../../../agent/agent-types';
 import type { BlockRendererProps } from '../../../composition/renderer-service';
 import { rendererHooks, rendererOverlay, rendererRpc } from './renderer-host';
@@ -857,7 +864,95 @@ function CitationBody({ block }: BlockRendererProps) {
   );
 }
 
-/** 11 个资产表现原语的注册表入口（供渲染器 cordis 插件装载）。 */
+/* ── chem（化学式/反应卡——scientific-rendering #10，2026-09）──
+ * name/formula/smiles 的结构化呈现：展示名（宋体）+ SMILES 结构图 + 分子式。
+ * 结构图走 smiles-drawer SvgDrawer（SVG 只写 viewBox 不写尺寸——CSS 100%×100%
+ * 自适应；scale<=0 时 viewBox 被归一为方形包围盒，盒内 meet 居中不失真）。
+ * 绘制是 effect（要真实 svg DOM 挂载）——SSR/测试无 effect → 空盒（measure
+ * 静态镜像恒 boxH，挂载后 RO 实测兜底——chem 属资产族恒挂 RO）。
+ * 错误可见不崩：parse/draw 失败 → 错误行 + formula/name 兜底仍在；smiles
+ * 原文只在异常时展示（成功时图即正文，不重复堆原文）。 */
+
+function ChemBody({ block }: BlockRendererProps) {
+  const p = block.payload as { name?: unknown; formula?: unknown; smiles?: unknown };
+  const name = typeof p.name === 'string' ? p.name : '';
+  const formula = typeof p.formula === 'string' ? p.formula : '';
+  const smiles = typeof p.smiles === 'string' ? p.smiles : '';
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const empty = !name && !formula && !smiles;
+  useEffect(() => {
+    if (!smiles || !svgRef.current) return;
+    let cancelled = false;
+    const svg = svgRef.current;
+    const onErr = (e: unknown): void => {
+      if (!cancelled) setErr(e instanceof Error ? e.message : String(e));
+    };
+    const draw = (tree: unknown): void => {
+      if (cancelled || !svg.isConnected) return;
+      try {
+        // 分子 options（SvgDrawer/ReactionDrawer 内部 SvgDrawer 共用）：
+        // 键控比例小一号（box 内 fit——默认 500×500 / bond 30 会撑满 180 盒）
+        const molOpts = {
+          width: 500,
+          height: 500,
+          bondThickness: 0.9,
+          bondLength: 22,
+          padding: 6,
+          fontSizeLarge: 7,
+          fontSizeSmall: 3,
+        };
+        if (smiles.includes('>>')) {
+          // 反应式（A>>B）：ReactionDrawer(reactionOptions, moleculeOptions)
+          const drawer = new SmilesDrawer.ReactionDrawer(
+            { spacing: 14, arrow: { length: 40, headSize: 6, thickness: 1 } },
+            molOpts,
+          );
+          drawer.draw(tree, svg, 'light');
+        } else {
+          const drawer = new SmilesDrawer.SvgDrawer(molOpts);
+          drawer.draw(tree, svg, 'light');
+        }
+      } catch (e) {
+        onErr(e);
+      }
+    };
+    if (smiles.includes('>>')) {
+      SmilesDrawer.parseReaction(smiles, draw, onErr);
+    } else {
+      SmilesDrawer.parse(smiles, draw, onErr);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [smiles]);
+  if (empty) {
+    return <div className="pp-chem pp-chem-empty">数据不可用 · 期望化学字段（name/formula/smiles 之一）</div>;
+  }
+  return (
+    <div className="pp-chem">
+      {name && <div className="pp-chem-name">{name}</div>}
+      {smiles && (
+        <div className="pp-chem-box">
+          {/* smiles-drawer 经 ref 原地绘制本 svg（append defs/g/paths）——元素自闭合写法无影响 */}
+          <svg ref={svgRef} className="pp-chem-svg" role="img" aria-label={name || formula || smiles} />
+        </div>
+      )}
+      {(formula || (smiles && err)) && (
+        <div className="pp-chem-meta">
+          {formula && <div className="pp-chem-formula">{formula}</div>}
+          {smiles && err && (
+            <div className="pp-chem-err" title={smiles}>
+              结构解析失败：{err}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 12 个资产表现原语的注册表入口（供渲染器 cordis 插件装载）。 */
 export type AssetRendererKind =
   | 'grid'
   | 'chart'
@@ -869,7 +964,8 @@ export type AssetRendererKind =
   | 'form'
   | 'board'
   | 'timeline'
-  | 'citation';
+  | 'citation'
+  | 'chem';
 
 export function assetRendererComponents(): Record<AssetRendererKind, (props: BlockRendererProps) => ReactNode> {
   return {
@@ -884,5 +980,6 @@ export function assetRendererComponents(): Record<AssetRendererKind, (props: Blo
     board: BoardBody,
     timeline: TimelineBody,
     citation: CitationBody,
+    chem: ChemBody,
   };
 }
