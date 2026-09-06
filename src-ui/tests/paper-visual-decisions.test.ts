@@ -541,3 +541,51 @@ describe('会话流族节奏（stream-rhythm 刀5，2026-09-03——族边界切
     expect(PANEL_TSX).toContain('verifyDoneIds');
   });
 });
+
+describe('纸面运行态（2026-09-06——「会话在跑而纸面死寂」根治批）', () => {
+  it('动效族同律：pp-ink-live 0.45↔1（带宽亮于线条呼吸——点是定位信号）', () => {
+    const kf = keyframesBody(PANEL_CSS, 'pp-ink-live');
+    expect(kf).toContain('opacity: 0.45');
+    expect(kf).toContain('opacity: 1');
+    // 1.6s 与 pp-breathe 同频（整族同拍）
+    expect(ruleBody(PANEL_CSS, '.pp-quill')).toContain('animation: pp-ink-live 1.6s ease-in-out infinite');
+  });
+
+  it('落笔点：卷轴线锚下石青方点（bottom 56 = 锚+9~16，7px 方形——圆角恒 0）', () => {
+    const rule = ruleBody(PANEL_CSS, '.pp-quill');
+    expect(rule).toContain('bottom: 56px');
+    expect(rule).toContain('left: 50%');
+    expect(rule).toContain('width: 7px');
+    expect(rule).toContain('height: 7px');
+    expect(rule).toContain('background: var(--indigo)'); // 机=石青铁律
+    expect(rule).not.toContain('border-radius'); // 方点化（D2）——无圆角声明
+  });
+
+  it('湿墨尾点：续墨行位随正文左缘（left:0 底下 20px，拖拽回流让位）', () => {
+    const rule = ruleBody(PANEL_CSS, '.pp-block.pp-writing:not(.pp-drag-returning)::after');
+    expect(rule).toContain('left: 0');
+    expect(rule).toContain('bottom: -20px');
+    expect(rule).toContain('width: 7px');
+    expect(rule).toContain('height: 7px');
+    expect(rule).toContain('background: var(--indigo)');
+  });
+
+  it('行走秒/在跑折叠行：石青 + 同族呼吸', () => {
+    expect(ruleBody(PANEL_CSS, '.pp-status.pp-status--live')).toContain(
+      'animation: pp-ink-live 1.6s ease-in-out infinite',
+    );
+    const busy = ruleBody(PANEL_CSS, '.pp-fold.pp-fold--busy');
+    expect(busy).toContain('color: var(--indigo)');
+    expect(busy).toContain('animation: pp-ink-live 1.6s ease-in-out infinite');
+    // running 状态签本色仍是石青（行走秒在其上叠呼吸）
+    expect(ruleBody(PANEL_CSS, '.pp-status.pp-running')).toContain('color: var(--indigo)');
+  });
+
+  it('接线在册：落笔点/湿墨类/运行集进壳层，wet 判定进 block-model', () => {
+    expect(PANEL_TSX).toContain('pp-quill');
+    expect(PANEL_TSX).toContain("writing ? ' pp-writing'");
+    expect(PANEL_TSX).toContain('runningSessions');
+    expect(PANEL_TSX).toContain('writingBlockIdOf(blocks)');
+    expect(readFileSync(join(SRC, 'paper', 'block-model.ts'), 'utf8')).toContain('export function writingBlockIdOf');
+  });
+});

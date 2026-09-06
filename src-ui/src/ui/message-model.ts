@@ -66,6 +66,9 @@ export interface ToolCallPart {
   err?: string;
   /** 后端截断输出时为 true。 */
   truncated?: boolean;
+  /** 首次进入 running 态的时刻（Date.now()，毫秒）——纸面行走秒的计时起点。
+   *  历史会话/未流式直建的卡片无此字段（渲染层降级为不带秒）。 */
+  startedAt?: number;
 }
 
 /** 子 agent 嵌套块 — 在助手消息内渲染为可折叠分组。 */

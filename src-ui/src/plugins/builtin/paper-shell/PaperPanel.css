@@ -186,6 +186,20 @@
   }
 }
 
+/* ── 纸面运行态动效族（2026-09-06）：落笔点/湿墨尾点/行走秒/在跑折叠行 ──
+ * 同族同律：石青（机=铁律）、方点（D2 圆角恒 0 收编）、1.6s 与 pp-breathe
+ * 同频呼吸（整族同拍不相干）。明度带宽比线条呼吸（0.2↔0.75）亮——点是
+ * 定位信号、行是环境信号。动效敏感用户经 foundation.css 全局豁免成静态。 */
+@keyframes pp-ink-live {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 /* ── 流式重排平滑（2026-09-02 stream-rhythm-smooth）──
  * 根因：会话流每来一段新字 → 正在写的块变高 → 布局重算 → 上面所有块坐标
  * 一次性瞬移到新位置（left/top 直接写）——「每几个字整段跳一下」的割裂感。
@@ -600,6 +614,29 @@
 .pp-status.pp-pending {
   color: var(--ink-3);
 }
+/* 行走秒（2026-09-06 纸面运行态）：running 态状态签换「行 Ns」并挂呼吸
+ * （ToolStatusChip 渲染）——静止的英文字 'running' 无活气，走秒是「在跑」
+ * 最便宜的体感。 */
+.pp-status.pp-status--live {
+  animation: pp-ink-live 1.6s ease-in-out infinite;
+}
+
+/* 湿墨尾点（2026-09-06 纸面运行态）：正在书写的块（.pp-writing，壳层按
+ * RegionView.writingBlockId 挂类）——续墨行位落一枚石青方点呼吸，块写完
+ * 「墨干」随类摘除退场。落点在块底下方一行的正文左缘（.pp-body 无内距，
+ * left:0 即字口），「下一行从这起」的笔位语义。拖拽回流态让位（::after 槽
+ * 位被回流预览占用）。 */
+.pp-block.pp-writing:not(.pp-drag-returning)::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -20px;
+  width: 7px;
+  height: 7px;
+  background: var(--indigo);
+  animation: pp-ink-live 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
 
 /* ── 来文（user）：楷书手迹 + 朱砂批线 ──
  * 2026-08-30 标题化：来文 = 题。去左批线，正文居中；题签（.pp-kind）从
@@ -906,6 +943,13 @@
 }
 .pp-fold:hover {
   color: var(--seal-deep);
+}
+/* 在跑折叠行（2026-09-06 纸面运行态）：被收起的运行中卡片/组头——行内已有
+ * 「N 在跑」字样（foldLabel），整行转石青并呼吸，让静止的折叠行活起来。
+ * 只染折叠行本身，不碰展开态（展开卡的活气由行走秒承担）。 */
+.pp-fold.pp-fold--busy {
+  color: var(--indigo);
+  animation: pp-ink-live 1.6s ease-in-out infinite;
 }
 .pp-block.pp-reasoning .pp-fold {
   color: var(--graphite);
@@ -2785,6 +2829,23 @@
   color: var(--ink-4);
   pointer-events: none;
   user-select: none;
+}
+
+/* 落笔点（2026-09-06 纸面运行态）：本卷在跑而尾部无湿墨（模型思考/工具
+ * 执行——运行而纸面静止的「死寂窗口」）→ 锚线下方卷轴线一枚石青方点
+ * 呼吸，示「墨将落此处」。锚线 = 最新块底边（流向上生长，新块底边贴锚），
+ * 容器底 = 锚 + 72（STREAM_REGION 底距），bottom:56 → 点在锚下 9~16px。
+ * 湿墨尾点在场时壳层不渲染本点（双点成噪声）。 */
+.pp-quill {
+  position: absolute;
+  bottom: 56px;
+  left: 50%;
+  margin-left: -3.5px;
+  width: 7px;
+  height: 7px;
+  background: var(--indigo);
+  animation: pp-ink-live 1.6s ease-in-out infinite;
+  pointer-events: none;
 }
 .pp-mm-band {
   position: absolute;

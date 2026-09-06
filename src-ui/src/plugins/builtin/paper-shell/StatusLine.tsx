@@ -13,6 +13,10 @@
 //   - 其余时刻显示 statusText 最新一条；
 //   - hover 展开 statusLog 环（最近 15 条）——可追溯但不占常驻位。
 //
+// 纸面运行态（2026-09-06）：活跃卷 Agent 在跑 → 「行卷中」（running prop，
+// PaperPanel 自 runningSessions 真源传入）插在警报之后、分析之前——
+// 前台回合是用户视线焦点，比后台分析优先；呼吸点/石青与「分析中」同语言。
+//
 // 挂载：PaperPanel 书眉（pp-zoom 旁）。app 级单例 store，无面板生命周期。
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享真实例。
 
@@ -30,7 +34,7 @@ function formatLogTime(at: number): string {
   return h + ':' + m;
 }
 
-export const StatusLine = memo(function StatusLine() {
+export const StatusLine = memo(function StatusLine({ running = false }: { running?: boolean }) {
   const statusText = useShellStore((s) => s.statusText);
   const statusLog = useShellStore((s) => s.statusLog);
   const analyzing = useShellStore((s) => s.analyzing);
@@ -49,15 +53,16 @@ export const StatusLine = memo(function StatusLine() {
     setAlertDismissedId('');
   }
 
-  // 分析中的呼吸点（可停原则：CSS transition + 定时翻转，卸载即清）
+  // 分析中的呼吸点（可停原则：CSS transition + 定时翻转，卸载即清）。
+  // 纸面运行态（2026-09-06）：行卷中共用同一呼吸点。
   useEffect(() => {
-    if (!analyzing) {
+    if (!analyzing && !running) {
       setPulse(false);
       return;
     }
     const t = window.setInterval(() => setPulse((p) => !p), ACTIVITY_PULSE_MS);
     return () => window.clearInterval(t);
-  }, [analyzing]);
+  }, [analyzing, running]);
 
   // 外点收起日志（弹层一致性，2026-08 UI 大清扫）
   useEffect(() => {
@@ -72,7 +77,7 @@ export const StatusLine = memo(function StatusLine() {
   // Esc 关闭日志弹层（2026-08-29 overlay 原语收编：非模态气泡——不拦冒泡不挡默认）
   useDialogEscape(() => setLogOpen(false), { enabled: logOpen, capture: false, blockPropagation: false });
 
-  const busy = analyzing !== null;
+  const busy = running || analyzing !== null;
   const alerting = bgAlert !== null;
 
   return (
@@ -81,7 +86,7 @@ export const StatusLine = memo(function StatusLine() {
         type="button"
         className={`sl-chip${busy ? ' sl-chip--busy' : ''}${alerting ? ' sl-chip--warn' : ''}`}
         title={alerting ? `后台警报：${bgAlert?.msg ?? ''}（点击查看最近记录）` : '状态（点击查看最近记录）'}
-        aria-label={`工作区状态：${alerting ? `后台警报 ${bgAlert?.msg ?? ''}` : busy ? '分析中' : statusText}`}
+        aria-label={`工作区状态：${alerting ? `后台警报 ${bgAlert?.msg ?? ''}` : running ? '行卷中' : busy ? '分析中' : statusText}`}
         aria-expanded={logOpen}
         onClick={() => setLogOpen((v) => !v)}
       >
@@ -90,11 +95,13 @@ export const StatusLine = memo(function StatusLine() {
         <span className="sl-text">
           {alerting
             ? `⚠ ${bgAlert?.msg ?? ''}`
-            : busy
-              ? analyzing === 'reanalyze'
-                ? '重分析中'
-                : '分析中'
-              : statusText}
+            : running
+              ? '行卷中'
+              : busy
+                ? analyzing === 'reanalyze'
+                  ? '重分析中'
+                  : '分析中'
+                : statusText}
         </span>
       </button>
       {alerting && alertDismissedId !== alertId && (

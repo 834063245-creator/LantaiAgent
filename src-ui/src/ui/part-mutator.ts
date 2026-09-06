@@ -59,6 +59,11 @@ export function applyEventToParts(parts: AssistantPart[], ev: AgentEvent): boole
           // Upsert：ToolCallStart + ToolCall 都发出同一 toolId 的
           // ToolDispatch — 第二个事件携带完整参数。
           existing.status = ev.tool.partial ? 'pending' : 'running';
+          // 走秒起点（2026-09-06 纸面运行态）：首次进 running 时落戳，
+          // 重发/进度事件不重置（elapsed 语义 = 自起跑连续累计）。
+          if (existing.status === 'running' && existing.startedAt == null) {
+            existing.startedAt = Date.now();
+          }
           if (ev.tool.args && ev.tool.args.length > existing.args.length) {
             existing.args = ev.tool.args;
           }
@@ -72,6 +77,7 @@ export function applyEventToParts(parts: AssistantPart[], ev: AgentEvent): boole
             label: ev.tool.name,
             readOnly: ev.tool.read_only ?? false,
             status: ev.tool.partial ? 'pending' : 'running',
+            ...(ev.tool.partial ? undefined : { startedAt: Date.now() }),
           });
         }
         return true;
@@ -83,6 +89,7 @@ export function applyEventToParts(parts: AssistantPart[], ev: AgentEvent): boole
         const tp = findToolPart(parts, ev.tool.id);
         if (tp) {
           tp.status = 'running';
+          if (tp.startedAt == null) tp.startedAt = Date.now();
           if (ev.tool.output) {
             // ponytail: 写入/编辑工具替换（预览内容随模型流式增长），
             // shell 工具追加（stdout 块累积）。

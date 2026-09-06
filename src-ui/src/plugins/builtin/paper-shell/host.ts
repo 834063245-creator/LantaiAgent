@@ -37,6 +37,9 @@ export {
 } from '../../../paper/active-region';
 // 类型面（产物域经 host.aliased 对拍）
 export type { SourcedBlock } from '../../../paper/block-model';
+/* 纸面运行态（2026-09-06）：湿墨判定纯函数——RegionView.writingBlockId 的
+ * 派生源（faceDeps 已含 host 形状封蜡，三处同步缺一即红）。 */
+export { writingBlockIdOf } from '../../../paper/block-model';
 // paper 几何 / 墨迹 / 测量 / 选择 / 翻译 / 虚拟化 / 上下文
 export {
   ANCHOR,

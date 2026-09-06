@@ -67,6 +67,7 @@ import { activeSpace } from '../../composition/space-service';
 import { Service } from '../../cordis';
 import { setLang } from '../../i18n';
 import { createSettleSelector, hitRegionAtWorld, viewportCenterWorld } from '../../paper/active-region';
+import { writingBlockIdOf } from '../../paper/block-model';
 import {
   ANCHOR,
   layoutRegion,
@@ -209,6 +210,7 @@ const faceDeps = {
   createSettleSelector,
   hitRegionAtWorld,
   viewportCenterWorld,
+  writingBlockIdOf,
   // paper-minimap 插件（2026-09-05）：minimap-core 纯几何（inkColorOf 已在下）
   clampViewportFrame,
   inkBarsFor,

@@ -12,6 +12,7 @@ import {
   pinBlock,
   resetBlockIdCounterForTests,
   unpinBlock,
+  writingBlockIdOf,
 } from '../src/paper/block-model';
 import {
   ANCHOR,
@@ -82,6 +83,52 @@ describe('paper/block-model', () => {
     const a = createBlock('notice', { text: '', level: 'info' }, { messageId: 'm', part: null });
     const b = createBlock('notice', { text: '', level: 'info' }, { messageId: 'm', part: null });
     expect(a.id).not.toBe(b.id);
+  });
+
+  /* ── 湿墨判定（2026-09-06 纸面运行态）：writingBlockIdOf ── */
+
+  it('writingBlockIdOf：取最末未干墨块（finalised===false 的 part 源）', () => {
+    resetBlockIdCounterForTests();
+    const dry = { type: 'text' as const, text: '已写完', finalised: true };
+    const wet = { type: 'text' as const, text: '正在写', finalised: false };
+    const blocks = [
+      createBlock('markdown', { text: '来文背景' }, { messageId: 'm', part: null }),
+      createBlock('markdown', { text: dry.text }, { messageId: 'm', part: dry }),
+      createBlock('markdown', { text: wet.text }, { messageId: 'm', part: wet }),
+    ];
+    expect(writingBlockIdOf(blocks)).toBe(blocks[2].id);
+  });
+
+  it('writingBlockIdOf：未干墨 part 在前、后续有干块 → 仍指向它（书写头不因后继失位）', () => {
+    resetBlockIdCounterForTests();
+    const wet = { type: 'text' as const, text: '流式中', finalised: false };
+    const toolPart = {
+      type: 'tool' as const,
+      toolId: 't',
+      name: 'fs',
+      label: 'fs',
+      args: '{}',
+      readOnly: false,
+      status: 'running' as const,
+    };
+    const blocks = [
+      createBlock('markdown', { text: wet.text }, { messageId: 'm', part: wet }),
+      createBlock(
+        'tool',
+        { toolId: 't', name: 'fs', label: 'fs', args: '{}', status: 'running' },
+        { messageId: 'm', part: toolPart },
+      ),
+    ];
+    expect(writingBlockIdOf(blocks)).toBe(blocks[0].id);
+  });
+
+  it('writingBlockIdOf：全干/空集 → null', () => {
+    resetBlockIdCounterForTests();
+    const dry = { type: 'text' as const, text: 'a', finalised: true };
+    expect(writingBlockIdOf([])).toBeNull();
+    expect(writingBlockIdOf([createBlock('markdown', { text: 'a' }, { messageId: 'm', part: dry })])).toBeNull();
+    // part 为 null 的块（user/notice）不误判
+    expect(writingBlockIdOf([createBlock('user', { text: '问' }, { messageId: 'm', part: null })])).toBeNull();
   });
 });
 
@@ -222,6 +269,50 @@ describe('paper/translate', () => {
     expect(tool.id).toBe('pb:a1:1');
     // 活引用：source.part 是原 part 对象
     expect(tool.source.part).toBe(msgs[0].parts[1]);
+  });
+
+  it('tool/code 块透传 startedAt（行走秒计时源，2026-09-06 纸面运行态）', () => {
+    resetBlockIdCounterForTests();
+    const stamp = 1_757_000_000_000;
+    const msgs: ChatMessage[] = [
+      asstMsg('a1', [
+        {
+          type: 'tool',
+          toolId: 't1',
+          name: 'fs',
+          label: '读文件',
+          args: '{}',
+          readOnly: true,
+          status: 'running',
+          startedAt: stamp,
+        },
+        {
+          type: 'tool',
+          toolId: 'c1',
+          name: 'code_execution',
+          label: '跑程序',
+          args: '{"code":"1+1"}',
+          readOnly: false,
+          status: 'running',
+          startedAt: stamp,
+        },
+        {
+          type: 'tool',
+          toolId: 't2',
+          name: 'fs',
+          label: '历史卡',
+          args: '{}',
+          readOnly: true,
+          status: 'running',
+        },
+      ]),
+    ];
+    const blocks = translateMessages(msgs);
+    expect(blocks.map((b) => b.kind)).toEqual(['tool', 'code', 'tool']);
+    expect((blocks[0].payload as { startedAt?: number }).startedAt).toBe(stamp);
+    expect((blocks[1].payload as { startedAt?: number }).startedAt).toBe(stamp);
+    // 无 startedAt（历史卡）不造字段——渲染层降级为纯「行」
+    expect('startedAt' in blocks[2].payload).toBe(false);
   });
 
   it('subagent parts 组内折叠（F4 2026-09-01）：组头 + 子块，不再摊平正文流', () => {

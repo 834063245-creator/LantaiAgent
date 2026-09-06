@@ -46,8 +46,12 @@ export interface RegionView {
    *  渲染层给单元界短规线；叙述/恢复/墓碑不发。 */
   unitLeadIds: ReadonlySet<string>;
   /** 验证链毕块（stream-rhythm 刀5 C：verify 工作单元末成员，链毕判据见
-   *  rhythmAssign）——渲染层给「✓ 阶段完成」锚。 */
+   *  rhythmAssign）——渲染层给「✓ 阶段完成」锚消费。 */
   verifyDoneIds: ReadonlySet<string>;
+  /** 正在书写的块 id（2026-09-06 纸面运行态：writingBlockIdOf 派生——
+   *  source part 未干墨的最末块）。渲染层据此给湿墨尾点；全干/null。
+   *  stub 卷为 null。 */
+  writingBlockId: string | null;
   /** P2-2 卷级虚拟化（2026-09-02）：true = 视口外 stub——blocks/flowGeom 为空
    *  数组，跳过全量派生（translate/adapt/measure/layout）。消费面（小地图
    *  extent / 孤儿钉 openBlockIds / 页脚块数）用最近一次全量构建值：

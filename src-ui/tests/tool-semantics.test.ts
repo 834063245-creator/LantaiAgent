@@ -170,4 +170,48 @@ describe('part-mutator — 领域工具 ToolProgress 语义', () => {
     expect(tp.type).toBe('tool');
     if (tp.type === 'tool') expect(tp.output).toBe('ab');
   });
+
+  /* ── startedAt 落戳（2026-09-06 纸面运行态：行走秒计时源） ── */
+
+  it('partial dispatch = pending 不落戳；首转 running（progress/整参 dispatch）落戳且不重置', () => {
+    const parts: (typeof AssistantPart)[] = [];
+    applyEventToParts(parts, {
+      kind: EventKind.ToolDispatch,
+      tool: { id: 't1', name: 'fs', args: '{"action":"read"', read_only: true, partial: true },
+    });
+    const tp = parts[0];
+    if (tp.type !== 'tool') throw new Error('part 形状错误');
+    expect(tp.status).toBe('pending');
+    expect(tp.startedAt).toBeUndefined(); // 参数流式中不计时
+    applyEventToParts(parts, {
+      kind: EventKind.ToolProgress,
+      tool: { id: 't1', name: 'fs', args: '{"action":"read"}', output: 'x' },
+    });
+    const stamp = tp.startedAt;
+    expect(typeof stamp).toBe('number'); // 首转 running 落戳
+    // 后续 progress 不重置（elapsed 连续累计）
+    applyEventToParts(parts, {
+      kind: EventKind.ToolProgress,
+      tool: { id: 't1', name: 'fs', args: '{"action":"read"}', output: 'xy' },
+    });
+    expect(tp.startedAt).toBe(stamp);
+    // 整参重发 dispatch（partial=false）同样不重置
+    applyEventToParts(parts, {
+      kind: EventKind.ToolDispatch,
+      tool: { id: 't1', name: 'fs', args: '{"action":"read"}', read_only: true, partial: false },
+    });
+    expect(tp.startedAt).toBe(stamp);
+  });
+
+  it('直建整参 dispatch（无 partial 期）→ 创建即落戳', () => {
+    const parts: (typeof AssistantPart)[] = [];
+    applyEventToParts(parts, {
+      kind: EventKind.ToolDispatch,
+      tool: { id: 't9', name: 'search', args: '{"action":"content"}', read_only: true, partial: false },
+    });
+    const tp = parts[0];
+    if (tp.type !== 'tool') throw new Error('part 形状错误');
+    expect(tp.status).toBe('running');
+    expect(typeof tp.startedAt).toBe('number');
+  });
 });

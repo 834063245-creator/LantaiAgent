@@ -122,6 +122,7 @@ import {
   visiblePinnedIds,
   WinControls,
   wheelFactor,
+  writingBlockIdOf,
   zoomAt,
 } from './host';
 import { InkLayer } from './InkLayer';
@@ -197,6 +198,28 @@ function messageCopyText(msg: ChatMessage): string {
     .join('\n');
 }
 
+/** 工具/程文卡状态签（2026-09-06 纸面运行态）：running = 石青「行」+行走秒
+ *  ——秒数读 part 起跑戳（startedAt，part-mutator 首转 running 落戳）现算，
+ *  虚拟化卸挂不丢时长；无戳历史卡降级纯「行」。1s 心跳自持在本签——
+ *  走秒只重渲这几颗字，不惊动块体。 */
+const ToolStatusChip = memo(function ToolStatusChip({ status, startedAt }: { status: string; startedAt?: number }) {
+  const running = status === 'running';
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!running) return;
+    const t = window.setInterval(() => setTick((n) => n + 1), 1000);
+    return () => window.clearInterval(t);
+  }, [running]);
+  let label: string;
+  if (!running) label = status;
+  else if (startedAt == null) label = '行';
+  else {
+    const s = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+    label = s < 60 ? `行 ${s}s` : `行 ${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}s`;
+  }
+  return <span className={`pp-status pp-${status}${running ? ' pp-status--live' : ''}`}>{label}</span>;
+});
+
 const BlockView = memo(function BlockView({
   block,
   seq,
@@ -242,6 +265,20 @@ const BlockView = memo(function BlockView({
     ? resolveAssetBlock(block.kind, block.asset.presentation)
     : resolveRenderer(block.kind)?.component;
   const foldable = isFoldable(block.kind);
+  /* 折叠行在跑呼吸（2026-09-06 纸面运行态）：被收起的运行中卡片/组头——行内
+   * 已有「N 在跑」字样（foldLabel），再给整行石青呼吸让静止的折叠行活
+   * 起来。在跑口径与 foldLabel 对齐：running + pending。 */
+  const foldBusy =
+    foldable &&
+    folded &&
+    (block.kind === 'tool' || block.kind === 'code'
+      ? (p as { status?: string }).status === 'running'
+      : block.kind === 'toolgroup' || block.kind === 'subagent'
+        ? (block.kind === 'subagent' && (p as { status?: string }).status === 'running') ||
+          ((p as { items?: Array<{ status?: string }> }).items ?? []).some(
+            (it) => it.status === 'running' || it.status === 'pending',
+          )
+        : false);
   return (
     <>
       {/* biome-ignore lint/a11y/noStaticElementInteractions: 拖拽手柄（D-R2-1 拖出钉住）；收回有原生按钮 */}
@@ -250,17 +287,17 @@ const BlockView = memo(function BlockView({
         <span className="pp-en">
           {KIND_EN[block.kind] ?? 'NOTE'} · {seq}
         </span>
-        {block.kind === 'tool' && (
-          <span className={`pp-status pp-${(p as { status: string }).status}`}>{(p as { status: string }).status}</span>
-        )}
-        {block.kind === 'code' && (
-          <span className={`pp-status pp-${(p as { status: string }).status}`}>{(p as { status: string }).status}</span>
+        {(block.kind === 'tool' || block.kind === 'code') && (
+          <ToolStatusChip
+            status={(p as { status: string }).status}
+            startedAt={(p as { startedAt?: number }).startedAt}
+          />
         )}
       </div>
       {foldable && (
         <button
           type="button"
-          className="pp-fold"
+          className={`pp-fold${foldBusy ? ' pp-fold--busy' : ''}`}
           onClick={(e) => {
             e.stopPropagation();
             onToggleFold(block);
@@ -332,6 +369,8 @@ const BlockView = memo(function BlockView({
 
 /** 拖动阈值（px）：超过即视为拖块（区分点击） */
 const DRAG_THRESHOLD = 6;
+/** 空运行集（引用恒定）——runningSessions state 的「无在跑」基值。 */
+const NO_RUNNING_SESSIONS: ReadonlySet<number> = new Set<number>();
 /** 钉住可发现性一次性眉批的 localStorage 旗标（毒化容忍——读写全包 try，
  * 命名同创作坞 lantai.hint.historySeen 族）。 */
 const PIN_HINT_KEY = 'lantai.hint.pinDragSeen';
@@ -387,6 +426,9 @@ interface RegionCoreCacheEntry {
     unitLeadIds: ReadonlySet<string>;
     /** 验证链毕块（刀5 C）——渲染层「✓ 阶段完成」锚消费。 */
     verifyDoneIds: ReadonlySet<string>;
+    /** 正在书写的块 id（2026-09-06 纸面运行态：writingBlockIdOf 派生）——
+     *  渲染层给湿墨尾点 + 落笔点让位判据。 */
+    writingBlockId: string | null;
   };
 }
 
@@ -403,6 +445,7 @@ const STUB_EMPTIES = {
   stageLeadIds: new Set<string>() as ReadonlySet<string>,
   unitLeadIds: new Set<string>() as ReadonlySet<string>,
   verifyDoneIds: new Set<string>() as ReadonlySet<string>,
+  writingBlockId: null as string | null,
 } as const;
 
 /** P2-3 复合键等价比较（引用级）——键元素全部引用相同 = 缓存可复用。
@@ -1270,6 +1313,7 @@ export function PaperPanel() {
             stageLeadIds,
             unitLeadIds,
             verifyDoneIds,
+            writingBlockId: writingBlockIdOf(blocks),
           },
         };
         regionCoreCacheRef.current.set(s.id, entry);
@@ -1304,6 +1348,7 @@ export function PaperPanel() {
         stageLeadIds: c.stageLeadIds,
         unitLeadIds: c.unitLeadIds,
         verifyDoneIds: c.verifyDoneIds,
+        writingBlockId: c.writingBlockId,
       });
     });
     // 合卷/切换后修剪无主核心（与 translateCacheBySession 同款纪律）
@@ -2682,26 +2727,30 @@ export function PaperPanel() {
    * 首句后坞不再沉降，只换装常驻匣；desk 只再管形态面（退匣/签条架/题字）。 ── */
   const desk = sessions.length === 0;
 
-  /* ── 运行呼吸线（创作坞 v2 2026-08-31）：任一摊开卷在跑 → 画布底缘
-   *  石青细线呼吸（.pp-canvas.pp-stream-live，机=石青语义）。订阅面 =
-   *  subscribeExecAll（exec 实例表变更 → 全部重挂 + 既有实例起停——实例
-   *  迟到/被换时捕获式订阅指空对象，start() 不可见）+ sess 列表。 ── */
-  const [streamLive, setStreamLive] = useState(false);
+  /* ── 运行态（2026-09-06 纸面运行态升格）：任一摊开卷在跑 → 画布底缘
+   *  石青细线呼吸（.pp-canvas.pp-stream-live，机=石青语义）+ 各在跑卷尾
+   *  落笔点 + 书眉「行卷中」。订阅面 = subscribeExecAll（exec 实例表变更 →
+   *  全部重挂 + 既有实例起停——实例迟到/被换时捕获式订阅指空对象，start()
+   *  不可见）+ sess 列表（合卷/改名重算清单）。单一真相 = runningSessions
+   *  集合，streamLive（呼吸线）由 size 派生，不再单独持态。 ── */
+  const [runningSessions, setRunningSessions] = useState<ReadonlySet<number>>(NO_RUNNING_SESSIONS);
   useEffect(() => {
     if (!core) {
-      setStreamLive(false);
+      setRunningSessions(NO_RUNNING_SESSIONS);
       return;
     }
     const sync = () => {
       const st = getChatStore(core.panelId).sess.getState();
-      let any = false;
+      const next = new Set<number>();
       for (const s of st.sessions) {
-        if (agentSessionState.getExec(core.panelId, s.id)?.isRunning) {
-          any = true;
-          break;
-        }
+        if (agentSessionState.getExec(core.panelId, s.id)?.isRunning) next.add(s.id);
       }
-      setStreamLive(any);
+      // 引用稳定守卫：rehang 期 sync 每实例表 bump 必发，无变化不动引用——
+      // 下游 memo 链（含本 memo 外的 TocStrip 等）不因空转重渲。
+      setRunningSessions((prev) => {
+        if (prev.size === next.size && [...next].every((id) => prev.has(id))) return prev;
+        return next;
+      });
     };
     const unExecAll = agentSessionState.subscribeExecAll(core.panelId, sync);
     const unSess = getChatStore(core.panelId).sess.subscribe(sync);
@@ -2710,6 +2759,9 @@ export function PaperPanel() {
       unSess();
     };
   }, [core]);
+  const streamLive = runningSessions.size > 0;
+  /** 活跃卷在跑——书眉「行卷中」（StatusLine 消费）。 */
+  const activeRunning = activeSessionId != null && runningSessions.has(activeSessionId);
 
   /* rework P3-1：创作坞实际高度（动态——思考展开/附件/yolo 都会变高）驱动
    * 目次带/小地图的底部定位，避免硬编码 gap 导致重叠。
@@ -2777,7 +2829,7 @@ export function PaperPanel() {
             <span className="pp-zoom" title={`画布读数：${totalBlocks} 块 · 已钉 ${totalPinned} · 纸条 ${totalStrips}`}>
               {zoomLabel}
             </span>
-            <StatusLine />
+            <StatusLine running={activeRunning} />
             <button
               type="button"
               className={`pp-settings${updateAvailable ? ' has-update' : ''}`}
@@ -2923,6 +2975,14 @@ export function PaperPanel() {
                     {/* 空卷题字：零块流区的版心竖排占位（pointer-events none——
                      * 点击穿透到流区背景激活） */}
                     {r.blocks.length === 0 && <div className="pp-region-empty">此卷未落墨</div>}
+                    {/* 落笔点（2026-09-06 纸面运行态）：本卷在跑且尾部无湿墨
+                     * （模型思考中/工具执行中——下一块墨将落此处）→ 卷轴线
+                     * 锚线下方石青方点呼吸。湿墨尾点在场时让位（书写中的正文
+                     * 自带活信号，双点成噪声）。LOD 缩远不画（方点随缩放变
+                     * 亚像素）。运行而纸面静止的「死寂窗口」由此被照亮。 */}
+                    {!lod && runningSessions.has(r.sessionNum) && !r.writingBlockId && (
+                      <div className="pp-quill" aria-hidden="true" />
+                    )}
                     {/* biome-ignore lint/a11y/noStaticElementInteractions: 边缘拖拽面（Stage-2 定案：无手柄条，hover 即拖拽态） */}
                     <div
                       className="pp-region-edge pp-region-edge--l"
@@ -3039,6 +3099,10 @@ export function PaperPanel() {
                   if (b.state === 'flow') {
                     const firstSeen = !seenBlocksRef.current.has(b.id);
                     if (firstSeen) seenBlocksRef.current.add(b.id);
+                    /* 湿墨尾点（2026-09-06）：正在书写的块（writingBlockIdOf
+                     * 派生——source part 未干墨）挂 pp-writing，::after 落
+                     * 石青方点在续墨行位。 */
+                    const writing = r.writingBlockId === b.id;
                     /* 松手定夺（2026-09-05）：拖动中的 flow 块 state 不变——仍在流
                      * 分支渲染，transform 覆盖为跟手位（slot 布局全程不动）；悬回
                      * 带内时块影转「回流」预览态（松手 = 取消回槽）。 */
@@ -3058,7 +3122,7 @@ export function PaperPanel() {
                           isDragged ? ' pp-dragging' : ''
                         }${inBand ? ' pp-drag-returning' : ''}${r.stageLeadIds.has(b.id) ? ' pp-stage-lead' : ''}${
                           r.unitLeadIds.has(b.id) ? ' pp-unit-lead' : ''
-                        }${r.verifyDoneIds.has(b.id) ? ' pp-verify-done' : ''}`}
+                        }${r.verifyDoneIds.has(b.id) ? ' pp-verify-done' : ''}${writing ? ' pp-writing' : ''}`}
                         style={{ transform: `translate(${dragX}px, ${dragY}px)`, width: b.w }}
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}
@@ -3100,7 +3164,7 @@ export function PaperPanel() {
                       <div
                         className={`pp-block pp-${b.kind} pp-pinned${isDragged ? ' pp-dragging' : ''}${
                           settleId === b.id ? ' pp-settle' : ''
-                        }`}
+                        }${r.writingBlockId === b.id ? ' pp-writing' : ''}`}
                         style={{ transform: `translate(${pos.x}px, ${pos.y}px)`, width: pinW }}
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}

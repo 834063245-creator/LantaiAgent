@@ -10,6 +10,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useShellStore } from '../src/app/shell-store';
 import { StatusLine } from '../src/plugins/builtin/paper-shell/StatusLine';
+import { useBgAlertStore } from '../src/state/bg-alert-store';
 
 describe('C12 StatusLine — 承接面渲染链', () => {
   let container: HTMLDivElement | null = null;
@@ -21,6 +22,7 @@ describe('C12 StatusLine — 承接面渲染链', () => {
     root = createRoot(container);
     // 每用例重置 store（zustand setState 直写——测试域特权）
     useShellStore.setState({ statusText: '就绪', statusLog: [], analyzing: null });
+    useBgAlertStore.setState({ bgAlert: null });
   });
   afterEach(() => {
     act(() => root?.unmount());
@@ -50,6 +52,29 @@ describe('C12 StatusLine — 承接面渲染链', () => {
     expect(container!.querySelector('.sl-chip .sl-text')?.textContent).toBe('分析中');
     expect(container!.querySelector('.sl-dot')).not.toBeNull();
     expect(container!.querySelector('.sl-chip--busy')).not.toBeNull();
+  });
+
+  it('行卷中（2026-09-06 纸面运行态）：running prop → 「行卷中」压过分析中', () => {
+    act(() => {
+      useShellStore.getState().setAnalyzing('open');
+    });
+    act(() => {
+      root?.render(createElement(StatusLine, { running: true }));
+    });
+    expect(container!.querySelector('.sl-chip .sl-text')?.textContent).toBe('行卷中');
+    expect(container!.querySelector('.sl-dot')).not.toBeNull();
+    expect(container!.querySelector('.sl-chip--busy')).not.toBeNull();
+    // 警报仍最高（行卷中不让位人的警报）
+    act(() => {
+      useBgAlertStore.setState({ bgAlert: { id: 'a1', msg: '后台挂了' } });
+    });
+    act(() => {
+      root?.render(createElement(StatusLine, { running: true }));
+    });
+    expect(container!.querySelector('.sl-chip .sl-text')?.textContent).toBe('⚠ 后台挂了');
+    act(() => {
+      useBgAlertStore.setState({ bgAlert: null });
+    });
   });
 
   it('点击 chip 展开 statusLog 环（最近优先）', () => {

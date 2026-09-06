@@ -62,6 +62,8 @@ export interface BlockPayloads {
     status: 'pending' | 'running' | 'done' | 'error';
     output?: string;
     err?: string;
+    /** 起跑时刻（毫秒）——文类签行走秒的计时源；缺省（历史卡片）只显「行」。 */
+    startedAt?: number;
   };
   /** 程序执行卡（P2-A）：code_execution 调用的专属形态——三段式
    *  （程序体 / 日志流 / 完成值），与 tool 块的单进单出语义分离。 */
@@ -75,6 +77,8 @@ export interface BlockPayloads {
     /** 合并输出（logs + 完成值 / 错误）——终态一次性写入（code run 无流式进度）。 */
     output?: string;
     err?: string;
+    /** 起跑时刻（毫秒）——同 tool 块行走秒。 */
+    startedAt?: number;
   };
   plan: {
     planId: string;
@@ -210,6 +214,21 @@ export function parsePlanItems(content: string): string[] {
         .trim(),
     )
     .filter(Boolean);
+}
+
+/* ── 湿墨判定（2026-09-06 纸面运行态）── */
+
+/** 正在书写的块 id：块序列中最后一个 source part 仍未干墨
+ *  （finalised === false——TextPart 未收尾 / 资产块增量中）的块。
+ *  文本拆围栏时多个段共享同一 part，取最末 = 书写头。语义注记：同一模型
+ *  响应内文本在工具执行期间仍可续墨（Message 事件收口才 finalise），
+ *  故工具在跑时文本段带墨点是诚实信号，不是误报。全干返回 null。 */
+export function writingBlockIdOf(blocks: readonly SourcedBlock[]): string | null {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const b = blocks[i];
+    if (b.source.part != null && (b.source.part as { finalised?: unknown }).finalised === false) return b.id;
+  }
+  return null;
 }
 
 /* ── 纯函数操作（交互层只改坐标/状态，不碰渲染）── */

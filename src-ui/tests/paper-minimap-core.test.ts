@@ -51,6 +51,7 @@ function stubRegion(over?: Partial<RegionView>): RegionView {
     regionBottom: 0,
     regionHeight: 200,
     folioH: 32,
+    writingBlockId: null,
     ...over,
   };
 }
