@@ -6,6 +6,7 @@
 // 核心缓存 + P2-2 卷级虚拟化）、钉位查找表、孤儿钉族、小地图墨迹快照、
 // 横向可见集。性能注释与竞态尸检注释随行——平移帧零重算的整条纪律都在这。
 
+import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { MinimapRegionInput } from '../../../paper/minimap-core';
 import type {
@@ -122,8 +123,14 @@ export function sameKey(a: readonly unknown[], b: readonly unknown[]): boolean {
 
 /** 布局核心域（paper-panel-split C3，自 PaperPanel 1051-1475 + 2706-2719
  *  域内原样搬入）。穿参输入全部为内容侧/拖动态值——edgeDragPos/regionCornerPos
- *  来自 use-region-move，draggingId/dragSource 来自装配根的拖拽渲染态。 */
+ *  来自 use-region-move，draggingId/dragSource 来自装配根的拖拽渲染态。
+ *  ⚠ regionsRef 是装配根持有的共享载体经穿参进来（单一 owner——本 hook 每帧
+ *  写 regionsRef.current = regions，InkLayer/拖块/自动选中/飞行/键盘走卷等
+ *  晚绑定读方都拿同一个实例；2026-09-06 拆解首版漏穿参自建了第二个实例，
+ *  装配根手里那个恒空——LOD 无墨/自动选中永不命中/拖块找不到带心，真机三连
+ *  症状即此，已根治）。 */
 export function usePaperRegions(params: {
+  regionsRef: MutableRefObject<RegionView[]>;
   sessions: Array<{ id: number; label: string }>;
   regionMsgs: Record<string, { messages: readonly ChatMessage[]; tick: number }>;
   paperTick: number;
@@ -139,6 +146,7 @@ export function usePaperRegions(params: {
   dragSource: { sessionId: string | undefined; wasFlow: boolean } | null;
 }) {
   const {
+    regionsRef,
     sessions,
     regionMsgs,
     paperTick,
@@ -170,8 +178,8 @@ export function usePaperRegions(params: {
   }, [sessions]);
 
   /* 稳定引用（性能专项第二刀）：平移/缩放每帧 view 变——回调读 ref 而非依赖
-   * view/layout，onBlockMouseDown 才可零依赖稳定（memo 友好，不逐帧重建闭包）。 */
-  const regionsRef = useRef<RegionView[]>([]);
+   * view/layout，onBlockMouseDown 才可零依赖稳定（memo 友好，不逐帧重建闭包）。
+   * regionsRef 经穿参进来（装配根持有）——见 hook 头注的单一 owner 说明。 */
   const blockSessionRef = useRef<Map<string, string>>(new Map());
   /* P2-3：块→卷索引的复合键缓存——O(块) 合并只在核心集变化时发生（平移帧零重建）。 */
   const blockSessionCacheRef = useRef<{ key: unknown[]; map: Map<string, string> } | null>(null);
@@ -595,7 +603,6 @@ export function usePaperRegions(params: {
 
   return {
     regions,
-    regionsRef,
     blockSessionRef,
     sidecarOutOf,
     minimapGeo,

@@ -104,3 +104,12 @@
 - 产物链零改动实据：esbuild 产物构建绿（entry import 自动跟随打包）；faceDeps 键集动态提取不变；manifest/roster/factory-products/first-party-manifest 全程未动。
 - 真机验收一项（用户跑）：画布六手势无回归——平移/缩放/拖块钉住/抽纸条/自动选中/小地图拖拽。
 - 终止条件中「组件函数体 ≤ ~650 行」实达 ~470 行（JSX 430 行计入后整文件 1019）。
+
+### 6.1 接线事故与根治（2026-09-06 真机三连症状 → 修复 commit）
+
+- **症状（用户真机报告）**：拖块钉住坏 / LOD 缩远墨迹坏 / 自动选中坏。
+- **根因**：拆解首版 `use-paper-regions` 自建了第二个 `regionsRef`（计划写的是「装配根持有、穿参进 hook」，写 hook 时漏了穿参一步）——装配根手里的实例恒空数组，而 InkLayer（LOD 墨迹）/拖块带心判定/自动选中命中表/视角飞行/键盘走卷这些**晚绑定读方**全读的是装配根那个空 ref。render 面（regions 值传递）全绿、ref 读面全瞎——这正是 jsdom 行为考官（perf-paper-pan 只测平移渲染）测不到的缝。
+- **修复**：`regionsRef` 单一 owner（装配根 `useRef` 持有）经穿参进 `usePaperRegions`（每帧 `regionsRef.current = regions`）；hook 删自建实例、不再回传（调用方自有绑定）。
+- **回归测试（一颗雷一个 commit 配回归测试）**：`tests/paper-regionsref-wiring.test.tsx` 两用例，从用户操作序列新写、挂真实组件穿全层——① InkLayer 真卷墨迹（缩进 LOD 档后桩条 fillRect > 0）；② 自动选中（视口中心悬停他卷 400ms → 切活跃卷）。**红性实证**：注入事故形态（穿恒空 ref）双用例精确复现两症状（LOD 无墨 / 永不选中）——这颗雷如再犯，考官即红。
+- **harness 坑在册（真组件测试时序纪律）**：jsdom 下 clientWidth=0 → RO effect 直写 `setCanvasSize(0,0)`（perf-paper-pan 同款，测试须挂载后直写覆盖）；重挂清除 effect 见 spread 非空会发 `requestFocus` → 240ms 视角飞行逐帧覆写测试视口——**预置 `restoreView` 可同时掐掉飞行与落锚两股噪声**（守恒首测跳过落锚 + 重挂清除走清 pending 分支）。
+- 真机验收一项（用户跑）：画布六手势无回归——平移/缩放/拖块钉住/抽纸条/自动选中/小地图拖拽。

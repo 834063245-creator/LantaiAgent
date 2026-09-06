@@ -425,6 +425,9 @@ export function PaperPanel() {
     visibleRegionIds,
     inkCache,
   } = usePaperRegions({
+    /* regionsRef：装配根持有的共享载体（本 hook 每帧写，InkLayer/拖拽/自动
+     * 选中/飞行等晚绑定读方共用同一实例——单一 owner 见 hook 头注）。 */
+    regionsRef,
     sessions,
     regionMsgs,
     paperTick,
