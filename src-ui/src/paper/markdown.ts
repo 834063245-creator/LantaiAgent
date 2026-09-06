@@ -49,6 +49,9 @@ export interface MdListItem {
   inl: MdInline[];
   /** 项内嵌套块（更深层列表 / 缩进续行 / 引用）——递归解析产物 */
   sub?: MdBlock[];
+  /** 任务列表复选框（GFM `- [ ]` / `- [x]`；2026-09 scientific-rendering #15）：
+   *  true = 待办 `[ ]`，false = 已完成 `[x]`；undefined = 普通列表项。 */
+  check?: boolean;
 }
 
 /* ── 行内解析 ── */
@@ -305,7 +308,17 @@ function collectList(lines: string[], startIdx: number): { block: MdBlock; next:
     const m = LIST_RE.exec(line);
     if (m && indentOf(line) <= baseIndent + 1) {
       flushItem();
-      items.push({ inl: parseInline(m[3]) });
+      // 任务复选框（GFM `- [ ]` / `- [x]`，2026-09 #15）：紧贴标记的 `[ ]`/`[x]`
+      // 剥出为 check 语义（大小写/空格宽松：`[X]`/`[ x ]` 均收）；其余照常。
+      // 仅吃列表项内容首位——非首位 `[x]` 是普通文本（如「先看 [x] 再决定」）。
+      let check: boolean | undefined;
+      let rest = m[3];
+      const cm = /^\[([ xX])\]\s*(.*)$/.exec(rest);
+      if (cm) {
+        check = cm[1] !== 'x' && cm[1] !== 'X';
+        rest = cm[2];
+      }
+      items.push({ inl: parseInline(rest), check });
       i++;
       continue;
     }

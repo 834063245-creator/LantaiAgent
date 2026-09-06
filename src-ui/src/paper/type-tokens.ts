@@ -54,6 +54,7 @@ export const MD_TOKENS = {
   codePadV: 10, // .pp-md-code padding 上下
   codePadH: 12, // .pp-md-code padding 左右
   codeBorderL: 3, // .pp-md-code border-left
+  checkBorderW: 1.5, // .pp-md-check 任务复选框描边（2026-09 #15）
   hrMargin: 18, // .pp-md-hr margin 上下
   hrBorder: 1, // .pp-md-hr 线
   tableGap: 14, // .pp-md-table margin-bottom
@@ -510,6 +511,7 @@ function collectCssVars(): VarSpec[] {
     ['md-codePadV', MD_TOKENS.codePadV],
     ['md-codePadH', MD_TOKENS.codePadH],
     ['md-codeBorderL', MD_TOKENS.codeBorderL],
+    ['md-checkBorderW', MD_TOKENS.checkBorderW],
     ['md-hrMargin', MD_TOKENS.hrMargin],
     ['md-hrBorder', MD_TOKENS.hrBorder],
     ['md-tableGap', MD_TOKENS.tableGap],

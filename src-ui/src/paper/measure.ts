@@ -1210,6 +1210,9 @@ function measureMdElement(el: MdBlock, w: number, last: boolean): number {
       let items = 0;
       for (const it of el.items) {
         let ih = measureInlineHeight(it.inl, w - MD_LI_INDENT, BODY_SIZE, SONG_STACK, PAPER_BODY_LINE_HEIGHT);
+        // 纯复选框项（- [ ] 无尾文）：li 仍占一行正文高（框是 absolute 不占行盒——
+        // 无文字时给最小行高，否则零高压叠下一块）
+        if (ih === 0 && it.check !== undefined) ih = PAPER_BODY_LINE_HEIGHT;
         if (it.sub) ih += MD_SUB_TOP + measureMdBlocks(it.sub, w - MD_LI_INDENT - MD_SUB_INDENT);
         items += ih + MD_LI_GAP;
       }

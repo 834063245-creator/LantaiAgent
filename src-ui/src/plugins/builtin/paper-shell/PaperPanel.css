@@ -830,6 +830,38 @@
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
 }
+/* 任务复选框（GFM - [ ] / - [x]，2026-09 #15）：标记列同位（.pp-md-mark 镜像——
+ * li 相对定位，框绝对定在 left 0；top 取正文首行中线，随正文字号走）。
+ * 自绘方框：纸面墨色 + 内钩（完成态朱砂深钩——同圈点/来文朱批语义）；
+ * 无原生控件（禁引入表单外观；只读展示态——勾选写回语义归 task/board）。 */
+.pp-md-check {
+  position: absolute;
+  left: 0;
+  top: 13px;
+  width: 13px;
+  height: 13px;
+  box-sizing: border-box;
+  border: var(--pp-md-checkBorderW) solid var(--ink-3);
+  border-radius: 2px; /* 纸面方框微圆角：是字形级注记（同 .pp-circled 豁免），非面板结构件 */
+  color: var(--seal-deep);
+}
+/* 纯复选框项（- [ ] 无尾文）：框 absolute 不占行盒，li 需最小高一行正文
+ * （否则零高压叠下一块）。min-height = body 行高（calc 乘 var，单源
+ * PAPER_TYPE.body）——measure 侧空 check 项给 PAPER_BODY_LINE_HEIGHT 同值。 */
+.pp-md-li--check {
+  min-height: calc(var(--pp-type-body-size) * var(--pp-type-body-lh));
+}
+.pp-md-check--on::after {
+  content: "";
+  position: absolute;
+  left: 2.5px;
+  top: 0.5px;
+  width: 5px;
+  height: 8px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
 .pp-md-sub {
   margin-top: var(--pp-md-subTop);
   padding-left: var(--pp-md-subIndent);
@@ -860,6 +892,57 @@
   word-break: break-all;
   max-height: var(--pp-lim-preMaxH);
   overflow: auto;
+}
+/* 代码高亮墨色协调（科研渲染 #5，2026-09）：hljs 的 .hljs-* 语义类 → 纸面
+ * token（hljs 只产出类名，不装自带主题；作用域限定 .pp-md-code 不污染全局）。
+ * 墨色纪律：正文墨为主，关键字石青（与脚注题一致），字符串石墨/赭石降饱和，
+ * 注释用 ink-3 弱化——代码与注疏同纸，不引入高饱和 IDE 配色。 */
+.pp-md-code .hljs-comment,
+.pp-md-code .hljs-quote {
+  color: var(--ink-3);
+  font-style: italic;
+}
+.pp-md-code .hljs-keyword,
+.pp-md-code .hljs-selector-tag,
+.pp-md-code .hljs-literal,
+.pp-md-code .hljs-meta {
+  color: var(--indigo);
+}
+.pp-md-code .hljs-string,
+.pp-md-code .hljs-regexp,
+.pp-md-code .hljs-addition {
+  color: var(--seal-deep);
+}
+.pp-md-code .hljs-number,
+.pp-md-code .hljs-symbol,
+.pp-md-code .hljs-bullet,
+.pp-md-code .hljs-link {
+  color: var(--seal);
+}
+.pp-md-code .hljs-title,
+.pp-md-code .hljs-title.function_,
+.pp-md-code .hljs-section,
+.pp-md-code .hljs-name {
+  color: var(--ink-1);
+  font-weight: 600;
+}
+.pp-md-code .hljs-built_in,
+.pp-md-code .hljs-type,
+.pp-md-code .hljs-class .hljs-title,
+.pp-md-code .hljs-attr,
+.pp-md-code .hljs-attribute,
+.pp-md-code .hljs-variable,
+.pp-md-code .hljs-template-variable {
+  color: var(--graphite);
+}
+.pp-md-code .hljs-deletion {
+  color: var(--fail);
+}
+.pp-md-code .hljs-emphasis {
+  font-style: italic;
+}
+.pp-md-code .hljs-strong {
+  font-weight: 600;
 }
 
 /* 分隔线 */

@@ -21,6 +21,15 @@
 //   - 内置灰框渲染器 = 默认行（本文件 registerBuiltinRenderers，装载期注册）；
 //     贡献与内置同 id → 内置胜（对齐 panelDefs() 合流纪律）。
 
+import hljs from 'highlight.js/lib/common';
+import hljsClojure from 'highlight.js/lib/languages/clojure';
+import hljsDockerfile from 'highlight.js/lib/languages/dockerfile';
+import hljsHaskell from 'highlight.js/lib/languages/haskell';
+import hljsJulia from 'highlight.js/lib/languages/julia';
+import hljsLatex from 'highlight.js/lib/languages/latex';
+import hljsMatlab from 'highlight.js/lib/languages/matlab';
+import hljsScala from 'highlight.js/lib/languages/scala';
+import hljsScheme from 'highlight.js/lib/languages/scheme';
 import katex from 'katex';
 import type { ComponentType, ReactNode } from 'react';
 import { Fragment, useMemo, useRef, useState } from 'react';
@@ -276,6 +285,42 @@ function MathInline({ source }: { source: string }) {
   );
 }
 
+/* ── 代码高亮（科研渲染 #5，2026-09）：markdown 围栏码补 hljs token 层 ──
+ * lang 解析已捕获（paper/markdown.ts）——只在此消费。lib/common 36 语言
+ * 主流集（js/ts/py/rust/go/cpp/bash…）；科研语言 common 缺的显式补注册
+ * （matlab/julia/scala/haskell/clojure/latex/scheme/dockerfile——科研会话
+ * 高频，模块极小）。
+ * 语义：
+ *   - 高亮只包 span（不改字体/行数/换行）→ measure 高度镜像零改动（源码
+ *     逐字字符与折行不变）；
+ *   - 无 lang / lang 不识别 → 原文（纯 mono，不炸不误着色）；
+ *   - 流式半成型围栏 tolerate（ignoreIllegals:true）。
+ * 纸面墨色协调：hljs 类名在 .pp-md-code 作用域映射到纸面 token（CSS 侧）。 */
+
+/** 补注册（模块装载期一次；hljs 已注册语言重复 register 会覆盖——幂等放行）。 */
+function registerResearchLanguages(): void {
+  hljs.registerLanguage('matlab', hljsMatlab);
+  hljs.registerLanguage('julia', hljsJulia);
+  hljs.registerLanguage('scala', hljsScala);
+  hljs.registerLanguage('haskell', hljsHaskell);
+  hljs.registerLanguage('clojure', hljsClojure);
+  hljs.registerLanguage('latex', hljsLatex);
+  hljs.registerLanguage('scheme', hljsScheme);
+  hljs.registerLanguage('dockerfile', hljsDockerfile);
+}
+registerResearchLanguages();
+
+/** 代码段 → 高亮 HTML（lang 不识别/空 → null = 原文纯 mono）。 */
+function highlightCode(text: string, lang: string | undefined): string | null {
+  if (!lang || !hljs.getLanguage(lang)) return null;
+  try {
+    // 半成型代码 tolerate：流式围栏未闭合也不崩
+    return hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;
+  } catch {
+    return null;
+  }
+}
+
 /** 行内片段 → 节点（标志位解析期已打平，无嵌套结构）。 */
 function InlineRuns({ inl }: { inl: MdInline[] }) {
   return (
@@ -316,6 +361,23 @@ function MdBlocksView({ blocks, tail }: { blocks: MdBlock[]; tail?: ReactNode })
   );
 }
 
+/** 围栏码块（markdown code）：hljs 高亮层（#5）。独立组件承载 useMemo——
+ *  switch case 内不可调 hook（hooks 规则），块渲染在这里抽顶。 */
+function MdCodeBlock({ el, tail }: { el: Extract<MdBlock, { t: 'code' }>; tail?: ReactNode }) {
+  const highlighted = useMemo(() => highlightCode(el.text, el.lang), [el.lang, el.text]);
+  return (
+    <pre className="pp-md-code">
+      {highlighted !== null ? (
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: hljs 输出为可信本地渲染（非模型 HTML；转义由 hljs 内建）
+        <code dangerouslySetInnerHTML={{ __html: highlighted }} />
+      ) : (
+        <code>{el.text}</code>
+      )}
+      {tail}
+    </pre>
+  );
+}
+
 function renderMdBlock(el: MdBlock, tail?: ReactNode): ReactNode {
   switch (el.t) {
     case 'p':
@@ -340,10 +402,18 @@ function renderMdBlock(el: MdBlock, tail?: ReactNode): ReactNode {
         <Tag className="pp-md-list">
           {el.items.map((it, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: 列表项按位渲染，序号即身份
-            <li key={i} className="pp-md-li">
-              <span className="pp-md-mark" aria-hidden="true">
-                {el.ord ? `${el.start + i}.` : '·'}
-              </span>
+            <li key={i} className={`pp-md-li${it.check !== undefined ? ' pp-md-li--check' : ''}`}>
+              {it.check !== undefined ? (
+                /* 任务列表复选框（GFM - [ ] / - [x]，2026-09 #15）：纯 CSS 自绘
+                 * span（纸面墨色铁律，无原生表单控件）——绝对定位在标记列
+                 * （.pp-md-mark 同位）；展示态：状态是正文陈述，勾选写回语义
+                 * 归 task/board 通道。 */
+                <span className={`pp-md-check${it.check ? '' : ' pp-md-check--on'}`} aria-hidden="true" />
+              ) : (
+                <span className="pp-md-mark" aria-hidden="true">
+                  {el.ord ? `${el.start + i}.` : '·'}
+                </span>
+              )}
               <InlineRuns inl={it.inl} />
               {it.sub && (
                 <div className="pp-md-sub">
@@ -362,12 +432,7 @@ function renderMdBlock(el: MdBlock, tail?: ReactNode): ReactNode {
         </blockquote>
       );
     case 'code':
-      return (
-        <pre className="pp-md-code">
-          {el.text}
-          {tail}
-        </pre>
-      );
+      return <MdCodeBlock el={el} tail={tail} />;
     case 'math': {
       // 块级 display 公式（KaTeX .katex-display 自带上下留白与居中）
       const html = mathHtml(el.text, true);
