@@ -7,7 +7,6 @@
 
 import type { StoredThinking } from '../provider/thinking';
 import type { Message, Provider } from '../provider/types';
-import type { Pricing } from './agent-types';
 
 /** 目标运行结果 — runGoal / resumeGoal 的统一返回 */
 export type GoalRunResult = { status: 'completed' | 'failed' | 'blocked' | 'aborted' | 'paused'; summary: string };
@@ -44,10 +43,7 @@ export interface ChatAgentHandle {
   setThinking(cfg: StoredThinking | undefined): void;
 
   /** 运行时切换 provider（模型/提供方/协议），不重建 Agent。 */
-  setProvider(prov: Provider, pricing?: Pricing): void;
-
-  /** 运行时更新定价表（同提供方内切模型后计费跟随），不重建 Agent。 */
-  setPricing(p: Pricing): void;
+  setProvider(prov: Provider): void;
 
   /** 运行时更新上下文窗口（压缩阈值），不重建 Agent。 */
   setContextWindow(n: number): void;

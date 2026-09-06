@@ -59,7 +59,6 @@ import {
 // Phase 1.5：全量图形状（GraphJSON/GraphNode/…）随分页栈退役；graphData = GraphSnapshot（agent/hooks）
 import {
   type AppSettings,
-  defaultPricing,
   getActiveProvider,
   graphEngineEnabled,
   loadSettings,
@@ -598,7 +597,7 @@ export class Workspace {
    *  - 同提供方内的 baseUrl/model/apiKey/thinking/maxTokens 变更 → 无需任何
    *    换引用——live provider（Phase C，2026-08-24）在每次使用点按名现解析，
    *    保存即生效
-   *  - 定价 / contextWindow → 热同步（setPricing / setContextWindow）
+   *  - contextWindow → 热同步（setContextWindow）
    * 上下文、压缩缓存、hook、正在运行的执行、所有会话全部保留。
    * 例外：Agent 缺席（装配失败/异常路径的恢复——Phase C 后无 Key 冷启动不再
    * 走此分支，Agent 恒装配）→ 走全量装配（setupAgent + autoRestoreLastSession，
@@ -658,7 +657,7 @@ export class Workspace {
         thinking: eff.thinking,
       });
       prov.prewarm?.();
-      handle.setProvider(prov, defaultPricing(row.kind, eff.model));
+      handle.setProvider(prov);
       handle.setThinking(eff.thinking);
       handle.setContextWindow(this._contextWindowFor(row, eff.model));
       return;
@@ -676,7 +675,7 @@ export class Workspace {
       const prov = override
         ? createLiveProvider(eff.providerName, undefined, { model: eff.model, thinking: eff.thinking })
         : createLiveProvider(eff.providerName);
-      h.setProvider(prov, defaultPricing(row.kind, eff.model));
+      h.setProvider(prov);
       h.setThinking(eff.thinking);
       h.setContextWindow(this._contextWindowFor(row, eff.model));
     });
@@ -1143,7 +1142,6 @@ export class Workspace {
             eventSink: chatPanel.eventSinkFor(sessionId),
             execState: chatPanel.getSessionExecState(sessionId),
             collaborationMode: ms.collaborationMode,
-            pricing: defaultPricing(row.kind, eff.model),
             temperature: 0.7,
             // 从模型目录动态解析窗口（deepseek-v4 标 1M），查不到才 fallback 200K。
             // 0b3e5bf 曾加 Math.min(..., 200000) 硬封顶 — 把动态结果压成 200K，

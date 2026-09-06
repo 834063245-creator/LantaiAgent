@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // ProviderPage 暂存流程组件测试：
-// 添加（catalog chip / 自定义带 Key）、删除、清除 Key 均为「暂存」，
-// 保存时才落盘 + 删凭据 + 重建 Agent（此前只有 CDP 冒烟覆盖）。
+// 删除、清除 Key 为「暂存」，保存时才落盘 + 删凭据 + 重建 Agent；
+// 添加（2026-09-06 两步式）= 预填连接 → 拉模型 → 选默认 → 即时持久化（onAddAndPersist）。
 import { act, createElement, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,6 +15,7 @@ const mockStageDelete = vi.fn();
 const mockStageClear = vi.fn();
 const mockUnstageClear = vi.fn();
 const mockSaveProviders = vi.fn();
+const mockAddPersist = vi.fn(async () => {});
 
 function makeSettings(overrides?: Partial<AppSettings>): AppSettings {
   return {
@@ -74,6 +75,11 @@ function Harness({ initial }: { initial: AppSettings }) {
       mockSaveProviders();
       setProviderDirty(false);
     },
+    onAddAndPersist: async (next, addedName) => {
+      mockAddPersist(next, addedName);
+      setSettings(next);
+      setProviderDirty(false);
+    },
   });
 }
 
@@ -109,6 +115,8 @@ describe('ProviderPage — 暂存流程', () => {
     mockStageClear.mockReset();
     mockUnstageClear.mockReset();
     mockSaveProviders.mockReset();
+    mockAddPersist.mockReset();
+    mockAddPersist.mockResolvedValue(undefined);
     document.body.innerHTML = '';
   });
 
@@ -116,28 +124,57 @@ describe('ProviderPage — 暂存流程', () => {
     root?.unmount();
   });
 
-  it('添加提供方（catalog chip）→ 暂存提交、列表更新、保存条点亮', async () => {
+  it('两步式添加（catalog chip 预填）→ 补默认模型 → onAddAndPersist 即时持久化', async () => {
     await render(makeSettings({ providers: [makeSettings().providers[1]] }));
 
     await click(document.querySelector('.pp-rail-add'));
     expect(document.querySelector('.pp-add-sheet')).not.toBeNull();
 
+    // chip 点击 = 预填连接表单（不再一键直加）
     const deepseekChip = [...document.querySelectorAll<HTMLButtonElement>('.pp-cat-chip')].find((b) =>
       b.textContent?.includes('deepseek'),
     )!;
     expect(deepseekChip.disabled).toBe(false);
     await click(deepseekChip);
 
-    // 弹层关闭，列表出现新提供方，保存条点亮
+    // 弹层仍在（未直加）；表单已预填 deepseek
+    expect(document.querySelector('.pp-add-sheet')).not.toBeNull();
+    const nameInput = [...document.querySelectorAll<HTMLInputElement>('.pp-form-grid input')].find((i) =>
+      i.placeholder.includes('my-gateway'),
+    )!;
+    expect(nameInput.value).toBe('deepseek');
+
+    // 手动补模型（jsdom 无网络——拉取走 catch 后仍可手动补）
+    const manual = document.querySelector<HTMLInputElement>('input[aria-label="手动补模型 id"]')!;
+    await setInputValue(manual, 'deepseek-v4-pro');
+    const sheet = document.querySelector('.pp-add-sheet')!;
+    await click(
+      [...sheet.querySelectorAll<HTMLButtonElement>('.pp-models-add button')].find((b) =>
+        b.textContent?.includes('添加'),
+      )!,
+    );
+    // 默认模型自动取第一个补入的
+    await click(
+      [...document.querySelectorAll<HTMLButtonElement>('.cd-actions button')].find((b) =>
+        b.textContent?.includes('确认添加'),
+      )!,
+    );
+
+    // 即时持久化：onAddAndPersist 收到含新 provider + models + model 的 next
+    expect(mockAddPersist).toHaveBeenCalledTimes(1);
+    const [next] = mockAddPersist.mock.calls[0] as [AppSettings, ProviderId];
+    const added = next.providers.find((p) => p.name === 'deepseek')!;
+    expect(added).toBeDefined();
+    expect(added.models).toContain('deepseek-v4-pro');
+    expect(added.model).toBe('deepseek-v4-pro');
+    // 成功添加后弹层关闭、列表出现、无保存条（即时生效非暂存）
     expect(document.querySelector('.pp-add-sheet')).toBeNull();
     expect([...document.querySelectorAll('.pp-src-name')].some((n) => n.textContent?.startsWith('deepseek'))).toBe(
       true,
     );
-    expect(document.querySelector('.pp-save-bar')).not.toBeNull();
-    expect(mockStageClear).not.toHaveBeenCalled();
   });
 
-  it('自定义添加带 Key → 未保存 Key 状态 + 聚焦 Key 输入框', async () => {
+  it('自定义添加（两步式）带 Key → onAddAndPersist 收到 name/kind/baseUrl/key/models', async () => {
     await render(makeSettings({ providers: [makeSettings().providers[1]] }));
     await click(document.querySelector('.pp-rail-add'));
 
@@ -149,19 +186,50 @@ describe('ProviderPage — 暂存流程', () => {
       i.placeholder.includes('sk-'),
     )!;
     await setInputValue(keyInput, 'sk-custom');
+
+    // 手动补模型后确认
+    const manual = document.querySelector<HTMLInputElement>('input[aria-label="手动补模型 id"]')!;
+    await setInputValue(manual, 'gpt-5');
+    const sheet = document.querySelector('.pp-add-sheet')!;
+    await click(
+      [...sheet.querySelectorAll<HTMLButtonElement>('.pp-models-add button')].find((b) =>
+        b.textContent?.includes('添加'),
+      )!,
+    );
     await click(
       [...document.querySelectorAll<HTMLButtonElement>('.cd-actions button')].find((b) =>
         b.textContent?.includes('确认添加'),
       )!,
     );
 
+    expect(mockAddPersist).toHaveBeenCalledTimes(1);
+    const [next] = mockAddPersist.mock.calls[0] as [AppSettings, ProviderId];
+    const added = next.providers.find((p) => p.name === 'my-gateway')!;
+    expect(added).toBeDefined();
+    expect(added.kind).toBe('openai');
+    expect(added.apiKey).toBe('sk-custom');
+    expect(added.models).toContain('gpt-5');
+    expect(added.model).toBe('gpt-5');
     expect(document.querySelector('.pp-add-sheet')).toBeNull();
-    expect([...document.querySelectorAll('.pp-src-name')].some((n) => n.textContent?.startsWith('my-gateway'))).toBe(
-      true,
+  });
+
+  it('无模型点确认添加 → 错误提示（不静默收尾）', async () => {
+    await render(makeSettings({ providers: [makeSettings().providers[1]] }));
+    await click(document.querySelector('.pp-rail-add'));
+
+    // 填了名称但未拉取也未手动补模型 → 确认被拦「还没有可用模型」
+    const nameInput = [...document.querySelectorAll<HTMLInputElement>('.pp-form-grid input')].find((i) =>
+      i.placeholder.includes('my-gateway'),
+    )!;
+    await setInputValue(nameInput, 'empty-provider');
+    await click(
+      [...document.querySelectorAll<HTMLButtonElement>('.cd-actions button')].find((b) =>
+        b.textContent?.includes('确认添加'),
+      )!,
     );
-    const chip = document.querySelector<HTMLElement>('.pp-chip.unsaved');
-    expect(chip?.textContent).toContain('未保存');
-    expect(document.querySelector('.pp-key-row input')).toBe(document.activeElement);
+    expect(document.querySelector('.pp-add-sheet')).not.toBeNull();
+    expect(document.querySelector('.pp-form-error')?.textContent).toContain('还没有可用模型');
+    expect(mockAddPersist).not.toHaveBeenCalled();
   });
 
   it('删除 Provider → 确认弹窗 → onStageDelete + 选中回落', async () => {

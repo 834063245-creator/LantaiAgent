@@ -826,6 +826,11 @@
   opacity: 0.4;
   cursor: default;
 }
+/* 两步式：chips = 预填表单而非直加——已选中高亮 */
+.pp-cat-chip.selected {
+  border-color: var(--seal);
+  background: var(--seal-soft);
+}
 .pp-cat-name {
   font-size: calc(11px * var(--font-scale));
   font-weight: 600;
@@ -885,6 +890,60 @@
   margin-top: 10px;
   font-size: calc(9.5px * var(--font-scale));
   color: var(--fail);
+}
+
+/* ── 两步式添加：拉取行 + 可选模型列表 ── */
+.pp-add-pull-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 11px;
+}
+.pp-add-pull-msg {
+  font-size: calc(9px * var(--font-scale));
+  color: var(--ink-3);
+  line-height: 1.4;
+}
+.pp-add-pull-msg.fail {
+  color: var(--fail);
+}
+.pp-pick-models {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 150px;
+  overflow-y: auto;
+  margin-bottom: 6px;
+}
+.pp-pick-model {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--rule-soft);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink-2);
+  cursor: pointer;
+  text-align: left;
+  transition: all var(--snap);
+}
+.pp-pick-model:hover {
+  border-color: var(--seal);
+  background: var(--seal-soft);
+}
+.pp-pick-model.selected {
+  border-color: color-mix(in oklch, var(--seal) 45%, var(--paper));
+  background: color-mix(in oklch, var(--seal) 8%, transparent);
+}
+.pp-pick-model-id {
+  font-family: var(--f-mono);
+  font-size: calc(10px * var(--font-scale));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
 }
 
 /* ── Provider 页独立保存条（P11：保存与全局拆域）── */

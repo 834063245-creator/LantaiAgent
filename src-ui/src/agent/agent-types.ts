@@ -98,7 +98,6 @@ export interface AgentEvent {
   reasoning?: string;
   tool?: ToolEvent;
   usage?: Usage;
-  pricing?: Pricing;
   session_hit?: number;
   session_miss?: number;
   level?: 'info' | 'warn' | 'error';
@@ -107,20 +106,6 @@ export interface AgentEvent {
   asset?: AssetEventData;
   /** EventKind.AssetDelta 时携带 */
   assetDelta?: AssetDeltaEventData;
-}
-
-export interface Pricing {
-  cache_hit: number; // 每 1M tokens
-  input: number; // 每 1M tokens
-  output: number; // 每 1M tokens
-  currency: string;
-}
-
-export function computeCost(p: Pricing | undefined, u: Usage | undefined): number {
-  if (!p || !u) return 0;
-  return (
-    (u.cache_hit_tokens * p.cache_hit + u.cache_miss_tokens * p.input + u.completion_tokens * p.output) / 1_000_000
-  );
 }
 
 /** Sink 接收 agent 的类型化事件流。 */

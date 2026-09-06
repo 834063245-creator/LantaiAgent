@@ -7,11 +7,6 @@
     "baseUrl": "https://api.minimax.io/anthropic",
     "reasoning": true,
     "input": ["text"],
-    "cost": {
-      "input": 0.3,
-      "output": 1.2,
-      "cacheRead": 0.06
-    },
     "contextWindow": 204800,
     "maxTokens": 131072,
     "thinkingEfforts": ["minimal", "low", "medium", "high", "xhigh", "max"],
@@ -25,11 +20,6 @@
     "baseUrl": "https://api.minimax.io/anthropic",
     "reasoning": true,
     "input": ["text"],
-    "cost": {
-      "input": 0.6,
-      "output": 2.4,
-      "cacheRead": 0.06
-    },
     "contextWindow": 204800,
     "maxTokens": 131072,
     "thinkingEfforts": ["minimal", "low", "medium", "high", "xhigh", "max"],
@@ -43,11 +33,6 @@
     "baseUrl": "https://api.minimax.io/anthropic",
     "reasoning": true,
     "input": ["text"],
-    "cost": {
-      "input": 0.3,
-      "output": 1.2,
-      "cacheRead": 0.06
-    },
     "contextWindow": 1000000,
     "maxTokens": 128000,
     "thinkingEfforts": ["minimal", "low", "medium", "high", "xhigh", "max"],

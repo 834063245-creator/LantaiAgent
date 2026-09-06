@@ -1,7 +1,8 @@
 // Phase 6 — 组合层收尾的结构门禁与验收实证（主计划 §6 Phase 6）。
 //
 // T0 静态：
-//   - AgentConfig 字段面冻结（31 字段，AST 取 PropertySignature）——组合扩展走
+//   - AgentConfig 字段面冻结（29 字段，AST 取 PropertySignature；2026-09-06 模型
+//     价格表拆除删 pricing 后 30→29）——组合扩展走
 //     blueprint capability，新增 config 字段必须显式改此断言并登记 progress.md；
 //   - _assembleAgent 零组合面直调——工具/hook 工厂、plan 接线、自动调优只出现在
 //     blueprint.ts capability 表；runtime 保留构造与生命周期所有权（Phase 4）；
@@ -88,7 +89,7 @@ const FORBIDDEN_COMPOSITION = [
 ];
 
 describe('phase-6 T0 结构门禁 — 组合面收敛到 blueprint capability 表', () => {
-  it('AgentConfig 字段面冻结（30 字段 — 新增工具/hook 不再扩 config）', () => {
+  it('AgentConfig 字段面冻结（29 字段 — 新增工具/hook 不再扩 config）', () => {
     expect(
       agentConfigFieldNames(),
       'AgentConfig 字段面漂移——组合扩展走 blueprint capability；确需新增 config 字段须改此断言并登记 progress.md',
@@ -115,7 +116,6 @@ describe('phase-6 T0 结构门禁 — 组合面收敛到 blueprint capability �
       'isolationId',
       'temperature',
       'contextWindow',
-      'pricing',
       'toolResultWindow',
       'collaborationMode',
       'systemPrompt',

@@ -44,7 +44,6 @@ vi.mock('../src/settings', () => ({
   loadSettings: vi.fn(() => ({ providers: [], activeProvider: 'deepseek' })),
   saveSettings: vi.fn(),
   getActiveProvider: vi.fn(() => ({ name: 'deepseek', apiKey: 'test', baseUrl: '', model: '', kind: 'openai' })),
-  defaultPricing: vi.fn(() => ({ cache_hit: 0, input: 0, output: 0, currency: 'CNY' })),
   restoreSecrets: vi.fn((s: any) => s),
   persistSecrets: vi.fn(),
 }));

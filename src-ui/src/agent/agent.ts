@@ -21,7 +21,6 @@ import {
   maybeCompactImpl,
   mergePartialsImpl,
   payloadMessagesImpl,
-  selectSummaryProviderImpl,
   setCompactionConfigPathImpl,
   summarizeRegionImpl,
   summaryProviderImpl,
@@ -31,15 +30,7 @@ import { attachFirstPartyLoopObservability } from './agent-loop/observability';
 import type { AgentLoop, AgentLoopHost } from './agent-loop/types';
 import type { AgentRecord, AgentStore } from './agent-store';
 // 共享类型 — 本文件内部也使用
-import {
-  type AgentEvent,
-  type AgentUINotifier,
-  computeCost,
-  EventKind,
-  type EventSink,
-  type Pricing,
-  type ToolEvent,
-} from './agent-types';
+import { type AgentEvent, type AgentUINotifier, EventKind, type EventSink, type ToolEvent } from './agent-types';
 import { generateAssetId } from './asset-kinds';
 import { rebuildAssetsFromSession } from './asset-store';
 import { type CompactionConfig, type CompactionSessionStats, CompactionTracker } from './compaction-model';
@@ -82,13 +73,12 @@ import type { FileOwnership } from './file-ownership';
 import type { MessageBus } from './message-bus';
 import type { TaskBoard } from './task-board';
 
-export { type AgentEvent, computeCost, EventKind, type EventSink, type Pricing, type ToolEvent };
+export { type AgentEvent, EventKind, type EventSink, type ToolEvent };
 
 // ---- Agent 选项 ----
 
 export interface AgentOptions {
   temperature?: number;
-  pricing?: Pricing;
   /** 上下文窗口大小（token 数）。0 = 不压缩。 */
   contextWindow?: number;
   /** 触发压缩的 contextWindow 比例（默认: 0.7） */
@@ -152,7 +142,6 @@ export class Agent {
   _toolResultWindow: number;
   /** 工具结果折叠边界（session tool 消息序号维度）— 批量前移，保持载荷前缀稳定 */
   _toolFoldBoundary = 0;
-  private pricing: Pricing | undefined;
   _agentOpts: AgentOptions;
   /** agent loop 实现（D13）——构造期解析（显式注入优先，缺省 = builtin/default）。 */
   private readonly _loop: AgentLoop;
@@ -188,8 +177,6 @@ export class Agent {
   compactRetryAfterLen = 0;
   // 连续失败计数 — 决定退避步长与是否升级用户告警
   compactFailCount = 0;
-  // 缓存的摘要模型选择（null = 未计算）— 运行时自动选出，无用户配置
-  _summaryProv: { prov: Provider; window: number } | null = null;
 
   // 子 Agent 深度追踪: 0 = 根，1 = 第一次 fork，2 = 孙 Agent，以此类推
   // MAX_SUBAGENT_DEPTH 随 spawn 实现迁 subagent-spawn.ts（宿主模式消费）
@@ -440,7 +427,6 @@ export class Agent {
     this._visibleToolsLimit = opts.visibleToolsLimit ?? DEFAULT_VISIBLE_TOOLS_LIMIT;
     // 默认禁用折叠 — 见 toolResultWindow 注释（DeepSeek 缓存计价下不划算）
     this._toolResultWindow = opts.toolResultWindow ?? 0;
-    this.pricing = opts.pricing;
     this.contextWindow = opts.contextWindow || 1000000; // 1M tokens 默认值; || 捕获零值（设置默认值），使压缩永不被静默禁用
     // ponytail: 0.55 将阈值设在 550K token（1M 窗口）。
     // 0.7 太高 — 最大的真实会话（450-630K）从未触发。
@@ -563,11 +549,9 @@ export class Agent {
   /** UI 路径 — 运行时切换 provider（模型/提供方/协议），不重建 Agent。
    *  正在进行的请求已持有旧引用，继续完成后下一轮起用新 provider；
    *  子 Agent 共享 this.prov，自动一并生效。
-   *  同时更新定价并清空摘要模型缓存，避免压缩摘要仍走旧模型。 */
-  setProvider(prov: Provider, pricing?: Pricing): void {
+   *  ⚡ 2026-09-06 价格表拆除：pricing 参数退役（同批删 setPricing）。 */
+  setProvider(prov: Provider): void {
     this.prov = prov;
-    if (pricing) this.pricing = pricing;
-    this._summaryProv = null;
     // write-through：子 Agent 从 ctx 服务表继承 provider（context.ts child()）。
     // 不写则热切换后新 spawn 的子 Agent 仍持有旧 provider/旧 Key ——
     // 2026-08-16 全链路断链审计（provider 切换 不生效 的根因之一）。
@@ -669,15 +653,12 @@ export class Agent {
 
   /** 获取当前会话的压缩成本模型统计。 */
   getCompactionStats(): CompactionSessionStats {
-    return this.compactionTracker.getStats(this.pricing);
+    return this.compactionTracker.getStats();
   }
 
   /** 压缩统计工具的公共访问器。 */
   getCompactionTracker(): CompactionTracker {
     return this.compactionTracker;
-  }
-  getPricing(): Pricing | undefined {
-    return this.pricing;
   }
   getCompactRatio(): number {
     return this.compactRatio;
@@ -693,12 +674,6 @@ export class Agent {
    *  不重建 Agent — 所有压缩判定都是运行时读此字段，下次判定即生效。 */
   setContextWindow(n: number): void {
     this.contextWindow = n > 0 ? n : 1000000; // 与构造兜底同语义
-  }
-
-  /** 运行时更新定价表（Phase C，2026-08-24）：同提供方内切换模型后 token
-   *  计费跟随，不换 provider 引用（live 形态按名现解析，无需重建）。 */
-  setPricing(p: Pricing): void {
-    this.pricing = p;
   }
 
   /** 设置自动调优压缩配置的持久化路径（委托 agent-compaction.ts）。 */
@@ -1096,7 +1071,6 @@ export class Agent {
       planState: this._planState,
       planInjector: this._planInjector,
       compactionTracker: this.compactionTracker,
-      pricing: this.pricing,
       contextWindow: this.contextWindow,
       // getter 暴露活引用：_applyPendingInserts 重绑 this._pendingInserts，
       // 快照引用会让 loop 的终止检查（pendingInserts.length===0）读到过期
@@ -1612,14 +1586,9 @@ export class Agent {
     return summarizeRegionImpl(this as unknown as CompactionHost, signal, msgs, priorSummary);
   }
 
-  /** 缓存的摘要模型选择。 */
+  /** 摘要模型解析 — 固定主模型（价格表拆除后摘要不再跨家比价）。 */
   async summaryProvider(): Promise<{ prov: Provider; window: number }> {
     return summaryProviderImpl(this as unknown as CompactionHost);
-  }
-
-  /** 运行时自动选择摘要模型（B1 修复回归测试经 as any 调用）。 */
-  async selectSummaryProvider(): Promise<{ prov: Provider; window: number }> {
-    return selectSummaryProviderImpl(this as unknown as CompactionHost);
   }
 
   /** 单次摘要 LLM 调用 — 空闲超时守卫。 */

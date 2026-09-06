@@ -74,7 +74,6 @@ describe('phase-3 T0 结构门禁 — 装配收敛', () => {
       'eventSink',
       'execState',
       'onSessionPersisted',
-      'pricing',
       'temperature',
       'contextWindow',
       'subagentDepth',

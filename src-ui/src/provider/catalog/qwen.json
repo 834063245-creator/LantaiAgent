@@ -7,11 +7,6 @@
     "baseUrl": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
     "reasoning": true,
     "input": ["text"],
-    "cost": {
-      "input": 0,
-      "output": 0,
-      "cacheRead": 0
-    },
     "contextWindow": 1000000,
     "maxTokens": 65536
   },
@@ -23,11 +18,6 @@
     "baseUrl": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
     "reasoning": true,
     "input": ["text"],
-    "cost": {
-      "input": 0,
-      "output": 0,
-      "cacheRead": 0
-    },
     "contextWindow": 1000000,
     "maxTokens": 65536
   },
@@ -39,11 +29,6 @@
     "baseUrl": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
     "reasoning": true,
     "input": ["text"],
-    "cost": {
-      "input": 0,
-      "output": 0,
-      "cacheRead": 0
-    },
     "contextWindow": 1000000,
     "maxTokens": 65536
   },
@@ -55,11 +40,6 @@
     "baseUrl": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
     "reasoning": true,
     "input": ["text"],
-    "cost": {
-      "input": 0,
-      "output": 0,
-      "cacheRead": 0
-    },
     "contextWindow": 1000000,
     "maxTokens": 64000
   },
@@ -71,11 +51,6 @@
     "baseUrl": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
     "reasoning": true,
     "input": ["text"],
-    "cost": {
-      "input": 0,
-      "output": 0,
-      "cacheRead": 0
-    },
     "contextWindow": 1000000,
     "maxTokens": 131072
   }

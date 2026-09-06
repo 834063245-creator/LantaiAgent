@@ -45,7 +45,7 @@ interface CatalogData {
 let _catalog: CatalogData | undefined;
 
 // ── 动态模型（运行时从 provider API 获取）──
-// 同一模型 ID 以静态目录优先（元数据更丰富：cost、contextWindow 等）
+// 同一模型 ID 以静态目录优先（元数据更丰富：contextWindow/能力声明等）
 const _dynamicModels = new Map<string, ModelDescriptor[]>();
 
 // ── 动态模型目录失败面（C5 2026-08-27）──
@@ -129,7 +129,7 @@ function loadCatalog(): CatalogData {
   const all: ModelDescriptor[] = [];
   const seenIds = new Set<string>();
 
-  // 静态目录优先（元数据丰富 — cost、contextWindow、reasoning 等）
+  // 静态目录优先（元数据丰富 — contextWindow、reasoning、能力声明等）
   for (const file of Object.values(CATALOG_FILES)) {
     for (const model of Object.values(file)) {
       all.push(model);

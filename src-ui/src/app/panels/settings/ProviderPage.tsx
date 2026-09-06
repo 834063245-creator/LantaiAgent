@@ -43,6 +43,9 @@ interface ProviderPageProps {
   providerDirty: boolean;
   /** Provider 页独立保存（落盘 + 凭据 + 重建 Agent） */
   onSaveProviders: () => void;
+  /** 添加提供方即时生效（2026-09-06）：一步落盘 + 写 Key + settings-saved 热广播，
+   *  使新提供方模型立刻全会话可选（不再走暂存-保存条）。next 已含新 provider。 */
+  onAddAndPersist: (next: AppSettings, addedName: ProviderId) => Promise<void>;
 }
 
 export function ProviderPage({
@@ -56,6 +59,7 @@ export function ProviderPage({
   saveVersion,
   providerDirty,
   onSaveProviders,
+  onAddAndPersist,
 }: ProviderPageProps) {
   const [selected, setSelected] = useState<ProviderId>(() => getActiveProvider(settings).name);
   const [keyDirtyMap, setKeyDirtyMap] = useState<Map<ProviderId, boolean>>(new Map());
@@ -229,29 +233,29 @@ export function ProviderPage({
     }
   }, [selectedProvider, onPersistProbe]);
 
+  /** 两步式添加收口（2026-09-06）：加进 settings → 即时落盘 + 写 Key +
+   *  settings-saved 热广播（新提供方模型立刻全会话可选）。不再走暂存-保存条。 */
   const handleAdd = useCallback(
-    (entry: AddProviderEntry) => {
+    async (entry: AddProviderEntry) => {
       try {
         const next = addProvider(settings, entry.name, entry.kind);
         const added = next.providers.find((p) => p.name === entry.name);
         if (added) {
           if (entry.apiKey?.trim()) added.apiKey = entry.apiKey.trim();
           if (entry.baseUrl?.trim()) added.baseUrl = entry.baseUrl.trim();
-          if (entry.model?.trim()) added.model = entry.model.trim();
+          added.models = entry.models;
+          added.model = entry.model;
         }
-        if (added?.apiKey?.trim()) {
-          setKeyDirtyMap((m) => new Map(m).set(added.name, true));
-        }
-        onCommitProvider(next);
+        setKeyDirtyMap((m) => (entry.apiKey?.trim() ? new Map(m).set(entry.name, true) : m));
+        await onAddAndPersist(next, entry.name);
         setSelected(entry.name);
         setAddOpen(false);
-        requestFocusKey();
       } catch (e) {
-        // 弹层已做重复名校验；此处仅兜底
-        console.warn('[provider] 添加失败:', e);
+        // 落盘/写 Key 失败——保留弹层让用户重试，错误可见（错误不静默）
+        console.warn('[provider] 添加持久化失败:', e);
       }
     },
-    [settings, onCommitProvider, requestFocusKey],
+    [settings, onAddAndPersist],
   );
 
   const handleDeleteConfirm = useCallback(() => {

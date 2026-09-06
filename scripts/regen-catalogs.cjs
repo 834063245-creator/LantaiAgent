@@ -11,9 +11,11 @@
 //   1. 已有条目一个字节都不改。数据源与目录冲突只打印 [review]/[override-conflict]，
 //      由人工裁决后改文件或改表——静默替换是 provider-system-spec P14 要杀的东西。
 //   2. 只新增 catalog-overrides.json 里声明过的模型；sources 只提供机械字段
-//      （cost/contextWindow/maxTokens），缺了就按覆盖表填，再缺就跳过并打印原因。
+//      （contextWindow/maxTokens），缺了就按覆盖表填，再缺就跳过并打印原因。
 //   3. 永不写入 'image'（spec 裁决 #3：Message.content 是 string、无传图入口；
 //      tests/provider-catalog.test.ts 有铁门）。input 一律取 vendors.<v>.input。
+//      ⚡ 2026-09-06 价格表拆除：cost 字段不再写入目录（LiteLLM 价格数据只用于
+//      对拍 contextWindow/maxTokens；价一律不进目录 JSON）。
 //
 // 数据源：LiteLLM 社区价格表（raw.githubusercontent.com）。models.dev 国内不通、
 // GitHub raw 时好时坏——网络失败时把快照存本地用 --source 重跑，启动路径零依赖
@@ -81,27 +83,18 @@ async function loadDefaultSource() {
   throw new Error(`全部默认源不可用\n  ${failures.join('\n  ')}\n  离线复跑：本地存快照后 node scripts/regen-catalogs.cjs --source <快照路径>`);
 }
 
-function roundCost(perToken) {
-  // LiteLLM 记每 token 美元价；目录记每百万 token。截到 6 位去尾零，对齐存量条目的小数风格。
-  return Number((perToken * 1_000_000).toFixed(6));
-}
-
-/** 机械映射：一条 LiteLLM 条目 → 目录字段的「候选值」。拿不到的键为 undefined。 */
+/** 机械映射：一条 LiteLLM 条目 → 目录字段的「候选值」。拿不到的键为 undefined。
+ *  ⚡ 2026-09-06 价格表拆除：不再取 cost——价格不进目录 JSON。 */
 function mapSourceEntry(raw) {
   const ctxWindow =
     typeof raw.max_input_tokens === 'number' && raw.max_input_tokens > 0 ? raw.max_input_tokens : undefined;
   const maxOut =
     typeof raw.max_output_tokens === 'number' && raw.max_output_tokens > 0 ? raw.max_output_tokens : undefined;
   const reasoning = typeof raw.supports_reasoning === 'boolean' ? raw.supports_reasoning : undefined;
-  const cost =
-    typeof raw.input_cost_per_token === 'number' && typeof raw.output_cost_per_token === 'number'
-      ? { input: roundCost(raw.input_cost_per_token), output: roundCost(raw.output_cost_per_token),
-          cacheRead: typeof raw.cache_read_input_token_cost === 'number' ? roundCost(raw.cache_read_input_token_cost) : 0 }
-      : undefined;
-  return { contextWindow: ctxWindow, maxTokens: maxOut, reasoning, cost };
+  return { contextWindow: ctxWindow, maxTokens: maxOut, reasoning };
 }
 
-/** 家法排版：短数组单行内联（对齐 anthropic.json 等），cost 对象多行。 */
+/** 家法排版：短数组单行内联（对齐 anthropic.json 等）。 */
 function serializeEntry(id, e) {
   const inlineArray = (arr) => `[${arr.map((v) => JSON.stringify(v)).join(', ')}]`;
   const f = [];
@@ -112,11 +105,6 @@ function serializeEntry(id, e) {
   f.push(`    "baseUrl": ${JSON.stringify(e.baseUrl)},`);
   f.push(`    "reasoning": ${e.reasoning},`);
   f.push(`    "input": ${inlineArray(e.input)},`);
-  f.push(`    "cost": {`);
-  f.push(`      "input": ${e.cost.input},`);
-  f.push(`      "output": ${e.cost.output},`);
-  f.push(`      "cacheRead": ${e.cost.cacheRead}`);
-  f.push(`    },`);
   f.push(`    "contextWindow": ${e.contextWindow},`);
   f.push(`    "maxTokens": ${e.maxTokens}`);
   if (e.thinkingEfforts !== undefined) {
@@ -267,7 +255,6 @@ async function main() {
         baseUrl: ovCfg.baseUrl,
         reasoning,
         input: [...ovCfg.input],
-        cost: ovr.cost ?? src.cost ?? { input: 0, output: 0, cacheRead: 0 },
         contextWindow,
         maxTokens,
         ...(ovr.thinkingEfforts === undefined ? {} : { thinkingEfforts: [...ovr.thinkingEfforts] }),
@@ -275,7 +262,7 @@ async function main() {
       };
       additions.push([id, entry]);
       catalog[id] = entry;
-      report.push(`[added] ${targetFile} + ${id}（ctx=${contextWindow}, out=${maxTokens}${src.cost ? ', 价=LiteLLM' : ', 价=0 占位'}）`);
+      report.push(`[added] ${targetFile} + ${id}（ctx=${contextWindow}, out=${maxTokens}）`);
     }
 
     if (!dry && additions.length > 0) {

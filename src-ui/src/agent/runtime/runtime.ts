@@ -20,7 +20,7 @@ import type { Message, Provider } from '../../provider/types';
 import { kernelDeleteFile, kernelProcessCall, kernelReadFile, kernelWriteFile, parseJson } from '../../rpc-contract';
 import { Agent } from '../agent';
 import { resolveAgentLoop } from '../agent-loop/agent-loop-active';
-import type { AgentUINotifier, EventSink, Pricing } from '../agent-types';
+import type { AgentUINotifier, EventSink } from '../agent-types';
 import { EventKind } from '../agent-types';
 import { AgentBlueprint, type BlueprintScope } from '../blueprint';
 import { AgentContext } from '../context';
@@ -114,11 +114,8 @@ class AgentHandleImpl implements AgentHandle {
   setThinking(cfg: StoredThinking | undefined) {
     return this._agent.setThinking(cfg);
   }
-  setProvider(prov: Provider, pricing?: Pricing) {
-    return this._agent.setProvider(prov, pricing);
-  }
-  setPricing(p: Pricing) {
-    return this._agent.setPricing(p);
+  setProvider(prov: Provider) {
+    return this._agent.setProvider(prov);
   }
   setContextWindow(n: number) {
     return this._agent.setContextWindow(n);
@@ -516,7 +513,6 @@ export class AgentRuntime implements RuntimePort {
       subAgentSpawner: config.subAgentSpawner,
       temperature: config.temperature,
       contextWindow: config.contextWindow,
-      pricing: config.pricing,
       toolResultWindow: config.toolResultWindow,
       onSessionPersisted: config.onSessionPersisted,
     };
@@ -682,7 +678,6 @@ export class AgentRuntime implements RuntimePort {
     //    旧路径这些接线与构造之间无 await，时序等价）
     const newAgent = new Agent(ctx, sysPrompt, {
       onSessionPersisted: inputs.onSessionPersisted,
-      pricing: inputs.pricing,
       temperature: inputs.temperature ?? 0.7,
       contextWindow: inputs.contextWindow ?? 0,
       toolResultWindow: inputs.toolResultWindow,

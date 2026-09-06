@@ -561,3 +561,91 @@ describe('ModelSelector 键盘导航（react-aria useComboBox，档位 C）', ()
     expect(onChange).not.toHaveBeenCalled(); // Escape = 取消，不提交
   });
 });
+
+describe('R3b：settings 保存后下拉可选面即时刷新（新提供方模型立刻可选）', () => {
+  let container: HTMLDivElement | null = null;
+  let root: Root | null = null;
+
+  beforeEach(() => {
+    localStorage.clear();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+  afterEach(() => {
+    act(() => root?.unmount());
+    container?.remove();
+    root = null;
+  });
+
+  const seed = () =>
+    localStorage.setItem(
+      'hologram_settings',
+      JSON.stringify({
+        activeProvider: 'deepseek',
+        providers: [
+          {
+            kind: 'openai',
+            name: 'deepseek',
+            apiKey: '',
+            baseUrl: 'https://api.deepseek.com/v1',
+            model: 'deepseek-v4-pro',
+            models: ['deepseek-v4-pro'],
+          },
+        ],
+        projectPath: '.',
+        agent: {},
+        display: { language: 'zh', fontScale: 1 },
+      }),
+    );
+
+  it('打开的下拉：settings 保存新增 provider+models → 新分组立刻出现（无需重开）', async () => {
+    seed();
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          compact: true,
+          value: 'deepseek-v4-pro',
+          providerName: 'deepseek',
+          kind: 'openai',
+          onChange: () => {},
+        }),
+      );
+    });
+    act(() => {
+      container!.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
+    });
+    await act(async () => {});
+    // 初始只有 deepseek 分组
+    let heads = [...container!.querySelectorAll('.ms-group-head')].map((e) => e.textContent ?? '');
+    expect(heads.some((h) => h.includes('deepseek'))).toBe(true);
+    expect(heads.some((h) => h.includes('qwen-token-plan'))).toBe(false);
+
+    // 模拟「添加提供方即时生效」：settings 落盘（含新 provider + models）
+    // 复用真实 saveSettings → onSettingsSaved 触发 → 可选面重快照
+    const { loadSettings, providerId, saveSettings } = await import('../src/settings');
+    const s = loadSettings();
+    saveSettings({
+      ...s,
+      activeProvider: providerId('qwen-token-plan'),
+      providers: [
+        ...s.providers,
+        {
+          kind: 'openai',
+          name: providerId('qwen-token-plan'),
+          apiKey: '',
+          baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+          model: 'qwen3-coder-plus',
+          models: ['qwen3-coder-plus', 'qwen3-max'],
+        },
+      ],
+    });
+    await act(async () => {});
+
+    // 下拉仍开着：新分组出现，模型可选
+    heads = [...container!.querySelectorAll('.ms-group-head')].map((e) => e.textContent ?? '');
+    expect(heads.some((h) => h.includes('qwen-token-plan'))).toBe(true);
+    const ids = [...container!.querySelectorAll<HTMLButtonElement>('.ms-item')].map((b) => b.textContent ?? '');
+    expect(ids.some((t) => t.includes('qwen3-coder-plus'))).toBe(true);
+  });
+});

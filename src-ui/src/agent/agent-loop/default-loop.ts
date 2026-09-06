@@ -271,7 +271,6 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
         host.sink({
           kind: EventKind.Usage,
           usage,
-          pricing: host.pricing,
           session_hit: host.cacheHitTotal,
           session_miss: host.cacheMissTotal,
         });

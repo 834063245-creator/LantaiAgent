@@ -216,7 +216,6 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
 export function registerCompactionTools(agent: Agent, reg: ToolRegistry): void {
   for (const tool of createCompactionTools(
     () => agent.getCompactionTracker(),
-    () => agent.getPricing(),
     () => ({
       compactRatio: agent.getCompactRatio(),
       recentKeep: agent.getRecentKeep(),

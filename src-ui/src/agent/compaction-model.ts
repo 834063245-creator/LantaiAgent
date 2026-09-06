@@ -21,7 +21,6 @@
 // 此追踪器监测 agent 循环来度量它。
 
 import { z } from 'zod';
-import type { Pricing } from './agent-types';
 import { log } from './logger';
 import type { Tool } from './tool';
 import { defineTool } from './tools/define-tool';
@@ -50,8 +49,6 @@ export interface CompactionEvent {
 
 export interface CompactionSessionStats {
   events: CompactionEvent[];
-  /** 摘要 LLM 总成本（输入 + 输出） */
-  totalSummaryCost: number;
   /** 估算的跨所有剩余轮次节省的总 token 数 */
   estimatedTokensSaved: number;
   /** 压缩前读取的文件（用于检测重读） */
@@ -285,20 +282,14 @@ export class CompactionTracker {
   }
 
   /** 计算会话级统计。 */
-  getStats(pricing?: Pricing): CompactionSessionStats {
-    let totalSummaryCost = 0;
+  getStats(): CompactionSessionStats {
     let totalTokensSaved = 0;
-    const cIn = pricing?.input ?? DEFAULT_C_IN;
-    const cOut = pricing?.output ?? DEFAULT_C_OUT;
-
     for (const e of this.events) {
-      totalSummaryCost += (e.summaryInputTokens * cIn + e.summaryOutputTokens * cOut) / 1_000_000;
       totalTokensSaved += e.regionTokensEst - e.summaryOutputTokens;
     }
 
     return {
       events: this.events,
-      totalSummaryCost,
       estimatedTokensSaved: totalTokensSaved,
       filesReadPreCompact: this.filesRead,
       reReadCount: this.reReads,
@@ -315,10 +306,10 @@ export class CompactionTracker {
     return (this.reReads + this.dupTools) * LOSS_FACTOR_PER_EVENT;
   }
 
-  /** 从定价和 token 估算值计算平均轮次成本。 */
-  estimateAvgTurnCost(avgInputTokens: number, avgOutputTokens: number, pricing?: Pricing): number {
-    const cIn = pricing?.input ?? DEFAULT_C_IN;
-    const cOut = pricing?.output ?? DEFAULT_C_OUT;
+  /** 从固定费率与 token 估算值计算平均轮次成本。 */
+  estimateAvgTurnCost(avgInputTokens: number, avgOutputTokens: number): number {
+    const cIn = DEFAULT_C_IN;
+    const cOut = DEFAULT_C_OUT;
     return (avgInputTokens * cIn + avgOutputTokens * cOut) / 1_000_000;
   }
 
@@ -387,12 +378,8 @@ const MIN_SAMPLES_FOR_TUNE = 5;
 /** 从追踪器数据计算最优参数。数据不足时返回 null。
  *  ponytail: 只统计 outcome === 'summary' 的事件 — stuck/truncated
  *  是失败样本（区域 0 token），混入会污染平均区域大小和压缩比。 */
-export function tuneCompactionParams(
-  tracker: CompactionTracker,
-  pricing?: Pricing,
-  contextWindow?: number,
-): CompactionConfig | null {
-  const stats = tracker.getStats(pricing);
+export function tuneCompactionParams(tracker: CompactionTracker, contextWindow?: number): CompactionConfig | null {
+  const stats = tracker.getStats();
   const summaryEvents = stats.events.filter((e) => e.outcome === 'summary');
   if (summaryEvents.length < MIN_SAMPLES_FOR_TUNE) return null;
 
@@ -414,11 +401,11 @@ export function tuneCompactionParams(
   const lossFactor = tracker.estimateLossFactor();
   const avgLossPerEvent = summaryEvents.length > 0 ? lossFactor / summaryEvents.length : 0;
 
-  // 平均轮次成本
-  const avgTurnCost = tracker.estimateAvgTurnCost(avgRegionTokens, avgRegionTokens * 0.15, pricing);
+  // 平均轮次成本（固定费率）
+  const avgTurnCost = tracker.estimateAvgTurnCost(avgRegionTokens, avgRegionTokens * 0.15);
 
   // 计算最优 recentKeep
-  const { k: optimalK } = optimalRecentKeep(Math.round(avgRegionMsgs), avgMsgTokens, avgTurnCost, 0.3, pricing?.input);
+  const { k: optimalK } = optimalRecentKeep(Math.round(avgRegionMsgs), avgMsgTokens, avgTurnCost, 0.3);
 
   // 根据预期会话长度计算最优 compactRatio — 用真实窗口而非硬编码 1M
   const win = contextWindow && contextWindow > 0 ? contextWindow : 1_000_000;
@@ -451,10 +438,9 @@ export function maybeTune(
   tracker: CompactionTracker,
   currentR: number,
   currentK: number,
-  pricing?: Pricing,
   contextWindow?: number,
 ): { config: CompactionConfig; changed: boolean } | null {
-  const config = tuneCompactionParams(tracker, pricing, contextWindow);
+  const config = tuneCompactionParams(tracker, contextWindow);
   if (!config) return null;
   const changed = Math.abs(config.compactRatio - currentR) > 0.05 || config.recentKeep !== currentK;
   return { config, changed };
@@ -462,23 +448,13 @@ export function maybeTune(
 
 // ── 诊断报告（用于 /compact-stats 或 MCP 工具）──
 
-/** ponytail: 共享成本计算 — 被 formatCompactionReport 和 agent 工具共用。 */
-function compactionEventCost(e: CompactionEvent, pricing?: Pricing): number {
-  return (
-    (e.summaryInputTokens * (pricing?.input ?? DEFAULT_C_IN) +
-      e.summaryOutputTokens * (pricing?.output ?? DEFAULT_C_OUT)) /
-    1_000_000
-  );
-}
-
-export function formatCompactionReport(stats: CompactionSessionStats, pricing?: Pricing): string {
+export function formatCompactionReport(stats: CompactionSessionStats): string {
   const lines: string[] = [
     `# 压缩成本分析报告`,
     ``,
     `| 指标 | 值 |`,
     `|------|-----|`,
     `| 压缩次数 | ${stats.events.length} |`,
-    `| 压缩总成本 | $${stats.totalSummaryCost.toFixed(4)} |`,
     `| 估算省 token | ${stats.estimatedTokensSaved.toLocaleString()} |`,
     `| 重读文件次数 | ${stats.reReadCount} |`,
     `| 重复工具调用 | ${stats.duplicateToolCalls} |`,
@@ -502,7 +478,6 @@ export function formatCompactionReport(stats: CompactionSessionStats, pricing?: 
       lines.push(
         `- 压缩比: ${compressionRatio}% (${e.preTokens.toLocaleString()} → ${e.postTokens.toLocaleString()} tokens)`,
       );
-      lines.push(`- 压缩 LLM 调用费: $${compactionEventCost(e, pricing).toFixed(4)}`);
       lines.push(`- 压缩后继续: ${turnsAfter} 轮`);
     }
   }
@@ -516,7 +491,6 @@ export function formatCompactionReport(stats: CompactionSessionStats, pricing?: 
  *  ponytail: 不做修改 — 仅格式化追踪器的当前状态。 */
 export function createCompactionTools(
   getTracker: () => CompactionTracker | null,
-  getPricing: () => Pricing | undefined,
   getCurrentParams: () => { compactRatio: number; recentKeep: number; contextWindow: number },
   loadConfig: () => Promise<CompactionConfig | null>,
 ): Tool[] {
@@ -530,11 +504,10 @@ export function createCompactionTools(
       readOnly: true,
       execute: async () => {
         const tracker = getTracker();
-        const pricing = getPricing();
         const current = getCurrentParams();
         const persisted = await loadConfig();
 
-        const stats = tracker?.getStats(pricing);
+        const stats = tracker?.getStats();
         const lines: string[] = [
           '# 上下文压缩运行状态',
           '',
@@ -569,7 +542,6 @@ export function createCompactionTools(
         lines.push(
           `- 估算信息丢失: ${((stats.reReadCount + stats.duplicateToolCalls) * LOSS_FACTOR_PER_EVENT).toFixed(1)} 轮`,
         );
-        lines.push(`- 压缩总成本: $${stats.totalSummaryCost.toFixed(4)}`);
 
         if (stats.events.length >= 5) {
           lines.push('');
@@ -597,7 +569,6 @@ export function createCompactionTools(
             lines.push(
               `- 上下文: ${e.preTokens.toLocaleString()} → ${e.postTokens.toLocaleString()} tokens (${ratio}%)`,
             );
-            lines.push(`- 压缩成本: $${compactionEventCost(e, pricing).toFixed(4)}`);
             lines.push(`- 压缩后继续: ${turnsAfter} 轮`);
           }
         }

@@ -149,7 +149,6 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
           baseUrl,
           reasoning: guessReasoning(m.id),
           input: ['text'] as ('text' | 'image')[],
-          cost: { input: 0, output: 0, cacheRead: 0 },
           contextWindow: 0,
           maxTokens: 0,
           // P14：/models 端点只报 id，不披露档位能力——thinkingEfforts 留空

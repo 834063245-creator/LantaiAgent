@@ -7,11 +7,6 @@
     "baseUrl": "http://localhost:11434/v1",
     "reasoning": false,
     "input": ["text"],
-    "cost": {
-      "input": 0,
-      "output": 0,
-      "cacheRead": 0
-    },
     "contextWindow": 0,
     "maxTokens": 0
   },
@@ -23,11 +18,6 @@
     "baseUrl": "http://localhost:11434/v1",
     "reasoning": false,
     "input": ["text"],
-    "cost": {
-      "input": 0,
-      "output": 0,
-      "cacheRead": 0
-    },
     "contextWindow": 0,
     "maxTokens": 0
   },
@@ -39,11 +29,6 @@
     "baseUrl": "http://localhost:11434/v1",
     "reasoning": true,
     "input": ["text"],
-    "cost": {
-      "input": 0,
-      "output": 0,
-      "cacheRead": 0
-    },
     "contextWindow": 0,
     "maxTokens": 0
   }

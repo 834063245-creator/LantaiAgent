@@ -267,29 +267,35 @@ const SettingsPanelApp: React.FC<{
     forceClose();
   }, [dirty, providerDirty, forceClose]);
 
-  /** 保存管道：落盘 + 删暂存凭据 + 写新 Key + 重建 Agent。返回是否成功。 */
-  const runSavePipeline = useCallback(async (): Promise<boolean> => {
-    saveSettings(settings);
-    // 1) 先删「清除 Key / 删除 Provider」暂存的系统凭据（removeSecret 幂等、失败静默）
-    for (const name of [...new Set([...pendingClears, ...pendingDeletes])]) {
-      await removeSecret(name);
-    }
-    // 2) 再写新 Key（P0-7：写失败必须据实提示）
-    const failed = await persistSecrets(settings);
-    if (failed.length > 0) {
-      setSaveError(
-        `API Key 写入系统凭据失败：${failed.join('、')}。\n设置本身已保存，但重启后这些 Key 会丢失，请重试或检查系统加密服务。`,
-      );
-      return false;
-    }
-    setPendingClears([]);
-    setPendingDeletes([]);
-    setLang(settings.display.language);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1500);
-    if (onSave) onSave();
-    return true;
-  }, [settings, pendingClears, pendingDeletes, onSave]);
+  /** 保存管道：落盘 + 删暂存凭据 + 写新 Key + 重建 Agent。返回是否成功。
+   *  @param toSave 要持久化的 settings（缺省 = 面板 state）。添加提供方即时
+   *   生效路径传入含新 provider 的 next——避免闭包读到 setSettings 前的旧快照。 */
+  const runSavePipeline = useCallback(
+    async (toSave?: AppSettings): Promise<boolean> => {
+      const target = toSave ?? settings;
+      saveSettings(target);
+      // 1) 先删「清除 Key / 删除 Provider」暂存的系统凭据（removeSecret 幂等、失败静默）
+      for (const name of [...new Set([...pendingClears, ...pendingDeletes])]) {
+        await removeSecret(name);
+      }
+      // 2) 再写新 Key（P0-7：写失败必须据实提示）
+      const failed = await persistSecrets(target);
+      if (failed.length > 0) {
+        setSaveError(
+          `API Key 写入系统凭据失败：${failed.join('、')}。\n设置本身已保存，但重启后这些 Key 会丢失，请重试或检查系统加密服务。`,
+        );
+        return false;
+      }
+      setPendingClears([]);
+      setPendingDeletes([]);
+      setLang(target.display.language);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+      if (onSave) onSave();
+      return true;
+    },
+    [settings, pendingClears, pendingDeletes, onSave],
+  );
 
   /** 全局保存（Agent / 显示等 tab） */
   const handleSave = useCallback(async () => {
@@ -312,6 +318,24 @@ const SettingsPanelApp: React.FC<{
       setSaveVersion((v) => v + 1);
     }
   }, [runSavePipeline]);
+
+  /** 添加提供方即时生效（2026-09-06）：next 进面板 state → 走保存管道（落盘 +
+   *  写 Key）→ settings-saved 热广播。全会话立刻可选新提供方的模型。 */
+  const handleAddAndPersist = useCallback(
+    async (next: AppSettings, addedName: ProviderId): Promise<void> => {
+      setSettings(next);
+      setProviderDirty(true);
+      const ok = await runSavePipeline(next);
+      if (!ok) {
+        // 写 Key 失败——面板保留暂存与保存条，用户可重试保存（错误不静默）
+        throw new Error(`添加 Provider「${addedName}」失败：API Key 写入系统凭据出错，请检查后重试`);
+      }
+      setProviderDirty(false);
+      setDirty(false);
+      setSaveVersion((v) => v + 1);
+    },
+    [runSavePipeline],
+  );
 
   const closeMsg =
     dirty && providerDirty
@@ -385,6 +409,7 @@ const SettingsPanelApp: React.FC<{
               saveVersion={saveVersion}
               providerDirty={providerDirty}
               onSaveProviders={handleSaveProviders}
+              onAddAndPersist={handleAddAndPersist}
             />
           </div>
 

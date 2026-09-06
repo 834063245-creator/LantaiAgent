@@ -45,6 +45,7 @@ import {
   iconHtml,
   loadSettings,
   onDynamicFetchChange,
+  onSettingsSaved,
   resolveApiKey,
   searchModels,
 } from './host';
@@ -67,8 +68,9 @@ interface ModelSelectorProps {
   onBlocked?: () => void;
 }
 
+/** 是否有「目录元数据」（相对 /models 拉来的裸 id）——价格面已拆除，只剩窗口。 */
 function hasMetadata(m: ModelDescriptor): boolean {
-  return m.cost.input > 0 || m.contextWindow > 0;
+  return m.contextWindow > 0;
 }
 
 /** 各已配置 provider 的「可用模型」并集（创作坞可选面，DSH routable 列表语义）。
@@ -76,11 +78,12 @@ function hasMetadata(m: ModelDescriptor): boolean {
  *  用户配了哪些，下拉就列哪些。id 有目录元数据 → 用目录描述符（名字/协议等）；
  *  目录外 id → 合成最小描述符。⚠️ vendor 一律用 provider 名（连接身份），不是目录
  *  厂商名——自定义 provider（my-gateway）复用目录模型 id 时，分组与切换目标都对
- *  准该 provider，不落到目录厂商（写错家 400 的同族病根）。 */
-function configuredModelDescriptors(): ModelDescriptor[] {
+ *  准该 provider，不落到目录厂商（写错家 400 的同族病根）。
+ *  @param settings 由调用方读取（settingsTick 触发重读），本函数不自己 loadSettings。 */
+function configuredModelDescriptors(settings: ReturnType<typeof loadSettings>): ModelDescriptor[] {
   try {
     const out: ModelDescriptor[] = [];
-    for (const p of loadSettings().providers) {
+    for (const p of settings.providers) {
       for (const id of effectiveModels(p)) {
         const known = getModel(id);
         if (known) {
@@ -94,7 +97,6 @@ function configuredModelDescriptors(): ModelDescriptor[] {
             baseUrl: p.baseUrl || '',
             reasoning: false,
             input: ['text'] as ('text' | 'image')[],
-            cost: { input: 0, output: 0, cacheRead: 0 },
             contextWindow: 0,
             maxTokens: 0,
           });
@@ -129,6 +131,14 @@ export function ModelSelector({
   const popoverRef = useRef<Element | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
 
+  // R3b（2026-09-06）：紧凑形态的可选面 = 已配置 provider 的模型列表——settings 保存
+  // （含「添加提供方即时生效」）后必须立刻重读，新提供方/新模型才可选。订阅
+  // onSettingsSaved 使下拉可选面随保存即时刷新（打开期间保存也能当场看到新家）。
+  const [settingsTick, setSettingsTick] = useState(0);
+  useEffect(() => onSettingsSaved(() => setSettingsTick((n) => n + 1)), []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: settingsTick 是刻意的重读触发器（保存事件/添加提供方 → 下拉可选面重快照），非响应值
+  const settingsState = useMemo(() => loadSettings(), [settingsTick]);
+
   const results = useMemo(() => {
     const q = query.toLowerCase().trim();
     // 选择面：
@@ -139,7 +149,7 @@ export function ModelSelector({
     // 查询词：compact 在配置面内过滤；字段形态走全目录搜索。
     let base: ModelDescriptor[];
     if (compact) {
-      base = configuredModelDescriptors();
+      base = configuredModelDescriptors(settingsState);
       if (q) {
         base = base.filter(
           (m) =>
@@ -155,7 +165,7 @@ export function ModelSelector({
       .filter((m) => compact || m.kind === kind)
       .sort((a, b) => a.id.localeCompare(b.id))
       .slice(0, 30);
-  }, [query, kind, providerName, compact]);
+  }, [query, kind, providerName, compact, settingsState]);
 
   // ── react-aria combobox 状态机：items = 已过滤结果（受控 → 不再二次过滤）──
   const state = useComboBoxState({
@@ -551,15 +561,6 @@ export function ModelSelector({
               {selectedDesc.contextWindow > 0 && (
                 <span className="ms-meta-tag">{(selectedDesc.contextWindow / 1000).toFixed(0)}k 上下文</span>
               )}
-              {selectedDesc.cost.input > 0 && (
-                <>
-                  <span className="ms-meta-tag">输入 ${selectedDesc.cost.input}/M</span>
-                  <span className="ms-meta-tag">输出 ${selectedDesc.cost.output}/M</span>
-                  {selectedDesc.cost.cacheRead > 0 && (
-                    <span className="ms-meta-tag">缓存 ${selectedDesc.cost.cacheRead}/M</span>
-                  )}
-                </>
-              )}
               {!hasMetadata(selectedDesc) && <span className="ms-meta-tag ms-meta-live">来自 API</span>}
             </div>
           )}
@@ -610,11 +611,6 @@ function ModelRow({ state, m, value }: { state: ComboBoxState<ModelDescriptor>; 
         {m.contextWindow > 0 && (
           <span className="ms-badge ms-badge-ctx" title="上下文窗口">
             {(m.contextWindow / 1000).toFixed(0)}k
-          </span>
-        )}
-        {m.cost.input > 0 && (
-          <span className="ms-badge ms-badge-cost" title="每 1M token 价格">
-            ${m.cost.input}/${m.cost.output}
           </span>
         )}
       </div>

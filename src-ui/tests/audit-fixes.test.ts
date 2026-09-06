@@ -70,7 +70,6 @@ vi.mock('../src/settings', () => ({
   })),
   saveSettings: vi.fn(),
   getActiveProvider: vi.fn(() => ({ name: 'test', apiKey: 'k', baseUrl: '', model: 'm', kind: 'openai' })),
-  defaultPricing: vi.fn(() => ({ cache_hit: 0, input: 0, output: 0, currency: 'CNY' })),
   CHAT_MODES: [{ id: 'general', label: '通用', description: '', temperature: 0.7, maxSteps: 50 }],
   restoreSecrets: vi.fn((s: any) => s),
   persistSecrets: vi.fn(),

@@ -7,11 +7,6 @@
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": false,
     "input": ["text"],
-    "cost": {
-      "input": 0.6,
-      "output": 2.5,
-      "cacheRead": 0.15
-    },
     "contextWindow": 131072,
     "maxTokens": 16384
   },
@@ -23,11 +18,6 @@
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": false,
     "input": ["text"],
-    "cost": {
-      "input": 0.6,
-      "output": 2.5,
-      "cacheRead": 0.15
-    },
     "contextWindow": 262144,
     "maxTokens": 262144
   },
@@ -39,11 +29,6 @@
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": true,
     "input": ["text"],
-    "cost": {
-      "input": 0.6,
-      "output": 2.5,
-      "cacheRead": 0.15
-    },
     "contextWindow": 262144,
     "maxTokens": 262144
   },
@@ -55,11 +40,6 @@
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": true,
     "input": ["text"],
-    "cost": {
-      "input": 1.15,
-      "output": 8,
-      "cacheRead": 0.15
-    },
     "contextWindow": 262144,
     "maxTokens": 262144
   },
@@ -71,11 +51,6 @@
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": false,
     "input": ["text"],
-    "cost": {
-      "input": 2.4,
-      "output": 10,
-      "cacheRead": 0.6
-    },
     "contextWindow": 262144,
     "maxTokens": 262144
   },
@@ -87,11 +62,6 @@
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": true,
     "input": ["text"],
-    "cost": {
-      "input": 0.6,
-      "output": 3,
-      "cacheRead": 0.1
-    },
     "contextWindow": 262144,
     "maxTokens": 262144
   },
@@ -103,11 +73,6 @@
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": true,
     "input": ["text"],
-    "cost": {
-      "input": 0.95,
-      "output": 4,
-      "cacheRead": 0.16
-    },
     "contextWindow": 262144,
     "maxTokens": 262144
   },
@@ -119,11 +84,6 @@
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": true,
     "input": ["text"],
-    "cost": {
-      "input": 0.95,
-      "output": 4,
-      "cacheRead": 0.19
-    },
     "contextWindow": 262144,
     "maxTokens": 262144
   },
@@ -135,11 +95,6 @@
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": true,
     "input": ["text"],
-    "cost": {
-      "input": 1.9,
-      "output": 8,
-      "cacheRead": 0.38
-    },
     "contextWindow": 262144,
     "maxTokens": 262144
   },
@@ -151,11 +106,6 @@
     "baseUrl": "https://api.moonshot.ai/v1",
     "reasoning": true,
     "input": ["text"],
-    "cost": {
-      "input": 3,
-      "output": 15,
-      "cacheRead": 0.3
-    },
     "contextWindow": 1048576,
     "maxTokens": 131072,
     "thinkingEfforts": ["low", "high", "max"]

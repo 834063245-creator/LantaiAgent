@@ -20,7 +20,6 @@ function desc(partial: Partial<ModelDescriptor>): ModelDescriptor {
     baseUrl: 'https://api.test/v1',
     reasoning: true,
     input: ['text'],
-    cost: { input: 0, output: 0, cacheRead: 0 },
     contextWindow: 100000,
     maxTokens: 32000,
     ...partial,

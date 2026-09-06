@@ -5,14 +5,11 @@
 // 从 agent.ts 机械搬移（11c），零逻辑改动。
 // 宿主模式：Agent 类经受控转换（as unknown as CompactionHost）传入本模块。
 
-import { createProvider } from '../provider';
-import { getAllModels } from '../provider/catalog';
 import { streamWithIdleTimeout } from '../provider/idle-stream';
 import type { Message, Provider, Usage } from '../provider/types';
 import { ChunkType } from '../provider/types';
 import { kernelReadFile, kernelWriteFile } from '../rpc-contract';
-import { loadSettingsWithSecrets } from '../settings';
-import { type AgentEvent, EventKind, type Pricing } from './agent-types';
+import { type AgentEvent, EventKind } from './agent-types';
 import type { CompactionConfig, CompactionEvent, CompactionTracker } from './compaction-model';
 import { maybeTune } from './compaction-model';
 import {
@@ -23,7 +20,6 @@ import {
   renderTranscript,
   SUMMARY_MAX_LLM_CHUNKS,
   SUMMARY_MIN_INPUT,
-  SUMMARY_MIN_WINDOW,
   SUMMARY_OUTPUT_BUDGET,
   SUMMARY_PROMPT_BUDGET,
 } from './compaction-summarize';
@@ -39,7 +35,6 @@ export interface CompactionHost {
   readonly session: Message[];
   readonly prov: Provider;
   readonly tools: ToolRegistry;
-  readonly pricing: Pricing | undefined;
   readonly contextWindow: number;
   readonly compactionTracker: CompactionTracker;
   readonly _execState: ExecStateInstance;
@@ -50,7 +45,6 @@ export interface CompactionHost {
   compactRetryAfterLen: number;
   compactFailCount: number;
   compactRunning: boolean;
-  _summaryProv: { prov: Provider; window: number } | null;
   _compactionConfigPath: string | null;
   _compactionTrackerPath: string | null;
   _compactSummary: string | null;
@@ -112,7 +106,7 @@ export async function loadCompactionTrackerImpl(host: CompactionHost): Promise<v
     const raw = await kernelReadFile(host._compactionTrackerPath);
     const stripped = raw.replace(/^\s*\d+\t/gm, '');
     host.compactionTracker.deserializeState(stripped);
-    const stats = host.compactionTracker.getStats(host.pricing);
+    const stats = host.compactionTracker.getStats();
     if (stats.events.length > 0) {
       log.info('agent', 'compaction tracker restored', {
         events: stats.events.length,
@@ -171,13 +165,7 @@ export async function applyAutoTuneConfigImpl(host: CompactionHost): Promise<Com
 /** 检查是否有足够数据，若有则计算并持久化最优参数。
  *  每次压缩后调用。不抛异常 — best-effort 后台调优。 */
 async function tryAutoTune(host: CompactionHost): Promise<void> {
-  const result = maybeTune(
-    host.compactionTracker,
-    host.compactRatio,
-    host.recentKeep,
-    host.pricing,
-    host.contextWindow,
-  );
+  const result = maybeTune(host.compactionTracker, host.compactRatio, host.recentKeep, host.contextWindow);
   if (!result?.changed) return;
 
   const { config } = result;
@@ -544,55 +532,14 @@ export async function summarizeRegionImpl(
   return { text: merged.text, degraded: degraded || merged.degraded };
 }
 
-/** 缓存的摘要模型选择。 */
+/**
+ * 摘要模型解析 — 固定使用主模型（host.prov + host.contextWindow）。
+ * ⚡ 2026-09-06 价格表拆除：旧的「自动选择更便宜的 keyed 模型」逻辑退役——
+ * 不再维护每模型价格后没有客观的「更便宜」，跨家选摘要模型失去依据；
+ * 摘要本就是主模型同一前缀下的补充调用，用主模型可复用热前缀。
+ */
 export async function summaryProviderImpl(host: CompactionHost): Promise<{ prov: Provider; window: number }> {
-  if (!host._summaryProv) host._summaryProv = await selectSummaryProviderImpl(host);
-  return host._summaryProv;
-}
-
-/** 运行时自动选择摘要模型 — 无用户配置项。
- *  规则：已配置 key 覆盖的模型中，窗口 ≥ SUMMARY_MIN_WINDOW 且
- *  输入价严格低于主模型者，取价格最低（窗口大者破平）。
- *  主模型自己参与竞选 — 没有严格占优的候选时维持现状。
- *  只可能在"窗口不小、价格更低"时偏离主模型，永远不会让事情变糟。
- *  ⚡ 2026-08-07 修复：必须走 loadSettingsWithSecrets()——localStorage 不落
- *  key，裸 loadSettings() 让 keyed 永远为空，本特性从未触发过。 */
-export async function selectSummaryProviderImpl(host: CompactionHost): Promise<{ prov: Provider; window: number }> {
-  const fallback = { prov: host.prov, window: host.contextWindow };
-  try {
-    const s = await loadSettingsWithSecrets();
-    const active = s.providers.find((p) => p.name === s.activeProvider);
-    if (!active) return fallback;
-    const all = getAllModels();
-    const main = all.find((m) => m.id === active.model);
-    const mainWindow = main && main.contextWindow > 0 ? main.contextWindow : host.contextWindow;
-    const mainCost = main?.cost?.input ?? Infinity;
-    const keyed = new Map(s.providers.filter((p) => p.apiKey?.trim()).map((p) => [p.name, p]));
-    const winner = all
-      .filter(
-        (m) =>
-          m.id !== active.model &&
-          keyed.has(m.vendor) &&
-          m.contextWindow >= SUMMARY_MIN_WINDOW &&
-          (m.cost?.input ?? 0) > 0 &&
-          (m.cost?.input ?? Infinity) < mainCost,
-      )
-      .sort((a, b) => a.cost.input - b.cost.input || b.contextWindow - a.contextWindow)[0];
-    if (!winner) return { prov: host.prov, window: mainWindow };
-    const ps = keyed.get(winner.vendor);
-    if (!ps) return { prov: host.prov, window: mainWindow };
-    const prov = createProvider({ ...ps, model: winner.id, thinking: '' }, { disableThinking: true });
-    log.info('agent', 'summary model auto-selected', {
-      model: winner.id,
-      window: winner.contextWindow,
-      costIn: winner.cost.input,
-      mainModel: active.model,
-    });
-    return { prov, window: winner.contextWindow };
-  } catch (e) {
-    log.warn('agent', `summary model selection failed (${errMessage(e)}) — 使用主模型`);
-    return fallback;
-  }
+  return { prov: host.prov, window: host.contextWindow };
 }
 
 /** 单次摘要 LLM 调用 — 30s 空闲超时守卫（挂起判定，streamWithIdleTimeout），

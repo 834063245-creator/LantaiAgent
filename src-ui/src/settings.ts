@@ -440,22 +440,3 @@ export function removeProvider(s: AppSettings, name: string): AppSettings {
   const active = s.activeProvider === name ? next[0].name : s.activeProvider;
   return { ...s, activeProvider: active, providers: next };
 }
-
-// ---- 定价（每百万 token）----
-
-/** 解析显示定价：优先模型目录（权威 USD 数据），读不到才回退硬编码。 */
-export function defaultPricing(kind: Protocol, model: string) {
-  const m = getModel(model);
-  if (m?.cost && m.cost.input > 0) {
-    return { cache_hit: m.cost.cacheRead, input: m.cost.input, output: m.cost.output, currency: '$' };
-  }
-  if (kind === 'anthropic') {
-    // Claude Sonnet 4 定价
-    return { cache_hit: 0.3, input: 3, output: 15, currency: '$' };
-  }
-  if (model.includes('deepseek')) {
-    return { cache_hit: 0.14, input: 2.0, output: 8.0, currency: '¥' };
-  }
-  // OpenAI 默认
-  return { cache_hit: 2.5, input: 5, output: 15, currency: '$' };
-}

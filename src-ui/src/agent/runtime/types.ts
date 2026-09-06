@@ -8,7 +8,7 @@
 
 import type { Message, Provider } from '../../provider/types';
 import type { AgentStore } from '../agent-store';
-import type { AgentEvent, EventSink, Pricing } from '../agent-types';
+import type { AgentEvent, EventSink } from '../agent-types';
 import type { SubAgentPool } from '../coordinator';
 import type { ExecStateInstance } from '../execution-state';
 import type { GoalManager } from '../goal-manager';
@@ -112,7 +112,6 @@ export interface AgentConfig {
   /** Agent 选项 */
   temperature?: number;
   contextWindow?: number;
-  pricing?: Pricing;
   /** 工具结果批量折叠大小（默认 0 = 禁用；开启需 >0） */
   toolResultWindow?: number;
   /** 协作模式 */
@@ -151,7 +150,6 @@ export interface AgentAssemblyInputs {
   subAgentSpawner?: import('../tools/subagent').SubAgentSpawner;
   temperature?: number;
   contextWindow?: number;
-  pricing?: Pricing;
   toolResultWindow?: number;
   onSessionPersisted?: (sessionId: string, messages: Message[]) => void;
 }

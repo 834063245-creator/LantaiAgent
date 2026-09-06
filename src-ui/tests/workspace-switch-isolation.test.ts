@@ -33,7 +33,6 @@ vi.mock('../src/settings', () => ({
   },
   getActiveProvider: (s: { providers?: Array<{ name: string; kind: string; apiKey?: string }> }) =>
     s?.providers?.[0] ?? { name: 'none', kind: 'openai', apiKey: '' },
-  defaultPricing: () => ({}),
   modelContextWindow: () => 8192,
 }));
 

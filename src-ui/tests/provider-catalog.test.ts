@@ -137,12 +137,9 @@ describe('catalog', () => {
     }
   });
 
-  it('all models have valid cost structure', () => {
+  it('no model carries price fields (2026-09-06 价格表拆除：cost 字段退役)', () => {
     for (const m of getAllModels()) {
-      expect(m.cost).toBeDefined();
-      expect(typeof m.cost.input).toBe('number');
-      expect(typeof m.cost.output).toBe('number');
-      expect(typeof m.cost.cacheRead).toBe('number');
+      expect('cost' in m, `${m.id} 仍带 cost 字段——价格表已拆除`).toBe(false);
     }
   });
 
@@ -162,7 +159,6 @@ describe('catalog', () => {
         baseUrl: 'https://api.testprov.com/v1',
         reasoning: true,
         input: ['text'],
-        cost: { input: 0.1, output: 0.2, cacheRead: 0 },
         contextWindow: 0,
         maxTokens: 0,
       },
@@ -174,7 +170,6 @@ describe('catalog', () => {
         baseUrl: 'https://stale.invalid/v1',
         reasoning: false,
         input: ['text'],
-        cost: { input: 0, output: 0, cacheRead: 0 },
         contextWindow: 0,
         maxTokens: 0,
       },
@@ -212,7 +207,6 @@ describe('catalog', () => {
         baseUrl: 'https://api.c5lastgood.com/v1',
         reasoning: false,
         input: ['text'],
-        cost: { input: 0, output: 0, cacheRead: 0 },
         contextWindow: 0,
         maxTokens: 0,
       },

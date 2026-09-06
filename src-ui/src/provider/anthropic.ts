@@ -142,7 +142,6 @@ export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
           // 多模态等真实传图入口出现后再做（breaking change，单独立项）。
           // P14：/v1/models 不披露思考档位——thinkingEfforts 留空，不编造。
           input: ['text'] as ('text' | 'image')[],
-          cost: { input: 0, output: 0, cacheRead: 0 },
           contextWindow: 0,
           maxTokens: 0,
         }));

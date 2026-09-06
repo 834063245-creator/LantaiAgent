@@ -95,7 +95,7 @@ export interface Provider {
    *  TCP+TLS 连接。尽力而为 — 失败静默处理。 */
   prewarm?(): void;
   /** 从 provider 的 /models API 端点获取可用模型。
-   *  返回 ModelDescriptor[]，仅含最小元数据（cost/contextWindow 从 API 不可知）。
+   *  返回 ModelDescriptor[]，仅含最小元数据（contextWindow/能力从 API 不可知）。
    *  尽力而为：传输失败（网络/超时/端点 4xx）上抛——调用面据此记失败面
    *  （C5 2026-08-27：此前静默返回 [] 被当成「无模型」，用户完全无感）；
    *  成功但端点无 data = 返回空数组。 */
@@ -115,14 +115,10 @@ export interface ProviderRuntimeArgs {
 
 // ---- 模型目录 ----
 
-/** 每百万 token 的费用（USD）。 */
-export interface ModelCost {
-  input: number;
-  output: number;
-  cacheRead: number;
-}
-
-/** 静态模型描述符 — 数据驱动的模型选择，无需手动输入。 */
+/** 静态模型描述符 — 数据驱动的模型选择，无需手动输入。
+ *  ⚡ 2026-09-06 价格表拆除：不再维护每模型价格（cost 字段与 ModelCost 类型
+ *  退役）——目录 JSON 只保留 baseUrl/kind/contextWindow/maxTokens/能力声明；
+ *  价格面随 defaultPricing/Pricing/价格徽章一并移除。 */
 export interface ModelDescriptor {
   id: string; // 例如 "deepseek-v4-pro"
   name: string; // 例如 "DeepSeek V4 Pro"
@@ -131,7 +127,6 @@ export interface ModelDescriptor {
   baseUrl: string; // API 端点
   reasoning: boolean; // 是否支持 thinking/reasoning
   input: ('text' | 'image')[];
-  cost: ModelCost;
   contextWindow: number;
   maxTokens: number;
   // ── 思考能力声明（P14 能力协商，2026-08-22）──

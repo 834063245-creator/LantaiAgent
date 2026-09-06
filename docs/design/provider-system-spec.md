@@ -792,4 +792,41 @@ P14 写「兰台是单活跃 provider 形态」，P15 后修正为：**多 provi
   provider-openai-thinking / provider-realsocket（maxTokensFor）。
 - 实机验收：用户逐条（Provider 页可用模型 / 创作坞下拉 / 思考常驻 / 自定义 provider 分组）。
 
+## 追裁 · 模型价格表拆除（2026-09-06 拍板）
 
+> 动因：用户反馈「不再维护模型价格表」——手写 catalog 价格的维护成本大于收益
+> （价格天然会 stale，改价需发版）；同时添加提供方页改为「拉模型 + 设默认」后，
+> 模型列表来自 provider 的 `/models`（价格从 API 不可知）。压缩层曾按价格选最便宜的
+> 摘要模型、估算压缩成本——经用户确认：**压缩层保留，只做价格解耦**（固定费率），
+> DSH 压缩移植不启动。
+
+### 拆除面（代码 + 数据）
+
+1. **目录 JSON**：`cost` 字段全删（9 个 catalog/*.json）；`ModelCost` 类型与
+   `ModelDescriptor.cost` 退役（provider/types.ts）。
+2. **展示**：模型下拉的价格徽章 / 元信息（`$x/y per M`）删除——目录元数据只剩
+   上下文窗口与推理标记；`hasMetadata` 只按窗口判定。
+3. **Agent Pricing 面**：`Pricing` / `computeCost` / `AgentConfig.pricing` /
+   `AgentOptions.pricing` / `AgentAssemblyInputs.pricing` / `AgentLoopHost.pricing` /
+   `AgentEvent.pricing` / `setProvider(prov, pricing)` / `setPricing` / `getPricing`
+   全链拆除（workspace 不再传 defaultPricing；Usage 事件不再带 pricing）。
+4. **压缩解耦**（压缩层保留）：
+   - `CompactionTracker` 成本估算改固定费率（DEFAULT_C_IN/OUT 保留，pricing 参数删）。
+   - `maybeTune/tuneCompactionParams` 不再收 pricing。
+   - 摘要模型「自动选最便宜 keyed 模型」退役（`selectSummaryProviderImpl` 删）——
+     `summaryProviderImpl` 固定返回主模型（host.prov + host.contextWindow）。
+   - 压缩报告去 `$` 成本行（`compactionEventCost` 删）；`hologram_compaction_stats`
+     不再输出成本。
+5. **生成器**：`scripts/regen-catalogs.cjs` 不再写 cost（LiteLLM 源仍可对拍窗口）。
+6. **收敛**：phase-3/phase-6 的 AgentConfig 字段清单去掉 `pricing`。
+
+### 行为变化（对用户可感知）
+
+- 模型选择 UI 不再显示「$输入/输出每 M」价格徽章。
+- 压缩统计/报告不再显示美元金额行（token 统计保留）。
+- 长会话不再自动换「更便宜的摘要模型」（此前几乎未触发——见 2026-08-07 修复注）。
+- **添加提供方页改为两步式（连接 → 拉模型 → 设默认）**（见 P16 追裁，若同日落地）。
+
+### 验收
+
+- vitest 全量绿 · tsc --noEmit 0 错 · biome ci 0/0 · verify:convergence exit 0。

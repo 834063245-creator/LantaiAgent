@@ -7,11 +7,6 @@
     "baseUrl": "https://opencode.ai/zen/go/v1",
     "reasoning": true,
     "input": ["text"],
-    "cost": {
-      "input": 0,
-      "output": 0,
-      "cacheRead": 0
-    },
     "contextWindow": 1000000,
     "maxTokens": 384000,
     "thinkingEfforts": ["high", "max"]
@@ -24,11 +19,6 @@
     "baseUrl": "https://opencode.ai/zen/go/v1",
     "reasoning": true,
     "input": ["text"],
-    "cost": {
-      "input": 0,
-      "output": 0,
-      "cacheRead": 0
-    },
     "contextWindow": 1000000,
     "maxTokens": 384000,
     "thinkingEfforts": ["high", "max"]

@@ -272,11 +272,6 @@
   background: color-mix(in oklch, var(--indigo) 8%, transparent);
 }
 
-.ms-badge-cost {
-  color: var(--ink-2);
-  background: var(--paper-deep);
-}
-
 .ms-badge-reason {
   font-size: calc(9px * var(--font-scale));
 }

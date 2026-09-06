@@ -14,7 +14,7 @@
 // register 一个 AgentLoop 即接管 turn/step/request/tool 全生命周期。
 
 import type { Message, Provider, ToolCall, Usage } from '../../provider/types';
-import type { AgentEvent, AgentUINotifier, Pricing } from '../agent-types';
+import type { AgentEvent, AgentUINotifier } from '../agent-types';
 import type { CompactionTracker } from '../compaction-model';
 import type { AgentEventBus } from '../events';
 import type { HookRegistry, PreflightHookRegistry } from '../hooks';
@@ -61,7 +61,6 @@ export interface AgentLoopHost {
     ): string | null;
   } | null;
   readonly compactionTracker: CompactionTracker;
-  readonly pricing: Pricing | undefined;
   readonly contextWindow: number;
   readonly pendingInserts: readonly string[];
 
