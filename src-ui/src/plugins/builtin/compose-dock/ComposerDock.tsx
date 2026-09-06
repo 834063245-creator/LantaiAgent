@@ -11,8 +11,9 @@
 //
 // 2026-09-06 收口 + 续批：三行制 = 书眉行（卷名 + 翰/律/后台指示）居顶、
 // 输入行居中、设置行（模型/权限/思考）垫底——三控件落位输入行之下的
-// 「下方一行」（DSH InputBar 排布），卷名/翰/律恒居书眉行；设置行控件定宽
-// 防跳动（详 PaperPanel.css）；模型选择器触发器恒驻 + 弹层内搜索（详 ModelSelector 头注）。
+// 「下方一行」（DSH InputBar 排布），卷名/翰/律恒居书眉行；设置行内模型独居
+// 左端、权限+思考成对靠右（组内权限在左）；设置行控件定宽防跳动（详
+// PaperPanel.css）；模型选择器触发器恒驻 + 弹层内搜索（详 ModelSelector 头注）。
 //
 // 归属铁律：创作坞是视图不是容器，不拥有任何会话状态，只"指向"当前活跃
 // 会话。草稿按会话隔离 = input-store 既有 sessionDrafts 机制（chat-session
@@ -943,8 +944,11 @@ export const ComposerDock = memo(function ComposerDock() {
 
       {/* 设置行（2026-09-06 续批：三行制之末行）——只放模型/权限/思考三控件，
           落位输入行之下的「下方一行」（DSH InputBar 同款排布：输入面在上、
-          控件行在下）；卷名/翰/律/后台指示归顶行书眉，不随迁。开口即开卷
-          （2026-08-31）：控件不随活跃卷隐藏——无主态操作「新卷出生默认」。 */}
+          控件行在下）；卷名/翰/律/后台指示归顶行书眉，不随迁。行内排布（续批二）：
+          模型独居左端，权限+思考成对靠右（组内权限在左、思考收尾）——两件同属
+          「运行策略」，成对不与模型混排；直接合并先不做（权限=工作区级 mode-store、
+          思考=每会话 compose-store，两真相源合一个控件会搅浑状态归属）。
+          开口即开卷（2026-08-31）：控件不随活跃卷隐藏——无主态操作「新卷出生默认」。 */}
       <div className="pp-composer-settings">
         {/* DSH 移植（2026-08-26）：运行中守卫——本卷在跑时模型下拉打开被拦
             （DSH onAttemptOpen 语义：流式中不允许切模型），localNotice 提示 */}
@@ -957,6 +961,7 @@ export const ComposerDock = memo(function ComposerDock() {
           isStreaming={running}
           onBlocked={() => setLocalNotice('Agent 正在运行——本回合结束后才能切换模型。')}
         />
+        <div className="pp-composer-settings-spacer" />
         {/* rework P2-3：权限三档分段控件（不随 DSH 迁移——权限是工作区级单一真相） */}
         <fieldset className="pp-mode-seg" aria-label="权限模式">
           {PERMISSION_MODES.map((m) => (
