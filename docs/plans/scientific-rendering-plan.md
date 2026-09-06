@@ -1,6 +1,6 @@
 # 科研渲染（scientific-rendering）计划
 
-> 状态：**In progress：4A 正文 LaTeX 施工完成（2026-09-06，门禁全绿，真机验收待跑）；4B 引用卡待开工**
+> 状态：**In progress：4A 正文 LaTeX 完成且真机验收通过（2026-09-07 用户实机确认效果良好）；4B 引用卡待下窗口接手**
 > 一句话：按「科研 Agent 渲染 20 种清单」倒查兰台现状，确立**双通道决策模型**（正文 markdown 通道 / 产物资产通道），前置治理渲染↔测量人肉镜像债，首期并行落地 **正文 LaTeX 数学** 与 **引用卡资产 kind** 两条通道样板。
 > 决策记录：2026-09 用户拍板——文档范围=完整立项；镜像策略=**优先重构收口镜像**（不是"先上新渲染再补债"）；首期=**数学（markdown 通道）+ 引用卡（资产通道）两项并行**；D1=**不保守（行内 `$...$` 直接上）**；D2=**KaTeX 进场**。
 > 施工史：2026-09-06 4A 落地——markdown.ts 数学单一解析（块级 `$$` fence 流式容忍 + 行内 `$...$` 界约束不误伤货币/变量/转义）+ renderer-service KaTeX renderToString（.pp-md-math 块级 / .pp-md-math-inline 行内原子，throwOnError:false 错误可见不崩块）+ type-tokens 数学版式 token + measure 静态预算（显式行数 × maxLines 封顶）+ **含公式 markdown 挂 RO**（needsObservedHeight 内容感知，三参向后兼容）+ KaTeX CSS 集中 main.ts 导入。新增 `tests/paper-math-rendering.test.ts` 17 用例（parse/render/measure 三侧对拍）。门禁：vitest 2627 passed · convergence 0 漂移 · biome 0/0 · build ✓（KaTeX 字体资产正确打包）。真机验收清单见 §7。**同日 §5 轮子策略定稿**——现有 9 kind 无一需换 wheel（chart 加 `interactive` 表现而非换）；选型核验表 + 进场路径 + 后续批次见 §5。
@@ -241,11 +241,13 @@ Agent 想要交互图用 `show_asset(kind:'chart', presentation:'interactive')`�
 
 ## 7. 真机验收清单（用户跑）
 
-1. 科研回答流式输出含 `$$...$$` 公式：渲染为排版公式，流式半程不破版、finalised 后不闪
-2. 行内 `$...$`（如 $E=mc^2$）在中文正文混排正常、不误伤货币/普通 `$`
-3. Agent 调 show_asset 出引用卡：DOI/arXiv 可点开、BibTeX 折叠、历史卡只读
-4. 公式块/引用卡钉住（pinned）+ 折叠态下行为正常、无叠字空跳
-5. 旧卷回放（历史会话含科研内容）过新管线渲染正常
+4A（数学）相关项用户 2026-09-07 实机确认通过：
+
+1. ✅ 科研回答流式输出含 `$$...$$` 公式：渲染为排版公式，流式半程不破版、finalised 后不闪（**2026-09-07 实机确认**）
+2. ✅ 行内 `$...$`（如 $E=mc^2$）在中文正文混排正常、不误伤货币/普通 `$`（**2026-09-07 实机确认**）
+3. Agent 调 show_asset 出引用卡：DOI/arXiv 可点开、BibTeX 折叠、历史卡只读（**4B 后验**）
+4. 公式块/引用卡钉住（pinned）+ 折叠态下行为正常、无叠字空跳（公式部分随 4A 已过；引用卡部分 **4B 后验**）
+5. 旧卷回放（历史会话含科研内容）过新管线渲染正常（含公式卷已验；引用卡卷 **4B 后验**）
 
 ## 8. 风险与决策点
 
