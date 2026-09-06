@@ -93,7 +93,8 @@ export function registerBuiltinAssetKinds(): void {
 
   assetKinds.register({
     id: 'chart',
-    description: '图表（柱/线/饼/散点四件套）——数据+配置，不是图片',
+    description:
+      '图表（柱/线/饼/散点四件套）——数据+配置，不是图片；presentation interactive 走 ECharts 交互版（科研渲染 #16）',
     schema: objectSchema(
       {
         type: { type: 'string', enum: ['bar', 'line', 'pie', 'scatter'], description: '图表类型' },
@@ -102,7 +103,7 @@ export function registerBuiltinAssetKinds(): void {
       },
       ['type', 'data'],
     ),
-    presentations: ['chart'],
+    presentations: ['chart', 'interactive'],
     defaultPresentation: 'chart',
     streamable: 'atomic',
   });

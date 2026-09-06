@@ -45,6 +45,7 @@
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@types/three": "^0.185.1",
+    "echarts": "^6.1.0",
     "gpt-tokenizer": "^3.4.0",
     "highlight.js": "^11.11.1",
     "katex": "^0.18.6",

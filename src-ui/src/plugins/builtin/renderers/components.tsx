@@ -12,13 +12,15 @@
 //     产出自包含 ESM（react/overlay/rpc 从 window.__lantai_plugin_host__ 取）。
 //
 // 纪律（协议 §2.9，自 asset-renderers.tsx 沿用）：
-//   - 全部纯 CSS+SVG 自绘，零新依赖；纸壳墨色体系由 PaperPanel.css 承载。
 //   - 渲染器只渲染块体；壳件（签/手柄/钉住/占位）不进注册表。
 //   - graph = 确定性分层布局（A5 二期）、tree = 深度列树布局（A5 首发；
 //     力导向不做）；空数据一律「数据不可用」占位，不画空白 SVG。
 //   - html 走沙箱 iframe（WO-8）：sandbox + 文档内 CSP，网络全 never。
 //   - form（confirm kind）带活决议回调时全交互（选项/确认/修改/拒绝）；
 //     无回调（历史卡/重载）只读态——回调不持久化（PlanPart._callback 先例）。
+//   - 依赖纪律（2026-09-07 #10/#16 起更新）：默认纯 CSS/SVG 自绘 + 纸面墨色；
+//     领域格式解析/交互渲染借 npm 库（smiles-drawer 结构式 / ECharts 交互图），
+//     esbuild 产物域 bundle:true 内联——只有对应 presentation 的组件消费。
 //
 // 类型导入纪律：type-only import 编译期擦除（esbuild 产物无裸运行时 import）。
 // smiles-drawer（scientific-rendering #10，2026-09）：npm 依赖，esbuild 产物域
@@ -26,12 +28,41 @@
 // 依赖——chroma-js 一并内联，不进宿主桥）。vitest 域真实加载本包：parse 是纯
 // 字符串处理不碰 DOM，SvgDrawer/ReactionDrawer 只在组件 effect 挂载后 draw 时
 // 才碰 svg DOM。类型：包自带 dist/types（SmilesDrawerNS 默认导出）。
+// ECharts（scientific-rendering #16，2026-09）：按需组合（core+charts+
+// components+renderers 顶层 use 一次）——交互图 canvas 自绘，init 在 effect；
+// SSR/测试无 effect → 空盒占位（measure 固定盒镜像 + RO 实测兜底）。体积
+// +219KB gzip 进共享产物（用户拍板接受——交互科研图表是 #16 硬缺口）。
 
+import { BarChart, LineChart, PieChart, ScatterChart } from 'echarts/charts';
+import {
+  DataZoomComponent,
+  GridComponent,
+  LegendComponent,
+  TitleComponent,
+  ToolboxComponent,
+  TooltipComponent,
+} from 'echarts/components';
+import * as echarts from 'echarts/core';
+import { CanvasRenderer } from 'echarts/renderers';
 import type { CSSProperties, ReactNode } from 'react';
 import SmilesDrawer from 'smiles-drawer';
 import type { ConfirmCardResponse } from '../../../agent/agent-types';
 import type { BlockRendererProps } from '../../../composition/renderer-service';
 import { rendererHooks, rendererOverlay, rendererRpc } from './renderer-host';
+
+echarts.use([
+  BarChart,
+  LineChart,
+  PieChart,
+  ScatterChart,
+  GridComponent,
+  TooltipComponent,
+  LegendComponent,
+  TitleComponent,
+  DataZoomComponent,
+  ToolboxComponent,
+  CanvasRenderer,
+]);
 
 const { useEffect, useRef, useState } = rendererHooks;
 
@@ -204,6 +235,98 @@ function ChartBody({ block }: BlockRendererProps) {
             <span key={i}>{l}</span>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+/* ── chart interactive（交互图表——scientific-rendering #16，2026-09）──
+ * chart kind 的第二个表现（presentation='interactive'，协议 §5.3 双维度正交）：
+ * 同一 payload {type, data, config}，渲染走 ECharts（canvas）——tooltip/缩放/
+ * 图例/工具箱交互。静态 chart 表现与历史块（presentation 缺省 → 'chart'）零影响。
+ *
+ * data 形状与静态版同源（chartValues/chartLabels 复用）：数组 [{label,value}]
+ * 或 {labels, values}；config 透传标题/图例等 ECharts option 片段。
+ *
+ * ECharts init 是 effect（要真实 canvas DOM + 2D ctx）——SSR/测试（jsdom 无
+ * canvas）→ 空容器占位（measure 固定盒镜像 + RO 实测兜底——资产族恒挂 RO）；
+ * init 失败（异常环境）→ 「初始化失败」可见不崩（错误不静默纪律）。 */
+
+/** 交互图固定盒高由 CSS 承载（.pp-chart-interactive-box height 走
+ *  --pp-asset-chart-interactiveBoxH token——measure 镜像同 token 派生）。 */
+
+/** 数据 → ECharts option（纯函数——测试直引，不碰 DOM/canvas）。
+ *  data 形状与静态版同源（chartValues/chartLabels）；config 透传 title/xName/
+ *  yName/palette；>40 项长数据自动加 dataZoom（滚动/缩放交互）。 */
+export function buildEchartsOption(
+  type: string,
+  data: unknown,
+  config: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const values = chartValues(data);
+  const labels = chartLabels(data);
+  const title = config && typeof config.title === 'string' ? { text: config.title } : undefined;
+  const base: Record<string, unknown> = {
+    title,
+    tooltip: {},
+    color: config && Array.isArray(config.palette) ? config.palette : undefined,
+  };
+  if (type === 'pie') {
+    return {
+      ...base,
+      legend: labels.length > 0 ? { bottom: 0 } : undefined,
+      series: [
+        {
+          type: 'pie',
+          radius: '62%',
+          data: values.map((v, i) => ({ name: labels[i] ?? `#${i + 1}`, value: v })),
+        },
+      ],
+    };
+  }
+  const xAxis = labels.length > 0 ? { type: 'category', data: labels } : { type: 'category' };
+  const seriesData = type === 'scatter' ? values.map((v, i) => [labels[i] ?? i, v]) : values;
+  return {
+    ...base,
+    grid: { left: 44, right: 16, top: title ? 48 : 28, bottom: labels.length > 0 ? 40 : 28 },
+    xAxis: { ...xAxis, name: config && typeof config.xName === 'string' ? config.xName : undefined },
+    yAxis: { type: 'value', name: config && typeof config.yName === 'string' ? config.yName : undefined },
+    // bar/line 单系列；scatter 以 [x,y] 点列
+    series: [{ type, data: seriesData, ...(type === 'line' ? { smooth: true } : {}) }],
+    dataZoom: values.length > 40 ? [{ type: 'inside' }, { type: 'slider', height: 14, bottom: 2 }] : undefined,
+  };
+}
+
+function InteractiveChartBody({ block }: BlockRendererProps) {
+  const p = block.payload as { type?: string; data?: unknown; config?: Record<string, unknown> };
+  const type = typeof p.type === 'string' ? p.type : 'bar';
+  const domRef = useRef<HTMLDivElement | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (!domRef.current || chartEmpty(p.data)) return;
+    let chart: ReturnType<typeof echarts.init> | null = null;
+    try {
+      chart = echarts.init(domRef.current);
+      chart.setOption(buildEchartsOption(type, p.data, p.config));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+    return () => {
+      chart?.dispose();
+    };
+  }, [type, p.data, p.config]);
+  if (chartEmpty(p.data)) {
+    // 与静态版同文案（错误不静默）
+    return <div className="pp-chart pp-chart-empty">数据不可用 · 期望数组或 {`{labels, values}`} 形状</div>;
+  }
+  return (
+    <div className="pp-chart pp-chart-interactive">
+      <div className="pp-chart-type">{type} · 交互</div>
+      {err ? (
+        <div className="pp-chart-interactive-err">交互图初始化失败：{err}</div>
+      ) : (
+        /* ECharts 固定盒（init 后 canvas 撑满盒）——SSR/测试无 effect → 空盒占位 */
+        <div ref={domRef} className="pp-chart-interactive-box" />
       )}
     </div>
   );
@@ -952,7 +1075,10 @@ function ChemBody({ block }: BlockRendererProps) {
   );
 }
 
-/** 12 个资产表现原语的注册表入口（供渲染器 cordis 插件装载）。 */
+/** 13 个资产表现原语/表现的注册表入口（供渲染器 cordis 插件装载）。
+ *  注：presentation 名与渲染器 kind 命名空间共用——chart kind 的
+ *  presentation='interactive'（科研渲染 #16）注册为渲染器 kind='interactive'
+ *  行，resolveAssetBlock 按 presentation 名查行即中。 */
 export type AssetRendererKind =
   | 'grid'
   | 'chart'
@@ -965,7 +1091,8 @@ export type AssetRendererKind =
   | 'board'
   | 'timeline'
   | 'citation'
-  | 'chem';
+  | 'chem'
+  | 'interactive';
 
 export function assetRendererComponents(): Record<AssetRendererKind, (props: BlockRendererProps) => ReactNode> {
   return {
@@ -981,5 +1108,6 @@ export function assetRendererComponents(): Record<AssetRendererKind, (props: Blo
     timeline: TimelineBody,
     citation: CitationBody,
     chem: ChemBody,
+    interactive: InteractiveChartBody,
   };
 }

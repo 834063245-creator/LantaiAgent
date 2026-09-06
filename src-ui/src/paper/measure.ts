@@ -288,6 +288,7 @@ const CHART_PIE_H = ASSET_DERIVED.chartPieH; // .pp-chart-pie height
 const CHART_LABEL_GAP = ASSET_DERIVED.chartLabelGap; // .pp-chart-labels margin-top
 const CHART_LABEL_LINE = ASSET_DERIVED.chartLabelSize * 1.8;
 const CHART_LABEL_FONT = `${ASSET_DERIVED.chartLabelSize}px ${MONO_STACK}`;
+const CHART_INTERACTIVE_BOX_H = ASSET_DERIVED.chartInteractiveBoxH; // .pp-chart-interactive-box 固定盒高（#16）
 
 const METRIC_PAD_V = ASSET_DERIVED.metricPadV; // .pp-metric padding 2×2
 const METRIC_CAPTION_H = ASSET_DERIVED.metricCaptionH; // .pp-metric-caption + margin-bottom 6
@@ -878,6 +879,11 @@ function measureAssetBlockHeight(b: SourcedBlock): number {
       return mediaBodyH(p as { ext?: unknown; filePath?: unknown });
     case 'chart':
       return chartBodyH(p as { type?: unknown; data?: unknown }, b.w);
+    case 'interactive':
+      // ECharts 交互图（科研渲染 #16）：type 行 + 固定盒高（ECharts 图在盒内
+      // canvas 自绘，图例/轴都在盒内不占盒外行）——盒高恒定镜像精确；
+      // canvas 实际绘制若有差异由挂载后 RO 实测兜底（资产族恒挂 RO）。
+      return CHART_PAD_V + CHART_TYPE_H + CHART_INTERACTIVE_BOX_H;
     case 'metric':
       return metricBodyH(p as { items?: unknown; caption?: unknown }, b.w);
     case 'grid':

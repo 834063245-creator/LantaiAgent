@@ -205,7 +205,18 @@ export const ASSET_TOKENS = {
     preLh: 1.6,
   },
   media: { padV: 2, labelSize: 13, labelMarginB: 4, imgMaxH: 320, rowSize: 11 },
-  chart: { padV: 4, typeSize: 9, typeMarginB: 4, svgMaxH: 240, pieH: 180, labelMarginTop: 6, labelSize: 9 },
+  // interactiveBoxH（科研渲染 #16）：ECharts 交互图固定盒高（canvas 自绘，
+  // 盒高恒定——measure 静态镜像精确，RO 恒挂仅兜底）
+  chart: {
+    padV: 4,
+    typeSize: 9,
+    typeMarginB: 4,
+    svgMaxH: 240,
+    pieH: 180,
+    labelMarginTop: 6,
+    labelSize: 9,
+    interactiveBoxH: 260,
+  },
   metric: {
     padV: 2,
     captionSize: 13,
@@ -365,6 +376,7 @@ export const ASSET_DERIVED = {
   chartPieH: ASSET_TOKENS.chart.pieH,
   chartLabelGap: ASSET_TOKENS.chart.labelMarginTop,
   chartLabelSize: ASSET_TOKENS.chart.labelSize,
+  chartInteractiveBoxH: ASSET_TOKENS.chart.interactiveBoxH, // .pp-chart-interactive-box 固定盒高（#16）
 
   metricPadV: ASSET_TOKENS.metric.padV * 2, // .pp-metric padding 2×2
   metricCaptionH: ASSET_TOKENS.metric.captionSize * 1.8 + ASSET_TOKENS.metric.captionMarginB,

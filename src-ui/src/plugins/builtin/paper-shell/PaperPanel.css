@@ -3449,6 +3449,23 @@
   border-left: 2px solid color-mix(in oklch, var(--fail) 45%, transparent);
   padding-left: 10px;
 }
+
+/* ── chart interactive（交互图表——scientific-rendering #16，2026-09）──
+ * chart kind 的 presentation='interactive'：ECharts canvas 自绘于固定盒
+ * （.pp-chart-interactive-box 高 = interactiveBoxH token——canvas init 需要
+ * 确定高度；图例/轴/tooltip 全在盒内，不占盒外行 → measure 镜像恒定精确）。 */
+.pp-chart-interactive-box {
+  height: var(--pp-asset-chart-interactiveBoxH);
+  width: 100%;
+  box-sizing: border-box;
+}
+.pp-chart-interactive-err {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--fail);
+  word-break: break-word;
+}
 .pp-chart-svg {
   width: 100%;
   height: auto;
