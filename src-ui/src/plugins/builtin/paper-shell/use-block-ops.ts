@@ -1,0 +1,155 @@
+// Copyright (c) 2026 Wenbing Jing. MIT License.
+// SPDX-License-Identifier: MIT
+
+// 消息操作域（paper-panel-split C3）——块 hover 操作按钮（施工单 #5 →
+// 2026-08-31 修订）：抄恒有；状态类操作（改/重发/重试）只出现在各卷最新一条
+// 对应角色消息上。opsByBlock 是 O(总块数) 的按块建表，P2-3 复合键缓存平移帧
+// 零重建。
+
+import type { MutableRefObject } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
+import type { AssistantMessage, ChatMessage, RegionView, TextPart, UserMessage } from './host';
+import { sameKey } from './use-paper-regions';
+import type { PaperCore } from './use-paper-sessions';
+
+/** 消息操作项（施工单 #5）：块 hover 出现的操作按钮。
+ *  disabled/title：状态类操作（改/重发/重试）在该轮已无法唯一定位撤回时
+ *  置灰降级（2026-09-01 重发锚点工程——绝不撤错轮）。 */
+export interface BlockOp {
+  key: string;
+  label: string;
+  run: () => void;
+  disabled?: boolean;
+  title?: string;
+}
+
+/** 从消息提取可复制的正文文本（text part 拼接）。 */
+function messageCopyText(msg: ChatMessage): string {
+  if (msg.role !== 'assistant') return msg.text;
+  return msg.parts
+    .filter((p): p is TextPart => p.type === 'text')
+    .map((p) => p.text)
+    .join('\n');
+}
+
+/** 消息操作域（paper-panel-split C3，自 PaperPanel 184-204 + 1592-1697
+ *  域内原样搬入）。ops 按块 id 记忆（opsCacheRef，stamp 随最新消息判定与
+ * 可撤态变化失效）——点击时经 regionMsgs 取最新消息。 */
+export function useBlockOps(params: {
+  core: PaperCore | null;
+  regions: RegionView[];
+  regionsRef: MutableRefObject<RegionView[]>;
+  regionMsgs: Record<string, { messages: readonly ChatMessage[]; tick: number }>;
+}) {
+  const { core, regions, regionsRef, regionMsgs } = params;
+
+  const msgOpsFor = useCallback(
+    (msg: ChatMessage, stateOps: boolean, retrace: boolean): BlockOp[] => {
+      if (!core) return [];
+      const latest = (): ChatMessage => {
+        // 在来源会话的消息流里找最新版本
+        for (const r of regionsRef.current) {
+          const found = regionMsgs[r.sessionNum]?.messages.find((m) => m._id === msg._id);
+          if (found) return found;
+        }
+        return msg;
+      };
+      const latestMsg = latest();
+      const ops: BlockOp[] = [];
+      // 可撤态置灰降级（沙盒映射定位失败 = 会话已压缩/上下文已变化——
+      // 按钮可留待重派生自愈，但绝不撤错轮）
+      const gone = (ok: boolean) => ({
+        disabled: !ok,
+        title: ok ? undefined : '该轮已不可重发（会话已压缩）',
+      });
+      if (msg.role === 'user') {
+        if (stateOps) {
+          const latestUser = (): UserMessage => {
+            for (const r of regionsRef.current) {
+              const m = regionMsgs[r.sessionNum]?.messages.find((x) => x._id === msg._id);
+              if (m && m.role === 'user') return m;
+            }
+            return msg as UserMessage;
+          };
+          ops.push({ key: 'edit', label: '改', run: () => core.editUserMessage(latestUser()), ...gone(retrace) });
+          ops.push({ key: 'resend', label: '重发', run: () => core.resendUserMessage(latestUser()), ...gone(retrace) });
+        }
+      } else if (msg.role === 'assistant') {
+        if (stateOps) {
+          const latestAsst = (): AssistantMessage => {
+            for (const r of regionsRef.current) {
+              const m = regionMsgs[r.sessionNum]?.messages.find((x) => x._id === msg._id);
+              if (m && m.role === 'assistant') return m;
+            }
+            return msg as AssistantMessage;
+          };
+          ops.push({ key: 'retry', label: '重试', run: () => core.retryAssistant(latestAsst()), ...gone(retrace) });
+        }
+      }
+      const text = messageCopyText(latestMsg);
+      if (text.trim()) ops.push({ key: 'copy', label: '抄', run: () => core.copyText(messageCopyText(latest())) });
+      return ops;
+    },
+    [core, regionMsgs, regionsRef],
+  );
+  const opsCacheRef = useRef<Map<string, { msg: ChatMessage; ops: BlockOp[]; stamp: string; regionMsgs: unknown }>>(
+    new Map(),
+  );
+  const opsByBlockCacheRef = useRef<{ key: unknown[]; map: Map<string, BlockOp[]> } | null>(null);
+  const opsByBlock = useMemo(() => {
+    // P2-3：复合键复用——输入不变（平移帧：blocks 引用稳定 + regionMsgs 同一
+    // 性）时整 Map 原样复用，O(总块数) 的 byId 建表/最新角色扫尾/缓存比对
+    // 全免。retrace 判定只在内容变化时重算（stamp 语义不变）。
+    const key: unknown[] = [regionMsgs, core, msgOpsFor];
+    for (const r of regions) key.push(r.sessionNum, r.blocks);
+    const prev = opsByBlockCacheRef.current;
+    if (prev && sameKey(prev.key, key)) return prev.map;
+    const map = new Map<string, BlockOp[]>();
+    if (!core) {
+      opsByBlockCacheRef.current = { key, map };
+      return map;
+    }
+    for (const r of regions) {
+      const msgs = regionMsgs[r.sessionNum]?.messages ?? [];
+      const byId = new Map<string, ChatMessage>();
+      for (const m of msgs) byId.set(m._id, m);
+      // 各卷最新角色消息（倒序首见）——状态类操作按钮的准入判定
+      let lastUser: ChatMessage | undefined;
+      let lastAsst: ChatMessage | undefined;
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i];
+        if (!lastUser && m.role === 'user') lastUser = m;
+        if (!lastAsst && m.role === 'assistant') lastAsst = m;
+        if (lastUser && lastAsst) break;
+      }
+      const lastId = msgs[msgs.length - 1]?._id;
+      for (const b of r.blocks) {
+        const msg = byId.get(b.source.messageId);
+        if (!msg) continue;
+        const stateOps =
+          (msg.role === 'user' && lastUser?._id === msg._id) ||
+          (msg.role === 'assistant' && lastAsst?._id === msg._id && lastId === msg._id);
+        // 可撤态入缓存戳——压缩/漂移后置灰态随渲染刷新（不粘旧判定）
+        let retrace = false;
+        if (stateOps && msg.role === 'user') retrace = core.canRetraceUserMessage(msg);
+        else if (stateOps && msg.role === 'assistant') retrace = core.canRetryAssistant(msg);
+        const stamp = stateOps ? (retrace ? '1' : '0') : '';
+        const hit = opsCacheRef.current.get(b.id);
+        if (hit && hit.msg === msg && hit.stamp === stamp && hit.regionMsgs === regionMsgs) {
+          // 2026-09-01 审计：缓存键补 regionMsgs 同一性——ops 闭包捕获建时的
+          // regionMsgs，消息表换新而 msg/stamp 未变时旧 ops 的 latest() 会读到
+          // 陈旧会话消息表。
+          map.set(b.id, hit.ops);
+        } else {
+          const ops = msgOpsFor(msg, stateOps, retrace);
+          opsCacheRef.current.set(b.id, { msg, ops, stamp, regionMsgs });
+          map.set(b.id, ops);
+        }
+      }
+    }
+    opsByBlockCacheRef.current = { key, map };
+    return map;
+  }, [regions, regionMsgs, core, msgOpsFor]);
+
+  return { opsByBlock };
+}

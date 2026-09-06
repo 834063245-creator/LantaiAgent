@@ -13,14 +13,22 @@
 
 // @vitest-environment node
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const SRC = join(__dirname, '..', 'src');
 const PANEL_CSS = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'), 'utf8');
 const HOME_CSS = readFileSync(join(SRC, 'app', 'foundation.css'), 'utf8');
-const PANEL_TSX = readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', 'PaperPanel.tsx'), 'utf8');
+/** 纸壳源面（paper-panel-split 后）：PaperPanel.tsx + 同目录拆出的 use-*.ts
+ *  hook 文件全量拼接——拆解把域逻辑（拖块/纸条/布局核心/消息操作…）物理
+ *  移入 hook 文件，扫描面跟随代码物理位置；断言零改动（对齐
+ *  paper-interaction-handoff.test.ts 的 readAllTs 目录递归既有范式）。
+ *  CSS 不入本扫描面（样式断言仍单读 PANEL_CSS）。 */
+const PANEL_TSX = readdirSync(join(SRC, 'plugins', 'builtin', 'paper-shell'))
+  .filter((f) => /\.(ts|tsx)$/.test(f))
+  .map((f) => readFileSync(join(SRC, 'plugins', 'builtin', 'paper-shell', f), 'utf8'))
+  .join('\n');
 const ICONS_TS = readFileSync(join(SRC, 'ui', 'icons.ts'), 'utf8');
 const MEASURE_TS = readFileSync(join(SRC, 'paper', 'measure.ts'), 'utf8');
 const CANVAS_MATH_TS = readFileSync(join(SRC, 'paper', 'canvas-math.ts'), 'utf8');

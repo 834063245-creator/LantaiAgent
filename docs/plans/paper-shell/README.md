@@ -5,6 +5,7 @@
 
 > 立项：2026-08-20 · 状态：**V5 竣工（2026-08-22 深夜）——纸壳（注疏案卷工作台）是唯一主界面；当前段 = R5 打磨环**
 > 设计契约：`docs/design/lantai-design-spec.md` + 黄金样本 `prototype/lantai.html`（视觉真相的唯一准绳）
+> 结构工程：[`paper-panel-split-plan.md`](paper-panel-split-plan.md)（2026-09-06 立项当日竣工——PaperPanel 3253 行巨型组件按域拆 16 个 hook 文件，纯行为保持机械批，JSX 尾逐字节对拍 430/431 行一致）
 
 ## 现状一句话
 
