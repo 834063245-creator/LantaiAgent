@@ -832,15 +832,38 @@ describe('单元界短规线 + 验证链毕锚（刀5 C+D）', () => {
     expect(r1.unitLeadIds.has('pb:a1:0g')).toBe(false); // 来文后首包：B1 反转区（尾距 8）无线位
     expect(r1.unitLeadIds.has('pb:a1:2')).toBe(true); // 写包首（上方是读组头）
     expect(r1.unitLeadIds.has('pb:a1:3')).toBe(false); // 叙述不发线
-    // 恢复首不发（转折自宣告）；流首 work 首（上方无块）发
+    // 恢复首不发（转折自宣告）；栈首 work 首不发线（2026-09-06 尸检改：
+    // -32px 线画进卷首头带——贴 head 底硬规线上方 2px，同病灶同判据）
     const r2 = layoutOf([
       asstMsg('a1', [
         toolPart('fs', '{"action":"write","path":"c.ts"}'),
         toolPart('shell', '{"action":"run","command":"cargo test"}', 'error'),
       ]),
     ]);
-    expect(r2.unitLeadIds.has('pb:a1:0')).toBe(true);
+    expect(r2.unitLeadIds.has('pb:a1:0')).toBe(false); // 栈首：上方无物可界
     expect(r2.unitLeadIds.has('pb:a1:1')).toBe(false);
+  });
+
+  it('栈首不发线（2026-09-06 尸检回归）：阶段线/单元线的 -48/-32px 不得画进卷首头带', () => {
+    // 病灶：stageLeadIds/unitLeadIds 原对栈首（i=0）块也发——块级线的
+    // 负偏移落进卷首头带（阶段线 -48 在 head padding-bottom 带内、head
+    // 底硬规线上方 ~18px 处，每卷必现一根全宽错位线；单元线 -32 贴规线
+    // 上方 2px）。语义正解：线标记「上方有界」——栈首之上只有卷首（天然
+    // 界），无线位。rhythmOf 不动（间距档语义与封口指纹不受影响）。
+    const r = layoutOf([
+      userMsg('u1'),
+      asstMsg('a1', [
+        toolPart('fs', '{"action":"read","path":"a.ts"}'),
+        { type: 'text', text: '结论', finalised: true },
+      ]),
+      userMsg('u2'),
+      asstMsg('a2', [toolPart('fs', '{"action":"read","path":"b.ts"}')]),
+    ]);
+    // 栈首来文：无上方阶段，不发阶段线；流内来文恒发
+    expect(r.stageLeadIds.has('pb:u1')).toBe(false);
+    expect(r.stageLeadIds.has('pb:u2')).toBe(true);
+    // 节奏档不受线发放影响（u1 仍是 stage 档——间距语义不变）
+    expect(r.rhythmOf.get('pb:u1')).toBe('stage');
   });
 });
 

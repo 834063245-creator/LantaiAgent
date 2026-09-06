@@ -471,14 +471,20 @@
  * 短线（96px，版心约 1/8——比阶段全宽线弱一档），落在单元间距 64 的中线
  * （ANCHOR.unitGap/2 = -32）。线语法同族：全宽 = 阶段界，短线 = 单元界，
  * 无线 = 同单元收紧。只发 work 单元（叙述不碎、转折自宣告），来文后首块
- * 是 B1 尾距反转区（8px）无线位——rhythmAssign.unitLeadIds 判据在册。 */
-.pp-block.pp-unit-lead::before {
-  content: "";
+ * 是 B1 尾距反转区（8px）无线位——rhythmAssign.unitLeadIds 判据在册。
+ * 2026-09-06 尸检改：原 .pp-block.pp-unit-lead::before 与脚注族注线
+ * （.pp-tool/.pp-toolgroup/.pp-code::before——石青 44px 块身份标记）争同
+ * 一伪元素槽：同特异性 (0,2,1) 平手按源序，注线在后必胜——工具族单元首
+ * 块的单元线被静默顶掉，单元界词汇在绝大多数工作包上消失（刀5 D 名存
+ * 实亡）。改实元素（壳层按 unitLeadIds 条件渲染 .pp-unit-rule span）：
+ * 槽位独立、层叠无关、注线与单元线并存。 */
+.pp-unit-rule {
   position: absolute;
   left: 0;
   width: 96px;
   top: -32px;
   border-top: var(--rule-soft);
+  pointer-events: none; /* 线区在块外间隙带——装饰不挡指针 */
 }
 
 /* 验证链毕锚（stream-rhythm 刀5 C，2026-09-03）：verify 工作单元链毕的

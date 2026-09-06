@@ -284,9 +284,14 @@ export function rhythmAssign(
     if (!m) continue;
     const rhythm = m.isFirst ? leadOf(m.unit) : 'intra';
     rhythmOf.set(b.id, rhythm);
-    if (rhythm === 'stage') stageLeadIds.add(b.id);
-    // 单元界短规线：work 单元首成员，且上方不是来文（B1 反转区无线位）
-    if (rhythm === 'unit' && m.unit.kind === 'work' && blocks[i - 1]?.kind !== 'user') unitLeadIds.add(b.id);
+    // 栈首不发线（2026-09-06 尸检回归）：线标记「上方有界」——栈首（i=0）
+    // 之上只有卷首头带，块级线的负偏移画进 head 区（阶段线 -48 在 head 底
+    // 硬规线上方 ~18px 每卷必现错位线；单元线 -32 贴规线上方 2px）。卷首即
+    // 天然界。节奏档（rhythmOf）不动——间距语义与封口指纹不受线发放影响。
+    if (rhythm === 'stage' && i > 0) stageLeadIds.add(b.id);
+    // 单元界短规线：work 单元首成员，且上方不是来文（B1 反转区无线位）；
+    // 栈首同上不发
+    if (rhythm === 'unit' && i > 0 && m.unit.kind === 'work' && blocks[i - 1]?.kind !== 'user') unitLeadIds.add(b.id);
   }
   const verifyDoneIds = new Set<string>();
   for (let i = 0; i < units.length; i++) {

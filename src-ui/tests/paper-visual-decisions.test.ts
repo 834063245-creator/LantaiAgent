@@ -518,13 +518,31 @@ describe('会话流族节奏（stream-rhythm 刀5，2026-09-03——族边界切
   });
 
   it('单元界短规线（D）：比阶段全宽线弱一档——top -32（unitGap/2）/ 宽 96 / rule-soft', () => {
-    const rule = ruleBody(PANEL_CSS, '.pp-block.pp-unit-lead::before');
+    // 2026-09-06 尸检改：原 .pp-block.pp-unit-lead::before 与脚注族注线
+    // （.pp-tool/.pp-toolgroup/.pp-code::before）争同一伪元素槽，同特异性
+    // (0,2,1) 平手按源序——注线在后必胜，工具族单元首块的单元线被静默顶掉。
+    // 单元线改实元素 .pp-unit-rule（壳层条件渲染），层叠无关、两线并存。
+    const rule = ruleBody(PANEL_CSS, '.pp-unit-rule');
     expect(rule).toContain('top: -32px');
     expect(rule).toContain('width: 96px');
     expect(rule).toContain('border-top: var(--rule-soft)');
     expect(rule).toContain('left: 0');
     // 阶段线仍是全宽（两级线语法：全宽 = 阶段界，短线 = 单元界）
     expect(ruleBody(PANEL_CSS, '.pp-block.pp-stage-lead::before')).toContain('right: 0');
+  });
+
+  it('单元线槽位独立性（2026-09-06 尸检回归）：块级 ::before 的死者选择器不得复活', () => {
+    // 病灶机理：单元线若以块级 ::before 实现，必与脚注族注线同槽——
+    // (0,2,1) 平手源序定生死，注线（在文件后段）恒胜 → 单元界词汇在
+    // 工具族首块上整体消失（刀5 D 名存实亡，真机「隐约不对」病灶之一）。
+    // 断言取规则形态（选择器 + {）——尸检注释里的死者选择器字面量不误伤。
+    expect(PANEL_CSS).not.toMatch(/\.pp-block\.pp-unit-lead::before\s*\{/);
+    // 脚注族注线（块身份标记）原样在册——修复不得挪动它
+    expect(ruleBody(PANEL_CSS, '.pp-block.pp-tool::before')).toContain('background: var(--indigo)');
+    expect(ruleBody(PANEL_CSS, '.pp-block.pp-toolgroup::before')).toContain('background: var(--indigo)');
+    expect(ruleBody(PANEL_CSS, '.pp-block.pp-code::before')).toContain('background: var(--indigo)');
+    // 实元素接线在册（壳层条件渲染，非绝对定位装饰不挡指针）
+    expect(PANEL_TSX).toContain('pp-unit-rule');
   });
 
   it('验证链毕锚（C）：「✓ 阶段完成」小字 ink-3 mono（最素形态）', () => {
@@ -535,7 +553,7 @@ describe('会话流族节奏（stream-rhythm 刀5，2026-09-03——族边界切
   });
 
   it('接线在册：unitLeadIds / verifyDoneIds 进壳层与 RegionView', () => {
-    expect(PANEL_TSX).toContain('pp-unit-lead');
+    expect(PANEL_TSX).toContain('pp-unit-rule');
     expect(PANEL_TSX).toContain('pp-verify-done');
     expect(PANEL_TSX).toContain('unitLeadIds');
     expect(PANEL_TSX).toContain('verifyDoneIds');

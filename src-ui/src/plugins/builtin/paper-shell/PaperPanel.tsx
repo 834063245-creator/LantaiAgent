@@ -3121,8 +3121,8 @@ export function PaperPanel() {
                         className={`pp-block pp-${b.kind}${firstSeen ? ' pp-enter' : ''}${
                           isDragged ? ' pp-dragging' : ''
                         }${inBand ? ' pp-drag-returning' : ''}${r.stageLeadIds.has(b.id) ? ' pp-stage-lead' : ''}${
-                          r.unitLeadIds.has(b.id) ? ' pp-unit-lead' : ''
-                        }${r.verifyDoneIds.has(b.id) ? ' pp-verify-done' : ''}${writing ? ' pp-writing' : ''}`}
+                          r.verifyDoneIds.has(b.id) ? ' pp-verify-done' : ''
+                        }${writing ? ' pp-writing' : ''}`}
                         style={{ transform: `translate(${dragX}px, ${dragY}px)`, width: b.w }}
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}
@@ -3130,6 +3130,12 @@ export function PaperPanel() {
                         ref={blockRootRef}
                         onDragStart={(e) => e.preventDefault()}
                       >
+                        {/* 单元界短规线（2026-09-06 尸检改实元素）：原块级 ::before
+                         * 与脚注族注线（.pp-tool::before 等）同槽同特异性，源序落败
+                         * 被静默顶掉——线在工具族单元首块上整体消失。机理与
+                         * 钉值见 CSS .pp-unit-rule 注 + paper-visual-decisions 槽位
+                         * 独立性回归。 */}
+                        {r.unitLeadIds.has(b.id) && <span className="pp-unit-rule" aria-hidden="true" />}
                         <BlockView
                           block={b}
                           seq={r.seq.get(b.id) ?? '000'}
