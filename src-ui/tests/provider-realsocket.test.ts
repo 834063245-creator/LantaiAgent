@@ -64,6 +64,17 @@ describe('真 socket — OpenAI 兼容流式全链路', () => {
         res.end();
         return;
       }
+      if (req.model === 'reasoning-variant-model') {
+        // 网关方言（2026-09-06 尸检）：思考文本在 delta.reasoning（OpenRouter 系），
+        // 非 DeepSeek 的 delta.reasoning_content——usage 仍计 reasoning_tokens
+        //（真机病灶形态：计费在、内容换字段名）。
+        sse(JSON.stringify({ choices: [{ delta: { reasoning: 'variant-think' } }] }));
+        sse(JSON.stringify({ choices: [{ delta: { content: 'ok' } }] }));
+        sse(JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] }));
+        res.write('data: [DONE]\n\n');
+        res.end();
+        return;
+      }
       // 模拟真实 SSE：一次 write 粘连两帧（TCP 缓冲语义）
       res.write(
         `data: ${JSON.stringify({ choices: [{ delta: { content: 'he' } }] })}\n\n` +
@@ -131,6 +142,39 @@ describe('真 socket — OpenAI 兼容流式全链路', () => {
     expect(usage).toMatchObject({ prompt_tokens: 100, completion_tokens: 10, cache_hit_tokens: 40 });
     expect(usage?.finish_reason).toBe('tool_calls');
     expect(done).toBe(true);
+  });
+
+  it('思考字段双形状容忍（2026-09-06 尸检）：delta.reasoning 网关变体同产 Reasoning chunk', async () => {
+    // 真机病灶：commandcodegoat 中转 + deepseek-v4-flash——usage 计 reasoning_tokens
+    //（1303/411…）而纸面零夹注。同中转另一轮（reasoning_content 字段）截获过
+    // 完整思考 → 解析只认单字段名是盲区。网关生态两形状并存（DeepSeek
+    // reasoning_content / OpenRouter 系 reasoning），与 usage 双形状读取
+    //（prompt_cache_hit_tokens ?? prompt_tokens_details.cached_tokens）同款惯例。
+    const prov = createOpenAIProvider({
+      name: 'test-openai',
+      apiKey: 'sk-test',
+      baseUrl: srv.url,
+      model: 'reasoning-variant-model',
+    });
+    const chunks = await collect(
+      prov.stream(new AbortController().signal, {
+        messages: [{ role: 'user', content: 'hi' }],
+        tools: [],
+        temperature: 0,
+        max_tokens: 100,
+      }),
+    );
+    const reasoning = chunks
+      .filter((c) => c.type === ChunkType.Reasoning)
+      .map((c) => c.text)
+      .join('');
+    const texts = chunks
+      .filter((c) => c.type === ChunkType.Text)
+      .map((c) => c.text)
+      .join('');
+    expect(reasoning).toBe('variant-think');
+    expect(texts).toBe('ok');
+    expect(chunks.some((c) => c.type === ChunkType.Done)).toBe(true);
   });
 
   it('wire 请求体：DeepSeek 声明驱动 thinking 包裹 + reasoning_effort low', async () => {

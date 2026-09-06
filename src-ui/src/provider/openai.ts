@@ -47,7 +47,11 @@ interface OpenAiSseEvent extends SseEvent {
   choices?: Array<{
     delta: {
       content?: string;
+      /** 思考文本双形状（2026-09-06 尸检）：DeepSeek 方言 reasoning_content /
+       *  OpenRouter 系网关方言 reasoning——两字段生态并存，usage 侧双形状
+       *  读取（prompt_cache_hit_tokens ?? prompt_tokens_details）同款惯例。 */
       reasoning_content?: string;
+      reasoning?: string;
       tool_calls?: Array<{ index: number; id?: string; function?: { name?: string; arguments?: string } }>;
     };
     finish_reason?: string;
@@ -345,9 +349,14 @@ async function* readSSE(body: ReadableStream<Uint8Array>, name: string, signal?:
         yield { type: ChunkType.Text, text: delta.content };
       }
 
-      // 推理内容（DeepSeek thinking 模式）
-      if (delta.reasoning_content) {
-        yield { type: ChunkType.Reasoning, text: delta.reasoning_content };
+      // 推理内容（双形状容忍——DeepSeek thinking 模式 reasoning_content；
+      //  OpenRouter 系网关 reasoning。2026-09-06 尸检：commandcodegoat 中转
+      //  + deepseek-v4-flash 计费 reasoning_tokens 而纸面零夹注，同中转另一
+      //  轮截获过 reasoning_content 全文——单字段解析是盲区，双形状齐认。
+      //  同帧齐发时 content 优先（DeepSeek 官方语义）。
+      const reasoningText = delta.reasoning_content ?? delta.reasoning;
+      if (reasoningText) {
+        yield { type: ChunkType.Reasoning, text: reasoningText };
       }
 
       // 工具调用
