@@ -1,8 +1,9 @@
 # Agent 资产块（block as asset）— Agent 生成块的协议与通道
 
-> 状态：**WO-1..8 竣工 + 渲染跟上批（2026-09-06）落地**——本批五项：confirm 真实回调面
-> （WO-7 欠账清偿）/ deps_impact 空数据占位 / board+timeline 两表现原语（§2.9 补齐）/
+> 状态：**WO-1..8 竣工 + 渲染跟上批（2026-09-06）+ scientific-rendering 4B citation（2026-09）落地**——
+> 渲染跟上批：confirm 真实回调面（WO-7 欠账清偿）/ deps_impact 空数据占位 / board+timeline 两表现原语（§2.9 补齐）/
 > graph 分层布局（A5 二期兑现）/ 产物通道装配断层对账（装载失败可见性）。
+> 4B：kind `citation` + citation-card 表现原语（引用卡；DOI/arXiv 链接化暂缓）。
 > 性质：纸壳块协议（「一张纸」§3.2）的闭环设计——补上「Agent → 块」这条缺失通路：
 > Agent 随时生成**可被引用/更新的资产块**（一块 = 一个组件实例），语义与表现双维度正交，
 > 渲染层插件化承接。
@@ -46,6 +47,7 @@
 | WO-8 | ✅ | HtmlBody 沙箱 iframe + buildHtmlCardDocument（sandbox + 文档 CSP，network never）+ 高度上报 + 512KB 上限 + spike 结论落档；tests/asset-primitives.test.ts 含 html 沙箱断言 |
 | 渲染跟上批（2026-09-06） | ✅ | ①confirm 真实回调面：executor 执行前预发卡（onResponse 随 Asset 事件进 BlockPart._confirmCallback）+ confirm-registry 阻塞决议（5 分钟超时，无 UI 通道立即 no_ui）+ FormBody 三钮交互（复用拟策卡钤印语言）+ 决议终态 confirmResolution 持久化（重载只读态）；tests/asset-confirm.test.ts（8 用例）②deps_impact 查询式/空数据 → 「数据不可用」占位（不再空白 SVG）；③board/timeline 两表现原语 + kind + CSS + measure 镜像 + 文类签；④graph 表现换确定性分层布局（tree 保留树布局）+ measure 镜像；⑤plugins/loader.ts 装配断层对账（第一方 feature 清单逐名对账，缺记录 → error 记录 + console.error——boot 审计只见 fiber，从未装载的产物原是盲区） |
 | 渲染跟上批·续（2026-09-06） | ✅ | ⑥资产表会话重建：parseAssetEventOutput 单一解析真源迁 asset-kinds.ts（executor/嵌套通道/重建三处一源）+ rebuildAssetsFromSession（agent/asset-store.ts）挂 Agent._replaceSession 四边界——重启/恢复后 update_asset 对旧资产照常寻址（U 面跨重启续命，兑现「可从日志重建」承诺）；tests/asset-tools.test.ts 增 4 用例（重建/更新后者胜/confirm 输出入表/整体替换 + Agent.setSession 接线） |
+| scientific-rendering 4B（2026-09） | ✅ | 新增 kind `citation` + citation-card 表现原语（asset-kinds.ts schema / components.tsx CitationBody / type-tokens 引用卡款 / measure 静态测高——见 [`scientific-rendering-plan.md`](scientific-rendering-plan.md) §4B）；tests/citation-card.test.ts（14 用例） |
 
 ---
 
@@ -256,8 +258,10 @@ pinnedPositions 机制，零改动红利）。用户随手拖出的任意坐标�
 
 ### 2.9 表现原语（presentation 注册表——有限集，一次性施工）
 
-> 交付状态（2026-09-06 渲染跟上批后）：grid/board/tree/timeline/chart/metric/form/graph/media/html
-> **10 原语全部在仓**（text/code/diff 是内置文类块的自留地，不走资产通道）。
+> 交付状态（2026-09-06 渲染跟上批 + 2026-09 scientific-rendering 4B 后）：
+> grid/board/tree/timeline/chart/metric/form/graph/media/html/citation
+> **11 原语全部在仓**（text/code/diff 是内置文类块的自留地，不走资产通道）。
+> citation（4B 引用卡）不走流式 append——引用是既成事实，原子终值交付。
 > timeline 的 streamable 原稿标 append，实装为 **atomic**——append 通道当前只对
 > 字符串 payload 有意义（AssetDelta 字符串累加器），对象 payload 的行级增量留
 > §7.4 扩展位，不为不存在的通道谎报契约。
@@ -299,6 +303,12 @@ pinnedPositions 机制，零改动红利）。用户随手拖出的任意坐标�
 | confirm | {title, body, options?, confirmLabel?} | [form] | form | atomic |
 | board | {columns: [{title, cards: [{label, body?, tone?}]}]} | [board] | board | atomic |
 | timeline | {items: [{ts, title, body?}]} | [timeline] | timeline | atomic |
+| citation | {title?, authors?, year?, venue?, doi?, pmid?, arxiv?, url?, bibtex?}（科研引用卡 4B） | [citation] | citation | atomic |
+
+> **citation kind（2026-09 scientific-rendering 4B 增补，见 [`scientific-rendering-plan.md`](scientific-rendering-plan.md) §4B）**：
+> 学术引用卡的 BibTeX 字段集（title/authors/year/venue/doi/pmid/arxiv/url/bibtex，authors 支持
+> 字符串或数组）；表现 citation-card——标题/作者/venue·年/标识行 + `<details>` 折叠 BibTeX。
+> DOI/PMID/arXiv 链接化暂缓（opener RPC 未立），标识为 mono 纯文本。
 
 > **confirm kind 阻塞语义（2026-09-06 起生效，plan 审批模式泛化的完整兑现）**：
 > show_asset(kind=confirm) 由 executor **执行前预发卡**（终值事件常规通道从工具输出

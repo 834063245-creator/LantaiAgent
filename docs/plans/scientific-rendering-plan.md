@@ -13,8 +13,9 @@
 
 ## 0.1 二十种科研渲染 · 现状倒查（对拍表）
 
-> 倒查基准：2026-09 代码现状（`paper/markdown.ts` 解析子集 · `renderer-service.tsx` 双通道 · `agent/asset-kinds.ts` 9 kind · `plugins/builtin/renderers/components.tsx` 10 表现原语 · `paper/fold.ts` 折叠 · `paper/type-tokens.ts` 版式真源）。
+> 倒查基准：2026-09 代码现状（`paper/markdown.ts` 解析子集 · `renderer-service.tsx` 双通道 · `agent/asset-kinds.ts` kind 注册表 · `plugins/builtin/renderers/components.tsx` 表现原语 · `paper/fold.ts` 折叠 · `paper/type-tokens.ts` 版式真源）。
 > 图例：✅ 已覆盖 · ⚠️ 半覆盖（有基础缺关键）· ❌ 硬缺口。
+> 4A/4B 落地后计数：✅ 7 · ⚠️ 9 · ❌ 4（见 §0.1 小结）。
 
 ### 一、基础渲染（8 种，科研会话底线）
 
@@ -53,9 +54,9 @@
 
 ### 对拍小结
 
-- ✅ 已覆盖 5：文本、富文本、表格、折叠截断、（统计表半满足）
-- ⚠️ 半覆盖 9：代码高亮、图片、提示框、数据预览、流程图、任务列表、widget、嵌入（视频/图片半满足）、结构
-- ❌ 硬缺口 6：LaTeX、参考文献、化学式、交互图表、分子查看器、地理图
+- ✅ 已覆盖 7：文本、富文本、LaTeX（4A ✅）、表格、参考文献/引用卡（4B ✅）、折叠截断、（统计表半满足）
+- ⚠️ 半覆盖 9：结构、代码高亮、图片、提示框、数据预览、流程图、任务列表、widget、嵌入
+- ❌ 硬缺口 4：化学式、交互图表、分子查看器、地理图
 
 **架构判断**：缺口大多不是渲染管线问题，是**科研 kind/presentation 目录**缺失。必须动 A 通道（测量镜像面）的只有正文内科学内容（LaTeX），其余全可落 B 资产通道零镜像风险。
 
@@ -88,8 +89,8 @@ show_asset(kind, presentation, payload) → BlockPart → SourcedBlock(asset 元
 → BlockView → resolveAssetBlock(kind, presentation) → 表现原语组件
 ```
 
-- kind 注册表：`agent/asset-kinds.ts`（table/chart/metric/file/deps_impact/html/confirm/board/timeline 9 种，schema 校验）
-- 表现原语：`plugins/builtin/renderers/components.tsx`（grid/chart/metric/media/graph/tree/html/form/board/timeline 10 个，纯 CSS+SVG 自绘零依赖；插件通道后注册胜）
+- kind 注册表：`agent/asset-kinds.ts`（table/chart/metric/file/deps_impact/html/confirm/board/timeline/citation 10 种，schema 校验）
+- 表现原语：`plugins/builtin/renderers/components.tsx`（grid/chart/metric/media/graph/tree/html/form/board/timeline/citation 11 个，纯 CSS+SVG 自绘零依赖；插件通道后注册胜）
 - **动态高安全网**：`measure.ts:744`——媒体图加载 / html 卡 iframe 上报 / 拟策反馈框三类"动态高"静态镜像结构性失明，走 **ResizeObserver 实测回写、实测优先于静态镜像**（未挂载窗口期用静态估算兜底）
 - **资产通道加新 kind/presentation 不碰测量镜像**（新渲染器 + RO 实测即可）
 
@@ -173,7 +174,7 @@ render 全字段/作者串形态/空占位/只读 + measure 行高镜像/占位�
 
 ## 5. 轮子策略：换 vs 加 vs 补（2026-09 用户问询 + 选型核验）
 
-> 用户问：现有 kind 是否需要换现成 wheel？结论：**不需要换**。9 个 kind 无一需要替换——
+> 用户问：现有 kind 是否需要换现成 wheel？结论：**不需要换**。判定通过时 9 个 kind 无一需要替换（4B 增 citation 后 10 kind 依旧成立——citation 是「补」的实例）——
 > 换 = 体积 + 网页风重调 + 测高镜像重做，纯负收益。真缺口是「补」不是「换」。
 
 ### 5.1 判定标准：换 wheel 的三个正当理由
@@ -184,7 +185,7 @@ render 全字段/作者串形态/空占位/只读 + measure 行高镜像/占位�
 
 **不成立的动机**：有轮子、别人都用、显得高级。现有实现是「纯 CSS/SVG 自绘 + 纸面墨色 token + 测高镜像 + 确定性布局」，换通用库会全丢。
 
-### 5.2 现有 9 kind 判定表（逐项过）
+### 5.2 现有 kind 判定表（逐项过；4B 增 citation 后 10 kind）
 
 | kind / 表现 | 现状 | 判 | 理由 |
 |---|---|---|---|
@@ -195,6 +196,7 @@ render 全字段/作者串形态/空占位/只读 + measure 行高镜像/占位�
 | deps_impact / graph / tree | 确定性 SVG 分层布局 | **不换** | **核心差异**——确定性布局 = 布局级测试可钉 + 流式刚体可保；通用图库力导向自布局会丢确定性，纯负收益 |
 | table / grid | CSS 表格 | **暂不换** | 渲染 CSV/结果集够；真需求是「几千行大表」→ **加虚拟滚动层**，不是替换 grid |
 | **chart** | 自绘 SVG 四件套 | **加表现，不换** | 唯一值得动的——协议支持同 kind 多表现（见 5.3） |
+| **citation**（4B 新增） | 引用卡（纯 CSS 排版 + `<details>` 折叠） | **不换** | 是排版件，轮子不如 CSS（citation-js 的解析面留作可选补强——模型直交结构化字段已够）；DOI/arXiv 链接化待 opener RPC |
 
 ### 5.3 chart 的正确姿势：加 presentation，不动 kind
 
