@@ -1,9 +1,9 @@
 # 科研渲染（scientific-rendering）计划
 
-> 状态：**In progress：4A 正文 LaTeX 完成且真机验收通过（2026-09-07 用户实机确认效果良好）；4B 引用卡完成且真机验收通过（2026-09 用户实机确认 §7 项 3-5 全过）；#5 代码高亮 + #15 任务列表 checkbox 已落地（2026-09，§5.6 批次推进）**
+> 状态：**In progress：4A 正文 LaTeX 完成且真机验收通过（2026-09-07 用户实机确认效果良好）；4B 引用卡完成且真机验收通过（2026-09 用户实机确认 §7 项 3-5 全过）；#5 代码高亮 + #15 任务列表 checkbox 已落地（2026-09，§5.6 批次推进）；#10 化学式 kind chem 已落地待真机验收（2026-09，§5.6 批次推进；B 通道批次开推）**
 > 一句话：按「科研 Agent 渲染 20 种清单」倒查兰台现状，确立**双通道决策模型**（正文 markdown 通道 / 产物资产通道），前置治理渲染↔测量人肉镜像债，首期并行落地 **正文 LaTeX 数学** 与 **引用卡资产 kind** 两条通道样板。
 > 决策记录：2026-09 用户拍板——文档范围=完整立项；镜像策略=**优先重构收口镜像**（不是"先上新渲染再补债"）；首期=**数学（markdown 通道）+ 引用卡（资产通道）两项并行**；D1=**不保守（行内 `$...$` 直接上）**；D2=**KaTeX 进场**。**4B 回卷（2026-09）：引用卡链接打开不在本回合考虑**——DOI/PMID/arXiv 以 mono 纯文本标识呈现，等 opener RPC 机制落地再链接化。
-> 施工史：2026-09-06 4A 落地——markdown.ts 数学单一解析（块级 `$$` fence 流式容忍 + 行内 `$...$` 界约束不误伤货币/变量/转义）+ renderer-service KaTeX renderToString（.pp-md-math 块级 / .pp-md-math-inline 行内原子，throwOnError:false 错误可见不崩块）+ type-tokens 数学版式 token + measure 静态预算（显式行数 × maxLines 封顶）+ **含公式 markdown 挂 RO**（needsObservedHeight 内容感知，三参向后兼容）+ KaTeX CSS 集中 main.ts 导入。新增 `tests/paper-math-rendering.test.ts` 17 用例（parse/render/measure 三侧对拍）。门禁：vitest 2627 passed · convergence 0 漂移 · biome 0/0 · build ✓（KaTeX 字体资产正确打包）。真机验收清单见 §7。**同日 §5 轮子策略定稿**——现有 9 kind 无一需换 wheel（chart 加 `interactive` 表现而非换）；选型核验表 + 进场路径 + 后续批次见 §5。**2026-09 4B 落地**——asset-kinds.ts 新增 kind `citation`（BibTeX 字段集 schema，atomic，表现 citation）+ components.tsx citation-card 表现原语（标题/作者/venue·年/标识行/<details> 折叠 BibTeX，空数据占位）+ type-tokens 引用卡版式 token（显式 px 行高——asset 组 token 注入带 px 后缀，行高不沿用 *Lh 系数键）+ PaperPanel.css 引用卡款 + measure 静态测高镜像（行高 × 折行数；BibTeX 默认折叠只计 summary 行，展开态 RO 实测兜底——citation 属资产族恒挂 RO）+ PaperPanel KIND_ZH/EN（引用/CITATION）+ asset-renderers 兼容壳。新增 `tests/citation-card.test.ts` 14 用例（kind 注册/render/measure/签名/RO）。门禁：vitest 2650 passed（4B 后全量）· convergence 0 漂移 · biome 0/0 · build ✓ · doc-sync 全对拍。**2026-09 #5 代码高亮落地**——markdown.ts 围栏 lang 早已捕获只此消费：renderer-service code case 拆独立 `MdCodeBlock` 组件（hooks 纪律——switch case 不调 hook）接 hljs `lib/common`（36 语言主流集 + 补注册科研语言 matlab/julia/scala/haskell/clojure/latex/scheme/dockerfile），`hljs.highlight(text,{language,ignoreIllegals:true})`（半成型流式容忍）dangerouslySetInnerHtml；高亮只包 span 不改行数/折行 → **measure 零改动**（镜像零变化测试钉死）；无 lang / 未知 lang → 原文纯 mono 不误着色；hljs 类名在 `.pp-md-code` 作用域映射纸面 token（CSS 侧，石青关键字/朱砂字符串/石墨类型/ink-3 注释）。新增 `tests/paper-code-highlight.test.ts` 6 用例。**同日 #15 任务列表落地**——markdown.ts MdListItem 加 `check?: boolean`（GFM `- [ ]`/`- [x]`/`- [X]` 剥为 check 语义，仅吃项首非首位 `[x]` 是普通文本）；renderer list case 有 check 用纯 CSS 自绘方框 span `.pp-md-check`（绝对定位标记列 `.pp-md-mark` 同位，完成态 `.pp-md-check--on` 朱砂深钩，无原生控件）；type-tokens 加 `checkBorderW`；CSS `calc(var(--pp-type-body-size) * var(--pp-type-body-lh))` min-height 撑纯 `- [ ]` 无尾文项（框 absolute 不占行盒，measure 空项给 body 行高同值）；measure list case 空文本+check 项补最小行高。新增 `tests/paper-checklist.test.ts` 11 用例。
+> 施工史：2026-09-06 4A 落地——markdown.ts 数学单一解析（块级 `$$` fence 流式容忍 + 行内 `$...$` 界约束不误伤货币/变量/转义）+ renderer-service KaTeX renderToString（.pp-md-math 块级 / .pp-md-math-inline 行内原子，throwOnError:false 错误可见不崩块）+ type-tokens 数学版式 token + measure 静态预算（显式行数 × maxLines 封顶）+ **含公式 markdown 挂 RO**（needsObservedHeight 内容感知，三参向后兼容）+ KaTeX CSS 集中 main.ts 导入。新增 `tests/paper-math-rendering.test.ts` 17 用例（parse/render/measure 三侧对拍）。门禁：vitest 2627 passed · convergence 0 漂移 · biome 0/0 · build ✓（KaTeX 字体资产正确打包）。真机验收清单见 §7。**同日 §5 轮子策略定稿**——现有 9 kind 无一需换 wheel（chart 加 `interactive` 表现而非换）；选型核验表 + 进场路径 + 后续批次见 §5。**2026-09 4B 落地**——asset-kinds.ts 新增 kind `citation`（BibTeX 字段集 schema，atomic，表现 citation）+ components.tsx citation-card 表现原语（标题/作者/venue·年/标识行/<details> 折叠 BibTeX，空数据占位）+ type-tokens 引用卡版式 token（显式 px 行高——asset 组 token 注入带 px 后缀，行高不沿用 *Lh 系数键）+ PaperPanel.css 引用卡款 + measure 静态测高镜像（行高 × 折行数；BibTeX 默认折叠只计 summary 行，展开态 RO 实测兜底——citation 属资产族恒挂 RO）+ PaperPanel KIND_ZH/EN（引用/CITATION）+ asset-renderers 兼容壳。新增 `tests/citation-card.test.ts` 14 用例（kind 注册/render/measure/签名/RO）。门禁：vitest 2650 passed（4B 后全量）· convergence 0 漂移 · biome 0/0 · build ✓ · doc-sync 全对拍。**2026-09 #5 代码高亮落地**——markdown.ts 围栏 lang 早已捕获只此消费：renderer-service code case 拆独立 `MdCodeBlock` 组件（hooks 纪律——switch case 不调 hook）接 hljs `lib/common`（36 语言主流集 + 补注册科研语言 matlab/julia/scala/haskell/clojure/latex/scheme/dockerfile），`hljs.highlight(text,{language,ignoreIllegals:true})`（半成型流式容忍）dangerouslySetInnerHtml；高亮只包 span 不改行数/折行 → **measure 零改动**（镜像零变化测试钉死）；无 lang / 未知 lang → 原文纯 mono 不误着色；hljs 类名在 `.pp-md-code` 作用域映射纸面 token（CSS 侧，石青关键字/朱砂字符串/石墨类型/ink-3 注释）。新增 `tests/paper-code-highlight.test.ts` 6 用例。**同日 #15 任务列表落地**——markdown.ts MdListItem 加 `check?: boolean`（GFM `- [ ]`/`- [x]`/`- [X]` 剥为 check 语义，仅吃项首非首位 `[x]` 是普通文本）；renderer list case 有 check 用纯 CSS 自绘方框 span `.pp-md-check`（绝对定位标记列 `.pp-md-mark` 同位，完成态 `.pp-md-check--on` 朱砂深钩，无原生控件）；type-tokens 加 `checkBorderW`；CSS `calc(var(--pp-type-body-size) * var(--pp-type-body-lh))` min-height 撑纯 `- [ ]` 无尾文项（框 absolute 不占行盒，measure 空项给 body 行高同值）；measure list case 空文本+check 项补最小行高。新增 `tests/paper-checklist.test.ts` 11 用例。**2026-09-07 #10 化学式落地（B 通道批次开推）**——asset-kinds.ts 新增 kind `chem`（name/formula/smiles schema，atomic，表现 chem）+ components.tsx chem-body 表现原语 + PaperPanel.css 化学卡款 + type-tokens chem 版式 token（显式 px 行高同 citation 纪律）+ measure 静态镜像（结构区**固定盒** boxH 180 含 border——smiles-drawer SVG 只写 viewBox 不写尺寸，盒内 100%×100% meet 居中 → 盒高与分子形状无关恒定；name/formula 实测折行）。smiles-drawer **2.4.1 进场**（用户拍板 #10 起步——用户选定 payload 三字段 name/formula/smiles；测量策略 Agent 定：固定盒 + 实测折行）：分子式走 `SvgDrawer`、反应式（SMILES 含 `>>`）走 `ReactionDrawer`，npm 依赖经 esbuild 产物域 bundle:true 内联（renderers entry.js +180KB 未压缩，自包含校验过）；parse/draw 失败 → 错误行（朱砂）+ formula/name 兜底仍在（错误可见不崩）；固定盒内边距零 + flex 居中。新增 `tests/chem-card.test.ts` 19 用例（kind 注册/render/measure/签名/RO + smiles-drawer Node 域真解析分子式/反应式/畸形回调）。门禁：vitest 2687 passed（#10 后全量）· convergence 0 漂移 · biome 0/0 · build ✓。真机验收清单 §7 项 6-7 待用户实机确认。
 
 ## 0. 为什么做 / 目标
 
@@ -17,6 +17,7 @@
 > 图例：✅ 已覆盖 · ⚠️ 半覆盖（有基础缺关键）· ❌ 硬缺口。
 > 4A/4B 落地后计数：✅ 7 · ⚠️ 9 · ❌ 4（见 §0.1 小结）。
 > #5/#15 落地后计数：✅ 9 · ⚠️ 7 · ❌ 4（见 §0.1 小结）。
+> #10 落地后计数：✅ 10 · ⚠️ 7 · ❌ 3（见 §0.1 小结）。
 
 ### 一、基础渲染（8 种，科研会话底线）
 
@@ -36,7 +37,7 @@
 | # | 类型 | 状态 | 证据 / 缺口 |
 |---|---|---|---|
 | 9 | **参考文献 / 引用卡片** | ✅ | kind `citation` + citation-card 表现原语已落地（2026-09，§4B/施工史）。DOI/PMID/arXiv 链接化暂缓（opener RPC 未立），以 mono 纯文本标识呈现 |
-| 10 | **化学式 / 反应式** | ❌ | mhchem/SMILES/InChI 全无。后续批次（资产 kind） |
+| 10 | **化学式 / 反应式** | ✅ | kind `chem`（name/formula/smiles schema）+ chem-body 表现原语已落地（2026-09，§5.6 #10 批次）——smiles-drawer 2.4.1（npm 内联）`SvgDrawer` 分子式 / `ReactionDrawer` 反应式（`A>>B`），固定盒结构区（180px + border，svg meet 居中）+ name/formula 文本兜底，解析失败错误可见不崩（formula/name 仍在）；InChI/mhchem 作后续扩展面非缺口 |
 | 11 | **数据预览 / CSV / DataFrame** | ⚠️ | grid 资产 ✅、chart ✅；清单要的分页/大表虚拟滚动 ❌——grid 全量平铺，超长靠 CSS 截断（PRE_MAX_H cap，measure.ts:208），无分页 |
 | 12 | **流程图 / 模型图** | ⚠️ | graph（分层）/tree（深列树）资产 ✅——但走**结构化 nodes/edges 直通 JSON**（components.tsx:369,485）；**mermaid 文本语法 ❌**（markdown 里是普通围栏码，无 mermaid 依赖） |
 | 13 | 统计表 / 模型输出表 | ⚠️ 够用 | grid/GFM 表格能呈现回归表/metrics 表；无显著性/对齐统计语义，不构成阻塞 |
@@ -55,9 +56,9 @@
 
 ### 对拍小结
 
-- ✅ 已覆盖 9：文本、富文本、LaTeX（4A ✅）、表格、参考文献/引用卡（4B ✅）、折叠截断、**代码高亮（#5 ✅）**、**任务列表 checkbox（#15 ✅ 部分）**、（统计表半满足）
+- ✅ 已覆盖 10：文本、富文本、LaTeX（4A ✅）、表格、参考文献/引用卡（4B ✅）、折叠截断、**代码高亮（#5 ✅）**、**任务列表 checkbox（#15 ✅ 部分）**、**化学式/反应式（#10 ✅）**、（统计表半满足）
 - ⚠️ 半覆盖 7：结构、图片、提示框、数据预览、流程图、widget、嵌入
-- ❌ 硬缺口 4：化学式、交互图表、分子查看器、地理图
+- ❌ 硬缺口 3：交互图表、分子查看器、地理图（#10 化学式已从硬缺口转 ✅，#16 交互图表排期下一批）
 
 **架构判断**：缺口大多不是渲染管线问题，是**科研 kind/presentation 目录**缺失。必须动 A 通道（测量镜像面）的只有正文内科学内容（LaTeX），其余全可落 B 资产通道零镜像风险。
 
@@ -114,7 +115,7 @@ show_asset(kind, presentation, payload) → BlockPart → SourcedBlock(asset 元
 | 正文内联科学符号（LaTeX `$...$`/`$$`） | **A markdown 通道** | 模型自由输出即渲染；混在正文里必须进单一解析模型 |
 | markdown 图片 `![]()` | **A markdown 通道** | 正文内嵌语法；注意 media 资产已是真路径 base64 预览的旁路 |
 | 参考文献 / 引用卡片（BibTeX/DOI/PMID/arXiv） | **B 资产通道** | 独立产物对象，可被引用/更新；kind + 渲染器即够 |
-| 化学式 / 反应式（mhchem/SMILES/InChI） | **B 资产通道** | 独立结构对象；渲染器可接 mhchem 或 SMILES 转 2D |
+| 化学式 / 反应式（SMILES） | **B 资产通道（✅ 已落地 2026-09-07）** | kind `chem` 已落——独立结构对象；渲染器接 smiles-drawer SMILES 转 2D（分子 `SvgDrawer` / 反应 `ReactionDrawer`）；mhchem（markdown 行内化学式）/InChI 作后续扩展面 |
 | 数据预览 / DataFrame / 大表 | **B 资产通道** | grid 已有；分页/虚拟滚动作为 grid 表现增强 |
 | 流程图 / 模型图（mermaid/graphviz） | **决策点 D3** | graph/tree 资产已覆盖结构化直通 JSON；mermaid 文本语法若走 A 通道需动解析+渲染+测量；倾向 B 资产 kind 承载 mermaid 源码（模型围栏输出 → 建议转 show_asset 或资产 kind 直取） |
 | 统计表 / 回归表 / metrics | **B 资产通道（grid/metric 已有）** | 半满足；统计语义（显著性等）可作表现增强 |
@@ -175,7 +176,7 @@ render 全字段/作者串形态/空占位/只读 + measure 行高镜像/占位�
 
 ## 5. 轮子策略：换 vs 加 vs 补（2026-09 用户问询 + 选型核验）
 
-> 用户问：现有 kind 是否需要换现成 wheel？结论：**不需要换**。判定通过时 9 个 kind 无一需要替换（4B 增 citation 后 10 kind 依旧成立——citation 是「补」的实例）——
+> 用户问：现有 kind 是否需要换现成 wheel？结论：**不需要换**。判定通过时 9 个 kind 无一需要替换（4B 增 citation、#10 增 chem 后 11 kind 依旧成立——citation/chem 都是「补」的实例）——
 > 换 = 体积 + 网页风重调 + 测高镜像重做，纯负收益。真缺口是「补」不是「换」。
 
 ### 5.1 判定标准：换 wheel 的三个正当理由
@@ -186,7 +187,7 @@ render 全字段/作者串形态/空占位/只读 + measure 行高镜像/占位�
 
 **不成立的动机**：有轮子、别人都用、显得高级。现有实现是「纯 CSS/SVG 自绘 + 纸面墨色 token + 测高镜像 + 确定性布局」，换通用库会全丢。
 
-### 5.2 现有 kind 判定表（逐项过；4B 增 citation 后 10 kind）
+### 5.2 现有 kind 判定表（逐项过；4B 增 citation + #10 增 chem 后 11 kind）
 
 | kind / 表现 | 现状 | 判 | 理由 |
 |---|---|---|---|
@@ -198,6 +199,7 @@ render 全字段/作者串形态/空占位/只读 + measure 行高镜像/占位�
 | table / grid | CSS 表格 | **暂不换** | 渲染 CSV/结果集够；真需求是「几千行大表」→ **加虚拟滚动层**，不是替换 grid |
 | **chart** | 自绘 SVG 四件套 | **加表现，不换** | 唯一值得动的——协议支持同 kind 多表现（见 5.3） |
 | **citation**（4B 新增） | 引用卡（纯 CSS 排版 + `<details>` 折叠） | **不换** | 是排版件，轮子不如 CSS（citation-js 的解析面留作可选补强——模型直交结构化字段已够）；DOI/arXiv 链接化待 opener RPC |
+| **chem**（#10 新增） | 结构固定盒 + smiles-drawer SVG（`SvgDrawer`/`ReactionDrawer`） | **不换** | SMILES 是「领域格式解析」（判定 3）——解析借 smiles-drawer（渲染形态仍自绘进固定盒 + 墨色协调）；渲染卡形态 = CSS 排版件自绘 |
 
 ### 5.3 chart 的正确姿势：加 presentation，不动 kind
 
@@ -217,7 +219,7 @@ Agent 想要交互图用 `show_asset(kind:'chart', presentation:'interactive')`�
 |---|---|---|---|
 | #5 代码高亮 | **highlight.js**（已在依赖，零引用） | A markdown（code 块补 token 层） | 轻量/易设/离线 ✓（[PkgPulse 对比](https://www.pkgpulse.com/guides/shiki-vs-prismjs-vs-highlightjs-syntax-highlighting-2026)）；Shiki 更准但要 WASM 偏重（[mdBook 讨论](https://github.com/rust-lang/mdBook/issues/2467)）——**接 hljs 先满足，Shiki 留档** |
 | #9 引用卡 | **citation-js**（解析/转换） | B 资产 kind | BibTeX/DOI → CSL-JSON → 各格式，浏览器/sever 均可（[Citation.js](https://citation.js.org/) / [PMC](https://pmc.ncbi.nlm.nih.gov/articles/PMC7924481/)）；**解析借它，卡形态仍自绘** |
-| #10 化学式 | **smiles-drawer**（SMILES→2D） | B 资产 kind | 小/高性能/MIT（[smilesDrawer](https://github.com/reymond-group/smilesDrawer)）；Kekule.js 老牌但重（[ResearchGate](https://www.researchgate.net/publication/303707990_Kekulejs_An_Open_Source_JavaScript_Chemoinformatics_Toolkit)）——**smiles-drawer 优先** |
+| #10 化学式 | **smiles-drawer**（SMILES→2D） | B 资产 kind | **✅ 2.4.1 已进场（2026-09-07）**——活跃（2 月内更新）、MIT、`unpacked 6.9MB` 但 min 产物仅 192KB、唯一依赖 chroma-js（[smilesDrawer](https://github.com/reymond-group/smilesDrawer)）；Kekule.js 老牌但重（[ResearchGate](https://www.researchgate.net/publication/303707990_Kekulejs_An_Open_Source_JavaScript_Chemoinformatics_Toolkit)） |
 | #12 流程图 | **mermaid**（文本→图） | B 资产 kind（D3） | 活跃、文本定义正对模型输出（[mermaid](https://github.com/mermaid-js/mermaid)） |
 | #16 交互图表 | **ECharts**（echarts-for-react） | B chart 加表现（5.3） | 开箱功能多（[对比](https://www.reddit.com/r/vuejs/comments/1mjaix1/chart_library_chartjs_or_apache_echarts/)），模块化按需 import 压体积（[echarts-for-react](https://www.npmjs.com/package/echarts-for-react)）；静态够用就不上 |
 | #11 大表 | **TanStack 虚拟化** | B grid 增强 | 处理大表滚动（[SO](https://stackoverflow.com/questions/78443179/how-to-improve-scroll-performance-of-react-tanstack-table-with-virtualization)）；先量化需求再动 |
@@ -238,8 +240,8 @@ Agent 想要交互图用 `show_asset(kind:'chart', presentation:'interactive')`�
 - #9 引用卡（kind `citation`）——**✅ 2026-09 已落地**（解析未借 citation-js——本期模型直接交付结构化字段；DOI/PMID/arXiv 链接化待 opener RPC 机制）；剩余：链接化 + 可选 citation-js 兜底解析
 - #5 代码高亮——**✅ 2026-09 已落地**（markdown code 块补 hljs token 层，measure 零镜像；剩余：无——Shiki 更准留档不追）
 - #15 任务列表 checkbox——**✅ 2026-09 已落地**（GFM `- [ ]` 解析 + CSS 自绘框；进度条视觉走 task/board 资产通道，按需另立）
-- #10 化学式（kind `chem`）：SMILES→2D 借 smiles-drawer
-- #16 交互图表：chart 加 `interactive` 表现（ECharts 按需 import），静态默认不动
+- #10 化学式（kind `chem`）——**✅ 2026-09 已落地**（asset-kinds 增 chem kind（name/formula/smiles schema）+ chem-body 表现原语 + type-token 版式 + measure 静态镜像（固定盒 180 + name/formula 实测折行）——见施工史；smiles-drawer **2.4.1** 进场：分子式走 `SvgDrawer`、反应式（`A>>B`）走 `ReactionDrawer`，均 npm 依赖 esbuild 产物域内联（renderers entry.js +180KB 未压缩）；解析失败错误可见不崩、formula/name 兜底仍在；`tests/chem-card.test.ts` 19 用例）；剩余：无（InChI/mhchem 属扩展面，按需再立）
+- #16 交互图表：chart 加 `interactive` 表现（ECharts 按需 import），静态默认不动——**下一批候选**
 - #11 大表虚拟滚动：grid 增强表现（先量化真需求）
 - #20 嵌入 PDF/Office：media 表现增强
 - #17/18 分子 3D / 地理图：后置（重资产 + 网络约束）
@@ -254,15 +256,17 @@ Agent 想要交互图用 `show_asset(kind:'chart', presentation:'interactive')`�
 
 ## 7. 真机验收清单（用户跑）
 
-4A（数学）相关项用户 2026-09-07 实机确认通过；4B（引用卡）项 3-5 用户 2026-09 实机确认通过：
+4A（数学）相关项用户 2026-09-07 实机确认通过；4B（引用卡）项 3-5 用户 2026-09 实机确认通过；#10（化学式）项 6-7 待用户实机验收：
 
 1. ✅ 科研回答流式输出含 `$$...$$` 公式：渲染为排版公式，流式半程不破版、finalised 后不闪（**2026-09-07 实机确认**）
 2. ✅ 行内 `$...$`（如 $E=mc^2$）在中文正文混排正常、不误伤货币/普通 `$`（**2026-09-07 实机确认**）
 3. ✅ Agent 调 show_asset 出引用卡：标题/作者/venue·年/标识行整齐、BibTeX 可折叠展开、历史卡只读不崩（DOI/arXiv **可点开暂缓**——本回合不做浏览器跳转，标识为 mono 文本）（**2026-09 实机确认**）
 4. ✅ 公式块/引用卡钉住（pinned）+ 折叠态下行为正常、无叠字空跳（公式部分随 4A 已过；引用卡部分 **2026-09 实机确认**）
 5. ✅ 旧卷回放（历史会话含科研内容）过新管线渲染正常（含公式卷已验；引用卡卷 **2026-09 实机确认**）
+6. ⬜ Agent 调 show_asset(kind:'chem') 出化学卡：SMILES 分子式渲染 2D 结构居中于固定盒、分子式/名称排版正常；钉住 + 折叠态不叠字（真机验收清单——§5.6 #10 批次）
+7. ⬜ 反应式（SMILES 含 `>>`）渲染为双分子 + 箭头、结构清晰；畸形 SMILES 出错误行且卡不崩、其余字段仍显示
 
-4B 真机验收全过——科研渲染首期（4A 数学 + 4B 引用卡）至此**无待验项**。
+4B 真机验收全过——科研渲染首期（4A 数学 + 4B 引用卡）至此**无待验项**；#10 化学式批次真机验收项 6-7 待用户实机确认。
 
 ## 8. 风险与决策点
 
