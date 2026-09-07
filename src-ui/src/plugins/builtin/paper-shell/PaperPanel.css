@@ -4084,3 +4084,140 @@ button.pp-form-option:disabled {
   border-left: 2px solid color-mix(in oklch, var(--fail) 45%, transparent);
   padding-left: 10px;
 }
+
+/* ── 回首页确认弹层（2026-09-08）：ConfirmDialog 通用组件样式本在 settings
+ * 域 CSS（provider-settings.css）——paper-shell 产物域不携带，裸渲染不可见。
+ * 这里 scope 在 .pp-root 内补一份（变量全部来自全局 tokens.css）；settings
+ * 面板的 .cd-* 保持原样，二者作用域不重叠。ConfirmDialog 渲染在 pp-root 内，
+ * .cd-overlay 的 absolute 遮罩以 pp-root（fixed）为定位父。 */
+.pp-root .cd-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-panel-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  background: var(--veil);
+}
+.pp-root .cd-sheet {
+  width: 420px;
+  max-width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: var(--rule-strong);
+  border-radius: 0;
+  background: var(--paper);
+  box-shadow: var(--elev-raise);
+  padding: 15px 16px;
+  animation: pp-rise 0.18s ease;
+}
+.pp-root .cd-sheet::-webkit-scrollbar {
+  width: 4px;
+}
+.pp-root .cd-sheet::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ink-2) 35%, transparent);
+  border-radius: 0;
+}
+.pp-root .cd-danger {
+  border-color: color-mix(in oklch, var(--fail) 45%, transparent);
+  border-top: 2px solid var(--fail);
+}
+.pp-root .cd-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.pp-root .cd-title {
+  font-family: var(--f-song);
+  font-size: calc(12.5px * var(--font-scale));
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--ink-1);
+}
+.pp-root .cd-danger .cd-title {
+  color: var(--fail);
+}
+.pp-root .cd-close {
+  background: none;
+  border: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: color var(--snap);
+  font-size: 13px;
+  padding: 0 4px;
+  border-radius: 0;
+}
+.pp-root .cd-close:hover {
+  color: var(--seal-deep);
+  background: var(--paper-deep);
+}
+.pp-root .cd-body {
+  font-size: calc(10.5px * var(--font-scale));
+  color: var(--ink-2);
+  line-height: 1.6;
+  margin-bottom: 16px;
+  font-family: var(--f-song);
+}
+.pp-root .cd-body b {
+  color: var(--ink-1);
+  font-family: var(--f-mono);
+}
+.pp-root .cd-body strong {
+  color: var(--fail);
+}
+.pp-root .cd-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.pp-root .cd-btn-danger {
+  font-family: var(--f-song);
+  font-size: calc(11px * var(--font-scale));
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  padding: 7px 18px;
+  border-radius: 0;
+  cursor: pointer;
+  transition: all var(--snap);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--seal-deep);
+  color: var(--paper);
+  border: 1px solid var(--seal-deep);
+}
+.pp-root .cd-btn-danger:hover {
+  background: var(--seal);
+  border-color: var(--seal);
+}
+.pp-root .cd-btn-danger:active {
+  transform: translateY(1px);
+}
+.pp-root .cd-actions .sp-btn {
+  font-family: var(--f-song);
+  font-size: calc(13px * var(--font-scale));
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 7px 18px;
+  border-radius: 0;
+  cursor: pointer;
+  transition:
+    background var(--snap),
+    color var(--snap),
+    border-color var(--snap),
+    transform var(--snap);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pp-root .cd-actions .sp-btn-cancel {
+  background: transparent;
+  color: var(--ink-2);
+  border: none;
+}
+.pp-root .cd-actions .sp-btn-cancel:hover {
+  color: var(--seal-deep);
+}

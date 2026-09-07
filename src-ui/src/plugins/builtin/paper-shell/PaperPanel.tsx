@@ -1092,26 +1092,27 @@ export function PaperPanel() {
               <def.component />
             </PluginBoundary>
           ))}
+          {/* 回首页确认（2026-09-08）：回首页 = 真关工作区（停 watcher/引擎/Agent），
+           * 有副作用的离开操作——确认后才执行 leaveToHome。无活动工作区同样确认
+           * （用户拍板），文案区分两种情形。放 pp-root 内——.cd-overlay 的
+           * absolute 遮罩以 pp-root（fixed）为定位父，且样式随本产物 CSS 注入。 */}
+          <ConfirmDialog
+            open={leaveConfirm}
+            title="回首页？"
+            message={
+              projectPath
+                ? '离开将关闭当前工作区的图谱引擎与后台分析（会话与画布会自动保存）。确定回首页？'
+                : '确定回首页？'
+            }
+            confirmLabel="回首页并关闭工作区"
+            cancelLabel="留在画布"
+            tone="danger"
+            onConfirm={forceLeave}
+            onCancel={() => setLeaveConfirm(false)}
+          />
         </div>
       </PaperRegionContext.Provider>
       <ToastHost />
-      {/* 回首页确认（2026-09-08）：回首页 = 真关工作区（停 watcher/引擎/Agent），
-       * 有副作用的离开操作——确认后才执行 leaveToHome。无活动工作区同样确认
-       * （用户拍板），文案区分两种情形。 */}
-      <ConfirmDialog
-        open={leaveConfirm}
-        title="回首页？"
-        message={
-          projectPath
-            ? '离开将关闭当前工作区的图谱引擎与后台分析（会话与画布会自动保存）。确定回首页？'
-            : '确定回首页？'
-        }
-        confirmLabel="回首页并关闭工作区"
-        cancelLabel="留在画布"
-        tone="danger"
-        onConfirm={forceLeave}
-        onCancel={() => setLeaveConfirm(false)}
-      />
     </PaperDockContext.Provider>
   );
 }
