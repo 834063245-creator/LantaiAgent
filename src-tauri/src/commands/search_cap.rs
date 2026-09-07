@@ -22,7 +22,7 @@
 // 真权路径与 builtin.search::search_content 相同（resolve_read_dispatch），权限
 // 回归 = 同一闸；search 无 permission 声明（v1 Passthrough），无家族规则差异。
 
-use hologram_graph::is_ignored_path;
+use crate::ignored_paths::is_ignored_path;
 use serde_json::Value;
 use tauri::State;
 
@@ -80,6 +80,20 @@ pub(crate) async fn search_content_cap(
 
     let pat = pattern.clone();
     let root = root.clone();
+
+    // 向量召回（可选边车）经引擎子进程（2026-09-08 逻辑全断）：仅当扫描根
+    // == 活动工作区根时随其引擎传输走——引擎绑单根，非工作区目录不为其
+    // 拉起引擎（扫描照常，向量边车缺席）。
+    let vector_transport: Option<std::sync::Arc<crate::engine_transport::McpRemoteTransport>> =
+        if let Some(ref handle) = *crate::utils::lock_or_recover(state) {
+            if same_canonical_root(&root, &handle.path) {
+                handle.transport.clone()
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
     tokio::task::spawn_blocking(move || {
         // ── 统一原始命中集：per-file {file, match_count, matches[]} ──
@@ -215,7 +229,9 @@ pub(crate) async fn search_content_cap(
             "files": files,
         });
         if !is_regex {
-            append_vector_hits(&mut output_val, &root, &pat);
+            if let Some(transport) = vector_transport.as_ref() {
+                append_vector_hits(&mut output_val, transport, &pat);
+            }
         }
 
         Ok(output_val)
@@ -266,45 +282,61 @@ fn glob_filter_to_regex(gf: &str) -> Option<regex::Regex> {
     regex::Regex::new(&re).ok()
 }
 
-/// 将向量（语义）搜索命中附加到输出。走引擎的进程级缓存索引（mtime 失效
-/// 自动重载）。与引擎 search_symbols 同一套过滤策略：低于阈值丢弃、最多 5 条。
-fn append_vector_hits(output_val: &mut Value, root: &std::path::Path, pattern: &str) {
-    use hologram_vector as vector;
-    let (index, slots) = match vector::get_or_load_index(root) {
-        Ok(pair) => pair,
-        Err(_) => return,
-    };
-    let idx = crate::utils::read_or_recover(&index);
-    let idx = match idx.as_ref() {
-        Some(i) => i,
-        None => return,
-    };
-    let slot_data = crate::utils::read_or_recover(&slots);
-    if slot_data.is_empty() { return; }
+/// canonical 根比较（跨盘符/分隔符/verbatim 前缀）。任一侧目录不存在 →
+/// false（不比较不存在的东西）。
+fn same_canonical_root(a: &std::path::Path, b: &str) -> bool {
+    match (
+        crate::app::canonical_root(&a.to_string_lossy()),
+        crate::app::canonical_root(b),
+    ) {
+        (Some(x), Some(y)) => x == y,
+        _ => false,
+    }
+}
 
-    let q_vec = vector::embed(pattern);
-    let results = match idx.search(&q_vec, 20) {
-        Ok(r) => r,
-        Err(_) => return,
+/// 将向量（语义）搜索命中附加到输出。引擎-宿主逻辑全断（2026-09-08）：
+/// 向量召回归引擎子进程——壳经 transport 调 `semantic_search` 模型工具
+///（阈值过滤/去重/top-N 策略全在引擎侧），映射回本口既有 vector_hits
+/// 形状（node_id + score + vector_backend——前端契约不变）。引擎不可用 /
+/// 无索引 / 低于阈值（Degraded 信封）→ 静默跳过：向量边车是可选增益，
+/// 不阻塞主扫描结果（与旧进程内形态同语义）。
+fn append_vector_hits(
+    output_val: &mut Value,
+    transport: &std::sync::Arc<crate::engine_transport::McpRemoteTransport>,
+    pattern: &str,
+) {
+    if pattern.trim().is_empty() {
+        return;
+    }
+    // 阻塞 RPC（调用点在 spawn_blocking 内）。限额 5 与旧进程内
+    // filter_hits top-5 同款；正则模式不进（旧形态同款）。
+    let args = serde_json::json!({ "query": pattern, "limit": 5 });
+    let Ok(text) = transport.call("semantic_search", &args) else {
+        return;
     };
-
-    let threshold = vector::score_threshold();
-    let raw: Vec<(String, f32)> = results.keys.iter().zip(results.distances.iter())
-        .filter_map(|(slot_key, distance)| {
-            let slot = *slot_key as usize;
-            if slot >= slot_data.len() { return None; }
-            let similarity = 1.0 - (*distance).min(2.0).max(0.0);
-            Some((slot_data[slot].clone(), similarity))
+    let Ok(v) = serde_json::from_str::<Value>(&text) else {
+        return;
+    };
+    // Degraded 信封无 results 字段 → 静默缺席
+    let Some(results) = v.get("results").and_then(|r| r.as_array()) else {
+        return;
+    };
+    let hits: Vec<Value> = results
+        .iter()
+        .filter_map(|r| {
+            let id = r.get("id")?.as_str()?;
+            let score = r.get("vector_score")?.as_u64()?;
+            Some(serde_json::json!({ "node_id": id, "score": score }))
         })
         .collect();
-    let hits = vector::filter_hits(&raw, threshold, 5, &std::collections::HashSet::new());
-    if hits.is_empty() { return; }
-
-    let vec_results: Vec<Value> = hits.into_iter()
-        .map(|(id, score)| serde_json::json!({"node_id": id, "score": (score * 100.0).round() as u32}))
-        .collect();
-    output_val["vector_hits"] = serde_json::json!(vec_results);
-    output_val["vector_backend"] = serde_json::json!(vector::backend_id());
+    if hits.is_empty() {
+        return;
+    }
+    output_val["vector_hits"] = serde_json::json!(hits);
+    output_val["vector_backend"] = v
+        .get("backend")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!("vector"));
 }
 
 #[cfg(test)]

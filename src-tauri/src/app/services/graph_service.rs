@@ -123,7 +123,7 @@ pub(crate) async fn get_graph_snapshot(
 
 /// hologram_file_nodes 业务体：按文件返回符号索引（id/name/kind/fanIn/fanOut）
 /// —— 前端 GraphContext 的按文件轻查询（取代全量建索引）。
-/// 匹配逻辑单一真源 = `hologram_engine::tools::file_nodes_value`。
+/// 匹配逻辑单一真源在引擎侧（file_nodes 壳方法消费的 file_nodes_value）。
 pub(crate) async fn hologram_file_nodes(
     file: String,
     state: crate::WorkspaceState,

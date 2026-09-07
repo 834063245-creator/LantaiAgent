@@ -3,8 +3,10 @@
 
 //! 应用层（L1 数据上下文抽象）—— 壳内新生的业务与数据归属层。
 //!
-//! [`WorkspaceDataContext`] 按工作区实例化：每个工作区一个专属引擎实例
-//! （图库 / 索引 / 时间线连接 / watcher 全在该实例内部）。
+//! [`WorkspaceDataContext`] 按工作区实例化：引擎-宿主逻辑全断
+//! （engine-host-severance，2026-09-08）后每工作区持一个**进程外引擎
+//! 传输**（spawn `hologram-engine.exe serve` 子进程，stdio MCP 通道）——
+//! 壳对引擎的全部知识 = 二进制 + 协议，零 hologram-* crate 依赖。
 //! 工作区 = 容器（workspace-session-ownership-rework 2026-08-27）：
 //! 会话物理归属工作区，会话只在所属工作区内打开——因此**不再需要**会话
 //! 绑定表与焦点投影；引擎决议只看「显式 root → 活动工作区（单槽
@@ -18,12 +20,12 @@
 //! 5. 运行时锚点 = 活动工作区（单槽），会话是其内的作用域。
 //!
 //! 线程/锁纪律：std::sync 锁 + `unwrap_or_else(|e| e.into_inner())` 中毒
-//! 恢复（壳层惯例，见 CONVENTIONS）；所有会阻塞的引擎操作（Engine init
-//! 开 SQLite）由命令层包 spawn_blocking，本层保持同步纯逻辑。
+//! 恢复（壳层惯例，见 CONVENTIONS）；本层保持同步纯逻辑，阻塞的引擎
+//! RPC（transport .call）由命令层包 spawn_blocking。
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 
 pub(crate) mod commands;
 pub(crate) mod services;
@@ -77,24 +79,16 @@ pub(crate) fn display_path(p: &Path) -> String {
 // 数据上下文
 // ═══════════════════════════════════════════════════════════════
 
-/// 按工作区实例化的数据上下文。显式持**数据宿主共享句柄**——
-/// 图库（hologram.db/FTS5/快照）与 timeline 连接的归属单元在
-/// [`hologram_storage::StoreHost`]（L2 crate 化：engine/src/storage 物理拆出
-/// 为独立 crate）。Phase 3（engine-plugin-extraction）起宿主自开 StoreHost
-/// （`StoreHost::open`，与引擎进程同库并发，SQLite 侧已并发安全）——
-/// 计算与访问的执行方是引擎子进程（经 `remote` transport）。
+/// 按工作区实例化的数据上下文。引擎-宿主逻辑全断（2026-09-08）后：
+/// 引擎数据所有权（hologram.db/FTS5/快照/向量/基线）完全归引擎进程与其
+/// 自有的 `.hologram/` 目录——壳不持任何引擎数据句柄，本结构只剩
+/// 「根 + 进程外传输」两样。
 pub(crate) struct WorkspaceDataContext {
     /// canonical 工作区根（注册表键）。
     pub root: PathBuf,
     /// 进程外传输（每工作区一个引擎子进程的 stdio MCP 通道；惰性构造，
     /// 经 resolve_transport 取用）。
     pub(crate) remote: std::sync::Mutex<Option<std::sync::Arc<crate::engine_transport::McpRemoteTransport>>>,
-    /// 数据宿主共享句柄（L2 存储外置；Phase 3 起宿主自开，与引擎进程
-    /// 同库并发）。
-    /// ponytail: 生产面暂无直接消费（L3 业务归位时接入），e2e 测试直查
-    /// ——dead_code 豁免。
-    #[allow(dead_code)]
-    pub(crate) store_host: Arc<Mutex<hologram_storage::StoreHost>>,
     pub created_at_ms: u64,
 }
 
@@ -139,8 +133,8 @@ impl AppContexts {
             .as_millis() as u64
     }
 
-    /// 确保工作区上下文存在（幂等——同根复用同一实例）。
-    /// ⚠ 会开 SQLite（阻塞 IO）——命令层须包 spawn_blocking。
+    /// 确保工作区上下文存在（幂等——同根复用同一实例）。纯注册表操作，
+    /// 不触碰引擎数据（传输在使用点惰性构造）。
     pub(crate) fn ensure_context(&self, root: &str) -> Result<Arc<WorkspaceDataContext>, String> {
         let canon = canonical_root(root)
             .ok_or_else(|| format!("工作区目录不存在或不可访问: {}", root.trim()))?;
@@ -152,12 +146,8 @@ impl AppContexts {
         if let Some(ctx) = guard.get(&canon) {
             return Ok(ctx.clone());
         }
-        // Phase 3：数据宿主自开（与引擎进程同库并发，SQLite 侧已并发安全）。
-        let store_host = hologram_storage::StoreHost::open(&canon)
-            .map_err(|e| format!("工作区数据宿主初始化失败 {}: {}", display_path(&canon), e))?;
         let ctx = Arc::new(WorkspaceDataContext {
             root: canon.clone(),
-            store_host: Arc::new(Mutex::new(store_host)),
             remote: std::sync::Mutex::new(None),
             created_at_ms: Self::now_ms(),
         });
@@ -199,8 +189,8 @@ impl AppContexts {
         Ok((transport, ctx.root.clone()))
     }
 
-    /// 上下文空闲判定回收：非活动工作区（不在保留集）→ 停 watcher + 移除
-    /// （Arc 落 Drop 关库连接）。保留集由命令层传入（单槽活动根）。
+    /// 上下文空闲判定回收：非活动工作区（不在保留集）→ 关停引擎子进程 +
+    /// 移除出注册表。保留集由命令层传入（单槽活动根）。
     /// 归零：会话绑定判定已退役——引擎上下文只跟「活动工作区」走。
     pub(crate) fn gc_if_unused(&self, root: &Path, keep_roots: &[PathBuf]) {
         let kept = keep_roots.iter().any(|k| k == root);
@@ -219,11 +209,10 @@ impl AppContexts {
             .map(|c| ContextInfo {
                 workspace: display_path(&c.root),
                 created_at_ms: c.created_at_ms,
-                ready: c
-                    .store_host
-                    .lock()
-                    .map(|host| host.store.read(|idx| idx.node_count()) > 0)
-                    .unwrap_or(false),
+                // 语义（2026-09-08 起）：该工作区的引擎子进程是否已拉起——
+                // 引擎数据所有权归引擎进程，壳不再直查 store（诊断 RPC，
+                // 前端无消费面）。
+                ready: crate::utils::lock_or_recover(&c.remote).is_some(),
             })
             .collect()
     }
@@ -258,8 +247,8 @@ mod tests {
         tmp
     }
 
-    /// 双工作区并行：各持各的数据上下文与 StoreHost，互不串写（L1 验收
-    /// 判据的存储面）。引擎进程级隔离由 tests/engine_process_e2e.rs 覆盖
+    /// 双工作区并行：各持各的数据上下文，互不串扰（L1 验收判据的注册
+    /// 表面）。引擎数据/进程级隔离由 engine_transport.rs 内联 e2e 测试覆盖
     ///（Phase 3 起引擎在子进程，单元测试不 spawn）。
     #[test]
     fn two_workspaces_get_distinct_contexts() {
@@ -274,46 +263,21 @@ mod tests {
         assert!(Arc::ptr_eq(&ctx_a1, &ctx_a2), "同根幂等复用");
         assert!(!Arc::ptr_eq(&ctx_a1, &ctx_b), "异根各持实例");
         assert_ne!(ctx_a1.root, ctx_b.root);
-        assert!(!Arc::ptr_eq(&ctx_a1.store_host, &ctx_b.store_host), "各持数据宿主");
         assert_eq!(app.context_count(), 2);
-
-        // 各自写入只落各自宿主
-        use hologram_graph::{Node, NodeKind};
-        let _ = ctx_a1
-            .store_host
-            .lock()
-            .unwrap()
-            .store
-            .write(|idx| idx.insert_node(Node::new("a_node", "A", NodeKind::Function)));
-        let _ = ctx_b
-            .store_host
-            .lock()
-            .unwrap()
-            .store
-            .write(|idx| idx.insert_node(Node::new("b_node", "B", NodeKind::Function)));
-        assert_eq!(
-            ctx_a1.store_host.lock().unwrap().store.read(|i| i.node_count()),
-            1
-        );
-        assert_eq!(
-            ctx_b.store_host.lock().unwrap().store.read(|i| i.node_count()),
-            1
-        );
-        assert!(
-            ctx_a1
-                .store_host
-                .lock()
-                .unwrap()
-                .store
-                .read(|i| i.get_node("b_node").is_none())
-        );
+        // 传输惰性构造——ensure 上下文不拉起引擎进程
+        for ctx in [&ctx_a1, &ctx_b] {
+            assert!(
+                crate::utils::lock_or_recover(&ctx.remote).is_none(),
+                "未使用的上下文不应有传输"
+            );
+        }
 
         let _ = std::fs::remove_dir_all(&ws_a);
         let _ = std::fs::remove_dir_all(&ws_b);
     }
 
     /// 决议链（workspace-session-ownership-rework 后两条臂）：上下文级。
-    /// resolve_transport 的进程 spawn 面由 tests/engine_process_e2e.rs 覆盖。
+    /// resolve_transport 的进程 spawn 面由 engine_transport.rs 内联 e2e 覆盖。
     #[test]
     fn resolve_transport_rejects_empty_roots() {
         let app = AppContexts::new();
@@ -406,13 +370,14 @@ mod tests {
         }
     }
 
-    /// L2 crate 化守卫：storage/vector 类型引用必须直连独立 crate
-    /// （`hologram_storage::` / `hologram_vector::`），不得再经
-    /// `hologram_engine::storage::` / `hologram_engine::vector::`
-    /// 路径引用——engine 的 storage/vector 门面已拆除，
-    /// 新代码不得恢复门面消费面（layering-rework-plan §4.3 欠账项 1 验收钉）。
+    /// 逻辑全断守卫（engine-host-severance 2026-09-08）：壳内不得存在任何
+    /// 引擎族 crate 直连——源代码 `hologram_` 前缀 crate 路径引用与
+    /// Cargo.toml 的 hologram-* 依赖条目双双为零。壳对引擎的全部知识 =
+    /// spawn hologram-engine.exe + MCP 协议（engine_transport）；文件忽略
+    /// 语义壳内自有一份（ignored_paths.rs）。新增直连即红。
+    /// 本测试文件自身写着这些字面量（断言消息），跳过防自匹配。
     #[test]
-    fn shell_storage_vector_refs_use_dedicated_crates() {
+    fn shell_has_zero_hologram_crate_refs() {
         let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut violations: Vec<String> = Vec::new();
         for entry in walkdir::WalkDir::new(&src_dir)
@@ -426,25 +391,35 @@ mod tests {
                 .unwrap()
                 .to_string_lossy()
                 .to_string();
-            // 本守卫测试自身写着这些字面量（注释/断言消息），跳过防自匹配。
             if rel.replace('\\', "/").starts_with("app/mod.rs") {
                 continue;
             }
             let content = std::fs::read_to_string(entry.path()).unwrap_or_default();
             for bad in [
-                "hologram_engine::storage::",
-                "hologram_engine::vector::",
-                "engine::storage::",
-                "engine::vector::",
+                "hologram_graph::",
+                "hologram_storage::",
+                "hologram_vector::",
+                "hologram_engine::",
             ] {
                 if content.contains(bad) {
-                    violations.push(format!("{rel} 含 {bad} —— 应直连 hologram_storage/hologram_vector crate"));
+                    violations.push(format!("{rel} 含 {bad} —— 壳禁直连引擎族 crate（走 engine_transport）"));
                 }
+            }
+        }
+        // Cargo.toml 依赖条目必须为零（跳过注释行）
+        let manifest = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"),
+        )
+        .unwrap_or_default();
+        for line in manifest.lines() {
+            let t = line.trim();
+            if !t.starts_with('#') && t.starts_with("hologram-") {
+                violations.push(format!("Cargo.toml 依赖条目未摘除: {t}"));
             }
         }
         assert!(
             violations.is_empty(),
-            "壳层存在经 engine 门面引用存储/向量类型的代码（应直连独立 crate）: {violations:?}"
+            "壳层存在引擎族 crate 直连（引擎知识面必须收敛为二进制 + MCP 协议）: {violations:?}"
         );
     }
 }

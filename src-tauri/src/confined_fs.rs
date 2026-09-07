@@ -231,7 +231,7 @@ pub(crate) fn list_dir_recursive(root: &std::path::Path, filter_ignored: bool) -
             let name = entry.file_name().to_string_lossy().to_string();
             let is_dir = path.is_dir();
             if filter_ignored && is_dir
-                && hologram_graph::is_ignored_path(&path.to_string_lossy().replace('\\', "/"))
+                && crate::ignored_paths::is_ignored_path(&path.to_string_lossy().replace('\\', "/"))
             {
                 continue;
             }

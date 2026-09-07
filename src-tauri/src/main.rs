@@ -23,6 +23,7 @@ mod credential;
 mod logging;
 pub(crate) mod os_sandbox;
 mod workspace;
+mod ignored_paths;
 mod utils;
 mod commands;
 mod confined_fs;

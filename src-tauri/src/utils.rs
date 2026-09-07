@@ -328,7 +328,9 @@ pub(crate) fn merge_path_entries(existing: &[String], extras: &[String]) -> Vec<
 // 调用点：
 //   - main.rs setup（开发/安装目录的 `.hologram`）
 //   - workspace_activate（每次打开项目时对该工作区根）
-// 引擎侧（engine/src/main.rs）另有同款调用以覆盖 MCP/CLI 直跑场景。
+// 引擎侧职责已收窄（2026-09-08 逻辑收断）：引擎只做文件级搬运
+// （engine/src/path_utils.rs::migrate_engine_data——`.lantai` 里的引擎
+// 数据搬往 `.hologram`）；整目录迁移（含宿主数据）只由本函数承担。
 // ═══════════════════════════════════════════════════════════════
 
 /// 迁移结果。

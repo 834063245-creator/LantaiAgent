@@ -20,7 +20,7 @@
 // worktree 前向映射）。返回 Value（rpc.rs ok_json 序列化；read 的 content 是
 // JSON 字符串值——出口 parse 无损）。
 
-use hologram_graph::is_ignored_path;
+use crate::ignored_paths::is_ignored_path;
 use serde_json::{json, Value};
 use tauri::State;
 

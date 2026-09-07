@@ -102,7 +102,7 @@ fn record_edit_side_effects(state: &crate::WorkspaceState, file_path: &str) {
     let Some(changed_files) = changed_files else {
         return;
     };
-    if hologram_graph::is_ignored_path(file_path) {
+    if crate::ignored_paths::is_ignored_path(file_path) {
         return;
     }
     let short = file_path.rsplit(['/', '\\']).next().unwrap_or(file_path);
