@@ -20,7 +20,14 @@ vi.mock('../src/bridge', () => ({
   isMockMode: () => false,
 }));
 
-import { buildOauthHeaders, oauthAccounts, oauthLogout, oauthPoll, oauthStart, runDeviceLogin } from '../src/provider/oauth';
+import {
+  buildOauthHeaders,
+  oauthAccounts,
+  oauthLogout,
+  oauthPoll,
+  oauthStart,
+  runDeviceLogin,
+} from '../src/provider/oauth';
 
 /** 让下一次 typedRpc 调用返回指定 JSON 字符串。 */
 function queueRpc(method: string, result: string): void {
