@@ -52,13 +52,13 @@ impl Sandbox {
     }
 
     /// 验证对 `path` 的读取操作。
-    /// 全局记忆路径绕过项目沙箱（与写入相同）。
+    /// 用户级数据目录（~/.lantai/{global_memory,skills}）绕过项目沙箱（与写入相同）。
     pub fn resolve_read(&self, path: &Path) -> SandboxResult {
-        // 全局记忆绕过
-        if Self::is_global_memory_path(path) {
+        // 用户级数据目录绕过
+        if Self::is_user_data_path(path) {
             let real = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
             if is_symlink_or_junction(path) {
-                return SandboxResult::Denied("global memory symlinks are not allowed".into());
+                return SandboxResult::Denied("user data path symlinks are not allowed".into());
             }
             return SandboxResult::Allowed(real);
         }
@@ -93,27 +93,72 @@ impl Sandbox {
         ))
     }
 
-    /// 检查此路径是否在全局记忆目录下。
-    /// Agent 管理的记忆设计上位于项目沙箱之外。
+    /// 检查此路径是否在用户级数据目录下（~/.lantai/<sub>）。
+    /// 用户管理的数据设计上位于项目沙箱之外（全局记忆 + 技能目录——
+    /// skills-mcp-production-plan Commit 3：让前端读 ~/.lantai/skills 放行）。
+    fn is_user_data_path(path: &Path) -> bool {
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_default();
+        if home.is_empty() {
+            return false;
+        }
+        Self::is_user_data_path_with_home(path, &home)
+    }
+
+    /// 用户级数据目录判定纯函数（home 注入——测试免 env 污染直测）。
+    /// ~/.lantai 下允许项目沙箱外访问的用户数据子目录（只读为主；
+    /// global_memory 历史含写绕过——skills 设计只读，写仍走项目内）。
+    fn is_user_data_path_with_home(path: &Path, home: &str) -> bool {
+        // ~/.lantai 下允许项目沙箱外访问的用户数据子目录（只读为主；
+        // global_memory 历史含写绕过——skills 设计只读，写仍走项目内）。
+        const USER_DATA_SUBDIRS: &[&str] = &["global_memory", "skills"];
+        let lantai = PathBuf::from(home).join(".lantai");
+        if !path.starts_with(&lantai) {
+            return false;
+        }
+        let first_ok = |p: &Path| {
+            p.strip_prefix(&lantai)
+                .ok()
+                .and_then(|rel| rel.components().next())
+                .and_then(|c| c.as_os_str().to_str())
+                .map(|first| USER_DATA_SUBDIRS.iter().any(|s| *s == first))
+                .unwrap_or(false)
+        };
+        if first_ok(path) {
+            return true;
+        }
+        // canonicalize 变体（junction/symlink 解析后前缀判定——拒绝自身在
+        // is_symlink_or_junction 检查，此处兜底规范化比较）
+        std::fs::canonicalize(path)
+            .map(|p| p.starts_with(&lantai) && first_ok(&p))
+            .unwrap_or(false)
+    }
+
+    /// 检查此路径是否在全局记忆目录下（~/.lantai/global_memory）。
+    /// 写豁免专用窄版——用户数据目录里只有 global_memory 开放写
+    /// （agent 管理记忆）；skills 等其余子目录只读（resolve_read 放行，
+    /// resolve_write 仍锁项目内）。
     fn is_global_memory_path(path: &Path) -> bool {
         let home = std::env::var("USERPROFILE")
             .or_else(|_| std::env::var("HOME"))
             .unwrap_or_default();
-        if home.is_empty() { return false; }
+        if home.is_empty() {
+            return false;
+        }
         let gm = PathBuf::from(&home).join(".lantai").join("global_memory");
-        // 检查原始路径和规范化版本
-        path.starts_with(&gm) || {
-            std::fs::canonicalize(path)
+        path.starts_with(&gm)
+            || std::fs::canonicalize(path)
                 .map(|p| p.starts_with(&gm))
                 .unwrap_or(false)
-        }
     }
 
     /// 验证写入操作。锁定到项目目录，
-    /// 全局记忆目录除外（agent 管理）。
+    /// 用户级数据目录除外（global_memory 为 agent 管理；skills 本期只读——
+    /// 写入仍锁项目内，防技能目录被任意写）。
     pub fn resolve_write(&self, path: &Path) -> SandboxResult {
-        // 全局记忆绕过：agent 写入 ~/.lantai/global_memory/
-        // 无论项目沙箱边界如何都始终允许。
+        // 用户级数据目录绕过（global_memory 写豁免保留；skills 目录不在写
+        // 豁免——技能安装走项目级 UI 动作，不开放任意写）
         if Self::is_global_memory_path(path) {
             let real = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
             // 安全检查仍然适用 — 记忆路径不允许符号链接
@@ -312,5 +357,60 @@ mod tests {
         let result = sandbox.resolve_write(&tmp.join("new_file.txt"));
         assert!(matches!(result, SandboxResult::Allowed(_)));
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ── 用户级数据目录（skills-mcp-production-plan Commit 3）──
+    // 纯函数直测（home 注入——免 env 污染）。Windows/macOS/Linux 共用路径
+    // 语义：home = /home/u 或 C:\Users\u，拼 .lantai/<sub>。
+
+    fn fake_home() -> PathBuf {
+        #[cfg(windows)]
+        {
+            PathBuf::from(r"C:\Users\test")
+        }
+        #[cfg(not(windows))]
+        {
+            PathBuf::from("/home/test")
+        }
+    }
+
+    #[test]
+    fn user_data_path_skills_allowed() {
+        let home = fake_home();
+        let home_s = home.to_string_lossy().into_owned();
+        // ~/.lantai/skills/<name>/SKILL.md 应放行（前端读用户级技能）
+        let p = home.join(".lantai").join("skills").join("code-review").join("SKILL.md");
+        assert!(Sandbox::is_user_data_path_with_home(&p, &home_s), "~/.lantai/skills 应放行");
+        // global_memory 保持放行（历史语义）
+        let gm = home.join(".lantai").join("global_memory").join("MEMORY.md");
+        assert!(Sandbox::is_user_data_path_with_home(&gm, &home_s), "~/.lantai/global_memory 应放行");
+    }
+
+    #[test]
+    fn user_data_path_other_subdirs_denied() {
+        let home = fake_home();
+        let home_s = home.to_string_lossy().into_owned();
+        // ~/.lantai 下但非白名单子目录（如 sessions/logs/canvas.json）→ 拒绝
+        let session = home.join(".lantai").join("sessions").join("1.json");
+        assert!(
+            !Sandbox::is_user_data_path_with_home(&session, &home_s),
+            "~/.lantai/sessions 不在白名单——拒绝"
+        );
+        let log = home.join(".lantai").join("logs").join("ui.log");
+        assert!(!Sandbox::is_user_data_path_with_home(&log, &home_s), "~/.lantai/logs 拒绝");
+        // ~/.lantai 根本身（无子目录段）→ 拒绝
+        assert!(!Sandbox::is_user_data_path_with_home(&home.join(".lantai"), &home_s), ".lantai 根拒绝");
+    }
+
+    #[test]
+    fn user_data_path_outside_home_denied() {
+        let home = fake_home();
+        let home_s = home.to_string_lossy().into_owned();
+        // 非 home 前缀一律拒绝（含项目内路径——项目内本就走正常沙箱路径）
+        #[cfg(windows)]
+        let outside = PathBuf::from(r"D:\proj\.lantai\skills\x\SKILL.md");
+        #[cfg(not(windows))]
+        let outside = PathBuf::from("/proj/.lantai/skills/x/SKILL.md");
+        assert!(!Sandbox::is_user_data_path_with_home(&outside, &home_s), "项目内 skills 走正常沙箱，非用户数据豁免");
     }
 }
