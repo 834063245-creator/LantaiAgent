@@ -104,3 +104,36 @@ describe('buildSystemPrompt', () => {
     });
   });
 });
+
+// 技能目录段（skills-mcp-production-plan Commit 2）：装配期追加可用技能清单。
+// 空/缺省 catalog = 零注入（fixture 与前缀缓存逐字节不变）；非空 = 尾部追加段。
+describe('buildSystemPrompt — skillCatalog 追加', () => {
+  it('缺省/空 skillCatalog：输出与无技能环境逐字节一致', async () => {
+    await withFirstPartyPromptChannel(async () => {
+      const base = buildSystemPrompt(null, '');
+      const withEmpty = buildSystemPrompt(null, '', '', '', '', undefined, '', undefined, '');
+      expect(withEmpty).toBe(base);
+    });
+  });
+
+  it('非空 skillCatalog：尾部追加「可用技能」段（name + description + when_to_use）', async () => {
+    await withFirstPartyPromptChannel(async () => {
+      const prompt = buildSystemPrompt(
+        null,
+        '',
+        '',
+        '',
+        '',
+        undefined,
+        '',
+        undefined,
+        ['- **code-review**: 审查代码变更\n  - 适用: 用户提到审查时', '- **deploy**: 部署到生产'].join('\n'),
+      );
+      expect(prompt).toContain('## 可用技能');
+      expect(prompt).toContain('- **code-review**: 审查代码变更');
+      expect(prompt).toContain('- **deploy**: 部署到生产');
+      // 段在提示词末尾（增量追加，不扰动既有段落）
+      expect(prompt.trimEnd().endsWith('- **deploy**: 部署到生产')).toBe(true);
+    });
+  });
+});

@@ -34,6 +34,7 @@ import { MessageBus } from '../message-bus';
 import { JsonMessageStore } from '../message-store';
 import { PlanStateManager } from '../plan/plan-state';
 import { SessionLog } from '../session-log';
+import { scanSkills } from '../skills';
 import type { DiagnosticsSource } from '../state-inject';
 import type { TaskManager } from '../task';
 import { TaskBoard, TaskBoardProxy } from '../task-board';
@@ -51,6 +52,25 @@ import type {
 } from './types';
 
 // ── AgentHandleImpl ──
+
+/** 技能目录文本（装配期 system prompt 追加段）。
+ *  扫 <project>/.lantai/skills + ~/.lantai/skills；无技能 = 返回 ''（零注入，
+ *  system-prompt fixture 逐字节不变）。失败静默降级（技能目录读不到不炸装配）。 */
+async function loadSkillCatalogFor(projectPath: string): Promise<string> {
+  try {
+    if (!projectPath) return '';
+    const scan = await scanSkills(projectPath);
+    if (scan.skills.length === 0) return '';
+    return scan.skills
+      .map((s) => {
+        const base = `- **${s.name}**: ${s.description}`;
+        return s.whenToUse ? `${base}\n  - 适用: ${s.whenToUse}` : base;
+      })
+      .join('\n');
+  } catch {
+    return '';
+  }
+}
 
 class AgentHandleImpl implements AgentHandle {
   constructor(
@@ -629,6 +649,7 @@ export class AgentRuntime implements RuntimePort {
         ctx.resolve('provider').name(),
         shellEnvSection,
         composition.prompt,
+        await loadSkillCatalogFor(ctx.projectPath),
       );
     }
 

@@ -80,8 +80,9 @@ export function buildSystemPrompt(
   providerName?: string,
   shellEnvSection = '',
   sections?: PromptSection[],
+  skillCatalog?: string,
 ): string {
-  return assembleSystemPrompt(
+  const base = assembleSystemPrompt(
     {
       graphData,
       projectPath,
@@ -94,6 +95,15 @@ export function buildSystemPrompt(
     },
     sections,
   );
+  // 技能目录段（skills-mcp-production-plan Commit 2）：装配期追加技能
+  // name+description 清单（模型据此发现可用技能）。空/缺省 = 无技能环境
+  // 零注入——system-prompt fixture 与前缀缓存逐字节不变。
+  if (!skillCatalog) return base;
+  return `${base}
+
+## 可用技能
+以下技能可用。需要时用 Skill 工具按名执行（skill 参数 = 技能名）：
+${skillCatalog}`;
 }
 
 // ── Tool registry builder ──
