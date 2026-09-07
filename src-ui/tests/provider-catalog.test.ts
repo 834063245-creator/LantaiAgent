@@ -19,25 +19,33 @@ import {
   searchModels,
 } from '../src/provider/catalog';
 import { guessReasoning } from '../src/provider/openai';
+import { getVendorTemplateVendors } from '../src/provider/vendor-templates';
 
 describe('catalog', () => {
-  it('loads models from all catalog providers', () => {
+  it('loads models from catalog seeds (内核 seed：deepseek/anthropic/openai 官方常用款)', () => {
     const all = getAllModels();
-    // deepseek(2) + anthropic(14) + openai(29) + moonshotai(10) + minimax(3) + qwen(5) + glm(3) + ollama(3)
-    expect(all.length).toBeGreaterThanOrEqual(30);
+    // deepseek(4) + anthropic(4) + openai(7) 官方常用款（方案乙 seed 化精简）
+    expect(all.length).toBeGreaterThanOrEqual(10);
   });
 
-  it('returns all catalog vendor names', () => {
-    const vendors = getCatalogVendors();
+  it('returns template vendor names (模板表是 chips/枚举主真源)', () => {
+    const vendors = getVendorTemplateVendors();
     expect(vendors).toContain('deepseek');
     expect(vendors).toContain('anthropic');
     expect(vendors).toContain('openai');
     expect(vendors).toContain('moonshotai');
     expect(vendors).toContain('minimax');
-    expect(vendors).toContain('qwen-token-plan');
+    expect(vendors).toContain('qwen');
     expect(vendors).toContain('glm');
     expect(vendors).toContain('ollama');
     expect(vendors).toContain('opencode');
+  });
+
+  it('getCatalogVendors 含内核 seed vendor（目录 seed 并入模板枚举）', () => {
+    const vendors = getCatalogVendors();
+    expect(vendors).toContain('deepseek');
+    expect(vendors).toContain('anthropic');
+    expect(vendors).toContain('openai');
   });
 
   it('findModels returns only models for the specified vendor', () => {
@@ -93,32 +101,36 @@ describe('catalog', () => {
     expect(all.length).toBe(allDirect.length);
   });
 
-  it('getDefaultModel returns a model for each known vendor', () => {
-    for (const providerName of [
-      'deepseek',
-      'anthropic',
-      'openai',
-      'moonshotai',
-      'minimax',
-      'qwen-token-plan',
-      'glm',
-      'ollama',
-      'opencode',
-    ]) {
-      const model = getDefaultModel(providerName);
-      expect(model, `default model for ${providerName}`).toBeDefined();
-      if (model) expect(model.vendor).toBe(providerName);
+  it('getDefaultModel：内核 seed 厂商（anthropic/openai/deepseek）返回 seed 默认模型', () => {
+    const expected: Record<string, string> = {
+      anthropic: 'https://api.anthropic.com',
+      openai: 'https://api.openai.com/v1',
+      deepseek: 'https://api.deepseek.com/v1',
+    };
+    for (const [vendor, baseUrl] of Object.entries(expected)) {
+      const model = getDefaultModel(vendor);
+      expect(model, `default model for ${vendor}`).toBeDefined();
+      expect(model?.baseUrl).toBe(baseUrl);
     }
   });
 
-  it('opencode GO provider defaults to deepseek-v4-flash on zen/go/v1', () => {
+  it('getDefaultModel：模板复用他厂 seed id 的厂商（opencode）→ 造描述符对齐模板', () => {
     const model = getDefaultModel('opencode');
     expect(model).toBeDefined();
     expect(model?.id).toBe('deepseek-v4-flash');
     expect(model?.baseUrl).toBe('https://opencode.ai/zen/go/v1');
     expect(model?.kind).toBe('openai');
     expect(model?.vendor).toBe('opencode');
-    expect(findModels('opencode').some((m) => m.id === 'deepseek-v4-pro')).toBe(true);
+  });
+
+  it('getDefaultModel：无 seed 的模板厂商（glm/moonshotai 等，方案乙运行时拉取）= undefined', () => {
+    // 方案乙：非内核厂商 JSON 退役，可用模型运行时从 /models 拉取——
+    // 出厂无默认模型（AddProviderSheet 两步式拉取后手动选定），不伪造 seed。
+    expect(getDefaultModel('glm')).toBeUndefined();
+    expect(getDefaultModel('moonshotai')).toBeUndefined();
+    expect(getDefaultModel('minimax')).toBeUndefined();
+    expect(getDefaultModel('ollama')).toBeUndefined();
+    expect(getDefaultModel('qwen')).toBeUndefined();
   });
 
   it('getDefaultModel returns undefined for unknown vendor', () => {
@@ -251,24 +263,6 @@ describe('catalog', () => {
     expect(guessReasoning('kimi-k2-thinking')).toBe(true);
     expect(guessReasoning('gpt-4o')).toBe(false);
     expect(guessReasoning('claude-3-5-sonnet')).toBe(false);
-  });
-
-  it('GLM-5.x 数据修复快照（2026-08-27 zhipu 官方核实；regen-catalogs 防回退）', () => {
-    const flash = getModel('glm-5.3-flash');
-    expect(flash).toBeDefined();
-    expect(flash?.contextWindow).toBe(1_000_000);
-    expect(flash?.maxTokens).toBe(131_072);
-    expect(flash?.reasoning).toBe(true);
-    // GLM-5.3 系原生档位 low/high/max（不可关闭）；缺档即选择器不出——这正是 P14 要的行为
-    expect([...(flash?.thinkingEfforts ?? [])].join(',')).toBe('low,high,max');
-    expect(getModel('glm-5.3')?.contextWindow).toBe(1_000_000);
-    expect(getModel('glm-5.2')?.contextWindow).toBe(1_000_000);
-    expect(getModel('glm-5.2')?.thinkingEfforts).toEqual(['high', 'max']);
-    expect(getModel('glm-5.1')?.contextWindow).toBe(200_000);
-    // glm-5.1 API 不收 effort 参数（无佐证不声明）→ 选择器不出现、请求不发参数
-    expect(getModel('glm-5.1')?.thinkingEfforts).toBeUndefined();
-    // 裁决 #3：视觉属实但产品未落地——保持 ['text']，multimodal 立项时随 breaking change 解禁
-    expect(flash?.input.includes('image'), 'glm-5.3-flash 声明了 image').toBe(false);
   });
 
   it('thinkingEfforts 是 canonical 词表子集且无重复（生成器保险丝）', () => {

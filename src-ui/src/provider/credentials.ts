@@ -44,6 +44,66 @@ export async function resolveApiKey(name: ProviderId): Promise<string> {
   return p;
 }
 
+// ── OAuth 订阅面（provider-refactor 方案乙 Phase 3D）──
+
+/** OAuth 模式解析结果（authMode='oauth' 的 provider 运行时注入面）。
+ *  敏感 token 只进程内持有，不落 localStorage。 */
+export interface ResolvedOAuth {
+  accessToken: string;
+  accountId: string;
+  expiresAt: number;
+}
+
+const _oauthCache = new Map<string, ResolvedOAuth | null>();
+
+/** 解析 OAuth provider 的运行时注入面（access token + 账号 id）。
+ *  provider 行 authMode !== 'oauth' → null（API Key 路径）。
+ *  Rust oauth_access 负责取最近/指定账号 grant + 过期自动刷新——
+ *  前端不持 refresh_token（刷新归 Rust，双写失效面归零）。
+ *  ⚡ 只读缓存（含 null 负缓存）——oauth_logout/oauth_refresh 成功后
+ *  invalidateOauthCache 写穿失效。 */
+export async function resolveOauthToken(provider: ProviderSettings, accountId?: string): Promise<ResolvedOAuth | null> {
+  if (provider.authMode !== 'oauth' || !provider.oauthProvider) return null;
+  const cacheKey = `${provider.oauthProvider}::${provider.name}::${accountId ?? '*'}`;
+  const cached = _oauthCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  try {
+    const { parseJson, typedRpc } = await import('../rpc-contract');
+    const raw = await typedRpc('oauth_access', {
+      provider: provider.oauthProvider,
+      ...(accountId ? { account_id: accountId } : {}),
+    });
+    const grant = parseJson<{
+      access_token: string;
+      account_id: string;
+      expires_at: number;
+    }>(raw);
+    const resolved: ResolvedOAuth = {
+      accessToken: grant.access_token,
+      accountId: grant.account_id,
+      expiresAt: grant.expires_at,
+    };
+    _oauthCache.set(cacheKey, resolved);
+    return resolved;
+  } catch (e) {
+    // OAUTH_NO_GRANT（未登录）/ 刷新失败 → 按无有效会话处理（fail-loud 使用点）
+    console.warn('[oauth] resolveOauthToken 失败（provider 可能未登录/会话过期）:', e);
+    _oauthCache.set(cacheKey, null);
+    return null;
+  }
+}
+
+/** 写穿失效（oauth_logout / oauth_refresh 成功后的缓存复位）。 */
+export function invalidateOauthCache(provider?: string): void {
+  if (provider !== undefined) {
+    for (const key of [..._oauthCache.keys()]) {
+      if (key.startsWith(`${provider}::`)) _oauthCache.delete(key);
+    }
+  } else {
+    _oauthCache.clear();
+  }
+}
+
 /** 提供方运行时配置（每次现取）：非凭据字段出自 settings（localStorage 同步
  *  读，零 IPC），凭据经 resolveApiKey（缓存）。提供方已不在设置中 → null
  *  （fail-loud 由使用点负责，不回退其他提供方）。 */

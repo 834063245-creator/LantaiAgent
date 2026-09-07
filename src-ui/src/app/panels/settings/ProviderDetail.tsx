@@ -7,15 +7,8 @@
 import type React from 'react';
 import { useCallback, useState } from 'react';
 import { getModel } from '../../../provider/catalog';
-import { type StoredThinking, thinkingOptionsFor } from '../../../provider/thinking';
-import type { Protocol } from '../../../provider/types';
-import {
-  type ConnectionProbe,
-  effectiveModels,
-  isFactoryBaseUrl,
-  type ModelOverrides,
-  type ProbeOutcome,
-} from '../../../settings';
+import { thinkingOptionsFor } from '../../../provider/thinking';
+import { effectiveModels, isFactoryBaseUrl, type ProbeOutcome, type ProviderSettings } from '../../../settings';
 import { protocolLabel } from './protocol';
 import { formatLatency, formatTestAt, providerStatus, STATUS_LABEL } from './status';
 
@@ -30,25 +23,15 @@ export interface ProbeUiState {
 }
 
 interface ProviderDetailProps {
-  provider: {
-    name: string;
-    kind: Protocol;
-    apiKey: string;
-    baseUrl: string;
-    model: string;
-    thinking?: StoredThinking;
-    lastTest?: ConnectionProbe;
-    /** per-model 覆盖（上下文窗口 / 最大输出）；0/缺省 = 用目录值。 */
-    modelOverrides?: Record<string, ModelOverrides>;
-    /** 该提供方「可用模型」id 列表（创作坞下拉的可选面；缺省 = [model]）。 */
-    models?: string[];
-  };
+  provider: ProviderSettings;
   canDelete: boolean;
   test: ProbeUiState;
   /** Key 栏 UI 状态簇：已保存 / 清除暂存 / 明文可见 / 输入框引用 */
   keyState: KeyUiState;
   /** 控制台全部回调簇 */
   actions: ProviderDetailActions;
+  /** Phase 3D：OAuth 登录数据面（authMode='oauth' 的 provider 专用；缺省 = apiKey 路径）。 */
+  oauthData?: OAuthData;
 }
 
 /** Key 栏 UI 状态簇（本地暂存，非持久化配置） */
@@ -80,8 +63,20 @@ export interface ProviderDetailActions {
   onDelete: () => void;
 }
 
-export function ProviderDetail({ provider, canDelete, test, keyState, actions }: ProviderDetailProps) {
+/** Phase 3D：OAuth 订阅登录数据面（authMode='oauth' 的 provider 专用）。
+ *  ProviderDetail 据此渲染登录面板（替代 API Key 输入区）。 */
+export interface OAuthData {
+  accounts: Array<{ accountId: string }>;
+  busy: boolean;
+  status: { tone: 'info' | 'ok' | 'fail'; msg: string } | null;
+  onLogin: () => void;
+  onLogout: (accountId: string) => void;
+  onCancel: () => void;
+}
+
+export function ProviderDetail({ provider, canDelete, test, keyState, actions, oauthData }: ProviderDetailProps) {
   const { saved: keySaved, pendingClear, visible: keyVisible, inputRef: keyInputRef } = keyState;
+  const isOAuth = provider.authMode === 'oauth';
   const {
     onFieldChange,
     onFetchModels,
@@ -175,50 +170,111 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions }:
           <span className="pp-rule" />
         </div>
 
-        <div className="pp-field">
-          <div className="pp-f-label-row">
-            <label className="pp-f-label" htmlFor="pd-api-key">
-              API Key
-            </label>
-            <span className={`pp-chip${keyChipCls}`}>{keyChip}</span>
-          </div>
-          <div className="pp-key-row">
-            <input
-              id="pd-api-key"
-              ref={keyInputRef}
-              type={keyVisible ? 'text' : 'password'}
-              className="sp-input"
-              value={provider.apiKey || ''}
-              onChange={(e) => onFieldChange('apiKey', e.target.value)}
-              onBlur={(e) => {
-                // 剥离非 ASCII（Key 只允许 ASCII）
-                // biome-ignore lint/suspicious/noControlCharactersInRegex: ASCII 范围判定必需
-                e.target.value = e.target.value.replace(/[^\x00-\x7F]/g, '');
-              }}
-              placeholder="sk-… 粘贴后保存写入系统凭据"
-              autoComplete="off"
-            />
-            <button
-              type="button"
-              className="sp-btn-sm"
-              title={keyVisible ? '隐藏' : '显示'}
-              onClick={onToggleKeyVisible}
-            >
-              {keyVisible ? '隐藏' : '显示'}
-            </button>
-            {provider.apiKey?.trim() && keySaved && (
+        {isOAuth ? (
+          /* ── Phase 3D：OAuth 订阅登录面板（替代 API Key 输入）── */
+          <div className="pp-field">
+            <div className="pp-f-label-row">
+              <span className="pp-f-label">登录方式</span>
+              <span className="pp-chip">OAuth 订阅</span>
+            </div>
+            {oauthData && oauthData.accounts.length > 0 ? (
+              <div className="pp-oauth-accounts">
+                {oauthData.accounts.map((acct) => (
+                  <div key={acct.accountId} className="pp-model-item">
+                    <span className="pp-model-chip" title={acct.accountId}>
+                      <span className="pp-model-chip-name">{acct.accountId}</span>
+                      <button
+                        type="button"
+                        className="pp-model-chip-x"
+                        title={`登出 ${acct.accountId}`}
+                        aria-label={`登出 ${acct.accountId}`}
+                        onClick={() => oauthData?.onLogout(acct.accountId)}
+                      >
+                        登出
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="pp-f-hint">尚未登录任何账号。点击下方按钮，用浏览器完成 ChatGPT Codex 授权登录。</div>
+            )}
+            {oauthData?.status && !oauthData.busy && (
+              <div className={`pp-oauth-status ${oauthData.status.tone}`}>{oauthData.status.msg}</div>
+            )}
+            <div className="pp-oauth-actions">
               <button
                 type="button"
-                className="sp-btn-sm pp-btn-danger"
-                title="从系统凭据中删除该 Key"
-                onClick={onClearKey}
+                className="sp-btn-sm"
+                disabled={oauthData?.busy}
+                onClick={() => oauthData?.onLogin()}
               >
-                清除
+                {oauthData?.busy
+                  ? '等待浏览器授权…'
+                  : oauthData && oauthData.accounts.length > 0
+                    ? '再登录一个账号'
+                    : '登录 Codex'}
               </button>
+              {oauthData?.busy && (
+                <button type="button" className="sp-btn-sm pp-btn-danger" onClick={() => oauthData?.onCancel()}>
+                  取消登录
+                </button>
+              )}
+            </div>
+            {oauthData?.busy && oauthData.status && (
+              <div className="pp-f-hint">
+                {oauthData.status.msg}
+                <br />
+                （轮询中——授权完成后自动生效；可在浏览器取消）
+              </div>
             )}
           </div>
-          <div className="pp-f-hint">Key 只保存在本机系统加密凭据中，不会写入 localStorage。</div>
-        </div>
+        ) : (
+          <div className="pp-field">
+            <div className="pp-f-label-row">
+              <label className="pp-f-label" htmlFor="pd-api-key">
+                API Key
+              </label>
+              <span className={`pp-chip${keyChipCls}`}>{keyChip}</span>
+            </div>
+            <div className="pp-key-row">
+              <input
+                id="pd-api-key"
+                ref={keyInputRef}
+                type={keyVisible ? 'text' : 'password'}
+                className="sp-input"
+                value={provider.apiKey || ''}
+                onChange={(e) => onFieldChange('apiKey', e.target.value)}
+                onBlur={(e) => {
+                  // 剥离非 ASCII（Key 只允许 ASCII）
+                  // biome-ignore lint/suspicious/noControlCharactersInRegex: ASCII 范围判定必需
+                  e.target.value = e.target.value.replace(/[^\x00-\x7F]/g, '');
+                }}
+                placeholder="sk-… 粘贴后保存写入系统凭据"
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                className="sp-btn-sm"
+                title={keyVisible ? '隐藏' : '显示'}
+                onClick={onToggleKeyVisible}
+              >
+                {keyVisible ? '隐藏' : '显示'}
+              </button>
+              {provider.apiKey?.trim() && keySaved && (
+                <button
+                  type="button"
+                  className="sp-btn-sm pp-btn-danger"
+                  title="从系统凭据中删除该 Key"
+                  onClick={onClearKey}
+                >
+                  清除
+                </button>
+              )}
+            </div>
+            <div className="pp-f-hint">Key 只保存在本机系统加密凭据中，不会写入 localStorage。</div>
+          </div>
+        )}
 
         {/* 可用模型 = 唯一的模型配置面（2026-08-26）：创作坞下拉的可选列表 + 新会话
             默认（= 最近使用，自动跟从创作坞切换，不在此手动选「默认模型」） */}

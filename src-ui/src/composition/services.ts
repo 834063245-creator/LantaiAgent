@@ -112,6 +112,10 @@ export interface LlmAdapterContribution {
    *  同 kind 后注册胜——对齐 renderer-service 覆盖语义；未知 kind 由 createProvider
    *  请求期响亮报错）。 */
   kind: string;
+  /** 协议下拉/展示用的人类可读标签（Phase 1A provider-refactor：协议开放后
+   *  AddProviderSheet 的协议 select 与 PROTOCOL_LABELS 的回落链查此标签；
+   *  缺省 = 直接显示 kind 字符串）。 */
+  label?: string;
   /** 方言工厂：从 createProvider 解析好的运行期实参构建完整 Provider。 */
   create: (rt: ProviderRuntimeArgs) => Provider;
 }

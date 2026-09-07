@@ -14,6 +14,14 @@
 // 操作返回 Err — 前端（settings.ts persistSecrets/restoreSecrets）catch 静默忽略。
 // ⚡ 2026-08-04 治理后 apiKey 权威=系统加密凭据，localStorage 不存明文，
 // 不存在「回退到 localStorage 明文存储」路径。
+//
+// ⚡ 2026-09 provider-refactor 方案乙 Phase 3B：OAuth grant 平面——
+//    OAuth 凭证（多字段对象）与 apiKey 单值平面共存同一加密文件：
+//    apiKey 键 = provider 名（值 = key 字符串）；
+//    OAuth 键 = "oauth:{provider}::{account_id}"（值 = grant JSON 字符串）。
+//    平台 store/get/delete 函数按字符串键复用；公共 API 层负责前缀拼接 +
+//    JSON 序列化（store_oauth_grant / get_oauth_grant / list_oauth_grants /
+//    delete_oauth_grant）。
 
 #![allow(non_snake_case)] // Win32 FFI 命名规范
 
@@ -103,6 +111,101 @@ pub fn delete_api_key(provider: &str) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
         delete_linux(provider)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OAuth grant 平面（Phase 3B，2026-09）——复合键 oauth:{provider}::{account_id}
+// ═══════════════════════════════════════════════════════════════
+
+/// OAuth grant 键前缀（provider 名与账号 id 之间的分隔——apiKey 平面键 = provider
+/// 名本身，前缀保证两平面不碰撞）。
+pub fn oauth_grant_key(provider: &str, account_id: &str) -> String {
+    format!("{}{}::{}", crate::oauth::OAUTH_KEY_PREFIX, provider, account_id)
+}
+
+/// 解析 OAuth 键 → (provider, account_id)。非 OAuth 键返回 None。
+fn parse_oauth_key(key: &str) -> Option<(&str, &str)> {
+    let prefix = crate::oauth::OAUTH_KEY_PREFIX;
+    let rest = key.strip_prefix(prefix)?;
+    let (provider, account_id) = rest.split_once("::")?;
+    Some((provider, account_id))
+}
+
+/// 存储 OAuth grant（按 provider::account_id 复合键覆盖写）。
+pub fn store_oauth_grant(grant: &crate::oauth::OAuthGrant) -> Result<(), String> {
+    if grant.account_id.is_empty() {
+        return Err("oauth grant: account_id 为空，拒绝写入".to_string());
+    }
+    let json = serde_json::to_string(grant).map_err(|e| format!("oauth grant 序列化失败: {e}"))?;
+    if json.len() > MAX_KEY_LEN {
+        return Err(format!(
+            "oauth grant 序列化长度 {} 超过上限 {}（毒化防护）",
+            json.len(),
+            MAX_KEY_LEN
+        ));
+    }
+    let key = oauth_grant_key(&grant.provider, &grant.account_id);
+    store_api_key(&key, &json)
+}
+
+/// 读取某 provider 全部 OAuth grant（按账号列表；无 = 空）。
+pub fn list_oauth_grants(provider: &str) -> Result<Vec<crate::oauth::OAuthGrant>, String> {
+    let map = read_all_credential_map()?;
+    let mut out = Vec::new();
+    for (k, v) in map {
+        let Some((prov, _acct)) = parse_oauth_key(&k) else {
+            continue;
+        };
+        if prov != provider {
+            continue;
+        }
+        let s = v.as_str().unwrap_or("");
+        match serde_json::from_str::<crate::oauth::OAuthGrant>(s) {
+            Ok(g) => out.push(g),
+            Err(e) => tracing::warn!(
+                "[credential] 丢弃损坏 OAuth grant 条目 key={}（{e}）",
+                k
+            ),
+        }
+    }
+    Ok(out)
+}
+
+/// 读取指定 (provider, account_id) 的 OAuth grant。
+pub fn get_oauth_grant(provider: &str, account_id: &str) -> Result<Option<crate::oauth::OAuthGrant>, String> {
+    let key = oauth_grant_key(provider, account_id);
+    match get_api_key(&key)? {
+        Some(json) => serde_json::from_str(&json)
+            .map(Some)
+            .map_err(|e| format!("oauth grant 解析失败: {e}")),
+        None => Ok(None),
+    }
+}
+
+/// 删除指定 (provider, account_id) 的 OAuth grant。不存在不算错误。
+pub fn delete_oauth_grant(provider: &str, account_id: &str) -> Result<(), String> {
+    let key = oauth_grant_key(provider, account_id);
+    delete_api_key(&key)
+}
+
+/// 读取整个加密 map（平台无关；Windows 文件在本地，mac/linux 走 CLI 无法全量——
+/// 仅 Windows 支持全量读，其余平台返回空 map 由 list 的特判路径兜底）。
+/// ⚠️ mac/linux 无全量枚举 API（security/secret-tool 按 account 单查）——
+/// list_oauth_grants 在非 Windows 平台退化为逐账号查询需另行设计；当前
+/// Phase 3 仅 Windows 桌面端首发（产品运行面 = Windows），mac/linux 的
+/// list 返回空并留 tracing 提示（login 单账号 store/get/delete 不受影响——
+/// 平台 store/get/delete 走的是平台 API，跨平台一致）。
+fn read_all_credential_map() -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    #[cfg(windows)]
+    {
+        // 复用 windows_impl 的 load 逻辑（值长度护栏同款）
+        windows_impl::load_all_keys()
+    }
+    #[cfg(not(windows))]
+    {
+        tracing::warn!("[credential] list_oauth_grants：当前平台无全量枚举——仅登录账号可读（store/get/delete 正常）");
+        Ok(serde_json::Map::new())
     }
 }
 
@@ -232,6 +335,11 @@ mod windows_impl {
                 ok
             })
             .collect())
+    }
+
+    /// OAuth grant 全量枚举（Phase 3B）：整 map 读出（长度护栏同 load_cred_map）。
+    pub(super) fn load_all_keys() -> Result<serde_json::Map<String, serde_json::Value>, String> {
+        load_cred_map()
     }
 
     fn load_cred_map_raw() -> Result<serde_json::Map<String, serde_json::Value>, String> {
@@ -820,5 +928,74 @@ mod tests {
         super::store_api_key("newprov", "sk-new").unwrap();
         assert_eq!(env.corrupt_backups().len(), 1, "毒化文件应被隔离备份");
         assert_eq!(super::get_api_key("newprov").unwrap(), Some("sk-new".to_string()));
+    }
+
+    // ── OAuth grant 平面（Phase 3B，2026-09）──
+
+    fn sample_grant(provider: &str, account_id: &str, access: &str) -> crate::oauth::OAuthGrant {
+        crate::oauth::OAuthGrant {
+            kind: "oauth".to_string(),
+            provider: provider.to_string(),
+            access_token: access.to_string(),
+            refresh_token: format!("refresh-{account_id}"),
+            expires_at: 0,
+            account_id: account_id.to_string(),
+            scope: None,
+        }
+    }
+
+    #[test]
+    fn oauth_key_prefix_isolated_from_api_key() {
+        // 复合键含 oauth: 前缀——与 apiKey 平面（裸 provider 名）不碰撞
+        let key = super::oauth_grant_key("codex", "user-1");
+        assert_eq!(key, "oauth:codex::user-1");
+        // apiKey 平面 key = provider 名本身，不与 oauth key 相同
+        assert_ne!("codex".to_string(), key);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_oauth_grant_roundtrip_and_isolation() {
+        let _env = TempCredEnv::new("oauth-roundtrip");
+        // 存 apiKey + oauth grant 同文件共存
+        super::store_api_key("codex", "sk-plain").unwrap();
+        let g1 = sample_grant("codex", "user-1", "at-1");
+        let g2 = sample_grant("codex", "user-2", "at-2");
+        super::store_oauth_grant(&g1).unwrap();
+        super::store_oauth_grant(&g2).unwrap();
+
+        // apiKey 平面不受 oauth 污染
+        assert_eq!(super::get_api_key("codex").unwrap(), Some("sk-plain".to_string()));
+
+        // oauth 平面按账号隔离
+        assert_eq!(super::get_oauth_grant("codex", "user-1").unwrap().unwrap().access_token, "at-1");
+        assert_eq!(super::get_oauth_grant("codex", "user-2").unwrap().unwrap().access_token, "at-2");
+        assert!(super::get_oauth_grant("codex", "nobody").unwrap().is_none());
+
+        // list 只列该 provider 的 oauth grant
+        let all = super::list_oauth_grants("codex").unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(super::list_oauth_grants("anthropic").unwrap().len(), 0);
+
+        // delete 单个账号
+        super::delete_oauth_grant("codex", "user-1").unwrap();
+        assert!(super::get_oauth_grant("codex", "user-1").unwrap().is_none());
+        assert_eq!(super::get_oauth_grant("codex", "user-2").unwrap().unwrap().access_token, "at-2");
+        // apiKey 仍不受影响
+        assert_eq!(super::get_api_key("codex").unwrap(), Some("sk-plain".to_string()));
+    }
+
+    #[test]
+    fn oauth_grant_empty_account_id_rejected() {
+        let g = crate::oauth::OAuthGrant {
+            kind: "oauth".to_string(),
+            provider: "codex".to_string(),
+            access_token: "at".to_string(),
+            refresh_token: "rt".to_string(),
+            expires_at: 0,
+            account_id: String::new(),
+            scope: None,
+        };
+        assert!(super::store_oauth_grant(&g).is_err(), "空 account_id 必须拒绝");
     }
 }

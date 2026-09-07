@@ -20,3 +20,4 @@ const impl = requireHost().mods.faceDeps as unknown as typeof import('./host');
 
 export const createAnthropicProvider = impl.createAnthropicProvider;
 export const createOpenAIProvider = impl.createOpenAIProvider;
+export const createResponsesProvider = impl.createResponsesProvider;

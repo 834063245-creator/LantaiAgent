@@ -11,9 +11,9 @@
 
 import type { Context } from '../../../cordis';
 import type { ProviderRuntimeArgs } from '../../../provider/types';
-import { createAnthropicProvider, createOpenAIProvider } from './host';
+import { createAnthropicProvider, createOpenAIProvider, createResponsesProvider } from './host';
 
-/** 第一方 LLM adapter 插件 —— anthropic/openai 内核方言两条默认 adapter 贡献。 */
+/** 第一方 LLM adapter 插件 —— anthropic/openai/responses 内核方言 adapter 贡献。 */
 export const llmAdaptersPlugin = {
   name: 'hologram/llm-adapters',
   inject: ['llm'],
@@ -23,6 +23,7 @@ export const llmAdaptersPlugin = {
         ctx.llm.register({
           id: 'builtin/anthropic',
           kind: 'anthropic',
+          label: 'Anthropic',
           create: (rt: ProviderRuntimeArgs) => createAnthropicProvider(rt),
         }),
       'llm-adapter-anthropic',
@@ -32,9 +33,30 @@ export const llmAdaptersPlugin = {
         ctx.llm.register({
           id: 'builtin/openai',
           kind: 'openai',
+          label: 'OpenAI 兼容',
           create: (rt: ProviderRuntimeArgs) => createOpenAIProvider(rt),
         }),
       'llm-adapter-openai',
+    );
+    ctx.effect(
+      () =>
+        ctx.llm.register({
+          id: 'builtin/responses',
+          kind: 'responses',
+          label: 'OpenAI Responses',
+          create: (rt: ProviderRuntimeArgs) =>
+            createResponsesProvider({
+              name: rt.name,
+              apiKey: rt.apiKey,
+              baseUrl: rt.baseUrl,
+              model: rt.model,
+              thinking: rt.thinking,
+              maxTokensFor: rt.maxTokensFor,
+              // Phase 3D：authMode='oauth' 的 Codex 订阅注入头（live 层装配）
+              extraHeaders: rt.oauthHeaders,
+            }),
+        }),
+      'llm-adapter-responses',
     );
   },
 };

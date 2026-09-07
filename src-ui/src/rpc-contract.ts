@@ -467,6 +467,30 @@ export interface RpcContract {
   credential_store: { params: { provider: string; key: string }; result: string }; // "null"
   credential_get: { params: { provider: string }; result: string }; // JSON
   credential_delete: { params: { provider: string }; result: string }; // "null"
+
+  // ── OAuth 订阅平面（Phase 3C，provider-refactor 方案乙）─────────
+  /** 发起 device-code 流程。返回 DeviceFlowStart JSON：
+   *  { verification_uri, user_code, device_auth_id, interval, expires_at }。 */
+  oauth_start: { params: { provider: string }; result: string }; // JSON
+  /** 轮询一拍：grant JSON（授权完成 + 已落库）| "null"（未批准，稍后继续）。 */
+  oauth_poll: {
+    params: { provider: string; device_auth_id: string; user_code: string };
+    result: string;
+  }; // JSON | "null"
+  /** 已存 grant 账号清单（仅元数据：provider/account_id/expires_at/scope）。 */
+  oauth_accounts: { params: { provider: string }; result: string }; // JSON array
+  /** 取指定/最近账号完整 grant（进程内请求装配；过期自动刷新）。
+   *  无已登录账号 → 报 OAUTH_NO_GRANT。 */
+  oauth_access: {
+    params: { provider: string; account_id?: string | null };
+    result: string;
+  }; // grant JSON
+  /** 登出：删除 (provider, account_id) 的 grant。 */
+  oauth_logout: { params: { provider: string; account_id: string }; result: string }; // "null"
+  /** 刷新 token 续期并回写 grant。返回 grant JSON。 */
+  oauth_refresh: { params: { provider: string; account_id: string }; result: string }; // JSON
+  /** 系统浏览器打开 URL（OAuth 授权页等）。 */
+  open_external: { params: { url: string }; result: string }; // "null"
   llm_proxy_port: { params: Record<string, never>; result: string }; // 端口号字符串（0=不可用）
 
   // ── 插件安装通道（S4-3）─────────────────────────────────

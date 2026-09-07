@@ -8,6 +8,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createProvider } from '../../../provider';
 import { markDynamicFetchStart, recordDynamicFetchResult } from '../../../provider/catalog';
+import { invalidateCredentialCache } from '../../../provider/credentials';
+import { oauthAccounts, oauthLogout, runDeviceLogin } from '../../../provider/oauth';
 import { ChunkType } from '../../../provider/types';
 import {
   type AppSettings,
@@ -70,6 +72,13 @@ export function ProviderPage({
   const [clearTarget, setClearTarget] = useState<ProviderId | null>(null);
   const [focusNonce, setFocusNonce] = useState(0);
   const keyInputRef = useRef<HTMLInputElement | null>(null);
+  // Phase 3D：OAuth 登录状态（busy = device-flow 进行中；status = 用户可读反馈；
+  // accounts = 已登录账号清单（含「当前生效」标记））
+  const [oauthBusy, setOauthBusy] = useState(false);
+  const [oauthStatus, setOauthStatus] = useState<{ tone: 'info' | 'ok' | 'fail'; msg: string } | null>(null);
+  const [oauthAccountsState, setOauthAccountsState] = useState<Array<{ accountId: string }>>([]);
+  // device-flow 进行中的取消标志（登录发起时置 false；取消置 true → 轮询停）
+  const oauthCancelRef = useRef(false);
 
   const activeProvider = getActiveProvider(settings);
   const selectedProvider = settings.providers.find((p) => p.name === selected) ?? activeProvider;
@@ -245,6 +254,9 @@ export function ProviderPage({
           if (entry.baseUrl?.trim()) added.baseUrl = entry.baseUrl.trim();
           added.models = entry.models;
           added.model = entry.model;
+          // Phase 3D：登录方式（codex 等 oauth 订阅行）
+          if (entry.authMode) added.authMode = entry.authMode;
+          if (entry.oauthProvider) added.oauthProvider = entry.oauthProvider;
         }
         setKeyDirtyMap((m) => (entry.apiKey?.trim() ? new Map(m).set(entry.name, true) : m));
         await onAddAndPersist(next, entry.name);
@@ -257,6 +269,85 @@ export function ProviderPage({
     },
     [settings, onAddAndPersist],
   );
+
+  /** Phase 3D：oauth provider 账号刷新（选中/登录/登出后）。 */
+  const refreshOauthAccounts = useCallback(async () => {
+    const p = selectedProvider;
+    if (p.authMode !== 'oauth' || !p.oauthProvider) {
+      setOauthAccountsState([]);
+      return;
+    }
+    try {
+      const accts = await oauthAccounts(p.oauthProvider);
+      setOauthAccountsState(accts.map((a) => ({ accountId: a.account_id })));
+    } catch {
+      setOauthAccountsState([]);
+    }
+  }, [selectedProvider]);
+
+  // 选中 oauth provider 时加载账号清单
+  useEffect(() => {
+    void refreshOauthAccounts();
+  }, [refreshOauthAccounts]);
+
+  /** OAuth 登录（device-code 编排）：开浏览器 + 轮询 → 成功后落库 + 刷新账号。
+   *  UI 展示等待面板（code + URL）由 oauthStatus 反馈带出。 */
+  const handleOauthLogin = useCallback(async () => {
+    const p = selectedProvider;
+    if (p.authMode !== 'oauth' || !p.oauthProvider) return;
+    setOauthBusy(true);
+    oauthCancelRef.current = false;
+    setOauthStatus({ tone: 'info', msg: '正在获取设备授权码…' });
+    try {
+      // 展示授权码 + URL（把流程信息经 status 反馈给用户）
+      await runDeviceLogin(
+        p.oauthProvider,
+        {
+          onAwaitingUser: (flow) => {
+            setOauthStatus({
+              tone: 'info',
+              msg: `请在浏览器打开授权页并输入代码 ${flow.user_code}：${flow.verification_uri}`,
+            });
+          },
+          onGranted: async () => {
+            await refreshOauthAccounts();
+            invalidateCredentialCache(p.name);
+            setOauthStatus({ tone: 'ok', msg: '登录成功——该 Codex 账号已可用于对话' });
+          },
+          onError: (err) => {
+            setOauthStatus({ tone: 'fail', msg: `登录失败：${err.message}` });
+          },
+          isCancelled: () => oauthCancelRef.current,
+        },
+        { openBrowser: true },
+      );
+    } finally {
+      setOauthBusy(false);
+    }
+  }, [selectedProvider, refreshOauthAccounts]);
+
+  /** 登出某账号。 */
+  const handleOauthLogout = useCallback(
+    async (accountId: string) => {
+      const p = selectedProvider;
+      if (p.authMode !== 'oauth' || !p.oauthProvider) return;
+      try {
+        await oauthLogout(p.oauthProvider, accountId);
+        invalidateCredentialCache(p.name);
+        setOauthStatus({ tone: 'ok', msg: `已登出账号 ${accountId}` });
+        await refreshOauthAccounts();
+      } catch (e) {
+        setOauthStatus({ tone: 'fail', msg: `登出失败：${e instanceof Error ? e.message : String(e)}` });
+      }
+    },
+    [selectedProvider, refreshOauthAccounts],
+  );
+
+  /** 取消进行中的 device-flow。 */
+  const handleOauthCancel = useCallback(() => {
+    oauthCancelRef.current = true;
+    setOauthStatus({ tone: 'info', msg: '正在取消登录…' });
+  }, []);
 
   const handleDeleteConfirm = useCallback(() => {
     if (!delTarget) return;
@@ -298,7 +389,7 @@ export function ProviderPage({
 
   return (
     <>
-      {!selectedProvider.apiKey?.trim() && (
+      {!selectedProvider.apiKey?.trim() && selectedProvider.authMode !== 'oauth' && (
         <div className="pp-onboard">
           <span className="pp-ob-icon">◈</span>
           <div className="pp-ob-text">
@@ -346,6 +437,14 @@ export function ProviderPage({
             onToggleKeyVisible: () =>
               setKeyVisibleMap((m) => new Map(m).set(selectedProvider.name, !m.get(selectedProvider.name))),
             onDelete: () => setDelTarget(selectedProvider.name),
+          }}
+          oauthData={{
+            accounts: oauthAccountsState,
+            busy: oauthBusy,
+            status: oauthStatus,
+            onLogin: handleOauthLogin,
+            onLogout: handleOauthLogout,
+            onCancel: handleOauthCancel,
           }}
         />
       </div>

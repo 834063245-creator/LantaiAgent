@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：19
+当前版本：20
 
-<!-- contract-fingerprint: e3774f8827c279f542deb1f648cabd5f06e81bcdd49200c2417a7967730ca208 -->
+<!-- contract-fingerprint: 4f01d1a65639c2e353d5d65833502ae09939931b888816406628ba4478c8293e -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -54,6 +54,7 @@
 | 17 | 2026-09-06 | manifest.tools 条目新增可选 `async: boolean`（app shell 件 D 后台唤醒回调 · 工具口：声明 true = 执行即返回卡片——宿主生成 taskId 注入 `args._task_id` 并登记发起者（executor 注入的 `_owner_id`），插件后台完成后经宿主桥 `deferred.complete(taskId, status)` 唤醒发起 Agent，唤醒体 minimal 定位键 {status, taskId, sessionId}、内容凭 taskId 调插件工具按需取；MCP 路对位 = server 完成通知 `lantai/deferred`（params.progressToken 回带调用期 token）由桥翻译成同一唤醒；缺省 false = 同步语义不变） | app-shell-software-plugin-plan.md §5-S4（决策 7/8） |
 | 18 | 2026-09-06 | AgentLoopHost 契约移除 `pricing` 成员（模型价格表拆除：AgentEvent.pricing / Pricing 全链退役，Usage 事件不再带定价）；AgentLoop 契约形状变更（无新增字段） | provider-system-spec.md 追裁·模型价格表拆除（2026-09-06） |
 | 19 | 2026-09-07 | default-loop step0 计划提醒读取删除剥行号补丁（kernelReadFile 缺省翻转为原文——fs(read) payload 行号 opt-in，工具缺陷报告 Bug 1；plan 文件读取路径行为不变，收到的即原文）；无契约形状变更 | 工具缺陷报告三连修复（2026-09-07） |
+| 20 | 2026-09-07 | `LlmAdapterContribution` 新增可选 `label?: string`（ctx.llm 协议下拉/展示用人类可读标签——provider-refactor 方案乙 Phase 1A Protocol 开放为 string 后，AddProviderSheet 协议 select 与 PROTOCOL_LABELS 回落链查 adapter 贡献标签；缺省 = 显示 kind 本身）；契约形状变更（新增可选字段，向后兼容） | provider-refactor-handoff.md Phase 1A（方案乙） |
 
 ## 变更流程（guard 红 → 修复四步）
 

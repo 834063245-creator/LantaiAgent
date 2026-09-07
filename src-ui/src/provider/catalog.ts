@@ -9,8 +9,19 @@
 //   目录 JSON 里的 `kind` 是【协议】（anthropic/openai），不是厂商：
 //   DeepSeek Beta 端点挂 kind=anthropic 是特性（官方提供 Anthropic 兼容 API）。
 //   JSON 不支持注释，模型条目的协议归属以本文件与 tests/provider-catalog.test.ts 为准。
+//
+// ⚡ 2026-09 provider-refactor（方案乙）Phase 1B 定稿：预设厂商目录维护负担退役。
+//   静态 JSON 只保留内核 seed（catalog/anthropic.json + openai.json + deepseek.json——
+//   官方常用几款，带 contextWindow/maxTokens/thinkingEfforts）；其余厂商一律运行时
+//   从 provider /models 拉取。消费面分类：
+//   - getModel / clampMaxTokens：模型**元数据**查询（窗口/档位/钳制）——唯一消费
+//     catalog JSON seed + 动态模型合并结果（ProviderSettings.models 拉取产物）。
+//   - getDefaultModel / getCatalogVendors：预填/回落——catalog JSON 退役后主真源
+//     是 vendor-templates.ts（连接模板表），本文件仅在内核 seed 存在时补默认模型。
+//   - AddProviderSheet chips 改走 getVendorTemplateVendors()。
 
 import type { ModelDescriptor } from './types';
+import { findVendorTemplate, getVendorTemplateVendors } from './vendor-templates';
 
 /** 目录 JSON 文件结构：{ [modelId]: ModelDescriptor } */
 type CatalogFile = Record<string, ModelDescriptor>;
@@ -194,15 +205,45 @@ export function searchModels(query: string): ModelDescriptor[] {
   );
 }
 
-/** 获取某个 provider 推荐的默认模型。 */
+/** 获取某个 provider 推荐的默认模型。
+ *  模板表优先（vendor-templates.ts 的 defaultModel + kind/baseUrl 对齐）；模板无
+ *  该厂商时回落目录 seed 首条（内核三家）；两者皆无 = undefined。 */
 export function getDefaultModel(providerName: string): ModelDescriptor | undefined {
+  const tpl = findVendorTemplate(providerName);
+  if (tpl) {
+    // 模板带 defaultModel → 找目录/动态合并结果里同名模型（元数据更丰富）
+    if (tpl.defaultModel) {
+      const seeded = getModel(tpl.defaultModel);
+      // seed 命中且 vendor 归属对得上才用（opencode 复用 deepseek id 时
+      // 归属仍应是该 vendor——目录条目 vendor=opencode 覆盖才成立）
+      if (seeded?.vendor === providerName) return seeded;
+      if (seeded) {
+        // 模板厂商复用他厂模型 id（opencode→deepseek-v4-flash）：造最小描述符，
+        // 连接参数（kind/baseUrl）以模板为准，不占 catalog seed 的厂商归属
+        return {
+          ...seeded,
+          kind: tpl.kind,
+          vendor: providerName,
+          baseUrl: tpl.baseUrl,
+        };
+      }
+    }
+    // 模板无 defaultModel（ollama 等）→ 目录 seed 首条（有则用）
+    const models = findModels(providerName);
+    if (models.length > 0) return models[0];
+    return undefined;
+  }
+  // 模板表外（自定义 provider 名）→ 目录 seed 首条兜底
   const models = findModels(providerName);
   if (models.length === 0) return undefined;
-  // 优先选择目录中的第一个模型（Pi 的数据已按相关性排序）
   return models[0];
 }
 
-/** 列出目录中有模型的所有 Vendor 名称（CONTEXT.md「Vendor」）。 */
+/** 列出目录中有模型的所有 Vendor 名称（CONTEXT.md「Vendor」）。
+ *  ⚡ 方案乙 Phase 1B：chips/枚举面主真源 = 模板表（getVendorTemplateVendors）；
+ *  目录 seed vendor 并入（内核三家 + 动态合并不在此枚举——动态是 provider 行级）。 */
 export function getCatalogVendors(): string[] {
-  return [...new Set(loadCatalog().allModels.map((m) => m.vendor))];
+  const names = new Set<string>(getVendorTemplateVendors());
+  for (const m of loadCatalog().allModels) names.add(m.vendor);
+  return [...names];
 }

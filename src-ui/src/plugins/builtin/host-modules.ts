@@ -148,6 +148,7 @@ import {
 } from '../../provider/catalog';
 import { resolveApiKey } from '../../provider/credentials';
 import { createOpenAIProvider } from '../../provider/openai';
+import { createResponsesProvider } from '../../provider/responses';
 import { thinkingOptionsFor } from '../../provider/thinking';
 import { kernelListDirectory, kernelReadFileRaw, kernelWriteFile, typedJsonRpc } from '../../rpc-contract';
 import {
@@ -156,6 +157,7 @@ import {
   graphEngineEnabled,
   loadSettings,
   loadSettingsWithSecrets,
+  modelContextWindow,
   onSettingsSaved,
   persistSecrets,
   removeSecret,
@@ -342,6 +344,7 @@ const faceDeps = {
   graphEngineEnabled,
   loadSettings,
   loadSettingsWithSecrets,
+  modelContextWindow,
   onSettingsSaved,
   persistSecrets,
   removeSecret,
@@ -368,6 +371,7 @@ const faceDeps = {
   spawnSubAgentImpl,
   createAnthropicProvider,
   createOpenAIProvider,
+  createResponsesProvider,
   setLang,
   iconHtml,
   // 创作坞 v2（2026-08-31）：引（typedJsonRpc 文件枚举）/ 拖放入卷（Tauri 原生通道）

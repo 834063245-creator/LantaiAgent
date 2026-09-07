@@ -7,7 +7,8 @@
 import { ANTHROPIC_DEFAULT_BASE_URL } from './provider/anthropic';
 import { getCatalogVendors, getDefaultModel, getModel } from './provider/catalog';
 import type { StoredThinking } from './provider/thinking';
-import type { Protocol } from './provider/types';
+import type { CoreProtocol, Protocol } from './provider/types';
+import { findVendorTemplate, VENDOR_TEMPLATES } from './provider/vendor-templates';
 
 /** 连接探针的结果（CONTEXT.md「ConnectionProbe」）— 非敏感，随 localStorage 持久化。 */
 export type ProbeOutcome = 'ok' | 'fail';
@@ -37,6 +38,13 @@ export interface ProviderSettings {
   apiKey: string;
   baseUrl: string;
   model: string;
+  /** 登录方式（provider-refactor 方案乙 Phase 3D）：缺省/缺字段 = 'api-key'
+   *  （零迁移——旧存储无此字段走 API Key 输入）；'oauth' = 系统 OAuth 订阅
+   *  登录（grant 存 Rust oauth 平面，请求注入 Bearer + account 头）。 */
+  authMode?: 'api-key' | 'oauth';
+  /** authMode='oauth' 时的 src-tauri oauth provider 注册表 id（如 codex）。
+   *  请求注入面的 account 选择：多账号时取最近登录的 grant（见 oauth.ts）。 */
+  oauthProvider?: string;
   thinking?: StoredThinking; // 领域词 ThinkingPolicy；存储字段名保持 thinking（遗留名）
   lastTest?: ConnectionProbe; // 存储字段名保持 lastTest（遗留名）；领域词 ConnectionProbe
   /** 该提供方「可用模型」id 列表——创作坞下拉的可选面（DSH routable 列表的
@@ -149,23 +157,33 @@ export interface AppSettings {
 const STORAGE_KEY = 'hologram_settings';
 
 /** 协议（kind）→ 默认 Base URL。字面量的唯一事实源——
- *  新增 provider 无目录条目时的兜底；已知厂商优先用
- *  defaultBaseUrl()（目录 getDefaultModel(name).baseUrl 优先）。 */
-export const PROVIDER_PROTOCOL_DEFAULTS: Record<Protocol, string> = {
+ *  ⚡ provider-refactor Phase 1A：收窄到内核两族（Protocol 已开放，闭合 Record
+ *  只覆盖内核；未知 kind 回落链见 defaultBaseUrl——模板表跳过后协议未命中
+ *  时返回 undefined，由调用方决定（新增未知协议不静默给错端点）。 */
+export const PROVIDER_PROTOCOL_DEFAULTS: Record<CoreProtocol, string> = {
   anthropic: ANTHROPIC_DEFAULT_BASE_URL,
   openai: 'https://api.openai.com/v1',
 };
 
-/** provider 默认 Base URL：目录条目优先（单一事实源在 catalog JSON），
- *  目录无此厂商时回退协议默认。 */
-export function defaultBaseUrl(name: string, kind: ProviderSettings['kind']): string {
-  return getDefaultModel(name)?.baseUrl ?? PROVIDER_PROTOCOL_DEFAULTS[kind];
+/** provider 默认 Base URL 回落链（三级）：
+ *  ① vendor 连接模板表（vendor-templates.ts —— 出厂厂商连接参数真源）；
+ *  ② catalog seed 默认模型（内核 seed JSON —— 模板表外的自定义厂商仍可命中目录）；
+ *  ③ 内核协议默认端点（PROVIDER_PROTOCOL_DEFAULTS）。
+ *  三级皆未命中（未知 kind 且无目录无模板）= undefined——调用方自行决策，
+ *  不静默给错端点（错误不静默宪法）。 */
+export function defaultBaseUrl(name: string, kind: ProviderSettings['kind']): string | undefined {
+  const tpl = findVendorTemplate(name);
+  if (tpl?.baseUrl) return tpl.baseUrl;
+  return getDefaultModel(name)?.baseUrl ?? PROVIDER_PROTOCOL_DEFAULTS[kind as CoreProtocol];
 }
 
-/** 是否仍是「出厂默认」Base URL（协议默认或目录厂商默认）——
+/** 是否仍是「出厂默认」Base URL（协议默认、模板默认或目录厂商默认）——
  *  设置面板模型切换时的 baseUrl 自动填充判定（用户自定义过就不覆盖）。 */
 export function isFactoryBaseUrl(url: string): boolean {
   const defaults = new Set<string>(Object.values(PROVIDER_PROTOCOL_DEFAULTS));
+  for (const tpl of VENDOR_TEMPLATES) {
+    if (tpl.baseUrl) defaults.add(tpl.baseUrl);
+  }
   for (const name of getCatalogVendors()) {
     const u = getDefaultModel(name)?.baseUrl;
     if (u) defaults.add(u);
@@ -180,7 +198,7 @@ const DEFAULTS: AppSettings = {
       kind: 'openai',
       name: providerId('deepseek'),
       apiKey: '',
-      baseUrl: defaultBaseUrl('deepseek', 'openai'),
+      baseUrl: defaultBaseUrl('deepseek', 'openai') ?? 'https://api.deepseek.com/v1',
       model: 'deepseek-v4-pro',
     },
     {
@@ -425,7 +443,9 @@ export function addProvider(s: AppSettings, name: ProviderId, kind: Protocol): A
         kind,
         name,
         apiKey: '',
-        baseUrl,
+        // 模板/目录命中 = 出厂默认端点；未知协议无模板 = 空串（两步式添加的
+        // onAdd 随后会带真实 baseUrl 覆盖；直接 addProvider 时需手填）。
+        baseUrl: baseUrl ?? '',
         model: '',
       },
     ],

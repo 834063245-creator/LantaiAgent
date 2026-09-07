@@ -5,6 +5,7 @@ pub mod engine_dispatch;
 pub mod filesystem;
 pub mod graph;
 pub mod identity;
+pub mod oauth;
 pub mod external;
 pub mod isolation;
 pub mod dataflow;

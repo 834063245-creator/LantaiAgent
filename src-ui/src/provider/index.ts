@@ -25,6 +25,10 @@ import type { Provider, ProviderRuntimeArgs } from './types';
 export interface CreateProviderOptions {
   /** Disable reasoning/thinking on OpenAI-compatible providers (e.g. for translation). */
   disableThinking?: boolean;
+  /** OAuth 请求注入头（Phase 3D）：authMode='oauth' 的 provider 由 live 层
+   *  解析 grant 后传入（Authorization Bearer + chatgpt-account-id 等）。
+   *  缺省 undefined = apiKey 路径。 */
+  oauthHeaders?: Record<string, string>;
 }
 
 /** 按 ctx.llm adapter 注册序取最后一个同 kind 实现（后注册胜）；未命中响亮报错。 */
@@ -52,5 +56,6 @@ export function createProvider(settings: ProviderSettings, options?: CreateProvi
     // 翻译器/摘要路径都传 disableThinking: true。
     thinking: withThinkingDisabled(settings.thinking, options?.disableThinking),
     maxTokensFor,
+    oauthHeaders: options?.oauthHeaders,
   });
 }

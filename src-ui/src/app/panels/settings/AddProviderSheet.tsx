@@ -16,9 +16,10 @@
 // Overlay 原语（统一语义），本件只保留焦点环。
 
 import { useEffect, useId, useRef, useState } from 'react';
+import { activeLlmAdapters } from '../../../composition/services';
 import { createProvider } from '../../../provider';
-import { getCatalogVendors, getDefaultModel } from '../../../provider/catalog';
-import type { Protocol } from '../../../provider/types';
+import { CORE_PROTOCOLS, type Protocol } from '../../../provider/types';
+import { findVendorTemplate, getVendorTemplateVendors } from '../../../provider/vendor-templates';
 import { defaultBaseUrl, type ProviderId, type ProviderSettings, providerId } from '../../../settings';
 import { mountDialogFocus } from '../../dialog-focus';
 import { Overlay } from '../../overlay';
@@ -33,6 +34,10 @@ export interface AddProviderEntry {
   models: string[];
   /** 新会话默认模型（必须是 models 之一或与 model 一致）。 */
   model: string;
+  /** 登录方式（Phase 3D）：codex chip 预填 authMode='oauth'。 */
+  authMode?: 'api-key' | 'oauth';
+  /** authMode='oauth' 时的 Rust oauth provider id。 */
+  oauthProvider?: string;
 }
 
 interface AddProviderSheetProps {
@@ -69,10 +74,31 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
   const [fetchMsg, setFetchMsg] = useState('');
   const [pulled, setPulled] = useState(false);
   const [error, setError] = useState('');
+  // Phase 3D：登录方式（模板预填；codex = oauth 订阅）
+  const [authMode, setAuthMode] = useState<'api-key' | 'oauth'>('api-key');
+  const [oauthProvider, setOauthProvider] = useState<string | undefined>(undefined);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
   const modelInputRef = useRef<HTMLInputElement | null>(null);
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
+
+  // 协议下拉选项：内核白名单（出厂两族）恒在、顺序在前；ctx.llm adapter 注册表
+  // 贡献的其余协议并入（开放协议，按 kind 去重——adapter 的 label 作展示，缺省
+  // 回落 kind 本身）。运行时取：装载前（无服务）= 只有内核两族。每次渲染快照
+  // 注册表（模块态非响应，开销极小——协议选项个位数）。
+  const protocolOptions = (() => {
+    const seen = new Set<Protocol>(CORE_PROTOCOLS);
+    const opts: Array<{ value: Protocol; label: string }> = [...CORE_PROTOCOLS].map((k) => ({
+      value: k,
+      label: protocolLabel(k),
+    }));
+    for (const a of activeLlmAdapters()) {
+      if (seen.has(a.kind)) continue;
+      seen.add(a.kind);
+      opts.push({ value: a.kind, label: protocolLabel(a.kind, a.label) });
+    }
+    return opts;
+  })();
 
   useEffect(() => {
     if (open) {
@@ -87,6 +113,8 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       setFetchMsg('');
       setPulled(false);
       setError('');
+      setAuthMode('api-key');
+      setOauthProvider(undefined);
     }
   }, [open]);
 
@@ -97,13 +125,14 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
     return mountDialogFocus(sheetRef.current, { initial: nameInputRef.current });
   }, [open]);
 
-  /** 目录 chip → 预填连接表单（不直加——进入拉模型两步）。 */
+  /** 厂商 chip → 预填连接表单（不直加——进入拉模型两步）。
+   *  来源 = 模板表（vendor-templates.ts 连接参数；模型一律运行时拉取）。 */
   const handlePickVendor = (provName: string) => {
-    const dm = getDefaultModel(provName);
-    if (!dm) return;
+    const tpl = findVendorTemplate(provName);
+    if (!tpl) return;
     setName(provName);
-    setKind(dm.kind);
-    setBaseUrl(dm.baseUrl);
+    setKind(tpl.kind);
+    setBaseUrl(tpl.baseUrl);
     setKey('');
     setModels([]);
     setDefaultModel('');
@@ -111,6 +140,9 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
     setFetchMsg('');
     setError('');
     setManualModel('');
+    // authMode/oauthProvider 随模板预填（codex = oauth）
+    setAuthMode(tpl.authMode ?? 'api-key');
+    setOauthProvider(tpl.oauthProvider);
   };
 
   /** 从已填连接拉取 /models（无 Key 也尝试——本地端点无鉴权）。 */
@@ -121,7 +153,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
     setFetching(true);
     setFetchMsg('');
     try {
-      const prov = createProvider(buildRow(n, kind, baseUrl.trim() || defaultBaseUrl(n, kind), key.trim()));
+      const prov = createProvider(buildRow(n, kind, baseUrl.trim() || defaultBaseUrl(n, kind) || '', key.trim()));
       const found = (await prov.fetchModels?.()) ?? [];
       const ids = found.map((m) => m.id).filter(Boolean);
       setModels(ids);
@@ -178,6 +210,8 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       baseUrl: baseUrl.trim() || undefined,
       models: ids,
       model: def,
+      authMode,
+      oauthProvider,
     });
   };
 
@@ -200,22 +234,22 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
         </div>
 
         <div className="pp-cat-grid">
-          {getCatalogVendors().map((provName) => {
-            const defaultModelDesc = getDefaultModel(provName);
-            if (!defaultModelDesc) return null;
+          {getVendorTemplateVendors().map((provName) => {
+            const tpl = findVendorTemplate(provName);
+            if (!tpl) return null;
             const used = existingNames.includes(provName);
             return (
               <button
                 type="button"
                 key={provName}
                 className={`pp-cat-chip${used ? ' used' : ''}${name === provName ? ' selected' : ''}`}
-                title={used ? `${provName} 已存在` : `预填 ${defaultModelDesc.baseUrl}`}
+                title={used ? `${provName} 已存在` : `预填 ${tpl.baseUrl}`}
                 disabled={used}
                 onClick={() => handlePickVendor(provName)}
               >
-                <div className="pp-cat-name">{provName}</div>
-                <div className="pp-cat-model">{defaultModelDesc.baseUrl}</div>
-                <div className="pp-cat-kind">{protocolLabel(defaultModelDesc.kind)}</div>
+                <div className="pp-cat-name">{tpl.label ?? provName}</div>
+                <div className="pp-cat-model">{tpl.baseUrl}</div>
+                <div className="pp-cat-kind">{protocolLabel(tpl.kind)}</div>
               </button>
             );
           })}
@@ -262,8 +296,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
               className="sp-select"
               value={kind}
               onChange={(e) => {
-                const k = e.target.value === 'anthropic' ? 'anthropic' : 'openai';
-                setKind(k);
+                setKind(e.target.value);
                 if (pulled) {
                   setPulled(false);
                   setModels([]);
@@ -272,8 +305,13 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
                 }
               }}
             >
-              <option value="openai">OpenAI 兼容</option>
-              <option value="anthropic">Anthropic</option>
+              {/* 协议下拉选项 = 内核白名单 + ctx.llm adapter 贡献（开放协议，
+               *  如 Responses——Phase 2 起注册后自动入列）。 */}
+              {protocolOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
             </select>
           </div>
           <div className="pp-fg">

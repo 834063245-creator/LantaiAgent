@@ -13,6 +13,7 @@ mod agent_isolation;
 mod engine_transport;
 mod pty_manager;
 mod lsp_manager;
+mod oauth;
 
 mod permissions;
 mod tools;

@@ -724,6 +724,54 @@ async fn dispatch_rpc(
                 .map_err(|e| format!("credential_delete 任务失败: {e}"))?;
             ok_unit(r)
         }
+
+        // ═══════════════════════════════════════════════════════
+        // OAuth 订阅平面（Phase 3C，provider-refactor 方案乙）：device-code
+        // 登录 / 账号管理 / 刷新 / 开浏览器。网络操作 async 直接 await；
+        // 本地凭证操作走 spawn_blocking（DPAPI/文件 IO 不进异步 runtime）。
+        // ═══════════════════════════════════════════════════════
+        "oauth_start" => {
+            let provider = req_str(&params, "provider", "oauth_start")?;
+            ok_json(commands::oauth::oauth_start(&provider).await)
+        }
+        "oauth_poll" => {
+            let provider = req_str(&params, "provider", "oauth_poll")?;
+            let device_auth_id = req_str(&params, "device_auth_id", "oauth_poll")?;
+            let user_code = req_str(&params, "user_code", "oauth_poll")?;
+            ok_json(commands::oauth::oauth_poll(&provider, &device_auth_id, &user_code).await)
+        }
+        "oauth_accounts" => {
+            let provider = req_str(&params, "provider", "oauth_accounts")?;
+            let r = tokio::task::spawn_blocking(move || commands::oauth::oauth_accounts(&provider))
+                .await
+                .map_err(|e| format!("oauth_accounts 任务失败: {e}"))?;
+            ok_json(r)
+        }
+        "oauth_access" => {
+            let provider = req_str(&params, "provider", "oauth_access")?;
+            let account_id = opt_str(&params, "account_id");
+            ok_json(commands::oauth::oauth_access(&provider, account_id).await)
+        }
+        "oauth_logout" => {
+            let provider = req_str(&params, "provider", "oauth_logout")?;
+            let account_id = req_str(&params, "account_id", "oauth_logout")?;
+            let r = tokio::task::spawn_blocking(move || commands::oauth::oauth_logout(&provider, &account_id))
+                .await
+                .map_err(|e| format!("oauth_logout 任务失败: {e}"))?;
+            ok_unit(r)
+        }
+        "oauth_refresh" => {
+            let provider = req_str(&params, "provider", "oauth_refresh")?;
+            let account_id = req_str(&params, "account_id", "oauth_refresh")?;
+            ok_json(commands::oauth::oauth_refresh(&provider, &account_id).await)
+        }
+        "open_external" => {
+            let url = req_str(&params, "url", "open_external")?;
+            let r = tokio::task::spawn_blocking(move || commands::oauth::open_external(&url))
+                .await
+                .map_err(|e| format!("open_external 任务失败: {e}"))?;
+            ok_unit(r)
+        }
         "llm_proxy_port" => Ok(crate::llm_proxy::proxy_port().to_string()),
 
         // ═══════════════════════════════════════════════════════

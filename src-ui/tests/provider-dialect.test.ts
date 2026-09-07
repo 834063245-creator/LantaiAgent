@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LlmAdapterContribution } from '../src/composition/services';
-import { compositionServicesPlugin } from '../src/composition/services';
+import { activeLlmAdapters, compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
 import { llmAdaptersPlugin } from '../src/plugins/builtin/llm-adapters';
 import { createProvider } from '../src/provider/index';
@@ -74,6 +74,22 @@ describe('方言解析器（createProvider 收口）', () => {
       expect(typeof p.stream).toBe('function');
       const a = createProvider(SETTINGS('anthropic'));
       expect(a.name()).toBe('p1');
+    } finally {
+      await env.dispose();
+    }
+  });
+
+  it('Phase 2：responses 协议（OpenAI Responses）在册——createProvider 可解析', async () => {
+    const env = await booted();
+    try {
+      const r = createProvider(SETTINGS('responses'));
+      expect(r.name()).toBe('p1');
+      expect(typeof r.stream).toBe('function');
+      // adapter 带 label（协议下拉展示面）
+      const adapters = activeLlmAdapters();
+      const respAdapter = adapters.find((d) => d.kind === 'responses');
+      expect(respAdapter).toBeDefined();
+      expect(respAdapter?.label).toBe('OpenAI Responses');
     } finally {
       await env.dispose();
     }

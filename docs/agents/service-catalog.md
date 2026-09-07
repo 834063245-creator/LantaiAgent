@@ -14,7 +14,7 @@ kind 三分规则（机械推导）：ctx 键 ∈ SEAM_DOMAINS（seam-resolution
 |---|---|---|---|---|
 | `ctx.fs` | `FsService` | `src/composition/fs-service.ts` | `builtin/rust-fs` | 2 文件 |
 | `ctx.graph` | `GraphService` | `src/composition/graph-service.ts` | `builtin/rust-graph` | 2 文件 |
-| `ctx.llm` | `LlmService` | `src/composition/services.ts` | `builtin/anthropic` · `builtin/openai` | 2 文件 |
+| `ctx.llm` | `LlmService` | `src/composition/services.ts` | `builtin/anthropic` · `builtin/openai` · `builtin/responses` | 2 文件 |
 | `ctx.sessionPersistence` | `SessionPersistenceService` | `src/composition/session-persistence-service.ts` | `builtin/rust-sessions` | 2 文件 |
 | `ctx.shell` | `ShellService` | `src/composition/shell-service.ts` | — | 2 文件 |
 | `ctx.subagents` | `SubagentsService` | `src/composition/subagent-service.ts` | `builtin/in-process` | 2 文件 |
@@ -40,7 +40,7 @@ fs 后端能力注册表（平台化 Phase 2 · D11）——默认 provider = bu
 LLM adapter 注册表（S1-1 起；平台化 Phase 1 升格为 ctx.llm seam）—— 行注册 → disposer；请求期解析语义见 provider/index.ts 方言解析器。
 
 - owner：`src/composition/services.ts`
-- 默认实现 / 贡献者 id：`builtin/anthropic` · `builtin/openai`
+- 默认实现 / 贡献者 id：`builtin/anthropic` · `builtin/openai` · `builtin/responses`
 - 消费面（2）：`src/composition/contract-version.ts` · `src/plugins/builtin/llm-adapters/index.ts`
 
 ### `ctx.sessionPersistence` — SessionPersistenceService（swappable seam（可换实现））

@@ -21,8 +21,9 @@
 //   - thinking 覆盖区分 undefined（回落行值）与 ''（显式自动 = 不发参数）。
 
 import { type ProviderSettings, providerId } from '../settings';
-import { resolveProviderRuntime } from './credentials';
+import { resolveOauthToken, resolveProviderRuntime } from './credentials';
 import { type CreateProviderOptions, createProvider } from './index';
+import { buildOauthHeaders } from './oauth';
 import type { StoredThinking } from './thinking';
 import type { Chunk, ModelDescriptor, Provider, Request } from './types';
 
@@ -42,16 +43,30 @@ export function createLiveProvider(
   // 覆盖槽（可变 holder——setThinking 运行时改写，stream 每请求现读）
   const overrides_: { model?: string; thinking?: StoredThinking } = { ...overrides };
 
-  const buildInner = (rt: { provider: ProviderSettings; apiKey: string }) =>
-    createProvider(
+  /** async 装配内层 provider：apiKey 路径（resolveApiKey）或 oauth 路径
+   *  （resolveOauthToken → oauthHeaders）。OAuth 时 apiKey 置空占位——
+   *  方言（responses）经 oauthHeaders 的 Authorization 注入。 */
+  const buildInner = async (rt: { provider: ProviderSettings; apiKey: string }) => {
+    // OAuth 模式：解析 grant → 注入头（token 过期 Rust 侧自动刷新）
+    let oauthHeaders: Record<string, string> | undefined;
+    let apiKey = rt.apiKey;
+    if (rt.provider.authMode === 'oauth' && rt.provider.oauthProvider) {
+      const oauth = await resolveOauthToken(rt.provider);
+      if (oauth) {
+        oauthHeaders = buildOauthHeaders(oauth);
+        apiKey = ''; // oauth 路径无 apiKey——Authorization 走 oauthHeaders
+      }
+    }
+    return createProvider(
       {
         ...rt.provider,
-        apiKey: rt.apiKey,
+        apiKey,
         ...(overrides_.model !== undefined ? { model: overrides_.model } : {}),
         thinking: overrides_.thinking !== undefined ? overrides_.thinking : rt.provider.thinking,
       },
-      options,
+      { ...options, oauthHeaders },
     );
+  };
 
   return {
     name() {
@@ -66,17 +81,22 @@ export function createLiveProvider(
       if (!rt) {
         throw new Error(`LIVE_PROVIDER: 提供方「${name}」已不在设置中——请在设置 → Provider 检查后重试`);
       }
-      if (!rt.apiKey) {
+      // OAuth provider 无 apiKey——凭据 = 系统 OAuth grant（resolveOauthToken）
+      const needsOauth = rt.provider.authMode === 'oauth';
+      if (!rt.apiKey && !needsOauth) {
         throw new Error(`MISSING_CREDENTIAL: 提供方「${name}」未配置 API Key——设置 → Provider 填写并保存后直接重试`);
       }
-      const inner = buildInner(rt);
+      const inner = await buildInner(rt);
       yield* inner.stream(signal, req);
     },
     prewarm(): void {
       void resolve()
-        .then((rt) => {
-          if (!rt?.apiKey) return; // 无 Key 不预热（无谓的 401 噪音）
-          buildInner(rt).prewarm?.();
+        .then(async (rt) => {
+          if (!rt) return;
+          const needsOauth = rt.provider.authMode === 'oauth';
+          if (!rt.apiKey && !needsOauth) return; // 无 Key 不预热（无谓的 401 噪音）
+          const inner = await buildInner(rt);
+          inner.prewarm?.();
         })
         .catch(() => {
           /* best-effort 预热 */
@@ -84,8 +104,10 @@ export function createLiveProvider(
     },
     async fetchModels(): Promise<ModelDescriptor[]> {
       const rt = await resolve();
-      if (!rt?.apiKey) return [];
-      const inner = buildInner(rt);
+      if (!rt) return [];
+      const needsOauth = rt.provider.authMode === 'oauth';
+      if (!rt.apiKey && !needsOauth) return [];
+      const inner = await buildInner(rt);
       return inner.fetchModels?.() ?? [];
     },
   };

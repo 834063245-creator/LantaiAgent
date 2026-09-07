@@ -92,12 +92,20 @@ describe('provider URL 单一事实源', () => {
     expect(PROVIDER_PROTOCOL_DEFAULTS.openai).toBe('https://api.openai.com/v1');
   });
 
-  it('defaultBaseUrl prefers catalog entry, falls back to protocol default', () => {
-    // 目录内厂商 → 目录 baseUrl
+  it('defaultBaseUrl 回落链：模板表 → 目录 seed → 协议默认', () => {
+    // 模板厂商 → 模板 baseUrl（vendor-templates 优先于目录——方案乙 Phase 1B）
     expect(defaultBaseUrl('deepseek', 'openai')).toBe('https://api.deepseek.com/v1');
-    // 目录外厂商 → 协议默认
+    expect(defaultBaseUrl('minimax', 'anthropic')).toBe('https://api.minimax.io/anthropic');
+    expect(defaultBaseUrl('ollama', 'openai')).toBe('http://localhost:11434/v1');
+    // 模板表外自定义厂商 + 内核协议 → 协议默认
     expect(defaultBaseUrl('my-local-llm', 'openai')).toBe('https://api.openai.com/v1');
     expect(defaultBaseUrl('my-claude-proxy', 'anthropic')).toBe('https://api.anthropic.com');
+  });
+
+  it('defaultBaseUrl：未知 kind 且无模板无目录 = undefined（不静默给错端点）', () => {
+    // Protocol 开放后：未注册的 kind（如拼错/第三方方言未注册）不应落回 OpenAI 官方端点
+    expect(defaultBaseUrl('my-gateway', 'responses')).toBeUndefined();
+    expect(defaultBaseUrl('custom-xyz', 'weird-dialect')).toBeUndefined();
   });
 
   it('isFactoryBaseUrl recognizes defaults but not user-customized URLs', () => {

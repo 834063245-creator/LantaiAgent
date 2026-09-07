@@ -7,8 +7,16 @@ import type { StoredThinking, ThinkingEffort } from './thinking';
 
 /** 模型 API 的线上方言（CONTEXT.md「Protocol」）。
  *  注意：ProviderSettings/ModelDescriptor 上的持久化字段名仍叫 `kind`（存储遗留名），
- *  领域词与代码类型统一为 Protocol，改存储键名需带迁移。 */
-export type Protocol = 'anthropic' | 'openai';
+ *  领域词与代码类型统一为 Protocol，改存储键名需带迁移。
+ *
+ *  ⚡ provider-refactor（方案乙）Phase 1A：Protocol 由闭合 union 开放为 string——
+ *  内核协议经 CORE_PROTOCOLS 常量列明，方言注册表（ctx.llm adapter）是运行期真源；
+ *  展示/回落链对未知 kind 用字符串回落（查不到标签就显示 kind 本身），不再闭合。 */
+export type Protocol = string;
+
+/** 内核协议（出厂即注册的两条方言）。协议下拉/回落链的内核白名单。 */
+export const CORE_PROTOCOLS = ['anthropic', 'openai'] as const;
+export type CoreProtocol = (typeof CORE_PROTOCOLS)[number];
 
 export type Role = 'system' | 'user' | 'assistant' | 'tool';
 
@@ -103,7 +111,11 @@ export interface Provider {
 }
 
 /** 方言工厂实参——createProvider 从 settings 解析后的运行期产物（2026-08-27 方言收口）。
- *  thinking 已过 withThinkingDisabled / 会话覆盖合并；maxTokensFor 即 P14 覆盖闭包。 */
+ *  thinking 已过 withThinkingDisabled / 会话覆盖合并；maxTokensFor 即 P14 覆盖闭包。
+ *  oauthHeaders（2026-09 Phase 3D）：authMode='oauth' 时 live provider 从系统
+ *  grant 解析出的请求注入头（Authorization: Bearer + chatgpt-account-id 等，
+ *  由 credentials.resolveOauthToken + provider/oauth 面构建）；缺省 undefined =
+ *  apiKey 路径。仅 Responses 等订阅协议方言消费。 */
 export interface ProviderRuntimeArgs {
   name: string;
   apiKey: string;
@@ -111,6 +123,7 @@ export interface ProviderRuntimeArgs {
   model: string;
   thinking: StoredThinking | undefined;
   maxTokensFor: (model: string) => number | undefined;
+  oauthHeaders?: Record<string, string>;
 }
 
 // ---- 模型目录 ----
