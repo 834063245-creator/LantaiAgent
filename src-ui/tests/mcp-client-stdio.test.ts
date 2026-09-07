@@ -57,4 +57,30 @@ describe('McpClient over real stdio', () => {
     expect(progress.some((p) => p.includes('halfway'))).toBe(true);
     await client.disconnect();
   });
+
+  it('detects unexpected server exit: isConnected flips false (Commit 6b 断线感知)', async () => {
+    const proc = createNodeStdioProc(process.execPath, [FIXTURE]);
+    const client = new McpClient({ serverName: 'fix', procIO: proc });
+    await client.connect();
+    expect(client.isConnected).toBe(true);
+
+    // 杀子进程（模拟 server 崩溃）→ onUnexpectedClose → isConnected 翻 false
+    const exited = new Promise<void>((resolve) => {
+      // 等退出事件传播（异步）——轮询 isConnected 翻转
+      const t = setInterval(() => {
+        if (!client.isConnected) {
+          clearInterval(t);
+          resolve();
+        }
+      }, 20);
+      setTimeout(() => {
+        clearInterval(t);
+        resolve();
+      }, 3000);
+    });
+    proc.kill();
+    await exited;
+    expect(client.isConnected).toBe(false);
+    expect(client.listRemoteTools()).toHaveLength(0); // 工具快照已清
+  });
 });

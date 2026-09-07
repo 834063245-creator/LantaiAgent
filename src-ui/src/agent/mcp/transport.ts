@@ -12,6 +12,11 @@ export interface McpTransport {
   send(line: string): Promise<void>;
   /** 订阅来自服务器的行（响应与通知）。返回退订函数。 */
   onMessage(cb: (line: string) => void): () => void;
+  /** 订阅传输**意外关闭**（底层进程退出/连接断开——非显式 close() 调用）。
+   *  stdio transport 实现；http/loopback 无进程面可缺省（不实现 = 无关闭事件）。
+   *  McpClient 用它把 isConnected 翻 false（死进程不再被视为已连接——
+   *  2026-09-07 skills-mcp-production-plan Commit 6b 断线感知）。 */
+  onUnexpectedClose?(cb: () => void): () => void;
   /** 启动就绪。 */
   start(): Promise<void>;
   /** 关闭传输。 */
@@ -133,13 +138,22 @@ export function createStdioTransport(proc: ProcIO): McpTransport {
         cbs.delete(cb);
       };
     },
+    onUnexpectedClose(cb: () => void) {
+      exitCbs.add(cb);
+      return () => {
+        exitCbs.delete(cb);
+      };
+    },
     async start() {
       /* 子进程已由 spawn 启动 */
       return Promise.resolve();
     },
     async close() {
+      // 先退订 exit（含 onUnexpectedClose 转发的 exitCbs）再 kill——
+      // 显式 close 触发的进程退出不算"意外关闭"，不上抛
       unsubOut();
       unsubExit();
+      exitCbs.clear();
       proc.kill();
     },
   };

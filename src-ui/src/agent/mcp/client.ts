@@ -149,6 +149,24 @@ export class McpClient {
       }
       this.dispatch(msg);
     });
+    // 断线感知（Commit 6b）：底层进程意外退出 → isConnected 翻 false——
+    // 否则死进程的 client 恒显示已连接，调用全失败直到下次装配
+    // （工厂层 if (!client.isConnected) 重连逻辑也因此永不触发）。
+    this.transport.onUnexpectedClose?.(() => {
+      this._markDisconnected();
+    });
+  }
+
+  /** 进程意外退出 → 连接态翻转 + 在途请求全部判负（错误可见不静默挂起）。 */
+  private _markDisconnected(): void {
+    if (!this.connected) return;
+    this.connected = false;
+    this.tools = empty;
+    for (const [, p] of this.pending) {
+      p.signal?.removeEventListener('abort', p.onAbort);
+      p.reject(new Error('McpClient: server 进程意外退出（连接已断）'));
+    }
+    this.pending.clear();
   }
 
   get server(): string {
