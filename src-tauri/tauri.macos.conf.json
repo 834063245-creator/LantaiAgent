@@ -1,5 +1,5 @@
 {
   "bundle": {
-    "resources": ["../grammars/*.dylib"]
+    "resources": { "../engine/grammars/*.dylib": "grammars/" }
   }
 }

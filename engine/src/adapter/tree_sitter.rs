@@ -412,11 +412,18 @@ pub fn add(a: i32, b: i32) -> i32 {
     }
 
     #[test]
-    fn test_analyze_kotlin_pending() {
-        // tree-sitter-kotlin 待 0.23+ 升级（C 符号冲突）
+    fn test_analyze_kotlin_dynamic_or_pending() {
+        // kotlin 静态链接受阻（C 符号冲突）；动态语法（engine/grammars DLL）
+        // 可用时经 libloading 真解析。资产归位（2026-09-08）后 grammars/
+        // 在测试位可达——两臂都合法，按装载器注册面（loaded ∪ available）
+        // 分支断言，环境无关的确定性。
         let a = TreeSitterAdapter;
         let (nodes, _, _) = a.analyze("Main.kt", "fun main() {}");
-        assert!(nodes.is_empty(), "kt not yet wired — pending grammar upgrade");
+        if GRAMMAR_LOADER.is_extension_registered("kt") {
+            assert!(!nodes.is_empty(), "动态 kotlin 语法就位时应产出节点");
+        } else {
+            assert!(nodes.is_empty(), "kt not yet wired — pending grammar upgrade");
+        }
     }
 
     #[test]

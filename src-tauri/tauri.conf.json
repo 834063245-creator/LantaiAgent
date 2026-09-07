@@ -32,14 +32,14 @@
       "icons/128x128@2x.png",
       "icons/icon.ico"
     ],
-    "resources": [
-      "../grammars/*.dll",
-      "onnxruntime.dll",
-      "models/all-MiniLM-L6-v2/model.onnx",
-      "models/all-MiniLM-L6-v2/vocab.txt",
-      "vendor/**/*",
-      "../src-ui/dist-plugins/**/*"
-    ],
+    "resources": {
+      "../engine/grammars/*.dll": "grammars/",
+      "../engine/onnxruntime.dll": "onnxruntime.dll",
+      "../engine/models/all-MiniLM-L6-v2/model.onnx": "models/all-MiniLM-L6-v2/model.onnx",
+      "../engine/models/all-MiniLM-L6-v2/vocab.txt": "models/all-MiniLM-L6-v2/vocab.txt",
+      "vendor/**/*": "vendor/",
+      "../src-ui/dist-plugins/**/*": "_up_/src-ui/dist-plugins/"
+    },
     "windows": {
       "wix": {
         "language": "zh-CN",

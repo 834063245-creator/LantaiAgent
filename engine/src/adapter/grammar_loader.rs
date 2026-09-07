@@ -285,7 +285,9 @@ impl GrammarLoader {
 /// 查找语法目录。检查顺序：
 /// 1. HOLOGRAM_GRAMMAR_DIR 环境变量
 /// 2. <exe_dir>/grammars/
-/// 3. ./grammars/（回退）
+/// 3. <祖先>/engine/grammars/（monorepo 开发位——2026-09-08 资产归位）
+/// 4. <cwd>/engine/grammars/ 或 ./engine/grammars/
+/// 5. ./grammars/（包目录开发位 / 独立分发回退）
 pub fn find_grammar_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("HOLOGRAM_GRAMMAR_DIR") {
         let p = PathBuf::from(dir);
@@ -296,6 +298,19 @@ pub fn find_grammar_dir() -> PathBuf {
     if let Ok(exe) = std::env::current_exe() {
         if let Some(parent) = exe.parent() {
             let d = parent.join("grammars");
+            if d.exists() {
+                return d;
+            }
+        }
+        for anc in exe.ancestors().skip(1) {
+            let d = anc.join("engine").join("grammars");
+            if d.exists() {
+                return d;
+            }
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        for d in [cwd.join("engine").join("grammars"), cwd.join("grammars")] {
             if d.exists() {
                 return d;
             }

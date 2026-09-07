@@ -176,9 +176,10 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=4096
 
       # model.onnx（90MB）不入库（.gitignore），但打包要求 tauri.conf.json resources 路径存在。
+      # 引擎资产归位（engine-host-severance，2026-09-08）：模型目录在 engine/models/。
       - name: Download MiniLM ONNX model
         shell: bash
-        working-directory: src-tauri
+        working-directory: engine
         run: |
           set -euo pipefail
           f=models/all-MiniLM-L6-v2/model.onnx

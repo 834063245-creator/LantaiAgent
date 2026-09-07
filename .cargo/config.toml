@@ -2,7 +2,7 @@
 # dynamic -lstdc++ (the -static-libstdc++ driver flag alone can't override
 # -Wl,-Bdynamic -lstdc++ that rustc hardcodes in its target spec).
 [target.x86_64-pc-windows-gnu]
-linker = "D:\\HoloGramHG\\grammars\\gcc-wrap.exe"
+linker = "D:\\HoloGramHG\\engine\\grammars\\gcc-wrap.exe"
 rustflags = ["-C", "link-args=-static-libgcc"]
 
 # sccache — shared compilation cache for parallel worktrees.

@@ -1083,13 +1083,15 @@ mod tests {
 
     #[test]
     fn test_count_source_files() {
-        // 应正确统计源代码文件，忽略非源码文件
+        // 应正确统计源代码文件，忽略非源码文件。非源样本用 .txt——
+        // 永不在语法注册表（静态/动态皆无），计数不随动态语法可用性漂移
+        //（资产归位 2026-09-08 后 markdown DLL 在测试位可达，.md 会入账）。
         let tmp = std::env::temp_dir().join("hologram_test_count");
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(tmp.join("src")).expect("准备压力测试项目");
         fs::write(tmp.join("src").join("main.py"), "x=1").expect("准备压力测试项目");
         fs::write(tmp.join("src").join("util.py"), "y=2").expect("准备压力测试项目");
-        fs::write(tmp.join("README.md"), "doc").expect("准备压力测试项目");
+        fs::write(tmp.join("data.txt"), "doc").expect("准备压力测试项目");
 
         let count = count_source_files(&tmp);
         assert_eq!(count, 2, "should count 2 .py files");

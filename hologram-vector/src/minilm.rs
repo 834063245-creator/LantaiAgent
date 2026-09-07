@@ -44,6 +44,7 @@ fn dll_candidates() -> Vec<PathBuf> {
     if let Ok(exe) = std::env::current_exe() {
         for anc in exe.ancestors().skip(1) {
             cands.push(anc.join("onnxruntime.dll"));
+            cands.push(anc.join("engine").join("onnxruntime.dll"));
         }
     }
     if let Ok(cwd) = std::env::current_dir() {
@@ -63,13 +64,13 @@ fn model_dir_candidates() -> Vec<PathBuf> {
     if let Ok(exe) = std::env::current_exe() {
         for anc in exe.ancestors().skip(1) {
             cands.push(anc.join("models").join(DIR));
-            cands.push(anc.join("src-tauri").join("models").join(DIR));
+            cands.push(anc.join("engine").join("models").join(DIR));
         }
     }
     if let Ok(cwd) = std::env::current_dir() {
         cands.push(cwd.join("models").join(DIR));
-        cands.push(cwd.join("src-tauri").join("models").join(DIR));
-        cands.push(cwd.join("..").join("src-tauri").join("models").join(DIR));
+        cands.push(cwd.join("engine").join("models").join(DIR));
+        cands.push(cwd.join("..").join("engine").join("models").join(DIR));
     }
     cands
 }

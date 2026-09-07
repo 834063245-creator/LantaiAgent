@@ -39,8 +39,8 @@ hologram_graph_files.json
 
 # Binaries
 *.dll
-!grammars/*.dll
-!src-tauri/onnxruntime.dll
+!engine/grammars/*.dll
+!engine/onnxruntime.dll
 *.exe
 # 捆绑的 MSYS2 工具集（shell-stability，随仓库分发的钉死版 shell）
 !src-tauri/vendor/msys2/bin/**
@@ -49,7 +49,7 @@ hologram_graph_files.json
 *.dylib
 
 # Embedding model binary (90MB) — user downloads locally
-src-tauri/models/**/*.onnx
+engine/models/**/*.onnx
 
 # ONNX Runtime DLL — bundled for Tauri resources
 # ponytail: ! rule above allows this specific path
@@ -172,7 +172,7 @@ scripts/daily-report/report-*.md
 scripts/catalog-source.snapshot.json
 
 # Grammar build artifacts
-grammars/build/
+engine/grammars/build/
 
 # Temp / stress / debug
 engine/tmplinux-stress/

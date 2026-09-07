@@ -131,7 +131,7 @@ mod tests {
 
     fn test_tokenizer() -> WordPieceTokenizer {
         // 真实词表（30522 词）
-        let path = Path::new("../src-tauri/models/all-MiniLM-L6-v2/vocab.txt");
+        let path = Path::new("../engine/models/all-MiniLM-L6-v2/vocab.txt");
         if !path.exists() { panic!("vocab.txt 缺失: {}", path.display()); }
         WordPieceTokenizer::from_file(path).unwrap()
     }
