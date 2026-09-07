@@ -107,31 +107,42 @@ impl Sandbox {
     }
 
     /// 用户级数据目录判定纯函数（home 注入——测试免 env 污染直测）。
-    /// ~/.lantai 下允许项目沙箱外访问的用户数据子目录（只读为主；
-    /// global_memory 历史含写绕过——skills 设计只读，写仍走项目内）。
+    /// ~/.lantai 下允许项目沙箱外访问的：
+    ///   - 数据子目录：global_memory（读+写豁免）、skills（读豁免，写锁项目内）
+    ///   - 根级数据文件：mcp.json（用户级 MCP 配置——读+写豁免，Commit 5b/6c）
     fn is_user_data_path_with_home(path: &Path, home: &str) -> bool {
         // ~/.lantai 下允许项目沙箱外访问的用户数据子目录（只读为主；
         // global_memory 历史含写绕过——skills 设计只读，写仍走项目内）。
         const USER_DATA_SUBDIRS: &[&str] = &["global_memory", "skills"];
+        // 根级数据文件（~/.lantai/<file>——首段即文件名，非子目录）。
+        const USER_DATA_FILES: &[&str] = &["mcp.json"];
         let lantai = PathBuf::from(home).join(".lantai");
         if !path.starts_with(&lantai) {
             return false;
         }
-        let first_ok = |p: &Path| {
-            p.strip_prefix(&lantai)
-                .ok()
-                .and_then(|rel| rel.components().next())
-                .and_then(|c| c.as_os_str().to_str())
-                .map(|first| USER_DATA_SUBDIRS.iter().any(|s| *s == first))
-                .unwrap_or(false)
+        let rel_ok = |p: &Path| {
+            let rel = match p.strip_prefix(&lantai).ok() {
+                Some(r) => r,
+                None => return false,
+            };
+            let mut comps = rel.components();
+            let first = comps.next().and_then(|c| c.as_os_str().to_str());
+            match first {
+                Some(f) => {
+                    // 子目录命中（白名单目录内任意层级）或根级文件命中
+                    USER_DATA_SUBDIRS.iter().any(|s| *s == f)
+                        || (comps.next().is_none() && USER_DATA_FILES.iter().any(|s| *s == f))
+                }
+                None => false,
+            }
         };
-        if first_ok(path) {
+        if rel_ok(path) {
             return true;
         }
         // canonicalize 变体（junction/symlink 解析后前缀判定——拒绝自身在
         // is_symlink_or_junction 检查，此处兜底规范化比较）
         std::fs::canonicalize(path)
-            .map(|p| p.starts_with(&lantai) && first_ok(&p))
+            .map(|p| p.starts_with(&lantai) && rel_ok(&p))
             .unwrap_or(false)
     }
 
@@ -153,17 +164,45 @@ impl Sandbox {
                 .unwrap_or(false)
     }
 
+    /// 用户级数据**写**豁免判定：global_memory 子目录（agent 管理记忆）
+    /// + ~/.lantai/mcp.json（用户 UI 管理用户级 MCP 配置，Commit 6c）。
+    /// 其余用户数据（skills 目录等）写仍锁项目内——防任意写跨项目资产。
+    fn is_user_data_writable_path(path: &Path) -> bool {
+        Self::is_global_memory_path(path) || Self::is_user_mcp_json_path(path)
+    }
+
+    /// ~/.lantai/mcp.json 判定（用户级 MCP 配置文件——读+写豁免）。
+    fn is_user_mcp_json_path(path: &Path) -> bool {
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_default();
+        if home.is_empty() {
+            return false;
+        }
+        Self::is_user_mcp_json_path_with_home(path, &home)
+    }
+
+    /// mcp.json 判定纯函数（home 注入——测试免 env 污染直测）。
+    fn is_user_mcp_json_path_with_home(path: &Path, home: &str) -> bool {
+        let f = PathBuf::from(home).join(".lantai").join("mcp.json");
+        let direct = path == f;
+        direct
+            || std::fs::canonicalize(path)
+                .map(|p| p == f)
+                .unwrap_or(false)
+    }
+
     /// 验证写入操作。锁定到项目目录，
     /// 用户级数据目录除外（global_memory 为 agent 管理；skills 本期只读——
     /// 写入仍锁项目内，防技能目录被任意写）。
     pub fn resolve_write(&self, path: &Path) -> SandboxResult {
-        // 用户级数据目录绕过（global_memory 写豁免保留；skills 目录不在写
-        // 豁免——技能安装走项目级 UI 动作，不开放任意写）
-        if Self::is_global_memory_path(path) {
+        // 用户级数据写豁免（global_memory + mcp.json；skills 目录不在豁免——
+        // 技能安装走项目级 UI 动作，不开放任意写）
+        if Self::is_user_data_writable_path(path) {
             let real = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-            // 安全检查仍然适用 — 记忆路径不允许符号链接
+            // 安全检查仍然适用 — 用户数据路径不允许符号链接
             if is_symlink_or_junction(path) {
-                return SandboxResult::Denied("global memory symlinks are not allowed".into());
+                return SandboxResult::Denied("user data path symlinks are not allowed".into());
             }
             return SandboxResult::Allowed(real);
         }
@@ -384,6 +423,25 @@ mod tests {
         // global_memory 保持放行（历史语义）
         let gm = home.join(".lantai").join("global_memory").join("MEMORY.md");
         assert!(Sandbox::is_user_data_path_with_home(&gm, &home_s), "~/.lantai/global_memory 应放行");
+    }
+
+    #[test]
+    fn user_data_path_mcp_json_allowed_rw() {
+        let home = fake_home();
+        let home_s = home.to_string_lossy().into_owned();
+        // ~/.lantai/mcp.json（用户级 MCP 配置）读+写豁免（Commit 5b/6c）
+        let f = home.join(".lantai").join("mcp.json");
+        assert!(Sandbox::is_user_data_path_with_home(&f, &home_s), "~/.lantai/mcp.json 读应放行");
+        assert!(
+            Sandbox::is_user_mcp_json_path_with_home(&f, &home_s),
+            "~/.lantai/mcp.json 写豁免判定应真"
+        );
+        // 同名前缀的其他文件不受影响
+        let other = home.join(".lantai").join("mcp.json.bak");
+        assert!(
+            !Sandbox::is_user_mcp_json_path_with_home(&other, &home_s),
+            "mcp.json.bak 不豁免"
+        );
     }
 
     #[test]
