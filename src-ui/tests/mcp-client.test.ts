@@ -68,6 +68,19 @@ describe('McpClient', () => {
     expect(publicToolName('repo', 'get_file')).toBe('mcp__repo__get_file');
   });
 
+  it('publicToolName 归一化追加哈希防塌缩（a.b 与 a_b 不同名）', () => {
+    // 非法字符触发归一 → 追加 FNV-1a 哈希（不同原串即使归一同形也保持不同）
+    const dotted = publicToolName('repo', 'a.b');
+    const underscored = publicToolName('repo', 'a_b');
+    expect(dotted.startsWith('mcp__repo__a_b')).toBe(true);
+    expect(underscored).toBe('mcp__repo__a_b'); // 纯合法名不追加哈希
+    expect(dotted).not.toBe(underscored); // 防塌缩：不同身份不同名
+    // 哈希稳定可复现
+    expect(publicToolName('repo', 'a.b')).toBe(dotted);
+    // 纯合法名（含连字符/下划线）原样返回——既有兼容面零变化
+    expect(publicToolName('repo', 'get-file')).toBe('mcp__repo__get-file');
+  });
+
   it('connects, lists tools, and calls a tool via loopback transport', async () => {
     const fake = makeFakeServer();
     const client = new McpClient({

@@ -76,14 +76,27 @@ type JsonRpcMessage = {
   params?: Record<string, unknown>;
 };
 
-/** 把远端工具名规范化为本地唯一名。 */
+/** FNV-1a 32 位稳定哈希（hex 8）——工具名防塌缩（无 crypto 依赖，纯函数可测）。 */
+export function fnv1aHex(input: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+/** 把远端工具名规范化为本地唯一名。
+ *  MCP 参考实现：非法字符替换为 `_`。**发生替换时追加原串哈希**——防不同
+ *  远端名（如 `a.b` 与 `a_b`）归一后塌缩成同名（skills-mcp-production-plan
+ *  Commit 5，对齐 DSH/kimi-code 的 lossy+hash 防塌缩）。纯合法名（无替换）
+ *  原样返回——既有 `mcp__server__tool` 形态与测试兼容面零变化。 */
 export function publicToolName(serverName: string, rawName: string): string {
   const joined = `mcp__${serverName}__${rawName}`;
-  // MCP 参考实现：非法字符替换为 `_`，超长截断并加哈希，避免不同远端名塌陷。
   const normalized = joined.replace(/[^A-Za-z0-9_-]/g, '_');
   if (normalized === joined) return normalized;
-  // 简单归一：仅发生替换时保留（不引入 hash 依赖，满足工具名唯一性即可）。
-  return normalized;
+  // 追加稳定哈希（原串 FNV-1a）——不同身份即使归一后同形也保持不同名
+  return `${normalized}__${fnv1aHex(joined)}`;
 }
 
 export class McpClient {
