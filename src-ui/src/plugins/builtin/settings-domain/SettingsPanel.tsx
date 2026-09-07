@@ -26,6 +26,7 @@ import {
   ProviderPage,
   persistSecrets,
   removeSecret,
+  SkillsPage,
   saveSettings,
   selectPreset,
   setLang,
@@ -36,7 +37,7 @@ import {
   useUpdateStore,
 } from './host';
 
-type Tab = 'provider' | 'agent' | 'display' | 'languages' | 'plugins' | 'about';
+type Tab = 'provider' | 'agent' | 'display' | 'languages' | 'plugins' | 'skills' | 'about';
 
 interface LspServer {
   command: string;
@@ -376,6 +377,7 @@ const SettingsPanelApp: React.FC<{
               ['display', 'mode-standard', '显示'],
               ['languages', 'code', '语言依赖'],
               ['plugins', 'agent', '插件'],
+              ['skills', 'agent', '技能'],
               ['about', 'info', '关于'],
             ] as const
           ).map(([id, icon, label]) => (
@@ -627,6 +629,11 @@ const SettingsPanelApp: React.FC<{
           {/* ═══ 插件标签页（S4-3 安装通道）═══ */}
           <div className="sp-tab-content" data-tab="plugins" style={{ display: activeTab === 'plugins' ? '' : 'none' }}>
             <PluginsPage />
+          </div>
+
+          {/* ═══ 技能标签页（skills-mcp-production-plan Commit 4）═══ */}
+          <div className="sp-tab-content" data-tab="skills" style={{ display: activeTab === 'skills' ? '' : 'none' }}>
+            <SkillsPage />
           </div>
 
           {/* ═══ 关于标签页 ═══ */}

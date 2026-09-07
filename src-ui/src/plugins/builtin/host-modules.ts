@@ -54,6 +54,7 @@ import { PluginBoundary } from '../../app/PluginBoundary';
 import { ConfirmDialog } from '../../app/panels/settings/ConfirmDialog';
 import { PluginsPage } from '../../app/panels/settings/PluginsPage';
 import { ProviderPage } from '../../app/panels/settings/ProviderPage';
+import { SkillsPage } from '../../app/panels/settings/SkillsPage';
 import { useShellStore } from '../../app/shell-store';
 import { WinControls } from '../../app/WinControls';
 import { isMockMode, watchFileDragDrop } from '../../bridge';
@@ -338,6 +339,7 @@ const faceDeps = {
   ConfirmDialog,
   PluginsPage,
   ProviderPage,
+  SkillsPage,
   // 设置 / provider / rpc / i18n
   autoUpdateCheckEnabled,
   effectiveModels,

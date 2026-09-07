@@ -54,6 +54,7 @@ export const iconHtml = impl.iconHtml;
 export const ConfirmDialog = impl.ConfirmDialog as ComponentType;
 export const PluginsPage = impl.PluginsPage as ComponentType;
 export const ProviderPage = impl.ProviderPage as ComponentType;
+export const SkillsPage = impl.SkillsPage as ComponentType;
 
 export type AppSettings = import('./host').AppSettings;
 export type ConnectionProbe = import('./host').ConnectionProbe;

@@ -48,6 +48,26 @@ import { type AssistantMessage, type ChatMessage, resetMsgIdCounter, type UserMe
 import { getWorkspaceEpoch, isCurrentEpoch } from '../../workspace-scope';
 import type { PromptShelfHandle } from './PromptShelf';
 
+// ── 斜杠技能候选缓存（skills-mcp-production-plan Commit 4）──
+// CommandRegistry.skillProvider 是同步签名；技能扫描是异步——用模块级缓存
+// 桥接：chat-core 构造时 fire-and-forget 扫一次当前工作区技能，provider 同步
+// 读缓存。技能变更（装/删）经 SettingsPage 或重开会话后自然刷新。
+let _slashSkillCache: Array<{ name: string; description?: string }> = [];
+
+/** 刷新斜杠技能候选（当前工作区 .lantai/skills + ~/.lantai/skills）。
+ *  chat-core 构造时调用（会话创建低频）；无工作区/读失败保持空候选。 */
+async function refreshSlashSkillCache(): Promise<void> {
+  try {
+    const path = useShellStore.getState().projectPath;
+    if (!path) return;
+    const { scanSkills } = await import('../../agent/skills');
+    const scan = await scanSkills(path);
+    _slashSkillCache = scan.skills.map((s) => ({ name: s.name, description: s.description }));
+  } catch {
+    // 技能读不到不阻塞 slash 路由——保持空候选
+  }
+}
+
 /** 视图注册的输入框命令式接口（聚焦/全选），其余输入状态一律走 input-store */
 export interface ComposerApi {
   focus: () => void;
@@ -159,6 +179,9 @@ export class ChatCore {
     this._exec = createExecState();
 
     CommandRegistry.instance.registerAll(DEFAULT_COMMANDS);
+    // 斜杠技能候选（Commit 4）：provider 同步读模块级缓存，构造时异步预热
+    CommandRegistry.instance.setSkillProvider(() => _slashSkillCache);
+    void refreshSlashSkillCache();
     this._wireCommandHandlers();
 
     // ── ask_user tool → prompt shelf（视图注册后生效）──
