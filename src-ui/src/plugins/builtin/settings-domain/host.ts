@@ -18,6 +18,7 @@ export { typedJsonRpc } from '../../../rpc-contract';
 export type { AppSettings, ConnectionProbe, ProviderId } from '../../../settings';
 export {
   autoUpdateCheckEnabled,
+  canvasWheelMode,
   graphEngineEnabled,
   loadSettings,
   loadSettingsWithSecrets,

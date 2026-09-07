@@ -2,19 +2,24 @@
 // SPDX-License-Identifier: MIT
 
 // 视口域（paper-panel-split C2）——PaperPanel 的摄像机：view/canvasSize 订阅、
-// 平移（rAF 帧合并）、滚轮平滚（plain = 平移 / ctrl = 缩放）、拖选自动滚屏、
-// Home 回锚、LOD 缩远、重栅格化锐化、视口持久化、尺寸 RO、世界点守恒、重挂
-// 清除。焦点飞行（flyTo 族）在 use-paper-focus——本域只产出飞行抢占所需的
+// 平移（rAF 帧合并）、滚轮平滚（plain = 平移 / ctrl = 缩放 / 设置可切回
+// 滚轮=缩放）、缩放步进（书眉 −/+ 与键盘 +/−/0）、拖选自动滚屏、Home 回锚、
+// LOD 缩远、重栅格化锐化、视口持久化、尺寸 RO、世界点守恒、重挂清除。
+// 焦点飞行（flyTo 族）在 use-paper-focus——本域只产出飞行抢占所需的
 // focusRafRef/focusFlightRef 载体。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   autoPanVector,
+  canvasWheelMode,
   createFocusFlightScheduler,
   getCanvasStore,
   injectPaperTokens,
+  loadSettings,
   lodActive,
   lodFarActive,
+  nextZoomStep,
+  onSettingsSaved,
   panBy,
   scheduleCanvasSave,
   useCanvasViewStore,
@@ -244,7 +249,20 @@ export function usePaperViewport(core: PaperCore | null) {
    * 2026-09-07 UX 批：滚轮语义改「平滚视角」——plain wheel = 平移（纵向随
    * deltaY / 横向随 deltaX，Chromium 已把 Shift+滚轮换算成 deltaX，其他宿主
    * 在此兜底换算）；Ctrl+wheel（触控板捏合同道）= 缩放。工具/程文输出区
-   * （pre/.pp-out 自带溢出滚动）保留原生透传——滚输出文本不带走画布。 */
+   * （pre/.pp-out 自带溢出滚动）保留原生透传——滚输出文本不带走画布。
+   * 2026-09-08 缩放舒适度拍板：设置「滚轮行为」可选回「缩放画布」
+   *（canvasWheelMode——Whimsical 派），zoom 模式下 plain wheel 走原缩放路径。 */
+  const wheelZoomModeRef = useRef(false);
+  useEffect(() => {
+    /* 滚轮行为随设置即时换轨：mount 读一次 + 保存广播刷新（设置面板保存 →
+     * onSettingsSaved → 重读）。滚轮是高频事件——不逐事件 JSON.parse。 */
+    const sync = () => {
+      wheelZoomModeRef.current = canvasWheelMode(loadSettings()) === 'zoom';
+    };
+    sync();
+    return onSettingsSaved(sync);
+  }, []);
+
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
@@ -261,7 +279,8 @@ export function usePaperViewport(core: PaperCore | null) {
         focusFlightRef.current.end();
       }
       useCanvasViewStore.getState().requestFocus(null);
-      if (e.ctrlKey) {
+      // Ctrl 恒缩放（捏合同道）；设置切「缩放画布」时 plain wheel 也缩放
+      if (e.ctrlKey || wheelZoomModeRef.current) {
         // 缩放守卫：记录「最近一次缩放」时刻，自动选中在其后 600ms 内不判
         zoomGuardUntilRef.current = performance.now() + 600;
         const rect = el.getBoundingClientRect();
@@ -281,6 +300,61 @@ export function usePaperViewport(core: PaperCore | null) {
     el.addEventListener('wheel', onWheelNative, { passive: false });
     return () => el.removeEventListener('wheel', onWheelNative);
   }, [setView]);
+
+  /* ── 缩放步进 / 回 100%（2026-09-08 缩放舒适度拍板）──书眉 −/+ 控件与键盘
+   * +/−/0 的语义端：阶梯档位（ZOOM_STEPS）迈步、锚视口中心；手动接管视口
+   *（取消在途定位动画 + 清 pendingFocus），与滚轮同纪律。 */
+  const stepZoom = useCallback(
+    (dir: 1 | -1) => {
+      if (focusRafRef.current) {
+        cancelAnimationFrame(focusRafRef.current);
+        focusRafRef.current = 0;
+        focusFlightRef.current.end();
+      }
+      useCanvasViewStore.getState().requestFocus(null);
+      zoomGuardUntilRef.current = performance.now() + 600;
+      const { view: v, canvasSize: cs } = useCanvasViewStore.getState();
+      const target = nextZoomStep(v.zoom, dir);
+      setView((cur) => zoomAt(cur, cs.w / 2, cs.h / 2, target / cur.zoom));
+    },
+    [setView],
+  );
+  const resetZoom = useCallback(() => {
+    if (focusRafRef.current) {
+      cancelAnimationFrame(focusRafRef.current);
+      focusRafRef.current = 0;
+      focusFlightRef.current.end();
+    }
+    useCanvasViewStore.getState().requestFocus(null);
+    zoomGuardUntilRef.current = performance.now() + 600;
+    const { canvasSize: cs } = useCanvasViewStore.getState();
+    setView((cur) => zoomAt(cur, cs.w / 2, cs.h / 2, 1 / cur.zoom));
+  }, [setView]);
+
+  /* 键盘缩放快捷键：+ / = 上调、- / _ 下调、0 回 100%（Ctrl+= / Ctrl+− 浏览器
+   * 习惯别名同收）；输入框/编辑区内不触发（Home 同款门控）。 */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '+' && e.key !== '=' && e.key !== '-' && e.key !== '_' && e.key !== '0') return;
+      if (e.altKey || e.metaKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (e.key === '0') {
+        e.preventDefault();
+        resetZoom();
+        return;
+      }
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        stepZoom(1);
+        return;
+      }
+      e.preventDefault();
+      stepZoom(-1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [stepZoom, resetZoom]);
 
   /* 回原点快捷键（D-R1-1 方位感）：Home → 视口回锚点几何 */
   useEffect(() => {
@@ -481,6 +555,8 @@ export function usePaperViewport(core: PaperCore | null) {
     panning,
     panningRef,
     selDragRef,
+    stepZoom,
+    resetZoom,
     zoomGuardUntilRef,
     focusRafRef,
     focusFlightRef,

@@ -5,7 +5,7 @@
 //
 // 承接面：shell-store 的 statusText（pushStatus 写入——工作区流大量调用：
 // 图谱预热/分析进度/切换提示/插件 notify 等）。V5 拆状态栏后这些信息
-// 对用户不可见，本组件把它接回书眉（与 .pp-zoom 同语言：mono 小字）。
+// 对用户不可见，本组件把它接回书眉（与 .pp-zoom-ctl 同语言：mono 小字）。
 //
 // 展示语义：
 //   - analyzing 徽标（◆ 分析中）优先展示——后台预热/分析是用户最关心的
@@ -17,7 +17,7 @@
 // PaperPanel 自 runningSessions 真源传入）插在警报之后、分析之前——
 // 前台回合是用户视线焦点，比后台分析优先；呼吸点/石青与「分析中」同语言。
 //
-// 挂载：PaperPanel 书眉（pp-zoom 旁）。app 级单例 store，无面板生命周期。
+// 挂载：PaperPanel 书眉（pp-zoom-ctl 旁）。app 级单例 store，无面板生命周期。
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享真实例。
 
 import { memo, useEffect, useRef, useState } from 'react';

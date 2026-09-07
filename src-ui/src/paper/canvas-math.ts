@@ -57,6 +57,27 @@ export function panBy(v: Viewport, dx: number, dy: number): Viewport {
   return { ...v, panX: v.panX + dx, panY: v.panY + dy };
 }
 
+/* ── 缩放阶梯（2026-09-08 缩放舒适度拍板）──
+ * 书眉 −/+ 控件与键盘 +/− 步进共用：不连续乘子（×1.2 手感不匀），走常用
+ * 档位梯；档间值（自由缩放的落点）迈步 = 取该方向的下一档（上调恒升、
+ * 下调恒降），端点外夹持。 */
+export const ZOOM_STEPS = [ZOOM_MIN, 0.5, 0.75, 1, 1.5, 2, ZOOM_MAX];
+
+/** 阶梯步进：dir +1 上调 / -1 下调——返回该方向的下一档位；越出两端夹持。 */
+export function nextZoomStep(zoom: number, dir: 1 | -1): number {
+  const EPS = 1e-9;
+  if (dir > 0) {
+    for (const s of ZOOM_STEPS) {
+      if (s > zoom + EPS) return s;
+    }
+    return ZOOM_MAX;
+  }
+  for (let i = ZOOM_STEPS.length - 1; i >= 0; i--) {
+    if (ZOOM_STEPS[i] < zoom - EPS) return ZOOM_STEPS[i];
+  }
+  return ZOOM_MIN;
+}
+
 /* ── 拖选自动滚屏（2026-09-07 UX 批）──
  * 鼠标拖选文字贴到画布边缘时，视口按指针入带深度自动平移（拖拽中介手势的
  * 通用原语——内容向指针反方向追出画外）。纯几何：指针位 → 单帧平移量。 */

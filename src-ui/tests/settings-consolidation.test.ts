@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as bridge from '../src/bridge';
 import {
+  canvasWheelMode,
   defaultBaseUrl,
   isFactoryBaseUrl,
   loadSettings,
@@ -83,6 +84,23 @@ describe('onSettingsSaved', () => {
     saveSettings(s);
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
     expect(raw.providers[0].apiKey).toBe('');
+  });
+});
+
+describe('canvasWheelMode（画布滚轮行为，2026-09-08 缩放舒适度拍板）', () => {
+  it('缺省容错：旧存储无 canvas 节 / 未知值 = 平滚视角', () => {
+    expect(canvasWheelMode(loadSettings())).toBe('pan');
+    const s = loadSettings();
+    delete s.canvas;
+    expect(canvasWheelMode(s)).toBe('pan');
+    expect(canvasWheelMode({ ...s, canvas: { wheelMode: 'bogus' as never } })).toBe('pan');
+  });
+
+  it('zoom 显式声明才缩放；save→load 往返保真', () => {
+    const s = loadSettings();
+    s.canvas = { wheelMode: 'zoom' };
+    saveSettings(s);
+    expect(canvasWheelMode(loadSettings())).toBe('zoom');
   });
 });
 

@@ -380,6 +380,8 @@ export function PaperPanel() {
     panning,
     panningRef,
     selDragRef,
+    stepZoom,
+    resetZoom,
     zoomGuardUntilRef,
     focusRafRef,
     focusFlightRef,
@@ -601,9 +603,41 @@ export function PaperPanel() {
           <div className="pp-topbar">
             <span className="pp-title">画布</span>
             <span className="pp-tag">兰台 · CANVAS</span>
-            <span className="pp-zoom" title={`画布读数：${totalBlocks} 块 · 已钉 ${totalPinned} · 纸条 ${totalStrips}`}>
-              {zoomLabel}
-            </span>
+            {/* 缩放控件（2026-09-08 缩放舒适度拍板）：−/+ 阶梯步进（ZOOM_STEPS
+                常用档）、点读数回 100%——滚轮平滚模式下缩放的零修饰键落点。
+                读数 hover 提示保留画布统计；键盘 +/−/0 同语义。 */}
+            <div
+              className="pp-zoom-ctl"
+              title={`画布读数：${totalBlocks} 块 · 已钉 ${totalPinned} · 纸条 ${totalStrips} · 滚轮平滚 / Ctrl+滚轮缩放`}
+            >
+              <button
+                type="button"
+                className="pp-zoom-btn"
+                aria-label="缩小一档"
+                title="缩小一档（键盘 −）"
+                onClick={() => stepZoom(-1)}
+              >
+                −
+              </button>
+              <button
+                type="button"
+                className="pp-zoom-val"
+                aria-label="缩放回到 100%"
+                title="回到 100%（键盘 0）"
+                onClick={resetZoom}
+              >
+                {zoomLabel}
+              </button>
+              <button
+                type="button"
+                className="pp-zoom-btn"
+                aria-label="放大一档"
+                title="放大一档（键盘 +）"
+                onClick={() => stepZoom(1)}
+              >
+                ＋
+              </button>
+            </div>
             <StatusLine running={activeRunning} />
             <button
               type="button"

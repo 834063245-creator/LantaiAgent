@@ -45,6 +45,7 @@ export {
   ANCHOR,
   autoPanVector,
   layoutRegion,
+  nextZoomStep,
   panBy,
   screenToWorld,
   viewFocusRegion,
@@ -114,6 +115,9 @@ export { collapseToolGroups, translateMessagesCached } from '../../../paper/tran
 export { injectPaperTokens } from '../../../paper/type-tokens';
 export type { FlowGeom, PinnedGeom } from '../../../paper/virtualize';
 export { viewportWorldRect, visibleFlowWindow, visiblePinnedIds } from '../../../paper/virtualize';
+// 设置读面（2026-09-08 缩放舒适度批）：滚轮行为 canvasWheelMode + 保存广播
+// onSettingsSaved——视口域滚轮语义随设置即时换轨（ref 缓存 + 广播刷新）。
+export { canvasWheelMode, loadSettings, onSettingsSaved } from '../../../settings';
 export { useBgAlertStore } from '../../../state/bg-alert-store';
 export type { CanvasStore } from '../../../state/canvas-store';
 export { blockFromSnapshot, getCanvasStore, scheduleCanvasSave, snapshotFromBlock } from '../../../state/canvas-store';

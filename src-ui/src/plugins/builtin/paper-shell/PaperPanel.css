@@ -86,13 +86,42 @@
   color: var(--ink-3);
   text-transform: uppercase;
 }
-.pp-topbar .pp-zoom {
+/* ── 缩放控件（2026-09-08 缩放舒适度拍板）：−/+ 阶梯步进 + 点读数回 100%。
+ * 沿用旧 .pp-zoom 读数的 mono 墨语言；三键裸面无边框，hover 提墨一档
+ * （ink-3 → ink-2），读数恒 tabular 不跳宽。 */
+.pp-topbar .pp-zoom-ctl {
   margin-left: auto;
+  display: flex;
+  align-items: center;
   font-family: var(--f-mono);
   font-size: calc(10px * var(--font-scale));
   letter-spacing: 0.1em;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
+}
+.pp-zoom-ctl button {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 4px 6px;
+  cursor: pointer;
+  transition: color var(--snap);
+  -webkit-app-region: no-drag;
+}
+.pp-zoom-ctl button:hover {
+  color: var(--ink-2);
+  background: var(--paper-deep);
+}
+.pp-zoom-ctl .pp-zoom-btn {
+  font-size: calc(11px * var(--font-scale));
+  line-height: 1;
+}
+.pp-zoom-ctl .pp-zoom-val {
+  min-width: 44px;
+  text-align: center;
 }
 .pp-close {
   font-family: var(--f-song);

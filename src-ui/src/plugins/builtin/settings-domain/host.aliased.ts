@@ -39,6 +39,7 @@ export const selectPreset = impl.selectPreset;
 export const setLang = impl.setLang;
 export const typedJsonRpc = impl.typedJsonRpc;
 export const autoUpdateCheckEnabled = impl.autoUpdateCheckEnabled;
+export const canvasWheelMode = impl.canvasWheelMode;
 export const graphEngineEnabled = impl.graphEngineEnabled;
 export const loadSettings = impl.loadSettings;
 export const loadSettingsWithSecrets = impl.loadSettingsWithSecrets;

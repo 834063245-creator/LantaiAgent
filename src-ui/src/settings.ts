@@ -136,6 +136,19 @@ export interface UpdateSettings {
   autoCheck: boolean;
 }
 
+/** 画布设置（可选——旧存储无此节 = 平滚，canvasWheelMode 容错读取）。
+ *  2026-09-08 缩放舒适度拍板：滚轮裸操作给「平滚视角」或「缩放画布」二选一
+ *  （Miro 派 vs Whimsical 派），另一操作恒有 Ctrl+滚轮 + 书眉缩放控件兜底。 */
+export interface CanvasSettings {
+  /** 滚轮行为：'pan' = 平滚视角（默认）；'zoom' = 缩放画布。 */
+  wheelMode: 'pan' | 'zoom';
+}
+
+/** 读取画布滚轮行为（缺省容错：旧存储无此节/未知值 = 平滚视角）。 */
+export function canvasWheelMode(s: AppSettings): 'pan' | 'zoom' {
+  return s.canvas?.wheelMode === 'zoom' ? 'zoom' : 'pan';
+}
+
 export interface AppSettings {
   /** 新会话默认提供方 = 最近使用的 provider（2026-08-26：「设为当前」按钮退役，
    *  activeProvider 不再手动指定，而是在创作坞切模型时自动跟从——compose-store
@@ -152,6 +165,8 @@ export interface AppSettings {
   graphEngine?: GraphEngineSettings;
   /** 更新器设置（可选——旧存储无此节 = 自动检查开，autoUpdateCheckEnabled 容错读取）。 */
   updates?: UpdateSettings;
+  /** 画布设置（可选——旧存储无此节 = 平滚视角，canvasWheelMode 容错读取）。 */
+  canvas?: CanvasSettings;
 }
 
 const STORAGE_KEY = 'hologram_settings';
@@ -224,6 +239,9 @@ const DEFAULTS: AppSettings = {
   },
   updates: {
     autoCheck: true,
+  },
+  canvas: {
+    wheelMode: 'pan',
   },
 };
 

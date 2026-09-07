@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: MIT.
 
 // 画布视口 UX 批（2026-09-07 用户四项：滚轮平滚 / 拖选自动滚屏 / 流区背景
-// 拖拽平移）行为考官——挂真实 PaperPanel 穿全层，jsdom 原生事件直驱：
+// 拖拽平移；2026-09-08 缩放舒适度拍板：书眉缩放控件 + 键盘 +/−/0 + 滚轮
+// 行为设置切换）行为考官——挂真实 PaperPanel 穿全层，jsdom 原生事件直驱：
 //   ① 滚轮语义：plain wheel = 平移（deltaY/deltaX，Shift 兜底换算），Ctrl+wheel
 //      = 缩放（锚光标）；pre/.pp-out 输出区原生透传（画布不动）。
 //   ② 流区背景（.pp-region 纸面）按下拖动 = 平移画布；块文本按下拖动 ≠ 平移。
 //   ③ 拖选自动滚屏：活选区 + 指针贴画布下缘 → panY 持续减小（rAF 循环）+
 //      Selection.extend 每帧把焦点追到指针下（caretRangeFromPoint 注入）；
 //      松手停滚；选区折叠不滚。
+//   ④ 缩放舒适度：书眉 −/+ 阶梯迈步（ZOOM_STEPS）+ 点读数回 100%；键盘
+//      +/=/−/0（输入框门控）；设置「滚轮行为=缩放画布」时 plain wheel
+//      直接缩放（Miro 派 ↔ Whimsical 派互切）。
 // harness 时序纪律同 paper-lod-tiers（RO 0×0 直写覆盖 + restoreView 预置掐
 // 挂载期视角飞行）。
 
@@ -84,6 +88,7 @@ import { Context } from '../src/cordis';
 import { wheelFactor } from '../src/paper/canvas-math';
 import { PaperPanel } from '../src/plugins/builtin/paper-shell/PaperPanel';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
+import { loadSettings, saveSettings } from '../src/settings';
 import { getCanvasStore } from '../src/state/canvas-store';
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
 import { useDockStore } from '../src/state/dock-store';
@@ -413,5 +418,92 @@ describe('画布视口 UX（2026-09-07：滚轮平滚 / 流区拖拽 / 拖选自
     await act(async () => {
       fire(window, 'mouseup', { clientX: 600, clientY: 780 });
     });
+  }, 30_000);
+
+  /* ── ④ 缩放舒适度（2026-09-08 拍板：书眉缩放控件 + 键盘 +/−/0 + 滚轮行为设置）── */
+
+  it('书眉缩放控件：＋/− 阶梯迈步（锚视口中心）、点读数回 100%', async () => {
+    await mountCanvas(); // 出发视口：zoom 1 / pan (600, 600)
+    const btns = container?.querySelectorAll<HTMLButtonElement>('.pp-zoom-ctl button');
+    expect(btns?.length).toBe(3);
+    // ＋：1 → 1.5，中心锚守恒（世界点 0,-200 不动 → pan (600, 700)）
+    await act(async () => {
+      btns?.[2].click();
+    });
+    expect(useCanvasViewStore.getState().view.zoom).toBe(1.5);
+    expect(useCanvasViewStore.getState().view.panX).toBe(600);
+    expect(useCanvasViewStore.getState().view.panY).toBe(700);
+    // −：1.5 → 回 1（原位复位）
+    await act(async () => {
+      btns?.[0].click();
+    });
+    const v = useCanvasViewStore.getState().view;
+    expect(v.zoom).toBe(1);
+    expect(v.panX).toBe(600);
+    expect(v.panY).toBe(600);
+    // 自由缩放到档间值（0.6）后 ＋：取该方向下一档 0.75
+    await act(async () => {
+      useCanvasViewStore.getState().setView((cur) => ({ ...cur, zoom: 0.6 }));
+    });
+    await act(async () => {
+      btns?.[2].click();
+    });
+    expect(useCanvasViewStore.getState().view.zoom).toBe(0.75);
+    // 点读数：回 100%（中心锚守恒）
+    await act(async () => {
+      btns?.[1].click();
+    });
+    const v2 = useCanvasViewStore.getState().view;
+    expect(v2.zoom).toBe(1);
+    expect(v2.panX).toBe(600);
+  }, 30_000);
+
+  it('键盘缩放快捷键：+/=/−/0（Ctrl+= 别名同收），输入框内不触发', async () => {
+    await mountCanvas();
+    const key = (k: string, init: KeyboardEventInit = {}): void => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: k, cancelable: true, bubbles: true, ...init }));
+    };
+    await act(async () => {
+      key('+');
+    });
+    expect(useCanvasViewStore.getState().view.zoom).toBe(1.5);
+    await act(async () => {
+      key('-');
+    });
+    expect(useCanvasViewStore.getState().view.zoom).toBe(1);
+    await act(async () => {
+      key('=', { ctrlKey: true }); // Ctrl+= 浏览器习惯别名
+    });
+    expect(useCanvasViewStore.getState().view.zoom).toBe(1.5);
+    await act(async () => {
+      key('0');
+    });
+    expect(useCanvasViewStore.getState().view.zoom).toBe(1);
+    // 输入框内打字不触发（composer/设置输入框同门控）
+    const ta = document.createElement('textarea');
+    document.body.appendChild(ta);
+    ta.focus();
+    await act(async () => {
+      ta.dispatchEvent(new KeyboardEvent('keydown', { key: '+', cancelable: true, bubbles: true }));
+    });
+    expect(useCanvasViewStore.getState().view.zoom).toBe(1);
+    ta.remove();
+  }, 30_000);
+
+  it('滚轮行为=缩放画布（设置切换）：plain wheel 直接缩放、不再平移', async () => {
+    // 预置设置：滚轮行为 = 缩放画布（whimsical 派），再挂载（mount 期同步读设置）
+    const s = loadSettings();
+    s.canvas = { wheelMode: 'zoom' };
+    saveSettings(s);
+    await mountCanvas();
+    container
+      ?.querySelector('.pp-canvas')
+      ?.dispatchEvent(
+        new WheelEvent('wheel', { deltaY: 120, clientX: 600, clientY: 400, bubbles: true, cancelable: true }),
+      );
+    const v = useCanvasViewStore.getState().view;
+    expect(v.zoom).toBeCloseTo(wheelFactor(120), 10); // 缩放路径（平移路径 zoom 不动）
+    // 锚光标守恒：屏幕 (600,400) 下的世界点缩放前后不动（zoom 路径特征）
+    expect((400 - v.panY) / v.zoom).toBeCloseTo(-200, 6);
   }, 30_000);
 });

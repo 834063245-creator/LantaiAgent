@@ -74,6 +74,7 @@ import {
   ANCHOR,
   autoPanVector,
   layoutRegion,
+  nextZoomStep,
   panBy,
   screenToWorld,
   viewFocusRegion,
@@ -155,6 +156,7 @@ import { thinkingOptionsFor } from '../../provider/thinking';
 import { kernelListDirectory, kernelReadFileRaw, kernelWriteFile, typedJsonRpc } from '../../rpc-contract';
 import {
   autoUpdateCheckEnabled,
+  canvasWheelMode,
   effectiveModels,
   graphEngineEnabled,
   loadSettings,
@@ -236,6 +238,7 @@ const faceDeps = {
   regionFrame,
   ANCHOR,
   autoPanVector,
+  nextZoomStep,
   layoutRegion,
   panBy,
   screenToWorld,
@@ -344,6 +347,7 @@ const faceDeps = {
   SkillsPage,
   // 设置 / provider / rpc / i18n
   autoUpdateCheckEnabled,
+  canvasWheelMode,
   effectiveModels,
   graphEngineEnabled,
   loadSettings,

@@ -20,6 +20,7 @@ import {
   autoPanVector,
   identityView,
   layoutFlow,
+  nextZoomStep,
   panBy,
   screenToWorld,
   viewForAnchor,
@@ -201,6 +202,23 @@ describe('paper/canvas-math', () => {
     // 双带重叠（画布窄于 2×带宽）取深侧不互抵：pos 10/40 贴左带更深（26 vs 6）
     const tiny = autoPanVector(10, 400, 40, 800);
     expect(tiny.dx).toBeCloseTo(AUTO_PAN_MAX_SPEED * (26 / 36));
+  });
+
+  it('nextZoomStep（缩放阶梯，2026-09-08）：档位迈步 / 档间取该方向下一档 / 端点夹持', () => {
+    // 档上迈步：1 → 上 1.5 / 下 0.75
+    expect(nextZoomStep(1, 1)).toBe(1.5);
+    expect(nextZoomStep(1, -1)).toBe(0.75);
+    // 档间值迈步 = 取该方向的下一档（上调恒升、下调恒降——0.8 上调 → 1，下调 → 0.75）
+    expect(nextZoomStep(0.8, 1)).toBe(1);
+    expect(nextZoomStep(0.8, -1)).toBe(0.75);
+    expect(nextZoomStep(1.2, 1)).toBe(1.5);
+    expect(nextZoomStep(1.2, -1)).toBe(1);
+    // 端点夹持：顶上调不动（2.4），底下调不动（0.35）
+    expect(nextZoomStep(2.4, 1)).toBe(ZOOM_MAX);
+    expect(nextZoomStep(0.35, -1)).toBe(ZOOM_MIN);
+    // 越出端点的极端值：仍夹回端点
+    expect(nextZoomStep(5, 1)).toBe(ZOOM_MAX);
+    expect(nextZoomStep(0.1, -1)).toBe(ZOOM_MIN);
   });
 
   it('layoutFlow：最新块底边贴锚点（y=0），流向上生长（D-R1-3）', () => {
