@@ -21,6 +21,7 @@ import {
   iconHtml,
   loadSettings,
   loadSettingsWithSecrets,
+  McpPage,
   notifyAgentConfigChanged,
   PluginsPage,
   ProviderPage,
@@ -37,7 +38,7 @@ import {
   useUpdateStore,
 } from './host';
 
-type Tab = 'provider' | 'agent' | 'display' | 'languages' | 'plugins' | 'skills' | 'about';
+type Tab = 'provider' | 'agent' | 'display' | 'languages' | 'plugins' | 'skills' | 'mcp' | 'about';
 
 interface LspServer {
   command: string;
@@ -378,6 +379,7 @@ const SettingsPanelApp: React.FC<{
               ['languages', 'code', '语言依赖'],
               ['plugins', 'agent', '插件'],
               ['skills', 'agent', '技能'],
+              ['mcp', 'agent', 'MCP'],
               ['about', 'info', '关于'],
             ] as const
           ).map(([id, icon, label]) => (
@@ -634,6 +636,11 @@ const SettingsPanelApp: React.FC<{
           {/* ═══ 技能标签页（skills-mcp-production-plan Commit 4）═══ */}
           <div className="sp-tab-content" data-tab="skills" style={{ display: activeTab === 'skills' ? '' : 'none' }}>
             <SkillsPage />
+          </div>
+
+          {/* ═══ MCP 标签页（skills-mcp-production-plan Commit 6c）═══ */}
+          <div className="sp-tab-content" data-tab="mcp" style={{ display: activeTab === 'mcp' ? '' : 'none' }}>
+            <McpPage />
           </div>
 
           {/* ═══ 关于标签页 ═══ */}

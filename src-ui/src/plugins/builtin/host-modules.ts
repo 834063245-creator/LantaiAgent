@@ -52,6 +52,7 @@ import { Icon } from '../../app/Icon';
 import { useDialogEscape } from '../../app/overlay';
 import { PluginBoundary } from '../../app/PluginBoundary';
 import { ConfirmDialog } from '../../app/panels/settings/ConfirmDialog';
+import { McpPage } from '../../app/panels/settings/McpPage';
 import { PluginsPage } from '../../app/panels/settings/PluginsPage';
 import { ProviderPage } from '../../app/panels/settings/ProviderPage';
 import { SkillsPage } from '../../app/panels/settings/SkillsPage';
@@ -337,6 +338,7 @@ const faceDeps = {
   WinControls,
   PluginBoundary,
   ConfirmDialog,
+  McpPage,
   PluginsPage,
   ProviderPage,
   SkillsPage,

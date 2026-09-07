@@ -52,6 +52,7 @@ export const usePresetStore = impl.usePresetStore;
 export const useUpdateStore = impl.useUpdateStore;
 export const iconHtml = impl.iconHtml;
 export const ConfirmDialog = impl.ConfirmDialog as ComponentType;
+export const McpPage = impl.McpPage as ComponentType;
 export const PluginsPage = impl.PluginsPage as ComponentType;
 export const ProviderPage = impl.ProviderPage as ComponentType;
 export const SkillsPage = impl.SkillsPage as ComponentType;

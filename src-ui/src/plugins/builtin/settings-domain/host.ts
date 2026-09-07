@@ -8,6 +8,7 @@
 // re-export，不改写任何实现。
 
 export { ConfirmDialog } from '../../../app/panels/settings/ConfirmDialog';
+export { McpPage } from '../../../app/panels/settings/McpPage';
 export { PluginsPage } from '../../../app/panels/settings/PluginsPage';
 export { ProviderPage } from '../../../app/panels/settings/ProviderPage';
 export { SkillsPage } from '../../../app/panels/settings/SkillsPage';
