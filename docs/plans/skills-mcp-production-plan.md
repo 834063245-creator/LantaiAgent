@@ -1,9 +1,11 @@
 # Skills 与 MCP 生产级改造计划
 
-> 状态：**In progress（施工中）**
+> 状态：**In progress（Commit 1-5 + 6a 已落地；剩余 6b/6c 见 §4）**
 > 立项：2026-09-07 用户拍板（决策见 §0）
 > 参照调研：deepseek-harness（DSH，本宿主同构）/ kimi-code / openhanako / jeecg-cc 四仓库 Skills/MCP 实现（调研结论见 §1）
 > 改造对象：兰台 `agent/skills.ts`（Skills）+ `plugins/mcp-bridge.ts` / `agent/mcp/*`（MCP）+ Rust 沙箱 + 设置面板 UI
+> 施工进度（2026-09-07）：4667f2b8（内核+注入）· b41ed197（沙箱）· e102659b（UI）
+> · 55eca277（工具名哈希）· 00f8cd4b（用户级 mcp.json）· 3c176280（死代码清理）
 
 ## 0. 用户拍板决策（2026-09-07，全部已定）
 
@@ -121,13 +123,16 @@
 
 ## 4. Commit 序列（每步门禁全绿才进下一个）
 
-1. **Skills 内核**：重写 `agent/skills.ts`（yaml 解析 + schema 校验 + 用户/项目双层 + 双形态 + 坏档诊断）。门禁：vitest + build + biome。
-2. **Skills 发现注入**：SkillRegistry digest 化 + 每步 available_skills 注入（agent 装配/loop 面）。门禁：vitest + build + biome + verify:convergence（空目录零注入 → 零漂移）。
-3. **Skills 沙箱**：Rust `sandbox.rs` 用户级目录白名单泛化（`is_global_memory_path` → `is_user_data_path` 涵盖 skills）。门禁：cargo test（src-tauri）。
-4. **Skills 管理 UI**：设置面板「技能」tab + 安装（目录/git）+ slash 菜单接通 setSkillProvider + 新 skills 测试套件。门禁：vitest + build + biome。
-5. **MCP 用户级配置**：`~/.lantai/mcp.json` 装载（boot 折算工具行）+ 工具名 sha256 + schema。门禁：vitest（mcp 套件）+ build + biome。
-6. **MCP 自动恢复 + UI**：断线重连 + 设置面板「MCP」tab + mcpClients 死代码清理。门禁：vitest + build + biome。
-7. **文档收口**：docs/plugins/README + 本计划竣工归档。
+1. ✅ **Skills 内核**（4667f2b8）：重写 `agent/skills.ts`（yaml 解析 + 用户/项目双层 + 双形态 + 坏档诊断）。门禁绿。
+2. ✅ **Skills 发现注入**（4667f2b8）：装配期 skillCatalog 段（agent-builder + runtime——空技能零注入，convergence 零漂移）。
+3. ✅ **Skills 沙箱**（b41ed197）：Rust `sandbox.rs` `is_user_data_path` 泛化（skills 读放行，写锁项目内）。cargo 测试绿。
+4. ✅ **Skills 管理 UI**（e102659b）：设置面板「技能」tab（SkillsPage 列表/新建/删除二次确认）+ slash 候选接通 setSkillProvider + 宿主桥封蜡三处。
+5a. ✅ **MCP 工具名哈希**（55eca277）：publicToolName lossy 归一追加 FNV-1a 防塌缩。
+5b. ✅ **MCP 用户级配置**（00f8cd4b）：`~/.lantai/mcp.json` 装载（user-mcp.ts 折算工具贡献 + main.ts 接线）。
+6a. ✅ **MCP 死代码清理**（3c176280）：mcpClients 直连旁路删除。
+6b. ⏳ **MCP 断线自动恢复**：client.ts 意外断线检测 + 旧形态自动重连（仿治理器 on-crash/kimi-code ping+reconnect）。
+6c. ⏳ **设置面板「MCP」tab**：server 列表（插件/用户级来源 + transport/状态）+ 用户级增删改。
+7. ⏳ **文档收口**：docs/plugins/README + 本计划竣工归档。
 
 ## 5. 验证门禁（每 commit）
 
