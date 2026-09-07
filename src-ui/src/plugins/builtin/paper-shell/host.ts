@@ -19,6 +19,7 @@ export { useDialogEscape } from '../../../app/overlay';
 /* 保险丝 b（2026-09-03 生产事故立法）：渲染面错误边界——面组件/块渲染器
  * 的崩溃隔离（单插件渲染崩溃只死自己那格，React 整树卸载绝迹）。 */
 export { PluginBoundary } from '../../../app/PluginBoundary';
+export { ConfirmDialog } from '../../../app/panels/settings/ConfirmDialog';
 export { useShellStore } from '../../../app/shell-store';
 export { WinControls } from '../../../app/WinControls';
 export {
@@ -118,6 +119,9 @@ export { viewportWorldRect, visibleFlowWindow, visiblePinnedIds } from '../../..
 // 设置读面（2026-09-08 缩放舒适度批）：滚轮行为 canvasWheelMode + 保存广播
 // onSettingsSaved——视口域滚轮语义随设置即时换轨（ref 缓存 + 广播刷新）。
 export { canvasWheelMode, loadSettings, onSettingsSaved } from '../../../settings';
+/* 离开工作区回首页（2026-09-08）：真关工作区 + 回首页（PaperPanel 确认弹层
+ * 确认后调用——workspace 流函数，运行时 deactivate 在壳层）。 */
+export { leaveToHome } from '../../../shell/rows/workspace';
 export { useBgAlertStore } from '../../../state/bg-alert-store';
 export type { CanvasStore } from '../../../state/canvas-store';
 export { blockFromSnapshot, getCanvasStore, scheduleCanvasSave, snapshotFromBlock } from '../../../state/canvas-store';

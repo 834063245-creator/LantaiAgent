@@ -125,6 +125,8 @@ export const writingBlockIdOf = impl.writingBlockIdOf;
 export const activeSpace = impl.activeSpace;
 export const agentSessionState = impl.agentSessionState;
 export const PluginBoundary = impl.PluginBoundary;
+export const ConfirmDialog = impl.ConfirmDialog as ComponentType;
+export const leaveToHome = impl.leaveToHome;
 
 export type SourcedBlock = import('./host').SourcedBlock;
 export type RegionHitRect = import('./host').RegionHitRect;

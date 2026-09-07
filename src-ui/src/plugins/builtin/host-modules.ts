@@ -167,6 +167,7 @@ import {
   removeSecret,
   saveSettings,
 } from '../../settings';
+import { leaveToHome } from '../../shell/rows/workspace';
 import { notifyAgentConfigChanged } from '../../state/agent-config-store';
 import { useAskStore } from '../../state/ask-store';
 import { useBgAlertStore } from '../../state/bg-alert-store';
@@ -341,6 +342,9 @@ const faceDeps = {
   WinControls,
   PluginBoundary,
   ConfirmDialog,
+  /* 离开工作区回首页（2026-09-08）：paper-shell 确认弹层确认后触发——运行时
+   * 真关工作区在壳层 workspace 流（host.ts 出口与 faceDeps 同步）。 */
+  leaveToHome,
   McpPage,
   PluginsPage,
   ProviderPage,

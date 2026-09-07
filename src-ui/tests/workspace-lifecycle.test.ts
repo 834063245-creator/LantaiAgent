@@ -13,6 +13,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const src = readFileSync(path.resolve(process.cwd(), 'src/workspace.ts'), 'utf8');
+const rowsWs = readFileSync(path.resolve(process.cwd(), 'src/shell/rows/workspace.ts'), 'utf8');
 
 /** 截取从 anchor 开始、长度为 span 的源码窗口做断言。 */
 function windowOf(anchor: string, span = 4000): string {
@@ -59,5 +60,36 @@ describe('runCheck/scheduleCheck 切换守卫（H4）', () => {
     expect(finallyIdx).toBeGreaterThan(-1);
     const tail = body.slice(finallyIdx);
     expect(tail).toContain('this._active');
+  });
+});
+
+describe('回首页真关工作区（2026-09-08 生命周期修复）', () => {
+  const leave = rowsWs.slice(rowsWs.indexOf('async function leaveToHome'));
+
+  it('leaveToHome 必须 deactivate 活动工作区（停 watcher/引擎/Agent）', () => {
+    expect(leave).toContain('workspace.deactivate(chatPanel)');
+    expect(leave).toContain('withTimeout');
+    expect(leave).toContain('shellRefs.workspace = null');
+  });
+
+  it('leaveToHome 清理 projectPath（单一权威 = shell-store）并关 paper 面板', () => {
+    expect(leave).toContain("setProjectPath('')");
+    expect(leave).toContain("closePanel('paper')");
+  });
+
+  it('leaveToHome 推进状态机到 idle（期间 deactivating 防并发切区）', () => {
+    expect(leave).toContain("canTransition('deactivating')");
+    expect(leave).toContain("forceState('idle')");
+  });
+
+  it('escLayer 不再关 paper（回首页 = 有副作用的离开操作，防误触）', () => {
+    const esc = rowsWs.slice(rowsWs.indexOf('function escLayer'), rowsWs.indexOf('export const workspaceFlow'));
+    expect(esc).toContain("dock.isOpen('settings')");
+    expect(esc).not.toContain("closePanel('paper')");
+  });
+
+  it('leaveToHome 导出进 workspaceFlow（PaperPanel 确认后调用面）', () => {
+    const flow = rowsWs.slice(rowsWs.indexOf('export const workspaceFlow'));
+    expect(flow).toContain('leaveToHome');
   });
 });

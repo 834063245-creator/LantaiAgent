@@ -17,6 +17,7 @@
 // 禁用即不可用，文档声明）。
 
 import { log } from '../../agent/logger';
+import { useShellStore } from '../../app/shell-store';
 import { withTimeout } from '../../lifecycle/timeout';
 import { kernelCreateDirectory, typedRpc } from '../../rpc-contract';
 import { useDockStore } from '../../state/dock-store';
@@ -214,22 +215,56 @@ async function switchWorkspace(path?: string, opts?: { graphEngine?: boolean | n
   }
 }
 
+// ── 离开工作区回首页（2026-09-08 生命周期修复：回首页 = 真关工作区）──
+// 历史语义：关纸面板只翻 dock-store 布尔，工作区实例（watcher/引擎/Agent/
+// fiber）继续常驻后台——视图层与运行时层脱节。用户拍板：回首页必须真正
+// deactivate（停 watcher/引擎/Agent），使从首页再进入必然重建实例重读
+// 图谱旗标（图谱开关"下次进入生效"变成真承诺）。
+
+/** 真关当前工作区并回首页。无活动工作区 = 直接关面板（无副作用）。
+ *  调用方（PaperPanel 确认弹层）先经关闭守卫弹确认再调本函数——
+ *  本函数不再二次确认。deactivate 带 5s 超时兜底（switchWorkspace 同款）。 */
+export async function leaveToHome(): Promise<void> {
+  const { workspace, wsMachine, chatPanel } = shellRefs;
+  if (workspace?.active && chatPanel) {
+    // 进入 deactivating——期间 isBusy=true，防用户在 deactivate 途中点进别的
+    // 工作区（switchWorkspace 入口的 isBusy 守卫拦截）触发并发切区竞态。
+    if (wsMachine.canTransition('deactivating')) wsMachine.transition('deactivating');
+    try {
+      await withTimeout(workspace.deactivate(chatPanel), 5000, () => {
+        console.warn('[leaveToHome] deactivate timed out, forcing clear');
+      });
+    } catch (e) {
+      console.error('[leaveToHome] deactivate error:', e);
+      await shellRefs.workspace?.forceClearState();
+    }
+    shellRefs.workspace = null;
+    wsMachine.forceState('idle');
+  }
+  // projectPath 单一权威 = shell-store（chat-core.setProjectPath 同源）
+  useShellStore.getState().setProjectPath('');
+  useDockStore.getState().closePanel('paper');
+  pushStatus('已回首页——工作区已关闭');
+}
+
 // ── Esc 逐层关闭（快捷键经 useGlobalKeys → actions 分发到此）──
 
 function escLayer(): void {
   const dock = useDockStore.getState();
   // 视觉栈序（V5 拆除后）：settings 浮层（z:401）盖纸壳（z:280）——
-  // 高层先关；纸关 = 回案卷首页换卷/续开。
+  // 高层先关。
+  // 2026-09-08 用户拍板：ESC 不再关 paper（纸关 = 回首页 = 真关工作区，
+  // 有副作用——防误触，回首页只走显式按钮/命令并经确认）。
   // closePanel 自带关闭守卫（dock-store 2026-08 UI 大清扫）：settings 有未保存
   // 改动时守卫弹确认并拦截本次 Esc——Esc 不再静默丢设置。
   if (dock.isOpen('settings')) dock.closePanel('settings');
-  else if (dock.isOpen('paper')) dock.closePanel('paper');
 }
 
 /** 导出面：冷启动行 + actions 行消费的 workspace 流函数族。 */
 export const workspaceFlow = {
   switchWorkspace,
   escLayer,
+  leaveToHome,
 };
 
 /** 壳行 boot：workspace 流本身就是模块级函数族——boot 无接线动作，

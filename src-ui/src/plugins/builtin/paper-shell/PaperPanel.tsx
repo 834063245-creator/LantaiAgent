@@ -39,9 +39,11 @@ import {
   activeOverlayContributions,
   activeSpace,
   blockFromSnapshot,
+  ConfirmDialog,
   foldLabel,
   Icon,
   isFoldable,
+  leaveToHome,
   needsObservedHeight,
   PaperDockContext,
   PaperRegionContext,
@@ -355,11 +357,34 @@ function DeskShelf({ core }: { core: PaperCore | null }) {
 }
 
 export function PaperPanel() {
-  const closePanel = useDockStore((s) => s.closePanel);
   const core = useCoreStore((s) => s.core);
   // 更新角标（update-store）：启动自动检查发现新版本且用户未看过 → 朱砂点
   const updateAvailable = useUpdateStore((s) => s.status === 'available' && !s.badgeDismissed);
   const updateVersion = useUpdateStore((s) => s.version);
+
+  /* ── 回首页确认守卫（2026-09-08 生命周期修复：回首页 = 真关工作区）──
+   * 历史：关 paper 面板只翻 dock-store 布尔，工作区（watcher/引擎/Agent）
+   * 后台常驻。用户拍板：回首页是有副作用的离开操作 → 需确认 → 确认后真
+   * deactivate（leaveToHome：停 watcher/引擎/Agent + 清 projectPath）。
+   * 守卫拦截所有 closePanel('paper')（回首页按钮 / Ctrl+P 命令都过这里）；
+   * ESC 已从 escLayer 移除（不关 paper）。无活动工作区也确认（用户拍板）。
+   * 确认后 forceLeave 先摘守卫再 leaveToHome（防二次拦截死循环，SettingsPanel
+   * forceClose 同款）。 */
+  const projectPath = useShellStore((s) => s.projectPath);
+  const [leaveConfirm, setLeaveConfirm] = useState(false);
+  const forceLeave = useCallback(() => {
+    useDockStore.getState().unregisterCloseGuard('paper');
+    void leaveToHome();
+  }, []);
+  useEffect(() => {
+    useDockStore.getState().registerCloseGuard('paper', () => {
+      setLeaveConfirm(true);
+      return false; // 拦截：确认弹层已在路上
+    });
+    return () => {
+      useDockStore.getState().unregisterCloseGuard('paper');
+    };
+  }, []);
 
   /* ── 域装配（2026-09-06 paper-panel-split）──
    * 挂载序三对硬约束（split-plan §3）：sessionsMirror（activeRegion 镜像先
@@ -649,7 +674,7 @@ export function PaperPanel() {
             >
               设置
             </button>
-            <button type="button" className="pp-close" onClick={() => closePanel('paper')}>
+            <button type="button" className="pp-close" onClick={() => setLeaveConfirm(true)}>
               回首页
             </button>
             <WinControls />
@@ -1070,6 +1095,23 @@ export function PaperPanel() {
         </div>
       </PaperRegionContext.Provider>
       <ToastHost />
+      {/* 回首页确认（2026-09-08）：回首页 = 真关工作区（停 watcher/引擎/Agent），
+       * 有副作用的离开操作——确认后才执行 leaveToHome。无活动工作区同样确认
+       * （用户拍板），文案区分两种情形。 */}
+      <ConfirmDialog
+        open={leaveConfirm}
+        title="回首页？"
+        message={
+          projectPath
+            ? '离开将关闭当前工作区的图谱引擎与后台分析（会话与画布会自动保存）。确定回首页？'
+            : '确定回首页？'
+        }
+        confirmLabel="回首页并关闭工作区"
+        cancelLabel="留在画布"
+        tone="danger"
+        onConfirm={forceLeave}
+        onCancel={() => setLeaveConfirm(false)}
+      />
     </PaperDockContext.Provider>
   );
 }
