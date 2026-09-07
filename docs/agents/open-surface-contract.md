@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：22
+当前版本：23
 
-<!-- contract-fingerprint: 6aa413003efd3d2df9a614eba89c9d16ddeb6a498113be50854cf09d061c10a8 -->
+<!-- contract-fingerprint: 7887d98c075b6982fa0eeabbb52ec9e939a7fc57e7696413573e87c1daa57ca4 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -57,6 +57,7 @@
 | 20 | 2026-09-07 | `LlmAdapterContribution` 新增可选 `label?: string`（ctx.llm 协议下拉/展示用人类可读标签——provider-refactor 方案乙 Phase 1A Protocol 开放为 string 后，AddProviderSheet 协议 select 与 PROTOCOL_LABELS 回落链查 adapter 贡献标签；缺省 = 显示 kind 本身）；契约形状变更（新增可选字段，向后兼容） | provider-refactor-handoff.md Phase 1A（方案乙） |
 | 21 | 2026-09-07 | `src/plugins/types.ts` 导出 `McpServerDeclSchema`（用户级 ~/.lantai/mcp.json 装载复用同一 schema——单一真源，避免 user-mcp.ts 重抄校验；McpServerDecl 类型形状零变更）；无契约形状变更 | skills-mcp-production-plan Commit 5b |
 | 22 | 2026-09-08 | 动态插件守卫 ctx 服务解析修复（sandbox.ts）：`makeGuardedCtx` 代解析由 `resolverCtx[prop]` 改 `resolverCtx.reflect.get(prop)`——生产消费单点 `activeDynamicRunner()` 是裸服务实例（this.ctx = runner fiber，有 runtime），旧解析被内核 inject 拦截沿 fiber 链找 impl 而 runner 无 inject 声明、组合层服务 impl 在兄弟 fiber，12 注册面恒抛 "cannot get property X without inject"；新解析走内核免 inject 读取通道直读根 store（strict 默认拒递半拆服务），run()/mount() 同源修复。守卫面形状零变更（effect + 12 register 语义不变）；无契约形状变更 | platform-bugs-cordis-dynamic-runner.md（2026-09-07 登记，2026-09-08 修复） |
+| 23 | 2026-09-08 | AgentLoopHost 契约新增 `compactIfNeeded(signal)` 与 `compactRatioOf()` 成员（上下文压缩 2026-09 迭代：自动压缩主触发前移到 step 前 pre-flight，pre-flight 读 `compactRatioOf()` 判定、调 `compactIfNeeded()` 走自动尾部 token 预算 + 摘要成本硬校验；`compactNow` 保留为手动 /compact 路径）；契约形状变更（新增成员，替换 loop 可忽略新成员即回到旧默认 loop 语义） | 上下文压缩迭代 2026-09（DSH 对照：阈值 0.8 / 尾部 retainRatio / step 前同步） |
 
 ## 变更流程（guard 红 → 修复四步）
 

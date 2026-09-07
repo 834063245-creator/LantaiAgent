@@ -214,6 +214,7 @@ export function registerCompactionTools(agent: Agent, reg: ToolRegistry): void {
     () => ({
       compactRatio: agent.getCompactRatio(),
       recentKeep: agent.getRecentKeep(),
+      retainRatio: agent.getRetainRatio(),
       contextWindow: agent.getContextWindow(),
     }),
     async () => agent.loadCompactionConfig(),

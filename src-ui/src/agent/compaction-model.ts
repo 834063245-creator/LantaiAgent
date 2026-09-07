@@ -3,9 +3,12 @@
 
 // 压缩成本模型 — 用可度量的数学替代硬编码的魔法数字。
 //
-// 决策变量（目前在 agent.ts 中硬编码）：
-//   r = compactRatio  (0.7) — 触发阈值，占 contextWindow 的比例
-//   k = recentKeep    (4)   — 尾部保留的完整消息数
+// 决策变量（默认值见 agent.ts；2026-09 迭代对齐 DSH 经济模型）：
+//   r = compactRatio  (0.8) — 触发阈值，占 contextWindow 的比例
+//   k = recentKeep    (消息数下限，默认 4) — 尾部保留的完整消息数下限
+//   retainRatio (0.16) — 尾部保留的 token 预算，占 contextWindow 的比例；
+//       computeCompactRegionImpl 从尾部往回累计 token 到 ≥ retainRatio×窗口
+//       （同时至少 recentKeep 条完整消息 + 完整回合边界）。
 //
 // 模型：
 //   NetBenefit = |R|·c_in·(T-1) - |S|·c_out - L·avg_turn_cost
@@ -71,6 +74,17 @@ const DEFAULT_C_OUT = 15.0; // $15/1M 输出
 /** ponytail: 每次重读或压缩后重复工具调用计为
  *  0.25 个额外轮次 — agent 通常恢复很快，不到一整轮。 */
 const LOSS_FACTOR_PER_EVENT = 0.25;
+
+// ── 压缩经济参数（2026-09 迭代真源；消费方 agent.ts / agent-compaction.ts）──
+
+/** 尾部保留的 token 预算，占 contextWindow 的比例（对齐 DSH retainRatio 0.16）。
+ *  computeCompactRegionImpl 从尾部往回累计 token 到 ≥ 此比例×窗口，
+ *  再钳制到完整回合边界 — 工具密集会话里保证模型手里有足够近期工作现场，
+ *  而不是旧实现 max(4, recentKeep) 那样只留几条消息。 */
+export const DEFAULT_RETAIN_RATIO = 0.16;
+
+/** 正常触发水位（占 contextWindow 比例；agent.ts 构造缺省同源）。 */
+export const DEFAULT_COMPACT_RATIO = 0.8;
 
 // ── 压缩成本模型 ──
 
@@ -410,9 +424,10 @@ export function tuneCompactionParams(tracker: CompactionTracker, contextWindow?:
   // 根据预期会话长度计算最优 compactRatio — 用真实窗口而非硬编码 1M
   const win = contextWindow && contextWindow > 0 ? contextWindow : 1_000_000;
   const { r: optimalR } = optimalCompactRatio(win, avgMsgTokens, stats.totalTurns, avgTurnCost);
-  // 限制到合理范围 — 下限 0.5：压缩不再销毁历史，但过早压缩
-  // 仍浪费摘要成本，0.35 级别的阈值毫无必要。
-  const tunedR = Math.max(0.5, Math.min(0.75, optimalR));
+  // 限制到合理范围 — 对齐 0.8 默认触发线（2026-09 迭代，DSH 对照）：
+  // 过早压缩把仍会反复读取的活跃中段换成摘要，在前缀缓存计价下净亏；
+  // 下限 0.7 保证只在压力真的高时动手，上限 0.85 防止阈值顶到溢出区。
+  const tunedR = Math.max(0.7, Math.min(0.85, optimalR));
 
   // 构建说明
   const parts: string[] = [];
@@ -491,7 +506,12 @@ export function formatCompactionReport(stats: CompactionSessionStats): string {
  *  ponytail: 不做修改 — 仅格式化追踪器的当前状态。 */
 export function createCompactionTools(
   getTracker: () => CompactionTracker | null,
-  getCurrentParams: () => { compactRatio: number; recentKeep: number; contextWindow: number },
+  getCurrentParams: () => {
+    compactRatio: number;
+    recentKeep: number;
+    retainRatio: number;
+    contextWindow: number;
+  },
   loadConfig: () => Promise<CompactionConfig | null>,
 ): Tool[] {
   return [
@@ -513,8 +533,9 @@ export function createCompactionTools(
           '',
           '## 当前参数',
           `- contextWindow: ${current.contextWindow.toLocaleString()} tokens`,
-          `- compactRatio: ${(current.compactRatio * 100).toFixed(0)}% (阈值 ${((current.contextWindow * current.compactRatio) / 1000).toFixed(0)}K tokens)`,
-          `- recentKeep: ${current.recentKeep} 条`,
+          `- compactRatio: ${(current.compactRatio * 100).toFixed(0)}% (触发阈值 ${((current.contextWindow * current.compactRatio) / 1000).toFixed(0)}K tokens)`,
+          `- retainRatio: ${(current.retainRatio * 100).toFixed(0)}% (自动压缩保留尾部 ${((current.contextWindow * current.retainRatio) / 1000).toFixed(0)}K tokens)`,
+          `- recentKeep: ${current.recentKeep} 条 (手动 /compact 尾部消息数下限)`,
           '',
         ];
 

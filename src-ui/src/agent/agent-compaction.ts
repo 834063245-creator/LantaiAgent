@@ -26,7 +26,7 @@ import {
 import type { ExecStateInstance } from './execution-state';
 import { log } from './logger';
 import { buildCompactedSummaryMessage } from './session-log';
-import { countMessages, countText } from './token-counter';
+import { countMessage, countMessages, countText } from './token-counter';
 import type { ToolRegistry } from './tool';
 import { foldToolResults, nextFoldBoundary } from './tool-fold';
 
@@ -41,6 +41,9 @@ export interface CompactionHost {
   _sink: (ev: AgentEvent) => void;
   compactRatio: number;
   recentKeep: number;
+  /** 自动压缩尾部保留的 token 预算比例（占 contextWindow；0 缺省用
+   *  DEFAULT_RETAIN_RATIO）。手动 /compact 不消费它（保留 recentKeep 条）。 */
+  retainRatio: number;
   compactStuck: boolean;
   compactRetryAfterLen: number;
   compactFailCount: number;
@@ -199,22 +202,65 @@ function recordCompactionEvent(host: CompactionHost, event: CompactionEvent): vo
   if (event.outcome === 'summary') void tryAutoTune(host);
 }
 
+/** 自动压缩的尾部保留起点：从尾部往回累计 token 到 retainRatio×窗口预算，
+ *  返回**保留尾部**的起点 index（含），起点前的内容进压缩区域。
+ *  尾部起点钳制到最近完整 user 回合（user 消息及其后所有 assistant/tool
+ *  同属一个回合，不拆开）。
+ *
+ *  对齐 DSH retainRatio(0.16) 经济模型：工具密集会话里模型手里必须保留
+ *  足够近期工作现场（token 预算），而不是旧实现的固定 recentKeep 条数。
+ *  手动 /compact 不走此路径 — 它保留 recentKeep 条（见 computeCompactRegionImpl）。
+ *
+ *  与 DSH selectCompactableRange 同语义：foldPoint 之后全部内容累计仍
+ *  不足预算（会话太短）→ 返回 null（不压，等对话增长）— 触发线 80% 压力
+ *  下内容必远大于 16% 预算，此分支只在测试构造 / 极端小载荷时命中。 */
+function autoTailStart(host: CompactionHost, foldPoint: number): number | null {
+  const msgs = host.session;
+  const budget = Math.max(1, Math.floor(host.contextWindow * host.retainRatio));
+  let acc = 0;
+  // 已扫过的最靠后完整 user 回合起点 — 达标时从它开始保留尾部。
+  let lastUser = -1;
+  let reachedBudget = false;
+  for (let i = msgs.length - 1; i > foldPoint; i--) {
+    acc += countMessage(msgs[i]);
+    if (msgs[i].role === 'user') lastUser = i;
+    if (acc >= budget) {
+      reachedBudget = true;
+      break;
+    }
+  }
+  if (!reachedBudget) return null; // 会话太短 — 不足保留预算，无可压价值
+  if (lastUser <= foldPoint) return null; // 无完整 user 回合可留 / 无可折叠
+  return lastUser;
+}
+
 /** 计算本次要折叠的中间区域。返回 null = 无可折叠内容（stuck）。
  *  区域 = session[foldPoint..tailStart]，foldPoint 是上次折叠点
- *  （首次压缩 = system 之后），tailStart 前保留最近 N 条消息 —
+ *  （首次压缩 = system 之后），tailStart 前保留最近消息 —
  *  每次压缩只处理"上次折叠后新增的消息"，摘要成本可控且累积正确。
- *  不拆分 tool-call 组: 若尾部以孤立的 tool 结果开始，将其拉入区域。 */
+ *  @param mode 'auto' = 自动（step 前预检）路径：尾部按 retainRatio token
+ *    预算保留完整 user 回合；'manual' = 手动 /compact：保留 recentKeep 条
+ *    完整消息（现状语义）。二者都不拆 tool-call 组。 */
 export function computeCompactRegionImpl(
   host: CompactionHost,
+  mode: 'auto' | 'manual' = 'manual',
 ): { region: Message[]; tailStart: number; priorSummary: string | null } | null {
   const msgs = host.session;
   const head = foldHead(host);
-  const tailCount = Math.max(4, host.recentKeep);
   const foldPoint = host._compactTailStart >= 0 ? Math.max(host._compactTailStart, head) : head;
-  const regionEnd = msgs.length - tailCount;
-  if (regionEnd - foldPoint <= 0) return null; // 无可折叠内容
-  let tailStart = regionEnd;
-  while (tailStart < msgs.length && msgs[tailStart].role === 'tool') tailStart++;
+  let tailStart: number;
+  if (mode === 'auto') {
+    const t = autoTailStart(host, foldPoint);
+    if (t === null) return null;
+    tailStart = t;
+  } else {
+    const tailCount = Math.max(4, host.recentKeep);
+    const regionEnd = msgs.length - tailCount;
+    if (regionEnd - foldPoint <= 0) return null; // 无可折叠内容
+    tailStart = regionEnd;
+    // 尾部以孤立的 tool 结果开头 → 拉进区域（现状语义：不把断腿结果留给模型）
+    while (tailStart < msgs.length && msgs[tailStart].role === 'tool') tailStart++;
+  }
   const region = msgs.slice(foldPoint, tailStart);
   if (region.length === 0) return null;
   return { region, tailStart, priorSummary: host._compactSummary };
@@ -239,10 +285,31 @@ function applyCompactState(host: CompactionHost, tailStart: number, summary: str
  *  根治: 压缩只生成摘要并记录折叠点 — 不触碰 this.session（完整历史），
  *  不触发 sessionReplaced，不写盘 — UI 渲染与磁盘存档永远完整。 */
 export async function compactNowImpl(host: CompactionHost, signal: AbortSignal): Promise<string> {
+  return runCompactionImpl(host, signal, 'manual');
+}
+
+/** 自动压缩入口（step 前 pre-flight 调用）— 与手动路径同管线，但尾部按
+ *  retainRatio token 预算保留完整 user 回合（见 computeCompactRegionImpl
+ *  'auto' 模式）。返回摘要文本或 'stuck'。 */
+export async function compactIfNeededImpl(host: CompactionHost, signal: AbortSignal): Promise<string> {
+  return runCompactionImpl(host, signal, 'auto');
+}
+
+/** 压缩管线主体（手动与自动共用）：算区域 → LLM/机械摘要 → 应用折叠状态。
+ *  失败/无可折叠一律不截历史，记 stuck 事件 + 退避门槛后返回 'stuck'。
+ *  摘要成本防护（硬校验）在自动路径启用：摘要+保留尾 ≥ 压缩前估算则
+ *  不落地 —— 防"压了没变小还费一次 LLM"（对齐 DSH summary 必须小于
+ *  shadowed content 的 shrink 校验；手动 /compact 是用户显式动作，失败
+ *  记 stuck 提示 /new 即可）。 */
+export async function runCompactionImpl(
+  host: CompactionHost,
+  signal: AbortSignal,
+  mode: 'auto' | 'manual',
+): Promise<string> {
   if (host.compactRunning) throw new Error('compaction already in progress');
   host.compactRunning = true;
   try {
-    const regionInfo = computeCompactRegionImpl(host);
+    const regionInfo = computeCompactRegionImpl(host, mode);
     if (!regionInfo) {
       // 头尾之间无内容可折叠 — 不再永久闩锁（对话增长后自然可折叠），
       // 仅设置增长门槛，避免响应式路径在空区域上空转。
@@ -295,6 +362,39 @@ export async function compactNowImpl(host: CompactionHost, signal: AbortSignal):
     }
     const summary = result.text;
 
+    // ── 摘要成本防护（硬校验，自动路径）──
+    // 摘要 + 保留尾 ≥ 压缩前载荷估算 → 本次压缩不落地（记 stuck，历史不动）。
+    // 对齐 DSH「summary 必须小于被遮蔽内容」的 shrink 校验；防自动压缩
+    // 在尾预算过大 / 摘要退化时"压了没变小还白费一次 LLM"。手动 /compact
+    // 是用户显式动作，不做此拦截（stuck 提示已足够）。
+    const preEstimate = host.tokenCountWithEstimation();
+    if (mode === 'auto') {
+      // 压后载荷 = head(≈估算 − 区域内 token) + 摘要 + 保留尾 + schema/transient。
+      // 用「压后 ≈ 原载荷 − 区域 + 摘要」的线性近似；摘要退化到接近区域时
+      // 此式会接近原值甚至更大 → 拦截。
+      const summaryTokens = countText(summary);
+      const postApprox = preEstimate - countMessages(region) + summaryTokens;
+      if (postApprox >= preEstimate) {
+        recordCompactionEvent(host, {
+          ts: Date.now(),
+          regionMsgCount: region.length,
+          regionTokensEst: countMessages(region),
+          summaryInputTokens: countMessages(region),
+          summaryOutputTokens: summaryTokens,
+          tailMsgCount: host.session.length - tailStart,
+          preTokens: preEstimate,
+          postTokens: preEstimate,
+          outcome: 'stuck',
+        });
+        host._sink({
+          kind: EventKind.Notice,
+          level: 'warn',
+          text: '压缩未能减少上下文（摘要不小于被压缩内容），本次跳过。建议用 /new 开启新会话。',
+        });
+        return 'stuck';
+      }
+    }
+
     // 应用折叠状态 — session 不变，发送载荷变小
     applyCompactState(host, tailStart, summary);
     host.stormSig = '';
@@ -327,6 +427,14 @@ export async function compactNowImpl(host: CompactionHost, signal: AbortSignal):
   }
 }
 
+/** ⚠️ 退役中的异步自动压缩入口（2026-09 迭代）。
+ *  出厂 default-loop 已弃用它（自动压缩主触发前移到 step 头同步 pre-flight，
+ *  见 default-loop.ts）——保留函数与宿主面成员有两个原因：
+ *    ① AgentLoopHost 是开放替换契约，第三方 loop 可能仍靠它在轮末按 usage
+ *      异步触发；
+ *    ② compaction-pipeline 测试 #5/#6/#7 直调它验证异步飞行语义（版本守卫 /
+ *      增长自愈 / 会话替换丢弃）。
+ *  新代码不应新增调用点；语义与 compactIfNeededImpl('auto') 等价但异步。 */
 export function maybeCompactImpl(host: CompactionHost, usage: Usage | undefined): void {
   if (host.contextWindow <= 0) return;
 
@@ -360,7 +468,7 @@ export function maybeCompactImpl(host: CompactionHost, usage: Usage | undefined)
 
   // 异步运行压缩（不阻塞当前轮次）
   const genAtStart = host._execState.bumpVersion();
-  const regionInfo = computeCompactRegionImpl(host);
+  const regionInfo = computeCompactRegionImpl(host, 'auto');
   if (!regionInfo) {
     // 无可折叠内容 — 不闩锁、不告警、不记录失败事件。
     // 对话继续增长后自然出现可折叠区域，设增长门槛后静默跳过。

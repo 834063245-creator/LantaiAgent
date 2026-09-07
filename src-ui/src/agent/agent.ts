@@ -13,6 +13,7 @@ import {
   applyAutoTuneConfigImpl,
   type CompactionHost,
   callSummaryLLMImpl,
+  compactIfNeededImpl,
   compactNowImpl,
   computeCompactRegionImpl,
   foldHead,
@@ -33,7 +34,13 @@ import type { AgentRecord, AgentStore } from './agent-store';
 import { type AgentEvent, type AgentUINotifier, EventKind, type EventSink, type ToolEvent } from './agent-types';
 import { generateAssetId } from './asset-kinds';
 import { rebuildAssetsFromSession } from './asset-store';
-import { type CompactionConfig, type CompactionSessionStats, CompactionTracker } from './compaction-model';
+import {
+  type CompactionConfig,
+  type CompactionSessionStats,
+  CompactionTracker,
+  DEFAULT_COMPACT_RATIO,
+  DEFAULT_RETAIN_RATIO,
+} from './compaction-model';
 import type { AgentContext } from './context';
 import {
   AgentEventBus,
@@ -81,10 +88,17 @@ export interface AgentOptions {
   temperature?: number;
   /** 上下文窗口大小（token 数）。0 = 不压缩。 */
   contextWindow?: number;
-  /** 触发压缩的 contextWindow 比例（默认: 0.7） */
+  /** 触发自动压缩的 contextWindow 比例（默认 0.8 — 对齐 DSH thresholdRatio；
+   *  2026-09 迭代：0.55 在前缀缓存计价下压的是仍会被反复读取的活跃中段，
+   *  净亏）。 */
   compactRatio?: number;
-  /** 原文保留的最少近期消息数 */
+  /** 手动压缩尾部保留的完整消息数下限（默认 4）。自动压缩改用
+   *  retainRatio token 预算（见下），此值作为消息数兜底。 */
   recentKeep?: number;
+  /** 自动压缩尾部保留的 token 预算，占 contextWindow 比例（默认 0.16 —
+   *  对齐 DSH retainRatio）。computeCompactRegionImpl 从尾部往回累计 token
+   *  到 ≥ 此预算并保留完整 user 回合。 */
+  retainRatio?: number;
   /** 用于持久化的会话 ID。未提供则自动生成。 */
   sessionId?: string;
   /** 每次会话保存后调用（fire-and-forget，不阻塞循环）。 */
@@ -169,6 +183,8 @@ export class Agent {
   private contextWindow: number;
   private compactRatio: number;
   private recentKeep: number;
+  /** 自动压缩尾部保留 token 预算比例（0.16 默认，见 agent-compaction.ts）。 */
+  private retainRatio: number;
   // 真卡死闩锁 — 仅在"折叠后载荷仍 >95% 窗口"时置位（此时压缩确实
   // 无能为力，只有 /new 能解决）。瞬时失败不再使用它 — 见下方退避门控。
   compactStuck = false;
@@ -428,11 +444,18 @@ export class Agent {
     // 默认禁用折叠 — 见 toolResultWindow 注释（DeepSeek 缓存计价下不划算）
     this._toolResultWindow = opts.toolResultWindow ?? 0;
     this.contextWindow = opts.contextWindow || 1000000; // 1M tokens 默认值; || 捕获零值（设置默认值），使压缩永不被静默禁用
-    // ponytail: 0.55 将阈值设在 550K token（1M 窗口）。
-    // 0.7 太高 — 最大的真实会话（450-630K）从未触发。
-    // 积累足够样本后根据 compaction-model.ts 数据调优。
-    this.compactRatio = opts.compactRatio ?? 0.55;
+    // ponytail: 0.8 对齐 DSH thresholdRatio（2026-09 迭代）。
+    // 0.55 是旧 1M 窗口时代的经验值——真实窗口按模型热同步后（per-model
+    // 覆盖 → 目录值 → 200K 缺省），0.55×200K = 110K 就触发，把仍会反复
+    // 读取的活跃中段过早换成摘要，在前缀缓存计价（hit 1/50 价）下净亏。
+    // 触发点前移到 step 前同步判定（default-loop pre-flight），0.8 线保证
+    // 只在压力真高、压缩有净收益时动手。积累足够样本后自动调优
+    // （compaction-model.ts 夹取 [0.7, 0.85]）。
+    this.compactRatio = opts.compactRatio ?? DEFAULT_COMPACT_RATIO;
     this.recentKeep = opts.recentKeep ?? 4;
+    // 自动压缩尾部 token 预算（对齐 DSH retainRatio 0.16）— 从尾部往回
+    // 累计 token 保留完整 user 回合，工具密集会话里保证模型有足够近期现场。
+    this.retainRatio = opts.retainRatio ?? DEFAULT_RETAIN_RATIO;
     this._subagentDepth = ctx.subagentDepth ?? opts.subagentDepth ?? 0;
     this.id = ctx.agentId ?? opts.agentId ?? `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     this.parentId = ctx.parentId ?? opts.parentId ?? null;
@@ -665,6 +688,10 @@ export class Agent {
   }
   getRecentKeep(): number {
     return this.recentKeep;
+  }
+  /** 自动压缩尾部保留的 token 预算比例（agent-compaction.ts 消费）。 */
+  getRetainRatio(): number {
+    return this.retainRatio;
   }
   getContextWindow(): number {
     return this.contextWindow;
@@ -1083,6 +1110,8 @@ export class Agent {
       stream: (sig, turn, executor) => this.stream(sig, turn, executor),
       tokenCountWithEstimation: () => this.tokenCountWithEstimation(),
       compactNow: (sig) => this.compactNow(sig),
+      compactIfNeeded: (sig) => this.compactIfNeeded(sig),
+      compactRatioOf: () => this.compactRatio,
       maybeCompact: (usage) => this.maybeCompact(usage),
       stormNudge: (calls, resultsByCallId) => this._stormNudge(calls, resultsByCallId),
       diagTokenBreakdown: (usage) => this._diagTokenBreakdown(usage),
@@ -1173,6 +1202,9 @@ export class Agent {
       // 低水位下不引发任何动作；也不再自动调低 contextWindow
       // （单次错误不能证明窗口大小，永久砍小会让压缩在荒谬
       // 的阈值反复触发，日志 2026-07-28 已实锤该恶性循环）。
+      // 2026-09 迭代：走自动入口（auto 尾部 token 预算 + 摘要成本硬校验），
+      // 与 step 前 pre-flight 同语义 —— 错误路径是 provider 已确认溢出，
+      // 压缩策略应与自动压力路径一致（DSH context-overflow 同款）。
       const errAt = this.tokenCountWithEstimation();
       if (
         this.isContextLengthError(lastErr) &&
@@ -1187,11 +1219,11 @@ export class Agent {
         });
         this._sink({ kind: EventKind.Notice, level: 'warn', text: '上下文过长，自动压缩后重试…' });
         try {
-          await this.compactNow(signal);
-          // compactNow 更新折叠状态（载荷变小）— 跳过退避，立即重试
+          await this.compactIfNeeded(signal);
+          // compactIfNeeded 更新折叠状态（载荷变小）— 跳过退避，立即重试
           continue;
         } catch {
-          // compactNow 失败 — 转入正常重试/中止逻辑
+          // compactIfNeeded 失败 — 转入正常重试/中止逻辑
           this._sink({ kind: EventKind.Notice, level: 'warn', text: '自动压缩失败，尝试直接重试…' });
         }
       }
@@ -1571,6 +1603,12 @@ export class Agent {
   /** 手动压缩触发器（来自 /compact 命令）。返回摘要文本或错误。 */
   async compactNow(signal: AbortSignal): Promise<string> {
     return compactNowImpl(this as unknown as CompactionHost, signal);
+  }
+
+  /** 自动压缩入口（step 前 pre-flight 调用）— 尾部按 retainRatio token 预算
+   *  保留完整 user 回合（DSH 自动压力路径语义）。返回摘要文本或 'stuck'。 */
+  async compactIfNeeded(signal: AbortSignal): Promise<string> {
+    return compactIfNeededImpl(this as unknown as CompactionHost, signal);
   }
 
   maybeCompact(usage: Usage | undefined): void {

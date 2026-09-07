@@ -43,6 +43,7 @@ vi.mock('../src/provider/catalog', async (importOriginal) => {
 });
 
 import type { Agent } from '../src/agent/agent';
+import { SUMMARY_OUTPUT_BUDGET, SUMMARY_PROMPT_BUDGET } from '../src/agent/compaction-summarize';
 import { createExecState } from '../src/agent/execution-state';
 import { countMessages, countText } from '../src/agent/token-counter';
 import { ToolRegistry } from '../src/agent/tool';
@@ -83,7 +84,6 @@ function makeSummaryProvider(behavior: {
 function makeAgent(prov: Provider, opts: { contextWindow?: number; events?: any[] } = {}): Agent {
   return createTestAgent(prov, new ToolRegistry(), 'You are a test agent.', {
     contextWindow: opts.contextWindow ?? 100000,
-    compactRatio: 0.55,
     execState: createExecState(),
     eventSink: opts.events ? (ev) => opts.events!.push(ev) : undefined,
   });
@@ -145,9 +145,11 @@ describe('compaction pipeline E2E', () => {
     const calls: RecordedCall[] = [];
     const { prov } = makeSummaryProvider({ onCall: (c) => calls.push(c) });
     const contextWindow = 20000;
-    const chunkCap = Math.floor((contextWindow - 2048 - 4000) * 0.8); // 11161
+    // chunkCap 与实现同源（输入预算 × 0.8）— 与 compaction-summarize.ts 的
+    // 单块容量公式一致，避免硬编码漂移（输出预算 2026-09 迭代 2048 → 4096）。
+    const chunkCap = Math.floor((contextWindow - SUMMARY_OUTPUT_BUDGET - SUMMARY_PROMPT_BUDGET) * 0.8);
     const agent = makeAgent(prov, { contextWindow });
-    pushPadMessages(agent, 24, 2000); // region = 20 条 ≈ 40K tokens → 多块
+    pushPadMessages(agent, 24, 2000); // region 多块
 
     // 用真实计数推导预期块数，不假设每字 token 率
     const a = asAny(agent);
@@ -221,9 +223,12 @@ describe('compaction pipeline E2E', () => {
   it('5. 空区域不闩锁：增长后自动恢复（旧永久 stuck 回归）', async () => {
     const events: any[] = [];
     const { prov, callCount } = makeSummaryProvider({});
-    const agent = makeAgent(prov, { events });
+    // 窗口 20000 → 自动尾部保留预算 = 3200 token（retainRatio 0.16）：
+    // 第一段 3×100=300 < 3200 → 无可压价值（null，不闩锁设增长门槛）；
+    // 第二段累计到 ~3300 ≥ 3200 → 真正触发压缩（窗口也保证 LLM 摘要可行）。
+    const agent = makeAgent(prov, { contextWindow: 20000, events });
     const a = asAny(agent);
-    pushPadMessages(agent, 3, 100); // system + 3 < 尾部 4 → 无可折叠区域
+    pushPadMessages(agent, 3, 100); // system + 3 < 尾部预算 → 无可折叠区域
 
     a.maybeCompact(USAGE_HIGH);
 
@@ -248,9 +253,11 @@ describe('compaction pipeline E2E', () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
     const { prov } = makeSummaryProvider({ gate: () => gate });
-    const agent = makeAgent(prov);
+    // 窗口 20000 → 自动尾部预算 3200 token：12×300 内容足够触发异步管线，
+    // 且窗口 ≥ ~12K 让 LLM 摘要可行（不断言 digest 降级）。
+    const agent = makeAgent(prov, { contextWindow: 20000 });
     const a = asAny(agent);
-    pushPadMessages(agent, 12, 100); // len = 13，tailStart = 9
+    pushPadMessages(agent, 12, 300); // len = 13
 
     a.maybeCompact(USAGE_HIGH);
     expect(a.compactRunning).toBe(true);
@@ -263,9 +270,10 @@ describe('compaction pipeline E2E', () => {
 
     // session 完整历史未动
     expect(agent.getSession()).toHaveLength(18);
-    // payload = system + 摘要 + 尾部（原 4 条 + 飞行中新增 5 条）
+    // payload = system + 摘要 + tailStart 起的全部尾部（含飞行中新增 5 条）
     const payload = a.payloadMessages();
-    expect(payload).toHaveLength(1 + 1 + 9);
+    const tailStart = a._compactTailStart;
+    expect(payload).toHaveLength(1 + 1 + (agent.getSession().length - tailStart));
     expect(payload.at(-1).content).toBe(lastContent);
     expect(payload[1].content).toContain('摘要#1');
   });
@@ -274,9 +282,9 @@ describe('compaction pipeline E2E', () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
     const { prov } = makeSummaryProvider({ gate: () => gate });
-    const agent = makeAgent(prov);
+    const agent = makeAgent(prov, { contextWindow: 20000 });
     const a = asAny(agent);
-    pushPadMessages(agent, 12, 100);
+    pushPadMessages(agent, 12, 300);
 
     a.maybeCompact(USAGE_HIGH);
     expect(a.compactRunning).toBe(true);
@@ -306,24 +314,37 @@ describe('compaction pipeline E2E', () => {
     expect(asAny(agent).compactStuck).toBe(false);
   });
 
-  it('9. 自动触发链路：maybeCompact 经真实 run 路径触发，载荷缩小且 session 无损', async () => {
-    // 第一轮：tool_calls + usage 90000（90% ≥ 55%）；第二轮：摘要调用；第三轮：主循环收尾纯文本。
+  it('9. 自动触发链路：step 前 pre-flight 同步压缩（主触发点）经真实 run 路径触发', async () => {
+    // 2026-09 迭代：自动压缩主触发从「轮末 maybeCompact(usage)」前移到
+    // 「step 前 pre-flight」——发送前估算载荷 ≥ compactRatio(默认 0.8) 即
+    // 同步压缩（compactIfNeeded）后再发请求，杜绝超压请求上路。
+    // 序列：run → step 0 前 pre-flight 估算达 0.8 → 摘要调用（n=1）→
+    // 主循环 tool_calls 轮（n=2）→ 收尾纯文本轮（n=3）。
     const calls: string[] = [];
-    let n = 0;
+    let mainCalls = 0;
     const prov: Provider = {
       name: () => 'mock',
       prewarm() {},
       async *stream(_signal: AbortSignal, _req: any) {
-        n++;
-        if (n === 1) {
+        // 按请求内容分流：摘要调用的 system prompt 是「对话压缩器」指令，
+        // 主循环是测试 agent 的 system。分块 map-reduce 会产生多次摘要调用
+        // （块 + 合并），不能靠调用序号区分主循环。
+        const system = String(_req.messages?.[0]?.content ?? '');
+        if (system.includes('对话压缩器')) {
+          calls.push('preflight-summary');
+          yield { type: ChunkType.Text, text: '自动触发摘要' } as any;
+          yield { type: ChunkType.Done } as any;
+          return;
+        }
+        mainCalls++;
+        if (mainCalls === 1) {
           calls.push('main-tool');
           yield { type: ChunkType.ToolCall, tool_call: { id: 'c1', name: 'fake_tool', arguments: '{}' } } as any;
-          yield { type: ChunkType.Usage, usage: USAGE_HIGH } as any;
+          yield { type: ChunkType.Usage, usage: { ...USAGE_HIGH } } as any;
           yield { type: ChunkType.Done } as any;
         } else {
-          // 摘要调用与主循环收尾轮顺序不定 — 返回同一文本，断言与顺序无关
-          calls.push('summary');
-          yield { type: ChunkType.Text, text: '自动触发摘要' } as any;
+          calls.push('main-text');
+          yield { type: ChunkType.Text, text: '收尾回复' } as any;
           yield { type: ChunkType.Done } as any;
         }
       },
@@ -339,25 +360,25 @@ describe('compaction pipeline E2E', () => {
         execute: async () => 'fake output',
       }),
     );
+    // 窗口 50000、12×3400 → pre-flight 估算 ≈ 40800/50000 ≈ 0.82 ≥ 0.8 触发；
+    // auto 尾部预算 8000 token，压缩区域 ≈ 40800−尾 < 单块上限（chunkCap
+    // ≈ (50000−8096)×0.8 ≈ 33523）→ 单次 LLM 摘要（n=1），调用序稳定。
     const agent = createTestAgent(prov, registry, 'You are a test agent.', {
-      contextWindow: 100000,
-      compactRatio: 0.55,
+      contextWindow: 50000,
       execState: createExecState(),
     });
-    pushPadMessages(agent, 12, 200);
+    pushPadMessages(agent, 12, 3400);
     const a = asAny(agent);
     const beforePayloadLen = a.payloadMessages().length;
     expect(beforePayloadLen).toBe(13); // system + 12
 
     await agent.run(new AbortController().signal, '继续干活');
 
-    // 第一轮 tool_calls 轮末触发 maybeCompact → 摘要调用已发生
-    expect(calls).toContain('summary');
-    // run 返回后压缩异步飞行 — 等待摘要落地
-    await vi.waitFor(() => expect(a._compactSummary).not.toBeNull(), { timeout: 5000 });
+    // pre-flight 触发 → 摘要调用已发生（压缩在发主请求前同步完成）
+    expect(calls[0]).toBe('preflight-summary');
     expect(a._compactSummary).toContain('自动触发摘要');
 
-    // 载荷缩小：system + 摘要 + 尾部最近消息
+    // 载荷缩小：system + 摘要 + auto 保留尾（完整 user 回合）
     const payload = a.payloadMessages();
     expect(payload.length).toBeLessThan(beforePayloadLen);
     expect(payload[1].content).toContain('<compacted-context>');

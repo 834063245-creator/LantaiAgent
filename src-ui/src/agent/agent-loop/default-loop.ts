@@ -132,15 +132,18 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
       // 注入其他 Agent 的新发现
       host.injectDiscoveries();
 
-      // ── 预检上下文窗口 ──
-      // 在发送到 API 前检查 — 捕获上轮结束时（maybeCompact() 在 0.55 触发）
-      // 与危险区（0.88）之间的间隙。估算基于发送载荷（折叠视图），
-      // 与真实 API 压力一致。没有这个检查，大量工具结果 + 注入
-      // 会在下一轮导致 400 错误。
+      // ── 预检上下文窗口（自动压缩主触发点，2026-09 迭代）──
+      // 每 step 发送前用估算检查载荷压力；≥ compactRatio(默认 0.8，随模型
+      // 窗口缩放) 即**同步**压缩后再发请求 —— 绝不带超压载荷上路。
+      // 取代旧的「轮末异步 maybeCompact(0.55) + step 前 0.88 兜底」双线：
+      // 轮末异步压完下一轮又涨回去（工具密集轮），且 0.55 在 DeepSeek 前缀
+      // 缓存计价下压的是最便宜的活跃中段、净亏；0.8 + 发送前同步把触发
+      // 收紧到压力真高、压缩有净收益的时刻（对齐 DSH thresholdRatio 0.8）。
+      // 没有此检查，大量工具结果 + 注入会在下一轮导致 400 错误。
       if (host.contextWindow > 0) {
         const preFlight = host.tokenCountWithEstimation();
         const preFlightRatio = preFlight / host.contextWindow;
-        if (preFlightRatio >= 0.88) {
+        if (preFlightRatio >= host.compactRatioOf()) {
           if (host.compactStuck) {
             log.warn('agent', 'pre-flight skipped: compact stuck', {
               estimated: preFlight,
@@ -168,7 +171,7 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
               text: `上下文使用率 ${(preFlightRatio * 100).toFixed(0)}%，发送前压缩…`,
             });
             try {
-              const outcome = await host.compactNow(signal);
+              const outcome = await host.compactIfNeeded(signal);
               if (outcome === 'stuck') {
                 host.sink({
                   kind: EventKind.Notice,
@@ -177,7 +180,7 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
                 });
               }
             } catch {
-              // compactNow 已发出自身错误 — 继续让 API 错误处理器
+              // compactIfNeeded 已发出自身错误 — 继续让 API 错误处理器
               // （stream 中的响应式压缩）捕获
               log.warn('agent', 'pre-flight compaction failed, falling through to API call');
             }
@@ -390,8 +393,9 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
         );
       }
 
-      // 下一轮前按需压缩
-      host.maybeCompact(usage);
+      // 2026-09 迭代：轮末异步压缩退役 — 自动压缩主触发已前移到下轮
+      // step 头（pre-flight 同步 ≥compactRatio 判定），此处不再按 usage
+      // 异步触发（异步压完下一轮又涨回去，且 0.55 线在前缀缓存计价下净亏）。
       host.loopEvents.emitLoopEvent('step/end', { agentId: host.id, step, toolCalls: calls.length });
     }
   } catch (e) {

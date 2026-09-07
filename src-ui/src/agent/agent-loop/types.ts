@@ -70,7 +70,13 @@ export interface AgentLoopHost {
   stream(signal: AbortSignal, turn: number, executor?: StreamingToolExecutor): Promise<LoopStreamResult>;
   tokenCountWithEstimation(): number;
   compactNow(signal: AbortSignal): Promise<string>;
+  /** 自动压缩入口（step 前 pre-flight 主触发）— 尾部按 retainRatio token
+   *  预算保留完整 user 回合（对齐 DSH 自动压力路径；compactNow 是手动
+   *  路径，保留 recentKeep 条）。 */
+  compactIfNeeded(signal: AbortSignal): Promise<string>;
   maybeCompact(usage: Usage | undefined): void;
+  /** 当前触发水位（compactRatio，占 contextWindow 比例）— pre-flight 判定读它。 */
+  compactRatioOf(): number;
   stormNudge(calls: ToolCall[], resultsByCallId: Map<string, { output: string; err?: string }>): string | null;
   diagTokenBreakdown(apiUsage: Usage | undefined): void;
   toolReadOnly(name: string): boolean;
