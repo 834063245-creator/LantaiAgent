@@ -113,6 +113,40 @@ describe('流式增量渐显 — MarkdownBody（正文）', () => {
     expect(container!.querySelectorAll('.pp-ink-delta')).toHaveLength(0);
     expect(container!.querySelector('.pp-body')?.textContent).toBe('完全不同的新内容');
   });
+
+  /* ── 尾块行内续写回归（会话流偶发吞尾字 bug 根因）──
+   * 行内增量（无换行的 delta）由 MarkdownBody 切成 tailNode 只挂最后一个块；
+   * 若收尾块是 list/table/math/hr（renderMdBlock 的 case 不消费 tail），
+   * 该帧新字符被静默丢弃——数据没丢，块重挂/全量重解析时"又出现"。
+   * 断言聚焦增量字是否出现（列表标记/表格格线是 CSS 呈现，不进 textContent）。 */
+  it('回归：列表收尾 + 行内续写——增量不丢字（吞尾字根因）', () => {
+    render(textBlock('markdown', '- 甲\n- 乙'));
+    render(textBlock('markdown', '- 甲\n- 乙丙'));
+    expect(container!.querySelector('.pp-body')?.textContent).toContain('乙');
+    expect(container!.querySelector('.pp-body')?.textContent).toContain('丙'); // 尾块续写增量——丢 tail 时此断言红
+  });
+
+  it('回归：表格收尾 + 行内续写——增量不丢字', () => {
+    render(textBlock('markdown', '| a | b |\n|---|---|\n| 1 | 2 |'));
+    render(textBlock('markdown', '| a | b |\n|---|---|\n| 1 | 2X |'));
+    expect(container!.querySelector('.pp-body')?.textContent).toContain('2X');
+    expect(container!.querySelector('.pp-body')?.textContent).toContain('X'); // hr 尾块续写——丢 tail 时此断言红
+  });
+
+  it('回归：列表尾连续多 token 行内续写——整串不丢（真实偶发观感）', () => {
+    render(textBlock('markdown', '- 甲\n- 乙'));
+    render(textBlock('markdown', '- 甲\n- 乙丙'));
+    render(textBlock('markdown', '- 甲\n- 乙丙丁'));
+    render(textBlock('markdown', '- 甲\n- 乙丙丁戊'));
+    expect(container!.querySelector('.pp-body')?.textContent).toContain('戊');
+    expect(container!.querySelector('.pp-body')?.textContent).toContain('乙丙丁');
+  });
+
+  it('回归：分隔线收尾 + 同行续写——不静默吞字', () => {
+    render(textBlock('markdown', '---'));
+    render(textBlock('markdown', '---X'));
+    expect(container!.querySelector('.pp-body')?.textContent).toContain('X');
+  });
 });
 
 describe('流式增量渐显 — TextBody（思考/通知）', () => {

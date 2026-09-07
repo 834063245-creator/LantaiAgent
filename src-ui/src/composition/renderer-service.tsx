@@ -415,6 +415,10 @@ function renderMdBlock(el: MdBlock, tail?: ReactNode): ReactNode {
                 </span>
               )}
               <InlineRuns inl={it.inl} />
+              {/* 流式尾块续写（会话流偶发吞尾字根因修复）：tail = 无换行的行内
+               * 增量——接进最后一项（列表尾项同行续写是模型常见产出）。丢 tail
+               * 即该帧新字符从 DOM 消失（数据未丢，重挂/全量重解析又出现）。 */}
+              {i === el.items.length - 1 && tail}
               {it.sub && (
                 <div className="pp-md-sub">
                   <MdBlocksView blocks={it.sub} />
@@ -437,39 +441,51 @@ function renderMdBlock(el: MdBlock, tail?: ReactNode): ReactNode {
       // 块级 display 公式（KaTeX .katex-display 自带上下留白与居中）
       const html = mathHtml(el.text, true);
       return (
-        // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX 输出为可信本地渲染（非模型 HTML）
-        <div className="pp-md-math" dangerouslySetInnerHTML={{ __html: html }} />
+        <>
+          {/* biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX 输出为可信本地渲染（非模型 HTML） */}
+          <div className="pp-md-math" dangerouslySetInnerHTML={{ __html: html }} />
+          {tail}
+        </>
       );
     }
     case 'hr':
-      return <hr className="pp-md-hr" />;
+      return (
+        <>
+          <hr className="pp-md-hr" />
+          {tail}
+        </>
+      );
     case 'table':
       return (
-        <table className="pp-md-table">
-          <thead>
-            <tr>
-              {el.head.map((cell, i) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: 表头按位渲染
-                <th key={i}>
-                  <InlineRuns inl={cell} />
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {el.rows.map((row, r) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: 表行按位渲染
-              <tr key={r}>
-                {row.map((cell, c) => (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: 表格按位渲染
-                  <td key={c}>
+        <>
+          <table className="pp-md-table">
+            <thead>
+              <tr>
+                {el.head.map((cell, i) => (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: 表头按位渲染
+                  <th key={i}>
                     <InlineRuns inl={cell} />
-                  </td>
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {el.rows.map((row, r) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: 表行按位渲染
+                <tr key={r}>
+                  {row.map((cell, c) => (
+                    // biome-ignore lint/suspicious/noArrayIndexKey: 表格按位渲染
+                    <td key={c}>
+                      <InlineRuns inl={cell} />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {/* 流式尾块续写兜底：表格结构无法行内接续 → 增量独立跟随表尾（不丢字） */}
+          {tail}
+        </>
       );
   }
 }
