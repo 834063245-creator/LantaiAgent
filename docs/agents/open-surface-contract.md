@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：21
+当前版本：22
 
-<!-- contract-fingerprint: dfe5883837ced997c37c442663ea723cc508d0591e9d5634e225190c76df8263 -->
+<!-- contract-fingerprint: 6aa413003efd3d2df9a614eba89c9d16ddeb6a498113be50854cf09d061c10a8 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -56,6 +56,7 @@
 | 19 | 2026-09-07 | default-loop step0 计划提醒读取删除剥行号补丁（kernelReadFile 缺省翻转为原文——fs(read) payload 行号 opt-in，工具缺陷报告 Bug 1；plan 文件读取路径行为不变，收到的即原文）；无契约形状变更 | 工具缺陷报告三连修复（2026-09-07） |
 | 20 | 2026-09-07 | `LlmAdapterContribution` 新增可选 `label?: string`（ctx.llm 协议下拉/展示用人类可读标签——provider-refactor 方案乙 Phase 1A Protocol 开放为 string 后，AddProviderSheet 协议 select 与 PROTOCOL_LABELS 回落链查 adapter 贡献标签；缺省 = 显示 kind 本身）；契约形状变更（新增可选字段，向后兼容） | provider-refactor-handoff.md Phase 1A（方案乙） |
 | 21 | 2026-09-07 | `src/plugins/types.ts` 导出 `McpServerDeclSchema`（用户级 ~/.lantai/mcp.json 装载复用同一 schema——单一真源，避免 user-mcp.ts 重抄校验；McpServerDecl 类型形状零变更）；无契约形状变更 | skills-mcp-production-plan Commit 5b |
+| 22 | 2026-09-08 | 动态插件守卫 ctx 服务解析修复（sandbox.ts）：`makeGuardedCtx` 代解析由 `resolverCtx[prop]` 改 `resolverCtx.reflect.get(prop)`——生产消费单点 `activeDynamicRunner()` 是裸服务实例（this.ctx = runner fiber，有 runtime），旧解析被内核 inject 拦截沿 fiber 链找 impl 而 runner 无 inject 声明、组合层服务 impl 在兄弟 fiber，12 注册面恒抛 "cannot get property X without inject"；新解析走内核免 inject 读取通道直读根 store（strict 默认拒递半拆服务），run()/mount() 同源修复。守卫面形状零变更（effect + 12 register 语义不变）；无契约形状变更 | platform-bugs-cordis-dynamic-runner.md（2026-09-07 登记，2026-09-08 修复） |
 
 ## 变更流程（guard 红 → 修复四步）
 

@@ -692,7 +692,11 @@ undefine|inspect_list|inspect_self)` 运行时定义的插件包走**双门**：
      阴影为 undefined（插件拿不到 DOM/网络/存储/动态求值逃逸面）；
    - **守卫注册面**：apply 收守卫代理——只暴露 effect 与 12 个可注册
      seam 的 register（def 形状逐个校验 + 贡献预算 64 条 + 取消后拒绝），
-     白名单外访问/赋值响亮拒绝（错误不静默）；
+     白名单外访问/赋值响亮拒绝（错误不静默）。守卫代理不是真实 cordis
+     ctx：服务解析由 runner 免 inject 代解析（`reflect.get` 直读根 store，
+     2026-09-08 修复运行期 "without inject" 缺陷）——宿主有无 fiber runtime
+     恒同路可解析，动态插件不需要也不存在 inject 声明面；未挂载服务在
+     register 前响亮报「服务未装配」；
    - **预算**：源码 ≤256KB / apply ≤10s / 贡献 ≤64 条，超限取消并链式
      回收全部已注册贡献（disposer 袋归 runner 管理）。
 - **边界如实声明**（R4）：浏览器主文档没有进程级硬边界——动态插件沙箱

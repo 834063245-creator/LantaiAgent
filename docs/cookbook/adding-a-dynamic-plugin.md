@@ -37,7 +37,16 @@ return {
 };
 ```
 
+> **apply 收到的 ctx 是守卫代理，不是真实 cordis ctx**（与静态插件的本质差异）：
+> 只暴露 `ctx.effect(fn, label)` 与 12 个可注册 seam 的 `register`，白名单外
+> 访问/赋值响亮拒绝。服务解析由 runner **免 inject 代解析**（`reflect.get`
+> 直读根 store——2026-09-08 修复，此前经裸实例路径恒抛 "without inject"），
+> 宿主无论有无 fiber runtime 恒同路可解析——插件不需要、也不存在 inject
+> 声明面；未挂载的服务在 `register` 前响亮报「服务未装配」。
+> 直调 `ctx.tools.register(...)` 不包 `ctx.effect` 是合法姿势——disposer 由
+> 守卫收进 runner 的回收袋（stop/失败/undefine 逆序 dispose）。
+
 ## 验证
 
-- `tests/dynamic-runner.test.ts` 8 用例（求值面阴影 / define 校验 / 主链 / 审批门 / 守卫零残留 / 超时 / 会话隔离 / 回滚）。
+- `tests/dynamic-runner.test.ts` 9 用例（求值面阴影 / define 校验 / 主链 / 审批门 / 守卫零残留 / 超时 / 会话隔离 / 回滚 / 运行期解析面回归）。
 - 审批：未授权 + 无 UI 通道 → `APPROVAL_REQUIRED`；拒绝 → `APPROVAL_DENIED`（不得重复请求）。

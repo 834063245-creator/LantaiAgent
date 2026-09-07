@@ -13,6 +13,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  activeDynamicRunner,
   DynamicRunnerService,
   dynamicRunnerPlugin,
   resetDynamicRunnerForTests,
@@ -256,6 +257,34 @@ describe('ctx.dynamicRunner（D7 动态插件运行时）', () => {
     expect(activeToolContributions().some((c) => c.id === 'dyn/v1')).toBe(true);
     expect(activeToolContributions().some((c) => c.id === 'dyn/v2')).toBe(false);
     await runner.undefine('s1', first.pluginId);
+    await dispose();
+  });
+
+  // ⑨ 运行期解析面回归（platform-bugs 2026-09-07）：生产消费单点是
+  // activeDynamicRunner()（cordis 工具面 requireRunner 同源）——裸实例，
+  // 方法内 this.ctx = runner 自身 fiber 的 ctx（fiber.runtime 非空）。
+  // 前八个用例经 root.dynamicRunner 取 runner——cordis traceable 绑定把
+  // this.ctx 重绑到「取用方 ctx」（root，无 runtime）→ 内核走免 inject 分支，
+  // 恰好绕开了生产路径（守卫 ctx 经 resolverCtx[prop] 被 inject 拦截的缺陷）。
+  // 本用例钉死生产路径：服务解析必须经免 inject 通道恒可解析。
+  it('⑨ 运行期解析面：经 activeDynamicRunner()（生产真路径）run 注册贡献可解析', async () => {
+    const { dispose } = await booted();
+    const runner = activeDynamicRunner();
+    expect(runner).toBeInstanceOf(DynamicRunnerService);
+    // 前提钉死：裸实例的 this.ctx 是 runner fiber（有 runtime）——若未来
+    // 变成无 runtime 的 ctx，本用例退化为①-⑧路径而失去守护价值。
+    const rawCtx = (runner as unknown as { ctx: { fiber: { runtime: unknown } } }).ctx;
+    expect(rawCtx.fiber.runtime).toBeTruthy();
+    const receipt = runner!.define('s1', {
+      kind: 'new',
+      idPrefix: 'rtm',
+      name: '运行期解析',
+      purpose: '生产路径回归',
+      code: TOOL_PLUGIN('dyn/runtime-path'),
+    });
+    await runner!.run('s1', receipt.pluginId, receipt.packageId, 'run', async () => true);
+    expect(activeToolContributions().some((c) => c.id === 'dyn/runtime-path')).toBe(true);
+    await runner!.undefine('s1', receipt.pluginId);
     await dispose();
   });
 });

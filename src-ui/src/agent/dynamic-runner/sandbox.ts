@@ -133,8 +133,9 @@ export function evaluateDynamicPlugin(source: string, fallbackName: string): Com
 // ── 注册面校验（按 service 的承重字段——错误在装载期暴露，不潜伏到调用期）──
 
 /** 各注册面的函数成员要求（presence 校验；缺即拒绝）。
- *  键集同时是：守卫白名单 + runner 挂载时的 inject 声明（cordis 语义——
- *  未声明的属性访问被内核拦死；单一真源防两处漂移）。 */
+ *  键集同时是：守卫白名单 + 可解析服务清单（服务经 reflect.get 免 inject
+ *  通道解析——runner 不声明 inject（依赖集编译期不可知）；单一真源防
+ *  两处漂移）。 */
 export const GUARDED_SERVICES: readonly string[] = [
   'tools',
   'panels',
@@ -218,17 +219,26 @@ export function makeGuardedCtx(
         if (!(prop in REQUIRED_FN_MEMBERS)) {
           fail(`非法访问 ctx.${prop}——动态插件只能使用注册面（effect + ${GUARDED_SERVICES.join('/')}）`);
         }
-        let svc: { register: (def: unknown) => () => void };
+        // 服务解析走 reflect.get（内核免 inject 读取通道——vendored cordis
+        // 为框架内部代解析设计的面）。不能用 resolverCtx[prop]：生产消费单点
+        // activeDynamicRunner() 是裸服务实例，其 this.ctx = runner 自身
+        // fiber 的 ctx（fiber.runtime 非空）——有 runtime 的 ctx 上属性访问
+        // 被内核 inject 拦截沿 fiber 链找 impl，而 runner 不声明 inject
+        // （依赖集编译期不可知）、组合层服务的 impl 又在兄弟 fiber 上，
+        // 恒抛 "without inject"（platform-bugs 2026-09-07）。reflect.get 直读
+        // 根 store，两种宿主形态（无 runtime 的 root / 有 runtime 的 runner
+        // fiber）恒同路解析；strict 默认语义（提供方 fiber 非 ACTIVE 不解析）
+        // 正确拒递半拆服务。
+        let svc: { register: (def: unknown) => () => void } | undefined;
         try {
-          svc = (resolverCtx as unknown as Record<string, { register: (def: unknown) => () => void }>)[prop] as {
-            register: (def: unknown) => () => void;
-          };
+          svc = resolverCtx.reflect.get(prop) as { register: (def: unknown) => () => void } | undefined;
         } catch (e) {
           fail(`ctx.${prop} 服务不可解析（未挂载或被裁剪）: ${e instanceof Error ? e.message : String(e)}`);
         }
         if (svc == null || typeof svc.register !== 'function') {
           fail(`ctx.${prop} 服务未装配——无法注册贡献`);
         }
+        const service = svc; // 闭包捕获窄化后的服务引用（let 窄化不进闭包）
         return {
           register: (def: unknown): (() => void) => {
             assertOpen();
@@ -237,7 +247,7 @@ export function makeGuardedCtx(
             if (budget.count > DYNAMIC_MAX_CONTRIBUTIONS) {
               fail(`贡献条数超预算（>${DYNAMIC_MAX_CONTRIBUTIONS}）`);
             }
-            const dispose = svc.register(def);
+            const dispose = service.register(def);
             bag.push(dispose); // 生命周期归 runner（stop/失败/undefine 逆序回收）
             return dispose;
           },
