@@ -370,12 +370,19 @@ patch/preset 可寻址禁用单个 server（组合均匀性不破）。**不需�
 - **startup-error**：装载期急连接验证——失败 → 插件 error 记录
   （设置面板可见）。
 - **进程生命周期**：kill 归插件 fiber disposer——插件卸载/禁用（重启
-  生效）→ spawn 的进程链式停。断线后的自动重连监督（DSH reconnect
-  loop 同构）是未决项——v1 以装配期重试承担。
+  生效）→ spawn 的进程链式停。断线感知（2026-09-07，Commit 6b）：进程
+  意外退出 → client isConnected 翻 false + 工具快照清 + 在途判负——下次
+  装配 factory 走重连/重建（受治面 restart:on-crash 指数退避自动重启）。
 - **stdio command 解析**：相对路径（含分隔符）相对插件目录（`plugin_dir`
   RPC 解析锚点）；裸名走 PATH。`args` 原样透传（相对路径不解析）。
 - **边界**（ADR §5 维持）：这是「插件挂外部机器」，不是「进程内宿主
   插件」——后者永久关闭。
+
+> **用户级直配（skills-mcp-production-plan，2026-09-07）**：除插件
+> `manifest.mcpServers` 外，用户可写 `~/.lantai/mcp.json` 声明跨项目个人
+> MCP server（同构条目，boot 期装载为工具贡献，行 id `plugin/user/mcp/
+> <server>`；设置面板「MCP」tab 管理）。详见
+> `docs/plans/skills-mcp-production-plan.md` §3.2。
 
 ### ctx.renderers —— 块渲染器（纸壳，即时生效）
 

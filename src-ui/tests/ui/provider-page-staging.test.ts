@@ -124,7 +124,8 @@ describe('ProviderPage — 暂存流程', () => {
     root?.unmount();
   });
 
-  it('两步式添加（catalog chip 预填）→ 补默认模型 → onAddAndPersist 即时持久化', async () => {    await render(makeSettings({ providers: [makeSettings().providers[1]] }));
+  it('两步式添加（catalog chip 预填）→ 补默认模型 → onAddAndPersist 即时持久化', async () => {
+    await render(makeSettings({ providers: [makeSettings().providers[1]] }));
 
     await click(document.querySelector('.pp-rail-add'));
     expect(document.querySelector('.pp-add-sheet')).not.toBeNull();
@@ -375,9 +376,11 @@ describe('ProviderPage — 暂存流程', () => {
         i.placeholder.includes('sk-'),
       ),
     ).toBe(false);
-    expect([...document.querySelectorAll<HTMLButtonElement>('.pp-add-pull-row button')].some((b) =>
-      b.textContent?.includes('拉取'),
-    )).toBe(false);
+    expect(
+      [...document.querySelectorAll<HTMLButtonElement>('.pp-add-pull-row button')].some((b) =>
+        b.textContent?.includes('拉取'),
+      ),
+    ).toBe(false);
     expect(document.querySelector('input[aria-label="手动补模型 id"]')).toBeNull();
     // 模板默认模型已展示为只读 chip
     expect(document.querySelector('.pp-pick-model-id')?.textContent).toBe('gpt-5.6-sol');

@@ -1,11 +1,12 @@
 # Skills 与 MCP 生产级改造计划
 
-> 状态：**In progress（Commit 1-5 + 6a 已落地；剩余 6b/6c 见 §4）**
+> 状态：**Commit 1-6 全部落地（4667f2b8 … a9d82b2a）；剩余 = 文档收口 + 真机验收**
 > 立项：2026-09-07 用户拍板（决策见 §0）
 > 参照调研：deepseek-harness（DSH，本宿主同构）/ kimi-code / openhanako / jeecg-cc 四仓库 Skills/MCP 实现（调研结论见 §1）
 > 改造对象：兰台 `agent/skills.ts`（Skills）+ `plugins/mcp-bridge.ts` / `agent/mcp/*`（MCP）+ Rust 沙箱 + 设置面板 UI
 > 施工进度（2026-09-07）：4667f2b8（内核+注入）· b41ed197（沙箱）· e102659b（UI）
 > · 55eca277（工具名哈希）· 00f8cd4b（用户级 mcp.json）· 3c176280（死代码清理）
+> · 9f224bd5（断线感知）· f1cefef9（mcp.json 沙箱豁免）· a9d82b2a（MCP tab）
 
 ## 0. 用户拍板决策（2026-09-07，全部已定）
 
@@ -130,9 +131,9 @@
 5a. ✅ **MCP 工具名哈希**（55eca277）：publicToolName lossy 归一追加 FNV-1a 防塌缩。
 5b. ✅ **MCP 用户级配置**（00f8cd4b）：`~/.lantai/mcp.json` 装载（user-mcp.ts 折算工具贡献 + main.ts 接线）。
 6a. ✅ **MCP 死代码清理**（3c176280）：mcpClients 直连旁路删除。
-6b. ⏳ **MCP 断线自动恢复**：client.ts 意外断线检测 + 旧形态自动重连（仿治理器 on-crash/kimi-code ping+reconnect）。
-6c. ⏳ **设置面板「MCP」tab**：server 列表（插件/用户级来源 + transport/状态）+ 用户级增删改。
-7. ⏳ **文档收口**：docs/plugins/README + 本计划竣工归档。
+6b. ✅ **MCP 断线自动恢复**（9f224bd5）：McpTransport.onUnexpectedClose + client 进程退出 isConnected 翻 false + 在途判负——装配级重连闭环生效。
+6c. ✅ **设置面板「MCP」tab**（a9d82b2a）：McpPage 用户级 server 列表/新建/删除 + 沙箱 mcp.json 读写豁免（f1cefef9）。
+7. ⏳ **文档收口**：docs/plugins/README 技能/MCP 用户配置说明 + 本计划竣工归档（真机验收后）。
 
 ## 5. 验证门禁（每 commit）
 
