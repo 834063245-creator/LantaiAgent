@@ -34,6 +34,7 @@ import {
   parseMarkdown,
   parseMarkdownIncremental,
   textHasMath,
+  textHasTable,
 } from './markdown';
 import { parseCircledSegments } from './marks';
 import { hasArgsToShow, prettyToolArgs } from './tool-text';
@@ -121,7 +122,7 @@ const MD_CODE_INSET = MD_DERIVED.codeInset; // border-left 3 + padding 左右 12
 const MD_HR_H = MD_DERIVED.hrH; // margin 18 + 线 1 + margin 18
 const MD_HR_LAST_H = MD_DERIVED.hrLastH; // 末元素 margin-bottom 归零
 const MD_TABLE_GAP = MD_TOKENS.tableGap; // .pp-md-table margin-bottom
-const MD_TABLE_CELL_PAD = MD_TOKENS.tableCellPadH; // th/td 左右 padding 8×2
+const MD_TABLE_CELL_PAD = MD_TOKENS.tableCellPadH * 2; // th/td 左右 padding 8×2（单侧 8——旧值只扣 8，测宽偏宽→行数偏少→叠字方向）
 const MD_TABLE_CELL_PAD_V = MD_DERIVED.tableCellPadV; // th/td 上下 padding 4×2
 const MD_TABLE_ROW_BORDER = MD_TOKENS.tableRowBorder; // th 行底规线
 /** 表格单元字体：等宽 11.5px/1.5（.pp-md-table） */
@@ -996,10 +997,12 @@ const BUILTIN_MEASURE_KINDS = new Set<string>([
 
 /** 壳层观察判据（与上方实测优先家族同源——只挂 RO 不回写是白挂）。
  *  text（2026-09 科研数学）：含公式的 markdown 块也挂 RO——公式高取决于
- *  KaTeX 结构（分式/矩阵/求和堆叠）无法从源码可靠静态镜像，挂载后实测回写。 */
+ *  KaTeX 结构（分式/矩阵/求和堆叠）无法从源码可靠静态镜像，挂载后实测回写。
+ *  表格（2026-09 表格叠字修复）：auto 布局列宽分布取决于字形度量——均分
+ *  假设只能近似（偏高方向安全），挂载后 RO 实测回写精确化（同公式先例）。 */
 export function needsObservedHeight(kind: BlockKind, hasAsset: boolean, text?: string): boolean {
   if (hasAsset || kind === 'plan' || !BUILTIN_MEASURE_KINDS.has(kind)) return true;
-  if (kind === 'markdown' && text != null && textHasMath(text)) return true;
+  if (kind === 'markdown' && text != null && (textHasMath(text) || textHasTable(text))) return true;
   return false;
 }
 
@@ -1251,8 +1254,7 @@ function markdownInkSources(text: string): InkSource[] {
 
 /* ── markdown 块测量（渲染 MarkdownBody 的逐字镜像——消费同一 parseMarkdown 模型）── */
 
-function tableRowH(cells: MdInline[][], w: number): number {
-  const cols = Math.max(1, ...cells.map((c) => c.length));
+function tableRowH(cells: MdInline[][], cols: number, w: number): number {
   const colW = Math.max(40, w / cols - MD_TABLE_CELL_PAD);
   let linesH = 0;
   for (const cell of cells)
@@ -1306,8 +1308,16 @@ function measureMdElement(el: MdBlock, w: number, last: boolean): number {
     case 'hr':
       return last ? MD_HR_LAST_H : MD_HR_H;
     case 'table': {
-      let h = tableRowH(el.head, w);
-      for (const row of el.rows) h += tableRowH(row, w);
+      // 列数 = 表头格数（GFM 列真源）；行格数异常（多于/少于表头）取 max 防呆。
+      // 2026-09 表格叠字修复：旧 cols 取「单元格内联段数 max」——单段格行退化
+      // 为 cols=1，每格按全宽测高，实际按 w/cols 渲染 → 测高严重偏矮 → 后续
+      // 块 transform 绝对定位压进表格区（纸面表格字体重叠的直接根因）。列宽
+      // 均分仍是浏览器 auto 布局的近似——偏高方向安全（phantom gap 不叠字），
+      // 含表格的 markdown 挂载后 RO 实测回写精确化（needsObservedHeight，
+      // 同公式先例）。
+      const cols = Math.max(1, el.head.length, ...el.rows.map((r) => r.length));
+      let h = tableRowH(el.head, cols, w);
+      for (const row of el.rows) h += tableRowH(row, cols, w);
       return h + (last ? 0 : MD_TABLE_GAP);
     }
   }

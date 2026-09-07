@@ -228,6 +228,17 @@ export function textHasMath(text: string): boolean {
   return text.includes('$$') || text.includes('$');
 }
 
+/** 文本是否含 GFM 表格（「含竖线行 + 紧随分隔行」快扫——壳层 RO 判据，
+ *  与 textHasMath 同款语义：多挂 RO 无副作用，漏挂才高估错位）。
+ *  判据与 parseMarkdown 表格分支同源（本行有竖线 && 下一行是分隔行）。 */
+export function textHasTable(text: string): boolean {
+  const lines = text.split('\n');
+  for (let i = 0; i + 1 < lines.length; i++) {
+    if (lines[i].includes('|') && isTableSeparator(lines[i + 1])) return true;
+  }
+  return false;
+}
+
 /** 片段序列 → 纯文本（测量端用：pretext 只测纯文本）。 */
 export function mdPlainText(inl: MdInline[]): string {
   return inl.map((s) => s.text).join('');

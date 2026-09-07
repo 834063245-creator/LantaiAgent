@@ -24,13 +24,21 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
 
 import { createBlock, resetBlockIdCounterForTests } from '../src/paper/block-model';
 import { defaultFolded, foldLabel, foldPreviewLine, isFoldable } from '../src/paper/fold';
-import { type MdBlock, mdHasRichInline, mdPlainText, parseInline, parseMarkdown } from '../src/paper/markdown';
+import {
+  type MdBlock,
+  mdHasRichInline,
+  mdPlainText,
+  parseInline,
+  parseMarkdown,
+  textHasTable,
+} from '../src/paper/markdown';
 import {
   clearPaperMeasureCache,
   createBlockMeasureCache,
   FOLD_ROW_H,
   measureBlockHeight,
   measureBlockHeightCached,
+  needsObservedHeight,
   PAPER_REASONING_LINE_HEIGHT,
 } from '../src/paper/measure';
 
@@ -117,6 +125,14 @@ describe('paper/markdown — parseMarkdown', () => {
     const table = blocks[0] as Extract<MdBlock, { t: 'table' }>;
     expect(table.head.map((c) => mdPlainText(c))).toEqual(['名', '值']);
     expect(table.rows).toHaveLength(2);
+  });
+
+  it('textHasTable：竖线行 + 紧随分隔行才真（RO 快扫——多挂无副作用方向安全）', () => {
+    expect(textHasTable('| a | b |\n| --- | --- |\n| 1 | 2 |')).toBe(true);
+    expect(textHasTable('前文\n\n| 名 | 值 |\n| --- | --- |')).toBe(true);
+    expect(textHasTable('普通文本')).toBe(false);
+    expect(textHasTable('a | b | c')).toBe(false); // 只有竖线没有分隔行 → 不成表
+    expect(textHasTable('| a |\n间隔行\n| --- |')).toBe(false); // 分隔行不紧随 → 不成表
   });
 
   it('空串 → 空模型；超出子集的行 → 段落兜底不丢字', () => {
@@ -236,6 +252,24 @@ describe('paper/measure — markdown 计高（mock 36/段）', () => {
     expect(measureBlockHeight(block('markdown', { text: '```\ncode\n```' }))).toBe(20 + 36);
     expect(measureBlockHeight(block('markdown', { text: '---' }))).toBe(19);
     expect(measureBlockHeight(block('markdown', { text: '| a |\n| --- |' }))).toBe(36 + 8 + 1);
+  });
+
+  it('表格列宽镜像：按表头列数均分减左右 padding（2026-09 叠字根因回归钉）', () => {
+    const text =
+      '| 名 | 值 | 性质 |\n| --- | --- | --- |\n| 长内容一格甲 | 长内容二格乙 | 短 |\n| 第二行甲 | 第二行乙 | 第二行丙 |';
+    measureBlockHeight(block('markdown', { text }));
+    // 9 格 = 表头 3 + 数据行 2×3；每格测宽 = 720/3 - 左右 padding 16（8×2）。
+    // 旧 bug：cols 取「单元格内联段数 max」（单段格行=1）→ 每格全宽测高 →
+    // 行数偏少 → 测高偏矮 → 后续块 transform 绝对定位压进表格区（截图
+    // 表格字体重叠的直接根因）。
+    expect(layoutMock).toHaveBeenCalledTimes(9);
+    for (const call of layoutMock.mock.calls) expect(call[1]).toBeCloseTo(720 / 3 - 16, 5);
+  });
+
+  it('含表格 markdown 触发 RO 判据（needsObservedHeight——同公式先例）', () => {
+    expect(needsObservedHeight('markdown', false, '| a |\n| --- |\n| 1 |')).toBe(true);
+    expect(needsObservedHeight('markdown', false, 'a | b（纯竖线行无分隔行）')).toBe(false);
+    expect(needsObservedHeight('markdown', false, '普通文本')).toBe(false);
   });
 
   it('嵌套列表 = 项文本 + 嵌套列表（+4 顶距）', () => {
