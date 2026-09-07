@@ -91,15 +91,16 @@
   justify-content: space-between;
   padding: 8px 11px 7px;
   border-bottom: var(--rule-strong);
-  font-family: var(--f-mono);
-  font-size: calc(8px * var(--font-scale));
+  /* 栏题中文文案走宋体（P4 教训：mono 栈无中文字形，回退更糊） */
+  font-family: var(--f-song);
+  font-size: calc(10px * var(--font-scale));
   font-weight: 600;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
+  letter-spacing: 0.12em;
   color: var(--ink-2);
   background: var(--paper-deep);
 }
 .pp-cnt {
+  font-family: var(--f-mono);
   color: var(--ink-3);
   letter-spacing: 0.05em;
 }
@@ -125,24 +126,34 @@
   gap: 8px;
   width: 100%;
   padding: 7px 8px 7px 10px;
-  border: 1px solid transparent;
-  border-left: 3px solid transparent;
+  border: none;
   border-radius: 0;
   background: none;
   cursor: pointer;
   text-align: left;
   color: var(--ink-1);
-  transition: all var(--snap);
+  transition: background var(--snap);
 }
 .pp-src:hover {
   background: var(--paper-deep);
 }
+/* 行型选中（§11 分型）：墨洗 + 朱砂左脊——全产品唯一行选中语言，
+   退役旧「深纸底 + 四边围框」写法（围框+上色+脊三条状态打架）。 */
 .pp-src.active {
-  background: var(--paper-deep);
-  border-left-color: var(--seal);
-  border-top: var(--rule-soft);
-  border-right: var(--rule-soft);
-  border-bottom: var(--rule-soft);
+  background: var(--sel-wash);
+}
+.pp-src.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  background: var(--seal);
+}
+.pp-src:focus-visible {
+  outline: 2px solid var(--seal);
+  outline-offset: -2px;
 }
 .pp-src-dot {
   width: 6px;
@@ -209,9 +220,10 @@
   border-radius: 0;
   background: none;
   color: var(--ink-2);
-  font-family: var(--f-mono);
-  font-size: calc(9px * var(--font-scale));
-  letter-spacing: 0.1em;
+  /* 中文文案走宋体（P4 教训：mono 栈无中文字形，回退更糊）；＋ 号随行 */
+  font-family: var(--f-song);
+  font-size: calc(11px * var(--font-scale));
+  letter-spacing: 0.06em;
   cursor: pointer;
   transition: all var(--snap);
 }
@@ -286,11 +298,12 @@
   font-family: var(--f-song);
 }
 .pp-badge {
-  font-family: var(--f-mono);
-  font-size: calc(8px * var(--font-scale));
+  /* 协议签 = 半中半英（"OpenAI 兼容"）——中文混排走宋体（P4 教训：
+     mono 栈无中文字形，回退更糊；uppercase 对中文无意义一并退役） */
+  font-family: var(--f-song);
+  font-size: calc(9px * var(--font-scale));
   font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  letter-spacing: 0.08em;
   padding: 2px 7px;
   border-radius: 0;
 }
@@ -312,7 +325,9 @@
   padding: 2px 8px;
   border-radius: 0;
   font-weight: 400; /* 2026-09-01 轻重批：状态签=机读注记档 */
-  font-family: var(--f-mono);
+  /* 状态字（未配置/已配置/正常/异常）= 纯中文——禁 mono（P4 教训），
+     与 ProviderList 行状态字同规 */
+  font-family: var(--f-song);
 }
 .pp-pdot {
   width: 5px;
@@ -374,11 +389,12 @@
   margin-bottom: 10px;
 }
 .pp-card-title {
-  font-family: var(--f-mono);
-  font-size: calc(8px * var(--font-scale));
+  /* 卡眉题（连接配置/诊断/危险区 = 中文）走宋体——mono 留给纯机读；
+     letter-spacing 对中文眉题仍成立（篇目注感） */
+  font-family: var(--f-song);
+  font-size: calc(9px * var(--font-scale));
   font-weight: 600;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
+  letter-spacing: 0.18em;
   color: var(--ink-2);
 }
 .pp-rule {
@@ -400,21 +416,28 @@
   margin-bottom: 5px;
 }
 .pp-f-label {
-  font-size: calc(10px * var(--font-scale));
+  font-size: calc(11px * var(--font-scale));
   color: var(--ink-2);
   font-weight: 400; /* 2026-09-01 轻重批：字段标签=注记档 */
   font-family: var(--f-song);
 }
-/* 状态 chip（已存/N 个）= 中文文案——禁 mono（P4 教训）；7.5px 上提 8px */
+/* 状态 chip（已存/N 个/订阅签）= 中文文案——禁 mono（P4 教训）；7.5px 上提 8px。
+   墨色纪律（2026-09-11 审计）：默认 = 中性墨注记（协议签/模型计数非「通过」语义，
+   用绿会把计数误读成成功态）；成功/待存/清除才上状态色。 */
 .pp-chip {
   font-family: var(--f-song);
   font-size: calc(8px * var(--font-scale));
   letter-spacing: 0.05em;
+  color: var(--ink-2);
+  background: color-mix(in oklch, var(--ink-2) 7%, transparent);
+  border: 1px solid color-mix(in oklch, var(--ink-2) 22%, transparent);
+  border-radius: 0;
+  padding: 0 6px;
+}
+.pp-chip.saved {
   color: var(--pass);
   background: color-mix(in oklch, var(--pass) 8%, transparent);
   border: 1px solid color-mix(in oklch, var(--pass) 28%, transparent);
-  border-radius: 0;
-  padding: 0 6px;
 }
 .pp-chip.unsaved {
   color: var(--warn);
@@ -496,6 +519,45 @@
 .pp-model-chip-x:hover {
   color: var(--ink-1);
 }
+
+/* ── OAuth 订阅登录面板（ProviderDetail + AddProviderSheet 弹层共用）── */
+.pp-oauth-accounts {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 4px 0 2px;
+}
+.pp-oauth-accounts .pp-model-item {
+  flex-direction: row;
+  align-items: center;
+}
+.pp-oauth-status {
+  font-size: calc(10px * var(--font-scale));
+  line-height: 1.45;
+  margin: 4px 0 2px;
+  padding: 4px 8px;
+  border: 1px solid var(--rule-soft);
+  background: var(--paper-deep);
+  overflow-wrap: anywhere;
+}
+.pp-oauth-status.info {
+  color: var(--ink-2);
+  border-color: color-mix(in oklch, var(--seal) 35%, var(--paper));
+}
+.pp-oauth-status.ok {
+  color: var(--pass);
+  border-color: color-mix(in oklch, var(--pass) 35%, var(--paper));
+}
+.pp-oauth-status.fail {
+  color: var(--fail);
+  border-color: color-mix(in oklch, var(--fail) 35%, var(--paper));
+}
+.pp-oauth-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
 /* per-model 参数展开（上下文窗口 / 最大输出，P14 覆盖） */
 .pp-model-chip-param {
   flex: 0 0 auto;
@@ -559,8 +621,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-family: var(--f-mono);
-  font-size: calc(9px * var(--font-scale));
+  /* 中文钮禁 mono（P4 教训）——与 .pp-ob-btn/.sp-btn-sm 同规 */
+  font-family: var(--f-song);
+  font-size: calc(10px * var(--font-scale));
   letter-spacing: 0.08em;
   padding: 7px 12px;
   border-radius: 0;
@@ -846,9 +909,10 @@
   white-space: nowrap;
 }
 .pp-cat-kind {
-  font-family: var(--f-mono);
+  /* 协议签（中英混排如 "OpenAI 兼容"）——中文混排走宋体（P4 教训） */
+  font-family: var(--f-song);
   font-size: calc(8px * var(--font-scale));
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   color: var(--indigo);
   margin-top: 3px;
 }
@@ -867,8 +931,9 @@
   border-bottom: none;
 }
 .pp-sheet-divider span {
-  font-family: var(--f-mono);
-  font-size: calc(8px * var(--font-scale));
+  /* 中文眉题（连接配置/可用模型）走宋体（P4 教训：mono 栈无中文字形） */
+  font-family: var(--f-song);
+  font-size: calc(9px * var(--font-scale));
   letter-spacing: 0.18em;
   color: var(--ink-3);
 }
@@ -883,8 +948,10 @@
   gap: 4px;
 }
 .pp-fg label {
-  font-size: calc(10px * var(--font-scale));
+  /* 与详情页字段标签同档（2026-09-11 对齐：控制台密度下的可读下限 11px） */
+  font-size: calc(11px * var(--font-scale));
   color: var(--ink-2);
+  font-family: var(--f-song);
 }
 .pp-form-error {
   margin-top: 10px;
@@ -982,23 +1049,28 @@
   border: 1px solid var(--ink-1);
   color: var(--paper);
   cursor: pointer;
+  box-shadow: var(--shadow-anchor); /* 浸墨②：每屏唯一主动作挂硬偏移投影 */
   transition: all var(--snap);
 }
 .pp-save-btn:hover {
   background: var(--ink-2);
   border-color: var(--ink-2);
+  box-shadow: 1px 2px 0 rgba(38, 34, 28, 0.14);
 }
 .pp-save-btn:active {
   background: var(--ink-3);
   border-color: var(--ink-3);
   transform: translateY(1px);
+  box-shadow: none;
 }
 
 /* 2026-08-29 走查：左侧列表空态（此前 providers=[] 时纯空白） */
 .pp-rail-empty {
   padding: 18px 12px;
-  font-family: var(--f-mono);
+  /* 中文引导语走宋体（P4 教训） */
+  font-family: var(--f-song);
   font-size: calc(11px * var(--font-scale));
-  letter-spacing: 0.06em;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
   color: var(--ink-3);
 }

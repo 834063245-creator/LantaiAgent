@@ -516,21 +516,25 @@
   color: var(--seal-deep);
 }
 
-/* 主按钮：墨底纸字（原型 .seg button.on 同语汇） */
+/* 主按钮：墨底纸字（原型 .seg button.on 同语汇）——浸墨②本屏唯一主动作挂
+   --shadow-anchor 硬偏移投影（§10 法则 1）；hover 墨加深、active 压印投影塌缩 */
 .sp-btn-save {
   background: var(--ink-1);
   color: var(--paper);
   border: 1px solid var(--ink-1);
+  box-shadow: var(--shadow-anchor);
 }
 
 .sp-btn-save:hover {
   background: var(--ink-2);
   border-color: var(--ink-2);
+  box-shadow: 1px 2px 0 rgba(38, 34, 28, 0.14);
 }
 .sp-btn-save:active {
   background: var(--ink-3);
   border-color: var(--ink-3);
   transform: translateY(1px);
+  box-shadow: none;
 }
 
 /* 保存成功：朱砂细框确认（人批语义） */
