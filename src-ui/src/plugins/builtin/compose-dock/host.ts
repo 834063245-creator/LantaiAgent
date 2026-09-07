@@ -45,7 +45,7 @@ export { thinkingOptionsFor } from '../../../provider/thinking';
 export type { ModelDescriptor, Protocol } from '../../../provider/types';
 export { typedJsonRpc } from '../../../rpc-contract';
 export type { ProviderSettings } from '../../../settings';
-export { effectiveModels, loadSettings, onSettingsSaved } from '../../../settings';
+export { effectiveModels, loadSettings, modelContextWindow, onSettingsSaved } from '../../../settings';
 export { useCanvasViewStore } from '../../../state/canvas-view-store';
 export type { ComposeSessionPrefs } from '../../../state/compose-store';
 export { getComposeStore, resolveNewSessionDefault } from '../../../state/compose-store';

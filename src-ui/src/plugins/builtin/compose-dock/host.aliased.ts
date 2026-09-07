@@ -68,6 +68,7 @@ export const resolveApiKey = impl.resolveApiKey;
 export const thinkingOptionsFor = impl.thinkingOptionsFor;
 export const effectiveModels = impl.effectiveModels;
 export const loadSettings = impl.loadSettings;
+export const modelContextWindow = impl.modelContextWindow;
 export const onSettingsSaved = impl.onSettingsSaved;
 export const getComposeStore = impl.getComposeStore;
 export const resolveNewSessionDefault = impl.resolveNewSessionDefault;

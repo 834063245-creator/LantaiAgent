@@ -259,6 +259,80 @@ describe('创作坞 v2：墨量线', () => {
     expect(line).not.toBeNull();
     expect(line?.style.opacity).toBe('0');
   });
+
+  it('目录外模型（网关命名空间 id）无覆盖：不编造窗口，线隐', async () => {
+    // 2026-09-07 分母接线：网关 /models 常返回命名空间 id（deepseek/deepseek-
+    // v4-flash），目录按裸 id 收录不中——无 per-model 覆盖时不得编造窗口。
+    localStorage.setItem(
+      'hologram_settings',
+      JSON.stringify({
+        activeProvider: 'commandcodegoat',
+        providers: [
+          {
+            kind: 'openai',
+            name: 'commandcodegoat',
+            apiKey: '',
+            baseUrl: 'https://api.commandcode.ai/provider/v1',
+            model: 'deepseek/deepseek-v4-flash',
+          },
+        ],
+        projectPath: '.',
+        agent: {},
+        display: { language: 'zh', fontScale: 1 },
+      }),
+    );
+    try {
+      await mountDock('ink-gateway', container, { tokens: { 1: 500000 } }, (r) => {
+        root = r;
+      });
+      getComposeStore('ink-gateway').getState().setModel('1', 'commandcodegoat', 'deepseek/deepseek-v4-flash');
+      await act(async () => {});
+      const line = container.querySelector<HTMLElement>('.pp-inkline');
+      expect(line).not.toBeNull();
+      expect(line?.style.opacity).toBe('0');
+    } finally {
+      localStorage.removeItem('hologram_settings');
+    }
+  });
+
+  it('目录外模型 + per-model 窗口覆盖：覆盖即分母，线显', async () => {
+    // 同上网关，但行上带 modelOverrides——设置页声明的窗口经
+    // modelContextWindow（与运行时压缩阈值同链）对墨条生效。
+    localStorage.setItem(
+      'hologram_settings',
+      JSON.stringify({
+        activeProvider: 'commandcodegoat',
+        providers: [
+          {
+            kind: 'openai',
+            name: 'commandcodegoat',
+            apiKey: '',
+            baseUrl: 'https://api.commandcode.ai/provider/v1',
+            model: 'deepseek/deepseek-v4-flash',
+            modelOverrides: { 'deepseek/deepseek-v4-flash': { contextWindow: 1000000 } },
+          },
+        ],
+        projectPath: '.',
+        agent: {},
+        display: { language: 'zh', fontScale: 1 },
+      }),
+    );
+    try {
+      await mountDock('ink-override', container, { tokens: { 1: 500000 } }, (r) => {
+        root = r;
+      });
+      getComposeStore('ink-override').getState().setModel('1', 'commandcodegoat', 'deepseek/deepseek-v4-flash');
+      await act(async () => {});
+      const line = container.querySelector<HTMLElement>('.pp-inkline');
+      expect(line).not.toBeNull();
+      expect(line?.style.opacity).toBe('1');
+      const bar = line?.querySelector<HTMLElement>('span');
+      expect(bar?.style.width).toBe('50%');
+      expect(line?.title).toContain('墨量 500000 / 1000000 tok（50%）');
+    } finally {
+      localStorage.removeItem('hologram_settings');
+    }
+  });
 });
 
 describe('创作坞 v2：引（文件引用面板）', () => {

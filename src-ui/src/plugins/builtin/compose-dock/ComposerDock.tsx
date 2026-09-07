@@ -40,6 +40,7 @@ import {
   loadSettings,
   MODE_DESCRIPTIONS,
   MODE_LABELS,
+  modelContextWindow,
   onSettingsSaved,
   PERMISSION_MODES,
   resolveNewSessionDefault,
@@ -366,9 +367,12 @@ export const ComposerDock = memo(function ComposerDock() {
   const provider: ProviderSettings | undefined = settings?.providers.find((p) => p.name === providerName);
   const providerKind = provider?.kind ?? 'openai';
   const modelDesc = useMemo(() => getModel(model), [model]);
-  // 墨量线（v2 2026-08-31）：分母 = 目录声明窗口（未知 0 = 不显）；分子 = 本卷
-  // 惰性 token 计数（sess store）。裸数字徽标退役，读数收进线 hover。
-  const inkWindow = modelDesc && modelDesc.contextWindow > 0 ? modelDesc.contextWindow : 0;
+  // 墨量线（v2 2026-08-31 → 2026-09-07 分母接线）：分母走 per-model 覆盖 ??
+  // 目录声明（modelContextWindow——与运行时压缩阈值同链，设置页声明的窗口
+  // 对墨条生效；网关命名空间 id 目录不中时由覆盖兜底）。fallback 0 = 不
+  // 编造，未知不显。分子 = 本卷惰性 token 计数（sess store）。
+  // 裸数字徽标退役，读数收进线 hover。
+  const inkWindow = provider ? modelContextWindow(provider, model, 0) : (modelDesc?.contextWindow ?? 0);
   const inkRatio = inkWindow > 0 && tokenCount > 0 ? Math.min(1, tokenCount / inkWindow) : 0;
   const thinkingOptions = useMemo(() => {
     const declared = thinkingOptionsFor(modelDesc);
