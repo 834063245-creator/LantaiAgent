@@ -49,6 +49,7 @@ fn capability_command_modules_are_frozen() {
         "identity",
         "isolation",
         "lsp_cap",
+        "oauth",
         "plugin_data",
         "plugin_install",
         "process_cap",
@@ -67,6 +68,9 @@ fn capability_command_modules_are_frozen() {
          若确属强制层（权限/沙箱/审计/IPC/组合引擎）改动，必须：\n\
          1) 在本测试基线中加入该模块；\n\
          2) 在 commit message 显式标注「强制层改动 + 宪法审查」。\n\
+         oauth = 强制层身份认证（OAuth 订阅登录，commit 6575c04c——凭证流与\n\
+         identity 同族；基线补录 2026-09-08：该 commit 漏更本基线致 HEAD 红，\n\
+         按本测试自有程序补录，非新授权）。\n\
          search_cap = v3 能力口（kernel-plugin-architecture-decision.md §3：fs 能力族\n\
          变体 + resolve_read 强制闸 + 物理扫描/向量召回）——合法强制层模块，见\n\
          docs/plans/kernel-capability-r2-search-pilot.md §7。\n\
