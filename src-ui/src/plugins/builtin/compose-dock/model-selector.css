@@ -177,9 +177,9 @@
 
 .ms-item {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
   width: 100%;
   padding: 6px 10px;
   cursor: pointer;
@@ -206,115 +206,23 @@
   background: var(--seal-soft);
 }
 
-.ms-item-main {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-  flex: 1;
-}
-
-.ms-item-id-row {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
 .ms-item-id {
   font-family: var(--f-mono);
   font-size: calc(10px * var(--font-scale));
   color: var(--ink-1);
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.ms-item-check {
-  display: flex;
-  align-items: center;
-  color: var(--seal);
-  flex-shrink: 0;
-}
-
-/* 选中态的厂商提示：跨家同 ID（deepseek/opencode 共享 v4 条目）时标明归属 */
-.ms-vendor-hint {
-  font-family: var(--f-mono);
-  font-size: calc(9px * var(--font-scale));
-  color: var(--ink-3);
-  flex-shrink: 0;
 }
 
 .ms-item-name {
   font-size: calc(9px * var(--font-scale));
   color: var(--ink-1); /* 2026-09-01 轻重批：行内主读物提墨，与注记分阶 */
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.ms-item-badges {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.ms-badge {
-  font-family: var(--f-mono);
-  font-size: calc(8px * var(--font-scale));
-  padding: 1px 4px;
-  border-radius: 0;
-  white-space: nowrap;
-}
-
-.ms-badge-ctx {
-  color: var(--indigo);
-  background: color-mix(in oklch, var(--indigo) 8%, transparent);
-}
-
-.ms-badge-reason {
-  font-size: calc(9px * var(--font-scale));
-}
-
-/* LIVE 徽章：石青语义（机=石青——来自 API 动态发现） */
-.ms-badge-live {
-  font-family: var(--f-mono);
-  font-size: calc(8px * var(--font-scale));
-  font-weight: 600; /* 2026-09-01 轻重批：700 中间档收编，与身份印签族齐 */
-  letter-spacing: 0.5px;
-  color: var(--indigo);
-  background: color-mix(in oklch, var(--indigo) 10%, transparent);
-  border: 1px solid color-mix(in oklch, var(--indigo) 30%, transparent);
-  border-radius: 0;
-  padding: 0 3px;
-  flex-shrink: 0;
-}
-
-.ms-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
-}
-
-.ms-meta-tag {
-  font-family: var(--f-mono);
-  font-size: calc(8px * var(--font-scale));
-  color: var(--ink-2);
-  padding: 1px 5px;
-  border-radius: 0;
-  background: var(--paper-deep);
-  white-space: nowrap;
-}
-
-.ms-meta-reason {
-  color: var(--seal-deep);
-  background: var(--seal-soft);
-}
-
-.ms-meta-live {
-  color: var(--indigo);
-  background: color-mix(in oklch, var(--indigo) 10%, transparent);
 }
 
 /* Catalog quick-pick in add-provider form */

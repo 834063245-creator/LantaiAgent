@@ -3,7 +3,11 @@
 
 // ModelSelector — 可搜索的下拉组合框，用于从目录中选择模型。
 // 支持自由输入目录中不存在的自定义模型名称（设置页字段形态）。
-// 从 API 动态获取的模型会标记 "live" 徽章。
+//
+// 2026 徽章收口：模型行只留模型本身（id + 人类名）——原 LIVE / 🧠 /
+// 上下文窗口 chip / vendor-hint 与字段形态下方的「推理/上下文/来自 API」
+// 标签组全部拆除（视觉噪声 + 挡字），元数据信息移入行 title（hover 可见）
+// 不丢失。判定动态（无目录元数据）内联为 contextWindow <= 0。
 //
 // 2026-08-29 frontend-overlay-a11y-plan 档位 C：手写 combobox（handleKeyDown /
 // role=listbox/option/aria-activedescendant 手工接线）整体换成 @react-aria/combobox
@@ -66,11 +70,6 @@ interface ModelSelectorProps {
   isStreaming?: boolean;
   /** 运行中被拦时的回调。 */
   onBlocked?: () => void;
-}
-
-/** 是否有「目录元数据」（相对 /models 拉来的裸 id）——价格面已拆除，只剩窗口。 */
-function hasMetadata(m: ModelDescriptor): boolean {
-  return m.contextWindow > 0;
 }
 
 /** 各已配置 provider 的「可用模型」并集（创作坞可选面，DSH routable 列表语义）。
@@ -266,8 +265,6 @@ export function ModelSelector({
       alive = false;
     };
   }, [state.isOpen, compact, headerVendors]);
-
-  const selectedDesc = useMemo(() => getModel(value), [value]);
 
   /* ── DSH 不可用状态（2026-08-26）：当前会话模型所属 provider 已不在配置里
    *    （被删/移除）——触发器标「⚠ 不可用」，title 说明；仍可打开下拉选有效
@@ -555,15 +552,6 @@ export function ModelSelector({
                 {renderRows()}
               </div>
             ))}
-          {selectedDesc && !state.isOpen && (
-            <div className="ms-meta">
-              {selectedDesc.reasoning && <span className="ms-meta-tag ms-meta-reason">推理</span>}
-              {selectedDesc.contextWindow > 0 && (
-                <span className="ms-meta-tag">{(selectedDesc.contextWindow / 1000).toFixed(0)}k 上下文</span>
-              )}
-              {!hasMetadata(selectedDesc) && <span className="ms-meta-tag ms-meta-live">来自 API</span>}
-            </div>
-          )}
         </>
       )}
     </div>
@@ -580,40 +568,33 @@ function ProviderMark({ vendor, className }: { vendor: string; className?: strin
   );
 }
 
-/** 下拉单项（useOption 接管 role/aria-selected/键盘选中语义，DOM 类名不变）。 */
+/** 下拉单项（useOption 接管 role/aria-selected/键盘选中语义，DOM 类名不变）。
+ *  行内只留模型本身（id + 人类名）；目录元数据（推理/上下文窗口/动态来源）全部
+ *  收进 title——徽章收口后 hover 可见，不再占行内空间挡字。 */
 function ModelRow({ state, m, value }: { state: ComboBoxState<ModelDescriptor>; m: ModelDescriptor; value: string }) {
   const optionRef = useRef<HTMLButtonElement | null>(null);
   const key = itemKey(m);
   const { optionProps, isFocused } = useOption({ key, isSelected: m.id === value }, state, optionRef);
-  const isDynamic = !hasMetadata(m);
+  const isDynamic = m.contextWindow <= 0; // 无目录元数据 = 运行时从 /models 动态发现
+  const title = [
+    m.id === value ? `当前模型 · ${m.vendor}` : m.vendor,
+    m.reasoning ? '支持推理/思考' : null,
+    m.contextWindow > 0 ? `上下文窗口 ${(m.contextWindow / 1000).toFixed(0)}k` : null,
+    isDynamic ? '运行时从 API 动态发现（无目录元数据）' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   return (
     <button
       type="button"
       ref={optionRef}
       {...optionProps}
       data-key={key}
+      title={title}
       className={`ms-item${isFocused ? ' active' : ''}${m.id === value ? ' selected' : ''}`}
     >
-      <div className="ms-item-main">
-        <div className="ms-item-id-row">
-          <span className="ms-item-id">{m.id}</span>
-          {isDynamic && <span className="ms-badge-live">LIVE</span>}
-          {m.id === value && <span className="ms-vendor-hint">{m.vendor}</span>}
-        </div>
-        {m.name !== m.id && <span className="ms-item-name">{m.name}</span>}
-      </div>
-      <div className="ms-item-badges">
-        {m.reasoning && (
-          <span className="ms-badge ms-badge-reason" title="支持推理/思考">
-            🧠
-          </span>
-        )}
-        {m.contextWindow > 0 && (
-          <span className="ms-badge ms-badge-ctx" title="上下文窗口">
-            {(m.contextWindow / 1000).toFixed(0)}k
-          </span>
-        )}
-      </div>
+      <span className="ms-item-id">{m.id}</span>
+      {m.name !== m.id && <span className="ms-item-name">{m.name}</span>}
     </button>
   );
 }

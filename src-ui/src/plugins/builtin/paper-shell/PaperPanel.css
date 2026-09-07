@@ -3261,16 +3261,6 @@
   right: 0;
   min-width: 300px;
 }
-/* 模型名全宽显示：id 可换行兜底，name 不截断 */
-.pp-composer-settings .ms-item-name {
-  white-space: normal;
-  overflow: visible;
-  text-overflow: clip;
-  line-height: 1.35;
-}
-.pp-composer-settings .ms-item-id {
-  overflow-wrap: anywhere;
-}
 
 /* rework P2-1 + DSH 移植（2026-08-26）：紧凑触发器（收起态 = 厂商 monogram + 人类模型名 + 箭头）
  * 2026-09-01 重皮：盒→线——触发器走纯文字，与权限三档/思考/翰律同语言 */
