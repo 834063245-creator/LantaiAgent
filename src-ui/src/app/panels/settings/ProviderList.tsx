@@ -15,9 +15,11 @@ interface ProviderListProps {
   current: ProviderId;
   onSelect: (name: ProviderId) => void;
   onAdd: () => void;
+  /** oauth provider 登录态（provider id → 已登录）——状态点推导用。 */
+  oauthLoggedInMap?: Record<string, boolean>;
 }
 
-export function ProviderList({ providers, selected, current, onSelect, onAdd }: ProviderListProps) {
+export function ProviderList({ providers, selected, current, onSelect, onAdd, oauthLoggedInMap }: ProviderListProps) {
   return (
     <aside className="pp-rail">
       <div className="pp-rail-hd">
@@ -29,7 +31,9 @@ export function ProviderList({ providers, selected, current, onSelect, onAdd }: 
           <div className="pp-rail-empty">还没有提供方——点击下方「添加提供方」开始。</div>
         ) : (
           providers.map((p) => {
-            const st = providerStatus(p);
+            const loggedIn =
+              p.authMode === 'oauth' && p.oauthProvider ? (oauthLoggedInMap?.[p.oauthProvider] ?? false) : false;
+            const st = providerStatus(p, loggedIn);
             const active = p.name === selected;
             return (
               <button

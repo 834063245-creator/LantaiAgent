@@ -82,6 +82,9 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
 
+  /** oauth 订阅行：无 API Key / 无 /models 可拉——表单形态与 api-key 两轨。 */
+  const isOAuth = authMode === 'oauth';
+
   // 协议下拉选项：内核白名单（出厂两族）恒在、顺序在前；ctx.llm adapter 注册表
   // 贡献的其余协议并入（开放协议，按 kind 去重——adapter 的 label 作展示，缺省
   // 回落 kind 本身）。运行时取：装载前（无服务）= 只有内核两族。每次渲染快照
@@ -126,7 +129,10 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
   }, [open]);
 
   /** 厂商 chip → 预填连接表单（不直加——进入拉模型两步）。
-   *  来源 = 模板表（vendor-templates.ts 连接参数；模型一律运行时拉取）。 */
+   *  来源 = 模板表（vendor-templates.ts 连接参数；模型一律运行时拉取）。
+   *  ⚡ oauth 厂商（authMode='oauth'）：无 /models 可拉（订阅端点），模型由
+   *  模板 defaultModel 固定——点选即把默认模型写入可用列表，表单免拉取直添
+   *  （登录在添加成功后的 Detail 面板完成）。 */
   const handlePickVendor = (provName: string) => {
     const tpl = findVendorTemplate(provName);
     if (!tpl) return;
@@ -134,8 +140,6 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
     setKind(tpl.kind);
     setBaseUrl(tpl.baseUrl);
     setKey('');
-    setModels([]);
-    setDefaultModel('');
     setPulled(false);
     setFetchMsg('');
     setError('');
@@ -143,6 +147,15 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
     // authMode/oauthProvider 随模板预填（codex = oauth）
     setAuthMode(tpl.authMode ?? 'api-key');
     setOauthProvider(tpl.oauthProvider);
+    if (tpl.authMode === 'oauth') {
+      // oauth 订阅：模板 defaultModel = 可用模型（无 /models 可拉）
+      const seed = tpl.defaultModel?.trim() ? [tpl.defaultModel.trim()] : [];
+      setModels(seed);
+      setDefaultModel(seed[0] ?? '');
+    } else {
+      setModels([]);
+      setDefaultModel('');
+    }
   };
 
   /** 从已填连接拉取 /models（无 Key 也尝试——本地端点无鉴权）。 */
@@ -194,6 +207,26 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
     if (existingNames.includes(n)) {
       setError(`Provider「${n}」已存在`);
       nameInputRef.current?.focus();
+      return;
+    }
+    // oauth 订阅：模板默认模型即可用列表（登录在 Detail 面板完成，不在此拉取）
+    if (authMode === 'oauth') {
+      const ids = [...new Set(models.filter((m) => m?.trim()))];
+      if (ids.length === 0) {
+        setError('该订阅没有默认模型——请先在连接配置里确认');
+        return;
+      }
+      const def = defaultModel.trim() || ids[0];
+      onAdd({
+        name: providerId(n),
+        kind,
+        apiKey: undefined, // oauth 无 API Key——凭据 = 系统 OAuth grant
+        baseUrl: baseUrl.trim() || undefined,
+        models: ids,
+        model: def,
+        authMode,
+        oauthProvider,
+      });
       return;
     }
     const ids = [...new Set(models.filter((m) => m?.trim()))];
@@ -333,48 +366,73 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
               autoComplete="off"
             />
           </div>
-          <div className="pp-fg">
-            <label htmlFor="aps-key">API Key（可选——本地端点无需）</label>
-            <input
-              id="aps-key"
-              type="password"
-              className="sp-input"
-              value={key}
-              onChange={(e) => {
-                setKey(e.target.value);
-                if (pulled) {
-                  setPulled(false);
-                  setModels([]);
-                  setDefaultModel('');
-                  setFetchMsg('');
-                }
-              }}
-              placeholder="sk-…"
-              autoComplete="off"
-            />
-          </div>
-        </div>
-
-        <div className="pp-add-pull-row">
-          <button
-            type="button"
-            className="sp-btn-sm"
-            disabled={fetching || !hasValidName}
-            onClick={handleFetch}
-            title={!hasValidName ? '先填名称（唯一且不重复）' : '从该提供方 /models 端点拉取可用模型'}
-          >
-            {fetching ? '拉取中…' : '从 API 拉取模型'}
-          </button>
-          {fetchMsg && (
-            <span className={`pp-add-pull-msg${fetchMsg.startsWith('拉取失败') ? ' fail' : ''}`}>{fetchMsg}</span>
+          {!isOAuth && (
+            <div className="pp-fg">
+              <label htmlFor="aps-key">API Key（可选——本地端点无需）</label>
+              <input
+                id="aps-key"
+                type="password"
+                className="sp-input"
+                value={key}
+                onChange={(e) => {
+                  setKey(e.target.value);
+                  if (pulled) {
+                    setPulled(false);
+                    setModels([]);
+                    setDefaultModel('');
+                    setFetchMsg('');
+                  }
+                }}
+                placeholder="sk-…"
+                autoComplete="off"
+              />
+            </div>
+          )}
+          {isOAuth && (
+            <div className="pp-fg">
+              <span className="pp-f-label">登录方式</span>
+              <div className="pp-f-hint">OAuth 订阅——确认添加后进入「提供方」详情完成浏览器授权登录。</div>
+            </div>
           )}
         </div>
+
+        {isOAuth ? (
+          /* oauth 订阅无 /models 端点——不提供拉取，模型由模板固定 */
+          <div className="pp-add-pull-row">
+            <span className="pp-add-pull-msg">该订阅的可用模型由账号自动提供，无需拉取。</span>
+          </div>
+        ) : (
+          <div className="pp-add-pull-row">
+            <button
+              type="button"
+              className="sp-btn-sm"
+              disabled={fetching || !hasValidName}
+              onClick={handleFetch}
+              title={!hasValidName ? '先填名称（唯一且不重复）' : '从该提供方 /models 端点拉取可用模型'}
+            >
+              {fetching ? '拉取中…' : '从 API 拉取模型'}
+            </button>
+            {fetchMsg && (
+              <span className={`pp-add-pull-msg${fetchMsg.startsWith('拉取失败') ? ' fail' : ''}`}>{fetchMsg}</span>
+            )}
+          </div>
+        )}
 
         <div className="pp-sheet-divider">
           <span>可用模型</span>
         </div>
 
-        {models.length > 0 ? (
+        {isOAuth ? (
+          /* oauth 订阅：模型由模板固定（单条只读展示，无交互），无拉取/手动补 */
+          <div className="pp-pick-models">
+            {models.map((id) => (
+              <div key={id} className="pp-pick-model selected" title={id}>
+                <span className="pp-pick-model-id">{id}</span>
+                <span className="pp-model-chip-default">默认</span>
+              </div>
+            ))}
+          </div>
+        ) : models.length > 0 ? (
           <div className="pp-pick-models" role="listbox" aria-label="可用模型">
             {models.map((id) => (
               <button
@@ -395,26 +453,28 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
           <div className="pp-f-hint">还没有模型——点上方「从 API 拉取模型」，或在下方手动补一个模型 id。</div>
         )}
 
-        <div className="pp-models-add">
-          <input
-            className="sp-input"
-            ref={modelInputRef}
-            value={manualModel}
-            placeholder="手动补模型 id，如 deepseek-reasoner"
-            autoComplete="off"
-            aria-label="手动补模型 id"
-            onChange={(e) => setManualModel(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                submitManual();
-              }
-            }}
-          />
-          <button type="button" className="sp-btn-sm" onClick={submitManual}>
-            添加
-          </button>
-        </div>
+        {!isOAuth && (
+          <div className="pp-models-add">
+            <input
+              className="sp-input"
+              ref={modelInputRef}
+              value={manualModel}
+              placeholder="手动补模型 id，如 deepseek-reasoner"
+              autoComplete="off"
+              aria-label="手动补模型 id"
+              onChange={(e) => setManualModel(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  submitManual();
+                }
+              }}
+            />
+            <button type="button" className="sp-btn-sm" onClick={submitManual}>
+              添加
+            </button>
+          </div>
+        )}
 
         {error && <div className="pp-form-error">{error}</div>}
 

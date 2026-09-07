@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createProvider } from '../../../provider';
 import { markDynamicFetchStart, recordDynamicFetchResult } from '../../../provider/catalog';
 import { invalidateCredentialCache } from '../../../provider/credentials';
+import { createLiveProvider } from '../../../provider/live';
 import { oauthAccounts, oauthLogout, runDeviceLogin } from '../../../provider/oauth';
 import { ChunkType } from '../../../provider/types';
 import {
@@ -73,15 +74,21 @@ export function ProviderPage({
   const [focusNonce, setFocusNonce] = useState(0);
   const keyInputRef = useRef<HTMLInputElement | null>(null);
   // Phase 3D：OAuth 登录状态（busy = device-flow 进行中；status = 用户可读反馈；
-  // accounts = 已登录账号清单（含「当前生效」标记））
+  // accounts = 选中行的已登录账号清单；loggedInMap = 全部 oauth provider 的登录态）
   const [oauthBusy, setOauthBusy] = useState(false);
   const [oauthStatus, setOauthStatus] = useState<{ tone: 'info' | 'ok' | 'fail'; msg: string } | null>(null);
   const [oauthAccountsState, setOauthAccountsState] = useState<Array<{ accountId: string }>>([]);
+  const [oauthLoggedInMap, setOauthLoggedInMap] = useState<Record<string, boolean>>({});
   // device-flow 进行中的取消标志（登录发起时置 false；取消置 true → 轮询停）
   const oauthCancelRef = useRef(false);
 
   const activeProvider = getActiveProvider(settings);
   const selectedProvider = settings.providers.find((p) => p.name === selected) ?? activeProvider;
+
+  // settings 的 ref 镜像——oauth 登录态刷新 callback 读它而不依赖 settings 对象，
+  // 保证 mount effect 不因 settings 引用变化重跑全量查询（2026-09 UX 走查）。
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   const requestFocusKey = useCallback(() => setFocusNonce((n) => n + 1), []);
 
@@ -143,6 +150,11 @@ export function ProviderPage({
 
   const handleRefreshModels = useCallback(async (): Promise<number> => {
     const p = selectedProvider;
+    // oauth 订阅（Codex）无 /models 端点——模型由账号提供，拉取无意义。
+    // 调用面（Detail）已隐藏按钮；此处防御性短路（错误不静默）。
+    if (p.authMode === 'oauth') {
+      throw new Error('订阅账号不提供 /models——可用模型由账号自动提供，无需拉取');
+    }
     if (!p.apiKey?.trim()) throw new Error('请先填写 API Key');
     const prov = createProvider(p);
     // C5（2026-08-27）：手动刷新记目录失败面（compact 选择器分组头同步可见）；
@@ -154,8 +166,14 @@ export function ProviderPage({
       markDynamicFetchStart(p.name);
       const models = (await prov.fetchModels?.()) ?? [];
       recordDynamicFetchResult(p.name, true);
-      onCommitProvider(updateProvider(settings, p.name, { models: models.map((m) => m.id).filter(Boolean) }));
-      return models.length;
+      // ⚡ 拉取结果与既有可用模型**合并去重**（2026-09 UX 走查）：旧实现直接
+      // 覆盖 models——用户手动补过模型后点拉取，手工条目被整批清掉。现在保留
+      // 手动条目（拉取端点返回的 id 优先在前——API 实况），仅补新拉到的。
+      const pulledIds = models.map((m) => m.id).filter(Boolean);
+      const existing = Array.isArray(p.models) ? p.models.filter((m) => m?.trim()) : [];
+      const merged = [...pulledIds, ...existing.filter((m) => !pulledIds.includes(m))];
+      onCommitProvider(updateProvider(settings, p.name, { models: merged }));
+      return pulledIds.length;
     } catch (e) {
       recordDynamicFetchResult(p.name, false, e instanceof Error ? e.message : String(e));
       throw e;
@@ -194,7 +212,8 @@ export function ProviderPage({
 
   const handleTest = useCallback(async () => {
     const name = selectedProvider.name;
-    if (!selectedProvider.apiKey?.trim()) {
+    const isOAuth = selectedProvider.authMode === 'oauth';
+    if (!isOAuth && !selectedProvider.apiKey?.trim()) {
       setTests((t) => new Map(t).set(name, { phase: 'fail', msg: '请先填写 API Key' }));
       return;
     }
@@ -202,12 +221,20 @@ export function ProviderPage({
       setTests((t) => new Map(t).set(name, { phase: 'fail', msg: '请先填写模型名称' }));
       return;
     }
+    if (isOAuth && !selectedProvider.oauthProvider) {
+      setTests((t) => new Map(t).set(name, { phase: 'fail', msg: '该订阅缺 oauth 登录配置——请重新添加' }));
+      return;
+    }
     setTests((t) => new Map(t).set(name, { phase: 'testing', msg: '' }));
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 15000);
     const started = performance.now();
     try {
-      const prov = createProvider(selectedProvider, { disableThinking: true });
+      // oauth 订阅行走 live provider（按名现解析 oauth grant 注入请求头）——
+      // 直接 createProvider(settings) 不带 oauth headers，空 Bearer 必挂（2026-09 走查）。
+      const prov = isOAuth
+        ? createLiveProvider(name, { disableThinking: true })
+        : createProvider(selectedProvider, { disableThinking: true });
       const gen = prov.stream(ctrl.signal, {
         messages: [{ role: 'user', content: 'ping' }],
         tools: [],
@@ -270,25 +297,53 @@ export function ProviderPage({
     [settings, onAddAndPersist],
   );
 
-  /** Phase 3D：oauth provider 账号刷新（选中/登录/登出后）。 */
-  const refreshOauthAccounts = useCallback(async () => {
-    const p = selectedProvider;
-    if (p.authMode !== 'oauth' || !p.oauthProvider) {
-      setOauthAccountsState([]);
+  /** Phase 3D：oauth 登录态全量刷新（ProviderList 逐行状态推导）。
+   *  只在 mount / 登录成功 / 登出后调用——每次账号变更都是显式落点。 */
+  const refreshOauthLoginMap = useCallback(async () => {
+    const oauthRows = settingsRef.current.providers.filter((p) => p.authMode === 'oauth' && p.oauthProvider);
+    const providerIds = [...new Set(oauthRows.map((p) => p.oauthProvider as string))];
+    if (providerIds.length === 0) {
+      setOauthLoggedInMap({});
       return;
     }
-    try {
-      const accts = await oauthAccounts(p.oauthProvider);
-      setOauthAccountsState(accts.map((a) => ({ accountId: a.account_id })));
-    } catch {
-      setOauthAccountsState([]);
+    const loginMap: Record<string, boolean> = {};
+    await Promise.all(
+      providerIds.map(async (pid) => {
+        try {
+          const accts = await oauthAccounts(pid);
+          loginMap[pid] = accts.length > 0;
+        } catch {
+          loginMap[pid] = false;
+        }
+      }),
+    );
+    setOauthLoggedInMap(loginMap);
+  }, []);
+
+  /** 选中 provider 的账号清单刷新（Detail 登录面板展示）。 */
+  const refreshSelectedOauthAccounts = useCallback(async () => {
+    const p = selectedProvider;
+    if (p.authMode === 'oauth' && p.oauthProvider) {
+      try {
+        const accts = await oauthAccounts(p.oauthProvider);
+        setOauthAccountsState(accts.map((a) => ({ accountId: a.account_id })));
+        return;
+      } catch {
+        /* fallthrough — 空清单 */
+      }
     }
+    setOauthAccountsState([]);
   }, [selectedProvider]);
 
-  // 选中 oauth provider 时加载账号清单
+  // mount 时全量 oauth 登录态（ProviderList 状态点）——
+  // refreshOauthLoginMap 空依赖恒等（settingsRef 读最新），effect 不因 settings 变重跑
   useEffect(() => {
-    void refreshOauthAccounts();
-  }, [refreshOauthAccounts]);
+    void refreshOauthLoginMap();
+  }, [refreshOauthLoginMap]);
+  // 选中 provider 变化时刷新 Detail 账号清单
+  useEffect(() => {
+    void refreshSelectedOauthAccounts();
+  }, [refreshSelectedOauthAccounts]);
 
   /** OAuth 登录（device-code 编排）：开浏览器 + 轮询 → 成功后落库 + 刷新账号。
    *  UI 展示等待面板（code + URL）由 oauthStatus 反馈带出。 */
@@ -310,7 +365,8 @@ export function ProviderPage({
             });
           },
           onGranted: async () => {
-            await refreshOauthAccounts();
+            await refreshOauthLoginMap();
+            await refreshSelectedOauthAccounts();
             invalidateCredentialCache(p.name);
             setOauthStatus({ tone: 'ok', msg: '登录成功——该 Codex 账号已可用于对话' });
           },
@@ -324,7 +380,7 @@ export function ProviderPage({
     } finally {
       setOauthBusy(false);
     }
-  }, [selectedProvider, refreshOauthAccounts]);
+  }, [selectedProvider, refreshOauthLoginMap, refreshSelectedOauthAccounts]);
 
   /** 登出某账号。 */
   const handleOauthLogout = useCallback(
@@ -335,12 +391,13 @@ export function ProviderPage({
         await oauthLogout(p.oauthProvider, accountId);
         invalidateCredentialCache(p.name);
         setOauthStatus({ tone: 'ok', msg: `已登出账号 ${accountId}` });
-        await refreshOauthAccounts();
+        await refreshOauthLoginMap();
+        await refreshSelectedOauthAccounts();
       } catch (e) {
         setOauthStatus({ tone: 'fail', msg: `登出失败：${e instanceof Error ? e.message : String(e)}` });
       }
     },
-    [selectedProvider, refreshOauthAccounts],
+    [selectedProvider, refreshOauthLoginMap, refreshSelectedOauthAccounts],
   );
 
   /** 取消进行中的 device-flow。 */
@@ -408,6 +465,7 @@ export function ProviderPage({
           current={settings.activeProvider}
           onSelect={setSelected}
           onAdd={() => setAddOpen(true)}
+          oauthLoggedInMap={oauthLoggedInMap}
         />
         <ProviderDetail
           provider={selectedProvider}

@@ -124,8 +124,7 @@ describe('ProviderPage — 暂存流程', () => {
     root?.unmount();
   });
 
-  it('两步式添加（catalog chip 预填）→ 补默认模型 → onAddAndPersist 即时持久化', async () => {
-    await render(makeSettings({ providers: [makeSettings().providers[1]] }));
+  it('两步式添加（catalog chip 预填）→ 补默认模型 → onAddAndPersist 即时持久化', async () => {    await render(makeSettings({ providers: [makeSettings().providers[1]] }));
 
     await click(document.querySelector('.pp-rail-add'));
     expect(document.querySelector('.pp-add-sheet')).not.toBeNull();
@@ -357,5 +356,48 @@ describe('ProviderPage — 暂存流程', () => {
     // 收起后展开仍在（modelOverrides 已持久到暂存 settings）
     await click(paramBtn);
     expect(document.querySelector('.pp-model-params')).toBeNull();
+  });
+
+  it('oauth 订阅（codex chip）免拉取直添：模板默认模型即 models，无 Key 也能确认', async () => {
+    await render(makeSettings({ providers: [makeSettings().providers[1]] }));
+    await click(document.querySelector('.pp-rail-add'));
+
+    // codex chip → 预填 + 模板默认模型直接可用
+    const codexChip = [...document.querySelectorAll<HTMLButtonElement>('.pp-cat-chip')].find((b) =>
+      b.textContent?.includes('codex'),
+    )!;
+    expect(codexChip).toBeDefined();
+    await click(codexChip);
+
+    // oauth 形态：无 API Key 输入框、无「从 API 拉取」按钮、手动补模型区隐藏
+    expect(
+      [...document.querySelectorAll<HTMLInputElement>('.pp-form-grid input')].some((i) =>
+        i.placeholder.includes('sk-'),
+      ),
+    ).toBe(false);
+    expect([...document.querySelectorAll<HTMLButtonElement>('.pp-add-pull-row button')].some((b) =>
+      b.textContent?.includes('拉取'),
+    )).toBe(false);
+    expect(document.querySelector('input[aria-label="手动补模型 id"]')).toBeNull();
+    // 模板默认模型已展示为只读 chip
+    expect(document.querySelector('.pp-pick-model-id')?.textContent).toBe('gpt-5.6-sol');
+
+    // 直接确认添加（无需拉取/手动补）
+    await click(
+      [...document.querySelectorAll<HTMLButtonElement>('.cd-actions button')].find((b) =>
+        b.textContent?.includes('确认添加'),
+      )!,
+    );
+    expect(mockAddPersist).toHaveBeenCalledTimes(1);
+    const [next] = mockAddPersist.mock.calls[0] as [AppSettings, ProviderId];
+    const added = next.providers.find((p) => p.name === 'codex')!;
+    expect(added).toBeDefined();
+    expect(added.kind).toBe('responses');
+    expect(added.authMode).toBe('oauth');
+    expect(added.oauthProvider).toBe('codex');
+    expect(added.apiKey).toBeFalsy();
+    expect(added.models).toEqual(['gpt-5.6-sol']);
+    expect(added.model).toBe('gpt-5.6-sol');
+    expect(document.querySelector('.pp-add-sheet')).toBeNull();
   });
 });
