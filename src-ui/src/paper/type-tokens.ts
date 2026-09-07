@@ -296,10 +296,10 @@ export const ASSET_TOKENS = {
     bodySize: 12,
   },
   // 学术引用卡（scientific-rendering 4B，2026-09）。行高全用**显式 px 行高 token**
-  // （titleLine 等）而非单位系数——asset 组 token 注入时全部带 px 后缀（见
-  // collectCssVars），`line-height: var(--pp-asset-*Lh)` 会拿到 "1.5px" 一类
-  // 绝对值（既有 form/metric 的 *Lh 键同此行为，属于沿用而非新造）；引用卡要
-  // CSS ↔ measure 行高严格同值，故存显式 px。measure 侧 ASSET_DERIVED 同名派生。
+  // （titleLine 等）而非单位系数——CSS ↔ measure 行高严格同值，故存显式 px。
+  // measure 侧 ASSET_DERIVED 同名派生。（2026-09 注入单位修复后，asset 组
+  // *Lh 后缀键已按 chromeFlat 同款约定注入无单位系数——本组保持显式 px
+  // *Line 命名不受影响，行为不变。）
   citation: {
     padV: 2,
     titleSize: 14,
@@ -575,8 +575,10 @@ function collectCssVars(): VarSpec[] {
     ['md-mathDisplayMaxLines', MD_TOKENS.mathDisplayMaxLines],
   ];
   for (const [key, v] of mdFlat) {
-    // math 系数（sizeRatio/lineH/maxLines）无单位；其余 px
-    const unitless = key.startsWith('md-math') && !key.endsWith('Gap');
+    // 行高系数（*lh 后缀——chromeFlat 同款约定）与 math 系数（sizeRatio/
+    // lineH/maxLines）无单位；其余 px。md-tableLh 曾误带 px（1.5px——表格
+    // 每行行盒 1.5px，多行单元格文字全部叠印，2026-09 表格叠字根因）。
+    const unitless = /lh$/i.test(key) || (key.startsWith('md-math') && !key.endsWith('Gap'));
     push(key, unitless ? String(v) : px(v));
   }
 
@@ -590,13 +592,18 @@ function collectCssVars(): VarSpec[] {
   }
   for (const [key, value] of chromeFlat) push(key, value);
 
-  const assetFlat: Array<[string, number]> = [];
+  const assetFlat: Array<[string, string]> = [];
   for (const [group, obj] of Object.entries(ASSET_TOKENS)) {
     for (const [prop, v] of Object.entries(obj)) {
-      assetFlat.push([`asset-${group}-${prop}`, v as number]);
+      // 行高系数无单位（*lh 后缀，与 chromeFlat 同款约定；citation/chem 的
+      // 显式 px 行高键是 *Line 命名不受影响）——2026-09 修复：此前 asset 组
+      // 全部 px 化，json.preLh/metric.cardValueLh/form.bodyLh 以 1.6px/1.2px/
+      // 1.7px 落进 line-height，多行文本行盒塌缩叠字（与 md-tableLh 同族）。
+      const value = /lh$/i.test(prop) ? String(v) : px(v as number);
+      assetFlat.push([`asset-${group}-${prop}`, value]);
     }
   }
-  for (const [key, v] of assetFlat) push(key, px(v));
+  for (const [key, value] of assetFlat) push(key, value);
 
   for (const [k, v] of Object.entries(LIMIT_TOKENS)) push(`lim-${k}`, px(v));
   for (const [k, v] of Object.entries(FOLIO_TOKENS)) push(`folio-${k}`, k === 'titleLh' ? String(v) : px(v));

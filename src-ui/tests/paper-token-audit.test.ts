@@ -73,4 +73,20 @@ describe('paper token 注入键集审计', () => {
     }
     expect(dup).toEqual([]);
   });
+
+  it('行高系数键（*lh 后缀，不分大小写）注入无单位——md-tableLh 1.5px 事故回归钉（2026-09 表格叠字根因：每行行盒 1.5px，多行单元格文字叠印）', () => {
+    const lhKeys = [...injected.keys()].filter((k) => /lh$/i.test(k));
+    expect(lhKeys.length).toBeGreaterThan(10); // type-*/md-h*/ch-*/md-tableLh/asset-*/folio
+    for (const k of lhKeys) {
+      expect(injected.get(k), k).toMatch(/^\d+(\.\d+)?$/); // 纯数字，无单位
+    }
+    // 定点钉：事故键 + asset 组同族受害者（此前全组 px 化）
+    expect(injected.get('--pp-md-tableLh')).toBe('1.5');
+    expect(injected.get('--pp-asset-json-preLh')).toBe('1.6');
+    expect(injected.get('--pp-asset-metric-cardValueLh')).toBe('1.2');
+    expect(injected.get('--pp-asset-form-bodyLh')).toBe('1.7');
+    // px 键仍带单位（防把整个注入裸化的反向事故）；math 系数豁免不变
+    expect(injected.get('--pp-md-tableSize')).toBe('11.5px');
+    expect(injected.get('--pp-md-mathSizeRatio')).toBe('1.06');
+  });
 });
