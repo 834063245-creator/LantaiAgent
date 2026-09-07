@@ -248,6 +248,10 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "lineNumbers": {
+            "description": "Set to true to prefix each line with a cat -n style line number (6-digit + tab). Default: raw file text — use this for exact string matching.",
+            "type": "boolean"
+          },
           "newString": {
             "description": "The text to replace it with (must be different from oldString)",
             "type": "string"
@@ -347,7 +351,7 @@
       }
     },
     {
-      "description": "Git operations: status / diff / log / stage / commit / push / pull / checkout / branch / stash / unstash / discard / init / blame. path may be omitted for every action — omitted = the workspace root.",
+      "description": "Git operations: status / diff / log / stage / commit / push / pull / checkout / branch / stash / unstash / discard / init / blame. path may be omitted for every action — omitted = the workspace root. Key semantics: file = one file for diff/discard/blame (omit it on diff = all changes); files = comma-separated list (or \".\" for all) for stage — commit accepts files too and auto-stages them before committing.",
       "name": "git",
       "parameters": {
         "properties": {
@@ -391,7 +395,7 @@
             "type": "string"
           },
           "files": {
-            "description": "File path(s) to stage, separated by commas. Use \".\" to stage all.",
+            "description": "File path(s) to stage, separated by commas. Use \".\" to stage all. (action: stage); File path(s) to stage before committing, separated by commas (same syntax as git stage). Omit to commit whatever is already staged. (action: commit)",
             "type": "string"
           },
           "message": {
