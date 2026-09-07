@@ -25,7 +25,9 @@
 // 无关，行迁不改变可见面，零漂移按构造成立。
 //
 // 不属于行表的装配步骤（保留在 buildToolRegistry 末端）：read_file 别名
-// （注册表操作非工具定义）、外部 mcpClients 贡献、convergeRegistry。
+// （注册表操作非工具定义）、convergeRegistry。MCP 工具全量经插件/用户级
+// mcp.json 折算行贡献（mcp-bridge / user-mcp）——mcpClients 直连旁路已删
+// （2026-09-07，skills-mcp-production-plan Commit 6 死代码清理，零调用方）。
 // S4-4 甲（2026-08-23）：插件贡献行经 factoryComposition() 快照进组合
 // 解析域——patch/preset 寻址 'plugin/<插件名>/<工具名>' 行（builtin/<族>
 // 行 id 已随行表退役终结，不复存在）。
