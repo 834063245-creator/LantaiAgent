@@ -43,6 +43,7 @@ export { writingBlockIdOf } from '../../../paper/block-model';
 // paper 几何 / 墨迹 / 测量 / 选择 / 翻译 / 虚拟化 / 上下文
 export {
   ANCHOR,
+  autoPanVector,
   layoutRegion,
   panBy,
   screenToWorld,
@@ -69,7 +70,6 @@ export {
   inkBarColorOf,
   inkColorOf,
   inkForBlock,
-  inkForText,
   LOD_TEXT_MIN_PX,
   lodActive,
   lodFarActive,

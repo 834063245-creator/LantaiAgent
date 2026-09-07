@@ -16,6 +16,8 @@ import {
 } from '../src/paper/block-model';
 import {
   ANCHOR,
+  AUTO_PAN_MAX_SPEED,
+  autoPanVector,
   identityView,
   layoutFlow,
   panBy,
@@ -175,6 +177,30 @@ describe('paper/canvas-math', () => {
     const v = panBy(identityView(), 10, -20);
     expect(v.panX).toBe(10);
     expect(v.panY).toBe(-20);
+  });
+
+  it('autoPanVector（拖选自动滚屏，2026-09-07）：带外零速 / 带内线性爬坡 / 越界封顶 1.5× / 方向对画布四缘', () => {
+    // 视口中心：带外零速
+    const mid = autoPanVector(600, 400, 1200, 800);
+    expect(mid.dx).toBe(0);
+    expect(mid.dy).toBe(0);
+    // 贴下缘（入带 16px）：向下追内容（panY 减小）——线性爬坡 16/36 × 26
+    const bottom = autoPanVector(600, 780, 1200, 800);
+    expect(bottom.dy).toBeCloseTo(-AUTO_PAN_MAX_SPEED * (16 / 36));
+    expect(bottom.dx).toBe(0);
+    // 贴上缘：向上追（panY 增大）
+    const top = autoPanVector(600, 20, 1200, 800);
+    expect(top.dy).toBeCloseTo(AUTO_PAN_MAX_SPEED * (16 / 36));
+    // 贴左缘：panX 增大；贴右缘：panX 减小
+    expect(autoPanVector(20, 400, 1200, 800).dx).toBeCloseTo(AUTO_PAN_MAX_SPEED * (16 / 36));
+    expect(autoPanVector(1180, 400, 1200, 800).dx).toBeCloseTo(-AUTO_PAN_MAX_SPEED * (16 / 36));
+    // 正好在缘线上（深度 = 全带）：满速
+    expect(autoPanVector(600, 800, 1200, 800).dy).toBeCloseTo(-AUTO_PAN_MAX_SPEED);
+    // 越出画布：封顶 1.5×
+    expect(autoPanVector(600, 900, 1200, 800).dy).toBeCloseTo(-AUTO_PAN_MAX_SPEED * 1.5);
+    // 双带重叠（画布窄于 2×带宽）取深侧不互抵：pos 10/40 贴左带更深（26 vs 6）
+    const tiny = autoPanVector(10, 400, 40, 800);
+    expect(tiny.dx).toBeCloseTo(AUTO_PAN_MAX_SPEED * (26 / 36));
   });
 
   it('layoutFlow：最新块底边贴锚点（y=0），流向上生长（D-R1-3）', () => {

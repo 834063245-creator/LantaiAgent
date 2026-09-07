@@ -22,7 +22,6 @@ import type {
   WorkUnit,
 } from './host';
 import {
-  blockFromSnapshot,
   collapseToolGroups,
   createBlockMeasureCache,
   createInkCache,
@@ -40,6 +39,7 @@ import {
   visiblePinnedIds,
   writingBlockIdOf,
 } from './host';
+import type { SelectionDragState } from './use-paper-viewport';
 
 /** 流内占位符高度（pinned 块在流原序位的洞——设计文档 §2.3）——regions memo
  *  与渲染层 ghost 按钮共用。 */
@@ -144,6 +144,9 @@ export function usePaperRegions(params: {
   regionCornerPos: { sessionId: string; x: number; width: number } | null;
   draggingId: string | null;
   dragSource: { sessionId: string | undefined; wasFlow: boolean } | null;
+  /** 拖选自动滚屏手势（use-paper-viewport 产出）：keepAlive 锚点块保活——
+   *  虚拟化滑出窗口不卸锚块（原生选区锚点死则选区从顶部截），到手势松开。 */
+  selDragRef: MutableRefObject<SelectionDragState | null>;
 }) {
   const {
     regionsRef,
@@ -160,6 +163,7 @@ export function usePaperRegions(params: {
     regionCornerPos,
     draggingId,
     dragSource,
+    selDragRef,
   } = params;
 
   /* 性能专项缓存（流式增量）——按会话隔离：
@@ -252,6 +256,10 @@ export function usePaperRegions(params: {
     // stub（小地图活跃墨迹 / 跟手不缺）。首见卷（extent 未知）全量构建。
     const STUB_MX = 900;
     const STUB_MY = 1200;
+    // 拖选锚点保活（2026-09-07）：选区锚点所在卷不 stub——锚块一卸，原生
+    // 选区从顶部截断（keepAlive 随手势起止，ref 在 memo 体内现读：保活登记
+    // 与首帧平移同拍，平移必触 viewRect 变化重跑本 memo，读到的一直是现值）。
+    const selKeep = selDragRef.current?.keepAlive ?? null;
     sessions.forEach((s, i) => {
       const sid = String(s.id);
       const persisted = canvasState.spread[sid];
@@ -273,6 +281,7 @@ export function usePaperRegions(params: {
         !resizing &&
         activeSessionKey !== sid &&
         dragSource?.sessionId !== sid &&
+        selKeep?.sessionId !== sid &&
         (known.extent.x1 + STUB_MX < viewRect.x0 ||
           known.extent.x0 - STUB_MX > viewRect.x1 ||
           known.extent.y1 + STUB_MY < viewRect.y0 ||
@@ -445,6 +454,9 @@ export function usePaperRegions(params: {
       // 拖拽保活（松手定夺改造 2026-09-05）：拖动中的块 slot 可能滑出视口窗口，
       // 但块影必须全程跟手不闪断——拖拽期间强制进可见集。
       if (draggingId != null) visibleIds.add(draggingId);
+      // 拖选锚点保活（2026-09-07）：锚块滑出视口窗口也不卸——原生选区锚点
+      // 死则选区截顶；保活到手势松开（keepAlive 随 selDragRef 起止）。
+      if (selKeep?.sessionId === sid) visibleIds.add(selKeep.blockId);
       coreKey.push(sid, c.blocks);
 
       out.push({
@@ -509,6 +521,7 @@ export function usePaperRegions(params: {
     adaptBlocks,
     draggingId,
     dragSource,
+    selDragRef,
   ]);
 
   regionsRef.current = regions;
@@ -573,8 +586,6 @@ export function usePaperRegions(params: {
     }
     return out;
   }, [canvasState.pins, openSessionIds, openBlockIds]);
-  /** 孤儿钉快照块（P4：远缩墨迹层画它们的行条——公共物不连坐，墨也不连坐） */
-  const orphanInkBlocks = useMemo(() => orphanPins.map(([id, pin]) => blockFromSnapshot(id, pin)), [orphanPins]);
   /** 孤儿钉的源卷已删（2026-08-28 会话管理专项）：源卷被删除后「收回」语义
    *  失效——按钮应显示「删除」。来自 deletedSessionIds（deleteSessionFile 标记
    *  + restoreCanvasSpread 播种）。 */
@@ -607,7 +618,6 @@ export function usePaperRegions(params: {
     sidecarOutOf,
     minimapGeo,
     orphanPins,
-    orphanInkBlocks,
     deadOrphanPinIds,
     visibleRegionIds,
     inkCache: inkCacheRef,

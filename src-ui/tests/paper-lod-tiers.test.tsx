@@ -88,6 +88,7 @@ import { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
 import { useShellStore } from '../src/app/shell-store';
 import { identityView } from '../src/paper/canvas-math';
+import { makeStrip } from '../src/paper/selection';
 import { PaperPanel } from '../src/plugins/builtin/paper-shell/PaperPanel';
 import { getCanvasStore } from '../src/state/canvas-store';
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
@@ -239,5 +240,126 @@ describe('远景三档（P4c）——分档渲染行为考官', () => {
     await mountAtZoom(0.1);
     expect(container?.querySelectorAll('.pp-folio-head').length).toBe(0);
     expect(inkStats.fillRect).toBeGreaterThan(0);
+  }, 30_000);
+});
+
+describe('LOD 钉住例外（2026-09-07 用户拍板：LOD 不再隐藏钉在画布上的卡片）', () => {
+  let root: Root | null = null;
+  let container: HTMLElement | null = null;
+
+  beforeEach(() => {
+    localStorage.clear();
+    mockInvoke.mockReset();
+    mockInvoke.mockImplementation((_cmd: string, payload: { method?: string }) => {
+      if (payload?.method === 'list_directory') return Promise.resolve('[]');
+      return Promise.resolve(null);
+    });
+    useShellStore.setState({ projectPath: 'D:/lod-pin-ws' });
+    useDockStore.getState().closePanel('paper');
+    useCanvasViewStore.setState({
+      view: identityView(),
+      canvasSize: { w: 800, h: 600 },
+      restoredView: null,
+      pendingFocusId: null,
+    });
+    inkStats.fillText = 0;
+    inkStats.fillRect = 0;
+    inkFonts.clear();
+  });
+
+  afterEach(() => {
+    if (root) {
+      void act(() => {
+        root?.unmount();
+      });
+      root = null;
+    }
+    if (container) {
+      container.remove();
+      container = null;
+    }
+  });
+
+  /** 挂一卷 + 三件钉在画布上的公共物（流内钉住块 / 孤儿钉 / 纸条）并缩到
+   *  目标档——「LOD 不再隐藏钉住的卡片」行为考官的台架。返回 panel（收回
+   *  断言要读它的 canvas-store）。 */
+  async function mountPinnedAtZoom(zoom: number): Promise<ChatCore> {
+    const panel = new ChatCore();
+    useCoreStore.setState({ core: panel });
+    const sess = getChatStore(panel.panelId).sess;
+    sess.setState({ sessions: [{ id: 1, label: '卷一' }], activeIdx: 0, nextSessionId: 2 });
+    msgStoreFor(panel.panelId, 1).getState().setMessages(volume(1));
+    const canvas = getCanvasStore(panel.panelId).getState();
+    canvas.setRegion('1', { anchorX: 0, anchorY: 0, width: 720 });
+    // 流内钉住块（活引用源：块 id = translate 的 `pb:${msgId}`——用户块 1:1）
+    canvas.setPin('pb:u1-0', {
+      x: 900,
+      y: -260,
+      w: 720,
+      source: { sessionId: 1, blockId: 'pb:u1-0' },
+      snapshot: { kind: 'user', text: '第 0 轮提问——量一段足够长的来文文本以贴近真实对话的长度。' },
+    });
+    // 孤儿钉（无活引用源——源卷未摊开也常驻）
+    canvas.setPin('orphan-pin-1', {
+      x: 1500,
+      y: 300,
+      w: 480,
+      snapshot: { kind: 'markdown', text: '孤儿钉快照正文' },
+    });
+    // 纸条（工作区级公共物）
+    canvas.addStrip(makeStrip('钉在纸上的纸条', 900, 500, 480));
+
+    const view = useCanvasViewStore;
+    view.getState().setCanvasSize(1200, 800);
+    view.getState().restoreView({ zoom, panX: 600 - 0 * zoom, panY: 400 + 200 * zoom });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(<PaperPanel />);
+    });
+    await act(async () => {
+      view.getState().setCanvasSize(1200, 800);
+    });
+    await act(async () => {
+      view.getState().setView((v) => ({ ...v, zoom, panX: 600, panY: 400 + 200 * zoom }));
+    });
+    inkStats.fillText = 0;
+    inkStats.fillRect = 0;
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 150));
+    });
+    return panel;
+  }
+
+  it('行影档（zoom 0.25）：流块退场（墨迹接管），钉住块/孤儿钉/纸条 DOM 恒在场', async () => {
+    await mountPinnedAtZoom(0.25);
+    // LOD 墨迹层在场（流块走 canvas）
+    expect(container?.querySelectorAll('.pp-ink-layer').length).toBe(1);
+    // 三件公共物 DOM 在场——用户拍板：LOD 不再隐藏钉在画布上的卡片
+    expect(container?.querySelectorAll('.pp-block.pp-pinned').length).toBe(2); // 流内钉 + 孤儿钉
+    expect(container?.querySelectorAll('.pp-strip').length).toBe(1);
+    // 钉住块各带收回钮——是可交互真卡不是残影
+    expect(container?.querySelectorAll('.pp-unpin').length).toBe(2);
+    // 流内 ghost 占位钮（「已移出」）随流块退场——远缩不点它
+    expect(container?.querySelectorAll('.pp-ghost').length).toBe(0);
+  }, 30_000);
+
+  it('剪影档（zoom 0.1）：公共物 DOM 仍在场（三档全线不退）', async () => {
+    await mountPinnedAtZoom(0.1);
+    expect(container?.querySelectorAll('.pp-ink-layer').length).toBe(1);
+    expect(container?.querySelectorAll('.pp-block.pp-pinned').length).toBe(2);
+    expect(container?.querySelectorAll('.pp-strip').length).toBe(1);
+  }, 30_000);
+
+  it('行影档钉住块可交互：收回钮真实拔钉（远缩下公共物是可取用的真卡）', async () => {
+    const panel = await mountPinnedAtZoom(0.25);
+    const btn = container?.querySelector('[data-block-id="orphan-pin-1"] .pp-unpin') ?? null;
+    expect(btn).not.toBeNull();
+    await act(async () => {
+      (btn as HTMLButtonElement).click();
+    });
+    expect(getCanvasStore(panel.panelId).getState().pins['orphan-pin-1']).toBeUndefined();
   }, 30_000);
 });

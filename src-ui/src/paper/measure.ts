@@ -49,7 +49,6 @@ import {
   ASSET_DERIVED,
   ASSET_TOKENS,
   CHROME_DERIVED,
-  CHROME_TOKENS,
   FOLIO_TOKENS,
   FONT_STACKS,
   LIMIT_TOKENS,
@@ -1065,14 +1064,6 @@ export interface InkSource {
   /** 行条上限（pre/output 族按 PRE_MAX_H/OUT 族镜像，缺省不封顶） */
   cap?: number;
 }
-
-/** 纸条墨迹常量（.pp-strip 镜像：12.5px 宋体 / 1.7 行距 / padding 12）。
- *  token 化：单一真源 = CHROME_TOKENS.strip。 */
-export const STRIP_INK = {
-  font: `${CHROME_TOKENS.strip.size}px ${SONG_STACK}`,
-  lineHeight: CHROME_TOKENS.strip.size * CHROME_TOKENS.strip.lh,
-  inset: CHROME_TOKENS.strip.padH,
-};
 
 /* ── 眉批栏（P5 夹注旁注化）——.pp-marginalia 镜像：块右缘 24px 起、总宽 240，
  * 左规线 2 + padding 10 → 内容宽 228；字体沿用夹注族（13.5px/1.85 石墨）。 ── */

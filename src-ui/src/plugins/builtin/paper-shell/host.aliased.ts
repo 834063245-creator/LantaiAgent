@@ -36,6 +36,7 @@ const host = requireHost();
 const impl = host.mods.faceDeps as unknown as typeof import('./host');
 
 export const ANCHOR = impl.ANCHOR;
+export const autoPanVector = impl.autoPanVector;
 export const layoutRegion = impl.layoutRegion;
 export const panBy = impl.panBy;
 export const screenToWorld = impl.screenToWorld;
@@ -60,7 +61,6 @@ export const createInkCache = impl.createInkCache;
 export const inkBarColorOf = impl.inkBarColorOf;
 export const inkColorOf = impl.inkColorOf;
 export const inkForBlock = impl.inkForBlock;
-export const inkForText = impl.inkForText;
 export const lodActive = impl.lodActive;
 export const lodFarActive = impl.lodFarActive;
 export const lodTierOf = impl.lodTierOf;

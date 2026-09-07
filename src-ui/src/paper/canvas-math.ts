@@ -57,6 +57,39 @@ export function panBy(v: Viewport, dx: number, dy: number): Viewport {
   return { ...v, panX: v.panX + dx, panY: v.panY + dy };
 }
 
+/* ── 拖选自动滚屏（2026-09-07 UX 批）──
+ * 鼠标拖选文字贴到画布边缘时，视口按指针入带深度自动平移（拖拽中介手势的
+ * 通用原语——内容向指针反方向追出画外）。纯几何：指针位 → 单帧平移量。 */
+
+/** 边缘感应带宽（px）：指针距画布边缘进带即起滚，越深越快。 */
+export const AUTO_PAN_BAND = 36;
+/** 单帧平移上限（px/帧；60fps ≈ 1560px/s），越出画布封顶 1.5×。 */
+export const AUTO_PAN_MAX_SPEED = 26;
+
+function axisAutoPan(pos: number, size: number, band: number, maxSpeed: number): number {
+  const lo = band - pos; // 贴上/左缘深度（带内为正）
+  const hi = pos - (size - band); // 贴下/右缘深度
+  if (lo <= 0 && hi <= 0) return 0;
+  // 双带重叠（画布窄于 2×带宽）取深侧；贴上/左 = 视口向负方向追（pan 增）。
+  const towardLo = lo >= hi;
+  const depth = towardLo ? lo : hi;
+  return (towardLo ? 1 : -1) * maxSpeed * Math.min(1.5, Math.max(0, depth) / band);
+}
+
+/** 指针画布内坐标 → 单帧自动平移量（屏幕 px）。方向语义：指针贴下缘 →
+ *  视口向下追内容（panY 减小，内容上移），贴上缘 → 向上追（panY 增大），
+ *  左右同理——喂 panBy 即得「内容向指针反方向让出」。 */
+export function autoPanVector(
+  ix: number,
+  iy: number,
+  w: number,
+  h: number,
+  band = AUTO_PAN_BAND,
+  maxSpeed = AUTO_PAN_MAX_SPEED,
+): { dx: number; dy: number } {
+  return { dx: axisAutoPan(ix, w, band, maxSpeed), dy: axisAutoPan(iy, h, band, maxSpeed) };
+}
+
 /* ── 流锚甲（D-R1-3）──
  * 流从锚点向上生长：块序列沿 -y 方向排布。
  * 视口内「最新块贴下缘」= 布局器保证最底块底边距锚点 line 处，

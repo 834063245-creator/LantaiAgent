@@ -12,13 +12,18 @@
 // 骨架（行文+几何）缓存于 InkCache（签名命中零重算）。本层 pointer-events:
 // none，远缩导航仍走小地图 / 书脊 / Home 回原点。
 //
+// 2026-09-07（用户拍板：LOD 不再隐藏钉在画布上的卡片）：钉住块 / 纸条 /
+// 孤儿钉在远缩档恒走 DOM 渲染（PaperPanel 不再以 lod 门控），本层只画
+// **流块**墨迹——DOM 面与 canvas 面不叠画同一物（ink canvas 在世界层之上，
+// 叠画即重影）。
+//
 // 像素对齐（P4c）：所有屏幕坐标取整到设备像素——半像素小字/细条加倍糊，
 // 距离观感的第一杀手。
 //
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享真实例。
 
 import { useEffect, useRef } from 'react';
-import type { BlockInk, InkCache, LodTier, PaperStrip, RegionView, SourcedBlock } from './host';
+import type { InkCache, LodTier, RegionView, SourcedBlock } from './host';
 import {
   INK_LABEL_ALPHA,
   INK_LABEL_MIN_PX,
@@ -27,7 +32,6 @@ import {
   inkBarColorOf,
   inkColorOf,
   inkForBlock,
-  inkForText,
   LOD_TEXT_MIN_PX,
   lodTierOf,
   useCanvasViewStore,
@@ -47,9 +51,6 @@ interface InkLayerProps {
   /** 有效折叠态（与 DOM 渲染同一 foldedOf——折叠块画桩条） */
   foldedOf: (b: SourcedBlock) => boolean;
   inkCache: InkCache;
-  /** 公共物（工作区级）：纸条 + 孤儿钉快照块（源卷未摊开时仍要见墨） */
-  strips: PaperStrip[];
-  orphanBlocks: SourcedBlock[];
 }
 
 /** 桩条屏幕高（折叠/空块的短矩形——text 为空串的墨条走矩形路径）。 */
@@ -57,7 +58,7 @@ function stubH(zoom: number): number {
   return Math.max(1.5, Math.min(10, 14 * zoom * 0.6));
 }
 
-export function InkLayer({ regionsRef, foldedOf, inkCache, strips, orphanBlocks }: InkLayerProps) {
+export function InkLayer({ regionsRef, foldedOf, inkCache }: InkLayerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: regionsRef 是稳定 ref——rAF 每帧直读最新 regions，不进依赖
@@ -132,8 +133,7 @@ export function InkLayer({ regionsRef, foldedOf, inkCache, strips, orphanBlocks 
       };
 
       /* 卷剪影档：块级墨影 + 文类色签边——远看是「纸上有字的灰质」+ 段落
-       * 节奏（签边色 = 文类远景化身），不画逐行。块足迹高从 flowGeom/pinnedGeom
-       * 真源取（RegionView 已带）。 */
+       * 节奏（签边色 = 文类远景化身），不画逐行。块足迹高从 flowGeom 真源取。 */
       const drawSilhouette = (b: SourcedBlock, x: number, y: number, w: number, h: number): void => {
         const bottom = y + h;
         if (y > vy1 || bottom < vy0) return;
@@ -173,28 +173,18 @@ export function InkLayer({ regionsRef, foldedOf, inkCache, strips, orphanBlocks 
         ctx.textAlign = 'left';
       };
 
+      /* 钉住块（含孤儿钉）与纸条不进本层——它们在远缩档仍走 DOM 渲染
+       *（2026-09-07 用户拍板：LOD 不再隐藏钉在画布上的卡片），这里只画流块。 */
       if (tier === 'silhouette') {
         for (const r of regionsRef.current) {
           const half = r.anchor.width / 2;
           if (r.anchor.anchorX + half < vx0 || r.anchor.anchorX - half > vx1) continue;
           for (const b of r.blocks) {
-            if (b.state === 'flow') {
-              const g = r.flowGeom.find((fg) => fg.id === b.id);
-              if (!g) continue;
-              drawSilhouette(b, g.x, g.y, b.w, g.h);
-            } else {
-              drawSilhouette(b, b.x, b.y, b.w, stubBlockH(b));
-            }
+            if (b.state !== 'flow') continue;
+            const g = r.flowGeom.find((fg) => fg.id === b.id);
+            if (!g) continue;
+            drawSilhouette(b, g.x, g.y, b.w, g.h);
           }
-        }
-        for (const b of orphanBlocks) drawSilhouette(b, b.x, b.y, b.w, stubBlockH(b));
-        // 纸条剪影：外框（内容墨影省略——远看纸条是一张小纸片）
-        ctx.strokeStyle = `rgba(${INK_RGB}, 0.5)`;
-        ctx.lineWidth = 1;
-        for (const s of strips) {
-          if (s.x > vx1 || s.x + s.w < vx0 || s.y > vy1 || s.y + 160 < vy0) continue;
-          const p = worldToScreen(view, s.x, s.y);
-          ctx.strokeRect(snap(p.x), snap(p.y), Math.max(3, s.w * view.zoom), Math.max(4, 96 * view.zoom));
         }
         drawRegionLabels();
         return;
@@ -205,39 +195,10 @@ export function InkLayer({ regionsRef, foldedOf, inkCache, strips, orphanBlocks 
         const half = r.anchor.width / 2;
         if (r.anchor.anchorX + half < vx0 || r.anchor.anchorX - half > vx1) continue;
         for (const b of r.blocks) {
-          if (b.state === 'flow') {
-            const slot = r.layout.get(b.id);
-            if (!slot) continue;
-            drawBlock(b, slot.x, slot.y);
-          } else {
-            drawBlock(b, b.x, b.y);
-          }
-        }
-      }
-      // 孤儿钉快照（公共物：源卷不在纸上也在墨）
-      for (const b of orphanBlocks) drawBlock(b, b.x, b.y);
-      // 纸条（外框 + 内容）——文字档真缩微，行影档墨条
-      ctx.strokeStyle = `rgba(${INK_RGB}, 0.7)`;
-      ctx.lineWidth = 1;
-      for (const s of strips) {
-        if (s.x > vx1 || s.x + s.w < vx0 || s.y > vy1 || s.y + 160 < vy0) continue;
-        const p = worldToScreen(view, s.x, s.y);
-        ctx.strokeRect(snap(p.x), snap(p.y), s.w * view.zoom, 96 * view.zoom);
-        const ink = inkForText(s.text, s.w);
-        ctx.fillStyle = tier === 'text' ? `rgba(${INK_RGB}, 0.7)` : `rgba(${INK_RGB}, ${INK_BAR_STRIP_ALPHA})`;
-        ctx.textBaseline = 'top';
-        if (tier === 'text') {
-          ctx.font = `${(ink.size * view.zoom).toFixed(2)}px ${ink.stack}`;
-          for (const bar of ink.bars) {
-            const bp = worldToScreen(view, s.x + bar.x0, s.y + 34 + bar.dy);
-            ctx.fillText(bar.text, snap(bp.x), snap(bp.y));
-          }
-        } else {
-          const barH = Math.max(1.25, Math.min(3, ink.lineH * view.zoom * 0.55));
-          for (const bar of ink.bars) {
-            const bp = worldToScreen(view, s.x + bar.x0, s.y + 34 + bar.dy);
-            ctx.fillRect(snap(bp.x), snap(bp.y), Math.max(1.25, bar.w * view.zoom), barH);
-          }
+          if (b.state !== 'flow') continue;
+          const slot = r.layout.get(b.id);
+          if (!slot) continue;
+          drawBlock(b, slot.x, slot.y);
         }
       }
       drawRegionLabels();
@@ -245,18 +206,7 @@ export function InkLayer({ regionsRef, foldedOf, inkCache, strips, orphanBlocks 
 
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [foldedOf, inkCache, strips, orphanBlocks]);
+  }, [foldedOf, inkCache]);
 
   return <canvas ref={canvasRef} className="pp-ink-layer" />;
 }
-
-/** 剪影档钉住块足迹高兜底：无 flowGeom 可查时用墨条推程（块至少一根墨条高）。 */
-function stubBlockH(b: SourcedBlock): number {
-  return b.state === 'pinned' ? 96 : 36;
-}
-
-/** 行影档纸条内容 alpha（兑水标签——非镜像面，绘制期局部常量）。 */
-const INK_BAR_STRIP_ALPHA = 0.38;
-
-// BlockInk 类型再导出（PaperPanel 端不直接消费，ink.ts 单一来源）
-export type { BlockInk };

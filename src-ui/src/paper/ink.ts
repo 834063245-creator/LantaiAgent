@@ -21,7 +21,7 @@ import {
   walkLineRanges,
 } from '@chenglou/pretext';
 import type { SourcedBlock } from './block-model';
-import { type InkSource, inkSourcesFor, measureSignature, STRIP_INK } from './measure';
+import { type InkSource, inkSourcesFor, measureSignature } from './measure';
 
 /** 单根墨条。text = 行原文（空串 = 桩条：折叠/空块画短矩形）。 */
 export interface InkBar {
@@ -196,19 +196,6 @@ function inkForSource(
     });
   }
   return { lines, total };
-}
-
-/** 自由文本 → 墨迹（纸条等无块语义的散墨）。 */
-export function inkForText(text: string, width: number): BlockInk {
-  const src: InkSource = { text, font: STRIP_INK.font, lineHeight: STRIP_INK.lineHeight, inset: STRIP_INK.inset };
-  const { lines } = inkForSource(src, width);
-  const f = parseFont(src.font);
-  return {
-    bars: lines.map((l, i) => ({ dy: i * src.lineHeight, x0: l.x0, w: l.w, text: l.text })),
-    lineH: src.lineHeight,
-    size: f.size,
-    stack: f.stack,
-  };
 }
 
 /* ── 块级墨迹缓存（与 BlockMeasureCache 同纪律：块 id + 签名 + 宽 记忆）── */

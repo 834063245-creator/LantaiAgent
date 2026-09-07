@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 // 视口域（paper-panel-split C2）——PaperPanel 的摄像机：view/canvasSize 订阅、
-// 平移（rAF 帧合并）、滚轮缩放、Home 回锚、LOD 缩远、重栅格化锐化、视口
-// 持久化、尺寸 RO、世界点守恒、重挂清除。焦点飞行（flyTo 族）在
-// use-paper-focus——本域只产出飞行抢占所需的 focusRafRef/focusFlightRef 载体。
+// 平移（rAF 帧合并）、滚轮平滚（plain = 平移 / ctrl = 缩放）、拖选自动滚屏、
+// Home 回锚、LOD 缩远、重栅格化锐化、视口持久化、尺寸 RO、世界点守恒、重挂
+// 清除。焦点飞行（flyTo 族）在 use-paper-focus——本域只产出飞行抢占所需的
+// focusRafRef/focusFlightRef 载体。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  autoPanVector,
   createFocusFlightScheduler,
   getCanvasStore,
   injectPaperTokens,
@@ -23,6 +25,18 @@ import {
   zoomAt,
 } from './host';
 import type { PaperCore } from './use-paper-sessions';
+
+/** 拖选自动滚屏的手势态（选区域产出，激活/布局核心两域穿参消费）：
+ *  手势在途（ref 非空）→ 自动选中不判（用户正握着一段选区）；
+ *  keepAlive → 锚点块保活（见 effect 注——原生选区锚点死则选区截顶）。 */
+export interface SelectionDragState {
+  /** 指针最新位（client 坐标——rAF 帧内现算边缘带） */
+  x: number;
+  y: number;
+  /** 选区锚点块保活（首个非折叠帧登记，mouseup 清）：regions stub 豁免 +
+   *  visibleIds 强制在册的输入。 */
+  keepAlive: { sessionId: string; blockId: string } | null;
+}
 
 /** 视口域（paper-panel-split C2，自 PaperPanel 739-1049 + 1698-1813 域内原样搬入）。
  *  挂载序硬约束（paper-panel-split-plan §3）：本 hook 必须晚于 usePaperSessions
@@ -215,7 +229,22 @@ export function usePaperViewport(core: PaperCore | null) {
   const focusRafRef = useRef(0);
   const focusFlightRef = useRef(createFocusFlightScheduler());
 
-  /* 缩放：原生非被动监听（React 合成 wheel 是 passive，preventDefault 无效） */
+  /* ── 拖选自动滚屏（2026-09-07 UX 批）──
+   * 拖选文字贴到画布边缘 → 视口按入带深度自动平移 + 把原生选区延伸到指针下
+   * 的新内容。两个关键点：
+   *  - 浏览器只在指针物理移动时扩选——内容在指针下移动（我们平移的）不会
+   *    自行扩选，须每帧 caretRangeFromPoint → Selection.extend 手动追；
+   *  - 虚拟化会卸载滑出窗口的块——锚点块一卸，原生选区从顶部被截。锚点块
+   *    经 keepAlive 保活（regions stub 豁免 + visibleIds 强制在册），到手势
+   *    松开为止。 */
+  const selDragRef = useRef<SelectionDragState | null>(null);
+  const selPanRafRef = useRef(0);
+
+  /* 缩放/平滚：原生非被动监听（React 合成 wheel 是 passive，preventDefault 无效）。
+   * 2026-09-07 UX 批：滚轮语义改「平滚视角」——plain wheel = 平移（纵向随
+   * deltaY / 横向随 deltaX，Chromium 已把 Shift+滚轮换算成 deltaX，其他宿主
+   * 在此兜底换算）；Ctrl+wheel（触控板捏合同道）= 缩放。工具/程文输出区
+   * （pre/.pp-out 自带溢出滚动）保留原生透传——滚输出文本不带走画布。 */
   useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
@@ -225,17 +254,29 @@ export function usePaperViewport(core: PaperCore | null) {
       if (t?.closest('.pp-minimap')) return;
       if (!e.ctrlKey && t?.closest('pre, .pp-out')) return;
       e.preventDefault();
-      // 用户缩放 = 手动接管视口：取消在途定位动画（否则动画会跟手抢 pan）
+      // 用户动视口 = 手动接管：取消在途定位动画（否则动画会跟手抢 pan）
       if (focusRafRef.current) {
         cancelAnimationFrame(focusRafRef.current);
         focusRafRef.current = 0;
         focusFlightRef.current.end();
       }
       useCanvasViewStore.getState().requestFocus(null);
-      // 缩放守卫：记录「最近一次缩放」时刻，自动选中在其后 600ms 内不判
-      zoomGuardUntilRef.current = performance.now() + 600;
-      const rect = el.getBoundingClientRect();
-      setView((v) => zoomAt(v, e.clientX - rect.left, e.clientY - rect.top, wheelFactor(e.deltaY)));
+      if (e.ctrlKey) {
+        // 缩放守卫：记录「最近一次缩放」时刻，自动选中在其后 600ms 内不判
+        zoomGuardUntilRef.current = performance.now() + 600;
+        const rect = el.getBoundingClientRect();
+        setView((v) => zoomAt(v, e.clientX - rect.left, e.clientY - rect.top, wheelFactor(e.deltaY)));
+        return;
+      }
+      // 平滚：deltaMode 1（行）按 16px/行归一；滚一下挪一屏内容、不动归属。
+      const unit = e.deltaMode === 1 ? 16 : 1;
+      let dx = e.deltaX * unit;
+      let dy = e.deltaY * unit;
+      if (e.shiftKey && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        dx = dy;
+        dy = 0;
+      }
+      setView((v) => panBy(v, -dx, -dy));
     };
     el.addEventListener('wheel', onWheelNative, { passive: false });
     return () => el.removeEventListener('wheel', onWheelNative);
@@ -256,20 +297,25 @@ export function usePaperViewport(core: PaperCore | null) {
   }, [canvasSize.w, canvasSize.h, setView]);
 
   const onCanvasMouseDown = useCallback((e: React.MouseEvent) => {
-    // 空白处按下 → 开始平移（块/流区有自己的处理，不落到这里）
-    if (e.target === e.currentTarget || (e.target as HTMLElement).classList.contains('pp-world')) {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      // 用户拖拽 = 手动接管视口：取消在途定位动画（否则动画会跟手抢 pan）
-      if (focusRafRef.current) {
-        cancelAnimationFrame(focusRafRef.current);
-        focusRafRef.current = 0;
-        focusFlightRef.current.end();
-      }
-      useCanvasViewStore.getState().requestFocus(null);
-      panningRef.current = { lastX: e.clientX, lastY: e.clientY };
-      setPanning(true);
+    if (e.button !== 0) return;
+    // 空白处按下 → 开始平移。2026-09-07 UX 批：平移起手势面扩到流区纸面
+    // （.pp-region 本体——卷首/空卷题字 pointer-events:none 穿透到它）——
+    // 鼠标在会话流区内同样可拖动画布。块/边缘/角柄/纸条/文类签各有自己的
+    // 手势（stopPropagation），不会落到这里；流区自己的 onMouseDown（激活）
+    // 先跑，激活与平移并存。
+    const t = e.target as HTMLElement;
+    const onEmpty = t === e.currentTarget || t.classList.contains('pp-world') || t.classList.contains('pp-region');
+    if (!onEmpty) return;
+    e.preventDefault();
+    // 用户拖拽 = 手动接管视口：取消在途定位动画（否则动画会跟手抢 pan）
+    if (focusRafRef.current) {
+      cancelAnimationFrame(focusRafRef.current);
+      focusRafRef.current = 0;
+      focusFlightRef.current.end();
     }
+    useCanvasViewStore.getState().requestFocus(null);
+    panningRef.current = { lastX: e.clientX, lastY: e.clientY };
+    setPanning(true);
   }, []);
 
   useEffect(() => {
@@ -318,6 +364,105 @@ export function usePaperViewport(core: PaperCore | null) {
     };
   }, [panning, setView]);
 
+  /* ── 拖选自动滚屏：手势臂装（window capture——块手柄类手势在 React 层
+   * stopPropagation，冒泡路看不到，须捕获面先行）→ rAF 循环（活选区非折叠
+   * 才滚）→ 边缘带平移 + 选区延伸。松手/选区未成不滚；指针回带内停摆，
+   * 再入带由 mousemove 重启。 ── */
+  useEffect(() => {
+    /** 锚点块保活登记：从活选区锚点反查块身份（data-block-id/data-session-id）。 */
+    const keepAliveOf = (): SelectionDragState['keepAlive'] => {
+      const node = window.getSelection()?.anchorNode ?? null;
+      const el = node instanceof Element ? node : (node?.parentElement ?? null);
+      const blockEl = el?.closest('.pp-block') ?? null;
+      const blockId = blockEl?.getAttribute('data-block-id');
+      const sessionId = blockEl?.getAttribute('data-session-id');
+      return blockId && sessionId ? { sessionId, blockId } : null;
+    };
+
+    /** 把选区焦点延伸到指针下的插入点（内容平移后浏览器不会自行扩选）。
+     *  caretRangeFromPoint 是 Chromium 面（WebView2 在册）；缺席的宿主降级
+     *  只滚不延。插入点落在世界层外（画布底/创作坞）不追——选区不逃出纸面。 */
+    const extendToCaret = (px: number, py: number): void => {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+      const caretFn = (
+        document as Document & {
+          caretRangeFromPoint?: (x: number, y: number) => Range | null;
+        }
+      ).caretRangeFromPoint;
+      if (typeof caretFn !== 'function') return;
+      const caret = caretFn.call(document, px, py);
+      if (!caret) return;
+      const node = caret.startContainer;
+      const el = node instanceof Element ? node : node.parentElement;
+      if (!el?.closest('.pp-world')) return;
+      sel.extend(node, caret.startOffset);
+    };
+
+    const tick = (): void => {
+      selPanRafRef.current = 0;
+      const g = selDragRef.current;
+      if (!g) return; // 手势已收
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
+        // 选区未成（按下未拖开）——待命，不滚
+        selPanRafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      if (!g.keepAlive) g.keepAlive = keepAliveOf();
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const { canvasSize } = useCanvasViewStore.getState();
+      const v = autoPanVector(g.x - rect.left, g.y - rect.top, canvasSize.w, canvasSize.h);
+      if (v.dx === 0 && v.dy === 0) return; // 指针回带内——停摆（mousemove 再入带重启）
+      // 先延后滚：延伸反映上一帧 pan 后的已提交布局（React 提交滞后一帧），
+      // 本帧滚出的位移由下一帧的延伸追上——选区焦点恒差一帧，不可见。
+      extendToCaret(g.x, g.y);
+      useCanvasViewStore.getState().setView((cur) => panBy(cur, v.dx, v.dy));
+      selPanRafRef.current = requestAnimationFrame(tick);
+    };
+    const startLoop = (): void => {
+      if (!selPanRafRef.current) selPanRafRef.current = requestAnimationFrame(tick);
+    };
+
+    const down = (e: MouseEvent): void => {
+      if (e.button !== 0) return;
+      const canvasEl = canvasRef.current;
+      const t = e.target instanceof Element ? e.target : null;
+      if (!canvasEl || !t || !canvasEl.contains(t)) return;
+      // 选择手势只可能起于块文本（.pp-block user-select:text）——纸条/流区
+      // 背景 user-select:none 天然不进；界面注记（按钮/文类签拖出柄/宽度
+      // 手调柄）是手势面不是文本，排除。
+      if (!t.closest('.pp-block')) return;
+      if (t.closest('button, .pp-kind, .pp-resize')) return;
+      selDragRef.current = { x: e.clientX, y: e.clientY, keepAlive: null };
+    };
+    const move = (e: MouseEvent): void => {
+      const g = selDragRef.current;
+      if (!g) return;
+      g.x = e.clientX;
+      g.y = e.clientY;
+      startLoop();
+    };
+    const up = (): void => {
+      if (!selDragRef.current) return;
+      selDragRef.current = null;
+      if (selPanRafRef.current) {
+        cancelAnimationFrame(selPanRafRef.current);
+        selPanRafRef.current = 0;
+      }
+    };
+    window.addEventListener('mousedown', down, true);
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => {
+      window.removeEventListener('mousedown', down, true);
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      if (selPanRafRef.current) cancelAnimationFrame(selPanRafRef.current);
+    };
+  }, []);
+
   /* 稳定引用（性能专项第二刀）：平移/缩放每帧 view 变——回调读 ref 而非依赖
    * view/layout，拖拽/移位回调才可零依赖稳定（memo 友好，不逐帧重建闭包）。 */
   const viewRef = useRef(view);
@@ -335,6 +480,7 @@ export function usePaperViewport(core: PaperCore | null) {
     viewRef,
     panning,
     panningRef,
+    selDragRef,
     zoomGuardUntilRef,
     focusRafRef,
     focusFlightRef,

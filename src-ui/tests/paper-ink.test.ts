@@ -40,7 +40,6 @@ import {
   inkBarColorOf,
   inkColorOf,
   inkForBlock,
-  inkForText,
   LOD_BAR_ENTER,
   LOD_BAR_EXIT,
   LOD_ENTER,
@@ -193,7 +192,7 @@ describe('paper/ink inkForBlock', () => {
     expect(ink.bars).toHaveLength(2);
   });
 
-  it('签名/宽度变化 → 重算（收缩与 resize 改宽必出新墨）', () => {
+  it('签名/宽度变化 → 重算（收缩与resize 改宽必出新墨）', () => {
     const cache = createInkCache();
     const b = block('user', { text: '一段来文' });
     b.w = 560;
@@ -202,13 +201,5 @@ describe('paper/ink inkForBlock', () => {
     b.w = 400;
     inkForBlock(b, false, cache);
     expect(walkMock.mock.calls.length).toBeGreaterThan(calls);
-  });
-});
-
-describe('paper/ink inkForText（纸条）', () => {
-  it('纸条墨条：.pp-strip 镜像行高与内缩', () => {
-    const ink = inkForText('纸条文字', 480);
-    expect(ink.lineH).toBe(12.5 * 1.7);
-    expect(ink.bars[0]?.x0).toBe(12);
   });
 });

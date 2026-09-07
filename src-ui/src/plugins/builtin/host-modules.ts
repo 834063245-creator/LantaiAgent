@@ -70,6 +70,7 @@ import { createSettleSelector, hitRegionAtWorld, viewportCenterWorld } from '../
 import { writingBlockIdOf } from '../../paper/block-model';
 import {
   ANCHOR,
+  autoPanVector,
   layoutRegion,
   panBy,
   screenToWorld,
@@ -92,7 +93,6 @@ import {
   inkBarColorOf,
   inkColorOf,
   inkForBlock,
-  inkForText,
   LOD_TEXT_MIN_PX,
   lodActive,
   lodFarActive,
@@ -233,6 +233,7 @@ const faceDeps = {
   minimapProject,
   regionFrame,
   ANCHOR,
+  autoPanVector,
   layoutRegion,
   panBy,
   screenToWorld,
@@ -254,7 +255,6 @@ const faceDeps = {
   inkBarColorOf,
   inkColorOf,
   inkForBlock,
-  inkForText,
   lodActive,
   lodFarActive,
   lodTierOf,

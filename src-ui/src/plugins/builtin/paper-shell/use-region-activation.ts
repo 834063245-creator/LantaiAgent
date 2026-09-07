@@ -40,6 +40,8 @@ export function useRegionActivation(params: {
   edgeDragRef: MutableRefObject<{ sessionId: string; sx: number; sy: number; ax: number; ay: number } | null>;
   dragRef: MutableRefObject<unknown>;
   stripDragRef: MutableRefObject<unknown>;
+  /** 拖选自动滚屏手势（use-paper-viewport）：用户正握着一段选区——不抢活跃。 */
+  selDragRef: MutableRefObject<unknown>;
   focusRafRef: MutableRefObject<number>;
   zoomGuardUntilRef: MutableRefObject<number>;
 }) {
@@ -52,6 +54,7 @@ export function useRegionActivation(params: {
     edgeDragRef,
     dragRef,
     stripDragRef,
+    selDragRef,
     focusRafRef,
     zoomGuardUntilRef,
   } = params;
@@ -108,13 +111,14 @@ export function useRegionActivation(params: {
         y1: r.regionBottom,
       }));
       const hit = hitRegionAtWorld(center.x, center.y, rects);
-      // 运动中不判：平移/边缘拖/定位动画 + 拖块/拖纸条（用户正握着东西，别抢活跃会话）
-      // + 输入锁存 + 缩放守卫 + 手动切换守卫
+      // 运动中不判：平移/边缘拖/定位动画 + 拖块/拖纸条/拖选（用户正握着东西，
+      // 别抢活跃会话）+ 输入锁存 + 缩放守卫 + 手动切换守卫
       const moving =
         panningRefLocal.current != null ||
         edgeDragRef.current != null ||
         dragRef.current != null ||
         stripDragRef.current != null ||
+        selDragRef.current != null ||
         focusRafRef.current > 0 ||
         inputLocked ||
         performance.now() < zoomGuardUntilRef.current ||
@@ -139,6 +143,7 @@ export function useRegionActivation(params: {
     edgeDragRef,
     dragRef,
     stripDragRef,
+    selDragRef,
     focusRafRef,
     zoomGuardUntilRef,
   ]);

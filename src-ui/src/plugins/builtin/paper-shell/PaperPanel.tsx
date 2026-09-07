@@ -379,6 +379,7 @@ export function PaperPanel() {
     viewRef,
     panning,
     panningRef,
+    selDragRef,
     zoomGuardUntilRef,
     focusRafRef,
     focusFlightRef,
@@ -423,7 +424,6 @@ export function PaperPanel() {
     sidecarOutOf,
     minimapGeo,
     orphanPins,
-    orphanInkBlocks,
     deadOrphanPinIds,
     visibleRegionIds,
     inkCache,
@@ -444,6 +444,7 @@ export function PaperPanel() {
     regionCornerPos,
     draggingId,
     dragSource,
+    selDragRef,
   });
 
   const { opsByBlock } = useBlockOps({ core, regions, regionsRef, regionMsgs });
@@ -513,6 +514,7 @@ export function PaperPanel() {
     edgeDragRef,
     dragRef,
     stripDragRef,
+    selDragRef,
     focusRafRef,
     zoomGuardUntilRef,
   });
@@ -792,94 +794,98 @@ export function PaperPanel() {
                 );
               })}
 
-              {/* 纸条（V3a：拷贝语义快照，可拖动、可销毁；工作区级公共物 Stage-5） */}
-              {!lod &&
-                canvasStrips.map((s) => {
-                  const stripDragged = dragStripId === s.id;
-                  const stripPos = stripDragged && stripDragPos ? stripDragPos : { x: s.x, y: s.y };
-                  const stripW = resizePreview?.id === s.id ? resizePreview.w : s.w;
-                  return (
-                    // biome-ignore lint/a11y/noStaticElementInteractions: 纸条拖拽面（D-R2-1 手势族）
-                    <div
-                      key={s.id}
-                      className={`pp-strip${stripDragged ? ' pp-dragging' : ''}${settleId === s.id ? ' pp-settle' : ''}`}
-                      style={{ left: stripPos.x, top: stripPos.y, width: stripW }}
-                      onMouseDown={(e) => onStripMouseDown(e, s)}
-                    >
-                      <div className="pp-strip-head">
-                        <span className="pp-strip-tag">纸条</span>
-                        <button
-                          type="button"
-                          className={`pp-strip-remove${stripConfirmId === s.id ? ' pp-strip-remove--confirm' : ''}`}
-                          title={stripConfirmId === s.id ? '再击一次确认销毁' : '销毁纸条'}
-                          aria-label={stripConfirmId === s.id ? '再击一次确认销毁纸条' : '销毁纸条'}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onRemoveStrip(s.id);
-                          }}
-                        >
-                          {stripConfirmId === s.id ? '确认？' : '✕'}
-                        </button>
-                      </div>
-                      <div className="pp-strip-body">{s.text}</div>
-                      {/* P2b 宽度手调面（右缘拖拽） */}
-                      {/* biome-ignore lint/a11y/noStaticElementInteractions: resize 是拖拽交互面 */}
-                      <div className="pp-resize" onMouseDown={(e) => onResizeMouseDown(e, s.id, 'strip', s.w)} />
+              {/* 纸条（V3a：拷贝语义快照，可拖动、可销毁；工作区级公共物 Stage-5）。
+                  LOD 不退场（2026-09-07 用户拍板：LOD 不再隐藏钉在画布上的卡片
+                  ——纸条同属钉在纸面的公共物，远缩仍是真纸片，InkLayer 不接管）。 */}
+              {canvasStrips.map((s) => {
+                const stripDragged = dragStripId === s.id;
+                const stripPos = stripDragged && stripDragPos ? stripDragPos : { x: s.x, y: s.y };
+                const stripW = resizePreview?.id === s.id ? resizePreview.w : s.w;
+                return (
+                  // biome-ignore lint/a11y/noStaticElementInteractions: 纸条拖拽面（D-R2-1 手势族）
+                  <div
+                    key={s.id}
+                    className={`pp-strip${stripDragged ? ' pp-dragging' : ''}${settleId === s.id ? ' pp-settle' : ''}`}
+                    style={{ left: stripPos.x, top: stripPos.y, width: stripW }}
+                    onMouseDown={(e) => onStripMouseDown(e, s)}
+                  >
+                    <div className="pp-strip-head">
+                      <span className="pp-strip-tag">纸条</span>
+                      <button
+                        type="button"
+                        className={`pp-strip-remove${stripConfirmId === s.id ? ' pp-strip-remove--confirm' : ''}`}
+                        title={stripConfirmId === s.id ? '再击一次确认销毁' : '销毁纸条'}
+                        aria-label={stripConfirmId === s.id ? '再击一次确认销毁纸条' : '销毁纸条'}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveStrip(s.id);
+                        }}
+                      >
+                        {stripConfirmId === s.id ? '确认？' : '✕'}
+                      </button>
                     </div>
-                  );
-                })}
+                    <div className="pp-strip-body">{s.text}</div>
+                    {/* P2b 宽度手调面（右缘拖拽） */}
+                    {/* biome-ignore lint/a11y/noStaticElementInteractions: resize 是拖拽交互面 */}
+                    <div className="pp-resize" onMouseDown={(e) => onResizeMouseDown(e, s.id, 'strip', s.w)} />
+                  </div>
+                );
+              })}
 
               {/* 公共物 · 孤儿钉（源会话未摊开/已删除，Stage-5）：以快照独立渲染——
-               * 公共物不绑会话、钉到拔为止。源会话摊开时由下方流区 pass 渲染活块。 */}
-              {!lod &&
-                orphanPins.map(([pinId, pin]) => {
-                  const snapshotBlock = blockFromSnapshot(pinId, pin);
-                  const isDragged = draggingId === pinId;
-                  const pos = isDragged && dragPos ? dragPos : { x: pin.x, y: pin.y };
-                  return (
-                    // biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler
-                    <div
-                      key={pinId}
-                      className={[
-                        'pp-block',
-                        `pp-${snapshotBlock.kind}`,
-                        'pp-pinned',
-                        isDragged ? 'pp-dragging' : '',
-                      ].join(' ')}
-                      style={{
-                        transform: `translate(${pos.x}px, ${pos.y}px)`,
-                        width: resizePreview?.id === pinId ? resizePreview.w : pin.w,
-                      }}
-                      onDragStart={(e) => e.preventDefault()}
-                    >
-                      <BlockView
-                        block={snapshotBlock}
-                        seq="PIN"
-                        ops={EMPTY_OPS}
-                        folded={foldedOf(snapshotBlock)}
-                        sidecarFolded={sidecarFoldedOf(snapshotBlock)}
-                        onToggleFold={onToggleFold}
-                        onToggleSidecarFold={onToggleSidecarFold}
-                        onSidecarPinMouseDown={onSidecarPinMouseDown}
-                        onUnpin={onUnpin}
-                        onDragHandleMouseDown={onBlockMouseDown}
-                        unpinLabel={deadOrphanPinIds.has(pinId) ? '删除' : '收回'}
-                      />
-                      {/* P2b 宽度手调面（右缘拖拽） */}
-                      {/* biome-ignore lint/a11y/noStaticElementInteractions: resize 是拖拽交互面 */}
-                      <div className="pp-resize" onMouseDown={(e) => onResizeMouseDown(e, pinId, 'pin', pin.w)} />
-                    </div>
-                  );
-                })}
+               * 公共物不绑会话、钉到拔为止。源会话摊开时由下方流区 pass 渲染活块。
+               * LOD 不退场（2026-09-07）：钉在画布上的卡片远缩仍可见可取用。 */}
+              {orphanPins.map(([pinId, pin]) => {
+                const snapshotBlock = blockFromSnapshot(pinId, pin);
+                const isDragged = draggingId === pinId;
+                const pos = isDragged && dragPos ? dragPos : { x: pin.x, y: pin.y };
+                return (
+                  // biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler
+                  <div
+                    key={pinId}
+                    className={[
+                      'pp-block',
+                      `pp-${snapshotBlock.kind}`,
+                      'pp-pinned',
+                      isDragged ? 'pp-dragging' : '',
+                    ].join(' ')}
+                    style={{
+                      transform: `translate(${pos.x}px, ${pos.y}px)`,
+                      width: resizePreview?.id === pinId ? resizePreview.w : pin.w,
+                    }}
+                    data-block-id={pinId}
+                    onDragStart={(e) => e.preventDefault()}
+                  >
+                    <BlockView
+                      block={snapshotBlock}
+                      seq="PIN"
+                      ops={EMPTY_OPS}
+                      folded={foldedOf(snapshotBlock)}
+                      sidecarFolded={sidecarFoldedOf(snapshotBlock)}
+                      onToggleFold={onToggleFold}
+                      onToggleSidecarFold={onToggleSidecarFold}
+                      onSidecarPinMouseDown={onSidecarPinMouseDown}
+                      onUnpin={onUnpin}
+                      onDragHandleMouseDown={onBlockMouseDown}
+                      unpinLabel={deadOrphanPinIds.has(pinId) ? '删除' : '收回'}
+                    />
+                    {/* P2b 宽度手调面（右缘拖拽） */}
+                    {/* biome-ignore lint/a11y/noStaticElementInteractions: resize 是拖拽交互面 */}
+                    <div className="pp-resize" onMouseDown={(e) => onResizeMouseDown(e, pinId, 'pin', pin.w)} />
+                  </div>
+                );
+              })}
 
-              {/* 流序列：每流区 flow 块按序渲染（视口窗口化——视口外不进 DOM） */}
-              {regions.map((r) => {
-                if (lod) return null; // P4 缩远墨迹：DOM 块树退场，InkLayer 接管
-                return r.blocks.map((b) => {
+              {/* 流序列：每流区块按序渲染（视口窗口化——视口外不进 DOM）。
+                  2026-09-07 LOD 例外（用户拍板）：远缩档流块 DOM 仍退场（InkLayer
+                  墨迹接管），但**钉住块不退**——LOD 不再隐藏钉在画布上的卡片。 */}
+              {regions.map((r) =>
+                r.blocks.map((b) => {
                   const slot = r.layout.get(b.id);
                   if (!slot || !r.visibleIds.has(b.id)) return null;
                   if (b.state === 'flow') {
+                    if (lod) return null; // P4 缩远墨迹：流块 DOM 退场，InkLayer 接管
                     const firstSeen = !seenBlocksRef.current.has(b.id);
                     if (firstSeen) seenBlocksRef.current.add(b.id);
                     /* 湿墨尾点（2026-09-06）：正在书写的块（writingBlockIdOf
@@ -909,6 +915,7 @@ export function PaperPanel() {
                         style={{ transform: `translate(${dragX}px, ${dragY}px)`, width: b.w }}
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}
+                        data-block-id={b.id}
                         data-block-observed={
                           needsObservedHeight(b.kind, b.asset != null, (b.payload as { text?: string }).text)
                             ? b.id
@@ -945,14 +952,18 @@ export function PaperPanel() {
                   const pinW = resizePreview?.id === b.id ? resizePreview.w : b.w;
                   return (
                     <Fragment key={b.id}>
-                      <button
-                        type="button"
-                        className="pp-ghost"
-                        style={{ left: slot.x, top: slot.y, width: b.w, height: GHOST_H }}
-                        onClick={() => onGhostClick(b.id)}
-                      >
-                        已移出 · 点击恢复
-                      </button>
+                      {/* 流内占位钮（「已移出 · 点击恢复」）随流块退场——远缩不点它；
+                          钉住的块本体照常渲染（见下）。 */}
+                      {!lod && (
+                        <button
+                          type="button"
+                          className="pp-ghost"
+                          style={{ left: slot.x, top: slot.y, width: b.w, height: GHOST_H }}
+                          onClick={() => onGhostClick(b.id)}
+                        >
+                          已移出 · 点击恢复
+                        </button>
+                      )}
                       {/* biome-ignore lint/a11y/noStaticElementInteractions: onDragStart 是阻断原生拖拽的防御性 handler */}
                       <div
                         className={`pp-block pp-${b.kind} pp-pinned${isDragged ? ' pp-dragging' : ''}${
@@ -961,6 +972,7 @@ export function PaperPanel() {
                         style={{ transform: `translate(${pos.x}px, ${pos.y}px)`, width: pinW }}
                         data-message-id={b.source.messageId}
                         data-session-id={r.sessionId}
+                        data-block-id={b.id}
                         data-block-observed={
                           needsObservedHeight(b.kind, b.asset != null, (b.payload as { text?: string }).text)
                             ? b.id
@@ -989,20 +1001,14 @@ export function PaperPanel() {
                       </div>
                     </Fragment>
                   );
-                });
-              })}
+                }),
+              )}
             </div>
 
-            {/* P4 缩远墨迹：远缩档的屏幕空间 canvas 骨架（pointer-events none） */}
-            {lod && (
-              <InkLayer
-                regionsRef={regionsRef}
-                foldedOf={foldedOf}
-                inkCache={inkCache.current}
-                strips={canvasStrips}
-                orphanBlocks={orphanInkBlocks}
-              />
-            )}
+            {/* P4 缩远墨迹：远缩档的屏幕空间 canvas 骨架（pointer-events none）。
+                只接管流块墨迹——钉住块/纸条/孤儿钉 DOM 恒在场（2026-09-07 用户
+                拍板：LOD 不再隐藏钉在画布上的卡片），本层不画它们（不叠墨）。 */}
+            {lod && <InkLayer regionsRef={regionsRef} foldedOf={foldedOf} inkCache={inkCache.current} />}
           </div>
 
           {/* 小地图已插件化（2026-09-05）：paper-minimap 插件经 overlays right-edge 槽贡献，
