@@ -55,12 +55,18 @@ interface SourceFile {
   code: string;
 }
 
+/** 排除清单：内容数据模块（非代码——字符串里的 ctx.* / *.register( 示例
+ *  文案会误判成消费面/实现 id，机械扫描按设计不剥字符串字面量）。
+ *  每收一个纯文档/数据模块必须在此登记，防目录虚胖。 */
+const CONTENT_DATA_FILES = new Set(['src/agent/builtin-skills.ts']);
+
 function scanSources(): Map<string, SourceFile> {
   const out = new Map<string, SourceFile>();
   for (const dir of SCAN_DIRS) {
     const abs = path.join(SRC_UI, dir);
     for (const file of walkTs(abs)) {
       const rel = path.relative(SRC_UI, file).replaceAll('\\', '/');
+      if (CONTENT_DATA_FILES.has(rel)) continue;
       const text = readFileSync(file, 'utf8');
       out.set(rel, { file: rel, text, code: stripComments(text) });
     }

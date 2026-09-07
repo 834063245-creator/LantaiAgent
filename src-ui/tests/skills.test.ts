@@ -4,6 +4,7 @@
 // Skills 系统测试（skills-mcp-production-plan Commit 1）：
 //   - yaml frontmatter 解析（标准 name/description + 附加字段）
 //   - 项目级 + 用户级双层发现 + 项目胜用户同名去重
+//   - 出厂技能第三发现根（builtin-skills.ts）：恒在场 + 项目/用户同名覆盖
 //   - 坏档可见诊断（skipped 带 reason，不炸发现）
 //   - digest 稳定（同内容同 digest；内容变 digest 变）
 //   - ${LANTAI_SKILL_DIR} 展开
@@ -29,6 +30,11 @@ const PROJ = '/proj';
 /** MockFs 的 kernelGlobalMemoryDir 固定返回 ~/.lantai/global_memory → 用户根 ~/.lantai/skills。 */
 const USER_ROOT = '~/.lantai/skills';
 
+/** 磁盘技能（项目 + 用户）——出厂技能恒在场（第三发现根），计数断言看磁盘面。 */
+function diskSkills(skills: Array<{ source: string }>) {
+  return skills.filter((s) => s.source !== 'builtin');
+}
+
 beforeEach(() => {
   const k = H.kernelFs!;
   k.fs.files.clear();
@@ -51,8 +57,9 @@ describe('scanSkills — 项目级发现', () => {
   it('发现目录包技能并解析 yaml frontmatter', async () => {
     setDirSkill(`${PROJ}/.lantai/skills`, 'code-review', STANDARD_FRONT);
     const scan = await scanSkills(PROJ);
-    expect(scan.skills).toHaveLength(1);
-    const s = scan.skills[0];
+    const disk = diskSkills(scan.skills);
+    expect(disk).toHaveLength(1);
+    const s = disk[0];
     expect(s.name).toBe('code-review');
     expect(s.description).toBe('审查代码变更');
     expect(s.source).toBe('project');
@@ -67,15 +74,24 @@ describe('scanSkills — 项目级发现', () => {
       '## 步骤\n1. 跑测试',
     );
     const scan = await scanSkills(PROJ);
-    expect(scan.skills[0].whenToUse).toBe('用户提到发布时');
-    expect(scan.skills[0].prompt).toContain('## 步骤\n1. 跑测试');
+    const deploy = scan.skills.find((s) => s.name === 'deploy')!;
+    expect(deploy.whenToUse).toBe('用户提到发布时');
+    expect(deploy.prompt).toContain('## 步骤\n1. 跑测试');
   });
 
-  it('无技能目录 = 空目录非错误', async () => {
+  it('无项目/用户技能 = 出厂技能恒在场（第三发现根，随 exe 分发）', async () => {
     const scan = await scanSkills(PROJ);
-    expect(scan.skills).toHaveLength(0);
     expect(scan.skipped).toHaveLength(0);
-    expect(scan.digest).toBe('811c9dc5'); // 空串 FNV-1a
+    expect(diskSkills(scan.skills)).toHaveLength(0);
+    const pluginDev = scan.skills.find((s) => s.name === 'lantai-plugin-dev');
+    expect(pluginDev).toBeDefined();
+    expect(pluginDev!.source).toBe('builtin');
+    expect(pluginDev!.dir).toBeUndefined(); // 不在盘上——内容自包含
+    expect(pluginDev!.prompt).toContain('为兰台写插件');
+    // 出厂面 digest 稳定且非空串摘要（出厂技能在场改变了恒在面）
+    const again = await scanSkills(PROJ);
+    expect(again.digest).toBe(scan.digest);
+    expect(scan.digest).not.toBe('811c9dc5');
   });
 });
 
@@ -83,7 +99,7 @@ describe('scanSkills — 用户级双层 + 项目胜用户', () => {
   it('发现用户级技能（~/.lantai/skills 经 global_memory_dir 推导）', async () => {
     setDirSkill(USER_ROOT, 'global-util', STANDARD_FRONT);
     const scan = await scanSkills(PROJ);
-    expect(scan.skills).toHaveLength(1);
+    expect(diskSkills(scan.skills)).toHaveLength(1);
     expect(scan.skills[0].source).toBe('user');
     expect(scan.skills[0].dir).toContain('~/.lantai/skills/global-util');
   });
@@ -92,7 +108,7 @@ describe('scanSkills — 用户级双层 + 项目胜用户', () => {
     setDirSkill(`${PROJ}/.lantai/skills`, 'code-review', STANDARD_FRONT);
     setDirSkill(USER_ROOT, 'code-review', 'name: code-review\ndescription: 用户版审查');
     const scan = await scanSkills(PROJ);
-    expect(scan.skills).toHaveLength(1);
+    expect(diskSkills(scan.skills)).toHaveLength(1);
     expect(scan.skills[0].description).toBe('审查代码变更');
     expect(scan.skills[0].source).toBe('project');
   });
@@ -100,7 +116,7 @@ describe('scanSkills — 用户级双层 + 项目胜用户', () => {
   it('用户级目录不存在 = 静默降级（项目级不受影响）', async () => {
     setDirSkill(`${PROJ}/.lantai/skills`, 'local', 'name: local\ndescription: 本地技能');
     const scan = await scanSkills(PROJ);
-    expect(scan.skills).toHaveLength(1);
+    expect(diskSkills(scan.skills)).toHaveLength(1);
     expect(scan.skills[0].name).toBe('local');
   });
 });
@@ -109,7 +125,7 @@ describe('scanSkills — 坏档可见诊断', () => {
   it('非法技能名（非 kebab-case）进 skipped 带 reason', async () => {
     setDirSkill(`${PROJ}/.lantai/skills`, 'Bad_Name', 'name: Bad_Name\ndescription: x');
     const scan = await scanSkills(PROJ);
-    expect(scan.skills).toHaveLength(0);
+    expect(diskSkills(scan.skills)).toHaveLength(0);
     expect(scan.skipped).toHaveLength(1);
     expect(scan.skipped[0].reason).toContain('非法');
   });
@@ -127,7 +143,7 @@ describe('scanSkills — 坏档可见诊断', () => {
     // 目录存在但无 SKILL.md——setDirSkill 只建文件；手动建个空目录技能位
     H.kernelFs!.fs.setFile(`${PROJ}/.lantai/skills/ghost/SKILL.md`, '---\nname: ghost\ndescription: x\n---\n');
     const scan = await scanSkills(PROJ);
-    expect(scan.skills).toHaveLength(1);
+    expect(diskSkills(scan.skills)).toHaveLength(1);
   });
 });
 
@@ -159,14 +175,42 @@ describe('scanSkills — 占位符展开', () => {
   });
 });
 
+describe('scanSkills — 出厂技能第三发现根（2026-09-08）', () => {
+  it('同名：项目胜出厂（用户可用项目版覆盖出厂面）', async () => {
+    setDirSkill(`${PROJ}/.lantai/skills`, 'lantai-plugin-dev', 'description: 项目定制版');
+    const scan = await scanSkills(PROJ);
+    const found = scan.skills.filter((s) => s.name === 'lantai-plugin-dev');
+    expect(found).toHaveLength(1);
+    expect(found[0].source).toBe('project');
+    expect(found[0].description).toBe('项目定制版');
+  });
+
+  it('同名：用户胜出厂（无项目版时用户版覆盖）', async () => {
+    setDirSkill(USER_ROOT, 'lantai-plugin-dev', 'description: 用户定制版');
+    const scan = await scanSkills(PROJ);
+    const found = scan.skills.filter((s) => s.name === 'lantai-plugin-dev');
+    expect(found).toHaveLength(1);
+    expect(found[0].source).toBe('user');
+  });
+
+  it('Skill 工具按名执行出厂技能（模型消费面——手册全文可取）', async () => {
+    const reg = new SkillRegistry(PROJ);
+    const out = await createSkillTool(reg).execute({ skill: 'lantai-plugin-dev' });
+    expect(out).toContain('为兰台写插件');
+    expect(out).toContain('cordis');
+    expect(out).toContain('manifest.json');
+  });
+});
+
 describe('SkillRegistry + createSkillTool', () => {
   it('reload 热装载：先装技能、reload 立即可见', async () => {
     const reg = new SkillRegistry(PROJ);
-    expect(await reg.reload()).toHaveLength(0);
+    expect(diskSkills(await reg.reload())).toHaveLength(0);
     setDirSkill(`${PROJ}/.lantai/skills`, 'fresh', STANDARD_FRONT);
     const skills = await reg.reload();
-    expect(skills).toHaveLength(1);
-    expect(reg.names).toEqual(['fresh']);
+    expect(diskSkills(skills)).toHaveLength(1);
+    expect(reg.names).toContain('fresh');
+    expect(reg.names).toContain('lantai-plugin-dev'); // 出厂面恒在场
   });
 
   it('无技能名调用 = 列举（含装载失败诊断）', async () => {

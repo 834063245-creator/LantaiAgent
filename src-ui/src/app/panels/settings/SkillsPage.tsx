@@ -5,7 +5,8 @@
 //
 // 功能：
 //   - 技能列表：项目级（.lantai/skills）+ 用户级（~/.lantai/skills，只读展示）
-//     的 SKILL.md 技能，显示 name/description/source + 装载失败诊断（skipped）
+//     的 SKILL.md 技能 + 出厂技能（builtin-skills.ts，随 exe 分发，只读），
+//     显示 name/description/source + 装载失败诊断（skipped）
 //   - 新建技能（项目级）：表单写 <project>/.lantai/skills/<name>/SKILL.md
 //   - 删除技能（项目级；用户级只读——防误删跨项目资产）
 //   - 从本地目录复制安装（项目级）
@@ -32,6 +33,7 @@ function SkillCard({
   confirming: boolean;
 }) {
   const isProject = skill.source === 'project';
+  const sourceLabel = skill.source === 'project' ? '项目' : skill.source === 'user' ? '用户' : '内置';
   return (
     <div className="sp-lsp-card">
       <span className="sp-lsp-card-icon" style={{ color: 'var(--pass)' }}>
@@ -42,7 +44,7 @@ function SkillCard({
         <div className="sp-lsp-card-header">
           <span className="lang-name">{skill.name}</span>
           <span className="lang-status" style={{ color: isProject ? 'var(--pass)' : 'var(--ink-2)' }}>
-            {isProject ? '项目' : '用户'}
+            {sourceLabel}
           </span>
         </div>
         <div className="sp-lsp-card-meta">
@@ -222,8 +224,9 @@ export function SkillsPage() {
         <div className="sp-section-title">技能（{skills.length}）</div>
         <div className="sp-hint" style={{ marginBottom: 10 }}>
           技能 = <code>.lantai/skills/&lt;name&gt;/SKILL.md</code>（项目）或{' '}
-          <code>~/.lantai/skills/&lt;name&gt;/SKILL.md</code>（用户，只读展示）。模型在 Agent 装配时看到技能目录，用{' '}
-          <code>Skill</code> 工具按名执行；新装技能下次装配生效。
+          <code>~/.lantai/skills/&lt;name&gt;/SKILL.md</code>
+          （用户，只读展示）；「内置」为随应用分发的出厂技能（不可删改，同名项目/用户版可覆盖）。模型在 Agent
+          装配时看到技能目录，用 <code>Skill</code> 工具按名执行；新装技能下次装配生效。
         </div>
         {loading && <div className="sp-hint">扫描中…</div>}
         {skills.length === 0 && !loading && (

@@ -3,7 +3,7 @@
 
 // Skill system — loads SKILL.md skills from project `.lantai/skills/` and
 // user-level `~/.lantai/skills/` (Agent Skills 开放标准形态：目录包
-// `<name>/SKILL.md`，YAML frontmatter `name` + `description` + markdown body)。
+// `<name>/SKILL.md`，YAML frontmatter `name` + `description` + markdown body）。
 //
 // 生产级改造（2026-09-07，skills-mcp-production-plan §3.1）：
 //   - frontmatter 用 yaml 包解析（对齐 composition/preset-discovery），不再手写行扫
@@ -15,13 +15,17 @@
 //   - `${LANTAI_SKILL_DIR}` 占位符展开为技能目录绝对路径（资源基址锚）
 //   - 热装载保留（调用时重扫），但加目录缓存——技能不变不重复 list+read
 //
-// 接口兼容（既有消费者零改动）：SkillDef / SkillRegistry(reload/.names) /
-// createSkillTool / loadSkills。
+// 第三发现根（2026-09-08）：出厂技能 builtin-skills.ts——编译进 bundle 随
+// exe 分发（分发环境下项目/用户两个磁盘根都是空的，Agent 无插件开发知识
+// 可用）。优先级：项目 > 用户 > 出厂（同名去重，用户可用同名覆盖出厂版）。
+//
+// 接口面：SkillDef / scanSkills / SkillRegistry(reload/.names) / createSkillTool。
 
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import type { DirEntry } from '../rpc-contract';
 import { kernelGlobalMemoryDir, kernelListDirectoryFlat, kernelReadFile } from '../rpc-contract';
+import { BUILTIN_SKILLS } from './builtin-skills';
 import type { Tool } from './tool';
 import { defineTool } from './tools/define-tool';
 
@@ -32,10 +36,10 @@ export interface SkillDef {
   prompt: string;
   /** 附加元数据（原样保留，发现注入展示用）。 */
   whenToUse?: string;
-  /** 技能目录绝对路径（${LANTAI_SKILL_DIR} 展开锚）。 */
+  /** 技能目录绝对路径（${LANTAI_SKILL_DIR} 展开锚；出厂技能无盘上目录）。 */
   dir?: string;
-  /** 来源根：'project' | 'user'。 */
-  source: 'project' | 'user';
+  /** 来源根：'project' | 'user' | 'builtin'。 */
+  source: 'project' | 'user' | 'builtin';
   /** 装载诊断（坏档时填充；正常为空）。 */
   error?: string;
 }
@@ -242,6 +246,21 @@ export async function scanSkills(projectPath: string, userDirOverride?: string |
     const projectNames = new Set(skills.map((s) => s.name));
     for (const s of userSkills) {
       if (!projectNames.has(s.name)) skills.push(s);
+    }
+  }
+
+  // 出厂技能（第三发现根——bundle 内、随 exe 分发）：优先级最低，项目/用户
+  // 同名版胜出（用户可覆盖出厂面）。出厂内容自包含（无 dir——占位符不适用）。
+  const seen = new Set(skills.map((s) => s.name));
+  for (const b of BUILTIN_SKILLS) {
+    if (!seen.has(b.name)) {
+      skills.push({
+        name: b.name,
+        description: b.description,
+        whenToUse: b.whenToUse,
+        prompt: b.prompt,
+        source: 'builtin',
+      });
     }
   }
 
