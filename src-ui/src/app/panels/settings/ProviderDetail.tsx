@@ -135,7 +135,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
     : pendingClear
       ? '清除待保存生效'
       : '未设置';
-  const keyChipCls = provider.apiKey?.trim() ? (keySaved ? '' : ' unsaved') : ' clear';
+  const keyChipCls = provider.apiKey?.trim() ? (keySaved ? ' saved' : ' unsaved') : ' clear';
 
   const testBlock =
     test.phase === 'ok' ? (
@@ -284,12 +284,10 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
               可用模型
             </label>
             <span className="pp-chip">{models.length} 个</span>
-            {/* oauth 订阅（Codex）无 /models——不提供拉取；模型由账号自动提供 */}
-            {!isOAuth && (
-              <button type="button" className="sp-btn-sm" disabled={fetching} onClick={handleFetch}>
-                {fetching ? '拉取中…' : '从 API 拉取'}
-              </button>
-            )}
+            {/* oauth 订阅（Codex）：登录后也可从账号 API 拉取真实模型——非「账号自动提供」 */}
+            <button type="button" className="sp-btn-sm" disabled={fetching} onClick={handleFetch}>
+              {fetching ? '拉取中…' : '从 API 拉取'}
+            </button>
           </div>
           {models.length > 0 && (
             <div className="pp-models-list">
@@ -313,18 +311,15 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                     >
                       {paramModel === id ? '收起' : '参数'}
                     </button>
-                    {/* oauth 订阅：模型固定由模板/账号提供——不可移除、参数仍可调 */}
-                    {!isOAuth && (
-                      <button
-                        type="button"
-                        className="pp-model-chip-x"
-                        title={`移除 ${id}`}
-                        aria-label={`移除 ${id}`}
-                        onClick={() => onRemoveModel(id)}
-                      >
-                        ✕
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="pp-model-chip-x"
+                      title={`移除 ${id}`}
+                      aria-label={`移除 ${id}`}
+                      onClick={() => onRemoveModel(id)}
+                    >
+                      ✕
+                    </button>
                   </span>
                   {paramModel === id && (
                     <div className="pp-model-params">
@@ -359,29 +354,25 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
               ))}
             </div>
           )}
-          {isOAuth ? (
-            <div className="pp-f-hint">订阅账号的模型由账号自动提供——登录后即可在创作坞选择。</div>
-          ) : (
-            <div className="pp-models-add">
-              <input
-                id="pd-models-input"
-                className="sp-input"
-                value={newModel}
-                placeholder="输入模型 id 添加，如 deepseek-reasoner"
-                autoComplete="off"
-                onChange={(e) => setNewModel(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    submitAdd();
-                  }
-                }}
-              />
-              <button type="button" className="sp-btn-sm" onClick={submitAdd}>
-                添加
-              </button>
-            </div>
-          )}
+          <div className="pp-models-add">
+            <input
+              id="pd-models-input"
+              className="sp-input"
+              value={newModel}
+              placeholder="输入模型 id 添加，如 deepseek-reasoner"
+              autoComplete="off"
+              onChange={(e) => setNewModel(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  submitAdd();
+                }
+              }}
+            />
+            <button type="button" className="sp-btn-sm" onClick={submitAdd}>
+              添加
+            </button>
+          </div>
           {fetchMsg && <div className="pp-f-hint">{fetchMsg}</div>}
           <div className="pp-f-hint">
             创作坞模型下拉只列这里的模型；「新会话默认」= 最近在创作坞选用的模型，自动跟从（不可在此改）。从 API

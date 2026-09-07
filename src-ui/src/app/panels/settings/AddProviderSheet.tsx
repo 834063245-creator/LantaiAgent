@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 添加提供方弹层（两步式，2026-09-06 重做）：
+// 添加提供方弹层（两步式，2026-09-06 重做；OAuth 内联登录 2026-09-11）：
 //   第一步「连接配置」：名称/协议/Base URL/API Key——目录 chips 点击 = 预填表单
 //     （name/kind/baseUrl 带出），不再一键直加（目录模型名可能 stale）；
 //   第二步「可用模型」：点「拉取模型」从提供方 /models 拉真实列表（无 Key 也可
@@ -9,6 +9,12 @@
 //     也可手动补一个模型 id（拉取失败/无 /models 端点的兜底）。
 //   确认添加 → 一次性把 name/kind/key/baseUrl/models/model 交给父组件（即时落盘 +
 //     settings-saved 热广播，新提供方模型立刻全会话可选）。
+//
+//   OAuth 订阅（authMode='oauth'，codex 等）走弹层内登录（2026-09-11 重做）：
+//     以前「确认添加 → 建行 → 再进详情页登录」两步割裂；现在登录直接发生在
+//     添加弹层——选厂商 → 弹层内 device-flow 授权 → 登录后拉真实模型 → 确认添加
+//     一次完成。grant 键 oauth:{provider}::{account} 与 provider 行解耦，弹层内
+//     登录对尚未建的行同样成立（OAuth 登录不必等到行存在）。
 //
 // 校验在本地完成，父组件只负责落 state + 持久化。
 //
@@ -18,6 +24,9 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { activeLlmAdapters } from '../../../composition/services';
 import { createProvider } from '../../../provider';
+import { invalidateOauthCache, resolveOauthToken } from '../../../provider/credentials';
+import { buildOauthHeaders, oauthAccounts, oauthLogout, runDeviceLogin } from '../../../provider/oauth';
+import type { ModelDescriptor, Provider } from '../../../provider/types';
 import { CORE_PROTOCOLS, type Protocol } from '../../../provider/types';
 import { findVendorTemplate, getVendorTemplateVendors } from '../../../provider/vendor-templates';
 import { defaultBaseUrl, type ProviderId, type ProviderSettings, providerId } from '../../../settings';
@@ -61,6 +70,11 @@ function buildRow(name: string, kind: Protocol, baseUrl: string, apiKey: string)
   };
 }
 
+/** OAuth 已登录账号清单（元数据只读面）。 */
+interface OAuthAccount {
+  accountId: string;
+}
+
 export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddProviderSheetProps) {
   const [name, setName] = useState('');
   const [kind, setKind] = useState<Protocol>('openai');
@@ -77,12 +91,18 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
   // Phase 3D：登录方式（模板预填；codex = oauth 订阅）
   const [authMode, setAuthMode] = useState<'api-key' | 'oauth'>('api-key');
   const [oauthProvider, setOauthProvider] = useState<string | undefined>(undefined);
+  // OAuth 弹层内登录态（2026-09-11 重做）：登录直接发生在添加弹层——
+  // 不再「添加完再去详情页登录」。已登录账号在此展示，可换/可登出。
+  const [oauthBusy, setOauthBusy] = useState(false);
+  const [oauthStatus, setOauthStatus] = useState<{ tone: 'info' | 'ok' | 'fail'; msg: string } | null>(null);
+  const [oauthAccountsState, setOauthAccountsState] = useState<OAuthAccount[]>([]);
+  const oauthCancelRef = useRef(false);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
   const modelInputRef = useRef<HTMLInputElement | null>(null);
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
 
-  /** oauth 订阅行：无 API Key / 无 /models 可拉——表单形态与 api-key 两轨。 */
+  /** oauth 订阅行：无 API Key / 登录走 device-flow——表单形态与 api-key 两轨。 */
   const isOAuth = authMode === 'oauth';
 
   // 协议下拉选项：内核白名单（出厂两族）恒在、顺序在前；ctx.llm adapter 注册表
@@ -118,6 +138,11 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       setError('');
       setAuthMode('api-key');
       setOauthProvider(undefined);
+      // OAuth 弹层态复位：清登录/账号展示（重新打开 = 从头选厂商）
+      setOauthBusy(false);
+      setOauthStatus(null);
+      setOauthAccountsState([]);
+      oauthCancelRef.current = false;
     }
   }, [open]);
 
@@ -130,9 +155,8 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
 
   /** 厂商 chip → 预填连接表单（不直加——进入拉模型两步）。
    *  来源 = 模板表（vendor-templates.ts 连接参数；模型一律运行时拉取）。
-   *  ⚡ oauth 厂商（authMode='oauth'）：无 /models 可拉（订阅端点），模型由
-   *  模板 defaultModel 固定——点选即把默认模型写入可用列表，表单免拉取直添
-   *  （登录在添加成功后的 Detail 面板完成）。 */
+   *  ⚡ oauth 厂商（authMode='oauth'）：模型来自登录后账号 API（本弹层内
+   *  先登录再拉取）；登录完成前不提供「添加」（行未配好就建会割裂）。 */
   const handlePickVendor = (provName: string) => {
     const tpl = findVendorTemplate(provName);
     if (!tpl) return;
@@ -144,17 +168,119 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
     setFetchMsg('');
     setError('');
     setManualModel('');
+    setModels([]);
+    setDefaultModel('');
     // authMode/oauthProvider 随模板预填（codex = oauth）
     setAuthMode(tpl.authMode ?? 'api-key');
     setOauthProvider(tpl.oauthProvider);
-    if (tpl.authMode === 'oauth') {
-      // oauth 订阅：模板 defaultModel = 可用模型（无 /models 可拉）
-      const seed = tpl.defaultModel?.trim() ? [tpl.defaultModel.trim()] : [];
-      setModels(seed);
-      setDefaultModel(seed[0] ?? '');
-    } else {
-      setModels([]);
-      setDefaultModel('');
+    if (tpl.authMode === 'oauth' && tpl.oauthProvider) {
+      // 打开即拉一次该 provider 已登录账号（grant 与行解耦——可能已有账号）
+      void refreshOauthAccounts(tpl.oauthProvider);
+    }
+  };
+
+  /** 拉某 oauth provider 的已登录账号清单（弹层内展示）。 */
+  const refreshOauthAccounts = async (pid: string) => {
+    try {
+      const accts = await oauthAccounts(pid);
+      setOauthAccountsState(accts.map((a) => ({ accountId: a.account_id })));
+    } catch {
+      setOauthAccountsState([]);
+    }
+  };
+
+  /** OAuth device-flow 登录（弹层内发起——不再等建行后去详情页）。
+   *  成功后刷新账号清单 + 失效凭据缓存；登录成功不自动建行——
+   *  用户仍可选「拉取模型」/直接确认。 */
+  const handleOauthLogin = async () => {
+    const pid = oauthProvider;
+    if (!pid) return;
+    setOauthBusy(true);
+    oauthCancelRef.current = false;
+    setOauthStatus({ tone: 'info', msg: '正在获取设备授权码…' });
+    try {
+      await runDeviceLogin(
+        pid,
+        {
+          onAwaitingUser: (flow) => {
+            setOauthStatus({
+              tone: 'info',
+              msg: `请在浏览器打开授权页并输入代码 ${flow.user_code}：${flow.verification_uri}`,
+            });
+          },
+          onGranted: async () => {
+            invalidateOauthCache(pid);
+            await refreshOauthAccounts(pid);
+            // 起步给模板默认模型作 seed（可被「从账号拉取模型」并入/替换——真实
+            // 可用面以账号 API 为准；无 seed 则留给用户拉取/手动补）。
+            const tpl = findVendorTemplate(name.trim());
+            const seed = tpl?.defaultModel?.trim();
+            setModels((prev) => (seed && !prev.includes(seed) ? (prev.length === 0 ? [seed] : [...prev, seed]) : prev));
+            setDefaultModel((prev) => prev || seed || '');
+            setOauthStatus({
+              tone: 'ok',
+              msg: seed
+                ? `登录成功——已带出默认模型 ${seed}，可「从账号拉取模型」获取完整列表`
+                : '登录成功——请拉取该账号的可用模型',
+            });
+          },
+          onError: (err) => {
+            setOauthStatus({ tone: 'fail', msg: `登录失败：${err.message}` });
+          },
+          isCancelled: () => oauthCancelRef.current,
+        },
+        { openBrowser: true },
+      );
+    } finally {
+      setOauthBusy(false);
+    }
+  };
+
+  /** 取消进行中的 device-flow。 */
+  const handleOauthCancel = () => {
+    oauthCancelRef.current = true;
+    setOauthStatus({ tone: 'info', msg: '正在取消登录…' });
+  };
+
+  /** 登出弹层内展示的某账号（不清空已拉 models——模型列表与账号解耦展示）。 */
+  const handleOauthLogout = async (accountId: string) => {
+    const pid = oauthProvider;
+    if (!pid) return;
+    try {
+      await oauthLogout(pid, accountId);
+      invalidateOauthCache(pid);
+      await refreshOauthAccounts(pid);
+      setOauthStatus({ tone: 'ok', msg: `已登出账号 ${accountId}` });
+    } catch (e) {
+      setOauthStatus({ tone: 'fail', msg: `登出失败：${e instanceof Error ? e.message : String(e)}` });
+    }
+  };
+
+  /** oauth 订阅登录后拉真实模型：live provider（带 oauth grant 注入头）拉 /models。
+   *  失败如实上抛——模型不靠「账号自动提供」的假话，靠真实拉取。 */
+  const handleOauthFetchModels = async () => {
+    const n = name.trim();
+    const pid = oauthProvider;
+    if (!n || !pid) return;
+    setError('');
+    setFetching(true);
+    setFetchMsg('');
+    try {
+      // 登录后 grant 已存在——live provider 解析 oauth 注入头拉 /models
+      const prov = await buildOauthModelProvider(n, pid, kind, baseUrl.trim());
+      const found: ModelDescriptor[] = (await prov.fetchModels?.()) ?? [];
+      const ids = found.map((m) => m.id).filter(Boolean);
+      const merged = [...ids, ...models.filter((m) => !ids.includes(m))];
+      setModels(merged);
+      setPulled(true);
+      if (merged.length > 0 && !defaultModel) setDefaultModel(merged[0]);
+      setFetchMsg(ids.length > 0 ? `已拉取 ${ids.length} 个模型` : '该端点未返回模型——可手动补模型 id');
+    } catch (e) {
+      // 拉取失败不阻断：如实提示，仍可手动补模型（错误不静默）
+      setPulled(true);
+      setFetchMsg(`拉取失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setFetching(false);
     }
   };
 
@@ -209,29 +335,15 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       nameInputRef.current?.focus();
       return;
     }
-    // oauth 订阅：模板默认模型即可用列表（登录在 Detail 面板完成，不在此拉取）
-    if (authMode === 'oauth') {
-      const ids = [...new Set(models.filter((m) => m?.trim()))];
-      if (ids.length === 0) {
-        setError('该订阅没有默认模型——请先在连接配置里确认');
-        return;
-      }
-      const def = defaultModel.trim() || ids[0];
-      onAdd({
-        name: providerId(n),
-        kind,
-        apiKey: undefined, // oauth 无 API Key——凭据 = 系统 OAuth grant
-        baseUrl: baseUrl.trim() || undefined,
-        models: ids,
-        model: def,
-        authMode,
-        oauthProvider,
-      });
+    // oauth 订阅：无 API Key 可用——确认添加前必须已登录（登录就在本弹层内完成，
+    // 否则会出现「建了行却没登录、还得去详情页补」的割裂。登录完才算配好）。
+    if (authMode === 'oauth' && oauthAccountsState.length === 0) {
+      setError('OAuth 订阅还没登录——请先在上方完成浏览器授权登录，再确认添加');
       return;
     }
     const ids = [...new Set(models.filter((m) => m?.trim()))];
     if (ids.length === 0) {
-      setError('还没有可用模型——点「拉取模型」或手动补一个模型 id');
+      setError('还没有可用模型——先登录（OAuth）/拉取模型，或手动补一个模型 id');
       modelInputRef.current?.focus();
       return;
     }
@@ -239,7 +351,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
     onAdd({
       name: providerId(n),
       kind,
-      apiKey: key.trim() || undefined,
+      apiKey: authMode === 'oauth' ? undefined : key.trim() || undefined,
       baseUrl: baseUrl.trim() || undefined,
       models: ids,
       model: def,
@@ -249,6 +361,31 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
   };
 
   const hasValidName = name.trim() && !existingNames.includes(name.trim());
+
+  /** oauth 订阅已登录账号（弹层内登录面板 + 详情页共用展示形状）。 */
+  const oauthAccountsEl =
+    oauthAccountsState.length > 0 ? (
+      <div className="pp-oauth-accounts">
+        {oauthAccountsState.map((acct) => (
+          <div key={acct.accountId} className="pp-model-item">
+            <span className="pp-model-chip" title={acct.accountId}>
+              <span className="pp-model-chip-name">{acct.accountId}</span>
+              <button
+                type="button"
+                className="pp-model-chip-x"
+                title={`登出 ${acct.accountId}`}
+                aria-label={`登出 ${acct.accountId}`}
+                onClick={() => handleOauthLogout(acct.accountId)}
+              >
+                登出
+              </button>
+            </span>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <div className="pp-f-hint">尚未登录任何账号。点击下方按钮，用浏览器完成 {name || '订阅'} 授权登录。</div>
+    );
 
   return (
     <Overlay open={open} onClose={onClose} className="cd-overlay" inertBackground>
@@ -264,6 +401,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
 
         <div className="pp-sheet-note">
           选择厂商预填连接（或手动配置）→ 拉取该提供方的真实模型 → 选定新会话默认 → 添加即生效。
+          {isOAuth && ' OAuth 订阅：先在下方完成浏览器授权登录，登录后即可拉取该账号的可用模型。'}
         </div>
 
         <div className="pp-cat-grid">
@@ -304,8 +442,9 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
               onChange={(e) => {
                 setName(e.target.value);
                 if (error) setError('');
-                // 改名后拉取结果作废
-                if (pulled) {
+                // 改名后拉取结果作废（api-key 手动拉取与 name 相关；
+                // oauth 的模型来自账号——与 name 解耦，不改动已拉列表）
+                if (pulled && !isOAuth) {
                   setPulled(false);
                   setModels([]);
                   setDefaultModel('');
@@ -389,17 +528,69 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
             </div>
           )}
           {isOAuth && (
+            /* ── OAuth 登录面板（弹层内——不再等建行后去详情页）── */
             <div className="pp-fg">
-              <span className="pp-f-label">登录方式</span>
-              <div className="pp-f-hint">OAuth 订阅——确认添加后进入「提供方」详情完成浏览器授权登录。</div>
+              <div className="pp-f-label-row">
+                <span className="pp-f-label">登录方式</span>
+                <span className="pp-chip">OAuth 订阅</span>
+              </div>
+              {oauthAccountsEl}
+              {oauthStatus && !oauthBusy && (
+                <div className={`pp-oauth-status ${oauthStatus.tone}`}>{oauthStatus.msg}</div>
+              )}
+              <div className="pp-oauth-actions">
+                <button
+                  type="button"
+                  className="sp-btn-sm"
+                  disabled={oauthBusy}
+                  onClick={() => void handleOauthLogin()}
+                >
+                  {oauthBusy ? '等待浏览器授权…' : oauthAccountsState.length > 0 ? '再登录一个账号' : '登录'}
+                </button>
+                {oauthBusy && (
+                  <button type="button" className="sp-btn-sm pp-btn-danger" onClick={handleOauthCancel}>
+                    取消登录
+                  </button>
+                )}
+              </div>
+              {oauthBusy && oauthStatus && (
+                <div className="pp-f-hint">
+                  {oauthStatus.msg}
+                  <br />
+                  （轮询中——授权完成后自动生效；可在浏览器取消）
+                </div>
+              )}
+              <div className="pp-f-hint">
+                账号登录凭证存本机系统凭据；多个账号可共存，这里展示的是此订阅已登录的账号。
+              </div>
             </div>
           )}
         </div>
 
+        <div className="pp-sheet-divider">
+          <span>可用模型</span>
+        </div>
+
         {isOAuth ? (
-          /* oauth 订阅无 /models 端点——不提供拉取，模型由模板固定 */
+          /* oauth 订阅：登录后从账号 API 拉真实模型（无账号拉取必然失败——
+             按钮未登录时禁用并说明；也保留手动补的兜底）。 */
           <div className="pp-add-pull-row">
-            <span className="pp-add-pull-msg">该订阅的可用模型由账号自动提供，无需拉取。</span>
+            <button
+              type="button"
+              className="sp-btn-sm"
+              disabled={fetching || oauthAccountsState.length === 0}
+              onClick={() => void handleOauthFetchModels()}
+              title={
+                oauthAccountsState.length === 0
+                  ? '先完成上方 OAuth 登录，才能拉取该账号可用模型'
+                  : '用当前登录账号从提供方拉取可用模型'
+              }
+            >
+              {fetching ? '拉取中…' : oauthAccountsState.length === 0 ? '登录后可拉取模型' : '从账号拉取模型'}
+            </button>
+            {fetchMsg && (
+              <span className={`pp-add-pull-msg${fetchMsg.startsWith('拉取失败') ? ' fail' : ''}`}>{fetchMsg}</span>
+            )}
           </div>
         ) : (
           <div className="pp-add-pull-row">
@@ -418,21 +609,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
           </div>
         )}
 
-        <div className="pp-sheet-divider">
-          <span>可用模型</span>
-        </div>
-
-        {isOAuth ? (
-          /* oauth 订阅：模型由模板固定（单条只读展示，无交互），无拉取/手动补 */
-          <div className="pp-pick-models">
-            {models.map((id) => (
-              <div key={id} className="pp-pick-model selected" title={id}>
-                <span className="pp-pick-model-id">{id}</span>
-                <span className="pp-model-chip-default">默认</span>
-              </div>
-            ))}
-          </div>
-        ) : models.length > 0 ? (
+        {models.length > 0 ? (
           <div className="pp-pick-models" role="listbox" aria-label="可用模型">
             {models.map((id) => (
               <button
@@ -450,31 +627,33 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
             ))}
           </div>
         ) : (
-          <div className="pp-f-hint">还没有模型——点上方「从 API 拉取模型」，或在下方手动补一个模型 id。</div>
-        )}
-
-        {!isOAuth && (
-          <div className="pp-models-add">
-            <input
-              className="sp-input"
-              ref={modelInputRef}
-              value={manualModel}
-              placeholder="手动补模型 id，如 deepseek-reasoner"
-              autoComplete="off"
-              aria-label="手动补模型 id"
-              onChange={(e) => setManualModel(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  submitManual();
-                }
-              }}
-            />
-            <button type="button" className="sp-btn-sm" onClick={submitManual}>
-              添加
-            </button>
+          <div className="pp-f-hint">
+            {isOAuth
+              ? '还没有模型——先完成上方登录，再点「从账号拉取模型」，或在下方手动补一个模型 id。'
+              : '还没有模型——点上方「从 API 拉取模型」，或在下方手动补一个模型 id。'}
           </div>
         )}
+
+        <div className="pp-models-add">
+          <input
+            className="sp-input"
+            ref={modelInputRef}
+            value={manualModel}
+            placeholder="手动补模型 id，如 deepseek-reasoner"
+            autoComplete="off"
+            aria-label="手动补模型 id"
+            onChange={(e) => setManualModel(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                submitManual();
+              }
+            }}
+          />
+          <button type="button" className="sp-btn-sm" onClick={submitManual}>
+            添加
+          </button>
+        </div>
 
         {error && <div className="pp-form-error">{error}</div>}
 
@@ -488,5 +667,38 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
         </div>
       </div>
     </Overlay>
+  );
+}
+
+/** 构建 OAuth 模式的模型拉取 provider（行尚未持久化——按名临时解析 grant 注入头）。
+ *  复用 live provider 的 oauth 注入路径，但 fetchModels 需要真正拿到 grant；
+ *  这里直接 resolveOauthToken 取最近登录账号 → 注入头 → 建 provider。 */
+async function buildOauthModelProvider(
+  name: string,
+  oauthProvider: string,
+  kind: Protocol,
+  baseUrl: string,
+): Promise<Provider> {
+  const oauth = await resolveOauthToken({
+    kind,
+    name: providerId(name),
+    apiKey: '',
+    baseUrl,
+    model: '',
+    authMode: 'oauth',
+    oauthProvider,
+  });
+  if (!oauth) {
+    throw new Error('OAuth 账号未登录或会话已失效——请先完成登录');
+  }
+  return createProvider(
+    {
+      kind,
+      name: providerId(name),
+      apiKey: '',
+      baseUrl,
+      model: '',
+    },
+    { oauthHeaders: buildOauthHeaders(oauth) },
   );
 }

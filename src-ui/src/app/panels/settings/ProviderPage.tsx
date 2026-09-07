@@ -11,6 +11,7 @@ import { markDynamicFetchStart, recordDynamicFetchResult } from '../../../provid
 import { invalidateCredentialCache } from '../../../provider/credentials';
 import { createLiveProvider } from '../../../provider/live';
 import { oauthAccounts, oauthLogout, runDeviceLogin } from '../../../provider/oauth';
+import type { Provider } from '../../../provider/types';
 import { ChunkType } from '../../../provider/types';
 import {
   type AppSettings,
@@ -150,13 +151,16 @@ export function ProviderPage({
 
   const handleRefreshModels = useCallback(async (): Promise<number> => {
     const p = selectedProvider;
-    // oauth 订阅（Codex）无 /models 端点——模型由账号提供，拉取无意义。
-    // 调用面（Detail）已隐藏按钮；此处防御性短路（错误不静默）。
+    // oauth 订阅（Codex）：无 API Key——必须已登录（live provider 注入 grant）才能拉。
+    // 未登录时 live provider 抛 OAUTH_NOT_LOGGED_IN（见 live.ts buildInner）——可读提示。
+    let prov: Provider;
     if (p.authMode === 'oauth') {
-      throw new Error('订阅账号不提供 /models——可用模型由账号自动提供，无需拉取');
+      if (!p.oauthProvider) throw new Error('该订阅缺 oauth 登录配置——请重新添加');
+      prov = createLiveProvider(p.name, {});
+    } else {
+      if (!p.apiKey?.trim()) throw new Error('请先填写 API Key');
+      prov = createProvider(p);
     }
-    if (!p.apiKey?.trim()) throw new Error('请先填写 API Key');
-    const prov = createProvider(p);
     // C5（2026-08-27）：手动刷新记目录失败面（compact 选择器分组头同步可见）；
     // 失败上抛给调用方显示真实原因（fetchModels 不再把网络失败伪装成「无模型」）。
     // 重构（2026-08-26）：拉取结果 = 该提供方「可用模型」列表（DSH /api/models 的
@@ -269,34 +273,6 @@ export function ProviderPage({
     }
   }, [selectedProvider, onPersistProbe]);
 
-  /** 两步式添加收口（2026-09-06）：加进 settings → 即时落盘 + 写 Key +
-   *  settings-saved 热广播（新提供方模型立刻全会话可选）。不再走暂存-保存条。 */
-  const handleAdd = useCallback(
-    async (entry: AddProviderEntry) => {
-      try {
-        const next = addProvider(settings, entry.name, entry.kind);
-        const added = next.providers.find((p) => p.name === entry.name);
-        if (added) {
-          if (entry.apiKey?.trim()) added.apiKey = entry.apiKey.trim();
-          if (entry.baseUrl?.trim()) added.baseUrl = entry.baseUrl.trim();
-          added.models = entry.models;
-          added.model = entry.model;
-          // Phase 3D：登录方式（codex 等 oauth 订阅行）
-          if (entry.authMode) added.authMode = entry.authMode;
-          if (entry.oauthProvider) added.oauthProvider = entry.oauthProvider;
-        }
-        setKeyDirtyMap((m) => (entry.apiKey?.trim() ? new Map(m).set(entry.name, true) : m));
-        await onAddAndPersist(next, entry.name);
-        setSelected(entry.name);
-        setAddOpen(false);
-      } catch (e) {
-        // 落盘/写 Key 失败——保留弹层让用户重试，错误可见（错误不静默）
-        console.warn('[provider] 添加持久化失败:', e);
-      }
-    },
-    [settings, onAddAndPersist],
-  );
-
   /** Phase 3D：oauth 登录态全量刷新（ProviderList 逐行状态推导）。
    *  只在 mount / 登录成功 / 登出后调用——每次账号变更都是显式落点。 */
   const refreshOauthLoginMap = useCallback(async () => {
@@ -334,6 +310,41 @@ export function ProviderPage({
     }
     setOauthAccountsState([]);
   }, [selectedProvider]);
+
+  /** 两步式添加收口（2026-09-06）：加进 settings → 即时落盘 + 写 Key +
+   *  settings-saved 热广播（新提供方模型立刻全会话可选）。不再走暂存-保存条。
+   *  OAuth 订阅（2026-09-11）：登录已前置到添加弹层内完成（grant 与行解耦，
+   *  弹层内登录即可直接建行）——此处刷新登录态只是列表状态点同步。 */
+  const handleAdd = useCallback(
+    async (entry: AddProviderEntry) => {
+      try {
+        const next = addProvider(settings, entry.name, entry.kind);
+        const added = next.providers.find((p) => p.name === entry.name);
+        if (added) {
+          if (entry.apiKey?.trim()) added.apiKey = entry.apiKey.trim();
+          if (entry.baseUrl?.trim()) added.baseUrl = entry.baseUrl.trim();
+          added.models = entry.models;
+          added.model = entry.model;
+          // Phase 3D：登录方式（codex 等 oauth 订阅行）
+          if (entry.authMode) added.authMode = entry.authMode;
+          if (entry.oauthProvider) added.oauthProvider = entry.oauthProvider;
+        }
+        setKeyDirtyMap((m) => (entry.apiKey?.trim() ? new Map(m).set(entry.name, true) : m));
+        await onAddAndPersist(next, entry.name);
+        setSelected(entry.name);
+        setAddOpen(false);
+        // oauth 行：弹层内可能已登录（grant 与行解耦）——添加后刷新列表登录态
+        if (entry.authMode === 'oauth' && entry.oauthProvider) {
+          void refreshOauthLoginMap();
+          void refreshSelectedOauthAccounts();
+        }
+      } catch (e) {
+        // 落盘/写 Key 失败——保留弹层让用户重试，错误可见（错误不静默）
+        console.warn('[provider] 添加持久化失败:', e);
+      }
+    },
+    [settings, onAddAndPersist, refreshOauthLoginMap, refreshSelectedOauthAccounts],
+  );
 
   // mount 时全量 oauth 登录态（ProviderList 状态点）——
   // refreshOauthLoginMap 空依赖恒等（settingsRef 读最新），effect 不因 settings 变重跑

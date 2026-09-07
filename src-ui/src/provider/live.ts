@@ -45,17 +45,22 @@ export function createLiveProvider(
 
   /** async 装配内层 provider：apiKey 路径（resolveApiKey）或 oauth 路径
    *  （resolveOauthToken → oauthHeaders）。OAuth 时 apiKey 置空占位——
-   *  方言（responses）经 oauthHeaders 的 Authorization 注入。 */
+   *  方言（responses）经 oauthHeaders 的 Authorization 注入。
+   *  ⚡ oauth 模式未登录（resolveOauthToken 返回 null）→ 响亮报错——
+   *  绝不静默发空 Bearer 请求落 401/403（错误不静默，提示直指登录）。 */
   const buildInner = async (rt: { provider: ProviderSettings; apiKey: string }) => {
     // OAuth 模式：解析 grant → 注入头（token 过期 Rust 侧自动刷新）
     let oauthHeaders: Record<string, string> | undefined;
     let apiKey = rt.apiKey;
     if (rt.provider.authMode === 'oauth' && rt.provider.oauthProvider) {
       const oauth = await resolveOauthToken(rt.provider);
-      if (oauth) {
-        oauthHeaders = buildOauthHeaders(oauth);
-        apiKey = ''; // oauth 路径无 apiKey——Authorization 走 oauthHeaders
+      if (!oauth) {
+        throw new Error(
+          `OAUTH_NOT_LOGGED_IN: 提供方「${name}」的订阅账号未登录或会话已失效——设置 → Provider → 该行先完成 OAuth 登录`,
+        );
       }
+      oauthHeaders = buildOauthHeaders(oauth);
+      apiKey = ''; // oauth 路径无 apiKey——Authorization 走 oauthHeaders
     }
     return createProvider(
       {

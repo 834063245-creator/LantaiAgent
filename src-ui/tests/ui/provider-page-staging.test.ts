@@ -3,13 +3,60 @@
 
 // ProviderPage 暂存流程组件测试：
 // 删除、清除 Key 为「暂存」，保存时才落盘 + 删凭据 + 重建 Agent；
-// 添加（2026-09-06 两步式）= 预填连接 → 拉模型 → 选默认 → 即时持久化（onAddAndPersist）。
+// 添加（2026-09-06 两步式）= 预填连接 → 拉模型 → 选默认 → 即时持久化（onAddAndPersist）；
+// OAuth 订阅（2026-09-11 重做）= 弹层内登录前置 → 登录后拉模型/seed → 确认添加。
 import { act, createElement, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// typedRpc → rpc → bridge.rpc —— mock bridge 层（照 provider-oauth.test 模式）。
+// 默认实现按 method 返回合理空形状；测试按需 queueRpc 覆盖。
+const mockInvoke = vi.fn(async (_kind: string, args: { method: string }) => {
+  const m = args.method;
+  if (m === 'oauth_accounts') return '[]'; // 未登录 = 空账号
+  if (m === 'credential_get') return 'null'; // 无已存 Key
+  return 'null';
+});
+vi.mock('../../src/bridge', () => ({
+  invoke: vi.fn(),
+  rpc: (method: string, params?: Record<string, unknown>) => mockInvoke('rpc', { method, params }),
+  listen: vi.fn(),
+  isMockMode: () => false,
+}));
+
 import { ProviderPage } from '../../src/app/panels/settings/ProviderPage';
 import { type AppSettings, type ProviderId, providerId } from '../../src/settings';
+
+/** 让下一次 typedRpc 调用返回指定 JSON 字符串（按 method 校验）。 */
+function queueRpc(method: string, result: string): void {
+  mockInvoke.mockImplementationOnce(async (_kind: string, args: { method: string }) => {
+    if (args.method !== method) throw new Error(`unexpected rpc ${args.method} (want ${method})`);
+    return result;
+  });
+}
+
+/** OAuth device-flow 起始响应（Rust oauth_start 形状）。 */
+function oauthStartFlow(): string {
+  return JSON.stringify({
+    verification_uri: 'https://auth.openai.com/codex/device',
+    user_code: 'ABCD-EFGH',
+    device_auth_id: 'da1',
+    interval: 5,
+    expires_at: 0,
+  });
+}
+
+/** OAuth 登录成功 grant（oauth_poll 完成态）。 */
+function oauthGrant(): string {
+  return JSON.stringify({
+    kind: 'oauth',
+    provider: 'codex',
+    access_token: 'at',
+    refresh_token: 'rt',
+    expires_at: 0,
+    account_id: 'user-1',
+  });
+}
 
 const mockStageDelete = vi.fn();
 const mockStageClear = vi.fn();
@@ -117,6 +164,8 @@ describe('ProviderPage — 暂存流程', () => {
     mockSaveProviders.mockReset();
     mockAddPersist.mockReset();
     mockAddPersist.mockResolvedValue(undefined);
+    // 清一次性的 queueRpc 序列，保留默认实现（oauth_accounts → [] 等）
+    mockInvoke.mockClear();
     document.body.innerHTML = '';
   });
 
@@ -359,33 +408,57 @@ describe('ProviderPage — 暂存流程', () => {
     expect(document.querySelector('.pp-model-params')).toBeNull();
   });
 
-  it('oauth 订阅（codex chip）免拉取直添：模板默认模型即 models，无 Key 也能确认', async () => {
+  it('oauth 订阅（codex chip）：未登录不能确认添加——先弹层内登录（device-flow）→ seed 模型 → 确认添加', async () => {
     await render(makeSettings({ providers: [makeSettings().providers[1]] }));
     await click(document.querySelector('.pp-rail-add'));
 
-    // codex chip → 预填 + 模板默认模型直接可用
+    // codex chip → 预填（无 API Key 输入框）
     const codexChip = [...document.querySelectorAll<HTMLButtonElement>('.pp-cat-chip')].find((b) =>
       b.textContent?.includes('codex'),
     )!;
     expect(codexChip).toBeDefined();
     await click(codexChip);
 
-    // oauth 形态：无 API Key 输入框、无「从 API 拉取」按钮、手动补模型区隐藏
+    // oauth 形态：无 API Key 输入框；显示「登录」按钮；无模型
     expect(
       [...document.querySelectorAll<HTMLInputElement>('.pp-form-grid input')].some((i) =>
         i.placeholder.includes('sk-'),
       ),
     ).toBe(false);
-    expect(
-      [...document.querySelectorAll<HTMLButtonElement>('.pp-add-pull-row button')].some((b) =>
-        b.textContent?.includes('拉取'),
-      ),
-    ).toBe(false);
-    expect(document.querySelector('input[aria-label="手动补模型 id"]')).toBeNull();
-    // 模板默认模型已展示为只读 chip
+    const loginBtn = [...document.querySelectorAll<HTMLButtonElement>('.pp-oauth-actions button')].find((b) =>
+      b.textContent?.includes('登录'),
+    )!;
+    expect(loginBtn).toBeDefined();
+    expect(document.querySelector('.pp-pick-model-id')).toBeNull();
+
+    // 未登录点「确认添加」→ 被拦（错误提示指向先登录）
+    await click(
+      [...document.querySelectorAll<HTMLButtonElement>('.cd-actions button')].find((b) =>
+        b.textContent?.includes('确认添加'),
+      )!,
+    );
+    expect(mockAddPersist).not.toHaveBeenCalled();
+    expect(document.querySelector('.pp-form-error')?.textContent).toContain('还没登录');
+
+    // 弹层内登录：oauth_start → open_external → oauth_poll 立即批准 → grant
+    queueRpc('oauth_start', oauthStartFlow());
+    queueRpc('open_external', 'null');
+    queueRpc('oauth_poll', oauthGrant());
+    // 登录成功回调刷新账号清单（oauth_accounts 返回新账号）
+    mockInvoke.mockImplementationOnce(async (_kind: string, args: { method: string }) => {
+      if (args.method === 'oauth_accounts') {
+        return JSON.stringify([{ provider: 'codex', account_id: 'user-1', expires_at: 0, scope: null }]);
+      }
+      throw new Error(`unexpected ${args.method}`);
+    });
+    await click(loginBtn);
+
+    // 登录成功 → 账号 chip 出现、默认模型 seed 出现（模板 defaultModel）
+    expect(document.querySelector('.pp-oauth-accounts')).not.toBeNull();
+    expect(document.querySelector('.pp-oauth-accounts')?.textContent).toContain('user-1');
     expect(document.querySelector('.pp-pick-model-id')?.textContent).toBe('gpt-5.6-sol');
 
-    // 直接确认添加（无需拉取/手动补）
+    // 现在确认添加 → onAddAndPersist 收到含 authMode/oauthProvider/models 的行
     await click(
       [...document.querySelectorAll<HTMLButtonElement>('.cd-actions button')].find((b) =>
         b.textContent?.includes('确认添加'),
@@ -399,7 +472,7 @@ describe('ProviderPage — 暂存流程', () => {
     expect(added.authMode).toBe('oauth');
     expect(added.oauthProvider).toBe('codex');
     expect(added.apiKey).toBeFalsy();
-    expect(added.models).toEqual(['gpt-5.6-sol']);
+    expect(added.models).toContain('gpt-5.6-sol');
     expect(added.model).toBe('gpt-5.6-sol');
     expect(document.querySelector('.pp-add-sheet')).toBeNull();
   });
