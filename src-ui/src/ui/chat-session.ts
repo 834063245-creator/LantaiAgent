@@ -236,21 +236,8 @@ export interface SessionContext {
 
 // ── 辅助函数 ──
 
-/** 去除 read_file_content 的 cat -n 行号。Rust 后端始终返回
- *  "{:>6}\t{content}" 格式（右对齐 6 字符 + tab）。
- *  #11 修复（2026-09-02）：旧正则 `^\s*\d+\t` 过于宽松——理论上能匹配
- *  JSON 内容中恰好以「空格+数字+tab」开头的行。新实现精确匹配 format_lines
- *  的输出格式：前 6 字符全是空格/数字、第 7 字符是 tab → 剥前 7 字符；
- *  否则原样保留（不误剥 JSON 内容）。 */
-export function stripLineNumbers(text: string): string {
-  return text
-    .split('\n')
-    .map((l) => {
-      if (l.length >= 7 && l[6] === '\t' && /^\s*\d+$/.test(l.slice(0, 6))) return l.slice(7);
-      return l;
-    })
-    .join('\n');
-}
+// （stripLineNumbers 已随 2026-09 fs(read) 行号默认翻转退役——kernelReadFile
+//  缺省返回原文，行号格式仅 lineNumbers:true 显式请求，无消费者需要剥。）
 
 // ── 会话 CRUD ──
 

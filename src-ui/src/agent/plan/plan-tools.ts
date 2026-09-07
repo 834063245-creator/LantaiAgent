@@ -106,7 +106,6 @@ export function createExitPlanModeTool(planState: PlanStateManager, eventSink?: 
       let planContent: string;
       try {
         planContent = await kernelReadFile(planPath);
-        planContent = planContent.replace(/^\s*\d+\t/gm, '');
       } catch {
         return `错误：计划文件不存在。先用 fs 的 write 动作写计划到 ${planPath}，再调 exit_plan_mode。`;
       }

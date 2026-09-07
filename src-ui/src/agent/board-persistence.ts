@@ -6,11 +6,6 @@
 
 import { kernelCreateDirectory, kernelDeleteFile, kernelReadFile, kernelWriteFile } from '../rpc-contract';
 
-/** 去除行号前缀（如 "42\t"）— Tauri read_file_content 会添加行号。 */
-export function stripNums(text: string): string {
-  return text.replace(/^\s*\d+\t/gm, '');
-}
-
 /** 规范化项目路径：正斜杠，无尾部斜杠。 */
 function normalizePath(p: string): string {
   return p.replace(/\\/g, '/').replace(/\/$/, '');
@@ -88,8 +83,7 @@ export class BoardPersistence {
   async restore(): Promise<string | null> {
     if (!this._projectPath) return null;
     try {
-      const raw = await kernelReadFile(this._boardPath);
-      return stripNums(raw);
+      return await kernelReadFile(this._boardPath);
     } catch {
       return null;
     }

@@ -21,9 +21,8 @@ export interface SkillDef {
 // ── Frontmatter parser (line-by-line, zero deps) ──
 
 function parseSkillMd(raw: string): { meta: Record<string, string>; body: string } {
-  const stripped = raw.replace(/^\s*\d+\t/gm, '');
-  const lines = stripped.split('\n');
-  if (lines[0]?.trim() !== '---') return { meta: {}, body: stripped };
+  const lines = raw.split('\n');
+  if (lines[0]?.trim() !== '---') return { meta: {}, body: raw };
 
   const meta: Record<string, string> = {};
   let i = 1;

@@ -417,7 +417,7 @@ export class AgentRuntime implements RuntimePort {
     const oldDiscPath = `${base}/.lantai/discoveries.json`;
     try {
       const raw = await kernelReadFile(oldDiscPath);
-      const arr = JSON.parse(raw.replace(/^\s*\d+\t/gm, ''));
+      const arr = JSON.parse(raw);
       if (Array.isArray(arr) && arr.length > 0) {
         const db = this._getOrCreateDiscoveryBoard('default');
         for (const e of arr) {
@@ -434,7 +434,7 @@ export class AgentRuntime implements RuntimePort {
     const oldTaskPath = `${base}/.lantai/taskboard.json`;
     try {
       const raw = await kernelReadFile(oldTaskPath);
-      const arr = JSON.parse(raw.replace(/^\s*\d+\t/gm, ''));
+      const arr = JSON.parse(raw);
       if (Array.isArray(arr) && arr.length > 0) {
         const _tb = this._getOrCreateTaskBoard('default');
         // 直接将迁移的条目写入新路径

@@ -104,8 +104,7 @@ export async function loadCompactionTrackerImpl(host: CompactionHost): Promise<v
   if (!host._compactionTrackerPath) return;
   try {
     const raw = await kernelReadFile(host._compactionTrackerPath);
-    const stripped = raw.replace(/^\s*\d+\t/gm, '');
-    host.compactionTracker.deserializeState(stripped);
+    host.compactionTracker.deserializeState(raw);
     const stats = host.compactionTracker.getStats();
     if (stats.events.length > 0) {
       log.info('agent', 'compaction tracker restored', {
@@ -133,9 +132,7 @@ export async function loadCompactionConfigImpl(host: CompactionHost): Promise<Co
   if (!host._compactionConfigPath) return null;
   try {
     const raw = await kernelReadFile(host._compactionConfigPath);
-    // 去除 cat -n 行号
-    const stripped = raw.replace(/^\s*\d+\t/gm, '');
-    return JSON.parse(stripped);
+    return JSON.parse(raw);
   } catch {
     return null;
   }

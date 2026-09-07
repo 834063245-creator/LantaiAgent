@@ -107,17 +107,18 @@ describe('迁移样板: read_file_content / git_log', () => {
   it('read_file_content 的 schema key 与转换后 Rust 参数一致', async () => {
     const t = tools.find((x) => x.name() === 'read_file_content')!;
     const params = t.parameters() as { properties: Record<string, unknown>; required?: string[] };
-    expect(Object.keys(params.properties)).toEqual(['filePath', 'offset', 'limit']);
+    expect(Object.keys(params.properties)).toEqual(['filePath', 'offset', 'limit', 'lineNumbers']);
     expect(params.required).toEqual(['filePath']);
     // R3-b 换轨：read 动作经 builtin/rust-fs → fs_cap（kernel-capability-
     // c3-design.md）；schema key 仍 camelCase（模型面零漂移），execute 出口
-    // 映射 fs_cap snake（file_path/line_numbers——read 缺省 raw 补行号）。
+    // 映射 fs_cap snake（file_path/line_numbers——2026-09 工具缺陷报告 Bug 1
+    // 拍板：缺省原文（line_numbers:false），lineNumbers opt-in）。
     const out = JSON.parse(await t.execute({ filePath: 'D:/a.ts', offset: 3 }));
     expect(out.name).toBe('fs_cap');
     expect(out.args).toEqual({
       action: 'read',
       file_path: 'D:/a.ts',
-      line_numbers: true,
+      line_numbers: false,
       offset: 3,
     });
   });

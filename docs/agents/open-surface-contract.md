@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：18
+当前版本：19
 
-<!-- contract-fingerprint: 3d9f10073880a803c129be117b3e0b17d93398f62815f79990a660f97a2a6ce5 -->
+<!-- contract-fingerprint: e3774f8827c279f542deb1f648cabd5f06e81bcdd49200c2417a7967730ca208 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -53,6 +53,7 @@
 | 16 | 2026-09-06 | manifest schema 新增可选 `app` 字段（app shell 件 A 应用视图通道：`{ entry: './' 前缀相对 HTML, mode: 'floating'\|'dock'\|'fullscreen', title }`——声明 = 插件以软件形态住进兰台：装载只登记窗口定义（数据），开窗才实例化 iframe 视口；窗内向宿主要能力走 postMessage 白名单桥（默认最小集 fs 数据目录 + notify）；卸载收口 = 摘定义 + 关窗；缺省不声明 = 行为不变） | app-shell-software-plugin-plan.md §5-S3 |
 | 17 | 2026-09-06 | manifest.tools 条目新增可选 `async: boolean`（app shell 件 D 后台唤醒回调 · 工具口：声明 true = 执行即返回卡片——宿主生成 taskId 注入 `args._task_id` 并登记发起者（executor 注入的 `_owner_id`），插件后台完成后经宿主桥 `deferred.complete(taskId, status)` 唤醒发起 Agent，唤醒体 minimal 定位键 {status, taskId, sessionId}、内容凭 taskId 调插件工具按需取；MCP 路对位 = server 完成通知 `lantai/deferred`（params.progressToken 回带调用期 token）由桥翻译成同一唤醒；缺省 false = 同步语义不变） | app-shell-software-plugin-plan.md §5-S4（决策 7/8） |
 | 18 | 2026-09-06 | AgentLoopHost 契约移除 `pricing` 成员（模型价格表拆除：AgentEvent.pricing / Pricing 全链退役，Usage 事件不再带定价）；AgentLoop 契约形状变更（无新增字段） | provider-system-spec.md 追裁·模型价格表拆除（2026-09-06） |
+| 19 | 2026-09-07 | default-loop step0 计划提醒读取删除剥行号补丁（kernelReadFile 缺省翻转为原文——fs(read) payload 行号 opt-in，工具缺陷报告 Bug 1；plan 文件读取路径行为不变，收到的即原文）；无契约形状变更 | 工具缺陷报告三连修复（2026-09-07） |
 
 ## 变更流程（guard 红 → 修复四步）
 

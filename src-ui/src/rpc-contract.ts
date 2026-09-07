@@ -754,16 +754,17 @@ function fsCapCall(params: RpcParamsOf<'fs_cap'>): Promise<unknown> {
   return typedRpc('fs_cap', params);
 }
 
-/** fs_cap read 统一：raw=true → 原文（line_numbers=false）；缺省/raw=false →
- *  行号格式（与旧 read_file_content 默认一致）。返回解析后的实际文件文本。 */
+/** fs_cap read 统一：缺省原文（line_numbers=false）；opts.lineNumbers=true →
+ *  cat -n 行号格式（2026-09 工具缺陷报告 Bug 1 拍板：行号 opt-in，payload
+ *  不默认混入装饰前缀）。返回解析后的实际文件文本。 */
 async function fsCapReadText(
   filePath: string,
-  opts?: { raw?: boolean; offset?: number; limit?: number },
+  opts?: { lineNumbers?: boolean; offset?: number; limit?: number },
 ): Promise<string> {
   const raw = await fsCapCall({
     action: 'read',
     file_path: filePath,
-    line_numbers: opts?.raw !== true,
+    line_numbers: opts?.lineNumbers === true,
     ...(opts?.offset !== undefined ? { offset: opts.offset } : {}),
     ...(opts?.limit !== undefined ? { limit: opts.limit } : {}),
     is_agent: false,
@@ -784,14 +785,17 @@ async function fsCapReadText(
   return raw as string;
 }
 
-/** 文本读（offset/limit 行号分页；raw=true 返回原文——P1-3 JSON 读取面）。 */
-export function kernelReadFile(filePath: string, opts?: { raw?: boolean }): Promise<string> {
+/** 文本读（offset/limit 行号分页；lineNumbers=true 返回 cat -n 行号格式）。 */
+export function kernelReadFile(
+  filePath: string,
+  opts?: { lineNumbers?: boolean; offset?: number; limit?: number },
+): Promise<string> {
   return fsCapReadText(filePath, opts);
 }
 
 /** 全量原文读（canvas / 会话卷等 JSON 消费面的惯用形）。 */
 export function kernelReadFileRaw(filePath: string): Promise<string> {
-  return fsCapReadText(filePath, { raw: true });
+  return fsCapReadText(filePath);
 }
 
 /** fs_cap 写类 action 返回解析：取 {path} 的 path；非 JSON/无 path（测试 mock

@@ -226,13 +226,14 @@ describe('codingExec 无状态族域第一方插件（P4 B① git/search + ② f
     });
     // fs 域已迁 fs_cap 能力口直呼（R3-b，kernel-capability-c3-design.md）——
     // read_file_content execute 经 builtinFsProvider → fs_cap read（不再
-    // tool_call 信封寻址 builtin.fs）。
+    // tool_call 信封寻址 builtin.fs）。2026-09 工具缺陷报告 Bug 1 拍板：
+    // 缺省原文（line_numbers:false）。
     const fsCalls = log.filter((e) => e.name === 'fs_cap');
     expect(fsCalls.length).toBe(1);
     expect(fsCalls[0].args).toMatchObject({
       action: 'read',
       file_path: 'D:/proj/a.ts',
-      line_numbers: true,
+      line_numbers: false,
     });
     // shell 域已迁 process_cap 能力口直呼（R3-d，kernel-capability-c3-design.md
     // §8/§9）——run_shell execute 经 builtinShellProvider → process_cap
@@ -268,6 +269,37 @@ describe('codingExec 无状态族域第一方插件（P4 B① git/search + ② f
     ]);
     expect(logB).toEqual([]);
     await disposeAll(fibers);
+  });
+
+  it('git_commit files 自动暂存编排（2026-09 工具缺陷报告 Bug 2）：给 files 先 stage 再 commit', async () => {
+    const log: Array<{ name: string; args?: unknown }> = [];
+    const exec: ToolExecutor = async (name, args) => {
+      log.push({ name, args });
+      return '';
+    };
+    const commit = createGitTools(exec).find((t) => t.name() === 'git_commit');
+    if (!commit) throw new Error('git_commit 缺失');
+    // ① 无 files：单次 commit（沿用「提交已暂存内容」语义）
+    await commit.execute({ path: 'D:/repo', message: 'm1' });
+    // ② files='a.ts,b.ts'：逐文件 stage 后 commit
+    await commit.execute({ path: 'D:/repo', message: 'm2', files: 'a.ts,b.ts' });
+    // ③ files='.'：stage_all 后 commit
+    await commit.execute({ path: 'D:/repo', message: 'm3', files: '.' });
+    expect(log.map((e) => `${e.name}:${(e.args as { action: string }).action}`)).toEqual([
+      'git_cap:git_commit',
+      'git_cap:git_stage',
+      'git_cap:git_stage',
+      'git_cap:git_commit',
+      'git_cap:git_stage_all',
+      'git_cap:git_commit',
+    ]);
+    const stage1 = log[1]?.args as { files?: string[] } | undefined;
+    const stage2 = log[2]?.args as { files?: string[] } | undefined;
+    const commitCall = log[3]?.args as { files?: string[] } | undefined;
+    expect(stage1?.files).toEqual(['a.ts']);
+    expect(stage2?.files).toEqual(['b.ts']);
+    // commit 调用不携带 files 键（files 由编排层消化，不渗进能力口）
+    expect(commitCall?.files).toBeUndefined();
   });
 
   it('生命周期：贡献注册经 ctx.effect——fiber dispose 后贡献消失（逐族）', async () => {

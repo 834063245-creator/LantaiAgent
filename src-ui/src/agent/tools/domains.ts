@@ -279,7 +279,8 @@ export const DOMAIN_SPECS: DomainSpec[] = [
     name: 'git',
     description:
       'Git operations: status / diff / log / stage / commit / push / pull / checkout / branch / stash / unstash / discard / init / blame. ' +
-      'path may be omitted for every action — omitted = the workspace root.',
+      'path may be omitted for every action — omitted = the workspace root. ' +
+      'Key semantics: file = one file for diff/discard/blame (omit it on diff = all changes); files = comma-separated list (or "." for all) for stage — commit accepts files too and auto-stages them before committing.',
     actions: {
       status: 'git_status',
       diff: 'git_diff',

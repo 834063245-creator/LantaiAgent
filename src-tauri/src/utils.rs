@@ -145,6 +145,25 @@ pub(crate) fn urlencoding(s: &str) -> String {
     out
 }
 
+/// git 失败消息三级回退：stderr → stdout → exit code。
+/// git 有把失败状态打到 stdout 的分支（实测 `git commit -m` 在「无暂存」时
+/// 状态文本全走 stdout、stderr 为空）——只回 stderr 会得到空错误（2026-09
+/// 工具缺陷报告 Bug 2：模型收到 `error: ` 无从排查）。
+pub(crate) fn git_failure_text(stderr: &str, stdout: &str, code: Option<i32>) -> String {
+    let err = stderr.trim();
+    if !err.is_empty() {
+        return err.to_string();
+    }
+    let out = stdout.trim();
+    if !out.is_empty() {
+        return out.to_string();
+    }
+    format!(
+        "git 命令失败 (exit {})",
+        code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".to_string())
+    )
+}
+
 pub(crate) fn run_git_sync(dir: &str, args: &[String]) -> Result<String, String> {
     let mut cmd = Command::new("git");
     #[cfg(windows)]
@@ -160,7 +179,11 @@ pub(crate) fn run_git_sync(dir: &str, args: &[String]) -> Result<String, String>
     if output.status.success() {
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     } else {
-        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+        Err(git_failure_text(
+            &String::from_utf8_lossy(&output.stderr),
+            &String::from_utf8_lossy(&output.stdout),
+            output.status.code(),
+        ))
     }
 }
 
@@ -354,6 +377,30 @@ pub(crate) fn migrate_hologram_to_lantai(root: &std::path::Path) -> Result<Migra
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── git 失败消息三级回退（Bug 2 根因：git commit 无暂存时 stderr 为空、
+    //    状态文本全在 stdout——只回 stderr 得到空错误）──
+    #[test]
+    fn git_failure_text_prefers_stderr() {
+        assert_eq!(git_failure_text(" fatal: boom ", "out", Some(128)), "fatal: boom");
+    }
+
+    #[test]
+    fn git_failure_text_falls_back_to_stdout_when_stderr_empty() {
+        // 实测 `git commit -m msg`（无暂存）：exit 1，stderr 空，状态文本在 stdout
+        let stdout = "On branch main\n\nno changes added to commit";
+        assert_eq!(git_failure_text("", stdout, Some(1)), stdout);
+    }
+
+    #[test]
+    fn git_failure_text_reports_exit_code_when_both_empty() {
+        assert_eq!(git_failure_text("", "  \n", Some(1)), "git 命令失败 (exit 1)");
+        assert_eq!(
+            git_failure_text("", "", None),
+            "git 命令失败 (exit unknown)",
+            "信号终止无 code 时也必须有可读消息"
+        );
+    }
 
     #[test]
     fn merge_path_entries_dedupes_case_insensitive_and_keeps_order() {

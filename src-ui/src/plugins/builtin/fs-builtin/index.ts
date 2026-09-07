@@ -30,7 +30,10 @@ import type { Context } from '../../../cordis';
  *  （编辑含 diff 应用语义）；constraints 读写是 hologram.constraints.yaml 域
  *  （constraints_cap）。三者在 execute 分支直呼对应能力口。 */
 const FS_ACTION_TO_CAP: Record<FsAction, { action: string; keys: Record<string, string> }> = {
-  read: { action: 'read', keys: { filePath: 'file_path', offset: 'offset', limit: 'limit' } },
+  read: {
+    action: 'read',
+    keys: { filePath: 'file_path', offset: 'offset', limit: 'limit', lineNumbers: 'line_numbers' },
+  },
   write: { action: 'write', keys: { filePath: 'file_path', content: 'content' } },
   edit: { action: '', keys: {} }, // editor_cap 直呼（见 execute 分支）
   list: { action: 'list', keys: { path: 'path', filterIgnored: 'filter_ignored' } },
@@ -45,8 +48,10 @@ const FS_ACTION_TO_CAP: Record<FsAction, { action: string; keys: Record<string, 
 
 /** 把模型面 args（camelCase + meta）映射为 fs_cap 顶层 snake 参数。
  *  meta 键（_agent_id/_owner_id/_forceGate）原样透传（executor 注入身份）。
- *  read 的 raw 与 fs_cap line_numbers 反相：raw 缺省/显式 false → 带行号
- *  （旧 read_file_content 默认）；raw=true → 原文（P1-3 JSON 读取面）。 */
+ *  read 行号 opt-in（2026-09 工具缺陷报告 Bug 1 拍板）：缺省返回文件原文
+ *  （line_numbers=false——行号前缀是装饰，绝不默认混入 payload）；模型显式
+ *  lineNumbers:true 才带 cat -n 行号。旧内部键 raw 静默吞掉（缺省原文语义
+ *  下 raw:true 与默认等价——历史调用方零破坏）。 */
 function toCapArgs(action: FsAction, args: Record<string, unknown>): Record<string, unknown> {
   const { action: capAction, keys } = FS_ACTION_TO_CAP[action];
   const out: Record<string, unknown> = { action: capAction };
@@ -55,11 +60,11 @@ function toCapArgs(action: FsAction, args: Record<string, unknown>): Record<stri
       out[k] = v; // meta 透传（snake 已保留下划线）
       continue;
     }
-    if (action === 'read' && k === 'raw') continue; // raw 单独处理（反相）
+    if (action === 'read' && k === 'raw') continue; // 历史内部键：缺省即原文，吞掉
     out[keys[k] ?? k] = v;
   }
   if (action === 'read') {
-    out.line_numbers = args.raw !== true;
+    out.line_numbers = args.lineNumbers === true;
   }
   return out;
 }
@@ -114,8 +119,8 @@ export const builtinFsProvider: FsProvider = {
       throw new Error(`fs-builtin: 动作 '${action}' 无能力口目标（fs 域收口后非 edit/constraints 动作应走 fs_cap）`);
     }
     const raw = await opts.dispatch('fs_cap', toCapArgs(action, args), opts.onProgress, opts.signal);
-    // read：fs_cap 返回 {path, content}——解包 content（旧 read_file_content
-    // 返回纯文本/行号格式，Text 语义）。
+    // read：fs_cap 返回 {path, content}——解包 content（缺省原文；lineNumbers:
+    // true 时为 cat -n 行号格式，Text 语义不变）。
     if (action === 'read') {
       try {
         const parsed = JSON.parse(raw) as { content?: unknown };

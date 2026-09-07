@@ -130,9 +130,7 @@ export class MemoryManager {
   async loadIndexText(scope: 'project' | 'global' = 'project'): Promise<string> {
     await this.ensureDir(scope);
     try {
-      const numbered = await kernelReadFile(this.indexPath(scope));
-      // read_file_content 返回 cat -n 格式（含行号）；去除行号。
-      return numbered.replace(/^\s*\d+\t/gm, '');
+      return await kernelReadFile(this.indexPath(scope));
     } catch {
       return '';
     }

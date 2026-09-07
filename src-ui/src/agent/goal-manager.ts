@@ -7,12 +7,9 @@
 // 存储隔离: .lantai/goals/{id}/ — 与普通聊天的 .lantai/agents/main/ 槽
 // 完全分离。普通对话每轮的 saveState 永远碰不到 goal 现场,这是断点续传
 // 五个已确诊 Bug 的根治基础(见重构计划 M1)。
-//
-// Pattern follows AgentStore: rpc file I/O, lazy ensureDir, stripLineNumbers.
 
 import type { Message } from '../provider/types';
 import { kernelCreateDirectory, kernelDeleteFile, kernelReadFile, kernelWriteFile } from '../rpc-contract';
-import { stripNums } from './board-persistence';
 
 // ── Types ──
 
@@ -110,7 +107,7 @@ export class GoalManager {
     await this.ensureDir();
     try {
       const raw = await kernelReadFile(this.recordPath(id));
-      return JSON.parse(stripNums(raw)) as GoalRecord;
+      return JSON.parse(raw) as GoalRecord;
     } catch {
       return null;
     }
@@ -133,7 +130,7 @@ export class GoalManager {
       const raw = await kernelReadFile(this.indexPath());
       // ⚠️ JSON.parse(null) 返回 null 而不抛错 — 必须显式校验数组，
       // 否则损坏/空 index.json 会让调用方 `all.filter` 崩溃。
-      const parsed = JSON.parse(stripNums(raw)) as unknown;
+      const parsed = JSON.parse(raw) as unknown;
       return Array.isArray(parsed) ? (parsed as GoalRecord[]) : [];
     } catch {
       return [];
@@ -191,7 +188,7 @@ export class GoalManager {
     await this.ensureDir();
     try {
       const raw = await kernelReadFile(this.sessionPath(id));
-      return JSON.parse(stripNums(raw)) as Message[];
+      return JSON.parse(raw) as Message[];
     } catch {
       return null;
     }

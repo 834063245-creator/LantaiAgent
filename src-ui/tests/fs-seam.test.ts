@@ -69,15 +69,28 @@ describe('fs seam（ctx.fs · D11）', () => {
     const out = await toolByName('read_file_content', spyExec).execute(meta);
     expect(out).toBe('ok:rust');
     // R3-b 能力口直呼（kernel-capability-c3-design.md）：builtin/rust-fs
-    // execute 经 fs_cap——模型键 filePath 映射 file_path、read 缺省 raw 补
-    // line_numbers:true（旧 read_file_content 默认行号格式）；_agent_id meta
-    // 原样透传（executor 身份）。
+    // execute 经 fs_cap——模型键 filePath 映射 file_path；2026-09 工具缺陷
+    // 报告 Bug 1 拍板：read 缺省原文（line_numbers:false，行号 opt-in）；
+    // _agent_id meta 原样透传（executor 身份）。
     expect(dispatchCalls).toEqual([
       {
         name: 'fs_cap',
-        args: { action: 'read', file_path: '/x/a.ts', line_numbers: true, _agent_id: 'agent-42' },
+        args: { action: 'read', file_path: '/x/a.ts', line_numbers: false, _agent_id: 'agent-42' },
       },
     ]);
+  });
+
+  it('②b read 行号 opt-in：lineNumbers:true → fs_cap line_numbers:true（Bug 1 契约）', async () => {
+    await ensureProductionChannelsBooted();
+    const dispatchCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
+    const spyExec: ToolExecutor = async (name, args) => {
+      dispatchCalls.push({ name, args });
+      return 'ok:rust';
+    };
+    await toolByName('read_file_content', spyExec).execute({ filePath: '/x/a.ts', lineNumbers: true });
+    await toolByName('read_file_content', spyExec).execute({ filePath: '/x/a.ts', lineNumbers: false });
+    expect(dispatchCalls[0]?.args).toMatchObject({ action: 'read', line_numbers: true });
+    expect(dispatchCalls[1]?.args).toMatchObject({ action: 'read', line_numbers: false });
   });
 
   it('③ rename 键名改写保持（path/new_name → filePath/newName → fs_cap rename）', async () => {

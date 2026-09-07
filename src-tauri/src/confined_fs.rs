@@ -308,6 +308,22 @@ pub(crate) fn format_lines(content: &str, offset: Option<usize>, limit: Option<u
     numbered.join("\n")
 }
 
+/// 原文切片（offset/limit；行号由 line_numbers=true 时的 format_lines 负责）。
+/// 无 offset/limit 时字节直通（trailing newline 不经 lines()/join 重建）。
+/// 2026-09 工具缺陷报告 Bug 1 伴生缺陷：此前 raw 读（line_numbers=false）
+/// 静默忽略 offset/limit——翻转为默认原文后切片必须在原文路径同样生效。
+pub(crate) fn slice_lines(content: &str, offset: Option<usize>, limit: Option<usize>) -> String {
+    if offset.is_none() && limit.is_none() {
+        return content.to_string();
+    }
+    let lines: Vec<&str> = content.lines().collect();
+    let start = offset.unwrap_or(0).min(lines.len());
+    let end = limit
+        .map(|l| (start + l).min(lines.len()))
+        .unwrap_or(lines.len());
+    lines[start..end].join("\n")
+}
+
 // ═══════════════════════════════════════════════════════════════
 // 测试 — 字节层（自 primitives-server fs_ops 测试迁回）
 // ═══════════════════════════════════════════════════════════════
@@ -448,6 +464,26 @@ mod tests {
         assert_eq!(format_lines("aa\nbb\ncc", None, None), "     1\taa\n     2\tbb\n     3\tcc");
         assert_eq!(format_lines("aa\nbb\ncc", Some(1), Some(1)), "     2\tbb");
     }
+
+    // ── slice_lines：原文路径的 offset/limit 切片（Bug 1 翻转后默认路径）──
+
+    #[test]
+    fn slice_lines_passthrough_without_window() {
+        // 无窗口：字节直通（trailing newline 保留——不经 lines()/join 重建）
+        assert_eq!(slice_lines("aa\nbb\n", None, None), "aa\nbb\n");
+        assert_eq!(slice_lines("aa\r\nbb", None, None), "aa\r\nbb");
+    }
+
+    #[test]
+    fn slice_lines_slices_like_format_lines() {
+        // 切片窗口与 format_lines 同源：同 offset/limit 同语义，只是不加行号
+        assert_eq!(format_lines("aa\nbb\ncc", Some(1), Some(1)), "     2\tbb");
+        assert_eq!(slice_lines("aa\nbb\ncc", Some(1), Some(1)), "bb");
+        assert_eq!(slice_lines("aa\nbb\ncc", None, Some(2)), "aa\nbb");
+        assert_eq!(slice_lines("aa\nbb\ncc", Some(2), None), "cc");
+        // 窗口越界安全钳制
+        assert_eq!(slice_lines("aa\nbb", Some(5), Some(3)), "");
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -574,7 +610,9 @@ pub(crate) async fn read_text_cap(
     let content = if line_numbers {
         format_lines(&content, offset, limit)
     } else {
-        content
+        // 原文默认（2026-09 工具缺陷报告 Bug 1：行号 opt-in，payload 不混入
+        // 装饰前缀）——offset/limit 切片在原文路径同样生效（此前被静默忽略）。
+        slice_lines(&content, offset, limit)
     };
     Ok((real_path, content))
 }

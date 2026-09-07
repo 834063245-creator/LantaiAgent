@@ -322,11 +322,27 @@ export function buildTrialRegistry(wt: string, graph: TrialGraphData): ToolRegis
                                     : name === 'git_push'
                                       ? ['push', fp('remote') || 'origin', fp('branch') || 'HEAD']
                                       : ['pull'];
-        return new Promise<string>((resolve) => {
-          execFile('git', gitArgs, { cwd: wt, timeout: 30_000 }, (err, stdout, stderr) => {
-            resolve(err ? `错误: ${stderr}` : stdout || '(无输出)');
+        // git_commit 带 files 时先自动暂存（镜像生产 stage-then-commit 编排）
+        const stageBeforeCommit =
+          name === 'git_commit' && String(args?.files ?? '').trim() !== '' ? String(args?.files).trim() : null;
+        const runGit = (ga: string[]) =>
+          new Promise<string>((resolve) => {
+            execFile('git', ga, { cwd: wt, timeout: 30_000 }, (err, stdout, stderr) => {
+              resolve(err ? `错误: ${stderr}` : stdout || '(无输出)');
+            });
           });
-        });
+        if (stageBeforeCommit !== null) {
+          await (stageBeforeCommit === '.' || stageBeforeCommit === 'all'
+            ? runGit(['add', '-A'])
+            : Promise.all(
+                stageBeforeCommit
+                  .split(',')
+                  .map((f) => f.trim())
+                  .filter((f) => f !== '')
+                  .map((f) => runGit(['add', f])),
+              ));
+        }
+        return runGit(gitArgs);
       }
       case 'bash_output':
       case 'bash_kill':

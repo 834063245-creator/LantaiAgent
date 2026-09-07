@@ -89,7 +89,7 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
               STEP_RPC_TIMEOUT_MS,
               'plan 文件读取超时',
             );
-            planContent = raw.replace(/^\s*\d+\t/gm, '');
+            planContent = raw;
           } catch {
             /* plan 文件尚未写入 — 正常 */
           }

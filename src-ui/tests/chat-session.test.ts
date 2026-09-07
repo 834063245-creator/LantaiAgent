@@ -94,7 +94,7 @@ import {
 } from '../src/state/canvas-store';
 import { getMessagesStore } from '../src/state/messages-store';
 import * as Session from '../src/ui/chat-session';
-import { scanMaxSessionId, stripLineNumbers } from '../src/ui/chat-session';
+import { scanMaxSessionId } from '../src/ui/chat-session';
 import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
 
 // ── Helpers ──
@@ -174,41 +174,8 @@ describe('ChatPanel session persistence', () => {
     document.body.innerHTML = '';
   });
 
-  // ═══════════════════════════════════════════════════════════════
-  // stripLineNumbers — cat -n format from Rust read_file_content
-  // ═══════════════════════════════════════════════════════════════
-
-  describe('stripLineNumbers', () => {
-    const strip = stripLineNumbers;
-
-    it('removes single line number prefix', () => {
-      const input = '     1\t{"id":1,"label":"test"}';
-      const result = strip(input);
-      expect(result).toBe('{"id":1,"label":"test"}');
-    });
-
-    it('removes multi-line line numbers', () => {
-      const input = '     1\t{"id":1,\n     2\t"label":"test",\n     3\t"ok":true}';
-      const result = strip(input);
-      expect(result).toBe('{"id":1,\n"label":"test",\n"ok":true}');
-    });
-
-    it('handles large line numbers (right-aligned in 6 chars)', () => {
-      const input = '   999\t{"big":true}';
-      const result = strip(input);
-      expect(result).toBe('{"big":true}');
-    });
-
-    it('passes through text without line numbers unchanged', () => {
-      const input = '{"plain":"json"}';
-      const result = strip(input);
-      expect(result).toBe('{"plain":"json"}');
-    });
-
-    it('handles empty string', () => {
-      expect(strip('')).toBe('');
-    });
-  });
+  // （stripLineNumbers 已随 2026-09 fs(read) 行号默认翻转退役：kernelReadFile
+  //  缺省原文、行号仅 lineNumbers:true 显式请求——剥行号路径无消费者，用例撤。）
 
   // ═══════════════════════════════════════════════════════════════
   // scanMaxSessionId — must never hang
@@ -341,7 +308,7 @@ describe('ChatPanel session persistence', () => {
       expect(result[1].id).toBe(1);
     });
 
-    it('handles cat -n formatted session files (read_file_content regression)', async () => {
+    it('reads raw session files (fs(read) raw-default contract)', async () => {
       panel = createChatPanel();
       const rawJSON = mockSessionFile(
         46,
@@ -355,9 +322,8 @@ describe('ChatPanel session persistence', () => {
 
       mockInvoke
         .mockResolvedValueOnce(JSON.stringify([{ name: '46.json', path: '/s/46.json', is_dir: false, children: null }]))
-        // P1-3（2026-09-02）：readSessionJSON 改 raw 模式——后端 raw=true 跳过
-        // format_lines，直接返回原文。mock 模拟新契约（原文直返）。
-        // 旧契约（cat -n 格式）的剥行号路径由 stripLineNumbers 单测覆盖。
+        // 2026-09 fs(read) 行号默认翻转后：kernelReadFile 缺省原文（P1-3 的
+        // raw 模式升格为默认契约），无剥行号路径——mock 直返原文。
         .mockResolvedValueOnce(rawJSON);
 
       const result = await panel.listSavedSessions('D:/test');

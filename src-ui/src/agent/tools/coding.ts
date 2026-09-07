@@ -100,7 +100,8 @@ export interface CodingToolsUI {
 // editor_cap / constraints_cap 直呼）——manifest 镜像消费面清零。
 // ═══════════════════════════════════════════════════════════════
 
-/** read_file_content schema——manifest 字节转录（filePath/offset/limit）。 */
+/** read_file_content schema——行号 opt-in（2026-09 工具缺陷报告 Bug 1 拍板：
+ *  payload 缺省原文，lineNumbers:true 才带 cat -n 行号）。 */
 const readFileContentSchema = z.object({
   filePath: z.string().describe('Absolute path to the file to read'),
   offset: z
@@ -117,6 +118,12 @@ const readFileContentSchema = z.object({
     .max(9007199254740991)
     .optional()
     .describe('Maximum number of lines to return (default: all lines)'),
+  lineNumbers: z
+    .boolean()
+    .optional()
+    .describe(
+      'Set to true to prefix each line with a cat -n style line number (6-digit + tab). Default: raw file text — use this for exact string matching.',
+    ),
 });
 
 /** write_file_content schema——manifest 字节转录（filePath/content/_forceGate）。 */
@@ -197,9 +204,10 @@ const FS_CAP_SCHEMA: Record<string, z.ZodObject<z.ZodRawShape>> = {
   delete: deleteFileSchema,
 };
 
-/** fs 域动作 → 模型面 description（manifest 字节转录）。 */
+/** fs 域动作 → 模型面 description（read 经 2026-09 工具缺陷报告 Bug 1 拍板
+ *  改写：缺省原文 + lineNumbers opt-in；其余动作 manifest 字节转录）。 */
 const FS_CAP_DESCRIPTION: Record<string, string> = {
-  read: 'Read the content of a file on disk. Returns text in cat -n format (6-digit line number + tab + content). Use offset and limit to read a specific range of lines (0-indexed). Use to inspect source code files when analyzing dependencies or investigating violations.',
+  read: 'Read the content of a file on disk. Returns the raw file text (byte-exact, no line-number prefixes — safe for string matching). Use offset and limit to read a specific range of lines (0-indexed). Set lineNumbers: true when you need cat -n style line numbers for quoting line addresses. Use to inspect source code files when analyzing dependencies or investigating violations.',
   write:
     'Create or overwrite a file with the given content. Creates parent directories if needed. Use to write new files or modify existing ones.',
   list: 'List files and subdirectories in a directory (recursive up to 4 levels deep). Returns name, path, type (file/dir), and size for each entry.',
@@ -541,10 +549,18 @@ const gitStageSchema = z.object({
   files: z.string().describe('File path(s) to stage, separated by commas. Use "." to stage all.'),
 });
 
-/** git_commit schema——manifest 字节转录（path/message/_forceGate）。 */
+/** git_commit schema——manifest 字节转录（path/message/_forceGate）+ files
+ *  自动暂存键（2026-09 工具缺陷报告 Bug 2 拍板：commit 接受 files 参数时
+ *  先自动暂存再提交，与其它写类工具的参数语义对齐）。 */
 const gitCommitSchema = z.object({
   path: z.string().describe('Absolute path to the git repository root'),
   message: z.string().describe('Commit message (conventional commits format recommended)'),
+  files: z
+    .string()
+    .optional()
+    .describe(
+      'File path(s) to stage before committing, separated by commas (same syntax as git stage). Omit to commit whatever is already staged.',
+    ),
   _forceGate: z
     .boolean()
     .optional()
@@ -638,7 +654,7 @@ const GIT_CAP_DESCRIPTION: Record<string, string> = {
     'Show recent git commit history. Returns structured JSON with commit hash, message, author, and date for each commit.',
   git_stage: 'Stage files for commit. Use before git_commit to add changes to the staging area.',
   git_commit:
-    'Commit staged changes with a message. Files must be staged first with git_stage. Returns the commit hash.',
+    'Commit changes with a message. Optionally pass files to auto-stage them first (comma-separated, "." stages all — same syntax as git stage); without files, commits whatever is already staged. Returns the commit summary.',
   git_push: 'Push committed changes to the remote repository.',
   git_pull: 'Pull latest changes from the remote repository (fast-forward only, no merge conflicts).',
   git_init: 'Initialize a new git repository in the given directory.',
@@ -706,6 +722,34 @@ function gitCapTool(action: string, localName: string, exec: ToolExecutor): Tool
   };
 }
 
+/** git_stage 拆单编排（git_stage 与 git_commit(files) 共用）：'.'/'all' →
+ *  git_stage_all；逗号分隔逐文件派发 git_stage。files 模型面是逗号串（与
+ *  能力口 files 数组之间的既有折写）。 */
+async function stageFilesViaCap(
+  exec: ToolExecutor,
+  path: string | undefined,
+  files: string,
+  onProgress?: (chunk: string) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (files === '.' || files === 'all') {
+    return exec('git_cap', toGitCapArgs('git_stage_all', { path }), onProgress, signal);
+  }
+  const fileList = files
+    .split(',')
+    .map((f) => f.trim())
+    .filter((f) => f !== '');
+  if (fileList.length === 0) {
+    throw new Error("git_stage: 'files' 为空——请给出逗号分隔的文件路径，或用 '.' 暂存全部");
+  }
+  const results: string[] = [];
+  for (const f of fileList) {
+    const r = await exec('git_cap', toGitCapArgs('git_stage', { path, files: [f] }), onProgress, signal);
+    results.push(r);
+  }
+  return results.join('\n');
+}
+
 /** git 域工具族（S1-2 从 createCodingTools 迁出；P2-3 起 manifest 驱动 →
  *  R3-c git 域收口后 zod 真源 + git_cap 直呼）。
  *  声明序 = 领域合并/装配的字节契约序——勿重排。 */
@@ -734,30 +778,27 @@ export function createGitTools(exec: ToolExecutor): Tool[] {
       // 模型面 schema（files 逗号串）与能力口 action 之间的既有折写。
       execute: async (args, onProgress, signal) => {
         const files = String((args as { files?: string }).files ?? '').trim();
-        if (files === '.' || files === 'all') {
-          return exec(
-            'git_cap',
-            toGitCapArgs('git_stage_all', { path: (args as { path?: string }).path }),
-            onProgress,
-            signal,
-          );
-        }
-        // 暂存单个文件（逐个派发——与既有行为一致）
-        const fileList = files.split(',').map((f) => f.trim());
-        const results: string[] = [];
-        for (const f of fileList) {
-          const r = await exec(
-            'git_cap',
-            toGitCapArgs('git_stage', { path: (args as { path?: string }).path, files: [f] }),
-            onProgress,
-            signal,
-          );
-          results.push(r);
-        }
-        return results.join('\n');
+        return stageFilesViaCap(exec, (args as { path?: string }).path, files, onProgress, signal);
       },
     },
-    gitCapTool('git_commit', 'git_commit', exec),
+    {
+      ...gitCapTool('git_commit', 'git_commit', exec),
+      // git_commit files 自动暂存（2026-09 工具缺陷报告 Bug 2）：模型面给了
+      // files 就先 stage 再 commit（与其他写类工具「给什么操作什么」的参数
+      // 语义对齐）；不给 files 沿用「提交已暂存内容」。stage 失败时错误直接
+      // 上抛（不再空手 commit）。
+      execute: async (args, onProgress, signal) => {
+        const { files, ...rest } = args as { files?: string };
+        const filesStr = String(files ?? '').trim();
+        if (filesStr !== '') {
+          await stageFilesViaCap(exec, (rest as { path?: string }).path, filesStr, onProgress, signal);
+        }
+        return shapeGitCapOutput(
+          'git_commit',
+          await exec('git_cap', toGitCapArgs('git_commit', rest), onProgress, signal),
+        );
+      },
+    },
     gitCapTool('git_push', 'git_push', exec),
     gitCapTool('git_pull', 'git_pull', exec),
     // ── Phase 2b: Git 操作 ──

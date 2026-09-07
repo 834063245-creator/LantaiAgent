@@ -4,7 +4,7 @@
 // JsonMessageStore — MessageStore 的 JSON 文件实现
 //
 // 将每个 agent 的 inbox 持久化到 .lantai/agents/{agentId}/inbox.json
-// 模式参照 agent-store.ts：rpc 文件 I/O、ensureDir、stripNums。
+// 模式参照 agent-store.ts：rpc 文件 I/O、ensureDir。
 // 所有操作 best-effort — 永不抛异常阻塞主流程。
 
 import {
@@ -14,7 +14,6 @@ import {
   kernelReadFile,
   kernelWriteFile,
 } from '../rpc-contract';
-import { stripNums } from './board-persistence';
 import type { AgentMessage, MessageStore } from './message-types';
 
 /** 判断读错误是否为「文件不存在」——此时该 agent 本来就无 inbox（空 inbox 从不落盘），
@@ -88,7 +87,7 @@ export class JsonMessageStore implements MessageStore {
         const agentId = entry.name;
         try {
           const rawInbox = await kernelReadFile(this.inboxPath(agentId));
-          const msgs = JSON.parse(stripNums(rawInbox)) as AgentMessage[];
+          const msgs = JSON.parse(rawInbox) as AgentMessage[];
           if (Array.isArray(msgs) && msgs.length > 0) {
             result.set(agentId, msgs);
           }

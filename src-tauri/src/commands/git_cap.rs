@@ -99,62 +99,14 @@ pub(crate) async fn git_cap(
     // 否则原样（无隔离 / 非 agent 幂等）。──
     let exec_path = crate::utils::git_exec_path(&repo_path, is_agent, agent_id.as_deref(), state)?;
 
-    let git_args: Vec<String> = match action.as_str() {
-        "git_status" => vec![
-            "status".to_string(),
-            "--branch".to_string(),
-            "--porcelain".to_string(),
-        ],
-        "git_diff_unstaged" => {
-            let f = file.ok_or_else(|| "git_cap git_diff_unstaged: missing 'file'".to_string())?;
-            vec!["diff".to_string(), "--".to_string(), f]
-        }
-        "git_diff_staged" => {
-            let f = file.ok_or_else(|| "git_cap git_diff_staged: missing 'file'".to_string())?;
-            vec!["diff".to_string(), "--cached".to_string(), "--".to_string(), f]
-        }
-        "git_log" => vec![
-            "log".to_string(),
-            format!("-{}", count.unwrap_or(10)),
-            "--pretty=format:%H%x00%h%x00%s%x00%an%x00%ai".to_string(),
-        ],
-        "git_stage" => {
-            let mut a = vec!["add".to_string()];
-            a.extend(files.ok_or_else(|| "git_cap git_stage: missing 'files'".to_string())?);
-            a
-        }
-        "git_stage_all" => vec!["add".to_string(), "-A".to_string()],
-        "git_commit" => vec![
-            "commit".to_string(),
-            "-m".to_string(),
-            message.ok_or_else(|| "git_cap git_commit: missing 'message'".to_string())?,
-        ],
-        "git_push" => vec!["push".to_string()],
-        "git_pull" => vec!["pull".to_string()],
-        "git_init" => vec!["init".to_string()],
-        "git_checkout" => vec![
-            "checkout".to_string(),
-            branch.ok_or_else(|| "git_cap git_checkout: missing 'branch'".to_string())?,
-        ],
-        "git_create_branch" => vec![
-            "checkout".to_string(),
-            "-b".to_string(),
-            branch.ok_or_else(|| "git_cap git_create_branch: missing 'branch'".to_string())?,
-        ],
-        "git_stash_push" => vec!["stash".to_string(), "push".to_string()],
-        "git_stash_pop" => vec!["stash".to_string(), "pop".to_string()],
-        "git_discard" => vec![
-            "checkout".to_string(),
-            "--".to_string(),
-            file.ok_or_else(|| "git_cap git_discard: missing 'file'".to_string())?,
-        ],
-        "git_blame" => vec![
-            "blame".to_string(),
-            "--line-porcelain".to_string(),
-            file.ok_or_else(|| "git_cap git_blame: missing 'file'".to_string())?,
-        ],
-        other => return Err(format!("git_cap: 未知 action '{other}'")),
-    };
+    let git_args = git_args(
+        &action,
+        file.as_deref(),
+        files,
+        message.as_deref(),
+        branch.as_deref(),
+        count,
+    )?;
 
     // git_status 失败回空串（退役前插件原语义——状态栏/turn-start 注入对
     // 非仓库路径不报错）；其余 action 错误传播。
@@ -170,6 +122,86 @@ pub(crate) async fn git_cap(
         "git_diff_unstaged" | "git_diff_staged" | "git_blame" => crate::utils::truncate_output(&out),
         _ => out,
     })
+}
+
+/// action → git 参数向量（纯函数，单测钉行为）。diff 双动作的 file 缺省 "."
+/// （2026-09 工具缺陷报告 Bug 3：模型面 schema 一直声明 `default "."`——
+/// "If omitted, shows all unstaged changes"——但缺省从未在运行时生效，
+/// 缺 file 直报 missing 'file'）。discard 保持必填（丢弃是破坏性动作，
+/// 不给缺省全仓兜底）。
+fn git_args(
+    action: &str,
+    file: Option<&str>,
+    files: Option<Vec<String>>,
+    message: Option<&str>,
+    branch: Option<&str>,
+    count: Option<usize>,
+) -> Result<Vec<String>, String> {
+    match action {
+        "git_status" => Ok(vec![
+            "status".to_string(),
+            "--branch".to_string(),
+            "--porcelain".to_string(),
+        ]),
+        "git_diff_unstaged" => Ok(vec![
+            "diff".to_string(),
+            "--".to_string(),
+            file.unwrap_or(".").to_string(),
+        ]),
+        "git_diff_staged" => Ok(vec![
+            "diff".to_string(),
+            "--cached".to_string(),
+            "--".to_string(),
+            file.unwrap_or(".").to_string(),
+        ]),
+        "git_log" => Ok(vec![
+            "log".to_string(),
+            format!("-{}", count.unwrap_or(10)),
+            "--pretty=format:%H%x00%h%x00%s%x00%an%x00%ai".to_string(),
+        ]),
+        "git_stage" => {
+            let mut a = vec!["add".to_string()];
+            a.extend(files.ok_or_else(|| "git_cap git_stage: missing 'files'".to_string())?);
+            Ok(a)
+        }
+        "git_stage_all" => Ok(vec!["add".to_string(), "-A".to_string()]),
+        "git_commit" => Ok(vec![
+            "commit".to_string(),
+            "-m".to_string(),
+            message
+                .ok_or_else(|| "git_cap git_commit: missing 'message'".to_string())?
+                .to_string(),
+        ]),
+        "git_push" => Ok(vec!["push".to_string()]),
+        "git_pull" => Ok(vec!["pull".to_string()]),
+        "git_init" => Ok(vec!["init".to_string()]),
+        "git_checkout" => Ok(vec![
+            "checkout".to_string(),
+            branch
+                .ok_or_else(|| "git_cap git_checkout: missing 'branch'".to_string())?
+                .to_string(),
+        ]),
+        "git_create_branch" => Ok(vec![
+            "checkout".to_string(),
+            "-b".to_string(),
+            branch
+                .ok_or_else(|| "git_cap git_create_branch: missing 'branch'".to_string())?
+                .to_string(),
+        ]),
+        "git_stash_push" => Ok(vec!["stash".to_string(), "push".to_string()]),
+        "git_stash_pop" => Ok(vec!["stash".to_string(), "pop".to_string()]),
+        "git_discard" => Ok(vec![
+            "checkout".to_string(),
+            "--".to_string(),
+            file.ok_or_else(|| "git_cap git_discard: missing 'file'".to_string())?.to_string(),
+        ]),
+        "git_blame" => Ok(vec![
+            "blame".to_string(),
+            "--line-porcelain".to_string(),
+            file.ok_or_else(|| "git_cap git_blame: missing 'file'".to_string())?.to_string(),
+        ]),
+        other => Err(format!("git_cap: 未知 action '{other}'")),
+    }
 }
 
 #[cfg(test)]
@@ -249,5 +281,53 @@ mod tests {
                 "{a} 不得同时落在两表"
             );
         }
+    }
+
+    // ── git_args 行为锚（2026-09 工具缺陷报告 Bug 3 修复）──
+
+    /// diff 双动作 file 缺省 "."——与模型面 schema 的 default "." 文档
+    /// （"If omitted, shows all unstaged changes"）对齐；缺省不再报
+    /// missing 'file'。
+    #[test]
+    fn git_args_diff_defaults_to_dot() {
+        let dot = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<String>>();
+        assert_eq!(
+            git_args("git_diff_unstaged", None, None, None, None, None).unwrap(),
+            dot(&["diff", "--", "."])
+        );
+        assert_eq!(
+            git_args("git_diff_staged", None, None, None, None, None).unwrap(),
+            dot(&["diff", "--cached", "--", "."])
+        );
+        // 显式 file 原样透传
+        assert_eq!(
+            git_args("git_diff_unstaged", Some("src/a.rs"), None, None, None, None).unwrap(),
+            dot(&["diff", "--", "src/a.rs"])
+        );
+    }
+
+    /// 破坏性/行级动作保持必填：discard/blame 无缺省兜底。
+    #[test]
+    fn git_args_discard_and_blame_still_require_file() {
+        assert!(git_args("git_discard", None, None, None, None, None)
+            .unwrap_err()
+            .contains("missing 'file'"));
+        assert!(git_args("git_blame", None, None, None, None, None)
+            .unwrap_err()
+            .contains("missing 'file'"));
+    }
+
+    /// commit 缺 message、stage 缺 files 显式报错（错误不静默）。
+    #[test]
+    fn git_args_required_params_error_loudly() {
+        assert!(git_args("git_commit", None, None, None, None, None)
+            .unwrap_err()
+            .contains("missing 'message'"));
+        assert!(git_args("git_stage", None, None, None, None, None)
+            .unwrap_err()
+            .contains("missing 'files'"));
+        assert!(git_args("git_checkout", None, None, None, None, None)
+            .unwrap_err()
+            .contains("missing 'branch'"));
     }
 }
