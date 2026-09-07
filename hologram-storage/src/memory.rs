@@ -776,7 +776,7 @@ impl MemoryIndex {
 
     // ── 快照持久化（超大图快速路径，M7c）──
 
-    /// 将索引全量快照到 `<project_root>/.lantai/graph.snapshot`（bincode 1.3）。
+    /// 将索引全量快照到 `<project_root>/.hologram/graph.snapshot`（bincode 1.3）。
     /// 文件 = 头部（代际 token，见 snapshot.rs）+ bincode payload；token 由
     /// GraphStore 生成并与 db meta 的 snapshot_token 比对判定快照有效性。
     /// 原子落盘：先写 .tmp 再 rename（同 vector/mod.rs 先例，现代 Rust 的
@@ -789,8 +789,8 @@ impl MemoryIndex {
             .map_err(|e| format!("snapshot serialize: {}", e))?;
         let mut bytes = crate::snapshot::encode_snapshot_header(token);
         bytes.extend_from_slice(&payload);
-        let dir = project_root.join(".lantai");
-        std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir .lantai: {}", e))?;
+        let dir = hologram_graph::data_dir(project_root);
+        std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir {}: {}", dir.display(), e))?;
         let path = crate::snapshot::snapshot_path(project_root);
         let tmp = crate::snapshot::snapshot_tmp_path(project_root);
         if let Err(e) = std::fs::write(&tmp, &bytes) {
@@ -808,7 +808,7 @@ impl MemoryIndex {
         Ok(())
     }
 
-    /// 从 `<project_root>/.lantai/graph.snapshot` 读回索引（bincode 反序列化）。
+    /// 从 `<project_root>/.hologram/graph.snapshot` 读回索引（bincode 反序列化）。
     /// 跳过头部代际 token（有效性由 GraphStore::open 用 peek_snapshot_token
     /// 与 db meta 比对判定）；文件缺失、头部非法或反序列化失败均返回 Err ——
     /// 调用方负责删除快照并回退 SQLite 路径。

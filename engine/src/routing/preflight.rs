@@ -12,12 +12,12 @@ use std::path::{Path, PathBuf};
 
 /// 每项目 graph 快照路径，用作简报基线。
 pub fn baseline_path(project_root: &Path) -> PathBuf {
-    project_root.join(".lantai").join("baseline.json")
+    hologram_graph::data_dir(project_root).join("baseline.json")
 }
 
 /// 违规 ID 快照路径 — 来自上次非静默检查的 ID。
 fn baseline_violations_path(project_root: &Path) -> PathBuf {
-    project_root.join(".lantai").join("baseline_violations.json")
+    hologram_graph::data_dir(project_root).join("baseline_violations.json")
 }
 
 pub fn load_baseline(project_root: &Path) -> Graph {
@@ -45,7 +45,7 @@ fn load_previous_violation_ids(project_root: &Path) -> Vec<String> {
 }
 
 fn save_violation_ids(project_root: &Path, ids: &[String]) {
-    let dir = project_root.join(".lantai");
+    let dir = hologram_graph::data_dir(project_root);
     let _ = std::fs::create_dir_all(&dir);
     if let Ok(json) = serde_json::to_string_pretty(ids) {
         let _ = std::fs::write(baseline_violations_path(project_root), json);
@@ -60,7 +60,7 @@ fn extract_violation_ids(violations: &[Value]) -> Vec<String> {
 }
 
 pub fn save_baseline(project_root: &Path, graph: &Graph) {
-    let dir = project_root.join(".lantai");
+    let dir = hologram_graph::data_dir(project_root);
     let _ = std::fs::create_dir_all(&dir);
     if let Ok(json) = serde_json::to_string_pretty(graph) {
         let _ = std::fs::write(baseline_path(project_root), json);
@@ -467,8 +467,8 @@ mod tests {
         assert!(r["new_cycles"].as_u64().unwrap() > 0, "should detect new cycles");
     }
 
-    /// 回归测试：对 `.lantai/` 或其他被忽略目录的变更不得
-    /// 产生违规。此前，`.lantai/baseline.json` 匹配了
+    /// 回归测试：对 `.hologram/` / `.lantai/` 等被忽略目录的变更不得
+    /// 产生违规。此前，数据目录里的 baseline.json 匹配了
     /// 配置文件模式（`.json$`）并触发了误报的 L5 违规。
     #[test]
     fn test_preflight_filters_ignored_paths() {
@@ -494,7 +494,7 @@ mod tests {
         g.add_node(Node::new("a", "fn_a", NodeKind::Symbol));
 
         let r = run_full_check(&g, &g, &[
-            ".lantai/baseline.json".into(),  // 被忽略 — 否则会误报 L5
+            ".hologram/baseline.json".into(),  // 被忽略 — 否则会误报 L5
             "migrations/0001_init.py".into(),   // 真实文件 — 应为 L5
         ], ".");
         // 仅迁移文件应产生违规

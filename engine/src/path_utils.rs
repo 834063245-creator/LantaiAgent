@@ -60,101 +60,195 @@ mod tests {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// `.hologram` → `.lantai` 目录改名迁移（2026-08-23）
+// `.lantai` → `.hologram` 引擎数据分居迁移（engine-host-severance，2026-09-08）
 //
-// 与壳 src-tauri/src/utils.rs::migrate_hologram_to_lantai 同款契约。
-// 引擎在 MCP/CLI 直跑时也可能被外部客户端拉起——独立提供一份。
+// 引擎数据目录自有化：引擎自有文件从宿主目录 `.lantai/` 搬到
+// `.hologram/`（真源见 hologram_graph::paths）。只搬引擎文件——宿主数据
+// （sessions/memory/agents/宿主日志）归属 `.lantai` 不动。历史上引擎曾
+// 兜底整目录迁移（.hologram→.lantai，2026-08-23），那会连宿主数据一起搬、
+// 属职责越界，已退役；宿主数据的迁移归宿主（壳 utils.rs）。
 // ═══════════════════════════════════════════════════════════════
 
 /// 迁移结果。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MigrateStatus {
-    /// 老目录不存在——无事可做。
-    NoOldData,
-    /// 已重命名 .hologram → .lantai。
+pub enum EngineDataMigrateStatus {
+    /// `.lantai` 下没有任何引擎数据——无事可做。
+    NoData,
+    /// 有搬迁（或遇到冲突告警——见 stderr 清单）。
     Migrated,
-    /// 两目录并存——告警不迁移（防误删用户数据），由用户手动决。
-    ConflictSkipped,
 }
 
-/// 把 `root/.hologram` 重命名为 `root/.lantai`（原子，同文件系统内）。
+/// 引擎在宿主数据目录里的自有文件（不含 db trio——它们有组语义）。
+const LANTAI_LEGACY_FILES: &[&str] = &[
+    "graph.snapshot",
+    "graph.snapshot.tmp",
+    "hologram_graph.json",
+    "vectors.usearch",
+    "vectors.usearch.tmp",
+    "vectors.slots.json",
+    "vectors.slots.json.tmp",
+    "baseline.json",
+    "baseline_violations.json",
+];
+
+/// 把引擎自有文件从 `root/.lantai/` 搬到 `root/.hologram/`（rename，原子）。
 ///
-/// 幂等：可反复调。两目录并存时告警不迁移（防误删用户数据）。
-pub fn migrate_hologram_to_lantai(root: &std::path::Path) -> Result<MigrateStatus, String> {
-    let old = root.join(".hologram");
-    let new = root.join(".lantai");
-    if !old.exists() {
-        return Ok(MigrateStatus::NoOldData);
+/// - 幂等：可反复调；源文件不存在 → 跳过；零数据 → 不建目录。
+/// - 保数据：目标已存在同名文件 → 冲突告警，**不搬不覆盖**，留在原地由
+///   用户手决，引擎继续用 `.hologram` 侧。db trio（hologram.db/-wal/-shm）
+///   整组语义：`.hologram` 已有 db 时 wal/shm 不得单独搬走（拼出半套
+///   数据库比不搬更糟）。
+/// - 失败非致命：个别文件搬不动只 warn，不阻断启动。
+pub fn migrate_engine_data(root: &std::path::Path) -> Result<EngineDataMigrateStatus, String> {
+    let old = root.join(".lantai");
+    let new = hologram_graph::data_dir(root);
+
+    let mut moved = 0usize;
+    let mut conflicts = 0usize;
+
+    let move_one = |src: &std::path::Path, dst: &std::path::Path, moved: &mut usize, conflicts: &mut usize| {
+        if dst.exists() {
+            eprintln!(
+                "[engine] 警告：{} 与 .hologram 侧同名文件并存，未搬迁（保数据，请手动合并后删除）。",
+                src.display()
+            );
+            *conflicts += 1;
+            return;
+        }
+        match std::fs::rename(src, dst) {
+            Ok(()) => *moved += 1,
+            Err(e) => eprintln!("[engine] 迁移 {} 失败（非致命）: {e}", src.display()),
+        }
+    };
+
+    // db trio：整组判定（组冲突 → 三件全留）
+    if old.join("hologram.db").exists() {
+        std::fs::create_dir_all(&new)
+            .map_err(|e| format!("mkdir {}: {e}", new.display()))?;
+        if new.join("hologram.db").exists() {
+            eprintln!(
+                "[engine] 警告：{} 与 .hologram 侧 hologram.db 并存，db 三件组不动（wal/shm 属于留在原地的 db）。",
+                old.join("hologram.db").display()
+            );
+            conflicts += 1;
+        } else {
+            for name in ["hologram.db", "hologram.db-wal", "hologram.db-shm"] {
+                let src = old.join(name);
+                if src.exists() {
+                    move_one(&src, &new.join(name), &mut moved, &mut conflicts);
+                }
+            }
+        }
     }
-    if new.exists() {
-        eprintln!(
-            "[lantai] 警告：{} 同时存在 .hologram 与 .lantai，未迁移。请手动合并后删除 .hologram。",
-            root.display()
-        );
-        return Ok(MigrateStatus::ConflictSkipped);
+
+    for name in LANTAI_LEGACY_FILES {
+        let src = old.join(name);
+        if !src.exists() {
+            continue;
+        }
+        std::fs::create_dir_all(&new)
+            .map_err(|e| format!("mkdir {}: {e}", new.display()))?;
+        move_one(&src, &new.join(name), &mut moved, &mut conflicts);
     }
-    std::fs::rename(&old, &new).map_err(|e| {
-        format!(
-            "迁移 {} → {} 失败: {e}",
-            old.display(),
-            new.display()
-        )
-    })?;
-    eprintln!("[lantai] 已迁移 {} → {}", old.display(), new.display());
-    Ok(MigrateStatus::Migrated)
+
+    // 引擎日志单独搬（logs/ 里还有宿主的 bridge.log——只取 engine.log）
+    let old_log = old.join("logs").join("engine.log");
+    if old_log.exists() {
+        let new_log_dir = new.join("logs");
+        std::fs::create_dir_all(&new_log_dir)
+            .map_err(|e| format!("mkdir {}: {e}", new_log_dir.display()))?;
+        move_one(&old_log, &new_log_dir.join("engine.log"), &mut moved, &mut conflicts);
+    }
+
+    if moved == 0 && conflicts == 0 {
+        return Ok(EngineDataMigrateStatus::NoData);
+    }
+    eprintln!("[engine] 引擎数据已从 .lantai 迁至 .hologram（{} 搬迁 / {} 冲突留驻）", moved, conflicts);
+    Ok(EngineDataMigrateStatus::Migrated)
 }
 
 #[cfg(test)]
 mod migrate_tests {
     use super::*;
 
-    #[test]
-    fn migrate_no_old_dir_is_noop() {
-        let tmp = std::env::temp_dir().join("lantai_test_migrate_noop");
+    fn tmp(tag: &str) -> std::path::PathBuf {
+        let tmp = std::env::temp_dir()
+            .join(format!("hologram_migrate_{}_{}", tag, std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
-        let r = migrate_hologram_to_lantai(&tmp).unwrap();
-        assert_eq!(r, MigrateStatus::NoOldData);
-        let _ = std::fs::remove_dir_all(&tmp);
+        tmp
     }
 
     #[test]
-    fn migrate_renames_old_to_new() {
-        let tmp = std::env::temp_dir().join("lantai_test_migrate_rename");
-        let _ = std::fs::remove_dir_all(&tmp);
-        std::fs::create_dir_all(tmp.join(".hologram/sessions")).unwrap();
-        std::fs::write(tmp.join(".hologram/sessions/1.json"), "{}").unwrap();
-        let r = migrate_hologram_to_lantai(&tmp).unwrap();
-        assert_eq!(r, MigrateStatus::Migrated);
-        assert!(!tmp.join(".hologram").exists());
-        assert!(tmp.join(".lantai/sessions/1.json").exists());
-        let _ = std::fs::remove_dir_all(&tmp);
+    fn migrate_no_lantai_data_is_noop() {
+        let t = tmp("noop");
+        assert_eq!(migrate_engine_data(&t).unwrap(), EngineDataMigrateStatus::NoData);
+        assert!(!t.join(".hologram").exists(), "零数据不建目录");
     }
 
     #[test]
-    fn migrate_conflict_skipped() {
-        let tmp = std::env::temp_dir().join("lantai_test_migrate_conflict");
-        let _ = std::fs::remove_dir_all(&tmp);
-        std::fs::create_dir_all(tmp.join(".hologram")).unwrap();
-        std::fs::create_dir_all(tmp.join(".lantai")).unwrap();
-        std::fs::write(tmp.join(".hologram/old.txt"), "old").unwrap();
-        std::fs::write(tmp.join(".lantai/new.txt"), "new").unwrap();
-        let r = migrate_hologram_to_lantai(&tmp).unwrap();
-        assert_eq!(r, MigrateStatus::ConflictSkipped);
-        // 两目录都未被修改
-        assert!(tmp.join(".hologram/old.txt").exists());
-        assert!(tmp.join(".lantai/new.txt").exists());
-        let _ = std::fs::remove_dir_all(&tmp);
+    fn migrate_moves_engine_files_only() {
+        let t = tmp("moves");
+        std::fs::create_dir_all(t.join(".lantai/logs")).unwrap();
+        std::fs::write(t.join(".lantai/hologram.db"), "db").unwrap();
+        std::fs::write(t.join(".lantai/hologram.db-wal"), "wal").unwrap();
+        std::fs::write(t.join(".lantai/hologram.db-shm"), "shm").unwrap();
+        std::fs::write(t.join(".lantai/vectors.usearch"), "vi").unwrap();
+        std::fs::write(t.join(".lantai/baseline.json"), "{}").unwrap();
+        std::fs::write(t.join(".lantai/logs/engine.log"), "log").unwrap();
+        // 宿主数据必须原地不动
+        std::fs::create_dir_all(t.join(".lantai/sessions")).unwrap();
+        std::fs::write(t.join(".lantai/sessions/1.json"), "{}").unwrap();
+        std::fs::write(t.join(".lantai/logs/bridge.log"), "host log").unwrap();
+
+        assert_eq!(migrate_engine_data(&t).unwrap(), EngineDataMigrateStatus::Migrated);
+        // 引擎文件已搬
+        assert!(t.join(".hologram/hologram.db").exists());
+        assert!(t.join(".hologram/hologram.db-wal").exists());
+        assert!(t.join(".hologram/hologram.db-shm").exists());
+        assert!(t.join(".hologram/vectors.usearch").exists());
+        assert!(t.join(".hologram/baseline.json").exists());
+        assert!(t.join(".hologram/logs/engine.log").exists());
+        assert!(!t.join(".lantai/hologram.db").exists());
+        assert!(!t.join(".lantai/vectors.usearch").exists());
+        // 宿主数据留驻
+        assert!(t.join(".lantai/sessions/1.json").exists());
+        assert!(t.join(".lantai/logs/bridge.log").exists());
     }
 
     #[test]
-    fn migrate_idempotent() {
-        let tmp = std::env::temp_dir().join("lantai_test_migrate_idem");
-        let _ = std::fs::remove_dir_all(&tmp);
-        std::fs::create_dir_all(tmp.join(".hologram")).unwrap();
-        let _ = migrate_hologram_to_lantai(&tmp).unwrap();
-        let r = migrate_hologram_to_lantai(&tmp).unwrap();
-        assert_eq!(r, MigrateStatus::NoOldData);
-        let _ = std::fs::remove_dir_all(&tmp);
+    fn migrate_db_conflict_keeps_group_together() {
+        let t = tmp("conflict");
+        std::fs::create_dir_all(t.join(".lantai")).unwrap();
+        std::fs::create_dir_all(t.join(".hologram")).unwrap();
+        std::fs::write(t.join(".lantai/hologram.db"), "old db").unwrap();
+        std::fs::write(t.join(".lantai/hologram.db-wal"), "old wal").unwrap();
+        std::fs::write(t.join(".hologram/hologram.db"), "new db").unwrap();
+
+        assert_eq!(migrate_engine_data(&t).unwrap(), EngineDataMigrateStatus::Migrated);
+        // 双侧 db 都不动，wal 也不得单独搬走（组语义——防半套数据库）
+        assert_eq!(
+            std::fs::read_to_string(t.join(".hologram/hologram.db")).unwrap(),
+            "new db"
+        );
+        assert_eq!(
+            std::fs::read_to_string(t.join(".lantai/hologram.db")).unwrap(),
+            "old db"
+        );
+        assert!(t.join(".lantai/hologram.db-wal").exists(), "组冲突时 wal/shm 不单独搬");
+    }
+
+    #[test]
+    fn migrate_is_idempotent() {
+        let t = tmp("idem");
+        std::fs::create_dir_all(t.join(".lantai")).unwrap();
+        std::fs::write(t.join(".lantai/hologram.db"), "db").unwrap();
+        assert_eq!(migrate_engine_data(&t).unwrap(), EngineDataMigrateStatus::Migrated);
+        // 二跑：.lantai 已无引擎数据 → NoData，零副作用
+        assert_eq!(migrate_engine_data(&t).unwrap(), EngineDataMigrateStatus::NoData);
+        assert_eq!(
+            std::fs::read_to_string(t.join(".hologram/hologram.db")).unwrap(),
+            "db"
+        );
     }
 }

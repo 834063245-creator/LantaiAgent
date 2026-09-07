@@ -16,9 +16,11 @@ pub mod edge;
 pub mod graph;
 pub mod id;
 pub mod ignore;
+pub mod paths;
 
 pub use node::{Node, NodeKind, set_code_extensions};
 pub use edge::{Edge, EdgeKind};
 pub use graph::Graph;
 pub use id::{EdgeId, NodeId};
 pub use ignore::{is_ignored_dir_name, is_ignored_path, IGNORED_DIRS};
+pub use paths::{DATA_DIR_NAME, data_dir};

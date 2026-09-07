@@ -151,7 +151,7 @@ impl GraphStore {
         }
 
         // JSON 迁移回退
-        let json_path = project_root.join(".lantai").join("hologram_graph.json");
+        let json_path = hologram_graph::data_dir(project_root).join("hologram_graph.json");
         if json_path.exists() {
             info!("[store] 从 JSON 迁移: {}", json_path.display());
             match Graph::from_json_file(&json_path.to_string_lossy()) {
@@ -318,7 +318,7 @@ impl GraphStore {
         drop(idx);
 
         let project_root = self.project_root.clone();
-        let vector_path = project_root.join(".lantai").join("vectors.usearch");
+        let vector_path = hologram_graph::data_dir(&project_root).join("vectors.usearch");
 
         let handle = std::thread::spawn(move || {
             // 并发守卫：与全量重建互斥（按索引文件路径键控），避免同时写同一索引文件

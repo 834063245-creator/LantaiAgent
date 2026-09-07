@@ -212,7 +212,7 @@ pub struct StaleCheck {
 
 /// 缓存新鲜度核心（纯函数，可单测）—— 基准 = SQLite 最近一次图持久化
 /// 时刻（`graph_generated_at`，冷启动实际读取的产物）；旧库无该 meta 时
-/// 回退 .lantai/hologram.db 的 mtime；无任何基准 → 视为过期（触发重分析
+/// 回退 .hologram/hologram.db 的 mtime；无任何基准 → 视为过期（触发重分析
 /// 补全）。遍历规则单一真源：扩展名 = grammar 注册表（+.proto，gRPC 合成
 /// 器依赖），忽略 = discovery 的 is_ignored_path（含虚拟环境前缀与
 /// gitignore 锚定语义）。旧 hologram_graph.json mtime 回退基准已随该
@@ -226,7 +226,7 @@ pub fn compute_cache_stale(root: &std::path::Path, generated_at_ms: Option<u64>)
                 .checked_add(std::time::Duration::from_millis(ms))
                 .map(|t| (t, "graph_generated_at"))
         } else {
-            std::fs::metadata(root.join(".lantai").join("hologram.db"))
+            std::fs::metadata(hologram_graph::data_dir(root).join("hologram.db"))
                 .ok()
                 .and_then(|m| m.modified().ok())
                 .map(|t| (t, "db_mtime"))

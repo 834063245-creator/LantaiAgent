@@ -422,7 +422,7 @@ impl Engine {
         // ponytail: 使用步骤 5.9 中已填充 snippet 的节点。
         // 在后台线程运行 — 不阻塞流水线完成。
         let vector_nodes: Vec<hologram_graph::Node> = result.graph.nodes_iter().map(|(_, n)| n.clone()).collect();
-        let vector_path = project_root.join(".lantai").join("vectors.usearch");
+        let vector_path = hologram_graph::data_dir(project_root).join("vectors.usearch");
         let vector_root = project_root.to_path_buf();
         std::thread::spawn(move || {
             // 并发守卫：与增量重建互斥（按索引文件路径键控），避免两个线程同时写同一索引文件

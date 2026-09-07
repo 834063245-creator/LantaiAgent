@@ -31,12 +31,12 @@ pub struct SqliteDb {
 }
 
 impl SqliteDb {
-    /// 在 `<project_root>/.lantai/hologram.db` 打开（或创建）数据库。
+    /// 在 `<project_root>/.hologram/hologram.db` 打开（或创建）数据库。
     /// 首次运行时创建 schema。
     pub fn open(project_root: &Path) -> Result<Self, String> {
-        let hologram_dir = project_root.join(".lantai");
+        let hologram_dir = hologram_graph::data_dir(project_root);
         std::fs::create_dir_all(&hologram_dir)
-            .map_err(|e| format!("mkdir .lantai: {}", e))?;
+            .map_err(|e| format!("mkdir {}: {}", hologram_dir.display(), e))?;
         let db_path = hologram_dir.join("hologram.db");
 
         let conn = Connection::open(&db_path)

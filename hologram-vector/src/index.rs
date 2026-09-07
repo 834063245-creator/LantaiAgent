@@ -285,7 +285,7 @@ fn index_mtime(path: &std::path::Path) -> Option<std::time::SystemTime> {
 /// 获取或创建给定项目根目录的缓存 CodeVectorIndex（按根键控）。
 /// 首次访问时从磁盘加载；索引文件 mtime 变化时自动重载。
 pub fn get_or_load_index(project_root: &std::path::Path) -> Result<(Arc<RwLock<Option<usearch::Index>>>, Arc<RwLock<Vec<String>>>), String> {
-    let path = project_root.join(".lantai").join("vectors.usearch");
+    let path = hologram_graph::data_dir(project_root).join("vectors.usearch");
     let current_mtime = index_mtime(&path);
     let mut cache = CACHED_INDEX.lock().map_err(|e| format!("vector cache lock: {e}"))?;
 
@@ -308,7 +308,7 @@ pub fn get_or_load_index(project_root: &std::path::Path) -> Result<(Arc<RwLock<O
 /// L4 起按根失效——B 工作区重建不得误伤 A 的热缓存。
 pub fn invalidate_cache(project_root: &std::path::Path) {
     if let Ok(mut cache) = CACHED_INDEX.lock() {
-        cache.remove(&project_root.join(".lantai").join("vectors.usearch"));
+        cache.remove(&hologram_graph::data_dir(project_root).join("vectors.usearch"));
     }
 }
 
@@ -440,7 +440,7 @@ mod tests {
     #[test]
     fn test_cache_invalidates_on_index_update() {
         let root = std::env::temp_dir().join(format!("hologram_vi_cache_{}", std::process::id()));
-        let dir = root.join(".lantai");
+        let dir = hologram_graph::data_dir(&root);
         std::fs::create_dir_all(&dir).unwrap();
         let idx_path = dir.join("vectors.usearch");
 
@@ -498,7 +498,7 @@ mod tests {
     #[test]
     fn test_real_generated_index() {
         // 验证 tauri dev 期间构建的向量索引确实可用
-        let path = "D:/HoloGramHG/.lantai/vectors.usearch";
+        let path = "D:/HoloGramHG/.hologram/vectors.usearch";
         if !std::path::Path::new(path).exists() {
             eprintln!("跳过: 未找到 {path} —— 请先运行 analyze");
             return;
