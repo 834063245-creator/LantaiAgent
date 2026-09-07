@@ -1,7 +1,7 @@
 # 兰台（Lantai）— 核心能力与技术架构
 
 > © 2026 Wenbing Jing. MIT License.
-> 最后更新：2026-09-03（插件 bundle 退役竣工：第一方插件 14 内核 + 30 出厂产物——exe 只留装配台，改插件 = 换产物不重编译；装载调度 = cordis fiber PENDING 挂起 + boot 全 ACTIVE 审计 fail-loud）
+> 最后更新：2026-09-08（引擎-宿主逻辑全断竣工：壳摘 hologram-graph/storage/vector 全部 crate 依赖——壳对引擎的知识收敛为「spawn 二进制 + MCP 协议」两条；引擎数据分居自有目录 `.hologram/`（启动自动搬迁老 `.lantai` 引擎文件）；引擎资产（onnxruntime/models/grammars）归位 engine/）
 
 兰台（Lantai）不是一个单纯的"代码图谱可视化工具"。它的本质是一个 **Harness Engineering 平台**——将多种成熟软件工程模式（依赖分析、约束治理、变更预演、沙箱隔离、Agent 自主执行等）编排为统一 Harness，并通过内置 Agent 与对外 MCP 服务将这些能力开放给人和 AI。桌面主界面是**注疏案卷**（纸壳）；工作台本体经八条贡献通道**完全插件化**——出厂态零硬编码特权行，第一方能力与第三方插件在同一注册表上竞争；**30 个出厂产物从磁盘通道装载**（exe 只留 14 内核装配台——改插件 = 换产物，永不重编译 exe）。
 
@@ -39,15 +39,17 @@
 │  └────┬─────┘  └────┬─────┘  └───────┬───────────┘  │
 │       └─────────────┴────────────────┘              │
 │  全局槽 ENGINE（Arc<Engine>——回退锚点，非唯一实例）      │
-│  Engine 单根实例 × N（每工作区一个，StoreHost 注入）      │
+│  Engine 单根实例 × N（每工作区一个，StoreHost 自开自持）  │
+│  数据目录自有：<root>/.hologram（引擎独占，宿主零句柄）    │
 │  ── L5b crate 化：四层 crate，引擎只留「分析器」──       │
-│  hologram-graph（纯类型：Node/Edge/Graph/ID 驻留器）    │
+│  hologram-graph（纯类型：Node/Edge/Graph/ID 驻留器 +    │
+│    数据目录真源 paths::data_dir）                      │
 │  hologram-vector（纯计算：usearch 索引 + MiniLM 嵌入）   │
 │  hologram-storage（数据家：GraphStore/SQLite/快照/     │
-│    StoreHost 所有权单元；依赖 graph+vector，不依赖 engine）│
-│  engine（分析器 + 三门面再导出，内部路径零改动）          │
+│    StoreHost 引擎自开自持；依赖 graph+vector）           │
+│  engine（分析器 + CLI/MCP 二进制）                      │
 └──────────────────────┬──────────────────────────────┘
-                       │ 进程管理 (McpManager) + IPC
+                       │ 进程外传输（engine_transport）+ stdio MCP
 ┌──────────────────────┴──────────────────────────────┐
 │              Tauri 桌面 Shell (Rust)                  │
 │  ┌──────────┐ ┌─────────┐ ┌────────┐ ┌───────────┐  │
@@ -56,12 +58,12 @@
 │  └──────────┘ └─────────┘ └────────┘ └───────────┘  │
 │  ┌──────────────────────────────────────────────┐   │
 │  │ 应用层 app/（L1 新生）：WorkspaceDataContext    │   │
-│  │ 按工作区实例化——每工作区一个专属 Engine +         │   │
-│  │ StoreHost（图库/索引/时间线所有权单元）；          │   │
-│  │ 会话 attach 事实校验（卷快照 workspace 字段）；    │   │
+│  │ 按工作区实例化——每工作区一个进程外引擎传输       │   │
+│  │（spawn engine serve 子进程，stdio MCP；          │   │
+│  │  惰性构造，随上下文回收关停）；                    │   │
 │  │ 命令族业务（services/：graph/hologram/dispatch/  │   │
 │  │ workspace/dataflow）+ 决议链（显式 path →        │   │
-│  │ _session_id → 焦点会话 → 单槽 → 全局兜底）        │   │
+│  │ 活动单槽工作区 → None）                           │   │
 │  └──────────────────────────────────────────────┘   │
 │         单一 RPC 入口 (rpc.rs 147 个方法薄壳)          │
 └──────────────────────┬──────────────────────────────┘
@@ -79,15 +81,15 @@
 ```
 
 三层各自独立编译，通过明确边界通信：
-- **Engine** 是纯 Rust 库 + CLI 二进制，可独立 `serve` 作为 MCP 服务器；**兰台 Phase 3 起零内嵌**（无 hologram-engine path 依赖）——每工作区由壳 spawn 一个 `engine serve` 子进程，经 `engine_transport`（stdio MCP）消费，Engine 崩溃自动重启；**数据文件（hologram.db/FTS5/快照/向量）的所有权在 StoreHost**，由宿主创建注入——Engine 是计算与访问的执行方，不是数据的唯一拥有者。**L5b crate 化后 Rust 侧为四层 crate**（根 workspace）：`hologram-graph`（纯类型）← `hologram-vector`（纯计算）← `hologram-storage`（数据家，不依赖 engine）← `hologram-engine`（分析器；graph/storage/vector 三门面再导出，内部 `crate::storage::*` 路径零改动；壳层直连独立 crate，守卫测试钉死）。**免编译扩展面（Phase 4）**：`src/plugins/` 读 `HOLOGRAM_PLUGIN_DIR` manifest 声明 language/framework/tool 三类扩展，不改一行 Rust（`examples/engine-plugins/`，契约 = `docs/agents/engine-plugin-contract.md` v4）
+- **Engine** 是纯 Rust 库 + CLI 二进制，可独立 `serve` 作为 MCP 服务器；**兰台 Phase 3 起零内嵌**（无 hologram-engine path 依赖）——每工作区由壳 spawn 一个 `engine serve` 子进程，经 `engine_transport`（stdio MCP）消费，Engine 崩溃自动重启；**引擎-宿主逻辑全断（2026-09-08，engine-host-severance）**：数据文件（hologram.db/FTS5/快照/向量/基线）所有权独占归引擎进程，落引擎自有数据目录 `<root>/.hologram/`（真源 `hologram_graph::paths`；老 `.lantai` 里的引擎文件由 `migrate_engine_data` 在 `engine_init` 顶部自动搬迁，冲突告警不搬）；壳侧三条数据 crate path 依赖全摘——对引擎的全部知识 = 二进制 + MCP 协议（守卫测试 `shell_has_zero_hologram_crate_refs` 钉死）。**Rust 侧四层 crate**（根 workspace）：`hologram-graph`（纯类型 + 数据目录真源）← `hologram-vector`（纯计算）← `hologram-storage`（数据家，不依赖 engine）← `hologram-engine`（分析器 + CLI/MCP 二进制）。**免编译扩展面（Phase 4）**：`src/plugins/` 读 `HOLOGRAM_PLUGIN_DIR` manifest 声明 language/framework/tool 三类扩展，不改一行 Rust（`examples/engine-plugins/`，契约 = `docs/agents/engine-plugin-contract.md` v4）
 - **Tauri Shell** 是通道（rpc.rs 薄壳）、权限守卫与进程管理者；**业务编排在应用层 `src-tauri/src/app/`**（数据上下文 + services），插件安装/授权通道也在此层
 - **前端** 是 Agent 运行时和用户界面（注疏案卷纸壳 + 组合层/插件系统），通过 `typedRpc()` / `typedListen()`（`rpc-contract.ts`）与后端通信
 
 ### 2.1 关键运行时事实
 
-- **数据上下文（L1 应用层）**：`AppContexts`（Tauri state）持有「canonical 根 → WorkspaceDataContext」注册表与会话绑定表。每个上下文 = 该工作区专属 `Arc<Engine>` + StoreHost 共享句柄；**会话 attach = 事实校验**（卷快照 `workspace` 字段为准、目录在才绑定；卷缺/字段空/坏卷 → Ungrouped 会话照常可用）；「当前工作区」退化为 UI 投影（焦点会话推导）。空闲上下文 GC（无会话绑定且非焦点且非单槽活跃）。
-- **Engine 多实例（L1/L2）**：`Engine::open(root)` 绑定单根终身不变（宿主开 StoreHost 注入，返回即 Ready）；`new_shared` = open + Arc + Weak 自引用 + 自动 watcher。全局槽 `ENGINE: RwLock<Option<Arc<Engine>>>` 仅作无决议信息调用（engine 二进制 / MCP serve）的回退锚点；壳层每次 ensure 上下文都把全局槽指向同一 Arc（杜绝同根双实例漂移）。
-- **引擎决议链（L1）**：图命令族（hologram_call / get_graph_* / engine_impact / run_check / 时间线）按「显式 path → `_session_id`（agentInvoke 恒注入活跃会话）→ 焦点会话 → 单槽工作区 → 全局兜底」决议引擎实例；hologram_call 在 spawn_blocking 线程经 `with_current`（线程局部当前引擎）绑定 dispatch——ToolRegistry 处理器自动吃到正确实例，跨工作区并行零锁串行零换绑竞态。壳层全局函数直连点由白名单守卫测试钉死。
+- **数据上下文（L1 应用层）**：`AppContexts`（Tauri state）持有「canonical 根 → WorkspaceDataContext」注册表。每个上下文 = 该工作区专属的**进程外引擎传输**（spawn `engine serve` 子进程，stdio MCP；惰性构造，随上下文回收关停）；**引擎数据零句柄**（所有权归引擎进程与其 `.hologram/` 目录）。决议链 = 显式 path → 活动单槽工作区 → None。空闲上下文 GC（关停引擎子进程 + 移除出注册表）。
+- **Engine 多实例（L1/L2）**：`Engine::open(root)` 绑定单根终身不变（引擎自开 StoreHost，返回即 Ready）；`new_shared` = open + Arc + Weak 自引用 + 自动 watcher。全局槽 `ENGINE: RwLock<Option<Arc<Engine>>>` 仅作 engine 二进制自身（MCP serve / CLI）的回退锚点——进程外形态下壳不可见此槽，同根双实例由「每根一传输一进程」结构性杜绝。
+- **引擎决议链（L1）**：图命令族（hologram_call / get_graph_* / engine_impact / run_check / 时间线）按「显式 path → 活动工作区（单槽 WorkspaceState）→ None」决议引擎传输；hologram_call 经 transport 落对应工作区的子进程，跨工作区天然进程级隔离。壳层对 engine 全局函数直连点、对 hologram-* crate 引用双双由守卫测试钉死为零。
 - **WorkspaceHandle（Rust）**：持有单个打开项目的壳层状态（权限上下文、watcher、审计、上下文引擎句柄）；壳层 watcher 增量落本实例（不吃全局）。
 - **ResourceLedger**：统一生命周期管理。所有有生命周期需求的后端服务（LlmProxy、BgJobs、Mcp、Pty、Lsp、UiaWorker、MemoryBundle、Logging 共 8 个）实现 `LifecycleService` trait 并注册，退出时按序 drain（总预算 2s + 3s 强退）。
 - **Workspace（前端）**：统一状态容器，替代 18+ 个模块级全局变量；原子化工作区切换（`old.deactivate()` → `Workspace.open()` → 注入）。生命周期原语已内核化为 vendored cordis（`src-ui/src/cordis/`，同 DSH 做法）：工作区级资源以 fiber effect 登记（获取点就地），Agent 挂身份 fiber（`hologram/agent`，清理仍走 DisposerBag 同步快通道），子系统以 Service 挂树（`LspService` 样板）；`deactivate()` = fiber dispose-to-quiescence + epoch 推进。epoch 代际防护永久保留——fiber 管所有权，epoch 管逃逸所有权的在途回调（详见 `docs/archive/cordis-migration/`）。
@@ -336,9 +338,9 @@ Agent 的装配面（工具行 / prompt 段 / capability 三类行源）全部�
 
 ### 5.1 统一 Engine API
 
-`engine/src/engine/mod.rs` 用单一 `Engine` 结构体替换了分散全局变量（CACHED_GRAPH / GRAPH_STORE / ANALYZE_LOCK）；L2 起**存储外置**——图库与时间线连接住在 `storage::StoreHost`（所有权单元），由宿主（壳层数据上下文 / engine 二进制）创建并注入共享句柄：
+`engine/src/engine/mod.rs` 用单一 `Engine` 结构体替换了分散全局变量（CACHED_GRAPH / GRAPH_STORE / ANALYZE_LOCK）；L2 起**存储外置**——图库与时间线连接住在 `hologram_storage::StoreHost`（所有权单元），**引擎自开自持**（数据落引擎自有目录 `<root>/.hologram/`；2026-09-08 起壳侧零句柄）：
 
-- **构造即绑根**：`Engine::open(root)`（宿主开 StoreHost 注入，返回即 Ready）；`new_shared(root)` = open + Arc + Weak 自引用 + 自动 watcher（生产共享形态）。**单根终身不变**——切换工作区 = 新建实例（`engine_init` 全局路径自行换整个实例，旧实例 watcher 经 Weak 自灭）。
+- **构造即绑根**：`Engine::open(root)`（引擎自开 StoreHost，返回即 Ready）；`new_shared(root)` = open + Arc + Weak 自引用 + 自动 watcher（生产共享形态）。**单根终身不变**——切换工作区 = 新建实例（`engine_init` 全局路径自行换整个实例，旧实例 watcher 经 Weak 自灭）。`engine_init` 顶部先跑 `migrate_engine_data`（老 `.lantai` 引擎文件 → `.hologram`，幂等 + 冲突不搬）。
 - **状态机**：`Ready ↔ Analyzing → Error`（Loading 收敛进 StoreHost::open；Uninitialized 仅全局槽空态）
 - **并发**：`RwLock` 读写分离；timeline 用专用 SQLite 连接（永不阻塞图锁）
 - **取消令牌**：新 analyze() 抢占旧运行（阶段边界中止），"重新分析"按钮秒响应
@@ -377,15 +379,15 @@ Agent 的装配面（工具行 / prompt 段 / capability 三类行源）全部�
 
 ### 5.4 语义向量索引（MiniLM ONNX）
 
-`engine/src/vector/` 实现代码语义搜索：
+`hologram-vector/src/`（L5b crate 化从 engine 拆出）实现代码语义搜索：
 
 - **双后端自动选择**（`embed.rs`）：
-  1. **MiniLM**（`minilm.rs` + `wordpiece.rs`）—— sentence-transformers/all-MiniLM-L6-v2 ONNX 模型（384 维），经 `ort` crate 动态加载项目自带的 `onnxruntime.dll` + 模型目录 `src-tauri/models/all-MiniLM-L6-v2/`，语义区分度高
+  1. **MiniLM**（`minilm.rs` + `wordpiece.rs`）—— sentence-transformers/all-MiniLM-L6-v2 ONNX 模型（384 维），经 `ort` crate 动态加载项目自带的 `onnxruntime.dll` + 模型目录 `engine/models/all-MiniLM-L6-v2/`（资产随引擎，2026-09-08 归位），语义区分度高
   2. **n-gram 哈希**—— 零依赖兜底，词法相似性
 - **索引存储**：usearch HNSW（Cos 度量），`slots.json` 记录节点 id 列表
 - **一致性保障**：slots.json 带嵌入后端标识，后端不匹配的旧索引自动判废（防跨嵌入空间垃圾结果）；slots 数与索引向量数必须一致；原子落盘（tmp + rename）
 - **进程级缓存**：mtime 变化自动失效重载（**按根键控**——双工作区互不踩，L4）；重建并发守卫按索引文件路径防重入
-- 索引位置：`.lantai/vectors.usearch`；后台线程构建（流水线 7.5 阶段）
+- 索引位置：`.hologram/vectors.usearch`（引擎数据目录内）；后台线程构建（流水线 7.5 阶段）
 - **暴露方式**：挂在前端 `search_code` 工具的 `vector_hits` 字段（与文本/FTS 命中合并返回），并带 `vector_backend` 标识
 
 ### 5.5 分析能力
@@ -680,7 +682,7 @@ Engine 编译为独立的 `hologram-engine.exe`。兰台（Phase 3 起）每工�
 
 ### 10.2 为什么 Tauri 壳只做通道
 
-Tauri Shell 的 `rpc.rs` 方法均为薄壳（L3 起业务编排在 `app/services/` 应用层；工具业务自 2026-09-05 能力化收口后经十一能力口直呼，模型面工具编排归 TS 域插件）。所有图谱操作经数据上下文决议到工作区专属 Engine 实例，Shell 专注于通道、权限裁决、沙箱隔离、插件安装通道。这种分离使得：
+Tauri Shell 的 `rpc.rs` 方法均为薄壳（L3 起业务编排在 `app/services/` 应用层；工具业务自 2026-09-05 能力化收口后经十一能力口直呼，模型面工具编排归 TS 域插件）。所有图谱操作经数据上下文决议到工作区专属的引擎子进程（进程外传输，2026-09-08 起壳零 crate 直连），Shell 专注于通道、权限裁决、沙箱隔离、插件安装通道。这种分离使得：
 - 权限引擎在 Engine 不可用时仍然生效
 - Engine 的测试可以完全不涉及 Tauri
 - 非 Tauri 的 Engine 消费者（纯 MCP 客户端）也能获得完整图谱能力

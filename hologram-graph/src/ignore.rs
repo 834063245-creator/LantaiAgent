@@ -4,10 +4,11 @@
 //! 通用排除规则（工具链、VCS、构建产物、运行时目录）。
 //!
 //! 原 `engine::pipeline::discovery` 的纯函数面（engine-plugin-extraction
-//! Phase 3 上收：壳层在摘除 hologram-engine 依赖后仍需同一套忽略语义，
-//! 纯函数迁图类型层 crate——后缀表 `set_code_extensions` 本就在此）。
-//! 由文件发现、watcher、简报（preflight）与壳层 fs/search 共享，
-//! 确保所有子系统中的过滤行为一致。
+//! Phase 3 上收；后缀表 `set_code_extensions` 本就在此 crate）。
+//! 引擎-宿主逻辑全断（2026-09-08）后消费面 = 引擎内部（文件发现、
+//! watcher、简报 preflight）；壳层 fs/search 的同型语义由壳自有
+//! `ignored_paths.rs` 承担——两个关注点从此各自演化，
+//! `.hologram`/`.lantai` 双名共存纪律两边照旧。
 //!
 //! 注意：不收录 `vendor`（Go/PHP 依赖树）与 `bin`（.NET 输出）——kernel
 //! 实证存在同名的真实源码目录（arch/riscv/include/uapi/asm/vendor、

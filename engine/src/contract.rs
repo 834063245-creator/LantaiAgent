@@ -96,7 +96,7 @@ pub const SHELL_METHODS: &[ShellMethodSpec] = &[
     },
     ShellMethodSpec {
         name: "save",
-        description: "持久化 store 到磁盘（.lantai/hologram.db）。壳专属。",
+        description: "持久化 store 到磁盘（.hologram/hologram.db）。壳专属。",
         params: &[],
         read_only: false,
         wired_in: "phase1",

@@ -541,13 +541,12 @@ pub(crate) fn edge_to_value(e: &Edge) -> Value {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 图聚合快照 —— 壳方法 graph_snapshot 与壳侧内嵌消费的单一真源
+// 图聚合快照 —— 壳方法 graph_snapshot 的单一真源
 // ═══════════════════════════════════════════════════════════════
 
 /// 从 Graph 组装聚合快照值（graph_snapshot 壳方法的负载形状：
 /// 计数 / kind 分布 / 边类型分布 / 社区规模 / top 扇入扇出 / 类数）。
-/// pub 供壳层（src-tauri 内嵌形态）复用 —— Phase 2 transport 后壳改经
-/// MCP 调同一方法，本函数回归引擎内单一消费。
+/// 进程外形态下壳经 MCP 调同一壳方法，本函数是引擎内单一消费源。
 pub fn graph_snapshot_value(g: &Graph, source_root: &str) -> Value {
     // BTreeMap：契约面确定性（HashMap 序列化序不稳定，字节契约）。
     let mut kind_counts: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
@@ -1030,7 +1029,7 @@ fn all_schemas() -> &'static [ToolSchema] {
         },
         ToolSchema {
             name: "save",
-            description: "[SHELL] Persist the store to disk (.lantai/hologram.db).",
+            description: "[SHELL] Persist the store to disk (.hologram/hologram.db).",
             params: &[],
             required: &[],
             read_only: false,
@@ -1061,7 +1060,7 @@ fn all_schemas() -> &'static [ToolSchema] {
         },
         ToolSchema {
             name: "diff",
-            description: "[SHELL] Baseline diff: baseline.json (default <root>/.lantai/baseline.json, override with baseline_path) vs current graph.",
+            description: "[SHELL] Baseline diff: baseline.json (default <root>/.hologram/baseline.json, override with baseline_path) vs current graph.",
             params: &[p!("baseline_path", "string", "Baseline file path (optional)")],
             required: &[],
             read_only: true,

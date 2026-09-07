@@ -7,9 +7,10 @@
 //! `hologram.db` / FTS5 / 快照 / 向量索引文件的所有权单元（`StoreHost`）与
 //! 读写实现（`GraphStore` / `MemoryIndex` / `SqliteDb` / 快照编解码）住在这里。
 //!
-//! 归属语义：数据文件按工作区打开，由宿主（壳层数据上下文 / engine 二进制的
-//! 进程级宿主）创建并**注入** Engine——Engine 是使用方不是唯一拥有方
-//! （语义自 L2-C5 StoreHost 落地起不变，本次只是物理搬家）。
+//! 归属语义（引擎-宿主逻辑全断 2026-09-08 后）：数据文件的唯一宿主 =
+//! 引擎进程——`StoreHost` 由引擎自开自持，落引擎自有数据目录
+//! `<root>/.hologram/`（真源 hologram_graph::paths）。壳层不持任何数据
+//! 句柄（曾经的双进程同库并发形态已随壳侧 StoreHost 退役消亡）。
 //!
 //! 依赖方向（健康）：storage → graph（类型词汇）+ vector（增量向量重建，
 //! 纯计算层）。不再依赖 engine——数据家与分析器物理分家。
@@ -29,10 +30,10 @@ use std::path::Path;
 
 /// 数据宿主（L2 存储外置）——图库 + 专用时间线连接的**所有权单元**。
 ///
-/// 归属语义：数据文件（hologram.db / FTS5 / 快照）按工作区打开，由宿主
-/// （壳层数据上下文 / engine 二进制的进程级宿主）创建并**注入** Engine——
-/// Engine 是使用方不是唯一拥有方，分析与查询经共享句柄（`Arc<Mutex<StoreHost>>`）
-/// 落库。timeline 用独立连接，永不阻塞图库锁（原 Engine 内两把锁的语义原样保留）。
+/// 归属语义（2026-09-08 起）：宿主 = 引擎进程——`StoreHost` 自开自持，
+/// 数据文件（hologram.db / FTS5 / 快照）落引擎自有数据目录
+/// `<root>/.hologram/`。timeline 用独立连接，永不阻塞图库锁
+/// （原 Engine 内两把锁的语义原样保留）。
 pub struct StoreHost {
     /// 图存储（MemoryIndex + SQLite + 快照路径）。
     pub store: GraphStore,

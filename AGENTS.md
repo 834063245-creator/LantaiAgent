@@ -66,8 +66,8 @@ HoloGram/（根 Cargo.toml = workspace，五成员）
 │                      声明 language/framework/tool 三类扩展（示例 examples/engine-plugins/，
 │                      契约与失败语义见 engine/src/plugins/mod.rs 头注 + engine_status.extensions）
 ├── src-tauri/         Tauri 2 桌面壳（rpc.rs 单一 IPC 入口 + 权限沙箱 + app/ 应用层 + 命令薄壳）
-│   ├── src/app/       应用层（L1 分层重构）：WorkspaceDataContext 按工作区实例化 + 会话 attach
-│   │                  事实校验 + services/ 命令族业务（决议链：显式 path → _session_id → 焦点 → 单槽）
+│   ├── src/app/       应用层（L1 分层重构）：WorkspaceDataContext 按工作区实例化
+│   │                  （每工作区一个进程外引擎传输；决议链：显式 path → 活动单槽）
 │   ├── src/commands/  RPC 命令薄壳（业务在 app/services/；横切权限/进程留壳）
 ├── src-ui/            TypeScript 前端（React 19 + Three.js + Monaco + Zustand 5）
 │   ├── src/app/       新观测台壳（单 React 根；新 UI 落这里）
@@ -79,7 +79,6 @@ HoloGram/（根 Cargo.toml = workspace，五成员）
 │   └── src/agent/     Agent 运行时、工具层、多 Agent、goal/plan
 ├── docs/              架构/ADR/交接/研究；archive/ 是历史，勿作现状依据
 ├── assets/            图标、UI 原型
-├── grammars/          tree-sitter 动态语法产物（Kotlin/Markdown/TOML）
 ├── CLAUDE.md          内置 Agent 系统提示 + Claude Code 项目指令
 ├── AGENTS.md          本文件（Codex/OpenAI 静态注入）
 ├── CONVENTIONS.md     编码约定（开工前必读）
@@ -88,9 +87,10 @@ HoloGram/（根 Cargo.toml = workspace，五成员）
 └── ARCHITECTURE.md    系统架构总览
 ```
 
-> 壳层引用 storage/vector 类型一律直连 `hologram_storage::` / `hologram_vector::`，
-> 禁止经 `engine::storage::` / `engine::vector::` 门面（守卫测试
-> `shell_storage_vector_refs_use_dedicated_crates` 钉死，src-tauri/src/app/mod.rs）。
+> 壳层禁直连任何引擎族 crate（hologram-graph/storage/vector/engine 依赖全摘，
+> 2026-09-08 逻辑全断）——引擎消费一律走 `engine_transport`（stdio MCP）；
+> 文件忽略语义壳内自有 `ignored_paths.rs`。守卫测试
+> `shell_has_zero_hologram_crate_refs` 钉死，src-tauri/src/app/mod.rs。
 
 > `tests/` 根目录已不存在（旧 Python 测试已随引擎 Rust 化移除），不要以旧文档里的 `tests/` 路径为准。
 

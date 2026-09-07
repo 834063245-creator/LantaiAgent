@@ -248,7 +248,7 @@ pub(crate) fn handler_cache_stale(args: &Value) -> ToolResponse {
     }))
 }
 
-/// 持久化 store 到磁盘（.lantai/hologram.db）。
+/// 持久化 store 到磁盘（.hologram/hologram.db）。
 pub(crate) fn handler_save(_args: &Value) -> ToolResponse {
     match engine::engine_save() {
         Ok(()) => ToolResponse::Success(json!({ "saved": true })),
@@ -761,7 +761,7 @@ mod tests {
         assert!(v["passed"].is_boolean() && v["violation_count"].is_u64(), "CheckResult 形状: {v}");
         assert_eq!(v["changed_files"], json!(["alpha.rs"]));
         assert_eq!(v["total_changed_files"], 1);
-        // 基线已推进（.lantai/baseline.json 落盘）
+        // 基线已推进（.hologram/baseline.json 落盘）
         assert!(crate::routing::preflight::baseline_path(&root).exists(), "基线必须落盘");
         // 无变更 → 静默（quiet=true，不写基线违规轮询）
         let v2 = serde_json::from_str::<Value>(&resp_text(&handler_run_check(&json!({}))))

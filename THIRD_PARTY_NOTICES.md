@@ -6,7 +6,7 @@ applicable open source licenses.
 
 ---
 
-## 1. Bundled Dynamic Libraries (grammars/)
+## 1. Bundled Dynamic Libraries (engine/grammars/)
 
 These `.dll` files are distributed as part of the HoloGram repository and binary release.
 
@@ -315,5 +315,5 @@ SOFTWARE.
 
 ---
 
-*This file was generated on 2026-07-08. To update: review Cargo.lock and grammars/
+*This file was generated on 2026-07-08. To update: review Cargo.lock and engine/grammars/
 for new or changed dependencies.*

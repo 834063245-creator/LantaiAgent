@@ -157,7 +157,7 @@ dsh web
 
 Python · JavaScript/TypeScript/TSX · Rust · Go · Java · C/C++ · C# · Ruby · PHP · Swift · Dart · Scala · Zig · Elixir · Lua · Bash · R
 
-其余静态链接语言（OCaml · Haskell · Nix · HTML · CSS · YAML · Erlang）走 tree-sitter 通用兜底遍历；**JSON 语法在代码中禁用**（数据文件不产生图节点，不浪费解析）；**Kotlin / Markdown / TOML** 通过 `.dll`/`.so` 动态加载（`grammars/`），无需重新编译引擎即可扩展语言。
+其余静态链接语言（OCaml · Haskell · Nix · HTML · CSS · YAML · Erlang）走 tree-sitter 通用兜底遍历；**JSON 语法在代码中禁用**（数据文件不产生图节点，不浪费解析）；**Kotlin / Markdown / TOML** 通过 `.dll`/`.so` 动态加载（`engine/grammars/`），无需重新编译引擎即可扩展语言。
 
 ### MCP 工具面（36 schema，默认 35）
 

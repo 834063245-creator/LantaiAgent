@@ -24,7 +24,7 @@
 | `graph_snapshot` | 聚合快照：节点/边数、社区分布、边类型、top 扇入、类数。壳专属——进程外形态下前端不搬原始图，graphData = 一次轻量查询。 | 只读 | phase1 |
 | `file_nodes` | 按文件返回符号索引（id/name/kind/fanIn/fanOut）。壳专属——取代前端全量建索引。 | 只读 | phase1 |
 | `analyze_with_progress` | 全量分析并持久化，进度经 MCP notifications/progress 推送。force=true 跳过缓存新鲜度门；默认缓存新鲜（非空且未过期）时直接返回 cached 不重分析。壳专属。 | 写 | phase1 |
-| `save` | 持久化 store 到磁盘（.lantai/hologram.db）。壳专属。 | 写 | phase1 |
+| `save` | 持久化 store 到磁盘（.hologram/hologram.db）。壳专属。 | 写 | phase1 |
 | `fts_search` | FTS5 全文搜索（内容级，区别于 search_symbols 的符号名模糊）。壳专属。 | 只读 | phase1 |
 | `timeline_record` | 记录时间线事件（写动作）。壳专属。 | 写 | phase1 |
 | `diff` | 基线 diff：baseline.json 与当前图比对。壳专属。 | 只读 | phase1 |
