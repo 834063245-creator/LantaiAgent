@@ -30,6 +30,7 @@ import { App } from './app/App';
 import { initCordisKernel } from './cordis/boot';
 import { auditBoot } from './plugins/boot-gate';
 import { loadBuiltinPlugins, loadExternalPlugins } from './plugins/loader';
+import { registerUserMcpServerTools } from './plugins/user-mcp';
 import { bootShell } from './shell/boot';
 
 // ── 全局错误钩子（错误不静默，2026-08-28 加固）──
@@ -59,6 +60,15 @@ createRoot(appRoot).render(createElement(App));
 //    全 ACTIVE 才放行 bootShell（fail-loud：任一 FAILED / PENDING 超时 =
 //    启动不进会话，错误可见）。flowDeps 缺省 = 出厂流。──
 void (async () => {
+  // 用户级 MCP server（~/.lantai/mcp.json，skills-mcp-production-plan Commit 5b）：
+  // 在外部插件装载前折算工具贡献（ctx.tools 通道 loadBuiltinPlugins 已就绪）。
+  // 失败隔离——坏配置记日志不阻断启动。
+  try {
+    await registerUserMcpServerTools(pluginKernelRoot);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    log.error('main', '[user-mcp] ~/.lantai/mcp.json 装载失败（跳过）: ' + msg);
+  }
   await loadExternalPlugins(pluginKernelRoot);
   const audit = await auditBoot(pluginKernelRoot);
   if (!audit.ok) {

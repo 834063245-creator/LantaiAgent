@@ -190,8 +190,11 @@ export type ToolManifestDecl = z.infer<typeof ToolManifestDeclSchema>;
 /** 权限类（C11-2）——插件可声明的权限域。 */
 export type PluginPermissionClass = z.infer<typeof PLUGIN_PERMISSION_CLASS>;
 
-/** manifest.mcpServers 条目（S4-4 乙机器桥）。 */
+/** manifest.mcpServers 条目（S4-4 乙机器桥）——用户级 mcp.json 条目同构。 */
 export type McpServerDecl = z.infer<typeof McpServerDeclSchema>;
+
+/** McpServerDeclSchema 导出（用户级 mcp.json 装载复用——单一真源，不重抄）。 */
+export { McpServerDeclSchema };
 
 /** manifest.app 声明（app shell 件 A · S3）。 */
 export type AppDecl = z.infer<typeof AppDeclSchema>;
