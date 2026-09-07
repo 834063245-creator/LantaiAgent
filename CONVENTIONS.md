@@ -384,7 +384,7 @@ DOM 所有权按层划分，不要跨层抢 DOM：
 | `src-ui/src/agent/**` | `cd src-ui && npm run verify:convergence` | exit 0（T0 静态 + 全部 phase specs 对拍 8 baseline；record 永不上 CI，baseline 变更走 change request 审批） |
 | 前端格式 | `npx biome check --write <改动文件>` | 全仓 `npx biome ci .` 0 errors / 0 warnings（2026-08-24 清零，保持归零）；行尾 = LF（根 `.gitattributes`） |
 | 引擎 | `cd engine && cargo test` | lib 592 + bin 0 + doc 0（bin 测试 27 个已随 Phase 3 TCP 拆除；storage/vector/graph 测试已随 L5b crate 拆出） |
-| 壳 | `cd src-tauri && cargo test` | bins+lib 411 + 集成 1（hologram-engine 依赖已摘，引擎 = 进程外消费；cdp e2e 按环境偶现 ±1；pwsh 冒烟在无 pwsh 7 的环境自动跳过） |
+| 壳 | `cd src-tauri && cargo test` | bins+lib 460 + 集成 1（引擎族 crate 依赖全摘 2026-09-08：hologram-graph/storage/vector 出 Cargo.toml，忽略语义壳内 ignored_paths.rs，守卫 shell_has_zero_hologram_crate_refs 零直连；cdp e2e 按环境偶现 ±1；pwsh 冒烟在无 pwsh 7 的环境自动跳过） |
 | 桌面打包 | `cd src-tauri && cargo tauri build` | 会先跑前端构建；禁止用 `cargo build --release` 代替 |
 | 生成物文档 | `cd src-ui && npm run doc-sync` | 五生成器全对拍（工具契约 / service·event 目录 / 开放面指纹 / 引擎契约 v4） |
 
