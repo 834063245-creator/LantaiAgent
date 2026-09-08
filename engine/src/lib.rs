@@ -46,4 +46,5 @@ pub mod logging;    // 结构化日志（tracing + NDJSON 文件输出）
 pub mod path_utils;  // 路径规范化工具
 pub mod stress;      // 压力测试与基准评估
 pub mod lsp_manager; // LSP 服务器池管理（多语言调用解析）
+pub mod lsp_daemon;  // LSP 舰队宿主（hologram-lspd：每 root 一套共享舰队）
 pub mod scip_bridge; // SCIP 桥接（P1-1：scip-* indexer 产出 → 图）

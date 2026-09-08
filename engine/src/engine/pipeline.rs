@@ -503,6 +503,16 @@ impl Engine {
         lsp_exts.dedup();
         std::thread::spawn(move || {
             let root_str = proj_root.to_string_lossy().to_string();
+            // 宿主共享化（2026-09-09）：hologram-lspd 在线时舰队归宿主，
+            // 本地不再 warm（防双舰队）；本地残留一并收敛。
+            if crate::lsp_manager::LspManager::ensure_daemon(&root_str) {
+                if crate::lsp_manager::LspManager::local_pool_nonempty() {
+                    info!("[lsp_manager] daemon owns fleet, skip post-analysis warm (drain local)");
+                    crate::lsp_manager::LspManager::shutdown_all();
+                }
+                crate::lsp_manager::LspManager::mark_initialized(&root_str);
+                return;
+            }
             // 换工作区重分析：杀掉旧根的 LSP 服务器，避免旧进程
             // 继续占用内存（进程回收治理，2026-08-15）。
             if crate::lsp_manager::LspManager::root_changed(&root_str) {

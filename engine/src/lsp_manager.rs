@@ -35,7 +35,8 @@
 //!   防止「查询→失败→重拉→再失败」的风暴被并行查询放大。
 
 use std::collections::HashMap;
-use std::io::{BufReader, Write};
+use std::io::{BufRead, BufReader, Write};
+use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex, RwLock};
@@ -71,6 +72,11 @@ const RESPAWN_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(30)
 /// 所有 LSP 查询全线报错。低于此值时拒绝拉新服务器，工具
 /// 透明降级，原因可在 engine_status 的 lsp.error 里看到。
 const MIN_SPAWN_COMMIT_MB: u64 = 3072;
+
+/// 宿主进程身份标志（模块级静态，Rust impl 块不允许关联 static）：
+/// hologram-lspd 主函数置位——宿主内的 LspManager 调用永远走本地池，
+/// 绝不作为客户端连自己（防递归）。
+static DAEMON_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// 单个 LSP 服务器进程的句柄。
 ///
@@ -654,6 +660,9 @@ pub struct LspManager {
     /// 每个命令最近一次 spawn 尝试（含失败）的时刻，重生退避用。
     /// 多窗口并行时 N 个引擎各自重拉服务器的风暴从这里被限频。
     last_spawn: RwLock<HashMap<String, std::time::Instant>>,
+    /// 宿主拉起失败负缓存（root → 上次尝试时刻）：
+    /// 未装 hologram-lspd 的环境不逐 op 重试拉起。
+    daemon_ensure: RwLock<HashMap<String, std::time::Instant>>,
 }
 
 impl LspManager {
@@ -706,6 +715,7 @@ impl LspManager {
         // 换根/清池后退避一并清零：新根的首次 warm 不应被旧根的
         // 失败退避卡住。
         mgr.last_spawn.write().unwrap_or_else(|e| e.into_inner()).clear();
+        mgr.daemon_ensure.write().unwrap_or_else(|e| e.into_inner()).clear();
         tracing::info!(killed, "[lsp_manager] shutdown_all done");
     }
 
@@ -716,6 +726,7 @@ impl LspManager {
             initialized: RwLock::new(false),
             last_warm_errors: RwLock::new(HashMap::new()),
             last_spawn: RwLock::new(HashMap::new()),
+            daemon_ensure: RwLock::new(HashMap::new()),
         }
     }
 
@@ -831,6 +842,253 @@ impl LspManager {
     /// 工具层据此给 agent「稍后重试」而非误导性的「去装服务器」指引。
     pub(crate) fn err_is_busy(e: &str) -> bool {
         e.starts_with("LSP busy")
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // LSP 宿主客户端（hologram-lspd 共享舰队）
+    //
+    // 2026-09-09 宿主共享化（lsp-fleet-daemon-plan）：同一 root 全机
+    // 只有一套舰队（宿主进程持有），本进程的四个 op 先走宿主、
+    // 宿主不可用才回退本地池。op 级错误（busy/门禁）原样透传，
+    // 只有传输层失败（连不上/断流）才回退——保证「一套舰队」性质。
+    // ═══════════════════════════════════════════════════════════════
+
+    /// 置位宿主进程身份（hologram-lspd 专用）。
+    pub fn set_daemon_mode(on: bool) {
+        DAEMON_MODE.store(on, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// 本进程是否为 LSP 宿主。
+    pub fn is_daemon_mode() -> bool {
+        DAEMON_MODE.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// 连接 root 的活宿主；不在线 → None。
+    fn connect_daemon(root: &str) -> Option<TcpStream> {
+        let port_file = crate::lsp_daemon::port_file(std::path::Path::new(root));
+        let content = std::fs::read_to_string(port_file).ok()?;
+        let port: u16 = content.trim().parse().ok()?;
+        TcpStream::connect(("127.0.0.1", port)).ok()
+    }
+
+    /// 确保宿主在位（惰性拉起链）：connect → spawn → 轮询。
+    /// 拉起失败负缓存 60s——未装 hologram-lspd 的环境不逐 op 重试。
+    /// pub：engine_status/pipeline 的舰队治理门 + 集成测试都要用。
+    pub fn ensure_daemon(root: &str) -> bool {
+        if Self::connect_daemon(root).is_some() {
+            return true;
+        }
+        let mgr = Self::global();
+        {
+            let cache = mgr.daemon_ensure.read().unwrap_or_else(|e| e.into_inner());
+            if let Some(t) = cache.get(root) {
+                if t.elapsed() < std::time::Duration::from_secs(60) {
+                    return false;
+                }
+            }
+        }
+        mgr.daemon_ensure
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(root.to_string(), std::time::Instant::now());
+        if Self::spawn_daemon(root).is_none() {
+            return false;
+        }
+        // 短轮询等宿主绑定 + 端口文件落盘（3s 预算）
+        for _ in 0..20 {
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            if Self::connect_daemon(root).is_some() {
+                return true;
+            }
+        }
+        tracing::warn!("[lsp_manager] lspd spawn poll exhausted, falling back to local pool");
+        false
+    }
+
+    /// 拉起宿主二进制；找不到 → None（老环境/未打包，本地池降级）。
+    /// 定位顺序：HOLOGRAM_LSPD_EXE 环境变量（测试注入）→ current_exe 同目录。
+    fn spawn_daemon(root: &str) -> Option<Child> {
+        let exe: Option<PathBuf> = std::env::var("HOLOGRAM_LSPD_EXE")
+            .ok()
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::current_exe()
+                    .ok()?
+                    .parent()
+                    .map(|d| d.join(Self::lspd_exe_name()))
+            });
+        let exe = exe?;
+        if !exe.exists() {
+            tracing::debug!(exe = %exe.display(), "[lsp_manager] hologram-lspd not found, local pool fallback");
+            return None;
+        }
+        let mut c = Command::new(&exe);
+        c.args(["--root", root])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            // CREATE_NO_WINDOW：宿主无控制台弹窗（与舰队 spawn 同理）
+            c.creation_flags(0x08000000);
+        }
+        c.spawn().ok()
+    }
+
+    fn lspd_exe_name() -> &'static str {
+        if cfg!(windows) { "hologram-lspd.exe" } else { "hologram-lspd" }
+    }
+
+    /// 一次 op 往返：一行请求 → 一行响应。
+    /// 传输层失败返回 Err（`[lspd-transport]` 前缀，调用方据此回退本地池）；
+    /// 宿主应答（含 op 级错误）返回 Ok(resp)。
+    fn daemon_call(root: &str, req: Value) -> Result<Value, String> {
+        let mut stream = Self::connect_daemon(root)
+            .ok_or_else(|| "[lspd-transport] connect failed".to_string())?;
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(15)))
+            .map_err(|e| format!("[lspd-transport] set timeout: {e}"))?;
+        stream
+            .set_write_timeout(Some(std::time::Duration::from_secs(15)))
+            .map_err(|e| format!("[lspd-transport] set timeout: {e}"))?;
+        let mut line = req.to_string();
+        line.push('\n');
+        stream
+            .write_all(line.as_bytes())
+            .map_err(|e| format!("[lspd-transport] write: {e}"))?;
+        let mut reader = BufReader::new(stream);
+        let mut resp = String::new();
+        reader
+            .read_line(&mut resp)
+            .map_err(|e| format!("[lspd-transport] read: {e}"))?;
+        if resp.trim().is_empty() {
+            return Err("[lspd-transport] empty response".to_string());
+        }
+        serde_json::from_str(resp.trim())
+            .map_err(|e| format!("[lspd-transport] parse: {e}"))
+    }
+
+    /// 四 op 的宿主优先包装：
+    /// - None → 宿主不可用（离线/本进程是宿主/无根），调用方走本地池
+    /// - Some(Ok/Err) → 宿主已应答，结果（含 op 级错误）原样返回
+    fn try_daemon_locations(
+        op: &str,
+        file_path: &str,
+        source: &str,
+        line: u32,
+        column: u32,
+        ext: &str,
+    ) -> Option<Result<Vec<LspLocation>, String>> {
+        if Self::is_daemon_mode() {
+            return None;
+        }
+        let root = Self::global()
+            .project_root
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()?;
+        if !Self::ensure_daemon(&root) {
+            return None;
+        }
+        // 相对路径客户端先转绝对（与本地 prepare() 同规则）
+        let abs_path = if PathBuf::from(file_path).is_absolute() {
+            file_path.to_string()
+        } else {
+            format!("{}/{}", root, file_path)
+        };
+        let req = json!({
+            "op": op,
+            "file": abs_path,
+            "source": source,
+            "line": line,
+            "column": column,
+            "ext": ext,
+        });
+        match Self::daemon_call(&root, req) {
+            Ok(resp) => {
+                if resp["ok"].as_bool().unwrap_or(false) {
+                    let locs: Vec<LspLocation> = resp["locations"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(crate::lsp_daemon::location_from_json)
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    Some(Ok(locs))
+                } else {
+                    Some(Err(
+                        resp["error"].as_str().unwrap_or("lspd op failed").to_string()
+                    ))
+                }
+            }
+            Err(_) => None, // 传输层失败 → 本地池
+        }
+    }
+
+    /// hover（resolve_type）的宿主优先包装，语义同 [`Self::try_daemon_locations`]。
+    fn try_daemon_hover(
+        file_path: &str,
+        source: &str,
+        line: u32,
+        column: u32,
+        ext: &str,
+    ) -> Option<Result<String, String>> {
+        if Self::is_daemon_mode() {
+            return None;
+        }
+        let root = Self::global()
+            .project_root
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()?;
+        if !Self::ensure_daemon(&root) {
+            return None;
+        }
+        let abs_path = if PathBuf::from(file_path).is_absolute() {
+            file_path.to_string()
+        } else {
+            format!("{}/{}", root, file_path)
+        };
+        let req = json!({
+            "op": "hover",
+            "file": abs_path,
+            "source": source,
+            "line": line,
+            "column": column,
+            "ext": ext,
+        });
+        match Self::daemon_call(&root, req) {
+            Ok(resp) => {
+                if resp["ok"].as_bool().unwrap_or(false) {
+                    Some(Ok(resp["hover"].as_str().unwrap_or("").to_string()))
+                } else {
+                    Some(Err(
+                        resp["error"].as_str().unwrap_or("lspd op failed").to_string()
+                    ))
+                }
+            }
+            Err(_) => None,
+        }
+    }
+
+    /// 宿主的 LSP 状态（engine_status 合并用）；离线 → None。
+    pub fn daemon_lsp_status(root: &str) -> Option<Vec<Value>> {
+        let resp = Self::daemon_call(root, json!({"op": "status"})).ok()?;
+        if !resp["ok"].as_bool().unwrap_or(false) {
+            return None;
+        }
+        resp["status"].as_array().cloned()
+    }
+
+    /// 本地池是否还有活服务器（宿主接管时的收敛检查用）。
+    pub fn local_pool_nonempty() -> bool {
+        let mgr = Self::global();
+        let pool = mgr.pool.read().unwrap_or_else(|e| e.into_inner());
+        pool.values().any(|arc| {
+            arc.lock().map(|g| g.is_some()).unwrap_or(false)
+        })
     }
 
     /// 预热服务器池——并行启动所有已配置的 LSP 服务器。
@@ -1349,6 +1607,10 @@ impl LspManager {
         column: u32,
         ext: &str,
     ) -> Result<Vec<LspLocation>, String> {
+        // 宿主优先：共享舰队在线时走宿主；传输层失败才回退本地池
+        if let Some(result) = Self::try_daemon_locations("definition", file_path, source, line, column, ext) {
+            return result;
+        }
         let mgr = Self::global();
         if !*mgr.initialized.read().unwrap_or_else(|e| e.into_inner()) {
             return Err("LSP pool not initialized".into());
@@ -1378,6 +1640,10 @@ impl LspManager {
         column: u32,
         ext: &str,
     ) -> Result<String, String> {
+        // 宿主优先
+        if let Some(result) = Self::try_daemon_hover(file_path, source, line, column, ext) {
+            return result;
+        }
         let (uri, lang_id) = Self::prepare(file_path, ext)?;
         let server_arc = Self::get_or_warm_server(ext)?;
         let source = source.to_string();
@@ -1395,6 +1661,10 @@ impl LspManager {
         column: u32,
         ext: &str,
     ) -> Result<Vec<LspLocation>, String> {
+        // 宿主优先
+        if let Some(result) = Self::try_daemon_locations("implementation", file_path, source, line, column, ext) {
+            return result;
+        }
         let (uri, lang_id) = Self::prepare(file_path, ext)?;
         let server_arc = Self::get_or_warm_server(ext)?;
         let source = source.to_string();
@@ -1412,6 +1682,10 @@ impl LspManager {
         column: u32,
         ext: &str,
     ) -> Result<Vec<LspLocation>, String> {
+        // 宿主优先
+        if let Some(result) = Self::try_daemon_locations("references", file_path, source, line, column, ext) {
+            return result;
+        }
         let (uri, lang_id) = Self::prepare(file_path, ext)?;
         let server_arc = Self::get_or_warm_server(ext)?;
         let source = source.to_string();
@@ -1857,6 +2131,55 @@ time.sleep(0.2)
         let mgr = LspManager::global();
         *mgr.initialized.write().unwrap_or_else(|e| e.into_inner()) = false;
         *mgr.project_root.write().unwrap_or_else(|e| e.into_inner()) = None;
+    }
+
+    #[test]
+    fn test_daemon_mode_never_connects_to_itself() {
+        // 宿主自连防护：hologram-lspd 进程内的 op 必须永远走本地池，
+        // 即使端口文件存在（指向自己）也绝不入客户端路径（防递归）。
+        let _guard = crate::engine::global_engine_test_guard();
+        let root = std::env::temp_dir().join(format!("hologram_lsp_selfconn_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&root);
+        let pf = crate::lsp_daemon::port_file(&root);
+        let _ = std::fs::write(&pf, "1"); // 伪端口：若误入客户端会触发拉起链（慢且错）
+        LspManager::mark_initialized(&root.to_string_lossy());
+
+        LspManager::set_daemon_mode(true);
+        let r = LspManager::try_daemon_locations("definition", "x.rs", "src", 0, 0, "rs");
+        assert!(r.is_none(), "daemon_mode must bypass the client path");
+        LspManager::set_daemon_mode(false);
+
+        // 还原全局状态
+        let mgr = LspManager::global();
+        *mgr.initialized.write().unwrap_or_else(|e| e.into_inner()) = false;
+        *mgr.project_root.write().unwrap_or_else(|e| e.into_inner()) = None;
+        let _ = std::fs::remove_file(&pf);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_daemon_offline_falls_back_to_local() {
+        // 宿主离线（无端口文件 + 找不到 lspd 二进制）→ op 包装返回 None，
+        // 调用方走本地池。负缓存写入独立 root，不污染其它测试。
+        let _guard = crate::engine::global_engine_test_guard();
+        let root = std::env::temp_dir()
+            .join(format!("hologram_lsp_offline_{}", std::process::id()))
+            .to_string_lossy()
+            .to_string();
+        let _ = std::fs::create_dir_all(&root);
+        let pf = crate::lsp_daemon::port_file(std::path::Path::new(&root));
+        let _ = std::fs::remove_file(&pf); // 确保离线
+        LspManager::mark_initialized(&root);
+
+        let r = LspManager::try_daemon_locations("definition", "x.rs", "src", 0, 0, "rs");
+        assert!(r.is_none(), "offline daemon must fall through to local pool");
+
+        // 还原全局状态
+        let mgr = LspManager::global();
+        *mgr.initialized.write().unwrap_or_else(|e| e.into_inner()) = false;
+        *mgr.project_root.write().unwrap_or_else(|e| e.into_inner()) = None;
+        mgr.daemon_ensure.write().unwrap_or_else(|e| e.into_inner()).clear();
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// 进程回收回归：shutdown_all 必须杀掉池中全部 LSP 子进程

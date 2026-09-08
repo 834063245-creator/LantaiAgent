@@ -1,4 +1,5 @@
 use serde_json::{json, Value};
+use tracing::info;
 use crate::analysis::*;
 use crate::engine;
 use hologram_graph::Node;
@@ -7,11 +8,11 @@ use crate::tools::{get_usize, project_root, with_store};
 use crate::tools::ToolResponse;
 
 pub(crate) fn handler_status(_args: &Value) -> ToolResponse {
-    // 仅在未初始化或项目根目录变更时预热 LSP 池。
-    //（不在每次 engine_status 轮询时重启健康的服务器。）
-    // 按已索引节点中真实出现的扩展名过滤，避免把 9 个 LSP
-    // 服务器全部 spawn 一遍。
-    {
+    // LSP 舰队治理（2026-09-09 宿主共享化）：
+    // 1) 宿主（hologram-lspd）在线 → 舰队归宿主，本地不 warm 不杀，
+    //    状态合并宿主面（shared_fleet 标记）；本地池若有残留先收敛掉。
+    // 2) 宿主离线 → 本地池自治（未初始化/换根时预热，按已索引扩展名过滤）。
+    let (lsp, fleet_shared): (Vec<serde_json::Value>, bool) = {
         let proj = project_root();
         let root = if proj.as_os_str().is_empty() {
             std::env::current_dir().unwrap_or_default()
@@ -19,46 +20,59 @@ pub(crate) fn handler_status(_args: &Value) -> ToolResponse {
             proj
         };
         let root_str = root.to_string_lossy().to_string();
-        let root_changed = crate::lsp_manager::LspManager::root_changed(&root_str);
-        if !crate::lsp_manager::LspManager::is_initialized() || root_changed {
-            if root_changed {
-                // 工作区切换：先杀旧工作区的 LSP 服务器再预热新池
-                //（旧池进程继续活着 = 浪费内存 + 用旧根解析新查询）。
+        if crate::lsp_manager::LspManager::ensure_daemon(&root_str) {
+            // 宿主接管：本地池残留（宿主曾离线时的回退舰队）收敛掉，
+            // 防双舰队并存；标记初始化让本地 op 走宿主路径。
+            if crate::lsp_manager::LspManager::local_pool_nonempty() {
+                info!("[lsp_manager] daemon owns fleet, draining local pool");
                 crate::lsp_manager::LspManager::shutdown_all();
             }
-            let mut lsp_exts: Vec<String> = Vec::new();
-            let _ = engine::engine_read(|idx| {
-                for node in idx.nodes_iter() {
-                    if let Some(file) = node.file() {
-                        if let Some(ext) = std::path::Path::new(file)
-                            .extension()
-                            .and_then(|e| e.to_str())
-                        {
-                            let ext = ext.to_ascii_lowercase();
-                            if !lsp_exts.contains(&ext) {
-                                lsp_exts.push(ext);
+            crate::lsp_manager::LspManager::mark_initialized(&root_str);
+            match crate::lsp_manager::LspManager::daemon_lsp_status(&root_str) {
+                Some(status) => (status, true),
+                None => (crate::lsp_manager::LspManager::lsp_status(), false),
+            }
+        } else {
+            let root_changed = crate::lsp_manager::LspManager::root_changed(&root_str);
+            if !crate::lsp_manager::LspManager::is_initialized() || root_changed {
+                if root_changed {
+                    // 工作区切换：先杀旧工作区的 LSP 服务器再预热新池
+                    //（旧池进程继续活着 = 浪费内存 + 用旧根解析新查询）。
+                    crate::lsp_manager::LspManager::shutdown_all();
+                }
+                let mut lsp_exts: Vec<String> = Vec::new();
+                let _ = engine::engine_read(|idx| {
+                    for node in idx.nodes_iter() {
+                        if let Some(file) = node.file() {
+                            if let Some(ext) = std::path::Path::new(file)
+                                .extension()
+                                .and_then(|e| e.to_str())
+                            {
+                                let ext = ext.to_ascii_lowercase();
+                                if !lsp_exts.contains(&ext) {
+                                    lsp_exts.push(ext);
+                                }
                             }
                         }
                     }
-                }
-            });
-            std::thread::spawn(move || {
-                if lsp_exts.is_empty() {
-                    // 尚无索引（首次打开/分析中）：不再全量 warm——
-                    // 无过滤 spawn 全部 9 个服务器是多窗口并行时的内存
-                    // 炸弹（2026-09-09 事故：6 引擎 × 全套舰队打爆 16GB
-                    // 提交内存）。只标记初始化，查询到来时经
-                    // get_or_warm_server 惰性拉起被查询的那一门语言。
-                    crate::lsp_manager::LspManager::mark_initialized(&root_str);
-                } else {
-                    let ext_filter: Vec<&str> = lsp_exts.iter().map(|s| s.as_str()).collect();
-                    crate::lsp_manager::LspManager::warm_filtered(&root_str, &ext_filter);
-                }
-            });
+                });
+                std::thread::spawn(move || {
+                    if lsp_exts.is_empty() {
+                        // 尚无索引（首次打开/分析中）：不再全量 warm——
+                        // 无过滤 spawn 全部 9 个服务器是多窗口并行时的内存
+                        // 炸弹（2026-09-09 事故：6 引擎 × 全套舰队打爆 16GB
+                        // 提交内存）。只标记初始化，查询到来时经
+                        // get_or_warm_server 惰性拉起被查询的那一门语言。
+                        crate::lsp_manager::LspManager::mark_initialized(&root_str);
+                    } else {
+                        let ext_filter: Vec<&str> = lsp_exts.iter().map(|s| s.as_str()).collect();
+                        crate::lsp_manager::LspManager::warm_filtered(&root_str, &ext_filter);
+                    }
+                });
+            }
+            (crate::lsp_manager::LspManager::lsp_status(), false)
         }
-    }
-    // LSP 状态独立于引擎状态 —— 始终收集
-    let lsp = crate::lsp_manager::LspManager::lsp_status();
+    };
     let lsp_available: Vec<&str> = lsp.iter()
         .filter(|s| s["available"].as_bool().unwrap_or(false))
         .map(|s| s["language_id"].as_str().unwrap_or(""))
@@ -68,6 +82,7 @@ pub(crate) fn handler_status(_args: &Value) -> ToolResponse {
         .map(|s| s["language_id"].as_str().unwrap_or(""))
         .collect();
     let lsp_data = json!({
+        "shared_fleet": fleet_shared,
         "available": lsp_available,
         "missing": lsp_missing,
         "servers": lsp,

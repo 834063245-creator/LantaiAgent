@@ -16,10 +16,16 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, Layer, EnvFilter, Registry};
 /// 如果提供了 `project_root`，则将 JSON 日志写入
 /// `<project_root>/.hologram/logs/engine.log`（不额外输出到 stderr）。
 pub fn init_logging(project_root: Option<&Path>) -> WorkerGuard {
+    init_logging_named(project_root, "engine")
+}
+
+/// [`init_logging`] 的带名变体：日志文件名前缀可指定
+/// （hologram-lspd 宿主用 "lspd"，与引擎日志分居不互踩）。
+pub fn init_logging_named(project_root: Option<&Path>, prefix: &str) -> WorkerGuard {
     let mut layers = Vec::new();
 
     // JSON 文件层——主要日志输出。有项目根目录时，日志写入
-    // .hologram/logs/engine.log。故意不添加 stderr 层：
+    // .hologram/logs/<prefix>.log。故意不添加 stderr 层：
     // 在 MCP stdio 模式下 stderr 可能干扰 Windows 上客户端的 stdout 读取器，
     // 导致响应解析失败。
     let guard = if let Some(root) = project_root {
@@ -28,7 +34,7 @@ pub fn init_logging(project_root: Option<&Path>) -> WorkerGuard {
 
         let file_appender = tracing_appender::rolling::Builder::new()
             .rotation(tracing_appender::rolling::Rotation::NEVER)
-            .filename_prefix("engine")
+            .filename_prefix(prefix)
             .filename_suffix("log")
             .max_log_files(5)
             .build(&log_dir)
