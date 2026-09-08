@@ -5,12 +5,15 @@
 // 从 chat-store.ts 拆分（god store → 领域存储）。
 
 import { create } from 'zustand';
+import type { ChatImageRef } from '../provider/types';
 import { createScopedStore } from './scoped-store';
 
 /** 单个会话的输入草稿快照 —— 会话切换时保存/恢复。 */
 export interface SessionDraft {
   inputText: string;
   attachedFiles: Array<{ path: string; name: string; size: number }>;
+  /** 附图引用（multimodal-image-plan B1——与文件附件并列的图片草稿槽）。 */
+  attachedImages: ChatImageRef[];
   inputHistory: string[];
   inputHistoryIdx: number;
   draftText: string;
@@ -21,6 +24,7 @@ export function snapshotDraft(s: InputStore): SessionDraft {
   return {
     inputText: s.inputText,
     attachedFiles: s.attachedFiles,
+    attachedImages: s.attachedImages,
     inputHistory: s.inputHistory,
     inputHistoryIdx: s.inputHistoryIdx,
     draftText: s.draftText,
@@ -32,6 +36,7 @@ function emptyDraft(): SessionDraft {
   return {
     inputText: '',
     attachedFiles: [],
+    attachedImages: [],
     inputHistory: [],
     inputHistoryIdx: -1,
     draftText: '',
@@ -41,6 +46,8 @@ function emptyDraft(): SessionDraft {
 interface InputStore {
   inputText: string;
   attachedFiles: Array<{ path: string; name: string; size: number }>;
+  /** 附图引用草稿（multimodal-image-plan——采集准入后入槽，发送时随消息带走）。 */
+  attachedImages: ChatImageRef[];
   inputHistory: string[];
   inputHistoryIdx: number;
   draftText: string;
@@ -53,6 +60,10 @@ interface InputStore {
   addAttachedFile: (file: { path: string; name: string; size: number }) => void;
   removeAttachedFile: (idx: number) => void;
   clearAttachedFiles: () => void;
+  setAttachedImages: (images: ChatImageRef[]) => void;
+  addAttachedImage: (image: ChatImageRef) => void;
+  removeAttachedImage: (idx: number) => void;
+  clearAttachedImages: () => void;
   pushInputHistory: (text: string) => void;
   setInputHistory: (history: string[]) => void;
   setInputHistoryIdx: (idx: number) => void;
@@ -74,6 +85,7 @@ function createInputStoreImpl() {
   return create<InputStore>((set) => ({
     inputText: '',
     attachedFiles: [],
+    attachedImages: [],
     inputHistory: [],
     inputHistoryIdx: -1,
     draftText: '',
@@ -84,6 +96,10 @@ function createInputStoreImpl() {
     addAttachedFile: (file) => set((s) => ({ attachedFiles: [...s.attachedFiles, file] })),
     removeAttachedFile: (idx) => set((s) => ({ attachedFiles: s.attachedFiles.filter((_, i) => i !== idx) })),
     clearAttachedFiles: () => set({ attachedFiles: [] }),
+    setAttachedImages: (attachedImages) => set({ attachedImages }),
+    addAttachedImage: (image) => set((s) => ({ attachedImages: [...s.attachedImages, image] })),
+    removeAttachedImage: (idx) => set((s) => ({ attachedImages: s.attachedImages.filter((_, i) => i !== idx) })),
+    clearAttachedImages: () => set({ attachedImages: [] }),
     pushInputHistory: (text) =>
       set((s) => {
         const filtered = s.inputHistory.filter((t) => t !== text);

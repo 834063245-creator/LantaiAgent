@@ -9,6 +9,7 @@
 export type MessageId = string;
 
 import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan-tools';
+import type { ChatImageRef } from '../provider/types';
 // ⚡ _idSeq → chat-store.ts
 import { getChatStore } from './chat-store';
 
@@ -130,6 +131,8 @@ export interface UserMessage {
   _id: MessageId;
   text: string;
   files?: FileAttachment[];
+  /** 附图引用（multimodal-image-plan D-1——与 files 并列，独立渲染/发送通道）。 */
+  images?: ChatImageRef[];
   /** 发送时在 agent 会话数组中的索引（用于撤回）。 */
   sessionIndex: number;
 }

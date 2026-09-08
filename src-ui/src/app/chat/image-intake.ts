@@ -1,0 +1,257 @@
+// Copyright (c) 2026 Wenbing Jing. MIT License.
+// SPDX-License-Identifier: MIT
+
+// 附图准入（multimodal-image-plan B1——docs/plans/multimodal-image-plan.md）
+//
+// 采集字节 → 验收（白名单 + magic-byte + 单图限制）→ 规整（EXIF 校正 + 保比
+// 降采样 + 重编码）→ sha256 内容寻址 → fs_cap write_base64 落
+// {ws}/.lantai/attachments/ → ChatImageRef。
+//
+// 分层：纯函数面（白名单/magic-byte/限制/尺寸决策/显示名清洗）可单测；
+// canvas 规整面 webview 专供（jsdom 无 createImageBitmap——纯函数测试 + 真机
+// 验收兜底）。规整在 TS、Rust 只管字节读写（kernel-plugin v3 宪法——D-15）。
+//
+// 通道不对称（读侧 read_base64 有 8MiB 预览上限）：粘贴直拿 Blob 字节，
+// 上限 = MAX_IMAGE_BYTES（20MiB）；拖放/夹选走路径→read_base64 通道，
+// 实际上限 = 8MiB。截图/常规图片远低于两界，不对称可接受（真机验收 3 兜底）。
+
+import type { ChatImageRef, ImageMediaType } from '../../provider/types';
+import { kernelReadFileBase64, kernelWriteFileBase64 } from '../../rpc-contract';
+
+/** 附图媒体类型白名单（D-4——png/jpeg/webp/gif，无 bmp/svg）。 */
+export const IMAGE_MEDIA_TYPES: readonly ImageMediaType[] = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+
+/** 准入限制（抄 DSH 默认值——attachment-local/src/index.ts）。 */
+export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+export const MAX_IMAGES_PER_MESSAGE = 20;
+export const MAX_MESSAGE_IMAGE_BYTES = 200 * 1024 * 1024;
+
+/** 规整目标（D-4）：长边 ≤ 2048 / 像素 ≤ 2048² / 编码后 ≤ 4MiB。 */
+export const NORMALIZED_MAX_DIMENSION = 2048;
+export const NORMALIZED_MAX_PIXELS = 2048 * 2048;
+export const NORMALIZED_MAX_BYTES = 4 * 1024 * 1024;
+
+/** mediaType → 磁盘扩展名（id 作文件名主干，扩展名只作人读/双击可用）。 */
+export function extOfMediaType(mediaType: ImageMediaType): 'png' | 'jpg' | 'webp' | 'gif' {
+  switch (mediaType) {
+    case 'image/png':
+      return 'png';
+    case 'image/jpeg':
+      return 'jpg';
+    case 'image/webp':
+      return 'webp';
+    case 'image/gif':
+      return 'gif';
+  }
+}
+
+/** magic-byte 嗅探——不信任调用方声明的 mime（DSH 同纪律：声明与字节不符即拒）。 */
+export function sniffImageMediaType(bytes: Uint8Array): ImageMediaType | undefined {
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a
+  ) {
+    return 'image/png';
+  }
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return 'image/jpeg';
+  }
+  // WEBP：RIFF 头 + 偏移 8-11 处 "WEBP"
+  if (bytes.length >= 12 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) {
+    return 'image/webp';
+  }
+  // GIF87a/GIF89a 共用 "GIF8" 前缀
+  if (bytes.length >= 6 && bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) {
+    return 'image/gif';
+  }
+  return undefined;
+}
+
+/** 保比投影尺寸——不放大（DSH request-projection 同款几何，叠加长边约束）。 */
+export function projectedDimensions(
+  width: number,
+  height: number,
+  maxDimension: number,
+  maxPixels: number,
+): { width: number; height: number } {
+  if (width <= 0 || height <= 0) throw new Error(`图片尺寸非法（${width}×${height}）`);
+  const byDimension = Math.min(1, maxDimension / Math.max(width, height));
+  const byPixels = Math.min(1, Math.sqrt(maxPixels / (width * height)));
+  const scale = Math.min(byDimension, byPixels);
+  if (scale === 1) return { width, height };
+  return {
+    width: Math.max(1, Math.floor(width * scale)),
+    height: Math.max(1, Math.floor(height * scale)),
+  };
+}
+
+/** GIF 逻辑屏幕尺寸（头偏移 6-9，小端 u16——canvas 会杀动画，GIF 不走解码）。 */
+export function gifDimensions(bytes: Uint8Array): { width: number; height: number } {
+  return {
+    width: bytes[6] | (bytes[7] << 8),
+    height: bytes[8] | (bytes[9] << 8),
+  };
+}
+
+/** 控制字符清洗集（U+0000-U+001F 与 U+007F）。fromCharCode 构造——
+ *  源文件里不进任何控制字节（biome noControlCharactersInRegex 纪律）。 */
+const CONTROL_CHARS_RE = new RegExp(
+  `[${String.fromCharCode(0)}-${String.fromCharCode(31)}${String.fromCharCode(127)}]`,
+  'g',
+);
+
+/** 剥路径分隔符的显示名（DSH displayName 同款——两种分隔符手剥防跨平台泄漏，
+ *  控制字符清洗 + 255 上限）。 */
+export function displayLeafName(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const leaf = value.slice(Math.max(value.lastIndexOf('/'), value.lastIndexOf('\\')) + 1);
+  const clean = leaf.replace(CONTROL_CHARS_RE, '').trim().slice(0, 255);
+  return clean === '' ? undefined : clean;
+}
+
+/** sha256 hex（webview crypto.subtle——内容寻址 id 真源）。 */
+export async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const copy = new Uint8Array(bytes);
+  const digest = await crypto.subtle.digest('SHA-256', copy.buffer as ArrayBuffer);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/** 字节 → base64（分块 btoa 防 String.fromCharCode 爆栈）。 */
+export function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+/** 附图落盘路径（内容寻址——D-2）。根路径反斜杠归一为正斜杠——Windows 工作区
+ *  根（D:\ws 形态）产出的引用路径全仓可移植，Rust 侧两分隔符均解析。 */
+export function attachmentFilePath(root: string, id: string, mediaType: ImageMediaType): string {
+  const cleanRoot = root.replace(/\\/g, '/').replace(/\/+$/, '');
+  return `${cleanRoot}/.lantai/attachments/${id}.${extOfMediaType(mediaType)}`;
+}
+
+/** 规整产物（归一化后、未做内容寻址）。 */
+export interface NormalizedImage {
+  bytes: Uint8Array;
+  mediaType: ImageMediaType;
+  width: number;
+  height: number;
+  /** 缩放发生时的原始尺寸。 */
+  originalDimensions?: { width: number; height: number };
+}
+
+/** 解码位图：createImageBitmap 主路径（EXIF 校正）；<img> 兜底（无 EXIF）。 */
+async function decodeBitmap(
+  blob: Blob,
+): Promise<{ bitmap: CanvasImageSource & { close?: () => void }; width: number; height: number }> {
+  if (typeof createImageBitmap === 'function') {
+    const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' } as ImageBitmapOptions);
+    return { bitmap: bmp, width: bmp.width, height: bmp.height };
+  }
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    return { bitmap: img, width: img.naturalWidth, height: img.naturalHeight };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** 规整（D-4）：EXIF 校正 + 保比降采样 + 重编码。
+ *  - GIF 不重采样（canvas 首帧化杀动画）——尺寸合规原样通过，超限拒绝；
+ *  - jpeg/webp 重编码 q0.85，png 保持无损；缩放发生时记 originalDimensions。 */
+export async function normalizeImageBytes(bytes: Uint8Array, mediaType: ImageMediaType): Promise<NormalizedImage> {
+  if (mediaType === 'image/gif') {
+    const dims = gifDimensions(bytes);
+    if (
+      Math.max(dims.width, dims.height) > NORMALIZED_MAX_DIMENSION ||
+      dims.width * dims.height > NORMALIZED_MAX_PIXELS
+    ) {
+      throw new Error(`GIF 尺寸超限（${dims.width}×${dims.height}），不支持超大 GIF`);
+    }
+    return { bytes, mediaType, width: dims.width, height: dims.height };
+  }
+  const copy = new Uint8Array(bytes);
+  const { bitmap, width, height } = await decodeBitmap(new Blob([copy.buffer as ArrayBuffer], { type: mediaType }));
+  const target = projectedDimensions(width, height, NORMALIZED_MAX_DIMENSION, NORMALIZED_MAX_PIXELS);
+  const downscaled = target.width !== width || target.height !== height;
+  const canvas = document.createElement('canvas');
+  canvas.width = target.width;
+  canvas.height = target.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('canvas 2d 上下文不可用，无法规整图片');
+  ctx.drawImage(bitmap, 0, 0, target.width, target.height);
+  if (typeof bitmap.close === 'function') bitmap.close();
+  const outType: ImageMediaType =
+    mediaType === 'image/png' ? 'image/png' : mediaType === 'image/jpeg' ? 'image/jpeg' : 'image/webp';
+  const quality = outType === 'image/png' ? undefined : 0.85;
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, outType, quality));
+  if (blob === null) throw new Error('canvas 重编码失败');
+  const out = new Uint8Array(await blob.arrayBuffer());
+  return {
+    bytes: out,
+    mediaType: outType,
+    width: target.width,
+    height: target.height,
+    ...(downscaled ? { originalDimensions: { width, height } } : {}),
+  };
+}
+
+/** 全管线：字节 → 验收 → 规整 → sha256 → 落盘 → 引用（B2 采集三入口共用底座）。 */
+export async function admitImageBytes(root: string, bytes: Uint8Array, name?: string): Promise<ChatImageRef> {
+  if (bytes.byteLength === 0) throw new Error('附图为空文件');
+  if (bytes.byteLength > MAX_IMAGE_BYTES) {
+    throw new Error(
+      `图片超过单图上限（${Math.round(bytes.byteLength / 1024 / 1024)}MiB > ${MAX_IMAGE_BYTES / 1024 / 1024}MiB）`,
+    );
+  }
+  const sniffed = sniffImageMediaType(bytes);
+  if (sniffed === undefined) throw new Error('不是受支持的图片格式（png / jpeg / webp / gif）');
+  const normalized = await normalizeImageBytes(bytes, sniffed);
+  if (normalized.bytes.byteLength > NORMALIZED_MAX_BYTES) {
+    throw new Error(`规整后图片仍超过 ${NORMALIZED_MAX_BYTES / 1024 / 1024}MiB 上限，请换更小的图`);
+  }
+  const id = await sha256Hex(normalized.bytes);
+  const filePath = attachmentFilePath(root, id, normalized.mediaType);
+  await kernelWriteFileBase64(filePath, bytesToBase64(normalized.bytes));
+  return {
+    id,
+    mediaType: normalized.mediaType,
+    bytes: normalized.bytes.byteLength,
+    width: normalized.width,
+    height: normalized.height,
+    ...(name !== undefined ? { name: displayLeafName(name) } : {}),
+    ...(normalized.originalDimensions !== undefined ? { originalDimensions: normalized.originalDimensions } : {}),
+  };
+}
+
+/** 粘贴通道：webview File/Blob 直拿字节（上限 MAX_IMAGE_BYTES）。 */
+export async function admitImageBlob(root: string, blob: Blob, name?: string): Promise<ChatImageRef> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  return admitImageBytes(root, bytes, name);
+}
+
+/** 路径通道：拖放/夹选——经 read_base64 取字节（8MiB 通道上限在此生效）。 */
+export async function admitImageFromPath(root: string, path: string): Promise<ChatImageRef> {
+  const b64 = await kernelReadFileBase64(path);
+  if (b64 === '') throw new Error(`读取图片失败（或超过通道上限 8MiB）：${path}`);
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const name = path.replace(/\\/g, '/').split('/').pop() || path;
+  return admitImageBytes(root, bytes, name);
+}

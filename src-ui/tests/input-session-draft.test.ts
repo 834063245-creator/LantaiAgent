@@ -94,6 +94,33 @@ describe('input session draft isolation', () => {
     expect(s.inputText).toBe('');
   });
 
+  it('附图引用草稿随槽隔离——切回原会话图片还在（multimodal-image B1）', () => {
+    const ref = {
+      id: 'sha256-AAA'.padEnd(64, '0'),
+      mediaType: 'image/png' as const,
+      bytes: 123,
+      width: 800,
+      height: 600,
+      name: '截图A.png',
+    };
+    getInputStore(storeId).getState().addAttachedImage(ref);
+    expect(getInputStore(storeId).getState().attachedImages).toHaveLength(1);
+    getInputStore(storeId).getState().saveSessionDraft(1);
+
+    // 切到会话 2（无草稿）→ live 清空，不泄漏 A 的图
+    getInputStore(storeId).getState().restoreSessionDraft(2);
+    expect(getInputStore(storeId).getState().attachedImages).toHaveLength(0);
+
+    // 切回会话 1 → 图恢复
+    getInputStore(storeId).getState().restoreSessionDraft(1);
+    expect(getInputStore(storeId).getState().attachedImages[0]?.name).toBe('截图A.png');
+
+    // 移除一张后清空
+    getInputStore(storeId).getState().removeAttachedImage(0);
+    expect(getInputStore(storeId).getState().attachedImages).toHaveLength(0);
+    getInputStore(storeId).getState().clearAttachedImages();
+  });
+
   it('发送后清空 live，切离再切回不会复活已发送文字', () => {
     seedDraft(storeId, '已发送');
     // 发送行为：清空 live + 清空该会话草稿槽（等价 sendMessage 后 live 置空）

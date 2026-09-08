@@ -20,9 +20,36 @@ export type CoreProtocol = (typeof CORE_PROTOCOLS)[number];
 
 export type Role = 'system' | 'user' | 'assistant' | 'tool';
 
+/** 附图媒体类型白名单（multimodal-image-plan D-4——magic-byte 校验后成立）。 */
+export type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+
+/** 附图引用——消息内图片的唯一形态（multimodal-image-plan D-1：字节永不进卷，
+ *  消息只带引用；字节落 {ws}/.lantai/attachments/{id}.{ext} 内容寻址文件）。
+ *  id = 规整后字节 sha256（十六进制）——同图跨卷天然去重复用。 */
+export interface ChatImageRef {
+  /** 内容寻址 id（sha256 hex）——同时是磁盘文件名主干。 */
+  id: string;
+  mediaType: ImageMediaType;
+  /** 规整后编码字节长度。 */
+  bytes: number;
+  /** 规整后宽（px）。 */
+  width: number;
+  /** 规整后高（px）。 */
+  height: number;
+  /** 显示名（已剥路径分隔符）。 */
+  name?: string;
+  /** 规整缩放发生时的原始尺寸（缩放未发生则缺省）。 */
+  originalDimensions?: { width: number; height: number };
+}
+
 export interface Message {
   role: Role;
   content: string;
+  /** 用户消息附图引用（multimodal-image-plan D-1；仅 user 角色携带）。
+   *  content 保持 string——纯文本 wire 纪律（D-6）：无图消息形态字节不变；
+   *  有图消息在适配器层才展开 content parts（openai）/ image blocks
+   *  （anthropic）/ input_image（responses）。 */
+  images?: ChatImageRef[];
   /** thinking 模式的思维链，多轮对话中原样往返 */
   reasoning_content?: string;
   /** provider 签发的推理证明（Anthropic thinking signature） */

@@ -54,7 +54,8 @@ fn record_fs_side_effect(
 }
 
 /// fs_cap 能力口分派。action ∈ {read, list, list_flat, glob, write, delete,
-/// rename, create_dir, append, read_base64, memory_batch, global_memory_dir}。
+/// rename, create_dir, append, read_base64, write_base64, memory_batch,
+/// global_memory_dir}。
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn fs_cap(
     action: String,
@@ -167,6 +168,16 @@ pub(crate) async fn fs_cap(
             let fp = file_path.or(path).ok_or_else(|| "fs_cap write: missing 'file_path'".to_string())?;
             let c = content.ok_or_else(|| "fs_cap write: missing 'content'".to_string())?;
             let real = crate::confined_fs::write_text_cap(&fp, &c, is_agent, agent_id.as_deref(), state, app).await?;
+            let rp = real.to_string_lossy().to_string();
+            record_fs_side_effect(state, "agent_write", "写入", &rp);
+            Ok(json!({ "path": rp }))
+        }
+        "write_base64" => {
+            // 附图字节写（multimodal-image-plan D-13）：content 键承载 base64
+            // （action-scoped 语义——与 write 的文本 content 同键不同义）。
+            let fp = file_path.or(path).ok_or_else(|| "fs_cap write_base64: missing 'file_path'".to_string())?;
+            let c = content.ok_or_else(|| "fs_cap write_base64: missing 'content' (base64)".to_string())?;
+            let real = crate::confined_fs::write_base64_cap(&fp, &c, is_agent, agent_id.as_deref(), state, app).await?;
             let rp = real.to_string_lossy().to_string();
             record_fs_side_effect(state, "agent_write", "写入", &rp);
             Ok(json!({ "path": rp }))

@@ -149,6 +149,37 @@ fn write_atomic(file_path: &str, content: &str) -> Result<(), String> {
     }
 }
 
+/// 字节版原子写（write_base64 通道）——与 write_atomic 同 bak/回滚时序，
+/// 载荷是 &[u8]。附图字节落盘用（multimodal-image-plan D-13）。
+fn write_bytes_atomic(file_path: &str, bytes: &[u8]) -> Result<(), String> {
+    static TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp_path = format!("{}.tmp.{}", file_path, seq);
+    let bak_path = format!("{}.bak", file_path);
+
+    with_io_retry(|| std::fs::write(&tmp_path, bytes), "write_bytes_atomic(tmp)")?;
+
+    let had_original = std::path::Path::new(file_path).exists();
+    if had_original {
+        let _ = std::fs::remove_file(&bak_path);
+        let _ = std::fs::rename(file_path, &bak_path);
+    }
+    match std::fs::rename(&tmp_path, file_path) {
+        Ok(()) => {
+            if had_original {
+                let _ = std::fs::remove_file(&bak_path);
+            }
+            Ok(())
+        }
+        Err(e) => {
+            if had_original && std::path::Path::new(&bak_path).exists() {
+                let _ = std::fs::rename(&bak_path, file_path);
+            }
+            Err(format!("write_bytes_atomic(rename): {}", e))
+        }
+    }
+}
+
 /// 追加内容到文件（不存在则创建）。fs_cap append（log_append 语义）用。
 pub(crate) fn append_text_unchecked(real_path: &str, content: &str) -> Result<(), String> {
     use std::io::Write;
@@ -331,6 +362,38 @@ pub(crate) fn slice_lines(content: &str, offset: Option<usize>, limit: Option<us
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── write_bytes_atomic（write_base64 通道的字节原子写）──
+
+    #[test]
+    fn write_bytes_atomic_roundtrip_and_overwrite() {
+        let dir = std::env::temp_dir().join(format!(
+            "lantai_wb64_{}",
+            std::process::id() * 1000 + TMP_TEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("blob.bin");
+        let ps = p.to_str().unwrap();
+
+        write_bytes_atomic(ps, b"hello").unwrap();
+        assert_eq!(std::fs::read(ps).unwrap(), b"hello");
+
+        // 覆写走 bak 时序——旧内容整体替换，无 .bak/.tmp 残留
+        write_bytes_atomic(ps, &[1, 2, 3]).unwrap();
+        assert_eq!(std::fs::read(ps).unwrap(), vec![1, 2, 3]);
+        assert!(!dir.join("blob.bin.bak").exists());
+        let leftovers: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name())
+            .collect();
+        assert_eq!(leftovers.len(), 1, "覆盖后只应有目标文件，无 tmp/bak 残留");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 跨用例唯一化 temp 子目录的序号（同名并发跑测试互不踩）。
+    static TMP_TEST_SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
     // ── glob 花括号展开（字节层随能力口回 exe）──
 
@@ -640,6 +703,39 @@ pub(crate) async fn write_text_cap(
             .map_err(|e| format!("无法创建目录: {}", e))?;
     }
     write_atomic(&rp, content)?;
+    Ok(real_path)
+}
+
+/// fs_cap.write_base64 二进制写（能力口入口：dispatch 闸 + 原子写字节）。
+/// 附图入卷通道（multimodal-image-plan D-13：消息只存引用，字节经此口落
+/// {ws}/.lantai/attachments/）——base64 入参先解码再过与 write_text_cap 同一道
+/// 写闸；字节上限同 MAX_WRITE_BYTES。
+pub(crate) async fn write_base64_cap(
+    file_path: &str,
+    b64: &str,
+    is_agent: bool,
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+    app: &AppHandle,
+) -> Result<PathBuf, String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| format!("fs_cap write_base64: base64 解码失败: {e}"))?;
+    if bytes.len() > MAX_WRITE_BYTES {
+        return Err(format!(
+            "内容过大 ({} MiB)，超过写入上限 ({} MiB)",
+            bytes.len() / (1024 * 1024),
+            MAX_WRITE_BYTES / (1024 * 1024)
+        ));
+    }
+    let real_path = crate::utils::resolve_write_dispatch(file_path, is_agent, agent_id, state, app).await?;
+    let rp = real_path.to_string_lossy().to_string();
+    if let Some(parent) = real_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("无法创建目录: {}", e))?;
+    }
+    write_bytes_atomic(&rp, &bytes)?;
     Ok(real_path)
 }
 
