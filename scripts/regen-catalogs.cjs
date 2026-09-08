@@ -12,8 +12,11 @@
 //      由人工裁决后改文件或改表——静默替换是 provider-system-spec P14 要杀的东西。
 //   2. 只新增 catalog-overrides.json 里声明过的模型；sources 只提供机械字段
 //      （contextWindow/maxTokens），缺了就按覆盖表填，再缺就跳过并打印原因。
-//   3. 永不写入 'image'（spec 裁决 #3：Message.content 是 string、无传图入口；
-//      tests/provider-catalog.test.ts 有铁门）。input 一律取 vendors.<v>.input。
+//   3. input 一律取 vendors.<v>.input。⚡ 2026-09-09（multimodal-image B5）起
+//      image 声明合法——真实传图入口已落地（Message.images 旁挂引用 + 三适配器
+//      wire），spec 裁决 #3 的「无传图入口」前提已失效；正/负清单由
+//      tests/provider-catalog.test.ts 精确钉死（已知 vision 款 = anthropic/openai
+//      全线 + deepseek vision-exp；新增 vision 声明须同步改该测试——显式表纪律）。
 //      ⚡ 2026-09-06 价格表拆除：cost 字段不再写入目录（LiteLLM 价格数据只用于
 //      对拍 contextWindow/maxTokens；价一律不进目录 JSON）。
 //
@@ -166,12 +169,9 @@ async function main() {
     }
   }
 
-  // 人工核实表先于一切校验：覆盖表里请求 image 直接硬失败（裁决 #3 无例外通道）。
+  // 人工核实表先于一切校验：thinkingEfforts 档位白名单（image 声明自 B5 起合法，
+  // 无需拦截——正/负清单由 tests/provider-catalog.test.ts 精确钉死）。
   for (const [vendor, cfg] of Object.entries(overridesAll.vendors)) {
-    if ((cfg.input ?? []).includes('image')) {
-      console.error(`[fatal] 覆盖表 vendors.${vendor}.input 含 'image'——违反 spec 裁决 #3，拒绝运行`);
-      process.exit(1);
-    }
     for (const [id, m] of Object.entries(cfg.models ?? {})) {
       if ('thinkingEfforts' in m) {
         const bad = m.thinkingEfforts.filter((x) => !THINKING_EFFORTS.includes(x));

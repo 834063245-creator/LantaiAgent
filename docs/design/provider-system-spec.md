@@ -119,7 +119,7 @@ interface Provider {
 |---|---|---|---|
 | 1 | kind 仅 anthropic/openai 两种 | **保持**。新厂商优先走 openai 兼容端点；协议不兼容才新增 kind（现阶段无此需求，不做） | 本文档 |
 | 2 | deepseek beta 模型挂 kind=anthropic | **保留**。这是特性——DeepSeek 提供 Anthropic 兼容端点；目录里加注释说明「kind=协议，provider=厂商」 | catalog 注释 |
-| 3 | `input: ['text','image']` 图像假声明 | **砍**。Message.content 是 string，请求构建器无图像块；等真实传图入口出现再做（breaking change，单独立项） | anthropic.ts/openai.ts fetchModels |
+| 3 | `input: ['text','image']` 图像假声明 | **砍**（P0 时点）。Message.content 是 string，请求构建器无图像块；等真实传图入口出现再做（breaking change，单独立项）。**修订（2026-09-09，multimodal-image B1-B5 落地）**：传图入口已建——content 保持 string（引用旁挂 `Message.images`，纯文本 wire 形态字节不变），已知 vision 款 catalog seed 声明已开闸 + 目录外款经 `ModelOverrides.input` 补声明（见 §modelOverrides）；「假声明」前提失效，正/负清单由 `tests/provider-catalog.test.ts` 精确钉死 | anthropic.ts/openai.ts fetchModels |
 | 4 | anthropic.ts `reasoning_tokens: 0` 写死 | **保留 + 注释**。Anthropic Messages API usage 无此字段，0 是事实正确 | 注释 |
 | 5 | 动态模型 `reasoning: false` 写死 | **修**。按模型 id 启发式（含 think/reasoning/思考 关键词）；静态目录元数据仍优先 | openai.ts |
 | 6 | 快速添加 chips 只填 name+kind | **修**。chips 同步带出 `defaultModel.baseUrl` | SettingsPanel.tsx |

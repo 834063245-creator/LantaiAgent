@@ -292,7 +292,7 @@ NetBenefit = |R|·c_in·(T-1) − |S|·c_out − L·avg_turn_cost
 
 统一 `Provider` trait 抹平各厂商 API 差异：
 - `provider/` 目录：`types.ts`（统一 Message / ToolCall / Chunk 类型）+ `anthropic.ts` + `openai.ts`（兼容 Ollama）+ `catalog.ts` 模型目录合并层 + `thinking.ts`（档位 → 厂商 wire 参数唯一事实源）
-- **9 个静态模型目录** JSON（77 个模型，`npm run gen:catalogs` 从 catalog-overrides.json + 社区数据源再生成）：anthropic / openai / moonshotai / qwen / deepseek / glm / minimax / ollama / opencode
+- **3 个内核 seed 模型目录** JSON（provider-refactor 方案乙 Phase 1B 后仅存内核 seed：anthropic / openai / deepseek——其余厂商一律运行时从 /models 拉取；`npm run gen:catalogs` 从 catalog-overrides.json + 社区数据源再生成缺失模型，只新增不改既有条目）
 - **动态模型发现**：`fetchModels()` 拉取 `/models`（OpenAI）/ `/v1/models`（Anthropic）并合并，静态目录同 ID 优先（元数据更丰富）
 - **thinking 档位适配（EffortVendor）**：Anthropic budget_tokens（low4k/medium8k/high16k/max32k）、DeepSeek reasoning_effort（high/max）、OpenAI 官方 low/medium/high
 - **LLM adapter seam（ctx.llm）**（平台化 Phase 1 · D2 修订版，2026-08-27）：第一方 `plugins/builtin/llm-adapters/` 把内核 anthropic/openai 协议方言经 `ctx.llm.register({ id, kind, create })` 贡献为默认 adapter（后注册胜），外部方言可覆盖（仪器化 wrapper / 替换实现）；未知 kind 响亮报错不再静默跌 openai，内核回落分支已拆除。详见 provider-system-spec「追加裁决 2026-08-27」
