@@ -1,8 +1,10 @@
 # 多模态图片链路施工计划（附图入卷——发送/接收/展示全链补齐）
 
-> 立项：2026-09-08 · 状态：**B1+B2+B3 已竣工（B1 = 0d2c39bd · B2 = b99c5217 · B3 = 9affbbf2，
-> 门禁全绿——vitest 全量 2870 用例 0 失败 / tsc 0 / biome 0/0 / convergence 双档 / doc-sync / build），
-> B4 渲染 + B5 配置待施工** · 上游：2026-09-08 两问调查（问题 1）
+> 立项：2026-09-08 · 状态：**全计划竣工（B1 = 0d2c39bd · B2 = b99c5217 · B3 = 9affbbf2 ·
+> B4 = ed6008ef · B5 = 8eaada50，门禁全绿——vitest 全量 287 文件 2910 passed / 4 skipped ·
+> tsc 0 · biome 改动面 0/0 · convergence 双档 · doc-sync · build）。
+> 余真机验收六项（§5，用户跑）——vision 声明面已开闸（catalog seed + 覆盖链），
+> 真机上附图入口随 vision 模型选择即显。** · 上游：2026-09-08 两问调查（问题 1）
 > B1 落账注：rpc-contract.ts 源码面（action union + kernelWriteFileBase64）随并行窗口
 > 9afa6878 已先行入库，B1 commit 补生成 frontend-rpc-contract.md；D-14 落账 = 无需契约升版。
 > B2 落账注：门禁策略在视图（imageCapable 目录声明）、机制在 chat-core；一次 agent 族
@@ -12,6 +14,20 @@
 > phase-6 AgentConfig 字段面 29→30（imageReader IO 注入腰，登记 agent-platformization-plan
 > §6 台账，gate/spec/断言三处同步）；agent 层零 app 依赖纪律保住（ctx.fs 是模型可见
 > 工具面不适配内部读——改走 workspace 工厂闭包注入）；event-catalog 仅行号漂移重生成。
+> B4 落账注（2026-09-09）：渲染面两处偏离计划原案的自洽修正——①缩略读取未直引
+> components.tsx 的 useMediaData（渲染器插件在产物域经 renderer-host 别名桥——宿主侧
+> renderer-service 直引会把 echarts/smiles-drawer 拖进主 bundle），改以 B3 同款
+> readAttachmentBase64 回读 + Overlay 复用 .pp-media-preview-overlay 先例，语义
+> 等价（epoch 防串流 + data URI + 预览浮层）；②markdown img 固定盒 = 静态测高
+> 即精确（chem 先例同族），未新增 RO 触发面。增量解析 starts/blocks 对齐纪律
+> （img 行 skip 时 starts 不推）在实现中自查发现并钉进测试。
+> B5 落账注（2026-09-09）：vision 声明按 DSH 权威定界——deepseek v4 主线保持
+> text-only（vision 是独立款），补 deepseek-v4-flash-vision-exp（DSH 默认目录同款）；
+> anthropic/openai 全线声明（Claude 3+ / GPT-4o 起全能线）。ModelOverrides.input 走
+> settings.ts modelInput 合并链（modelContextWindow 先例同位——getModel 是无 provider
+> 上下文的纯目录查询，覆盖合并归 settings 域），三消费面（能力戳/坞门禁/「视」徽标）
+> 同链接线；宿主桥三件封蜡实测（faceDeps + face.json 键对拍过）。B1 期「禁止假声明」
+> 钉测试翻案为正/负清单新真相。
 > 拍板：用户 2026-09-08「先来补齐图片多模态配套」→「先落 plan」。
 > 参照系：DSH（`D:\useful\deepseek-harness`）图片链路全量研究（2026-09-08 主会话亲读，
 > 可抄决定见 §1.2——DSH 是本仓钦定参照工程）。
