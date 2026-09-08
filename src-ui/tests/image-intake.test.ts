@@ -12,12 +12,16 @@ import {
   bytesToBase64,
   displayLeafName,
   extOfMediaType,
+  extractImageFiles,
   gifDimensions,
+  isImagePath,
   NORMALIZED_MAX_DIMENSION,
   NORMALIZED_MAX_PIXELS,
+  previewUrlFor,
   projectedDimensions,
   sha256Hex,
   sniffImageMediaType,
+  splitIntakePaths,
 } from '../src/app/chat/image-intake';
 
 // ── magic-byte 嗅探 ──
@@ -151,5 +155,67 @@ describe('admitImageBytes 拒绝路径', () => {
   it('超大 GIF 尺寸闸（不走 canvas 即拒）', async () => {
     const huge = new Uint8Array([...GIF_HEAD, 0xff, 0xff, 0x01, 0x00, 0x00, 0x00]);
     await expect(admitImageBytes('D:/ws', huge)).rejects.toThrow('GIF 尺寸超限');
+  });
+});
+
+// ── B2 采集路由（纯函数面）──
+
+describe('isImagePath / splitIntakePaths', () => {
+  it('图片扩展名识别（大小写不敏感 + jpeg 别名 + 无扩展名否决）', () => {
+    expect(isImagePath('D:/a/截图.PNG')).toBe(true);
+    expect(isImagePath('b/c/d.jpg')).toBe(true);
+    expect(isImagePath('e.jpeg')).toBe(true);
+    expect(isImagePath('f.webp')).toBe(true);
+    expect(isImagePath('g.GIF')).toBe(true);
+    expect(isImagePath('h.txt')).toBe(false);
+    expect(isImagePath('noext')).toBe(false);
+    expect(isImagePath('.gitignore')).toBe(false);
+  });
+
+  it('分流：allowImages=true 图片入附图道、其余走文件附件老路', () => {
+    const r = splitIntakePaths(['a.png', 'b.txt', 'c/d.JPG', 'e.rs'], true);
+    expect(r.images).toEqual(['a.png', 'c/d.JPG']);
+    expect(r.files).toEqual(['b.txt', 'e.rs']);
+  });
+
+  it('分流：allowImages=false 全部走文件附件老路（文本模型零回归）', () => {
+    const r = splitIntakePaths(['a.png', 'b.txt'], false);
+    expect(r.images).toEqual([]);
+    expect(r.files).toEqual(['a.png', 'b.txt']);
+  });
+});
+
+describe('extractImageFiles（粘贴载荷抽图）', () => {
+  const fakeItems = (
+    entries: Array<{ kind: string; type?: string } | null>,
+  ): Array<{ kind: string; getAsFile: () => File | null }> =>
+    entries.map((e) => ({
+      kind: e?.kind ?? 'string',
+      getAsFile: () => (e && e.kind === 'file' && e.type ? new File(['x'], 'f', { type: e.type }) : null),
+    }));
+
+  it('kind=file 且 mime 图片的项抽出；文本/非图片/坏项略过', () => {
+    const files = extractImageFiles(
+      fakeItems([
+        { kind: 'file', type: 'image/png' },
+        { kind: 'string' },
+        { kind: 'file', type: 'text/plain' },
+        null,
+        { kind: 'file', type: 'image/jpeg' },
+      ]),
+    );
+    expect(files).toHaveLength(2);
+    expect(files[0]?.type).toBe('image/png');
+    expect(files[1]?.type).toBe('image/jpeg');
+  });
+
+  it('无图片载荷返回空数组（文本粘贴零影响判据）', () => {
+    expect(extractImageFiles(fakeItems([{ kind: 'string' }, { kind: 'file', type: 'text/html' }]))).toEqual([]);
+  });
+});
+
+describe('previewUrlFor（预览种子缓存——未命中降级）', () => {
+  it('未种 id 返回 undefined（渲染层降级为占位盒）', () => {
+    expect(previewUrlFor('never-seeded-id')).toBeUndefined();
   });
 });

@@ -9,6 +9,7 @@
 
 export { agentSessionState } from '../../../agent/agent-session-state';
 export { useCoreStore } from '../../../app/chat/core-instance';
+export { extractImageFiles, previewUrlFor } from '../../../app/chat/image-intake';
 export { useShellStore } from '../../../app/shell-store';
 export type { FileDragEvent } from '../../../bridge';
 export { isMockMode, watchFileDragDrop } from '../../../bridge';
@@ -42,7 +43,7 @@ export { resolveApiKey } from '../../../provider/credentials';
 // 类型面（产物域经 host.aliased 对拍）
 export type { StoredThinking, ThinkingMode } from '../../../provider/thinking';
 export { thinkingOptionsFor } from '../../../provider/thinking';
-export type { ModelDescriptor, Protocol } from '../../../provider/types';
+export type { ChatImageRef, ModelDescriptor, Protocol } from '../../../provider/types';
 export { typedJsonRpc } from '../../../rpc-contract';
 export type { ProviderSettings } from '../../../settings';
 export { effectiveModels, loadSettings, modelContextWindow, onSettingsSaved } from '../../../settings';

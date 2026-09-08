@@ -48,6 +48,7 @@ import { createAssetTools } from '../../agent/tools/show-asset';
 import { createAgentStatusTool, createSubAgentTool } from '../../agent/tools/subagent';
 import { createWaitTool } from '../../agent/tools/wait';
 import { useCoreStore } from '../../app/chat/core-instance';
+import { extractImageFiles, previewUrlFor } from '../../app/chat/image-intake';
 import { Icon } from '../../app/Icon';
 import { useDialogEscape } from '../../app/overlay';
 import { PluginBoundary } from '../../app/PluginBoundary';
@@ -369,6 +370,8 @@ const faceDeps = {
   hasDynamicFetchInflight,
   onDynamicFetchChange,
   resolveApiKey,
+  extractImageFiles,
+  previewUrlFor,
   thinkingOptionsFor,
   typedJsonRpc,
   // sessions-builtin（2026-09-05 seam 动作面重设计）：默认 provider 换

@@ -1831,6 +1831,109 @@
   background: var(--seal-soft);
 }
 
+/* ── 附图 rail（B2 multimodal-image-plan）——缩略图道，与路径附件 chips 并列。
+ *    圆角恒 0 纪律；缩略 56px 方界（规线细框），hover 露朱砂移除钮；
+ *    未命中预览 URL（进程外恢复场景）降级为 mono 文件名占位盒。 ── */
+.pp-image-rail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 40%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  mask-image: linear-gradient(to right, var(--ink-solid) 85%, transparent);
+  -webkit-mask-image: linear-gradient(to right, var(--ink-solid) 85%, transparent);
+}
+.pp-image-rail::-webkit-scrollbar {
+  display: none;
+}
+.pp-image-thumb-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.pp-image-thumb {
+  display: block;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 1px solid var(--ink-4);
+  background: transparent;
+  overflow: hidden;
+  cursor: zoom-in;
+  transition: border-color var(--snap);
+}
+.pp-image-thumb:hover {
+  border-color: color-mix(in oklch, var(--seal) 45%, transparent);
+}
+.pp-image-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.pp-image-thumb-fallback {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 4px;
+  box-sizing: border-box;
+  font-family: var(--f-mono);
+  font-size: 9px;
+  line-height: 1.3;
+  color: var(--ink-3);
+  overflow: hidden;
+  word-break: break-all;
+}
+.pp-image-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  color: var(--paper);
+  background: var(--seal-deep);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--snap);
+}
+.pp-image-thumb-wrap:hover .pp-image-remove,
+.pp-image-remove:focus-visible {
+  opacity: 1;
+}
+/* 大图浮层：ink-solid 墨罩（lightbox 唯一豁免用墨源实色——alpha 墨罩透字）；
+ * 海拔 95 = 浮层带（§11 45-90）之上、全屏顶件（280）之下 */
+.pp-image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: color-mix(in oklch, var(--ink-solid) 78%, transparent);
+  cursor: zoom-out;
+}
+.pp-image-lightbox img {
+  max-width: min(86vw, 1200px);
+  max-height: 78vh;
+  border: var(--rule-soft);
+  background: var(--paper);
+  cursor: default;
+}
+.pp-image-lightbox-meta {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--paper);
+  letter-spacing: 0.04em;
+}
+
 /* ── 底部创作坞（Stage-4：设置行 + 输入行两段；旧 composer 升级）──
  * v2（2026-08-31）：度量纪律——坞本体锁 880 版心居中。超宽屏全宽输入行
  * = 光标到「拟文」隔一条银河，可读性基本功（ChatGPT/Claude 同款 ~768-800

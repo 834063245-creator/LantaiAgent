@@ -21,7 +21,7 @@ import { log } from '../../agent/logger';
 import type { RuntimePort } from '../../agent/runtime/types';
 import { useShellStore } from '../../app/shell-store';
 import { sessionExecute } from '../../composition/session-persistence-service';
-import type { ToolSchema } from '../../provider/types';
+import type { ChatImageRef, ToolSchema } from '../../provider/types';
 import { apiErrorSummary } from '../../provider/types';
 import type { StarGraph } from '../../scene/graph-types';
 import { askSessionOf, useAskStore } from '../../state/ask-store';
@@ -46,6 +46,13 @@ import * as Stream from '../../ui/chat-stream';
 import { type CommandDef, CommandRegistry, DEFAULT_COMMANDS } from '../../ui/command-registry';
 import { type AssistantMessage, type ChatMessage, resetMsgIdCounter, type UserMessage } from '../../ui/message-model';
 import { getWorkspaceEpoch, isCurrentEpoch } from '../../workspace-scope';
+import {
+  admitImageBlob,
+  admitImageFromPath,
+  MAX_IMAGES_PER_MESSAGE,
+  MAX_MESSAGE_IMAGE_BYTES,
+  splitIntakePaths,
+} from './image-intake';
 import type { PromptShelfHandle } from './PromptShelf';
 
 // ── 斜杠技能候选缓存（skills-mcp-production-plan Commit 4）──
@@ -1431,22 +1438,82 @@ export class ChatCore {
    * 拿假路径 read_file 必报错）；②size 恒 0 写死，来文渲染「0 B」误导。
    * 修法：回退分支只往 input-store 存能兑现的（路径拿不到就不入附件面，
    * 打日志可见）；size 不再伪造（渲染层不显示，agent 只需路径）。 */
-  async openFilePicker(): Promise<void> {
-    const input = getChatStore(this.panelId).input.getState();
+  async openFilePicker(opts?: { images?: boolean }): Promise<void> {
     try {
       const { open } = await import('@tauri-apps/plugin-dialog');
       const result = await open({ multiple: true, title: '拾遗——选择要附入案卷的文件', filters: [] });
       if (!result) return;
       const paths = Array.isArray(result) ? result : [result];
-      for (const p of paths) {
-        const name = p.replace(/\\/g, '/').split('/').pop() || p;
-        if (!input.attachedFiles.some((f) => f.path === p)) input.addAttachedFile({ path: p, name, size: 0 });
-      }
+      // B2（multimodal-image-plan）：夹选经共用底座分流——图片扩展名且当前
+      // 模型声明 vision 时入附图道；否则与非图片一并走路径附件老路。
+      await this.attachIntakePaths(paths, opts?.images === true);
     } catch (e) {
       // 浏览器 dev（mock）环境：File 无真路径——不再用 name 冒充（旧病灶）。
       // 附件链在真机才有意义；dev 下静默提示不可用，错误可见不炸。
       console.warn('[chat] 附件拾遗仅在真机可用（Tauri dialog 缺席）:', e);
     }
+  }
+
+  /* ── 附图采集（multimodal-image-plan B2）——三入口（粘贴/拖放/夹选）汇聚底座。
+   *    采集→准入规整（image-intake）→ ChatImageRef 入 input-store 图片草稿槽；
+   *    发送接线在 B3。能力门禁（D-8②）由创作坞按当前模型 input 声明传入
+   *    allowImages——机制在此、策略在视图。 ── */
+
+  /** 单图入槽闸：每卷计数上限 + 总量上限 + id 去重；超限/重复返回 false。 */
+  private admitOneImage(ref: ChatImageRef): boolean {
+    const input = getChatStore(this.panelId).input.getState();
+    if (input.attachedImages.some((img) => img.id === ref.id)) return false; // 同图去重（静默）
+    if (input.attachedImages.length >= MAX_IMAGES_PER_MESSAGE) {
+      showToast(`附图已达单卷上限 ${MAX_IMAGES_PER_MESSAGE} 张——先发送或移除部分图片`, 'warn');
+      return false;
+    }
+    const totalBytes = input.attachedImages.reduce((sum, img) => sum + img.bytes, 0) + ref.bytes;
+    if (totalBytes > MAX_MESSAGE_IMAGE_BYTES) {
+      showToast(`附图总量超过 ${MAX_MESSAGE_IMAGE_BYTES / 1024 / 1024}MiB 上限——请精简`, 'warn');
+      return false;
+    }
+    input.addAttachedImage(ref);
+    return true;
+  }
+
+  /** 粘贴通道：webview File 字节直入（上限 MAX_IMAGE_BYTES 20MiB）。 */
+  async intakeImageFiles(files: readonly File[]): Promise<void> {
+    const root = useShellStore.getState().projectPath;
+    if (!root || files.length === 0) return;
+    for (const file of files) {
+      try {
+        this.admitOneImage(await admitImageBlob(root, file, file.name));
+      } catch (e) {
+        showToast(`附图失败：${file.name || '剪贴板图片'}（${e instanceof Error ? e.message : String(e)}）`, 'warn');
+      }
+    }
+  }
+
+  /** 路径通道：拖放/夹选（8MiB read_base64 通道上限在 admit 内生效）。 */
+  async intakeImagePaths(paths: readonly string[]): Promise<void> {
+    const root = useShellStore.getState().projectPath;
+    if (!root || paths.length === 0) return;
+    for (const p of paths) {
+      try {
+        this.admitOneImage(await admitImageFromPath(root, p));
+      } catch (e) {
+        showToast(`附图失败：${p}（${e instanceof Error ? e.message : String(e)}）`, 'warn');
+      }
+    }
+  }
+
+  /** 夹/引/拖放共用底座（v3 B2）：图片扩展名分流——allowImages 时入附图道，
+   *  否则与非图片文件一并走路径附件老路（文本模型零回归）。 */
+  async attachIntakePaths(paths: readonly string[], allowImages: boolean): Promise<void> {
+    if (paths.length === 0) return;
+    const { images, files } = splitIntakePaths(paths, allowImages);
+    const input = getChatStore(this.panelId).input.getState();
+    for (const p of files) {
+      if (!input.attachedFiles.some((f) => f.path === p)) {
+        input.addAttachedFile({ path: p, name: p.split(/[\\/]/).pop() || p, size: 0 });
+      }
+    }
+    if (images.length > 0) await this.intakeImagePaths(images);
   }
 
   /** 视图拖放转发 — T2 WebView 默认接管 dragDrop，网页层收不到 HTML5 drop

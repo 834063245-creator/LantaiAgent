@@ -26,14 +26,22 @@
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享
 // 真实例，react 经构建期别名桥。
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ClipboardEvent, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DirEntry } from '../../../rpc-contract';
 import { kernelListDirectory } from '../../../rpc-contract';
-import type { ComposeSessionPrefs, PermissionMode, ProviderSettings, StoredThinking, ThinkingMode } from './host';
+import type {
+  ChatImageRef,
+  ComposeSessionPrefs,
+  PermissionMode,
+  ProviderSettings,
+  StoredThinking,
+  ThinkingMode,
+} from './host';
 import {
   agentSessionState,
   CommandRegistry,
   composerSubmitOnKey,
+  extractImageFiles,
   getChatStore,
   getComposeStore,
   getModel,
@@ -43,6 +51,7 @@ import {
   modelContextWindow,
   onSettingsSaved,
   PERMISSION_MODES,
+  previewUrlFor,
   resolveNewSessionDefault,
   thinkingOptionsFor,
   useCoreStore,
@@ -229,16 +238,19 @@ export const ComposerDock = memo(function ComposerDock() {
    *    负责 save/restore sessionDrafts，本组件只读写 live 槽）── */
   const [inputText, setInputTextState] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<Array<{ path: string; name: string; size: number }>>([]);
+  const [attachedImages, setAttachedImages] = useState<ChatImageRef[]>([]);
   useEffect(() => {
     if (!core) {
       setInputTextState('');
       setAttachedFiles([]);
+      setAttachedImages([]);
       return;
     }
     const input = getChatStore(core.panelId).input;
     const sync = () => {
       setInputTextState(input.getState().inputText);
       setAttachedFiles(input.getState().attachedFiles);
+      setAttachedImages(input.getState().attachedImages);
     };
     sync();
     return input.subscribe(sync);
@@ -367,6 +379,10 @@ export const ComposerDock = memo(function ComposerDock() {
   const provider: ProviderSettings | undefined = settings?.providers.find((p) => p.name === providerName);
   const providerKind = provider?.kind ?? 'openai';
   const modelDesc = useMemo(() => getModel(model), [model]);
+  // 附图能力门禁（multimodal-image-plan D-8②）：目录声明 input 含 'image' 才开
+  // 图片采集道——策略在此（视图层），机制在 chat-core（intake 方法）。目录 seed
+  // 的 vision 声明在 B5 落地；ModelOverrides.input 补声明亦经 getModel 合并。
+  const imageCapable = modelDesc?.input.includes('image') === true;
   // 墨量线（v2 2026-08-31 → 2026-09-07 分母接线）：分母走 per-model 覆盖 ??
   // 目录声明（modelContextWindow——与运行时压缩阈值同链，设置页声明的窗口
   // 对墨条生效；网关命名空间 id 目录不中时由覆盖兜底）。fallback 0 = 不
@@ -434,8 +450,8 @@ export const ComposerDock = memo(function ComposerDock() {
 
   /* ── 附件 ── */
   const onAttach = useCallback(() => {
-    void core?.openFilePicker();
-  }, [core]);
+    void core?.openFilePicker({ images: imageCapable });
+  }, [core, imageCapable]);
   const onRemoveAttached = useCallback(
     (idx: number) => {
       if (!core) return;
@@ -443,18 +459,42 @@ export const ComposerDock = memo(function ComposerDock() {
     },
     [core],
   );
+  const onRemoveAttachedImage = useCallback(
+    (idx: number) => {
+      if (!core) return;
+      getChatStore(core.panelId).input.getState().removeAttachedImage(idx);
+    },
+    [core],
+  );
 
-  /* ── 附文件入卷共用底座（引 / 拖放，v2 2026-08-31）：路径 → input-store。
-   *    size 恒 0 不显示——openFilePicker 同语义（C10：拿不到真大小就不伪造）。 ── */
+  /* ── 粘贴附图（B2 2026-09-08）：clipboardData.items kind='file' 且 mime 为
+   *    图片 → 附图道（D-8② 门禁：非 vision 模型贴图提示并忽略）；文本粘贴零影响。 ── */
+  const onComposerPaste = useCallback(
+    (e: ClipboardEvent<HTMLTextAreaElement>) => {
+      const files = extractImageFiles(e.clipboardData.items);
+      if (files.length === 0) return; // 文本/非图片粘贴走默认
+      e.preventDefault();
+      if (!imageCapable) {
+        setLocalNotice('当前模型不支持图片输入——贴图已忽略（可在设置行换 vision 模型）');
+        return;
+      }
+      void core?.intakeImageFiles(files);
+    },
+    [core, imageCapable],
+  );
+
+  /* ── 附图预览（B2）：大图浮层——点击缩略图开、点浮层/再点图关。 ── */
+  const [imagePreview, setImagePreview] = useState<ChatImageRef | null>(null);
+
+  /* ── 附文件入卷共用底座（引 / 拖放，v3 B2）：图片分流经 chat-core——图片
+   *    扩展名且 imageCapable 时入附图道，否则与非图片一并走路径附件老路
+   *    （C10 语义保留：size 恒 0 不显示——拿不到真大小就不伪造）。 ── */
   const attachPaths = useCallback(
     (paths: readonly string[]) => {
       if (!core || paths.length === 0) return;
-      const input = getChatStore(core.panelId).input.getState();
-      for (const p of paths) {
-        input.addAttachedFile({ path: p, name: p.split(/[\\/]/).pop() || p, size: 0 });
-      }
+      void core.attachIntakePaths(paths, imageCapable);
     },
-    [core],
+    [core, imageCapable],
   );
 
   /* ── 引：工作区文件模糊引用（v2 2026-08-31）。
@@ -831,11 +871,67 @@ export const ComposerDock = memo(function ComposerDock() {
             {attachedFiles.length > 3 && <span className="pp-attach-count">共 {attachedFiles.length} 件</span>}
           </div>
         )}
+        {/* 附图 rail（B2 multimodal-image-plan）：缩略图 + 移除 + 点击放大。
+            预览 URL 为进程内存态（准入时种——seedPreviewUrl），未命中降级为占位盒。 */}
+        {attachedImages.length > 0 && (
+          <div className="pp-image-rail">
+            {attachedImages.map((img, i) => {
+              const url = previewUrlFor(img.id);
+              return (
+                <div key={img.id} className="pp-image-thumb-wrap">
+                  <button
+                    type="button"
+                    className="pp-image-thumb"
+                    title={img.name ?? '附图'}
+                    aria-label={`预览附图：${img.name ?? img.id.slice(0, 8)}`}
+                    onClick={() => setImagePreview(img)}
+                  >
+                    {url ? (
+                      <img src={url} alt={img.name ?? '附图'} loading="lazy" />
+                    ) : (
+                      <span className="pp-image-thumb-fallback">{img.name ?? img.id.slice(0, 8)}</span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="pp-image-remove"
+                    title={`移除附图：${img.name ?? ''}`}
+                    aria-label={`移除附图 ${i + 1}`}
+                    onClick={() => onRemoveAttachedImage(i)}
+                  >
+                    ✕
+                  </button>
+                </div>
+              );
+            })}
+            {attachedImages.length > 1 && <span className="pp-attach-count">共 {attachedImages.length} 图</span>}
+          </div>
+        )}
+        {imagePreview !== null && (
+          <div
+            className="pp-image-lightbox"
+            role="dialog"
+            aria-modal="true"
+            aria-label="附图预览"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setImagePreview(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setImagePreview(null);
+            }}
+          >
+            <img src={previewUrlFor(imagePreview.id)} alt={imagePreview.name ?? '附图'} />
+            <div className="pp-image-lightbox-meta">
+              {imagePreview.name ?? imagePreview.id.slice(0, 12)} · {imagePreview.width}×{imagePreview.height}
+            </div>
+          </div>
+        )}
         <textarea
           ref={composerRef}
           rows={1}
           value={inputText}
           placeholder={activeSession ? '拟文…' : '落笔即另起一卷…'}
+          onPaste={onComposerPaste}
           onChange={(e) => {
             setInputText(e.target.value);
             setMenuOpen(false); // 手输接管：翰面板散（/ 触发词自然接管过滤）

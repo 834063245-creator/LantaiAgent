@@ -142,6 +142,64 @@ export function attachmentFilePath(root: string, id: string, mediaType: ImageMed
   return `${cleanRoot}/.lantai/attachments/${id}.${extOfMediaType(mediaType)}`;
 }
 
+// ── B2 采集路由（纯函数面——可测）──────────────────────────────
+
+/** 图片扩展名集合（小写——路由分流判据；与 IMAGE_MEDIA_TYPES 对应 + jpeg 别名）。 */
+const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif']);
+
+/** 路径是否图片（扩展名判据——夹/引/拖放的图片分流）。 */
+export function isImagePath(path: string): boolean {
+  const dot = path.lastIndexOf('.');
+  if (dot < 0) return false;
+  return IMAGE_EXTS.has(path.slice(dot + 1).toLowerCase());
+}
+
+/** 路径分流（B2 路由决策）：图片扩展名且允许时入附图道，否则走路径附件老路
+ *  （文本模型零回归——png 当普通文件附，模型 read_file 时行为同今日）。 */
+export function splitIntakePaths(
+  paths: readonly string[],
+  allowImages: boolean,
+): { images: string[]; files: string[] } {
+  const images: string[] = [];
+  const files: string[] = [];
+  for (const p of paths) (allowImages && isImagePath(p) ? images : files).push(p);
+  return { images, files };
+}
+
+/** 粘贴载荷抽图（DSH keymap 同款：clipboardData.items kind='file' → getAsFile，
+ *  只取 mime 图片项——文本粘贴零影响）。入参鸭子类型，jsdom 可测。 */
+export function extractImageFiles(items: Iterable<{ kind: string; getAsFile: () => File | null }>): File[] {
+  const out: File[] = [];
+  for (const item of items) {
+    if (item.kind !== 'file') continue;
+    const file = item.getAsFile();
+    if (file?.type.startsWith('image/')) out.push(file);
+  }
+  return out;
+}
+
+// ── 预览 URL 缓存（DSH preview seeding 同款）────────────────────
+// 准入时用规整字节种 object URL——草稿期同步显示的就是模型将看到的图。
+// 草稿槽是进程内存态（重启不存），同进程 seed 覆盖全部草稿渲染场景，
+// 无需回读盘。进程生命周期不 revoke：量级受每卷 20 图上限约束，
+// 已知取舍（不另立 GC 面）。
+
+const _previewUrls = new Map<string, string>();
+
+/** 准入后种预览 URL（同 id 幂等）。 */
+export function seedPreviewUrl(id: string, bytes: Uint8Array, mediaType: ImageMediaType): string {
+  const existing = _previewUrls.get(id);
+  if (existing !== undefined) return existing;
+  const url = URL.createObjectURL(new Blob([new Uint8Array(bytes).buffer as ArrayBuffer], { type: mediaType }));
+  _previewUrls.set(id, url);
+  return url;
+}
+
+/** 取预览 URL（未命中返回 undefined——渲染层降级为占位盒）。 */
+export function previewUrlFor(id: string): string | undefined {
+  return _previewUrls.get(id);
+}
+
 /** 规整产物（归一化后、未做内容寻址）。 */
 export interface NormalizedImage {
   bytes: Uint8Array;
@@ -228,6 +286,7 @@ export async function admitImageBytes(root: string, bytes: Uint8Array, name?: st
   const id = await sha256Hex(normalized.bytes);
   const filePath = attachmentFilePath(root, id, normalized.mediaType);
   await kernelWriteFileBase64(filePath, bytesToBase64(normalized.bytes));
+  seedPreviewUrl(id, normalized.bytes, normalized.mediaType);
   return {
     id,
     mediaType: normalized.mediaType,
