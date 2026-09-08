@@ -16,6 +16,7 @@
 
 /** 块状态：流内（随对话流走）| 钉住（用户主权，世界坐标说了算） */
 import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan-tools';
+import type { ChatImageRef } from '../provider/types';
 import type { AssistantPart, ToolCallPart } from '../ui/message-model';
 
 export type BlockState = 'flow' | 'pinned';
@@ -45,6 +46,9 @@ export interface BlockPayloads {
     /** 附件行（C10 结构化：真机拾遗的真路径文件；渲染层独立小行展示，
      *  不再拼进入文楷书正文） */
     files?: Array<{ path: string; name: string }>;
+    /** 附图引用（B4 · D-1/D-9：与 files 并列旁挂——渲染层缩略行独立展示，
+     *  字节永不进块/卷，INVARIANTS #14） */
+    images?: ChatImageRef[];
   };
   markdown: {
     text: string;

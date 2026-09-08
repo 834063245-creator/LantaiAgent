@@ -78,6 +78,11 @@ export const MD_TOKENS = {
    * 1.5-2 行高；分式/矩阵更高由 RO 纠正）。超长公式溢出横向滚动不增行数。 */
   mathDisplayLineH: 2.2, // 单位 = 正文行高倍数（单行 display 公式预算）
   mathDisplayMaxLines: 3, // 跨行公式预算行数上限（超长不无限膨胀——RO 兜底）
+  /* ── 远端图（B4 multimodal-image D-9，2026-09）：固定盒（chem boxH 先例）
+   *  ——加载/失败态都不改版面，measure 静态镜像即精确（无需 RO）。 */
+  imgBoxH: 160, // .pp-md-imgbox 固定盒高（含 border——box-sizing）
+  imgGap: 12, // .pp-md-imgbox margin-bottom（末元素 :last-child 归零）
+  imgBorder: 1, // .pp-md-imgbox 周框（加载中/失败的盒界可见）
 } as const;
 
 /* ── markdown 子版式组合派生（measure 用；CSS 引用 MD_TOKENS 原始值）──
@@ -109,6 +114,9 @@ export const CHROME_TOKENS = {
     asterismLine: 14,
   },
   userFiles: { lineH: 16, marginTop: 8, borderTop: 1 },
+  // 来文附图缩略行（B4 D-9）：64px 方界 tile + wrap 行距 + 上距（measure 镜像
+  // 同 token——rows = ceil(n / perRow)，perRow = floor((w+gap)/(thumb+gap))）
+  userImages: { thumb: 64, gap: 8, marginTop: 10 },
   reasoning: { borderL: 2, padL: 18 },
   tool: { padTop: 10, noteW: 44, noteH: 1.5 },
   out: { marginTop: 6, borderTop: 1, padTop: 6 },
@@ -165,6 +173,9 @@ export const CHROME_DERIVED = {
   userAsterismH: CHROME_TOKENS.user.asterismMarginTop + CHROME_TOKENS.user.asterismLine,
   userFileLineH: CHROME_TOKENS.userFiles.lineH,
   userFilesMarginTop: CHROME_TOKENS.userFiles.marginTop + CHROME_TOKENS.userFiles.borderTop,
+  userImageThumb: CHROME_TOKENS.userImages.thumb,
+  userImageGap: CHROME_TOKENS.userImages.gap,
+  userImagesMarginTop: CHROME_TOKENS.userImages.marginTop,
   reasoningTextInset: CHROME_TOKENS.reasoning.borderL + CHROME_TOKENS.reasoning.padL,
   toolPadTop: CHROME_TOKENS.tool.padTop,
   outChromeH: CHROME_TOKENS.out.marginTop + CHROME_TOKENS.out.borderTop + CHROME_TOKENS.out.padTop,
@@ -573,6 +584,9 @@ function collectCssVars(): VarSpec[] {
     ['md-mathSizeRatio', MD_TOKENS.mathSizeRatio],
     ['md-mathDisplayLineH', MD_TOKENS.mathDisplayLineH],
     ['md-mathDisplayMaxLines', MD_TOKENS.mathDisplayMaxLines],
+    ['md-imgBoxH', MD_TOKENS.imgBoxH],
+    ['md-imgGap', MD_TOKENS.imgGap],
+    ['md-imgBorder', MD_TOKENS.imgBorder],
   ];
   for (const [key, v] of mdFlat) {
     // 行高系数（*lh 后缀——chromeFlat 同款约定）与 math 系数（sizeRatio/

@@ -133,6 +133,11 @@ const MD_MATH_GAP = MD_TOKENS.mathGap; // .pp-md-math margin-bottom
 const MD_MATH_DISPLAY_LINE_H = MD_TOKENS.mathDisplayLineH; // display 公式预算行高系数
 const MD_MATH_DISPLAY_MAX_LINES = MD_TOKENS.mathDisplayMaxLines; // 预算行数上限
 const MD_TABLE_LINE_HEIGHT = MD_TOKENS.tableSize * MD_TOKENS.tableLh;
+/** 远端图固定盒（B4 D-9；chem boxH 先例）：.pp-md-imgbox 高度恒定——
+ *  加载/失败态不改版面，静态镜像即精确（不触发 RO）。border 计入盒高
+ *  （全局 box-sizing: border-box）。 */
+const MD_IMG_BOX_H = MD_TOKENS.imgBoxH; // .pp-md-imgbox 固定盒高
+const MD_IMG_GAP = MD_TOKENS.imgGap; // .pp-md-imgbox margin-bottom
 
 /* ── 富行内精确测量（P3 2026-08-30：@chenglou/pretext/rich-inline）──
  * 有富标志（粗/斜/删/行内码/链接）的行内序列走逐片段字体精确测量——旧
@@ -248,6 +253,10 @@ const USER_ASTERISM_H = CHROME_DERIVED.userAsterismH;
 /** 来文附件行（C10）：每行 mono 11px / 行高 16 + 上间距 8 + 弱规线 1。 */
 const USER_FILE_LINE_H = CHROME_DERIVED.userFileLineH;
 const USER_FILES_MARGIN_TOP = CHROME_DERIVED.userFilesMarginTop; // margin-top 8 + 规线 1
+/** 来文附图缩略行（B4 D-9）：tile 64 / 行距 8 / 上距 10（--pp-ch-userImages-* 镜像）。 */
+const USER_IMAGE_THUMB = CHROME_DERIVED.userImageThumb;
+const USER_IMAGE_GAP = CHROME_DERIVED.userImageGap;
+const USER_IMAGES_MARGIN_TOP = CHROME_DERIVED.userImagesMarginTop;
 const REASONING_TEXT_INSET = CHROME_DERIVED.reasoningTextInset; // padding-left 18 + border-left 2（虚线）
 const TOOL_PAD_TOP = CHROME_DERIVED.toolPadTop; // .pp-block.pp-tool padding-top
 const OUT_CHROME_H = CHROME_DERIVED.outChromeH; // .pp-out margin-top 6 + padding-top 6 + border-top 1
@@ -1019,6 +1028,16 @@ export function clearObservedHeightsForSession(): void {
   observedHeights.clear();
 }
 
+/** 来文附图缩略行高（B4 D-9）：wrap 行几何的纯函数镜像——渲染侧
+ *  .pp-user-images flex-wrap 同一公式（perRow tile + (perRow-1) gap ≤ 宽），
+ *  rows × thumb + (rows-1) gap + 上距。宽不足一 tile 时至少单列（钉住窄块防零除）。 */
+export function userImagesRowHeight(count: number, width: number): number {
+  if (count <= 0) return 0;
+  const perRow = Math.max(1, Math.floor((width + USER_IMAGE_GAP) / (USER_IMAGE_THUMB + USER_IMAGE_GAP)));
+  const rows = Math.ceil(count / perRow);
+  return USER_IMAGES_MARGIN_TOP + rows * USER_IMAGE_THUMB + (rows - 1) * USER_IMAGE_GAP;
+}
+
 /** 来文测高（P3 2026-08-30）：含圈点候选（【】）的文本按行拆解（pre-wrap 硬
  *  换行语义），逐行走 rich 精确——圈点段 = 原子件 + CIRCLE_EXTRA 横向 chrome，
  *  其余段 = 来文楷体；空行仍占一行。纯文本（无【】）保持旧路整体 layout。 */
@@ -1298,6 +1317,9 @@ function measureMdElement(el: MdBlock, w: number, last: boolean): number {
     }
     case 'hr':
       return last ? MD_HR_LAST_H : MD_HR_H;
+    case 'img':
+      // 固定盒（B4 D-9）：高度与加载态解耦——静态镜像即精确，无 RO 面需求
+      return MD_IMG_BOX_H + (last ? 0 : MD_IMG_GAP);
     case 'table': {
       // 列数 = 表头格数（GFM 列真源）；行格数异常（多于/少于表头）取 max 防呆。
       // 2026-09 表格叠字修复：旧 cols 取「单元格内联段数 max」——单段格行退化
@@ -1362,8 +1384,12 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       // 附件行（C10）：每文件一行 mono 小字，高度线性叠加
       const files = (b.payload as { files?: Array<{ path: string; name: string }> }).files;
       const filesH = files?.length ? USER_FILES_MARGIN_TOP + files.length * USER_FILE_LINE_H : 0;
+      // 附图缩略行（B4 D-9）：64px 方界 tile + wrap——rows 由块宽整除推得
+      // （渲染 .pp-user-images flex-wrap 同几何；两处共用 token）
+      const images = (b.payload as { images?: unknown[] }).images;
+      const imagesH = images?.length ? userImagesRowHeight(images.length, b.w - USER_TEXT_INSET) : 0;
       // 题签（2026-08-30 标题化）+ asterism（B1）恒加：题签置顶、花押收尾
-      return USER_KIND_H + textH + filesH + USER_ASTERISM_H;
+      return USER_KIND_H + textH + filesH + imagesH + USER_ASTERISM_H;
     }
     case 'markdown': {
       // markdown 专项（2026-08-30）：消费 parseMarkdown 结构模型逐元素计高

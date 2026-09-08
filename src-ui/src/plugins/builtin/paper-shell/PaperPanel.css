@@ -1077,6 +1077,40 @@
   background: color-mix(in oklch, var(--fail) 8%, transparent);
 }
 
+/* ── 远端图（B4 multimodal-image-plan D-9）：独立行 ![alt](http/https) ──
+ * 固定盒高（--pp-md-imgBoxH，chem boxH 先例；border 计入盒高——全局
+ * box-sizing: border-box）——加载/失败态都不改版面，measure 静态镜像即
+ * 精确（不触发 RO）。协议白名单过在解析层（remoteImageSrc——非 http/https
+ * 已降级 alt 文本，不进此通道）；加载失败换 alt 行（mono 弱墨，错误不静默）。 */
+.pp-md-imgbox {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--pp-md-imgBoxH);
+  margin: 0 0 var(--pp-md-imgGap);
+  border: var(--pp-md-imgBorder) solid var(--rule-soft);
+  background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
+  overflow: hidden;
+}
+.pp-md-img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.pp-md-img-alt {
+  max-width: 100%;
+  padding: 6px 10px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── 折叠行（2026-08-30 折叠机制）：夹注/脚注/程文块顶的展开/收起面 ──
  * 折叠规则与字数文案在 paper/fold.ts；行高 14 + margin 6 = FOLD_ROW_H 20
  * （测量镜像）。mono 小字 + 墨三级——是界面注记，不搅正文墨色。 */
@@ -1767,6 +1801,56 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ── 来文附图缩略行（B4 multimodal-image-plan D-9）：64px 方界 tile + wrap
+ *    多行居中（来文居中版式）；点击放大走 .pp-media-preview-overlay 浮层
+ *    （media 渲染器同款）。几何 token --pp-ch-userImages-*（thumb/gap/
+ *    marginTop），measure.userImagesRowHeight 同源镜像（wrap 行数整除推得）。
+ *    圆角恒 0；规线细框同创作坞附图 rail；未命中预览（进程外恢复）降级
+ *    mono 占位盒。── */
+.pp-user-images {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--pp-ch-userImages-gap);
+  margin-top: var(--pp-ch-userImages-marginTop);
+}
+.pp-user-image {
+  display: block;
+  width: var(--pp-ch-userImages-thumb);
+  height: var(--pp-ch-userImages-thumb);
+  padding: 0;
+  border: 1px solid var(--ink-4);
+  background: transparent;
+  overflow: hidden;
+  cursor: zoom-in;
+  transition: border-color var(--snap);
+}
+.pp-user-image:hover {
+  border-color: color-mix(in oklch, var(--seal) 45%, transparent);
+}
+.pp-user-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.pp-user-image-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 4px;
+  box-sizing: border-box;
+  font-family: var(--f-mono);
+  font-size: 9px;
+  line-height: 1.3;
+  color: var(--ink-3);
+  overflow: hidden;
+  word-break: break-all;
+  text-align: center;
 }
 
 /* ── 拾遗（C10 附件入口）：夹按钮 + 待发附件条 ──

@@ -615,3 +615,48 @@ describe('纸面运行态（2026-09-06——「会话在跑而纸面死寂」根
     expect(readFileSync(join(SRC, 'paper', 'block-model.ts'), 'utf8')).toContain('export function writingBlockIdOf');
   });
 });
+
+describe('B4 多模态附图渲染面（multimodal-image-plan D-9，2026-09）', () => {
+  it('来文附图缩略行：几何全走 --pp-ch-userImages-* token（measure 同源），圆角恒 0', () => {
+    const row = ruleBody(PANEL_CSS, '.pp-user-images');
+    expect(row).toContain('flex-wrap: wrap');
+    expect(row).toContain('justify-content: center'); // 来文居中版式
+    expect(row).toContain('gap: var(--pp-ch-userImages-gap)');
+    expect(row).toContain('margin-top: var(--pp-ch-userImages-marginTop)');
+    const thumb = ruleBody(PANEL_CSS, '.pp-user-image {');
+    expect(thumb).toContain('width: var(--pp-ch-userImages-thumb)');
+    expect(thumb).toContain('height: var(--pp-ch-userImages-thumb)');
+    expect(thumb).toContain('border: 1px solid var(--ink-4)'); // 规线细框同创作坞 rail
+    expect(thumb).not.toContain('border-radius');
+    expect(thumb).toContain('cursor: zoom-in');
+  });
+
+  it('md 远端图固定盒：高走 --pp-md-imgBoxH token（D-9 钉值 160），border 计入盒高', () => {
+    const box = ruleBody(PANEL_CSS, '.pp-md-imgbox');
+    expect(box).toContain('height: var(--pp-md-imgBoxH)');
+    expect(box).toContain('margin: 0 0 var(--pp-md-imgGap)');
+    expect(box).toContain('border: var(--pp-md-imgBorder) solid var(--rule-soft)');
+    expect(box).toContain('overflow: hidden');
+    expect(TYPE_TOKENS_TS).toContain('imgBoxH: 160'); // D-9 裁定钉值
+    expect(TYPE_TOKENS_TS).toContain('imgGap: 12');
+    expect(TYPE_TOKENS_TS).toContain('userImages: { thumb: 64, gap: 8, marginTop: 10 }');
+  });
+
+  it('白名单在解析层（remoteImageSrc 单一真源）+ 非白名单不产图盒', () => {
+    const md = readFileSync(join(SRC, 'paper', 'markdown.ts'), 'utf8');
+    expect(md).toContain('export function remoteImageSrc');
+    expect(md).toContain("protocol === 'http:' || protocol === 'https:'");
+    // 降级路径：alt 文本段落 / alt 空整行不产块（data: 巨串不灌纸面）
+    expect(md).toContain("blocks.push({ t: 'p', inl: parseInline(img[1]) })");
+    // 渲染端图盒只出白名单幸存者
+    expect(RENDERER_TS).toContain('pp-md-imgbox');
+    expect(RENDERER_TS).toContain('referrerPolicy="no-referrer"');
+  });
+
+  it('INVARIANTS #14 渲染面：块只携引用，data URI 只在渲染期出现', () => {
+    // translate 旁挂引用（不是字节/base64）；UserBody 经 readAttachmentBase64 渲染期回读
+    expect(TRANSLATE_TS).toContain('msg.images?.length ? msg.images : undefined');
+    expect(RENDERER_TS).toContain('readAttachmentBase64');
+    expect(RENDERER_TS).toContain('previewUrlFor');
+  });
+});

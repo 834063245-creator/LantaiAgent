@@ -191,8 +191,15 @@ function translateUser(msg: UserMessage): SourcedBlock {
   // 附件不再拼进入文正文（旧病灶：等宽路径挤进楷书朱砂批注体，字体语义全乱）。
   // 结构化进 payload.files，渲染层独立小行（石青 mono）展示。
   const files = msg.files?.length ? msg.files.map((f) => ({ path: f.path, name: f.name })) : undefined;
+  // 附图引用（B4 D-9）：与 files 并列旁挂——渲染层缩略行；引用纯 JSON，
+  // 字节永不进块（INVARIANTS #14——渲染期才回读 data URI）。
+  const images = msg.images?.length ? msg.images : undefined;
   return {
-    ...createBlock('user', { text: msg.text, ...(files ? { files } : {}) }, { messageId: msg._id, part: null }),
+    ...createBlock(
+      'user',
+      { text: msg.text, ...(files ? { files } : {}), ...(images ? { images } : {}) },
+      { messageId: msg._id, part: null },
+    ),
     id: `pb:${msg._id}`, // 用户消息 1:1，id 直接挂消息 id
     w: USER_BLOCK_WIDTH,
   };

@@ -43,7 +43,11 @@ export type MdBlock =
   | { t: 'code'; lang?: string; text: string }
   | { t: 'math'; text: string }
   | { t: 'hr' }
-  | { t: 'table'; head: MdInline[][]; rows: MdInline[][][] };
+  | { t: 'table'; head: MdInline[][]; rows: MdInline[][][] }
+  /** 远端图（B4 · D-9）：独立行 `![alt](http/https)` 专用块型——src 已过协议
+   *  白名单；非白名单源（data:/file:/相对路径等）在解析层降级 alt 文本，
+   *  不产本块型。渲染/测高共用固定盒（measure 镜像），加载态不改版面。 */
+  | { t: 'img'; alt: string; src: string };
 
 export interface MdListItem {
   inl: MdInline[];
@@ -256,6 +260,23 @@ const HEADING_RE = /^(#{1,6})\s+(.*)$/;
 const HR_RE = /^ {0,3}([-*_])\s*(?:\1\s*){2,}$/;
 const LIST_RE = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
 const TABLE_SEP_RE = /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$/;
+/** 独立行图（B4 D-9）：整行 `![alt](url)`（可带 "title" 后缀——链接同款）。
+ *  alt 允许空（`![](url)` 常见）；url 不含空白/括号（对齐 parseInline 链接段）。 */
+const IMG_LINE_RE = /^!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)$/;
+
+/** 远端图协议白名单（B4 · D-9，抄 DSH remoteImageUrl 纪律）：仅 http/https 绝对
+ *  URL 放行；其余协议（data:/file:/javascript:）与相对路径（new URL 无基址即拒）
+ *  一律 undefined → 解析层降级 alt 文本。白名单过在解析层而非渲染层——
+ *  measure 与 render 消费同一结构，拒绝路径不产生待测盒。 */
+export function remoteImageSrc(url: string): string | undefined {
+  try {
+    const protocol = new URL(url).protocol;
+    return protocol === 'http:' || protocol === 'https:' ? url : undefined;
+  } catch {
+    // 非绝对 URL（相对路径等）——与不允许协议同拒（new URL 无基址仅此一种失败）
+    return undefined;
+  }
+}
 
 function indentOf(line: string): number {
   let n = 0;
@@ -273,6 +294,7 @@ function isBlockStart(line: string): boolean {
     FENCE_RE.test(t) ||
     HEADING_RE.test(t) ||
     HR_RE.test(line.trim()) ||
+    IMG_LINE_RE.test(t) ||
     t.startsWith('>') ||
     LIST_RE.test(line) ||
     (t.includes('|') && TABLE_SEP_RE.test(t))
@@ -449,6 +471,22 @@ function parseDetailed(text: string): MdDetailed {
       const lv = Math.min(4, h[1].length) as 1 | 2 | 3 | 4;
       blocks.push({ t: 'h', lv, inl: parseInline(h[2].trim()) });
       starts.push(blockStart);
+      i++;
+      continue;
+    }
+    // 独立行图（B4 D-9）：![alt](http/https) → 固定盒 img 块；非白名单源
+    // 降级 alt 文本段落（DSH 同语义；alt 空则整行不产块——data: 巨串不灌纸面，
+    // 本地路径/data URI 不进图通道，资产通道（show_asset）既有职责不重叠）。
+    const img = IMG_LINE_RE.exec(trimmed);
+    if (img) {
+      const src = remoteImageSrc(img[2]);
+      if (src !== undefined) {
+        blocks.push({ t: 'img', alt: img[1], src });
+        starts.push(blockStart);
+      } else if (img[1] !== '') {
+        blocks.push({ t: 'p', inl: parseInline(img[1]) });
+        starts.push(blockStart);
+      }
       i++;
       continue;
     }

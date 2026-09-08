@@ -32,9 +32,12 @@ import hljsScala from 'highlight.js/lib/languages/scala';
 import hljsScheme from 'highlight.js/lib/languages/scheme';
 import katex from 'katex';
 import type { ComponentType, ReactNode } from 'react';
-import { Fragment, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { assetKinds } from '../agent/asset-kinds';
 import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan-tools';
+import { previewUrlFor, readAttachmentBase64 } from '../app/chat/image-intake';
+import { Overlay } from '../app/overlay';
+import { useShellStore } from '../app/shell-store';
 import { type Context, Service } from '../cordis';
 import { type BlockKind, parsePlanItems, type SourcedBlock } from '../paper/block-model';
 import { foldLabel, foldPreviewLine } from '../paper/fold';
@@ -47,6 +50,7 @@ import {
 } from '../paper/markdown';
 import { parseCircledSegments } from '../paper/marks';
 import { hasArgsToShow, prettyToolArgs } from '../paper/tool-text';
+import type { ChatImageRef } from '../provider/types';
 
 /** 渲染器组件入参——渲染器拿到块本体 + 纸壳递下的服务性回调。
  *  folded（2026-08-30 折叠机制）：壳层算好的有效折叠态（用户覆盖 ?? 默认规则，
@@ -378,6 +382,37 @@ function MdCodeBlock({ el, tail }: { el: Extract<MdBlock, { t: 'code' }>; tail?:
   );
 }
 
+/* ── 远端图（B4 multimodal-image-plan · D-9）：独立行 ![alt](http/https) ──
+ * 固定盒高（--pp-md-imgBoxH token，chem boxH 先例）——加载/失败态都不改
+ * 版面（measure 静态镜像即精确）；加载失败换 alt 行（mono 弱墨，盒界常在，
+ * 错误不静默）。src 已在解析层过协议白名单（remoteImageSrc）。 */
+function MdImage({ el, tail }: { el: Extract<MdBlock, { t: 'img' }>; tail?: ReactNode }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <>
+      <div className="pp-md-imgbox">
+        {failed ? (
+          <span className="pp-md-img-alt" title={el.src}>
+            {el.alt || el.src}
+          </span>
+        ) : (
+          <img
+            className="pp-md-img"
+            src={el.src}
+            alt={el.alt}
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            onError={() => setFailed(true)}
+          />
+        )}
+      </div>
+      {/* 流式尾块续写兜底：同表格先例——图盒固定不接行内，增量独立跟随 */}
+      {tail}
+    </>
+  );
+}
+
 function renderMdBlock(el: MdBlock, tail?: ReactNode): ReactNode {
   switch (el.t) {
     case 'p':
@@ -437,6 +472,8 @@ function renderMdBlock(el: MdBlock, tail?: ReactNode): ReactNode {
       );
     case 'code':
       return <MdCodeBlock el={el} tail={tail} />;
+    case 'img':
+      return <MdImage el={el} tail={tail} />;
     case 'math': {
       // 块级 display 公式（KaTeX .katex-display 自带上下留白与居中）
       const html = mathHtml(el.text, true);
@@ -627,9 +664,97 @@ function TextBody({ block, folded }: BlockRendererProps) {
  *  圈永不拆行由 .pp-circled 的 inline-block 保证（CSS 侧纪律）。
  *  增量渐显：稳定段走圈点，增量段纯文本淡入（稳定化后并入圈点）。
  *  附件行（C10）：payload.files 独立渲染——石青 mono 小行，不混楷书正文。 */
+
+/* ── 来文附图缩略行（B4 multimodal-image-plan · D-9）──
+ * 引用 → 展示 URL 两径：进程内预览 URL（准入 seedPreviewUrl——同进程零 RPC
+ * 快径）；未命中（重启/跨进程历史卷）经 B3 同款 readAttachmentBase64 回读
+ * 盘上附件 → data URI（INVARIANTS #14：字节只在渲染期成 URI，不进卷）。
+ * epoch 防串流同 useMediaData 语义（组件卸载/换图丢弃在途结果）。 */
+
+interface UserImageState {
+  src: string | null;
+  err: string | null;
+}
+
+function useUserImageSrc(img: ChatImageRef): UserImageState {
+  const projectPath = useShellStore((s) => s.projectPath);
+  const [state, setState] = useState<UserImageState>(() => ({ src: previewUrlFor(img.id) ?? null, err: null }));
+  const { id, mediaType, name } = img;
+  useEffect(() => {
+    let cancelled = false;
+    // 快径：进程内 object URL（准入时种）——同步命中零 RPC
+    const seeded = previewUrlFor(id);
+    if (seeded !== undefined) {
+      setState({ src: seeded, err: null });
+      return;
+    }
+    if (!projectPath) {
+      setState({ src: null, err: '工作区未打开，附图不可读' });
+      return;
+    }
+    // 慢径：盘上附件回读（读取中不清旧 src——同 id 换引用防闪）
+    readAttachmentBase64(projectPath, { id, mediaType, name })
+      .then((b64) => {
+        if (!cancelled) setState({ src: `data:${mediaType};base64,${b64}`, err: null });
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setState({ src: null, err: e instanceof Error ? e.message : String(e) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, mediaType, name, projectPath]);
+  return state;
+}
+
+function UserImageThumb({ img, onOpen }: { img: ChatImageRef; onOpen: (src: string) => void }) {
+  const { src, err } = useUserImageSrc(img);
+  const label = img.name ?? img.id.slice(0, 8);
+  return (
+    <button
+      type="button"
+      className="pp-user-image"
+      title={err ?? label}
+      aria-label={`预览附图：${label}`}
+      onClick={() => {
+        if (src !== null) onOpen(src);
+      }}
+    >
+      {src !== null ? (
+        <img src={src} alt={label} loading="lazy" />
+      ) : (
+        <span className="pp-user-image-fallback">{err !== null ? '读取失败' : label}</span>
+      )}
+    </button>
+  );
+}
+
+function UserImagesRow({ images }: { images: ChatImageRef[] }) {
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  return (
+    <>
+      <div className="pp-user-images">
+        {images.map((img) => (
+          <UserImageThumb key={img.id} img={img} onOpen={setPreviewSrc} />
+        ))}
+      </div>
+      {/* 点击放大：media 渲染器同款浮层（.pp-media-preview-overlay 全局模态） */}
+      <Overlay
+        open={previewSrc !== null}
+        onClose={() => setPreviewSrc(null)}
+        portal
+        className="pp-media-preview-overlay"
+      >
+        {previewSrc !== null && <img className="pp-media-preview" src={previewSrc} alt="附图" />}
+      </Overlay>
+    </>
+  );
+}
+
 function UserBody({ block }: BlockRendererProps) {
   const text = (block.payload as { text: string }).text;
   const files = (block.payload as { files?: Array<{ path: string; name: string }> }).files;
+  const images = (block.payload as { images?: ChatImageRef[] }).images;
   const { stable, delta } = useStreamDelta(text ?? '', null);
   const segs = parseCircledSegments(stable);
   return (
@@ -655,6 +780,7 @@ function UserBody({ block }: BlockRendererProps) {
           ))}
         </div>
       )}
+      {images && images.length > 0 && <UserImagesRow images={images} />}
       {/* asterism（B1）：来文收尾三星——古代卷子每卷末的花押句号。
        * 视觉尾距 30px 在 .pp-user-asterism（margin-top），测量镜像 measure.ts。 */}
       <span className="pp-user-asterism" aria-hidden="true">
