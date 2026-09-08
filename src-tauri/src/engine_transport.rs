@@ -654,11 +654,21 @@ out({"jsonrpc":"2.0","id":req["id"],"result":{"content":[{"type":"text","text":"
         }
         std::thread::sleep(Duration::from_millis(200));
 
-        // 下一次调用自动重启；SQLite 持久化数据读回（ready = 非空图）
-        let raw = t
-            .call("ensure_ready", &json!({}))
-            .unwrap_or_else(|e| panic!("崩溃重启后调用失败: {e}"));
-        let v: Value = serde_json::from_str(&raw).unwrap();
+        // 下一次调用自动重启；SQLite 持久化数据读回（ready = 非空图）。
+        // 负载敏感收敛（2026-09-08）：引擎重启 + StoreHost 加载 SQLite 在
+        // 满负载套件下偶发超出 ensure_ready 单发窗口（全量门禁实测假红一次、
+        // 单跑即绿）——小退避重试收敛时序，判定不变。
+        let mut v = Value::Null;
+        for _ in 0..20 {
+            let raw = t
+                .call("ensure_ready", &json!({}))
+                .unwrap_or_else(|e| panic!("崩溃重启后调用失败: {e}"));
+            v = serde_json::from_str(&raw).unwrap();
+            if v["ready"] == json!(true) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
         assert_eq!(v["ready"], true, "重启后必须从 SQLite 恢复非空图: {v}");
         let raw = t.call("fts_search", &json!({ "query": "alpha_one" })).unwrap();
         assert!(

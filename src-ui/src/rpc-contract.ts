@@ -240,9 +240,9 @@ export interface RpcContract {
 
   // ── 能力口（R3-a + 收口，kernel-capability-c3-design.md）──────────
   // fs_cap：fs 能力族直呼入口（read/list/list_flat/glob/write/delete/rename/
-  // create_dir/append/read_base64/memory_batch/global_memory_dir）——不经
-  // tool_call 信封 / PluginRegistry / PluginToolAdapter。参数键顶层 snake_case
-  // （bridge.rpc() 转换幂等）；is_agent/agent_id 显式传（Agent 过
+  // create_dir/append/read_base64/write_base64/memory_batch/global_memory_dir）
+  // ——不经 tool_call 信封 / PluginRegistry / PluginToolAdapter。参数键顶层
+  // snake_case（bridge.rpc() 转换幂等）；is_agent/agent_id 显式传（Agent 过
   // resolve_*_dispatch 闸 / UI 只解析）。编排（缺省/输出格式）归 TS。
   fs_cap: {
     params: {
@@ -257,6 +257,7 @@ export interface RpcContract {
         | 'create_dir'
         | 'append'
         | 'read_base64'
+        | 'write_base64'
         | 'memory_batch'
         | 'global_memory_dir';
       path?: string;
@@ -275,7 +276,7 @@ export interface RpcContract {
       is_agent?: boolean;
       agent_id?: string | null;
     };
-    result: string; // JSON — read={path,content} / read_base64={path,base64} / list|list_flat={entries} / glob={pattern,count,truncated,results} / memory_batch=Record<path,content|null> / 写类={path}
+    result: string; // JSON — read={path,content} / read_base64={path,base64} / list|list_flat={entries} / glob={pattern,count,truncated,results} / memory_batch=Record<path,content|null> / 写类（write|write_base64|create_dir|rename|delete）={path}
   };
 
   // ── 能力口（R3-c，kernel-capability-c3-design.md §8）──────────
@@ -545,10 +546,8 @@ export interface RpcContract {
 
   // ── Hologram 遗留命令 ────────────────────────────────────
   hologram_run_check: { params: { path?: string }; result: string }; // JSON
-  hologram_record_event: {
-    params: { event_type: string; file?: string; summary: string };
-    result: string; // "null"（fire-and-forget）
-  };
+  // （hologram_record_event 已退役 2026-09-08：前端零消费——时间线记录走
+  //  Rust 侧 record_timeline_transport_detached 直达，不经 RPC。）
 
   // ── 工作区 ───────────────────────────────────────────────
   workspace_activate: {
@@ -579,7 +578,8 @@ export interface RpcContract {
     result: string; // text
   };
   dataflow_query: { params: { trace_id?: string; list?: boolean }; result: string }; // JSON
-  dataflow_delete: { params: { trace_id: string }; result: string }; // text
+  // （dataflow_delete 已退役 2026-09-08：前端零消费——engine-domain 插件
+  //  的模型工具只注册 save/query 两件。）
 
   // （pty_spawn/write/resize/kill 已随 R4-4 小面清偿换 pty_cap 能力口直呼
   //   信封消费，kernel-plugin-runtime P2-6；pty-output 事件行仍在本文件 EventContract。）
@@ -936,6 +936,17 @@ export async function kernelReadFileBase64(filePath: string): Promise<string> {
     // 非 JSON——直通
   }
   return raw as string;
+}
+
+/** 附图字节写（fs_cap write_base64——image-intake 消费，multimodal-image-plan
+ *  D-13；用户路径 is_agent=false）。content 键承载 base64；返回解析后真实路径
+ *  （双形态：结构化对象直取 / JSON 字符串慢路径 parse）。 */
+export async function kernelWriteFileBase64(filePath: string, base64: string): Promise<string> {
+  const raw = await fsCapCall({ action: 'write_base64', file_path: filePath, content: base64, is_agent: false });
+  const payload = typeof raw === 'string' ? parseJson<{ path?: string }>(raw) : (raw as { path?: string });
+  const path = typeof payload === 'object' && payload !== null ? payload.path : undefined;
+  if (typeof path === 'string' && path !== '') return path;
+  throw new Error('kernelWriteFileBase64: 返回形状违反契约（缺 path）');
 }
 
 // ── git_cap 直呼便捷封装（git 域收口，kernel-capability-c3-design.md R3-c）──

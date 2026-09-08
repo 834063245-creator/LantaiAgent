@@ -91,18 +91,4 @@ pub(crate) async fn query(root: String, trace_id: Option<String>, list: Option<b
     Ok(serde_json::json!({ "traces": traces }).to_string())
 }
 
-/// dataflow_delete 业务体：删除已保存的追踪记录。
-pub(crate) async fn delete(root: String, trace_id: String) -> Result<String, String> {
-    crate::utils::sanitize_path_id(&trace_id, "trace_id")?;
-    let path = PathBuf::from(&root)
-        .join(".lantai")
-        .join("dataflow")
-        .join(format!("{trace_id}.json"));
-
-    if path.exists() {
-        fs::remove_file(&path).map_err(|e| format!("删除失败: {e}"))?;
-        Ok(serde_json::json!({ "deleted": trace_id }).to_string())
-    } else {
-        Err(format!("追踪记录不存在: {trace_id}"))
-    }
-}
+// （delete 已退役 2026-09-08：RPC 死链——dataflow_delete 前端零消费。）

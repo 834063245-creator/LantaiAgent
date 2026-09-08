@@ -31,27 +31,8 @@ pub(crate) async fn hologram_run_check(
     .await
 }
 
-/// 在统一时间轴 (hologram.db) 中记录面向用户的事件。
-#[tauri::command]
-pub(crate) async fn hologram_record_event(
-    event_type: String,
-    file: Option<String>,
-    summary: String,
-    state: tauri::State<'_, crate::WorkspaceState>,
-    app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
-) -> Result<String, String> {
-    crate::utils::check_mcp_permission("hologram_record_event", &state)?;
-    crate::app::services::hologram_service::record_event(
-        event_type,
-        file,
-        summary,
-        state.inner().clone(),
-        app_ctx.inner().clone(),
-    )
-    .await?;
-    Ok("ok".into())
-}
-
 // ═══════════════════════════════════════════════════════
 // （2026-08-04 清理：hologram_hotspots / hologram_gate_check 前端零调用，已删）
+// （2026-09-08 清理：hologram_record_event 前端零调用，已删——时间线记录走
+//  Rust 侧 record_timeline_transport_detached 直达 transport，不经 RPC 往返。）
 // ═══════════════════════════════════════════════════════

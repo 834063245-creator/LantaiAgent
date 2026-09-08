@@ -224,11 +224,11 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // read = 文件内容文本 / write/delete = ok_unit "null"——Text（默认臂）。
         "plugin_data_ensure" | "plugin_data_list" => RpcResultShape::JsonValue,
 
-        // ── 数据流 ──
+        // ── 数据流（2 个命令：save / query；delete 已退役 2026-09-08）──
         // dataflow_query 的 trace_id 路径直通磁盘 .json 文件原文——磁盘文件
         // 可能被写坏，出口 parse 会把业务错变成协议错，保持 Text（前端
-        // agentInvoke 兜底链自处理）。save/delete 同域同待遇，不单独展开。
-        // dataflow_save | dataflow_query | dataflow_delete → Text
+        // agentInvoke 兜底链自处理）。save 同域同待遇，不单独展开。
+        // dataflow_save | dataflow_query → Text
 
         
         // ── 其余（含 ok_unit "null" 家族、read_file_content、
@@ -928,17 +928,8 @@ async fn dispatch_rpc(
             let path = opt_str(&params, "path");
             commands::hologram::hologram_run_check(path, state, app_ctx).await
         }
-        "hologram_record_event" => {
-            let event_type = req_str(&params, "event_type", "hologram_record_event")?;
-            let file = opt_str(&params, "file");
-            let summary = req_str(&params, "summary", "hologram_record_event")?;
-            // E3: 统一返回包装 — 将 "ok" 映射为 "null" 以保持
-            // 与其他返回单元的命令一致（ok_unit 模式）。
-            // 前端以 fire-and-forget 方式调用，不检查返回值。
-            commands::hologram::hologram_record_event(event_type, file, summary, state, app_ctx)
-                .await
-                .map(|_| "null".into())
-        }
+        // （hologram_record_event 已退役 2026-09-08：前端零消费——时间线
+        //  记录走 Rust 侧 record_timeline_transport_detached 直达，不经 RPC。）
 
         // ═══════════════════════════════════════════════════════
         // 工作区（10 个命令）
@@ -1040,7 +1031,7 @@ async fn dispatch_rpc(
         }
 
         // ═══════════════════════════════════════════════════════
-        // 数据流（3 个命令）
+        // 数据流（2 个命令：save / query；delete 已退役 2026-09-08）
         // ═══════════════════════════════════════════════════════
         "dataflow_save" => {
             let query = req_str(&params, "query", "dataflow_save")?;
@@ -1054,10 +1045,8 @@ async fn dispatch_rpc(
             let list = opt_bool(&params, "list");
             commands::dataflow::dataflow_query(trace_id, list, state).await
         }
-        "dataflow_delete" => {
-            let trace_id = req_str(&params, "trace_id", "dataflow_delete")?;
-            commands::dataflow::dataflow_delete(trace_id, state).await
-        }
+        // （dataflow_delete 已退役 2026-09-08：前端零消费——engine-domain
+        //  插件的模型工具只注册 save/query 两件。）
 
 
 

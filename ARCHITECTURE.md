@@ -484,7 +484,7 @@ Engine 作为独立 MCP Server 运行，通过 JSON-RPC over stdin/stdout 对外
 
 ### 7.1 RPC 单一入口
 
-`rpc.rs` 一个 `#[tauri::command] rpc(method, params)` 是全部前端能力的单一 IPC 入口（54 个方法分支，以生成物 `docs/agents/frontend-rpc-contract.md` 实测为准——工具业务自 2026-09-05 内核能力化收口后走十一能力口直呼；`tool_call` 信封 + `plugin_tool_manifests` 已随 R5 脚手架拆除）；**命令实现是薄壳**（参数提取 + State 转换 + 横切），业务编排在应用层 `app/services/`。分类（由生成物 `docs/agents/frontend-rpc-contract.md` 实测为准，`scripts/gen-rpc-contract-md.cjs` 再生）：应用层（数据上下文）、Engine 调度、Graph、能力口（search/fs/git/process/browser/uia/web/constraints/pty/lsp/editor 十一口）、MCP/ACP stdio 桥、身份认证/权限、**插件安装通道**（plugin_install/uninstall/set_enabled/dir）、Agent 隔离与工作区、外部服务（agent_session_append）、Hologram 遗留（dataflow 三方法）。
+`rpc.rs` 一个 `#[tauri::command] rpc(method, params)` 是全部前端能力的单一 IPC 入口（64 个方法分支，以生成物 `docs/agents/frontend-rpc-contract.md` 实测为准——工具业务自 2026-09-05 内核能力化收口后走十一能力口直呼；`tool_call` 信封 + `plugin_tool_manifests` 已随 R5 脚手架拆除）；**命令实现是薄壳**（参数提取 + State 转换 + 横切），业务编排在应用层 `app/services/`。分类（由生成物 `docs/agents/frontend-rpc-contract.md` 实测为准，`scripts/gen-rpc-contract-md.cjs` 再生）：应用层（数据上下文）、Engine 调度、Graph、能力口（search/fs/git/process/browser/uia/web/constraints/pty/lsp/editor 十一口）、MCP/ACP stdio 桥、身份认证/权限、OAuth 订阅平面、**插件安装通道**（plugin_install/uninstall/set_enabled/dir）、Agent 隔离与工作区、外部服务（agent_session_append）、Hologram 遗留（run_check；record_event 2026-09-08 退役）、数据流（save/query；delete 2026-09-08 退役）。
 
 ### 7.2 ResourceLedger（统一生命周期）
 

@@ -32,28 +32,5 @@ pub(crate) async fn run_check(
     .map_err(|e| format!("简报任务失败: {e}"))?
 }
 
-/// hologram_record_event 业务体：时间线事件落引擎进程的 hologram.db。
-pub(crate) async fn record_event(
-    event_type: String,
-    file: Option<String>,
-    summary: String,
-    state: crate::WorkspaceState,
-    app_ctx: Arc<AppContexts>,
-) -> Result<(), String> {
-    let (transport, _root) = graph_service::resolve_transport(&app_ctx, &state, None)?;
-    tokio::task::spawn_blocking(move || {
-        transport.call(
-            "timeline_record",
-            &serde_json::json!({
-                "event": event_type,
-                // 引擎 record_timeline 的第二参为 node_id 语义（文件路径
-                // 即旧壳侧的传法）；detail 缺省时用事件名，这里始终带 summary。
-                "node_id": file.unwrap_or_default(),
-                "detail": summary,
-            }),
-        )
-        .map(|_| ())
-    })
-    .await
-    .map_err(|e| format!("时间轴写入失败: {e}"))?
-}
+// （record_event 已退役 2026-09-08：RPC 死链——前端零调用；时间线记录的
+//  活路径是 utils::record_timeline_transport_detached（Rust 侧直达 transport）。）

@@ -150,3 +150,21 @@ hologram-\* crate**（源码 + Cargo.toml 双扫）。
 **真机验收清单（用户待跑）**——即 §4 四项：① 老项目自动搬迁后图查询/
 向量召回/时间线如常；② 新项目直落 `.hologram`；③ MCP 直连老项目同样
 自动搬迁；④ 冲突项目告警不搬、引擎用 `.hologram` 不崩。
+
+## §7 附批：宿主引擎面死面清理（2026-09-08，用户拍板 B）
+
+竣工后用户追问「宿主还有没有必要消费引擎」，给出 A 全退役 / B 清死面 /
+C 去特例化（引擎降级用户自配 MCP server）三向，用户拍 **B**。审计
+宿主引擎面 11 个 RPC 方法：**活 9 / 死 2**。
+
+- **退役 2 条死链**：`hologram_record_event`（时间线记录的活路径是
+  Rust 侧 record_timeline_transport_detached 直达 transport，不经 RPC
+  往返）与 `dataflow_delete`（engine-domain 插件的模型工具只注册
+  save/query 两件）——rpc 分支 / 命令壳 / 服务体 / TS 契约条目全链移除。
+- **附带修复生成器失同步**：oauth 提交（6575c04c）在 rpc.rs 加的
+  「OAuth 订阅平面」箱线组漏登 gen-rpc-contract-md.cjs 的 SECTIONS——
+  其后所有方法在生成文档错挂一节、数据流整节被 section 溢出**静默丢表**；
+  补位恢复 1:1（22 分区）。与该 commit 漏更冻结基线同属一类配套遗漏。
+- **结论**：引擎面 rpc 除两死例外全部活跃（workspace_start_watcher、
+  图谱开关、merge-gate 对 run_check 的复用皆在册）——「全下线」是
+  产品级决定，未采纳；A/C 方向留档待用户将来重开。

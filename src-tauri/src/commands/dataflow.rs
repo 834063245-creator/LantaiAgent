@@ -27,11 +27,5 @@ pub(crate) async fn dataflow_query(
     crate::app::services::dataflow_service::query(root, trace_id, list).await
 }
 
-#[tauri::command]
-pub(crate) async fn dataflow_delete(
-    trace_id: String,
-    state: tauri::State<'_, crate::WorkspaceState>,
-) -> Result<String, String> {
-    let root = crate::utils::workspace_path(&state)?;
-    crate::app::services::dataflow_service::delete(root, trace_id).await
-}
+// （dataflow_delete 已退役 2026-09-08：前端零消费——engine-domain 插件的
+//  模型工具只注册 save/query 两件；服务体 delete 同链移除。）

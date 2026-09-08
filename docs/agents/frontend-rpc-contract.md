@@ -1,8 +1,8 @@
 # 前端 RPC 契约（生成物）
 
 > 由 `scripts/gen-rpc-contract-md.cjs` 从 `src-tauri/src/rpc.rs` 生成 — 勿手改。
-> 生成时间：2026-09-05T20:47:29.083Z
-> 方法总数：59（rpc.rs 头注释为历史数字，以此表为准）
+> 生成时间：2026-09-07T20:02:42.556Z
+> 方法总数：64（rpc.rs 头注释为历史数字，以此表为准）
 
 前端类型化入口：`src-ui/src/rpc-contract.ts`（`typedRpc` / `typedListen`，编译期接线检查）。
 
@@ -99,6 +99,18 @@
 | `credential_store` | provider, key | — | `null`（unit） |
 | `credential_get` | provider | — | JSON 字符串 |
 | `credential_delete` | provider | — | `null`（unit） |
+
+## OAuth 订阅平面
+
+| 方法 | 必选参数 | 可选参数 | 返回 |
+|------|----------|----------|------|
+| `oauth_start` | provider | — | JSON 字符串 |
+| `oauth_poll` | provider, device_auth_id, user_code | — | JSON 字符串 |
+| `oauth_accounts` | provider | — | JSON 字符串 |
+| `oauth_access` | provider | account_id | JSON 字符串 |
+| `oauth_logout` | provider, account_id | — | `null`（unit） |
+| `oauth_refresh` | provider, account_id | — | JSON 字符串 |
+| `open_external` | url | — | `null`（unit） |
 | `llm_proxy_port` | — | — | 字符串 |
 
 ## 插件安装通道
@@ -142,7 +154,6 @@
 | 方法 | 必选参数 | 可选参数 | 返回 |
 |------|----------|----------|------|
 | `hologram_run_check` | — | path | 字符串 |
-| `hologram_record_event` | event_type, summary | file | `null`（unit） |
 
 ## 工作区
 
@@ -171,7 +182,6 @@
 |------|----------|----------|------|
 | `dataflow_save` | query | content, explore_result, dataflow_result | 字符串 |
 | `dataflow_query` | — | trace_id, list | 字符串 |
-| `dataflow_delete` | trace_id | — | 字符串 |
 
 ## 事件（Rust 侧 emit → 前端 listen）
 

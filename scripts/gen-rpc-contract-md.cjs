@@ -27,6 +27,10 @@ const OUT_MD = path.join(ROOT, 'docs', 'agents', 'frontend-rpc-contract.md');
 // 共用一个箱线块（单分区），SECTIONS 却按四个分区登记，editor_cap 起全部
 // 错挂（editor→constraints 节、protocol_bridge→pty 节……）。收敛为本表
 // 与真实块序 1:1（21 项），web_cap 行承担四小面标题。
+// 2026-09-08 双修（引擎-宿主死面清理批）：① OAuth 提交（6575c04c）加的
+// 「OAuth 订阅平面」箱线组漏登本表——其后所有方法错挂一节、数据流整节
+// 被 section 溢出丢表；补位后恢复 1:1（22 项）。② hologram_record_event
+// 与 dataflow_delete 退役（前端零消费），rpc.rs 分支已删，分区序不变。
 const SECTIONS = [
   '应用层：数据上下文（L1）',
   'Engine 调度',
@@ -41,6 +45,7 @@ const SECTIONS = [
   '能力口（editor_cap）',
   'MCP / ACP stdio 桥',
   '身份认证 / 权限',
+  'OAuth 订阅平面',
   '插件安装通道',
   '插件数据目录',
   'Agent 隔离（worktree）',
