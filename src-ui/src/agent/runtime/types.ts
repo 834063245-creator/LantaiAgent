@@ -120,6 +120,9 @@ export interface AgentConfig {
   systemPrompt?: string;
   /** 会话持久化回调 */
   onSessionPersisted?: (sessionId: string, messages: Message[]) => void;
+  /** 附图字节读取器（multimodal-image-plan B3 · D-5）——请求期 ChatImageRef →
+   *  base64。app 层闭包注入（工作区根拼 attachments 路径 → fs_cap read_base64）。 */
+  imageReader?: (ref: import('../../provider/types').ChatImageRef) => Promise<string>;
   /** 通信总线（可选 — 无则为 headless 无通信能力） */
   messageBus?: MessageBus;
   /** TaskBoard — 共享状态区，追踪异步子 Agent 的工作状态 */
@@ -152,6 +155,8 @@ export interface AgentAssemblyInputs {
   contextWindow?: number;
   toolResultWindow?: number;
   onSessionPersisted?: (sessionId: string, messages: Message[]) => void;
+  /** 附图字节读取器（B3）——经 AgentOptions 落 Agent；子 Agent 继承父读取器。 */
+  imageReader?: (ref: import('../../provider/types').ChatImageRef) => Promise<string>;
 }
 
 // ── Agent 句柄 ──

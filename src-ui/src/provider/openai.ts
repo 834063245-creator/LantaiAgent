@@ -100,6 +100,7 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
         req.max_tokens,
         thinking,
         cfg.maxTokensFor,
+        req.imageData,
       );
       const response = await sendWithRetry({
         url: `${baseUrl}/chat/completions`,
@@ -160,9 +161,18 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
 
 // ---- 请求构建 ----
 
+/** user 消息多模态 content parts（multimodal-image-plan B3）：文本恒在前，
+ *  image_url data URI 依消息内 images 序 join（imageData 键控 ChatImageRef.id；
+ *  解析缺图的引用自然跳过——wire 缺图不炸）。 */
+interface ChatContentPart {
+  type: 'text' | 'image_url';
+  text?: string;
+  image_url?: { url: string };
+}
+
 interface ChatMessage {
   role: string;
-  content: string | null;
+  content: string | null | ChatContentPart[];
   tool_calls?: ChatToolCall[];
   tool_call_id?: string;
   name?: string;
@@ -204,6 +214,7 @@ export function buildChatRequest(
   maxTok: number,
   thinking: StoredThinking | undefined,
   maxTokensFor?: (model: string) => number | undefined,
+  imageData?: Request['imageData'],
 ): ChatRequest {
   // P14 能力协商：档位合法性由模型目录声明裁决（deepseek.json 等声明 thinkingEfforts）。
   // 直连 DeepSeek 声明 low/high/max（2026-08-22 用户官方文档核实 low 成立）。
@@ -237,6 +248,25 @@ export function buildChatRequest(
     switch (m.role as Role) {
       case 'system':
       case 'user':
+        // B3（multimodal-image-plan）：user 消息带图且解析表非空 → content
+        // parts 数组（text 在前、image_url 在后）。纯文本消息保持 string
+        // 紧凑形态（D-6——字节不变，前缀缓存/兼容面零影响）。
+        if (m.role === 'user' && m.images !== undefined && m.images.length > 0 && imageData !== undefined) {
+          const parts: ChatContentPart[] = [];
+          if (m.content) parts.push({ type: 'text', text: m.content });
+          for (const ref of m.images) {
+            const hit = imageData[ref.id];
+            if (hit === undefined) continue; // 读失败/超预算图——wire 缺图不炸
+            parts.push({
+              type: 'image_url',
+              image_url: { url: `data:${hit.mediaType};base64,${hit.data}` },
+            });
+          }
+          chatMsgs.push(
+            parts.length > 0 ? { role: m.role, content: parts } : { role: m.role, content: m.content || null },
+          );
+          break;
+        }
         chatMsgs.push({ role: m.role, content: m.content || null });
         break;
       case 'tool':

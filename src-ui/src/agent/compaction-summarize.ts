@@ -92,7 +92,14 @@ export function renderTranscript(msgs: Message[]): string {
   for (const m of msgs) {
     switch (m.role) {
       case 'user':
-        lines.push(`[用户]\n${m.content || ''}\n`);
+        lines.push(`[用户]\n${m.content || ''}`);
+        // B3（multimodal-image-plan D-12）：摘要模型看不到图——折叠区内的
+        // 附图以确定性事实行交代（数量/尺寸），字节永不进摘要转录。
+        if (m.images !== undefined && m.images.length > 0) {
+          const dims = m.images.map((ref) => `${ref.width}×${ref.height}`).join('、');
+          lines.push(`[本消息含 ${m.images.length} 张附图已折叠（${dims}）——图片内容不在摘要范围]`);
+        }
+        lines.push('');
         break;
       case 'assistant': {
         if (m.content) lines.push(`[助手]\n${m.content}`);

@@ -164,12 +164,18 @@ export type ChatMessage = UserMessage | AssistantMessage | NoticeMessage;
 // ── 辅助函数 ──────────────────────────────────────────────
 
 /** 创建新用户消息。 */
-export function createUserMessage(text: string, files?: FileAttachment[], sessionIndex?: number): UserMessage {
+export function createUserMessage(
+  text: string,
+  files?: FileAttachment[],
+  sessionIndex?: number,
+  images?: ChatImageRef[],
+): UserMessage {
   return {
     role: 'user',
     _id: nextMsgId(),
     text,
     files: files?.length ? files : undefined,
+    images: images?.length ? images : undefined,
     sessionIndex: sessionIndex ?? -1,
   };
 }

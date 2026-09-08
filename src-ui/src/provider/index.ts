@@ -19,6 +19,7 @@
 
 import { activeLlmAdapters } from '../composition/services';
 import type { ProviderSettings } from '../settings';
+import { getModel } from './catalog';
 import { withThinkingDisabled } from './thinking';
 import type { Provider, ProviderRuntimeArgs } from './types';
 
@@ -47,7 +48,7 @@ function resolveProviderDialect(kind: string, rt: ProviderRuntimeArgs): Provider
 export function createProvider(settings: ProviderSettings, options?: CreateProviderOptions): Provider {
   // per-model 最大输出覆盖（P14）：请求时按模型解析，0/缺省 = 目录值（clampMaxTokens 兜底）
   const maxTokensFor = (model: string): number | undefined => settings.modelOverrides?.[model]?.maxTokens || undefined;
-  return resolveProviderDialect(settings.kind, {
+  const prov = resolveProviderDialect(settings.kind, {
     name: settings.name,
     apiKey: settings.apiKey,
     baseUrl: settings.baseUrl,
@@ -58,4 +59,9 @@ export function createProvider(settings: ProviderSettings, options?: CreateProvi
     maxTokensFor,
     oauthHeaders: options?.oauthHeaders,
   });
+  // 输入模态能力戳（multimodal-image-plan B3 · D-8③）：目录声明（seed JSON +
+  // ModelOverrides 合并，B5 落地声明面）盖在实例上——Agent 请求期投影读它，
+  // Provider 实现自身零感知。未声明 = ['text']（不编造能力）。
+  prov.inputModalities = getModel(settings.model)?.input ?? ['text'];
+  return prov;
 }

@@ -37,6 +37,7 @@ import { buildTurnStartBlock, refreshGitStatus, refreshTimeline } from './agent/
 import { TaskManager } from './agent/task';
 import type { ToolRegistry } from './agent/tool';
 import type { ChatCore } from './app/chat/chat-core';
+import { readAttachmentBase64 } from './app/chat/image-intake';
 import { useShellStore } from './app/shell-store';
 import { resolveCurrentComposition } from './composition/preset-assembly';
 import type { ResolvedComposition } from './composition/roster';
@@ -1143,6 +1144,10 @@ export class Workspace {
             execState: chatPanel.getSessionExecState(sessionId),
             collaborationMode: ms.collaborationMode,
             temperature: 0.7,
+            // 附图读取器（multimodal-image-plan B3 · D-5）：请求期 ref→base64
+            // 的 IO 腰——工作区根拼 attachments 路径经 fs_cap read_base64；
+            // Agent 层零 app 依赖（注入闭包）。子 Agent 经 spawn 继承。
+            imageReader: (ref) => readAttachmentBase64(this.path, ref),
             // 从模型目录动态解析窗口（deepseek-v4 标 1M），查不到才 fallback 200K。
             // 0b3e5bf 曾加 Math.min(..., 200000) 硬封顶 — 把动态结果压成 200K，
             // 导致压缩在 110K 就触发；压缩已根治为只影响发送载荷，cap 无必要。

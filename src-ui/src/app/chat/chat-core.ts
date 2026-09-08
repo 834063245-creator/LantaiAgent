@@ -1310,7 +1310,9 @@ export class ChatCore {
     // 轮次簿册以它作权威身份（撤回/重发 ID 直达）
     const files = getChatStore(this.panelId).input.getState().attachedFiles;
     const filesSnapshot = [...files];
-    const bubble = this.appendUserBubble(text, filesSnapshot);
+    const images = getChatStore(this.panelId).input.getState().attachedImages;
+    const imagesSnapshot = [...images];
+    const bubble = this.appendUserBubble(text, filesSnapshot, undefined, imagesSnapshot);
     const turnSidPre = this.activeSessionId;
     Session.getTurnPairs(this.panelId, turnSidPre ?? undefined).push({
       userText: text,
@@ -1324,7 +1326,8 @@ export class ChatCore {
     let focusPrefix = '';
 
     // 附加文件 — 暴露路径以便 Agent 读取（大小不做假：openFilePicker 拿不到真实
-    // size，旧实现硬编码 0 导致模型看到「0 B」误判空文件；要真大小需 Rust stat 通道）
+    // size，旧实现硬编码 0 导致模型看到「0 B」误判空文件；要真大小需 Rust stat 通道）。
+    // 附图（B3）不走文本前缀——引用随 agent.run 结构化传递（multimodal-image-plan D-1）。
     if (files.length > 0) {
       focusPrefix += '用户附加了以下文件：\n';
       for (const f of files) {
@@ -1332,6 +1335,9 @@ export class ChatCore {
       }
       focusPrefix += '你可以用 read_file 读取这些文件。\n\n';
       getChatStore(this.panelId).input.getState().clearAttachedFiles();
+    }
+    if (imagesSnapshot.length > 0) {
+      getChatStore(this.panelId).input.getState().clearAttachedImages();
     }
 
     // 追踪启动本次运行的会话 — 事件路由身份已由工厂绑定的 eventSinkFor
@@ -1344,9 +1350,9 @@ export class ChatCore {
       this.agent?.setUiSessionId(turnSid);
     }
 
-    // 运行 Agent
+    // 运行 Agent（附图引用随用户消息入 session——B3；文本前缀只载路径附件）
     try {
-      await this.agent.run(signal, focusPrefix + text);
+      await this.agent.run(signal, focusPrefix + text, imagesSnapshot.length > 0 ? imagesSnapshot : undefined);
     } catch (err: unknown) {
       // 2026-08-31 贴黄拆迁：回合错误写进回合自身（墓碑），不播黄纸条
       const msg = err instanceof Error ? err.message : String(err);
@@ -1532,9 +1538,10 @@ export class ChatCore {
   private appendUserBubble(
     text: string,
     files?: { path: string; name: string; size: number }[],
-    skipActions?: boolean,
+    _skipActions?: boolean,
+    images?: ChatImageRef[],
   ): UserMessage {
-    return Stream.appendUserBubble(this._streamCtxFor(null), text, files, skipActions);
+    return Stream.appendUserBubble(this._streamCtxFor(null), text, files, _skipActions, images);
   }
 
   private finishTurn(): void {

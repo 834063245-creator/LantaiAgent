@@ -108,6 +108,7 @@ export function createResponsesProvider(cfg: ResponsesConfig): Provider {
         req.max_tokens,
         thinking,
         cfg.maxTokensFor,
+        req.imageData,
       );
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -163,11 +164,12 @@ export function createResponsesProvider(cfg: ResponsesConfig): Provider {
 // ---- 请求构建 ----
 
 /** input 数组 item：message item 或 function_call_output item（Responses 官方
- *  item-based 形态，非 chat messages 形态）。 */
+ *  item-based 形态，非 chat messages 形态）。content 数组元素含 B3 附图
+ *  input_image part（image_url = data URI）。 */
 interface ResponsesInputItem {
   type?: 'message' | 'function_call_output';
   role?: 'user' | 'assistant' | 'developer' | 'system';
-  content?: Array<{ type: string; text?: string; output?: string }>;
+  content?: Array<{ type: string; text?: string; output?: string; image_url?: string }>;
   /** message item 的 assistant 工具输出子项（function_call 数组） */
   output?: Array<{ id?: string; type: 'function_call'; name?: string; arguments?: string; call_id?: string }>;
   /** function_call_output item：关联的 function_call id */
@@ -202,6 +204,7 @@ export function buildResponsesRequest(
   maxTok: number,
   thinkingCfg: StoredThinking | undefined,
   maxTokensFor?: (model: string) => number | undefined,
+  imageData?: Request['imageData'],
 ): ResponsesRequest {
   // instructions：全部 system 消息合并（Responses 顶层字段，非 input 角色）
   const systemParts = msgs.filter((m) => m.role === 'system').map((m) => m.content);
@@ -223,8 +226,17 @@ export function buildResponsesRequest(
       continue;
     }
     // user / assistant
-    const content: Array<{ type: string; text?: string }> = [];
+    const content: Array<{ type: string; text?: string; image_url?: string }> = [];
     if (m.content) content.push({ type: 'input_text', text: m.content });
+    // B3（multimodal-image-plan）：user 带图且解析表非空 → input_image parts
+    // （读失败图自然跳过）。无图消息形态字节不变（D-6）。
+    if (m.role === 'user' && m.images !== undefined && m.images.length > 0 && imageData !== undefined) {
+      for (const ref of m.images) {
+        const hit = imageData[ref.id];
+        if (hit === undefined) continue;
+        content.push({ type: 'input_image', image_url: `data:${hit.mediaType};base64,${hit.data}` });
+      }
+    }
     const item: ResponsesInputItem = {
       type: 'message',
       role: m.role as 'user' | 'assistant',

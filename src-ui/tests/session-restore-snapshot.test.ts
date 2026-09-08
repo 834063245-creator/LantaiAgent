@@ -544,7 +544,7 @@ describe('改/重发/重试三操作语义（ChatCore 级，2026-09-01 重发锚
     p.resendUserMessage(m1);
     await new Promise((r) => setTimeout(r, 0));
 
-    expect(run).toHaveBeenCalledWith(expect.anything(), '第一问');
+    expect(run).toHaveBeenCalledWith(expect.anything(), '第一问', undefined);
     expect((p.getAgent()!.getSession() as any[]).map((m) => m.content).filter(Boolean)).toEqual(['sys', '第一问']);
     // 新气泡已铸（新 _id），旧轮（m1/a1）已消失
     const after = uiMsgs(p);
@@ -559,7 +559,7 @@ describe('改/重发/重试三操作语义（ChatCore 级，2026-09-01 重发锚
     p.retryAssistant(a1);
     await new Promise((r) => setTimeout(r, 0));
 
-    expect(run).toHaveBeenCalledWith(expect.anything(), '第一问');
+    expect(run).toHaveBeenCalledWith(expect.anything(), '第一问', undefined);
     expect(uiMsgs(p).some((m) => m._id === 'a1')).toBe(false);
   });
 

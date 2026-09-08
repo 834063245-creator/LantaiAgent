@@ -317,6 +317,17 @@
 
 ## 6. 验收总门禁（每 Phase 统一）
 
+**AgentConfig 字段面登记（phase-6 T0 冻结断言的逃生门台账）**——冻结测试
+`tests/convergence/specs/phase-6.test.ts` 规定「确需新增 config 字段须改断言并登记」：
+
+- 2026-09-06：`pricing` 删除（模型价格表拆除）——30 → 29 字段。
+- **2026-09-09：`imageReader` 新增（multimodal-image-plan B3）——29 → 30 字段。**
+  附图字节读取器 IO 注入腰（`ChatImageRef → base64`，workspace 闭包注入）。
+  性质 = 与 `onSessionPersisted`/`subAgentSpawner` 同类的装配期 IO 回调，
+  **非工具/hook 面**——工具扩展仍走 blueprint capability（T2 实测不破）。
+  消费 = agent.ts streamOnce 请求期解析（`agent/request-images.ts`）；
+  子 Agent 经 `SubAgentSpawnHost._imageReader` 继承。
+
 ```bash
 cd src-ui && npm run build && npx vitest run && npx biome ci .   # 前端
 cd src-ui && npm run verify:convergence                          # 组合层（standard 零漂移）

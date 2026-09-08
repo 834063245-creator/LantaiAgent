@@ -451,13 +451,14 @@ export function appendUserBubble(
   text: string,
   files?: { path: string; name: string; size: number }[],
   _skipActions?: boolean,
+  images?: import('../provider/types').ChatImageRef[],
 ): UserMessage {
   const fileAttachments: FileAttachment[] = (files || []).map((f) => ({
     path: f.path,
     name: f.name,
     size: f.size,
   }));
-  const userMsg = createUserMessage(text, fileAttachments.length > 0 ? fileAttachments : undefined);
+  const userMsg = createUserMessage(text, fileAttachments.length > 0 ? fileAttachments : undefined, undefined, images);
 
   const msgs = ctx.getActiveMessages();
   msgs.push(userMsg);

@@ -88,6 +88,7 @@ export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
         thinking || '',
         req.max_tokens,
         cfg.maxTokensFor,
+        req.imageData,
       );
       const response = await sendWithRetry({
         url: `${baseUrl}/v1/messages`,
@@ -162,7 +163,7 @@ interface TextBlock {
 }
 
 interface ContentBlock {
-  type: 'text' | 'tool_use' | 'tool_result' | 'thinking' | 'redacted_thinking';
+  type: 'text' | 'tool_use' | 'tool_result' | 'thinking' | 'redacted_thinking' | 'image';
   text?: string;
   thinking?: string;
   signature?: string;
@@ -171,6 +172,8 @@ interface ContentBlock {
   input?: unknown;
   tool_use_id?: string;
   content?: string;
+  /** image 块（B3 multimodal-image-plan）：base64 源。 */
+  source?: { type: 'base64'; media_type: string; data: string };
   cache_control?: CacheControl;
 }
 
@@ -210,13 +213,16 @@ function findLastNonThinkingBlock(blocks: ContentBlock[]): ContentBlock | undefi
   return undefined;
 }
 
-function buildRequest(
+/** 请求体构造（导出 = 测试直呼面——openai buildChatRequest / responses
+ *  buildResponsesRequest 同款先例）。 */
+export function buildRequest(
   msgs: Message[],
   tools: Request['tools'],
   model: string,
   thinkingCfg: string,
   maxTok: number,
   maxTokensFor?: (model: string) => number | undefined,
+  imageData?: Request['imageData'],
 ): AnthRequest {
   const system: TextBlock[] = [];
   const anthMsgs: AnthMessage[] = [];
@@ -237,6 +243,20 @@ function buildRequest(
         if (m.content) system.push({ type: 'text', text: m.content });
         break;
       case 'user':
+        // B3（multimodal-image-plan）：user 带图且解析表非空 → image blocks
+        // （文本块在前，图依消息内序 join；读失败图自然跳过）。无图 user 消息
+        // 形态字节不变（D-6）。
+        if (m.images !== undefined && m.images.length > 0 && imageData !== undefined) {
+          const blocks: ContentBlock[] = [];
+          if (m.content) blocks.push({ type: 'text', text: m.content });
+          for (const ref of m.images) {
+            const hit = imageData[ref.id];
+            if (hit === undefined) continue;
+            blocks.push({ type: 'image', source: { type: 'base64', media_type: hit.mediaType, data: hit.data } });
+          }
+          appendBlocks('user', blocks);
+          break;
+        }
         if (m.content) appendBlocks('user', [{ type: 'text', text: m.content }]);
         break;
       case 'tool': {

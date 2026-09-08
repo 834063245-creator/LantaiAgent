@@ -79,6 +79,10 @@ export interface Request {
   tools: ToolSchema[];
   temperature: number;
   max_tokens: number;
+  /** 附图请求期解析产物（multimodal-image-plan B3 · D-5）：ChatImageRef.id →
+   *  规整字节 base64。适配器按消息内 images 引用 join 出 wire 格式；缺省 =
+   *  无图载荷（纯文本 wire 形态字节不变——D-6）。 */
+  imageData?: Record<string, { mediaType: ImageMediaType; data: string }>;
 }
 
 export enum ChunkType {
@@ -123,6 +127,10 @@ export interface Provider {
   name(): string;
   /** 启动流式补全，yield chunks。取消 signal 会中止。 */
   stream(signal: AbortSignal, req: Request): AsyncGenerator<Chunk>;
+  /** 输入模态能力戳（multimodal-image-plan B3 · D-8③）：工厂从模型目录
+   *  （ModelDescriptor.input，含 ModelOverrides 合并）盖在实例上——Agent
+   *  请求期据此决定附图走 wire 还是投影成文本占位。缺省 = ['text']。 */
+  inputModalities?: readonly ('text' | 'image')[];
   /** 运行时更新思考策略（ModelSwitcher 切思考档位），不重建 Provider。
    *  可选 — 旧实现没有此方法时静默跳过。 */
   setThinking?(cfg: StoredThinking | undefined): void;

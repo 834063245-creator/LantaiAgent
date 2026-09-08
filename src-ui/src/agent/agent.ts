@@ -7,7 +7,7 @@ import { currentPresetId } from '../composition/preset-assembly';
 import { activeSubagentProviders } from '../composition/subagent-service';
 import { STREAM_IDLE_TIMEOUT_MS, streamWithIdleTimeout } from '../provider/idle-stream';
 import type { StoredThinking } from '../provider/thinking';
-import type { Message, Provider, ToolCall, ToolSchema, Usage } from '../provider/types';
+import type { Message, Provider, Request, ToolCall, ToolSchema, Usage } from '../provider/types';
 import { ApiError, apiErrorSummary, ChunkType } from '../provider/types';
 import {
   applyAutoTuneConfigImpl,
@@ -59,6 +59,7 @@ import type { Disposer } from './lifecycle';
 import { log } from './logger';
 import { batchStormSignature, type ToolOutcome } from './loop-helpers';
 import { type PlanGate, planGateCheck } from './plan/plan-registry';
+import { applyImageBudget, projectImagesForTextModel, resolveRequestImageData } from './request-images';
 import { backoffDelay, isRetryable, MAX_RETRIES, sleepWithAbort } from './retry';
 import { registerOwnerContext } from './session-context';
 import { SessionLog, type SessionResetReason } from './session-log';
@@ -133,6 +134,11 @@ export interface AgentOptions {
   /** agent loop 实现（平台化 Phase 5 · D13）——缺省 = builtin/default
    *  （逐字节一致）；runtime 装配经 ctx.agentLoop 注册表解析传入。 */
   agentLoop?: AgentLoop;
+  /** 附图字节读取器（multimodal-image-plan B3 · D-5）——请求期把 ChatImageRef
+   *  解析成 base64。注入层：app（工作区根拼 attachments 路径 → fs_cap
+   *  read_base64）；agent 层零 app 依赖。缺省 = 无读取器（附图请求期降级
+   *  为 wire 缺图，不炸）。子 Agent 经 spawn 继承。 */
+  imageReader?: (ref: import('../provider/types').ChatImageRef) => Promise<string>;
   // gate 已移除 — 权限由 Rust 后端 has_permission_to_use_tool() 处理
 }
 
@@ -168,6 +174,11 @@ export class Agent {
    *  child() 继承白名单成员，子 Agent 与父同一组合面）。
    *  消费面：spawnSubAgent 透传子 Agent（ctx 路径）、诊断/测试只读。 */
   private readonly _composition: import('../composition/roster').ResolvedComposition | null = null;
+
+  /** 附图字节读取器 — 请求期 IO 腰（app 注入；null = 无读取器，附图降级缺图）。 */
+  _imageReader: ((ref: import('../provider/types').ChatImageRef) => Promise<string>) | null = null;
+  /** 附图解析缓存（ref.id → base64）——实例级，同图跨回合零重读。 */
+  private _imageDataCache = new Map<string, { mediaType: import('../provider/types').ImageMediaType; data: string }>();
 
   /** 会话创建时点生效的 preset id（S4-1b 首事件的事实源镜像——构造期读
    *  currentPresetId()；空白会话期经 selectPreset() 改选并追加同名事件）。
@@ -432,6 +443,9 @@ export class Agent {
     this._agentOpts = opts;
     // D13：loop 实现 = 显式注入优先，缺省 = builtin/default（逐字节一致）
     this._loop = opts.agentLoop ?? defaultAgentLoop;
+    // 附图读取器（multimodal-image-plan B3）：请求期 ref→base64 的 IO 腰；
+    // 缓存按 id 键控——同图跨回合零重读。子 Agent 经 spawn 继承读取器。
+    this._imageReader = opts.imageReader ?? null;
     // Phase 5：planGate 常驻经 eventBus tool/guard 监听（构造期挂——
     // executor 收到 eventBus 后优先 bus；缺 guard 监听 = plan 门禁失效，
     // 故守卫监听必须无条件先于任何 bus 使用）
@@ -1028,11 +1042,17 @@ export class Agent {
     return this._loopEvents.onLoopEvent(event, fn, opts);
   }
 
-  async run(signal: AbortSignal, input: string): Promise<void> {
+  async run(signal: AbortSignal, input: string, images?: import('../provider/types').ChatImageRef[]): Promise<void> {
     this._isRunning = true;
     this._ui.onStatusChange?.(true);
     if (input) {
-      this._appendMessage('user/message', { role: 'user', content: input });
+      // B3（multimodal-image-plan D-1）：附图引用随用户消息入 session（字节
+      // 永不进卷）；空文本纯图轮 content 落空串占位。
+      this._appendMessage('user/message', {
+        role: 'user',
+        content: input,
+        ...(images !== undefined && images.length > 0 ? { images } : {}),
+      });
       // 用户发新消息 → 重置 plan 提醒计数（下一轮注入全量提醒）
       this._planInjector?.resetOnUserInput();
     }
@@ -1298,17 +1318,33 @@ export class Agent {
     const payload = this.payloadMessages();
     const fullSession = transientMsgs.length > 0 ? [...payload, ...transientMsgs] : payload;
 
+    // ── 附图发送面（multimodal-image-plan B3 · D-5/D-7/D-8③）──
+    // 引用→wire 全部发生在发送边界：session 永持完整引用（INVARIANTS #14）。
+    //   1. 模型无 image 声明 → 全部图投影成文本占位（不报错）；
+    //   2. 声明支持 → 请求级预算降级（超限最旧先移除换占位）；
+    //   3. 幸存引用经读取器解析成 Request.imageData（缓存键控 id）。
+    let wireSession = fullSession;
+    if (fullSession.some((m) => (m.images?.length ?? 0) > 0)) {
+      const supportsImage = this.prov.inputModalities?.includes('image') === true;
+      wireSession = supportsImage ? applyImageBudget(fullSession) : projectImagesForTextModel(fullSession);
+    }
+    let imageData: Request['imageData'];
+    if (wireSession.some((m) => (m.images?.length ?? 0) > 0) && this._imageReader) {
+      imageData = await resolveRequestImageData(wireSession, this._imageReader, this._imageDataCache);
+    }
+
     // 流空闲超时：30s 无任何 chunk 视为挂起（与 callSummaryLLM / dataflow NL 解析
     // 共用 streamWithIdleTimeout）。超时 abort 后 sendWithRetry/readSSE 抛 aborted，
     // 此处转为可读的挂起提示（[响应超时] 会在 stream() 重试循环里按瞬态重试）。
     // 外部 signal 只做转发，不直接传给 stream——避免超时 abort 连累调用方。
     // sanitizeToolPairing 不在此调用 — provider（openai/anthropic）是上线前的最终 gate。
     const stream = streamWithIdleTimeout(this.prov, signal, {
-      messages: fullSession,
+      messages: wireSession,
       tools: this.requestToolSchemas(),
       temperature: this.temperature,
       // max_tokens 不开放设置 — 0 = provider 默认 32000，发送前按模型目录上限钳制
       max_tokens: 0,
+      ...(imageData !== undefined && Object.keys(imageData).length > 0 ? { imageData } : {}),
     });
 
     let text = '';

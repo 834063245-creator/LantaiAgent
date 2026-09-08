@@ -142,6 +142,18 @@ export function attachmentFilePath(root: string, id: string, mediaType: ImageMed
   return `${cleanRoot}/.lantai/attachments/${id}.${extOfMediaType(mediaType)}`;
 }
 
+/** 附图请求期读取（B3 · D-5——Agent.imageReader 注入腰的 app 端实现）：
+ *  工作区根拼 attachments 路径 → fs_cap read_base64。读失败上抛——
+ *  request-images.resolveRequestImageData 捕获后该图降级为 wire 缺图。 */
+export async function readAttachmentBase64(
+  root: string,
+  ref: Pick<ChatImageRef, 'id' | 'mediaType' | 'name'>,
+): Promise<string> {
+  const b64 = await kernelReadFileBase64(attachmentFilePath(root, ref.id, ref.mediaType));
+  if (b64 === '') throw new Error(`附图读取失败（或超过通道上限 8MiB）：${ref.name ?? ref.id.slice(0, 12)}`);
+  return b64;
+}
+
 // ── B2 采集路由（纯函数面——可测）──────────────────────────────
 
 /** 图片扩展名集合（小写——路由分流判据；与 IMAGE_MEDIA_TYPES 对应 + jpeg 别名）。 */

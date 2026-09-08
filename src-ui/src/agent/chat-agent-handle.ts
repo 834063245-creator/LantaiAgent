@@ -6,7 +6,7 @@
 // Agent 类已结构性实现此接口，无需额外 adapter。
 
 import type { StoredThinking } from '../provider/thinking';
-import type { Message, Provider } from '../provider/types';
+import type { ChatImageRef, Message, Provider } from '../provider/types';
 
 /** 目标运行结果 — runGoal / resumeGoal 的统一返回 */
 export type GoalRunResult = { status: 'completed' | 'failed' | 'blocked' | 'aborted' | 'paused'; summary: string };
@@ -15,8 +15,9 @@ export interface ChatAgentHandle {
   /** 该 Agent 实例的唯一标识 — 会话层按会话登记，UI 据此定位其专属待办等。 */
   readonly id: string;
 
-  /** 发起一轮对话：附加用户消息，驱动工具循环 */
-  run(signal: AbortSignal, input: string): Promise<void>;
+  /** 发起一轮对话：附加用户消息，驱动工具循环。images = 附图引用
+   *  （multimodal-image-plan B3——随用户消息入 session，字节永不进卷）。 */
+  run(signal: AbortSignal, input: string, images?: ChatImageRef[]): Promise<void>;
 
   /** 自主多轮目标执行。status 新增 'paused' — 用户中断时保存检查点，可通过 resumeGoal 继续。 */
   runGoal(signal: AbortSignal, goal: string): Promise<GoalRunResult>;

@@ -45,6 +45,8 @@ export interface SubAgentSpawnHost {
   readonly agentStore: AgentStore | null;
   _currentRunSignal: AbortSignal | null;
   _fileOwnership: FileOwnership | null;
+  /** 附图字节读取器（B3 multimodal-image-plan）——子 Agent 继承父读取器。 */
+  _imageReader: ((ref: import('../provider/types').ChatImageRef) => Promise<string>) | null;
   extractRecentContext(maxMessages: number): string;
   /** 父 preflight 注册表（null = 主 Agent 未接线）— 子 Agent 门禁继承用。 */
   getPreflightHooks(): import('./hooks').PreflightHookRegistry | null;
@@ -324,6 +326,9 @@ ${subTools
   const subAgent = new Agent(childCtx, subSystem, {
     temperature: 0.3,
     contextWindow: ag.contextWindow,
+    // 附图读取器（multimodal-image-plan B3）：fork 子 Agent 会话可能继承含图
+    // 用户消息——与父同读取器，请求期解析面一致。
+    imageReader: ag._imageReader ?? undefined,
   });
 
   // 门禁继承：子 Agent 与主 Agent 同权面跑 preflight（HIGH 风险拦截 + 写前

@@ -703,6 +703,8 @@ export class AgentRuntime implements RuntimePort {
       contextWindow: inputs.contextWindow ?? 0,
       toolResultWindow: inputs.toolResultWindow,
       ui: this._wrapNotifier(agentId),
+      // 附图读取器（B3）：装配输入透传——app 注入的 IO 腰（request-images）。
+      imageReader: inputs.imageReader,
       // D13（平台化 Phase 5）：loop 解析 = ctx.agentLoop 注册表后注册胜。
       // 修复（2026-08-28 实机）：不再经 `this._cordisParent?.agentLoop?.active()`
       // 裸取 cordis 服务——生产 fiber 链上该访问抛「cannot get property
