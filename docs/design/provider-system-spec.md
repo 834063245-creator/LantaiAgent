@@ -695,7 +695,11 @@ interface ProviderSettings {
   models?: string[];         // 可用模型列表（创作坞下拉可选面；缺省 = [model]，零迁移）
   modelOverrides?: Record<string, ModelOverrides>; // per-model 覆盖
 }
-interface ModelOverrides { contextWindow?: number; maxTokens?: number; }
+interface ModelOverrides {
+  contextWindow?: number;
+  maxTokens?: number;
+  input?: ('text' | 'image')[]; // 输入模态声明（multimodal-image B5 · D-8①）
+}
 ```
 
 - **`models` = 用户管的模型配置面**：Provider 页增删 + 「从 API 拉取」填充
@@ -706,10 +710,18 @@ interface ModelOverrides { contextWindow?: number; maxTokens?: number; }
   model + activeProvider（新鲜 loadSettings 读改写单字段，不整份快照 → A4 clobber
   不复活）；只影响新卷/未改卷出生默认，已存在会话走覆盖（applyAgentConfig 会话级
   分支按会话解析，A1「切一个拖累全部」不复发）。
-- **`modelOverrides` = per-model 上下文/最大输出**（取代 P14 的 per-provider
+- **`modelOverrides` = per-model 上下文/最大输出/输入模态**（取代 P14 的 per-provider
   `contextWindow/maxTokens` 单字段）：`modelContextWindow` / `modelMaxTokens` 解析
   （覆盖 ?? 目录值 ?? 默认）；workspace `_contextWindowFor` 与 `createProvider`
   `maxTokensFor(model)`（请求时按模型解析，取代构造时固定的 maxTokensOverride）消费。
+  **`input` = 输入模态覆盖**（2026-09-09，multimodal-image B5 · D-8①）：生效声明走
+  `modelInput(p, modelId)` 合并链（`['text','image']` 覆盖 ?? 目录 `ModelDescriptor.input`
+  ?? `['text']`——不编造能力），三消费面同链——`createProvider` 的 `inputModalities`
+  能力戳（请求期图投影 D-8③）、创作坞附图门禁（入口显隐 D-8②）、ModelSelector
+  「视」徽标。GLM-4V/Qwen-VL 等目录外 vision 模型经 Provider 页参数面板「视觉模型」
+  开关补声明（on = `['text','image']`，off = 清覆盖回落目录）；catalog seed 已声明
+  已知 vision 款（anthropic/openai 全线 + deepseek vision-exp 独立款——主线按 DSH
+  权威保持纯文本）。
 - **`activeProvider` = 最近使用的 provider**（「设为当前」按钮退役）；Provider 列表
   角标叫「新会话默认」。`addProvider` 仍设 activeProvider = 新家，`removeProvider`
   回落 next[0]。

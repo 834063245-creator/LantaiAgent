@@ -80,7 +80,7 @@ _Avoid_: toast、log、消息（当指 notice 时）
 _Avoid_: base64、图片消息、inline image、blob
 
 **附图**:
-用户附入卷的图片（输入草稿 `attachedImages` / 用户消息 `images`），区别于**附件**（路径文件引用，模型经 read_file 自取）。采集三入口：粘贴 / 拖放 / 夹选；展示中文一律用「附图」，不用「图片附件」。
+用户附入卷的图片（输入草稿 `attachedImages` / 用户消息 `images`），区别于**附件**（路径文件引用，模型经 read_file 自取）。采集三入口：粘贴 / 拖放 / 夹选；展示中文一律用「附图」，不用「图片附件」。入口随**生效输入模态**显隐（`modelInput`：per-model 覆盖 ?? 目录声明）——vision 模型才开附图道；选择器徽标展示字恒「视」，设置页补声明开关叫「视觉模型」。
 _Avoid_: 图片附件、image attachment、上传图片
 
 **准入规整**:

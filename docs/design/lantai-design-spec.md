@@ -81,7 +81,7 @@
 
 | BlockKind | 文类签 | 字体 | 墨色 | 视觉 |
 |---|---|---|---|---|
-| `user` | 来文 | `--f-kai` | `--seal-deep` | 左 2px 红批线 + 圈点关键词；16px / 行距 1.9（B4 环1 拍板：字号收到正文 17 之下，朱砂深保持——问仍是唯一彩色声音） |
+| `user` | 来文 | `--f-kai` | `--seal-deep` | 左 2px 红批线 + 圈点关键词；16px / 行距 1.9（B4 环1 拍板：字号收到正文 17 之下，朱砂深保持——问仍是唯一彩色声音）；附图缩略行（2026-09-09 multimodal-image B4）：64px 方界 tile 规线细框 + wrap 居中多行 + 点击放大浮层，几何 token `--pp-ch-userImages-*`（measure 镜像 `userImagesRowHeight` wrap 行数整除推得）；未命中预览/读失败降级 mono 占位盒 |
 | `markdown` | 正文 | `--f-song` | `--ink-1` | 17px / 行距 2.0，居中主角 |
 | `reasoning` | 夹注 | `--f-song`（英文走 Garamond） | `--graphite` | 86% 宽、虚线勾边、擦改痕迹 |
 | `diff` | 抄录 | `--f-mono` | `--ink-1` | 3px 硬左线 + 米黄底图版，add 松绿（--pass）/ del 朱砂深+删除线（B5 环2 红绿墨色化定稿——铁律在 diff 语境豁免：删行读作擦改非人语） |
@@ -102,6 +102,7 @@
 | 列表 | 标记列等宽小字绝对定位（ul `·` / ol `n.`），条目缩进 26、嵌套再缩进 22 |
 | 引用 | 石墨左线 + 缩进 + ink-2 |
 | 图码 | 石青左线 + 深纸底（独立 `diff` 块之外幸存围栏的兜底面） |
+| 远端图（2026-09-09 multimodal-image B4） | 独立行 `![alt](http/https)` 固定盒 160px（`--pp-md-imgBoxH`，chem 先例同族——加载/失败态都不改版面，measure 静态镜像即精确）；协议白名单过在解析层（非 http/https 降级 alt 文本，空 alt 整行不产块——data: 巨串不灌纸面）；周框 `--rule-soft` + 深纸底；加载失败换 mono 弱墨 alt 行（盒界常在，错误不静默） |
 | 表格 | 等宽 11.5px + 弱规线（`.pp-grid-table` 同族） |
 | 行内 | 加粗 600 / 斜体 / 删除线石墨 / 行内码等宽小号 chip / 链接石青下划线 |
 
