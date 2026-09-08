@@ -136,6 +136,10 @@ impl LspDaemon {
         loop {
             match self.listener.accept() {
                 Ok((stream, _addr)) => {
+                    // Windows：accept 出的 socket 继承监听器的非阻塞模式，
+                    // 连接循环要阻塞读——显式置回，否则 WOULDBLOCK 掐连接
+                    //（2026-09-09 冒烟事故：同连接第二个请求必死）。
+                    let _ = stream.set_nonblocking(false);
                     touch();
                     LIVE_CONNECTIONS.fetch_add(1, Ordering::SeqCst);
                     std::thread::spawn(move || {
@@ -210,6 +214,12 @@ impl LspDaemon {
 }
 
 /// 单连接处理：循环读行式请求，直至 EOF。
+///
+/// Windows 陷阱（2026-09-09 冒烟事故）：`accept()` 出来的 socket 会
+/// **继承监听器的非阻塞模式**（serve 循环把 listener 置了非阻塞做空闲
+/// 轮询），而本循环假设阻塞读——第二个请求到达前读会撞上
+/// WSAEWOULDBLOCK，被当致命错误掐断连接（客户端视角 = 响应后连接被
+/// RST）。双保险：accept 处显式置回阻塞 + 这里对 WouldBlock 容忍重试。
 fn handle_connection(stream: TcpStream) {
     let mut writer = match stream.try_clone() {
         Ok(w) => w,
@@ -242,6 +252,11 @@ fn handle_connection(stream: TcpStream) {
                 if writeln!(writer, "{}", resp).is_err() || writer.flush().is_err() {
                     break;
                 }
+            }
+            // 非阻塞残留防御：正常路径 accept 处已置阻塞，这里不该进来；
+            // 若某平台仍交出非阻塞 socket，睡一拍重试而非掐断连接。
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                std::thread::sleep(Duration::from_millis(10));
             }
             Err(_) => break,
         }
@@ -363,6 +378,46 @@ mod tests {
         serve_thread.join().expect("serve thread exits cleanly");
         assert!(!port_file_of(&root).exists(), "port file must be removed on exit");
         // 还原宿主身份（本进程内后续测试按引擎客户端身份跑）
+        LspManager::set_daemon_mode(false);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn test_multiple_requests_on_single_connection() {
+        // 同连接多请求回归：真实冒烟发现连接在第一个响应后被 RST。
+        // 进程内复现——宿主线程若 panic 会直接打进测试输出。
+        let _serial = serialize();
+        let root = fresh_root("multi");
+        LspManager::set_daemon_mode(true);
+        let daemon = LspDaemon::bind(&root, Duration::from_secs(3600))
+            .expect("bind")
+            .expect("first bind must win");
+        let port = daemon.port();
+        let serve_thread = std::thread::spawn(move || daemon.serve());
+
+        let s = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+        s.set_read_timeout(Some(Duration::from_secs(15))).unwrap();
+        let mut w = s.try_clone().expect("clone writer");
+        let mut r = BufReader::new(s);
+        let mut line = String::new();
+
+        for i in 1..=3 {
+            writeln!(w, r#"{{"op":"ping"}}"#).expect("write ping");
+            w.flush().expect("flush ping");
+            line.clear();
+            r.read_line(&mut line).unwrap_or_else(|e| {
+                panic!("req#{i} read failed (connection killed?): {e}")
+            });
+            assert!(line.contains("\"pong\""), "req#{i} should pong, got: {line}");
+        }
+
+        writeln!(w, r#"{{"op":"shutdown"}}"#).expect("write shutdown");
+        w.flush().expect("flush shutdown");
+        line.clear();
+        r.read_line(&mut line).expect("shutdown ack");
+        assert!(line.contains("\"ok\""), "shutdown acked, got: {line}");
+        serve_thread.join().expect("serve exits");
+        assert!(!port_file_of(&root).exists(), "port file cleaned");
         LspManager::set_daemon_mode(false);
         let _ = std::fs::remove_dir_all(&root);
     }
