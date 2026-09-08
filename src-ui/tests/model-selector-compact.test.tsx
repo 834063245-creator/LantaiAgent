@@ -138,6 +138,53 @@ describe('ModelSelector compact（创作坞触发器形态）', () => {
     expect(heads.some((h) => h.includes('openai'))).toBe(false); // 未配置厂商被过滤——杜绝写错行 400
   });
 
+  it('B5：vision 模型行带「视」徽标（目录声明 + 覆盖补声明同面亮标）', async () => {
+    localStorage.setItem(
+      'hologram_settings',
+      JSON.stringify({
+        activeProvider: 'p',
+        providers: [
+          {
+            kind: 'openai',
+            name: 'p',
+            apiKey: '',
+            baseUrl: 'https://gateway.example/v1',
+            model: 'deepseek-v4-flash-vision-exp',
+            models: ['deepseek-v4-flash-vision-exp', 'glm-4v-custom', 'deepseek-v4-pro'],
+            modelOverrides: { 'glm-4v-custom': { input: ['text', 'image'] } },
+          },
+        ],
+        projectPath: '.',
+        agent: {},
+        display: { language: 'zh', fontScale: 1 },
+      }),
+    );
+    act(() => {
+      root?.render(
+        createElement(ModelSelector, {
+          compact: true,
+          value: 'deepseek-v4-pro',
+          providerName: 'p',
+          kind: 'openai',
+          onChange: () => {},
+        }),
+      );
+    });
+    act(() => {
+      container!.querySelector<HTMLButtonElement>('.ms-trigger')?.click();
+    });
+    await act(async () => {});
+    // 目录 seed vision 款：徽标在
+    const visionExp = container!.querySelector('[data-key="p/deepseek-v4-flash-vision-exp"]');
+    expect(visionExp?.querySelector('.ms-item-vision')?.textContent).toBe('视');
+    // 覆盖补声明款（目录外自定义 vision）：同亮（modelInput 合并链）
+    const custom = container!.querySelector('[data-key="p/glm-4v-custom"]');
+    expect(custom?.querySelector('.ms-item-vision')).not.toBeNull();
+    // 纯文本主线：无徽标（不编造能力）
+    const plain = container!.querySelector('[data-key="p/deepseek-v4-pro"]');
+    expect(plain?.querySelector('.ms-item-vision')).toBeNull();
+  });
+
   it('C5：动态目录拉取失败的厂商分组头标注「目录获取失败」', async () => {
     recordDynamicFetchResult('anthropic', false, '网络错误');
     try {

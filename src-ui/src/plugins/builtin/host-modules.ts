@@ -163,6 +163,7 @@ import {
   loadSettings,
   loadSettingsWithSecrets,
   modelContextWindow,
+  modelInput,
   onSettingsSaved,
   persistSecrets,
   removeSecret,
@@ -358,6 +359,9 @@ const faceDeps = {
   loadSettings,
   loadSettingsWithSecrets,
   modelContextWindow,
+  // B5 multimodal-image：生效输入模态解析（覆盖 ?? 目录 ?? ['text']）——
+  // 创作坞附图门禁与 ModelSelector「视」徽标同链消费
+  modelInput,
   onSettingsSaved,
   persistSecrets,
   removeSecret,

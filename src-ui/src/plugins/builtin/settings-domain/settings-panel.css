@@ -571,6 +571,13 @@ button.sp-btn.sp-btn-ok {
   color: var(--ink-1);
 }
 
+/* 声明态小钮（B5 multimodal-image：ProviderDetail「视觉模型」开关）——
+ * is-on = 石青墨 + 石青框（声明生效中；与模型行「视」徽标同色系）。 */
+.sp-btn-sm.is-on {
+  color: var(--indigo);
+  border-color: color-mix(in oklch, var(--indigo) 45%, transparent);
+}
+
 .sp-btn-rm-provider:hover {
   border-color: var(--fail);
   color: var(--fail);

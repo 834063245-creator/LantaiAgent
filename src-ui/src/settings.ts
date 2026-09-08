@@ -64,6 +64,10 @@ export interface ModelOverrides {
   contextWindow?: number;
   /** 最大输出 token；0/缺省 = 用目录值（目录无 = 不钳制）。 */
   maxTokens?: number;
+  /** 输入模态覆盖（B5 · D-8①，multimodal-image-plan）：['text','image'] = 视觉
+   *  模型（附图入口开 + 请求期图投影放行）；缺省 = 用目录声明；目录亦无 =
+   *  ['text']（不编造能力）。GLM-4V/Qwen-VL 等目录外 vision 模型在此补声明。 */
+  input?: ('text' | 'image')[];
 }
 
 /** 解析某提供方的「可用模型」id 列表：显式 models 优先，缺省回落 [model]
@@ -87,6 +91,16 @@ export function modelMaxTokens(p: ProviderSettings, modelId: string): number {
   const ov = p.modelOverrides?.[modelId]?.maxTokens;
   if (ov && ov > 0) return ov;
   return getModel(modelId)?.maxTokens || 0;
+}
+
+/** 某模型生效的输入模态（B5 · D-8①）：per-model 覆盖 ?? 目录声明 ?? ['text']。
+ *  消费面 = createProvider 能力戳（请求期图投影）+ 创作坞附图门禁 + ModelSelector
+ *  徽标——三面同链（覆盖一处声明即三面生效）。provider 缺省（未配置厂商）=
+ *  只查目录（目录外自定义模型恒 ['text']——除非日后有全局声明面）。 */
+export function modelInput(p: ProviderSettings | undefined, modelId: string): ('text' | 'image')[] {
+  const ov = p?.modelOverrides?.[modelId]?.input;
+  if (ov && ov.length > 0) return [...ov];
+  return getModel(modelId)?.input ?? ['text'];
 }
 
 export interface AgentSettings {

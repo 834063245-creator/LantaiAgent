@@ -13,6 +13,17 @@
     "thinkingOff": true,
     "deepseekThinking": true
   },
+  "deepseek-v4-flash-vision-exp": {
+    "id": "deepseek-v4-flash-vision-exp",
+    "name": "DeepSeek V4 Flash Vision (Exp)",
+    "kind": "openai",
+    "vendor": "deepseek",
+    "baseUrl": "https://api.deepseek.com/v1",
+    "reasoning": false,
+    "input": ["text", "image"],
+    "contextWindow": 1000000,
+    "maxTokens": 384000
+  },
   "deepseek-v4-pro": {
     "id": "deepseek-v4-pro",
     "name": "DeepSeek V4 Pro",

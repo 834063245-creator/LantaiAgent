@@ -216,6 +216,19 @@
   text-overflow: ellipsis;
 }
 
+/* 视觉徽标（B5 multimodal-image）：生效输入模态含 image 的模型标「视」——
+ * 描述符 input 已含 ModelOverrides 覆盖合并（modelInput），目录声明与用户
+ * 补声明同面生效；石青 mono 小签（机读件语义，朱砂留给人）。 */
+.ms-item-vision {
+  flex-shrink: 0;
+  padding: 1px 4px;
+  border: 1px solid color-mix(in oklch, var(--indigo) 40%, transparent);
+  font-family: var(--f-mono);
+  font-size: calc(8px * var(--font-scale));
+  line-height: 1.2;
+  color: var(--indigo);
+}
+
 .ms-item-name {
   font-size: calc(9px * var(--font-scale));
   color: var(--ink-1); /* 2026-09-01 轻重批：行内主读物提墨，与注记分阶 */

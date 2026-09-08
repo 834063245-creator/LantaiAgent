@@ -18,8 +18,7 @@
 // 挂着 ADR #0002 单独裁决）；贡献道当前的合法用法是【覆盖】两种内核方言。
 
 import { activeLlmAdapters } from '../composition/services';
-import type { ProviderSettings } from '../settings';
-import { getModel } from './catalog';
+import { modelInput, type ProviderSettings } from '../settings';
 import { withThinkingDisabled } from './thinking';
 import type { Provider, ProviderRuntimeArgs } from './types';
 
@@ -59,9 +58,9 @@ export function createProvider(settings: ProviderSettings, options?: CreateProvi
     maxTokensFor,
     oauthHeaders: options?.oauthHeaders,
   });
-  // 输入模态能力戳（multimodal-image-plan B3 · D-8③）：目录声明（seed JSON +
-  // ModelOverrides 合并，B5 落地声明面）盖在实例上——Agent 请求期投影读它，
+  // 输入模态能力戳（multimodal-image-plan B3 · D-8③）：生效声明 = ModelOverrides.input
+  // 覆盖 ?? 目录值（B5 modelInput 合并链）盖在实例上——Agent 请求期投影读它，
   // Provider 实现自身零感知。未声明 = ['text']（不编造能力）。
-  prov.inputModalities = getModel(settings.model)?.input ?? ['text'];
+  prov.inputModalities = modelInput(settings, settings.model);
   return prov;
 }

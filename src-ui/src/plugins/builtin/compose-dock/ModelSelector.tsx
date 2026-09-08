@@ -48,6 +48,7 @@ import {
   hasDynamicFetchInflight,
   iconHtml,
   loadSettings,
+  modelInput,
   onDynamicFetchChange,
   onSettingsSaved,
   resolveApiKey,
@@ -85,8 +86,10 @@ function configuredModelDescriptors(settings: ReturnType<typeof loadSettings>): 
     for (const p of settings.providers) {
       for (const id of effectiveModels(p)) {
         const known = getModel(id);
+        // B5：input 走 modelInput 合并（覆盖 ?? 目录）——「视」徽标与附图门禁
+        // 同链，自定义 vision 模型补声明后徽标即亮
         if (known) {
-          out.push({ ...known, vendor: p.name });
+          out.push({ ...known, vendor: p.name, input: modelInput(p, id) });
         } else {
           out.push({
             id,
@@ -95,7 +98,7 @@ function configuredModelDescriptors(settings: ReturnType<typeof loadSettings>): 
             vendor: p.name,
             baseUrl: p.baseUrl || '',
             reasoning: false,
-            input: ['text'] as ('text' | 'image')[],
+            input: modelInput(p, id),
             contextWindow: 0,
             maxTokens: 0,
           });
@@ -158,7 +161,10 @@ export function ModelSelector({
     } else if (q) {
       base = searchModels(q);
     } else {
-      base = findModels(providerName);
+      // 字段形态（设置页）：本家目录行——input 合并本 provider 的覆盖声明
+      // （「视」徽标与创作坞门禁同链，设置页补声明当场亮标）
+      const providerRow = settingsState.providers.find((p) => p.name === providerName);
+      base = findModels(providerName).map((m) => ({ ...m, input: modelInput(providerRow, m.id) }));
     }
     return base
       .filter((m) => compact || m.kind === kind)
@@ -578,6 +584,7 @@ function ModelRow({ state, m, value }: { state: ComboBoxState<ModelDescriptor>; 
   const isDynamic = m.contextWindow <= 0; // 无目录元数据 = 运行时从 /models 动态发现
   const title = [
     m.id === value ? `当前模型 · ${m.vendor}` : m.vendor,
+    m.input.includes('image') ? '支持图片输入' : null,
     m.reasoning ? '支持推理/思考' : null,
     m.contextWindow > 0 ? `上下文窗口 ${(m.contextWindow / 1000).toFixed(0)}k` : null,
     isDynamic ? '运行时从 API 动态发现（无目录元数据）' : null,
@@ -594,6 +601,11 @@ function ModelRow({ state, m, value }: { state: ComboBoxState<ModelDescriptor>; 
       className={`ms-item${isFocused ? ' active' : ''}${m.id === value ? ' selected' : ''}`}
     >
       <span className="ms-item-id">{m.id}</span>
+      {m.input.includes('image') && (
+        <span className="ms-item-vision" title="视觉模型——支持图片输入（目录声明或参数面板覆盖）">
+          视
+        </span>
+      )}
       {m.name !== m.id && <span className="ms-item-name">{m.name}</span>}
     </button>
   );

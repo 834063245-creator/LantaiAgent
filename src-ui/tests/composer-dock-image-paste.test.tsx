@@ -120,6 +120,7 @@ describe('附图粘贴门禁（B2 · D-8②）', () => {
     container.remove();
     resetComposeStoresForTests();
     resetCanvasStoresForTests();
+    localStorage.removeItem('hologram_settings'); // B5 种子清场（不渗后测）
   });
 
   it('vision 模型：贴图入附图道（intakeImageFiles 直呼），无提示', async () => {
@@ -149,6 +150,35 @@ describe('附图粘贴门禁（B2 · D-8②）', () => {
     const ta = container.querySelector('textarea');
     pasteOn(ta as HTMLTextAreaElement, [TEXT_ITEM, { kind: 'file', type: 'text/plain' }]);
     expect(core.intakeImageFiles).not.toHaveBeenCalled();
+    expect(container.querySelector('.pp-local-notice')).toBeNull();
+  });
+
+  it('B5：ModelOverrides.input 补声明——目录外自定义 vision 模型贴图放行', async () => {
+    // GLM-4V 类目录外 vision 款：catalog 无条目（getModel undefined），靠
+    // 设置页参数面板的覆盖声明开附图道（modelInput 合并链：覆盖 ?? 目录）
+    localStorage.setItem(
+      'hologram_settings',
+      JSON.stringify({
+        activeProvider: 'p',
+        providers: [
+          {
+            kind: 'openai',
+            name: 'p',
+            apiKey: '',
+            baseUrl: 'https://gateway.example/v1',
+            model: 'glm-4v-custom',
+            modelOverrides: { 'glm-4v-custom': { input: ['text', 'image'] } },
+          },
+        ],
+        projectPath: '.',
+        agent: {},
+        display: { language: 'zh', fontScale: 1 },
+      }),
+    );
+    const core = await mountDock('glm-4v-custom', container);
+    const ta = container.querySelector('textarea');
+    pasteOn(ta as HTMLTextAreaElement, [IMAGE_ITEM]);
+    expect(core.intakeImageFiles).toHaveBeenCalledTimes(1); // 覆盖声明 → 附图道开
     expect(container.querySelector('.pp-local-notice')).toBeNull();
   });
 });

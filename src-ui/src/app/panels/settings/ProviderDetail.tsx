@@ -56,6 +56,8 @@ export interface ProviderDetailActions {
   onRemoveModel: (modelId: string) => void;
   /** per-model 覆盖（P14）：上下文窗口 / 最大输出，0 = 清回目录值。 */
   onModelOverride: (modelId: string, field: 'contextWindow' | 'maxTokens', value: number) => void;
+  /** 视觉声明覆盖（B5 · D-8①）：on = ['text','image'] 强制开；off = 清覆盖回落目录。 */
+  onModelVisionToggle: (modelId: string, on: boolean) => void;
   onTest: () => void;
   onClearKey: () => void;
   onResetBaseUrl: () => void;
@@ -83,6 +85,7 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
     onAddModel,
     onRemoveModel,
     onModelOverride,
+    onModelVisionToggle,
     onTest,
     onClearKey,
     onResetBaseUrl,
@@ -291,67 +294,90 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
           </div>
           {models.length > 0 && (
             <div className="pp-models-list">
-              {models.map((id) => (
-                <div key={id} className="pp-model-item">
-                  <span className={`pp-model-chip${id === provider.model ? ' is-default' : ''}`} title={id}>
-                    <span className="pp-model-chip-name">{getModel(id)?.name ?? id}</span>
-                    {id === provider.model && (
-                      <span
-                        className="pp-model-chip-default"
-                        title="「新会话默认」= 最近在创作坞选用的模型——自动跟从，在此不可改"
+              {models.map((id) => {
+                // 视觉声明覆盖态（B5）：覆盖里显式声明 image = 开（目录声明不在此钮
+                // 态里——那是回落值，钮只展示/操控覆盖本身）
+                const visionOn = provider.modelOverrides?.[id]?.input?.includes('image') === true;
+                return (
+                  <div key={id} className="pp-model-item">
+                    <span className={`pp-model-chip${id === provider.model ? ' is-default' : ''}`} title={id}>
+                      <span className="pp-model-chip-name">{getModel(id)?.name ?? id}</span>
+                      {id === provider.model && (
+                        <span
+                          className="pp-model-chip-default"
+                          title="「新会话默认」= 最近在创作坞选用的模型——自动跟从，在此不可改"
+                        >
+                          新会话默认
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        className="pp-model-chip-param"
+                        title="上下文窗口 / 最大输出"
+                        onClick={() => setParamModel(paramModel === id ? null : id)}
                       >
-                        新会话默认
-                      </span>
+                        {paramModel === id ? '收起' : '参数'}
+                      </button>
+                      <button
+                        type="button"
+                        className="pp-model-chip-x"
+                        title={`移除 ${id}`}
+                        aria-label={`移除 ${id}`}
+                        onClick={() => onRemoveModel(id)}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                    {paramModel === id && (
+                      <div className="pp-model-params">
+                        <label className="pp-model-param">
+                          <span>上下文窗口</span>
+                          <input
+                            type="number"
+                            min={0}
+                            value={provider.modelOverrides?.[id]?.contextWindow ?? ''}
+                            placeholder={String(getModel(id)?.contextWindow || 200000)}
+                            onChange={(e) =>
+                              onModelOverride(id, 'contextWindow', Number.parseInt(e.target.value, 10) || 0)
+                            }
+                          />
+                        </label>
+                        <label className="pp-model-param">
+                          <span>最大输出</span>
+                          <input
+                            type="number"
+                            min={0}
+                            value={provider.modelOverrides?.[id]?.maxTokens ?? ''}
+                            placeholder={String(getModel(id)?.maxTokens || 0)}
+                            onChange={(e) => onModelOverride(id, 'maxTokens', Number.parseInt(e.target.value, 10) || 0)}
+                          />
+                        </label>
+                        {/* 视觉声明开关（B5 · D-8①）：覆盖开 = ['text','image']（附图
+                         *  入口 + 请求期图投影放行）；关 = 清覆盖回落目录声明。目录
+                         *  已声明视觉的模型不需要动这里。 */}
+                        <span className="pp-model-param">
+                          <span>视觉模型（图片输入）</span>
+                          <button
+                            type="button"
+                            className={`sp-btn-sm${visionOn ? ' is-on' : ''}`}
+                            title={
+                              getModel(id)?.input.includes('image')
+                                ? '目录已声明视觉——覆盖开/关可强制改写（关 = 回落目录值）'
+                                : '目录未声明视觉——自定义 vision 模型在此补声明（生效面：附图入口 + 请求期图投影 + 选择器「视」徽标）'
+                            }
+                            onClick={() => onModelVisionToggle(id, !visionOn)}
+                          >
+                            {visionOn ? '已声明' : '未声明'}
+                          </button>
+                        </span>
+                        <span className="pp-model-params-hint">
+                          留空 = 用目录值（自定义模型目录无值则上下文 200K / 输出不钳制）；视觉生效 = 覆盖 ?? 目录声明
+                        </span>
+                      </div>
                     )}
-                    <button
-                      type="button"
-                      className="pp-model-chip-param"
-                      title="上下文窗口 / 最大输出"
-                      onClick={() => setParamModel(paramModel === id ? null : id)}
-                    >
-                      {paramModel === id ? '收起' : '参数'}
-                    </button>
-                    <button
-                      type="button"
-                      className="pp-model-chip-x"
-                      title={`移除 ${id}`}
-                      aria-label={`移除 ${id}`}
-                      onClick={() => onRemoveModel(id)}
-                    >
-                      ✕
-                    </button>
-                  </span>
-                  {paramModel === id && (
-                    <div className="pp-model-params">
-                      <label className="pp-model-param">
-                        <span>上下文窗口</span>
-                        <input
-                          type="number"
-                          min={0}
-                          value={provider.modelOverrides?.[id]?.contextWindow ?? ''}
-                          placeholder={String(getModel(id)?.contextWindow || 200000)}
-                          onChange={(e) =>
-                            onModelOverride(id, 'contextWindow', Number.parseInt(e.target.value, 10) || 0)
-                          }
-                        />
-                      </label>
-                      <label className="pp-model-param">
-                        <span>最大输出</span>
-                        <input
-                          type="number"
-                          min={0}
-                          value={provider.modelOverrides?.[id]?.maxTokens ?? ''}
-                          placeholder={String(getModel(id)?.maxTokens || 0)}
-                          onChange={(e) => onModelOverride(id, 'maxTokens', Number.parseInt(e.target.value, 10) || 0)}
-                        />
-                      </label>
-                      <span className="pp-model-params-hint">
-                        留空 = 用目录值（自定义模型目录无值则上下文 200K / 输出不钳制）
-                      </span>
-                    </div>
-                  )}
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
           )}
           <div className="pp-models-add">

@@ -149,6 +149,22 @@ export function ProviderPage({
     [settings, onCommitProvider],
   );
 
+  /** 视觉声明覆盖（B5 · D-8①）：on = 强制 ['text','image']（附图入口 + 请求期
+   *  投影放行）；off = 清覆盖回落目录声明。GLM-4V/Qwen-VL 等目录外 vision
+   *  模型的补声明面。 */
+  const handleModelVisionToggle = useCallback(
+    (name: string, modelId: string, on: boolean) => {
+      const p = settings.providers.find((x) => x.name === name);
+      const cur = p?.modelOverrides?.[modelId] ?? {};
+      const nextOverrides = {
+        ...(p?.modelOverrides ?? {}),
+        [modelId]: { ...cur, input: on ? (['text', 'image'] as ('text' | 'image')[]) : undefined },
+      };
+      onCommitProvider(updateProvider(settings, name, { modelOverrides: nextOverrides }));
+    },
+    [settings, onCommitProvider],
+  );
+
   const handleRefreshModels = useCallback(async (): Promise<number> => {
     const p = selectedProvider;
     // oauth 订阅（Codex）：无 API Key——必须已登录（live provider 注入 grant）才能拉。
@@ -495,6 +511,7 @@ export function ProviderPage({
             onRemoveModel: (modelId) => handleRemoveModel(selectedProvider.name, modelId),
             onModelOverride: (modelId, field, value) =>
               handleModelOverride(selectedProvider.name, modelId, field, value),
+            onModelVisionToggle: (modelId, on) => handleModelVisionToggle(selectedProvider.name, modelId, on),
             onTest: handleTest,
             onClearKey: () => setClearTarget(selectedProvider.name),
             onResetBaseUrl: () =>

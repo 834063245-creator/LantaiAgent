@@ -155,10 +155,25 @@ describe('catalog', () => {
     }
   });
 
-  it('no model declares image input (P0: 多模态未落地，禁止假声明)', () => {
-    for (const m of getAllModels()) {
-      expect(m.input.includes('image'), `${m.id} declares image input`).toBe(false);
+  it('vision 声明面（B5 · D-8①）：已知 vision 款声明 image，deepseek 主线保持纯文本', () => {
+    // anthropic：Claude 3+ 全系 vision——4 款全声明
+    for (const m of findModels('anthropic')) {
+      expect(m.input, `${m.id}`).toContain('image');
     }
+    // openai：GPT-4o 起全能线——GPT-5 系 7 款全声明
+    for (const m of findModels('openai')) {
+      expect(m.input, `${m.id}`).toContain('image');
+    }
+    // deepseek：主线 v4 flash/pro（含 Beta）纯文本（DSH 权威——vision 是独立款）
+    const deepseek = findModels('deepseek');
+    for (const m of deepseek) {
+      if (m.id === 'deepseek-v4-flash-vision-exp') continue;
+      expect(m.input.includes('image'), `${m.id} 不得声明 image`).toBe(false);
+    }
+    // vision 款 = flash-vision-exp（DSH 默认目录同款）
+    const vision = getModel('deepseek-v4-flash-vision-exp');
+    expect(vision?.input).toEqual(['text', 'image']);
+    expect(vision?.contextWindow).toBe(1000000);
   });
 
   it('mergeDynamicModels adds out-of-catalog ids, skips existing ones', () => {

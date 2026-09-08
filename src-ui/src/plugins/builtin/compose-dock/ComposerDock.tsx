@@ -49,6 +49,7 @@ import {
   MODE_DESCRIPTIONS,
   MODE_LABELS,
   modelContextWindow,
+  modelInput,
   onSettingsSaved,
   PERMISSION_MODES,
   previewUrlFor,
@@ -379,10 +380,11 @@ export const ComposerDock = memo(function ComposerDock() {
   const provider: ProviderSettings | undefined = settings?.providers.find((p) => p.name === providerName);
   const providerKind = provider?.kind ?? 'openai';
   const modelDesc = useMemo(() => getModel(model), [model]);
-  // 附图能力门禁（multimodal-image-plan D-8②）：目录声明 input 含 'image' 才开
-  // 图片采集道——策略在此（视图层），机制在 chat-core（intake 方法）。目录 seed
-  // 的 vision 声明在 B5 落地；ModelOverrides.input 补声明亦经 getModel 合并。
-  const imageCapable = modelDesc?.input.includes('image') === true;
+  // 附图能力门禁（multimodal-image-plan D-8②）：生效输入模态含 'image' 才开
+  // 图片采集道——策略在此（视图层），机制在 chat-core（intake 方法）。
+  // modelInput 合并链（B5）：ModelOverrides.input 覆盖 ?? 目录 seed vision 声明；
+  // 目录外自定义 vision 模型经设置页参数面板补声明即开。
+  const imageCapable = modelInput(provider, model).includes('image');
   // 墨量线（v2 2026-08-31 → 2026-09-07 分母接线）：分母走 per-model 覆盖 ??
   // 目录声明（modelContextWindow——与运行时压缩阈值同链，设置页声明的窗口
   // 对墨条生效；网关命名空间 id 目录不中时由覆盖兜底）。fallback 0 = 不
