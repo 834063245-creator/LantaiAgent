@@ -1,6 +1,9 @@
 # 多模态图片链路施工计划（附图入卷——发送/接收/展示全链补齐）
 
-> 立项：2026-09-08 · 状态：**plan 定稿待施工** · 上游：2026-09-08 两问调查（问题 1）
+> 立项：2026-09-08 · 状态：**B1 已竣工（commit 0d2c39bd，门禁全绿——cargo 461 / vitest 2838 用例
+> 0 失败 / tsc 0 / biome 0/0 / doc-sync / build），B2-B5 待施工** · 上游：2026-09-08 两问调查（问题 1）
+> B1 落账注：rpc-contract.ts 源码面（action union + kernelWriteFileBase64）随并行窗口
+> 9afa6878 已先行入库，B1 commit 补生成 frontend-rpc-contract.md；D-14 落账 = 无需契约升版。
 > 拍板：用户 2026-09-08「先来补齐图片多模态配套」→「先落 plan」。
 > 参照系：DSH（`D:\useful\deepseek-harness`）图片链路全量研究（2026-09-08 主会话亲读，
 > 可抄决定见 §1.2——DSH 是本仓钦定参照工程）。
