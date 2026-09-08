@@ -147,6 +147,25 @@ fn write_back_lsp_resolution(
     })
 }
 
+/// LSP 降级详情：真实错误优先于安装指引。
+/// 服务器「忙/冷启动」时 agent 收到的指引应该是稍后重试，
+/// 而不是误导性的「去安装 LSP 服务器」（2026-09-09 事故现场：
+/// 服务器全在启动/OOM，agent 却被引导去装服务器）。
+fn lsp_degraded_details(ext: &str, lsp_error: Option<String>) -> Value {
+    let mut details = json!({
+        "ext": ext,
+        "missing_lsp": crate::lsp_manager::LspManager::warm_errors(),
+        "note": "Handwritten adapters removed in v8. Use real LSP servers (pyright, gopls, rust-analyzer, etc.)"
+    });
+    if let Some(e) = lsp_error {
+        if crate::lsp_manager::LspManager::err_is_busy(&e) {
+            details["retry_hint"] = json!("LSP server is starting/busy — retry in a minute instead of installing anything");
+        }
+        details["lsp_error"] = json!(e);
+    }
+    details
+}
+
 /// 通过原生 LSP 按需进行类型感知的调用解析。
 /// LSP 服务器未安装时优雅降级。
 pub(crate) fn handler_resolve_call(args: &Value) -> ToolResponse {    let file_path = args.get("file").and_then(|v| v.as_str()).unwrap_or("");
@@ -179,22 +198,28 @@ pub(crate) fn handler_resolve_call(args: &Value) -> ToolResponse {    let file_p
         },
     };
 
-    // 尝试原生 LSP（如果池已预热）──
+    // 尝试原生 LSP（如果池已预热）——真实错误透传给降级详情，
+    // 服务器忙/冷启动时 agent 才能拿到「稍后重试」的正确指引。
+    let mut lsp_error: Option<String> = None;
     let lsp_result = if line > 0 || column > 0 {
-        crate::lsp_manager::LspManager::resolve_definition(
+        match crate::lsp_manager::LspManager::resolve_definition(
             &path_str, &source, line, column, &ext,
-        )
-        .ok()
-        .map(|locs| {
-            locs.iter()
-                .map(|loc| json!({
-                    "file": crate::lsp_manager::uri_to_path(&loc.uri),
-                    "line": loc.range_start_line,
-                    "column": loc.range_start_char,
-                    "backend": "native_lsp",
-                }))
-                .collect::<Vec<_>>()
-        })
+        ) {
+            Ok(locs) => Some(
+                locs.iter()
+                    .map(|loc| json!({
+                        "file": crate::lsp_manager::uri_to_path(&loc.uri),
+                        "line": loc.range_start_line,
+                        "column": loc.range_start_char,
+                        "backend": "native_lsp",
+                    }))
+                    .collect::<Vec<_>>()
+            ),
+            Err(e) => {
+                lsp_error = Some(e);
+                None
+            }
+        }
     } else {
         None
     };
@@ -219,10 +244,7 @@ pub(crate) fn handler_resolve_call(args: &Value) -> ToolResponse {    let file_p
     ToolResponse::Degraded {
         guidance: format!("Native LSP unavailable for .{} — call resolution skipped.", ext),
         fallback: format!("Install an LSP server for .{} to enable precise call resolution. Check engine_status for details.", ext),
-        details: json!({
-            "missing_lsp": crate::lsp_manager::LspManager::warm_errors(),
-            "note": "Handwritten adapters removed in v8. Use real LSP servers (pyright, gopls, rust-analyzer, etc.)"
-        }),
+        details: lsp_degraded_details(&ext, lsp_error),
     }
 }
 
@@ -243,6 +265,7 @@ pub(crate) fn handler_resolve_type(args: &Value) -> ToolResponse {
     let column = get_usize(args, "column", 0) as u32;
 
     // 尝试原生 LSP
+    let mut lsp_error: Option<String> = None;
     match crate::lsp_manager::LspManager::resolve_type(&path_str, &source, line, column, &ext) {
         Ok(hover) if !hover.is_empty() => {
             return ToolResponse::Success(json!({
@@ -251,17 +274,15 @@ pub(crate) fn handler_resolve_type(args: &Value) -> ToolResponse {
                 "type_info": hover,
             }));
         }
-        _ => {}
+        Ok(_) => {}
+        Err(e) => lsp_error = Some(e),
     }
 
     // ── 路径 2：无原生 LSP 可用 → 降级 ──
     ToolResponse::Degraded {
         guidance: format!("Native LSP unavailable for .{} — type resolution skipped.", ext),
         fallback: format!("Install an LSP server for .{} to enable precise type resolution. Check engine_status for details.", ext),
-        details: json!({
-            "missing_lsp": crate::lsp_manager::LspManager::warm_errors(),
-            "note": "Handwritten adapters removed in v8. Use real LSP servers."
-        }),
+        details: lsp_degraded_details(&ext, lsp_error),
     }
 }
 
@@ -282,6 +303,7 @@ pub(crate) fn handler_find_implementations(args: &Value) -> ToolResponse {
     let column = get_usize(args, "column", 0) as u32;
 
     // 尝试原生 LSP
+    let mut lsp_error: Option<String> = None;
     match crate::lsp_manager::LspManager::find_implementations(&path_str, &source, line, column, &ext) {
         Ok(locs) if !locs.is_empty() => {
             return ToolResponse::Success(json!({
@@ -295,17 +317,15 @@ pub(crate) fn handler_find_implementations(args: &Value) -> ToolResponse {
                 "count": locs.len(),
             }));
         }
-        _ => {}
+        Ok(_) => {}
+        Err(e) => lsp_error = Some(e),
     }
 
     // 回退：无原生 LSP → 降级
     ToolResponse::Degraded {
         guidance: format!("Native LSP unavailable for .{} — implementation search skipped.", ext),
         fallback: format!("Install an LSP server for .{} to enable interface implementation search.", ext),
-        details: json!({
-            "missing_lsp": crate::lsp_manager::LspManager::warm_errors(),
-            "note": "Handwritten adapters removed in v8. Use real LSP servers."
-        }),
+        details: lsp_degraded_details(&ext, lsp_error),
     }
 }
 

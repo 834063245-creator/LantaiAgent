@@ -12,13 +12,27 @@
 //! ```
 //!
 //! ## 生命周期
-//! - 索引完成 → `pool.warm(project_root)` → 后台启动所有服务器
+//! - 索引完成 → `pool.warm_filtered(project_root, exts)` → 后台启动索引中
+//!   实际出现的语言服务器；索引未建立的窗口只 `mark_initialized`，
+//!   查询到来时惰性拉起被查询的那一门语言
 //! - Agent 查询 → `pool.resolve(file, l, c)` → JSON-RPC textDocument/definition
 //! - UI 影响范围 → `pool.references(file, l, c)` → JSON-RPC textDocument/references
 //!
 //! ## 降级策略
-//! 如果服务器无法启动（未安装 / spawn 失败 / 超时），
+//! 如果服务器无法启动（未安装 / spawn 失败 / 内存门禁 / 预热失败），
 //! 透明降级到现有的手写适配器。
+//!
+//! ## 生存性三闸（2026-09-09 事故后）
+//! - **内存门禁**：系统可用提交内存不足时拒绝拉新服务器——
+//!   多窗口并行时每个引擎各拉全套舰队，16GB 机器提交内存耗尽，
+//!   gopls 直接 VirtualAlloc 失败（errno=1455）。
+//! - **超时不杀**：冷启动服务器（rust-analyzer 全量索引 1-2 分钟）
+//!   首次查询几乎必然超 5s；原实现超时即杀进程重拉，重拉又从零
+//!   索引、又被杀——服务器永远活不过索引期（杀-重生循环）。
+//!   现在超时把 Receiver 存进回收盒等读线程送回 reader，冷窗口
+//!   （150s）内进程保留，窗口耗尽才销毁重建。
+//! - **重生退避**：同一命令死亡/失败后至少间隔 30s 才允许再拉，
+//!   防止「查询→失败→重拉→再失败」的风暴被并行查询放大。
 
 use std::collections::HashMap;
 use std::io::{BufReader, Write};
@@ -37,7 +51,26 @@ use serde_json::{json, Value};
 /// 导致工具调用卡死 30s 才 fallback。降到 5s 快速失败 ——
 /// LSP 可用时 5s 足够（本地语言服务器响应毫秒级），
 /// 不可用时避免长时间阻塞用户。
+/// 注意：超时不再销毁进程（见 [`LspProcess::send_request`] 的
+/// 迟到响应回收机制），只影响本次调用。
 const LSP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// 冷启动窗口：服务器 spawn 后这段时间内，查询超时不算死刑——
+/// 重型服务器（rust-analyzer 对大型仓库冷索引需 1-2 分钟）首次
+/// 请求大概率超 5s；窗口内进程保留等读线程送回 reader，
+/// 窗口耗尽仍未恢复才销毁重建。
+const LSP_COLD_WINDOW: std::time::Duration = std::time::Duration::from_secs(150);
+
+/// 同一命令的重生退避：spawn 尝试（含失败）后至少间隔这么久
+/// 才允许再拉，防止「查询→失败→重拉→再失败」风暴。
+const RESPAWN_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// LSP spawn 内存门禁阈值（系统可用提交内存，MB）。
+/// 2026-09-09 事故：16GB 机器上 6 个引擎进程并行各拉全套舰队，
+/// 提交内存耗尽，gopls 直接 VirtualAlloc 失败（errno=1455），
+/// 所有 LSP 查询全线报错。低于此值时拒绝拉新服务器，工具
+/// 透明降级，原因可在 engine_status 的 lsp.error 里看到。
+const MIN_SPAWN_COMMIT_MB: u64 = 3072;
 
 /// 单个 LSP 服务器进程的句柄。
 ///
@@ -54,6 +87,19 @@ struct LspProcess {
     stderr: Option<std::process::ChildStderr>,
     next_id: u64,
     timeout: std::time::Duration,
+    /// spawn 时刻：冷窗口判定的基准。
+    spawned_at: std::time::Instant,
+    /// 冷启动窗口时长（测试可覆写）。
+    cold_window: std::time::Duration,
+    /// 迟到响应回收盒：上次超时后读线程仍在等旧响应。
+    /// 读线程完成后经 channel 把 reader 送回，下次调用收割。
+    /// None = 无悬挂请求；Some(Empty) = 旧响应未到（服务器忙/索引中）。
+    late_rx: Option<
+        std::sync::mpsc::Receiver<(
+            BufReader<std::process::ChildStdout>,
+            Result<Value, String>,
+        )>,
+    >,
 }
 
 impl LspProcess {
@@ -77,9 +123,52 @@ impl LspProcess {
     /// LSP 服务器会在请求/响应周期之间异步发送诊断和日志通知——
     /// 这些消息会被跳过，只等待与请求 id 匹配的响应。
     ///
-    /// 使用独立线程读取响应以实现超时控制。
-    /// 超时后 reader 丢失，下次调用会触发 get_or_warm_server 重建进程。
+    /// 超时语义（2026-09-09 事故后重设计）：
+    /// 超时**不**销毁服务器。读线程继续等旧响应，完成后经 channel
+    /// 把 reader 送回；`late_rx` 保存 Receiver，下次调用非阻塞收割。
+    /// 冷窗口内收割不到 → 返回 "LSP busy"（进程保留，工具降级）；
+    /// 窗口耗尽仍收不回 → 返回可销毁错误（重建走重生退避）。
+    /// 旧实现超时即丢 reader 杀进程，冷启动的 rust-analyzer
+    /// 永远活不过索引期（杀-重生循环）。
     fn send_request(&mut self, method: &str, params: Value) -> Result<Value, String> {
+        // ── 迟到响应回收 ──
+        if let Some(rx) = self.late_rx.take() {
+            match rx.try_recv() {
+                Ok((reader_back, old_result)) => {
+                    // 旧响应已到，reader 归位——服务器恢复健康。
+                    self.reader = Some(reader_back);
+                    tracing::debug!("[lsp_manager] late response reclaimed, reader restored");
+                    // 但旧请求以读错误收场 = 流已断（多半进程死了）——
+                    // 立即判死走重建，别把死进程挂满冷窗口。
+                    // （"LSP error: ..." 是 JSON-RPC 应答，服务器健康，继续用。）
+                    if let Err(e) = old_result {
+                        if e.starts_with("LSP read error") {
+                            return Err(format!("{e} — server will be recreated"));
+                        }
+                    }
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    // 读线程仍在等旧响应（冷启动索引中）。
+                    self.late_rx = Some(rx);
+                    if self.spawned_at.elapsed() < self.cold_window {
+                        return Err(format!(
+                            "LSP busy: server still answering earlier request (cold start, {:.0}s elapsed) — retry later",
+                            self.spawned_at.elapsed().as_secs()
+                        ));
+                    }
+                    return Err(
+                        "LSP reader lost after cold window — server will be recreated".to_string()
+                    );
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    return Err(
+                        "LSP reader thread exited without reader — server will be recreated"
+                            .to_string(),
+                    );
+                }
+            }
+        }
+
         self.next_id += 1;
         let id = self.next_id;
         let request = json!({
@@ -138,10 +227,11 @@ impl LspProcess {
                 result
             }
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                // 线程仍然存活但我们不再等待
-                // reader 已丢失——下次调用失败 → get_or_warm_server 重建
+                // 不丢弃 rx：读线程继续等旧响应，完成后把 reader 送回。
+                // 服务器保持存活（冷窗口内），下次调用收割。
+                self.late_rx = Some(rx);
                 Err(format!(
-                    "LSP timeout after {:?} waiting for {}(id {})",
+                    "LSP busy: timeout after {:?} waiting for {}(id {}) — server kept alive, retry later",
                     self.timeout, method, id,
                 ))
             }
@@ -557,10 +647,13 @@ pub struct LspManager {
     pool: RwLock<PoolMap>,
     /// 项目根目录
     project_root: RwLock<Option<String>>,
-    /// 是否已初始化（warm 已调用）
+    /// 是否已初始化（warm/mark_initialized 已调用）
     initialized: RwLock<bool>,
     /// 每个命令的最后一次预热错误，用于诊断
     last_warm_errors: RwLock<HashMap<String, String>>,
+    /// 每个命令最近一次 spawn 尝试（含失败）的时刻，重生退避用。
+    /// 多窗口并行时 N 个引擎各自重拉服务器的风暴从这里被限频。
+    last_spawn: RwLock<HashMap<String, std::time::Instant>>,
 }
 
 impl LspManager {
@@ -610,6 +703,9 @@ impl LspManager {
         *mgr.initialized.write().unwrap_or_else(|e| e.into_inner()) = false;
         *mgr.project_root.write().unwrap_or_else(|e| e.into_inner()) = None;
         mgr.last_warm_errors.write().unwrap_or_else(|e| e.into_inner()).clear();
+        // 换根/清池后退避一并清零：新根的首次 warm 不应被旧根的
+        // 失败退避卡住。
+        mgr.last_spawn.write().unwrap_or_else(|e| e.into_inner()).clear();
         tracing::info!(killed, "[lsp_manager] shutdown_all done");
     }
 
@@ -619,7 +715,122 @@ impl LspManager {
             project_root: RwLock::new(None),
             initialized: RwLock::new(false),
             last_warm_errors: RwLock::new(HashMap::new()),
+            last_spawn: RwLock::new(HashMap::new()),
         }
+    }
+
+    /// 标记 LSP 池已初始化（记录项目根），但不 spawn 任何服务器。
+    ///
+    /// 「索引尚未建立」的窗口用它替代全量 warm：查询到来时走
+    /// [`Self::get_or_warm_server`] 的惰性路径，只拉被查询的那一门
+    /// 语言——避免分析窗口内 9 个服务器无条件全量 spawn
+    /// （多窗口并行时 ×N，2026-09-09 内存事故来源之一）。
+    pub fn mark_initialized(project_root: &str) {
+        let mgr = Self::global();
+        *mgr.project_root.write().unwrap_or_else(|e| e.into_inner()) = Some(project_root.to_string());
+        *mgr.initialized.write().unwrap_or_else(|e| e.into_inner()) = true;
+    }
+
+    /// 记录一次 spawn 尝试（含失败）——重生退避的时钟。
+    fn record_spawn_attempt(cmd: &str) {
+        Self::global()
+            .last_spawn
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(cmd.to_string(), std::time::Instant::now());
+    }
+
+    /// 同一命令距下次允许 spawn 还要等多久；None = 现在就可以。
+    fn respawn_cooldown_remaining(cmd: &str) -> Option<std::time::Duration> {
+        let mgr = Self::global();
+        let map = mgr.last_spawn.read().unwrap_or_else(|e| e.into_inner());
+        let last = map.get(cmd)?;
+        let since = last.elapsed();
+        if since < RESPAWN_COOLDOWN {
+            Some(RESPAWN_COOLDOWN - since)
+        } else {
+            None
+        }
+    }
+
+    /// 系统可用提交内存（MB）。
+    ///
+    /// Windows 用 GlobalMemoryStatusEx 的 ullAvailPageFile
+    /// （commit limit − 已提交）——正是 errno=1455
+    /// (ERROR_COMMITMENT_LIMIT) 触碰的那条线；Linux 读 /proc/meminfo。
+    /// 无法探测时返回 None（不门禁）。
+    pub fn available_commit_mb() -> Option<u64> {
+        #[cfg(windows)]
+        {
+            #[repr(C)]
+            #[derive(Default)]
+            struct MemoryStatusEx {
+                dw_length: u32,
+                dw_memory_load: u32,
+                ull_total_phys: u64,
+                ull_avail_phys: u64,
+                ull_total_page_file: u64,
+                ull_avail_page_file: u64,
+                ull_total_virtual: u64,
+                ull_avail_virtual: u64,
+                ull_avail_extended_virtual: u64,
+            }
+            extern "system" {
+                fn GlobalMemoryStatusEx(buffer: *mut MemoryStatusEx) -> i32;
+            }
+            let mut status = MemoryStatusEx::default();
+            status.dw_length = std::mem::size_of::<MemoryStatusEx>() as u32;
+            // SAFETY: 按约定把结构体指针传给 kernel32，函数只写入。
+            let ok = unsafe { GlobalMemoryStatusEx(&mut status) };
+            if ok != 0 {
+                Some(status.ull_avail_page_file / (1024 * 1024))
+            } else {
+                None
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            let info = std::fs::read_to_string("/proc/meminfo").ok()?;
+            for line in info.lines() {
+                if let Some(rest) = line.strip_prefix("MemAvailable:") {
+                    let kb: u64 = rest.trim().trim_end_matches(" kB").parse().ok()?;
+                    return Some(kb / 1024);
+                }
+            }
+            None
+        }
+    }
+
+    /// 内存门禁的纯决策（可单测）：None = 探测不到，不门禁。
+    fn spawn_gate_decision(avail_mb: Option<u64>) -> Result<(), String> {
+        match avail_mb {
+            Some(mb) if mb < MIN_SPAWN_COMMIT_MB => Err(format!(
+                "lsp spawn skipped: low system memory (available commit {} MB < {} MB) — \
+                 close other workspaces/windows or enlarge the pagefile",
+                mb, MIN_SPAWN_COMMIT_MB,
+            )),
+            _ => Ok(()),
+        }
+    }
+
+    /// spawn 前的内存门禁：可用提交内存不足时拒绝拉新服务器。
+    fn gate_spawn_memory() -> Result<(), String> {
+        Self::spawn_gate_decision(Self::available_commit_mb())
+    }
+
+    /// 哪些错误代表「服务器还活着，别杀」：
+    /// - `LSP busy`：请求超时/服务器忙——读线程还在等响应，进程保留；
+    /// - `LSP error`：服务器正常应答了 JSON-RPC error（协议层答复，
+    ///   例如方法不支持），进程完全健康，杀掉纯属误伤。
+    /// 其余（流损坏 parse/read header、进程死亡）才值得销毁重建。
+    fn err_preserves_server(e: &str) -> bool {
+        Self::err_is_busy(e) || e.starts_with("LSP error")
+    }
+
+    /// 错误是否为「忙/冷启动」类（值得稍后重试，而非安装/修复）。
+    /// 工具层据此给 agent「稍后重试」而非误导性的「去装服务器」指引。
+    pub(crate) fn err_is_busy(e: &str) -> bool {
+        e.starts_with("LSP busy")
     }
 
     /// 预热服务器池——并行启动所有已配置的 LSP 服务器。
@@ -890,6 +1101,11 @@ impl LspManager {
             None => return false,
         };
         let cmd = cfg.command;
+        // 重生退避（防御纵深：get_or_warm_server 已查过一次）。
+        if let Some(remain) = Self::respawn_cooldown_remaining(cmd) {
+            tracing::debug!(cmd, remain_secs = remain.as_secs(), "[lsp_manager] lazy warm blocked by respawn cooldown");
+            return false;
+        }
         match Self::spawn_server(cfg, &root) {
             Ok(process) => {
                 tracing::info!(cmd, ext, "[lsp_manager] lazy warm succeeded");
@@ -916,6 +1132,13 @@ impl LspManager {
     ///
     /// Windows 上 npm 全局工具是 .cmd 包装器，需要通过 cmd.exe /c 运行。
     fn spawn_server(cfg: &LspServerConfig, root: &str) -> Result<LspProcess, String> {
+        // 重生退避：spawn 尝试（含此处的门禁失败）先记时钟——
+        // 冷却期内惰性重拉在 try_warm_one/get_or_warm_server 就被拦下。
+        Self::record_spawn_attempt(cfg.command);
+        // 内存门禁：可用提交内存不足时拒绝拉新服务器。
+        // 失败原因会进 last_warm_errors，engine_status 可见、工具降级。
+        Self::gate_spawn_memory()?;
+
         // 解析完整路径——Windows 上 npm 全局工具是 .cmd 包装器
         // .cmd/.bat 文件必须通过 cmd.exe /c 运行（它们是脚本，不是 PE 可执行文件）
         let exe = Self::resolve_cmd_path(cfg.command)
@@ -988,6 +1211,9 @@ impl LspManager {
             stderr,
             next_id: 0,
             timeout: LSP_TIMEOUT,
+            spawned_at: std::time::Instant::now(),
+            cold_window: LSP_COLD_WINDOW,
+            late_rx: None,
         };
 
         // 快速死亡检测：如果进程在几百毫秒内就退出了（典型：版本不兼容），
@@ -1055,9 +1281,29 @@ impl LspManager {
             if let Some(cmd) = cmd {
                 tracing::warn!(ext, "[lsp_manager] stale dead server removed, rebuilding");
                 mgr.pool.write().unwrap_or_else(|e| e.into_inner()).remove(cmd);
+                // 重生退避：冷却未过不再拉——防止「查询→失败→重拉→
+                // 再失败」风暴（多窗口 ×N 放大，2026-09-09 事故）。
+                if let Some(remain) = Self::respawn_cooldown_remaining(cmd) {
+                    tracing::debug!(cmd, remain_secs = remain.as_secs(), "[lsp_manager] respawn cooldown active");
+                    return Err(format!(
+                        "LSP busy: {} respawn cooldown (~{:.0}s left) — retry later",
+                        cmd, remain.as_secs_f32()
+                    ));
+                }
             }
         }
         tracing::info!(ext, "[lsp_manager] server not in pool, attempting lazy warm");
+        // 重生退避：池中无条目（从未 spawn / 已被移除）时同样受冷却约束，
+        // 且把原因透传成 busy 类错误——工具层才能给出「稍后重试」指引。
+        if let Some(cfg) = SERVER_CONFIGS.iter().find(|c| c.extensions.contains(&ext)) {
+            if let Some(remain) = Self::respawn_cooldown_remaining(cfg.command) {
+                tracing::debug!(cmd = cfg.command, remain_secs = remain.as_secs(), "[lsp_manager] respawn cooldown active");
+                return Err(format!(
+                    "LSP busy: {} respawn cooldown (~{:.0}s left) — retry later",
+                    cfg.command, remain.as_secs_f32()
+                ));
+            }
+        }
         if !Self::try_warm_one(ext) {
             return Err(format!("no server for .{} (lazy warm failed)", ext));
         }
@@ -1066,8 +1312,9 @@ impl LspManager {
 
     /// 在 LSP 进程上执行操作。
     ///
-    /// 锁定服务器，执行闭包 f，如果 f 失败则清空池条目，
-    /// 使下次调用时重新预热新进程。
+    /// 锁定服务器，执行闭包 f；f 失败时按错误性质决定：
+    /// - 瞬态错误（"LSP busy"/"LSP error"）→ 进程保留（服务器健康）；
+    /// - 其余错误 → 清空池条目，下次调用重新预热新进程。
     fn with_process<T>(
         server_arc: &Arc<Mutex<Option<LspProcess>>>,
         f: impl FnOnce(&mut LspProcess) -> Result<T, String>,
@@ -1077,6 +1324,9 @@ impl LspManager {
         match f(process) {
             Ok(v) => Ok(v),
             Err(e) => {
+                if Self::err_preserves_server(&e) {
+                    return Err(e);
+                }
                 *guard = None; // 销毁损坏的进程，下次调用强制重建
                 Err(e)
             }
@@ -1363,6 +1613,56 @@ mod tests {
             stderr: None,
             next_id: 0,
             timeout: std::time::Duration::from_secs(2), // 测试用 2 秒超时
+            spawned_at: std::time::Instant::now(),
+            cold_window: std::time::Duration::from_secs(60),
+            late_rx: None,
+        }
+    }
+
+    /// 启动一个「收到请求后延迟应答」的 python 假 LSP 服务器——
+    /// 用于迟到响应回收测试（读线程最终会把 reader 送回回收盒）。
+    fn spawn_slow_responder(delay_secs: f64, timeout: std::time::Duration) -> LspProcess {
+        let script = format!(
+            r#"
+import sys, json, time
+def read_msg():
+    length = 0
+    while True:
+        line = sys.stdin.buffer.readline()
+        if not line: sys.exit(0)
+        if line.startswith(b'Content-Length:'):
+            length = int(line.split(b':')[1].strip())
+        if line == b'\r\n': break
+    return json.loads(sys.stdin.buffer.read(length))
+def send(obj):
+    body = json.dumps(obj).encode()
+    sys.stdout.buffer.write(b'Content-Length: ' + str(len(body)).encode() + b'\r\n\r\n' + body)
+    sys.stdout.buffer.flush()
+for _ in range(3):
+    req = read_msg()
+    time.sleep({delay_secs})
+    send({{"jsonrpc":"2.0","id":req["id"],"result":{{}}}})
+"#
+        );
+        let mut child = Command::new("python")
+            .args(["-c", &script])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn python slow responder");
+        let stdin = child.stdin.take().unwrap();
+        let stdout = child.stdout.take().unwrap();
+        LspProcess {
+            process: child,
+            stdin: Arc::new(Mutex::new(stdin)),
+            reader: Some(BufReader::new(stdout)),
+            stderr: None,
+            next_id: 0,
+            timeout,
+            spawned_at: std::time::Instant::now(),
+            cold_window: std::time::Duration::from_secs(300),
+            late_rx: None,
         }
     }
 
@@ -1420,6 +1720,143 @@ time.sleep(0.2)
         assert!(elapsed < std::time::Duration::from_secs(5),
             "send_request should not block forever, took {:?}, result: {:?}", elapsed, result);
         assert!(result.is_err(), "expected error from hanging process, got {:?}", result);
+    }
+
+    // ── 生存性三闸回归（2026-09-09 事故）──
+
+    #[test]
+    fn test_spawn_gate_decision() {
+        // 探测不到（None）→ 不门禁
+        assert!(LspManager::spawn_gate_decision(None).is_ok());
+        // 充足 → 放行
+        assert!(LspManager::spawn_gate_decision(Some(MIN_SPAWN_COMMIT_MB)).is_ok());
+        assert!(LspManager::spawn_gate_decision(Some(MIN_SPAWN_COMMIT_MB + 1)).is_ok());
+        // 不足 → 拒绝且给出可操作的原因
+        let err = LspManager::spawn_gate_decision(Some(MIN_SPAWN_COMMIT_MB - 1)).unwrap_err();
+        assert!(err.contains("low system memory"), "gate error should explain: {err}");
+    }
+
+    #[test]
+    fn test_available_commit_mb_positive() {
+        // 本机必须能探测到正值，否则门禁形同虚设
+        let avail = LspManager::available_commit_mb();
+        assert!(avail.is_some(), "available_commit_mb should be probeable");
+        assert!(avail.unwrap() > 0);
+    }
+
+    #[test]
+    fn test_err_preserves_server_classification() {
+        // 忙/JSON-RPC error → 保留进程
+        assert!(LspManager::err_preserves_server("LSP busy: timeout after 5s waiting for x(id 1)"));
+        assert!(LspManager::err_preserves_server("LSP error: {\"code\":-32601,...}"));
+        // 流损坏/死亡 → 销毁
+        assert!(!LspManager::err_preserves_server("LSP read error: read header: failed to fill whole buffer"));
+        assert!(!LspManager::err_preserves_server("LSP reader lost after cold window — server will be recreated"));
+        assert!(!LspManager::err_preserves_server("parse: expected value"));
+    }
+
+    #[test]
+    fn test_timeout_keeps_young_server_alive() {
+        // 杀-重生循环回归：冷窗口内超时不得销毁进程。
+        // 旧实现超时即杀 → 冷启动 rust-analyzer 永远活不过索引期。
+        let arc: Arc<Mutex<Option<LspProcess>>> = Arc::new(Mutex::new(Some(spawn_hanging_process())));
+
+        // 第一次请求：2s 超时 → busy（保留进程）
+        let e1 = LspManager::with_process(&arc, |p| {
+            p.send_request("textDocument/definition", json!({}))
+        }).unwrap_err();
+        assert!(e1.starts_with("LSP busy"), "timeout should be busy-class, got: {e1}");
+        assert!(arc.lock().unwrap().is_some(), "young server must survive a timeout");
+
+        // 第二次请求：回收盒空（挂起进程永不响应）→ 冷窗口内仍 busy、仍保留
+        let e2 = LspManager::with_process(&arc, |p| {
+            p.send_request("textDocument/definition", json!({}))
+        }).unwrap_err();
+        assert!(e2.starts_with("LSP busy"), "cold-window busy expected, got: {e2}");
+        assert!(arc.lock().unwrap().is_some(), "young server must stay alive while busy");
+    }
+
+    #[test]
+    fn test_cold_window_expiry_destroys_stuck_server() {
+        // 冷窗口耗尽仍收不回 reader → 销毁重建（挂死的服务器不能永久占位）
+        let arc: Arc<Mutex<Option<LspProcess>>> = Arc::new(Mutex::new(Some(spawn_hanging_process())));
+        // 冷窗口归零：下一轮回收失败即判死刑
+        arc.lock().unwrap().as_mut().unwrap().cold_window = std::time::Duration::ZERO;
+
+        let e1 = LspManager::with_process(&arc, |p| {
+            p.send_request("textDocument/definition", json!({}))
+        }).unwrap_err();
+        assert!(e1.starts_with("LSP busy"));
+
+        let e2 = LspManager::with_process(&arc, |p| {
+            p.send_request("textDocument/definition", json!({}))
+        }).unwrap_err();
+        assert!(e2.contains("reader lost"), "expired cold window should be destroy-class, got: {e2}");
+        assert!(arc.lock().unwrap().is_none(), "stuck server must be destroyed after cold window");
+    }
+
+    #[test]
+    fn test_late_response_reclaim_restores_reader() {
+        // 迟到响应回收：服务器最终应答后，reader 必须能被下次调用收割，
+        // 服务器恢复健康（而不是被当成死壳销毁）。
+        // python 假服务器：每个请求延迟 1.2s 才应答，请求超时 300ms。
+        let mut process = spawn_slow_responder(1.2, std::time::Duration::from_millis(300));
+
+        let e1 = process.send_request("textDocument/definition", json!({})).unwrap_err();
+        assert!(e1.starts_with("LSP busy"), "first request should time out as busy, got: {e1}");
+
+        // 轮询等回收盒到货：慢机器上 python 启动 + 全量测试并行时
+        // 调度延迟都可能远超 1.5s。回收未到时 send_request 只空转
+        // 返回 busy（不发新请求），轮询无副作用。
+        // 收割成功的标志 = 发出的是【新】请求并再次超时——
+        // 而不是 "reader lost"。
+        let mut e2 = String::new();
+        for _ in 0..40 {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            match process.send_request("textDocument/definition", json!({})) {
+                Err(e) if e.contains("LSP busy: timeout") => { e2 = e; break; }
+                Err(e) if e.contains("still answering") => { continue; }
+                other => panic!("unexpected result while polling for reclaim: {other:?}"),
+            }
+        }
+        assert!(!e2.is_empty(), "late response never arrived within poll budget");
+        assert!(!e2.contains("reader lost"), "reader must have been reclaimed, got: {e2}");
+
+        let _ = process.process.kill();
+    }
+
+    #[test]
+    fn test_respawn_cooldown_remaining() {
+        let mgr = LspManager::global();
+        let key = "__test_cooldown_cmd__";
+        {
+            let mut map = mgr.last_spawn.write().unwrap();
+            map.insert(key.to_string(), std::time::Instant::now());
+        }
+        assert!(LspManager::respawn_cooldown_remaining(key).is_some(),
+            "fresh spawn attempt must be inside cooldown");
+        // 时间倒推超过冷却 → 放行
+        {
+            let mut map = mgr.last_spawn.write().unwrap();
+            map.insert(key.to_string(), std::time::Instant::now() - RESPAWN_COOLDOWN - std::time::Duration::from_secs(1));
+        }
+        assert!(LspManager::respawn_cooldown_remaining(key).is_none(),
+            "cooldown must expire");
+        mgr.last_spawn.write().unwrap().remove(key);
+    }
+
+    #[test]
+    fn test_mark_initialized() {
+        // 全局状态测试：与其它引擎级测试共用串行锁，避免互相污染
+        let _guard = crate::engine::global_engine_test_guard();
+        LspManager::mark_initialized("D:/__lsp_mark_init_test__");
+        assert!(LspManager::is_initialized());
+        assert!(!LspManager::root_changed("D:/__lsp_mark_init_test__"));
+        assert!(LspManager::root_changed("D:/another/root"));
+        // 还原全局状态（直接写私有字段，避免 shutdown_all 误杀并行测试的服务器池）
+        let mgr = LspManager::global();
+        *mgr.initialized.write().unwrap_or_else(|e| e.into_inner()) = false;
+        *mgr.project_root.write().unwrap_or_else(|e| e.into_inner()) = None;
     }
 
     /// 进程回收回归：shutdown_all 必须杀掉池中全部 LSP 子进程

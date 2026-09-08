@@ -44,8 +44,12 @@ pub(crate) fn handler_status(_args: &Value) -> ToolResponse {
             });
             std::thread::spawn(move || {
                 if lsp_exts.is_empty() {
-                    // 尚无索引（首次打开/分析中）：保留旧的保守行为。
-                    crate::lsp_manager::LspManager::warm(&root_str);
+                    // 尚无索引（首次打开/分析中）：不再全量 warm——
+                    // 无过滤 spawn 全部 9 个服务器是多窗口并行时的内存
+                    // 炸弹（2026-09-09 事故：6 引擎 × 全套舰队打爆 16GB
+                    // 提交内存）。只标记初始化，查询到来时经
+                    // get_or_warm_server 惰性拉起被查询的那一门语言。
+                    crate::lsp_manager::LspManager::mark_initialized(&root_str);
                 } else {
                     let ext_filter: Vec<&str> = lsp_exts.iter().map(|s| s.as_str()).collect();
                     crate::lsp_manager::LspManager::warm_filtered(&root_str, &ext_filter);

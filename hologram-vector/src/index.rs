@@ -182,7 +182,7 @@ impl CodeVectorIndex {
         let tmp_index = self.path.with_extension("usearch.tmp");
         let tmp_str = tmp_index.to_str().ok_or("non-UTF8 path")?;
         index.save(tmp_str).map_err(|e| format!("usearch save: {e}"))?;
-        std::fs::rename(&tmp_index, &self.path)
+        rename_with_retry(&tmp_index, &self.path)
             .map_err(|e| format!("usearch rename: {e}"))?;
         info!("[vector] 索引已保存到 {}", self.path.display());
 
@@ -199,7 +199,7 @@ impl CodeVectorIndex {
             .map_err(|e| format!("slot serialize: {e}"))?;
         std::fs::write(&tmp_slot, json_str)
             .map_err(|e| format!("slot save: {e}"))?;
-        std::fs::rename(&tmp_slot, &slot_path)
+        rename_with_retry(&tmp_slot, &slot_path)
             .map_err(|e| format!("slot rename: {e}"))?;
         Ok(())
     }
@@ -258,6 +258,30 @@ static VECTOR_CACHE: LazyLock<Mutex<std::collections::HashMap<u64, Arc<Vec<f32>>
     LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 
 /// snippet 内容哈希（向量缓存键）。只需同一进程内一致，DefaultHasher 足够。
+/// 带重试的 rename：Windows 上多个引擎进程共用同一数据目录时，
+/// 目标文件可能正被另一个进程短暂占用（os error 5 共享冲突），
+/// 等一拍再试通常就能过（2026-09-09 事故：增量重建 ×7 落盘失败，
+/// usearch/slots 索引没能更新）。
+fn rename_with_retry(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    const ATTEMPTS: u32 = 3;
+    const RETRY_DELAY_MS: u64 = 400;
+    let mut last_err = None;
+    for attempt in 0..ATTEMPTS {
+        match std::fs::rename(from, to) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                if attempt + 1 < ATTEMPTS {
+                    std::thread::sleep(std::time::Duration::from_millis(RETRY_DELAY_MS));
+                }
+                last_err = Some(e);
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::Other, "rename_with_retry: no attempt made")
+    }))
+}
+
 fn snippet_hash(s: &str) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -375,6 +399,26 @@ pub fn extract_snippet(source: &str, node_name: &str, node_kind: &NodeKind) -> O
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// rename_with_retry：正常改名一次过；源不存在时报错不 panic
+    ///（多引擎共用目录的占用重试是 2026-09-09 事故的落盘修复）。
+    #[test]
+    fn test_rename_with_retry() {
+        let tmp = std::env::temp_dir().join(format!("hologram_vi_rename_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&tmp);
+        let src = tmp.join("a.tmp");
+        let dst = tmp.join("a.bin");
+        let _ = std::fs::remove_file(&dst);
+        std::fs::write(&src, b"x").unwrap();
+        assert!(rename_with_retry(&src, &dst).is_ok());
+        assert!(dst.exists() && !src.exists(), "rename should move the file");
+        assert!(
+            rename_with_retry(&tmp.join("no-such.tmp"), &dst).is_err(),
+            "missing source must surface the io error"
+        );
+        let _ = std::fs::remove_file(&dst);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 
     /// 后端不匹配的索引必须判废（load 返回 0），防止跨嵌入空间的垃圾结果
     #[test]
