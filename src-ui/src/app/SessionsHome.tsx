@@ -55,6 +55,12 @@ function wsGraphOn(ws: KnownWorkspace): boolean {
   return ws.graph_engine ?? graphEngineEnabled(loadSettings());
 }
 
+/** 恢复卡死判定阈值（2026-09-09 事故立法）：切区/冷启动恢复 busy 超过
+ *  此时长视为挂死——健康恢复链（大工作区实测秒级）远低于此。超阈值后
+ *  isBusy 守卫从「请稍候」升级为亮「强制重置」逃生口（workspaceFlow.
+ *  stuckRecover），不再把用户锁死在所有工作区外面。 */
+const STUCK_SWITCH_MS = 60_000;
+
 /** 案卷日期列：MM-DD（原型 .session-row .date 同款） */
 function formatSessionDate(iso: string | null | undefined): string {
   if (!iso) return '——';
@@ -101,6 +107,9 @@ export function SessionsHome() {
   const [workspaces, setWorkspaces] = useState<KnownWorkspace[]>([]);
   const [listState, setListState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [notice, setNotice] = useState<string | null>(null);
+  /** 卡死逃生口可见位（2026-09-09 事故立法）：isBusy 守卫发现恢复超过
+   *  STUCK_SWITCH_MS 时置位——亮「强制重置」按钮；正常路径复位。 */
+  const [forceReset, setForceReset] = useState(false);
   const [busy, setBusy] = useState(false);
   /** 内联改名（一次一张卡）。 */
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
@@ -166,15 +175,21 @@ export function SessionsHome() {
    *  目录已丢失的工作区禁进（调用侧守卫）。
    *  #4 修复（2026-09-02）：冷启动期间 switchWorkspace 仍在跑（setupAgent +
    *  restoreCanvasSpread）——wsMachine.isBusy 时拦截，防止纸面板开了但卷
-   *  还没恢复完。 */
+   *  还没恢复完。
+   *  卡死逃生口（2026-09-09 事故立法）：busy 超过 STUCK_SWITCH_MS 视为恢复
+   *  挂死（实机事故：引擎二进制缺席 → 恢复链永停 'switching'，一切点击被拦，
+   *  用户被锁在所有工作区外面）——守卫升级为亮「强制重置」。 */
   const onEnterWorkspace = useCallback(
     (ws: string) => {
       setRemoveTarget(null);
       // 冷启动恢复未完成时不进画布——卷还没铺开，进去看到的是空纸
       if (shellRefs.wsMachine.isBusy) {
-        setNotice('工作区正在恢复中，请稍候…');
+        const stuck = shellRefs.wsMachine.busyMs > STUCK_SWITCH_MS;
+        setForceReset(stuck);
+        setNotice(stuck ? '工作区恢复仍未完成（已超过 1 分钟）——疑似卡死' : '工作区正在恢复中，请稍候…');
         return;
       }
+      setForceReset(false);
       openPanel('paper');
       const current = useShellStore.getState().projectPath;
       if (!isSamePath(ws, current)) {
@@ -183,6 +198,14 @@ export function SessionsHome() {
     },
     [openPanel],
   );
+
+  /** 强制重置卡死的恢复（workspaceFlow.stuckRecover）：回收在途切区 + 状态机
+   *  复位——用户随后重新点击工作区卡即走全新 switch。 */
+  const onForceReset = useCallback(() => {
+    setForceReset(false);
+    setNotice(null);
+    void workspaceFlow.stuckRecover();
+  }, []);
 
   /** 新建工作区 sheet：创建/指定双路（2026-08-31 拍板——一个按钮管两件事）。
    *  出生仪式在画布——sheet 只负责把工作区实体立起来（建目录/选目录 + 引擎勾选）。 */
@@ -492,6 +515,16 @@ export function SessionsHome() {
           <p className="sh-empty-hint">还没有工作区——新建或指定一个目录，从一卷新案卷开始。</p>
         )}
         {notice && <p className="sh-notice">{notice}</p>}
+        {/* 卡死逃生口（2026-09-09 事故立法）：仅 STUCK_SWITCH_MS 超时后亮——
+            强制重置走 stuckRecover（全套回收 + 状态机复位），重进即全新 switch */}
+        {forceReset && (
+          <p className="sh-notice">
+            引擎或后端可能无响应。
+            <button type="button" className="sh-retry" onClick={onForceReset}>
+              强制重置
+            </button>
+          </p>
+        )}
 
         <div className="sh-actions">
           <button type="button" className="sh-btn-primary" onClick={onOpenCreateSheet}>

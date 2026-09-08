@@ -10,7 +10,9 @@
 兰台是 Tauri 桌面应用：生产包把前端编译进安装产物，改代码必须重新
 `cargo tauri build`（分钟级）。但项目一直具备 Vite dev server 的 HMR
 （热模块替换）能力——`tauri.conf.json` 配了 `devUrl: http://127.0.0.1:1420`
-+ `beforeDevCommand: npm run dev`。只是日常跑生产包，感受不到。
++ `beforeDevCommand: cargo build -p hologram-engine && npm run dev`（引擎
+增量构建先行——壳不依赖引擎 crate，缺引擎二进制时应用瘫，2026-09-09
+事故立法）。只是日常跑生产包，感受不到。
 
 ## 怎么进 dev 模式
 
@@ -19,8 +21,9 @@ dev.cmd
 ```
 
 一条命令（Windows，Git Bash / cmd / PowerShell 均可）：
-1. 先自动起 Vite dev server（HMR 就绪）；
-2. 再编译并启动 Rust 壳 + 打开开发窗口。
+1. 先增量构建引擎二进制（`target/debug/`；已新鲜时秒级）；
+2. 再自动起 Vite dev server（HMR 就绪）；
+3. 再编译并启动 Rust 壳 + 打开开发窗口。
 
 > 首次冷启动 Rust 编译要几分钟（与 build 相同）；编译完成后窗口即开。
 > 窗口标题栏会连接到 `127.0.0.1:1420` 的 dev server。
@@ -42,7 +45,7 @@ dev.cmd
 - **前端代码路径不同**：开发窗口从 dev server 拉 HTML/JS；生产包从
   `dist/` 读取。个别环境相关行为（如资源路径）可能不同。
 - **发版前必须重跑生产构建**：`build.cmd`（内部 = `cargo tauri build`，
-  会先跑完整前端构建 + tsc 类型检查）。dev 模式通过 ≠ 生产可发布。
+  会先跑完整前端构建 + tsc 类型检查 + 引擎 release 二进制构建）。dev 模式通过 ≠ 生产可发布。
 
 ## 常见问题
 

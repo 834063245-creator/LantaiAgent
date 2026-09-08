@@ -154,7 +154,7 @@ flowchart LR
 | 改引擎 | `cd engine && cargo test`（快验 `cargo build`） |
 | 改前端 | `cd src-ui && npm run build` + `npx vitest run` |
 | 改壳 | `cd src-tauri && cargo test`（快验 `cargo check`） |
-| 桌面打包 | `cd src-tauri && cargo tauri build`（自动先跑前端构建） |
+| 桌面打包 | `cd src-tauri && cargo tauri build`（自动先跑前端构建 + `cargo build -p hologram-engine --release`——壳不依赖引擎 crate，引擎二进制全靠这一步产出；bundle 落 exe 同级） |
 | 前端格式 | `cd src-ui && npx biome check --write <改动文件>` |
 
 ## 6. 前端分层铁律（详情见 CONVENTIONS.md）

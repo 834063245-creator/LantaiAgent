@@ -5,8 +5,8 @@
   "build": {
     "frontendDist": "../src-ui/dist",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeDevCommand": { "script": "npm run dev", "cwd": "../src-ui" },
-    "beforeBuildCommand": { "script": "npm run build", "cwd": "../src-ui" }
+    "beforeDevCommand": { "script": "cargo build -p hologram-engine && npm --prefix src-ui run dev", "cwd": ".." },
+    "beforeBuildCommand": { "script": "npm --prefix src-ui run build && cargo build -p hologram-engine --release", "cwd": ".." }
   },
   "app": {
     "windows": [
@@ -33,6 +33,7 @@
       "icons/icon.ico"
     ],
     "resources": {
+      "../target/release/hologram-engine.exe": "hologram-engine.exe",
       "../engine/grammars/*.dll": "grammars/",
       "../engine/onnxruntime.dll": "onnxruntime.dll",
       "../engine/models/all-MiniLM-L6-v2/model.onnx": "models/all-MiniLM-L6-v2/model.onnx",

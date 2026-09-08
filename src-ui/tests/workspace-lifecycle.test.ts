@@ -8,12 +8,18 @@
 //   agent_isolation_discard（真实删除 git worktree）；saveState('done') 不落盘留死账。
 // - H4：runCheck 在途 RPC resolve 后无 _active 守卫 —— 旧项目检查结果写进
 //   新项目 dock store 并自动弹开 check 面板。
+// - 卡死锁死（2026-09-09 实机事故）：引擎二进制缺席 → 冷启动恢复链挂死 →
+//   状态机永停 'switching' → 首页 isBusy 守卫拦截一切点击，用户被锁在所有
+//   工作区外面。修复三件：恢复链尾部 RPC 全部 withTimeout 有界化；状态机
+//   busyMs 让守卫可判「卡死」；workspaceFlow.stuckRecover 逃生口 + 首页
+//   「强制重置」按钮。
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const src = readFileSync(path.resolve(process.cwd(), 'src/workspace.ts'), 'utf8');
 const rowsWs = readFileSync(path.resolve(process.cwd(), 'src/shell/rows/workspace.ts'), 'utf8');
+const homeSrc = readFileSync(path.resolve(process.cwd(), 'src/app/SessionsHome.tsx'), 'utf8');
 
 /** 截取从 anchor 开始、长度为 span 的源码窗口做断言。 */
 function windowOf(anchor: string, span = 4000): string {
@@ -91,5 +97,74 @@ describe('回首页真关工作区（2026-09-08 生命周期修复）', () => {
   it('leaveToHome 导出进 workspaceFlow（PaperPanel 确认后调用面）', () => {
     const flow = rowsWs.slice(rowsWs.indexOf('export const workspaceFlow'));
     expect(flow).toContain('leaveToHome');
+  });
+});
+
+describe('恢复链卡死护栏（2026-09-09 实机事故立法）', () => {
+  const home = homeSrc;
+
+  it('switchWorkspace 尾部 RPC 全部有界化——无裸 await（挂起不再永锁 switching）', () => {
+    const body = rowsWs.slice(rowsWs.indexOf('async function switchWorkspace'), rowsWs.indexOf('── 离开工作区回首页'));
+    for (const anchor of [
+      'withTimeout(kernelCreateDirectory(',
+      'withTimeout(chatPanel.autoRestoreLastSession(',
+      'withTimeout(chatPanel.restoreCanvasSpread(',
+      "withTimeout(typedRpc('workspace_start_watcher'",
+    ]) {
+      expect(body, `尾部护栏必须覆盖 ${anchor}`).toContain(anchor);
+    }
+    // 旧静默吞错退役：watcher 起不来必须可见（console.warn + pushStatus）
+    expect(body).toContain('⚠️ 文件监视未启动');
+  });
+
+  it('stuckRecover：非 busy no-op + 摘守卫在 leaveToHome 前 + 无条件状态机复位 + 加载态复位', () => {
+    const body = rowsWs.slice(
+      rowsWs.indexOf('export async function stuckRecover'),
+      rowsWs.indexOf('export const workspaceFlow'),
+    );
+    expect(body).toContain('if (!wsMachine.isBusy) return');
+    const unreg = body.indexOf("unregisterCloseGuard('paper')");
+    const leave = body.indexOf('await leaveToHome()');
+    expect(unreg, '摘 paper 守卫必须先于 leaveToHome（防确认弹层二次拦截）').toBeGreaterThan(-1);
+    expect(leave).toBeGreaterThan(unreg);
+    // leaveToHome 的 forceState('idle') 在 workspace?.active 分支内——卡死冷启动
+    // shellRefs.workspace 为 null 时该分支不进，逃生口必须自带无条件复位
+    expect(body).toContain('if (wsMachine.isBusy) wsMachine.forceState');
+    expect(body).toContain('setLoading(false)');
+  });
+
+  it('stuckRecover 导出进 workspaceFlow（首页按钮调用面）', () => {
+    const flow = rowsWs.slice(rowsWs.indexOf('export const workspaceFlow'));
+    expect(flow).toContain('stuckRecover');
+  });
+
+  it('首页守卫可判卡死：STUCK_SWITCH_MS 阈值 + busyMs 读取 + 强制重置按钮', () => {
+    expect(home).toContain('STUCK_SWITCH_MS = 60_000');
+    expect(home).toContain('shellRefs.wsMachine.busyMs > STUCK_SWITCH_MS');
+    expect(home).toContain('workspaceFlow.stuckRecover()');
+    expect(home).toContain('强制重置');
+  });
+
+  it('状态机 busyMs：进 busy 起算、busy→busy 复合不重置、离 busy 清零（运行时）', async () => {
+    const { WorkspaceStateMachine } = await import('../src/lifecycle/state-machine');
+    const m = new WorkspaceStateMachine();
+    expect(m.busyMs, 'idle 态 busyMs = 0').toBe(0);
+    m.transition('switching');
+    const t0 = m.busyMs;
+    expect(t0, '进 busy 即起算（>=0）').toBeGreaterThanOrEqual(0);
+    await new Promise((r) => setTimeout(r, 5));
+    expect(m.busyMs, 'busy 期间随时间增长').toBeGreaterThan(t0);
+    // busy→busy 复合动作（deactivating→switching 是同一用户动作的两段）不重置起点
+    m.forceState('deactivating');
+    const t1 = m.busyMs;
+    expect(t1).toBeGreaterThanOrEqual(5);
+    m.forceState('switching');
+    expect(m.busyMs, 'busy→busy 不重置起算点').toBeGreaterThanOrEqual(t1);
+    // 离 busy 清零
+    m.transition('active');
+    expect(m.busyMs, '离 busy 清零').toBe(0);
+    // 再进 busy 重新起算
+    m.transition('switching');
+    expect(m.busyMs).toBeLessThan(50);
   });
 });

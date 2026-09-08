@@ -102,8 +102,8 @@ hologram-\* crate**（源码 + Cargo.toml 双扫）。
 
 ## §5 发现但不修（本工程范围外）
 
-- desktop release 的 tauri bundle resources 未见 `hologram-engine.exe` 打包条目
-  ——桌面安装包是否随附引擎二进制存疑，另核实（不属于逻辑收断面）。
+- ~~desktop release 的 tauri bundle resources 未见 `hologram-engine.exe` 打包条目~~
+  **2026-09-09 已修**（见 §6 实施偏差第 5 条收口：beforeBuild/DevCommand 链引擎构建 + bundle resources 落 exe 同级）。
 - `--tcp` 9777 旧协议（engine-plugin-extraction §8 留专项）原样。
 - 版本号：摘依赖后锁步已无意义，维持 10.4.0 不动。
 
@@ -146,6 +146,16 @@ hologram-\* crate**（源码 + Cargo.toml 双扫）。
    `<exe>/grammars` 探测永远落空）。
 5. **desktop release 未见 hologram-engine.exe 打包条目**：§5 疑点原样
    在册（非本工程面，待另核实）。
+   → **2026-09-09 已收口**（实机事故立法：当晚 target 清理 + `cargo tauri
+   build` 只产壳不产引擎 → `hologram-engine.exe` 全树缺席 → 引擎起不来 →
+   冷启动恢复链挂死状态机 → 首页一切工作区点击被 isBusy 守卫拦截，用户被
+   锁死）。修复：tauri.conf `beforeDevCommand`/`beforeBuildCommand` 链上
+   `cargo build -p hologram-engine`（dev 档 debug、build 档 release——引擎
+   增量构建秒级，冷编一次后无感）+ `bundle.resources` 补
+   `../target/release/hologram-engine.exe → hologram-engine.exe`（安装包
+   落 exe 同级 = engine_exe_path 候选 1）。配套：恢复链卡死护栏
+   （switchWorkspace 尾部 RPC 全 withTimeout 有界 + 首页「强制重置」逃生
+   口，见 tests/workspace-lifecycle.test.ts「恢复链卡死护栏」）。
 
 **真机验收清单（用户待跑）**——即 §4 四项：① 老项目自动搬迁后图查询/
 向量召回/时间线如常；② 新项目直落 `.hologram`；③ MCP 直连老项目同样

@@ -172,21 +172,24 @@ async function switchWorkspace(path?: string, opts?: { graphEngine?: boolean | n
     // 豁免（session-persistence-seam-wiring-plan 表 1.1 #10）：工作区脚手架结构
     // op——壳行执行时序早于插件装载，不可依赖 seam；默认 provider save 走
     // kernelWriteFile 自带父目录自动创建兜底。
+    // 超时护栏（2026-09-09 事故立法）：恢复链上的 RPC 一律有界——引擎缺席/
+    // 后端无响应时无界 await 会把状态机永锁 'switching'（挂起的 await 不走
+    // finally，兜底 forceState 也到不了），首页一切点击被 isBusy 守卫拦截。
     try {
-      await kernelCreateDirectory(`${folder.replace(/[\\/]+$/, '')}/.lantai/sessions`);
+      await withTimeout(kernelCreateDirectory(`${folder.replace(/[\\/]+$/, '')}/.lantai/sessions`), 5000);
     } catch (e) {
       console.warn('[switchWorkspace] 会话根目录创建失败:', folder, e);
     }
     // 会话统一 U2：恢复改为 await——跨工作区续开（首页点他区卷 → switch →
     // loadSessionFromDisk）需要恢复落定后再摊开目标卷，否则恢复的整表 setState
     // 会与续开的 append 交错（续开的卷被恢复态覆写）。
-    await chatPanel.autoRestoreLastSession(folder).catch((e) => {
+    await withTimeout(chatPanel.autoRestoreLastSession(folder), 60_000).catch((e) => {
       console.error('[switchWorkspace] autoRestoreLastSession failed:', e);
       pushStatus(`⚠️ 会话恢复失败: ${e instanceof Error ? e.message : String(e)}`);
     });
     // Stage-5：进工作区恢复画布——摊开集合 + 各自位置 + 活跃会话（拍板 11：
     // 展开 = 永远展开，重启恢复；Q-B 在画布语义下不再适用）。
-    await chatPanel.restoreCanvasSpread(folder).catch((e) => {
+    await withTimeout(chatPanel.restoreCanvasSpread(folder), 60_000).catch((e) => {
       console.error('[switchWorkspace] restoreCanvasSpread failed:', e);
       pushStatus(`⚠️ 画布布局恢复失败: ${e instanceof Error ? e.message : String(e)}`);
     });
@@ -195,7 +198,12 @@ async function switchWorkspace(path?: string, opts?: { graphEngine?: boolean | n
     setLoading(false);
     if (ws._graphEngineOn) {
       ws.runCheck();
-      await typedRpc('workspace_start_watcher', {}).catch(() => {});
+      await withTimeout(typedRpc('workspace_start_watcher', {}), 10_000).catch((e) => {
+        // 原 `.catch(() => {})` 全静默——无界 await + 静默吞错正是卡死无感的
+        // 双成因；watcher 起不来只是增量分析缺席，工作区本身可用（可见降级）。
+        console.warn('[switchWorkspace] workspace_start_watcher 失败/超时——本次无增量分析:', e);
+        pushStatus('⚠️ 文件监视未启动——本次进入无增量分析（可继续用，重进工作区可重试）');
+      });
     } else {
       // 引擎开关关闭（2026-08-22）：不跑初始简报、不启文件 watcher——
       // watcher 的增量分析链（engine_try_incremental）会在后台把引擎拉起来。
@@ -260,11 +268,46 @@ function escLayer(): void {
   if (dock.isOpen('settings')) dock.closePanel('settings');
 }
 
+// ── 卡死逃生口（2026-09-09 事故立法：首页「点不进工作区」根因收口）──
+// 实机事故：引擎二进制缺席 → 冷启动恢复链在会话/画布恢复段挂死 → 状态机
+// 永停 'switching' → 首页 onEnterWorkspace 的 isBusy 守卫拦截一切点击（弹
+// 「工作区正在恢复中，请稍候…」），用户被锁在所有工作区外面且无任何逃生
+// 口。尾部 await 已加 withTimeout 护栏（上方），但护栏防不住未知的挂点
+// （Workspace.open 内部、未来新增的恢复步骤）——本口 = 最后一道人工逃生：
+// 首页守卫发现 busy 超过 STUCK_SWITCH_MS 后向用户亮「强制重置」。
+
+/** 强制回收卡死的切区。非 busy = no-op（防误触）。
+ *  语义 = leaveToHome 全套清理（deactivate 5s 超时兜底 + 状态机复位 idle +
+ *  清 projectPath + 关 paper）+ 加载态复位（leaveToHome 不动 analyzing——
+ *  正常回首页时本就无加载态，卡死路径需要显式清）。
+ *  先摘 paper 关闭守卫：卡死路径的关面板不该被「回首页？」确认弹层二次
+ *  拦截（PaperPanel.forceLeave 同款次序）。在途切区若事后自行苏醒，其尾部
+ *  transition 会因非法转移抛错（届时 state 已非 'switching'，finally 的
+ *  forceState 分支不触发）——只留 console 噪音；卡死 60s 后的用户逃生权
+ *  优先于那个理论上还活着的在途任务。 */
+export async function stuckRecover(): Promise<void> {
+  const { wsMachine } = shellRefs;
+  if (!wsMachine.isBusy) return;
+  console.warn('[stuckRecover] 切区卡死', wsMachine.state, `${wsMachine.busyMs}ms —— 强制回收`);
+  useDockStore.getState().unregisterCloseGuard('paper');
+  try {
+    await leaveToHome();
+  } finally {
+    // leaveToHome 的状态机复位在其 `workspace?.active` 分支内——卡死冷启动路径
+    // shellRefs.workspace 可能为 null（open 挂起中从未落位），该分支不进，
+    // 机器就会永停 'switching'。逃生口必须无条件复位（本函数存在即证明卡死）。
+    if (wsMachine.isBusy) wsMachine.forceState('idle');
+    setLoading(false);
+  }
+  pushStatus('已强制回收卡死的恢复——可重新进入工作区');
+}
+
 /** 导出面：冷启动行 + actions 行消费的 workspace 流函数族。 */
 export const workspaceFlow = {
   switchWorkspace,
   escLayer,
   leaveToHome,
+  stuckRecover,
 };
 
 /** 壳行 boot：workspace 流本身就是模块级函数族——boot 无接线动作，
