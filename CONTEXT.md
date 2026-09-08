@@ -23,7 +23,7 @@ _Avoid_: provider、服务商、公司
 _Avoid_: kind、API 类型、厂商协议
 
 **Model**:
-Vendor 提供的具体模型，有唯一标识与能力元数据（上下文窗口、成本、是否支持推理）。
+Vendor 提供的具体模型，有唯一标识与能力元数据（上下文窗口、思考档位、输入模态 text/image）。
 _Avoid_: 模型名、model id、LLM
 
 **ModelId**:
@@ -74,6 +74,18 @@ _Avoid_: 气泡、block、section
 **Notice**:
 系统通知消息，带 level（info/warn/error），展示为横幅或状态提示；不是用户或模型的对话内容。
 _Avoid_: toast、log、消息（当指 notice 时）
+
+**ChatImageRef**:
+消息内图片的唯一形态：内容寻址引用（id = 规整字节 sha256 + 媒型 + 宽高 + 显示名）。字节永不进消息/会话卷——落 `{ws}/.lantai/attachments/{id}.{ext}`，请求期才解析成 wire 格式（multimodal-image-plan D-1）。
+_Avoid_: base64、图片消息、inline image、blob
+
+**附图**:
+用户附入卷的图片（输入草稿 `attachedImages` / 用户消息 `images`），区别于**附件**（路径文件引用，模型经 read_file 自取）。采集三入口：粘贴 / 拖放 / 夹选；展示中文一律用「附图」，不用「图片附件」。
+_Avoid_: 图片附件、image attachment、上传图片
+
+**准入规整**:
+附图入卷前的验收管线（image-intake.ts）：magic-byte 白名单（png/jpeg/webp/gif）+ EXIF 校正 + 保比降采样（长边 ≤2048 / 编码 ≤4MiB）+ sha256 内容寻址。规整在 TS webview，Rust 只留能力口（write_base64）。
+_Avoid_: 压缩（当指规整时）、上传
 
 ### 任务与目标（Task & Goal 簇）
 

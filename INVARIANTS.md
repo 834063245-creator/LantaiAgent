@@ -296,6 +296,33 @@ Ask）、`uia/com.rs` NO_PATTERN 错误（未授权物理路径明确报错而�
 
 ---
 
+## 14. 附图字节永不进卷：消息只存 ChatImageRef 引用
+
+**文件**: `src-ui/src/provider/types.ts`（Message.images / ChatImageRef）、`src-ui/src/ui/message-model.ts`（UserMessage.images）、`src-ui/src/app/chat/image-intake.ts`（准入规整 + 内容寻址）、`src-tauri/src/confined_fs.rs`（write_base64_cap）
+
+```
+⚠️ INVARIANT：图片字节永不进会话卷（AgentRecord session JSON / UI 卷 JSON / 草稿槽）。
+   消息内图片的唯一形态 = ChatImageRef 引用（sha256 内容寻址 + 媒型 + 宽高 + 显示名）；
+   字节落 {ws}/.lantai/attachments/{id}.{ext}（fs_cap write_base64 能力口，用户通道）；
+   请求期才解析成 wire 格式（data URI），渲染期才读成 data URI。
+
+   Why：卷 JSON 是全量快照（每回合全写）——一张 4MiB 规整图 base64 进卷 = 卷文件
+   每回合膨胀 ~5.3MiB × 图数 × 回合数，重绘恢复/落盘/IPC 三面全炸（§11 的变体）。
+   DSH 同款纪律（attachment 包：消息只存 ImageAttachmentRef，durable bytes 另居）。
+
+✅ 正确：Message.images = ChatImageRef[]（引用）；bytes 经 image-intake 落 attachments 目录
+❌ 错误：把 base64/dataURI 塞进 Message.content / UserMessage.text / 会话 JSON 任何字段；
+   把 raw bytes 存进 input-store 草稿槽（预览 URL 是 object URL 内存态，不是可序列化状态）
+```
+
+**炸过**: 无（2026-09-08 立规于 multimodal-image B1，参照 DSH attachment 架构防患——
+卷膨胀是结构性事故不是边界事故，事后回收须迁移）。
+
+**守护**: `tests/image-intake.test.ts`（ChatImageRef 形状 + 内容寻址路径）、
+`docs/plans/multimodal-image-plan.md` D-1 裁定（字节永不进卷）+ §5 grep 验收。
+
+---
+
 ## 使用方式
 
 每个 Agent prompt 模板里加一行：

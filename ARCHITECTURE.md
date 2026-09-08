@@ -296,6 +296,7 @@ NetBenefit = |R|·c_in·(T-1) − |S|·c_out − L·avg_turn_cost
 - **动态模型发现**：`fetchModels()` 拉取 `/models`（OpenAI）/ `/v1/models`（Anthropic）并合并，静态目录同 ID 优先（元数据更丰富）
 - **thinking 档位适配（EffortVendor）**：Anthropic budget_tokens（low4k/medium8k/high16k/max32k）、DeepSeek reasoning_effort（high/max）、OpenAI 官方 low/medium/high
 - **LLM adapter seam（ctx.llm）**（平台化 Phase 1 · D2 修订版，2026-08-27）：第一方 `plugins/builtin/llm-adapters/` 把内核 anthropic/openai 协议方言经 `ctx.llm.register({ id, kind, create })` 贡献为默认 adapter（后注册胜），外部方言可覆盖（仪器化 wrapper / 替换实现）；未知 kind 响亮报错不再静默跌 openai，内核回落分支已拆除。详见 provider-system-spec「追加裁决 2026-08-27」
+- **附图（multimodal 图片线）**（2026-09-08 起，multimodal-image-plan B1+B2 已落地）：用户消息可挂 `ChatImageRef[]` 引用（`Message.images` 旁挂字段——**字节永不进消息/卷**，只存内容寻址引用；字节经 fs_cap `write_base64` 能力口落 `{ws}/.lantai/attachments/{sha256}.{ext}`）。采集三入口（粘贴/拖放/夹选）统一经 `app/chat/image-intake.ts` 准入规整（magic-byte 白名单 png/jpeg/webp/gif + EXIF 校正 + 长边 ≤2048 重编码 ≤4MiB + sha256 内容寻址）；纯文本消息 wire 形态字节不变（发送面三适配器 content parts 在 B3 落地）；能力门禁 = 模型目录 `ModelDescriptor.input` 声明 image。真源：`docs/plans/multimodal-image-plan.md`
 - **本地反向代理**（`llm_proxy.rs` + `transport.ts`）：loopback-only HTTP 代理（127.0.0.1:14570）转发 LLM 请求并强加 CORS 头，SSE 逐块透传；`spawn_llm_proxy` 不 join 防启动挂起，停机标志保证退出干净
 - 流式 chunk 类型：Text / Reasoning / ToolCallStart / ToolCall / Usage / Done / Error；支持 reasoning_content round-trip
 

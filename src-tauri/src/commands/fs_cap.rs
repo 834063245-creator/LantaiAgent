@@ -6,9 +6,10 @@
 //
 // 能力口语义：被 TS 工具经 RPC 直呼（不经 tool_call 信封 / PluginRegistry /
 // PluginToolAdapter）。单方法 + action 分派（read/list/glob/write/delete/rename/
-// create_dir/append）——能力口数量 = 能力族数，与工具名无关（v3 §4）。
-// 口内入口即裁决：每个 action 走 confined_fs 的 *_cap 变体（resolve_*_dispatch
-// = Agent 过闸 + Ask / UI 只解析），字节执行 + guards 一体。
+// create_dir/append/read_base64/write_base64——能力口数量 = 能力族数，v3 §4）。
+// write_base64（multimodal-image-plan D-13）：附图字节写，只开用户通道（agent
+// 工具面不注册）；口内入口即裁决：每个 action 走 confined_fs 的 *_cap 变体
+// （resolve_*_dispatch = Agent 过闸 + Ask / UI 只解析），字节执行 + guards 一体。
 //
 // 副作用（R3-b）：write/delete/rename 的 timeline / changed_files 记录原在
 // builtin.fs 插件内（fs/mod.rs）——R3-b 模型族 execute 换 fs_cap 直呼后由
