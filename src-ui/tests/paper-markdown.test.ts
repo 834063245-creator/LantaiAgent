@@ -145,13 +145,14 @@ describe('paper/markdown — parseMarkdown', () => {
 /* ═══ 折叠规则（paper/fold）═══ */
 
 describe('paper/fold — 默认规则与文案', () => {
-  it('夹注恒折叠；脚注/程文 running|error 展开、done|pending 收起；其余不可折叠', () => {
+  it('夹注恒折叠；脚注/程文仅 error 展开、pending|running|done 收起（2026-09-08 抽搐根治）；其余不可折叠', () => {
     expect(defaultFolded('reasoning', {})).toBe(true);
-    expect(defaultFolded('tool', { status: 'running' })).toBe(false);
+    expect(defaultFolded('tool', { status: 'running' })).toBe(true);
     expect(defaultFolded('tool', { status: 'error' })).toBe(false);
     expect(defaultFolded('tool', { status: 'done' })).toBe(true);
     expect(defaultFolded('tool', { status: 'pending' })).toBe(true);
-    expect(defaultFolded('code', { status: 'running' })).toBe(false);
+    expect(defaultFolded('code', { status: 'running' })).toBe(true);
+    expect(defaultFolded('code', { status: 'error' })).toBe(false);
     expect(defaultFolded('code', { status: 'done' })).toBe(true);
     expect(defaultFolded('markdown', {})).toBe(false);
     expect(defaultFolded('user', {})).toBe(false);

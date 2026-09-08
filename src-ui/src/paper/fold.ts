@@ -9,8 +9,14 @@
 //
 // 折叠默认规则（状态派生 + 用户覆盖单字段）：
 //   - 夹注：恒折叠（流里只留一行预览，展开读全文）；
-//   - 脚注/程文：运行中/出错 = 展开（看得到在跑什么、错在哪），
-//     其余（done/pending）= 折叠——完成即收，错误留面；
+//   - 脚注/程文：出错 = 展开（错误留面），其余（pending/running/done）=
+//     折叠——完成即收。在跑信号由折叠行呼吸（pp-fold--busy）+ 走秒签
+//     （行 Ns）承载，要看进度点折叠行显式展开（用户覆盖跨状态保持）。
+//     2026-09-08 抽搐根治：此前 running 自动展开——读/查类快工具（fs
+//     read、glob、search——无参数预览事件）在模型流参数期间死静折叠，
+//     完整分发（running）与结果（done）近乎背靠背，展开只闪一帧，用户
+//     看到的是「折叠→完成时展开→又折叠」的抽搐；与 toolgroup/subagent
+//     组语义对齐（组内 running 子卡从不自动展开）后主灶消除；
 //   - 其余 kind（来文/正文/抄录/拟策/贴黄）不可折叠。
 // 用户显式点开/收起写入壳层覆盖表（foldOv），覆盖默认——
 // 状态翻转（running→done）自动收回的是「没有用户意志的默认态」。
@@ -48,8 +54,10 @@ export function defaultFolded(kind: BlockKind, payload: unknown): boolean {
   }
   if (kind === 'tool' || kind === 'code') {
     const status = (payload as { status?: string }).status;
-    // 运行中/出错展开（过程与错误可见）；完成/待起折叠
-    return status !== 'running' && status !== 'error';
+    // 错误留面：error 恒展开；pending/running/done 恒折叠（2026-09-08
+    // 抽搐根治——running 自动展开对快工具是折叠→闪开→折叠的主灶，详见
+    // 文件头注；在跑可见性 = 折叠行呼吸 + 走秒签，点折叠行可显式展开）。
+    return status !== 'error';
   }
   return false;
 }

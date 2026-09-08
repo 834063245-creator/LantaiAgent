@@ -19,12 +19,14 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
   measureRichInlineStats: vi.fn(() => ({ lineCount: 2, maxLineWidth: 100 })),
 }));
 
+import { EventKind } from '../src/agent/agent-types';
 import { createBlock, resetBlockIdCounterForTests } from '../src/paper/block-model';
 import { defaultFolded, foldLabel, isFoldable } from '../src/paper/fold';
 import { measureBlockHeight, measureSignature } from '../src/paper/measure';
 import { hasArgsToShow, toolDigest } from '../src/paper/tool-text';
 import { collapseToolGroups, translateMessages } from '../src/paper/translate';
 import type { AssistantMessage, SubAgentPart, ToolCallPart } from '../src/ui/message-model';
+import { applyEventToParts } from '../src/ui/part-mutator';
 
 function toolPart(name: string, args: string, status: ToolCallPart['status'] = 'done', output?: string): ToolCallPart {
   return {
@@ -412,5 +414,103 @@ describe('measure/摘除：subagent 组头恒一行，收起摘子块', () => {
     const blocks = [header, c1, pinned];
     expect(collapseToolGroups(blocks, () => true).map((b) => b.id)).toEqual(['h1', 'c2']);
     expect(collapseToolGroups(blocks, () => false)).toEqual(blocks);
+  });
+});
+
+/* ═══ 抽搐根治（2026-09-08）：running 不自动展开——事件时间线回归 ═══
+ * 用户报「工具卡片最开始折叠，完成后自动展开然后又折叠」。根因：规则面
+ * running 自动展开 + 快工具（fs read/glob/search——无 ToolArgPreview 事件，
+ * 模型流参数期间死静折叠）完整分发与结果近乎背靠背 → 展开只闪一帧。
+ * 本钉穿 part-mutator → translate → fold 真实管线回放事件序列，
+ * 断言折叠态全程稳定；错误路径仍自动展开（错误留面）。 */
+
+describe('抽搐根治：单卡事件时间线（part-mutator → translate → fold 穿全链）', () => {
+  beforeEach(() => resetBlockIdCounterForTests());
+
+  type FoldedFrame = Array<{ id: string; kind: string; folded: boolean; hiddenInGroup: boolean }>;
+
+  /** 单帧可观测面：块的折叠态（foldOv 空 = 纯规则面）+ 是否被组收起摘除。 */
+  const frameOf = (msg: AssistantMessage): FoldedFrame => {
+    const blocks = translateMessages([msg]);
+    const visible = collapseToolGroups(blocks, (b) => defaultFolded(b.kind, b.payload));
+    const visibleIds = new Set(visible.map((b) => b.id));
+    return blocks.map((b) => ({
+      id: b.id,
+      kind: b.kind,
+      folded: defaultFolded(b.kind, b.payload),
+      hiddenInGroup: !visibleIds.has(b.id),
+    }));
+  };
+
+  it('S1 快工具全周期零翻转：pending→running→done 三帧恒折叠（抽搐主灶）', () => {
+    const msg = asstMsg('a1', []);
+    // 帧 1：ToolCallStart（partial）——模型开始流参数（读工具无预览事件）
+    applyEventToParts(msg.parts, {
+      kind: EventKind.ToolDispatch,
+      tool: { id: 'tc1', name: 'fs', args: '', read_only: true, partial: true },
+    });
+    expect(frameOf(msg)).toEqual([{ id: 'pb:a1:0', kind: 'tool', folded: true, hiddenInGroup: false }]);
+    // 帧 2：完整分发（finish_reason → ToolCall → executor.addTool）→ running
+    applyEventToParts(msg.parts, {
+      kind: EventKind.ToolDispatch,
+      tool: { id: 'tc1', name: 'fs', args: '{"action":"read","file_path":"a.ts"}', read_only: true, partial: false },
+    });
+    expect(frameOf(msg)).toEqual([{ id: 'pb:a1:0', kind: 'tool', folded: true, hiddenInGroup: false }]);
+    // 帧 3：ToolResult（快工具与分发近乎同帧）→ done：完成即收
+    applyEventToParts(msg.parts, {
+      kind: EventKind.ToolResult,
+      tool: { id: 'tc1', name: 'fs', args: '', output: '内容', read_only: true },
+    });
+    expect(frameOf(msg)).toEqual([{ id: 'pb:a1:0', kind: 'tool', folded: true, hiddenInGroup: false }]);
+  });
+
+  it('错误路径不受根治影响：ToolResult 带 err → error 自动展开（错误留面）', () => {
+    const msg = asstMsg('a1', []);
+    applyEventToParts(msg.parts, {
+      kind: EventKind.ToolDispatch,
+      tool: { id: 'tc1', name: 'fs', args: '{"action":"read","file_path":"a.ts"}', read_only: true, partial: false },
+    });
+    applyEventToParts(msg.parts, {
+      kind: EventKind.ToolResult,
+      tool: { id: 'tc1', name: 'fs', args: '', err: 'boom', read_only: true },
+    });
+    expect(frameOf(msg)).toEqual([{ id: 'pb:a1:0', kind: 'tool', folded: false, hiddenInGroup: false }]);
+  });
+
+  it('混族批组溶解后子卡不蹦出展开：dispatch 帧两张折叠行（S2 场景）', () => {
+    const msg = asstMsg('a1', []);
+    // 双 pending 成组（族未表态并入；组头折叠摘除子卡——2026-08-30 组语义）
+    for (const [id, ro] of [
+      ['t1', true],
+      ['t2', false],
+    ] as const) {
+      applyEventToParts(msg.parts, {
+        kind: EventKind.ToolDispatch,
+        tool: { id, name: 'fs', args: '', read_only: ro, partial: true },
+      });
+    }
+    const grouped = frameOf(msg);
+    expect(grouped[0]).toMatchObject({ kind: 'toolgroup', folded: true });
+    expect(grouped.slice(1).every((f) => f.hiddenInGroup)).toBe(true);
+    // 完整分发：族表态 read/write → 族变断组，组溶解——子卡以折叠行出现，
+    // 不再是「组行 → 蹦出展开卡 → 折叠」的抽搐
+    applyEventToParts(msg.parts, {
+      kind: EventKind.ToolDispatch,
+      tool: { id: 't1', name: 'fs', args: '{"action":"read","file_path":"x.ts"}', read_only: true, partial: false },
+    });
+    applyEventToParts(msg.parts, {
+      kind: EventKind.ToolDispatch,
+      tool: {
+        id: 't2',
+        name: 'fs',
+        args: '{"action":"write","file_path":"y.ts","content":"c"}',
+        read_only: false,
+        partial: false,
+      },
+    });
+    expect(frameOf(msg)).toEqual([
+      { id: 'pb:a1:0', kind: 'tool', folded: true, hiddenInGroup: false },
+      { id: 'pb:a1:1', kind: 'tool', folded: true, hiddenInGroup: false },
+    ]);
   });
 });
