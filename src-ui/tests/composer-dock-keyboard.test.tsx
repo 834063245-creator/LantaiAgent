@@ -31,8 +31,6 @@ function fakeCore(panelId: string): ChatCore {
 
 const DOCK_CONTEXT: PaperDockContextValue = {
   activeSessionId: '1',
-  inputLocked: false,
-  setInputLocked: vi.fn(),
   flyToPoint: vi.fn(),
 };
 

@@ -125,10 +125,9 @@ export function sameKey(a: readonly unknown[], b: readonly unknown[]): boolean {
  *  域内原样搬入）。穿参输入全部为内容侧/拖动态值——edgeDragPos/regionCornerPos
  *  来自 use-region-move，draggingId/dragSource 来自装配根的拖拽渲染态。
  *  ⚠ regionsRef 是装配根持有的共享载体经穿参进来（单一 owner——本 hook 每帧
- *  写 regionsRef.current = regions，InkLayer/拖块/自动选中/飞行/键盘走卷等
- *  晚绑定读方都拿同一个实例；2026-09-06 拆解首版漏穿参自建了第二个实例，
- *  装配根手里那个恒空——LOD 无墨/自动选中永不命中/拖块找不到带心，真机三连
- *  症状即此，已根治）。 */
+ *  写 regionsRef.current = regions，InkLayer/拖块/飞行/键盘走卷等晚绑定读方
+ *  都拿同一个实例；2026-09-06 拆解首版漏穿参自建了第二个实例，装配根手里
+ *  那个恒空——真机症状即此，已根治）。 */
 export function usePaperRegions(params: {
   regionsRef: MutableRefObject<RegionView[]>;
   sessions: Array<{ id: number; label: string }>;

@@ -4,13 +4,13 @@
 // 纸壳共享 ref 穿线回归（paper-panel-split 接线事故，2026-09-06）——
 //
 // 事故：拆解首版 use-paper-regions 自建了第二个 regionsRef，装配根手里的
-// （喂给 InkLayer/拖块/自动选中/飞行/键盘走卷的晚绑定读方）恒空——真机
-// 三连症状：LOD 缩远无墨 / 自动选中永不命中 / 拖块找不到来源带心。
+// （喂给 InkLayer/拖块/飞行/键盘走卷的晚绑定读方）恒空——真机症状：LOD
+// 缩远无墨 / 拖块找不到来源带心。
 // 根治：regionsRef 单一 owner（装配根持有）经穿参进 use-paper-regions。
 //
-// 本测试钉的就是「晚绑定读方拿到的必须是真卷数据」——两个不同消费面：
-//   ① InkLayer（LOD 墨迹）：rAF 直读 regionsRef 画墨——空 ref 零绘制；
-//   ② 自动选中 settle 控制器：视口中心命中他卷 + 停留 400ms 切活跃。
+// 本测试钉的就是「晚绑定读方拿到的必须是真卷数据」：
+//   ① InkLayer（LOD 墨迹）：rAF 直读 regionsRef 画墨——空 ref 零绘制。
+//（原用例② 自动选中 settle 随 2026-09-10 拍板「浏览跟随退役」一并拆除。）
 // 挂真实 PaperPanel 穿全层（perf-paper-pan 同款 harness），jsdom 真实定时器。
 
 import { act } from 'react';
@@ -187,54 +187,5 @@ describe('纸壳共享 ref 穿线（paper-panel-split 接线事故回归）', ()
       await new Promise((r) => setTimeout(r, 200));
     });
     expect(inkStats.fillRect).toBeGreaterThan(0);
-  }, 30_000);
-
-  it('自动选中（settle 三道闸）：视口中心悬停他卷 → 停留 400ms 后切活跃', async () => {
-    const panel = new ChatCore();
-    useCoreStore.setState({ core: panel });
-    const sess = getChatStore(panel.panelId).sess;
-    sess.setState({
-      sessions: [
-        { id: 1, label: '卷一' },
-        { id: 2, label: '卷二' },
-      ],
-      activeIdx: 0,
-      nextSessionId: 3,
-    });
-    msgStoreFor(panel.panelId, 1).getState().setMessages(turnMessages(1));
-    msgStoreFor(panel.panelId, 2).getState().setMessages(turnMessages(2));
-    const canvas = getCanvasStore(panel.panelId).getState();
-    canvas.setRegion('1', { anchorX: 0, anchorY: 0, width: 720 });
-    canvas.setRegion('2', { anchorX: 2000, anchorY: 0, width: 720 });
-
-    const view = useCanvasViewStore;
-    /* 同上：restoreView 置位掐掉挂载期飞行/落锚两股视口噪声。预置目标视口
-     * （中心对准卷二：世界中心 = (2000, -140) → zoom 1, panX = 600-2000,
-     * panY = 400-(-140)）。 */
-    view.getState().setCanvasSize(1200, 800);
-    view.getState().restoreView({ zoom: 1, panX: -1400, panY: 540 });
-
-    container = document.createElement('div');
-    document.body.appendChild(container);
-    root = createRoot(container);
-    await act(async () => {
-      root?.render(<PaperPanel />);
-    });
-
-    /* RO 0×0 直写覆盖 + 守恒调 pan 后，最终再摆一次目标视口（视口唯一真源
-     * 在 store，最终值以测试 setView 为准）。 */
-    await act(async () => {
-      view.getState().setCanvasSize(1200, 800);
-    });
-    await act(async () => {
-      view.getState().setView((v) => ({ ...v, zoom: 1, panX: -1400, panY: 540 }));
-    });
-
-    // 时间预算：手动切换守卫（挂载起 800ms）→ tick 200ms 节拍 → 停留 400ms。
-    // 空事故形态（regionsRef 空 → hit 永不命中）下 activeIdx 恒 0。
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 2100));
-    });
-    expect(getChatStore(panel.panelId).sess.getState().activeIdx).toBe(1);
   }, 30_000);
 });

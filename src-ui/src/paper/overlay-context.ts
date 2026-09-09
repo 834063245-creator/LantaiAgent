@@ -23,13 +23,10 @@ import type { MinimapRegionInput } from './minimap-core';
 import type { RegionView } from './region-view';
 import type { WorldRect } from './virtualize';
 
-/** 创作坞消费的低频上下文（动作 + 活跃会话 + 输入锁存）。 */
+/** 创作坞消费的低频上下文（动作 + 活跃会话）。 */
 export interface PaperDockContextValue {
   /** 当前活跃会话 id（sess store 单一权威的镜像；null = 无活跃）。 */
   activeSessionId: string | null;
-  /** 输入锁存：composer 聚焦/输入中关闭自动切换（Stage-4 §4.1）。 */
-  inputLocked: boolean;
-  setInputLocked: (locked: boolean) => void;
   /** 视口飞到指定会话的指定世界 y（目次带点击跳转 / 书脊定位同族）。 */
   flyToPoint: (sessionId: string, worldY: number) => void;
   /** 无目标卷视口飞行（小地图点击跳转——视口中心滑到该世界点，保 zoom）。 */

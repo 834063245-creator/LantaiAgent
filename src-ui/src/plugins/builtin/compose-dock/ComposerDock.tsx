@@ -5,9 +5,9 @@
 // （增补四起源码落位 plugins/builtin/compose-dock/——产物通道化。）
 //
 // 定位（canvas-space-model-notes.md §5 拍板 9）：带设置的输入条，常驻画布
-// 元素，状态跟活跃目标走（自动选中 + 高亮已定），设置项贴输入条（模型/
-// 权限/思考强度，展开收起），发送前顺手拨。空白画布无活跃会话时处于无主
-// 待命态。
+// 元素，状态跟活跃目标走（显式激活 + 高亮——2026-09-10 拍板：浏览态自动
+// 跟随退役），设置项贴输入条（模型/权限/思考强度，展开收起），发送前顺手拨。
+// 空白画布无活跃会话时处于无主待命态。
 //
 // 2026-09-06 收口 + 续批：三行制 = 书眉行（卷名 + 翰/律/后台指示）居顶、
 // 输入行居中、设置行（模型/权限/思考）垫底——三控件落位输入行之下的
@@ -22,7 +22,7 @@
 // 单一真相。
 //
 // 挂载：compose-dock 插件以 ctx.overlays 贡献行注册（slot:'composer'），
-// 由 PaperPanel 渲染在底部；经 paper/overlay-context 取活跃会话与输入锁存。
+// 由 PaperPanel 渲染在底部；经 paper/overlay-context 取活跃会话。
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享
 // 真实例，react 经构建期别名桥。
 
@@ -197,7 +197,7 @@ const THINKING_SAFE_FALLBACK: readonly { value: ThinkingMode; label: string }[] 
 
 export const ComposerDock = memo(function ComposerDock() {
   const core = useCoreStore((s) => s.core);
-  const { activeSessionId, setInputLocked } = usePaperDock();
+  const { activeSessionId } = usePaperDock();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [localNotice, setLocalNotice] = useState<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
@@ -562,7 +562,6 @@ export const ComposerDock = memo(function ComposerDock() {
    *    首次聚焦浮现 6s（localStorage 旗标，毒化容忍）。提示长在功能
    *    所在处，不再常驻占位符。 ── */
   const onComposerFocus = useCallback(() => {
-    setInputLocked(true);
     if (!core) return;
     let seen = true;
     try {
@@ -580,7 +579,7 @@ export const ComposerDock = memo(function ComposerDock() {
     }
     setHistHint(true);
     window.setTimeout(() => setHistHint(false), 6000);
-  }, [core, setInputLocked]);
+  }, [core]);
 
   /* ── 发送 ── */
   const onSend = useCallback(async () => {
@@ -637,10 +636,6 @@ export const ComposerDock = memo(function ComposerDock() {
     },
     [core, activeSessionId],
   );
-
-  /* ── 输入锁存：聚焦/输入中关闭自动切换（Stage-4 §4.1）。
-   *    onComposerFocus 主体上移至「历史眉批」节（锁存 + 一次性眉批同一入口）。 ── */
-  const onComposerBlur = useCallback(() => setInputLocked(false), [setInputLocked]);
 
   /* ── 实测高上报（--composer-h-live）：composer 是两段式（设置行+输入行，
    *  textarea 还会自动长高），静态 token --composer-h: 66px 早已 stale
@@ -944,7 +939,6 @@ export const ComposerDock = memo(function ComposerDock() {
             }
           }}
           onFocus={onComposerFocus}
-          onBlur={onComposerBlur}
           onKeyDown={(e) => {
             /* ── C3：斜杠面板键盘导航优先（↑↓ 选 / Enter 执行 / Esc 关） ── */
             if (slashActive && !e.nativeEvent.isComposing) {

@@ -32,7 +32,6 @@ import {
 import type { PaperCore } from './use-paper-sessions';
 
 /** 拖选自动滚屏的手势态（选区域产出，激活/布局核心两域穿参消费）：
- *  手势在途（ref 非空）→ 自动选中不判（用户正握着一段选区）；
  *  keepAlive → 锚点块保活（见 effect 注——原生选区锚点死则选区截顶）。 */
 export interface SelectionDragState {
   /** 指针最新位（client 坐标——rAF 帧内现算边缘带） */
@@ -228,9 +227,7 @@ export function usePaperViewport(core: PaperCore | null) {
   /* ── 交互：平移 / 缩放 ── */
   const panningRef = useRef<{ lastX: number; lastY: number } | null>(null);
   const [panning, setPanning] = useState(false);
-  /* rework P1-1：缩放守卫——滚轮缩放期间/刚停（600ms）不判自动选中（缩放是读细节不改归属） */
-  const zoomGuardUntilRef = useRef(0);
-  /* 焦点飞行载体（use-paper-focus / 自动选中消费——wheel 与手动拖拽抢占飞行）。 */
+  /* 焦点飞行载体（use-paper-focus / glide 消费——wheel 与手动拖拽抢占飞行）。 */
   const focusRafRef = useRef(0);
   const focusFlightRef = useRef(createFocusFlightScheduler());
 
@@ -281,8 +278,6 @@ export function usePaperViewport(core: PaperCore | null) {
       useCanvasViewStore.getState().requestFocus(null);
       // Ctrl 恒缩放（捏合同道）；设置切「缩放画布」时 plain wheel 也缩放
       if (e.ctrlKey || wheelZoomModeRef.current) {
-        // 缩放守卫：记录「最近一次缩放」时刻，自动选中在其后 600ms 内不判
-        zoomGuardUntilRef.current = performance.now() + 600;
         const rect = el.getBoundingClientRect();
         setView((v) => zoomAt(v, e.clientX - rect.left, e.clientY - rect.top, wheelFactor(e.deltaY)));
         return;
@@ -312,7 +307,6 @@ export function usePaperViewport(core: PaperCore | null) {
         focusFlightRef.current.end();
       }
       useCanvasViewStore.getState().requestFocus(null);
-      zoomGuardUntilRef.current = performance.now() + 600;
       const { view: v, canvasSize: cs } = useCanvasViewStore.getState();
       const target = nextZoomStep(v.zoom, dir);
       setView((cur) => zoomAt(cur, cs.w / 2, cs.h / 2, target / cur.zoom));
@@ -326,7 +320,6 @@ export function usePaperViewport(core: PaperCore | null) {
       focusFlightRef.current.end();
     }
     useCanvasViewStore.getState().requestFocus(null);
-    zoomGuardUntilRef.current = performance.now() + 600;
     const { canvasSize: cs } = useCanvasViewStore.getState();
     setView((cur) => zoomAt(cur, cs.w / 2, cs.h / 2, 1 / cur.zoom));
   }, [setView]);
@@ -419,8 +412,8 @@ export function usePaperViewport(core: PaperCore | null) {
       if (!raf) raf = requestAnimationFrame(flush);
     };
     const up = () => {
-      // ⚠ 必须清 panningRef：否则 moving 里 panningRef.current != null 恒 true，
-      // 第一次拖画布后自动选中永远被当成“平移中”而取消计时。
+      // ⚠ 必须清 panningRef：move 以 ref 判手势在途——不清则松手后任意
+      // mousemove 继续拖画布（2026-09-06 前只清 state 没清 ref，真机病根之一）。
       panningRef.current = null;
       if (raf) {
         cancelAnimationFrame(raf);
@@ -553,11 +546,9 @@ export function usePaperViewport(core: PaperCore | null) {
     viewRect,
     viewRef,
     panning,
-    panningRef,
     selDragRef,
     stepZoom,
     resetZoom,
-    zoomGuardUntilRef,
     focusRafRef,
     focusFlightRef,
     onCanvasMouseDown,

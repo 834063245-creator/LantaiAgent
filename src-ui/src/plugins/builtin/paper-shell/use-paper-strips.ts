@@ -438,6 +438,5 @@ export function usePaperStrips(params: {
     stripConfirmId,
     onRemoveStrip,
     onStripMouseDown,
-    stripDragRef,
   };
 }

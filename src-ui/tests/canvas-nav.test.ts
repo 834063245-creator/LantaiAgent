@@ -9,7 +9,7 @@ import { panelDefs } from '../src/app/panels/panel-def';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { spaceServicePlugin } from '../src/composition/space-service';
 import { Context } from '../src/cordis';
-import { identityView, viewFocusRegion } from '../src/paper/canvas-math';
+import { identityView, viewFocusRegion, viewportCenterWorld } from '../src/paper/canvas-math';
 import { pickDropAnchor } from '../src/paper/space';
 import { canvasNavPlugin } from '../src/plugins/builtin/canvas-nav';
 import {
@@ -182,6 +182,11 @@ describe('paper/canvas-math viewFocusRegion（定位器视口）', () => {
     expect(target.zoom).toBe(1);
     expect(target.panX).toBe(800 - 2160); // 水平居中
     expect(target.panY).toBe(450 - -500); // 垂直中心
+  });
+
+  it('viewportCenterWorld：视口中心（屏幕 [w/2, h/2]）的世界坐标', () => {
+    const v = identityView();
+    expect(viewportCenterWorld(v, 1600, 900)).toEqual({ x: 800, y: 450 });
   });
 });
 

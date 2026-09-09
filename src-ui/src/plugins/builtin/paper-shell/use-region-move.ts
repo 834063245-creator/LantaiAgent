@@ -152,7 +152,6 @@ export function useRegionMove(params: {
   return {
     edgeDragPos,
     regionCornerPos,
-    edgeDragRef,
     onRegionEdgeMouseDown,
     onRegionCornerMouseDown,
   };

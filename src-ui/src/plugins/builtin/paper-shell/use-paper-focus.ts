@@ -78,8 +78,7 @@ export function usePaperFocus(params: {
     [flyToPoint, core, regionsRef],
   );
   /* 小地图点击跳转（V3b 欠账接回，2026-08-30）：视口中心滑到目标世界点（保 zoom）。
-   * 复用 focusRafRef——与 flyToPoint 互斥（后动取消先动），自动选中的
-   * 「运动中不判」守卫也随之生效。 */
+   * 复用 focusRafRef——与 flyToPoint 互斥（后动取消先动）。 */
   const glideViewTo = useCallback(
     (worldX: number, worldY: number) => {
       // glide 也是飞行：进入在途态（无目标卷），阻挡补飞打扰；定位到达后取代

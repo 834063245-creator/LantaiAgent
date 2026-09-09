@@ -30,12 +30,6 @@ export { resolveAssetBlock, resolveRenderer } from '../../../composition/rendere
 /* 创作坞 v2（2026-08-31）：案头签条开卷（activeSpace.expand）+ 流区运行
  * 呼吸线（agentSessionState exec 订阅）——faceDeps 已含，此处只补开发域出口。 */
 export { activeSpace } from '../../../composition/space-service';
-export type { RegionHitRect } from '../../../paper/active-region';
-export {
-  createSettleSelector,
-  hitRegionAtWorld,
-  viewportCenterWorld,
-} from '../../../paper/active-region';
 // 类型面（产物域经 host.aliased 对拍）
 export type { SourcedBlock } from '../../../paper/block-model';
 /* 纸面运行态（2026-09-06）：湿墨判定纯函数——RegionView.writingBlockId 的
@@ -51,6 +45,7 @@ export {
   screenToWorld,
   viewFocusRegion,
   viewForAnchor,
+  viewportCenterWorld,
   wheelFactor,
   worldToScreen,
   zoomAt,

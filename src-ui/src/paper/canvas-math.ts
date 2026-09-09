@@ -38,6 +38,11 @@ export function screenToWorld(v: Viewport, sx: number, sy: number): { x: number;
   return { x: (sx - v.panX) / v.zoom, y: (sy - v.panY) / v.zoom };
 }
 
+/** 视口中心的世界坐标（键盘跳卷寻带 / 新卷落位找最近空列用）。 */
+export function viewportCenterWorld(v: Viewport, w: number, h: number): { x: number; y: number } {
+  return screenToWorld(v, w / 2, h / 2);
+}
+
 /** 围绕屏幕锚点缩放（光标为锚——原型同款手感）。 */
 export function zoomAt(v: Viewport, sx: number, sy: number, factor: number): Viewport {
   const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, v.zoom * factor));

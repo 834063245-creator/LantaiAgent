@@ -65,7 +65,6 @@ import { ContributionRegistry } from '../../composition/services';
 import { activeSpace } from '../../composition/space-service';
 import { Service } from '../../cordis';
 import { setLang } from '../../i18n';
-import { createSettleSelector, hitRegionAtWorld, viewportCenterWorld } from '../../paper/active-region';
 import { writingBlockIdOf } from '../../paper/block-model';
 import {
   ANCHOR,
@@ -76,6 +75,7 @@ import {
   screenToWorld,
   viewFocusRegion,
   viewForAnchor,
+  viewportCenterWorld,
   wheelFactor,
   worldToScreen,
   zoomAt,
@@ -223,8 +223,6 @@ const faceDeps = {
   resolveRenderer,
   selectPreset,
   // paper 域（几何/墨迹/测量/选择/翻译/虚拟化/上下文）
-  createSettleSelector,
-  hitRegionAtWorld,
   viewportCenterWorld,
   writingBlockIdOf,
   // paper-minimap 插件（2026-09-05）：minimap-core 纯几何（inkColorOf 已在下）

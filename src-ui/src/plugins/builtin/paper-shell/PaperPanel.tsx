@@ -403,11 +403,9 @@ export function PaperPanel() {
     viewRect,
     viewRef,
     panning,
-    panningRef,
     selDragRef,
     stepZoom,
     resetZoom,
-    zoomGuardUntilRef,
     focusRafRef,
     focusFlightRef,
     onCanvasMouseDown,
@@ -438,7 +436,7 @@ export function PaperPanel() {
   const { measureTick, blockRootRef } = useBlockMeasure();
   const { foldedOf, onToggleFold, sidecarFoldedOf, onToggleSidecarFold } = useFoldState();
   const { runningSessions, streamLive, activeRunning } = useRunningSessions(core, activeSessionId);
-  const { edgeDragPos, regionCornerPos, edgeDragRef, onRegionEdgeMouseDown, onRegionCornerMouseDown } = useRegionMove({
+  const { edgeDragPos, regionCornerPos, onRegionEdgeMouseDown, onRegionCornerMouseDown } = useRegionMove({
     core,
     canvasRef,
     viewRef,
@@ -518,7 +516,6 @@ export function PaperPanel() {
     stripConfirmId,
     onRemoveStrip,
     onStripMouseDown,
-    stripDragRef,
   } = usePaperStrips({
     core,
     view,
@@ -532,19 +529,7 @@ export function PaperPanel() {
     resizeRef,
   });
 
-  const { activateRegion, inputLocked, setInputLocked } = useRegionActivation({
-    core,
-    canvasSize,
-    regionsRef,
-    activeSessionKey,
-    panningRef,
-    edgeDragRef,
-    dragRef,
-    stripDragRef,
-    selDragRef,
-    focusRafRef,
-    zoomGuardUntilRef,
-  });
+  const { activateRegion } = useRegionActivation({ core });
 
   useJumpKeys({ core, canvasSize, regionsRef, flyToPoint, flyToRegion, activateRegion });
 
@@ -587,19 +572,17 @@ export function PaperPanel() {
     return () => ro.disconnect();
   }, []);
 
-  /* ── 覆盖层上下文（Stage-4）：创作坞消费低频（动作/活跃/锁存），
+  /* ── 覆盖层上下文（Stage-4）：创作坞消费低频（动作/活跃），
    * 目次带消费高频（流区几何）。拆两 context 避免创作坞随平移重渲。
    * 2026-09-05 插件化：小地图（paper-minimap）经 minimap 数据面 + glideTo
    * 消费（P2-3 缓存原样下发——引用稳定纪律不破）。 ── */
   const dockContext = useMemo(
     () => ({
       activeSessionId: activeSessionKey,
-      inputLocked,
-      setInputLocked,
       flyToPoint,
       glideTo: glideViewTo,
     }),
-    [activeSessionKey, inputLocked, setInputLocked, flyToPoint, glideViewTo],
+    [activeSessionKey, flyToPoint, glideViewTo],
   );
   const regionContext = useMemo(
     () => ({

@@ -46,8 +46,6 @@ export const viewForAnchor = impl.viewForAnchor;
 export const wheelFactor = impl.wheelFactor;
 export const worldToScreen = impl.worldToScreen;
 export const zoomAt = impl.zoomAt;
-export const createSettleSelector = impl.createSettleSelector;
-export const hitRegionAtWorld = impl.hitRegionAtWorld;
 export const viewportCenterWorld = impl.viewportCenterWorld;
 export const createFocusFlightScheduler = impl.createFocusFlightScheduler;
 export const defaultFolded = impl.defaultFolded;
@@ -129,7 +127,6 @@ export const ConfirmDialog = impl.ConfirmDialog as ComponentType;
 export const leaveToHome = impl.leaveToHome;
 
 export type SourcedBlock = import('./host').SourcedBlock;
-export type RegionHitRect = import('./host').RegionHitRect;
 export type BlockInk = import('./host').BlockInk;
 export type InkCache = import('./host').InkCache;
 export type BlockMeasureCache = import('./host').BlockMeasureCache;
