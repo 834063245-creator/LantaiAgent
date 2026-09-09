@@ -1,8 +1,8 @@
 # Contributing
 
-感谢你对 HoloGram 的兴趣！
+感谢你对兰台的兴趣！
 
-HoloGram 是一个 **Rust 分析引擎 + Tauri 2 桌面壳 + TypeScript/React 前端** 的项目。开工前请先读根目录 [`CONVENTIONS.md`](CONVENTIONS.md) 与 [`INVARIANTS.md`](INVARIANTS.md)，并按 [`AGENTS.md`](AGENTS.md) 的开工清单执行。
+兰台是一个 **Rust 分析引擎 + Tauri 2 桌面壳 + TypeScript/React 前端** 的项目。开工前请先读根目录 [`CONVENTIONS.md`](CONVENTIONS.md) 与 [`INVARIANTS.md`](INVARIANTS.md)，并按 [`AGENTS.md`](AGENTS.md) 的开工清单执行。
 
 ## 行为准则
 
@@ -18,7 +18,7 @@ HoloGram 是一个 **Rust 分析引擎 + Tauri 2 桌面壳 + TypeScript/React �
 2. 使用 Bug Report 模板
 3. 提供：
    - 操作系统和版本
-   - HoloGram 版本
+   - 兰台版本
    - 最小复现步骤
    - 实际行为 vs 预期行为
 
@@ -136,4 +136,4 @@ src-ui/               TypeScript 前端（React 19 + Zustand 5 + Three.js + Mona
 
 ---
 
-**HoloGram 用自己分析自己。** 跑一次 `cd engine && cargo run -- run analyze_project .`，你就能看到自己的贡献在依赖图里怎么连上整个项目。
+**兰台用自己分析自己。** 跑一次 `cd engine && cargo run -- run analyze_project .`，你就能看到自己的贡献在依赖图里怎么连上整个项目。

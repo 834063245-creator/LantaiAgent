@@ -36,7 +36,7 @@
 
 ## 2. 功能矩阵（你 vs 参照系）
 
-| 能力 | HoloGram CDP | BrowserAct | Playwright MCP |
+| 能力 | 兰台 CDP | BrowserAct | Playwright MCP |
 |---|---|---|---|
 | launch/connect/discover | 有（仅 Windows） | 有 | 有 |
 | navigate/back/forward/reload/tab | **缺** | 有 | 有 |
@@ -66,7 +66,7 @@
 3. **截图只回路径，不回图片内容**（`cdp.rs:1532-1557`）
    - 纯文本模型看不到图；vision 模型要多走 `read_file_base64`。
    - 修法：`browser_screenshot` 增加 `fullPage`；增加 `inline`（上限保护，返回 data URL）。
-     工具结果直接带图的形态取决于 HoloGram 的 image part 支持，先做开关。
+     工具结果直接带图的形态取决于兰台的 image part 支持，先做开关。
 4. **表单动作缺一半**
    - 无 `select` / `upload` / hover / drag；`browser_type` 只 focus + `Input.insertText`，
      不清空已有内容；`browser_press` 不支持组合键。
@@ -255,7 +255,7 @@ Linux 环境已知 8 个历史失败（bwrap / tasklist / %USERPROFILE% / worktr
 ### 8.5 踩坑速记（务必读）
 
 - **不要跑 `cargo fmt --all`**：会把全仓库历史未格式化文件一起刷掉，diff 爆炸；只对当前改动文件做 `rustfmt --check` 或保持现有风格。
-- `cargo check/test` 可能把 `src-tauri/Cargo.lock` 的 hologram 版本从 10.0.1 改成 10.1.0；提交前 `git checkout -- src-tauri/Cargo.lock`。
+- `cargo check/test` 可能把 `src-tauri/Cargo.lock` 的 lantai 版本从 10.0.1 改成 10.1.0；提交前 `git checkout -- src-tauri/Cargo.lock`。
 - `find_chrome` 现在有各平台固定路径 + PATH 兜底；Linux 没有 Chrome 时 e2e 设计为跳过，不是测试挂了。
 - e2e 端口：9444 外部实例、9445 launch、9446 round2、9447 round3（headless/network/AX）、9448/9449 round5（多账号 A/B）；新增 e2e 端口避开 9222/9223-9238 和这六个。
 - `Page.setInterceptFileChooserDialog` 只在非 self 会话开启，self（9222）是只读通道，不要把文件选择框拦截加回 self。

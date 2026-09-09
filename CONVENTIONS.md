@@ -1,4 +1,4 @@
-# CONVENTIONS.md — HoloGram 编码约定
+# CONVENTIONS.md — 兰台编码约定
 
 > 最后校准：2026-08-29（逐条对照源码与实测门禁）。
 > 所有写代码的 Agent（内置 Agent / Claude Code / Codex / Cursor）在动文件前必须先读本文件；

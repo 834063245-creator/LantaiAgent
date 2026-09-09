@@ -8,18 +8,18 @@
 > - §5 ACP server：新增 `src-ui/src/agent/acp/`（server + index），initialize / session/new / session/prompt(流式 agent_message_chunk) / session/cancel / session/delete / 权限通道；行 I/O 与 Agent 工厂注入，可测。测试 `tests/acp-server.test.ts`。
 > - Tauri stdio 桥：新增 `src-tauri/src/commands/protocol_bridge.rs`（spawn/write/kill）+ rpc 分发 + `rpc-contract.ts` 方法/事件 + `tauri-io.ts` 适配，webview 里 MCP/ACP 可驱动真实子进程。`cargo build`(src-tauri) 通过。
 > - **测试分三层（不只单测）**：① 单测（回环/内存，协议语义）→ `mcp-client.test.ts` / `acp-server.test.ts` / `engine mcp.rs` 14 用例；② **真实 stdio 进程集成** → `mcp-client-stdio.test.ts`（Node 起 fixture MCP server 子进程，真握手/调工具/收进度）；③ **跨组件互测** → `mcp-interop-engine.test.ts`（TS client 连真实 `engine.exe serve`，真握手 + tools/list 全量 + 真图查询）。全套 `vitest` 972 通过。
-> 作者：Wenbing Jing · 源起：2026 年 HoloGram 协议层盘点
-> 性质：把 HoloGram 建成"角色齐备"的标准 Agent 软件，补齐对外协议支持。
+> 作者：Wenbing Jing · 源起：2026 年兰台协议层盘点
+> 性质：把兰台建成"角色齐备"的标准 Agent 软件，补齐对外协议支持。
 
 ---
 
 ## 0. 一句话目标
 
-HoloGram 要承担三个**标准角色**（不是发明双向协议，是照范式把该有的角色各自建对）：
+兰台要承担三个**标准角色**（不是发明双向协议，是照范式把该有的角色各自建对）：
 
 1. **MCP server** —— 把 engine 能力对外暴露（已有雏形，需补全）
-2. **MCP client** —— 让 HoloGram 的 Agent 能调用外部 MCP server 的工具（完全没有）
-3. **ACP server** —— 让 HoloGram 的 Agent 实体能被外部程序驱动/观察/接管（完全没有）
+2. **MCP client** —— 让兰台的 Agent 能调用外部 MCP server 的工具（完全没有）
+3. **ACP server** —— 让兰台的 Agent 实体能被外部程序驱动/观察/接管（完全没有）
 
 三个角色都照 [MCP 规范](https://modelcontextprotocol.io) 和 [ACP 规范](https://agentclientprotocol.com) 填满，不做非标准扩展。
 
@@ -27,9 +27,9 @@ HoloGram 要承担三个**标准角色**（不是发明双向协议，是照范�
 
 ## 1. 现状盘点（已实地核查）
 
-### 1.1 HoloGram 架构事实（决定落点）
+### 1.1 兰台架构事实（决定落点）
 
-    src-ui (TypeScript)  —— HoloGram 的 Agent 主体就在这
+    src-ui (TypeScript)  —— 兰台的 Agent 主体就在这
     +-- provider/   8 个模型提供商(deepseek/anthropic/openai/...)
     +-- agent/      Agent loop + 工具系统 + 多Agent + 会话
     |   +-- agent.ts        runLoop -> stream -> executor -> 循环
@@ -116,7 +116,7 @@ HoloGram 要承担三个**标准角色**（不是发明双向协议，是照范�
 ## 4. MCP client（TS，新增 src-ui/src/agent/mcp/client.ts）
 
 ### 4.1 职责
-让 HoloGram 的 Agent 能调用**外部 MCP server** 的工具，并把它们注册进 ToolRegistry。
+让兰台的 Agent 能调用**外部 MCP server** 的工具，并把它们注册进 ToolRegistry。
 
 ### 4.2 组件
 
@@ -151,7 +151,7 @@ HoloGram 要承担三个**标准角色**（不是发明双向协议，是照范�
 - notifications/progress -> 桥接成 onProgress 回调（可复用现有 tool onProgress 通道）
 
 ### 4.6 验收
-- 建一个测试 MCP server（如 echo/repo 工具），HoloGram Agent 能通过 mcp__* 工具调用它
+- 建一个测试 MCP server（如 echo/repo 工具），兰台 Agent 能通过 mcp__* 工具调用它
 - 工具出现在 registry.schemas()，模型能看到并能调用
 - 断开重连能重建工具集
 - stdio 与 streamable-http 两个传输都通
@@ -161,7 +161,7 @@ HoloGram 要承担三个**标准角色**（不是发明双向协议，是照范�
 ## 5. ACP server（TS，新增 src-ui/src/agent/acp/server.ts）
 
 ### 5.1 职责
-让外部程序把 HoloGram 的 **Agent** 当驱动对象：发 prompt、收流式输出、取消、处理权限请求。
+让外部程序把兰台的 **Agent** 当驱动对象：发 prompt、收流式输出、取消、处理权限请求。
 
 ### 5.2 协议面（ACP 规范）
 | method | 作用 |

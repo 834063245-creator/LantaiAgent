@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-HoloGram incorporates the following third-party open source software.
+Lantai incorporates the following third-party open source software.
 This file fulfills the attribution requirements of the MIT License and other
 applicable open source licenses.
 
@@ -8,7 +8,7 @@ applicable open source licenses.
 
 ## 1. Bundled Dynamic Libraries (engine/grammars/)
 
-These `.dll` files are distributed as part of the HoloGram repository and binary release.
+These `.dll` files are distributed as part of the Lantai repository and binary release.
 
 ### 1.1 tree-sitter-kotlin.dll
 

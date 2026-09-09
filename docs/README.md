@@ -1,4 +1,4 @@
-# HoloGram 文档索引
+# 兰台文档索引
 
 > 收敛日期：2026-08-17。原则：**根目录只放入口与规则；docs/ 按用途分层；完成即归档。**
 > 找文档先看本页；本页没有的再去 `docs/archive/`，归档内容不是现状。
@@ -10,7 +10,7 @@
 | 用户 / 想跑起来 | [`README.md`](../README.md) | 定位、安装、快速开始、构建 |
 | 贡献者 | [`CONTRIBUTING.md`](../CONTRIBUTING.md) | 提交流程、门禁、结构 |
 | 想写插件 / 贡献插件 | [`PLUGINS.md`](../PLUGINS.md) | 插件开发指南：从零到跑通到发布（根目录入口） |
-| 内置 HoloGram Agent / Claude Code | [`CLAUDE.md`](../CLAUDE.md) | 每次会话自动注入的硬约束 |
+| 内置兰台 Agent / Claude Code | [`CLAUDE.md`](../CLAUDE.md) | 每次会话自动注入的硬约束 |
 | Codex / 其他项目级 Agent | [`AGENTS.md`](../AGENTS.md) | 静态注入的项目手册 |
 
 ## 规则（改动前必读）

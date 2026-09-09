@@ -40,7 +40,7 @@
 
 ## 许可声明
 
-本项目（HoloGram，MIT）与上述二进制为**单纯聚合**（mere aggregation）：
+本项目（兰台，MIT）与上述二进制为**单纯聚合**（mere aggregation）：
 各二进制保留自身许可，独立分发、可独立替换，未与本项目代码静态/动态链接。
 GPL 组件的源码可自 MSYS2 官方仓库获取（`https://repo.msys2.org/msys/x86_64/`
 对应版本 `-src` 包）。如需替换/审计，运行 `scripts/check-msys2-deps.sh`

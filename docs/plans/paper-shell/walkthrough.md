@@ -7,7 +7,7 @@
 ## 启动
 
 ```
-D:\HoloGramHG\src-tauri\target\debug\hologram.exe     ← 已含最新构建
+D:\HoloGramHG\src-tauri\target\debug\lantai.exe     ← 已含最新构建
 （或 cd src-tauri && cargo tauri dev）
 ```
 

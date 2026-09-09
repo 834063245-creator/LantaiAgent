@@ -2,7 +2,7 @@
 
 DSH web 的 3D 依赖星图查看器。**渲染内核不再维护副本**：`vite.config.ts` 通过
 `@hologram-kernel` alias 直接构建 `src-ui/src/ui` 的 `StarGraph` 全套模块，
-与 HoloGram 主应用同源，主仓改内核后这里自动跟随。
+与兰台主应用同源，主仓改内核后这里自动跟随。
 
 只把 4 处 app 耦合替换成 `kernel/stubs/` 的轻量桩：
 

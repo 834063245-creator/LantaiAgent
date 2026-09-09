@@ -29,7 +29,7 @@ S1 竣工后组合「机制」全就位，但三件事仍钉死在编译期：
 | capabilities | `agent/blueprint.ts` 新拆 `builtinCapabilities()`（14 项，即现 `standard()` 数组原样搬家，id = 现 key） | key 即 id（`plan-tools`…） | `AgentBlueprint.fromRoster()`（新） |
 | shell | `composition/shell-rows.ts`（新，§2.6） | `hologram/shell-<block>`（插件名风格） | `src/shell/boot.ts` 启动编排 |
 
-**关键结构决策（对 DSH 的第一处刻意偏离）：出厂层是代码，不是 yml 文件。** DSH 的 base patch 是 451 行 yml，因为它的行是 npm 包（`name` 字段寻址包管理器解析的模块）；HoloGram 出厂行是编译期 factory（id 寻址代码内实现），若再用 yml 复述一遍全量清单就是双真源，必然漂移。**学的是 patch 语义（id 寻址 / disabled / insert / last-write-wins），不是文件形态。** 用户 yml 永远只写增量（delta），出厂清单的唯一真源是三张 TS 表 + 壳行表。
+**关键结构决策（对 DSH 的第一处刻意偏离）：出厂层是代码，不是 yml 文件。** DSH 的 base patch 是 451 行 yml，因为它的行是 npm 包（`name` 字段寻址包管理器解析的模块）；兰台出厂行是编译期 factory（id 寻址代码内实现），若再用 yml 复述一遍全量清单就是双真源，必然漂移。**学的是 patch 语义（id 寻址 / disabled / insert / last-write-wins），不是文件形态。** 用户 yml 永远只写增量（delta），出厂清单的唯一真源是三张 TS 表 + 壳行表。
 
 ### 2.2 patch 文件：形状与位置
 
@@ -65,7 +65,7 @@ shell:
 
 - **格式 yml**（计划已拍板）：用户手编文件需要注释与多行文本块，JSON 两者皆无。解析走 `yaml`（eemeli/yaml v2，纯 JS 零传递依赖）→ 结构交给 zod v4 校验——与 `plugins/types.ts` 的 manifest 完全同一纪律（parse 产 unknown，schema 产校验 + 类型，禁手写平行接口）。
 - **操作全集（S2）**：`disabled`（四域皆可）· `text` 覆盖（仅 prompt 域）· `insert` 文本段（仅 prompt 域，带 `before`/`after` 锚）。tools/capabilities/shell 域出现 `text` 或 `insert` → schema 直接拒绝（错误不静默：没有「写了但什么都不发生」的字段）。
-- **insert 为何带位置锚（对 DSH 的第二处刻意偏离）**：DSH 行序无装载语义（activation 由服务可用性驱动），append 即可；HoloGram 行序 = 字节契约（表序 = 组合序 = 前缀缓存语义），插到哪必须显式声明。锚点必须存在于当前工作列表（含已禁用行——禁用行在最终一步才被丢弃，锚在禁用行旁插入的段落落位于该行原位）。
+- **insert 为何带位置锚（对 DSH 的第二处刻意偏离）**：DSH 行序无装载语义（activation 由服务可用性驱动），append 即可；兰台行序 = 字节契约（表序 = 组合序 = 前缀缓存语义），插到哪必须显式声明。锚点必须存在于当前工作列表（含已禁用行——禁用行在最终一步才被丢弃，锚在禁用行旁插入的段落落位于该行原位）。
 - **同一 yml 语义边界**：一条 prompt 域行 `disabled` 与 `text` 互斥（refine 拒绝）；既无 `disabled` 又无 `text` 的条目拒绝（无操作条目 = 手误）；insert 条目 `before`/`after` 互斥但可都缺（追加表尾）。
 
 ### 2.3 解析语义（DSH 实证 + 三条本地纪律）

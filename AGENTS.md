@@ -46,7 +46,7 @@
 ## 2. 目录结构（当前实际）
 
 ```
-HoloGram/（根 Cargo.toml = workspace，五成员）
+兰台/（根 Cargo.toml = workspace，五成员）
 ├── hologram-graph/    图类型层独立 crate（L5b）：Node/Edge/Graph + ID 全局驻留器；
 │                      零项目内依赖；engine 的 code_extension_set 后缀表经
 │                      set_code_extensions 注入（未注入退化通用默认表）；
@@ -117,7 +117,7 @@ flowchart LR
   UI[src-ui React + Agent] -->|typedRpc invoke| Tauri[src-tauri rpc.rs]
   Tauri -->|TCP 127.0.0.1:9777| Engine[engine/]
   Engine -->|tree-sitter| AST[27 语言 AST]
-  Engine -->|GraphStore| DB[(.lantai/hologram.db + FTS5)]
+  Engine -->|GraphStore| DB[(.hologram/hologram.db + FTS5)]
   MCP[Cursor / Claude Code] -->|stdio serve| Engine
 ```
 

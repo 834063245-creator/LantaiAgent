@@ -28,13 +28,13 @@ S2 终态是「**应用级**组合一次解析，启动期生效」：compositio
 
 **Preset = 命名的 ResolvedComposition 工厂。** 与 DSH 的关键同构/差异：
 
-| 维度 | DSH | HoloGram S4 | 理由 |
+| 维度 | DSH | 兰台 S4 | 理由 |
 |---|---|---|---|
-| preset 本体 | 一个目录 = 一份 cordis.yml（**插件行**组合） | 一个目录 = 一份 `roster.patch.yml`（**四域行**组合） | HoloGram 的行是数据不是插件包；复用 S2 的 patch schema/解析引擎零新语义 |
-| 装载机制 | cordis scope realm（mount 进 agent 的 context 层，service 隔离） | **纯函数解析 + 显式传参**：`resolveRoster(factory, [userPatch, presetPatch])` → 装配面已有可选参数 | HoloGram 装配面是函数参数不是 ctx service；realm 的「per-session service 隔离」问题（DSH 泄漏守卫那套）在这里不存在——组合是值不是注册副作用 |
+| preset 本体 | 一个目录 = 一份 cordis.yml（**插件行**组合） | 一个目录 = 一份 `roster.patch.yml`（**四域行**组合） | 兰台的行是数据不是插件包；复用 S2 的 patch schema/解析引擎零新语义 |
+| 装载机制 | cordis scope realm（mount 进 agent 的 context 层，service 隔离） | **纯函数解析 + 显式传参**：`resolveRoster(factory, [userPatch, presetPatch])` → 装配面已有可选参数 | 兰台装配面是函数参数不是 ctx service；realm 的「per-session service 隔离」问题（DSH 泄漏守卫那套）在这里不存在——组合是值不是注册副作用 |
 | 生效面 | tools + systemPrompt sections + delegation | **tools + prompt + capabilities** 三域（shell 域对会话无意义——壳引导是应用级一次性的，preset 不碰） | 壳行禁用是应用级决策；会话级组合不含壳 |
 | 信任模型 | system（部署自带）/ user（`$DSH_HOME/.agent-presets`，等同 shell 信任） | 同款二分：system preset（应用内置，`src/composition/presets/`）+ user preset（`~/.lantai/presets/`） | 与 DSH 的 authoring 纪律一致：user root 可写、system 只读 |
-| 会话记录 | header 深冻 + `agent-preset/selected` 事件（newest wins，重建读 resolveSessionPreset） | 首事件方案（session/reset init 必发首条 `preset/selected`，newest-wins 重建；**新增事件 kind 走 Phase 5 立规：SESSION_EVENT_KINDS + DataMap + spec AST + gate 计数**——§2.4） | 「模型可见 ⟺ 已记录」是 DSH 那条纪律的原样移植——preset 决定模型看到的 schema/段，必须可重建（HoloGram 无 header 概念，首事件承担其语义位——复审修正） |
+| 会话记录 | header 深冻 + `agent-preset/selected` 事件（newest wins，重建读 resolveSessionPreset） | 首事件方案（session/reset init 必发首条 `preset/selected`，newest-wins 重建；**新增事件 kind 走 Phase 5 立规：SESSION_EVENT_KINDS + DataMap + spec AST + gate 计数**——§2.4） | 「模型可见 ⟺ 已记录」是 DSH 那条纪律的原样移植——preset 决定模型看到的 schema/段，必须可重建（兰台无 header 概念，首事件承担其语义位——复审修正） |
 
 **目录形态**（学 DSH：composition 是纯行列表，metadata 独立文件）：
 
@@ -102,7 +102,7 @@ boot：ensureCompositionLoaded 后追加 preset 解析
 
 ### 2.4 会话日志与重建（G1 的可重建半边）
 
-**复审修正（2026-08-20）：HoloGram 的 SessionLog 没有 header 概念**（实查 `agent/session-log.ts`：仅 `events[]` 流 + 序列化，无 SessionHeader 同构物）——DSH 的「header 深冻 + selected 事件」不能平移。改用**首事件方案**：
+**复审修正（2026-08-20）：兰台的 SessionLog 没有 header 概念**（实查 `agent/session-log.ts`：仅 `events[]` 流 + 序列化，无 SessionHeader 同构物）——DSH 的「header 深冻 + selected 事件」不能平移。改用**首事件方案**：
 
 - 会话构造（`session/reset` init）时**必发一条 `preset/selected`**——首条即创建时点事实（等价 DSH header 的语义位）；
 - **reset 语义（三轮复审补——初稿规格空缺）**：被 reset 的会话若中途改选过 preset（事件已追加在旧段内），reset 重开发出的是**当前生效选择**（重读默认值），**不继承**被清掉那个会话的改选——「reset 开启新逻辑段」与「首事件描述新段」是同一条纪律的两面。倒序扫描因此天然安全：reset 边界后最近的 `preset/selected` 就是新段自己的，旧段事件不可能跨 reset 边界泄漏（`session/reset` 事件本身就是段分界）。S4-1b 单测必须含此场景（改选 → reset → 重建用默认而非改选）；
@@ -229,7 +229,7 @@ S2 延期清单的兑现：**`composition-store` 加「重载」动作**，不�
 复审方法：设计断言逐条对照代码现实实查（S2 复审同款纪律——断言必须有 grep/读文件证据）。抓到三处设计错误并已回写修正：
 
 1. **四 service 零消费者**（G0/§2.3/S4-1.5）：初稿默认 hello 三通道可跑——实查 `ctx.tools.list` 等全仓无调用方，插件贡献从未流进装配/渲染面。修正 = 新增消费闭环接线批，置于 hello 之前。
-2. **会话头不存在**（§2.4 修正注）：初稿照抄 DSH「header 深冻 + selected 事件」——实查 HoloGram SessionLog 仅 events 流无 header。修正 = 首事件方案（session/reset init 时必发首条 `preset/selected`）。
+2. **会话头不存在**（§2.4 修正注）：初稿照抄 DSH「header 深冻 + selected 事件」——实查兰台 SessionLog 仅 events 流无 header。修正 = 首事件方案（session/reset init 时必发首条 `preset/selected`）。
 3. **hello 超规格**（§2.8 修正注）：初稿给 hello 加了「1 prompt section」——计划 README 规格是三通道，且 prompt-section 贡献通道无 service 无消费者（S2 §2.9 纪律）。修正 = 裁掉，通道设计进 §6 未决项。
 
 **二轮复审（用户四处偏差指正，2026-08-20 同日）**：

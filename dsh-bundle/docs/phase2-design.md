@@ -1,7 +1,7 @@
 # 阶段 2 — 3D 图谱内嵌 DSH web：设计定稿（recon 完成）
 
 > 状态：两块已摸透，待用户定「挂法」。本文件是唯一事实来源。
-> 结论先行：**复用 HoloGram 的渲染内核（graph-*.ts），只换数据源** —— 渲染观感不重写。
+> 结论先行：**复用兰台的渲染内核（graph-*.ts），只换数据源** —— 渲染观感不重写。
 
 ## 已确认的两块事实（本轮验证）
 
@@ -17,13 +17,13 @@
 
 => 3D 渲染只需「引擎图数据 → StarGraph.render」，中间无不可逾越的缝。
 
-### B. 渲染内核可复用，但带 HoloGram 应用耦合
+### B. 渲染内核可复用，但带兰台应用耦合
 
-	exttt{StarGraph} facade 导入了 HoloGram app 依赖：`../app/shell-store`（zustand）、`./events`（bus）、`../i18n`、`gpu-layout`。整类搬迁会把壳一起带进来。三条剥耦合路径待选：
+	exttt{StarGraph} facade 导入了兰台 app 依赖：`../app/shell-store`（zustand）、`./events`（bus）、`../i18n`、`gpu-layout`。整类搬迁会把壳一起带进来。三条剥耦合路径待选：
 
-1. **整类复用 + 提供桩**：为 `useShellStore`/`bus`/`i18n` 提供轻量 stub，原样 import `StarGraph`。最快，但寄生 HoloGram 壳形态。
+1. **整类复用 + 提供桩**：为 `useShellStore`/`bus`/`i18n` 提供轻量 stub，原样 import `StarGraph`。最快，但寄生兰台壳形态。
 2. **借 build 层抽内核**：只带 `graph-scene/graph-node-renderer/graph-edge-renderer/graph-layout` 等纯渲染模块，自己拼一个轻 `StarGraph`-like 门面。最干净，工作量中等。
-3. **等 HoloGram 自己把内核做成可独立包**（`runtime-adapter.ts` 已是这类接缝）。
+3. **等兰台自己把内核做成可独立包**（`runtime-adapter.ts` 已是这类接缝）。
 
 ## 挂法（用户决定 A / B）
 

@@ -1,7 +1,7 @@
-# hello — HoloGram 插件三通道最小示例
+# hello — 兰台插件三通道最小示例
 
-> 这是 HoloGram 插件体系的「从零到跑通」示例（组合架构 S4 验收工装）。
-> **验收口径：你只需要读本文件（不需要读 HoloGram 源码）就能装上它、看到
+> 这是兰台插件体系的「从零到跑通」示例（组合架构 S4 验收工装）。
+> **验收口径：你只需要读本文件（不需要读兰台源码）就能装上它、看到
 > > 三通道全部工作、再干净卸载。** 如果哪一步卡住了，那就是我们的文档缺口。
 >
 > **2026-08-20 走查记录（已验证）**：`cargo tauri dev` 起真机，按本文件
@@ -25,7 +25,7 @@
 
 ## 前置
 
-- HoloGram 桌面应用已构建并运行（`cargo tauri build` 产物或 `cargo tauri dev`）。
+- 兰台桌面应用已构建并运行（`cargo tauri build` 产物或 `cargo tauri dev`）。
 - 知道你的插件目录：`~/.lantai/plugins/`（Windows：
   `%USERPROFILE%\.lantai\plugins\`）。
 
@@ -80,7 +80,7 @@ registry.npmjs.org 下载。）
 
 **插件是本机全信任代码：可读写文件、起子进程、调用全部 RPC。** npm 上的
 包 ≠ 审核过的包——只安装你信任来源的插件。这与你手动改本机文件是同一
-信任级别（详见 HoloGram 的 `docs/plugins/README.md`）。
+信任级别（详见兰台的 `docs/plugins/README.md`）。
 
 ## 写自己的插件
 

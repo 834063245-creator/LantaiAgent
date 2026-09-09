@@ -94,9 +94,11 @@ static BUILTIN_PLUGINS_DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::On
 ///   1. `resource_dir()/builtin` ——打包态期望落点（若 tauri.conf.json
 ///      resources 用 map 形式把 `dist-plugins/builtin` 重映射到 `builtin/`）；
 ///   2. `resource_dir()/_up_/src-ui/dist-plugins/builtin` ——tauri v2 对
-///      crate 外资源（当前 conf 的 `"../src-ui/dist-plugins/**/*"` 字符串
-///      形式）的实际落点：`_up_` 是 bundler 对越界 `../` 路径的转义目录
-///      （debug 与 release 实测一致落此）。
+///      crate 外资源（当前 conf 的 `"../src-ui/dist-plugins"` 目录 key）的
+///      实际落点：`_up_` 是 bundler 对越界 `../` 路径的转义目录
+///      （debug 与 release 实测一致落此）。⚠ map 形式的 glob key
+///      （`**/*`）会压平目录只留文件名——曾把 31 个插件 manifest.json
+///      压进同一目录打爆 MSI ICE30 校验（light 退出码 204），勿回退。
 /// 命中即锁缓存；**全未命中不锁 None**——保留 builtin_plugins_root 的仓库
 /// 兜底分支可走（早先实现遇 `resource_dir()/builtin` 缺席即 `set(None)`，
 /// 把 OnceLock 钉死 None，令兜底分支沦为死代码——dev 下「重新加载全报错」

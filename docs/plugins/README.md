@@ -1,4 +1,4 @@
-# HoloGram 插件指南（docs/plugins/README.md）
+# 兰台插件指南（docs/plugins/README.md）
 
 > S4 竣工（2026-08-20）；S3 第一方行化（2026-08-22）；P4 A-1 prompt 段贡献
 > 通道（2026-08-23）；P4 B④ 第一方 prompt 段迁移收官（2026-08-23）；S4-4
@@ -94,7 +94,8 @@ cookbook（`docs/cookbook/`）+ 发布路径（`docs/user/develop/`）是平台�
 兰台的 30 个出厂插件（7 seam 供应商 + 5 既有 + 16 工具域 + 2 段贡献）——
 真源在仓库 `src-ui/src/plugins/builtin/<name>/` 目录，构建管线（esbuild，
 `scripts/build-builtin-plugins.mjs`，接入 `npm run build`）产出 ESM 产物 +
-manifest，随包携带（`tauri.conf.json` resources `dist-plugins/**`）；运行时经
+manifest，随包携带（`tauri.conf.json` resources 目录映射
+`"../src-ui/dist-plugins"`，目录 key 保结构；glob key 会压平，勿用）；运行时经
 **与第三方同一条 D6 装载链路**装载（`/plugins/` 索引含内置根，Rust 资产通道
 回退 `src-ui/dist-plugins` 或打包态 `resource_dir/builtin`），设置面板
 「重新加载」→ 重装载（秒级生效，应用不重启；工具面下次装配生效）。

@@ -98,7 +98,7 @@
 
 ## 3. Harness Engineering 模式
 
-HoloGram 将以下软件工程模式编排为统一的 Harness 体系：
+兰台将以下软件工程模式编排为统一的 Harness 体系：
 
 ### 3.1 约束治理 (Constraint Governance)
 
@@ -572,7 +572,7 @@ Engine 作为独立 MCP Server 运行，通过 JSON-RPC over stdin/stdout 对外
 ## 9. 项目结构
 
 ```
-HoloGram/
+兰台/
 ├── engine/                      # 代码图谱分析引擎 (Rust 库 + CLI)
 │   ├── src/
 │   │   ├── engine/              # 统一 API (Engine 结构体 + 状态机 + GRAMMAR_LOADER + watcher + pipeline)

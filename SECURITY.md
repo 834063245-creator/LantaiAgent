@@ -26,7 +26,7 @@ You should receive an acknowledgement within 48 hours. We will keep you updated 
 
 ### Scope
 
-Security-relevant areas of HoloGram include:
+Security-relevant areas of Lantai include:
 
 1. **Agent tool execution** — The built-in Agent can execute shell commands and read/write files. Permission escalation bugs, sandbox escapes, or privilege bypasses in the tool guard layer (permission engine / sandbox / confined fs) are critical.
 2. **Engine subprocess IPC** — The shell communicates with the Rust analysis engine (`hologram-engine`) via JSON-RPC over stdio / TCP :9777. Injection vectors in IPC messages that could cause arbitrary code execution, or path/command smuggling that escapes the project boundary.

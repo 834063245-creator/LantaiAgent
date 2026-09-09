@@ -35,7 +35,7 @@
 
 ## 1. 背景与问题
 
-HoloGram 的 Agent 工具面（ToolRegistry + defineTool/zod + blueprint capability 表 +
+兰台的 Agent 工具面（ToolRegistry + defineTool/zod + blueprint capability 表 +
 domains 折叠）在**声明层**已是 DSH 同级。差距集中在两处半：
 
 1. **缺执行原语**（结构性）：模型一次只能发一个 JSON 工具调用，组合逻辑活在下一 token
@@ -57,7 +57,7 @@ cordis 解决的是**开发者侧组装**（Service 注册/依赖注入/生命�
 > `export const name/inject/Config`）。
 
 即：cordis 化不是白做，它是插件化的**装配层**；本计划补的是它上面缺的两块——执行腰和
-文档发电机。HoloGram vendored 的 cordis 与 DSH 同宗，模式可以直接平移。
+文档发电机。兰台 vendored 的 cordis 与 DSH 同宗，模式可以直接平移。
 
 ### 生态赌注的诚实分析（2026-08-19 补，决定 P4 走向）
 
@@ -70,7 +70,7 @@ DSH 实际是「cordis 地基 + 一整圈服务契约」（ctx.tools/session/llm
 /ctx.router 上，不长在裸 cordis 上）。
 
 但契约是分层的：L1 纯工具类（挂 ctx.tools）+ L2 工具+prompt section——插件生态的大头
-恰好在这两层，且 HoloGram 的 Tool 接口形状与之同构。若 DSH 稳定接口，跟随成本集中在
+恰好在这两层，且兰台的 Tool 接口形状与之同构。若 DSH 稳定接口，跟随成本集中在
 「最小服务契约子集 + dsh-compat 装载层」，而非重实现平台。
 
 **当前不做跟随的理由**：DSH 的 peer deps 全是 `workspace:^`（monorepo 内部协议），尚无
@@ -78,7 +78,7 @@ DSH 实际是「cordis 地基 + 一整圈服务契约」（ctx.tools/session/llm
 
 ## 2. DSH 实证速查（执行者先读这五个文件）
 
-| # | DSH 文件 | 教的东西 | HoloGram 对应物 |
+| # | DSH 文件 | 教的东西 | 兰台对应物 |
 |---|---|---|---|
 | 1 | `packages/code-runtime/code-runtime/src/index.ts` | CodeRuntime = cordis Service；「runtime 不知道工具/会话，消费者自己管」的接缝纪律；跨语言保留字/保留全局的**可移植契约** | 未来 `ctx.codeRuntime` 的接口形状 |
 | 2 | `packages/code-runtime/code-runtime-worker-thread/src/protocol.ts` | 窄腰线协议：worker 只拿**函数名清单**（namespaces），函数本体留宿主；correlation-id 应答；**宿主视入站流量为敌意**（模型代码可伪造 parentPort 消息） | 沙箱协议规范（无论后端选哪个都适用） |
@@ -87,7 +87,7 @@ DSH 实际是「cordis 地基 + 一整圈服务契约」（ctx.tools/session/llm
 | 5 | `packages/workflow/tool-workflow/src/index.ts` | 编排=薄 cordis 插件：模型面 schema 与执行引擎分离（`ctx.workflowEngine` 可整体换硬），提示词指导注册为工具自己的 prompt section | 未来 workflow 工具的形态模板 |
 
 另：`packages/typert` 是工具面跨进程类型协议（merge-extensible declaration maps）——
-HoloGram 单进程内暂不需要，P4 插件边界时再评估。
+兰台单进程内暂不需要，P4 插件边界时再评估。
 
 ## 3. 完成判据（按阶段分组，均可测）
 
@@ -123,14 +123,14 @@ HoloGram 单进程内暂不需要，P4 插件边界时再评估。
 ## 4. 设计决策
 
 - **D1 沙箱后端选 Web Worker 优先，不是 Node sidecar**。DSH 实证的关键洞察：worker 里
-  **根本没有工具**——工具全是宿主侧的 proxy binding，程序只能经协议腰调用。HoloGram 的
+  **根本没有工具**——工具全是宿主侧的 proxy binding，程序只能经协议腰调用。兰台的
   webview 里开 Web Worker，同样只暴露 `tools.*` 代理，能力面天然收窄到桥协议；攻击面
   是桥的实现质量，不是 worker 逃逸。诚实标注：这是**协议纪律沙箱**而非**基底沙箱**
   （同源 Web Worker 不是硬边界），与 DSH worker-thread 的安全定位实际等价（DSH 的
   worker 同样不是进程级隔离，靠的就是敌意校验+无损 JSON+预算）。
   sidecar Node / engine 嵌 deno_core 是后续硬化选项，接口不破即可换（C9 的意义）。
 - **D2 单腰不加宽**。只加一个 `code_execution` 工具，schema 面增量=1（DeepSeek 前缀缓存
-  友好）；不把几十个工具接口塞 system prompt（DSH 那样做是因为「代理即产品」；HoloGram
+  友好）；不把几十个工具接口塞 system prompt（DSH 那样做是因为「代理即产品」；兰台
   是带代理的桌面应用，domains 折叠形态更适合——**别抄工具面预算**）。
 - **D3 组合不进平台**。不造工作流引擎。若未来要 workflow，抄 DSH 形态：一个薄插件工具
   给 `agent()/parallel()/pipeline()` 几个钩子，编排语义由模型写的程序承担
@@ -189,7 +189,7 @@ session-log 审计对 + 纸壳程文块；baseline 变更
 0. ~~产品拍板项~~ ✅（2026-08-22 拍板方案 A：新增 code 块 kind + ctx.renderers 专属渲染器）
 1. 协议层：correlation-id 腰线（照抄 protocol.ts 语义：一次性应答、敌意校验、无损 JSON、
    输出预算、日志先行）
-2. Worker 侧：Web Worker bootstrap——类型剥离（HoloGram 无 ts 转译链，直接收 JS 程序体，
+2. Worker 侧：Web Worker bootstrap——类型剥离（兰台无 ts 转译链，直接收 JS 程序体，
    限定 erasable 子集可后置）、`tools.*` proxy materialize、console 捕获
 3. 宿主侧：桥接 registry（嵌套执行走现行 executor 并发契约 + dispatch log）
 4. `code_execution` defineTool + blueprint capability + domains 归属（建议 shell 域新
@@ -296,7 +296,7 @@ dsh-compat 装载层（npm 包加载 + peer 版本协商 + 契约漂移检测）
 - 不摊平工具面到 DSH 规模（前缀缓存 + 桌面应用定位，domains 折叠是更优形态）
 - 不造工作流引擎/DSL（D3）
 - 不在本计划内动 cordis 内核本体
-- 不做 Python 后端（DSH 的可移植契约值得学，但 HoloGram 单语言足够）
+- 不做 Python 后端（DSH 的可移植契约值得学，但兰台单语言足够）
 - typert 式跨进程类型协议（P4 前无需求）
 
 ## 8. 与既有计划的关系

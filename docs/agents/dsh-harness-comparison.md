@@ -1,28 +1,28 @@
-# DSH Harness × HoloGram Agent 横向对比与收口记录
+# DSH Harness × 兰台 Agent 横向对比与收口记录
 
 > 生成：2026-08-15 · 分支：`feat/agent-gap-closure`
 > 来源：对 `/home/jingjianhua/deepseek-harness` 的多 Agent 编排架构的完整盘点（subagent / workflow / goal / jobs / sandbox / session 六个子系统），与本仓库 Agent 运行时的逐项对比。
 
 ## 1. 一句话结论
 
-HoloGram 的 Agent 在「单仓库多工人协同」垂直场景比 DSH 更深（git worktree 隔离、资源租约队列、merge 门禁、黑板/消息箱、记忆分级都是 DSH 没有的）；DSH 是一套通用编排平台，其强项在子 Agent 生命周期（可续聊/冷恢复）、编排原语（workflow/ralph）、Goal 严谨性（事件溯源 + CAS）与委派权限固化。本次收口把其中可移植、成本可控的部分全部落地，共 **6 项**。
+兰台的 Agent 在「单仓库多工人协同」垂直场景比 DSH 更深（git worktree 隔离、资源租约队列、merge 门禁、黑板/消息箱、记忆分级都是 DSH 没有的）；DSH 是一套通用编排平台，其强项在子 Agent 生命周期（可续聊/冷恢复）、编排原语（workflow/ralph）、Goal 严谨性（事件溯源 + CAS）与委派权限固化。本次收口把其中可移植、成本可控的部分全部落地，共 **6 项**。
 
 ## 2. 对比总览（维度 × 强弱）
 
-| 维度 | DSH | HoloGram | 结论 |
+| 维度 | DSH | 兰台 | 结论 |
 |---|---|---|---|
-| 子 Agent 后端 | 多 provider（进程内 spawn/fork、ACP、Codex app-server、Claude Code SDK、DSH SDK） | 仅进程内 fork/fresh；ACP 是服务端 | DSH 强；HoloGram 路线图红线明确不做 |
+| 子 Agent 后端 | 多 provider（进程内 spawn/fork、ACP、Codex app-server、Claude Code SDK、DSH SDK） | 仅进程内 fork/fresh；ACP 是服务端 | DSH 强；兰台路线图红线明确不做 |
 | 子 Agent 能力控制 | outputSchema / maxDepth / toolFilter / persona，能力不足派发前拒绝 | 本次补 output_schema + 深度守卫全模式化 | 已收口（P1-4 / P0-3） |
 | 子 Agent 续接 | durable 可续子会话（send_message/interrupt/list_agents/冷恢复） | 消息箱 + wait；完成后不可续聊 | **未落地**（见 §4 P0-2） |
-| 隔离生命周期 | 沙箱模式隔离，共享 workspace | git worktree + merge 门禁 + TTL | HoloGram 强；重启孤儿已收口（P0-1） |
+| 隔离生命周期 | 沙箱模式隔离，共享 workspace | git worktree + merge 门禁 + TTL | 兰台强；重启孤儿已收口（P0-1） |
 | 编排原语 | workflow（模型写编排脚本）+ ralph（固定脚本迭代） | coordinator 固定并发池 + 租约队列，主 Agent 手动编排 | **未落地**（见 §4 P1-5） |
 | Goal | 事件溯源 + revision CAS + blocked(机器可读 code) + 人类权威区分 | 文件型 + stall 检测 + adoptOrphans；本次补 blocked + 权威注释 | 已收口（P1-6） |
 | 大输出 | spill 落盘 + locator | 原本 32KB 截断/500 字符裁剪 | 已收口（P2-7） |
 | 委派权限 | 子级 approval 钉 never + 沙箱范围固化 + 不可扩权声明 | permissions.json 静态规则；本次剥离 ask_user / plan 工具 + 边界提示词 | 已收口（P2-10） |
 | 循环守卫 | guard（无效模式 + per-call 预算） | storm breaker（同错 3 连发强制换策略） | 大部分已覆盖；per-call 预算未做 |
 | 后台任务 | 通用 JobRegistry（stream/final 输出、job_output/kill/list） | shell 队列 + bash_wait + wait 工具 | **未落地**（见 §4 P2-8） |
-| 记忆 | 无独立记忆包 | 置信度分级 + /remember 授权 | HoloGram 强 |
-| 黑板/消息 | 无 free-form 黑板 | TaskBoard/DiscoveryBoard/agent_message/topology | HoloGram 强 |
+| 记忆 | 无独立记忆包 | 置信度分级 + /remember 授权 | 兰台强 |
+| 黑板/消息 | 无 free-form 黑板 | TaskBoard/DiscoveryBoard/agent_message/topology | 兰台强 |
 
 ## 3. 本次落地清单（6 项，均验证后提交）
 
@@ -37,8 +37,8 @@ HoloGram 的 Agent 在「单仓库多工人协同」垂直场景比 DSH 更深�
 
 ## 4. 未落地项与理由（按需再开）
 
-- **P0-2 子 Agent 可续聊**（DSH continuable children）：需要 durable 子会话 + activation 管理 + 冷恢复，是 DSH 最深的子系统。HoloGram 已有 `agent-session-state.ts` 底子，但完整落地需新开窗口。
-- **P1-5 模型可编程编排**（workflow/ralph）：与 HoloGram「机制替代通讯」哲学存在路线取舍；其自身路线图 §4 的「任务 DAG + 调度器」在 N=8-15 才触发。DSH 的 pipeline/parallel 原语可作为届时参照。
+- **P0-2 子 Agent 可续聊**（DSH continuable children）：需要 durable 子会话 + activation 管理 + 冷恢复，是 DSH 最深的子系统。兰台已有 `agent-session-state.ts` 底子，但完整落地需新开窗口。
+- **P1-5 模型可编程编排**（workflow/ralph）：与兰台「机制替代通讯」哲学存在路线取舍；其自身路线图 §4 的「任务 DAG + 调度器」在 N=8-15 才触发。DSH 的 pipeline/parallel 原语可作为届时参照。
 - **P2-8 通用 job 抽象**：现有 shell 租约队列 + bash_wait 已覆盖当前规模；通用 JobRegistry 收益要等后台任务种类变多。
 - **guard 的 per-call 预算**：storm breaker 已覆盖「无效重复模式」；token/时长预算改动 executor 热路径，风险收益不划算。
 - **外部 Agent provider**（Claude Code/Codex/ACP 后端）：路线图 §5 明确红线，尊重不碰。
