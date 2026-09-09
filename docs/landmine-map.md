@@ -124,3 +124,17 @@
 - `loadGraphPages` 逐页 `ws.active` + `source_root` 对拍（epoch 防护教科书）；graph-scene-lifecycle 代际 + safety timer
 - cache-store 全量（epoch + resetAgentCaches 双路径 + buildResult 归属，commit `176f4873`）
 - scoped-store 分区机制、runtime per-session board 注册表、MessageBus inbox、子 Agent finally 链、board-persistence `_destroyed` 标志
+
+---
+
+## 第三批审计（2026-09-10）— 打包资源残留家族
+
+> 来源：实机事故（进入工作区报「会话核心未初始化，无法绑定目录」）+ CDP 实机取证。
+> 家族指纹：**构建工具的合并不清空 + 装载通道照单全收 + boot-gate fail-loud 一票否决**——
+> 三层接缝叠加，任何「源里删除、目标目录残留」的产物退役都会复刻。
+
+| # | 位置 | 雷 | 触发 → 后果 | 状态 |
+|---|------|----|------------|------|
+| B1 | `target/<profile>/_up_/src-ui/dist-plugins/`（cargo tauri build/dev 的资源拷贝落点） | Tauri 资源拷贝**合并不清空**——源侧 `src-ui/dist-plugins`（build-builtin-plugins 每次 `rmSync` 全量重建、永远干净）删除/改名的产品目录，在 exe 侧资源目录永久残留成僵尸 | 图谱退役（51047f99 删 engine-domain/graph-builtin）后 17:02 重新打包 → 两僵尸残留 → 产物通道照常装载（装配断层对账只查「缺」不查「多」）→ graph-builtin inject 的服务已删 → fiber 永停 PENDING → **boot-gate fail-loud 杀掉 bootShell** → chatPanel 永空 → 进任何工作区报「会话核心未初始化，无法绑定目录」；首页其余一切正常（工作区列表走独立 RPC，症状极具迷惑性） | ✅ 已拆僵尸（2026-09-10 实机删除 `target\release\_up_` 与 `target\debug\_up_` 两侧残留，CDP 验证 boot 全绿 43 fiber 全 ACTIVE + 端到端进工作区「✨ 工作区已就绪」）。复发防线 = **拍板 A：纪律**——退役/改名产品时顺手删两侧 `_up_\src-ui\dist-plugins\builtin\hologram\<产品>` 对应目录（2026-09-10 用户拍板；b = build.cmd 前置清理、c = 装载器拒载非第一方 `hologram/*` 通道产物，两案备而未拍） |
+
+**取证备忘**：boot 期错误不落 ui.log——`initLogger` 挂在 `Workspace.open`（workspace.ts），boot 被杀 → 永远进不了工作区 → logPath 恒空 → 错误只进 WebView console。唯一取证面 = CDP：`tauri.conf.json` `additionalBrowserArgs: "--remote-debugging-port=9222"` 已开，`http://127.0.0.1:9222/json/list` 取 webview target，WebSocket + `Runtime.enable` 即可收 console——且 Runtime.enable 会**重放上一轮 boot 的全部 console 历史**（含旧故障现场），区分「历史重放」与「本次 boot」勿误判。
