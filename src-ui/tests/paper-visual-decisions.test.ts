@@ -109,6 +109,26 @@ describe('纸壳视觉定稿钉值（B3/B4/B5）', () => {
     expect(active).toContain('var(--shadow-sheet-active)');
   });
 
+  it('拿纸动效（2026-09-10 拍板「拿纸 + 朱笔划界」）：激活落影过冲 lift 档再落「在手」——帧内只许 box-shadow', () => {
+    // keyframes 红线（同 pp-enter / settle 立法）：帧内禁 transform（世界坐标
+    // 换算与 InkLayer 对位）、禁 background（变色判死延伸到帧——纸纹层）
+    const take = keyframesBody(PANEL_CSS, 'pp-region-take');
+    expect(take).not.toBe('');
+    expect(take).not.toMatch(/transform\s*:/);
+    expect(take).not.toMatch(/background/);
+    // 三档全字面复用既有影值（零新魔数）：from 平放 → 60% 过冲 lift（拖拽
+    // 手势既有最高档）→ to 在手；to 帧 = 静态 active 值（播放完自然回落）
+    expect(take).toContain('var(--shadow-sheet)');
+    expect(take).toContain('var(--shadow-sheet-lift)');
+    expect(take).toContain('var(--shadow-sheet-active)');
+    expect(ruleBody(PANEL_CSS, '.pp-region-active {')).toContain('animation: pp-region-take');
+    // 基座缓退：换主时旧卷影 320ms 缓退非瞬移；整句钉死 = 单属性（只 box-shadow）
+    // + 家风缓动，一石二鸟
+    expect(ruleBody(PANEL_CSS, '.pp-region {')).toContain(
+      'transition: box-shadow 320ms cubic-bezier(0.23, 1, 0.32, 1)',
+    );
+  });
+
   it('物理包边 token 载入（tokens.css 真源）：band/lit/shade + 活跃落影一档', () => {
     expect(TOKENS_CSS).toContain('--sheet-band:');
     expect(TOKENS_CSS).toContain('--sheet-lit:');
@@ -263,6 +283,15 @@ describe('卷首 folio-head 钉值（2026-08-30 原型转录：prototype/lantai.
     expect(tab).toContain('height: 3px');
     // 版口钮是朱砂——卷首钤印语义（朱砂=人/仪式），非状态色挪用
     expect(tab).toContain('background: var(--seal)');
+    // 朱笔划界（2026-09-10 拍板「拿纸 + 朱笔划界」）：激活瞬间红条从 0 划到
+    // 56px——落笔划界的书写感。宽度动画不走 transform（块级 transform 事故
+    // 立法同源）；缓动/时长同 pp-enter 家风
+    expect(tab).toContain('animation: pp-seal-draw 0.24s cubic-bezier(0.23, 1, 0.32, 1)');
+    const draw = keyframesBody(PANEL_CSS, 'pp-seal-draw');
+    expect(draw).not.toBe('');
+    expect(draw).not.toMatch(/transform\s*:/);
+    expect(draw).toContain('width: 0');
+    expect(draw).toContain('width: 56px');
     // 标签带退役（卷首即卷名，不重复播报）
     expect(PANEL_CSS).not.toContain('.pp-region-label');
     expect(PANEL_TSX).toContain('pp-folio-head');

@@ -291,16 +291,51 @@
     inset 0 0 0 7px var(--sheet-band),
     var(--shadow-sheet);
   z-index: 1;
+  /* 影随手动（2026-09-10 拿纸动效）：落影三档（平放/在手/lift）间缓退——
+   * 换主时旧卷影不是瞬间消失，拖拽带显形起落也走同一缓动（物理世界纸影
+   * 不瞬移）。只声明 box-shadow 一项，别拖其他属性。 */
+  transition: box-shadow 320ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 /* active 只动 box-shadow——朱砂洗底退役（2026-09-02「变色」判死）：活跃 = 接触
  * 落影加深一档（手里正拿着的纸，离桌面更高一点），结构墨阶不动纸色；
- * background 简写仍禁——会抹纸纹层。版口钮独挂 = 另一条活跃门控规则（见卷首段）。 */
+ * background 简写仍禁——会抹纸纹层。版口钮独挂 = 另一条活跃门控规则（见卷首段）。
+ * 拿纸动效（2026-09-10 拍板「拿纸 + 朱笔划界」）：显式激活瞬间影子从平放档
+ * 过冲 lift 档（拖拽手势既有最高影档）再落「在手」档——「刚把这张纸拿起来」
+ * 的物理过场；基座 transition 承接缓退，keyframes 承接过冲。class 不变不重放
+ * （幂等再点同卷无动效）。 */
 .pp-region-active {
+  animation: pp-region-take 0.4s cubic-bezier(0.23, 1, 0.32, 1);
   box-shadow:
     inset 3px 4px 5px var(--sheet-lit),
     inset -2px -3px 6px var(--sheet-shade),
     inset 0 0 0 7px var(--sheet-band),
     var(--shadow-sheet-active);
+}
+/* 拿纸 keyframes：三档影值全字面复用既有 stack（零新魔数）——任何帧不得
+ * 声明 transform（世界坐标换算与 InkLayer 对位红线）与 background（纸纹层）。
+ * 动画终帧 = 静态 active 值，播放完自然回落，无需 fill-mode。 */
+@keyframes pp-region-take {
+  from {
+    box-shadow:
+      inset 3px 4px 5px var(--sheet-lit),
+      inset -2px -3px 6px var(--sheet-shade),
+      inset 0 0 0 7px var(--sheet-band),
+      var(--shadow-sheet);
+  }
+  60% {
+    box-shadow:
+      inset 3px 4px 5px var(--sheet-lit),
+      inset -2px -3px 6px var(--sheet-shade),
+      inset 0 0 0 7px var(--sheet-band),
+      var(--shadow-sheet-lift);
+  }
+  to {
+    box-shadow:
+      inset 3px 4px 5px var(--sheet-lit),
+      inset -2px -3px 6px var(--sheet-shade),
+      inset 0 0 0 7px var(--sheet-band),
+      var(--shadow-sheet-active);
+  }
 }
 /* 带显形（2026-09-05 松手定夺改造）：拖拽进行时来源流区提落影至 lift 档
  * ——「这张纸是当前手势的领域」（块拖回带内 = 回流；纸条拖出带外 = 成条，
@@ -360,7 +395,10 @@
 }
 /* 活跃卷版口钮（2026-09-02 视觉迭代）：朱砂条从「卷卷都挂」改「只挂活跃卷」——
  * 整屏至多一处红（浸墨法则 3），红在哪卷即活卷；对原型 .folio-head 的主动偏离
- * （原型先于真纸材质批与一纸多卷定案）。 */
+ * （原型先于真纸材质批与一纸多卷定案）。
+ * 朱笔划界（2026-09-10 拍板「拿纸 + 朱笔划界」）：激活瞬间红条从 0 划到 56px
+ * ——落笔划界的书写感，与拿纸影动效同一时刻。宽度动画不走 transform（块级
+ * transform 事故立法同源）；缓动/时长同 pp-enter 家风。 */
 .pp-region-active .pp-folio-head::after {
   content: "";
   position: absolute;
@@ -369,6 +407,15 @@
   width: 56px;
   height: 3px;
   background: var(--seal);
+  animation: pp-seal-draw 0.24s cubic-bezier(0.23, 1, 0.32, 1);
+}
+@keyframes pp-seal-draw {
+  from {
+    width: 0;
+  }
+  to {
+    width: 56px;
+  }
 }
 .pp-yuwei {
   display: block;
