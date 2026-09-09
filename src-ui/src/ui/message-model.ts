@@ -28,6 +28,42 @@ export function resetMsgIdCounter(_storeId?: string): void {
   // 有意为空 — 见上方说明。
 }
 
+/** 采纳外来源消息（磁盘 uiMessages 快照——2026-09-09 消息消失/整流冲坏根治）。
+ *
+ *  快照里的 _id 是**上一运行**的发号器产物；进程重启后计数器归零，新消息会
+ *  重新从 m1 铸起——与快照回填的旧 id 撞号（用户症状：发出的消息因块 key
+ *  撞车不渲染「消失」；流式助手按 _id find 首个命中，把新轮回复写进历史
+ *  消息，「冲坏整个聊天流」）。本函数在采纳时做两件事：
+ *    ① 垫高发号器到快照最大号之上（后续新铸的号恒在旧号之上——撞号结构性不成立）；
+ *    ② 快照内部撞号（历史受损档案）重铸后到者——首发者保号，respondingTo
+ *       等引用指向首发者，不需要重映射。
+ *  无撞号时零拷贝返回原数组（常见路径）。 */
+export function adoptRestoredMessages(msgs: ChatMessage[]): ChatMessage[] {
+  let maxN = 0;
+  const seen = new Set<string>();
+  let hasDup = false;
+  for (const m of msgs) {
+    const n = /^m(\d+)$/.exec(m._id ?? '');
+    if (n) maxN = Math.max(maxN, Number(n[1]));
+    if (seen.has(m._id)) hasDup = true;
+    else seen.add(m._id);
+  }
+  const sess = getChatStore().sess;
+  if (sess.getState().msgIdSeq < maxN) sess.setState({ msgIdSeq: maxN });
+  if (!hasDup) return msgs;
+  const out = [...msgs];
+  const first = new Set<string>();
+  for (let i = 0; i < out.length; i++) {
+    const m = out[i];
+    if (!first.has(m._id)) {
+      first.add(m._id);
+      continue;
+    }
+    out[i] = { ...m, _id: nextMsgId() };
+  }
+  return out;
+}
+
 // ── 附件 ──────────────────────────────────────────
 
 export interface FileAttachment {

@@ -22,6 +22,7 @@ import { useAgentPanelStore } from './agent-panel-store';
 import { bumpSession, getChatStore, msgStoreFor } from './chat-store';
 import type { AssistantMessage, BlockPart, ChatMessage, MessageId, SubAgentPart, UserMessage } from './message-model';
 import {
+  adoptRestoredMessages,
   createAssistantMessage,
   createNoticeMessage,
   createUserMessage,
@@ -350,6 +351,9 @@ export function closeSession(ctx: SessionContext, idx: number): void {
   // 数据捕获必须在 removeAgent 之前（句柄消亡后 getSession 不可再得）；
   // 写入目标路径在捕获时固定，无跨工作区串写风险（与 scheduleAutoSave 的
   // epoch 守卫防护面不同——那是延迟重读 store 的风险，这里快照即定局）。
+  // uiMessages/compose 同步捕获（2026-09-09 修复）：C8 此前只落 provider
+  // 消息——重开该卷被迫走降采样重建（工具 err/output 丢、_id 重发号），
+  // 快照保真链（WO-7）在合卷口断裂。msgStore 在函数尾部才拆，此处可安全读。
   {
     const agent = agentSessionState.getAgent(ctx.storeId, s.id);
     const messages = agent?.getSession();
@@ -357,12 +361,16 @@ export function closeSession(ctx: SessionContext, idx: number): void {
     if (agent && messages && hasContent) {
       const projectPath = ctx.getProjectPath();
       const tokensUsed = idx === st.activeIdx ? ctx.getTotalTokensUsed() : (st.sessionTokens[s.id] ?? 0);
+      const uiMessages = msgStoreFor(ctx.storeId, s.id).getState().messages;
+      const compose = getComposeStore(ctx.storeId).getState().getPrefs(String(s.id));
       writeSessionSnapshot(projectPath, {
         id: s.id,
         label: s.label,
         savedAt: new Date().toISOString(),
         messages,
+        uiMessages: uiMessages.length > 0 ? uiMessages : undefined,
         tokensUsed,
+        compose,
       }).catch(() => showToast(`合卷落盘失败：${s.label}`, 'error', TOAST_LONG_HOLD_MS));
     }
   }
@@ -454,14 +462,23 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
   // 句柄不是建卷的前置条件（拟文时 ensureSessionAgent 惰性现造）。
   // 工厂在场时顺手现造一个句柄（首次拟文的常见路径提前就绪）；
   // 工厂缺席/返空/抛错 → 无句柄建卷（拟文时提示配 Key——Phase B 契约）。
+  //
+  // 发号同步占位（2026-09-09 建卷竞态修复）：id 在任何 await 之前解析并推高
+  // nextSessionId——并发建卷（案头双回车）不再铸同号卷（同号 = 两卷共享同一
+  // msgStore/agent 槽位）；sessions 写回改函数式——工厂在途期间其它路径
+  // （续开/批量恢复/并发建卷）对 sess store 的变更不再被陈旧快照整体覆写
+  // （旧实现整表写回 [...st.sessions]，在途变更全被挤掉——「续开的卷从
+  // 案头消失」的 lost-update 根因）。占号不回退：epoch 丢弃路径烧一个空号，
+  // 与「发号下限保留」纪律一致。
+  const id = getChatStore(ctx.storeId).sess.getState().nextSessionId;
+  getChatStore(ctx.storeId).sess.setState({ nextSessionId: id + 1 });
   let newAgent: OwnedAgentHandle | null = null;
   const factory = getAgentFactory(ctx.storeId);
-  const st = getChatStore(ctx.storeId).sess.getState();
   if (factory) {
     try {
       // 方案甲：新卷句柄按「出生时刻的全局默认」装配——此刻尚无会话覆盖，
       // 工厂收到 id 后裸 live（实时跟随全局默认）。
-      newAgent = await factory(st.nextSessionId);
+      newAgent = await factory(id);
     } catch {
       /* 装配失败 = 句柄缺席，内容层照常（错误由拟文路径可见） */
     }
@@ -474,28 +491,28 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
   }
   // ponytail: 消息在会话级 store 中 — 无需保存/恢复。
   // 只需保存旧会话的 token 计数。
-  if (st.activeIdx >= 0) {
-    const oldSid = st.sessions[st.activeIdx].id;
-    getChatStore(ctx.storeId).sess.getState().setSessionTokens(oldSid, ctx.getTotalTokensUsed());
-    // 把旧会话的输入草稿存回其会话槽 —— 新建会话后切回旧 tab 时文字仍在
-    getChatStore(ctx.storeId).input.getState().saveSessionDraft(oldSid);
+  {
+    const stNow = getChatStore(ctx.storeId).sess.getState();
+    if (stNow.activeIdx >= 0) {
+      const oldSid = stNow.sessions[stNow.activeIdx].id;
+      getChatStore(ctx.storeId).sess.getState().setSessionTokens(oldSid, ctx.getTotalTokensUsed());
+      // 把旧会话的输入草稿存回其会话槽 —— 新建会话后切回旧 tab 时文字仍在
+      getChatStore(ctx.storeId).input.getState().saveSessionDraft(oldSid);
+    }
   }
   ctx.flushReasoning();
   ctx.flushText();
   ctx.clearPendingToolCards();
-  const id = st.nextSessionId;
-  const label = `案卷 ${st.sessions.length + 1}`;
   if (newAgent) {
     agentSessionState.setAgent(ctx.storeId, id, newAgent);
     // 静态绑定该 Agent 的 board 到新会话（id 在 factory 之后才确定）
     newAgent.bindSession?.(String(id));
     agentSessionState.setExec(ctx.storeId, id, createExecState());
   }
-  getChatStore(ctx.storeId).sess.setState({
-    sessions: [...st.sessions, { id, label }],
-    activeIdx: st.sessions.length,
-    nextSessionId: id + 1,
-  });
+  getChatStore(ctx.storeId).sess.setState((s) => ({
+    sessions: [...s.sessions, { id, label: `案卷 ${s.sessions.length + 1}` }],
+    activeIdx: s.sessions.length,
+  }));
   // ponytail: 创建会话级消息 store — 唯一数据源
   msgStoreFor(ctx.storeId, id).getState().setMessages([]);
   resetMsgIdCounter();
@@ -934,7 +951,10 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   // 运行时字段全保真（工具 err/output/折叠依赖的形状都在其上），不再按 provider
   // 消息重建（重建是降采样：err 丢弃、output 可能翻不到、_id 重发号，加载后
   // 与实时「有出入」）。旧存档无 uiMessages → 走 provider 重建兜底（WO-7）。
-  const uiSnapshot = Array.isArray(data.uiMessages) && data.uiMessages.length > 0 ? data.uiMessages : undefined;
+  // 采纳快照必须过 adoptRestoredMessages（2026-09-09 根治）：旧 id 是上一
+  // 运行的发号产物，不垫发号器 → 重启后新消息撞号（消息消失/整流冲坏）。
+  const uiSnapshot =
+    Array.isArray(data.uiMessages) && data.uiMessages.length > 0 ? adoptRestoredMessages(data.uiMessages) : undefined;
   const hasUiSnapshot = uiSnapshot !== undefined;
   if (uiSnapshot) {
     msgStoreFor(ctx.storeId, sid).getState().setMessages(uiSnapshot);
@@ -1048,7 +1068,12 @@ export async function batchRestoreSessions(
   let failed = 0;
   for (const { sid, data, conv } of labeled) {
     try {
-      const uiSnapshot = Array.isArray(data.uiMessages) && data.uiMessages.length > 0 ? data.uiMessages : undefined;
+      // 采纳快照必须过 adoptRestoredMessages（同 loadSessionFromDisk——旧 id
+      // 是上一运行发号产物，不垫发号器 → 重启后新消息撞号）
+      const uiSnapshot =
+        Array.isArray(data.uiMessages) && data.uiMessages.length > 0
+          ? adoptRestoredMessages(data.uiMessages)
+          : undefined;
       if (uiSnapshot) {
         msgStoreFor(ctx.storeId, sid).getState().setMessages(uiSnapshot);
         setTurnPairs(ctx.storeId, sid, rebuildTurnPairsFromProvider(conv));
