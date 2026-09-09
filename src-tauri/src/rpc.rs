@@ -113,20 +113,6 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         //  detach/focus 三命令退役，shape 表同步清。）
         "context_list" => RpcResultShape::JsonValue,
 
-        // ── Engine 调度 ──
-        // hologram_call 是元命令（37 个底层工具），输出形态由工具决定，无法在
-        // 出口层保证恒定——保持 Text，由前端 holoExec 双形态守卫兜。
-        // hologram_tools_list：Ok 恒为 schema 数组 JSON（serde 序列化，空时为 "[]"）。
-        "hologram_tools_list" => RpcResultShape::JsonValue,
-
-        // ── Graph ──
-        // Phase 1.5：load_graph_json/get_graph_snapshot 返回聚合快照 JSON
-        // （快照按需算，恒定轻量，跨边界不再传全量图体）。
-        // analyze_and_load：轻状态。hologram_file_nodes：按文件符号索引。
-        // engine_impact：with_index 产物恒定。
-        "load_graph_json" | "get_graph_snapshot" | "hologram_file_nodes"
-        | "analyze_and_load" => RpcResultShape::JsonValue,
-
         // ── Git ──
         // （旧 git_* RPC 分支已随 kernel-plugin-runtime P2-3 迁 builtin.git 插件；
         //  插件又随 git 域收口退役（2026-09-05，c3 §8）——git_cap 能力口承接。
@@ -181,8 +167,8 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // web_cap：search = JSON 字符串 / fetch = 网页文本（信封 dispatch 的
         // Value 序列化语义逐字节保持）——Text。
         "web_cap" => RpcResultShape::Text,
-        // constraints_cap：read = YAML 原文 / write = "null"——Text。
-        "constraints_cap" => RpcResultShape::Text,
+        // （constraints_cap 随图谱全量退役删除，2026-09-09——hologram.constraints.yaml
+        //  读写仅服务引擎 run_check，兰台侧已无消费方。）
         // pty_cap：spawn = 会话 id / 其余 = "null"——Text。
         "pty_cap" => RpcResultShape::Text,
         // lsp_cap：start = 会话 id / request = JSON 字符串（TS parseJson）/
@@ -208,11 +194,8 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // sandbox_status：json! 构造恒 JSON。其余 MCP 文案文本，Text。
         "sandbox_status" => RpcResultShape::JsonValue,
 
-        // ── Hologram 遗留 ──
-        // hologram_run_check：serde 序列化（to_string(&result)，空时 unwrap_or_default
-        // 返回空串——空串非合法 JSON！保守 Text，前端 merge-gate 自行 parse。
-        // （run_check 正常路径永不为空，但 unwrap_or_default 的类型要求意味着
-        // 可能，不赌。）
+        // （hologram_run_check（serde 序列化、保守 Text）随图谱全量退役删除，
+        //  2026-09-09——run_check 约束检查属引擎图数据面。）
 
         // ── 插件安装 ──
         // plugin_install：ok_json(String) 恒 JSON 字符串。uninstall/set_enabled：
@@ -224,13 +207,9 @@ fn rpc_result_shape(method: &str) -> RpcResultShape {
         // read = 文件内容文本 / write/delete = ok_unit "null"——Text（默认臂）。
         "plugin_data_ensure" | "plugin_data_list" => RpcResultShape::JsonValue,
 
-        // ── 数据流（2 个命令：save / query；delete 已退役 2026-09-08）──
-        // dataflow_query 的 trace_id 路径直通磁盘 .json 文件原文——磁盘文件
-        // 可能被写坏，出口 parse 会把业务错变成协议错，保持 Text（前端
-        // agentInvoke 兜底链自处理）。save 同域同待遇，不单独展开。
-        // dataflow_save | dataflow_query → Text
+        // （数据流形状条目（dataflow_save / dataflow_query → Text）随图谱
+        //  全量退役删除，2026-09-09。）
 
-        
         // ── 其余（含 ok_unit "null" 家族、read_file_content、
         // exec_command、会话持久化、workspace、
         // protocol_bridge、llm_proxy_port 等）──
@@ -370,35 +349,10 @@ async fn dispatch_rpc(
         // ═══════════════════════════════════════════════════════
         "context_list" => crate::app::commands::context_list(app_ctx),
 
-        // ═══════════════════════════════════════════════════════
-        // Engine 调度（tools.rs 重新导出）
-        // ═══════════════════════════════════════════════════════
-        "hologram_call" => {
-            let tool = req_str(&params, "tool", "hologram_call")?;
-            let args = params.get("args").cloned().unwrap_or(Value::Null);
-            // 工作区身份透传（显式 workspace；缺省 = 活动工作区单槽决议）。
-            let workspace = opt_str(&params, "workspace");
-            commands::engine_dispatch::hologram_call(tool, args, workspace, state, app_ctx).await
-        }
-        "hologram_tools_list" => commands::engine_dispatch::hologram_tools_list(state, app_ctx).await,
-
-        // ═══════════════════════════════════════════════════════
-        // Graph（9 个命令）
-        // ═══════════════════════════════════════════════════════
-        "load_graph_json" => {
-            let path = opt_str(&params, "path");
-            commands::graph::load_graph_json(path, state, app_ctx).await
-        }
-        "analyze_and_load" => {
-            let path = req_str(&params, "path", "analyze_and_load")?;
-            let force = opt_bool(&params, "force");
-            commands::graph::analyze_and_load(path, force, app, state, app_ctx).await
-        }
-        "get_graph_snapshot" => commands::graph::get_graph_snapshot(state, app_ctx).await,
-        "hologram_file_nodes" => {
-            let file = req_str(&params, "file", "hologram_file_nodes")?;
-            commands::graph::hologram_file_nodes(file, state, app_ctx).await
-        }
+        // （Engine 调度（hologram_call / hologram_tools_list）与 Graph 命令族
+        //  （load_graph_json / analyze_and_load / get_graph_snapshot /
+        //  hologram_file_nodes）随图谱全量退役删除，2026-09-09——兰台零引擎
+        //  内置接线，引擎以独立进程 + 外部 MCP 通道形态供消费。）
 
         // ═══════════════════════════════════════════════════════
         // 能力口（R2 试点，kernel-capability-r2-search-pilot.md）——
@@ -601,13 +555,7 @@ async fn dispatch_rpc(
             let agent_id = opt_str(&params, "agent_id").or_else(|| opt_str(&params, "_agent_id"));
             commands::web_cap::web_cap(action, params, is_agent, agent_id, &state, &app).await
         }
-        "constraints_cap" => {
-            let action = req_str(&params, "action", "constraints_cap")?;
-            let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
-            let agent_id = opt_str(&params, "agent_id").or_else(|| opt_str(&params, "_agent_id"));
-            commands::constraints_cap::constraints_cap(action, params, is_agent, agent_id, &state, &app)
-                .await
-        }
+        // （constraints_cap 分发臂随图谱全量退役删除，2026-09-09。）
         "pty_cap" => {
             let action = req_str(&params, "action", "pty_cap")?;
             let is_agent = opt_bool(&params, "is_agent").unwrap_or(false);
@@ -921,33 +869,20 @@ async fn dispatch_rpc(
         // ═══════════════════════════════════════════════════════
         "sandbox_status" => commands::external::sandbox_status(),
 
-        // ═══════════════════════════════════════════════════════
-        // Hologram（尚未迁入 engine ToolRegistry 的遗留命令）
-        // ═══════════════════════════════════════════════════════
-        "hologram_run_check" => {
-            let path = opt_str(&params, "path");
-            commands::hologram::hologram_run_check(path, state, app_ctx).await
-        }
-        // （hologram_record_event 已退役 2026-09-08：前端零消费——时间线
-        //  记录走 Rust 侧 record_timeline_transport_detached 直达，不经 RPC。）
+        // （hologram_run_check 随图谱全量退役删除，2026-09-09。）
 
         // ═══════════════════════════════════════════════════════
-        // 工作区（10 个命令）
+        // 工作区
         // ═══════════════════════════════════════════════════════
         "workspace_activate" => {
             let path = req_str(&params, "path", "workspace_activate")?;
-            // per-workspace 图谱引擎旗标（2026-08-31）：缺省 = None（保持注册表现值）
-            let graph_engine = params.get("graph_engine").and_then(|v| v.as_bool());
-            ok_unit(commands::workspace::workspace_activate(path, graph_engine, state, app_ctx).await)
+            ok_unit(commands::workspace::workspace_activate(path, state, app_ctx).await)
         }
         "workspace_deactivate" => {
             ok_unit(commands::workspace::workspace_deactivate(state, app_ctx).await)
         }
-        "workspace_start_watcher" => {
-            ok_unit(commands::workspace::workspace_start_watcher(app, state).await)
-        }
         // get_last_project：Option<String> serde 序列化，恒 "path"/null JSON
-        //（credential_get 同款）；图谱引擎停用时冷启动的唯一恢复信号。
+        //（credential_get 同款）。
         "get_last_project" => {
             let r = tokio::task::spawn_blocking(commands::workspace::get_last_project)
                 .await
@@ -985,17 +920,7 @@ async fn dispatch_rpc(
                 .map_err(|e| format!("workspace_remove 任务失败: {e}"))?;
             ok_unit(res)
         }
-        // per-workspace 图谱引擎开关（2026-08-31）：首页卡片徽标切换入口；
-        // 未知路径自动补登记。生效语义 = 装配期一次（在途不活拆）。
-        "workspace_set_graph_engine" => {
-            let path = req_str(&params, "path", "workspace_set_graph_engine")?;
-            let enabled = req_bool(&params, "enabled", "workspace_set_graph_engine")?;
-            let res =
-                tokio::task::spawn_blocking(move || commands::workspace::registry::set_graph_engine(&path, enabled))
-                    .await
-                    .map_err(|e| format!("workspace_set_graph_engine 任务失败: {e}"))?;
-            ok_unit(res)
-        }
+        // （workspace_set_graph_engine 随图谱全量退役删除，2026-09-09。）
         // 新建工作区目录（2026-08-31 首页 sheet「创建」路径）：
         // ~/Documents/兰台/<名字>，返回归一化路径字符串。
         "workspace_create_dir" => {
@@ -1030,23 +955,9 @@ async fn dispatch_rpc(
             ok_unit(agent_session_append(&project_path, &agent_id, messages, rewrite))
         }
 
-        // ═══════════════════════════════════════════════════════
-        // 数据流（2 个命令：save / query；delete 已退役 2026-09-08）
-        // ═══════════════════════════════════════════════════════
-        "dataflow_save" => {
-            let query = req_str(&params, "query", "dataflow_save")?;
-            let content = opt_str(&params, "content");
-            let explore_result = opt_str(&params, "explore_result");
-            let dataflow_result = opt_str(&params, "dataflow_result");
-            commands::dataflow::dataflow_save(query, content, explore_result, dataflow_result, state).await
-        }
-        "dataflow_query" => {
-            let trace_id = opt_str(&params, "trace_id");
-            let list = opt_bool(&params, "list");
-            commands::dataflow::dataflow_query(trace_id, list, state).await
-        }
-        // （dataflow_delete 已退役 2026-09-08：前端零消费——engine-domain
-        //  插件的模型工具只注册 save/query 两件。）
+        // （数据流命令族（dataflow_save / dataflow_query / dataflow_delete）随
+        //  图谱全量退役删除，2026-09-09——engine-domain 插件与 .lantai/dataflow
+        //  壳侧存储一并退役。）
 
 
 
@@ -1124,21 +1035,21 @@ mod tests {
         use serde_json::json;
         // 形态表钉死：小样命令 = JsonValue，未列命令默认 Text
         // （shell_env / exec_command 已随 builtin.shell 迁 tool_call 退表——
-        //  workspace_list 接任 JsonValue 小样，kernel-plugin-runtime P2-4）
+        //  workspace_list 接任 JsonValue 小样，kernel-plugin-runtime P2-4；
+        //  图命令族（load_graph_json 等）已随图谱退役退表，2026-09-09——
+        //  get_graph_meta/get_graph_page 断言改为「未列命令默认 Text」的同型小样）
         assert_eq!(rpc_result_shape("workspace_list"), RpcResultShape::JsonValue);
-        // Phase 1.5：load_graph_json/get_graph_snapshot = 聚合快照（JsonValue 恒定）；
-        // 分页双命令（get_graph_meta/get_graph_page）与 get_full_graph 已拆除。
-        assert_eq!(rpc_result_shape("load_graph_json"), RpcResultShape::JsonValue);
-        assert_eq!(rpc_result_shape("get_graph_snapshot"), RpcResultShape::JsonValue);
-        assert_eq!(rpc_result_shape("hologram_file_nodes"), RpcResultShape::JsonValue);
+        assert_eq!(rpc_result_shape("load_graph_json"), RpcResultShape::Text);
+        assert_eq!(rpc_result_shape("get_graph_snapshot"), RpcResultShape::Text);
+        assert_eq!(rpc_result_shape("hologram_file_nodes"), RpcResultShape::Text);
         assert_eq!(rpc_result_shape("get_graph_meta"), RpcResultShape::Text);
         assert_eq!(rpc_result_shape("get_graph_page"), RpcResultShape::Text);
         assert_eq!(rpc_result_shape("exec_command"), RpcResultShape::Text);
         assert_eq!(rpc_result_shape("anything_else"), RpcResultShape::Text);
-        // JsonValue 命令：真结构化展开（小样 workspace_list / get_graph_snapshot）
+        // JsonValue 命令：真结构化展开（小样 workspace_list）
         let v = dispatch_result_to_value("workspace_list", Ok(r#"{"bundled":true}"#.into())).unwrap();
         assert_eq!(v, json!({"bundled": true}));
-        let v = dispatch_result_to_value("get_graph_snapshot", Ok(r#"{"total_nodes":42}"#.into())).unwrap();
+        let v = dispatch_result_to_value("workspace_list", Ok(r#"{"total_nodes":42}"#.into())).unwrap();
         assert_eq!(v, json!({"total_nodes": 42}));
         let bad = dispatch_result_to_value("workspace_list", Ok("not json".into()));
         assert!(bad.is_err(), "JsonValue 命令 Ok 输出非合法 JSON 必须转 Err");

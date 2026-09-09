@@ -84,47 +84,9 @@ pub(crate) fn get_ctx(state: &WorkspaceState) -> Result<Arc<PermissionContext>, 
     Ok(handle.permission_ctx.clone())
 }
 
-/// 检查 MCP/图工具权限 — deny + ask + allow + 安全检查。
-/// MCP 工具是只读的；只有明确的 deny 规则才会阻止它们。
-/// 无工作区 = 无规则 = 放行（允许 hologram_status 等诊断工具通过）。
-pub(crate) fn check_mcp_permission(
-    tool_name: &str,
-    state: &tauri::State<'_, WorkspaceState>,
-) -> Result<(), String> {
-    // ponytail: 无工作区 = 无 .lantai/permissions.json = 无自定义规则，放行。
-    let ctx = match get_ctx(state) {
-        Ok(ctx) => ctx,
-        Err(_) => return Ok(()),
-    };
-    let rules = ctx.read_rules();
-
-    // ① 工具级 Deny — 最高优先级
-    if let Some(rule) = rules.find_deny(tool_name, None) {
-        let reason = format!("{} 工具被规则禁止使用", rule.explain());
-        drop(rules);
-        ctx.audit_deny(tool_name, "", &reason);
-        return Err(reason);
-    }
-
-    // ② 工具级 Ask — 强制弹窗确认（此前对 MCP 工具忽略此项）
-    if let Some(rule) = rules.find_ask(tool_name, None) {
-        // yolo 模式：Ask 一律自动放行（同步路径无前端弹窗可等）
-        if permissions::current_permission_mode() == permissions::PermissionMode::Yolo {
-            return Ok(());
-        }
-        let reason = rule.explain();
-        drop(rules);
-        return Err(format!("{} 工具需要用户确认: {}", tool_name, reason));
-    }
-
-    // ③ 工具级 Allow — 明确允许
-    if rules.find_allow(tool_name, None).is_some() {
-        return Ok(());
-    }
-
-    // ④ 无规则匹配 → 放行
-    Ok(())
-}
+// （check_mcp_permission——引擎 MCP 工具的 RPC 级权限闸——随图谱全量退役
+//  删除，2026-09-09：唯一调用方 hologram_run_check 已退役；外部 MCP 工具
+//  的权限面在 TS 执行器（agent 权限系统），不经壳 RPC。）
 
 /// 检查工具权限。若为 Ask，则发送事件并等待用户响应。
 pub(crate) async fn check_permission(

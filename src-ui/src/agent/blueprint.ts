@@ -41,8 +41,7 @@ import { createCodeExecutionTool } from './code-run/code-execution-tool';
 import type { CodeBindingSpec } from './code-run/host';
 import type { AgentContext } from './context';
 import {
-  createGraphContextHook,
-  createGraphPreflightHook,
+  createBuildResultHook,
   createStatePreflightHook,
   createStateReadHook,
   type HookRegistry,
@@ -50,10 +49,9 @@ import {
 } from './hooks';
 import { createBoardTrackingHook } from './hooks/board-tracking-hook';
 import type { MessageBus } from './message-bus';
-import { createPlanExploreHook, createPlanWriteHook } from './plan/plan-graph-hook';
 import { PlanModeInjector } from './plan/plan-injection';
 import { createEnterPlanModeTool, createExitPlanModeTool } from './plan/plan-tools';
-import { loadEngineSnapshot, registerCompactionTools } from './runtime/agent-builder';
+import { registerCompactionTools } from './runtime/agent-builder';
 import type { AgentAssemblyInputs } from './runtime/types';
 import type { DiagnosticsSource } from './state-inject';
 import { createTaskTools, TaskManager } from './task';
@@ -228,9 +226,6 @@ export function firstPartyCapabilities(): AgentCapability[] {
         scope.tools.register(
           createMergeTool(taskProxy, () => agent.id, scope.deps.isolationExec, {
             projectPath: scope.ctx.projectPath,
-            // 图门禁真值 = 本装配面 graphContext 是否在场（绑定期引擎开关的下游
-            // 快照）——不读实时 settings，防中途拨开关与绑定态错位（#1/#2）
-            graphEngineOn: scope.inputs.graphContext != null,
           }),
         );
         scope.tools.register(createBoardStatusTool(taskProxy, () => agent.id));
@@ -340,33 +335,22 @@ export function firstPartyCapabilities(): AgentCapability[] {
       },
     },
     {
-      // 图上下文 + 状态 + plan 增强 hooks（提示注入类 — 受 hooksEnabled 总开关）。
-      // 2026-08-24 解耦（#3）：state-read/state-preflight 的数据源是 LSP 诊断
-      //（与图谱引擎无关），不再被「无 graphContext」一票否决——when 放宽为
-      // 图或诊断源任一在场；图系 hooks（graph-context/graph-preflight/plan×2
-      //+ 快照加载）仍各自以 graphContext 为准（键不拆：minimal 按 graph-hooks
-      // 整键禁用是字节契约面）。
-      key: 'graph-hooks',
+      // 状态 + 构建结果 hooks（提示注入类 — 受 hooksEnabled 总开关）。
+      // 2026-09-09 图谱退役：graph-hooks 收缩为纯状态面并改名 state-hooks——
+      // graphContext 系（graph-context/graph-preflight/plan 增强/引擎快照加载）
+      // 随图谱全量退役删除；state-read/state-preflight 的数据源是 LSP 诊断
+      //（与图谱引擎无关），build-result 承接原 graph-context hook 的
+      // run_shell 构建缓存分支（[构建] turn-start 注入源）。
+      key: 'state-hooks',
       phase: 'agent',
-      when: ({ inputs, deps }) => !!inputs.graphContext || !!deps.diagnosticsSource,
       install: ({ ctx, inputs, hooks, preflightHooks, deps }) => {
-        const graphContext = inputs.graphContext;
-        // 引擎快照加载不受 hooksEnabled 门控（与旧装配一致 — 只有 hook 注册受控）
-        if (graphContext) void loadEngineSnapshot(graphContext, ctx.projectPath).catch(() => {});
         if (inputs.hooksEnabled === false) return;
-        if (graphContext) hooks.register(createGraphContextHook(graphContext));
         if (deps.diagnosticsSource) {
           hooks.register(createStateReadHook(ctx.projectPath, deps.diagnosticsSource));
         }
-        if (graphContext) preflightHooks.register(createGraphPreflightHook(graphContext));
+        hooks.register(createBuildResultHook());
         if (deps.diagnosticsSource) {
           preflightHooks.register(createStatePreflightHook(deps.diagnosticsSource));
-        }
-        if (graphContext) {
-          const planState = ctx.resolve('planState');
-          // Plan 模式图增强 hook — 探索时注入影响面，写计划时追加分析
-          hooks.register(createPlanExploreHook(graphContext, planState));
-          hooks.register(createPlanWriteHook(graphContext, planState));
         }
       },
     },

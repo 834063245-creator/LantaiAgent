@@ -22,16 +22,16 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 23;
+export const OPEN_SURFACE_CONTRACT_VERSION = 24;
 
-/** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。 */
+/** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v24（2026-09-09）：graph-service.ts（ctx.graph seam）随图谱功能全量退役移除。 */
 export const OPEN_SURFACE_CONTRACT_FILES: readonly string[] = [
   // 六个 seam 注册表（provider 接口 + 动作枚举 + 消费单点签名）
   'src/composition/services.ts', // ctx.llm + ContributionRegistry 内核 + 四通道 def
   'src/composition/fs-service.ts', // ctx.fs
   'src/composition/shell-service.ts', // ctx.shell（subprocess 并入）
   'src/composition/session-persistence-service.ts', // ctx.sessionPersistence
-  'src/composition/graph-service.ts', // ctx.graph
   'src/composition/subagent-service.ts', // ctx.subagents
   // seam 裁剪面（组合域寻址契约）
   'src/composition/seam-resolution.ts',

@@ -42,7 +42,9 @@ describe('composition/tool-rows（行装配，builtin 行表已退役）', () =>
     }
     expect(names.some((n) => n.startsWith('task_'))).toBe(true);
     expect(names).toContain('agent_spawn');
-    expect(names).toContain('dataflow_save');
+    // dataflow_save 随 engine-domain（hologram 动态工具族）图谱全量退役整删
+    // （2026-09-09）——工具面不再含引擎侧写动作。
+    expect(names).not.toContain('dataflow_save');
     // 名字冲突装载期拒绝：重名 register 直接 throw，能走到这里即证明
     // 行表 + 别名 + 外部贡献全链路无重名
     expect(new Set(names).size).toBe(names.length);

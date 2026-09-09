@@ -5,7 +5,7 @@
 //   - 名册 dir 集 === 磁盘 builtin 目录集（加/删产物漏改名册 = 红）
 //   - 名册 scope 名 / inject === 各源码 index.ts 插件对象（name/inject 派生零漂移）
 //   - first-party-manifest feature 集 === 名册集（description 从名册读，勿双写）
-//   - 名册无孤儿/重复/序断裂（buildOrder 0..30 连续）
+//   - 名册无孤儿/重复/序断裂（buildOrder 0..28 连续；31→29 随图谱退役，2026-09-09）
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -69,7 +69,7 @@ describe('builtin-roster（名册单一真源守卫）', () => {
     const disk = new Set(diskBuiltinDirs());
     expect([...roster].filter((d) => !disk.has(d))).toEqual([]); // 名册有磁盘无
     expect([...disk].filter((d) => !roster.has(d))).toEqual([]); // 磁盘有名册无
-    expect(roster.size).toBe(31);
+    expect(roster.size).toBe(29);
   });
 
   it('名册 buildOrder 连续 0..N-1 无重复（防序号断裂/误插）', () => {

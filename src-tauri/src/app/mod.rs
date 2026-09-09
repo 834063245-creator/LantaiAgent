@@ -81,27 +81,12 @@ pub(crate) fn display_path(p: &Path) -> String {
 
 /// 按工作区实例化的数据上下文。引擎-宿主逻辑全断（2026-09-08）后：
 /// 引擎数据所有权（hologram.db/FTS5/快照/向量/基线）完全归引擎进程与其
-/// 自有的 `.hologram/` 目录——壳不持任何引擎数据句柄，本结构只剩
-/// 「根 + 进程外传输」两样。
+/// 自有的 `.hologram/` 目录。图谱全量退役（2026-09-09）后壳不再拉起/持有
+/// 引擎进程——本结构只剩 canonical 根（注册表锚点）。
 pub(crate) struct WorkspaceDataContext {
     /// canonical 工作区根（注册表键）。
     pub root: PathBuf,
-    /// 进程外传输（每工作区一个引擎子进程的 stdio MCP 通道；惰性构造，
-    /// 经 resolve_transport 取用）。
-    pub(crate) remote: std::sync::Mutex<Option<std::sync::Arc<crate::engine_transport::McpRemoteTransport>>>,
     pub created_at_ms: u64,
-}
-
-impl WorkspaceDataContext {
-    /// 优雅停机：进程外形态下随上下文回收关停引擎子进程（惰性 spawn 的
-    /// 对称清理）。GC 释放上下文前调用；幂等。
-    pub(crate) fn shutdown(&self) {
-        if let Ok(mut guard) = self.remote.lock() {
-            if let Some(t) = guard.take() {
-                t.shutdown();
-            }
-        }
-    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -134,7 +119,7 @@ impl AppContexts {
     }
 
     /// 确保工作区上下文存在（幂等——同根复用同一实例）。纯注册表操作，
-    /// 不触碰引擎数据（传输在使用点惰性构造）。
+    /// 不触碰引擎数据（图谱退役后本结构只持根路径）。
     pub(crate) fn ensure_context(&self, root: &str) -> Result<Arc<WorkspaceDataContext>, String> {
         let canon = canonical_root(root)
             .ok_or_else(|| format!("工作区目录不存在或不可访问: {}", root.trim()))?;
@@ -148,58 +133,21 @@ impl AppContexts {
         }
         let ctx = Arc::new(WorkspaceDataContext {
             root: canon.clone(),
-            remote: std::sync::Mutex::new(None),
             created_at_ms: Self::now_ms(),
         });
         guard.insert(canon, ctx.clone());
         Ok(ctx)
     }
 
-    /// 工作区传输句柄（具体型，供 WorkspaceHandle pump / timeline 记录等
-    /// 长生命周期消费方持有）。ensure_context + 惰性构造 McpRemoteTransport。
-    pub(crate) fn transport_of(
-        &self,
-        root: &str,
-    ) -> Result<Arc<crate::engine_transport::McpRemoteTransport>, String> {
-        let ctx = self.ensure_context(root)?;
-        let mut guard = crate::utils::lock_or_recover(&ctx.remote);
-        if guard.is_none() {
-            *guard = Some(std::sync::Arc::new(
-                crate::engine_transport::McpRemoteTransport::new(&ctx.root.to_string_lossy()),
-            ));
-        }
-        Ok(guard.clone().expect("just set"))
-    }
-
-    /// 传输解析（命令层入口）：与旧 resolve_engine 同决议链（显式 → 活动
-    /// 单槽），产出每工作区引擎进程的 stdio MCP 通道。调用方 spawn_blocking
-    /// 后 .call(method, args)。
-    pub(crate) fn resolve_transport(
-        &self,
-        explicit_root: Option<&str>,
-        fallback_root: Option<&str>,
-    ) -> Result<(std::sync::Arc<crate::engine_transport::McpRemoteTransport>, PathBuf), String> {
-        let root = explicit_root
-            .or(fallback_root)
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .ok_or_else(|| "未打开工作区，请先打开项目".to_string())?;
-        let ctx = self.ensure_context(root)?;
-        let transport = self.transport_of(&ctx.root.to_string_lossy())?;
-        Ok((transport, ctx.root.clone()))
-    }
-
-    /// 上下文空闲判定回收：非活动工作区（不在保留集）→ 关停引擎子进程 +
-    /// 移除出注册表。保留集由命令层传入（单槽活动根）。
-    /// 归零：会话绑定判定已退役——引擎上下文只跟「活动工作区」走。
+    /// 上下文空闲判定回收：非活动工作区（不在保留集）→ 移除出注册表。
+    /// 保留集由命令层传入（单槽活动根）。
+    /// 归零：会话绑定判定已退役——上下文只跟「活动工作区」走。
     pub(crate) fn gc_if_unused(&self, root: &Path, keep_roots: &[PathBuf]) {
         let kept = keep_roots.iter().any(|k| k == root);
         if kept {
             return;
         }
-        if let Some(ctx) = write_or_recover(&self.contexts).remove(root) {
-            ctx.shutdown();
-        }
+        write_or_recover(&self.contexts).remove(root);
     }
 
     /// 上下文清单（诊断 / 守护测试）。
@@ -209,10 +157,7 @@ impl AppContexts {
             .map(|c| ContextInfo {
                 workspace: display_path(&c.root),
                 created_at_ms: c.created_at_ms,
-                // 语义（2026-09-08 起）：该工作区的引擎子进程是否已拉起——
-                // 引擎数据所有权归引擎进程，壳不再直查 store（诊断 RPC，
-                // 前端无消费面）。
-                ready: crate::utils::lock_or_recover(&c.remote).is_some(),
+                ready: true,
             })
             .collect()
     }
@@ -248,8 +193,7 @@ mod tests {
     }
 
     /// 双工作区并行：各持各的数据上下文，互不串扰（L1 验收判据的注册
-    /// 表面）。引擎数据/进程级隔离由 engine_transport.rs 内联 e2e 测试覆盖
-    ///（Phase 3 起引擎在子进程，单元测试不 spawn）。
+    /// 表面）。（图谱退役后上下文只持根路径——进程级隔离已无壳侧面。）
     #[test]
     fn two_workspaces_get_distinct_contexts() {
         let ws_a = temp_dir("lantai_ctx_par_a");
@@ -264,30 +208,9 @@ mod tests {
         assert!(!Arc::ptr_eq(&ctx_a1, &ctx_b), "异根各持实例");
         assert_ne!(ctx_a1.root, ctx_b.root);
         assert_eq!(app.context_count(), 2);
-        // 传输惰性构造——ensure 上下文不拉起引擎进程
-        for ctx in [&ctx_a1, &ctx_b] {
-            assert!(
-                crate::utils::lock_or_recover(&ctx.remote).is_none(),
-                "未使用的上下文不应有传输"
-            );
-        }
 
         let _ = std::fs::remove_dir_all(&ws_a);
         let _ = std::fs::remove_dir_all(&ws_b);
-    }
-
-    /// 决议链（workspace-session-ownership-rework 后两条臂）：上下文级。
-    /// resolve_transport 的进程 spawn 面由 engine_transport.rs 内联 e2e 覆盖。
-    #[test]
-    fn resolve_transport_rejects_empty_roots() {
-        let app = AppContexts::new();
-        // 显式与回退全空/全无效 → 显式报错（「未打开工作区」）
-        let err = app.resolve_transport(Some(""), Some("")).unwrap_err();
-        assert!(err.contains("未打开工作区"), "{err}");
-        let err = app.resolve_transport(Some("Z:/definitely/not/here"), None).unwrap_err();
-        assert!(err.contains("工作区目录不存在"), "{err}");
-        // 全 None 同理
-        assert!(app.resolve_transport(None, None).is_err());
     }
 
     /// GC：非保留根回收；保留根不回收。

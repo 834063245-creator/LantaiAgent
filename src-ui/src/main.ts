@@ -6,8 +6,8 @@
 // 化执行，见 composition/shell-rows.ts；行实现落 src/shell/rows/*）。
 // 历史注：三模式星图 minimal/standard/full 独立实例切换重建（v3）；
 // Workspace 抽象统一工作区状态（v4.1）；壳行化（S2，2026-08-20）；
-// V5 拆除（2026-08-22）——星图 canvas/旧 chrome CSS 随观测台退役，
-// 图谱走后台预热 + Agent 工具面（graphData 数据面保留）。
+// V5 拆除（2026-08-22）——星图 canvas/旧 chrome CSS 随观测台退役；
+// 图谱全量退役（2026-09-09）——后台预热/Agent 图工具面一并移除。
 
 import './app/fonts';
 import './app/tokens.css';

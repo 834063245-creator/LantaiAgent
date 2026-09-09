@@ -24,11 +24,11 @@
 // （贡献是插件注册的对象本体，无 factory 面——插件自担实例状态性；
 // 与 tools 通道的实例缓存语义天然一致）。
 //
-// 装配序（runtime._assembleAgent）：capability 钩子先注册（graph-hooks/
+// 装配序（runtime._assembleAgent）：capability 钩子先注册（state-hooks/
 // board-tracking 等第一方面），通道贡献随后——与 tools 域「builtin 行在
 // 前、贡献行随后」同序约定；enrich 链中后注册的 hook 看到已富化的输出，
 // preflight 聚合序同理。子 Agent 不自动继承（spawnSubAgent 手工建
-// registry 只挂 board-tracking——与 graph-hooks 不下放子 Agent 的既有
+// registry 只挂 board-tracking——与 state-hooks 不下放子 Agent 的既有
 // 语义一致；插件钩子要下放属后续扩展）。
 //
 // 组合解析域：钩子贡献**不进** roster 寻址域（四域行模型不含 hooks 域

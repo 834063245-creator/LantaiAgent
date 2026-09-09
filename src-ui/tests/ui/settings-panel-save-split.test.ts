@@ -125,12 +125,15 @@ describe('SettingsPanel — 保存拆域', () => {
     const save = document.querySelector<HTMLButtonElement>('.sp-footer .sp-btn-save')!;
     expect(save.disabled).toBe(true);
 
-    // 模型参数区（全局上下文窗口/深度思考）已拆除——用 Agent 页
-    // 图谱引擎开关触发非 Provider tab 的 dirty。
-    const engineToggle = [...document.querySelectorAll<HTMLInputElement>('.sp-checkbox-label input')].find((i) =>
-      i.closest('.sp-section')?.textContent?.includes('图谱引擎'),
+    // 模型参数区（全局上下文窗口/深度思考）与图谱引擎开关均已拆除（图谱功能
+    // 全量退役，2026-09-09）——改用「关于」页的启动时自动检查更新开关触发非
+    // Provider tab 的 dirty（同一 commit → markDirty 路径）。
+    clickTab('关于');
+    await tick();
+    const autoUpdateToggle = [...document.querySelectorAll<HTMLInputElement>('.sp-checkbox-label input')].find((i) =>
+      i.closest('.sp-section')?.textContent?.includes('启动时自动检查更新'),
     )!;
-    engineToggle.click();
+    autoUpdateToggle.click();
     await tick();
     expect(save.disabled).toBe(false);
 

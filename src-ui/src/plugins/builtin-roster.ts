@@ -3,7 +3,7 @@
 
 // builtin-roster — 第一方内置产物名册（单一真源，2026-09-06 事故立法）。
 //
-// 数据本体在 builtin-roster.json（31 个 feature 产物的清单事实：dir /
+// 数据本体在 builtin-roster.json（29 个 feature 产物的清单事实：dir /
 // buildOrder / description / entry / hostModule / inject / face / define）；
 // 本文件是薄类型包装 + 派生 helper——TS 侧经 resolveJsonModule import JSON，
 // Node 构建脚本直读同一 JSON（零 loader，无双格式漂移）。
@@ -14,7 +14,7 @@
 //     （description）。各 builtin/index.ts 的插件对象 inject 必须与名册一致
 //     （守卫测试对拍——名册权威，源码违反即红）。
 //   - name（= "hologram/" + dir）派生，不在名册手写。
-//   - service（14 内核，无目录非产物）不进本名册，仍留 first-party-manifest。
+//   - service（13 内核，无目录非产物）不进本名册，仍留 first-party-manifest。
 
 import roster from './builtin-roster.json';
 

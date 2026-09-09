@@ -44,67 +44,25 @@ pub(crate) const DETACHED_PROCESS_FLAG: u32 = 0x00000008; // 仅一次性探测�
 pub(crate) mod bg_jobs;
 pub(crate) mod build_lock;
 pub(crate) mod encoding;
-pub(crate) mod graph_io;
 pub(crate) mod ipc_guard;
 pub(crate) mod path_resolve;
 // （sticky_cwd 已随 shell 域收口退役——2026-09-05，kernel-capability-c3-design.md
 //  R3-d §9 裁定：粘性 cwd 归 TS 编排层（session-context per-owner 注册表 +
 //  agent/sticky-cwd.ts 截流），Rust 口只收 cwd/sticky_cwd 显式参数——
-//  commands/process_cap.rs resolve_effective_cwd。）
+//  commands/process_cap.rs resolve_effective_cwd。
+//  graph_io（图谱分析装载轮询）已随图谱全量退役删除，2026-09-09。）
 pub(crate) use bg_jobs::*;
 pub(crate) use build_lock::*;
 pub(crate) use encoding::*;
-pub(crate) use graph_io::*;
 pub(crate) use ipc_guard::*;
 pub(crate) use path_resolve::*;
 
 /// 日志守护 — 在首次打开项目时初始化一次，在整个进程生命周期内持有。
 pub(crate) static LOG_GUARD: std::sync::OnceLock<WorkerGuard> = std::sync::OnceLock::new();
 
-/// 时间线记录（Phase 3 transport 形态）：事件落工作区引擎进程的
-/// hologram.db（timeline_record 壳方法）。best-effort——timeline 是旁路
-/// 观测面，失败仅日志可见，不阻断主操作。
-pub(crate) fn record_timeline_transport(
-    transport: Option<&std::sync::Arc<crate::engine_transport::McpRemoteTransport>>,
-    event: &str,
-    node_id: Option<&str>,
-    summary: &str,
-) {
-    let Some(t) = transport else {
-        return; // 占位工作区（无传输）不记录
-    };
-    if let Err(e) = t.call(
-        "timeline_record",
-        &serde_json::json!({
-            "event": event,
-            "node_id": node_id.unwrap_or(""),
-            "detail": summary,
-        }),
-    ) {
-        eprintln!("[timeline] 记录失败 ({event}): {e}");
-    }
-}
-
-/// timeline 记录的 fire-and-forget 形态：detached 线程发送，引擎卡死/缺席
-/// 只丢观测事件，绝不拖住工具命令线程。同步形态（`record_timeline_transport`）
-/// 会把引擎往返（`CALL_TIMEOUT_SECS` = 3600s）内联进调用方命令——Phase 3 后
-/// write/edit 挂起的根治形态：能力工具与引擎的耦合必须不占命令线程。
-pub(crate) fn record_timeline_transport_detached(
-    transport: Option<std::sync::Arc<crate::engine_transport::McpRemoteTransport>>,
-    event: &str,
-    node_id: Option<&str>,
-    summary: &str,
-) {
-    let Some(t) = transport else {
-        return; // 占位工作区（无传输）不记录
-    };
-    let event = event.to_string();
-    let node_id = node_id.unwrap_or("").to_string();
-    let summary = summary.to_string();
-    std::thread::spawn(move || {
-        record_timeline_transport(Some(&t), &event, Some(&node_id), &summary);
-    });
-}
+// （时间线记录（record_timeline_transport / record_timeline_transport_detached）
+//  随图谱全量退役删除，2026-09-09——事件落引擎进程的 hologram.db，属引擎
+//  图数据面；壳内零引擎接线后无调用方。）
 
 pub(crate) fn is_private_ip(host: &str) -> bool {    // 主机名检查（解析到本地/私有的 DNS 名称）
     let host_lower = host.to_lowercase();
@@ -484,19 +442,6 @@ mod tests {
         let s: String = "汉".repeat(MAX_TOOL_OUTPUT_CHARS * 2);
         let out = truncate_output(&s);
         assert!(out.contains("[output truncated:"));
-    }
-
-    #[test]
-    fn guard_ipc_size_allows_small() {
-        let s = "x".repeat(1024);
-        assert_eq!(guard_ipc_size(s.clone(), "测试").unwrap(), s);
-    }
-
-    #[test]
-    fn guard_ipc_size_rejects_oversize() {
-        let s = "x".repeat(MAX_IPC_RESPONSE_BYTES + 1);
-        let err = guard_ipc_size(s, "Graph JSON").unwrap_err();
-        assert!(err.contains("超过 IPC 上限"), "报错必须说明原因：{err}");
     }
 
     /// 回归 P0-3：上次崩溃残留的 .bak 不得让后续写入永久失败。

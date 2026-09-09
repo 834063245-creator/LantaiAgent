@@ -7,31 +7,29 @@
 // 注入点：
 //   TurnStart  — onSessionPersisted → 刷新缓存 → 下一轮看到新数据
 //   PreRead    — read_file_content 钩子 → 同步读取 diag + blame 缓存
-//   PostEdit   — write-tool 钩子 → 同步读取 check 缓存
 //
 // 所有调用都能优雅降级 — 数据不可用时不注入任何内容。
+//
+// （[简报]/[时间轴] 注入随图谱功能全量退役删除，2026-09-09——
+//  run_check 约束检查与引擎时间线均属图数据面；[Git]/[构建]/[LSP]
+//  与引擎无关照常保留。）
 
-import { kernelGitCall, typedRpc } from '../rpc-contract';
-import type { BuildResult, CheckStatusSummary } from './cache-store';
+import { kernelGitCall } from '../rpc-contract';
+import type { BuildResult } from './cache-store';
 import {
   getBlameCache,
   getBuildResultCache,
   getCacheEpoch,
-  getCheckCache,
   getGitCache,
   getGitCacheTs,
-  getTimelineCache,
-  getTimelineCacheTs,
   hasBlameEntry,
   setBlameEntry,
   setBuildResultCache,
-  setCheckCache,
   setGitCache,
-  setTimelineCache,
 } from './cache-store';
 import { parseGitStatusPorcelain } from './git-porcelain';
 
-export type { BuildResult, CheckStatusSummary, GitStatusSummary, TimelineEvent } from './cache-store';
+export type { BuildResult, GitStatusSummary } from './cache-store';
 export { invalidateBlameEntry } from './cache-store';
 
 /** LSP 诊断的结构类型 — 与 ui/lsp-client 的 LspDiagnostic 结构一致，
@@ -131,18 +129,6 @@ export function getGitBlameCached(filePath: string): string | null {
   return getBlameCache()[filePath] ?? null;
 }
 
-// ── Check 状态缓存 ──
-
-/** 由 CheckPanel.update() 在新检查结果到达时调用。 */
-export function cacheCheckResult(result: ReturnType<typeof getCheckCache> & {}): void {
-  setCheckCache(result as CheckStatusSummary);
-}
-
-/** 钩子同步读取。 */
-export function getCheckStatusCached() {
-  return getCheckCache();
-}
-
 // ── 构建/测试结果缓存 ──
 
 /** 由 run_shell 钩子在测试/构建命令完成时调用。
@@ -171,68 +157,6 @@ export function formatBuildResult(consumerId?: string): string | null {
   return `[构建] ${icon} ${r.command}: ${r.summary}`;
 }
 
-// ── 时间轴缓存 ──
-
-const TIMELINE_CACHE_MS = 10000;
-
-/** Fire-and-forget 刷新。 */
-export async function refreshTimeline(projectPath: string): Promise<void> {
-  const now = Date.now();
-  const cached = getTimelineCache();
-  if (cached.length > 0 && now - getTimelineCacheTs() < TIMELINE_CACHE_MS) return;
-  const epoch = getCacheEpoch();
-  try {
-    const json = await typedRpc('hologram_call', {
-      tool: 'project_timeline',
-      args: { path: projectPath, limit: 8 },
-    });
-    // 工作区已切换（缓存被 reset）— 旧项目的在途结果直接丢弃
-    if (getCacheEpoch() !== epoch) return;
-    const raw = JSON.parse(json);
-    setTimelineCache((raw.events || []).slice(0, 8), now);
-  } catch {
-    /* silent */
-  }
-}
-
-/** 格式化最近的时间轴事件用于 turn-start。仅显示面向用户的事件。 */
-export function formatTimeline(): string | null {
-  const cached = getTimelineCache();
-  if (cached.length === 0) return null;
-  const recent = cached.slice(0, 5);
-  const labels = recent.map((e) => {
-    const fname = e.file ? e.file.replace(/\\/g, '/').split('/').pop() : '';
-    const label = eventLabel(e.event_type);
-    return fname ? `${label} ${fname}` : label;
-  });
-  return `[时间轴] ${labels.join(' → ')}`;
-}
-
-function eventLabel(type: string): string {
-  switch (type) {
-    case 'agent_write':
-      return '写入';
-    case 'agent_edit':
-      return '编辑';
-    case 'agent_delete':
-      return '删除';
-    case 'agent_rename':
-      return '重命名';
-    case 'agent_move':
-      return '移动';
-    case 'commit_clean':
-      return '✅';
-    case 'commit_violation':
-      return '⚠️';
-    case 'file_changed':
-      return '外部变更';
-    case 'incremental_update':
-      return '图更新';
-    default:
-      return type;
-  }
-}
-
 // ── 格式化器 — 从缓存数据构建可注入字符串 ──
 
 /** 格式化 git 状态用于 turn-start 注入。 */
@@ -245,22 +169,6 @@ export function formatGitStatus(): string | null {
     .map((f) => `${f.path.replace(/\\/g, '/').split('/').pop()}(${f.status[0].toUpperCase()})`)
     .join(', ');
   return `[Git] ${git.branch}${git.ahead > 0 ? ` ↑${git.ahead}` : ''}${git.behind > 0 ? ` ↓${git.behind}` : ''} | ${git.dirtyCount} 脏: ${fileList}`;
-}
-
-/** 格式化 check 状态用于 turn-start 注入。 */
-export function formatCheckStatus(): string | null {
-  const r = getCheckCache();
-  if (!r) return null;
-  const parts: string[] = [];
-  if (r.passed) {
-    parts.push('✅ 通过');
-  } else {
-    parts.push(`⚠️ ${r.violationCount} 违规`);
-  }
-  if (r.newCount > 0) parts.push(`+${r.newCount} 新增`);
-  if (r.resolvedCount > 0) parts.push(`-${r.resolvedCount} 已解决`);
-  if (r.persistentCount > 0) parts.push(`↻${r.persistentCount} 持续`);
-  return `[简报] ${parts.join(' | ')}`;
 }
 
 /** 格式化诊断信息用于 pre-read 注入。 */
@@ -278,7 +186,7 @@ export function formatDiagnostics(filePath: string, getDiags: DiagnosticsSource)
     .map((d) => `L${d.startLine + 1}: ${d.message.slice(0, 80)}`)
     .join('; ');
   const fname = filePath.replace(/\\/g, '/').split('/').pop();
-  return `[LSP] ${fname}: ${parts.join(', ')}${top3 ? ' — ' + top3 : ''}`;
+  return `[LSP] ${fname}: ${parts.join(', ')}${top3 ? ` — ${top3}` : ''}`;
 }
 
 /** 格式化 git blame 用于 pre-read 注入。 */
@@ -297,10 +205,6 @@ export function buildTurnStartBlock(consumerId?: string): string {
   const lines: string[] = [];
   const git = formatGitStatus();
   if (git) lines.push(git);
-  const check = formatCheckStatus();
-  if (check) lines.push(check);
-  const timeline = formatTimeline();
-  if (timeline) lines.push(timeline);
   const build = formatBuildResult(consumerId);
   if (build) lines.push(build);
   return lines.length > 0 ? lines.join('\n') : '';

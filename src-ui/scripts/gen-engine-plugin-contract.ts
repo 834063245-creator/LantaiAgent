@@ -7,7 +7,9 @@
 //   - md 是生成物，勿手改；契约面变更后重新运行本脚本并同 commit。
 //   - 输出不含时间戳——字节稳定是 --check 守护的前提。
 // 真源：engine/src/contract.rs（版本 + 壳专属方法清单）、engine/src/tools/mod.rs（模型工具面）。
-// GraphJSON 数据契约的权威源 = src-ui/src/scene/graph-types.ts（引擎侧引用同一形状）。
+// GraphJSON 数据契约的权威源 = engine/src/tools/mod.rs 的 graph_snapshot_value
+// （2026-09-09 图谱退役：兰台侧 scene/graph-types.ts TS 镜像整删——引擎回归纯
+// MCP 供外部消费，GraphJSON 形状真源只剩引擎侧 Rust 实现）。
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -16,7 +18,6 @@ const ROOT = path.resolve(import.meta.dirname ?? '.', '..', '..');
 const OUT_MD = path.join(ROOT, 'docs', 'agents', 'engine-plugin-contract.md');
 const CONTRACT_RS = path.join(ROOT, 'engine', 'src', 'contract.rs');
 const TOOLS_RS = path.join(ROOT, 'engine', 'src', 'tools', 'mod.rs');
-const GRAPH_TYPES = path.join(ROOT, 'src-ui', 'src', 'scene', 'graph-types.ts');
 
 function parseContractVersion(src: string): number {
   const m = src.match(/ENGINE_CONTRACT_VERSION:\s*(?:u32\s*=\s*)?(\d+)/);
@@ -67,7 +68,8 @@ function main(): void {
   const version = parseContractVersion(contractSrc);
   const methods = parseShellMethods(contractSrc);
   const modelTools = parseModelDefaults(toolsSrc);
-  const graphTypesOk = existsSync(GRAPH_TYPES);
+  // GraphJSON 权威源是否在引擎源码里可证（graph_snapshot_value 聚合函数）
+  const graphJsonAuthorityOk = toolsSrc.includes('pub fn graph_snapshot_value');
 
   if (!Number.isInteger(version) || version <= 0) {
     console.error('[engine-plugin-contract] 契约版本缺失或非法');
@@ -98,7 +100,11 @@ function main(): void {
   md.push('| 当前版本 | ' + version + ' |');
   md.push('| 模型可见默认工具数 | ' + modelTools.length + ' |');
   md.push('| 壳专属方法数 | ' + methods.length + ' |');
-  md.push('| GraphJSON 权威源 | src-ui/src/scene/graph-types.ts' + (graphTypesOk ? '' : '（⚠️ 缺失）') + ' |');
+  md.push(
+    '| GraphJSON 权威源 | engine/src/tools/mod.rs `graph_snapshot_value`' +
+      (graphJsonAuthorityOk ? '' : '（⚠️ 缺失）') +
+      ' |',
+  );
   md.push('');
   md.push('## 模型可见默认工具面（tools/list 默认返回）');
   md.push('');

@@ -18,7 +18,6 @@ import {
   autoUpdateCheckEnabled,
   ConfirmDialog,
   canvasWheelMode,
-  graphEngineEnabled,
   iconHtml,
   loadSettings,
   loadSettingsWithSecrets,
@@ -32,28 +31,16 @@ import {
   saveSettings,
   selectPreset,
   setLang,
-  typedJsonRpc,
   useCompositionStore,
   useDockStore,
   usePresetStore,
   useUpdateStore,
 } from './host';
 
-type Tab = 'provider' | 'agent' | 'display' | 'languages' | 'plugins' | 'skills' | 'mcp' | 'about';
+type Tab = 'provider' | 'agent' | 'display' | 'plugins' | 'skills' | 'mcp' | 'about';
 
-interface LspServer {
-  command: string;
-  language_id: string;
-  extensions: string[];
-  available: boolean;
-  installed?: boolean;
-  error?: string;
-}
-interface LspData {
-  available: string[];
-  missing: string[];
-  servers: LspServer[];
-}
+// （「语言依赖」标签页（引擎 LSP 舰队状态探测）随图谱全量退役删除，2026-09-09——
+//  数据源 hologram_call(engine_status) 属引擎接线，兰台侧零引擎后无源。）
 
 // ── 主组件 ──
 
@@ -133,53 +120,6 @@ const SettingsPanelApp: React.FC<{
   const [pendingDeletes, setPendingDeletes] = useState<ProviderId[]>([]);
   const [pendingClears, setPendingClears] = useState<ProviderId[]>([]);
   const [saveVersion, setSaveVersion] = useState(0);
-
-  // LSP 状态（pollCount 供进度展示——30s 黑盒等待可感知）
-  const [lspStatus, setLspStatus] = useState<LspData | null>(null);
-  const [lspLoading, setLspLoading] = useState(false);
-  const [lspPollShown, setLspPollShown] = useState(0);
-  const [showInstallGuide, setShowInstallGuide] = useState(false);
-
-  // ── 语言依赖标签页打开时加载 LSP 状态 ──
-  const lspLoaded = useRef(false);
-  const lspPollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lspPollCount = useRef(0);
-  const MAX_LSP_POLLS = 15; // 最多 30 秒
-  useEffect(() => {
-    if (activeTab !== 'languages' || lspLoaded.current) return;
-    lspLoaded.current = true;
-    setLspLoading(true);
-
-    const fetchStatus = () => {
-      // hologram_call 载荷随工具（边界粗检 z.unknown()）——engine_status 载荷
-      // 形状在此显式收窄（唯一消费点）。
-      typedJsonRpc('hologram_call', { tool: 'engine_status', args: {} })
-        .then((value) => {
-          const parsed = value as { lsp?: LspData } | null;
-          if (parsed?.lsp?.servers) {
-            setLspStatus(parsed.lsp);
-            // 当所有已安装服务器都已确定状态（运行或错误）时停止，
-            // 或轮询次数足够时停止。
-            lspPollCount.current += 1;
-            setLspPollShown(lspPollCount.current);
-            const allResolved = parsed.lsp.servers.every((s) => s.available || s.error || !s.installed);
-            if ((allResolved || lspPollCount.current >= MAX_LSP_POLLS) && lspPollTimer.current) {
-              clearInterval(lspPollTimer.current);
-              lspPollTimer.current = null;
-            }
-          }
-        })
-        .catch(() => {})
-        .finally(() => setLspLoading(false));
-    };
-
-    fetchStatus();
-    // 每 2 秒轮询一次，直到所有已安装服务器报告最终状态。
-    lspPollTimer.current = setInterval(fetchStatus, 2000);
-    return () => {
-      if (lspPollTimer.current) clearInterval(lspPollTimer.current);
-    };
-  }, [activeTab]);
 
   // ── 处理函数 ──
   // 手动落盘（2026-08-07 回退）：任何改动只进 state 并标 dirty，
@@ -377,7 +317,6 @@ const SettingsPanelApp: React.FC<{
               ['provider', 'agent', '提供方'],
               ['agent', 'code', 'Agent'],
               ['display', 'mode-standard', '显示'],
-              ['languages', 'code', '语言依赖'],
               ['plugins', 'agent', '插件'],
               ['skills', 'agent', '技能'],
               ['mcp', 'agent', 'MCP'],
@@ -467,26 +406,6 @@ const SettingsPanelApp: React.FC<{
                 )}
               </div>
             </div>
-            <div className="sp-section">
-              <div className="sp-section-title">图谱引擎</div>
-              <div className="sp-field">
-                <label className="sp-label sp-checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={graphEngineEnabled(settings)}
-                    onChange={(e) => {
-                      commit({ ...settings, graphEngine: { enabled: e.target.checked } });
-                    }}
-                  />
-                  新工作区默认启用图谱引擎
-                </label>
-                <div className="sp-hint-sub">
-                  关闭 = 新工作区只做纯 Agent 工作区：不分析、无图/简报工具、不监视文件（fs/shell/git
-                  照常，内存占用更低）。此为新建工作区时的默认勾选值；已有工作区在首页卡片的
-                  「开/关图谱」单独切换（下次进入生效），在途工作区不活拆。
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* ═══ 显示标签页 ═══ */}
@@ -544,116 +463,6 @@ const SettingsPanelApp: React.FC<{
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* ═══ 语言依赖标签页 ═══ */}
-          <div
-            className="sp-tab-content"
-            data-tab="languages"
-            style={{ display: activeTab === 'languages' ? '' : 'none' }}
-          >
-            {lspLoading ? (
-              <div className="sp-hint" style={{ padding: 24, textAlign: 'center' }}>
-                检测中…（{lspPollShown}/{MAX_LSP_POLLS}）
-              </div>
-            ) : !lspStatus ? (
-              <div className="sp-hint" style={{ padding: 24, textAlign: 'center' }}>
-                无法获取语言依赖状态
-                <br />
-                <small>引擎未响应，请重试</small>
-              </div>
-            ) : (
-              <>
-                <div className="sp-section">
-                  <div className="sp-section-title">语言服务器状态</div>
-                  <div className="sp-hint" style={{ marginBottom: 10 }}>
-                    {[
-                      lspStatus.available.length > 0 && `${lspStatus.available.length} 运行中`,
-                      lspStatus.servers.filter((s) => !s.available && s.installed).length > 0 &&
-                        `${lspStatus.servers.filter((s) => !s.available && s.installed).length} 待启动`,
-                      lspStatus.servers.filter((s) => !s.available && !s.installed).length > 0 &&
-                        `${lspStatus.servers.filter((s) => !s.available && !s.installed).length} 未安装`,
-                    ]
-                      .filter(Boolean)
-                      .join('  ·  ') || '没有检测到已安装的语言服务器'}
-                  </div>
-                  {lspStatus.servers.map((srv) => {
-                    const installed = srv.installed === true;
-                    let icon: string, statusText: string, color: string, rowClass: string;
-                    if (srv.available) {
-                      icon = 'check-circle';
-                      statusText = '运行中';
-                      color = 'var(--pass)';
-                      rowClass = 'running';
-                    } else if (installed) {
-                      icon = 'alert-circle';
-                      statusText = '已安装';
-                      color = 'var(--warn)';
-                      rowClass = 'installed';
-                    } else {
-                      icon = 'close';
-                      statusText = '未安装';
-                      color = 'var(--ink-2)';
-                      rowClass = '';
-                    }
-                    return (
-                      <div key={srv.language_id} className={`sp-lsp-card ${rowClass}`}>
-                        <span
-                          className="sp-lsp-card-icon"
-                          style={{ color }}
-                          // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG，无外部输入
-                          dangerouslySetInnerHTML={{ __html: iconHtml(icon, 13) }}
-                        />
-                        <div className="sp-lsp-card-body">
-                          <div className="sp-lsp-card-header">
-                            <span className="lang-name">{srv.language_id}</span>
-                            <span className="lang-status" style={{ color }}>
-                              {statusText}
-                            </span>
-                          </div>
-                          <div className="sp-lsp-card-meta">
-                            <code>{srv.command}</code>
-                            &nbsp;·&nbsp; .{srv.extensions.join(', .')}
-                          </div>
-                          {!srv.available && srv.error && <div className="sp-lsp-card-err">{srv.error}</div>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="sp-section">
-                  <button
-                    type="button"
-                    className="sp-install-toggle"
-                    onClick={() => setShowInstallGuide((v) => !v)}
-                    // biome-ignore lint/security/noDangerouslySetInnerHtml: icons.ts 常量表静态 SVG + 字面量，无外部输入
-                    dangerouslySetInnerHTML={{
-                      __html: iconHtml(showInstallGuide ? 'chevron-down' : 'chevron-right', 9) + ' 安装指南',
-                    }}
-                  />
-                  {showInstallGuide && (
-                    <div style={{ marginTop: 10, fontSize: 11, lineHeight: 1.8 }}>
-                      {[
-                        ['Python', 'npm install -g pyright'],
-                        ['TypeScript', 'npm install -g typescript-language-server typescript'],
-                        ['Rust', 'rustup component add rust-analyzer'],
-                        ['Go', 'go install golang.org/x/tools/gopls@latest'],
-                        ['C/C++', 'scoop install clangd'],
-                        ['Java', 'scoop install jdtls'],
-                        ['C#', 'dotnet tool install --global OmniSharp'],
-                        ['PHP', 'npm install -g intelephense'],
-                        ['Kotlin', 'scoop install kotlin-language-server'],
-                      ].map(([lang, cmd]) => (
-                        <div key={lang} className="sp-install-row">
-                          <span className="lang-label">{lang}</span>
-                          <code>{cmd}</code>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
           </div>
 
           {/* ═══ 插件标签页（S4-3 安装通道）═══ */}

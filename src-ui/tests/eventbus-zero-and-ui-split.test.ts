@@ -184,18 +184,17 @@ ${violations.join('\n')}`,
     ).toEqual([]);
   });
 
-  it.skipIf(!COMPLETE)('终态：总线与桥接全灭，scene/ 与 state/ 就位', () => {
+  it.skipIf(!COMPLETE)('终态：总线与桥接全灭，scene/ 整删、state/ 就位', () => {
     expect(existsSync(join(process.cwd(), 'src', 'app', 'bridge-adapters.ts'))).toBe(false);
     expect(findEventsImports(join(process.cwd(), 'src'))).toEqual([]);
     const scene = listFiles(join(process.cwd(), 'src', 'scene'));
-    // C13 sweep（2026-08-22）：Three.js 渲染面 22 文件删除，scene/ 收窄为类型模块 + README。
-    expect(scene, 'C13 后 scene/ 应仅存类型模块与 README').toEqual(['graph-types.ts', 'README.md']);
+    // 图谱功能全量退役（2026-09-09）：scene/ 目录整删——graph-types.ts + README
+    // 均为图谱消费兼容形状，无渲染面后无存在理由；listFiles 对不存在目录返回 []。
+    expect(scene, '图谱退役后 scene/ 目录应已整删').toEqual([]);
     const state = listFiles(join(process.cwd(), 'src', 'state'));
+    // 现况 27 文件（26 ts + README；timeline-store.ts 已随图谱退役删）。
     expect(state.length, 'state/ 应 ≥11 文件').toBeGreaterThanOrEqual(11);
-    const shim = readFileSync(join(uiDir, 'graph.ts'), 'utf-8');
-    expect(
-      shim.split('\n').filter((l) => l.trim()).length,
-      'ui/graph.ts 应为 ≤3 行 re-export shim',
-    ).toBeLessThanOrEqual(3);
+    // ui/graph.ts shim 随 scene/ 退役同删——类型层目录已不存在，无再导出面。
+    expect(existsSync(join(uiDir, 'graph.ts')), 'ui/graph.ts shim 应已删除').toBe(false);
   });
 });

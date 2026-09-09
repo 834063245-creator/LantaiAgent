@@ -6,8 +6,8 @@
 // - H3：forceClearState()（deactivate 超时的紧急路径）此前不调 disposeAll ——
 //   每个存活 Agent 的 60s 巡检 timer 永久存活，_enforceTTL 会继续对共享后端发
 //   agent_isolation_discard（真实删除 git worktree）；saveState('done') 不落盘留死账。
-// - H4：runCheck 在途 RPC resolve 后无 _active 守卫 —— 旧项目检查结果写进
-//   新项目 dock store 并自动弹开 check 面板。
+// - H4（2026-09-09 图谱退役）：runCheck/scheduleCheck/_checkTimer/_active 守卫
+//   面随 [简报] run_check 全链退役删除——本守卫测试随行为同批删除。
 // - 卡死锁死（2026-09-09 实机事故）：引擎二进制缺席 → 冷启动恢复链挂死 →
 //   状态机永停 'switching' → 首页 isBusy 守卫拦截一切点击，用户被锁在所有
 //   工作区外面。修复三件：恢复链尾部 RPC 全部 withTimeout 有界化；状态机
@@ -49,30 +49,10 @@ describe('forceClearState 紧急路径清理（H3）', () => {
   });
 });
 
-describe('runCheck/scheduleCheck 切换守卫（H4）', () => {
-  it('runCheck 入口有 _active 守卫', () => {
-    const body = windowOf('async runCheck(): Promise<void> {');
-    expect(body.slice(0, 200)).toContain('this._active');
-  });
-
-  it('scheduleCheck 入口有 _active 守卫', () => {
-    const body = windowOf('scheduleCheck(): void {');
-    expect(body.slice(0, 200)).toContain('this._active');
-  });
-
-  it('finally 重武装 checkTimer 前有 _active 守卫', () => {
-    const body = windowOf('async runCheck(): Promise<void> {');
-    const finallyIdx = body.indexOf('finally');
-    expect(finallyIdx).toBeGreaterThan(-1);
-    const tail = body.slice(finallyIdx);
-    expect(tail).toContain('this._active');
-  });
-});
-
 describe('回首页真关工作区（2026-09-08 生命周期修复）', () => {
   const leave = rowsWs.slice(rowsWs.indexOf('async function leaveToHome'));
 
-  it('leaveToHome 必须 deactivate 活动工作区（停 watcher/引擎/Agent）', () => {
+  it('leaveToHome 必须 deactivate 活动工作区（停 Agent/fiber）', () => {
     expect(leave).toContain('workspace.deactivate(chatPanel)');
     expect(leave).toContain('withTimeout');
     expect(leave).toContain('shellRefs.workspace = null');
@@ -109,12 +89,11 @@ describe('恢复链卡死护栏（2026-09-09 实机事故立法）', () => {
       'withTimeout(kernelCreateDirectory(',
       'withTimeout(chatPanel.autoRestoreLastSession(',
       'withTimeout(chatPanel.restoreCanvasSpread(',
-      "withTimeout(typedRpc('workspace_start_watcher'",
     ]) {
       expect(body, `尾部护栏必须覆盖 ${anchor}`).toContain(anchor);
     }
-    // 旧静默吞错退役：watcher 起不来必须可见（console.warn + pushStatus）
-    expect(body).toContain('⚠️ 文件监视未启动');
+    // 图谱退役（2026-09-09）：workspace_start_watcher（通知泵）随引擎接线
+    // 整删——恢复链尾部无引擎侧 RPC，护栏 = 会话根目录/会话/画布恢复三项。
   });
 
   it('stuckRecover：非 busy no-op + 摘守卫在 leaveToHome 前 + 无条件状态机复位 + 加载态复位', () => {

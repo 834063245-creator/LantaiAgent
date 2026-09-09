@@ -5,16 +5,16 @@
 // 生产 loadBuiltinPlugins 的通道最小集——四 service + llm-adapters +
 // subagents（service + in-process provider）+ fs（service + builtin）+
 // shell（service + builtin）+ sessionPersistence（service + builtin）+
-// graph（service + builtin）+ dynamicRunner（P4 D7）+ agentLoop（P5 D13）。
+// dynamicRunner（P4 D7）+ agentLoop（P5 D13）。
+// （graph service + builtin provider 随图谱功能全量退役移除，2026-09-09。）
 // 幂等：每个测试文件的模块图内只 boot 一次（vitest 按 file 隔离模块图）；
 // 返回根 Context 供覆盖语义测试在同一注册表上注册 probe。
 //
 // 裸路径（不调本函数）的显式降级语义由 provider-dialect / subagent-seam /
-// fs-seam / shell-seam / sessions-seam / graph-seam 钉住。
+// fs-seam / shell-seam / sessions-seam 钉住。
 
 import { dynamicRunnerPlugin } from '../../src/agent/dynamic-runner/dynamic-runner-service';
 import { fsServicePlugin } from '../../src/composition/fs-service';
-import { graphServicePlugin } from '../../src/composition/graph-service';
 import { compositionServicesPlugin } from '../../src/composition/services';
 import { sessionPersistenceServicePlugin } from '../../src/composition/session-persistence-service';
 import { shellServicePlugin } from '../../src/composition/shell-service';
@@ -22,7 +22,6 @@ import { subagentsServicePlugin } from '../../src/composition/subagent-service';
 import { Context } from '../../src/cordis';
 import { agentLoopServicePlugin } from '../../src/plugins/builtin/agent-loop-service';
 import { builtinFsPlugin } from '../../src/plugins/builtin/fs-builtin';
-import { builtinGraphPlugin } from '../../src/plugins/builtin/graph-builtin';
 import { llmAdaptersPlugin } from '../../src/plugins/builtin/llm-adapters';
 import { builtinSessionsPlugin } from '../../src/plugins/builtin/sessions-builtin';
 import { builtinShellPlugin } from '../../src/plugins/builtin/shell-builtin';
@@ -31,7 +30,7 @@ import { inProcessSubagentPlugin } from '../../src/plugins/builtin/subagent-in-p
 let bootRoot: Context | null = null;
 
 /** 幂等装配复现：需要 createProvider / spawnSubAgent / fs·shell 消费面 / 会话
- *  持久化 / 图分析 / 动态插件运行时 / agent loop 走注册表的测试在用到前
+ *  持久化 / 动态插件运行时 / agent loop 走注册表的测试在用到前
  *  await 本函数（可在模块顶层，也可在用例体内——后者用于保住裸路径用例的
  *  零装配前提）。返回根 Context。 */
 export async function ensureProductionChannelsBooted(): Promise<Context> {
@@ -47,8 +46,6 @@ export async function ensureProductionChannelsBooted(): Promise<Context> {
   await root.plugin(builtinShellPlugin);
   await root.plugin(sessionPersistenceServicePlugin);
   await root.plugin(builtinSessionsPlugin);
-  await root.plugin(graphServicePlugin);
-  await root.plugin(builtinGraphPlugin);
   await root.plugin(dynamicRunnerPlugin);
   await root.plugin(agentLoopServicePlugin);
   bootRoot = root;

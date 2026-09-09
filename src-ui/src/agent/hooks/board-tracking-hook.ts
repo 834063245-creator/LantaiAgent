@@ -3,7 +3,7 @@
 
 // BoardFileTrackingHook — PostTool hook，自动追踪子 Agent 文件修改到 TaskBoard
 //
-// 复用现有 HookRegistry 机制（与 GraphContextHook 相同的 post-tool 注入点）。
+// 复用现有 HookRegistry 机制（post-tool 注入点）。
 // 子 Agent 调用 write_file / edit_file 时自动登记文件路径到 board。
 
 import type { Hook } from '../hooks';

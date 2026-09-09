@@ -8,7 +8,6 @@ use tauri;
 #[tauri::command]
 pub(crate) async fn workspace_activate(
     path: String,
-    graph_engine: Option<bool>,
     state: tauri::State<'_, crate::WorkspaceState>,
     app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
 ) -> Result<(), String> {
@@ -24,10 +23,8 @@ pub(crate) async fn workspace_activate(
     *crate::utils::lock_or_recover(&state) = Some(handle);
     // Stage-5 补尾：绑定真目录 → 登记进「已知工作区」注册表（首页工作区管理
     // 的实体来源；空工作区也可见）。登记是便利面，失败不阻断激活（可见于日志）。
-    // per-workspace 图谱引擎旗标（2026-08-31）：Some = 显式选择（新建工作区
-    // sheet 的勾选）随登记写入；None = 保持注册表现值（进入既有工作区不覆写）。
     if !reg_path.trim().is_empty() {
-        if let Err(e) = registry::register(&reg_path, None, graph_engine) {
+        if let Err(e) = registry::register(&reg_path, None) {
             eprintln!("[workspace] 已知工作区登记失败 {reg_path}: {e}");
         }
     }
@@ -67,15 +64,13 @@ pub(crate) fn create_default_workspace_dir(name: &str) -> Result<String, String>
     Ok(dir.to_string_lossy().replace('\\', "/"))
 }
 
-/// 停用当前工作区。停止文件监视器，清除已变更文件。
+/// 停用当前工作区。清理工作区状态。
 #[tauri::command]
 pub(crate) async fn workspace_deactivate(
     state: tauri::State<'_, crate::WorkspaceState>,
     app_ctx: tauri::State<'_, std::sync::Arc<crate::app::AppContexts>>,
 ) -> Result<(), String> {
     // 在短暂持有锁时取出句柄，然后在停用前释放锁。
-    // deactivate() 停止监视器；在 state 互斥锁下执行此操作
-    // 会在整个停止期间阻塞所有需要 state 的其他命令。
     let handle = {
         let mut guard = state.lock().map_err(|e| format!("工作区状态错误: {e}"))?;
         guard.take()
@@ -88,23 +83,12 @@ pub(crate) async fn workspace_deactivate(
     Ok(())
 }
 
-/// 启动活跃工作区的文件监视器。
-/// 必须在 workspace_activate 之后调用。
-#[tauri::command]
-pub(crate) async fn workspace_start_watcher(
-    app: tauri::AppHandle,
-    state: tauri::State<'_, crate::WorkspaceState>,
-) -> Result<(), String> {
-    if let Some(ref mut handle) = *crate::utils::lock_or_recover(&state) {
-        handle.start_watcher(app);
-        Ok(())
-    } else {
-        Err("没有活跃的工作区".into())
-    }
-}
+// （workspace_start_watcher（壳侧通知泵启动口）随图谱全量退役删除，
+//  2026-09-09——泵的产出（analyze-* 进度事件 / graph-updated）纯为图谱
+//  数据面服务，引擎进程不再被兰台拉起。）
 
-/// 读取最近工作区路径（.last_project——workspace_activate 每次绑定都写，
-/// 与图谱引擎无关）。冷启动恢复信号之一；图谱引擎停用时是**唯一**信号。
+/// 读取最近工作区路径（.last_project——workspace_activate 每次绑定都写）。
+/// 冷启动恢复信号。
 #[tauri::command]
 pub(crate) fn get_last_project() -> Result<Option<String>, String> {
     let last = std::fs::read_to_string(crate::utils::project_root().join(".last_project"))
@@ -139,10 +123,6 @@ pub(crate) mod registry {
         pub last_opened_at: String,
         #[serde(default)]
         pub pinned: bool,
-        /// per-workspace 图谱引擎旗标（2026-08-31）：None = 从未显式选择
-        /// （前端回退全局默认值）。生效语义 = 装配期一次（在途工作区不活拆）。
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        pub graph_engine: Option<bool>,
     }
 
     #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -189,14 +169,11 @@ pub(crate) mod registry {
         p.replace('\\', "/").trim_end_matches('/').to_string()
     }
 
-    /// 登记（upsert）：path 已存在 → 刷新 last_opened_at（name 提供则更新，
-    /// graph_engine 提供则更新）；否则新增。`workspace_activate` 每次绑定真
-    /// 目录时调用——graph_engine 为 None 时不动已有值（进入既有工作区路径）。
-    pub(crate) fn register(
-        path: &str,
-        name: Option<String>,
-        graph_engine: Option<bool>,
-    ) -> Result<(), String> {
+    /// 登记（upsert）：path 已存在 → 刷新 last_opened_at（name 提供则更新）；
+    /// 否则新增。`workspace_activate` 每次绑定真目录时调用。
+    /// （graph_engine 旗标随图谱全量退役移除，2026-09-09——在盘注册表残留
+    ///  旧字段由 serde 忽略，自然荒废。）
+    pub(crate) fn register(path: &str, name: Option<String>) -> Result<(), String> {
         if path.trim().is_empty() {
             return Ok(()); // 占位工作区（path=''）不登记
         }
@@ -211,39 +188,12 @@ pub(crate) mod registry {
                     e.name = Some(n.to_string());
                 }
             }
-            if graph_engine.is_some() {
-                e.graph_engine = graph_engine;
-            }
         } else {
             reg.workspaces.push(WorkspaceEntry {
                 path: np,
                 name,
                 last_opened_at: now,
                 pinned: false,
-                graph_engine,
-            });
-        }
-        write_registry(&reg)
-    }
-
-    /// per-workspace 图谱引擎开关（2026-08-31）：首页卡片徽标的切换入口。
-    /// 未知路径自动补登记（rename/pin 同款）；生效语义 = 装配期一次
-    /// （在途不活拆——下次进入该工作区即见）。
-    pub(crate) fn set_graph_engine(path: &str, enabled: bool) -> Result<(), String> {
-        let np = norm_path(path);
-        if np.is_empty() {
-            return Err("工作区路径不能为空".into());
-        }
-        let mut reg = read_registry();
-        if let Some(e) = reg.workspaces.iter_mut().find(|e| e.path == np) {
-            e.graph_engine = Some(enabled);
-        } else {
-            reg.workspaces.push(WorkspaceEntry {
-                path: np,
-                name: None,
-                last_opened_at: crate::audit::now_iso(),
-                pinned: false,
-                graph_engine: Some(enabled),
             });
         }
         write_registry(&reg)
@@ -265,7 +215,6 @@ pub(crate) mod registry {
                 name: Some(name.to_string()),
                 last_opened_at: crate::audit::now_iso(),
                 pinned: false,
-                graph_engine: None,
             });
         }
         write_registry(&reg)
@@ -283,7 +232,6 @@ pub(crate) mod registry {
                 name: None,
                 last_opened_at: crate::audit::now_iso(),
                 pinned,
-                graph_engine: None,
             });
         }
         write_registry(&reg)
@@ -322,8 +270,6 @@ pub(crate) mod registry {
         /// 工作区根目录在磁盘上是否仍存在（false = 前端「目录已丢失」诚实
         /// 显示并禁进——此前谎称「空工作区」且进入会复活目录树）。
         pub dir_exists: bool,
-        /// per-workspace 图谱引擎旗标（None = 未显式选择，前端回退全局默认）。
-        pub graph_engine: Option<bool>,
     }
 
     /// 已知工作区清单：注册表条目全量列出（含空工作区）；每个工作区的
@@ -351,7 +297,6 @@ pub(crate) mod registry {
                 session_count: sessions.len(),
                 latest_saved_at: latest,
                 dir_exists: std::path::Path::new(&e.path).exists(),
-                graph_engine: e.graph_engine,
             });
         }
 
@@ -400,8 +345,8 @@ pub(crate) mod registry {
         #[test]
         fn register_upsert_refreshes_last_opened() {
             with_temp_home(|| {
-                register("D:/proj", Some("项目A".into()), None).unwrap();
-                register("D:/proj", None, None).unwrap();
+                register("D:/proj", Some("项目A".into())).unwrap();
+                register("D:/proj", None).unwrap();
                 let reg = read_registry();
                 assert_eq!(reg.workspaces.len(), 1);
                 assert_eq!(reg.workspaces[0].name.as_deref(), Some("项目A"));
@@ -411,38 +356,8 @@ pub(crate) mod registry {
         #[test]
         fn empty_path_not_registered() {
             with_temp_home(|| {
-                register("", None, None).unwrap();
+                register("", None).unwrap();
                 assert!(read_registry().workspaces.is_empty());
-            });
-        }
-
-        #[test]
-        fn graph_engine_flag_roundtrip_and_none_keeps() {
-            // per-workspace 引擎旗标（2026-08-31）：Some 写入、None 保持现值
-            with_temp_home(|| {
-                register("D:/proj", None, Some(false)).unwrap();
-                assert_eq!(read_registry().workspaces[0].graph_engine, Some(false));
-                // 再登记不携旗标（进入既有工作区路径）→ 保持注册表现值
-                register("D:/proj", None, None).unwrap();
-                assert_eq!(read_registry().workspaces[0].graph_engine, Some(false));
-                // 显式翻转 → 覆写
-                register("D:/proj", None, Some(true)).unwrap();
-                assert_eq!(read_registry().workspaces[0].graph_engine, Some(true));
-            });
-        }
-
-        #[test]
-        fn set_graph_engine_upserts() {
-            with_temp_home(|| {
-                // 未知路径自动补登记（rename/pin 同款）
-                set_graph_engine("D:/new", false).unwrap();
-                let reg = read_registry();
-                assert_eq!(reg.workspaces.len(), 1);
-                assert_eq!(reg.workspaces[0].graph_engine, Some(false));
-                assert_eq!(reg.workspaces[0].path, "D:/new");
-                // 既有条目翻转
-                set_graph_engine("D:/new", true).unwrap();
-                assert_eq!(read_registry().workspaces[0].graph_engine, Some(true));
             });
         }
 
@@ -533,8 +448,8 @@ pub(crate) mod registry {
             .unwrap();
 
             with_temp_home(|| {
-                register(&empty_str, None, None).unwrap();
-                register(&full_str, None, None).unwrap();
+                register(&empty_str, None).unwrap();
+                register(&full_str, None).unwrap();
 
                 let list = list().unwrap();
                 // 空工作区也在列（注册表来源，计数 0）
@@ -562,7 +477,7 @@ pub(crate) mod registry {
             let _ = std::fs::remove_dir_all(&ws_root);
             let ws_str = ws_root.to_string_lossy().replace('\\', "/");
             with_temp_home(|| {
-                register(&ws_str, None, None).unwrap();
+                register(&ws_str, None).unwrap();
                 // 新模型（workspace-session-ownership-rework）：会话在
                 // {ws}/.lantai/sessions/ 下——删除 = 删该目录
                 let sessions_dir = crate::commands::filesystem::workspace_sessions_root(&ws_str);
@@ -589,7 +504,7 @@ pub(crate) mod registry {
             let _ = std::fs::remove_dir_all(&ws_root);
             let ws_str = ws_root.to_string_lossy().replace('\\', "/");
             with_temp_home(|| {
-                register(&ws_str, None, None).unwrap();
+                register(&ws_str, None).unwrap();
                 assert!(!std::path::Path::new(&ws_str).exists());
                 remove(&ws_str).unwrap();
                 assert!(!read_registry().workspaces.iter().any(|e| e.path == ws_str));
@@ -613,7 +528,7 @@ pub(crate) mod registry {
             std::fs::create_dir_all(sessions_root.parent().unwrap()).unwrap();
             std::fs::write(&sessions_root, b"not a directory").unwrap();
             with_temp_home(|| {
-                register(&ws_str, None, None).unwrap();
+                register(&ws_str, None).unwrap();
                 let r = remove(&ws_str);
                 assert!(r.is_err(), "sessions 根被文件占用时删除必须报错");
                 assert!(

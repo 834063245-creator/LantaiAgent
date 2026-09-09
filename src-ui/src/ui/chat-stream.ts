@@ -15,7 +15,6 @@ import { refreshPinnedAssetSnapshots } from '../state/canvas-store';
 import { showToast, TOAST_HOLD_MS, TOAST_LONG_HOLD_MS } from '../state/toast-store';
 import { autoTitleSessionIfDefault } from './chat-session';
 import { bumpChat, getChatStore, msgStoreFor } from './chat-store';
-import type { StarGraph } from './graph';
 import type { AssistantMessage, ChatMessage, FileAttachment, MessageId, PlanPart, UserMessage } from './message-model';
 import { createAssistantMessage, createUserMessage } from './message-model';
 import { applyAssetUpdateToExistingParts, applyEventToParts } from './part-mutator';
@@ -53,9 +52,6 @@ export interface StreamContext {
 
   // ── Agent ──
   getAgent: () => ChatAgentHandle | null;
-
-  // ── Graph ──
-  getStarGraph: () => StarGraph | null;
 
   // ── 回调 ──
   updateFooter: () => void;

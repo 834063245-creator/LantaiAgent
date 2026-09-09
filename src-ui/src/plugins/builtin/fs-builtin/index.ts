@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT.
 
 // 内置 fs provider（平台化 Phase 2 · D11 默认实现）——真源产物化
 // （plugin-bundle-retirement S2，2026-09-03）。原 agent/fs-provider.ts
@@ -9,14 +9,14 @@
 // （寻址 builtin.fs 插件——已退役）换 fs_cap 能力口直呼——dispatch 即 exec
 // （executor 注入 is_agent 到 fs_cap 顶层，与 searchCapTool 同构）。模型族
 // 工具 schema 真源已回 TS zod（coding.ts FS_CAP_SCHEMA）。
-// R4-4 小面清偿（kernel-capability-d4-handle-design.md）：constraints 两动作
-// 换 constraints_cap 直呼（builtin.constraints 退役）；R4-4b：edit 换
-// editor_cap 直呼（builtin.editor 退役——R4 窗最后在册插件）。tool_call 信封
-// 的 TS 消费面随 R5 脚手架拆除清零。
+// R4-4b：edit 换 editor_cap 直呼（builtin.editor 退役——R4 窗最后在册插件）。
+// tool_call 信封的 TS 消费面随 R5 脚手架拆除清零。
+// （constraints/write_constraints 两动作随图谱全量退役移除，2026-09-09——
+//  hologram.constraints.yaml 读写仅服务引擎 run_check，兰台侧已无消费方。）
 //
 // 双表职责：
 //   FS_ACTION_TO_CAP —— execute 换轨动作→fs_cap action + 模型键→snake 键映射；
-//   constraints（R4-4）与 edit（R4-4b）两分支在本文件内直呼对应能力口。
+//   edit 分支在本文件内直呼 editor_cap。
 
 import type { FsAction, FsProvider } from '../../../composition/fs-service';
 import type { Context } from '../../../cordis';
@@ -26,9 +26,8 @@ import type { Context } from '../../../cordis';
 //  清零。）
 
 /** fs 动作 → fs_cap 能力口动作 + 模型面键（camelCase）→ fs_cap 顶层 snake 键。
- *  edit/constraints/write_constraints 不经 fs_cap：edit_file 走 editor_cap
- *  （编辑含 diff 应用语义）；constraints 读写是 hologram.constraints.yaml 域
- *  （constraints_cap）。三者在 execute 分支直呼对应能力口。 */
+ *  edit 不经 fs_cap：edit_file 走 editor_cap（编辑含 diff 应用语义）——
+ *  在 execute 分支直呼。 */
 const FS_ACTION_TO_CAP: Record<FsAction, { action: string; keys: Record<string, string> }> = {
   read: {
     action: 'read',
@@ -42,8 +41,6 @@ const FS_ACTION_TO_CAP: Record<FsAction, { action: string; keys: Record<string, 
   move: { action: 'rename', keys: { from: 'from', to: 'to' } },
   rename: { action: 'rename', keys: { filePath: 'from', newName: 'to' } },
   delete: { action: 'delete', keys: { path: 'path' } },
-  constraints: { action: '', keys: {} }, // R4-4：constraints_cap 直呼（见 execute 分支）
-  write_constraints: { action: '', keys: {} }, // R4-4：constraints_cap 直呼（见 execute 分支）
 };
 
 /** 把模型面 args（camelCase + meta）映射为 fs_cap 顶层 snake 参数。
@@ -71,7 +68,7 @@ function toCapArgs(action: FsAction, args: Record<string, unknown>): Record<stri
 
 /** 默认 Rust fs provider（id 'builtin/rust-fs'）——R3-b 起 execute 经 fs_cap
  *  能力口直呼（dispatch 即 executor 的 codingExec——注入 is_agent，与 search
- *  直呼同构）。留信封动作（edit/constraints/write_constraints）保持原路径。
+ *  直呼同构）。留信封动作（edit）保持原路径。
  *  形状兼容（R3-b）：fs_cap 返回结构化 JSON（read={path,content}、write={path}
  *  等），本层组装成 builtin.fs 插件原工具输出形状——工具 execute 返回给模型的
  *  字符串不漂移（编排归 TS 的本体；read 解包 content / write 回执含预览）。 */
@@ -80,22 +77,6 @@ export const builtinFsProvider: FsProvider = {
   async execute(action, args, opts) {
     const cap = FS_ACTION_TO_CAP[action];
     if (!cap.action) {
-      // constraints 族（R4-4）：constraints_cap 直呼（builtin.constraints 插件
-      // 退役——模型面键 projectPath/content 顶层映射 snake；meta 透传）。
-      if (action === 'constraints' || action === 'write_constraints') {
-        const keys: Record<string, string> = { projectPath: 'project_path', content: 'content' };
-        const out: Record<string, unknown> = {
-          action: action === 'constraints' ? 'read_constraints' : 'write_constraints',
-        };
-        for (const [k, v] of Object.entries(args)) {
-          if (k.startsWith('_')) {
-            out[k] = v; // meta 透传
-            continue;
-          }
-          out[keys[k] ?? k] = v;
-        }
-        return opts.dispatch('constraints_cap', out, opts.onProgress, opts.signal);
-      }
       // edit（R4-4b）：editor_cap 直呼（builtin.editor 插件退役——模型面键
       // filePath/oldString/newString/replaceAll 顶层映射 snake；meta（含
       // _forceGate/_agent_id）原样透传）。
@@ -116,7 +97,7 @@ export const builtinFsProvider: FsProvider = {
         }
         return opts.dispatch('editor_cap', out, opts.onProgress, opts.signal);
       }
-      throw new Error(`fs-builtin: 动作 '${action}' 无能力口目标（fs 域收口后非 edit/constraints 动作应走 fs_cap）`);
+      throw new Error(`fs-builtin: 动作 '${action}' 无能力口目标（fs 域收口后非 edit 动作应走 fs_cap）`);
     }
     const raw = await opts.dispatch('fs_cap', toCapArgs(action, args), opts.onProgress, opts.signal);
     // read：fs_cap 返回 {path, content}——解包 content（缺省原文；lineNumbers:

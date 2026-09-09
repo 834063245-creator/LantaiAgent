@@ -22,16 +22,16 @@ import { parseIsolationDiff } from '../spill';
 import type { BoardEntry, TaskBoard } from '../task-board';
 import type { Tool, ToolExecutor } from '../tool';
 import { defineTool } from './define-tool';
-import { runCompileTest, runGraphGate } from './merge-gate';
+import { runCompileTest } from './merge-gate';
 
 // ── Merge 门禁配置 ──
-// v1：图检查默认开（merge-then-verify，轮询 hologram_run_check）；
-// 编译测试默认关（worktree 冷构建可达分钟级，时间盒限制）。
-// 测试旁路：(window as TestMergeGateOverride).__LANTAI_MERGE_GATE__ = { graph: false } 可临时关闭。
+// v1：编译测试默认关（worktree 冷构建可达分钟级，时间盒限制）。
+// （图检查 gate 已随图谱功能全量退役删除，2026-09-09。）
+// 测试旁路：(window as TestMergeGateOverride).__LANTAI_MERGE_GATE__ = { compileTest: true } 可临时开启。
 interface TestMergeGateOverride {
   __LANTAI_MERGE_GATE__?: Partial<typeof MERGE_GATE>;
 }
-const MERGE_GATE = { graph: true, compileTest: false, maxCheckWaitMs: 60_000, compileTimeoutMs: 600_000 };
+const MERGE_GATE = { compileTest: false, compileTimeoutMs: 600_000 };
 function effectiveGate(): typeof MERGE_GATE {
   const override = (globalThis as TestMergeGateOverride).__LANTAI_MERGE_GATE__;
   return override ? { ...MERGE_GATE, ...override } : MERGE_GATE;
@@ -44,7 +44,7 @@ export function createMergeTool(
   board: TaskBoard,
   getAgentId: () => string,
   exec: ToolExecutor,
-  opts: { projectPath: string; graphEngineOn?: boolean },
+  opts: { projectPath: string },
 ): Tool {
   // R10：同轮并发 agent_merge 串行化。两个 merge 同时读 completed 条目会
   // 一个成功、另一个撞「没有活跃的隔离环境」报假冲突；串行后第二个看到
@@ -74,11 +74,8 @@ export function createMergeTool(
     const noArtifactDetails: string[] = [];
 
     const gate = effectiveGate();
-    const gateOpts = { projectPath: opts.projectPath, exec, graphEngineOn: opts.graphEngineOn };
+    const gateOpts = { projectPath: opts.projectPath };
 
-    // 批量 merge：成功合并的条目先收集，图检查在循环后统一跑一次 —
-    // runGraphGate 是整图分析（不依赖单个 entry），逐条跑 N 次 = N 次全图扫描 + N 次轮询，
-    // 批量场景（5 Agent）会被放大成分钟级。统一一次：5× 全图 → 1×。
     const mergedEntries: BoardEntry[] = [];
     const mergedTexts = new Map<string, string>(); // agentId → merge 返回文本（commit hash 等）
 
@@ -165,38 +162,13 @@ export function createMergeTool(
       }
     }
 
-    // ③ merge-then-verify：图检查 — 批量统一跑一次（而非逐条）
-    // runGraphGate 是整图分析（只依赖 projectPath/exec），一次即可覆盖所有已 merge 的变更；
-    // watcher 已增量分析主仓，轮询 run_check 直到非 quiet。
-    // 门禁定位：信息报告，不是裁决 — L5 红线是启发式有噪音，
-    // 失败只标记 + 报告，改动保留在主仓（commit 在历史），主 Agent 决定修复/revert/接受。
-    if (gate.graph && mergedEntries.length > 0) {
-      const gateResult = await runGraphGate(mergedEntries[0], gateOpts);
-      if (!gateResult.passed) {
-        for (const entry of mergedEntries) {
-          board.fail(entry.agentId, '[门禁] ' + gateResult.report);
-        }
-        conflicts += mergedEntries.length;
-        conflictDetails.push(
-          `${mergedEntries.map((e) => e.agentId).join(', ')}: 门禁未通过，改动已保留在主仓，请审阅后决定修复 / git revert / 接受\n${gateResult.report}`,
-        );
-      } else {
-        for (const entry of mergedEntries) {
-          board.markMerged(entry.agentId);
-          merged++;
-          mergedDetails.push(
-            `${entry.agentId} (${entry.description}) — ✅ ${mergedTexts.get(entry.agentId) ?? '已合并'}`,
-          );
-        }
-      }
-    } else {
-      for (const entry of mergedEntries) {
-        board.markMerged(entry.agentId);
-        merged++;
-        mergedDetails.push(
-          `${entry.agentId} (${entry.description}) — ✅ ${mergedTexts.get(entry.agentId) ?? '已合并'}`,
-        );
-      }
+    // ③ merge 收口：统一标记已合并
+    // （图检查门禁已随图谱退役删除，2026-09-09——原为 merge-then-verify 轮询
+    //  run_check；编译测试 gate 仍可用（默认关）。）
+    for (const entry of mergedEntries) {
+      board.markMerged(entry.agentId);
+      merged++;
+      mergedDetails.push(`${entry.agentId} (${entry.description}) — ✅ ${mergedTexts.get(entry.agentId) ?? '已合并'}`);
     }
 
     const parts: string[] = [`已合并 ${merged} 个子Agent，${conflicts} 个冲突。`];

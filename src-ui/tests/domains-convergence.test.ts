@@ -203,19 +203,21 @@ describe('retireRedirect 旧名淘汰重定向', () => {
     expect(retireRedirect('agent_message')).toBe('agent(message)');
     expect(retireRedirect('task_create')).toBe('task(create)');
     expect(retireRedirect('hologram_memory_save')).toBe('memory(save)');
-    expect(retireRedirect('dataflow_save')).toBe('graph(dataflow_save)');
-    expect(retireRedirect('dataflow_query')).toBe('graph(dataflow_query)');
-    expect(retireRedirect('write_constraints')).toBe('fs(write_constraints)');
-    expect(retireRedirect('semantic_search')).toBe('graph(semantic)');
   });
 
   it('read_file 别名经链解析到 fs(read)', () => {
     expect(retireRedirect('read_file')).toBe('fs(read)');
   });
 
-  it('未知/领域名返回 null（不误伤）', () => {
+  it('未知/领域名返回 null（不误伤）；图谱旧名退役后无映射，同样 null', () => {
     expect(retireRedirect('fs')).toBeNull();
     expect(retireRedirect('whatever')).toBeNull();
+    // 图谱域（graph(dataflow_save) 等）与 fs 域 constraints 两动作随图谱
+    // 全量退役（2026-09-09）：这些旧名不在 DOMAIN_SPECS/别名表 → null
+    expect(retireRedirect('dataflow_save')).toBeNull();
+    expect(retireRedirect('dataflow_query')).toBeNull();
+    expect(retireRedirect('write_constraints')).toBeNull();
+    expect(retireRedirect('semantic_search')).toBeNull();
   });
 });
 

@@ -34,18 +34,16 @@ fn parse_command_modules(src: &str) -> Vec<String> {
 fn capability_command_modules_are_frozen() {
     let src = fs::read_to_string(commands_mod_path()).expect("src/commands/mod.rs must exist");
     let actual = parse_command_modules(&src);
+    // （图谱全量退役 2026-09-09：engine_dispatch / graph / hologram / dataflow /
+    //  constraints_cap 五模块随引擎接线删除——基线同步移出，按本测试自有
+    //  程序「基线加入/移出该模块 + commit 标注」执行。）
     let expected = vec![
         "browser_cap",
-        "constraints_cap",
-        "dataflow",
         "editor_cap",
-        "engine_dispatch",
         "external",
         "filesystem",
         "fs_cap",
         "git_cap",
-        "graph",
-        "hologram",
         "identity",
         "isolation",
         "lsp_cap",
@@ -72,7 +70,7 @@ fn capability_command_modules_are_frozen() {
          identity 同族；基线补录 2026-09-08：该 commit 漏更本基线致 HEAD 红，\n\
          按本测试自有程序补录，非新授权）。\n\
          search_cap = v3 能力口（kernel-plugin-architecture-decision.md §3：fs 能力族\n\
-         变体 + resolve_read 强制闸 + 物理扫描/向量召回）——合法强制层模块，见\n\
+         变体 + resolve_read 强制闸 + 物理扫描）——合法强制层模块，见\n\
          docs/plans/kernel-capability-r2-search-pilot.md §7。\n\
          fs_cap = v3 能力口（kernel-capability-c3-design.md R3-a：fs 能力族 + \n\
          resolve_*_dispatch 强制闸 + confined_fs 字节执行）——合法强制层模块，\n\
@@ -96,11 +94,13 @@ fn capability_command_modules_are_frozen() {
          resolve→classify→grant→lease 全链执行体（INVARIANTS #13：COM 只活\n\
          worker 线程、物理输入必经租约））——合法强制层模块，grants/审计/\n\
          敏感词表是句柄层本体，禁止向 commands/ 塞业务命令。\n\
-         web_cap/constraints_cap/pty_cap/lsp_cap = v3 能力口（同设计件 R4-4\n\
-         小面清偿：web 族（WebFetchTool 口内闸 + SSRF 逐跳复查）/ constraints\n\
-         读写（原语义无闸 + 路径校验）/ pty、lsp 会话族（Passthrough 原语义，\n\
-         pty_manager/lsp_manager 本体留 Rust——v3 §4 原生引用不迁））——合法\n\
+         web_cap/pty_cap/lsp_cap = v3 能力口（同设计件 R4-4\n\
+         小面清偿：web 族（WebFetchTool 口内闸 + SSRF 逐跳复查）/ pty、lsp\n\
+         会话族（Passthrough 原语义，pty_manager/lsp_manager 本体留\n\
+         Rust——v3 §4 原生引用不迁））——合法\n\
          强制层模块，禁止向 commands/ 塞业务命令。\n\
+         （constraints_cap 随图谱全量退役删除，2026-09-09——hologram.constraints.yaml\n\
+         读写仅服务引擎 run_check，兰台侧已无消费方。）\n\
          plugin_data = 应用壳基础设施（app-shell 四件套 · 件 B，docs/plans/\n\
          app-shell-software-plugin-plan.md §5-S1）：webview 无盘权 → 插件数据\n\
          目录 I/O 必须 Rust（v3 决策「应用壳」保留面）；名字 + rel 双围栏 +\n\

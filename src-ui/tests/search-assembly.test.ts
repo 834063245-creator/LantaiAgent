@@ -200,22 +200,6 @@ describe('assembleSearchOutput（三形态组装）', () => {
     expect(out.truncated).toBe(true);
     expect(out.budget_truncated).toBe(true);
   });
-
-  it('向量召回 passthrough：尾键序 vector_hits → vector_backend', () => {
-    const scan = scanOf({
-      vector_hits: [{ node_id: 'n1', score: 87 }],
-      vector_backend: 'static',
-    });
-    const out = JSON.parse(assembleSearchOutput({ directory: 'D:/x', pattern: 'hello' }, scan)) as Record<
-      string,
-      unknown
-    >;
-    const keys = Object.keys(out);
-    expect(keys[keys.length - 2]).toBe('vector_hits');
-    expect(keys[keys.length - 1]).toBe('vector_backend');
-    expect(out.vector_hits).toEqual([{ node_id: 'n1', score: 87 }]);
-    expect(out.vector_backend).toBe('static');
-  });
 });
 
 describe('parseScanOutput', () => {

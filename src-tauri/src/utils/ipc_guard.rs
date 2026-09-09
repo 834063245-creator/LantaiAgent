@@ -86,23 +86,9 @@ fn sweep_shell_spills() {
     }
 }
 
-/// IPC 响应尺寸硬上限 — 2026-08-08 事故：256MB 响应经 IPC 击毁 WebView2 进程栈。
-/// 图 JSON 是唯一合法的大 payload（kernel 级仓库可达数百 MB），
-/// 暂以硬上限换「明确报错」替代「白屏假死」；真正的解法是图分页/流式
-/// （见 docs/landmine-map.md P0-2 → L 级项目）。
-pub(crate) const MAX_IPC_RESPONSE_BYTES: usize = 128 * 1024 * 1024;
-
-/// 大响应护栏：超过 IPC 上限则报错而非静默传输（宪法·错误不静默）。
-pub(crate) fn guard_ipc_size(content: String, what: &str) -> Result<String, String> {
-    if content.len() > MAX_IPC_RESPONSE_BYTES {
-        return Err(format!(
-            "{what} 大小 {}MB 超过 IPC 上限 {}MB——直接传输会击毁 WebView2。需要图分页支持（见 docs/landmine-map.md P0-2）",
-            content.len() / (1024 * 1024),
-            MAX_IPC_RESPONSE_BYTES / (1024 * 1024),
-        ));
-    }
-    Ok(content)
-}
+// （IPC 响应尺寸护栏（MAX_IPC_RESPONSE_BYTES / guard_ipc_size）随图谱全量
+// 退役删除，2026-09-09：唯一大 payload 消费面是图 JSON 命令（load_graph_json
+// 等，kernel 级仓库可达数百 MB）；图命令族已退役，壳 RPC 无大载荷出口。
 
 /// 统一加锁：锁中毒（持锁线程 panic）时恢复数据并告警，绝不让 panic
 /// 沿 IPC 面连锁扩散——一处 panic 不得拖死整个命令面（雷区地图 P0-12）。

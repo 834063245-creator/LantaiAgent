@@ -11,7 +11,7 @@
 | 当前版本 | 4 |
 | 模型可见默认工具数 | 36 |
 | 壳专属方法数 | 11 |
-| GraphJSON 权威源 | src-ui/src/scene/graph-types.ts |
+| GraphJSON 权威源 | engine/src/tools/mod.rs `graph_snapshot_value` |
 
 ## 模型可见默认工具面（tools/list 默认返回）
 

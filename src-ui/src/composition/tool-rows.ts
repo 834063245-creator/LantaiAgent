@@ -44,8 +44,6 @@ import type { SubAgentSpawner } from '../agent/tools/subagent';
  *  可选字段的缺席 = 该行/贡献产出空集（族内工具按依赖存在性条件注册，
  *  与迁移前 builder 的 if 分支语义一致）。 */
 export interface ToolRowContext {
-  /** graph/ops/lsp 族的开关：缺帐时该贡献产出空集（原 if (graphData) 分支）。 */
-  graphData?: unknown;
   codingExec: ToolExecutor;
   /** ask_user 的 UI 回调（builder 从 BuilderDeps.onAskUser 注入）。 */
   ui?: CodingToolsUI;

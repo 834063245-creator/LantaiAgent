@@ -22,55 +22,21 @@ import { resolveSemanticToolName } from '../ui/tool-semantics';
 /** 工具族（版式语义：观察轻 / 产物重 / 验证换气 / 落款锚）。 */
 export type ToolFamily = 'read' | 'write' | 'verify' | 'commit' | 'other';
 
-/** 旧语义名 → 族（第一方默认表；领域动作经 resolveSemanticToolName 反查到旧名后入表）。 */
+/** 旧语义名 → 族（第一方默认表；领域动作经 resolveSemanticToolName 反查到旧名后入表）。
+ *  （图谱域语义名（graph/lsp/ops 36+ 工具）与 constraints/dataflow 对随图谱
+ *  全量退役移除，2026-09-09——动态名面兜底铁律（readOnly → read）兜住
+ *  远端 MCP 同名工具的版式族。） */
 const FAMILY_BY_SEMANTIC_NAME: Record<string, ToolFamily> = {
   // fs 观察面
   read_file_content: 'read',
   list_directory: 'read',
   glob: 'read',
   search_content: 'read',
-  read_constraints: 'read',
   // git 观察面
   git_status: 'read',
   git_diff: 'read',
   git_log: 'read',
   git_blame: 'read',
-  // 图查询（graph 域全部只读）
-  search_symbols: 'read',
-  semantic_search: 'read',
-  get_neighbors: 'read',
-  trace_impact: 'read',
-  find_dep_path: 'read',
-  inspect_symbol: 'read',
-  explore_deps: 'read',
-  get_community: 'read',
-  cluster_report: 'read',
-  graph_summary: 'read',
-  detect_cycles: 'read',
-  coupling_report: 'read',
-  fragile_modules: 'read',
-  arch_blindspots: 'read',
-  check_boundaries: 'read',
-  thread_conflicts: 'read',
-  async_edges: 'read',
-  find_unused: 'read',
-  list_flows: 'read',
-  get_flow: 'read',
-  get_affected_flows: 'read',
-  trace_dataflow: 'read',
-  preflight_check: 'read',
-  grpc_services: 'read',
-  graph_diff: 'read',
-  dataflow_query: 'read',
-  // lsp / ops 观察面
-  resolve_call: 'read',
-  infer_type: 'read',
-  find_implementations: 'read',
-  find_references: 'read',
-  validate_project: 'read',
-  project_health: 'read',
-  engine_status: 'read',
-  project_timeline: 'read',
   // web / 任务板 / 记忆观察面
   web_fetch: 'read',
   task_get: 'read',
@@ -117,8 +83,7 @@ const FAMILY_BY_SEMANTIC_NAME: Record<string, ToolFamily> = {
   move_file: 'write',
   rename_file: 'write',
   delete_file: 'write',
-  write_constraints: 'write',
-  // git 写面 / 图与符号写面
+  // git 写面 / 记忆写面
   git_stage: 'write',
   git_push: 'write',
   git_pull: 'write',
@@ -128,11 +93,8 @@ const FAMILY_BY_SEMANTIC_NAME: Record<string, ToolFamily> = {
   git_stash_pop: 'write',
   git_discard: 'write',
   git_init: 'write',
-  rename_symbol: 'write',
-  import_scip: 'write',
   hologram_memory_save: 'write',
   hologram_memory_delete: 'write',
-  dataflow_save: 'write',
   // 落款
   git_commit: 'commit',
 };

@@ -282,49 +282,11 @@ const EDITOR_CAP_DESCRIPTION =
   'Perform exact string replacement in a file. The old_string must match exactly (including indentation and whitespace) and must be unique in the file (unless replace_all is true). This is the preferred way to modify code — safer and cheaper than rewriting the entire file.';
 
 // ═══════════════════════════════════════════════════════════════
-// constraints 域模型族 zod 真源（kernel-capability-d4-handle-design.md R4-4
-// 小面清偿，2026-09-05）：builtin.constraints 插件退役，2 工具 schema 真源
-// 回 TS zod（逐键等价退役前 manifest 发射）；execute 经 fsExecute → provider
-// seam（D11 开放面不动）→ builtinFsProvider 换 constraints_cap 直呼。
+// （constraints 域模型族工具随图谱全量退役删除，2026-09-09——
+//  hologram.constraints.yaml 读写仅服务引擎 run_check，兰台侧已无消费方；
+//  曾于 R4-4（2026-09-05）从 builtin.constraints 插件迁 zod 真源 +
+//  constraints_cap 直呼，本批整族退役。）
 // ═══════════════════════════════════════════════════════════════
-
-const readConstraintsSchema = z.object({
-  projectPath: z.string().describe('Project root directory path'),
-});
-
-const writeConstraintsSchema = z.object({
-  projectPath: z.string().describe('Project root directory path'),
-  content: z.string().describe('Full YAML content to write'),
-});
-
-/** constraints 域动作 → 模型面 description（manifest 字节转录）。 */
-const CONSTRAINTS_CAP_DESCRIPTION = {
-  read_constraints:
-    'Read the current constraint configuration (hologram.constraints.yaml) for the project. Returns the YAML content. Use to check routing rules, thresholds, and allowlist/denylist settings.',
-  write_constraints:
-    'Write the constraint configuration (hologram.constraints.yaml) for the project — replaces the whole file. Use after check_boundaries (graph domain) reveals violations worth encoding as standing rules: routing rules, thresholds, allowlist/denylist. Read the current config with fs(constraints) first so you extend existing rules rather than drop them.',
-} as const;
-
-/** constraints 域模型族工具（R4-4 起 zod 真源，不查 builtin.constraints 镜像）；
- *  TS 工具名保持历史名（模型面契约）；execute 经 provider seam
- *  （constraints/write_constraints 动作 → builtinFsProvider → constraints_cap）。 */
-function constraintsCapTool(
-  action: keyof typeof CONSTRAINTS_CAP_DESCRIPTION,
-  localName: string,
-  schema: z.ZodObject<z.ZodRawShape>,
-  exec: ToolExecutor,
-): Tool {
-  const parameters = toInputJsonSchema(schema.passthrough());
-  const readOnly = action === 'read_constraints';
-  return {
-    name: () => localName,
-    description: () => CONSTRAINTS_CAP_DESCRIPTION[action],
-    parameters: () => parameters,
-    readOnly: () => readOnly,
-    execute: (args, onProgress, signal) =>
-      fsExecute(action === 'read_constraints' ? 'constraints' : 'write_constraints', args, exec, onProgress, signal),
-  };
-}
 
 /** editor 域模型族工具（R4-4b 起 zod 真源，不查 builtin.editor 镜像）；
  *  TS 工具名保持历史名（模型面契约）；execute 经 provider seam
@@ -341,7 +303,7 @@ function editCapTool(localName: string, exec: ToolExecutor): Tool {
 }
 
 /** fs 域工具族（S1-2 从 createCodingTools 迁出；fs 域收口后 8 模型族 zod 真源
- *  + edit/constraints 仍 manifest 驱动）。
+ *  + edit 仍 manifest 驱动；constraints 两件随图谱退役移除）。
  *  声明序 = 领域合并/装配的字节契约序——勿重排。 */
 export function createFsTools(exec: ToolExecutor): Tool[] {
   const rename = fsCapTool('rename', 'rename_file', exec);
@@ -350,8 +312,6 @@ export function createFsTools(exec: ToolExecutor): Tool[] {
     fsCapTool('write', 'write_file', exec),
     editCapTool('edit_file', exec),
     fsCapTool('list', 'list_directory', exec),
-    constraintsCapTool('read_constraints', 'read_constraints', readConstraintsSchema, exec),
-    constraintsCapTool('write_constraints', 'write_constraints', writeConstraintsSchema, exec),
     fsCapTool('glob', 'glob', exec),
     fsCapTool('delete', 'delete_file', exec),
     fsCapTool('mkdir', 'create_directory', exec),

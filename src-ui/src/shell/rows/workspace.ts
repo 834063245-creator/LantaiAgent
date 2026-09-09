@@ -8,18 +8,17 @@
 // 零目录会话/占位工作区已随「会话物理归属工作区」移除，无项目不装配 Agent。
 //
 // V5 拆除（2026-08-22，纸壳唯一主界面）：星图渲染面退役——switchWorkspace
-// 不再构造/等待 StarGraph 渲染，图谱数据面（graphData 分页装载 + graph-
-// updated 监听 + runCheck）照旧服务 Agent 工具与简报注入；doSearch /
-// reanalyze / toggleDiff（星图交互族）随观测台退役。
+// 不再构造/等待 StarGraph 渲染。图谱全量退役（2026-09-09）：graphData 装载 /
+// graph-updated 监听 / runCheck / workspace_start_watcher（通知泵）随引擎接线
+// 整批移除——switch = 激活 + Agent 装配 + 会话/画布恢复，零引擎依赖。
 //
 // 行禁用涟漪（§2.8）：boot 不跑 = flowDeps 未产出 = actions 行跳过注册、
 // 冷启动行调 switchWorkspace 一致地失败（直接 import 本模块调用会炸——
 // 禁用即不可用，文档声明）。
 
-import { log } from '../../agent/logger';
 import { useShellStore } from '../../app/shell-store';
 import { withTimeout } from '../../lifecycle/timeout';
-import { kernelCreateDirectory, typedRpc } from '../../rpc-contract';
+import { kernelCreateDirectory } from '../../rpc-contract';
 import { useDockStore } from '../../state/dock-store';
 import { bumpWorkspaceSwitched } from '../../state/workspace-switch-store';
 import { useAgentPanelStore } from '../../ui/agent-panel-store';
@@ -28,9 +27,8 @@ import { pushStatus, type ShellRefs, setLoading, shellRefs } from '../runtime';
 
 // 惰性取 Workspace 模块（值面）——防组合层环：roster → shell-rows →
 // 本模块 → workspace.ts → composition-store/roster。类型 import 擦除无环；
-// 值（Workspace 类 / isSamePath / loadGraphPages）在运行时首次调用取
-// （模块系统缓存，零重复装载）。工作区函数族全部运行时触发（UI 动作/
-// 冷启动），惰性装载无时序代价。
+// 值（Workspace 类 / isSamePath）在运行时首次调用取（模块系统缓存，零重复
+// 装载）。工作区函数族全部运行时触发（UI 动作/冷启动），惰性装载无时序代价。
 async function wsMod(): Promise<typeof import('../../workspace')> {
   return import('../../workspace');
 }
@@ -52,10 +50,7 @@ export async function pickFolder(): Promise<string | null> {
 // switchWorkspace — 统一入口
 // ═══════════════════════════════════════════════════════════════
 
-/** opts.graphEngine（2026-08-31 per-workspace 引擎旗标）：true/false = 显式指定
- *  （新建工作区 sheet 的勾选，随 activate 写入注册表）；null/undefined = 不指定，
- *  Workspace.open 内部按注册表现值装配（无记录回退全局默认），注册表不被覆写。 */
-async function switchWorkspace(path?: string, opts?: { graphEngine?: boolean | null }): Promise<void> {
+async function switchWorkspace(path?: string): Promise<void> {
   const { workspace, wsMachine } = shellRefs;
   const chatPanel = shellRefs.chatPanel;
   if (!chatPanel) {
@@ -78,7 +73,7 @@ async function switchWorkspace(path?: string, opts?: { graphEngine?: boolean | n
 
     if (workspace?.active && isSamePath(workspace.path, folder)) {
       pushStatus('已在当前工作区');
-      wsMachine.forceState(workspace?._health === 'degraded' ? 'degraded' : 'active');
+      wsMachine.forceState('active');
       return;
     }
 
@@ -100,8 +95,7 @@ async function switchWorkspace(path?: string, opts?: { graphEngine?: boolean | n
       shellRefs.workspace = null;
     }
 
-    // 创建新工作区 — 立即传入回调，使 Workspace.open（分析 + 数据装载）期间
-    // 的进度事件推送可见的状态更新。
+    // 创建新工作区 — 立即传入回调，使 Workspace.open 期间的状态更新可见。
     const onStatusChange = (msg: string) => {
       pushStatus(msg);
     };
@@ -110,26 +104,19 @@ async function switchWorkspace(path?: string, opts?: { graphEngine?: boolean | n
     };
     let ws: Workspace;
     try {
-      ws = await WorkspaceCls.open(folder, null, chatPanel, {
+      ws = await WorkspaceCls.open(folder, chatPanel, {
         onStatusChange,
         onLoadingChange,
-        graphEngine: opts?.graphEngine ?? null,
       });
     } catch (err) {
       console.error('[switchWorkspace] Workspace.open threw:', err);
-      pushStatus(`分析失败: ${err}`);
+      pushStatus(`打开工作区失败: ${err}`);
       setLoading(false);
       wsMachine.forceState('idle');
       throw err;
     }
     ws.onStatusChange = onStatusChange;
     ws.onLoadingChange = onLoadingChange;
-
-    // 接线分析失败回调，用于降级模式
-    ws.onAnalysisFailed = (err) => {
-      console.warn('[switchWorkspace] background analysis failed:', err);
-      pushStatus('⚠️ 后台分析未完成 — 缓存图谱可用，重新绑定目录可重试');
-    };
 
     shellRefs.workspace = ws;
     // 竞态根治（2026-09-02 实机事故）：状态机此前在 open() 返回后即转
@@ -139,14 +126,6 @@ async function switchWorkspace(path?: string, opts?: { graphEngine?: boolean | n
     // 全部越界被拒 + 双方 setupAgent 互拆 runtime/core → 画布/设置面板全死。
     // 修复：'switching' 持有到整个 switch 完成（含恢复），finally 兜底不变。
 
-    // Phase 1.5：graphData = 聚合快照（不再有全量 nodes/edges 计数）
-    const gd = ws.graphData;
-    const nodeCount = gd?.node_count ?? 0;
-    pushStatus(`✨ ${nodeCount} 节点已就绪`);
-    log.info('main', 'project loaded', {
-      nodes: nodeCount,
-      edges: gd?.edge_count ?? 0,
-    });
     // #2 修复（2026-09-02）：setLoading(false) 原在此处调用——但 setupAgent +
     // restoreCanvasSpread 尚未完成。用户看到 analyzing 已清除、认为工作区就绪，
     // 实际卷还在恢复。移到 restoreCanvasSpread 之后。这里保留 pushStatus 进度。
@@ -172,9 +151,9 @@ async function switchWorkspace(path?: string, opts?: { graphEngine?: boolean | n
     // 豁免（session-persistence-seam-wiring-plan 表 1.1 #10）：工作区脚手架结构
     // op——壳行执行时序早于插件装载，不可依赖 seam；默认 provider save 走
     // kernelWriteFile 自带父目录自动创建兜底。
-    // 超时护栏（2026-09-09 事故立法）：恢复链上的 RPC 一律有界——引擎缺席/
-    // 后端无响应时无界 await 会把状态机永锁 'switching'（挂起的 await 不走
-    // finally，兜底 forceState 也到不了），首页一切点击被 isBusy 守卫拦截。
+    // 超时护栏（2026-09-09 事故立法）：恢复链上的 RPC 一律有界——后端无响应
+    // 时无界 await 会把状态机永锁 'switching'（挂起的 await 不走 finally，
+    // 兜底 forceState 也到不了），首页一切点击被 isBusy 守卫拦截。
     try {
       await withTimeout(kernelCreateDirectory(`${folder.replace(/[\\/]+$/, '')}/.lantai/sessions`), 5000);
     } catch (e) {
@@ -196,38 +175,22 @@ async function switchWorkspace(path?: string, opts?: { graphEngine?: boolean | n
     // #2 修复：恢复完成后才清除加载态——用户在此前不能进入纸面板（analyzing
     // 状态仍在，onEnterWorkspace 的 wsMachine.isBusy 守卫也拦截）
     setLoading(false);
-    if (ws._graphEngineOn) {
-      ws.runCheck();
-      await withTimeout(typedRpc('workspace_start_watcher', {}), 10_000).catch((e) => {
-        // 原 `.catch(() => {})` 全静默——无界 await + 静默吞错正是卡死无感的
-        // 双成因；watcher 起不来只是增量分析缺席，工作区本身可用（可见降级）。
-        console.warn('[switchWorkspace] workspace_start_watcher 失败/超时——本次无增量分析:', e);
-        pushStatus('⚠️ 文件监视未启动——本次进入无增量分析（可继续用，重进工作区可重试）');
-      });
-    } else {
-      // 引擎开关关闭（2026-08-22）：不跑初始简报、不启文件 watcher——
-      // watcher 的增量分析链（engine_try_incremental）会在后台把引擎拉起来。
-      pushStatus('图谱引擎已停用——跳过简报与文件监视');
-    }
+    pushStatus('✨ 工作区已就绪');
     // 竞态根治：全部恢复落定后才离开 'switching'（isBusy 期间二次点击
-    // 被 switchWorkspace 入口 + #4 守卫拦截）。switching → active/degraded
-    // 均为合法转移。
-    wsMachine.transition(ws._health === 'degraded' ? 'degraded' : 'active');
+    // 被 switchWorkspace 入口 + #4 守卫拦截）。
+    wsMachine.transition('active');
   } finally {
     // 兜底：异常路径（open 抛错已 forceState('idle')）外不得卡 'switching'
     if (wsMachine.state === 'switching') {
-      wsMachine.forceState(
-        shellRefs.workspace?._health === 'degraded' ? 'degraded' : shellRefs.workspace ? 'active' : 'idle',
-      );
+      wsMachine.forceState(shellRefs.workspace ? 'active' : 'idle');
     }
   }
 }
 
 // ── 离开工作区回首页（2026-09-08 生命周期修复：回首页 = 真关工作区）──
-// 历史语义：关纸面板只翻 dock-store 布尔，工作区实例（watcher/引擎/Agent/
-// fiber）继续常驻后台——视图层与运行时层脱节。用户拍板：回首页必须真正
-// deactivate（停 watcher/引擎/Agent），使从首页再进入必然重建实例重读
-// 图谱旗标（图谱开关"下次进入生效"变成真承诺）。
+// 历史语义：关纸面板只翻 dock-store 布尔，工作区实例（Agent/fiber）继续
+// 常驻后台——视图层与运行时层脱节。用户拍板：回首页必须真正 deactivate
+//（停 Agent/fiber），使从首页再进入必然重建实例。
 
 /** 真关当前工作区并回首页。无活动工作区 = 直接关面板（无副作用）。
  *  调用方（PaperPanel 确认弹层）先经关闭守卫弹确认再调本函数——
@@ -269,8 +232,8 @@ function escLayer(): void {
 }
 
 // ── 卡死逃生口（2026-09-09 事故立法：首页「点不进工作区」根因收口）──
-// 实机事故：引擎二进制缺席 → 冷启动恢复链在会话/画布恢复段挂死 → 状态机
-// 永停 'switching' → 首页 onEnterWorkspace 的 isBusy 守卫拦截一切点击（弹
+// 实机事故：冷启动恢复链在会话/画布恢复段挂死 → 状态机永停 'switching' →
+// 首页 onEnterWorkspace 的 isBusy 守卫拦截一切点击（弹
 // 「工作区正在恢复中，请稍候…」），用户被锁在所有工作区外面且无任何逃生
 // 口。尾部 await 已加 withTimeout 护栏（上方），但护栏防不住未知的挂点
 // （Workspace.open 内部、未来新增的恢复步骤）——本口 = 最后一道人工逃生：

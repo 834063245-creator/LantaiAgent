@@ -13,8 +13,9 @@
 // ①b（2026-08-23）：minimal/用户层 patch 寻址 plugin 行——解析须在
 // withFirstPartyToolChannel 腰内（贡献行在册才可寻址）。已解析组合的
 // 行对象自带 factory，装配期（AgentRuntime/buildToolRegistry）不需要通道。
-// B⑤（2026-08-24）：minimal 的 graph-hooks capability 行经通道注册——
+// B⑤（2026-08-24）：minimal 的 state-hooks capability 行经通道注册——
 // 寻址 capability key 的解析须在 withFirstPartyCapabilityChannel 腰内。
+// 2026-09-09 图谱退役：graph-hooks 收缩改名 state-hooks，禁用行随键改。
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -60,7 +61,7 @@ async function minimalComposition(): Promise<ResolvedComposition> {
               { id: WEB_ROW, disabled: true },
               { id: WEB_FETCH_ROW, disabled: true },
             ],
-            capabilities: [{ id: 'graph-hooks', disabled: true }],
+            capabilities: [{ id: 'state-hooks', disabled: true }],
           },
         ]),
       ),
@@ -111,19 +112,14 @@ describe('S4-1a 装配穿线：createAgentFromContext/createAgent 组合覆盖',
   });
 
   it('带 minimal 覆盖：Agent.composition = 覆盖组合；prompt 段表反映 preset', async () => {
-    // B④ 收官（2026-08-23）：第一方面 13 段全经 ctx.prompts 通道贡献——
+    // B④ 收官（2026-08-23）：第一方面段全经 ctx.prompts 通道贡献——
     // 系统提示词内容断言须在通道腰内复现生产装配面
     await withFirstPartyPromptChannel(async () => {
       const rt = new AgentRuntime();
       await rt.ready();
       const minimal = await minimalComposition();
-      // graphData 在场 → 完整面（模型身份等段参与——minimal 未禁它们）
-      const h = await rt.createAgentFromContext(
-        makeCtx('s41a-minimal', rt),
-        { graphData: { nodes: [] } },
-        undefined,
-        minimal,
-      );
+      // 图谱退役后无 graphData 装配输入——有目录面（模型身份等段参与，minimal 未禁它们）
+      const h = await rt.createAgentFromContext(makeCtx('s41a-minimal', rt), {}, undefined, minimal);
       const { composition } = agentOf(h);
       expect(composition).toBe(minimal); // ctx 服务写入的就是覆盖对象（引用透传）
       const sys = sysOf(h);
@@ -132,18 +128,13 @@ describe('S4-1a 装配穿线：createAgentFromContext/createAgent 组合覆盖',
     });
   });
 
-  it('带覆盖 + capability 禁用：graph-hooks 不装（graphContext 存在时 hooks 不注册）', async () => {
+  it('带覆盖 + capability 禁用：state-hooks 不装（hooks 提示注入关闭）', async () => {
     const rt = new AgentRuntime();
     await rt.ready();
     const minimal = await minimalComposition();
-    // graph-hooks 禁用 → loadEngineSnapshot 等 capability 不跑；结构断言：
+    // state-hooks 禁用 → 状态/构建结果 hooks capability 不跑；结构断言：
     // 装配成功 + plan 工具面（context 阶段 capability）不受影响
-    const h = await rt.createAgentFromContext(
-      makeCtx('s41a-caps', rt),
-      { graphData: { nodes: [] } },
-      undefined,
-      minimal,
-    );
+    const h = await rt.createAgentFromContext(makeCtx('s41a-caps', rt), {}, undefined, minimal);
     const { tools } = agentOf(h);
     expect(tools.all().map((t) => t.name())).toContain('enter_plan_mode');
     expect(tools.all().map((t) => t.name())).toContain('exit_plan_mode');

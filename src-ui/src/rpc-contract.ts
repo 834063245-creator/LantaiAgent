@@ -17,8 +17,7 @@
 // - result（rpc Value 化第二步，2026-08-22）：
 //     `// JSON`  = JSON 形态。Rust 出口（rpc.rs rpc_result_shape 表）已把表内
 //                 命令展开为真结构化 Value，typedJsonRpc 直接透传；表外 JSON
-//                 命令（hologram_call/get_graph_page 等，形态不恒定或体量不可控）
-//                 仍返 JSON 字符串，typedJsonRpc 双形态兼容（string 走 parse）。
+//                 命令仍返 JSON 字符串，typedJsonRpc 双形态兼容（string 走 parse）。
 //     `// text`  = 纯文本（文件内容、base64、git stdout、错误信息等）。
 // - 新增前端一律用 typedRpc / typedListen，接线错误在编译期暴露；JSON 命令
 //   用 typedJsonRpc（双形态 shim 在那里）。
@@ -32,14 +31,8 @@ import { listen, rpc } from './bridge';
 // 方法契约
 // ─────────────────────────────────────────────────────────────
 
-/** Agent 上下文的公共可选参数（写操作需 is_agent + _agent_id 走权限路径）。
- *  workspace-session-ownership-rework（2026-08-27）：`_session_id` 已退役——
- *  引擎决议只跟活动工作区（单槽）走，会话 id 不参与引擎路由。 */
-interface AgentCtx {
-  is_agent?: boolean;
-  _agent_id?: string;
-  [key: string]: unknown;
-}
+// （AgentCtx 公共参数接口随 hologram_* 引擎 RPC 全量退役删除，2026-09-09——
+// 唯一消费方是引擎调度方法面。）
 
 /** git_cap 能力口 action（R3-c git 域收口）——退役前 builtin.git 16 工具名
  *  一一位（与历史精确规则寻址名 plugin:builtin.git.<action> 同构）。 */
@@ -149,37 +142,6 @@ export interface RpcContract {
     result: string; // JSON
   };
 
-  // ── Engine 调度 ──────────────────────────────────────────
-  hologram_call: {
-    params: { tool: string; args?: Record<string, unknown> } & AgentCtx;
-    result: string; // JSON
-  };
-  hologram_tools_list: {
-    params: Record<string, never>;
-    result: string; // JSON
-  };
-
-  // ── Graph ────────────────────────────────────────────────
-  // Phase 1.5（engine-plugin-extraction）：分页运输栈拆除——graphData =
-  // 聚合快照（get_graph_snapshot / load_graph_json），按文件符号索引走
-  // hologram_file_nodes 轻查询；跨边界不再传全量图体。
-  load_graph_json: {
-    params: { path?: string };
-    result: string; // JSON — 聚合快照
-  };
-  analyze_and_load: {
-    params: { path: string; force?: boolean };
-    result: string; // JSON — 轻状态（分析完成后经 get_graph_snapshot 装载）
-  };
-  get_graph_snapshot: {
-    params: Record<string, never>;
-    result: string; // JSON — 聚合快照
-  };
-  hologram_file_nodes: {
-    params: { file: string };
-    result: string; // JSON — { file, count, nodes: [{id,name,kind,fan_in,fan_out}] }
-  };
-
   // ── Git ──────────────────────────────────────────────────
   // （git_status / git_diff_unstaged / git_diff_staged / git_log / git_stage /
   //   git_stage_all / git_commit / git_push / git_pull / git_init / git_checkout /
@@ -193,17 +155,15 @@ export interface RpcContract {
   //   信封退役。内部 I/O 统一经下方 fsCapCall 一族助手，is_agent=false 用户路径。）
   get_last_project: {
     params: Record<string, never>;
-    result: string; // JSON — 最近工作区路径 "path"/null（冷启动恢复信号，与图谱引擎无关）
+    result: string; // JSON — 最近工作区路径 "path"/null（冷启动恢复信号）
   };
   workspace_list: {
     params: Record<string, never>;
-    result: string; // JSON — 已知工作区清单（注册表 + 各工作区会话计数/dir_exists/graph_engine，含空工作区）
+    result: string; // JSON — 已知工作区清单（注册表 + 各工作区会话计数/dir_exists，含空工作区）
   };
   workspace_rename: { params: { path: string; name: string }; result: string }; // "null"
   workspace_toggle_pin: { params: { path: string; pinned: boolean }; result: string }; // "null"
   workspace_remove: { params: { path: string }; result: string }; // "null" — 删除该工作区全部会话 + 解除登记（删除失败报错且不解除登记）
-  /** per-workspace 图谱引擎开关（首页卡片徽标切换入口）。生效语义 = 装配期一次（在途不活拆）。 */
-  workspace_set_graph_engine: { params: { path: string; enabled: boolean }; result: string }; // "null"
   /** 新建工作区目录：~/Documents/兰台/<名字>，返回归一化路径。只建目录不登记（登记随后续 activate）。 */
   workspace_create_dir: { params: { name: string }; result: string }; // JSON — 归一化路径字符串
 
@@ -211,8 +171,10 @@ export interface RpcContract {
   // search_cap：search 全文扫描能力口（fs 能力族变体，v3 §4）——不经 tool_call
   // 信封 / PluginRegistry。R2-d(2) 收窄：口只做纯扫描返回**统一原始命中集**
   // {pattern, scanned_files, budget_truncated, files:[{file, match_count,
-  // matches:[{line, content, context}]}]}（可选 vector_hits/vector_backend 尾键）
+  // matches:[{line, content, context}]}]}
   // ——三形态组装/分页/行号显示归 TS 编排层（agent/tools/search-assembly.ts）。
+  // （可选 vector_hits/vector_backend 语义召回尾键已随图谱全量退役删除，
+  //  2026-09-09——向量边车原经引擎 transport，壳内零引擎接线后不再出现。）
   // 收窄键：max_matches（总命中上限，content 形态行级断）/ max_files（命中文件
   // 上限，files/count 形态文件级断——触顶置 budget_truncated）/ collect_lines
   // （携带命中行与上下文邻居，仅 content）。参数键 = 顶层 snake_case
@@ -368,13 +330,14 @@ export interface RpcContract {
   };
 
   // ── 能力口（R4-4 小面清偿，kernel-capability-d4-handle-design.md）──────
-  // web_cap/constraints_cap/pty_cap/lsp_cap：四族直呼入口（对应 builtin.*
-  // 插件退役）——不经 tool_call 信封 / PluginRegistry / PluginToolAdapter。
-  // 均 Text：web search = JSON 字符串 / fetch = 网页文本；constraints read =
-  // YAML 原文 / write = "null"；pty spawn = 会话 id；lsp request = JSON 字符串
-  // （kernelLspRequest parseJson）。web 口内 WebFetchTool 无条件过闸（域名
-  // 规则 + SSRF 逐跳复查）；constraints/pty/lsp 原语义 Passthrough；
-  // pty-output / lsp-message 事件通道零改（manager 内部 emit）。
+  // web_cap/pty_cap/lsp_cap：三族直呼入口（对应 builtin.* 插件退役）——
+  // 不经 tool_call 信封 / PluginRegistry / PluginToolAdapter。
+  // 均 Text：web search = JSON 字符串 / fetch = 网页文本；pty spawn = 会话 id；
+  // lsp request = JSON 字符串（kernelLspRequest parseJson）。web 口内
+  // WebFetchTool 无条件过闸（域名规则 + SSRF 逐跳复查）；pty/lsp 原语义
+  // Passthrough；pty-output / lsp-message 事件通道零改（manager 内部 emit）。
+  // （constraints_cap 随图谱全量退役删除，2026-09-09——hologram.constraints.yaml
+  //  读写仅服务引擎 run_check，兰台侧已无消费方。）
   web_cap: {
     params: {
       action: 'web_search' | 'web_fetch';
@@ -386,17 +349,6 @@ export interface RpcContract {
       [key: string]: unknown;
     };
     result: string; // text — search JSON / fetch 网页文本
-  };
-  constraints_cap: {
-    params: {
-      action: 'read_constraints' | 'write_constraints';
-      project_path?: string;
-      content?: string;
-      is_agent?: boolean;
-      agent_id?: string | null;
-      [key: string]: unknown;
-    };
-    result: string; // text — YAML 原文 / "null"
   };
   pty_cap: {
     params: {
@@ -544,18 +496,12 @@ export interface RpcContract {
   // ── 外部服务 ─────────────────────────────────────────────
   sandbox_status: { params: Record<string, never>; result: string }; // JSON — {degraded,reason}（Value 化：Rust 出口已展开）
 
-  // ── Hologram 遗留命令 ────────────────────────────────────
-  hologram_run_check: { params: { path?: string }; result: string }; // JSON
-  // （hologram_record_event 已退役 2026-09-08：前端零消费——时间线记录走
-  //  Rust 侧 record_timeline_transport_detached 直达，不经 RPC。）
-
   // ── 工作区 ───────────────────────────────────────────────
   workspace_activate: {
-    params: { path: string; graph_engine?: boolean | null };
+    params: { path: string };
     result: string;
-  }; // "null" — graph_engine 缺省 = 保持注册表现值；显式值随登记写入（新建工作区 sheet）
+  }; // "null"
   workspace_deactivate: { params: Record<string, never>; result: string }; // "null"
-  workspace_start_watcher: { params: Record<string, never>; result: string }; // "null"
 
   // ── 会话持久化 ───────────────────────────────────────────
   // （workspace-session-ownership-rework 2026-08-27：chat 会话 NDJSON
@@ -567,19 +513,14 @@ export interface RpcContract {
     result: string; // "null"
   };
 
-  // ── 约束 ─────────────────────────────────────────────────
   // （read_constraints / write_constraints 已随 R4-4（2026-09-05）换 constraints_cap
-  //   能力口直呼——builtin.constraints 退役，契约见上方 constraints_cap。信封面
-  //   已随 R5 脚手架拆除。）
+  //   能力口直呼——builtin.constraints 退役。constraints_cap 本身随图谱全量
+  //   退役删除（2026-09-09）——hologram.constraints.yaml 读写仅服务引擎 run_check，
+  //   兰台侧已无消费方。）
 
-  // ── 数据流 ───────────────────────────────────────────────
-  dataflow_save: {
-    params: { query: string; content?: string; explore_result?: string; dataflow_result?: string };
-    result: string; // text
-  };
-  dataflow_query: { params: { trace_id?: string; list?: boolean }; result: string }; // JSON
-  // （dataflow_delete 已退役 2026-09-08：前端零消费——engine-domain 插件
-  //  的模型工具只注册 save/query 两件。）
+  // （dataflow_save / dataflow_query / dataflow_delete 已随图谱全量退役删除
+  //   （2026-09-09，dataflow_delete 前于 2026-09-08 首删）——engine-domain
+  //   插件与 .lantai/dataflow 壳侧存储一并退役。）
 
   // （pty_spawn/write/resize/kill 已随 R4-4 小面清偿换 pty_cap 能力口直呼
   //   信封消费，kernel-plugin-runtime P2-6；pty-output 事件行仍在本文件 EventContract。）
@@ -631,20 +572,12 @@ export interface EventContract {
     agentId: string;
     suggestions: { rule: string; behavior: 'allow' | 'deny' | 'ask' }[];
   };
-  /** analyze_and_load 进度 */
-  'analyze-progress': { current: number; total: number; file: string };
-  /** analyze_and_load 心跳 */
-  'analyze-heartbeat': { label: string; elapsed: string };
-  /** analyze_and_load 阶段切换 */
-  'analyze-phase': { phase: string; message: string };
   /** LSP 消息 */
   'lsp-message': { session_id: number; message: unknown };
   /** 前台 shell 输出流 */
   'shell:output': { streamId: string; kind: 'stdout' | 'stderr'; chunk: string };
   /** 前台 shell 结束 */
   'shell:done': { streamId: string; exitCode: number; error?: string };
-  /** 图变更摘要（workspace.rs 发射，分析完成后触发前端重载分页图） */
-  'graph-updated': string;
   /** PTY 输出（src-tauri 发射；旧前端未监听，新前端用 PTY 时需要） */
   'pty-output': { session_id: number; data: string };
   /** MCP/ACP stdio 桥 stdout 行 */
@@ -1022,52 +955,6 @@ export async function kernelLspRequest<T = unknown>(args: {
  *  实现/结构体定义双源核对，2026-09-01 实测；object 一律 passthrough——
  *  边界管形状对错，不做字段集冻结，Rust 加字段不炸前端）。 */
 export const rpcResultSchemas = {
-  // hologram_call 粗检（唯一 z.unknown() 条目）：载荷形状随底层工具（36+ 动态）
-  // 不恒定，内容契约归 define-tool 工具面体系；边界只保「合法 JSON 已解析」
-  // （string 慢路径的 parse 已在 schema 之前完成）。
-  hologram_call: z.unknown(),
-  hologram_tools_list: z.array(
-    z
-      .object({
-        name: z.string(),
-        description: z.string(),
-        // readOnly / properties 元素 description：引擎 mcp_value 恒写，但浏览器
-        // mock 面缺省（历史形状且被 convergence/tool-contract 基线钉住）——optional
-        // 兼容两态；消费方 mcpSchemaToTool 自带回退。
-        readOnly: z.boolean().optional(),
-        inputSchema: z
-          .object({
-            type: z.string(),
-            properties: z.record(
-              z.string(),
-              z
-                .object({
-                  type: z.string(),
-                  description: z.string().optional(),
-                  enum: z.array(z.string()).optional(),
-                })
-                .passthrough(),
-            ),
-            required: z.array(z.string()),
-          })
-          .passthrough(),
-      })
-      .passthrough(),
-  ),
-  load_graph_json: z
-    .object({
-      source_root: z.string(),
-      node_count: z.number(),
-      edge_count: z.number(),
-      file_count: z.number(),
-      class_count: z.number(),
-      kind_counts: z.record(z.string(), z.number()),
-      edge_kind_counts: z.record(z.string(), z.number()),
-      communities: z.array(z.object({ id: z.number(), size: z.number() })),
-      top_fan_in: z.array(z.object({ id: z.string(), name: z.string(), fan_in: z.number() })),
-      top_fan_out: z.array(z.object({ id: z.string(), name: z.string(), fan_out: z.number() })),
-    })
-    .passthrough(),
   get_last_project: z.nullable(z.string()),
   workspace_list: z.array(
     z
@@ -1079,7 +966,6 @@ export const rpcResultSchemas = {
         session_count: z.number(),
         latest_saved_at: z.nullable(z.string()),
         dir_exists: z.boolean(),
-        graph_engine: z.nullable(z.boolean()),
       })
       .passthrough(),
   ),
@@ -1110,9 +996,9 @@ export type RpcSchemaResultOf<M extends keyof typeof rpcResultSchemas> = z.infer
 export type WorkspaceSummary = RpcSchemaResultOf<'workspace_list'>[number];
 
 /** workspace_list 短期缓存（P1-2，2026-09-02）：SessionsHome 挂载拉一次、
- *  Workspace.open 查图谱旗标又拉一次——冷启动 10s 内两调全量扫各工作区
- *  会话根。TTL 内复用同一次结果；过期/写操作（rename/pin/remove/set_graph_engine）
- *  由调用方显式失效（clearWorkspaceListCache）。只缓存成功结果。 */
+ *  切区/首页重进又拉一次——TTL 内复用同一次结果；过期/写操作
+ *  （rename/pin/remove）由调用方显式失效（clearWorkspaceListCache）。
+ *  只缓存成功结果。 */
 const WORKSPACE_LIST_TTL_MS = 10_000;
 let _wsListCache: { at: number; data: WorkspaceSummary[] } | null = null;
 

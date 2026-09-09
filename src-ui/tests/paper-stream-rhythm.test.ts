@@ -68,7 +68,6 @@ describe('grammar：classifyTool 族推导', () => {
     expect(classifyTool('git', '{"action":"stage"}')).toBe('write');
     expect(classifyTool('git', '{"action":"commit","message":"x"}')).toBe('commit');
     expect(classifyTool('search', '{"action":"content","pattern":"x"}')).toBe('read');
-    expect(classifyTool('graph', '{"action":"impact"}')).toBe('read');
   });
 
   it('旧名直呼同样入表（历史卷 / 测试路径不经领域收敛）', () => {
@@ -92,6 +91,8 @@ describe('grammar：classifyTool 族推导', () => {
     expect(classifyTool('mcp__remote__foo', '{}', true)).toBe('read');
     expect(classifyTool('browser_click', '{}')).toBe('other');
     expect(classifyTool('agent_spawn', '{}')).toBe('other');
+    // graph 域随图谱全量退役：领域名/动作不再入表，落 unknown 兜底（other）
+    expect(classifyTool('graph', '{"action":"impact"}')).toBe('other');
   });
 
   it('流式半程 JSON 解析失败 → 不炸（other 兜底）', () => {

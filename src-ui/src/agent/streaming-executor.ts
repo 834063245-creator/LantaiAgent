@@ -4,7 +4,7 @@
 // 流式工具执行器 — 工具调用到达即执行，无需等待整个流结束。
 // 在 tool_use 块完成时立即开始执行。
 //
-// 钩子（GraphContextHook / PreflightHook）在此运行 — 执行前预检，
+// 钩子（富化 Hook / PreflightHook）在此运行 — 执行前预检，
 // 工具后富化 — 这样它们不会被流式执行绕过。
 //
 // 平台化 Phase 5（D13）：guard/preflight/around 全量经 eventBus 管道

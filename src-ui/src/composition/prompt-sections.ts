@@ -9,23 +9,16 @@
 // 零漂移优先于美化：任何"顺手规整分隔符"的改动都会击穿
 // system-prompt.fixture 快照与前缀缓存。
 //
-// 三个装配面（2026-08-25 三面解耦——目录 / 图 / 模式独立判面）：
+// 两个装配面（2026-09-09 图谱退役后——原三面解耦随图谱面移除）：
 //   - 零目录面（无项目）：identity-brief → memory-brief → env-brief
-//   - 关引擎面（有目录、graphData 缺帐）：identity → env → model-identity
-//     （含引擎停用行）→ memory → claude-md
-//   - 完整面（有图）：identity → env → model-identity → graph-snapshot
-//     → memory → claude-md
+//   - 有目录面：identity → env → model-identity → memory → claude-md
 // 2026-08-28 用户拍板：behavior-rules / graph-discipline / visual-discipline /
 // collaboration-mode / multi-agent 五段删除——策略与工具说明不内建，改走
 // A 类设置页与工具自带 schema 注入；system prompt 收缩为身份 + 动态数据。
-// 根因修复：此前 graphData==null 一刀切二分——绑了目录但关图谱引擎
-// （2026-08-22 能力）的 Agent 被错塞进零目录简短面，17 条行为规则/
-// 协作模式/多 Agent 指南/项目规范全部陪葬，且"当前没有加载项目"在
-// 绑定目录时是假话。解耦后 applicable 看"本段真正需要的信号"：
-// 图相关段看 hasGraph，目录相关段看 hasProject（两者独立判段）。
-// 同一段在两个面的位置不同（env 在完整面插在协作模式后、模型身份前；
-// memory 在简短面先于 env）——全局单一表序无法同时满足，故 env/memory
-// 各拆 brief/完整两个 id（render 共享 helper，行为逐字一致）。
+// （原 hasGraph 判面与 graph-snapshot 段、「图谱引擎已停用」行随图谱
+//  全量退役删除，2026-09-09；hasProject 判面 = projectPath 非空。）
+// 同一段在两个面的位置不同——env/memory 各拆 brief/完整两个 id
+// （render 共享 helper，行为逐字一致）。
 //
 // P4 B④ 收官（2026-08-23，拍板 #3 纯插件面）：全部 13 段经 ctx.prompts
 // 第一方插件通道贡献（plugins/prompt-segments-plugin.ts，装配腰
@@ -58,14 +51,10 @@ import { activePromptContributions } from './prompt-service';
 
 /** section 渲染上下文 — buildSystemPrompt 的全部入参。 */
 export interface PromptSectionContext {
-  graphData?: unknown;
   projectPath: string;
-  /** 绑定了项目目录（三面解耦 2026-08-25）：true = 关引擎面/完整面，
-   *  false = 零目录面。缺省按 graphData != null 推导（兼容既有调用点
-   *  ——显式置 false 才落零目录面；null 图 + 有路径 = 关引擎）。 */
+  /** 绑定了项目目录：true = 有目录面，false = 零目录面。 */
   hasProject?: boolean;
   memorySection?: string;
-  graphSnapshot?: string;
   claudeMdSection?: string;
   providerName?: string;
   shellEnvSection?: string;
@@ -80,11 +69,9 @@ export interface PromptSection {
   render: (ctx: PromptSectionContext) => string;
 }
 
-const hasGraph = (ctx: PromptSectionContext): boolean => ctx.graphData != null;
-/** 目录面谓词：显式 hasProject 优先；缺省按图推导（兼容 B④ 收官时代
- *  的既有调用点——除显式 false 外行为不变）。 */
+/** 目录面谓词：显式 hasProject 优先；缺省按 projectPath 非空推导。 */
 const hasProject = (ctx: PromptSectionContext): boolean =>
-  ctx.hasProject !== undefined ? ctx.hasProject : ctx.graphData != null;
+  ctx.hasProject !== undefined ? ctx.hasProject : ctx.projectPath !== '';
 const noProject = (ctx: PromptSectionContext): boolean => !hasProject(ctx);
 
 /** 模型身份双行（两面共用；从 buildSystemPrompt 机械迁出）。 */
@@ -163,32 +150,17 @@ const MODEL_IDENTITY: PromptSection = {
   applicable: hasProject,
   render: (ctx) => {
     const { negation, identity } = modelIdentityLines(ctx.providerName);
-    // 关引擎面（hasProject && 无图）：图谱引擎停用说明——修复"绑了目录
-    // 却说没加载项目"的假话（三面解耦 2026-08-25）。
-    const engineLine =
-      hasGraph(ctx) || noProject(ctx)
-        ? ''
-        : `\n- 图谱引擎已停用：依赖图工具（graph/lsp）本会话缺席，改用 search/fs 直接分析。`;
     return `
 ## 模型身份
 - ${negation}
 - ${identity}
-- 项目: \`${ctx.projectPath}\`${engineLine}`;
+- 项目: \`${ctx.projectPath}\``;
   },
 };
 
 // multi-agent 段已删除（2026-08-28）：多 Agent 工具说明改由 agent 工具自带。
 
-const GRAPH_SNAPSHOT: PromptSection = {
-  id: 'graph-snapshot',
-  applicable: (ctx) => hasGraph(ctx) && !!ctx.graphSnapshot,
-  render: (ctx) => `
-
-## 项目架构快照
-\`\`\`
-${ctx.graphSnapshot}
-\`\`\``,
-};
+// graph-snapshot 段已删除（2026-09-09）：随图谱功能全量退役。
 
 const MEMORY: PromptSection = {
   id: 'memory',
@@ -205,16 +177,16 @@ const CLAUDE_MD: PromptSection = {
 ${ctx.claudeMdSection}`,
 };
 
-/** 第一方 prompt 段清单（序 = 拼装序 = 迁移前出厂表序）——经 ctx.prompts
+/** 第一方 prompt 段清单（序 = 拼装序）——经 ctx.prompts
  *  第一方插件通道贡献（plugins/prompt-segments-plugin.ts 装载本清单，
  *  装配腰 composition/first-party-prompts.ts）。
  *  B④ 收官（2026-08-23）：出厂段表 builtinPromptSections() 退役，本清单
  *  即出厂装配面的全部段落来源（简短/完整两面经 applicable 互斥分流，
- *  序不变——13 段 = 试点/续批迁出 3 段 + 收官批迁出 10 段）。
+ *  序不变）。12 段 = 原 13 段 − graph-snapshot（图谱退役，2026-09-09）。
  *  S4-4 甲：清单段经通道进 roster 解析域（factoryComposition prompt 域
  *  快照）——patch/preset 可寻址段 id（disable/text/锚定）。 */
 export function firstPartyPromptSections(): PromptSection[] {
-  return [IDENTITY_BRIEF, MEMORY_BRIEF, ENV_BRIEF, IDENTITY, ENV, MODEL_IDENTITY, GRAPH_SNAPSHOT, MEMORY, CLAUDE_MD];
+  return [IDENTITY_BRIEF, MEMORY_BRIEF, ENV_BRIEF, IDENTITY, ENV, MODEL_IDENTITY, MEMORY, CLAUDE_MD];
 }
 
 /** 按序拼装系统提示词（applicable=false 的段跳过，其余纯 concat）。

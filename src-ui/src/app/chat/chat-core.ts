@@ -23,7 +23,6 @@ import { useShellStore } from '../../app/shell-store';
 import { sessionExecute } from '../../composition/session-persistence-service';
 import type { ChatImageRef, ToolSchema } from '../../provider/types';
 import { apiErrorSummary } from '../../provider/types';
-import type { StarGraph } from '../../scene/graph-types';
 import { askSessionOf, useAskStore } from '../../state/ask-store';
 import { useBgAlertStore } from '../../state/bg-alert-store';
 import { getCanvasStore, loadCanvasFromDisk, saveCanvasToDisk } from '../../state/canvas-store';
@@ -133,8 +132,6 @@ export class ChatCore {
   getSessionExecState(sessionId: number): ExecStateInstance {
     return Session.getSessionExecState(this.panelId, sessionId);
   }
-
-  private starGraph: StarGraph | null = null;
 
   /** 流式同步 timer — 按卷隔离（并发会话：两卷各自防抖刷新，互不挤掉对方）。 */
   private _syncTimers = new Map<number, ReturnType<typeof setTimeout>>();
@@ -291,7 +288,6 @@ export class ChatCore {
   }
   registerAt(c: AtAutocompleteHandle): void {
     this._atAutocomplete = c;
-    if (this.starGraph) c.setNodeNames(this.starGraph.getNodeNames());
   }
   registerMessages(c: MessagesApi): void {
     this._chatMessages = c;
@@ -387,9 +383,6 @@ export class ChatCore {
 
   getAgent(): ChatAgentHandle | null {
     return this.agent;
-  }
-  setStarGraph(g: StarGraph): void {
-    this.starGraph = g;
   }
   setProjectPath(p: string): void {
     // projectPath 单一权威 = shell-store（2026-08-04 状态治理收口）。
@@ -509,48 +502,11 @@ export class ChatCore {
     getChatStore(this.panelId).panel.getState().addToolUsage(toolName, args);
   }
 
-  /** 对工具名称进行分类，用于可视化分组。 */
-  private static _holoTools?: Set<string>;
+  /** 对工具名称进行分类，用于可视化分组。
+   *  （graph/ops/lsp 域 36+ 工具名清单已随图谱全量退役删除，2026-09-09——
+   *  剩余 holo 类 = hologram_ 前缀的第一方记忆域工具。） */
   static isHoloTool(name: string): boolean {
-    if (name.startsWith('hologram_')) return true; // 记忆 / 遗留工具
-    if (!ChatCore._holoTools) {
-      ChatCore._holoTools = new Set([
-        'explore_deps',
-        'search_symbols',
-        'get_neighbors',
-        'trace_impact',
-        'find_dep_path',
-        'inspect_symbol',
-        'symbol_history',
-        'get_community',
-        'cluster_report',
-        'async_edges',
-        'fragile_modules',
-        'detect_cycles',
-        'thread_conflicts',
-        'coupling_report',
-        'project_timeline',
-        'arch_blindspots',
-        'graph_summary',
-        'graph_diff',
-        'analyze_project',
-        'preflight_check',
-        'validate_project',
-        'project_health',
-        'rename_symbol',
-        'engine_status',
-        'check_boundaries',
-        'find_unused',
-        'trace_dataflow',
-        'resolve_call',
-        'infer_type',
-        'find_implementations',
-        'find_references',
-        'dataflow_save',
-        'dataflow_query',
-      ]);
-    }
-    return ChatCore._holoTools.has(name);
+    return name.startsWith('hologram_'); // 记忆域工具（历史前缀，见 domains.ts memory 域）
   }
   static toolCategory(name: string): 'read' | 'write' | 'exec' | 'holo' {
     if (ChatCore.isHoloTool(name)) return 'holo';
@@ -597,7 +553,6 @@ export class ChatCore {
         s.setInputHistoryIdx(-1);
         s.setDraftText('');
       },
-      getStarGraph: () => this.starGraph,
       getRuntime: () => useAgentPanelStore.getState().runtimeRef as RuntimePort | null,
     };
   }
@@ -649,7 +604,6 @@ export class ChatCore {
       },
       getTurnPairs: () => Session.getTurnPairs(this.panelId, ownerSid ?? undefined),
       getAgent: () => (ownerSid != null ? Session.getSessionAgent(this.panelId, ownerSid) : this.agent),
-      getStarGraph: () => this.starGraph,
       updateFooter: () => this.updateFooter(),
       setLastUsageText: (s) => {
         // 用量文本是活跃卷的底栏——后台卷事件不覆盖显示
@@ -1552,9 +1506,6 @@ export class ChatCore {
 
   copyText(text: string): void {
     navigator.clipboard.writeText(text).catch((e) => console.warn('[chat-core] 复制到剪贴板失败:', e));
-  }
-  navigateToNode(nodeName: string): void {
-    if (this.starGraph) this.starGraph.focusNode(nodeName);
   }
   /** 「改」：抄文本回输入框 + 撤旧轮（含其回复），用户改完手动发送——不预发送。
    *  撤回以 msg._id 经沙盒映射 ID 直达；定位失败 = 轮已不可撤（会话已压缩），

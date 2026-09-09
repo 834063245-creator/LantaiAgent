@@ -102,7 +102,7 @@ describe('composition/capability-service（A-3 capability 贡献通道）', () =
     expect(() => root.capabilities.register(probeCapability('auto-tune', 'agent', []))).toThrow(
       /duplicate contribution key/,
     );
-    expect(() => root.capabilities.register(probeCapability('graph-hooks', 'agent', []))).toThrow(
+    expect(() => root.capabilities.register(probeCapability('state-hooks', 'agent', []))).toThrow(
       /duplicate contribution key/,
     );
     await f2.dispose();

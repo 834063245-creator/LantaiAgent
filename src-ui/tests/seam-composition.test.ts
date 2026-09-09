@@ -10,8 +10,10 @@
 //   ④ 跨层 last-write-wins + 未知 id all-or-nothing
 //   ⑤ loopEvents 事件面开关：禁用事件不广播，其余事件不受影响（P3 全栈 preset）
 //   ⑥ llm seam 禁用：builtin/openai 被禁 → PROVIDER_DIALECT；后注册替代 adapter 接管
-//   ⑦ 其余 seam 域消费视图裁剪（subagents/sessionPersistence/graph 注册表读面）
+//   ⑦ 其余 seam 域消费视图裁剪（subagents/sessionPersistence）
 //   ⑧ composition-store 写入口灌入裁剪面（setResolved/setError/resetToFactory）
+// 2026-09-09 图谱退役：`seam/graph` 域随 graph-service 整删移除（SEAM_DOMAINS
+// 六域——llm/subagents/fs/shell/sessionPersistence/loopEvents）。
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { AgentEventBus } from '../src/agent/events';
@@ -19,7 +21,6 @@ import type { ToolExecutor } from '../src/agent/tool';
 import { createFsTools, fsExecute } from '../src/agent/tools/coding';
 import type { FsProvider } from '../src/composition/fs-service';
 import { activeFsProviders, registeredFsProviders } from '../src/composition/fs-service';
-import { activeGraphProviders, graphExecute, registeredGraphProviders } from '../src/composition/graph-service';
 import type { CompositionPatch } from '../src/composition/roster';
 import { CompositionPatchError, factoryComposition, resolveRoster } from '../src/composition/roster';
 import { resetSeamDisabled } from '../src/composition/seam-resolution';
@@ -80,7 +81,6 @@ describe('seam 裁剪域（组合解析 × ctx seam 消费视图）', () => {
       fs: [],
       shell: [],
       sessionPersistence: [],
-      graph: [],
       loopEvents: [],
     });
     // seams 寻址域 = 注册表原始清单 + 全部 D4 emit 事件名
@@ -126,11 +126,16 @@ describe('seam 裁剪域（组合解析 × ctx seam 消费视图）', () => {
 
   it('④ 跨层 last-write-wins；未知 seam id = all-or-nothing 拒绝', () => {
     const factory = factoryComposition();
+    // `seam/graph` 域已随图谱退役——SEAM_DOMAINS 无 graph，该键在解析域被
+    // 忽略（消费视图无 graph 面，无产生可禁行）
+    const ignored = resolveRoster(factory, [{ 'seam/graph': [{ id: 'builtin/rust-graph', disabled: true }] }]);
+    expect(ignored.seamDisabled).not.toHaveProperty('graph');
+
     const resolved = resolveRoster(factory, [
-      { 'seam/graph': [{ id: 'builtin/rust-graph', disabled: true }] },
-      { 'seam/graph': [{ id: 'builtin/rust-graph', disabled: false }] },
+      { 'seam/fs': [{ id: 'builtin/rust-fs', disabled: true }] },
+      { 'seam/fs': [{ id: 'builtin/rust-fs', disabled: false }] },
     ]);
-    expect(resolved.seamDisabled.graph).toEqual([]);
+    expect(resolved.seamDisabled.fs).toEqual([]);
 
     expect(() => resolveRoster(factory, [{ 'seam/fs': [{ id: 'no/such-provider', disabled: true }] }])).toThrow(
       CompositionPatchError,
@@ -166,21 +171,18 @@ describe('seam 裁剪域（组合解析 × ctx seam 消费视图）', () => {
     dispose();
   });
 
-  it('⑦ 其余 seam 域消费视图裁剪（subagents / sessionPersistence / graph）', async () => {
+  it('⑦ 其余 seam 域消费视图裁剪（subagents / sessionPersistence）', async () => {
     await ensureProductionChannelsBooted();
     applyPatch({
       'seam/subagents': [{ id: 'builtin/in-process', disabled: true }],
       'seam/sessionPersistence': [{ id: 'builtin/rust-sessions', disabled: true }],
-      'seam/graph': [{ id: 'builtin/rust-graph', disabled: true }],
     });
     expect(activeSubagentProviders()).toEqual([]);
     expect(activeSessionPersistenceProviders()).toEqual([]);
-    expect(activeGraphProviders()).toEqual([]);
-    await expect(graphExecute('symbols', {})).rejects.toThrow(/GRAPH_PROVIDER/);
     // 原始清单不动——实现真源在注册表
     expect(registeredSubagentProviders().map((p) => p.id)).toContain('builtin/in-process');
     expect(registeredSessionPersistenceProviders().map((p) => p.id)).toContain('builtin/rust-sessions');
-    expect(registeredGraphProviders().map((p) => p.id)).toContain('builtin/rust-graph');
+    // `seam/graph` 域随图谱退役不存在——寻址拒绝在 ④ 钉（消费面 graph-service 整删）
   });
 
   it('⑧ composition-store 写入口灌入：setError/resetToFactory 回退出厂裁剪面', async () => {

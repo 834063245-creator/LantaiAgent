@@ -36,15 +36,14 @@ export interface ScanFileEntry {
   matches: ScanMatch[];
 }
 
-/** search_cap 纯扫描返回的统一原始命中集。 */
+/** search_cap 纯扫描返回的统一原始命中集。
+ *  （向量语义召回尾键 vector_hits/vector_backend 已随图谱全量退役删除，
+ *  2026-09-09——向量边车原经引擎 transport，壳内零引擎接线后不再出现。） */
 export interface ScanOutput {
   pattern: string;
   scanned_files: number;
   budget_truncated: boolean;
   files: ScanFileEntry[];
-  /** 向量（语义）召回——非 regex 时口内附加（物理索引，passthrough）。 */
-  vector_hits?: Array<{ node_id: string; score: number }>;
-  vector_backend?: string;
 }
 
 /** searchCapTool 的模型面参数（zod 缺省后；编排读的形状——全字段可选 =
@@ -165,10 +164,6 @@ export function assembleSearchOutput(args: SearchToolArgs, scan: ScanOutput): st
       results: paginate(results, head, skip),
     };
   }
-
-  // 向量召回 passthrough（非 regex 时口内附加；保持输出尾键序）
-  if (scan.vector_hits !== undefined) output.vector_hits = scan.vector_hits;
-  if (scan.vector_backend !== undefined) output.vector_backend = scan.vector_backend;
 
   return JSON.stringify(output);
 }

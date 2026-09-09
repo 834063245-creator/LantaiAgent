@@ -68,7 +68,7 @@ describe('纯路径解析（只 join 不规范化）', () => {
   });
 });
 
-// ── 域参数预处理腰 ──
+// ── 域参数预处理腰（仅 fs/git/search 着腰；graph 域已随图谱退役）──
 
 interface CapturingStub extends Tool {
   lastArgs: Record<string, unknown> | undefined;
@@ -98,7 +98,7 @@ async function dispatch(domain: Tool, args: Record<string, unknown>): Promise<vo
   await domain.execute(args);
 }
 
-describe('域参数预处理腰（fs/git/search 着腰，graph 不着）', () => {
+describe('域参数预处理腰（fs/git/search 着腰）', () => {
   it('fs(read)：相对 path 归一为绝对 filePath（同义键 + 解析）', async () => {
     registerOwnerContext('owner-1', 'D:\\proj');
     const reg = new ToolRegistry();
@@ -194,20 +194,6 @@ describe('域参数预处理腰（fs/git/search 着腰，graph 不着）', () =>
     expect(read.lastArgs?.filePath).toBe('src/x.ts');
     await expect(dispatch(git, { action: 'status' })).rejects.toThrow('参数校验失败');
     expect(status.lastArgs).toBeUndefined();
-  });
-
-  it('graph 域不着腰：from/to 符号名不被路径解析污染', async () => {
-    const reg = new ToolRegistry();
-    const impact = stubTool('trace_impact', {
-      type: 'object',
-      properties: { from: { type: 'string' }, to: { type: 'string' } },
-      required: ['from', 'to'],
-    });
-    reg.register(impact);
-    const [graph] = createDomainTools(reg);
-    await dispatch(graph, { action: 'impact', from: 'foo', to: 'bar', _owner_id: 'owner-1' });
-    expect(impact.lastArgs?.from).toBe('foo');
-    expect(impact.lastArgs?.to).toBe('bar');
   });
 
   it('可见 schema：path 单键 + 共享描述；filePath/projectPath/directory 消失', () => {

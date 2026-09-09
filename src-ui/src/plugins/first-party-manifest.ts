@@ -3,8 +3,8 @@
 
 // 第一方插件元数据清单（平台化收尾，2026-08-29；P1 扩充 2026-08-30；
 // 增补四通道化收编 2026-08-31；2026-09-06 名册单一真源换轨）
-// ——第一方插件的身份真源：14 个平台 service（内核，无目录非产物）手写于
-// 本文件；31 个 feature（出厂产物）条目从 builtin-roster.json 派生
+// ——第一方插件的身份真源：13 个平台 service（内核，无目录非产物）手写于
+// 本文件；29 个 feature（出厂产物）条目从 builtin-roster.json 派生
 // （description 等清单事实唯一在名册，此处不双写）。
 //
 // 背景：平台化 P4-P6 之后，第一方插件经 plugins/loader.ts 的 BUILTIN_PLUGINS
@@ -14,14 +14,16 @@
 // profile bundles 清单同构（DSH 第一方插件在设置页可见、可管理，这里对齐）。
 //
 // 铁律：
-//   - 覆盖全部第一方插件（45 = 14 service + 31 feature；多/缺条目 = 装配
+//   - 覆盖全部第一方插件（42 = 13 service + 29 feature；多/缺条目 = 装配
 //     断层，守护测试 tests/first-party-manifest.test.ts 钉死；loader 运行时
 //     缺条目 = 跳过装载 + error 记录，错误不静默）。
 //   - kind 分两类（S5 降级为展示分组标签——不再决定装载语义）：
-//       service  = 内核插件（14 件注册表/运行时）——不提供禁用开关；
-//       feature  = 出厂产物（31 件）——可禁用（plugin-prefs，下次启动生效），
+//       service  = 内核插件（13 件注册表/运行时）——不提供禁用开关；
+//       feature  = 出厂产物（29 件）——可禁用（plugin-prefs，下次启动生效），
 //                  装载面 = 产物通道（dev 模式下走源码路径）；清单事实真源
 //                  = builtin-roster.json（2026-09-06 起）。
+//   - （graph-service / graph-builtin / engine-domain 随图谱全量退役移除，
+//     2026-09-09——45→42。）
 //
 // 使用方：plugins/loader.ts（装载时折算记录）、state/plugin-store.ts
 // （PluginRecord.meta 类型）、app/panels/settings/PluginsPage.tsx（分组渲染）。
@@ -47,7 +49,7 @@ function meta(name: string, kind: FirstPartyPluginKind, description: string): Fi
   return { name, version: FIRST_PARTY_VERSION, kind, description };
 }
 
-/** 平台 service 元数据（14 个内核——无目录、非产物，唯一手写处；
+/** 平台 service 元数据（13 个内核——无目录、非产物，唯一手写处；
  *  feature 条目见下，由名册派生，禁止在此手写 description 造成双源）。 */
 const SERVICE_META: Record<string, FirstPartyPluginMeta> = {
   'hologram/composition-services': meta(
@@ -63,7 +65,6 @@ const SERVICE_META: Record<string, FirstPartyPluginMeta> = {
     'service',
     '会话持久化服务注册表（seam/sessionPersistence）',
   ),
-  'hologram/graph-service': meta('hologram/graph-service', 'service', '图谱域服务注册表（seam/graph）'),
   'hologram/composition-space': meta('hologram/composition-space', 'service', '空间服务（工作区/会话空间）'),
   'hologram/composition-overlays': meta('hologram/composition-overlays', 'service', '覆盖层服务'),
   'hologram/renderer-service': meta('hologram/renderer-service', 'service', '块渲染器注册表（第五贡献通道，后注册胜）'),

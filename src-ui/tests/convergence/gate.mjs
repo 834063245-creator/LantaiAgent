@@ -76,10 +76,11 @@ const T0_RULES = [
     label: 'phase-6 T0: AgentConfig 字段面冻结 + 装配本体零组合面直调',
     check: () => {
       const failures = [];
-      // AgentConfig 字段面冻结（30）——组合扩展走 blueprint capability，不再扩 config
+      // AgentConfig 字段面冻结（28）——组合扩展走 blueprint capability，不再扩 config
       // （c7866c32 拆除 AURA 语义记忆后字段 31→30；2026-09-06 模型价格表拆除删
       //  pricing 后 30→29；2026-09-09 multimodal-image B3 加 imageReader IO 注入腰
       //  后 29→30——非工具/hook 面，登记 agent-platformization-plan.md §6 字段台账；
+      //  同日图谱退役删 graphData/graphContext 后 30→28；
       //  spec phase-6.test.ts 已同步，本 gate 断言补齐对齐）
       if (!T0_EXEMPTIONS.has('types.ts:AgentConfig-fields')) {
         const types = readFileSync(path.resolve(pkgRoot, 'src/agent/runtime/types.ts'), 'utf8');
@@ -88,15 +89,18 @@ const T0_RULES = [
           failures.push('未找到 AgentConfig interface（runtime/types.ts）');
         } else {
           const count = (m[0].match(/^\s+[A-Za-z_][A-Za-z0-9_]*\??:/gm) || []).length;
-          if (count !== 30) {
+          if (count !== 28) {
             failures.push(
-              `AgentConfig 字段数 ${count}（冻结 30）——新增工具/hook 走 blueprint capability；` +
+              `AgentConfig 字段数 ${count}（冻结 28）——新增工具/hook 走 blueprint capability；` +
                 '确需新增 config 字段须登记豁免并更新 specs/phase-6 断言',
             );
           }
         }
       }
       // 组合面（工具/hook 工厂、plan 接线、调优）只出现在 blueprint.ts capability 表
+      // 图谱退役（2026-09-09）删 createGraphContextHook/createGraphPreflightHook/
+      // createPlanExploreHook/createPlanWriteHook/loadEngineSnapshot——随图谱面删除，
+      // 与 spec phase-6 FORBIDDEN_COMPOSITION 同删。
       const rt = readFileSync(path.resolve(pkgRoot, 'src/agent/runtime/runtime.ts'), 'utf8');
       const forbidden = [
         'createEnterPlanModeTool',
@@ -112,14 +116,9 @@ const T0_RULES = [
         'new TaskManager(',
         'registerCompactionTools',
         'convergeRegistry',
-        'createGraphContextHook',
         'createStateReadHook',
-        'createGraphPreflightHook',
         'createStatePreflightHook',
-        'createPlanExploreHook',
-        'createPlanWriteHook',
         'createBoardTrackingHook',
-        'loadEngineSnapshot',
         'setCompactionConfigPath',
         'setPlanState',
         'setPreRunHook',

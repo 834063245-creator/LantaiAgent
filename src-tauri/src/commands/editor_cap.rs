@@ -87,46 +87,9 @@ pub(crate) fn checked_write_atomic(
     crate::utils::write_atomic(file_path, new_content)
 }
 
-/// 写盘成功后的副作用：timeline 记录 + changed_files 登记。
-///
-/// 引擎调用（`engine_record_timeline` → 全局 `ENGINE.read()`）可能阻塞
-/// ——引擎初始化/工作区切换期间写锁被持有。因此先把 `changed_files`
-/// 的 Arc 克隆出来并**释放 WorkspaceState 锁**，再调引擎：否则一旦
-/// 引擎侧阻塞，WorkspaceState 会被一并长期持有，所有需要 state 的
-/// 命令（读写/git/shell/权限回包）全部排队，单工具挂起放大为全会话死亡。
-fn record_edit_side_effects(state: &crate::WorkspaceState, file_path: &str) {
-    let changed_files = {
-        let guard = crate::utils::lock_or_recover(state);
-        guard.as_ref().map(|h| h.changed_files.clone())
-    };
-    let Some(changed_files) = changed_files else {
-        return;
-    };
-    if crate::ignored_paths::is_ignored_path(file_path) {
-        return;
-    }
-    let short = file_path.rsplit(['/', '\\']).next().unwrap_or(file_path);
-    // Phase 3：timeline 落工作区引擎进程（transport timeline_record；占位
-    // 工作区无传输，不记录）。
-    let transport = {
-        let guard = crate::utils::lock_or_recover(state);
-        guard.as_ref().and_then(|h| h.transport.clone())
-    };
-    // fire-and-forget：引擎往返（3600s 超时）不得内联在 edit 命令线程上——
-    // 锁纪律只保证不拖死其它命令，detach 才保证 edit 本身不被引擎拖住。
-    crate::utils::record_timeline_transport_detached(
-        transport,
-        "agent_edit",
-        Some(file_path),
-        &format!("Agent 编辑: {}", short),
-    );
-    if let Ok(mut changed) = changed_files.lock() {
-        let owned = file_path.to_string();
-        if !changed.contains(&owned) {
-            changed.push(owned);
-        }
-    };
-}
+// （写盘副作用——timeline 记录 + changed_files 登记——随图谱全量退役删除，
+//  2026-09-09：两者均属引擎图数据面（timeline_record 直达引擎进程；
+//  changed_files 唯一消费方 run_check 已退役），引擎接线拆除后无消费方。）
 
 /// old_string 未命中时错误消息里的键截断（≈60 字节预算）。
 /// 必须按字符边界回退：`&s[..60]` 在 CJK 混合行的第 60 字节落在
@@ -262,7 +225,6 @@ async fn edit_file(ctx: &EditorCtx<'_>, args: &Value) -> Result<Value, ToolError
                             }
                             Err(e) => return Err(ToolError::Tool(e)),
                         }
-                        record_edit_side_effects(state, &file_path);
                         let match_line = start + 1;
                         let ds = build_line_diff(&content, &out);
                         return Ok(Value::String(format!(
@@ -309,8 +271,6 @@ async fn edit_file(ctx: &EditorCtx<'_>, args: &Value) -> Result<Value, ToolError
         }
         Err(e) => return Err(ToolError::Tool(e)),
     }
-
-    record_edit_side_effects(state, &file_path);
 
     let first_match_line = content.lines()
         .enumerate()

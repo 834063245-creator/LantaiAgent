@@ -81,19 +81,8 @@ pub(crate) async fn search_content_cap(
     let pat = pattern.clone();
     let root = root.clone();
 
-    // 向量召回（可选边车）经引擎子进程（2026-09-08 逻辑全断）：仅当扫描根
-    // == 活动工作区根时随其引擎传输走——引擎绑单根，非工作区目录不为其
-    // 拉起引擎（扫描照常，向量边车缺席）。
-    let vector_transport: Option<std::sync::Arc<crate::engine_transport::McpRemoteTransport>> =
-        if let Some(ref handle) = *crate::utils::lock_or_recover(state) {
-            if same_canonical_root(&root, &handle.path) {
-                handle.transport.clone()
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+    // （向量召回边车（经引擎子进程 semantic_search）随图谱全量退役删除，
+    //  2026-09-09——扫描本体不受影响；vector_hits 尾键不再出现。）
 
     tokio::task::spawn_blocking(move || {
         // ── 统一原始命中集：per-file {file, match_count, matches[]} ──
@@ -222,17 +211,12 @@ pub(crate) async fn search_content_cap(
             }
         }
 
-        let mut output_val = serde_json::json!({
+        let output_val = serde_json::json!({
             "pattern": pat,
             "scanned_files": scanned_files,
             "budget_truncated": truncated_by_budget,
             "files": files,
         });
-        if !is_regex {
-            if let Some(transport) = vector_transport.as_ref() {
-                append_vector_hits(&mut output_val, transport, &pat);
-            }
-        }
 
         Ok(output_val)
     })
@@ -282,62 +266,9 @@ fn glob_filter_to_regex(gf: &str) -> Option<regex::Regex> {
     regex::Regex::new(&re).ok()
 }
 
-/// canonical 根比较（跨盘符/分隔符/verbatim 前缀）。任一侧目录不存在 →
-/// false（不比较不存在的东西）。
-fn same_canonical_root(a: &std::path::Path, b: &str) -> bool {
-    match (
-        crate::app::canonical_root(&a.to_string_lossy()),
-        crate::app::canonical_root(b),
-    ) {
-        (Some(x), Some(y)) => x == y,
-        _ => false,
-    }
-}
-
-/// 将向量（语义）搜索命中附加到输出。引擎-宿主逻辑全断（2026-09-08）：
-/// 向量召回归引擎子进程——壳经 transport 调 `semantic_search` 模型工具
-///（阈值过滤/去重/top-N 策略全在引擎侧），映射回本口既有 vector_hits
-/// 形状（node_id + score + vector_backend——前端契约不变）。引擎不可用 /
-/// 无索引 / 低于阈值（Degraded 信封）→ 静默跳过：向量边车是可选增益，
-/// 不阻塞主扫描结果（与旧进程内形态同语义）。
-fn append_vector_hits(
-    output_val: &mut Value,
-    transport: &std::sync::Arc<crate::engine_transport::McpRemoteTransport>,
-    pattern: &str,
-) {
-    if pattern.trim().is_empty() {
-        return;
-    }
-    // 阻塞 RPC（调用点在 spawn_blocking 内）。限额 5 与旧进程内
-    // filter_hits top-5 同款；正则模式不进（旧形态同款）。
-    let args = serde_json::json!({ "query": pattern, "limit": 5 });
-    let Ok(text) = transport.call("semantic_search", &args) else {
-        return;
-    };
-    let Ok(v) = serde_json::from_str::<Value>(&text) else {
-        return;
-    };
-    // Degraded 信封无 results 字段 → 静默缺席
-    let Some(results) = v.get("results").and_then(|r| r.as_array()) else {
-        return;
-    };
-    let hits: Vec<Value> = results
-        .iter()
-        .filter_map(|r| {
-            let id = r.get("id")?.as_str()?;
-            let score = r.get("vector_score")?.as_u64()?;
-            Some(serde_json::json!({ "node_id": id, "score": score }))
-        })
-        .collect();
-    if hits.is_empty() {
-        return;
-    }
-    output_val["vector_hits"] = serde_json::json!(hits);
-    output_val["vector_backend"] = v
-        .get("backend")
-        .cloned()
-        .unwrap_or_else(|| serde_json::json!("vector"));
-}
+// （向量召回边车 append_vector_hits / same_canonical_root 随图谱全量退役
+//  删除，2026-09-09——semantic_search 经引擎 transport，壳内零引擎接线后
+//  无调用面。）
 
 #[cfg(test)]
 mod tests {

@@ -8,9 +8,9 @@
 // 不进 zustand、不触 INVARIANTS #1。
 //
 // V5 拆除（2026-08-22）：starGraph / agentViz / graphEl / FileViewer 惰性
-// 句柄随旧观测台退役——星图不再渲染，图谱数据面走 workspace.graphData
-// （后台预热）服务 Agent 工具。starGraph 字段保留为恒 null 的兼容面：
-// workspace 流与 chat-core 的类型/判空消费点先收敛，后续 C 段清理。
+// 句柄随旧观测台退役——星图不再渲染。starGraph 兼容字段随后续清理删除。
+// （图谱数据面（workspace.graphData 后台预热）已随图谱全量退役删除，
+//  2026-09-09。）
 //
 // 可空性契约：chatPanel 构造于 chat 行、其后恒非空；workspace 在无工作区时
 // 为 null——零目录会话的占位工作区（path=''）同样进此槽（单槽统一
@@ -25,8 +25,6 @@ import type { Workspace } from '../workspace';
 
 /** 壳引导期共享句柄集合 — 壳行 boot(refs) 的唯一入参。 */
 export interface ShellRefs {
-  /** V5 后恒 null（兼容面——星图已退役，见头注）。 */
-  starGraph: null;
   chatPanel: ChatCore | null;
   workspace: Workspace | null;
   wsMachine: WorkspaceStateMachine;
@@ -34,7 +32,6 @@ export interface ShellRefs {
 
 // ── refs 单例（app 级唯一；状态机构造无副作用）──
 export const shellRefs: ShellRefs = {
-  starGraph: null,
   chatPanel: null,
   workspace: null,
   wsMachine: new WorkspaceStateMachine(),

@@ -4,7 +4,7 @@
 > 从组合层源码机械推导生成 — 勿手改；服务面变更后重新生成并同 commit。
 > 不含时间戳：字节稳定是 `--check`（doc-sync 门禁）的前提。
 
-共 18 个 ctx 服务：seam 6 · 贡献通道 8 · 服务 4。
+共 17 个 ctx 服务：seam 5 · 贡献通道 8 · 服务 4。
 kind 三分规则（机械推导）：ctx 键 ∈ SEAM_DOMAINS（seam-resolution.ts 单一真源）= seam；
 类体含 `register(def: *Contribution)` = 贡献通道；其余 = 服务。
 
@@ -13,7 +13,6 @@ kind 三分规则（机械推导）：ctx 键 ∈ SEAM_DOMAINS（seam-resolution
 | ctx 键 | Service | owner | 默认实现 / 贡献者 | 消费面 |
 |---|---|---|---|---|
 | `ctx.fs` | `FsService` | `src/composition/fs-service.ts` | `builtin/rust-fs` | 2 文件 |
-| `ctx.graph` | `GraphService` | `src/composition/graph-service.ts` | `builtin/rust-graph` | 2 文件 |
 | `ctx.llm` | `LlmService` | `src/composition/services.ts` | `builtin/anthropic` · `builtin/openai` · `builtin/responses` | 2 文件 |
 | `ctx.sessionPersistence` | `SessionPersistenceService` | `src/composition/session-persistence-service.ts` | `builtin/rust-sessions` | 2 文件 |
 | `ctx.shell` | `ShellService` | `src/composition/shell-service.ts` | — | 2 文件 |
@@ -26,14 +25,6 @@ fs 后端能力注册表（平台化 Phase 2 · D11）——默认 provider = bu
 - owner：`src/composition/fs-service.ts`
 - 默认实现 / 贡献者 id：`builtin/rust-fs`
 - 消费面（2）：`src/composition/contract-version.ts` · `src/plugins/builtin/fs-builtin/index.ts`
-
-### `ctx.graph` — GraphService（swappable seam（可换实现））
-
-图分析后端注册表（平台化 Phase 2 · D11）——默认 provider = builtin/rust-graph（agent/graph-provider.ts）；消费面 = hologram 域 holoExec。
-
-- owner：`src/composition/graph-service.ts`
-- 默认实现 / 贡献者 id：`builtin/rust-graph`
-- 消费面（2）：`src/composition/contract-version.ts` · `src/plugins/builtin/graph-builtin/index.ts`
 
 ### `ctx.llm` — LlmService（swappable seam（可换实现））
 
@@ -78,7 +69,7 @@ shell 后端能力注册表（平台化 Phase 2 · D11；subprocess 并入本 se
 | `ctx.panels` | `PanelsService` | `src/composition/services.ts` | `canvas-sidebar` · `canvas-spine` · `paper` · `settings` | 3 文件 |
 | `ctx.prompts` | `PromptsService` | `src/composition/prompt-service.ts` | — | 1 文件 |
 | `ctx.renderers` | `RenderersService` | `src/composition/renderer-service.tsx` | — | 6 文件 |
-| `ctx.tools` | `ToolsService` | `src/composition/services.ts` | `hologram/browser-desktop-domain/tools` · `hologram/engine-domain/tools` | 5 文件 |
+| `ctx.tools` | `ToolsService` | `src/composition/services.ts` | `hologram/browser-desktop-domain/tools` | 4 文件 |
 
 ### `ctx.capabilities` — CapabilitiesService（贡献通道）
 
@@ -141,8 +132,8 @@ system-prompt 段落注册表（A-1 第六贡献通道）——段注册 → dis
 工具注册表（S1-1）——行注册 → disposer；下次 Agent 装配生效语义。
 
 - owner：`src/composition/services.ts`
-- 默认实现 / 贡献者 id：`hologram/browser-desktop-domain/tools` · `hologram/engine-domain/tools`
-- 消费面（5）：`src/plugins/builtin/browser-desktop-domain/index.ts` · `src/plugins/builtin/contribution-helpers.ts` · `src/plugins/builtin/engine-domain/index.ts` · `src/plugins/mcp-bridge.ts` · `src/plugins/tool-declarations.ts`
+- 默认实现 / 贡献者 id：`hologram/browser-desktop-domain/tools`
+- 消费面（4）：`src/plugins/builtin/browser-desktop-domain/index.ts` · `src/plugins/builtin/contribution-helpers.ts` · `src/plugins/mcp-bridge.ts` · `src/plugins/tool-declarations.ts`
 
 ## 服务
 

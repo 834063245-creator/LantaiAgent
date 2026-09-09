@@ -12,7 +12,6 @@ import type { AgentEvent, EventSink } from '../agent-types';
 import type { SubAgentPool } from '../coordinator';
 import type { ExecStateInstance } from '../execution-state';
 import type { GoalManager } from '../goal-manager';
-import type { GraphContext, GraphSnapshot } from '../hooks';
 import type { MemoryManager } from '../memory';
 import type { MessageBus } from '../message-bus';
 import type { SkillRegistry } from '../skills';
@@ -77,8 +76,6 @@ export interface AgentConfig {
   sessionId?: string;
   /** 项目路径 */
   projectPath: string;
-  /** 图数据（null = 无图模式；宽松形状 — 宽容引擎跨版本字段别名） */
-  graphData?: GraphSnapshot | null;
   /** LLM Provider */
   provider: Provider;
   /** 工具注册表（已按权限过滤） */
@@ -102,9 +99,7 @@ export interface AgentConfig {
   execState?: ExecStateInstance;
   /** 事件接收器（Agent 事件流） */
   eventSink?: EventSink;
-  /** 图上下文（用于 hooks） */
-  graphContext?: GraphContext | null;
-  /** 提示注入类 hooks 总开关（false = 关闭 graph-context / preflight / state / plan 注入；
+  /** 提示注入类 hooks 总开关（false = 关闭 preflight / state / 构建结果注入；
    *  默认开启。board-tracking 等有实际副作用的 hook 不受影响） */
   hooksEnabled?: boolean;
   /** 隔离 ID（worktree） */
@@ -133,20 +128,17 @@ export interface AgentConfig {
 
 // ── AgentContext 入口的装配输入 ──
 //
-// 非服务的装配素材与调优参数（提示词原料 / graph 快照 / 运行参数）。
+// 非服务的装配素材与调优参数（提示词原料 / 运行参数）。
 // 服务与身份一律走 AgentContext；本类型随 Phase 6 blueprint 进一步收敛。
+// （图谱素材字段 graphData/graphContext 随图谱退役删除，2026-09-09。）
 
 import type { AgentContext } from '../context';
 
 /** createAgentFromContext 的非服务装配输入 — 与 AgentConfig 的对应字段同语义。 */
 export interface AgentAssemblyInputs {
-  /** 预构建 system prompt（缺省由 runtime 按 ctx + graphData 构建） */
+  /** 预构建 system prompt（缺省由 runtime 按 ctx 构建） */
   systemPrompt?: string;
-  /** 图数据快照（null/缺省 = 无图模式；system prompt 图段落原料） */
-  graphData?: GraphSnapshot | null;
-  /** 图上下文（hooks 用；缺省不注册图 hooks） */
-  graphContext?: GraphContext | null;
-  /** 提示注入类 hooks 总开关（false = 关闭 graph-context / preflight / state / plan 注入；
+  /** 提示注入类 hooks 总开关（false = 关闭 preflight / state / 构建结果注入；
    *  默认开启。board-tracking 等有实际副作用的 hook 不受影响） */
   hooksEnabled?: boolean;
   /** 子 Agent 派生函数 — 由调用者注入；装配时替换 agent_spawn 为绑定本 Agent 的版本 */

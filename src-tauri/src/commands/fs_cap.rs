@@ -11,48 +11,18 @@
 // 工具面不注册）；口内入口即裁决：每个 action 走 confined_fs 的 *_cap 变体
 // （resolve_*_dispatch = Agent 过闸 + Ask / UI 只解析），字节执行 + guards 一体。
 //
-// 副作用（R3-b）：write/delete/rename 的 timeline / changed_files 记录原在
-// builtin.fs 插件内（fs/mod.rs）——R3-b 模型族 execute 换 fs_cap 直呼后由
-// 本口承接（Agent 写项目文件仍记录审计/变更，UI 内部写 .lantai ignored 路径
-// 跳过——与插件原语义一致）。
+// 副作用（R3-b → 图谱退役收口，2026-09-09）：write/delete/rename 原随
+// fs_cap 承接 builtin.fs 插件的 timeline / changed_files 记录——两者均属
+// 引擎图数据面（timeline_record 直达引擎进程；changed_files 唯一消费方
+// run_check 已退役），随图谱全量退役删除。
 //
 // 参数语言：顶层 snake_case（bridge.rpc() 顶层转换幂等——search_cap R2-a 键位
 // 断层教训）；is_agent/agent_id 显式传（resolve_*_dispatch 需要 agent_id 做
 // worktree 前向映射）。返回 Value（rpc.rs ok_json 序列化；read 的 content 是
 // JSON 字符串值——出口 parse 无损）。
 
-use crate::ignored_paths::is_ignored_path;
 use serde_json::{json, Value};
 use tauri::State;
-
-/// 写路径副作用：timeline 记录 + changed_files 登记（builtin.fs 插件原逻辑
-/// 迁入；ignored 路径（.lantai 内部等）跳过——引擎因果/内部写不记）。
-fn record_fs_side_effect(
-    state: &State<'_, crate::WorkspaceState>,
-    event: &str,
-    verb: &str,
-    path: &str,
-) {
-    if is_ignored_path(&path.replace('\\', "/")) {
-        return;
-    }
-    if let Some(ref handle) = *crate::utils::lock_or_recover(state) {
-        let short = path.rsplit(['/', '\\']).next().unwrap_or(path);
-        let summary = format!("Agent {}: {}", verb, short);
-        crate::utils::record_timeline_transport_detached(
-            handle.transport.clone(),
-            event,
-            Some(path),
-            &summary,
-        );
-        if let Ok(mut changed) = handle.changed_files.lock() {
-            let p = path.replace('\\', "/");
-            if !changed.contains(&p) {
-                changed.push(p);
-            }
-        }
-    }
-}
 
 /// fs_cap 能力口分派。action ∈ {read, list, list_flat, glob, write, delete,
 /// rename, create_dir, append, read_base64, write_base64, memory_batch,
@@ -170,7 +140,6 @@ pub(crate) async fn fs_cap(
             let c = content.ok_or_else(|| "fs_cap write: missing 'content'".to_string())?;
             let real = crate::confined_fs::write_text_cap(&fp, &c, is_agent, agent_id.as_deref(), state, app).await?;
             let rp = real.to_string_lossy().to_string();
-            record_fs_side_effect(state, "agent_write", "写入", &rp);
             Ok(json!({ "path": rp }))
         }
         "write_base64" => {
@@ -180,14 +149,12 @@ pub(crate) async fn fs_cap(
             let c = content.ok_or_else(|| "fs_cap write_base64: missing 'content' (base64)".to_string())?;
             let real = crate::confined_fs::write_base64_cap(&fp, &c, is_agent, agent_id.as_deref(), state, app).await?;
             let rp = real.to_string_lossy().to_string();
-            record_fs_side_effect(state, "agent_write", "写入", &rp);
             Ok(json!({ "path": rp }))
         }
         "delete" => {
             let p = path.ok_or_else(|| "fs_cap delete: missing 'path'".to_string())?;
             let real = crate::confined_fs::delete_cap(&p, is_agent, agent_id.as_deref(), state, app).await?;
             let rp = real.to_string_lossy().to_string();
-            record_fs_side_effect(state, "agent_delete", "删除", &rp);
             Ok(json!({ "path": rp }))
         }
         "rename" => {
@@ -195,7 +162,6 @@ pub(crate) async fn fs_cap(
             let t = to.ok_or_else(|| "fs_cap rename: missing 'to'".to_string())?;
             let (_, real_to) = crate::confined_fs::rename_cap(&f, &t, is_agent, agent_id.as_deref(), state, app).await?;
             let rp = real_to.to_string_lossy().to_string();
-            record_fs_side_effect(state, "agent_rename", "重命名", &rp);
             Ok(json!({ "path": rp }))
         }
         "create_dir" => {

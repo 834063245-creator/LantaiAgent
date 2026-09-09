@@ -7,7 +7,7 @@
 //     - 工具域：每个 DOMAIN_SPEC 的域工具都来自 ctx.tools 第一方插件通道
 //       （无装配期硬编码——withFirstPartyToolChannel 复现生产装配）；
 //     - seam 默认 provider：llm 2 adapter / fs / shell / sessionPersistence /
-//       graph / subagents 全有注册；agentLoop 默认已登记；
+//       subagents 全有注册；agentLoop 默认已登记；
 //     - 动态插件运行时已装配（cordis 工具面存在）。
 //   P5-C2（扩展方不 import loop 内部）：扫描 src 里 import agent-loop 包
 //   的位置——只允许 Agent（消费者宿主）、runtime 装配器、loader 表与包自身。
@@ -20,7 +20,6 @@ import { resolveAgentLoop } from '../src/agent/agent-loop/agent-loop-active';
 import { activeDynamicRunner } from '../src/agent/dynamic-runner/dynamic-runner-service';
 import { DOMAIN_SPECS } from '../src/agent/tools/domains';
 import { activeFsProviders } from '../src/composition/fs-service';
-import { activeGraphProviders } from '../src/composition/graph-service';
 import { activeLlmAdapters } from '../src/composition/services';
 import { activeSessionPersistenceProviders } from '../src/composition/session-persistence-service';
 import { activeShellProviders } from '../src/composition/shell-service';
@@ -53,14 +52,13 @@ describe('P5-C1 出厂面零硬编码守卫', () => {
     expect(registry.get('cordis')).toBeDefined();
   });
 
-  it('seam 默认 provider 全注册（llm 2 adapter / fs / shell / sessions / graph / subagents）', async () => {
+  it('seam 默认 provider 全注册（llm 2 adapter / fs / shell / sessions / subagents）', async () => {
     await ensureProductionChannelsBooted();
     expect(activeLlmAdapters().map((a) => a.id)).toContain('builtin/anthropic');
     expect(activeLlmAdapters().map((a) => a.id)).toContain('builtin/openai');
     expect(activeFsProviders().map((p) => p.id)).toContain('builtin/rust-fs');
     expect(activeShellProviders().map((p) => p.id)).toContain('builtin/rust-shell');
     expect(activeSessionPersistenceProviders().map((p) => p.id)).toContain('builtin/rust-sessions');
-    expect(activeGraphProviders().map((p) => p.id)).toContain('builtin/rust-graph');
     expect(activeSubagentProviders().map((p) => p.id)).toContain('builtin/in-process');
     // 动态插件运行时（D7）与 agent loop（D13）出厂面在册
     expect(activeDynamicRunner()).not.toBeNull();

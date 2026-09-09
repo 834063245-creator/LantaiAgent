@@ -115,21 +115,8 @@ interface DisplaySettings {
   fontScale: number;
 }
 
-/** 图谱引擎设置（引擎开关，2026-08-22；per-workspace 旗标化 2026-08-31）：
- *  「绑目录 ≠ 开图谱」。per-workspace 时代本节 = **新工作区的默认勾选值**；
- *  已有工作区的旗标存注册表（workspaces.json graph_engine 字段，首页卡片
- *  徽标切换），工作区装配时显式旗标 > 注册表 > 本节全局默认。 */
-export interface GraphEngineSettings {
-  /** 引擎总开关（缺省 true = 旧行为零漂移；false 时读取点见 workspace.ts
-   *  （绑定期快照——装配面经 graphContext 间接消费，见 blueprint.ts）/
-   *  shell/rows/cold-start.ts / app/SessionsHome.tsx）。 */
-  enabled: boolean;
-}
-
-/** 读取图谱引擎开关（缺省容错：旧存储无此节 = 开）。 */
-export function graphEngineEnabled(s: AppSettings): boolean {
-  return s.graphEngine?.enabled !== false;
-}
+// （图谱引擎设置 graphEngine/graphEngineEnabled 随图谱全量退役删除，
+//  2026-09-09——旧存储残留的 graphEngine 节由 loadSettings 展开自然荒废。）
 
 /** 读取更新自动检查开关（缺省容错：旧存储无此节 = 开）。 */
 export function autoUpdateCheckEnabled(s: AppSettings): boolean {
@@ -175,8 +162,6 @@ export interface AppSettings {
   display: DisplaySettings;
   /** 组合层设置（可选——旧存储无此字段，loadSettings 缺省容错补 standard）。 */
   composition?: CompositionSettings;
-  /** 图谱引擎设置（可选——旧存储无此节 = 引擎开，graphEngineEnabled 容错读取）。 */
-  graphEngine?: GraphEngineSettings;
   /** 更新器设置（可选——旧存储无此节 = 自动检查开，autoUpdateCheckEnabled 容错读取）。 */
   updates?: UpdateSettings;
   /** 画布设置（可选——旧存储无此节 = 平滚视角，canvasWheelMode 容错读取）。 */
@@ -247,9 +232,6 @@ const DEFAULTS: AppSettings = {
   },
   composition: {
     preset: 'standard',
-  },
-  graphEngine: {
-    enabled: true,
   },
   updates: {
     autoCheck: true,

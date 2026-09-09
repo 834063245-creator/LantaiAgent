@@ -9,7 +9,7 @@
 // builtin 表退役，第一方十五项经通道注册，plugins/capability-segments-plugin）
 // / shell（builtinShellRows）。
 // 七 seam 裁剪域（平台化 Phase 3，2026-08-27）：`seam/llm` `seam/subagents`
-// `seam/fs` `seam/shell` `seam/sessionPersistence` `seam/graph` `seam/loopEvents`
+// `seam/fs` `seam/shell` `seam/sessionPersistence` `seam/loopEvents`
 // ——Phase 1/2 的 swappable seam 贡献并进组合解析域，patch/preset 可禁用/
 // 换默认 provider（禁用默认行后「后注册胜」落到替代 provider；loopEvents =
 // D4 emit 观测域的事件面开关）。键名 `seam/` 前缀与四行域隔离（`shell` 键
@@ -61,7 +61,6 @@ import type { AgentCapability } from '../agent/blueprint';
 import { LOOP_EVENT_NAMES } from '../agent/events';
 import { activeCapabilityContributions } from './capability-service';
 import { registeredFsProviders } from './fs-service';
-import { registeredGraphProviders } from './graph-service';
 import { pluginToolRows } from './plugin-tool-rows';
 import type { PromptSection } from './prompt-sections';
 import { activePromptContributions } from './prompt-service';
@@ -116,7 +115,7 @@ const PromptDomainEntrySchema = z.union([
   z.strictObject({ insert: z.array(PromptInsertSchema).min(1) }),
 ]);
 
-/** 用户组合 patch 文件的结构（S2 设计件 §2.2）：一个文件、四个行域键 + 七个
+/** 用户组合 patch 文件的结构（S2 设计件 §2.2）：一个文件、四个行域键 + 六个
  *  seam 裁剪域键（平台化 Phase 3——`seam/<域>` 键名，与行域键隔离），缺哪个
  *  域 = 该域无增量。未知顶层键拒绝（strict）。 */
 export const CompositionPatchSchema = z.strictObject({
@@ -126,13 +125,13 @@ export const CompositionPatchSchema = z.strictObject({
   shell: z.array(DisableEntrySchema).optional(),
   // ── seam 裁剪域（平台化 Phase 3）：disable 条目，语义 = 对应 ctx seam 注册
   //    表的「后注册胜」扫描面剔除该 id（消费视图 = 活动注册表 − 禁用集）。
-  //    loopEvents 域条目 id = D4 事件名（emit 观测域；裁决域不开放）。 ──
+  //    loopEvents 域条目 id = D4 事件名（emit 观测域；裁决域不开放）。
+  //    （`seam/graph` 域随图谱全量退役移除，2026-09-09。） ──
   'seam/llm': z.array(DisableEntrySchema).optional(),
   'seam/subagents': z.array(DisableEntrySchema).optional(),
   'seam/fs': z.array(DisableEntrySchema).optional(),
   'seam/shell': z.array(DisableEntrySchema).optional(),
   'seam/sessionPersistence': z.array(DisableEntrySchema).optional(),
-  'seam/graph': z.array(DisableEntrySchema).optional(),
   'seam/loopEvents': z.array(DisableEntrySchema).optional(),
 });
 
@@ -234,7 +233,6 @@ export function factoryComposition(): ResolvedComposition {
       fs: registeredFsProviders().map((p) => ({ id: p.id })),
       shell: registeredShellProviders().map((p) => ({ id: p.id })),
       sessionPersistence: registeredSessionPersistenceProviders().map((p) => ({ id: p.id })),
-      graph: registeredGraphProviders().map((p) => ({ id: p.id })),
       loopEvents: LOOP_EVENT_NAMES.map((id) => ({ id })),
     },
     seamDisabled: EMPTY_SEAM_DISABLED,
@@ -324,8 +322,6 @@ function seamEntries(
       return layer['seam/shell'];
     case 'sessionPersistence':
       return layer['seam/sessionPersistence'];
-    case 'graph':
-      return layer['seam/graph'];
     case 'loopEvents':
       return layer['seam/loopEvents'];
   }
@@ -351,7 +347,6 @@ export function resolveRoster(factory: FactoryComposition, layers: CompositionPa
     fs: toWorkRows([...factory.seams.fs]),
     shell: toWorkRows([...factory.seams.shell]),
     sessionPersistence: toWorkRows([...factory.seams.sessionPersistence]),
-    graph: toWorkRows([...factory.seams.graph]),
     loopEvents: toWorkRows([...factory.seams.loopEvents]),
   };
 
@@ -419,7 +414,6 @@ export function resolveRoster(factory: FactoryComposition, layers: CompositionPa
     fs: [],
     shell: [],
     sessionPersistence: [],
-    graph: [],
     loopEvents: [],
   };
   const seamDisabledOut: Record<(typeof SEAM_DOMAINS)[number], string[]> = {
@@ -428,7 +422,6 @@ export function resolveRoster(factory: FactoryComposition, layers: CompositionPa
     fs: [],
     shell: [],
     sessionPersistence: [],
-    graph: [],
     loopEvents: [],
   };
   for (const domain of SEAM_DOMAINS) {

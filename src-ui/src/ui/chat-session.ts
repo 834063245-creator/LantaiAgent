@@ -229,7 +229,6 @@ export interface SessionContext {
   getLastAgentDiag: () => string;
 
   clearInputHistory: () => void;
-  getStarGraph: () => import('./graph').StarGraph | null;
 
   /** 运行时访问，用于会话级 board 切换 */
   getRuntime?: () => import('../agent/runtime/types').RuntimePort | null;

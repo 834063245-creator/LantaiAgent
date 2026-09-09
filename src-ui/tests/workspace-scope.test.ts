@@ -69,14 +69,16 @@ describe('Workspace bag 接线（T0 静态断言）', () => {
     expect(src).not.toContain('_unlisteners');
     expect(body).toContain('await this._fiber.dispose()');
     // 关键资源清理都是 fiber effect/有序组登记的标签（获取点登记制 — review 可见）
+    // （图谱侧清理标签 listener:graph-updated / checkTimer-clear /
+    //   engine-snapshot-refresh-cancel 随 run_check 与快照装载退役，2026-09-09）
     for (const label of [
-      "'listener:graph-updated'",
-      "'listener:tool-done'",
       "'runtime-dispose'",
       "'reset-agent-caches'",
       "'agent-panel-store-clear'",
-      "'checkTimer-clear'",
-      "'engine-snapshot-refresh-cancel'",
+      "'session-state-clear'",
+      "'subagent-pool-stop'",
+      "'listener:bg-note'",
+      "'listener:runtime-msg'",
     ]) {
       expect(src, `缺少 bag 登记: ${label}`).toContain(label);
     }

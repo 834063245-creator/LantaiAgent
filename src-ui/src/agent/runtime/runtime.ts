@@ -26,7 +26,7 @@ import { AgentBlueprint, type BlueprintScope } from '../blueprint';
 import { AgentContext } from '../context';
 import { DiscoveryBoard, DiscoveryBoardProxy } from '../discovery-board';
 import { createExecState } from '../execution-state';
-import { asGraphSnapshot, formatGraphSnapshot, HookRegistry, PreflightHookRegistry } from '../hooks';
+import { HookRegistry, PreflightHookRegistry } from '../hooks';
 import { enqueueIsolationOp } from '../isolation-queue';
 import { AgentLifecycleManager } from '../lifecycle-manager';
 import { log } from '../logger';
@@ -39,7 +39,7 @@ import type { DiagnosticsSource } from '../state-inject';
 import type { TaskManager } from '../task';
 import { TaskBoard, TaskBoardProxy } from '../task-board';
 import { agentInvoke, ToolRegistry } from '../tool';
-import { buildSystemPrompt, extractGraphNodeNames } from './agent-builder';
+import { buildSystemPrompt } from './agent-builder';
 
 import type {
   AgentAssemblyInputs,
@@ -527,8 +527,6 @@ export class AgentRuntime implements RuntimePort {
     );
     const inputs: AgentAssemblyInputs = {
       systemPrompt: config.systemPrompt,
-      graphData: config.graphData,
-      graphContext: config.graphContext,
       hooksEnabled: config.hooksEnabled,
       subAgentSpawner: config.subAgentSpawner,
       temperature: config.temperature,
@@ -600,17 +598,15 @@ export class AgentRuntime implements RuntimePort {
       const memoryManager = ctx.get('memoryManager');
       if (memoryManager) {
         try {
-          memSection = await memoryManager.loadPromptSection(
-            inputs.graphData ? extractGraphNodeNames(inputs.graphData) : undefined,
-          );
+          // 记忆召回锚点：原为图谱 top 枢纽名（extractGraphNodeNames），
+          // 图谱退役（2026-09-09）后回退无锚形态。
+          memSection = await memoryManager.loadPromptSection();
         } catch {}
       }
       let claudeMd = '';
       try {
         claudeMd = await kernelReadFile(`${ctx.projectPath}/CLAUDE.md`);
       } catch {}
-      const snapshot = asGraphSnapshot(inputs.graphData);
-      const snap = snapshot ? formatGraphSnapshot(snapshot) : '';
 
       // 运行环境块 — 探测当前 shell（bash/cmd），注入 system prompt。
       // Agent 第一轮就知道命令跑在哪个解释器上，避免"猜语法"反复踩坑。
@@ -641,10 +637,8 @@ export class AgentRuntime implements RuntimePort {
       } catch {}
 
       sysPrompt = buildSystemPrompt(
-        inputs.graphData,
         ctx.projectPath,
         memSection,
-        snap,
         claudeMd,
         ctx.resolve('provider').name(),
         shellEnvSection,
@@ -726,11 +720,11 @@ export class AgentRuntime implements RuntimePort {
     newAgent.setPreflightHooks(scope.preflightHooks);
 
     // 5b. 管道钩子贡献折叠（A-2 通道）——ctx.hooks 贡献（enrich/preflight）
-    // 注册进本 Agent 的共享 registries。序：capability 钩子先（graph-hooks/
+    // 注册进本 Agent 的共享 registries。序：capability 钩子先（state-hooks/
     // board-tracking 等第一方面），通道贡献随后——与 tools 域「builtin 行
     // 在前、贡献行随后」同序约定。贡献实例跨装配复用（无 factory 面）；
     // 生效时机 = 装配时点（在途会话不动，新会话折叠最新清单）。子 Agent
-    // 不经本路径（spawnSubAgent 手工建 registry——graph-hooks 同款不下放）。
+    // 不经本路径（spawnSubAgent 手工建 registry——state-hooks 同款不下放）。
     for (const contribution of activeHookContributions()) {
       if (contribution.kind === 'enrich') scope.hooks.register(contribution.hook);
       else scope.preflightHooks.register(contribution.hook);

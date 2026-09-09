@@ -22,7 +22,7 @@ import type { PlanStateManager } from './plan-state';
  *    - readOnly 工具放行；
  *    - 领域工具仅放行只读动作；fs(write)/fs(edit) 命中计划文件时豁免；
  *    - agent(spawn) 放行（plan 模式保留并行只读探索；子 Agent 静态只读）；
- *    - 其余非只读工具（analyze_project/validate_project/rename_symbol 等）拦截。 */
+ *    - 其余非只读工具（记忆写类等）拦截。 */
 export type PlanGate = (name: string, args: Record<string, unknown>, tool: Tool) => string | null;
 
 export function planGateCheck(

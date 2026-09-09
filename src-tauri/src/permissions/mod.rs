@@ -558,8 +558,9 @@ mod smoke {
         ));
     }
 
-    /// 场景 5: hologram_search "auth" → 放行（只读 MCP 工具无 deny 规则）
-    /// check_mcp_permission 核心逻辑 = read_rules().find_deny(name, None).is_none()
+    /// 场景 5: 无 deny 规则的任意工具名 → find_deny 不命中（deny 规则面放行语义）
+    /// （原「MCP 工具放行」小样 check_mcp_permission 随图谱退役删除，2026-09-09——
+    ///  deny 规则机（find_deny）仍被工具级权限判定消费，本测钉规则机行为。）
     #[test]
     fn s5_mcp_no_deny_passthrough() {
         let root = tmp_project();
@@ -622,7 +623,7 @@ mod smoke {
         let rules = ctx.read_rules();
         assert!(
             rules.find_deny("hologram_explore", None).is_some(),
-            "deny rule for hologram_explore should be loaded — check_mcp_permission would return Err"
+            "deny rule for hologram_explore should be loaded — deny 规则机命中"
         );
     }
 

@@ -16,7 +16,6 @@ import {
   type BlueprintScope,
   firstPartyCapabilities,
 } from '../src/agent/blueprint';
-import type { GraphContext } from '../src/agent/hooks';
 import type { DiagnosticsSource } from '../src/agent/state-inject';
 import { withFirstPartyCapabilityChannel } from '../src/composition/first-party-capabilities';
 import { factoryComposition } from '../src/composition/roster';
@@ -112,7 +111,7 @@ describe('AgentBlueprint T1 — 原语行为', () => {
       'compaction-tools',
       'code-execution-tool',
       'converge-tools',
-      'graph-hooks',
+      'state-hooks',
       'board-tracking-hook',
       'plan-injector',
       'auto-tune',
@@ -132,7 +131,7 @@ describe('AgentBlueprint T1 — 原语行为', () => {
   });
 });
 
-describe('graph-hooks capability — state hooks 与 graphContext 解耦（引擎开关 #3）', () => {
+describe('state-hooks capability — 状态 + 构建结果 hooks（图谱退役后）', () => {
   /** 记名注册表桩 — 只记录 hook 名，不跑 apply/check。 */
   function recordingRegistries() {
     const hookNames: string[] = [];
@@ -152,22 +151,22 @@ describe('graph-hooks capability — state hooks 与 graphContext 解耦（引�
     return { hooks, preflightHooks, hookNames, preflightNames };
   }
 
-  function graphHooksCap(): AgentCapability {
-    const cap = firstPartyCapabilities().find((c) => c.key === 'graph-hooks');
-    if (!cap) throw new Error('graph-hooks capability 缺席');
+  function stateHooksCap(): AgentCapability {
+    const cap = firstPartyCapabilities().find((c) => c.key === 'state-hooks');
+    if (!cap) throw new Error('state-hooks capability 缺席');
     return cap;
   }
 
-  /** graph-hooks 安装面 scope 桩（graphContext 缺席路径不触 resolve/loadEngineSnapshot）。 */
+  /** state-hooks 安装面 scope 桩（图谱退役后无 graphContext 面——纯状态 hooks）。 */
   function capScope(overrides: {
-    graphContext?: GraphContext | null;
     diagnosticsSource?: DiagnosticsSource;
+    hooksEnabled?: boolean;
     hooks?: unknown;
     preflightHooks?: unknown;
   }): BlueprintScope {
     return {
       ctx: { projectPath: 'D:/proj/demo', resolve: () => ({}) } as unknown as BlueprintScope['ctx'],
-      inputs: { graphContext: overrides.graphContext ?? null },
+      inputs: { ...(overrides.hooksEnabled !== undefined ? { hooksEnabled: overrides.hooksEnabled } : {}) },
       tools: {} as BlueprintScope['tools'],
       hooks: (overrides.hooks ?? {}) as BlueprintScope['hooks'],
       preflightHooks: (overrides.preflightHooks ?? {}) as BlueprintScope['preflightHooks'],
@@ -179,33 +178,29 @@ describe('graph-hooks capability — state hooks 与 graphContext 解耦（引�
     };
   }
 
-  it('graphContext 缺席 + LSP 诊断源在场：state hooks 注册，图系 hooks 不注册', () => {
+  it('LSP 诊断源在场：state hooks 注册 + build-result hook 注册', () => {
     const { hooks, preflightHooks, hookNames, preflightNames } = recordingRegistries();
     const diagSource: DiagnosticsSource = () => [];
     const scope = capScope({ diagnosticsSource: diagSource, hooks, preflightHooks });
-    expect(graphHooksCap().when?.(scope)).toBe(true); // 解耦后 capability 存活
-    graphHooksCap().install(scope);
-    expect(hookNames).toEqual(['state-read']);
+    stateHooksCap().install(scope);
+    expect(hookNames).toEqual(['state-read', 'build-result']);
     expect(preflightNames).toEqual(['state-preflight']);
   });
 
-  it('graphContext 与诊断源双缺席：when 关闭 capability', () => {
-    expect(graphHooksCap().when?.(capScope({}))).toBe(false);
+  it('诊断源缺席：仅 build-result hook（构建缓存注入不依赖 LSP）', () => {
+    const { hooks, preflightHooks, hookNames, preflightNames } = recordingRegistries();
+    const scope = capScope({ hooks, preflightHooks });
+    stateHooksCap().install(scope);
+    expect(hookNames).toEqual(['build-result']);
+    expect(preflightNames).toEqual([]);
   });
 
-  it('诊断源缺席 + graphContext 在场：仅图系 hooks（原语义保持）', () => {
+  it('hooksEnabled=false：全不注册（提示注入类总开关）', () => {
     const { hooks, preflightHooks, hookNames, preflightNames } = recordingRegistries();
-    const graphCtx: GraphContext = {
-      getNodesInFile: () => [],
-      getImpactSummary: () => null,
-      getSearchContext: () => null,
-      engine: null,
-    };
-    const scope = capScope({ graphContext: graphCtx, hooks, preflightHooks });
-    expect(graphHooksCap().when?.(scope)).toBe(true);
-    graphHooksCap().install(scope);
-    // 注册序与解耦前一致：graph-context → plan×2（无 state hooks；快照加载 fire-and-forget）
-    expect(hookNames).toEqual(['graph-context', 'plan-explore-graph', 'plan-write-graph']);
-    expect(preflightNames).toEqual(['graph-preflight']);
+    const diagSource: DiagnosticsSource = () => [];
+    const scope = capScope({ diagnosticsSource: diagSource, hooksEnabled: false, hooks, preflightHooks });
+    stateHooksCap().install(scope);
+    expect(hookNames).toEqual([]);
+    expect(preflightNames).toEqual([]);
   });
 });

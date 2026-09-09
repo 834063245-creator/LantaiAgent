@@ -1,17 +1,22 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MIT.
 
-// Hooks —— Agent 调工具时自动注入图上下文
+// Hooks —— Agent 调工具时自动注入状态上下文
 //
 // 两层架构：
-//   1. PreflightHook（pre-tool）：edit_file / write_file 之前 → ⚠️ 警告注入结果顶部
-//   2. GraphContextHook（post-tool）：read_file / search_content / glob / list_directory / trace_dataflow / search_symbols / inspect_symbol / git_diff / run_shell 之后 → 📊 符号概览注入结果顶部
+//   1. PreflightHook（pre-tool）：edit_file / write_file 之前 → ⚠️ 诊断警告注入结果顶部
+//   2. 状态 hooks（post-tool）：read_file → 📋 诊断 + git blame；
+//      run_shell（构建/测试命令）→ 📊 构建结果缓存 + 即时摘要
+//      （[构建] turn-start 注入的数据源 = cacheBuildResult）。
 //
 // 设计约束：
 //   - 注入内容 < 800 字符，避免膨胀 token
 //   - 结果接近 32KB 上限时跳过注入
 //   - Hook 崩溃静默降级，绝不影响工具结果
-//   - preflight 基于内存 fileIndex，零延迟（< 0.1ms）
+//
+// （图谱 hooks——GraphContext/EngineSnapshot/graph-context/graph-preflight——
+//  随图谱功能全量退役删除，2026-09-09；构建结果解析与缓存原寄居 graph-context
+//  hook 的 run_shell 分支，随批独立成 build-result hook 保留。）
 
 // ── Hook 接口 ──
 
@@ -25,9 +30,9 @@ export interface Hook {
 
 // ── HookRegistry ──
 
-/** 单 hook 富化超时——hook 是结果路径上的观测增强面，引擎/诊断源卡死
+/** 单 hook 富化超时——hook 是结果路径上的观测增强面，诊断源卡死
  *  不得拖住工具结果（超时回落到未富化结果；错误路径已有 catch 降级）。
- *  3s：graph/诊断富化是毫秒级本地查询的正常量级，超过即视为源不可用。 */
+ *  3s：诊断富化是毫秒级本地查询的正常量级，超过即视为源不可用。 */
 const HOOK_ENRICH_TIMEOUT_MS = 3_000;
 
 export class HookRegistry {
@@ -65,8 +70,8 @@ export class HookRegistry {
 }
 
 // ── Preflight Hook（pre-tool）──
-// 在 edit_file / write_file 执行前，用内存 fileIndex 即时计算影响面，
-// 返回 ⚠️ 警告字符串注入到工具结果顶部。Agent 无法忽略。
+// 在 edit_file / write_file 执行前注入诊断上下文（LSP errors/warnings），
+// 返回 ⚠️ 警告字符串注入到工具结果顶部。
 
 export interface PreflightHook {
   name: string;
@@ -92,7 +97,7 @@ export class PreflightHookRegistry {
   }
 
   /** 运行所有匹配的 hook 并聚合其警告（原来是首个匹配生效，
-   *  会静默遮蔽 graph preflight 之后的每个 hook）。 */
+   *  会静默遮蔽后续每个 hook）。 */
   check(toolName: string, args: Record<string, unknown>): string | null {
     const warnings: string[] = [];
     for (const hook of this.hooks) {
@@ -109,250 +114,9 @@ export class PreflightHookRegistry {
   }
 }
 
-// ── GraphContext —— 图数据查询接口 ──
-
-/** 引擎层快照，从 hologram_call 加载（fragile_modules + project_health）。
- *  在 agent 设置后异步填充。首次 fetch 完成前为 null。 */
-export interface EngineSnapshot {
-  /** 脆弱度最高的模块：[file, score] */
-  fragilityRanks: Array<{ file: string; score: number }>;
-  /** 循环依赖总数 */
-  cycleCount: number;
-  /** 耦合密度得分 0-100 */
-  healthScore: number;
-  /** 会话基线 — 用于漂移追踪 */
-  baselineFragility: Map<string, number>;
-  /** 会话开始以来的漂移：正值 = 退化 */
-  sessionDrift: number;
-  /** LSP: 高调用次数符号的文件（前 20） */
-  lspHotspots: Array<{ file: string; symbol: string; callers: number }>;
-  /** LSP: 来自 resolve_call 的真实调用解析数据（按需 per-file） */
-  lspCallers: Map<string, Array<{ symbol: string; count: number }>>;
-  /** 合成：按类型分组的盲点标记 */
-  synthesisAlerts: Array<{ type: string; count: number; detail: string }>;
-  /** 向量：语义邻居映射：file -> 相似符号名 */
-  semanticNeighbors: Map<string, Array<{ name: string; file: string }>>;
-  /** 向量：就绪标志 */
-  vectorReady: boolean;
-}
-
-export interface GraphContext {
-  /** 按文件符号索引 —— 读按需缓存（file_nodes 轻查询的产物，Phase 1.5）。
-   *  未预热的文件返回 []（保守无警告）；preflight 命中前先 warmFile。 */
-  getNodesInFile(filePath: string): NodeBrief[];
-  getImpactSummary(filePath: string): string | null;
-  getSearchContext(files: string[]): string | null;
-  /** 预热单文件符号索引（file_nodes 轻查询 → 缓存；幂等，在途去重）。 */
-  warmFile(filePath: string): Promise<void>;
-  /** 图更新时清空按需索引缓存（下次查询重新拉取，保新鲜）。 */
-  invalidate(): void;
-  /** 引擎快照 — 异步 fetch 完成前为 null。由 preflight hook 读取。 */
-  engine: EngineSnapshot | null;
-}
-
-// ── GraphSnapshot —— 引擎 graph_snapshot 聚合载荷（Phase 1.5 graphData 形态）──
-// 契约真源 = engine/src/tools/mod.rs graph_snapshot_value（壳侧 get_graph_snapshot
-// / load_graph_json / 引擎壳方法 graph_snapshot 三路同源）。
-
-export interface GraphSnapshot {
-  source_root?: string;
-  node_count: number;
-  edge_count: number;
-  file_count: number;
-  class_count: number;
-  kind_counts: Record<string, number>;
-  edge_kind_counts: Record<string, number>;
-  communities: Array<{ id: number; size: number }>;
-  top_fan_in: Array<{ id: string; name: string; fan_in: number }>;
-  top_fan_out: Array<{ id: string; name: string; fan_out: number }>;
-}
-
-/** 兼容收窄：unknown → GraphSnapshot（宽松判定 = 有 node_count 数字）。 */
-export function asGraphSnapshot(v: unknown): GraphSnapshot | null {
-  if (v && typeof v === 'object' && typeof (v as Record<string, unknown>).node_count === 'number') {
-    return v as GraphSnapshot;
-  }
-  return null;
-}
-
-export interface NodeBrief {
-  id: string;
-  name: string;
-  kind: string;
-  fanIn: number;
-  fanOut: number;
-}
-
-// ── formatGraphSnapshot —— 快照 → 架构速览文本，注入 system prompt ──
-// （Phase 1.5：替代 buildGraphSnapshot —— 后者从全量 nodes/edges 现场聚合，
-// 现在聚合面由引擎 graph_snapshot 一次给出，前端只做渲染。）
-
-export function formatGraphSnapshot(s: GraphSnapshot): string {
-  const parts: string[] = [];
-  parts.push(`${s.node_count} 节点 / ${s.edge_count} 边`);
-
-  if (s.communities.length > 0) {
-    const sizes = s.communities
-      .map((c) => c.size)
-      .sort((a, b) => b - a)
-      .slice(0, 5);
-    parts.push(`${s.communities.length} 个社区（规模: ${sizes.join('/')}）`);
-  }
-
-  const typeParts = Object.entries(s.edge_kind_counts).sort((a, b) => b[1] - a[1]);
-  if (typeParts.length > 0) {
-    parts.push(`边: ${typeParts.map(([k, v]) => `${k}:${v}`).join(', ')}`);
-  }
-
-  if (s.class_count > 0) {
-    parts.push(`${s.class_count} 个类/接口`);
-  }
-
-  if (s.top_fan_in.length > 0) {
-    parts.push(`枢纽: ${s.top_fan_in.map((n) => `\`${n.name}\`(${n.fan_in})`).join(', ')}`);
-  }
-
-  return parts.join(' | ');
-}
-
-// ── 工具元数据常量 ──
-// ponytail: 新增/改名工具时，改这里就行。测试会验证这些名字在 ToolRegistry 里真实存在。
-
-/** 触发 post-tool 图上下文注入的工具名
- *  ponytail: 'read_file' 是 alias→read_file_content，模型会吐出这个名字，必须保留 */
-export const GRAPH_ENRICH_TOOLS = ['read_file_content', 'read_file', 'git_diff', 'run_shell'] as const;
-
-/** 触发 preflight 写前影响分析的工具名
- *  ponytail: 写操作可能注册为别名，保留原始名 */
-export const GRAPH_PREFLIGHT_TOOLS = [
-  'edit_file',
-  'write_file',
-  'delete_file',
-  'rename_file',
-  'move_file',
-  'git_discard',
-  'git_checkout',
-  'git_commit',
-] as const;
-
-// ═══════════════════════════════════════════════════════════
-// ── GraphContextHook（post-tool，结果顶部注入）──
-
-const MAX_ENRICH_BYTES = 800;
-const MAX_RESULT_BYTES = 30_000; // leave 2KB headroom below 32KB
-
-export function createGraphContextHook(ctx: GraphContext): Hook {
-  return {
-    name: 'graph-context',
-
-    shouldEnrich(toolName: string): boolean {
-      // edit_file / write_file 由 preflight hook 处理，此处不重复
-      return (GRAPH_ENRICH_TOOLS as readonly string[]).includes(toolName);
-    },
-
-    async enrich(toolName: string, args: Record<string, unknown>, result: string): Promise<string> {
-      // 结果过大或看起来是错误时跳过
-      if (result.length > MAX_RESULT_BYTES) return result;
-      if (/^(error|Error|❌)/.test(result.trimStart())) return result;
-
-      let snippet: string | null = null;
-
-      switch (toolName) {
-        case 'read_file_content':
-        case 'read_file': {
-          const fp = String(args.filePath || args.file_path || '');
-          if (fp) {
-            await ctx.warmFile(fp);
-            snippet = ctx.getImpactSummary(fp);
-            // 引擎层：脆弱度排名
-            if (ctx.engine) {
-              const normFp = fp.replace(/\\/g, '/').toLowerCase();
-              const rankEntry = ctx.engine.fragilityRanks.find(
-                (r) =>
-                  r.file.replace(/\\/g, '/').toLowerCase().includes(normFp) ||
-                  normFp.includes(r.file.replace(/\\/g, '/').toLowerCase()),
-              );
-              if (rankEntry) {
-                const rank = ctx.engine.fragilityRanks.indexOf(rankEntry) + 1;
-                snippet = (snippet || '') + ` 脆弱度 #${rank} (${rankEntry.score.toFixed(0)})`;
-              }
-            }
-          }
-          break;
-        }
-        case 'git_diff': {
-          const files = extractFilesFromDiffResult(result);
-          if (files.length > 0) {
-            await Promise.all(files.slice(0, 3).map((f) => ctx.warmFile(f)));
-            snippet = ctx.getSearchContext(files.slice(0, 3));
-            // 引擎层：变更文件的脆弱度摘要
-            if (ctx.engine) {
-              const hot = files.filter((f) => {
-                const nf = f.replace(/\\/g, '/').toLowerCase();
-                return ctx.engine?.fragilityRanks.some((r) => r.file.replace(/\\/g, '/').toLowerCase().includes(nf));
-              });
-              if (hot.length > 0) {
-                snippet = (snippet || '') + ` ⚠ ${hot.length} 个变更文件在高脆弱度排名中`;
-              }
-            }
-          }
-          break;
-        }
-        case 'run_shell': {
-          const cmd = String(args.command || '');
-          const isTest = /pytest|jest|cargo.test|npm.test|go.test|python.-m.pytest/.test(cmd);
-          const isBuild = /npm.install|cargo.build|pip.install|make|cmake|npx|yarn/.test(cmd);
-
-          if (isTest || isBuild) {
-            // 归属标记：executor 在 execute 前往同一 args 对象注入的 _agent_id
-            // （streaming-executor.ts）。turn-start 只消费同 Agent 的构建结果，
-            // 避免 A 会话跑的结果注入 B 会话的上下文。
-            const ownerId = typeof args._agent_id === 'string' ? args._agent_id : null;
-            const parsed = parseBuildOutput(cmd, result);
-            if (parsed) {
-              cacheBuildResult(parsed, ownerId);
-              snippet = parsed.outcome === 'pass' ? `✅ ${parsed.summary}` : `❌ ${parsed.summary}`;
-              // 引擎层：失败时报告脆弱度上下文
-              if (parsed.outcome === 'fail' && ctx.engine && ctx.engine.fragilityRanks.length > 0) {
-                const top = ctx.engine.fragilityRanks[0];
-                snippet += ` | 最脆弱模块: ${top.file.split('/').pop()} (${top.score.toFixed(0)})`;
-              }
-            } else {
-              // 回退：无法识别输出格式，缓存通用结果
-              // 让 agent 知道命令已运行 — 只是无法解析结果
-              const label = cmd.split(' ').slice(0, 2).join(' ');
-              const tail = result.slice(-200).replace(/\n/g, ' ');
-              cacheBuildResult(
-                { command: label, outcome: 'pass', summary: `完成 (输出未解析)`, ts: Date.now() },
-                ownerId,
-              );
-              snippet = `⚠️ 完成，但无法解析输出格式。尾部: ${tail}`;
-            }
-          }
-          break;
-        }
-      }
-
-      if (snippet && snippet.length > 0) {
-        // 强制执行承诺的注入预算 — 引擎层附加内容
-        // （脆弱度/循环/LSP 热点）曾经无限增长。
-        if (snippet.length > MAX_ENRICH_BYTES) {
-          snippet = snippet.slice(0, MAX_ENRICH_BYTES) + '…';
-        }
-        // 注入到结果顶部（而非底部），Agent 第一眼就能看到
-        const block = `📊 [图上下文] ${snippet}\n${'─'.repeat(40)}\n\n`;
-        if (result.length + block.length <= MAX_RESULT_BYTES) {
-          return block + result;
-        }
-      }
-      return result;
-    },
-  };
-}
-
 // ═══════════════════════════════════════════════════════════════
 // 状态 hooks — 将自维护的项目事实注入工具结果。
-// 数据来源：LSP 诊断、Git status/blame、Check/简报。
+// 数据来源：LSP 诊断、Git status/blame、构建/测试结果。
 // ═══════════════════════════════════════════════════════════════
 
 import {
@@ -364,6 +128,7 @@ import {
   refreshGitBlame,
 } from './state-inject';
 
+const MAX_RESULT_BYTES = 30_000; // leave 2KB headroom below 32KB
 const _MAX_STATE_BYTES = 600;
 
 /** Pre-read hook — agent 读文件时注入诊断 + blame。
@@ -409,6 +174,59 @@ export function createStatePreflightHook(diagSource: DiagnosticsSource): Preflig
       // （edit 最终被门禁拦下也只是多一次无害的重新拉取。）
       invalidateBlameEntry(filePath);
       return formatDiagnostics(filePath, diagSource);
+    },
+  };
+}
+
+// ── BuildResultHook（post-tool）──
+// run_shell 的构建/测试命令完成 → 解析结果 + 缓存（[构建] turn-start 注入源）
+// + 即时摘要注入结果顶部。原寄居 graph-context hook 的 run_shell 分支，
+// 图谱退役后独立成 hook（行为保留：归属标记 / 解析失败回退通用缓存）。
+
+export function createBuildResultHook(): Hook {
+  return {
+    name: 'build-result',
+
+    shouldEnrich(toolName: string): boolean {
+      return toolName === 'run_shell';
+    },
+
+    async enrich(_toolName: string, args: Record<string, unknown>, result: string): Promise<string> {
+      // 结果过大或看起来是错误时跳过注入（缓存仍然进行）
+      const tooLarge = result.length > MAX_RESULT_BYTES;
+      const looksLikeError = /^(error|Error|❌)/.test(result.trimStart());
+
+      const cmd = String(args.command || '');
+      const isTest = /pytest|jest|cargo.test|npm.test|go.test|python.-m.pytest/.test(cmd);
+      const isBuild = /npm.install|cargo.build|pip.install|make|cmake|npx|yarn/.test(cmd);
+
+      if (isTest || isBuild) {
+        // 归属标记：executor 在 execute 前往同一 args 对象注入的 _agent_id
+        // （streaming-executor.ts）。turn-start 只消费同 Agent 的构建结果，
+        // 避免 A 会话跑的结果注入 B 会话的上下文。
+        const ownerId = typeof args._agent_id === 'string' ? args._agent_id : null;
+        const parsed = parseBuildOutput(cmd, result);
+        let snippet: string | null = null;
+        if (parsed) {
+          cacheBuildResult(parsed, ownerId);
+          snippet = parsed.outcome === 'pass' ? `✅ ${parsed.summary}` : `❌ ${parsed.summary}`;
+        } else {
+          // 回退：无法识别输出格式，缓存通用结果
+          // 让 agent 知道命令已运行 — 只是无法解析结果
+          const label = cmd.split(' ').slice(0, 2).join(' ');
+          const tail = result.slice(-200).replace(/\n/g, ' ');
+          cacheBuildResult({ command: label, outcome: 'pass', summary: `完成 (输出未解析)`, ts: Date.now() }, ownerId);
+          snippet = `⚠️ 完成，但无法解析输出格式。尾部: ${tail}`;
+        }
+
+        if (!tooLarge && !looksLikeError && snippet && snippet.length > 0) {
+          const block = `📊 [构建] ${snippet}\n${'─'.repeat(40)}\n\n`;
+          if (result.length + block.length <= MAX_RESULT_BYTES) {
+            return block + result;
+          }
+        }
+      }
+      return result;
     },
   };
 }
@@ -476,297 +294,4 @@ function parseBuildOutput(
   }
 
   return null;
-}
-
-// ── git_diff → 变更文件提取 ──
-
-function extractFilesFromDiffResult(result: string): string[] {
-  const files = new Set<string>();
-  const lines = result.split('\n');
-  for (const line of lines) {
-    const match = line.match(/^\+\+\+ [ab]\/(.+)/);
-    if (match) files.add(match[1]);
-    if (files.size >= 5) break;
-  }
-  return [...files];
-}
-
-// ── GraphContext 实现（file_nodes 按需索引 + 缓存，Phase 1.5）──
-// 旧形态 = 工作区装载时全量建 fileIndex（graphData 携带全量 nodes/edges）；
-// 快照形态下图数据不再过界 —— getNodesInFile 读按需缓存，未命中走
-// file_nodes 轻查询（单文件毫秒级）。preflight（同步接口）命中前
-// 保守无警告并后台预热；enrich（异步）先 warm 再读，始终新鲜。
-
-export type GraphFileNodesFetcher = (file: string) => Promise<NodeBrief[]>;
-
-export function createGraphContext(
-  fetchFileNodes: GraphFileNodesFetcher,
-  engine: EngineSnapshot | null = null,
-): GraphContext {
-  const cache = new Map<string, NodeBrief[]>();
-  const inflight = new Map<string, Promise<void>>();
-
-  function norm(fp: string): string {
-    return fp.replace(/\\/g, '/').toLowerCase();
-  }
-
-  function getNodesInFile(filePath: string): NodeBrief[] {
-    return cache.get(norm(filePath)) || [];
-  }
-
-  async function warmFile(filePath: string): Promise<void> {
-    const key = norm(filePath);
-    if (cache.has(key)) return;
-    const existing = inflight.get(key);
-    if (existing) return existing;
-    const p = fetchFileNodes(filePath)
-      .then((nodes) => {
-        cache.set(key, nodes);
-      })
-      .catch(() => {
-        /* 查询失败 = 保持未预热（保守无警告），下次再试 */
-      })
-      .finally(() => inflight.delete(key));
-    inflight.set(key, p);
-    return p;
-  }
-
-  function invalidate(): void {
-    cache.clear();
-    inflight.clear();
-  }
-
-  function getImpactSummary(filePath: string): string | null {
-    const nodes = getNodesInFile(filePath);
-    if (nodes.length === 0) return null;
-
-    // 下游：谁依赖此文件的符号
-    const downstream = [...nodes]
-      .filter((n) => n.fanIn > 0)
-      .sort((a, b) => b.fanIn - a.fanIn)
-      .slice(0, 5);
-    // 上游：此文件的符号依赖什么
-    const upstream = [...nodes]
-      .filter((n) => n.fanOut > 0)
-      .sort((a, b) => b.fanOut - a.fanOut)
-      .slice(0, 3);
-
-    let summary = `此文件 ${nodes.length} 个符号。`;
-    if (downstream.length > 0) {
-      summary += ` 下游依赖: ${downstream.map((n) => `\`${n.name}\`(${n.fanIn})`).join(', ')}。`;
-    }
-    if (upstream.length > 0) {
-      summary += ` | 依赖上游: ${upstream.map((n) => `\`${n.name}\`(${n.fanOut})`).join(', ')}。`;
-    }
-    return summary;
-  }
-
-  function getSearchContext(files: string[]): string | null {
-    const parts: string[] = [];
-    let totalFanIn = 0;
-    let totalFanOut = 0;
-    for (const fp of files) {
-      const nodes = getNodesInFile(fp);
-      if (nodes.length > 0) {
-        const fi = nodes.reduce((s, n) => s + n.fanIn, 0);
-        const fo = nodes.reduce((s, n) => s + n.fanOut, 0);
-        totalFanIn += fi;
-        totalFanOut += fo;
-        const fileName = fp.replace(/\\/g, '/').split('/').pop() || fp;
-        const deps: string[] = [];
-        if (fi > 0) deps.push(`${fi}↓`);
-        if (fo > 0) deps.push(`${fo}↑`);
-        const top3 = nodes.sort((a, b) => b.fanIn - a.fanIn).slice(0, 3);
-        const names = top3.map((n) => `\`${n.name}\``).join(', ');
-        parts.push(`${fileName}: ${nodes.length}符号${deps.length > 0 ? ` [${deps.join(' ')}]` : ''} — ${names}`);
-      }
-    }
-    if (parts.length === 0) return null;
-    let summary = `匹配文件 — ${parts.join(' | ')}。`;
-    if (files.length >= 2) {
-      summary += ` ${files.length} 个文件, 扇入合计 ${totalFanIn}, 扇出合计 ${totalFanOut}。`;
-      if (totalFanIn >= 10 || totalFanOut >= 10) {
-        summary += ` 跨文件耦合较高。`;
-      }
-    }
-    return summary;
-  }
-
-  return { engine, getNodesInFile, getImpactSummary, getSearchContext, warmFile, invalidate };
-}
-
-// ── GraphPreflightHook —— 写操作前自动影响分析 ──
-//
-// edit_file / write_file 触发时，用内存 fileIndex 即时评估：
-//   1. 该文件有多少符号被外部依赖
-//   2. 被依赖最多的 top 5 符号
-//   3. 风险等级（LOW / MEDIUM / HIGH）
-//   4. 引导 Agent 调 trace_impact 深挖（MEDIUM+ 时）
-//
-// 耗时 < 0.1ms，数据全在内存，不额外调 MCP。
-
-export function createGraphPreflightHook(ctx: GraphContext): PreflightHook {
-  return {
-    name: 'graph-preflight',
-
-    shouldCheck(toolName: string): boolean {
-      return (GRAPH_PREFLIGHT_TOOLS as readonly string[]).includes(toolName);
-    },
-
-    check(toolName: string, args: Record<string, unknown>): string | null {
-      // ── git_checkout: 无具体文件，通用警告 ──
-      if (toolName === 'git_checkout') {
-        const branch = String(args.branch || '');
-        return [
-          `⚠️ [切换分支] 即将切换到 \`${branch}\`。`,
-          `│  切换前请确认当前工作区已提交或暂存，避免丢失未保存的修改。`,
-        ].join('\n');
-      }
-
-      // ── git_commit: 无具体文件，通用警告 ──
-      if (toolName === 'git_commit') {
-        return [`⚠️ [提交] 即将创建提交。`].join('\n');
-      }
-
-      // ── git_discard: 拼接 repo 根 + 相对路径 ──
-      let fp: string;
-      if (toolName === 'git_discard') {
-        const repoPath = String(args.path || '');
-        const file = String(args.file || '');
-        fp = repoPath ? `${repoPath.replace(/\\/g, '/')}/${file}` : file;
-      } else {
-        fp = String(args.filePath || args.file_path || '');
-      }
-
-      if (!fp) return null;
-
-      const nodes = ctx.getNodesInFile(fp);
-      if (nodes.length === 0) {
-        // Phase 1.5 按需索引：该文件尚未预热 → 同步接口保守无警告，
-        // 后台预热一次（同文件下一次写操作即有完整评估）。
-        void ctx.warmFile(fp);
-        return null;
-      }
-
-      const totalFanIn = nodes.reduce((sum, n) => sum + n.fanIn, 0);
-      const topSymbols = [...nodes]
-        .filter((n) => n.fanIn > 0)
-        .sort((a, b) => b.fanIn - a.fanIn)
-        .slice(0, 5);
-
-      // 全是内部符号（fanIn = 0）→ 无外部影响，不打扰
-      if (topSymbols.length === 0) return null;
-
-      const maxFanIn = topSymbols[0].fanIn;
-      let riskLevel: string;
-      if (maxFanIn >= 10 || totalFanIn >= 50) riskLevel = 'HIGH   ';
-      else if (maxFanIn >= 5 || totalFanIn >= 20) riskLevel = 'MEDIUM ';
-      else riskLevel = 'LOW    ';
-
-      const fileName = fp.replace(/\\/g, '/').split('/').pop() || fp;
-      const verb = toolName === 'git_discard' ? '丢弃修改' : '修改';
-
-      const lines = [
-        `⚠️ [自动影响分析] 即将${verb} \`${fileName}\``,
-        `│  文件内 ${nodes.length} 个符号，${totalFanIn} 个外部依赖者。`,
-      ];
-
-      if (topSymbols.length > 0) {
-        lines.push(`│`);
-        lines.push(`│  被依赖最多的符号:`);
-        for (const s of topSymbols) {
-          lines.push(`│  • \`${s.name}\` — ${s.fanIn} 个下游`);
-        }
-      }
-
-      lines.push(`│`);
-      lines.push(`│  风险等级: ${riskLevel}`);
-
-      // ── 引擎层数据：紧凑标签式摘要（原来是 6 个区块，约 20 行）──
-      if (ctx.engine) {
-        const eng = ctx.engine;
-        const normFp = fp.replace(/\\/g, '/').toLowerCase();
-        const rankEntry = eng.fragilityRanks.find(
-          (r) =>
-            r.file.replace(/\\/g, '/').toLowerCase().includes(normFp) ||
-            normFp.includes(r.file.replace(/\\/g, '/').toLowerCase()),
-        );
-        if (rankEntry || eng.cycleCount > 0 || eng.sessionDrift > 0) {
-          // 第 1 行：脆弱度 + 循环 + 漂移 + 健康度
-          const tags: string[] = [];
-          if (rankEntry) tags.push(`脆弱#${eng.fragilityRanks.indexOf(rankEntry) + 1}(${rankEntry.score.toFixed(0)})`);
-          if (eng.cycleCount > 0) tags.push(`循环×${eng.cycleCount}`);
-          if (eng.sessionDrift > 0) {
-            const driftPct = (eng.sessionDrift * 100).toFixed(1);
-            tags.push(`退化+${driftPct}%`);
-            if (eng.sessionDrift > 0.1) {
-              riskLevel = 'HIGH   ';
-            }
-          }
-          tags.push(`健康${eng.healthScore}/100`);
-          lines.push(`│  引擎: ${tags.join(' ')}`);
-
-          // 第 2 行：LSP 热点 + 调用者 + 语义邻居 + 合成（如有）
-          const lspParts: string[] = [];
-          const fileHit = eng.lspHotspots.filter(
-            (h) =>
-              h.file.replace(/\\/g, '/').toLowerCase().includes(normFp) ||
-              normFp.includes(h.file.replace(/\\/g, '/').toLowerCase()),
-          );
-          if (fileHit.length > 0) {
-            lspParts.push(
-              fileHit
-                .slice(0, 3)
-                .map((h) => `${h.symbol}(${h.callers}↓)`)
-                .join(','),
-            );
-          }
-          if (eng.lspCallers.size > 0) {
-            const callerEntries =
-              eng.lspCallers.get(normFp) ||
-              [...eng.lspCallers.entries()].find(([k]) => k.replace(/\\/g, '/').toLowerCase().includes(normFp))?.[1];
-            if (callerEntries && callerEntries.length > 0) {
-              lspParts.push(
-                callerEntries
-                  .slice(0, 3)
-                  .map((c) => `${c.symbol}(${c.count}↓)`)
-                  .join(','),
-              );
-            }
-          }
-          if (eng.semanticNeighbors.size > 0) {
-            const neighbors =
-              eng.semanticNeighbors.get(normFp) ||
-              [...eng.semanticNeighbors.entries()].find(([k]) =>
-                k.replace(/\\/g, '/').toLowerCase().includes(normFp),
-              )?.[1];
-            if (neighbors && neighbors.length > 0) {
-              lspParts.push(
-                `邻居:${neighbors
-                  .slice(0, 5)
-                  .map((n) => n.name)
-                  .join(',')}`,
-              );
-            }
-          }
-          if (eng.synthesisAlerts.length > 0) {
-            lspParts.push(`合成:${eng.synthesisAlerts.map((a) => `${a.type}(${a.count})`).join(',')}`);
-          }
-          if (lspParts.length > 0) {
-            lines.push(`│  LSP: ${lspParts.join(' ')}`);
-          }
-
-          // 漂移严重时升级风险等级
-          if (eng.sessionDrift > 0.1) {
-            // 更新已推送的风险等级行
-            const riskIdx = lines.findIndex((l) => l.includes('风险等级'));
-            if (riskIdx >= 0) lines[riskIdx] = `│  风险等级: ${riskLevel} ⚠退化>10%`;
-          }
-        }
-      }
-
-      lines.push(`│  精确影响面 → preflight_check(["${fp.replace(/\\/g, '/')}"])`);
-      return lines.join('\n');
-    },
-  };
 }

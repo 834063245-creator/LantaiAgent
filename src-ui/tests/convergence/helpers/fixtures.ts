@@ -1,10 +1,9 @@
 // Convergence 测试基建 — 确定性夹具。
 //
 // 目标：同一份代码在任何机器、任何时间跑出字节相同的契约输出。
-// 内容：录制型 ToolExecutor、固定图数据、标准工具注册表、合成门禁工具、脚本化 Provider。
+// 内容：录制型 ToolExecutor、标准工具注册表、合成门禁工具、脚本化 Provider。
 
 import { SubAgentPool } from '../../../src/agent/coordinator';
-import { formatGraphSnapshot } from '../../../src/agent/hooks';
 import { buildToolRegistry } from '../../../src/agent/runtime/agent-builder';
 import { TaskManager } from '../../../src/agent/task';
 import type { Tool, ToolExecutor, ToolRegistry } from '../../../src/agent/tool';
@@ -25,47 +24,17 @@ export function recordingExec(log: Array<{ name: string; args: Record<string, un
   };
 }
 
-// ── 固定图快照 — formatGraphSnapshot/装配开关的确定性输入 ──
-// Phase 1.5：graphData = 聚合快照（引擎 graph_snapshot 形态）。
-// 本快照与旧 FIXED_GRAPH_DATA(nodes/edges) 在 buildGraphSnapshot 下的
-// 聚合输出逐字节等价（4 节点/4 边 | 2 社区 2/2 | import:2,call:2 |
-// 枢纽 core(2)/util(2)）——system-prompt.fixture 零漂移。
-
-export const FIXED_GRAPH_SNAPSHOT = {
-  node_count: 4,
-  edge_count: 4,
-  file_count: 0,
-  class_count: 0,
-  kind_counts: {},
-  edge_kind_counts: { import: 2, call: 2 },
-  communities: [
-    { id: 0, size: 2 },
-    { id: 1, size: 2 },
-  ],
-  top_fan_in: [
-    { id: 'demo/core.ts', name: 'core', fan_in: 2 },
-    { id: 'demo/util.ts', name: 'util', fan_in: 2 },
-  ],
-  top_fan_out: [],
-};
-
-export function fixedGraphSnapshot(): string {
-  return formatGraphSnapshot(FIXED_GRAPH_SNAPSHOT);
-}
-
 // ── 标准注册表：真实 buildToolRegistry 生产路径 + 确定性依赖 ──
 //
-// 说明：graphData 给固定图 → hologram 动态工具走 loadHologramSchemas()，
-// 测试环境（无 Tauri bridge）恒返回 []——引擎侧工具面由 Rust 测试与 RPC 契约守护，
-// 本快照覆盖静态注册面（coding/task/browser/desktop/wait + 领域收敛）。
-// memory/skill 为可选依赖，不传入（生产同样可缺省）。
+// 图谱退役（2026-09-09）后无引擎/图数据依赖——工具面 = 内置行表 + 通道
+// 贡献 + 领域收敛（memory/skill 为可选依赖，不传入——生产同样可缺省）。
 // P4 B①（2026-08-23）起 git/search 两族经 ctx.tools 第一方插件通道贡献——
 // 夹具以 withFirstPartyToolChannel 复现生产装配（标准 = 内置行 + 第一方
 // 插件贡献；测试环境不跑 main.ts 引导，通道腰在此补挂）。
 // S4-4 甲（2026-08-23）：通道贡献行进组合解析域（factoryComposition 快照）
 // ——buildToolRegistry 缺省装配 = 出厂组合（内置行 + 贡献行），toolRows
 // 注入 = preset 解析产物（惰性 thunk 在通道腰内求值）。
-// B⑤（2026-08-24）：minimal 的 graph-hooks capability 行经 ctx.capabilities
+// B⑤（2026-08-24）：minimal 的 state-hooks capability 行经 ctx.capabilities
 // 通道注册——preset 解析（减法组合含 capabilities 域寻址）须在 capability
 // 通道腰内求值，与工具通道腰同挂（withFirstPartyCapabilityChannel）。
 
@@ -77,11 +46,10 @@ export async function buildStandardRegistry(
   return withFirstPartyToolChannel(() =>
     withFirstPartyCapabilityChannel(async () => {
       // S4-4 甲：toolRows 支持惰性 thunk——在通道腰内求值使解析域纳入
-      // 当前第一方贡献行（minimal 的减法解析含 34 贡献行 + graph-hooks
+      // 当前第一方贡献行（minimal 的减法解析含当前贡献行 + state-hooks
       // capability 行；数组直传兼容）。
       const rows = typeof toolRows === 'function' ? toolRows() : toolRows;
       const reg = await buildToolRegistry({
-        graphData: FIXED_GRAPH_SNAPSHOT,
         deps: {},
         taskManager: new TaskManager(),
         subAgentPool: new SubAgentPool(),

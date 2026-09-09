@@ -4,9 +4,9 @@
 //   standard = 恰好等于现行装配：贡献行按现行通道注册序、外部贡献为空集。
 //   minimal（S4-1b freeze，CR 用户批准）= 从运行时 preset 表派生：
 //   composition/presets.ts 的 minimal（禁 plugin/hologram/browser-desktop-domain/tools
-//   + plugin/hologram/web-domain/web_fetch 工具行 + graph-hooks capability——
-//   ①b 后寻址 plugin 行）经 resolvePresetComposition 派生行集合——真源单一，
-//   minimal 定义改了这里自动跟（不手抄清单）。
+//   + plugin/hologram/web-domain/web_search/web_fetch 工具行 + state-hooks
+//   capability——①b 后寻址 plugin 行）经 resolvePresetComposition 派生行集合
+//   ——真源单一，minimal 定义改了这里自动跟（不手抄清单）。
 //
 // 确定性按构造保证，不按环境保证（§2.3 关键修正）：
 //   specs 构造装配时显式传贡献集——贡献集是 preset 定义的纯函数，

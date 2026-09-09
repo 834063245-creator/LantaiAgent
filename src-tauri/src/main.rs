@@ -2,15 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 // 兰台 Tauri 后端
-// 桥接层：Agent (TypeScript) → Tauri commands → Rust engine
+// 桥接层：Agent (TypeScript) → Tauri commands → Rust 能力口
 // 不做分析逻辑，只做进程管理和文本转发
+// （图谱全量退役 2026-09-09：engine_transport 模块随引擎接线删除——
+//  兰台零引擎内置，引擎以独立进程 + 外部 MCP 通道形态供消费。）
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 #[cfg(windows)] use std::os::windows::process::CommandExt;
 
 mod agent_isolation;
-mod engine_transport;
 mod pty_manager;
 mod lsp_manager;
 mod oauth;
@@ -79,11 +80,7 @@ fn main() {
                         ledger.shutdown_all(std::time::Duration::from_secs(2));
                     }
                     if let Some(ws_state) = app_clone.try_state::<WorkspaceState>() {
-                        if let Ok(mut guard) = ws_state.lock() {
-                            if let Some(handle) = guard.as_mut() {
-                                handle.deactivate();
-                            }
-                        }
+                        let _guard = ws_state.lock();
                     }
                     let _ = tx.send(());
                 });
@@ -245,13 +242,13 @@ mod tests {
     }
 
     #[test]
-    fn workspace_handle_deactivate_stops_watcher() {
+    fn workspace_handle_deactivate_is_idempotent() {
         let tmp = std::env::temp_dir().join("hologram_test_deactivate");
         let _ = std::fs::create_dir_all(&tmp);
         let mut handle = workspace::WorkspaceHandle::new(&tmp.to_string_lossy());
-        // deactivate 在无 watcher 运行时不应 panic
+        // deactivate 幂等，不 panic（图谱退役后 watcher/pump 已删，纯状态清理）
         handle.deactivate();
-        assert!(crate::utils::lock_or_recover(&handle.changed_files).is_empty());
+        handle.deactivate();
         let _ = std::fs::remove_dir_all(&tmp);
     }
 

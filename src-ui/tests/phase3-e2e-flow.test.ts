@@ -214,7 +214,7 @@ describe('端到端：系统提示词验证', () => {
   // 出厂拼装断言须在通道腰内复现生产装配面（无通道 = 空提示词）。
   it('系统提示词包含极简骨架：身份 + 模型身份（工具说明段已移除）', async () => {
     await withFirstPartyPromptChannel(async () => {
-      const prompt = buildSystemPrompt({ nodes: [], edges: [] }, '/fake/project', '', '', '', 'deepseek');
+      const prompt = buildSystemPrompt('/fake/project', '', '', 'deepseek');
 
       expect(prompt).toContain('你是兰台的编码 Agent。');
       expect(prompt).toContain('## 模型身份');
@@ -229,7 +229,7 @@ describe('端到端：系统提示词验证', () => {
     await withFirstPartyPromptChannel(async () => {
       // 协作模式/多 Agent 静态段已移除（2026-08-28）——系统提示词模式无关，
       // 规划模式约束由 PlanModeInjector 的运行时提醒下发。
-      const prompt = buildSystemPrompt({ nodes: [], edges: [] }, '/fake/project', '', '', '', 'deepseek');
+      const prompt = buildSystemPrompt('/fake/project', '', '', 'deepseek');
 
       expect(prompt).not.toContain('多 Agent 协作');
       expect(prompt).not.toContain('## 协作模式');

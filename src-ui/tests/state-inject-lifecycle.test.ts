@@ -3,11 +3,13 @@
 
 // 状态注入缓存生命周期守护。
 // 回归背景：注入缓存是进程级全局单例且此前无任何清理 —
-// 1) 工作区 deactivate/forceClear 不清缓存 → 旧项目的 git/blame/check
+// 1) 工作区 deactivate/forceClear 不清缓存 → 旧项目的 git/blame/buildResult
 //    状态注入下一个工作区的 turn-start；
 // 2) 在途的 fire-and-forget 刷新在切换后 resolve → 旧项目数据回填全局槽；
 // 3) buildResult 全局单槽无归属 → A 会话的构建结果注入 B 会话上下文；
 // 4) blame 条目永不过期 → agent 自己编辑文件后注入的仍是旧 blame。
+// （check/timeline 缓存族随图谱功能全量退役删除，2026-09-09——run_check 简报
+//  与引擎时间线均属图数据面；reset 只覆盖 git/blame/buildResult 三族 + 代际。）
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // state-inject.ts 经 rpc-contract → bridge.rpc 发 IPC — mock 掉真实 Tauri 调用
@@ -22,14 +24,10 @@ import {
   getBlameCache,
   getBuildResultCache,
   getCacheEpoch,
-  getCheckCache,
-  getTimelineCache,
   invalidateBlameEntry,
   resetAgentCaches,
   setBlameEntry,
-  setCheckCache,
   setGitCache,
-  setTimelineCache,
 } from '../src/agent/cache-store';
 import {
   buildTurnStartBlock,
@@ -51,18 +49,14 @@ describe('resetAgentCaches（工作区切换清理）', () => {
       Date.now(),
     );
     setBlameEntry('a.ts', 'alice');
-    setCheckCache({ passed: true, violationCount: 0, newCount: 0, resolvedCount: 0, persistentCount: 0 });
     cacheBuildResult({ command: 'cargo test', outcome: 'pass', summary: 'ok', ts: Date.now() });
-    setTimelineCache([{ event_type: 'agent_write', timestamp: 't' }], Date.now());
     const epoch = getCacheEpoch();
 
     resetAgentCaches();
 
     expect(getGitStatusCached()).toBeNull();
     expect(getBlameCache()).toEqual({});
-    expect(getCheckCache()).toBeNull();
     expect(getBuildResultCache()).toBeNull();
-    expect(getTimelineCache()).toEqual([]);
     expect(getCacheEpoch()).toBe(epoch + 1);
   });
 });

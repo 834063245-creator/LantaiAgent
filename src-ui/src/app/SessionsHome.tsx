@@ -5,9 +5,10 @@
 //
 // 定案（docs/plans/canvas-space/stage-2.md §3.5 方案 A + Stage-5 补尾拍板）：
 // **不并存——画布即主界面**。首页管「你有哪些工作区」：新建工作区（创建
-// 目录或指定已有目录 + per-workspace 图谱引擎勾选，2026-08-31 拍板）、
-// 改名、固定常用、移除（连带删卷，模态勾选确认——不做退路）、进画布；
-// 工作区内的会话管理交给画布旁的侧边栏（出生仪式在那边，开口即开卷）。
+// 目录或指定已有目录）、改名、固定常用、移除（连带删卷，模态勾选确认——
+// 不做退路）、进画布；工作区内的会话管理交给画布旁的侧边栏（出生仪式在
+// 那边，开口即开卷）。
+// （per-workspace 图谱引擎勾选/开关随图谱全量退役移除，2026-09-09。）
 //
 // 数据源：`workspace_list` 单一来源——Rust 把 ~/.lantai/workspaces.json 注册表
 // 全量列出，每个工作区的会话计数/最近时间扫**自己的会话根**
@@ -19,7 +20,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { WorkspaceSummary } from '../rpc-contract';
 import { clearWorkspaceListCache, typedRpc, workspaceListCached } from '../rpc-contract';
-import { graphEngineEnabled, loadSettings } from '../settings';
 import { pickFolder, workspaceFlow } from '../shell/rows/workspace';
 import { shellRefs } from '../shell/runtime';
 import { useDockStore } from '../state/dock-store';
@@ -48,11 +48,6 @@ function isSamePath(a: string, b: string): boolean {
   return (
     a.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase() === b.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
   );
-}
-
-/** 该工作区的图谱旗标显示值：注册表未显式选择时回退全局默认。 */
-function wsGraphOn(ws: KnownWorkspace): boolean {
-  return ws.graph_engine ?? graphEngineEnabled(loadSettings());
 }
 
 /** 恢复卡死判定阈值（2026-09-09 事故立法）：切区/冷启动恢复 busy 超过
@@ -120,8 +115,6 @@ export function SessionsHome() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetStage, setSheetStage] = useState<'choose' | 'create'>('choose');
   const [newWsName, setNewWsName] = useState('');
-  /** 勾选项 = 「分析此目录」——per-workspace 图谱引擎旗标；默认取全局设置值。 */
-  const [newWsEngine, setNewWsEngine] = useState(() => graphEngineEnabled(loadSettings()));
   /** 移除确认模态（2026-08-31 拍板「不做退路、确认做足」）：居中弹窗 + 勾选
    *  承认不可恢复后才能点亮红色删除键；取代旧的卡片内两段式点击确认。 */
   const [removeTarget, setRemoveTarget] = useState<KnownWorkspace | null>(null);
@@ -208,16 +201,15 @@ export function SessionsHome() {
   }, []);
 
   /** 新建工作区 sheet：创建/指定双路（2026-08-31 拍板——一个按钮管两件事）。
-   *  出生仪式在画布——sheet 只负责把工作区实体立起来（建目录/选目录 + 引擎勾选）。 */
+   *  出生仪式在画布——sheet 只负责把工作区实体立起来（建目录/选目录）。 */
   const onOpenCreateSheet = useCallback(() => {
     setNotice(null);
     setNewWsName('');
-    setNewWsEngine(graphEngineEnabled(loadSettings()));
     setSheetStage('choose');
     setSheetOpen(true);
   }, []);
 
-  /** 「创建」提交：命名 → ~/Documents/兰台/<名字> → activate（携引擎勾选）→ 进画布。 */
+  /** 「创建」提交：命名 → ~/Documents/兰台/<名字> → activate → 进画布。 */
   const onCreateCommit = useCallback(async () => {
     const name = newWsName.trim();
     if (!name || busy) return;
@@ -229,16 +221,16 @@ export function SessionsHome() {
       clearWorkspaceListCache();
       setSheetOpen(false);
       openPanel('paper');
-      await workspaceFlow.switchWorkspace(path, { graphEngine: newWsEngine });
+      await workspaceFlow.switchWorkspace(path);
     } catch (e) {
       console.error('[home] workspace_create_dir failed:', e);
       setNotice(`创建失败: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(false);
     }
-  }, [newWsName, newWsEngine, busy, openPanel]);
+  }, [newWsName, busy, openPanel]);
 
-  /** 「指定已有目录」提交：系统选择器 → activate（携引擎勾选）→ 进画布。 */
+  /** 「指定已有目录」提交：系统选择器 → activate → 进画布。 */
   const onPickCommit = useCallback(async () => {
     if (busy) return;
     const folder = await pickFolder();
@@ -250,39 +242,14 @@ export function SessionsHome() {
       // activate 会登记新工作区——同样清缓存
       clearWorkspaceListCache();
       openPanel('paper');
-      await workspaceFlow.switchWorkspace(folder, { graphEngine: newWsEngine });
+      await workspaceFlow.switchWorkspace(folder);
     } catch (e) {
       console.error('[home] pick workspace failed:', e);
       setNotice(`打开失败: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setBusy(false);
     }
-  }, [busy, newWsEngine, openPanel]);
-
-  /** 图谱徽标切换（per-workspace 引擎旗标，2026-08-31 拍板方案一）。
-   *  生效语义 = 装配期一次（在途不活拆）——切的是当前激活工作区时提示下次进入生效。 */
-  const onToggleGraphEngine = useCallback(
-    async (ws: KnownWorkspace) => {
-      if (busy) return;
-      setBusy(true);
-      setNotice(null);
-      try {
-        const next = !wsGraphOn(ws);
-        await typedRpc('workspace_set_graph_engine', { path: ws.path, enabled: next });
-        await refreshWorkspaces();
-        const current = useShellStore.getState().projectPath;
-        if (isSamePath(ws.path, current)) {
-          setNotice(`「${wsDisplayName(ws)}」图谱引擎已${next ? '开启' : '关闭'}——生效于下次进入该工作区`);
-        }
-      } catch (e) {
-        console.error('[home] workspace_set_graph_engine failed:', e);
-        setNotice(`图谱开关失败: ${e instanceof Error ? e.message : String(e)}`);
-      } finally {
-        setBusy(false);
-      }
-    },
-    [busy, refreshWorkspaces],
-  );
+  }, [busy, openPanel]);
 
   /** 改名提交：空名 = 取消。 */
   const onRenameCommit = useCallback(
@@ -458,11 +425,9 @@ export function SessionsHome() {
                     <span className="sh-ws-meta" title={w.path}>
                       {isDead
                         ? '目录已丢失 · 无法访问案卷'
-                        : `图谱${wsGraphOn(w) ? '开' : '关'} · ${
-                            w.session_count > 0
-                              ? `${w.session_count} 卷 · 最近 ${formatSessionDate(w.latest_saved_at)}`
-                              : '空工作区 · 还没有案卷'
-                          }`}
+                        : w.session_count > 0
+                          ? `${w.session_count} 卷 · 最近 ${formatSessionDate(w.latest_saved_at)}`
+                          : '空工作区 · 还没有案卷'}
                     </span>
                     {!isDead && <span className="sh-ws-enter">进入画布 →</span>}
                   </button>
@@ -485,14 +450,6 @@ export function SessionsHome() {
                         onClick={() => void onTogglePin(w)}
                       >
                         {w.pinned ? '解固' : '固定'}
-                      </button>
-                      <button
-                        type="button"
-                        title={`图谱引擎${wsGraphOn(w) ? '关闭' : '开启'}（本工作区，下次进入生效）`}
-                        disabled={busy}
-                        onClick={() => void onToggleGraphEngine(w)}
-                      >
-                        {wsGraphOn(w) ? '关图谱' : '开图谱'}
                       </button>
                       <button
                         type="button"
@@ -579,10 +536,6 @@ export function SessionsHome() {
                       }
                     }}
                   />
-                  <label className="sh-modal-check">
-                    <input type="checkbox" checked={newWsEngine} onChange={(e) => setNewWsEngine(e.target.checked)} />
-                    分析此目录（代码图谱 + 文件监视）
-                  </label>
                 </div>
                 <div className="sh-modal-foot">
                   <button type="button" onClick={() => setSheetStage('choose')}>

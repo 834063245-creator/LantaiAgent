@@ -34,7 +34,6 @@ import { Overlay } from '../app/overlay';
 import { useShellStore } from '../app/shell-store';
 import { capabilitiesServicePlugin } from '../composition/capability-service';
 import { fsServicePlugin } from '../composition/fs-service';
-import { graphServicePlugin } from '../composition/graph-service';
 import { hooksServicePlugin } from '../composition/hook-service';
 import { overlayServicePlugin } from '../composition/overlay-service';
 import { promptsServicePlugin } from '../composition/prompt-service';
@@ -131,7 +130,6 @@ export const BUILTIN_PLUGINS: LantaiPlugin[] = [
   fsServicePlugin,
   shellServicePlugin,
   sessionPersistenceServicePlugin,
-  graphServicePlugin,
   spaceServicePlugin,
   overlayServicePlugin,
   codeRuntimePlugin,
@@ -142,13 +140,13 @@ export const BUILTIN_PLUGINS: LantaiPlugin[] = [
   capabilitiesServicePlugin,
 ];
 
-/** 全部第一方插件（14 内核 + dev 出厂产物源码路径）。
+/** 全部第一方插件（13 内核 + dev 出厂产物源码路径）。
  *  ⚠ 2026-09-06：出厂产物展开从 BUILTIN_PLUGINS 顶层挪到本函数——顶层展开会在
  *  模块加载期调用 factoryProductPlugins()，而 settings-domain → SettingsPanel →
  *  PluginsPage → loader 的循环 import 使插件对象在加载期未初始化（TDZ/undefined
  *  ——s3-settings-domain 实测炸）。运行期调用（loadBuiltinPlugins / 测试）时
  *  模块图已闭合。
- *  生产形态：import.meta.env.DEV=false → 仅 14 内核（产物走磁盘通道装载）；
+ *  生产形态：import.meta.env.DEV=false → 仅 13 内核（产物走磁盘通道装载）；
  *  dev 形态：追加 factoryProductPlugins()（vite HMR 源码热重载；forceProductChannel
  *  =1 时不追加——产物通道是唯一装载面，形态同生产）。 */
 export function allBuiltinPlugins(): LantaiPlugin[] {

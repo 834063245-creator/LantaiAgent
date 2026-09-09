@@ -17,7 +17,7 @@
 // ctx.capabilities 通道注册）——phase-1 effective 快照消费
 // composition.capabilities（fromRoster 装配蓝图），standard 与 minimal
 // 两条路径的解析都必须在 withFirstPartyCapabilityChannel 腰内做
-//（standard 的 capability 面 = 通道快照；minimal 另寻址 graph-hooks
+//（standard 的 capability 面 = 通道快照；minimal 另寻址 state-hooks
 // key——无通道 = 空能力表/未知 key，快照会失真）。组合是值——解析产物
 // 带出通道使用（compositionOverride 穿线）。
 

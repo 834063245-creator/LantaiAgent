@@ -77,7 +77,7 @@ const BUILTIN_PRESETS: Array<{
     id: 'minimal',
     metadata: {
       name: 'minimal',
-      description: '精简面：禁 browser/desktop、web、图 hooks 等重装备',
+      description: '精简面：禁 browser/desktop、web、状态 hooks 等重装备',
     },
     // ①b（2026-08-23）：web/browser-desktop 迁插件通道——寻址行改枚举
     // plugin 行 id（原 builtin/<族> 行 id 随行表退役）。整族禁用：web 双
@@ -85,16 +85,18 @@ const BUILTIN_PRESETS: Array<{
     // 贡献行 = 一行禁整族（族内新增工具自动覆盖，名面不被清单锁死）。寻址 plugin 行的解析须在
     // 贡献在册的环境（生产 = loadBuiltinPlugins 启动期装载先于 bootShell
     // 组合链；测试 = withFirstPartyToolChannel 通道腰）。
-    // B⑤（2026-08-24）：graph-hooks 迁 ctx.capabilities 通道（第一方
+    // B⑤（2026-08-24）：hooks capability 迁 ctx.capabilities 通道（第一方
     // capability 插件注册）——寻址该 key 的解析同样须在 capability 通道
     // 在册环境（测试 = withFirstPartyCapabilityChannel 通道腰）。
+    // 2026-09-09 图谱退役：graph-hooks 收缩为 state-hooks（状态 + 构建结果
+    // hooks），minimal 的禁用行随键改名。
     patch: {
       tools: [
         { id: 'plugin/hologram/browser-desktop-domain/tools', disabled: true },
         { id: 'plugin/hologram/web-domain/web_search', disabled: true },
         { id: 'plugin/hologram/web-domain/web_fetch', disabled: true },
       ],
-      capabilities: [{ id: 'graph-hooks', disabled: true }],
+      capabilities: [{ id: 'state-hooks', disabled: true }],
     },
   },
 ];

@@ -5,7 +5,7 @@
 // 替换 main.ts 中的 18+ 个模块级全局变量。
 //
 // 生命周期：
-//   const ws = await Workspace.open(path, starGraph, chatPanel);
+//   const ws = await Workspace.open(path, chatPanel);
 //   // ... 用户工作 ...
 //   await ws.deactivate(chatPanel);
 //
@@ -17,28 +17,20 @@ import { AgentStore } from './agent/agent-store';
 import { resetAgentCaches } from './agent/cache-store';
 import { SubAgentPool } from './agent/coordinator';
 import { GoalManager } from './agent/goal-manager';
-import { createGraphContext, type GraphContext, type GraphSnapshot, type NodeBrief } from './agent/hooks';
 import { DisposerBag } from './agent/lifecycle';
 import { initLogger, log } from './agent/logger';
 import { MemoryManager } from './agent/memory';
 import { memoryBundleIngest } from './agent/memory-bundle-client';
-import {
-  type BuilderDeps,
-  buildToolRegistry,
-  cancelEngineSnapshotRefresh,
-  extractGraphNodeNames,
-  scheduleEngineSnapshotRefresh,
-} from './agent/runtime/agent-builder';
+import { type BuilderDeps, buildToolRegistry } from './agent/runtime/agent-builder';
 // ── 运行时层（替代 bootstrap.ts）──
 import { AgentRuntime } from './agent/runtime/runtime';
 import type { AgentHandle } from './agent/runtime/types';
 import { SkillRegistry } from './agent/skills';
-import { buildTurnStartBlock, refreshGitStatus, refreshTimeline } from './agent/state-inject';
+import { buildTurnStartBlock, refreshGitStatus } from './agent/state-inject';
 import { TaskManager } from './agent/task';
 import type { ToolRegistry } from './agent/tool';
 import type { ChatCore } from './app/chat/chat-core';
 import { readAttachmentBase64 } from './app/chat/image-intake';
-import { useShellStore } from './app/shell-store';
 import { resolveCurrentComposition } from './composition/preset-assembly';
 import type { ResolvedComposition } from './composition/roster';
 import type { Context, Fiber } from './cordis';
@@ -48,20 +40,10 @@ import { markDynamicFetchStart, mergeDynamicModels, recordDynamicFetchResult } f
 import { resolveApiKey } from './provider/credentials';
 import { createLiveProvider } from './provider/live';
 import type { Provider } from './provider/types';
-import {
-  kernelGlobalMemoryDir,
-  kernelProcessCall,
-  parseJson,
-  typedJsonRpc,
-  typedListen,
-  typedRpc,
-  workspaceListCached,
-} from './rpc-contract';
-// Phase 1.5：全量图形状（GraphJSON/GraphNode/…）随分页栈退役；graphData = GraphSnapshot（agent/hooks）
+import { kernelGlobalMemoryDir, kernelProcessCall, typedListen, typedRpc } from './rpc-contract';
 import {
   type AppSettings,
   getActiveProvider,
-  graphEngineEnabled,
   loadSettings,
   loadSettingsWithSecrets,
   type ModelOverrides,
@@ -71,16 +53,12 @@ import {
 import type { AgentConfigChangeReason } from './state/agent-config-store';
 import { getComposeStore, resolveComposeEffective } from './state/compose-store';
 import { useCompositionStore } from './state/composition-store';
-import type { CheckResult } from './state/dock-store';
-import { useDockStore } from './state/dock-store';
 import { broadcastGoalRecord } from './state/goal-store';
 import { getPanelStore } from './state/panel-store';
-import { bumpTimelineRefresh } from './state/timeline-store';
 import { useAgentPanelStore } from './ui/agent-panel-store';
 import { resetSessionState } from './ui/chat-session';
 import { getDiagnosticsForFile, LspService } from './ui/lsp-client';
 import { createBuilderDeps, createRuntimeAdapter } from './ui/runtime-adapter';
-import { resolveSemanticToolName } from './ui/tool-semantics';
 import { bumpWorkspaceEpoch, getWorkspaceEpoch, isCurrentEpoch } from './workspace-scope';
 
 // ═══════════════════════════════════════════════════════
@@ -104,14 +82,6 @@ export function isSamePath(a: string, b: string): boolean {
 
 // ── Workspace 类 ─────────────────────────────────────────────────
 
-/** graph-updated 事件载荷（workspace.rs 发射的 JSON 摘要）。
- *  Phase 1.5：diff 字段不再消费 —— 事件只作「图变了」信号，快照重拉。 */
-interface GraphUpdatedSummary {
-  meta?: { source_root?: string };
-  total_nodes?: number;
-  node_count?: number;
-}
-
 /** 工作区 scope fiber 的插件定义（cordis-migration P1）。
  *  apply 为空：资源登记发生在 fiber ctx 上（获取点就地 effect），不走插件闭包。 */
 const workspaceScopePlugin = {
@@ -122,13 +92,6 @@ const workspaceScopePlugin = {
 export class Workspace {
   // ── 标识 ──
   readonly path: string;
-
-  // ── 图数据 ──
-  /** Phase 1.5：聚合快照（引擎 graph_snapshot 形态）——不再承载全量
-   *  nodes/edges；按文件符号索引走 _preflightCtx 的按需查询。
-   *  （fileGraphData 已随 hologram_graph_files.json 产物链退役——
-   *  Phase 3 摘依赖时 regenerate_file_graph 死代码删除，此处为死状态。） */
-  graphData: GraphSnapshot | null = null;
 
   // ── Agent 与记忆 ──
   /** 工厂已挂接标记（applyAgentConfig 的「补装配」分支判据——工厂在场
@@ -155,11 +118,6 @@ export class Workspace {
   // ── Store 路由（面板级隔离）──
   _storeId: string = '__default__';
 
-  // ── 检查状态 ──
-  checkRunning: boolean = false;
-  checkPending: boolean = false;
-  checkTimer: ReturnType<typeof setTimeout> | null = null;
-
   // ── Agent 设置守卫 ──
   agentSetupRunning: boolean = false;
   agentSetupPending: boolean = false;
@@ -175,39 +133,16 @@ export class Workspace {
   /** LSP 子系统服务（cordis-migration P3）— 状态与生命周期挂工作区 fiber。 */
   private readonly _lspService: LspService;
 
-  /** 冷启动后台分析的健康状态。 */
-  _health: 'unknown' | 'ready' | 'degraded' = 'unknown';
-  /** 图谱后台预热中（workspace-flip 批 3，D-W1-3）：缓段拉页进行时为 true——
-   *  UI 呈现「预热中」+ graph 工具缺席的诚实提示判定位。 */
-  _graphWarming = false;
-
-  /** P3-3（2026-09-02）：快照查询的门闩——open() 起始就并行发 load_graph_json
-   *  （与监听器接线/setupAgent 的记忆装配重叠，省纯串行等待）；settle 前不
-   *  阻塞 open() 返回，仅由 _setupAgentInner 在 buildToolRegistry 前 await
-   *  （保序：注册期真值 graphData 必须就位——hologram 行工厂对 null 产出空集，
-   *  是注册期决定不是调用期判空）。 */
-  private _graphReady: Promise<void> | null = null;
-  /** P3-3：预热完成 registry 重建所需的工作区级装配材料（builderDeps +
-   *  agentRef + 装配时组合快照 + chatPanel）——rebuildToolRegistry 消费。 */
+  /** 工作区级装配材料（builderDeps + agentRef + 装配时组合快照 + chatPanel）
+   *  ——_buildRegistryLocked / 会话工厂消费。 */
   private _agentRef: { current: Agent | null } = { current: null };
   private _builderDeps: BuilderDeps | null = null;
   private _assemblyComposition: ResolvedComposition | null = null;
   private _chatPanel: ChatCore | null = null;
 
-  /** 图谱引擎开关快照（引擎开关，2026-08-22）：open() 时从 settings 读取。
-   *  false = 本工作区不触图谱（graphData 恒 null / 不跑简报 / 不拉文件图谱）；
-   *  生效语义 = 绑定期一次（在途工作区不活拆——下次绑定目录即见）。 */
-  _graphEngineOn = true;
-
-  /** 后台分析失败时的回调（冷启动降级模式）。 */
-  onAnalysisFailed: ((err: unknown) => void) | null = null;
-
   /** 守卫（历史名 _initialRenderActive）：分页原子换入已随 Phase 1.5 退役，
    *  快照重拉幂等无需防踩踏 —— 字段保留给既有读写点，语义 = 初始装载期。 */
   _initialRenderActive: boolean = false;
-
-  /** 预检 GraphContext — 存储以便写入后刷新引擎快照。 */
-  _preflightCtx: GraphContext | null = null;
 
   get active(): boolean {
     return this._active;
@@ -232,86 +167,44 @@ export class Workspace {
    *  直接 new 出来的实例 _active=false，不触发任何 RPC。 */
   constructor(path: string) {
     this.path = path;
-    // 引擎开关快照（2026-08-22）：构造期读一次 settings——绑定期语义
-    // （在途工作区不活拆，重新绑定/重启即见新值）。
-    this._graphEngineOn = graphEngineEnabled(loadSettings());
     // 工作区 scope fiber — 挂在根 Context 上（initCordisKernel 幂等：生产路径
     // main.ts 已引导，复用既有根；测试路径首次调用自动建根）。
     this._fiber = initCordisKernel().plugin(workspaceScopePlugin);
     // cordis-migration P3：LSP 子系统服务挂工作区 fiber — 状态收进服务实例，
     // 生命周期随 fiber（deactivate/forceClear → provider/监听器/缓存/会话全清）。
     this._lspService = new LspService(this._fiber.ctx);
-    // 构造即登记"恒在的清理器"（无获取点、工作区一建就存在）：
-    // - checkTimer：停用时清掉防抖 timer；
-    // - cancelEngineSnapshotRefresh：停用时取消在途引擎快照刷新。
-    //   （fiber effect：setup 立即执行、返回值即清理器；LIFO 释放 — 注册在前的
-    //   后释放，timers/快照最后清，与旧 deactivate 顺序一致。）
-    this._fiber.ctx.effect(
-      () => () => {
-        if (this.checkTimer) {
-          clearTimeout(this.checkTimer);
-          this.checkTimer = null;
-        }
-      },
-      'checkTimer-clear',
-    );
-    this._fiber.ctx.effect(() => () => cancelEngineSnapshotRefresh(), 'engine-snapshot-refresh-cancel');
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // 工厂方法：打开工作区 — 分析 + 数据装载 + 监听器
-  // （V5 拆除 2026-08-22：starGraph 渲染面退役——图谱数据面照旧）
+  // 工厂方法：打开工作区 — 激活 + 监听器接线
+  // （V5 拆除 2026-08-22：starGraph 渲染面退役）
   // （workspace-session-ownership-rework 2026-08-27：占位工作区 path='' 退役——
   //  零目录会话已退役，工作区 = 目录实体，无项目不装配 Agent）
+  // （图谱全量退役 2026-09-09：分析/快照装载/简报/图事件监听整批移除——
+  //  工作区打开 = 激活 + 会话恢复，零引擎接线）
   // ═══════════════════════════════════════════════════════════════
 
   static async open(
     path: string,
-    _starGraph: null,
     _chatPanel: ChatCore,
     callbacks?: {
       onStatusChange?: (msg: string) => void;
       onLoadingChange?: (loading: boolean) => void;
-      /** per-workspace 图谱引擎旗标（2026-08-31）：
-       *  true/false = 显式指定（新建工作区 sheet 的勾选）——随 workspace_activate
-       *  写入注册表；
-       *  null/undefined = 按注册表现值装配（无记录回退全局默认），注册表不被覆写。 */
-      graphEngine?: boolean | null;
     },
   ): Promise<Workspace> {
     const ws = new Workspace(path);
     ws._active = true;
-    // ponytail: 立即连接回调，以便本方法内的进度监听器能推送状态更新。
-    // 否则整个分析阶段都是静默的 — onStatusChange 在 open() 返回后才被赋值。
+    // ponytail: 立即连接回调，以便本方法内的状态更新能推送。
     ws.onStatusChange = callbacks?.onStatusChange ?? null;
     ws.onLoadingChange = callbacks?.onLoadingChange ?? null;
 
-    // per-workspace 引擎旗标解析（2026-08-31）：显式旗标 > 注册表现值 > 全局默认
-    // （构造期已读入 ws._graphEngineOn = 全局默认）。进入既有工作区不携旗标 →
-    // 查注册表该区的 graph_engine 字段；查不到（mock/毒化/未登记）→ 全局默认。
-    let engineFlag: boolean | null = callbacks?.graphEngine ?? null;
-    if (engineFlag === null) {
-      try {
-        // P1-2 优化：走短期缓存——首页挂载拉过的清单 10s 内直接复用
-        const list = await workspaceListCached();
-        const hit = list.find((w) => isSamePath(w.path, path));
-        if (hit && typeof hit.graph_engine === 'boolean') engineFlag = hit.graph_engine;
-      } catch {
-        /* 读失败 → 全局默认（engineFlag 保持 null） */
-      }
-    }
-    if (engineFlag !== null) ws._graphEngineOn = engineFlag;
-
-    // Agent 写入文件时自动调度检查
-    // （通过 agent:tool-done → onToolDone → scheduleCheck 处理，见下文）
-
-    // 1. 向后端注册工作区（显式旗标随登记写入；null = 保持注册表现值）
-    ws.onStatusChange?.('正在初始化引擎...');
+    // 1. 向后端注册工作区
+    ws.onStatusChange?.('正在激活工作区...');
     console.log('[Workspace.open] step 1: workspace_activate...');
     // #10 修复（2026-09-02）：workspace_activate 失败此前只 console.error——
     // 后端未注册工作区时后续文件操作会全失败，但用户看不到。现在 pushStatus
     // 可见化（不 throw——工作区文件层面仍可操作，只是后端桥断）。
-    await typedRpc('workspace_activate', { path, graph_engine: callbacks?.graphEngine ?? null }).catch((e) => {
+    await typedRpc('workspace_activate', { path }).catch((e) => {
       console.error('[Workspace.open] workspace_activate failed:', e);
       const msg = e instanceof Error ? e.message : String(e);
       ws.onStatusChange?.(`⚠️ 工作区激活失败（后端桥可能不可用）: ${msg}`);
@@ -319,191 +212,7 @@ export class Workspace {
     console.log('[Workspace.open] step 1: done');
     initLogger(path);
 
-    // 2. 连接进度监听器（限定于本工作区）
-    let currentPhase = '';
-    // 2026-09-01 审计：三个监听器逐个 await——中途 reject 时已建者原本永不解除
-    //（此时还没登记进 fiber effect）。创建期任一失败 = 先解已建者再抛。
-    // P0-1 优化（2026-09-02）：三个监听器互相独立——Promise.all 批量注册，
-    // 省 2 次 IPC 往返。任一失败仍回滚全部已建监听器。
-    const createdListeners: Array<() => void> = [];
-    let unlistenProgress: () => void;
-    let unlistenPhase: () => void;
-    let unlistenHeartbeat: () => void;
-    try {
-      [unlistenProgress, unlistenPhase, unlistenHeartbeat] = await Promise.all([
-        typedListen('analyze-progress', ({ current, total, file }) => {
-          if (!ws._active) return;
-          const basename = file.replace(/.*[/\\]/, '');
-          ws.onStatusChange?.(`${currentPhase ? currentPhase + ' — ' : ''}[${current}/${total}] ${basename}`);
-        }),
-        typedListen('analyze-phase', (p) => {
-          if (!ws._active) return;
-          currentPhase = p.message || p.phase;
-          ws.onStatusChange?.(currentPhase);
-        }),
-        typedListen('analyze-heartbeat', ({ label, elapsed }) => {
-          if (!ws._active) return;
-          ws.onStatusChange?.(`${label} (${elapsed}...)`);
-        }),
-      ]);
-      createdListeners.push(unlistenProgress, unlistenPhase, unlistenHeartbeat);
-    } catch (e) {
-      for (const un of createdListeners.splice(0)) un();
-      throw e;
-    }
-
-    try {
-      if (!ws._graphEngineOn) {
-        // 引擎开关关闭（2026-08-22）：绑目录 ≠ 开图谱。graphData 留 null——
-        // 走零目录会话的既有无图路径（hologram 工具行产出空集 + noGraph
-        // prompt 段），fs/shell/git/权限全套保留。跳过：分析/快照装载、
-        // 文件级图谱、初始简报（runCheck 的隐藏回退会强分析，见 runCheck 门禁注释）。
-        // _health 保持 unknown——健康语义只对图谱数据面有意义。
-        ws.onStatusChange?.('图谱引擎已停用——纯 Agent 工作区（图工具缺席，fs/shell/git 照常）');
-      } else {
-        // P3-3（2026-09-02）：快照查询不再阻塞 open() 返回——fire 后立即继续
-        // 接线 graph-updated / tool-done 监听器；_setupAgentInner 的
-        // buildToolRegistry 前 await _graphReady 保序（注册期真值契约）。
-        // 收益 = 快照查询（首调含引擎子进程 spawn，秒级）与 setupAgent 的
-        // 记忆装配 / 监听器接线全程重叠。
-        // 形状真源 = engine graph_snapshot_value（schema 全检）。真机 Rust 出口
-        // 已是结构化 Value——旧「string 泛型 + parseJson」在真机恒炸恒吞
-        // （JSON.parse 收到对象）→ 图谱预热假死，2026-09-01 边界校验批修复。
-        ws._graphReady = (async () => {
-          try {
-            const snap = await typedJsonRpc('load_graph_json', { path });
-            if (!ws._active) return;
-            if (snap.node_count > 0) {
-              ws.graphData = snap;
-              ws._health = 'ready';
-            }
-          } catch {
-            /* 无缓存图 → 留 null，后台分析补 */
-          }
-          if (!ws._active) return;
-          // 仍触发 analyze_and_load（force=false），保留缓存过期→重分析能力：
-          // direct_analyze 内部校验 SQLite 缓存新鲜度，过期则重建；
-          // 分析完成后由 graph-updated 事件驱动快照重拉。
-          ws._graphWarming = ws.graphData === null;
-          if (ws._graphWarming) {
-            ws.onStatusChange?.('图谱后台预热中——对话已就绪，图工具将在分析完成后可用');
-          }
-          typedRpc('analyze_and_load', { path, force: false }).catch((e) => {
-            // 2026-09-01 审计：失败要复位预热旗标 + 可见告警——否则 _graphWarming
-            // 恒 true，图谱永不就绪也无人知道（静默卡死）。
-            ws._graphWarming = false;
-            console.warn('[Workspace.open] analyze_and_load 失败（图工具本次不可用）:', e);
-            ws.onStatusChange?.('图谱预热失败——图工具本次不可用（重开工作区可重试）');
-          });
-        })();
-      }
-
-      // 3.（已删）文件级图谱装载——hologram_graph_files.json 产物链随
-      //    regenerate_file_graph 退役（Phase 3），fileGraphData 消费面本就为零。
-
-      // 4. 初始基线检查 — 渲染段已随 V5 拆除（星图退役），runCheck 保留
-      //    （简报注入 cacheCheckResult 服务 Agent 状态注入面）。
-      //    引擎开关关闭时跳过（runCheck 的隐藏回退会击穿开关，见 runCheck 门禁注释）。
-      if (ws._graphEngineOn) {
-        console.log('[Workspace.open] step 4: scheduling initial check...');
-        ws._initialRenderActive = true;
-        setTimeout(() => {
-          ws._initialRenderActive = false;
-          // 运行初始检查以建立基线
-          ws.runCheck();
-        }, 0);
-      }
-
-      // 5. 连接持久事件监听器（graph-updated）
-      console.log('[Workspace.open] step 5: wiring listeners...');
-      const unlistenGraphUpdated = await typedListen('graph-updated', async (rawSummary) => {
-        if (!ws._active) return;
-        // 引擎开关关闭：本工作区无图数据面——事件兜底/简报一律不触
-        //（防御性守卫：正常路径下 watcher 未启动，事件本不该来）。
-        if (!ws._graphEngineOn) return;
-        try {
-          const summary = JSON.parse(rawSummary) as GraphUpdatedSummary;
-          const eventRoot = summary.meta?.source_root || '';
-          if (eventRoot && !isSamePath(eventRoot, ws.path)) return;
-          const nc = summary.total_nodes || summary.node_count || 0;
-          if (nc > 0 && ws.path) {
-            try {
-              // Phase 1.5：快照重拉（毫秒级轻查询）——diff 本地合并与分页
-              // 重载已随全量图形态退役；按需文件索引缓存同步失效。
-              const snap = await typedJsonRpc('load_graph_json', { path: ws.path });
-              if (snap.node_count > 0) {
-                ws.graphData = snap;
-                if (ws._graphWarming) {
-                  ws._graphWarming = false;
-                  ws._health = 'ready';
-                  ws.onStatusChange?.('图谱预热完成——图工具已可用（新会话生效）');
-                  ws.runCheck();
-                  // P3-3（2026-09-02）：重建共享 registry——让上面那句「新会话
-                  // 生效」从提示变成真话（此前 registry 只在 setupAgent 一次成型，
-                  // 预热前装配的空工具面永不更新）。新会话经 this.registry 拿到
-                  // 完整图工具；在途会话旧引用不动。
-                  void ws.rebuildToolRegistry();
-                }
-                ws._preflightCtx?.invalidate();
-              }
-              bumpTimelineRefresh();
-            } catch (e) {
-              console.warn('[Workspace.open] 图谱快照重拉失败——保持现状:', e);
-            }
-          }
-        } catch (e) {
-          console.warn('[Workspace.open] graph-updated 载荷解析失败:', e);
-        }
-      });
-      ws._fiber.ctx.effect(() => unlistenGraphUpdated, 'listener:graph-updated');
-
-      // Agent 工具完成 → 文件可能变更时自动触发简报
-      const FILE_MODIFY_TOOLS = new Set([
-        'write_file',
-        'edit_file',
-        'delete_file',
-        'rename_file',
-        'move_file',
-        'git_commit',
-        'git_stage',
-        'git_push',
-        'git_pull',
-        'run_shell',
-        'rename_symbol',
-      ]);
-      const onToolDone = (evt: { toolName: string; args: Record<string, unknown> }) => {
-        // 工具收敛后模型调用领域工具（fs/git/shell）— 归一化回旧语义名匹配
-        const sem = resolveSemanticToolName(evt.toolName, JSON.stringify(evt.args || {}));
-        if (FILE_MODIFY_TOOLS.has(sem)) {
-          if (ws._graphEngineOn) {
-            ws.scheduleCheck();
-            // 刷新引擎快照 — 跟踪累积结构漂移
-            if (ws._preflightCtx) scheduleEngineSnapshotRefresh(ws._preflightCtx, ws.path);
-          }
-          bumpTimelineRefresh();
-        }
-      };
-      // P1 总线归零：agent:tool-done → agent-panel-store.lastToolDone（tick+payload 原子更新）
-      const unsubToolDone = useAgentPanelStore.subscribe((s, prev) => {
-        if (s.toolDoneTick !== prev.toolDoneTick && s.lastToolDone) onToolDone(s.lastToolDone);
-      });
-      ws._fiber.ctx.effect(() => unsubToolDone, 'listener:tool-done');
-
-      // 清理进度监听器（仅在初始分析期间存活）
-      unlistenProgress();
-      unlistenPhase();
-      unlistenHeartbeat();
-      console.log('[Workspace.open] all done, returning workspace');
-    } catch (err) {
-      console.error('[Workspace.open] FAILED:', err);
-      unlistenProgress();
-      unlistenPhase();
-      unlistenHeartbeat();
-      ws.onStatusChange?.(`分析失败: ${err}`);
-      ws.onLoadingChange?.(false);
-      throw err;
-    }
-
+    console.log('[Workspace.open] all done, returning workspace');
     return ws;
   }
 
@@ -703,12 +412,10 @@ export class Workspace {
     }
   }
 
-  /** P3-3（2026-09-02）：构建共享工具注册表——setupAgent 与 rebuildToolRegistry
-   *  的共用出口。组装材料（deps/agentRef/memoryManager/skillRegistry…）全部
-   *  工作区级，重建即换 graphData/组合快照两个真值。 */
+  /** 构建/重建共享工具注册表——setupAgent 与会话工厂覆盖路径的共用出口。
+   *  组装材料（deps/agentRef/memoryManager/skillRegistry…）全部工作区级。 */
   private async _buildRegistryLocked(composition: ResolvedComposition): Promise<ToolRegistry> {
     const registry = await buildToolRegistry({
-      graphData: this.graphData,
       deps: this._builderDeps as BuilderDeps,
       memoryManager: this.memoryManager ?? undefined,
       skillRegistry: this.skillRegistry ?? undefined,
@@ -734,23 +441,6 @@ export class Workspace {
     // 工具 schema 连接到 UI 面板（重建时同步刷新）
     this._chatPanel?.setToolSchemas(registry.schemas());
     return registry;
-  }
-
-  /** P3-3（2026-09-02）：预热完成后的共享 registry 重建——graph-updated 的
-   *  warming 完成分支调用。此前「图工具已可用（新会话生效）」是句谎话：共享
-   *  registry 在 setupAgent 时一次成型（graphData null → hologram 行空集），
-   *  之后无人重建——新会话拿到的还是空工具面。重建后新会话即得完整工具面；
-   *  在途会话持有的旧 registry 引用不受影响（句柄生命周期 = 卷）。
-   *  防御：装配材料缺席（setupAgent 未跑/已拆）= no-op。 */
-  async rebuildToolRegistry(): Promise<void> {
-    if (!this._builderDeps || !this._active) return;
-    try {
-      const composition = useCompositionStore.getState().resolved;
-      await this._buildRegistryLocked(composition);
-      this.onStatusChange?.('图工具面已更新——新会话生效');
-    } catch (e) {
-      console.warn('[Workspace] 预热完成 registry 重建失败（保持旧工具面）:', e);
-    }
   }
 
   /** 从 panel store 读取协作模式。回退到 normal。
@@ -876,7 +566,8 @@ export class Workspace {
       );
     };
     try {
-      memorySection = await this.memoryManager.loadPromptSection(extractGraphNodeNames(this.graphData));
+      // 记忆召回锚点：原为图谱 top 枢纽名，图谱退役（2026-09-09）后回退无锚形态。
+      memorySection = await this.memoryManager.loadPromptSection();
     } catch (err) {
       console.error('[setupAgent] loadPromptSection failed:', err);
     }
@@ -1013,34 +704,8 @@ export class Workspace {
     });
     teardown.add(unsubMsg, 'listener:runtime-msg');
 
-    // ── 构建图谱上下文（Phase 1.5：file_nodes 按需索引 + 缓存）──
-    // 快照形态下全量 fileIndex 不再存在 —— GraphContext 按文件轻查询
-    // （单文件毫秒级），preflight 同步消费缓存、enrich 异步预热。
-    const graphCtx = this.graphData
-      ? createGraphContext(async (file) => {
-          const raw = await typedRpc('hologram_file_nodes', { file });
-          return parseJson<{ nodes?: NodeBrief[] }>(raw)?.nodes ?? [];
-        })
-      : null;
-    this._preflightCtx = graphCtx;
-
-    // P3-3（2026-09-02）：快照门闩——注册期真值契约（hologram 行工厂对
-    // graphData null 产出空集）。open() 已并行发查询，此处 await 保序——
-    // 快照在途期间 setupAgent 的记忆装配与其重叠，不空等。
-    await this._graphReady?.catch(() => {});
-    // 门闩 settle 后 graphData 可能已就位——graphCtx 按新值补建（上面按
-    // null 建的 query 闭包不依赖 graphData 本体，仅 this.graphData 判空；
-    // 就位即换真上下文）
-    if (this.graphData && !this._preflightCtx) {
-      this._preflightCtx = createGraphContext(async (file) => {
-        const raw = await typedRpc('hologram_file_nodes', { file });
-        return parseJson<{ nodes?: NodeBrief[] }>(raw)?.nodes ?? [];
-      });
-    }
-
     // ── 构建工具注册表（通过 agent-builder，零 UI 导入）──
-    // P3-3：装配材料提升为实例字段（rebuildToolRegistry 消费）——预热完成
-    // 后的 registry 重建复用同一 deps/agentRef/组合快照。
+    // 装配材料提升为实例字段（会话工厂覆盖路径复用同一 deps/agentRef/组合快照）。
     const builderDeps: BuilderDeps = createBuilderDeps(this._storeId);
     this._builderDeps = builderDeps;
     this._agentRef = { current: null as Agent | null };
@@ -1050,10 +715,8 @@ export class Workspace {
 
     const registry = await this._buildRegistryLocked(composition);
 
-    // 冷启动：预热状态缓存（引擎关态跳过 timeline——它走引擎读取，
-    // 关态必然 Err，不浪费一次注定失败的 IPC；git 状态与引擎无关照刷）
+    // 冷启动：预热状态缓存（git 状态与引擎无关照刷）
     refreshGitStatus(this.path).catch(() => {});
-    if (this._graphEngineOn) refreshTimeline(this.path).catch(() => {});
 
     // ── 工厂：每次调用通过 runtime 创建全新 Agent ──
     // 返回 runtime 句柄（含 dispose）— 所有权随句柄交给会话 state
@@ -1098,7 +761,6 @@ export class Workspace {
       // 会话作用域注册表：覆盖存在时按覆盖的 tools 域构建（deps 工作区级复用）
       const sessionRegistry = compositionOverride
         ? await buildToolRegistry({
-            graphData: this.graphData,
             deps: builderDeps,
             memoryManager: this.memoryManager ?? undefined,
             skillRegistry: this.skillRegistry ?? undefined,
@@ -1127,7 +789,6 @@ export class Workspace {
             agentId: sessionAgentId,
             parentId: null,
             projectPath: this.path,
-            graphData: this.graphData,
             provider: sessProv,
             tools: sessionRegistry,
             memoryManager: this.memoryManager ?? undefined,
@@ -1136,7 +797,6 @@ export class Workspace {
             agentStore: this.agentStore ?? undefined,
             subAgentPool: this.subAgentPool,
             taskManager: this.taskManager,
-            graphContext: graphCtx,
             // 并发会话（2026-08-26）：事件入口按会话绑定——事件天生携带所属卷
             // 身份，两卷并发流式互不串扰（旧共享 eventSink 靠活跃卷猜测路由）。
             // execState 同步改挂会话级（权限卡/停止语义按卷隔离）。
@@ -1164,7 +824,6 @@ export class Workspace {
               ).catch(() => {});
               (async () => {
                 await refreshGitStatus(this.path);
-                if (this._graphEngineOn) await refreshTimeline(this.path);
                 // 只消费本 Agent 产生的构建结果（其他会话的留在槽位等本尊）——
                 // 并发会话：用本工厂闭包捕获的 agent（handle 建成即定），不再
                 // 经共享 agentRef.current（最后创建的卷）错路由。
@@ -1211,93 +870,4 @@ export class Workspace {
     this._factoryRegistered = true;
     this.onStatusChange?.('[Agent] ✅ 工厂已就绪（拟文时装配）');
   }
-
-  // ═══════════════════════════════════════════════════════════════
-  // runCheck — 健康检查 / 简报
-  // ═══════════════════════════════════════════════════════════════
-
-  async runCheck(): Promise<void> {
-    // 工作区已停用（切换中/后）不跑 — 否则在途 RPC resolve 会把旧项目
-    // 结果写进新项目的 dock store 并弹开 check 面板（landmine-map H4）
-    if (!this._active || !this.path) return;
-    // 引擎开关关闭（2026-08-22）：简报是图数据面的一部分，一并停用。
-    // 关键防御：hologram_run_check 的 Rust 侧有隐藏回退链（引擎空 →
-    // engine_init → 仍空 → direct_analyze(force=true) 全量强分析），
-    // 不 gate 这里，开关会被静默击穿——用户关了图谱却后台跑 420s 分析。
-    if (!this._graphEngineOn) return;
-    if (this.checkRunning) {
-      this.checkPending = true;
-      return;
-    }
-    if (this.checkTimer) {
-      clearTimeout(this.checkTimer);
-      this.checkTimer = null;
-    }
-
-    this.checkRunning = true;
-    this.checkPending = false;
-    try {
-      const json = await typedRpc('hologram_run_check', { path: this.path });
-      // 在途期间工作区已停用 — 结果是旧项目的，直接丢弃不写共享 store
-      if (!this._active) return;
-      try {
-        const result: CheckResult = JSON.parse(json);
-        const dock = useDockStore.getState();
-        dock.setCheckResult(result);
-        // C14：check 面板已随 V5 退役——不再 openPanel('check')；
-        // 简报对用户的可见性走下方 statusText + 违规徽章
-        bumpTimelineRefresh();
-        // 通知工具栏以显示违规徽章
-        const cnt =
-          (result.l5_violations?.length || 0) +
-          (result.l4_violations?.length || 0) +
-          (result.l3_violations?.length || 0) +
-          (result.l2_violations?.length || 0);
-        // P1 总线归零：原 bus 'check:result' → bridge-adapters 转写，现直写 shell-store
-        useShellStore.getState().setViolations(result.passed ? 0 : cnt);
-        // 推送状态栏通知 — 即使检查面板关闭也可见
-        if (!result.passed) {
-          this.onStatusChange?.(`⚠ 简报未通过: ${cnt} 条违规`);
-        }
-      } catch (parseErr) {
-        console.error('[runCheck] JSON parse failed:', parseErr, 'raw:', json.slice(0, 200));
-        this.onStatusChange?.('简报解析失败');
-      }
-    } catch (err) {
-      console.error('Check failed:', err);
-      this.onStatusChange?.('简报请求失败');
-    } finally {
-      this.checkRunning = false;
-      // 在途期间工作区已停用 — 不重武装 timer，旧项目的 pending 检查就此丢下
-      if (this._active && this.checkPending) {
-        this.checkPending = false;
-        if (this.checkTimer) clearTimeout(this.checkTimer);
-        this.checkTimer = setTimeout(() => {
-          this.checkTimer = null;
-          if (!this.checkRunning) this.runCheck();
-        }, 2000);
-      }
-    }
-  }
-
-  /** 防抖检查 — Agent 写入文件时调用。3 秒延迟批量处理多次写入。 */
-  scheduleCheck(): void {
-    // 工作区已停用（切换中/后）不再排程 — 否则 timer 触发会走 runCheck 把
-    // 旧项目结果写进新项目面板（landmine-map H4）
-    if (!this._active || !this.path) return;
-    // 引擎开关关闭：不排程（runCheck 已 gate，这里拦 timer 空转——同族防御）
-    if (!this._graphEngineOn) return;
-    if (this.checkTimer) clearTimeout(this.checkTimer);
-    this.checkTimer = setTimeout(() => {
-      this.checkTimer = null;
-      if (!this.checkRunning) this.runCheck();
-    }, 3000);
-  }
 }
-
-// ═══════════════════════════════════════════════════════════════
-// buildSystemPrompt — 纯函数，读取 Workspace 状态
-// ═══════════════════════════════════════════════════════════════
-
-// ═══════════════════════════════════════════════════════════════
-// （数据流追踪 Agent 已移除 — 由引擎查询替代）

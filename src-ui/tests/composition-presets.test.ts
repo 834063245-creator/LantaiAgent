@@ -3,7 +3,7 @@
 
 // S4-0 preset 数据模型测试 — 设计件 §3 S4-0 验收的纯函数半边：
 //   1. standard ≡ factoryComposition（出厂组合，零漂移的构造性保证）；
-//   2. minimal 的禁用面符合设计（browser-desktop/web 工具行 + graph-hooks capability）；
+//   2. minimal 的禁用面符合设计（browser-desktop/web 工具行 + state-hooks capability）；
 //   3. 用户 preset 叠加在用户层 patch 之上（同 id 后写胜前写）；
 //   4. 未知 id / broken preset → factory 兜底（占 id 拒绝装载）；
 //   5. PresetId 围栏规则；
@@ -11,8 +11,9 @@
 // ①b（2026-08-23）：minimal/用户层 patch 寻址 plugin 行——寻址 plugin 行的
 // 解析须在 withFirstPartyToolChannel 腰内（贡献行在册才可解析；无通道
 // 环境 tools 域 = 空行表，plugin id 全部未知会被 all-or-nothing 拒绝）。
-// B⑤（2026-08-24）：minimal 的 graph-hooks capability 行经 ctx.capabilities
+// B⑤（2026-08-24）：minimal 的 state-hooks capability 行经 ctx.capabilities
 // 通道注册——寻址该 key 的解析须在 withFirstPartyCapabilityChannel 腰内。
+// 2026-09-09 图谱退役：graph-hooks 收缩改名 state-hooks，minimal 禁用行随键改。
 
 import { describe, expect, it } from 'vitest';
 import { withFirstPartyCapabilityChannel } from '../src/composition/first-party-capabilities';
@@ -52,7 +53,7 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
     expect(r.diagnostics).toEqual({ disabled: [], overridden: [], inserted: [] });
   });
 
-  it('minimal：browser-desktop/web 工具行 + graph-hooks capability 被禁', async () => {
+  it('minimal：browser-desktop/web 工具行 + state-hooks capability 被禁', async () => {
     await withFirstPartyToolChannel(() =>
       withFirstPartyCapabilityChannel(async () => {
         const r = resolvePresetComposition('minimal');
@@ -66,9 +67,9 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
             (id) => id !== BROWSER_DESKTOP_ROW && id !== WEB_ROW && id !== WEB_FETCH_ROW,
           ),
         );
-        expect(r.capabilities.map((c) => c.key)).not.toContain('graph-hooks');
+        expect(r.capabilities.map((c) => c.key)).not.toContain('state-hooks');
         // 诊断按表序收集（web 行居表首——与 patch 声明序无关）
-        expect(r.diagnostics.disabled).toEqual([WEB_ROW, WEB_FETCH_ROW, BROWSER_DESKTOP_ROW, 'graph-hooks']);
+        expect(r.diagnostics.disabled).toEqual([WEB_ROW, WEB_FETCH_ROW, BROWSER_DESKTOP_ROW, 'state-hooks']);
       }),
     );
   });

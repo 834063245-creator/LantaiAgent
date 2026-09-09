@@ -11,15 +11,7 @@ import { PlanStateManager } from '../../../src/agent/plan/plan-state';
 import { buildSystemPrompt } from '../../../src/agent/runtime/agent-builder';
 import { withFirstPartyPromptChannel } from '../../../src/composition/first-party-prompts';
 import { runDifferential } from '../helpers/differential';
-import {
-  agentDomainTool,
-  buildStandardRegistry,
-  FIXED_GRAPH_SNAPSHOT,
-  fixedGraphSnapshot,
-  fsDomainTool,
-  readOnlyTool,
-  throwingTool,
-} from '../helpers/fixtures';
+import { agentDomainTool, buildStandardRegistry, fsDomainTool, readOnlyTool, throwingTool } from '../helpers/fixtures';
 import { stableStringify } from '../helpers/normalize';
 import { presetBaselineDir, resolvePreset, type ToolContribution } from '../helpers/presets';
 import { compareText, snapshot } from '../helpers/snapshot';
@@ -35,7 +27,7 @@ describe('phase-0 契约快照', () => {
     const reg = await buildStandardRegistry(preset.contributions, preset.toolRows);
     const schemas = reg.schemas();
     snapshot('phase-0/tool-schemas.full.json', {
-      note: '引擎动态工具（hologram_tools_list）测试环境恒为空，不在本快照内；本快照钉住静态注册面',
+      note: '本快照钉住装配后的模型可见静态注册面（内置行表 + 通道贡献 + 领域收敛）；引擎侧 MCP 工具面由引擎契约与 Rust 测试守护，不在本快照内',
       count: schemas.length,
       schemas,
     });
@@ -54,45 +46,45 @@ describe('phase-0 契约快照', () => {
     });
   });
 
-  it('system-prompt.fixture — 固定输入的 buildSystemPrompt（三面夹具）', async () => {
-    // P4 B④ 收官（2026-08-23）：13 段全量经 ctx.prompts 第一方插件通道
-    // 贡献（试点 memory/claude-md + 续批 graph-snapshot + 收官批 10 段）
-    // ——测试环境不跑 main.ts 引导，通道腰在此复现生产装配面
-    // （同 B① 工具面 buildStandardRegistry 先例；贡献序 = 迁移前出厂表序，
-    // 快照零漂移按构造，双 preset 实测）。
-    // 三面解耦（2026-08-25）：hasProject 与 hasGraph 独立判段，夹具三面
-    // 全覆盖——withGraph（完整面，字节不变）/ engineOff（关引擎面：有目录
-    // 无图，旧 noGraph 同参调用落此面——行为规则/协作模式/项目规范照常
-    // 注入，图纪律/图快照缺席）/ noProject（零目录面：path=''，字节 =
-    // 旧 noGraph 简短面——"当前没有加载项目"在此面才是真话）。
+  it('system-prompt.fixture — 固定输入的 buildSystemPrompt（两面夹具：有目录 / 零目录）', async () => {
+    // P4 B④ 收官（2026-08-23）：prompt 段全量经 ctx.prompts 第一方插件通道
+    // 贡献（prompt-segments 装载 firstPartyPromptSections()）——测试环境
+    // 不跑 main.ts 引导，通道腰在此复现生产装配面（同 B① 工具面
+    // buildStandardRegistry 先例；贡献序 = 出厂表序，快照零漂移按构造）。
+    // 两面（2026-09-09 图谱退役后）：hasProject = projectPath 非空——
+    // 原三面（withGraph/engineOff/noGraph）随 graphData/引擎开关行为删除，
+    // 夹具改两面：project（有目录面：path 非空，memory/claudeMd/shellEnv/
+    // providerName 齐备——identity → env → model-identity → memory →
+    // claude-md 按序拼装）与 noProject（零目录面：path=''，其余空——
+    // identity-brief 独段，"当前没有加载项目"在此面才是真话）。
     await withFirstPartyPromptChannel(async () => {
-      const withGraph = buildSystemPrompt(
-        FIXED_GRAPH_SNAPSHOT,
+      // 有目录面：memory/claudeMd/shellEnv/providerName 全注入。
+      const project = buildSystemPrompt(
         '/projects/demo',
         '### 固定记忆段落\n- 记忆条目 A',
-        fixedGraphSnapshot(),
-        '### CLAUDE.md 固定内容\n- 规范条目 A',
-        'deepseek',
-        '- OS: win32\n- Shell: bash (Git Bash)',
-      );
-      // 关引擎面：与 withGraph 同输入内容（memory/claudeMd/env 齐备），
-      // 仅 graphData=null——镜像生产的"绑目录 + 引擎开关关"装配。
-      const engineOff = buildSystemPrompt(
-        null,
-        '/projects/demo',
-        '### 固定记忆段落\n- 记忆条目 A',
-        '',
         '### CLAUDE.md 固定内容\n- 规范条目 A',
         'deepseek',
         '- OS: win32\n- Shell: bash (Git Bash)',
       );
       // 零目录面：占位工作区装配真值（path='' → hasProject=false）。
-      const noProject = buildSystemPrompt(null, '', '', '', '', undefined, '');
+      const noProject = buildSystemPrompt('');
+      // 面内实况断言（对照 prompt-sections.ts 的 IDENTITY/IDENTITY_BRIEF/
+      // ENV/MODEL_IDENTITY/MEMORY/CLAUDE_MD 段渲染）——不依赖 baseline，
+      // 两面的段位与关键内容直接钉死：
+      expect(project.startsWith('你是兰台的编码 Agent。')).toBe(true);
+      expect(project).toContain('\n\n## 运行环境\n- OS: win32\n- Shell: bash (Git Bash)');
+      expect(project).toContain('## 模型身份');
+      expect(project).toContain('- 项目: `/projects/demo`');
+      expect(project).toContain('## 记忆库\n### 固定记忆段落\n- 记忆条目 A');
+      expect(project).toContain('## 项目规范\n### CLAUDE.md 固定内容\n- 规范条目 A');
+      expect(project).not.toContain('当前没有加载项目');
+      expect(noProject.startsWith('你是兰台的 AI 编码助手。当前没有加载项目。')).toBe(true);
+      expect(noProject).toContain('## 模型身份');
+      expect(noProject).not.toContain('/projects/demo');
+      expect(noProject).not.toContain('你是兰台的编码 Agent。');
       snapshot('phase-0/system-prompt.fixture.json', {
-        withGraphLength: withGraph.length,
-        withGraph,
-        engineOffLength: engineOff.length,
-        engineOff,
+        projectLength: project.length,
+        project,
         noProjectLength: noProject.length,
         noProject,
       });

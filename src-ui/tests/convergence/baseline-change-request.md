@@ -64,3 +64,38 @@
 - TS 新测试：fs-seam ② 缺省 line_numbers:false + ②b lineNumbers opt-in 双向；
   coding-domain-plugins git_commit 编排三态（无 files / 'a,b' 逐文件 / '.' →
   stage_all）；cargo 440 全绿；vitest 全量见 record commit 前置验证。
+
+---
+
+# baseline change request — 图谱功能全量退役（兰台零引擎内置接线，2026-09-09）
+
+- **日期**: 2026-09-09
+- **请求 Agent**: 图谱退役执行 Agent（plan `.lantai/plans/plan-1788924433965-dmkj.md` v2，用户拍板全部决策点）
+- **涉及快照**: `baseline/phase-0/tool-schemas.full.json`、`baseline/phase-0/tool-schemas.plan.json`、`baseline/phase-0/system-prompt.fixture.json`（standard + preset-minimal 各一份）
+- **状态**: **已批准**——用户审查 plan v2 后逐点拍板（图谱全量退役 + search 向量边车随批退役 + constraints 能力口随批退役），产品层明确决定改变模型可见行为（README 协议合法变更类型 ①）；本请求是该决定的收敛对拍落地。
+
+## 变更内容
+
+兰台内置图谱功能全量退役（引擎回归纯 MCP 供外部消费）后，模型可见工具面与 system prompt 随之收缩：
+
+1. **工具面缩容**：hologram 动态工具族（graph/ops/lsp 引擎侧 schema 在生成环境恒空集，不影响装配产物）整行退役——tool-schemas.full/plan 的 count 21→**18**（graph 域 27 动作、ops、dataflow 对、fs 域 constraints/write_constraints 两动作随批退役）；fs 域 description 与只读 action 表同步（constraints 两动作删）。
+2. **system-prompt.fixture 换键**：三面夹具（withGraph/engineOff/noProject——graphData/引擎开关判面）随图谱退役收缩为**两面**（project/noProject——hasProject 独立判段），snapshot key 结构换代：`withGraph/engineOff` 键删除，新增 `project/projectLength/noProject/noProjectLength`（graph-snapshot 段与「图谱引擎已停用」行已删）。
+3. **spec 结构断言同步**（非 baseline 文件，随实现批同 commit）：phase-3 config 消费面 24→22（删 graphData/graphContext）；phase-6 AgentConfig 冻结 30→28（同上）+ FORBIDDEN_COMPOSITION 删 5 个已删图谱专名；gate.mjs T0 计数 30→28。
+
+## 为什么变
+
+- 图谱「给人看的报告层」失真不可信 → 用户决定兰台内置图谱全量退役；引擎二进制保留，回归纯 MCP 供外部消费（外部 MCP 通道不在本快照内——装配面零引擎动态工具）。
+- 兰台零引擎内置接线后 graphData/graphContext/引擎开关概念全灭，prompt 判面收缩为 hasProject 两面。
+
+## 影响面
+
+- **模型可见表面**：本请求列的三类快照漂移（工具面 count + fs 描述；fixture 键换代）。
+- **行为面**：兰台 Agent 不再装配 hologram/graph/ops/lsp 动态工具、无 dataflow 对、fs 域无 constraints/write_constraints；system prompt 无 graph-snapshot 段与引擎停用行（两面装配）。
+- **消费面**：composition 行表/prompt 段表/capability 表（graph-hooks→state-hooks）随实现批同步；convergence specs 与 helpers 已随实现批更新（phase-3/6 绿）。
+- **重录动作**：`npm run record:convergence`（standard）+ `CONVERGENCE_PRESET=minimal npm run record:convergence`（minimal），随后 `npm run verify:convergence` 必须 exit 0——独立 record commit，不夹带 src 改动。
+
+## 证据
+
+- 实现批：非 convergence 全量 vitest 271 files / 2767 tests 绿 + build/tsc 绿 + biome 0/0 + check:tool-contract 绿（tool-contract 生成物同 commit）；
+- 源整改后 convergence 结构门禁：phase-3 + phase-6 11/11 绿（28 字段全等）；phase-0 残留失败形态 = 纯 baseline 漂移（本请求对象），无源码级崩；
+- 引擎侧不动（engine/ + 三 crate 零改动）；外部 MCP 通道本体不动。

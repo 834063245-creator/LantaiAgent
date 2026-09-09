@@ -23,8 +23,9 @@
 // 模块级可变态归属（CONVENTIONS §1.10 第 4 类——初始化后随组合写入点替换的
 // 单键值；生命周期 = 进程，无跨工作区所有权问题：裁剪面是全局组合语义）。
 
-/** seam 域清单（单一真源；roster 的 patch schema 与解析循环由此驱动）。 */
-export const SEAM_DOMAINS = ['llm', 'subagents', 'fs', 'shell', 'sessionPersistence', 'graph', 'loopEvents'] as const;
+/** seam 域清单（单一真源；roster 的 patch schema 与解析循环由此驱动）。
+ *  （graph 域随图谱功能全量退役移除，2026-09-09。） */
+export const SEAM_DOMAINS = ['llm', 'subagents', 'fs', 'shell', 'sessionPersistence', 'loopEvents'] as const;
 
 export type SeamDomain = (typeof SEAM_DOMAINS)[number];
 
@@ -38,7 +39,6 @@ export const EMPTY_SEAM_DISABLED: SeamDisabledMap = {
   fs: [],
   shell: [],
   sessionPersistence: [],
-  graph: [],
   loopEvents: [],
 };
 

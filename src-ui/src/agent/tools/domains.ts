@@ -61,7 +61,7 @@ const PATH_RESOLVE_FAMILY = new Set([...PATH_FAMILY, 'from', 'to']);
 const PATH_WAIST_DOMAINS = new Set(['fs', 'git', 'search']);
 /** 省缺填充 = workspace root 的域（全部 action）。fs 单列（按 action 白名单）。 */
 const PATH_DEFAULT_DOMAINS = new Set(['git', 'search']);
-const PATH_DEFAULT_FS_ACTIONS = new Set(['list', 'glob', 'constraints', 'write_constraints']);
+const PATH_DEFAULT_FS_ACTIONS = new Set(['list', 'glob']);
 
 /** 焦点态规格（design-2 rev2）：set = 成功后设焦；fill = 省缺时从焦点填充。
  *  desktop 粘性窗口为 all-or-nothing 填充（模型给了任一定位字段即不补——
@@ -242,10 +242,9 @@ export const DOMAIN_SPECS: DomainSpec[] = [
   {
     name: 'fs',
     description:
-      'File-system operations: read / write / edit / list / glob / mkdir / move / rename / delete / constraints / write_constraints. ' +
+      'File-system operations: read / write / edit / list / glob / mkdir / move / rename / delete. ' +
       'Use fs(read) to inspect files, fs(write)/fs(edit) to modify them. ' +
-      'fs(constraints) reads hologram.constraints.yaml; fs(write_constraints) replaces it (read first — extend existing rules rather than dropping them). ' +
-      'Path params accept workspace-root-relative paths (e.g. "src/agent/tool.ts"); fs(list)/fs(glob)/fs(constraints) may omit the path — omitted = the workspace root. ' +
+      'Path params accept workspace-root-relative paths (e.g. "src/agent/tool.ts"); fs(list)/fs(glob) may omit the path — omitted = the workspace root. ' +
       'fs(read)/fs(edit) may also omit the path — omitted = the file from your most recent fs(read)/fs(edit) (results end with a [file: ...] line showing where you landed).',
     actions: {
       read: 'read_file_content',
@@ -257,8 +256,6 @@ export const DOMAIN_SPECS: DomainSpec[] = [
       move: 'move_file',
       rename: 'rename_file',
       delete: 'delete_file',
-      constraints: 'read_constraints',
-      write_constraints: 'write_constraints',
     },
   },
   {
@@ -451,67 +448,8 @@ export const DOMAIN_SPECS: DomainSpec[] = [
       status: 'desktop_status',
     },
   },
-  {
-    name: 'graph',
-    description:
-      '依赖图查询与分析（27 语言 AST + 符号级引用边）。**改代码前先问图**：定位符号、评估影响面、判断架构都走这里，grep 只能看到文本，图能看到结构。' +
-      '答案带 ⚠️ staleness 横幅 = 图数据落后于当前文件——小改直接读文件确认，大改先 ops(analyze) 刷新；图查不到再退回 search/grep 文本兜底。' +
-      'symbols 搜符号（「XX 在哪」）; semantic 语义检索（向量索引，按含义找符号——不知道确切名字时用，如「内存在哪释放」）; neighbors 谁依赖谁(1跳)（「这个模块被谁依赖」）; impact 改某文件的影响面（改前必查）; path 两符号间依赖路径; inspect 单符号全景; explore 自然语言探索依赖; community 模块所属社区; clusters 全局社区地图; summary 图统计+解析率+SCIP 新鲜度; cycles 循环依赖; coupling 单模块耦合画像(L1-L4); fragile 脆弱模块排名; blindspots 架构盲点; boundaries 边界违规; conflicts 线程冲突; async 异步/时序边; unused 死代码; flows 数据流列表; flow 单条数据流; affected_flows 受影响数据流; dataflow 变量使用统计(语法级,非污点); preflight 改前预检(改文件前必须); grpc gRPC 服务映射; diff 与基线图对比; dataflow_save 保存数据流追踪结果（供面板查看，写动作）; dataflow_query 查询已保存的数据流。',
-    actions: {
-      symbols: 'search_symbols',
-      semantic: 'semantic_search',
-      neighbors: 'get_neighbors',
-      impact: 'trace_impact',
-      path: 'find_dep_path',
-      inspect: 'inspect_symbol',
-      explore: 'explore_deps',
-      community: 'get_community',
-      clusters: 'cluster_report',
-      summary: 'graph_summary',
-      cycles: 'detect_cycles',
-      coupling: 'coupling_report',
-      fragile: 'fragile_modules',
-      blindspots: 'arch_blindspots',
-      boundaries: 'check_boundaries',
-      conflicts: 'thread_conflicts',
-      async: 'async_edges',
-      unused: 'find_unused',
-      flows: 'list_flows',
-      flow: 'get_flow',
-      affected_flows: 'get_affected_flows',
-      dataflow: 'trace_dataflow',
-      preflight: 'preflight_check',
-      grpc: 'grpc_services',
-      diff: 'graph_diff',
-      dataflow_save: 'dataflow_save',
-      dataflow_query: 'dataflow_query',
-    },
-  },
-  {
-    name: 'ops',
-    description:
-      '工程操作与状态：analyze 全量重分析（慢，后台跑）; validate 全约束校验; health 项目健康快照; status 引擎状态（含工具调用计数/向量索引/LSP）; timeline 审计日志; rename 符号重命名; import_scip 导入 SCIP 索引提升符号级引用精度。',
-    actions: {
-      analyze: 'analyze_project',
-      validate: 'validate_project',
-      health: 'project_health',
-      status: 'engine_status',
-      timeline: 'project_timeline',
-      rename: 'rename_symbol',
-      import_scip: 'import_scip',
-    },
-  },
-  {
-    name: 'lsp',
-    description:
-      '语言服务器精确解析（按需启动）：resolve_call 解析调用点的真实定义; infer_type 推断符号类型; implementations 找接口实现; references 找全部引用点。graph 查不到或需要类型级答案时用。',
-    actions: {
-      resolve_call: 'resolve_call',
-      infer_type: 'infer_type',
-      implementations: 'find_implementations',
-      references: 'find_references',
-    },
-  },
+  // （graph / ops / lsp 三个域定义随图谱功能全量退役删除，2026-09-09——
+  //  底层 36+ 引擎工具不再装配，领域收敛面随之消失。）
   {
     name: 'cordis',
     description:

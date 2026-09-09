@@ -20,19 +20,9 @@ import { type Context, Service } from '../cordis';
 import { seamDisabled } from './seam-resolution';
 import { ContributionRegistry } from './services';
 
-/** fs 域动作（与 domains.ts fs 域动作枚举对齐——消费面形状的唯一事实）。 */
-export type FsAction =
-  | 'read'
-  | 'write'
-  | 'edit'
-  | 'list'
-  | 'glob'
-  | 'mkdir'
-  | 'move'
-  | 'rename'
-  | 'delete'
-  | 'constraints'
-  | 'write_constraints';
+/** fs 域动作（与 domains.ts fs 域动作枚举对齐——消费面形状的唯一事实）。
+ *  （constraints/write_constraints 两动作随图谱全量退役移除，2026-09-09。） */
+export type FsAction = 'read' | 'write' | 'edit' | 'list' | 'glob' | 'mkdir' | 'move' | 'rename' | 'delete';
 
 /** 一次 fs 调用的执行选项。dispatch = 强制层派发腰（executor 装配的
  *  codingExec——命令名→后端 + worktree 路由 + meta 透传）；默认 provider 借腰

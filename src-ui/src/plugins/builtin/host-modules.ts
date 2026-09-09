@@ -20,18 +20,17 @@
 // 里的 PluginsPage 反向引用 loader 的 activate/deactivate——三处都是运行期
 // 取用（组件渲染 / 按钮回调），无模块初始化期解引用，ESM 循环安全。
 
-import { z } from 'zod';
 import { setActiveAgentLoop } from '../../agent/agent-loop/agent-loop-active';
 import { defaultAgentLoop } from '../../agent/agent-loop/default-loop';
 import { agentSessionState } from '../../agent/agent-session-state';
 // S3：工具域/段贡献插件对象导入已拆除——产物域真源自带；此处只导工具工厂
-// 运行时值（faceDeps 取用面）。z 从 zod 包直入（宿主桥共享同一实例）。
+// 运行时值（faceDeps 取用面）。（z（engine-domain 运行时取用）随图谱退役
+// 移除，2026-09-09。）
 import { firstPartyCapabilities } from '../../agent/blueprint';
 import { createMemoryTools } from '../../agent/memory';
 import { createSkillTool } from '../../agent/skills';
 import { spawnSubAgentImpl } from '../../agent/subagent-spawn';
 import { createTaskTools } from '../../agent/task';
-import { agentInvoke } from '../../agent/tool';
 import { createBrowserTools, createDesktopTools } from '../../agent/tools/browser';
 import {
   createAgentIsolationTools,
@@ -41,8 +40,6 @@ import {
   createShellTools,
 } from '../../agent/tools/coding';
 import { CORDIS_TOOL_NAMES, createCordisTools } from '../../agent/tools/cordis';
-import { defineTool } from '../../agent/tools/define-tool';
-import { loadHologramSchemas, mcpSchemaToTool } from '../../agent/tools/hologram';
 import { createSearchTools, createWebTools } from '../../agent/tools/manifest-tools';
 import { createAssetTools } from '../../agent/tools/show-asset';
 import { createAgentStatusTool, createSubAgentTool } from '../../agent/tools/subagent';
@@ -60,7 +57,6 @@ import { SkillsPage } from '../../app/panels/settings/SkillsPage';
 import { useShellStore } from '../../app/shell-store';
 import { WinControls } from '../../app/WinControls';
 import { isMockMode, watchFileDragDrop } from '../../bridge';
-import { graphExecute } from '../../composition/graph-service';
 import { activeOverlayContributions, subscribeOverlayContributions } from '../../composition/overlay-service';
 import { selectPreset } from '../../composition/preset-assembly';
 import { firstPartyPromptSections } from '../../composition/prompt-sections';
@@ -159,7 +155,6 @@ import {
   autoUpdateCheckEnabled,
   canvasWheelMode,
   effectiveModels,
-  graphEngineEnabled,
   loadSettings,
   loadSettingsWithSecrets,
   modelContextWindow,
@@ -196,12 +191,10 @@ type FaceBridgeSeal = Record<keyof typeof import('./canvas-nav/host'), unknown> 
   Record<keyof typeof import('./paper-shell/host'), unknown> &
   Record<keyof typeof import('./settings-domain/host'), unknown> &
   Record<keyof typeof import('./sessions-builtin/host'), unknown> &
-  Record<keyof typeof import('./graph-builtin/host'), unknown> &
   Record<keyof typeof import('./subagent-in-process/host'), unknown> &
   Record<keyof typeof import('./llm-adapters/host'), unknown> &
   Record<keyof typeof import('./web-domain/host'), unknown> &
   Record<keyof typeof import('./browser-desktop-domain/host'), unknown> &
-  Record<keyof typeof import('./engine-domain/host'), unknown> &
   Record<keyof typeof import('./git-domain/host'), unknown> &
   Record<keyof typeof import('./search-domain/host'), unknown> &
   Record<keyof typeof import('./fs-domain/host'), unknown> &
@@ -355,7 +348,6 @@ const faceDeps = {
   autoUpdateCheckEnabled,
   canvasWheelMode,
   effectiveModels,
-  graphEngineEnabled,
   loadSettings,
   loadSettingsWithSecrets,
   modelContextWindow,
@@ -380,13 +372,13 @@ const faceDeps = {
   typedJsonRpc,
   // sessions-builtin（2026-09-05 seam 动作面重设计）：默认 provider 换
   // kernel* 具名 helper（D-3/D-4——行为与今日直连逐字节一致 + 测试 mock 面
-  // 零迁移）。graph-builtin agentInvoke 先例：宿主桥 faceDeps 取用。
+  // 零迁移）。
   // （typedRpc 孤儿键随 sessions-builtin 换轨移除——旧默认 provider 走 RPC
-  //  直呼的唯一供给源；现无任何产物 host 面消费它。）
+  //  直呼的唯一供给源；现无任何产物 host 面消费它。
+  //  agentInvoke 先例（graph-builtin）随图谱退役删除，2026-09-09。）
   kernelReadFileRaw,
   kernelListDirectory,
   kernelWriteFile,
-  agentInvoke,
   spawnSubAgentImpl,
   createAnthropicProvider,
   createOpenAIProvider,
@@ -415,11 +407,6 @@ const faceDeps = {
   createCordisTools,
   CORDIS_TOOL_NAMES,
   createAssetTools,
-  z,
-  defineTool,
-  loadHologramSchemas,
-  mcpSchemaToTool,
-  graphExecute,
   firstPartyPromptSections,
   firstPartyCapabilities,
   // S5b agent-loop-service 产物运行时依赖
