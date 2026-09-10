@@ -36,7 +36,8 @@ function fakeCore(panelId: string): { core: ChatCore; deleteSessionFile: Mock } 
     renameSavedSession: vi.fn(),
     closeSession: vi.fn(),
     deleteSessionFile,
-    loadSessionFromDisk: vi.fn(async () => {}),
+    // 摊开成功（expand 收口后：返回 false = 卷不存在 → 不发定位请求）
+    loadSessionFromDisk: vi.fn(async () => true),
     switchSession: vi.fn(),
   } as unknown as ChatCore;
   return { core, deleteSessionFile };
@@ -302,5 +303,39 @@ describe('SessionSidebar 注疏重排（分节/检索/键盘）', () => {
       width: 1440,
     });
     expect((core as unknown as { loadSessionFromDisk: Mock }).loadSessionFromDisk).toHaveBeenCalledWith('', 2); // 闭合卷 = 摊开
+  });
+
+  /* expand 收口（2026-09-10）：摊开/定位是 expand 一家的职责——调用侧不再
+   * 无条件 requestFocus（卷已删/坏档时会留下永不兑现的悬空定位请求）。 */
+  it('行点击定位：闭合卷读盘失败 = 不留悬空请求；摊开成功 = 发请求；摊开行 = 聚焦 + 定位', async () => {
+    const ctx = new Context();
+    new SpaceService(ctx); // 激活 activeSpace()（空间命令通道）
+    await mount();
+    const rows = [...container.querySelectorAll('.ss-row')] as HTMLElement[];
+    const closed = rows[rows.length - 1]; // 盘卷甲（id 2，闭合）
+
+    // ① 卷不存在（读盘失败；loadSessionFromDisk 已弹「案卷文件读取失败」）
+    const load = (core as unknown as { loadSessionFromDisk: Mock }).loadSessionFromDisk;
+    load.mockResolvedValue(false);
+    await act(async () => {
+      closed.click();
+    });
+    expect(load).toHaveBeenCalledWith('', 2);
+    expect(useCanvasViewStore.getState().pendingFocusId).toBeNull();
+
+    // ② 摊开成功 → 发定位请求（落位后由补飞兑现）
+    load.mockResolvedValue(true);
+    await act(async () => {
+      closed.click();
+    });
+    expect(useCanvasViewStore.getState().pendingFocusId).toBe('2');
+
+    // ③ 已摊开行（「Cordis 迁移」id 3）→ expand 内部 focus（切活跃）+ 定位
+    useCanvasViewStore.getState().requestFocus(null);
+    await act(async () => {
+      rows[0].click();
+    });
+    expect((core as unknown as { switchSession: Mock }).switchSession).toHaveBeenCalledWith(1);
+    expect(useCanvasViewStore.getState().pendingFocusId).toBe('3');
   });
 });

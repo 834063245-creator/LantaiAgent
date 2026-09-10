@@ -52,7 +52,6 @@ import {
   resolveRenderer,
   sheetCharacter,
   subscribeOverlayContributions,
-  useCanvasViewStore,
   useCoreStore,
   useDockStore,
   useShellStore,
@@ -334,9 +333,10 @@ function DeskShelf({ core }: { core: PaperCore | null }) {
       alive = false;
     };
   }, [core, projectPath]);
+  /** 续写签条：expand 自带定位（读盘成功才 requestFocus——签条来自磁盘列表，
+   *  点它时卷可能已被删；失败不留悬空定位请求，2026-09-10 收口）。 */
   const onResume = useCallback((sid: string) => {
     activeSpace()?.expand(sid);
-    useCanvasViewStore.getState().requestFocus(sid);
   }, []);
   if (recent.length === 0) return null;
   return (

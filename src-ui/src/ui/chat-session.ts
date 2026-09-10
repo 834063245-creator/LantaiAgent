@@ -867,8 +867,16 @@ export async function listSavedSessions(
 }
 
 /** 从磁盘加载已保存的会话到新标签页（单卷打开路径——首页点卷/侧边栏续开）。
- *  批量摊开集恢复走 batchRestoreSessions（P3-1）——本函数不再承担恢复路径。 */
-export async function loadSessionFromDisk(ctx: SessionContext, projectPath: string, sessionId: number): Promise<void> {
+ *  批量摊开集恢复走 batchRestoreSessions（P3-1）——本函数不再承担恢复路径。
+ *  ⚠ 返回「该卷是否已在案头摊开」（2026-09-10 收口）：true = 新摊开成功或本
+ *  就已在案头（幂等分支）；false = 未摊开（卷文件缺失/墓碑、读失败、代际丢弃）。
+ *  消费方 space-service.expand 依此决定要不要发起定位——失败卷永远不会进
+ *  摊开集，照旧发定位只会留下永不兑现的悬空请求（见 expand 注）。 */
+export async function loadSessionFromDisk(
+  ctx: SessionContext,
+  projectPath: string,
+  sessionId: number,
+): Promise<boolean> {
   // 代际防护（H1 跨工作区串卷，2026-09-02）：摊开是 fire-and-forget（space-service
   // .expand / 签条架续写），读盘 + 工厂装配在途期间用户可能已切走工作区——迟到的
   // append 会把旧区卷混进新工作区 sess store（PaperPanel 兜底落位还会把它写进
@@ -881,7 +889,7 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
     const openIdx = st0.sessions.findIndex((s) => s.id === sessionId);
     if (openIdx >= 0) {
       if (openIdx !== st0.activeIdx) switchSession(ctx, openIdx);
-      return;
+      return true;
     }
   }
   let data: StoredSession | null = null;
@@ -890,7 +898,7 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   data = await readVolumeData(projectPath, sessionId);
   if (!data) {
     showToast('案卷文件读取失败', 'error');
-    return;
+    return false;
   }
 
   // Phase B 对齐（Q-B 后「从首页点开历史卷」即此入口）：句柄是惰性资源——
@@ -910,7 +918,7 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   // 不得 append 进新工作区——见函数头代际防护注释）
   if (!isCurrentEpoch(epoch)) {
     newAgent?.dispose();
-    return;
+    return false;
   }
 
   const conv = (data.messages as Message[]).filter((m) => m.role !== 'system');
@@ -1010,6 +1018,7 @@ export async function loadSessionFromDisk(ctx: SessionContext, projectPath: stri
   ctx.setLastUsageText('');
   ctx.updateFooter();
   // U4/Q1-B：总目记账退役（摊开集重启由磁盘扫描推导）
+  return true;
 }
 
 // ── 摊开集批量恢复应用（P3-1，2026-09-02）──────────────────────────

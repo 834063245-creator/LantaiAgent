@@ -733,7 +733,8 @@ export class ChatCore {
   ): Promise<Array<{ id: number; label: string; msgCount: number; savedAt: string }>> {
     return Session.listSavedSessions(this._sessionCtx(), projectPath);
   }
-  async loadSessionFromDisk(projectPath: string, sessionId: number): Promise<void> {
+  /** 单卷续开（返回「是否已在案头摊开」——space-service.expand 依此决定定位）。 */
+  async loadSessionFromDisk(projectPath: string, sessionId: number): Promise<boolean> {
     return Session.loadSessionFromDisk(this._sessionCtx(), projectPath, sessionId);
   }
   async deleteSessionFile(projectPath: string, sessionId: number): Promise<void> {

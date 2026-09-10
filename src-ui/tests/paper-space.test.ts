@@ -9,6 +9,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { ChatCore } from '../src/app/chat/chat-core';
 import { useCoreStore } from '../src/app/chat/core-instance';
+import { useShellStore } from '../src/app/shell-store';
 import { SpaceService } from '../src/composition/space-service';
 import { Context } from '../src/cordis';
 import { createBlock } from '../src/paper/block-model';
@@ -30,6 +31,7 @@ import {
   snapshotCanvas,
   snapshotFromBlock,
 } from '../src/state/canvas-store';
+import { useCanvasViewStore } from '../src/state/canvas-view-store';
 import { getChatStore } from '../src/ui/chat-store';
 
 const STORE = 'test-space';
@@ -287,5 +289,62 @@ describe('ctx.space 通道（SpaceService + demo 插件消费）', () => {
     getCanvasStore(STORE).getState().setRegion('1', { anchorX: 2160, anchorY: 0, width: 1440 });
     expect(calls).toBe(2);
     un();
+  });
+});
+
+describe('ctx.space expand 收口（2026-09-10）：摊开成功才发定位请求', () => {
+  /** 卷已删/坏档时 loadSessionFromDisk 返 false——expand 不得留下悬空定位请求。 */
+  function coreWithLoad(opened: boolean, calls: Array<[string, number]>): ChatCore {
+    return {
+      panelId: STORE,
+      loadSessionFromDisk: async (ws: string, sid: number) => {
+        calls.push([ws, sid]);
+        return opened;
+      },
+    } as unknown as ChatCore;
+  }
+
+  beforeEach(() => {
+    resetCanvasStoresForTests();
+    useCanvasViewStore.getState().requestFocus(null);
+    useShellStore.setState({ projectPath: 'D:/expand-ws' });
+    getChatStore(STORE).sess.setState({ sessions: [], activeIdx: -1, nextSessionId: 1 });
+  });
+
+  it('读盘失败（卷已删/墓碑/坏档）→ 不发定位请求，pending 不悬空', async () => {
+    const calls: Array<[string, number]> = [];
+    useCoreStore.getState().setChatCore(coreWithLoad(false, calls));
+    const ctx = new Context();
+    new SpaceService(ctx);
+    ctx.space.expand('9');
+    await new Promise((r) => setTimeout(r, 0)); // 读盘 promise 落地
+    expect(calls).toEqual([['D:/expand-ws', 9]]);
+    expect(useCanvasViewStore.getState().pendingFocusId).toBeNull();
+  });
+
+  it('摊开成功 → 发起定位（pending 待落位后由补飞兑现）', async () => {
+    const calls: Array<[string, number]> = [];
+    useCoreStore.getState().setChatCore(coreWithLoad(true, calls));
+    const ctx = new Context();
+    new SpaceService(ctx);
+    ctx.space.expand('9');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(useCanvasViewStore.getState().pendingFocusId).toBe('9');
+  });
+
+  it('已摊开卷 → 聚焦（切活跃）+ 定位（不再读盘、不再由调用侧补 requestFocus）', () => {
+    const switched: number[] = [];
+    useCoreStore.getState().setChatCore({
+      panelId: STORE,
+      switchSession: (idx: number) => switched.push(idx),
+    } as unknown as ChatCore);
+    getChatStore(STORE).sess.setState({ sessions: [{ id: 2, label: 'x' }], activeIdx: 0 });
+    getCanvasStore(STORE).getState().setRegion('2', { anchorX: 0, anchorY: -300, width: 1440 });
+    const ctx = new Context();
+    new SpaceService(ctx);
+    ctx.space.expand('2');
+    expect(switched).toEqual([0]);
+    expect(getCanvasStore(STORE).getState().activeSessionId).toBe('2');
+    expect(useCanvasViewStore.getState().pendingFocusId).toBe('2');
   });
 });

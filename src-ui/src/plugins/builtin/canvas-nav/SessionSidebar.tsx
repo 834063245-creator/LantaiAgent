@@ -377,13 +377,10 @@ export const SessionSidebar = memo(function SessionSidebar() {
         return;
       }
       const sid = String(row.id);
-      if (row.open) {
-        activeSpace()?.focus(sid);
-        useCanvasViewStore.getState().requestFocus(sid);
-      } else {
-        activeSpace()?.expand(sid);
-        useCanvasViewStore.getState().requestFocus(sid);
-      }
+      // 摊开/定位统一走 expand（已摊开 = 聚焦 + 飞；未摊开 = 读盘成功才飞）——
+      // 旧实现在调用侧无条件 requestFocus，卷已删/坏档时留下永不兑现的悬空
+      // 定位请求（2026-09-10 收口；expand 内注释详述失败语义）。
+      activeSpace()?.expand(sid);
     },
     [core, disarmAll, toggleSelect],
   );
@@ -484,8 +481,12 @@ export const SessionSidebar = memo(function SessionSidebar() {
     // 相对视口中心，聚焦把它带到眼前
     void (async () => {
       try {
+        const before = getChatStore(core.panelId).sess.getState().sessions.length;
         await core.createNewSession();
         const st = getChatStore(core.panelId).sess.getState();
+        // 建卷失败（无工作区等）= 案头未变：不定位（旧实现会照读 activeIdx，
+        // 对上一个活跃卷发起一次无意义飞行）——2026-09-10 同族收口。
+        if (st.sessions.length <= before) return;
         const sid = st.sessions[st.activeIdx]?.id;
         if (sid != null) useCanvasViewStore.getState().requestFocus(String(sid));
       } finally {

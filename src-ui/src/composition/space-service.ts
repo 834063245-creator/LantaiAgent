@@ -113,8 +113,8 @@ export class SpaceService extends Service {
   }
 
   /** 空间命令·展开：把磁盘上已有卷摊上画布（未开则开，已开只定位）。
-   *  展开绑定视角聚焦（用户拍板：不然落点找不到）——load 落定后
-   *  requestFocus，流区出现后 PaperPanel 补飞。 */
+   *  展开绑定视角聚焦（用户拍板：不然落点找不到）——本命令是「摊开 + 定位」
+   *  的单一权威入口，调用方**不得**再自己补 requestFocus（见下方失败语义）。 */
   expand(sessionId: string): void {
     const panelId = panelIdOf();
     const core = useCoreStore.getState().core;
@@ -122,14 +122,28 @@ export class SpaceService extends Service {
     const sessSt = getChatStore(panelId).sess.getState();
     const openIdx = sessSt.sessions.findIndex((s) => String(s.id) === sessionId);
     if (openIdx >= 0) {
+      // 已摊开：聚焦 + 飞行（位置已在 spread，飞行目标即真位置）
       this.focus(sessionId);
+      useCanvasViewStore.getState().requestFocus(sessionId);
       return;
     }
-    // 从当前工作区磁盘续开（fire-and-forget；失败由 loadSessionFromDisk 通知）
+    // 从当前工作区磁盘续开（失败由 loadSessionFromDisk 弹窗可见）
     const ws = useShellStore.getState().projectPath;
-    void core.loadSessionFromDisk(ws, Number(sessionId)).then(() => {
-      useCanvasViewStore.getState().requestFocus(sessionId);
-    });
+    void core
+      .loadSessionFromDisk(ws, Number(sessionId))
+      .then((opened) => {
+        /* 收口（2026-09-10）：**摊开成功才发起定位**。旧实现无条件 requestFocus
+         * ——失败卷（文件缺失/墓碑/读失败/代际丢弃）永远不会进摊开集，定位请求
+         * 于是永不兑现也永不自清，只能靠用户平移/滚轮顺手清掉（「目标不存在即
+         * 悬空」）。失败已由 loadSessionFromDisk 弹「案卷文件读取失败」可见，
+         * 此处不留悬空请求。成功时卷已在 sess 里、spread 由落位 effect 补，
+         * pending 保持到流区出现由补飞 effect 兑现（R1 语义）。 */
+        if (opened) useCanvasViewStore.getState().requestFocus(sessionId);
+      })
+      // 抛出（读盘/装配链异常）不得静默：旧实现会让它变成无人接的 rejection
+      .catch((e) => {
+        console.error('[space] expand 续开失败:', sessionId, e);
+      });
   }
 
   /** 空间命令·收起：合卷（流区从画布彻底退场；不自动重排——用户自主）。 */
