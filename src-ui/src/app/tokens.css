@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════════
    Lantai · 兰台设计 token（v1）
-   气质：注疏横排 · 分体字体（宋体/楷书/等宽）· 矿物墨色 · 圆角恒 0。
+   气质：注疏横排 · 全字体 MiSans（2026-09-10 三体换代拍板：宋/楷/等宽退役）· 矿物墨色 · 圆角恒 0。
    来源：prototype/lantai.html 原型（:root 转录），铁律见
    docs/design/lantai-design-spec.md（朱砂=人，石青=机，石墨=草稿，墨=正文）。
    C5 竣工（2026-08-22）：--obs-* 过渡别名层已退役，tokens.obs.css 已删除；
@@ -43,11 +43,12 @@
   --warn: #b0782e;
   --fail: #a9443f;
 
-  /* ── 字体四体（EB Garamond 经 fontsource-variable 装载，族名带 Variable 后缀）── */
-  --f-song: "EB Garamond Variable", "EB Garamond", "Noto Serif SC", "Songti SC", serif; /* 宋体正文 + 旧书衬线英文 */
-  --f-kai:
-    "Ma Shan Zheng", "EB Garamond Variable", "Kaiti SC", "STKaiti", "KaiTi", "楷体", serif; /* 楷书手迹（KaiTi/楷体=Windows 冷僻字回退，防掉宋体） */
-  --f-mono: "IBM Plex Mono", "Cascadia Code", "Consolas", monospace; /* 等宽机读 */
+  /* ── 字体四体（2026-09-10 三体换代：宋/楷/等宽退役，值层统一 MiSans——
+   * MiSans VF 经 src/app/fonts.css @font-face 装载，单文件覆盖 100-900 全字重。
+   * 文类语义键保留：song=正文 / kai=来文手迹位 / mono=机读位，引用点按文类寻址不变）── */
+  --f-song: "MiSans", "PingFang SC", "Microsoft YaHei", sans-serif; /* 正文位（原宋体） */
+  --f-kai: "MiSans", "PingFang SC", "Microsoft YaHei", sans-serif; /* 手迹位（原楷书，只给人的来文） */
+  --f-mono: "MiSans", "PingFang SC", "Microsoft YaHei", sans-serif; /* 机读位（原等宽——非等宽对齐为拍板接受的代价） */
 
   /* ── 规线三式（圆角恒 0，印刷品无圆角）── */
   --rule-hard: 2px solid var(--ink-1); /* 硬线：卷首下划线 / 代码左线 / 计划顶线 */

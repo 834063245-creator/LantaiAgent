@@ -15,8 +15,8 @@
 
 **注疏横排**。文字全程横排（代码、英文、URL 不折行），但骨架是古籍注疏的层级，不是聊天气泡：
 
-- **正文**（答 / 策）居中，是案卷的「经文」，宋体、大一号（17px 起，行距 2.0）；
-- **来文**（问）是人的批注，楷书 + 朱砂深 16px/1.9（B4 环1 定稿），左侧 2px 红批线；
+- **正文**（答 / 策）居中，是案卷的「经文」，正文位、大一号（17px 起，行距 2.0）；
+- **来文**（问）是人的批注，手迹位 + 朱砂深 16px/1.9（B4 环1 定稿），左侧 2px 红批线；
 - **夹注**（思）缩进列边（约 86% 宽），石墨铅笔，小一号，虚线勾边；
 - **脚注**（器）贴底小字，上方一道 44px 石青注线引出；
 - **抄录**（码）栏内图版（3px 硬左线 + 上下规线 + 米黄底）；
@@ -27,28 +27,25 @@
 
 ---
 
-## 2. 字体系统（已锁定）
+## 2. 字体系统（2026-09-10 三体换代拍板重锁）
 
-| 角色 | 中文 | 英文 | fontsource 包 | 备注 |
-|---|---|---|---|---|
-| 宋体（正文/标题） | Noto Serif SC | EB Garamond | `@fontsource/noto-serif-sc` ＋ `@fontsource-variable/eb-garamond` | 宋体 + 16 世纪旧书衬线对偶 |
-| 楷书（手迹） | Ma Shan Zheng（马善政楷书） | EB Garamond | `@fontsource/ma-shan-zheng` | 只用于「人的」来文 |
-| 等宽（机读） | — | IBM Plex Mono | `@fontsource/ibm-plex-mono`（或 variable） | 代码 / 工具 / 编号 |
+| 角色 | 值层 | 装载 | 备注 |
+|---|---|---|---|
+| 正文位 `--f-song`（原宋体） | MiSans | `src/app/fonts.css` @font-face（`src/assets/fonts/MiSans-VF.ttf`，VF 单文件 100-900 全字重） | 原宋体/衬线正文 |
+| 手迹位 `--f-kai`（原楷书） | MiSans | 同上 | 只用于「人的」来文——文类语义保留，手写感随三体退役 |
+| 机读位 `--f-mono`（原等宽） | MiSans | 同上 | 代码/工具/编号——非等宽对齐为拍板接受的代价 |
 
-字体栈（CSS 直抄）：
+字体栈（CSS 直抄，文类语义键保留、值层统一）：
 
 ```css
---f-song: "EB Garamond", "Noto Serif SC", "Songti SC", serif;
---f-kai:  "Ma Shan Zheng", "EB Garamond", "Kaiti SC", "STKaiti", serif;
---f-mono: "IBM Plex Mono", "Cascadia Code", "Consolas", monospace;
+--f-song: "MiSans", "PingFang SC", "Microsoft YaHei", sans-serif;
+--f-kai:  "MiSans", "PingFang SC", "Microsoft YaHei", sans-serif;
+--f-mono: "MiSans", "PingFang SC", "Microsoft YaHei", sans-serif;
 ```
 
-**`src/app/fonts.ts` 变更**：
-- 新增：`eb-garamond`（variable）、`ma-shan-zheng`、`ibm-plex-mono`；
-- 退役：`fraunces`、`lxgw-wenkai`、`jetbrains-mono`；
-- 保留：`noto-serif-sc`。
+**装载**：`src/app/fonts.ts` 只 `import './fonts.css'`（本地 @font-face，打包进应用不依赖系统安装）；fontsource 四包（eb-garamond / ma-shan-zheng / ibm-plex-mono / noto-serif-sc）已卸载。
 
-> 关键纪律：**英文思考链用 EB Garamond，不是手写体**。夹注（reasoning）是模型的英文思考，走 `--f-song`（宋体/Garamond）；楷书只给「人的来文」。
+> 关键纪律：**斜体走合成伪斜**（MiSans 无 italic 字形，`font-style: italic` 由渲染器合成——拍板接受）；canvas 侧字面量栈（type-tokens `FONT_STACKS`、InkLayer `LABEL_FONT_STACK`）与 tokens.css 同步改。
 
 ---
 
@@ -86,7 +83,7 @@
 | `reasoning` | 夹注 | `--f-song`（英文走 Garamond） | `--graphite` | 86% 宽、虚线勾边、擦改痕迹 |
 | `diff` | 抄录 | `--f-mono` | `--ink-1` | 3px 硬左线 + 米黄底图版，add 松绿（--pass）/ del 朱砂深+删除线（B5 环2 红绿墨色化定稿——铁律在 diff 语境豁免：删行读作擦改非人语） |
 | `tool` | 脚注 | `--f-mono` | `--indigo` | 44px 注线 + 11–11.5px 小字 |
-| `plan` | 拟策 | `--f-song` | `--ink-1` | 石青策面（2026-09-10 拟策卡渲染专项，用户拍板）：顶硬线 + 底软线保留 + 3px 石青硬左线 + 石青淡底（indigo 4% 兑纸面）+ 横向内距 16——与来文的朱砂左线对仗（人声朱 / 机策青）；内容走完整 markdown 体（`.pp-pc-body` + `.pp-md` 族共享，宋体 17px/2.0），行号机制（01/02/… 石青序号）退役；方案区 + 钤印三钮不变 |
+| `plan` | 拟策 | `--f-song` | `--ink-1` | 石青策面（2026-09-10 拟策卡渲染专项，用户拍板）：顶硬线 + 底软线保留 + 3px 石青硬左线 + 石青淡底（indigo 4% 兑纸面）+ 横向内距 16——与来文的朱砂左线对仗（人声朱 / 机策青）；内容走完整 markdown 体（`.pp-pc-body` + `.pp-md` 族共享，正文位 17px/2.0），行号机制（01/02/… 石青序号）退役；方案区 + 钤印三钮不变 |
 | `notice` | 贴黄 | `--f-song` 小字 | `--warn` | 系统通知（建议作「贴黄」纸条） |
 
 > `notice`（系统通知）原型未覆盖，建议按「贴黄」（古代奏章上贴的黄纸条）处理：小字、土黄底、一条弱规线，与正文明确区分。
@@ -98,7 +95,7 @@
 | 子元素 | 版式 |
 |---|---|
 | 段落 | 17px/2.0，段间 14px（旧 10px 段距小于行距、段落黏连，专项提到 14） |
-| 标题 h1–h4 | 20/18/16.5/15.5px 宋体加粗，padding 承担上下距（首元素 margin 逃逸会破坏测高，禁 margin-top） |
+| 标题 h1–h4 | 20/18/16.5/15.5px 正文位加粗，padding 承担上下距（首元素 margin 逃逸会破坏测高，禁 margin-top） |
 | 列表 | 标记列等宽小字绝对定位（ul `·` / ol `n.`），条目缩进 26、嵌套再缩进 22 |
 | 引用 | 石墨左线 + 缩进 + ink-2 |
 | 图码 | 石青左线 + 深纸底（独立 `diff` 块之外幸存围栏的兜底面） |
@@ -186,7 +183,7 @@
 创作坞（composer dock）从「贴底输入条」升格为「案头」——纸墨身份不动，交互模型对齐书房隐喻。八件定案：
 
 1. **度量纪律**：坞本体锁 880px 版心居中（`.pp-composer max-width`）；超宽屏全宽输入行退役。纸色坞底与顶边规线仍全幅。
-2. **两态同位**（2026-09-02 拍板 C）：创作坞恒居中抬起 `var(--composer-rise)`（96px 固定——不再随窗口高度 12vh 浮动，不同窗口大小坞位恒同）。零摊开卷的**案头态**只再管形态：退匣直书（`.pp-composer-slot.pp-at-desk`——形态类刻意不叫 `pp-desk`，避免与世界层桌垫同名撞车）、空态题字上移 36% 让位、坞下方**出流悬挂**签条架（最近三卷「续 · 卷名」签条，楷体、hover 朱砂，点击 `space.expand` 摊开——架出没不推坞位）。落笔发出首句（开口即开卷）后换装常驻匣（坞顶硬线 + 版口钮），位置不动。
+2. **两态同位**（2026-09-02 拍板 C）：创作坞恒居中抬起 `var(--composer-rise)`（96px 固定——不再随窗口高度 12vh 浮动，不同窗口大小坞位恒同）。零摊开卷的**案头态**只再管形态：退匣直书（`.pp-composer-slot.pp-at-desk`——形态类刻意不叫 `pp-desk`，避免与世界层桌垫同名撞车）、空态题字上移 36% 让位、坞下方**出流悬挂**签条架（最近三卷「续 · 卷名」签条，手迹位、hover 朱砂，点击 `space.expand` 摊开——架出没不推坞位）。落笔发出首句（开口即开卷）后换装常驻匣（坞顶硬线 + 版口钮），位置不动。
 3. **附着面**：`引`（工作区文件模糊引用：`list_directory` 递归摊平 + 子序列匹配，basename 加权）→ 夹签入卷；**拖文件入卷**（Tauri `onDragDropEvent` 原生通道——HTML5 drop 在 T2 WebView 永不触发，C10 尸检课的偿还），悬停坞体亮**界栏**（朱砂细线 + 纸色加深 +「松手入卷」批注），松手命中才入卷；`夹`（file picker）保留为兜底。贴图入卷**刻意不做**——agent 无读图链路，贴图路径是空头支票（C10 同款判断）。
 4. **渐进披露**：占位符只留一句（`拟文…` / `落笔即另起一卷…`）；键位收进**律**册（设置行右端浮层，13 行键位总览）；历史导航提示改**一次性眉批**（有历史且首聚焦时浮现 6s 自散，localStorage 旗标）；流区拖拽语义以原生 title 就地提示。
 5. **墨量线**：坞底 1px 墨线 = 本卷已用 token 占模型窗口比例（`sessionTokens /` 窗口——2026-09-07 分母接线：per-model 覆盖 ?? 目录声明，`modelContextWindow` 与运行时压缩阈值同链，网关命名空间 id 目录不中时由设置页覆盖兜底），近满（>80%）转朱砂；裸 `[0]` 徽标退役，读数进 hover。窗口未知（0）或零用量不显（不编造）。
@@ -211,7 +208,7 @@
 **五法则**（token 见 tokens.css「浸墨法则」块）：
 
 1. **墨阶锚点**：重墨全产品只许三处——① 页缘版框（`--rule-frame` 2px 墨线，古籍双栏线）；② 每屏唯一主动作（主钮/拟文印，墨底实色 + `--shadow-anchor` 硬偏移投影）；③ 屏级分区线（书眉底线/列表顶线/脚线/坞顶线，`--rule-hard`）。余处禁 2px 硬线。
-2. **字重极端**（2026-09-01 轻重批对齐拍板 B 钉值测试）：题字 `--weight-display` (900，Noto Serif SC 已装载)，卷首 700（`.pp-folio-title`），卷名/条目名/动作钮 600，机读注记 400——四级之外禁盘（500 为审计实锤违例已清零）。张力全在两极差。
+2. **字重极端**（2026-09-01 轻重批对齐拍板 B 钉值测试；2026-09-10 三体换代：MiSans VF 全字重已装载）：题字 `--weight-display` (900)，卷首 700（`.pp-folio-title`），卷名/条目名/动作钮 600，机读注记 400——四级之外禁盘（500 为审计实锤违例已清零）。张力全在两极差。
 3. **句读点朱**：题字句号落 `--seal`——古籍句读遗意，每屏至多一处红字。
 4. **纸层次**（2026-09-01 真纸化）：全局纹理层（**`body::after` 文档级**，z `--z-grain`；勿挂组件根——`.sh-root` 是首页自己的层叠上下文，纹理会被困在首页，画布/面板全无纹理，实机打回过一次）挂**真纸纹理资产**（`src/assets/paper/paper-grain.jpg` 高频肌理 × `paper-fiber.jpg` 低频纤维晕染，AI 平扫感生成 + 两段预处理：按通道异权提白 `k=R.55/G.40/B.25` 中和黄味（两层 multiply 复利，暖调由 `--paper` carry）→ 统一扩幅 `k=1.6` 放大振幅 ×2.6（提白后振幅只剩四成、画布上读不出纹理，实机打回重调）；`background-blend-mode: multiply` 相乘后随元素 `multiply` 浸入页面，`brightness(1.05)` 校暗度至 ~13%，顶层留 .05 SVG 微颗粒抗色带）+ `--light-fall` 顶部方向光 + `--vignette` 四边微沉 + `--laid-lines` 帘纹（`body::before`）——纸从「底色」变「材料」。印面/重墨受纹理同源于顶层 multiply（全局覆盖），局部禁再挂纹理层——**唯一例外＝印章 `.sh-seal` 挂印泥分材质**（印泥≠纸：`src/assets/paper/seal-paste.jpg` 朱砂膏体颗粒/纤维，同脚本两段预处理成色相中性灰后 `background-blend-mode: multiply` 乘在 `--seal` 实色上，160px 平铺，色随 token 走不锁死在图里）；换纸 = 替换 assets/paper/ 同名图片并跑 `scripts/normalize-paper-texture.ps1`，管道不变。**墨迹洇边（同批）**：重墨大字墨渗——题字 900 加 1.5px 字晕、节题字 1px、节题墨锚 2px 柔晕（`text-shadow`/`box-shadow` + `color-mix(in oklch, var(--ink-solid) N%, transparent)`，同 folio-title 的 alpha 墨残影手法）；发丝线（版框/界栏 1-2px）**不加**——洇边会把细线糊成泥。**流区真纸（材质批二）**：每卷流区＝一张不透明真纸——`src/assets/paper/paper-sheet.jpg`（fiber 线性扩幅回中派生：`a=1.63/b=-.555`——振幅 .031→.067 立得住、均值 .94 不动纸色；原 k=.7 提白档实机不可见；管道 `normalize-paper-texture.ps1 -Sheet`）乘印其上 + `src/paper/sheet.ts` 以卷 id 哈希出纸性三参 `--sheet-ox/oy/j`（同卷恒同纸、卷卷不重样；active 态只动 `background-color`——`background:` 简写会抹掉纸纹层）；流区挂接触落影 `--shadow-sheet`（两段硬偏移堆纸厚——同色纸放同色桌面全靠它读出「一张纸」，非 UI 海拔、是材质物理）。**物理包边（2026-09-02 视觉迭代）**：流区纸缘＝材料不是墨——border/outline 全退役，box-shadow 四层堆出纸的物理四至（受光缘 `--sheet-lit` 左上一线 → 背光缘 `--sheet-shade` 右下 → 裱边带 `--sheet-band` 7px 一圈纸色深带 → 接触落影 `--shadow-sheet` 重校）；剂量 A/B 台 `prototype/edge-ab.html` 定档（亮 .75——米色桌会吃淡光、沉 .13、带 42%）。active 态洗底退役（「变色」判死）——只换落影一档 `--shadow-sheet-active`（手里正拿着的纸离桌面更高一点），活跃信号全走结构墨阶不动纸色；`background:` 简写禁令延续（会抹纸纹层）。**贴纸纹理归属（2026-09-02 透明错觉根治）**：纹理必须随纸走——任何视口固定（fixed）的纹理/纹样层在画布上都是「不动之纹」，拖动时纸走纹不走，材质被大脑判属桌面，流区被读作「透」（实机白纸双盲实锤：纯白实心流区 + 固定横纹 = 仍读作透；流区一直在画，从无渲染故障）。归属三条：① 桌面纹 = `.pp-desk`（`.pp-world` 第一子，世界坐标系随拖动/缩放，四层配方「微颗粒×grain×fiber×帘纹」只混自身层不乘盖流区/纸条）；② 流区纹 = `.pp-region` 自带 paper-sheet 单层（帘纹不进流区——叠乘读作屏纹，实机过审移除）；③ 文档级 `body::after` 颗粒与 `body::before` 帘纹在画布态退役（`body:has(.pp-root)` / `body:not(:has(.pp-root))` 分治），首页/面板照旧（**模态豁免 2026-09-10**：设置面板（全屏模态，墨纱盖画布）在场时恢复文档级材质——工作区里开设置不再被 `.pp-root` 连坐剥光，两场景同观感；实现走「设置遮罩在场即恢复」选择器，画布裸露可交互时材质归属仍按画布态）；`body::before` 画布态只留顶光+边沉——光照类视口固定正当（灯在桌上、不在纸里）。顶眉/坞/目次带等固定家具在画布态无纹（家具与内容分层）。
 5. **完工动作**：选中态墨底反白（禁灰底假选中）、浮层必挂投影（`--elev-raise`/`--elev-menu`）、节题前实心方墨锚点。

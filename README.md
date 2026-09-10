@@ -290,7 +290,7 @@ Python · JavaScript/TypeScript/TSX · Rust · Go · Java · C/C++ · C# · Ruby
 | `plan` | 拟策 | 方案审批——石青策面（顶硬线 + 3px 石青左线 + 淡底），内容走完整 markdown 体，行号机制已退役 |
 | `notice` | 贴黄 | 系统通知——古代奏章上贴的黄纸条 |
 
-**墨色铁律**：朱砂 = 人，石青 = 机，石墨 = 草稿，墨 = 正文。字体三栈——宋体（正文，Noto Serif SC + EB Garamond）/ 楷书（手迹，Ma Shan Zheng，只给「人的来文」）/ 等宽（机读，IBM Plex Mono）。
+**墨色铁律**：朱砂 = 人，石青 = 机，石墨 = 草稿，墨 = 正文。字体统一 MiSans（2026-09-10 三体换代拍板：宋体/楷书/等宽三栈退役，文类语义位 song/kai/mono 保留、值层全 MiSans，VF 单文件全字重自托管）。
 
 ### 画布交互
 

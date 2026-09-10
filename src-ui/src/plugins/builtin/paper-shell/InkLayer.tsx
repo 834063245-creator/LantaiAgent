@@ -40,7 +40,7 @@ import {
 
 /** 卷名标签字体栈（= tokens.css --f-song 字面量——canvas ctx.font 不吃
  *  CSS var()，镜像纪律同墨色：改 token 两处同步）。 */
-const LABEL_FONT_STACK = '"EB Garamond Variable", "EB Garamond", "Noto Serif SC", "Songti SC", serif';
+const LABEL_FONT_STACK = '"MiSans", "PingFang SC", "Microsoft YaHei", sans-serif';
 
 /** 墨源 rgb 基色（= tokens.css --ink-* 的 rgba(38,34,28,α) 同一瓶墨）。
  *  canvas 2D 不吃 CSS var，字面量在此单点声明——改墨色时与 tokens.css 同步。 */

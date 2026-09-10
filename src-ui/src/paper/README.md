@@ -13,7 +13,7 @@
 | `tool-text.ts` | **2026-08-30** 脚注参数规整（pretty JSON）——ToolBody 渲染与 measure 计高共用的单一变换 |
 | `canvas-math.ts` | 交互层：无限画布数学（视口/缩放锚点/屏幕↔世界换算/流锚布局） |
 | `translate.ts` | 宿主侧块转译 v1：`ChatMessage[]` → `SourcedBlock[]` 纯函数（agent 层零改动） |
-| `measure.ts` | **V3a** 块高真测量：`@chenglou/pretext`（上游包，待定 #8）+ prepare 缓存纪律 + 纸面字体常量（具名栈：Fraunces/Noto Serif SC/JetBrains Mono） |
+| `measure.ts` | **V3a** 块高真测量：`@chenglou/pretext`（上游包，待定 #8）+ prepare 缓存纪律 + 纸面字体常量（FONT_STACKS 真源 = type-tokens.ts，2026-09-10 三体换代后统一 MiSans） |
 | `virtualize.ts` | **V3a** 视口虚拟化：视口→世界矩形、flow 窗口二分（O(log n)）、pinned 矩形相交——数据全量、渲染窗口化；**Stage-2** 加跨流区窗口 `visibleRegionWindows`（一纸多卷） |
 | `space.ts` | **Stage-2** 画布空间纯函数 + 常量：流区宽 1440 / 间距 720 / 吸附网格 2160 / 边缘宽 6px / 线性排比默认落位 / X 吸附 |
 | `selection.ts` | **V3a** 抽纸条（待定 #10）：`PaperStrip` 用户层物件——拷贝语义快照 + 世界坐标 + source 溯源元信息（收尾 2026-08-24 接入持久化；**Stage-5 起随工作区画布状态文件**落盘，不随会话快照） |

@@ -305,7 +305,7 @@ const BlockView = memo(function BlockView({
 const EMPTY_OPS: BlockOp[] = [];
 
 /* ── 案头签条架（创作坞 v2 2026-08-31）──
- * 空态三件套之一：最近三卷「续写」签条（楷体批注字，hover 朱砂——样式见
+ * 空态三件套之一：最近三卷「续写」签条（手迹位批注字，hover 朱砂——样式见
  * .pp-desk-shelf）。数据 = listSavedSessions（savedAt 倒序取三）；点击 =
  * activeSpace().expand 摊开 + requestFocus 定位（SessionSidebar 同款手势）。
  * 只在案头态（零摊开卷）渲染；无已存卷/无工作区 = 架空。 */

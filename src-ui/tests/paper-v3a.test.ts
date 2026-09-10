@@ -107,16 +107,16 @@ describe('paper/measure', () => {
     expect(prepareMock).toHaveBeenCalledTimes(2);
   });
 
-  it('字体常量是具名栈（兰台四体：不用 system-ui）', () => {
+  it('字体常量是具名栈（2026-09-10 三体换代：统一 MiSans，不用 system-ui）', () => {
     expect(PAPER_BODY_FONT).not.toContain('system-ui');
     expect(PAPER_MONO_FONT).not.toContain('ui-monospace');
-    expect(PAPER_BODY_FONT).toContain('Noto Serif SC');
-    expect(PAPER_MONO_FONT).toContain('IBM Plex Mono');
+    expect(PAPER_BODY_FONT).toContain('MiSans');
+    expect(PAPER_MONO_FONT).toContain('MiSans');
   });
 
-  it('B4 环1 钉值：来文 22px 楷书 / 行高 22×1.65=36.3（seal-deep 不变；2026-08-30 标题化：题 > 正文 17）', () => {
+  it('B4 环1 钉值：来文 22px / 行高 22×1.65=36.3（seal-deep 不变；2026-08-30 标题化：题 > 正文 17；手迹位三体换代后同 MiSans）', () => {
     expect(PAPER_USER_FONT).toContain('22px');
-    expect(PAPER_USER_FONT).toContain('Ma Shan Zheng');
+    expect(PAPER_USER_FONT).toContain('MiSans');
     expect(PAPER_USER_LINE_HEIGHT).toBeCloseTo(36.3, 5);
   });
 

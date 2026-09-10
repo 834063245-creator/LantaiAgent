@@ -1,0 +1,16 @@
+/* Copyright (c) 2026 Wenbing Jing. MIT License.
+// SPDX-License-Identifier: MIT
+*/
+
+/* MiSans 可变字体自托管（2026-09-10 三体换代拍板：宋/楷/等宽退役，
+ * 全产品统一 MiSans——VF 单文件覆盖 100-900 全字重，打包进应用不依赖系统）。
+ * 源文件 src/assets/fonts/MiSans-VF.ttf（MiSans Global ALL 官方包）。
+ * 斜体：MiSans 无 italic 字形，font-style: italic 由渲染器合成伪斜（已拍板接受）。 */
+
+@font-face {
+  font-family: "MiSans";
+  src: url("../assets/fonts/MiSans-VF.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}

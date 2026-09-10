@@ -538,7 +538,7 @@ Engine 作为独立 MCP Server 运行，通过 JSON-RPC over stdin/stdout 对外
 |------|------|
 | `react` 19.x + `react-dom` | UI 框架（React 迁移完成，`src/app/` 单根） |
 | `zustand` 5.x | 状态管理（react-hook stores + vanilla stores） |
-| `@fontsource-variable/eb-garamond` + `@fontsource/ma-shan-zheng` + `@fontsource/ibm-plex-mono` + `@fontsource/noto-serif-sc` | 自托管字体（宋体/楷书/等宽——注疏范式三栈；Fraunces / LXGW / JetBrains Mono 已退役） |
+| `MiSans-VF.ttf` 自托管（`src/assets/fonts/` + `src/app/fonts.css` @font-face） | 全产品统一字体（2026-09-10 三体换代：宋/楷/等宽三栈退役；VF 单文件 100-900 全字重） |
 | `react-markdown` + `remark-gfm` | Markdown 渲染（正文块） |
 | `highlight.js` | 代码高亮 |
 | `zod` 4.x | 工具 schema 单一事实源（`defineTool`） |

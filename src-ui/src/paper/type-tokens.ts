@@ -14,10 +14,12 @@
 // USER_TEXT_INSET = user.borderL + user.padL）。CSS 引用原始值，measure 引用
 // 组合值，同一真源，不镜像。
 
+/* 2026-09-10 三体换代：song/kai/mono 语义键保留（PAPER_TYPE.stack 按文类
+ * 寻址不变），值层统一 MiSans 栈——canvas 测量与 DOM 渲染同字体。 */
 export const FONT_STACKS = {
-  song: '"EB Garamond Variable", "EB Garamond", "Noto Serif SC", "Songti SC", serif',
-  kai: '"Ma Shan Zheng", "EB Garamond Variable", "Kaiti SC", "STKaiti", "KaiTi", "楷体", serif',
-  mono: '"IBM Plex Mono", "Cascadia Code", "Consolas", monospace',
+  song: '"MiSans", "PingFang SC", "Microsoft YaHei", sans-serif',
+  kai: '"MiSans", "PingFang SC", "Microsoft YaHei", sans-serif',
+  mono: '"MiSans", "PingFang SC", "Microsoft YaHei", sans-serif',
 } as const;
 
 /* ── 块体字号 / 行高系数（CSS 侧 .pp-block.pp-* .pp-body 镜像）── */

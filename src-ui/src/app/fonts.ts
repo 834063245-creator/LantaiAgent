@@ -1,18 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 兰台字体（P0 自托管）—— 宋体正文 / 楷书手迹 / 等宽机读。
-// 四体分工见 docs/design/lantai-design-spec.md §2：宋体（正文/标题，
-// Noto Serif SC + EB Garamond 旧书衬线对偶）、楷书（Ma Shan Zheng，只给人的来文）、
-// 等宽（IBM Plex Mono，代码/工具/编号）。英文思考链走宋体/Garamond，不是手写体。
+// 兰台字体装载（P0 自托管）——2026-09-10 三体换代：宋体/楷书/等宽三栈退役，
+// 全产品统一 MiSans 可变字体（VF 单文件全字重 100-900，见 fonts.css @font-face）。
+// 文类语义键（--f-song/--f-kai/--f-mono 与 type-tokens FONT_STACKS 的 song/kai/mono）
+// 保留不动——250+ 引用点按文类寻址不变，值层统一 MiSans 栈。
 
-import '@fontsource-variable/eb-garamond/index.css';
-import '@fontsource-variable/eb-garamond/wght-italic.css';
-import '@fontsource/ma-shan-zheng/400.css';
-import '@fontsource/ibm-plex-mono/400.css';
-import '@fontsource/ibm-plex-mono/500.css';
-import '@fontsource/noto-serif-sc/400.css';
-import '@fontsource/noto-serif-sc/500.css';
-import '@fontsource/noto-serif-sc/600.css';
-import '@fontsource/noto-serif-sc/700.css';
-import '@fontsource/noto-serif-sc/900.css'; /* 浸墨法则：题字 --weight-display（规格书 §10） */
+import './fonts.css';

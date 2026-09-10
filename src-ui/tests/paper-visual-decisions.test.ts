@@ -36,6 +36,7 @@ const GROUP_TS = readFileSync(join(SRC, 'paper', 'group.ts'), 'utf8');
 const TYPE_TOKENS_TS = readFileSync(join(SRC, 'paper', 'type-tokens.ts'), 'utf8');
 const TOKENS_CSS = readFileSync(join(SRC, 'app', 'tokens.css'), 'utf8');
 const FONTS_TS = readFileSync(join(SRC, 'app', 'fonts.ts'), 'utf8');
+const FONTS_CSS = readFileSync(join(SRC, 'app', 'fonts.css'), 'utf8');
 const NORMALIZE_PS1 = readFileSync(join(__dirname, '..', '..', 'scripts', 'normalize-paper-texture.ps1'), 'utf8');
 const RENDERER_TS = readFileSync(join(SRC, 'composition', 'renderer-service.tsx'), 'utf8');
 const TRANSLATE_TS = readFileSync(join(SRC, 'paper', 'translate.ts'), 'utf8');
@@ -326,12 +327,14 @@ describe('卷首 folio-head 钉值（2026-08-30 原型转录：prototype/lantai.
 });
 
 describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', () => {
-  it('法则入宪：tokens 载 --weight-display/--shadow-anchor/--vignette/--laid-lines，字体装载 900', () => {
+  it('法则入宪：tokens 载 --weight-display/--shadow-anchor/--vignette/--laid-lines，字体装载 900（2026-09-10 三体换代：MiSans VF 100-900 全字重）', () => {
     expect(TOKENS_CSS).toContain('--weight-display: 900');
     expect(TOKENS_CSS).toContain('--shadow-anchor: 2px 3px 0');
     expect(TOKENS_CSS).toContain('--vignette: radial-gradient');
     expect(TOKENS_CSS).toContain('--laid-lines: repeating-linear-gradient');
-    expect(FONTS_TS).toContain('noto-serif-sc/900.css');
+    expect(FONTS_TS).toContain("import './fonts.css'");
+    expect(FONTS_CSS).toContain('font-family: "MiSans"');
+    expect(FONTS_CSS).toContain('font-weight: 100 900');
   });
 
   it('墨阶锚点：书眉/列顶/脚线/坞顶升硬线，主钮投影', () => {

@@ -39,10 +39,8 @@ import { parseCircledSegments } from './marks';
 import { hasArgsToShow, prettyToolArgs } from './tool-text';
 
 /* ── 纸面字体常量（2026-08-30 token 化：单一真源 = type-tokens.ts）──
- * 兰台四体分工（docs/design/lantai-design-spec.md §2）：宋体正文 / 楷书来文 /
- * 等宽机读；英文思考链走宋体/Garamond，楷书只给人的来文。
- * 栈全具名——pretext 对 system-ui 在 macOS 不建模（PLATFORM_BUGS.md），
- * 且 canvas 测量字体必须与渲染字体一致（FONT_STACKS 与 tokens.css --f-* 同源）。 */
+ * 2026-09-10 三体换代：宋/楷/等宽退役，三栈统一 MiSans（文类语义键 song/kai/mono
+ * 保留——FONT_STACKS 与 tokens.css --f-* 同源，canvas 测量字体必须与渲染字体一致）。 */
 
 import {
   ASSET_DERIVED,
@@ -60,7 +58,7 @@ const SONG_STACK = FONT_STACKS.song;
 const KAI_STACK = FONT_STACKS.kai;
 const MONO_STACK = FONT_STACKS.mono;
 
-/** 来文（user）：楷书 16px/1.9 朱砂深（.pp-block.pp-user .pp-body）
+/** 来文（user）：手迹位 16px/1.9 朱砂深（.pp-block.pp-user .pp-body；三体换代后同 MiSans）
  *  B4 环1 拍板 C：字号 18→16 收到正文 17 之下，行高同 C 变体 1.9 */
 export const PAPER_USER_FONT = `${PAPER_TYPE.user.size}px ${FONT_STACKS[PAPER_TYPE.user.stack]}`;
 export const PAPER_USER_LINE_HEIGHT = PAPER_TYPE.user.size * PAPER_TYPE.user.lh;
@@ -147,7 +145,7 @@ const MD_CI_SIZE_RATIO = MD_TOKENS.ciSizeRatio;
 const MD_CI_EXTRA = MD_DERIVED.ciExtra;
 /** 圈点椭圆横向 chrome（.pp-circled：padding 4×2 + border 1.5×2）。 */
 export const CIRCLE_EXTRA = 11;
-/** 圈点字体：来文楷体 16px 加 600（.pp-circled font-weight 镜像）。 */
+/** 圈点字体：来文手迹位 16px 加 600（.pp-circled font-weight 镜像）。 */
 const CIRCLE_FONT = `600 ${PAPER_TYPE.user.size}px ${KAI_STACK}`;
 
 const RICH_CACHE_MAX = 500;
@@ -1034,7 +1032,7 @@ export function userImagesRowHeight(count: number, width: number): number {
 
 /** 来文测高（P3 2026-08-30）：含圈点候选（【】）的文本按行拆解（pre-wrap 硬
  *  换行语义），逐行走 rich 精确——圈点段 = 原子件 + CIRCLE_EXTRA 横向 chrome，
- *  其余段 = 来文楷体；空行仍占一行。纯文本（无【】）保持旧路整体 layout。 */
+ *  其余段 = 来文手迹位；空行仍占一行。纯文本（无【】）保持旧路整体 layout。 */
 function measureUserTextHeight(text: string, maxWidth: number): number {
   if (!text.includes('【')) {
     return measureTextHeight(text, maxWidth, PAPER_USER_FONT, PAPER_USER_LINE_HEIGHT);
