@@ -95,31 +95,63 @@ describe('ask-store（prompt:ask 退役）', () => {
     expect(useAskStore.getState().consumeAsk(-1)).toBeNull();
   });
 
-  it('pending 期 chat-core 重建：构造即回放，无 shelf 时 callback(null) 恰好一次', async () => {
+  it('pending 期 chat-core 重建：无承接面不消费（注册 shelf 才送达，不静默取消）', async () => {
     const { ChatCore } = await import('../src/app/chat/chat-core');
     const cb = vi.fn();
     // 无任何 chat-core 存活时请求到达（旧 bus 语义下此刻 emit 即静默丢失）
     pushAsk(makeReq({ id: 'ask-orphan', callback: cb }));
 
-    // 重建 chat-core —— 构造函数应回放在途 pending
+    // 重建 chat-core —— 构造回放撞上无承接面：请求留在 store（2026-09-10
+    // 完备化——旧语义此处 callback(null) = 用户没见过问题却被报「用户取消」）
     new ChatCore();
-    expect(cb).toHaveBeenCalledTimes(1);
-    expect(cb).toHaveBeenCalledWith(null);
+    expect(cb).not.toHaveBeenCalled();
+    // 第二个实例构造同样不消费、不重复回答
+    new ChatCore();
+    expect(cb).not.toHaveBeenCalled();
 
-    // 第二个实例构造时请求已被消费——不得重复回答
-    new ChatCore();
-    expect(cb).toHaveBeenCalledTimes(1);
+    // 注册承接面（PromptShelf 挂载）：pending 立即送达
+    const core = new ChatCore();
+    const shown: string[] = [];
+    core.registerPromptShelf({
+      active: null,
+      showAsk: (p) => {
+        shown.push(p.id);
+        return Promise.resolve(['继续']);
+      },
+      showAskBatch: () => Promise.resolve(null),
+      showPermission: () => Promise.resolve({ allow: false, remember: false }),
+      dismiss: () => {},
+      dismissByOwner: () => {},
+      answerActiveText: () => false,
+    });
+    await vi.waitFor(() => expect(cb).toHaveBeenCalledTimes(1));
+    expect(cb).toHaveBeenCalledWith(['继续']);
+    expect(shown).toEqual(['ask-orphan']);
   });
 
   it('订阅者在 pushAsk 后同步收到请求（等价旧 bus.emit 同步分发语义）', async () => {
     const { ChatCore } = await import('../src/app/chat/chat-core');
     const cb = vi.fn();
-    new ChatCore(); // 先有实例（订阅就位）
+    const shown: string[] = [];
+    const core = new ChatCore(); // 先有实例（订阅就位）+ 承接面
+    core.registerPromptShelf({
+      active: null,
+      showAsk: (p) => {
+        shown.push(p.id);
+        return Promise.resolve(['继续']);
+      },
+      showAskBatch: () => Promise.resolve(null),
+      showPermission: () => Promise.resolve({ allow: false, remember: false }),
+      dismiss: () => {},
+      dismissByOwner: () => {},
+      answerActiveText: () => false,
+    });
     expect(cb).not.toHaveBeenCalled();
 
     pushAsk(makeReq({ id: 'ask-live', callback: cb }));
-    // zustand subscribe 同步通知 —— 与 bus.emit 的同步时序等价
-    expect(cb).toHaveBeenCalledTimes(1);
-    expect(cb).toHaveBeenCalledWith(null);
+    // zustand subscribe 同步通知 —— 与 bus.emit 的同步时序等价（showAsk 已同步入队）
+    expect(shown).toEqual(['ask-live']);
+    await vi.waitFor(() => expect(cb).toHaveBeenCalledTimes(1));
+    expect(cb).toHaveBeenCalledWith(['继续']);
   });
 });

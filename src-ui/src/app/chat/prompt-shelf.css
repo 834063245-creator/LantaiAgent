@@ -65,6 +65,11 @@
   border-color: color-mix(in oklch, var(--indigo) 36%, transparent);
   background: color-mix(in oklch, var(--indigo) 8%, transparent);
 }
+/* 归属卷徽标（2026-09-10 ask 用户侧完备化）：多卷并发「替哪卷答/批」的
+ * 卷名 chip——朱砂系但退一档（去底只留边线），从属于类型 tag 不抢主标 */
+.prompt-shelf__tag--owner {
+  background: transparent;
+}
 
 .prompt-shelf__question {
   flex: 1;

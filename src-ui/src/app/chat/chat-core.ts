@@ -219,7 +219,13 @@ export class ChatCore {
     //（跨工作区触发：_refreshGoalRecord 在途结果按 INVARIANTS #12 epoch 守卫）
     _globalStoreUnsubs.push(
       useWorkspaceSwitchStore.subscribe((s, prev) => {
-        if (s.switchedTick !== prev.switchedTick) void this._refreshGoalRecord();
+        if (s.switchedTick !== prev.switchedTick) {
+          // 工作区切换 = 全上下文重置：在途提问/权限卡全部按取消收口
+          //（卡片 callback 指向旧工作区已 dispose 的 Agent——按卷杀卡够不到
+          // 他卷残留，漂到新工作区只能是死回答回调；2026-09-10 ask 完备化）
+          this._promptShelf?.dismiss();
+          void this._refreshGoalRecord();
+        }
       }),
     );
     this._refreshGoalRecord();
@@ -234,12 +240,17 @@ export class ChatCore {
     // dismiss/focus 副作用只由真起停与切卷触发。
     let _execUnsub: (() => void) | null = null;
     let _rebinding = false;
-    const _onExecChange = (exec: ExecStateInstance) => {
+    const _onExecChange = (exec: ExecStateInstance, ownerSid: number | null) => {
       if (exec.isRunning) {
         this._updateStatusBar('thinking', '分析中…');
       } else {
         this._updateStatusBar('idle');
-        this._promptShelf?.dismiss(); // ⚡ 停止时关闭 ask/permission 弹层
+        // ⚡ 停止只收本卷的卡（2026-09-10 ask 用户侧完备化）：卡片生命周期
+        // 挂归属卷——旧 dismiss() 一刀切清全架，切卷（新卷 idle 的初始同步）
+        // 和停 A 卷都会误杀 B 卷在等答案的提问卡（Agent 收「用户取消」而
+        // 用户没答过）。权限卡同理按卷收（enqueuePerm 只管排队态，展示态
+        // 的杀卡此前也是一刀切）。
+        this._promptShelf?.dismissByOwner(ownerSid);
         this._composer?.focus();
       }
       for (const cb of this._execListeners) cb();
@@ -255,9 +266,10 @@ export class ChatCore {
           _execUnsub();
           _execUnsub = null;
         }
+        const ownerSid = this.activeSessionId;
         const exec = this._activeExec();
-        _execUnsub = exec.onChange(() => _onExecChange(exec));
-        if (initialSync) _onExecChange(exec); // 初始同步
+        _execUnsub = exec.onChange(() => _onExecChange(exec, ownerSid));
+        if (initialSync) _onExecChange(exec, ownerSid); // 初始同步
       } finally {
         _rebinding = false;
       }
@@ -282,6 +294,9 @@ export class ChatCore {
   }
   registerPromptShelf(c: PromptShelfHandle): void {
     this._promptShelf = c;
+    // 注册即回放在途 ask（2026-09-10 完备化）：构造期回放撞上 shelf 未注册的
+    // 窗口时请求已留在 ask-store，此处补收——不再有「无声取消」路径。
+    this._consumePendingAsk();
   }
   registerSlash(c: SlashPanelHandle): void {
     this._slashController = c;
@@ -460,7 +475,9 @@ export class ChatCore {
   /** 通过 PromptShelf 渲染权限请求（位于输入框上方，非内联）。
    *  并发会话（2026-08-26）：ownerSid = 请求归属卷（bridges 按 agentId 解析）。
    *  权限卡挂归属卷的 execState 队列——停止语义按卷隔离（停 A 卷只杀 A 的卡，
-   *  旧「挂此刻活跃卷」是活 bug：切到 B 后 A 的写权限卡会被 B 的停止键误杀）。 */
+   *  旧「挂此刻活跃卷」是活 bug：切到 B 后 A 的写权限卡会被 B 的停止键误杀）。
+   *  2026-09-10 完备化：展示态同款按卷——ownerSid/badge 进卡（dismissByOwner
+   *  按卷收卡 + 归属卷徽标替哪卷批准）。 */
   showPermissionCard(
     toolName: string,
     reason: string,
@@ -476,10 +493,13 @@ export class ChatCore {
     }
     const shelf = this._promptShelf;
     const exec = ownerSid != null ? Session.getSessionExecState(this.panelId, ownerSid) : this._activeExec();
+    const sid = ownerSid ?? null;
     return exec.enqueuePerm(() =>
       shelf.showPermission({
         type: 'permission',
         id: `perm-${toolName}-${Date.now()}`,
+        ownerSid: sid,
+        badge: ownerSid != null ? this._sessionLabelOf(ownerSid) : null,
         toolName,
         reason,
         subject: subject || '',
@@ -1067,27 +1087,28 @@ export class ChatCore {
     return this._sessionLabelOf(sid);
   }
 
-  /** 消费 ask-store 的在途请求 → PromptShelf（无 shelf 时立即按取消回答回调）。
-   *  并发会话：按 seq 最老优先消费任意队列（PromptShelf 自身 FIFO 多卡，
-   *  多卷同时提问各答各的）。 */
+  /** 消费 ask-store 的在途请求 → PromptShelf。并发会话：按 seq 最老优先
+   *  消费任意队列（PromptShelf 自身 FIFO 多卡，多卷同时提问各答各的）。
+   *  2026-09-10 用户侧完备化：无 shelf 时不再按取消回答回调（静默取消 =
+   *  用户没见过问题、模型收「用户取消」）——请求留在 store，registerPromptShelf
+   *  注册时回放消费（ask-store 的 callback-in-store 先例即为此设计）。 */
   private _consumePendingAsk(): void {
+    if (!this._promptShelf) return; // 无承接面：留 store（先判后取，防止出队即丢），注册时回放
     const data = useAskStore.getState().consumeAnyAsk();
     if (!data) return;
-    if (!this._promptShelf) {
-      data.callback(null);
-      return;
-    }
     // 归属卷徽标（哪卷在问——多卷并发时用户需要知道替谁作答）
     const ownerSid = askSessionOf(data);
-    const sessionBadge = ownerSid != null ? this._sessionLabelOf(ownerSid) : null;
+    const badge = ownerSid != null ? this._sessionLabelOf(ownerSid) : null;
     // 批量多问（questions 数组）→ 一张分页卡收集；单问 → AskCard
     if (data.questions && data.questions.length > 0) {
       this._promptShelf
         .showAskBatch({
           type: 'ask-batch',
           id: data.id,
+          ownerSid,
+          badge,
           questions: data.questions,
-          header: (sessionBadge ? `${sessionBadge} · ` : '') + (data.header ?? '提问'),
+          header: data.header ?? '提问',
         })
         .then((answers) => data.callback(answers));
       return;
@@ -1096,12 +1117,29 @@ export class ChatCore {
       .showAsk({
         type: 'ask',
         id: data.id,
+        ownerSid,
+        badge,
         question: data.question ?? '',
-        header: (sessionBadge ? `${sessionBadge} · ` : '') + (data.header ?? '提问'),
+        header: data.header ?? '提问',
         options: data.options ?? [],
         multiSelect: !!data.multiSelect,
       })
       .then(data.callback);
+  }
+
+  /** 主输入文本作答在途提问卡（2026-09-10 完备化）：架头是提问卡且归属本卷
+   *  （或无归属——活跃卷兜底语义）时以文本作答；返回 false = 不适用（空架/
+   *  权限卡/他卷卡），调用方走常规发送路径。 */
+  private _answerActiveAsk(text: string): boolean {
+    const shelf = this._promptShelf;
+    const active = shelf?.active;
+    if (!shelf || !active) return false;
+    if (active.type !== 'ask' && active.type !== 'ask-batch') return false;
+    const owner = active.ownerSid ?? null;
+    if (owner != null && owner !== this.activeSessionId) return false; // 他卷的卡不抢答
+    if (!shelf.answerActiveText(text)) return false;
+    showToast('已作为提问回答提交', 'info');
+    return true;
   }
 
   // ── Goal 状态记录 → panel-store.goalRecord（GoalStrip 组件渲染）──
@@ -1210,6 +1248,19 @@ export class ChatCore {
         this.sendAgentText(`Execute skill: ${skillName}`, text);
         return;
       }
+    }
+
+    // ── 在途提问作答（2026-09-10 ask 用户侧完备化）──
+    // Agent 运行中架头是本卷的提问卡时，主输入文本作为回答提交——否则运行中
+    // 输入只能插话（下轮才见），提问卡干等 5 分钟超时被「取消」+ 一条无关
+    // 插话同时砸向模型（用户本能是往主输入框打字，卡片内输入不是唯一路径）。
+    // 跨卷不抢答：他卷的卡只认卡内输入（badge 已标替哪卷答），本卷输入语义
+    // 优先保给本卷。
+    if (this._activeExec().isRunning && this._answerActiveAsk(text)) {
+      getChatStore(this.panelId).input.getState().setInputText('');
+      getChatStore(this.panelId).input.getState().pushInputHistory(text);
+      getChatStore(this.panelId).input.getState().setDraftText('');
+      return;
     }
 
     // ── 插入路径：Agent 运行中，将消息注入会话 ──
