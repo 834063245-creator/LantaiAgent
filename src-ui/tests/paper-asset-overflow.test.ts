@@ -226,7 +226,7 @@ describe('measure：拟策卡精确镜像（固定预算退役）', () => {
     resetBlockIdCounterForTests();
   });
 
-  it('只读拟策：chrome 31 + 标题实测 36+12 + 条目 36', () => {
+  it('只读拟策：chrome 31 + 标题实测 36+12 + markdown 体 36（内容走 measureMdBlocks）', () => {
     const b = block('plan', { planId: 'p', title: 't', content: 'c', status: 's' });
     expect(measureBlockHeight(b)).toBe(31 + 36 + 12 + 36);
   });

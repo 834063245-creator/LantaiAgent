@@ -29,7 +29,6 @@ export const PAPER_TYPE = {
   mono: { size: 12.5, lh: 1.7, stack: 'mono' as const }, // 抄录图版
   tool: { size: 11.5, lh: 1.6, stack: 'mono' as const }, // 脚注石青
   out: { size: 11, lh: 1.5, stack: 'mono' as const }, // 脚注输出/错误
-  planItem: { size: 13.5, lh: 1.8, stack: 'song' as const }, // 拟策条目
 } as const;
 
 /* ── markdown 子版式（CSS 侧 .pp-md-* 镜像）── */
@@ -133,16 +132,14 @@ export const CHROME_TOKENS = {
   plan: {
     borderTop: 2,
     borderBottom: 1,
+    // 石青策面（2026-09-10 拟策卡渲染专项）：3px 石青硬左线 + 淡底 + 横向内距
+    // ——拟策是机器的正式提案面（石青=机），与来文的朱砂左线（人声）对仗。
+    borderL: 3,
     padV: 14,
+    padH: 16,
     headGap: 10,
     headSize: 15,
     headLh: 1.8,
-    itemPadL: 36,
-    itemSize: 13.5,
-    itemLh: 1.8,
-    itemGap: 7,
-    numTop: 2,
-    numSize: 10,
     // 选项区数值（options*/option*）与标题字号归 ASSET_TOKENS.plan 单一真源
     // （2026-09-03 双组去重：此前的 optionBorder 1vs2 分歧即双源漂移产物）；
     // CSS 引用 --pp-asset-plan-*，测高派生 ASSET_DERIVED.plan*。
@@ -183,8 +180,7 @@ export const CHROME_DERIVED = {
   diffPreChromeH: CHROME_TOKENS.diff.prePadV * 2 + CHROME_TOKENS.diff.preBorderTb * 2,
   diffTextInset: CHROME_TOKENS.diff.preBorderL + CHROME_TOKENS.diff.prePadL,
   planChromeH: CHROME_TOKENS.plan.borderTop + CHROME_TOKENS.plan.borderBottom + CHROME_TOKENS.plan.padV * 2,
-  planItemInset: CHROME_TOKENS.plan.itemPadL,
-  planItemGap: CHROME_TOKENS.plan.itemGap,
+  planTextInset: CHROME_TOKENS.plan.borderL + CHROME_TOKENS.plan.padH * 2, // 策面横向内缩（左线 3 + 内距 16×2）——markdown 体测宽/墨迹内缩共用
   planActionsH:
     CHROME_TOKENS.plan.actionsSize * CHROME_TOKENS.plan.actionsLh +
     CHROME_TOKENS.plan.actionsPadV * 2 +

@@ -39,13 +39,13 @@ import { previewUrlFor, readAttachmentBase64 } from '../app/chat/image-intake';
 import { Overlay } from '../app/overlay';
 import { useShellStore } from '../app/shell-store';
 import { type Context, Service } from '../cordis';
-import { type BlockKind, parsePlanItems, type SourcedBlock } from '../paper/block-model';
+import type { BlockKind, SourcedBlock } from '../paper/block-model';
 import { foldLabel, foldPreviewLine } from '../paper/fold';
 import {
   type MdBlock,
   type MdInline,
   type MdParseState,
-  parseInline,
+  parseMarkdown,
   parseMarkdownIncremental,
 } from '../paper/markdown';
 import { parseCircledSegments } from '../paper/marks';
@@ -828,7 +828,16 @@ function PlanBody({ block }: BlockRendererProps) {
     options?: { label: string; description: string; outcome?: PlanOptionOutcome }[];
     _callback?: (response: PlanApprovalResponse) => void;
   };
-  const items = parsePlanItems(p.content ?? '');
+  // 拟策内容 = 完整 markdown 体（2026-09-10 拟策卡渲染专项）：标题/列表/加粗/
+  // 围栏码/表格按结构渲染（旧 parsePlanItems 剥标记平铺成行号清单——「太毛坯」
+  // 的直接根因）；与 measure 的 plan 分支共用 parseMarkdown（同源纪律）。
+  const mdBlocks = useMemo(() => parseMarkdown(p.content ?? ''), [p.content]);
+  const mdBody =
+    mdBlocks.length > 0 ? (
+      <div className="pp-pc-body pp-md">
+        <MdBlocksView blocks={mdBlocks} />
+      </div>
+    ) : null;
   const cb = p._callback;
   const [selected, setSelected] = useState<string | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -836,22 +845,13 @@ function PlanBody({ block }: BlockRendererProps) {
   const [done, setDone] = useState(false);
 
   if (!cb) {
-    // 只读态（历史块 / 无审批回调）：维持拟策展示（条目行内解析——裸 markdown 修复）
+    // 只读态（历史块 / 无审批回调）：维持拟策展示
     return (
       <div className="pp-pc">
         <div className="pp-pc-head">
           <span className="pp-pc-t">{p.title || '拟策'}</span>
         </div>
-        {items.length > 0 && (
-          <ol>
-            {items.map((item, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: 静态列表逐行渲染，序号即身份
-              <li key={i}>
-                <InlineRuns inl={parseInline(item)} />
-              </li>
-            ))}
-          </ol>
-        )}
+        {mdBody}
       </div>
     );
   }
@@ -869,16 +869,7 @@ function PlanBody({ block }: BlockRendererProps) {
       <div className="pp-pc-head">
         <span className="pp-pc-t">{p.title || '拟策'}</span>
       </div>
-      {items.length > 0 && (
-        <ol>
-          {items.map((item, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: 静态列表逐行渲染，序号即身份
-            <li key={i}>
-              <InlineRuns inl={parseInline(item)} />
-            </li>
-          ))}
-        </ol>
-      )}
+      {mdBody}
       {hasOptions && (
         <div className="pp-pc-options">
           {(p.options ?? []).map((o) => (

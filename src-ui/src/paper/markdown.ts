@@ -8,9 +8,9 @@
 //
 // 为什么自写解析器而不是 react-markdown：本仓纸面纪律是「measure.ts 镜像 CSS、
 // 测高是唯一真相」——块高由 canvas 预测量喂绝对定位布局，渲染与测量必须消费
-// **同一个结构模型**，否则两边结构漂移 = 块重叠。单一解析（parsePlanItems /
-// parseCircledSegments 同款先例）让渲染器与测量器共用本文件输出，结构漂移
-// 结构性不成立。react-markdown（package.json 既有依赖）黑盒渲染无法镜像测量。
+// **同一个结构模型**，否则两边结构漂移 = 块重叠。单一解析（parseCircledSegments
+// 同款先例）让渲染器与测量器共用本文件输出，结构漂移结构性不成立。
+// react-markdown（package.json 既有依赖）黑盒渲染无法镜像测量。
 //
 // 覆盖子集（agent 产出的常见面）：ATX 标题 1-4 / 段落 / 有序无序列表（一层
 // 嵌套递归）/ 引用 / 围栏码 / GFM 表格 / 分隔线 / 远端图（独立行

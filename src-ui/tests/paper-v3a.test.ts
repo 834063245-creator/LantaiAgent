@@ -127,11 +127,12 @@ describe('paper/measure', () => {
     // user 题签 48 + 纯文本 36 + asterism 44（2026-08-30 标题化：题签置顶占高，
 
     // reasoning 展开态 = 折叠行 20 + 纯文本 36（折叠机制 2026-08-30）；
-    // notice 带贴黄 chrome 17；plan 带拟策 chrome 31+39
+    // notice 带贴黄 chrome 17；plan 带拟策 chrome 31 + 标题实测 48
     expect(measureBlockHeight(block('user', { text: 'hi' }))).toBe(48 + 36 + 44);
     expect(measureBlockHeight(block('reasoning', { text: 'think' }))).toBe(FOLD_ROW_H + 36);
     expect(measureBlockHeight(block('notice', { text: 'n', level: 'info' }))).toBe(17 + 36);
-    // 拟策 2026-08-30 溢出修复：标题实测（mock 36）+ head margin 12——旧固定 39 退役
+    // 拟策 2026-09-10 渲染专项：内容走 markdown 体（measureMdBlocks）；
+    // 标题实测（mock 36）+ head margin 12——旧固定 39 已退役
     expect(measureBlockHeight(block('plan', { planId: 'p', title: 't', content: 'c', status: 's' }))).toBe(
       31 + 36 + 12 + 36,
     );

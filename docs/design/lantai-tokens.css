@@ -21,7 +21,7 @@
   --seal: #A63A2E;         /* 朱砂：印章 / 来文 / 圈点 / 朱批 */
   --seal-deep: #8C2F26;    /* 朱砂深：来文文字 */
   --seal-soft: color-mix(in oklch, var(--seal) 16%, transparent);
-  --indigo: #3A5B7A;       /* 石青：脚注 / 拟策序号 / diff 新增 */
+  --indigo: #3A5B7A;       /* 石青：脚注 / 拟策策面（左线·淡底·文类签）/ diff 新增 */
   --graphite: #6F6E68;     /* 赭石：夹注 / 擦改 / diff 删除 */
 
   /* ── 语义状态（降饱和到矿物色）── */

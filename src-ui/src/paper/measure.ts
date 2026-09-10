@@ -23,14 +23,13 @@ import {
   type RichInlineItem,
 } from '@chenglou/pretext/rich-inline';
 import { assetKinds } from '../agent/asset-kinds';
-import { type BlockKind, parsePlanItems, type SourcedBlock } from './block-model';
+import type { BlockKind, SourcedBlock } from './block-model';
 import {
   type MdBlock,
   type MdInline,
   type MdParseState,
   mdHasRichInline,
   mdPlainText,
-  parseInline,
   parseMarkdown,
   parseMarkdownIncremental,
   textHasMath,
@@ -89,10 +88,6 @@ export const PAPER_TOOL_LINE_HEIGHT = PAPER_TYPE.tool.size * PAPER_TYPE.tool.lh;
 /** 脚注输出/错误（.pp-out）：等宽 11px/1.5 */
 export const PAPER_OUT_FONT = `${PAPER_TYPE.out.size}px ${FONT_STACKS[PAPER_TYPE.out.stack]}`;
 export const PAPER_OUT_LINE_HEIGHT = PAPER_TYPE.out.size * PAPER_TYPE.out.lh;
-
-/** 拟策条目：13.5px/1.8（.pp-pc li） */
-export const PAPER_PLAN_ITEM_FONT = `${PAPER_TYPE.planItem.size}px ${FONT_STACKS[PAPER_TYPE.planItem.stack]}`;
-export const PAPER_PLAN_ITEM_LINE_HEIGHT = PAPER_TYPE.planItem.size * PAPER_TYPE.planItem.lh;
 
 /** 正文段距（2026-08-30 markdown 专项改版：17px/行距 2.0 下 10px 段距比行距
  *  还小、段落黏连——提到 14px；.pp-md-p margin-bottom 镜像）。 */
@@ -264,8 +259,7 @@ const DIFF_LANG_H = CHROME_DERIVED.diffLangH; // .pp-lang 10px×lh1 + margin-bot
 const DIFF_PRE_CHROME_H = CHROME_DERIVED.diffPreChromeH; // pre padding 14×2 + border 1×2
 const DIFF_TEXT_INSET = CHROME_DERIVED.diffTextInset; // border-left 3 + padding-left 20
 const PLAN_CHROME_H = CHROME_DERIVED.planChromeH; // .pp-pc border-top 2 + border-bottom 1 + padding 14×2
-const PLAN_ITEM_INSET = CHROME_DERIVED.planItemInset; // li padding-left（石青序号列）
-const PLAN_ITEM_GAP = CHROME_DERIVED.planItemGap; // li margin-bottom（末项无）
+const PLAN_TEXT_INSET = CHROME_DERIVED.planTextInset; // 策面横向内缩：石青左线 3 + 内距 16×2（.pp-pc-body 测宽）
 const PLAN_ACTIONS_H = CHROME_DERIVED.planActionsH; // 按钮行
 const NOTICE_CHROME_H = CHROME_DERIVED.noticeChromeH; // padding 8×2 + border-bottom 1
 const NOTICE_TEXT_INSET = CHROME_DERIVED.noticeTextInset; // padding 12×2
@@ -1189,30 +1183,22 @@ export function inkSourcesFor(b: SourcedBlock, folded: boolean): InkSource[] {
         });
       return out;
     }
-    case 'plan': {
-      const items = parsePlanItems(p.content ?? '');
-      return items.length === 0
-        ? []
-        : [
-            {
-              text: items.join('\n'),
-              font: PAPER_PLAN_ITEM_FONT,
-              lineHeight: PAPER_PLAN_ITEM_LINE_HEIGHT,
-              inset: PLAN_ITEM_INSET,
-            },
-          ];
-    }
+    case 'plan':
+      // 拟策内容 = markdown 体（2026-09-10 渲染专项）：墨迹走 markdown 同一
+      // 走查（p/h/列表项/围栏码逐款），内缩 = 策面横向 chrome。
+      return p.content ? markdownInkSources(p.content, PLAN_TEXT_INSET) : [];
     default:
       return []; // 资产/开放 kind：远缩画外框即可（无行条）
   }
 }
 
 /** markdown 元素 → 墨迹源（parseMarkdown 同源走查：p/h/列表项走正文族字号，
- *  围栏码走 mono 封顶，引用递归，hr 跳过，表格按行退化）。 */
-function markdownInkSources(text: string): InkSource[] {
+ *  围栏码走 mono 封顶，引用递归，hr 跳过，表格按行退化）。
+ *  inset：正文块 0；拟策体传策面横向内缩（.pp-pc-body 左线+内距）。 */
+function markdownInkSources(text: string, inset = 0): InkSource[] {
   const out: InkSource[] = [];
   const push = (t: string, size: number, lh: number): void => {
-    if (t) out.push({ text: t, font: `${size}px ${SONG_STACK}`, lineHeight: lh, inset: 0 });
+    if (t) out.push({ text: t, font: `${size}px ${SONG_STACK}`, lineHeight: lh, inset });
   };
   const walk = (blocks: MdBlock[]): void => {
     for (const el of blocks) {
@@ -1240,7 +1226,7 @@ function markdownInkSources(text: string): InkSource[] {
               text: el.text,
               font: PAPER_MONO_FONT,
               lineHeight: PAPER_MONO_LINE_HEIGHT,
-              inset: MD_CODE_INSET,
+              inset: inset + MD_CODE_INSET,
               cap: Math.floor(PRE_MAX_H / PAPER_MONO_LINE_HEIGHT),
             });
           break;
@@ -1456,26 +1442,12 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       return TOOL_PAD_TOP + FOLD_ROW_H + codeH + outH + errH;
     }
     case 'plan': {
-      const items = parsePlanItems(p.content ?? '');
-      // 行内富文本镜像（2026-09-03 裸 markdown 修复）：条目经 parseInline 解析，
-      // 含加粗/行内码/链接等富行内时逐片段精确测高（measureInlineHeight）——
-      // 与渲染端 InlineRuns 同一解析，防渲染变宽后块高低估压下一块。
-      const itemsH =
-        items.length === 0
-          ? 0
-          : items.reduce(
-              (sum, it) =>
-                sum +
-                measureInlineHeight(
-                  parseInline(it),
-                  b.w - PLAN_ITEM_INSET,
-                  PAPER_TYPE.planItem.size,
-                  SONG_STACK,
-                  PAPER_PLAN_ITEM_LINE_HEIGHT,
-                ) +
-                PLAN_ITEM_GAP,
-              0,
-            ) - PLAN_ITEM_GAP;
+      // 拟策内容 = 完整 markdown 体（2026-09-10 拟策卡渲染专项）：与正文块同一
+      // 结构模型（parseMarkdown → measureMdBlocks——渲染 .pp-pc-body 消费同一
+      // 解析，结构漂移结构性不成立），宽度扣策面横向 chrome（石青左线+内距）。
+      // 拟策块恒挂壳层 RO 实测（needsObservedHeight），公式/图等动态高兜底。
+      const content = p.content ?? '';
+      const mdH = content ? measureMdBlocks(parseMarkdown(content), b.w - PLAN_TEXT_INSET) : 0;
       // 2026-08-30 溢出修复：标题实测（旧固定 39 漏算换行）、方案选择区逐枚
       // 实测（旧 118 装不下两枚带描述的方案）、操作行按钮实高（旧 40 偏小）。
       // 无回调的只读拟策块不增加交互区高度（施工单 #1/#2 语义不变）。
@@ -1485,10 +1457,14 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
         options?: Array<{ label?: string; description?: string }>;
       };
       const headH =
-        measureTextHeight(plan.title || '拟策', b.w, PLAN_TITLE_FONT, PLAN_TITLE_LINE_HEIGHT) + PLAN_HEAD_MARGIN;
-      const optionsH = plan._callback && (plan.options?.length ?? 0) >= 2 ? planOptionsH(plan.options ?? [], b.w) : 0;
+        measureTextHeight(plan.title || '拟策', b.w - PLAN_TEXT_INSET, PLAN_TITLE_FONT, PLAN_TITLE_LINE_HEIGHT) +
+        PLAN_HEAD_MARGIN;
+      const optionsH =
+        plan._callback && (plan.options?.length ?? 0) >= 2
+          ? planOptionsH(plan.options ?? [], b.w - PLAN_TEXT_INSET)
+          : 0;
       const actionsH = plan._callback ? PLAN_ACTIONS_H : 0;
-      return PLAN_CHROME_H + headH + itemsH + optionsH + actionsH;
+      return PLAN_CHROME_H + headH + mdH + optionsH + actionsH;
     }
     case 'toolgroup':
       // 工具组头恒一行（2026-08-30 会话流专项）：折叠行即本体，注线顶距同脚注族；
@@ -1503,7 +1479,8 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
   }
 }
 
-/** 拟策方案选择区高（.pp-pc-options 逐字镜像；描述文本实测可换行）。 */
+/** 拟策方案选择区高（.pp-pc-options 逐字镜像；w = 策面内容宽——调用方已扣
+ *  .pp-pc 横向 chrome；描述文本实测可换行）。 */
 function planOptionsH(options: Array<{ label?: string; description?: string }>, w: number): number {
   const textW = Math.max(80, w - PLAN_OPTION_DESC_INSET);
   let h = PLAN_OPTIONS_CHROME_H;

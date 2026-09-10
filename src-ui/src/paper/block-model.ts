@@ -205,21 +205,6 @@ export function createBlock<K extends BlockKind>(
 /** 流内默认块宽（世界单位；走查弹取观测台聊天列同族宽度） */
 export const DEFAULT_BLOCK_WIDTH = 720;
 
-/** 拟策内容 → 条目列表（渲染 PlanBody 与测量 measureBlockHeight 共用的单一解析：
- * 逐行剥列表标记（- / * / 1. / 1)）与标题标记（#{1,6}，2026-09-01 审计：
- * '### 修整方案' 曾以字面 ### 入条目），剥后为空的行丢弃。 */
-export function parsePlanItems(content: string): string[] {
-  return content
-    .split('\n')
-    .map((s) =>
-      s
-        .replace(/^[-*]\s+|^\d+[.)]\s*/, '')
-        .replace(/^#{1,6}\s+/, '')
-        .trim(),
-    )
-    .filter(Boolean);
-}
-
 /* ── 湿墨判定（2026-09-06 纸面运行态）── */
 
 /** 正在书写的块 id：块序列中最后一个 source part 仍未干墨
