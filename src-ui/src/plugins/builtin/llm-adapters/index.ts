@@ -24,7 +24,17 @@ export const llmAdaptersPlugin = {
           id: 'builtin/anthropic',
           kind: 'anthropic',
           label: 'Anthropic',
-          create: (rt: ProviderRuntimeArgs) => createAnthropicProvider(rt),
+          create: (rt: ProviderRuntimeArgs) =>
+            createAnthropicProvider({
+              name: rt.name,
+              apiKey: rt.apiKey,
+              baseUrl: rt.baseUrl,
+              model: rt.model,
+              thinking: rt.thinking,
+              maxTokensFor: rt.maxTokensFor,
+              // provider 作用域描述符（拉取元数据 + 覆盖 + seed）——方言请求期读它
+              describeModel: rt.describeModel,
+            }),
         }),
       'llm-adapter-anthropic',
     );
@@ -34,7 +44,16 @@ export const llmAdaptersPlugin = {
           id: 'builtin/openai',
           kind: 'openai',
           label: 'OpenAI 兼容',
-          create: (rt: ProviderRuntimeArgs) => createOpenAIProvider(rt),
+          create: (rt: ProviderRuntimeArgs) =>
+            createOpenAIProvider({
+              name: rt.name,
+              apiKey: rt.apiKey,
+              baseUrl: rt.baseUrl,
+              model: rt.model,
+              thinking: rt.thinking,
+              maxTokensFor: rt.maxTokensFor,
+              describeModel: rt.describeModel,
+            }),
         }),
       'llm-adapter-openai',
     );
@@ -52,6 +71,7 @@ export const llmAdaptersPlugin = {
               model: rt.model,
               thinking: rt.thinking,
               maxTokensFor: rt.maxTokensFor,
+              describeModel: rt.describeModel,
               // Phase 3D：authMode='oauth' 的 Codex 订阅注入头（live 层装配）
               extraHeaders: rt.oauthHeaders,
             }),

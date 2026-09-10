@@ -8,11 +8,40 @@ import type React from 'react';
 import { useCallback, useState } from 'react';
 import { getModel } from '../../../provider/catalog';
 import { thinkingOptionsFor } from '../../../provider/thinking';
-import { effectiveModels, isFactoryBaseUrl, type ProbeOutcome, type ProviderSettings } from '../../../settings';
+import {
+  effectiveModels,
+  isFactoryBaseUrl,
+  modelContextWindow,
+  modelDescriptor,
+  modelInput,
+  modelMaxTokens,
+  type ProbeOutcome,
+  type ProviderSettings,
+} from '../../../settings';
 import { protocolLabel } from './protocol';
 import { formatLatency, formatTestAt, providerStatus, STATUS_LABEL } from './status';
 
 export type ProviderField = 'apiKey' | 'baseUrl' | 'model' | 'thinking';
+
+/** per-model 参数的来源标注字段（provider-model-meta 四层链的展示面）。 */
+type MetaField = 'contextWindow' | 'maxTokens' | 'input';
+
+/** 该字段当前生效值的来源（给用户看清「这个数是哪儿来的」）：
+ *  手动设置 > API 拉取（带日期）> 目录 seed > 未提供。
+ *  此前面板只显示 `目录值 || 200000` 占位符——网关模型的「200000」是编造的
+ *  默认值，用户无从分辨它是不是真值。 */
+function metaSource(provider: ProviderSettings, id: string, field: MetaField): string {
+  const has = (v: unknown): boolean =>
+    field === 'input' ? Array.isArray(v) && v.length > 0 : typeof v === 'number' && v > 0;
+  const ov = provider.modelOverrides?.[id];
+  if (has(field === 'input' ? ov?.input : ov?.[field])) return '手动设置';
+  const meta = provider.modelMeta?.[id];
+  if (has(field === 'input' ? meta?.input : meta?.[field])) {
+    return meta?.fetchedAt ? `API 拉取 · ${new Date(meta.fetchedAt).toLocaleDateString()}` : 'API 拉取';
+  }
+  if (has(getModel(id)?.[field])) return '目录';
+  return '未提供';
+}
 
 /** 连接探针的 UI 阶段（瞬时态，不持久化）；结果本体见 ConnectionProbe。 */
 export type ProbeUiPhase = 'idle' | 'testing' | ProbeOutcome;
@@ -121,14 +150,15 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
   const st = providerStatus(provider, isOAuth ? (oauthData?.accounts.length ?? 0) > 0 : false);
   const statusCls = test.phase === 'testing' ? 'testing' : st;
   const statusLabel = test.phase === 'testing' ? '测试中…' : STATUS_LABEL[st];
-  // P14 能力协商：档位表来自当前模型的目录声明（thinkingEfforts/thinkingOff），
-  // 目录外模型 = 无声明 = 不显示选择器（思考走模型默认，无法控制），不编造档位。
-  const modelDesc = getModel(provider.model);
+  // P14 能力协商：档位表来自当前模型的**生效描述符**（provider 作用域合并链 =
+  // 用户覆盖 + API 拉取元数据 + 目录 seed）——网关模型若在拉取时拿到档位声明
+  // 同样生效；皆无 = 不显示选择器（思考走模型默认，无法控制），不编造档位。
+  const modelDesc = modelDescriptor(provider, provider.model);
   const thinkingModes = thinkingOptionsFor(modelDesc);
   const thinkingHint =
     thinkingModes.length > 0
-      ? '档位由该模型的目录声明提供；目录外的档位不可选（不会静默替换为其他档位）。'
-      : '该模型暂无思考档位数据（目录外或厂商未披露）——思考行为由模型默认决定，无法在此控制。';
+      ? '档位由该模型的声明提供（API 拉取或目录）；声明外的档位不可选（不会静默替换为其他档位）。'
+      : '该模型暂无思考档位数据（端点未披露且目录外）——思考行为由模型默认决定，无法在此控制。';
   const isFactoryUrl = isFactoryBaseUrl(provider.baseUrl);
 
   const keyChip = provider.apiKey?.trim()
@@ -295,13 +325,20 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
           {models.length > 0 && (
             <div className="pp-models-list">
               {models.map((id) => {
-                // 视觉声明覆盖态（B5）：覆盖里显式声明 image = 开（目录声明不在此钮
-                // 态里——那是回落值，钮只展示/操控覆盖本身）
+                // 视觉声明覆盖态（B5）：覆盖里显式声明 image = 开（目录/API 声明不在此
+                // 钮态里——那是回落值，钮只展示/操控覆盖本身）
                 const visionOn = provider.modelOverrides?.[id]?.input?.includes('image') === true;
+                // 生效输入模态（覆盖 ?? API 拉取 ?? 目录）——「视」徽标与创作坞门禁同链
+                const visionEffective = modelInput(provider, id).includes('image');
                 return (
                   <div key={id} className="pp-model-item">
                     <span className={`pp-model-chip${id === provider.model ? ' is-default' : ''}`} title={id}>
-                      <span className="pp-model-chip-name">{getModel(id)?.name ?? id}</span>
+                      <span className="pp-model-chip-name">{modelDescriptor(provider, id)?.name ?? id}</span>
+                      {visionEffective && (
+                        <span className="pp-model-chip-vision" title="视觉模型（覆盖 / API 拉取 / 目录声明）">
+                          视
+                        </span>
+                      )}
                       {id === provider.model && (
                         <span
                           className="pp-model-chip-default"
@@ -336,11 +373,14 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                             type="number"
                             min={0}
                             value={provider.modelOverrides?.[id]?.contextWindow ?? ''}
-                            placeholder={String(getModel(id)?.contextWindow || 200000)}
+                            placeholder={String(modelContextWindow(provider, id, 0) || '未知')}
                             onChange={(e) =>
                               onModelOverride(id, 'contextWindow', Number.parseInt(e.target.value, 10) || 0)
                             }
                           />
+                          <span className="pp-model-param-src" title="该值的来源（用户手改 > API 拉取 > 目录）">
+                            {metaSource(provider, id, 'contextWindow')}
+                          </span>
                         </label>
                         <label className="pp-model-param">
                           <span>最大输出</span>
@@ -348,30 +388,34 @@ export function ProviderDetail({ provider, canDelete, test, keyState, actions, o
                             type="number"
                             min={0}
                             value={provider.modelOverrides?.[id]?.maxTokens ?? ''}
-                            placeholder={String(getModel(id)?.maxTokens || 0)}
+                            placeholder={String(modelMaxTokens(provider, id) || '不钳制')}
                             onChange={(e) => onModelOverride(id, 'maxTokens', Number.parseInt(e.target.value, 10) || 0)}
                           />
+                          <span className="pp-model-param-src" title="该值的来源（用户手改 > API 拉取 > 目录）">
+                            {metaSource(provider, id, 'maxTokens')}
+                          </span>
                         </label>
                         {/* 视觉声明开关（B5 · D-8①）：覆盖开 = ['text','image']（附图
-                         *  入口 + 请求期图投影放行）；关 = 清覆盖回落目录声明。目录
-                         *  已声明视觉的模型不需要动这里。 */}
+                         *  入口 + 请求期图投影放行）；关 = 清覆盖回落 API 拉取/目录声明。 */}
                         <span className="pp-model-param">
                           <span>视觉模型（图片输入）</span>
                           <button
                             type="button"
                             className={`sp-btn-sm${visionOn ? ' is-on' : ''}`}
                             title={
-                              getModel(id)?.input.includes('image')
-                                ? '目录已声明视觉——覆盖开/关可强制改写（关 = 回落目录值）'
-                                : '目录未声明视觉——自定义 vision 模型在此补声明（生效面：附图入口 + 请求期图投影 + 选择器「视」徽标）'
+                              visionEffective && !visionOn
+                                ? 'API 拉取/目录已声明视觉——覆盖开/关可强制改写（关 = 回落声明值）'
+                                : '未声明视觉——自定义 vision 模型在此补声明（生效面：附图入口 + 请求期图投影 + 选择器「视」徽标）'
                             }
                             onClick={() => onModelVisionToggle(id, !visionOn)}
                           >
-                            {visionOn ? '已声明' : '未声明'}
+                            {visionOn ? '已声明' : visionEffective ? '随声明' : '未声明'}
                           </button>
+                          <span className="pp-model-param-src">{metaSource(provider, id, 'input')}</span>
                         </span>
                         <span className="pp-model-params-hint">
-                          留空 = 用目录值（自定义模型目录无值则上下文 200K / 输出不钳制）；视觉生效 = 覆盖 ?? 目录声明
+                          留空 = 用 API 拉取/目录值（都没有则上下文按未知处理、输出不钳制）；视觉生效 = 覆盖 ?? API 拉取
+                          ?? 目录
                         </span>
                       </div>
                     )}

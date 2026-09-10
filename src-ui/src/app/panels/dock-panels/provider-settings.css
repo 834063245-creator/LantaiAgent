@@ -519,6 +519,15 @@
 .pp-model-chip-x:hover {
   color: var(--ink-1);
 }
+/* 视觉徽标（生效输入模态 = 覆盖 ?? API 拉取 ?? 目录；与创作坞附图门禁同链） */
+.pp-model-chip-vision {
+  flex: 0 0 auto;
+  font-size: calc(8px * var(--font-scale));
+  letter-spacing: 0.05em;
+  color: var(--seal-deep);
+  border: 1px solid color-mix(in oklch, var(--seal) 35%, var(--paper));
+  padding: 0 3px;
+}
 
 /* ── OAuth 订阅登录面板（ProviderDetail + AddProviderSheet 弹层共用）── */
 .pp-oauth-accounts {
@@ -594,6 +603,14 @@
 }
 .pp-model-param .sp-input {
   width: 110px;
+}
+/* per-model 参数的来源标注（手动设置 / API 拉取 · 日期 / 目录 / 未提供）——
+ * 让用户看清这个数是哪儿来的，而不是把编造的 200K 默认值当真值。 */
+.pp-model-param-src {
+  font-size: calc(8px * var(--font-scale));
+  color: var(--ink-3);
+  opacity: 0.75;
+  white-space: nowrap;
 }
 .pp-model-params-hint {
   flex-basis: 100%;

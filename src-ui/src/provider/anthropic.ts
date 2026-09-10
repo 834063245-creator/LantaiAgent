@@ -5,6 +5,7 @@
 
 import { clampMaxTokens, getModel } from './catalog';
 import { classifyProviderError } from './error-catalog';
+import { type ModelMeta, modelEntries, parseModelEntry } from './model-meta';
 import { sendWithRetry } from './retry';
 import { extractWritePreview, fetchJsonWithTimeout, prewarmEndpoint, type SseEvent, sseEvents } from './shared';
 import { assertEffortDeclared, type StoredThinking, THINKING_EFFORT_BUDGETS, thinkingCapability } from './thinking';
@@ -60,6 +61,9 @@ interface AnthropicConfig {
   thinking?: StoredThinking;
   /** per-model 最大输出覆盖（P14）：请求时按模型解析，0/缺省 = 目录值。 */
   maxTokensFor?: (model: string) => number | undefined;
+  /** provider 作用域描述符解析（provider-model-meta）：携带本提供方拉取到的
+   *  元数据与用户覆盖；缺省 = 全局目录（getModel）。 */
+  describeModel?: (model: string) => ModelDescriptor | undefined;
 }
 
 export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
@@ -67,6 +71,9 @@ export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
   const baseUrl = (cfg.baseUrl || ANTHROPIC_DEFAULT_BASE_URL).replace(/\/$/, '');
   const { model, apiKey } = cfg;
   let thinking: StoredThinking | undefined = cfg.thinking; // setThinking 运行时更新
+  // provider 作用域描述符；缺省回落全局目录（测试直呼面零改动）
+  const describe = (m: string): ModelDescriptor | undefined => cfg.describeModel?.(m) ?? getModel(m);
+  let fetchedMeta: Record<string, ModelMeta> = {};
 
   return {
     name() {
@@ -79,7 +86,7 @@ export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
     async *stream(signal: AbortSignal, req: Request): AsyncGenerator<Chunk> {
       // P14 能力协商：目录声明了档位清单的模型，选中清单外档位在 I/O 前响亮报错。
       // 目录外模型（自定义 Anthropic 端点）不拦——budget 钮是协议 uniform 能力。
-      const desc = getModel(model);
+      const desc = describe(model);
       if (desc?.thinkingEfforts) assertEffortDeclared(thinking, thinkingCapability(desc), 'anthropic');
       const body = buildRequest(
         sanitizeToolPairing(req.messages),
@@ -89,6 +96,7 @@ export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
         req.max_tokens,
         cfg.maxTokensFor,
         req.imageData,
+        desc,
       );
       const response = await sendWithRetry({
         url: `${baseUrl}/v1/messages`,
@@ -128,24 +136,23 @@ export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
       // 上抛让调用面可见（选择器分组头标注 / 手动刷新报真实原因）；静态目录 +
       // last-good 动态模型兜底。
       if (!json) throw new Error(`${name}: 模型目录获取失败（网络错误或端点无响应）`);
-      const data: Array<{ id: string; display_name?: string }> =
-        (json as { data?: Array<{ id: string; display_name?: string }> }).data || [];
-      return data
-        .filter((m) => m.id)
-        .map((m) => ({
-          id: m.id,
-          name: m.display_name || m.id,
-          kind: 'anthropic' as const,
-          vendor: name,
-          baseUrl,
-          reasoning: m.id.includes('sonnet') || m.id.includes('opus') || m.id.includes('haiku'),
-          // 定稿（P0）：只声明 text——Message 是纯字符串，请求构建器无图像块；
-          // 多模态等真实传图入口出现后再做（breaking change，单独立项）。
-          // P14：/v1/models 不披露思考档位——thinkingEfforts 留空，不编造。
-          input: ['text'] as ('text' | 'image')[],
-          contextWindow: 0,
-          maxTokens: 0,
-        }));
+      // 宽容解析（provider-model-meta）：官方端点目前只给 id/display_name/created_at，
+      // 第三方 Anthropic 兼容端点若披露窗口/模态则照收——未披露字段保持「未知」
+      // 语义（contextWindow 0 / input ['text']），不编造。
+      const ctx = { kind: 'anthropic', vendor: name, baseUrl };
+      const models: ModelDescriptor[] = [];
+      const meta: Record<string, ModelMeta> = {};
+      for (const raw of modelEntries(json)) {
+        const parsed = parseModelEntry(raw, ctx);
+        if (!parsed) continue;
+        models.push(parsed.descriptor);
+        meta[parsed.descriptor.id] = parsed.meta;
+      }
+      fetchedMeta = meta;
+      return models;
+    },
+    lastModelMeta(): Record<string, ModelMeta> {
+      return fetchedMeta;
     },
   };
 }
@@ -223,6 +230,9 @@ export function buildRequest(
   maxTok: number,
   maxTokensFor?: (model: string) => number | undefined,
   imageData?: Request['imageData'],
+  /** provider 作用域描述符（拉取元数据 + 用户覆盖 + seed 合并）；缺省 = 全局目录
+   *  （测试直呼面不传即保持旧行为）。 */
+  desc?: ModelDescriptor,
 ): AnthRequest {
   const system: TextBlock[] = [];
   const anthMsgs: AnthMessage[] = [];
@@ -346,7 +356,12 @@ export function buildRequest(
 
   const r: AnthRequest = {
     model,
-    max_tokens: clampMaxTokens(model, maxTok > 0 ? maxTok : DEFAULT_MAX_TOKENS, maxTokensFor?.(model)),
+    // 钳制链：用户覆盖 ?? provider 作用域描述符 maxTokens（= 拉取元数据 ?? seed）
+    max_tokens: clampMaxTokens(
+      model,
+      maxTok > 0 ? maxTok : DEFAULT_MAX_TOKENS,
+      maxTokensFor?.(model) ?? desc?.maxTokens,
+    ),
     system: system.length > 0 ? system : undefined,
     messages: anthMsgs,
     tools: anthTools.length > 0 ? anthTools : undefined,

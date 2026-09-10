@@ -18,7 +18,7 @@ import {
   recordDynamicFetchResult,
   searchModels,
 } from '../src/provider/catalog';
-import { guessReasoning } from '../src/provider/openai';
+import { guessReasoningFromId } from '../src/provider/model-meta';
 import { getVendorTemplateVendors } from '../src/provider/vendor-templates';
 
 describe('catalog', () => {
@@ -272,12 +272,19 @@ describe('catalog', () => {
     expect(ticks).toBe(2);
   });
 
-  it('guessReasoning heuristic (P0: 动态模型 reasoning 启发式)', () => {
-    expect(guessReasoning('deepseek-v4-pro')).toBe(true);
-    expect(guessReasoning('deepseek-reasoner')).toBe(true);
-    expect(guessReasoning('kimi-k2-thinking')).toBe(true);
-    expect(guessReasoning('gpt-4o')).toBe(false);
-    expect(guessReasoning('claude-3-5-sonnet')).toBe(false);
+  it('guessReasoningFromId 启发式（P0 语义迁移 + 协议分野，仅端点未披露 reasoning 时生效）', () => {
+    // openai 兼容：id 关键词表（原 openai.guessReasoning 行为逐条不变）
+    expect(guessReasoningFromId('deepseek-v4-pro', 'openai')).toBe(true);
+    expect(guessReasoningFromId('deepseek-reasoner', 'openai')).toBe(true);
+    expect(guessReasoningFromId('kimi-k2-thinking', 'openai')).toBe(true);
+    expect(guessReasoningFromId('gpt-4o', 'openai')).toBe(false);
+    expect(guessReasoningFromId('claude-3-5-sonnet', 'openai')).toBe(false);
+    // anthropic：Claude 全系 sonnet/opus/haiku（原 anthropic.fetchModels 内联判定）
+    expect(guessReasoningFromId('claude-sonnet-4-6', 'anthropic')).toBe(true);
+    expect(guessReasoningFromId('claude-haiku-4-5', 'anthropic')).toBe(true);
+    expect(guessReasoningFromId('some-custom-model', 'anthropic')).toBe(false);
+    // responses：该协议端点全为推理模型（原 responses.fetchModels 的写死语义）
+    expect(guessReasoningFromId('gpt-5.6-sol', 'responses')).toBe(true);
   });
 
   it('thinkingEfforts 是 canonical 词表子集且无重复（生成器保险丝）', () => {

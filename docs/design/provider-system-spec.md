@@ -110,6 +110,7 @@ interface Provider {
   stream(signal, req): AsyncGenerator<Chunk>;  // 唯一真实路径
   prewarm?(): void;
   fetchModels?(): Promise<ModelDescriptor[]>;
+  lastModelMeta?(): Record<string, ModelMeta>; // 同一次拉取的元数据（落盘面真源，2026-09-11）
 }
 ```
 
@@ -121,7 +122,7 @@ interface Provider {
 | 2 | deepseek beta 模型挂 kind=anthropic | **保留**。这是特性——DeepSeek 提供 Anthropic 兼容端点；目录里加注释说明「kind=协议，provider=厂商」 | catalog 注释 |
 | 3 | `input: ['text','image']` 图像假声明 | **砍**（P0 时点）。Message.content 是 string，请求构建器无图像块；等真实传图入口出现再做（breaking change，单独立项）。**修订（2026-09-09，multimodal-image B1-B5 落地）**：传图入口已建——content 保持 string（引用旁挂 `Message.images`，纯文本 wire 形态字节不变），已知 vision 款 catalog seed 声明已开闸 + 目录外款经 `ModelOverrides.input` 补声明（见 §modelOverrides）；「假声明」前提失效，正/负清单由 `tests/provider-catalog.test.ts` 精确钉死 | anthropic.ts/openai.ts fetchModels |
 | 4 | anthropic.ts `reasoning_tokens: 0` 写死 | **保留 + 注释**。Anthropic Messages API usage 无此字段，0 是事实正确 | 注释 |
-| 5 | 动态模型 `reasoning: false` 写死 | **修**。按模型 id 启发式（含 think/reasoning/思考 关键词）；静态目录元数据仍优先 | openai.ts |
+| 5 | 动态模型 `reasoning: false` 写死 | **修**。按模型 id 启发式（含 think/reasoning/思考 关键词）；静态目录元数据仍优先。**修订（2026-09-11）**：启发式收口到 `provider/model-meta.guessReasoningFromId`（按协议分野，anthropic/responses 两条既有内联判定一并收编），且升级为「端点披露优先、启发式兜底」——端点给 `supported_parameters`/`capabilities` 证据时以证据为准，启发式猜测绝不进落盘元数据表（见文末 §模型元数据拉取与持久化） | openai.ts / model-meta.ts |
 | 6 | 快速添加 chips 只填 name+kind | **修**。chips 同步带出 `defaultModel.baseUrl` | SettingsPanel.tsx |
 | 7 | `defaultPricing` 硬编码三厂商 | **修**。优先读 catalog `cost`，读不到才走现有 fallback | settings.ts |
 | 8 | runtime.ts 死 import | **删** | runtime.ts |
@@ -131,7 +132,7 @@ interface Provider {
 | 12 | provider 切换重建链 | **验证项**。确认 `agent:config-changed` 事件 → `Workspace.applyAgentConfig` 重建 agent；文档锁定它为唯一切换入口 | 验收 |
 | 13 | SSE 不解析 `event:`/多行 data | **保持**。所有目标服务商均单行 data；边界写入 shared.ts 注释 | 注释 |
 | 14 | 目录缺 GLM/Ollama | **可选**。ollama 走 `http://localhost:11434/v1` openai 兼容，apiKey 可空；按需手写条目即可 | catalog/*.json |
-| 15 | 目录数据维护（价格/窗口） | **定稿口径（2026-08-07）**：目录 = 开箱体验优化，非必需。全部消费点已有 fallback（clampMaxTokens 不钳制 / 窗口 fallback 200K / 摘要 fallback 主模型 / 徽章显示 LIVE / defaultPricing 硬编码回退）。厂商不提供元数据接口是行业现状；成熟 agent 软件（Chatbox/Cline/Cherry Studio）同为「手写列表 + /models 拉 ID」。**远程价格表（models.dev / LiteLLM GitHub raw）不做自动拉取**——国内网络 models.dev 不通、GitHub raw 时好时坏，引入启动依赖得不偿失 | 本文档 |
+| 15 | 目录数据维护（价格/窗口） | **定稿口径（2026-08-07）**：目录 = 开箱体验优化，非必需。全部消费点已有 fallback（clampMaxTokens 不钳制 / 窗口 fallback 200K / 摘要 fallback 主模型 / 徽章显示 LIVE / defaultPricing 硬编码回退）。厂商不提供元数据接口是行业现状；成熟 agent 软件（Chatbox/Cline/Cherry Studio）同为「手写列表 + /models 拉 ID」。**远程价格表（models.dev / LiteLLM GitHub raw）不做自动拉取**——国内网络 models.dev 不通、GitHub raw 时好时坏，引入启动依赖得不偿失。**修订（2026-09-11，实测推翻前半句）**：「厂商不提供元数据接口」对**聚合网关不成立**——实测用户网关 `/models` 69/69 条带 `context_length` + 人类可读 `name`（OpenRouter 系还给 `architecture.input_modalities` / `supported_parameters`，Gemini 给 `inputTokenLimit`，Ollama `/api/show` 给 `capabilities` + `model_info.<arch>.context_length`）。故改为「端点披露多少就认多少」（`provider/model-meta.ts`）并**持久化**到 `ProviderSettings.modelMeta`；**远程第三方价格/元数据表仍不拉取**（裁决后半句不变） | 本文档 / model-meta.ts |
 
 ## 目录地位定稿（2026-08-07）
 
@@ -693,12 +694,19 @@ interface ProviderSettings {
   thinking?: StoredThinking;
   lastTest?: ConnectionProbe;
   models?: string[];         // 可用模型列表（创作坞下拉可选面；缺省 = [model]，零迁移）
-  modelOverrides?: Record<string, ModelOverrides>; // per-model 覆盖
+  modelOverrides?: Record<string, ModelOverrides>; // per-model 覆盖（用户手改）
+  modelMeta?: Record<string, ModelMeta>;           // per-model API 拉取元数据（2026-09-11）
 }
 interface ModelOverrides {
   contextWindow?: number;
   maxTokens?: number;
   input?: ('text' | 'image')[]; // 输入模态声明（multimodal-image B5 · D-8①）
+}
+interface ModelMeta {        // provider/model-meta.ts —— 端点真披露的字段（不编造）
+  name?: string; contextWindow?: number; maxTokens?: number;
+  input?: ('text' | 'image')[]; reasoning?: boolean;
+  thinkingEfforts?: ThinkingEffort[]; thinkingOff?: boolean;
+  fetchedAt: number;
 }
 ```
 
@@ -710,23 +718,38 @@ interface ModelOverrides {
   model + activeProvider（新鲜 loadSettings 读改写单字段，不整份快照 → A4 clobber
   不复活）；只影响新卷/未改卷出生默认，已存在会话走覆盖（applyAgentConfig 会话级
   分支按会话解析，A1「切一个拖累全部」不复发）。
-- **`modelOverrides` = per-model 上下文/最大输出/输入模态**（取代 P14 的 per-provider
-  `contextWindow/maxTokens` 单字段）：`modelContextWindow` / `modelMaxTokens` 解析
-  （覆盖 ?? 目录值 ?? 默认）；workspace `_contextWindowFor` 与 `createProvider`
+- **`modelMeta` = API 拉取元数据的持久化层**（2026-09-11 彻查修复，见文末追加裁决）：
+  「从 API 拉取」经方言的宽容解析层（`provider/model-meta.parseModelEntry`）把端点
+  真披露的字段（`context_length` / `name` / `architecture.input_modalities` /
+  `supported_parameters` / `inputTokenLimit` / Ollama `capabilities`+`model_info.*`）
+  解析出来，由 `provider/model-sync.applyFetchedModels` 单一入口落进暂存 → 保存持久化。
+  此前只落 id 列表，元数据随进程消失，聚合网关的模型重启后一律吃 200K 假默认。
+  **四层解析链（单一权威源 `settings.ts`）**：`modelOverrides` ?? `modelMeta` ??
+  目录 seed ?? 默认。消费面全部走链：`modelContextWindow` / `modelMaxTokens` /
+  `modelInput` / `modelReasoning` / `modelThinkingEfforts`，以及方言请求期的
+  `modelDescriptor(p, id)`（经 `ProviderRuntimeArgs.describeModel` 注入，使 provider
+  级元数据真正抵达 wire——档位协商 `thinkingCapability` 与输出钳制 `clampTokens`）。
+  设置页「参数」面板按模型标注来源（手动设置 / API 拉取 · 日期 / 目录 / 未提供）。
+- **`modelOverrides` = per-model 上下文/最大输出/输入模态（用户手改，链首）**（取代 P14 的
+  per-provider `contextWindow/maxTokens` 单字段——遗留存储值在 `loadSettings` 即清洗）：
+  `modelContextWindow` / `modelMaxTokens` 解析
+  （覆盖 ?? API 拉取 ?? 目录值 ?? 默认）；workspace `_contextWindowFor` 与 `createProvider`
   `maxTokensFor(model)`（请求时按模型解析，取代构造时固定的 maxTokensOverride）消费。
   **`input` = 输入模态覆盖**（2026-09-09，multimodal-image B5 · D-8①）：生效声明走
-  `modelInput(p, modelId)` 合并链（`['text','image']` 覆盖 ?? 目录 `ModelDescriptor.input`
-  ?? `['text']`——不编造能力），三消费面同链——`createProvider` 的 `inputModalities`
-  能力戳（请求期图投影 D-8③）、创作坞附图门禁（入口显隐 D-8②）、ModelSelector
-  「视」徽标。GLM-4V/Qwen-VL 等目录外 vision 模型经 Provider 页参数面板「视觉模型」
-  开关补声明（on = `['text','image']`，off = 清覆盖回落目录）；catalog seed 已声明
-  已知 vision 款（anthropic/openai 全线 + deepseek vision-exp 独立款——主线按 DSH
+  `modelInput(p, modelId)` 合并链（`['text','image']` 覆盖 ?? API 拉取 ?? 目录
+  `ModelDescriptor.input` ?? `['text']`——不编造能力），三消费面同链——`createProvider`
+  的 `inputModalities` 能力戳（请求期图投影 D-8③）、创作坞附图门禁（入口显隐 D-8②）、
+  ModelSelector「视」徽标。GLM-4V/Qwen-VL 等目录外 vision 模型经 Provider 页参数面板
+  「视觉模型」开关补声明（on = `['text','image']`，off = 清覆盖回落声明）；catalog seed
+  已声明已知 vision 款（anthropic/openai 全线 + deepseek vision-exp 独立款——主线按 DSH
   权威保持纯文本）。
 - **`activeProvider` = 最近使用的 provider**（「设为当前」按钮退役）；Provider 列表
   角标叫「新会话默认」。`addProvider` 仍设 activeProvider = 新家，`removeProvider`
   回落 next[0]。
-- **思考档位常驻**：per-model 档位来自目录声明（P14）；无目录声明的模型给
-  「自动/关闭」协议安全兜底（assertEffortDeclared 对 ''/off 不拦），不再整控件消失。
+- **思考档位常驻**：per-model 档位来自生效描述符声明（API 拉取或目录，P14）；无声明
+  的模型给「自动/关闭」协议安全兜底（assertEffortDeclared 对 ''/off 不拦），不再整控件
+  消失。现实：当前主流端点均不披露档位清单——`thinkingEfforts` 在拉取面只认端点显式
+  给出的数组（过 canonical 词表），未披露即不显示档位选择器（不编造）。
 
 ### 退役清单（本 Phase 删除）
 
@@ -842,3 +865,77 @@ P14 写「兰台是单活跃 provider 形态」，P15 后修正为：**多 provi
 ### 验收
 
 - vitest 全量绿 · tsc --noEmit 0 错 · biome ci 0/0 · verify:convergence exit 0。
+
+## 追裁 · 模型元数据拉取与持久化（2026-09-11，用户彻查报告拍板「按 A 全链做」）
+
+> 用户提问：「提供方从 API 拉取模型，到底有没有拉到上下文容量、视觉、思考强度这些
+> 参数？是不是没把参数持久化给模型设置？」彻查结论：**一条都没落地**，且其中一部分
+> 是「端点给了、我们扔了」。
+
+### 彻查结论（修复前现状）
+
+1. **三处 fetchModels 硬编码「只读 `data[].id`」**（openai.ts / anthropic.ts /
+   responses.ts）：`name` 回落生 id、`contextWindow`/`maxTokens` 写死 0、
+   `input` 写死 `['text']`、`thinkingEfforts` 一律不设。传输层（`fetchJsonWithTimeout`）
+   **没有丢数据**——完整 JSON 就在内存里，是在 `.map()` 映射成 `ModelDescriptor` 的
+   那一步被主动丢弃。
+2. **实测反证**：用户配置的聚合网关 `api.commandcode.ai/provider/v1/models` 返回
+   69 条模型，**69/69 条都带 `context_length`**（实测分布 200000×7、256000×6、
+   262144×3、400000×4、500000×2、1000000×34、1048576×9、1050000×3）与人类可读
+   `name`——全部被丢弃。另一家 `opencode.ai/zen/go/v1/models` 只给 id（无物可拉）。
+3. **零持久化**：拉取结果只落 `ProviderSettings.models`（id 字符串数组）；
+   元数据只进进程内 `catalog._dynamicModels`（且**只拉 active provider、只在
+   setupAgent 那一次**）；可持久化的 `modelOverrides` 只有手工入口。后果：用户存档
+   100 个模型里 98 个（gemini-vision / claude-opus / GLM / omni 系）窗口一律按
+   **200000** 算（真实 200K～1.05M，最多差 5 倍）、视觉一律关闭、思考档位选择器不显示。
+4. **请求期读全局 `getModel`**：方言（`thinkingCapability` / `clampMaxTokens`）
+   无 provider 上下文——即便解析出元数据也到不了 wire 层。
+5. **遗留死字段**：旧存储的 per-provider `contextWindow`/`maxTokens`（P14 已拆为
+   per-model）代码「读都不读」，用户存档里仍留着，是最初的误配来源之一。
+
+### 修复（全链）
+
+1. **宽容解析层** `provider/model-meta.ts`（新）：从任意方言里认字段——`context_length`
+   / `context_window` / `max_context_length` / `max_model_len` / `inputTokenLimit`
+   （窗口）、`max_completion_tokens` / `outputTokenLimit`（输出上限）、
+   `architecture.input_modalities` / 平铺 `input_modalities` / Ollama `capabilities`
+   （视觉）、`supported_parameters` / `capabilities` / 布尔 `reasoning`（推理）、
+   `thinking_efforts`（档位，过 canonical 词表过滤）、Ollama `model_info.<arch>.context_length`。
+   **纪律不破（P14）**：认得就填，认不得留空——未披露字段保持「窗口 0 / input
+   `['text']` / 无档位声明」的未知语义，绝不推测。id 启发式（`guessReasoningFromId`，
+   原 `openai.guessReasoning` 迁入 + anthropic/responses 两条既有内联判定收编）
+   只在端点未披露时生效，且**不进落盘元数据表**（猜测不是证据）。
+2. **持久化面** `ProviderSettings.modelMeta`：Provider 新增 `lastModelMeta()`（工厂闭包
+   side-channel，live 层回指同一次拉取的内层实例），落盘经 `provider/model-sync.ts`
+   的 `applyFetchedModels` **单一写入口**（字段级合并，未披露字段保留 last-good；
+   空壳元数据不落盘）。
+3. **四层解析链**（`settings.ts` 单一权威源）：`modelOverrides` ?? `modelMeta` ??
+   目录 seed ?? 默认，落地为 `modelContextWindow` / `modelMaxTokens` / `modelInput` /
+   `modelReasoning` / `modelThinkingEfforts` / `modelDescriptor`。
+4. **元数据抵达 wire**：`ProviderRuntimeArgs.describeModel` 注入三方言，请求期
+   `assertEffortDeclared(thinkingCapability(describe(model)))` 与 `max_tokens` 钳制
+   改读 provider 作用域描述符——网关模型第一次拿到自己的窗口与档位声明。
+5. **拉取点统一**：设置页手动刷新、添加提供方两步式（含 OAuth 登录后拉取）→
+   `applyFetchedModels`（元数据随行落盘）；`workspace.setupAgent` 后台拉取改为
+   **全部 provider**（此前只拉 active），但只落内存目录不写 settings（避免与设置页
+   未保存的暂存互相覆盖）——持久化仍走「从 API 拉取」这个显式动作。
+6. **遗留死字段清理**：`loadSettings` 就地删除 per-provider `contextWindow`/`maxTokens`
+   （同 apiKey `"null"` 清洗惯例），下次保存落回干净状态。
+7. **UI 展示来源**：Provider 页 per-model 参数面板标注每个值的来源（手动设置 /
+   API 拉取 · 日期 / 目录 / 未提供），并把编造的 `200000` 占位符改为「未知」；
+   模型行补「视」徽标（与创作坞附图门禁同链）。
+
+### 行为变化（用户可感知）
+
+- 拉取模型后，**上下文窗口 / 最大输出 / 视觉 / 推理**随 settings 持久化，重启仍在；
+  聚合网关的模型不再吃 200K 假默认（实测该网关 69 条从 200K 归位到真实值）。
+- 模型下拉显示 API 给的人类可读名（此前一律生 id），并新增「视」徽标。
+- 设置页参数面板显示每个值的来源，不再把默认值当目录值展示。
+- 后台目录拉取覆盖全部提供方（切到非活动家不再是空目录）。
+
+### 验收
+
+- 新增 `tests/provider-model-meta.test.ts`（25 例：各方言字段识别 / 四层链 / 落盘合并 /
+  端到端「拉取 → 落盘 → 重启后生效 → 抵达请求体」）。
+- 全量 vitest 279 文件 2842 passed / 4 skipped · tsc --noEmit 0 错 · biome ci 0/0 ·
+  verify:convergence exit 0。

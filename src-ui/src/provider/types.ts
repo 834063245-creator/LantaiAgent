@@ -3,6 +3,7 @@
 
 // Provider 抽象层 — 统一 Message / Chunk / ToolCall，抹平 Anthropic 和 OpenAI 的 API 差异
 
+import type { ModelMeta } from './model-meta';
 import type { StoredThinking, ThinkingEffort } from './thinking';
 
 /** 模型 API 的线上方言（CONTEXT.md「Protocol」）。
@@ -138,11 +139,19 @@ export interface Provider {
    *  TCP+TLS 连接。尽力而为 — 失败静默处理。 */
   prewarm?(): void;
   /** 从 provider 的 /models API 端点获取可用模型。
-   *  返回 ModelDescriptor[]，仅含最小元数据（contextWindow/能力从 API 不可知）。
+   *  返回 ModelDescriptor[]，字段由方言的宽容解析层
+   *  （model-meta.parseModelEntry）填充：端点披露什么就填什么，未披露的保持
+   *  「未知」语义（contextWindow/maxTokens = 0、input = ['text']、无档位声明）
+   *  ——不编造（P14）。元数据随 fetchModels 顺带解析，落盘面经 lastModelMeta 取。
    *  尽力而为：传输失败（网络/超时/端点 4xx）上抛——调用面据此记失败面
    *  （C5 2026-08-27：此前静默返回 [] 被当成「无模型」，用户完全无感）；
    *  成功但端点无 data = 返回空数组。 */
   fetchModels?(): Promise<ModelDescriptor[]>;
+  /** 最近一次 fetchModels 解析出的 **provider 级元数据**（键 = 模型 id）。
+   *  落盘面 ProviderSettings.modelMeta 的唯一真源——表中只含端点真披露的字段，
+   *  descriptor 上的启发式兜底（reasoning 猜测等）不在表内（不编造的类型边界）。
+   *  调用序：先 await fetchModels()，随后同步读本方法（取的是同一次拉取的产物）。 */
+  lastModelMeta?(): Record<string, ModelMeta>;
 }
 
 /** 方言工厂实参——createProvider 从 settings 解析后的运行期产物（2026-08-27 方言收口）。
@@ -158,6 +167,12 @@ export interface ProviderRuntimeArgs {
   model: string;
   thinking: StoredThinking | undefined;
   maxTokensFor: (model: string) => number | undefined;
+  /** 某模型在**该提供方作用域**下的生效描述符（provider 级拉取元数据 + 用户覆盖
+   *  + 静态目录 seed 的合并产物，见 settings.modelDescriptor）。方言请求期读它
+   *  （thinkingCapability / max_tokens 钳制），使 provider 级元数据真正抵达 wire
+   *  ——此前一律读全局 getModel，聚合网关的模型（静态目录无条目）永远拿不到
+   *  自己的窗口与档位声明。缺省 = 回落全局 getModel（未接线方言零改动）。 */
+  describeModel?: (model: string) => ModelDescriptor | undefined;
   oauthHeaders?: Record<string, string>;
 }
 

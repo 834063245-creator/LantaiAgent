@@ -23,6 +23,7 @@
 import { type ProviderSettings, providerId } from '../settings';
 import { resolveOauthToken, resolveProviderRuntime } from './credentials';
 import { type CreateProviderOptions, createProvider } from './index';
+import type { ModelMeta } from './model-meta';
 import { buildOauthHeaders } from './oauth';
 import type { StoredThinking } from './thinking';
 import type { Chunk, ModelDescriptor, Provider, Request } from './types';
@@ -42,6 +43,9 @@ export function createLiveProvider(
   const resolve = () => resolveProviderRuntime(pid);
   // 覆盖槽（可变 holder——setThinking 运行时改写，stream 每请求现读）
   const overrides_: { model?: string; thinking?: StoredThinking } = { ...overrides };
+  // 最近一次 fetchModels 装配出的内层 provider——lastModelMeta 从它取元数据
+  // （内层每次 fetchModels 现造，side-channel 必须回指同一次拉取的那个实例）。
+  let lastFetched: Provider | null = null;
 
   /** async 装配内层 provider：apiKey 路径（resolveApiKey）或 oauth 路径
    *  （resolveOauthToken → oauthHeaders）。OAuth 时 apiKey 置空占位——
@@ -113,7 +117,12 @@ export function createLiveProvider(
       const needsOauth = rt.provider.authMode === 'oauth';
       if (!rt.apiKey && !needsOauth) return [];
       const inner = await buildInner(rt);
-      return inner.fetchModels?.() ?? [];
+      const models = await (inner.fetchModels?.() ?? []);
+      lastFetched = inner; // 同一次拉取的元数据 side-channel（lastModelMeta 读它）
+      return models;
+    },
+    lastModelMeta(): Record<string, ModelMeta> {
+      return lastFetched?.lastModelMeta?.() ?? {};
     },
   };
 }

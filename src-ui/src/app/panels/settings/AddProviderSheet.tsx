@@ -25,6 +25,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { activeLlmAdapters } from '../../../composition/services';
 import { createProvider } from '../../../provider';
 import { invalidateOauthCache, resolveOauthToken } from '../../../provider/credentials';
+import type { ModelMeta } from '../../../provider/model-meta';
 import { buildOauthHeaders, oauthAccounts, oauthLogout, runDeviceLogin } from '../../../provider/oauth';
 import type { ModelDescriptor, Provider } from '../../../provider/types';
 import { CORE_PROTOCOLS, type Protocol } from '../../../provider/types';
@@ -43,6 +44,10 @@ export interface AddProviderEntry {
   models: string[];
   /** 新会话默认模型（必须是 models 之一或与 model 一致）。 */
   model: string;
+  /** API 拉取到的 per-model 元数据（provider-model-meta，2026-09-11）——拉取时
+   *  由方言的宽容解析层产出（窗口/输出上限/视觉/推理），随添加一次性落盘到
+   *  ProviderSettings.modelMeta。未拉取或端点未披露 = 缺省（不编造）。 */
+  modelMeta?: Record<string, ModelMeta>;
   /** 登录方式（Phase 3D）：codex chip 预填 authMode='oauth'。 */
   authMode?: 'api-key' | 'oauth';
   /** authMode='oauth' 时的 Rust oauth provider id。 */
@@ -83,6 +88,9 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
   const [models, setModels] = useState<string[]>([]);
   const [defaultModel, setDefaultModel] = useState('');
   const [manualModel, setManualModel] = useState('');
+  // API 拉取到的 per-model 元数据（provider-model-meta）：随确认添加落盘到
+  // ProviderSettings.modelMeta——新行出生即带窗口/视觉/推理，不必再回设置页拉一次。
+  const [pulledMeta, setPulledMeta] = useState<Record<string, ModelMeta>>({});
   // 拉取状态面
   const [fetching, setFetching] = useState(false);
   const [fetchMsg, setFetchMsg] = useState('');
@@ -132,6 +140,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       setModels([]);
       setDefaultModel('');
       setManualModel('');
+      setPulledMeta({});
       setFetching(false);
       setFetchMsg('');
       setPulled(false);
@@ -272,6 +281,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       const ids = found.map((m) => m.id).filter(Boolean);
       const merged = [...ids, ...models.filter((m) => !ids.includes(m))];
       setModels(merged);
+      setPulledMeta((prev) => ({ ...prev, ...(prov.lastModelMeta?.() ?? {}) }));
       setPulled(true);
       if (merged.length > 0 && !defaultModel) setDefaultModel(merged[0]);
       setFetchMsg(ids.length > 0 ? `已拉取 ${ids.length} 个模型` : '该端点未返回模型——可手动补模型 id');
@@ -296,6 +306,8 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       const found = (await prov.fetchModels?.()) ?? [];
       const ids = found.map((m) => m.id).filter(Boolean);
       setModels(ids);
+      // 元数据（端点披露多少收多少）——确认添加时随行落盘
+      setPulledMeta((prev) => ({ ...prev, ...(prov.lastModelMeta?.() ?? {}) }));
       setPulled(true);
       if (ids.length > 0) setDefaultModel(ids[0]);
       setFetchMsg(ids.length > 0 ? `已拉取 ${ids.length} 个模型` : '该端点未返回模型——可手动输入模型 id');
@@ -355,6 +367,7 @@ export function AddProviderSheet({ open, existingNames, onClose, onAdd }: AddPro
       baseUrl: baseUrl.trim() || undefined,
       models: ids,
       model: def,
+      ...(Object.keys(pulledMeta).length > 0 ? { modelMeta: pulledMeta } : {}),
       authMode,
       oauthProvider,
     });

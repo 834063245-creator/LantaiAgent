@@ -24,6 +24,7 @@
 
 import { getModel } from './catalog';
 import { classifyProviderError } from './error-catalog';
+import { type ModelMeta, modelEntries, parseModelEntry } from './model-meta';
 import { sendWithRetry } from './retry';
 import { extractWritePreview, fetchJsonWithTimeout, prewarmEndpoint, type SseEvent, sseEvents } from './shared';
 import { assertEffortDeclared, type StoredThinking, thinkingCapability } from './thinking';
@@ -81,6 +82,9 @@ interface ResponsesConfig {
   maxTokensFor?: (model: string) => number | undefined;
   /** 附加请求头（Phase 3 OAuth：chatgpt-account-id / originator / version / UA）。 */
   extraHeaders?: Record<string, string>;
+  /** provider 作用域描述符解析（provider-model-meta）：携带本提供方拉取到的
+   *  元数据与用户覆盖；缺省 = 全局目录（getModel）。 */
+  describeModel?: (model: string) => ModelDescriptor | undefined;
 }
 
 export function createResponsesProvider(cfg: ResponsesConfig): Provider {
@@ -89,6 +93,9 @@ export function createResponsesProvider(cfg: ResponsesConfig): Provider {
   const { model, apiKey } = cfg;
   let thinking: StoredThinking | undefined = cfg.thinking; // setThinking 运行时更新
   const extraHeaders = cfg.extraHeaders ?? {};
+  // provider 作用域描述符；缺省回落全局目录（测试直呼面零改动）
+  const describe = (m: string): ModelDescriptor | undefined => cfg.describeModel?.(m) ?? getModel(m);
+  let fetchedMeta: Record<string, ModelMeta> = {};
 
   return {
     name() {
@@ -100,7 +107,7 @@ export function createResponsesProvider(cfg: ResponsesConfig): Provider {
     async *stream(signal: AbortSignal, req: Request): AsyncGenerator<Chunk> {
       // P14 能力协商：目录模型声明是档位唯一裁决（目录外模型 = 无声明 = 不拦——
       // OAuth 订阅模型无 seed，effort 词表按 Responses 开放语义放行）。
-      assertEffortDeclared(thinking, thinkingCapability(getModel(model)), 'responses');
+      assertEffortDeclared(thinking, thinkingCapability(describe(model)), 'responses');
       const body = buildResponsesRequest(
         sanitizeToolPairing(req.messages),
         req.tools,
@@ -109,6 +116,7 @@ export function createResponsesProvider(cfg: ResponsesConfig): Provider {
         thinking,
         cfg.maxTokensFor,
         req.imageData,
+        describe(model),
       );
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -143,20 +151,22 @@ export function createResponsesProvider(cfg: ResponsesConfig): Provider {
       if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
       const json = await fetchJsonWithTimeout(`${baseUrl}/models`, headers, 10000);
       if (!json) throw new Error(`${name}: 模型目录获取失败（网络错误或端点无响应）`);
-      const data: Array<{ id: string }> = (json as { data?: Array<{ id: string }> }).data || [];
-      return data
-        .filter((m) => m.id)
-        .map((m) => ({
-          id: m.id,
-          name: m.id,
-          kind: 'responses',
-          vendor: name,
-          baseUrl,
-          reasoning: true,
-          input: ['text'] as ('text' | 'image')[],
-          contextWindow: 0,
-          maxTokens: 0,
-        }));
+      // 宽容解析（provider-model-meta）：官方 Responses 端点不披露窗口/模态时保持
+      // 「未知」语义不编造；披露了则照收（含 provider 级落盘元数据）。
+      const ctx = { kind: 'responses', vendor: name, baseUrl };
+      const models: ModelDescriptor[] = [];
+      const meta: Record<string, ModelMeta> = {};
+      for (const raw of modelEntries(json)) {
+        const parsed = parseModelEntry(raw, ctx);
+        if (!parsed) continue;
+        models.push(parsed.descriptor);
+        meta[parsed.descriptor.id] = parsed.meta;
+      }
+      fetchedMeta = meta;
+      return models;
+    },
+    lastModelMeta(): Record<string, ModelMeta> {
+      return fetchedMeta;
     },
   };
 }
@@ -205,6 +215,8 @@ export function buildResponsesRequest(
   thinkingCfg: StoredThinking | undefined,
   maxTokensFor?: (model: string) => number | undefined,
   imageData?: Request['imageData'],
+  /** provider 作用域描述符（拉取元数据 + 用户覆盖 + seed 合并）；缺省 = 全局目录。 */
+  desc?: ModelDescriptor,
 ): ResponsesRequest {
   // instructions：全部 system 消息合并（Responses 顶层字段，非 input 角色）
   const systemParts = msgs.filter((m) => m.role === 'system').map((m) => m.content);
@@ -283,7 +295,8 @@ export function buildResponsesRequest(
   if (instructions) r.instructions = instructions;
 
   // max_output_tokens：maxTok（调用方给）或目录值兜底；钳制同 openai.ts 语义
-  const cap = maxTokensFor?.(model) ?? getModel(model)?.maxTokens;
+  // （用户覆盖 ?? provider 作用域描述符 ?? 全局目录）
+  const cap = maxTokensFor?.(model) ?? desc?.maxTokens ?? getModel(model)?.maxTokens;
   const desired = maxTok > 0 ? maxTok : DEFAULT_MAX_TOKENS;
   r.max_output_tokens = cap && cap > 0 ? Math.min(desired, cap) : desired;
 

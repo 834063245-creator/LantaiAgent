@@ -6,6 +6,7 @@
 
 import { clampMaxTokens, getModel } from './catalog';
 import { classifyProviderError } from './error-catalog';
+import { type ModelMeta, modelEntries, parseModelEntry } from './model-meta';
 import { sendWithRetry } from './retry';
 import { extractWritePreview, fetchJsonWithTimeout, prewarmEndpoint, type SseEvent, sseEvents } from './shared';
 import {
@@ -67,20 +68,24 @@ interface OpenAIConfig {
   thinking?: StoredThinking;
   /** per-model 最大输出覆盖（P14）：请求时按模型解析，0/缺省 = 目录值。 */
   maxTokensFor?: (model: string) => number | undefined;
+  /** provider 作用域描述符解析（provider-model-meta）：携带本提供方拉取到的
+   *  元数据与用户覆盖；缺省 = 全局目录（getModel）。 */
+  describeModel?: (model: string) => ModelDescriptor | undefined;
 }
 
-/** 动态模型 reasoning 启发式（P0 定稿）：
- *  静态目录元数据优先（mergeDynamicModels 跳过已收录 id），此函数只服务
- *  目录外的新模型。匹配 id 中的 think/reason 等关键词。 */
-export function guessReasoning(id: string): boolean {
-  return /think|reason|r1|deepseek-v[34]|kimi-k2-thinking/i.test(id);
-}
+/** 动态模型 reasoning 启发式已迁入 provider/model-meta.ts（三方言共用的
+ *  guessReasoningFromId，按协议分野）——本文件不再持有该逻辑（单一真源）。 */
 
 export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
   const name = cfg.name || 'openai';
   const baseUrl = cfg.baseUrl.replace(/\/$/, ''); // 用户在 baseUrl 中控制 v1 前缀
   const { model, apiKey } = cfg;
   let thinking: StoredThinking | undefined = cfg.thinking; // setThinking 运行时更新
+  // provider 作用域描述符（拉取元数据 + 用户覆盖 + 静态 seed 合并）；
+  // 缺省回落全局目录——测试直呼面与未接线方言零改动。
+  const describe = (m: string): ModelDescriptor | undefined => cfg.describeModel?.(m) ?? getModel(m);
+  // 最近一次 fetchModels 解析出的元数据（落盘面经 Provider.lastModelMeta 取）
+  let fetchedMeta: Record<string, ModelMeta> = {};
 
   return {
     name() {
@@ -90,9 +95,10 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
       thinking = cfg;
     },
     async *stream(signal: AbortSignal, req: Request): AsyncGenerator<Chunk> {
-      // P14 能力协商：模型目录声明是档位合法性的唯一裁决。选中声明外档位
-      // 在任何网络 I/O 之前响亮报错（绝不静默替换成别的档位）。
-      assertEffortDeclared(thinking, thinkingCapability(getModel(model)), 'openai');
+      // P14 能力协商：模型声明是档位合法性的唯一裁决（声明来自本 provider 作用域
+      // 的合并描述符——网关拉取到的档位声明与用户覆盖都能抵达这里）。选中声明外
+      // 档位在任何网络 I/O 之前响亮报错（绝不静默替换成别的档位）。
+      assertEffortDeclared(thinking, thinkingCapability(describe(model)), 'openai');
       const body = buildChatRequest(
         sanitizeToolPairing(req.messages),
         req.tools,
@@ -101,6 +107,7 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
         thinking,
         cfg.maxTokensFor,
         req.imageData,
+        describe(model),
       );
       const response = await sendWithRetry({
         url: `${baseUrl}/chat/completions`,
@@ -139,22 +146,24 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
       // 手动刷新报真实原因）；静态目录 + 已合并的 last-good 动态模型兜底，不因
       // 失败丢失。
       if (!json) throw new Error(`${name}: 模型目录获取失败（网络错误或端点无响应）`);
-      const data: Array<{ id: string }> = (json as { data?: Array<{ id: string }> }).data || [];
-      return data
-        .filter((m) => m.id)
-        .map((m) => ({
-          id: m.id,
-          name: m.id,
-          kind: 'openai' as const,
-          vendor: name,
-          baseUrl,
-          reasoning: guessReasoning(m.id),
-          input: ['text'] as ('text' | 'image')[],
-          contextWindow: 0,
-          maxTokens: 0,
-          // P14：/models 端点只报 id，不披露档位能力——thinkingEfforts 留空
-          // （无声明 = UI 不显示档位选择器 + 请求不发 effort 参数），不编造。
-        }));
+      // 宽容解析（provider-model-meta）：端点披露什么就填什么——OpenAI 兼容族
+      // 的方言差异极大（官方仅 id；聚合网关给 name + context_length；OpenRouter
+      // 系给 architecture.input_modalities + supported_parameters）。未披露的字段
+      // 保持「未知」语义（不编造）；真披露的字段同时收进 lastModelMeta 供落盘。
+      const ctx = { kind: 'openai', vendor: name, baseUrl };
+      const models: ModelDescriptor[] = [];
+      const meta: Record<string, ModelMeta> = {};
+      for (const raw of modelEntries(json)) {
+        const parsed = parseModelEntry(raw, ctx);
+        if (!parsed) continue;
+        models.push(parsed.descriptor);
+        meta[parsed.descriptor.id] = parsed.meta;
+      }
+      fetchedMeta = meta;
+      return models;
+    },
+    lastModelMeta(): Record<string, ModelMeta> {
+      return fetchedMeta;
     },
   };
 }
@@ -215,10 +224,14 @@ export function buildChatRequest(
   thinking: StoredThinking | undefined,
   maxTokensFor?: (model: string) => number | undefined,
   imageData?: Request['imageData'],
+  /** provider 作用域描述符（拉取元数据 + 用户覆盖 + seed 合并）；缺省 = 全局目录。
+   *  测试直呼面不传即保持旧行为（getModel）。 */
+  desc?: ModelDescriptor,
 ): ChatRequest {
-  // P14 能力协商：档位合法性由模型目录声明裁决（deepseek.json 等声明 thinkingEfforts）。
+  // P14 能力协商：档位合法性由模型声明裁决（deepseek.json 等声明 thinkingEfforts）。
   // 直连 DeepSeek 声明 low/high/max（2026-08-22 用户官方文档核实 low 成立）。
-  const cap = thinkingCapability(getModel(model));
+  const resolved = desc ?? getModel(model);
+  const cap = thinkingCapability(resolved);
   assertEffortDeclared(thinking, cap, 'openai');
 
   // wire 翻译（声明驱动，零静默替换）：
@@ -317,7 +330,13 @@ export function buildChatRequest(
     model,
     messages: chatMsgs,
     tools: chatTools,
-    max_tokens: clampMaxTokens(model, maxTok > 0 ? maxTok : DEFAULT_MAX_TOKENS, maxTokensFor?.(model)),
+    // 钳制链：用户覆盖 ?? provider 作用域描述符的 maxTokens（= 拉取元数据 ?? 目录
+    // seed）。后者此前读不到——网关模型没有 seed 条目，钳制值恒为「无」。
+    max_tokens: clampMaxTokens(
+      model,
+      maxTok > 0 ? maxTok : DEFAULT_MAX_TOKENS,
+      maxTokensFor?.(model) ?? resolved?.maxTokens,
+    ),
     stream: true,
     stream_options: { include_usage: true },
     thinking: thinkingBlock,

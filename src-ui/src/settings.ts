@@ -6,8 +6,9 @@
 
 import { ANTHROPIC_DEFAULT_BASE_URL } from './provider/anthropic';
 import { getCatalogVendors, getDefaultModel, getModel } from './provider/catalog';
-import type { StoredThinking } from './provider/thinking';
-import type { CoreProtocol, Protocol } from './provider/types';
+import type { ModelMeta } from './provider/model-meta';
+import type { StoredThinking, ThinkingEffort } from './provider/thinking';
+import type { CoreProtocol, ModelDescriptor, Protocol } from './provider/types';
 import { findVendorTemplate, VENDOR_TEMPLATES } from './provider/vendor-templates';
 
 /** 连接探针的结果（CONTEXT.md「ConnectionProbe」）— 非敏感，随 localStorage 持久化。 */
@@ -56,6 +57,13 @@ export interface ProviderSettings {
    *  多模型时代按 Provider 管一个值毫无意义）。键 = 模型 id；0/缺省 = 用目录值。
    *  workspace._contextWindowFor 与 createProvider → buildRequest → clampMaxTokens 消费。 */
   modelOverrides?: Record<string, ModelOverrides>;
+  /** per-model 的 API 拉取元数据缓存（provider-model-meta，2026-09-11）——
+   *  「从 API 拉取」时由适配器的宽容解析层（provider/model-meta.parseModelEntry）
+   *  写入，随后**持久化**。解析链第二优先层（低于 modelOverrides 的用户手改，
+   *  高于静态目录 seed）：聚合网关/自定义端点在静态目录里没有条目，此前拉取只
+   *  留下 id 列表，元数据（上下文窗口/视觉/推理）随进程消失——99% 的模型只能
+   *  吃「目录无值」的 200K 假默认。键 = 模型 id。 */
+  modelMeta?: Record<string, ModelMeta>;
 }
 
 /** 单模型的 P14 覆盖：目录数据 stale / 目录外自定义模型时的纠正。 */
@@ -78,29 +86,86 @@ export function effectiveModels(p: ProviderSettings): string[] {
   return p.model?.trim() ? [p.model.trim()] : [];
 }
 
-/** 某模型生效的上下文窗口：per-model 覆盖 ?? 目录值 ?? 默认（200K）。 */
+/** 某模型生效的上下文窗口（provider-model-meta 2026-09-11 四层链）：
+ *  用户覆盖 ?? API 拉取元数据 ?? 静态目录 seed ?? 默认（200K）。
+ *  中间层的意义：聚合网关/自定义端点在静态目录里没有条目，窗口此前一律吃
+ *  200K 假默认（实测某网关 69 个模型真实窗口 200K～1.05M 全被压成 200K，
+ *  自动压缩阈值因此全错）。 */
 export function modelContextWindow(p: ProviderSettings, modelId: string, fallback = 200000): number {
   const ov = p.modelOverrides?.[modelId]?.contextWindow;
   if (ov && ov > 0) return ov;
+  const meta = p.modelMeta?.[modelId]?.contextWindow;
+  if (meta && meta > 0) return meta;
   return getModel(modelId)?.contextWindow || fallback;
 }
 
-/** 某模型生效的最大输出 token：per-model 覆盖 ?? 目录值 ?? 0（不钳制）。
+/** 某模型生效的最大输出 token（同四层链；末层 0 = 不钳制）。
  *  （clampMaxTokens 内部另有目录兜底，此处返回 per-model 覆盖优先值。） */
 export function modelMaxTokens(p: ProviderSettings, modelId: string): number {
   const ov = p.modelOverrides?.[modelId]?.maxTokens;
   if (ov && ov > 0) return ov;
+  const meta = p.modelMeta?.[modelId]?.maxTokens;
+  if (meta && meta > 0) return meta;
   return getModel(modelId)?.maxTokens || 0;
 }
 
-/** 某模型生效的输入模态（B5 · D-8①）：per-model 覆盖 ?? 目录声明 ?? ['text']。
+/** 某模型生效的输入模态（四层链：覆盖 ?? 拉取元数据 ?? 目录声明 ?? ['text']）。
  *  消费面 = createProvider 能力戳（请求期图投影）+ 创作坞附图门禁 + ModelSelector
  *  徽标——三面同链（覆盖一处声明即三面生效）。provider 缺省（未配置厂商）=
- *  只查目录（目录外自定义模型恒 ['text']——除非日后有全局声明面）。 */
+ *  只查目录（目录外自定义模型恒 ['text']——除非有拉取元数据或覆盖）。 */
 export function modelInput(p: ProviderSettings | undefined, modelId: string): ('text' | 'image')[] {
   const ov = p?.modelOverrides?.[modelId]?.input;
   if (ov && ov.length > 0) return [...ov];
+  const meta = p?.modelMeta?.[modelId]?.input;
+  if (meta && meta.length > 0) return [...meta];
   return getModel(modelId)?.input ?? ['text'];
+}
+
+/** 某模型是否支持推理/思考（拉取元数据 ?? 目录声明；皆无 = undefined 未知）。
+ *  未知不编造——UI 不据此显示任何能力徽标。 */
+export function modelReasoning(p: ProviderSettings | undefined, modelId: string): boolean | undefined {
+  return p?.modelMeta?.[modelId]?.reasoning ?? getModel(modelId)?.reasoning;
+}
+
+/** 某模型声明的思考档位（拉取元数据 ?? 目录声明；皆无 = undefined）。
+ *  现实：当前主流端点均不披露档位清单——缺省即「无声明」，UI 不显示档位选择器、
+ *  请求不发 effort 参数（P14 能力协商）。 */
+export function modelThinkingEfforts(
+  p: ProviderSettings | undefined,
+  modelId: string,
+): readonly ThinkingEffort[] | undefined {
+  return p?.modelMeta?.[modelId]?.thinkingEfforts ?? getModel(modelId)?.thinkingEfforts;
+}
+
+/** 拉取元数据与静态目录 seed + 用户覆盖合并成完整 ModelDescriptor——
+ *  方言请求期（thinkingCapability / clampMaxTokens）读它而非全局 getModel，
+ *  使 provider 级的拉取元数据与覆盖真正抵达 wire 层。
+ *  seed 与 meta 皆无 = undefined（调用面落回「目录外模型」语义，不编造）。
+ *  kind/vendor/baseUrl 由连接配置补齐（provider 名即 vendor，见 ModelSelector
+ *  「写错家 400」同族纪律）。 */
+export function modelDescriptor(p: ProviderSettings, modelId: string): ModelDescriptor | undefined {
+  const seed = getModel(modelId);
+  const meta = p.modelMeta?.[modelId];
+  if (!seed && !meta) return undefined;
+  const input = modelInput(p, modelId);
+  const contextWindow = modelContextWindow(p, modelId, 0);
+  const maxTokens = modelMaxTokens(p, modelId);
+  const reasoning = modelReasoning(p, modelId);
+  const thinkingEfforts = modelThinkingEfforts(p, modelId);
+  return {
+    id: modelId,
+    name: meta?.name ?? seed?.name ?? modelId,
+    kind: p.kind,
+    vendor: p.name,
+    baseUrl: p.baseUrl || seed?.baseUrl || '',
+    reasoning: reasoning ?? false,
+    input: [...input],
+    contextWindow,
+    maxTokens,
+    ...(thinkingEfforts !== undefined ? { thinkingEfforts } : {}),
+    ...(seed?.thinkingOff !== undefined ? { thinkingOff: seed.thinkingOff } : {}),
+    ...(seed?.deepseekThinking !== undefined ? { deepseekThinking: seed.deepseekThinking } : {}),
+  };
 }
 
 export interface AgentSettings {
@@ -259,6 +324,14 @@ export function loadSettings(): AppSettings {
           for (const p of parsed.providers) {
             if (p && typeof p.apiKey === 'string' && p.apiKey.trim() === 'null') {
               p.apiKey = '';
+            }
+            // P14 遗留死字段清理（2026-09-11）：per-provider contextWindow/maxTokens
+            // 已拆为 per-model modelOverrides——旧存储里的值**读都不读**（多模型
+            // 时代按 Provider 管一个值是错语义），加载时即归档清掉，下次保存落回
+            // 干净状态（同上方 apiKey "null" 清洗惯例）。
+            if (p && typeof p === 'object') {
+              delete (p as { contextWindow?: unknown }).contextWindow;
+              delete (p as { maxTokens?: unknown }).maxTokens;
             }
           }
         }

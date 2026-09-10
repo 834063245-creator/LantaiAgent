@@ -18,9 +18,9 @@
 // 挂着 ADR #0002 单独裁决）；贡献道当前的合法用法是【覆盖】两种内核方言。
 
 import { activeLlmAdapters } from '../composition/services';
-import { modelInput, type ProviderSettings } from '../settings';
+import { modelDescriptor, modelInput, type ProviderSettings } from '../settings';
 import { withThinkingDisabled } from './thinking';
-import type { Provider, ProviderRuntimeArgs } from './types';
+import type { ModelDescriptor, Provider, ProviderRuntimeArgs } from './types';
 
 export interface CreateProviderOptions {
   /** Disable reasoning/thinking on OpenAI-compatible providers (e.g. for translation). */
@@ -47,6 +47,11 @@ function resolveProviderDialect(kind: string, rt: ProviderRuntimeArgs): Provider
 export function createProvider(settings: ProviderSettings, options?: CreateProviderOptions): Provider {
   // per-model 最大输出覆盖（P14）：请求时按模型解析，0/缺省 = 目录值（clampMaxTokens 兜底）
   const maxTokensFor = (model: string): number | undefined => settings.modelOverrides?.[model]?.maxTokens || undefined;
+  // provider 作用域描述符解析（provider-model-meta）：方言请求期（档位协商 / 输出
+  // 钳制）读它——合并链 = 用户覆盖 ?? API 拉取元数据 ?? 静态目录 seed ?? 默认。
+  // 此前方言一律读全局 getModel：聚合网关/自定义端点的模型（静态目录无条目）
+  // 永远拿不到自己的窗口与档位声明，拉取到的元数据也到不了 wire 层。
+  const describeModel = (model: string): ModelDescriptor | undefined => modelDescriptor(settings, model);
   const prov = resolveProviderDialect(settings.kind, {
     name: settings.name,
     apiKey: settings.apiKey,
@@ -56,6 +61,7 @@ export function createProvider(settings: ProviderSettings, options?: CreateProvi
     // 翻译器/摘要路径都传 disableThinking: true。
     thinking: withThinkingDisabled(settings.thinking, options?.disableThinking),
     maxTokensFor,
+    describeModel,
     oauthHeaders: options?.oauthHeaders,
   });
   // 输入模态能力戳（multimodal-image-plan B3 · D-8③）：生效声明 = ModelOverrides.input

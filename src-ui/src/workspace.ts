@@ -590,17 +590,25 @@ export class Workspace {
     prov.prewarm?.();
     // 从 API 获取动态模型，合并到目录（尽力而为）
     // R5 D8（2026-08-29）：拉取中面——compact 选择器分组头「目录获取中…」可见
-    markDynamicFetchStart(active.name);
-    prov
-      .fetchModels?.()
-      .then((models) => {
-        if (models.length > 0) mergeDynamicModels(active.name, models);
-        // C5（2026-08-27）：后台自动拉取也记失败面——成功清标记，失败记原因
-        // （compact 选择器分组头可见「目录获取失败」）。last-good 已合并模型
-        // 不因失败被清。
-        recordDynamicFetchResult(active.name, true);
-      })
-      .catch((e) => recordDynamicFetchResult(active.name, false, e instanceof Error ? e.message : String(e)));
+    // provider-model-meta（2026-09-11）：**全部提供方**都后台拉取（此前只拉 active
+    // ——多提供方配置下非活动行的模型元数据永远缺失，切过去才发现窗口/视觉全错）。
+    // 无凭据的行由 live 层静默返回空（不算失败面）；这里只落**内存目录**
+    // （mergeDynamicModels），不写 settings——避免与设置页未保存的暂存互相覆盖。
+    // 持久化走设置页「从 API 拉取」这个显式动作（写暂存 → 保存落 modelMeta）。
+    for (const row of settings.providers) {
+      const target: Provider = row.name === active.name ? prov : createLiveProvider(row.name);
+      markDynamicFetchStart(row.name);
+      target
+        .fetchModels?.()
+        .then((models) => {
+          if (models.length > 0) mergeDynamicModels(row.name, models);
+          // C5（2026-08-27）：后台自动拉取也记失败面——成功清标记，失败记原因
+          // （compact 选择器分组头可见「目录获取失败」）。last-good 已合并模型
+          // 不因失败被清。
+          recordDynamicFetchResult(row.name, true);
+        })
+        .catch((e) => recordDynamicFetchResult(row.name, false, e instanceof Error ? e.message : String(e)));
+    }
     this.prov = prov;
 
     // ── 创建 Runtime + UI 适配器 ──

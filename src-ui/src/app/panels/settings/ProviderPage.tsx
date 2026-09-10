@@ -7,9 +7,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createProvider } from '../../../provider';
-import { markDynamicFetchStart, recordDynamicFetchResult } from '../../../provider/catalog';
+import { markDynamicFetchStart, mergeDynamicModels, recordDynamicFetchResult } from '../../../provider/catalog';
 import { invalidateCredentialCache } from '../../../provider/credentials';
 import { createLiveProvider } from '../../../provider/live';
+import { applyFetchedModels } from '../../../provider/model-sync';
 import { oauthAccounts, oauthLogout, runDeviceLogin } from '../../../provider/oauth';
 import type { Provider } from '../../../provider/types';
 import { ChunkType } from '../../../provider/types';
@@ -181,19 +182,20 @@ export function ProviderPage({
     // 失败上抛给调用方显示真实原因（fetchModels 不再把网络失败伪装成「无模型」）。
     // 重构（2026-08-26）：拉取结果 = 该提供方「可用模型」列表（DSH /api/models 的
     // host 报告语义）——写进暂存 settings，随保存落盘；创作坞下拉据此列项。
+    // provider-model-meta（2026-09-11）：**元数据一并落盘**——适配器的宽容解析层
+    // 认出的窗口/输出上限/视觉/推理（含聚合网关的 name + context_length）经
+    // lastModelMeta 取出，写进 ProviderSettings.modelMeta（暂存，保存即持久化）。
+    // 此前只落 id 列表，元数据随进程消失 → 网关模型重启后一律吃 200K 假默认。
     try {
       // R5 D8（2026-08-29）：拉取中面——选择器分组头「目录获取中…」同步可见
       markDynamicFetchStart(p.name);
       const models = (await prov.fetchModels?.()) ?? [];
       recordDynamicFetchResult(p.name, true);
-      // ⚡ 拉取结果与既有可用模型**合并去重**（2026-09 UX 走查）：旧实现直接
-      // 覆盖 models——用户手动补过模型后点拉取，手工条目被整批清掉。现在保留
-      // 手动条目（拉取端点返回的 id 优先在前——API 实况），仅补新拉到的。
-      const pulledIds = models.map((m) => m.id).filter(Boolean);
-      const existing = Array.isArray(p.models) ? p.models.filter((m) => m?.trim()) : [];
-      const merged = [...pulledIds, ...existing.filter((m) => !pulledIds.includes(m))];
-      onCommitProvider(updateProvider(settings, p.name, { models: merged }));
-      return pulledIds.length;
+      // 进程内目录（展示面即时生效：选择器里的显示名/窗口徽标）；
+      // 落盘面走 applyFetchedModels（不可变 settings → 暂存 → 保存）
+      if (models.length > 0) mergeDynamicModels(p.name, models);
+      onCommitProvider(applyFetchedModels(settings, p.name, { models, meta: prov.lastModelMeta?.() ?? {} }));
+      return models.length;
     } catch (e) {
       recordDynamicFetchResult(p.name, false, e instanceof Error ? e.message : String(e));
       throw e;
@@ -341,6 +343,11 @@ export function ProviderPage({
           if (entry.baseUrl?.trim()) added.baseUrl = entry.baseUrl.trim();
           added.models = entry.models;
           added.model = entry.model;
+          // provider-model-meta：拉取到的元数据随行落盘（新行出生即带窗口/视觉/
+          // 推理；未拉取或端点未披露 = 缺省，不编造）
+          if (entry.modelMeta && Object.keys(entry.modelMeta).length > 0) {
+            added.modelMeta = entry.modelMeta;
+          }
           // Phase 3D：登录方式（codex 等 oauth 订阅行）
           if (entry.authMode) added.authMode = entry.authMode;
           if (entry.oauthProvider) added.oauthProvider = entry.oauthProvider;
