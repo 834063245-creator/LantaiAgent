@@ -16,7 +16,7 @@ import { activeHookContributions } from '../../composition/hook-service';
 import { factoryComposition, type ResolvedComposition } from '../../composition/roster';
 import type { Context } from '../../cordis';
 import type { StoredThinking } from '../../provider/thinking';
-import type { Message, Provider } from '../../provider/types';
+import type { ChatImageRef, Message, Provider } from '../../provider/types';
 import { kernelDeleteFile, kernelProcessCall, kernelReadFile, kernelWriteFile, parseJson } from '../../rpc-contract';
 import { Agent } from '../agent';
 import { resolveAgentLoop } from '../agent-loop/agent-loop-active';
@@ -89,8 +89,11 @@ class AgentHandleImpl implements AgentHandle {
     return this._agent.isRunning ? 'running' : 'idle';
   }
 
-  run(signal: AbortSignal, input: string): Promise<void> {
-    return this._agent.run(signal, input);
+  /** 转发附图引用（ChatAgentHandle.run 第三参）——**必须原样透传**：
+   *  本类是实现侧最后一跳，少接一参即静默吞图（图不进 agent 会话、无占位、
+   *  模型只收文字）；同签名的 acp.AcpAgent 是外部协议极小子集，不走此路。 */
+  run(signal: AbortSignal, input: string, images?: ChatImageRef[]): Promise<void> {
+    return this._agent.run(signal, input, images);
   }
   runGoal(signal: AbortSignal, goal: string) {
     return this._agent.runGoal(signal, goal);
