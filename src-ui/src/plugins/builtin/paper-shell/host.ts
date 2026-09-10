@@ -102,6 +102,7 @@ export type { StreamRegionState } from '../../../paper/space';
 export {
   clampRegionW,
   defaultRegionFor,
+  EMPTY_REGION_CONTENT_H,
   nearestFreeRegion,
   REGION_CONTENT_MARGIN,
   STREAM_REGION,

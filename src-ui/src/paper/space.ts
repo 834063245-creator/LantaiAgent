@@ -33,6 +33,14 @@ export const STREAM_REGION = {
 export const REGION_MIN_W = 720;
 export const REGION_MAX_W = 2160;
 
+/** 空卷（零块）流区的虚拟内容高（世界单位）——卷首之下的「此卷未落墨」占位区。
+ *  零块卷没有「最旧块顶」可当 regionTop（旧实现用 Math.min 的 0 初值 → 纸面
+ *  钉在世界原点，与锚点无关：新建卷的纸画在别处、首句落墨才跳回锚点）。
+ *  regionTop = 锚点 − 本值，纸面底缘仍 = 锚点 + 底距 72——空卷也是一张贴在
+ *  锚点上的纸，与首句落墨后的几何同族。消费面：use-paper-regions 的 regionTop
+ *  与空卷包围盒兜底（两处同值，改一处必改两处）。 */
+export const EMPTY_REGION_CONTENT_H = 200;
+
 export function clampRegionW(w: number): number {
   return Math.min(REGION_MAX_W, Math.max(REGION_MIN_W, w));
 }

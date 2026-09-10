@@ -88,6 +88,7 @@ export const selSeedOf = impl.selSeedOf;
 export const sheetCharacter = impl.sheetCharacter;
 export const clampRegionW = impl.clampRegionW;
 export const defaultRegionFor = impl.defaultRegionFor;
+export const EMPTY_REGION_CONTENT_H = impl.EMPTY_REGION_CONTENT_H;
 export const nearestFreeRegion = impl.nearestFreeRegion;
 export const REGION_CONTENT_MARGIN = impl.REGION_CONTENT_MARGIN;
 export const STREAM_REGION = impl.STREAM_REGION;

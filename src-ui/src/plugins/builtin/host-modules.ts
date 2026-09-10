@@ -116,6 +116,7 @@ import { sheetCharacter } from '../../paper/sheet';
 import {
   clampRegionW,
   defaultRegionFor,
+  EMPTY_REGION_CONTENT_H,
   nearestFreeRegion,
   pickDropAnchor,
   REGION_CONTENT_MARGIN,
@@ -294,6 +295,7 @@ const faceDeps = {
   sheetCharacter,
   clampRegionW,
   defaultRegionFor,
+  EMPTY_REGION_CONTENT_H,
   nearestFreeRegion,
   pickDropAnchor,
   REGION_CONTENT_MARGIN,

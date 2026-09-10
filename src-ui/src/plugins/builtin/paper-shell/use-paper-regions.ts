@@ -26,6 +26,7 @@ import {
   createBlockMeasureCache,
   createInkCache,
   defaultRegionFor,
+  EMPTY_REGION_CONTENT_H,
   groupWorkUnits,
   layoutRegion,
   measureBlockHeightCached,
@@ -375,8 +376,13 @@ export function usePaperRegions(params: {
           seq.set(blocks[bi].id, String(bi + 1).padStart(3, '0'));
         }
 
-        let top = 0;
+        let top = Number.POSITIVE_INFINITY;
         for (const g of flowGeom) top = Math.min(top, g.y);
+        // 零块卷（新建即摊开、未落墨）：没有「最旧块顶」——regionTop 取锚点上溯
+        // EMPTY_REGION_CONTENT_H（虚拟内容顶）。旧实现以 0 为 Math.min 初值 =
+        // 空卷纸面钉在世界原点（新建卷的纸画在别处、首句落墨才跳回锚点：
+        // 2026-09-10 用户两问之二）。
+        if (!Number.isFinite(top)) top = anchor.anchorY - EMPTY_REGION_CONTENT_H;
         const regionTop = top;
         // 卷首头高度：标题按流区可用宽实测（folio 头左右内距 16×2，镜像 .pp-folio-head padding）
         const folioH = measureFolioHeadHeight(s.label || `案卷 ${s.id}`, anchor.width - 32);
@@ -409,7 +415,7 @@ export function usePaperRegions(params: {
             extent: {
               x0: anchor.anchorX - anchor.width / 2,
               x1: anchor.anchorX + anchor.width / 2,
-              y0: anchor.anchorY - 200,
+              y0: anchor.anchorY - EMPTY_REGION_CONTENT_H,
               y1: anchor.anchorY + 72,
             },
             blockIds: new Set(),
