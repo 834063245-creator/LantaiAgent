@@ -449,6 +449,20 @@ describe('贴纸纹理归属（2026-09-02 透明错觉根治批）', () => {
     expect(home).toContain('var(--vignette)');
   });
 
+  it('模态面板豁免（2026-09-10 两场景统一）：设置遮罩在场恢复文档级材质——工作区开设置不再被画布态连坐剥光', () => {
+    // 纹理层恢复（id 特异性压过画布态退役的 display:none）
+    const modal = ruleBody(HOME_CSS, 'body:has(#settings-panel-overlay)::after');
+    expect(modal).toContain('display: block');
+    // 帘纹+顶光+边沉三件齐回（与首页开设置同观感）
+    const before = ruleBody(HOME_CSS, 'body:has(#settings-panel-overlay)::before');
+    expect(before).toContain('var(--laid-lines)');
+    expect(before).toContain('var(--light-fall)');
+    expect(before).toContain('var(--vignette)');
+    // 画布态退役本体不受影响（设置关掉即回画布无纹态）
+    const retire = ruleBody(HOME_CSS, 'body:has(.pp-root)::after');
+    expect(retire).toContain('display: none');
+  });
+
   it('桌垫：世界内纸面——四层配方（微颗粒×grain×fiber×帘纹）+ 无界巨幅 + 不与流区混合', () => {
     const desk = ruleBody(PANEL_CSS, '.pp-desk {');
     // 桌面纸配方：与 body::after 同源 + 帘纹归桌面

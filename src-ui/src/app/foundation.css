@@ -161,6 +161,18 @@ body::before {
 body:not(:has(.pp-root))::before {
   background: var(--laid-lines), var(--light-fall), var(--vignette);
 }
+/* 模态面板豁免（2026-09-10 两场景统一修复）：设置面板是全屏模态（墨纱盖
+ * 画布、z 401），观感属「非画布态」——但画布态退役只看 .pp-root 在不在，
+ * 工作区里开设置时纸壳仍挂载，文档级纹理/帘纹被连坐剥光（首页开设置有纸
+ * 感、工作区开设置是平色板——同一面板两副面孔）。设置遮罩在场即恢复材质
+ * （模态无拖动空间隐喻，规格书 §10 法则 4「首页/面板照旧」）；命令面板等
+ * 瞬时浮层不豁免（几秒即散，材质归属其下的画布）。 */
+body:has(#settings-panel-overlay)::after {
+  display: block; /* 压过画布态退役（id 选择器特异性压类选择器） */
+}
+body:has(#settings-panel-overlay)::before {
+  background: var(--laid-lines), var(--light-fall), var(--vignette);
+}
 
 /* ── 顶部书眉（窗口拖拽区 + 品牌 + 设置入口 + 窗口控制）── */
 .sh-head {
