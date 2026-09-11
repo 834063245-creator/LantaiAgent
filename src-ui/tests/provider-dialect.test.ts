@@ -115,6 +115,69 @@ describe('方言解析器（createProvider 收口）', () => {
       await env.dispose();
     }
   });
+
+  it('v25：缺 model() 的旧 adapter 在创建边界被点名（PROVIDER_ADAPTER_SHAPE），不再崩在回合中途', async () => {
+    const env = await bootedWithRegistry();
+    try {
+      // 按 v25 之前的契约构建的 adapter（只有 name/stream——TS 编译期管不到
+      // 运行时加载的插件 bundle，故必须在创建边界硬校验）
+      const legacy = {
+        name: () => 'legacy',
+        stream: async function* () {
+          /* 探针不产流 */
+        },
+      } as unknown as Provider;
+      env.register({ id: 'acme/legacy-adapter', kind: 'openai', create: () => legacy });
+
+      let thrown: unknown;
+      try {
+        createProvider(SETTINGS('openai'));
+      } catch (e) {
+        thrown = e;
+      }
+      expect(thrown).toBeInstanceOf(Error);
+      const msg = String((thrown as Error)?.message ?? '');
+      expect(msg).toContain('PROVIDER_ADAPTER_SHAPE');
+      // 点名 adapter id 与缺失成员——旧形态只有 TypeError: xxx.model is not a function
+      expect(msg).toContain('acme/legacy-adapter');
+      expect(msg).toContain('model()');
+      // 指向修法（不是回退：契约 v25 起 model() 必填）
+      expect(msg).toContain('model: () => rt.model');
+    } finally {
+      await env.dispose();
+    }
+  });
+
+  it('v25：形状校验不提供回退——绝不用 name() 顶替 model()（那正是被修掉的静默 bug）', async () => {
+    const env = await bootedWithRegistry();
+    try {
+      const legacy = {
+        name: () => 'legacy-provider',
+        stream: async function* () {
+          /* 探针不产流 */
+        },
+      } as unknown as Provider;
+      env.register({ id: 'acme/no-fallback', kind: 'anthropic', create: () => legacy });
+
+      // 必须抛错，而不是「补个默认值让它跑起来」
+      expect(() => createProvider(SETTINGS('anthropic'))).toThrow(/PROVIDER_ADAPTER_SHAPE/);
+    } finally {
+      await env.dispose();
+    }
+  });
+
+  it('v25：形状合法的 adapter 不受影响（回归——校验不误伤）', async () => {
+    const env = await bootedWithRegistry();
+    try {
+      env.register({ id: 'acme/ok-adapter', kind: 'openai', create: () => stub('ok-tag') });
+      const p = createProvider(SETTINGS('openai'));
+      expect(p.name()).toBe('ok-tag');
+      expect(p.model()).toBe('ok-tag');
+      expect(typeof p.stream).toBe('function');
+    } finally {
+      await env.dispose();
+    }
+  });
 });
 
 interface DialectEnv {

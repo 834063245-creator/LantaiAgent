@@ -31,11 +31,40 @@ export interface CreateProviderOptions {
   oauthHeaders?: Record<string, string>;
 }
 
+/** ctx.llm adapter 必须实现的成员（开放面契约 v25 起 `Provider` 形状的可执行镜像）。
+ *  真源是 provider/types.ts 的 `Provider` 接口——TS 编译期只覆盖 src/ 内的实现，
+ *  插件 bundle 是运行时加载的，编译器管不到（动态插件/外部插件同此）。 */
+const REQUIRED_PROVIDER_MEMBERS: readonly (keyof Provider)[] = ['name', 'model', 'stream'];
+
+/** 形状校验：旧契约构建的 adapter 在**创建边界**被点名，而不是等到回合中途
+ *  抛 `TypeError: host.prov.model is not a function`（2026-09-12 实测：
+ *  那是升级 v25 后旧 bundle 的实际失败形态，报错对 adapter 作者毫无指引）。
+ *
+ *  ⚠️ 这不是兼容层——不做任何回退/兜底（绝不 `?? name()` 之类把提供方名
+ *  当模型 id 填回去，那正是 v25 修掉的静默 bug 形态）；只把「哪里坏了、
+ *  怎么修」说清楚，报错即终局。 */
+function assertProviderShape(prov: Provider, adapterId: string, kind: string): void {
+  for (const member of REQUIRED_PROVIDER_MEMBERS) {
+    if (typeof prov[member] === 'function') continue;
+    const hint =
+      member === 'model'
+        ? '该 adapter 可能按 v25 之前的契约构建——开放面契约 v25 起 Provider 新增必填 model()（返回真实模型 id；name() 是提供方身份，两者不可混用），请补 model: () => rt.model 后重新构建插件'
+        : `Provider 契约要求实现 ${String(member)}()`;
+    throw new Error(
+      `PROVIDER_ADAPTER_SHAPE: adapter「${adapterId}」(kind=${kind}) 未实现 ${String(member)}()——${hint}`,
+    );
+  }
+}
+
 /** 按 ctx.llm adapter 注册序取最后一个同 kind 实现（后注册胜）；未命中响亮报错。 */
 function resolveProviderDialect(kind: string, rt: ProviderRuntimeArgs): Provider {
   const contributed = [...activeLlmAdapters()].filter((d) => d.kind === kind);
   const winner = contributed[contributed.length - 1];
-  if (winner) return winner.create(rt);
+  if (winner) {
+    const prov = winner.create(rt);
+    assertProviderShape(prov, winner.id, kind);
+    return prov;
+  }
   const registeredKinds = [...new Set(activeLlmAdapters().map((d) => d.kind))].sort();
   throw new Error(
     `PROVIDER_DIALECT: 未注册的协议方言 "${kind}"（当前可用：${registeredKinds.join(', ') || '(无已注册 adapter)'}）` +
