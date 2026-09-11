@@ -126,6 +126,13 @@ export interface Chunk {
 /** Provider 是具备聊天能力的模型后端。 */
 export interface Provider {
   name(): string;
+  /** 本提供方当前生效的**模型 id**（= 请求里发给服务商的 model 字段）。
+   *  与 `name()` 是两回事：`name()` 是提供方身份（settings.providers[].name，
+   *  如 "commandcodegoat"），本方法是被调用的模型（如 "deepseek/deepseek-v4.1-flash"）。
+   *  2026-09-12 立：此前可观测面（turn/start 载荷、llm response 日志）把
+   *  `name()` 填进了名为 `model` 的字段——排查时被这行日志带偏十几分钟。
+   *  会话级模型覆盖（live provider）时本方法必须返回**覆盖后**的值。 */
+  model(): string;
   /** 启动流式补全，yield chunks。取消 signal 会中止。 */
   stream(signal: AbortSignal, req: Request): AsyncGenerator<Chunk>;
   /** 输入模态能力戳（multimodal-image-plan B3 · D-8③）：工厂从模型目录

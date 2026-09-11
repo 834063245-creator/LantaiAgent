@@ -106,13 +106,19 @@ interface ModelDescriptor {
 
 ```ts
 interface Provider {
-  name(): string;
+  name(): string;                              // 提供方身份（settings.providers[].name）
+  model(): string;                             // 真实模型 id（2026-09-12 立；会话覆盖后的生效值）
   stream(signal, req): AsyncGenerator<Chunk>;  // 唯一真实路径
   prewarm?(): void;
   fetchModels?(): Promise<ModelDescriptor[]>;
   lastModelMeta?(): Record<string, ModelMeta>; // 同一次拉取的元数据（落盘面真源，2026-09-11）
 }
 ```
+
+> ⚠️ `name()` 与 `model()` 是两回事，**不可混用**（2026-09-12 事故）：前者是提供方
+> 身份（如 `commandcodegoat`），后者是被调用的模型（如 `deepseek/deepseek-v4.1-flash`）。
+> 可观测面（`turn/start` / `request/start` 载荷、`llm response` 日志）历史上把
+> `name()` 填进名为 `model` 的字段，排查时被误导。开放面契约 v25 起两者分账。
 
 ## 架构裁决（半成品问题逐条定稿）
 

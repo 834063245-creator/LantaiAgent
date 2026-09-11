@@ -26,6 +26,7 @@ import { createTestAgent } from './helpers/agent';
 function makeMockProvider(): Provider {
   return {
     name: () => 'mock',
+    model: () => 'mock',
     async *stream() {
       yield { type: 5 as any }; // Done
     },

@@ -55,7 +55,11 @@ describe('D4 事件表完整性 guard', () => {
 
 function fakeProvider(): Provider {
   return {
-    name: () => 'mock-model',
+    // provider 名与模型 id **故意取不同值**：2026-09-12 拆碑前载荷把 provider 名
+    // 填进名为 model 的字段，排查时被误导。两者分离后，任何「把 name() 塞进
+    // model」的回归都会让下面的载荷断言当场变红。
+    name: () => 'mock-provider',
+    model: () => 'mock-model',
     stream: async function* (): AsyncGenerator<Chunk> {
       yield { type: ChunkType.Text, text: 'ok' } as Chunk;
       yield { type: ChunkType.Done } as Chunk;
@@ -78,9 +82,18 @@ describe('D4 发射序与载荷（单轮无工具路径）', () => {
     await agent.run(new AbortController().signal, 'hi');
 
     expect(order).toEqual(['turn/start', 'step/start', 'request/start', 'request/end', 'step/end', 'turn/end']);
-    expect(payloads['turn/start']).toMatchObject({ agentId: agent.id, model: 'mock-model' });
+    expect(payloads['turn/start']).toMatchObject({
+      agentId: agent.id,
+      provider: 'mock-provider',
+      model: 'mock-model',
+    });
     expect(payloads['step/start']).toMatchObject({ agentId: agent.id, step: 0 });
-    expect(payloads['request/start']).toMatchObject({ agentId: agent.id, step: 1, model: 'mock-model' });
+    expect(payloads['request/start']).toMatchObject({
+      agentId: agent.id,
+      step: 1,
+      provider: 'mock-provider',
+      model: 'mock-model',
+    });
     expect(payloads['request/end']).toMatchObject({ agentId: agent.id, step: 1, err: null });
     expect(payloads['step/end']).toMatchObject({ agentId: agent.id, step: 0, toolCalls: 0 });
     expect(payloads['turn/end']).toMatchObject({ agentId: agent.id, ok: true, aborted: false });

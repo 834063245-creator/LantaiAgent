@@ -10,7 +10,7 @@
 // 显式记入 event-feature-map 的「部分重表达」清单（P6 观察项），不扩载荷。
 //
 // 当前重表达清单：
-//   - turn/start → log.info('turn started', { model })（载荷含 model ✓）
+//   - turn/start → log.info('turn started', { provider, model })（载荷含两者 ✓）
 // 其余散点（llm response / collect streaming results / stream error /
 // empty assistant turn / pre-flight 族）保留在 loop 体/宿主原位——它们要么
 // 依赖 loop 内部上下文（压缩埋点、pendingInserts），要么载荷在 R1 面不可
@@ -23,7 +23,7 @@ import { log } from '../logger';
  *  返回 disposer——随 bus 生命周期，Agent 不存在时泄漏）。 */
 export function attachFirstPartyLoopObservability(bus: AgentEventBus): () => void {
   return bus.onLoopEvent('turn/start', (payload) => {
-    // 重表达自 default-loop 的 'turn started' 散点（载荷 model 可及）
-    log.info('agent', 'turn started', { model: payload.model });
+    // 重表达自 default-loop 的 'turn started' 散点（载荷 provider/model 均可及）
+    log.info('agent', 'turn started', { provider: payload.provider, model: payload.model });
   });
 }

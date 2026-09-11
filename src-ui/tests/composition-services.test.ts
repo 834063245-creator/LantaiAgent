@@ -51,6 +51,7 @@ const TOOL: ToolContribution = { id: 'probe/tool', factory: probeTool };
 function probeProvider(tag: string) {
   return {
     name: () => tag,
+    model: () => tag,
     stream: async function* () {
       /* 探针不产流 */
     },

@@ -68,6 +68,7 @@ function makeSummaryProvider(behavior: {
     callCount: () => n,
     prov: {
       name: () => 'mock',
+      model: () => 'mock',
       prewarm() {},
       async *stream(_signal: AbortSignal, req: any) {
         n++;
@@ -324,6 +325,7 @@ describe('compaction pipeline E2E', () => {
     let mainCalls = 0;
     const prov: Provider = {
       name: () => 'mock',
+      model: () => 'mock',
       prewarm() {},
       async *stream(_signal: AbortSignal, _req: any) {
         // 按请求内容分流：摘要调用的 system prompt 是「对话压缩器」指令，

@@ -91,6 +91,9 @@ export function createOpenAIProvider(cfg: OpenAIConfig): Provider {
     name() {
       return name;
     },
+    model() {
+      return model;
+    },
     setThinking(cfg: StoredThinking | undefined): void {
       thinking = cfg;
     },

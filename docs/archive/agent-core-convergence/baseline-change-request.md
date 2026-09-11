@@ -1,3 +1,58 @@
+# Baseline 变更申请 — phase-5/session-projection.trace.json（turn/start 载荷 provider/model 分账）
+
+> 申请日期：2026-09-12 · 申请人：编码助手（链路挂起排障事故的可观测面拆碑）
+> 状态：**已批准** —— 用户在对话中就本项给出明确选项裁决（「乙：甲 + 给 Provider
+> 接口加 model() 补上真模型」），即本变更的开工授权。
+> 模型可见表面：**无变更**（turn/start 是 R1 明示的非模型可见观测事件，
+> 不进 system prompt / 工具表）；本变更只动审计载荷与日志。
+
+## 1. 变更对象
+
+- `src-ui/tests/convergence/baseline/phase-5/session-projection.trace.json`
+- `src-ui/tests/convergence/baseline/preset-minimal/phase-5/session-projection.trace.json`
+- 变更内容：`turn/start` 事件的 `data` 由 `{model}` 变为 `{model, provider}`——
+  新增 `provider` 字段（提供方身份），`model` 值保持不变（该 fixture 的 mock
+  provider 名与模型名同为 `"mock"`）。**逐处 = 每个 turn/start 只多一行**。
+
+## 2. 为什么必须变
+
+- 2026-09-12 排障事故：`turn/start` 载荷与 `llm response` 日志把
+  `host.prov.name()`（提供方身份，如 `commandcodegoat`）填进名为 `model` 的字段，
+  日志读起来像「模型 = commandcodegoat」。排查链路挂起时被这行带偏十几分钟，
+  先误判到错误的端点与模型上去。
+- 单据「模型」语义必须成立：`turn/start` / `request/start` 的 `model` 改为真实
+  模型 id（`Provider.model()` 新增），提供方身份另立 `provider` 字段。
+- 三处调用点同批：`sessionLog.append('turn/start')`、
+  `emitLoopEvent('turn/start')`、`emitLoopEvent('request/start')`
+  （`request/start` 不在 baseline 观测面内）。
+
+## 3. 证据
+
+- `tests/agent-loop-events.test.ts`：mock provider 的 `name()`（`mock-provider`）
+  与 `model()`（`mock-model`）**故意取不同值**——任何「把 name() 塞进 model」
+  的回归都会让载荷断言当场变红；
+- 新增开放面契约 v25 登记（`docs/agents/open-surface-contract.md` 变更记录 +
+  指纹重算）：`Provider.model()` 为必填，属 `ctx.llm` adapter 实现面形状变更，
+  cookbook 已同步；
+- record 后 `git diff` 只含上述两个 baseline 快照 + 生成物文档；
+- 门禁：vitest 全量 / `npm run build` / `biome ci .` 0-0 / `verify:convergence`。
+
+## 4. 拟议变更（record 已生成）
+
+- 采纳 record 快照（每个 turn/start 增加 `provider: "mock"` 一行，`model` 值不变）。
+
+## 5. 落地步骤
+
+1. ✅ `Provider` 接口加 `model()` + 四方言实现（openai/anthropic/responses/live）；
+2. ✅ 载荷与日志 provider/model 分账（events.ts / default-loop.ts / observability.ts / session-log.ts）；
+3. ✅ 测试 mock 全量补 `model()`（25 文件 / 34 处——机械规则 `name:` 行复制为 `model:`）；
+4. ✅ 开放面契约 v25（版本 + 变更记录 + 指纹 + `provider/types.ts` 补登记）；
+5. ✅ 本文件登记 + 用户批准（方案乙裁决）；
+6. ✅ record:convergence 独立步骤执行；
+7. ✅ 门禁四连重跑全绿收尾。
+
+---
+
 # Baseline 变更申请 — phase-0/tool-schemas.full.json + phase-1/tool-schemas.effective.json（Agent 工具面 × 引擎能力同步）
 
 > 申请日期：2026-08-19 · 申请人：编码助手（工具面迭代：semantic_search 一等化 / dataflow 折叠 / write_constraints / 参数枚举化）

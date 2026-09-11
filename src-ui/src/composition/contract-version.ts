@@ -22,13 +22,18 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 24;
+export const OPEN_SURFACE_CONTRACT_VERSION = 25;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v25（2026-09-12）：补登记 `provider/types.ts`——`ctx.llm` 的
+ *  `LlmAdapterContribution.create` 返回的 `Provider` 形状就是该 seam 的契约面，
+ *  此前未入册（本版给 Provider 加 `model()` 时差点从指纹下溜过去）；
+ *  同版 events.ts 载荷 provider/model 分账。
  *  v24（2026-09-09）：graph-service.ts（ctx.graph seam）随图谱功能全量退役移除。 */
 export const OPEN_SURFACE_CONTRACT_FILES: readonly string[] = [
   // 六个 seam 注册表（provider 接口 + 动作枚举 + 消费单点签名）
   'src/composition/services.ts', // ctx.llm + ContributionRegistry 内核 + 四通道 def
+  'src/provider/types.ts', // ctx.llm seam 的实现面形状真源（Provider/Chunk/Request——v25 补登记）
   'src/composition/fs-service.ts', // ctx.fs
   'src/composition/shell-service.ts', // ctx.shell（subprocess 并入）
   'src/composition/session-persistence-service.ts', // ctx.sessionPersistence

@@ -8,15 +8,16 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：24
+当前版本：25
 
-<!-- contract-fingerprint: d7605bb4594b7fb2c709abd8a63ea9da3e3f7689896147b6e42724df1c607b55 -->
+<!-- contract-fingerprint: 6855d1cb496d7a1e69747c5ef489b7ea5b671f6889747be39a0a5f3d2ddfd97b -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
 | 文件 | 契约内容 |
 |---|---|
 | `src/composition/services.ts` | `ctx.llm`（`LlmAdapterContribution`）+ ContributionRegistry 内核 + panels/commands/tools 通道 def 形状 |
+| `src/provider/types.ts` | `ctx.llm` seam 的**实现面形状真源**（`Provider` / `Chunk` / `Request`——v25 补登记：`LlmAdapterContribution.create` 返回的 Provider 形状即契约面，此前未入册） |
 | `src/composition/fs-service.ts` | `ctx.fs`（`FsProvider` / `FsAction` 动作 / `FsCallOptions` dispatch 腰） |
 | `src/composition/shell-service.ts` | `ctx.shell`（`ShellProvider` / `ShellAction` 四动作；subprocess 并入） |
 | `src/composition/session-persistence-service.ts` | `ctx.sessionPersistence`（`SessionPersistenceProvider` 四动词 read_volume/list_volumes/save_volume/delete_volume + `sessionExecute` 消费单点 + Service.execute） |
@@ -60,6 +61,7 @@
 | 22 | 2026-09-08 | 动态插件守卫 ctx 服务解析修复（sandbox.ts）：`makeGuardedCtx` 代解析由 `resolverCtx[prop]` 改 `resolverCtx.reflect.get(prop)`——生产消费单点 `activeDynamicRunner()` 是裸服务实例（this.ctx = runner fiber，有 runtime），旧解析被内核 inject 拦截沿 fiber 链找 impl 而 runner 无 inject 声明、组合层服务 impl 在兄弟 fiber，12 注册面恒抛 "cannot get property X without inject"；新解析走内核免 inject 读取通道直读根 store（strict 默认拒递半拆服务），run()/mount() 同源修复。守卫面形状零变更（effect + 12 register 语义不变）；无契约形状变更 | platform-bugs-cordis-dynamic-runner.md（2026-09-07 登记，2026-09-08 修复） |
 | 23 | 2026-09-08 | AgentLoopHost 契约新增 `compactIfNeeded(signal)` 与 `compactRatioOf()` 成员（上下文压缩 2026-09 迭代：自动压缩主触发前移到 step 前 pre-flight，pre-flight 读 `compactRatioOf()` 判定、调 `compactIfNeeded()` 走自动尾部 token 预算 + 摘要成本硬校验；`compactNow` 保留为手动 /compact 路径）；契约形状变更（新增成员，替换 loop 可忽略新成员即回到旧默认 loop 语义） | 上下文压缩迭代 2026-09（DSH 对照：阈值 0.8 / 尾部 retainRatio / step 前同步） |
 | 24 | 2026-09-09 | `ctx.graph` seam 全量退役：`graph-service.ts`（GraphService/activeGraphProviders/graphExecute）+ 载体清单移除，`SEAM_DOMAINS` 七域→六域（llm/subagents/fs/shell/sessionPersistence/loopEvents）——图谱功能全量退役（引擎回归纯 MCP），开放面不再有 graph 域契约 | 兰台图谱功能全量退役计划（plan-1788924433965-dmkj v2） |
+| 25 | 2026-09-12 | **provider/model 语义分账（可观测面拆碑）**：`Provider` 接口新增 `model(): string`（真实模型 id；`name()` 保持提供方身份）——`ctx.llm` adapter 实现面形状变更（**必填**，三方 adapter 需补该方法，cookbook 已同步）；`TurnStartPayload` / `RequestStartPayload` 新增 `provider` 字段、`model` 语义纠正（此前两者的 `model` 装的是 `host.prov.name()` = 提供方名，日志读起来像「模型 = 提供方名」，实测把排障带偏）；同版补登记 `src/provider/types.ts` 进指纹清单（此前漏登，本次变更差点从指纹下溜过） | 2026-09-12 链路挂起排障事故（日志 model 字段误导）+ 用户拍板方案乙 |
 
 ## 变更流程（guard 红 → 修复四步）
 

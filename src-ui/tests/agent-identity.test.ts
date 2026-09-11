@@ -12,6 +12,7 @@ import { createTestAgent } from './helpers/agent';
 function mockProvider(): Provider {
   return {
     name: () => 'mock',
+    model: () => 'mock',
     stream: async function* (_signal: AbortSignal) {
       yield { type: 5 as any } as Chunk; // Done
     },

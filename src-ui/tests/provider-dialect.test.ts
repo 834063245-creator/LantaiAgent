@@ -22,6 +22,7 @@ import type { Provider, ProviderRuntimeArgs } from '../src/provider/types';
 function stub(tag: string): Provider {
   return {
     name: () => tag,
+    model: () => tag,
     stream: async function* () {
       /* 探针不产流 */
     },

@@ -22,6 +22,7 @@ export function countTokens(provider: Provider): { provider: Provider; used: () 
   let total = 0;
   const wrapped: Provider = {
     name: () => provider.name(),
+    model: () => provider.model(),
     stream: async function* (signal, req) {
       for await (const chunk of provider.stream(signal, req)) {
         if (chunk.type === ChunkType.Usage && chunk.usage) {

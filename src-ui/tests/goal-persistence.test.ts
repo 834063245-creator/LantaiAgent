@@ -60,6 +60,7 @@ function steppedProvider(turns: Chunk[][]): Provider {
   let i = 0;
   return {
     name: () => 'mock',
+    model: () => 'mock',
     stream: async function* (signal: AbortSignal) {
       for (const c of turns[i++] ?? [DONE]) {
         if (signal.aborted) break;
@@ -281,6 +282,7 @@ describe('Pause session isolation', () => {
     });
     return {
       name: () => 'mock',
+      model: () => 'mock',
       stream: async function* (signal: AbortSignal) {
         callCount++;
         if (callCount === 1) {
@@ -353,6 +355,7 @@ describe('Pause session isolation', () => {
     });
     const provider: Provider = {
       name: () => 'mock',
+      model: () => 'mock',
       stream: async function* (signal: AbortSignal) {
         callCount++;
         if (callCount === 1) {

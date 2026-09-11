@@ -33,6 +33,7 @@ async function booted(): Promise<{ service: AgentLoopService; dispose: () => Pro
 function stubProvider(): Provider {
   return {
     name: () => 'loop-test-model',
+    model: () => 'loop-test-model',
     stream: async function* () {
       /* 不产流 */
     },

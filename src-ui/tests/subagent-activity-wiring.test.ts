@@ -46,6 +46,7 @@ function makeProvider(): Provider {
   let streams = 0;
   return {
     name: () => 'mock',
+    model: () => 'mock',
     stream: () => {
       streams++;
       const n = streams;

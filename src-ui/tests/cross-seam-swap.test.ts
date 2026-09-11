@@ -31,6 +31,7 @@ const stubExec: ToolExecutor = async () => 'stub';
 function stubProvider(): Provider {
   return {
     name: () => 'cross-seam-model',
+    model: () => 'cross-seam-model',
     stream: async function* () {
       /* 不产流 */
     },
@@ -52,6 +53,7 @@ describe('P6-C2 跨 seam 替换集成（llm + fs + subagents 同时换实现）'
       create: () =>
         ({
           name: () => 'cross-llm',
+          model: () => 'cross-llm',
           stream: async function* () {
             /* 探针 */
           },

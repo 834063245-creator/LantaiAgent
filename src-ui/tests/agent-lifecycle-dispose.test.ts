@@ -26,7 +26,7 @@ import type { AgentHandle } from '../src/agent/runtime/types';
 import { ToolRegistry } from '../src/agent/tool';
 
 function mockProvider(): any {
-  return { name: () => 'mock-provider' };
+  return { name: () => 'mock-provider', model: () => 'mock-provider-model' };
 }
 
 /** 以最小配置创建一个会话主 Agent（无 pool/graph/memory — 跳过外部依赖） */

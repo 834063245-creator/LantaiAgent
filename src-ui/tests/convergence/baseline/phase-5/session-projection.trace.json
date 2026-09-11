@@ -35,7 +35,8 @@
     },
     {
       "data": {
-        "model": "mock"
+        "model": "mock",
+        "provider": "mock"
       },
       "kind": "turn/start",
       "seq": 4,
@@ -68,7 +69,8 @@
     },
     {
       "data": {
-        "model": "mock"
+        "model": "mock",
+        "provider": "mock"
       },
       "kind": "turn/start",
       "seq": 7,
@@ -155,7 +157,8 @@
     },
     {
       "data": {
-        "model": "mock"
+        "model": "mock",
+        "provider": "mock"
       },
       "kind": "turn/start",
       "seq": 14,

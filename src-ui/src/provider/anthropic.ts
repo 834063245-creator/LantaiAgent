@@ -79,6 +79,9 @@ export function createAnthropicProvider(cfg: AnthropicConfig): Provider {
     name() {
       return name;
     },
+    model() {
+      return model;
+    },
     setThinking(cfg: StoredThinking | undefined): void {
       thinking = cfg;
     },

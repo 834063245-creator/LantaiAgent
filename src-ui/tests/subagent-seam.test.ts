@@ -19,6 +19,7 @@ import { ensureProductionChannelsBooted } from './helpers/composition-boot';
 function fakeProvider(tag: string): Provider {
   return {
     name: () => tag,
+    model: () => tag,
     stream: async function* () {
       /* 探针不产流 */
     },

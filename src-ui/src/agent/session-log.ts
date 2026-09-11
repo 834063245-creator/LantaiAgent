@@ -74,7 +74,7 @@ export type SessionResetReason = 'init' | 'restore' | 'new-session' | 'goal-resu
 /** 各 kind 的 data 形状。 */
 export interface SessionEventDataMap {
   /** runLoop 一次调用开始（轮次边界标记，无消息投影）。 */
-  'turn/start': { model: string };
+  'turn/start': { provider: string; model: string };
   /** 用户可见消息 append（run 输入 / 安全边界插入 / inbox 持久部分 / goal 提示）。 */
   'user/message': { message: Message };
   /** assistant 轮次提交（content + reasoning + tool_calls 整体，原子事实）。 */

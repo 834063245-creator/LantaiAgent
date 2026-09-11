@@ -60,7 +60,16 @@ import { log } from './logger';
 import { batchStormSignature, type ToolOutcome } from './loop-helpers';
 import { type PlanGate, planGateCheck } from './plan/plan-registry';
 import { applyImageBudget, projectImagesForTextModel, resolveRequestImageData } from './request-images';
-import { backoffDelay, isRetryable, MAX_RETRIES, sleepWithAbort } from './retry';
+import {
+  backoffDelay,
+  formatElapsed,
+  isRetryable,
+  isStallError,
+  MAX_RETRIES,
+  STALL_RETRY_BUDGET_MS,
+  sleepWithAbort,
+  withinRetryBudget,
+} from './retry';
 import { registerOwnerContext } from './session-context';
 import { SessionLog, type SessionResetReason } from './session-log';
 import type { StreamingToolExecutor } from './streaming-executor';
@@ -1201,14 +1210,19 @@ export class Agent {
     err: Error | undefined;
   }> {
     let lastErr: Error | undefined;
+    // 总尝试次数（含首次）与首次尝试时刻：挂起走时间预算，重试次数是变量——
+    // 收尾文案按**实数**报，不按预算常量报（旧文案写死「已重试 MAX_RETRIES 次」）。
+    let attempts = 0;
+    const startedAt = Date.now();
 
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    for (let attempt = 0; ; attempt++) {
       if (signal.aborted) {
         executor?.discard();
         return { text: '', reasoning: '', signature: '', calls: [], usage: undefined, err: new Error('aborted') };
       }
 
       const result = await this.streamOnce(signal, turn, executor);
+      attempts++;
 
       // 成功 — 无错误，或错误已由 streamOnce 作为通知发出
       if (!result.err) return result;
@@ -1251,8 +1265,13 @@ export class Agent {
       // 不可重试的错误不重试
       if (!isRetryable(lastErr)) return result;
 
-      // 最后一次尝试 — 放弃
-      if (attempt >= MAX_RETRIES) break;
+      // 重试预算分账（2026-09-12 自愈修复）：
+      //   - 流挂起（[响应超时]）= 链路级瞬态，可持续数分钟——走时间预算，
+      //     窗口内持续重试，链路恢复即自动继续；
+      //   - 其余可重试错误（限流/5xx/繁忙）= 计数预算，不该被无限重试。
+      // 判定收在 retry.withinRetryBudget 单点（可单测，不再散在循环里）。
+      const stalled = isStallError(lastErr);
+      if (!withinRetryBudget(lastErr, attempt, Date.now() - startedAt)) break;
 
       // 丢弃失败尝试的所有工具调用
       executor?.discard();
@@ -1266,14 +1285,24 @@ export class Agent {
           ? Math.min(lastErr.retryAfter * 1000, 30_000)
           : undefined;
       const delay = hinted ?? backoffDelay(attempt);
-      log.info('agent', `stream retry ${attempt + 1}/${MAX_RETRIES} in ${delay}ms`, {
+      // 进度口径随预算分账：挂起报「已等待 / 上限」（次数无意义），
+      // 其余错误报「第 n/N 次重试」。
+      const elapsed = Date.now() - startedAt;
+      const progress = stalled
+        ? `仍未收到服务商数据，已等待 ${formatElapsed(elapsed)} / 上限 ${formatElapsed(STALL_RETRY_BUDGET_MS)}`
+        : `第 ${attempt + 1}/${MAX_RETRIES} 次重试`;
+      log.info('agent', `stream retry ${attempt + 1} in ${delay}ms`, {
         error: String(lastErr.message || lastErr),
         code: summary || undefined,
+        budget: stalled
+          ? `stall-time:${formatElapsed(elapsed)}/${formatElapsed(STALL_RETRY_BUDGET_MS)}`
+          : `count:${attempt + 1}/${MAX_RETRIES}`,
+        elapsed_ms: elapsed,
       });
       this._sink({
         kind: EventKind.Notice,
         level: 'warn',
-        text: `模型调用失败${codePart}，${(delay / 1000).toFixed(1)}s 后重试 (${attempt + 1}/${MAX_RETRIES})…`,
+        text: `模型调用失败${codePart}，${(delay / 1000).toFixed(1)}s 后重试（${progress}）…`,
       });
 
       const aborted = await sleepWithAbort(delay, signal);
@@ -1282,13 +1311,21 @@ export class Agent {
       }
     }
 
-    // 重试已耗尽——墓碑带原始错误码（第二行，pre-line 渲染）
+    // 重试已耗尽——墓碑带原始错误码（第二行，pre-line 渲染）。
+    // 挂起与非挂起分别给建议：挂起是链路/服务商侧无响应，与本地配置无关，
+    // 说清楚「恢复后直接重发」比泛泛的「请检查网络连接和 API 设置」有用。
     const finalMsg = lastErr?.message || '未知错误';
     const finalCode = apiErrorSummary(lastErr);
+    const finalWaited = formatElapsed(Date.now() - startedAt);
+    const hint =
+      lastErr && isStallError(lastErr)
+        ? `服务商连续 ${finalWaited} 未返回任何数据（共 ${attempts} 次尝试），已停止重试。` +
+          '此形态多为出网链路或服务商侧故障，而非本地配置问题——链路恢复后直接重发即可。'
+        : `请检查网络连接和 API 设置。`;
     this._sink({
       kind: EventKind.Notice,
       level: 'error',
-      text: `模型调用失败，已重试 ${MAX_RETRIES} 次：${finalMsg}。请检查网络连接和 API 设置。${finalCode ? `\n（${finalCode}）` : ''}`,
+      text: `模型调用失败（共 ${attempts} 次尝试，历时 ${finalWaited}）：${finalMsg}。${hint}${finalCode ? `\n（${finalCode}）` : ''}`,
     });
     return { text: '', reasoning: '', signature: '', calls: [], usage: undefined, err: lastErr };
   }
@@ -1335,7 +1372,8 @@ export class Agent {
 
     // 流空闲超时：30s 无任何 chunk 视为挂起（与 callSummaryLLM / dataflow NL 解析
     // 共用 streamWithIdleTimeout）。超时 abort 后 sendWithRetry/readSSE 抛 aborted，
-    // 此处转为可读的挂起提示（[响应超时] 会在 stream() 重试循环里按瞬态重试）。
+    // 此处转为可读的挂起提示——stream() 重试循环对 [响应超时] 走**时间预算**
+    // （STALL_RETRY_BUDGET_MS），链路恢复即自动继续（2026-09-12 自愈修复）。
     // 外部 signal 只做转发，不直接传给 stream——避免超时 abort 连累调用方。
     // sanitizeToolPairing 不在此调用 — provider（openai/anthropic）是上线前的最终 gate。
     const stream = streamWithIdleTimeout(this.prov, signal, {
@@ -1424,7 +1462,14 @@ export class Agent {
       }
     } catch (e) {
       if (stream.idleTimedOut) {
-        err = new Error(`[响应超时] 模型响应超时（${STREAM_IDLE_TIMEOUT_MS / 1000} 秒无输出），已自动中止`);
+        // 文案纪律（2026-09-12）：空闲守卫只知道「一个 chunk 都没来」，不知道原因
+        // ——既可能是连接/首包没建起来，也可能是流中途停吐。措辞必须只说观测事实，
+        // 不许写成「模型响应超时」（读起来像模型慢，实测把排查方向带偏了十几分钟）。
+        // ⚠️ `[响应超时]` 前缀是分类标记（retry.ts 的 isRetryable / error-catalog
+        // 的 TRANSIENT_MARKERS 消费），文案可改、前缀不可改。
+        err = new Error(
+          `[响应超时] ${STREAM_IDLE_TIMEOUT_MS / 1000} 秒内未收到服务商任何数据（连接未建立或流式输出中途停止），已中止本次请求`,
+        );
       } else {
         err = e instanceof Error ? e : new Error(String(e));
       }

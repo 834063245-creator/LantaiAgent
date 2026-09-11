@@ -27,7 +27,9 @@ describe('isRetryable', () => {
   });
 
   it('retries idle-stream timeout', () => {
-    expect(isRetryable(new Error('[响应超时] 模型响应超时（30 秒无输出），已自动中止'))).toBe(true);
+    expect(
+      isRetryable(new Error('[响应超时] 30 秒内未收到服务商任何数据（连接未建立或流式输出中途停止），已中止本次请求')),
+    ).toBe(true);
   });
 
   it('retries unknown errors once', () => {

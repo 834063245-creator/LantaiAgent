@@ -183,6 +183,7 @@ const USAGE: Usage = {
 export function scriptedProvider(script: Chunk[]): Provider {
   return {
     name: () => 'mock',
+    model: () => 'mock',
     stream: async function* () {
       for (const c of script) yield c;
     },

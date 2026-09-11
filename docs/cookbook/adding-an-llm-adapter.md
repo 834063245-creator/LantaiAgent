@@ -16,7 +16,11 @@ interface LlmAdapterContribution {
 - 经 `ctx.llm.register(def)` 注册 → disposer（建议挂 `ctx.effect`）；**同 kind 后注册胜**。
 - 消费方 `createProvider(settings)` 是单一入口：内部查 `ctx.llm` 注册表、同 kind 后注册胜；
   未命中任何 adapter → `PROVIDER_DIALECT` 响亮报错（不静默跌回旧分支）。
-- `Provider` 形状：`name()` + `stream()`（async generator 产 `Chunk`）；形状真源 `src/provider/types.ts`。
+- `Provider` 形状：`name()` + `model()` + `stream()`（async generator 产 `Chunk`）；形状真源 `src/provider/types.ts`。
+  - `name()` = **提供方身份**（`rt.name`）；`model()` = **本次请求实际调用的模型 id**（`rt.model`）。
+    两者是两回事，可观测面（`turn/start` 载荷、`llm response` 日志）分别取用——
+    把 `name()` 当模型 id 返回会让排障读错模型（2026-09-12 事故，开放面契约 v25 起两者分账）。
+  - `model()` 为**必填**（v25 起）：三方 adapter 升级时需补一行 `model: () => rt.model`。
 - 覆盖内核方言（`builtin/anthropic` / `builtin/openai`）：注册同 kind 即可覆盖（后注册胜）。
 
 ## 最小实现
@@ -35,6 +39,7 @@ export const myAdapterPlugin = {
           kind: 'openai', // 覆盖 builtin/openai
           create: (rt) => ({
             name: () => rt.name,
+            model: () => rt.model,
             stream: async function* () {
               // 实现方言流式协议……产 Chunk（type: 'text' | 'tool_call' | …）
               yield { type: 'text', text: '…' };

@@ -39,6 +39,7 @@ function makeProvider(failingTurns: number, toolName = 'read_file_content', args
   let streams = 0;
   return {
     name: () => 'mock',
+    model: () => 'mock',
     stream: (_signal: AbortSignal, _req: unknown) => {
       streams++;
       const n = streams;

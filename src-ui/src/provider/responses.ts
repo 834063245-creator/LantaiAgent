@@ -101,6 +101,9 @@ export function createResponsesProvider(cfg: ResponsesConfig): Provider {
     name() {
       return name;
     },
+    model() {
+      return model;
+    },
     setThinking(cfg2: StoredThinking | undefined): void {
       thinking = cfg2;
     },

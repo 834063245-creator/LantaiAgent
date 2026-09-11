@@ -181,6 +181,7 @@ describe('phase-5 T3 — session-projection 契约快照', () => {
     ];
     const prov = {
       name: () => 'mock',
+      model: () => 'mock',
       async *stream(_signal: AbortSignal, req: { messages: Message[] }) {
         const log = agentBox?.getSessionLog();
         const internals = agentBox as unknown as { _toolResultWindow: number; _toolFoldBoundary: number } | null;

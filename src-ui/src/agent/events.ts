@@ -62,6 +62,10 @@ export type AgentEventName = keyof typeof AGENT_EVENT_MAP;
 
 export interface TurnStartPayload {
   agentId: string;
+  /** 提供方身份（settings.providers[].name）——**不是**模型 id（2026-09-12 拆碑：
+   *  此前该字段名为 `model` 却装 provider 名，排查时误导）。 */
+  provider: string;
+  /** 本回合实际调用的模型 id。 */
   model: string;
 }
 export interface TurnEndPayload {
@@ -84,6 +88,9 @@ export interface RequestStartPayload {
   agentId: string;
   /** 人类序步号（step + 1，与请求日志 turn 字段一致）。 */
   step: number;
+  /** 提供方身份（settings.providers[].name）。 */
+  provider: string;
+  /** 本次请求实际调用的模型 id。 */
   model: string;
 }
 export interface RequestEndPayload {

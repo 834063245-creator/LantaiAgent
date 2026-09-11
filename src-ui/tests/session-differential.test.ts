@@ -85,6 +85,7 @@ function makeHarness(scripts: Chunk[][], opts?: { toolResultWindow?: number }) {
   let callIdx = 0;
   const prov: Provider = {
     name: () => 'mock',
+    model: () => 'mock',
     async *stream(_signal: AbortSignal, req: { messages: Message[] }) {
       const log = agentBox?.getSessionLog();
       const internals = agentBox as unknown as { _toolResultWindow: number; _toolFoldBoundary: number } | null;
@@ -431,6 +432,7 @@ describe('T2 差分 — saveState finally 保底（2026-09-01 AgentStore 内存�
     // stream 第一轮直接抛错 → runLoop 冒泡 → run() 必须仍走 saveState
     const prov: Provider = {
       name: () => 'mock',
+      model: () => 'mock',
       // biome-ignore lint/correctness/useYield: 故障注入 — provider 必须抛错而非产出
       async *stream() {
         throw new Error('provider exploded');

@@ -59,6 +59,7 @@ const USAGE: Usage = {
 function textProvider(text: string): Provider {
   return {
     name: () => 'mock',
+    model: () => 'mock',
     stream: () =>
       (async function* (): AsyncGenerator<Chunk> {
         yield { type: ChunkType.Text, text };

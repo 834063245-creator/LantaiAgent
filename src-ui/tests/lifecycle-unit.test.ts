@@ -58,6 +58,7 @@ const USAGE: Usage = {
 function textProvider(text: string): Provider {
   return {
     name: () => 'mock',
+    model: () => 'mock',
     stream: () =>
       (async function* (): AsyncGenerator<Chunk> {
         yield { type: ChunkType.Text, text };
@@ -71,6 +72,7 @@ function textProvider(text: string): Provider {
 function slowTextProvider(text: string, delayMs: number): Provider {
   return {
     name: () => 'mock',
+    model: () => 'mock',
     stream: () =>
       (async function* (): AsyncGenerator<Chunk> {
         await new Promise((r) => setTimeout(r, delayMs));

@@ -161,6 +161,7 @@ const LONG_SUMMARY =
 function editOnceProvider(toolName: string, toolArgs: Record<string, unknown>, toolResults: string[]): Provider {
   return {
     name: () => 'mock',
+    model: () => 'mock',
     stream: async function* (_signal: AbortSignal, req: { messages: { role: string; content?: string }[] }) {
       const last = req.messages[req.messages.length - 1];
       if (last?.role === 'tool') {
@@ -181,6 +182,7 @@ function editOnceProvider(toolName: string, toolArgs: Record<string, unknown>, t
 function longTextProvider(): Provider {
   return {
     name: () => 'mock',
+    model: () => 'mock',
     stream: async function* () {
       yield { type: ChunkType.Text, text: LONG_SUMMARY };
       yield { type: ChunkType.Usage, usage: USAGE };
@@ -192,6 +194,7 @@ function longTextProvider(): Provider {
 function shortTextProvider(): Provider {
   return {
     name: () => 'mock',
+    model: () => 'mock',
     stream: async function* () {
       yield { type: ChunkType.Text, text: '嗯' };
       yield { type: ChunkType.Usage, usage: USAGE };

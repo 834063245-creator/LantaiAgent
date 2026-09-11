@@ -397,6 +397,7 @@ describe('资产表会话重建 — 重启/恢复后 update_asset 的 U 面续�
 
     const provider = {
       name: () => 'mock',
+      model: () => 'mock',
       stream: async function* () {
         /* 不跑流——只测会话边界 */
       },

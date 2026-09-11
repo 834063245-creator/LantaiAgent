@@ -66,9 +66,13 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
     host.currentRunSignal = signal; // 子 Agent 派生时合并此 signal 用于级联中止
     host.sink({ kind: EventKind.TurnStarted });
     // Phase 5：轮次边界事件（无消息投影 — 回放/审计用）
-    host.sessionLog.append('turn/start', { model: host.prov.name() });
+    host.sessionLog.append('turn/start', { provider: host.prov.name(), model: host.prov.model() });
     // D4：turn/start 监听面广播（可观测，非模型可见——见 events.ts R1 声明）
-    host.loopEvents.emitLoopEvent('turn/start', { agentId: host.id, model: host.prov.name() });
+    host.loopEvents.emitLoopEvent('turn/start', {
+      agentId: host.id,
+      provider: host.prov.name(),
+      model: host.prov.model(),
+    });
 
     for (let step = 0; ; step++) {
       host.loopEvents.emitLoopEvent('step/start', { agentId: host.id, step });
@@ -205,7 +209,8 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
       host.loopEvents.emitLoopEvent('request/start', {
         agentId: host.id,
         step: step + 1,
-        model: host.prov.name(),
+        provider: host.prov.name(),
+        model: host.prov.model(),
       });
       let { text, reasoning, signature, calls, usage, err } = await host.stream(signal, step + 1, executor);
       host.loopEvents.emitLoopEvent('request/end', {
@@ -256,7 +261,10 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
       if (usage && usage.total_tokens > 0) {
         log.info('agent', 'llm response', {
           turn: step + 1,
-          model: host.prov.name(),
+          // 2026-09-12 拆碑：此处曾把 provider 名填进 `model` 字段——日志读起来
+          // 像「模型 = commandcodegoat」，实际那是提供方身份。两字段分开报。
+          provider: host.prov.name(),
+          model: host.prov.model(),
           finish_reason: usage.finish_reason,
           total_tokens: usage.total_tokens,
           prompt_tokens: usage.prompt_tokens,

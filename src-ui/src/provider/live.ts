@@ -20,7 +20,7 @@
 //   - 覆盖存在 = 该维度用会话值（改过的卷不跟随全局——方案甲语义 4）；
 //   - thinking 覆盖区分 undefined（回落行值）与 ''（显式自动 = 不发参数）。
 
-import { type ProviderSettings, providerId } from '../settings';
+import { loadSettings, type ProviderSettings, providerId } from '../settings';
 import { resolveOauthToken, resolveProviderRuntime } from './credentials';
 import { type CreateProviderOptions, createProvider } from './index';
 import type { ModelMeta } from './model-meta';
@@ -80,6 +80,16 @@ export function createLiveProvider(
   return {
     name() {
       return name;
+    },
+    model(): string {
+      // 生效模型 = 会话覆盖（方案甲语义 4）→ 该 provider 行的 settings 值
+      // （方案甲语义 3，未改过的卷实时跟随全局默认）。与 buildInner 的解析同序。
+      // 同步面：settings 是 localStorage 同步读（零 IPC），故不走
+      // resolveProviderRuntime 的 async 路径——model() 不阻塞可观测面调用点。
+      if (overrides_.model !== undefined) return overrides_.model;
+      // provider 行已不存在（设置里被删）→ 空串；请求期由 stream 的 LIVE_PROVIDER
+      // 响亮报错兜底，这里不编造模型名。
+      return loadSettings().providers.find((p) => p.name === name)?.model ?? '';
     },
     setThinking(cfg: StoredThinking | undefined): void {
       // 方案甲：cfg = undefined 清除覆盖（回落 provider 行值）；''/档位 = 会话覆盖
