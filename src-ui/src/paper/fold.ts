@@ -8,7 +8,8 @@
 // block-model 自走查弹起就给 reasoning 标注「可折叠语义」，此处补上机制。
 //
 // 折叠默认规则（状态派生 + 用户覆盖单字段）：
-//   - 夹注：恒折叠（流里只留一行预览，展开读全文）；
+//   - 夹注：恒折叠（流里只留**最新一行**预览——折叠态随思考推进动态更新，
+//     见 foldPreviewLine；展开读全文）；
 //   - 脚注/程文：出错 = 展开（错误留面），其余（pending/running/done）=
 //     折叠——完成即收。在跑信号由折叠行呼吸（pp-fold--busy）+ 走秒签
 //     （行 Ns）承载，要看进度点折叠行显式展开（用户覆盖跨状态保持）。
@@ -174,8 +175,17 @@ export function foldLabel(kind: BlockKind, payload: unknown, folded: boolean): s
   return '';
 }
 
-/** 夹注折叠预览：首个非空行（流式中思考开头相对稳定，不做尾随）。 */
+/** 夹注折叠预览：**最新一行**（2026-09-14 用户拍板改向）。
+ *  折叠态要报「此刻在想什么」，思考是尾随生长的：旧行为取首个非空行 = 永远
+ *  定格开头（折叠卡成了静态墓碑），改取末个非空行——流式每落一行预览即更新，
+ *  收尾态读到的是结论而不是开场白。空行（流式行间断）跳过，全空返回空串。
+ *  渲染侧单行截断（.pp-fold-preview nowrap + ellipsis），测量侧恒一行——
+ *  取哪一行不影响测高。 */
 export function foldPreviewLine(text: string): string {
-  const line = text.split('\n').find((s) => s.trim().length > 0);
-  return line ?? '';
+  const lines = text.split('\n');
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (line.trim().length > 0) return line.trim();
+  }
+  return '';
 }

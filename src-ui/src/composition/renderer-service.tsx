@@ -32,7 +32,7 @@ import hljsScala from 'highlight.js/lib/languages/scala';
 import hljsScheme from 'highlight.js/lib/languages/scheme';
 import katex from 'katex';
 import type { ComponentType, ReactNode } from 'react';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useEffect, useMemo, useRef, useState } from 'react';
 import { assetKinds } from '../agent/asset-kinds';
 import type { PlanApprovalResponse, PlanOptionOutcome } from '../agent/plan/plan-tools';
 import { previewUrlFor, readAttachmentBase64 } from '../app/chat/image-intake';
@@ -49,7 +49,14 @@ import {
   parseMarkdownIncremental,
 } from '../paper/markdown';
 import { parseCircledSegments } from '../paper/marks';
-import { hasArgsToShow, prettyToolArgs } from '../paper/tool-text';
+import {
+  hasArgsToShow,
+  hasPayloadToShow,
+  type ToolDisplay,
+  type ToolSpan,
+  type ToolTone,
+  toolDisplay,
+} from '../paper/tool-text';
 import type { ChatImageRef } from '../provider/types';
 
 /** 渲染器组件入参——渲染器拿到块本体 + 纸壳递下的服务性回调。
@@ -934,19 +941,100 @@ function PlanBody({ block }: BlockRendererProps) {
   );
 }
 
+/* ── 工具卡载荷段（2026-09-14 可读性专项）──
+ * 旧观感：args 原始 JSON 单行串 + output 原样倾倒，同一块内两层无标签地叠在
+ * 一起，长 token 被 break-all 从中间剁开——用户报「跟乱码一样」。新观感：
+ *   ① 分段：参数/输出/错误各有段头（小字注记 + 细规线），一眼分清进出；
+ *   ② 结构：JSON 载荷走 paper/tool-text 的结构化打印（一键一行、缩进、
+ *      短容器内联、数组条目列表化、字符串值解转义——Windows 路径单反斜杠）；
+ *   ③ 洁净：ANSI 转义与控制字符在展示变换里剔除（终端的 [36m 不再是内容）；
+ *   ④ 着色：键/字符串/数字/结构符分色，扫读时结构与数据分离。
+ * 展示文本是唯一变换产物——measure.ts 与 inkSourcesFor 消费同一 text，
+ * 行数与渲染逐字一致（镜像纪律见 paper/tool-text 头注）。 */
+
+/** 片段语义 → 纸面类（'plain' 无类——直接文本节点）。 */
+const TONE_CLASS: Record<ToolTone, string> = {
+  key: 'pp-tv-k',
+  str: 'pp-tv-s',
+  num: 'pp-tv-n',
+  punct: 'pp-tv-p',
+  note: 'pp-tv-c',
+  plain: '',
+};
+
+/** 一行里的片段序列（键/值/字面量/结构符逐片着色）。 */
+function LineParts({ parts }: { parts: ToolSpan[] }) {
+  return (
+    <>
+      {parts.map((part, j) => {
+        const cls = TONE_CLASS[part.tone];
+        const body = cls ? <span className={cls}>{part.text}</span> : part.text;
+        // biome-ignore lint/suspicious/noArrayIndexKey: 展示行内片段按位渲染，静态内容无重排身份
+        return <Fragment key={j}>{body}</Fragment>;
+      })}
+    </>
+  );
+}
+
+/** 结构化载荷：逐行逐片渲染（缩进=2 空格/级、条目 `· ` 标记——与展示文本
+ *  逐字同源）。纯文本载荷直出 text：47KB 文件内容不炸成几千个节点。 */
+function PayloadText({ display }: { display: ToolDisplay }) {
+  if (display.lines === null) return <>{display.text}</>;
+  return (
+    <>
+      {display.lines.map((line, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: 展示行按位渲染，静态内容无重排身份
+        <Fragment key={i}>
+          {i > 0 && '\n'}
+          {line.level > 0 && '  '.repeat(line.level)}
+          {line.marker && <span className="pp-tv-p">· </span>}
+          <LineParts parts={line.parts} />
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
+/** 载荷段（段头 + 盒）。variant 即语义：args=石青直排（机器的输入面）/
+ *  out=中性滚动盒 / err=错误墨段。段类同时是段头的染色挂点。
+ *  useMemo 按原始串记忆展示模型（20–30KB JSON 的解析+摊行不随无关重渲染重跑）。 */
+const PayloadSection = memo(function PayloadSection({
+  label,
+  raw,
+  variant,
+  gap,
+}: {
+  label: string;
+  raw: string;
+  variant: 'args' | 'out' | 'err';
+  /** 段头前留空档（首段紧跟折叠行/程序体，不留） */
+  gap?: boolean;
+}) {
+  const display = useMemo(() => toolDisplay(raw), [raw]);
+  const boxClass = variant === 'err' ? 'pp-out pp-out--err' : variant === 'args' ? 'pp-args' : 'pp-out';
+  const body = <PayloadText display={display} />;
+  return (
+    <div className={`pp-sec pp-sec--${variant}${gap ? ' pp-sec--gap' : ''}`}>
+      <div className="pp-sec-head">
+        <span className="pp-sec-label">{label}</span>
+      </div>
+      {variant === 'args' ? <pre className={boxClass}>{body}</pre> : <div className={boxClass}>{body}</div>}
+    </div>
+  );
+});
+
 function ToolBody({ block, folded }: BlockRendererProps) {
   const p = block.payload as { args: string; output?: string; err?: string };
   if (folded) return null; // 折叠态只留壳层折叠行（paper/fold.ts 规则）——参数/输出全收
+  // F1（2026-09-01 三轴审计）：空/无意义参数（`{}` 等 JSON 骨架）不裸奔
+  const showArgs = hasArgsToShow(p.args);
+  const showOut = hasPayloadToShow(p.output);
+  const showErr = hasPayloadToShow(p.err);
   return (
     <>
-      {/* F1（2026-09-01 三轴审计）：空/无意义参数（`{}` 等 JSON 骨架）不裸奔 */}
-      {hasArgsToShow(p.args) ? <pre>{prettyToolArgs(p.args)}</pre> : null}
-      {p.output && <div className="pp-out">{p.output}</div>}
-      {p.err && (
-        <div className="pp-out" style={{ color: 'var(--fail)' }}>
-          {p.err}
-        </div>
-      )}
+      {showArgs && <PayloadSection label="参数" raw={p.args} variant="args" />}
+      {showOut && <PayloadSection label="输出" raw={p.output ?? ''} variant="out" gap={showArgs} />}
+      {showErr && <PayloadSection label="错误" raw={p.err ?? ''} variant="err" gap={showArgs || showOut} />}
     </>
   );
 }
@@ -956,15 +1044,14 @@ function ToolBody({ block, folded }: BlockRendererProps) {
  *  折叠态收程序体、留输出/错误（执行结果一眼可见——测量端同款镜像）。 */
 function CodeBody({ block, folded }: BlockRendererProps) {
   const p = block.payload as { code: string; output?: string; err?: string };
+  const showSrc = !folded && !!p.code;
+  const showOut = hasPayloadToShow(p.output);
+  const showErr = hasPayloadToShow(p.err);
   return (
     <>
-      {!folded && <pre className="pp-code-src">{p.code}</pre>}
-      {p.output && <div className="pp-out">{p.output}</div>}
-      {p.err && (
-        <div className="pp-out" style={{ color: 'var(--fail)' }}>
-          {p.err}
-        </div>
-      )}
+      {showSrc && <pre className="pp-code-src">{p.code}</pre>}
+      {showOut && <PayloadSection label="输出" raw={p.output ?? ''} variant="out" gap={showSrc} />}
+      {showErr && <PayloadSection label="错误" raw={p.err ?? ''} variant="err" gap={showSrc || showOut} />}
     </>
   );
 }

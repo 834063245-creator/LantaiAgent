@@ -556,10 +556,58 @@ describe('Error 墨色家族（stream-rhythm 刀4c 确认，2026-09-03——现�
     expect(body).not.toContain('var(--seal)');
   });
 
-  it('工具/程文错误输出与状态签：--fail 单一真源（渲染器两处 err 行内）', () => {
+  it('工具/程文错误输出与状态签：--fail 单一真源（2026-09-14 起错误墨归 CSS 段类）', () => {
     expect(ruleBody(PANEL_CSS, '.pp-status.pp-error')).toContain('color: var(--fail)');
-    // 渲染器错误输出恒两处（tool / code 同构）——新增错误面须过此钉改账
-    expect(RENDERER_TS.match(/color: 'var\(--fail\)'/g)?.length).toBe(2);
+    expect(ruleBody(PANEL_CSS, '.pp-block.pp-tool .pp-out--err')).toContain('color: var(--fail)');
+    expect(ruleBody(PANEL_CSS, '.pp-block.pp-code .pp-out--err')).toContain('color: var(--fail)');
+    // 渲染端 inline style 退役（旧两处 inline 色 → 段类承载；改错误面色先过此钉改账）
+    expect(RENDERER_TS).not.toContain("color: 'var(--fail)'");
+    expect(RENDERER_TS).toContain('pp-out--err');
+  });
+});
+
+describe('工具卡载荷可读性定稿（2026-09-14——「展开乱得像乱码」根治批）', () => {
+  it('长 token 不再腰斩：break-all 在载荷族退役，只留 break-word', () => {
+    // break-all 在 token 中间下刀（路径/JSON 串读成乱码）；break-word 只在单词超宽时断
+    for (const sel of ['.pp-block.pp-tool .pp-args', '.pp-block.pp-tool .pp-out', '.pp-block.pp-code .pp-out']) {
+      const rule = ruleBody(PANEL_CSS, `${sel} {`);
+      expect(rule, sel).not.toContain('word-break: break-all');
+      expect(rule, sel).toContain('overflow-wrap: break-word');
+      expect(rule).toContain('white-space: pre-wrap');
+    }
+  });
+
+  it('载荷段头（参数/输出/错误）：小字标 + 细规线，几何全走 token', () => {
+    const head = ruleBody(PANEL_CSS, '.pp-sec-head {');
+    expect(head).toContain('font-size: var(--pp-ch-secHead-size)');
+    expect(head).toContain('line-height: var(--pp-ch-secHead-lh)');
+    expect(ruleBody(PANEL_CSS, '.pp-sec-head::after')).toContain('border-top: 1px solid var(--rule-soft)');
+    expect(ruleBody(PANEL_CSS, '.pp-sec--gap')).toContain('margin-top: var(--pp-ch-secHead-marginTop)');
+    // 语义色：入=石青（机器的输入）/ 出=中性注记墨（缺省）/ 错误=--fail
+    expect(ruleBody(PANEL_CSS, '.pp-sec--args .pp-sec-label')).toContain('var(--indigo)');
+    expect(ruleBody(PANEL_CSS, '.pp-sec-label {')).toContain('var(--ink-4)');
+    expect(ruleBody(PANEL_CSS, '.pp-sec--err .pp-sec-label')).toContain('var(--fail)');
+    // 测量镜像：真源在 type-tokens（CSS 走 --pp-ch-* 注入，paper-token-audit 守护零悬空）
+    expect(TYPE_TOKENS_TS).toContain('secHead: { size: 10, lh: 1.4, marginTop: 6 }');
+    expect(MEASURE_TS).toContain('SEC_HEAD_H');
+  });
+
+  it('载荷四档墨（键/值/字面量/结构符）：纸面墨阶不引新色相', () => {
+    expect(ruleBody(PANEL_CSS, '.pp-tv-k')).toContain('var(--ink-3)');
+    expect(ruleBody(PANEL_CSS, '.pp-tv-s')).toContain('var(--ink-1)');
+    expect(ruleBody(PANEL_CSS, '.pp-tv-n')).toContain('var(--indigo)');
+    expect(ruleBody(PANEL_CSS, '.pp-tv-p')).toContain('var(--ink-4)');
+    // 接线在册：渲染端 tone → 类的映射单一真源
+    expect(RENDERER_TS).toContain('pp-tv-k');
+  });
+
+  it('夹注折叠预览：最新一行恒一行（nowrap + ellipsis，不再 max-height 硬裁半截字）', () => {
+    const preview = ruleBody(PANEL_CSS, '.pp-fold-preview {');
+    expect(preview).toContain('white-space: nowrap');
+    expect(preview).toContain('text-overflow: ellipsis');
+    expect(preview).toContain('overflow: hidden');
+    // 预览行取末行（真源在 paper/fold）
+    expect(readFileSync(join(SRC, 'paper', 'fold.ts'), 'utf8')).toContain('最新一行');
   });
 });
 

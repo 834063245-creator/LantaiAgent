@@ -120,7 +120,10 @@ export const CHROME_TOKENS = {
   userImages: { thumb: 64, gap: 8, marginTop: 10 },
   reasoning: { borderL: 2, padL: 18 },
   tool: { padTop: 10, noteW: 44, noteH: 1.5 },
-  out: { marginTop: 6, borderTop: 1, padTop: 6 },
+  // 载荷段头（2026-09-14 工具卡可读性专项）：参数/输出/错误各一行小字标 + 细规线。
+  // 旧 .pp-out 的 marginTop/borderTop/padTop（6/1/6）退役——分隔语义改由段头行
+  // 承载（首段不留空档，后续段上距 = marginTop）。
+  secHead: { size: 10, lh: 1.4, marginTop: 6 },
   diff: {
     langSize: 10,
     langLh: 1,
@@ -154,7 +157,7 @@ export const CHROME_TOKENS = {
   },
   notice: { padV: 8, borderBottom: 1, padH: 12 },
   codeSrc: { borderL: 3, padL: 14, padV: 10, maxH: 320 },
-  codeOut: { marginTop: 6, borderTop: 1, padTop: 6, maxH: 200 },
+  codeOut: { maxH: 200 },
   marginalia: { offset: 24, width: 240, borderL: 2, padL: 10 },
   strip: { size: 12.5, lh: 1.7, padV: 10, padH: 12 },
 } as const;
@@ -177,7 +180,10 @@ export const CHROME_DERIVED = {
   userImagesMarginTop: CHROME_TOKENS.userImages.marginTop,
   reasoningTextInset: CHROME_TOKENS.reasoning.borderL + CHROME_TOKENS.reasoning.padL,
   toolPadTop: CHROME_TOKENS.tool.padTop,
-  outChromeH: CHROME_TOKENS.out.marginTop + CHROME_TOKENS.out.borderTop + CHROME_TOKENS.out.padTop,
+  /** 段头行恒一行（mono size × lh）——参数/输出/错误段共用。 */
+  secHeadH: CHROME_TOKENS.secHead.size * CHROME_TOKENS.secHead.lh,
+  /** 段头上距（首段不留空档——渲染端 gap 条件与 measure 同判据）。 */
+  secHeadGap: CHROME_TOKENS.secHead.marginTop,
   diffLangH: CHROME_TOKENS.diff.langSize * CHROME_TOKENS.diff.langLh + CHROME_TOKENS.diff.langMarginB,
   diffPreChromeH: CHROME_TOKENS.diff.prePadV * 2 + CHROME_TOKENS.diff.preBorderTb * 2,
   diffTextInset: CHROME_TOKENS.diff.preBorderL + CHROME_TOKENS.diff.prePadL,
@@ -193,7 +199,8 @@ export const CHROME_DERIVED = {
   codeSrcInset: CHROME_TOKENS.codeSrc.borderL + CHROME_TOKENS.codeSrc.padL,
   codeSrcPadV: CHROME_TOKENS.codeSrc.padV * 2,
   codeSrcMaxH: CHROME_TOKENS.codeSrc.maxH,
-  codeOutTextMax: CHROME_TOKENS.codeOut.maxH - CHROME_TOKENS.codeOut.padTop - CHROME_TOKENS.codeOut.borderTop,
+  /** 程文输出文本预算 = max-height 全域（2026-09-14：内距/规线归段头，滚动区即文本区）。 */
+  codeOutTextMax: CHROME_TOKENS.codeOut.maxH,
   codeOutMaxH: CHROME_TOKENS.codeOut.maxH,
   marginaliaW: CHROME_TOKENS.marginalia.width,
   marginaliaInset: CHROME_TOKENS.marginalia.borderL + CHROME_TOKENS.marginalia.padL,

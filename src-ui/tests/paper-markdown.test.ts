@@ -40,6 +40,8 @@ import {
   measureBlockHeightCached,
   needsObservedHeight,
   PAPER_REASONING_LINE_HEIGHT,
+  SEC_HEAD_GAP,
+  SEC_HEAD_H,
 } from '../src/paper/measure';
 
 function block(kind: Parameters<typeof createBlock>[0], payload: object) {
@@ -174,8 +176,11 @@ describe('paper/fold — 默认规则与文案', () => {
     expect(foldLabel('code', { code: 'abcd' }, false)).toBe('▾ 收起 程序');
   });
 
-  it('夹注预览取首个非空行', () => {
-    expect(foldPreviewLine('\n\n第二行才是货\n第三行')).toBe('第二行才是货');
+  it('夹注预览取最新一行（2026-09-14 改向：折叠态随思考推进动态更新）', () => {
+    // 旧行为取首行 = 永远定格开头；新规格取末个非空行（流式尾行即「此刻在想什么」）
+    expect(foldPreviewLine('\n\n开头那行\n收尾才是货')).toBe('收尾才是货');
+    expect(foldPreviewLine('独行')).toBe('独行');
+    expect(foldPreviewLine('思考正文\n')).toBe('思考正文'); // 流式行尾未闭合只剩换行
     expect(foldPreviewLine('   \n')).toBe('');
   });
 });
@@ -198,21 +203,25 @@ describe('paper/measure — 折叠态计高', () => {
 
   it('脚注：展开 = 折叠行 + 参数 + 输出 + 错误；折叠 = 折叠行（全部收起）', () => {
     const b = block('tool', { toolId: 't', name: 'n', label: 'l', args: 'a', status: 'done', output: 'o', err: 'e' });
-    expect(measureBlockHeight(b, false)).toBe(10 + FOLD_ROW_H + 36 + 49 + 49);
+    // 载荷段头恒一行（SEC_HEAD_H），输出/错误段带上距（首段紧跟折叠行不留档）
+    const sec = (gap: boolean) => SEC_HEAD_H + (gap ? SEC_HEAD_GAP : 0) + 36;
+    expect(measureBlockHeight(b, false)).toBe(10 + FOLD_ROW_H + sec(false) + sec(true) * 2);
     expect(measureBlockHeight(b, true)).toBe(10 + FOLD_ROW_H);
   });
 
   it('程文：折叠收程序体、留输出/错误（执行结果可见——与脚注的差异面）', () => {
     const b = block('code', { toolId: 't', description: 'd', code: 'c', status: 'done', output: 'o', err: 'e' });
     // 56 = 36 文本 + 20 程序体纵向内距（.pp-code-src 内距镜像，2026-08-30 溢出修复）
-    expect(measureBlockHeight(b, false)).toBe(10 + FOLD_ROW_H + 56 + 49 + 49);
-    expect(measureBlockHeight(b, true)).toBe(10 + FOLD_ROW_H + 49 + 49);
+    const sec = (gap: boolean) => SEC_HEAD_H + (gap ? SEC_HEAD_GAP : 0) + 36;
+    expect(measureBlockHeight(b, false)).toBe(10 + FOLD_ROW_H + 56 + sec(true) * 2);
+    // 折叠态程序体不画 → 输出段成了首段（无上距）
+    expect(measureBlockHeight(b, true)).toBe(10 + FOLD_ROW_H + sec(false) + sec(true));
   });
 
-  it('脚注参数测高消费 prettyToolArgs（渲染/测量同源变换）', () => {
+  it('脚注参数测高消费 toolDisplay（渲染/测量同源变换）', () => {
     const raw = block('tool', { toolId: 't', name: 'n', label: 'l', args: '{"a":1}', status: 'done' });
-    // pretty 后文本仍为一段（mock 恒 36）——此处只验证不因规整而炸
-    expect(measureBlockHeight(raw, false)).toBe(10 + FOLD_ROW_H + 36);
+    // 展示文本仍为一段（mock 恒 36）——只验不因规整而炸；段头恒占 SEC_HEAD_H
+    expect(measureBlockHeight(raw, false)).toBe(10 + FOLD_ROW_H + SEC_HEAD_H + 36);
   });
 
   it('折叠切换 = 签名变化 → 重测（缓存不以旧态命中）', () => {

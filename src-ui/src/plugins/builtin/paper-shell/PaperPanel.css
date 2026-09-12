@@ -1200,10 +1200,14 @@
 .pp-block.pp-reasoning .pp-fold:hover {
   color: var(--ink-1);
 }
-/* 夹注折叠预览：单行截断（行高 13.5×1.85≈25px——测量端按一行计高） */
+/* 夹注折叠预览：最新一行（foldPreviewLine）——nowrap + ellipsis 保证恒一行
+ * （行高 13.5×1.85≈25px，测量端按一行计高；2026-09-14 前是首行 + max-height
+ * 硬裁，长行会在字腰上被切掉半截）。 */
 .pp-fold-preview {
   max-height: 25px;
   overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   opacity: 0.85;
 }
 
@@ -1219,6 +1223,62 @@
   font-size: var(--pp-type-reasoning-size);
   line-height: var(--pp-type-reasoning-lh);
   color: var(--graphite);
+}
+
+/* ── 工具卡载荷段（2026-09-14 可读性专项）──
+ * 旧观感（用户报「展开之后乱得要死，看着跟乱码一样」）的四个病灶与对策：
+ *   ① 无分段：参数原始 JSON 与输出同色同形叠在一起 → 段头（小字标 + 细规线）；
+ *   ② ANSI 转义裸奔：shell 输出的 \u001b[36m 在纸面上是字面乱码 → 展示变换剔除；
+ *   ③ 单行巨串无结构：20–30KB 单行 JSON 被 break-all 从 token 中间剁开 →
+ *      结构化打印（paper/tool-text）+ overflow-wrap: break-word（只在词太长时断）；
+ *   ④ 键值同色：扫读时结构与数据分离不了 → .pp-tv-* 四档墨（键弱/值实/字面量石青/
+ *      结构符最弱）。
+ * 高度侧纪律：段头行高 14 + 上距 6（--pp-ch-secHead-*）、首段不留空档、
+ * 输出盒无内距（滚动区即文本区）——measure.ts 的 SEC_HEAD_H/SEC_HEAD_GAP 逐字镜像。 */
+.pp-sec-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--f-mono);
+  font-size: var(--pp-ch-secHead-size);
+  line-height: var(--pp-ch-secHead-lh);
+  letter-spacing: 0.18em;
+}
+/* 段头细规线：填满标字之后的行宽（卷内横线语法的最小档） */
+.pp-sec-head::after {
+  content: "";
+  flex: 1;
+  border-top: 1px solid var(--rule-soft);
+}
+.pp-sec--gap {
+  margin-top: var(--pp-ch-secHead-marginTop);
+}
+.pp-sec-label {
+  color: var(--ink-4); /* 默认：中性注记墨（输出段） */
+}
+.pp-sec--args .pp-sec-label {
+  color: var(--indigo); /* 参数（入）= 石青：机器的输入面 */
+}
+.pp-sec--err .pp-sec-label {
+  color: var(--fail); /* 错误 = 墨浓红（--fail 单一真源） */
+}
+/* 载荷行内片段四档墨（渲染端 TONE_CLASS，paper/tool-text 的 tone 语义）：
+ * 值 = 实墨（要读的是数据）/ 键 = 次级 / 字面量 = 石青（机器数）/ 结构符 = 最弱。 */
+.pp-tv-k {
+  color: var(--ink-3);
+}
+.pp-tv-s {
+  color: var(--ink-1);
+}
+.pp-tv-n {
+  color: var(--indigo);
+}
+.pp-tv-p {
+  color: var(--ink-4);
+}
+.pp-tv-c {
+  color: var(--graphite);
+  font-style: italic;
 }
 
 /* ── 脚注（tool）：石青注线小字 ── */
@@ -1255,21 +1315,22 @@
 .pp-block.pp-toolgroup .pp-kind .pp-zh {
   color: var(--indigo);
 }
-.pp-block.pp-tool pre {
+/* 参数（入）段：石青 mono 直排（未结构化载荷仍是石青字身——结构化行由 .pp-tv-* 接管墨阶） */
+.pp-block.pp-tool .pp-args {
   margin: 0;
   font-family: var(--f-mono);
   font-size: var(--pp-type-tool-size);
   line-height: var(--pp-type-tool-lh);
-  white-space: pre-wrap;
-  word-break: break-all;
   color: var(--indigo);
   max-height: var(--pp-lim-preMaxH);
   overflow: auto;
+  white-space: pre-wrap;
+  /* 2026-09-14：break-all 退役——它在 token 中间下刀（路径/JSON 串读成乱码）；
+   * break-word 只在单词本身超宽时才断，与 measure 侧 pretext 的换行模型一致。 */
+  overflow-wrap: break-word;
 }
+/* 输出/错误（出）段：滚动盒即文本区（上距/规线归段头——measure OUT_CHROME_H 镜像） */
 .pp-block.pp-tool .pp-out {
-  margin-top: var(--pp-ch-out-marginTop);
-  border-top: var(--pp-ch-out-borderTop) solid var(--rule-soft);
-  padding-top: var(--pp-ch-out-padTop);
   font-family: var(--f-mono);
   font-size: var(--pp-type-out-size);
   line-height: var(--pp-type-out-lh);
@@ -1277,7 +1338,11 @@
   max-height: var(--pp-lim-outMaxH);
   overflow: auto;
   white-space: pre-wrap;
-  word-break: break-all;
+  overflow-wrap: break-word;
+}
+/* 错误段：--fail 单一真源（2026-09-14：渲染器 inline style 退役，色归 CSS） */
+.pp-block.pp-tool .pp-out--err {
+  color: var(--fail);
 }
 
 /* ── 程文（code，P2-A）：程序执行卡——石青注线同源（脚注族），
@@ -1306,15 +1371,12 @@
   max-height: var(--pp-ch-codeSrc-maxH);
   overflow: auto;
   white-space: pre-wrap;
-  word-break: break-all;
+  overflow-wrap: break-word; /* 同脚注族：break-all 退役（2026-09-14，标识符不再腰斩） */
   border-left: var(--pp-ch-codeSrc-borderL) solid var(--indigo);
   background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
   padding: var(--pp-ch-codeSrc-padV) 0 var(--pp-ch-codeSrc-padV) var(--pp-ch-codeSrc-padL);
 }
 .pp-block.pp-code .pp-out {
-  margin-top: var(--pp-ch-out-marginTop);
-  border-top: var(--pp-ch-out-borderTop) solid var(--rule-soft);
-  padding-top: var(--pp-ch-out-padTop);
   font-family: var(--f-mono);
   font-size: var(--pp-type-out-size);
   line-height: var(--pp-type-out-lh);
@@ -1322,7 +1384,11 @@
   max-height: var(--pp-ch-codeOut-maxH);
   overflow: auto;
   white-space: pre-wrap;
-  word-break: break-all;
+  overflow-wrap: break-word; /* 同脚注族：break-all 退役（2026-09-14） */
+}
+/* 错误段：--fail 单一真源（同脚注族） */
+.pp-block.pp-code .pp-out--err {
+  color: var(--fail);
 }
 
 /* ── 抄录（diff）：栏内图版，3px 硬左线 + 上下规线 + 米黄底 ── */

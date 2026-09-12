@@ -36,7 +36,7 @@ import {
   textHasTable,
 } from './markdown';
 import { parseCircledSegments } from './marks';
-import { hasArgsToShow, prettyToolArgs } from './tool-text';
+import { hasArgsToShow, hasPayloadToShow, toolDisplay } from './tool-text';
 
 /* ── 纸面字体常量（2026-08-30 token 化：单一真源 = type-tokens.ts）──
  * 2026-09-10 三体换代：宋/楷/等宽退役，三栈统一 MiSans（文类语义键 song/kai/mono
@@ -252,7 +252,10 @@ const USER_IMAGE_GAP = CHROME_DERIVED.userImageGap;
 const USER_IMAGES_MARGIN_TOP = CHROME_DERIVED.userImagesMarginTop;
 const REASONING_TEXT_INSET = CHROME_DERIVED.reasoningTextInset; // padding-left 18 + border-left 2（虚线）
 const TOOL_PAD_TOP = CHROME_DERIVED.toolPadTop; // .pp-block.pp-tool padding-top
-const OUT_CHROME_H = CHROME_DERIVED.outChromeH; // .pp-out margin-top 6 + padding-top 6 + border-top 1
+/** 载荷段头（.pp-sec-head，2026-09-14）：恒一行（mono 10px × 1.4 = 14），
+ *  首段不留上距——参数段紧跟折叠行（渲染端 gap 条件同判据）。 */
+export const SEC_HEAD_H = CHROME_DERIVED.secHeadH;
+export const SEC_HEAD_GAP = CHROME_DERIVED.secHeadGap;
 const DIFF_LANG_H = CHROME_DERIVED.diffLangH; // .pp-lang 10px×lh1 + margin-bottom 6
 const DIFF_PRE_CHROME_H = CHROME_DERIVED.diffPreChromeH; // pre padding 14×2 + border 1×2
 const DIFF_TEXT_INSET = CHROME_DERIVED.diffTextInset; // border-left 3 + padding-left 20
@@ -1127,23 +1130,23 @@ export function inkSourcesFor(b: SourcedBlock, folded: boolean): InkSource[] {
       const out: InkSource[] = [];
       if (hasArgsToShow(p.args))
         out.push({
-          text: prettyToolArgs(p.args),
+          text: toolDisplay(p.args).text,
           font: PAPER_TOOL_FONT,
           lineHeight: PAPER_TOOL_LINE_HEIGHT,
           inset: 0,
           cap: Math.floor(PRE_MAX_H / PAPER_TOOL_LINE_HEIGHT),
         });
-      if (p.output)
+      if (hasPayloadToShow(p.output))
         out.push({
-          text: p.output,
+          text: toolDisplay(p.output).text,
           font: PAPER_OUT_FONT,
           lineHeight: PAPER_OUT_LINE_HEIGHT,
           inset: 0,
           cap: Math.floor(OUT_MAX_H / PAPER_OUT_LINE_HEIGHT),
         });
-      if (p.err)
+      if (hasPayloadToShow(p.err))
         out.push({
-          text: p.err,
+          text: toolDisplay(p.err).text,
           font: PAPER_OUT_FONT,
           lineHeight: PAPER_OUT_LINE_HEIGHT,
           inset: 0,
@@ -1163,17 +1166,17 @@ export function inkSourcesFor(b: SourcedBlock, folded: boolean): InkSource[] {
           inset: CODE_SRC_INSET,
           cap: Math.floor((CODE_SRC_MAX_H - CODE_SRC_PAD_V) / PAPER_TOOL_LINE_HEIGHT),
         });
-      if (p.output)
+      if (hasPayloadToShow(p.output))
         out.push({
-          text: p.output,
+          text: toolDisplay(p.output).text,
           font: PAPER_OUT_FONT,
           lineHeight: PAPER_OUT_LINE_HEIGHT,
           inset: 0,
           cap: Math.floor(CODE_OUT_TEXT_MAX / PAPER_OUT_LINE_HEIGHT),
         });
-      if (p.err)
+      if (hasPayloadToShow(p.err))
         out.push({
-          text: p.err,
+          text: toolDisplay(p.err).text,
           font: PAPER_OUT_FONT,
           lineHeight: PAPER_OUT_LINE_HEIGHT,
           inset: 0,
@@ -1409,20 +1412,25 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
     case 'tool': {
       // 折叠机制（fold.ts 同款规则镜像）：折叠态只留折叠行——参数/输出/错误全收。
       // F1（2026-09-01 三轴审计）：空/无意义参数（`{}` 骨架）渲染端不画 → 测高镜像同判据。
-      const argsH =
-        folded || !hasArgsToShow(p.args)
-          ? 0
-          : cappedH(prettyToolArgs(p.args ?? ''), b.w, PAPER_TOOL_FONT, PAPER_TOOL_LINE_HEIGHT, PRE_MAX_H);
-      const outH = folded
-        ? 0
-        : p.output
-          ? OUT_CHROME_H + cappedH(p.output, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, OUT_MAX_H)
-          : 0;
-      const errH = folded
-        ? 0
-        : p.err
-          ? OUT_CHROME_H + cappedH(p.err, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, OUT_MAX_H)
-          : 0;
+      // 2026-09-14 工具卡可读性专项：载荷走展示变换（toolDisplay）——测量消费
+      // 展示文本（而非原始串），与渲染行数逐字一致；段头恒一行（SEC_HEAD_H），
+      // 首段不留上距（渲染端同样按「上方有无内容」决定 gap）。
+      const showArgs = !folded && hasArgsToShow(p.args);
+      const showOut = !folded && hasPayloadToShow(p.output);
+      const showErr = !folded && hasPayloadToShow(p.err);
+      const argsH = showArgs
+        ? SEC_HEAD_H + cappedH(toolDisplay(p.args).text, b.w, PAPER_TOOL_FONT, PAPER_TOOL_LINE_HEIGHT, PRE_MAX_H)
+        : 0;
+      const outH = showOut
+        ? SEC_HEAD_H +
+          (showArgs ? SEC_HEAD_GAP : 0) +
+          cappedH(toolDisplay(p.output).text, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, OUT_MAX_H)
+        : 0;
+      const errH = showErr
+        ? SEC_HEAD_H +
+          (showArgs || showOut ? SEC_HEAD_GAP : 0) +
+          cappedH(toolDisplay(p.err).text, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, OUT_MAX_H)
+        : 0;
       return TOOL_PAD_TOP + FOLD_ROW_H + argsH + outH + errH;
     }
     case 'code': {
@@ -1430,12 +1438,20 @@ export function measureBlockHeight(b: SourcedBlock, folded = false, sidecarFolde
       // 折叠态收程序体、留输出/错误（执行结果一眼可见——与脚注折叠的差异面）。
       // 2026-08-30 溢出修复：程序体走 .pp-code-src 专属镜像（内缩/内距/320 封顶），
       // 输出/错误走 .pp-code .pp-out 的 200 上限（脚注族 160 不同款）。
-      const codeH = folded ? 0 : codeSrcH((b.payload as { code?: string }).code ?? p.args ?? '', b.w);
-      const outH = p.output
-        ? OUT_CHROME_H + cappedH(p.output, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, CODE_OUT_TEXT_MAX)
+      // 2026-09-14：段头 + 展示变换同 tool 族（codeOutTextMax 内距归段头后 = 200）。
+      const showSrc = !folded && !!(b.payload as { code?: string }).code;
+      const showOut = hasPayloadToShow(p.output);
+      const showErr = hasPayloadToShow(p.err);
+      const codeH = showSrc ? codeSrcH((b.payload as { code?: string }).code ?? p.args ?? '', b.w) : 0;
+      const outH = showOut
+        ? SEC_HEAD_H +
+          (showSrc ? SEC_HEAD_GAP : 0) +
+          cappedH(toolDisplay(p.output).text, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, CODE_OUT_TEXT_MAX)
         : 0;
-      const errH = p.err
-        ? OUT_CHROME_H + cappedH(p.err, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, CODE_OUT_TEXT_MAX)
+      const errH = showErr
+        ? SEC_HEAD_H +
+          (showSrc || showOut ? SEC_HEAD_GAP : 0) +
+          cappedH(toolDisplay(p.err).text, b.w, PAPER_OUT_FONT, PAPER_OUT_LINE_HEIGHT, CODE_OUT_TEXT_MAX)
         : 0;
       return TOOL_PAD_TOP + FOLD_ROW_H + codeH + outH + errH;
     }

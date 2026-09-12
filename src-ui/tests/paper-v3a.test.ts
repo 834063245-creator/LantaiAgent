@@ -42,6 +42,8 @@ import {
   PAPER_USER_FONT,
   PAPER_USER_LINE_HEIGHT,
   PRE_MAX_H,
+  SEC_HEAD_GAP,
+  SEC_HEAD_H,
 } from '../src/paper/measure';
 import {
   makeStrip,
@@ -94,8 +96,9 @@ describe('paper/measure', () => {
 
   it('tool 块：注线顶距 + 折叠行 + args + output + err 各计一段，output/err 封顶 OUT_MAX_H', () => {
     const b = block('tool', { toolId: 't', name: 'n', label: 'l', args: 'a', status: 'done', output: 'o', err: 'e' });
-    // 顶距 10 + 折叠行 20；args 36；output/err 各 13 chrome + 36
-    expect(measureBlockHeight(b)).toBe(10 + FOLD_ROW_H + 36 + 49 + 49);
+    // 顶距 10 + 折叠行 20；args 段头 14 + 36；output/err 各段头 14 + 上距 6 + 36
+    const sec = (gap: boolean) => SEC_HEAD_H + (gap ? SEC_HEAD_GAP : 0) + 36;
+    expect(measureBlockHeight(b)).toBe(10 + FOLD_ROW_H + sec(false) + sec(true) * 2);
   });
 
   it('prepare 缓存：同文本同字体只 prepare 一次（FIFO 纪律）', () => {
@@ -172,10 +175,10 @@ describe('paper/measure', () => {
       status: 'done',
       output: 'y'.repeat(1000),
     });
-    // args 为空走零成本路径；折叠行 20 + output 截断后 +13 chrome，加顶距 10
-    expect(measureBlockHeight(tool)).toBe(10 + FOLD_ROW_H + OUT_MAX_H + 13);
+    // args 为空走零成本路径；折叠行 20 + 输出段头 14 + output 截断后，加顶距 10
+    expect(measureBlockHeight(tool)).toBe(10 + FOLD_ROW_H + SEC_HEAD_H + OUT_MAX_H);
     // 超长程文（2026-08-30 溢出修复钉值）：程序体内容预算 320-20 内距、文本宽
-    // w-17 内缩；输出截断到 193（.pp-code .pp-out 200 - padding 6 - border 1）
+    // w-17 内缩；输出截断到 200（.pp-code .pp-out 上限——2026-09-14 内距归段头）
     layoutMock.mockReturnValueOnce({ height: 9999, lineCount: 999 });
     layoutMock.mockReturnValueOnce({ height: 9999, lineCount: 999 });
     const code = block('code', {
@@ -185,7 +188,9 @@ describe('paper/measure', () => {
       status: 'done',
       output: 'y'.repeat(1000),
     });
-    expect(measureBlockHeight(code)).toBe(10 + FOLD_ROW_H + CODE_SRC_MAX_H + 13 + CODE_OUT_TEXT_MAX);
+    expect(measureBlockHeight(code)).toBe(
+      10 + FOLD_ROW_H + CODE_SRC_MAX_H + SEC_HEAD_H + SEC_HEAD_GAP + CODE_OUT_TEXT_MAX,
+    );
     expect(layoutMock).toHaveBeenCalled();
   });
 

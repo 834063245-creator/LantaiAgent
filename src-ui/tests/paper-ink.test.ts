@@ -173,8 +173,8 @@ describe('paper/ink inkForBlock', () => {
 
   it('脚注多源：args + output 顺序累计 dy（输出段接在参数段之后）', () => {
     const cache = createInkCache();
-    // args 用 JSON 字符串值：对象经 prettyToolArgs 展开成多行，桩「每段恒 2 行」
-    // 的算术就乱了——单行值保住「args 2 行 + output 2 行 = 4 条」的可读账
+    // args 用 JSON 字符串值：容器经 toolDisplay 摊成多行，桩「每段恒 2 行」
+    // 的算术就乱了——标量值（顶层串）保住「args 2 行 + output 2 行 = 4 条」的可读账
     const b = block('tool', { toolId: 't', name: 'n', label: 'l', args: '"x"', status: 'done', output: 'out' });
     b.w = 640;
     const ink = inkForBlock(b, false, cache);
