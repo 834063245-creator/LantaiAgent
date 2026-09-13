@@ -238,5 +238,13 @@
     "entry": "index.ts",
     "hostModule": "host",
     "inject": ["capabilities"]
+  },
+  {
+    "dir": "office-domain",
+    "buildOrder": 29,
+    "description": "office 域工具（office(action,…)——OfficeCLI 一等域：读写 .docx/.xlsx/.pptx，经 shell seam 受沙箱 spawn）",
+    "entry": "index.ts",
+    "hostModule": "host",
+    "inject": ["tools"]
   }
 ]

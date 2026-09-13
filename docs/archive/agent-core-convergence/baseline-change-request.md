@@ -1,3 +1,62 @@
+# Baseline 变更申请 — phase-0/tool-schemas.full.json + phase-0/tool-schemas.plan.json（新增 office 域工具）
+
+> 申请日期：2026-09-13 · 申请人：编码助手（OfficeCLI 集成 C 路：MCP 挂接改判为一等域工具）
+> 状态：**已批准** —— 用户在对话中明确下达「干C」（选择 C 路 = 把 OfficeCLI 做成一等域工具、
+> 撤掉 MCP 挂接），即本变更的开工授权；本文件按模板登记变更对象与证据。
+> 模型可见表面：**有变更**（新增工具 `office`）——这正是本申请的对象（+1 工具，不改既有条目）。
+
+## 1. 变更对象
+
+- `src-ui/tests/convergence/baseline/phase-0/tool-schemas.full.json`（`count` 16 → 17）
+- `src-ui/tests/convergence/baseline/phase-0/tool-schemas.plan.json`（`count` 18 → 19）
+- 变更内容：两个快照的 `schemas` 数组**各追加一条 `office` 工具的 schema**（动作枚举 12 项 +
+  参数表），其余条目逐字节不变、顺序不变（新域追加在表尾 = 前缀缓存友好）。
+- plan 面含它是因为本域声明了 `readOnlyActions`（plan 克隆按白名单暴露只读动作）——
+  **这正是 C 路相对 MCP 路的收益之一**：plan 模式下仍可用 `view/get/query/validate` 读文档，
+  而旧 MCP 路整块被判为写、连 `view` 都被拦。
+
+## 2. 为什么必须变
+
+- MCP 挂接把 OfficeCLI 原样搬成「一个收命令行字符串的工具」，绕过兰台自己的强制面：
+  ① MCP 子进程是**全权用户进程**（不经 fs_cap、不受 os_sandbox 约束，可写任意路径）；
+  ② 参数无类型（自由字符串，与「defineTool + zod 真源」纪律不符）；
+  ③ 整块只读/写二分（plan 粒度错）。
+- C 路把同一能力做成兰台原生形状：zod 收窄动作面、经 `ctx.shell` seam → `process_cap`
+  受控 spawn（os_sandbox 沙箱 + Bash 权限类 + 审计，与 `run_shell` 同一条路）、
+  `readOnlyActions` 白名单 ⇒ plan 按 action 分档、命令行由工具层拼装（模型不碰引号）。
+- 工具面新增一域 ⇒ 两个快照必然新增一条：这是**新增**而非**改动**，不触碰既有工具的任何字节。
+
+## 3. 证据
+
+- `src-ui/tests/office-domain.test.ts`（12 例）：纯函数（引号/命令行/动作→argv）、工具形状
+  （domain/actions/readOnlyActions）、**plan 分档逐动作断言**（4 只读放行、7 写动作拦截）、
+  执行面经 ctx.shell seam 派发（相对路径按工作区根解析、粘性 cwd 沿用、写动作带落盘提示）、
+  **真 bash × 真 officecli 端到端**（create→add→view→screenshot→validate，且"写完立刻读盘"）。
+- 生成物：`npm run gen:tool-contract` 已把 `office` 收录进 `docs/agents/model-tool-contract.md`
+  （域 `office` / 11 动作 / 参数表）。
+- 登记面：`plugins/builtin-roster.json` 追加 `office-domain`（buildOrder 29）+
+  `composition/first-party-tools.ts` 表尾追加；`first-party-manifest` 计数守护 42 → 43
+  已按"故意规格变更"显式更新（测试内写明日期与原因）。
+- record 后 `git diff` 只含上述两个 baseline 快照 + 生成物文档 + 本批代码。
+
+## 4. 拟议变更
+
+采纳 record 快照：两文件各 +1 条 `office` schema 条目 + `count` +1；其余零变更。
+
+## 5. 落地步骤
+
+1. ✅ office 域工具 `agent/tools/office.ts`（12 动作、zod 真源、`defineTool` 扩 domain/actions/readOnlyActions 透传）；
+2. ✅ 域插件 `plugins/builtin/office-domain/`（index/host/host.aliased）+ 名册与清单登记；
+3. ✅ 守护测试 12 例（含真二进制端到端）；
+4. ✅ `gen:tool-contract` 重生成；
+5. ✅ 本文件登记 + 授权依据（用户「干C」）；
+6. ⬜ `record:convergence` 独立步骤执行；
+7. ⬜ 撤 MCP 路：`examples/plugins/office/` 去 `mcpServers`（保留活预览窗）、`preflight.ps1` 改口径、
+   skill 改写为域工具调用面、用户机 `~/.lantai/mcp.json` 删 office 条目；
+8. ⬜ 门禁四连（vitest / build / biome ci / verify:convergence）+ 文档（计划 §10、AGENTS 域清单）。
+
+---
+
 # Baseline 变更申请 — phase-5/session-projection.trace.json（turn/start 载荷 provider/model 分账）
 
 > 申请日期：2026-09-12 · 申请人：编码助手（链路挂起排障事故的可观测面拆碑）

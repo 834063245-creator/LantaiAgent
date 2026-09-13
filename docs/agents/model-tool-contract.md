@@ -4,7 +4,7 @@
 > 从 `buildToolRegistry` 出厂行表装配产物生成 — 勿手改；工具面变更后重新生成并同 commit。
 > 本文档不含时间戳：字节稳定是 `--check` 构建守护的前提。
 
-可见工具 16 个（域折叠形态 + 常驻件）；隐藏旧名 104 个（附录）。
+可见工具 17 个（域折叠形态 + 常驻件）；隐藏旧名 104 个（附录）。
 
 装配说明：标准注册表 = composition 行表出厂序；hologram 动态族（graph/ops/lsp 引擎侧
 schema）在本生成环境（无 Tauri bridge / 无引擎连接）恒为空集，引擎侧工具面以引擎
@@ -23,6 +23,7 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 | [`show_asset`](#show_asset) | ✓ | — | Create a visual asset block in the conversation (chart/table/metric/graph/html...) rendered as a component. Use for any deliverable that benefits from spatial layout or needs to be referred/updated later (charts, tables, impact graphs, metric dashboards, SVG/HTML cards). The block enters the chat flow and can be pinned to the canvas by the user. Kinds and their payload schemas are listed by list_block_kinds; presentation selects the visual form within the kind white-list (omit for the default). Check list_block_kinds before your first call. |
 | [`update_asset`](#update_asset) | ✓ | — | Update an existing asset block in-place by assetId (payload/presentation replace; the block id and pin position keep unchanged — pinned copies update live). Rules: kind is NOT changeable (changing semantics means creating a new asset with show_asset); presentation is changeable (skin swap, within the same kind white-list). Errors name what went wrong and what to do instead. |
 | [`list_block_kinds`](#list_block_kinds) | ✓ | — | List all available asset block kinds with their payload JSON Schema, presentation white-lists, and streaming mode. Call before show_asset to learn what you can generate and how the payload must be shaped; the list reflects the live registry (plugin-contributed kinds appear automatically). |
+| [`office`](#office) | — | 12 | Read, edit, and produce Office files (.docx / .xlsx / .pptx) through OfficeCLI — the same engine as the `officecli` command line, but with typed actions and no quoting on your side. |
 | [`fs`](#fs) | — | 9 | File-system operations: read / write / edit / list / glob / mkdir / move / rename / delete. Use fs(read) to inspect files, fs(write)/fs(edit) to modify them. Path params accept workspace-root-relative paths (e.g. "src/agent/tool.ts"); fs(list)/fs(glob) may omit the path — omitted = the workspace root. fs(read)/fs(edit) may also omit the path — omitted = the file from your most recent fs(read)/fs(edit) (results end with a [file: ...] line showing where you landed). |
 | [`shell`](#shell) | — | 4 | Shell execution: run (build/test commands only, bundled bash by default; interpreter:"pwsh" ONLY for Windows-native tasks like registry/ACL/MSI/COM/WMI), plus output / wait / kill for background jobs. Working directory is sticky per agent (a successful cd persists across calls; results end with a [cwd: ...] line). bash_output returns only NEW bytes since your last read — polling watch modes/dev servers is cheap. Do NOT use shell(run) for file search, code search, or git — use fs/search/git instead. |
 | [`git`](#git) | — | 13 | Git operations: status / diff / log / stage / commit / push / pull / checkout / branch / stash / unstash / discard / init / blame. path may be omitted for every action — omitted = the workspace root. Key semantics: file = one file for diff/discard/blame (omit it on diff = all changes); files = comma-separated list (or "." for all) for stage — commit accepts files too and auto-stages them before committing. |
@@ -104,6 +105,38 @@ buildToolRegistry 装配产物，与 tool-schemas.full.json 同范围。
 > List all available asset block kinds with their payload JSON Schema, presentation white-lists, and streaming mode. Call before show_asset to learn what you can generate and how the payload must be shaped; the list reflects the live registry (plugin-contributed kinds appear automatically).
 
 - 只读：是
+
+### `office`
+
+> Read, edit, and produce Office files (.docx / .xlsx / .pptx) through OfficeCLI — the same engine as the `officecli` command line, but with typed actions and no quoting on your side.
+> Actions: view (read text/annotated/outline/stats/issues) · get (element + children) · query (CSS-like selector) · validate (OpenXML schema) · create · set / add / remove (element edits) · batch (≥3 edits in one atomic pass) · merge (fill {{key}} templates) · screenshot (render page/slides to PNG) · playbook (load a per-format build guide: word/academic-paper/pptx/pitch-deck/excel/financial-model/…).
+> Writes flush to disk immediately, so other tools and the user see fresh bytes at once.
+> Before producing a deliverable, run the delivery gate: validate → view issues (overflow/format/structure) → scan view text for leftover placeholders — note issues does NOT catch placeholders, missing image alt text, or empty content; and it does catch pptx overflow/off-slide shapes and xlsx formula errors.
+> Load the `officecli` skill for the full playbook (units, colors, template flow, tracked changes, pitfalls).
+
+- 只读：否
+- 域：`office`
+- action 枚举（12）：`view` · `get` · `query` · `validate` · `create` · `set` · `add` · `remove` · `batch` · `merge` · `screenshot` · `playbook`
+- 只读 action：`view` · `get` · `query` · `validate` · `playbook`
+
+| 参数 | 必选 | 类型 | 说明 |
+|------|------|------|------|
+| `action` | ✓ | string（枚举见 action 表/描述） | 动作（读：view/get/query/validate/playbook；写：create/set/add/remove/batch；交付：merge/screenshot） |
+| `file` | — | string | 目标 Office 文件（.docx/.xlsx/.pptx）。相对路径按工作区根解析。除 playbook 外所有动作必填。 |
+| `playbook` | — | string（枚举见 action 表/描述） | playbook 动作的专项技能名（逐格式构建指南，正文 25–65 KB）：word/academic-paper/word-form/pptx/pitch-deck/morph-ppt/morph-ppt-3d/excel/financial-model/data-dashboard。一件产物只载一个，别重复载。 |
+| `path` | — | string | 元素路径（get/set/remove 用）：1-based 本地名路径，如 /body/p[2]、/slide[1]/shape[@id=2]、/Sheet1/A1。 |
+| `mode` | — | `text` / `annotated` / `outline` / `stats` / `issues` / `html` / `svg` / `forms` | view 的读数模式（缺省 text）：text/annotated/outline/stats/issues/html/svg/forms。 |
+| `selector` | — | string | query 的 CSS 式选择器，如 paragraph[style=Heading1]、cell[value>5000]。 |
+| `props` | — | object | set/add 的属性表（值一律字符串，如 {"text":"标题","style":"Heading1"}；单位/颜色写法见 officecli 技能 §8）。 |
+| `type` | — | string | add 的元素类型：paragraph/run/table/slide/shape/picture/comment/sheet/cell… |
+| `parent` | — | string | add 的父路径（缺省 /），如 /body、/slide[1]、/Sheet1、/styles。 |
+| `json` | — | boolean | view/get/query/validate/batch 追加 --json（结构化输出；token 更贵，按需开）。 |
+| `items` | — | array | batch 的改动项数组（≥3 处改动优先用它：一次开关 + 原子回滚）。 |
+| `data` | — | object | merge 的数据映射（键 = 模板里的 {{key}}）。 |
+| `out` | — | string | 输出路径（screenshot 的 PNG / merge 的成品文件）。相对路径按工作区根解析。 |
+| `page` | — | integer | screenshot 的页号（1-based）。 |
+| `grid` | — | boolean | screenshot 出整册联系表（--grid auto）而不是单页。 |
+| `depth` | — | integer | get 的展开深度。 |
 
 ### `fs`
 

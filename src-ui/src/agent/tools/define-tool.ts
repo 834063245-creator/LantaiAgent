@@ -47,6 +47,13 @@ export interface DefineToolOpts<S extends z.ZodObject<z.ZodRawShape>> {
   schema: S;
   /** 是否只读(可安全并行)。默认 false */
   readOnly?: boolean;
+  /** 领域名（域工具如 fs/shell/office——模型面折叠与契约文档分组用）。 */
+  domain?: string;
+  /** 动作枚举（域工具；契约文档逐项列出，plan 门禁按 `args.action` 匹配只读白名单）。 */
+  actions?: readonly string[];
+  /** plan 模式放行的只读动作白名单（域工具）——planGateCheck 命中即放行，
+   *  planRegistry 静态克隆只暴露这些动作。缺省 = 无白名单（整工具按 readOnly 判）。 */
+  readOnlyActions?: readonly string[];
   /** 资产通道标记——透传到 Tool.assetChannel（executor 据此前路由 Asset 事件） */
   assetChannel?: boolean;
   /** 接收 parse 后的类型化参数(default 已注入, 校验失败会抛错而非静默兜底)。
@@ -58,6 +65,9 @@ export interface DefineToolOpts<S extends z.ZodObject<z.ZodRawShape>> {
 /** 创建 Tool。返回的 Tool 与旧手写对象形状完全一致, 消费方(ToolRegistry/executor/plan/mock)零感知。 */
 export function defineTool<S extends z.ZodObject<z.ZodRawShape>>(opts: DefineToolOpts<S>): Tool {
   const { name, description, schema, readOnly = false, assetChannel = false, execute } = opts;
+  const domain = opts.domain;
+  const actions = opts.actions;
+  const readOnlyActions = opts.readOnlyActions;
   // passthrough: 允许 schema 未声明的 meta key 透传(见文件头注释)
   const passthroughSchema = schema.passthrough();
   return {
@@ -65,6 +75,9 @@ export function defineTool<S extends z.ZodObject<z.ZodRawShape>>(opts: DefineToo
     description: () => description,
     parameters: () => toInputJsonSchema(passthroughSchema),
     readOnly: () => readOnly,
+    ...(domain ? { domain: () => domain } : {}),
+    ...(actions ? { actions: () => [...actions] } : {}),
+    ...(readOnlyActions ? { readOnlyActions: () => [...readOnlyActions] } : {}),
     ...(assetChannel ? { assetChannel: true } : {}),
     execute: async (args, onProgress, signal) => {
       let parsed: z.output<S>;

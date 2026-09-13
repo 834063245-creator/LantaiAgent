@@ -32,6 +32,7 @@ import { cordisDomainPlugin } from '../plugins/builtin/cordis-domain';
 import { fsDomainPlugin } from '../plugins/builtin/fs-domain';
 import { gitDomainPlugin } from '../plugins/builtin/git-domain';
 import { memoryDomainPlugin } from '../plugins/builtin/memory-domain';
+import { officeDomainPlugin } from '../plugins/builtin/office-domain';
 import { searchDomainPlugin } from '../plugins/builtin/search-domain';
 import { shellDomainPlugin } from '../plugins/builtin/shell-domain';
 import { skillDomainPlugin } from '../plugins/builtin/skill-domain';
@@ -42,7 +43,7 @@ import type { LantaiPlugin } from '../plugins/types';
 import { compositionServicesPlugin } from './services';
 
 /** 经 ctx.tools 贡献工具的第一方域插件（表序 = 贡献注册序 = 装配序；
- *  ①b 后全量十六族：web + browser-desktop（①b 前插，序 = 迁移前行表序）
+ *  ①b 后全量十七族：web + browser-desktop（①b 前插，序 = 迁移前行表序）
  *  + git/search/fs/shell/agent-isolation（B①/② 无状态族）
  *  + wait/ask/memory/skill/task/agent（①c 装配期真值族）
  *  + cordis（平台化 Phase 4 · D7 动态插件面——装配期真值族，表尾追加）
@@ -71,6 +72,8 @@ export function firstPartyToolPlugins(): LantaiPlugin[] {
     cordisDomainPlugin,
     // Agent 资产块域（无状态族——kind 注册表模块级，args meta 注入）
     assetDomainPlugin,
+    // office 域（C 路，2026-09-13——OfficeCLI 一等域工具；表尾追加 = 前缀缓存友好）
+    officeDomainPlugin,
   ];
 }
 

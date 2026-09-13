@@ -4,7 +4,7 @@
 // 第一方插件元数据清单（平台化收尾，2026-08-29；P1 扩充 2026-08-30；
 // 增补四通道化收编 2026-08-31；2026-09-06 名册单一真源换轨）
 // ——第一方插件的身份真源：13 个平台 service（内核，无目录非产物）手写于
-// 本文件；29 个 feature（出厂产物）条目从 builtin-roster.json 派生
+// 本文件；30 个 feature（出厂产物）条目从 builtin-roster.json 派生
 // （description 等清单事实唯一在名册，此处不双写）。
 //
 // 背景：平台化 P4-P6 之后，第一方插件经 plugins/loader.ts 的 BUILTIN_PLUGINS
@@ -14,7 +14,7 @@
 // profile bundles 清单同构（DSH 第一方插件在设置页可见、可管理，这里对齐）。
 //
 // 铁律：
-//   - 覆盖全部第一方插件（42 = 13 service + 29 feature；多/缺条目 = 装配
+//   - 覆盖全部第一方插件（43 = 13 service + 30 feature；多/缺条目 = 装配
 //     断层，守护测试 tests/first-party-manifest.test.ts 钉死；loader 运行时
 //     缺条目 = 跳过装载 + error 记录，错误不静默）。
 //   - kind 分两类（S5 降级为展示分组标签——不再决定装载语义）：

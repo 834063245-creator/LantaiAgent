@@ -15,7 +15,7 @@
 
 | 用户四问（2026-09-13） | 拍板 | 落地 |
 |---|---|---|
-| 集成门 | 先补 MCP 只读洞 → **A 路零代码挂接**当天验价值 | ✅ A 路已装在本机（`~/.lantai/mcp.json` + `~/.lantai/skills/officecli/`） |
+| 集成门 | 先补 MCP 只读洞 → **A 路零代码挂接**当天验价值 | ✅ 已验（值不值得做的答案：值得）→ **2026-09-13 改判 C 路**：读写能力收成兰台一等 `office` 域工具，MCP 挂接退役（见 §10） |
 | 主用例 | 三者都要：①卷→交付物导出 → ②既有文档注疏回写 → ③xlsx 数据面 | ✅ 三批各有真实二进制 e2e 守护 |
 | 纸壳呈现 | **活预览**（watch 本地服务 / html 内嵌） | ✅ 核查完毕：html 内嵌不可行、watch 需平台件（已建）；同时落了截图刷新路 |
 | 二进制分发 | 随插件/应用自带（先实测体积） | 体积已实测；**载体三来源安装全部端到端实测**，推荐态已落成产物，等签核 |
@@ -113,8 +113,8 @@ registry 与 bridge 两处工具构造同源消费；`~/.lantai/mcp.json` 同构
   幂等（同哈希 → 无需安装）；升级把旧件挪 `.bak-<时间戳>`；`VERSION` 记**二进制自报版本**
   （请求版本另记 `requested_version`）；受限网络可 `-SumsOverride`。
   **三条来源全部端到端实测**（`-FromRelease` 实测 624.5 s＝本机 ~44 KB/s 网络现实）。
-- **推荐载体**：插件目录自带 → `examples/plugins/office/`（manifest + entry + `bin/` 说明 + README；
-  二进制不进仓，装法见其 `bin/README.md`；含 `app.url` 活预览窗 + `office_preview_open` 工具口）。
+- **推荐载体**：~~插件目录自带~~ → **C 路改判后不再需要载体**（读写能力归内置 `office` 域工具，二进制走标准安装位）；
+  `examples/plugins/office/` 保留为**可选活预览窗插件**（`app.url` + `office_preview_open`，不挂 MCP）。
 
 ## 5. 坑账（实测得出，均已在技能/脚本/文档里落地）
 
@@ -177,6 +177,7 @@ registry 与 bridge 两处工具构造同源消费；`~/.lantai/mcp.json` 同构
 | 9 | 交付门槛覆盖面实测（抓什么/不抓什么） | e2e ⑬：抓几何/溢出/公式错/未求值；不抓占位符/alt/空白 |
 | 10 | watch 推送链路实测 + `-FromRelease` 端到端 | SSE 0.6 s 推增量补丁；`-FromRelease` exit 0（624.5 s，哈希通过） |
 | 11 | **真机判据由 Agent 用 CDP 探针答掉**（§2.4 表）+ 复跑 `preflight.ps1` | 兰台真 webview 内：A 档 `readyState=1(OPEN)`、B 档 `2(CLOSED)`；真实 watch 页帧内 `hasEs:true/OPEN/rendered:true`；探针节点已移除、应用 target 列表干净 |
+| 12 | **C 路落地：MCP 挂接改判为一等 `office` 域工具**（§10） | 域工具 12 动作 + zod 真源 + 沙箱路径；`office-domain.test` 13 例（含真 bash × 真 officecli 端到端）；契约生成物收录；**基线变更走 CR 审批后 record**（full 16→17 / plan 18→19）；MCP 路退役（插件去 mcpServers、用户机 mcp.json 清条目、预检加退役检查） |
 
 **门禁终值**：e2e **12/12 绿**（真二进制，缺席自动跳过）；全量 `npx vitest run`
 **2944 passed / 2 failed / 4 skipped（2950）**——2 红是**用户未跟踪**的 `tests/chat-send-liveness.test.ts`
@@ -185,12 +186,62 @@ registry 与 bridge 两处工具构造同源消费；`~/.lantai/mcp.json` 同构
 
 ## 8. 剩余与未决
 
-1. **用户真机验收**（§6，含唯一真机判据）；
-2. **分发载体签核**（推荐插件目录自带；三形态机制均已支持）；
+1. **用户真机验收**（§6：重启后新会话里 `office(action,…)` 可用、plan 反向判据、纸面出图）；
+2. ~~分发载体签核~~ → **已随 C 路作废**：读写走内置域工具（二进制标准安装位），插件只剩可选的活预览窗；
 3. **产品方向件**（需用户定）：
-   - 把注疏回写 / xlsx 做成一等工具域（不再只靠技能驱动）；
-   - 「工具结果携带图像」平台件（让模型看见自己的渲染，替代现在的人判）；
+   - ~~把注疏回写 / xlsx 做成一等工具域~~ → **C 路已一并兑现**（同一域工具的动作面里就有）；
+   - 「工具结果携带图像」平台件（让模型看见自己的渲染，替代现在的人判）——**仍是唯一的大件**；
    - `officecli watch` 进程的自动收尾（现为 shell 后台手工管理，v1 可接受）；
-4. **代码尚未提交**：`src-ui/src/composition/contract-version.ts` 与 `docs/agents/open-surface-contract.md`
-   里混着用户未提交的 v26 token-meter 契约改动（HEAD 是 v25）——现在提交会把在途工作卷进来且指纹错位；
-   等那批落地后单独提 P0（只读语义）与 P4（窗入口二态）两批，commit message 写明行为变更。
+4. **提交状态**：A 路 + 平台两修已提交（`f0e72bbd` 平台批 / `09b0924c` 集成件批）；
+   C 路这批（域工具 + 插件改造 + 基线 CR/record + 文档）待提交——提交时 baseline 快照与本文件同 commit。
+
+## 10. C 路：MCP 挂接改判为一等 office 域工具（2026-09-13）
+
+### 10.1 为什么改判
+
+用户的原话是「cli 被加到 MCP，听着就不是很对劲」——这个直觉是对的。MCP 挂接把 OfficeCLI 原样
+搬成「**一个收命令行字符串的工具**」，四处不合兰台的形状：
+
+| 面 | 旧（MCP 挂接） |
+|---|---|
+| 参数 | 自由命令行字符串（模型自己拼引号/转义/glob 规避） |
+| 执行 | MCP 子进程 = **全权用户进程**：不经 fs_cap、不受 os_sandbox、无权限类、无审计 |
+| plan 模式 | 整块判为写（我修过只读语义后反而更严）——**连 `view`/`validate` 都被拦** |
+| 能力可见性 | 工具面一条 `mcp__office__officecli`，与「defineTool + zod 真源」纪律不符 |
+
+### 10.2 新形态：`office(action, …)`
+
+- **zod 真源收窄动作面（12 个）**：读 `view`/`get`/`query`/`validate`/`playbook`；
+  写 `create`/`set`/`add`/`remove`/`batch`；交付 `merge`/`screenshot`。
+  （CLI 的 `raw`/`raw-set`/`add-part`/`refresh`/`mark`/`watch` 不进模型面——L3 逃生舱走 shell 域；
+  `load_skill` 收成 `playbook` 动作，**不丢能力**。）
+- **执行走 `ctx.shell` seam → `process_cap`**：os_sandbox 沙箱 + **Bash 权限类** + 审计，与 `run_shell`
+  同一条路。**不加新能力口**——口数 = 能力族数，office 是 process 族的消费者不是新能力族
+  （架构裁定见 `docs/plans/kernel-plugin-architecture-decision.md` §3/§4）。
+- **plan 按动作分档**：`readOnlyActions = [view, get, query, validate, playbook]` ⇒ 规划期可读文档、
+  写动作被 `[已拦截]`（旧 MCP 路做不到）。
+- **两个产品决定写死在工具里**：① `OFFICECLI_RESIDENT_FLUSH=each`（每次改动**写完即落盘**——
+  否则截图/预览/交付会读到 resident 未 flush 的旧字节，这类静默错曾反复出现）；
+  ② `OFFICECLI_SKIP_UPDATE=1`（确定性优先，升级走安装器换哈希）。
+- **模型不碰引号**：命令行由工具层拼装（`shQuote` 单引号 + POSIX 收尾），路径里的空格/方括号
+  （`/slide[1]` 会被 bash 当 glob）在此一次解决；相对路径按**该会话工作区根**解析
+  （`ownerContext` + `resolveAgainstRoot`），并沿用 owner 的粘性 cwd（不顶掉 shell 域的 cwd）。
+- **二进制定位**：`$OFFICECLI_PATH` → `~/.lantai/tools/officecli/officecli.exe` → PATH 兜底，
+  **在 spawn 出来的 shell 里解析**（工具层碰不到盘；且 `~/.lantai/tools` 不在沙箱用户数据白名单里，
+  fs 能力口读不到它）。找不到时工具按"错误不静默"补安装指引。
+
+### 10.3 落地与证据
+
+| 面 | 落点 |
+|---|---|
+| 工具本体 | `src-ui/src/agent/tools/office.ts`（12 动作 + 纯函数 `shQuote`/`buildOfficeCommand`/`buildOfficeArgv`/`cleanShellOutput`） |
+| 域插件 | `src-ui/src/plugins/builtin/office-domain/`（index/host/host.aliased）+ `builtin-roster.json` buildOrder 29 + `composition/first-party-tools.ts` 表尾 |
+| `defineTool` 扩展 | 新增可选透传 `domain`/`actions`/`readOnlyActions`（域工具契约与 plan 分档需要） |
+| 守护测试 | `tests/office-domain.test.ts` **13 例**：纯函数、工具形状、**plan 逐动作分档**、执行面经 seam 派发（相对路径/cwd/落盘提示）、**真 bash × 真 officecli 端到端**（create→add→view→screenshot→validate，且"写完立刻读盘"） |
+| 契约生成物 | `npm run gen:tool-contract` 收录 `office`（域 office / 12 动作 / 参数表） |
+| 序列化基线 | **CR 审批后 record**：`phase-0/tool-schemas.full.json` 16→17、`…plan.json` 18→19（各 +1 条，其余逐字节不变）；CR 见 `docs/archive/agent-core-convergence/baseline-change-request.md` 首条 |
+| MCP 路退役 | `examples/plugins/office/` 去 `mcpServers`（保留活预览窗，版本 2.0.0）；`bin/` 目录删除；用户机 `~/.lantai/mcp.json` 清空 office 条目；`preflight.ps1` 加「MCP 挂接已退役」检查；插件两守护测试改写（形状/装载路径/无 MCP 行/卸载收口） |
+| 技能改写 | `examples/office-cli/SKILL.md` 调用面全部改为 `office(action,…)`（含"落盘已替你钉住"、`playbook` 取代表格、坑表按域工具口径重写） |
+
+**门禁**：`office-domain` 13/13 绿；契约与基线对拍 `verify:convergence` exit 0；壳 `cargo test`
+不涉（本批零 Rust 改动）；前端 vitest / build / biome 见提交记录。

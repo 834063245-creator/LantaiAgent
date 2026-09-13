@@ -1,23 +1,18 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// office 载体插件入口——本插件的全部能力经 manifest.mcpServers 声明式挂接
-// （S4-4 乙机器桥 + S2 受治进程），entry 本体零贡献：这个文件的存在只为满足
-// loader 的「entry 存在且导出 { name, apply }」契约。能力实体是
-// bin/officecli.exe（外部 MCP server 进程，OfficeCLI 自带 `officecli mcp`）。
+// office 活预览窗插件入口（C 路改判后，2026-09-13）——**不再挂 MCP server**：
+// OfficeCLI 的读写能力已由兰台内置 office 域工具（office(action,…)，经 shell seam →
+// process_cap 受沙箱 spawn）承担；本插件只剩一件事：开一扇显示 `officecli watch`
+// 实时渲染页的浮窗（manifest.app.url = 环回远端视图，契约 v28）。
 //
-// 为什么不写成「进程内宿主插件」：进程内宿主通道永久关闭（composition 计划
-// 内核线裁定）——跨进程能力走 MCP / 前端 seam / 外部 ESM 插件三条路。
+// entry 本体零贡献（无 apply 副作用）：这个文件的存在只为满足 loader 的
+// 「entry 存在且导出 { name, apply }」契约；能力实体是宿主窗口设施 ——
+// 窗口只有宿主 webview 摸得到，故「开窗」这个动作必须住在本文件的 toolHandlers。
 //
-// 也不在这里做二进制存在性检查：webview 无盘权（插件只能经宿主桥读写自己的
-// dataDir），检查不了插件目录里的 bin/。缺件时机器桥的 spawn 会失败并留可见
-// 记录（lazy 空集 + warn），装法见 bin/README.md。
-//
-// 两张门各司其职（决策 8）：
-//   · MCP 路：officecli 本体（bin/officecli.exe mcp）——实现住在进程里，随
-//     tools/list 进注册表（工具名 mcp__office__officecli）；
-//   · 工具口：office_preview_open——窗口设施只有宿主 webview 摸得到，故
-//     「开活预览窗」这个动作必须住在本文件（对位 notes-app 的 notes_open）。
+// 二进制不进插件目录：officecli 走标准安装位（~/.lantai/tools/officecli/officecli.exe，
+// 由 examples/office-cli/install-officecli.ps1 装），office 域工具在 shell 里定位它。
+// entry 也不做存在性检查——webview 无盘权，查不了；缺件时 office 域工具会给出安装指引。
 
 export const name = 'office';
 
@@ -39,11 +34,11 @@ export const toolHandlers = {
     return (
       `Office 活预览窗已打开（${windowId}）——窗内是本机 http://127.0.0.1:26315 的实时渲染页。` +
       '若显示连接失败：先让 Agent 用 shell 跑 `officecli watch <文件>`（默认端口 26315），' +
-      '或改用截图刷新路（update_asset 原地刷新，见 officecli 技能 §7.5）。'
+      '或改用截图刷新路（office(screenshot) + show_asset 原地刷新）。'
     );
   },
 };
 
 export async function apply() {
-  // 声明式 mcpServers / app / tools 的注册动作归 loader 的包装层——entry 无事可做。
+  // 声明式 app / tools 的注册动作归 loader 的包装层——entry 无事可做。
 }

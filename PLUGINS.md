@@ -211,7 +211,7 @@ export const toolHandlers = { hello_status: async () => '装载正常' };
 | 契约全集（通道 API / 生效语义 / 信任模型） | `docs/plugins/README.md` |
 | 各 seam provider 怎么写 | `docs/cookbook/`（8 篇指南） |
 | 最小示例 / MCP 端到端示例 | `examples/plugins/hello/` · `examples/plugins/dataflow-mcp/` |
-| 外部二进制载体示例（第三方 CLI 随插件目录分发） | `examples/plugins/office/`（OfficeCLI：`./bin/officecli.exe` 相对命令 + 受治进程；二进制不进仓，装法见其 `bin/README.md`） |
+| 活预览窗插件示例（环回远端视图，不挂 MCP） | `examples/plugins/office/`（OfficeCLI 活预览窗：`app.url` 指向本机 watch 服务 + `office_preview_open` 工具口；OfficeCLI 的读写能力已由内置 `office` 域工具承担——见 `examples/office-cli/`） |
 | 发布到 registry | `docs/user/develop/publishing-plugins.md` |
 | 契约版本（manifest schema 变更须升版） | `docs/agents/open-surface-contract.md` |
 
