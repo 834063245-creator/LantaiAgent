@@ -1,0 +1,29 @@
+{
+  "name": "office",
+  "version": "1.0.0",
+  "description": "OfficeCLI 载体插件（分发形态）：把单二进制 Office 套件（.docx/.xlsx/.pptx 读写 + 内置渲染/公式引擎）以受治 MCP server 形态挂进兰台。二进制随插件目录自带（bin/officecli.exe，不随仓提交——见 bin/README.md），工具名 mcp__office__officecli；lazy 拉起 + 崩溃自动重启；不声明 readOnly（officecli 写文件，缺省 fail-closed 视为写才是期望行为——见 docs/plans/office-cli-integration-plan.md §5）。",
+  "entry": "entry.js",
+  "app": {
+    "url": "http://127.0.0.1:26315/",
+    "mode": "floating",
+    "title": "Office 活预览"
+  },
+  "tools": [
+    {
+      "name": "office_preview_open",
+      "description": "打开 Office 活预览窗（环回远端视图：显示本机 officecli watch 服务的实时渲染页）。前置：该文档已被 `officecli watch <文件>` 挂起（走 shell 域后台跑），默认端口 26315；watch 未起或端口不同则窗内显示连接失败——用 officecli 的 watch/unwatch 管理，或改用截图刷新路（见 officecli 技能 §7.5）。",
+      "parameters": { "type": "object", "properties": {}, "required": [] },
+      "readOnly": true
+    }
+  ],
+  "mcpServers": [
+    {
+      "name": "office",
+      "transport": "stdio",
+      "command": "./bin/officecli.exe",
+      "args": ["mcp"],
+      "lifecycle": "lazy",
+      "restart": "on-crash"
+    }
+  ]
+}
