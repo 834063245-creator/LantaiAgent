@@ -22,9 +22,21 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 25;
+export const OPEN_SURFACE_CONTRACT_VERSION = 28;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v28（2026-09-13）：`manifest.app` 入口二态——`entry`（资产 HTML）与 `url`
+ *  （**环回** http(s) 远端页，白名单 127.0.0.1/localhost/::1、禁凭据）互斥必给其一；
+ *  url 形态禁 `fullscreen`。远端形态的窗口帧给 `allow-same-origin`（跨源文档保住
+ *  自己 origin，同源 SSE/fetch 才通）且**不绑宿主桥**。契约形状变更（entry 由必填
+ *  转为「二态之一」），向后兼容：只声明 entry 的既有插件行为零变化。
+ *  v27（2026-09-13）：`manifest.mcpServers[]` 新增可选 `readOnly`（MCP 工具只读
+ *  语义归真——P0，见 office-cli-integration-plan.md §5）：判定真源落在
+ *  `agent/mcp/registry.resolveMcpToolReadOnly`（条目声明 > 远端 annotations.
+ *  readOnlyHint > 缺省 false）。types.ts 是 manifest schema 载体，故本版升号。
+ *  v26（2026-09-13）：`LoopStreamResult` 新增可选 `token`（token 计量记录）——
+ *  默认 loop 把它随 Usage 事件投给 UI；第三方 loop 不提供即 UI 计量面缺一条，
+ *  执行语义零变更。同版 default-loop 的 Usage sink 增携带该字段。
  *  v25（2026-09-12）：补登记 `provider/types.ts`——`ctx.llm` 的
  *  `LlmAdapterContribution.create` 返回的 `Provider` 形状就是该 seam 的契约面，
  *  此前未入册（本版给 Provider 加 `model()` 时差点从指纹下溜过去）；

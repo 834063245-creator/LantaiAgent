@@ -66,6 +66,13 @@ export function parseUserMcpJson(raw: string, skipped: Array<{ name: string; rea
   return out;
 }
 
+/** 「文件不存在」类错误判定（区分正常空态与真失败——错误不静默的最低要件）。
+ *  Rust 侧真实现给的是 "parent directory not found" / "… (os error 2)"，
+ *  测试 mock 给的是 "ENOENT: …"——两种拼写都要认，否则把正常空态报成故障。 */
+export function isUserMcpMissingError(msg: string): boolean {
+  return /not found|不存在|no such file|os error 2|enoent/i.test(msg);
+}
+
 /** 用户级 .lantai 目录推导（kernelGlobalMemoryDir → ~/.lantai）。 */
 async function resolveUserLantaiDir(): Promise<string | null> {
   try {
@@ -77,6 +84,19 @@ async function resolveUserLantaiDir(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/** 用户级 mcp.json 的**绝对**路径（`~/.lantai/mcp.json` 的展开形态）。
+ *
+ *  为什么调用方该用它而不是字面量 `~/.lantai/mcp.json`：fs 能力口在
+ *  2026-09-13 之前**不展开波浪号**（`~` 被当相对路径 → "parent directory not found"），
+ *  设置页 MCP 面板因此读写全链路失败、还被 catch 吞成"文件不存在"（面板恒空）。
+ *  Rust 侧已修（`expand_home` 接入 fs 路径解析入口），但前端复用同一推导更稳：
+ *  **旧壳上也能工作**，且路径形态与实际文件系统一致（单一来源 = kernelGlobalMemoryDir）。
+ *  返回 null = 推导失败（调用方须显式报错，不许静默当"无配置"）。 */
+export async function resolveUserMcpJsonPath(): Promise<string | null> {
+  const dir = await resolveUserLantaiDir();
+  return dir ? `${dir}/mcp.json` : null;
 }
 
 /** 用户级 MCP server 装载（main.ts 在 loadBuiltinPlugins 后调用——ctx.tools
@@ -92,9 +112,15 @@ export async function registerUserMcpServerTools(
   let raw: string;
   try {
     raw = await kernelReadFile(file);
-  } catch {
-    // 缺 mcp.json = 无用户级 server（非错误）
-    return { servers: 0, skipped: [], file };
+  } catch (e) {
+    // 「没有 mcp.json」= 无用户级 server（首次配置，非错误）。
+    // 但**其它读失败必须可见**（2026-09-13 立规，对齐"错误不静默"）：路径形态/沙箱拒绝
+    // 此前与"文件不存在"混为一谈——设置页面板恒空、用户以为没配上（实测踩坑：
+    // fs 层不展开 `~` 导致的读写全链路失败）。此处把原因带进 skipped 与 file 字段，
+    // boot 期调用方（main.ts）已把非空 skipped 记日志。
+    const msg = e instanceof Error ? e.message : String(e);
+    if (isUserMcpMissingError(msg)) return { servers: 0, skipped: [], file };
+    return { servers: 0, skipped: [{ name: '(mcp.json)', reason: `读取失败：${msg}` }], file };
   }
   const skipped: Array<{ name: string; reason: string }> = [];
   const servers = parseUserMcpJson(raw, skipped);

@@ -5,8 +5,10 @@
 
 import { describe, expect, it } from 'vitest';
 import { McpClient, publicToolName } from '../src/agent/mcp/client';
-import { mcpClientTool, registerMcpTools } from '../src/agent/mcp/registry';
+import { mcpClientTool, registerMcpTools, resolveMcpToolReadOnly } from '../src/agent/mcp/registry';
 import { createLoopbackTransport } from '../src/agent/mcp/transport';
+import { planGateCheck } from '../src/agent/plan/plan-registry';
+import { PlanStateManager } from '../src/agent/plan/plan-state';
 import { ToolRegistry } from '../src/agent/tool';
 
 /** 构造一个 fake MCP server 的响应处理器（回环，同步返回）。 */
@@ -115,7 +117,9 @@ describe('McpClient', () => {
     expect(registry.get('mcp__repo__echo')).toBeDefined();
 
     const tool = registry.get('mcp__repo__echo')!;
-    expect(tool.readOnly()).toBe(true);
+    // P0（2026-09-13）规格变更：远端未声明 annotations → fail-closed 视为**写**
+    // （旧实现硬编码 true，写型 MCP 工具因此在 plan 模式被放行）
+    expect(tool.readOnly()).toBe(false);
     const out = await tool.execute({ text: 'yo' });
     expect(out).toContain('echo:yo');
   });
@@ -131,5 +135,37 @@ describe('McpClient', () => {
     const ac = new AbortController();
     const out = await tool.execute({ text: 'x' }, undefined, ac.signal);
     expect(out).toContain('echo:x');
+  });
+
+  // ── 只读语义（P0，2026-09-13）：条目声明 > 远端 readOnlyHint > 缺省 false ──
+
+  it('resolveMcpToolReadOnly：优先级链与 fail-closed 缺省', () => {
+    expect(resolveMcpToolReadOnly({})).toBe(false); // 什么都不表态 = 写
+    expect(resolveMcpToolReadOnly({ annotations: {} })).toBe(false);
+    expect(resolveMcpToolReadOnly({ annotations: { readOnlyHint: false } })).toBe(false);
+    expect(resolveMcpToolReadOnly({ annotations: { readOnlyHint: true } })).toBe(true);
+    // 条目级声明覆盖远端注解（双向）
+    expect(resolveMcpToolReadOnly({ annotations: { readOnlyHint: false } }, true)).toBe(true);
+    expect(resolveMcpToolReadOnly({ annotations: { readOnlyHint: true } }, false)).toBe(false);
+    // undefined 才是「不表态」——false 是显式担保写
+    expect(resolveMcpToolReadOnly({ annotations: { readOnlyHint: true } }, undefined)).toBe(true);
+  });
+
+  it('P0 反向判据：未声明只读的 MCP 工具在 plan 模式被 planGateCheck 拦截', async () => {
+    const fake = makeFakeServer();
+    const client = new McpClient({
+      serverName: 'office',
+      transport: createLoopbackTransport(fake.handler),
+    });
+    await client.connect();
+    // 远端 fake 的 echo/boom 均无 annotations（OfficeCLI 的 MCP 工具正是这种形态）
+    const tool = mcpClientTool(client, client.listRemoteTools()[0]);
+    const ps = new PlanStateManager();
+    ps.enter('/proj');
+    // 旧实现下此处为 null（放行写动作）——本判据钉死修复后的行为
+    expect(planGateCheck(ps, tool.name(), {}, tool)).toContain('[已拦截]');
+    // 显式担保只读的 server 工具仍放行（不误伤）
+    const roTool = mcpClientTool(client, { ...client.listRemoteTools()[0], annotations: { readOnlyHint: true } });
+    expect(planGateCheck(ps, roTool.name(), {}, roTool)).toBeNull();
   });
 });

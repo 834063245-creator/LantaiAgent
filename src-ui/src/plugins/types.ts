@@ -67,6 +67,14 @@ const McpServerDeclSchema = z
      *  lazy（缺省）：首装配连接，失败 → 空集 + warn（下次装配重试）。
      *  治理字段在场时对本条目退役（治理面接管失败语义）。 */
     failurePolicy: z.enum(['startup-error', 'lazy']).optional(),
+    /** 该 server 全部工具的只读担保（P0，2026-09-13）：**缺省不表态**——按远端
+     *  `annotations.readOnlyHint` 判，远端亦无声明则 fail-closed **视为写**
+     *  （plan 模式拦截 + 不进只读并行组）。
+     *  声明 true = 插件作者担保该 server 工具集全只读；声明 false = 强制写。
+     *  误声明 true 会重现「写动作绕过 plan 门禁」的旧洞（本字段即为修复该洞的
+     *  显式通道）——声明前务必核对 server 侧真实行为。
+     *  判定真源 = agent/mcp/registry.resolveMcpToolReadOnly（单一真源）。 */
+    readOnly: z.boolean().optional(),
     /** 崩溃重启策略（S2 治理字段）：off（缺省）= 不自动重启（下次装配/调用
      *  兜底拉起）；on-crash = 进程意外退出后指数退避自动重启。 */
     restart: z.enum(['off', 'on-crash']).optional(),
@@ -111,24 +119,72 @@ const ToolManifestDeclSchema = z.strictObject({
  *  ——「写了但不生效」的类名是手误，错误不静默）。 */
 const PLUGIN_PERMISSION_CLASS = z.enum(['read', 'edit', 'bash', 'git', 'web']);
 
+/** 环回主机白名单（app.url 形态的硬边界）：只许本机服务，禁任意公网页面。
+ *  `URL.hostname` 对 IPv6 字面量返回带方括号形态，故 `[::1]` 也在表内。 */
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
+
+/** app.url 合法性：**环回 http(s)**——协议 http/https + 主机在环回白名单 +
+ *  不带凭据（user:pass@）。任何一条不满足即拒（错误不静默）。
+ *
+ *  为什么只许环回：远端文档以 `allow-same-origin` 承载（它必须保住自己的
+ *  origin，同源 SSE/fetch 才通——见 PluginWindowFrame 的 sandbox 分档），
+ *  虽然拿不到宿主 DOM 与宿主桥，但它**能覆盖宿主的视觉面**；允许任意 URL
+ *  等于允许插件在兰台窗里嵌一个公网页面冒充界面。白名单是这条路的边界。 */
+export function isLoopbackAppUrl(value: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(value);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+  if (u.username !== '' || u.password !== '') return false;
+  return LOOPBACK_HOSTS.has(u.hostname.toLowerCase());
+}
+
 /** manifest.app 声明（app shell 件 A · S3，应用视图通道）：插件声明自己的
  *  窗内容入口与窗模式——装载只登记窗口定义（注册表数据），开窗才实例化
  *  iframe 视口（宿主窗口注册表 + postMessage 白名单桥，见 state/
  *  plugin-window-store.ts 与 plugins/window-bridge.ts）。窗内渲染完全归
- *  插件（iframe 真隔离，§4-3 拍板）。 */
+ *  插件（iframe 真隔离，§4-3 拍板）。
+ *
+ *  **入口二态（2026-09-13，契约 v28）**——两者互斥，必给其一：
+ *    · `entry`：插件自包含 HTML（资产通道，`./` 相对插件目录）——iframe 走
+ *      opaque origin（不给 allow-same-origin），**宿主桥是它唯一的能力通道**；
+ *    · `url`：**环回**远端页（如本机 `http://127.0.0.1:<port>` 的活预览服务）
+ *      ——iframe 给 allow-same-origin（跨源文档保住自己 origin，同源
+ *      SSE/fetch 才通），**不绑宿主桥**（远端文档不是插件代码），且禁
+ *      fullscreen（可覆盖宿主视觉面的形态不放大到全屏）。 */
 const APP_WINDOW_MODE = z.enum(['floating', 'dock', 'fullscreen']);
 
-const AppDeclSchema = z.strictObject({
-  /** 窗内容入口：`./` 前缀相对插件目录的 HTML（资产通道寻址）。 */
-  entry: z.string().refine(isSafeAppEntry, {
-    message: 'app.entry 必须是 "./" 前缀的相对 HTML 路径（如 ./app/index.html），禁止绝对路径/回溯段',
-  }),
-  /** 窗模式：floating（缺省，画布上浮动窗）/ dock（右侧停靠栏）/ fullscreen
-   *  （盖满视口）。 */
-  mode: APP_WINDOW_MODE.optional(),
-  /** 窗标题（书眉显示；缺省用插件名）。 */
-  title: z.string().min(1).optional(),
-});
+const AppDeclSchema = z
+  .strictObject({
+    /** 窗内容入口 A：`./` 前缀相对插件目录的 HTML（资产通道寻址）。 */
+    entry: z
+      .string()
+      .refine(isSafeAppEntry, {
+        message: 'app.entry 必须是 "./" 前缀的相对 HTML 路径（如 ./app/index.html），禁止绝对路径/回溯段',
+      })
+      .optional(),
+    /** 窗内容入口 B：环回 http(s) 远端页（本机服务，如 officecli watch 的活预览）。 */
+    url: z
+      .string()
+      .refine(isLoopbackAppUrl, {
+        message: 'app.url 必须是环回 http(s) URL（127.0.0.1 / localhost / ::1，禁凭据）——公网页面不得进兰台窗',
+      })
+      .optional(),
+    /** 窗模式：floating（缺省，画布上浮动窗）/ dock（右侧停靠栏）/ fullscreen
+     *  （盖满视口）。 */
+    mode: APP_WINDOW_MODE.optional(),
+    /** 窗标题（书眉显示；缺省用插件名）。 */
+    title: z.string().min(1).optional(),
+  })
+  .refine((v) => (v.entry !== undefined) !== (v.url !== undefined), {
+    message: 'app 必须且只能声明 entry（资产 HTML）或 url（环回远端页）之一',
+  })
+  .refine((v) => !(v.url !== undefined && v.mode === 'fullscreen'), {
+    message: 'app.url（环回远端视图）不允许 fullscreen——远端文档可覆盖宿主视觉面，全屏形态把界面辨识度也拿走',
+  });
 
 export const PluginManifestSchema = z.object({
   name: z.string().regex(PLUGIN_NAME_RE, 'name 必须是 npm scope 风格 id（如 hologram/settings）'),

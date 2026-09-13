@@ -163,14 +163,18 @@ export const toolHandlers = { hello_status: async () => '装载正常' };
 
 ```json
 "mcpServers": [
-  { "name": "engine", "transport": "stdio", "command": "./server.cjs", "args": ["--serve"], "failurePolicy": "lazy" }
+  { "name": "engine", "transport": "stdio", "command": "./server.cjs", "args": ["--serve"], "failurePolicy": "lazy", "readOnly": true }
 ]
 ```
 
 - `transport`：`stdio`（本地进程，command/args）| `http`（远程，url）；
 - 相对路径（`./`）相对插件目录解析；
 - `failurePolicy`：`lazy`（缺省，首装配连接，失败下次重试）| `startup-error`（装载期急连接，失败 = 插件 error）。
-- 端到端例子：`examples/plugins/dataflow-mcp/`；指南：`docs/cookbook/adding-an-mcp-server.md`。
+- `readOnly`：**可选**，该 server 全部工具的只读担保。缺省**不表态**——按远端
+  `annotations.readOnlyHint` 判，远端也无声明则 **fail-closed 视为写**（plan 模式
+  拦截 + 不进只读并行组）。写型 server 误声明 `true` 会重现「写动作绕过 plan 门禁」
+  的旧洞；确为只读的 server 建议显式声明（判定真源 `resolveMcpToolReadOnly`）。
+- 端到端例子：`examples/plugins/dataflow-mcp/`（声明了 `"readOnly": true`）；指南：`docs/cookbook/adding-an-mcp-server.md`。
 
 ## 本地开发与测试
 
@@ -207,6 +211,7 @@ export const toolHandlers = { hello_status: async () => '装载正常' };
 | 契约全集（通道 API / 生效语义 / 信任模型） | `docs/plugins/README.md` |
 | 各 seam provider 怎么写 | `docs/cookbook/`（8 篇指南） |
 | 最小示例 / MCP 端到端示例 | `examples/plugins/hello/` · `examples/plugins/dataflow-mcp/` |
+| 外部二进制载体示例（第三方 CLI 随插件目录分发） | `examples/plugins/office/`（OfficeCLI：`./bin/officecli.exe` 相对命令 + 受治进程；二进制不进仓，装法见其 `bin/README.md`） |
 | 发布到 registry | `docs/user/develop/publishing-plugins.md` |
 | 契约版本（manifest schema 变更须升版） | `docs/agents/open-surface-contract.md` |
 

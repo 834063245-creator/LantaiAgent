@@ -45,7 +45,14 @@
 // protocol_bridge / plugin_dir RPC）——测试注入 fake（loopback JSON-RPC
 // 行协议），生产走默认实现。
 
-import { McpClient, type McpToolSchema, mcpClientTool, type ProcIO, publicToolName } from '../agent/mcp';
+import {
+  McpClient,
+  type McpToolSchema,
+  mcpClientTool,
+  type ProcIO,
+  publicToolName,
+  resolveMcpToolReadOnly,
+} from '../agent/mcp';
 import { createTauriProcIO } from '../agent/mcp/tauri-io';
 import type { Tool } from '../agent/tool';
 import type { Context } from '../cordis';
@@ -557,7 +564,7 @@ function governedTool(governor: ServerGovernor, schema: McpToolSchema): Tool {
       properties: inputSchema.properties ?? {},
       required,
     }),
-    readOnly: () => true,
+    readOnly: () => resolveMcpToolReadOnly(schema, governor.server.readOnly),
     execute: async (args: Record<string, unknown>, onProgress?: (chunk: string) => void, signal?: AbortSignal) => {
       const acquired = governor.acquireForCall();
       if ('notReady' in acquired) {
@@ -681,10 +688,13 @@ export async function registerMcpServerTools(
           }
           if (!client.isConnected) await client.connect();
           return client.listRemoteTools().map((schema) =>
-            mcpClientTool(client as McpClient, schema, undefined, {
-              plugin: pluginName,
-              bindToken: bindMcpDeferredToken,
-            }),
+            // 只读语义同受治面：条目级声明 > 远端 readOnlyHint > 缺省 false
+            mcpClientTool(
+              client as McpClient,
+              schema,
+              { readOnly: () => resolveMcpToolReadOnly(schema, server.readOnly) },
+              { plugin: pluginName, bindToken: bindMcpDeferredToken },
+            ),
           );
         } catch (e) {
           // lazy 语义：瞬态机器不炸装配——空集 + 可见 warn；空集不缓存

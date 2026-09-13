@@ -186,8 +186,10 @@ manifest，随包携带（`tauri.conf.json` resources 目录映射
       "transport": "stdio",           // stdio | http
       "command": "./bin/engine",      // stdio：相对路径相对插件目录解析；裸名走 PATH
       "args": ["--serve"],            // stdio：命令参数（原样透传——相对路径不解析，用绝对路径）
-      "failurePolicy": "lazy"         // 缺省 lazy：首装配连接，失败 = 空集 + warn（下次装配重试）；
+      "failurePolicy": "lazy",        // 缺省 lazy：首装配连接，失败 = 空集 + warn（下次装配重试）；
                                       // startup-error：装载期急连接验证，失败 → 插件 error 记录
+      "readOnly": true                // 可选。该 server 全部工具的只读担保（缺省**不表态**——
+                                      // 按远端 annotations.readOnlyHint 判，仍无声明则 fail-closed 视为写）
     },
     {
       "name": "remote",               // http 形态：
@@ -376,6 +378,15 @@ patch/preset 可寻址禁用单个 server（组合均匀性不破）。**不需�
   装配 factory 走重连/重建（受治面 restart:on-crash 指数退避自动重启）。
 - **stdio command 解析**：相对路径（含分隔符）相对插件目录（`plugin_dir`
   RPC 解析锚点）；裸名走 PATH。`args` 原样透传（相对路径不解析）。
+- **只读语义（P0，2026-09-13；契约 v27）**：远端工具的 `readOnly` = 条目级
+  声明 `mcpServers[].readOnly` > 远端 `annotations.readOnlyHint === true` >
+  **缺省 false（fail-closed）**。判定真源 =
+  `src-ui/src/agent/mcp/registry.ts` 的 `resolveMcpToolReadOnly`（registry 与
+  mcp-bridge 两处工具构造共用，不各判各的）。**旧行为是两处硬编码
+  `readOnly: true`**——写型 MCP 工具因此在 plan 模式被放行（`plan-registry.ts`
+  首行只读短路）、并入只读并行组；远端不表态即视为写是本洞的根治。确为只读的
+  server 请在条目上声明 `"readOnly": true`（或让 server 自己发 `readOnlyHint`），
+  否则该 server 的工具在 plan 模式会被拦、且串行执行。
 - **边界**（ADR §5 维持）：这是「插件挂外部机器」，不是「进程内宿主
   插件」——后者永久关闭。
 
@@ -659,7 +670,11 @@ loader 同款挂接路径）。
    具体命令仍受项目权限规则与模式门禁。
 
 已知的边界（未决项如实列出）：`mcpServers` 挂接的子进程不在权限类闭集内
-（进程 spawn 的信任面由 §6 完全信任模型 + 安装期审阅 manifest 承担）；
+（进程 spawn 的信任面由 §6 完全信任模型 + 安装期审阅 manifest 承担）——
+**注意这同时意味着该子进程不受 `fs_cap` 与 `os_sandbox` 约束**（全权用户进程，
+可写任意路径）；需要沙箱/审计的动作应走 `process_cap`（shell 域）而非 MCP 路。
+只读语义（plan 门禁 / 并行组）已由 `mcpServers[].readOnly` +
+`annotations.readOnlyHint` + fail-closed 缺省接管（契约 v27）；
 browser/desktop 命令域尚未接入 Rust 权限检查。
 
 registry 缺省 `https://registry.npmjs.org`；镜像经 manifest 外的安装参数
@@ -793,7 +808,7 @@ factory（出厂表，代码真源）
 
 | 件 | manifest 字段 | 宿主给什么 |
 |---|---|---|
-| **A 窗口原语** | `app: { entry: "./app/index.html", mode?: "floating"\|"dock"\|"fullscreen", title? }` | 装载只登记窗口定义；开窗才实例化 iframe 视口（**真隔离**：sandbox 无 allow-same-origin，窗内容拿不到宿主桥）。窗内向宿主要能力走 **postMessage 白名单桥**（协议 `lantai-plugin-bridge`，call/result 按 reqId 关联；默认最小集 `fs.list/read/write/delete` + `notify`，方法级白名单克制开面；**插件身份由容器侧绑定**——窗内消息不携带也不可信插件名）。宿主→窗广播限 `bridge-ready` / `window-closing` 两种。窗口设施（开/关/聚焦/模式/查询）经宿主桥 `windows` 键暴露——**宿主能力面非工具面**：工具语义归插件（插件在 tools 声明「开窗」工具，执行体调设施） |
+| **A 窗口原语** | `app: { entry: "./app/index.html" }`（资产 HTML）**或** `app: { url: "http://127.0.0.1:<port>/…" }`（**环回**远端页，二态互斥必给其一）；`mode?: "floating"\|"dock"\|"fullscreen"`（url 形态禁 fullscreen）；`title?` | 装载只登记窗口定义；开窗才实例化 iframe 视口。**入口二态（契约 v28，2026-09-13）**：①`entry` = 插件自包含 HTML——**真隔离**：sandbox 无 allow-same-origin，窗内容拿不到宿主桥，窗内向宿主要能力走 **postMessage 白名单桥**（协议 `lantai-plugin-bridge`，call/result 按 reqId 关联；默认最小集 `fs.list/read/write/delete` + `notify`，方法级白名单克制开面；**插件身份由容器侧绑定**——窗内消息不携带也不可信插件名）；宿主→窗广播限 `bridge-ready` / `window-closing` 两种。②`url` = **环回**远端页（本机服务，如 `officecli watch` 活预览）——iframe 给 `allow-same-origin`（跨源文档保住自己 origin，其同源 `EventSource`/`fetch` 才通；父页仍拿不到它的 DOM），**且不绑宿主桥**（远端文档不是插件代码）。白名单：host ∈ {127.0.0.1, localhost, ::1}、禁凭据、禁非 http(s)——远端文档能覆盖宿主视觉面，所以只许环回 + 禁全屏。窗口设施（开/关/聚焦/模式/查询）经宿主桥 `windows` 键暴露——**宿主能力面非工具面**：工具语义归插件（插件在 tools 声明「开窗」工具，执行体调设施） |
 | **B 数据目录** | `dataDir: true` | 装载即分配 `<数据根>/<插件名>/`（幂等 ensure）；受治进程经 spawn env `LANTAI_PLUGIN_DATA_DIR` 拿到路径；窗经桥 fs 读写（Rust 侧名字 + rel 双围栏 + canonicalize 前缀锁死插件根）；卸载随 `plugin_uninstall` 整体挪 `.trash` 回收（备份一个目录全家走） |
 | **C 受治进程** | `mcpServers` 条目 `restart?: "off"\|"on-crash"` / `lifecycle?: "lazy"\|"eager"\|"with-window"`（任一在场 = 受治面；皆缺席 = 旧形态不变；http 条目声明治理字段拒绝） | 就绪 = initialize 握手 + tools/list 限窗完成（缺省 60s，到点判启动失败 + 杀挂壁进程）；on-crash 指数退避重启（1s×2 封顶 30s）；三档生命周期（lazy：装配/调用/开窗拉起 + 空闲回收 5min，无窗才计时；eager：装载即拉起卸载才停；with-window：随窗开合，关窗默认杀）；未就绪调用立即报 `service_not_ready` + 触发拉起（宿主永不阻塞等待）；进程树终止（Windows taskkill /T；kill 挂插件 fiber） |
 | **D 后台唤醒** | tools 条目 `async: true`（工具口） | 执行即返回卡片（宿主生成 taskId 注入 `args._task_id` + 登记发起者）；完成唤醒发起 Agent + **minimal 定位键 `{status, taskId, sessionId}`**（内容不进唤醒体——凭 taskId 调插件工具按需取）；MCP 路对位：server 完成通知 `lantai/deferred`（params.progressToken 回带调用期 token）由桥翻译成同一唤醒 |
@@ -821,8 +836,8 @@ factory（出厂表，代码真源）
 - **卸载**：fiber dispose 链式——工具贡献注销 + 受治进程树终止 + 窗全关 +
   定义摘除；数据目录随 `plugin_uninstall` 挪 `.trash`（回收失败降级 warn
   不阻断卸载——数据留原位是安全方向）。
-- **契约版本**：软件级字段全在开放面契约（v14-v17，`docs/agents/
-  open-surface-contract.md` 变更记录逐版在案）。
+- **契约版本**：软件级字段全在开放面契约（v14-v17 起，app 入口二态见 v28；
+  `docs/agents/open-surface-contract.md` 变更记录逐版在案）。
 
 ---
 

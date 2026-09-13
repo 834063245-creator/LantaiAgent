@@ -20,12 +20,19 @@
 import { create } from 'zustand';
 import type { PluginWindowMode } from '../plugins/types';
 
-/** 窗口定义（manifest.app 折算——装载期登记；mode/title 已归一）。 */
+/** 窗口定义（manifest.app 折算——装载期登记；kind/mode/title 已归一）。 */
 export interface PluginWindowDef {
   pluginName: string;
-  /** 窗内容入口 URL（装载期解析：资产 origin + 插件名 + app.entry——
-   *  视口 iframe 的 src，插件自包含 HTML）。 */
+  /** 窗内容入口 URL（装载期解析：资产形态 = 资产 origin + 插件名 + app.entry；
+   *  远端形态 = app.url 原样——视口 iframe 的 src）。 */
   entryUrl: string;
+  /** 入口形态（2026-09-13，app 入口二态）：
+   *    · `asset`——插件自包含 HTML（资产通道）；iframe opaque origin，宿主桥是
+   *      它唯一的能力通道；
+   *    · `remote`——环回远端页（app.url）；iframe 给 allow-same-origin（跨源
+   *      文档保住自己 origin 以便同源 SSE/fetch），**不绑宿主桥**。
+   *  帧据此选 sandbox 与桥绑定策略——判定单一真源在本字段，不在渲染处重推。 */
+  kind: 'asset' | 'remote';
   mode: PluginWindowMode;
   title: string;
 }

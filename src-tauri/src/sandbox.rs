@@ -20,16 +20,20 @@ pub struct Sandbox {
     project_root: PathBuf,
 }
 
-/// 去掉 Windows verbatim 路径前缀（`\\?\`），统一比较基准。
-/// canonicalize 返回 `\\?\D:\...`，用户提供的路径是 `D:\...` —
-/// 字符串比较前必须统一，否则 starts_with 恒失败。
+/// 去掉 Windows verbatim 路径前缀（`\\?\` 与 `//?/` 两种拼写），统一比较基准。
+/// canonicalize 返回 `\\?\D:\...`，用户提供的路径是 `D:\...`（前端透传/序列化后
+/// 还可能变成 `//?/D:/...`）——字符串比较前必须统一，否则 starts_with 恒失败。
+/// 注意：本函数只统一**拼写**，不做跨盘/回溯归约——归属判定后仍会 canonicalize，
+/// 越界路径该拒还是拒。
 #[cfg(windows)]
 fn logical_path(p: &Path) -> PathBuf {
     let s = p.to_string_lossy();
-    match s.strip_prefix(r"\\?\") {
-        Some(rest) => PathBuf::from(rest),
-        None => p.to_path_buf(),
+    for pre in [r"\\?\", "//?/"] {
+        if let Some(rest) = s.strip_prefix(pre) {
+            return PathBuf::from(rest);
+        }
     }
+    p.to_path_buf()
 }
 #[cfg(not(windows))]
 fn logical_path(p: &Path) -> PathBuf {
@@ -116,10 +120,7 @@ impl Sandbox {
         const USER_DATA_SUBDIRS: &[&str] = &["global_memory", "skills"];
         // 根级数据文件（~/.lantai/<file>——首段即文件名，非子目录）。
         const USER_DATA_FILES: &[&str] = &["mcp.json"];
-        let lantai = PathBuf::from(home).join(".lantai");
-        if !path.starts_with(&lantai) {
-            return false;
-        }
+        let lantai = logical_path(&PathBuf::from(home).join(".lantai"));
         let rel_ok = |p: &Path| {
             let rel = match p.strip_prefix(&lantai).ok() {
                 Some(r) => r,
@@ -136,13 +137,19 @@ impl Sandbox {
                 None => false,
             }
         };
-        if rel_ok(path) {
+        // 入参可能已是 verbatim 形态（`\\?\C:\...` / `//?/C:/...`——canonicalize 或前端透传）
+        // ⇒ 先统一拼写再判归属；否则豁免恒不命中，用户级技能/记忆被误判 outside project。
+        let logical = logical_path(path);
+        if logical.starts_with(&lantai) && rel_ok(&logical) {
             return true;
         }
-        // canonicalize 变体（junction/symlink 解析后前缀判定——拒绝自身在
-        // is_symlink_or_junction 检查，此处兜底规范化比较）
+        // canonicalize 兜底（junction/symlink 解析后前缀判定——拒绝自身在
+        // is_symlink_or_junction 检查）：结果**同样带 verbatim 前缀**，必须再过 logical_path。
         std::fs::canonicalize(path)
-            .map(|p| p.starts_with(&lantai) && rel_ok(&p))
+            .map(|p| {
+                let lp = logical_path(&p);
+                lp.starts_with(&lantai) && rel_ok(&lp)
+            })
             .unwrap_or(false)
     }
 
@@ -157,10 +164,12 @@ impl Sandbox {
         if home.is_empty() {
             return false;
         }
-        let gm = PathBuf::from(&home).join(".lantai").join("global_memory");
-        path.starts_with(&gm)
+        let gm = logical_path(&PathBuf::from(&home).join(".lantai").join("global_memory"));
+        // 与读豁免同款：入参与 canonicalize 结果都可能是 verbatim 拼写，统一后再比
+        let logical = logical_path(path);
+        logical.starts_with(&gm)
             || std::fs::canonicalize(path)
-                .map(|p| p.starts_with(&gm))
+                .map(|p| logical_path(&p).starts_with(&gm))
                 .unwrap_or(false)
     }
 
@@ -184,11 +193,11 @@ impl Sandbox {
 
     /// mcp.json 判定纯函数（home 注入——测试免 env 污染直测）。
     fn is_user_mcp_json_path_with_home(path: &Path, home: &str) -> bool {
-        let f = PathBuf::from(home).join(".lantai").join("mcp.json");
-        let direct = path == f;
-        direct
+        let f = logical_path(&PathBuf::from(home).join(".lantai").join("mcp.json"));
+        // 同款：verbatim 拼写（`\\?\`/`//?/`）统一后再比——用户级 mcp.json 的读+写都靠它
+        logical_path(path) == f
             || std::fs::canonicalize(path)
-                .map(|p| p == f)
+                .map(|p| logical_path(&p) == f)
                 .unwrap_or(false)
     }
 
@@ -296,16 +305,26 @@ fn is_symlink_or_junction(path: &Path) -> bool {
     path.is_symlink()
 }
 
-/// 将 ~ 展开为用户 home 目录。
-/// 被 permissions/bash.rs 用于从 shell 命令中提取路径。
+/// 将 `~` 展开为用户 home 目录。
+/// 被 permissions/bash.rs 从 shell 命令提取路径用；**也被 fs 路径解析入口用**
+/// （2026-09-13 修：设置页 `~/.lantai/mcp.json` 的读/写此前全链路静默失败——
+///  `~` 在 fs 层压根没展开，`Path::new("~/.lantai/mcp.json")` 被当相对路径，
+///  落到 "parent directory not found"，再被 UI 的 catch 吞成"没有该文件"）。
+/// 支持 `~` / `~/` / `~\` 三种写法；其余原样返回（不猜、不静默改）。
 pub fn expand_home(raw: &str) -> PathBuf {
-    if raw.starts_with("~/") {
-        #[cfg(windows)]
-        let home = std::env::var("USERPROFILE").unwrap_or_default();
-        #[cfg(not(windows))]
-        let home = std::env::var("HOME").unwrap_or_default();
-        if !home.is_empty() {
-            return PathBuf::from(home).join(&raw[2..]);
+    #[cfg(windows)]
+    let home = std::env::var("USERPROFILE").unwrap_or_default();
+    #[cfg(not(windows))]
+    let home = std::env::var("HOME").unwrap_or_default();
+    if home.is_empty() {
+        return PathBuf::from(raw);
+    }
+    if raw == "~" {
+        return PathBuf::from(&home);
+    }
+    for pre in ["~/", r"~\"] {
+        if let Some(rest) = raw.strip_prefix(pre) {
+            return PathBuf::from(&home).join(rest);
         }
     }
     PathBuf::from(raw)
@@ -330,6 +349,33 @@ mod tests {
         #[cfg(not(windows))]
         {
             assert_eq!(logical_path(Path::new("/tmp/x")), PathBuf::from("/tmp/x"));
+        }
+    }
+
+    /// `~` 展开（fs 路径层从此支持波浪号）——`~` / `~/` / `~\` 三种写法都要落到 home，
+    /// 非波浪号一律原样（不猜、不静默改路径）。
+    #[test]
+    fn test_expand_home_forms() {
+        let home = std::env::var("USERPROFILE")
+            .or_else(|_| std::env::var("HOME"))
+            .unwrap_or_default();
+        if home.is_empty() {
+            return; // 无 home 环境：本机不适用
+        }
+        let h = PathBuf::from(&home);
+        #[cfg(windows)]
+        {
+            assert_eq!(expand_home("~"), h);
+            assert_eq!(expand_home("~/.lantai/mcp.json"), h.join(".lantai/mcp.json"));
+            assert_eq!(expand_home(r"~\.lantai\mcp.json"), h.join(r".lantai\mcp.json"));
+            assert_eq!(expand_home("C:/other/x.json"), PathBuf::from("C:/other/x.json"));
+            assert_eq!(expand_home("~/"), h.join(""));
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(expand_home("~"), h);
+            assert_eq!(expand_home("~/.lantai/mcp.json"), h.join(".lantai/mcp.json"));
+            assert_eq!(expand_home("/tmp/x"), PathBuf::from("/tmp/x"));
         }
     }
 
@@ -458,6 +504,41 @@ mod tests {
         assert!(!Sandbox::is_user_data_path_with_home(&log, &home_s), "~/.lantai/logs 拒绝");
         // ~/.lantai 根本身（无子目录段）→ 拒绝
         assert!(!Sandbox::is_user_data_path_with_home(&home.join(".lantai"), &home_s), ".lantai 根拒绝");
+    }
+
+    /// 回归：Windows `canonicalize` 产出的 **verbatim 形态**（`\\?\C:\...`）必须同样命中用户数据豁免。
+    /// 实测 bug（2026-09-13）：前端读到的一批路径带 `\\?\`/`//?/` 前缀，而
+    /// `is_user_data_path_with_home` 只拿**逻辑形态**（`C:\...`）做 `starts_with` ⇒ 恒不命中，
+    /// 用户级技能 `~/.lantai/skills/<name>/SKILL.md` 被误判「outside project directory」拒读，
+    /// 且 canonicalize 兜底同样在拿 verbatim 路径比对逻辑前缀（双重失效）。
+    #[test]
+    fn user_data_path_verbatim_prefix_allowed() {
+        let home = fake_home();
+        let home_s = home.to_string_lossy().into_owned();
+        #[cfg(windows)]
+        {
+            let verbatim = PathBuf::from(format!(r"\\?\{}\.lantai\skills\officecli\SKILL.md", home_s));
+            assert!(
+                Sandbox::is_user_data_path_with_home(&verbatim, &home_s),
+                r"verbatim（\\?\）形态应命中用户数据豁免"
+            );
+            let verbatim_fwd = PathBuf::from(format!("//?/{}/.lantai/skills/officecli/SKILL.md", home_s.replace('\\', "/")));
+            assert!(
+                Sandbox::is_user_data_path_with_home(&verbatim_fwd, &home_s),
+                "verbatim 正斜杠形态（//?/C:/...）应命中用户数据豁免"
+            );
+            // 非白名单子目录在 verbatim 形态下仍必须拒（豁免只放宽形态，不放宽范围）
+            let verbatim_denied = PathBuf::from(format!(r"\\?\{}\.lantai\sessions\1.json", home_s));
+            assert!(
+                !Sandbox::is_user_data_path_with_home(&verbatim_denied, &home_s),
+                "verbatim 形态不得把非白名单子目录放进来"
+            );
+        }
+        #[cfg(not(windows))]
+        {
+            let p = home.join(".lantai").join("skills").join("officecli").join("SKILL.md");
+            assert!(Sandbox::is_user_data_path_with_home(&p, &home_s));
+        }
     }
 
     #[test]

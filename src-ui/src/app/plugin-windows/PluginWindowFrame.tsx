@@ -3,11 +3,18 @@
 
 // 插件应用窗帧（app shell 件 A · S3）——iframe 载体 + 书眉 + 拖拽。
 //
-// 隔离与绑定：iframe sandbox 无 allow-same-origin（opaque origin——窗内容
-// 拿不到宿主桥，postMessage 白名单桥是唯一能力通道；绑定在容器侧——
-// bindBridgeWindow 以 contentWindow 身份登记插件名）。崩溃隔离：帧体包
-// PluginBoundary（宿主渲染面自保——iframe 内容异常天然隔离在独立 document，
-// 到不了宿主）。
+// 隔离与绑定（**入口二态**，契约 v28——判定单一真源 = `def.kind`）：
+//   · `asset`（插件自包含 HTML，资产通道）：iframe sandbox **不给
+//     allow-same-origin**（opaque origin——窗内容拿不到宿主桥，postMessage
+//     白名单桥是唯一能力通道；绑定在容器侧——bindBridgeWindow 以
+//     contentWindow 身份登记插件名）。
+//   · `remote`（环回远端页，app.url——如 officecli watch 的活预览）：iframe
+//     **给 allow-same-origin**——跨源文档加此许可只让它保住自己的 origin
+//     （父页仍拿不到它的 DOM），而它的同源 `EventSource`/`fetch` 才通；
+//     同时**不绑宿主桥**（远端文档不是插件代码，不该拿到插件身份与桥能力）。
+//     环回白名单 + 禁 fullscreen 在 manifest schema 层把过（types.ts）。
+// 崩溃隔离：帧体包 PluginBoundary（宿主渲染面自保——iframe 内容异常天然隔离
+// 在独立 document，到不了宿主）。
 //
 // 拖拽（floating）：书眉 mousedown → document 级 mousemove/mouseup（快速
 // 拖出书眉不断线——PaperPanel panningRef 同款 document 监听纪律）；
@@ -29,11 +36,14 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const boundWindowRef = useRef<Window | null>(null);
   const dragRef = useRef<{ offX: number; offY: number } | null>(null);
+  /** 远端形态（环回页）：保住自己 origin + **不绑宿主桥**（见头注）。 */
+  const remote = def.kind === 'remote';
 
   // 桥绑定生命周期：iframe onLoad 绑（容器侧绑定插件身份 + 广播就绪）；
   // 卸载时先尽力广播 window-closing（同拍移除，收到无保证——告警为限），
-  // 再解绑。
+  // 再解绑。远端形态整段不参与（没绑过就不解）。
   useEffect(() => {
+    if (remote) return;
     const bound = boundWindowRef;
     return () => {
       const cw = bound.current;
@@ -42,9 +52,10 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
         unbindBridgeWindow(cw);
       }
     };
-  }, [instance.windowId]);
+  }, [instance.windowId, remote]);
 
   const handleLoad = () => {
+    if (remote) return; // 远端页不绑宿主桥（它不是插件代码，且拿不到桥协议）
     const cw = iframeRef.current?.contentWindow;
     if (!cw) return;
     boundWindowRef.current = cw;
@@ -116,9 +127,15 @@ export function PluginWindowFrame({ instance, def }: FrameProps) {
               className="pw-iframe"
               title={def.title}
               src={def.entryUrl}
-              // opaque origin 隔离：不给 allow-same-origin（窗内容与宿主桥
-              // 天然隔离；localStorage 等同源存储面不开——数据地盘走桥 fs）
-              sandbox="allow-scripts allow-forms allow-modals"
+              // asset：opaque origin 隔离——不给 allow-same-origin（窗内容与宿主桥
+              // 天然隔离；localStorage 等同源存储面不开——数据地盘走桥 fs）。
+              // remote：给 allow-same-origin——跨源文档保住自己 origin（同源
+              // EventSource/fetch 才通），父页仍拿不到它的 DOM；桥另行不绑。
+              sandbox={
+                remote
+                  ? 'allow-scripts allow-forms allow-modals allow-same-origin'
+                  : 'allow-scripts allow-forms allow-modals'
+              }
               onLoad={handleLoad}
             />
           </div>

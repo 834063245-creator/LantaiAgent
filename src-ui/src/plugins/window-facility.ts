@@ -26,11 +26,16 @@ export function appEntryUrl(origin: string, pluginName: string, entry: string): 
 
 /** 装载挂接（loader 包装 apply 调用）：manifest.app 声明 → 窗口定义登记；
  *  卸载收口挂 ctx.effect（fiber dispose 链式）：摘定义 + 关掉该插件全部
- *  开窗 + 逐窗通知治理器关窗事件（受治进程 with-window 档随关窗回收）。 */
+ *  开窗 + 逐窗通知治理器关窗事件（受治进程 with-window 档随关窗回收）。
+ *
+ *  入口二态（契约 v28）：schema 已保证 entry / url 恰有其一——asset 形态走
+ *  资产 origin 前缀解析，remote 形态 url 原样透传（环回白名单已在 schema 把过）。 */
 export function mountPluginApp(ctx: Context, pluginName: string, app: AppDecl, origin: string): void {
+  const remote = app.url !== undefined;
   const def: PluginWindowDef = {
     pluginName,
-    entryUrl: appEntryUrl(origin, pluginName, app.entry),
+    kind: remote ? 'remote' : 'asset',
+    entryUrl: remote ? (app.url as string) : appEntryUrl(origin, pluginName, app.entry ?? ''),
     mode: app.mode ?? 'floating',
     title: app.title ?? pluginName,
   };

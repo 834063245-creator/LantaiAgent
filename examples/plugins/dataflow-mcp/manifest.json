@@ -9,7 +9,8 @@
       "transport": "stdio",
       "command": "node",
       "args": ["./server.cjs"],
-      "failurePolicy": "startup-error"
+      "failurePolicy": "startup-error",
+      "readOnly": true
     }
   ]
 }

@@ -87,6 +87,40 @@ describe('S3 窗口原语：manifest.app schema', () => {
   it('缺省不声明 = 行为不变（无 app 字段照常装载）', () => {
     expect(validateManifest(HELLO).ok).toBe(true);
   });
+
+  // 入口二态（契约 v28）：url 形态 = 环回远端页（活预览服务），白名单即边界
+  it('url 形态：环回 http(s) 收，公网 / 凭据 / 非 http / 双给 / fullscreen 全拒', () => {
+    for (const url of [
+      'http://127.0.0.1:26315/',
+      'http://localhost:26315/preview?page=2',
+      'https://127.0.0.1:8443/',
+      'http://[::1]:26315/',
+    ]) {
+      const v = validateManifest({ ...HELLO, app: { url } });
+      expect(v.ok, `应接受环回 url: ${url}`).toBe(true);
+      expect(v.ok ? v.manifest.app?.url : '').toBe(url);
+    }
+    // 公网/局域网/文件/凭据/畸形 全拒（远端文档能覆盖宿主视觉面——白名单是硬边界）
+    for (const url of [
+      'https://example.com/',
+      'http://192.168.1.10:8080/', // 非环回私有网段也拒（等价公网信任面）
+      'http://127.0.0.1.evil.com/',
+      'http://user:pass@127.0.0.1:26315/',
+      'file:///C:/x.html',
+      'javascript:alert(1)',
+      'not a url',
+    ]) {
+      expect(validateManifest({ ...HELLO, app: { url } }).ok, `应拒绝 url: ${url}`).toBe(false);
+    }
+    // 二态互斥：双给 / 都不给 全拒
+    expect(validateManifest({ ...HELLO, app: { entry: './a.html', url: 'http://127.0.0.1:1/' } }).ok).toBe(false);
+    expect(validateManifest({ ...HELLO, app: { title: '只有标题' } }).ok).toBe(false);
+    // 远端形态禁 fullscreen（可覆盖宿主视觉面的形态不放大到全屏）；floating/dock 放行
+    expect(validateManifest({ ...HELLO, app: { url: 'http://127.0.0.1:1/', mode: 'fullscreen' } }).ok).toBe(false);
+    expect(validateManifest({ ...HELLO, app: { url: 'http://127.0.0.1:1/', mode: 'dock', title: '预览' } }).ok).toBe(
+      true,
+    );
+  });
 });
 
 // ── 窗口注册表（纯状态层） ──
@@ -95,6 +129,7 @@ describe('S3 窗口原语：窗口注册表（plugin-window-store）', () => {
   const DEF = {
     pluginName: 'hello',
     entryUrl: ORIGIN + '/hello/app/index.html',
+    kind: 'asset' as const,
     mode: 'floating' as const,
     title: '便签',
   };
@@ -353,12 +388,38 @@ describe('S3 窗口原语：loader 装载接线（manifest.app → 窗口定义�
     expect(defs.notes).toMatchObject({
       pluginName: 'notes',
       entryUrl: ORIGIN + '/notes/app/index.html',
+      kind: 'asset',
       mode: 'floating',
       title: '便签',
     });
     expect(defs.plain).toBeUndefined(); // 无 app 声明不登记
     // 开窗可用（定义在，视口有渲染源）
     expect(openPluginWindow('notes')).toBe('notes#1');
+  });
+
+  it('url 形态装载：窗口定义 kind=remote 且 entryUrl = 声明原样（不走资产前缀）', async () => {
+    const manifestRemote = {
+      name: 'office',
+      version: '1.0.0',
+      entry: 'entry.js',
+      app: { url: 'http://127.0.0.1:26315/', title: '活预览' },
+    };
+    await loadExternalPlugins(new Context(), {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['office'],
+        [ORIGIN + '/plugins.json']: { disabled: [] },
+        [ORIGIN + '/office/manifest.json']: manifestRemote,
+      }),
+      importModule: importByName,
+    });
+    expect(usePluginWindowStore.getState().defs.office).toMatchObject({
+      pluginName: 'office',
+      entryUrl: 'http://127.0.0.1:26315/',
+      kind: 'remote',
+      mode: 'floating',
+      title: '活预览',
+    });
   });
 
   it('增量停用（deactivateExternalPlugin）→ 摘定义 + 关窗', async () => {

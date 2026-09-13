@@ -70,7 +70,13 @@ function fakeMcpProcIO(opts: { failConnect?: boolean } = {}): { proc: ProcIO; ki
                 description: '回声工具',
                 inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
               },
-              { name: 'ping', description: '探活', inputSchema: { type: 'object', properties: {} } },
+              {
+                name: 'ping',
+                description: '探活',
+                inputSchema: { type: 'object', properties: {} },
+                // 远端只读自述（P0 只读语义的远端来源；echo 不表态 → fail-closed 视为写）
+                annotations: { readOnlyHint: true },
+              },
             ],
           });
         } else if (msg.method === 'tools/call') {
@@ -192,6 +198,35 @@ describe('MCP 机器桥（S4-4 乙）：折算与解析域', () => {
     expect(first(spawns).command).toBe('node');
     await fiber.dispose();
     await root[Symbol.asyncDispose]?.();
+  });
+
+  // P0（2026-09-13）：只读语义归真——旧实现两处硬编码 readOnly=true，写型 MCP 工具
+  // 因此在 plan 模式被放行。判定真源 = agent/mcp/registry.resolveMcpToolReadOnly。
+  it('只读语义（旧形态路）：远端 readOnlyHint 生效，未表态者 fail-closed 视为写', async () => {
+    const { io } = makeIO();
+    const { root, fiber } = await bootBridge([STDIO_SERVER], io);
+    const tools: Tool[] = await first(pluginToolRows()).factory({} as never);
+    const byName = new Map(tools.map((t) => [t.name(), t]));
+    expect(byName.get('mcp__my-engine__ping')?.readOnly()).toBe(true); // annotations.readOnlyHint
+    expect(byName.get('mcp__my-engine__echo')?.readOnly()).toBe(false); // 远端不表态 → 写
+    await fiber.dispose();
+    await root[Symbol.asyncDispose]?.();
+  });
+
+  it('只读语义（旧形态路）：条目级 readOnly 声明覆盖远端注解（双向）', async () => {
+    // 声明 true → 全组只读（echo 虽不表态也放行）；声明 false → 全组写（ping 的
+    // readOnlyHint 被作者担保推翻——误声明是作者责任，见 types.ts 字段注）
+    for (const [decl, expected] of [
+      [true, true],
+      [false, false],
+    ] as const) {
+      const { io } = makeIO();
+      const { root, fiber } = await bootBridge([{ ...STDIO_SERVER, readOnly: decl }], io);
+      const tools: Tool[] = await first(pluginToolRows()).factory({} as never);
+      expect(tools.map((t) => t.readOnly())).toEqual([expected, expected]);
+      await fiber.dispose();
+      await root[Symbol.asyncDispose]?.();
+    }
   });
 });
 

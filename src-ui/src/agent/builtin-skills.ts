@@ -246,7 +246,7 @@ manifest 声明（或用户级 \`~/.lantai/mcp.json\`，形状同）：
 
 \`\`\`json
 "mcpServers": [
-  { "name": "engine", "transport": "stdio", "command": "./server.cjs", "args": ["--serve"], "failurePolicy": "lazy" }
+  { "name": "engine", "transport": "stdio", "command": "./server.cjs", "args": ["--serve"], "failurePolicy": "lazy", "readOnly": true }
 ]
 \`\`\`
 
@@ -260,6 +260,12 @@ manifest 声明（或用户级 \`~/.lantai/mcp.json\`，形状同）：
   就绪握手带时限、崩溃退避重启、空闲回收；http 条目声明治理字段会被拒）。
 - server 的工具经机器桥折算成宿主工具行（\`plugin/<名>/mcp/<server>\` 寻址，
   组合可禁用）。
+- 可选 \`readOnly: true\`：**只读担保**（该 server 全部工具）。缺省不表态——
+  按远端 \`annotations.readOnlyHint\` 判，仍无声明则 fail-closed **视为写**
+  （plan 模式拦截 + 不进只读并行组）。只读 server 请显式声明；写型 server
+  误声明 true 会重现「写动作绕过 plan 门禁」的洞。
+- ⚠️ 挂接的子进程是**全权用户进程**（不经 fs 能力口、不受沙箱约束，可写
+  任意路径）——需要沙箱/权限类/审计的动作走 shell 域，不挂 MCP。
 
 ## 3. 装载与验证（你的动作序列）
 

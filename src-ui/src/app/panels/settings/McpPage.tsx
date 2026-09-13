@@ -17,14 +17,13 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { type McpServerDecl, McpServerDeclSchema } from '../../../plugins/types';
-import { parseUserMcpJson } from '../../../plugins/user-mcp';
+import { isUserMcpMissingError, parseUserMcpJson, resolveUserMcpJsonPath } from '../../../plugins/user-mcp';
 import { kernelReadFile, kernelWriteFile } from '../../../rpc-contract';
 
-/** 用户级 mcp.json 路径（kernelGlobalMemoryDir 推导 ~/.lantai 逻辑在装载侧；
- *  本页经 mock 兼容的固定推导——真实运行时由 user-mcp.resolveUserLantaiDir）。
- *  页面直接拼 ~/.lantai（前端 mock/真实现 kernelGlobalMemoryDir 均返回该父）。
- */
-const USER_MCP_PATH = '~/.lantai/mcp.json';
+/** 展示用标签（人看的写法）。**实际读写一律用 `resolveUserMcpJsonPath()` 的绝对路径**：
+ *  字面量 `~` 曾因 fs 层不展开波浪号而让本页读写全链路静默失败（2026-09-13 修，见
+ *  docs/plans/office-cli-integration-plan.md §5 坑账）——不再赌波浪号。 */
+const USER_MCP_LABEL = '~/.lantai/mcp.json';
 
 /** server 卡片。 */
 function McpServerCard({
@@ -95,11 +94,16 @@ function NewMcpServerForm({ onSaved, onError }: { onSaved: () => void; onError: 
     }
     setBusy(true);
     try {
-      // 读现有 mcp.json → 追加新条目 → 写回
+      // 读现有 mcp.json → 追加新条目 → 写回（**绝对路径**：不赌 fs 层认 `~`）
       let servers: McpServerDecl[] = [];
       const skipped: Array<{ name: string; reason: string }> = [];
+      const path = await resolveUserMcpJsonPath();
+      if (!path) {
+        onError('无法推导 ~/.lantai 位置（kernelGlobalMemoryDir 失败）');
+        return;
+      }
       try {
-        const raw = await kernelReadFile(USER_MCP_PATH);
+        const raw = await kernelReadFile(path);
         servers = parseUserMcpJson(raw, skipped);
       } catch {
         // 无 mcp.json = 首次配置——从空开始
@@ -135,7 +139,7 @@ function NewMcpServerForm({ onSaved, onError }: { onSaved: () => void; onError: 
         }),
       );
       // kernelWriteFile 自动建父目录（write_text_cap create_dir_all）——不显式建
-      await kernelWriteFile(USER_MCP_PATH, JSON.stringify({ mcpServers: map }, null, 2) + '\n');
+      await kernelWriteFile(path, JSON.stringify({ mcpServers: map }, null, 2) + '\n');
       setName('');
       setCommand('');
       setArgs('');
@@ -150,7 +154,7 @@ function NewMcpServerForm({ onSaved, onError }: { onSaved: () => void; onError: 
 
   return (
     <div className="sp-section">
-      <div className="sp-section-title">新建 server（用户级 ~/.lantai/mcp.json）</div>
+      <div className="sp-section-title">新建 server（用户级 {USER_MCP_LABEL}）</div>
       <div className="sp-field">
         <input
           className="sp-input"
@@ -220,15 +224,32 @@ export function McpPage() {
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const raw = await kernelReadFile(USER_MCP_PATH);
+      const path = await resolveUserMcpJsonPath();
+      if (!path) {
+        setServers([]);
+        setSkipped([]);
+        setMessage({ kind: 'err', text: '无法推导 ~/.lantai 位置（kernelGlobalMemoryDir 失败）' });
+        return;
+      }
+      let raw: string;
+      try {
+        raw = await kernelReadFile(path);
+      } catch (e) {
+        // 读失败**不再吞**（2026-09-13）：文件不存在 = 首次配置（正常空态）；
+        // 其它失败（沙箱拒绝 / 路径形态不被认）必须可见——否则"读被拒"看起来就是
+        // "没配置"，面板长期显示空（实测踩坑：fs 层曾不展开 `~`，本面板读写全链路失败）。
+        const msg = e instanceof Error ? e.message : String(e);
+        setServers([]);
+        setSkipped([]);
+        if (!isUserMcpMissingError(msg)) {
+          setMessage({ kind: 'err', text: `读取 ${path} 失败：${msg}` });
+        }
+        return;
+      }
       const skippedList: Array<{ name: string; reason: string }> = [];
       const list = parseUserMcpJson(raw, skippedList);
       setServers(list);
       setSkipped(skippedList);
-    } catch {
-      // 无 mcp.json = 无用户级 server（首次配置）
-      setServers([]);
-      setSkipped([]);
     } finally {
       setLoading(false);
     }
@@ -255,7 +276,12 @@ export function McpPage() {
             return [sn, rest];
           }),
         );
-        await kernelWriteFile(USER_MCP_PATH, JSON.stringify({ mcpServers: map }, null, 2) + '\n');
+        const path = await resolveUserMcpJsonPath();
+        if (!path) {
+          setMessage({ kind: 'err', text: '无法推导 ~/.lantai 位置（kernelGlobalMemoryDir 失败）' });
+          return;
+        }
+        await kernelWriteFile(path, JSON.stringify({ mcpServers: map }, null, 2) + '\n');
         await reload();
         setMessage({ kind: 'ok', text: `已删除 server ${name}` });
       } catch (e) {
@@ -272,7 +298,7 @@ export function McpPage() {
       <div className="sp-section">
         <div className="sp-section-title">用户级 MCP server（{servers.length}）</div>
         <div className="sp-hint" style={{ marginBottom: 10 }}>
-          配置存 <code>~/.lantai/mcp.json</code>——跨项目个人 server（裸命令走 PATH）。插件声明的 MCP server
+          配置存 <code>{USER_MCP_LABEL}</code>——跨项目个人 server（裸命令走 PATH）。插件声明的 MCP server
           在「插件」页管理。工具折算 = <code>plugin/user/mcp/&lt;server&gt;</code>，patch/preset 可禁用。
         </div>
         {loading && <div className="sp-hint">读取中…</div>}

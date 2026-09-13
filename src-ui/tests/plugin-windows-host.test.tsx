@@ -26,15 +26,31 @@ const DEFS = {
   'acme/notes': {
     pluginName: 'acme/notes',
     entryUrl: ORIGIN + '/acme/notes/app/index.html',
+    kind: 'asset',
     mode: 'floating',
     title: '便签',
   },
-  'acme/board': { pluginName: 'acme/board', entryUrl: ORIGIN + '/acme/board/board.html', mode: 'dock', title: '看板' },
+  'acme/board': {
+    pluginName: 'acme/board',
+    entryUrl: ORIGIN + '/acme/board/board.html',
+    kind: 'asset',
+    mode: 'dock',
+    title: '看板',
+  },
   'acme/plot': {
     pluginName: 'acme/plot',
     entryUrl: ORIGIN + '/acme/plot/plot.html',
+    kind: 'asset',
     mode: 'fullscreen',
     title: '大图',
+  },
+  // 入口二态（契约 v28）：环回远端页（活预览服务形态）
+  'acme/preview': {
+    pluginName: 'acme/preview',
+    entryUrl: 'http://127.0.0.1:26315/',
+    kind: 'remote',
+    mode: 'floating',
+    title: '活预览',
   },
 } as const;
 
@@ -82,6 +98,20 @@ describe('S3 视口层：a) 开窗渲染 / b) 关窗回收 / e) 隔离属性', (
     // 书眉：标题 + 插件名（机读注记）
     expect(document.body.querySelector('.pw-title')?.textContent).toBe('便签');
     expect(document.body.querySelector('.pw-title-plugin')?.textContent).toBe('acme/notes');
+  });
+
+  it('入口二态：remote（环回远端页）src 原样 + sandbox 给 allow-same-origin（同源 SSE 才通）', () => {
+    mountHost();
+    act(() => {
+      openPluginWindow('acme/preview');
+    });
+    const iframe = document.body.querySelector<HTMLIFrameElement>('.pw-iframe');
+    expect(iframe).not.toBeNull();
+    expect(iframe?.getAttribute('src')).toBe('http://127.0.0.1:26315/');
+    // 远端文档保住自己 origin（跨源文档加 allow-same-origin 不泄父页 DOM），
+    // 但它是远端页 ⇒ 不绑宿主桥（帧侧 remote 分支直接跳过 bindBridgeWindow）
+    expect(iframe?.getAttribute('sandbox')).toBe('allow-scripts allow-forms allow-modals allow-same-origin');
+    expect(document.body.querySelector('.pw-title')?.textContent).toBe('活预览');
   });
 
   it('✕ 关窗 → 设施 close → 注册表清窗（帧卸载）', () => {

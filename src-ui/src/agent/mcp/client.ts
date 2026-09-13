@@ -19,6 +19,15 @@ import {
   type ProcIO,
 } from './transport';
 
+/** MCP 工具注解（规范 `ToolAnnotations`——服务器自述的行为提示，纯提示不担保）。
+ *  `readOnlyHint` 是只读语义的**唯一远端来源**（见 registry.resolveMcpToolReadOnly）。 */
+export interface McpToolAnnotations {
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
+}
+
 /** 远端工具 schema（MCP tools/list 项）。 */
 export interface McpToolSchema {
   name: string;
@@ -28,6 +37,8 @@ export interface McpToolSchema {
     properties?: Record<string, unknown>;
     required?: string[];
   };
+  /** 远端注解（缺省 = 未表态 → 只读语义 fail-closed 判为写）。 */
+  annotations?: McpToolAnnotations;
 }
 
 /** MCP client 结果（tools/call 返回）。 */

@@ -5,10 +5,10 @@
 //!
 //! 命名规范：`mcp__<serverName>__<rawName>`，避免与本地 hologram 工具冲突。
 //! 每个远端工具包装成 `Tool`：execute 走 McpClient.callTool（signal 支持取消），
-//! readOnly 默认 true（外部工具大多只读；写入型由调用方按需覆盖）。
+//! readOnly 由 resolveMcpToolReadOnly 判定（**fail-closed**——缺省视为写）。
 
 import type { Tool, ToolRegistry } from '../tool';
-import type { McpClient } from './client';
+import type { McpClient, McpToolAnnotations } from './client';
 
 interface RawMcpSchema {
   name: string;
@@ -18,6 +18,27 @@ interface RawMcpSchema {
     properties?: Record<string, unknown>;
     required?: string[];
   };
+  annotations?: McpToolAnnotations;
+}
+
+/** MCP 工具只读语义判定（**单一真源**——registry 与 plugins/mcp-bridge 两处工具
+ *  构造共用，杜绝各判各的）。
+ *
+ *  优先级：条目级显式声明（`manifest.mcpServers[].readOnly` / 用户 `~/.lantai/mcp.json`
+ *  同名字段）> 远端 `annotations.readOnlyHint === true` > **缺省 false（fail-closed）**。
+ *
+ *  为什么 fail-closed（2026-09-13 P0，见 docs/plans/office-cli-integration-plan.md §5）：
+ *  旧实现两处硬编码 `readOnly: () => true`（注释「写入型由调用方按需覆盖」，实际全仓
+ *  零调用方覆盖）——于是**任何写型 MCP 工具在兰台都被当只读**：plan 模式放行写动作
+ *  （`plan/plan-registry.ts` 首行 `if (tool.readOnly()) return null;`）、并入只读并行组、
+ *  plan 模式子 Agent 的静态只读集照收。远端不表态即不当只读，是唯一安全的默认值；
+ *  确为只读的 server 由条目级声明或远端 `readOnlyHint` 显式担保。 */
+export function resolveMcpToolReadOnly(
+  schema: { annotations?: McpToolAnnotations },
+  serverReadOnly?: boolean,
+): boolean {
+  if (serverReadOnly !== undefined) return serverReadOnly;
+  return schema.annotations?.readOnlyHint === true;
 }
 
 /** deferred 语境（S4 app shell 件 D）：插件声明的 server 才带——调用期
@@ -48,7 +69,7 @@ export function mcpClientTool(
       properties: inputSchema.properties ?? {},
       required,
     }),
-    readOnly: () => true,
+    readOnly: () => resolveMcpToolReadOnly(schema),
     execute: async (args: Record<string, unknown>, onProgress?: (chunk: string) => void, signal?: AbortSignal) => {
       // deferred 语境 + Agent 发起（executor 注入 _owner_id）→ 绑 token
       // （S4：server 完成通知 lantai/deferred 回带此 token，桥翻译成唤醒）；

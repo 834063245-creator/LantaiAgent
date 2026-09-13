@@ -9,8 +9,22 @@ use tauri::Emitter;
 
 use crate::permissions;
 use crate::permissions::{PermissionContext, PermissionDecision, has_permission_to_use_tool, register_ask};
+use crate::sandbox::expand_home;
 use crate::tools;
 use crate::workspace;
+
+/// fs 路径解析入口统一前置：`~/` → home 展开（2026-09-13 修）。
+///
+/// 背景：`fs_cap` 的 read/write 全链路此前**不认波浪号**——`~/.lantai/mcp.json`
+/// 被当相对路径解析，落到 "parent directory not found"；而设置页 MCP 面板正是用
+/// 这个路径读写用户级 mcp.json，错误又被 UI 的 catch 吞成"文件不存在"⇒
+/// **面板恒显示空、且新增 server 存不进去**（实测复现，见
+/// docs/plans/office-cli-integration-plan.md §5 坑账）。
+///
+/// 展开只对 `~`/`~/`/`~\` 前缀生效，其余路径原样——归属裁决仍由沙箱负责。
+fn expand_input(file_path: &str) -> PathBuf {
+    expand_home(file_path)
+}
 
 pub(crate) fn project_root() -> PathBuf {
     // 生产环境（已安装应用）：使用 exe 所在目录 — python/ 和 src_python/ 打包在旁边
@@ -200,7 +214,7 @@ pub(crate) fn check_permission_sync(
 pub(crate) async fn require_read(file_path: &str, agent_id: Option<&str>, state: &tauri::State<'_, WorkspaceState>, app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let ctx = get_ctx(state)?;
     // Phase 3：当隔离模式为 Worktree 时，前向映射到 worktree 物理路径 (spec §5.6)
-    let physical = ctx.forward_map_path(std::path::Path::new(file_path), agent_id);
+    let physical = ctx.forward_map_path(&expand_input(file_path), agent_id);
     let physical_str = physical.to_string_lossy().to_string();
     let tool = tools::ReadTool { path: physical_str.clone(), agent_id: agent_id.map(|s| s.to_string()) };
     check_permission(&tool, &ctx, app).await?;
@@ -213,7 +227,7 @@ pub(crate) async fn require_read(file_path: &str, agent_id: Option<&str>, state:
 pub(crate) async fn require_write(file_path: &str, agent_id: Option<&str>, state: &tauri::State<'_, WorkspaceState>, app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let ctx = get_ctx(state)?;
     // Phase 3：当隔离模式为 Worktree 时，前向映射到 worktree 物理路径 (spec §5.6)
-    let physical = ctx.forward_map_path(std::path::Path::new(file_path), agent_id);
+    let physical = ctx.forward_map_path(&expand_input(file_path), agent_id);
     let physical_str = physical.to_string_lossy().to_string();
     let tool = tools::EditTool { path: physical_str.clone(), agent_id: agent_id.map(|s| s.to_string()) };
     check_permission(&tool, &ctx, app).await?;
@@ -225,14 +239,14 @@ pub(crate) async fn require_write(file_path: &str, agent_id: Option<&str>, state
 /// safety check 仍然保留在写路径 (防误操作系统文件).
 pub(crate) fn resolve_path_user_read(file_path: &str, state: &tauri::State<'_, WorkspaceState>) -> Result<PathBuf, String> {
     let ctx = get_ctx(state)?;
-    let physical = ctx.forward_map_path(std::path::Path::new(file_path), None);
+    let physical = ctx.forward_map_path(&expand_input(file_path), None);
     let physical_str = physical.to_string_lossy().to_string();
     ctx.resolve_read(&physical_str)
 }
 
 pub(crate) fn resolve_path_user_write(file_path: &str, state: &tauri::State<'_, WorkspaceState>) -> Result<PathBuf, String> {
     let ctx = get_ctx(state)?;
-    let physical = ctx.forward_map_path(std::path::Path::new(file_path), None);
+    let physical = ctx.forward_map_path(&expand_input(file_path), None);
     let physical_str = physical.to_string_lossy().to_string();
     ctx.resolve_write(&physical_str)
 }
@@ -288,7 +302,7 @@ pub(crate) fn resolve_read_unchecked(
         return resolve_path_user_read(file_path, state);
     }
     let ctx = get_ctx(state)?;
-    let physical = ctx.forward_map_path(std::path::Path::new(file_path), agent_id);
+    let physical = ctx.forward_map_path(&expand_input(file_path), agent_id);
     std::fs::canonicalize(&physical)
         .map_err(|e| format!("无法解析路径 {}: {}", file_path, e))
 }
@@ -302,7 +316,7 @@ pub(crate) fn resolve_write_unchecked(
 ) -> Result<PathBuf, String> {
     let ctx = get_ctx(state)?;
     let agent = if is_agent { agent_id } else { None };
-    let physical = ctx.forward_map_path(std::path::Path::new(file_path), agent);
+    let physical = ctx.forward_map_path(&expand_input(file_path), agent);
     ctx.resolve_write(&physical.to_string_lossy())
 }
 
@@ -346,7 +360,7 @@ pub(crate) fn require_command_sync(command: &str, state: &tauri::State<'_, Works
 pub(crate) fn require_read_sync(file_path: &str, agent_id: Option<&str>, state: &tauri::State<'_, WorkspaceState>) -> Result<PathBuf, String> {
     let ctx = get_ctx(state)?;
     // Phase 3：当隔离模式为 Worktree 时，前向映射到 worktree 物理路径 (spec §5.6)
-    let physical = ctx.forward_map_path(std::path::Path::new(file_path), agent_id);
+    let physical = ctx.forward_map_path(&expand_input(file_path), agent_id);
     let physical_str = physical.to_string_lossy().to_string();
     let tool = tools::ReadTool { path: physical_str.clone(), agent_id: agent_id.map(|s| s.to_string()) };
     check_permission_sync(&tool, &ctx)?;
