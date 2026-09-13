@@ -7,6 +7,12 @@
 
 - 仓库：MSYS2 官方 `msys/x86_64`（下载源 `https://repo.msys2.org/msys/x86_64/`，2026-08-15 快照）
 - 仅包含 `usr/bin` 下的可执行文件与依赖 DLL；未修改任何二进制。
+- 目录形态 = 标准 MSYS2 根：`usr/bin/`（exe+dll）+ `tmp/` + `etc/fstab`。
+  `etc/fstab` 为 msys2-runtime 3.6.10-3 的官方原文（未修改）：最后一行
+  `none / cygdrive binary,posix=0,noacl,user 0 0` 是盘符前缀开关——缺了它
+  runtime 退回 Cygwin 默认 `/cygdrive/<drive>/...`，于是 `$PWD` 形态、
+  system prompt 里的 `/c/...` 提示、TS 侧粘性 cwd 的 MSYS 规整全部错位
+  （2026-09-13 真机实测：`cd /d/x` 报 No such file）。
 
 ## 包清单（版本 = 下载时点快照）
 
@@ -49,5 +55,6 @@ GPL 组件的源码可自 MSYS2 官方仓库获取（`https://repo.msys2.org/msy
 ## 升级纪律
 
 1. 改包版本必须重跑 `scripts/check-msys2-deps.sh`（objdump 依赖闭包自检）。
-2. 新增功能包前先确认 LICENSE；GPL/LGPL/BSD/zlib/MIT 均可，禁止 EPL/专有。
-3. 更新上表版本号与许可列。
+2. 升级 msys2-runtime 时必须同步核对 `etc/fstab` 原文（盘符前缀开关，见上）。
+3. 新增功能包前先确认 LICENSE；GPL/LGPL/BSD/zlib/MIT 均可，禁止 EPL/专有。
+4. 更新上表版本号与许可列。

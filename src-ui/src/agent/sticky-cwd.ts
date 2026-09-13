@@ -30,10 +30,26 @@ export const CWD_MARKER_END = '\u0007';
 
 // ── MSYS 路径规整 ──
 // 捆绑 bash 的 $PWD 是 POSIX 风格（`/d/HoloGramHG/engine`），而 spawn 侧 /
-// 回显需要 Windows 风格。只处理盘符挂载（绝对主流）；UNC `//server/...` 与
-// 其他形态放弃（返回 null → 粘性不动，自愈）。
+// 回显需要 Windows 风格。两种盘符形态都认：
+//   - MSYS2 标准形态 `/<drive>/...`（bundle 带 `etc/fstab` 时的正常形态）
+//   - Cygwin 默认 cygdrive 形态 `/cygdrive/<drive>/...`（bundle 根缺
+//     `etc/fstab`、或 runtime 根被系统 MSYS2 接管时的退化形态，2026-09-13
+//     实测遇到过；不认它会把 `/cygdrive/d/x` 当成「盘符 c」切成
+//     `c:/ygdrive/d/x` 这种盘上不存在的垃圾路径 → 粘性静默失效）
+// UNC `//server/...` 与其他形态放弃（返回 null → 粘性不动，自愈）。
+const CYGDRIVE_PREFIX = /^\/cygdrive(\/|$)/i;
+const CYGDRIVE_DRIVE = /^\/cygdrive\/([a-zA-Z])(?:\/|$)/i;
+
 export function normalizeMsysPath(raw: string): string | null {
   const t = raw.trim();
+  // cygdrive 形态必须先行判定（否则会被下面的单字母分支当成盘符 c）
+  if (CYGDRIVE_PREFIX.test(t)) {
+    const m = CYGDRIVE_DRIVE.exec(t);
+    if (!m?.[1]) return null;
+    const drive = m[1].toLowerCase();
+    const rest = t.slice(m[0].length).replace(/^\/+/, '');
+    return rest === '' ? `${drive}:/` : `${drive}:/${rest}`;
+  }
   if (/^\/[a-zA-Z]/.test(t)) {
     const drive = t[1]?.toLowerCase();
     const rest = t.slice(2).replace(/^\/+/, '');

@@ -42,6 +42,21 @@ describe('normalizeMsysPath（MSYS → Windows 规整）', () => {
   it('Windows 风格直通（pwsh 路径）', () => {
     expect(normalizeMsysPath('D:\\HoloGramHG\\src-ui')).toBe('D:\\HoloGramHG\\src-ui');
   });
+
+  // 2026-09-13：捆绑根缺 etc/fstab（或 runtime 根被系统 MSYS2 接管）时，$PWD
+  // 是 Cygwin 默认的 /cygdrive/<drive>/... 形态——旧实现在此把 cygdrive 当成
+  // 盘符 c，产出 c:/ygdrive/... 这种盘上不存在的路径，粘性静默失效。
+  it('cygdrive 退化形态归一（/cygdrive/<drive>/... 不许被切成盘符 c）', () => {
+    expect(normalizeMsysPath('/cygdrive/d/HoloGramHG/engine')).toBe('d:/HoloGramHG/engine');
+    expect(normalizeMsysPath('/cygdrive/C/')).toBe('c:/');
+    expect(normalizeMsysPath('/cygdrive/c')).toBe('c:/');
+  });
+
+  it('cygdrive 形态畸形（无盘符 / 非字母）→ null（放弃捕获，粘性不动自愈）', () => {
+    expect(normalizeMsysPath('/cygdrive')).toBeNull();
+    expect(normalizeMsysPath('/cygdrive/')).toBeNull();
+    expect(normalizeMsysPath('/cygdrive/1/x')).toBeNull();
+  });
 });
 
 describe('CwdMarkerFilter（流式截流 + 捕获提交）', () => {
@@ -103,6 +118,13 @@ describe('CwdMarkerFilter（流式截流 + 捕获提交）', () => {
     const { clean, captured } = f.push(`${CWD_MARKER_START}//server/share${CWD_MARKER_END}rest`);
     expect(captured).toBeNull();
     expect(clean).toBe('rest');
+  });
+
+  it('cygdrive 形态落点同样捕获（前缀退化时粘性仍要提交）', () => {
+    const f = new CwdMarkerFilter();
+    const { clean, captured } = f.push(`built\n${CWD_MARKER_START}/cygdrive/d/HoloGramHG/engine${CWD_MARKER_END}`);
+    expect(clean).toBe('built\n');
+    expect(captured).toBe('d:/HoloGramHG/engine');
   });
 });
 

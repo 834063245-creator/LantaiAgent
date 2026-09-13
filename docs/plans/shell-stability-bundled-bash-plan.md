@@ -34,7 +34,7 @@ Agent shell(run) ──> Rust spawn_shell ──> 捆绑的 bash.exe -c <cmd>（
 - 源：`https://mirror.msys2.org/msys/x86_64/`（当前版本以 `*pkg.tar.zst` 元数据为准，版本号写死进 NOTICE）
 - 功能包：`bash`、`coreutils`、`sed`、`grep`、`gawk`、`findutils`、`diffutils`、`tar`、`gzip`、`which`
 - 依赖闭包：每包解包后用 `objdump -p *.exe/*.dll` 抓 `DLL Name`，缺哪个补哪个包（预期：`msys2-runtime`(msys-2.0.dll)、`libintl`、`libiconv`、`libpcre2_8`、`libreadline`、`zlib`、`libbz2`、`liblzma`、`libzstd`、`libgmp`、`libmpfr`、`libncursesw`）
-- 目录形态：`vendor/{usr/bin,tmp}/`，`usr/bin` 只放 exe+dll；NOTICE 列版本与许可（bash=GPLv3、coreutils=GPLv3、其余各自 GPL/LGPL/BSD）。必须用标准 MSYS2 根布局，否则 runtime 把 `/tmp` 解析到 `vendor/tmp`、把 `/bin` 解析到 `vendor/usr/bin`，目录不对会报 `could not find /tmp`。
+- 目录形态：`vendor/{usr/bin,tmp,etc}/`，`usr/bin` 只放 exe+dll；`etc/fstab` 随包（盘符前缀开关，见 §6）；NOTICE 列版本与许可（bash=GPLv3、coreutils=GPLv3、其余各自 GPL/LGPL/BSD）。必须用标准 MSYS2 根布局，否则 runtime 把 `/tmp` 解析到 `vendor/tmp`、把 `/bin` 解析到 `vendor/usr/bin`，目录不对会报 `could not find /tmp`。
 - tauri.conf.json `bundle.resources` 加 `"vendor/**/*"`（dev 模式 resource_dir 同样解析）
 
 ## 3. 关键设计决策
@@ -63,7 +63,35 @@ Linux 本机：`cargo check` + `cargo test utils::`（纯函数）+ 确认 `comm
 
 ## 5. 踩坑速记
 
-- `zstd -d` 解包 MSYS2 tar.zst；包内 `usr/bin` 与 `etc/` 结构——只拷 bin 层的 exe+dll，bash 需要 `/etc/nsswitch.conf`? 不需要（MSYS 默认行为够用）。
+- `zstd -d` 解包 MSYS2 tar.zst；包内 `usr/bin` 与 `etc/` 结构——`usr/bin` 只拷 exe+dll，但 **`etc/fstab` 必须拷**（见 §6，2026-09-13 实测修正：当初判「不需要 etc」是错的）。
 - Git 仓库 +15MB 二进制：可接受（用户明确无商用问题）；提交时单列一个 commit。
 - 别动 `assign_to_job`（LSP/MCP/Unity 用全局 Job 的 die-with-parent）；别把 per-command Job 加内存上限（构建命令内存需求不可预测，dsh 也没加）。
 - Windows 侧不可在本 Linux 机器验证——代码必须 cfg(windows) 零触及 Linux 路径，Linux 回归必须仍绿。
+
+## 6. 补丁（2026-09-13）：盘符前缀 fstab + HOME 钉扎
+
+**症状（真机复刻 App spawn 环境实测）**：Agent 在 shell 里 `cd /d/HoloGramHG` 报
+`No such file or directory`，`$PWD` 是 `/cygdrive/d/...`，`cd` / `cd ~` 必失败。
+
+**根因两条**：
+
+1. bundle 只拷了 `usr/bin` + `tmp`，缺 `etc/fstab` → msys2-runtime 退回 Cygwin
+   默认 cygdrive 前缀（盘符挂 `/cygdrive/<drive>/`，不是 `/<drive>/`）。连带三处
+   不自洽：`shell_env()` 注入的 system prompt 提示（`/c/Users/...`）、
+   `process_cap` 的 `cd /x/path` 纠偏提示、TS `sticky-cwd.ts` 的 MSYS 规整
+   （`/cygdrive/d/x` 被当成盘符 c → `c:/ygdrive/d/x` → 盘上不存在 → 粘性静默失效，
+   每条命令都回到工作区根）。
+2. runtime 从 Windows 账户派生的 `HOME` = `<root>/home/<user>` 不在盘上（打包态
+   更是只读资源目录）→ `cd` / `cd ~` 必失败，且认 HOME 的工具（git 全局配置、
+   ssh、npmrc）静默换到空目录。
+
+**修法**：`vendor/etc/fstab` 落官方原文（前缀开关）+ `spawn_bash` 钉
+`HOME = $USERPROFILE` 的 POSIX 形态（探测不到则不设，保持 runtime 默认）；
+TS 侧 `normalizeMsysPath` 同时认 `/cygdrive/<drive>/` 与 `/<drive>/` 两形态
+（防御：根解析依赖 PATH，本机 user PATH 里的系统 MSYS2 可以接管根）。
+
+**守卫测试**（新增，不动既有断言）：`bundled_root_fstab_keeps_msys_drive_prefix`
+（fstab 在册 + 真跑 `$PWD` 形态）、`bundled_bash_home_is_usable`（走生产
+`spawn_bash` 构造，钉住 HOME 值 + `cd "$HOME"` 真能进）、`posix_home_env_pins_only_existing_profile`
+（纯层：不存在的目录不钉）、`tests/sticky-cwd.test.ts` 的 cygdrive 两例 +
+截流器一例。

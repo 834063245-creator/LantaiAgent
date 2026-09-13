@@ -820,6 +820,21 @@ pub mod imp {
         path.replace('\\', "/")
     }
 
+    /// POSIX 形态的 HOME 钉扎值（纯函数，供单测）。
+    /// 捆绑根的 `/etc/passwd` 不存在，runtime 从 Windows 账户派生的 HOME 必然
+    /// 指向 `<root>/home/<user>` —— 该目录既不在盘上（打包态更是只读资源目录），
+    /// 于是 `cd` / `cd ~` 必失败，且认 HOME 的工具（git 全局配置、ssh、npmrc）
+    /// 会静默换到那个空目录（2026-09-13 实测：`cd` 报 "No such file or directory"）。
+    /// 钉成真实用户目录（与 Git Bash 在 Windows 的同一约定）；探测不到就返回
+    /// None，调用方不设 HOME，保持 runtime 默认派生（不引入新失败面）。
+    pub(crate) fn posix_home_env(user_profile: Option<&str>) -> Option<String> {
+        let profile = user_profile?.trim();
+        if profile.is_empty() || !std::path::Path::new(profile).is_dir() {
+            return None;
+        }
+        Some(windows_to_posix_path(profile))
+    }
+
     // ── Job Object ──
 
     pub mod job {
@@ -1042,6 +1057,11 @@ pub mod imp {
         // PATH 归一化（P3）：捆绑 bin 在前（coreutils 解析），用户工具目录在后
         if let Some(path) = bash_path_env() {
             envs.push(("PATH", path));
+        }
+        // HOME 钉扎（2026-09-13）：runtime 派生的 HOME 指向不存在的
+        // `<root>/home/<user>`（见 posix_home_env 头注）——钉成真实用户目录。
+        if let Some(home) = posix_home_env(std::env::var("USERPROFILE").ok().as_deref()) {
+            envs.push(("HOME", home));
         }
         let envs_ref: Vec<(&str, &str)> = envs.iter().map(|(k, v)| (*k, v.as_str())).collect();
         spawn_argv(bash_path, &[String::from("-c"), arg], cwd, &envs_ref)
@@ -1573,6 +1593,124 @@ pub mod imp {
                 .expect("捆绑 bash 真实执行");
             assert!(out.status.success(), "bash -c 非零退出: {:?}", out.status);
             assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "msy2-ok");
+        }
+
+        /// HOME 钉扎（纯层）：只在用户目录真实存在时给值；缺失/空/不存在 → None
+        /// （None = 调用方不设 HOME，保持 runtime 默认派生）。
+        #[test]
+        fn posix_home_env_pins_only_existing_profile() {
+            let tmp = std::env::temp_dir().to_string_lossy().to_string();
+            let pinned = super::posix_home_env(Some(&tmp)).expect("临时目录存在 → 应钉扎");
+            assert_eq!(pinned, super::windows_to_posix_path(&tmp));
+            assert!(pinned.starts_with('/'), "应是 POSIX 形态: {pinned}");
+            assert!(super::posix_home_env(None).is_none());
+            assert!(super::posix_home_env(Some("")).is_none());
+            assert!(super::posix_home_env(Some("   ")).is_none());
+            assert!(
+                super::posix_home_env(Some(r"C:\holo-not-exist-profile-xyz")).is_none(),
+                "盘上不存在的目录不钉（不造新失败面）"
+            );
+        }
+
+        /// 盘符前缀守卫（2026-09-13）：bundle 根缺 `etc/fstab` 时 msys2-runtime
+        /// 退回 Cygwin 默认 `/cygdrive` 前缀——`$PWD` 形态、system prompt 里的
+        /// `/c/...` 提示、TS 侧粘性 cwd 的 MSYS 规整全部错位（实测：`cd /d/x`
+        /// 报 No such file，`$PWD` = /cygdrive/d/...）。
+        /// PATH 只留捆绑 bin：把 runtime 的根解析钉死在 repo vendor（本机 user
+        /// PATH 里的系统 MSYS2 会接管根，否则测不到 bundle 自己的 fstab）。
+        #[test]
+        #[cfg(windows)]
+        fn bundled_root_fstab_keeps_msys_drive_prefix() {
+            let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let fstab = root.join("vendor").join("etc").join("fstab");
+            let body = std::fs::read_to_string(&fstab).unwrap_or_else(|e| {
+                panic!("vendor/etc/fstab 必须随包（缺它盘符退回 /cygdrive）: {} — {e}", fstab.display())
+            });
+            assert!(
+                body.contains("none / cygdrive"),
+                "fstab 必须含去掉 cygdrive 前缀的官方行"
+            );
+
+            let bash = super::resolve_bundled_bash(Some(&root)).expect("repo vendor bash 应可用");
+            let bin = bash
+                .parent()
+                .expect("bash 必在 <root>/usr/bin 下")
+                .to_string_lossy()
+                .into_owned();
+            let cwd = root.to_string_lossy().into_owned();
+            let child = super::spawn_argv(
+                &bash.to_string_lossy(),
+                &[String::from("-c"), String::from(r#"printf '%s' "$PWD""#)],
+                &cwd,
+                &[("PATH", bin.as_str())],
+            )
+            .expect("spawn bundled bash");
+            let (out, ok) = read_child(child);
+            assert!(ok, "捆绑 bash 执行 $PWD 失败: {out:?}");
+            let pwd = out.trim();
+            assert!(
+                !pwd.contains("cygdrive"),
+                "runtime 退回 /cygdrive 前缀（bundle 缺 etc/fstab？）: {pwd:?}"
+            );
+            assert!(
+                pwd.starts_with('/') && pwd.as_bytes().get(1).is_some_and(u8::is_ascii_alphabetic),
+                "MSYS 盘符形态应为 /<drive>/... : {pwd:?}"
+            );
+        }
+
+        /// HOME 钉扎实跑守卫（2026-09-13）：钉扎前 `cd` / `cd ~` 必失败（runtime
+        /// 派生的 `<root>/home/<user>` 不在盘上）——这里同时钉住「值 = 真实用户
+        /// 目录的 POSIX 形态」与「`cd $HOME` 真能落地」两件事。
+        #[test]
+        #[cfg(windows)]
+        fn bundled_bash_home_is_usable() {
+            let Some(expected) = super::posix_home_env(std::env::var("USERPROFILE").ok().as_deref())
+            else {
+                eprintln!("[home-guard] 无 USERPROFILE —— 跳过（钉扎不适用）");
+                return;
+            };
+            let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let bash = super::resolve_bundled_bash(Some(&root)).expect("repo vendor bash 应可用");
+            let cwd = root.to_string_lossy().into_owned();
+            // 走生产构造（spawn_bash 自己拼 env），不复刻环境——否则测的是测试
+            let child = super::spawn_bash(
+                &bash.to_string_lossy(),
+                r#"printf '%s|' "$HOME"; cd "$HOME" 2>/dev/null && printf cd-ok"#,
+                &cwd,
+            )
+            .expect("spawn_bash");
+            let (out, ok) = read_child(child);
+            assert!(ok, "捆绑 bash 执行 HOME 探测失败: {out:?}");
+            assert_eq!(
+                out.trim(),
+                format!("{expected}|cd-ok"),
+                "spawn_bash 的 HOME 钉扎应落在真实用户目录且可 cd 进入"
+            );
+        }
+
+        /// 读干一条 SandboxedChild：stdout 全量 + 退出是否成功——自带超时纪律，
+        /// 与 smoke_test_bash 同款：坏解释器不许把测试挂死。
+        #[cfg(windows)]
+        fn read_child(mut child: crate::os_sandbox::SandboxedChild) -> (String, bool) {
+            use std::io::Read;
+            // 先读到 EOF（子端写句柄不可继承，EOF 即命令输出结束）再等退出码
+            let mut buf = Vec::new();
+            if let Some(mut r) = child.take_stdout() {
+                let _ = r.read_to_end(&mut buf);
+            }
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+            let ok = loop {
+                match child.try_wait() {
+                    Ok(Some(status)) => break status.success(),
+                    Ok(None) if std::time::Instant::now() >= deadline => {
+                        let _ = child.kill();
+                        break false;
+                    }
+                    Ok(None) => std::thread::sleep(std::time::Duration::from_millis(30)),
+                    Err(_) => break false,
+                }
+            };
+            (String::from_utf8_lossy(&buf).to_string(), ok)
         }
 
         /// 完整后台链路复现：spawn_bg → drain 线程 → read_bg_output / wait_bg。
