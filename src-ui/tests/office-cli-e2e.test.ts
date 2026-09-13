@@ -1,19 +1,20 @@
-// OfficeCLI 集成端到端（A 路真机证据）——真实二进制 + 真实 stdio + 机器桥生产路径。
+// officecli **语义**真机回归（真实二进制）——经 MCP 最小挂载器驱动，**不是产品路**。
 //
-// 计划：docs/plans/office-cli-integration-plan.md（本文件覆盖 §8 可机器判定的部分）。
-//
-// 覆盖：
-//   ① 装载：manifest 形状的 server 声明经 registerMcpServerTools 折算成工具行，
-//      真实 server 的 tools/list 产出 `mcp__office__officecli`；
-//   ② P0 只读语义在真实 server 上成立：officecli 不声明 annotations ⇒ readOnly false
-//      （修复前恒 true —— 写动作会绕过 plan 门禁并入只读并行组）；
-//   ③ 真写盘：create → add → save 后文件在盘上，且 view text 读回内容
-//      （落盘边界铁律：别的程序读的是盘上字节）；
-//   ④ 预览原料：view screenshot -o <png> 产出真 PNG（纸面「截图路」的输入）。
+// 定位（2026-09-13 C 路改判后重述）：产品路已改为内置 office 域工具（`office(action,…)`，
+// 守护在 tests/office-domain.test.ts）。本文件保留是因为它用**最小挂载器**（一个 manifest 形状的
+// server 声明 + registerMcpServerTools）就能把 officecli 当纯 CLI 驱动，用来钉**officecli 自身的
+// 语义**——这些结论同时是 `examples/office-cli/SKILL.md` 的实测依据：
+//   ① 挂载器形状与真实 tools/list（`mcp__office__officecli`）+ **P0 只读语义**（无 annotations
+//      ⇒ readOnly=false，旧实现恒 true 会让写动作绕过 plan 门禁）；
+//   ② 真写盘与落盘边界（别的程序读的是盘上字节）；
+//   ③ 预览原料：`view screenshot` 产出真 PNG（纸面截图路的输入）；
+//   ④ 交付门槛覆盖面（抓得到 pptx 越界/溢出、xlsx 公式错与未求值；抓不到占位符/alt/空白）；
+//   ⑤ 读数陷阱（待决删除在 view text 里不显示）、修订按作者接受、模板 dump→batch→merge 往返、
+//      单位/颜色/行距全形态、pptx 全流程。
 //
 // 跳过纪律（仓库既有纪律：真实环境测试缺条件自动跳过，不炸 CI）：
 //   二进制缺席（未装且未设 OFFICECLI_PATH）= 整套 skip。
-//   本机安装位（P1）：%USERPROFILE%\.lantai\tools\officecli\officecli.exe
+//   本机安装位：%USERPROFILE%\.lantai\tools\officecli\officecli.exe
 
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
