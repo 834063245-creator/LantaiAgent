@@ -439,3 +439,32 @@ export function pluginHostMods(): Record<string, unknown> {
 export function faceDepsKeys(): ReadonlySet<string> {
   return new Set(Object.keys(faceDeps));
 }
+
+/** 宿主面指纹（保险丝 a′，2026-09-14 立法）——键集（排序）的 FNV-1a 32 位十六进制。
+ *
+ *  为什么需要它：保险丝 a 只在「产物要的键运行时没有」时开火，而这**只是偏斜的
+ *  一种形态**。同日事故（乙 批把 INK_FAIL / buildTocInkBuckets 加进宿主面后按
+ *  「只换产物」部署）：产物 face.json 声明的键在 exe 里也没有 → a 开火了，但由于
+ *  S5 已把 displace 兜底退役（产物是唯一装载面），结果是**该插件整面缺席**，而非
+ *  §8.5 承诺的「拒载 + bundle 兜底行不倒」。且**作者期毫无信号**——`npm run build`
+ *  不会告诉你"本批动了宿主面，光换产物必炸"。
+ *  指纹把这条边界变成可读数字：基线 `src/plugins/host-surface.baseline.json` 由
+ *  `npm run gen:host-surface` 生成、由 tests/host-surface-seal.test.ts 封印（改宿主面
+ *  必须同 commit 更新基线）；构建脚本把它写进每个产物 face.json 并**与本批 HEAD 的
+ *  基线对比**，变了就大字告警；装载器拿产物声明的指纹与运行时对拍，报错从"缺键 A、B"
+ *  升级为"产物需宿主面 <a>，当前 exe <b>"。
+ *
+ *  keys 可注入（缺省 = 运行时真源）——纯函数，测试可直接对拍稳定性与敏感性。 */
+export function hostSurfaceFingerprint(keys: Iterable<string> = faceDepsKeys()): string {
+  const sorted = [...keys].sort();
+  let h = 0x811c9dc5; // FNV-1a 32
+  for (const k of sorted) {
+    for (let i = 0; i < k.length; i++) {
+      h ^= k.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    h ^= 0x1f; // 键分隔符（防 "ab"+"c" 与 "a"+"bc" 撞同一指纹）
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, '0');
+}

@@ -48,7 +48,7 @@ import { getProxyPort } from '../provider/transport';
 import { typedRpc } from '../rpc-contract';
 import { usePluginPrefs } from '../state/plugin-prefs';
 import { type PluginRecord, usePluginStore } from '../state/plugin-store';
-import { faceDepsKeys, pluginHostMods } from './builtin/host-modules';
+import { faceDepsKeys, hostSurfaceFingerprint, pluginHostMods } from './builtin/host-modules';
 import { ensurePluginDataDir, type PluginDataFs, pluginDataFs } from './data-fs';
 import { completePluginTask } from './deferred';
 import { factoryProductNames, factoryProductPlugins } from './factory-products';
@@ -698,7 +698,30 @@ async function manifestStage(dirId: string, deps: LoadOneDeps): Promise<Manifest
       };
     }
   }
-  // 4b') 宿主面键集对拍（保险丝 a，2026-09-03 生产事故立法）：产物 face.json
+  // 4b') 宿主面指纹对拍（保险丝 a′，2026-09-14 立法）：产物 face.json 里的 hostApi
+  //       = 构建时（与本批源码同源）的宿主面指纹。与运行时指纹不符 = 产物与 exe
+  //       版本偏斜——报错直接给出两个指纹；旧版只报「缺键 X、Y」，读者得自己
+  //       推断「是不是这批动了宿主面」。缺 hostApi 的产物（旧产物/第三方）跳过
+  //       本闸，由下面的键集闸（4b）兜底。
+  if (faceDoc != null && typeof faceDoc === 'object') {
+    const declared = (faceDoc as { hostApi?: unknown }).hostApi;
+    if (typeof declared === 'string' && declared.length > 0) {
+      const current = hostSurfaceFingerprint();
+      if (declared !== current) {
+        return {
+          ok: false,
+          record: withBuiltinMeta(
+            manifest.name,
+            manifest,
+            `宿主面版本偏斜（拒载防渲染期整树卸载）: 产物需宿主面 ${declared}，当前 exe 是 ${current}` +
+              ' —— 本批触及了 faceDeps 面：产物不能只换产物热更，用与 exe 同源的源码树重建产物，或重建 exe',
+          ),
+          tim,
+        };
+      }
+    }
+  }
+  // 4b) 宿主面键集对拍（保险丝 a，2026-09-03 生产事故立法）：产物 face.json
   //       声明的需求键在运行时 faceDeps 缺席 = 产物与 exe 版本偏斜——装载期
   //       拒载（偏斜产物不 import）。face.json 缺席/坏形状 = 零需求
   //       （旧产物 / 第三方 / renderers 走 renderer-host 面）——回退兼容。

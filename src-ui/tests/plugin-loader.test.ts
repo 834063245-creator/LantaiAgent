@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { rendererServicePlugin, resolveRenderer } from '../src/composition/renderer-service';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
+import { hostSurfaceFingerprint } from '../src/plugins/builtin/host-modules';
 import { builtinRenderersPlugin } from '../src/plugins/builtin/renderers';
 import { FIRST_PARTY_MANIFEST } from '../src/plugins/first-party-manifest';
 import {
@@ -929,6 +930,37 @@ describe('face 键集对拍门禁（保险丝 a）', () => {
     expect(rec?.status).toBe('error');
     expect(rec?.error).toContain('宿主面缺键');
     expect(rec?.error).toContain('__lantai_never_key__');
+  });
+
+  it('face.json 宿主面指纹偏斜（保险丝 a′）→ 拒载：报错给出两个指纹', async () => {
+    const root = new Context();
+    await root.plugin(compositionServicesPlugin);
+    let imported = false;
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        [ORIGIN + '/']: ['acme/face-probe'],
+        [ORIGIN + '/plugins.json']: { disabled: [], granted: {} },
+        [ORIGIN + '/acme/face-probe/manifest.json']: FACE_TEST_MANIFEST,
+        // 键全在（键集闸不会开火），但指纹是旧 exe 的——正是「本批动了宿主面、
+        // 产物只换产物热更」那种偏斜
+        [ORIGIN + '/acme/face-probe/face.json']: {
+          faceDeps: ['layoutRegion', 'ANCHOR'],
+          hostApi: 'deadbeef',
+        },
+      }),
+      importModule: async () => {
+        imported = true;
+        return { default: { name: 'acme/face-probe', apply() {} } };
+      },
+    });
+    expect(imported).toBe(false);
+    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'acme/face-probe');
+    expect(rec?.status).toBe('error');
+    expect(rec?.error).toContain('宿主面版本偏斜');
+    expect(rec?.error).toContain('deadbeef'); // 产物声明的指纹
+    expect(rec?.error).toContain(hostSurfaceFingerprint()); // 当前 exe 的指纹
+    expect(rec?.error).toContain('重建 exe');
   });
 
   it('face.json 全键在 → 正常装载', async () => {

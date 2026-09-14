@@ -40,6 +40,7 @@
 
 import { build } from '../src-ui/node_modules/esbuild/lib/main.js';
 import { mkdirSync, readdirSync, rmSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractFaceKeys } from './lib/face-keys.mjs';
@@ -49,6 +50,77 @@ const repoRoot = resolve(__dirname, '..');
 const builtinSrcRoot = join(repoRoot, 'src-ui', 'src', 'plugins', 'builtin');
 const outRoot = join(repoRoot, 'src-ui', 'dist-plugins', 'builtin', 'hologram');
 const reactBridge = join(builtinSrcRoot, 'react-bridge.cjs');
+
+/* ── 宿主面指纹（保险丝 a′，2026-09-14 立法）──
+ * 基线 src/plugins/host-surface.baseline.json 由 `npm run gen:host-surface` 生成、
+ * 由 tests/host-surface-seal.test.ts 封印（改宿主面必须同 commit 更新基线）。
+ * 本脚本：① 把指纹写进每个产物 face.json（装载器据此精确报错）；② 与本批 HEAD
+ * 的基线对比——**变了就大字告警**：产物不能只换产物热更，必须重建 exe。
+ * 事故由来：同日乙 批新增 INK_FAIL / buildTocInkBuckets 后按「只换产物」部署，
+ * 旧 exe 无此键 → 产物拒载，又因 S5 已退役 displace 兜底 → 插件整面缺席。 */
+const HOST_SURFACE_BASELINE = join(repoRoot, 'src-ui', 'src', 'plugins', 'host-surface.baseline.json');
+
+function readJsonSafe(p) {
+  try {
+    return JSON.parse(readFileSync(p, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/** 本批（工作区）宿主面基线。 */
+const hostSurface = readJsonSafe(HOST_SURFACE_BASELINE);
+if (!hostSurface?.fingerprint) {
+  console.error(
+    `[build-builtin-plugins] 宿主面基线缺失/坏形状：${HOST_SURFACE_BASELINE}\n` +
+      '  —— 跑 npm run gen:host-surface 生成（产物 face.json 需要它写 hostApi 指纹）',
+  );
+  process.exit(1);
+}
+
+/** HEAD 版基线（作者期信号：本批相对上一次提交是否动了宿主面）。
+ *  git 不可用/无提交 = null（跳过告警，构建照常）。 */
+function headHostSurface() {
+  try {
+    const raw = execFileSync('git', ['show', `HEAD:src-ui/src/plugins/host-surface.baseline.json`], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** 宿主面若相对 HEAD 变了：大字告警（构建不阻断——改宿主面是合法操作，代价是 exe 重建）。 */
+function warnIfHostSurfaceChanged() {
+  const head = headHostSurface();
+  if (!head?.fingerprint || head.fingerprint === hostSurface.fingerprint) return;
+  const before = new Set(head.keys ?? []);
+  const after = new Set(hostSurface.keys ?? []);
+  const added = [...after].filter((k) => !before.has(k));
+  const removed = [...before].filter((k) => !after.has(k));
+  const fmt = (list) => (list.length > 8 ? `${list.slice(0, 8).join(', ')} …（共 ${list.length}）` : list.join(', '));
+  console.warn(
+    [
+      '',
+      '════════════════════════════════════════════════════════════════════',
+      '⚠ 本批触及宿主面（faceDeps）——产物不能只换产物热更：',
+      `   指纹 ${head.fingerprint} → ${hostSurface.fingerprint}`,
+      added.length ? `   新增键：${fmt(added)}` : null,
+      removed.length ? `   删除键：${fmt(removed)}` : null,
+      '   影响：旧 exe 里没有这些键 → 新产物装载期拒载（且 S5 已退役 displace',
+      '         兜底 = 该插件整面缺席）。要看到本批效果必须重建 exe：',
+      '         cd src-tauri && cargo tauri build（或 --no-bundle 只出 exe）',
+      '   仅换 dist-plugins 目录里的产物 = 一定会踩这条；dev 态走源码域不受影响。',
+      '════════════════════════════════════════════════════════════════════',
+      '',
+    ]
+      .filter(Boolean)
+      .join('\n'),
+  );
+}
 
 // ── 名册单一真源（2026-09-06）：31 个内置产物的清单事实唯一在
 // src-ui/src/plugins/builtin-roster.json（dir/buildOrder/entry/hostModule/face/
@@ -156,7 +228,10 @@ async function buildPlugin(spec) {
   // 不产出。
   const faceKeys = extractFaceKeys(entrySrc);
   if (faceKeys.length > 0) {
-    await fsp.writeFile(join(outDir, 'face.json'), JSON.stringify({ faceDeps: faceKeys }, null, 2) + '\n');
+    await fsp.writeFile(
+      join(outDir, 'face.json'),
+      JSON.stringify({ faceDeps: faceKeys, hostApi: hostSurface.fingerprint }, null, 2) + '\n',
+    );
   }
   const inputCount = result.metafile ? Object.keys(result.metafile.inputs).length : 0;
   console.log(
@@ -165,6 +240,7 @@ async function buildPlugin(spec) {
 }
 
 async function main() {
+  warnIfHostSurfaceChanged();
   // 产物根重建（幂等——每次全量）
   rmSync(join(repoRoot, 'src-ui', 'dist-plugins'), { recursive: true, force: true });
   mkdirSync(outRoot, { recursive: true });

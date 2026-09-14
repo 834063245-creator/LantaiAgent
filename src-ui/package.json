@@ -28,7 +28,8 @@
     "gen:catalogs:event": "node ../scripts/gen-event-catalog.cjs",
     "doc-sync": "node ../scripts/doc-sync.cjs",
     "gen:contract-fingerprint": "node ../scripts/gen-contract-fingerprint.cjs",
-    "check:contract-fingerprint": "node ../scripts/gen-contract-fingerprint.cjs --check"
+    "check:contract-fingerprint": "node ../scripts/gen-contract-fingerprint.cjs --check",
+    "gen:host-surface": "cross-env HOST_SURFACE_RECORD=1 vitest run tests/host-surface-seal.test.ts"
   },
   "dependencies": {
     "@chenglou/pretext": "^0.0.8",
