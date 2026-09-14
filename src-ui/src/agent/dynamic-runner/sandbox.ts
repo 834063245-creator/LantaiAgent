@@ -134,36 +134,70 @@ export function evaluateDynamicPlugin(source: string, fallbackName: string): Com
 
 /** 各注册面的函数成员要求（presence 校验；缺即拒绝）。
  *  键集同时是：守卫白名单 + 可解析服务清单（服务经 reflect.get 免 inject
- *  通道解析——runner 不声明 inject（依赖集编译期不可知）；单一真源防
- *  两处漂移）。 */
+ *  通道解析——runner 不声明 inject（依赖集编译期不可知））。 */
 export const GUARDED_SERVICES: readonly string[] = [
+  // 九条贡献通道（与 composition/contribution-channel.ts 的九通道同集）
   'tools',
   'panels',
   'commands',
   'llm',
+  'prompts',
+  'hooks',
+  'capabilities',
+  'renderers',
+  'overlays',
+  // 五条可换后端 seam（同一内核，消费语义是「替换默认 provider」）
   'fs',
   'shell',
   'sessionPersistence',
-  'graph',
   'subagents',
-  'prompts',
-  'renderers',
-  'capabilities',
+  'agentLoop',
 ];
 
+/** 自持登记：上面那张表的键集**就是**白名单（gate 读本表，错误文案读 GUARDED_SERVICES）
+ *  ——两处必须同集，由 tests/dynamic-runner.test.ts 的「注册面 ↔ 真装配」用例对拍。
+ *
+ *  2026-09-14 校准（此前漂移已久，技能文档 `lantai-plugin-dev` 曾照抄错误清单）：
+ *    - **删 `graph`**：图谱能力 2026-09-09 全量退役，该条目恒解析失败，是死条目；
+ *    - **补 `overlays`**：画布覆盖层（`{ id, slot, component }`——与 panels 同形）；
+ *    - **补 `agentLoop`**：流式循环 seam（`{ id, run }`）；
+ *    - **补 `hooks`**：工具管道钩子——承重成员是**嵌套形状**（`{ id, kind, hook }`，
+ *      函数成员在 `hook` 里面），presence 表表达不了，由下方 SHAPE_CHECKS 承担。 */
 const REQUIRED_FN_MEMBERS: Record<string, readonly string[]> = {
   tools: ['factory'],
   panels: ['component'],
   commands: [],
   llm: ['create'],
+  prompts: ['render'],
+  hooks: [], // 嵌套形状——见 SHAPE_CHECKS
+  capabilities: ['install'],
+  renderers: ['component'],
+  overlays: ['component'],
   fs: ['execute'],
   shell: ['execute'],
   sessionPersistence: ['execute'],
-  graph: ['invoke'],
   subagents: ['spawn'],
-  prompts: ['render'],
-  renderers: ['component'],
-  capabilities: ['install'],
+  agentLoop: ['run'],
+};
+
+/** 逐面附加形状校验（函数成员之外的承重形状——返回错误串，null = 通过）。 */
+const SHAPE_CHECKS: Record<string, (def: Record<string, unknown>) => string | null> = {
+  // HookContribution = { id, kind: 'enrich' | 'preflight', hook }——hook 是对象，
+  // 其函数成员随 kind 而变（enrich 族：shouldEnrich + enrich；preflight 族：
+  // shouldCheck + check）。畸形形状在装载期拒绝，不潜伏到工具调用期（那时
+  // 才 TypeError 就晚了：hook 在结果路径上跑）。
+  hooks: (def) => {
+    const kind = def.kind;
+    if (kind !== 'enrich' && kind !== 'preflight') return 'kind 必须是 "enrich" | "preflight"';
+    const hook = def.hook as Record<string, unknown> | undefined;
+    if (hook == null || typeof hook !== 'object') return 'hook 必须是对象（Hook 或 PreflightHook）';
+    if (typeof hook.name !== 'string' || hook.name.trim() === '') return 'hook.name 必须是非空 string';
+    const members = kind === 'enrich' ? ['shouldEnrich', 'enrich'] : ['shouldCheck', 'check'];
+    for (const m of members) {
+      if (typeof hook[m] !== 'function') return `hook 缺 ${m} 函数成员`;
+    }
+    return null;
+  },
 };
 
 /** 守卫 ctx：动态插件 apply 收到的唯一宿主面。 */
@@ -192,14 +226,22 @@ export function makeGuardedCtx(
   const validateDef = (svcName: string, def: unknown): void => {
     if (def == null || typeof def !== 'object') fail(`${svcName}.register(def) 的 def 必须是对象`);
     const record = def as Record<string, unknown>;
-    const needId = svcName !== 'capabilities' ? 'id' : 'key';
-    if (typeof record[needId] !== 'string' || (record[needId] as string).trim() === '') {
-      fail(`${svcName}.register 的 def 缺合法 ${needId}`);
+    // 行身份统一为 `id`（2026-09-14 M1 收口：九条通道一律 id，capability 的历史
+    // 字段名 `key` 已退役不留别名）。本处曾按服务特判 needId='key'——那是改名
+    // 漏掉的连带面：外部/dynamic 插件给正确的 `id` 会被这里拒掉，给旧 `key`
+    // 又会随后被通道的 assertContributionShape 拒掉，即动态注册 capability
+    // 整条路恒失败。现统一 id。
+    if (typeof record.id !== 'string' || record.id.trim() === '') {
+      fail(`${svcName}.register 的 def 缺合法 id`);
     }
     for (const member of REQUIRED_FN_MEMBERS[svcName] ?? []) {
       if (typeof record[member] !== 'function') {
         fail(`${svcName}.register 的 def 缺 ${member} 函数成员`);
       }
+    }
+    const shapeError = SHAPE_CHECKS[svcName]?.(record);
+    if (shapeError != null) {
+      fail(`${svcName}.register 的 def 形状非法：${shapeError}`);
     }
   };
   const guarded = new Proxy(

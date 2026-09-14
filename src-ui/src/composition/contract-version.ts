@@ -22,9 +22,20 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 29;
+export const OPEN_SURFACE_CONTRACT_VERSION = 30;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v30（2026-09-14）动态插件守卫注册面校准（`dynamic-runner/sandbox.ts`）：
+ *  `GUARDED_SERVICES` 此前漂移已久——仍列着 2026-09-09 全量退役的 `graph`
+ *  （死条目：模型照它写 `ctx.graph.register` 必报「服务不可解析」），且缺
+ *  `overlays` / `hooks` / `agentLoop`；同文件 `validateDef` 还按服务特判
+ *  `needId='key'`，在 v29 把行身份统一成 `id` 之后，**动态插件注册 capability
+ *  整条路恒失败**（给正确 id 被守卫拒，给旧 key 被通道形状校验拒）。
+ *  本版：白名单 = 九条贡献通道 + 五条 seam 全量 14 面；`needId` 统一 `id`；
+ *  `hooks` 的嵌套形状（`{ id, kind, hook }`，函数成员在 hook 内且随 kind 变）
+ *  由新增的 `SHAPE_CHECKS` 承担装载期校验。**对外可感知**：动态插件从此能贡献
+ *  overlays / hooks / agentLoop，capability 必须用 `id`。同版补上文件自注承诺
+ *  却缺席的守护——白名单 ↔ 真装配对拍（tests/dynamic-runner.test.ts ⑩）。
  *  v29（2026-09-14）M1 插件化收口（通道内核单层化）：注册表内核从
  *  `services.ts` 的 `ContributionRegistry` 上收为 `contribution-channel.ts` 的
  *  `ContributionChannel`——**类名变更 = 破坏性契约变更**（该名字经宿主桥

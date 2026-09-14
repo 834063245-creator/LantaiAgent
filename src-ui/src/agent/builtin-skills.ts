@@ -56,11 +56,10 @@ const PLUGIN_DEV_PROMPT = `# 为兰台写插件——Agent 操作手册
 - \`apply(ctx)\` 收**守卫代理**，只有两个面：
   - \`ctx.effect(fn, label)\`——fn 返回 disposer；
   - \`ctx.<服务>.register(def)\`——**守卫白名单**里的注册面（\`agent/dynamic-runner/sandbox.ts\`
-    的 \`GUARDED_SERVICES\`）：tools / panels / commands / llm / fs / shell /
-    sessionPersistence / subagents / prompts / renderers / capabilities（**11 条可用**）。
-    白名单里还留着一个已退役的 \`graph\`（图谱能力 2026-09-09 全量退役）——访问它会
-    响亮报错，不要用。**hooks / overlays / agentLoop 尚未进白名单**：动态插件贡献不了
-    这三面，需要它们就写静态插件（§2）。
+    的 \`GUARDED_SERVICES\`，2026-09-14 校准后 = 九条贡献通道 + 五条 seam 全量 14 面）：
+    tools / panels / commands / llm / prompts / hooks / capabilities / renderers /
+    overlays / fs / shell / sessionPersistence / subagents / agentLoop。
+    白名单与真装配同集由测试对拍（列了平台没有的服务即红），照它写不会踩空。
   - 白名单外的属性访问、任何赋值 → 响亮报错。直调 register 不包 effect
     是合法的（disposer 由宿主回收袋管理）。
 - 贡献 def 形状与静态插件完全同构（见 §2.3）——def 缺 id / 缺函数成员

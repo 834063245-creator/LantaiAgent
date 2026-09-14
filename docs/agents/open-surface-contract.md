@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：29
+当前版本：30
 
-<!-- contract-fingerprint: e5f51b23443958cccdd45ef8e4491ff5ed1d9acf2da9d993e1398cb581205244 -->
+<!-- contract-fingerprint: f8733188086da4574d9ac15947ec60995148213aa9e358fcd53907b6cf30c403 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -66,6 +66,7 @@
 | 26 | 2026-09-13 | `LoopStreamResult` 新增可选 `token: TokenRequestRecord`（token 计量：Agent 侧每请求一本账——分桶用量 / 请求压力 / 投影占用 / 上下文构成 / 逐轮）；默认 loop 的 `EventKind.Usage` sink 一并携带该字段投给 UI。**执行语义零变更**：第三方 loop 不返回该字段即 UI 计量面缺一条，不报错不降级执行 | token 计量系统（创作坞「墨量册」+ agent/token-meter，对齐 DSH token-meter 语义） |
 | 27 | 2026-09-13 | **manifest.mcpServers 条目新增可选 `readOnly: boolean` + MCP 工具只读语义归真（行为变更）**：判定真源 = `agent/mcp/registry.resolveMcpToolReadOnly`（条目级声明 > 远端 `annotations.readOnlyHint === true` > **缺省 false**）——registry `mcpClientTool` 与 `plugins/mcp-bridge` 两处工具构造共用，杜绝各判各的。旧行为两处硬编码 `readOnly: () => true`（注释自称「写入型由调用方按需覆盖」，全仓零调用方覆盖）：写型 MCP 工具因此在 plan 模式被放行（`plan/plan-registry.ts` 首行只读短路）、并入只读并行组、被 plan 子 Agent 静态只读集照收。**用户可感知变更**：未声明只读且远端无 `readOnlyHint` 的 MCP 工具从「只读」变为「写」（plan 模式拦截 + 退出并行组）；确为只读的 server 由作者条目声明 `readOnly: true` 或远端注解显式担保 | office-cli-integration-plan.md §5（P0 平台前置——OfficeCLI 的 MCP 工具实测无 annotations，正是本洞的活样本） |
 | 28 | 2026-09-13 | **manifest.app 入口二态（窗入口二态）**：`entry`（`./` 相对资产 HTML）与 `url`（**环回** http(s) 远端页；host 白名单 127.0.0.1/localhost/::1、禁凭据、禁非 http(s)）**互斥必给其一**；`url` 形态**禁 `fullscreen`**。窗口帧侧：`url` 形态 iframe 给 `allow-same-origin`（跨源文档保住自己 origin——它的同源 `EventSource`/`fetch` 才通），**且不绑宿主桥**（远端文档不是插件代码）；`entry` 形态 sandbox 与桥绑定**逐字节不变**。窗口定义新增 `kind: 'asset' \| 'remote'`（判定单一真源，渲染处不重推）。**向后兼容**：只声明 `entry` 的既有插件行为零变化；`app: {}`（两者皆无）从「缺 entry 报错」变为「二态 refine 报错」，仍是拒绝 | office-cli-integration-plan.md §4.3.1（活预览正式形态——`officecli watch` 活刷新页要环回 URL 窗口；实测该服务不回 CORS 头 ⇒ 沙箱 opaque origin 下活刷新必死，故须 allow-same-origin） |
+| 30 | 2026-09-14 | **动态插件守卫注册面校准（`dynamic-runner/sandbox.ts`）**：`GUARDED_SERVICES` 漂移已久——仍列着 2026-09-09 全量退役的 `graph`（死条目：模型照它写 `ctx.graph.register` 必报「服务不可解析」），且缺 `overlays` / `hooks` / `agentLoop`；同文件 `validateDef` 还按服务特判 `needId='key'`，在 v29 统一行身份为 `id` 之后**动态插件注册 capability 整条路恒失败**（给正确 `id` 被守卫拒，给旧 `key` 被通道形状校验拒）。本版：白名单 = **九条贡献通道 + 五条 seam 全量 14 面**；`needId` 统一 `id`；`hooks` 的嵌套形状（`{ id, kind: 'enrich'\|'preflight', hook }`，函数成员在 `hook` 内且随 kind 而变——enrich 族 `shouldEnrich`+`enrich` / preflight 族 `shouldCheck`+`check`）由新增 `SHAPE_CHECKS` 承担装载期校验。**对外可感知**：动态插件从此能贡献 overlays / hooks / agentLoop；capability 必须用 `id`。同版补上该文件自注承诺却缺席的守护——白名单 ↔ 真装配对拍（列了平台没有的服务即红，`tests/dynamic-runner.test.ts` ⑩）| 出厂技能 `lantai-plugin-dev` 曾照抄错误清单，同批更正 |
 | 29 | 2026-09-14 | **M1 插件化收口（贡献通道内核单层化）**：注册表内核从 `services.ts` 内的 `ContributionRegistry` 上收为 `contribution-channel.ts` 的 `ContributionChannel`——**类名变更是破坏性契约变更**（该名字经宿主桥 `faceDeps`/`host.aliased.ts` 暴露给产物插件）；五个手抄副本（`RendererRegistry` / `PromptRegistry` / `HookContributionRegistry` / `CapabilityContributionRegistry` / `OverlayRegistry`）随之退役，14 个 service 全部收敛到同一内核。**行为面逐字零变更**（id 寻址 / 重名装载期拒绝 / 幂等 disposer / 陈旧性守卫 / 组合序 = 注册序全部保持）；新增两件**声明式数据**：`timing`（四档生效时机 immediate/next-assembly/request/frame——历史上是隐式的「构造时传没传回调」，读时序只能读七份文件头）与 `subscribe`（统一订阅面，收编 OverlayRegistry 自成一格的 API）。**同版破坏性变更**：`AgentCapability.key` → `.id`（capabilities 是九条通道里唯一行身份不叫 id 的；`AgentBlueprint.keys()` 随之更名 `ids()`）——外部插件若贡献 capability 必须改字段名，旧名不留别名 | 插件化收口 M1（用户拍板「全做」：诊断见本会话——同一条通道语义六种接口/成员集互不相同） |
 
 ## 变更流程（guard 红 → 修复四步）
