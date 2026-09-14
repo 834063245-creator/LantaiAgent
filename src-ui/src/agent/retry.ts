@@ -21,6 +21,22 @@ const JITTER_MS = 1000;
  *  （限流/5xx/繁忙）仍走 MAX_RETRIES 计数预算——它们不该被无限重试。 */
 export const STALL_RETRY_BUDGET_MS = 15 * 60_000;
 
+/** 中止语义结构化（2026-09-14）——判据是「谁的 signal 被中止」这一**事实**，
+ *  不是错误文本。旧实现用 `msg.includes('aborted')` 猜「用户按了停止」，于是
+ *  传输出自己断的错误（`BodyStreamBuffer was aborted`、`<provider>: aborted`）
+ *  被当成用户意图：不重试、不落墓碑、静默吞掉——案卷里留下悬空来文（用户看见
+ *  「模型不响应」）。任何含该子串的上游错误（"request aborted by upstream"）
+ *  同款误判，属宪法四「错误不静默」违规。 */
+export function isAbortFlavoured(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return err.name === 'AbortError' || /abort/i.test(err.message);
+}
+
+/** 非用户中止的传输切断标记（agent.streamOnce 在 signal 未中止时织入）。
+ *  与 [响应超时] 同族但不共用预算：切断多是一次性的（真断链会在下一次请求
+ *  以 [响应超时] 形态出现并接管时间预算），故走计数预算，不做无限重试。 */
+export const INTERRUPTED_MARKER = '[传输中断]';
+
 /** 是否为流挂起错误。`[响应超时]` 前缀是分类标记（agent/retry.ts 的 isRetryable
  *  与 provider/error-catalog.ts 的 TRANSIENT_MARKERS 共同消费）——文案可改，
  *  前缀不可改。 */
@@ -48,8 +64,13 @@ export function withinRetryBudget(err: Error, attempt: number, elapsedMs: number
 /** Check if an error is worth retrying. */
 export function isRetryable(err: Error): boolean {
   const msg = err.message || String(err);
-  // Abort → don't retry
-  if (msg.includes('[已取消]') || err.name === 'AbortError' || msg.includes('aborted')) return false;
+  // 中止 → 不重试。判据：DOMException AbortError（真被 abort 的 fetch）与
+  // `[已取消]` 分类标记（types.classifyError 的产出面）。
+  // ⚠️ 2026-09-14 拆除 `msg.includes('aborted')`：那是文本猜测，会把传输自己
+  // 断掉的失败（BodyStreamBuffer was aborted）当成用户取消。用户中止一律由
+  // `signal.aborted` 这一事实判定（agent.streamOnce / chat-core 的 catch），
+  // 不靠消息文本。
+  if (err.name === 'AbortError' || msg.includes('[已取消]')) return false;
 
   // Auth / permissions → don't retry (won't fix itself)
   if (
@@ -65,12 +86,15 @@ export function isRetryable(err: Error): boolean {
   // Rate limit / server errors / overload → retry
   if (msg.includes('[服务商限流]') || msg.includes('[服务商故障]') || msg.includes('[服务商繁忙]')) return true;
 
-  // Network errors — retry timeouts and resets, but not DNS/config errors
+  // 网络错误 — 重试超时与重置，但不重试 DNS/配置错误
   if (msg.includes('[网络问题]')) {
     if (msg.includes('超时') || msg.includes('ECONNRESET') || msg.includes('ECONNREFUSED')) return true;
     // ENOTFOUND / getaddrinfo = DNS → won't fix itself
     return false;
   }
+
+  // 传输被切断（非用户中止）——链路级瞬态，值得重试（计数预算）
+  if (msg.includes(INTERRUPTED_MARKER)) return true;
 
   // 模型流空闲超时 — 长时间无 chunk 的瞬态挂起，值得重试
   if (msg.includes('[响应超时]')) return true;

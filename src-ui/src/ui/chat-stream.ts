@@ -156,15 +156,24 @@ function _streamingAssistant(ctx: StreamContext): AssistantMessage {
 /** 回合墓碑（2026-08-31 贴黄拆迁）：把终止失败/暂停写入当前回合的
  *  assistant 消息（status='error' + errorMessage）。finishTurn 尊重
  *  error 状态不覆盖——墓碑跨流式收尾存活（translate 渲染为 turn-error
- *  块，贴在该回合正文尾部）。无流式助手/回合消息缺席（装配期错误）：
- *  退化为 toast，错误不静默。 */
+ *  块，贴在该回合正文尾部）。
+ *  流式助手缺席（回合在第一个 token 之前就失败——传输出自己断、装配期错误）：
+ *  **补建一条墓碑消息**（2026-09-14），不再只弹 toast。旧行为下案卷里留下
+ *  一条悬空来文 + 一个 6.4 秒后消失的提示：用户看见「模型不响应」，下一轮
+ *  载荷还带着两条相邻 user 消息。无会话可落（target 缺席）才退化为 toast。 */
 export function markTurnError(ctx: StreamContext, text: string, level: 'warn' | 'error' = 'error'): void {
   const sid = ctx.getStreamingAssistantId();
   const target = _resolveSessionTarget(ctx, sid);
   const msgs = target ? target.messages : ctx.getActiveMessages();
-  const assistant = sid
+  let assistant = sid
     ? (msgs.find((m) => m.role === 'assistant' && m._id === sid) as AssistantMessage | undefined)
     : undefined;
+  if (!assistant && target) {
+    // 补建墓碑：挂在本轮最后一条来文之后（与 _streamingAssistant 同款挂载语义）
+    const lastUser = [...msgs].reverse().find((m) => m.role === 'user');
+    assistant = createAssistantMessage(lastUser?._id ?? '');
+    msgs.push(assistant);
+  }
   if (assistant) {
     assistant.status = 'error';
     assistant.errorMessage = text;
@@ -178,7 +187,7 @@ export function markTurnError(ctx: StreamContext, text: string, level: 'warn' | 
     }
     return;
   }
-  // 回合缺席（装配期/第一个 token 前崩溃）：toast 兜底，错误不静默
+  // 无会话可落（面板尚无卷）：toast 兜底，错误不静默
   showToast(text, level === 'warn' ? 'warn' : 'error', level === 'warn' ? TOAST_HOLD_MS : TOAST_LONG_HOLD_MS);
 }
 

@@ -63,6 +63,8 @@ import { applyImageBudget, projectImagesForTextModel, resolveRequestImageData } 
 import {
   backoffDelay,
   formatElapsed,
+  INTERRUPTED_MARKER,
+  isAbortFlavoured,
   isRetryable,
   isStallError,
   MAX_RETRIES,
@@ -1461,6 +1463,7 @@ export class Agent {
         if (err) break;
       }
     } catch (e) {
+      const raw = e instanceof Error ? e : new Error(String(e));
       if (stream.idleTimedOut) {
         // 文案纪律（2026-09-12）：空闲守卫只知道「一个 chunk 都没来」，不知道原因
         // ——既可能是连接/首包没建起来，也可能是流中途停吐。措辞必须只说观测事实，
@@ -1470,8 +1473,17 @@ export class Agent {
         err = new Error(
           `[响应超时] ${STREAM_IDLE_TIMEOUT_MS / 1000} 秒内未收到服务商任何数据（连接未建立或流式输出中途停止），已中止本次请求`,
         );
+      } else if (signal.aborted || !isAbortFlavoured(raw)) {
+        // ① signal 已中止 = 用户/上层停止（本轮 signal 是唯一权威判据，不读错误文本）；
+        // ② 与中止无关的普通失败 = 原样上抛交重试分类。
+        err = raw;
       } else {
-        err = e instanceof Error ? e : new Error(String(e));
+        // 非用户中止的「中止族」失败（2026-09-14）：流被平台/链路切断
+        // （`BodyStreamBuffer was aborted`、`<provider>: aborted`）。
+        // 旧实现把这形态当成用户按了停止（isRetryable 的 msg.includes('aborted')）
+        // ——不重试 + 不落墓碑 + 静默吞掉，案卷里只剩一条悬空来文。
+        // 现按链路级瞬态处理：可重试（计数预算），重试耗尽则落可见墓碑。
+        err = new Error(`${INTERRUPTED_MARKER} 流式传输被切断（${raw.message}），非用户中止`);
       }
     }
 

@@ -1034,13 +1034,15 @@ export class ChatCore {
     } catch (err: unknown) {
       // 2026-08-31 贴黄拆迁：回合错误改记入回合自身（墓碑），不再播黄纸条
       const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes('aborted') && !msg.includes('AbortError')) {
-        if (msg.includes('paused after')) {
-          Stream.markTurnError(this._streamCtxFor(turnSid), msg, 'warn');
-        } else {
-          const code = apiErrorSummary(err);
-          Stream.markTurnError(this._streamCtxFor(turnSid), `错误: ${msg}${code ? `\n（${code}）` : ''}`, 'error');
-        }
+      // 用户停止的判据是**事实**（2026-09-14 拆文本猜测）：本轮 signal 是否被中止。
+      // 旧实现用 `!msg.includes('aborted')` 判「用户按了停止」——于是传输出自己断掉的
+      // 失败（BodyStreamBuffer was aborted）被当作用户意图静默吞掉：案卷里留下一条
+      // 悬空来文，用户只看见「模型不响应」。
+      if (msg.includes('paused after')) {
+        Stream.markTurnError(this._streamCtxFor(turnSid), msg, 'warn');
+      } else if (!signal.aborted) {
+        const code = apiErrorSummary(err);
+        Stream.markTurnError(this._streamCtxFor(turnSid), `错误: ${msg}${code ? `\n（${code}）` : ''}`, 'error');
       }
       // 正常中止（用户主动停止）：exec 状态已表达，不另播报
     } finally {
@@ -1362,17 +1364,17 @@ export class ChatCore {
     } catch (err: unknown) {
       // 2026-08-31 贴黄拆迁：回合错误写进回合自身（墓碑），不播黄纸条
       const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.includes('aborted') && !msg.includes('AbortError')) {
-        if (msg.includes('paused after')) {
-          Stream.markTurnError(this._streamCtxFor(turnSid), msg, 'warn');
-        } else {
-          const code = apiErrorSummary(err);
-          Stream.markTurnError(
-            this._streamCtxFor(turnSid),
-            `错误: ${msg}。发送任意消息重试，或输入 /compact 压缩上下文，或输入 /new 新建会话${code ? `\n（${code}）` : ''}`,
-            'error',
-          );
-        }
+      // 用户停止的判据是**事实**（2026-09-14 拆文本猜测）：本轮 signal 是否被中止
+      // （同 _runAgentTurn 的 catch——两处同款病灶同治）。
+      if (msg.includes('paused after')) {
+        Stream.markTurnError(this._streamCtxFor(turnSid), msg, 'warn');
+      } else if (!signal.aborted) {
+        const code = apiErrorSummary(err);
+        Stream.markTurnError(
+          this._streamCtxFor(turnSid),
+          `错误: ${msg}。发送任意消息重试，或输入 /compact 压缩上下文，或输入 /new 新建会话${code ? `\n（${code}）` : ''}`,
+          'error',
+        );
       }
     } finally {
       // 发起时刻捕获的 exec + signal 守卫（execution-state.done 注释）——
