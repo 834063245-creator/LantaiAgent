@@ -1,7 +1,7 @@
 # 组合架构（composition-architecture）——特权线左移计划
 
 > **本目录阅读顺序**：① 本 README（宪法 + 现状）→ ② [`HISTORY.md`](HISTORY.md)（S0-S2/S4 施工史与批次记录）→ ③ `designs/`（设计件全文）。边界依据 [`docs/adr/composition-boundaries.md`](../../adr/composition-boundaries.md)。
-> 立项：2026-08-20 · 状态：**S0-S4 全竣工（S3 于 2026-08-22 收官——全段竣工）** · **平台边界修订（2026-08-25，`agent-platformization-plan.md` Phase 0：内核线改强制层/能力契约层二分）**
+> 立项：2026-08-20 · 状态：**S0-S4 全竣工（S3 于 2026-08-22 收官——全段竣工）** · **平台边界修订（2026-08-25，`agent-platformization-plan.md` Phase 0：内核线改强制层/能力契约层二分）** · **S6 草案待批（2026-09-14，per-agent 组合：[`designs/S6-per-agent-composition.md`](designs/S6-per-agent-composition.md)）**
 
 ## 一句话
 
@@ -31,6 +31,8 @@
 ## 现状（全段竣工）
 
 **S3 — 第一方行化**已收官（2026-08-22）：settings 面板域迁成第一方插件（`plugins/settings-plugin.ts` 面板 + 命令双贡献；paper 域同步补齐 `paper/toggle` 命令；`PANEL_DEFS` 常量面清空；快捷键链路经 `app/actions.ts` 别名翻译层桥接，useGlobalKeys 字面量不变）。施工史与裁决记录见 [`HISTORY.md`](HISTORY.md) S3 段。
+
+**S6 — per-agent 组合**（2026-09-14 草案待批）：把组合从「全局状态的一次函数求值」推到「每 Agent 一份值」——卷级选择 + 选择集（默认关行/回开）+ 装配期 provider 值注入 + 插件按需激活（引用计数）。路径选择 = **视图 + 引用计数**（不抄 DSH 的 scope realm；realm 仅作资源型插件的逃生门）。设计件：[`designs/S6-per-agent-composition.md`](designs/S6-per-agent-composition.md)；立项输入 = 2026-09-14 组合层审计（F1-F6 断链已修）+ 用户三项拍板（差异到插件集合层 / UI 与程序双入口 / 全粒度并存）。
 
 协作纪律延续：**重构推到哪个域，行化跟到哪个域**——不抢跑未动的域。新增功能的审查试金石：是行还是特权代码堆积？
 

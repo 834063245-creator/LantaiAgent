@@ -34,6 +34,8 @@
 
 | pretext 排版引擎 | [`pretext-typography-plan.md`](pretext-typography-plan.md) | **P1-P4 竣工（2026-08-30，commits `550973c6`/`14fa755c`，门禁全绿）**，P5 设计件待用户方向确认 · P2a 对齐 A\|B 环待实机 | lift 遮罩（抽纸条原地占位）/ rich-inline 精确测量（0.96 系数退役 + 圈点精确）/ 来文变宽纸条（shrink-wrap）+ 钉住/纸条宽度手调（pin.w 唯一真相）/ 缩远墨迹 LOD 行条骨架 + 小地图真墨——pretext 从高度计算器升级为纸面排版引擎，做聊天框做不到的事 |
 
+| **组合粒度（per-agent composition）** | [`composition-architecture/designs/S6-per-agent-composition.md`](composition-architecture/designs/S6-per-agent-composition.md) | **P-1 + P0.5 已落地（2026-09-14，待 commit）；P0 起待续** | 把组合从「全局状态的一次函数求值」推到「每 Agent 一份值」。**已落地（2026-09-14）**：**P-1 authoring 环境**（`composition_dir` RPC + 打开目录 + 复制内置为模板（拒覆盖 / id 围栏 / 内置 id 拒绝）+ 免重启重扫 `rescanPresets` + 设置面板作者块——单二进制下用户不动源码即可配 preset，四条缺项全补）；**P0.5**（minimal 轨重录 `office` 漏项 + `verify:convergence` 改双轨，CI 经同一 npm script 自动获得第二轨）。**待续**：P0 记录闭环 → P1 卷级选择（全局默认 + 卷级两层）+ 选择集（`defaultOff` 行 / `disabled:false` 回开）→ P2 装配期 provider 值注入（seam 选择去模块态）→ P3 插件按需激活（引用计数 + 独占声明 + fail loud）→ P4 程序入口（RPC/MCP 带 `preset`）→ P5 卷头 chip + 同屏并排。路线 = **视图 + 引用计数**（不抄 DSH scope realm，realm 仅作资源型插件逃生门）；不变式 = **门禁维度只在出厂 preset（用户 preset 走运行时校验，空间无限）**。立项输入 = 2026-09-14 组合层审计（F1-F6 断链修复批已落地）+ 用户四项拍板（含「preset 不上线，平台只提供环境」） |
+
 ## 活跃工程（就一个半）
 
 ### 1. paper-shell — 收尾中
