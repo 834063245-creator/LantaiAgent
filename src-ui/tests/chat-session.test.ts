@@ -94,8 +94,6 @@ import {
   snapshotFromBlock,
 } from '../src/state/canvas-store';
 import { getMessagesStore } from '../src/state/messages-store';
-import { usePresetStore } from '../src/state/preset-store';
-import { useToastStore } from '../src/state/toast-store';
 import * as Session from '../src/ui/chat-session';
 import { scanMaxSessionId } from '../src/ui/chat-session';
 import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
