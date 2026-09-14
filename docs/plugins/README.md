@@ -758,6 +758,13 @@ factory（出厂表，代码真源）
 - 选择与生效：设置 → Agent → 「组合」节选 preset（持久化到 settings）。
   **装配作用域**（tools/prompt/capabilities）：下次装配生效（新会话即见）；
   **壳作用域**（shell 域——V5 双装配挂点）：重启生效。
+- **preset 不是分发单位**（2026-09-14 用户定调）：它是**用户自己配的环境**，
+  不是出厂物，也不随插件分发——**manifest 不带 preset 字段**。平台提供的是
+  **环境**：设置面板「组合」节的「打开目录 / 复制为模板 / 重新扫描」三个动作
+  （目录按需创建、拒覆盖、免重启重扫），路径与用法见
+  [`docs/composition/README.md`](../composition/README.md) §authoring。
+  将来若要"分享一份 preset"，路径是**复制目录**（DSH copy-only authoring 同款），
+  不是新打包通道。
 - 同 id 内置胜（用户不可影子化内置 preset——内置 id 是部署事实）。
 - 坏 preset（yml 语法错/校验失败）：发现层报 broken（设置面板可见），
   装配侧回退 factory——不炸发现。

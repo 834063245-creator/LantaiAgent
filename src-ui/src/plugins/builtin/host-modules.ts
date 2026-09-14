@@ -62,6 +62,7 @@ import { isMockMode, watchFileDragDrop } from '../../bridge';
 import { ContributionChannel } from '../../composition/contribution-channel';
 import { activeOverlayContributions, subscribeOverlayContributions } from '../../composition/overlay-service';
 import { selectPreset } from '../../composition/preset-assembly';
+import { compositionDir, createPresetFromTemplate, rescanPresets } from '../../composition/preset-authoring';
 import { firstPartyPromptSections } from '../../composition/prompt-sections';
 import { resolveAssetBlock, resolveRenderer } from '../../composition/renderer-service';
 import { activeSpace } from '../../composition/space-service';
@@ -228,6 +229,10 @@ const faceDeps = {
   resolveAssetBlock,
   resolveRenderer,
   selectPreset,
+  // P-1 authoring 环境（2026-09-14）：设置面板「组合」节的作者动作
+  compositionDir,
+  createPresetFromTemplate,
+  rescanPresets,
   // paper 域（几何/墨迹/测量/选择/翻译/虚拟化/上下文）
   viewportCenterWorld,
   writingBlockIdOf,

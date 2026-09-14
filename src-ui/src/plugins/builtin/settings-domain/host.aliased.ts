@@ -36,6 +36,9 @@ const host = requireHost();
 const impl = host.mods.faceDeps as unknown as typeof import('./host');
 
 export const selectPreset = impl.selectPreset;
+export const compositionDir = impl.compositionDir;
+export const createPresetFromTemplate = impl.createPresetFromTemplate;
+export const rescanPresets = impl.rescanPresets;
 export const setLang = impl.setLang;
 export const typedJsonRpc = impl.typedJsonRpc;
 export const autoUpdateCheckEnabled = impl.autoUpdateCheckEnabled;

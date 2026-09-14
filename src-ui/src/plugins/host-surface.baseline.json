@@ -1,5 +1,5 @@
 {
-  "fingerprint": "d60a1d57",
+  "fingerprint": "a6fce1b6",
   "keys": [
     "ANCHOR",
     "CORDIS_TOOL_NAMES",
@@ -44,6 +44,7 @@
     "clearPaperMeasureCache",
     "collapseToolGroups",
     "composerSubmitOnKey",
+    "compositionDir",
     "computeSlider",
     "createAgentIsolationTools",
     "createAgentStatusTool",
@@ -61,6 +62,7 @@
     "createMemoryTools",
     "createOfficeTools",
     "createOpenAIProvider",
+    "createPresetFromTemplate",
     "createResponsesProvider",
     "createSearchTools",
     "createShellTools",
@@ -132,6 +134,7 @@
     "regionFrame",
     "removeSecret",
     "reportObservedBlockHeight",
+    "rescanPresets",
     "resolveApiKey",
     "resolveAssetBlock",
     "resolveNewSessionDefault",

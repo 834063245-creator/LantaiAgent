@@ -18,6 +18,8 @@ import {
   autoUpdateCheckEnabled,
   ConfirmDialog,
   canvasWheelMode,
+  compositionDir,
+  createPresetFromTemplate,
   iconHtml,
   loadSettings,
   loadSettingsWithSecrets,
@@ -27,6 +29,7 @@ import {
   ProviderPage,
   persistSecrets,
   removeSecret,
+  rescanPresets,
   SkillsPage,
   saveSettings,
   selectPreset,
@@ -44,6 +47,11 @@ type Tab = 'provider' | 'agent' | 'display' | 'plugins' | 'skills' | 'mcp' | 'ab
 
 // ── 主组件 ──
 
+/** 错误消息提取（作者动作反馈面——错误不静默，统一成一行可读文本）。 */
+function errTextOf(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 const SettingsPanelApp: React.FC<{
   onClose: () => void;
   onSave: (() => void) | null;
@@ -60,6 +68,68 @@ const SettingsPanelApp: React.FC<{
   const presetSelected = usePresetStore((s) => s.selected);
   /** preset 层解析失败原因（F1 捕获网：行 id 不可寻址 → 回退用户层组合）。 */
   const presetError = usePresetStore((s) => s.error);
+  // ── P-1 authoring 环境（2026-09-14）：组合目录 + 作者动作 ──
+  const [compositionPath, setCompositionPath] = useState('');
+  const [newPresetId, setNewPresetId] = useState('');
+  const [newPresetFrom, setNewPresetFrom] = useState<'standard' | 'minimal'>('standard');
+  const [authoringBusy, setAuthoringBusy] = useState(false);
+  const [authoringMsg, setAuthoringMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  // 打开面板取一次组合目录（Rust 侧按需创建——用户第一次就能看到路径）。
+  // 失败不阻断面板（作者动作会再试并报错）——「错误不静默」由动作反馈承担。
+  useEffect(() => {
+    let alive = true;
+    compositionDir(false)
+      .then((p) => {
+        if (alive) setCompositionPath(p);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const handleOpenCompositionDir = useCallback(async () => {
+    setAuthoringBusy(true);
+    setAuthoringMsg(null);
+    try {
+      setCompositionPath(await compositionDir(true));
+      setAuthoringMsg({ kind: 'ok', text: '已用系统文件管理器打开组合目录。' });
+    } catch (e) {
+      setAuthoringMsg({ kind: 'err', text: `打开目录失败：${errTextOf(e)}` });
+    } finally {
+      setAuthoringBusy(false);
+    }
+  }, []);
+
+  const handleRescan = useCallback(async () => {
+    setAuthoringBusy(true);
+    setAuthoringMsg(null);
+    try {
+      await rescanPresets();
+      const users = usePresetStore.getState().roster.filter((p) => !p.builtin);
+      setAuthoringMsg({ kind: 'ok', text: `已重新扫描：当前发现 ${users.length} 个用户 preset。` });
+    } catch (e) {
+      setAuthoringMsg({ kind: 'err', text: `重新扫描失败：${errTextOf(e)}` });
+    } finally {
+      setAuthoringBusy(false);
+    }
+  }, []);
+
+  const handleCreateFromTemplate = useCallback(async () => {
+    setAuthoringBusy(true);
+    setAuthoringMsg(null);
+    const res = await createPresetFromTemplate(newPresetId, newPresetFrom);
+    if (!res.ok) {
+      setAuthoringMsg({ kind: 'err', text: res.error ?? '复制模板失败' });
+      setAuthoringBusy(false);
+      return;
+    }
+    setNewPresetId('');
+    await rescanPresets();
+    setAuthoringMsg({ kind: 'ok', text: `已写出模板：${res.dir}（已重扫，可直接在上方选择它）` });
+    setAuthoringBusy(false);
+  }, [newPresetId, newPresetFrom]);
   // ⚡ 2026-08-04 状态治理：apiKey 权威在系统加密凭据 —
   // localStorage 无明文，打开面板时异步回填密钥供表单展示。
   // ⚡ 2026-08-07 竞态修复：回填用函数式合并、只填充仍为空的 key——
@@ -405,6 +475,71 @@ const SettingsPanelApp: React.FC<{
                   <div className="sp-hint-sub" style={{ color: 'var(--warn)' }}>
                     ⚠ preset 层解析失败：{presetError}
                     ——新案卷已回退「用户层 patch + 出厂组合」；请修正行 id 或改选其它 preset。
+                  </div>
+                )}
+              </div>
+              {/* P-1 authoring 环境（2026-09-14）：单二进制下"不动源码配出一个
+                  preset"的最短路径——目录按需创建 / 打开 / 复制模板 / 免重启重扫。
+                  块职责边界：这里不编辑组合内容（作者的编辑器是他们的编辑器）。 */}
+              <div className="sp-field">
+                <label className="sp-label" htmlFor="sp-preset-newid">
+                  新建 / 修改 preset（组合目录）
+                </label>
+                <div className="sp-hint-sub">
+                  目录：<code>{compositionPath || '（读取中…）'}</code>{' '}
+                  <button
+                    type="button"
+                    className="sp-btn-sm"
+                    onClick={handleOpenCompositionDir}
+                    disabled={authoringBusy}
+                  >
+                    打开目录
+                  </button>{' '}
+                  <button type="button" className="sp-btn-sm" onClick={handleRescan} disabled={authoringBusy}>
+                    重新扫描
+                  </button>
+                </div>
+                <div className="sp-hint-sub">
+                  每份 preset 是组合目录下的一个子目录（`roster.patch.yml` 本体 + `preset.yml` 元数据）。
+                  直接改文件后点「重新扫描」即可生效，**无需重启**。
+                </div>
+                <input
+                  id="sp-preset-newid"
+                  className="sp-input"
+                  value={newPresetId}
+                  placeholder="my-preset（小写字母/数字/连字符）"
+                  onChange={(e) => setNewPresetId(e.target.value)}
+                  disabled={authoringBusy}
+                />
+                <div className="sp-key-row" style={{ marginTop: 8 }}>
+                  <select
+                    className="sp-select"
+                    value={newPresetFrom}
+                    onChange={(e) => setNewPresetFrom(e.target.value === 'minimal' ? 'minimal' : 'standard')}
+                    disabled={authoringBusy}
+                  >
+                    <option value="standard">模板：standard（注释齐全的空骨架）</option>
+                    <option value="minimal">模板：minimal（现成范例）</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="sp-btn-sm"
+                    onClick={handleCreateFromTemplate}
+                    disabled={authoringBusy || newPresetId.trim() === ''}
+                  >
+                    复制为模板
+                  </button>
+                </div>
+                <div className="sp-hint-sub">
+                  已存在同名 preset 时拒绝覆盖（绝不抹掉你已写的内容）；行 id 写错不会静默——选中该 preset
+                  会被拒绝并说明原因。
+                </div>
+                {authoringMsg && (
+                  <div
+                    className="sp-hint-sub"
+                    style={{ color: authoringMsg.kind === 'ok' ? 'var(--pass)' : 'var(--warn)' }}
+                  >
+                    {authoringMsg.text}
                   </div>
                 )}
               </div>

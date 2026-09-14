@@ -472,6 +472,10 @@ export interface RpcContract {
   /** 插件目录绝对路径（S4-4 乙机器桥：manifest mcpServers 的 stdio command
    *  相对插件目录解析）。名字围栏同 uninstall；目录不存在 = 错误。 */
   plugin_dir: { params: { name: string }; result: string }; // 绝对路径
+  /** 组合目录（P-1 authoring 环境，2026-09-14）：返回 `~/.lantai/composition/`
+   *  绝对路径并按需创建（root + presets/，幂等，不动已有内容）；`open: true`
+   *  时用系统文件管理器打开。路径只来自服务端计算，无调用方路径参数。 */
+  composition_dir: { params: { open?: boolean }; result: string }; // 绝对路径
 
   // ── 插件数据目录（app shell 四件套 · 件 B，S1）─────────────
   // manifest.dataDir 插件的专属数据地盘：装载期 loader 调 ensure 分配（幂等），

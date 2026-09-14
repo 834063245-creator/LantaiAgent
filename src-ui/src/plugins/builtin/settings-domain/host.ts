@@ -13,6 +13,7 @@ export { PluginsPage } from '../../../app/panels/settings/PluginsPage';
 export { ProviderPage } from '../../../app/panels/settings/ProviderPage';
 export { SkillsPage } from '../../../app/panels/settings/SkillsPage';
 export { selectPreset } from '../../../composition/preset-assembly';
+export { compositionDir, createPresetFromTemplate, rescanPresets } from '../../../composition/preset-authoring';
 export { setLang } from '../../../i18n';
 export { typedJsonRpc } from '../../../rpc-contract';
 export type { AppSettings, ConnectionProbe, ProviderId } from '../../../settings';
