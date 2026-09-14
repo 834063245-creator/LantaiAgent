@@ -63,12 +63,13 @@ cookbook（`docs/cookbook/`）+ 发布路径（`docs/user/develop/`）是平台�
 | `ctx.hooks` | Hook 贡献（enrich/preflight） | 下次装配 | composition/hook-service.ts |
 | `ctx.capabilities` | AgentCapability（会话级） | 下次装配 | composition/capability-service.ts |
 | `ctx.overlays` | 画布覆盖层 | 即时 | composition/overlay-service.ts |
+| `ctx.llm` | LlmAdapterContribution（协议适配器；同 kind 后注册胜） | 请求期解析 | composition/services.ts |
 
 ### swappable seam（能力契约层——可换实现）
 
 | ctx seam | 默认 provider | 消费面 | patch 域 |
 |---|---|---|---|
-| `ctx.llm` | `builtin/anthropic` · `builtin/openai` | createProvider | `seam/llm` |
+| `ctx.llm`（**同时是上表的第九条贡献通道**——同一个注册表，消费语义不同） | `builtin/anthropic` · `builtin/openai` | createProvider | `seam/llm` |
 | `ctx.subagents` | `builtin/in-process` | Agent.spawnSubAgent | `seam/subagents` |
 | `ctx.fs` | `builtin/rust-fs` | fsExecute（fs 域 11 动作） | `seam/fs` |
 | `ctx.shell` | `builtin/rust-shell` | shellExecute（shell 域四动作；subprocess 并入） | `seam/shell` |

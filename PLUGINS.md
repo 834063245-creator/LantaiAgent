@@ -12,16 +12,19 @@
 
 ## 插件是什么（30 秒）
 
-兰台是插件化架构。**面板、命令、工具、块渲染器、system-prompt 段、管道钩子、
-会话级能力、引擎能力缝（seam）——全部是插件贡献**，第一方和第三方走同一套
-通道。你写一个插件 = 一个目录 + 两个文件，经设置面板「插件」tab 或磁盘目录
-装载，就能向宿主注册这些贡献。
+兰台是插件化架构。**面板、命令、工具、LLM 协议适配器、块渲染器、system-prompt
+段、管道钩子、会话级能力、画布覆盖层——九条贡献通道，加上五条可换实现的后端
+seam（fs/shell/sessionPersistence/subagents/agentLoop）——全部是插件贡献**，
+第一方和第三方走同一套通道（**同一个注册表内核** `ContributionChannel`：
+id 寻址 + 重名装载期拒绝 + 幂等 disposer + 声明式生效时机）。你写一个插件 =
+一个目录 + 两个文件，经设置面板「插件」tab 或磁盘目录装载，就能向宿主注册这些
+贡献。
 
 插件形态两种，任选：
 
 | 形态 | 是什么 | 典型用途 |
 |---|---|---|
-| **自包含 ESM 插件** | `manifest.json` + `entry.js`（自包含模块） | 面板 / 命令 / 工具 / 块渲染器 / prompt 段 / 钩子 / capability / seam provider |
+| **自包含 ESM 插件** | `manifest.json` + `entry.js`（自包含模块） | 面板 / 命令 / 工具 / LLM adapter / 块渲染器 / prompt 段 / 钩子 / capability / 覆盖层 / seam provider |
 | **外部 MCP server** | manifest 声明式挂接 `mcpServers` | 把已有的 MCP server（Node/Python/任意进程）接进来，零插件代码 |
 
 ## 最快路径：从零到跑通（15 分钟）
@@ -120,27 +123,34 @@ export default {
 - 每个注册的返回值（disposer）必须经 **`ctx.effect(() => disposer, '标签')` 登记**——这是插件生命周期的全部纪律：fiber 卸载即链式回收全部贡献。
 - **自包含**：零裸 import；需要 React 用 `window.__lantai_plugin_host__.createElement`（无 JSX、无 hook）；需要状态栏通知用 `.notify(text)`。
 
-### 贡献通道（八条 + seam）
+### 贡献通道（九条）与可换后端（seam，五条）
 
-| ctx 通道 | 贡献什么 | 生效时机 |
+| ctx 通道 | 贡献什么 | 生效时机（各通道声明的 `timing`） |
 |---|---|---|
-| `ctx.panels` | 面板（右侧 dock / 全屏覆盖） | 装载后即时 |
-| `ctx.commands` | 命令（命令面板 Ctrl+K） | 装载后即时 |
-| `ctx.tools` | 模型工具（Agent 可调用） | 下次 Agent 装配 |
-| `ctx.renderers` | 块渲染器（纸壳块体渲染，后注册胜） | 即时 |
-| `ctx.prompts` | system-prompt 段 | 下次 Agent 装配 |
-| `ctx.hooks` | 工具管道钩子（enrich/preflight） | 下次 Agent 装配 |
-| `ctx.capabilities` | 会话级能力 | 下次 Agent 装配 |
-| `ctx.overlays` | 画布覆盖层 | 即时 |
+| `ctx.panels` | 面板（右侧 dock / 全屏覆盖） | 装载后即时（`immediate`） |
+| `ctx.commands` | 命令（命令面板 Ctrl+K） | 装载后即时（`immediate`） |
+| `ctx.overlays` | 画布覆盖层（视口固定槽位：创作坞 / 右缘窄条） | 装载后即时（`immediate`） |
+| `ctx.renderers` | 块渲染器（纸壳块体渲染，后注册胜 + `*` 兜底） | 渲染期每帧重取（`frame`） |
+| `ctx.tools` | 模型工具（Agent 可调用） | 下次 Agent 装配（`next-assembly`） |
+| `ctx.prompts` | system-prompt 段 | 下次 Agent 装配（`next-assembly`） |
+| `ctx.hooks` | 工具管道钩子（enrich 富化 / preflight 预检） | 下次 Agent 装配（`next-assembly`） |
+| `ctx.capabilities` | 会话级能力（`AgentCapability`，行 id = `.id`） | 下次 Agent 装配（`next-assembly`） |
+| `ctx.llm` | LLM 协议适配器（`{ id, kind, label?, create(rt) }`；同 kind 后注册胜） | 请求期解析（`request`） |
 
-**引擎能力缝（seam，可换实现）**：`ctx.llm` / `ctx.subagents` / `ctx.fs` /
-`ctx.shell` / `ctx.sessionPersistence` / `ctx.agentLoop` ——（`ctx.graph` 图分析 seam 随图谱功能全量退役，2026-09-09）
-写一个 seam 的 provider 就能替换兰台的默认后端（Rust/engine 只是默认实现）。
+**可换实现的后端（seam）**：`ctx.fs` / `ctx.shell` / `ctx.sessionPersistence` /
+`ctx.subagents` / `ctx.agentLoop` —— 与上面九条**同一内核**（`ContributionChannel`），
+差别只在消费语义：写一个 provider 就替换兰台的默认后端（Rust/engine 只是默认实现）。
 各 seam 的注册 API 见 `docs/cookbook/`。
+（`ctx.graph` 图分析 seam 随图谱功能全量退役，2026-09-09——同批删除了它的 cookbook。）
 
-> **生效时差是平台契约**：面板/命令即时，工具/prompt/capability 等下次 Agent
-> 装配（工具面变更 = 前缀缓存边界，只发生在会话边界）。旧会话看不到新工具是
-> 纪律不是 bug——开新会话即可。
+> **生效时差是平台契约，且由通道自己声明**（`timing` 四档：`immediate` /
+> `next-assembly` / `request` / `frame`——2026-09-14 起是数据不是注释）。面板/命令/
+> 覆盖层装载后即时；工具/prompt/hook/capability 等下次 Agent 装配（工具面变更 =
+> 前缀缓存边界，只发生在会话边界）；LLM adapter 在请求期解析；渲染器每帧重取。
+> 旧会话看不到新工具是纪律不是 bug——开新会话即可。
+>
+> **行的身份统一是 `id`**（npm scope 风格 `'<插件名>/<行名>'`）：九条通道一律 `id`，
+> capability 的历史字段名 `key` 已于 2026-09-14 退役（不留别名）。
 
 ### 声明式工具（manifest.tools，C11-1）
 
@@ -218,21 +228,30 @@ export const toolHandlers = { hello_status: async () => '装载正常' };
 ## 内部：给兰台仓库加第一方出厂产物
 
 兰台内置的 43 个第一方插件（**13 内核 + 30 出厂产物**）与第三方走同一套通道。
-内核 14 件编译进 exe（注册表/运行时——`src-ui/src/plugins/loader.ts` 的
+内核 13 件编译进 exe（11 注册表/运行时 + code-runtime + dynamic-runner——`src-ui/src/plugins/loader.ts` 的
 `BUILTIN_PLUGINS` 表装载）；出厂产物 30 件真源在 `plugins/builtin/<name>/`
 目录（磁盘通道装载，**改插件 = 换产物，不重编译 exe**）。设置面板
 「插件」tab 三组陈列：**平台服务**（内核，不可禁）/ **内置插件**（产物，
 可禁用）/ **已安装**（第三方）。
 
-新增出厂产物 = **四步**：
+新增出厂产物 = **四步**（2026-09-14 校准——此前写的「建 manifest.json / 改
+`first-party-manifest.ts` 加条目」两条都是错的）：
 
-1. `plugins/builtin/<name>/` 建目录（`index.ts` 插件对象 + `manifest.json` +
-   可选 `host.ts`/`host.aliased.ts` 运行时依赖桥）；
-2. `src-ui/src/plugins/factory-products.ts` 加行（表序 = 贡献注册序，字节契约）；
-3. `src-ui/src/plugins/first-party-manifest.ts` 清单加条目（守护测试
-   `tests/first-party-manifest.test.ts` 钉死覆盖，漏一条测试就红）；
-4. `scripts/build-builtin-plugins.mjs` 的规格表加条目 + `src-tauri/src/
-   plugin_assets.rs` 白名单加名。
+1. `src/plugins/builtin/<name>/` 建目录：`index.ts`（`LantaiPlugin` 插件对象）
+   + 可选 `host.ts` / `host.aliased.ts`（产物域运行时依赖桥）。
+   **不写 `manifest.json`**——产物 manifest 由 `scripts/build-builtin-plugins.mjs`
+   从名册生成（2026-09-06 起源目录 manifest.json 已退役，名册是唯一真源），
+   所以 `inject` 一类字段只许写在名册里。
+2. `src/plugins/builtin-roster.json` 加条目（`dir` / `buildOrder` / `description` /
+   `entry` / `hostModule` / `inject` / 可选 `face`）——**这是唯一真源**。
+3. `src/plugins/factory-products.ts` 加 import + 加一行（dev 模式源码域装载用；
+   表序由名册 `buildOrder` 排出，不手写）。
+4. `scripts/build-builtin-plugins.mjs` 的规格表加条目 + `src-tauri/src/plugin_assets.rs`
+   白名单加名。
+
+`src/plugins/first-party-manifest.ts` 是**派生的**（身份元数据由名册 + 内核表算出），
+**不需要手工加条目**——覆盖性由 `tests/first-party-manifest.test.ts` +
+`tests/builtin-roster.test.ts`（含 factory-products 覆盖与序对拍）钉死，漏一步即红。
 
 产物可禁用（`state/plugin-prefs.ts`，localStorage 持久化、下次启动生效）。
 开发模式下产物走源码路径（`import.meta.env.DEV` 分支——vite HMR 热重载，

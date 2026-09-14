@@ -14,7 +14,7 @@
 // ≤100 条）。root 取 DATAFLOW_ROOT 环境变量（缺省 = 进程 cwd）。
 //
 // 这是「MCP 是能力加面路径之一」的活例子：同一能力既可以走进程内 seam
-// （ctx.graph / dataflow RPC），也可以走外部 MCP server（本文件）——D1 收口。
+// （壳内 RPC 直呼；图谱 seam ctx.graph 已于 2026-09-09 随图谱功能全量退役），也可以走外部 MCP server（本文件）——D1 收口。
 
 const fs = require('node:fs');
 const path = require('node:path');
