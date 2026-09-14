@@ -245,3 +245,31 @@ registry 与 bridge 两处工具构造同源消费；`~/.lantai/mcp.json` 同构
 
 **门禁**：`office-domain` 13/13 绿；契约与基线对拍 `verify:convergence` exit 0；壳 `cargo test`
 不涉（本批零 Rust 改动）；前端 vitest / build / biome 见提交记录。
+
+### 10.4 事故与立法：产物经 faceDeps 取实现，漏登记 = boot 挂住（2026-09-13）
+
+**症状**（用户 `cargo tauri build` 后）：进工作区报 **「会话核心未初始化，无法绑定目录」**
+（文案出自 `shell/rows/workspace.ts`：`chatPanel` 缺席 = chat 壳行没跑起来）。
+
+**根因**：生产走**磁盘产物通道**——`dist-plugins/builtin/hologram/<域>/entry.js` 里拿实现的方式是
+`const impl = requireHost().mods.faceDeps; export const createOfficeTools = impl.createOfficeTools;`
+（共享真实例，防影子 store）。我新增 `office-domain` 时只加了插件与名册，**没在
+`plugins/builtin/host-modules.ts` 的 `faceDeps` 登记 `createOfficeTools`** ⇒ 生产里它是 `undefined`
+⇒ `apply()` 期 `familyContributions(...)` 内 `build(NEVER_EXEC)` 调 `createOfficeTools` **TypeError**
+⇒ 插件装载失败 ⇒ boot gate fail-loud 挂住 ⇒ 后续壳行（含 chat）没执行 ⇒ 上面那句文案。
+
+**为什么既有守卫没拦住**：`host-modules.ts` 的 `FaceBridgeSeal`（编译期封印）只在**新域被显式加进
+封印类型**时才生效——漏加即静默；而所有域测试都**直连真身**（`createOfficeTools` 直接从源码 import），
+不经过 faceDeps。`face.json` 保险丝 a 只覆盖 `face: true` 的面产物，工具域产物不产 face.json
+（`host-modules.ts` 注释里正记着同一类历史事故：paper-minimap 曾因取用形态不被提取器识别而失去保护）。
+
+**修**：`host-modules.ts` 补登记（值面 + 封印类型面各一处，封印恢复 tsc 覆盖）。
+
+**立法**：新增 `tests/face-deps-seal.test.ts`（零维护，对全部产物生效）——
+① 从每个产物的 `host.aliased.ts` **真导出语句**推导取用键（`export const X = impl.X;`，不认注释示例，
+paper-minimap 注释里那句就曾被宽匹配误报），断言 ⊆ `faceDepsKeys()`；
+② 守卫自检（office-domain/asset-domain 必须解析出对应键，防守卫自身失灵）；
+③ **生产同形装载**（`dist-plugins` 在场时）：全部工具域产物经**真 cordis 生命周期** +
+宿主桥 faceDeps 装载并断言贡献到工具行。
+**验证守卫会咬人**：临时撤掉登记 → ①③ 双红并点名 `office-domain → createOfficeTools`；恢复后 3/3 绿。
+

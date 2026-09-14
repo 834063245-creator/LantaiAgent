@@ -41,6 +41,7 @@ import {
 } from '../../agent/tools/coding';
 import { CORDIS_TOOL_NAMES, createCordisTools } from '../../agent/tools/cordis';
 import { createSearchTools, createWebTools } from '../../agent/tools/manifest-tools';
+import { createOfficeTools } from '../../agent/tools/office';
 import { createAssetTools } from '../../agent/tools/show-asset';
 import { createAgentStatusTool, createSubAgentTool } from '../../agent/tools/subagent';
 import { createWaitTool } from '../../agent/tools/wait';
@@ -209,6 +210,7 @@ type FaceBridgeSeal = Record<keyof typeof import('./canvas-nav/host'), unknown> 
   Record<keyof typeof import('./wait-domain/host'), unknown> &
   Record<keyof typeof import('./cordis-domain/host'), unknown> &
   Record<keyof typeof import('./asset-domain/host'), unknown> &
+  Record<keyof typeof import('./office-domain/host'), unknown> &
   Record<keyof typeof import('./prompt-segments/host'), unknown> &
   Record<keyof typeof import('./capability-segments/host'), unknown> &
   Record<keyof typeof import('./agent-loop-service/host'), unknown>;
@@ -407,6 +409,11 @@ const faceDeps = {
   createCordisTools,
   CORDIS_TOOL_NAMES,
   createAssetTools,
+  // office 域（2026-09-13 C 路）——**漏登记会让产物域 impl.createOfficeTools = undefined
+  // → apply 期 TypeError → boot gate fail-loud 挂住 → chat 壳行不起（表现为
+  // 「会话核心未初始化，无法绑定目录」）**。本文件顶部的 FaceBridgeSeal 是编译期守卫：
+  // 新域漏登记 = tsc 红（本条即那次事故的补登记）。
+  createOfficeTools,
   firstPartyPromptSections,
   firstPartyCapabilities,
   // S5b agent-loop-service 产物运行时依赖
