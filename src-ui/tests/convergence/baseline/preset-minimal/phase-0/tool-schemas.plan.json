@@ -1,5 +1,5 @@
 {
-  "count": 14,
+  "count": 15,
   "schemas": [
     {
       "description": "Ask the user one or more questions when you need clarification or confirmation before proceeding. Use when the request is ambiguous, you need to choose between approaches, or you need approval for a destructive action. Supports: single question (question/header/options/multiSelect), multiple questions in one call (questions array — recommended for 2+, asked one at a time), and open-ended questions (omit options — the user types a free-text answer). Returns the user's answer(s).",
@@ -181,6 +181,136 @@
       "parameters": {
         "additionalProperties": {},
         "properties": {},
+        "type": "object"
+      }
+    },
+    {
+      "description": "Read, edit, and produce Office files (.docx / .xlsx / .pptx) through OfficeCLI — the same engine as the `officecli` command line, but with typed actions and no quoting on your side.\nActions: view (read text/annotated/outline/stats/issues) · get (element + children) · query (CSS-like selector) · validate (OpenXML schema) · create · set / add / remove (element edits) · batch (≥3 edits in one atomic pass) · merge (fill {{key}} templates) · screenshot (render page/slides to PNG) · playbook (load a per-format build guide: word/academic-paper/pptx/pitch-deck/excel/financial-model/…).\nWrites flush to disk immediately, so other tools and the user see fresh bytes at once.\nBefore producing a deliverable, run the delivery gate: validate → view issues (overflow/format/structure) → scan view text for leftover placeholders — note issues does NOT catch placeholders, missing image alt text, or empty content; and it does catch pptx overflow/off-slide shapes and xlsx formula errors.\nLoad the `officecli` skill for the full playbook (units, colors, template flow, tracked changes, pitfalls).",
+      "name": "office",
+      "parameters": {
+        "additionalProperties": {},
+        "properties": {
+          "action": {
+            "description": "动作（读：view/get/query/validate/playbook；写：create/set/add/remove/batch；交付：merge/screenshot）",
+            "enum": [
+              "view",
+              "get",
+              "query",
+              "validate",
+              "create",
+              "set",
+              "add",
+              "remove",
+              "batch",
+              "merge",
+              "screenshot",
+              "playbook"
+            ],
+            "type": "string"
+          },
+          "data": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "merge 的数据映射（键 = 模板里的 {{key}}）。",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "depth": {
+            "description": "get 的展开深度。",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "file": {
+            "description": "目标 Office 文件（.docx/.xlsx/.pptx）。相对路径按工作区根解析。除 playbook 外所有动作必填。",
+            "type": "string"
+          },
+          "grid": {
+            "description": "screenshot 出整册联系表（--grid auto）而不是单页。",
+            "type": "boolean"
+          },
+          "items": {
+            "description": "batch 的改动项数组（≥3 处改动优先用它：一次开关 + 原子回滚）。",
+            "items": {},
+            "type": "array"
+          },
+          "json": {
+            "description": "view/get/query/validate/batch 追加 --json（结构化输出；token 更贵，按需开）。",
+            "type": "boolean"
+          },
+          "mode": {
+            "description": "view 的读数模式（缺省 text）：text/annotated/outline/stats/issues/html/svg/forms。",
+            "enum": [
+              "text",
+              "annotated",
+              "outline",
+              "stats",
+              "issues",
+              "html",
+              "svg",
+              "forms"
+            ],
+            "type": "string"
+          },
+          "out": {
+            "description": "输出路径（screenshot 的 PNG / merge 的成品文件）。相对路径按工作区根解析。",
+            "type": "string"
+          },
+          "page": {
+            "description": "screenshot 的页号（1-based）。",
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "parent": {
+            "description": "add 的父路径（缺省 /），如 /body、/slide[1]、/Sheet1、/styles。",
+            "type": "string"
+          },
+          "path": {
+            "description": "元素路径（get/set/remove 用）：1-based 本地名路径，如 /body/p[2]、/slide[1]/shape[@id=2]、/Sheet1/A1。",
+            "type": "string"
+          },
+          "playbook": {
+            "description": "playbook 动作的专项技能名（逐格式构建指南，正文 25–65 KB）：word/academic-paper/word-form/pptx/pitch-deck/morph-ppt/morph-ppt-3d/excel/financial-model/data-dashboard。一件产物只载一个，别重复载。",
+            "enum": [
+              "word",
+              "academic-paper",
+              "word-form",
+              "pptx",
+              "pitch-deck",
+              "morph-ppt",
+              "morph-ppt-3d",
+              "excel",
+              "financial-model",
+              "data-dashboard"
+            ],
+            "type": "string"
+          },
+          "props": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "set/add 的属性表（值一律字符串，如 {\"text\":\"标题\",\"style\":\"Heading1\"}；单位/颜色写法见 officecli 技能 §8）。",
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "selector": {
+            "description": "query 的 CSS 式选择器，如 paragraph[style=Heading1]、cell[value>5000]。",
+            "type": "string"
+          },
+          "type": {
+            "description": "add 的元素类型：paragraph/run/table/slide/shape/picture/comment/sheet/cell…",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
         "type": "object"
       }
     },

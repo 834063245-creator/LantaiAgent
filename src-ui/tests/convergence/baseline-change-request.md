@@ -1,3 +1,44 @@
+# baseline change request — minimal 轨重录（office 域漏录，2026-09-13 起静默漂移）+ verify 门禁改双轨（2026-09-14）
+
+- **日期**: 2026-09-14
+- **请求 Agent**: 组合层审计修复执行 Agent（同日先落 F1-F6 断链修复批）
+- **涉及快照**: `baseline/preset-minimal/phase-0/tool-schemas.full.json`（count 12 → 13）、`baseline/preset-minimal/phase-0/tool-schemas.plan.json`（count 14 → 15）——两文件的**唯一内容变化 = 新增 `office` 域工具 schema**（diff 形状：`count` 行替换 + 131 行插入，无其它行改动，可逐行对拍）
+- **状态**: **已批准（2026-09-14 用户拍板「两件一起，开工」——本批 = P-1 authoring 环境 + P0.5 minimal 重录与双轨门禁，设计件 `docs/plans/composition-architecture/designs/S6-per-agent-composition.md` §4 批表）**
+
+## 变更内容
+
+**只补快照，不改模型可见面**：`2d54081f`（office 域改一等工具，2026-09-13）已把 `office` 加进模型面，
+但**只重录了 standard 轨**——`baseline/preset-minimal/` 停留在 2026-09-09（`f1ca3dd8`），
+于是 minimal 轨自 2026-09-13 起静默漂移（`CONVERGENCE_PRESET=minimal` 实测 phase-0 两条红：
+full 期望 12/实际 13、plan 期望 14/实际 15）。本请求 = 把该轨重录到与当前装配面一致。
+
+**附带修复（本批同时落地）**：`verify:convergence` 从「只跑 standard」改为**双轨**
+（`gate.mjs check` + `CONVERGENCE_PRESET=minimal gate.mjs check`）；CI 的 `convergence.yml`
+调的就是这个 npm script，因此自动获得第二轨——**不改任何 workflow 文件**。
+
+## 为什么变
+
+1. **根因**：预设轨的快照不是自动产物，靠人记着重录；`2d54081f` 漏了 minimal 侧。
+2. **为什么没人发现**：`npm run verify:convergence` 与 CI（`.github/workflows/convergence.yml`）
+   都不设 `CONVERGENCE_PRESET`，`gate.mjs` 缺省 = standard；minimal 轨需显式运行，
+   而**没有任何自动路径会跑它**。文档里「convergence 双 preset 零漂移」这句话长期失真
+   （本批已同步更正 `AGENTS.md` §10 与 `CLAUDE.md`）。
+3. **这是第三次复发**：先例 `docs/archive/agent-core-convergence/baseline-change-request-tool-ergonomics-waist.md:40-48`
+   原文记过一次（「minimal 套件不在默认门禁（需 CONVERGENCE_PRESET=minimal 显式运行），
+   漏项潜伏两天未被发现」，同款先例 `5b5c20a9`）。双轨门禁是针对该复发模式的**机制性修复**：
+   轨不在门禁里 = 轨会腐烂，靠自觉无解。
+
+## 影响面
+
+- **模型可见面**：零变化（`office` 在 2026-09-13 就已进面；本批不碰任何装配代码）。
+- **用户可感知行为**：无。
+- **门禁成本**：convergence job 时长约 ×2（两遍 vitest specs）；这是为「轨不再腐烂」付的价。
+- **重录动作**：`CONVERGENCE_PRESET=minimal npm run record:convergence`（已执行，落 2 文件，
+  单一动因、无夹带）。
+- **验收**：`npm run verify:convergence`（双轨）exit 0。
+
+---
+
 # baseline change request — 工具缺陷三连修复：fs(read) 行号 opt-in + git_commit files 自动暂存 + git 域键语义描述（2026-09-07）
 
 - **日期**: 2026-09-07
