@@ -17,7 +17,11 @@
 //     飞到该轮）、流式 writing head（石青呼吸线）、unreadBand 淡朱未读区、
 //     hover 纸感卡（指哪读哪——行盒原文直出，刻痕/轮次次之）。
 // 几何：带体 fixed 通栏（top:0/bottom:0，z 压书眉 z-30 与坞槽 z-6 之下）；
-// 映射区 = [书眉下缘, 坞上缘]（元素坐标 = 页面坐标），内容恒在可见带内。
+// 映射区 = [书眉下缘 + 刻痕半高, 坞上缘]（元素坐标 = 页面坐标），内容恒在
+// 可见带内；映射区**永不与书眉（＝窗口标题栏，-webkit-app-region: drag）
+// 重叠**——带内任何元素（刻痕盒/滑块/墨迹）都不得越界到 y < 书眉下缘
+// （2026-09-14：刻痕盒不内缩半高，最上一枚就有 4px 落在书眉拖动带里，
+// 点刻痕变成拖窗口）。
 // 挂载：compose-dock 插件以 ctx.overlays 贡献行注册（slot:'right-edge'），
 // 经 paper/overlay-context 取活跃流区派生数据与折叠态（与主渲染同真源）。
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享真实例。
@@ -43,8 +47,15 @@ import {
   usePaperRegion,
 } from './host';
 
-/** 映射区顶 = 书眉高 var(--bar-h)=56px（页面坐标）。 */
-const TOC_TOP = 56;
+/** 书眉（＝窗口标题栏）下缘 = var(--bar-h)=56px（页面坐标）。 */
+export const TOC_TOP = 56;
+/** 刻痕盒半高（.pp-toc-mark 高 8px、刻位居中）——映射区顶必须再内缩这半高：
+ *  刻痕盒 top = stripY − MARK_HALF，不内缩时最上一枚刻痕的盒顶会越过书眉
+ *  下缘，那几像素点在书眉（命中归标题栏＝拖窗口），点刻痕点不中。 */
+export const MARK_HALF = 4;
+/** 映射区顶（页面坐标）= 书眉下缘 + 刻痕半高：带内一切（墨迹 canvas / 刻痕 /
+ *  滑块 / 未读区 / hover 索引）共用此几何真源，无一元素越界到书眉带。 */
+export const STRIP_TOP = TOC_TOP + MARK_HALF;
 /** 创作坞槽的坐底抬高（.pp-composer-slot bottom:var(--composer-rise)=96px——
  *  坞顶线 = 页底 −96 −坞高；2026-09-02 拍板 C：两态同位，固定值不随窗口高浮动，
  *  与 tokens.css --composer-rise 同源镜像）。 */
@@ -113,8 +124,9 @@ export const TocStrip = memo(function TocStrip() {
     [regions, activeSessionId],
   );
 
-  /* 带体通栏（top:0/bottom:0），映射区 = [书眉下缘, 坞上缘]（元素坐标 = 页面坐标）。 */
-  const mappedBottom = Math.max(TOC_TOP + 1, TOC_TOP + canvasSize.h - COMPOSER_RISE - composerHeight);
+  /* 带体通栏（top:0/bottom:0），映射区 = [书眉下缘 + 刻痕半高, 坞上缘]
+   * （元素坐标 = 页面坐标）。底 = 坞顶线（画布区底 − 抬高 − 坞高），不随顶内缩。 */
+  const mappedBottom = Math.max(STRIP_TOP + 1, TOC_TOP + canvasSize.h - COMPOSER_RISE - composerHeight);
   /* ── 标记/锚点派生（几何槽位回填 worldY/worldH；一次建索引防 O(n²)）──
    * P2-3（2026-09-02 拖动卡顿专项）：依赖收窄到内容侧原语/稳定内层引用——
    * 原实现挂 activeRegion 对象引用，regions memo 每 pan 帧换引用 → 全部
@@ -128,7 +140,7 @@ export const TocStrip = memo(function TocStrip() {
     return {
       regionTop: activeRegionTop,
       regionBottom: activeRegionBottom,
-      stripTop: TOC_TOP,
+      stripTop: STRIP_TOP,
       stripBottom: mappedBottom,
     };
   }, [activeRegionTop, activeRegionBottom, mappedBottom]);
@@ -310,6 +322,11 @@ export const TocStrip = memo(function TocStrip() {
   const onPointerDown = (e: React.PointerEvent<HTMLElement>): void => {
     if (e.button !== 0 || !range || !slider) return;
     const stripY = stripYOf(e.clientY, e.currentTarget);
+    /* 带外一律不响应（2026-09-14 行为变更）：元素框是通栏 fixed（top:0/bottom:0），
+     * 但映射区只有 [书眉下缘 + 刻痕半高, 坞上缘]——书眉带归标题栏（拖动/窗口钮），
+     * 坞下装饰带无语义。此前这两处按下仍会 scrub，视口被顺手拽走（实测坞下
+     * 一点：画布从 panY 1580 跳到 90285）。 */
+    if (stripY < range.stripTop || stripY > range.stripBottom) return;
     if (slider.draggable) {
       const inSlider = stripY >= slider.top && stripY <= slider.top + slider.height;
       const offset = inSlider ? grabOffsetAt(stripY, slider) : slider.height / 2;
@@ -405,7 +422,7 @@ export const TocStrip = memo(function TocStrip() {
           key={m.blockId}
           type="button"
           className={`pp-toc-mark is-${m.kind}`}
-          style={{ top: m.stripY - 4 }}
+          style={{ top: m.stripY - MARK_HALF }}
           title={m.preview}
           aria-label={`跳到：${m.preview}`}
           onMouseDown={(e) => e.stopPropagation()}
