@@ -708,6 +708,14 @@ export class Agent {
     return this._sessionLog.resolveSessionPreset();
   }
 
+  /** 本卷生效的组合 id（P0 记录闭环，2026-09-14）——ChatAgentHandle 的能力位
+   *  实现：卷落盘写 `presetId` 时读它（真源 = 构造时点读的 preset id；空白会话期
+   *  经 selectPreset 改选会同步更新）。与 `sessionPresetId`（事件流重建面）的分工：
+   *  本 getter 是**当前事实**，那个是**日志重建**。 */
+  get presetId(): string {
+    return this._presetId;
+  }
+
   getLastUsage(): Usage | undefined {
     return this.lastUsage;
   }

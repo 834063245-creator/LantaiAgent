@@ -156,6 +156,14 @@ export function selectionError(presetId?: string): string | null {
   }
 }
 
+/** 该组合 id 是否在册（内置表或用户目录发现结果）。
+ *  卷恢复期的可见性判据：未知 id（preset 被删/改名）与不可解析（行 id 失效 /
+ *  对应插件被禁用）是两类不同的失败，都要能说出来——否则用户只看到"组合变了"
+ *  却不知道为什么。 */
+export function isPresetKnown(presetId: string): boolean {
+  return findPresetById(presetId) !== undefined;
+}
+
 /** 记录/清除 preset 层失败原因（preset-store.error 唯一写入口）。
  *  只在**内容变化**时写 store + 落 console（坏 preset 在每卷装配都会被问一次，
  *  不去重会刷屏）。错误不静默：解析侧回退组合，原因留在 store 里给 UI。 */

@@ -83,6 +83,7 @@ import { ensureProductionChannelsBooted } from './helpers/composition-boot';
 
 await ensureProductionChannelsBooted();
 
+import { agentSessionState } from '../src/agent/agent-session-state';
 import { ChatCore } from '../src/app/chat/chat-core';
 import { createBlock } from '../src/paper/block-model';
 import { makeStrip } from '../src/paper/selection';
@@ -93,6 +94,8 @@ import {
   snapshotFromBlock,
 } from '../src/state/canvas-store';
 import { getMessagesStore } from '../src/state/messages-store';
+import { usePresetStore } from '../src/state/preset-store';
+import { useToastStore } from '../src/state/toast-store';
 import * as Session from '../src/ui/chat-session';
 import { scanMaxSessionId } from '../src/ui/chat-session';
 import { getChatStore, msgStoreFor } from '../src/ui/chat-store';
@@ -1366,6 +1369,108 @@ describe('ChatPanel session persistence', () => {
       const parsed = JSON.parse(write![1]);
       expect(parsed).not.toHaveProperty('workspace'); // 归属 = 存储位置，无字段标签
       expect(parsed.messages.some((m: any) => m.content === 'U1 内容')).toBe(true);
+    });
+
+    // ── P0 记录闭环（2026-09-14）：组合身份随卷落盘 + 重开按其重建 ──
+    // 「模型可见 ⟺ 已记录」：组合决定模型看到哪些工具/段落，卷必须能自证；
+    // 重开一卷 = 重跑它当时的那套组合（而不是当前全局默认）。
+
+    it('P0：落盘带组合身份——真源 = 本卷 Agent 的 presetId（能力位）', async () => {
+      const files = mockDualDirDisk({});
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      const stub = {
+        presetId: 'review',
+        getSession: () => [
+          { role: 'system', content: 'sys' },
+          { role: 'user', content: 'U1 内容' },
+        ],
+        setSession: vi.fn(),
+        dispose: vi.fn(),
+        cascadeAbort: vi.fn(),
+      };
+      panel.setAgentFactory(async () => ({ ...stub }) as any);
+      await panel.createNewSession();
+
+      await panel.saveActiveSession(PROJ);
+
+      const write = Object.entries(files).find(([p]) => p.endsWith('/1.json'));
+      const parsed = JSON.parse(write![1]);
+      expect(parsed.presetId).toBe('review');
+    });
+
+    it('P0：句柄无 presetId 能力位（旧实现/桩）→ 无记录（字段省略，不猜全局默认）', async () => {
+      const files = mockDualDirDisk({});
+      await setupVolumePanel(); // 该桩无 presetId 字段
+      await panel.saveActiveSession(PROJ);
+      const write = Object.entries(files).find(([p]) => p.endsWith('/1.json'));
+      expect(JSON.parse(write![1]).presetId).toBeUndefined();
+    });
+
+    it('P0：重开卷按卷内记录的组合身份登记（工厂据此重建；校验与提示在装配面）', async () => {
+      mockDualDirDisk({
+        [`${PROJ}/.lantai/sessions/7.json`]: JSON.stringify({
+          id: 7,
+          label: '有记录的卷',
+          savedAt: '2026-09-14T00:00:00Z',
+          messages: [
+            { role: 'system', content: 'sys' },
+            { role: 'user', content: '历史内容' },
+          ],
+          presetId: 'ghost',
+        }),
+      });
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      panel.setAgentFactory(storingFactory());
+
+      await panel.loadSessionFromDisk(PROJ, 7);
+
+      // 登记面：工厂读它决定用哪套组合重建（不可用时的提示也在那一面发；
+      // workspace 工厂源码窗口断言见 composition-preset-assembly.test.ts）
+      expect(agentSessionState.getRecordedPresetId(panel.panelId, 7)).toBe('ghost');
+    });
+
+    it('P0：旧存档无 presetId 字段 → 无记录（不猜、不迁移）', async () => {
+      mockDualDirDisk({
+        [`${PROJ}/.lantai/sessions/8.json`]: JSON.stringify({
+          id: 8,
+          label: '旧卷',
+          savedAt: '2026-09-01T00:00:00Z',
+          messages: [{ role: 'user', content: '旧内容' }],
+        }),
+      });
+      panel = createChatPanel();
+      panel.setProjectPath(PROJ);
+      panel.setAgentFactory(storingFactory());
+
+      await panel.loadSessionFromDisk(PROJ, 8);
+
+      expect(agentSessionState.getRecordedPresetId(panel.panelId, 8)).toBeNull();
+    });
+
+    it('P0 连带修复：renameSessionFile 不再抹掉卷内其它字段（tokens/compose/presetId）', async () => {
+      const files = mockDualDirDisk({
+        [`${PROJ}/.lantai/sessions/9.json`]: JSON.stringify({
+          id: 9,
+          label: '旧名',
+          savedAt: '2026-09-14T00:00:00Z',
+          messages: [{ role: 'user', content: 'x' }],
+          tokensUsed: 42,
+          tokens: { total: 42 },
+          compose: { provider: 'p', model: 'm' },
+          presetId: 'minimal',
+        }),
+      });
+
+      await Session.renameSessionFile(PROJ, 9, '新名');
+
+      const parsed = JSON.parse(files[`${PROJ}/.lantai/sessions/9.json`]);
+      expect(parsed.label).toBe('新名');
+      expect(parsed.tokensUsed).toBe(42);
+      expect(parsed.tokens).toEqual({ total: 42 }); // 旧行为：改名把它静默抹掉
+      expect(parsed.compose).toEqual({ provider: 'p', model: 'm' });
+      expect(parsed.presetId).toBe('minimal');
     });
 
     /** 工厂桩：setSession 真正落进闭包（loadSessionFromDisk 重建消息依赖 agent 持有会话）。 */

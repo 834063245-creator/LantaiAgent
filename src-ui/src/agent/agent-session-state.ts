@@ -96,6 +96,14 @@ export interface AgentSessionStateApi {
   getTurnIdBridge(storeId: string, sessionId: number): TurnIdBridge | null;
   setTurnIdBridge(storeId: string, sessionId: number, bridge: TurnIdBridge | null): void;
 
+  // ── 卷记录的组合身份（P0 记录闭环，2026-09-14）──
+  /** 登记某卷**落盘时记录**的组合 id（loadSessionFromDisk 读盘后、把该卷交给
+   *  工厂之前登记）——工厂据此用「该卷自己记录的组合」重建它，而不是当前全局
+   *  默认（「模型可见 ⟺ 已记录」的可重建半边）。null = 清登记（旧卷无字段）。 */
+  setRecordedPresetId(storeId: string, sessionId: number, presetId: string | null): void;
+  /** 该卷记录的组合 id（未登记/无记录 = null）。 */
+  getRecordedPresetId(storeId: string, sessionId: number): string | null;
+
   // ── 批量操作 ──
   /** 移除并 dispose 面板的所有 agent 句柄，清除 exec 状态。 */
   clearPanelState(storeId: string): void;
@@ -142,6 +150,8 @@ export function createAgentSessionState(): AgentSessionStateApi {
   const _turnPairsBySession = new Map<string, TurnPair[]>();
   const _turnIdBridgeBySession = new Map<string, TurnIdBridge>();
   const _sessionOfAgentId = new Map<string, { storeId: string; sessionId: number }>();
+  /** 卷落盘时记录的组合 id（P0 记录闭环，2026-09-14）——读盘后、交给工厂前登记。 */
+  const _presetIdBySession = new Map<string, string>();
 
   function _bump(): void {
     store.setState({ version: store.getState().version + 1 });
@@ -177,13 +187,27 @@ export function createAgentSessionState(): AgentSessionStateApi {
         agent.dispose();
         _agentBySession.delete(k);
       }
-      // 句柄消亡 = 旧定位映射全部作废（重开卷由尾对齐重派生）
+      // 句柄消亡 = 旧定位映射全部作废（重开卷由尾对齐重派生）+ 卷记录的组合
+      // 身份一并作废（重开时由读盘结果重新登记——P0 记录闭环）
       _turnIdBridgeBySession.delete(k);
+      _presetIdBySession.delete(k);
       _bump();
     },
 
     sessionOfAgent(agentId): { storeId: string; sessionId: number } | null {
       return _sessionOfAgentId.get(agentId) ?? null;
+    },
+
+    // ── 卷记录的组合身份 ──
+
+    setRecordedPresetId(storeId, sessionId, presetId): void {
+      const k = agentKey(storeId, sessionId);
+      if (presetId === null || presetId === '') _presetIdBySession.delete(k);
+      else _presetIdBySession.set(k, presetId);
+    },
+
+    getRecordedPresetId(storeId, sessionId): string | null {
+      return _presetIdBySession.get(agentKey(storeId, sessionId)) ?? null;
     },
 
     // ── Exec 状态 ──
@@ -280,6 +304,9 @@ export function createAgentSessionState(): AgentSessionStateApi {
       }
       for (const k of [..._turnIdBridgeBySession.keys()]) {
         if (k.startsWith(prefix)) _turnIdBridgeBySession.delete(k);
+      }
+      for (const k of [..._presetIdBySession.keys()]) {
+        if (k.startsWith(prefix)) _presetIdBySession.delete(k);
       }
       _bump();
     },

@@ -31,7 +31,7 @@ import { TaskManager } from './agent/task';
 import type { ToolRegistry } from './agent/tool';
 import type { ChatCore } from './app/chat/chat-core';
 import { readAttachmentBase64 } from './app/chat/image-intake';
-import { effectiveComposition } from './composition/preset-assembly';
+import { effectiveComposition, isPresetKnown, selectionError } from './composition/preset-assembly';
 import type { ResolvedComposition } from './composition/roster';
 import type { Context, Fiber } from './cordis';
 import { initCordisKernel } from './cordis/boot';
@@ -55,6 +55,7 @@ import { getComposeStore, resolveComposeEffective } from './state/compose-store'
 import { useCompositionStore } from './state/composition-store';
 import { broadcastGoalRecord } from './state/goal-store';
 import { getPanelStore } from './state/panel-store';
+import { showToast, TOAST_LONG_HOLD_MS } from './state/toast-store';
 import { useAgentPanelStore } from './ui/agent-panel-store';
 import { resetSessionState } from './ui/chat-session';
 import { getDiagnosticsForFile, LspService } from './ui/lsp-client';
@@ -774,7 +775,22 @@ export class Workspace {
       //     applyDefaultPreset / 热重载后 reapplyComposition），此时共享注册表
       //     本就按该组合建成——两条路给出的组合面都是「当前选择」，语义正确。
       // F1 捕获网：解析走 effectiveComposition（坏 preset 回退用户层组合，不抛）。
-      const sessionComposition = effectiveComposition();
+      // P0 记录闭环（2026-09-14）：**重开一卷用它自己记录的组合**重建（读盘时经
+      // agentSessionState 登记；缺省 = 新卷，用全局当前选择）——「模型可见 ⟺ 已记录」
+      // 的可重建半边：某卷创建于 minimal，后来全局默认改成 standard，重开该卷仍是
+      // minimal（该组合仍可用时）。两类失败在**装配面**给一次可见提示（卷照常打开、
+      // 回退用户层组合；不静默、不阻断）——提示归这里而不是卷持久化层：那一层引组合
+      // 模块会成环（实测整仓连坐），且「组合可不可用」只有解析侧知道。
+      const recordedPresetId = agentSessionState.getRecordedPresetId(this._storeId, sessionId);
+      if (recordedPresetId !== null) {
+        const reason = isPresetKnown(recordedPresetId)
+          ? selectionError(recordedPresetId)
+          : `组合「${recordedPresetId}」不在册（已被删除或改名）`;
+        if (reason) {
+          showToast(`本卷组合不可用：${reason}——已按用户层组合加载`, 'error', TOAST_LONG_HOLD_MS);
+        }
+      }
+      const sessionComposition = effectiveComposition(recordedPresetId ?? undefined);
       const compositionOverride = sessionComposition !== this._assemblyComposition ? sessionComposition : undefined;
       // 会话作用域注册表：覆盖存在时按覆盖的 tools 域构建（deps 工作区级复用）
       const sessionRegistry = compositionOverride

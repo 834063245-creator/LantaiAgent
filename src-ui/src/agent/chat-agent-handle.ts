@@ -80,4 +80,12 @@ export interface ChatAgentHandle {
 
   /** 从卷文件恢复账本（旧卷无此字段 = 空账本；毒化数据降级不抛）。 */
   restoreTokenLedger?(snapshot: TokenLedgerSnapshot | null | undefined): void;
+
+  // ── 组合身份（P0 记录闭环，2026-09-14）——本卷生效的组合 id ──
+  // 能力位（可选）：句柄不实现 = 无组合身份可读（旧实现/测试桩），调用方降级为
+  // 「无记录」而不是炸链路。真源 = Agent 构造时点读的 preset id（空白会话期
+  // 改选会同步更新）；「模型可见 ⟺ 已记录」——组合决定模型看到什么，必须可查。
+
+  /** 本卷生效的组合 id（纯读）。 */
+  readonly presetId?: string;
 }

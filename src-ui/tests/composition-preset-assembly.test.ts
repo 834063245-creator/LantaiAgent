@@ -464,9 +464,13 @@ describe('S4-1a workspace 会话工厂：会话作用域注册表路径（源码
     const i = src.indexOf(factoryAnchor);
     expect(i).toBeGreaterThan(0);
     // P3-3（2026-09-02）：窗口 1600→2000——比较基准迁到实例字段后行位后移
-    const window = src.slice(i, i + 2600);
+    // P0（2026-09-14）：再后移（工厂内组合身份读取 + 不可用提示）
+    const window = src.slice(i, i + 3600);
     // F1（2026-09-15）：工厂改走捕获网入口（旧：resolveCurrentComposition 可抛）
-    expect(window).toContain('effectiveComposition()');
+    // P0（2026-09-14）：传本卷记录的组合 id（effectiveComposition(recorded ?? undefined)）
+    expect(window).toContain('effectiveComposition(');
+    // P0（2026-09-14）：重开卷用**该卷自己记录的组合**重建（读盘时登记）
+    expect(window).toContain('getRecordedPresetId');
     // P3-3（2026-09-02）：比较基准从 setupAgent 闭包常量改为实例字段
     // _assemblyComposition（= composition-store 的 resolved 快照）
     expect(window).toContain('sessionComposition !== this._assemblyComposition');
@@ -475,7 +479,8 @@ describe('S4-1a workspace 会话工厂：会话作用域注册表路径（源码
   it('覆盖存在时走 buildToolRegistry({toolRows: compositionOverride.tools})', () => {
     const i = src.indexOf(factoryAnchor);
     // F1（2026-09-15）：窗口 3200→4200——工厂读块注释扩写（捕获网 + 引用比较实测语义）
-    const window = src.slice(i, i + 4200);
+    // P0（2026-09-14）：4200→5600——组合身份读取 + 不可用提示再后移
+    const window = src.slice(i, i + 5600);
     expect(window).toContain('compositionOverride');
     expect(window).toContain('toolRows: compositionOverride.tools');
     expect(window).toContain('tools: sessionRegistry');
@@ -483,7 +488,8 @@ describe('S4-1a workspace 会话工厂：会话作用域注册表路径（源码
 
   it('覆盖经 createAgent 第二参透传（AgentConfig 面冻结不破）', () => {
     const i = src.indexOf(factoryAnchor);
-    const window = src.slice(i, i + 6000);
+    // P0（2026-09-14）：窗口 6000→7600（工厂读块再后移）
+    const window = src.slice(i, i + 7600);
     expect(window).toContain('compositionOverride,');
   });
 });

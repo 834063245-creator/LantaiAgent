@@ -556,6 +556,10 @@ export interface StoredSession {
   tokens?: TokenLedgerSnapshot;
   /** 会话级创作坞覆盖（方案甲 2026-08-27）：旧存档无此字段 = 无覆盖。 */
   compose?: ComposeSessionPrefs;
+  /** 本卷创建时点生效的组合 id（P0 记录闭环，2026-09-14）。
+   *  「模型可见 ⟺ 已记录」：组合决定模型看到哪些工具/段落，卷必须能自证。
+   *  旧存档无此字段 = 未知（不猜、不编造；恢复期不校验）。 */
+  presetId?: string;
   deleted?: boolean;
   /** _active.json 跟踪文件字段（与单个会话文件形状不同） */
   lastId?: number;
@@ -635,6 +639,8 @@ interface SessionSnapshotData {
   /** token 账本快照（2026-09-13）：见 StoredSession.tokens。 */
   tokens?: TokenLedgerSnapshot;
   compose?: ComposeSessionPrefs;
+  /** 组合身份（P0 记录闭环）：见 StoredSession.presetId。 */
+  presetId?: string;
 }
 
 /** 将已捕获的会话快照写入存储（save_volume——默认 provider 落工作区会话根
@@ -688,6 +694,10 @@ export async function saveActiveSession(ctx: SessionContext, projectPath: string
     tokens: agent.snapshotTokenLedger?.() ?? undefined,
     // 方案甲：会话级创作坞覆盖随卷落盘（无覆盖 = undefined，字段省略）
     compose: getComposeStore(ctx.storeId).getState().getPrefs(String(sMeta.id)),
+    // 组合身份随卷落盘（P0 记录闭环，2026-09-14）：真源 = 本卷 Agent 的 presetId
+    // 能力位；句柄不实现（旧实现/测试桩）= **无记录**（字段省略）——不猜全局默认，
+    // 「卷记录的是这一卷当时跑的组合」，不是别人的选择。
+    presetId: agent.presetId,
   };
 
   try {
@@ -724,6 +734,8 @@ export async function saveSessionById(ctx: SessionContext, projectPath: string, 
       tokens: agent.snapshotTokenLedger?.() ?? undefined,
       // 方案甲：会话级创作坞覆盖随卷落盘（与活跃卷同构）
       compose: getComposeStore(ctx.storeId).getState().getPrefs(String(sid)),
+      // 组合身份随卷落盘（与活跃卷同构；能力位缺省 = 无记录）
+      presetId: agent.presetId,
     });
   } catch {
     /* 已记日志——改名即存是尽力而为（合卷路径另有告警） */
@@ -740,12 +752,15 @@ export async function renameSessionFile(projectPath: string, sessionId: number, 
     return;
   }
   try {
+    // ⚡ 连带修复（2026-09-14 审计）：改名此前**重建**卷对象（只写 6 个字面字段），
+    // 于是 `tokens`（token 账本）与 `compose`（创作坞覆盖）被静默抹掉——改名即丢数据。
+    // 现改为「展开原卷 → 只覆盖 label」：未知/后续新增字段天然保留（presetId 等）。
     await writeSessionSnapshot(projectPath, {
+      ...data,
       id: data.id,
       label,
       savedAt: data.savedAt ?? new Date().toISOString(),
       messages: data.messages ?? [],
-      uiMessages: data.uiMessages,
       tokensUsed: data.tokensUsed ?? 0,
     });
   } catch {
@@ -987,6 +1002,18 @@ export async function loadSessionFromDisk(
   if (data.compose) {
     getComposeStore(ctx.storeId).getState().hydratePrefs(String(sid), data.compose);
   }
+  // 组合身份随卷恢复（P0 记录闭环，2026-09-14）：**只登记**「本卷落盘时记录的组合」
+  // ——工厂（workspace 会话工厂）据此用该卷自己记录的那套组合重建它，而不是当前
+  // 全局默认，这是「模型可见 ⟺ 已记录」的可重建半边；旧存档无此字段 = 未知
+  // （不猜、不迁移，工厂退回全局默认）。
+  // 校验与提示（不在册 / 行 id 不可解析）归**装配面**做（workspace 工厂）——本层
+  // 不引组合层模块：ui/chat-session 与 composition 互相可达会成环（实测：
+  // ReferenceError: Cannot access ... before initialization，整仓 46 个测试文件连坐）。
+  agentSessionState.setRecordedPresetId(
+    ctx.storeId,
+    sid,
+    typeof data.presetId === 'string' && data.presetId !== '' ? data.presetId : null,
+  );
   // token 账本随卷恢复（2026-09-13）：句柄在场才回填（账本真源 = Agent）；
   // 旧存档无 tokens 字段 = 账本从空开始（不迁移）。
   if (newAgent && data.tokens) newAgent.restoreTokenLedger?.(data.tokens);
@@ -1107,6 +1134,9 @@ export async function batchRestoreSessions(
       if (data.compose) {
         getComposeStore(ctx.storeId).getState().hydratePrefs(String(sid), data.compose);
       }
+      // 组合身份随卷登记（P0 记录闭环——与 loadSessionFromDisk 同构：本批只登记，
+      // 不弹提示（批量恢复安静展开；逐卷打开时由 loadSessionFromDisk 提示）。
+      agentSessionState.setRecordedPresetId(ctx.storeId, sid, typeof data.presetId === 'string' ? data.presetId : null);
       getChatStore(ctx.storeId)
         .sess.getState()
         .setSessionTokens(sid, typeof data.tokensUsed === 'number' ? data.tokensUsed : 0);
