@@ -50,7 +50,7 @@ prompt:
 |---|---|---|
 | `tools` | `plugin/hologram/web-domain/web_fetch`、`plugin/hologram/shell-domain/run_shell`、`plugin/hologram/engine-domain/tools`… | 插件贡献行（`ctx.tools` 通道折算，①b 起为唯一行源——git/search/fs/shell/agent-isolation/web + wait/ask/memory/skill/task/agent/hologram/browser-desktop 十四族；粒度 = 单工具行或 hologram/browser-desktop 整族行） |
 | `prompt` | 第一方段 id（`behavior-rules`、`multi-agent`…）、已插入段 id、插件段贡献 id | system prompt 段（真源 `prompt-sections.ts` `firstPartyPromptSections()`——13 段经 `ctx.prompts` 通道贡献；S4-4 甲起全量进寻址域：disable/text 覆盖/insert 锚定第一方段 id 均合法） |
-| `capabilities` | `plan-tools`、`converge-tools`、`graph-hooks`… | 会话级工具/hook（真源 `agent/blueprint.ts`；id = capability key） |
+| `capabilities` | `plan-tools`、`converge-tools`、`state-hooks`… | 会话级工具/hook（真源 `agent/blueprint.ts`；id = `AgentCapability.id`（2026-09-14 前叫 `key`，已退役）） |
 | `shell` | `hologram/shell-graph`、`hologram/shell-cold-start`… | 壳引导行（真源 `composition/shell-rows.ts`；行实现 `src-ui/src/shell/rows/*`） |
 
 > **寻址域（S4-4 甲 + ①b，2026-08-23）**：patch/preset 的组合解析域 =
@@ -181,7 +181,7 @@ factory（出厂表）
 - **内置 system preset**（代码常量，不落盘）：
   - `standard`——零 patch = 出厂组合（缺省）；
   - `minimal`——精简面：禁 `plugin/hologram/browser-desktop-domain/tools`、
-    `plugin/hologram/web-domain/web_fetch` 工具行 + `graph-hooks`
+    `plugin/hologram/web-domain/web_fetch` 工具行 + `state-hooks`
     capability（V5「纸壳 preset」的原型；①b 起 builtin 行 id 退役改
     枚举 plugin 行）。
 - **用户 preset**：`~/.lantai/composition/presets/<id>/`——`roster.patch.yml`
@@ -205,7 +205,7 @@ factory（出厂表）
 | 任一工具行 | system prompt 规则 #13/#14 仍静态枚举全量域工具名 → 模型可能调到不存在的工具，报 unknown tool 后自适 | 已知限制（动态生成延期） |
 | `converge-tools` | 旧细粒度名全可见（66 工具面替 14 域工具）；功能等价，前缀缓存按新面重算 | 文档声明 |
 | `task-tools` / `spawn-tool` | 回退行表版 task_* / agent_spawn | 文档声明 |
-| `graph-hooks` | 无图上下文注入、无 preflight 图钩——**图优先核心工作流被关闭** | **强警告：可禁，自担** |
+| `state-hooks`（原名 `graph-hooks`，2026-09-09 图谱退役时收缩更名） | 无 LSP 诊断注入（state-read）/ 无构建结果注入（build-result）/ 无 state-preflight——模型少两类提示，另受 `hooksEnabled` 总开关约束 | 提示注入类，可禁；禁用后 LSP 诊断与构建缓存提示不再进上下文 |
 | `hologram/shell-platform` | 平台 CSS 差异化标记缺失（视觉问题，无功能损失） | 文档声明 |
 | `hologram/shell-graph` | 无星图、无文件可视化接线（WebGL 兜底提示层也不铺）；开项目被拒绝 | 文档声明 |
 | `hologram/shell-chat` | 无对话面板；开项目 / 占位 agent 均被拒绝 | 文档声明 |

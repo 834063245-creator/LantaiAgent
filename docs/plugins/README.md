@@ -493,7 +493,7 @@ ctx.effect(
   拦截，code_execution 嵌套调用一律打回）。
 - **生效时机是下次 Agent 装配**（新会话）——装配创建全新 registry 折叠
   当前清单；在途会话保持创建时点的钩子面不变（§7）。
-- **装配序**：第一方 capability 钩子（graph-hooks/board-tracking）先注册，
+- **装配序**：第一方 capability 钩子（state-hooks/board-tracking）先注册，
   通道贡献随后——enrich 链中插件钩子看到的是已富化的输出，preflight
   聚合序同理。
 - **消费面**：StreamingToolExecutor 直调路径与 eventBus 管道路径（Phase 2
@@ -519,7 +519,7 @@ ctx.effect(
 ctx.effect(
   () =>
     ctx.capabilities.register({
-      key: 'acme/secret-scanner',   // key 即寻址 id；推荐 '<插件名>/<能力名>'
+      id: 'acme/secret-scanner',    // id 即寻址行；推荐 '<插件名>/<能力名>'
       phase: 'agent',                // 'context'（Agent 构造前，可写 ctx 服务）| 'agent'（构造后）
       install: (scope) => {
         // 与内置 capability 同一视图：scope.tools / scope.hooks /
@@ -540,15 +540,15 @@ ctx.effect(
   外部插件之前）。无通道环境 = 空能力表（B④ prompt 域同款注册面依赖——
   出厂面复现须经 withFirstPartyCapabilityChannel 腰，见
   `src/composition/first-party-capabilities.ts`）。
-- **key 即寻址 id**：patch/preset 可按 key disable 贡献行
+- **id 即寻址行**（2026-09-14 M1 前叫 `key`，已退役）：patch/preset 可按 id disable 贡献行
   （`capabilities: [{ id: 'acme/secret-scanner', disabled: true }]`）——插件
-  开关与能力粒度裁剪两层正交（第一方 key 同寻址面——minimal 禁 graph-hooks
-  既有消费者零变化）。**注意**：插件卸载后 patch 里残留的 key 会变
+  开关与能力粒度裁剪两层正交（第一方行同寻址面——minimal 禁 state-hooks（原名 graph-hooks，2026-09-09 图谱退役时更名）
+  既有消费者零变化）。**注意**：插件卸载后 patch 里残留的 id 会变
   未知 id → 整个用户层 patch 被拒（all-or-nothing 既有语义，处置 = 删失效
   条目）。
-- **重名装载期拒绝**：撞注册表现有 key 即 throw——B⑤ 后第一方十四项本身在
-  注册表里（装载序在先），撞第一方 key（如 `auto-tune`）同样走此径；畸形
-  形状（key 空 / phase 非法 / install 缺函数）同样装载期拒绝（外部插件是纯
+- **重名装载期拒绝**：撞注册表现有 id 即 throw——B⑤ 后第一方十四项本身在
+  注册表里（装载序在先），撞第一方 id（如 `auto-tune`）同样走此径；畸形
+  形状（id 空 / phase 非法 / install 缺函数）同样装载期拒绝（外部插件是纯
   JS——fail-fast，不潜伏到会话装配期）。
 - **生效时机是下次 Agent 装配**（新会话）；在途会话不动（KV-cache 纪律，
   §7）。贡献 register/dispose = 组合输入变更（preset 缓存代数失效）。
@@ -745,7 +745,7 @@ factory（出厂表，代码真源）
 ```
 
 - **内置 system preset**（代码常量，不落盘）：`standard`（零 patch =
-  出厂组合）、`minimal`（禁 browser-desktop/web 工具行 + graph-hooks
+  出厂组合）、`minimal`（禁 browser-desktop/web 工具行 + state-hooks
   capability 的精简面）。
 - **用户 preset**：`~/.lantai/composition/presets/<id>/`：
 
