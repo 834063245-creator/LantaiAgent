@@ -135,6 +135,10 @@ export async function reloadCompositionPatch(opts: LoadCompositionPatchOptions =
       // preset 层不保留（用户层没了，叠层产物一并撤下）
       clearUserPatch();
       useCompositionStore.getState().resetToFactory();
+      // F5（2026-09-15）：resetToFactory 之后补一次 preset 层应用——当前选择
+      // 若带非空 patch（如 minimal），组合面应当是「preset 层」而不是出厂全量；
+      // 漏这一步会让诊断面/共享注册表与运行面（会话按选择解析）分歧。
+      applyDefaultPreset();
       console.info('[composition] 用户层 patch 已删除——回退出厂组合');
       return;
     }

@@ -58,6 +58,8 @@ const SettingsPanelApp: React.FC<{
   const compositionDiagnostics = useCompositionStore((s) => s.resolved.diagnostics);
   const presetRoster = usePresetStore((s) => s.roster);
   const presetSelected = usePresetStore((s) => s.selected);
+  /** preset 层解析失败原因（F1 捕获网：行 id 不可寻址 → 回退用户层组合）。 */
+  const presetError = usePresetStore((s) => s.error);
   // ⚡ 2026-08-04 状态治理：apiKey 权威在系统加密凭据 —
   // localStorage 无明文，打开面板时异步回填密钥供表单展示。
   // ⚡ 2026-08-07 竞态修复：回填用函数式合并、只填充仍为空的 key——
@@ -216,7 +218,13 @@ const SettingsPanelApp: React.FC<{
   const runSavePipeline = useCallback(
     async (toSave?: AppSettings): Promise<boolean> => {
       const target = toSave ?? settings;
-      saveSettings(target);
+      // ⚡ F3（2026-09-15 审计修复）：composition 节**不在本面板的表单面内**——
+      // 它由预设选择器即时持久化（selectPreset → saveSettings）。settings 是
+      // 挂载期快照，整体写盘会把期间改过的 preset 选择静默回退（复现：面板开着
+      // 时切 preset → 之后点保存 → 重启回到旧 preset）。写盘前从磁盘重读该节
+      // （与 persistProbe 的「读盘-改-写回」同一纪律；面板不拥有它）。
+      const diskComposition = loadSettings().composition;
+      saveSettings(diskComposition ? { ...target, composition: diskComposition } : target);
       // 1) 先删「清除 Key / 删除 Provider」暂存的系统凭据（removeSecret 幂等、失败静默）
       for (const name of [...new Set([...pendingClears, ...pendingDeletes])]) {
         await removeSecret(name);
@@ -384,11 +392,21 @@ const SettingsPanelApp: React.FC<{
                   ))}
                 </select>
                 <div className="sp-hint-sub">
-                  生效时机：新 Agent 装配（新案卷）即用新组合；在途案卷保持创建时点的组合。
+                  生效时机：新 Agent 装配（新案卷）即用新组合（含 seam 裁剪面）；在途案卷保持创建时点的组合；
+                  壳行域（shell）重启生效。
                   {presetRoster.find((p) => p.id === presetSelected)?.error
                     ? ` 当前 preset 装载失败: ${presetRoster.find((p) => p.id === presetSelected)?.error}`
                     : ''}
                 </div>
+                {/* F1 捕获网可见面（2026-09-15）：preset 层行 id 不可寻址时解析
+                    回退用户层组合——原因必须在这里可见（旧行为：boot 期抛错只落
+                    console，壳行全不 boot = 空壳）。 */}
+                {presetError && (
+                  <div className="sp-hint-sub" style={{ color: 'var(--warn)' }}>
+                    ⚠ preset 层解析失败：{presetError}
+                    ——新案卷已回退「用户层 patch + 出厂组合」；请修正行 id 或改选其它 preset。
+                  </div>
+                )}
               </div>
               <div className="sp-field">
                 <div className="sp-hint-sub">

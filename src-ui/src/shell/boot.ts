@@ -10,12 +10,13 @@
 //   3. 按 resolved.shell 表序逐行 await boot（保序 = 现 init 的 await 语义）；
 //   4. 主视图落点：启动落点恒为案卷首页（2026-08-22 用户拍板——不再
 //      固定直落纸面板；纸面板由用户动作唤起）；
-//   5. 失败隔离：单行抛错 console.error + 继续（loader 同款纪律）。
+//   5. 失败隔离：单行抛错 log.error（console + ui.log）+ 继续（loader 同款纪律）。
 //
 // 行序即执行序——表序是字节契约（§2.6 表 = 现 init() 执行序的证据）。
 // workspace 流 deps（actions 行消费）由调用方注入：S2-3 阶段是 main.ts 侧
 // 函数（零漂移过渡），S2-4 起是 shell/workspace.ts 真源。
 
+import { log } from '../agent/logger';
 import { onCapabilityContributionsChanged } from '../composition/capability-service';
 import { loadCompositionPatch, reloadCompositionPatch } from '../composition/patch-loader';
 import {
@@ -123,7 +124,7 @@ export async function bootShell(
         await row.boot(shellRefs, flowDeps);
       } catch (err) {
         // 失败隔离：单行失败不炸引导（行内代码不假设前行必然成功）
-        console.error('[shell] 壳行 boot 失败:', row.id, err);
+        log.error('shell', '壳行 boot 失败: ' + row.id, { error: String(err) });
       }
     }
 
@@ -131,7 +132,11 @@ export async function bootShell(
     //    不再固定为最后一卷/新卷。纸面板由用户动作唤起（新建/续开/换卷）；
     //    「关卷」回首页的既有语义不变（纸面板 unmountOnClose）。
   } catch (err) {
-    // 编排器级失败（引导三件套/patch await——理论不可达，防御性兜底）
-    console.error('[shell] 壳引导失败:', err);
+    // 编排器级失败（引导三件套/patch await——理论不可达，防御性兜底）。
+    // ⚡ F1（2026-09-15 审计）：此前只 console.error——WebView 用户看不到，
+    // 而这里中断的后果是**第 3 步壳行全不 boot（空壳）**。经 log（ui.log）
+    // 落盘：boot 期 logPath 尚未 init（首个工作区打开时）→ 条目先入缓冲，
+    // initLogger 后的 flush 把它写进 .lantai/logs/ui.log。
+    log.error('shell', '壳引导失败（后续壳行未 boot）', { error: String(err) });
   }
 }

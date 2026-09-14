@@ -29,14 +29,19 @@ import { withFirstPartyCapabilityChannel } from '../src/composition/first-party-
 import { withFirstPartyPromptChannel } from '../src/composition/first-party-prompts';
 import { withFirstPartyToolChannel } from '../src/composition/first-party-tools';
 import {
+  applyDefaultPreset,
   clearUserPatch,
+  effectiveComposition,
   invalidatePresetCache,
   registerUserPatch,
   resolveCurrentComposition,
+  selectPreset,
   syncPresetSelectionFromSettings,
 } from '../src/composition/preset-assembly';
+import { builtinPresets, type PresetEntry } from '../src/composition/presets';
 import { factoryComposition, type ResolvedComposition, resolveRoster } from '../src/composition/roster';
 import { capabilitySegmentsPlugin } from '../src/plugins/builtin/capability-segments';
+import { loadSettings } from '../src/settings';
 import { useCompositionStore } from '../src/state/composition-store';
 import { usePresetStore } from '../src/state/preset-store';
 import { readOnlyTool, scriptedProvider } from './convergence/helpers/fixtures';
@@ -355,25 +360,122 @@ describe('S4-1a preset-assembly：cache + 选择同步 + boot 应用', () => {
   });
 });
 
+// ── F1 / F1b / F5 修复回归（2026-09-15 审计）────────────────────────────
+// 用户序列：写一个引用「不存在的行 id」的用户 preset（等价于对应插件被
+// 禁用后的内置 minimal）→ 选中它 → 看新案卷与「组合」诊断面。
+// 旧行为：resolveRoster 的 all-or-nothing 抛错没有捕获网——boot 期抛穿
+// bootShell（10 条壳行全不 boot = 空壳，错误只落 console 不进 ui.log），
+// 会话期抛在首次拟文；且 selectPreset 只改 preset-store + settings，
+// composition-store（诊断面/seam 裁剪面的唯一来源）直到重启才追上。
+
+/** 坏 preset 样本：引用不存在的 plugin 行（= 「对应插件被禁用」的等价形态）。 */
+const GHOST_PRESET: PresetEntry = {
+  id: 'ghost',
+  builtin: false,
+  patch: { tools: [{ id: 'plugin/hologram/ghost-domain/tools', disabled: true }] },
+};
+
+/** 装载失败样本（发现层已标 broken：patch = null + error）。 */
+const BROKEN_PRESET: PresetEntry = {
+  id: 'damaged',
+  builtin: false,
+  patch: null,
+  error: 'YAML 语法错误: x',
+};
+
+describe('F1/F1b/F5：preset 层捕获网 + 选择校验 + 立即回写（2026-09-15）', () => {
+  beforeEach(() => {
+    usePresetStore.setState({ selected: 'standard', error: null });
+    usePresetStore.getState().setRoster([...builtinPresets(), GHOST_PRESET, BROKEN_PRESET]);
+    invalidatePresetCache();
+    clearUserPatch();
+    useCompositionStore.setState({
+      status: 'factory',
+      patchOrigin: undefined,
+      error: undefined,
+      resolved: factoryComposition(),
+    });
+  });
+
+  it('F1：行 id 不可寻址 → 纯解析仍抛（契约保留），生产入口不抛且回退用户层组合 + 原因可见', async () => {
+    await withFirstPartyToolChannel(async () => {
+      usePresetStore.getState().select('ghost');
+      // 纯解析 = all-or-nothing 校验语义（selectionError 的判据来源）
+      expect(() => resolveCurrentComposition()).toThrow(/未知行 id/);
+      // 生产入口 = 捕获网：回退「只叠用户层」的组合，绝不穿出去
+      const r = effectiveComposition();
+      expect(ids(r.tools)).toEqual(ids(factoryComposition().tools));
+      expect(usePresetStore.getState().error).toContain('未知行 id');
+    });
+  });
+
+  it('F1：applyDefaultPreset 遇不可解析 preset 不抛、也不写 preset 层产物（origin 不撒谎）', async () => {
+    await withFirstPartyToolChannel(async () => {
+      usePresetStore.getState().select('ghost');
+      applyDefaultPreset(); // 旧行为：此处抛出 → bootShell catch → 壳行全不 boot
+      const s = useCompositionStore.getState();
+      expect(s.status).toBe('factory');
+      expect(s.patchOrigin).toBeUndefined();
+      expect(usePresetStore.getState().error).toContain('未知行 id');
+    });
+  });
+
+  it('F1b：selectPreset 拒绝不可解析 preset（选择与 settings 都不动 + 原因可见）', async () => {
+    await withFirstPartyToolChannel(async () => {
+      expect(selectPreset('ghost')).toBe(false);
+      expect(usePresetStore.getState().selected).toBe('standard');
+      expect(usePresetStore.getState().error).toContain('未知行 id');
+      expect(loadSettings().composition?.preset).not.toBe('ghost');
+    });
+  });
+
+  it('F1b：selectPreset 拒绝装载失败的 preset（patch = null——发现层已标 broken）', async () => {
+    expect(selectPreset('damaged')).toBe(false);
+    expect(usePresetStore.getState().selected).toBe('standard');
+    expect(usePresetStore.getState().error).toContain('YAML');
+  });
+
+  it('F5：selectPreset 立即回写 composition-store（诊断面 + seam 裁剪面同源），切回空 patch 回退出厂态', async () => {
+    await withFirstPartyToolChannel(() =>
+      withFirstPartyCapabilityChannel(async () => {
+        expect(selectPreset('minimal')).toBe(true);
+        expect(usePresetStore.getState().error).toBeNull(); // 成功切换清除旧错误
+        const s = useCompositionStore.getState();
+        expect(s.status).toBe('ok');
+        expect(s.patchOrigin).toContain('preset:minimal');
+        expect(ids(s.resolved.tools)).not.toContain(BROWSER_DESKTOP_ROW);
+        expect(s.resolved.diagnostics.disabled).toContain('state-hooks'); // 面板「禁用行」同源
+        // 切回 standard（空 patch + 无用户层）→ 回退出厂态，诊断面不残留 minimal
+        expect(selectPreset('standard')).toBe(true);
+        const s2 = useCompositionStore.getState();
+        expect(s2.status).toBe('factory');
+        expect(ids(s2.resolved.tools)).toEqual(ids(factoryComposition().tools));
+      }),
+    );
+  });
+});
+
 describe('S4-1a workspace 会话工厂：会话作用域注册表路径（源码窗口断言）', () => {
   const src = readFileSync(path.resolve(process.cwd(), 'src/workspace.ts'), 'utf8');
   // 方案甲（2026-08-27）：工厂签名带 sessionId（按会话生效配置装配）
   const factoryAnchor = 'const factory = async (sessionId: number): Promise<AgentHandle | null> => {';
 
-  it('工厂读 resolveCurrentComposition 并做引用不等判定', () => {
+  it('工厂读 effectiveComposition（F1 捕获网入口）并做引用不等判定', () => {
     const i = src.indexOf(factoryAnchor);
     expect(i).toBeGreaterThan(0);
     // P3-3（2026-09-02）：窗口 1600→2000——比较基准迁到实例字段后行位后移
-    const window = src.slice(i, i + 2000);
-    expect(window).toContain('resolveCurrentComposition()');
+    const window = src.slice(i, i + 2600);
+    // F1（2026-09-15）：工厂改走捕获网入口（旧：resolveCurrentComposition 可抛）
+    expect(window).toContain('effectiveComposition()');
     // P3-3（2026-09-02）：比较基准从 setupAgent 闭包常量改为实例字段
-    // _assemblyComposition（预热完成 rebuildToolRegistry 更新后新会话生效）
+    // _assemblyComposition（= composition-store 的 resolved 快照）
     expect(window).toContain('sessionComposition !== this._assemblyComposition');
   });
 
   it('覆盖存在时走 buildToolRegistry({toolRows: compositionOverride.tools})', () => {
     const i = src.indexOf(factoryAnchor);
-    const window = src.slice(i, i + 3200);
+    // F1（2026-09-15）：窗口 3200→4200——工厂读块注释扩写（捕获网 + 引用比较实测语义）
+    const window = src.slice(i, i + 4200);
     expect(window).toContain('compositionOverride');
     expect(window).toContain('toolRows: compositionOverride.tools');
     expect(window).toContain('tools: sessionRegistry');

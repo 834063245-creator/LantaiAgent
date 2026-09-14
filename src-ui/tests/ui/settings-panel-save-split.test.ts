@@ -27,6 +27,7 @@ vi.mock('../../src/state/agent-config-store', () => ({
 vi.mock('../../src/ui/icons', () => ({ iconHtml: () => '' }));
 
 import { SettingsPanel } from '../../src/plugins/builtin/settings-domain/SettingsPanel';
+import { loadSettings, saveSettings } from '../../src/settings';
 
 const STORAGE_KEY = 'hologram_settings';
 const tick = () => new Promise((r) => setTimeout(r, 50));
@@ -142,5 +143,23 @@ describe('SettingsPanel — 保存拆域', () => {
     expect(save.disabled).toBe(true);
     expect(mockConfigChanged).toHaveBeenCalledTimes(1);
     expect(mockConfigChanged).toHaveBeenCalledWith('settings-saved');
+  });
+
+  it('F3：全局保存不覆盖期间由预设选择器改过的 composition.preset', async () => {
+    // 1) 预设选择器把选择落盘（= selectPreset 的写盘效果；此处直写盘面，
+    //    免得为一条保存管道回归去架工具通道腰——本用例的对象是保存管道）
+    saveSettings({ ...loadSettings(), composition: { preset: 'minimal' } });
+    // 2) 面板是在此之前挂载的（挂载期快照里仍是 standard）→ 触发一次全局保存
+    clickTab('关于');
+    await tick();
+    const autoUpdateToggle = [...document.querySelectorAll<HTMLInputElement>('.sp-checkbox-label input')].find((i) =>
+      i.closest('.sp-section')?.textContent?.includes('启动时自动检查更新'),
+    )!;
+    autoUpdateToggle.click();
+    await tick();
+    document.querySelector<HTMLButtonElement>('.sp-footer .sp-btn-save')!.click();
+    await tick();
+    // 3) 选择不被回退（旧行为：整个挂载期快照写盘 → 静默回到 standard，重启即失效）
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).composition.preset).toBe('minimal');
   });
 });

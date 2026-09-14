@@ -31,7 +31,7 @@ import { TaskManager } from './agent/task';
 import type { ToolRegistry } from './agent/tool';
 import type { ChatCore } from './app/chat/chat-core';
 import { readAttachmentBase64 } from './app/chat/image-intake';
-import { resolveCurrentComposition } from './composition/preset-assembly';
+import { effectiveComposition } from './composition/preset-assembly';
 import type { ResolvedComposition } from './composition/roster';
 import type { Context, Fiber } from './cordis';
 import { initCordisKernel } from './cordis/boot';
@@ -760,11 +760,21 @@ export class Workspace {
       // Agent 在 runtime.agents/_agentSessions 里互相覆盖（多会话错位根因之一）
       const sessionAgentId = `main-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
-      // 会话组合覆盖判定（S4-1a 机制位；V5 选择器接入后此处才会出现分歧）
-      // P3-3：比较基准与共享注册表改读实例字段——预热完成的 registry 重建
-      // （rebuildToolRegistry 更新 _assemblyComposition + registry）对后续
-      // 新会话生效；在途会话持有的旧引用不受影响（「新会话生效」语义）。
-      const sessionComposition = resolveCurrentComposition();
+      // 会话组合覆盖判定（S4-1a 机制位）：当前选择的组合 ≠ 工作区装配组合时，
+      // 为本会话建会话作用域注册表并把组合覆盖传给 createAgent。
+      // ⚡ 实测语义（2026-09-15 审计 F4 更正——旧注释称「无选择器时两值恒等」
+      // 与代码相反，且引用的 rebuildToolRegistry 全仓不存在）：
+      //   - 比较是**引用**比较；_assemblyComposition 来自 composition-store 的
+      //     resolved（setupAgent 时点快照，见本文件 :633/:720）；
+      //   - 默认配置（standard + 无用户层 patch）下 resolveCurrentComposition()
+      //     返回 cache 里的 resolveRoster 产物，与 store 里那份 factoryComposition()
+      //     快照**恒不是同一对象** → 覆盖分支恒活跃，每卷各建一份会话注册表
+      //     （deps/行表复用，代价是注册表重建本身）；
+      //   - 引用相等只出现在 store 曾被本模块 cache 实例写过的路径（boot 期
+      //     applyDefaultPreset / 热重载后 reapplyComposition），此时共享注册表
+      //     本就按该组合建成——两条路给出的组合面都是「当前选择」，语义正确。
+      // F1 捕获网：解析走 effectiveComposition（坏 preset 回退用户层组合，不抛）。
+      const sessionComposition = effectiveComposition();
       const compositionOverride = sessionComposition !== this._assemblyComposition ? sessionComposition : undefined;
       // 会话作用域注册表：覆盖存在时按覆盖的 tools 域构建（deps 工作区级复用）
       const sessionRegistry = compositionOverride

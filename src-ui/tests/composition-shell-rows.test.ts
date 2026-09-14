@@ -102,7 +102,13 @@ describe('S2-3/S2-4 bootShell 编排器（shell/boot.ts）', () => {
     await bootShell(stubFlowDeps());
     // 10 行全部被调用（含抛错的第 3 行）
     expect(calls).toEqual(EXPECTED_ROW_IDS);
-    expect(errSpy).toHaveBeenCalledWith('[shell] 壳行 boot 失败:', 'hologram/shell-bridges', expect.any(Error));
+    // F1（2026-09-15 审计）：壳行失败改经 agent/logger（console 镜像 + ui.log
+    // 落盘）——boot 期失败此前只落 console，WebView 用户不可见；行 id 仍在
+    // 消息里点名（定位面不退化）。
+    expect(errSpy).toHaveBeenCalledWith(
+      '[shell] 壳行 boot 失败: hologram/shell-bridges',
+      expect.objectContaining({ error: expect.stringContaining('行 3 故障注入') }),
+    );
     errSpy.mockRestore();
   });
 
