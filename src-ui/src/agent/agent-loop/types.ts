@@ -22,6 +22,7 @@ import type { MessageBus } from '../message-bus';
 import type { PlanGate } from '../plan/plan-registry';
 import type { SessionLog } from '../session-log';
 import type { StreamingToolExecutor } from '../streaming-executor';
+import type { TokenRequestRecord } from '../token-meter';
 import type { ToolRegistry } from '../tool';
 
 /** loop 一次流式请求的产物（Agent.stream 的返回形状）。 */
@@ -32,6 +33,9 @@ export interface LoopStreamResult {
   calls: ToolCall[];
   usage: Usage | undefined;
   err: Error | undefined;
+  /** token 计量记录（2026-09-13）：Agent 侧已入账，此处带回 loop 以便随
+   *  Usage 事件投给 UI。第三方 loop 不提供时 UI 计量面缺一条（不影响执行）。 */
+  token?: TokenRequestRecord | undefined;
 }
 
 /** loop 体对宿主 Agent 的依赖面（Agent._loopHost() 构建）。

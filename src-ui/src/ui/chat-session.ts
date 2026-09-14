@@ -8,6 +8,7 @@
 import { agentSessionState, type OwnedAgentHandle, type TurnPair } from '../agent/agent-session-state';
 import type { ChatAgentHandle } from '../agent/chat-agent-handle';
 import { createExecState, type ExecStateInstance } from '../agent/execution-state';
+import type { TokenLedgerSnapshot } from '../agent/token-meter/types';
 import { sessionExecute } from '../composition/session-persistence-service';
 import type { Message } from '../provider/types';
 import { kernelWriteFile } from '../rpc-contract';
@@ -549,6 +550,10 @@ export interface StoredSession {
   /** UI 消息副本（WO-7）：含 BlockPart 资产块；旧存档无此字段 = 仅 provider 消息。 */
   uiMessages?: ChatMessage[];
   tokensUsed?: number;
+  /** token 账本快照（2026-09-13）：分桶用量/逐轮/压力/构成。
+   *  `tokensUsed` 是它的总量投影（旧字段，坞在无句柄时用）；旧存档无
+   *  `tokens` = 账本从空开始（不迁移，不编造历史）。 */
+  tokens?: TokenLedgerSnapshot;
   /** 会话级创作坞覆盖（方案甲 2026-08-27）：旧存档无此字段 = 无覆盖。 */
   compose?: ComposeSessionPrefs;
   deleted?: boolean;
@@ -627,6 +632,8 @@ interface SessionSnapshotData {
   /** UI 消息副本（WO-7）：见 StoredSession.uiMessages。 */
   uiMessages?: ChatMessage[];
   tokensUsed: number;
+  /** token 账本快照（2026-09-13）：见 StoredSession.tokens。 */
+  tokens?: TokenLedgerSnapshot;
   compose?: ComposeSessionPrefs;
 }
 
@@ -676,6 +683,9 @@ export async function saveActiveSession(ctx: SessionContext, projectPath: string
     messages,
     uiMessages: msgStoreFor(ctx.storeId, sMeta.id).getState().messages,
     tokensUsed: ctx.getTotalTokensUsed(),
+    // token 账本随卷落盘（2026-09-13）：分桶/逐轮/构成/压力整本带走——
+    // 重启后读数从卷文件恢复（空账本 = undefined，字段省略）。
+    tokens: agent.snapshotTokenLedger?.() ?? undefined,
     // 方案甲：会话级创作坞覆盖随卷落盘（无覆盖 = undefined，字段省略）
     compose: getComposeStore(ctx.storeId).getState().getPrefs(String(sMeta.id)),
   };
@@ -710,6 +720,8 @@ export async function saveSessionById(ctx: SessionContext, projectPath: string, 
       messages,
       uiMessages: msgStoreFor(ctx.storeId, sid).getState().messages,
       tokensUsed,
+      // token 账本随卷落盘（与活跃卷同构）
+      tokens: agent.snapshotTokenLedger?.() ?? undefined,
       // 方案甲：会话级创作坞覆盖随卷落盘（与活跃卷同构）
       compose: getComposeStore(ctx.storeId).getState().getPrefs(String(sid)),
     });
@@ -975,6 +987,9 @@ export async function loadSessionFromDisk(
   if (data.compose) {
     getComposeStore(ctx.storeId).getState().hydratePrefs(String(sid), data.compose);
   }
+  // token 账本随卷恢复（2026-09-13）：句柄在场才回填（账本真源 = Agent）；
+  // 旧存档无 tokens 字段 = 账本从空开始（不迁移）。
+  if (newAgent && data.tokens) newAgent.restoreTokenLedger?.(data.tokens);
   if (typeof data.tokensUsed === 'number') {
     ctx.setTotalTokensUsed(data.tokensUsed);
     getChatStore(ctx.storeId).sess.getState().setSessionTokens(sid, data.tokensUsed);

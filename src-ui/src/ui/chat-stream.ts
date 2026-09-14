@@ -10,6 +10,7 @@ import type { TurnPair } from '../agent/agent-session-state';
 import type { AgentEvent, AssetEventData } from '../agent/agent-types';
 import { EventKind } from '../agent/agent-types';
 import type { ChatAgentHandle } from '../agent/chat-agent-handle';
+import type { TokenRequestRecord } from '../agent/token-meter/types';
 import { getAssetTableStore } from '../state/asset-store';
 import { refreshPinnedAssetSnapshots } from '../state/canvas-store';
 import { showToast, TOAST_HOLD_MS, TOAST_LONG_HOLD_MS } from '../state/toast-store';
@@ -65,7 +66,10 @@ export interface StreamContext {
   _updateStatusBar: (state: 'idle' | 'thinking' | 'running' | 'error', detail?: string) => void;
   _recordToolUsage: (toolName: string, args: string) => void;
   sendMessage: () => Promise<void>;
-  _updateTokens: (tokensUsed: number) => void;
+  /** token 计量入库（2026-09-13）：每次请求一条 Agent 侧记录（构成 + 用量）。
+   *  取代旧 `_updateTokens(数字)`——旧口径把「最后一次请求的 total_tokens」
+   *  当成「本卷已用 token」，与卷文件 tokensUsed / 上下文占用都不同义。 */
+  _recordTokens: (record: TokenRequestRecord) => void;
 
   getProjectPath: () => string;
   getRunning: () => boolean;
@@ -386,8 +390,10 @@ export function renderEvent(ctx: StreamContext, ev: AgentEvent): void {
       break;
 
     case EventKind.Usage:
+      // token 计量先入账（2026-09-13）：Agent 侧账本已记（streamOnce），
+      // 这里把同一记录投影到 UI 面（卷文件 tokensUsed + 计量面板读数）。
+      if (ev.token) ctx._recordTokens(ev.token);
       if (ev.usage?.total_tokens) {
-        ctx._updateTokens(ev.usage.total_tokens);
         const u = ev.usage;
         const total = u.total_tokens ?? 0;
         const cached = u.cache_hit_tokens ?? 0;

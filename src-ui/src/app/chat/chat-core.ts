@@ -19,6 +19,7 @@ import { createExecState, type ExecStateInstance } from '../../agent/execution-s
 import { GoalManager, type GoalRecord } from '../../agent/goal-manager';
 import { log } from '../../agent/logger';
 import type { RuntimePort } from '../../agent/runtime/types';
+import { totalTokens } from '../../agent/token-meter/usage';
 import { useShellStore } from '../../app/shell-store';
 import { sessionExecute } from '../../composition/session-persistence-service';
 import type { ChatImageRef, ToolSchema } from '../../provider/types';
@@ -648,15 +649,19 @@ export class ChatCore {
       },
       _recordToolUsage: (n, a) => this._recordToolUsage(n, a),
       sendMessage: () => this.sendMessage(),
-      _updateTokens: (n) => {
-        // token 按卷入账（会话级）；面板显示只跟随活跃卷
-        if (ownerSid != null) {
-          getChatStore(storeId).sess.getState().setSessionTokens(ownerSid, n);
-          if (ownerSid === this.activeSessionId) {
-            getChatStore(storeId).panel.getState().setTotalTokensUsed(n);
-          }
-        } else {
-          getChatStore(storeId).panel.getState().setTotalTokensUsed(n);
+      _recordTokens: (_record) => {
+        // token 计量入库（2026-09-13）：真源 = Agent 侧账本（streamOnce 已记），
+        // 这里只取两个投影面：
+        //   ① 卷级累计总量 → sess.sessionTokens（坞的订阅触发面 + 卷文件 tokensUsed）；
+        //   ② 活跃卷 → panel.totalTokensUsed（状态栏/导出同源）。
+        // 无句柄（无 Key 未装配）时无账本可读——保留卷文件里的旧值，不编造。
+        if (ownerSid == null) return;
+        const stats = Session.getSessionAgent(storeId, ownerSid)?.getTokenStats?.();
+        if (!stats) return;
+        const total = totalTokens(stats.totals);
+        getChatStore(storeId).sess.getState().setSessionTokens(ownerSid, total);
+        if (ownerSid === this.activeSessionId) {
+          getChatStore(storeId).panel.getState().setTotalTokensUsed(total);
         }
       },
       getProjectPath: () => useShellStore.getState().projectPath,

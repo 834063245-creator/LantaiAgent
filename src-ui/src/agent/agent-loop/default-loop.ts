@@ -212,7 +212,7 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
         provider: host.prov.name(),
         model: host.prov.model(),
       });
-      let { text, reasoning, signature, calls, usage, err } = await host.stream(signal, step + 1, executor);
+      let { text, reasoning, signature, calls, usage, err, token } = await host.stream(signal, step + 1, executor);
       host.loopEvents.emitLoopEvent('request/end', {
         agentId: host.id,
         step: step + 1,
@@ -284,6 +284,9 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
           usage,
           session_hit: host.cacheHitTotal,
           session_miss: host.cacheMissTotal,
+          // token 计量记录随用量事件一并发往 UI（Agent 侧账本为真源，
+          // 这里是它的投影面；无 token 时 UI 侧计量面不更新）。
+          ...(token === undefined ? {} : { token }),
         });
       }
 

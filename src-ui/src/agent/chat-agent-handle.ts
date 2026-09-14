@@ -7,6 +7,7 @@
 
 import type { StoredThinking } from '../provider/thinking';
 import type { ChatImageRef, Message, Provider } from '../provider/types';
+import type { TokenLedgerSnapshot, TokenMeasurement } from './token-meter/types';
 
 /** 目标运行结果 — runGoal / resumeGoal 的统一返回 */
 export type GoalRunResult = { status: 'completed' | 'failed' | 'blocked' | 'aborted' | 'paused'; summary: string };
@@ -66,4 +67,17 @@ export interface ChatAgentHandle {
 
   /** Set the UI session ID — used for precise per-session bump in sub-agent notifications */
   setUiSessionId(sid: number): void;
+
+  // ── token 计量（2026-09-13）——每卷一本账，UI 只读、卷文件持久化 ──
+  // 能力位（可选）：句柄不实现 = 无账本可读（旧实现/测试桩），调用方降级
+  // 为「无读数」而不是炸链路——计量是观测面，不是执行面。
+
+  /** 本卷计量读数（分桶用量 / 压力 / 投影占用 / 构成 / 逐轮）。纯读。 */
+  getTokenStats?(): TokenMeasurement;
+
+  /** 账本快照（随卷落盘；空账本 null）。 */
+  snapshotTokenLedger?(): TokenLedgerSnapshot | null;
+
+  /** 从卷文件恢复账本（旧卷无此字段 = 空账本；毒化数据降级不抛）。 */
+  restoreTokenLedger?(snapshot: TokenLedgerSnapshot | null | undefined): void;
 }

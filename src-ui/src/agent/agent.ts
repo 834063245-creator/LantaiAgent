@@ -77,7 +77,15 @@ import { SessionLog, type SessionResetReason } from './session-log';
 import type { StreamingToolExecutor } from './streaming-executor';
 import { parseAssetEventOutput } from './streaming-executor';
 import type { SubAgentSpawnHost } from './subagent-spawn';
-import { countMessage, countMessages, countTexts, countToolSchemas } from './token-counter';
+import { countMessages, countTexts, countToolSchemas } from './token-counter';
+import {
+  type EnvelopeMeasure,
+  measureEnvelope,
+  SessionTokenMeter,
+  type TokenLedgerSnapshot,
+  type TokenMeasurement,
+  type TokenRequestRecord,
+} from './token-meter';
 import type { ToolRegistry } from './tool';
 import { createStableSchemaSelector, type StableSchemaSelector, userContext } from './tool-select';
 import { resolveGuardToolName } from './tools/domains';
@@ -168,6 +176,14 @@ export class Agent {
   private session: Message[];
   /** Phase 5：会话事件溯源日志 — 模型可见事实先入日志，this.session 为投影。 */
   private _sessionLog: SessionLog;
+  /** token 计量器（2026-09-13）：每卷一本账 — 分桶用量 / 压力 / 投影占用 /
+   *  构成 / 逐轮。录入点 = streamOnce（请求信封 + 用量），读数面 = UI。 */
+  private _tokenMeter = new SessionTokenMeter();
+  /** 轮次序号（run() 入口递增）——逐轮用量的分组键。 */
+  private _turnSeq = 0;
+  /** 最近一次请求的信封测量（构成细分的单一 tokenization 通道：计量与
+   *  诊断日志共用，不重复分词一遍载荷）。 */
+  private _envelope: EnvelopeMeasure | undefined;
   private temperature: number;
   private _visibleToolsLimit: number;
   _toolResultWindow: number;
@@ -469,6 +485,7 @@ export class Agent {
     // 默认禁用折叠 — 见 toolResultWindow 注释（DeepSeek 缓存计价下不划算）
     this._toolResultWindow = opts.toolResultWindow ?? 0;
     this.contextWindow = opts.contextWindow || 1000000; // 1M tokens 默认值; || 捕获零值（设置默认值），使压缩永不被静默禁用
+    this._tokenMeter.setContextWindow(this.contextWindow);
     // ponytail: 0.8 对齐 DSH thresholdRatio（2026-09 迭代）。
     // 0.55 是旧 1M 窗口时代的经验值——真实窗口按模型热同步后（per-model
     // 覆盖 → 目录值 → 200K 缺省），0.55×200K = 110K 就触发，把仍会反复
@@ -726,6 +743,25 @@ export class Agent {
    *  不重建 Agent — 所有压缩判定都是运行时读此字段，下次判定即生效。 */
   setContextWindow(n: number): void {
     this.contextWindow = n > 0 ? n : 1000000; // 与构造兜底同语义
+    this._tokenMeter.setContextWindow(this.contextWindow); // 计量面热同步（占用分母换新）
+  }
+
+  // ── token 计量公共面（2026-09-13）——UI 读数 / 账本随卷落盘 ──
+
+  /** 本卷计量读数（分桶用量 / 压力 / 投影占用 / 构成 / 逐轮）。纯读。 */
+  getTokenStats(): TokenMeasurement {
+    return this._tokenMeter.measure();
+  }
+
+  /** 账本快照（随卷落盘；空账本 null）。 */
+  snapshotTokenLedger(): TokenLedgerSnapshot | null {
+    return this._tokenMeter.snapshot();
+  }
+
+  /** 从卷文件恢复账本（毒化数据降级为缺省，绝不抛）。 */
+  restoreTokenLedger(snapshot: TokenLedgerSnapshot | null | undefined): void {
+    this._tokenMeter = SessionTokenMeter.restore(snapshot);
+    this._tokenMeter.setContextWindow(this.contextWindow);
   }
 
   /** 设置自动调优压缩配置的持久化路径（委托 agent-compaction.ts）。 */
@@ -1011,6 +1047,9 @@ export class Agent {
     this.compactFailCount = 0;
     this.compactionTracker.reset();
     this._transientReminders = [];
+    // token 账本随新会话归零（与 cacheHitTotal/lastUsage 同批——旧账不跨卷）
+    this._tokenMeter = new SessionTokenMeter();
+    this._tokenMeter.setContextWindow(this.contextWindow);
     this._sink({ kind: EventKind.Notice, level: 'info', text: '已开启新会话' });
   }
 
@@ -1056,6 +1095,9 @@ export class Agent {
   async run(signal: AbortSignal, input: string, images?: import('../provider/types').ChatImageRef[]): Promise<void> {
     this._isRunning = true;
     this._ui.onStatusChange?.(true);
+    // token 计量：一轮 = 一次用户输入（含空 input 的唤醒轮——它同样会发请求）。
+    // 计数点在循环之前，因此本轮所有 step（含重试）都归到同一个轮槽。
+    this._turnSeq += 1;
     if (input) {
       // B3（multimodal-image-plan D-1）：附图引用随用户消息入 session（字节
       // 永不进卷）；空文本纯图轮 content 落空串占位。
@@ -1210,6 +1252,8 @@ export class Agent {
     calls: ToolCall[];
     usage: Usage | undefined;
     err: Error | undefined;
+    /** 本次尝试的 token 计量记录（已入账；UI 侧经 Usage 事件收到）。 */
+    token: TokenRequestRecord | undefined;
   }> {
     let lastErr: Error | undefined;
     // 总尝试次数（含首次）与首次尝试时刻：挂起走时间预算，重试次数是变量——
@@ -1220,7 +1264,15 @@ export class Agent {
     for (let attempt = 0; ; attempt++) {
       if (signal.aborted) {
         executor?.discard();
-        return { text: '', reasoning: '', signature: '', calls: [], usage: undefined, err: new Error('aborted') };
+        return {
+          text: '',
+          reasoning: '',
+          signature: '',
+          calls: [],
+          usage: undefined,
+          err: new Error('aborted'),
+          token: undefined,
+        };
       }
 
       const result = await this.streamOnce(signal, turn, executor);
@@ -1309,7 +1361,15 @@ export class Agent {
 
       const aborted = await sleepWithAbort(delay, signal);
       if (aborted) {
-        return { text: '', reasoning: '', signature: '', calls: [], usage: undefined, err: new Error('aborted') };
+        return {
+          text: '',
+          reasoning: '',
+          signature: '',
+          calls: [],
+          usage: undefined,
+          err: new Error('aborted'),
+          token: undefined,
+        };
       }
     }
 
@@ -1329,7 +1389,7 @@ export class Agent {
       level: 'error',
       text: `模型调用失败（共 ${attempts} 次尝试，历时 ${finalWaited}）：${finalMsg}。${hint}${finalCode ? `\n（${finalCode}）` : ''}`,
     });
-    return { text: '', reasoning: '', signature: '', calls: [], usage: undefined, err: lastErr };
+    return { text: '', reasoning: '', signature: '', calls: [], usage: undefined, err: lastErr, token: undefined };
   }
 
   /** 单次流式尝试 — 无重试逻辑。
@@ -1346,6 +1406,7 @@ export class Agent {
     calls: ToolCall[];
     usage: Usage | undefined;
     err: Error | undefined;
+    token: TokenRequestRecord | undefined;
   }> {
     // 将临时提醒作为 user 消息追加到末尾 — 它们
     // 本轮对 LLM 可见但不持久化到 this.session。
@@ -1355,6 +1416,14 @@ export class Agent {
       content,
     }));
     const payload = this.payloadMessages();
+    // 工具 schema 本请求只解析一次（选择器带锁存，但没必要调两遍）——
+    // 请求体与 token 计量共用同一份。
+    const toolSchemas = this.requestToolSchemas();
+    // ── token 计量（2026-09-13）：请求发出时刻测信封构成 ──
+    // 一次分词同时喂两面：本请求的计量记录（构成 + 表面量）与诊断日志
+    // （`_diagTokenBreakdown` 读 this._envelope，不再自己重算）。
+    const envelope = measureEnvelope([...payload, ...transientMsgs], toolSchemas);
+    this._envelope = envelope;
     const fullSession = transientMsgs.length > 0 ? [...payload, ...transientMsgs] : payload;
 
     // ── 附图发送面（multimodal-image-plan B3 · D-5/D-7/D-8③）──
@@ -1380,7 +1449,7 @@ export class Agent {
     // sanitizeToolPairing 不在此调用 — provider（openai/anthropic）是上线前的最终 gate。
     const stream = streamWithIdleTimeout(this.prov, signal, {
       messages: wireSession,
-      tools: this.requestToolSchemas(),
+      tools: toolSchemas,
       temperature: this.temperature,
       // max_tokens 不开放设置 — 0 = provider 默认 32000，发送前按模型目录上限钳制
       max_tokens: 0,
@@ -1487,6 +1556,20 @@ export class Agent {
       }
     }
 
+    // ── token 计量入账（2026-09-13）：每次尝试一条，成败都记 ──
+    // 失败尝试同样计入 attempts 与轮内步数（它确实发了出去），只是无账单——
+    // 把失败从步数里抹掉会让「本轮几步」与实况对不上（DSH 同判：重试各自
+    // 构成一次可计费尝试）。
+    const token: TokenRequestRecord = {
+      turn: this._turnSeq,
+      step: _turn,
+      breakdown: envelope.breakdown,
+      surfaceTokens: envelope.surfaceTokens,
+      contextWindow: this.contextWindow,
+      ...(usage === undefined ? {} : { usage }),
+    };
+    this._tokenMeter.recordRequest(token);
+
     if (err) {
       // 2026-08-31 贴黄拆迁 + 墓碑语义：单次尝试失败不落墓碑（回合可能自动重试
       // 成功——墓碑残留会把完成的回合标成 error）。降为 warn 瞬时播报；
@@ -1497,7 +1580,7 @@ export class Agent {
       // （资产生成等有副作用工具），default-loop 需要真实的 calls 才能把已执行
       // 的结果补 append 进上下文——否则 UI 已渲染、上下文无记录，Agent 下一轮
       // 会重复执行同一任务（会话 225 事故根因：流内错误丢资产生成结果）。
-      return { text, reasoning, signature, calls, usage, err };
+      return { text, reasoning, signature, calls, usage, err, token };
     }
 
     // 关闭文本流
@@ -1505,7 +1588,7 @@ export class Agent {
       this._sink({ kind: EventKind.Message, text, reasoning });
     }
 
-    return { text, reasoning, signature, calls, usage, err: undefined };
+    return { text, reasoning, signature, calls, usage, err: undefined, token };
   }
 
   // ---- Storm breaker — 打断重复工具调用循环 ----
@@ -1580,72 +1663,39 @@ export class Agent {
     total += countTexts(this._transientReminders);
     // 计算工具 schema token — 每次请求都发送
     total += countToolSchemas(this.requestToolSchemas());
+    // 载荷估算入库（projected 占用的表面基准）：本方法是所有压力判定的
+    // 必经之路（step 前 pre-flight / 响应式压缩 / 压缩埋点），在此顺手刷新
+    // 表面量 = 零额外开销的计量面更新（不重复分词）。
+    this._tokenMeter.recordSurface(total);
     return total;
   }
 
   /** 诊断: 按组件分解 token 消耗。
    *  每轮后以结构化 NDJSON 记录到 .lantai/logs/ui.log。
-   *  过滤: jq 'select(.module=="agent" and .message=="token breakdown") | .ctx' */
+   *  过滤: jq 'select(.module=="agent" and .message=="token breakdown") | .ctx'
+   *
+   *  2026-09-13：分词改为与 token-meter 共用**同一次**信封测量
+   *  （streamOnce 请求前测的 this._envelope）——此前诊断自己再分词一遍
+   *  整个载荷+全量 schema，每请求双份开销。 */
   private _diagTokenBreakdown(apiUsage: Usage | undefined): void {
     try {
-      const T = this.requestToolSchemas();
-      const schemaTokens = countToolSchemas(T);
-      // 统计发送载荷（折叠视图）而非完整历史 — 反映真实 API 成本
-      const payload = this.payloadMessages();
-
-      let sysTokens = 0,
-        userTokens = 0,
-        reminderTokens = 0,
-        assistantTokens = 0,
-        toolTokens = 0;
-      let reminderCount = 0,
-        inboxInjCount = 0;
-      let sysMsgCount = 0,
-        userMsgCount = 0,
-        assistantMsgCount = 0,
-        toolMsgCount = 0;
-
-      for (const m of payload) {
-        const tok = countMessage(m);
-        if (m.role === 'system') {
-          sysTokens += tok;
-          sysMsgCount++;
-        } else if (m.role === 'user') {
-          if (typeof m.content === 'string' && m.content.includes('<system-reminder>')) {
-            reminderTokens += tok;
-            reminderCount++;
-            if (m.content.includes('📬')) inboxInjCount++;
-          } else {
-            userTokens += tok;
-            userMsgCount++;
-          }
-        } else if (m.role === 'assistant') {
-          assistantTokens += tok;
-          assistantMsgCount++;
-        } else if (m.role === 'tool') {
-          toolTokens += tok;
-          toolMsgCount++;
-        }
-      }
-
-      const transientTokens = countTexts(this._transientReminders);
-      const estimatedTotal =
-        sysTokens + userTokens + reminderTokens + transientTokens + assistantTokens + toolTokens + schemaTokens;
+      const env =
+        this._envelope ?? measureEnvelope(this.payloadMessages(), this.requestToolSchemas(), this._transientReminders);
 
       const diag = {
-        turn_session_msgs: payload.length,
+        turn_session_msgs: env.messageCount,
         history_msgs: this.session.length,
         // ── 成本中心 ──
-        system_prompt: { tokens: sysTokens, msgs: sysMsgCount },
-        user_real: { tokens: userTokens, msgs: userMsgCount },
-        reminders: { tokens: reminderTokens, msgs: reminderCount, inbox: inboxInjCount },
-        transient_reminders: { tokens: transientTokens, msgs: this._transientReminders.length },
-        assistant: { tokens: assistantTokens, msgs: assistantMsgCount },
-        tool_results: { tokens: toolTokens, msgs: toolMsgCount },
-        tool_schemas: { tokens: schemaTokens, count: T.length },
-        folded_tool_results: Math.min(this._toolFoldBoundary, toolMsgCount),
+        system_prompt: { tokens: env.breakdown.systemTokens, msgs: env.systemMessages },
+        user_real: { tokens: env.userTokens, msgs: env.userMessages },
+        reminders: { tokens: env.reminderTokens, msgs: env.reminderMessages, inbox: env.inboxReminders },
+        transient_reminders: { tokens: env.transientTokens, msgs: this._transientReminders.length },
+        assistant: { tokens: env.assistantTokens, msgs: env.assistantMessages },
+        tool_results: { tokens: env.toolResultTokens, msgs: env.toolResultMessages },
+        tool_schemas: { tokens: env.breakdown.toolsTokens, count: env.schemaCount },
+        folded_tool_results: Math.min(this._toolFoldBoundary, env.toolResultMessages),
         // ── 汇总 ──
-        estimated_total: estimatedTotal,
+        estimated_total: env.surfaceTokens,
         api_reported: apiUsage
           ? { prompt: apiUsage.prompt_tokens, completion: apiUsage.completion_tokens, total: apiUsage.total_tokens }
           : null,

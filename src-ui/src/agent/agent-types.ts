@@ -4,6 +4,7 @@
 // 共享 agent 类型 — 从 agent.ts 中提取，避免 agent.ts 和 streaming-executor.ts 之间的循环依赖。
 
 import type { Message, Usage } from '../provider/types';
+import type { TokenRequestRecord } from './token-meter/types';
 
 export enum EventKind {
   TurnStarted = 'turn_started',
@@ -98,6 +99,10 @@ export interface AgentEvent {
   reasoning?: string;
   tool?: ToolEvent;
   usage?: Usage;
+  /** token 计量记录（2026-09-13）：每次请求一条，随 Usage 事件投递。
+   *  真源 = Agent 侧 SessionTokenMeter 账本；UI 侧计量面（state/token-store）
+   *  按它累进，因此事件重放不会重复入账（同一 token record 幂等地刷同一槽）。 */
+  token?: TokenRequestRecord;
   session_hit?: number;
   session_miss?: number;
   level?: 'info' | 'warn' | 'error';

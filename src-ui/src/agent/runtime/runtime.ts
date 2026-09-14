@@ -38,6 +38,7 @@ import { scanSkills } from '../skills';
 import type { DiagnosticsSource } from '../state-inject';
 import type { TaskManager } from '../task';
 import { TaskBoard, TaskBoardProxy } from '../task-board';
+import type { TokenLedgerSnapshot } from '../token-meter';
 import { agentInvoke, ToolRegistry } from '../tool';
 import { buildSystemPrompt } from './agent-builder';
 
@@ -142,6 +143,17 @@ class AgentHandleImpl implements AgentHandle {
   }
   setContextWindow(n: number) {
     return this._agent.setContextWindow(n);
+  }
+
+  // ── token 计量转发（2026-09-13）：句柄即会话账本入口 ──
+  getTokenStats() {
+    return this._agent.getTokenStats();
+  }
+  snapshotTokenLedger() {
+    return this._agent.snapshotTokenLedger();
+  }
+  restoreTokenLedger(snapshot: TokenLedgerSnapshot | null | undefined) {
+    return this._agent.restoreTokenLedger(snapshot);
   }
 
   /** 绑定到指定会话的 board — 会话 id 在创建后才分配，由会话层在登记句柄时调用 */
