@@ -812,11 +812,11 @@ P14 写「兰台是单活跃 provider 形态」，P15 后修正为：**多 provi
    - 后端能力四 seam 落地：`ctx.fs`（11 动作）/ `ctx.shell`（四动作；**ctx.subprocess
      并入 ctx.shell**——spawn/stdio/进程树即后台任务族，无第二消费者不开空通道）/
      `ctx.sessionPersistence`（六动词，含实测发现的 `log_append` 会话事件日志动词）/
-     `ctx.graph`（hologram_call 派发）。
-   - 统一形状：`composition/*-service.ts`（ContributionRegistry 单一内核）+
+     ~~`ctx.graph`~~（hologram_call 派发）——**已随图谱功能全量退役，2026-09-09**。
+   - 统一形状：`composition/*-service.ts`（2026-09-14 M1 收口后 = `ContributionChannel` 单一内核，见 `composition/contribution-channel.ts`）+
      `agent/*-provider.ts` 默认 provider（动作→命令恒等映射）；fs/shell 走 dispatch
      腰注入（meta/_agent_id 全量透传），sessions 直连 typedRpc（基础设施无 meta），
-     graph 走 agentInvoke。
+     graph 走 agentInvoke（**该 seam 已退役，2026-09-09**）。
    - 强制层不旁路：gate 在 executor 管道层、先于工具 execute——P2-C3 守卫测试
      钉死「plan 激活拦截时 provider 与 dispatch 双未触」（fs/shell seam 各一）。
    - 消费面收口：tool-fs（coding.ts）/ tool-shell / agent-store / hologram holoExec

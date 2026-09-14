@@ -18,7 +18,7 @@
 
 ## 定位
 
-兰台把代码库解析成一张**统一 IR 依赖图**（节点 = 符号/函数/类/模块，边 = 调用/继承/读写/时序/数据流），让依赖推理变成**确定性的图查询**而不是 LLM 逐文件猜源码；同时内置完整的多 Agent 编码工作台——工作台本体经八条贡献通道**完全插件化**，出厂态零硬编码特权行。
+兰台把代码库解析成一张**统一 IR 依赖图**（节点 = 符号/函数/类/模块，边 = 调用/继承/读写/时序/数据流），让依赖推理变成**确定性的图查询**而不是 LLM 逐文件猜源码；同时内置完整的多 Agent 编码工作台——工作台本体经九条贡献通道（+ 五条 seam provider 注册表）**完全插件化**，出厂态零硬编码特权行。
 
 **核心主张：依赖推理应当是确定性的，而不是猜的。**
 
@@ -43,7 +43,7 @@ LLM 分析"改 A 会炸什么"时，靠逐文件读源码推测依赖——弱�
 | **精确解析** | 按需启动原生 LSP（rust-analyzer / gopls / pyright 等 9 个），`resolve_call` / `infer_type` / `find_implementations` / `find_references` |
 | **内置 Agent 编码工作台** | 12 个领域工具（fs / shell / git / search / web / agent / task / browser / desktop / graph / ops / lsp）+ ask_user/wait 常驻件 + code_execution 执行原语，多 Agent 协作、Plan / Goal 模式、事件溯源会话日志、token 治理 |
 | **多厂商 LLM** | 9 个静态模型目录共 77 个模型 + 运行时动态发现，Anthropic / OpenAI 兼容 / DeepSeek / GLM / Qwen / MiniMax / Moonshot / Ollama / opencode；thinking 档位按厂商适配；本地反向代理绕 CORS |
-| **完全插件化** | 面板/命令/工具/块渲染器/prompt 段/管道钩子/capability 八条贡献通道 + MCP 机器桥；第一方与第三方走同一注册表（详见「插件系统」） |
+| **完全插件化** | 面板/命令/工具/块渲染器/prompt 段/管道钩子/capability 九条贡献通道 + MCP 机器桥；第一方与第三方走同一注册表（详见「插件系统」） |
 | **Harness 工程模式** | 约束治理（constraints.yaml）、权限引擎（Allow / Deny / Ask / Passthrough）、三层沙箱、git worktree 隔离、审计日志、系统级加密凭证 |
 | **注疏案卷主界面** | 古籍注疏范式：来文/正文/夹注/脚注/抄录/拟策/贴黄七类文类块，矿物墨色语义（朱砂=人、石青=机、石墨=草稿），无限画布纸条交互（详见「桌面端」） |
 | **增量与自举** | watcher 驱动增量更新（保存即刷新）；兰台用自己的引擎分析自己的代码库 |
@@ -249,9 +249,9 @@ Python · JavaScript/TypeScript/TSX · Rust · Go · Java · C/C++ · C# · Ruby
 
 ---
 
-## 插件系统（八通道全开）
+## 插件系统（九通道全开）
 
-> **2026-08-24 P4 收官**：出厂态零硬编码特权行。面板/命令/工具/块渲染器/prompt 段/管道钩子/capability 全部经插件通道贡献——兰台自己就是自己插件架构的第一用户（十五项第一方 capability、十三段 system-prompt、全部领域工具行都走同一套通道），与第三方插件在同一注册表上竞争。
+> **2026-08-24 P4 收官**：出厂态零硬编码特权行。面板/命令/工具/块渲染器/prompt 段/管道钩子/capability 全部经插件通道贡献——兰台自己就是自己插件架构的第一用户（十四项第一方 capability、十三段 system-prompt、全部领域工具行都走同一套通道），与第三方插件在同一注册表上竞争。
 
 | 通道 | 挂什么 | 生效时机 |
 |---|---|---|
@@ -270,7 +270,7 @@ Python · JavaScript/TypeScript/TSX · Rust · Go · Java · C/C++ · C# · Ruby
 - **信任模型（如实声明）**：插件是本机全信任代码——不做签名、不做沙箱；真正的强制层在 Rust 命令咽喉的权限规则与模式门禁
 - **MCP 机器桥**：manifest `mcpServers` 声明式挂接外部 MCP server——stdio（Rust 进程桥）与 http 双传输，工具以 `mcp__<server>__<工具名>` 注册；这是比自造插件格式更标准的开放路径
 - **preset/patch 寻址**：全部贡献行（含第一方）可被 roster patch / preset 禁用、覆盖、锚定——组合解析域对内外一律均匀
-- **完整契约**：[`docs/plugins/README.md`](docs/plugins/README.md)（manifest 字段 / 八通道 API / 宿主桥 / 安装与授权 / 信任模型 / KV-cache 注意事项）
+- **完整契约**：[`docs/plugins/README.md`](docs/plugins/README.md)（manifest 字段 / 九通道 API / 宿主桥 / 安装与授权 / 信任模型 / KV-cache 注意事项）
 
 ---
 

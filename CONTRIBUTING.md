@@ -31,7 +31,7 @@
 兰台自身就是插件化架构——面板、命令、工具、块渲染器、prompt 段、管道钩子、capability 全部经贡献通道装载，八条通道对外一致开放。写一个插件不需要碰 Rust 引擎、不需要懂组合层内部，最小路径是一个 `manifest.json` + 一个自包含 ESM 模块：
 
 - **从这开始**：[PLUGINS.md](PLUGINS.md)（根目录插件开发指南——自包含到能照写最小插件，最快 15 分钟跑通）
-- 契约全文档：[docs/plugins/README.md](docs/plugins/README.md)（manifest 字段 / 八通道 API / 权限与信任模型 / 生效时机）
+- 契约全文档：[docs/plugins/README.md](docs/plugins/README.md)（manifest 字段 / 九通道 API / 权限与信任模型 / 生效时机）
 - 从零到跑通的最小示例：[examples/plugins/hello/](examples/plugins/hello/README.md)（只读该 README 即可装上、看到效果、干净卸载）
 - 更省事的路：外部 MCP server 经 manifest `mcpServers` 声明式挂接，零插件代码
 

@@ -80,7 +80,7 @@ Phase 1/2 开放的全部 swappable seam 并进组合解析域：每个 seam pro
 | `seam/fs` | `builtin/rust-fs` | 文件系统后端（`ctx.fs`） |
 | `seam/shell` | `builtin/rust-shell` | shell/子进程后端（`ctx.shell`） |
 | `seam/sessionPersistence` | `builtin/rust-sessions` | 会话持久化后端（`ctx.sessionPersistence`） |
-| `seam/graph` | `builtin/rust-graph` | 图分析后端（`ctx.graph`） |
+| ~~`seam/graph`~~ | ~~`builtin/rust-graph`~~ | 已退役——随图谱功能全量退役，2026-09-09 |
 | `seam/loopEvents` | `turn/start`、`subagent/spawn`… | D4 emit 观测事件（事件面开关——裁决域 tool/guard 等不开放） |
 
 **语义（注册表 = 实现真源，组合 = 裁剪真源）**：

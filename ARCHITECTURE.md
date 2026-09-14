@@ -3,7 +3,7 @@
 > © 2026 Wenbing Jing. MIT License.
 > 最后更新：2026-09-08（引擎-宿主逻辑全断竣工：壳摘 hologram-graph/storage/vector 全部 crate 依赖——壳对引擎的知识收敛为「spawn 二进制 + MCP 协议」两条；引擎数据分居自有目录 `.hologram/`（启动自动搬迁老 `.lantai` 引擎文件）；引擎资产（onnxruntime/models/grammars）归位 engine/）
 
-兰台（Lantai）不是一个单纯的"代码图谱可视化工具"。它的本质是一个 **Harness Engineering 平台**——将多种成熟软件工程模式（依赖分析、约束治理、变更预演、沙箱隔离、Agent 自主执行等）编排为统一 Harness，并通过内置 Agent 与对外 MCP 服务将这些能力开放给人和 AI。桌面主界面是**注疏案卷**（纸壳）；工作台本体经八条贡献通道**完全插件化**——出厂态零硬编码特权行，第一方能力与第三方插件在同一注册表上竞争；**30 个出厂产物从磁盘通道装载**（exe 只留 14 内核装配台——改插件 = 换产物，永不重编译 exe）。
+兰台（Lantai）不是一个单纯的"代码图谱可视化工具"。它的本质是一个 **Harness Engineering 平台**——将多种成熟软件工程模式（依赖分析、约束治理、变更预演、沙箱隔离、Agent 自主执行等）编排为统一 Harness，并通过内置 Agent 与对外 MCP 服务将这些能力开放给人和 AI。桌面主界面是**注疏案卷**（纸壳）；工作台本体经九条贡献通道（+ 五条 seam provider 注册表）**完全插件化**——出厂态零硬编码特权行，第一方能力与第三方插件在同一注册表上竞争；**30 个出厂产物从磁盘通道装载**（exe 只留 13 内核装配台——改插件 = 换产物，永不重编译 exe）。
 
 代码图谱分析引擎（HoloGram）是目前体量最大、最核心的组件，但它是 Harness 体系的一个支柱，而非全部。
 
@@ -18,7 +18,7 @@
 | **Harness Engineering 模式** | 约束治理、变更预演、沙箱隔离、权限引擎、审计日志 | ★★★★☆ |
 | **MCP 对外服务** | 36 个 schema、默认暴露 35 个工具，通过 JSON-RPC 服务任意 MCP 客户端 | ★★★★★ |
 | **注疏案卷工作台（纸壳）** | 古籍注疏范式主界面：七类文类块（来文/正文/夹注/脚注/抄录/拟策/贴黄）+ 矿物墨色语义 + 无限画布纸条 | ★★★★☆ |
-| **插件化架构（八通道）** | 面板/命令/工具/渲染器/prompt 段/管道钩子/capability 全经贡献通道装配 + manifest 声明挂接（工具声明/MCP 机器桥）；30 出厂产物 = 磁盘通道（改插件不重编译 exe），14 内核 = exe 装配台 | ★★★★★ |
+| **插件化架构（九通道 + 五 seam）** | 面板/命令/工具/LLM adapter/渲染器/prompt 段/管道钩子/capability/overlay 九条贡献通道 + fs/shell/sessionPersistence/subagents/agentLoop 五条 seam provider 注册表——**同一内核 `ContributionChannel`**（2026-09-14 M1 收口：内核单源 `composition/contribution-channel.ts`）+ manifest 声明挂接（工具声明/MCP 机器桥）；30 出厂产物 = 磁盘通道（改插件不重编译 exe），13 内核 = exe 装配台 | ★★★★★ |
 | **3D 星图（DSH bundle）** | GPU 加速的交互式依赖星图——已从桌面端拆出（V5），随 DSH 插件分发（`dsh-bundle/`） | ★★★☆☆ |
 
 ---
@@ -315,7 +315,7 @@ NetBenefit = |R|·c_in·(T-1) − |S|·c_out − L·avg_turn_cost
 
 2026-08 的收敛工程把自有运行时的生命周期/会话契约全部原语化并门禁化（详见 `docs/archive/agent-core-convergence/`）：
 
-- **声明式装配（Phase 6 + 组合架构 S1 三层，2026-08-20；P4 修订 2026-08-23/24；S5 bundle 退役 2026-09-03）**：全部工具族经 ctx.tools 第一方插件通道贡献（真源 `plugins/builtin/<domain>/`）；system-prompt 段落由 `src/composition/prompt-sections.ts` 单一真源定义（13 段，两装配面 applicable 分流；经 `plugins/builtin/prompt-segments/` 走 ctx.prompts 通道贡献）；会话级工具/hook 由 `agent/blueprint.ts` 的 `AgentBlueprint` capability 表驱动（十五项第一方 capability 经 `plugins/builtin/capability-segments/` 走 ctx.capabilities 通道贡献——`firstPartyCapabilities()` 清单序 = 迁移前出厂表序）——**`AgentConfig` 冻结 31 字段**不再扩张；三层表序 = 字节契约（DeepSeek 前缀缓存与 effective 快照依赖此序）；teardown 走 `ctx.effect`；面板/命令/工具/llm 四 service 注册表挂根 Context（`src/composition/services.ts`，`ContributionRegistry` 内核：装载期重名拒绝 + disposer 双守卫）+ 块渲染器第五（`renderer-service.tsx`）+ prompt 段第六（`prompt-service.ts`）+ 管道钩子第七（`hook-service.ts`）+ capability 第八（`capability-service.ts`）+ 子代理第九（`subagent-service.ts`，平台化 Phase 1 · D3——默认 provider `plugins/builtin/subagent-in-process/` 进程内实现，消费面 `Agent.spawnSubAgent` 单点）+ fs 第十（`fs-service.ts`）/ shell 第十一（`shell-service.ts`，subprocess 并入）/ 会话持久化第十二（`session-persistence-service.ts`）/ 图分析第十三（`graph-service.ts`），平台化 Phase 2 · D11——后端能力默认 provider = Rust/engine 包装（`plugins/builtin/{fs,shell,sessions,graph}-builtin/`），强制层 gate 在管道层不旁路
+- **声明式装配（Phase 6 + 组合架构 S1 三层，2026-08-20；P4 修订 2026-08-23/24；S5 bundle 退役 2026-09-03）**：全部工具族经 ctx.tools 第一方插件通道贡献（真源 `plugins/builtin/<domain>/`）；system-prompt 段落由 `src/composition/prompt-sections.ts` 单一真源定义（13 段，两装配面 applicable 分流；经 `plugins/builtin/prompt-segments/` 走 ctx.prompts 通道贡献）；会话级工具/hook 由 `agent/blueprint.ts` 的 `AgentBlueprint` capability 表驱动（十四项第一方 capability 经 `plugins/builtin/capability-segments/` 走 ctx.capabilities 通道贡献——`firstPartyCapabilities()` 清单序 = 迁移前出厂表序）——**`AgentConfig` 冻结 31 字段**不再扩张；三层表序 = 字节契约（DeepSeek 前缀缓存与 effective 快照依赖此序）；teardown 走 `ctx.effect`；面板/命令/工具/llm 四 service 注册表挂根 Context（`src/composition/services.ts`，`ContributionRegistry` 内核：装载期重名拒绝 + disposer 双守卫）+ 块渲染器第五（`renderer-service.tsx`）+ prompt 段第六（`prompt-service.ts`）+ 管道钩子第七（`hook-service.ts`）+ capability 第八（`capability-service.ts`）+ 子代理第九（`subagent-service.ts`，平台化 Phase 1 · D3——默认 provider `plugins/builtin/subagent-in-process/` 进程内实现，消费面 `Agent.spawnSubAgent` 单点）+ fs 第十（`fs-service.ts`）/ shell 第十一（`shell-service.ts`，subprocess 并入）/ 会话持久化第十二（`session-persistence-service.ts`）/ 图分析第十三（`graph-service.ts`），平台化 Phase 2 · D11——后端能力默认 provider = Rust/engine 包装（`plugins/builtin/{fs,shell,sessions,graph}-builtin/`），强制层 gate 在管道层不旁路
 - **会话事件溯源（Phase 5）**：`session-log.ts` 事件日志 + session 变异三入口（`_appendMessage` / `_replaceSession` / `_retractSessionRange`）；工具折叠逻辑同步 `derivePayload`
 - **生命周期内核（cordis-migration P0–P4）**：vendored cordis（`src/cordis/`）+ workspace-scope epoch（`getWorkspaceEpoch()` / `bumpWorkspaceEpoch()`，**永久保留**——fiber 管所有权，epoch 管逃逸所有权的在途回调）。资源获取点就地 `fiber.ctx.effect()` 登记（顺序敏感拆除组打包 DisposerBag 单 effect 保串行），工作区切换/退出只调 `fiber.dispose()` + epoch bump，杜绝跨项目串台；Agent 挂身份 fiber（清理走 DisposerBag 同步快通道），子系统以 Service 挂树（`LspService` 样板）
 - **门禁**：`npm run verify:convergence`（T0 静态断言 + 8 个 frozen baseline 对拍）失败即返工；record 需显式 `CONVERGENCE_RECORD=1`，baseline 变更走审批
@@ -324,8 +324,8 @@ NetBenefit = |R|·c_in·(T-1) − |S|·c_out − L·avg_turn_cost
 
 Agent 的装配面（工具行 / prompt 段 / capability 三类行源）全部经插件通道贡献，出厂 builtin 三张表退役——特权区只减不增，第一方与第三方在同一注册表上竞争：
 
-- **十三条贡献通道**：`ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.llm`（LLM adapter）/ `ctx.subagents`（子代理 provider）/ `ctx.fs`（文件系统）/ `ctx.shell`（shell，subprocess 并入）/ `ctx.sessionPersistence`（会话持久化）/ `ctx.graph`（图分析）/ `ctx.renderers`（纸壳块体）/ `ctx.prompts`（system-prompt 段）/ `ctx.hooks`（工具管道钩子：enrich 富化 / preflight 预检）/ `ctx.capabilities`（会话级能力）——service 注册表挂根 Context（`composition/services.ts` 等：装载期重名拒绝 + disposer 双守卫；fs/shell/sessions/graph 为平台化 Phase 2 · D11 后端能力 seam，默认 provider = Rust/engine 包装）
-- **第一方即插件**：十五项 capability（真源 `plugins/builtin/capability-segments/`）、十三段 system-prompt（真源 `plugins/builtin/prompt-segments/`）、十四族工具（真源 `plugins/builtin/<domain>/`）全部经通道贡献——30 个出厂产物全部从磁盘通道装载（exe 只留 14 内核：12 注册表 + code-runtime + dynamic-runner）；无引导环境（convergence 夹具/gen-tool-contract）经 `composition/first-party-*.ts` 装配腰复现生产面
+- **九条贡献通道 + 五条 seam provider 注册表**（2026-09-14 M1 收口：**同一内核** `ContributionChannel`，见 `composition/contribution-channel.ts`——id 寻址 + 重名装载期拒绝 + 幂等 disposer + 陈旧性守卫 + 声明式 `timing` 四档 immediate/next-assembly/request/frame）：贡献通道 = `ctx.panels`（面板）/ `ctx.commands`（命令）/ `ctx.tools`（工具）/ `ctx.llm`（LLM adapter）/ `ctx.prompts`（system-prompt 段）/ `ctx.hooks`（工具管道钩子：enrich 富化 / preflight 预检）/ `ctx.capabilities`（会话级能力）/ `ctx.renderers`（纸壳块体）/ `ctx.overlays`（画布覆盖层）；seam provider 注册表 = `ctx.fs`（文件系统）/ `ctx.shell`（shell，subprocess 并入）/ `ctx.sessionPersistence`（会话持久化）/ `ctx.subagents`（子代理后端）/ `ctx.agentLoop`（流式循环）——service 注册表挂根 Context，默认 provider = Rust/engine 包装（`ctx.graph` 图分析 seam 随图谱功能全量退役，2026-09-09）
+- **第一方即插件**：十四项 capability（真源 `plugins/builtin/capability-segments/`）、十三段 system-prompt（真源 `plugins/builtin/prompt-segments/`）、十四族工具（真源 `plugins/builtin/<domain>/`）全部经通道贡献——30 个出厂产物全部从磁盘通道装载（exe 只留 13 内核：11 注册表 + code-runtime + dynamic-runner）；无引导环境（convergence 夹具/gen-tool-contract）经 `composition/first-party-*.ts` 装配腰复现生产面
 - **插件装载**：`~/.lantai/plugins/<name>/` 自包含 ESM，webview 动态 import（无包管理器/无 import map，宿主桥 `window.__lantai_plugin_host__`）；manifest 声明式挂接——`tools`（声明是数据 + entry `toolHandlers` 命名导出执行，装载器包装挂载）与 `mcpServers`（MCP 机器桥：stdio 经 Rust protocol_bridge / http 直连，工具名 `mcp__<server>__*`，lazy 首装配连接失败空集重试 | startup-error 装载期急连接；kill 挂插件 fiber disposer）
 - **行组合层**：roster.patch.yml（用户层，可寻址禁用/覆盖/锚定全部贡献行含第一方）→ preset（standard/minimal 内置 + `~/.lantai/composition/presets/` 用户目录）→ 热重载（Rust composition_watcher → `composition:changed` → reloadCompositionPatch，在途会话冻结）
 - **权限三层**：manifest `permissions` 声明（read/edit/bash/git/web 五域闭集）→ plugins.json granted 段授予门禁（装载期一票否决，未授权不 import 插件代码）→ Rust 命令咽喉逐调用强制（与声明无关，照常生效）
@@ -732,7 +732,7 @@ D9 拍板不等 DSH，自己当第一用户。工具行、prompt 段、capabilit
 - **同一张注册表竞争**：第一方与第三方走同一贡献通道、同一装载序、同一重名拒绝防线——不存在"内置的旁路"，契约漂移在装配层不可藏
 - **解耦收益真实可取**：禁用/裁剪/preset 寻址对内外一律均匀（patch 可禁用第一方行）；多窗口并行、契约固化随通道免费获得
 - **字节契约由清单序保住**：第一方贡献序 = 迁移前出厂表序（convergence 双 preset 零漂移按构造钉死，前缀缓存不受迁移影响）
-- **产物化（S5，2026-09-03）**：30 个出厂产物真源在 `plugins/builtin/<name>/` 目录，exe 只留 14 内核装配台（12 注册表 + code-runtime + dynamic-runner）——**改插件 = 换产物，永不重编译 exe**；dev 模式经 `import.meta.env.DEV` 分支走源码路径（vite HMR 热重载），产物仅发布形态；装载调度 = cordis fiber PENDING 挂起 + `plugins/boot-gate.ts` 全 ACTIVE 审计 fail-loud（不带病运行）
+- **产物化（S5，2026-09-03）**：30 个出厂产物真源在 `plugins/builtin/<name>/` 目录，exe 只留 13 内核装配台（11 注册表 + code-runtime + dynamic-runner）——**改插件 = 换产物，永不重编译 exe**；dev 模式经 `import.meta.env.DEV` 分支走源码路径（vite HMR 热重载），产物仅发布形态；装载调度 = cordis fiber PENDING 挂起 + `plugins/boot-gate.ts` 全 ACTIVE 审计 fail-loud（不带病运行）
 
 ---
 

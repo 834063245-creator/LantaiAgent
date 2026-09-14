@@ -23,14 +23,16 @@ const COOKBOOK_DIR = path.join(ROOT, 'docs', 'cookbook');
 const CONTRACT_DOC = path.join(ROOT, 'docs', 'agents', 'open-surface-contract.md');
 
 describe('P6-C1 平台契约文档形状守卫', () => {
-  it('cookbook 每 seam 指南存在（llm/subagents/fs/shell/session/graph/dynamic/mcp）', () => {
+  it('cookbook 每 seam 指南存在（llm/subagents/fs/shell/session/dynamic/mcp）', () => {
     const files = [
       'adding-an-llm-adapter.md',
       'adding-a-subagent-provider.md',
       'adding-a-fs-backend.md',
       'adding-a-shell-backend.md',
       'adding-a-session-backend.md',
-      'adding-a-graph-backend.md',
+      // `adding-a-graph-backend.md` 随 `ctx.graph` seam 全量退役（2026-09-09）同批删除
+      // ——本清单是「每个在册 seam 有一张指南」的正面清单，退役 seam 的指南留着
+      // 就是让人往一个不存在的后端注册（文档撒谎），故删而非标注。
       'adding-a-dynamic-plugin.md',
       'adding-an-mcp-server.md',
     ];
@@ -39,20 +41,15 @@ describe('P6-C1 平台契约文档形状守卫', () => {
     }
   });
 
-  it('plugins README §0 平台契约总览含全部 seam + 信任模型二分 + 契约版本指针', () => {
+  it('plugins README §0 平台契约总览含全部在册 seam + 退役 seam 已标注 + 信任模型二分 + 契约版本指针', () => {
     const readme = readFileSync(PLUGINS_README, 'utf8');
     expect(readme).toContain('# 0. 平台契约总览');
-    for (const seam of [
-      'ctx.llm',
-      'ctx.subagents',
-      'ctx.fs',
-      'ctx.shell',
-      'ctx.sessionPersistence',
-      'ctx.graph',
-      'ctx.agentLoop',
-    ]) {
+    for (const seam of ['ctx.llm', 'ctx.subagents', 'ctx.fs', 'ctx.shell', 'ctx.sessionPersistence', 'ctx.agentLoop']) {
       expect(readme, `§0 缺 seam ${seam}`).toContain(seam);
     }
+    // `ctx.graph` 不在在册清单里（2026-09-09 随图谱功能全量退役），但 §0 必须
+    // 留痕标注——否则读文档的人会以为图分析后端还能换实现。
+    expect(readme, '§0 应对 ctx.graph 标注退役').toMatch(/ctx\.graph[\s\S]{0,80}退役/);
     expect(readme).toContain('swappable seam（能力契约层——可换实现）');
     expect(readme).toContain('open-surface-contract.md');
     // P6-C4：信任模型二分明示

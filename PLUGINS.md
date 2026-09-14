@@ -134,7 +134,7 @@ export default {
 | `ctx.overlays` | 画布覆盖层 | 即时 |
 
 **引擎能力缝（seam，可换实现）**：`ctx.llm` / `ctx.subagents` / `ctx.fs` /
-`ctx.shell` / `ctx.sessionPersistence` / `ctx.graph` / `ctx.agentLoop` ——
+`ctx.shell` / `ctx.sessionPersistence` / `ctx.agentLoop` ——（`ctx.graph` 图分析 seam 随图谱功能全量退役，2026-09-09）
 写一个 seam 的 provider 就能替换兰台的默认后端（Rust/engine 只是默认实现）。
 各 seam 的注册 API 见 `docs/cookbook/`。
 
@@ -217,7 +217,7 @@ export const toolHandlers = { hello_status: async () => '装载正常' };
 
 ## 内部：给兰台仓库加第一方出厂产物
 
-兰台内置的 44 个第一方插件（**14 内核 + 30 出厂产物**）与第三方走同一套通道。
+兰台内置的 43 个第一方插件（**13 内核 + 30 出厂产物**）与第三方走同一套通道。
 内核 14 件编译进 exe（注册表/运行时——`src-ui/src/plugins/loader.ts` 的
 `BUILTIN_PLUGINS` 表装载）；出厂产物 30 件真源在 `plugins/builtin/<name>/`
 目录（磁盘通道装载，**改插件 = 换产物，不重编译 exe**）。设置面板
