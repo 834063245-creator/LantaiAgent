@@ -24,20 +24,24 @@ export interface BuiltinSkillDef {
 
 const PLUGIN_DEV_PROMPT = `# 为兰台写插件——Agent 操作手册
 
-兰台（Lantai）是插件化架构：面板、命令、模型工具、块渲染器、system-prompt 段、
-管道钩子、会话能力、后端 seam——全部经统一通道注册，第一方与第三方同一套机制。
+兰台（Lantai）是插件化架构：**九条贡献通道**（面板 / 命令 / 模型工具 / LLM 协议
+适配器 / 块渲染器 / system-prompt 段 / 管道钩子 / 会话能力 / 画布覆盖层）+ **五条
+可换后端 seam**（fs / shell / sessionPersistence / subagents / agentLoop）——全部经
+同一套注册机制（同一个 \`ContributionChannel\` 内核：id 寻址 + 重名装载期拒绝 +
+幂等 disposer + 声明式生效时机），第一方与第三方一致。
 用户让你「加个功能 / 写个插件 / 接个工具」时，按本手册动手。
 
-## 0. 先选形态（三条路，按需求定）
+## 0. 先选形态（四条路，按需求定）
 
 | 用户要什么 | 用哪条路 |
 |---|---|
 | 本会话内 Agent 自己用的工具/能力（快速、临时） | **动态插件**（§1）——cordis 工具当场 define→run，无文件落盘 |
 | 面板、命令、重启后仍在的持久功能 | **静态插件**（§2）——写 manifest.json + entry.js 落盘安装 |
 | 接一个现成的 MCP server（Node/Python 进程或远程 HTTP） | **MCP 挂接**（§2.6）——零插件代码，声明即接 |
+| 一个**能开窗的软件形态**（自己的窗口界面 + 自己的工具，像独立小软件住进兰台） | **软件级插件**（§2.7）——manifest 声明 \`app\`（相对 HTML 或环回 URL），宿主给窗口注册表 + 设施 API + 受治进程随窗开合 |
 
 判断不了时问用户一句：这个功能是「以后一直要有」还是「现在先用一下」。
-插件形态三合一：一个插件可以同时有面板 + 命令 + 工具 + MCP。
+形态可以叠加：一个插件能同时有面板 + 命令 + 工具 + MCP + 窗口。
 
 ## 1. 动态插件（cordis 工具族——最快路径）
 
@@ -51,9 +55,12 @@ const PLUGIN_DEV_PROMPT = `# 为兰台写插件——Agent 操作手册
 - 预算：源码 ≤256KB；apply ≤10 秒；贡献总数 ≤64 条，超限取消并回收。
 - \`apply(ctx)\` 收**守卫代理**，只有两个面：
   - \`ctx.effect(fn, label)\`——fn 返回 disposer；
-  - \`ctx.<服务>.register(def)\`——12 个注册通道：
-    tools / panels / commands / llm / fs / shell / sessionPersistence /
-    graph / subagents / prompts / renderers / capabilities。
+  - \`ctx.<服务>.register(def)\`——**守卫白名单**里的注册面（\`agent/dynamic-runner/sandbox.ts\`
+    的 \`GUARDED_SERVICES\`）：tools / panels / commands / llm / fs / shell /
+    sessionPersistence / subagents / prompts / renderers / capabilities（**11 条可用**）。
+    白名单里还留着一个已退役的 \`graph\`（图谱能力 2026-09-09 全量退役）——访问它会
+    响亮报错，不要用。**hooks / overlays / agentLoop 尚未进白名单**：动态插件贡献不了
+    这三面，需要它们就写静态插件（§2）。
   - 白名单外的属性访问、任何赋值 → 响亮报错。直调 register 不包 effect
     是合法的（disposer 由宿主回收袋管理）。
 - 贡献 def 形状与静态插件完全同构（见 §2.3）——def 缺 id / 缺函数成员
@@ -104,6 +111,8 @@ manifest.json 字段（\`name\`/\`version\`/\`entry\` 必填）：
 | \`tools\` | 声明式工具（§2.4） |
 | \`mcpServers\` | 声明式 MCP 挂接（§2.6） |
 | \`dataDir\` | \`true\` = 装载即分配专属数据目录（\`<数据根>/<插件名>/ \`，经宿主桥 fs 面读写，卸载随插件回收进 .trash） |
+| \`app\` | **软件级插件**（§2.7）：窗内容入口 + 窗模式——\`{ entry: './app/index.html' }\`（插件自包含 HTML）**或** \`{ url: 'http://127.0.0.1:PORT' }\`（环回页；仅本机、禁凭据）；\`mode\`: \`floating\`（缺省）/ \`dock\` / \`fullscreen\`（环回 URL 形态禁 fullscreen） |
+| \`displace\` | \`true\` = 位移式装载：与同名内置插件共享行 id（贡献面单活互换）；第三方同名产物声明 true 可覆盖同名内置插件 |
 
 ### 2.2 entry.js 规则与宿主桥
 
@@ -205,7 +214,7 @@ ctx.prompts.register({
 
 \`\`\`js
 ctx.capabilities.register({
-  id: 'my/capability',       // 行 id（八条通道统一身份）
+  id: 'my/capability',       // 行 id（九条通道统一身份；历史名 key 已退役）
   phase: 'agent',            // 'context' | 'agent'
   when: (scope) => true,     // 可选：返回 false 跳过安装
   install: (scope) => { /* 注册工具/接线；不得做 teardown（归 ctx.effect） */ },
@@ -216,7 +225,7 @@ ctx.capabilities.register({
 
 **llm**（LLM 协议适配器，进阶）：\`{ id, kind: '<协议kind>', label?, create(rt) }\`——为 settings 的自定义协议提供 Provider 工厂，同 kind 后注册胜。
 
-**seam provider**（后端替换，进阶）：\`ctx.fs\`/\`ctx.shell\`/\`ctx.sessionPersistence\`/\`ctx.subagents\` 各注册一个替换默认后端的实现——写这个等于换掉兰台的默认引擎，非必要不碰。
+**seam provider**（后端替换，进阶）：\`ctx.fs\`/\`ctx.shell\`/\`ctx.sessionPersistence\`/\`ctx.subagents\`/\`ctx.agentLoop\` 各注册一个替换默认后端的实现——写这个等于换掉兰台的默认引擎，非必要不碰。（\`ctx.graph\` 图分析 seam 随图谱功能全量退役，2026-09-09。）
 
 ### 2.4 声明式工具（manifest.tools——更小的信任面）
 
@@ -266,6 +275,39 @@ manifest 声明（或用户级 \`~/.lantai/mcp.json\`，形状同）：
   误声明 true 会重现「写动作绕过 plan 门禁」的洞。
 - ⚠️ 挂接的子进程是**全权用户进程**（不经 fs 能力口、不受沙箱约束，可写
   任意路径）——需要沙箱/权限类/审计的动作走 shell 域，不挂 MCP。
+
+### 2.7 软件级插件（app shell——带窗口的软件形态）
+
+插件想「像一个小软件一样住进兰台」：有自己的窗口界面 + 自己的工具。manifest 只需
+多一个 \`app\` 字段，窗内容**完全归插件**（iframe 真隔离，宿主不实现窗内语义）：
+
+\`\`\`json
+"app": { "entry": "./app/index.html", "mode": "floating", "title": "我的小软件" }
+\`\`\`
+
+入口二态（互斥，必给其一）：
+
+| 形态 | 写法 | 隔离与能力 |
+|---|---|---|
+| 资产 HTML | \`"entry": "./app/index.html"\`（\`./\` 相对插件目录；须以 \`.html\` 结尾） | iframe 走 opaque origin，**宿主桥是它唯一的能力通道** |
+| 环回远端页 | \`"url": "http://127.0.0.1:PORT"\`（只许本机 127.0.0.1/localhost/::1，禁凭据） | 给 \`allow-same-origin\`（远端页保住自己 origin，同源 SSE/fetch 才通）且**不绑宿主桥**；禁 \`fullscreen\` |
+
+- \`mode\`：\`floating\`（缺省，画布浮动窗）/ \`dock\`（右停靠栏）/ \`fullscreen\`（盖满视口）。
+- 窗内要宿主能力走 **postMessage 白名单桥**：默认最小集 = 数据目录 fs 面 + \`notify\`（\`manifest.dataDir: true\` + \`app\` 搭配最顺）。
+- 宿主桥 \`windows\` 设施面（插件的工具执行体里调，工具语义归插件）：
+  \`open(pluginName) → windowId|null\`（已开则聚焦返回原窗；v1 每插件单窗）、
+  \`close(windowId)\`、\`focus(windowId)\`、\`setMode(windowId, mode)\`、
+  \`list()\`、\`isOpen(pluginName)\`。
+- **与受治进程联动**（S2×S3）：真开新窗才通知治理器——\`lifecycle: 'with-window'\`
+  的 MCP server 随之拉起、关窗计数归零即杀；lazy 档有窗时不回收。所以「插件窗口 +
+  自带后端进程」的软件形态 = \`app\` + \`mcpServers\`（带 \`lifecycle\`）两条一起声明。
+- 卸载收口：定义注销 + 开着窗口全关（受治进程随关窗杀）。
+- **当前没有窗口管理 UI 面**（启动器/任务栏形态待用户设计定稿）：开窗靠插件自己的
+  工具（如范本 \`notes_open\`）——你写软件级插件时，记得给一个开窗工具，否则用户
+  没有入口。
+- 完整范本：\`examples/plugins/notes-app/\`（窗口 + 数据目录 + MCP 后端 + async 工具
+  五件齐全）；指南：\`docs/cookbook/plugin-as-software.md\`；契约：\`docs/plugins/README.md\`
+  §10。
 
 ## 3. 装载与验证（你的动作序列）
 
