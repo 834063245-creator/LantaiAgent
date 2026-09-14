@@ -1,10 +1,12 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// plugins/builtin/compose-dock/TocStrip — 目次带 v2（2026-09-01 minimap 换血）。
+// plugins/builtin/compose-dock/TocStrip — 目次带 v3（2026-09-14 甲：可点层拆出）。
 //
 // 底子 = minimap（对齐 VSCode 交互语义），超越 = 语义刻痕/活线/未读区
-// （拍板 10「关键时刻不同标记」后置债一并清偿）。三层结构：
+// （拍板 10「关键时刻不同标记」后置债一并清偿）。四层结构（职责分离，
+// 谁也不挤在同一个命中面上——2026-09-14 甲方拍板「丙：甲 + 乙」，乙 =
+// 墨迹换可辨认缩略，见文件尾 todo）：
 //   - canvas 内容指纹：paper/ink inkForBlock 行盒骨架 → bar 直绘（镜像
 //     InkLayer/MinimapView 画法；带内缩放比下一行常亚像素，bar 是唯一诚实
 //     原语——真字形 fillText 亚像素不可辨），墨色走 inkColorOf 单一真源；
@@ -13,9 +15,19 @@
 //     scrub 直写 canvas-view-store（不走飞行动画——连续 scrub 动画必糊）。
 //     夹紧域 = 可见视口（书眉下缘 → 坞上缘）：拖到底 = 内容底边贴坞顶线，
 //     最新内容完整可见（2026-09-01 实机返工：全视口夹紧会把尾巴藏进坞后）；
-//   - DOM 刻痕/活线/未读/hover 卡：deriveMarks 语义刻痕（点击 = flyToPoint
-//     飞到该轮）、流式 writing head（石青呼吸线）、unreadBand 淡朱未读区、
-//     hover 纸感卡（指哪读哪——行盒原文直出，刻痕/轮次次之）。
+//   - DOM 阶段锚（**带内唯一可点目标**）：buildStageAnchors 消费工作单元
+//     （阶段 = user 单元，与流的阶段间距/细线同真源）——朱砂横规 + 28px 命中
+//     盒，点击 = flyToPoint 飞到该阶段首块；
+//   - DOM 装饰刻痕/活线/未读/hover 卡：deriveMarks 非阶段锚刻痕**退为纯扫读
+//     信号**（惰性 div + aria-hidden + CSS pointer-events:none，不参与命中）、
+//     流式 writing head（石青呼吸线）、unreadBand 淡朱未读区、hover 纸感卡
+//     （指哪读哪；命中盒与卡片同源：卡片所示即点击所得）。
+// 病史（2026-09-14 实机实测，本设计的由来）：旧版把 289 枚刻痕全做成 button
+// 命中盒（10×8）——tool 刻痕 255 枚把 18 枚阶段锚挤到平均 3.8px 间距，命中盒
+// 相互叠压，DOM 后渲染者胜：点自己那枚的比例只有 7.3%（268/289 被相邻刻痕
+// 盖住），用户读作「刻痕点不中」；同时 289 个 tab 停靠点也是键盘灾难。
+// 现在：可点目标 = 18 枚阶段锚（实测间距 63px，单枚命中盒 28px 高）；装饰层
+// 只负责扫读（密集段自然读作密、报错恒在最上）；连续 scrub 归滑块 + 带空白处。
 // 几何：带体 fixed 通栏（top:0/bottom:0，z 压书眉 z-30 与坞槽 z-6 之下）；
 // 映射区 = [书眉下缘 + 刻痕半高, 坞上缘]（元素坐标 = 页面坐标），内容恒在
 // 可见带内；映射区**永不与书眉（＝窗口标题栏，-webkit-app-region: drag）
@@ -38,7 +50,6 @@ import {
   inkColorOf,
   inkForBlock,
   jumpViewTopAt,
-  nearestAnchorAt,
   scrubViewTop,
   unreadBand,
   useCanvasViewStore,
@@ -62,10 +73,13 @@ export const STRIP_TOP = TOC_TOP + MARK_HALF;
 const COMPOSER_RISE = 96;
 /** 密度档阈值：块数超过后每块只画首行（MinimapView 同款策略）。 */
 const DENSITY_BLOCKS = 80;
-/** 刻痕 hover 命中半径（带内像素）——贴刻痕视觉足迹。 */
-const MARK_HIT_R = 5;
-/** user 轮 hover 命中半径（带内像素）——行盒原文未命中时的兜底。 */
-const TURN_HIT_R = 14;
+/** 阶段锚命中盒高（px）= CSS .pp-toc-anchor 的 height（单一真源：热区 ≥24px
+ *  纪律；卡片判定半径 = 其半高——**卡片所示即点击所得**）。 */
+export const STAGE_HIT_H = 28;
+const STAGE_HIT_HALF = STAGE_HIT_H / 2;
+/** 装饰刻痕 hover 判定半径（带内像素）——贴着那枚才读它（视觉足迹 3×6，
+ *  两侧各让 1px）。它不再参与命中：刻痕层是扫读信号，不是点击靶。 */
+const TICK_HIT_R = 4;
 /** hover 卡单行原文截断。 */
 const HOVER_TEXT_MAX = 120;
 
@@ -186,6 +200,16 @@ export const TocStrip = memo(function TocStrip() {
     }
     return buildStageAnchors(inputs, range);
   }, [activeUnits, markInputs, range]);
+
+  /* ── 可点层 / 装饰层分家（2026-09-14 甲）──
+   * 装饰层 = 非阶段锚的一切刻痕（tool/plan/error 全部，外加**没有对应单元的
+   * 用户块**——没有阶段就没有可点目标，此处不撒谎，让它以刻痕形态留个印子）。
+   * 装饰层不参与命中（惰性 div + aria-hidden + CSS pointer-events:none）。 */
+  const anchorBlockIds = useMemo(() => new Set(stageAnchors.map((a) => a.blockId)), [stageAnchors]);
+  const decorations = useMemo(
+    () => marks.filter((m) => m.kind !== 'user' || !anchorBlockIds.has(m.blockId)),
+    [marks, anchorBlockIds],
+  );
 
   /* ── 滑块（可见视口 → 带上区间；VSCode 语义）──
    * 可见视口 = 书眉下缘 → 坞上缘：visY0 = 画布区顶，visY1 = 画布区底 − 坞高。 */
@@ -327,6 +351,9 @@ export const TocStrip = memo(function TocStrip() {
      * 坞下装饰带无语义。此前这两处按下仍会 scrub，视口被顺手拽走（实测坞下
      * 一点：画布从 panY 1580 跳到 90285）。 */
     if (stripY < range.stripTop || stripY > range.stripBottom) return;
+    /* 阶段锚自己接手势（onClick = 飞到该阶段）——按下它不启动 scrub：
+     * 否则同一按既 scrub 又飞（两个落点抢同一根指针）。 */
+    if ((e.target as Element | null)?.closest('.pp-toc-anchor')) return;
     if (slider.draggable) {
       const inSlider = stripY >= slider.top && stripY <= slider.top + slider.height;
       const offset = inSlider ? grabOffsetAt(stripY, slider) : slider.height / 2;
@@ -349,20 +376,35 @@ export const TocStrip = memo(function TocStrip() {
     e.currentTarget.releasePointerCapture(e.pointerId);
   };
 
-  /* ── hover 预览卡：行盒原文（指哪读哪）> 刻痕 > 最近 user 轮 ── */
-  const [hover, setHover] = useState<{ y: number; text: string } | null>(null);
+  /* ── hover 预览卡：命中盒与卡片**同源**（卡片所示即点击所得）──
+   * 顺序 = 可点层优先：① 阶段锚命中盒内（|Δ| ≤ STAGE_HIT_HALF）→「阶段 N · 首句」，
+   * 按下就是飞到它；② 贴着装饰刻痕（|Δ| ≤ TICK_HIT_R）→ 那枚的语义预览（按下 =
+   * scrub 到该 y；那枚同时提墨一档，卡片所示即高亮所在）；③ 光标下的行盒原文
+   * （指哪读哪——按下 = scrub 到该 y）。 */
+  const [hover, setHover] = useState<{ y: number; text: string; tickId: string | null } | null>(null);
   const onMouseMove = (e: React.MouseEvent<HTMLElement>): void => {
     if (dragRef.current || !range) return;
     const stripY = stripYOf(e.clientY, e.currentTarget);
     let text: string | null = null;
-    // 1) 刻痕（贴足迹命中——语义优先于原文）
-    for (const m of marks) {
-      if (Math.abs(m.stripY - stripY) <= MARK_HIT_R) {
-        text = m.preview;
+    let tickId: string | null = null;
+    // 1) 阶段锚（可点层优先——导航是第一用途）
+    for (const a of stageAnchors) {
+      if (Math.abs(a.stripY - stripY) <= STAGE_HIT_HALF) {
+        text = `阶段 ${a.stageIndex} · ${a.preview}`;
         break;
       }
     }
-    // 2) 光标下的行盒原文（指哪读哪）
+    // 2) 贴着装饰刻痕（扫读信号）
+    if (text === null) {
+      for (const m of decorations) {
+        if (Math.abs(m.stripY - stripY) <= TICK_HIT_R) {
+          text = m.preview;
+          tickId = m.blockId;
+          break;
+        }
+      }
+    }
+    // 3) 光标下的行盒原文（指哪读哪）
     if (text === null) {
       for (const hb of hoverIndex) {
         if (stripY < hb.top || stripY > hb.bottom) continue;
@@ -383,15 +425,11 @@ export const TocStrip = memo(function TocStrip() {
         break;
       }
     }
-    // 3) 最近阶段锚（行盒间隙兜底）——带阶段序（stream-rhythm 刀4）
-    if (text === null) {
-      const a = nearestAnchorAt(stripY, stageAnchors);
-      if (a && Math.abs(a.stripY - stripY) <= TURN_HIT_R) text = `阶段 ${a.stageIndex} · ${a.preview}`;
-    }
     text = text === null ? null : text.slice(0, HOVER_TEXT_MAX);
     setHover((prev) => {
       if (text === null) return prev === null ? prev : null;
-      return prev && prev.text === text ? prev : { y: stripY, text };
+      if (prev && prev.text === text && prev.tickId === tickId) return prev;
+      return { y: stripY, text, tickId };
     });
   };
   const onMouseLeave = (): void => setHover(null);
@@ -417,18 +455,27 @@ export const TocStrip = memo(function TocStrip() {
           style={{ top: slider.top, height: slider.height }}
         />
       )}
-      {marks.map((m) => (
-        <button
+      {/* 装饰刻痕（扫读层）：惰性 div + aria-hidden + CSS pointer-events:none——
+          不是点击靶（点它们 = 点带空白 = scrub 到该 y），也不再是 289 个 tab 停靠点。 */}
+      {decorations.map((m) => (
+        <div
           key={m.blockId}
-          type="button"
-          className={`pp-toc-mark is-${m.kind}`}
+          className={`pp-toc-mark is-${m.kind}${hover?.tickId === m.blockId ? ' is-hover' : ''}`}
           style={{ top: m.stripY - MARK_HALF }}
-          title={m.preview}
-          aria-label={`跳到：${m.preview}`}
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (activeSessionId) flyToPoint(activeSessionId, m.worldY);
+          aria-hidden="true"
+        />
+      ))}
+      {/* 阶段锚（可点层）：带内唯一可点的离散目标——28px 命中盒（热区纪律），
+          点击 = 飞到该阶段首块。 */}
+      {stageAnchors.map((a) => (
+        <button
+          key={a.unitId}
+          type="button"
+          className="pp-toc-anchor"
+          style={{ top: a.stripY - STAGE_HIT_HALF }}
+          aria-label={`跳到阶段 ${a.stageIndex}：${a.preview}`}
+          onClick={() => {
+            if (activeSessionId) flyToPoint(activeSessionId, a.worldY);
           }}
         />
       ))}

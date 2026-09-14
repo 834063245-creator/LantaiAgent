@@ -3731,7 +3731,10 @@
   pointer-events: none;
   z-index: 2;
 }
-/* 语义刻痕：色 + 形双通道（error 实心满高，其余细横杠） */
+/* 语义刻痕 = **装饰/扫读层**（色 + 形双通道：error 实心满高，其余细横杠）：
+ * 不参与命中（pointer-events:none；DOM 侧是 aria-hidden 惰性元素）——目次带
+ * 的可点目标只有阶段锚（见下）。实测病史（2026-09-14）：289 枚刻痕全做命中盒
+ * 时平均间距 3.8px、命中盒 10×8 相互叠压，点自己那枚只有 7.3%。 */
 .pp-toc-mark {
   position: absolute;
   left: 0;
@@ -3740,7 +3743,7 @@
   padding: 0;
   border: none;
   background: transparent;
-  cursor: pointer;
+  pointer-events: none;
   z-index: 3;
 }
 .pp-toc-mark::before {
@@ -3767,11 +3770,49 @@
   height: 8px;
   background: var(--fail);
 }
-.pp-toc-mark:hover::before {
+/* 卡片所示即高亮所在：hover 卡指到哪枚装饰刻痕，那枚提墨一档
+ *  （装饰层 pointer-events:none → :hover 不再可达，改由组件下发 is-hover） */
+.pp-toc-mark.is-hover::before {
   background: var(--ink-1);
 }
-.pp-toc-mark.is-error:hover::before {
+.pp-toc-mark.is-error.is-hover::before {
   background: var(--fail);
+}
+/* ── 阶段锚 = 带内**唯一可点目标**（2026-09-14 甲：可点层与装饰层分家）──
+ * 朱砂＝人（阶段由人来文开启）；横规一档宽于刻痕，与流内阶段细线/单元界短规
+ * 同族。命中盒 28px 高（热区纪律 ≥24px；高度值 = TocStrip STAGE_HIT_H 单一
+ * 真源，改动两处同改），视觉规线在盒内居中；盒宽只占左缘栏（26px）——带右侧
+ * 留给连续 scrub（滚动条语义），两者不抢同一根指针。
+ * hover 展宽 = 规线「吐出」一档（同族动效走 width，不动位置）。 */
+.pp-toc-anchor {
+  position: absolute;
+  left: 0;
+  width: 26px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  cursor: pointer;
+  z-index: 4;
+}
+.pp-toc-anchor::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 2px;
+  background: var(--seal);
+  transition:
+    width var(--snap),
+    background var(--snap);
+}
+.pp-toc-anchor:hover::before,
+.pp-toc-anchor:focus-visible::before {
+  width: 26px;
+  background: var(--seal-deep);
 }
 /* 活线：流式运行 writing head（石青呼吸——机=石青语义，pp-breathe 复用；
  * 坐标随映射底（坞顶线）由组件内联 top 下发） */
