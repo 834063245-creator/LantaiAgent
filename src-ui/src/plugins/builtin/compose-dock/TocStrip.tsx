@@ -61,15 +61,24 @@ import {
   usePaperRegion,
 } from './host';
 
-/** 书眉（＝窗口标题栏）下缘 = var(--bar-h)=56px（页面坐标）。 */
+/** 书眉（＝窗口标题栏）下缘 = var(--bar-h)=56px——**带体自身的页面起点**
+ *  （CSS `.pp-toc { top: var(--bar-h) }`，2026-09-14 整体下移）。此处是字面量
+ *  镜像与测试基准：带体坐标 = 页面坐标 − TOC_TOP，带体与标题栏零像素重叠。 */
 export const TOC_TOP = 56;
 /** 刻痕盒半高（.pp-toc-mark 高 8px、刻位居中）——映射区顶必须再内缩这半高：
- *  刻痕盒 top = stripY − MARK_HALF，不内缩时最上一枚刻痕的盒顶会越过书眉
- *  下缘，那几像素点在书眉（命中归标题栏＝拖窗口），点刻痕点不中。 */
+ *  刻痕盒 top = stripY − MARK_HALF，不内缩时最上一枚刻痕的盒顶会越出带体顶
+ *  （越出即进书眉带：那几像素点在书眉＝拖窗口，点刻痕点不中）。 */
 export const MARK_HALF = 4;
-/** 映射区顶（页面坐标）= 书眉下缘 + 刻痕半高：带内一切（墨迹 canvas / 刻痕 /
- *  滑块 / 未读区 / hover 索引）共用此几何真源，无一元素越界到书眉带。 */
-export const STRIP_TOP = TOC_TOP + MARK_HALF;
+/** 映射区顶（**带体坐标**）= 刻痕半高：带体本身已从书眉下缘起，带内一切
+ *  （墨迹 canvas / 刻痕 / 阶段锚 / 滑块 / 未读区 / hover 卡）共用此几何真源、
+ *  恒 top ≥ 0——「不越进书眉带」由「带体不在那一带」结构性保证。 */
+export const STRIP_TOP = MARK_HALF;
+/** hover 卡翻转阈（带体坐标）：hover.y 低于此值时卡片改「挂在红线下方」、
+ *  不再上下居中——卡片最大半高（约 4 行 ≈ 36px）+ 余量。否则贴顶 hover 时
+ *  卡片上半会越出带体（进书眉带，压住标题栏的设置/回首页/窗口钮）。 */
+export const TOC_CARD_FLIP_Y = 40;
+/** 翻转态卡片与红线的间隙（px）。 */
+const TOC_CARD_GAP = 12;
 /** 创作坞槽的坐底抬高（.pp-composer-slot bottom:var(--composer-rise)=96px——
  *  坞顶线 = 页底 −96 −坞高；2026-09-02 拍板 C：两态同位，固定值不随窗口高浮动，
  *  与 tokens.css --composer-rise 同源镜像）。 */
@@ -88,6 +97,14 @@ const HOVER_TEXT_MAX = 120;
 
 /** 未读账本（进程级瞬态 UI 态，键控自清理语义——不持久化，重启即全读）。 */
 const lastReadBySession = new Map<string, number>();
+
+/** hover 卡的锚点（纯函数，带体坐标入/出）：默认上下居中（跟随红线）；
+ *  贴顶时翻转到红线下方——**卡片任何位置都不得越出带体顶**（越出即进书眉带，
+ *  压住标题栏的设置/回首页/窗口钮，2026-09-14 用户报「还是打架」的第二处）。 */
+export function cardAnchorFor(hoverY: number): { top: number; transform: string } {
+  if (hoverY < TOC_CARD_FLIP_Y) return { top: hoverY + TOC_CARD_GAP, transform: 'none' };
+  return { top: hoverY, transform: 'translateY(-50%)' };
+}
 
 /** SourcedBlock → 标记派生输入（payload 摘取；组状态 = 子项聚合）。 */
 function markInputOf(b: SourcedBlock): TocMarkInput {
@@ -143,7 +160,9 @@ export const TocStrip = memo(function TocStrip() {
 
   /* 带体通栏（top:0/bottom:0），映射区 = [书眉下缘 + 刻痕半高, 坞上缘]
    * （元素坐标 = 页面坐标）。底 = 坞顶线（画布区底 − 抬高 − 坞高），不随顶内缩。 */
-  const mappedBottom = Math.max(STRIP_TOP + 1, TOC_TOP + canvasSize.h - COMPOSER_RISE - composerHeight);
+  /* 带体从书眉下缘起（CSS top: var(--bar-h)），映射区 = [刻痕半高, 坞顶线]
+   * ——**带体坐标**（= 页面坐标 − TOC_TOP）。坞顶线 = 画布区底 − 抬高 − 坞高。 */
+  const mappedBottom = Math.max(STRIP_TOP + 1, canvasSize.h - COMPOSER_RISE - composerHeight);
   /* ── 标记/锚点派生（几何槽位回填 worldY/worldH；一次建索引防 O(n²)）──
    * P2-3（2026-09-02 拖动卡顿专项）：依赖收窄到内容侧原语/稳定内层引用——
    * 原实现挂 activeRegion 对象引用，regions memo 每 pan 帧换引用 → 全部
@@ -490,7 +509,11 @@ export const TocStrip = memo(function TocStrip() {
       ))}
       {streaming && <div className="pp-toc-head" style={{ top: mappedBottom - 2 }} />}
       {hover && (
-        <div className="pp-toc-card" style={{ top: hover.y }} role="tooltip">
+        <div
+          className="pp-toc-card"
+          style={{ top: cardAnchorFor(hover.y).top, transform: cardAnchorFor(hover.y).transform }}
+          role="tooltip"
+        >
           {hover.text}
         </div>
       )}

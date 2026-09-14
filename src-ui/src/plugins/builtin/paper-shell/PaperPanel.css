@@ -3686,16 +3686,21 @@
 /* ── 目次带 v2（2026-09-01 minimap 换血：右缘窄条、屏幕固定、内容跟随活跃会话）──
  * 三层：canvas 内容指纹（.pp-toc-ink）/ 滑块与未读区（视口投影）/ 语义刻痕
  * （user=朱砂横杠 / tool=石青 / plan=石墨 / error=--fail 实心短刻——
- * 墨色语义铁律朱砂=人不可挪用，报错走语义状态 --fail）。 */
+ * 墨色语义铁律朱砂=人不可挪用，报错走语义状态 --fail）。
+ * 2026-09-14（用户二报「标题栏还是和目次带打架」→ 带体整体下移）：`top: var(--bar-h)`
+ * ——带体**从书眉（＝窗口标题栏，-webkit-app-region: drag）下缘起**，与标题栏
+ * 不共享一个像素（旧版 top:0 通栏：命中虽一律归书眉，但刻痕盒/墨迹/hover 卡
+ * 都可能越进那一带，且"归属"只靠 z 序遮盖，边界含糊）。映射区顶再内缩刻痕
+ * 半高（组件 STRIP_TOP）→ 带内一切元素恒 top ≥ 0，不越出带体。 */
 .pp-toc {
   position: fixed;
   right: 0;
-  top: 0;
+  top: var(--bar-h); /* 书眉下缘——不与标题栏共享像素（2026-09-14 整体下移） */
   bottom: 0;
   width: 64px;
   border-left: var(--rule-soft);
   background: color-mix(in oklch, var(--paper-deep) 45%, transparent);
-  z-index: 5; /* 通栏但居画布之上、坞槽(z-6)/书眉(z-30)之下——头尾被实体件遮住 */
+  z-index: 5; /* 居画布之上、坞槽(z-6)之下；书眉不再与之重叠（带体已下移） */
   user-select: none;
   touch-action: none;
   cursor: pointer;

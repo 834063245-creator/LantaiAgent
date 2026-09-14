@@ -13,6 +13,8 @@
 // canvas / 刻痕 / 滑块 / 未读区 / hover 索引）共用它——无一元素越界。
 // 另：带外按下不再响应（此前坞下装饰带一点就把视口拽走）。
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -47,7 +49,14 @@ import {
   type PaperRegionContextValue,
 } from '../src/paper/overlay-context';
 import type { RegionView } from '../src/paper/region-view';
-import { MARK_HALF, STRIP_TOP, TOC_TOP, TocStrip } from '../src/plugins/builtin/compose-dock/TocStrip';
+import {
+  cardAnchorFor,
+  MARK_HALF,
+  STRIP_TOP,
+  TOC_CARD_FLIP_Y,
+  TOC_TOP,
+  TocStrip,
+} from '../src/plugins/builtin/compose-dock/TocStrip';
 import { useCanvasViewStore } from '../src/state/canvas-view-store';
 
 /** 流区夹具：2000 世界高、三枚 user 刻痕——最旧块顶 = regionTop，于是最上
@@ -92,10 +101,21 @@ const VIEW_RECT = { x0: -4000, y0: -4000, x1: 4000, y1: 0 };
 const CANVAS_SIZE = { w: 1200, h: 1000 };
 const COMPOSER_HEIGHT = 130;
 /** 书眉下缘（页面坐标）= tokens.css --bar-h 字面量镜像——jsdom 不加载 tokens.css，
- *  测试侧按字面钉死（越界判据的基准，不许跟着实现漂）。 */
+ *  测试侧按字面钉死（CSS 契约断言 + 带体起点语义的基准，不许跟着实现漂）。 */
 const BAR_H = 56;
-/** 映射区底 = 书眉下缘 + 画布区高 − 坞抬高 − 坞高（与组件内同式）。 */
-const MAPPED_BOTTOM = BAR_H + CANVAS_SIZE.h - 96 - COMPOSER_HEIGHT;
+/** 映射区底（**带体坐标**）= 画布区高 − 坞抬高 − 坞高（带体已从书眉下缘起，
+ *  故不再 + 书眉高；与组件内同式）。 */
+const MAPPED_BOTTOM = CANVAS_SIZE.h - 96 - COMPOSER_HEIGHT;
+/** 纸壳样式（.pp-toc 规则所在）：CSS 契约断言用（同 paper-visual-decisions 口径）。 */
+const PANEL_CSS = readFileSync(
+  join(__dirname, '..', 'src', 'plugins', 'builtin', 'paper-shell', 'PaperPanel.css'),
+  'utf8',
+);
+function ruleBody(css: string, selector: string): string {
+  const i = css.indexOf(selector);
+  if (i < 0) return '';
+  return css.slice(i, css.indexOf('}', i));
+}
 
 function regionContext(): PaperRegionContextValue {
   return {
@@ -154,28 +174,49 @@ describe('目次带 × 标题栏（映射区不越界 + 带外不响应）', () 
     });
   }
 
-  it('刻痕与滑块整枚落在书眉下缘之下（y ≥ --bar-h）——最上一枚刻痕不得越界', async () => {
+  it('带体整体下移：CSS top = var(--bar-h)（与标题栏零像素重叠）', () => {
+    const rule = ruleBody(PANEL_CSS, '.pp-toc {');
+    expect(rule).toContain('top: var(--bar-h)');
+    expect(rule).not.toContain('top: 0');
+    // 书眉高三处同源：tokens.css 真源 = 组件字面量镜像 = 本文件基准（改一处必红）
+    const tokens = readFileSync(join(__dirname, '..', 'src', 'app', 'tokens.css'), 'utf8');
+    expect(tokens).toContain(`--bar-h: ${BAR_H}px`);
+    expect(TOC_TOP).toBe(BAR_H);
+  });
+
+  it('刻痕与滑块整枚落在带体内（top ≥ 0）——最上一枚刻痕不得越出带体顶', async () => {
     await mount();
     const marks = [...container!.querySelectorAll('.pp-toc-mark')] as HTMLElement[];
     expect(marks).toHaveLength(3);
     const tops = marks.map((m) => Number.parseFloat(m.style.top));
-    // 最上一枚刻痕盒顶 = STRIP_TOP − MARK_HALF ≥ 书眉下缘（旧实现 = 下缘 − 4：
-    // 那 4px 命中归书眉＝拖窗口，点刻痕点不中，视觉还被书眉压掉半截）
-    expect(Math.min(...tops)).toBeGreaterThanOrEqual(BAR_H);
-    // 映射区顶就是「书眉下缘 + 刻痕半高」（带内一切共用此真源，非巧合值）
-    expect(STRIP_TOP).toBe(TOC_TOP + MARK_HALF);
-    expect(STRIP_TOP - MARK_HALF).toBeGreaterThanOrEqual(BAR_H);
+    // 带体坐标：带体本身从书眉下缘起，故「不越进书眉带」= 带内一切 top ≥ 0。
+    // 最上一枚刻痕盒顶 = STRIP_TOP − MARK_HALF = 0（旧旧实现 = 页面 52 < 56：
+    // 那 4px 命中归书眉＝拖窗口，点刻痕点不中）
+    expect(Math.min(...tops)).toBeGreaterThanOrEqual(0);
+    expect(STRIP_TOP).toBe(MARK_HALF); // 映射区顶 = 刻痕半高（带体坐标）
+    expect(STRIP_TOP - MARK_HALF).toBe(0);
     const slider = container!.querySelector('.pp-toc-slider') as HTMLElement;
     expect(Number.parseFloat(slider.style.top)).toBeGreaterThanOrEqual(STRIP_TOP);
   });
 
-  it('带内按下 = 跳视口；书眉带（y < 下缘）与坞下装饰带按下一律不响应', async () => {
+  it('hover 卡不越出带体顶：贴顶时翻转到红线下方（压不住标题栏按钮区）', () => {
+    // 居中态：卡片半高（≤4 行 ≈36px）小于翻转阈 → 上缘恒 ≥ 0
+    expect(TOC_CARD_FLIP_Y).toBeGreaterThanOrEqual(36);
+    expect(cardAnchorFor(TOC_CARD_FLIP_Y)).toEqual({ top: TOC_CARD_FLIP_Y, transform: 'translateY(-50%)' });
+    // 贴顶态：翻到红线下方，卡片不向上溢出
+    const top = cardAnchorFor(2);
+    expect(top.transform).toBe('none');
+    expect(top.top).toBeGreaterThan(2);
+    expect(cardAnchorFor(0).top).toBeGreaterThanOrEqual(0);
+  });
+
+  it('带内按下 = 跳视口；带体顶（y < 映射区顶）与坞下装饰带按下一律不响应', async () => {
     await mount();
     const nav = container!.querySelector('.pp-toc') as HTMLElement;
     const before = useCanvasViewStore.getState().view.panY;
 
-    // 书眉带（y = 50 < 56）：命中本属标题栏拖动带，目次带不得顺手拽走视口
-    pointerDown(nav, BAR_H - 6);
+    // 带体顶之上（带体坐标 y = 0 即书眉下缘；书眉带归标题栏拖动/窗口钮）
+    pointerDown(nav, 0);
     expect(useCanvasViewStore.getState().view.panY).toBe(before);
 
     // 坞下装饰带（映射区底之下）：无语义，按下同样不响应
@@ -183,7 +224,7 @@ describe('目次带 × 标题栏（映射区不越界 + 带外不响应）', () 
     expect(useCanvasViewStore.getState().view.panY).toBe(before);
 
     // 带内：点带即跳照旧生效（断言不为空转）
-    pointerDown(nav, BAR_H + 300);
+    pointerDown(nav, STRIP_TOP + 300);
     expect(useCanvasViewStore.getState().view.panY).not.toBe(before);
   });
 });
