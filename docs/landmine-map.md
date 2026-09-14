@@ -140,3 +140,24 @@
 | B1 | `target/<profile>/_up_/src-ui/dist-plugins/`（cargo tauri build/dev 的资源拷贝落点） | Tauri 资源拷贝**合并不清空**——源侧 `src-ui/dist-plugins`（build-builtin-plugins 每次 `rmSync` 全量重建、永远干净）删除/改名的产品目录，在 exe 侧资源目录永久残留成僵尸 | 图谱退役（51047f99 删 engine-domain/graph-builtin）后 17:02 重新打包 → 两僵尸残留 → 产物通道照常装载（装配断层对账只查「缺」不查「多」）→ graph-builtin inject 的服务已删 → fiber 永停 PENDING → **boot-gate fail-loud 杀掉 bootShell** → chatPanel 永空 → 进任何工作区报「会话核心未初始化，无法绑定目录」；首页其余一切正常（工作区列表走独立 RPC，症状极具迷惑性） | ✅ 已拆僵尸（2026-09-10 实机删除 `target\release\_up_` 与 `target\debug\_up_` 两侧残留，CDP 验证 boot 全绿 43 fiber 全 ACTIVE + 端到端进工作区「✨ 工作区已就绪」）。复发防线 = **拍板 A：纪律**——退役/改名产品时顺手删两侧 `_up_\src-ui\dist-plugins\builtin\hologram\<产品>` 对应目录（2026-09-10 用户拍板；b = build.cmd 前置清理、c = 装载器拒载非第一方 `hologram/*` 通道产物，两案备而未拍） |
 
 **取证备忘**：boot 期错误不落 ui.log——`initLogger` 挂在 `Workspace.open`（workspace.ts），boot 被杀 → 永远进不了工作区 → logPath 恒空 → 错误只进 WebView console。唯一取证面 = CDP：`tauri.conf.json` `additionalBrowserArgs: "--remote-debugging-port=9222"` 已开，`http://127.0.0.1:9222/json/list` 取 webview target，WebSocket + `Runtime.enable` 即可收 console——且 Runtime.enable 会**重放上一轮 boot 的全部 console 历史**（含旧故障现场），区分「历史重放」与「本次 boot」勿误判。
+
+---
+
+## 第四批审计（2026-09-14）— 回复链路活性家族
+
+> 来源：用户报「发出消息到收到回复的 pipeline 有断点、模型经常不响应，模型通讯是通的」。
+> 定性结论（重要，别记错）：**本次症状的真凶是链路挂起**（HTTP 通了但一个字节不回）——
+> 09-12 的 `7dac038b`（挂起走时间预算）就修好了，只是当时在跑的是 09-11 02:19 的旧
+> exe，修复没编进二进制；换上新二进制后症状消失。下面是同族病灶（不是本次症状）。
+> 家族指纹：**活性保障只有一层、且只认一种失败形态**——`idle-stream` 的 30s 守卫只会
+> `ctrl.abort()` 一个 fetch，掐不断不理会 signal 的 await；而"是不是用户主动停止"
+> 全靠错误文本猜。两者叠加的后果统一为：**用户看见「发出去没回应」，案卷里留下悬空
+> 来文，日志里连一行都没有**。
+
+| # | 位置 | 雷 | 触发 → 后果 | 状态 |
+|---|------|----|------------|------|
+| L1 | `agent/retry.ts:52` + `app/chat/chat-core.ts:1042/1370` | 「用户停止」靠 `msg.includes('aborted')` 猜（三处同款） | 非用户的中止（`BodyStreamBuffer was aborted` 这类传输被切断）被当成用户意图 → 不重试 + 不落墓碑 → 案卷留下悬空来文，只闪一条 6.4s toast；且任何含 `aborted` 子串的失败（上游 "request aborted by upstream"）都会被静默吞掉 = 宪法四「错误不静默」违规 | ⏳ 未拆（**阻塞：并行窗口在途改 `agent.ts`(172 行)/`chat-core.ts`/`chat-stream.ts`，落点正在其改动区内**）。落点已定：`streamOnce` catch 改三支——`idleTimedOut`→`[响应超时]`；`signal.aborted`→结构化 user-abort 哨兵（`name='UserAbortError'`，事实判定，不读文本）；其余中止族→`[传输中断]`（进 isRetryable 计数预算，不再冒充取消）。`chat-core` 两处 catch 改用 `signal.aborted`（`paused after` 分支保持在前，语义不变）。验收环 = `tests/chat-send-liveness.test.ts`（现 2 红未提交，正是本条 + L3） |
+| L2 | `provider/transport.ts` / `provider/credentials.ts` | 上路本机 IPC 无超时 + 失败结果永久缓存（含负缓存） | 一次瞬态故障被伪装成「配置事实」且不可恢复：`getProxyPort` 钉在 0 → 此后恒走直连（CORS 不放行的厂商全废）；`resolveApiKey` 把 IPC 抛错记成「没有 Key」→ 恒报 MISSING_CREDENTIAL 而设置里 Key 明明在；`resolveOauthToken` 同款（瞬态故障记成「未登录」）。三条都只能重启自愈、日志无痕 | ✅ 已拆（Commit `4c4a8206`：三处改 `typedRpcWithTimeout`（5s/10s/30s）+ 失败不落缓存，真负结果（确实无 Key / 真是 OAUTH_NO_GRANT）仍缓存；同批修 `proxyFetch` 吞掉 abort 后回退重发。钉子 `tests/provider-cap-liveness.test.ts` 8 例） |
+| L3 | `provider/idle-stream.ts` + `agent/agent.ts:stream()` | 无「请求硬截止」：全链路唯一的活性守卫只会 abort fetch | 卡在非 fetch 的 await（本机 IPC / 凭据解析 / 任何不理会 signal 的等待）时，30s 守卫是**空操作** → 回合永久挂起：无错误、无重试、无日志、无 UI 反馈，UI 永卡运行态直到重启 | ⏳ 未立项（②.2）。复现配方（L2 已把最容易命中的入口堵上，但通用缺口仍在）：假 provider 的 `stream()` 里 `await new Promise(()=>{})` 永不落定且不理会 signal，推进假时钟 120s，`agent.run()` 仍不 settle。落点需动重试循环核心（被遗弃的尝试仍可能往 executor 塞工具），要定参数并处理遗弃语义——单独立项，别顺手做 |
+| L4 | `workspace.ts:840` (`onSessionPersisted`) + `:778` (`subAgentSpawner`) | 注释声称「已改用本工厂闭包捕获的 agent，不再经共享 `agentRef.current`」，代码里仍是 `agentRef.current?.insertMessage(...)` | 多会话并发时 turn-start 块 / 子 Agent 派生落进「最后创建的卷」= 注入错卷（与 2026-08-13 多会话错位事故同族）。半径小（只影响提醒注入与 spawn 归属），但注释与代码不符，下次读代码的人会被误导 | ⏳ 未拆（低危，记录在案） |
+
