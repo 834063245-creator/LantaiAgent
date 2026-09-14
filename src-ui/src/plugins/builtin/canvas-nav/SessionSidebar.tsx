@@ -121,9 +121,28 @@ function computeStatus(
 
 export const SessionSidebar = memo(function SessionSidebar() {
   const core = useCoreStore((s) => s.core);
-  const [rows, setRows] = useState<SidebarRow[]>([]);
+  /* ── 两源分离（2026-09-14：与 SpineRack 同批的竞态根治）──
+   * 摊开集（内存 sess store）与磁盘已存卷清单（listSavedSessions）各入各的
+   * state，行集在渲染期合流。病史：此前把合流结果直接 setRows，而**异步磁盘
+   * 应答的续体用的是发起那一刻捕获的摊开集**——合卷/删卷一瞬连发数次
+   * listSavedSessions（sess/agent/ask/space/消息 store 多条订阅各触发一次），
+   * 先发的应答后到就把旧清单写回，已合卷的卷闪回「摊开中」节（书脊同病灶，
+   * 2026-09-14 用户报书脊「被合卷那根先消失又闪回来」）。 */
+  const [openRows, setOpenRows] = useState<Array<{ id: number; label: string; msgCount: number }>>([]);
+  const [savedRows, setSavedRows] = useState<Parameters<typeof mergeSessionRows>[1]>([]);
   /** 当前活跃卷 id（渲染当前卷朱砂标记；status 计算也要用）。 */
   const [activeSid, setActiveSid] = useState<number | null>(null);
+  /** 任一卷有在途提问（提问卡本身带卷徽标）——行状态点 pending 判据。 */
+  const [askPending, setAskPending] = useState(false);
+  const panelId = core?.panelId ?? '';
+  const rows = useMemo<SidebarRow[]>(
+    () =>
+      mergeSessionRows(openRows, savedRows).map((r) => ({
+        ...r,
+        status: computeStatus(panelId, r, activeSid, askPending),
+      })),
+    [openRows, savedRows, activeSid, askPending, panelId],
+  );
   const [query, setQuery] = useState('');
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [draftLabel, setDraftLabel] = useState('');
@@ -156,35 +175,36 @@ export const SessionSidebar = memo(function SessionSidebar() {
     if (renamingId !== null) renameInputRef.current?.focus();
   }, [renamingId]);
 
+  const refreshSeqRef = useRef(0);
   const refresh = useCallback(() => {
     if (!core) return;
-    const panelId = core.panelId;
+    const pid = core.panelId;
     const pp = useShellStore.getState().projectPath;
-    const st = getChatStore(panelId).sess.getState();
+    const st = getChatStore(pid).sess.getState();
     const active = st.sessions[st.activeIdx]?.id ?? null;
     setActiveSid(active);
     // 并发会话：任一卷有在途提问即标记活跃卷 pending（提问卡本身带卷徽标）
     const askPending = useAskStore.getState().pendingBySession.size > 0;
-    const open = st.sessions.map((s) => ({
-      id: s.id,
-      label: s.label,
-      msgCount: msgStoreFor(panelId, s.id).getState().messages.length,
-    }));
+    setAskPending(askPending);
+    setOpenRows(
+      st.sessions.map((s) => ({
+        id: s.id,
+        label: s.label,
+        msgCount: msgStoreFor(pid, s.id).getState().messages.length,
+      })),
+    );
+    /* 磁盘清单：请求序号防竞态——只认最新一次请求的应答（旧应答丢弃，不得把
+     * 已合卷的卷回灌成「摊开中」）。 */
+    const seq = ++refreshSeqRef.current;
     void core
       .listSavedSessions(pp)
       .then((saved) => {
-        const merged = mergeSessionRows(open, saved).map((r) => ({
-          ...r,
-          status: computeStatus(panelId, r, active, askPending),
-        }));
-        setRows(merged);
+        if (seq !== refreshSeqRef.current) return;
+        setSavedRows(saved);
       })
       .catch(() => {
-        const merged = mergeSessionRows(open, []).map((r) => ({
-          ...r,
-          status: computeStatus(panelId, r, active, askPending),
-        }));
-        setRows(merged);
+        if (seq !== refreshSeqRef.current) return;
+        setSavedRows([]);
       });
   }, [core]);
 

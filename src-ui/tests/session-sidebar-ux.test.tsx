@@ -114,6 +114,60 @@ describe('SessionSidebar 注疏重排（分节/检索/键盘）', () => {
     expect(metas[0]).toContain('未存'); // Cordis 迁移（未落盘摊开卷）
   });
 
+  it('合卷应答竞态：在途旧应答迟到不得把已合卷的卷闪回「摊开中」节', async () => {
+    // 与书脊同病灶（2026-09-14 实机：书脊「被合卷那根先消失又闪回来」）：
+    // 合卷一瞬连发数次 listSavedSessions（sess/agent/ask/space/消息 store
+    // 多条订阅各触发一次），先发的应答后到时把旧摊开集写回 → 已合卷的卷
+    // 闪回「摊开中」。行集改两源分离 + 请求序号收敛后不得回灌。
+    type Saved = { id: number; label: string; msgCount: number; savedAt: string };
+    const pending: Array<(rows: Saved[]) => void> = [];
+    core.listSavedSessions = vi.fn(
+      () =>
+        new Promise<Saved[]>((resolve) => {
+          pending.push(resolve);
+        }),
+    );
+    await mount();
+    expect(pending.length).toBeGreaterThanOrEqual(1); // 首拉在途（旧摊开集 [1,3]）
+    expect(container.querySelectorAll('.ss-section-head .n')[0].textContent).toBe('OPEN · 2');
+
+    // 合卷卷 1（真实路径 core.closeSession 最终只落 sess store 这一写）
+    await act(async () => {
+      getChatStore(panelId).sess.setState({
+        sessions: [{ id: 3, label: 'Cordis 迁移' }],
+        activeIdx: 0,
+        sessionTokens: {},
+        nextSessionId: 4,
+      });
+    });
+    expect(container.querySelectorAll('.ss-section-head .n')[0].textContent).toBe('OPEN · 1');
+
+    // 磁盘清单（卷 1 已合卷、卷 2 未摊开）
+    const disk: Saved[] = [
+      { id: 1, label: '案卷一', msgCount: 2, savedAt: '2026-09-14T02:00:00.000Z' },
+      { id: 2, label: '盘卷甲', msgCount: 5, savedAt: '2026-09-11T00:00:00.000Z' },
+    ];
+    // 合卷后发出的新一轮拉取先落地（新摊开集）
+    const freshFrom = pending.length - 1;
+    await act(async () => {
+      for (let i = freshFrom; i < pending.length; i++) pending[i](disk);
+      await Promise.resolve();
+    });
+    expect([...container.querySelectorAll('.ss-section-head .n')].map((e) => e.textContent)).toEqual([
+      'OPEN · 1',
+      'CLOSED · 2',
+    ]);
+
+    // 先发的旧应答（含被合卷的卷 1 的旧摊开集）最后落地 → 不得把卷 1 写回摊开节
+    await act(async () => {
+      pending[0](disk);
+      await Promise.resolve();
+    });
+    const heads = [...container.querySelectorAll('.ss-section-head .n')].map((e) => e.textContent);
+    expect(heads).toEqual(['OPEN · 1', 'CLOSED · 2']);
+    expect(container.querySelector('.ss-row.open .ss-label')?.textContent).toBe('Cordis 迁移');
+  });
+
   it('检索：即输即滤 + 无匹配空态 + Esc 清空还原（不误收侧栏）', async () => {
     useDockStore.getState().openPanel('canvas-sidebar');
     await mount();

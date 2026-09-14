@@ -25,7 +25,7 @@
 // 视觉迭代秒级热更）——项目内依赖一律经 './host' 取宿主共享真实例
 // （store/service 单例不可内联副本），react 由构建期别名桥共享。
 
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ExecStateInstance } from './host';
 import {
   activeSpace,
@@ -64,20 +64,45 @@ function spineOrder(
 
 export const SpineRack = memo(function SpineRack() {
   const core = useCoreStore((s) => s.core);
-  const [sessions, setSessions] = useState<Array<{ id: number; label: string }>>([]);
+  /* ── 两源分离（2026-09-14「被合卷那根闪回来」根治）──
+   * 摊开集（内存 sess store）与磁盘已存卷清单（listSavedSessions）各入各的
+   * state，卷序在渲染期 useMemo 合流。
+   * 病史：此前把合流结果直接 setSessions，而**异步磁盘应答的续体用的是发起
+   * 那一刻捕获的摊开集**——合卷一瞬会连发数次 listSavedSessions（exec/agent/
+   * space/sess 四条订阅各触发一次 resync，且 listSavedSessions 内部是
+   * 「list_volumes + 每卷并行读文件」的多跳异步），先发的应答后到时就把
+   * 「还没发合卷」的旧清单写回书脊 → 已合卷的卷闪回来。
+   * 现在：摊开集只由内存写（旧值永不回灌），磁盘应答按请求序号收敛（旧的丢弃）。 */
+  const [openRows, setOpenRows] = useState<Array<{ id: number; label: string; msgCount: number }>>([]);
+  const [savedRows, setSavedRows] = useState<Parameters<typeof mergeSessionRows>[1]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [runningIds, setRunningIds] = useState<Set<number>>(new Set());
+  const sessions = useMemo(() => spineOrder(openRows, savedRows), [openRows, savedRows]);
 
-  /* 会话列表 + 运行态同步：sess store 订阅 + agentSessionState 版本订阅
-   * + ctx.space 订阅（流区位置/活跃变化）→ 全量重读。卷序走 spineOrder；
-   * 磁盘卷清单缓存在 savedRowsRef——resync 高频触发（运行态跳变即触发），
-   * 不能每次先回内存数组序再等磁盘应答（卷序会肉眼可见地抖动）。 */
-  const savedRowsRef = useRef<Parameters<typeof mergeSessionRows>[1]>([]);
+  /* ── 磁盘卷清单：请求序号防竞态（只认最新一次请求的应答）──
+   * 缓存留在 state（resync 不清空）——resync 高频触发（运行态跳变即触发），
+   * 每次先回内存数组序再等磁盘应答会让卷序肉眼可见地抖动。 */
+  const savedSeqRef = useRef(0);
+  const refreshSaved = useCallback(() => {
+    if (!core) return;
+    const seq = ++savedSeqRef.current;
+    // 同 SessionSidebar 的 P4-1 教训：工作区路径变化必须重拉 listSavedSessions
+    const pp = useShellStore.getState().projectPath;
+    void core
+      .listSavedSessions(pp)
+      .then((saved) => {
+        if (seq !== savedSeqRef.current) return; // 在途旧应答：丢弃（不得回灌已合卷的卷）
+        setSavedRows(saved);
+      })
+      .catch(() => {});
+  }, [core]);
+
+  /* 内存侧重读：sess store 订阅 + agentSessionState 版本订阅 + ctx.space 订阅
+   * （流区位置/活跃变化）+ 工作区路径变化 → 全量重读。 */
   const resync = useCallback(() => {
     if (!core) return;
     const st = getChatStore(core.panelId).sess.getState();
-    const open = st.sessions.map((s) => ({ id: s.id, label: s.label, msgCount: 0 }));
-    setSessions(spineOrder(open, savedRowsRef.current));
+    setOpenRows(st.sessions.map((s) => ({ id: s.id, label: s.label, msgCount: 0 })));
     const active = st.sessions[st.activeIdx];
     setActiveId(active ? active.id : null);
     const running = new Set<number>();
@@ -85,16 +110,8 @@ export const SpineRack = memo(function SpineRack() {
       if (readRunning(core.panelId, s.id)) running.add(s.id);
     }
     setRunningIds(running);
-    // 同 SessionSidebar 的 P4-1 教训：工作区路径变化必须重拉 listSavedSessions
-    const pp = useShellStore.getState().projectPath;
-    void core
-      .listSavedSessions(pp)
-      .then((saved) => {
-        savedRowsRef.current = saved;
-        setSessions(spineOrder(open, saved));
-      })
-      .catch(() => {});
-  }, [core]);
+    refreshSaved();
+  }, [core, refreshSaved]);
 
   useEffect(() => {
     if (!core) return;
