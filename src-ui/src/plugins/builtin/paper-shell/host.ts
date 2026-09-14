@@ -22,6 +22,10 @@ export { PluginBoundary } from '../../../app/PluginBoundary';
 export { ConfirmDialog } from '../../../app/panels/settings/ConfirmDialog';
 export { useShellStore } from '../../../app/shell-store';
 export { WinControls } from '../../../app/WinControls';
+/* 标题栏交互（2026-09-14 app-region 全面退役）：书眉拖拽/双击最大化走 Tauri 原生
+ * 通道——触发范围由元素自己判定（WebView2 的 app-region 行窗只在启动时按当时页面
+ * 算一次，进画布后会多出一条幽灵标题栏并吃掉书眉按钮）。见 app/window-drag.ts 头注。 */
+export { onTopbarDoubleClick, onTopbarPointerDown } from '../../../app/window-drag';
 export {
   activeOverlayContributions,
   subscribeOverlayContributions,

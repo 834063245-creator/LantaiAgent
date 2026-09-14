@@ -32,6 +32,7 @@ mod rpc;
 mod app;
 mod lifecycle;
 mod cdp;
+mod window_drag_band;
 mod desktop;
 mod uia;
 mod sensitive;
@@ -110,6 +111,10 @@ fn main() {
             // P1d：先注入内置插件产物目录（打包态 resource_dir/builtin——渲染器
             // 插件等第一方产物回退源）；dev/测试由 builtin_plugins_root 兜底仓库。
             plugin_assets::init_builtin_plugins_dir(app.handle());
+            // 拖动带夹紧（2026-09-14 事故立法）：WebView2 宿主窗口把顶部 ~86px 当
+            // caption，而书眉只有 56px——多出的「幽灵标题栏」会吃掉画布顶缘/目次带
+            // 最上方（在那里拖内容＝挪窗口）+ 应用自绘窗口钮。子类化夹到书眉高。
+            window_drag_band::install(app.handle().clone());
             let _proxy_port = llm_proxy::spawn_llm_proxy();
             // 组合层热重载 watcher（S4-2）：~/.lantai/composition/ 根级
             // roster.patch.yml 变更 → composition:changed 事件 → 前端 reload。

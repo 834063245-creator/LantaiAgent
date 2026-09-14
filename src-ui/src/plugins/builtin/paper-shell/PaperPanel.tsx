@@ -45,6 +45,8 @@ import {
   isFoldable,
   leaveToHome,
   needsObservedHeight,
+  onTopbarDoubleClick,
+  onTopbarPointerDown,
   PaperDockContext,
   PaperRegionContext,
   PluginBoundary,
@@ -608,7 +610,12 @@ export function PaperPanel() {
     <PaperDockContext.Provider value={dockContext}>
       <PaperRegionContext.Provider value={regionContext}>
         <div className="pp-root" ref={paperRootRef}>
-          <div className="pp-topbar">
+          {/* 书眉 = 窗口标题栏（2026-09-14 app-region 退役）：拖动/双击最大化由本元素
+              自己接 pointerdown 走 Tauri 原生通道——触发范围恰好是本元素；WebView2 的
+              app-region 行窗只在启动那一刻按当时页面算一次（首页 ~88px），进画布后会
+              多出一条幽灵标题栏并吃掉书眉按钮（详见 app/window-drag.ts 头注）。 */}
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: 窗口拖拽热区（decorations:false 的标题栏） */}
+          <div className="pp-topbar" onPointerDown={onTopbarPointerDown} onDoubleClick={onTopbarDoubleClick}>
             <span className="pp-title">画布</span>
             <span className="pp-tag">兰台 · CANVAS</span>
             {/* 缩放控件（2026-09-08 缩放舒适度拍板）：−/+ 阶梯步进（ZOOM_STEPS

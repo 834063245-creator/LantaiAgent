@@ -174,19 +174,16 @@ body:has(#settings-panel-overlay)::before {
   background: var(--laid-lines), var(--light-fall), var(--vignette);
 }
 
-/* ── 顶部书眉（窗口拖拽区 + 品牌 + 设置入口 + 窗口控制）── */
+/* ── 顶部书眉（品牌 + 设置入口 + 窗口控制）──
+ * 2026-09-14：拖动/双击最大化改由 app/window-drag.ts 接管（app-region 全面退役，
+ * 见该文件头注：WebView2 行窗只在启动时按当时页面算一次）。 */
 .sh-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 20px 48px 16px;
   border-bottom: var(--rule-hard); /* 浸墨：书眉底线升硬线（屏级分区） */
-  -webkit-app-region: drag;
   flex-shrink: 0;
-}
-.sh-head button,
-.sh-head .wc-btns {
-  -webkit-app-region: no-drag;
 }
 .sh-brand {
   display: flex;

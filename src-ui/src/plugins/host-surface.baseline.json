@@ -1,5 +1,5 @@
 {
-  "fingerprint": "338d1411",
+  "fingerprint": "d60a1d57",
   "keys": [
     "ANCHOR",
     "CORDIS_TOOL_NAMES",
@@ -123,6 +123,8 @@
     "notifyAgentConfigChanged",
     "onDynamicFetchChange",
     "onSettingsSaved",
+    "onTopbarDoubleClick",
+    "onTopbarPointerDown",
     "panBy",
     "persistSecrets",
     "pickDropAnchor",

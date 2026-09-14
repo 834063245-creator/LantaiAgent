@@ -26,6 +26,7 @@ import { useDockStore } from '../state/dock-store';
 import { useUpdateStore } from '../state/update-store';
 import { useShellStore } from './shell-store';
 import { WinControls } from './WinControls';
+import { onTopbarDoubleClick, onTopbarPointerDown } from './window-drag';
 
 /** 已知工作区行（Rust WorkspaceSummary 同形——类型由 workspace_list schema 推导）。 */
 type KnownWorkspace = WorkspaceSummary;
@@ -64,34 +65,9 @@ function formatSessionDate(iso: string | null | undefined): string {
   return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** 顶栏拖拽窗口 — CSS -webkit-app-region: drag 无效时（Linux WM）用 Tauri 原生拖拽兜底。 */
-interface TauriInternals {
-  metadata?: { currentWindow?: { label?: string } };
-  invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
-}
-function handleBarPointerDown(e: React.PointerEvent): void {
-  const target = e.target as HTMLElement;
-  if (target.closest('button, input, kbd, .wc-btns')) return;
-  if (document.documentElement.getAttribute('data-platform') !== 'linux') return;
-  const ta = (window as unknown as { __TAURI_INTERNALS__?: TauriInternals }).__TAURI_INTERNALS__;
-  if (ta?.invoke) {
-    ta.invoke('plugin:window|start_dragging', {
-      label: ta.metadata?.currentWindow?.label || 'main',
-    }).catch((err) => console.warn('start_dragging failed', err));
-  }
-}
-
-/** 标题栏双击最大化 */
-function handleBarDoubleClick(e: React.MouseEvent): void {
-  const target = e.target as HTMLElement;
-  if (target.closest('button, input, kbd, .wc-btns')) return;
-  const ta = (window as unknown as { __TAURI_INTERNALS__?: TauriInternals }).__TAURI_INTERNALS__;
-  if (ta?.invoke) {
-    ta.invoke('plugin:window|toggle_maximize', {
-      label: ta.metadata?.currentWindow?.label || 'main',
-    }).catch((err) => console.warn('toggle_maximize failed', err));
-  }
-}
+/* 顶栏拖拽/双击最大化：实现收在 app/window-drag.ts（单一真源，书眉与首页共用）。
+ * 2026-09-14 app-region 全面退役——页面两处标题栏都不再声明 app-region，
+ * 命中范围由元素自己判定（见该文件头注：WebView2 行窗只在启动时算一次）。 */
 
 export function SessionsHome() {
   const openPanel = useDockStore((s) => s.openPanel);
@@ -329,7 +305,7 @@ export function SessionsHome() {
     <div className="sh-root">
       {/* 顶部书眉：印章 + 兰台 wordmark + tagline · 右侧设置入口 + 窗口控制 */}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: 窗口拖拽热区（decorations:false 的标题栏） */}
-      <header className="sh-head" onPointerDown={handleBarPointerDown} onDoubleClick={handleBarDoubleClick}>
+      <header className="sh-head" onPointerDown={onTopbarPointerDown} onDoubleClick={onTopbarDoubleClick}>
         <div className="sh-brand">
           <span className="sh-seal" role="img" aria-label="印章：蘭臺"></span>
           <span className="sh-wordmark">兰台</span>

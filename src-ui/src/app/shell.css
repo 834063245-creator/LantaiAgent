@@ -12,7 +12,6 @@
   display: inline-flex;
   align-items: center;
   gap: 0;
-  -webkit-app-region: no-drag;
   flex-shrink: 0;
 }
 .wc-btn {

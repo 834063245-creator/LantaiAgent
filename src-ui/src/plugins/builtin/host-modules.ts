@@ -57,6 +57,7 @@ import { ProviderPage } from '../../app/panels/settings/ProviderPage';
 import { SkillsPage } from '../../app/panels/settings/SkillsPage';
 import { useShellStore } from '../../app/shell-store';
 import { WinControls } from '../../app/WinControls';
+import { onTopbarDoubleClick, onTopbarPointerDown } from '../../app/window-drag';
 import { isMockMode, watchFileDragDrop } from '../../bridge';
 import { ContributionChannel } from '../../composition/contribution-channel';
 import { activeOverlayContributions, subscribeOverlayContributions } from '../../composition/overlay-service';
@@ -412,6 +413,9 @@ const faceDeps = {
   createWaitTool,
   createCordisTools,
   CORDIS_TOOL_NAMES,
+  // 标题栏交互（2026-09-14 app-region 退役）：书眉拖拽/双击最大化的原生实现
+  onTopbarPointerDown,
+  onTopbarDoubleClick,
   createAssetTools,
   // office 域（2026-09-13 C 路）——**漏登记会让产物域 impl.createOfficeTools = undefined
   // → apply 期 TypeError → boot gate fail-loud 挂住 → chat 壳行不起（表现为
