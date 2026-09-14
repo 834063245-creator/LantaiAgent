@@ -73,7 +73,7 @@ cookbook（`docs/cookbook/`）+ 发布路径（`docs/user/develop/`）是平台�
 | `ctx.fs` | `builtin/rust-fs` | fsExecute（fs 域 11 动作） | `seam/fs` |
 | `ctx.shell` | `builtin/rust-shell` | shellExecute（shell 域四动作；subprocess 并入） | `seam/shell` |
 | `ctx.sessionPersistence` | `builtin/rust-sessions` | sessionExecute（会话卷四动作 read_volume/list_volumes/save_volume/delete_volume——chat-session/chat-core 产品会话持久化全链） | `seam/sessionPersistence` |
-| `ctx.graph` | `builtin/rust-graph` | graphExecute（hologram 域） | `seam/graph` |
+| `ctx.graph` ~~`builtin/rust-graph`~~ | —（随图谱功能全量退役，2026-09-09） | ~~graphExecute（hologram 域）~~ | ~~`seam/graph`~~ |
 | `ctx.agentLoop` | `builtin/default` | Agent.runLoop | —（契约可替换，patch 域未开） |
 | 事件面 | —（D4 表） | emitLoopEvent 开关 | `seam/loopEvents` |
 
@@ -144,7 +144,7 @@ manifest，随包携带（`tauri.conf.json` resources 目录映射
 | 概念 | 是什么 | 真源 |
 |---|---|---|
 | 插件 | 自包含 ESM 模块（`{ name, inject?, apply(ctx) }`） | 本文档 |
-| 贡献通道 | `ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.llm`（LLM adapter）/ `ctx.subagents`（子代理 provider）/ `ctx.fs` / `ctx.shell`（subprocess 并入）/ `ctx.sessionPersistence` / `ctx.graph`（后端能力四 seam，平台化 Phase 2 · D11）/ `ctx.renderers`（块渲染器，V3b）/ `ctx.prompts`（prompt 段，P4 A-1）/ `ctx.hooks`（管道钩子，P4 A-2）/ `ctx.capabilities`（capability，P4 A-3） | `src-ui/src/composition/services.ts` + `subagent-service.ts` + `fs-service.ts` + `shell-service.ts` + `session-persistence-service.ts` + `graph-service.ts` + `renderer-service.tsx` + `prompt-service.ts` + `hook-service.ts` + `capability-service.ts` |
+| 贡献通道 | **九条贡献通道**：`ctx.panels` / `ctx.commands` / `ctx.tools` / `ctx.llm`（LLM adapter）/ `ctx.prompts`（prompt 段，P4 A-1）/ `ctx.hooks`（管道钩子，P4 A-2）/ `ctx.capabilities`（capability，P4 A-3）/ `ctx.renderers`（块渲染器，V3b）/ `ctx.overlays`（画布覆盖层）——**同一个注册表内核**（`contribution-channel.ts` 的 `ContributionChannel`，2026-09-14 M1 收口；`timing` 声明生效时机）；**五条 seam provider 注册表**：`ctx.subagents` / `ctx.fs` / `ctx.shell`（subprocess 并入）/ `ctx.sessionPersistence` / `ctx.agentLoop`（后端替换，平台化 Phase 1/2）；`ctx.graph` seam 随图谱功能全量退役（2026-09-09） | `src-ui/src/composition/contribution-channel.ts`（内核）+ `services.ts` / `renderer-service.tsx` / `prompt-service.ts` / `hook-service.ts` / `capability-service.ts` / `overlay-service.ts` / `subagent-service.ts` / `fs-service.ts` / `shell-service.ts` / `session-persistence-service.ts`（各通道） |
 | 行（row） | 组合的最小单元——工具族/prompt 段/capability/壳行各有 id | `src-ui/src/composition/*` |
 | preset | 命名的行组合叠加层（standard/minimal 内置 + 用户目录） | §8 + `docs/composition/README.md` |
 | patch | 四域行的增量数据（禁用/覆盖/插入） | `docs/composition/README.md` |
@@ -505,12 +505,12 @@ ctx.effect(
 
 ### ctx.capabilities —— capability 贡献（下次 Agent 装配生效）
 
-第八贡献通道（P4 A-3，2026-08-24；B⑤ 收官同日——十五项第一方 capability 也
+第八贡献通道（P4 A-3，2026-08-24；B⑤ 收官同日——十四项第一方 capability 也
 经本通道贡献，出厂 builtinCapabilities() 退役）：向 Agent 装配表贡献
 **capability**——会话级能力的组合单元（工具 + hooks + ctx 服务 + Agent 接线一把抓）。
 这是**深集成通道**：install 拿到与第一方 capability 完全同一的装配视图
 （BlueprintScope——ctx/inputs/tools/hooks/preflightHooks/deps/agent），与
-`firstPartyCapabilities()` 十五项（B⑤ 起同样经通道注册——真源
+`firstPartyCapabilities()` 十四项（B⑤ 起同样经通道注册——真源
 `plugins/builtin/capability-segments/`）在同一张 blueprint 表上竞争。设计件：
 `docs/plans/composition-architecture/designs/A3-capability-contribution-channel.md`。
 
@@ -533,7 +533,7 @@ ctx.effect(
 关键语义：
 
 - **贡献序 = 注册序（B⑤ 后唯一行源）**：capabilities 域 = ctx.capabilities
-  贡献快照——第一方十五项经 `hologram/capability-segments` 插件注册（注册序 =
+  贡献快照——第一方十四项经 `hologram/capability-segments` 插件注册（注册序 =
   firstPartyCapabilities() 清单序 = 迁移前出厂表序，字节契约/前缀缓存纪律由
   清单序保住）；外部贡献接在第一方之后（装载序 = BUILTIN_PLUGINS 表尾在
   外部插件之前）。无通道环境 = 空能力表（B④ prompt 域同款注册面依赖——
@@ -545,7 +545,7 @@ ctx.effect(
   既有消费者零变化）。**注意**：插件卸载后 patch 里残留的 key 会变
   未知 id → 整个用户层 patch 被拒（all-or-nothing 既有语义，处置 = 删失效
   条目）。
-- **重名装载期拒绝**：撞注册表现有 key 即 throw——B⑤ 后第一方十五项本身在
+- **重名装载期拒绝**：撞注册表现有 key 即 throw——B⑤ 后第一方十四项本身在
   注册表里（装载序在先），撞第一方 key（如 `auto-tune`）同样走此径；畸形
   形状（key 空 / phase 非法 / install 缺函数）同样装载期拒绝（外部插件是纯
   JS——fail-fast，不潜伏到会话装配期）。
@@ -630,8 +630,9 @@ capability）本就只能在下次 Agent 装配体现，boot 期跳过是最诚�
 ### 示例：外部 MCP server 承载真实能力（平台化 P4 · D1 收口，P4-C5）
 
 `examples/plugins/dataflow-mcp/`——**MCP 是能力加面路径之一（不是唯一）**
-的活例子：dataflow 查询既可走进程内 seam（`ctx.graph` / dataflow RPC），
-也可走外部 MCP server（本例）。插件 manifest 以 `mcpServers` 声明
+的活例子：dataflow 查询既可走进程外 MCP server（本例），也可走壳内 RPC 直呼
+（图谱 seam `ctx.graph` 已于 2026-09-09 随图谱功能全量退役——本示例保留，
+因为外部 MCP 路径与图谱退役无关）。插件 manifest 以 `mcpServers` 声明
 `node ./server.cjs`（`./` 前缀 arg 相对插件目录解析），零依赖 Node 进程
 直读 `<工作区>/.lantai/dataflow/*.json`（格式与 dataflow_service.rs 逐字段
 对齐），经 MCP `tools/call` 应答——装载后模型可见工具名
