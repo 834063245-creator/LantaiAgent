@@ -50,6 +50,7 @@ import {
 } from '../src/paper/overlay-context';
 import type { RegionView } from '../src/paper/region-view';
 import {
+  anchorBoxTop,
   cardAnchorFor,
   MARK_HALF,
   STRIP_TOP,
@@ -197,6 +198,17 @@ describe('目次带 × 标题栏（映射区不越界 + 带外不响应）', () 
     expect(STRIP_TOP - MARK_HALF).toBe(0);
     const slider = container!.querySelector('.pp-toc-slider') as HTMLElement;
     expect(Number.parseFloat(slider.style.top)).toBeGreaterThanOrEqual(STRIP_TOP);
+  });
+
+  it('带内所有子元素 top ≥ 0（刻痕/锚/滑块一律不越出带体顶）', async () => {
+    await mount();
+    // 实机验收曾当场量到最上一枚阶段锚盒顶越出（页面 47 < 书眉 56）——本用例把它钉住
+    expect(anchorBoxTop(5)).toBe(0); // 贴顶夹紧
+    expect(anchorBoxTop(100)).toBe(86); // 常态：盒以刻位为中心
+    const kids = [...container!.querySelectorAll('.pp-toc-mark, .pp-toc-anchor, .pp-toc-slider')] as HTMLElement[];
+    expect(kids.length).toBeGreaterThan(0);
+    const tops = kids.map((k) => Number.parseFloat(k.style.top));
+    expect(Math.min(...tops)).toBeGreaterThanOrEqual(0);
   });
 
   it('hover 卡不越出带体顶：贴顶时翻转到红线下方（压不住标题栏按钮区）', () => {

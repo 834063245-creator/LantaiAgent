@@ -98,6 +98,15 @@ const HOVER_TEXT_MAX = 120;
 /** 未读账本（进程级瞬态 UI 态，键控自清理语义——不持久化，重启即全读）。 */
 const lastReadBySession = new Map<string, number>();
 
+/** 阶段锚命中盒顶（纯函数，带体坐标）：盒以刻位为中心（高 STAGE_HIT_H），但
+ *  **恒夹在带体内**（≥ 0）——最上一枚阶段锚原本盒顶 = stripY − 14 会越出带体
+ *  （进书眉带：那半截点击归标题栏＝拖窗口；锚是主要导航靶，与刻痕同族病灶，
+ *  2026-09-14 实机验收当场量到 top=47 < 56）。贴顶时盒下压、规线在盒内居中
+ *  （最多 14px 视觉偏差——位置读数本就由墨迹缩略承担）。 */
+export function anchorBoxTop(stripY: number): number {
+  return Math.max(0, stripY - STAGE_HIT_HALF);
+}
+
 /** hover 卡的锚点（纯函数，带体坐标入/出）：默认上下居中（跟随红线）；
  *  贴顶时翻转到红线下方——**卡片任何位置都不得越出带体顶**（越出即进书眉带，
  *  压住标题栏的设置/回首页/窗口钮，2026-09-14 用户报「还是打架」的第二处）。 */
@@ -500,7 +509,7 @@ export const TocStrip = memo(function TocStrip() {
           key={a.unitId}
           type="button"
           className="pp-toc-anchor"
-          style={{ top: a.stripY - STAGE_HIT_HALF }}
+          style={{ top: anchorBoxTop(a.stripY) }}
           aria-label={`跳到阶段 ${a.stageIndex}：${a.preview}`}
           onClick={() => {
             if (activeSessionId) flyToPoint(activeSessionId, a.worldY);
