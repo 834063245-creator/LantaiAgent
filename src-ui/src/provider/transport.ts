@@ -14,27 +14,38 @@
 // （Ollama 等本就走 127.0.0.1，无 CORS 问题）、原本放行 CORS 的厂商（DeepSeek）
 // 与测试（mock fetch）仍然成立。
 
-import { typedRpc } from '../rpc-contract';
+import { typedRpcWithTimeout } from '../rpc-contract';
+
+/** 代理端口解析的超时上限（2026-09-13）。
+ *  本机 IPC 正常是毫秒级（Rust 侧只是读一个原子量）；5s 只在 Rust 侧卡死或
+ *  回包丢失时触发——那种情况下按「取不到端口」回退直连，不让一次瞬态故障
+ *  把整轮对话钉死在一个无界 await 上。 */
+export const PORT_RPC_TIMEOUT_MS = 5_000;
 
 let portResolved = 0;
 let portPromise: Promise<number> | null = null;
 
-/** 惰性解析代理端口（一次性）。0 = 不可用（回退直连）。 */
+/** 惰性解析代理端口。0 = 不可用（回退直连）。
+ *  ⚠ 失败**不落缓存**（2026-09-13 修）：旧实现在这里把结果永久钉住——一次
+ *  瞬态失败（后端还没起来 / IPC 卡死）就让整个进程从此走直连；对 CORS 不放行
+ *  的厂商（Anthropic / OpenAI）等于此后每个请求都失败，且直到重启无法自愈。
+ *  失败即清槽：下一次调用重新问一次（多一次 IPC，换可恢复性）。 */
 export function getProxyPort(): Promise<number> {
   if (portResolved) return Promise.resolve(portResolved);
   if (!portPromise) {
     portPromise = (async () => {
       try {
-        // typedRpc 返回 string；parse 出端口号
-        const raw = await typedRpc('llm_proxy_port', {});
+        // 返回 string；parse 出端口号
+        const raw = await typedRpcWithTimeout('llm_proxy_port', {}, PORT_RPC_TIMEOUT_MS);
         const n = Number.parseInt(String(raw ?? '').trim(), 10);
         if (Number.isFinite(n) && n > 0 && n < 65536) {
           portResolved = n;
           return n;
         }
       } catch {
-        /* 后端不可用（dev / 测试）— 回退直连 */
+        /* 后端不可用（dev / 测试）/ IPC 卡死超时 — 回退直连 */
       }
+      portPromise = null;
       return 0;
     })();
   }
@@ -76,7 +87,12 @@ export async function proxyFetch(url: string, init: RequestInit & { signal?: Abo
       return fetch(url, init);
     }
     return resp;
-  } catch {
+  } catch (e) {
+    // 我们自己掐断的（用户停止 / 空闲守卫 abort）→ 直接上抛，**不得回退重发**
+    // （2026-09-13 修）：旧实现在这里无条件 catch 后重发一次直连——一次取消
+    // 变成两次请求，且第二次直连对 CORS 不放行的厂商还会抛出「Failed to fetch」
+    // 掩盖真正的取消语义（被误分类成网络错误 → 白重试）。
+    if (signal?.aborted) throw e;
     // 代理不可达 / CORS / Private Network Access 预检被拦 → 回退直连。
     // DeepSeek 等原本直连可用的厂商不能因为代理链路问题而不可用。
     return fetch(url, init);
