@@ -465,10 +465,18 @@ fn list_preset_dirs(root: &Path) -> Vec<String> {
 
 /// 静态资产响应——CORS/PNA 头与 llm_proxy::cors_response 同一套
 /// （含 access-control-allow-private-network: true，WebView2 PNA 预检需要）。
+///
+/// `cache-control: no-store`（**2026-09-14 事故立法**）：本通道是**无版本号的本地
+/// 文件服务**（产物换文件不改 URL），不发缓存指令时 WebView2 把 entry.js 当可缓存
+/// 资源**跨重启复用**——于是「改插件 = 换产物秒级生效」静默失效。实机证据：磁盘产物
+/// 已换、页面内 fetch 同一 URL 拿到新内容（`clamp=true`），但运行中的模块仍是旧的
+/// （重启后依旧）——排查一小时才落到这行头。本地文件读取廉价，一律 no-store
+/// （不依赖 validator，也就不会出现「有 ETag 但重验证失败仍用旧体」这类变体）。
 fn asset_response(status: StatusCode, mime: &str, body: Bytes) -> Response<BoxBody> {
     Response::builder()
         .status(status)
         .header("content-type", mime)
+        .header("cache-control", "no-store")
         .header("access-control-allow-origin", "*")
         .header("access-control-allow-methods", "GET, POST, OPTIONS")
         .header("access-control-allow-headers", "*")
@@ -516,6 +524,25 @@ mod tests {
         std::fs::write(root.join("hello").join("entry.js"), b"export const spike = 1").unwrap();
         std::fs::write(root.join("plugins.json"), b"{\"disabled\":[]}").unwrap();
         root
+    }
+
+    /// 资产响应必带 `cache-control: no-store`（2026-09-14 事故立法）：产物通道是
+    /// 无版本号的本地文件服务，缺这条头时 WebView2 跨重启复用旧 entry.js——
+    /// 「换产物秒级生效」静默失效（实机排查一小时）。
+    #[test]
+    fn asset_response_disables_caching() {
+        for (status, mime) in [
+            (StatusCode::OK, "text/javascript"),
+            (StatusCode::OK, "application/json"),
+            (StatusCode::NOT_FOUND, "application/json"),
+        ] {
+            let resp = asset_response(status, mime, Bytes::from_static(b"x"));
+            assert_eq!(
+                resp.headers().get("cache-control").and_then(|v| v.to_str().ok()),
+                Some("no-store"),
+                "插件资产响应必须禁缓存（否则产物热更被 WebView2 缓存吃掉）"
+            );
+        }
     }
 
     /// WO-S0B 测试 1：路径遍历拒绝（含 %2e%2e 编码形态、反斜杠、绝对前缀）。
