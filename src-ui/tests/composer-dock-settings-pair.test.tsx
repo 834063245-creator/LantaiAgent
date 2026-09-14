@@ -5,6 +5,11 @@
 // 靠右（组内权限在左、思考收尾）——两件同属「运行策略」成对归堆，不与模型混排。
 // 直接合并成单控件暂缓（权限=工作区级 mode-store、思考=每会话 compose-store，
 // 两真相源硬合会搅浑状态归属）。本文件钉行内 DOM 序防回退。
+//
+// 2026-09-13 规格变更（墨量册落位）：行尾追加**墨量仪表**（pp-ink-sel）——
+// 读数件不是控件，不进「运行策略」对，独立居行最右（用户动作链末端 = 拟文印
+// 正下方的读点；对齐 DSH 把上下文表放在输入条旁的判据）。成对契约不变：
+// 权限+思考仍相邻成对，只是对尾多了仪表。
 
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -64,7 +69,7 @@ describe('创作坞设置行行内排布（2026-09-06 续批二：模型居左�
     await act(async () => {});
   };
 
-  it('模型居左端、权限+思考成对靠右：子序 = 模型 → spacer → 权限 → 思考', async () => {
+  it('模型居左端、权限+思考成对靠右、墨量仪表收行尾：子序 = 模型 → spacer → 权限 → 思考 → 墨量', async () => {
     await mountDock('settings-pair');
     const settings = container.querySelector('.pp-composer-settings')!;
     const classes = [...settings.children].map((el) => el.className);
@@ -73,19 +78,49 @@ describe('创作坞设置行行内排布（2026-09-06 续批二：模型居左�
     const spacerIdx = classes.indexOf('pp-composer-settings-spacer');
     const permIdx = classes.findIndex((c) => c.includes('pp-mode-seg'));
     const thinkIdx = classes.findIndex((c) => c.includes('pp-thinking-sel'));
+    const inkIdx = classes.findIndex((c) => c.includes('pp-ink-sel'));
     expect(msIdx).toBe(0);
     expect(spacerIdx).toBe(msIdx + 1); // 模型与策略对之间隔 spacer——成对被推右
     expect(permIdx).toBe(spacerIdx + 1);
-    expect(thinkIdx).toBe(permIdx + 1); // 思考收尾；权限在组内左侧
-    expect(thinkIdx).toBe(classes.length - 1); // 权限+思考靠行尾
+    expect(thinkIdx).toBe(permIdx + 1); // 思考收尾「运行策略」对；权限在组内左侧
+    expect(inkIdx).toBe(thinkIdx + 1); // 墨量仪表居行最右（读数不插进策略对）
+    expect(inkIdx).toBe(classes.length - 1);
   });
 
-  it('策略对成员相邻无模型插入：权限与思考之间不隔其它控件', async () => {
+  it('策略对成员相邻无模型/仪表插入：权限与思考之间不隔其它控件', async () => {
     await mountDock('settings-pair-adjacent');
     const settings = container.querySelector('.pp-composer-settings')!;
     const children = [...settings.children].map((el) => el.className);
     const permIdx = children.findIndex((c) => c.includes('pp-mode-seg'));
     const thinkIdx = children.findIndex((c) => c.includes('pp-thinking-sel'));
     expect(thinkIdx - permIdx).toBe(1); // 成对相邻
+  });
+
+  it('墨量仪表有活跃卷才出现（无主待命态不冒充读数）', async () => {
+    await mountDock('settings-pair-no-active');
+    expect(container.querySelector('.pp-ink-sel')).not.toBeNull();
+    // 无活跃卷（activeSessionId 置空）→ 仪表不渲染
+    act(() => root?.unmount());
+    root = null;
+    container.innerHTML = '';
+    useCoreStore.getState().setChatCore(fakeCore('settings-pair-idle'));
+    getChatStore('settings-pair-idle').sess.setState({
+      sessions: [],
+      activeIdx: -1,
+      sessionTokens: {},
+      nextSessionId: 1,
+    });
+    act(() => {
+      root = createRoot(container);
+      root.render(
+        createElement(
+          PaperDockContext.Provider,
+          { value: { activeSessionId: null, flyToPoint: vi.fn() } },
+          createElement(ComposerDock),
+        ),
+      );
+    });
+    await act(async () => {});
+    expect(container.querySelector('.pp-ink-sel')).toBeNull();
   });
 });

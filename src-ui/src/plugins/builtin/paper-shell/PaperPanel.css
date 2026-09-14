@@ -2270,8 +2270,284 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 0 0 132px; /* 2026-09-06 收口：定宽——换卷/改名不推挤同行控件，超长截断 */
+  flex: 0 1 auto; /* 2026-09-13：定宽 132px 退役——书眉行右端只有翰/律两枚小钮，
+                     多余空间白白空着，卷名却一律截断在十来个字。
+                     改为「按内容长、封顶 64%」：短名不虚占，长名吃满可读宽度，
+                     换卷/改名仍不推挤右端控件（spacer flex:1 吸收余量）。 */
+  max-width: 64%;
 }
+/* ── 墨量册（2026-09-13）：坞内 token 计量装置 ──
+ * 触发器与思考 pill 同语言（盒→线：纯文字 + 小墨点），面板向上开
+ * （坞贴屏底）；构成三段用墨阶递减（浓 → 淡）——纸墨体系只有墨，
+ * 不引第三色（石青=运行态、朱砂=人的动作，均不占）。 */
+.pp-composer-settings .pp-ink-sel {
+  position: relative;
+  flex: 0 0 auto;
+}
+.pp-composer-settings .pp-ink-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 2px;
+  font-family: var(--f-song);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--snap);
+}
+.pp-composer-settings .pp-ink-trigger:hover,
+.pp-composer-settings .pp-ink-trigger.open {
+  color: var(--seal-deep);
+}
+/* 墨点：占用信号（<80% 浓墨点，近满转朱砂——与坞底墨量线同判据） */
+.pp-ink-trigger-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-2);
+  flex: 0 0 auto;
+}
+.pp-composer-settings .pp-ink-trigger:hover .pp-ink-trigger-dot,
+.pp-composer-settings .pp-ink-trigger.open .pp-ink-trigger-dot {
+  background: var(--seal);
+}
+.pp-composer-settings .pp-ink-trigger.full {
+  color: var(--seal-deep);
+}
+.pp-composer-settings .pp-ink-trigger.full .pp-ink-trigger-dot {
+  background: var(--seal);
+}
+/* 档位词定宽（同思考 pill 纪律）：百分比位数变化不推挤同行控件 */
+.pp-composer-settings .pp-ink-trigger-label {
+  display: inline-block;
+  min-width: 4.5em;
+  text-align: left;
+}
+.pp-composer-settings .pp-ink-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 85;
+  width: 300px;
+  /* 坞贴屏底 + 面板向上开：小窗口（最小 880×600）下整本账可能顶到屏外——
+     封高 + 内部滚动，不裁切也不溢出（同思考菜单的 max-height 纪律）。
+     70vh/520 二选一取小：常规窗口（≥900 高）整本装得下、不滚；矮窗才滚。 */
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--rule-strong);
+  box-shadow: var(--elev-menu);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  animation: pop-up 0.14s cubic-bezier(0.23, 1, 0.32, 1);
+}
+/* 滚动 flex 列的子项不得被压扁：封高态下默认 flex-shrink:1 会把占用条
+   挤成 0 高（2026-09-13 实测 getBoundingClientRect().height = 0——数字自
+   查才逮到的坑，肉眼只当「线画得细」）。 */
+.pp-ink-panel > * {
+  flex: 0 0 auto;
+}
+.pp-ink-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 6px;
+  border-bottom: var(--rule-head);
+}
+.pp-ink-head-title {
+  font-family: var(--f-song);
+  font-size: calc(12px * var(--font-scale));
+  font-weight: 600;
+  color: var(--ink-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp-ink-head-figures {
+  font-family: var(--f-song);
+  font-size: calc(10px * var(--font-scale));
+  color: var(--ink-3);
+  letter-spacing: 0.2em; /* 「回报 / 估算」= 来源徽记，非读数 */
+  white-space: nowrap;
+}
+/* 占用条：总长 = 窗口占比，段宽 = 构成比（估算） */
+.pp-ink-bar {
+  display: flex;
+  height: 6px;
+  background: var(--paper-deep);
+  border: 1px solid var(--rule-soft);
+  overflow: hidden;
+}
+.pp-ink-seg {
+  height: 100%;
+  transition: width 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.pp-ink-seg-system {
+  background: var(--ink-1);
+}
+.pp-ink-seg-tools {
+  background: var(--ink-2);
+}
+.pp-ink-seg-messages {
+  background: var(--ink-3);
+}
+.pp-ink-seg-total {
+  background: var(--ink-1);
+}
+/* ── 册页排印（2026-09-13 二版）─────────────────────────────
+ * 一版是 13 行等重小字（设置表单面孔）——重排为册页：读数当题字（全册唯一
+ * 26px 大字），副行小字距承接分子/分母与预计，账目改两列 grid 且**数值右
+ * 对齐**（账本竖排对齐，眼睛读竖列不读横排），段题复刻首页节题语言
+ * （11px 实心方墨锚点 + 字距题字，浸墨⑤ 完工动作）。 */
+.pp-ink-reading {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin-top: 2px;
+}
+.pp-ink-percent {
+  font-family: var(--f-song);
+  font-size: calc(26px * var(--font-scale));
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink-1);
+  letter-spacing: -0.01em;
+}
+.pp-ink-percent.full {
+  color: var(--seal-deep); /* 句读点朱：全册唯一红字 = 近满预警 */
+}
+.pp-ink-reading-label {
+  font-family: var(--f-song);
+  font-size: calc(11px * var(--font-scale));
+  color: var(--ink-2);
+  letter-spacing: 0.18em;
+}
+.pp-ink-note {
+  margin: 5px 0 0;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+}
+.pp-ink-note-sep {
+  padding: 0 5px;
+  color: var(--ink-4);
+}
+/* 构成图例：横排一行（三格），色点与占用条同色相应 */
+.pp-ink-legend {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  gap: 14px;
+}
+.pp-ink-legend > li {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+.pp-ink-swatch {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  transform: translateY(-1px);
+}
+.pp-ink-legend-label {
+  font-family: var(--f-song);
+  font-size: calc(10px * var(--font-scale));
+  color: var(--ink-3);
+  letter-spacing: 0.08em;
+}
+.pp-ink-legend-value {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  color: var(--ink-2);
+}
+/* 段题：方墨锚点 + 字距题字（首页 .sh-section-title 的册页缩影） */
+.pp-ink-section {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--rule-soft);
+}
+.pp-ink-section-mark {
+  width: 8px;
+  height: 8px;
+  background: var(--ink-1);
+  flex: 0 0 auto;
+}
+.pp-ink-section-title {
+  font-family: var(--f-song);
+  font-size: calc(10px * var(--font-scale));
+  font-weight: 600;
+  color: var(--ink-1);
+  letter-spacing: 0.26em;
+}
+/* 账目：dt 左 dd 右，数值竖排对齐 */
+.pp-ink-ledger {
+  margin: 5px 0 0;
+  display: flex;
+  flex-direction: column;
+}
+.pp-ink-line {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 2px 0;
+}
+.pp-ink-line > dt {
+  font-family: var(--f-song);
+  font-size: calc(11px * var(--font-scale));
+  color: var(--ink-2);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.pp-ink-line > dd {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-1);
+  text-align: right;
+  white-space: nowrap;
+}
+/* 合计行：账目收口（字重上提一档 + 上方弱线，仍不占墨底锚点） */
+.pp-ink-line.strong {
+  margin-top: 2px;
+  padding-top: 5px;
+  border-top: 1px solid var(--rule-soft);
+}
+.pp-ink-line.strong > dt {
+  color: var(--ink-1);
+  font-weight: 600;
+}
+.pp-ink-line.strong > dd {
+  font-size: 12px;
+  font-weight: 600;
+}
+.pp-ink-foot {
+  margin: 8px 0 0;
+  font-family: var(--f-song);
+  font-size: calc(10px * var(--font-scale));
+  line-height: 1.5;
+  color: var(--ink-3);
+  letter-spacing: 0.02em;
+}
+
 /* ── 墨量线（创作坞 v2 2026-08-31）：坞底 1px 墨线──
  * 本卷已用 token 占模型目录窗口的比例；裸数字徽标退役（[0] 是噪音），
  * 读数收进 hover title。近满（>80%）转朱砂预警。 */

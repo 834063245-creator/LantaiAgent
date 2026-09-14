@@ -61,6 +61,7 @@ import {
   useShellStore,
   watchFileDragDrop,
 } from './host';
+import { InkLedger } from './InkLedger';
 import { ModelSelector } from './ModelSelector';
 
 /** 把目录模型描述符映射到已配置 provider 名（跨 provider 搜索时联动切换）。 */
@@ -235,6 +236,16 @@ export const ComposerDock = memo(function ComposerDock() {
   const activeSidNum = activeSessionId != null ? Number(activeSessionId) : null;
   const tokenCount = activeSidNum != null ? (sessionTokens[activeSidNum] ?? 0) : 0;
 
+  /* ── 墨量册读数（2026-09-13）：真源 = 活跃卷 Agent 侧 token 账本 ──
+   * 依赖 sessionTokens 作为重算触发（每次请求入账时 _recordTokens 会写它，
+   * 卷级 store 的订阅随之把本组件重渲一次）——不引入第二个账本副本。 */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sessionTokens 是刻意的「入账触发器」——账本真源在 Agent 侧，用卷级总量当重算信号
+  const tokenStats = useMemo(() => {
+    if (!core || activeSidNum == null) return null;
+    return agentSessionState.getAgent(core.panelId, activeSidNum)?.getTokenStats?.() ?? null;
+  }, [core, activeSidNum, sessionTokens]);
+  const [inkOpen, setInkOpen] = useState(false);
+
   /* ── 草稿（input-store live = 当前活跃会话的输入框；切卷由 chat-session
    *    负责 save/restore sessionDrafts，本组件只读写 live 槽）── */
   const [inputText, setInputTextState] = useState('');
@@ -293,6 +304,7 @@ export const ComposerDock = memo(function ComposerDock() {
     setMenuOpen(false);
     setHelpOpen(false);
     setYinOpen(false);
+    setInkOpen(false);
     setHistHint(false);
   }, [activeSessionId]);
 
@@ -390,8 +402,13 @@ export const ComposerDock = memo(function ComposerDock() {
   // 对墨条生效；网关命名空间 id 目录不中时由覆盖兜底）。fallback 0 = 不
   // 编造，未知不显。分子 = 本卷惰性 token 计数（sess store）。
   // 裸数字徽标退役，读数收进线 hover。
+  // 2026-09-13：分子换轨到 token-meter 读数——旧口径拿「最后一次请求的
+  // total_tokens」（含输出，且是单次请求量）冒充「本卷上下文占用」，两处
+  // 都错；现在用投影占用（提供方 prompt 侧压力 + 采样后载荷增量），无回报
+  // 时回落载荷估算（估计值同样如实标注）。
   const inkWindow = provider ? modelContextWindow(provider, model, 0) : (modelDesc?.contextWindow ?? 0);
-  const inkRatio = inkWindow > 0 && tokenCount > 0 ? Math.min(1, tokenCount / inkWindow) : 0;
+  const inkUsed = tokenStats?.usedTokens ?? tokenCount;
+  const inkRatio = inkWindow > 0 && inkUsed > 0 ? Math.min(1, inkUsed / inkWindow) : 0;
   const thinkingOptions = useMemo(() => {
     const declared = thinkingOptionsFor(modelDesc);
     // P14：有目录声明用声明档位表；无声明也给「自动/关闭」协议安全兜底——
@@ -694,11 +711,12 @@ export const ComposerDock = memo(function ComposerDock() {
 
   /* ── 浮层互斥（2026-09-01 审计）：思考/翰/律/引 四浮层同屏只开一个——
    *    此前各 onClick 只关自己认识的兄弟面板，思考菜单与引面板可叠开（截图实证）。 ── */
-  const toggleLayer = useCallback((layer: 'thinking' | 'menu' | 'help' | 'yin') => {
+  const toggleLayer = useCallback((layer: 'thinking' | 'menu' | 'help' | 'yin' | 'ink') => {
     setSettingsOpen(layer === 'thinking' ? (v) => !v : false);
     setMenuOpen(layer === 'menu' ? (v) => !v : false);
     setHelpOpen(layer === 'help' ? (v) => !v : false);
     setYinOpen(layer === 'yin' ? (v) => !v : false);
+    setInkOpen(layer === 'ink' ? (v) => !v : false);
   }, []);
 
   return (
@@ -1129,17 +1147,34 @@ export const ComposerDock = memo(function ComposerDock() {
             )}
           </div>
         )}
+        {/* 墨量册（2026-09-13）：坞内 token 计量装置——触发器报占用百分比，
+            点开是完整账本（构成 / 压力 / 投影 / 四桶 / 命中率 / 逐轮）。
+            与思考 pill 同隔离级：并入浮层互斥（四层同屏只开一个）。 */}
+        {activeSidNum != null && (
+          <InkLedger
+            stats={tokenStats}
+            sessionLabel={activeSession?.label || `案卷 ${activeSidNum}`}
+            fallbackTotal={tokenCount}
+            open={inkOpen}
+            onToggle={() => toggleLayer('ink')}
+          />
+        )}
       </div>
 
-      {/* 墨量线（v2）：坞底 1px——本卷已用 token 占模型窗口比例，近满转朱砂。
-          裸数字徽标退役；读数进 hover。窗口未知（0）或零用量不显。 */}
+      {/* 墨量线（v2）：坞底 1px——本卷上下文占用占模型窗口比例，近满转朱砂。
+          裸数字徽标退役；读数进 hover。窗口未知（0）或零占用不显。
+          2026-09-13：分子换轨 token-meter 的投影占用（旧「最后一次请求的
+          total_tokens」既含输出又只算单次请求，与「已用上下文」不是一回事）；
+          hover 读数同时给出来源（回报/估算）。 */}
       <div
         className={`pp-inkline${inkRatio > 0.8 ? ' full' : ''}`}
-        style={{ opacity: inkWindow > 0 && tokenCount > 0 ? 1 : 0 }}
+        style={{ opacity: inkWindow > 0 && inkUsed > 0 ? 1 : 0 }}
         title={
-          inkWindow > 0 && tokenCount > 0
-            ? `墨量 ${tokenCount} / ${inkWindow} tok（${Math.round(inkRatio * 100)}%）`
-            : '墨量——本卷已用 token 占模型窗口比例（惰性读取，切回直接读）'
+          inkWindow > 0 && inkUsed > 0
+            ? `墨量 ${inkUsed} / ${inkWindow} tok（${Math.round(inkRatio * 100)}%${
+                tokenStats?.usedSource === 'surface' ? ' · 估算' : ''
+              }）`
+            : '墨量——本卷上下文占用占模型窗口比例（点击设置行右端「墨」看账）'
         }
       >
         <span style={{ width: `${Math.round(inkRatio * 100)}%` }} />

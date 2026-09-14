@@ -374,6 +374,19 @@ describe('浸墨法则钉值（规格书 §10，2026-08-31 用户拍板 B）', (
     expect(ruleBody(PANEL_CSS, '.pp-empty-title')).toContain('var(--weight-display)');
   });
 
+  it('书眉卷名吃满余量（2026-09-13）：定宽 132px 退役——按内容长 + 封顶，不许回退', () => {
+    // 病灶：书眉行右端只有翰/律两枚小钮，132px 定宽把卷名一律截在十来个字，
+    // 白白空着大半行。定稿 = flex 按内容 + max-width 封顶（余量归 spacer）。
+    const target = ruleBody(PANEL_CSS, '.pp-composer-target');
+    expect(target).not.toContain('flex: 0 0');
+    expect(target).toContain('flex: 0 1 auto');
+    expect(target).toContain('max-width: 64%');
+    // 余量吸收件仍在（右端控件不吃卷名宽度）
+    expect(ruleBody(PANEL_CSS, '.pp-composer-settings-spacer')).toContain('flex: 1');
+    // 书眉行不换行纪律不变（换行会与输入行抢高度）
+    expect(target).toContain('text-overflow: ellipsis');
+  });
+
   it('纸层次（2026-09-01 真纸化）：真纹理双资产乘印 + SVG 微颗粒 + 顶光边沉帘纹（body 文档级 before/after）', () => {
     // 真纸纹理资产接线（feTurbulence 程序噪声退役——真纤维/斑点，cover 免接缝；
     // 挂 body 文档级——2026-09-01 实机打回：错挂 .sh-root 时纹理被困首页，画布/面板无纹理）
