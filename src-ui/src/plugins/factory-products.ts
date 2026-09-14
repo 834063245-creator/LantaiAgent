@@ -40,12 +40,21 @@ import { inProcessSubagentPlugin } from './builtin/subagent-in-process';
 import { BUILTIN_ROSTER } from './builtin-roster';
 import type { LantaiPlugin } from './types';
 
-/** 29 个出厂产物插件对象（表序 = 名册 buildOrder——贡献注册序字节契约）。
+/** 30 个出厂产物插件对象（表序 = 名册 buildOrder——贡献注册序字节契约）。
  *  映射函数内构造（惰性）：模块加载期不访问插件对象值（loader 顶层 DEV
  *  展开在 import 图求值中调用本函数——settings-domain 环回时若顶层已读
- *  其插件对象会 TDZ），调用时全部模块已就绪。 */
+ *  其插件对象会 TDZ），调用时全部模块已就绪。
+ *
+ *  M4 收口（2026-09-14）：原先把这一列拆成 `direct`（12）与 `viaChannels`（17）
+ *  两个数组——**分区是惰性的**：两者只喂同一个并集，没有任何代码问「某个产物
+ *  属于哪一路」，也没有任何校验保证放对了数组（放错也照跑）；而那组计数本身
+ *  就是过期手抄（注释写 29，实测覆盖 30）。现合成单列——两个来源的差异是
+ *  import 图的既成事实（② 那层间接是破环用的，见文件头注），不需要在数据结构
+ *  上再表态一次。覆盖性仍由下方逐名册条目 fail-loud 兜底，且新增**同名成簇**
+ *  检测：两个插件名派生出同一个 dir 时，旧的 Object.fromEntries 会静默后者胜。 */
 export function factoryProductPlugins(): LantaiPlugin[] {
-  const direct: LantaiPlugin[] = [
+  const plugins: LantaiPlugin[] = [
+    // ① 直接 import 的产物（供应商 / 渲染器 / UI 面 / agent-loop-service）
     llmAdaptersPlugin,
     inProcessSubagentPlugin,
     builtinFsPlugin,
@@ -58,23 +67,31 @@ export function factoryProductPlugins(): LantaiPlugin[] {
     composeDockPlugin,
     paperMinimapPlugin,
     agentLoopServicePlugin,
-  ];
-  const viaChannels: LantaiPlugin[] = [
+    // ② 经 composition 通道函数取得的产物（薄层各自 import 自己的 builtin——
+    //    这层间接是破环用的：settings-domain → SettingsPanel → PluginsPage →
+    //    loader → factory-products 的直接环会让 settingsPlugin 在 BUILTIN_PLUGINS
+    //    顶层展开求值时未初始化，见文件头注）
     ...firstPartyToolPlugins(),
     ...firstPartyPromptPlugins(),
     ...firstPartyCapabilityPlugins(),
   ];
-  const dirToPlugin: Record<string, LantaiPlugin> = Object.fromEntries(
-    [...direct, ...viaChannels].map((p) => [p.name.replace(/^hologram\//, ''), p]),
-  );
+  const dirToPlugin = new Map<string, LantaiPlugin>();
+  for (const p of plugins) {
+    const dir = p.name.replace(/^hologram\//, '');
+    const prev = dirToPlugin.get(dir);
+    if (prev && prev !== p) {
+      throw new Error(`出厂产物名撞车: ${dir}——两个插件对象派生同一 dir，名册寻址会歧义`);
+    }
+    dirToPlugin.set(dir, p);
+  }
   return BUILTIN_ROSTER.map((e) => {
-    const plugin = dirToPlugin[e.dir];
+    const plugin = dirToPlugin.get(e.dir);
     if (!plugin) throw new Error(`名册条目缺插件对象映射: ${e.dir}——factory-products 漏 import`);
     return plugin;
   });
 }
 
-/** 29 个出厂产物名（dev 模式 loadExternalPlugins 过滤用——防止产物通道
+/** 30 个出厂产物名（dev 模式 loadExternalPlugins 过滤用——防止产物通道
  *  重复装载已在源码域装载的出厂插件）。 */
 export function factoryProductNames(): Set<string> {
   return new Set(factoryProductPlugins().map((p) => p.name));

@@ -26,10 +26,10 @@
 // install 每装配重调）——与 tools 通道的 rowCtx 锁存不同，无跨装配串扰面；
 // 子 Agent 不自动继承（spawnSubAgent 手工装配不经 blueprint——既有语义）。
 
-import { Context } from '../cordis';
 import { capabilitySegmentsPlugin } from '../plugins/builtin/capability-segments';
 import type { LantaiPlugin } from '../plugins/types';
 import { capabilitiesServicePlugin } from './capability-service';
+import { withFirstPartyChannel } from './with-first-party-channel';
 
 /** 经 ctx.capabilities 贡献会话级能力的第一方插件（表序 = 贡献注册序
  *  = 迁移前出厂表序）。B⑤ 收官：capabilitySegmentsPlugin 装载全部
@@ -41,16 +41,8 @@ export function firstPartyCapabilityPlugins(): LantaiPlugin[] {
 /** 在第一方 capability 通道激活期间执行 run（通道随调用拆卸）。
  *  capabilities service 先装载（清单插件的 inject ['capabilities'] 依赖
  *  可解析）；拆卸逆序（服务 dispose 守卫式清空活动读取面——capability
- *  表序是字节敏感面）。 */
-export async function withFirstPartyCapabilityChannel<T>(run: () => Promise<T>): Promise<T> {
-  const root = new Context();
-  const fibers = [await root.plugin(capabilitiesServicePlugin)];
-  for (const plugin of firstPartyCapabilityPlugins()) {
-    fibers.push(await root.plugin(plugin));
-  }
-  try {
-    return await run();
-  } finally {
-    for (let i = fibers.length - 1; i >= 0; i--) await fibers[i].dispose();
-  }
+ *  表序是字节敏感面）。M4 收口：装配体已上收 withFirstPartyChannel
+ *  （纪律见该文件头注）——本文件只负责清单。 */
+export function withFirstPartyCapabilityChannel<T>(run: () => Promise<T>): Promise<T> {
+  return withFirstPartyChannel([capabilitiesServicePlugin], firstPartyCapabilityPlugins(), run);
 }

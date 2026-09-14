@@ -5,12 +5,14 @@
 //   - 名册 dir 集 === 磁盘 builtin 目录集（加/删产物漏改名册 = 红）
 //   - 名册 scope 名 / inject === 各源码 index.ts 插件对象（name/inject 派生零漂移）
 //   - first-party-manifest feature 集 === 名册集（description 从名册读，勿双写）
-//   - 名册无孤儿/重复/序断裂（buildOrder 0..28 连续；31→29 随图谱退役，2026-09-09）
+//   - 名册无孤儿/重复/序断裂（buildOrder 连续；31→30 随图谱退役与后续产物，2026-09-14 核）
+//   - M4：factory-products（dev 装载面）覆盖名册全集且序 = buildOrder
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { BUILTIN_ROSTER, rosterDirs, rosterScopeNames } from '../src/plugins/builtin-roster';
+import { factoryProductPlugins } from '../src/plugins/factory-products';
 import { FIRST_PARTY_MANIFEST } from '../src/plugins/first-party-manifest';
 
 const BUILTIN_SRC = resolve(__dirname, '../src/plugins/builtin');
@@ -93,5 +95,21 @@ describe('builtin-roster（名册单一真源守卫）', () => {
       .sort();
     const rosterNames = [...rosterScopeNames()].sort();
     expect(fpmFeatures).toEqual(rosterNames);
+  });
+
+  /* M4 收口（2026-09-14）：dev 装载面（factory-products 的源码域插件对象）
+   * 此前只有运行期兜底（名册条目缺映射 → 装载时 throw），且它的"12 直接 +
+   * 17 经通道"分区是**惰性**的——放错数组也照跑（两者只喂同一个并集）。
+   * 这里把「覆盖名册全集 + 序 = 名册 buildOrder + 无同名/dir 撞车」钉成断言：
+   * 加产物只改名册就够（漏 import 会在本用例红，而不是等到 dev 启动才炸）。 */
+  it('factory-products 覆盖名册全集且序一致（dev 装载面 —— 无同名/dir 撞车）', () => {
+    const products = factoryProductPlugins();
+    const names = products.map((p) => p.name);
+    const dirs = names.map((n) => n.replace(/^hologram\//, ''));
+
+    expect(new Set(names).size, '两个插件对象同名').toBe(names.length);
+    expect(new Set(dirs).size, '两个插件名派生同一 dir（名册寻址会歧义）').toBe(dirs.length);
+    expect([...dirs].sort()).toEqual([...rosterDirs()].sort()); // 覆盖全集
+    expect(dirs, '序必须 = 名册 buildOrder（贡献注册序 = 字节契约）').toEqual(BUILTIN_ROSTER.map((e) => e.dir));
   });
 });

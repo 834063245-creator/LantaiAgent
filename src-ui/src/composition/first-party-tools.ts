@@ -22,7 +22,6 @@
 // 是最后两族）——组合解析域的 tools 行全量 = 插件贡献行；无通道环境
 // 的 tools 域 = 空行表（行寻址解析须在通道腰内做）。
 
-import { Context } from '../cordis';
 import { agentDomainPlugin } from '../plugins/builtin/agent-domain';
 import { agentIsolationDomainPlugin } from '../plugins/builtin/agent-isolation-domain';
 import { askDomainPlugin } from '../plugins/builtin/ask-domain';
@@ -41,6 +40,7 @@ import { waitDomainPlugin } from '../plugins/builtin/wait-domain';
 import { webDomainPlugin } from '../plugins/builtin/web-domain';
 import type { LantaiPlugin } from '../plugins/types';
 import { compositionServicesPlugin } from './services';
+import { withFirstPartyChannel } from './with-first-party-channel';
 
 /** 经 ctx.tools 贡献工具的第一方域插件（表序 = 贡献注册序 = 装配序；
  *  ①b 后全量十七族：web + browser-desktop（①b 前插，序 = 迁移前行表序）
@@ -78,16 +78,9 @@ export function firstPartyToolPlugins(): LantaiPlugin[] {
 }
 
 /** 在第一方工具插件通道激活期间执行 run（通道随调用拆卸）。
- *  四 service 先装载（清单插件的 inject ['tools'] 依赖可解析）；拆卸逆序。 */
-export async function withFirstPartyToolChannel<T>(run: () => Promise<T>): Promise<T> {
-  const root = new Context();
-  const fibers = [await root.plugin(compositionServicesPlugin)];
-  for (const plugin of firstPartyToolPlugins()) {
-    fibers.push(await root.plugin(plugin));
-  }
-  try {
-    return await run();
-  } finally {
-    for (let i = fibers.length - 1; i >= 0; i--) await fibers[i].dispose();
-  }
+ *  四 service 先装载（清单插件的 inject ['tools'] 依赖可解析）；拆卸逆序。
+ *  M4 收口：装配体已上收 withFirstPartyChannel（三条通道腰的唯一实现，
+ *  纪律见该文件头注）——本文件只负责清单。 */
+export function withFirstPartyToolChannel<T>(run: () => Promise<T>): Promise<T> {
+  return withFirstPartyChannel([compositionServicesPlugin], firstPartyToolPlugins(), run);
 }

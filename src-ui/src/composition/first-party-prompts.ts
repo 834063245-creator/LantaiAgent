@@ -22,10 +22,10 @@
 // PromptSectionContext 装配期真值）——与 tools 通道的 rowCtx 锁存不同，
 // 动态插值段（graph-snapshot/memory/claude-md）无跨装配串扰面。
 
-import { Context } from '../cordis';
 import { promptSegmentsPlugin } from '../plugins/builtin/prompt-segments';
 import type { LantaiPlugin } from '../plugins/types';
 import { promptsServicePlugin } from './prompt-service';
+import { withFirstPartyChannel } from './with-first-party-channel';
 
 /** 经 ctx.prompts 贡献段的第一方插件（表序 = 贡献注册序）。
  *  B④ 收官：promptSegmentsPlugin 装载全部 13 第一方段。 */
@@ -35,16 +35,9 @@ export function firstPartyPromptPlugins(): LantaiPlugin[] {
 
 /** 在第一方 prompt 段通道激活期间执行 run（通道随调用拆卸）。
  *  prompts service 先装载（清单插件的 inject ['prompts'] 依赖可解析）；
- *  拆卸逆序（服务 dispose 守卫式清空活动读取面——prompt 是字节敏感面）。 */
-export async function withFirstPartyPromptChannel<T>(run: () => Promise<T>): Promise<T> {
-  const root = new Context();
-  const fibers = [await root.plugin(promptsServicePlugin)];
-  for (const plugin of firstPartyPromptPlugins()) {
-    fibers.push(await root.plugin(plugin));
-  }
-  try {
-    return await run();
-  } finally {
-    for (let i = fibers.length - 1; i >= 0; i--) await fibers[i].dispose();
-  }
+ *  拆卸逆序（服务 dispose 守卫式清空活动读取面——prompt 是字节敏感面）。
+ *  M4 收口：装配体已上收 withFirstPartyChannel（纪律见该文件头注）——
+ *  本文件只负责清单。 */
+export function withFirstPartyPromptChannel<T>(run: () => Promise<T>): Promise<T> {
+  return withFirstPartyChannel([promptsServicePlugin], firstPartyPromptPlugins(), run);
 }
