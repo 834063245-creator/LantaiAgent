@@ -594,17 +594,44 @@ export function collectHiddenToolNames(): string[] {
   return [...names];
 }
 
-/** 收敛入口：注册领域工具 + 隐藏旧工具名。
- *  rebuildDomains=true 时先注销已有领域工具再重建（正常模式：补齐运行时后注册的动作）；
- *  rebuildDomains=false 时保留现有领域工具不重建，仅追加隐藏旧名。 */
-export function convergeRegistry(registry: ToolRegistry, opts: { rebuildDomains?: boolean } = {}): void {
-  const { rebuildDomains = true } = opts;
-  if (rebuildDomains) {
-    for (const spec of DOMAIN_SPECS) registry.unregister(spec.name);
-  }
+/** 收敛入口：注册领域工具 + 隐藏旧工具名（先卸门面再重建——幂等）。
+ *
+ *  M3 收口（2026-09-14）：原签名 `opts: { rebuildDomains?: boolean }` 删除——
+ *  **全仓零调用方传过它**（只有本文件自己的定义与分支），所谓「保留现有领域
+ *  门面不重建」是预防性配置而非需求：重建本身幂等（先 unregister 门面名再
+ *  createDomainTools 重注册），而「补齐运行时后注册的动作」（runtime 注入
+ *  agent_* 族）恰恰就是重建要干的事。为一个不存在的场景在签名上留旋钮，是
+ *  把「唯一的路径」写成「两个不能同时验证的分支」。 */
+export function convergeRegistry(registry: ToolRegistry): void {
+  for (const spec of DOMAIN_SPECS) registry.unregister(spec.name);
   for (const t of createDomainTools(registry)) registry.register(t);
   for (const n of collectHiddenToolNames()) registry.hide(n);
 }
+
+// ── 身份映射（模块级一次构造；DOMAIN_SPECS 是常量表，原先每次调用都线性扫全表）──
+//
+// resolveGuardToolName 在**每轮工具调用**上被门禁 / hooks 问一次，retireRedirect
+// 在隐藏旧名被调用时问一次——两者原先都是 O(域数 × 动作数) 的 find/双重循环。
+// 收成两张 Map 后是 O(1)，且把「域门面名 → 动作表」与「动作实现名 → 域(动作)」
+// 两个方向的身份关系摆在同一处，读代码不用再来回跳。
+
+/** 域门面名 → 该域的动作表。 */
+const DOMAIN_ACTIONS_BY_NAME: ReadonlyMap<string, Record<string, string>> = new Map(
+  DOMAIN_SPECS.map((spec) => [spec.name, spec.actions]),
+);
+
+/** 动作实现名 → `域(动作)` 反查。**首见胜**（与原先线性扫描的 first-match 语义
+ *  逐字一致）；同名跨域声明是身份污染，由 tests/domains-convergence.test.ts 的
+ *  「动作实现名不得跨域重名」用例拦在装载期面。 */
+const DOMAIN_FOR_ACTION_NAME: ReadonlyMap<string, string> = (() => {
+  const m = new Map<string, string>();
+  for (const spec of DOMAIN_SPECS) {
+    for (const [action, oldName] of Object.entries(spec.actions)) {
+      if (!m.has(oldName)) m.set(oldName, `${spec.name}(${action})`);
+    }
+  }
+  return m;
+})();
 
 /** 把领域工具调用解析回旧工具名，供 preflight 门禁 / 图增强 hooks / 子 Agent 关联使用。 */
 export function resolveGuardToolName(registry: ToolRegistry, toolName: string, args: Record<string, unknown>): string {
@@ -612,8 +639,7 @@ export function resolveGuardToolName(registry: ToolRegistry, toolName: string, a
   if (!t?.domain) return toolName;
   const action = (args as { action?: unknown })?.action;
   if (typeof action !== 'string') return toolName;
-  const spec = DOMAIN_SPECS.find((s) => s.name === toolName);
-  return spec?.actions[action] ?? toolName;
+  return DOMAIN_ACTIONS_BY_NAME.get(toolName)?.[action] ?? toolName;
 }
 
 /** 旧名重定向表：隐藏的旧工具被模型调用时，executor 返回"已淘汰 → 领域动作"而非执行。
@@ -630,10 +656,5 @@ export function retireRedirect(toolName: string): string | null {
     visited.add(name);
     name = ALIAS_REDIRECTS[name];
   }
-  for (const spec of DOMAIN_SPECS) {
-    for (const [action, oldName] of Object.entries(spec.actions)) {
-      if (oldName === name) return `${spec.name}(${action})`;
-    }
-  }
-  return null;
+  return DOMAIN_FOR_ACTION_NAME.get(name) ?? null;
 }

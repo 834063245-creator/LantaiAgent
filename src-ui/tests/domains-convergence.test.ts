@@ -190,6 +190,48 @@ describe('领域工具收敛', () => {
     expect(resolveGuardToolName(registry, 'fs', { action: 'nope' })).toBe('fs');
     expect(resolveGuardToolName(registry, 'read_file_content', { filePath: 'x' })).toBe('read_file_content');
   });
+
+  /* ── M3 收口：身份一致性（2026-09-14）──────────────────────────────────
+   * 模型面的一个工具此前挂着五套身份：行 id / 工具名 / 域门面名 / 动作名 /
+   * 旧实现名，各自的对应关系散在三处（DOMAIN_SPECS 表、隐藏清单、两张反查
+   * 循环）里，靠人工同步。下面三条把「映射是双射且自洽」钉成机器断言——
+   * 手工清单时代这三条都只能靠人记得对。 */
+
+  it('动作实现名不得跨域重名（身份双射的前提——重名会让反查表歧义）', () => {
+    const owner = new Map<string, string>();
+    const dupes: string[] = [];
+    for (const spec of DOMAIN_SPECS) {
+      for (const oldName of Object.values(spec.actions)) {
+        const prev = owner.get(oldName);
+        if (prev !== undefined && prev !== spec.name) dupes.push(`${oldName}: ${prev} 与 ${spec.name} 都声明`);
+        else owner.set(oldName, spec.name);
+      }
+    }
+    expect(dupes, '同一个动作实现名被多个域声明——反查（retireRedirect）会有歧义').toEqual([]);
+  });
+
+  it('DOMAIN_SPECS 声明的每个动作都能被反查解析（映射闭包：声明 → 隐藏 → 反查三面一致）', () => {
+    const registry = new ToolRegistry();
+    for (const spec of DOMAIN_SPECS) {
+      for (const oldName of Object.values(spec.actions)) registry.register(fakeTool(oldName, `${oldName} impl`, true));
+    }
+    convergeRegistry(registry);
+
+    const hidden = new Set(collectHiddenToolNames());
+    const broken: string[] = [];
+    for (const spec of DOMAIN_SPECS) {
+      for (const [action, oldName] of Object.entries(spec.actions)) {
+        if (!hidden.has(oldName)) broken.push(`${spec.name}(${action})→${oldName}: 未进隐藏集`);
+        if (retireRedirect(oldName) !== `${spec.name}(${action})`) {
+          broken.push(`${spec.name}(${action})→${oldName}: 反查得 ${String(retireRedirect(oldName))}`);
+        }
+        // 门面在册时，动作必须映射回声明的实现名
+        const viaGuard = resolveGuardToolName(registry, spec.name, { action });
+        if (viaGuard !== oldName) broken.push(`${spec.name}(${action})→${oldName}: 门禁解析得 ${viaGuard}`);
+      }
+    }
+    expect(broken, '声明 / 隐藏 / 反查三面不一致——模型面身份链断了').toEqual([]);
+  });
 });
 
 describe('normalizeArgs 参数别名归一（领域扁平 schema 摩擦修复）', () => {
