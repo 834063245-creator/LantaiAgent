@@ -29,7 +29,9 @@ export interface AssetKindDef {
 class AssetKindRegistry {
   private kinds = new Map<string, AssetKindDef>();
 
-  /** 注册 kind 并返回所有权清理器（对齐 ContributionRegistry 纪律；重名装载期拒绝） */
+  /** 注册 kind 并返回所有权清理器（对齐 ContributionChannel 的纪律：重名装载期拒绝；
+   *  本注册表是 agent 层纯数据面，**不是** composition 层贡献通道——无 ctx/Service/
+   *  fiber 生命周期，见 composition/contribution-channel.ts 的边界注记）。 */
   register(def: AssetKindDef): () => void {
     if (this.kinds.has(def.id)) {
       throw new Error(`[asset-kinds] 重复注册 kind "${def.id}" —— 装载期拒绝，不静默覆盖`);

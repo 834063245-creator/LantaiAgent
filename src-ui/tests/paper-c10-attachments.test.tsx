@@ -7,7 +7,7 @@
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { builtinRendererDefs } from '../src/composition/renderer-service';
+import { builtinRendererDefs } from '../src/app/paper/builtin-renderers';
 
 // measure 依赖 Canvas 2D（jsdom 没有）→ vi.mock '@chenglou/pretext'
 // （paper-v3a 同款范式）：文本高度恒 36，附件行差值断言不受影响（线性叠加精确可期）。

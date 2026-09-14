@@ -6,10 +6,10 @@
 // await ctx.plugin() fiber、fiber.dispose() 清理——不碰 boot 单例。
 
 import { describe, expect, it } from 'vitest';
+import { builtinRendererDefs } from '../src/app/paper/builtin-renderers';
 import {
   activeRendererContributions,
   type BlockRendererContribution,
-  builtinRendererDefs,
   type RenderersService,
   rendererServicePlugin,
   resolveRenderer,

@@ -48,7 +48,7 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
     const f = factoryComposition();
     expect(ids(r.tools)).toEqual(ids(f.tools));
     expect(ids(r.prompt)).toEqual(ids(f.prompt));
-    expect(r.capabilities.map((c) => c.key)).toEqual(f.capabilities.map((c) => c.key));
+    expect(r.capabilities.map((c) => c.id)).toEqual(f.capabilities.map((c) => c.id));
     expect(ids(r.shell)).toEqual(ids(f.shell));
     expect(r.diagnostics).toEqual({ disabled: [], overridden: [], inserted: [] });
   });
@@ -67,7 +67,7 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
             (id) => id !== BROWSER_DESKTOP_ROW && id !== WEB_ROW && id !== WEB_FETCH_ROW,
           ),
         );
-        expect(r.capabilities.map((c) => c.key)).not.toContain('state-hooks');
+        expect(r.capabilities.map((c) => c.id)).not.toContain('state-hooks');
         // 诊断按表序收集（web 行居表首——与 patch 声明序无关）
         expect(r.diagnostics.disabled).toEqual([WEB_ROW, WEB_FETCH_ROW, BROWSER_DESKTOP_ROW, 'state-hooks']);
       }),

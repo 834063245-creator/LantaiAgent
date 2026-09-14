@@ -8,15 +8,16 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：28
+当前版本：29
 
-<!-- contract-fingerprint: ecfaef51541d1c865738f97a9d6b9db5079174b1c5a318a119ec9989fd0ff5f3 -->
+<!-- contract-fingerprint: 9597d271a9ae4f0fb015bf36a71a8c95e9538d7076fc4d75f049a75f221a9370 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
 | 文件 | 契约内容 |
 |---|---|
-| `src/composition/services.ts` | `ctx.llm`（`LlmAdapterContribution`）+ ContributionRegistry 内核 + panels/commands/tools 通道 def 形状 |
+| `src/composition/contribution-channel.ts` | **贡献通道内核**（M1 收口：九通道 + 五 seam 的唯一注册表实现——`ContributionChannel` / `ContributionTiming` / `ContributionChannelOptions`。类名经宿主桥 `faceDeps` 与 `host.aliased.ts` 暴露给产物插件，形状即对外契约） |
+| `src/composition/services.ts` | `ctx.llm`（`LlmAdapterContribution`）+ panels/commands/tools 通道 def 形状（M1 起注册表内核移出本文件） |
 | `src/provider/types.ts` | `ctx.llm` seam 的**实现面形状真源**（`Provider` / `Chunk` / `Request`——v25 补登记：`LlmAdapterContribution.create` 返回的 Provider 形状即契约面，此前未入册） |
 | `src/composition/fs-service.ts` | `ctx.fs`（`FsProvider` / `FsAction` 动作 / `FsCallOptions` dispatch 腰） |
 | `src/composition/shell-service.ts` | `ctx.shell`（`ShellProvider` / `ShellAction` 四动作；subprocess 并入） |
@@ -29,7 +30,7 @@
 | src/plugins/types.ts | 插件 manifest schema（name/version/inject/permissions/tools/mcpServers（含 `readOnly`）/displace/dataDir/**app（入口二态：`entry` 资产 HTML 或 `url` 环回远端页）**） |
 | src/agent/agent-loop/types.ts | AgentLoop/AgentLoopHost（D13 loop seam 契约） |
 | src/agent/agent-loop/default-loop.ts | 默认 loop 实现（行为逐字节一致，D13） |
-| src/agent/agent-loop/agent-loop-service.ts | ctx.agentLoop 注册表（构造期登记 builtin/default，后注册胜） |
+| src/agent/agent-loop/agent-loop-service.ts → `src/plugins/builtin/agent-loop-service/index.ts` | ctx.agentLoop 注册表（构造期登记 builtin/default，后注册胜；S5b 起本体在产物域，活动面留 `agent-loop-active.ts`——**清单真源以 `contract-version.ts` 为准，本行同步实况**） |
 
 （`graph-service.ts` / `ctx.graph` seam 随图谱功能全量退役移除，2026-09-09。）
 
@@ -65,6 +66,7 @@
 | 26 | 2026-09-13 | `LoopStreamResult` 新增可选 `token: TokenRequestRecord`（token 计量：Agent 侧每请求一本账——分桶用量 / 请求压力 / 投影占用 / 上下文构成 / 逐轮）；默认 loop 的 `EventKind.Usage` sink 一并携带该字段投给 UI。**执行语义零变更**：第三方 loop 不返回该字段即 UI 计量面缺一条，不报错不降级执行 | token 计量系统（创作坞「墨量册」+ agent/token-meter，对齐 DSH token-meter 语义） |
 | 27 | 2026-09-13 | **manifest.mcpServers 条目新增可选 `readOnly: boolean` + MCP 工具只读语义归真（行为变更）**：判定真源 = `agent/mcp/registry.resolveMcpToolReadOnly`（条目级声明 > 远端 `annotations.readOnlyHint === true` > **缺省 false**）——registry `mcpClientTool` 与 `plugins/mcp-bridge` 两处工具构造共用，杜绝各判各的。旧行为两处硬编码 `readOnly: () => true`（注释自称「写入型由调用方按需覆盖」，全仓零调用方覆盖）：写型 MCP 工具因此在 plan 模式被放行（`plan/plan-registry.ts` 首行只读短路）、并入只读并行组、被 plan 子 Agent 静态只读集照收。**用户可感知变更**：未声明只读且远端无 `readOnlyHint` 的 MCP 工具从「只读」变为「写」（plan 模式拦截 + 退出并行组）；确为只读的 server 由作者条目声明 `readOnly: true` 或远端注解显式担保 | office-cli-integration-plan.md §5（P0 平台前置——OfficeCLI 的 MCP 工具实测无 annotations，正是本洞的活样本） |
 | 28 | 2026-09-13 | **manifest.app 入口二态（窗入口二态）**：`entry`（`./` 相对资产 HTML）与 `url`（**环回** http(s) 远端页；host 白名单 127.0.0.1/localhost/::1、禁凭据、禁非 http(s)）**互斥必给其一**；`url` 形态**禁 `fullscreen`**。窗口帧侧：`url` 形态 iframe 给 `allow-same-origin`（跨源文档保住自己 origin——它的同源 `EventSource`/`fetch` 才通），**且不绑宿主桥**（远端文档不是插件代码）；`entry` 形态 sandbox 与桥绑定**逐字节不变**。窗口定义新增 `kind: 'asset' \| 'remote'`（判定单一真源，渲染处不重推）。**向后兼容**：只声明 `entry` 的既有插件行为零变化；`app: {}`（两者皆无）从「缺 entry 报错」变为「二态 refine 报错」，仍是拒绝 | office-cli-integration-plan.md §4.3.1（活预览正式形态——`officecli watch` 活刷新页要环回 URL 窗口；实测该服务不回 CORS 头 ⇒ 沙箱 opaque origin 下活刷新必死，故须 allow-same-origin） |
+| 29 | 2026-09-14 | **M1 插件化收口（贡献通道内核单层化）**：注册表内核从 `services.ts` 内的 `ContributionRegistry` 上收为 `contribution-channel.ts` 的 `ContributionChannel`——**类名变更是破坏性契约变更**（该名字经宿主桥 `faceDeps`/`host.aliased.ts` 暴露给产物插件）；五个手抄副本（`RendererRegistry` / `PromptRegistry` / `HookContributionRegistry` / `CapabilityContributionRegistry` / `OverlayRegistry`）随之退役，14 个 service 全部收敛到同一内核。**行为面逐字零变更**（id 寻址 / 重名装载期拒绝 / 幂等 disposer / 陈旧性守卫 / 组合序 = 注册序全部保持）；新增两件**声明式数据**：`timing`（四档生效时机 immediate/next-assembly/request/frame——历史上是隐式的「构造时传没传回调」，读时序只能读七份文件头）与 `subscribe`（统一订阅面，收编 OverlayRegistry 自成一格的 API）。**同版破坏性变更**：`AgentCapability.key` → `.id`（capabilities 是九条通道里唯一行身份不叫 id 的；`AgentBlueprint.keys()` 随之更名 `ids()`）——外部插件若贡献 capability 必须改字段名，旧名不留别名 | 插件化收口 M1（用户拍板「全做」：诊断见本会话——同一条通道语义六种接口/成员集互不相同） |
 
 ## 变更流程（guard 红 → 修复四步）
 

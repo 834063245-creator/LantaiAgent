@@ -159,6 +159,29 @@ describe('领域工具收敛', () => {
     expect(hidden).toContain('agent_message');
   });
 
+  it('收敛后可见面只有域门面——任何域动作实现名不得出现在 schemas()（M3 效果断言）', () => {
+    // M3 收口（2026-09-14）：隐藏集不再手工抄 browser/desktop/agent 三族名单
+    // （实测与 DOMAIN_SPECS 派生集完全冗余，见 collectHiddenToolNames 头注）。
+    // 手工副本删掉之后，这条**效果断言**接管守门：把全部域动作实现名都注册进
+    // 注册表再收敛，模型可见面里只许剩域门面——漏隐藏一个名字就会在这里红
+    // （那正是「手工清单少抄一行 = 旧工具在模型面复活」的故障形态）。
+    const registry = new ToolRegistry();
+    const actionNames = DOMAIN_SPECS.flatMap((spec) => Object.values(spec.actions));
+    for (const n of actionNames) registry.register(fakeTool(n, `${n} impl`, true));
+    registry.register(fakeTool('unrelated_tool', '不在任何域里的工具', true));
+
+    convergeRegistry(registry);
+
+    const visible = registry.schemas().map((s) => s.name);
+    const leaked = visible.filter((n) => actionNames.includes(n));
+    expect(leaked, `这些域动作实现名泄漏进模型可见面：${leaked.join(', ')}`).toEqual([]);
+    // 域门面在册 + 域外工具不受影响
+    expect(visible).toContain('fs');
+    expect(visible).toContain('browser');
+    expect(visible).toContain('agent');
+    expect(visible).toContain('unrelated_tool');
+  });
+
   it('resolveGuardToolName 把领域动作映射回旧工具名（门禁/hooks 不失效）', async () => {
     const registry = buildFsRegistry();
     convergeRegistry(registry);

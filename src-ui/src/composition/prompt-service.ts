@@ -24,6 +24,7 @@
 // prompt 无 React 常驻清单，不需要 bump 信号 store）。
 
 import { type Context, Service } from '../cordis';
+import { ContributionChannel } from './contribution-channel';
 import type { PromptSection } from './prompt-sections';
 
 /** prompt 段贡献：形状即 PromptSection（id 寻址 + 条件参与 + 文本渲染——
@@ -46,50 +47,16 @@ function firePromptContributionsChanged(): void {
   for (const cb of [...promptContributionListeners]) cb();
 }
 
-// ── 注册表内核（renderer-service 同款单文件自持；不导出公共类——
-//    各 service 的通用内核是内核线内部复用，跨文件再抽公共会耦合两处
-//    内核，简单复制更诚实）──
-
-class PromptRegistry {
-  private entries = new Map<string, { def: PromptContribution; dispose: () => void }>();
-
-  constructor(private readonly onChange: (() => void) | null = null) {}
-
-  register(def: PromptContribution): () => void {
-    if (this.entries.has(def.id)) {
-      throw new Error('[prompts] duplicate contribution id "' + def.id + '" —— 装载期拒绝，不静默覆盖');
-    }
-    let done = false;
-    const entry = {
-      def,
-      dispose: () => {
-        if (done) return;
-        done = true;
-        if (this.entries.get(def.id)?.def === def) {
-          this.entries.delete(def.id);
-          this.onChange?.(); // 贡献消失（陈旧性守卫内——实际删除才触发）
-        }
-      },
-    };
-    this.entries.set(def.id, entry);
-    this.onChange?.(); // 贡献出现
-    return entry.dispose;
-  }
-
-  get(id: string): PromptContribution | undefined {
-    return this.entries.get(id)?.def;
-  }
-
-  /** 组合序 = 注册序（追加序——前缀缓存语义依赖此序）。 */
-  list(): PromptContribution[] {
-    return [...this.entries.values()].map((e) => e.def);
-  }
-}
+// ── 注册表内核（M1 收口：composition/contribution-channel 单一实现——
+//    本文件不再自持类；timing='next-assembly' 声明在构造点）──
 
 // ── service 本体 ──
 
 export class PromptsService extends Service {
-  private registry = new PromptRegistry(firePromptContributionsChanged);
+  private registry = new ContributionChannel<PromptContribution>('prompts', {
+    timing: 'next-assembly',
+    onChanged: firePromptContributionsChanged,
+  });
 
   constructor(ctx: Context) {
     super(ctx, 'prompts');

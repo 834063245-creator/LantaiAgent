@@ -16,7 +16,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { builtinRendererDefs } from '../src/composition/renderer-service';
+import { builtinRendererDefs } from '../src/app/paper/builtin-renderers';
 import { translateMessages } from '../src/paper/translate';
 import type { AssistantMessage } from '../src/ui/message-model';
 
@@ -99,7 +99,7 @@ const PROBES: DeadLinkProbe[] = [
     id: 'plan-approval-ui',
     note: '#2 PlanBody 只渲染内容，无批准/修改/拒绝按钮',
     isDead: () => {
-      const body = functionBody(read(join(SRC, 'composition', 'renderer-service.tsx')), 'PlanBody');
+      const body = functionBody(read(join(SRC, 'app', 'paper', 'builtin-renderers.tsx')), 'PlanBody');
       return !body.includes('onClick');
     },
   },

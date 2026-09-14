@@ -3,5 +3,5 @@
 
 export { setActiveAgentLoop } from '../../../agent/agent-loop/agent-loop-active';
 export { defaultAgentLoop } from '../../../agent/agent-loop/default-loop';
-export { ContributionRegistry } from '../../../composition/services';
+export { ContributionChannel } from '../../../composition/contribution-channel';
 export { Service } from '../../../cordis';

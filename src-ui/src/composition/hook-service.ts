@@ -11,7 +11,8 @@
 //   - kind 'preflight'：pre-tool 预检（PreflightHookRegistry.check 聚合
 //     ——警告注入结果顶部，含 HIGH 风险等级的嵌套调用拦截语义）。
 //
-// 契约对齐 prompt-service（A-1 先例）与四 service（S1-1）：
+// 契约对齐 prompt-service（A-1 先例）——注册表内核经 ContributionChannel 单一
+// 实现（M1 收口）：
 //   - register(def) → Disposer：调用方挂 ctx.effect（所有权登记是调用方纪律）；
 //   - 重名 id 装载期拒绝（throw，不静默覆盖）；
 //   - disposer 幂等 + 陈旧性守卫（同 def 重注册后旧 disposer 不误删新行）；
@@ -37,6 +38,7 @@
 
 import type { Hook, PreflightHook } from '../agent/hooks';
 import { type Context, Service } from '../cordis';
+import { ContributionChannel } from './contribution-channel';
 
 /** 管道钩子贡献：enrich（post-tool 富化）| preflight（pre-tool 预检）。
  *  id 约定 '<插件名>/<钩子名>'（npm scope 风格——跨插件防撞名）。
@@ -45,40 +47,16 @@ export type HookContribution =
   | { id: string; kind: 'enrich'; hook: Hook }
   | { id: string; kind: 'preflight'; hook: PreflightHook };
 
-// ── 注册表内核（prompt-service 同款单文件自持；不导出公共类）──
-
-class HookContributionRegistry {
-  private entries = new Map<string, { def: HookContribution; dispose: () => void }>();
-
-  register(def: HookContribution): () => void {
-    if (this.entries.has(def.id)) {
-      throw new Error('[hooks] duplicate contribution id "' + def.id + '" —— 装载期拒绝，不静默覆盖');
-    }
-    let done = false;
-    const entry = {
-      def,
-      dispose: () => {
-        if (done) return;
-        done = true;
-        if (this.entries.get(def.id)?.def === def) {
-          this.entries.delete(def.id);
-        }
-      },
-    };
-    this.entries.set(def.id, entry);
-    return entry.dispose;
-  }
-
-  /** 贡献序 = 注册序（装配折叠保序——enrich 链序/预检聚合序依赖此序）。 */
-  list(): HookContribution[] {
-    return [...this.entries.values()].map((e) => e.def);
-  }
-}
+// ── 注册表内核（M1 收口：composition/contribution-channel 单一实现——
+//    本文件不再自持类；timing='next-assembly' 声明在构造点）──
+//    注：本通道无 onChanged 挂点（钩子贡献不进 roster 寻址域、无组合 cache
+//    消费面——见上「组合解析域」段），这是**声明式事实**而非缺省遗漏：内核
+//    的 onChanged 是可选项，与四 service 的 panels/commands 逐字同构。 ──
 
 // ── service 本体 ──
 
 export class HooksService extends Service {
-  private registry = new HookContributionRegistry();
+  private registry = new ContributionChannel<HookContribution>('hooks', { timing: 'next-assembly' });
 
   constructor(ctx: Context) {
     super(ctx, 'hooks');
@@ -87,6 +65,10 @@ export class HooksService extends Service {
 
   register(def: HookContribution): () => void {
     return this.registry.register(def);
+  }
+
+  get(id: string): HookContribution | undefined {
+    return this.registry.get(id);
   }
 
   list(): HookContribution[] {

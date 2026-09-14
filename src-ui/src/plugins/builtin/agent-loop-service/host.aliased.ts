@@ -11,7 +11,7 @@ function requireHost(): PluginHostBridge {
   return host;
 }
 const impl = requireHost().mods.faceDeps as unknown as typeof import('./host');
-export const ContributionRegistry = impl.ContributionRegistry;
+export const ContributionChannel = impl.ContributionChannel;
 export const Service = impl.Service;
 export const defaultAgentLoop = impl.defaultAgentLoop;
 export const setActiveAgentLoop = impl.setActiveAgentLoop;

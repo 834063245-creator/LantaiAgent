@@ -28,8 +28,8 @@
 // 不经 executor 派发腰（强制层 gate 管模型工具调用，不管 store 内部落盘）。
 
 import { type Context, Service } from '../cordis';
+import { ContributionChannel } from './contribution-channel';
 import { seamDisabled } from './seam-resolution';
-import { ContributionRegistry } from './services';
 
 /** 会话持久化动作（会话语义四动作——D-1；消费动词与 chat-session 卷 CRUD
  *  一一对应：全量快照读写 / 目录扫描 / 墓碑删除）。运行时单一真源
@@ -47,7 +47,10 @@ export interface SessionPersistenceProvider {
 }
 
 export class SessionPersistenceService extends Service {
-  private registry = new ContributionRegistry<SessionPersistenceProvider>('sessionPersistence');
+  // 请求期解析语义：卷 CRUD 消费面按 provider id 扫描（后注册胜 + 组合裁剪）。
+  private registry = new ContributionChannel<SessionPersistenceProvider>('sessionPersistence', {
+    timing: 'request',
+  });
 
   constructor(ctx: Context) {
     super(ctx, 'sessionPersistence');

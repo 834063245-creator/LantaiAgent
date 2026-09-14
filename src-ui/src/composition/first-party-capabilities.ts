@@ -20,7 +20,7 @@
 // （capabilitySegmentsPlugin 装载 firstPartyCapabilities()——序 = 迁移前
 // 出厂表序，单批零漂移按构造）；出厂 builtinCapabilities() 退役——
 // 无通道环境的 capabilities 域 = 空表（B④ prompt 域注册面依赖同款语义：
-// 出厂面的复现必须经本腰，寻址 capability key 的解析同理）。
+// 出厂面的复现必须经本腰，寻址 capability id 的解析同理）。
 //
 // 语义提醒：capability 通道无实例缓存（贡献是 AgentCapability 对象本体，
 // install 每装配重调）——与 tools 通道的 rowCtx 锁存不同，无跨装配串扰面；

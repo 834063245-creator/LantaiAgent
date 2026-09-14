@@ -18,7 +18,7 @@
 // id（解析须在 withFirstPartyToolChannel 腰内）。
 // B⑤（2026-08-24）：capability 域出厂表退役（十五项第一方 capability 经
 // ctx.capabilities 通道贡献）——无通道环境 capabilities 域 = 空表（B④
-// prompt 域同款注册面依赖）；寻址 capability key / 通道快照钉面须在
+// prompt 域同款注册面依赖）；寻址 capability id / 通道快照钉面须在
 // withFirstPartyCapabilityChannel 腰内。
 
 import { describe, expect, it } from 'vitest';
@@ -37,7 +37,7 @@ import {
 import { builtinShellRows } from '../src/composition/shell-rows';
 
 const ids = <T extends { id: string }>(rows: T[]): string[] => rows.map((r) => r.id);
-const capKeys = (): string[] => firstPartyCapabilities().map((c) => c.key);
+const capKeys = (): string[] => firstPartyCapabilities().map((c) => c.id);
 
 /** ①b 后 tools 域唯一可寻址行：plugin 贡献行（web/web_fetch/browser-desktop 是
  *  行序前三行——①b 前插保装配序，零漂移按构造）。 */
@@ -89,12 +89,12 @@ describe('composition/roster（S2-0 组合引擎）', () => {
           expect(f.prompt.map((s) => s.id)).toContain('model-identity');
           // capabilities 域（B⑤）：通道贡献快照 = 第一方十五项（注册序 =
           // 清单序 = 迁移前出厂表序——零漂移按构造）
-          expect(f.capabilities.map((c) => c.key)).toEqual(capKeys());
+          expect(f.capabilities.map((c) => c.id)).toEqual(capKeys());
           // 恒等解析在快照面同样成立（空层列表 = 快照全等）
           const r = resolveRoster(f, []);
           expect(ids(r.tools)).toEqual(ids(f.tools));
           expect(r.prompt.map((s) => s.id)).toEqual(f.prompt.map((s) => s.id));
-          expect(r.capabilities.map((c) => c.key)).toEqual(f.capabilities.map((c) => c.key));
+          expect(r.capabilities.map((c) => c.id)).toEqual(f.capabilities.map((c) => c.id));
         }),
       ),
     );
@@ -158,7 +158,7 @@ describe('composition/roster（S2-0 组合引擎）', () => {
     // capability 同语义（B⑤ 后 capability 行经通道在册——解析须在通道腰内）
     await withFirstPartyCapabilityChannel(async () => {
       const rc = resolveRoster(factoryComposition(), [{ capabilities: [{ id: 'auto-tune', disabled: true }] }]);
-      expect(rc.capabilities.map((c) => c.key)).toEqual(capKeys().filter((k) => k !== 'auto-tune'));
+      expect(rc.capabilities.map((c) => c.id)).toEqual(capKeys().filter((k) => k !== 'auto-tune'));
     });
   });
 

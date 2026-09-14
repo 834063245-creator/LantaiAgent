@@ -22,9 +22,20 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 28;
+export const OPEN_SURFACE_CONTRACT_VERSION = 29;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v29（2026-09-14）M1 插件化收口（通道内核单层化）：注册表内核从
+ *  `services.ts` 的 `ContributionRegistry` 上收为 `contribution-channel.ts` 的
+ *  `ContributionChannel`——**类名变更 = 破坏性契约变更**（该名字经宿主桥
+ *  faceDeps 与 `host.aliased.ts` 暴露给产物插件；五个手抄副本
+ *  Renderer/Prompt/HookContribution/CapabilityContribution/Overlay 随之退役）。
+ *  行为面零变更（id 寻址/重名拒绝/幂等 disposer/陈旧性守卫/贡献序逐字保持），
+ *  新增两件声明式数据：`timing`（四档生效时机，历史上是隐式的「传没传回调」）
+ *  与 `subscribe`（统一订阅面，收编 OverlayRegistry 的自成一格 API）。
+ *  **同版破坏性变更**：`AgentCapability.key` 更名为 `.id`（capabilities 是九条
+ *  通道里唯一行身份不叫 id 的，M1 统一为 id；`AgentBlueprint.keys()` 随之更名
+ *  `ids()`）——外部插件若贡献 capability 必须改字段名，旧名不保留别名。
  *  v28（2026-09-13）：`manifest.app` 入口二态——`entry`（资产 HTML）与 `url`
  *  （**环回** http(s) 远端页，白名单 127.0.0.1/localhost/::1、禁凭据）互斥必给其一；
  *  url 形态禁 `fullscreen`。远端形态的窗口帧给 `allow-same-origin`（跨源文档保住
@@ -43,8 +54,11 @@ export const OPEN_SURFACE_CONTRACT_VERSION = 28;
  *  同版 events.ts 载荷 provider/model 分账。
  *  v24（2026-09-09）：graph-service.ts（ctx.graph seam）随图谱功能全量退役移除。 */
 export const OPEN_SURFACE_CONTRACT_FILES: readonly string[] = [
+  // 贡献通道内核（M1 收口：九通道 + 五 seam 的唯一注册表实现——ContributionChannel
+  // 本身是插件面（经宿主桥 faceDeps 暴露），形状变更即对外契约变更）
+  'src/composition/contribution-channel.ts',
   // 六个 seam 注册表（provider 接口 + 动作枚举 + 消费单点签名）
-  'src/composition/services.ts', // ctx.llm + ContributionRegistry 内核 + 四通道 def
+  'src/composition/services.ts', // ctx.llm + 四通道 def（M1 起内核移出本文件）
   'src/provider/types.ts', // ctx.llm seam 的实现面形状真源（Provider/Chunk/Request——v25 补登记）
   'src/composition/fs-service.ts', // ctx.fs
   'src/composition/shell-service.ts', // ctx.shell（subprocess 并入）

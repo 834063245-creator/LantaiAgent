@@ -243,8 +243,9 @@ export function factoryComposition(): ResolvedComposition {
 // ── 解析引擎 ──
 
 /** 工作列表条目：寻址 id + 行 + 禁用标记（终步才过滤，锚定与诊断全程可见）。
- *  id 是 roster 寻址面：tools/prompt/shell 用行自身 id；capabilities 用
- *  capability key（行无 id 字段——S2 设计件 §2.1「行 id = 现 key」）。 */
+ *  id 是 roster 寻址面：五行域（tools/capabilities/prompt/shell/seams）一律用
+ *  行自身的 id 字段——M1 收口后 capability 行也有 id（历史名 key 已废弃），
+ *  故 capabilities 域不再需要专属折算。 */
 interface WorkRow<T> {
   id: string;
   row: T;
@@ -258,10 +259,6 @@ interface PromptWorkRow extends WorkRow<PromptSection> {
 
 function toWorkRows<T extends { id: string }>(rows: T[]): WorkRow<T>[] {
   return rows.map((row) => ({ id: row.id, row, disabled: false }));
-}
-
-function toCapWorkRows(caps: AgentCapability[]): WorkRow<AgentCapability>[] {
-  return caps.map((row) => ({ id: row.key, row, disabled: false }));
 }
 
 function toPromptWorkRows(sections: PromptSection[]): PromptWorkRow[] {
@@ -334,7 +331,7 @@ function seamEntries(
  *  S2-0 测试钉住）。抛 CompositionPatchError = 整体拒绝（all-or-nothing）。 */
 export function resolveRoster(factory: FactoryComposition, layers: CompositionPatch[]): ResolvedComposition {
   const tools = toWorkRows(factory.tools);
-  const capabilities = toCapWorkRows(factory.capabilities);
+  const capabilities = toWorkRows(factory.capabilities);
   const shell = toWorkRows(factory.shell);
   const prompt = toPromptWorkRows(factory.prompt);
 

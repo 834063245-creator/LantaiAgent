@@ -205,7 +205,7 @@ ctx.prompts.register({
 
 \`\`\`js
 ctx.capabilities.register({
-  key: 'my/capability',      // key 寻址（其余通道都是 id）
+  id: 'my/capability',       // 行 id（八条通道统一身份）
   phase: 'agent',            // 'context' | 'agent'
   when: (scope) => true,     // 可选：返回 false 跳过安装
   install: (scope) => { /* 注册工具/接线；不得做 teardown（归 ctx.effect） */ },
@@ -216,7 +216,7 @@ ctx.capabilities.register({
 
 **llm**（LLM 协议适配器，进阶）：\`{ id, kind: '<协议kind>', label?, create(rt) }\`——为 settings 的自定义协议提供 Provider 工厂，同 kind 后注册胜。
 
-**seam provider**（后端替换，进阶）：\`ctx.fs\`/\`ctx.shell\`/\`ctx.sessionPersistence\`/\`ctx.graph\`/\`ctx.subagents\` 各注册一个替换默认后端的实现——写这个等于换掉兰台的默认引擎，非必要不碰。
+**seam provider**（后端替换，进阶）：\`ctx.fs\`/\`ctx.shell\`/\`ctx.sessionPersistence\`/\`ctx.subagents\` 各注册一个替换默认后端的实现——写这个等于换掉兰台的默认引擎，非必要不碰。
 
 ### 2.4 声明式工具（manifest.tools——更小的信任面）
 

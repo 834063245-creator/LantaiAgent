@@ -8,13 +8,13 @@
 // 单点收口（blueprint spawn-tool 绑定与测试直调都经它）。未来 ACP / 外部后端经本
 // 注册表挂接；多 provider 共存时取「后注册胜」为默认（对齐 llm/renderers 覆盖语义）。
 //
-// 注册纪律：四 service 同款 ContributionRegistry（重名 id 装载期拒绝 + disposer
-// 双守卫，自 services.ts 单一内核复用）；disposer 经 ctx.effect 登记（调用方所有权）。
+// 注册纪律：ContributionChannel（自 contribution-channel.ts 单一内核复用——重名 id
+// 装载期拒绝 + disposer 双守卫）；disposer 经 ctx.effect 登记（调用方所有权）。
 
 import type { SubAgentSpawnHost } from '../agent/subagent-spawn';
 import { type Context, Service } from '../cordis';
+import { ContributionChannel } from './contribution-channel';
 import { seamDisabled } from './seam-resolution';
-import { ContributionRegistry } from './services';
 
 /** 子代理派生请求（字段与 Agent.spawnSubAgent 形参一一对应）。 */
 export interface SubAgentSpawnArgs {
@@ -44,7 +44,8 @@ export interface SubagentProvider {
 }
 
 export class SubagentsService extends Service {
-  private registry = new ContributionRegistry<SubagentProvider>('subagents');
+  // 请求期解析语义：spawn 单点收口按 provider id 扫描（后注册胜 + 组合裁剪）。
+  private registry = new ContributionChannel<SubagentProvider>('subagents', { timing: 'request' });
 
   constructor(ctx: Context) {
     super(ctx, 'subagents');

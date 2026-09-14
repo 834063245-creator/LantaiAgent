@@ -78,8 +78,8 @@ describe('composition-store 引导期新鲜度（①b boot 序洞）', () => {
       expect(prompt.map((s) => s.id)).not.toContain('graph-snapshot');
       expect(prompt).toHaveLength(8);
       // capabilities 域：14 第一方能力全量（第三处毒害）
-      expect(capabilities.map((c) => c.key)).toContain('plan-tools');
-      expect(capabilities.map((c) => c.key)).toContain('spawn-tool');
+      expect(capabilities.map((c) => c.id)).toContain('plan-tools');
+      expect(capabilities.map((c) => c.id)).toContain('spawn-tool');
       expect(capabilities).toHaveLength(14);
       // 修复后快照与初始空表不再是同一引用
       expect(useCompositionStore.getState().resolved).not.toBe(initialResolved);

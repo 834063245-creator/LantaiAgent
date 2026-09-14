@@ -17,6 +17,7 @@
 
 import type { ComponentType } from 'react';
 import { type Context, Service } from '../cordis';
+import { ContributionChannel } from './contribution-channel';
 
 /** 覆盖层槽位。 */
 export type OverlaySlot = 'composer' | 'right-edge';
@@ -28,54 +29,15 @@ export interface OverlayContribution {
   component: ComponentType;
 }
 
-/** 通用注册表（id 寻址 + Disposer + 重名拒绝——对齐四 service 语义）。 */
-class OverlayRegistry {
-  private entries = new Map<string, { def: OverlayContribution; dispose: () => void }>();
-  private listeners = new Set<() => void>();
-
-  private fireChange(): void {
-    for (const cb of [...this.listeners]) cb();
-  }
-
-  subscribe(cb: () => void): () => void {
-    this.listeners.add(cb);
-    return () => {
-      this.listeners.delete(cb);
-    };
-  }
-
-  register(def: OverlayContribution): () => void {
-    if (this.entries.has(def.id)) {
-      throw new Error('[overlays] duplicate contribution id "' + def.id + '" —— 装载期拒绝，不静默覆盖');
-    }
-    let done = false;
-    const entry = {
-      def,
-      dispose: () => {
-        if (done) return;
-        done = true;
-        if (this.entries.get(def.id)?.def === def) {
-          this.entries.delete(def.id);
-          this.fireChange();
-        }
-      },
-    };
-    this.entries.set(def.id, entry);
-    this.fireChange();
-    return entry.dispose;
-  }
-
-  list(slot: OverlaySlot): OverlayContribution[] {
-    const out: OverlayContribution[] = [];
-    for (const { def } of this.entries.values()) {
-      if (def.slot === slot) out.push(def);
-    }
-    return out;
-  }
-}
+// ── 注册表内核（M1 收口：composition/contribution-channel 单一实现）──
+// 本通道不用专属注册表类：slot 过滤是内核 filter() 的一个谓词，订阅是内核
+// subscribe()（历史债：OverlayRegistry 是六份手抄之一，且是唯一订阅 API 形状
+// 自成一格的——现由内核统一）。
 
 export class OverlayService extends Service {
-  private registry = new OverlayRegistry();
+  // 即时生效语义：PaperPanel 挂载期经 subscribeOverlayContributions 订阅，
+  // 贡献热注册即时重取渲染面。
+  private registry = new ContributionChannel<OverlayContribution>('overlays', { timing: 'immediate' });
 
   constructor(ctx: Context) {
     super(ctx, 'overlays');
@@ -87,7 +49,7 @@ export class OverlayService extends Service {
   }
 
   list(slot: OverlaySlot): OverlayContribution[] {
-    return this.registry.list(slot);
+    return this.registry.filter((def) => def.slot === slot);
   }
 
   /** 订阅覆盖层贡献变更（register/dispose——PaperPanel 即时重取渲染面）。 */

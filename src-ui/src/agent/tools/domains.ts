@@ -571,78 +571,25 @@ export function createDomainTools(registry: ToolRegistry): Tool[] {
   return tools;
 }
 
-/** 需要从 schemas() 隐藏的旧工具名（含别名）。hide() 对不存在的名字无操作。 */
+/** 需要从 schemas() 隐藏的旧工具名（含别名）。hide() 对不存在的名字无操作。
+ *
+ * 隐藏集 = **全部** DOMAIN_SPECS 动作实现名（派生，零手抄）+ 两个不属于任何
+ * 域的名字：`read_file`（read_file_content 的别名）与 `symbol_history`（已淘汰，
+ * 由 ALIAS_REDIRECTS 重定向）。
+ *
+ * M3 收口（2026-09-14）：此前这里另抄了两段硬编码清单——browser/desktop 细粒度
+ * 46 名，与 agent 族 11 名（后者注明「运行时后注册的细粒度工具（runtime.ts
+ * createAgent 中注入）」：它们是 runtime 注入、不在首次收敛的注册面里，于是
+ * 只能手工补进隐藏集）。实测两段与派生集**完全冗余**（130 个动作名逐一核对，
+ * 无一例外），删除后隐藏集逐字不变——手工副本的全部作用就是不相信派生。
+ *
+ * 真正的不变量不靠这份清单守，靠**效果断言**：收敛后 `schemas()`（模型可见面）
+ * 里不得出现任何域动作实现名（tests/domains-convergence.test.ts「收敛后可见面
+ * 只有域门面」）。清单漏一个名字 = 那个旧工具在模型面上复活，效果断言直接红。 */
 export function collectHiddenToolNames(): string[] {
   const names = new Set<string>(['read_file', 'symbol_history']);
   for (const spec of DOMAIN_SPECS) {
     for (const oldName of Object.values(spec.actions)) names.add(oldName);
-  }
-  // browser 领域的细粒度工具全部隐藏 — 领域工具 browser 是唯一可见入口
-  for (const n of [
-    'browser_launch',
-    'browser_connect',
-    'browser_discover',
-    'browser_kill',
-    'browser_sessions',
-    'browser_switch_session',
-    'browser_cookies',
-    'browser_targets',
-    'browser_attach',
-    'browser_new_tab',
-    'browser_close_tab',
-    'browser_navigate',
-    'browser_back',
-    'browser_forward',
-    'browser_reload',
-    'browser_snapshot',
-    'browser_content',
-    'browser_inspect',
-    'browser_report',
-    'browser_console',
-    'browser_network',
-    'browser_network_detail',
-    'browser_network_har',
-    'browser_screenshot',
-    'browser_audit',
-    'browser_click',
-    'browser_hover',
-    'browser_type',
-    'browser_select',
-    'browser_upload',
-    'browser_dialog',
-    'browser_press',
-    'browser_scroll',
-    'browser_viewport',
-    'browser_eval',
-    'browser_status',
-    'browser_wait',
-    'desktop_probe',
-    'desktop_screenshot',
-    'desktop_uia_tree',
-    'desktop_uia_find',
-    'desktop_uia_click',
-    'desktop_uia_right_click',
-    'desktop_uia_type',
-    'desktop_uia_scroll',
-    'desktop_uia_window_shot',
-  ]) {
-    names.add(n);
-  }
-  // 运行时后注册的细粒度工具（runtime.ts createAgent 中注入）
-  for (const n of [
-    'agent_ack',
-    'agent_board',
-    'agent_discover',
-    'agent_inbox',
-    'agent_kill',
-    'agent_list',
-    'agent_lookup',
-    'agent_merge',
-    'agent_message',
-    'agent_reply',
-    'agent_request',
-  ]) {
-    names.add(n);
   }
   return [...names];
 }

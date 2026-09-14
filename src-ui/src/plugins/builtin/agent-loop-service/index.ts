@@ -4,17 +4,18 @@
 // agent loop 注册表 · 真源产物（S5b，plugin-bundle-retirement）——
 // 原 agent/agent-loop/agent-loop-service.ts 整体迁入；类本体 + 挂载插件
 // 在产物域，模块级 _activeService 活动面留内核（agent-loop-active.ts，
-// runtime.ts 读它）。运行时依赖（Service/ContributionRegistry/
+// runtime.ts 读它）。运行时依赖（Service/ContributionChannel/
 // defaultAgentLoop/setActiveAgentLoop）经宿主桥 mods.faceDeps 取用——
 // setActiveAgentLoop 是内核函数引用（闭包桥接），产物构造器调用它写内核态。
 
 import type { AgentLoop } from '../../../agent/agent-loop/types';
 import type { Context } from '../../../cordis';
-import { ContributionRegistry, defaultAgentLoop, Service, setActiveAgentLoop } from './host';
+import { ContributionChannel, defaultAgentLoop, Service, setActiveAgentLoop } from './host';
 
 /** agent loop 注册表服务（S5b 产物域本体）。 */
 export class AgentLoopService extends Service {
-  private registry = new ContributionRegistry<AgentLoop>('agentLoop');
+  // 请求期解析语义：装配期按注册序取最后一个（后注册胜）——见 active()。
+  private registry = new ContributionChannel<AgentLoop>('agentLoop', { timing: 'request' });
 
   constructor(ctx: Context) {
     super(ctx, 'agentLoop');

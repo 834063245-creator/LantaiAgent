@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: MIT.
 
 // Phase 6 T1 — AgentBlueprint 声明式组合原语行为规约。
-// 重复 key 拒绝 / 表序保持 / when() 门控 / fromRoster 实例隔离与表审计。
+// 重复 id 拒绝 / 表序保持 / when() 门控 / fromRoster 实例隔离与表审计。
 // B⑤（2026-08-24）：standard() 与 builtinCapabilities() 退役——出厂
 // capability 面经 ctx.capabilities 通道贡献（firstPartyCapabilities() 是
 // 十五项定义真源，plugins/capability-segments-plugin.ts 装载）。表序冻结
 // 断言换代为「钉通道面」：通道在册的 factoryComposition().capabilities
-// keys ≡ firstPartyCapabilities() 清单序 ≡ 迁移前出厂表序。
+// ids ≡ firstPartyCapabilities() 清单序 ≡ 迁移前出厂表序。
+// M1（2026-09-14）：capability 行身份字段 key → id（九通道统一），本文件
+// 断言语义一格未动，只换字段名。
 
 import { describe, expect, it } from 'vitest';
 import {
@@ -21,18 +23,13 @@ import { withFirstPartyCapabilityChannel } from '../src/composition/first-party-
 import { factoryComposition } from '../src/composition/roster';
 
 /** 最小 capability 构造（install 记录调用序）。 */
-function cap(
-  key: string,
-  phase: 'context' | 'agent',
-  order: string[],
-  when?: AgentCapability['when'],
-): AgentCapability {
+function cap(id: string, phase: 'context' | 'agent', order: string[], when?: AgentCapability['when']): AgentCapability {
   return {
-    key,
+    id,
     phase,
     ...(when ? { when } : {}),
     install: () => {
-      order.push(key);
+      order.push(id);
     },
   };
 }
@@ -53,20 +50,20 @@ function stubScope(): BlueprintScope {
 }
 
 describe('AgentBlueprint T1 — 原语行为', () => {
-  it('重复 key 拒绝（构造与 add 双路径）', () => {
-    expect(() => new AgentBlueprint([cap('a', 'agent', []), cap('a', 'context', [])])).toThrow(/key 重复: a/);
+  it('重复 id 拒绝（构造与 add 双路径）', () => {
+    expect(() => new AgentBlueprint([cap('a', 'agent', []), cap('a', 'context', [])])).toThrow(/id 重复: a/);
     const bp = new AgentBlueprint([cap('a', 'agent', [])]);
-    expect(() => bp.add(cap('a', 'context', []))).toThrow(/key 重复: a/);
+    expect(() => bp.add(cap('a', 'context', []))).toThrow(/id 重复: a/);
   });
 
-  it('capabilities() 按阶段过滤且保持声明序；keys() 反映追加', () => {
+  it('capabilities() 按阶段过滤且保持声明序；ids() 反映追加', () => {
     const order: string[] = [];
     const bp = new AgentBlueprint([cap('a', 'context', order), cap('b', 'agent', order), cap('c', 'context', order)]);
-    expect(bp.capabilities('context').map((c) => c.key)).toEqual(['a', 'c']);
-    expect(bp.capabilities('agent').map((c) => c.key)).toEqual(['b']);
-    expect(bp.capabilities().map((c) => c.key)).toEqual(['a', 'b', 'c']);
+    expect(bp.capabilities('context').map((c) => c.id)).toEqual(['a', 'c']);
+    expect(bp.capabilities('agent').map((c) => c.id)).toEqual(['b']);
+    expect(bp.capabilities().map((c) => c.id)).toEqual(['a', 'b', 'c']);
     bp.add(cap('d', 'agent', order));
-    expect(bp.keys()).toEqual(['a', 'b', 'c', 'd']);
+    expect(bp.ids()).toEqual(['a', 'b', 'c', 'd']);
     expect(bp.capability('b')?.phase).toBe('agent');
     expect(bp.capability('nope')).toBeUndefined();
   });
@@ -87,12 +84,12 @@ describe('AgentBlueprint T1 — 原语行为', () => {
 
   it('fromRoster 每次返回全新实例 — 扩展不污染源表', () => {
     const a = AgentBlueprint.fromRoster(firstPartyCapabilities());
-    const before = a.keys().length;
+    const before = a.ids().length;
     a.add(cap('custom-x', 'agent', []));
-    expect(a.keys()).toContain('custom-x');
+    expect(a.ids()).toContain('custom-x');
     const b = AgentBlueprint.fromRoster(firstPartyCapabilities());
-    expect(b.keys()).not.toContain('custom-x');
-    expect(b.keys()).toHaveLength(before);
+    expect(b.ids()).not.toContain('custom-x');
+    expect(b.ids()).toHaveLength(before);
   });
 
   it('第一方 capability 表序冻结（钉通道面——新增 capability 必须显式改此断言）', async () => {
@@ -116,15 +113,15 @@ describe('AgentBlueprint T1 — 原语行为', () => {
       'plan-injector',
       'auto-tune',
     ];
-    expect(firstPartyCapabilities().map((c) => c.key)).toEqual(expected);
+    expect(firstPartyCapabilities().map((c) => c.id)).toEqual(expected);
     await withFirstPartyCapabilityChannel(async () => {
-      expect(factoryComposition().capabilities.map((c) => c.key)).toEqual(expected);
+      expect(factoryComposition().capabilities.map((c) => c.id)).toEqual(expected);
     });
   });
 
-  it('第一方 capability 均声明 key/phase/install', () => {
+  it('第一方 capability 均声明 id/phase/install', () => {
     for (const c of firstPartyCapabilities()) {
-      expect(c.key, 'key 必须非空').toMatch(/^[a-z][a-z0-9-]*$/);
+      expect(c.id, 'id 必须非空').toMatch(/^[a-z][a-z0-9-]*$/);
       expect(['context', 'agent']).toContain(c.phase);
       expect(typeof c.install).toBe('function');
     }
@@ -152,7 +149,7 @@ describe('state-hooks capability — 状态 + 构建结果 hooks（图谱退役�
   }
 
   function stateHooksCap(): AgentCapability {
-    const cap = firstPartyCapabilities().find((c) => c.key === 'state-hooks');
+    const cap = firstPartyCapabilities().find((c) => c.id === 'state-hooks');
     if (!cap) throw new Error('state-hooks capability 缺席');
     return cap;
   }

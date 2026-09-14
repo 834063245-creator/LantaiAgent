@@ -13,12 +13,12 @@
 // 强制层不旁路（D11 铁律，同 fs）：权限咽喉 / plan gate / 审计在 executor
 // 管道层，先于工具 execute——provider 换实现不触碰强制层。
 //
-// 注册纪律：ContributionRegistry 单一内核复用；disposer 经 ctx.effect 登记。
+// 注册纪律：ContributionChannel 单一内核复用；disposer 经 ctx.effect 登记。
 
 import type { ToolExecutor } from '../agent/tool';
 import { type Context, Service } from '../cordis';
+import { ContributionChannel } from './contribution-channel';
 import { seamDisabled } from './seam-resolution';
-import { ContributionRegistry } from './services';
 
 /** shell 域动作（执行 + 后台任务族三动词）。 */
 export type ShellAction = 'run' | 'output' | 'kill' | 'wait';
@@ -38,7 +38,8 @@ export interface ShellProvider {
 }
 
 export class ShellService extends Service {
-  private registry = new ContributionRegistry<ShellProvider>('shell');
+  // 请求期解析语义：shell 域动作消费面按 provider id 扫描（后注册胜 + 组合裁剪）。
+  private registry = new ContributionChannel<ShellProvider>('shell', { timing: 'request' });
 
   constructor(ctx: Context) {
     super(ctx, 'shell');

@@ -14,7 +14,7 @@
 // withFirstPartyToolChannel 腰内（贡献行在册才可寻址）。已解析组合的
 // 行对象自带 factory，装配期（AgentRuntime/buildToolRegistry）不需要通道。
 // B⑤（2026-08-24）：minimal 的 state-hooks capability 行经通道注册——
-// 寻址 capability key 的解析须在 withFirstPartyCapabilityChannel 腰内。
+// 寻址 capability id 的解析须在 withFirstPartyCapabilityChannel 腰内。
 // 2026-09-09 图谱退役：graph-hooks 收缩改名 state-hooks，禁用行随键改。
 
 import { readFileSync } from 'node:fs';
@@ -276,7 +276,7 @@ describe('S4-1a preset-assembly：cache + 选择同步 + boot 应用', () => {
     const s = useCompositionStore.getState();
     expect(s.status).toBe('ok');
     expect(ids(s.resolved.tools)).toContain('plugin/acme/probe');
-    expect(s.resolved.capabilities.map((c) => c.key)).not.toContain('auto-tune');
+    expect(s.resolved.capabilities.map((c) => c.id)).not.toContain('auto-tune');
 
     // 贡献 dispose → 代数再变 → 解析产物不含该行；reapply（factory 路径重新快照）
     dispose();

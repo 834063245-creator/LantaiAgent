@@ -58,11 +58,11 @@ import { SkillsPage } from '../../app/panels/settings/SkillsPage';
 import { useShellStore } from '../../app/shell-store';
 import { WinControls } from '../../app/WinControls';
 import { isMockMode, watchFileDragDrop } from '../../bridge';
+import { ContributionChannel } from '../../composition/contribution-channel';
 import { activeOverlayContributions, subscribeOverlayContributions } from '../../composition/overlay-service';
 import { selectPreset } from '../../composition/preset-assembly';
 import { firstPartyPromptSections } from '../../composition/prompt-sections';
 import { resolveAssetBlock, resolveRenderer } from '../../composition/renderer-service';
-import { ContributionRegistry } from '../../composition/services';
 import { activeSpace } from '../../composition/space-service';
 import { Service } from '../../cordis';
 import { setLang } from '../../i18n';
@@ -417,7 +417,7 @@ const faceDeps = {
   firstPartyPromptSections,
   firstPartyCapabilities,
   // S5b agent-loop-service 产物运行时依赖
-  ContributionRegistry,
+  ContributionChannel,
   Service,
   defaultAgentLoop,
   setActiveAgentLoop,

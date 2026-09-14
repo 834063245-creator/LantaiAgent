@@ -28,6 +28,7 @@ import type { Tool } from '../agent/tool';
 import { type Context, Service } from '../cordis';
 import type { Provider } from '../provider/types';
 import { bumpCommands, bumpPanelDefs } from '../state/panel-defs-store';
+import { ContributionChannel } from './contribution-channel';
 import { seamDisabled } from './seam-resolution';
 import type { ToolRowContext } from './tool-rows';
 
@@ -120,61 +121,22 @@ export interface LlmAdapterContribution {
   create: (rt: ProviderRuntimeArgs) => Provider;
 }
 
-// ── 通用注册表内核（四 service 共用：id 寻址 + Disposer + 重名拒绝 + 组合序）──
-
-/**
- * 注册表变更信号（S4-1.5 消费闭环）——panels/commands 域贡献变更时 bump
- * 对应信号 store（即时生效语义：DockRail/DockPanel/CommandPalette 重取
- * 清单）。tools/llm 不 bump——它们的生效时机是「下次 Agent 装配」
- * （S1 既有语义），无即时消费面。
- */
-type ChangeSignal = () => void;
-
-export class ContributionRegistry<T extends { id: string }> {
-  private entries = new Map<string, { def: T; dispose: () => void }>();
-
-  constructor(
-    private readonly kind: string,
-    private readonly onChange: ChangeSignal | null = null,
-  ) {}
-
-  register(def: T): () => void {
-    if (this.entries.has(def.id)) {
-      throw new Error('[' + this.kind + '] duplicate contribution id "' + def.id + '" —— 装载期拒绝，不静默覆盖');
-    }
-    let done = false;
-    const entry = {
-      def,
-      dispose: () => {
-        // 一次性守卫 + 陈旧性守卫（对齐 ToolRegistry.register 的 disposer 契约）：
-        // done 保证幂等；同 def 对象重注册后，陈旧 disposer 的二次调用不误删新行。
-        if (done) return;
-        done = true;
-        if (this.entries.get(def.id)?.def === def) {
-          this.entries.delete(def.id);
-          this.onChange?.(); // 贡献消失——即时面重取清单（S4-1.5）
-        }
-      },
-    };
-    this.entries.set(def.id, entry);
-    this.onChange?.(); // 贡献出现——即时面重取清单（S4-1.5）
-    return entry.dispose;
-  }
-
-  get(id: string): T | undefined {
-    return this.entries.get(id)?.def;
-  }
-
-  /** 组合序 = 注册序（数组序）；前缀缓存语义依赖此序（S1 设计件 §2.1）。 */
-  list(): T[] {
-    return [...this.entries.values()].map((e) => e.def);
-  }
-}
+// ── 注册表内核 ──
+//
+// M1 收口（2026-09-14）：内核已上收到 composition/contribution-channel.ts
+// （ContributionChannel——全平台唯一注册表实现，见该文件头注）。本条通道的
+// 差异只剩三件**声明式数据**：kind / timing / onChanged——不再各自持有一份
+// 手抄的类。历史上本文件内的 ContributionRegistry 是七份复制中的「正本」，
+// 其余六份抄它又各自少了成员（get/变更通知），现已全部收编。
 
 // ── 四 service 本体（结构同构，分立四个服务名：inject 面各自独立）──
 
 export class PanelsService extends Service {
-  private registry = new ContributionRegistry<PanelContribution>('panels', bumpPanelDefs);
+  // 即时生效语义：DockRail/DockPanel 经 bumpPanelDefs 信号 store 重取清单。
+  private registry = new ContributionChannel<PanelContribution>('panels', {
+    timing: 'immediate',
+    onChanged: bumpPanelDefs,
+  });
 
   constructor(ctx: Context) {
     super(ctx, 'panels');
@@ -195,7 +157,11 @@ export class PanelsService extends Service {
 }
 
 export class CommandsService extends Service {
-  private registry = new ContributionRegistry<CommandContribution>('commands', bumpCommands);
+  // 即时生效语义：CommandPalette/effectiveActions 经 bumpCommands 信号 store 重取清单。
+  private registry = new ContributionChannel<CommandContribution>('commands', {
+    timing: 'immediate',
+    onChanged: bumpCommands,
+  });
 
   constructor(ctx: Context) {
     super(ctx, 'commands');
@@ -216,7 +182,12 @@ export class CommandsService extends Service {
 }
 
 export class ToolsService extends Service {
-  private registry = new ContributionRegistry<ToolContribution>('tools', fireContributionsChanged);
+  // 下次装配生效语义：无即时 React 消费面，变更是「组合输入变更」
+  // （preset-assembly cache 代数失效 + bootShell 重应用 + pluginToolRows 实例缓存清）。
+  private registry = new ContributionChannel<ToolContribution>('tools', {
+    timing: 'next-assembly',
+    onChanged: fireContributionsChanged,
+  });
 
   constructor(ctx: Context) {
     super(ctx, 'tools');
@@ -237,7 +208,8 @@ export class ToolsService extends Service {
 }
 
 export class LlmService extends Service {
-  private registry = new ContributionRegistry<LlmAdapterContribution>('llm');
+  // 请求期解析语义：createProvider 按 kind 扫描注册序取最后一个同 kind 实现。
+  private registry = new ContributionChannel<LlmAdapterContribution>('llm', { timing: 'request' });
 
   constructor(ctx: Context) {
     super(ctx, 'llm');

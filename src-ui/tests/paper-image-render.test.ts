@@ -40,8 +40,8 @@ vi.mock('../src/rpc-contract', async (importOriginal) => {
 });
 
 import { previewUrlFor, seedPreviewUrl } from '../src/app/chat/image-intake';
+import { builtinRendererDefs } from '../src/app/paper/builtin-renderers';
 import { useShellStore } from '../src/app/shell-store';
-import { builtinRendererDefs } from '../src/composition/renderer-service';
 import { createBlock } from '../src/paper/block-model';
 import { parseMarkdown, parseMarkdownIncremental, remoteImageSrc } from '../src/paper/markdown';
 import { measureBlockHeight, measureMdBlocks, userImagesRowHeight } from '../src/paper/measure';

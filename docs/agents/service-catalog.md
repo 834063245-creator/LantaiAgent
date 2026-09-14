@@ -64,12 +64,12 @@ shell 后端能力注册表（平台化 Phase 2 · D11；subprocess 并入本 se
 |---|---|---|---|---|
 | `ctx.capabilities` | `CapabilitiesService` | `src/composition/capability-service.ts` | — | 1 文件 |
 | `ctx.commands` | `CommandsService` | `src/composition/services.ts` | `canvas/sidebar-toggle` · `compose/space-status` · `paper/toggle` · `settings/toggle` | 4 文件 |
-| `ctx.hooks` | `HooksService` | `src/composition/hook-service.ts` | — | 0 文件 |
+| `ctx.hooks` | `HooksService` | `src/composition/hook-service.ts` | `plan-injector` | 0 文件 |
 | `ctx.overlays` | `OverlayService` | `src/composition/overlay-service.ts` | `compose-dock` · `paper-minimap` · `toc-strip` | 2 文件 |
 | `ctx.panels` | `PanelsService` | `src/composition/services.ts` | `canvas-sidebar` · `canvas-spine` · `paper` · `settings` | 3 文件 |
 | `ctx.prompts` | `PromptsService` | `src/composition/prompt-service.ts` | — | 1 文件 |
-| `ctx.renderers` | `RenderersService` | `src/composition/renderer-service.tsx` | — | 6 文件 |
-| `ctx.tools` | `ToolsService` | `src/composition/services.ts` | `hologram/browser-desktop-domain/tools` | 4 文件 |
+| `ctx.renderers` | `RenderersService` | `src/composition/renderer-service.tsx` | — | 7 文件 |
+| `ctx.tools` | `ToolsService` | `src/composition/services.ts` | `communication-tools` · `compaction-tools` · `converge-tools` · `discovery-tools` · `hologram/browser-desktop-domain/tools` · `merge-tools` · `request-tool` · `spawn-tool` | 4 文件 |
 
 ### `ctx.capabilities` — CapabilitiesService（贡献通道）
 
@@ -92,7 +92,7 @@ capability 贡献注册表（A-3 第八贡献通道）——贡献注册 → dis
 工具管道钩子注册表（A-2）——enrich/preflight 贡献注册 → disposer； 下次 Agent 装配生效语义。
 
 - owner：`src/composition/hook-service.ts`
-- 默认实现 / 贡献者 id：—
+- 默认实现 / 贡献者 id：`plan-injector`
 - 消费面：—（无直接 import/ctx 引用——运行时通道注入）
 
 ### `ctx.overlays` — OverlayService（贡献通道）
@@ -125,14 +125,14 @@ system-prompt 段落注册表（A-1 第六贡献通道）——段注册 → dis
 
 - owner：`src/composition/renderer-service.tsx`
 - 默认实现 / 贡献者 id：—
-- 消费面（6）：`src/composition/asset-renderers.tsx` · `src/plugins/builtin/host-modules.ts` · `src/plugins/builtin/paper-shell/host.ts` · `src/plugins/builtin/renderers/components.tsx` · `src/plugins/builtin/renderers/index.tsx` · `src/plugins/loader.ts`
+- 消费面（7）：`src/app/paper/builtin-renderers.tsx` · `src/composition/asset-renderers.tsx` · `src/plugins/builtin/host-modules.ts` · `src/plugins/builtin/paper-shell/host.ts` · `src/plugins/builtin/renderers/components.tsx` · `src/plugins/builtin/renderers/index.tsx` · `src/plugins/loader.ts`
 
 ### `ctx.tools` — ToolsService（贡献通道）
 
 工具注册表（S1-1）——行注册 → disposer；下次 Agent 装配生效语义。
 
 - owner：`src/composition/services.ts`
-- 默认实现 / 贡献者 id：`hologram/browser-desktop-domain/tools`
+- 默认实现 / 贡献者 id：`communication-tools` · `compaction-tools` · `converge-tools` · `discovery-tools` · `hologram/browser-desktop-domain/tools` · `merge-tools` · `request-tool` · `spawn-tool`
 - 消费面（4）：`src/plugins/builtin/browser-desktop-domain/index.ts` · `src/plugins/builtin/contribution-helpers.ts` · `src/plugins/mcp-bridge.ts` · `src/plugins/tool-declarations.ts`
 
 ## 服务

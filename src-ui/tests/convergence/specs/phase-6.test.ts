@@ -208,12 +208,12 @@ describe('phase-6 T2 验收实证 — 新增工具/hook 不要求修改 AgentCon
       let hookInstalled = false;
       const ext = AgentBlueprint.fromRoster(factoryComposition().capabilities).add(
         {
-          key: 'acme-probe-tool',
+          id: 'acme-probe-tool',
           phase: 'agent',
           install: (scope) => scope.tools.register(probeTool()),
         },
         {
-          key: 'acme-probe-hook',
+          id: 'acme-probe-hook',
           phase: 'agent',
           install: (scope) => {
             const hook: Hook = {

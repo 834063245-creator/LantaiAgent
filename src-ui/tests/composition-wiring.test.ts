@@ -181,22 +181,22 @@ describe('S2-1 穿线：AgentBlueprint.fromRoster', () => {
     // B⑤ 收官：standard() 与 builtinCapabilities() 退役——不变式改钉新
     // 真源：通道快照 ≡ 清单（fromRoster 的缺省输入与清单同一张表）
     await withFirstPartyCapabilityChannel(async () => {
-      const a = AgentBlueprint.fromRoster(factoryComposition().capabilities).keys();
-      const b = firstPartyCapabilities().map((c) => c.key);
+      const a = AgentBlueprint.fromRoster(factoryComposition().capabilities).ids();
+      const b = firstPartyCapabilities().map((c) => c.id);
       expect(a).toEqual(b);
     });
   });
 
-  it('禁用 capability 后 keys 少一项且序保持', async () => {
+  it('禁用 capability 后 ids 少一项且序保持', async () => {
     await withFirstPartyCapabilityChannel(async () => {
       const composition = resolveRoster(factoryComposition(), [
         { capabilities: [{ id: 'auto-tune', disabled: true }] },
       ]);
-      const keys = AgentBlueprint.fromRoster(composition.capabilities).keys();
+      const keys = AgentBlueprint.fromRoster(composition.capabilities).ids();
       expect(keys).not.toContain('auto-tune');
       expect(keys).toEqual(
         firstPartyCapabilities()
-          .map((c) => c.key)
+          .map((c) => c.id)
           .filter((k) => k !== 'auto-tune'),
       );
     });

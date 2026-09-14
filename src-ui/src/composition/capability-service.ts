@@ -7,29 +7,30 @@
 //
 // 贡献形状 = AgentCapability 本体（形状零改写——phase（context/agent）、when() 门控、
 // install(scope) 全原样保留，插件贡献与第一方 capability 在同一张 blueprint 表上
-// 竞争）。key 即寻址 id：capabilities 域「行 id = 现 key」是 S2 设计件 §2.1 既有
-// 裁定——key 同时是 AgentBlueprint 唯一性约束与 roster 寻址面。推荐
-// '<插件名>/<能力名>' npm scope 风格（hooks 通道同款约定，跨插件防撞名）。
+// 竞争）。行 id = AgentCapability.id（M1 收口，2026-09-14：与其余七条通道统一；
+// 历史名 key 已废弃，别名不留）——行 id 同时是 AgentBlueprint 唯一性约束与
+// roster 寻址面。推荐 '<插件名>/<能力名>' npm scope 风格（prompts/hooks 通道
+// 同款约定，跨插件防撞名）。
 //
-// 契约对齐 prompt-service（贡献进解析域的先例）与 hook-service（A-2 先例）：
+// 注册表内核（M1 收口）：ContributionChannel 单一实现（contribution-channel.ts）
+// ——本文件不再自持手抄的 CapabilityContributionRegistry（历史债：六份复制之一，
+// 且是唯一用 key 当行身份的一份）。本通道的差异只剩三件声明式数据：
+//   - timing: 'next-assembly'（见下）；
+//   - validate: assertContributionShape（运行时形状守卫——外部插件是纯 JS 无 tsc）；
+//   - onChanged: fireCapabilityContributionsChanged（组合输入变更监听）。
+//
+// 保留的契约要点：
 //   - register(def) → Disposer：调用方挂 ctx.effect（所有权登记是调用方纪律）；
-//   - 重名 key 装载期拒绝（throw，不静默覆盖）——B⑤ 收官（2026-08-24）后
-//     第一方十五项本身经通道注册（装载序 = capabilitiesServicePlugin →
-//     第一方 capability 插件 → 外部插件），外部贡献撞第一方 key 同样走
-//     注册表重名拒绝（装载期可见）；A-3 时代的「撞 builtinCapabilities()
-//     key 拒绝」随出厂表退役而退役（B④ prompt-service 同款终态——无第一
-//     方通道的环境里第一方 key 可注册，撞名防线在装载序上）；
-//   - 运行时形状守卫（外部插件是纯 JS 无 tsc——畸形贡献须在装载期拒绝，不
-//     潜伏到会话装配期 TypeError；loader 的 isPluginShape 同款先例）；
-//   - disposer 幂等 + 陈旧性守卫（同 def 重注册后旧 disposer 不误删新行）；
-//   - 无即时 React 信号（capability 无常驻清单消费面）。
+//   - 重名 id 装载期拒绝（throw，不静默覆盖）——B⑤ 收官（2026-08-24）后第一方
+//     十五项本身经通道注册（装载序 = capabilitiesServicePlugin → 第一方 capability
+//     插件 → 外部插件），外部贡献撞第一方 id 同样走注册表重名拒绝（装载期可见）。
 //
-// 组合解析域（设计件 §2.2/§2.5，S4-4 甲第三挂点；B⑤ 收官修订见文件头）：
-// 贡献 key 经 factoryComposition() 快照进 capabilities 域（B⑤ 后唯一行源
-// ——第一方十五项经通道注册，贡献序 = 注册序；无通道环境 = 空表）；patch/
-// preset 可按 key disable 贡献行（插件开关与能力粒度裁剪两层正交）。贡献
-// register/dispose 因此成为组合输入变更——onCapabilityContributionsChanged
-// 供 preset-assembly 的组合 cache 代数失效 + bootShell 的贡献监听重应用。
+// 组合解析域（设计件 §2.2/§2.5，S4-4 甲第三挂点）：贡献 id 经 factoryComposition()
+// 快照进 capabilities 域（B⑤ 后唯一行源——第一方十五项经通道注册，贡献序 =
+// 注册序；无通道环境 = 空表）；patch/preset 可按 id disable 贡献行（插件开关与
+// 能力粒度裁剪两层正交）。贡献 register/dispose 因此成为组合输入变更
+// ——onCapabilityContributionsChanged 供 preset-assembly 的组合 cache 代数失效
+// + bootShell 的贡献监听重应用。
 //
 // 生效时机 = 下次 Agent 装配（新会话）——runtime._assembleAgent 既有穿线
 // AgentBlueprint.fromRoster(composition.capabilities) 消费整张表（A-3 零
@@ -39,8 +40,9 @@
 
 import type { AgentCapability } from '../agent/blueprint';
 import { type Context, Service } from '../cordis';
+import { ContributionChannel } from './contribution-channel';
 
-/** capability 贡献：形状即 AgentCapability（key 寻址 + 阶段 + 条件 + 安装动作）。 */
+/** capability 贡献：形状即 AgentCapability（id 寻址 + 阶段 + 条件 + 安装动作）。 */
 export type CapabilityContribution = AgentCapability;
 
 // ── 贡献变更监听（S4-4 甲第三挂点）──
@@ -58,61 +60,29 @@ function fireCapabilityContributionsChanged(): void {
   for (const cb of [...capabilityContributionListeners]) cb();
 }
 
-// ── 注册表内核（prompt-service 同款单文件自持；不导出公共类）──
-
 /** 运行时形状守卫（设计件 §2.1）：三个承重字段装载期校验——外部插件是
  *  纯 JS（无 tsc），漏 install / phase 拼错不拦即潜伏到会话装配期。 */
 function assertContributionShape(def: CapabilityContribution): void {
-  if (typeof def.key !== 'string' || def.key === '') {
-    throw new Error('[capabilities] 贡献 key 必须是非空 string');
+  if (typeof def.id !== 'string' || def.id === '') {
+    throw new Error('[capabilities] 贡献 id 必须是非空 string');
   }
   if (def.phase !== 'context' && def.phase !== 'agent') {
-    throw new Error(
-      `[capabilities] 贡献 "${def.key}" 的 phase 必须是 "context" | "agent"（收到 ${String(def.phase)}）`,
-    );
+    throw new Error(`[capabilities] 贡献 "${def.id}" 的 phase 必须是 "context" | "agent"（收到 ${String(def.phase)}）`);
   }
   if (typeof def.install !== 'function') {
-    throw new Error(`[capabilities] 贡献 "${def.key}" 缺少 install 函数`);
-  }
-}
-
-class CapabilityContributionRegistry {
-  private entries = new Map<string, { def: CapabilityContribution; dispose: () => void }>();
-
-  constructor(private readonly onChange: (() => void) | null = null) {}
-
-  register(def: CapabilityContribution): () => void {
-    assertContributionShape(def);
-    if (this.entries.has(def.key)) {
-      throw new Error('[capabilities] duplicate contribution key "' + def.key + '" —— 装载期拒绝，不静默覆盖');
-    }
-    let done = false;
-    const entry = {
-      def,
-      dispose: () => {
-        if (done) return;
-        done = true;
-        if (this.entries.get(def.key)?.def === def) {
-          this.entries.delete(def.key);
-          this.onChange?.(); // 贡献消失（陈旧性守卫内——实际删除才触发）
-        }
-      },
-    };
-    this.entries.set(def.key, entry);
-    this.onChange?.(); // 贡献出现
-    return entry.dispose;
-  }
-
-  /** 组合序 = 注册序（表尾追加序——前缀缓存语义依赖此序）。 */
-  list(): CapabilityContribution[] {
-    return [...this.entries.values()].map((e) => e.def);
+    throw new Error(`[capabilities] 贡献 "${def.id}" 缺少 install 函数`);
   }
 }
 
 // ── service 本体 ──
 
 export class CapabilitiesService extends Service {
-  private registry = new CapabilityContributionRegistry(fireCapabilityContributionsChanged);
+  // 下次装配生效语义 + 装载期形状守卫 + 组合输入变更监听。
+  private registry = new ContributionChannel<CapabilityContribution>('capabilities', {
+    timing: 'next-assembly',
+    validate: assertContributionShape,
+    onChanged: fireCapabilityContributionsChanged,
+  });
 
   constructor(ctx: Context) {
     super(ctx, 'capabilities');

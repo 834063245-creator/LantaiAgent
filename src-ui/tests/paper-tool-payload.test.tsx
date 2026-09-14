@@ -26,7 +26,7 @@ vi.mock('@chenglou/pretext', () => ({
   clearCache: vi.fn(),
 }));
 
-import { builtinRendererDefs } from '../src/composition/renderer-service';
+import { builtinRendererDefs } from '../src/app/paper/builtin-renderers';
 import type { SourcedBlock } from '../src/paper/block-model';
 import { createBlock } from '../src/paper/block-model';
 import { measureBlockHeight } from '../src/paper/measure';

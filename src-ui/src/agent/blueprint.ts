@@ -101,10 +101,11 @@ export interface BlueprintScope {
   readonly agent?: Agent;
 }
 
-/** 一项声明式装配能力：条件 + 安装动作。key 全局唯一（重复即拒绝）。 */
+/** 一项声明式装配能力：条件 + 安装动作。id 全局唯一（重复即拒绝）。 */
 export interface AgentCapability {
-  /** 稳定标识 — 审计/排序/差分对拍用。 */
-  readonly key: string;
+  /** 稳定标识 — 审计/排序/差分对拍/通道寻址用（M1 收口：字段名与其余七条
+   *  贡献通道统一为 id；历史名 key 已废弃）。 */
+  readonly id: string;
   /** 装配阶段。 */
   readonly phase: CapabilityPhase;
   /** 缺省恒装；返回 false 跳过。 */
@@ -126,12 +127,12 @@ function requireAgent(scope: BlueprintScope): Agent {
 export class AgentBlueprint {
   private readonly _caps: AgentCapability[];
 
-  /** 构造蓝图。capabilities 的 key 必须唯一（重复抛错 — 序与审计都依赖 key 唯一）。 */
+  /** 构造蓝图。capabilities 的 id 必须唯一（重复抛错 — 序与审计都依赖 id 唯一）。 */
   constructor(capabilities: AgentCapability[] = []) {
     const seen = new Set<string>();
     for (const cap of capabilities) {
-      if (seen.has(cap.key)) throw new Error(`[blueprint] capability key 重复: ${cap.key}`);
-      seen.add(cap.key);
+      if (seen.has(cap.id)) throw new Error(`[blueprint] capability id 重复: ${cap.id}`);
+      seen.add(cap.id);
     }
     this._caps = [...capabilities];
   }
@@ -139,22 +140,22 @@ export class AgentBlueprint {
   /** 追加 capability（链式）。返回本实例 — 扩展只应作用于调用方私有蓝图。 */
   add(...caps: AgentCapability[]): this {
     for (const cap of caps) {
-      if (this._caps.some((c) => c.key === cap.key)) {
-        throw new Error(`[blueprint] capability key 重复: ${cap.key}`);
+      if (this._caps.some((c) => c.id === cap.id)) {
+        throw new Error(`[blueprint] capability id 重复: ${cap.id}`);
       }
       this._caps.push(cap);
     }
     return this;
   }
 
-  /** 按 key 查找。 */
-  capability(key: string): AgentCapability | undefined {
-    return this._caps.find((c) => c.key === key);
+  /** 按 id 查找。 */
+  capability(id: string): AgentCapability | undefined {
+    return this._caps.find((c) => c.id === id);
   }
 
-  /** 全部 capability key（声明序）。 */
-  keys(): string[] {
-    return this._caps.map((c) => c.key);
+  /** 全部 capability id（声明序）。 */
+  ids(): string[] {
+    return this._caps.map((c) => c.id);
   }
 
   /** 按阶段过滤（保持声明序）。缺省返回全部。 */
@@ -175,13 +176,13 @@ export class AgentBlueprint {
  *  起经 ctx.capabilities 第一方插件通道贡献（plugins/capability-segments-
  *  plugin.ts 装载本清单，装配腰 composition/first-party-capabilities.ts）。
  *  出厂 builtinCapabilities() 退役，本清单即出厂装配面的全部 capability
- *  来源。行 id = capability key（roster patch 用户组合文件在 capabilities
+ *  来源。行 id = capability id（roster patch 用户组合文件在 capabilities
  *  域的寻址面）。S2-0 从 standard() 内联数组原样拆出，内容零改写。 */
 export function firstPartyCapabilities(): AgentCapability[] {
   return [
     // ── context 阶段（Agent 构造前）──
     {
-      key: 'plan-tools',
+      id: 'plan-tools',
       phase: 'context',
       install: ({ ctx, tools }) => {
         // readOnly: true → 两种模式都存活；planState 由 ctx 提供（翻译层或物化层创建）
@@ -193,7 +194,7 @@ export function firstPartyCapabilities(): AgentCapability[] {
     // ── agent 阶段（Agent 构造后 — 表序即工具面注册序）──
     {
       // 通信族 — bus 注册本身在 Agent 构造内经 ctx 完成，这里补模型可见工具面
-      key: 'communication-tools',
+      id: 'communication-tools',
       phase: 'agent',
       install: (scope) => {
         const agent = requireAgent(scope);
@@ -204,7 +205,7 @@ export function firstPartyCapabilities(): AgentCapability[] {
     },
     {
       // discovery 族 — 同上；proxy 已由物化层静态绑定到该 Agent 的会话板
-      key: 'discovery-tools',
+      id: 'discovery-tools',
       phase: 'agent',
       install: (scope) => {
         const agent = requireAgent(scope);
@@ -215,7 +216,7 @@ export function firstPartyCapabilities(): AgentCapability[] {
     },
     {
       // 子 Agent 管理族（merge/board/kill）— 需要会话级 pool
-      key: 'merge-tools',
+      id: 'merge-tools',
       phase: 'agent',
       when: ({ ctx }) => !!ctx.get('subAgentPool'),
       install: (scope) => {
@@ -234,7 +235,7 @@ export function firstPartyCapabilities(): AgentCapability[] {
     },
     {
       // 同步请求工具 — agent_request
-      key: 'request-tool',
+      id: 'request-tool',
       phase: 'agent',
       install: (scope) => {
         const agent = requireAgent(scope);
@@ -243,7 +244,7 @@ export function firstPartyCapabilities(): AgentCapability[] {
     },
     {
       // 替换 agent_spawn 为绑定本 Agent 的版本 — 修复多会话下 spawn 路由错位
-      key: 'spawn-tool',
+      id: 'spawn-tool',
       phase: 'agent',
       when: ({ ctx, inputs }) => !!ctx.get('subAgentPool') && !!inputs.subAgentSpawner,
       install: (scope) => {
@@ -263,7 +264,7 @@ export function firstPartyCapabilities(): AgentCapability[] {
     },
     {
       // 替换 task_* 为绑定本 Agent 实例的专属待办 — 每 Agent 一份清单
-      key: 'task-tools',
+      id: 'task-tools',
       phase: 'agent',
       install: (scope) => {
         const perAgentTaskManager = new TaskManager();
@@ -276,7 +277,7 @@ export function firstPartyCapabilities(): AgentCapability[] {
     },
     {
       // 压缩工具 + tracker 持久化路径
-      key: 'compaction-tools',
+      id: 'compaction-tools',
       phase: 'agent',
       install: (scope) => {
         const agent = requireAgent(scope);
@@ -292,7 +293,7 @@ export function firstPartyCapabilities(): AgentCapability[] {
       // 位置：compaction-tools 之后、converge-tools 之前——常驻名不进
       // DOMAIN_SPECS（与 ask_user/wait 同类的会话级原语），注册序在此
       // 显式选定（D7：表序 = 字节契约）。
-      key: 'code-execution-tool',
+      id: 'code-execution-tool',
       phase: 'agent',
       install: (scope) => {
         const agent = requireAgent(scope);
@@ -328,7 +329,7 @@ export function firstPartyCapabilities(): AgentCapability[] {
     },
     {
       // 工具层收敛：领域工具 + 隐藏旧名（必须在全部工具注册之后 — 表序保证）
-      key: 'converge-tools',
+      id: 'converge-tools',
       phase: 'agent',
       install: ({ tools }) => {
         convergeRegistry(tools);
@@ -341,7 +342,7 @@ export function firstPartyCapabilities(): AgentCapability[] {
       // 随图谱全量退役删除；state-read/state-preflight 的数据源是 LSP 诊断
       //（与图谱引擎无关），build-result 承接原 graph-context hook 的
       // run_shell 构建缓存分支（[构建] turn-start 注入源）。
-      key: 'state-hooks',
+      id: 'state-hooks',
       phase: 'agent',
       install: ({ ctx, inputs, hooks, preflightHooks, deps }) => {
         if (inputs.hooksEnabled === false) return;
@@ -356,7 +357,7 @@ export function firstPartyCapabilities(): AgentCapability[] {
     },
     {
       // Board 追踪 hook — board 可用时始终注册（有实际副作用，不受 hooksEnabled 影响）
-      key: 'board-tracking-hook',
+      id: 'board-tracking-hook',
       phase: 'agent',
       install: ({ ctx, hooks }) => {
         hooks.register(createBoardTrackingHook(ctx.agentId, ctx.resolve('taskBoard')));
@@ -364,7 +365,7 @@ export function firstPartyCapabilities(): AgentCapability[] {
     },
     {
       // Plan 模式接线 — runLoop 提醒注入器 + 状态通知
-      key: 'plan-injector',
+      id: 'plan-injector',
       phase: 'agent',
       install: (scope) => {
         const agent = requireAgent(scope);
@@ -377,7 +378,7 @@ export function firstPartyCapabilities(): AgentCapability[] {
     },
     {
       // 自动调优 — fire-and-forget
-      key: 'auto-tune',
+      id: 'auto-tune',
       phase: 'agent',
       install: (scope) => {
         const agent = requireAgent(scope);

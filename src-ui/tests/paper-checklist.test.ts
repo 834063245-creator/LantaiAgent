@@ -28,7 +28,7 @@ vi.mock('@chenglou/pretext/rich-inline', () => ({
   measureRichInlineStats: vi.fn(() => ({ lineCount: 2, maxLineWidth: 100 })),
 }));
 
-import { builtinRendererDefs } from '../src/composition/renderer-service';
+import { builtinRendererDefs } from '../src/app/paper/builtin-renderers';
 import { createBlock, resetBlockIdCounterForTests, type SourcedBlock } from '../src/paper/block-model';
 import { type MdBlock, parseMarkdown } from '../src/paper/markdown';
 import { clearPaperMeasureCache, measureBlockHeight } from '../src/paper/measure';

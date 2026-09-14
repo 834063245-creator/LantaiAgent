@@ -27,7 +27,7 @@ import { resolvePresetComposition } from '../../../src/composition/presets';
 import { factoryComposition, type ResolvedComposition } from '../../../src/composition/roster';
 
 /** 当前 preset 的组合解析产物（CONVERGENCE_PRESET 路由）。
- *  异步：preset 寻址 plugin 行/capability key 的解析在工具 + capability
+ *  异步：preset 寻址 plugin 行/capability id 的解析在工具 + capability
  *  双通道腰内执行（贡献行与第一方 capability 在册——B⑤ 后 capabilities
  *  域的通道快照 = 生产出厂面）。 */
 export async function resolveCurrentComposition(): Promise<ResolvedComposition> {

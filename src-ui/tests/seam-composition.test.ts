@@ -74,7 +74,7 @@ describe('seam 裁剪域（组合解析 × ctx seam 消费视图）', () => {
     const factory = factoryComposition();
     const resolved = resolveRoster(factory, []);
     expect(resolved.tools.map((r) => r.id)).toEqual(factory.tools.map((r) => r.id));
-    expect(resolved.capabilities.map((c) => c.key)).toEqual(factory.capabilities.map((c) => c.key));
+    expect(resolved.capabilities.map((c) => c.id)).toEqual(factory.capabilities.map((c) => c.id));
     expect(resolved.shell.map((r) => r.id)).toEqual(factory.shell.map((r) => r.id));
     expect(resolved.seamDisabled).toEqual({
       llm: [],

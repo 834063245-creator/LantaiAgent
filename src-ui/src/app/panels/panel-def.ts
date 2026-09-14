@@ -37,7 +37,7 @@ export const PANEL_DEFS: PanelDef[] = [];
 
 // ── 装载期运行时校验（S1-5：id 从编译期 union 约束迁到运行时清单校验）──
 // union 退役后合法 id 的守门在这里：重复 id / 缺组件在模块加载时直接 throw
-// （错误不静默——对齐 composition/services ContributionRegistry 的装载期
+// （错误不静默——对齐 composition/contribution-channel ContributionChannel 的装载期
 // 拒绝语义）。外部插件面板（S2/S4）将经 PanelsService 注册走同款校验。
 {
   const seen = new Set<string>();

@@ -12,13 +12,13 @@
 // 先于工具 execute——provider 换实现不触碰、也不需要触碰强制层；dispatch 腰
 // 作为调用选项注入（默认 provider 借腰转发命令名，替代 provider 可完全忽略）。
 //
-// 注册纪律：ContributionRegistry 单一内核复用（重名 id 装载期拒绝 + disposer
+// 注册纪律：ContributionChannel 单一内核复用（重名 id 装载期拒绝 + disposer
 // 双守卫）；disposer 经 ctx.effect 登记（调用方所有权）。
 
 import type { ToolExecutor } from '../agent/tool';
 import { type Context, Service } from '../cordis';
+import { ContributionChannel } from './contribution-channel';
 import { seamDisabled } from './seam-resolution';
-import { ContributionRegistry } from './services';
 
 /** fs 域动作（与 domains.ts fs 域动作枚举对齐——消费面形状的唯一事实）。
  *  （constraints/write_constraints 两动作随图谱全量退役移除，2026-09-09。） */
@@ -43,7 +43,8 @@ export interface FsProvider {
 }
 
 export class FsService extends Service {
-  private registry = new ContributionRegistry<FsProvider>('fs');
+  // 请求期解析语义：fs 域动作消费面按 provider id 扫描（后注册胜 + 组合裁剪）。
+  private registry = new ContributionChannel<FsProvider>('fs', { timing: 'request' });
 
   constructor(ctx: Context) {
     super(ctx, 'fs');
