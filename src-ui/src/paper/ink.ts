@@ -138,6 +138,11 @@ export function inkBarColorOf(kind: string): string {
   return (INK_BAR_COLORS as Record<string, string>)[kind] ?? INK_BAR_COLORS._default;
 }
 
+/** 报错墨（tokens.css `--fail` 字面量镜像）。canvas 里取不到 CSS 变量，而语义
+ *  状态色必须有 TS 侧真源：报错走语义状态，**朱砂=人不可挪用**（目次带识别层
+ *  的「错」短规 + 刻痕 error 族同源）。字面量由 tests/paper-ink.test.ts 钉死。 */
+export const INK_FAIL = '#a9443f';
+
 /* ── 卷剪影档（2026-09-06 P4c）：块级墨影 + 文类色签边 ──
  * 墨影 = 块足迹淡墨（远看纸上有字的「灰质」而非内容）；签边 = 块左缘
  * 2-4px 色条（文类签的远景化身——段落节奏与文类结构可见）。

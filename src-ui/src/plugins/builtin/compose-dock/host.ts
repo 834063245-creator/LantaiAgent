@@ -15,7 +15,7 @@ export type { FileDragEvent } from '../../../bridge';
 export { isMockMode, watchFileDragDrop } from '../../../bridge';
 export type { SourcedBlock } from '../../../paper/block-model';
 export { composerSubmitOnKey } from '../../../paper/ime';
-export { createInkCache, inkColorOf, inkForBlock } from '../../../paper/ink';
+export { createInkCache, INK_FAIL, inkBarColorOf, inkColorOf, inkForBlock } from '../../../paper/ink';
 export { usePaperDock, usePaperRegion } from '../../../paper/overlay-context';
 export type { StageUnitInput, TocMark, TocMarkInput, TocRange, TocSlider } from '../../../paper/toc';
 export {
@@ -30,6 +30,8 @@ export {
   unreadBand,
   viewportMarker,
 } from '../../../paper/toc';
+export type { TocInkBucket, TocInkLine } from '../../../paper/toc-ink';
+export { buildTocInkBuckets } from '../../../paper/toc-ink';
 export {
   findModels,
   getDynamicFetchFailure,

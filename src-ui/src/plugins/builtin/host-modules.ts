@@ -87,6 +87,7 @@ import { groupWorkUnits, leadOf, rhythmAssign, sealedMessageIdsOf, unitMembershi
 import { composerSubmitOnKey } from '../../paper/ime';
 import {
   createInkCache,
+  INK_FAIL,
   INK_LABEL_ALPHA,
   INK_LABEL_MIN_PX,
   INK_SIL_ACCENT_ALPHA,
@@ -135,6 +136,7 @@ import {
   unreadBand,
   viewportMarker,
 } from '../../paper/toc';
+import { buildTocInkBuckets } from '../../paper/toc-ink';
 import { collapseToolGroups, translateMessagesCached } from '../../paper/translate';
 import { injectPaperTokens } from '../../paper/type-tokens';
 import { viewportWorldRect, visibleFlowWindow, visiblePinnedIds } from '../../paper/virtualize';
@@ -257,6 +259,7 @@ const faceDeps = {
   inkBarColorOf,
   inkColorOf,
   inkForBlock,
+  INK_FAIL,
   lodActive,
   lodFarActive,
   lodTierOf,
@@ -280,6 +283,7 @@ const faceDeps = {
   buildStageAnchors,
   nearestAnchorAt,
   viewportMarker,
+  buildTocInkBuckets,
   computeSlider,
   grabOffsetAt,
   scrubViewTop,

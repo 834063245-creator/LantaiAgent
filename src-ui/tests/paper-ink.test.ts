@@ -37,6 +37,7 @@ import {
   createInkCache,
   INK_BAR_COLORS,
   INK_COLORS,
+  INK_FAIL,
   inkBarColorOf,
   inkColorOf,
   inkForBlock,
@@ -127,6 +128,19 @@ describe('paper/ink INK_COLORS 镜像', () => {
     expect(INK_COLORS.plan).toBe('#3a5b7a');
     expect(INK_COLORS.notice).toBe('rgba(38, 34, 28, 0.7)'); // --ink-2 alpha 墨（2026-08-31 浸墨化 v2）
     expect(inkColorOf('chart')).toBe('rgba(38, 34, 28, 0.48)'); // 资产/未知 → --ink-3 alpha 墨（2026-08-31 浸墨化 v2）
+  });
+
+  it('INK_FAIL = tokens.css --fail 字面量镜像（目次带识别层的「错」短规用）', () => {
+    expect(INK_FAIL).toBe('#a9443f');
+    expect(INK_BAR_COLORS._default).not.toBe(INK_FAIL); // 错不是文类族色，是语义状态
+  });
+
+  it('INK_BAR_COLORS 条面色 = 文字色兑水（目次带识别层的族色真源）', () => {
+    expect(INK_BAR_COLORS.markdown).toBe('rgba(38, 34, 28, 0.42)');
+    expect(INK_BAR_COLORS.user).toBe('rgba(166, 58, 46, 0.58)'); // 朱砂提亮（人=landmark）
+    expect(INK_BAR_COLORS.tool).toBe('rgba(58, 91, 122, 0.44)'); // --indigo 石青
+    expect(INK_BAR_COLORS.code).toBe('rgba(58, 91, 122, 0.44)');
+    expect(inkBarColorOf('chart')).toBe('rgba(38, 34, 28, 0.24)'); // 图表/未知 → _default
   });
 });
 

@@ -1,15 +1,16 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// plugins/builtin/compose-dock/TocStrip — 目次带 v3（2026-09-14 甲：可点层拆出）。
-//
-// 底子 = minimap（对齐 VSCode 交互语义），超越 = 语义刻痕/活线/未读区
-// （拍板 10「关键时刻不同标记」后置债一并清偿）。四层结构（职责分离，
-// 谁也不挤在同一个命中面上——2026-09-14 甲方拍板「丙：甲 + 乙」，乙 =
-// 墨迹换可辨认缩略，见文件尾 todo）：
-//   - canvas 内容指纹：paper/ink inkForBlock 行盒骨架 → bar 直绘（镜像
-//     InkLayer/MinimapView 画法；带内缩放比下一行常亚像素，bar 是唯一诚实
-//     原语——真字形 fillText 亚像素不可辨），墨色走 inkColorOf 单一真源；
+// plugins/builtin/compose-dock/TocStrip — 目次带 v3（2026-09-14 甲：可点层拆出；
+// 同日乙：识别层换装）。四层结构（职责分离，谁也不挤在同一个命中面上——
+// 用户拍板「丙：甲 + 乙」，甲已落地、乙本批落地）：
+//   - canvas 识别层（**乙**）：paper/toc-ink 把行盒聚成**带内墨桶**——形状 =
+//     桶内最宽行右缘（剪影）、墨量 = 桶内墨面积归一的深浅（哪里长/哪里密）、
+//     族色 = 定形行的块 kind → inkBarColorOf（墨色真源仍在 paper/ink.ts）、
+//     错桶另立 `--fail` 短规（错要最响）。桶是带内唯一诚实的竖向原语：带内
+//     缩放比常见 0.005–0.012，行距/缩进/块间留白全在 1px 之下，逐行直画即糊
+//     （v2「每块首行一根 1.2px 细条 + 块级降级」实机空行率 0.42–0.81 = 用户
+//     读作「滚动条」）。定档见原型 prototype/toc-thumb-ab.html + 规格书 §13；
 //   - DOM 滑块：computeSlider/grabOffsetAt/scrubViewTop 纯几何——拖拽 scrub
 //     （grab offset 锁采样）、点滑块外即跳对中心再顺势拖、fit 全高不可拖；
 //     scrub 直写 canvas-view-store（不走飞行动画——连续 scrub 动画必糊）。
@@ -39,15 +40,17 @@
 // 双走查形态（增补四）：产物域源码——项目内依赖经 './host' 取宿主共享真实例。
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import type { SourcedBlock, StageUnitInput, TocMarkInput, TocRange } from './host';
+import type { SourcedBlock, StageUnitInput, TocInkLine, TocMarkInput, TocRange } from './host';
 import {
   agentSessionState,
   buildStageAnchors,
+  buildTocInkBuckets,
   computeSlider,
   createInkCache,
   deriveMarks,
   grabOffsetAt,
-  inkColorOf,
+  INK_FAIL,
+  inkBarColorOf,
   inkForBlock,
   jumpViewTopAt,
   scrubViewTop,
@@ -71,8 +74,8 @@ export const STRIP_TOP = TOC_TOP + MARK_HALF;
  *  坞顶线 = 页底 −96 −坞高；2026-09-02 拍板 C：两态同位，固定值不随窗口高浮动，
  *  与 tokens.css --composer-rise 同源镜像）。 */
 const COMPOSER_RISE = 96;
-/** 密度档阈值：块数超过后每块只画首行（MinimapView 同款策略）。 */
-const DENSITY_BLOCKS = 80;
+/** 错桶短规宽（带内 px）——错是语义状态，不走族色深浅（最响的一档）。 */
+const INK_FAIL_RULE_W = 4;
 /** 阶段锚命中盒高（px）= CSS .pp-toc-anchor 的 height（单一真源：热区 ≥24px
  *  纪律；卡片判定半径 = 其半高——**卡片所示即点击所得**）。 */
 export const STAGE_HIT_H = 28;
@@ -260,6 +263,9 @@ export const TocStrip = memo(function TocStrip() {
   const activeLayout = activeRegion?.layout;
   const activeAnchorX = activeRegion?.anchor.anchorX;
   const activeAnchorW = activeRegion?.anchor.width;
+  /* 报错块集（deriveMarks 的 error 族）——识别层的「错」通道与刻痕层同源：
+     两处都从同一份 marks 派生，不另立判据。 */
+  const errorBlockIds = useMemo(() => new Set(marks.filter((m) => m.kind === 'error').map((m) => m.blockId)), [marks]);
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !activeBlocks || !activeLayout || activeAnchorX == null || activeAnchorW == null || !range) return;
@@ -279,35 +285,38 @@ export const TocStrip = memo(function TocStrip() {
     const regionW = Math.max(1, activeAnchorW);
     const xs = W / regionW;
     const left = activeAnchorX - regionW / 2;
-    const flow = activeBlocks.filter((b) => b.state === 'flow');
-    const density = flow.length > DENSITY_BLOCKS;
-    for (const b of flow) {
+    /* 行盒 → 桶输入（识别层唯一数据面：形状右缘 / 墨面积 / 族 kind / 错旗）。
+       逐行喂进去，聚合交给 paper/toc-ink 纯函数——绘制只认桶。 */
+    const lines: TocInkLine[] = [];
+    for (const b of activeBlocks) {
+      if (b.state !== 'flow') continue;
       const slot = activeLayout.get(b.id);
       if (!slot) continue;
       const ink = inkForBlock(b, foldedOf(b), inkCacheRef.current);
-      const bar0 = ink.bars[0];
-      if (!bar0) continue;
-      ctx.fillStyle = inkColorOf(b.kind);
-      if (density) {
-        ctx.fillRect(
-          (slot.x + bar0.x0 - left) * xs,
-          range.stripTop + (slot.y - range.regionTop) * ys,
-          Math.max(1, bar0.w * xs),
-          1.2,
-        );
-        continue;
-      }
-      const h = Math.max(0.6, ink.lineH * ys * 0.55);
+      if (ink.bars.length === 0) continue;
+      const err = errorBlockIds.has(b.id);
       for (const bar of ink.bars) {
-        ctx.fillRect(
-          (slot.x + bar.x0 - left) * xs,
-          range.stripTop + (slot.y + bar.dy - range.regionTop) * ys,
-          Math.max(0.5, bar.w * xs),
-          h,
-        );
+        lines.push({
+          rel: (slot.y + bar.dy - range.regionTop) * ys,
+          right: Math.min(W, Math.max(0, (slot.x + bar.x0 + bar.w - left) * xs)),
+          area: Math.max(0, bar.w * xs),
+          kind: b.kind,
+          err,
+        });
       }
     }
-  }, [activeBlocks, activeLayout, activeAnchorX, activeAnchorW, range, foldedOf]);
+    for (const bucket of buildTocInkBuckets(lines, range)) {
+      ctx.globalAlpha = bucket.alpha; // 墨量档：哪里长／哪里密
+      ctx.fillStyle = inkBarColorOf(bucket.kind); // 族色：这是什么（墨色真源）
+      ctx.fillRect(0, bucket.top, Math.max(0.6, bucket.width), bucket.height);
+      if (bucket.err) {
+        ctx.globalAlpha = 1; // 错：最响的一档，不参与墨量深浅
+        ctx.fillStyle = INK_FAIL;
+        ctx.fillRect(0, bucket.top, INK_FAIL_RULE_W, bucket.height);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }, [activeBlocks, activeLayout, activeAnchorX, activeAnchorW, range, foldedOf, errorBlockIds]);
 
   /* ── hover 索引：行盒原文 → 带内 y 区间（与画笔同一几何、同一缓存）── */
   const hoverIndex = useMemo<HoverBlock[]>(() => {
