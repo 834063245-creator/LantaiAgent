@@ -1119,4 +1119,22 @@ describe('S6 P3a：activation 声明-接线对齐（登记 ≠ 激活）', () =>
     await root.activation.releaseAll(handles);
     expect(log).toEqual(['start', 'stop']);
   });
+
+  it('声明 activation.lazy 的 MCP 插件：懒激活由治理器 lifecycle 承担（不要求 apply 再登记）', async () => {
+    const root = new Context();
+    await root.plugin(compositionServicesPlugin);
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch({
+        ...routes,
+        [ORIGIN + '/acme/res/manifest.json']: {
+          ...LAZY_MANIFEST,
+          mcpServers: [{ name: 'engine', transport: 'stdio', command: 'node', lifecycle: 'lazy' }],
+        },
+      }),
+      importModule: async () => ({ default: { name: 'acme/res', apply() {} } }),
+    });
+    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'acme/res');
+    expect(rec?.status).toBe('active'); // 不因「未登记回调」被拒
+  });
 });

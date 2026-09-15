@@ -219,9 +219,30 @@ effectiveComposition(id)  // 生产唯一解析入口（捕获网，永不抛出
 
 - **副作用启动点收口**：新增 `ctx.activation`（或复用 `ctx.effect` 语义）——插件在 `apply()` 里
   **只登记**，把「启动」写成激活回调；守卫测试钉「资源型插件不得在 apply 期直接起进程/连端口」。
+  **✅ 落地（2026-09-15，P3a `e508f093` / P3b `2259c3c3`；用户裁定 A = 新增 `ctx.activation`，
+  挂进既有 `hologram/composition-services`——不新增插件条目，计数字面量不动）**：
+  - 账本体 = **键控叶模块** `composition/activation.ts`（声明表 + 引用计数账，键 = 插件名）；
+    服务面 = `composition/activation-service.ts` 的 `ActivationService`（第五个组合层 service）。
+  - 启动时机：`AgentRuntime._assembleAgent` 装配期 `retainForComposition`（首次 → `await start()`），
+    句柄交给 `AgentContext.effect` 的清理链 ⇒ Agent dispose / 切组合即归零 → `stop`（复用
+    INVARIANTS #12 的所有权语义，**不新造拆除路径**）。取值走 `ctx.cordisCtx`（AgentContext 是
+    自有服务表，`activation` 不在其 `AgentServices` 面内）；无 cordis 挂载 ⇒ 零开销 no-op。
+  - 谁被激活 = **声明在册** ∩（组合里有它的存活工具行 ∪ 组合 `requires` 它）；判定 = 行 id 前缀
+    `plugin/<插件名>/`（含尾斜杠）。**只问声明过激活的插件** ⇒ 不需要全量插件名册（不引第二真源）；
+    只贡献面板/命令的插件靠 `requires` 显式声明（诚实边界）。
+  - **kill switch**：manifest 无 `activation` 块 ⇒ 本批全部新行为不发生（出厂 43 插件今天零声明
+    ⇒ 两轨快照零漂移是构造性结论）。
+  - 装载期 fail loud 两条：`lazy: true` × `mcpServers[].lifecycle="eager"` 互斥（manifest 级 refine
+    ——那正是「apply 期起进程」，本批要封的口）；`lazy: true` 但 apply 未登记回调 = 插件 error 记录
+    （**例外**：声明 `mcpServers` 的插件由治理器 lifecycle 承担懒激活，不要求重抄一遍治理器）。
 - **声明式**：manifest 增 `activation: { lazy: true, exclusive: ['fs:sandbox'], resources: [...] }`。
+  **✅ 落地（P3a）**：`activation: { lazy?, resources?, exclusive? }`，`resources` 是闭集
+  （`pty` / `stdio` / `port` / `listener` / `window`，真源 `ACTIVATION_RESOURCE_KINDS`）。
 - **逃生门**：`exclusive` 里声明「不可共享」的资源类型（如 PTY 会话、stdio 子进程）时，
   允许该插件走 realm / 子进程隔离（乙路线），实现留 P3 之后单独立项。
+  **✅ 落地（P3b，用户裁定 B）**：exclusive **只表达「同一时刻一个持有者」**并在**装配期
+  fail loud**（后装配者被拒、原因含双方 id、本次记账整体回滚；先装配者不受影响；一方释放后
+  另一方即可装配）——**与 realm 正交**，realm 逃生门仍留 §7.4。
 
 ### 3.6 记录与重建（P0）
 
@@ -299,7 +320,7 @@ effectiveComposition(id)  // 生产唯一解析入口（捕获网，永不抛出
 | 注（P0 范围调整） | **「卷头只读标签」移入 P5**（它属 UI 面，与 chip / 同屏并排同批做，且需要"哪个是当前卷"的展示位）；**「诊断四栏化数据面」移入 P1**（"未选中 vs 被禁用"要等选择集语义落地才有区分度）。P0 只做**落盘 + 登记 + 校验 + 提示**这条不可再省的闭环 | — | — | — |
 | **P1** ✅ **已落地（2026-09-15，五笔：P1a `6e3b3fb2` / P1b `6abbcc30` / P1c `9196f5da` / P1d `cca04a58` / P1e `fd30742c`；另基线修复 `8c7abf92`）** | 卷级选择全链路（用户 2026-09-15 拍板「我觉得OK，开工」，按施工单四批 + UI 一笔落地）：**P1a** 卷内组合记录不再被落盘改写（工厂把记录回述给 Agent 镜像——旧行为：重开旧卷后本卷再落一次盘就把 `presetId` 改写成全局默认，记录静默蒸发）；**P1b** 选择集语义（`ToolContribution.defaultOff` + `disabled:false` 回开，**开放面契约 v31**）+ 诊断三栏；**P1c** 卷级选择写路径（`selectSessionPreset`：校验 → 空白闸 → 拆句柄 → 登记 → 空白卷即时重建；`sessionSelectionError` 比 `selectionError` 严一档：未知 id 也拒）；**P1d** 会话工厂判据从对象引用换轨为**组合身份**（层内容 + 贡献代数，输入派生——消掉「每卷白建注册表」的 F4 浪费，且含代数 ⇒ 不复用陈旧注册表）；**P1e** 创作坞组合芯片（两态：无主态 = 新卷出生默认 / 空白卷 = 卷级 / 跑过一轮 = 只读标签） | §2 序列 A/B：空白卷可拨且立刻生效（有句柄则当场重建）、跑过一轮被拒（控件锁 + 写路径二道闸同一把尺子）、两卷工具面互不影响（身份不同 ⇒ 各建注册表；身份相同 ⇒ 复用）、卷级选择不写全局真源 | vitest + biome 0/0 + build（30 产物）+ doc-sync + **convergence 双轨零漂移**（P1 不动出厂 preset 面 = 构造性证据） | 组合按卷生效（同工作区两卷可不同）；设置行左端新增组合芯片、行内序由「模型→spacer→权限→思考→墨量」变为「模型→组合→spacer→…」（**故意规格变更**，row-order 契约随之显式改写）；诊断面由一栏拆三栏（「禁用行」不再混装 seam id）；卷文件 `presetId` 在重开后不再被改写；新建卷装配少一次注册表构建 |
 | **P2** ✅ **已落地（2026-09-15，两笔：P2a `a1e83c8f` / P2b `53924344`；施工单 `work-orders/WO-S6P2-seam-value-injection.md`，用户逐项裁定 A/B/C/D/E/F 见 §7 与 §8）** | seam 选择从模块态 → 装配期值注入：**P2a** 新增键控叶模块 `composition/seam-scope.ts`（装配期登记裁剪面，键 = Agent bus id）+ `seamDisabled(domain, view?)` 可选 view + fs/shell/subagents 三消费点 + `AgentEventBus.setSeamView`（每 Agent 一条总线）；**P2b** llm 单点（`activeLlmAdapters(view?)` + `CreateProviderOptions.seamView` + 三个 provider 构建点）。**契约 v36（P2a）/ v37（P2b）**——四步流程各走一遍 | §2 序列 D（⑨ 同一工具实例两卷两 provider 且互不串味）；旧无组合上下文路径零漂移（⑫ 哨兵 + ①-⑧ 零改动） | **不新增 seam 域 per-composition 快照、不触发 baseline-change-request**（用户裁定 B：两轨的 `seamDisabled` 构造性为空 ⇒ 新快照零信息量，零漂移由既有 8 份快照逐字节覆盖；信息量落在行为测试） | 同一工具可按卷走不同 provider；`seam/sessionPersistence` 例外仍全局（如实声明） |
-| **P3（成本悬崖）** | 插件激活/引用计数/独占声明/`requires`/fail loud + 诊断「被跳过」栏 | §2 序列 E；无引用即释放；冲突装配期拒绝 | + 激活生命周期测试 + 性能门 | 插件副作用改为按需激活；新增 manifest 字段 |
+| **P3（成本悬崖）** ✅ **已落地（2026-09-15，三笔：P3a `e508f093` / P3b `2259c3c3` / P3c 收官；施工单 `work-orders/WO-S6P3-plugin-activation.md`，用户逐项裁定 A-H 见 §7 与 §8.3）** | 插件激活/引用计数/独占声明/`requires`/fail loud + 诊断「被跳过」栏：**P3a** 激活账（叶模块 `composition/activation.ts` + 第五个组合层 service `ctx.activation` + 装配期 retain/对称释放 + manifest `activation` 块与装载期校验）；**P3b** `requires`/`exclusive` 组合声明 + 独占冲突装配期 fail loud + 诊断第四栏「被跳过」（含设置面板呈现）；**P3c** §7.8 profile 断言 + 性能对表 + 文档写回。**契约 v38（P3a）/ v39（P3b）** | §2 序列 E；无引用即释放；冲突装配期拒绝 | 全部通过：激活生命周期测试（三文件 51 例含破测 10 条）+ 性能门（见 `reports/perf-after-S6P3.md`）+ convergence 双轨零漂移（构造性） | 插件副作用改为按需激活；manifest 新增 `activation` 字段；用户 preset 新增 `requires`/`exclusive` 键；诊断面由三栏扩四栏 |
 | **P4** | 程序入口：会话创建 RPC 带 `preset` / MCP 工具参数 / 评测自举 | §2 序列 C；与 UI 同 id 解析逐字节一致 | + RPC 契约重生成 + e2e | 新增 RPC 参数（契约版本升版） |
 | **P5** | UI 面：卷头 chip（含 blank-only 锁）+ 同屏并排两 Agent | §2 序列 B 的 UI 层；锁生效（跑过一轮的卷拒绝切换） | + UI e2e + golden | 用户可见的新控件与新锁 |
 
@@ -353,6 +374,10 @@ effectiveComposition(id)  // 生产唯一解析入口（捕获网，永不抛出
 8. **profile 断言（§3.7 欠账，P2 未顺带）**：同一 preset 在会话数 1/2/5 下的有效快照逐字节一致
    ——证明「会话数不进门禁矩阵」。属 P3 起手可顺手补的一条测试（口径：同一 preset、N 卷并存、
    对拍 `tool-schemas.effective` 字节）。
+   **✅ 已满偿（2026-09-15，P3c）**：`tests/composition-session-count-profile.test.ts`（2 例）——
+   同一 preset 在 1 / 2 / 5 卷下每卷工具面**逐字节一致**（standard 全量面），且并存卷数
+   **只进激活账**（4 卷 ⇒ `holders = 4`、`start` 恰一次；全关 ⇒ `stop` 恰一次）。
+   **不新增 baseline 快照**（同测试内对拍 = 零审批成本；快照是「出厂 preset 维度」的事）。
 
 ---
 
@@ -424,3 +449,34 @@ effectiveComposition(id)  // 生产唯一解析入口（捕获网，永不抛出
 4. **`selectionError` 对未知 id 是容忍的**（解析侧回退用户层，那是旧卷兜底的正确语义）；
    「写下一条新记录」是另一回事——`sessionSelectionError` 严一档：不在册也拒
    （记一条不存在的 id = 该卷永远解析不出组合）。
+
+### 8.3 P3 施工中实测的环境事实（P4/P5 动手前必读）
+
+1. **`AgentContext` 不是 cordis `Context`**（P3a 实测踩到）：运行时装配体里的 `ctx` 是
+   `AgentContext`（自有 `AgentServices` 服务表 + `DisposerBag`），**新的 ctx service 取不到它**——
+   `ctx.get('activation')` 恒 undefined（且类型上也不在 `AgentServiceName` 里）。正确姿势 =
+   `ctx.cordisCtx?.get('<服务名>')`（`cordisCtx` 仅在有 `cordisParent` 时存在；腰外单测无它 ⇒
+   天然 no-op，这正是既有测试零漂移的原因）。而**释放**该用 `AgentContext.effect`
+   （DisposerBag，接受 async disposer），它与 cordis fiber 是两套所有权链。
+2. **冲突检测必须发生在建账之前**（P3b 实测）：先建账后校验会让「被拒绝的装配者」留下
+   零计数空账——诊断面会把它显示成「在场的插件」，且它本来是装配被拒者。破测用例
+   （`exclusive 冲突` 断言 `activationStates()` 只剩先装配者）钉住这个顺序。
+3. **`ctx.activation` 挂进既有 `composition-services` 而非新增插件**：`first-party-manifest`
+   的 `43 = 13 + 30` 是硬断言，新增内核插件要牵动计数 + AGENTS/CLAUDE 多处文案；而
+   组合层 service 本就是一个插件承载多个 service（P3a 前的四件）。**新增 ctx 键仍会牵动
+   `gen:catalogs:service` 生成物**（它扫 `declare module '../cordis/context'`），doc-sync 会拦。
+4. **给插件加 host 面出口 = 四处联动**（P3b 实测）：`plugins/builtin/<域>/host.ts`（开发域
+   re-export）→ `host.aliased.ts`（产物域从 `mods.faceDeps` 取）→ `host-modules.ts` 的 `faceDeps`
+   （**类型封蜡**：`FaceBridgeSeal` 是 `Record<keyof typeof import('./host'), unknown>`，漏注册
+   在写代码时就 tsc 红）→ `npm run gen:host-surface` 重生成 `host-surface.baseline.json`。
+   设置面板要读任何新面，走这条链；**不要**在产物域里直接 import 项目模块（插件自包含纪律）。
+5. **`requires` 的「在册」判据必须是两条并集**：只查「插件名下有存活工具行」会误判面板/命令类
+   插件（无工具行），只查 plugin-store 会误判「记录尚未落 store / 外部插件异步装载中」的窗口——
+   而误判的代价是**拒绝一个本来能用的组合**。两条任一成立即可（`preset-assembly.ts`）。
+6. **`selectionError` 是热路径**（每卷装配都过）：新判据必须在**输入为空时立刻返回**——
+   `requires` 为空就不许碰 `factoryComposition()`（它要遍历全部通道贡献折算行）。P3b 的
+   `missingRequiredPlugins` 因此第一行就是 `if (requires.length === 0) return []`。
+7. **破测是唯一可靠的「接线证据」**：本批 10 条破测里，有三条（冲突检查摘掉 / 归零不释放
+   资源 / requires 判据摘掉）都是**改坏后立刻红**，而「看起来该红」的写法（例如只删
+   `ctx.effect` 而不删 retain）在别的用例里会照绿——照 P1/P2 的先例，破测结果必须逐条写进
+   commit message。

@@ -827,7 +827,11 @@ async function moduleStage(entry: ManifestStageOk, deps: LoadOneDeps): Promise<M
             // S6 P3a：「声明了开关却没接线」= 手误，装载期 fail loud（不静默
             // 放过）——manifest 声明懒激活的插件必须真的在 apply 里登记了激活
             // 回调，否则它的副作用永不启动，而用户看到的是一个「装上了」的插件。
-            if (manifest.activation?.lazy === true) {
+            // 例外（P3b 复核补）：声明 mcpServers 的插件由**治理器**承担懒激活
+            // （lazy/with-window 档本就「装配/调用/开窗才拉起」），且 manifest 级
+            // refine 已把 `lazy + lifecycle:"eager"` 拦死（那才是 apply 期起进程）
+            // ——故这类插件不要求 apply 里再登记回调（要求它等于要求重抄一遍治理器）。
+            if (manifest.activation?.lazy === true && !needsMcp) {
               const activation = ctx.get('activation');
               if (activation && !activation.has(manifest.name)) {
                 throw new Error(

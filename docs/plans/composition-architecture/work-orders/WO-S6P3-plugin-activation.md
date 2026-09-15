@@ -1,5 +1,8 @@
 # WO-S6P3 — 插件激活生命周期（登记 ≠ 激活 · 引用计数 · 独占声明）
 
+> **状态：✅ 执行完毕（2026-09-15，三笔：P3a `e508f093` / P3b `2259c3c3` / P3c 收官；
+> 每笔独立全绿：vitest + biome 0/0 + build + convergence 双轨 + doc-sync；破测 11 条逐条确认能红，
+> 结果写进各 commit message；性能对表见 `reports/perf-after-S6P3.md`）。**
 > 施工单（**八道判断题已于 2026-09-15 全部裁定，见 §7；可开工**）。上级设计件：`designs/S6-per-agent-composition.md`
 > §3.5（激活与独占）+ §3.8（诊断第四栏）+ §4 批序 P3 行 + §7.8（profile 断言欠账）+ §8.2。
 > 前置批次：P-1 / P0.5 / P0 / P1(a-e) / P2(a/b) 全部落地；**P3 前置性能门已过**

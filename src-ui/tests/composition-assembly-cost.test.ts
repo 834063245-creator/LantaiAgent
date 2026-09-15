@@ -24,11 +24,19 @@
 //   ⑤ 组合解析零拷贝：cache 读返回同一对象（P2 的 owner 查表是 Map.get + 既有引用）；
 //   ⑥ seam 作用域查表零拷贝 + 对称清理（P2 装配期值注入的调用期成本形态）。
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { SubAgentPool } from '../src/agent/coordinator';
 import { buildToolRegistry } from '../src/agent/runtime/agent-builder';
 import { TaskManager } from '../src/agent/task';
 import type { Tool, ToolRegistry } from '../src/agent/tool';
+import {
+  activationPlan,
+  activationStates,
+  clearActivationsForTest,
+  declareActivation,
+  releaseActivation,
+  retainActivation,
+} from '../src/composition/activation';
 import { withFirstPartyCapabilityChannel } from '../src/composition/first-party-capabilities';
 import { withFirstPartyToolChannel } from '../src/composition/first-party-tools';
 import { pluginToolRows } from '../src/composition/plugin-tool-rows';
@@ -149,5 +157,49 @@ describe('装配成本形态（确定性计数，与机器负载无关）', () =
     dispose();
     expect(seamScopeOf('cost-probe')).toBeUndefined();
     dispose(); // 幂等
+  });
+});
+
+// S6 P3（激活账）的成本形态——新增记账面不得引入「每装配多次记账」或
+// 「每次记账新建账条目」的退化（那是 O(装配数) 的隐藏成本，时间台看不出来）。
+describe('⑧⑨ 激活账成本形态（S6 P3）', () => {
+  afterEach(() => clearActivationsForTest());
+
+  it('⑧ 每装配每插件恰一次 retain：N 次装配 ⇒ 账 holders 恰 N，副作用只启动一次', async () => {
+    let starts = 0;
+    declareActivation('acme/cost', {
+      start: () => {
+        starts++;
+      },
+    });
+    for (let i = 0; i < 3; i++) await retainActivation('acme/cost', `agent-${i}`);
+    expect(starts).toBe(1); // 首次激活才 start
+    expect(activationStates()).toEqual([{ plugin: 'acme/cost', holders: 3, started: true, failure: null }]);
+    // 组合里没有它的行 ⇒ 零记账（不声明/不在组合 = 零成本）；有它的行 ⇒ 恰一次进计划
+    expect(activationPlan({ tools: [{ id: 'plugin/other/x' }] })).toEqual([]);
+    expect(activationPlan({ tools: [{ id: 'plugin/acme/cost/probe' }] })).toEqual(['acme/cost']);
+  });
+
+  it('⑨ 账条目按插件单份（同 holder 重复 retain 不重复计数）+ 陈旧句柄释放幂等', async () => {
+    const log: string[] = [];
+    declareActivation('acme/cost', {
+      start: () => {
+        log.push('start');
+      },
+      stop: () => {
+        log.push('stop');
+      },
+    });
+    const h1 = await retainActivation('acme/cost', 'same-holder');
+    const h2 = await retainActivation('acme/cost', 'same-holder'); // 同一持有者：Set 判据 ⇒ 不加新条目
+    expect(activationStates()).toHaveLength(1);
+    expect(activationStates()[0]?.holders).toBe(1);
+    expect(log).toEqual(['start']);
+
+    await releaseActivation(h1);
+    expect(log).toEqual(['start', 'stop']); // 归零即停 + 账清零
+    expect(activationStates()).toEqual([]);
+    await releaseActivation(h2); // 陈旧句柄：账已清，无动作（不重复 stop）
+    expect(log).toEqual(['start', 'stop']);
   });
 });
