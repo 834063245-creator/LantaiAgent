@@ -112,25 +112,59 @@ export function danglingToolCalls(events: readonly SessionEvent[]): DanglingTool
  * 合成收尾事件：为每条悬空调用补一条 `tool/result`（两种语义文案不同）。
  * seq 从日志末尾续号、ts 复用末条真实事件的时间（确定性，不发明未来时间）。
  * 已平衡的日志返回空数组。
+ *
+ * **宣布补落（2026-09-15 触发点 B 施工）**：若某条悬空调用的「宣布」（assistant
+ * 消息里的 tool_calls）**不在日志里**（崩溃发生在流式执行器已派发、而流收尾的
+ * assistant 消息还没落盘的窗口——兰台的执行器在流期间就跑工具），先合成一条
+ * 承载该调用的 assistant 消息事件。理由：provider 拒绝「有 tool 结果、没有对应
+ * assistant tool_calls」的转写——只补结果不补宣布 = 造出非法转写。
+ * 合成消息 content 为空串（provider 接受「有 tool_calls 无文本」的 assistant 轮）。
  */
 export function interruptedToolCallClosers(events: readonly SessionEvent[]): SessionEvent[] {
   const dangling = danglingToolCalls(events);
   if (dangling.length === 0) return [];
+  const announced = new Set<string>();
+  for (const ev of events) {
+    if (ev.kind !== 'assistant/text') continue;
+    for (const call of (ev.data as { message: Message }).message.tool_calls ?? []) {
+      const id = String((call as ToolCall).id ?? '');
+      if (id) announced.add(id);
+    }
+  }
   const last = events.at(-1);
   let seq = (last?.seq ?? 0) + 1;
   const ts = last?.ts ?? Date.now();
-  return dangling.map((call) => {
+  const closers: SessionEvent[] = [];
+
+  const unannounced = dangling.filter((c) => !announced.has(c.callId));
+  if (unannounced.length > 0) {
+    closers.push({
+      seq: seq++,
+      ts,
+      kind: 'assistant/text' as const,
+      data: {
+        message: {
+          role: 'assistant',
+          content: '',
+          tool_calls: unannounced.map((c) => ({ id: c.callId, name: c.name, arguments: '{}' }) as ToolCall),
+        } as Message,
+      },
+    } as SessionEvent);
+  }
+
+  for (const call of dangling) {
     const message: Message = {
       role: 'tool',
       tool_call_id: call.callId,
       name: call.name,
       content: call.dispatched ? OUTCOME_UNKNOWN_TEXT : NOT_STARTED_TEXT,
     };
-    return {
+    closers.push({
       seq: seq++,
       ts,
       kind: 'tool/result' as const,
       data: { message },
-    } as SessionEvent;
-  });
+    } as SessionEvent);
+  }
+  return closers;
 }

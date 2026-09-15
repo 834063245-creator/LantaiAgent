@@ -302,6 +302,8 @@ export function attachSessionLogStore(logInstance: SessionLog, opts: AttachSessi
     hasWork: () => queue.hasWork,
     stats: () => ({ batches, events, failures }),
   };
+  // 落盘面接上日志（agent 层的检查点问日志要屏障——见 SessionLog.flushPersistence）
+  logInstance.setPersistenceSink(store);
   _stores.set(logInstance, store);
   _live.add(store);
   return store;
@@ -342,6 +344,7 @@ export async function detachSessionLogStore(logInstance: SessionLog): Promise<vo
   } catch (e) {
     log.warn('session-log', `会话事件日志摘除前排空失败（案卷 ${store.sessionId}）`, { error: String(e) });
   }
+  logInstance.setPersistenceSink(null);
   _stores.delete(logInstance);
   _live.delete(store);
 }

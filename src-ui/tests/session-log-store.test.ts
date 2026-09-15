@@ -261,4 +261,28 @@ describe('Phase 1 事件日志落盘（materialize → durable append）', () =>
     expect(lines.length).toBe(3); // 头行 + 2 条事件（构造 1 + 新 1）
     expect(store.hasWork()).toBe(false);
   });
+
+  it('落盘面接上日志：log.flushPersistence() 即检查点屏障（未 attach = no-op）', async () => {
+    const { attachSessionLogStore } = await import('../src/app/chat/session-log-store');
+    const { SessionLog } = await import('../src/agent/session-log');
+
+    // 未 attach：无落盘面 = no-op（不炸链路）
+    const bare = new SessionLog();
+    await expect(bare.flushPersistence()).resolves.toBeUndefined();
+
+    // attach 后：flushPersistence 排空队列（与 store.flush 同一屏障）
+    const log = await makeLog(1);
+    const store = attachSessionLogStore(log, { root: ROOT, sessionId: 12, header: { ...HEADER, id: 12 } });
+    log.append('user/message', { message: { role: 'user', content: 'before-tool' } });
+    await log.flushPersistence();
+    expect(fileLines(`${ROOT}/12.ndjson`).length).toBe(3); // 头行 + 2 事件
+    expect(store.hasWork()).toBe(false);
+
+    // 摘除后回到 no-op
+    const { detachSessionLogStore } = await import('../src/app/chat/session-log-store');
+    await detachSessionLogStore(log);
+    log.append('user/message', { message: { role: 'user', content: 'after-detach' } });
+    await log.flushPersistence(); // no-op——不再落盘（句柄消亡后的日志无落盘面）
+    expect(fileLines(`${ROOT}/12.ndjson`).length).toBe(3);
+  });
 });

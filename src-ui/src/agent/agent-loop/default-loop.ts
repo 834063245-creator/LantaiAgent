@@ -205,6 +205,10 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
         host.loopEvents,
         // 通知路由身份（bus id）— bg job owner / bash_kill 所有权（executor 注入 _owner_id）
         host.id,
+        // 工具副作用前检查点（换轨 Phase 1 触发点 B）：把此刻已知的会话事实推到盘上
+        // 再让工具体落地副作用。动作 = 排空日志队列（增量写 ⇒ 通常只是几 KB append）。
+        // 未接落盘面（无 UI/测试桩）= no-op；失败 fail-open 且可见（执行器内 warn）。
+        () => host.sessionLog.flushPersistence(),
       );
       host.loopEvents.emitLoopEvent('request/start', {
         agentId: host.id,

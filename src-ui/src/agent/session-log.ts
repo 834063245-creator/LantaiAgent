@@ -162,6 +162,25 @@ export class SessionLog {
   private _events: SessionEvent[] = [];
   private _nextSeq = 1;
   private _listeners: Array<(ev: SessionEvent) => void> = [];
+  /** 落盘面（由 app 层 attach——`app/chat/session-log-store.attachSessionLogStore`）。
+   *  日志自己回答「我落盘了吗」：检查点（模型请求前 / 工具副作用前 / 退出）都问它，
+   *  而不是让 agent 层去认识 app 层的写入面（分层：agent 不 import app）。 */
+  private _sink: { flush(): Promise<void> } | null = null;
+
+  /** 接上落盘面（app 层调用；重复接 = 覆盖，摘除 = 传 null）。 */
+  setPersistenceSink(sink: { flush(): Promise<void> } | null): void {
+    this._sink = sink;
+  }
+
+  /**
+   * 排空到静默点（**持久化屏障**）：本日志已 append 的全部事件落盘后才 resolve。
+   * 未接落盘面（无 UI/测试桩/无工作区）= no-op——「无持久化面」是合法降级，
+   * 不炸链路（检查点是保证，不是门禁；见 docs/session-checkpoint-design.md §3.3）。
+   */
+  async flushPersistence(): Promise<void> {
+    if (!this._sink) return;
+    await this._sink.flush();
+  }
 
   /** 已记录事件数。 */
   get size(): number {

@@ -207,12 +207,21 @@
 
 ### 换轨后仍留的口子（不属本计划范围，另立）
 
-1. **触发点 B（工具副作用前检查点）未接线**——需要把 `tool/call` 审计事件移到
-   **分发时**落（现在在流收尾后落：兰台的执行器在流期间就跑了工具，所以日志里
-   `tool/call` 晚于副作用）。落点 = `agent/streaming-executor.ts` 的派发点 + 一个
-   异步 pre-dispatch flush 面（现有 `tool/guard|preflight` 都是同步钩子，需要新面）。
-   Phase 2 的恢复链已经把「最坏情况」兜住（已分发的悬空调用补 `TOOL_OUTCOME_UNKNOWN`
-   并提示模型别盲重试），所以这条是**降低窗口**而不是堵死洞。
+1. **触发点 B（工具副作用前检查点）——屏障已落地，宣布顺序待审批**：
+   - **已做**（2026-09-15 第二批）：默认 loop 构造执行器时注入
+     `host.sessionLog.flushPersistence()`；执行器在 args 解析完成、闸/预检之前 await
+     它（失败 fail-open + 可见）。语义 = 「副作用发生前，此刻**已知**的会话事实已落盘」。
+     测试：`tests/tool-dispatch-checkpoint.test.ts`（顺序可证 / fail-open 可见 / 未注入=旧行为 /
+     生产接线的 T0 源码断言）。
+   - **未做（须走审批）**：把 `tool/call` 审计事件**提前到分发时**落——兰台的
+     `StreamingToolExecutor` 在**流期间**就跑工具（流式执行优化），而流收尾才落
+     assistant 消息与 `tool/call`；于是「宣布先于副作用」在当前事件顺序下不成立。
+     改顺序 = 漂移 phase-5 事件序列基线（`baseline/phase-5/session-projection.trace.json`）
+     ⇒ 必须走 `docs/archive/agent-core-convergence/baseline-change-request.md` 审批 +
+     两轨 record，不能偷跑。
+   - 已就位的兜底：Phase 2 的恢复链对「已分发、无结果」的调用补
+     `TOOL_OUTCOME_UNKNOWN` 并提示模型别盲重试（本次为「派发而宣布未落」的形态补了
+     **宣布补落**：先合成 assistant 消息再补结果，保证 provider 转写合法）。
 2. **日志体量与压实**：兰台事件把整条 Message（含工具输出全文）写进行，日志体积
    与 DSH 相比更粗（DSH 有 chunk packing + 可选 zstd）；当前无压实策略，
    长会话日志会线性增长。需要时按 DSH `compactNow`/重写段做（**注意**：重写段会

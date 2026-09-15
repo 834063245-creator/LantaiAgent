@@ -353,5 +353,6 @@ cd D:\HoloGramHG\src-ui; $env:NODE_ENV='test'; npx vitest run tests/chat-session
 配平后 replay 投影）；`.json` = 带 `{seq, ver}` 的 UI 投影缓存（陈旧即不采信、重建）。
 契约面随之升到 v33（`delete_volume` 退役 / 新增 `delete_log`）。
 
-**仍留的口子**（详见计划文档末节）：触发点 B（工具副作用前检查点）未接线；
+**仍留的口子**（详见计划文档末节）：触发点 B 的**宣布顺序**（把 `tool/call` 提前到
+分发时落——改事件顺序 ⇒ 须走 phase-5 基线变更审批；**执行前的持久化屏障本身已落地**）；
 日志体积无压实策略；跨进程多实例并发未裁决。

@@ -22,9 +22,17 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 33;
+export const OPEN_SURFACE_CONTRACT_VERSION = 34;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v34（2026-09-15）工具副作用前检查点（换轨触发点 B 的兰台形）：默认 loop
+ *  构造 StreamingToolExecutor 时注入第 7 参钩子 = host.sessionLog.flushPersistence()
+ *  ——args 解析完成、闸/预检之前 await 一次「会话事实落盘屏障」，失败 fail-open 且
+ *  executor 内 warn 可见。**契约形状零变更**（AgentLoopHost 成员未动；新参数在
+ *  执行器构造上，第三方 loop 自管工具执行不受影响）；同版 SessionLog 增
+ *  setPersistenceSink / lushPersistence 两个方法（日志自己回答「我落盘了吗」，
+ *  避免 agent 层 import app 层——分层纪律）。**仍未做**：把 	ool/call 审计事件
+ *  提前到分发时落（那会改事件顺序 ⇒ phase-5 基线漂移 ⇒ 需 baseline-change-request）。
  *  v33（2026-09-15）会话持久化 seam 权威翻转（Phase 3b）：delete_volume 退役
  *  （墓碑重写 deleted:true 是「快照即存储」时代的占位手段——权威翻转后
  *  「文件不在 = 卷不存在」），新增 delete_log（真删日志 + 投影缓存）。

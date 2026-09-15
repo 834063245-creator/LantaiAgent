@@ -156,6 +156,36 @@ describe('Phase 2 悬空工具调用配平（纯函数）', () => {
     // 已平衡 → 再算一次没有可补的
     expect(interruptedToolCallClosers(balanced)).toEqual([]);
   });
+
+  it('孤儿 tool/call（宣布未落盘）：先补 assistant 宣布再补结果——转写仍合法', async () => {
+    const { interruptedToolCallClosers, OUTCOME_UNKNOWN_TEXT } = await import('../src/agent/session-log-repair');
+    // 崩溃形态：执行器已派发（tool/call 在盘上），流收尾的 assistant 消息还没落
+    const events = evs([
+      { kind: 'user/message', data: { message: { role: 'user', content: '跑一下' } } },
+      { kind: 'tool/call', data: { call: { id: 'orphan1', name: 'bash', arguments: '{"cmd":"rm -rf y"}' } } },
+    ]) as never[];
+
+    const closers = interruptedToolCallClosers(events);
+    expect(closers).toHaveLength(2);
+    const [synth, result] = closers as unknown as Array<{ kind: string; data: Record<string, any> }>;
+    // 合成的是「宣布」：assistant 消息带该调用的 tool_calls
+    expect(synth.kind).toBe('assistant/text');
+    expect(synth.data.message.role).toBe('assistant');
+    expect(synth.data.message.tool_calls.map((c: { id: string }) => c.id)).toEqual(['orphan1']);
+    // 结果是「副作用未知」（已分发）——文案仍是别盲重试
+    expect(result.kind).toBe('tool/result');
+    expect(result.data.message.content).toBe(OUTCOME_UNKNOWN_TEXT);
+
+    // 投影后 provider 转写合法：tool 结果必有前置 assistant tool_calls
+    const { SessionLog } = await import('../src/agent/session-log');
+    const messages = SessionLog.replay([...events, ...closers] as never).deriveMessages() as Array<{
+      role: string;
+      tool_calls?: Array<{ id: string }>;
+      tool_call_id?: string;
+    }>;
+    expect(messages.flatMap((m) => (m.tool_calls ?? []).map((c) => c.id))).toEqual(['orphan1']);
+    expect(messages.filter((m) => m.role === 'tool').map((m) => m.tool_call_id)).toEqual(['orphan1']);
+  });
 });
 
 describe('Phase 2 断尾修复与版本拒读（打开路径）', () => {

@@ -19,6 +19,7 @@ import { type AgentEvent, EventKind, type ToolPipelineContext } from './agent-ty
 import { generateAssetId, parseAssetEventOutput } from './asset-kinds';
 import { markConfirmEmitted, resolveConfirm } from './confirm-registry';
 import type { AgentEventBus } from './events';
+import { log } from './logger';
 import type { Tool, ToolRegistry } from './tool';
 import { resolveGuardToolName, retireRedirect } from './tools/domains';
 import { truncateToolOutput } from './truncate';
@@ -78,6 +79,8 @@ export class StreamingToolExecutor {
    *  （guard/preflight/around/result/error），由 events.ts 的 attach* 适配器
    *  把 planGate / hooks / preflightHooks 挂进 bus。eventBus 是唯一管道。 */
   private eventBus: AgentEventBus | null;
+  /** 工具副作用前检查点（见构造参数注释；未注入 = no-op）。 */
+  private beforeToolDispatch: ((call: ToolCall) => Promise<void>) | null;
 
   constructor(
     tools: ToolRegistry,
@@ -86,6 +89,16 @@ export class StreamingToolExecutor {
     signal?: AbortSignal | null,
     eventBus?: AgentEventBus | null,
     ownerId?: string | null,
+    /**
+     * 工具副作用前检查点（平台化换轨 Phase 1 触发点 B 的兰台形，2026-09-15）。
+     * 在 args 解析完成、**任何副作用发生之前** await 一次——语义 = 「把此刻已知的
+     * 会话事实推到盘上」（由 default-loop 注入 `host.sessionLog.flushPersistence`）。
+     * 失败语义 = **fail-open + 可见**（设计件 §3.3：磁盘满时不能把整条工具链锁死），
+     * 失败不阻断工具执行，但必须留痕。缺省（未传）= 无检查点（旧装配/测试桩）。
+     * 注：**只对顶层派发**生效——嵌套分发走 Agent.dispatchNestedTool，不经本执行器
+     * （与 DSH 的 `exec.parent === undefined` 过滤同义）。
+     */
+    beforeToolDispatch?: (call: ToolCall) => Promise<void>,
   ) {
     this.tools = tools;
     this.emit = emitEvent;
@@ -93,6 +106,7 @@ export class StreamingToolExecutor {
     this.ownerId = ownerId ?? null;
     this.signal = signal ?? null;
     this.eventBus = eventBus ?? null;
+    this.beforeToolDispatch = beforeToolDispatch ?? null;
   }
 
   /** 从流中添加工具调用。立即开始执行。
@@ -348,6 +362,21 @@ export class StreamingToolExecutor {
     // 领域工具（fs/shell/git/...）解析回旧工具名，保证门禁 / hooks / 关联按原语义工作
     const guardName = resolveGuardToolName(this.tools, call.name, args);
     const ctx = this.pipelineCtx(call, tool, args, guardName);
+
+    // ── 工具副作用前检查点（触发点 B）──
+    // 时点：args 已解析、闸与预检之前 = 「即将产生副作用」的那一刻；
+    // 动作：排空会话日志队列（此刻已知的会话事实落盘后才继续）。
+    // fail-open + 可见：磁盘故障不能把工具链锁死（设计件 §3.3），但必须留痕。
+    if (this.beforeToolDispatch) {
+      try {
+        await this.beforeToolDispatch(call);
+      } catch (e) {
+        log.warn('agent', '工具副作用前检查点失败（fail-open，继续执行）', {
+          tool: call.name,
+          error: String(e),
+        });
+      }
+    }
 
     // ── 预检钩子：破坏性写入前警告（经 eventBus 的 tool/preflight 监听面）──
     let preflightWarning: string | null = null;
