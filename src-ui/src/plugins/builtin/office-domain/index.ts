@@ -5,14 +5,15 @@
 //
 // 形状与其它域产物一致（registerFamily + familyContributions，走 ctx.tools 贡献
 // 通道）：装配序 = 名册 buildOrder；本族只有一条工具 `office`（动作枚举面）。
-// 执行体经 ctx.shell seam → process_cap 受控 spawn（沙箱 + Bash 权限类 + 审计），
-// 详见 agent/tools/office.ts 头注。
+// 执行体经 process_cap 的 **office_exec** 动作受控 spawn（命令由强制层拼装 +
+// OfficeTool 只审声明的目标文件 + 动词白名单；2026-09-15 R3 起不再走 shell seam），
+// 详见 agent/tools/office.ts 头注 + docs/plans/office-cli-integration-plan.md §11.3。
 
 import type { Context } from '../../../cordis';
 import { familyContributions, registerFamily } from '../contribution-helpers';
 import { createOfficeTools } from './host';
 
-/** office 域插件——贡献 1 工具（`office`，11 动作）。 */
+/** office 域插件——贡献 1 工具（`office`，12 动作）。 */
 export const officeDomainPlugin = {
   name: 'hologram/office-domain',
   inject: ['tools'],
