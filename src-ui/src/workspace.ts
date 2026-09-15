@@ -892,6 +892,17 @@ export class Workspace {
         this.onStatusChange?.(`⚠️ ${msg}`);
         return null;
       }
+      // P1a（S6，2026-09-14）：把**本卷记录的组合**回述给 Agent 镜像。
+      // 病灶（探针实证）：Agent 构造期 `_presetId = currentPresetId()` 读的是
+      // **全局默认**，而卷落盘写的是 `agent.presetId`（chat-session.ts 两处 save）
+      // ——重开一卷时装配面已按记录重建（上面的 effectiveComposition(recorded)），
+      // 但镜像仍是全局默认，于是本卷**再落一次盘就把 presetId 改写成全局默认**，
+      // 记录静默丢失（P0 的「重开按其重建」只在第一次重开成立）。
+      // 记录不可解析时照样回述：`presetId` 是「本卷的组合意图」而非「实际生效面」，
+      // 修好该 preset 后重开仍应回到它；回退与提示已在上方装配面给出（不静默）。
+      // `selectPreset` 追加 preset/selected 事件（newest-wins 重建面同源），且
+      // 不触发重装配——组合面在构造时点已按记录冻结（前缀缓存纪律）。
+      if (recordedPresetId !== null) agent.selectPreset(recordedPresetId);
       agentRef.current = agent;
       this._lastRawAgent = agent;
       return handle;
