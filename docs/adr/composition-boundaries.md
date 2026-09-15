@@ -1,7 +1,7 @@
 # 组合边界：为什么兰台不做（也做不到）DSH 式全体插件化
 
 > 日期：2026-08-20 · 状态：Accepted
-> 关联：`docs/plans/composition-architecture/README.md`（本 ADR 划边界，该计划在边界内施工）
+> 关联：`docs/archive/composition-architecture/README.md`（本 ADR 划边界，该计划在边界内施工）
 > 取代叙事：`.lantai/plans/plan-1787199847398-bu20.md`（plugin-ecosystem v1）中「宿主壳永不插件化」的宪法表述——本 ADR 给出更精确的边界定义
 > 性质：对 2026-08-19/20 两日 DSH 源码实证对标讨论的定案总结
 
@@ -56,4 +56,4 @@
 
 ## 7. 与计划的关系
 
-本 ADR 定义边界与不做清单；`docs/plans/composition-architecture/README.md` 在边界内施工（S0-S4）；`agent-plugin-architecture-plan.md` 的 D8（生态观望、形状兼容、零依赖）继续有效，其 P4 路线 B 由组合层计划承载。
+本 ADR 定义边界与不做清单；`docs/archive/composition-architecture/README.md` 在边界内施工（S0-S4）；`agent-plugin-architecture-plan.md` 的 D8（生态观望、形状兼容、零依赖）继续有效，其 P4 路线 B 由组合层计划承载。

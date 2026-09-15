@@ -1,5 +1,8 @@
 # 组合架构（composition-architecture）——特权线左移计划
 
+> ⚠ **已归档（2026-09-16 · 文档面重构 P3）**：所属线（组合架构 S0-S6）**全段竣工**——本件是历史留存，不作现状口径；组合层现状见 [`docs/composition/README.md`](../../composition/README.md)，插件契约见 [`docs/plugins/README.md`](../../plugins/README.md)，在办计划入口见 [`docs/plans/README.md`](../../plans/README.md)。
+> 本目录已整体移出 `docs/plans/`（原 `docs/plans/composition-architecture/`），相对链接与文件相对位置不变。
+
 > **本目录阅读顺序**：① 本 README（宪法 + 现状）→ ② [`HISTORY.md`](HISTORY.md)（S0-S2/S4 施工史与批次记录）→ ③ `designs/`（设计件全文）。边界依据 [`docs/adr/composition-boundaries.md`](../../adr/composition-boundaries.md)。
 > 立项：2026-08-20 · 状态：**S0-S4 全竣工（S3 于 2026-08-22 收官——全段竣工）** · **平台边界修订（2026-08-25，`agent-platformization-plan.md` Phase 0：内核线改强制层/能力契约层二分）** · **S6 草案待批（2026-09-14，per-agent 组合：[`designs/S6-per-agent-composition.md`](designs/S6-per-agent-composition.md)）**
 

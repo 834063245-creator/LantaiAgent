@@ -1,5 +1,7 @@
 # WO-S6P3 — 插件激活生命周期（登记 ≠ 激活 · 引用计数 · 独占声明）
 
+> ⚠ **已归档（2026-09-16 · 文档面重构 P3）**：所属线（组合架构 S0-S6）**全段竣工**——本件是历史留存，不作现状口径；组合层现状见 [`docs/composition/README.md`](../../../composition/README.md)，插件契约见 [`docs/plugins/README.md`](../../../plugins/README.md)，在办计划入口见 [`docs/plans/README.md`](../../../plans/README.md)。
+
 > **状态：✅ 执行完毕（2026-09-15，四笔：P3a `e508f093` / P3b `2259c3c3` / P3c `aa5b491d` /
 > P3d 受治进程接线（本轮，见 §2.7 落地注）；每笔独立全绿：vitest + biome 0/0 + build +
 > convergence 双轨 + doc-sync；破测 14 条逐条确认能红，结果写进各 commit message；

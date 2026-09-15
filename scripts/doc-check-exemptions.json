@@ -2,54 +2,11 @@
   "note": "doc-check 在册豁免账（文档面大重构 P0 立尺，2026-09-16）。每条必须写 reason（为什么现在还欠着）+ payoff（哪批清偿）。豁免是账不是免罪符：payoff 批次落地时同步删除对应条目；条目归零 = 文档面收尾成立（永久豁免只给「不属于本项目文档面」的文件）。",
   "entries": [
     {
-      "id": "facts-plans-14",
-      "check": "facts",
-      "file": "docs/plans/README.md",
-      "contains": "`builtin_service_plugins`",
-      "reason": "计划索引仍以现状口吻写「14 内核」（真源 13）——索引瘦身时一并清",
-      "payoff": "P3"
-    },
-    {
-      "id": "size-plans-active",
-      "check": "size",
-      "file": "docs/plans/*.md",
-      "reason": "在办施工单长行（scientific-rendering / stream-rhythm / agent-platformization）——随各线竣工归档消化",
-      "payoff": "P3"
-    },
-    {
-      "id": "size-plans-tree",
-      "check": "size",
-      "file": "docs/plans/**",
-      "reason": "计划树下长行（taste-ledger 15 行、composition-architecture designs、索引两页）——归档大扫除 + 索引瘦身消化",
-      "payoff": "P3"
-    },
-    {
       "id": "size-codely",
       "check": "size",
       "file": "CODELY.md",
       "reason": "Codely 工具私有记忆文件（非兰台文档面，格式由该工具决定）",
       "payoff": "永久"
-    },
-    {
-      "id": "orphans-plans",
-      "check": "orphans",
-      "file": "docs/plans/*",
-      "reason": "计划正文 7 篇无任何引用（含 paper-shell 子目录 README/HISTORY）——归档或补索引时消化",
-      "payoff": "P3"
-    },
-    {
-      "id": "orphans-plans-tree",
-      "check": "orphans",
-      "file": "docs/plans/**",
-      "reason": "计划树内 README/HISTORY 无引用",
-      "payoff": "P3"
-    },
-    {
-      "id": "archive-plans",
-      "check": "archive",
-      "file": "docs/plans/**",
-      "reason": "七份已竣工文档（agent-platformization / plugin-bundle-retirement / builtin-plugin-roster / frontend-overlay-a11y / composition-architecture 设计两件）仍留在 plans/——CONVENTIONS §4「竣工即归档」待执行，需同步核对现状层引用",
-      "payoff": "P3"
     }
   ]
 }

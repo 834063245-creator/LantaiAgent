@@ -39,7 +39,7 @@
 ❌ 禁止：把可由证据判定的题上交；把「我不确定」当提问理由；一次上交三道以上。
 ```
 
-> **先例（本条的由来）**：`docs/plans/composition-architecture/work-orders/WO-S7-multi-core-panels.md` §0.5
+> **先例（本条的由来）**：`docs/archive/composition-architecture/work-orders/WO-S7-multi-core-panels.md` §0.5
 > ——九道判断题经复核**没有一道属于用户**（八道是工程内部取舍；第九道「是否共享工作区」是引擎契约
 > 强制、本不该问）。该批已全部自裁并把施工单形态改为「我的裁定 + 理由」。
 

@@ -1,7 +1,7 @@
 # 文档面大重构（打磨收尾）— 施工单
 
 > 立项 2026-09-16（用户拍板根 README 对外定位 = 乙：桌面 Agent 工作台为主、引擎降配套）。
-> 状态：**P0 立尺 + P1 注入层已落地**，P2-P4 待推。
+> 状态：**P0-P3 已落地**；P4 在推（P4a ADR/cookbook/research 三索引已落，余 docs/README 唯一入口重写）。
 > 门禁：`cd src-ui && npm run doc-check`（非零即拦）；`npm run doc-check:report` 看全量漂移清单。
 > 真源：`scripts/doc-facts.cjs`（事实导出）+ `scripts/doc-check.cjs`（六查）+ `scripts/doc-check-exemptions.json`（在册豁免账）。
 
@@ -37,9 +37,9 @@
 |---|---|---|
 | **P0 立尺** ✅ | facts 导出器（9 条事实）+ doc-check 六查 + 豁免账先绿 + doc-sync 登记 | `doc-sync` 与 `doc-check` 双绿；漂移清单可复现 |
 | **P1 注入层** ✅ | CLAUDE+AGENTS 去重合一（AGENTS 变薄指针）、长表格外移、预算门禁上牙 | L0 合计 ≤32KB；`budget` 豁免条目删净 |
-| **P2 现状层** | ARCHITECTURE / 根 README（乙定位）/ plans 索引 / docs 索引 按真源重写；数字改为指针 | `facts` 与 `links` 豁免条目删净 |
-| **P3 归档大扫除** | 竣工文档 git mv → archive/，索引瘦身（单元格 ≤500），HISTORY 补时间轴 | `archive` 豁免删净；plans/ 只剩在办项 |
-| **P4 索引重建** | docs/README 重写为唯一入口（角色 × 任务两轴），孤儿全部挂上 | `orphans` 豁免删净 |
+| **P2 现状层** ✅ | ARCHITECTURE / 根 README（乙定位）/ plans 索引 / docs 索引 按真源重写；数字改为指针 | `facts` 与 `links` 豁免条目删净 |
+| **P3 归档大扫除** ✅ | 竣工文档 git mv → archive/，索引瘦身（单元格 ≤500），HISTORY 补时间轴 | `archive` 豁免删净；plans/ 只剩在办项 |
+| **P4 索引重建** 在推 | docs/README 重写为唯一入口（角色 × 任务两轴），孤儿全部挂上 | `orphans` 豁免删净（P4a 三索引已落；孤儿已由 P3 清到 0） |
 
 ## 4. 首轮实测台账（P0 立尺当日，可 `npm run doc-check:report` 复现）
 
@@ -87,6 +87,39 @@
   构建链已断（待用户拍产品面去留）；根 `.lantai/` 残留目录待取证。
 - **豁免账：P2 类目清零**（facts-arch-31 / facts-readme-domains / size-current-layer / links-landmine /
   facts-plugins-29 / orphans-top / size-design-spec / size-landmine / size-open-surface 全部清偿）。
+
+### 4.3 P3 落账（2026-09-16 · 归档大扫除 + 索引瘦身）
+
+**归档**（`git mv`，21 个文件位移；archive 是既定机制，未真删、git 史在）：
+
+| 源 | 目的 |
+|---|---|
+| `docs/plans/composition-architecture/`（整树 16 件：README + HISTORY + designs×5 + reports×2 + work-orders×7） | `docs/archive/composition-architecture/` |
+| `docs/plans/agent-platformization-plan.md` | `docs/archive/agent-platformization-plan.md` |
+| `docs/plans/plugin-bundle-retirement-plan.md` | `docs/archive/plugin-bundle-retirement-plan.md` |
+| `docs/plans/builtin-plugin-roster-single-source.md` | `docs/archive/builtin-plugin-roster-single-source.md` |
+| `docs/plans/frontend-overlay-a11y-plan.md` | `docs/archive/frontend-overlay-a11y-plan.md` |
+| `docs/plans/handoff-p2-window.md`（内核插件运行时 Phase 2 交接窗——该线已随 v3 拆除令作废） | `docs/archive/handoff-p2-window.md` |
+
+- 14 件补「已归档（2026-09-16 · P3）」横幅 + 现状指针（`docs/README.md` 维护规则第 5 条）；**S7「真面板并排」随线归档并在
+  `docs/plans/README.md` 注明重启方式**（取回重新立项）。
+- 引用同步 11 处（`CLAUDE.md` / `CONVENTIONS.md` / `docs/adr/composition-boundaries.md`×2 / `docs/adr/project-constitution.md`×2 /
+  `docs/composition/README.md` / `docs/plugins/README.md` / 两份 plan 内裸文件名 / 被移文件内部自身路径×3）。
+
+**索引瘦身**：
+
+| 文件 | 前 | 后 |
+|---|---|---|
+| `docs/plans/README.md` | 122 行 · 最长行 4979 · 最长单元格 1988 | **127 行 · 最长行 462 · 最长单元格 373**（骨架保留；真机欠账 12 行逐行保留；竣工线压成「点名 + archive 指针」） |
+| `docs/plans/HISTORY.md` | 最长单元格 945（8 处 >500） | 最长单元格 492（8 处全压，里程碑语义保留 + 指针） |
+
+**长行拆分（内容零改动）**：`taste-ledger.md` 15 行 · `scientific-rendering-plan.md` 1 行（4714 字符）· `stream-rhythm-plan.md` 1 行——
+在句界 / `**标签**：` 边界插换行 + 缩进；校验法 = 从 `git show HEAD:<file>` 取原文、重跑同一拆分算法，
+**与工作区逐字节比对相等**（工作区 = 原文 + 仅换行缩进，3 份文件全等）。
+
+**孤儿清偿**：P3 起始 23 项 → **0**。归档消化 16 项；索引挂链消化 6 项（canvas-space 阶段件 3 · 并发会话 · LSP 舰队 · 出厂产物归家 ·
+纸壳交互承接 · 内核能力口设计件 4 · 纸壳表面清单 · v11 分析引擎）；**豁免账 P3 类目清零**（facts-plans-14 / size-plans-active /
+size-plans-tree / orphans-plans / orphans-plans-tree / archive-plans 六条全删，账上只剩 1 条永久豁免 = `CODELY.md`）。
 
 ## 5. 门禁用法与维护纪律
 

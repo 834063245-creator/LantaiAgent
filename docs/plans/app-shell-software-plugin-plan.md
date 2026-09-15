@@ -556,7 +556,7 @@ toolHandlers——实现跑在宿主 webview，用宿主设施）与 MCP 路（m
 
 - **件 C 落点本体**：`plugins/mcp-bridge.ts`（升级目标，不只是参照）；MCP
   形态先例 `examples/plugins/dataflow-mcp/`（notes-app 进程面的直接底本）；
-  装载调度层 `plugin-bundle-retirement-plan.md`（四件套与装载层正交：
+  装载调度层 `docs/archive/plugin-bundle-retirement-plan.md`（四件套与装载层正交：
   装载层管「装不装得上」，app shell 管「装上了怎么活」）。
 - 示例关联：`examples/plugins/hello/`（基本范本，本次 notes-app 是其软件级
   对位范本）。

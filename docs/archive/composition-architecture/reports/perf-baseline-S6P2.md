@@ -1,5 +1,7 @@
 # 性能基线 · 组合层装配成本（S6 P2 后，P3 前置）
 
+> ⚠ **已归档（2026-09-16 · 文档面重构 P3）**：所属线（组合架构 S0-S6）**全段竣工**——本件是历史留存，不作现状口径；组合层现状见 [`docs/composition/README.md`](../../../composition/README.md)，插件契约见 [`docs/plugins/README.md`](../../../plugins/README.md)，在办计划入口见 [`docs/plans/README.md`](../../../plans/README.md)。
+
 > 2026-09-15 实测（P2 刚落地、P3 未动装配路径）。台子 = `src-ui/tests/bench/`（跑法见其 README）；
 > 结构化事实由 `src-ui/tests/composition-assembly-cost.test.ts`（7 例）钉住。
 > 本报告是 **P3 的对照基准**：P3 把「激活账 / `requires` 校验 / `exclusive` 冲突检测」加到装配

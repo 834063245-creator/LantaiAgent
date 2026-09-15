@@ -1,5 +1,7 @@
 # 交接窗——内核插件运行时 Phase 2 全量竣工窗（P2-5/P2-6 实施完成）
 
+> ⚠ **已归档（2026-09-16 · 文档面重构 P3）**：内核插件运行时线**已建成又已拆除**（v3 拆除令，2026-09-05），本件是该线 Phase 2 全量竣工窗的交接记录，是历史留存。决策真源见 [`docs/plans/kernel-plugin-architecture-decision.md`](../plans/kernel-plugin-architecture-decision.md)，在办计划入口见 [`docs/plans/README.md`](../plans/README.md)。
+
 ## 当前态（本窗结束，已实核）
 - **main 头部**：d419c9d7 = P2-6（builtin.pty + builtin.lsp）；c12281e8 = P2-5（builtin.browser + builtin.uia）；70c85db1 = 设计件 §8 增补
 - **Phase 2 全量竣工**：九域（fs/editor/constraints/git/shell/browser/uia/pty/lsp）全部内核插件信封化，rpc.rs **45 methods**（145 → 45 全历程），kernel-plugin-runtime 工具域收口

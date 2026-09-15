@@ -155,7 +155,7 @@ DSH 实际是「cordis 地基 + 一整圈服务契约」（ctx.tools/session/llm
   第一用户是自己的域功能开发（多窗口并行 / 可禁用域 / 贡献面即契约）；②**形状与
   DSH 契约兼容、零依赖**原则保留——将来 DSH 信号点亮只需补 compat 层即可吃其生态；
   ③存量拆解与通道建设交替推进（拆到哪疼了通道就知道该长什么样），不存在大工程
-  开工时刻。特权区清单同步定案（**2026-08-25 按 `agent-platformization-plan.md`
+  开工时刻。特权区清单同步定案（**2026-08-25 按 `docs/archive/agent-platformization-plan.md`
   Phase 0 修订，权威以该计划 §3/§9 为准**）：**强制层** = cordis 内核 / 注册表机制 /
   RPC 平台面（权限咽喉）/ 沙箱内核 / 审计 / Workspace 原语 / React root+壳——
   **只减不增**；**能力实现（fs/shell/subprocess/session/graph/llm/subagents/agent

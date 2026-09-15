@@ -520,7 +520,7 @@ ctx.effect(
 （BlueprintScope——ctx/inputs/tools/hooks/preflightHooks/deps/agent），与
 `firstPartyCapabilities()` 十四项（B⑤ 起同样经通道注册——真源
 `plugins/builtin/capability-segments/`）在同一张 blueprint 表上竞争。设计件：
-`docs/plans/composition-architecture/designs/A3-capability-contribution-channel.md`。
+`docs/archive/composition-architecture/designs/A3-capability-contribution-channel.md`。
 
 ```js
 ctx.effect(

@@ -1,5 +1,7 @@
 # S4 设计件 — preset realm + 热重载 + npm 分发 + 机器桥 + hello 闭环
 
+> ⚠ **已归档（2026-09-16 · 文档面重构 P3）**：所属线（组合架构 S0-S6）**全段竣工**——本件是历史留存，不作现状口径；组合层现状见 [`docs/composition/README.md`](../../../composition/README.md)，插件契约见 [`docs/plugins/README.md`](../../../plugins/README.md)，在办计划入口见 [`docs/plans/README.md`](../../../plans/README.md)。
+
 > 状态：**竣工（2026-08-20：S4-0 `c7e089ff` → S4-1a `01c035f8` → S4-1.5 `8f8b131e` → S4-2 `b366422d` → S4-3 `7913d266` → S4-5 `50a1f532` → S4-1b `d4dcb5bf`+`2c4f4bf3`，七批每批独立全绿；S4-1b 经 Phase 5 CR 用户批准「批准全项」后实施——preset/selected 首事件五项同步 + 差分矩阵场景 + minimal baseline/preset-minimal/ 首次冻结。S4-4 机器桥按 §3 裁定整体跳过（未决项，hello 三通道不依赖）。**
 > **S4-4 复活（2026-08-23 拍板，agent-plugin-architecture-plan §5 五项拍板 #1）**：机器桥整批做——甲=插件行纳入组合解析域（①b web/browser-desktop 迁移的前置）+ 乙=manifest mcpServers 进程桥；实施细节见该计划 §5 B 表 ①b 行，设计沿用本件 §2.7。
 > **S4-4 甲落地（2026-08-23）**：插件贡献行/段进组合解析域——`factoryComposition()` 快照收编 pluginToolRows 行（builtin 行在前、贡献行随后）+ ctx.prompts 段贡献；patch/preset 可寻址 `plugin/<贡献 id>` 行与贡献段 id（含 13 第一方段）；B④/② 的寻址拒绝与两条临时位序（插入段恒在贡献之前 / insert 同名贡献段不拒）消灭；`assembleSystemPrompt` sections 提供即精确清单（缺省 = 当前贡献）；贡献 register/dispose = 组合输入变更（preset-assembly cache 代数失效 + bootShell 贡献监听 reapplyComposition 重应用）。双 preset 零漂移实测（装配序 = builtin 行 + 贡献行，与迁移前两循环叠加同序）。

@@ -1,6 +1,8 @@
 # WO-S0A — 装载通道验证 spike（第一刀，小时级）
 
-> 施工单：自包含，执行 agent 可直接开工。前置阅读：`docs/plans/composition-architecture/README.md` S0 节。
+> ⚠ **已归档（2026-09-16 · 文档面重构 P3）**：所属线（组合架构 S0-S6）**全段竣工**——本件是历史留存，不作现状口径；组合层现状见 [`docs/composition/README.md`](../../../composition/README.md)，插件契约见 [`docs/plugins/README.md`](../../../plugins/README.md)，在办计划入口见 [`docs/plans/README.md`](../../../plans/README.md)。
+
+> 施工单：自包含，执行 agent 可直接开工。前置阅读：`docs/archive/composition-architecture/README.md` S0 节。
 > **结果：✅ 分支 1（假设证实，2026-08-20）**——dev webview（127.0.0.1:1420）从 `http://127.0.0.1:14570` 动态 import 磁盘 ES module 成功，console 证据 `[spike] import ok: {"ok":true,"from":"disk-es-module"}`。spike 代码（Rust 分支/前端临时代码/磁盘模块）已全量清除；生产 origin 验证随 WO-S0B 验收 5 补齐。
 > 目标：**验证一个假设，不是建一个功能**——「Tauri webview 能从 `http://127.0.0.1:14570` 动态 import ES module」。
 > 该假设是整个 S0（乃至插件机制）的物理前提；在跑通之前它是假设不是事实（v1 计划正是在同类假设上翻车的，不犯第二次）。

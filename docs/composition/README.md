@@ -8,7 +8,7 @@
 > 组合架构的「数据外化」段：工具行 / prompt 段 / capability / 壳行 /
 > seam provider 的「禁哪些、换哪段文本、插哪些段」从编译期 TS 表外化为
 > 用户可改的 patch 数据文件。设计件：
-> `docs/plans/composition-architecture/designs/S2-composition-externalization.md`
+> `docs/archive/composition-architecture/designs/S2-composition-externalization.md`
 > （S2）与 `.../S4-preset-realm-distribution.md`（S4）。
 
 ## 一分钟上手

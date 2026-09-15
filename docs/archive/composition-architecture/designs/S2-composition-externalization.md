@@ -1,5 +1,7 @@
 # S2 设计件 — 组合外化（roster patch 数据文件 + 装配穿线 + 壳装配行化）
 
+> ⚠ **已归档（2026-09-16 · 文档面重构 P3）**：所属线（组合架构 S0-S6）**全段竣工**——本件是历史留存，不作现状口径；组合层现状见 [`docs/composition/README.md`](../../../composition/README.md)，插件契约见 [`docs/plugins/README.md`](../../../plugins/README.md)，在办计划入口见 [`docs/plans/README.md`](../../../plans/README.md)。
+
 > 状态：**待批准**（2026-08-20 预写；与 S1 设计件同一流程——用户批准后 S2-0 即可开工，批准记录落此处）。
 > 性质：S2 是组合架构计划的「数据外化」段。S1 把装配来源收进三张 TS 表（机制就位、数据仍在编译期）；S2 把「禁哪些行、换哪段文本、插哪些段」外化为用户可改的 patch 数据文件，把 `blueprint.standard()` 的真源换成行管道，并把 main.ts 909 行（实测）硬编码壳装配改为壳行驱动。本件划定 schema、解析语义、文件通道、穿线路径、批次序列与零漂移规则。
 > 对标实证（2026-08-20 源码查验）：DSH `packages/bundle/base/cordis.patch.yml`（451 行 roster：id 寻址 / config 整体替换 / disabled / insert）、`packages/bundle/web-app/cordis.patch.yml`（分层 disable + insert 范本——「行序无装载语义」与「禁用而非删除」两段注释是本件的直接教材）、`packages/boot/app-boot/src/profile.ts`（bundle 层 → profile 层 → --patch overlay 的分层组合）、`apps/web/src/main.ts`（10 行薄引导）。

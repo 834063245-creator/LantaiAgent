@@ -1,5 +1,7 @@
 # A-3 设计件 — capability 贡献面（ctx.capabilities 第八贡献通道）
 
+> ⚠ **已归档（2026-09-16 · 文档面重构 P3）**：所属线（组合架构 S0-S6）**全段竣工**——本件是历史留存，不作现状口径；组合层现状见 [`docs/composition/README.md`](../../../composition/README.md)，插件契约见 [`docs/plugins/README.md`](../../../plugins/README.md)，在办计划入口见 [`docs/plans/README.md`](../../../plans/README.md)。
+
 > 状态：**待批准**（2026-08-24 预写；与 S1/S2 设计件同一流程——用户批准后实施，批准记录落此处）。
 > 性质：P4 通道补齐第三件（agent-plugin-architecture-plan §5 A 表「blueprint capability 贡献面」，2026-08-23 拍板 #4）——会话级能力的插件装载，B⑤ 批（plan/通信/discovery/merge/board/compaction 六族迁移）的前置。A-1（prompts）/A-2（hooks）是宽松面直接实施；本件是**字节敏感面**（capability 表序 = 装配序 = 模型可见 schema 序，phase-1 effective 快照 + DeepSeek 前缀缓存守护），按拍板 #4 纪律单独出设计件过审后动工。
 > 先例对标：A-1 prompt-service（贡献快照进组合解析域 + 变更代数失效——S4-4 甲模式）/ A-2 hook-service（形状零改写 + 单文件自持服务纪律）/ S2-1（fromRoster 穿线——本件零 runtime 改动的红利来源）/ S4-4 甲（贡献行进寻址域的组合均匀性论证）。

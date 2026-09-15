@@ -1,5 +1,7 @@
 # WO-S6P4 — 程序入口（按组合起卷 · 拒绝语义 · 评测自举定位）
 
+> ⚠ **已归档（2026-09-16 · 文档面重构 P3）**：所属线（组合架构 S0-S6）**全段竣工**——本件是历史留存，不作现状口径；组合层现状见 [`docs/composition/README.md`](../../../composition/README.md)，插件契约见 [`docs/plugins/README.md`](../../../plugins/README.md)，在办计划入口见 [`docs/plans/README.md`](../../../plans/README.md)。
+
 > **状态：✅ 执行完毕（2026-09-16，两笔：P4a `4ca7df3e` 入口 + 拒绝语义 / P4b 收官写回；
 > 每笔独立全绿：vitest + biome 0/0 + build + convergence 双轨 + doc-sync v39；
 > 破测 5 条逐条确认能红——①2红 ②2红 ③4红 ④1红 ⑤1红，结果写进 P4a commit message）。

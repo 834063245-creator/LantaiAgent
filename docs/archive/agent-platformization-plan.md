@@ -159,7 +159,7 @@
 
 **做什么：** 把 D1-D13 落进权威文档，让"边界"变成代码里可检查的约定。
 
-1. 重写 `docs/plans/composition-architecture/README.md` 的**内核线**：强制层 / 能力契约层二分；删"Agent↔engine 耦合带永久特权"；增补"能力实现不是特权，Rust/engine = 默认 provider"（D1/D11）。
+1. 重写 `docs/archive/composition-architecture/README.md` 的**内核线**：强制层 / 能力契约层二分；删"Agent↔engine 耦合带永久特权"；增补"能力实现不是特权，Rust/engine = 默认 provider"（D1/D11）。
 2. 修订 `agent-plugin-architecture-plan.md` D9 特权区清单：减出 LLM / 子代理 / 工具管道监听面 / 后端能力实现 / agent loop（D8/D11/D13）；明确推翻"Rust 侧插件化标准形态 = 外部 MCP server"的绝对化。
 3. `docs/adr/project-constitution.md` 增补**平台边界**最高约定（或另立 `docs/adr/platform-boundary.md` 并挂进宪法，执行时定）：强制层 / 能力契约层二分 + 试金石 + 新能力加面规则（优先开放面，强制层改动需宪法审查）。
 4. 门禁：一条守卫测试（或静态扫描）钉住"**强制层外**不得新增 Rust 命令"——把 D1 从"零增长"改为"强制层外零增长"（强制层内改动需显式标注 + 审查）。

@@ -1,5 +1,7 @@
 # 性能对表 · 组合层装配成本（S6 P3 后）
 
+> ⚠ **已归档（2026-09-16 · 文档面重构 P3）**：所属线（组合架构 S0-S6）**全段竣工**——本件是历史留存，不作现状口径；组合层现状见 [`docs/composition/README.md`](../../../composition/README.md)，插件契约见 [`docs/plugins/README.md`](../../../plugins/README.md)，在办计划入口见 [`docs/plans/README.md`](../../../plans/README.md)。
+
 > 2026-09-15 实测（P3a `e508f093` + P3b `2259c3c3` 落地后）。对照基准 =
 > [`perf-baseline-S6P2.md`](perf-baseline-S6P2.md)（P2 后，P3 未动装配路径）。
 > 阈值见设计件 §3.7；**判据一律 min（p75 次之），绝对 ms 不进红绿**；本表只报告。

@@ -1,5 +1,7 @@
 # WO-S6P2 — seam 选择：从模块态到装配期值注入
 
+> ⚠ **已归档（2026-09-16 · 文档面重构 P3）**：所属线（组合架构 S0-S6）**全段竣工**——本件是历史留存，不作现状口径；组合层现状见 [`docs/composition/README.md`](../../../composition/README.md)，插件契约见 [`docs/plugins/README.md`](../../../plugins/README.md)，在办计划入口见 [`docs/plans/README.md`](../../../plans/README.md)。
+
 > 施工单（**已过目并执行完毕：2026-09-15 用户逐项裁定，见 §7 裁定列；P2a `a1e83c8f` / P2b `53924344`
 > 两笔落地，§5 的门禁四连 + 破测全部通过；实测环境事实已写回设计件 §8.2**）。上级设计件：`designs/S6-per-agent-composition.md`
 > §3.4 消费点表 + §4 批序 P2 行 + §8.1 环境事实。前置批次：P-1 / P0.5 / P0 / P1(a-e) 全部落地。

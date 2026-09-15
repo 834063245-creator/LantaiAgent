@@ -140,7 +140,7 @@
 
 - `types.ts`：manifest 增三层源/优先级字段（patch 语义：安装包出厂 → 用户数据目录覆盖 → 外部插件），`roster.patch.ts` 接入覆盖裁定（对齐 DSH patch layer，见立案 §4-3）。
 - 文档同步：`docs/plugins/README.md`（平台契约总览、装载解析优先级）、`AGENTS.md`/`CLAUDE.md` 插件面段、`CONVENTIONS.md` 如有引用。
-- `docs/plans/plugin-bundle-retirement-plan.md` 本图纸归档标记竣工（进 docs/archive）。
+- `docs/archive/plugin-bundle-retirement-plan.md` 本图纸归档标记竣工（进 docs/archive）。
 - **验证**：全量门禁 + 真机验收（见 §4）。
 
 ## 3. 验证门禁（每 S 必过）

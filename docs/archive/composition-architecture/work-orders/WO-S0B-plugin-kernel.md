@@ -1,5 +1,7 @@
 # WO-S0B — 插件内核（loader + manifest + plugin-store + 正式装载通道）
 
+> ⚠ **已归档（2026-09-16 · 文档面重构 P3）**：所属线（组合架构 S0-S6）**全段竣工**——本件是历史留存，不作现状口径；组合层现状见 [`docs/composition/README.md`](../../../composition/README.md)，插件契约见 [`docs/plugins/README.md`](../../../plugins/README.md)，在办计划入口见 [`docs/plans/README.md`](../../../plans/README.md)。
+
 > 施工单：自包含。前置：**WO-S0A spike 必须已通过**（装载通道假设已证实）。
 > 本单交付插件机制的内核；四条贡献通道（panels/commands/tools/providers）是 S1，不在本单。
 > 高 fan-in 提醒：动 `main.ts`（904 行入口）前先跑内置 `graph(preflight)`（AGENTS.md §0-4）。

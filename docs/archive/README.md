@@ -13,10 +13,17 @@
 - **清理记录**：audit-fix 系列、async-spawn 系列、framework-expansion-plan
 - **2026-08-22 深夜归档（竣工计划全文）**：`workspace-flip/`（目录）、`agent-core-convergence/`（目录，含活流程文件 baseline-change-request.md）、`cordis-migration/`（目录）、`ui-react-island-retirement-plan.md`、`eventbus-zero-and-ui-split-plan.md`
 - **2026-08-22 深夜归档（已消费交接稿）**：`design-handoff-lantai-2026-08-22.md`（兰台注疏设计定稿交接——全部落地后退役；产物为 `prototype/lantai.html` + `docs/design/lantai-design-spec.md`）
-- **2026-08-22 S3 竣工归档**：`composition-architecture-S3-settings-domain-externalization.md`（S3 settings 域行化设计件——六裁决两批落地后随段竣工归档；施工史与落地记录在 `docs/plans/composition-architecture/HISTORY.md` S3 段）
+- **2026-08-22 S3 竣工归档**：`composition-architecture-S3-settings-domain-externalization.md`（S3 settings 域行化设计件——六裁决两批落地后随段竣工归档；施工史与落地记录在 `docs/archive/composition-architecture/HISTORY.md` S3 段）
 - **2026-08-23 归档**：`arch-action-plan.md`（any 清理 + agent.ts 拆分等架构行动全集——11c/14 全收官后退役；现状叙事由 CONVENTIONS/AGENTS 承接）
 - **2026-08-24 归档（会话线连续三棒）**：`session-ledger-plan.md`（案卷总目 L0-L3 竣工，2026-08-24 merge `e677c5c8`；后续由 session-unify 继承身份/发号机制）、`workspace-ownership-root-cure-handoff.md`（工作区归属根治五 Phase + boot 序洞真根因，实机验收通过；DSH 对标事实源清单）。活线见 `docs/plans/README.md`「会话 / 分层 / 画布三线」。
 - **2026-08-26 归档（baton 交接棒系列全量）**：`lantai-handoff/`（目录，baton6–baton18 全部 13 棒）——baton 制退役，后续不写交接棒；当前状态与下一步以 `docs/plans/README.md` 为准。
+- **2026-09-16 归档（文档面重构 P3 · 归档大扫除）**：竣工线与计划整批移出 `docs/plans/`——
+  - `composition-architecture/`（目录整树：README + HISTORY + designs×5 + reports×2 + work-orders×7）——组合架构 S0-S6 全段竣工；
+    **S7「真面板并排」是 ⏸ 搁置件随线归档，重启该批时取回重新立项**（其 §0.5/§0.6）。
+  - `agent-platformization-plan.md`（平台化 Phase 0-6 全竣工）· `plugin-bundle-retirement-plan.md`（插件 bundle 退役）·
+    `builtin-plugin-roster-single-source.md`（内置插件名册单一真源）· `frontend-overlay-a11y-plan.md`（前端浮层/焦点/a11y 修复）·
+    `handoff-p2-window.md`（内核插件运行时 Phase 2 竣工窗交接记录——该线已随 v3 拆除令作废）。
+  - 以上各件顶部均已加「已归档（2026-09-16 · P3）」横幅与现状指针；现状入口一律 `docs/plans/README.md`。
 
 ## 使用规则
 
