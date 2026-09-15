@@ -80,7 +80,7 @@ S0/S1/S2/S4 竣工后，S3（settings 域第一方行化：面板/命令双贡�
 |---|---|
 | ~~agent-plugin **P4** 插件边界/DSH 跟随~~ | **D9 换轨（2026-08-23）：移出等待表**——自研为主不等信号（见上表）；DSH 信号点亮只追加 compat 装载层 |
 | agent-plugin **C12 dsh-compat** | P4 全清后的唯一合法挂起：DSH peer 出非 workspace 版本即启动（外部信号依赖；p4a 调研已备好契约地图，见 agent-plugin 计划） |
-| v4-pro-minimal AB 实验 | Linux 环境（Windows 不可用） |
+| v4-pro-minimal AB 实验 | Linux 环境（Windows 不可用）；**且旧 harness 已删**（2026-09-16，`77ad6fe7` 后续一笔——`src-ui/tests/ab/` + `scripts/ab-test/` 是图谱时代化石、引用已删符号、默认跑法整文件跳过；实验本体仍为 Draft 未执行，重跑需先重写 harness，见 [`v4-pro-minimal-ab-test-plan.md`](v4-pro-minimal-ab-test-plan.md)） |
 | repo 改名 GitHub 侧执行 | 用户操作；改名前不打发布包 |
 
 ## 真机验证欠账（代码完成、未实跑）

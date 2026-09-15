@@ -124,8 +124,7 @@ export async function buildToolRegistry(opts: ToolRegistryOptions): Promise<Tool
     // R3-d（shell 域收口，kernel-capability-c3-design.md）：shell 域经
     // process_cap 能力口直呼（builtin.shell 信封退役）——codingExec 的特殊面
     // （前台流式执行）按 action + run_in_background 寻址（外层名恒
-    // 'process_cap'；args 是 provider 映射后的顶层 snake 形，与 tests/ab/
-    // ab-tools.ts 的 kernelExec 互为镜像）。后台三动词直通 ledger。
+    // 'process_cap'；args 是 provider 映射后的顶层 snake 形）。后台三动词直通 ledger。
     if (name === 'process_cap') {
       const env = args as { action?: string; run_in_background?: boolean };
       if (env.action === 'exec_command' && !env.run_in_background) {

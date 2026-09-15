@@ -1,5 +1,12 @@
 # DeepSeek V4 Pro × 极简模式 能力验证实验计划
 
+> ⚠️ **本计划从未执行（Draft），且原配实验台已于 2026-09-16 整删**（`src-ui/tests/ab/**` +
+> `scripts/ab-test/**`，S6 P4 附笔；理由：台子引用图谱时代已删符号
+> `createGraphContext*`，因 `AB_ARM` 门控默认整文件跳过 ⇒ 烂了不报警；且它对照的
+> 两臂在图谱全量退役（2026-09-09）后已无差别）。**重跑本实验需先重写 harness**
+> （底座可复用 `src-ui/tests/helpers/composition-boot.ts` 与 convergence 装配面）。
+> 本文件保留为实验设计记录，不再描述现状。
+
 > 状态：Draft（未执行）
 > 目标环境：Linux（物理机 / 云主机 / WSL2；**不可用 Windows 本机**）
 > 关联文档：`browser-cdp-suite-review-round2.md`（同目录）、
