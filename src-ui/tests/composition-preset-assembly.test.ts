@@ -460,7 +460,7 @@ describe('S4-1a workspace 会话工厂：会话作用域注册表路径（源码
   // 方案甲（2026-08-27）：工厂签名带 sessionId（按会话生效配置装配）
   const factoryAnchor = 'const factory = async (sessionId: number): Promise<AgentHandle | null> => {';
 
-  it('工厂读 effectiveComposition（F1 捕获网入口）并做引用不等判定', () => {
+  it('工厂读 effectiveComposition（F1 捕获网入口）并按**组合身份**判定覆盖', () => {
     const i = src.indexOf(factoryAnchor);
     expect(i).toBeGreaterThan(0);
     // P3-3（2026-09-02）：窗口 1600→2000——比较基准迁到实例字段后行位后移
@@ -471,9 +471,12 @@ describe('S4-1a workspace 会话工厂：会话作用域注册表路径（源码
     expect(window).toContain('effectiveComposition(');
     // P0（2026-09-14）：重开卷用**该卷自己记录的组合**重建（读盘时登记）
     expect(window).toContain('getRecordedPresetId');
-    // P3-3（2026-09-02）：比较基准从 setupAgent 闭包常量改为实例字段
-    // _assemblyComposition（= composition-store 的 resolved 快照）
-    expect(window).toContain('sessionComposition !== this._assemblyComposition');
+    // S6 P1d（2026-09-15）：判据从**对象引用**换轨到**组合身份**（输入派生）——
+    // 引用在 factory 态恒不等（每卷白建注册表）；身份含贡献代数 ⇒ 不会复用陈旧
+    // 注册表。_assemblyComposition 字段随换轨删除（零读者即化石）。
+    expect(window).toContain('compositionIdentity(recordedPresetId ?? undefined)');
+    expect(window).toContain('sessionKey !== this._assemblyKey');
+    expect(src).not.toContain('_assemblyComposition');
   });
 
   it('覆盖存在时走 buildToolRegistry({toolRows: compositionOverride.tools})', () => {

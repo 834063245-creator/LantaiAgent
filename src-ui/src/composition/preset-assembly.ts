@@ -107,6 +107,43 @@ function findPresetById(id: string): PresetEntry | undefined {
   return builtinPresetById(id) ?? usePresetStore.getState().roster.find((p) => p.id === id && !p.builtin);
 }
 
+// ── 组合身份（S6 P1d）──
+
+/** 层内容 + 贡献代数 → 身份串（纯函数；空层与缺失层归一：`{}` / null 等价——
+ *  「空 patch」与「没有 preset 层」产出的组合面逐字相同，身份也应当相同）。 */
+function identityOfLayers(presetPatch: CompositionPatch | null | undefined): string {
+  const norm = (p: CompositionPatch | null | undefined): string =>
+    p && Object.keys(p).length > 0 ? JSON.stringify(p) : '-';
+  return norm(userPatchRegistry.patch) + '|' + norm(presetPatch) + '|' + contributionsGeneration;
+}
+
+/** 组合身份——解析**输入**的稳定派生（与产物对象引用无关）。
+ *
+ *  用途：会话工厂判定「本卷要的组合」与「共享注册表所依据的组合」是否同一份
+ *  （S6 P1d：替换原先的对象引用比较——引用在 factory 态恒不等，每卷白建一份会话
+ *  注册表）。
+ *
+ *  为何是**输入**派生而不是产物内容派生：产物内容躲不开「prompt 段的 text 覆盖
+ *  不进 id 序列」——只比 id+序会把「只改了提示词」的组合判成同一份，会话便静默
+ *  丢掉自己的覆盖。输入派生则天然覆盖（任何改变产物的层内容都进身份）。
+ *
+ *  为何含**贡献代数**：同一行 id 在不同装载代可能绑不同 factory 闭包——只比 id
+ *  会复用陈旧注册表（插件重注册/卸载后必须重建）。同代 + 同层内容 ⇒ 同
+ *  factoryComposition() 快照 ⇒ 同产物，可安全共用注册表。
+ *
+ *  刻意**不含 preset id**：id 只用来找 patch，产物只由层内容决定（两个 id 内容相同
+ *  ⇒ 同一份组合，共用是对的）。 */
+export function compositionIdentity(presetId?: string): string {
+  const id = presetId ?? usePresetStore.getState().selected;
+  return identityOfLayers(findPresetById(id)?.patch ?? null);
+}
+
+/** 用户层组合（不含 preset 层）的身份——patch-loader 写 store 时用（它的产物只叠
+ *  用户层）；出厂态回退（resetToFactory / setError）与「空 preset patch」同源。 */
+export function userLayerIdentity(): string {
+  return identityOfLayers(null);
+}
+
 /** 当前生效组合解析入口（§2.2 装配粒度：workspace Agent 装配 / 占位 Agent /
  *  子 Agent 三处读同一默认 preset）。
  *
@@ -272,7 +309,7 @@ function applySelectionToStore(): void {
   const patch = findPresetById(selected)?.patch;
   const empty = !patch || Object.keys(patch).length === 0;
   if (empty && registeredUserPatch() === null) {
-    comp.resetToFactory();
+    comp.resetToFactory(userLayerIdentity());
     return;
   }
   const origin = empty
@@ -280,7 +317,9 @@ function applySelectionToStore(): void {
     : comp.patchOrigin
       ? comp.patchOrigin + ' + preset:' + selected
       : 'preset:' + selected;
-  useCompositionStore.getState().setResolved(effectiveComposition(selected), origin);
+  // S6 P1d：连同**输入身份**一起写——装配面据此判定共享注册表是否就按这份组合建的
+  // （引用比较在 factory 态恒不等，见 compositionIdentity 头注）。
+  useCompositionStore.getState().setResolved(effectiveComposition(selected), origin, compositionIdentity(selected));
 }
 
 /** 切换 preset（设置面板选择器入口）：先校验可解析（F1b 捕获网）→ store 同步
@@ -333,14 +372,24 @@ export function applyDefaultPreset(): void {
     console.warn('[composition] 未知/损坏 preset "' + selected + '"——保持用户层组合');
   }
   const patch = preset?.patch;
-  if (!patch || Object.keys(patch).length === 0) return; // 空 patch = 无增量 = 不触碰
+  if (!patch || Object.keys(patch).length === 0) {
+    // 空 patch = 无增量 = 不触碰产物（零漂移语义保持）；但**身份要补记**——
+    // 此时 store 里的产物就是「用户层（可能为空）」那一份，装配面据此才能判定
+    // 「本会话要的组合与共享注册表同一份」（否则每卷照旧白建注册表）。
+    comp.noteResolvedKey(compositionIdentity(selected));
+    return;
+  }
   // F1 捕获网：不可解析（行 id 不可寻址——写错 id / 对应插件被禁用）→ 保持
   // loadCompositionPatch 的产物（用户层组合）+ 原因可见；**不写** preset 层
   // 产物（否则 origin 会谎报 preset:X，且回退产物被当成选择结果）。
   const err = selectionError(selected);
   noteSelectionError(err);
-  if (err !== null) return;
+  if (err !== null) {
+    // 回退产物 = 用户层组合——身份同样按「未叠 preset 层」补记（同 compositionIdentity）
+    comp.noteResolvedKey(compositionIdentity(selected));
+    return;
+  }
   const resolved = resolveCurrentComposition(selected);
   const origin = comp.patchOrigin ? comp.patchOrigin + ' + preset:' + selected : 'preset:' + selected;
-  useCompositionStore.getState().setResolved(resolved, origin);
+  useCompositionStore.getState().setResolved(resolved, origin, compositionIdentity(selected));
 }

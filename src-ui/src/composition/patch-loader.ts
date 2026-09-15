@@ -25,7 +25,12 @@
 // 的用户层内容 hash 变化自动失效，R13；新 Agent 装配即用新组合）。
 
 import { parse as parseYaml } from 'yaml';
-import { applyDefaultPreset, clearUserPatch, registerUserPatch } from '../composition/preset-assembly';
+import {
+  applyDefaultPreset,
+  clearUserPatch,
+  registerUserPatch,
+  userLayerIdentity,
+} from '../composition/preset-assembly';
 import { factoryComposition, parseCompositionPatch, resolveRoster } from '../composition/roster';
 import { getProxyPort } from '../provider/transport';
 import { useCompositionStore } from '../state/composition-store';
@@ -81,7 +86,7 @@ export async function loadCompositionPatch(opts: LoadCompositionPatchOptions = {
       const msg = '组合 patch 通道异常: HTTP ' + res.status;
       console.error('[composition] ' + msg);
       clearUserPatch(); // store 回退 factory——登记面同步清空（S4-1a）
-      store.setError(msg, PATCH_FILENAME);
+      store.setError(msg, PATCH_FILENAME, userLayerIdentity());
       return;
     }
     const text = await res.text();
@@ -92,14 +97,14 @@ export async function loadCompositionPatch(opts: LoadCompositionPatchOptions = {
       const msg = 'YAML 语法错误: ' + errText(e);
       console.error('[composition] ' + msg);
       clearUserPatch();
-      store.setError(msg, PATCH_FILENAME);
+      store.setError(msg, PATCH_FILENAME, userLayerIdentity());
       return;
     }
     const validated = parseCompositionPatch(parsed);
     if (!validated.ok) {
       console.error('[composition] patch 校验失败:', validated.error);
       clearUserPatch();
-      store.setError('patch 校验失败: ' + validated.error, PATCH_FILENAME);
+      store.setError('patch 校验失败: ' + validated.error, PATCH_FILENAME, userLayerIdentity());
       return;
     }
     // resolveRoster throw（未知 id / insert 撞 id / 锚点不存在）→ 整体拒绝
@@ -108,12 +113,13 @@ export async function loadCompositionPatch(opts: LoadCompositionPatchOptions = {
     // resolved 是已叠加产物，不能回退当用户层用）。preset 层的应用在
     // boot/reload 的编排层（发现完成后）——本函数保持单一职责。
     registerUserPatch(validated.patch);
-    store.setResolved(resolved, PATCH_FILENAME);
+    // S6 P1d：连**输入身份**一起写——本产物只叠用户层（无 preset 层）。
+    store.setResolved(resolved, PATCH_FILENAME, userLayerIdentity());
   } catch (e) {
     // 通道级失败（fetch 网络错 / resolveRoster throw）：可见 + factory 兜底
     console.error('[composition] 用户层 patch 装载失败:', e);
     clearUserPatch();
-    useCompositionStore.getState().setError(errText(e), PATCH_FILENAME);
+    useCompositionStore.getState().setError(errText(e), PATCH_FILENAME, userLayerIdentity());
   }
 }
 
@@ -134,7 +140,7 @@ export async function reloadCompositionPatch(opts: LoadCompositionPatchOptions =
       // patch 被删除：回退 factory（显式清理——热删除是合法编辑动作）；
       // preset 层不保留（用户层没了，叠层产物一并撤下）
       clearUserPatch();
-      useCompositionStore.getState().resetToFactory();
+      useCompositionStore.getState().resetToFactory(userLayerIdentity());
       // F5（2026-09-15）：resetToFactory 之后补一次 preset 层应用——当前选择
       // 若带非空 patch（如 minimal），组合面应当是「preset 层」而不是出厂全量；
       // 漏这一步会让诊断面/共享注册表与运行面（会话按选择解析）分歧。

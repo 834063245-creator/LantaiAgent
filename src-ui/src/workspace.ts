@@ -31,7 +31,12 @@ import { TaskManager } from './agent/task';
 import type { ToolRegistry } from './agent/tool';
 import type { ChatCore } from './app/chat/chat-core';
 import { readAttachmentBase64 } from './app/chat/image-intake';
-import { effectiveComposition, isPresetKnown, selectionError } from './composition/preset-assembly';
+import {
+  compositionIdentity,
+  effectiveComposition,
+  isPresetKnown,
+  selectionError,
+} from './composition/preset-assembly';
 import type { ResolvedComposition } from './composition/roster';
 import type { Context, Fiber } from './cordis';
 import { initCordisKernel } from './cordis/boot';
@@ -138,7 +143,13 @@ export class Workspace {
    *  ——_buildRegistryLocked / 会话工厂消费。 */
   private _agentRef: { current: Agent | null } = { current: null };
   private _builderDeps: BuilderDeps | null = null;
-  private _assemblyComposition: ResolvedComposition | null = null;
+  /** 共享注册表所依据的组合**身份**（S6 P1d）——建注册表时点的
+   *  composition-store.resolvedKey 快照（缺席 = 未知 ⇒ 会话一律自建注册表）。
+   *  必须与**建表时点**同步快照：判定要比的是「建表时的输入」，而不是比较时点的
+   *  store（热重载后 store 已前进，拿新身份配旧注册表 = 复用陈旧行面）。
+   *  （旧字段（装配时点的组合快照）是引用比较的另一半，随判据换轨删除——
+   *  零读者即化石。） */
+  private _assemblyKey: string | undefined;
   private _chatPanel: ChatCore | null = null;
 
   /** 守卫（历史名 _initialRenderActive）：分页原子换入已随 Phase 1.5 退役，
@@ -438,7 +449,9 @@ export class Workspace {
       toolRows: composition.tools,
     });
     this.registry = registry;
-    this._assemblyComposition = composition;
+    // S6 P1d：身份与产物同步快照（建表时点）——判定「能否复用本注册表」用身份比，
+    // 而身份必须是**建表时点**的（见 _assemblyKey 字段注）。
+    this._assemblyKey = useCompositionStore.getState().resolvedKey;
     // 工具 schema 连接到 UI 面板（重建时同步刷新）
     this._chatPanel?.setToolSchemas(registry.schemas());
     return registry;
@@ -631,7 +644,11 @@ export class Workspace {
     // 获得身份 fiber（hologram/agent），生命周期随 AgentContext.dispose 摘除。
     // S2-1 组合外化：composition-store 的 resolved 穿进 runtime（capability
     // 表 + prompt 段表的运行时真源；store 缺省 = 出厂组合 = 现行装配）。
-    const composition = useCompositionStore.getState().resolved;
+    // S6 P1d：连同产物的**输入身份**（resolvedKey）一起取——会话工厂据此判定
+    // 「本卷要的组合」与共享注册表所依据的组合是否同一份（取代引用比较）。
+    const compSnapshot = useCompositionStore.getState();
+    const composition = compSnapshot.resolved;
+    this._assemblyKey = compSnapshot.resolvedKey;
     const runtime = new AgentRuntime(this.path, this._fiber.ctx, composition);
     const adapter = createRuntimeAdapter(this._storeId);
     runtime.setNotifier(adapter);
@@ -718,7 +735,6 @@ export class Workspace {
     const builderDeps: BuilderDeps = createBuilderDeps(this._storeId);
     this._builderDeps = builderDeps;
     this._agentRef = { current: null as Agent | null };
-    this._assemblyComposition = composition;
     this._chatPanel = chatPanel;
     const agentRef = this._agentRef;
 
@@ -761,19 +777,23 @@ export class Workspace {
       // Agent 在 runtime.agents/_agentSessions 里互相覆盖（多会话错位根因之一）
       const sessionAgentId = `main-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
-      // 会话组合覆盖判定（S4-1a 机制位）：当前选择的组合 ≠ 工作区装配组合时，
-      // 为本会话建会话作用域注册表并把组合覆盖传给 createAgent。
-      // ⚡ 实测语义（2026-09-15 审计 F4 更正——旧注释称「无选择器时两值恒等」
-      // 与代码相反，且引用的 rebuildToolRegistry 全仓不存在）：
-      //   - 比较是**引用**比较；_assemblyComposition 来自 composition-store 的
-      //     resolved（setupAgent 时点快照，见本文件 :633/:720）；
-      //   - 默认配置（standard + 无用户层 patch）下 resolveCurrentComposition()
-      //     返回 cache 里的 resolveRoster 产物，与 store 里那份 factoryComposition()
-      //     快照**恒不是同一对象** → 覆盖分支恒活跃，每卷各建一份会话注册表
-      //     （deps/行表复用，代价是注册表重建本身）；
-      //   - 引用相等只出现在 store 曾被本模块 cache 实例写过的路径（boot 期
-      //     applyDefaultPreset / 热重载后 reapplyComposition），此时共享注册表
-      //     本就按该组合建成——两条路给出的组合面都是「当前选择」，语义正确。
+      // 会话组合覆盖判定（S4-1a 机制位；S6 P1d 换判据）：本会话要的组合与共享
+      // 注册表所依据的组合**不是同一份**时，为本会话建会话作用域注册表并把组合
+      // 覆盖传给 createAgent。
+      // ⚡ 判据演进（2026-09-15）：
+      //   - 旧判据是**对象引用**比较（会话解析产物 vs 装配时点快照字段；该字段随
+      //     换轨删除——零读者即化石）。
+      //     实测语义（2026-09-15 审计 F4）：引用在 factory 态恒不等——store 里那份是
+      //     setupAgent 时点的快照，会话解析产物来自 preset-assembly 的 cache，两者
+      //     永不同一对象 ⇒ 覆盖分支恒活跃，**每卷白建一份会话注册表**。
+      //   - 现判据是**组合身份**比较（preset-assembly.compositionIdentity：层内容 +
+      //     贡献代数，输入派生）。同身份 ⇒ 同输入 ⇒ 同一份行面 ⇒ 可安全复用共享
+      //     注册表；身份含贡献代数 ⇒ 插件重注册/卸载后必不相等 ⇒ 不会复用陈旧注册表
+      //     （「先证明不会复用陈旧注册表」的判据就在这一条）。
+      //   - 身份与产物同步快照（_assemblyKey 在**建表时点**取，见字段注）——不与
+      //     比较时点的 store 比，否则热重载后会拿新身份配旧注册表。
+      //   - _assemblyKey 缺席（store 未记录输入身份）= 未知 ⇒ 按「不同」处理
+      //     （会话自建注册表 = 旧行为，安全方向）。
       // F1 捕获网：解析走 effectiveComposition（坏 preset 回退用户层组合，不抛）。
       // P0 记录闭环（2026-09-14）：**重开一卷用它自己记录的组合**重建（读盘时经
       // agentSessionState 登记；缺省 = 新卷，用全局当前选择）——「模型可见 ⟺ 已记录」
@@ -791,7 +811,10 @@ export class Workspace {
         }
       }
       const sessionComposition = effectiveComposition(recordedPresetId ?? undefined);
-      const compositionOverride = sessionComposition !== this._assemblyComposition ? sessionComposition : undefined;
+      // S6 P1d 判据：组合身份（输入派生）不引用。身份 ≠ 建表时点身份（含「未知」）
+      // ⇒ 本会话自建注册表；等同 ⇒ 复用共享注册表（真零重建）。
+      const sessionKey = compositionIdentity(recordedPresetId ?? undefined);
+      const compositionOverride = sessionKey !== this._assemblyKey ? sessionComposition : undefined;
       // 会话作用域注册表：覆盖存在时按覆盖的 tools 域构建（deps 工作区级复用）
       const sessionRegistry = compositionOverride
         ? await buildToolRegistry({
