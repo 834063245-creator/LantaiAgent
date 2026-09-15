@@ -42,13 +42,14 @@
 
 | 目录 | 放什么 | 现状 |
 |---|---|---|
-| [`adr/`](adr/) | 架构决策记录（编号 ADR + 主题 ADR） | 6 篇，见目录 |
-| [`agents/`](agents/) | Agent 操作/事故/对比文档 | 保留：dsh-harness-comparison、platform-bugs-2026-08-13、frontend-rpc-contract（生成物）、engine-plugin-contract（生成物） |
-| [`design/`](design/) | 设计定稿与探索 | provider-system-spec、visual-language-ink-brass、mcp-acp-protocol-support、一张纸设计 |
+| [`adr/`](adr/README.md) | 架构决策记录（宪法 + 编号 ADR + 主题 ADR） | 8 篇，入口 [`adr/README.md`](adr/README.md) |
+| [`agents/`](agents/) | Agent 操作/事故/对比文档 | [dsh 对比](agents/dsh-harness-comparison.md) · [并发事故](agents/platform-bugs-2026-08-13.md) · [cordis 动态插件事故](agents/platform-bugs-cordis-dynamic-runner.md) · [事件目录](agents/event-catalog.md)（生成物） · [服务目录](agents/service-catalog.md)（生成物） · [rpc 契约](agents/frontend-rpc-contract.md)（生成物） · [引擎契约](agents/engine-plugin-contract.md)（生成物） |
+| [`design/`](design/) | 设计定稿与探索 | [provider 体系](design/provider-system-spec.md) · [墨铜视觉语言](design/visual-language-ink-brass.md) · [一张纸交互形态](design/一张纸-Agent软件交互形态设计.md) · [MCP/ACP 协议支持](design/mcp-acp-protocol-support.md) · [纸壳设计规格](design/lantai-design-spec.md) · [rpc 运行时校验](design/rpc-runtime-validation-design.md) |
+| [`cookbook/`](cookbook/README.md) | 各 seam 的动手指南 | 8 篇，入口 [`cookbook/README.md`](cookbook/README.md) |
 | [`plans/`](plans/) | 待执行/进行中的计划与实验；**竣工即归档** | 入口 [`plans/README.md`](plans/README.md)（现状全景）+ [`plans/HISTORY.md`](plans/HISTORY.md)（里程碑时间轴） |
-| [`research/`](research/) | 调研证据与决策 | 入口 [`research/README.md`](research/README.md) |
-| [`archive/`](archive/) | 已竣工施工稿、历史 handoff、被取代的 plan | 入口 [`archive/README.md`](archive/README.md) |
-| 散件 | 仍在使用的路线图/雷区/回归 runbook | `MULTI_AGENT_ROADMAP.md`、`landmine-map.md`、`p3-regression-runbook.md` |
+| [`research/`](research/README.md) | 调研证据与决策（冻结层） | 入口 [`research/README.md`](research/README.md) |
+| [`archive/`](archive/README.md) | 已竣工施工稿、历史 handoff、被取代的 plan | 入口 [`archive/README.md`](archive/README.md) |
+| 散件 | 仍在使用的路线图/雷区/回归 runbook | [`MULTI_AGENT_ROADMAP.md`](MULTI_AGENT_ROADMAP.md) · [`multi-agent-design-methodology.md`](multi-agent-design-methodology.md)（方法论） · [`landmine-map.md`](landmine-map.md) · [`p3-regression-runbook.md`](p3-regression-runbook.md) |
 
 ## 已归档（2026-08-16 收敛）
 

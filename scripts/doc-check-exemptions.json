@@ -54,34 +54,6 @@
       "payoff": "永久"
     },
     {
-      "id": "orphans-adr",
-      "check": "orphans",
-      "file": "docs/adr/*",
-      "reason": "ADR 四篇没有逐篇入口（docs/README 只列目录）",
-      "payoff": "P4"
-    },
-    {
-      "id": "orphans-cookbook",
-      "check": "orphans",
-      "file": "docs/cookbook/*",
-      "reason": "cookbook 缺索引页（八篇里四篇无任何引用）",
-      "payoff": "P4"
-    },
-    {
-      "id": "orphans-design",
-      "check": "orphans",
-      "file": "docs/design/*",
-      "reason": "设计件两篇（mcp-acp-protocol-support / 一张纸设计）无入口",
-      "payoff": "P4"
-    },
-    {
-      "id": "orphans-research",
-      "check": "orphans",
-      "file": "docs/research/README.md",
-      "reason": "research 索引自身没人链接",
-      "payoff": "P4"
-    },
-    {
       "id": "orphans-plans",
       "check": "orphans",
       "file": "docs/plans/*",
@@ -94,13 +66,6 @@
       "file": "docs/plans/**",
       "reason": "计划树内 README/HISTORY 无引用",
       "payoff": "P3"
-    },
-    {
-      "id": "orphans-methodology",
-      "check": "orphans",
-      "file": "docs/multi-agent-design-methodology.md",
-      "reason": "多 Agent 设计方法论无入口（41KB 方法论稿，归档或挂路线图由 P4 定）",
-      "payoff": "P4"
     },
     {
       "id": "archive-plans",

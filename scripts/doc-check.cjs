@@ -320,27 +320,46 @@ function checkSize(files) {
   return { violations, skipped: [] };
 }
 
+/**
+ * 收集「谁引用了谁」——**把相对链接解析成仓库相对路径**再比（早期版本直接字符串
+ * 匹配「docs/x/y.md」，于是 docs/README 里写 `research/README.md` 这种相对链接
+ * 一律算没引用，误报成孤儿）。两种引用形态都算：
+ *   ① markdown 链接 `](target)`（相对本文件解析）
+ *   ② 反引号里的仓库相对路径 `` `docs/...` ``（本仓库既有的引用习惯）
+ */
+function collectReferences(files) {
+  const refs = new Map();
+  const add = (target, referrer) => {
+    if (!refs.has(target)) refs.set(target, new Set());
+    refs.get(target).add(referrer);
+  };
+  for (const rel of files) {
+    const dir = path.posix.dirname(rel);
+    const text = readText(rel);
+    for (const m of text.matchAll(/\]\(([^)\s]+)\)/g)) {
+      const t = m[1];
+      if (/^([a-z][a-z0-9+.-]*:|\/\/|#)/i.test(t)) continue;
+      const p = t.split('#')[0];
+      if (!p || !p.endsWith('.md')) continue;
+      add(path.posix.normalize(path.posix.join(dir, decodeURIComponent(p))), rel);
+    }
+    for (const m of text.matchAll(/`([^`\n]+\.md)`/g)) {
+      const t = m[1].trim();
+      if (!t.startsWith('docs/')) continue; // 仓库相对书写习惯：只认 docs/ 开头（避免歧义）
+      add(path.posix.normalize(t), rel);
+    }
+  }
+  return refs;
+}
+
 function checkOrphans(files) {
   // archive/ 是既定坟场（按目录可达 + archive/README 交代），不要求逐份被链接。
   const docs = files.filter((f) => f.startsWith('docs/') && !f.startsWith('docs/archive/'));
-  const corpus = new Map();
-  for (const rel of files) corpus.set(rel, readText(rel));
+  const refs = collectReferences(files);
   const violations = [];
   for (const rel of docs) {
-    const base = path.basename(rel);
-    const needsPath = base === 'README.md' || base === 'HISTORY.md';
-    let referenced = false;
-    let referrer = '';
-    for (const [other, text] of corpus) {
-      if (other === rel) continue;
-      const hit = needsPath ? text.includes(rel) : text.includes(rel) || text.includes(base);
-      if (hit) {
-        referenced = true;
-        referrer = other;
-        break;
-      }
-    }
-    if (!referenced) {
+    const referrers = [...(refs.get(rel) ?? [])].filter((r) => r !== rel);
+    if (referrers.length === 0) {
       violations.push({
         check: 'orphans',
         file: rel,
@@ -463,6 +482,14 @@ function main() {
   const byPayoff = {};
   for (const w of waived) byPayoff[w.payoff ?? '(未标批次)'] = (byPayoff[w.payoff ?? '(未标批次)'] ?? 0) + 1;
 
+  // 账目卫生：豁免条目若已不再命中任何违规 = 债务已清偿（或规则收紧后失效），条目该删。
+  const usedIds = new Set();
+  for (const v of all) {
+    const e = matchExemption(v, exemptions.entries);
+    if (e?.id) usedIds.add(e.id);
+  }
+  const unused = exemptions.entries.filter((e) => !usedIds.has(e.id));
+
   if (asJson) {
     console.log(JSON.stringify({ open, waived, skipped, byPayoff, candidates: { total: candidates.total } }, null, 2));
     return open.length === 0 ? 0 : 1;
@@ -494,6 +521,10 @@ function main() {
     for (const c of candidates.sample) console.log(`  ${c.file}:${c.line} — ${c.text}`);
     console.log(`\n── 历史语态放行 ${skipped.length} 条（时态豁免，不计违规）──`);
     for (const s of skipped.slice(0, 10)) console.log(`  ${s.file}:${s.line} — ${s.message}`);
+    if (unused.length > 0) {
+      console.log(`\n── 账目卫生：${unused.length} 条豁免已不再命中（债务已清偿或规则收紧后失效）——该删 ──`);
+      for (const e of unused) console.log(`  [${e.payoff ?? '?'}] ${e.id}（${e.check}）`);
+    }
     return 0;
   }
 
