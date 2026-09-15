@@ -2,7 +2,7 @@
 
 > 立项：2026-08-24 · 状态：**设计定稿；施工进行中——Stage-1 地基清零 ✅ + Stage-2 一纸多卷 ✅ + Stage-3 会话的出生与管理 ✅ + Stage-4 会话内体验（创作坞 + 目次带）✅ + Stage-5 收尾（布局持久化 + 公共物工作区级 + 零目录退役）✅（2026-08-26，门禁全绿），Stage-6 进行中（2026-08-31 起 UI/UX 专项：§11 层次法立法 + UI 全面审计三轴批）** · 性质：设计笔记（画布支全阶段共享设计源，原则五：不重写）
 > 本文件积累「画布式空间系统」的全部已定概念与设计输入，是画布支各阶段展开的共享设计源。
-> 相关：`session-unify-plan.md`（会话全局化，已完成存储/索引层）、`layering-rework-plan.md`（分层重构，含 DSH 工作区对照）。
+> 相关：`session-unify-plan.md`（会话全局化，已完成存储/索引层）、`docs/archive/layering-rework-plan.md`（分层重构，含 DSH 工作区对照）。
 
 ## 0. 一句话
 
@@ -72,7 +72,7 @@
 ## 4. 相关
 
 - `session-unify-plan.md`：会话存储/索引层已完成；验收修正：重启不自动摊开（Q-B），首页全量列表
-- `layering-rework-plan.md`：分层重构 + DSH 工作区五条铁律（会话第一公民/attach 校验/出生绑定分离/运行时锚点=当前会话）
+- `docs/archive/layering-rework-plan.md`：分层重构 + DSH 工作区五条铁律（会话第一公民/attach 校验/出生绑定分离/运行时锚点=当前会话）
 - 画布支已独立立项（2026-08-24/25，Stage-1/2 已落地）；本文件是画布支全阶段共享的设计源（原则五：不重写），全部阶段竣工后归档。
 
 ---
@@ -167,7 +167,7 @@
   - **流式全量重算 → 增量**：`paper/translate.ts` 新增 `translateMessagesCached`（按消息引用只重译被触碰消息，未变块对象引用稳定）+ `paper/measure.ts` 新增块级测量缓存 `measureBlockHeightCached`（块 id + 内容签名命中，流式只真测变更块）；`flowGeom` 复用 `stack` 高度，删掉原二次全量测量。
   - **每帧全量重渲染 → memo**：`BlockView` 包 `React.memo`（ops 按块 id 记忆 + 点击时读最新消息；`onBlockMouseDown` 读 ref 稳定化），`SpineRack` / `StatusLine` / `ModeIndicator` 全部 memo 化——平移/缩放不再让未变块与书眉组件逐帧重渲。
   - **门禁全绿**：vitest 171 文件 1695 passed / 4 skipped · `npm run build` ✓ · `verify:convergence` exit 0 · biome 改动文件 0。回归测试：`tests/paper-core.test.ts`（增量缓存引用稳定性/钉住表失效/新增消息补录/整表换引用）+ `tests/paper-v3a.test.ts`（块级测量命中/签名失效/独立记账）。
-- 🟡 **真机验收四项：用户拍板「先过了」（2026-08-25）**——工程整体落地后有系统性性能优化，本阶段以自动化门禁 + 代码面收口为准；四项清单（单工作区零回归 / 双工作区并行 / 跨工作区续开 / Ungrouped 可用）保留在 `layering-rework-plan.md` §4.6，整体优化窗口再跑。
+- 🟡 **真机验收四项：用户拍板「先过了」（2026-08-25）**——工程整体落地后有系统性性能优化，本阶段以自动化门禁 + 代码面收口为准；四项清单（单工作区零回归 / 双工作区并行 / 跨工作区续开 / Ungrouped 可用）保留在 `docs/archive/layering-rework-plan.md` §4.6，整体优化窗口再跑。
 - **范围说明**：§性能基准场景（~100 会话多 Agent 同跑）是第二阶段「一纸多卷」之后的目标；本阶段只承诺单会话流式/浏览在代码面闭环，系统性优化（工作区级虚拟化/布局流区隔离/分层渲染）随二阶段落地。
 
 ---

@@ -24,6 +24,17 @@
     `builtin-plugin-roster-single-source.md`（内置插件名册单一真源）· `frontend-overlay-a11y-plan.md`（前端浮层/焦点/a11y 修复）·
     `handoff-p2-window.md`（内核插件运行时 Phase 2 竣工窗交接记录——该线已随 v3 拆除令作废）。
   - 以上各件顶部均已加「已归档（2026-09-16 · P3）」横幅与现状指针；现状入口一律 `docs/plans/README.md`。
+- **2026-09-16 归档（文档面重构 P3b 补批 · 竣工但没写横幅的件）**：`archive` 查只看头部 15 行横幅，
+  这批因此漏网；逐条取证（头注 + `docs/plans/README.md` 真机欠账表）后归档——
+  - `engine-plugin-extraction.md`（引擎插件化 Phase 0-5）· `layering-rework-plan.md`（分层重构 L1-L4 + L5b；真机四项已闭）·
+    `first-party-hot-reload-plan.md`（第一方热更）· `agent-asset-blocks.md`（资产块协议 + 渲染跟上批）·
+    `multimodal-image-plan.md`（多模态图片链 B1-B5；**真机六项欠账仍在办**，在办真值在计划索引欠账表）·
+    `browser-cdp-suite-review-round2.md`（CDP 二轮评审；E2E-1..5 已实跑结清）·
+    `session-persistence-seam-wiring-plan.md`（会话持久化 seam 接线；**原头注「待施工」已过期，横幅内已订正**）·
+    `paper-shell/paper-panel-split-plan.md`（PaperPanel 机械拆解）·
+    `tool-ergonomics-notes.md` + `tool-ergonomics/`（design-1-context-waist · design-2-session-focus；工具层人体工学 T-1/T-2）。
+  - 各件顶部已加「已归档（2026-09-16 · 文档面重构）」横幅 + 现状指针；引用面同步到 `docs/archive/…`
+    （含 `INVARIANTS.md` / `docs/adr/` / `docs/agents/open-surface-contract.md` / 计划索引与施工史）。
 
 ## 使用规则
 

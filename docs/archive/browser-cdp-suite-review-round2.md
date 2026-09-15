@@ -1,8 +1,10 @@
 # Browser CDP 套件二轮评审 + 改进计划
 
+> **已归档（2026-09-16 · 文档面重构）**——第一至第五批全部提交并入 main；**头注「剩余任务：补跑 E2E-1..5」已过期**：E2E 已实跑（2026-08-22 `cargo test cdp::` 35/35 全绿，含 E2E-5 多账号 cookie 隔离）⇒ 剩余任务清零。现状指针：`docs/adr/0003-agent-browser-cdp-suite.md`；现状入口 `docs/plans/README.md`。
+
 > 状态：第一至第五批均已提交并入 main（第五批 `534faba` 起；是否 push 以 `git status` 为准）。代码侧全部完成：cookies/profile/proxy/多账号 slot 切换 + E2E-5；eval 隔离 world 保持可选不做
 > 剩余任务：有 Windows 环境则补跑 E2E-1/2/3/4/5（重点 E2E-5 多账号 cookie 隔离）；eval 隔离 world 仍为可选项
-> 关联实验：[`v4-pro-minimal-ab-test-plan.md`](./v4-pro-minimal-ab-test-plan.md)（同目录）
+> 关联实验：[`v4-pro-minimal-ab-test-plan.md`](../plans/v4-pro-minimal-ab-test-plan.md)（在 plans/）
 > 评审范围：`src-tauri/src/cdp.rs`、`src-tauri/src/rpc.rs`、`src-tauri/src/tools/mod.rs`、
 > `src-ui/src/agent/tools/browser.ts`、`src-tauri/src/cdp/probes/*.js`、`src-tauri/src/cdp/e2e.rs`
 > 参照系：BrowserAct（`D:\useful\browser-act-skills`）、Playwright MCP / Chrome DevTools MCP 的能力面

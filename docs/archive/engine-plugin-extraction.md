@@ -1,5 +1,7 @@
 # 引擎独立插件化：兰台进程外 + MCP 契约（engine-plugin-extraction）
 
+> **已归档（2026-09-16 · 文档面重构）**——全计划竣工（Phase 0-5，2026-08-29：兰台改连进程外引擎、摘掉 hologram-engine 依赖、Phase 4 免编译扩展面与 Phase 5 收口同日落地）。现状指针：`ARCHITECTURE.md` §5/§6 + 生成物 `docs/agents/engine-plugin-contract.md`；现状入口 `docs/plans/README.md`。
+
 > 状态：**全计划竣工**（Phase 0-5，2026-08-29。兰台已从内嵌改连进程外引擎、hologram-engine 依赖已摘；
 > Phase 4 免编译扩展面 + Phase 5 收口同日落地）。
 > 立项拍板（2026-08-29）：①做彻底——兰台从内嵌改连进程；

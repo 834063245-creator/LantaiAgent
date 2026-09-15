@@ -1,5 +1,7 @@
 # T-1 设计件 — 工具层上下文腰与参数减负（fs/git/search 三域）rev2
 
+> **已归档（2026-09-16 · 文档面重构）**——已落地（2026-08-30 rev2 当日竣工；rev1「解析腰放 Rust」经用户质询后重裁归位 JS 平台层）。现状指针：代码真源 `src-ui/src/agent/session-context.ts`（per-owner 注册表）+ `src-ui/src/agent/tools/domains.ts`（参数预处理腰）。
+
 > 状态：**已落地（2026-08-30 rev2 当日竣工）**。实施偏差一处：coding.ts zod 未 optional 化——
 > 域可见面 required 恒为 ['action']，省缺由腰填充、旧工具 zod 必填保持即 loud 失败语义，少一面 diff。
 > **rev2 重裁记录**：rev1 把解析腰放在 Rust 漏斗（path_resolve.rs），2026-08-30 用户质询

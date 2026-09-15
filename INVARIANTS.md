@@ -321,7 +321,7 @@ Ask）、`uia/com.rs` NO_PATTERN 错误（未授权物理路径明确报错而�
 **守护**: `tests/image-intake.test.ts`（ChatImageRef 形状 + 内容寻址路径）、
 `tests/paper-image-render.test.ts`（B4 渲染面——payload 只携引用 + 盘上回读渲染期成
 data URI + #14 接线钉值）、
-`docs/plans/multimodal-image-plan.md` D-1 裁定（字节永不进卷）+ §5 grep 验收。
+`docs/archive/multimodal-image-plan.md` D-1 裁定（字节永不进卷）+ §5 grep 验收。
 
 ---
 

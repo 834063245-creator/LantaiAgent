@@ -53,7 +53,7 @@ cd /home/jingjianhua/HoloGram && python3 scripts/bench_resolution.py --all --out
 - **不要恢复孤儿清理**：`resolver.rs` 里 P0-3 的 `unresolved:` 占位节点是有意设计（MemoryIndex 是节点锚定的，`from_existing_graph` 会丢弃端点缺失的边——占位节点是让它保留的唯一办法）。
 - **不要改 benchmark gold 来迁就失败**：gold 是验收线；改解析器后必须 `python3 scripts/bench_resolution.py --all` 保持 100%。
 - **工作区有别人的未提交改动，commit 时排除**：`src-tauri/src/main.rs`、`src-tauri/src/os_sandbox.rs`（Browser CDP 套件第五批）、`docs/plans/agent-core-convergence*`（删除+新增）、根目录 `hologram_graph*.json`。本任务的 commit 范围 = 第二节表格里的文件 + `docs/research/benchmarks/` + `scripts/bench_resolution.py` + 三个 fixture 目录。
-- `.hologram/` 运行时目录已 gitignore；`docs/plans/browser-cdp-suite-review-round2.md` §8 是别的任务。
+- `.hologram/` 运行时目录已 gitignore；`docs/archive/browser-cdp-suite-review-round2.md` §8 是别的任务。
 - 引擎二进制在 `engine/target/release/hologram-engine`（已是最新）。
 
 ## 五、给下个窗口的启动语（直接复制）

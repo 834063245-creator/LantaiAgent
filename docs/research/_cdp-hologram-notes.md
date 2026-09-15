@@ -212,7 +212,7 @@ LLM → browser.ts (领域工具 browser + 37 个隐藏 browser_* 子工具)
 |---|---|
 | docs/adr/0003-agent-browser-cdp-suite.md | 135 |
 | docs/archive/browser-cdp-suite-plan-2026-08-13.md | 135 |
-| docs/plans/browser-cdp-suite-review-round2.md | 263 |
+| docs/archive/browser-cdp-suite-review-round2.md | 263 |
 | docs/archive/tool-convergence-browser-plan-2026-08-08.md | 208 |
 | src-tauri/src/cdp.rs（facade + 单测） | 704 |
 | src-tauri/src/cdp/transport.rs | 194 |

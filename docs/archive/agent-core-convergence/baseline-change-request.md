@@ -241,7 +241,7 @@
 
 # Baseline 变更申请 — Agent 资产块工具三件套（asset-domain：show_asset / update_asset / list_block_kinds）
 
-> 申请日期：2026 资产协议实施（WO-2）· 申请人：编码助手（Agent 资产块协议 docs/plans/agent-asset-blocks.md 施工）
+> 申请日期：2026 资产协议实施（WO-2）· 申请人：编码助手（Agent 资产块协议 docs/archive/agent-asset-blocks.md 施工）
 > 状态：**已批准** —— 用户在对话中逐项拍板协议（Q1-A7 全部裁决，含三原语设计），并批准「开始实施」（WO-1/2 开工指令）；
 > record 以 WO-2 收尾的独立步骤执行（与 baseline-change-request 模板纪律一致）。
 

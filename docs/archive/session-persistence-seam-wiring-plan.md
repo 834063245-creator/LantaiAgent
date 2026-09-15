@@ -1,5 +1,7 @@
 # 会话持久化 seam 接线施工计划（sessionPersistence 承诺做实——C 定案）
 
+> **已归档（2026-09-16 · 文档面重构）**——**头注「状态：plan 定稿待施工（下窗执行）」已过期**：本计划已施工完毕，批次 2/3/4 于 2026-09-05 三 commit 竣工（四动作面重设计 + Service.execute 落位 + 产品会话卷 CRUD 全链接线 seam；「插件注册 provider 即接管产品会话持久化」这一承诺由 `sessions-seam.test` 的 fake provider 端到端测试可证）。现状指针：`docs/plugins/README.md` + 生成物 `docs/agents/open-surface-contract.md`；现状入口 `docs/plans/README.md`。
+
 > 立项：2026-09-05 · 状态：**plan 定稿待施工（下窗执行）** · 上游：平台化 Phase 2 · D11（施工⑥）
 > + 归属反转会话模型换代（2026-08-27）+ R5 落账窗发现（2026-09-05）
 > 拍板：用户 2026-09-05 定 **C**（把承诺做实——产品会话持久化全链经 seam，插件换 provider 即换存储后端）。

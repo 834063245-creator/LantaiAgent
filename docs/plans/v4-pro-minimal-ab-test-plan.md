@@ -9,7 +9,7 @@
 
 > 状态：Draft（未执行）
 > 目标环境：Linux（物理机 / 云主机 / WSL2；**不可用 Windows 本机**）
-> 关联文档：`browser-cdp-suite-review-round2.md`（同目录）、
+> 关联文档：`docs/archive/browser-cdp-suite-review-round2.md`（全文在 archive）、
 > `D:\useful\deepseek-harness` 的 minimal preset 相关 Agent Notes
 
 ## 0. 背景与假设

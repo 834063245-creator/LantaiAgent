@@ -95,7 +95,7 @@ Agent 流式事件 → part-mutator 追加 → SourcedBlock(kind:'markdown')
 - **缺口**：LaTeX 公式（`$`/`$$`）、markdown 图片 `![]()`、checkbox `- [ ]`、mermaid 围栏
 - 版式数字单一真源：`paper/type-tokens.ts`（MD_TOKENS/CHROME_TOKENS → CSS `var(--pp-*)` 注入 + measure `*DERIVED` 派生；`paper-token-audit.test.ts` 钉无悬空 var）
 
-### 通道 B：资产块（显式 `show_asset` 产出，协议 `docs/plans/agent-asset-blocks.md`）
+### 通道 B：资产块（显式 `show_asset` 产出，协议 `docs/archive/agent-asset-blocks.md`）
 
 ```
 show_asset(kind, presentation, payload) → BlockPart → SourcedBlock(asset 元数据)
@@ -214,7 +214,7 @@ render 全字段/作者串形态/空占位/只读 + measure 行高镜像/占位�
 
 ### 5.3 chart 的正确姿势：加 presentation，不动 kind
 
-`agent-asset-blocks.md` 的 kind 语义 × presentation 表现**双维度正交**给免费能力——换表现不动 kind 契约 / payload / 历史块：
+`docs/archive/agent-asset-blocks.md` 的 kind 语义 × presentation 表现**双维度正交**给免费能力——换表现不动 kind 契约 / payload / 历史块：
 
 ```
 chart kind（payload {type, data, config} 不变）

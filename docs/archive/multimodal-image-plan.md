@@ -1,5 +1,7 @@
 # 多模态图片链路施工计划（附图入卷——发送/接收/展示全链补齐）
 
+> **已归档（2026-09-16 · 文档面重构）**——全计划竣工（B1-B5 五 commit `0d2c39bd`/`b99c5217`/`9affbbf2`/`ed6008ef`/`8eaada50`，门禁全绿）。**余真机验收六项仍是在办欠账**（本页 §5 为原始清单，在办真值逐行见 `docs/plans/README.md` 真机欠账表）；字节永不进卷契约见 `INVARIANTS.md` #14。
+
 > 立项：2026-09-08 · 状态：**全计划竣工（B1 = 0d2c39bd · B2 = b99c5217 · B3 = 9affbbf2 ·
 > B4 = ed6008ef · B5 = 8eaada50，门禁全绿——vitest 全量 287 文件 2910 passed / 4 skipped ·
 > tsc 0 · biome 改动面 0/0 · convergence 双档 · doc-sync · build）。

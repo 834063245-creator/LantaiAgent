@@ -14,7 +14,7 @@
 | 事实 | 出处 |
 |---|---|
 | 引擎进程外消费后，每窗口/CLI 会话各带一个 `hologram-engine serve`（stdio MCP 1:1） | engine-plugin-extraction Phase 2/3 拍板 |
-| 当时只拍了「N×EXE 页可接受，典型 1-3 工作区」 | engine-plugin-extraction.md L78 |
+| 当时只拍了「N×EXE 页可接受，典型 1-3 工作区」 | `docs/archive/engine-plugin-extraction.md` L78 |
 | 漏算项：LSP 舰队不是共享 EXE 页——每引擎另拉 4 个重子进程（rust-analyzer 单套 1-3GB） | 2026-09-09 事故日志 |
 | LspManager 是进程内静态单例（pool/project_root 都是进程级） | lsp_manager.rs `LspManager::global()` |
 | 事故时 6 引擎 = 至少 4 套车队并存 + 6 份 ONNX + 6 份全量分析 | .hologram/logs/engine.log 2026-09-08T20:59-22:01Z |

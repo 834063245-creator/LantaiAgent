@@ -1,7 +1,7 @@
 # baseline change request — 工具层上下文腰（T-1/T-2）：fs 可见键归一 + 三域描述换代（2026-08-30）
 
 - **日期**: 2026-08-30
-- **请求 Agent**: 工具层人体工学执行 Agent（设计件 `docs/plans/tool-ergonomics/design-1-context-waist.md` rev2 §3 验收 5 / `design-2-session-focus.md` rev2 §3——用户 2026-08-30 拍板「开工」）
+- **请求 Agent**: 工具层人体工学执行 Agent（设计件 `docs/archive/tool-ergonomics/design-1-context-waist.md` rev2 §3 验收 5 / `docs/archive/tool-ergonomics/design-2-session-focus.md` rev2 §3——用户 2026-08-30 拍板「开工」）
 - **涉及快照**: `baseline/phase-0/tool-schemas.full.json`、`baseline/phase-0/tool-schemas.plan.json`、`baseline/preset-minimal/phase-0/` 对应物——同一动因的字节漂移
 - **状态**: **已批准（用户在 design-1/design-2 rev2 全文在库且明示「唯一流程门槛 = baseline 重录」后指令开工；重录为本设计的落地动作）**
 

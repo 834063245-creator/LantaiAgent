@@ -13,7 +13,7 @@
 > 上游目标物：[iOfficeAI/OfficeCLI](https://github.com/iOfficeAI/OfficeCLI)（Apache-2.0；
 > 本计划 pin 版本 **v1.0.149**，win-x64 **31.87 MB**，SHA256 `abd82dae…31e2`）。
 > 相关计划：[`scientific-rendering-plan.md`](scientific-rendering-plan.md)（#20 PDF/Office 内嵌暂缓项）、
-> [`multimodal-image-plan.md`](multimodal-image-plan.md)（媒体/图片通道）、
+> [`multimodal-image-plan.md`](../archive/multimodal-image-plan.md)（媒体/图片通道）、
 > [`app-shell-software-plugin-plan.md`](app-shell-software-plugin-plan.md)（软件级插件四件套）。
 
 **读法**：§0 拍板与现状 → §1 实测事实 → §2 落地形态 → §3 平台改动 → §4 分发 → §5 坑账 → §6 你的验收清单 → §7 施工史一览 → §8 剩余。

@@ -4,7 +4,7 @@
 
 - 2026-08-12 `e6fa9d2` 落地 browser 领域工具初版：CDP 双通道（target=self 走 webview 内直读探针 / 外部页面走 Rust CDP），12 个动作。
 - 评审（2026-08-13）结论：方向正确，但存在端口冲突、调用无超时、全局单例会话、探针代码分叉等结构问题。
-- 本文档定调套件的**目标形态**，并记录每条决策的理由。落地分期史见 `docs/archive/browser-cdp-suite-plan-2026-08-13.md`；后续批次与剩余 Windows 真机 E2E 见 `docs/plans/browser-cdp-suite-review-round2.md`。
+- 本文档定调套件的**目标形态**，并记录每条决策的理由。落地分期史见 `docs/archive/browser-cdp-suite-plan-2026-08-13.md`；后续批次与剩余 Windows 真机 E2E 见 `docs/archive/browser-cdp-suite-review-round2.md`。
 
 ## 落地状态（2026-08-13 同日完成，08-14 二批收尾）
 
@@ -13,7 +13,7 @@
 - 后续收尾：profile 按端口隔离随会话清理、租约 env 可调（`182ecbe`）；connect 动作——连接用户已启动的调试端口实例（`b988f87d`，见 D8）；星图空闲按需渲染根治 CPU 空转（`64051fb`，与本套件无关但同期修复）。
 - 第二批次（2026-08-14）：世界快照静默失效根因修复（`e1679a0`，D5 数据通道自落地起从未工作，端到端实测暴露）；probe 返回值契约锁死（`e581ae7c`）；观察任务竞态修复（`b7dd2d08`）；desktop_probe / desktop_screenshot 桌面快照工具（`6b2bf906`/`fffd554f`）；browser_wait 显式等待 + snapshot 分页（`14aea446`）。全部经端到端实测，详见路线图 §8。
 - 与计划的差异与遗留项见路线图文档各节「落地注记」与 §6。
-- 二轮评审第一批（2026-08-15）：补上 P0 日常任务缺口 —— `navigate` / `back` / `forward` / `reload`（Page.navigate + 导航历史）、`content`（正文提取探针 `cdp/probes/content.js`，text / markdown-lite + 字符分页）、`select`（value/option 文本匹配 + 原生 setter 派发事件）、`type(replace)`（先清空再输入）；`check_sensitive` 高危文本补英文词（Pay now / Delete / Confirm / Unsubscribe 等，Rust 与页面 JS 共用同一正则源并加单测）；rpc 层所有 `browser_*` 分支统一经过 `check_browser_permission`，`Browser=deny` 对只读/self 通道同样生效，L2 普通动作由 `BrowserTool` 统一裁决为 Passthrough。详见 `docs/plans/browser-cdp-suite-review-round2.md` §4.1。
+- 二轮评审第一批（2026-08-15）：补上 P0 日常任务缺口 —— `navigate` / `back` / `forward` / `reload`（Page.navigate + 导航历史）、`content`（正文提取探针 `cdp/probes/content.js`，text / markdown-lite + 字符分页）、`select`（value/option 文本匹配 + 原生 setter 派发事件）、`type(replace)`（先清空再输入）；`check_sensitive` 高危文本补英文词（Pay now / Delete / Confirm / Unsubscribe 等，Rust 与页面 JS 共用同一正则源并加单测）；rpc 层所有 `browser_*` 分支统一经过 `check_browser_permission`，`Browser=deny` 对只读/self 通道同样生效，L2 普通动作由 `BrowserTool` 统一裁决为 Passthrough。详见 `docs/archive/browser-cdp-suite-review-round2.md` §4.1。
 - 二轮评审第二批（2026-08-15）：日常任务断点补齐 —— `dialog`（观察 `Page.javascriptDialogOpening` + `Page.handleJavaScriptDialog`）、`upload`（拦截 `Page.fileChooserOpened` 或 selector + `DOM.setFileInputFiles`）、`hover`、组合键 modifiers、截图 `fullPage`/`inline`、tab 管理（`/json/new` PUT 新开并自动 attach、`/json/close` 关闭；切换复用 attach）。新增对应单测、真实 Chrome e2e（本机无 Chrome 自动跳过）与 `/json/new`、`/json/close` 协议级测试。剩余批次见计划文档 §4.2。
 - 二轮评审第四批第一批（2026-08-15，工作树）：跨平台 `find_chrome`（macOS/Linux 固定路径 + PATH 兜底）与 `cdp_discover`（非 Windows `ps -ax -o pid=,comm=,args=`，PowerShell/ps 输出统一解析）；审计 jsonl 按日轮转，审计/截图/HAR 目录按保留天数清理；新增 `browser_network_har`（HAR 1.2 文件导出，timing 因观察通道未采样记 -1）；`cdp.rs` 拆出 `transport.rs`（HTTP `/json` + 命令 WS/批量 WS）与 `probes.rs`（探针单一来源），又补 `browser_viewport` 落地 `Emulation.setDeviceMetricsOverride`；eval 隔离 world 为可选剩余项。
 - 二轮评审第三批（2026-08-15，工作树）：观察与调试补齐 —— network 事件按 `requestId` 配对为单条 `NetworkEntry`（response 回填 status/headers，loadingFailed 回填 error 且不再污染 url）+ `browser_network_detail`；snapshot 优先 `Accessibility.getFullAXTree`（批量 resolve backendNodeId 回写 `data-hg-ref`，ref 语义不变），失败回退增强 `snapshot.js`（accessible name、aria-labelledby、same-origin iframe 递归、shadow DOM 穿透）；`browser_launch` 增加 `headless`/`windowSize` 且复用会话校验启动形态。新增 network 配对/launch 参数单测、AX 解析单测、jsdom 探针行为测试（可访问名称/iframe/shadow/ref 回写）与 E2E-4（headless + 本地 HTTP network 配对/详情 + AX snapshot）。无 Chrome 环境时 E2E-4 自动跳过，由 jsdom 测试覆盖回退探针行为。HAR 导出与 `Emulation.setDeviceMetricsOverride` 已在第四批落地。

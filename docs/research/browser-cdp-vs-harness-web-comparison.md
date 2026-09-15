@@ -331,7 +331,7 @@ harness 的 seam 是可插拔架构的正面范例：选择语义（含 `WEB_PRO
 
 ### 15.2 关键文件索引
 
-- A 侧：`src-tauri/src/cdp/{transport,session,actions,probes,e2e}.rs`、`src-tauri/src/cdp.rs`、`src-tauri/src/rpc.rs`（browser 分支）、`src-tauri/src/tools/mod.rs`（BrowserTool）、`src-ui/src/agent/tools/browser.ts`、`src-ui/src/agent/tools/domains.ts`、`docs/adr/0003-agent-browser-cdp-suite.md`、`docs/plans/browser-cdp-suite-review-round2.md`
+- A 侧：`src-tauri/src/cdp/{transport,session,actions,probes,e2e}.rs`、`src-tauri/src/cdp.rs`、`src-tauri/src/rpc.rs`（browser 分支）、`src-tauri/src/tools/mod.rs`（BrowserTool）、`src-ui/src/agent/tools/browser.ts`、`src-ui/src/agent/tools/domains.ts`、`docs/adr/0003-agent-browser-cdp-suite.md`、`docs/archive/browser-cdp-suite-review-round2.md`
 - B 侧：`packages/web/web/src/{index,types}.ts`、`packages/web/web-fetch-http/src/{provider,policy}.ts`、`packages/web/tool-web/src/{fetch,search,index}.ts`、`packages/web/web-search-*/src/provider.ts`、`.agents/notes/implemented/architecture/2026-06-24-web-capability-seam.md`、`docs/subsystems/web.md`
 
 ### 15.3 方法学说明

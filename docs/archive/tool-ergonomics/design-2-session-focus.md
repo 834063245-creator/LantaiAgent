@@ -1,5 +1,7 @@
 # T-2 设计件 — 会话焦点态（fs 焦点文件 + desktop 粘性窗口）rev2
 
+> **已归档（2026-09-16 · 文档面重构）**——已落地（2026-08-30 rev2 当日竣工，与 T-1 同 commit、共享 baseline freeze）。现状指针：代码真源 `src-ui/src/agent/session-context.ts`（会话焦点态）+ `CONVENTIONS.md`（工具层纪律）。
+
 > 状态：**已落地（2026-08-30 rev2 当日竣工；与 T-1 同 commit、共享 baseline freeze）**。
 > 实施偏差一处：desktop 粘性窗口 fill 从 per-field 改为 **all-or-nothing**（自查缺陷 B——
 > per-field 会把不同窗口的 hwnd/title 混进同一 locator；模型给了任一定位字段即不补）。

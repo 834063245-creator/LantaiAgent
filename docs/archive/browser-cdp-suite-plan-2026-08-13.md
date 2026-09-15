@@ -1,6 +1,6 @@
 # Agent 浏览器控制套件 —— 设计路线图（2026-08-13）
 
-> ⚠️ 已归档（2026-08-16）：套件第一至第五批已提交 main；剩余 Windows 真机 E2E 见 `docs/plans/browser-cdp-suite-review-round2.md`。
+> ⚠️ 已归档（2026-08-16）：套件第一至第五批已提交 main；剩余 Windows 真机 E2E 见 `docs/archive/browser-cdp-suite-review-round2.md`。
 > 目标形态与决策理由见 `docs/adr/0003-agent-browser-cdp-suite.md`（ADR 0003）。
 > 前身：`docs/archive/tool-convergence-browser-plan-2026-08-08.md`
 > §3.5 把「交互式浏览器」标为 v2 决策点（Rust 原生 CDP，不建 Node 桥）；

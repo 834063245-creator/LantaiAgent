@@ -17,7 +17,7 @@ R5 打磨收尾 · 画布支 Stage-6（UI/UX 专项）。已竣工线的权威�
 
 | 线 | 文档 | 状态 | 一句话 |
 |---|---|---|---|
-| **文档面重构** | [`doc-surface-refactor-plan.md`](doc-surface-refactor-plan.md) | **P0-P3 已落**（P4 索引重建在推：P4a 三索引已落） | 四层形态 + 批序 + 豁免账见施工单；门禁 `npm run doc-check`（六查），真源 `scripts/doc-facts.cjs` |
+| **文档面重构** | [`doc-surface-refactor-plan.md`](doc-surface-refactor-plan.md) | **P0-P4 已落**（P3 补批 = 11 件竣工件归档，本页所在批） | 四层形态 + 批序 + 豁免账见施工单；门禁 `npm run doc-check`（六查），真源 `scripts/doc-facts.cjs` |
 | **paper-shell（R5 打磨环）** | [`paper-shell/README.md`](paper-shell/README.md) | **收尾中** | 剩余工作逐项清单 = [`r5-polish-backlog.md`](paper-shell/r5-polish-backlog.md)（最常看）；视觉决定账本 [`taste-ledger.md`](paper-shell/taste-ledger.md)；管线史 [`HISTORY.md`](paper-shell/HISTORY.md)；走查 [`walkthrough.md`](paper-shell/walkthrough.md)；表面覆盖地图 [`v2-surface-inventory.md`](paper-shell/v2-surface-inventory.md)；访谈 [`interviews/R1-2026-08-20.md`](paper-shell/interviews/R1-2026-08-20.md) |
 | **画布空间模型** | [`canvas-space/canvas-space-model-notes.md`](canvas-space/canvas-space-model-notes.md) | **Stage-6 进行中**（UI/UX 专项） | 一纸多卷 / 有界流区 / 宿主模型 / 三层导航；阶段件与返工清单见笔记「展开」段；provider+创作坞联合体检 [`canvas-space/composer-provider-audit.md`](canvas-space/composer-provider-audit.md) |
 | 会话归属反转 | [`workspace-session-ownership-rework.md`](workspace-session-ownership-rework.md) | P1-P4 代码全量落地；P5 实机验收在办 | 会话**物理归属工作区**（`{ws}/.lantai/sessions/` 唯一存储位，焦点/绑定/全局列表全退役）；旧 session-unify 方向已归档（[`../archive/session-unify-plan.md`](../archive/session-unify-plan.md)） |
@@ -34,7 +34,7 @@ R5 打磨收尾 · 画布支 Stage-6（UI/UX 专项）。已竣工线的权威�
 | **OfficeCLI 集成** | 工程完成；**余用户真机验收**（计划 §6 六条 + 权限面判据） | 单二进制 Office 套件接成一等 `office(action,…)` 域工具；真机复盘四处病灶与 P0 权限判定已全修（`4412ce87` / `f207e5f4`）——见 [`office-cli-integration-plan.md`](office-cli-integration-plan.md) |
 | **科研渲染（scientific-rendering）** | 4A/4B 已验收；#5/#10/#11/#15/#16 已落地；**余 §7 真机项** | 双通道决策模型（正文 markdown / 产物资产通道）+ kind 扩充（math / citation / chem / 交互 chart / 虚拟 table）——见 [`scientific-rendering-plan.md`](scientific-rendering-plan.md) §7 |
 | **会话流版式语法（stream-rhythm）** | 五批全落地；**余真机验收五项 + D1/D2 终审** | 事件语义分类 + 工作单元 + 节奏渲染（族边界切单元）+ 目次带阶段导航——见 [`stream-rhythm-plan.md`](stream-rhythm-plan.md) §5 |
-| **多模态图片链路** | B1-B5 全竣工；**余真机验收六项** | 字节永不进卷（INVARIANTS #14）+ 发送边界管线 + 渲染面 + vision 声明——见 [`multimodal-image-plan.md`](multimodal-image-plan.md) §5 |
+| **pretext 排版引擎** | P1-P5 全竣工 + P4c 远景三档；**余 P2a 对齐 A\|B 环待实机拍板** | 从高度计算器升级为纸面排版引擎（lift 遮罩 / rich-inline 精确测量 / 来文变宽纸条 / 缩远墨迹 LOD 与小地图真墨）——[`pretext-typography-plan.md`](pretext-typography-plan.md) |
 | **流式渐显渲染** | 1-2 天 | Claude Code 式增量淡入（旧块零动画），识别收在渲染器内部、不动数据管线——[`streaming-fade-render-plan.md`](streaming-fade-render-plan.md)（等拍板方案 A/B + 参数） |
 | **出厂产物归家** | Proposed·Draft（未开工） | 一个产物 = 一个物理目录（魂身合一：实现从内核深处搬进插件包）——[`factory-products-homing-plan.md`](factory-products-homing-plan.md) |
 | **v11 分析引擎** | 草案挂起（用户拍板挂起） | 动态边 + 查询预算 + 降噪分级三篇合一——[`v11-analysis-engine-master-plan.md`](v11-analysis-engine-master-plan.md)；D 篇原件 [`dynamic-edge-detection-plan.md`](dynamic-edge-detection-plan.md)（superseded，以主文档为准） |
@@ -60,13 +60,13 @@ R5 打磨收尾 · 画布支 Stage-6（UI/UX 专项）。已竣工线的权威�
 | ~~browser CDP E2E-1/2/3/4/5~~ | **已实跑（2026-08-22）**：`cargo test cdp::` 35/35 全绿，含 E2E-5 多账号 cookie 隔离（上会话偶发失败本轮未复现） |
 | session-ledger 真机三项 | 代码判据已测试钉死，真机未跑（需带 API key 会话）：① 重启工作集恢复；② 后台卷落盘；③ 续开查重——见 [`../archive/session-ledger-plan.md`](../archive/session-ledger-plan.md) §7（⚠️ ①已被 session-unify Q-B 取代：重启不自动摊开） |
 | ~~workspace-flip 批 3 边界~~ | **作废（2026-09-09）**——「预热期内创建的会话缺 graph 工具」随图谱功能全量退役消失（兰台已零引擎内置接线） |
-| ~~**分层重构真机验收四项**~~ | **图谱相关项作废（2026-09-09）**：①② 的「图查询」验收点随图谱退役消失；~~③ 跨工作区续开~~ / ~~④ Ungrouped 会话~~ 随归属反转作废——见 [`layering-rework-plan.md`](layering-rework-plan.md) §4.6 |
+| ~~**分层重构真机验收四项**~~ | **图谱相关项作废（2026-09-09）**：①② 的「图查询」验收点随图谱退役消失；~~③ 跨工作区续开~~ / ~~④ Ungrouped 会话~~ 随归属反转作废——见 [`../archive/layering-rework-plan.md`](../archive/layering-rework-plan.md) §4.6 |
 | **画布 Stage-3 实机待验** | 代码已落地（2026-08-25，门禁全绿）：① 书脊手感（左键定位轻动画 / 拖动落位幽灵+吸附 / hover 小卡合卷）；② 侧边栏折叠与状态点/相对时间/行操作；③ 生命周期闭环（新建→落位→展开→收起→删除）；④ 未摊开卷行点击展开补飞 + 视角自由拖拽——见 [`canvas-space/stage-3.md`](canvas-space/stage-3.md) |
 | **画布 Stage-4 返工清单（P0-P4）** | 代码面已修（2026-08-26），待实机勾销：P0-1 全放确认+关窗崩溃 / ~~P1-1 自动选中三道闸~~（**拔源勾销 2026-09-10**——浏览跟随随拍板整体退役）/ P1-2 聚焦落点手感 / P3-1 非全屏布局——见 [`canvas-space/stage-4-rework-checklist.md`](canvas-space/stage-4-rework-checklist.md) |
 | **创作坞+提供方联合体检验收七项** | 方案甲 + 全批修复已落地（2026-08-26 三 commit，门禁全绿）：① 卷间会话级模型/思考隔离；② 未改卷跟全局/改过卷不跟；③ 重启后各卷配置保留；④ 模型下拉列全+无 Key 标注；⑤ 测试连接后取消不落暂存；⑥ ↑↓ 历史+焦点回归；⑦ 后台卷运行态指示——见 [`canvas-space/composer-provider-audit.md`](canvas-space/composer-provider-audit.md) |
 | **stream-rhythm 真机验收五项** | 代码五批全落地（2026-09-03，门禁全绿），待实机：① 长回合读起来是几个工作单元 + 换气；② Error 处明显转折（前置放空）且 Retry 紧贴；③ 流式活尾重排不引起视口上方跳动；④ 折叠组展开后判别量可见 + 「✓ 阶段完成」锚位置正确；⑤ 旧卷回放渲染正常、滚动不退——另带 **D1 间距三档（32/64/96）、D2 阶段细线形态与刀5 新词汇终审**——见 [`stream-rhythm-plan.md`](stream-rhythm-plan.md) §5 |
 | **内核能力口收口 R3+R4 真机四项** | 代码十一插件全退役 + 十一能力口在产（2026-09-05）：① browser 全链路（含 sensitive 二次 Ask 与 audit）；② desktop 全链路（不抢焦点 / input lease 串行 / INVARIANTS #13 链路不变）；③ shell 粘性 cwd + bg 三件；④ 编辑（edit_file diff 快照与权限 Ask）——~~约束读写~~（**作废 2026-09-09**：constraints_cap 随图谱整口删除）——owner：用户 |
-| **多模态图片线真机验收六项** | 代码 B1-B5 全落地（2026-09-09，门禁全绿）：① vision 模型贴截图 → 模型描述内容；② 非 vision 模型入口隐藏 + 强行含图不炸；③ 三入口齐验（粘贴/拖放/夹选）；④ 重启后缩略仍显示；⑤ 多图大图预算降级；⑥ 远端图回渲染 + 非白名单降级 alt——见 [`multimodal-image-plan.md`](multimodal-image-plan.md) §5——owner：用户 |
+| **多模态图片线真机验收六项** | 代码 B1-B5 全落地（2026-09-09，门禁全绿）：① vision 模型贴截图 → 模型描述内容；② 非 vision 模型入口隐藏 + 强行含图不炸；③ 三入口齐验（粘贴/拖放/夹选）；④ 重启后缩略仍显示；⑤ 多图大图预算降级；⑥ 远端图回渲染 + 非白名单降级 alt——见 [`../archive/multimodal-image-plan.md`](../archive/multimodal-image-plan.md) §5——owner：用户 |
 
 ## 已完成并归档（点名即可，详情勿读）
 
@@ -80,24 +80,27 @@ R5 打磨收尾 · 画布支 Stage-6（UI/UX 专项）。已竣工线的权威�
 前端浮层/a11y 修复（[`frontend-overlay-a11y-plan.md`](../archive/frontend-overlay-a11y-plan.md)）·
 内核插件运行时 Phase 2 交接窗（[`handoff-p2-window.md`](../archive/handoff-p2-window.md)）。
 
+**2026-09-16 P3b 归档批**（补批：`archive` 查只看头部 15 行横幅，这批「竣工但没写横幅」的件漏网——逐条取证后归档；
+各件顶部已加归档横幅 + 现状指针；施工史见 [`HISTORY.md`](HISTORY.md)）：
+[`engine-plugin-extraction.md`](../archive/engine-plugin-extraction.md)（引擎插件化 Phase 0-5）·
+[`layering-rework-plan.md`](../archive/layering-rework-plan.md)（分层重构 L1-L4 + L5b crate 化）·
+[`first-party-hot-reload-plan.md`](../archive/first-party-hot-reload-plan.md)（第一方热更）·
+[`agent-asset-blocks.md`](../archive/agent-asset-blocks.md)（资产块协议 + 渲染跟上批）·
+[`multimodal-image-plan.md`](../archive/multimodal-image-plan.md)（多模态图片链 B1-B5；**真机六项欠账仍在办**，见上表）·
+[`browser-cdp-suite-review-round2.md`](../archive/browser-cdp-suite-review-round2.md)（CDP 二轮评审；E2E-1..5 已实跑结清）·
+[`session-persistence-seam-wiring-plan.md`](../archive/session-persistence-seam-wiring-plan.md)（会话持久化 seam 接线；头注「待施工」已过期）·
+[`paper-shell/paper-panel-split-plan.md`](../archive/paper-shell/paper-panel-split-plan.md)（PaperPanel 机械拆解；真机一项待跑）·
+[`tool-ergonomics-notes.md`](../archive/tool-ergonomics-notes.md) +
+[`tool-ergonomics/design-1-context-waist.md`](../archive/tool-ergonomics/design-1-context-waist.md) +
+[`tool-ergonomics/design-2-session-focus.md`](../archive/tool-ergonomics/design-2-session-focus.md)（工具层人体工学 T-1/T-2）。
+
 **更早**（按线点名，施工史在 [`HISTORY.md`](HISTORY.md)）：workspace-flip · 总线归零 + ui/ 拆分 · 岛层退休 ·
 cordis-migration · agent-core-convergence（baseline 冻结维护态）· 雷区地图 P0/P1 全拆 · V5 旧前端拆除 ·
-session-ledger L0-L3 · workspace-ownership-root-cure（实机验收通过）· 分层重构 L1-L4 + L5b crate 化 ·
-引擎插件化 Phase 0-5 · 第一方热更 · 会话持久化 seam 接线 · 工具/资产块/预排版（pretext）各线。
+session-ledger L0-L3 · workspace-ownership-root-cure（实机验收通过）。
 
 **注意两个活的例外**：`docs/landmine-map.md`（技术债清单，P2 残留与根治级在册）与 convergence 的 baseline
 change request 流程（[`../archive/agent-core-convergence/baseline-change-request.md`](../archive/agent-core-convergence/baseline-change-request.md)）
 ——虽在归档目录，仍是活流程入口。
-
-**未归档的竣工件**（还压在 plans/，待 P4 或后续批次归位；现状口径一律以本页为准）：
-[`engine-plugin-extraction.md`](engine-plugin-extraction.md) · [`layering-rework-plan.md`](layering-rework-plan.md) ·
-[`first-party-hot-reload-plan.md`](first-party-hot-reload-plan.md) · [`agent-asset-blocks.md`](agent-asset-blocks.md) ·
-[`multimodal-image-plan.md`](multimodal-image-plan.md) · [`pretext-typography-plan.md`](pretext-typography-plan.md) ·
-[`browser-cdp-suite-review-round2.md`](browser-cdp-suite-review-round2.md) ·
-[`session-persistence-seam-wiring-plan.md`](session-persistence-seam-wiring-plan.md) ·
-[`paper-shell/paper-panel-split-plan.md`](paper-shell/paper-panel-split-plan.md) ·
-[`tool-ergonomics-notes.md`](tool-ergonomics-notes.md)（+ [`tool-ergonomics/design-1-context-waist.md`](tool-ergonomics/design-1-context-waist.md) ·
-[`tool-ergonomics/design-2-session-focus.md`](tool-ergonomics/design-2-session-focus.md)）。
 
 **内核插件线（已拆除，但决策与能力口仍是现状）**：决策真源
 [`kernel-plugin-architecture-decision.md`](kernel-plugin-architecture-decision.md)（v3：TS 策略建议层 + Rust

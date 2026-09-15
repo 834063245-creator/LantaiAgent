@@ -12,7 +12,7 @@
 | [`mode-switching.md`](mode-switching.md) | 模式切换系统（Plan / Goal 等模式的定义与切换语义） | Accepted（修订版 v4） |
 | [`0001-provider-id-three-in-one.md`](0001-provider-id-three-in-one.md) | Provider 身份三合一（ProviderId = 配置身份 = 系统凭据键 = 动态模型合并键） | Accepted |
 | [`0002-provider-kind-is-protocol.md`](0002-provider-kind-is-protocol.md) | Provider 的 `kind` 是协议（Protocol），不是厂商（Vendor） | Accepted |
-| [`0003-agent-browser-cdp-suite.md`](0003-agent-browser-cdp-suite.md) | Agent 浏览器控制套件：目标形态与核心决策 | Accepted（已落地，回归见 `docs/plans/browser-cdp-suite-review-round2.md`） |
+| [`0003-agent-browser-cdp-suite.md`](0003-agent-browser-cdp-suite.md) | Agent 浏览器控制套件：目标形态与核心决策 | Accepted（已落地，回归见 `docs/archive/browser-cdp-suite-review-round2.md`） |
 
 ## 相关现状文档
 
