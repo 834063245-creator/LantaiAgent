@@ -147,19 +147,38 @@ archive 查只看计划头部 15 行的「已竣工/已归档」**字面量**，
 | 2 | L0 ≤32KB/文件 且进上下文 | ✅ **19291 B 合计**（CLAUDE.md 15753 + AGENTS.md 3538）/ 预算 65536 B = 29% | 改造前 74242 B（AGENTS.md 被 harness 整份丢弃） |
 | 3 | 断链 0 · 索引单元格 ≤500 · 单行 ≤1000 | ✅ | links 栏 0；`plans/README` 最长单元格 373 / 最长行 462；全仓仅 CODELY.md 一条永久豁免长行 |
 | 4 | `plans/` 只剩在办项 | ✅ | 32 件竣工件已归档（P3 21 + P3b 11）；余 45 份 = 在办线 + 6 件「代码竣工但真机欠账在办」（欠账逐行在 `plans/README.md` 欠账表） |
-| 5 | 事实有真源 | ✅ 8 条跨文档标量（fields/kernel/products/first-party/domains/两道契约版本/壳方法/默认工具）gate-enforced + 生成物 doc-sync 对拍 | `docs/facts.generated.md`；新增事实 = `doc-facts.cjs` 加解析器 + `doc-check.cjs` 加断言。**报道层**另有 114 行「未登记候选」（集中在 `provider-system-spec` / `landmine-map` / `session-persistence-audit` / 事故报告等散文，多为举例数字）——不上牙，下一批归并 |
+| 5 | 事实有真源 | ✅ 8 条跨文档标量（fields/kernel/products/first-party/domains/两道契约版本/壳方法/默认工具）gate-enforced + 生成物 doc-sync 对拍 | `docs/facts.generated.md`；新增事实 = `doc-facts.cjs` 加解析器 + `doc-check.cjs` 加断言。**报道层** 108 行「未登记候选」逐行判过、5 处真漂移已修、余者有意保留（见 §4.6） |
 | 6 | 没读过历史的 Agent 能接手 | ✅ | 入口链 = L0（CLAUDE.md 规则+门禁+指针）→ L1（CONVENTIONS/INVARIANTS/ADR）→ L2（ARCHITECTURE）→ 索引（`docs/README.md` 两轴 + `plans/README.md` 现状） |
 
-### 4.6 已知边界（下一批，不在本轮判据内）
+### 4.6 已知边界
 
-1. **archive 查的观察窗 = 头部 15 行字面量**：本批 11 件就是被它漏掉的。可加强（扩窗 / 认「状态：…竣工」句式），
-   但那会改门禁语义并把上面那 6 件在办件误判 ⇒ **留给下一批连同归档判断一起做**。
-2. **21 处代码注释里的旧计划路径**（`src-ui/src/agent/**`、`src-ui/tests/**`、`src-tauri/src/app/mod.rs` 等）——
-   不是 markdown 链接、不破门禁，但现状已失效；属禁改区（本轮只动文档面），随下次触到该文件时顺手订正。
-3. **对外发布面两处待用户拍板**（已记 `docs/landmine-map.md` 第八批）：`release-bin/` 缺失致 release staging 断链（B3）·
-   `dsh-bundle/viewer` 构建链已断。
-4. **树内 README 顾问查**：13 份 `src/**/README.md` 走「报道不上牙」通道（改代码的 commit 不该被文档债拦住），
-   现为 0 问题；是否上牙待定。
+**已处置（收尾二批，2026-09-16）**
+
+1. ✅ **archive 查补强**（`7bfccde9`）：观察窗 15 → 30 行 + 认「状态：…竣工」句式 + **活跃标记否定项**
+   （在办/在产/进行中/拍板/未执行/Draft）。**语义裁定**：「竣工即归档」判的是「过程文档是否还活着」，
+   不是「验收跑没跑完」——真机欠账由 `plans/README.md` 欠账表承载（先例：`archive/session-ledger-plan.md`
+   的欠账行早就指进 archive）⇒「待实机 / 验收 / 欠账」不算在办。
+   顺带用新规则抓并订正 2 处状态不自洽：`kernel-capability-c3-design.md` 标**在产设计件** ·
+   `paper-shell/README.md` 状态行改「V5 竣工；**当前在办 = R5 打磨环**」。
+   **实测 recall 上限**：对 P3b 那 11 件的归档前版本回放，新规则直接命中 **3/11**（其余 8 件头部含
+   「验收/欠账」等词，按上述语义不构成在办）——本查是**兜底网，不是完备判定**；完备判定要等给
+   每个计划加机器可读状态行（下一步，见下）。
+2. ✅ **代码注释旧计划路径**（`a29e04bc`）：22 文件 / 23 处 `docs/plans/<plan>.md` → `docs/archive/…`
+   （tsc / biome 0-0 / cargo check 全绿）。**有意不动**：另 103 处是「design tag」式裸名引用
+   （如 `（multimodal-image-plan B3）`）——不是可循路径，改它要动 97 个文件且零收益。
+3. ✅ **候选归并**（`1ef1aae4`）：114 行逐行判过 → 修 5 处真漂移（ADR 的「133 方法 / 37 工具」·
+   composition README 的「14 域工具」· CONVENTIONS 的「ui/ 25 文件」· dev-workflow 的「31 个插件」·
+   mcp-acp 设计件的「35 个工具」），全部改为指针；**余 108 行有意保留**（带日期的取证记录 / 提案快照 /
+   单文件契约数字 / 修辞）——逐个登记成 fact 断言 = 为一次性散文造长期维护债。
+
+**仍开着（下一批 / 待用户）**
+
+4. **机器可读状态行**：给 `plans/` 每个计划定一行 `> 状态：在办 | 在产设计件 | 搁置 | 竣工（日期）`，
+   doc-check 按它判归档（取代现在的散文分类）——这是把第 1 条的「兜底网」升级成「完备判定」的正路。
+5. **对外发布面两处待用户拍板**（记 `docs/landmine-map.md` 第八批）：`release-bin/` 缺失致 release staging
+   断链（B3）· `dsh-bundle/viewer` 构建链已断。
+6. **树内 README 顾问查**：13 份 `src/**/README.md` 走「报道不上牙」通道（改代码的 commit 不该被文档债
+   拦住），现为 0 问题；是否上牙待定。
 
 ## 5. 门禁用法与维护纪律
 
