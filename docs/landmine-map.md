@@ -243,3 +243,46 @@
 
 换轨终态一句话：**`.ndjson` 事件日志 = 卷本体与内容真源；`.json` = 带 `{seq, ver}` 的
 UI 投影缓存（陈旧即重建）**。计划与施工记录见 `docs/plans/session-persistence-dsh-port-plan.md`。
+
+---
+
+## 第七批审计（2026-09-16）— 零消费者 / 死态家族
+
+起因：接手清单列了一批「化石」（零生产读者 / 零消费者）。本轮**逐项对代码取证**后
+**已切 5 项、驳回 4 项**——驳回的几项是**清单本身的误分类**，写在这里免得下一个人重走一遍
+（或按清单误删）。取证纪律照旧：先 grep 全仓读者，再看测试面，最后看生成物/基线耦合。
+
+### 已切（本批落地）
+
+| # | 位置 | 病灶（实测） | commit |
+|---|---|---|---|
+| 1 | `src/state/panel-store.ts` + `chat-core.ts:326` + `workspace.ts:472` | `toolSchemas` **只写不读**，且 `workspace.ts:472` **每次装配**都把全量 schema 数组灌进这个无人读的 store = 每次装配白做功。不在插件面（`host-surface.baseline.json` 无它）⇒ 纯内部死态 | `675173f3`（7 处 + 2 个测试桩同批） |
+| 2 | `src/workspace.ts:165` `_chatPanel` | 死字段：写于 `setupAgent:756`、零读者——**切掉 #1 唯一那处读之后由 biome `noUnusedPrivateClassMembers` 当场抓出**（基线 0/0 不许留 warning，故必须同批处置） | `675173f3` |
+| 3 | `tests/ui/__snapshots__/layout-golden.test.ts.snap` | 孤儿快照：源测试随 `35db9ef8`（Three.js 渲染面退役）删除，全仓对 `layout-golden` **零引用** | `994927a1`（573 行） |
+| 4 | `src/workspace.ts:213` `open()` 的 `_chatPanel` 形参 | 死参数，且它**牵出一处真缺陷**：`51047f99` 从签名删 `_starGraph`（4 参 → 3 参）后**生产调用点改了、4 处测试调用位没改** ⇒ `callbacks` 实际收到 `panel`、**测试明确想传的回调被静默丢弃**（今日无可见影响，但是地雷） | `3177c22c`（签名 + 5 处调用位 + 连带清一处未用变量） |
+| 5 | `src/plugins/boot-gate.ts` 的 `BootGateService` + `assertBootOk` | 空转的预留机制：全仓**零** `inject: ['bootGate']` 生产消费者；「不进病态会话」的真闸是 `main.ts:73-77` 的抛错（`bootShell()` 在其后一行）⇒ 服务与它功能重叠。`assertBootOk` 零消费者（main.ts 内联同款） | `578e640a`（测试面 6 → 5 例同批退役） |
+
+### 驳回（**清单误分类，不要按化石删**）
+
+| 项 | 清单原话 | 实测 | 裁定 |
+|---|---|---|---|
+| `composition/contribution-channel.ts` 的 `timing` 四档 | 「零消费者」 | **它是被护栏管着的声明式元数据**：`tests/contribution-channel-single-source.test.ts:122-124` 遍历全部贡献点断言 `s.timing` 合法（`TIMINGS` 白名单）；15 个通道各自声明（fs/shell/subagents/sessionPersistence/agentLoop=`request`、hooks/prompts/capabilities/tools=`next-assembly`、overlays/panels/commands=`immediate`、renderers=`frame`）；语义由**消费方**实现（通道自身不实现生效逻辑——文件头注即此意） | ❌ **不删**。删它 = 拆掉那条自洽护栏 + 丢掉机器可读的生效时机声明。**清单此项误分类** |
+| `composition/roster.ts:239-240` `diagnostics.overridden/.inserted` | 「零消费者」 | 生产面确零读者，但**测试面有 9 条断言主动断言这套 prompt 覆盖/插入账**（`composition-patch-loader.test.ts:70-72`、`composition-roster.test.ts:178/236/247/265/335`、`composition-wiring.test.ts:303-305`），另有 3 个测试构造完整 `diagnostics` 对象 | ⏸ **暂不删**。零功能收益却要动 5 个测试文件的既有断言。**并且**：源码 `roster.ts:232` 那句「（历史栏，零消费者）」**本身是假陈述**——但 `roster.ts` 在契约清单里，改注释要升版 ⇒ 登记待与下一次合法升版合并 |
+| `composition/roster.ts` 的 `ResolvedComposition.seams` | 「零生产读者」 | **半真**：`FactoryComposition.seams` 是**活的**（`roster.ts:390-395` 逐域读 `factory.seams.*` 建 seam 工作行；`seam-composition.test.ts:130-164` 也读）；只有**解析产物**上那份额外声明（`:204` 声明 / `:504` 写入）无读者 | ⏸ **暂不删**。单字段收益不抵一次契约升版（`roster.ts` 在契约清单里） |
+| `PanelDef`/`PanelContribution` 的 `side`/`title`/`icon`/`askAgent` | 「无人读」 | **成立**：`panelDefs()` 的唯一消费者 `app/panels/DockPanel.tsx:18-27` 只读 `def.id` / `def.unmountOnClose` / `def.component`；而 4 个贡献点在写（`canvas-nav/index.ts:43-45,55-57`、`paper-shell/index.ts:48-50`、`settings-domain/index.ts:37-39`） | ⏸ **暂不删**。剩余项里收益最大的一个，但跨 `PanelDef`（非契约）+ `PanelContribution`（契约，`services.ts:59-72`）两侧，**拆一半会留不一致的中间态** ⇒ 须与一次合法契约升版合并 |
+
+### 本家族结论（写给自己与下一个人）
+
+**已无「拆掉就净赚」的项。** 清单一共 9 项，能净赚的 5 项已切；剩下的要么**根本不是死码**
+（`timing`），要么**收益不抵一次契约升版**（其余三项）。
+⇒ **别再为了清单好看去动它们**；下次谁合法升版（契约 v40）时，把上表 ⏸ 的几项
++ `roster.ts:232` 那句假注释**一并带上**（一次升版解决全部）。
+
+### 顺带发现（另立一笔，本批未修）
+
+生成物 `docs/agents/service-catalog.md` 收录 **18** 个 ctx 键，却**漏了 `ctx.agentLoop`**——
+该服务确实存在（`plugins/builtin/agent-loop-service/index.ts:21` 的 `super(ctx, 'agentLoop')`
++ `agent/agent-loop/agent-loop-active.ts:44` 的 `declare module` 增广），但**两者不在同一文件**；
+而生成器头注自述规则是「同文件 `declare module` 增广」（`scripts/gen-service-catalog.ts:9/:92`），
+已收录的 18 键恰好全是同文件形态。**`doc-sync` 抓不到**（生成器自洽）⇒ 生成器物有缺口，值得单修。
+
