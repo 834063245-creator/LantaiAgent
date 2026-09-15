@@ -164,6 +164,26 @@ export function isPresetKnown(presetId: string): boolean {
   return findPresetById(presetId) !== undefined;
 }
 
+/** **卷级选择**的校验面（S6 P1c）——与 `selectPreset` 同一把尺子 + 同一可见面
+ *  （preset-store.error 仍只由 noteSelectionError 写），但**严一档**：id 不在册
+ *  也拒绝。
+ *  为何比 selectionError 严：`selectionError` 对**未知 id** 是容忍的（解析侧回退
+ *  「只叠用户层」——那是「旧卷里记着一个已被删掉的 preset」的正确兜底）。但
+ *  「写下一条新记录」是另一回事：记一个不存在的 id = 该卷从此永远解析不出组合，
+ *  每次开卷都要弹一次「不在册」。拒绝并说明原因才是对的（沿 F1b：拒绝+说明 >
+ *  记下却没生效）。
+ *  返回 null = 可记录；否则为拒绝原因（同时进 preset-store.error 供面板显示）。 */
+export function sessionSelectionError(presetId: string): string | null {
+  if (!isPresetKnown(presetId)) {
+    const err = `组合「${presetId}」不在册（id 写错，或该 preset 已被删除/改名）`;
+    noteSelectionError(err);
+    return err;
+  }
+  const err = selectionError(presetId);
+  noteSelectionError(err);
+  return err;
+}
+
 /** 记录/清除 preset 层失败原因（preset-store.error 唯一写入口）。
  *  只在**内容变化**时写 store + 落 console（坏 preset 在每卷装配都会被问一次，
  *  不去重会刷屏）。错误不静默：解析侧回退组合，原因留在 store 里给 UI。 */

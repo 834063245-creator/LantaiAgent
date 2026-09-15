@@ -54,6 +54,7 @@ import {
   splitIntakePaths,
 } from './image-intake';
 import type { PromptShelfHandle } from './PromptShelf';
+import * as SessionComposition from './session-composition';
 
 // ── 斜杠技能候选缓存（skills-mcp-production-plan Commit 4）──
 // CommandRegistry.skillProvider 是同步签名；技能扫描是异步——用模块级缓存
@@ -691,6 +692,28 @@ export class ChatCore {
   async createNewSession(): Promise<void> {
     return Session.createNewSession(this._sessionCtx());
   }
+
+  // ── 组合（S6 P1c：卷级选择）──
+
+  /** 本卷组合身份 + 来源（卷级记录 / 全局默认）——创作坞组合芯片的读面。
+   *  异步 = 解析面动态 import（见 ui/session-composition 文件头「解析面动态
+   *  import」：静态可达 composition-store 会成环）。 */
+  sessionComposition(sessionId: number): Promise<SessionComposition.SessionCompositionInfo> {
+    return SessionComposition.sessionCompositionInfo(this.panelId, sessionId);
+  }
+
+  /** 本卷是否空白（未跑过一轮）——芯片可拨 ⇔ 空白（跑过一轮即只读标签）。 */
+  isSessionBlank(sessionId: number): boolean {
+    return SessionComposition.isSessionBlank(this.panelId, sessionId);
+  }
+
+  /** 卷级组合选择：校验 → 空白闸 → 登记 → 空白卷即时重建句柄。
+   *  返回拒绝原因（不可解析 / 已跑过一轮）供控件面显示——组合面是字节契约，
+   *  跑过一轮的卷不给换（另起一卷再选）。 */
+  async selectSessionPreset(sessionId: number, presetId: string): Promise<SessionComposition.SessionPresetChange> {
+    return SessionComposition.selectSessionPreset(this._sessionCtx(), sessionId, presetId);
+  }
+
   /** 改名（C8 书脊题签）：sess store 单写入口 + 立即落盘（改名即存）。 */
   renameSession(id: number, label: string): void {
     getChatStore(this.panelId).sess.getState().renameSession(id, label);
