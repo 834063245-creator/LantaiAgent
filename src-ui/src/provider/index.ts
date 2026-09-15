@@ -17,6 +17,7 @@
 // 类型开放集挂起说明：第三方方言要新增 kind 字面量时才扩 Protocol（存储格式变更，
 // 挂着 ADR #0002 单独裁决）；贡献道当前的合法用法是【覆盖】两种内核方言。
 
+import type { SeamDisabledMap } from '../composition/seam-resolution';
 import { activeLlmAdapters } from '../composition/services';
 import { modelDescriptor, modelInput, type ProviderSettings } from '../settings';
 import { withThinkingDisabled } from './thinking';
@@ -29,6 +30,10 @@ export interface CreateProviderOptions {
    *  解析 grant 后传入（Authorization Bearer + chatgpt-account-id 等）。
    *  缺省 undefined = apiKey 路径。 */
   oauthHeaders?: Record<string, string>;
+  /** 本次构建所属组合的 seam 裁剪面（S6 P2b）——方言解析按它裁剪 `seam/llm`
+   *  （每卷可走不同 adapter）。**缺省 = 全局当前选择**（无组合上下文的构建点：
+   *  设置面板连通性测试 / 翻译压缩旁路——P2 前语义，零漂移）。 */
+  seamView?: SeamDisabledMap | null;
 }
 
 /** ctx.llm adapter 必须实现的成员（开放面契约 v25 起 `Provider` 形状的可执行镜像）。
@@ -56,16 +61,17 @@ function assertProviderShape(prov: Provider, adapterId: string, kind: string): v
   }
 }
 
-/** 按 ctx.llm adapter 注册序取最后一个同 kind 实现（后注册胜）；未命中响亮报错。 */
-function resolveProviderDialect(kind: string, rt: ProviderRuntimeArgs): Provider {
-  const contributed = [...activeLlmAdapters()].filter((d) => d.kind === kind);
+/** 按 ctx.llm adapter 注册序取最后一个同 kind 实现（后注册胜）；未命中响亮报错。
+ *  view（S6 P2b）= 本次构建所属组合的裁剪面；缺省 = 全局当前选择（零漂移）。 */
+function resolveProviderDialect(kind: string, rt: ProviderRuntimeArgs, view?: SeamDisabledMap | null): Provider {
+  const contributed = [...activeLlmAdapters(view)].filter((d) => d.kind === kind);
   const winner = contributed[contributed.length - 1];
   if (winner) {
     const prov = winner.create(rt);
     assertProviderShape(prov, winner.id, kind);
     return prov;
   }
-  const registeredKinds = [...new Set(activeLlmAdapters().map((d) => d.kind))].sort();
+  const registeredKinds = [...new Set(activeLlmAdapters(view).map((d) => d.kind))].sort();
   throw new Error(
     `PROVIDER_DIALECT: 未注册的协议方言 "${kind}"（当前可用：${registeredKinds.join(', ') || '(无已注册 adapter)'}）` +
       '——请检查该提供方的 kind 设置与 llm-adapters 装配',
@@ -81,18 +87,22 @@ export function createProvider(settings: ProviderSettings, options?: CreateProvi
   // 此前方言一律读全局 getModel：聚合网关/自定义端点的模型（静态目录无条目）
   // 永远拿不到自己的窗口与档位声明，拉取到的元数据也到不了 wire 层。
   const describeModel = (model: string): ModelDescriptor | undefined => modelDescriptor(settings, model);
-  const prov = resolveProviderDialect(settings.kind, {
-    name: settings.name,
-    apiKey: settings.apiKey,
-    baseUrl: settings.baseUrl,
-    model: settings.model,
-    // disableThinking 语义统一到两种协议：true → 强制关闭扩展思考。
-    // 翻译器/摘要路径都传 disableThinking: true。
-    thinking: withThinkingDisabled(settings.thinking, options?.disableThinking),
-    maxTokensFor,
-    describeModel,
-    oauthHeaders: options?.oauthHeaders,
-  });
+  const prov = resolveProviderDialect(
+    settings.kind,
+    {
+      name: settings.name,
+      apiKey: settings.apiKey,
+      baseUrl: settings.baseUrl,
+      model: settings.model,
+      // disableThinking 语义统一到两种协议：true → 强制关闭扩展思考。
+      // 翻译器/摘要路径都传 disableThinking: true。
+      thinking: withThinkingDisabled(settings.thinking, options?.disableThinking),
+      maxTokensFor,
+      describeModel,
+      oauthHeaders: options?.oauthHeaders,
+    },
+    options?.seamView,
+  );
   // 输入模态能力戳（multimodal-image-plan B3 · D-8③）：生效声明 = ModelOverrides.input
   // 覆盖 ?? 目录值（B5 modelInput 合并链）盖在实例上——Agent 请求期投影读它，
   // Provider 实现自身零感知。未声明 = ['text']（不编造能力）。

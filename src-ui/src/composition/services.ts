@@ -29,7 +29,7 @@ import { type Context, Service } from '../cordis';
 import type { Provider } from '../provider/types';
 import { bumpCommands, bumpPanelDefs } from '../state/panel-defs-store';
 import { ContributionChannel } from './contribution-channel';
-import { seamDisabled } from './seam-resolution';
+import { type SeamDisabledMap, seamDisabled } from './seam-resolution';
 import type { ToolRowContext } from './tool-rows';
 
 // ── 工具贡献变更监听（S4-1.5）──
@@ -292,9 +292,12 @@ export function registeredLlmAdapters(): LlmAdapterContribution[] {
 
 /** 当前 LLM adapter 贡献（无服务/无注册 = 空集——createProvider 方言解析的
  *  「后注册胜」扫描源）。裁剪面（平台化 Phase 3）：组合 seam 裁剪域
- *  `seam/llm` 禁用的 adapter id 从视图剔除（消费视图 = 注册表 − 禁用集）。 */
-export function activeLlmAdapters(): LlmAdapterContribution[] {
-  const disabled = seamDisabled('llm');
+ *  `seam/llm` 禁用的 adapter id 从视图剔除（消费视图 = 注册表 − 禁用集）。
+ *  view（S6 P2b）= 本次 provider 构建所属组合的裁剪面（会话卷级组合 / 工作区
+ *  组合经 createProvider 的 options.seamView 传入）；**缺省 = 全局当前选择**
+ *  （无组合上下文路径——设置面板连通性测试 / 翻译压缩旁路——零漂移）。 */
+export function activeLlmAdapters(view?: SeamDisabledMap | null): LlmAdapterContribution[] {
+  const disabled = seamDisabled('llm', view);
   return registeredLlmAdapters().filter((a) => !disabled.has(a.id));
 }
 

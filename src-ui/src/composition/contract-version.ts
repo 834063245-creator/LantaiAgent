@@ -22,9 +22,18 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 36;
+export const OPEN_SURFACE_CONTRACT_VERSION = 37;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v37（2026-09-15）S6 P2b llm seam **装配期值注入**：`activeLlmAdapters(view?)`
+ *  收可选 view；`createProvider(settings, options)` 的 `CreateProviderOptions` 新增
+ *  可选 `seamView`——方言解析（`resolveProviderDialect`）按它裁剪 `seam/llm`。
+ *  **对外可感知**：同一份 settings，两卷可落不同 adapter（每卷 provider 由
+ *  workspace 会话工厂 / 热切换按该卷组合构建）；**缺省 = 全局当前选择** ⇒
+ *  无组合上下文的构建点（设置面板连通性测试 / 翻译压缩旁路 / 第三方自测）行为
+ *  逐字不变。工作区默认 provider 有意不传（其组合上下文 = 工作区装配组合，
+ *  已由 composition-store 灌成全局当前选择）| S6-per-agent-composition.md P2b
+ *  （施工单 WO-S6P2 §2 消费点 4 + §7-F 两笔切分的第二笔）
  *  v36（2026-09-15）S6 P2a seam 裁剪面**装配期值注入**：`seamDisabled(domain, view?)`
  *  新增可选 view —— **缺省 = 全局当前选择**（无组合上下文的旧路径逐字保持 P2 前
  *  语义）；`activeFsProviders` / `activeShellProviders` / `activeSubagentProviders`

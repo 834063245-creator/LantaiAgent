@@ -337,4 +337,27 @@ describe('seam 裁剪域（组合解析 × ctx seam 消费视图）', () => {
 
     disposeMem();
   });
+
+  it('⑬ llm seam 按组合注入：同一份 settings，两卷方言解析各归其组合', async () => {
+    const root = await ensureProductionChannelsBooted();
+    const settings = { kind: 'openai', name: 'p1', apiKey: 'k', baseUrl: 'http://a.test/v1', model: 'm1' };
+    // 替代方言（后注册胜 ⇒ 无裁剪时全局默认就是它）
+    const dispose = root.llm.register({
+      id: 'test/openai-alt',
+      kind: 'openai',
+      create: () => stubProvider('alt-openai'),
+    } satisfies LlmAdapterContribution);
+
+    // A 卷：裁掉替代方言 ⇒ 落 builtin/openai；B 卷：不裁 ⇒ 落替代方言
+    const compA = compositionWith({ 'seam/llm': [{ id: 'test/openai-alt', disabled: true }] });
+    const compB = compositionWith({});
+
+    // builtin/openai 的 name() = 提供方名（settings.name），替代方言的自报名 = 'alt-openai'
+    expect(createProvider(settings as never, { seamView: compA.seamDisabled }).name()).toBe('p1');
+    expect(createProvider(settings as never, { seamView: compB.seamDisabled }).name()).toBe('alt-openai');
+    // 哨兵：不传 seamView（设置面板连通性测试 / 翻译压缩旁路）= 全局当前选择
+    expect(createProvider(settings as never).name()).toBe('alt-openai');
+
+    dispose();
+  });
 });

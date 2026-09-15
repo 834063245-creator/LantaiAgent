@@ -38,6 +38,7 @@ import {
   selectionError,
 } from './composition/preset-assembly';
 import type { ResolvedComposition } from './composition/roster';
+import type { SeamDisabledMap } from './composition/seam-resolution';
 import type { Context, Fiber } from './cordis';
 import { initCordisKernel } from './cordis/boot';
 import { formatDeferredWakeNote, registerDeferredWakeHandler } from './plugins/deferred';
@@ -78,8 +79,19 @@ export function isSamePath(a: string, b: string): boolean {
   return a.replace(/\\/g, '/').toLowerCase() === b.replace(/\\/g, '/').toLowerCase();
 }
 
-// ── 参数翻译（从 main.ts 迁移）──────────────────────────────────
+// ── 会话组合 → seam 裁剪面（S6 P2b）────────────────────────────
 
+/** 某卷 provider 的 seam 裁剪面：**有组合上下文**的 provider 构建点（会话工厂 /
+ *  两条热切换路径）按**该卷自己组合**取，方言解析据此裁剪 `seam/llm`——每卷可走
+ *  不同 adapter，且切一次模型不会把卷级 seam 面退回全局（与装配面自洽）。
+ *  无记录（新卷 / 旧卷无字段）= 全局当前选择（`effectiveComposition` 的既有权重）。
+ *  解析面是 preset-assembly 的 cache 读、有捕获网（永不抛）——调用点零风险。 */
+function sessionSeamViewFor(storeId: string, sessionId: number): SeamDisabledMap {
+  return effectiveComposition(agentSessionState.getRecordedPresetId(storeId, sessionId) ?? undefined)
+    .seamDisabled;
+}
+
+// ── 参数翻译（从 main.ts 迁移）──────────────────────────────────
 // ponytail: 所有 hologram 工具 schema 已用 camelCase (nodeId/maxDepth/from/to/...),
 // Tauri v2 默认 camelCase 重命名 Rust snake_case 参数 → 期望的 JS key 正是这些 camelCase.
 // 旧 ARG_TRANSLATIONS 把 camelCase→snake_case, 方向全反 → 7 个工具 (node/unused/impact/
@@ -374,10 +386,13 @@ export class Workspace {
       if (!handle) return; // 句柄未建（惰性）——工厂现造时会吃到新覆盖
       const eff = resolveComposeEffective(this._storeId, sessionId);
       const row = s.providers.find((p) => p.name === eff.providerName) ?? act;
-      const prov = createLiveProvider(eff.providerName, undefined, {
-        model: eff.model,
-        thinking: eff.thinking,
-      });
+      const prov = createLiveProvider(
+        eff.providerName,
+        // S6 P2b：热切换重造的 provider 也用**该卷自己组合**的 seam 裁剪面
+        // （否则切一次模型就把卷级 seam 面退回全局——与装配面不自洽）。
+        { seamView: sessionSeamViewFor(this._storeId, sessionId) },
+        { model: eff.model, thinking: eff.thinking },
+      );
       prov.prewarm?.();
       handle.setProvider(prov);
       handle.setThinking(eff.thinking);
@@ -393,10 +408,12 @@ export class Workspace {
       const eff = resolveComposeEffective(storeId, sid);
       const row = s.providers.find((p) => p.name === eff.providerName) ?? act;
       // 覆盖存在 → live 带覆盖（该会话维度不跟随全局）；无覆盖 → 裸 live（现解析行值）
+      // seamView（S6 P2b）：两条分支都按该卷组合裁剪 `seam/llm`。
       const override = getComposeStore(storeId).getState().getPrefs(String(sid));
+      const seamView = sessionSeamViewFor(storeId, sid);
       const prov = override
-        ? createLiveProvider(eff.providerName, undefined, { model: eff.model, thinking: eff.thinking })
-        : createLiveProvider(eff.providerName);
+        ? createLiveProvider(eff.providerName, { seamView }, { model: eff.model, thinking: eff.thinking })
+        : createLiveProvider(eff.providerName, { seamView });
       h.setProvider(prov);
       h.setThinking(eff.thinking);
       h.setContextWindow(this._contextWindowFor(row, eff.model));
@@ -478,6 +495,9 @@ export class Workspace {
    *  MISSING_CREDENTIAL 报错）；「强制关闭思考」的旁路（翻译/压缩）仍用
    *  显式构造的 createProvider，不经此入口。 */
   private _buildProvider(settings: AppSettings): Provider {
+    // S6 P2b：这里**不传 seamView** 是有意的——工作区默认 provider 的组合上下文
+    // 就是「工作区装配组合」，而 composition-store 的三个 setter 已把它的
+    // seamDisabled 灌成全局当前选择（seam-resolution.ts 的兜底面）⇒ 缺省即正确。
     return createLiveProvider(getActiveProvider(settings).name);
   }
 
@@ -765,9 +785,10 @@ export class Workspace {
       const override = getComposeStore(this._storeId).getState().getPrefs(String(sessionId));
       const eff = resolveComposeEffective(this._storeId, sessionId);
       const row = s.providers.find((p) => p.name === eff.providerName) ?? act;
+      const sessSeamView = sessionSeamViewFor(this._storeId, sessionId);
       const sessProv = override
-        ? createLiveProvider(eff.providerName, undefined, { model: eff.model, thinking: eff.thinking })
-        : createLiveProvider(eff.providerName);
+        ? createLiveProvider(eff.providerName, { seamView: sessSeamView }, { model: eff.model, thinking: eff.thinking })
+        : createLiveProvider(eff.providerName, { seamView: sessSeamView });
       sessProv.prewarm?.(); // 廉价预热（fire-and-forget）；fetchModels 合目录只在 setupAgent 做
 
       const ms = this._modeState();

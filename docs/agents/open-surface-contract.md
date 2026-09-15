@@ -8,16 +8,16 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：36
+当前版本：37
 
-<!-- contract-fingerprint: 0c9d40e8c2a4c7f0bb48d0237714ba4e22918f9bc023c792f79d50b5605d5915 -->
+<!-- contract-fingerprint: b93af12712534045a60b6ea5a6d643b4380b8408d1b838acde3c8e6279f79d33 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
 | 文件 | 契约内容 |
 |---|---|
 | `src/composition/contribution-channel.ts` | **贡献通道内核**（M1 收口：九通道 + 五 seam 的唯一注册表实现——`ContributionChannel` / `ContributionTiming` / `ContributionChannelOptions`。类名经宿主桥 `faceDeps` 与 `host.aliased.ts` 暴露给产物插件，形状即对外契约） |
-| `src/composition/services.ts` | `ctx.llm`（`LlmAdapterContribution`）+ panels/commands/tools 通道 def 形状（M1 起注册表内核移出本文件） |
+| `src/composition/services.ts` | `ctx.llm`（`LlmAdapterContribution`；**v37 起 `activeLlmAdapters(view?)` 的可选 view**——缺省 = 全局当前选择）+ panels/commands/tools 通道 def 形状（M1 起注册表内核移出本文件） |
 | `src/provider/types.ts` | `ctx.llm` seam 的**实现面形状真源**（`Provider` / `Chunk` / `Request`——v25 补登记：`LlmAdapterContribution.create` 返回的 Provider 形状即契约面，此前未入册） |
 | `src/composition/fs-service.ts` | `ctx.fs`（`FsProvider` / `FsAction` 动作 / `FsCallOptions` dispatch 腰） |
 | `src/composition/shell-service.ts` | `ctx.shell`（`ShellProvider` / `ShellAction` 四动作；subprocess 并入） |
@@ -80,6 +80,8 @@
 | 35 | 2026-09-15 | **	ool/call 前移到分发时落（触发点 B 收官）**：默认 loop 注入的检查点钩子先 append 	ool/call 再 lushPersistence()——「模型宣布了什么」在副作用发生前落盘（兰台执行器在流期间就跑工具，此前流收尾才记，崩溃后恢复链看不到痕迹）；default-loop 两处流收尾的重复追加删除（单一写入点）。**契约形状零变更**、**模型可见面零变化**（	ool/call 无消息投影，deriveMessages/前缀缓存不受影响）；事件**序列**变化 ⇒ phase-5 事件序列基线**两轨重录**（已批准：docs/archive/agent-core-convergence/baseline-change-request.md「tool/call 前移」条目） | DSH session-checkpoint-policy 的 	ools/execute 前置 flush（packages/session/session-checkpoint-policy/src/index.ts:70-75）+ 用户 2026-09-15 批准 |
 
 | 36 | 2026-09-15 | **S6 P2a seam 裁剪面装配期值注入（per-Agent 裁剪面）**：`seamDisabled(domain, view?)` 新增可选 `view`——**缺省 = 全局当前选择**（`composition-store` 三 setter 灌入的模块态降级为**无组合上下文的兜底面**）；`activeFsProviders` / `activeShellProviders` / `activeSubagentProviders` 同款收可选 `view`；`AgentEventBus` 新增 `setSeamView()`——每 Agent 一条总线，`emitLoopEvent` 读本总线视图（**emit 调用点零改动**：`default-loop` 7 处 + `Agent.spawnSubAgent` 3 处一字未动）。**对外可感知**：同一份 seam 注册表 + 一次工具实例，两卷可按各自组合走不同 provider（fs/shell 按 executor 注入的 `_owner_id` 查装配期登记的裁剪面——携带层 `composition/seam-scope.ts`）；**未传 view 的旧调用面（UI 直调 / 无 agent 的工具路径 / 第三方 provider 自测）行为逐字不变** ⇒ convergence 双轨快照零漂移（出厂 standard/minimal 的 `seamDisabled` 构造性为空，证明是构造性的而非事后观察）。`sessionPersistence` 单点**本版不动**（per-volume 后端要读也按该卷组合，而读盘时点组合尚未解析 ⇒ 需「卷→组合」外部索引，另立批次）。新增携带层是**键控叶模块**（零项目内运行时依赖；叶性由 `tests/composition-import-cycle.test.ts` 钉住），不入本清单 | S6-per-agent-composition.md P2a（施工单 `WO-S6P2-seam-value-injection.md` §7 用户逐项裁定：A 携带路径取 owner 键控表——fs/shell 族实例经 `familyContributions` 锁存首次装配 rowCtx，扩字段对这两族结构性无效；B 不新增 convergence 快照；D sessionPersistence 本批不做） |
+
+| 37 | 2026-09-15 | **S6 P2b llm seam 装配期值注入**：`activeLlmAdapters(view?)` 收可选 view；`CreateProviderOptions` 新增可选 `seamView`——`createProvider` 的方言解析按它裁剪 `seam/llm`。**对外可感知**：同一份 settings，两卷可落不同 adapter（会话工厂与两条热切换路径按**该卷自己组合**的裁剪面构建 provider；热切换路径尤其必要——否则切一次模型就把卷级 seam 面退回全局，与装配面不自洽）。**缺省 = 全局当前选择** ⇒ 无组合上下文的构建点（设置面板连通性测试 / 翻译压缩旁路 / 第三方自测）行为逐字不变；工作区默认 provider（`_buildProvider`）**有意不传**——它的组合上下文就是工作区装配组合，而后者已由 `composition-store` 灌成全局当前选择 | S6-per-agent-composition.md P2b（施工单 §2 消费点 4；用户裁定 F 的第二笔） |
 
 ## 变更流程（guard 红 → 修复四步）
 
