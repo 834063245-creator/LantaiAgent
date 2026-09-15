@@ -253,6 +253,37 @@ export function notifyPluginWindowClosed(pluginName: string): void {
   for (const g of governedByPlugin.get(pluginName) ?? []) g.onWindowClosed();
 }
 
+/** 受治进程的**激活面**（S6 P3d）——把「装配期拉起 / 引用归零停止」交给激活账
+ *  （`ctx.activation`），只对 manifest 声明了 `activation` 的插件接线。
+ *
+ *  **只覆盖 lazy 档**（含缺省）：它的拉起语义本就是「装配/调用/开窗拉起 + 空闲
+ *  回收」，把它接到组合引用计数上只是换了个释放触发源。另两档**不经手**（如实
+ *  声明，WO-S6P3 §2.7）：
+ *    - `eager`：装载即拉起、卸载才停（生命周期 = 插件装载期，不是组合）；
+ *    - `with-window`：开窗拉起、关窗即杀（生命周期 = 窗口，组合无权替它决定）。
+ *  ⇒ 接线的净效果 = 「所有持有它的卷都关了 ⇒ 进程停」（不再等空闲回收）。 */
+export interface GovernedActivationFace {
+  /** 拉起全部 lazy 档受治进程到就绪（幂等：已在就绪/在途 ⇒ 复用）。失败抛出
+   *  （由激活账记 failure——诊断第四栏「被跳过」可见，装配本身不因此失败）。 */
+  startLazy(): Promise<void>;
+  /** 停止全部 lazy 档受治进程（组合引用归零）。 */
+  stopLazy(): void;
+}
+
+/** 由受治进程集合产出激活面（无 lazy 档 ⇒ null = 不接线）。 */
+function governedActivationFace(governors: readonly ServerGovernor[]): GovernedActivationFace | null {
+  const lazy = governors.filter((g) => g.lifecycle === 'lazy');
+  if (lazy.length === 0) return null;
+  return {
+    startLazy: async () => {
+      for (const g of lazy) await g.start();
+    },
+    stopLazy: () => {
+      for (const g of lazy) g.stop();
+    },
+  };
+}
+
 /** 单个受治 server 的生命周期治理器（每个声明治理字段的 mcpServers 条目一个，
  *  生命周期 = 插件 fiber——dispose 链式杀进程）。 */
 class ServerGovernor {
@@ -600,7 +631,7 @@ async function registerGovernedServer(
   io: McpBridgeIO,
   env: Record<string, string> | undefined,
   timing: Required<McpGovernorTiming>,
-): Promise<void> {
+): Promise<ServerGovernor> {
   const governor = new ServerGovernor(pluginName, server, io, env, timing);
   addGovernor(governor);
   if (governor.lifecycle === 'eager') {
@@ -633,10 +664,16 @@ async function registerGovernedServer(
     },
     `${contribId}`,
   );
+  return governor;
 }
 
 /**
  * 注册一个插件声明的全部 MCP server 工具贡献（loader 装载期调用）。
+ *
+ * 返回值 = **受治进程的激活面**（S6 P3d）：调用方（loader）在 manifest 声明
+ * `activation` 时把它交给 `ctx.activation`，于是「装配期拉起 / 组合引用归零停止」
+ * 由激活账驱动（只覆盖 lazy 档，见 `GovernedActivationFace` 头注）；无受治条目
+ * 或受治条目都不是 lazy 档 ⇒ null（不接线，行为逐字节不变）。
  *
  * 每个 server：一条 ctx.tools 贡献（id `<插件名>/mcp/<server名>`——折算行
  * id `plugin/<插件名>/mcp/<server名>`）；贡献注销 + 进程 kill 挂该 server
@@ -659,12 +696,13 @@ export async function registerMcpServerTools(
   servers: McpServerDecl[],
   io: McpBridgeIO = tauriMcpBridgeIO,
   opts: RegisterMcpServerOptions = {},
-): Promise<void> {
+): Promise<GovernedActivationFace | null> {
   const env = opts.dataDirPath ? { [PLUGIN_DATA_DIR_ENV]: opts.dataDirPath } : undefined;
+  const governed: ServerGovernor[] = [];
   for (const server of servers) {
     // 治理分岔：任一治理字段在场 = 受治面；皆缺席 = 旧形态逐字节不变
     if (server.restart !== undefined || server.lifecycle !== undefined) {
-      await registerGovernedServer(ctx, pluginName, server, io, env, resolveTiming(opts));
+      governed.push(await registerGovernedServer(ctx, pluginName, server, io, env, resolveTiming(opts)));
       continue;
     }
     // 急连接（startup-error）：装载期验证机器起得来；失败即抛（→ 插件 error）
@@ -718,6 +756,7 @@ export async function registerMcpServerTools(
       `${contribId}`,
     );
   }
+  return governedActivationFace(governed);
 }
 
 /** 测试复位：清空治理器注册表与窗口计数（vitest 同 worker 模块态跨用例

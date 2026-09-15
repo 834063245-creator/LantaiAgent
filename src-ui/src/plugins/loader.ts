@@ -53,7 +53,7 @@ import { ensurePluginDataDir, type PluginDataFs, pluginDataFs } from './data-fs'
 import { completePluginTask } from './deferred';
 import { factoryProductNames, factoryProductPlugins } from './factory-products';
 import { FIRST_PARTY_MANIFEST, type FirstPartyPluginMeta } from './first-party-manifest';
-import { type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
+import { type GovernedActivationFace, type McpBridgeIO, registerMcpServerTools } from './mcp-bridge';
 import { mountToolDeclarations } from './tool-declarations';
 import { type LantaiPlugin, type PluginManifest, validateManifest } from './types';
 import { mountPluginApp, type PluginWindowFacility, pluginWindowFacility } from './window-facility';
@@ -824,28 +824,41 @@ async function moduleStage(entry: ManifestStageOk, deps: LoadOneDeps): Promise<M
               }
             }
             await candidate.apply(ctx);
-            // S6 P3a：「声明了开关却没接线」= 手误，装载期 fail loud（不静默
-            // 放过）——manifest 声明懒激活的插件必须真的在 apply 里登记了激活
-            // 回调，否则它的副作用永不启动，而用户看到的是一个「装上了」的插件。
-            // 例外（P3b 复核补）：声明 mcpServers 的插件由**治理器**承担懒激活
-            // （lazy/with-window 档本就「装配/调用/开窗才拉起」），且 manifest 级
-            // refine 已把 `lazy + lifecycle:"eager"` 拦死（那才是 apply 期起进程）
-            // ——故这类插件不要求 apply 里再登记回调（要求它等于要求重抄一遍治理器）。
-            if (manifest.activation?.lazy === true && !needsMcp) {
-              const activation = ctx.get('activation');
-              if (activation && !activation.has(manifest.name)) {
-                throw new Error(
-                  'manifest 声明 activation.lazy 但 apply 未登记激活回调（ctx.activation.declare）——副作用将永不启动',
-                );
-              }
-            }
             if (needsToolDecls) {
               mountToolDeclarations(ctx, manifest.name, manifest.tools ?? [], mod.toolHandlers);
             }
+            let mcpFace: GovernedActivationFace | null = null;
             if (needsMcp) {
-              await registerMcpServerTools(ctx, manifest.name, manifest.mcpServers ?? [], deps.mcpBridgeIO, {
+              mcpFace = await registerMcpServerTools(ctx, manifest.name, manifest.mcpServers ?? [], deps.mcpBridgeIO, {
                 dataDirPath,
               });
+            }
+            // S6 P3d：manifest 声明 activation 的插件，其**受治进程的 lazy 档**
+            // 拉起/停止由激活账驱动（所有持有它的卷都关 ⇒ 进程停，不再等空闲
+            // 回收）。插件自己在 apply 里登记过就不用推导（自登记优先）。
+            if (manifest.activation && mcpFace) {
+              const activation = ctx.get('activation');
+              if (activation && !activation.has(manifest.name)) {
+                const face = mcpFace;
+                activation.declare(manifest.name, {
+                  resources: manifest.activation.resources,
+                  exclusive: manifest.activation.exclusive,
+                  start: () => face.startLazy(),
+                  stop: () => face.stopLazy(),
+                });
+              }
+            }
+            // S6 P3a/P3d：「声明了开关却没接线」= 手误，装载期 fail loud（不静默
+            // 放过）——声明 `lazy: true` 的插件必须真的登记了激活回调（apply 里
+            // 自登记，或装载层从受治进程推导出来），否则它的副作用永不启动，
+            // 而用户看到的是一个「装上了」的插件。
+            if (manifest.activation?.lazy === true) {
+              const activation = ctx.get('activation');
+              if (activation && !activation.has(manifest.name)) {
+                throw new Error(
+                  'manifest 声明 activation.lazy 但 apply 未登记激活回调（ctx.activation.declare）、也无 lazy 档受治进程可推导——副作用将永不启动',
+                );
+              }
             }
             // S3（app shell 件 A）：manifest.app 声明 → 窗口定义登记（装载只
             // 登记数据，开窗才实例化视口；卸载收口挂 ctx.effect——摘定义 +

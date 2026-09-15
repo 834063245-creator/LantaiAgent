@@ -1,8 +1,9 @@
 # WO-S6P3 — 插件激活生命周期（登记 ≠ 激活 · 引用计数 · 独占声明）
 
-> **状态：✅ 执行完毕（2026-09-15，三笔：P3a `e508f093` / P3b `2259c3c3` / P3c 收官；
-> 每笔独立全绿：vitest + biome 0/0 + build + convergence 双轨 + doc-sync；破测 11 条逐条确认能红，
-> 结果写进各 commit message；性能对表见 `reports/perf-after-S6P3.md`）。**
+> **状态：✅ 执行完毕（2026-09-15，四笔：P3a `e508f093` / P3b `2259c3c3` / P3c `aa5b491d` /
+> P3d 受治进程接线（本轮，见 §2.7 落地注）；每笔独立全绿：vitest + biome 0/0 + build +
+> convergence 双轨 + doc-sync；破测 14 条逐条确认能红，结果写进各 commit message；
+> 性能对表见 `reports/perf-after-S6P3.md`）。**
 > 施工单（**八道判断题已于 2026-09-15 全部裁定，见 §7；可开工**）。上级设计件：`designs/S6-per-agent-composition.md`
 > §3.5（激活与独占）+ §3.8（诊断第四栏）+ §4 批序 P3 行 + §7.8（profile 断言欠账）+ §8.2。
 > 前置批次：P-1 / P0.5 / P0 / P1(a-e) / P2(a/b) 全部落地；**P3 前置性能门已过**
@@ -167,6 +168,17 @@ interface ActivationPlan { activates: Array<{ plugin: string; exclusive: string[
   三档 + 空闲回收语义**逐字节不变**（外部插件存量零漂移，构造性）。
 - 声明 `activation` 的条目：`start` = `governor.start()`、`stop` = `governor.stop()`（由 loader 从 manifest 派生），
   `exclusive` 含 `stdio` 时其端口/进程约束进冲突检测。
+
+> **落地注（2026-09-15，P3d 收口）**：接线形态与上文略有出入，如实记录——
+> **只覆盖 lazy 档**（含缺省）：`registerMcpServerTools` 回报 `GovernedActivationFace`
+> （`startLazy`/`stopLazy`），loader 在 `manifest.activation` 在场且插件未自登记时
+> 把它交给 `ctx.activation.declare`。另两档**不经手**：`eager` 归装载期（装载即拉起、
+> 卸载才停——生命周期不是组合），`with-window` 归窗口（开窗拉起、关窗即杀——组合
+> 无权替它决定）。⇒ 净效果 = 声明 activation 的插件其 lazy 档受治进程「所有持有它的
+> 卷都关了 ⇒ 进程停」，不再等空闲回收；**未声明 activation 的插件逐字节不变**（既无
+> 声明也无 lazy 受治条目 ⇒ 不接线）。测试 `tests/mcp-activation-refcount.test.ts`（5 例）
+> 钉住四态（装载零 spawn / 装配首次 spawn / 多卷复用 / 归零停）+ with-window 与 eager
+> 不经手 + 拉起失败进第四栏。
 
 ---
 
