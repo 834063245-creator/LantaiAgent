@@ -249,9 +249,13 @@ preset realm + 热重载 + 消费闭环（S4，2026-08-20 起生效）：
    **下次启动生效**（loader boot 跳过）；装载统一收 state/plugin-store.ts
    （builtin+meta，mergePlugins 按 name 合并——第一方 boot 与第三方异步装载
    互不冲刷）。
-   **新增出厂产物 = 产品目录建 index.ts + manifest.json +
-   factory-products.ts 加行 + 本清单加条目**（守护
-   tests/first-party-manifest.test.ts 钉死覆盖，漏条目 = loader 跳过 + error）
+   **新增出厂产物 = 产品目录建 index.ts + builtin-roster.json 加条目 +
+   插件对象进出厂装配面**（产物 manifest.json 由 build-builtin-plugins.mjs
+   从名册生成、**不手写**；直接 import 的产物在 factory-products.ts 加行，
+   工具/prompt/capability 域产物只进各自通道清单；**构建脚本与 Rust 资产
+   通道都不用动**——规格已从名册派生、plugin_assets.rs 无名字白名单）。
+   守护 tests/first-party-manifest.test.ts 钉死覆盖（漏条目 = loader 跳过 +
+   error）+ tests/builtin-roster.test.ts
 ```
 
 ### 1.8 文件命名与 import
