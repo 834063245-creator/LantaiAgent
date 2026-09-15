@@ -87,8 +87,7 @@ export function isSamePath(a: string, b: string): boolean {
  *  无记录（新卷 / 旧卷无字段）= 全局当前选择（`effectiveComposition` 的既有权重）。
  *  解析面是 preset-assembly 的 cache 读、有捕获网（永不抛）——调用点零风险。 */
 function sessionSeamViewFor(storeId: string, sessionId: number): SeamDisabledMap {
-  return effectiveComposition(agentSessionState.getRecordedPresetId(storeId, sessionId) ?? undefined)
-    .seamDisabled;
+  return effectiveComposition(agentSessionState.getRecordedPresetId(storeId, sessionId) ?? undefined).seamDisabled;
 }
 
 // ── 参数翻译（从 main.ts 迁移）──────────────────────────────────

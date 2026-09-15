@@ -31,7 +31,9 @@
     "doc-sync": "node ../scripts/doc-sync.cjs",
     "gen:contract-fingerprint": "node ../scripts/gen-contract-fingerprint.cjs",
     "check:contract-fingerprint": "node ../scripts/gen-contract-fingerprint.cjs --check",
-    "gen:host-surface": "cross-env HOST_SURFACE_RECORD=1 vitest run tests/host-surface-seal.test.ts"
+    "gen:host-surface": "cross-env HOST_SURFACE_RECORD=1 vitest run tests/host-surface-seal.test.ts",
+    "bench:assembly": "cross-env NODE_ENV=test NODE_OPTIONS=--expose-gc vitest bench --dir tests/bench",
+    "bench:assembly:json": "cross-env NODE_ENV=test NODE_OPTIONS=--expose-gc vitest bench --dir tests/bench --outputJson tests/bench/baseline/assembly-baseline.json"
   },
   "dependencies": {
     "@chenglou/pretext": "^0.0.8",

@@ -10,6 +10,7 @@
       "**",
       "!tests/convergence/baseline",
       "!tests/convergence/reports",
+      "!tests/bench/baseline",
       "!dist-plugins",
       "!src/agent/tools/kernel-manifests.generated.ts"
     ]
