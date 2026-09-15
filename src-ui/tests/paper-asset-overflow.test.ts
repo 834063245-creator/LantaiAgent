@@ -84,7 +84,7 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
     expect(measureBlockHeight(b)).toBe(4 + (13 * 1.8 + 4) + 11 * 1.8);
   });
 
-  it('chart 柱状：type 行 + svg 封顶 240 + 标签行（viewBox 宽自适应公式同 ChartBody）', () => {
+  it('chart 柱状：type 行 + svg 封顶 240（标签已进 SVG，不占盒外行）', () => {
     const b = assetBlock('chart', {
       type: 'bar',
       data: [
@@ -92,15 +92,22 @@ describe('measure：资产块按表现原语计高（80px 常量退役）', () =
         { label: '乙', value: 2 },
       ],
     });
-    // w=720，viewBox 宽 = max(320, 2×44)=320 → 720×220/320=495 → 封顶 240；
-    // 标签 joined 文本 mock 36 → ceil(36/16.2)=3 行
-    const labelH = 6 + 3 * (9 * 1.8);
-    expect(measureBlockHeight(b)).toBe(8 + (9 * 1.8 + 4) + 240 + labelH);
+    // D8/D9（2026-09-16）：分类标签移入 SVG 内（与柱体同坐标系），不再产生
+    // 盒外标签行——故此处只有 pad + type 行 + svg（w=720、vbW=30+2×40+10=120
+    // → 720×180/120=1080 → 封顶 240）
+    expect(measureBlockHeight(b)).toBe(8 + (9 * 1.8 + 4) + 240);
   });
 
-  it('chart 纯数值 data：标签条只剩 margin 空条（空 span 无行盒）', () => {
+  it('chart 纯数值 data：无标签条（标签进 SVG 后纯数值同样无盒外行）', () => {
     const b = assetBlock('chart', { type: 'line', data: [1, 2, 3] });
-    expect(measureBlockHeight(b)).toBe(8 + (9 * 1.8 + 4) + 240 + 6);
+    expect(measureBlockHeight(b)).toBe(8 + (9 * 1.8 + 4) + 240);
+  });
+
+  it('chart config.title / 轴名各占一行（D4/D9 新增，旧实现完全忽略 config）', () => {
+    const withTitle = assetBlock('chart', { type: 'bar', data: [1, 2], config: { title: '论文量' } });
+    expect(measureBlockHeight(withTitle)).toBe(8 + (9 * 1.8 + 4) + (11 * 1.8 + 6) + 240);
+    const withAxis = assetBlock('chart', { type: 'bar', data: [1, 2], config: { xName: '月份' } });
+    expect(measureBlockHeight(withAxis)).toBe(8 + (9 * 1.8 + 4) + 240 + (8 * 1.8 + 2));
   });
 
   it('metric：auto-fill 列数（minmax(120,1fr)+gap8）→ 行数 × 卡高', () => {

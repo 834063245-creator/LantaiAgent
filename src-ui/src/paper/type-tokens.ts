@@ -223,6 +223,14 @@ export const ASSET_TOKENS = {
   media: { padV: 2, labelSize: 13, labelMarginB: 4, imgMaxH: 320, rowSize: 11 },
   // interactiveBoxH（科研渲染 #16）：ECharts 交互图固定盒高（canvas 自绘，
   // 盒高恒定——measure 静态镜像精确，RO 恒挂仅兜底）
+  //
+  // 静态图几何（D4-D8，2026-09-16）：以下数值是**几何真源**——CSS 走
+  // --pp-asset-chart-* 变量，measure 派生 ASSET_DERIVED.chart*，渲染组件
+  // （plugins/builtin/renderers/components.tsx）因插件产物域不 import paper
+  // 层而**硬编码镜像**（GRID_VIRTUAL_ROW_H 先例），一致性由
+  // tests/chart-geometry.test.ts 钉住。
+  // vbH/leftPad/rightPad/topPad/bottomPad/barSlot/barW/scatterVbW 共同决定
+  // SVG viewBox —— 实际高度 = w × vbH / viewBoxW（measure 同款公式）。
   chart: {
     padV: 4,
     typeSize: 9,
@@ -232,6 +240,22 @@ export const ASSET_TOKENS = {
     labelMarginTop: 6,
     labelSize: 9,
     interactiveBoxH: 260,
+    // titleSize/titleMarginB：config.title 行（静态版此前完全忽略 config）
+    titleSize: 11,
+    titleMarginB: 6,
+    // SVG 坐标系（viewBox 单位）
+    vbH: 180,
+    leftPad: 30,
+    rightPad: 10,
+    topPad: 14,
+    bottomPad: 20,
+    barSlot: 40,
+    barW: 22,
+    scatterVbW: 400,
+    axisSize: 8,
+    valueSize: 8,
+    /** 数值标注上限（超过则省略，防重叠——纯性能/可读性语义常量） */
+    valueMaxItems: 20,
   },
   metric: {
     padV: 2,
@@ -399,6 +423,16 @@ export const ASSET_DERIVED = {
   chartLabelGap: ASSET_TOKENS.chart.labelMarginTop,
   chartLabelSize: ASSET_TOKENS.chart.labelSize,
   chartInteractiveBoxH: ASSET_TOKENS.chart.interactiveBoxH, // .pp-chart-interactive-box 固定盒高（#16）
+  // chart 静态图几何（D4-D9，2026-09-16）——measure 与渲染组件共用同一套坐标系；
+  // 渲染侧因插件产物域不 import paper 层而镜像同一组数值（components.tsx CHART_GEO），
+  // 一致性由 tests/chart-geometry.test.ts 钉住。
+  chartTitleH: ASSET_TOKENS.chart.titleSize * 1.8 + ASSET_TOKENS.chart.titleMarginB, // .pp-chart-title + margin
+  chartAxisNamesH: ASSET_TOKENS.chart.axisSize * 1.8 + 2, // .pp-chart-axis-names + margin-top 2
+  chartVbH: ASSET_TOKENS.chart.vbH,
+  chartLeftPad: ASSET_TOKENS.chart.leftPad,
+  chartRightPad: ASSET_TOKENS.chart.rightPad,
+  chartBarSlot: ASSET_TOKENS.chart.barSlot,
+  chartScatterVbW: ASSET_TOKENS.chart.scatterVbW,
 
   metricPadV: ASSET_TOKENS.metric.padV * 2, // .pp-metric padding 2×2
   metricCaptionH: ASSET_TOKENS.metric.captionSize * 1.8 + ASSET_TOKENS.metric.captionMarginB,

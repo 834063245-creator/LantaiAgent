@@ -293,6 +293,15 @@ const CHART_LABEL_GAP = ASSET_DERIVED.chartLabelGap; // .pp-chart-labels margin-
 const CHART_LABEL_LINE = ASSET_DERIVED.chartLabelSize * 1.8;
 const CHART_LABEL_FONT = `${ASSET_DERIVED.chartLabelSize}px ${MONO_STACK}`;
 const CHART_INTERACTIVE_BOX_H = ASSET_DERIVED.chartInteractiveBoxH; // .pp-chart-interactive-box 固定盒高（#16）
+// D4-D9（2026-09-16）：静态图几何——与 components.tsx CHART_GEO 同值（一致性由
+// tests/chart-geometry.test.ts 钉住；token 真源 = ASSET_TOKENS.chart）
+const CHART_TITLE_H = ASSET_DERIVED.chartTitleH;
+const CHART_AXIS_NAMES_H = ASSET_DERIVED.chartAxisNamesH;
+const CHART_VB_H = ASSET_DERIVED.chartVbH;
+const CHART_LEFT_PAD = ASSET_DERIVED.chartLeftPad;
+const CHART_RIGHT_PAD = ASSET_DERIVED.chartRightPad;
+const CHART_BAR_SLOT = ASSET_DERIVED.chartBarSlot;
+const CHART_SCATTER_VBW = ASSET_DERIVED.chartScatterVbW;
 
 const METRIC_PAD_V = ASSET_DERIVED.metricPadV; // .pp-metric padding 2×2
 const METRIC_CAPTION_H = ASSET_DERIVED.metricCaptionH; // .pp-metric-caption + margin-bottom 6
@@ -526,27 +535,63 @@ function mediaBodyH(p: { ext?: unknown; filePath?: unknown }): number {
   return MEDIA_PAD_V + MEDIA_LABEL_H + (isImage ? 2 + MEDIA_IMG_MAX_H : MEDIA_ROW_H);
 }
 
-/** chart 体高：type 行 + svg（bar 按数据量加宽，与 ChartBody viewBox 同款公式）+ 标签行。 */
-function chartBodyH(p: { type?: unknown; data?: unknown }, w: number): number {
+/** chart 体高（D9，2026-09-16 重写）：type 行 +（可选）title 行 + svg +（可选）标签行/轴名行。
+ *
+ *  两处修复（旧实现的两宗罪）：
+ *   ① 只认 Array.isArray(p.data)——对象形状 {labels,values} 会算错块高（渲染按
+ *      归一语义画了标签，测高却当无标签 → 差一整行）。
+ *   ② 未计 config.title / 轴名（渲染新增了这两行，测高必须跟随）。
+ *
+ *  数据语义与渲染组件 normalizeChartData 同源（三形状：对象/带标签数组/纯数值数组）。 */
+function chartBodyH(p: { type?: unknown; data?: unknown; config?: unknown }, w: number): number {
   const type = typeof p.type === 'string' ? p.type : 'bar';
-  const values = Array.isArray(p.data) ? p.data : [];
-  const n = Math.max(values.length, 1);
+  // 归一：与 components.tsx normalizeChartData 同判据（此处只关心 labels/数量）
+  const raw = Array.isArray(p.data)
+    ? p.data
+    : p.data && typeof p.data === 'object' && Array.isArray((p.data as { values?: unknown }).values)
+      ? ((p.data as { values: unknown[] }).values as unknown[]).map((v, i) => ({
+          value: v,
+          label: Array.isArray((p.data as { labels?: unknown[] }).labels)
+            ? ((p.data as { labels: unknown[] }).labels[i] ?? '')
+            : '',
+        }))
+      : [];
+  const n = Math.max(raw.length, 1);
+  const labels = raw.map((d) => (d && typeof d === 'object' ? String((d as { label?: unknown }).label ?? '') : ''));
+  const anyLabelText = labels.some((l) => l.length > 0);
+
   const svgH =
     type === 'pie'
       ? CHART_PIE_H
-      : Math.min((w * 220) / Math.max(GRAPH_MIN_W, type === 'bar' ? n * 44 : 400), CHART_SVG_MAX_H);
-  const labels = values.map((d) => (d && typeof d === 'object' ? String((d as { label?: unknown }).label ?? '') : ''));
-  const hasLabels = labels.length > 0;
-  const anyLabelText = labels.some((l) => l.length > 0);
-  const labelLines = hasLabels
-    ? Math.max(
-        1,
-        Math.ceil(measureTextHeight(labels.join(' '), w, CHART_LABEL_FONT, CHART_LABEL_LINE) / CHART_LABEL_LINE),
-      )
-    : 0;
-  // 全空标签（纯数值 data）DOM 只剩 margin 空条（空 span 不产生行盒）
-  const labelH = !hasLabels ? 0 : anyLabelText ? CHART_LABEL_GAP + labelLines * CHART_LABEL_LINE : CHART_LABEL_GAP;
-  return CHART_PAD_V + CHART_TYPE_H + svgH + labelH;
+      : Math.min(
+          (w * CHART_VB_H) /
+            Math.max(
+              GRAPH_MIN_W,
+              type === 'scatter' ? CHART_SCATTER_VBW : CHART_LEFT_PAD + n * CHART_BAR_SLOT + CHART_RIGHT_PAD,
+            ),
+          CHART_SVG_MAX_H,
+        );
+
+  // 分类标签（D8 起进 SVG，占 SVG 高度的一部分，不再单独占盒外行）；饼图仍走盒外图例行
+  const pieLegendH =
+    type === 'pie' && anyLabelText
+      ? (() => {
+          const text = labels.filter((l) => l.length > 0).join(' ');
+          const lines = Math.max(
+            1,
+            Math.ceil(measureTextHeight(text, w, CHART_LABEL_FONT, CHART_LABEL_LINE) / CHART_LABEL_LINE),
+          );
+          return CHART_LABEL_GAP + lines * CHART_LABEL_LINE;
+        })()
+      : 0;
+
+  const cfg = (p.config ?? {}) as { title?: unknown; xName?: unknown; yName?: unknown };
+  const titleH = typeof cfg.title === 'string' && cfg.title.length > 0 ? CHART_TITLE_H : 0;
+  const hasAxisNames =
+    (typeof cfg.xName === 'string' && cfg.xName.length > 0) || (typeof cfg.yName === 'string' && cfg.yName.length > 0);
+  const axisNamesH = hasAxisNames ? CHART_AXIS_NAMES_H : 0;
+
+  return CHART_PAD_V + CHART_TYPE_H + titleH + svgH + pieLegendH + axisNamesH;
 }
 
 /** metric 体高：caption + auto-fill 网格行（列数镜像 minmax(120,1fr)+gap 8）。 */
@@ -895,7 +940,8 @@ function measureAssetBlockHeight(b: SourcedBlock): number {
     case 'media':
       return mediaBodyH(p as { ext?: unknown; filePath?: unknown });
     case 'chart':
-      return chartBodyH(p as { type?: unknown; data?: unknown }, b.w);
+      // D9：传完整 payload（含 config）——title/轴名会改变块高，旧签名丢 config 会算错
+      return chartBodyH(p as { type?: unknown; data?: unknown; config?: unknown }, b.w);
     case 'interactive':
       // ECharts 交互图（科研渲染 #16）：type 行 + 固定盒高（ECharts 图在盒内
       // canvas 自绘，图例/轴都在盒内不占盒外行）——盒高恒定镜像精确；

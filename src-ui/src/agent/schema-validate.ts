@@ -42,9 +42,18 @@ function checkSchemaNode(node: unknown, path: string): string | null {
       return `schema 节点 ${path} 含不支持的关键字 "${key}"（仅支持 ${[...SUPPORTED_KEYWORDS].join('/')}）`;
     }
   }
-  if (node.type != null && typeof node.type !== 'string') return `schema 节点 ${path} 的 type 必须是字符串`;
-  if (node.type != null && !VALID_TYPES.has(node.type as string)) {
-    return `schema 节点 ${path} 的 type "${String(node.type)}" 不受支持`;
+  if (node.type != null && typeof node.type !== 'string' && !Array.isArray(node.type)) {
+    return `schema 节点 ${path} 的 type 必须是字符串或字符串数组`;
+  }
+  if (typeof node.type === 'string' && !VALID_TYPES.has(node.type)) {
+    return `schema 节点 ${path} 的 type "${node.type}" 不受支持`;
+  }
+  if (Array.isArray(node.type)) {
+    for (const t of node.type) {
+      if (typeof t !== 'string' || !VALID_TYPES.has(t)) {
+        return `schema 节点 ${path} 的联合类型含不受支持的类型 "${String(t)}"`;
+      }
+    }
   }
   if (node.properties != null) {
     if (!isPlainObject(node.properties)) return `schema 节点 ${path} 的 properties 必须是对象`;
@@ -104,11 +113,19 @@ function matchType(v: unknown, t: string): boolean {
   }
 }
 
+/** 类型匹配（支持联合类型数组，如 `type: ['string','number']`）。
+ *  2026-09-16：asset kind schema 里 metric.value 等字段用联合类型——原实现
+ *  只接受字符串 type，遇数组一律 false → 合法数据被误拒（D1 落地时暴露出）。 */
+function matchTypeSpec(v: unknown, spec: unknown): boolean {
+  if (Array.isArray(spec)) return spec.some((t) => typeof t === 'string' && matchType(v, t));
+  return typeof spec === 'string' && matchType(v, spec);
+}
+
 /** 校验值是否符合受限子集 schema。返回错误文案，null = 通过。
  *  先调 assertSupportedSchema 保证 schema 本身合法。 */
 export function validateObjectJsonSchema(value: unknown, schema: JsonSchema, path = '$'): string | null {
-  if (schema.type != null && !matchType(value, schema.type as string)) {
-    return `${path}: 期望类型 ${String(schema.type)}，实际 ${describeType(value)}`;
+  if (schema.type != null && !matchTypeSpec(value, schema.type)) {
+    return `${path}: 期望类型 ${Array.isArray(schema.type) ? schema.type.join('|') : String(schema.type)}，实际 ${describeType(value)}`;
   }
   if (schema.const !== undefined && !deepEqual(value, schema.const)) {
     return `${path}: 与 const 不符`;

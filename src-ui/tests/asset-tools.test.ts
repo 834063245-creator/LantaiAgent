@@ -112,7 +112,10 @@ describe('资产工具三件套 — show_asset / update_asset / list_block_kinds
   });
 
   it('update_asset 换 kind：拒绝并讲明规矩（kind 绑定语义身份）', async () => {
-    const created = JSON.parse(await run('show_asset', { kind: 'chart', payload: { v: 1 } })) as { assetId: string };
+    // 夹具随 D1 契约收紧同步：payload 须是合法 chart 形状（原 {v:1} 是任意占位）
+    const created = JSON.parse(await run('show_asset', { kind: 'chart', payload: { type: 'bar', data: [1] } })) as {
+      assetId: string;
+    };
     await expect(run('update_asset', { assetId: created.assetId, kind: 'table', payload: {} })).rejects.toThrow(
       /不能更换 kind/,
     );
@@ -144,7 +147,10 @@ describe('资产工具三件套 — show_asset / update_asset / list_block_kinds
   });
 
   it('update_asset presentation 越界也报带窗错误', async () => {
-    const created = JSON.parse(await run('show_asset', { kind: 'chart', payload: { v: 1 } })) as { assetId: string };
+    // 夹具同步 D1：合法 chart 形状（原 {v:1} 是任意占位）
+    const created = JSON.parse(await run('show_asset', { kind: 'chart', payload: { type: 'bar', data: [1] } })) as {
+      assetId: string;
+    };
     await expect(run('update_asset', { assetId: created.assetId, presentation: 'html', payload: {} })).rejects.toThrow(
       /不支持表现 'html'/,
     );
@@ -268,11 +274,11 @@ describe('executor 资产通道 — assetChannel 工具的事件路由', () => {
     for (const t of createAssetTools()) registry.register(t);
     const events: AgentEvent[] = [];
     const executor = makeExecutor(events, registry);
-    // 先建后更（同一 session 的两次调用）
+    // 先建后更（同一 session 的两次调用）——夹具同步 D1：合法 chart 形状
     executor.addTool({
       id: 'c3',
       name: 'show_asset',
-      arguments: JSON.stringify({ kind: 'chart', payload: { v: 1 } }),
+      arguments: JSON.stringify({ kind: 'chart', payload: { type: 'bar', data: [1] } }),
     });
     await executor.awaitRemaining();
     const created = events.find((e) => e.kind === EventKind.Asset)?.asset;
@@ -280,14 +286,14 @@ describe('executor 资产通道 — assetChannel 工具的事件路由', () => {
     executor.addTool({
       id: 'c4',
       name: 'update_asset',
-      arguments: JSON.stringify({ assetId: created?.assetId, payload: { v: 2 } }),
+      arguments: JSON.stringify({ assetId: created?.assetId, payload: { type: 'bar', data: [2] } }),
     });
     await executor.awaitRemaining();
     const updated = [...events].reverse().find((e) => e.kind === EventKind.Asset);
     expect(updated?.kind).toBe(EventKind.Asset);
     expect(updated.asset?.assetId).toBe(created?.assetId);
     expect(updated.asset?.kind).toBe('chart');
-    expect(updated.asset?.payload).toEqual({ v: 2 });
+    expect(updated.asset?.payload).toEqual({ type: 'bar', data: [2] });
   });
 
   it('非资产通道工具回归：ToolProgress 照常（Asset 事件缺席）', async () => {

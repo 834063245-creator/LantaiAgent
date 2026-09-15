@@ -12,7 +12,7 @@
 //     Agent 从错误里自纠，绝不静默降级（协议 §2.7）。
 
 import { z } from 'zod';
-import { assetKinds, generateAssetId, requireKind, requirePresentation } from '../asset-kinds';
+import { assetKinds, generateAssetId, requireKind, requirePresentation, validatePayload } from '../asset-kinds';
 import { type AssetRecord, getAsset, listAssets, upsertAsset } from '../asset-store';
 import { waitForConfirm } from '../confirm-registry';
 import type { Tool } from '../tool';
@@ -63,6 +63,15 @@ export function createShowAssetTool(): Tool {
       const kind = args.kind;
       const def = requireKind(kind);
       const presentation = requirePresentation(def, args.presentation);
+      // D1（2026-09-16）：payload 走向量校验——坏数据不入库（此前 payload 是
+      // z.unknown()，任何形状都能过，坏形状直通渲染层塌成「数据不可用」死块）。
+      // 例外：append 型 + stream + 字符串 payload 是**流式暂态**（既有设计：
+      // 分段 onProgress 走 AssetDelta，终值 JSON 仍是权威替换）——不经结构化契约校验。
+      const streamingText = args.stream === true && def.streamable === 'append' && typeof args.payload === 'string';
+      if (!streamingText) {
+        const payloadErr = validatePayload(def, args.payload);
+        if (payloadErr) throw new Error(payloadErr);
+      }
       // meta key（executor 注入）不在 schema 类型内——经 passthrough 透传，断言读取
       const injectedAssetId = (args as { _asset_id?: string })._asset_id;
       const assetId =
@@ -157,6 +166,9 @@ export function createUpdateAssetTool(): Tool {
         def,
         typeof args.presentation === 'string' ? args.presentation : undefined,
       );
+      // D1：update 同样走校验（否则可经 update 绕过 show 的闸门灌坏数据）
+      const payloadErr = validatePayload(def, args.payload);
+      if (payloadErr) throw new Error(payloadErr);
       const record: AssetRecord = {
         assetId: existing.assetId,
         kind: existing.kind,

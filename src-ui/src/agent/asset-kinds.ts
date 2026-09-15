@@ -11,6 +11,8 @@
 //   - 校验辅助的报错一律「带窗」：未知 kind 报可用清单，presentation 越界
 //     报该 kind 白名单（协议 §2.7——关门的每一处都带窗）。
 
+import { validateObjectJsonSchema } from './schema-validate';
+
 export interface AssetKindDef {
   /** 机器名——show_asset 的 kind 参数值（update 不可变更） */
   id: string;
@@ -24,6 +26,11 @@ export interface AssetKindDef {
   defaultPresentation: string;
   /** 流式契约：append = 可 AssetDelta 增量（finalised 前字符串累加）；atomic = 一次性终值 */
   streamable: 'append' | 'atomic';
+  /** 跨字段校验（JSON Schema 受限子集表达不了的关系，如「两数组等长」）。
+   *  返回错误文案，null/undefined = 通过。D1（2026-09-16）引入。 */
+  payloadCheck?: (payload: unknown) => string | null;
+  /** 正确形状示例（校验失败时随错误一起回给模型——错误即导航）。 */
+  payloadExample?: string;
 }
 
 class AssetKindRegistry {
@@ -60,6 +67,36 @@ class AssetKindRegistry {
 
 /** 全局 kind 注册表（单例；动态贡献面留给插件通道，v1 内置表注册于模块装载） */
 export const assetKinds = new AssetKindRegistry();
+
+/** payload 契约校验（D1，2026-09-16）——show_asset / update_asset 共用的单一真源。
+ *
+ *  分两层：① schema 层走受限子集校验（形状/类型/必需字段）；② kind 自带的
+ *  payloadCheck 补跨字段关系（如两数组等长）。
+ *
+ *  返回错误文案（带窗：kind + 期望 + 正确示例），null = 通过。
+ *  注意：**不**用 assertSupportedSchema 预检 schema 本身——kind schema 的字段
+ *  普遍带 description，而该函数的关键字白名单不含 description（会误拒）；
+ *  validateObjectJsonSchema 对未知关键字宽容，直接用它即可。 */
+export function validatePayload(def: AssetKindDef, payload: unknown): string | null {
+  // chart 的 data 是 payload 内的字段，其余 kind 的 schema 描述整个 payload —— 统一按
+  // 「payload 本身即 def.schema 描述的对象」处理：schema 校验整块 payload。
+  const schemaErr = validateObjectJsonSchema(payload, def.schema);
+  if (schemaErr) {
+    return (
+      `payload 不符合 '${def.id}' 的契约：${schemaErr}。` +
+      (def.payloadExample ? `正确形状示例：${def.payloadExample}` : '') +
+      `（完整 schema 用 list_block_kinds 查 '${def.id}'）`
+    );
+  }
+  const crossErr = def.payloadCheck?.(payload) ?? null;
+  if (crossErr) {
+    return (
+      `payload 不符合 '${def.id}' 的契约：${crossErr}。` +
+      (def.payloadExample ? `正确形状示例：${def.payloadExample}` : '')
+    );
+  }
+  return null;
+}
 
 // ═══════════════════════════════════════════════════════
 // 内置 kind（首发清单，协议 §2.10）
@@ -106,9 +143,39 @@ export function registerBuiltinAssetKinds(): void {
         type: { type: 'string', enum: ['bar', 'line', 'pie', 'scatter'], description: '图表类型' },
         data: {
           description:
-            '数据序列——两种形状二选一：{labels: string[], values: number[]}（推荐，labels 与 values 等长）' +
-            '或 [{label, value}] 数组；纯数值数组 [1,2,3] 也可。四类型共用同一形状。' +
-            '注意：不是 ECharts 的 {datasets:[{data}]} 形状——那个形状取不到数会渲染「数据不可用」占位',
+            '数据序列——两种形状二选一（机器校验，不符会被拒绝并提示正确形状）：' +
+            '① 推荐：{labels: string[], values: number[]}（labels 与 values 必须等长）；' +
+            '② 或：[{label, value}] 数组，纯数值数组 [1,2,3] 也可（此时无标签）。' +
+            '注意：不是 ECharts 的 {datasets:[{data}]} 形状，也不是 {categories, series} —— 这些形状会被拒绝',
+          // D2（2026-09-16）：显式联合，取代此前的纯 description「纸条提示」。
+          // 两个分支互斥（object vs array）；array 分支的 items 用 oneOf 收窄，
+          // 使空数组 [] 恰好命中一个分支（若把纯数值并列成第三个顶层分支，空数组会同时命中两个 → 被误拒）。
+          oneOf: [
+            {
+              type: 'object',
+              properties: {
+                labels: { type: 'array', items: { type: 'string' } },
+                values: { type: 'array', items: { type: 'number' } },
+              },
+              required: ['labels', 'values'],
+            },
+            {
+              type: 'array',
+              items: {
+                oneOf: [
+                  {
+                    type: 'object',
+                    properties: {
+                      label: { type: 'string' },
+                      value: { type: 'number' },
+                    },
+                    required: ['label', 'value'],
+                  },
+                  { type: 'number' },
+                ],
+              },
+            },
+          ],
         },
         config: {
           type: 'object',
@@ -120,6 +187,21 @@ export function registerBuiltinAssetKinds(): void {
     presentations: ['chart', 'interactive'],
     defaultPresentation: 'chart',
     streamable: 'atomic',
+    payloadExample:
+      '{type:"bar", data:{labels:["feat","fix","docs"], values:[251,88,36]}, config:{title:"提交类型分布", yName:"次数"}}',
+    // labels/values 必须等长（受限子集无「两数组等长」关键字——运行时补）。
+    // 注意取 payload.data（data 是 payload 的嵌套字段，不是 payload 本身）。
+    payloadCheck: (payload) => {
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+      const data = (payload as { data?: unknown }).data;
+      if (!data || typeof data !== 'object' || Array.isArray(data)) return null; // 形状交给 schema 拒
+      const { labels, values } = data as { labels?: unknown; values?: unknown };
+      if (!Array.isArray(labels) || !Array.isArray(values)) return null;
+      if (labels.length !== values.length) {
+        return `data.labels 与 data.values 必须等长（现在 ${labels.length} 个标签 vs ${values.length} 个数值）`;
+      }
+      return null;
+    },
   });
 
   assetKinds.register({

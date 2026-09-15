@@ -120,28 +120,10 @@ describe('composition/renderer-service — 首发表现原语（WO-6）', () => 
     });
   });
 
-  it('chart 四种类型分别渲染对应标记', async () => {
-    await withRenderers(() => {
-      const bar = resolveAssetBlock('chart', 'chart')!;
-      expect(
-        renderToStaticMarkup(createElement(bar, { block: assetBlock('chart', 'chart', { type: 'bar', data: [1] }) })),
-      ).toContain('pp-chart-bar');
-      const line = resolveAssetBlock('chart', 'chart')!;
-      expect(
-        renderToStaticMarkup(createElement(line, { block: assetBlock('chart', 'chart', { type: 'line', data: [1] }) })),
-      ).toContain('pp-chart-line');
-      const scatter = resolveAssetBlock('chart', 'chart')!;
-      expect(
-        renderToStaticMarkup(
-          createElement(scatter, { block: assetBlock('chart', 'chart', { type: 'scatter', data: [1] }) }),
-        ),
-      ).toContain('pp-chart-dot');
-      const pie = resolveAssetBlock('chart', 'chart')!;
-      expect(
-        renderToStaticMarkup(createElement(pie, { block: assetBlock('chart', 'chart', { type: 'pie', data: [1] }) })),
-      ).toContain('pp-chart-pie');
-    });
-  });
+  // chart 四种类型的几何与数值断言已迁 tests/chart-geometry.test.ts（D10，
+  // 2026-09-16 整删此处旧的「类名存在」断言——它只验 toContain('pp-chart-pie')，
+  // 而新类名 pp-chart-pie-svg 恰好含该子串，属假通过；且旧断言无法识破
+  // 「饼图 0 宽空圈 / 散点伪随机 x」，作证力归零）。
 
   it('chart 支持对象形状 data（{labels, values}）——回归：此前对象形状静默空白', async () => {
     await withRenderers(() => {
@@ -156,7 +138,10 @@ describe('composition/renderer-service — 首发表现原语（WO-6）', () => 
       );
       // 有柱（含高度）而不是空 SVG
       expect(html).toContain('pp-chart-bar');
-      expect(html).toContain('width="24"');
+      // 柱宽来自 token（D5-D8 重写后几何由 ASSET_TOKENS.chart 驱动，不硬编码
+      // 具体数值——避免测试与 token 改动耦合；柱存在性由上一行断言）
+      expect(html).toMatch(/width="\d+"/);
+      expect(html).toMatch(/height="[1-9][\d.]*"/);
       // 标签渲染
       expect(html).toContain('feat');
       expect(html).toContain('docs');

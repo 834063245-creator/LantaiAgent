@@ -45,7 +45,7 @@ import {
 } from 'echarts/components';
 import * as echarts from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
-import type { CSSProperties, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import SmilesDrawer from 'smiles-drawer';
 import type { ConfirmCardResponse } from '../../../agent/agent-types';
 import type { BlockRendererProps } from '../../../composition/renderer-service';
@@ -184,138 +184,286 @@ function VirtualGridBody({ rows, cols, caption }: { rows: unknown[][]; cols: str
   );
 }
 
+/* ── chart 几何真源（D4-D8，2026-09-16）──────────────────────────────
+ * 组件域不 import paper 层（插件产物自包含纪律），故这里硬编码镜像
+ * ASSET_TOKENS.chart（type-tokens.ts 是真源；GRID_VIRTUAL_ROW_H 先例）。
+ * 一致性由 tests/chart-geometry.test.ts 钉住（防两侧漂移——本轮修的
+ * 「测高与渲染对不上」正是漂移产物）。 */
+
+const CHART_GEO = {
+  vbH: 180,
+  leftPad: 30,
+  rightPad: 10,
+  topPad: 14,
+  bottomPad: 20,
+  barSlot: 40,
+  barW: 22,
+  scatterVbW: 400,
+  valueMaxItems: 20,
+} as const;
+
+/** chart 数据归一（单一真源——渲染与 measure 共用同一套语义）。
+ *  返回 {values, labels}；形状非法返回 null（渲染层落「数据不可用」占位）。
+ *  D3：只接受已声明的三种合法形状（schema 已在校验层拒掉其余），
+ *  不再「宽容」吸收任意形状。 */
+function normalizeChartData(data: unknown): { values: number[]; labels: string[] } | null {
+  if (Array.isArray(data)) {
+    if (data.length === 0) return { values: [], labels: [] };
+    const values: number[] = [];
+    const labels: string[] = [];
+    for (const d of data) {
+      if (typeof d === 'number') {
+        if (!Number.isFinite(d)) return null;
+        values.push(d);
+        labels.push('');
+      } else if (d && typeof d === 'object') {
+        const o = d as { label?: unknown; value?: unknown };
+        if (typeof o.value !== 'number' || !Number.isFinite(o.value)) return null;
+        values.push(o.value);
+        labels.push(typeof o.label === 'string' ? o.label : '');
+      } else {
+        return null;
+      }
+    }
+    return { values, labels };
+  }
+  if (data && typeof data === 'object') {
+    const o = data as { labels?: unknown; values?: unknown };
+    if (!Array.isArray(o.values) || !Array.isArray(o.labels)) return null;
+    if (o.labels.length !== o.values.length) return null; // 等长契约（写入侧已拦，读取侧兜底）
+    const values: number[] = [];
+    const labels: string[] = [];
+    for (let i = 0; i < o.values.length; i++) {
+      const v = o.values[i];
+      if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+      values.push(v);
+      labels.push(typeof o.labels[i] === 'string' ? (o.labels[i] as string) : '');
+    }
+    return { values, labels };
+  }
+  return null;
+}
+
+/** 有效标签：首尾含非空字符才认为这组数据「有标签」（与 measure 同判据）。 */
+function hasRealLabels(labels: string[]): boolean {
+  return labels.some((l) => l.length > 0);
+}
+
 /* ── chart ── */
 
-/** 归一化 chart 数据为数值数组。支持两种形状：
- *  1. 数组：`[1,2,3]` 或 `[{label,value}]`（value 取数值）
- *  2. 对象：`{ labels: [...], values: [...] }`（values 取数值，labels 与 values 等长取用）
- *  无法解析（非数组且无 values 数组）→ 返回 []（渲染层落"数据不可用"占位，不静默空白）。 */
+/** 归一化 chart 数据为数值数组（D3 起委托 normalizeChartData——单一真源）。
+ *  无法解析 → 返回 []（渲染层落「数据不可用」占位，不静默空白）。 */
 function chartValues(data: unknown): number[] {
-  let raw: unknown[] | null = null;
-  if (Array.isArray(data)) {
-    raw = data;
-  } else if (data && typeof data === 'object') {
-    const v = (data as { values?: unknown }).values;
-    if (Array.isArray(v)) raw = v;
-    else return [];
-  } else {
-    return [];
-  }
-  if (raw === null) return [];
-  return raw.map((d) => {
-    if (typeof d === 'number') return d;
-    if (d && typeof d === 'object') {
-      const v = (d as { value?: unknown }).value;
-      const n = typeof v === 'number' ? v : Number(v);
-      return Number.isFinite(n) ? n : 0;
-    }
-    // 数字字符串（"12.5"）也接受；其余 NaN → 0
-    const n = Number(d);
-    return Number.isFinite(n) ? n : 0;
-  });
+  return normalizeChartData(data)?.values ?? [];
 }
 
-/** 归一化 chart 标签：数组形状取 {label}，对象形状取 {labels}（与 values 对齐）。 */
+/** 归一化 chart 标签：委托 normalizeChartData（与 values 同源同序）。 */
 function chartLabels(data: unknown): string[] {
-  let raw: unknown[] | null = null;
-  if (Array.isArray(data)) {
-    raw = data;
-  } else if (data && typeof data === 'object') {
-    const v = (data as { labels?: unknown }).labels;
-    if (Array.isArray(v)) raw = v;
-    else return [];
-  } else {
-    return [];
-  }
-  if (raw === null) return [];
-  return raw.map((d) => {
-    if (d && typeof d === 'object') return String((d as { label?: unknown }).label ?? '');
-    // 字符串标签直接取本身（如 {labels: ['feat','docs']}）
-    return String(d);
-  });
+  return normalizeChartData(data)?.labels ?? [];
 }
 
-/** data 是否无可用数值（空/形状不符）——驱动"数据不可用"占位（错误不静默纪律）。 */
+/** data 是否无可用数值（空/形状不符）——驱动「数据不可用」占位（错误不静默纪律）。 */
 function chartEmpty(data: unknown): boolean {
   return chartValues(data).length === 0;
+}
+
+/** 饼图扇区几何（D5）：按累计角度生成 SVG 弧路径。
+ *  单一真源——渲染与测试共用（tart 前必失败：旧实现是 0 宽的 conic-gradient 空 span）。 */
+export function pieSlices(values: number[]): Array<{ d: string; start: number; end: number; ratio: number }> {
+  const total = values.reduce((a, b) => a + Math.max(0, b), 0);
+  if (total <= 0) return [];
+  const R = 70;
+  const cx = 80;
+  const cy = 80;
+  let acc = -90; // 从 12 点方向起画
+  const out: Array<{ d: string; start: number; end: number; ratio: number }> = [];
+  for (const v of values) {
+    const ratio = Math.max(0, v) / total;
+    const start = acc;
+    const end = acc + ratio * 360;
+    const x1 = cx + R * Math.cos((start * Math.PI) / 180);
+    const y1 = cy + R * Math.sin((start * Math.PI) / 180);
+    const x2 = cx + R * Math.cos((end * Math.PI) / 180);
+    const y2 = cy + R * Math.sin((end * Math.PI) / 180);
+    const large = end - start > 180 ? 1 : 0;
+    // 满圆（单片占 100%）时 arc 起终点重合 → 用两段半圆逼近
+    const d =
+      ratio >= 1
+        ? `M ${cx} ${cy - R} A ${R} ${R} 0 1 1 ${cx} ${cy + R} A ${R} ${R} 0 1 1 ${cx} ${cy - R} Z`
+        : `M ${cx} ${cy} L ${x1} ${y1} A ${R} ${R} 0 ${large} 1 ${x2} ${y2} Z`;
+    out.push({ d, start, end, ratio });
+    acc = end;
+  }
+  return out;
 }
 
 function ChartBody({ block }: BlockRendererProps) {
   const p = block.payload as { type?: string; data?: unknown; config?: Record<string, unknown> };
   const type = typeof p.type === 'string' ? p.type : 'bar';
-  const values = chartValues(p.data);
-  const labels = chartLabels(p.data);
-  if (chartEmpty(p.data)) {
+  const norm = normalizeChartData(p.data);
+  const cfg = p.config ?? {};
+  const title = typeof cfg.title === 'string' ? cfg.title : '';
+  if (!norm || norm.values.length === 0) {
     // 错误不静默：数据形状不符/为空时渲染占位，不画空白 SVG
     return <div className="pp-chart pp-chart-empty">数据不可用 · 期望数组或 {`{labels, values}`} 形状</div>;
   }
+  const { values, labels } = norm;
   const max = Math.max(1, ...values);
   const n = Math.max(values.length, 1);
+  const showLabels = hasRealLabels(labels);
+  const showValues = values.length <= CHART_GEO.valueMaxItems;
 
+  const { vbH, leftPad, topPad, bottomPad, barSlot, barW, scatterVbW } = CHART_GEO;
+  const plotW = n * barSlot;
+  const vbW = type === 'scatter' ? scatterVbW : leftPad + plotW + CHART_GEO.rightPad;
+  const baseY = vbH - bottomPad;
+
+  // 柱：等高线映射 + 数值标注（D7）
   const bar = (
-    <svg className="pp-chart-svg" viewBox={`0 0 ${Math.max(320, n * 44)} 220`} role="img" aria-label="bar chart">
+    <svg
+      className="pp-chart-svg"
+      viewBox={`0 0 ${vbW} ${vbH}`}
+      role="img"
+      aria-label="bar chart"
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <line className="pp-chart-axis" x1={leftPad} y1={baseY} x2={vbW - CHART_GEO.rightPad} y2={baseY} />
+      <line className="pp-chart-axis" x1={leftPad} y1={topPad} x2={leftPad} y2={baseY} />
       {values.map((v, i) => {
-        const h = (v / max) * 180;
+        const h = (v / max) * (baseY - topPad);
+        const x = leftPad + i * barSlot + (barSlot - barW) / 2;
         return (
-          // biome-ignore lint/suspicious/noArrayIndexKey: 柱状图按数据序渲染
-          <rect key={i} x={i * 44 + 14} y={200 - h} width={24} height={Math.max(h, 1)} className="pp-chart-bar" />
+          // biome-ignore lint/suspicious/noArrayIndexKey: 柱状图按数据序渲染（同图表族既有约定）
+          <g key={`b${i}`}>
+            <rect x={x} y={baseY - h} width={barW} height={Math.max(h, 1)} className="pp-chart-bar" />
+            {showValues && (
+              <text className="pp-chart-value" x={x + barW / 2} y={baseY - h - 4} textAnchor="middle">
+                {v}
+              </text>
+            )}
+            {showLabels && (
+              <text className="pp-chart-cat" x={x + barW / 2} y={baseY + 12} textAnchor="middle">
+                {labels[i] ?? ''}
+              </text>
+            )}
+          </g>
         );
       })}
     </svg>
   );
 
+  // 线：折线 + 点 + 数值（D7）
   const line = (
-    <svg className="pp-chart-svg" viewBox="0 0 400 220" role="img" aria-label="line chart">
+    <svg
+      className="pp-chart-svg"
+      viewBox={`0 0 ${vbW} ${vbH}`}
+      role="img"
+      aria-label="line chart"
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <line className="pp-chart-axis" x1={leftPad} y1={baseY} x2={vbW - CHART_GEO.rightPad} y2={baseY} />
+      <line className="pp-chart-axis" x1={leftPad} y1={topPad} x2={leftPad} y2={baseY} />
       <polyline
-        points={values.map((v, i) => `${(i / Math.max(1, n - 1)) * 380 + 10},${200 - (v / max) * 180}`).join(' ')}
+        points={values
+          .map((v, i) => `${leftPad + i * barSlot + barSlot / 2},${baseY - (v / max) * (baseY - topPad)}`)
+          .join(' ')}
         className="pp-chart-line"
       />
+      {values.map((v, i) => {
+        const cx = leftPad + i * barSlot + barSlot / 2;
+        const cy = baseY - (v / max) * (baseY - topPad);
+        return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: 折线图按数据序渲染（同图表族约定）
+          <g key={`p${i}`}>
+            <circle className="pp-chart-dot" cx={cx} cy={cy} r={3} />
+            {showValues && (
+              <text className="pp-chart-value" x={cx} y={cy - 7} textAnchor="middle">
+                {v}
+              </text>
+            )}
+            {showLabels && (
+              <text className="pp-chart-cat" x={cx} y={baseY + 12} textAnchor="middle">
+                {labels[i] ?? ''}
+              </text>
+            )}
+          </g>
+        );
+      })}
     </svg>
   );
 
+  // 饼：真扇区（D5）——旧实现是 0 宽 conic-gradient 空 span，渲染成空圈
+  const slices = pieSlices(values);
   const pie = (
-    <div className="pp-chart-pie" role="img" aria-label="pie chart">
-      {values.map((v, i) => (
-        <span
-          // biome-ignore lint/suspicious/noArrayIndexKey: 扇区按数据序渲染
-          key={i}
-          className="pp-chart-pie-seg"
-          style={
-            {
-              '--seg': `${
-                (v /
-                  Math.max(
-                    1,
-                    values.reduce((a, b) => a + b, 0),
-                  )) *
-                360
-              }deg`,
-            } as CSSProperties
-          }
+    <svg className="pp-chart-svg pp-chart-pie-svg" viewBox="0 0 160 160" role="img" aria-label="pie chart">
+      {slices.map((s, i) => (
+        <path
+          // biome-ignore lint/suspicious/noArrayIndexKey: 饼图扇区按数据序渲染（同图表族约定）
+          key={`s${i}`}
+          className={`pp-chart-slice pp-chart-slice-${i % 6}`}
+          d={s.d}
+          data-start={s.start}
+          data-end={s.end}
+          data-ratio={s.ratio}
         />
       ))}
-    </div>
-  );
-
-  const scatter = (
-    <svg className="pp-chart-svg" viewBox="0 0 400 220" role="img" aria-label="scatter chart">
-      {values.map((v, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: 散点图按数据序渲染
-        <circle key={i} cx={10 + ((i * 37) % 380)} cy={200 - (v / max) * 180} r={5} className="pp-chart-dot" />
-      ))}
     </svg>
   );
+
+  // 散点：x = 真实序列位置（D6）——旧实现 cx 是 (i*37)%380 的伪随机数，与数据无关
+  const scatter = (
+    <svg
+      className="pp-chart-svg"
+      viewBox={`0 0 ${scatterVbW} ${vbH}`}
+      role="img"
+      aria-label="scatter chart"
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <line className="pp-chart-axis" x1={leftPad} y1={baseY} x2={scatterVbW - CHART_GEO.rightPad} y2={baseY} />
+      <line className="pp-chart-axis" x1={leftPad} y1={topPad} x2={leftPad} y2={baseY} />
+      {values.map((v, i) => {
+        const cx = leftPad + (i / Math.max(1, n - 1)) * (scatterVbW - leftPad - CHART_GEO.rightPad);
+        const cy = baseY - (v / max) * (baseY - topPad);
+        return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: 散点图按数据序渲染（同图表族约定）
+          <g key={`d${i}`}>
+            <circle className="pp-chart-dot" cx={cx} cy={cy} r={4} data-x={cx} data-y={cy} />
+            {showValues && (
+              <text className="pp-chart-value" x={cx} y={cy - 8} textAnchor="middle">
+                {v}
+              </text>
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+
+  // 轴名（D4）：config.xName / config.yName
+  const xName = typeof cfg.xName === 'string' ? cfg.xName : '';
+  const yName = typeof cfg.yName === 'string' ? cfg.yName : '';
 
   return (
     <div className="pp-chart">
       <div className="pp-chart-type">{type}</div>
+      {title && <div className="pp-chart-title">{title}</div>}
       {type === 'line' ? line : type === 'pie' ? pie : type === 'scatter' ? scatter : bar}
-      {labels.length > 0 && (
+      {showLabels && type === 'pie' && (
         <div className="pp-chart-labels">
           {labels.map((l, i) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: 标签按数据序渲染
-            <span key={i}>{l}</span>
+            // biome-ignore lint/suspicious/noArrayIndexKey: 饼图图例按数据序渲染（同图表族约定）
+            <span key={`pl${i}`}>
+              {l}
+              {l ? ' ' : ''}
+              {values[i]}
+            </span>
           ))}
+        </div>
+      )}
+      {(xName || yName) && (
+        <div className="pp-chart-axis-names">
+          {xName && <span className="pp-chart-xname">{xName}</span>}
+          {yName && <span className="pp-chart-yname">{yName}</span>}
         </div>
       )}
     </div>

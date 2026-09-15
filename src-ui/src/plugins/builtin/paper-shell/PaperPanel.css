@@ -4280,6 +4280,11 @@
   height: auto;
   max-height: var(--pp-asset-chart-svgMaxH);
 }
+/* 坐标轴（D7）：基线 + 纵轴，与纸面墨色同族（不引入新色值） */
+.pp-chart-axis {
+  stroke: color-mix(in oklch, var(--ink-3) 55%, transparent);
+  stroke-width: 1;
+}
 .pp-chart-bar {
   fill: var(--indigo);
 }
@@ -4291,17 +4296,58 @@
 .pp-chart-dot {
   fill: var(--seal);
 }
-.pp-chart-pie {
-  display: flex;
-  height: var(--pp-asset-chart-pieH);
-  border-radius: 50%;
-  overflow: hidden;
-  background: var(--paper-deep);
+/* config.title 行（D4）——静态版此前完全忽略 config */
+.pp-chart-title {
+  font-family: var(--f-song);
+  font-size: var(--pp-asset-chart-titleSize);
+  color: var(--ink-1);
+  margin-bottom: var(--pp-asset-chart-titleMarginB);
 }
-.pp-chart-pie-seg {
-  display: block;
-  height: 100%;
-  background: conic-gradient(var(--seal) var(--seg), var(--indigo) 0);
+/* 数值标注（D7）与分类标签（D8——移入 SVG，与柱体同一坐标系） */
+.pp-chart-value {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-chart-valueSize);
+  fill: var(--ink-2);
+}
+.pp-chart-cat {
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-chart-axisSize);
+  fill: var(--ink-3);
+}
+/* 饼真扇区（D5）——旧实现是 0 宽 conic-gradient 空 span，渲染成空圈 */
+.pp-chart-pie-svg {
+  max-height: var(--pp-asset-chart-pieH);
+}
+.pp-chart-slice {
+  stroke: var(--paper);
+  stroke-width: 1;
+}
+.pp-chart-slice-0 {
+  fill: var(--indigo);
+}
+.pp-chart-slice-1 {
+  fill: var(--seal);
+}
+.pp-chart-slice-2 {
+  fill: color-mix(in oklch, var(--indigo) 70%, var(--seal));
+}
+.pp-chart-slice-3 {
+  fill: color-mix(in oklch, var(--indigo) 45%, var(--ink-3));
+}
+.pp-chart-slice-4 {
+  fill: color-mix(in oklch, var(--seal) 60%, var(--ink-2));
+}
+.pp-chart-slice-5 {
+  fill: color-mix(in oklch, var(--ink-3) 80%, var(--indigo));
+}
+/* 轴名（D4）：config.xName / yName */
+.pp-chart-axis-names {
+  display: flex;
+  gap: 12px;
+  margin-top: 2px;
+  font-family: var(--f-mono);
+  font-size: var(--pp-asset-chart-axisSize);
+  color: var(--ink-3);
 }
 .pp-chart-labels {
   display: flex;
