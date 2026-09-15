@@ -2,14 +2,6 @@
   "note": "doc-check 在册豁免账（文档面大重构 P0 立尺，2026-09-16）。每条必须写 reason（为什么现在还欠着）+ payoff（哪批清偿）。豁免是账不是免罪符：payoff 批次落地时同步删除对应条目；条目归零 = 文档面收尾成立（永久豁免只给「不属于本项目文档面」的文件）。",
   "entries": [
     {
-      "id": "facts-readme-domains",
-      "check": "facts",
-      "file": "README.md",
-      "contains": "`tool_domains`",
-      "reason": "根 README 列「12 个领域工具」且清单含已退役的 graph/ops/lsp，缺 memory/cordis（真源 11 域）",
-      "payoff": "P2"
-    },
-    {
       "id": "facts-plans-14",
       "check": "facts",
       "file": "docs/plans/README.md",

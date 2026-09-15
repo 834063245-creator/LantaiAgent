@@ -292,3 +292,38 @@ UI 投影缓存（陈旧即重建）**。计划与施工记录见 `docs/plans/se
 已收录的 18 键恰好全是同文件形态。**`doc-sync` 抓不到**（生成器自洽）⇒ ✅ **已修**（本批：**键改取类体 `super(ctx, '<键>')`**——机械可推导且每类唯一（19 类 ↔ 19 处一一对应），与增广的类型名解耦；增广此后只供**描述**，同文件找不到时按 ctx 键全仓找。修完 `ctx.agentLoop` 进目录，**其余 18 条逐字节未动**）。
 根因值得记牢：旧规则「同文件按**类名**找增广」本身就是错的——原来那 18 个命中是「增广的类型名恰好等于 Service 类名」的**巧合**；`ctx.agentLoop` 声明为结构面 `AgentLoopServiceFace`，故整个服务从目录里消失。
 
+## 第八批审计（2026-09-16）— 文档面重构顺带发现家族
+
+起因：文档面大重构（施工单 `docs/plans/doc-surface-refactor-plan.md`）在按真源逐文件校准时，
+顺带撞见三件**不在文档面、但由文档面暴露出来**的事。取证纪律同第七批。
+
+### 已修（本批落地）
+
+| # | 位置 | 病灶（实测） | 处置 |
+|---|---|---|---|
+| 1 | `src-ui/src/ui/README.md` | 自称「现 16 文件」（实测 **14**：13 ts + README）；且三处引用**已删模块**——「星图类型变更走 `src/scene/graph-types.ts`」、文件簇表里「位置兼容 shim `graph.ts`」、依赖方向图里的 `scene/`。`src/scene/` 目录与 `graph-types.ts`、`ui/graph.ts` 均已随图谱多轮 sweep 整删 | ✅ 本批改：计数改实测值、删 shim 行、依赖方向去掉 `scene/`，并加一条硬约束「不要再新增星图类型或 shim」 |
+
+### 待立批（证据齐，需用户拍产品面去留）
+
+**`dsh-bundle/viewer` 的构建链已断**——它是 HoloGram 的 DSH 侧 3D 视图，**不维护内核副本**而是直接构建 src-ui 的 graph 模块：
+
+- `viewer/main.ts:9-10` 导入 `@hologram-kernel/graph`（StarGraph）与 `@hologram-kernel/graph-types`（GraphJSON）；
+- `viewer/vite.config.ts:19` 把 `@hologram-kernel/*` alias 到 `../../src-ui/src/ui`；
+- 而 `src-ui/src/ui/` 现仅 14 个文件（chat 编排 + 旧层基础设施），**无 `graph.ts` / `graph-types.ts` / 任何渲染子模块**（C13 sweep 删渲染面、`51047f99` 图谱全量退役删 `scene/`）；
+- ⇒ 该 viewer **构建必失败**；而 CI 的 `dsh-bundle` job 里有 `Build viewer (src-ui graph kernel, no vendored copy)` 步骤（`.github/workflows/ci.yml`），release 工作流也带 `dsh-bundle`。
+- **待裁定（用户）**：DSH 插件（`@a834063245/hologram-dsh`）还在不在产品面上？在 ⇒ 要给 viewer 换内核（引擎图数据经 MCP 取，自己只留渲染）或恢复最小渲染面；不在 ⇒ 连同 npm 包与 CI job 一起退役（本仓对「已在产品面消失的能力」的既定处置就是拆干净）。
+
+### 待核实（证据不足，勿按化石删）
+
+根 `.lantai/` 下有 `aura-brain/`、`specs/`、`docs/` 等目录，在 TS/Rust 真源里找不到消费者（疑似历史残留）。
+第七批的教训在先（清单误分类已有先例）⇒ **需一次「零消费者」取证**（grep 全仓读者 + 看测试面 + 看打包资源），
+取证前不动。同一批可带上「`.lantai/` 与 `~/.lantai/` 目录清单是否与代码写的路径集合一致」这个对账动作。
+
+### 教训（记给下一轮文档校准）
+
+**最危险的文档漂移是「机制级事实」的漂移，因为没人会去读代码验证它。** 本批实测两例：
+① 文档（ARCHITECTURE / CLAUDE / AGENTS）一致写着「壳经 `engine_transport` 每工作区 spawn 一个 `engine serve` 子进程」，而 `src-tauri/src/engine_transport.rs` **2026-09-09 已随图谱退役删除**、壳内零 spawn 引擎代码（现状：壳只做二进制位置只读探测 `engine_assets.rs`，拉起由前端 `plugins/bundled-engine.ts` → MCP 受治进程通道 `plugins/mcp-bridge.ts` → Rust `commands/protocol_bridge.rs` stdio）；
+② `AgentConfig` 字段数 28 在 AGENTS/CLAUDE 已更正、ARCHITECTURE 两处与根 README 仍写 31。
+⇒ 这正是 `npm run doc-check`（事实对拍 + 六查）与 `docs/facts.generated.md`（单一真源）要解决的问题：
+**规则写在文档里靠自觉会漂，必须由门禁兜底。**
+
