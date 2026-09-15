@@ -147,7 +147,7 @@ describe('S6 P1d 组合身份：会话工厂不再白建注册表（真装配腰
           saveActiveSession: async () => {},
           saveCanvasState: async () => {},
         };
-        const ws = await Workspace.open('D:/wsP1d', null, panel as never, {
+        const ws = await Workspace.open('D:/wsP1d', {
           onStatusChange: () => {},
           onLoadingChange: () => {},
         });

@@ -93,7 +93,7 @@ async function withAssembledWorkspace(
       useCompositionStore.getState().resetToFactory(); // 腰内快照（含第一方贡献行）
       const { Workspace } = await import('../src/workspace');
       const panel = makePanel();
-      const ws = await Workspace.open(path, null, panel, {
+      const ws = await Workspace.open(path, {
         onStatusChange: () => {},
         onLoadingChange: () => {},
       });

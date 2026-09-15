@@ -104,7 +104,7 @@ async function switchWorkspace(path?: string): Promise<void> {
     };
     let ws: Workspace;
     try {
-      ws = await WorkspaceCls.open(folder, chatPanel, {
+      ws = await WorkspaceCls.open(folder, {
         onStatusChange,
         onLoadingChange,
       });

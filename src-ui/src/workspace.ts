@@ -209,7 +209,6 @@ export class Workspace {
 
   static async open(
     path: string,
-    _chatPanel: ChatCore,
     callbacks?: {
       onStatusChange?: (msg: string) => void;
       onLoadingChange?: (loading: boolean) => void;

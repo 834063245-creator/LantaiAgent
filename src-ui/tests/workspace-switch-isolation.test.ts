@@ -104,7 +104,7 @@ describe('跨工作区串卷：装配失败不得遗留旧区会话（H2）', ()
   it('setupAgent 中途抛错 → 旧区会话面仍必须被清空', async () => {
     const { Workspace } = await import('../src/workspace');
     const panel = makePanel('xws-h2');
-    const ws = await Workspace.open('D:/wsA', null, panel, {
+    const ws = await Workspace.open('D:/wsA', {
       onStatusChange: () => {},
       onLoadingChange: () => {},
     });
@@ -133,8 +133,7 @@ describe('跨工作区串卷：deactivate 超时被抢清后不得串写旧工�
 
   it('forceClearState 抢救（超时路径）→ 迟到的画布落盘不得写旧工作区 canvas.json', async () => {
     const { Workspace } = await import('../src/workspace');
-    const panel = makePanel('xws-h3', new Promise<void>(() => {})); // saveActiveSession 永不落定（挂起）
-    const ws = await Workspace.open('D:/wsA', null, panel, {
+    const ws = await Workspace.open('D:/wsA', {
       onStatusChange: () => {},
       onLoadingChange: () => {},
     });
