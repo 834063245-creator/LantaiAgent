@@ -199,7 +199,7 @@
 | # | 位置 | 雷 | 触发 → 后果 | 状态 |
 |---|------|----|------------|------|
 | S1 | `src-ui/src/shell/rows/persistence.ts`（旧 beforeunload 块）+ `src-tauri/src/main.rs:72-92` | 退出收尾只有 `beforeunload`（WebView2/Tauri 关窗**不触发**，上游 #3217/#2996），块内 `scheduleAutoSave` 只是「clear 再 setTimeout(500ms)」= 把待落盘推迟到窗口消失之后，`saveAllSessions().catch(()=>{})` 是未 await 的 fire-and-forget 且静默吞错；Rust 侧 `Destroyed` → `drain` → `std::process::exit(0)` 直接腰斩在途写 | 正常关窗 = 未落盘内容随进程消失；系统关机 = 强杀（实测应用活到关机那一刻）。注释还留着「localStorage 同步写兜底」化石（该链 2026-08-25 已拆） | ✅ 已拆（本批）：一条 flush 三入口（`watchWindowClose` preventDefault→flush→destroy / `pagehide`+`visibilitychange(hidden)` 兜底 / `beforeunload` 保留）+ 2500ms 硬预算 + 逐卷异常可见（不再静默吞）；能力位 `core:window:allow-destroy` 已入 capabilities |
-| S2 | 落盘时机全表（`ui/chat-stream.ts:500` finishTurn、turn-done 订阅壳行、合卷、改名、失活） | 全部在**轮次结束之后**——一轮从用户输入到流收尾之间磁盘上零痕迹；`docs/session-checkpoint-design.md` §3.1/§3.2 的两个语义时刻检查点从未接线（会话事件 NDJSON 第二写面也已随 agent-store 内存化退役） | 崩溃/退出/关机丢**整轮**（用户消息 + 助手输出 + 全部工具结果） | ✅ 触发点 A 已接线（本批，loop 监听面 `request/start`——不改 agent-loop 契约文件、在途合并、fail-open 可见）；⏳ 触发点 B（工具副作用前）仍未接线 |
+| S2 | 落盘时机全表（`ui/chat-stream.ts:500` finishTurn、turn-done 订阅壳行、合卷、改名、失活） | 全部在**轮次结束之后**——一轮从用户输入到流收尾之间磁盘上零痕迹；`docs/session-checkpoint-design.md` §3.1/§3.2 的两个语义时刻检查点从未接线（会话事件 NDJSON 第二写面也已随 agent-store 内存化退役） | 崩溃/退出/关机丢**整轮**（用户消息 + 助手输出 + 全部工具结果） | ✅ 触发点 A 已接线（loop 监听面 `request/start`——不改 agent-loop 契约文件、在途合并、fail-open 可见）；✅ 触发点 B 的**执行前屏障**已接线（`SessionLog.flushPersistence` + 执行器第 7 参钩子，fail-open 可见）；⏳ 仅剩「`tool/call` 提前到分发时落」= 改事件顺序 ⇒ 须走 phase-5 基线变更审批 |
 | S3 | `ui/chat-session.ts::writeSessionSnapshot` + `src-tauri/src/confined_fs.rs::write_atomic` | 同卷多写者（防抖/后台卷/改名/合卷/失活/退出 `Promise.all`）**无串行化**，而 `write_atomic` 不是临界区（对照 `editor_cap.rs:72` 有进程级锁） | 迟到的旧快照覆盖新快照 = 静默回滚；撤掉写链实测复现「v1 覆盖 v2」（`src-ui/tests/session-exit-flush.test.ts` 真变红） | ✅ 已拆（本批）：每卷写链（键 = 目标路径）+ `drainVolumeWrites()` 退出前 drain |
 | S4 | `src-tauri/src/confined_fs.rs:129-142` + `plugins/builtin/sessions-builtin/index.ts:36-43` | `write_atomic` = `target→.bak` → `tmp→target` → 删 `.bak`：两次 rename 之间进程死 ⇒ 卷文件**整体消失**（内容只在 `.bak`/`.tmp.N`）；读面只认 `{id}.json`（无回退）、`list_volumes` 只列 `.json`，`restoreCanvasSpread` 还会把它从 `canvas.json` 剪掉；无 fsync | 崩溃/强杀撞上写窗口 = 卷「消失」，用户视角像永久删除（本机 22 卷暂无 `.bak`/`.tmp` 残留 ⇒ 目前是风险不是已发生事故） | ⏳ 未拆（P1，用户已批「`.bak` 只读回退」）：先决 = 把该决策写回 `session-checkpoint-design.md` §6.6/§9.3（原文裁定「不做卷版本化/.bak 多副本」） |
 | S5 | `ui/chat-session.ts::saveActiveSession` / `saveSessionById`（旧 `if (!agent) return`） | 句柄缺席（未水合卷 / 工厂失败 / 切 preset 拆句柄）时**静默跳过**落盘：无日志无提示；`saveAllSessions` 又只遍历案头摊开的卷 | 「卷还在、内容旧」——退出即丢该卷内存里的全部内容，用户零信号 | ✅ 已拆（本批）：`SessionSaveOutcome` 五态 + 一次性 warn + `flushSessionsForExit` 逐卷汇总（退出路径可见报异常卷） |
@@ -213,7 +213,7 @@
 
 - **S1/S2（退出与在途）**：退出路径保留 P0 的三入口，但动作从「写 N 卷 MB 级快照」降为
   「排空事件日志队列」（KB 级）；**触发点 A（模型请求前）已接线**（`request/start` loop 监听面）。
-  **触发点 B（工具副作用前）仍未接线**——它需要把 `tool/call` 审计事件提到分发时落
+  **触发点 B 的执行前屏障已接线（`fe52e6d1`）**；仅剩「把 `tool/call` 审计事件提到分发时落」未做——它需要改事件顺序
   （兰台的执行器在流期间就跑工具），落点在 `agent/streaming-executor.ts`，属另立项。
 - **S3（写面无串行化）**：每卷写链（P0）+ 写后队列单写者（Phase 1）双保险。
 - **S4（原子写崩溃窗口）**：⚪ **随架构消失**——卷本体改为 append-only 事件日志，
