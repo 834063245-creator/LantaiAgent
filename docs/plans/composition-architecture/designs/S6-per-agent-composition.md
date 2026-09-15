@@ -321,7 +321,7 @@ effectiveComposition(id)  // 生产唯一解析入口（捕获网，永不抛出
 | **P1** ✅ **已落地（2026-09-15，五笔：P1a `6e3b3fb2` / P1b `6abbcc30` / P1c `9196f5da` / P1d `cca04a58` / P1e `fd30742c`；另基线修复 `8c7abf92`）** | 卷级选择全链路（用户 2026-09-15 拍板「我觉得OK，开工」，按施工单四批 + UI 一笔落地）：**P1a** 卷内组合记录不再被落盘改写（工厂把记录回述给 Agent 镜像——旧行为：重开旧卷后本卷再落一次盘就把 `presetId` 改写成全局默认，记录静默蒸发）；**P1b** 选择集语义（`ToolContribution.defaultOff` + `disabled:false` 回开，**开放面契约 v31**）+ 诊断三栏；**P1c** 卷级选择写路径（`selectSessionPreset`：校验 → 空白闸 → 拆句柄 → 登记 → 空白卷即时重建；`sessionSelectionError` 比 `selectionError` 严一档：未知 id 也拒）；**P1d** 会话工厂判据从对象引用换轨为**组合身份**（层内容 + 贡献代数，输入派生——消掉「每卷白建注册表」的 F4 浪费，且含代数 ⇒ 不复用陈旧注册表）；**P1e** 创作坞组合芯片（两态：无主态 = 新卷出生默认 / 空白卷 = 卷级 / 跑过一轮 = 只读标签） | §2 序列 A/B：空白卷可拨且立刻生效（有句柄则当场重建）、跑过一轮被拒（控件锁 + 写路径二道闸同一把尺子）、两卷工具面互不影响（身份不同 ⇒ 各建注册表；身份相同 ⇒ 复用）、卷级选择不写全局真源 | vitest + biome 0/0 + build（30 产物）+ doc-sync + **convergence 双轨零漂移**（P1 不动出厂 preset 面 = 构造性证据） | 组合按卷生效（同工作区两卷可不同）；设置行左端新增组合芯片、行内序由「模型→spacer→权限→思考→墨量」变为「模型→组合→spacer→…」（**故意规格变更**，row-order 契约随之显式改写）；诊断面由一栏拆三栏（「禁用行」不再混装 seam id）；卷文件 `presetId` 在重开后不再被改写；新建卷装配少一次注册表构建 |
 | **P2** ✅ **已落地（2026-09-15，两笔：P2a `a1e83c8f` / P2b `53924344`；施工单 `work-orders/WO-S6P2-seam-value-injection.md`，用户逐项裁定 A/B/C/D/E/F 见 §7 与 §8）** | seam 选择从模块态 → 装配期值注入：**P2a** 新增键控叶模块 `composition/seam-scope.ts`（装配期登记裁剪面，键 = Agent bus id）+ `seamDisabled(domain, view?)` 可选 view + fs/shell/subagents 三消费点 + `AgentEventBus.setSeamView`（每 Agent 一条总线）；**P2b** llm 单点（`activeLlmAdapters(view?)` + `CreateProviderOptions.seamView` + 三个 provider 构建点）。**契约 v36（P2a）/ v37（P2b）**——四步流程各走一遍 | §2 序列 D（⑨ 同一工具实例两卷两 provider 且互不串味）；旧无组合上下文路径零漂移（⑫ 哨兵 + ①-⑧ 零改动） | **不新增 seam 域 per-composition 快照、不触发 baseline-change-request**（用户裁定 B：两轨的 `seamDisabled` 构造性为空 ⇒ 新快照零信息量，零漂移由既有 8 份快照逐字节覆盖；信息量落在行为测试） | 同一工具可按卷走不同 provider；`seam/sessionPersistence` 例外仍全局（如实声明） |
 | **P3（成本悬崖）** ✅ **已落地（2026-09-15，三笔：P3a `e508f093` / P3b `2259c3c3` / P3c 收官；施工单 `work-orders/WO-S6P3-plugin-activation.md`，用户逐项裁定 A-H 见 §7 与 §8.3）** | 插件激活/引用计数/独占声明/`requires`/fail loud + 诊断「被跳过」栏：**P3a** 激活账（叶模块 `composition/activation.ts` + 第五个组合层 service `ctx.activation` + 装配期 retain/对称释放 + manifest `activation` 块与装载期校验）；**P3b** `requires`/`exclusive` 组合声明 + 独占冲突装配期 fail loud + 诊断第四栏「被跳过」（含设置面板呈现）；**P3c** §7.8 profile 断言 + 性能对表 + 文档写回。**契约 v38（P3a）/ v39（P3b）** | §2 序列 E；无引用即释放；冲突装配期拒绝 | 全部通过：激活生命周期测试（三文件 51 例含破测 10 条）+ 性能门（见 `reports/perf-after-S6P3.md`）+ convergence 双轨零漂移（构造性） | 插件副作用改为按需激活；manifest 新增 `activation` 字段；用户 preset 新增 `requires`/`exclusive` 键；诊断面由三栏扩四栏 |
-| **P4** | 程序入口：会话创建 RPC 带 `preset` / MCP 工具参数 / 评测自举 | §2 序列 C；与 UI 同 id 解析逐字节一致 | + RPC 契约重生成 + e2e | 新增 RPC 参数（契约版本升版） |
+| **P4** ✅ **已落地（2026-09-16，两笔：P4a `4ca7df3e` 入口 + P4b 收官写回；施工单 `work-orders/WO-S6P4-program-entry.md`，用户十道判断题全部照建议，见其 §7 裁定记录）** | 程序入口 = **形态甲（TS 组合层单点）**——`createSessionWithPreset(ctx, presetId?)` 落 `app/chat/session-composition.ts`：显式参数在发号后、**调工厂之前**落卷级登记 ⇒ 该卷**出生即按该组合装配一次**；严一档校验（`sessionSelectionError`）⇒ 不可解析**拒绝创建 + 具名原因、一个卷都不建**；`createNewSession` 返回新卷 id（`number \| null`）供程序判成败。**设计件本行的字面（「会话创建 RPC / MCP 工具」）与实测不符**——RPC 零会话创建、兰台不是 MCP server、ACP server 零接线、17 个域工具无建卷动作（见 §8.4 事实 1）⇒ 本批先立入口，外部协议接线与评测自举各自独立批次 | §2 序列 C：程序指定组合起卷生效；**与 UI 选同一 id 解析面逐字节一致**（两路径对拍 tools/prompt/capabilities/shell + seamDisabled + activationDecl）；错误路径返回具名原因 | vitest（新增 9 例 + 破测 5 条）+ biome 0/0 + build + **convergence 双轨零漂移**（不动出厂 preset 面 = 构造性）+ doc-sync v39 | **新增程序入口函数**；新建卷可出生即带组合（此前只能「出生后拨」且只对空白卷）；`createNewSession` 返回值判成败（不再有「静默失败后读到旧活跃卷 id」的陷阱）；**不新增 Rust 命令 / 不新增 ctx 键 / 契约仍 v39** |
 | **P5** | UI 面：卷头 chip（含 blank-only 锁）+ 同屏并排两 Agent | §2 序列 B 的 UI 层；锁生效（跑过一轮的卷拒绝切换） | + UI e2e + golden | 用户可见的新控件与新锁 |
 
 **依赖**：**P-1 → P0** → P1 → P2 → P3 → P4/P5（P4/P5 可并行）；P0.5 与 P-1/P0 无依赖，但必须在 P1
@@ -387,9 +387,14 @@ effectiveComposition(id)  // 生产唯一解析入口（捕获网，永不抛出
 - **2026-09-14 用户纠正一项**（改本件 I1 与 §7.2，并新增 P-1 批）：**preset 不上线、不是出厂物——
   它是用户自己设置的环境，平台只需提供环境**；连带暴露的真问题：单二进制下用户**配不出** preset
   （目录不建 / 无打开动作 / 无模板 / 加完要重启——§2 序列 F 的四条实测缺项）。P-1 因此成为本线首批发。
-- 本件状态：**已批准并执行中**（P-1 / P0.5 / P0 / P1 / P2 / **P3 全部落地**；下一批 = P4/P5）。原「批准后三步」已兑现：
-  ① I1 已进 `CONVENTIONS.md`；② P0.5 的 `baseline-change-request` 已留痕（`37418b74`）；
+- 本件状态：**已批准并执行中**（P-1 / P0.5 / P0 / P1 / P2 / P3 / **P4 全部落地**；下一批 = **P5**）。
+  原「批准后三步」已兑现：① I1 已进 `CONVENTIONS.md`；② P0.5 的 `baseline-change-request` 已留痕（`37418b74`）；
   ③ P-1 起每批独立 commit + 门禁四连。
+- **2026-09-16 用户批准 P4 施工单（十道判断题全部照建议）**（原话「我大概看了一下，全部按推荐施工，开工吧」；
+  裁定记录见 `work-orders/WO-S6P4-program-entry.md` §7 末）：形态甲（TS 入口单点 / 不新增 Rust 命令）、
+  **单次装配**（改冻结文件 `ui/chat-session.ts` 3-4 行，用户点头）、只收 preset **id**、**落卷**、
+  严一档拒绝且**拒绝即不建卷**、**不加模型可见工具参数**、**本批不接外部协议**（ACP / 兰台作 MCP server 拆独立批次）、
+  评测自举拆独立批次 + 顺带整删 `tests/ab` 化石（附笔 `43963f2c`）、鉴权不与权限模式联动、e2e 只做进程内行为测试。
 - **2026-09-15 用户真机验收 P1e 创作坞组合芯片：通过**（原话「已真机验收，感觉应该没大问题」）。
   口径记录：验收对象 = 出厂产物源码 + 新增 `composition-chip.css`，**须 `cargo tauri build` 后可见**
   （dev 态看不到芯片）；结论 = 三态（无主态 / 空白卷可拨 / 跑过一轮只读标签）无异常报出，
@@ -485,3 +490,46 @@ effectiveComposition(id)  // 生产唯一解析入口（捕获网，永不抛出
    资源 / requires 判据摘掉）都是**改坏后立刻红**，而「看起来该红」的写法（例如只删
    `ctx.effect` 而不删 retain）在别的用例里会照绿——照 P1/P2 的先例，破测结果必须逐条写进
    commit message。
+
+### 8.4 P4 施工中实测的环境事实（P5 / 后续批次动手前必读）
+
+1. **本件 §4 P4 行的字面与今天的事实不符（本批的头号发现）**：写「会话创建 RPC 带 `preset` /
+   MCP 工具参数」时，实测**没有任何程序入口能起卷**——RPC 面 53 个方法零会话创建
+   （最沾边的 `agent_session_append` 只写 `.lantai/agents/` 且零 TS 调用方）；**兰台不是 MCP
+   server**（`plugins/mcp-bridge.ts` 是 client；引擎的 MCP server 只提供图查询）；ACP server
+   （`agent/acp/server.ts`）**协议齐、零 boot 接线**（`createAcpServer` 只被测试调用、
+   `createTauriAcpLineIO` 零调用者，且 `session/new` 无组合参数）；模型可见 17 个域工具**没有
+   任何一个**能建卷/开会话/指定组合。⇒ **P4 实际做的是「先把入口立起来」**（形态甲），
+   外部协议接线与评测自举各自独立批次。
+2. **平台边界挡住「新增 Rust 命令」这条路**：`src-tauri/tests/platform_boundary_test.rs:3-6`
+   （头注「强制层外不得新增 Rust 命令，必须走开放面」+ `:40-61` 的 `commands/*.rs` 模块基线）；
+   `docs/plans/composition-architecture/README.md:26-27` 明列「session 持久化」属**能力契约层**
+   （seam）。「会话创建」因此只能是前端开放面。
+3. **RPC 没有对外 transport**：`src-ui/src/bridge.ts:52` 走 `@tauri-apps/api/core` 的 `invoke`
+   ——只在 webview 内可达；本机唯一对外监听面是 LLM 反代 + 插件资产
+   （`src-tauri/src/llm_proxy.rs:4-25`，只收 `POST/OPTIONS` + `GET /plugins/*`）。
+   ⇒ **新增 RPC 买不到设计件要的「外部程序」**，别把它当作兑现序列 C 的路径。
+4. **模型可见面加参数的代价是审批通道**：`baseline/phase-0/tool-schemas.full.json`（36KB）与
+   `preset-minimal/` 两轨逐字节对拍 ⇒ 给任何模型可见工具加参数/加动作 = 两轨同时漂 =
+   `baseline-change-request` + `record`；且与 S4-1a「子 Agent 与父同组合面」
+   （`agent/context.ts:214-216` 的 `child()` 白名单继承 `composition`）冲突 ⇒ 本批裁定不加。
+5. **`createNewSession` 的静默 return 是程序入口的真实陷阱**：无工作区时它 `showToast + return`
+   （`chat-session.ts:514-518`）**不抛不返回失败** ⇒ 入口若事后读 `sessions[activeIdx].id`，会把
+   **旧活跃卷的 id** 当成新卷返回。处置：`createNewSession` 返回值改 `number | null`（本批），
+   入口据此判成败（破测⑤证明确有牙）。
+6. **登记必须早于工厂调用**：组合由工厂按卷登记决定（`workspace.ts:824` `getRecordedPresetId`
+   → `:833` `effectiveComposition`），所以显式参数只能落在 `chat-session.ts:535`（发号后）与
+   `:542`（调工厂前）之间。落在之后 = 出生即错面（破测②实证 2 红：①/⑦）。
+7. **「落卷」的全部收益来自登记本身**：卷头 `presetId` 取自 `agent.presetId`
+   （`chat-session.ts:326`），而它由工厂 `agent.selectPreset(recordedPresetId)` 回述
+   （`workspace.ts:948`）⇒ 登记对了，落盘、恢复期校验、读面 `sessionCompositionInfo`
+   （`source='session'`）**全部零新增代码**自动成立——P5 卷头 chip 直接吃这一份。
+8. **测试替身的三条现实**：① 建卷需要 `SessionContext` 的 9 个回调（storeId/getProjectPath/
+   flush×2/clearPendingToolCards/clearInputHistory/token 三件/updateFooter），假 ctx 要一次给全；
+   ② 假句柄无 `sessionLog` 能力位 ⇒ `seedVolumeLog` 降级（不落盘，正好让测试只盯组合面）；
+   ③ 断言「出生即按组合装配」的正确姿势 = 让替身工厂**镜像生产工厂的两行判据**
+   （`getRecordedPresetId` → `effectiveComposition`）并记录它当时读到的面——直接断言
+   `presetId` 会退化成「读自己写的值」，断言 **minimal 禁用行/能力缺席** 才有牙。
+9. **破测要防「还原不一致」**：本批 5 条注入用「备份文件 → 注入 → 跑 → 从备份恢复 →
+   文件哈希比对」闭环；纯内存字符串还原在文件被外部操作动过时会静默失败（本轮实测踩到过
+   两次「文件在工作区被清空/删除」，每次都用备份立即还原并校验哈希）。
