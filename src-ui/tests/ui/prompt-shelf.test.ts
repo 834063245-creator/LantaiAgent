@@ -88,14 +88,17 @@ describe('PromptShelf — 开放式问题', () => {
     const p = showAsk(q({ id: 'open-1', options: [], question: '叫什么名字？' }));
     const input = container!.querySelector<HTMLInputElement>('.prompt-shelf__custom-input')!;
     expect(input).toBeTruthy();
+    // 提交钮改为「有输入才出现」（2026-09-16 断链修复：原先只有开放式问题
+    // 渲染它、且常在未输入时就显示；现统一为输入驱动——避免空提交与
+    // 「有选项时无钮可点」的双向病灶）
+    act(() => {
+      setInputValue(input, '小蓝鲸');
+    });
     const submit = Array.from(container!.querySelectorAll('button')).find((b) => b.textContent?.includes('提交回答'))!;
     expect(submit).toBeTruthy();
     // 不应渲染选项列表
     expect(container!.querySelector('.prompt-shelf__options')).toBeNull();
 
-    act(() => {
-      setInputValue(input, '小蓝鲸');
-    });
     await act(async () => {
       submit.click();
     });
@@ -258,6 +261,58 @@ describe('PromptShelf — 单问卡片（AskCard）', () => {
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
     });
     await expect(p).resolves.toEqual(['都不选，用我的']);
+  });
+
+  // ── 2026-09-16 断链修复：有选项时也必须有「可点的」自定义提交键 ──
+  // 此前「提交回答」钮只在开放式（无选项）时渲染，有选项卡上用户打字后
+  // **没有任何按钮可点**（只能猜 Enter）——既有测试只走 Enter 路径故未暴露。
+  it('有选项 + 输入文字 ⇒ 出现「提交回答」钮（此前缺失）', async () => {
+    const p = showAsk(q({ id: 'c2' }));
+    // 未输入时无提交钮（不与「确认选择」并排造成歧义）
+    expect(Array.from(container!.querySelectorAll('button')).some((b) => b.textContent?.includes('提交回答'))).toBe(
+      false,
+    );
+    const input = container!.querySelector<HTMLInputElement>('.prompt-shelf__custom-input')!;
+    act(() => {
+      setInputValue(input, '我自己的答案');
+    });
+    const submit = Array.from(container!.querySelectorAll('button')).find((b) => b.textContent?.includes('提交回答'));
+    expect(submit, '有选项时输入文字后必须出现可点的提交钮').toBeTruthy();
+    await act(async () => {
+      submit!.click();
+    });
+    await expect(p).resolves.toEqual(['我自己的答案']);
+  });
+
+  it('开放式（无选项）+ 输入文字 ⇒ 同样出现「提交回答」钮且可点', async () => {
+    const p = showAsk(q({ id: 'c3', options: [] }));
+    const input = container!.querySelector<HTMLInputElement>('.prompt-shelf__custom-input')!;
+    act(() => {
+      setInputValue(input, '开放式答案');
+    });
+    const submit = Array.from(container!.querySelectorAll('button')).find((b) => b.textContent?.includes('提交回答'));
+    expect(submit).toBeTruthy();
+    await act(async () => {
+      submit!.click();
+    });
+    await expect(p).resolves.toEqual(['开放式答案']);
+  });
+
+  it('清空输入 ⇒ 提交钮收回（不残留可点空提交）', async () => {
+    showAsk(q({ id: 'c4' }));
+    const input = container!.querySelector<HTMLInputElement>('.prompt-shelf__custom-input')!;
+    act(() => {
+      setInputValue(input, 'x');
+    });
+    expect(Array.from(container!.querySelectorAll('button')).some((b) => b.textContent?.includes('提交回答'))).toBe(
+      true,
+    );
+    act(() => {
+      setInputValue(input, '');
+    });
+    expect(Array.from(container!.querySelectorAll('button')).some((b) => b.textContent?.includes('提交回答'))).toBe(
+      false,
+    );
   });
 
   it('取消按钮 → null', async () => {

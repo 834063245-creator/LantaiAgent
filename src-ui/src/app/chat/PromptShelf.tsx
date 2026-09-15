@@ -99,6 +99,39 @@ function OwnerChips({
   );
 }
 
+/** 自定义答案提交钮（2026-09-16 修断链）——非空输入才出现。
+ *  此前「提交回答」钮只在开放式问题（无选项）时渲染，有选项卡上用户自己
+ *  打字后**没有任何可点的提交键**（测试也只走 Enter 路径，故长期未暴露）。
+ *  本地 state 跟踪输入内容以控制显隐（无受控 value——保留原生 IME 行为）。 */
+const SubmitCustomButton: React.FC<{
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  onResolve: (answer: string[] | null) => void;
+}> = ({ inputRef, onResolve }) => {
+  const [hasText, setHasText] = useState(false);
+  // 输入变化同步显隐（原生事件——不受 React 受控干扰）
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const sync = () => setHasText(el.value.trim().length > 0);
+    sync();
+    el.addEventListener('input', sync);
+    return () => el.removeEventListener('input', sync);
+  }, [inputRef]);
+  if (!hasText) return null;
+  return (
+    <button
+      className="prompt-shelf__submit"
+      onClick={() => {
+        const v = inputRef.current?.value.trim();
+        if (v) onResolve([v]);
+      }}
+      type="button"
+    >
+      提交回答
+    </button>
+  );
+};
+
 const AskCard: React.FC<{
   prompt: AskPrompt & PromptOwner;
   onResolve: (answer: string[] | null) => void;
@@ -134,11 +167,6 @@ const AskCard: React.FC<{
     const labels = prompt.options.filter((_, i) => selected.has(i)).map((o) => o.label);
     onResolve(labels);
   }, [prompt.options, selected, onResolve]);
-
-  const submitCustom = useCallback(() => {
-    const v = inputRef.current?.value.trim();
-    if (v) onResolve([v]);
-  }, [onResolve]);
 
   const cancel = useCallback(() => onResolve(null), [onResolve]);
 
@@ -247,8 +275,11 @@ const AskCard: React.FC<{
         </div>
       )}
 
-      {/* 用于输入预定义选项之外的自定义回答；开放式问题为主输入。
-       *  Enter 语义：有自定义文字提交文字；空输入且已选中项 → 提交已选项。 */}
+      {/* 自定义答案提交（2026-09-16 修断链）：**有选项时也出按钮**——
+       *  此前按钮只在 `!hasOptions` 时渲染，有选项卡上用户自己打字后
+       *  找不到任何可点的提交键（只能碰运气按 Enter，或误点选项把选项答案
+       *  提交掉）——「用户填写内容再发送」的链路即断在这里。
+       *  非空输入才出（避免与「确认选择」并排时按钮含义含糊）。 */}
       <div className="prompt-shelf__custom">
         <input
           ref={inputRef}
@@ -264,21 +295,17 @@ const AskCard: React.FC<{
             }
           }}
         />
-        {!hasOptions && (
-          <button className="prompt-shelf__submit" onClick={submitCustom} type="button">
-            提交回答
-          </button>
-        )}
       </div>
 
-      {/* 确认（单选/多选同款显式提交——不选中不放行，反悔 = 再点取消选中） */}
-      {hasOptions && selected.size > 0 && (
-        <div className="prompt-shelf__actions">
+      {/* 底部动作区：自定义提交 + 选项确认并列（各自独立，互不遮蔽） */}
+      <div className="prompt-shelf__actions">
+        <SubmitCustomButton inputRef={inputRef} onResolve={onResolve} />
+        {hasOptions && selected.size > 0 && (
           <button className="prompt-shelf__confirm" onClick={confirm} type="button">
             {prompt.multiSelect ? `确认选择 (${selected.size})` : '确认选择'}
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
@@ -612,17 +639,19 @@ export interface PromptShelfHandle {
 // ── Shelf 组件（P2′-2b：直接挂 ChatBeacon 树，Controller 包装已删）──
 // FIFO 队列：同轮多个 ask_user / 权限请求排队展示，不再互相顶掉
 // （旧实现第二个提示会以 null 静默取消第一个 → 模型收到"用户取消"并重复追问，
-//   观感即"点击后卡死"）。每张卡激活时起 5 分钟超时兜底 —
-//   无操作自动按取消解析，从根上防工具 promise 永久挂起。
-
-/** 卡片激活后无操作的最长等待时间 — 超时按取消解析 */
-const CARD_TIMEOUT_MS = 5 * 60 * 1000;
+//   观感即"点击后卡死"）。
+//
+// ⚠ 自动超时已退役（2026-09-16 用户拍板）：「卡片激活 5 分钟无操作按取消解析」
+// 曾用于防工具 promise 永久挂起，但它**会杀掉正在填写的卡**——用户还在组织语言
+// （或排队等前一张卡答完）时超时到点，卡被按 null 静默取消，用户看到的是
+// "我填了/我要填，模型却说用户取消了"。这是「工具 promise 挂起」与
+// 「用户正在作答」之间的取舍，用户裁定：**不自动取消**——宁可等，不许替用户
+// 表达「取消」。真正的兜底在别处（用户停轮次 dismiss / 切工作区全清 /
+// MCP 侧 abort），不再有 5 分钟定时器。
 
 interface QueuedPrompt {
   prompt: PromptData;
   resolve: (v: unknown) => void;
-  /** 激活时启动的超时定时器；未激活的队列项为 null */
-  timer: number | null;
 }
 
 /** 超时默认值 — ask 取消（null），权限按拒绝。 */
@@ -640,32 +669,21 @@ export const PromptShelf = forwardRef<PromptShelfHandle>(function PromptShelf(_p
     answerFnRef.current = fn;
   }, []);
 
-  /** 解析队头并激活下一张。稳定引用 — 超时定时器与卡片点击共用。 */
+  /** 解析队头并激活下一张（自动超时已退役——只由用户动作/取消调用）。 */
   const resolveHead = useCallback((v: unknown) => {
     const head = queueRef.current.shift();
-    if (head) {
-      if (head.timer !== null) window.clearTimeout(head.timer);
-      head.resolve(v);
-    }
-    const next = queueRef.current[0];
-    setActive(next?.prompt ?? null);
-    if (next) {
-      next.timer = window.setTimeout(() => resolveHead(timeoutValue(next.prompt)), CARD_TIMEOUT_MS);
-    }
+    if (head) head.resolve(v);
+    setActive(queueRef.current[0]?.prompt ?? null);
   }, []);
 
   /** 入队；队列原本为空时立即激活队头。 */
   const enqueue = useCallback(
     (prompt: PromptData): Promise<unknown> =>
       new Promise((resolve) => {
-        queueRef.current.push({ prompt, resolve, timer: null });
-        if (queueRef.current.length === 1) {
-          const head = queueRef.current[0];
-          head.timer = window.setTimeout(() => resolveHead(timeoutValue(head.prompt)), CARD_TIMEOUT_MS);
-          setActive(head.prompt);
-        }
+        queueRef.current.push({ prompt, resolve });
+        if (queueRef.current.length === 1) setActive(prompt);
       }),
-    [resolveHead],
+    [],
   );
 
   const showAsk = useCallback(
@@ -690,36 +708,25 @@ export const PromptShelf = forwardRef<PromptShelfHandle>(function PromptShelf(_p
     const q = queueRef.current;
     queueRef.current = [];
     setActive(null);
-    for (const item of q) {
-      if (item.timer !== null) window.clearTimeout(item.timer);
-      item.resolve(timeoutValue(item.prompt));
-    }
+    for (const item of q) item.resolve(timeoutValue(item.prompt));
   }, []);
 
   /** 按归属卷关闭：匹配项按取消解析（含激活卡），其余照常。 */
-  const dismissByOwner = useCallback(
-    (ownerSid: number | null) => {
-      const remains: QueuedPrompt[] = [];
-      const q = queueRef.current;
-      queueRef.current = remains;
-      let activeKilled = false;
-      for (const item of q) {
-        if ((item.prompt.ownerSid ?? null) === ownerSid) {
-          if (item.timer !== null) window.clearTimeout(item.timer);
-          item.resolve(timeoutValue(item.prompt));
-          if (q[0] === item) activeKilled = true;
-        } else {
-          remains.push(item);
-        }
+  const dismissByOwner = useCallback((ownerSid: number | null) => {
+    const remains: QueuedPrompt[] = [];
+    const q = queueRef.current;
+    queueRef.current = remains;
+    let activeKilled = false;
+    for (const item of q) {
+      if ((item.prompt.ownerSid ?? null) === ownerSid) {
+        item.resolve(timeoutValue(item.prompt));
+        if (q[0] === item) activeKilled = true;
+      } else {
+        remains.push(item);
       }
-      if (activeKilled) {
-        const next = remains[0];
-        setActive(next?.prompt ?? null);
-        if (next) next.timer = window.setTimeout(() => resolveHead(timeoutValue(next.prompt)), CARD_TIMEOUT_MS);
-      }
-    },
-    [resolveHead],
-  );
+    }
+    if (activeKilled) setActive(remains[0]?.prompt ?? null);
+  }, []);
 
   /** 主输入作答：架头是提问卡时以 text 作答（单问整卡提交 / 批量填当前页）。 */
   const answerActiveText = useCallback(
