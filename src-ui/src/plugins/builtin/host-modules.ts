@@ -59,6 +59,8 @@ import { useShellStore } from '../../app/shell-store';
 import { WinControls } from '../../app/WinControls';
 import { onTopbarDoubleClick, onTopbarPointerDown } from '../../app/window-drag';
 import { isMockMode, watchFileDragDrop } from '../../bridge';
+// S6 P3b：激活诊断读面（设置面板「组合」节第四栏「被跳过」+ 独占冲突回看）
+import { activationConflict, activationSkipped } from '../../composition/activation';
 import { ContributionChannel } from '../../composition/contribution-channel';
 import { activeOverlayContributions, subscribeOverlayContributions } from '../../composition/overlay-service';
 import { selectPreset } from '../../composition/preset-assembly';
@@ -241,6 +243,9 @@ const faceDeps = {
   compositionDir,
   createPresetFromTemplate,
   rescanPresets,
+  // S6 P3b：激活诊断读面（第四栏「被跳过」= 激活失败的插件 + 原因；独占冲突回看）
+  activationSkipped,
+  activationConflict,
   // paper 域（几何/墨迹/测量/选择/翻译/虚拟化/上下文）
   viewportCenterWorld,
   writingBlockIdOf,

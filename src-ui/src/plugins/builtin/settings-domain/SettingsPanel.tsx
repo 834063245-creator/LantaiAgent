@@ -15,6 +15,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AppSettings, ConnectionProbe, ProviderId } from './host';
 import './settings-panel.css';
 import {
+  activationConflict,
+  activationSkipped,
   autoUpdateCheckEnabled,
   ConfirmDialog,
   canvasWheelMode,
@@ -74,6 +76,16 @@ const SettingsPanelApp: React.FC<{
   const [newPresetFrom, setNewPresetFrom] = useState<'standard' | 'minimal'>('standard');
   const [authoringBusy, setAuthoringBusy] = useState(false);
   const [authoringMsg, setAuthoringMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  // 第四栏「被跳过」（S6 P3b）：激活账是装配期事实（每 Agent 一份账），不进纯解析
+  // 产物（resolved.diagnostics）——随组合/选择变更重取一次（诊断面，非实时面板）。
+  const [activationSkips, setActivationSkips] = useState<ReturnType<typeof activationSkipped>>([]);
+  const [activationConflictInfo, setActivationConflictInfo] = useState<ReturnType<typeof activationConflict>>(null);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: compositionStatus/presetSelected 是刻意的「回看触发器」——激活账写在装配期（本面板只做回看），组合状态或选择一变就重取一次；两者非 effect 体内直接引用值（与 compose-dock 的 settingsTick 同款手法）
+  useEffect(() => {
+    setActivationSkips(activationSkipped());
+    setActivationConflictInfo(activationConflict());
+  }, [compositionStatus, presetSelected]);
 
   // 打开面板取一次组合目录（Rust 侧按需创建——用户第一次就能看到路径）。
   // 失败不阻断面板（作者动作会再试并报错）——「错误不静默」由动作反馈承担。
@@ -573,6 +585,28 @@ const SettingsPanelApp: React.FC<{
                   <div className="sp-hint-sub">
                     seam 裁剪（{compositionDiagnostics.seamCapped.length}）：
                     <code>{compositionDiagnostics.seamCapped.join(', ')}</code>
+                  </div>
+                )}
+                {/* 第四栏「被跳过」（S6 P3b）：「某行不见了」的第四种原因——插件
+                    激活失败（副作用没起来，P3a 起插件可按组合懒激活）。与前三栏
+                    并列但**带原因**（前三栏单因故纯 id 列表；本栏的原因才是处置
+                    依据：端口被占 / 权限被拒 / 依赖服务未起…）。独占冲突也在此
+                    回看（冲突时装配被拒 = fail loud，拒绝后装配者）。 */}
+                {activationSkips.length > 0 && (
+                  <div className="sp-hint-sub">
+                    被跳过的插件（{activationSkips.length}）：
+                    {activationSkips.map((s) => (
+                      <div key={s.id}>
+                        <code>{s.id}</code>——{s.reason}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {activationConflictInfo && (
+                  <div className="sp-hint-sub">
+                    独占资源冲突：<code>{activationConflictInfo.resource}</code> 已被{' '}
+                    <code>{activationConflictInfo.heldBy}</code> 持有——
+                    <code>{activationConflictInfo.rejected}</code> 的装配被拒绝。
                   </div>
                 )}
               </div>

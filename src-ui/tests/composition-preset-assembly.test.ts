@@ -35,7 +35,9 @@ import {
   invalidatePresetCache,
   registerUserPatch,
   resolveCurrentComposition,
+  selectionError,
   selectPreset,
+  sessionSelectionError,
   syncPresetSelectionFromSettings,
 } from '../src/composition/preset-assembly';
 import { builtinPresets, type PresetEntry } from '../src/composition/presets';
@@ -43,6 +45,7 @@ import { factoryComposition, type ResolvedComposition, resolveRoster } from '../
 import { capabilitySegmentsPlugin } from '../src/plugins/builtin/capability-segments';
 import { loadSettings } from '../src/settings';
 import { useCompositionStore } from '../src/state/composition-store';
+import { usePluginStore } from '../src/state/plugin-store';
 import { usePresetStore } from '../src/state/preset-store';
 import { readOnlyTool, scriptedProvider } from './convergence/helpers/fixtures';
 
@@ -494,5 +497,84 @@ describe('S4-1a workspace 会话工厂：会话作用域注册表路径（源码
     // P0（2026-09-14）：窗口 6000→7600（工厂读块再后移）
     const window = src.slice(i, i + 7600);
     expect(window).toContain('compositionOverride,');
+  });
+});
+
+// S6 P3b：组合声明的插件依赖（`requires`）——缺插件 = 组合不可用，**原因具名**。
+// 两段式（用户 2026-09-15 裁定 C）：选择期**拒**（严一档，与 P1c 同尺）+ 解析期
+// 捕获网回退（不抛，原因进 preset-store.error）。生产判据两条：插件名下的存活
+// 工具行，或 plugin-store 里 status='active' 的记录。
+describe('S6 P3b：requires 缺插件的失败面（两段式）', () => {
+  /** 用户 preset 条目（带 requires 声明）。 */
+  const reviewPreset = (requires: string[]): PresetEntry => ({
+    id: 'review',
+    builtin: false,
+    patch: { requires },
+  });
+
+  beforeEach(() => {
+    usePresetStore.setState({ selected: 'standard', roster: builtinPresets(), error: null });
+    usePluginStore.setState({ plugins: [] });
+    invalidatePresetCache();
+    clearUserPatch();
+    useCompositionStore.setState({
+      status: 'factory',
+      patchOrigin: undefined,
+      error: undefined,
+      resolved: factoryComposition(),
+    });
+  });
+
+  it('requires 缺插件 ⇒ selectionError 给出**具名**原因（不是「未知行 id」）', () => {
+    usePresetStore.setState({ roster: [...builtinPresets(), reviewPreset(['hologram/review-domain'])] });
+    const err = selectionError('review');
+    expect(err).toContain('hologram/review-domain');
+    expect(err).toContain('未装载');
+  });
+
+  it('选择期拒：selectPreset 返回 false 且旧选择/设置不动；sessionSelectionError 同拒', () => {
+    usePresetStore.setState({ roster: [...builtinPresets(), reviewPreset(['hologram/review-domain'])] });
+    expect(selectPreset('review')).toBe(false);
+    expect(usePresetStore.getState().selected).toBe('standard'); // 拒绝切换：旧选择不动
+    expect(usePresetStore.getState().error).toContain('hologram/review-domain');
+    expect(sessionSelectionError('review')).toContain('未装载');
+  });
+
+  it('解析期捕获网：effectiveComposition 不抛，回退「只叠用户层」+ 原因可见', () => {
+    usePresetStore.setState({ roster: [...builtinPresets(), reviewPreset(['hologram/review-domain'])] });
+    const comp = effectiveComposition('review'); // 不抛（F1 捕获网语义）
+    expect(comp.activationDecl.requires).toEqual([]); // 回退产物 = 只叠用户层（preset 层未应用）
+    expect(usePresetStore.getState().error).toContain('hologram/review-domain');
+  });
+
+  it('在册判据①：插件名下的存活工具行 ⇒ 依赖满足', async () => {
+    usePresetStore.setState({ roster: [...builtinPresets(), reviewPreset(['hologram/web-domain'])] });
+    await withFirstPartyToolChannel(async () => {
+      expect(selectionError('review')).toBeNull(); // plugin/hologram/web-domain/… 行在册
+    });
+  });
+
+  it('在册判据②：plugin-store 里 status=active 的记录 ⇒ 面板/命令类插件（无工具行）依赖满足', () => {
+    usePresetStore.setState({ roster: [...builtinPresets(), reviewPreset(['acme/notes'])] });
+    expect(selectionError('review')).toContain('acme/notes'); // 未装载
+    usePluginStore.setState({
+      plugins: [{ name: 'acme/notes', manifest: null, status: 'active' }],
+    });
+    expect(selectionError('review')).toBeNull(); // 装载记录在册
+    // 被禁用的插件不算在册（status 非 active）
+    usePluginStore.setState({ plugins: [{ name: 'acme/notes', manifest: null, status: 'disabled' }] });
+    expect(selectionError('review')).toContain('acme/notes');
+  });
+
+  it('零漂移：出厂两轨不声明 requires ⇒ 该判据不求值（热路径零新增开销）', async () => {
+    // standard（空 patch）与 minimal（只寻址行，无 requires 键）——判据在
+    // requires 为空时**直接返回**，不触 factoryComposition() 快照。
+    expect(selectionError('standard')).toBeNull();
+    // minimal 寻址 plugin 行 ⇒ 须在通道腰内解析（既有语义，与 requires 无关）
+    await withFirstPartyToolChannel(() =>
+      withFirstPartyCapabilityChannel(async () => {
+        expect(selectionError('minimal')).toBeNull();
+      }),
+    );
   });
 });

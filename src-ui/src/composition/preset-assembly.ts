@@ -40,6 +40,7 @@
 
 import { loadSettings, saveSettings } from '../settings';
 import { useCompositionStore } from '../state/composition-store';
+import { usePluginStore } from '../state/plugin-store';
 import { usePresetStore } from '../state/preset-store';
 import { onCapabilityContributionsChanged } from './capability-service';
 import { builtinPresetById, type PresetEntry, resolvePresetComposition } from './presets';
@@ -174,16 +175,51 @@ export function resolveCurrentComposition(presetId?: string): ResolvedCompositio
 
 // ── F1 捕获网：校验 + 安全解析 + 错误可见 ──
 
-/** preset 层解析失败原因（null = 可解析）。两类判据：
+/** 组合声明的插件依赖（`requires`）是否满足（S6 P3b）——返回**缺失的插件名**。
+ *
+ *  「在册」判据两条，任一成立即可：
+ *   ① 有该插件名下的**存活工具行**（`plugin/<插件名>/…`）——覆盖工具域插件与
+ *      MCP 桥插件（一 server 一行）；
+ *   ② plugin-store 里有该插件名且 `status === 'active'` 的记录——覆盖只贡献
+ *      面板/命令/prompt 段（没有工具行）的插件。
+ *  两条都查的理由：任何单条都会误判一类插件（① 漏面板类，② 漏「记录尚未落
+ *  store / 外部插件异步装载中」的窗口），而误判的代价是**拒绝一个本来能用的组合**。
+ *  解析域变更时本判据自愈：contributions register/dispose → cache 代数变 →
+ *  下次 selectionError 现读（不缓存结论）。
+ *
+ *  ⚠ 代价纪律：**只在组合真的声明了 `requires` 时才求值**——出厂两轨零声明
+ *  ⇒ 热路径（每卷装配都过 selectionError）零新增开销；`factoryComposition()`
+ *  的快照不是免费读（要遍历全部通道贡献折算行）。 */
+function missingRequiredPlugins(patch: CompositionPatch | null | undefined): string[] {
+  const requires = patch?.requires ?? [];
+  if (requires.length === 0) return [];
+  const rows = factoryComposition().tools;
+  const rowOwned = (name: string) => rows.some((r) => r.id.startsWith('plugin/' + name + '/'));
+  const active = new Set(
+    usePluginStore
+      .getState()
+      .plugins.filter((p) => p.status === 'active')
+      .map((p) => p.name),
+  );
+  return requires.filter((name) => !active.has(name) && !rowOwned(name));
+}
+
+/** preset 层解析失败原因（null = 可解析）。三类判据：
  *  1. 条目存在但本体装载失败（patch === null——YAML/校验错，发现层已标 broken）
  *     → 直接不可用（选中它只会静默回退出厂组合，等于「选了没生效」）；
- *  2. 行 id / 段 id / seam id 不可寻址 → 用真实出厂组合做一次解析才知道
+ *  2. `requires` 声明的插件缺任一（S6 P3b）→ 该组合执行面残缺（行 id 也多半
+ *     已经不可寻址，但报「缺插件 X」比报「未知行 id plugin/X/y」可读得多）；
+ *  3. 行 id / 段 id / seam id 不可寻址 → 用真实出厂组合做一次解析才知道
  *     （发现层只跑 schema，这是判据的唯一所在地）。 */
 export function selectionError(presetId?: string): string | null {
   const id = presetId ?? usePresetStore.getState().selected;
   const entry = findPresetById(id);
   if (entry && entry.patch === null) {
     return entry.error ?? 'preset 不可用（roster.patch.yml 装载失败）';
+  }
+  const missing = missingRequiredPlugins(entry?.patch);
+  if (missing.length > 0) {
+    return '组合「' + id + '」需要插件 ' + missing.join(' / ') + '，但它未装载（未安装，或已在设置 › 插件里被禁用）';
   }
   try {
     resolveCurrentComposition(id);

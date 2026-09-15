@@ -22,9 +22,21 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 38;
+export const OPEN_SURFACE_CONTRACT_VERSION = 39;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v39（2026-09-15）S6 P3b 组合**依赖与独占**声明：`CompositionPatchSchema` 新增
+ *  两个可选顶层键——`requires: [插件名]`（该组合依赖的插件；缺任一 ⇒ 组合不可用，
+ *  原因**具名**：「组合 X 需要插件 Y，但它未装载」——比行 id 写错的报错可读）
+ *  与 `exclusive: [资源实例名]`（该组合要独占的资源，如 `port:9310` / `stdio`）。
+ *  `ResolvedComposition` 新增 `activationDecl`（两键的**纯聚合**，判定不在解析层）；
+ *  `ActivationSpec` 的 `exclusive` 与组合层声明同等参与**装配期冲突检测**——
+ *  同一资源被两个插件声明且都在位 ⇒ 后装配者被拒（fail loud，原因含双方 id），
+ *  拒绝后装配者不留账（整体回滚）。**对外可感知**：用户 preset 可声明依赖与独占，
+ *  失败面从「未知行 id」变成「缺插件 X」；**缺省 = 不写两键 ⇒ 现语义逐字节不变**
+ *  （出厂两轨零声明 ⇒ 该判据在热路径不求值，零新增开销）。诊断第四栏「被跳过」
+ *  （`activationSkipped`：激活失败的插件 + 原因）经设置面板「组合」节呈现 |
+ *  S6-per-agent-composition.md P3b（施工单 WO-S6P3 §2.4-§2.6/§7-B·C·D）
  *  v38（2026-09-15）S6 P3a 插件**激活声明**（登记 ≠ 激活）：manifest 新增可选块
  *  `activation: { lazy?, resources?, exclusive? }`（plugins/types.ts）——`lazy:true`
  *  的插件把副作用启动从 apply 期挪到**组合装配期**（引用计数：首次 start /
@@ -165,7 +177,8 @@ export const OPEN_SURFACE_CONTRACT_FILES: readonly string[] = [
   // seam 裁剪域键，用户手写在 ~/.lantai/composition/presets/<id>/roster.patch.yml）
   'src/composition/roster.ts',
   // 激活账（v38 新增第五个组合层 service；插件面 = apply 期 declare(spec) 的
-  // ActivationSpec 形状，装配面 = retainForComposition/releaseAll）
+  // ActivationSpec 形状，装配面 = retainForComposition/releaseAll；v39 增
+  // exclusive 持有表与冲突检测 + 诊断读面 activationSkipped/activationConflict）
   'src/composition/activation.ts',
   'src/composition/activation-service.ts',
 ];

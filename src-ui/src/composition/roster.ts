@@ -76,6 +76,13 @@ import type { BuiltinToolRow } from './tool-rows';
 
 const idField = z.string().min(1);
 
+/** 插件名（npm scope 风格，最多两段——与 plugins/types.ts 的 PLUGIN_NAME_RE 同形）。
+ *  `requires` 域用它的**窄形态**：写错形状（三段的行 id、带空格的自由文本）在
+ *  patch 解析期就拒——组合声明的依赖必须是插件名，不是行 id。 */
+const PLUGIN_NAME_FIELD = z
+  .string()
+  .regex(/^[a-z0-9-]+(\/[a-z0-9-]+)?$/, 'requires 条目必须是插件名（npm scope 风格，如 hologram/review-domain）');
+
 /** disable-only 域（tools/capabilities/shell）条目：id + disabled 必填
  *  （false = 显式启用，供后层覆盖先层禁用；无操作条目在 schema 层拒绝）。 */
 const DisableEntrySchema = z.strictObject({
@@ -133,6 +140,16 @@ export const CompositionPatchSchema = z.strictObject({
   'seam/shell': z.array(DisableEntrySchema).optional(),
   'seam/sessionPersistence': z.array(DisableEntrySchema).optional(),
   'seam/loopEvents': z.array(DisableEntrySchema).optional(),
+  // ── 激活域（S6 P3b）：组合层对插件的**依赖**与**独占资源**声明。
+  //    requires：本组合依赖的插件名（缺任一 → 组合不可用，原因具名——见
+  //      preset-assembly.selectionError；比「行 id 写错」的报错可读得多）。
+  //    exclusive：本组合要**独占**的资源实例名（`port:9310` / `stdio` /
+  //      `listener:<名>`）——同一时刻只允许一个组合持有，冲突在装配期
+  //      fail loud（拒绝后装配者）。与插件 manifest 的 activation.exclusive
+  //      是两层声明：manifest 说「这个插件要独占什么」，patch 说「本组合要
+  //      独占什么」，冲突检测对两者一视同仁（见 composition/activation.ts）。 ──
+  requires: z.array(PLUGIN_NAME_FIELD).optional(),
+  exclusive: z.array(z.string().min(1)).optional(),
 });
 
 export type CompositionPatch = z.infer<typeof CompositionPatchSchema>;
@@ -189,8 +206,20 @@ export interface ResolvedComposition {
    *  消费视图 = 活动注册表 − 本表（晚注册可见，除非显式禁用）；composition-store
    *  写入口经 applySeamDisabled 灌入运行时（seam-resolution.ts）。 */
   seamDisabled: SeamDisabledMap;
+  /** 激活域声明（S6 P3b）——各层 `requires` / `exclusive` 的**纯聚合**
+   *  （并集 + 保持首现序去重；空层 = 空数组，零漂移）。刻意只收集**声明**、
+   *  不做任何判定：可满足性（插件在不在册）与独占冲突（别的组合是否持有）
+   *  都不是 (factory, layers) 的函数，判定归 composition/activation.ts 的
+   *  plan 层与 preset-assembly 的校验面（本函数保持纯函数）。 */
+  activationDecl: ActivationDeclaration;
   /** 终态诊断（信息性，供 store/UI 呈现）：禁用行 / 被覆盖段 / 插入段 id。 */
   diagnostics: CompositionDiagnostics;
+}
+
+/** 激活域声明聚合（CompositionPatchSchema 的 `requires` / `exclusive` 并集）。 */
+export interface ActivationDeclaration {
+  requires: string[];
+  exclusive: string[];
 }
 
 /** 终态诊断（信息性，供 store/UI 呈现）：按**原因分栏**——「某行不见了」有
@@ -248,6 +277,7 @@ export function factoryComposition(): ResolvedComposition {
       loopEvents: LOOP_EVENT_NAMES.map((id) => ({ id })),
     },
     seamDisabled: EMPTY_SEAM_DISABLED,
+    activationDecl: { requires: [], exclusive: [] },
     diagnostics: { unselected: [], disabled: [], seamCapped: [], overridden: [], inserted: [] },
   };
 }
@@ -367,8 +397,17 @@ export function resolveRoster(factory: FactoryComposition, layers: CompositionPa
 
   const overriddenIds: string[] = [];
   const insertedIds: string[] = [];
+  // 激活域声明聚合（S6 P3b）：纯收集——并集 + 首现序去重（判定归 activation 层）。
+  const requiresDecl: string[] = [];
+  const exclusiveDecl: string[] = [];
 
   for (const layer of layers) {
+    for (const plugin of layer.requires ?? []) {
+      if (!requiresDecl.includes(plugin)) requiresDecl.push(plugin);
+    }
+    for (const resource of layer.exclusive ?? []) {
+      if (!exclusiveDecl.includes(resource)) exclusiveDecl.push(resource);
+    }
     for (const entry of layer.tools ?? []) {
       applyDisable(tools, entry.id, entry.disabled, 'tools');
     }
@@ -464,6 +503,7 @@ export function resolveRoster(factory: FactoryComposition, layers: CompositionPa
     shell: finish(shell),
     seams: seamResolved,
     seamDisabled: seamDisabledOut,
+    activationDecl: { requires: requiresDecl, exclusive: exclusiveDecl },
     diagnostics: {
       unselected: unselectedIds,
       disabled: disabledIds,

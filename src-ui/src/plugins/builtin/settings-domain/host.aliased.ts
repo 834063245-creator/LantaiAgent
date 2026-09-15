@@ -39,6 +39,9 @@ export const selectPreset = impl.selectPreset;
 export const compositionDir = impl.compositionDir;
 export const createPresetFromTemplate = impl.createPresetFromTemplate;
 export const rescanPresets = impl.rescanPresets;
+// S6 P3b：激活诊断读面（设置面板「组合」节第四栏）
+export const activationConflict = impl.activationConflict;
+export const activationSkipped = impl.activationSkipped;
 export const setLang = impl.setLang;
 export const typedJsonRpc = impl.typedJsonRpc;
 export const autoUpdateCheckEnabled = impl.autoUpdateCheckEnabled;

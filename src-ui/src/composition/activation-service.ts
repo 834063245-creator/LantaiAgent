@@ -18,12 +18,17 @@
 import type { Context } from '../cordis';
 import { Service } from '../cordis';
 import {
+  type ActivationConflict,
   type ActivationHandle,
+  type ActivationSkip,
   type ActivationSpec,
   type ActivationState,
+  activationClaims,
+  activationConflict,
   activationDeclared,
   activationFailure,
   activationPlan,
+  activationSkipped,
   activationStates,
   type CompositionActivationInput,
   declareActivation,
@@ -58,15 +63,25 @@ export class ActivationService extends Service {
   }
 
   /** 装配期记账：按组合激活（首次 → `start()`）。返回句柄数组——**调用方负责
-   *  挂 ctx.effect 释放**（缺省 = 泄漏面）。未声明插件 ⇒ 空数组（no-op）。 */
+   *  挂 ctx.effect 释放**（缺省 = 泄漏面）。未声明插件 ⇒ 空数组（no-op）。
+   *
+   *  **独占冲突 = 装配期 fail loud**（S6 P3b）：任一插件要的独占资源已被别的
+   *  插件持有 ⇒ 本次记账**整体回滚**（已 retain 的先释放）后抛错——拒绝后装配者，
+   *  先装配者不受影响（设计件 §3.5：冲突不在运行时静默降级）。 */
   async retainForComposition(
     comp: CompositionActivationInput | null | undefined,
     holder: string,
   ): Promise<ActivationHandle[]> {
     const handles: ActivationHandle[] = [];
-    for (const plugin of activationPlan(comp)) {
-      const h = await retainActivation(plugin, holder);
-      if (h) handles.push(h);
+    const exclusive = comp?.activationDecl?.exclusive ?? [];
+    try {
+      for (const plugin of activationPlan(comp)) {
+        const h = await retainActivation(plugin, holder, exclusive);
+        if (h) handles.push(h);
+      }
+    } catch (e) {
+      await releaseActivations(handles); // 回滚本次已记账的部分（不泄漏句柄）
+      throw e;
     }
     return handles;
   }
@@ -84,6 +99,21 @@ export class ActivationService extends Service {
   /** 某插件上一次激活失败原因。 */
   failureOf(plugin: string): string | null {
     return activationFailure(plugin);
+  }
+
+  /** 诊断第四栏「被跳过」读面（S6 P3b）：激活失败 → 副作用未起的插件 + 原因。 */
+  skipped(): ActivationSkip[] {
+    return activationSkipped();
+  }
+
+  /** 上一次独占资源冲突（null = 无）。 */
+  conflict(): ActivationConflict | null {
+    return activationConflict();
+  }
+
+  /** 当前被持有的独占资源（资源名 → 持有它的插件）。 */
+  heldExclusive(): Array<{ resource: string; plugin: string }> {
+    return activationClaims();
   }
 }
 

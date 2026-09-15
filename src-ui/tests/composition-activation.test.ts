@@ -19,6 +19,8 @@ import { AgentRuntime } from '../src/agent/runtime/runtime';
 import { ToolRegistry } from '../src/agent/tool';
 import type { SubAgentSpawner } from '../src/agent/tools/subagent';
 import {
+  activationClaims,
+  activationConflict,
   activationFailure,
   activationPlan,
   activationStates,
@@ -56,6 +58,7 @@ function compositionWithRows(ids: string[]): ResolvedComposition {
     shell: [],
     seams: { llm: [], subagents: [], fs: [], shell: [], sessionPersistence: [], loopEvents: [] },
     seamDisabled: EMPTY_SEAM_DISABLED,
+    activationDecl: { requires: [], exclusive: [] },
     diagnostics: { unselected: [], disabled: [], seamCapped: [], overridden: [], inserted: [] },
   };
 }
@@ -207,6 +210,122 @@ describe('② 服务面（ctx.activation 挂组合层插件）', () => {
     expect(root.activation.states().map((s) => s.holders)).toEqual([1]);
     await root.activation.releaseAll(handles);
     expect(log).toEqual(['start:probe', 'stop:probe']);
+    await fiber.dispose();
+  });
+});
+
+describe('④ requires 显式来源与 exclusive 冲突（S6 P3b）', () => {
+  /** 带 requires / exclusive 声明的组合桩。 */
+  function compWith(ids: string[], decl: { requires?: string[]; exclusive?: string[] }): ResolvedComposition {
+    return {
+      ...compositionWithRows(ids),
+      activationDecl: { requires: decl.requires ?? [], exclusive: decl.exclusive ?? [] },
+    };
+  }
+
+  it('requires 是显式激活来源：没有工具行也照样激活（面板/命令类插件）', async () => {
+    const log: string[] = [];
+    declareActivation('acme/notes', probeSpec(log));
+    // 组合里没有 plugin/acme/notes/… 行——靠 requires 声明激活
+    const comp = compWith(['plugin/hologram/web-domain/web_search'], { requires: ['acme/notes'] });
+    expect(activationPlan(comp)).toEqual(['acme/notes']);
+    const handle = await retainActivation('acme/notes', 'a1');
+    expect(log).toEqual(['start:probe']);
+    await releaseActivation(handle);
+  });
+
+  it('requires 里未声明激活的插件不进激活集（没有副作用可起）', () => {
+    declareActivation('acme/notes', probeSpec([]));
+    const comp = compWith([], { requires: ['hologram/review-domain'] });
+    expect(activationPlan(comp)).toEqual([]);
+  });
+
+  it('exclusive 冲突：同一资源被两个插件声明 ⇒ 后装配者被拒 + 原因含双方 id', async () => {
+    const log: string[] = [];
+    declareActivation('acme/a', { ...probeSpec(log, 'a'), exclusive: ['port:9310'] });
+    declareActivation('acme/b', { ...probeSpec(log, 'b'), exclusive: ['port:9310'] });
+    const holds = await retainActivation('acme/a', 'agent-1');
+    expect(log).toEqual(['start:a']);
+
+    await expect(retainActivation('acme/b', 'agent-2')).rejects.toThrow('独占资源冲突');
+    // 拒绝后装配者：B 未启动、未留账
+    expect(log).toEqual(['start:a']);
+    expect(activationStates().map((s) => s.plugin)).toEqual(['acme/a']);
+    const conflict = activationConflict();
+    expect(conflict?.resource).toBe('port:9310');
+    expect(conflict?.heldBy).toBe('acme/a');
+    expect(conflict?.rejected).toBe('acme/b');
+    // 先装配者不受影响
+    expect(activationClaims()).toEqual([{ resource: 'port:9310', plugin: 'acme/a' }]);
+
+    // 释放 A ⇒ 资源回到自由态，B 可再装配
+    await releaseActivation(holds);
+    expect(activationClaims()).toEqual([]);
+    const hb = await retainActivation('acme/b', 'agent-2');
+    expect(hb?.ok).toBe(true);
+    expect(log).toEqual(['start:a', 'stop:a', 'start:b']);
+    await releaseActivation(hb);
+  });
+
+  it('组合层 exclusive 声明同等参与冲突；同一插件重复 retain 不冲突', async () => {
+    declareActivation('acme/a', probeSpec([]));
+    const h1 = await retainActivation('acme/a', 'agent-1', ['stdio']);
+    expect(activationClaims()).toEqual([{ resource: 'stdio', plugin: 'acme/a' }]);
+    // 同一插件的第二卷：不是冲突（持有者本身）
+    const h2 = await retainActivation('acme/a', 'agent-2', ['stdio']);
+    expect(activationStates()).toEqual([{ plugin: 'acme/a', holders: 2, started: true, failure: null }]);
+    await releaseActivation(h1);
+    expect(activationClaims()).toEqual([{ resource: 'stdio', plugin: 'acme/a' }]); // 仍有持有者 ⇒ 不释放资源
+    await releaseActivation(h2);
+    expect(activationClaims()).toEqual([]);
+  });
+
+  it('retainForComposition 冲突 ⇒ 整体回滚后抛错（不留半份记账）', async () => {
+    const log: string[] = [];
+    declareActivation('acme/a', probeSpec(log, 'a'));
+    declareActivation('acme/b', { ...probeSpec(log, 'b'), exclusive: ['port:9310'] });
+    declareActivation('acme/c', { ...probeSpec(log, 'c'), exclusive: ['port:9310'] });
+
+    const root = new Context();
+    const fiber = root.plugin(compositionServicesPlugin);
+    await fiber;
+    // 先用 C 占住资源
+    const seeded = await root.activation.retainForComposition(
+      compWith(['plugin/acme/c/tool'], { exclusive: ['port:9310'] }),
+      'seeded',
+    );
+    expect(log).toContain('start:c');
+
+    // A（无冲突、声明序在前）先被 retain，随后 B 撞冲突 ⇒ 整批回滚
+    await expect(
+      root.activation.retainForComposition(compWith(['plugin/acme/a/tool', 'plugin/acme/b/tool'], {}), 'agent-x'),
+    ).rejects.toThrow('独占资源冲突');
+    expect(log).toContain('start:a');
+    expect(log).toContain('stop:a'); // 回滚：A 的记账被释放
+    expect(root.activation.states().map((s) => s.plugin)).toEqual(['acme/c']);
+
+    await root.activation.releaseAll(seeded);
+    await fiber.dispose();
+  });
+
+  it('第四栏读面：skipped = 激活失败的插件 + 原因（start 抛错）', async () => {
+    declareActivation('acme/ok', probeSpec([]));
+    declareActivation('acme/bad', {
+      start: () => {
+        throw new Error('端口被占');
+      },
+    });
+    const root = new Context();
+    const fiber = root.plugin(compositionServicesPlugin);
+    await fiber;
+    await root.activation.retainForComposition(
+      compWith(['plugin/acme/ok/tool', 'plugin/acme/bad/tool'], {}),
+      'agent-1',
+    );
+    const skipped = root.activation.skipped();
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]?.id).toBe('acme/bad');
+    expect(skipped[0]?.reason).toContain('端口被占');
     await fiber.dispose();
   });
 });

@@ -12,6 +12,8 @@ export { McpPage } from '../../../app/panels/settings/McpPage';
 export { PluginsPage } from '../../../app/panels/settings/PluginsPage';
 export { ProviderPage } from '../../../app/panels/settings/ProviderPage';
 export { SkillsPage } from '../../../app/panels/settings/SkillsPage';
+// S6 P3b：激活诊断读面（设置面板「组合」节第四栏「被跳过」+ 独占冲突回看）
+export { activationConflict, activationSkipped } from '../../../composition/activation';
 export { selectPreset } from '../../../composition/preset-assembly';
 export { compositionDir, createPresetFromTemplate, rescanPresets } from '../../../composition/preset-authoring';
 export { setLang } from '../../../i18n';

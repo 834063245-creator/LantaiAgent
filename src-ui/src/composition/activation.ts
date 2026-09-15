@@ -75,9 +75,14 @@ export interface ActivationState {
   failure: string | null;
 }
 
-/** 组合里参与激活判定的最小形状（存活的工具行 id 清单——ResolvedComposition 的结构子集）。 */
+/** 组合里参与激活判定的最小形状：
+ *  - `tools`：存活的工具行 id 清单（隐含属主来源——ResolvedComposition 的结构子集）；
+ *  - `activationDecl`：组合层的 `requires` / `exclusive` 声明（S6 P3b）——
+ *    `requires` 是**显式**激活来源（只贡献面板/命令、没有工具行的插件靠它声明），
+ *    `exclusive` 是组合自己声明的独占资源（与插件 spec.exclusive 同等参与冲突检测）。 */
 export interface CompositionActivationInput {
   tools: readonly { id: string }[];
+  activationDecl?: { requires?: readonly string[]; exclusive?: readonly string[] } | null;
 }
 
 interface LedgerEntry {
@@ -86,6 +91,25 @@ interface LedgerEntry {
   /** 在途的首次 start（并发 retain 共享同一份，不重复启动）。 */
   starting: Promise<void> | null;
   failure: string | null;
+  /** 本插件当前持有的独占资源实例名（归零时释放）。 */
+  claims: string[];
+}
+
+/** 被跳过的条目（诊断第四栏的生产者：插件激活失败——副作用没起来）。 */
+export interface ActivationSkip {
+  /** 被跳过的对象 id——这里 = 插件名（它的行面可能因此不可用）。 */
+  id: string;
+  reason: string;
+}
+
+/** 独占资源冲突记录（拒绝后装配者的原因；留档供诊断面回看）。 */
+export interface ActivationConflict {
+  resource: string;
+  /** 已持有该资源的插件。 */
+  heldBy: string;
+  /** 本次被拒绝的插件（后装配者）。 */
+  rejected: string;
+  reason: string;
 }
 
 // ── 声明表（键 = 插件名） ──
@@ -95,6 +119,13 @@ const declarations = new Map<string, ActivationSpec>();
 // ── 账（键 = 插件名；归零即删——不留零计数空账） ──
 
 const ledger = new Map<string, LedgerEntry>();
+
+// ── 独占资源持有表（键 = 资源实例名 → 持有它的插件） ──
+
+const claims = new Map<string, string>();
+
+/** 上一次独占冲突（null = 无）。 */
+let lastConflict: ActivationConflict | null = null;
 
 function errText(e: unknown): string {
   return e instanceof Error ? e.name + ': ' + e.message : String(e);
@@ -154,35 +185,73 @@ export function activationDeclared(plugin: string): boolean {
   return declarations.has(plugin);
 }
 
-/** 本组合要激活的插件（声明在册 且 组合里有它的存活工具行）。
+/** 本组合要激活的插件 = **声明在册** ∩（组合里有它的存活工具行 ∪ 组合显式 `requires` 它）。
  *
- *  判定 = 行 id 前缀 `plugin/<插件名>/`（行 id 由 composition/plugin-tool-rows
+ *  隐含来源判定 = 行 id 前缀 `plugin/<插件名>/`（行 id 由 composition/plugin-tool-rows
  *  折算；贡献 id 约定 `<插件名>/<行名>` ⇒ 行 id 恒有第三段，前缀含尾斜杠故
  *  不会把 `hologram/web` 与 `hologram/web-domain` 判混）。
+ *  显式来源（S6 P3b）= 组合层 `requires`——只贡献面板/命令（无工具行）的插件
+ *  只能靠它声明，这是本层的诚实边界（不为它建第二条索引）。
  *
- *  纯读、不 mutate；无声明插件 ⇒ 空集（零漂移：出厂 43 插件今天零声明）。 */
+ *  纯读、不 mutate；无声明插件 ⇒ 空集（零漂移：出厂 43 插件今天零声明）。
+ *  `requires` 里**未声明激活**的插件不进激活集（没有副作用可起；它的可满足性
+ *  由 preset-assembly.selectionError 判定——两件事分开）。 */
 export function activationPlan(comp: CompositionActivationInput | null | undefined): string[] {
   if (!comp || declarations.size === 0) return [];
   const ids = comp.tools.map((r) => r.id);
+  const required = new Set(comp.activationDecl?.requires ?? []);
   const out: string[] = [];
   for (const plugin of declarations.keys()) {
     const prefix = 'plugin/' + plugin + '/';
-    if (ids.some((id) => id.startsWith(prefix))) out.push(plugin);
+    if (ids.some((id) => id.startsWith(prefix)) || required.has(plugin)) out.push(plugin);
   }
   return out;
 }
+
+/** 本组合声明的独占资源（组合层 `exclusive`）由装配面（ctx.activation 的
+ *  retainForComposition）取出并随 retain 传入本模块——与插件 spec.exclusive
+ *  并集后参与持有表（同一个资源被两处声明 = 同一份约束，不重复登记）。 */
 
 /** 激活某插件（引用计数 ++）。未声明 ⇒ null（**no-op**——kill switch 语义）；
  *  首次激活 ⇒ `await start()`；start 抛错 ⇒ 记账可见（failure）且**不抛**给
  *  装配面（P3b 据此跳过行，装配本身不因一个插件起不来而整链失败）。
  *  并发首次激活共享同一份在途 start（不重复启动副作用）。 */
-export async function retainActivation(plugin: string, holder: string): Promise<ActivationHandle | null> {
+export async function retainActivation(
+  plugin: string,
+  holder: string,
+  extraExclusive: readonly string[] = [],
+): Promise<ActivationHandle | null> {
   const spec = declarations.get(plugin);
   if (!spec) return null;
+  // 独占资源冲突（S6 P3b）：同一资源实例同一时刻只允许一个插件持有——
+  // 冲突发生在**装配期**（fail loud，拒绝后装配者），不在运行时静默降级。
+  // 同一插件重复 retain（多卷）不构成冲突（它就是持有者本身）。
+  // ⚠ 冲突检查必须在**建账之前**：被拒绝的插件不得留下任何账目（连零计数
+  // 空账也不行——否则诊断面会把它当成「在场的插件」，且它是装配被拒者）。
+  const exclusive = [...new Set([...(spec.exclusive ?? []), ...extraExclusive])];
+  for (const resource of exclusive) {
+    const heldBy = claims.get(resource);
+    if (heldBy !== undefined && heldBy !== plugin) {
+      const reason =
+        '独占资源冲突：「' +
+        resource +
+        '」已被插件 ' +
+        heldBy +
+        ' 持有，插件 ' +
+        plugin +
+        ' 不能同时持有（两个组合都在位——关掉其中一个，或把资源声明改成可共享）';
+      lastConflict = { resource, heldBy, rejected: plugin, reason };
+      throw new Error('[activation] ' + reason);
+    }
+  }
   let entry = ledger.get(plugin);
   if (!entry) {
-    entry = { holders: new Set(), started: false, starting: null, failure: null };
+    entry = { holders: new Set(), started: false, starting: null, failure: null, claims: [] };
     ledger.set(plugin, entry);
+  }
+  for (const resource of exclusive) {
+    claims.set(resource, plugin);
+    if (!entry.claims.includes(resource)) entry.claims.push(resource);
   }
   entry.holders.add(holder);
   if (!entry.started) {
@@ -218,6 +287,10 @@ export async function releaseActivation(handle: ActivationHandle | null | undefi
   if (entry.holders.size > 0) return;
   const spec = declarations.get(handle.plugin);
   ledger.delete(handle.plugin);
+  // 归零 ⇒ 独占资源释放（只释放仍归自己的那些：别的插件可能已接手同名声明的重登记路径）
+  for (const resource of entry.claims) {
+    if (claims.get(resource) === handle.plugin) claims.delete(resource);
+  }
   if (entry.started && spec?.stop) {
     try {
       await spec.stop();
@@ -250,8 +323,31 @@ export function activationFailure(plugin: string): string | null {
   return ledger.get(plugin)?.failure ?? null;
 }
 
+/** 诊断第四栏的读面（S6 P3b）：**被跳过的插件**（激活失败——副作用没起来）。
+ *  这是「某行不见了」的第四种原因（前三：未选中 / 被禁用 / seam 裁剪），
+ *  与它们处置动作相同（去设置›插件处理），故与前三栏并列呈现、但**带原因**
+ *  （前三栏是单因纯 id 列表，第四栏三因同栏，纯 id 会让「原因可见」落空）。 */
+export function activationSkipped(): ActivationSkip[] {
+  return [...ledger.entries()]
+    .filter(([, e]) => e.failure !== null)
+    .map(([plugin, e]) => ({ id: plugin, reason: e.failure as string }));
+}
+
+/** 上一次独占资源冲突（null = 无）——冲突时装配被拒（fail loud），本记录
+ *  让「拒了谁、因为谁」在诊断面可回看。 */
+export function activationConflict(): ActivationConflict | null {
+  return lastConflict;
+}
+
+/** 当前被持有的独占资源（诊断/测试面：资源名 → 持有它的插件）。 */
+export function activationClaims(): Array<{ resource: string; plugin: string }> {
+  return [...claims.entries()].map(([resource, plugin]) => ({ resource, plugin }));
+}
+
 /** 测试隔离辅助——清空声明表与账（生产代码禁用；vitest 同 worker 模块态跨用例共享）。 */
 export function clearActivationsForTest(): void {
   declarations.clear();
   ledger.clear();
+  claims.clear();
+  lastConflict = null;
 }

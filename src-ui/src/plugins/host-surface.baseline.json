@@ -1,5 +1,5 @@
 {
-  "fingerprint": "b4f61d2e",
+  "fingerprint": "592c75f8",
   "keys": [
     "ANCHOR",
     "CORDIS_TOOL_NAMES",
@@ -29,6 +29,8 @@
     "SkillsPage",
     "USER_SHRINK_MIN_W",
     "WinControls",
+    "activationConflict",
+    "activationSkipped",
     "activeOverlayContributions",
     "activeSpace",
     "agentSessionState",

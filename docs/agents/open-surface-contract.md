@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：38
+当前版本：39
 
-<!-- contract-fingerprint: 7ea458c7b035ea3ca8b3b7b2d5a2ebc9b81029869915efe7e6e1a253662409b5 -->
+<!-- contract-fingerprint: dafd4a833049effd2b30a6ca0ac228e5fe9afb3f6187106863b6aae239746ac4 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -87,6 +87,8 @@
 | 37 | 2026-09-15 | **S6 P2b llm seam 装配期值注入**：`activeLlmAdapters(view?)` 收可选 view；`CreateProviderOptions` 新增可选 `seamView`——`createProvider` 的方言解析按它裁剪 `seam/llm`。**对外可感知**：同一份 settings，两卷可落不同 adapter（会话工厂与两条热切换路径按**该卷自己组合**的裁剪面构建 provider；热切换路径尤其必要——否则切一次模型就把卷级 seam 面退回全局，与装配面不自洽）。**缺省 = 全局当前选择** ⇒ 无组合上下文的构建点（设置面板连通性测试 / 翻译压缩旁路 / 第三方自测）行为逐字不变；工作区默认 provider（`_buildProvider`）**有意不传**——它的组合上下文就是工作区装配组合，而后者已由 `composition-store` 灌成全局当前选择 | S6-per-agent-composition.md P2b（施工单 §2 消费点 4；用户裁定 F 的第二笔） |
 
 | 38 | 2026-09-15 | **S6 P3a 插件激活声明（登记 ≠ 激活）**：manifest 新增可选块 `activation: { lazy?, resources?, exclusive? }`——`lazy: true` 的插件把副作用启动从 apply 期挪到**组合装配期**（引用计数：首次 `start` / 归零 `stop`）；`lazy: true` 与 `mcpServers[].lifecycle="eager"` **互斥**（manifest 级 refine，装载期拒载——那正是「apply 期起进程」，本版要封的口）；`lazy: true` 但 apply 未登记激活回调 = 装载失败记录（「声明了开关却没接线」，不静默放过）。同版新增**第五个组合层 service** `ctx.activation`（`declare` / `planFor` / `retainForComposition` / `releaseAll` / `states`；账本体在叶模块 `composition/activation.ts`）与装配期记账点（`AgentRuntime._assembleAgent` 的 retain + `ctx.effect` 对称释放 ⇒ Agent dispose / 切组合即归零 → `stop`）。**对外可感知**：插件可声明资源型副作用并拿到**按组合**的生命周期（两个组合各有该插件 ⇒ 只启动一次、计数 2；全关 ⇒ 停一次）。**缺省 = 无 `activation` 块 ⇒ P3 前语义（登记即激活）逐字节不变**（kill switch，设计件 §5）——出厂 43 插件今天零声明 ⇒ convergence 双轨快照零漂移是**构造性**结论。**本版起契约面口径统一**：用户 preset 写法契约 `composition/roster.ts` 一并补登记（此前靠「文件不在清单里」逃过指纹） | S6-per-agent-composition.md P3a（施工单 `WO-S6P3-plugin-activation.md` §2/§7 用户裁定：A 新增 ctx.activation 挂既有组合层 service；F 补登记 roster.ts 与新服务文件） |
+
+| 39 | 2026-09-15 | **S6 P3b 组合依赖（`requires`）与独占（`exclusive`）声明**：`CompositionPatchSchema`（用户 preset 写法）新增两个可选顶层键——`requires: [插件名]`（缺任一 ⇒ 组合不可用：选择期**拒**并给**具名**原因「组合「review」需要插件 hologram/review-domain，但它未装载」；解析期捕获网照旧回退用户层 + 原因可见，不抛）与 `exclusive: [资源实例名]`（`port:9310` / `stdio` / `listener:<名>`）。`ActivationSpec.exclusive` 与组合层声明同等参与**装配期冲突检测**：同一资源被两个插件声明且都在位 ⇒ 后装配者被拒（fail loud、原因含双方 id），且**拒绝后装配者不留账**（本次已 retain 的部分整体回滚）；先装配者不受影响，释放后资源回到自由态。诊断面增**第四栏**「被跳过」（`activationSkipped`：激活失败的插件 + 原因）与冲突回看（`activationConflict`），经设置面板「组合」节呈现——「某行不见了」从此四种原因可分（未选中 / 被禁用 / seam 裁剪 / 被跳过）。**对外可感知**：用户 preset 能声明依赖与独占，失败面从「未知行 id: plugin/X/y」变为「缺插件 X」；**缺省 = 不写两键 ⇒ 现语义逐字节不变**（出厂两轨零声明 ⇒ 判据在 `requires` 为空时直接返回，热路径零新增开销 ⇒ conv 双轨零漂移是构造性结论） | S6-per-agent-composition.md P3b（施工单 `WO-S6P3-plugin-activation.md` §2.4-§2.6；用户裁定 B 闭集 / C 两段式 / D 一栏带原因） |
 
 ## 变更流程（guard 红 → 修复四步）
 
