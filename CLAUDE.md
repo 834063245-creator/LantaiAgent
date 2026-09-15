@@ -51,7 +51,7 @@
 ## 硬约束
 
 - **四条架构约定**（最高）：类型边界 / 单一权威源 / 异步纪律 / 错误不静默。详见 `docs/adr/project-constitution.md`；新代码违反即返工。
-- **前端**：React 19 + Zustand 5。跨组件业务状态走 zustand store（面板级走 `createScopedStore` 注册表）；事件总线已归零（`ui/events.ts` 已删除，禁复活——不要 window.dispatchEvent / CustomEvent / 自建 EventEmitter）。分层终态：store 一律 `src/state/`、`src/scene/` 仅存星图类型模块 graph-types.ts（C13 sweep：Three.js 渲染面已删，StarGraph 为兼容形状）、`src/ui/` 残余 = chat 编排域核心 + 旧层命令式基础设施（见 `src/ui/README.md`）；新组件落 `src/app/**`。聊天消息原地 mutate 后必须 `touchMessage` / `touchMessageContaining`。
+- **前端**：React 19 + Zustand 5。跨组件业务状态走 zustand store（面板级走 `createScopedStore` 注册表）；事件总线已归零（`ui/events.ts` 已删除，禁复活——不要 window.dispatchEvent / CustomEvent / 自建 EventEmitter）。分层终态：store 一律 `src/state/`；`src/scene/` 目录已随图谱多轮 sweep **整个删除**（类型面同亡——别再引用 `graph-types.ts`）；`src/ui/` 残余 = chat 编排域核心 + 旧层命令式基础设施（见 `src/ui/README.md`）；新组件落 `src/app/**`。聊天消息原地 mutate 后必须 `touchMessage` / `touchMessageContaining`。
 - **token 计量**：真源 = `agent/token-meter/`（分桶代数 `usage.ts` / 构成测量 `estimate.ts` / 每卷账本 `SessionTokenMeter`）+ Agent 侧每卷一本账（`getTokenStats / snapshotTokenLedger / restoreTokenLedger` 是句柄上的**能力位**——不实现 = 无读数，不炸链路）；录入点唯一 = `Agent.streamOnce`，落盘 = 卷文件 `tokens` 字段（旧卷无此字段 = 从空开始）。**口径纪律（沿 DSH token-meter，禁漂移）**：① 输入四桶互不重叠且加总恒等于提供方 `prompt_tokens`；② 压力只算 prompt 侧；③ 占用 = 投影（夹零）；④ 构成是估算不是账单（与压缩预检共用 `token-counter.ts` 同一把尺子）；⑤ 缓存命中率部分命中绝不四舍五入成 100%。UI 面契约见 `docs/design/lantai-design-spec.md` §9.1。
 - **RPC**：前端调后端一律 `typedRpc` / `typedListen`（`src-ui/src/rpc-contract.ts`）；参数键 snake_case。新增后端方法同步 `src-tauri/src/rpc.rs` + `RpcContract`，生成文档用 `scripts/gen-rpc-contract-md.cjs`。受权文件之外裸 `rpc` 会被 biome 拦截。
 - **工具**：模型工具必须 `defineTool` + zod v4；领域动作变更同步 `DOMAIN_SPECS` / 测试（`collectHiddenToolNames()` 已派生自 `DOMAIN_SPECS`，不必手工登记）。禁止手写 schema、execute 里 `as` 强拆、用 `.strict()`。
@@ -62,7 +62,7 @@
 - **第一方插件清单与新增出厂产物**：身份单一真源 = `plugins/first-party-manifest.ts`（`service` 内核不可禁 / `feature` 出厂产物可禁用；**计数见 `docs/facts.generated.md`**）；出厂产物真源 = `plugins/builtin/<name>/` + `plugins/builtin-roster.json`（磁盘通道装载，改插件 = 换产物不重编译 exe）。**新增出厂产物 = ①目录建 `index.ts` ②`builtin-roster.json` 加条目（唯一真源；产物 manifest 由 `build-builtin-plugins.mjs` 生成，不手写）③插件对象进出厂装配面**（直接 import 的产物在 `factory-products.ts` 加行；工具/prompt/capability 域产物只进各自通道清单）——构建脚本与 Rust 资产通道都不用动。守护：`tests/first-party-manifest.test.ts` + `tests/builtin-roster.test.ts`。细则 `PLUGINS.md`。
 - **Rust**：生产代码零裸 `.unwrap()`（测试模块除外）。锁中毒用 `lock_or_recover` / `read_or_recover` / `write_or_recover`（src-tauri），engine 用 `unwrap_or_else(|e| e.into_inner())`。失败必须可见，写入/持久化错误不得静默吞。
 - **Windows 路径**：拆 `location` 的 `文件:行` 只拆最后一个冒号（`rsplit_once(':')`），不要吃掉 drive letter。
-- **不改的**：`graph-layout.ts` / `gpu-layout.ts` 的布局参数、`.github/workflows/ci.yml`、Python 引擎路径（已退役，不要恢复）。壳层不得直连 `hologram-storage` / `hologram-vector` 门面、**不得重新引入 hologram-engine 依赖**（引擎唯一消费面 = `engine_transport` 的 stdio MCP 子进程；守卫测试钉死）。不要把与任务无关的未提交改动混进 commit——用户/他窗的在途改动单独确认。
+- **不改的**：`graph-layout.ts` / `gpu-layout.ts` 的布局参数、`.github/workflows/ci.yml`、Python 引擎路径（已退役，不要恢复）。壳层不得直连 `hologram-storage` / `hologram-vector` 门面、**不得重新引入 hologram-engine 依赖**（守卫测试 `shell_has_zero_hologram_crate_refs` 钉死）；**壳也不拉起引擎**（`engine_transport.rs` 已随图谱退役删除）——引擎由前端经 MCP 受治进程通道拉起（`plugins/bundled-engine.ts` → `mcp-bridge.ts` 的 ServerGovernor → Rust `protocol_bridge` stdio），壳对引擎的全部知识 = 二进制位置只读探测（`engine_assets.rs`）+ MCP 协议。不要把与任务无关的未提交改动混进 commit——用户/他窗的在途改动单独确认。
 - **产品输出纪律**：应用的程序层只呈现数据，不替用户推断 bug 根因/解释因果。这条限制的是你写进产品 UI/工具输出的内容；你排查问题时照常推理，结论写在回复/计划/代码注释里。
 
 ## 验证门禁（不过不交付、不 commit）
@@ -83,6 +83,6 @@
 
 ## 项目快照
 
-- **定位**：兰台（Lantai）= 以「纸壳·注疏案卷」为唯一主界面的桌面 Agent 软件（Tauri 2 壳 + TypeScript/React 19 前端）。**HoloGram 代码图谱引擎是随包配套的独立进程与独立产品面**（每工作区一个 `engine serve` 子进程，stdio MCP），不再是应用内的主叙事。
+- **定位**：兰台（Lantai）= 以「纸壳·注疏案卷」为唯一主界面的桌面 Agent 软件（Tauri 2 壳 + TypeScript/React 19 前端）。**HoloGram 代码图谱引擎是随包配套的独立进程与独立产品面**（`engine serve`，stdio MCP；**应用内默认关**，由前端经 MCP 受治进程通道拉起，一进程一根），不再是应用内的主叙事。
 - **工具层**：模型可见工具面以生成物为准（`docs/agents/model-tool-contract.md`；域折叠 + action 枚举 + 参数说明 + 隐藏旧名附录）。会话级 capability 工具（`Skill` / plan / 通信族 / `code_execution` 执行原语）经 blueprint 装配，契约由 convergence 快照钉住。`code_execution` 程序体经 `ctx.codeRuntime` 在 Web Worker 沙箱执行，程序内可嵌套调用全部可见工具（审计逐条落 session-log，门禁/hooks/截断不豁免，读并行写串行）。旧工具名（`run_shell` / `write_file` / `git_*` / `search_symbols` 等）已淘汰，模型调用会被重定向。
 - **文档面纪律（2026-09-16 起）**：跨文档复述的数字**只准来自 `docs/facts.generated.md` 或写指针**，禁手抄；规则 → `CONVENTIONS.md` / `INVARIANTS.md`，架构现状 → `ARCHITECTURE.md`，现在在哪 → `docs/plans/README.md`，索引 → `docs/README.md`，`docs/archive/` 是历史勿作现状。门禁 = `npm run doc-check`。

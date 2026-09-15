@@ -25,7 +25,7 @@
 
 | 文档 | 状态 | 内容 |
 |---|---|---|
-| [`ARCHITECTURE.md`](../ARCHITECTURE.md) | 当前（2026-08-17 校准） | 系统架构、技术栈、关键决策、验证基线 |
+| [`ARCHITECTURE.md`](../ARCHITECTURE.md) | 当前（**L2 现状层**，2026-09-16 文档面 P2 校准——数字一律指向 `docs/facts.generated.md` 或标注代码真源） | 架构分层与数据流 / Harness 工程模式 / Agent 系统 / 随包引擎 / MCP 服务 / 生命周期 / 技术栈 / 项目结构 / 关键决策 / 门禁指针 |
 | [`CONTEXT.md`](../CONTEXT.md) | 当前 | 应用级统一词汇（`kind`/`status` 带簇前缀） |
 | [`docs/composition/README.md`](composition/README.md) | 当前（2026-08-20 S4 校准） | 组合层用户指南：patch 语法/preset/热重载/涟漪表 |
 | [docs/plugins/README.md](plugins/README.md) | 当前（2026-08-28 平台化 P6 平台契约校准） | 插件契约 = 平台契约总览（§0）：贡献通道/seam provider/动态插件/MCP 面/契约版本/信任模型二分 |

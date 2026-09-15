@@ -1,483 +1,445 @@
 # 兰台（Lantai）— 核心能力与技术架构
 
 > © 2026 Wenbing Jing. MIT License.
-> 最后更新：2026-09-08（引擎-宿主逻辑全断竣工：壳摘 hologram-graph/storage/vector 全部 crate 依赖——壳对引擎的知识收敛为「spawn 二进制 + MCP 协议」两条；引擎数据分居自有目录 `.hologram/`（启动自动搬迁老 `.lantai` 引擎文件）；引擎资产（onnxruntime/models/grammars）归位 engine/）
+> 最后更新：2026-09-16（文档面重构 P2：现状层按代码真源逐条校准——跨文档数字改为指针，目录结构 / 数据流 /
+> 引擎能力面 / 验证基线四处清单重建）。
+> 本页是**现状层（L2）**：回答「系统现在是什么样」。规则见 `CONVENTIONS.md` / `INVARIANTS.md`，
+> 最高约定见 `docs/adr/project-constitution.md`；现在在哪、还剩什么见 `docs/plans/README.md`；
+> 历史（不是现状）见 `docs/archive/`。
+> **数字纪律**：跨文档复述的标量（字段数 / 插件数 / 契约版本 / 域数 / 引擎工具数）只准来自生成物
+> `docs/facts.generated.md`——本页不复述，只给指针；其余数字均标注代码真源。
 
-兰台（Lantai）不是一个单纯的"代码图谱可视化工具"。它的本质是一个 **Harness Engineering 平台**——将多种成熟软件工程模式（依赖分析、约束治理、变更预演、沙箱隔离、Agent 自主执行等）编排为统一 Harness，并通过内置 Agent 与对外 MCP 服务将这些能力开放给人和 AI。桌面主界面是**注疏案卷**（纸壳）；工作台本体经九条贡献通道（+ 五条 seam provider 注册表）**完全插件化**——出厂态零硬编码特权行，第一方能力与第三方插件在同一注册表上竞争；**30 个出厂产物从磁盘通道装载**（exe 只留 13 内核装配台——改插件 = 换产物，永不重编译 exe）。
+## 0. 定位
 
-代码图谱分析引擎（HoloGram）是目前体量最大、最核心的组件，但它是 Harness 体系的一个支柱，而非全部。
+**兰台（Lantai）= 以「纸壳 · 注疏案卷」为唯一主界面的桌面 Agent 软件。**
+技术形态：Tauri 2 壳（Rust）+ TypeScript / React 19 前端；Agent 循环、组合层与插件系统全在前端，
+壳负责通道、权限、沙箱、进程治理与凭据。
+
+**HoloGram（代码图谱引擎）是随包配套的独立进程与独立产品面**，不是应用内的主叙事：
+它以 `hologram-engine serve`（stdio MCP）对外提供图能力，兰台侧**默认不启用**（用户按需开启），
+外部 MCP 客户端（Claude Code / Cursor / DSH bundle）可独立消费同一二进制。
+
+工作台本体完全插件化：贡献通道（面板 / 命令 / 工具 / LLM adapter / prompt 段 / 渲染器 / 工具管道钩子 /
+capability / overlay）与 seam provider 注册表（fs / shell / sessionPersistence / subagents / agentLoop）
+——全量清单与寻址域见 `docs/plugins/README.md` §0，内核单源 = `src-ui/src/composition/contribution-channel.ts`；
+出厂态没有任何一行硬编码特权（出厂产物从磁盘通道装载，exe 只留内核装配台）。
 
 ---
 
 ## 1. 核心能力总览
 
-| 能力域 | 定位 | 当前实现深度 |
-|--------|------|-------------|
-| **代码图谱分析引擎** | 多语言 AST 解析 → 依赖拓扑图 → 耦合/社区/数据流分析 + 语义向量索引 | ★★★★★ 最完整 |
-| **Agent 自主执行系统** | LLM 驱动的多轮工具调用循环，含多 Agent 协作、上下文压缩、Plan 模式、目标管理 | ★★★★☆ |
-| **Harness Engineering 模式** | 约束治理、变更预演、沙箱隔离、权限引擎、审计日志 | ★★★★☆ |
-| **MCP 对外服务** | 36 个 schema、默认暴露 35 个工具，通过 JSON-RPC 服务任意 MCP 客户端 | ★★★★★ |
-| **注疏案卷工作台（纸壳）** | 古籍注疏范式主界面：七类文类块（来文/正文/夹注/脚注/抄录/拟策/贴黄）+ 矿物墨色语义 + 无限画布纸条 | ★★★★☆ |
-| **插件化架构（九通道 + 五 seam）** | 面板/命令/工具/LLM adapter/渲染器/prompt 段/管道钩子/capability/overlay 九条贡献通道 + fs/shell/sessionPersistence/subagents/agentLoop 五条 seam provider 注册表——**同一内核 `ContributionChannel`**（2026-09-14 M1 收口：内核单源 `composition/contribution-channel.ts`）+ manifest 声明挂接（工具声明/MCP 机器桥）；30 出厂产物 = 磁盘通道（改插件不重编译 exe），13 内核 = exe 装配台 | ★★★★★ |
-| **3D 星图（DSH bundle）** | GPU 加速的交互式依赖星图——已从桌面端拆出（V5），随 DSH 插件分发（`dsh-bundle/`） | ★★★☆☆ |
+| 能力域 | 定位 | 实现位置（真源） |
+|---|---|---|
+| **注疏案卷工作台（纸壳）** | 主界面：文类块 + 矿物墨色语义 + 无限画布纸条与流区 + 书脊卷列 | `src-ui/src/paper/` · `src-ui/src/app/paper/` · `plugins/builtin/paper-shell/` |
+| **Agent 自主执行系统** | 多轮工具调用循环、多 Agent 协作、上下文压缩、Plan / Goal | `src-ui/src/agent/` |
+| **组合层与插件系统** | 贡献通道 + seam provider 注册表 + manifest / roster / preset / 热重载（清单见 `docs/plugins/README.md` §0） | `src-ui/src/composition/` · `src-ui/src/plugins/` |
+| **Harness Engineering** | 约束治理（引擎侧）、权限引擎、三层沙箱、worktree 隔离、审计 | `src-tauri/src/permissions/` · `sandbox.rs` · `os_sandbox.rs` · `confined_fs.rs` · `agent_isolation.rs` |
+| **代码图谱引擎（HoloGram，随包配套）** | 多语言 AST → 依赖拓扑图 → 耦合 / 社区 / 数据流分析 + 语义向量索引 | `engine/` · `hologram-graph/` · `hologram-storage/` · `hologram-vector/` |
+| **引擎开放面** | 模型工具面 + 壳专属方法（host API）+ 免编译扩展面 | 生成物 `docs/agents/engine-plugin-contract.md` |
 
 ---
 
-## 2. 架构分层
+## 2. 架构分层与数据流
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    外部 MCP 客户端                     │
-│            (Claude Code / Cursor / 任意 MCP 客户端)      │
-└──────────────────────┬──────────────────────────────┘
-                       │ JSON-RPC over stdin/stdout
-┌──────────────────────┴──────────────────────────────┐
-│              Engine (Rust 库 + CLI 二进制)             │
-│  ┌──────────┐  ┌──────────┐  ┌───────────────────┐  │
-│  │ 统一 API  │  │ MCP 服务  │  │ 36 schema/35 默认    │  │
-│  │ Engine.rs │  │ JSON-RPC │  │  ToolRegistry     │  │
-│  └────┬─────┘  └────┬─────┘  └───────┬───────────┘  │
-│       └─────────────┴────────────────┘              │
-│  全局槽 ENGINE（Arc<Engine>——回退锚点，非唯一实例）      │
-│  Engine 单根实例 × N（每工作区一个，StoreHost 自开自持）  │
-│  数据目录自有：<root>/.hologram（引擎独占，宿主零句柄）    │
-│  ── L5b crate 化：四层 crate，引擎只留「分析器」──       │
-│  hologram-graph（纯类型：Node/Edge/Graph/ID 驻留器 +    │
-│    数据目录真源 paths::data_dir）                      │
-│  hologram-vector（纯计算：usearch 索引 + MiniLM 嵌入）   │
-│  hologram-storage（数据家：GraphStore/SQLite/快照/     │
-│    StoreHost 引擎自开自持；依赖 graph+vector）           │
-│  engine（分析器 + CLI/MCP 二进制）                      │
-└──────────────────────┬──────────────────────────────┘
-                       │ 进程外传输（engine_transport）+ stdio MCP
-┌──────────────────────┴──────────────────────────────┐
-│              Tauri 桌面 Shell (Rust)                  │
-│  ┌──────────┐ ┌─────────┐ ┌────────┐ ┌───────────┐  │
-│  │ 权限引擎  │ │ 沙箱    │ │ 隔离   │ │ 生命周期   │  │
-│  │Permission│ │ 三层沙箱 │ │worktree│ │Ledger     │  │
-│  └──────────┘ └─────────┘ └────────┘ └───────────┘  │
-│  ┌──────────────────────────────────────────────┐   │
-│  │ 应用层 app/（L1 新生）：WorkspaceDataContext    │   │
-│  │ 按工作区实例化——每工作区一个进程外引擎传输       │   │
-│  │（spawn engine serve 子进程，stdio MCP；          │   │
-│  │  惰性构造，随上下文回收关停）；                    │   │
-│  │ 命令族业务（services/：graph/hologram/dispatch/  │   │
-│  │ workspace/dataflow）+ 决议链（显式 path →        │   │
-│  │ 活动单槽工作区 → None）                           │   │
-│  └──────────────────────────────────────────────┘   │
-│         单一 RPC 入口 (rpc.rs 147 个方法薄壳)          │
-└──────────────────────┬──────────────────────────────┘
-                       │ Tauri IPC (invoke)
-┌──────────────────────┴──────────────────────────────┐
-│              前端 (TypeScript / React 19)             │
-│  ┌──────────┐ ┌──────────┐ ┌────────┐ ┌───────────┐  │
-│  │ Agent 循环│ │ 组合层/   │ │多Agent池│ │ 注疏案卷   │  │
-│  │ streaming│ │ 插件通道  │ │Coord.  │ │ 纸壳 UI   │  │
-│  └──────────┘ └──────────┘ └────────┘ └───────────┘  │
-│  会话作用域（session-scope）＝「当前工作区」UI 投影锚；   │
-│  agentInvoke 恒注入 _session_id（引擎决议到会话上下文）  │
-│   Workspace (cordis fiber 宿主) + Zustand + React     │
-└─────────────────────────────────────────────────────┘
+### 2.1 数据流（现状）
+
+```mermaid
+flowchart TD
+  subgraph FE["前端 src-ui（React 19 + Zustand 5）"]
+    AGENT["Agent 运行时：循环 / 工具 / 组合层"]
+    UI["纸壳 UI 与面板"]
+  end
+  subgraph SHELL["Tauri 壳 src-tauri（Rust）"]
+    RPC["rpc.rs：单一 IPC 入口（薄壳）"]
+    APP["应用层 app/：WorkspaceDataContext + services"]
+    CAP["能力口 commands/*_cap"]
+    GUARD["权限引擎 / 沙箱 / 审计 / ResourceLedger"]
+    PB["protocol_bridge：stdio 子进程桥"]
+  end
+  ENGINE["hologram-engine serve（随包配套进程，默认未启用）"]
+  WS[".lantai/：宿主数据（sessions / memory / agents / skills / attachments）"]
+  HOLO[".hologram/：引擎数据（hologram.db / 快照 / 向量 / 基线）"]
+  EXT["外部 MCP 客户端（Claude Code / Cursor / DSH bundle）"]
+
+  UI --> AGENT
+  AGENT -- "typedRpc / typedListen" --> RPC
+  RPC --> APP
+  APP --> CAP
+  APP --> GUARD
+  AGENT -- "bundled-engine.ts 注册工具行 → mcp-bridge.ts 受治进程" --> RPC
+  RPC --> PB
+  PB -- "stdio MCP" --> ENGINE
+  RPC -- "会话卷 / 附图 / 记忆（经 seam provider 与能力口）" --> WS
+  ENGINE -- "独占所有权" --> HOLO
+  EXT -- "stdio MCP（或 engine.exe 的 TCP 9777 数据面）" --> ENGINE
 ```
 
-三层各自独立编译，通过明确边界通信：
-- **Engine** 是纯 Rust 库 + CLI 二进制，可独立 `serve` 作为 MCP 服务器；**兰台 Phase 3 起零内嵌**（无 hologram-engine path 依赖）——每工作区由壳 spawn 一个 `engine serve` 子进程，经 `engine_transport`（stdio MCP）消费，Engine 崩溃自动重启；**引擎-宿主逻辑全断（2026-09-08，engine-host-severance）**：数据文件（hologram.db/FTS5/快照/向量/基线）所有权独占归引擎进程，落引擎自有数据目录 `<root>/.hologram/`（真源 `hologram_graph::paths`；老 `.lantai` 里的引擎文件由 `migrate_engine_data` 在 `engine_init` 顶部自动搬迁，冲突告警不搬）；壳侧三条数据 crate path 依赖全摘——对引擎的全部知识 = 二进制 + MCP 协议（守卫测试 `shell_has_zero_hologram_crate_refs` 钉死）。**Rust 侧四层 crate**（根 workspace）：`hologram-graph`（纯类型 + 数据目录真源）← `hologram-vector`（纯计算）← `hologram-storage`（数据家，不依赖 engine）← `hologram-engine`（分析器 + CLI/MCP 二进制）。**免编译扩展面（Phase 4）**：`src/plugins/` 读 `HOLOGRAM_PLUGIN_DIR` manifest 声明 language/framework/tool 三类扩展，不改一行 Rust（`examples/engine-plugins/`，契约 = `docs/agents/engine-plugin-contract.md` v4）
-- **Tauri Shell** 是通道（rpc.rs 薄壳）、权限守卫与进程管理者；**业务编排在应用层 `src-tauri/src/app/`**（数据上下文 + services），插件安装/授权通道也在此层
-- **前端** 是 Agent 运行时和用户界面（注疏案卷纸壳 + 组合层/插件系统），通过 `typedRpc()` / `typedListen()`（`rpc-contract.ts`）与后端通信
+要点（都在代码里可指）：
+- **前端到壳只有一条路**：`typedRpc()` / `typedListen()`（`src-ui/src/rpc-contract.ts`），参数键 snake_case；
+  壳侧只有一个 `#[tauri::command] rpc(method, params)`（`src-tauri/src/rpc.rs`），命令实现是薄壳，业务编排在
+  `src-tauri/src/app/`。
+- **壳不拉起引擎**：壳内零 `spawn engine` 代码（`engine_transport.rs` 已删），对引擎的全部知识 =
+  二进制位置只读探测（`engine_assets.rs` 的 `engine_bundled_info`）+ MCP 协议。启用态由前端
+  `src-ui/src/plugins/bundled-engine.ts` 经既有 MCP 受治进程通道（`mcp-bridge.ts` 的 `ServerGovernor`）拉起，
+  工具面折算为一条工具行贡献（行 id `plugin/hologram-engine/mcp/hologram`，工具名 `mcp__hologram__*`），
+  可被 roster.patch / preset 禁用。
+- **数据分居**：引擎数据独占 `<root>/.hologram/`（真源 `hologram-graph/src/paths.rs`），宿主数据落
+  `<workspace>/.lantai/`；老项目 `.lantai` 里的引擎文件由引擎启动时的 `migrate_engine_data` 自动搬迁。
 
-### 2.1 关键运行时事实
+### 2.2 三层边界
 
-- **数据上下文（L1 应用层）**：`AppContexts`（Tauri state）持有「canonical 根 → WorkspaceDataContext」注册表。每个上下文 = 该工作区专属的**进程外引擎传输**（spawn `engine serve` 子进程，stdio MCP；惰性构造，随上下文回收关停）；**引擎数据零句柄**（所有权归引擎进程与其 `.hologram/` 目录）。决议链 = 显式 path → 活动单槽工作区 → None。空闲上下文 GC（关停引擎子进程 + 移除出注册表）。
-- **Engine 多实例（L1/L2）**：`Engine::open(root)` 绑定单根终身不变（引擎自开 StoreHost，返回即 Ready）；`new_shared` = open + Arc + Weak 自引用 + 自动 watcher。全局槽 `ENGINE: RwLock<Option<Arc<Engine>>>` 仅作 engine 二进制自身（MCP serve / CLI）的回退锚点——进程外形态下壳不可见此槽，同根双实例由「每根一传输一进程」结构性杜绝。
-- **引擎决议链（L1）**：图命令族（hologram_call / get_graph_* / engine_impact / run_check / 时间线）按「显式 path → 活动工作区（单槽 WorkspaceState）→ None」决议引擎传输；hologram_call 经 transport 落对应工作区的子进程，跨工作区天然进程级隔离。壳层对 engine 全局函数直连点、对 hologram-* crate 引用双双由守卫测试钉死为零。
-- **WorkspaceHandle（Rust）**：持有单个打开项目的壳层状态（权限上下文、watcher、审计、上下文引擎句柄）；壳层 watcher 增量落本实例（不吃全局）。
-- **ResourceLedger**：统一生命周期管理。所有有生命周期需求的后端服务（LlmProxy、BgJobs、Mcp、Pty、Lsp、UiaWorker、MemoryBundle、Logging 共 8 个）实现 `LifecycleService` trait 并注册，退出时按序 drain（总预算 2s + 3s 强退）。
-- **Workspace（前端）**：统一状态容器，替代 18+ 个模块级全局变量；原子化工作区切换（`old.deactivate()` → `Workspace.open()` → 注入）。生命周期原语已内核化为 vendored cordis（`src-ui/src/cordis/`，同 DSH 做法）：工作区级资源以 fiber effect 登记（获取点就地），Agent 挂身份 fiber（`hologram/agent`，清理仍走 DisposerBag 同步快通道），子系统以 Service 挂树（`LspService` 样板）；`deactivate()` = fiber dispose-to-quiescence + epoch 推进。epoch 代际防护永久保留——fiber 管所有权，epoch 管逃逸所有权的在途回调（详见 `docs/archive/cordis-migration/`）。
+- **Engine（`hologram-engine`，Rust 库 + CLI/MCP 二进制）**：可独立 `serve` 为 MCP 服务器；**单根终身不变**
+  （`Engine::open(root)`，切换工作区 = 换进程）；一个进程只服务一个工作区根（`ensure_ready` 同根幂等、
+  异根拒绝）。免编译扩展面：`HOLOGRAM_PLUGIN_DIR`（缺省 `<root>/plugins`）读 manifest 声明
+  language / framework / tool 三类扩展，不改一行 Rust（示例 `examples/engine-plugins/`）。
+- **Rust crate 四层（根 workspace）**：`hologram-graph`（纯类型：Node / Edge / Graph / ID 驻留器 +
+  数据目录真源）← `hologram-vector`（纯计算：usearch 索引 + MiniLM 嵌入）← `hologram-storage`
+  （数据家：GraphStore / SQLite / 快照 / StoreHost，不依赖 engine）← `hologram-engine`（分析器 + CLI/MCP 二进制）。
+  workspace members 见根 `Cargo.toml`（另含 `src-tauri`）。
+- **Tauri 壳**：通道（`rpc.rs` 薄壳）、权限裁决、沙箱、进程与生命周期治理、插件安装 / 授权通道、凭据。
+- **前端**：Agent 运行时（循环、工具、组合层、插件系统）+ 用户界面（注疏案卷纸壳）。Agent 循环在
+  TypeScript 里跑，理由见 §10.3。
+
+### 2.3 关键运行时事实
+
+- **工作区即容器**（`src-tauri/src/app/`）：`AppContexts` 持有「canonical 根 → WorkspaceDataContext」注册表，
+  决议链 = 显式 path → 活动单槽工作区 → None；会话**物理归属工作区**（唯一存储位
+  `{ws}/.lantai/sessions/`），因此不需要会话绑定表与焦点投影。
+- **`WorkspaceHandle`（Rust）**：单个打开项目的壳层状态（权限上下文、watcher、审计）。
+- **`ResourceLedger`**：统一生命周期管理。注册的服务见 `src-tauri/src/main.rs` 的 `ledger.register` 调用点
+  （LlmProxy / BgJobs / Pty / Lsp / Uia / MemoryBundle / Logging），退出时按注册序 drain（总预算 + 强退）。
+- **引擎多实例**：全局槽 `ENGINE: RwLock<Option<Arc<Engine>>>` 仅作 engine 二进制自身（MCP serve / CLI）的
+  回退锚点；进程外形态下壳不可见此槽，同根双实例由「一进程一根」结构性杜绝。
+- **Workspace（前端）**：cordis fiber 宿主 + Zustand；工作区级资源以 `fiber.ctx.effect()` 就地登记，
+  `old.deactivate()` = fiber dispose-to-quiescence + epoch 推进。epoch 代际防护永久保留
+  （fiber 管所有权，epoch 管逃逸所有权的在途回调）。
+- **组合身份随卷走**：卷文件记录本卷创建时生效的组合 id；UI 之外按组合起卷的单点是
+  `app/chat/session-composition.ts` 的 `createSessionWithPreset(ctx, presetId?)`（只收 preset id，不可解析则
+  拒绝创建 + 具名原因）。
 
 ---
 
 ## 3. Harness Engineering 模式
 
-兰台将以下软件工程模式编排为统一的 Harness 体系：
+### 3.1 约束治理（Constraint Governance，引擎侧）
 
-### 3.1 约束治理 (Constraint Governance)
+`hologram.constraints.yaml`（根目录）定义不可逾越的架构边界——耦合深度路由开关（L1-L5）、阈值
+（波及半径上限、跨社区边容忍）、allowlist / denylist。**消费方是引擎**：`preflight_check`
+（编辑前按图谱拓扑算波及半径 / 跨社区影响 / L4 穿透，决定放行或路由人工确认）与 `run_check`
+（基线 load / diff / save + 违规信号 + 时间线记录）都是引擎工具，清单见生成物
+`docs/agents/engine-plugin-contract.md`。
 
-通过 `hologram.constraints.yaml` 定义不可逾越的架构边界：
+> **兰台侧无消费方**：`constraints_cap` 能力口随图谱内置接线整量退役（2026-09-09）已删除；该 yaml
+> 如今仅服务引擎 `run_check`（`src-tauri/src/rpc.rs` 的退役注记）。
 
-```yaml
-constraints:
-  routing:        # L1-L5 耦合深度路由开关
-    l5_irreversible: true   # L5 永远路由（不可关闭）
-    l4_silent: true         # L4 静默破溃默认路由
-  thresholds:     # 触发阈值
-    blast_radius_max: 20        # 波及节点上限
-    cross_community_tolerance: 0 # 跨社区边新增容忍
-  allowlist:      # 白名单（不触发路由）
-  denylist:       # 黑名单（含关键词的变量变更永远路由）
-```
+### 3.2 沙箱隔离（Sandboxed Agent Execution）
 
-Agent 在执行文件编辑前必须经过 `preflight_check`，引擎根据图谱拓扑计算波及半径、跨社区影响、L4 穿透等指标，决定放行还是路由到人工确认。前端另有 `PreflightHookRegistry`（内存 fileIndex 即时计算，<0.1ms 零延迟），编辑前注入 ⚠️ 警告到工具结果顶部，Agent 无法忽略。
+**OS 层沙箱**（`os_sandbox.rs`，跨平台）：
+- Windows：每条命令一个独立 Job Object（`TerminateJobObject` 内核级终止 + `KILL_ON_JOB_CLOSE` 防孤儿；
+  AppContainer 已移除——它与通用开发工具链冲突：后者会生成深层进程树、从不可预测路径加载 DLL，
+  文件系统与网络隔离交权限引擎负责）
+- macOS：`sandbox-exec`；Linux：`bubblewrap`
 
-### 3.2 变更预演 (Change Preflight)
+**路径层沙箱**（`sandbox.rs`）：路径 canonicalize + 边界校验，`resolve_read / resolve_write` 返回
+`Allowed / Denied`；边界外路径不硬拒，交权限引擎路由到 Ask（降级策略）。
 
-`preflight_check` 工具接受待修改文件列表，返回：
-- **波及半径**：BFS 遍历下游依赖，给出影响树
-- **风险等级**：low / medium / high / critical
-- **共享变量影响**：哪些 dataflow 共享状态会被波及
-- **时序边信号**：async trigger/await 链是否受影响
+**统一受限文件系统**（`confined_fs.rs`）：所有文件 I/O 的统一 confine 层——读写各 100 MiB 上限、30s 超时、
+3 次瞬态重试（指数退避）、原子写（tmp + rename）；ACL 式路径控制由权限引擎承担。
 
-这是一个"改之前先看会炸哪里"的 Harness 模式，避免盲目修改高扇入符号。
+**Agent worktree 隔离**（`agent_isolation.rs`）：
+- `git worktree add --detach` 为每个子 Agent 建独立工作树；路径双向映射（逻辑 ↔ 物理），权限检查、shell cwd、
+  git repo 路径全部经映射
+- 完成后按 `original_head..head` **范围 cherry-pick** 回主仓（冲突则 abort 保持主仓干净并返回 diff 供人工处理）
+- TTL 清理 + `force_purge` 兜底；git 操作经 `src-ui/src/agent/isolation-queue.ts` 串行化
 
-### 3.3 沙箱隔离 (Sandboxed Agent Execution)
+### 3.3 权限引擎（Permission Engine）
 
-三层隔离机制：
-
-**OS 层沙箱** (`os_sandbox.rs`，跨平台)：
-- Windows：Job Object（子进程随父进程死亡，64 进程 / 1 GiB 内存上限；AppContainer 已移除）
-- macOS：sandbox-exec；Linux：bubblewrap
-- 所有 Engine 进程、Memory Bundle 进程纳入 OS 沙箱
-
-**路径层沙箱** (`sandbox.rs`)：
-- 路径 canonicalize + 边界校验，`resolve_read / resolve_write` 返回 `Allowed / Denied`
-- 不再硬拒绝边界外路径——交给权限引擎路由到 Ask（降级策略）
-
-**统一受限文件系统** (`confined_fs.rs`)：
-- 所有文件 I/O 的统一 confine 层（100 MiB 读写上限、30s 超时、3 次瞬态重试、原子写）；"ACL"式路径控制实际由权限引擎承担
-
-**Agent Worktree 隔离** (`agent_isolation.rs`)：
-- `git worktree add --detach` 为每个 Agent 创建独立工作树
-- 路径双向映射：forward（逻辑→物理）+ reverse（物理→逻辑），权限检查、shell cwd、git repo 路径全部经映射
-- 完成后 cherry-pick 合并回主仓库；冲突时返回 diff 供人工处理
-- TTL 30 分钟自动清理；`force_purge` 兜底；git 操作经 `isolation-queue.ts` 串行化
-
-### 3.4 权限引擎 (Permission Engine)
-
-v4 起为**两层自治架构**（Sandbox 降级，权限系统升级为 `PermissionContext`）：
+`PermissionContext` + `has_permission_to_use_tool(ctx, agent_id)` 返回四态：
 
 ```
-has_permission_to_use_tool(ctx, agent_id) → PermissionResult
-  ├── Allow           → 直接执行
-  ├── Deny            → 拒绝并返回原因
-  ├── Ask { danger }  → 路由到用户确认（critical 显示红色警告卡）
-  └── Passthrough     → 交由引擎兜底
+Allow         → 直接执行
+Deny{reason}  → 拒绝并给出原因
+Ask{danger}   → 路由用户确认（danger = "critical" 时前端显示红色警告卡）
+Passthrough   → 交引擎兜底
 ```
 
-- **Tool trait** 七类实现：`ReadTool / EditTool / BashTool / GitTool / WebFetchTool / BrowserTool / DesktopTool`
-- **规则**（`PermissionRules`）：system / project / session 三来源合并，持久化到 `permissions.json`；路径 glob、读写分类、危险操作标记
-- **bash 启发式**（`permissions/bash.rs`，1237 行）：命令 tokenize + 危险命令清单
-- **worktree 感知**：规则匹配时物理路径 reverse-map 回主仓库逻辑路径，`Edit("src/**")` 在隔离环境下同样生效
-- **agent_id 显式传递**：所有涉路径命令接受 `_agent_id: Option<String>` 并 `.as_deref()` 传递，杜绝并行子 Agent 身份串扰
+- **规则**（`permissions/rule.rs`）：system / project / session 三来源合并，项目规则持久化到
+  `.lantai/permissions.json`；路径 glob、读写分类、危险操作标记
+- **Tool trait 实现**（`src-tauri/src/tools/mod.rs`）：Read / Edit / Bash / Git / WebFetch / Browser /
+  Desktop / Office——以该文件的 `impl Tool for` 为准（新增族在此登记）
+- **bash 启发式**（`permissions/bash.rs`）：命令 tokenize + 危险命令清单
+- **worktree 感知**：物理路径 reverse-map 回主仓库逻辑路径，`Edit("src/**")` 在隔离环境下同样生效
+- **agent_id 显式传递**：涉路径命令接受 `_agent_id` 并 `.as_deref()` 下传，杜绝并行子 Agent 身份串扰
 
-### 3.5 审计日志 (Audit Trail)
+### 3.4 审计（Audit Trail）
 
-`AuditLogger` 记录所有 Agent 工具调用的完整审计轨迹（allowed / denied 条目），配合 `project_timeline` 工具提供按时间线回溯的分析历史。会话消息以 NDJSON 增量持久化（`session_append`）。会话以「案卷」管理（session-ledger L0-L3，2026-08-23）：卷脊总目、摊开工作集重启恢复、双卷并发落盘、续开查重（判据 26 用例钉死）。
+`audit.rs` 记录 Agent 工具调用的 allowed / denied 轨迹；browser 与 desktop 写动作各自落
+`hologram-*-audit-YYYYMMDD.jsonl`（按日轮转，可经工具查询）；宿主结构化日志落
+`.lantai/logs/ui.log`（NDJSON）。会话的事件日志即真相（`.lantai/sessions/{id}.ndjson`，见 §9）。
 
-### 3.6 技能系统 (Hot-Loading Skills)
+### 3.5 技能系统（Hot-Loading Skills）
 
-Agent 支持从 `.lantai/skills/<name>/SKILL.md` 热加载技能。技能格式为 YAML frontmatter + Markdown body，每次调用时重新加载（零依赖 frontmatter 解析器），无需重启即可新增技能。
+技能是目录包：`<workspace>/.lantai/skills/<name>/SKILL.md` 与用户级 `~/.lantai/skills/<name>/SKILL.md`
+（双发现根）。无技能 = 零注入；新增技能无需重启。
 
-### 3.7 Computer-Use（CDP 浏览器 + UIA 桌面，2026-08 Agent 优先改造）
+### 3.6 Computer-Use（CDP 浏览器 + UIA 桌面）
 
-两条通道共享同一套 Agent-first 交互范式：**snapshot/tree + ref 引用 → pattern 优先操作 → world-diff 反馈 → 分层授权 → 逐动作审计 + `[CODE]` 结构化错误**。
+两条通道共享同一套 Agent-first 交互范式：**snapshot / tree + ref 引用 → pattern 优先操作 → world-diff 反馈 →
+分层授权 → 逐动作审计 + `[CODE]` 结构化错误**。
 
-**browser（CDP，src-tauri/src/cdp/）**：受控 Chrome 启动/外部实例连接、按 agent 键控多账号会话（slot + 空闲租约）、snapshot（AX 优先）+ ref、console/network/dialog 观察、世界变化反馈、敏感目标单独 Ask、审计 jsonl。
-
-**desktop（UIA，src-tauri/src/uia/）**：进程内 COM——`hologram-uia` 专用线程（MTA + catch_unwind + mpsc/oneshot + 15s 超时）独占全部 COM 对象；线程内树缓存（hwnd → generation + controls + 元素句柄），ref = 全量树下标，失效自动重建一次。
-
-- **反馈闭环**：写动作返回 world-diff（窗口标题/焦点/value/toggle/滚动百分比 前后对比）+ IsPassword 掩码
-- **读路径零打扰**：tree/find/read/wait 不抢前台不动光标；pattern 动作（Invoke/SetValue/Select/Expand/Scroll）同样无需前台
-- **权限分层**（tools/mod.rs DesktopTool）：只读放行 → 窗口级授权（DesktopGrant，agent+hwnd 键控滑动 TTL 10min，接管 Ask 一次后 pattern 放行）→ 敏感目标（sensitive.rs 共享词表）每次 Ask → 物理输入路径每次 Ask + 全局输入租约 → screenshot 高隐私 Ask
-- **DesktopInputLease**：SetCursorPos/SendInput/剪贴板/SetForegroundWindow 全进程串行化，拿不到回 `[UIA_LEASE_BUSY]` + 持有者（INVARIANTS #13）
-- **通道路由**：desktop_probe 每窗口带 route 建议——chromium→cdp / UIA 探测≥3 interactive→uia / 自绘→vision
-- **审计**：desktop 写动作逐条落 `hologram-desktop-audit-*.jsonl`（7 天轮转），desktop_audit 可查
-- **错误码**：`[UIA_WINDOW_NOT_FOUND/STALE_REF/NO_PATTERN/TIMEOUT/LEASE_BUSY/ACCESS_DENIED/ARG_INVALID/INTERNAL]`，TS 侧 parseStructuredError 与 browser 共用
-- **生命周期**：UiaService 注册 ResourceLedger（未用过不启动线程，退出 Quit + 带限 join）
-- **e2e**：`HOLOGRAM_UIA_E2E=1` + 交互桌面会话（记事本真实窗口全流程）
+- **browser**（CDP，`src-tauri/src/cdp/`）：受控 Chrome 启动 / 外部实例连接、按 agent 键控多账号会话
+  （slot + 空闲租约）、snapshot（AX 优先）+ ref、console / network / dialog 观察、敏感目标单独 Ask、审计 jsonl。
+- **desktop**（UIA，`src-tauri/src/uia/`）：进程内 COM 跑在专用线程（MTA + `catch_unwind` + 超时），
+  全量 COM 对象独占；树缓存（hwnd → generation + controls + 元素句柄），ref = 全量树下标，失效自动重建一次。
+- 读路径零打扰（tree / find / read / wait 不抢前台）；pattern 动作（Invoke / SetValue / Select / Expand / Scroll）
+  同样无需前台；物理输入路径每次 Ask + 全局输入租约（`DesktopInputLease`，拿不到回 `[UIA_LEASE_BUSY]`）。
+- 错误码 `[UIA_*]` / `[CDP_*]` 经 TS 侧 `parseStructuredError` 统一解析。
 
 ---
 
 ## 4. 内置 Agent 系统
-
-Agent 系统是 Harness 与 LLM 之间的桥梁，将上述工程模式自主地应用于实际编码任务。
 
 ### 4.1 Agent 循环
 
 ```
 User Input → System Prompt + Tools → LLM Stream
   ↓ (流式解析)
-StreamingToolExecutor (并发执行 tool calls, 支持 AbortSignal)
+StreamingToolExecutor（并发执行 tool calls，AbortSignal 竞速）
   ↓
-Tool Results → 注入会话 → 下一轮 LLM Stream
-  ↓ (循环直到模型给出最终回答)
+Tool Results → 注入会话 → 下一轮 LLM Stream（循环至最终回答）
 ```
 
-核心特性：
-- **流式工具执行**：不等整条 stream 结束，`tool_use` block 完成就立即 dispatch
-- **并发执行**：同一轮的多个只读工具并发运行
-- **输出截断**：单个工具输出上限 50KB / 2000 行，超出则头尾保留 + 中间省略
-- **重试与退避**：可重试错误按指数退避重试，最多 3 次
-- **Abort 传播**：executor 的每个 pending promise 与 AbortSignal 竞速，杜绝卡死的工具调用挂起循环
-- **上下文压缩**：成本模型驱动（见 4.6）
+- **流式执行**：不等整条 stream 结束，`tool_use` 块完成即 dispatch（`StreamingToolExecutor`，同一回合的多个调用
+  并发跑、各自与 AbortSignal 竞速）；读并行 / 写串行是 `code_execution` 程序体内嵌套调用的纪律（见 §4.8）
+- **输出截断**：单工具输出上限 50KB / 2000 行（`src-ui/src/agent/truncate.ts`），超出头尾保留 + 中间省略，
+  大 diff 溢写 `.lantai/spill/`
+- **重试**：可重试错误指数退避，上限 3 次（`src-ui/src/agent/retry.ts`）
+- **Abort 传播**：每个 pending promise 与 AbortSignal 竞速，杜绝卡死工具挂起循环
 
 ### 4.2 多 Agent 编排
 
-`SubAgentPool`（coordinator.ts）管理子 Agent 生命周期：
-- **并发上限**：默认 5 个子 Agent 同时运行（队列 20）；**超时兜底**：默认 30 分钟 abort
-- **两种模式**：`fork`（继承父上下文）/ `fresh`（干净启动）
-- **异步 spawn**：`async: true` 立即返回 agentId，完成后经 MessageBus 发 `result` 消息通知父 Agent
-- **独立 execState**：子 Agent 不互相 abort；async 模式不被用户下一条消息杀掉
-- **隔离执行**：文件编辑在独立 git worktree 中运行，`agent_merge` 串行合并
+`SubAgentPool`（`src-ui/src/agent/coordinator.ts`）：并发上限 5、队列 20、超时兜底 30 分钟（常量在该文件）；
+两种模式 `fork`（继承父上下文）/ `fresh`；`async: true` 立即返回 agentId，完成后经 MessageBus 回 `result`；
+子 Agent 各自独立 execState（不被兄弟 abort，async 模式不被用户下一条消息杀掉）；文件编辑在 worktree 中
+隔离进行，合并走 `agent_isolation_merge`（范围 cherry-pick）。
 
-**Agent 通信层**（`message-bus.ts`）：
-- 有界 inbox + 背压控制（满了 drop，防 OOM）；peek + ack 模型；msgIndex O(1) 查找
-- 拓扑策略注入（TreeTopology 默认 / Mesh / Star）；传输层可替换（当前 InProcess）
-- 5 个通信工具：`agent_message / agent_reply / agent_ack / agent_inbox / agent_list`
-- 消息持久化到 `.lantai/agents/{id}/inbox.json`（debounced flush 2 秒批量写）
+**通信层**（`message-bus.ts`）：有界 inbox + 背压（满则 drop 防 OOM）、peek + ack 模型、O(1) 消息查找；
+拓扑策略可注入（`topology.ts`：Tree 缺省 / Star / Mesh，越权发送抛 `TopologyDeniedError`）；持久化到
+`.lantai/agents/{id}/inbox.json`（debounced 批量写）。
 
-**共享状态板**：
-- `TaskBoard`：子 Agent 任务状态（status / filesTouched / diff），`BoardFileTrackingHook` 自动追踪写文件；合并后转 `merged`
-- `DiscoveryBoard`：探索发现共享（TTL 2h，同 key 覆盖）
-- 两者均**按 session 隔离**（`.lantai/{taskboard,discoveries}/{sessionId}.json`），防跨会话串扰
+**共享状态板**：`TaskBoard`（子 Agent 任务状态 / filesTouched / diff，合并后转 merged）与 `DiscoveryBoard`
+（探索发现，同 key 覆盖），两者按会话隔离——`.lantai/taskboard/{sessionId}.json`、
+`.lantai/discoveries/{sessionId}.json`。
 
-**生命周期管理**（`lifecycle-manager.ts`）：全局空闲判定 + worktree 泄漏检测（60s 巡检）+ TTL 清理 + 启动恢复（restore inbox/board + 孤儿检测 + 崩溃孤儿 worktree 清理）。
+**生命周期**（`lifecycle-manager.ts` + 壳侧 `agent_isolation.rs`）：空闲判定、worktree 泄漏巡检、TTL 清理、
+启动恢复（restore inbox / board + 孤儿检测 + 崩溃孤儿 worktree 清理）。
 
-### 4.3 Plan 模式
+### 4.3 Plan 模式与目标管理
 
-`agent/plan/` 实现分层提醒工作流：
-- 只读工具 + 写计划文件权限，`exit_plan_mode` 提交计划给用户审批（可带多方案 options）
-- 图引擎自动注入影响面数据（读文件时显示下游依赖和脆弱度）
-- 每 5 轮刷新完整工作流提醒
+- **Plan**（`src-ui/src/agent/plan/`）：只读工具 + 计划文件写权限；`exit_plan_mode` 提交计划给用户审批
+  （可带多方案）；计划文件落 `.lantai/plans/{id}.md`。
+- **Goal**（`goal-manager.ts` + `goal-loop.ts`）：显式生命周期对象（active → paused → completed / failed /
+  cancelled），迭代计数与停滞检测；存储隔离于 `.lantai/goals/{id}/`，不与会话历史混淆。
 
-### 4.4 目标管理
-
-`GoalManager` 将 Agent 从"一轮轮循环 + 正则标记"提升为显式生命周期对象：
-- 目标状态：active → paused → completed / failed / cancelled
-- 迭代计数与停滞检测；存储隔离于 `.lantai/goals/{id}/`，不与会话历史混淆；旧 GoalState 自动迁移
-
-### 4.5 上下文记忆
+### 4.4 上下文记忆
 
 | 层 | 实现 | 用途 |
-|----|------|------|
-| **会话记忆** | Agent session JSON（`.lantai/agents/{id}/`） | 当前对话上下文，支持压缩 |
-| **项目记忆** | `MemoryManager` → `.lantai/memory/*.md` + 全局 `~/.lantai/global_memory/`，MEMORY.md 索引 + confidence 分级（fact/reference/background/suppressed） | 跨会话项目知识 |
-| **Memory Bundle** | 外部进程 `memory-bundle.exe` + 前端 HTTP 客户端（127.0.0.1:9600，Dockerized FirstBeat 记忆服务） | 进程隔离的记忆服务（ingest 已接线，health/analyze/recall/portrait 待集成） |
+|---|---|---|
+| 会话记忆 | 会话卷 + 事件日志（`.lantai/sessions/`） | 当前对话上下文，压缩只作用于发送载荷 |
+| 项目记忆 | `memory.ts` → `.lantai/memory/*.md` + `MEMORY.md` 索引（confidence 分级） | 跨会话项目知识 |
+| 全局记忆 | `~/.lantai/global_memory/*.md` + 索引 | 跨项目个人知识 |
+| Memory Bundle | 可选外部进程 `memory-bundle.exe`（在 exe 同目录找到才启动）+ HTTP 客户端 `127.0.0.1:9600` | 进程隔离的记忆服务 |
 
-### 4.6 上下文压缩（成本模型驱动）
+### 4.5 上下文压缩（成本模型驱动）
 
-`compaction-model.ts` 以可测量成本模型决定何时压缩：
+`compaction-model.ts` 用可测量成本模型（`NetBenefit = |R|·c_in·(T-1) − |S|·c_out − L·avg_turn_cost`）决定
+何时压缩；分块摘要 + 机械兜底 + 摘要模型自动选择；结果类型 summary / digest / truncated / stuck。
+**压缩只作用于发送载荷**，会话永远是完整历史（见 §10.7）。配置与统计落
+`.lantai/compaction-config.json`、`.lantai/compaction-tracker.json`。
 
-```
-NetBenefit = |R|·c_in·(T-1) − |S|·c_out − L·avg_turn_cost
-  R = 被替换消息, S = 摘要, T = 剩余轮次, L = 摘要后的轮次
-```
+### 4.6 Hooks 系统
 
-- 压缩只作用于**发送载荷**，session 永为完整历史（发往 LLM 前截断）
-- 分块摘要 + 机械兜底 + 摘要模型自动选择；`CompactionEvent` 结果类型：summary / digest / truncated / stuck
-- 摘要模型自动选择（模型目录动态解析，无 200K 硬封顶）
+两类 hook 注入 Harness 逻辑（`src-ui/src/agent/hooks.ts`）：
 
-### 4.7 Hooks 系统
+- **Post-Tool**（`HookRegistry`）：`state-read`（每轮注入 Git 状态与诊断信息）、`build-result`（构建结果回填）
+- **Pre-Tool 预检**（`PreflightHookRegistry`）：`state-preflight`（LSP 诊断状态）
 
-两类 Hook 在 Agent 循环中注入 Harness 逻辑：
+> 图谱类 hook（读文件注入符号概览、编辑前图谱波及预检）随图谱内置接线整量退役（2026-09-09）已删除。
+> 第三方可经 `ctx.hooks` 贡献钩子（kind = enrich / preflight），见 `composition/hook-service.ts`。
 
-**Post-Tool Hooks**（工具执行后注入上下文，`HookRegistry`）：
-- `GraphContextHook`：读文件/搜索/glob 后自动注入符号概览（<800 字符，结果接近 50KB 截断上限时跳过）
-- `BoardTrackingHook`：write/edit 后追踪到 TaskBoard
-- `StateReadHook`：每轮开始注入 Git 状态、诊断信息
+### 4.7 LLM Provider 抽象
 
-**Preflight Hooks**（工具执行前拦截，`PreflightHookRegistry`）：
-- `GraphPreflightHook`：编辑前检查图谱波及范围（内存 fileIndex，零延迟）
-- `StatePreflightHook`：检查 LSP 诊断状态
+- `provider/` 目录：统一类型（`types.ts`）+ `anthropic.ts` / `openai.ts` / `responses.ts`（协议方言）+
+  `catalog.ts` 模型目录合并层 + `model-sync.ts` 动态发现 + `oauth.ts` 订阅面 + `thinking.ts`
+  （档位 → 厂商 wire 参数唯一事实源）+ `vendor-templates.ts`
+- **内核 seed 模型目录**：`provider/catalog/*.json`（以该目录文件为准；其余厂商模型一律运行时从 `/models`
+  拉取合并）；目录再生经 `npm run gen:catalogs`
+- **LLM adapter seam**（`ctx.llm`）：第一方 adapter 由插件通道贡献，后注册胜；未知 kind 响亮报错，不静默跌回
+- **本地反向代理**（`llm_proxy.rs` + `transport.ts`）：loopback-only HTTP 代理，转发并强加 CORS 头，SSE 逐块透传
+- **附图（多模态）**：用户消息挂内容寻址引用（字节永不进消息与卷），采集三入口（粘贴 / 拖放 / 夹选）经
+  `app/chat/image-intake.ts` 准入规整（magic-byte 白名单 + EXIF 校正 + 长边 2048 重编码 + sha256 寻址）；
+  能力门禁 = 生效输入模态声明（`settings.ts` 的 `modelInput`）
+- 流式 chunk 类型：Text / Reasoning / ToolCallStart / ToolCall / Usage / Done / Error
 
-### 4.8 LLM Provider 抽象
+### 4.8 Agent 工具体系（模型可见面）
 
-统一 `Provider` trait 抹平各厂商 API 差异：
-- `provider/` 目录：`types.ts`（统一 Message / ToolCall / Chunk 类型）+ `anthropic.ts` + `openai.ts`（兼容 Ollama）+ `catalog.ts` 模型目录合并层 + `thinking.ts`（档位 → 厂商 wire 参数唯一事实源）
-- **3 个内核 seed 模型目录** JSON（provider-refactor 方案乙 Phase 1B 后仅存内核 seed：anthropic / openai / deepseek——其余厂商一律运行时从 /models 拉取；`npm run gen:catalogs` 从 catalog-overrides.json + 社区数据源再生成缺失模型，只新增不改既有条目）
-- **动态模型发现**：`fetchModels()` 拉取 `/models`（OpenAI）/ `/v1/models`（Anthropic）并合并，静态目录同 ID 优先（元数据更丰富）
-- **thinking 档位适配（EffortVendor）**：Anthropic budget_tokens（low4k/medium8k/high16k/max32k）、DeepSeek reasoning_effort（high/max）、OpenAI 官方 low/medium/high
-- **LLM adapter seam（ctx.llm）**（平台化 Phase 1 · D2 修订版，2026-08-27）：第一方 `plugins/builtin/llm-adapters/` 把内核 anthropic/openai 协议方言经 `ctx.llm.register({ id, kind, create })` 贡献为默认 adapter（后注册胜），外部方言可覆盖（仪器化 wrapper / 替换实现）；未知 kind 响亮报错不再静默跌 openai，内核回落分支已拆除。详见 provider-system-spec「追加裁决 2026-08-27」
-- **附图（multimodal 图片线）**（2026-09-08 起，multimodal-image-plan B1-B5 全链已落地）：用户消息可挂 `ChatImageRef[]` 引用（`Message.images` 旁挂字段——**字节永不进消息/卷**，只存内容寻址引用；字节经 fs_cap `write_base64` 能力口落 `{ws}/.lantai/attachments/{sha256}.{ext}`）。采集三入口（粘贴/拖放/夹选）统一经 `app/chat/image-intake.ts` 准入规整（magic-byte 白名单 png/jpeg/webp/gif + EXIF 校正 + 长边 ≤2048 重编码 ≤4MiB + sha256 内容寻址）；纯文本消息 wire 形态字节不变（三适配器 content parts，openai/anthropic/responses）；能力门禁 = 生效输入模态声明（`settings.ts` 的 `modelInput`：`ModelOverrides.input` 覆盖 ?? 目录 `ModelDescriptor.input`——catalog seed 已声明已知 vision 款，目录外自定义 vision 模型在设置页参数面板补声明），三消费面同链（createProvider 能力戳 → 请求期图投影 / 创作坞附图门禁 / 选择器「视」徽标）。真源：`docs/plans/multimodal-image-plan.md`
-- **本地反向代理**（`llm_proxy.rs` + `transport.ts`）：loopback-only HTTP 代理（127.0.0.1:14570）转发 LLM 请求并强加 CORS 头，SSE 逐块透传；`spawn_llm_proxy` 不 join 防启动挂起，停机标志保证退出干净
-- 流式 chunk 类型：Text / Reasoning / ToolCallStart / ToolCall / Usage / Done / Error；支持 reasoning_content round-trip
+模型可见工具面是**领域折叠**形态：一个域一个工具 + `action` 判别联合 + 常驻件（`ask_user` / `wait`）。
 
-### 4.9 Agent 工具体系
+| 想找什么 | 去哪（唯一权威） |
+|---|---|
+| 模型可见工具面（域 / action / 参数 / 隐藏旧名附录） | 生成物 `docs/agents/model-tool-contract.md`（`npm run gen:tool-contract`，勿手改） |
+| 域清单与域数 | 生成物 `docs/facts.generated.md`（真源 `src-ui/src/agent/tools/domains.ts` 的 `DOMAIN_SPECS`） |
+| 会话级 capability 工具（Skill / plan / 通信族 / `code_execution` 等） | `src-ui/src/agent/blueprint.ts` 的 capability 表 |
 
-模型可见工具已收敛为领域工具（`src-ui/src/agent/tools/domains.ts` 的 `DOMAIN_SPECS`）：
+- **旧细粒度名**（`search_symbols` / `run_shell` / `write_file` / `git_*` / `agent_spawn` 等）保留在
+  `ToolRegistry` 但 `hide()`；模型误调由 `retireRedirect` 拦截并返回「已淘汰 → 领域动作」重定向。
+- **新工具必须 `defineTool` + zod v4**：一份 schema 同时产出 JSON Schema、运行时校验与 `z.infer` 类型；
+  meta key（`_forceGate` / `_callId` / `_agent_id`）经 `.passthrough()` 透传。
+- **行源全量插件化**：tools 域唯一行源 = 插件通道贡献快照（`pluginToolRows()`），`buildToolRegistry` 按行表序
+  装配——**表序 = 组合序 = 字节契约**（前缀缓存与 effective 快照依赖此序，禁重排）。
+- **`code_execution` 执行原语**：程序体经 `ctx.codeRuntime` 在 Web Worker 沙箱执行，程序内可嵌套调用全部
+  可见工具（审计逐条落 session-log，门禁 / hooks / 截断不豁免，读并行写串行）。
 
-- **领域工具**：`fs / shell / git / search / web / agent / task / browser / desktop / graph / ops / lsp`，加常驻 `ask_user / wait`；`memory` 族（记忆工具）与 `Skill`、plan 双入口、通信族、`code_execution` 执行原语经会话级 capability 装配。
-- **图谱三域**：`graph`（24 个只读动作：symbols/neighbors/impact/preflight/cycles/…）、`ops`（analyze/validate/health/status/timeline/rename/import_scip）、`lsp`（resolve_call/infer_type/implementations/references）。底层仍是引擎 36 schema / 默认 35 的 MCP 工具。
-- **旧细粒度名**（`search_symbols`、`run_shell`、`write_file`、`git_*`、`agent_spawn` 等）保留在 `ToolRegistry` 但 `hide()`；模型调用由 `retireRedirect` 拦截并返回 `[已淘汰] → 领域动作` 重定向。内部代码/测试仍可直调。
-- **新工具必须 `defineTool` + zod v4**：一个 schema 同时产出 JSON Schema、运行时校验和 `z.infer` 类型化参数；meta key（`_forceGate` / `_callId` / `_agent_id`）经 `.passthrough()` 透传。
-- 新增领域动作须同步 `DOMAIN_SPECS` + `collectHiddenToolNames()` + 测试 + `AGENTS.md`。
-- **行源全量插件化（P4 收官 2026-08-24；S3 产物化 2026-09-03）**：出厂 builtin 工具行表退役——十四族工具全部经 ctx.tools 第一方插件通道贡献（真源 `plugins/builtin/<domain>/`，清单单一真源 `composition/first-party-tools.ts`），tools 域唯一行源 = `pluginToolRows()`；`buildToolRegistry` 按行表序装配——表序 = 组合序（前缀缓存语义的根基），行内工具名冲突由 `ToolRegistry.register` 装载期拒绝（duplicate throw）。可见面由 DOMAIN_SPECS 驱动不受通道影响；无状态族实例缓存，装配期真值族（wait/ask/memory/skill/task/agent/hologram）声明 noCache 每装配重创。
+### 4.9 组合层与插件化
 
-### 4.10 Agent 运行时收敛（agent-core-convergence Phase 0–6，已并入 main）
+Agent 的装配面（工具行 / prompt 段 / capability 三类行源）全部经插件通道贡献，出厂 builtin 表已退役——
+第一方与第三方在同一注册表上竞争，特权区只减不增。
 
-2026-08 的收敛工程把自有运行时的生命周期/会话契约全部原语化并门禁化（详见 `docs/archive/agent-core-convergence/`）：
-
-- **声明式装配（Phase 6 + 组合架构 S1 三层，2026-08-20；P4 修订 2026-08-23/24；S5 bundle 退役 2026-09-03）**：全部工具族经 ctx.tools 第一方插件通道贡献（真源 `plugins/builtin/<domain>/`）；system-prompt 段落由 `src/composition/prompt-sections.ts` 单一真源定义（13 段，两装配面 applicable 分流；经 `plugins/builtin/prompt-segments/` 走 ctx.prompts 通道贡献）；会话级工具/hook 由 `agent/blueprint.ts` 的 `AgentBlueprint` capability 表驱动（十四项第一方 capability 经 `plugins/builtin/capability-segments/` 走 ctx.capabilities 通道贡献——`firstPartyCapabilities()` 清单序 = 迁移前出厂表序）——**`AgentConfig` 冻结 31 字段**不再扩张；三层表序 = 字节契约（DeepSeek 前缀缓存与 effective 快照依赖此序）；teardown 走 `ctx.effect`；面板/命令/工具/llm 四 service 注册表挂根 Context（`src/composition/services.ts`，`ContributionRegistry` 内核：装载期重名拒绝 + disposer 双守卫）+ 块渲染器第五（`renderer-service.tsx`）+ prompt 段第六（`prompt-service.ts`）+ 管道钩子第七（`hook-service.ts`）+ capability 第八（`capability-service.ts`）+ 子代理第九（`subagent-service.ts`，平台化 Phase 1 · D3——默认 provider `plugins/builtin/subagent-in-process/` 进程内实现，消费面 `Agent.spawnSubAgent` 单点）+ fs 第十（`fs-service.ts`）/ shell 第十一（`shell-service.ts`，subprocess 并入）/ 会话持久化第十二（`session-persistence-service.ts`）/ 图分析第十三（`graph-service.ts`），平台化 Phase 2 · D11——后端能力默认 provider = Rust/engine 包装（`plugins/builtin/{fs,shell,sessions,graph}-builtin/`），强制层 gate 在管道层不旁路
-- **会话事件溯源（Phase 5）**：`session-log.ts` 事件日志 + session 变异三入口（`_appendMessage` / `_replaceSession` / `_retractSessionRange`）；工具折叠逻辑同步 `derivePayload`
-- **生命周期内核（cordis-migration P0–P4）**：vendored cordis（`src/cordis/`）+ workspace-scope epoch（`getWorkspaceEpoch()` / `bumpWorkspaceEpoch()`，**永久保留**——fiber 管所有权，epoch 管逃逸所有权的在途回调）。资源获取点就地 `fiber.ctx.effect()` 登记（顺序敏感拆除组打包 DisposerBag 单 effect 保串行），工作区切换/退出只调 `fiber.dispose()` + epoch bump，杜绝跨项目串台；Agent 挂身份 fiber（清理走 DisposerBag 同步快通道），子系统以 Service 挂树（`LspService` 样板）
-- **门禁**：`npm run verify:convergence`（T0 静态断言 + 8 个 frozen baseline 对拍）失败即返工；record 需显式 `CONVERGENCE_RECORD=1`，baseline 变更走审批
-
-### 4.11 组合层与插件化（S0-S4 + P4，2026-08-24 收官）
-
-Agent 的装配面（工具行 / prompt 段 / capability 三类行源）全部经插件通道贡献，出厂 builtin 三张表退役——特权区只减不增，第一方与第三方在同一注册表上竞争：
-
-- **九条贡献通道 + 五条 seam provider 注册表**（2026-09-14 M1 收口：**同一内核** `ContributionChannel`，见 `composition/contribution-channel.ts`——id 寻址 + 重名装载期拒绝 + 幂等 disposer + 陈旧性守卫 + 声明式 `timing` 四档 immediate/next-assembly/request/frame）：贡献通道 = `ctx.panels`（面板）/ `ctx.commands`（命令）/ `ctx.tools`（工具）/ `ctx.llm`（LLM adapter）/ `ctx.prompts`（system-prompt 段）/ `ctx.hooks`（工具管道钩子：enrich 富化 / preflight 预检）/ `ctx.capabilities`（会话级能力）/ `ctx.renderers`（纸壳块体）/ `ctx.overlays`（画布覆盖层）；seam provider 注册表 = `ctx.fs`（文件系统）/ `ctx.shell`（shell，subprocess 并入）/ `ctx.sessionPersistence`（会话持久化）/ `ctx.subagents`（子代理后端）/ `ctx.agentLoop`（流式循环）——service 注册表挂根 Context，默认 provider = Rust/engine 包装（`ctx.graph` 图分析 seam 随图谱功能全量退役，2026-09-09）
-- **第一方即插件**：十四项 capability（真源 `plugins/builtin/capability-segments/`）、十三段 system-prompt（真源 `plugins/builtin/prompt-segments/`）、十四族工具（真源 `plugins/builtin/<domain>/`）全部经通道贡献——30 个出厂产物全部从磁盘通道装载（exe 只留 13 内核：11 注册表 + code-runtime + dynamic-runner）；无引导环境（convergence 夹具/gen-tool-contract）经 `composition/first-party-*.ts` 装配腰复现生产面
-- **插件装载**：`~/.lantai/plugins/<name>/` 自包含 ESM，webview 动态 import（无包管理器/无 import map，宿主桥 `window.__lantai_plugin_host__`）；manifest 声明式挂接——`tools`（声明是数据 + entry `toolHandlers` 命名导出执行，装载器包装挂载）与 `mcpServers`（MCP 机器桥：stdio 经 Rust protocol_bridge / http 直连，工具名 `mcp__<server>__*`，lazy 首装配连接失败空集重试 | startup-error 装载期急连接；kill 挂插件 fiber disposer）
-- **行组合层**：roster.patch.yml（用户层，可寻址禁用/覆盖/锚定全部贡献行含第一方）→ preset（standard/minimal 内置 + `~/.lantai/composition/presets/` 用户目录）→ 热重载（Rust composition_watcher → `composition:changed` → reloadCompositionPatch，在途会话冻结）
-- **权限三层**：manifest `permissions` 声明（read/edit/bash/git/web 五域闭集）→ plugins.json granted 段授予门禁（装载期一票否决，未授权不 import 插件代码）→ Rust 命令咽喉逐调用强制（与声明无关，照常生效）
-- **契约文档**：`docs/plugins/README.md`（插件面人类契约）+ `docs/composition/README.md`（roster 语法）+ convergence 门禁（三层表序 = 字节契约，standard preset 零漂移）
+- **贡献通道与 seam 注册表**：全量清单（含寻址域、重名拒绝、幂等 disposer、声明式 `timing` 四档）见
+  `docs/plugins/README.md` §0；内核单源 = `composition/contribution-channel.ts`。seam provider 默认实现 =
+  Rust / 引擎包装，强制层在管道层不在 provider 内（不可旁路）。
+- **行组合层**：`~/.lantai/composition/roster.patch.yml`（用户层，可寻址禁用 / 覆盖 / 锚定全部贡献行，含第一方）
+  → preset（内置 + `~/.lantai/composition/presets/` 用户目录）→ 热重载（Rust `composition_watcher` →
+  `composition:changed` → `reloadCompositionPatch`，在途会话冻结）。
+- **插件装载**：`~/.lantai/plugins/<name>/` 自包含 ESM，webview 动态 import（无包管理器、无 import map），
+  宿主桥 `window.__lantai_plugin_host__`；manifest 支持 `tools`（声明 + `toolHandlers` 命名导出）与
+  `mcpServers`（MCP 机器桥：stdio 经 Rust `protocol_bridge`，工具名 `mcp__<server>__*`，治理三档
+  lifecycle / 崩溃指数退避重启 / 空闲回收 / 进程树终止）。
+- **权限三层**：manifest `permissions` 声明（read / edit / bash / git / web 闭集）→ `plugins.json` `granted` 段
+  授予门禁（装载期一票否决，未授权不 import 插件代码）→ Rust 命令咽喉逐调用强制。
+- **契约文档**：`docs/plugins/README.md`（插件面人类契约）+ `docs/composition/README.md`（roster 语法）+
+  convergence 门禁（三层表序 = 字节契约）。
 
 ---
 
-## 5. 代码图谱分析引擎
+## 5. 代码图谱分析引擎（HoloGram，随包配套）
 
-引擎是整个 Harness 体系的数据基础，将源代码转化为可查询的依赖拓扑图。
+引擎把源代码转成可查询的依赖拓扑图。它是兰台之外的独立产品面：兰台默认不启用，外部 MCP 客户端可直连。
 
 ### 5.1 统一 Engine API
 
-`engine/src/engine/mod.rs` 用单一 `Engine` 结构体替换了分散全局变量（CACHED_GRAPH / GRAPH_STORE / ANALYZE_LOCK）；L2 起**存储外置**——图库与时间线连接住在 `hologram_storage::StoreHost`（所有权单元），**引擎自开自持**（数据落引擎自有目录 `<root>/.hologram/`；2026-09-08 起壳侧零句柄）：
+`engine/src/engine/` 用单一 `Engine` 结构体替换了分散的全局变量；存储外置——图库与时间线连接住在
+`hologram_storage::StoreHost`（所有权单元），**引擎自开自持**，数据落 `<root>/.hologram/`
+（真源 `hologram-graph/src/paths.rs`）：
 
-- **构造即绑根**：`Engine::open(root)`（引擎自开 StoreHost，返回即 Ready）；`new_shared(root)` = open + Arc + Weak 自引用 + 自动 watcher（生产共享形态）。**单根终身不变**——切换工作区 = 新建实例（`engine_init` 全局路径自行换整个实例，旧实例 watcher 经 Weak 自灭）。`engine_init` 顶部先跑 `migrate_engine_data`（老 `.lantai` 引擎文件 → `.hologram`，幂等 + 冲突不搬）。
-- **状态机**：`Ready ↔ Analyzing → Error`（Loading 收敛进 StoreHost::open；Uninitialized 仅全局槽空态）
-- **并发**：`RwLock` 读写分离；timeline 用专用 SQLite 连接（永不阻塞图锁）
-- **取消令牌**：新 analyze() 抢占旧运行（阶段边界中止），"重新分析"按钮秒响应
-- **panic 守卫**：`catch_unwind` 包裹流水线，任何 panic 都重置状态 + 释放锁，杜绝卡死在 Analyzing
-- **增量更新**：实例方法 `try_incremental`（先试增量 IncrementalUpdater，失败回退全量）；全局 `engine_try_incremental` 仅引擎二进制自用
-- **线程局部当前引擎**：`with_current(arc, f)` 在分派线程绑定当前实例——engine_* 全局函数先查 TLS 再落全局，MCP 工具处理器无需逐个穿线即吃到正确实例（纪律：只存在于同步闭包内，禁跨 .await）
+- **构造即绑根**：`Engine::open(root)`（返回即 Ready）；`new_shared(root)` = open + Arc + Weak 自引用 + 自动
+  watcher。**单根终身不变**——切换工作区 = 新进程（`engine_init` 上部先跑 `migrate_engine_data`，把老
+  `.lantai` 里的引擎文件搬到 `.hologram/`，幂等 + 冲突不搬）。
+- **状态机**：`Ready ↔ Analyzing → Error`；**并发**：`RwLock` 读写分离，timeline 用专用 SQLite 连接（不阻塞图锁）。
+- **取消令牌**：新 `analyze()` 抢占旧运行（阶段边界中止）；**panic 守卫**：`catch_unwind` 包裹流水线，
+  任何 panic 都重置状态并释放锁。
+- **增量**：实例方法 `try_incremental`（先试增量，失败回退全量）。
+- **线程局部当前引擎**：`with_current(arc, f)` 在分派线程绑定当前实例——MCP 工具处理器无需逐个穿线
+  （纪律：只存在于同步闭包内，禁跨 `.await`）。
 
 ### 5.2 分析流水线
 
-`pipeline/` 拆为 discovery → parser → runner：
+`engine/src/pipeline/` 拆为 discovery → parser → runner：
 
 | 阶段 | 说明 |
-|------|------|
-| 1. 文件发现 | 按 GRAMMAR_LOADER 支持的扩展名遍历项目 |
-| 2. 分批并行解析 | **200 文件/批** rayon 并行解析，串行合并（v3 批式：内存有界、无锁、线性合并；64K 文件不炸内存） |
-| 3. 解析缓存 | file_path → (source, tree) 传递给后续合成阶段（消除 3 次重复 walkdir） |
-| 4. Cross-File Resolution | 解析跨文件的 import / call 关系（含裸名目标，GraphMerger 用 add_edge_unchecked） |
-| 5. Coupling Analysis | 计算 L1-L4 耦合深度 |
-| 6. Framework Routes | 24 个框架的路由检测 |
-| 7. Dynamic Dispatch | 多态调用的合成边 + React 组件 / JSX + Vue template + DI/反射 + 动态 import + eval + 跨语言调用 + bridge/rpc 间接调用 |
-| 8. Dataflow Synthesis | 函数级读写分析 + 共享状态 + async trigger/await 链 |
-| 9. Community Detection | Leiden（扁平）+ Louvain（层级）社区检测 |
+|---|---|
+| 1. 文件发现 | 按已装语法支持的扩展名遍历项目（忽略清单见 `hologram-graph/src/ignore.rs`） |
+| 2. 分批并行解析 | rayon 并行解析，**200 文件/批**（`pipeline/runner.rs` 的 `BATCH`），串行合并（内存有界） |
+| 3. 解析缓存 | file_path → (source, tree) 传给后续合成阶段，消除重复 walkdir |
+| 4. Cross-File Resolution | 跨文件 import / call 关系合成（`engine/src/graph/`） |
+| 5. Coupling Analysis | L1-L4 耦合深度 |
+| 6. Framework Routes | 框架路由检测（`analysis/framework_routes/frameworks/`，一族一文件） |
+| 7. Dynamic Dispatch | 多态调用合成边 + React / Vue template + DI / 反射 + 动态 import + eval + 跨语言 + bridge / rpc 间接调用 |
+| 8. Dataflow Synthesis | 函数级读写 + 共享状态 + async trigger / await 链 |
+| 9. Community Detection | Leiden（扁平）+ Louvain（层级） |
 | 10. DB Save | 持久化到 MemoryIndex + SQLite + 向量索引 |
 
-特性：进度报告、AtomicBool 取消、每阶段计时（StageTiming）、LSP 后台预热。
+特性：进度报告、`AtomicBool` 取消、每阶段计时、单文件解析超时保护、LSP 后台预热。
 
 ### 5.3 图谱数据模型
 
-**节点** (9 种类型)：`Symbol | Function | Class | Module | File | Interface | Variable | Medium | Temporal`
+- **节点**（`hologram-graph/src/node.rs` 的 `NodeKind`）：`Symbol / Function / Class / Module / File /
+  Interface / Variable / Medium / Temporal`；每节点带 id、name、kind、location、snippet（供向量搜索）、
+  properties、in/out_degree、community_id。
+- **边**（`hologram-graph/src/edge.rs` 的 `EdgeKind`）：`Imports / Calls / Inherits / Defines / Reads /
+  Writes / Shares / Triggers / Awaits / Sequences / Usage / Throws`；每条边带 coupling_depth（L1-L4）、
+  cross_file、temporal_delay_sec、lsp_resolved、is_synthesized（启发式合成边）、metadata（溯源）。
 
-每个节点携带：id, name, kind, location, snippet（供向量搜索的源码片段）, properties, in/out_degree, 3D position, community_id
+### 5.4 语义向量索引
 
-**边** (12 种类型)：`Imports | Calls | Inherits | Defines | Reads | Writes | Shares | Triggers | Awaits | Sequences | Usage | Throws`
+`hologram-vector/src/` 实现代码语义搜索：
 
-每条边携带：coupling_depth (L1-L4), cross_file 标记, temporal_delay_sec, lsp_resolved 标记, is_synthesized 标记（启发式合成边）, metadata（溯源追踪）
-
-### 5.4 语义向量索引（MiniLM ONNX）
-
-`hologram-vector/src/`（L5b crate 化从 engine 拆出）实现代码语义搜索：
-
-- **双后端自动选择**（`embed.rs`）：
-  1. **MiniLM**（`minilm.rs` + `wordpiece.rs`）—— sentence-transformers/all-MiniLM-L6-v2 ONNX 模型（384 维），经 `ort` crate 动态加载项目自带的 `onnxruntime.dll` + 模型目录 `engine/models/all-MiniLM-L6-v2/`（资产随引擎，2026-09-08 归位），语义区分度高
-  2. **n-gram 哈希**—— 零依赖兜底，词法相似性
-- **索引存储**：usearch HNSW（Cos 度量），`slots.json` 记录节点 id 列表
-- **一致性保障**：slots.json 带嵌入后端标识，后端不匹配的旧索引自动判废（防跨嵌入空间垃圾结果）；slots 数与索引向量数必须一致；原子落盘（tmp + rename）
-- **进程级缓存**：mtime 变化自动失效重载（**按根键控**——双工作区互不踩，L4）；重建并发守卫按索引文件路径防重入
-- 索引位置：`.hologram/vectors.usearch`（引擎数据目录内）；后台线程构建（流水线 7.5 阶段）
-- **暴露方式**：挂在前端 `search_code` 工具的 `vector_hits` 字段（与文本/FTS 命中合并返回），并带 `vector_backend` 标识
+- **双后端自动选择**（`embed.rs`）：MiniLM（`minilm.rs` + `wordpiece.rs`，all-MiniLM-L6-v2 ONNX，384 维，
+  经 `ort` 动态加载随引擎分发的 `onnxruntime.dll` 与 `engine/models/`）→ 不可用时跌 n-gram 哈希（零依赖兜底）
+- **索引存储**：usearch HNSW（Cos 度量）+ `slots.json` 记节点 id 列表；索引落 `.hologram/vectors.usearch`
+- **一致性**：`slots.json` 带后端标识，后端不匹配的旧索引自动判废；slots 数与向量数必须一致；原子落盘
+- **进程级缓存**：按根键控（双工作区互不踩），mtime 变化失效重载；后台线程构建
+- **暴露**：并入 `search` 域的文本 / FTS 命中返回，带 `vector_backend` 标识
 
 ### 5.5 分析能力
 
 | 模块 | 能力 |
-|------|------|
-| `coupling.rs` + `coupling_report.rs` | L1-L4 四级耦合深度计算 + 报告 |
-| `cycles.rs` | 循环依赖检测（all / data / llm 模式） |
-| `dataflow_engine.rs` + `dataflow_synthesis.rs` | 函数级变量读写分析、跨函数共享状态、async trigger |
-| `flows.rs` | 数据流聚合查询 |
-| `fragility.rs` | 结构脆弱性排行（扇入/扇出 + 耦合深度） |
-| `blindspots.rs` | 架构盲区扫描（L4 穿透、未锁并发、LLM 反馈环） |
-| `dynamic_boundaries.rs` | 动态边界检测 |
-| `policy_check.rs` | 约束规则检查（配合 constraints.yaml） |
-| `graph_stats.rs` + `explore.rs` | 图统计 + NL 聚合查询 |
-| `bridge_rpc.rs` | bridge / rpc 间接调用补全 |
+|---|---|
+| `analysis/coupling.rs` + `coupling_report.rs` | L1-L4 四级耦合深度 + 报告 |
+| `analysis/cycles.rs` | 循环依赖检测（all / data / llm 模式） |
+| `analysis/dataflow_engine.rs` + `dataflow_synthesis.rs` + `flows.rs` | 函数级变量读写、跨函数共享状态、async trigger、聚合查询 |
+| `analysis/fragility.rs` | 结构脆弱性排行（扇入 / 扇出 + 耦合深度） |
+| `analysis/blindspots.rs` | 架构盲区扫描（L4 穿透、未锁并发、反馈环） |
+| `analysis/dynamic_boundaries.rs` | 动态边界检测 |
+| `analysis/policy_check.rs` | 约束规则检查（配合 `hologram.constraints.yaml`） |
+| `analysis/graph_stats.rs` + `explore.rs` | 图统计 + 聚合查询 |
+| `analysis/bridge_rpc.rs` + `grpc_services.rs` | bridge / rpc / gRPC 间接调用补全 |
 | `community/` | Leiden + Louvain 社区检测 |
-| `vector/` | 语义向量索引（usearch + MiniLM ONNX） |
+| `scip_bridge/` | SCIP 索引导入 |
+| `stress.rs` | 压力测试合成项目生成器 + 基准运行器（多级规模） |
 
 ### 5.6 语言适配
 
-通过 `LanguageAdapter` trait 抽象，支持动态语法加载：
-
-27 种语言通过 tree-sitter 静态链接（其中 18 个适配器族有专用 .scm 结构/数据流查询，js/ts/tsx 一族、c/cpp 各一族）：Python, TypeScript, TSX, JavaScript, Go, Rust, Java, C, C++, Ruby, Lua, C#, PHP, Swift, Dart, Scala, OCaml, Haskell, R, Nix, Bash, HTML, CSS, YAML, Zig, Elixir, Erlang（JSON 语法在 `grammar.rs` 中注释禁用——数据文件不解析）
-
-动态语法通过 `grammar_loader.rs`（`engine::GRAMMAR_LOADER`）+ `libloading` 加载 DLL，无需重新编译即可扩展语言。`engine_supported_extensions()` 始终与已装 DLL 同步。
+- **静态语法**：`engine/Cargo.toml` 的 `tree-sitter-*` 依赖表是语言清单的**唯一真源**（Python、TypeScript、
+  TSX、JavaScript、Go、Rust、Java、C、C++、Ruby、Lua、C#、PHP、Swift、Dart、Scala、OCaml、Haskell、R、Nix、
+  Bash、HTML、CSS、YAML、Zig、Elixir、Erlang；JSON 语法在 `grammar.rs` 中注释禁用——数据文件不解析）。
+- **查询族**：`engine/queries/*.scm` 一族一对 structure / dataflow 查询（清单以目录为准）；
+  `adapter/registry.rs` 决定注册序（first-registered-wins）。
+- **动态语法**：`adapter/grammar_loader.rs` + `libloading` 加载 DLL，无需重编译即可扩展语言。
+- **免编译扩展**：`engine/src/plugins/` 读 `HOLOGRAM_PLUGIN_DIR` manifest，可补语言适配器 / 框架路由 / 工具
+  （契约见生成物 `docs/agents/engine-plugin-contract.md`，示例 `examples/engine-plugins/`）。
 
 ### 5.7 LSP 集成
 
-`LspManager` 管理原生 LSP 服务器（rust-analyzer / gopls / pyright 等），提供 `resolve_call`（多态分发解析）、`infer_type`、`find_implementations`、`find_references`。
-
-**手写协议纪律**（见 INVARIANTS.md #6）：LSP 客户端是自研 JSON-RPC 帧解析（非现成库）——
-- 帧边界按**字节流扫描定界**，不能用 read_line（JSON body 内可能含 \n）
-- 解析失败时把原始字节带进错误（`raw=...`）便于诊断
-- 超时 30s → 5s 快速失败；回复服务器请求；死壳自愈
-- 教训：手写协议必须配协议级测试（模拟服务器发粘连帧/异常帧）
+`lsp_manager.rs` 管理原生 LSP 服务器（rust-analyzer / gopls / pyright 等），提供 `resolve_call`（多态分发解析）、
+`infer_type`、`find_implementations`、`find_references`；`lsp_daemon.rs` + `bin/lspd.rs` 提供常驻守护形态。
+**手写协议纪律**（见 `INVARIANTS.md` #6）：帧边界按字节流扫描定界（不可 `read_line`——JSON body 内可能含 `\n`）；
+解析失败把原始字节带进错误；超时分级（30s → 5s 快速失败）；回复服务器请求；死壳自愈。
 
 ### 5.8 增量更新与存储层
 
-**增量更新**：`IncrementalUpdater` 监听文件变更（`notify` crate），仅重新解析变更文件并增量更新图谱（解析缓存复用），失败自动回退全量。
-
-**双层存储**：
-- **MemoryIndex**：CSR 格式内存图索引，高并发读
-- **SQLite**：持久化（WAL），FTS5 全文搜索，timeline 事件
-
-**压力测试**：`stress.rs` 合成项目生成器 + 基准运行器，4 级规模（500 / 2000 / 10000 / 50000 文件），输出每阶段计时和吞吐量。
+- **增量**：`pipeline/incremental.rs` 监听文件变更（`notify`），仅重解析变更文件并增量更新图谱，失败回退全量。
+- **双层存储**（`hologram-storage/src/`）：MemoryIndex（CSR 内存图索引，高并发读）+ SQLite（WAL 持久化、
+  FTS5 全文搜索、timeline 事件）+ `snapshot.rs` 快照。
 
 ---
 
-## 6. MCP 对外服务
+## 6. MCP 对外服务（引擎形态）
 
-Engine 作为独立 MCP Server 运行，通过 JSON-RPC over stdin/stdout 对外暴露工具（注册表共 36 个 schema，默认暴露 35 个——含 `symbol_history` 在内的全部 36 个需 `HOLOGRAM_MCP_TOOLS=*`）。
+引擎是独立 MCP Server，对外暴露工具面：
 
-### 6.1 接入方式
-
-```json
-// .mcp.json
-{
-  "mcpServers": {
-    "hologram": {
-      "command": "./engine/target/release/hologram-engine",
-      "args": ["serve", "--project-root", "."]
-    }
-  }
-}
-```
-
-复制到 Claude Code / Cursor / 任意 MCP 客户端即可使用，零额外配置。
-
-### 6.2 工具分类
-
-| 分类 | 工具 |
-|------|------|
-| **图导航** | `explore_deps`（NL 聚合查询，首选项）, `search_symbols`, `get_neighbors`, `inspect_symbol`, `find_dep_path`, `graph_summary` |
-| **社区/结构** | `get_community`, `cluster_report`, `grpc_services` |
-| **影响分析** | `trace_impact`, `preflight_check`, `graph_diff` |
-| **架构分析** | `fragile_modules`, `detect_cycles`, `thread_conflicts`, `coupling_report`, `arch_blindspots`, `check_boundaries`, `find_unused` |
-| **数据流（语法级启发式）** | `trace_dataflow`, `async_edges`, `list_flows`, `get_flow`, `get_affected_flows` |
-| **LSP** | `resolve_call`, `infer_type`, `find_implementations`, `find_references` |
-| **操作/时序** | `analyze_project`, `validate_project`, `project_health`, `rename_symbol`, `import_scip`, `project_timeline`, `engine_status` |
-
-### 6.3 降级策略
-
-工具执行遇到错误时返回 `Degraded` 响应（非 JSON-RPC error），包含：
-- `guidance`：给 LLM 的引导信息
-- `fallback`：降级建议
-- `_stalenessBanner`：文件变更过期提醒（`staleness.rs`）
-
-这确保 MCP 客户端始终收到可操作的信息，而非硬错误。
+- **stdio 形态**：`hologram-engine serve --project-root <根>`（兰台与 DSH 走这条，`--tcp` 可同时再起数据面）
+- **TCP 形态**：`engine.exe` 默认模式在 `127.0.0.1:9777` 监听（`main.rs` 的 `run_tcp_server`），供 Tauri 前端 /
+  Unity 等外部客户端
+- **工具面（模型可见默认集 / 壳专属方法 / 免编译扩展三类）**：生成物
+  `docs/agents/engine-plugin-contract.md`（真源 `engine/src/contract.rs` + `engine/src/tools/mod.rs`），
+  本页不复述清单与计数
+- **接入示例**：`.mcp.json.example`（复制到 Claude Code / Cursor / 任意 MCP 客户端即可）
+- **响应模型**：`tools/response.rs` 的 `ToolResponse` 四态——`Success(data)` / `Degraded { guidance, fallback,
+  details }`（可恢复失败，给模型引导与回退建议，**不是** JSON-RPC error）/ `Refused { reason }`（安全拒绝，
+  不得重试）/ `Fault { message, retry }`（真故障）；`with_suggestions` 统一附加后续工具建议。
+- **新鲜度横幅**：`tools/staleness.rs`——结果引用了自上次索引同步后被编辑的文件、图经增量更新后社区 / 聚类
+  结果只算近似、或 SCIP 桥接边可能过期时，相关工具结果带 ⚠️ 横幅说明（不静默冒充新鲜）。
 
 ---
 
@@ -485,268 +447,289 @@ Engine 作为独立 MCP Server 运行，通过 JSON-RPC over stdin/stdout 对外
 
 ### 7.1 RPC 单一入口
 
-`rpc.rs` 一个 `#[tauri::command] rpc(method, params)` 是全部前端能力的单一 IPC 入口（64 个方法分支，以生成物 `docs/agents/frontend-rpc-contract.md` 实测为准——工具业务自 2026-09-05 内核能力化收口后走十一能力口直呼；`tool_call` 信封 + `plugin_tool_manifests` 已随 R5 脚手架拆除）；**命令实现是薄壳**（参数提取 + State 转换 + 横切），业务编排在应用层 `app/services/`。分类（由生成物 `docs/agents/frontend-rpc-contract.md` 实测为准，`scripts/gen-rpc-contract-md.cjs` 再生）：应用层（数据上下文）、Engine 调度、Graph、能力口（search/fs/git/process/browser/uia/web/constraints/pty/lsp/editor 十一口）、MCP/ACP stdio 桥、身份认证/权限、OAuth 订阅平面、**插件安装通道**（plugin_install/uninstall/set_enabled/dir）、Agent 隔离与工作区、外部服务（agent_session_append）、Hologram 遗留（run_check；record_event 2026-09-08 退役）、数据流（save/query；delete 2026-09-08 退役）。
+`rpc.rs` 的 `#[tauri::command] rpc(method, params)` 是全部前端能力的唯一 IPC 入口，实现是薄壳
+（参数提取 + State 转换 + 横切），业务编排在 `src-tauri/src/app/services/`。**方法清单与方法总数以生成物
+`docs/agents/frontend-rpc-contract.md` 为准**（`scripts/gen-rpc-contract-md.cjs` 再生），本页不复述。
+
+命令族（按目录可指）：应用层（工作区数据上下文）、能力口（`commands/*_cap.rs`：search / fs / git / process /
+browser / uia / web / pty / lsp / editor）、MCP / ACP stdio 桥（`protocol_bridge.rs`）、身份与权限、OAuth 订阅面、
+插件安装通道（`plugin_install.rs` / `plugin_data.rs`）、隔离与工作区、浏览器与桌面、组合（`composition.rs`）。
 
 ### 7.2 ResourceLedger（统一生命周期）
 
-`lifecycle.rs`：`LifecycleService` trait + `ResourceLedger` 中央注册表。注册的服务：LlmProxy、BgJobs、Mcp、Pty、Lsp、UiaWorker、MemoryBundle、Logging 共 8 个。退出时按注册顺序 drain，每服务带截止时间（Clean / Forced / Failed / NotApplicable 状态）。替代 main.rs Destroyed 里分散的清理逻辑 + `process::exit(0)`。
+`lifecycle.rs`：`LifecycleService` trait + `ResourceLedger` 中央注册表；注册点集中在 `main.rs`。退出时按注册序
+drain，每服务带截止时间（Clean / Forced / Failed / NotApplicable）。替代散落在 `main.rs` 的清理逻辑。
 
-### 7.3 凭证与外部进程
+### 7.3 凭据与外部进程
 
-- **credential.rs**：加密凭证存储（libloading FFI 模式），`credential_store/get/delete/clear` + `permission_ask_response` 校验 allow/remember/rule_to_add/rule_behavior
-- **McpManager**：Engine 子进程管理——ready 信号等待（最长 600s，大项目布局计算）、崩溃追踪（60s 内 3 次 → 永久降级 CLI）、Job Object 随父退出
-- **memory-bundle.exe**：独立进程，主进程 setup 时 spawn，ResourceLedger 关停
+- `credential.rs`：加密凭证存储（libloading FFI 模式）+ 权限 Ask 应答校验（allow / remember / rule_to_add）
+- `protocol_bridge.rs`：MCP / ACP 子进程的 stdio 桥（spawn / write / kill——kill 连进程树终止）；前端经
+  `agent/mcp/tauri-io.ts` 消费
+- `engine_assets.rs`：随包引擎二进制**只读探测**（多候选梯 + `LANTAI_ENGINE_EXE` 覆盖；只在命中时写缓存）
+- `plugin_assets.rs` / `commands/plugin_data.rs`：插件与数据目录位置（含 `.trash` 回收）
+- `composition_watcher.rs`：组合层文件监听 → `composition:changed` 事件
+- `memory-bundle.exe`：可选外部记忆服务，exe 同目录存在才 spawn（生命周期挂 ResourceLedger）
 
 ---
 
 ## 8. 技术栈
 
-### Engine (Rust)
+### Engine（Rust，crate `hologram-engine`）
 
 | 依赖 | 用途 |
-|------|------|
-| `tree-sitter` + 27 语言语法 | 多语言 AST 解析（18 种专用结构查询 + 通用兜底） |
+|---|---|
+| `tree-sitter` + 各语言语法 crate | 多语言 AST 解析（清单见 `engine/Cargo.toml`） |
 | `libloading` | 动态语法 DLL 加载 |
-| `rusqlite` (bundled) | SQLite 持久化 + FTS5 全文搜索 |
-| `parking_lot` | 高性能 RwLock |
-| `rayon` | 并行文件解析 |
-| `usearch` | 语义向量索引（ANN 搜索） |
-| `ort` + onnxruntime.dll | MiniLM ONNX 推理（语义嵌入） |
-| `notify` | 文件系统监听（增量更新） |
-| `serde` / `serde_json` / `serde_yaml` | 序列化 |
-| `tracing` + `tracing-subscriber` | 结构化日志 |
-| `chrono` | 时间线记录 |
-| `mimalloc` | 内存分配器 |
-| `regex` / `walkdir` | 模式匹配 / 文件遍历 |
+| `rusqlite`（bundled） | SQLite 持久化 + FTS5 全文搜索 |
+| `usearch` / `ort` | 向量索引（ANN）/ MiniLM ONNX 推理（`hologram-vector`） |
+| `parking_lot` / `rayon` / `notify` | 读写锁 / 并行解析 / 文件监听 |
+| `tokio` | MCP 服务端与 TCP 数据面 |
+| `mimalloc` / `tracing` | 分配器 / 结构化日志 |
 
-### Tauri Shell (Rust)
+### Tauri Shell（Rust）
 
 | 依赖 | 用途 |
-|------|------|
-| `tauri` 2.x (feature "wry") | 桌面应用框架 |
+|---|---|
+| `tauri` 2.x（feature `wry`） | 桌面应用框架 |
 | `tauri-plugin-dialog` / `tauri-plugin-updater` / `tauri-plugin-window-state` | 对话框 / 自动更新 / 窗口状态 |
 | `portable-pty` | PTY 终端管理 |
-| `ureq` / `url` / `regex` / `glob` | HTTP / URL / 模式 |
-| `libloading` | 凭证库 FFI 加载 |
-| `tokio` (sync/time) | 异步通道、超时 |
-| `engine_transport`（壳内模块） | 引擎进程外消费（每工作区一个 `engine serve` 子进程，stdio MCP；Phase 3 起无 hologram-engine path 依赖） |
-| `base64` | 编码 |
+| `tokio` / `tokio-tungstenite` | 异步通道、超时、WebSocket（CDP） |
+| `ureq` / `reqwest` | HTTP（含 MCP http 桥） |
+| `windows` / `libloading` | Win32（Job Object、UIA/SendInput）/ 凭证库 FFI |
 
-### 前端 (TypeScript / React 19)
+### 前端（TypeScript / React 19）
 
 | 依赖 | 用途 |
-|------|------|
-| `react` 19.x + `react-dom` | UI 框架（React 迁移完成，`src/app/` 单根） |
-| `zustand` 5.x | 状态管理（react-hook stores + vanilla stores） |
-| `MiSans-VF.ttf` 自托管（`src/assets/fonts/` + `src/app/fonts.css` @font-face） | 全产品统一字体（2026-09-10 三体换代：宋/楷/等宽三栈退役；VF 单文件 100-900 全字重） |
-| `react-markdown` + `remark-gfm` | Markdown 渲染（正文块） |
-| `highlight.js` | 代码高亮 |
-| `zod` 4.x | 工具 schema 单一事实源（`defineTool`） |
-| `gpt-tokenizer` | token 计数（压缩成本模型） |
-| `@tanstack/react-virtual` | 虚拟列表（消息长列表） |
-| `vite` 6.x | 构建工具 |
-| `vitest` + `jsdom` | 测试框架 |
-| `biome` | 代码格式化 + lint |
-| `typescript` 6.x | 类型系统 |
+|---|---|
+| `react` 19 / `react-dom` / `zustand` 5 | UI 框架与状态管理（`src/app/` 单根） |
+| `@tauri-apps/api` | 壳 IPC（经 `typedRpc` 收敛） |
+| `@chenglou/pretext` | 纸面排版引擎（测量 / 折行 / 虚拟化基线） |
+| `react-markdown` + `remark-gfm` / `highlight.js` | 正文 markdown 与代码高亮 |
+| `katex` / `echarts` / `smiles-drawer` | 科研渲染（公式 / 交互图表 / 化学式） |
+| `@tanstack/react-virtual` | 长列表虚拟化 |
+| `zod` 4.x | 工具 schema 单一真源（`defineTool`） |
+| `gpt-tokenizer` | token 计数（压缩成本模型 / 墨量册） |
+| `yaml` | roster / patch / manifest 解析 |
+| `MiSans-VF.ttf` 自托管（`src/assets/fonts/` + `app/fonts.css`） | 全产品统一字体（VF 单文件全字重） |
+| `vite` 6 / `vitest` 4 + `jsdom` / `biome` 2 / `typescript` 6 | 构建 / 测试 / 格式化与 lint / 类型系统 |
 
-> `three` / `@types/three` / `@webgpu/types` / `monaco-editor` 已从运行时依赖面退役（V5 拆除 + C13 sweep）：桌面端不再渲染 3D 星图、不再内嵌 Monaco；依赖清单里的残留条目是待清理项。3D 星图随 DSH bundle 分发（`dsh-bundle/`）。
-
-### Provider 抽象
-
-| Provider | 实现 |
-|----------|------|
-| Anthropic | `provider/anthropic.ts`（Claude 系列，支持 thinking） |
-| OpenAI | `provider/openai.ts`（GPT 系列 + Ollama 兼容） |
-| 模型目录 | 9 个 JSON 静态目录（73 模型）+ `/models` 动态发现合并 |
+> `three` / `@types/three` / `@webgpu/types` / `monaco-editor` 已不在运行时使用面（桌面端不渲染 3D 星图、
+> 不内嵌 Monaco）；`package.json` 里的残留条目是待清理项。
 
 ### 外部组件
 
 | 组件 | 用途 |
-|------|------|
-| `memory-bundle.exe` | 进程隔离的记忆服务（FirstBeat） |
-| `onnxruntime.dll` + MiniLM 模型 | 本地语义嵌入（384 维） |
+|---|---|
+| `hologram-engine.exe` + `grammars/` + `onnxruntime.dll` + `models/` | 随安装包分发的图引擎及其资产（`tauri.conf.json` 的 `bundle.resources`） |
+| `memory-bundle.exe`（可选） | 进程隔离的记忆服务 |
 | LSP 服务器 | 原生类型解析（rust-analyzer / gopls / pyright 等） |
+| `officecli`（可选） | Office 域工具后端（解析序 `$OFFICECLI_PATH` → `~/.lantai/tools/officecli/` → PATH） |
 
 ---
 
 ## 9. 项目结构
 
+### 9.1 顶层
+
 ```
 兰台/
-├── engine/                      # 代码图谱分析引擎 (Rust 库 + CLI)
-│   ├── src/
-│   │   ├── engine/              # 统一 API (Engine 结构体 + 状态机 + GRAMMAR_LOADER + watcher + pipeline)
-│   │   ├── plugins/             # 免编译扩展面 (HOLOGRAM_PLUGIN_DIR manifest: language/framework/tool)
-│   │   ├── graph/               # 图数据模型 (Node, Edge, Graph, merge, query)
-│   │   ├── adapter/             # 语言适配器 (LanguageAdapter trait + 27 静态语法 + 动态加载)
-│   │   ├── analysis/            # 分析模块 (coupling, cycles, dataflow, fragility, blindspots, flows, explore)
-│   │   │   ├── framework_routes/frameworks/  # 24 个框架路由检测
-│   │   │   ├── di_reflection/   # DI/反射检测 (多语言)
-│   │   │   ├── dynamic_dispatch*.rs  # 动态分发/React/Vue 合成边
-│   │   │   └── bridge_rpc.rs    # bridge/rpc 间接调用
-│   │   ├── community/           # 社区检测 (Leiden + Louvain)
-│   │   ├── pipeline/            # 流水线 (discovery / parser / runner 分批并行)
-│   │   ├── routing/             # 框架路由检测
-│   │   ├── storage/             # 存储层 (MemoryIndex CSR + SQLite)
-│   │   │   └── incremental.rs   # 增量更新器
-│   │   ├── vector/              # 语义向量索引 (minilm ONNX + ngram + wordpiece + usearch)
-│   │   ├── tools/               # MCP 工具注册表 + 处理器 (36 schema / 默认暴露 35)
-│   │   ├── mcp.rs               # MCP JSON-RPC 服务端
-│   │   ├── lsp_manager.rs       # 原生 LSP 管理 (手写帧协议)
-│   │   ├── stress.rs            # 压力测试合成项目生成器
-│   │   └── lib.rs               # 库入口
-│   └── Cargo.toml
-│
-├── src-tauri/                   # Tauri 桌面 Shell (Rust)
-│   ├── src/
-│   │   ├── app/                 # 应用层 (L1 新生): AppContexts 数据上下文注册表 +
-│   │   │   │                    # 会话 attach 事实校验 + services/ 命令族业务
-│   │   │   └── services/        # graph/hologram/dispatch/workspace/dataflow 服务
-│   │   ├── commands/            # 命令薄壳 (engine_dispatch/graph/hologram/workspace/dataflow <100 行/文件)
-│   │   ├── permissions/         # 权限引擎 (mod: PermissionContext + rule + bash/filesystem/git/web/safety)
-│   │   ├── tools/               # Tool trait 实现 (Read/Edit/Bash/Git/WebFetch/Browser/Desktop)
-│   │   ├── lifecycle.rs         # ResourceLedger + LifecycleService (9 个服务)
-│   │   ├── workspace.rs         # WorkspaceHandle (权限上下文 + watcher + 审计)
-│   │   ├── agent_isolation.rs   # git worktree 生命周期管理
-│   │   ├── mcp_manager.rs       # MCP 子进程管理
-│   │   ├── sandbox.rs           # 路径沙箱 (resolve_read/write)
-│   │   ├── confined_fs.rs       # 统一受限文件系统 (读写上限/超时/重试/原子写)
-│   │   ├── os_sandbox.rs        # OS 层沙箱 (Job Object/sandbox-exec/bubblewrap + 捆绑 MSYS2 bash vendor)
-│   │   ├── credential.rs        # 加密凭证存储
-│   │   ├── pty_manager.rs       # PTY 终端管理
-│   │   ├── llm_proxy.rs         # LLM 本地反向代理 (绕 CORS, SSE 透传)
-│   │   ├── audit.rs             # 审计日志
-│   │   ├── rpc.rs               # 单一 RPC 入口 (146 个方法)
-│   │   └── main.rs              # Tauri 应用入口 (模块声明权威清单)
-│   └── Cargo.toml
-│
-├── src-ui/                      # 前端 (TypeScript / React 19)
-│   ├── src/
-│   │   ├── app/                 # React 根 (App.tsx + SessionsHome + CommandPalette + panels/ + chat/)
-│   │   ├── agent/               # Agent 系统 (85 文件)
-│   │   │   ├── agent.ts          # Agent 主循环
-│   │   │   ├── coordinator.ts    # SubAgentPool (并发/超时/中断)
-│   │   │   ├── message-bus.ts    # 多 Agent 通信层 (inbox/ack/背压)
-│   │   │   ├── task-board.ts     # 任务共享状态板
-│   │   │   ├── lifecycle-manager.ts  # 泄漏检测 + TTL 清理
-│   │   │   ├── streaming-executor.ts  # 流式工具执行器 (AbortSignal)
-│   │   │   ├── tool.ts           # Tool 接口 + ToolRegistry
-│   │   │   ├── blueprint.ts      # AgentBlueprint capability 表驱动装配 (Phase 6 + S1 会话层; firstPartyCapabilities)
-│   │   │   ├── session-log.ts    # SessionLog 事件溯源日志 (Phase 5)
-│   │   │   ├── lifecycle.ts      # Disposer/DisposerBag 原语
-│   │   │   ├── hooks.ts          # Hook/PreflightHook 系统
-│   │   │   ├── goal-manager.ts   # 目标生命周期管理
-│   │   │   ├── skills.ts         # 技能热加载
-│   │   │   ├── memory.ts / memory-bundle-client.ts  # 记忆两层
-│   │   │   ├── code-run/          # code_execution 执行原语 (P2/P3: 协议腰线 + Worker 沙箱 + 预算)
-│   │   │   ├── compaction-model.ts  # 上下文压缩成本模型
-│   │   │   ├── runtime/          # AgentRuntime + AgentBuilder (零 UI 依赖)
-│   │   │   ├── plan/             # Plan 模式
-│   │   │   └── tools/            # coding/communication/discovery/merge/request/subagent/domains
-│   │   ├── paper/               # 纸壳内核 (block-model/canvas-math/measure/translate/virtualize + paper-plugin)
-│   │   ├── plugins/             # 插件层 (loader/factory-products/boot-gate/types/tool-declarations/mcp-bridge + builtin/ 30 个出厂产物真源目录)
-│   │   ├── composition/         # 组合层 (S1+P4): 行表 + 八 service 注册表 + preset/roster + first-party-* 清单
-│   │   ├── shell/               # 12 壳行引导 (boot.ts + rows/: persistence/chat/keyguard/…)
-│   │   ├── state/               # zustand 状态层 (领域 + 面板 + app 级 + 信号 store)
-│   │   ├── provider/           # LLM Provider 抽象 + catalog (9 模型目录/73 模型 + 动态发现) + thinking 档位适配
-│   │   ├── cordis/            # vendored cordis 内核 (Context/Fiber/Service; 禁就地改, 见目录 README)
-│   │   ├── ui/                 # chat 编排域核心 + 旧层命令式基础设施 (终态 16 文件, 见目录 README)
-│   │   ├── scene/              # 星图类型层 (graph-types.ts; Three.js 渲染面已退役)
-│   │   ├── workspace.ts        # Workspace 统一状态容器 (替代 18+ 全局变量; 工作区 fiber 宿主)
-│   │   ├── workspace-scope.ts  # workspace epoch 代际防护原语 (永久保留: 管在途回调, 与 fiber 所有权互补)
-│   │   ├── bridge.ts           # Tauri IPC 桥接
-│   │   ├── lifecycle/          # WorkspaceStateMachine + timeout
-│   │   └── settings.ts         # 设置与凭证
-│   └── package.json
-│
-├── dsh-bundle/                  # DSH 插件包 (引擎 + 3D 星图; npm @a834063245/hologram-dsh)
-├── examples/plugins/            # 插件示例 (hello: 三通道最小示例)
-├── docs/                        # 活动文档（入口 docs/README.md；agents/adr/design/plans/research）
-├── docs/archive/                # 已竣工施工稿与历史设计，勿作现状依据
-├── hologram.constraints.yaml   # 约束配置
-├── ARCHITECTURE.md             # 本文档
-├── INVARIANTS.md               # 踩碎必炸的规则 (改 ui/agent 前必读)
-├── CONVENTIONS.md              # 编码约定 (状态管理/通信/命名)
-└── build.cmd                   # 构建脚本
+├── engine/                  # crate hologram-engine：分析器 + CLI/MCP 二进制 + 免编译扩展面
+├── hologram-graph/          # crate：纯类型（Node/Edge/Graph/ID）+ 数据目录真源 paths.rs + 忽略清单
+├── hologram-vector/         # crate：纯计算（usearch 索引 + MiniLM ONNX 嵌入）
+├── hologram-storage/        # crate：数据家（GraphStore / SQLite / 快照 / StoreHost）
+├── src-tauri/               # Tauri 桌面壳（通道 / 权限 / 沙箱 / 进程治理 / 凭据）
+├── src-ui/                  # 前端（React 19 + Agent 运行时 + 组合层 + 插件系统 + 纸壳）
+├── dsh-bundle/              # DSH 插件包（引擎接入 + viewer/ 3D 星图；构建来源与状态见其 README）
+├── examples/                # 插件示例（plugins/ 宿主插件、engine-plugins/ 引擎免编译扩展）
+├── docs/                    # 活动文档（入口 docs/README.md；facts.generated.md 是数字真源）
+├── scripts/                 # 构建与门禁脚本（gen-* / doc-sync / doc-check / build-builtin-plugins）
+├── assets/ · prototype/     # 图标与设计素材 / 原型草稿
+├── hologram.constraints.yaml # 引擎约束治理配置（消费方 = 引擎 run_check / preflight_check）
+├── build.cmd · dev.cmd      # Windows 构建 / 开发包装脚本
+└── Cargo.toml               # Rust workspace（members 见文件）
 ```
+
+### 9.2 引擎 `engine/src/`
+
+```
+engine/src/
+├── engine/        # Engine 结构体：状态机 / 构造即绑根 / 取消令牌 / panic 守卫 / GRAMMAR_LOADER / watcher
+├── pipeline/      # discovery → parser → runner（分批并行）+ incremental.rs（增量更新）
+├── adapter/       # LanguageAdapter trait + registry（注册序）+ python/typescript 专用 + tree_sitter + grammar_loader（动态 DLL）
+├── graph/         # 跨文件合成：import_resolver / resolver / merge
+├── analysis/      # coupling / cycles / dataflow / fragility / blindspots / flows / explore / policy_check /
+│                  #   framework_routes/frameworks（一族一文件）/ di_reflection / dynamic_dispatch*
+├── community/     # Leiden + Louvain
+├── routing/       # 框架路由检测
+├── scip_bridge/   # SCIP 索引导入
+├── tools/         # MCP 工具注册表 + handlers/ + response.rs + staleness.rs
+├── plugins/       # 免编译扩展面（HOLOGRAM_PLUGIN_DIR manifest：language / framework / tool）
+├── bin/lspd.rs    # LSP 守护形态二进制
+├── mcp.rs         # MCP JSON-RPC 服务端
+├── main.rs        # CLI 入口（默认 TCP 数据面 / serve 子命令）
+├── contract.rs    # 引擎契约版本 + 壳专属方法清单
+├── lib.rs         # 库入口
+├── lsp_manager.rs # LSP 管理
+├── lsp_daemon.rs  # LSP 守护
+├── path_utils.rs  # migrate_engine_data（老 .lantai 引擎文件 → .hologram）
+└── stress.rs      # 压力测试合成项目生成器
+```
+
+### 9.3 壳 `src-tauri/src/`
+
+```
+src-tauri/src/
+├── app/               # 应用层：WorkspaceDataContext 注册表（mod.rs）+ commands.rs + services/（命令族业务）
+├── commands/          # 命令薄壳：*_cap.rs（search/fs/git/process/browser/uia/web/pty/lsp/editor 能力口）+
+│                      #   identity / isolation / oauth / plugin_install / plugin_data / protocol_bridge /
+│                      #   composition / workspace / browser_cap / external
+├── permissions/       # 权限引擎：mod（PermissionContext + 结果四态）/ rule / bash / filesystem / git / web / safety
+├── tools/             # Tool trait 实现（Read / Edit / Bash / Git / WebFetch / Browser / Desktop / Office）
+├── cdp/ · uia/        # 浏览器 CDP 通道 / 桌面 UIA 通道（各自含审计与 e2e）
+├── oauth/             # 订阅面（OAuth）
+├── utils/             # 壳内共用工具
+├── rpc.rs             # 单一 IPC 入口（薄壳）
+├── main.rs            # 启动、ResourceLedger 注册、外部进程 spawn
+├── lifecycle.rs       # ResourceLedger + LifecycleService（注册点见 main.rs）
+├── workspace.rs       # WorkspaceHandle（权限上下文 + watcher + 审计）
+├── agent_isolation.rs # git worktree 生命周期 + 范围 cherry-pick 合并
+├── sandbox.rs         # 路径沙箱（resolve_read / resolve_write）
+├── os_sandbox.rs      # OS 层沙箱（Job Object / sandbox-exec / bubblewrap + 捆绑 MSYS2 bash）
+├── confined_fs.rs     # 统一受限文件系统（限额 / 超时 / 重试 / 原子写）
+├── credential.rs      # 加密凭证存储
+├── sensitive.rs       # 敏感目标共享词表
+├── llm_proxy.rs       # LLM 本地反向代理
+├── audit.rs           # 工具审计
+├── pty_manager.rs     # PTY 终端
+├── lsp_manager.rs     # LSP 侧管理
+├── engine_assets.rs   # 随包引擎二进制探测（只读）
+├── plugin_assets.rs   # 插件资产位置与组合根
+├── composition_watcher.rs # 组合层热重载监听
+├── ignored_paths.rs   # 忽略清单（含 .hologram / .lantai）
+├── desktop.rs · window_drag_band.rs · logging.rs   # 桌面输入 / 窗口拖拽带 / 日志
+```
+
+### 9.4 前端 `src-ui/src/`
+
+```
+src-ui/src/
+├── app/            # React 根与界面：chat/（会话与创作坞）+ panels/ + paper/（纸壳视图）+ plugin-windows/
+├── paper/          # 纸壳内核：block-model / measure / markdown / virtualize / region-view / space / ink / toc …
+├── agent/          # Agent 系统：agent.ts / coordinator / message-bus / streaming-executor / session-log /
+│                   #   blueprint（capability 表）/ hooks / compaction / memory / skills / goal-manager /
+│                   #   tools/（域工具真源 domains.ts）/ agent-loop/（流式循环契约与默认实现）/
+│                   #   runtime/（AgentRuntime + AgentBuilder）/ plan/ / code-run/ / token-meter/ /
+│                   #   dynamic-runner/ / mcp/（MCP 客户端 + tauri-io 桥）/ acp/
+├── composition/    # 组合层：contribution-channel（内核单源）/ services / tool-rows / prompt-sections /
+│                   #   roster + patch-loader + presets + preset-discovery/assembly / seam-scope / activation
+├── plugins/        # 插件层：loader / boot-gate / types / manifest 派生（first-party-manifest、builtin-roster）/
+│                   #   builtin/（出厂产物真源目录）/ mcp-bridge / bundled-engine / window-bridge / host-surface.baseline.json
+├── cordis/         # vendored cordis 内核（Context / Fiber / Service；禁就地改）
+├── state/          # zustand 状态层（领域 store + 面板 store + scoped-store 注册表 + prefs）
+├── shell/          # 壳行引导：boot.ts + rows/（persistence / chat / keyguard / platform / workspace / cold-start …）
+├── provider/       # LLM Provider 抽象 + catalog/（内核 seed 目录）+ thinking / model-sync / oauth
+├── ui/             # chat 编排域核心 + 旧层命令式基础设施（只减不增；契约见 ui/README.md）
+├── lifecycle/      # WorkspaceStateMachine + 超时
+├── assets/         # 字体与纸纹素材（MiSans-VF.ttf / paper-*.jpg / seal-*.jpg）
+├── bridge.ts · rpc-contract.ts · settings.ts · workspace.ts · workspace-scope.ts · i18n.ts · main.ts
+```
+
+### 9.5 运行时数据目录
+
+**工作区级 `<workspace>/.lantai/`（宿主数据）**：
+
+```
+{workspace}/.lantai/
+├── sessions/              # 会话卷：{id}.json（快照缓存）+ {id}.ndjson（事件日志 = 真相）+ _active.json（id 分配）
+├── attachments/           # 附图字节（内容寻址 {sha256}.{ext}；消息只存引用）
+├── memory/                # 项目记忆 *.md + MEMORY.md 索引
+├── agents/{id}/           # 每 Agent 的 inbox.json（多 Agent 通信持久化）
+├── goals/{id}/            # Goal 模式存储（与会话槽隔离）
+├── plans/{id}.md          # Plan 模式计划文件
+├── skills/<name>/SKILL.md # 项目级技能（热加载）
+├── taskboard/{sessionId}.json    # 子 Agent 任务状态板（按卷隔离）
+├── discoveries/{sessionId}.json  # 探索发现板（按卷隔离）
+├── worktrees/{isolationId}/      # 子 Agent 隔离工作树（git worktree --detach）
+├── spill/                        # 大 diff / 超长输出溢写
+├── logs/ui.log                   # 宿主结构化日志（NDJSON）
+├── canvas.json                   # 工作区级画布（纸条 / 流区 / 视口；不随卷快照）
+├── compaction-config.json · compaction-tracker.json   # 压缩配置与统计
+└── permissions.json              # 项目级权限规则
+```
+
+**用户级 `~/.lantai/`**：`plugins/<name>/`（插件安装位）+ `plugins/plugins.json`（granted 授权与启用态）、
+`mcp.json`（用户级 MCP server 声明）、`composition/`（组合层用户层：roster.patch.yml + presets/）、
+`skills/`、`global_memory/`、`workspaces.json`（用户绑定过的目录）、`tools/officecli/`。
+
+**引擎级 `<root>/.hologram/`（引擎独占，宿主零句柄）**：`hologram.db`（图库 + FTS5 + timeline）、
+`vectors.usearch` + `vectors.slots.json`（向量索引）、快照、`baseline.json`、引擎侧 `logs/`。
+老项目 `.lantai` 下的引擎文件（`hologram.db` / `vectors.*`）由引擎启动时的 `migrate_engine_data` 搬迁；
+`.lantai/dataflow/` 等图谱时代目录随内置接线退役，不再是现状。
 
 ---
 
 ## 10. 关键设计决策
 
-### 10.1 为什么 Engine 是独立二进制
+### 10.1 为什么 Engine 是独立二进制 + 独立进程
 
-Engine 编译为独立的 `hologram-engine.exe`。兰台（Phase 3 起）每工作区 spawn 一个 `serve` 子进程（stdio MCP，`engine_transport`），外部 MCP 客户端（Cursor / Claude Code / DSH）也可独立消费同一二进制；引擎能力面支持免编译扩展（`HOLOGRAM_PLUGIN_DIR` manifest）。这保证了：
-- 外部 MCP 客户端无需安装桌面应用即可使用图谱能力
-- Engine 崩溃不影响 Tauri Shell，Shell 可重启 Engine
-- Engine 的性能不受 Tauri 的 WebView 开销影响
+引擎编译为 `hologram-engine.exe`，兰台与外部 MCP 客户端消费同一二进制，且**一个进程只服务一个工作区根**。
+带来：外部客户端无需安装桌面应用即可用图能力；引擎崩溃不影响宿主（宿主按 MCP 受治进程通道重启）；
+引擎性能不受 webview 开销影响；**多工作区并行的正确性由「一进程一根」结构性保证**，不靠调用方自觉。
+引擎能力面支持免编译扩展（`HOLOGRAM_PLUGIN_DIR` manifest）。
 
 ### 10.2 为什么 Tauri 壳只做通道
 
-Tauri Shell 的 `rpc.rs` 方法均为薄壳（L3 起业务编排在 `app/services/` 应用层；工具业务自 2026-09-05 能力化收口后经十一能力口直呼，模型面工具编排归 TS 域插件）。所有图谱操作经数据上下文决议到工作区专属的引擎子进程（进程外传输，2026-09-08 起壳零 crate 直连），Shell 专注于通道、权限裁决、沙箱隔离、插件安装通道。这种分离使得：
-- 权限引擎在 Engine 不可用时仍然生效
-- Engine 的测试可以完全不涉及 Tauri
-- 非 Tauri 的 Engine 消费者（纯 MCP 客户端）也能获得完整图谱能力
-- 多会话多工作区并行的正确性由架构保证（每工作区一实例一 store），非调用方自觉
+`rpc.rs` 全是薄壳，业务编排在 `app/services/` 应用层；工具业务经能力口直呼；模型面工具编排归 TS 域插件。
+壳专注通道、权限裁决、沙箱、进程治理与插件安装通道。收益：权限引擎在引擎缺席时照常生效；引擎与本层测试
+互不牵连；非 Tauri 消费者（纯 MCP 客户端）也拿到完整图能力。
 
 ### 10.3 为什么 Agent 在前端
 
-Agent 循环在 TypeScript 中运行（而非 Rust），因为：
-- LLM streaming 在 JS 生态中更成熟
-- UI 更新与 Agent 循环同线程，避免跨语言状态同步
-- 工具调用的 UI 反馈（权限卡片、进度条）天然低延迟
-
-后端通过 `typedRpc()` 单一契约入口提供所有能力，前端通过 `buildToolRegistry` 按组合层行表序组装工具列表（行源 = 插件通道贡献快照，图谱动态族从 MCP `tools/list` 动态加载）。
+LLM streaming 在 JS 生态更成熟；UI 更新与 Agent 循环同线程，避免跨语言状态同步；工具调用的 UI 反馈
+（权限卡、进度）天然低延迟。后端经 `typedRpc()` 单一契约提供能力，前端按组合层行表序组装工具列表。
 
 ### 10.4 为什么用 git worktree 做 Agent 隔离
 
-相比虚拟机或容器，git worktree：
-- 零开销：共享同一仓库的 .git，只创建工作目录
-- 原生合并：cherry-pick 提供标准的三方合并
-- 可审计：worktree 的每个 commit 都是审计点
-- 冲突安全：合并失败时返回 diff，不破坏主仓库状态
+相比虚拟机 / 容器：零开销（共享 `.git`，只建工作目录）；原生合并（范围 cherry-pick 提供标准三方合并）；
+可审计（每个 commit 是审计点）；冲突安全（失败即 abort 并返回 diff，不破坏主仓状态）。
 
-### 10.5 为什么状态全部走 Zustand store + createScopedStore 注册表
+### 10.5 为什么状态全走 Zustand store + `createScopedStore` 注册表
 
-（INVARIANTS.md #1）模块顶层全局变量 = 跨面板串流。面板级 store（messages/session/panel/input）统一走 `createScopedStore`（`src-ui/src/state/scoped-store.ts`）：
+（见 `INVARIANTS.md` #1）模块顶层全局变量 = 跨面板串流。面板级 store（messages / session / panel / input）
+统一走 `createScopedStore`（`src-ui/src/state/scoped-store.ts`）按 storeId 取实例；app 级单例用普通 `create()`。
+新状态必须走注册表或单例 store，否则多面板 / 多会话共享全局状态必出 bug。
 
-```
-const scoped = createScopedStore('__lantai_xxx_stores__', createImpl);
-export const getXxxStore = scoped.getStore; // 按 storeId 取实例
-```
+### 10.6 为什么 EventBus 已退役
 
-app 级单例（shell/dock/overlay）用普通 `create()`。新状态必须走注册表或单例 store，否则多面板/多会话共享全局状态必出 bug（已炸 6 次）。
-
-### 10.6 为什么 EventBus 已退役（终态）
-
-EventBus 只覆盖不到一半通信，存在 5 个孤儿 emit、三层通信混用——解耦价值归零、复杂度留存。2026-08-19 总线归零（docs/archive/eventbus-zero-and-ui-split-plan.md）后 `ui/events.ts` 整文件删除：UI 状态只走 Zustand store（信号 store 在 `src/state/`）；Agent 层内部用 MessageBus（多 Agent 通信，带背压）；禁 window.dispatchEvent / CustomEvent / 自建 EventEmitter（守护 tests/eventbus-zero-and-ui-split.test.ts）。
+EventBus 只覆盖不到一半通信，存在孤儿 emit 与三层通信混用——解耦价值归零、复杂度留存。总线归零后
+`ui/events.ts` 整文件删除：UI 状态只走 Zustand store（信号 store 在 `src/state/`）；Agent 层内部用 MessageBus
+（带背压）；**禁** `window.dispatchEvent` / CustomEvent / 自建 EventEmitter（守护测试钉死）。
 
 ### 10.7 为什么压缩只作用于发送载荷
 
-（commit eadd2e0）session 永为完整历史，压缩只在发往 LLM 前对载荷执行。这保证 UI 显示、恢复、重放永远基于完整上下文，压缩决策可逆且可度量（成本模型），避免"压缩后上下文永久丢失"的不可逆破坏。
+会话永为完整历史，压缩只在发往 LLM 前对载荷执行。这保证 UI 显示、恢复、重放永远基于完整上下文，
+压缩决策可逆且可度量（成本模型），避免「压缩后上下文永久丢失」的不可逆破坏。
 
-### 10.8 为什么出厂态零特权行 + 产物化（P4 2026-08-24 + bundle 退役 2026-09-03）
+### 10.8 为什么出厂态零特权行 + 产物化
 
-D9 拍板不等 DSH，自己当第一用户。工具行、prompt 段、capability 三类行源全量经插件通道贡献，出厂表三张退役；S5 进一步把 30 个出厂插件从编译期 bundle 搬到磁盘产物通道：
-- **特权区只减不增**：出厂态没有任何一行硬编码特权，可度量（git 可验）——"能拆尽拆、特权区最小"从愿景变成约束
-- **同一张注册表竞争**：第一方与第三方走同一贡献通道、同一装载序、同一重名拒绝防线——不存在"内置的旁路"，契约漂移在装配层不可藏
-- **解耦收益真实可取**：禁用/裁剪/preset 寻址对内外一律均匀（patch 可禁用第一方行）；多窗口并行、契约固化随通道免费获得
-- **字节契约由清单序保住**：第一方贡献序 = 迁移前出厂表序（convergence 双 preset 零漂移按构造钉死，前缀缓存不受迁移影响）
-- **产物化（S5，2026-09-03）**：30 个出厂产物真源在 `plugins/builtin/<name>/` 目录，exe 只留 13 内核装配台（11 注册表 + code-runtime + dynamic-runner）——**改插件 = 换产物，永不重编译 exe**；dev 模式经 `import.meta.env.DEV` 分支走源码路径（vite HMR 热重载），产物仅发布形态；装载调度 = cordis fiber PENDING 挂起 + `plugins/boot-gate.ts` 全 ACTIVE 审计 fail-loud（不带病运行）
+工具行、prompt 段、capability 三类行源全量经插件通道贡献，出厂表退役；出厂产物从编译期 bundle 迁到磁盘产物
+（`plugins/builtin/`），exe 只留内核装配台——**改插件 = 换产物，永不重编译 exe**。收益：
+**特权区只减不增**（可度量、git 可验）；**同一张注册表竞争**（第一方与第三方同通道、同装载序、同重名拒绝，
+不存在「内置旁路」）；解耦收益对内外均匀（patch / preset 可禁用第一方行）；**字节契约由清单序保住**
+（第一方贡献序 = 迁移前出厂表序，convergence 按构造钉零漂移）。dev 模式经 `import.meta.env.DEV` 走源码路径
+（vite HMR），产物仅发布形态；装载调度 = cordis fiber PENDING + `plugins/boot-gate.ts` 全 ACTIVE 审计（不带病运行）。
 
 ---
 
-## 11. 测试与验证基线
+## 11. 验证与门禁
 
-| 层 | 命令 | 规模 |
-|----|------|------|
-| Engine | `cd engine && cargo test` | 705 用例（lib 677 + bin 27 + doc 1；含 TLS 路由守卫/双工作区并发 e2e/StoreHost 闭环） |
-| Tauri Shell | `cd src-tauri && cargo test` | bin 421 + 集成 14（全绿，2026-08-25 分层重构后实测；含 attach 事实校验/决议链优先级/GC/直连白名单守卫） |
-| 前端 | `cd src-ui && npx vitest run` | 172 文件 / 1692 passed / 1 skipped（2026-08-25 分层重构后实测；本机跑测试前清 `NODE_ENV=production`，否则 specs 收集报错） |
-| 前端契约 | `cd src-ui && npm run verify:convergence` | T0 静态 + 8 baseline 对拍 + system-prompt.fixture（standard preset 零漂移） |
-| Agent 运行时/组合层 | 同上 + `composition/first-party-tools.ts` / `first-party-capabilities.ts` 清单 + `agent/blueprint.ts` capability 表 | AgentConfig 冻结 31 字段，T0 断言；行表/段落表/capability 三层表序 = 字节契约（行源 = 插件通道贡献快照） |
-| 前端构建 | `cd src-ui && npm run build` | tsc --noEmit + vite build 零错误 |
-| 引擎构建 | `cd engine && cargo build` | CI 强制 -D warnings 零警告 |
-| 全量 | `cd src-tauri && cargo tauri build` | 发布构建 |
+**本页不复述基线数字**——基线会漂移，权威表只有两处：
 
-CI（`.github/workflows/ci.yml`）只做编译+测试，不可修改。
+| 想找什么 | 去哪 |
+|---|---|
+| 各层门禁命令与实测基线（引擎 / 壳 / 前端 / convergence / 打包，含本机测试运行纪律） | `CONVENTIONS.md` §3 + §3 尾注 |
+| 改动类型 → 必过门禁（按改动面索引） | `CLAUDE.md` 的「验证门禁」表 |
+| 生成物文档与源码逐字节对拍 | `cd src-ui && npm run doc-sync` |
+| 文档面六查（事实对拍 / 断链 / 体量 / 孤儿 / 归档 / 注入预算） | `cd src-ui && npm run doc-check` |
+
+前提不变：CI（`.github/workflows/ci.yml`）只做编译 + 测试，不可修改；**门禁不过不交付、不 commit**。
