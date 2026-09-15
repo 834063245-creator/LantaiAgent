@@ -18,14 +18,6 @@
       "payoff": "P2"
     },
     {
-      "id": "facts-plugins-29",
-      "check": "facts",
-      "file": "docs/plugins/README.md",
-      "contains": "`factory_products`",
-      "reason": "写「29 出厂产物」（真源 = builtin-roster.json 30 条；loader 头注同款漂移 29/30）",
-      "payoff": "P2"
-    },
-    {
       "id": "facts-plans-14",
       "check": "facts",
       "file": "docs/plans/README.md",
@@ -34,38 +26,10 @@
       "payoff": "P3"
     },
     {
-      "id": "links-landmine",
-      "check": "links",
-      "file": "docs/landmine-map.md",
-      "reason": "链接写成 ../design/...（应为本目录 design/...）——断链",
-      "payoff": "P2"
-    },
-    {
       "id": "size-current-layer",
       "check": "size",
       "file": "ARCHITECTURE.md",
       "reason": "1 行 1232 字符（分层表）——现状层校准时改表",
-      "payoff": "P2"
-    },
-    {
-      "id": "size-design-spec",
-      "check": "size",
-      "file": "docs/design/lantai-design-spec.md",
-      "reason": "1 行 2374 字符——设计定稿，校准批次内拆表",
-      "payoff": "P2"
-    },
-    {
-      "id": "size-landmine",
-      "check": "size",
-      "file": "docs/landmine-map.md",
-      "reason": "1 行 1329 字符（雷区表格单元格）——同一批随断链一起修",
-      "payoff": "P2"
-    },
-    {
-      "id": "size-open-surface",
-      "check": "size",
-      "file": "docs/agents/open-surface-contract.md",
-      "reason": "1 行 1059 字符（契约载体表）——手写面，校准批次内拆表",
       "payoff": "P2"
     },
     {
@@ -116,13 +80,6 @@
       "file": "docs/research/README.md",
       "reason": "research 索引自身没人链接",
       "payoff": "P4"
-    },
-    {
-      "id": "orphans-top",
-      "check": "orphans",
-      "file": "docs/engine-as-external-mcp.md",
-      "reason": "新落的引擎外用说明未挂索引",
-      "payoff": "P2"
     },
     {
       "id": "orphans-plans",

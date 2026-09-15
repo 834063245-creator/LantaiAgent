@@ -35,6 +35,7 @@
 | [`docs/MULTI_AGENT_ROADMAP.md`](MULTI_AGENT_ROADMAP.md) | 工作台 | 多 Agent 路线图与已落地能力 |
 | [`docs/landmine-map.md`](landmine-map.md) | 当前 | 雷区地图、拆弹批次状态 |
 | [`docs/facts.generated.md`](facts.generated.md) | 生成物 | **文档事实单一真源**（跨文档复述的标量：字段数/插件数/契约版本/域数…）——L0-L2 层文档禁止手抄这些数字，只准指本表 |
+| [`docs/engine-as-external-mcp.md`](engine-as-external-mcp.md) | 当前 | 引擎作外部 MCP 消费：起法 / 工具面 / 与桌面应用进程外引擎的关系（引擎开放面契约见 `docs/agents/engine-plugin-contract.md`） |
 | [`docs/plans/doc-surface-refactor-plan.md`](plans/doc-surface-refactor-plan.md) | 进行中 | 文档面大重构施工单（四层形态 / 批序 / 完成判据） |
 
 ## docs/ 分区

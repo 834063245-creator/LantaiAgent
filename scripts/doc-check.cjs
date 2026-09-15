@@ -289,7 +289,10 @@ function checkSize(files) {
     if (rel.startsWith('docs/archive/') || rel.startsWith('docs/research/')) continue;
     const lines = readText(rel).split('\n');
     lines.forEach((line, idx) => {
-      if (line.length > LINE_LIMIT) {
+      if (line.length > LINE_LIMIT && !line.trimStart().startsWith('|')) {
+        // 表格是结构化数据（markdown 表格单元格不可换行）：行宽规则只管散文行，
+        // 单元格宽度规则只对索引页上牙（INDEX_FILES）——两者分工明确，避免把
+        // 版本变更记录表之类的合法宽表判成「排版事故」。
         violations.push({
           check: 'size',
           file: rel,

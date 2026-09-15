@@ -11,8 +11,9 @@
 > **2026-08-31（增补四）：kind='feature' 全量通道化（23 个产物 + 位移机制）。**
 > **2026-09-03（plugin-bundle-retirement S2-S5 竣工）：bundle 双轨拆除**——
 > 43 个第一方插件分家为 **13 内核**（exe 编译态：11 注册表/运行时 +
-> agent-loop-service 暂缓）+ **29 出厂产物**（磁盘通道：6 供应商 + 5 既有 +
-> 16 工具域 + 2 段贡献，真源全部在 plugins/builtin/&lt;name&gt;/ 目录）。
+> agent-loop-service 暂缓）+ **出厂产物**（磁盘通道：6 供应商 + 5 既有 +
+> 16 工具域 + 2 段贡献，真源全部在 plugins/builtin/&lt;name&gt;/ 目录）——
+> 当时 29 条，**现计数见 `docs/facts.generated.md`**。
 > displace 位移机制退役（产物是唯一装载面，无 bundle 兜底）；dev 模式走源码
 > 路径（import.meta.env.DEV 分支，vite HMR），产物仅发布形态。
 > 装载调度 = 依赖图 + boot 全 ACTIVE 审计（plugins/boot-gate.ts——
