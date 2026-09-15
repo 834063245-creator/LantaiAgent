@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // 出厂产物清单（S5/S5b，plugin-bundle-retirement；2026-09-06 单一真源换轨）——
-// 29 个出厂插件产物的源码域插件对象（dev/vitest 域装载用）+ 名单
+// 30 个出厂插件产物的源码域插件对象（dev/vitest 域装载用）+ 名单
 //（loadExternalPlugins 在 dev 模式下过滤产物通道重复装载用）。
 //
 // 生产形态：这些插件从磁盘产物通道（loadExternalPlugins）装载——本清单
@@ -17,10 +17,12 @@
 // → factory-products 的直接环使 settingsPlugin 在 BUILTIN_PLUGINS 顶层展开
 // 求值时未初始化）。插件对象来源分两路，与换轨前一致（已验证无环）：
 //   1. 12 个直接 builtin（供应商 + 渲染器 + UI 面 + agent-loop-service）；
-//   2. 17 个经 composition 通道函数（firstPartyToolPlugins 15 + PromptPlugins 1
+//   2. 18 个经 composition 通道函数（firstPartyToolPlugins 16 + PromptPlugins 1
 //      + CapabilityPlugins 1——薄层各自 import 自己的 builtin）。
 // 两路拍平成 dir → plugin 映射后**按名册 buildOrder 排序输出**（序不手写）。
-// （graph-builtin / engine-domain 随图谱全量退役移除，2026-09-09——31→29。）
+//（graph-builtin / engine-domain 随图谱全量退役移除，2026-09-09——31→29；
+//  office-domain 2026-09-13 C 路新增——29→30。**两组计数一律以 builtin-roster.json
+//  条目数为准**——下方 M4 收口注已记过一次「注释写 29、实测覆盖 30」的手抄漂移。）
 
 import { firstPartyCapabilityPlugins } from '../composition/first-party-capabilities';
 import { firstPartyPromptPlugins } from '../composition/first-party-prompts';

@@ -7,7 +7,7 @@
 import type { Context } from '../../../cordis';
 import { firstPartyCapabilities } from './host';
 
-/** 第一方 capability 插件——装载 firstPartyCapabilities()（十五项全量）。
+/** 第一方 capability 插件——装载 firstPartyCapabilities()（十四项全量）。
  *  注册序 = 清单序 = 迁移前出厂表序（装配字节零漂移按构造）。 */
 export const capabilitySegmentsPlugin = {
   name: 'hologram/capability-segments',

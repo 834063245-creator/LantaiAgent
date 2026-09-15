@@ -242,8 +242,8 @@ ctx.effect(
 );
 ```
 
-生效语义：register/dispose 即时（面板清单经信号 store bump，DockRail/
-DockPanel/命令面板当场重取）。
+生效语义：register/dispose 即时（面板清单经信号 store bump，DockPanel/
+命令面板当场重取）。
 
 ### ctx.commands —— 命令（即时生效）
 

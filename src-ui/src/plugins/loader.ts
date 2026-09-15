@@ -94,7 +94,7 @@ export function pluginAssetsOrigin(port: number): string {
  * 表尾接第一方工具域插件清单（git/search 两域 B① + fs/shell/agent-isolation
  * 三域 ②，经 ctx.tools 贡献工具，单一真源 composition/first-party-tools.ts
  * ——贡献行序 = 清单序，且必须列于四 service 之后使 inject ['tools'] 可解析
- * ）。P4 B④ 收官（2026-08-23）：表尾接第一方 prompt 段插件清单（13 段全量经
+ * ）。P4 B④ 收官（2026-08-23）：表尾接第一方 prompt 段插件清单（8 段全量经
  * ctx.prompts 贡献——试点 memory/claude-md + 续批 graph-snapshot +
  * 收官批 10 段；单一真源 composition/first-party-prompts.ts——贡献序 =
  * 清单序，列于 promptsServicePlugin 之后使 inject ['prompts'] 可解析；
@@ -105,15 +105,17 @@ export function pluginAssetsOrigin(port: number): string {
  * service（capability 贡献注册表——ctx.capabilities，会话级能力的插件
  * 装载；贡献经 factoryComposition 快照进 capabilities 域，runtime
  * fromRoster 穿线零改动，见 composition/capability-service.ts）。P4 B⑤
- * 收官（2026-08-24）：表尾接第一方 capability 插件清单（十五项会话级
+ * 收官（2026-08-24）：表尾接第一方 capability 插件清单（十四项会话级
  * 能力全量经 ctx.capabilities 贡献——单一真源 composition/first-party-
  * capabilities.ts，贡献序 = 清单序 = 迁移前出厂表序；出厂
  * builtinCapabilities() 退役，本通道是出厂 capability 面唯一来源）。
  * 2026-08-29 起 export（守护测试对拍 first-party-manifest 完备性）。 */
-/** S5（plugin-bundle-retirement）：bundle 双轨拆除——
- *  生产形态：BUILTIN_PLUGINS 只装 15 内核（14 注册表/运行时 + agent-loop-service
- *  暂缓产物化）；29 个出厂产物从磁盘产物通道（loadExternalPlugins）装载。
- *  开发形态：`import.meta.env.DEV` 分支展开 29 个出厂产物（源码路径，
+/** S5（plugin-bundle-retirement）：bundle 双轨拆除（**计数以代码真源为准**——
+ *  13 内核 = 下方 BUILTIN_PLUGINS / SERVICE_META 13 条；30 出厂产物 =
+ *  builtin-roster.json 条目数。旧记「15 内核 / 29 产物」是 S5 当时的过期手抄）。
+ *  生产形态：BUILTIN_PLUGINS 只装 13 内核；30 个出厂产物从磁盘产物通道
+ *  （loadExternalPlugins）装载。
+ *  开发形态：`import.meta.env.DEV` 分支展开 30 个出厂产物（源码路径，
  *  vite HMR 热重载；产物仅发布形态）——分支经 vite define 在生产端展开为
  *  `false ? [...] : []`，rollup 死代码消除后 factory-products.ts 及其
  *  传递导入不进生产 bundle。

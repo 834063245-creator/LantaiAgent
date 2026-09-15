@@ -29,7 +29,7 @@
 //
 // P4 B⑤（2026-08-24，agent-plugin-architecture-plan §5 B 表 ⑤ 收官）：
 // 出厂 builtinCapabilities() 退役（B④ builtinPromptSections 退役同款终态）
-// ——十五项定义仍留本文件（capability 单一真源），改名
+// ——十四项定义仍留本文件（capability 单一真源），改名
 // firstPartyCapabilities() 供第一方 capability 插件（plugins/
 // capability-segments-plugin.ts）经 ctx.capabilities 通道注册装载；
 // 装配缺省蓝图 = fromRoster(组合解析产物)（S2-1 既有穿线，零 runtime
@@ -172,7 +172,7 @@ export class AgentBlueprint {
   }
 }
 
-/** 第一方 capability 清单（序 = 迁移前出厂表序，十五项）——B⑤（2026-08-24）
+/** 第一方 capability 清单（序 = 迁移前出厂表序，十四项）——B⑤（2026-08-24）
  *  起经 ctx.capabilities 第一方插件通道贡献（plugins/capability-segments-
  *  plugin.ts 装载本清单，装配腰 composition/first-party-capabilities.ts）。
  *  出厂 builtinCapabilities() 退役，本清单即出厂装配面的全部 capability

@@ -7,7 +7,7 @@
 import type { Context } from '../../../cordis';
 import { firstPartyPromptSections } from './host';
 
-/** 第一方 prompt 段插件——装载 firstPartyPromptSections()（13 段全量）。
+/** 第一方 prompt 段插件——装载 firstPartyPromptSections()（8 段全量）。
  *  注册序 = 段清单序 = 迁移前出厂表序（拼装字节零漂移按构造）。 */
 export const promptSegmentsPlugin = {
   name: 'hologram/prompt-segments',

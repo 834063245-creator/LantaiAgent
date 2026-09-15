@@ -22,11 +22,11 @@
 // 保留的契约要点：
 //   - register(def) → Disposer：调用方挂 ctx.effect（所有权登记是调用方纪律）；
 //   - 重名 id 装载期拒绝（throw，不静默覆盖）——B⑤ 收官（2026-08-24）后第一方
-//     十五项本身经通道注册（装载序 = capabilitiesServicePlugin → 第一方 capability
+//     十四项本身经通道注册（装载序 = capabilitiesServicePlugin → 第一方 capability
 //     插件 → 外部插件），外部贡献撞第一方 id 同样走注册表重名拒绝（装载期可见）。
 //
 // 组合解析域（设计件 §2.2/§2.5，S4-4 甲第三挂点）：贡献 id 经 factoryComposition()
-// 快照进 capabilities 域（B⑤ 后唯一行源——第一方十五项经通道注册，贡献序 =
+// 快照进 capabilities 域（B⑤ 后唯一行源——第一方十四项经通道注册，贡献序 =
 // 注册序；无通道环境 = 空表）；patch/preset 可按 id disable 贡献行（插件开关与
 // 能力粒度裁剪两层正交）。贡献 register/dispose 因此成为组合输入变更
 // ——onCapabilityContributionsChanged 供 preset-assembly 的组合 cache 代数失效

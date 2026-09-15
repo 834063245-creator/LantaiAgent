@@ -16,7 +16,7 @@
 //      这里——装载器是唯一引导入口，本腰只服务测试/工具环境（它们不跑
 //      main.ts）。
 //
-// B⑤ 收官（2026-08-24）：十五项第一方 capability 全量经本通道贡献
+// B⑤ 收官（2026-08-24）：十四项第一方 capability 全量经本通道贡献
 // （capabilitySegmentsPlugin 装载 firstPartyCapabilities()——序 = 迁移前
 // 出厂表序，单批零漂移按构造）；出厂 builtinCapabilities() 退役——
 // 无通道环境的 capabilities 域 = 空表（B④ prompt 域注册面依赖同款语义：
@@ -33,7 +33,7 @@ import { withFirstPartyChannel } from './with-first-party-channel';
 
 /** 经 ctx.capabilities 贡献会话级能力的第一方插件（表序 = 贡献注册序
  *  = 迁移前出厂表序）。B⑤ 收官：capabilitySegmentsPlugin 装载全部
- *  十五项第一方 capability。 */
+ *  十四项第一方 capability。 */
 export function firstPartyCapabilityPlugins(): LantaiPlugin[] {
   return [capabilitySegmentsPlugin];
 }

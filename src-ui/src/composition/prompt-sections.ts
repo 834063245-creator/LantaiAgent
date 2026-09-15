@@ -182,7 +182,10 @@ ${ctx.claudeMdSection}`,
  *  装配腰 composition/first-party-prompts.ts）。
  *  B④ 收官（2026-08-23）：出厂段表 builtinPromptSections() 退役，本清单
  *  即出厂装配面的全部段落来源（简短/完整两面经 applicable 互斥分流，
- *  序不变）。12 段 = 原 13 段 − graph-snapshot（图谱退役，2026-09-09）。
+ *  序不变）。**8 段**——原 13 段（`adc3750c` B④ 收官）经两批减到 8：`56fb9285`
+ *  极简骨架收缩（去 BEHAVIOR_RULES / GRAPH_DISCIPLINE / VISUAL_DISCIPLINE /
+ *  COLLABORATION_MODE / MULTI_AGENT，补 IDENTITY）→ 9 段；`51047f99` 图谱退役去
+ *  graph-snapshot → 8 段。**段数以本函数返回值为唯一真源**（禁手抄计数）。
  *  S4-4 甲：清单段经通道进 roster 解析域（factoryComposition prompt 域
  *  快照）——patch/preset 可寻址段 id（disable/text/锚定）。 */
 export function firstPartyPromptSections(): PromptSection[] {
