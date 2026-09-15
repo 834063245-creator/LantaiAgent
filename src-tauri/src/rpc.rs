@@ -424,6 +424,8 @@ async fn dispatch_rpc(
                 is_agent,
                 agent_id,
                 opt_str(&params, "workspace_root"),
+                opt_bool(&params, "durable"),
+                params.get("truncate_to").and_then(|v| v.as_u64()),
                 &state,
                 &app,
             )

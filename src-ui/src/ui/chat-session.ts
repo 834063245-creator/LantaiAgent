@@ -10,6 +10,7 @@ import type { ChatAgentHandle } from '../agent/chat-agent-handle';
 import { createExecState, type ExecStateInstance } from '../agent/execution-state';
 import { log } from '../agent/logger';
 import type { TokenLedgerSnapshot } from '../agent/token-meter/types';
+import { detachSessionLogStore, openSessionLog } from '../app/chat/session-log-store';
 import { sessionExecute } from '../composition/session-persistence-service';
 import type { Message } from '../provider/types';
 import { kernelWriteFile } from '../rpc-contract';
@@ -297,6 +298,34 @@ function hydrateSessionAgentVisible(ctx: SessionContext): void {
     });
 }
 
+/** 会话卷的事件日志接线（换轨 Phase 1 唯一入口）。
+ *  在句柄刚到手、本轮尚未产生事件的窗口里调用：读盘 → 置回真源 → 接到盘上。
+ *  句柄无 `sessionLog` 能力位（旧实现/测试桩）或工作区路径为空 = no-op（降级不炸）。 */
+async function seedVolumeLog(ctx: SessionContext, sid: number, agent: OwnedAgentHandle, label?: string): Promise<void> {
+  const logInstance = agent.sessionLog;
+  if (!logInstance) return;
+  const projectPath = ctx.getProjectPath();
+  if (!projectPath) return;
+  try {
+    await openSessionLog(logInstance, {
+      root: workspaceSessionsDir(projectPath),
+      sessionId: sid,
+      header: {
+        type: 'session',
+        version: 1,
+        id: sid,
+        createdAt: new Date().toISOString(),
+        ...(label ? { label } : {}),
+        ...(agent.presetId ? { presetId: agent.presetId } : {}),
+        cwd: projectPath,
+      },
+    });
+  } catch (e) {
+    // 接线失败不挡会话（日志降级为「本轮不落盘」可见化）——但绝不静默
+    log.warn('chat', `案卷 ${sid} 事件日志接线失败（本轮事件不落盘）`, { error: String(e) });
+  }
+}
+
 /** L0 惰性水合（摊开集恢复后续语义）：重启恢复后惰性卷的 Agent 句柄缺席。
  *  本卷被切到/拟文时按需补建：factory 现调 + 会话内容从会话级 msgStore
  *  回填 + exec/board 绑定。已有句柄 = no-op（返回 true）。
@@ -313,6 +342,13 @@ export async function ensureSessionAgent(ctx: SessionContext): Promise<boolean> 
   const epoch = getWorkspaceEpoch();
   const agent = await factory(sid);
   if (!agent) return false;
+  if (!isCurrentEpoch(epoch)) return false;
+
+  // 事件日志接线（换轨 Phase 1）：在**任何本轮事件产生之前**把日志置回磁盘真源
+  // （openSessionLog：有日志→restoreInPlace+append；无日志→materialize），
+  // 否则本轮 append 会与上一次运行的 seq 撞号（重放面判损坏）。
+  const stForLabel = getChatStore(ctx.storeId).sess.getState();
+  await seedVolumeLog(ctx, sid, agent, stForLabel.sessions.find((s) => s.id === sid)?.label);
   if (!isCurrentEpoch(epoch)) return false;
 
   // 会话内容回填：msgStore 的 ChatMessage 不是 provider 消息——从磁盘卷文件
@@ -376,6 +412,13 @@ export function closeSession(ctx: SessionContext, idx: number): void {
     }
   }
   removeSessionExecState(ctx.storeId, s.id);
+  // 事件日志摘除（换轨 Phase 1）：先排空队列再随句柄消亡——否则签卷那一刻
+  // 仍在 200ms 窗口里的尾事件会随 Agent 一起消失（DSH retirement drain 的兰台形）。
+  {
+    const closing = agentSessionState.getAgent(ctx.storeId, s.id);
+    const logInstance = closing?.sessionLog;
+    if (logInstance) void detachSessionLogStore(logInstance);
+  }
   agentSessionState.removeAgent(ctx.storeId, s.id);
   // 合卷 = 流区从纸面退场（Stage-5）：摊开集合移除该卷位置（位置释放不重排）；
   // 公共物（钉住块/纸条）是工作区级宿主，不随卷退场——钉到拔为止。
@@ -505,6 +548,9 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
   ctx.flushText();
   ctx.clearPendingToolCards();
   if (newAgent) {
+    // 事件日志接线（换轨 Phase 1）：新卷 = 无日志文件 → materialize
+    // （首批把「头行 + 当时全部事件」原子物化；构造期的 reset/preset 一并落盘）。
+    await seedVolumeLog(ctx, id, newAgent, `案卷 ${getChatStore(ctx.storeId).sess.getState().sessions.length + 1}`);
     agentSessionState.setAgent(ctx.storeId, id, newAgent);
     // 静态绑定该 Agent 的 board 到新会话（id 在 factory 之后才确定）
     newAgent.bindSession?.(String(id));
@@ -1089,6 +1135,11 @@ export async function loadSessionFromDisk(
     newAgent?.dispose();
     return false;
   }
+
+  // 事件日志接线（换轨 Phase 1）：**必须先于 setSession** —— 把日志置回磁盘真源
+  // （读 .ndjson → restoreInPlace + append 姿态），随后 setSession 的 session/reset
+  // 才能以「新事实」接在旧事件之后（日志单调增长，崩溃尾巴不被覆写）。
+  if (newAgent) await seedVolumeLog(ctx, data.id || sessionId, newAgent, data.label);
 
   const conv = (data.messages as Message[]).filter((m) => m.role !== 'system');
   const freshSys = newAgent?.getSession().filter((m: Message) => m.role === 'system') ?? [];

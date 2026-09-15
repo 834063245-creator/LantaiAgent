@@ -1,5 +1,5 @@
 {
-  "fingerprint": "a6fce1b6",
+  "fingerprint": "2760390d",
   "keys": [
     "ANCHOR",
     "CORDIS_TOOL_NAMES",
@@ -99,8 +99,10 @@
     "isFoldable",
     "isMockMode",
     "jumpViewTopAt",
+    "kernelAppendFileDurable",
     "kernelListDirectory",
     "kernelReadFileRaw",
+    "kernelTruncateFile",
     "kernelWriteFile",
     "layoutRegion",
     "leadOf",

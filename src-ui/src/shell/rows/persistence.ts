@@ -7,6 +7,7 @@
 
 import { agentSessionState } from '../../agent/agent-session-state';
 import { log } from '../../agent/logger';
+import { flushAllSessionLogs, flushSessionLog } from '../../app/chat/session-log-store';
 import { watchWindowClose } from '../../bridge';
 import { loadSettings } from '../../settings';
 import { useAgentConfigStore } from '../../state/agent-config-store';
@@ -44,16 +45,17 @@ export function bootPersistence(refs: ShellRefs): void {
     const key = `${storeId}:${sessionId}`;
     if (_checkpointInFlight.has(key)) return;
     _checkpointInFlight.add(key);
-    void panel
-      .saveSessionById(sessionId)
-      .then((outcome) => {
+    // 检查点 = **排空事件日志队列**（换轨 Phase 1）：增量写让这一步只有几十字节
+    // 到几 KB，所以可以挂在每个模型请求前（DSH `llm/stream` 前的 flush 同义）。
+    // 副作用：此前那句「落一次全量快照（1–2MB）」的旧实现退役——快照现在是投影
+    // 缓存，只在轮末/退出写。
+    const logInstance = agentSessionState.getAgent(storeId, sessionId)?.sessionLog ?? null;
+    void flushSessionLog(logInstance)
+      .then(() => {
         if (!isCurrentEpoch(epoch)) return;
-        if (outcome === 'failed') {
-          log.warn('persistence', `请求前检查点落盘失败：案卷 ${sessionId}`, { outcome });
-        }
       })
       .catch((e: unknown) => {
-        log.warn('persistence', `请求前检查点异常：案卷 ${sessionId}`, { error: String(e) });
+        log.warn('persistence', `请求前检查点排空失败：案卷 ${sessionId}`, { error: String(e) });
       })
       .finally(() => {
         _checkpointInFlight.delete(key);
@@ -187,6 +189,16 @@ export function bootPersistence(refs: ShellRefs): void {
     if (!ws) return;
     const panel = refs.chatPanel;
     if (panel) {
+      // ① 事件日志排空（换轨 Phase 1）：增量写 ⇒ 退出收尾成本 = 未落盘增量
+      //    （几十字节~几 KB/卷），不再写 N 卷 MB 级快照。
+      try {
+        const drained = await withBudget(flushAllSessionLogs(), EXIT_FLUSH_BUDGET_MS, '事件日志排空');
+        if (drained.failed > 0) {
+          pushStatus(`⚠️ 退出时 ${drained.failed} 卷事件日志未排空——重启可能丢失最后一条`);
+        }
+      } catch (e) {
+        log.error('persistence', `退出排空事件日志失败（${trigger}）`, { error: String(e) });
+      }
       try {
         const report = await withBudget(panel.flushSessionsForExit(), EXIT_FLUSH_BUDGET_MS, '会话退出落盘');
         // 错误不静默（CONVENTIONS §1.7）：非 saved 的卷逐条报出——空卷是常态

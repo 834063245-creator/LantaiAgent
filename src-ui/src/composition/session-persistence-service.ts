@@ -31,10 +31,24 @@ import { type Context, Service } from '../cordis';
 import { ContributionChannel } from './contribution-channel';
 import { seamDisabled } from './seam-resolution';
 
-/** 会话持久化动作（会话语义四动作——D-1；消费动词与 chat-session 卷 CRUD
- *  一一对应：全量快照读写 / 目录扫描 / 墓碑删除）。运行时单一真源
+/** 会话持久化动作（会话语义四动作 + 事件日志两动作——D-1/Phase 1；消费动词与
+ *  chat-session 卷 CRUD 一一对应：全量快照读写 / 目录扫描 / 墓碑删除；事件日志
+ *  追加（durable）与截断（断尾修复）见 DSH 参照移植计划）。运行时单一真源
  *  （sessions-seam.test ② 钉形与类型共用；变更 = 加数组元素 + provider 实现）。 */
-export const SESSION_PERSIST_ACTIONS = ['read_volume', 'list_volumes', 'save_volume', 'delete_volume'] as const;
+export const SESSION_PERSIST_ACTIONS = [
+  'read_volume',
+  'list_volumes',
+  'save_volume',
+  'delete_volume',
+  /** 事件日志读取（缺失 = 空串，不抛）——最小加载器用。 */
+  'read_log',
+  /** 事件日志整体物化（原子替换写）——首批「头行 + 全部事件」。 */
+  'write_log',
+  /** 事件日志追加（durable：返回即已 fsync）——写面单点，检查点即排空队列。 */
+  'append_events',
+  /** 事件日志截断到字节偏移（断尾修复，Phase 2）。 */
+  'truncate_log',
+] as const;
 
 export type SessionPersistAction = (typeof SESSION_PERSIST_ACTIONS)[number];
 

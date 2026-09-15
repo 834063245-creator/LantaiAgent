@@ -101,4 +101,11 @@ export interface ChatAgentHandle {
     fn: (payload: import('./events').LoopEventPayload[E]) => void,
     opts?: import('./events').ListenerOptions,
   ): import('./lifecycle').Disposer;
+
+  // ── 事件日志（Phase 1 换轨，2026-09-15）──
+  // 能力位（可选）：句柄不实现 = 无日志面（旧实现/测试桩），调用方降级为
+  // 「无事件日志可落」而不是炸链路。
+
+  /** 本卷的事件溯源日志（模型可见事实的真源——落盘面见 app/chat/session-log-store）。 */
+  readonly sessionLog?: import('./session-log').SessionLog;
 }

@@ -169,6 +169,13 @@ class AgentHandleImpl implements AgentHandle {
     return this._agent.onLoopEvent(event, fn, opts);
   }
 
+  // ── 事件日志（Phase 1 换轨，2026-09-15）──
+  // 句柄即日志入口：会话层据此把事件日志接到盘上（app/chat/session-log-store），
+  // 检查点/退出收尾据它排空队列。
+  get sessionLog() {
+    return this._agent.sessionLog;
+  }
+
   /** 绑定到指定会话的 board — 会话 id 在创建后才分配，由会话层在登记句柄时调用 */
   bindSession(sessionId: string): void {
     this._runtime._bindAgentSession(this._agent.id, sessionId);

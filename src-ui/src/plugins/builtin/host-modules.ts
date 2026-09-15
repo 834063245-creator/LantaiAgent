@@ -156,7 +156,14 @@ import { resolveApiKey } from '../../provider/credentials';
 import { createOpenAIProvider } from '../../provider/openai';
 import { createResponsesProvider } from '../../provider/responses';
 import { thinkingOptionsFor } from '../../provider/thinking';
-import { kernelListDirectory, kernelReadFileRaw, kernelWriteFile, typedJsonRpc } from '../../rpc-contract';
+import {
+  kernelAppendFileDurable,
+  kernelListDirectory,
+  kernelReadFileRaw,
+  kernelTruncateFile,
+  kernelWriteFile,
+  typedJsonRpc,
+} from '../../rpc-contract';
 import {
   autoUpdateCheckEnabled,
   canvasWheelMode,
@@ -391,6 +398,10 @@ const faceDeps = {
   kernelReadFileRaw,
   kernelListDirectory,
   kernelWriteFile,
+  // Phase 1 事件日志（2026-09-15 DSH 参照移植）：durable append 进宿主桥
+  // （append_events 动作的落盘面——fsync 版 kernel helper）。
+  kernelAppendFileDurable,
+  kernelTruncateFile,
   spawnSubAgentImpl,
   createAnthropicProvider,
   createOpenAIProvider,

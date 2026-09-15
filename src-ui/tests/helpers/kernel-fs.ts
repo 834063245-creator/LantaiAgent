@@ -202,6 +202,27 @@ export function createKernelFsMock(opts?: { wrapWithSpies?: boolean }): {
     return p;
   };
 
+  /** 事件日志写面（Phase 1 换轨）：durable append——与 kernelWriteFile 同记账，
+   *  但语义是**追加**（真实现 = O_APPEND + fsync，失败回滚到写入前 size）。 */
+  const kernelAppendFileDurable = async (filePath: string, content: string): Promise<string> => {
+    if (fs.fail.write) throw new Error(fs.fail.write);
+    const p = String(filePath).replace(/\\/g, '/');
+    fs.touchParents(p);
+    fs.files.set(p, (fs.files.get(p) ?? '') + String(content));
+    fs.writes.push({ file_path: p, content: String(content) });
+    return p;
+  };
+
+  /** 断尾修复原语：截到字节偏移（mock 用 JS 字符长度——测试面全 ASCII）。 */
+  const kernelTruncateFile = async (filePath: string, offset: number): Promise<string> => {
+    if (fs.fail.write) throw new Error(fs.fail.write);
+    const p = String(filePath).replace(/\\/g, '/');
+    const cur = fs.files.get(p) ?? '';
+    if (offset > cur.length) throw new Error(`truncate: offset ${offset} exceeds length ${cur.length}`);
+    fs.files.set(p, cur.slice(0, offset));
+    return p;
+  };
+
   const kernelReadMemoryBatch = async (paths: string[]): Promise<Record<string, string | null>> => {
     const out: Record<string, string | null> = {};
     for (const p of paths) {
@@ -228,6 +249,8 @@ export function createKernelFsMock(opts?: { wrapWithSpies?: boolean }): {
     kernelListDirectory,
     kernelListDirectoryFlat,
     kernelLogAppend,
+    kernelAppendFileDurable,
+    kernelTruncateFile,
     kernelReadMemoryBatch,
     kernelGlobalMemoryDir,
     kernelReadFileBase64,

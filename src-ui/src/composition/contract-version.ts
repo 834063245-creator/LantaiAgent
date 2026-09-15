@@ -22,9 +22,18 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 31;
+export const OPEN_SURFACE_CONTRACT_VERSION = 32;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v32（2026-09-15）会话持久化 seam 动作面扩展（DSH 参照换轨 Phase 1）：
+ *  `SESSION_PERSIST_ACTIONS` 由四动作（read/list/save/delete_volume）扩为八动作
+ *  ——新增事件日志四动作 `read_log` / `write_log` / `append_events`（durable：
+ *  append + fsync，返回即已落盘）/ `truncate_log`（断尾修复）。**对外可感知**：
+ *  第三方会话后端 provider 需实现四新动作才算完整实现（文本持久化的后端最简单
+ *  的实现 = 四动作转发到同一份文件读写；不改后端也能跑——事件日志面缺席即
+ *  「旧行为逐字不变」）。同版消费面：`app/chat/session-log-store.ts`（写后队列 +
+ *  最小加载器）+ `shell/rows/persistence.ts` 的检查点从「落全量快照」改为
+ *  「排空日志队列」。
  *  v31（2026-09-15）S6 P1b 选择集语义：`ToolContribution` 新增可选
  *  `defaultOff?: boolean`——插件可出货「**登记但默认不进任何组合**」的行
  *  （重装备/实验性），组合解析把它初始置 disabled，用户在自己的 preset 里写

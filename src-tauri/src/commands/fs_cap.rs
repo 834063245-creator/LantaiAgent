@@ -25,7 +25,7 @@ use serde_json::{json, Value};
 use tauri::State;
 
 /// fs_cap 能力口分派。action ∈ {read, list, list_flat, glob, write, delete,
-/// rename, create_dir, append, read_base64, write_base64, memory_batch,
+/// rename, create_dir, append, truncate, read_base64, write_base64, memory_batch,
 /// global_memory_dir}。
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn fs_cap(
@@ -45,6 +45,8 @@ pub(crate) async fn fs_cap(
     is_agent: bool,
     agent_id: Option<String>,
     workspace_root: Option<String>,
+    durable: Option<bool>,
+    truncate_to: Option<u64>,
     state: &State<'_, crate::WorkspaceState>,
     app: &tauri::AppHandle,
 ) -> Result<Value, String> {
@@ -180,8 +182,28 @@ pub(crate) async fn fs_cap(
             let p = path.ok_or_else(|| "fs_cap append: missing 'path'".to_string())?;
             let c = content.ok_or_else(|| "fs_cap append: missing 'content'".to_string())?;
             let real = crate::utils::resolve_write_dispatch(&p, is_agent, agent_id.as_deref(), state, app).await?;
-            crate::confined_fs::append_text_unchecked(&real.to_string_lossy(), &c)?;
-            Ok(json!({ "path": real.to_string_lossy() }))
+            let rp = real.to_string_lossy().to_string();
+            // 会话事件日志换轨（2026-09-15 DSH 参照）：durable=true 走 fsync 变体
+            // （append 返回即已落盘——检查点的天花板语义）；缺省仍是旧 log_append
+            // 语义（无 fsync，应用日志用）。
+            if let Some(parent) = real.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("无法创建目录: {}", e))?;
+            }
+            if durable.unwrap_or(false) {
+                crate::confined_fs::append_text_durable(&rp, &c)?;
+            } else {
+                crate::confined_fs::append_text_unchecked(&rp, &c)?;
+            }
+            Ok(json!({ "path": rp }))
+        }
+        "truncate" => {
+            // 断尾修复原语（Phase 2）：把日志截到扫描器给的 committedBytes。
+            let p = path.ok_or_else(|| "fs_cap truncate: missing 'path'".to_string())?;
+            let off = truncate_to.ok_or_else(|| "fs_cap truncate: missing 'truncate_to'".to_string())?;
+            let real = crate::utils::resolve_write_dispatch(&p, is_agent, agent_id.as_deref(), state, app).await?;
+            let rp = real.to_string_lossy().to_string();
+            crate::confined_fs::truncate_file(&rp, off)?;
+            Ok(json!({ "path": rp, "truncate_to": off }))
         }
         other => Err(format!("fs_cap: 未知 action '{other}'")),
     }

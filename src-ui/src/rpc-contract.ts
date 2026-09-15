@@ -219,6 +219,7 @@ export interface RpcContract {
         | 'rename'
         | 'create_dir'
         | 'append'
+        | 'truncate'
         | 'read_base64'
         | 'write_base64'
         | 'memory_batch'
@@ -236,6 +237,10 @@ export interface RpcContract {
       filter_ignored?: boolean;
       paths?: string[];
       workspace_root?: string;
+      /** append 的 durable 变体（append + fsync，返回即已落盘）——会话事件日志写面。 */
+      durable?: boolean;
+      /** truncate 的目标字节偏移（断尾修复——扫描器给的 committedBytes）。 */
+      truncate_to?: number;
       is_agent?: boolean;
       agent_id?: string | null;
     };
@@ -806,6 +811,21 @@ export async function kernelDeleteFile(path: string): Promise<string> {
  *  语义等价：UI 写 .lantai/logs 不受规则拦）。 */
 export async function kernelLogAppend(path: string, content: string): Promise<string> {
   const raw = await fsCapCall({ action: 'append', path, content, is_agent: false });
+  return fsCapPathOf(raw);
+}
+
+/** 追加 + fsync（durable 变体，2026-09-15 会话事件日志换轨）——**返回即已落盘**
+ *  （Rust 侧 `confined_fs::append_text_durable`：write_all + sync_all，失败回滚到
+ *  写入前 size 再抛，防重试产生重复/缺号）。检查点「排空队列」正是建立在这个
+ *  语义上：flush 之后磁盘上就是完整前缀。 */
+export async function kernelAppendFileDurable(path: string, content: string): Promise<string> {
+  const raw = await fsCapCall({ action: 'append', path, content, durable: true, is_agent: false });
+  return fsCapPathOf(raw);
+}
+
+/** 截断到指定字节偏移并 fsync（断尾修复原语）。 */
+export async function kernelTruncateFile(path: string, offset: number): Promise<string> {
+  const raw = await fsCapCall({ action: 'truncate', path, truncate_to: offset, is_agent: false });
   return fsCapPathOf(raw);
 }
 

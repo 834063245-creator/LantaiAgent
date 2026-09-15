@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：31
+当前版本：32
 
-<!-- contract-fingerprint: 7271e417bc02f15e0069062869e10a7ac8038c036efa4fb4749df3a5c4ebc985 -->
+<!-- contract-fingerprint: 935ec6b3e8041a345a692de32bdc9243de16eb6e96f3d68e70800fa9dea0c6e3 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -70,6 +70,8 @@
 | 29 | 2026-09-14 | **M1 插件化收口（贡献通道内核单层化）**：注册表内核从 `services.ts` 内的 `ContributionRegistry` 上收为 `contribution-channel.ts` 的 `ContributionChannel`——**类名变更是破坏性契约变更**（该名字经宿主桥 `faceDeps`/`host.aliased.ts` 暴露给产物插件）；五个手抄副本（`RendererRegistry` / `PromptRegistry` / `HookContributionRegistry` / `CapabilityContributionRegistry` / `OverlayRegistry`）随之退役，14 个 service 全部收敛到同一内核。**行为面逐字零变更**（id 寻址 / 重名装载期拒绝 / 幂等 disposer / 陈旧性守卫 / 组合序 = 注册序全部保持）；新增两件**声明式数据**：`timing`（四档生效时机 immediate/next-assembly/request/frame——历史上是隐式的「构造时传没传回调」，读时序只能读七份文件头）与 `subscribe`（统一订阅面，收编 OverlayRegistry 自成一格的 API）。**同版破坏性变更**：`AgentCapability.key` → `.id`（capabilities 是九条通道里唯一行身份不叫 id 的；`AgentBlueprint.keys()` 随之更名 `ids()`）——外部插件若贡献 capability 必须改字段名，旧名不留别名 | 插件化收口 M1（用户拍板「全做」：诊断见本会话——同一条通道语义六种接口/成员集互不相同） |
 
 | 31 | 2026-09-15 | **`ToolContribution` 新增可选 `defaultOff?: boolean`（S6 P1b 选择集语义）**：插件可出货「**登记但默认不进任何组合**」的行——装载面照常注册（通道在册 / 可寻址 / 可诊断），组合解析（`resolveRoster`）把该行初始置 `disabled`，用户在自己的 preset 里写 `disabled: false` 回开（roster 既有语义，零新语法）。**对外可感知**：第三方插件从此能出货「默认关」的重装备/实验性行；**不声明 = 行为逐字不变**（出厂面当前零声明 ⇒ convergence 双轨快照零漂移，本版实测）。同版诊断面按**原因**分栏：「未选中」（`defaultOff` 且未被回开）/「被禁用」（显式 `disabled: true`）/「seam 裁剪」（`seam/<域>` id——旧扁平 `disabled` 栏把三者混装一栏，seam id 也在里面）。类型面 `CompositionDiagnostics` 增 `unselected` / `seamCapped`（载体在 `roster.ts`，非本清单文件，随本版一并记录） | S6-per-agent-composition.md P1b（用户拍板：先落地三栏，「被跳过」= `requires` 缺的一栏随 P3 引入 requires 时再加，不预造空栏） |
+
+| 32 | 2026-09-15 | **会话持久化 seam 动作面扩展（事件日志四动作）**：`SESSION_PERSIST_ACTIONS` 由四动作（`read_volume` / `list_volumes` / `save_volume` / `delete_volume`）扩为八动作——新增 `read_log`（事件日志读取，缺失 = 空串不抛）、`write_log`（整体物化，原子替换写）、`append_events`（**durable**：append + fsync，返回即已落盘）、`truncate_log`（截到字节偏移，断尾修复）。**对外可感知**：第三方会话后端 provider 需实现四新动作才算完整实现；不实现 = 事件日志面缺席，快照面行为逐字不变（旧 provider 照常可跑）。消费面同批落地：`app/chat/session-log-store.ts`（DSH 参照的写后队列 + 200ms 批量窗口 + 失败回灌 + 最小加载器）与 `shell/rows/persistence.ts` 的检查点从「落全量快照」改为「排空日志队列」（检查点成本从 MB 级降到 KB 级）。依据：`docs/plans/session-persistence-dsh-port-plan.md`（用户拍板三期全做） | DSH 参照移植 Phase 1（`deepseek-harness/packages/session/session-persistence*`，HEAD 4e84901e64） |
 
 ## 变更流程（guard 红 → 修复四步）
 

@@ -88,8 +88,18 @@ describe('sessionPersistence seam（D11 · C 动作面重设计）', () => {
     );
   });
 
-  it('② 动作面钉：四动作会话语义（SESSION_PERSIST_ACTIONS 单一真源）', () => {
-    expect([...SESSION_PERSIST_ACTIONS]).toEqual(['read_volume', 'list_volumes', 'save_volume', 'delete_volume']);
+  it('② 动作面钉：会话语义八动作（快照四 + 事件日志四；SESSION_PERSIST_ACTIONS 单一真源）', () => {
+    expect([...SESSION_PERSIST_ACTIONS]).toEqual([
+      'read_volume',
+      'list_volumes',
+      'save_volume',
+      'delete_volume',
+      // 事件日志四动作（Phase 1 换轨，2026-09-15 DSH 参照移植）：读/物化/追加(durable)/截断
+      'read_log',
+      'write_log',
+      'append_events',
+      'truncate_log',
+    ]);
     expect(Object.keys(builtinSessionsProvider)).toEqual(['id', 'execute']);
     expect(builtinSessionsProvider.id).toBe('builtin/rust-sessions');
   });

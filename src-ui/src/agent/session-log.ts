@@ -234,6 +234,26 @@ export class SessionLog {
     return log;
   }
 
+  /**
+   * 用已落盘事件**原地重建**本日志（事件日志换轨 Phase 1，2026-09-15）。
+   *
+   * 为什么需要它：Agent 构造期就会 append（`session/reset init` + `preset/selected`），
+   * 而日志文件在**上一次运行**里已经有自己的 seq 序列；不换基线就接着 append，
+   * 磁盘上会出现重复/回退 seq（重放面判为损坏）。会话层在「句柄刚到手、尚未拟文」
+   * 的窗口里调用本方法，把日志置回磁盘真源，其后所有 append 自然接在尾部。
+   *
+   * 语义：**整体替换**（构造期那几个事件被丢弃——它们由恢复路径的 `session/reset`
+   * 与 `preset/selected` 重新表达；见 `app/chat/session-log-store.ts` 的接线注释）。
+   * 传入事件必须 seq 严格递增（同 `appendEvent` 规约），否则抛错——宁可响亮失败，
+   * 不静默接受坏基线。
+   */
+  restoreInPlace(events: readonly SessionEvent[]): void {
+    const staged = new SessionLog();
+    for (const ev of events) staged.appendEvent(jsonClone(ev) as SessionEvent);
+    this._events = staged._events;
+    this._nextSeq = staged._nextSeq;
+  }
+
   /** 完整历史投影 — 必须与旧 session 数组逐字节等价（T1/T2 差分钉住）。 */
   deriveMessages(): Message[] {
     return this.project().messages;

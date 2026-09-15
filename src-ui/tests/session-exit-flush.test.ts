@@ -71,7 +71,10 @@ const sys = { role: 'system', content: 'sys' };
 type Msg = { role: string; content: string };
 
 /** 桩 Agent 句柄：消息数组可换（模拟「新一轮内容」）+ loop 事件可触发
- *  （onLoopEvent 能力位 = 触发点 A 的挂点）。 */
+ *  （onLoopEvent 能力位 = 触发点 A 的挂点）+ **真实事件日志**（Phase 1 换轨后
+ *  检查点的落盘面是日志队列，不是快照——桩必须带 SessionLog 能力位）。 */
+const { SessionLog: StubSessionLog } = await import('../src/agent/session-log');
+
 function makeAgent(messages: Msg[]) {
   const state = { messages };
   const listeners = new Map<string, Array<(p: unknown) => void>>();
@@ -81,6 +84,7 @@ function makeAgent(messages: Msg[]) {
       id,
       getSession: () => state.messages,
       dispose: vi.fn(),
+      sessionLog: new StubSessionLog(),
       onLoopEvent: (event: string, fn: (p: unknown) => void) => {
         const arr = listeners.get(event) ?? [];
         arr.push(fn);
@@ -96,6 +100,12 @@ function makeAgent(messages: Msg[]) {
       for (const fn of listeners.get(event) ?? []) fn({ agentId: id });
     },
   };
+}
+
+/** 卷事件日志的落盘行（ndjson）。 */
+function storedLogLines(sid: number): string[] {
+  const raw = H.kernelFs!.fs.files.get(`${SESSIONS}/${sid}.ndjson`);
+  return raw ? raw.split('\n').filter((l) => l.length > 0) : [];
 }
 
 /** 铺一卷案头：specs 里带 messages = 有句柄（有内容），不带 = 无句柄卷。 */
@@ -263,29 +273,49 @@ describe('P0 工作区路径守卫（M8）', () => {
   });
 });
 
-describe('P0 触发点 A —— 模型请求前检查点（M1）', () => {
-  it('request/start → 该卷立刻落盘（含用户已说的话）', async () => {
+describe('触发点 A —— 模型请求前检查点（Phase 1 换轨后 = 排空事件日志队列）', () => {
+  it('request/start → 该卷事件日志排空到盘（含用户已说的话）', async () => {
     const { panel, agents } = await setupChatCore([
       { sid: 31, messages: [sys, { role: 'user', content: '用户说的话' }] },
     ]);
+    // 生产路径的事件日志接线 = chat-session.seedVolumeLog（此处直接调 openSessionLog，
+    // 与 chat-session 走同一函数）
+    const { openSessionLog } = await import('../src/app/chat/session-log-store');
+    const stub = agents.get(31)!;
+    const logInstance = stub.handle.sessionLog;
+    expect(logInstance).toBeTruthy();
+    await openSessionLog(logInstance, {
+      root: SESSIONS,
+      sessionId: 31,
+      header: { type: 'session', version: 1, id: 31, createdAt: '2026-09-15T00:00:00.000Z' },
+    });
+    // 用户消息已经入了日志（模型可见事实），但还在 200ms 窗口里
+    logInstance.append('user/message', { message: { role: 'user', content: '用户说的话' } });
+    expect(H.kernelFs!.fs.files.has(`${SESSIONS}/31.ndjson`)).toBe(false);
+
     const { bootPersistence } = await import('../src/shell/rows/persistence');
     bootPersistence({ chatPanel: panel, workspace: null } as never);
-
-    // 请求前：盘上还没有这一轮（本轮全部内容只在内存 = 事故面）
-    expect(volumeOnDisk(31)).toBeNull();
 
     agents.get(31)!.fire('request/start');
 
-    await vi.waitFor(() => expect(volumeOnDisk(31)).not.toBeNull());
-    expect(volumeOnDisk(31)?.messages.at(-1)?.content).toBe('用户说的话');
+    await vi.waitFor(() => expect(H.kernelFs!.fs.files.has(`${SESSIONS}/31.ndjson`)).toBe(true));
+    const lines = storedLogLines(31);
+    expect(JSON.parse(lines[0]).type).toBe('session');
+    expect(JSON.parse(lines.at(-1)!).data.message.content).toBe('用户说的话');
   });
 
-  it('在途检查点合并：同一卷不并发重写（下一请求/轮末再落）', async () => {
+  it('在途检查点合并：同一卷不并发重写（慢写期间第二次请求不重复落盘）', async () => {
     const { panel, agents } = await setupChatCore([{ sid: 32, messages: [sys, { role: 'user', content: 'v1' }] }]);
-    const { bootPersistence } = await import('../src/shell/rows/persistence');
-    bootPersistence({ chatPanel: panel, workspace: null } as never);
+    const { openSessionLog } = await import('../src/app/chat/session-log-store');
+    const stub = agents.get(32)!;
+    await openSessionLog(stub.handle.sessionLog, {
+      root: SESSIONS,
+      sessionId: 32,
+      header: { type: 'session', version: 1, id: 32, createdAt: '2026-09-15T00:00:00.000Z' },
+    });
+    stub.handle.sessionLog.append('user/message', { message: { role: 'user', content: 'v1' } });
 
-    // 首写慢（60ms）：期间第二次 request/start 必须被合并掉
+    // 首写慢（60ms）：期间第二次 request/start 落到同一屏障上，不产生第二批
     const writeMock = H.kernelFs!.overrides.kernelWriteFile as ReturnType<typeof vi.fn>;
     const defaultImpl = writeMock.getMockImplementation()!;
     writeMock.mockImplementation(async (p: string, c: string) => {
@@ -293,15 +323,25 @@ describe('P0 触发点 A —— 模型请求前检查点（M1）', () => {
       return defaultImpl(p, c);
     });
 
+    const { bootPersistence } = await import('../src/shell/rows/persistence');
+    bootPersistence({ chatPanel: panel, workspace: null } as never);
+
     const agent = agents.get(32)!;
     agent.fire('request/start');
-    agent.setMessages([sys, { role: 'user', content: 'v2' }]);
+    agent.handle.sessionLog.append('assistant/text', { message: { role: 'assistant', content: 'v2' } });
     agent.fire('request/start');
 
-    await vi.waitFor(() => expect(volumeOnDisk(32)).not.toBeNull());
-    await new Promise((r) => setTimeout(r, 150));
-    const writes = H.kernelFs!.fs.writes.filter((w) => w.file_path === `${SESSIONS}/32.json`);
-    expect(writes.length).toBe(1);
-    expect(volumeOnDisk(32)?.messages.at(-1)?.content).toBe('v1');
+    await vi.waitFor(() => expect(H.kernelFs!.fs.files.has(`${SESSIONS}/32.ndjson`)).toBe(true));
+    await new Promise((r) => setTimeout(r, 200));
+    // 两条事件各落一次：物化一次（头行 + v1）+ 增量 append 一次（v2 一行）——
+    // 并发检查点共享队列屏障，不重复写前缀（旧实现每次检查点重写全量快照）。
+    const writes = H.kernelFs!.fs.writes.filter((w) => w.file_path === `${SESSIONS}/32.ndjson`);
+    expect(writes.length).toBe(2);
+    expect(writes[1].content.split('\n').filter((l) => l.length > 0).length).toBe(1);
+    const lines = storedLogLines(32);
+    expect(lines.length).toBe(3);
+    expect(JSON.parse(lines.at(-1)!).data.message.content).toBe('v2');
+    // 序号严格递增且无重复（重放面的硬前提）
+    expect(lines.slice(1).map((l) => JSON.parse(l).seq)).toEqual([1, 2]);
   });
 });

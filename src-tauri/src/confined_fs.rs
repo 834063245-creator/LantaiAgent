@@ -193,6 +193,69 @@ pub(crate) fn append_text_unchecked(real_path: &str, content: &str) -> Result<()
     Ok(())
 }
 
+/// 追加 + fsync（durable 变体，2026-09-15 会话事件日志换轨起用）。
+///
+/// 语义照 DSH `JsonlSessionPersistence.appendLines`（`session-persistence-jsonl/src/index.ts:693-731`）：
+/// 单次 `write_all` + `sync_all`；**任一步失败即回滚到写入前的 size 再抛**——
+/// 调用方会用同一批次重试，残留的半截字节会让重放看到重复/缺号的序号。
+///
+/// O_APPEND 保证「单次 write 完整续尾」（并发追加零丢失字节——INVARIANTS #11
+/// 家族的多写者面）；fsync 保证「append 返回 = 已落盘」，这是检查点（模型请求前
+/// / 工具副作用前 flush 队列）能当天花板用而不只是尽力而为的前提。
+pub(crate) fn append_text_durable(real_path: &str, content: &str) -> Result<(), String> {
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .append(true)
+        .open(real_path)
+        .map_err(|e| format!("durable append: cannot open {}: {}", real_path, e))?;
+    let before = file
+        .metadata()
+        .map_err(|e| format!("durable append: stat {} failed: {}", real_path, e))?
+        .len();
+    let rollback = |file: &std::fs::File| -> Result<(), String> {
+        file.set_len(before)
+            .map_err(|e| format!("durable append: rollback truncate failed: {}", e))?;
+        file.sync_all()
+            .map_err(|e| format!("durable append: rollback sync failed: {}", e))
+    };
+    if let Err(e) = file.write_all(content.as_bytes()) {
+        let _ = rollback(&file);
+        return Err(format!("durable append: write failed: {}", e));
+    }
+    if let Err(e) = file.sync_all() {
+        let _ = rollback(&file);
+        return Err(format!("durable append: sync failed: {}", e));
+    }
+    Ok(())
+}
+
+/// 截断文件到指定字节偏移并 fsync（断尾修复原语——丢弃崩溃留下的半截记录）。
+/// 偏移 > 当前长度时 `set_len` 会补零扩展，调用方（扫描器）只传 committedBytes，
+/// 因此不构成风险；此处仍显式拒绝越界，避免把「修复」变成「造洞」。
+pub(crate) fn truncate_file(real_path: &str, offset: u64) -> Result<(), String> {
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .open(real_path)
+        .map_err(|e| format!("truncate: cannot open {}: {}", real_path, e))?;
+    let len = file
+        .metadata()
+        .map_err(|e| format!("truncate: stat {} failed: {}", real_path, e))?
+        .len();
+    if offset > len {
+        return Err(format!(
+            "truncate: offset {} exceeds file length {} ({})",
+            offset, len, real_path
+        ));
+    }
+    file.set_len(offset)
+        .map_err(|e| format!("truncate: set_len failed: {}", e))?;
+    file.sync_all()
+        .map_err(|e| format!("truncate: sync failed: {}", e))?;
+    Ok(())
+}
+
 /// 重命名/移动。`from`/`to` 双路径检查（read+write）→ 就地执行。
 pub(crate) async fn rename(
     from: &str,
@@ -394,6 +457,73 @@ mod tests {
 
     /// 跨用例唯一化 temp 子目录的序号（同名并发跑测试互不踩）。
     static TMP_TEST_SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+    // ── 事件日志写面（Phase 1 换轨，2026-09-15 DSH 参照）──
+
+    /// durable append：续尾、按序、返回即已落盘；多次 append 内容为拼接。
+    #[test]
+    fn append_text_durable_appends_in_order() {
+        let dir = std::env::temp_dir().join(format!(
+            "lantai_durable_{}",
+            std::process::id() * 1000 + TMP_TEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("7.ndjson");
+        let ps = p.to_str().unwrap();
+
+        append_text_durable(ps, "{\"seq\":1}\n").unwrap();
+        append_text_durable(ps, "{\"seq\":2}\n").unwrap();
+        assert_eq!(std::fs::read_to_string(ps).unwrap(), "{\"seq\":1}\n{\"seq\":2}\n");
+
+        // 文件不存在时创建（首卷首次 append）
+        let p2 = dir.join("new.ndjson");
+        append_text_durable(p2.to_str().unwrap(), "x").unwrap();
+        assert_eq!(std::fs::read_to_string(&p2).unwrap(), "x");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// append 失败路径不留半截：目标为目录时写失败，且不产生新文件。
+    #[test]
+    fn append_text_durable_fails_without_partial_file() {
+        let dir = std::env::temp_dir().join(format!(
+            "lantai_durable_err_{}",
+            std::process::id() * 1000 + TMP_TEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("as_dir");
+        std::fs::create_dir_all(&target).unwrap();
+
+        let err = append_text_durable(target.to_str().unwrap(), "data").unwrap_err();
+        assert!(err.contains("durable append"), "错误必须点名失败原语: {err}");
+        assert!(target.is_dir(), "目录形态未被破坏");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 截断原语：丢弃断尾并 fsync；越界偏移拒绝（不造洞）。
+    #[test]
+    fn truncate_file_discards_tail_and_rejects_overflow() {
+        let dir = std::env::temp_dir().join(format!(
+            "lantai_trunc_{}",
+            std::process::id() * 1000 + TMP_TEST_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("log.ndjson");
+        let ps = p.to_str().unwrap();
+        std::fs::write(ps, "line1\nline2\n半截").unwrap();
+
+        // committedBytes = 12（两条完整行）→ 断尾被丢弃
+        truncate_file(ps, 12).unwrap();
+        assert_eq!(std::fs::read_to_string(ps).unwrap(), "line1\nline2\n");
+
+        // 越界 = 拒绝（修复不得变成造洞）
+        let err = truncate_file(ps, 999).unwrap_err();
+        assert!(err.contains("exceeds file length"), "越界必须拒绝: {err}");
+        assert_eq!(std::fs::read_to_string(ps).unwrap(), "line1\nline2\n");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     // ── glob 花括号展开（字节层随能力口回 exe）──
 

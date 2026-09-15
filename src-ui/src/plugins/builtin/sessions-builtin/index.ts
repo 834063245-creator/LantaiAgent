@@ -23,7 +23,13 @@ import type {
   SessionPersistenceProvider,
 } from '../../../composition/session-persistence-service';
 import type { Context } from '../../../cordis';
-import { kernelListDirectory, kernelReadFileRaw, kernelWriteFile } from './host';
+import {
+  kernelAppendFileDurable,
+  kernelListDirectory,
+  kernelReadFileRaw,
+  kernelTruncateFile,
+  kernelWriteFile,
+} from './host';
 
 /** 动作 → kernel* helper 的 args 组装。args 已是 snake_case RPC 参数直传
  *  （无腰设计）；helper 返回已解析路径/原文。消费方各自 parse（见 D-1：
@@ -63,6 +69,34 @@ async function executeViaKernel(action: SessionPersistAction, args: Record<strin
         `${root}/${id}.json`,
         JSON.stringify({ id: Number(id), deleted: true, label: '', messages: [], savedAt: '' }),
       );
+      return 'null';
+    }
+    case 'append_events': {
+      // 事件日志追加（DSH 参照移植 Phase 1）：durable=true → append + fsync，
+      // 返回即已落盘（检查点「排空队列」的天花板语义靠它成立）。
+      // 头行是否随本批写入由 TS 侧（写作面 materialized 标志）决定——
+      // provider 无隐藏状态，只落给定字节（DSH appendBatch(isMaterialized) 同形）。
+      await kernelAppendFileDurable(`${root}/${id}.ndjson`, String(args.data ?? ''));
+      return 'null';
+    }
+    case 'read_log': {
+      // 事件日志读取：缺失/不可读 = 空串（不抛——「没有日志」是首启常态，
+      // 与 read_volume 的 'null' 判空语义同族）。
+      try {
+        return await kernelReadFileRaw(`${root}/${id}.ndjson`);
+      } catch {
+        return '';
+      }
+    }
+    case 'write_log': {
+      // 整体物化（首批：头行 + 当时全部事件）——原子替换写（tmp→rename），
+      // 崩溃不会留下「已物化但空」的会话。
+      await kernelWriteFile(`${root}/${id}.ndjson`, String(args.data ?? ''));
+      return 'null';
+    }
+    case 'truncate_log': {
+      // 断尾修复（Phase 2）：截到扫描器给的 committedBytes 并 fsync。
+      await kernelTruncateFile(`${root}/${id}.ndjson`, Number(args.offset ?? 0));
       return 'null';
     }
   }
