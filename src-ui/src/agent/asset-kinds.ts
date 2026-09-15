@@ -82,8 +82,12 @@ export function registerBuiltinAssetKinds(): void {
     description: '二维表格数据（CSV 风格行集）；支持 append 流式行累积',
     schema: objectSchema(
       {
-        columns: { type: 'array', items: { type: 'string' }, description: '列名（可空）' },
-        rows: { type: 'array', items: { type: 'array' }, description: '行数据' },
+        columns: { type: 'array', items: { type: 'string' }, description: '列名（可空——缺省按列位生成 #1/#2…）' },
+        rows: {
+          type: 'array',
+          items: { type: 'array' },
+          description: '行数据——每行是一个单元格数组（按 columns 顺序），如 [["feat",251],["docs",218]]',
+        },
         caption: { type: 'string', description: '表题（可空）' },
       },
       ['rows'],
@@ -100,8 +104,16 @@ export function registerBuiltinAssetKinds(): void {
     schema: objectSchema(
       {
         type: { type: 'string', enum: ['bar', 'line', 'pie', 'scatter'], description: '图表类型' },
-        data: { description: '数据序列（按图表类型组织）' },
-        config: { type: 'object', description: '可选配置（标题/轴/图例等）' },
+        data: {
+          description:
+            '数据序列——两种形状二选一：{labels: string[], values: number[]}（推荐，labels 与 values 等长）' +
+            '或 [{label, value}] 数组；纯数值数组 [1,2,3] 也可。四类型共用同一形状。' +
+            '注意：不是 ECharts 的 {datasets:[{data}]} 形状——那个形状取不到数会渲染「数据不可用」占位',
+        },
+        config: {
+          type: 'object',
+          description: '可选配置：title（字符串，不是 {text} 对象）、xName、yName、palette（颜色数组）',
+        },
       },
       ['type', 'data'],
     ),
@@ -137,10 +149,10 @@ export function registerBuiltinAssetKinds(): void {
     id: 'file',
     description: '会话文件/媒体引用（图片/视频/文档——点击打开预览）',
     schema: objectSchema({
-      fileId: { type: 'string' },
-      filePath: { type: 'string' },
-      label: { type: 'string' },
-      ext: { type: 'string' },
+      fileId: { type: 'string', description: '会话文件 id（可空）' },
+      filePath: { type: 'string', description: '绝对路径——图片/视频预览需给此项（读文件内容渲染）' },
+      label: { type: 'string', description: '显示名（可空——缺省回落到 fileId/filePath）' },
+      ext: { type: 'string', description: '扩展名（如 png/mp4/pdf，小写无点——决定渲染形态；可空）' },
     }),
     presentations: ['media'],
     defaultPresentation: 'media',
@@ -152,8 +164,13 @@ export function registerBuiltinAssetKinds(): void {
     description: '依赖影响面/依赖链（图谱内化：影响面树直通 trace_impact 输出）',
     schema: objectSchema(
       {
-        nodeId: { type: 'string', description: '根节点 id（查询式）' },
-        depth: { type: 'number', description: '波及深度（可空）' },
+        nodeId: {
+          type: 'string',
+          description:
+            '根节点 id（仅作标注）——渲染不认查询式：必须同时给 nodes/edges 直通数据，' +
+            '否则渲染「数据不可用」占位（要查影响面用 trace_impact 的输出直接透传）',
+        },
+        depth: { type: 'number', description: '波及深度（仅作标注，可空）' },
         nodes: {
           type: 'array',
           items: objectSchema({
@@ -162,12 +179,12 @@ export function registerBuiltinAssetKinds(): void {
             depth: { type: 'number' },
             kind: { type: 'string' },
           }),
-          description: '节点表（直通式，与 edges 成对）',
+          description: '节点表（渲染必需——与 edges 成对；边引用的 id 必须在本表出现）',
         },
         edges: {
           type: 'array',
           items: objectSchema({ from: { type: 'string' }, to: { type: 'string' }, kind: { type: 'string' } }),
-          description: '边表（直通式，与 nodes 成对）',
+          description: '边表（渲染必需——与 nodes 成对，from/to 取 nodes 里的 id）',
         },
       },
       [],
