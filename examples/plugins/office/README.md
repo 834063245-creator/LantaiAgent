@@ -34,10 +34,12 @@ Copy-Item ..\..\office-cli\SKILL.md "$env:USERPROFILE\.lantai\skills\officecli\S
 # 然后让 Agent 调 office_preview_open 开窗
 ```
 
-> ⚠️ **watch 占着的文件，别同时让 Agent 改**：watch 自己持有该文件的常驻进程，域工具的
-> `OFFICECLI_RESIDENT_FLUSH=each` 对**外来 resident** 不生效 ⇒ 回执说成功、磁盘字节可能滞后
-> （2026-09-15 实测事故，计划 §11.1：报 180 行、磁盘只落 19 行）。**二选一**：要活预览就只看不改；
-> 要改就用截图路（见下方**不想起 watch 的场合**那条），改完重截同一路径 + `update_asset` 原地刷新。
+> ⚠️ **watch 占着的文件，Agent 能改，但两件事要知道（2026-09-15 受控实测）**：
+> ① 域工具**不起自己的常驻进程**（`OFFICECLI_NO_AUTO_RESIDENT`），`view`/`set`/`add`/`batch`
+> 在你的 watch resident 在场时照常工作、写入**照常落盘**（读回命中，等待 idle-autosave 之后也不被覆盖）；
+> ② 唯一冲突是 **`create`**：watch 的 resident 持有文件锁时 `create` 被硬拒（`--force` 也无效），
+> 所以域工具在 `create` 前会**自动 close 掉你的 resident**（结果里会说明）——**你的活预览窗需要重新起 watch**。
+> 另外：resident 持有期间，**外部程序**（Excel/WPS/兰台媒体回读）读该文件会被锁住。
 
 - 改文档 → watch 经 SSE 推**增量补丁**（实测约 0.6 s 一条 `word-patch`）→ 窗内自动刷新，
   **不需要轮询、也不需要重开窗**。

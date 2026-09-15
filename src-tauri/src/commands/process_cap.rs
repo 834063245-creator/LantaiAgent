@@ -124,15 +124,42 @@ fn sh_quote(arg: &str) -> String {
     format!("'{}'", arg.replace('\'', "'\\''"))
 }
 
-/// officecli 调用命令行：环境钉扎（跳更新检查 + 每次改动立即落盘）+ 逐项单引号。
-fn build_office_command(argv: &[String]) -> String {
-    let mut cmd = String::from("OFFICECLI_SKIP_UPDATE=1 OFFICECLI_RESIDENT_FLUSH=each ");
-    cmd.push_str(&sh_quote(&office_bin()));
+/// officecli 调用命令行。
+///
+/// **环境钉扎 + 可选前置 close（2026-09-15 受控实测定型）**：
+/// - `OFFICECLI_SKIP_UPDATE=1`：跳过后台更新检查（确定性优先，升级走安装器换哈希）。
+/// - **`OFFICECLI_NO_AUTO_RESIDENT=1`：不起常驻进程**。officecli 缺省会为**每个被碰过的
+///   文件**留一个 `__resident-serve__` 常驻进程（实测 **42 MB / 16 线程**），只在**闲置
+///   12 分钟**后才退、而每次调用都重置该计时器 ⇒ 一场文档密集会话能堆起十几个进程、
+///   几百个线程（用户报的"线程泄露"即此，2026-09-15 复现：0→1→2 进程 / 0→16→32 线程）。
+///   关掉后每次调用自成一次 open/save（字节当场落盘，落盘不再依赖谁来 flush）。
+/// - 写动作**不**无差别前置 close（见 `pre_close` 的推导）：只有 `create` 需要它。
+fn build_office_command(argv: &[String], pre_close: Option<&str>) -> String {
+    let bin = sh_quote(&office_bin());
+    let mut cmd = String::new();
+    if let Some(doc) = pre_close {
+        cmd.push_str(&format!("{bin} 'close' {} 2>&1; ", sh_quote(doc)));
+    }
+    cmd.push_str("OFFICECLI_SKIP_UPDATE=1 OFFICECLI_NO_AUTO_RESIDENT=1 OFFICECLI_RESIDENT_FLUSH=each ");
+    cmd.push_str(&bin);
     for arg in argv {
         cmd.push(' ');
         cmd.push_str(&sh_quote(arg));
     }
     cmd
+}
+
+/// 前置 close 的落点推导（纯函数，便于单测）：**只有 `create` 需要**。
+/// `set`/`add`/`remove`/`batch`/`merge` 在有外来 resident 时照常落盘（实测），
+/// 无差别 close 只会掐掉用户自己起的活预览窗。落点本身必须是**已过闸的声明目标**。
+fn pre_close_target<'a>(verb: &str, targets: &'a [(String, bool)]) -> Option<&'a str> {
+    if verb != "create" {
+        return None;
+    }
+    targets
+        .iter()
+        .find(|(_, write)| *write)
+        .map(|(path, _)| path.as_str())
 }
 
 /// office_exec —— office 域工具的专用入口（2026-09-15 R3 重构）。
@@ -177,7 +204,12 @@ async fn office_exec(
         .map(|t| (t.path.clone(), t.write))
         .collect();
     crate::utils::require_office(&targets, agent_id.as_deref(), state, app).await?;
-    let command = build_office_command(&parsed.argv);
+    // 前置 close 的落点：**只有 `create` 需要**（2026-09-15 受控实测）——
+    // resident 持有该路径时 `create` 被硬拒（exit 1 / "currently opened by a resident
+    // process"），且 `--force` 也无效；close 掉之后 `create` 才回到正常的
+    // "already exists"（模型看得懂、能处理）而不是误导性的锁错误。
+    let pre_close = pre_close_target(parsed.argv[0].as_str(), &targets).map(|s| s.to_string());
+    let command = build_office_command(&parsed.argv, pre_close.as_deref());
     exec_command(
         command,
         cwd,
@@ -952,16 +984,38 @@ mod tests {
         assert_eq!(sh_quote("my doc.docx"), "'my doc.docx'");
         assert_eq!(sh_quote("it's"), r#"'it'\''s'"#);
 
-        let cmd = build_office_command(&[
-            "view".to_string(),
-            "D:/ws/报告 一.docx".to_string(),
-            "outline".to_string(),
-        ]);
+        let cmd = build_office_command(
+            &[
+                "view".to_string(),
+                "D:/ws/报告 一.docx".to_string(),
+                "outline".to_string(),
+            ],
+            None,
+        );
         assert!(cmd.contains("OFFICECLI_SKIP_UPDATE=1"), "跳后台更新检查");
         assert!(cmd.contains("OFFICECLI_RESIDENT_FLUSH=each"), "每次改动立即落盘");
+        // 不起常驻：officecli 缺省为每个文件留 42MB/16 线程的 resident（闲置 12min 才退，
+        // 每次调用重置计时器）——用户报的"线程泄露"即此
+        assert!(cmd.contains("OFFICECLI_NO_AUTO_RESIDENT=1"), "不得起常驻进程: {cmd}");
         assert!(cmd.contains("'view' 'D:/ws/报告 一.docx' 'outline'"), "逐项单引号：{cmd}");
         assert!(!cmd.contains("${"), "命令里不得再有 ${{…}} 赋值段（R3 根因）: {cmd}");
         assert!(!cmd.contains("BIN="), "命令里不得再有 BIN 赋值段: {cmd}");
+        assert!(!cmd.contains("'close'"), "无写目标时不得前置 close: {cmd}");
+    }
+
+    /// 写动作前置 close 的**推导规则**：只有 `create` 命中，且只关已过闸的写目标。
+    /// 其余写动作靠"照常落盘"（实测）而不是靠 close，避免掐掉用户的活预览窗 resident。
+    #[test]
+    fn pre_close_only_for_create() {
+        let doc = "/ws/a.xlsx".to_string();
+        let targets_w = vec![(doc.clone(), true)];
+        let targets_r = vec![(doc.clone(), false)];
+        assert_eq!(pre_close_target("create", &targets_w), Some("/ws/a.xlsx"));
+        assert_eq!(pre_close_target("create", &targets_r), None, "只读目标不该被 close");
+        for verb in ["set", "add", "remove", "batch", "merge", "view", "load_skill"] {
+            assert_eq!(pre_close_target(verb, &targets_w), None, "{verb} 不该前置 close");
+        }
+        assert_eq!(pre_close_target("create", &[]), None, "无目标（playbook）不 close");
     }
 
     /// 真二进制端到端（Rust 侧）：命令拼装 × 真 bash × 真 officecli（二进制缺席即跳过）。
@@ -977,17 +1031,84 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("e2e.xlsx").to_string_lossy().replace('\\', "/");
 
-        let create = build_office_command(&["create".to_string(), file.clone()]);
+        let create = build_office_command(&["create".to_string(), file.clone()], None);
         let out = run_wait_in(&create, &dir.to_string_lossy(), 120_000).expect("create 执行失败");
         assert!(out.contains("Created"), "create 回执异常: {out}");
         assert!(std::path::Path::new(&file).is_file(), "create 后盘上应有文件");
 
-        let view = build_office_command(&["view".to_string(), file.clone(), "outline".to_string()]);
+        // 不常驻 ⇒ 直接读盘就该能看到字节（不需要 close/save）
+        let view = build_office_command(
+            &["view".to_string(), file.clone(), "outline".to_string()],
+            None,
+        );
         let out2 = run_wait_in(&view, &dir.to_string_lossy(), 120_000).expect("view 执行失败");
         assert!(out2.contains("Sheet1") || out2.contains("sheet"), "view 回执异常: {out2}");
-        // 收尾：关掉 resident（它持有文件句柄，删目录会失败；close 失败不影响判定）
-        let close = build_office_command(&["close".to_string(), file.clone()]);
-        let _ = run_wait_in(&close, &dir.to_string_lossy(), 30_000);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// **线程泄露回归**（2026-09-15 用户报「office cli 线程泄露」→ 实测：缺省每个被碰文件
+    /// 留 42MB/16 线程的 resident，闲置 12 分钟才退）：本口的命令必须**不留**常驻进程。
+    /// 判据 = 用 `open` 探针问一句——残留 resident 在场时它会答 "reusing running resident"。
+    #[test]
+    fn office_call_leaves_no_resident_behind() {
+        let bin = office_bin();
+        if !std::path::Path::new(&bin).is_file() {
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("lantai_office_leak_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let dir_s = dir.to_string_lossy().to_string();
+        let file = dir.join("leak.xlsx").to_string_lossy().replace('\\', "/");
+
+        // 本口的 create（带前置 close + NO_AUTO_RESIDENT）
+        let cmd = build_office_command(&["create".to_string(), file.clone()], Some(&file));
+        let out = run_wait_in(&cmd, &dir_s, 120_000).expect("create 执行失败");
+        assert!(out.contains("Created"), "create 回执异常: {out}");
+
+        // 探针：plain open（**不带** NO_AUTO_RESIDENT，所以它自己有起 resident 的能力）
+        let probe = format!("{} 'open' {}", sh_quote(&bin), sh_quote(&file));
+        let probe_out = run_wait_in(&probe, &dir_s, 60_000).expect("open 探针执行失败");
+        assert!(
+            !probe_out.contains("reusing running resident"),
+            "本口留下了常驻进程（线程泄露回归）: {probe_out}"
+        );
+
+        // 探针自己起了一个 → 收尾关掉（失败不影响判定）
+        let close = format!("{} 'close' {}", sh_quote(&bin), sh_quote(&file));
+        let _ = run_wait_in(&close, &dir_s, 30_000);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// **文件锁互踩回归**：外来 resident 持有目标路径时，`create` 被硬拒
+    /// （"currently opened by a resident process"，且 `--force` 也无效——上游 help 明文）。
+    /// 本口的 create 会先 close 掉那个 resident，于是返回的是**正常**的 file_exists
+    /// （模型看得懂、能用 rm/换名处理），而不是误导性的锁错误。
+    #[test]
+    fn office_create_releases_foreign_resident_lock() {
+        let bin = office_bin();
+        if !std::path::Path::new(&bin).is_file() {
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("lantai_office_lock_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let dir_s = dir.to_string_lossy().to_string();
+        let file = dir.join("lock.xlsx").to_string_lossy().replace('\\', "/");
+
+        // ① 手工起 resident（plain create：文件存在 + resident 持有）
+        let plain = format!("{} 'create' {}", sh_quote(&bin), sh_quote(&file));
+        let out = run_wait_in(&plain, &dir_s, 120_000).expect("plain create 执行失败");
+        assert!(out.contains("Created"), "plain create 回执异常: {out}");
+
+        // ② 本口的 create（前置 close 释放锁）
+        let cmd = build_office_command(&["create".to_string(), file.clone()], Some(&file));
+        let out2 = run_wait_in(&cmd, &dir_s, 120_000).expect("本口 create 执行失败");
+        assert!(!out2.contains("resident process"), "锁未被释放: {out2}");
+        assert!(out2.contains("already exists"), "应回到正常的 file_exists 语义: {out2}");
+
+        let close = format!("{} 'close' {}", sh_quote(&bin), sh_quote(&file));
+        let _ = run_wait_in(&close, &dir_s, 30_000);
         std::fs::remove_dir_all(&dir).ok();
     }
 

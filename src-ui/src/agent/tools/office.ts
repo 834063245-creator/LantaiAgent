@@ -16,18 +16,25 @@
 //   · readOnlyActions 白名单 ⇒ plan 模式按 action 分读写（view/get/query/validate 放行）；
 //   · 相对路径按工作区根解析（模型不碰引号/转义——命令由强制层拼装）。
 //
-// 两个刻意的产品决定：
-//   1) 写动作**自动落盘**：子进程带 OFFICECLI_RESIDENT_FLUSH=each——officecli 的
-//      resident 默认延迟写盘，而别的程序（兰台媒体回读、外部打开、交付）读的是盘上
-//      字节；不钉这个开关就会出现"截图/预览是旧内容"这类静默错。
-//   2) 关掉后台更新检查（OFFICECLI_SKIP_UPDATE=1）：确定性优先，升级走 pin + 安装器。
+// 三个刻意的产品决定（**R3.1 修订**，2026-09-15 受控实测后）：
+//   1) **不起常驻进程**（`OFFICECLI_NO_AUTO_RESIDENT=1`）——officecli 缺省会为**每个被碰过的
+//      文件**留一个 `__resident-serve__` 常驻进程：实测 **42 MB / 16 线程**，只在闲置
+//      **12 分钟**后才退，而每次调用都重置那个计时器 ⇒ 一场文档密集会话能堆起十几个进程、
+//      几百个线程（用户报的"线程泄露"）。关掉后每次调用自成一次 open/save，字节当场写盘。
+//      代价：失去 warm resident 的加速（每次重新 open/parse）——以"不泄露 + 落盘语义确定"换。
+//   2) 写动作仍带 `OFFICECLI_RESIDENT_FLUSH=each`：**万一**调用被路由进一个外部 resident
+//      （用户自己起的 watch），这条钉扎保证改动立刻落盘（不再依赖对方的 idle-autosave）。
+//   3) 关掉后台更新检查（`OFFICECLI_SKIP_UPDATE=1`）：确定性优先，升级走 pin + 安装器。
 //
-// ⚠️ 已知边界（2026-09-15 实测，尚未修）：FLUSH=each 只在**由本工具启动**的子进程里
-//    生效。若目标文件上已经存在一个**外来的裸 resident**（别处 `officecli open` 起的、
-//    不带 FLUSH 的常驻进程），后续调用会被路由进那个进程，本工具的 FLUSH 开关随之失效
-//    —— 实测：工具报 `Updated ...: value=TOOL_WRITE` 成功，磁盘却仍是空的。此时
-//    OFFICECLI_NO_AUTO_RESIDENT 也**不能**绕开（实测同样落空），只能先 `close` 掉外来
-//    resident。这是 officecli 的 resident 语义所致，不是本工具的开关能解的。
+// ⚠️ 已知边界（2026-09-15 受控实测复核，**修正**了此前那条未复现的观察）：
+//    外部 resident（用户 `watch` / 旧进程残留）持有目标文件时——
+//    · `set`/`add`/`remove`/`batch` 的写入**照常落盘**，等过对方 idle-autosave 窗口也**不被
+//      覆盖**（实测 D/E/F 三组读回全命中）⇒ **不存在**"回执成功而磁盘无字节"这类静默丢写；
+//    · 唯一真实的互踩是**文件锁**：`create` 被硬拒（`currently opened by a resident process`，
+//      **`--force` 也无效**）⇒ 所以只有 `create` 会先 `close` 掉那个 resident（见 Rust
+//      `pre_close_target`）；其余动作不无差别 close，免得顺手掐掉用户的活预览窗；
+//    · 外部程序（Excel/WPS/兰台媒体回读）在 resident 持有期间读该文件会被锁住——这是
+//      "改完看不到效果"的真实来源之一，交人判 + 用 `view` 复核（`view` 走 resident，看得见）。
 //
 // ── 2026-09-15 事故修复批（用户会话 23「复杂 excel」实测复盘）────────────────
 // 那场测试里模型只调了 5 次本工具、其余 71 次全在绕路（shell / code_execution），
@@ -410,12 +417,15 @@ export function createOfficeTools(exec: ToolExecutor): Tool[] {
       };
 
       // 落盘脚注：**只看退出码说话**（2026-09-15 事故——失败也追加"已落盘"，模型据此
-      // 当成功继续）。成功也只声明"已提交 + flush 开关已带"，不再承诺"别人一定看到新字节"：
-      // 该开关只对**本进程持有的 resident** 生效，外来裸 resident 会让它失效（文件头已知边界）。
-      const flushTail = (exit: number | null): string => {
+      // 当成功继续）。成功语义自 R3.1 起变硬：Rust 侧钉 OFFICECLI_NO_AUTO_RESIDENT=1
+      // ⇒ 每次调用自成一次 open/save、字节当场写盘，不再依赖谁去 flush；exit 0 = 字节在盘上。
+      const flushTail = (exit: number | null, text: string): string => {
         if (!MUTATING_ACTIONS.has(a.action)) return '';
+        const closedForeign = /Resident closed for/i.test(text)
+          ? '\n[office] 该文件上有一个**外部**常驻进程（用户起的 watch / 旧进程残留），create 之前已先 close 掉它——否则 create 会被它的文件锁硬拒，连 --force 也无效。若你在用活预览窗，请重新起 watch。'
+          : '';
         if (exit === 0) {
-          return '\n[office] 改动已提交（resident flush=each）。注意：若该文件此前已被**另一个** officecli 进程打开，本开关不生效、磁盘字节可能滞后——要确定时用 office(action:"view") 复核。';
+          return `${closedForeign}\n[office] 改动已落盘（本次不常驻：自成一次 open/save，字节当场写盘）。`;
         }
         if (exit === null) {
           return '\n[office] ⚠️ 本次调用没拿到退出码 —— 结果**未知**，不要当成功继续。';
@@ -432,10 +442,12 @@ export function createOfficeTools(exec: ToolExecutor): Tool[] {
             `[office] batch 共 ${a.items.length} 项 → 分 ${chunks.length} 批执行（每批自身原子回滚；**批与批之间不原子**，已成功的批次不回退）。`,
           ];
           let failedAt = 0;
+          let lastText = '';
           for (let i = 0; i < chunks.length; i++) {
             const argv = buildOfficeArgv({ ...a, items: chunks[i] }, resolve);
             if (typeof argv === 'string') return `[office] ${argv}`;
             const r = await runOne(argv);
+            lastText = r.text;
             lines.push(`── 批 ${i + 1}/${chunks.length}（${chunks[i]?.length ?? 0} 项）──\n${clipBatchOutput(r.text)}`);
             if (r.exit !== 0) {
               failedAt = i + 1;
@@ -444,7 +456,7 @@ export function createOfficeTools(exec: ToolExecutor): Tool[] {
           }
           lines.push(
             failedAt === 0
-              ? `[office] ${chunks.length} 批全部成功，共 ${a.items.length} 项。${flushTail(0)}`
+              ? `[office] ${chunks.length} 批全部成功，共 ${a.items.length} 项。${flushTail(0, lastText)}`
               : `[office] ⚠️ 第 ${failedAt}/${chunks.length} 批失败并已停下：前 ${failedAt - 1} 批已落盘、第 ${failedAt} 批起**未执行**。修好该批的报错后**只补做第 ${failedAt} 批起的数据**，不要整表重来。`,
           );
           return lines.join('\n');
@@ -455,7 +467,7 @@ export function createOfficeTools(exec: ToolExecutor): Tool[] {
       if (typeof argv === 'string') return `[office] ${argv}`;
       const r = await runOne(argv);
       const body = a.action === 'playbook' ? `${PLAYBOOK_GUARD_HEADER}\n\n────────────\n\n${r.text}` : r.text;
-      return `${body}${flushTail(r.exit)}`;
+      return `${body}${flushTail(r.exit, r.text)}`;
     },
   });
   return [tool];

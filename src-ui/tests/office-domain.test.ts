@@ -298,7 +298,7 @@ describe('office 域：执行面（经 process_cap office_exec 派发）', () =>
       path: '/body/p[1]',
       props: { bold: 'true' },
     });
-    expect(write).toContain('改动已提交');
+    expect(write).toContain('改动已落盘');
 
     // 失败：officecli 报错 + 非零退出码 → 不得出现"已落盘/已提交"这类成功话术
     nextResult = '[exit 1]\n[1] ERROR: Sheet not found: "参数表"\nBatch complete: 0 succeeded, 3 failed';
@@ -309,7 +309,7 @@ describe('office 域：执行面（经 process_cap office_exec 派发）', () =>
       props: { bold: 'true' },
     });
     expect(failed).toContain('未成功');
-    expect(failed).not.toContain('改动已提交');
+    expect(failed).not.toContain('改动已落盘');
 
     // 退出码读不到（别的 shell provider / 回执形状变了）→ 未知，同样不许声明成功
     nextResult = 'recorded without exit marker';
@@ -320,13 +320,22 @@ describe('office 域：执行面（经 process_cap office_exec 派发）', () =>
       props: { bold: 'true' },
     });
     expect(unknown).toContain('没拿到退出码');
-    expect(unknown).not.toContain('改动已提交');
+    expect(unknown).not.toContain('改动已落盘');
 
     // 只读动作任何情况下都不带脚注
     nextResult = '[exit 0] recorded\n[cwd: /d/ws]';
     const read = await tool.execute({ action: 'validate', file: 'D:/ws/a.docx' });
-    expect(read).not.toContain('改动已提交');
+    expect(read).not.toContain('改动已落盘');
     expect(read).not.toContain('未成功');
+  });
+
+  it('create 关掉外部常驻进程时明说（用户的 watch 需重起）', async () => {
+    captured.length = 0;
+    nextResult = '[exit 0] Resident closed for a.xlsx\nCreated: D:/ws/a.xlsx';
+    const out = await tool.execute({ action: 'create', file: 'D:/ws/a.xlsx' });
+    expect(out).toContain('外部');
+    expect(out).toContain('watch');
+    expect(out).toContain('改动已落盘');
   });
 
   it('batch 超限自动切块：顺序执行、逐批报账（2026-09-15 静默丢行事故）', async () => {

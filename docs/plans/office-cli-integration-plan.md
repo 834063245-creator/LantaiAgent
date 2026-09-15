@@ -378,4 +378,33 @@ E_ALLOW_BARE      = Ask   ← 连裸 `Bash` allow 规则也无效
 **宪法面**：本批动 `commands/process_cap.rs` + `tools/mod.rs` + `utils/path_resolve.rs` = **强制层改动**，
 commit message 显式标注；`platform_boundary_test.rs` 的 process_cap 条目同步补记 office_exec（模块清单未变）。
 
+### 11.4 第二轮：常驻进程泄露 + 文件锁互踩（2026-09-15，用户报告驱动）
+
+**用户报告的原话**：「office cli 可能有线程泄露和线程互踩」。受控实验复核（本机 officecli 1.0.149、
+`OFFICECLI_SKIP_UPDATE=1`）得出下表——**其中一条推翻了我自己上一轮的判断，已就地更正**：
+
+| 假设 | 实测数据 | 结论 |
+|---|---|---|
+| 每个被碰过的文件留一个常驻进程 | `create a.xlsx` → 1 进程 / 14 线程 / 41.5 MB；`view a.xlsx` → 1 / 16 / 42.8；`create b.xlsx` → **2 / 30 / 84.4**；`view b.xlsx` → 2 / 32 / 85.7 | ✅ **成立**（用户说的"线程泄露"）：缺省每文件一个 `__resident-serve__`，实测 **42 MB / 16 线程**，只在**闲置 12 分钟**后退出、而**每次调用都重置那个计时器**；本产品从不 close ⇒ 一场文档密集会话能堆十几个进程、几百个线程 |
+| 路径写法（`\` vs `/`、大小写、相对路径）会养出两个 resident | 四种写法全部答 "reusing running resident"，进程数恒 1 | ❌ 不成立：officecli 自身按规范化路径复用 |
+| 外来 resident 在场时写入被截留（"回执成功、磁盘无字节"） | 三组对照（无外来 / 有外来不 close / 有外来先 close）**读回全部命中**；有外来的那组等过 15 s idle-autosave 窗口后值**仍在** | ❌ **不成立**——我上一轮那句判断是**误判**（当时用"字节扫描 + 直接读盘"取证，被 xlsx 的 zip 压缩与 resident 的文件锁骗了）。已在代码注释/技能/本节更正 |
+| 并行多条写同一文件会互相踩 | 4 条并行 `set` → 4/4 全部落盘 | ❌ 不成立（CLI 侧经 resident 串行化） |
+| resident 持有文件时 `create` | `exit 1 / "currently opened by a resident process"`，**`--force` 同样被拒**（上游 help 亦明文） | ✅ **成立**（真正的"互踩"）：会话 23 里 Agent 的 `create` 正撞这条，而它准备的 `--force` 退路本来就是死的 |
+| resident 持有期间**外部程序**读该文件 | 直接读盘报 `being used by another process` | ✅ 成立：交付/兰台媒体回读被锁——"改完别人看不到"的真实来源之一（不是没保存） |
+
+**修法（R3.1 同批）**：
+- **`OFFICECLI_NO_AUTO_RESIDENT=1`**（Rust `build_office_command` 环境钉扎）⇒ 本工具**不再养任何常驻
+  进程**：泄露从源头消失；且每次调用自成一次 open/save，落盘不再依赖谁去 flush。
+  代价 = 失去 warm resident 的加速（每次重新 open/parse），以确定性换。
+- **只有 `create` 前置 `close`**（Rust `pre_close_target`，纯函数可单测）：放掉外部 resident 的文件锁，
+  让 `create` 回到正常的 `file_exists` 语义而非误导性的锁错误；`set`/`add`/`remove`/`batch`/`merge`
+  **不**无差别 close——实测它们本就照常落盘，无差别 close 只会掐掉用户自己起的活预览窗。
+- 结果脚注同步改硬：`exit 0` ⇒「改动已落盘（本次不常驻）」；`create` close 掉外部 resident 时明说
+  （并提示用户的 watch 需要重起）。
+
+**守护**：Rust `office_call_leaves_no_resident_behind`（用 `open` 探针问 "reusing running resident"——
+有残留即红）、`office_create_releases_foreign_resident_lock`（锁被释放 ⇒ 报 `already exists` 而非
+`resident process`）、`pre_close_only_for_create`（推导规则）、`office_command_quoting_and_env_pins`
+（钉 `NO_AUTO_RESIDENT=1` 与"命令里不得有 `BIN=`/`${…}`"）、真二进制 e2e 全绿（7/7）。
+
 
