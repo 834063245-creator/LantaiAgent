@@ -253,6 +253,11 @@ effectiveComposition(id)  // 生产唯一解析入口（捕获网，永不抛出
   仍是同一个事实（preset id），**不触发**——泛化留待工作区绑定正式化那条线。
 - 卷头只读标签：显示该卷的组合名（DSH「控制在此不承诺」同款——运行中的卷不给切换控件，
   切换只对新装配生效）。
+  **✅ 落地（2026-09-16，P5a `87681434`）**：落点 = **卷首 `.pp-folio-head` 右上角**的组合芯片
+  （`paper-shell/FolioCompositionChip.tsx`）——**每个卷各显示自己的组合名**（不再只有创作坞那处
+  「当前活跃卷」）；空白卷可拨（写的是**本卷**的卷级选择，对非活跃卷同样生效）、跑过一轮 =
+  只读标签；hover 显示来源与不可用原因。**绝对定位覆盖、不进高度流水**（不动 `FOLIO_TOKENS` /
+  `measureFolioHeadHeight` / 卷级几何 ⇒ 既有画布零位移）。
 
 ### 3.7 门禁与 baseline 策略
 
@@ -307,6 +312,10 @@ effectiveComposition(id)  // 生产唯一解析入口（捕获网，永不抛出
 > `exclusive` 冲突）**不在 P1 预造空栏**：`requires` 是 P3 才引入的字段，空栏即化石（本仓有
 > 明确纪律，`diagnostics.overridden/.inserted` 就是标本）。「卷头 hover 显示来源」随卷头 UI 落 P5；
 > P1e 的**创作坞芯片**已用同一读面（`sessionCompositionInfo`）显示来源与不可用原因。
+> **✅ P5 兑现（2026-09-16，P5a）**：卷首芯片的 hover 显示 `本卷记录（界面拨动，或程序按组合
+> 起卷时写入）` / `全局默认（新卷出生默认）` + 不可用原因——**词表与 P1e 芯片同一套**。
+> 一台诚实注记：卷级记录**不区分"谁写的"**（界面拨动与 P4 程序入口落的是同一份登记），
+> 故文案如实说「本卷记录」，不假装能分辨程序与界面（要能分辨得另立数据面，本批不做）。
 
 ---
 
@@ -322,7 +331,8 @@ effectiveComposition(id)  // 生产唯一解析入口（捕获网，永不抛出
 | **P2** ✅ **已落地（2026-09-15，两笔：P2a `a1e83c8f` / P2b `53924344`；施工单 `work-orders/WO-S6P2-seam-value-injection.md`，用户逐项裁定 A/B/C/D/E/F 见 §7 与 §8）** | seam 选择从模块态 → 装配期值注入：**P2a** 新增键控叶模块 `composition/seam-scope.ts`（装配期登记裁剪面，键 = Agent bus id）+ `seamDisabled(domain, view?)` 可选 view + fs/shell/subagents 三消费点 + `AgentEventBus.setSeamView`（每 Agent 一条总线）；**P2b** llm 单点（`activeLlmAdapters(view?)` + `CreateProviderOptions.seamView` + 三个 provider 构建点）。**契约 v36（P2a）/ v37（P2b）**——四步流程各走一遍 | §2 序列 D（⑨ 同一工具实例两卷两 provider 且互不串味）；旧无组合上下文路径零漂移（⑫ 哨兵 + ①-⑧ 零改动） | **不新增 seam 域 per-composition 快照、不触发 baseline-change-request**（用户裁定 B：两轨的 `seamDisabled` 构造性为空 ⇒ 新快照零信息量，零漂移由既有 8 份快照逐字节覆盖；信息量落在行为测试） | 同一工具可按卷走不同 provider；`seam/sessionPersistence` 例外仍全局（如实声明） |
 | **P3（成本悬崖）** ✅ **已落地（2026-09-15，三笔：P3a `e508f093` / P3b `2259c3c3` / P3c 收官；施工单 `work-orders/WO-S6P3-plugin-activation.md`，用户逐项裁定 A-H 见 §7 与 §8.3）** | 插件激活/引用计数/独占声明/`requires`/fail loud + 诊断「被跳过」栏：**P3a** 激活账（叶模块 `composition/activation.ts` + 第五个组合层 service `ctx.activation` + 装配期 retain/对称释放 + manifest `activation` 块与装载期校验）；**P3b** `requires`/`exclusive` 组合声明 + 独占冲突装配期 fail loud + 诊断第四栏「被跳过」（含设置面板呈现）；**P3c** §7.8 profile 断言 + 性能对表 + 文档写回。**契约 v38（P3a）/ v39（P3b）** | §2 序列 E；无引用即释放；冲突装配期拒绝 | 全部通过：激活生命周期测试（三文件 51 例含破测 10 条）+ 性能门（见 `reports/perf-after-S6P3.md`）+ convergence 双轨零漂移（构造性） | 插件副作用改为按需激活；manifest 新增 `activation` 字段；用户 preset 新增 `requires`/`exclusive` 键；诊断面由三栏扩四栏 |
 | **P4** ✅ **已落地（2026-09-16，两笔：P4a `4ca7df3e` 入口 + P4b 收官写回；施工单 `work-orders/WO-S6P4-program-entry.md`，用户十道判断题全部照建议，见其 §7 裁定记录）** | 程序入口 = **形态甲（TS 组合层单点）**——`createSessionWithPreset(ctx, presetId?)` 落 `app/chat/session-composition.ts`：显式参数在发号后、**调工厂之前**落卷级登记 ⇒ 该卷**出生即按该组合装配一次**；严一档校验（`sessionSelectionError`）⇒ 不可解析**拒绝创建 + 具名原因、一个卷都不建**；`createNewSession` 返回新卷 id（`number \| null`）供程序判成败。**设计件本行的字面（「会话创建 RPC / MCP 工具」）与实测不符**——RPC 零会话创建、兰台不是 MCP server、ACP server 零接线、17 个域工具无建卷动作（见 §8.4 事实 1）⇒ 本批先立入口，外部协议接线与评测自举各自独立批次 | §2 序列 C：程序指定组合起卷生效；**与 UI 选同一 id 解析面逐字节一致**（两路径对拍 tools/prompt/capabilities/shell + seamDisabled + activationDecl）；错误路径返回具名原因 | vitest（新增 9 例 + 破测 5 条）+ biome 0/0 + build + **convergence 双轨零漂移**（不动出厂 preset 面 = 构造性）+ doc-sync v39 | **新增程序入口函数**；新建卷可出生即带组合（此前只能「出生后拨」且只对空白卷）；`createNewSession` 返回值判成败（不再有「静默失败后读到旧活跃卷 id」的陷阱）；**不新增 Rust 命令 / 不新增 ctx 键 / 契约仍 v39** |
-| **P5** | UI 面：卷头 chip（含 blank-only 锁）+ 同屏并排两 Agent | §2 序列 B 的 UI 层；锁生效（跑过一轮的卷拒绝切换） | + UI e2e + golden | 用户可见的新控件与新锁 |
+| **P5** ✅ **已落地（2026-09-16，两笔：P5a `87681434` 卷首组合芯片 + P5b 并排验收与收官写回；施工单 `work-orders/WO-S6P5-ui-face.md`，八道判断题裁定：**并排语义 = 同纸多卷**，其余照建议）** | UI 面：**卷首组合 chip**（落 `.pp-folio-head` 右上角，绝对定位覆盖、不进高度流水）+ **同屏并排两 Agent 验收**（形态 = 同纸多卷：一纸多卷画布今天已支持每卷一个流区、每卷一份组合 P0/P1 已落 ⇒ 本批交付的是 chip + 证据，不动 ChatCore 单例链）+ 两处欠账清偿（§3.6 卷头只读标签 / §3.8 hover 显示来源） | §2 序列 B：两卷各显示自己的组合名；**两个 Agent 组合面不同**；**在 A 卷拨组合只重建 A**（B 的句柄引用与记录一动不动；拨非活跃卷登记生效但不当场装配） | vitest（新增 10 例：卷首芯片 7 + 并排 3，破测 7 条）+ biome 0/0 + build + **convergence 双轨零漂移** + doc-sync v39 | **用户可见的新控件**：每个卷首显示本卷组合名、空白卷可拨、跑过一轮只读；hover 显示来源与不可用原因；并在卷首芯片可见"本卷记录 vs 全局默认"的差别 |
+| **S6 全段竣工** | P-1 → P0.5 → P0 → P1(a-e) → P2(a/b) → P3(a-d) → **P4(a/b)** → **P5(a/b)** 全部落地（2026-09-14 → 2026-09-16）。**待议的独立批次（不在 S6 范围内）**：真面板并排（多 ChatCore，七面，见 §8.5）/ 跨工作区并存 / 外部协议接线（ACP、兰台作 MCP server）/ 评测自举 / `seam/sessionPersistence` 按卷取值（需「卷→组合」外部索引） | — | — | — |
 
 **依赖**：**P-1 → P0** → P1 → P2 → P3 → P4/P5（P4/P5 可并行）；P0.5 与 P-1/P0 无依赖，但必须在 P1
 之前落地（没有可信的 minimal 轨，出厂 preset 的快照这条腿是瘸的）。**P-1 虽然最小，但它是这条线
@@ -387,9 +397,17 @@ effectiveComposition(id)  // 生产唯一解析入口（捕获网，永不抛出
 - **2026-09-14 用户纠正一项**（改本件 I1 与 §7.2，并新增 P-1 批）：**preset 不上线、不是出厂物——
   它是用户自己设置的环境，平台只需提供环境**；连带暴露的真问题：单二进制下用户**配不出** preset
   （目录不建 / 无打开动作 / 无模板 / 加完要重启——§2 序列 F 的四条实测缺项）。P-1 因此成为本线首批发。
-- 本件状态：**已批准并执行中**（P-1 / P0.5 / P0 / P1 / P2 / P3 / **P4 全部落地**；下一批 = **P5**）。
-  原「批准后三步」已兑现：① I1 已进 `CONVENTIONS.md`；② P0.5 的 `baseline-change-request` 已留痕（`37418b74`）；
-  ③ P-1 起每批独立 commit + 门禁四连。
+- 本件状态：**已批准并执行完毕**——**S6 全段竣工（P-1 / P0.5 / P0 / P1 / P2 / P3 / P4 / P5 全部落地，
+  2026-09-14 → 2026-09-16）**。原「批准后三步」已兑现：① I1 已进 `CONVENTIONS.md`；
+  ② P0.5 的 `baseline-change-request` 已留痕（`37418b74`）；③ P-1 起每批独立 commit + 门禁四连。
+  **留待独立批次**（设计件已定边界，不在本件范围）：真面板并排（多 ChatCore，§8.5 事实 3）/
+  跨工作区并存（§6 R5）/ 外部协议接线（ACP、兰台作 MCP server）/ 评测自举 /
+  `seam/sessionPersistence` 按卷取值（§3.4 裁定 D，需「卷→组合」外部索引）。
+- **2026-09-16 用户裁定 P5 施工单**（八道判断题）：**并排语义 = 同纸多卷**（用户看清"真面板并排"
+  的四道构造级拦路石后确认；真面板并排 = 七面、量级等同独立批次，且**买不到组合隔离**——那部分
+  今天已成立）；其余七道照建议（两笔切分 / 落卷首且只放开 chip 子树 / 作用对象 = 本 region 的卷 /
+  hover 来源本批做 / P1e 不迁 / jsdom+进程内+真机验收 / 跨工作区不做）。
+  **追加实施口径**：卷首 chip 绝对定位覆盖、**不进高度流水**（避免动卷首高度镜像与既有画布几何）。
 - **2026-09-16 用户批准 P4 施工单（十道判断题全部照建议）**（原话「我大概看了一下，全部按推荐施工，开工吧」；
   裁定记录见 `work-orders/WO-S6P4-program-entry.md` §7 末）：形态甲（TS 入口单点 / 不新增 Rust 命令）、
   **单次装配**（改冻结文件 `ui/chat-session.ts` 3-4 行，用户点头）、只收 preset **id**、**落卷**、
@@ -533,3 +551,38 @@ effectiveComposition(id)  // 生产唯一解析入口（捕获网，永不抛出
 9. **破测要防「还原不一致」**：本批 5 条注入用「备份文件 → 注入 → 跑 → 从备份恢复 →
    文件哈希比对」闭环；纯内存字符串还原在文件被外部操作动过时会静默失败（本轮实测踩到过
    两次「文件在工作区被清空/删除」，每次都用备份立即还原并校验哈希）。
+
+### 8.5 P5 施工中实测的环境事实（后续批次动手前必读）
+
+1. **「卷头」在本仓叫卷首，且是 per-卷 渲染的**：`PaperPanel.tsx:784-802` 的 `.pp-folio-head`
+   （玉徽 + 机读眉行 + 卷名 + 档行），字段来自 `RegionView`（`r.sessionNum/label/blocks`），
+   DOM 上有 `data-session-id`（`:778`）⇒ **作用对象天然是"本 region 的卷"**，不需要问"谁是活跃卷"。
+   两个障碍：① 卷首本体 `pointer-events: none`（点击穿透流区背景，激活语义不变）⇒ 控件必须
+   **只放开自己的子树**；② 卷首在远档 LOD 不渲染（`lodFar`，`tests/paper-lod-tiers.test.tsx` 钉住）⇒ 远档看不到 chip（如实接受：远档是缩略视图）。
+2. **卷首高度是几何契约，改它牵动全局**：真源链 = `paper/type-tokens.ts` 的 `FOLIO_TOKENS` →
+   `paper/measure.ts measureFolioHeadHeight` → `use-paper-regions.ts`（卷级度量缓存）→ 所有
+   既有画布的流区几何；且 `tests/paper-visual-decisions.test.ts` 逐字钉住 CSS 与 token。
+   ⇒ P5a 的处置 = **绝对定位覆盖、不进高度流水**（一处新增取代一次规格变更）。
+3. **「同屏并排两 Agent」在视图层与组合层今天都已成立，缺的只是 chip 与证据**：纸壳是
+   **一纸多卷**横向画布（`use-paper-regions.ts` 头注「一纸多卷的派生心脏」+ 横向可见集；
+   `use-running-sessions.ts` 已处理多卷同时在跑）；每卷一份组合由 P0/P1 落地。**但"两个 Agent
+   面板"（两个 ChatCore）是另一件工程**——四道构造级拦路石：① 唯一 ChatCore（`shell/rows/chat.ts:15`
+   + 单槽 `useCoreStore`）② **第二实例会拆掉第一实例**（`chat-core.ts:119/183` 的 `_globalStoreUnsubs`
+   是"上实例退订"语义）③ 一 Workspace 只绑一 core（`workspace.ts:517/758/906`）④ 面板面无多实例语义
+   （`PanelDef` 无 storeId、`DockPanel` 不传 props、各面板 `position: fixed` 覆盖层、`canvas.json`
+   按工作区路径键控）。⇒ 真面板并排 = 七面（多实例承载 / storeId 映射 / 多 core 订阅所有权 /
+   Workspace 解绑 / 磁盘面分账 / 布局容器 / 每面板 chip），**买到的是独立视口与独立活跃卷，
+   买不到组合隔离**。
+4. **「门禁 + UI e2e + golden」在本仓要重新解释**：`tests/ui/layout-golden.test.ts` 已随
+   `35db9ef8`（Three.js 渲染面退役）**删除**，只剩孤儿快照 ⇒ 今天**没有**截图/坐标 golden 机制；
+   最接近的惯例 = `tests/paper-visual-decisions.test.ts` 的**字面量钉值**（读 CSS/TS 源码断言）；
+   真机 e2e = `src-tauri/src/cdp/e2e.rs`（环境型抖动源）。⇒ P5 的 UI 门禁 = jsdom 组件测试 +
+   进程内行为测试 + **真机验收交用户**（沿 P1e 先例）。
+5. **断言的"牙"要靠破测现场设计，不是靠断言数量**：P5b 的"拨非活跃卷不为它当场装配"最初写成
+   「两卷都有句柄」现场 ⇒ 注入「摘掉活跃卷判据」**照绿**（因为 `ensureSessionAgent` 见活跃卷已有
+   句柄即提前返回，缺陷不可观测）；改成「活跃卷**无句柄**（惰性水合态）」现场后同一注入立刻红。
+   **教训**：破测不只是"确认能红"，它同时是**断言有效性的验收**——照绿时先怀疑断言没牙，别急着换注入。
+6. **给产物插件的卷首/面组件加读面 = host 面三处同步**（`host.ts` → `host.aliased.ts` →
+   `host-modules.ts` 的 `faceDeps`），但若该 key 已被别的插件在用（如 `usePresetStore` 已被
+   compose-dock 用），`faceDeps` 不必再动、`host-surface.baseline.json` 也**不变**（它记的是
+   faceDeps 键集合，不是各插件自己的出口清单）——本批实测。
