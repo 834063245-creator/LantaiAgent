@@ -59,11 +59,13 @@ Copy-Item .\SKILL.md "$env:USERPROFILE\.lantai\skills\officecli\SKILL.md" -Force
 关键项（二进制 + pin + 技能）全过 = exit 0；把输出贴回来即可定位问题。
 
 人工验收（重启兰台 → 开新会话）：
-1. 让模型跑 `office(action:'create', file:'试.docx')` → 盘上出现文件（**写完即落盘**，无需 save）；
+1. 让模型跑 `office(action:'create', file:'试.docx')` → 盘上出现文件（域工具带 `flush=each`，**不要**手动 save；
+   写完若要吃嘴里的"已落盘"，就用 `view` 读回复核——见下表落盘行）；
 2. `office(action:'view', file:'试.docx')` 能读回；`office(action:'validate', …)` 干净；
 3. **plan 模式反向判据**：plan 下让它 `set`/`add` → 应被 `[已拦截]`；`view` 应放行（只读动作白名单）；
 4. 真文档跑一轮：读 issues → 改一处 → 截图 PNG → `show_asset` 进纸面；
-5. （可选）起 watch 后调 `office_preview_open`，窗内应实时刷新。
+5. **权限模式提醒**：本工具的命令串在 `ask`/`auto` 模式下**每次调用都会弹确认卡**（计划 §11.3，未修），
+   要顺畅验收请把模式设为 `yolo`，或等权限族改造落地。
 
 ## 4. 与退役形态的差异（为什么改判）
 
@@ -72,5 +74,5 @@ Copy-Item .\SKILL.md "$env:USERPROFILE\.lantai\skills\officecli\SKILL.md" -Force
 | 参数 | 自由命令行字符串（模型自己拼引号） | zod 收窄的 12 个动作 + 类型化参数 |
 | 执行 | MCP 子进程 = **全权用户进程**（不经 fs_cap、不受 os_sandbox 约束） | 经 shell seam → `process_cap`：沙箱 + Bash 权限类 + 审计 |
 | plan 模式 | 整块判为写，连 `view` 都被拦 | `readOnlyActions` 白名单：view/get/query/validate/playbook 放行 |
-| 落盘 | 需记得 `save`（否则别的程序读到旧字节） | 工具钉 `OFFICECLI_RESIDENT_FLUSH=each`，写完即落盘 |
+| 落盘 | 需记得 `save`（否则别的程序读到旧字节） | 工具钉 `OFFICECLI_RESIDENT_FLUSH=each`——**但只对域工具自己持有的那个 resident 生效**：文件此前若被另一个 officecli 进程打开过，回执照样说成功、磁盘字节却可能滞后（2026-09-15 实测，见计划 §11.1）。判定真源 = 写完用 `office(action:'view')` 复核 |
 | 能力可见性 | 工具面一条 `mcp__office__officecli` | 进工具契约生成物（域 `office` / 12 动作枚举 / 参数表） |

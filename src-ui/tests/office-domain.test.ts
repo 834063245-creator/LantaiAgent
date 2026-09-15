@@ -24,8 +24,11 @@ import {
   cleanShellOutput,
   createOfficeTools,
   OFFICE_ACTIONS,
+  OFFICE_BATCH_MAX_ITEMS,
   OFFICE_READONLY_ACTIONS,
+  parseShellExit,
   shQuote,
+  splitOfficeBatchItems,
 } from '../src/agent/tools/office';
 import { activeShellProviders, shellServicePlugin } from '../src/composition/shell-service';
 import { Context } from '../src/cordis';
@@ -151,6 +154,44 @@ describe('office 域：纯函数（引号 / 命令行 / argv）', () => {
     expect(missing).toContain('command not found');
     expect(missing).toContain('install-officecli.ps1');
   });
+
+  it('cleanShellOutput：只有"二进制缺席"才补安装指引（2026-09-15 收窄——别把文件找不到误报成没装）', () => {
+    // 目标文件不存在 / 路径写错：一个字都不许提"装 officecli"
+    const noFile = cleanShellOutput('[exit 1] Error: Cannot open /d/ws/报告.docx: No such file or directory');
+    expect(noFile).not.toContain('install-officecli.ps1');
+    const badDom = cleanShellOutput('[exit 1] ERROR: Sheet not found: "参数表"');
+    expect(badDom).not.toContain('install-officecli.ps1');
+    // 真缺席两种拼写都要认（PATH 形态 / 绝对路径形态）
+    expect(cleanShellOutput('[exit 127] bash: line 1: officecli: command not found')).toContain(
+      'install-officecli.ps1',
+    );
+    expect(
+      cleanShellOutput(
+        '[exit 127] bash: line 1: /c/u/.lantai/tools/officecli/officecli.exe: No such file or directory',
+      ),
+    ).toContain('install-officecli.ps1');
+  });
+
+  it('parseShellExit：只认行首 `[exit N]`；读不到 = null（未知不许当成功）', () => {
+    expect(parseShellExit('[exit 0] ok')).toBe(0);
+    expect(parseShellExit('[exit 127] bash: officecli: command not found')).toBe(127);
+    expect(parseShellExit('\n[exit 1] boom')).toBe(1);
+    expect(parseShellExit('ok without marker')).toBeNull();
+    expect(parseShellExit('')).toBeNull();
+  });
+
+  it('splitOfficeBatchItems：条数上限与字节上限双约束，超大单项独占一块', () => {
+    expect(splitOfficeBatchItems([])).toEqual([]);
+    const small = (n: number) => Array.from({ length: n }, (_, i) => ({ command: 'set', path: `/Sheet1/A${i + 1}` }));
+    const chunks = splitOfficeBatchItems(small(250));
+    expect(chunks.map((c) => c.length)).toEqual([OFFICE_BATCH_MAX_ITEMS, OFFICE_BATCH_MAX_ITEMS, 50]);
+    // 字节上限先到：3 个 ~6KB 项 → 各自一块（2×6KB+2 > 12KB）
+    const fat = Array.from({ length: 3 }, () => ({ command: 'set', props: { value: 'x'.repeat(6000) } }));
+    expect(splitOfficeBatchItems(fat).map((c) => c.length)).toEqual([1, 1, 1]);
+    // 单项就超上限 → 也得自成一块（切不开，只能交给上层报错）
+    const huge = [{ command: 'set', props: { value: 'y'.repeat(20000) } }, { command: 'set' }];
+    expect(splitOfficeBatchItems(huge).map((c) => c.length)).toEqual([1, 1]);
+  });
 });
 
 describe('office 域：工具形状与 plan 分档', () => {
@@ -190,6 +231,10 @@ describe('office 域：工具形状与 plan 分档', () => {
 describe('office 域：执行面（经 ctx.shell seam 派发）', () => {
   const captured: Array<{ action: string; args: Record<string, unknown> }> = [];
   let tool: Tool;
+  /** 下一次 shell 层回执（各用例按需改写——退出码语义要靠它驱动）。 */
+  let nextResult = '[exit 0] recorded\n[cwd: /d/ws]';
+  /** 按调用序号出队的回执脚本（空则用 nextResult）——多批场景靠它逐步改判。 */
+  let scripted: string[] = [];
 
   beforeAll(async () => {
     const root = new Context();
@@ -198,7 +243,7 @@ describe('office 域：执行面（经 ctx.shell seam 派发）', () => {
       id: 'test/recorder',
       execute: async (action, args) => {
         captured.push({ action, args });
-        return '[exit 0] recorded\n[cwd: /d/ws]';
+        return scripted.shift() ?? nextResult;
       },
     });
     expect(activeShellProviders().length).toBeGreaterThan(0);
@@ -226,17 +271,91 @@ describe('office 域：执行面（经 ctx.shell seam 派发）', () => {
     expect(captured[0]?.args.cwd).toBe('D:\\ws');
   });
 
-  it('写动作带落盘提示；只读动作不带', async () => {
+  it('落盘脚注只认退出码：成功才声明，失败/未知一律不声明（2026-09-15 假成功事故）', async () => {
     captured.length = 0;
+    nextResult = '[exit 0] recorded\n[cwd: /d/ws]';
     const write = await tool.execute({
       action: 'set',
       file: 'D:/ws/a.docx',
       path: '/body/p[1]',
       props: { bold: 'true' },
     });
-    expect(write).toContain('改动已落盘');
+    expect(write).toContain('改动已提交');
+
+    // 失败：officecli 报错 + 非零退出码 → 不得出现"已落盘/已提交"这类成功话术
+    nextResult = '[exit 1]\n[1] ERROR: Sheet not found: "参数表"\nBatch complete: 0 succeeded, 3 failed';
+    const failed = await tool.execute({
+      action: 'set',
+      file: 'D:/ws/a.docx',
+      path: '/body/p[1]',
+      props: { bold: 'true' },
+    });
+    expect(failed).toContain('未成功');
+    expect(failed).not.toContain('改动已提交');
+
+    // 退出码读不到（别的 shell provider / 回执形状变了）→ 未知，同样不许声明成功
+    nextResult = 'recorded without exit marker';
+    const unknown = await tool.execute({
+      action: 'set',
+      file: 'D:/ws/a.docx',
+      path: '/body/p[1]',
+      props: { bold: 'true' },
+    });
+    expect(unknown).toContain('没拿到退出码');
+    expect(unknown).not.toContain('改动已提交');
+
+    // 只读动作任何情况下都不带脚注
+    nextResult = '[exit 0] recorded\n[cwd: /d/ws]';
     const read = await tool.execute({ action: 'validate', file: 'D:/ws/a.docx' });
-    expect(read).not.toContain('改动已落盘');
+    expect(read).not.toContain('改动已提交');
+    expect(read).not.toContain('未成功');
+  });
+
+  it('batch 超限自动切块：顺序执行、逐批报账（2026-09-15 静默丢行事故）', async () => {
+    captured.length = 0;
+    nextResult = '[exit 0] Batch complete: ok';
+    const items = Array.from({ length: 250 }, (_, i) => ({
+      command: 'set',
+      path: `/Sheet1/A${i + 1}`,
+      props: { value: String(i) },
+    }));
+    const out = await tool.execute({ action: 'batch', file: 'D:/ws/a.xlsx', items });
+    // 250 项 / 上限 100 → 3 批 ⇒ 3 次 CLI 调用，且每批自身 ≤100 项
+    expect(captured).toHaveLength(3);
+    const perCall = captured.map((c) => {
+      const cmd = String(c.args.command);
+      const m = cmd.match(/'--commands' '(\[.*\])'/s);
+      expect(m).not.toBeNull();
+      return JSON.parse((m?.[1] ?? '[]').replace(/'\\''/g, "'")) as unknown[];
+    });
+    expect(perCall.map((c) => c.length)).toEqual([100, 100, 50]);
+    expect(out).toContain('分 3 批执行');
+    expect(out).toContain('共 250 项');
+  });
+
+  it('batch 中途失败：停在原地并说清哪几批已落盘（不回退、不重来）', async () => {
+    captured.length = 0;
+    scripted = ['[exit 0] Batch complete: 100 succeeded', '[exit 1] Batch complete: 100 failed, 100 total'];
+    const out = await tool.execute({
+      action: 'batch',
+      file: 'D:/ws/a.xlsx',
+      items: Array.from({ length: 250 }, (_, i) => ({ command: 'set', path: `/Sheet1/A${i + 1}` })),
+    });
+    scripted = [];
+    expect(captured).toHaveLength(2); // 第 2 批失败即停，不再跑第 3 批
+    expect(out).toContain('第 2/3 批失败并已停下');
+    expect(out).toContain('前 1 批已落盘');
+  });
+
+  it('playbook 结果前置环境护栏（正文是命令行指南，本环境跑不了）', async () => {
+    captured.length = 0;
+    nextResult = '[exit 0] # OfficeCLI XLSX Skill\n\n## Help-First Rule\n\n```bash\nofficecli help xlsx\n```';
+    const out = await tool.execute({ action: 'playbook', playbook: 'excel' });
+    expect(out).toContain('在本环境不可执行');
+    expect(out).toContain('不在 shell 的 PATH 里');
+    expect(out).toContain('Help-First Rule'); // 正文照旧保留（护栏是前缀，不是替换）
+    // 目标文件（.xlsx）确实经 shell 派发——guard 不放行"只在文档里写"
+    expect(captured[0]?.action).toBe('run');
   });
 
   it('缺参不派发、直接回说明（省一次进程）', async () => {
@@ -305,7 +424,8 @@ d('office 域：真二进制端到端（真 bash × 真 officecli）', () => {
 
     const created = await tool.execute({ action: 'create', file: docx, _owner_id: 'e2e-owner' });
     expect(created).toContain('Created');
-    expect(created).toContain('改动已落盘');
+    expect(created).toContain('[exit 0]');
+    expect(created).toContain('改动已提交');
     // 立即读盘（不经 officecli）：落盘开关生效的最硬判据
     expect(statSync(docx).size).toBeGreaterThan(0);
 

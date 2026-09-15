@@ -2,6 +2,12 @@
 
 > **状态：工程完成，待用户验收**（2026-09-13 十窗连续施工；`goal` 已 blocked/disarmed，等用户动作）
 >
+> **2026-09-15 更新（真机复盘，见 §11）**：「待验收」这个口径被实测推翻——用户那次真机测试里，
+> 模型 76 次工具调用只有 **5 次**用了本工具，其余全在绕路（shell / code_execution），最后用一个
+> Node 脚本直驱 officecli 收场。已修四处（假成功信号 / argv 无上限 / playbook 教命令行 /
+> 错误归因过宽）；**§11.3 的 P0 未修**：默认（ask）与 auto 模式下本工具**每次调用都弹权限卡，
+> 且任何 allow 规则都压不住**（只有 yolo 能跑），需权限族级改造。
+>
 > **本文件是现状合集**——十窗逐日流水已压成 §7 一张表；正文只留"现在是什么样"。
 > 上游目标物：[iOfficeAI/OfficeCLI](https://github.com/iOfficeAI/OfficeCLI)（Apache-2.0；
 > 本计划 pin 版本 **v1.0.149**，win-x64 **31.87 MB**，SHA256 `abd82dae…31e2`）。
@@ -272,4 +278,68 @@ paper-minimap 注释里那句就曾被宽匹配误报），断言 ⊆ `faceDepsK
 ③ **生产同形装载**（`dist-plugins` 在场时）：全部工具域产物经**真 cordis 生命周期** +
 宿主桥 faceDeps 装载并断言贡献到工具行。
 **验证守卫会咬人**：临时撤掉登记 → ①③ 双红并点名 `office-domain → createOfficeTools`；恢复后 3/3 绿。
+
+## 11. 真机复盘与修复批（2026-09-15：用户会话 23「复杂 excel」）
+
+**背景**：用户报「Agent 用 office cli 时行为很不可控」。复盘把 `.lantai/sessions/23.json` 的
+149 条消息抽成调用链后，症状第一次有了形状：**76 次工具调用里只有 5 次 `office`**，其余 71 次
+全是 `shell` / `code_execution` / `fs`——模型没在"用"这个工具，它在**绕开**它。最后交付的
+xlsx 是一个 Node 脚本（`execFileSync` 直接驱动 officecli）跑出来的。
+
+### 11.1 触发链（会话实录，逐条可查）
+
+| # | 发生了什么 | 证据 |
+|---|---|---|
+| 1 | 模型按设计先载技能 + `office(playbook:'excel')`，一次拿到 13KB 手册 + **35KB 指南** | 消息 2~4 |
+| 2 | 那份指南第 11 行是 **「⚠️ Help-First Rule：不确定就先查 help」**，示例全是 `officecli help …` | 指南原文 |
+| 3 | 模型照做 → shell 里 `officecli: command not found`（**二进制不在 PATH**，只有域工具在 spawn 出的 shell 里解析它） | 消息 6/7 |
+| 4 | 模型转去 `find / -iname "officecli*"` **全盘搜索** → 用户中断 | 消息 8/9 |
+| 5 | 用户问「office cli 用不了是吗」→ 模型改试域工具，`create` 成功，自己写道"域工具自己有 spawn 通道" | 消息 12~14 |
+| 6 | 于是**两通道并用**：域工具建文件 + shell 直调 officecli 改文件 → 立刻 `Sheet not found: "参数表"`（shell 那次改名丢了） | 消息 36~39 |
+| 7 | 模型判断「resident 缓存和 shell 进程打架」，改纯域工具灌明细：脚本报 **`rows=180 ops=2174`（零失败）**，随即读回**只有 20~23 行** | 消息 60~63 |
+| 8 | 模型放弃域工具（第 44 条后 `office` 再没被调用），写 Node 脚本直驱 CLI 收场 | 消息 45~148 |
+
+**环境事实**：那场测试全程 `yolo` 模式（`logs/bridge.log`：`2026-09-14T09:18:54Z [perm] permission mode -> yolo`），
+审计窗口 649 条 Bash 决议全是 `allowed`、零 `ask`——**权限层当时是全裸的**。
+
+### 11.2 本批修掉的四处（≤`office.ts` + 技能 + 测试）
+
+| 病灶 | 症状 | 修法 |
+|---|---|---|
+| 假成功信号 | 失败也追加「改动已落盘（resident 立即 flush）」——`[exit 1]` + `Batch complete: 0 succeeded` 后面紧跟这句 | 脚注改**退出码感知**：只有 `[exit 0]` 才说"已提交"，失败说"未成功"、读不到说"未知" |
+| 无 argv 上限 | 2174 项塞一条命令（>100KB）→ 超 Windows 命令行 32767 字符上限被**静默截断**，回执仍说零失败 | `splitOfficeBatchItems`：>100 项或 >12KB 自动切块顺序执行，失败停在原地并报"前 N 批已落盘" |
+| 指南教命令行 | playbook 正文 488 行 / 101 条 `officecli` 命令 + 强制 Help-First Rule，模型照它下 shell | 返回 playbook 时前置 `PLAYBOOK_GUARD_HEADER`（翻译 + 禁令 + 最小 batch 替代 help） |
+| 错误归因过宽 | `cleanShellOutput` 只匹配 `No such file or directory` ⇒ 目标文件不存在也被报成"officecli 没装" | 收窄为 `officecli(.exe): command not found \| no such file` 相邻匹配；技能同步删掉五处"走 shell 域调 officecli"的逃生舱指引（PATH 里没有它） |
+
+### 11.3 未修：P0 权限判定（需权限族级改造）
+
+**探针实证**（临时加在 `src-tauri/src/permissions/bash.rs` 测试模块，跑完已还原；
+复现：在该模块加一条 `check()` 调用即可，`cargo test --bin lantai … -- --nocapture`）：
+
+```
+A_FULL_BIN_PREFIX = Ask(命令访问了项目外的路径: BIN=${OFFICECLI_PATH:-$HOME/.lantai/tools/officecli/officecli.exe}; (parent directory not found))
+B_NO_PREFIX       = Passthrough
+F_DOM_PATH        = Ask(命令访问了项目外的路径: /body/p[1] (parent directory not found))
+G_JSON_PAYLOAD    = Ask(命令访问了项目外的路径: [{"command":"set","path":"/Sheet1/A1",…}] (…))
+D_ALLOW_EXACT     = Ask   ← 精确 allow 规则（UI「始终允许」写的就是这条）无效
+E_ALLOW_BARE      = Ask   ← 连裸 `Bash` allow 规则也无效
+```
+
+**机制**：`bash::check` 把 argv 里**含 `/` 的 token 一律当路径**解析，而 office 的命令串有三处
+这种 token：① `BIN=${…}` 赋值段；② DOM 路径 `/body/p[1]`；③ batch 的 JSON 载荷（内含 `/Sheet1/A1`）。
+三者都解析失败 ⇒ 判"项目外路径" ⇒ Ask，而该判定在 **allow 规则匹配之前提前返回**（步骤 3 → 步骤 4），
+所以任何规则都压不住——**默认（ask）与 auto 模式下，这个工具的每一次调用都要人工点卡**，
+只有 yolo 能跑。用户那次测试恰好是 yolo，所以这条完全没暴露。
+
+**为什么不能像原计划那样"改一行 BIN_RESOLVE"**：DOM 路径与 JSON 载荷各自独立触发同一判定，
+换掉 BIN 前缀只消掉三分之一。**也不能**改成"跳过含未展开变量的 token"或"Windows 上跳过 `/` 开头
+token"——`BIN=/etc/shadow; cat "$BIN"` 这类正是靠赋值 token 命中，`/c/Users/…` 在 MSYS bash 里
+也是真路径，放行即开洞。
+
+**结论：正解是给 office 域工具一条自己的权限族**（对齐 git/browser/desktop 的既有形态：
+`OfficeTool` 只校验**目标文件路径**（`file`/`out`）+ 放行自家二进制，而不是让一串
+`bash::check` 去猜 officecli 的 DOM 语法）。改动面 = `tools/mod.rs` 新 `OfficeTool` +
+`process_cap` 分支 + 前端 seam 传「目标文件/读写档位」（**必须不可被模型伪造**：shell 工具的
+key 映射表要挡死，否则等于把任意命令挂到宽松族上）。属强制层改动，按宪法走审查 + 边界基线。
+
 

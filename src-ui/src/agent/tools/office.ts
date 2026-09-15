@@ -21,6 +21,33 @@
 //      resident 默认延迟写盘，而别的程序（兰台媒体回读、外部打开、交付）读的是盘上
 //      字节；不钉这个开关就会出现"截图/预览是旧内容"这类静默错。
 //   2) 关掉后台更新检查（OFFICECLI_SKIP_UPDATE=1）：确定性优先，升级走 pin + 安装器。
+//
+// ⚠️ 已知边界（2026-09-15 实测，尚未修）：FLUSH=each 只在**由本工具启动**的子进程里
+//    生效。若目标文件上已经存在一个**外来的裸 resident**（别处 `officecli open` 起的、
+//    不带 FLUSH 的常驻进程），后续调用会被路由进那个进程，本工具的 FLUSH 开关随之失效
+//    —— 实测：工具报 `Updated ...: value=TOOL_WRITE` 成功，磁盘却仍是空的。此时
+//    OFFICECLI_NO_AUTO_RESIDENT 也**不能**绕开（实测同样落空），只能先 `close` 掉外来
+//    resident。这是 officecli 的 resident 语义所致，不是本工具的开关能解的。
+//
+// ── 2026-09-15 事故修复批（用户会话 23「复杂 excel」实测复盘）────────────────
+// 那场测试里模型只调了 5 次本工具、其余 71 次全在绕路（shell / code_execution），
+// 最后用一个 Node 脚本直接驱动 officecli 收场。四处病灶 + 修法：
+//   · 假成功信号 → 结果脚注改**退出码感知**（失败/未知一律不声明落盘）。
+//   · 一次 batch 塞 2174 项（>100KB argv）→ 回执"零失败"而磁盘只落 19/180 行：
+//     现在 >100 项或 >12KB 自动切块顺序执行，失败停在原地并报"前 N 批已落盘"。
+//   · playbook 正文是 officecli 自带的**命令行**指南（488 行 / 101 条 officecli 命令，
+//     含强制的 Help-First Rule）→ 模型照它下 shell → `command not found` → 转去找二进制
+//     → 与本工具抢 resident。正文改不了，改为返回时前置护栏头（PLAYBOOK_GUARD_HEADER）。
+//   · cleanShellOutput 的"找不到二进制"判定过宽（任何 No such file or directory 都命中）
+//     → 收窄为 officecli(.exe) 与错误文案相邻。
+//
+// ⚠️ 未修（P0，需权限族级改造，2026-09-15 探针实证）：本工具的命令串在**默认权限模式下
+//    每次调用都触发 Ask**，且任何 allow 规则都压不住——`bash::check` 把 argv 里含 `/` 的
+//    token 一律当路径解析：① `BIN=${...}` 赋值段；② DOM 路径 `/body/p[1]`；③ batch 的 JSON
+//    载荷（含 `/Sheet1/A1`）。三者都解析失败 ⇒ "项目外路径" ⇒ Ask，而该判定在
+//    **allow 规则匹配之前提前返回**（bash.rs 步骤 3 → 4），所以"始终允许"写进去也不生效。
+//    只在 yolo 模式下不可见（用户那次测试正是 yolo）。修法见
+//    docs/plans/office-cli-integration-plan.md §11。
 
 import { z } from 'zod';
 import { isAbsolutePath, ownerContext, resolveAgainstRoot, stickyCwdOf } from '../session-context';
@@ -165,8 +192,14 @@ export function buildOfficeArgv(a: OfficeToolArgs, resolve: (p: string) => strin
     }
     case 'batch': {
       // 3 处以上改动走 batch：一次开关 + 原子回滚；JSON 走 argv 单引号形态（免 shell 撕碎）。
-      if (!a.items || a.items.length === 0)
-        return 'batch 需要 items（数组，每项 {command,parent,type,props} 或 {command,path,props}）';
+      if (!a.items || a.items.length === 0) {
+        return (
+          'batch 需要 items（数组，不能为空）。每项形状：' +
+          '{command:"set"|"add"|"remove"|"move"|"swap", path?, parent?, type?, props?, selector?, to?, after?, before?} —— ' +
+          'command 是**裸动词**，动词的参数是**同级字段**（不是塞进 command 的字符串）。' +
+          '例：[{command:"set",path:"/Sheet1/A1",props:{value:"标题"}},{command:"add",parent:"/Sheet1",type:"row",props:{}}]'
+        );
+      }
       return ['batch', f, '--commands', JSON.stringify(a.items), ...json];
     }
     case 'merge': {
@@ -191,18 +224,76 @@ export function buildOfficeArgv(a: OfficeToolArgs, resolve: (p: string) => strin
 }
 
 /** shell 层返回包的清洗：剥掉粘性 cwd 回显行（officecli 调用一律绝对路径，cwd 回显
- *  对模型是噪声），并在"找不到二进制"时补安装指引（错误不静默——别让模型去猜）。 */
+ *  对模型是噪声），并在"找不到二进制"时补安装指引（错误不静默——别让模型去猜）。
+ *
+ *  ⚠️ 判定必须**只认二进制缺席**（2026-09-15 收窄）：早先只匹配 `No such file or directory`
+ *  ⇒ 目标文件不存在、路径写错、DOM 路径里带空格等一切"文件找不到"都被误报成"officecli 没装"，
+ *  把模型推去装二进制。现在要求 officecli(可选 .exe) 与错误文案相邻出现。 */
 export function cleanShellOutput(raw: string): string {
   const withoutCwd = raw
     .split('\n')
     .filter((line) => !/^\[cwd: .*\]$/.test(line.trim()))
     .join('\n')
     .trimEnd();
-  if (/command not found|No such file or directory/i.test(withoutCwd)) {
-    return `${withoutCwd}\n[office] 未找到 officecli 可执行文件。安装：examples/office-cli/install-officecli.ps1（pin 版本 + 哈希校验），或把它放进 PATH；诊断：examples/office-cli/preflight.ps1。`;
+  if (/officecli(\.exe)?["']?:\s*(command not found|no such file or directory)/i.test(withoutCwd)) {
+    return `${withoutCwd}\n[office] 未找到 officecli 可执行文件（解析序：$OFFICECLI_PATH → ~/.lantai/tools/officecli/officecli.exe → PATH）。安装：examples/office-cli/install-officecli.ps1（pin 版本 + 哈希校验）；诊断：examples/office-cli/preflight.ps1。**不要**自己下 shell 找二进制跑——那会另起常驻进程抢同一个文件。`;
   }
   return withoutCwd;
 }
+
+/** shell 层结果里的退出码（`[exit N]` 前缀）。读不到 = null —— **绝不把未知当成功**。 */
+export function parseShellExit(raw: string): number | null {
+  const m = raw.match(/^\s*\[exit\s+(\d+)\]/i);
+  return m?.[1] !== undefined ? Number(m[1]) : null;
+}
+
+/** batch 单次 CLI 调用的两条硬上限（取先到者）：
+ *  · 条数 100 —— officecli 官方建议 ≤50 ops/块、实测 80+ 零失败（见 playbook），留余量；
+ *  · 序列化 12KB —— 命令是经 `bash -c` 单串进 CreateProcess 的，Windows 命令行上限
+ *    32767 字符，**超限静默截断**。2026-09-15 实测事故：2174 项塞一条命令（>100KB），
+ *    回执「零失败」而磁盘只落 19/180 行，没有任何一层报错。 */
+export const OFFICE_BATCH_MAX_ITEMS = 100;
+export const OFFICE_BATCH_MAX_BYTES = 12_000;
+
+/** batch items → 分块（超大单项独占一块；空表 → 空块表）。 */
+export function splitOfficeBatchItems(
+  items: readonly unknown[],
+  maxItems: number = OFFICE_BATCH_MAX_ITEMS,
+  maxBytes: number = OFFICE_BATCH_MAX_BYTES,
+): unknown[][] {
+  const chunks: unknown[][] = [];
+  let cur: unknown[] = [];
+  let bytes = 2; // '[' + ']'
+  for (const item of items) {
+    const size = (JSON.stringify(item) ?? '').length + 1; // +1 = 分隔逗号
+    if (cur.length > 0 && (cur.length >= maxItems || bytes + size > maxBytes)) {
+      chunks.push(cur);
+      cur = [];
+      bytes = 2;
+    }
+    cur.push(item);
+    bytes += size;
+  }
+  if (cur.length > 0) chunks.push(cur);
+  return chunks;
+}
+
+/** 分批执行时单批输出的展示上限（防 20+ 批把工具结果撑爆）。 */
+function clipBatchOutput(text: string, max = 2000): string {
+  if (text.length <= max) return text;
+  return `${text.slice(0, max)}\n…[本批输出已截断，共 ${text.length} 字符]`;
+}
+
+/** playbook 正文的护栏头（2026-09-15 实测事故补丁）：正文是 **officecli 自带的命令行
+ *  指南**，模型照它去 shell 里跑 `officecli help …` → `command not found` → 转去找二进制
+ *  → 另起常驻进程与本工具抢同一文件 → 写入静默丢失。正文不在本仓、改不了，只能在返回时
+ *  补这一层「翻译 + 禁止」。 */
+export const PLAYBOOK_GUARD_HEADER = [
+  '[兰台] 以下正文来自 OfficeCLI 自带的构建指南。**正文里的 `officecli …` 命令行在本环境不可执行**：',
+  '① `officecli` 不在 shell 的 PATH 里；② 直调它会另起一个常驻进程，与本工具的 resident 抢同一个文件 ⇒ 写入静默丢失（2026-09-15 实测：回执「零失败」而磁盘只落 19/180 行）。',
+  '读法：把正文每条命令**翻译**成 office 域工具动作（view/get/query/validate/create/set/add/remove/batch/merge/screenshot）。',
+  '正文要求「先查 help 确认属性名」——本环境没有 help 通道：属性名没把握时用**一条最小 batch（1 项）**试探，不要下 shell 去试。',
+].join('\n');
 
 const officeSchema = z.object({
   action: z
@@ -278,21 +369,68 @@ export function createOfficeTools(exec: ToolExecutor): Tool[] {
         if (isAbsolutePath(norm) || !root) return norm;
         return resolveAgainstRoot(root, norm).replace(/\\/g, '/');
       };
-      const argv = buildOfficeArgv(a, resolve);
-      if (typeof argv === 'string') return `[office] ${argv}`;
       // cwd：沿用该 owner 的粘性 cwd（若无则工作区根）——execStreamedShell 会按命令
       // 落点回写粘性 cwd，这里刻意给"当前值"以免 office 调用把 shell 域的 cwd 顶掉。
       const cwd = stickyCwdOf(owner) ?? root;
-      const out = await shellExecute(
-        'run',
-        { command: buildOfficeCommand(argv), ...(cwd ? { cwd } : {}), timeoutMs: 120_000 },
-        exec,
-        undefined,
-        signal,
-      );
-      const text = cleanShellOutput(out);
-      const tail = MUTATING_ACTIONS.has(a.action) ? '\n[office] 改动已落盘（resident 立即 flush）。' : '';
-      return `${text}${tail}`;
+
+      const runOne = async (argv: readonly string[]): Promise<{ text: string; exit: number | null }> => {
+        const out = await shellExecute(
+          'run',
+          { command: buildOfficeCommand(argv), ...(cwd ? { cwd } : {}), timeoutMs: 120_000 },
+          exec,
+          undefined,
+          signal,
+        );
+        return { text: cleanShellOutput(out), exit: parseShellExit(out) };
+      };
+
+      // 落盘脚注：**只看退出码说话**（2026-09-15 事故——失败也追加"已落盘"，模型据此
+      // 当成功继续）。成功也只声明"已提交 + flush 开关已带"，不再承诺"别人一定看到新字节"：
+      // 该开关只对**本进程持有的 resident** 生效，外来裸 resident 会让它失效（文件头已知边界）。
+      const flushTail = (exit: number | null): string => {
+        if (!MUTATING_ACTIONS.has(a.action)) return '';
+        if (exit === 0) {
+          return '\n[office] 改动已提交（resident flush=each）。注意：若该文件此前已被**另一个** officecli 进程打开，本开关不生效、磁盘字节可能滞后——要确定时用 office(action:"view") 复核。';
+        }
+        if (exit === null) {
+          return '\n[office] ⚠️ 本次调用没拿到退出码 —— 结果**未知**，不要当成功继续。';
+        }
+        return `\n[office] ⚠️ 本次改动**未成功**（退出码 ${exit}）：上面的报错才是真相，按它修参数后重试，不要当成功继续。`;
+      };
+
+      // batch：超大 items 必须切块执行（见 OFFICE_BATCH_MAX_*）——一次 CLI 调用装不下，
+      // 而且超限是**静默**的。批间不原子，所以失败要停在原地并说清哪几批已落盘。
+      if (a.action === 'batch' && Array.isArray(a.items) && a.items.length > 0) {
+        const chunks = splitOfficeBatchItems(a.items);
+        if (chunks.length > 1) {
+          const lines: string[] = [
+            `[office] batch 共 ${a.items.length} 项 → 分 ${chunks.length} 批执行（每批自身原子回滚；**批与批之间不原子**，已成功的批次不回退）。`,
+          ];
+          let failedAt = 0;
+          for (let i = 0; i < chunks.length; i++) {
+            const argv = buildOfficeArgv({ ...a, items: chunks[i] }, resolve);
+            if (typeof argv === 'string') return `[office] ${argv}`;
+            const r = await runOne(argv);
+            lines.push(`── 批 ${i + 1}/${chunks.length}（${chunks[i]?.length ?? 0} 项）──\n${clipBatchOutput(r.text)}`);
+            if (r.exit !== 0) {
+              failedAt = i + 1;
+              break;
+            }
+          }
+          lines.push(
+            failedAt === 0
+              ? `[office] ${chunks.length} 批全部成功，共 ${a.items.length} 项。${flushTail(0)}`
+              : `[office] ⚠️ 第 ${failedAt}/${chunks.length} 批失败并已停下：前 ${failedAt - 1} 批已落盘、第 ${failedAt} 批起**未执行**。修好该批的报错后**只补做第 ${failedAt} 批起的数据**，不要整表重来。`,
+          );
+          return lines.join('\n');
+        }
+      }
+
+      const argv = buildOfficeArgv(a, resolve);
+      if (typeof argv === 'string') return `[office] ${argv}`;
+      const r = await runOne(argv);
+      const body = a.action === 'playbook' ? `${PLAYBOOK_GUARD_HEADER}\n\n────────────\n\n${r.text}` : r.text;
+      return `${body}${flushTail(r.exit)}`;
     },
   });
   return [tool];

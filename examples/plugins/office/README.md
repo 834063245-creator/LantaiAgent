@@ -27,9 +27,16 @@ Copy-Item ..\..\office-cli\SKILL.md "$env:USERPROFILE\.lantai\skills\officecli\S
 ## 2. 用
 
 ```powershell
-# 让 Agent 走 shell 域后台起 watch（或你手动跑），再让它调 office_preview_open 开窗
-officecli watch D:\path\to\文档.docx      # 打印 http://localhost:26315
+# watch 必须由**你自己**用绝对路径起（Agent 的 shell 里没有 officecli——PATH 里没有它，
+# 域工具只在它自己 spawn 的 shell 里解析二进制；别让 Agent 去找二进制起第二条通道）：
+& "$env:USERPROFILE\.lantai\tools\officecli\officecli.exe" watch D:\path\to\文档.docx   # 打印 http://localhost:26315
+# 然后让 Agent 调 office_preview_open 开窗
 ```
+
+> ⚠️ **watch 占着的文件，别同时让 Agent 改**：watch 自己持有该文件的常驻进程，域工具的
+> `OFFICECLI_RESIDENT_FLUSH=each` 对**外来 resident** 不生效 ⇒ 回执说成功、磁盘字节可能滞后
+> （2026-09-15 实测事故，计划 §11.1：报 180 行、磁盘只落 19 行）。**二选一**：要活预览就只看不改；
+> 要改就用截图路（见下方**不想起 watch 的场合**那条），改完重截同一路径 + `update_asset` 原地刷新。
 
 - 改文档 → watch 经 SSE 推**增量补丁**（实测约 0.6 s 一条 `word-patch`）→ 窗内自动刷新，
   **不需要轮询、也不需要重开窗**。

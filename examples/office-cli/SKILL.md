@@ -35,18 +35,17 @@ description: 用内置 office 域工具读写 Word/Excel/PPT（.docx/.xlsx/.pptx
 
 ## 2. 兰台侧铁律（违反必出错）
 
-1. **落盘已经替你钉住了**：域工具给 officecli 带 `OFFICECLI_RESIDENT_FLUSH=each`，**每次改动写完即落盘**
-   ——你不需要（也不能）手动 `save`。截图、交付、外部打开看到的一定是最新字节。
+1. **落盘：不要手动 `save`**（域工具已带 `OFFICECLI_RESIDENT_FLUSH=each`）。但这条保证**只对"由域工具起的那个常驻进程"成立**：若该文件已被**另一个** officecli 进程打开过，回执照样说成功、磁盘字节却可能滞后——2026-09-15 实测见过「回执报 180 行、磁盘只落 19 行，全程零报错」。**判定真源的唯一办法是复核**：写完用 `office(action:'view')` 读回关键格/段再宣布完成。
 2. **你自己看不到图**：`screenshot` 产出的是**盘上 PNG**，工具结果只回文本。要让用户看到效果：
    `office(action:'screenshot', file, out:'<工作区绝对路径>.png')` → 再
    `show_asset(kind:'file', payload={filePath:'<该 png>', ext:'png', label:'第N页'})`。
    **改完重截同一路径 + `update_asset(assetId, …)` 即可原地刷新纸面**（不必新开块）。
    你自己的机械自检走 `validate` + `view issues`（文本面）；视觉效果交人判，别替他下结论。
-3. **不要在 shell 里手跑 `officecli install`**（它会往别的 agent 目录写东西）、也别开自动更新
-   （工具已钉 `OFFICECLI_SKIP_UPDATE=1`）。要看原始 CLI：走 shell 域，但先读本手册的坑表。
+3. **不要在 shell 里手跑 `officecli`——本环境 shell 的 PATH 里没有它**（`command not found`）。域工具自己在 spawn 出的 shell 里按 `$OFFICECLI_PATH` → `~/.lantai/tools/officecli/officecli.exe` 解析，这是**有意**的：你自己下 shell 找二进制跑就开了**第二条通道**，两个常驻进程会互相覆盖写入（同上：报零失败、磁盘丢行）。`install` 子命令另会往别的 agent 目录写东西，更不要跑。**需要域工具没有的 CLI 能力时：如实告诉用户"这步本环境不可用"，不要绕路。**
 4. **参数不合法时工具会直说**（如"set 需要至少一个 props"）——别硬试，按提示补参数。
-5. **≥3 处改动一律 `batch`**：一次开关 + 原子回滚（默认任一失败整批回滚）。
-6. Word/WPS 打开着目标文件时会写失败（文件锁）——请用户先关。
+5. **≥3 处改动一律 `batch`**：一次开关 + 原子回滚（默认任一失败整批回滚）。**单次别超 100 项 / 12KB**——超了工具会自动分批（批间不原子），而且一次塞太多会被命令行长度上限**静默**截断。
+6. **失败就是失败**：工具结果以 `[exit N]` 起头、脚注只在 `exit 0` 时才说"已提交"。看到「未成功」就别当成功继续，按报错修参数。
+7. Word/WPS 打开着目标文件时会写失败（文件锁）——请用户先关。
 
 ## 3. 三层读法：先大后小
 
@@ -59,7 +58,7 @@ office(action:'query', file, selector:'paragraph[style=Heading1]')  # L2：选�
 office(action:'set'|'add'|'remove'|'batch', …)   # L2：改
 ```
 
-需要裸 XML（`raw`/`raw-set`/`add-part`）时走 shell 域直接调 officecli——**那是逃生舱，不是常规路**。
+需要裸 XML（`raw`/`raw-set`/`add-part`）时：域工具没有这些动作，**shell 里也没有 officecli** ⇒ 停下来把限制告诉用户（不要去找二进制跑）。
 
 ## 4. 交付门槛（报告"做完了"之前逐条过）
 
@@ -85,7 +84,7 @@ office(action:'set'|'add'|'remove'|'batch', …)   # L2：改
 | 盲区 | 自检动作 |
 |---|---|
 | **占位符残留**（docx 与 pptx 都不报 `{{x}}`/`<TODO>`/`xxxx`） | 必扫 `view text`——**这一步是承重的**；`merge` 的失败形态就是**静默留下 `{{key}}`** |
-| **图片缺 alt 文本** | 走 shell 域 `officecli query <f> 'picture:no-alt'`（域工具没有这个动作） |
+| **图片缺 alt 文本** | 域工具没有这个动作、shell 里也没有 officecli ⇒ 如实说"未验证"，交人判 |
 | **空白内容**（空文档/空段落/空标题页 → 0 issues，`validate` 也过） | 只能人判；**"干净"不等于"有东西"** |
 
 > 三层分工：机械正确性交给 `validate` + `issues`；内容存在性与占位符残留自己扫；视觉交人判。
@@ -123,8 +122,7 @@ office(merge, file:'模板.docx', out:'成品-001.docx', data:{ client:'Acme', t
 
 - `merge` 回执带 `Replaced keys: N`（实测：2 个键 → `Replaced keys: 2`）。
 - **灌完必扫 `view text` 确认没有残留 `{{`**——失败了它不报错（见 §4.1 盲区）。
-- 想拿现成版式当模板：走 shell 域 `officecli dump 样张.docx -o blueprint.json`（结构化蓝图，本机实测
-  16 项细粒度项集），再用 `batch --input blueprint.json` 回放（实测 16/16 成功）。
+- 想拿现成版式当模板：officecli 的 `dump` 蓝图流 + `batch --input` 回放**本环境用不了**（域工具无此动作、shell 无二进制）⇒ 手写 `batch` 复刻版式，或如实说明受此限制。
 
 ### 5.3 既有文档注疏 → 回写
 
@@ -136,11 +134,11 @@ office(set,   file:'来文.docx', path:'/body/p[2]/r[1]',
 office(query, file:'来文.docx', selector:'revision', json:true)   # 读回（含 nativePath）
 ```
 
-- **批注不能用 `view annotated` 验**——它只给正文 + 格式；批注走 `get /comments` 或 `query comment`（经 shell 域）。
+- **批注不能用 `view annotated` 验**——它只给正文 + 格式；批注走 `office(action:'get', path:'/comments')` 或 `office(action:'query', selector:'comment')`。
 - **一个 run 同时只能挂一个修订**：叠第二个会报 `run is already inside a track-change wrapper`。
 - **⚠️ 读数陷阱（实测）**：**待决删除的文本在 `view text` 里不出现**（那段看起来是空的），
   而 `view annotated` 里**照常显示、且不标注**它处于修订态 ⇒ **判定修订状态只有一个真源：
-  `query revision`**（经 shell 域；域工具的 `query` 动作传 `selector:'revision'` 亦可）。
+  `office(action:'query', selector:'revision')`**。
   读带修订的来文时先跑它，否则你会以为某段不存在、或以为某段是原文。
 
 ### 5.4 幻灯片
@@ -175,6 +173,11 @@ office(screenshot, file:'汇报.pptx', out:'<绝对路径>-全册.png', grid:tru
 **`pitch-deck` 64.9，最大**）。
 ⇒ **一件产物只载一个**（载入后规则持续有效，别每轮重载）；没把握时先载再动手，比试错便宜。
 
+⚠️ **正文是 officecli 自带的命令行指南**（488 行里 101 条 `officecli …` 命令，含强制的
+"Help-First Rule: 先查 help 再动手"）。**那些命令行在本环境一律不可执行**——工具返回时会
+前置一段护栏头，照它把每条命令**翻译**成 `office(action,…)`；正文要你查 help 时，改用
+**一条最小 batch（1 项）**试探属性名，**不要**下 shell。
+
 ## 7. 常见坑（实测/读码得出）
 
 | 坑 | 正解 |
@@ -184,7 +187,7 @@ office(screenshot, file:'汇报.pptx', out:'<绝对路径>-全册.png', grid:tru
 | 同一 run 上叠第二个修订被拒 | 一 run 一修订；换 run，或用 `revision.type=format` |
 | 带修订的文档"少了一段" / 看不出哪段有修订 | `view text` 隐藏待决删除、`annotated` 不标注——真源是 `query revision` |
 | 占位符残留没人报 | 自己扫 `view text`（§4.1） |
-| 图片缺 alt 没人报 | shell 域 `query 'picture:no-alt'` |
+| 图片缺 alt 没人报 | 域工具无此动作、shell 无 officecli ⇒ 如实说"未验证" |
 | 改完看不到效果 | `screenshot` 出 PNG + `show_asset` 给用户看（你看不到图） |
 | xlsx 公式没有值 | 求值器不认识的函数写了等于没值——看 `issues` 的 `[U3] not evaluated` |
 | 单位写成 `%` 被拒 | 长度只收 cm/mm/in/pt/pc/px/Q/裸 EMU；`%` 只在行距有效（§8） |
@@ -205,6 +208,5 @@ office(screenshot, file:'汇报.pptx', out:'<绝对路径>-全册.png', grid:tru
 
 ## 9. 活预览（可选，看纸面效果）
 
-想让用户盯着看实时效果（而不是一张张截图）：走 shell 域后台跑 `officecli watch <文件>`，
-再让 `office_preview_open`（活预览窗插件）开一扇浮窗——窗内是本机 `http://127.0.0.1:26315` 的
-实时渲染页，**改文件约 0.6 s 自动刷新**（SSE 增量补丁，实测）。不起 watch 就用 §5 的截图路。
+**本环境起不了 watch**（shell 里没有 officecli）⇒ 用 §5 的截图路：改完 → `screenshot` 出 PNG →
+`show_asset` 给用户看。若用户想边改边看实时刷新，如实说明这一版还不支持。
