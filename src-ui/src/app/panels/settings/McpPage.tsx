@@ -16,6 +16,13 @@
 // 用户级直配。生效时机：mcp.json 变更后需重启应用重新装载（boot 期读取）。
 
 import { useCallback, useEffect, useState } from 'react';
+import {
+  type BundledEngineInfo,
+  isBundledEngineEnabled,
+  onBundledEnginePrefChanged,
+  probeBundledEngine,
+  setBundledEngineEnabled,
+} from '../../../plugins/bundled-engine';
 import { type McpServerDecl, McpServerDeclSchema } from '../../../plugins/types';
 import { isUserMcpMissingError, parseUserMcpJson, resolveUserMcpJsonPath } from '../../../plugins/user-mcp';
 import { kernelReadFile, kernelWriteFile } from '../../../rpc-contract';
@@ -212,6 +219,74 @@ function NewMcpServerForm({ onSaved, onError }: { onSaved: () => void; onError: 
   );
 }
 
+/** 随包图谱引擎（engine-bundled-mcp-distribution，2026-09-16）——方案乙：
+ *  引擎随安装包分发，但**默认不接**（尊重 2026-09-09 图谱工具面退役决策）。
+ *  本区块让「随包」可见：显示探测到的引擎路径 + 一键启用（生效时机 = 下次
+ *  打开工作区，工具行注册在 boot 后的工作区激活点）。 */
+function BundledEngineSection() {
+  const [info, setInfo] = useState<BundledEngineInfo | null>(null);
+  const [enabled, setEnabled] = useState(isBundledEngineEnabled());
+  const [probing, setProbing] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    void probeBundledEngine()
+      .then((i) => {
+        if (alive) setInfo(i);
+      })
+      .finally(() => {
+        if (alive) setProbing(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 订阅外部变更（多面板一致性）——本组件自持 state，订阅只为同步自己
+  useEffect(() => onBundledEnginePrefChanged(() => setEnabled(isBundledEngineEnabled())), []);
+
+  return (
+    <div className="sp-section">
+      <div className="sp-section-title">随包图谱引擎</div>
+      <div className="sp-hint" style={{ marginBottom: 10 }}>
+        兰台安装包内含 <code>hologram-engine.exe</code>（代码依赖图分析，MCP server 形态）。 启用后打开工作区，Agent
+        工具面会出现图谱相关工具（图查询 / 影响面 / LSP 解析等）。
+      </div>
+      {probing ? (
+        <div className="sp-hint">探测中…</div>
+      ) : info?.available ? (
+        <>
+          <div className="sp-field">
+            <div className="sp-hint-sub" style={{ wordBreak: 'break-all' }}>
+              已检测到：<code>{info.path}</code>
+            </div>
+          </div>
+          <label className="sp-hint-sub" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => {
+                setBundledEngineEnabled(e.target.checked);
+                setEnabled(e.target.checked);
+              }}
+            />
+            <span>启用随包图谱引擎</span>
+          </label>
+          <div className="sp-hint-sub" style={{ marginTop: 6 }}>
+            生效时机：下次打开工作区（每个工作区按各自的根启动一个引擎进程；离开工作区即停）。
+            {enabled && ' 引擎首次分析较慢，可用引擎自带的状态查询看进度。'}
+          </div>
+        </>
+      ) : (
+        <div className="sp-hint-sub">
+          未检测到随包引擎二进制（开发态可先 <code>cargo build -p hologram-engine --release</code>）。 也可在下方「新建
+          server」里手动指向任意位置的引擎。
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** MCP 标签页（用户级 server 管理）。 */
 export function McpPage() {
   const [servers, setServers] = useState<McpServerDecl[]>([]);
@@ -346,6 +421,8 @@ export function McpPage() {
         }}
         onError={(text) => setMessage({ kind: 'err', text })}
       />
+
+      <BundledEngineSection />
     </>
   );
 }

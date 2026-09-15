@@ -38,6 +38,7 @@ mod uia;
 mod sensitive;
 mod llm_proxy;
 mod plugin_assets;
+mod engine_assets;
 mod composition_watcher;
 
 use std::sync::Arc;

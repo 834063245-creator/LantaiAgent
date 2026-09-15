@@ -485,6 +485,15 @@ export interface RpcContract {
   /** 插件目录绝对路径（S4-4 乙机器桥：manifest mcpServers 的 stdio command
    *  相对插件目录解析）。名字围栏同 uninstall；目录不存在 = 错误。 */
   plugin_dir: { params: { name: string }; result: string }; // 绝对路径
+  /** 随包图谱引擎信息（engine-bundled-mcp-distribution，2026-09-16）：探测
+   *  安装目录里的 `hologram-engine.exe`（多候选：env `LANTAI_ENGINE_EXE` →
+   *  宿主 exe 同级 → 上一级 → 仓库 target/）。**纯只读探测，不启动进程**——
+   *  接线在 TS 侧 `plugins/bundled-engine.ts`，走 MCP 受治进程通道。
+   *  `path: null` = 未找到（走「引擎不可用」降级，非错误）。 */
+  engine_bundled_info: {
+    params: Record<string, never>;
+    result: { path: string | null; dir: string | null; available: boolean };
+  };
   /** 组合目录（P-1 authoring 环境，2026-09-14）：返回 `~/.lantai/composition/`
    *  绝对路径并按需创建（root + presets/，幂等，不动已有内容）；`open: true`
    *  时用系统文件管理器打开。路径只来自服务端计算，无调用方路径参数。 */

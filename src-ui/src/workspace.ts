@@ -41,6 +41,7 @@ import type { ResolvedComposition } from './composition/roster';
 import type { SeamDisabledMap } from './composition/seam-resolution';
 import type { Context, Fiber } from './cordis';
 import { initCordisKernel } from './cordis/boot';
+import { registerBundledEngineTools } from './plugins/bundled-engine';
 import { formatDeferredWakeNote, registerDeferredWakeHandler } from './plugins/deferred';
 import { markDynamicFetchStart, mergeDynamicModels, recordDynamicFetchResult } from './provider/catalog';
 import { resolveApiKey } from './provider/credentials';
@@ -756,6 +757,31 @@ export class Workspace {
     this._agentRef = { current: null as Agent | null };
     this._chatPanel = chatPanel;
     const agentRef = this._agentRef;
+
+    // 随包图谱引擎接线（engine-bundled-mcp-distribution，2026-09-16）：
+    // **必须在 _buildRegistryLocked 之前**——MCP 工具行是注册表构建的输入，
+    // 晚于它注册则首装配看不到引擎工具（要等下次装配）。
+    //
+    // 生命周期归属：工具行挂 `this._fiber.ctx`（工作区 fiber）⇒ 离开/切换
+    // 工作区随 fiber.dispose 自动摘行 + 治理器杀进程树，**不需要额外清理代码**。
+    //
+    // 引擎契约「一进程一工作区根」（ensure_ready 异根拒绝）：注册粒度 =
+    // 工作区，root 进 `args` 的 `--project-root`。切工作区 = 旧 fiber 释放
+    // 进程 + 新 fiber 按新 root 重注册（= engine_init 说的「换整个实例」）。
+    //
+    // 默认关（方案乙）：未启用时立即返回，零行为变更。
+    try {
+      const wiring = await registerBundledEngineTools(this._fiber.ctx, this.path);
+      if (wiring.wired) {
+        console.log('[Workspace] 随包图谱引擎已接线:', this.path);
+      } else if (wiring.reason) {
+        // 启用了但接不上 = 可见降级（不静默——错误不静默纪律）
+        console.warn('[Workspace] 随包图谱引擎未接线:', wiring.reason);
+      }
+    } catch (e) {
+      // 接线失败不得阻断工作区打开（引擎工具面是增强，非核心路径）
+      console.warn('[Workspace] 随包图谱引擎接线失败:', e);
+    }
 
     const registry = await this._buildRegistryLocked(composition);
 

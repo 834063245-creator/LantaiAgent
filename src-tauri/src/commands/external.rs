@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 // 外部服务 — 沙箱状态、memory-bundle 句柄。
-// （MCP Server 生命周期面已随 legacy McpManager 退役——引擎子进程统一走
-//  engine_transport::McpRemoteTransport，每工作区一个，随上下文关停。）
+// （MCP Server 生命周期面已随 legacy McpManager 退役；图谱全量退役
+//  2026-09-09 后壳内亦无引擎传输层——引擎 = 随包分发的独立二进制，
+//  消费接线在前端 src-ui/src/plugins/bundled-engine.ts（MCP 受治进程通道）。）
 
 use std::sync::Mutex;
 

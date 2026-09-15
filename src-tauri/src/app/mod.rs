@@ -3,14 +3,21 @@
 
 //! 应用层（L1 数据上下文抽象）—— 壳内新生的业务与数据归属层。
 //!
-//! [`WorkspaceDataContext`] 按工作区实例化：引擎-宿主逻辑全断
-//! （engine-host-severance，2026-09-08）后每工作区持一个**进程外引擎
-//! 传输**（spawn `hologram-engine.exe serve` 子进程，stdio MCP 通道）——
-//! 壳对引擎的全部知识 = 二进制 + 协议，零 hologram-* crate 依赖。
+//! [`WorkspaceDataContext`] 按工作区实例化：**壳对引擎零内置接线**
+//! （图谱全量退役 2026-09-09，commit 51047f99——`engine_transport.rs` 连同
+//! 「每工作区 spawn 引擎」的传输层整批删除，壳内零 spawn 引擎的代码）。壳对
+//! 引擎的全部知识 = 二进制在磁盘上的位置（`engine_assets.rs` 的只读探测）+
+//! MCP 协议；零 hologram-* crate 依赖。
+//!
+//! 引擎消费现状（engine-bundled-mcp-distribution，2026-09-16）：
+//! 引擎**随安装包分发**（`tauri.conf.json` bundle.resources，实测 196MB），
+//! 接线在**前端** `src-ui/src/plugins/bundled-engine.ts`——用户启用后按工作区
+//! 经既有 MCP 受治进程通道拉起（治理/生命周期/回收全在 TS 侧 `mcp-bridge.ts`）。
+//! 本模块只提供「二进制在哪」的探测（`engine_assets`），不参与拉起。
+//!
 //! 工作区 = 容器（workspace-session-ownership-rework 2026-08-27）：
 //! 会话物理归属工作区，会话只在所属工作区内打开——因此**不再需要**会话
-//! 绑定表与焦点投影；引擎决议只看「显式 root → 活动工作区（单槽
-//! WorkspaceState）→ None」两条臂。
+//! 绑定表与焦点投影。
 //!
 //! 设计参照 DSH 五条铁律（docs/plans/layering-rework-plan.md §4 L1）：
 //! 1. 会话是第一公民（按区归属）；
@@ -296,8 +303,8 @@ mod tests {
     /// 逻辑全断守卫（engine-host-severance 2026-09-08）：壳内不得存在任何
     /// 引擎族 crate 直连——源代码 `hologram_` 前缀 crate 路径引用与
     /// Cargo.toml 的 hologram-* 依赖条目双双为零。壳对引擎的全部知识 =
-    /// spawn hologram-engine.exe + MCP 协议（engine_transport）；文件忽略
-    /// 语义壳内自有一份（ignored_paths.rs）。新增直连即红。
+    /// 二进制位置探测（engine_assets.rs）+ MCP 协议（接线在前端 TS 侧）；
+    /// 文件忽略语义壳内自有一份（ignored_paths.rs）。新增直连即红。
     /// 本测试文件自身写着这些字面量（断言消息），跳过防自匹配。
     #[test]
     fn shell_has_zero_hologram_crate_refs() {
@@ -325,7 +332,7 @@ mod tests {
                 "hologram_engine::",
             ] {
                 if content.contains(bad) {
-                    violations.push(format!("{rel} 含 {bad} —— 壳禁直连引擎族 crate（走 engine_transport）"));
+                    violations.push(format!("{rel} 含 {bad} —— 壳禁直连引擎族 crate（引擎=进程外 MCP，接线在前端 TS 侧）"));
                 }
             }
         }

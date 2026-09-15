@@ -764,6 +764,24 @@ async fn dispatch_rpc(
                 .map_err(|e| format!("plugin_dir 任务失败: {e}"))?;
             ok_json(r)
         }
+        // 随包图谱引擎探测（engine-bundled-mcp-distribution，2026-09-16）：纯只读
+        // 探测安装目录里的 hologram-engine.exe，不启动进程。前端 plugins/
+        // bundled-engine.ts 消费（拿路径与安装目录锚点接 MCP 通道）。
+        // spawn_blocking：canonicalize/is_file 是阻塞 IO。
+        "engine_bundled_info" => {
+            let r = tokio::task::spawn_blocking(|| {
+                let path = crate::engine_assets::engine_exe_path();
+                let dir = crate::engine_assets::install_dir();
+                serde_json::json!({
+                    "path": path.map(|p| p.to_string_lossy().to_string()),
+                    "dir": dir.map(|d| d.to_string_lossy().to_string()),
+                    "available": crate::engine_assets::engine_available(),
+                })
+            })
+            .await
+            .map_err(|e| format!("engine_bundled_info 任务失败: {e}"))?;
+            ok_json(Ok(r))
+        }
         "plugin_set_enabled" => {
             let name = req_str(&params, "name", "plugin_set_enabled")?;
             let enabled = match params.get("enabled") {
@@ -882,7 +900,7 @@ async fn dispatch_rpc(
 
         // ═══════════════════════════════════════════════════════
         // 外部服务（sandbox_status；MCP server 生命周期面已随 legacy
-        // McpManager 退役——引擎子进程统一走 engine_transport）
+        // McpManager 退役——引擎消费接线在前端 TS 侧，壳内零传输层）
         // ═══════════════════════════════════════════════════════
         "sandbox_status" => commands::external::sandbox_status(),
 
