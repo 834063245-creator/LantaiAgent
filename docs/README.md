@@ -34,6 +34,8 @@
 | [docs/user/develop/publishing-plugins.md](user/develop/publishing-plugins.md) | 当前（2026-08-28 平台化 P6） | 三方发布路径（registry 发布 + 安装 + 信任面） |
 | [`docs/MULTI_AGENT_ROADMAP.md`](MULTI_AGENT_ROADMAP.md) | 工作台 | 多 Agent 路线图与已落地能力 |
 | [`docs/landmine-map.md`](landmine-map.md) | 当前 | 雷区地图、拆弹批次状态 |
+| [`docs/facts.generated.md`](facts.generated.md) | 生成物 | **文档事实单一真源**（跨文档复述的标量：字段数/插件数/契约版本/域数…）——L0-L2 层文档禁止手抄这些数字，只准指本表 |
+| [`docs/plans/doc-surface-refactor-plan.md`](plans/doc-surface-refactor-plan.md) | 进行中 | 文档面大重构施工单（四层形态 / 批序 / 完成判据） |
 
 ## docs/ 分区
 
@@ -60,6 +62,10 @@
 
 ## 维护规则
 
+0. **事实与体量门禁**：`cd src-ui && npm run doc-check`（六查：事实对拍 / 断链 / 体量 / 孤儿 /
+   归档纪律 / 注入预算；`--report` 看全量漂移清单）。**跨文档复述的数字只准来自
+   [`docs/facts.generated.md`](facts.generated.md) 或写指针**，禁手抄——改了真源就跑
+   `npm run gen:doc-facts`（doc-sync 会对拍）。
 1. **完成即归档**：施工稿、交接稿、被取代的 plan 完成后移入 `docs/archive/`，并更新本索引与相关链接。
 2. **生成物勿手改**：`docs/agents/frontend-rpc-contract.md` 由 `scripts/gen-rpc-contract-md.cjs` 生成；
    `docs/agents/model-tool-contract.md` 由 `scripts/gen-tool-contract-md.cjs`（经 tsx 运行
