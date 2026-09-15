@@ -508,13 +508,23 @@ export function closeSession(ctx: SessionContext, idx: number): void {
   // U4/Q1-B：总目记账退役（摊开集重启由磁盘扫描推导）
 }
 
-export async function createNewSession(ctx: SessionContext): Promise<void> {
+/** 建卷选项（S6 P4 程序入口）——`presetId` 指定本卷组合：在发号之后、调工厂
+ *  **之前**写入卷级登记 ⇒ 该卷**出生即按此组合装配一次**（不白装配、不写全局
+ *  设置）。缺省 = 今天语义（工厂读 null → 全局默认）。 */
+export interface CreateSessionOptions {
+  presetId?: string;
+}
+
+/** 建卷。返回新卷 id（`null` = 未建：无工作区 / 在途切走工作区被代际丢弃）。
+ *  S6 P4 起返回 id 供**程序入口**判成败——此前返回 `void`，调用方只能事后读
+ *  `sessions[activeIdx].id`，而静默失败路径会把**旧活跃卷的 id** 当成新卷。 */
+export async function createNewSession(ctx: SessionContext, opts: CreateSessionOptions = {}): Promise<number | null> {
   // 零目录退役（Stage-5 拍板 a）：创建必须要有目录——无工作区（projectPath 空）
   // 不造零目录会话，改由首页选/建工作区。与「创建工作区必须要有目录」一致。
   const claimWs = ctx.getProjectPath();
   if (!claimWs) {
     showToast('新建案卷需要先有工作区——请在首页新建或指定工作区', 'warn');
-    return;
+    return null;
   }
   // 代际防护（H1 跨工作区串卷，2026-09-02）：与 loadSessionFromDisk 同款——
   // 工厂装配在途期间切走工作区，迟到的 append 不得落进新工作区 sess store。
@@ -533,12 +543,16 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
   // 与「发号下限保留」纪律一致。
   const id = getChatStore(ctx.storeId).sess.getState().nextSessionId;
   getChatStore(ctx.storeId).sess.setState({ nextSessionId: id + 1 });
+  // S6 P4 程序入口：显式指定的组合在**工厂调用之前**落卷级登记——工厂按卷登记
+  // 决定组合（workspace 工厂读 getRecordedPresetId），登记先于装配 ⇒ 出生即一次
+  // 装配到位。（「出生后拨组合」是另一条语义，见 app/chat/session-composition。）
+  if (opts.presetId) agentSessionState.setRecordedPresetId(ctx.storeId, id, opts.presetId);
   let newAgent: OwnedAgentHandle | null = null;
   const factory = getAgentFactory(ctx.storeId);
   if (factory) {
     try {
-      // 方案甲：新卷句柄按「出生时刻的全局默认」装配——此刻尚无会话覆盖，
-      // 工厂收到 id 后裸 live（实时跟随全局默认）。
+      // 方案甲：新卷句柄按「出生时刻的组合」装配——程序入口给了 presetId 就按上一步
+      // 的卷级登记；否则此刻尚无会话覆盖，工厂读 null ⇒ 全局默认（裸 live）。
       newAgent = await factory(id);
     } catch {
       /* 装配失败 = 句柄缺席，内容层照常（错误由拟文路径可见） */
@@ -548,7 +562,7 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
   // 旧区新建卷不得 append 进新工作区）
   if (!isCurrentEpoch(epoch)) {
     newAgent?.dispose();
-    return;
+    return null;
   }
   // ponytail: 消息在会话级 store 中 — 无需保存/恢复。
   // 只需保存旧会话的 token 计数。
@@ -598,6 +612,7 @@ export async function createNewSession(ctx: SessionContext): Promise<void> {
   ctx.setLastUsageText('');
   ctx.updateFooter();
   // U4/Q1-B：总目记账退役（摊开集重启由磁盘扫描推导）
+  return id;
 }
 
 // ── 会话持久化 — 每个工作区一个会话根，每卷一个文件（{ws}/.lantai/sessions/）──

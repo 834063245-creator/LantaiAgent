@@ -694,7 +694,9 @@ export class ChatCore {
     Session.closeSession(this._sessionCtx(), idx);
   }
   async createNewSession(): Promise<void> {
-    return Session.createNewSession(this._sessionCtx());
+    // S6 P4：模块入口返回新卷 id（程序入口判成败用）——本编排面包装器不承载该值
+    // （程序入口 = app/chat/session-composition 的模块函数，UI 之外的调用者直接调它）。
+    await Session.createNewSession(this._sessionCtx());
   }
 
   // ── 组合（S6 P1c：卷级选择）──

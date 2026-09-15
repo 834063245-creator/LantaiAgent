@@ -25,6 +25,12 @@
 // 空白判据单点 = `isSessionBlank`：控件锁与写路径二道闸**共用同一把尺子**——两处
 // 各判会漂移成「控件可点、一拨就被写路径拒绝」的鬼状态。
 //
+// 程序入口（S6 P4，本文件末尾）：`createSessionWithPreset(ctx, presetId?)`——
+// 「起卷时指定组合」与「空白卷上拨组合」是**两条语义**，但共用同一把尺子
+// （`sessionSelectionError` 严一档）与同一份记录真源（卷级登记）。显式参数在发号
+// 之后、调工厂**之前**登记（`createNewSession` 的 opts）⇒ 该卷出生即按它装配一次
+// （不白装配）。⇒ 装配面之外的写点**两处**：本函数 + `selectSessionPreset`。
+//
 // ⚡ 静态面纪律（2026-09-15 实测两次踩坑，务必保持）：
 //   `state/composition-store` 在**模块体**里就调 `factoryComposition()`，而
 //   `state/preset-store` 在**模块体**里就调 `builtinPresets()`——两条模块体求值都
@@ -43,7 +49,7 @@
 // 新编排件按约定落 app/**，本模块与宿主 chat-core 同目录。
 
 import { agentSessionState } from '../../agent/agent-session-state';
-import { ensureSessionAgent, type SessionContext } from '../../ui/chat-session';
+import { createNewSession, ensureSessionAgent, type SessionContext } from '../../ui/chat-session';
 import { getChatStore, msgStoreFor } from '../../ui/chat-store';
 
 /** 本卷组合选择的结果（拒绝必带原因——错误不静默）。 */
@@ -115,4 +121,43 @@ export async function selectSessionPreset(
     }
   }
   return { ok: true };
+}
+
+// ── 程序入口（S6 P4）——「起卷时指定组合」─────────────────────────────
+
+/** **程序入口**：按组合起一卷。UI 之外的调用者（评测自举 / 未来 ACP 驱动 /
+ *  插件编排）与本文件的卷级写路径**共用同一把尺子与同一份记录真源**。
+ *
+ *  语义（设计件 §3.3 优先级链 + §2 序列 C；裁定见 WO-S6P4 §7）：
+ *   - **优先级**：显式 `presetId` > 卷级记录 > 全局默认——显式值在本卷**出生即落
+ *     卷级登记**（单一真源，不留「本次参数」这第二个真源；卷头芯片与恢复期校验
+ *     零新增代码即可显示它）；
+ *   - **不可解析 = 拒绝创建**（不在册 / `requires` 缺插件 / 行 id 不可寻址）：
+ *     返回具名原因且**一个卷都不建**。程序入口没有「可见提示」载体——容忍或回退
+ *     对程序就等于静默（违「错误不静默」），故用严一档 `sessionSelectionError`，
+ *     与 P1c 同尺（`selectionError` 的容忍语义仍留给「读旧卷」路径）；
+ *   - **无工作区 / 在途切走工作区 = 失败可判**（不沿用 `createNewSession` 的静默
+ *     return——那会让调用方把**旧活跃卷的 id** 当成新卷）；
+ *   - 组合面只在**已登记面内**裁剪/回开（禁用行 / `defaultOff` 回开 / 插件激活），
+ *     **不引入未注册能力**；**不与权限模式联动**（设计件 §6 R7：能起会话者本就能
+ *     跑 shell——程序指定组合不是提权通道）。
+ *
+ *  静态面纪律（见文件头）：组合解析面一律调用点动态 import。 */
+export async function createSessionWithPreset(
+  ctx: SessionContext,
+  presetId?: string,
+): Promise<{ ok: true; sessionId: number } | { ok: false; reason: string }> {
+  // ① 先严格校验：不可解析 ⇒ 拒绝创建（此刻一个卷都还没建 = 拒绝路径零副作用）
+  if (presetId !== undefined) {
+    const { sessionSelectionError } = await import('../../composition/preset-assembly');
+    const err = sessionSelectionError(presetId);
+    if (err !== null) return { ok: false, reason: err };
+  }
+
+  // ② 起卷（显式组合在发号后、工厂前落卷级登记 ⇒ 出生即按它装配一次）
+  const created = await createNewSession(ctx, presetId === undefined ? undefined : { presetId });
+  if (created === null) {
+    return { ok: false, reason: '起卷失败：需要先绑定工作区（无工作区不造零目录卷）' };
+  }
+  return { ok: true, sessionId: created };
 }
