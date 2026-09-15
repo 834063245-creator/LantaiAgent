@@ -182,3 +182,27 @@
 | O4 | `examples/office-cli/SKILL.md` + officecli 自带 playbook（`office(action:'playbook')` 返回的正文） | 交付给模型的权威指引要求**在 shell 里跑 officecli**（playbook 488 行里 101 条命令 + 开头强制的 Help-First Rule），而产品环境 PATH 里没有该二进制、域工具也刻意不暴露 CLI | 模型照指引下 shell → `command not found` → 转去找二进制 → 另起 resident 与域工具抢同一文件 ⇒ 写入静默丢失（报零失败、磁盘丢行）。**这是那场测试的第一块多米诺** | ✅ 已拆（`4412ce87`）：playbook 返回时前置护栏头（翻译成域工具动作 + 禁止下 shell + 最小 batch 替代 help）；SKILL.md 删掉五处"走 shell 域调 officecli"的逃生舱指引。**未拆的根**：playbook 正文由上游二进制产出、不在本仓（要彻底解决需自写一份动作面手册或改上游） |
 | O5 | `agent/tools/office.ts` schema：`items: z.array(z.unknown())` | `batch` 是动作面里最复杂的参数，而模型可见 schema **零形状提示**（真实要求是 `{command,parent,path,selector,type,props,to,path2}` 那一套）；形状只存在于 playbook 正文与一条运行时缺参报错里 | 模型只能猜——实测会话里 2174 项 batch 就是这么拼出来的；猜错时拿到的是 officecli 的原始报错而非字段级提示 | ⏳ 未拆（低危，记录在案）：修它要改模型可见 schema ⇒ `phase-0/tool-schemas.*` 快照漂移 ⇒ 必须走 `baseline-change-request` 审批 + 两轨 record。当下缓解 = 运行时缺参报错带完整形状（`4412ce87`）+ SKILL.md 写清上限与形状 |
 
+---
+
+## 第六批审计（2026-09-15）— 会话存盘家族
+
+> 来源：用户报「会话内容的存盘有问题，各种意外退出甚至正常退出会导致会话丢内容」
+> → 全链审计 + 本机运行时物证，见 `docs/session-persistence-audit.md`（含复核命令）。
+> 家族指纹：**「会话什么时候算已持久化」从未被定义**——全部落盘触发点都是偶然时机
+> （轮次结束回调 / 500ms 防抖 / 合卷 / 失活 / 退出钩子），而唯一的设计件
+> `docs/session-checkpoint-design.md` 自述「定稿未实施」；退出路径的纸面保证
+> （beforeunload 全卷保存 + localStorage 同步兜底）在 2026-08-25 拆 localStorage 后就不成立了。
+> 实测代价：2026-09-15 一轮 1h47m 的工作（2333 次工具调用）在磁盘上**零痕迹**，
+> 随后用户正常关机 → 全部消失。
+
+| # | 位置 | 雷 | 触发 → 后果 | 状态 |
+|---|------|----|------------|------|
+| S1 | `src-ui/src/shell/rows/persistence.ts`（旧 beforeunload 块）+ `src-tauri/src/main.rs:72-92` | 退出收尾只有 `beforeunload`（WebView2/Tauri 关窗**不触发**，上游 #3217/#2996），块内 `scheduleAutoSave` 只是「clear 再 setTimeout(500ms)」= 把待落盘推迟到窗口消失之后，`saveAllSessions().catch(()=>{})` 是未 await 的 fire-and-forget 且静默吞错；Rust 侧 `Destroyed` → `drain` → `std::process::exit(0)` 直接腰斩在途写 | 正常关窗 = 未落盘内容随进程消失；系统关机 = 强杀（实测应用活到关机那一刻）。注释还留着「localStorage 同步写兜底」化石（该链 2026-08-25 已拆） | ✅ 已拆（本批）：一条 flush 三入口（`watchWindowClose` preventDefault→flush→destroy / `pagehide`+`visibilitychange(hidden)` 兜底 / `beforeunload` 保留）+ 2500ms 硬预算 + 逐卷异常可见（不再静默吞）；能力位 `core:window:allow-destroy` 已入 capabilities |
+| S2 | 落盘时机全表（`ui/chat-stream.ts:500` finishTurn、turn-done 订阅壳行、合卷、改名、失活） | 全部在**轮次结束之后**——一轮从用户输入到流收尾之间磁盘上零痕迹；`docs/session-checkpoint-design.md` §3.1/§3.2 的两个语义时刻检查点从未接线（会话事件 NDJSON 第二写面也已随 agent-store 内存化退役） | 崩溃/退出/关机丢**整轮**（用户消息 + 助手输出 + 全部工具结果） | ✅ 触发点 A 已接线（本批，loop 监听面 `request/start`——不改 agent-loop 契约文件、在途合并、fail-open 可见）；⏳ 触发点 B（工具副作用前）仍未接线 |
+| S3 | `ui/chat-session.ts::writeSessionSnapshot` + `src-tauri/src/confined_fs.rs::write_atomic` | 同卷多写者（防抖/后台卷/改名/合卷/失活/退出 `Promise.all`）**无串行化**，而 `write_atomic` 不是临界区（对照 `editor_cap.rs:72` 有进程级锁） | 迟到的旧快照覆盖新快照 = 静默回滚；撤掉写链实测复现「v1 覆盖 v2」（`src-ui/tests/session-exit-flush.test.ts` 真变红） | ✅ 已拆（本批）：每卷写链（键 = 目标路径）+ `drainVolumeWrites()` 退出前 drain |
+| S4 | `src-tauri/src/confined_fs.rs:129-142` + `plugins/builtin/sessions-builtin/index.ts:36-43` | `write_atomic` = `target→.bak` → `tmp→target` → 删 `.bak`：两次 rename 之间进程死 ⇒ 卷文件**整体消失**（内容只在 `.bak`/`.tmp.N`）；读面只认 `{id}.json`（无回退）、`list_volumes` 只列 `.json`，`restoreCanvasSpread` 还会把它从 `canvas.json` 剪掉；无 fsync | 崩溃/强杀撞上写窗口 = 卷「消失」，用户视角像永久删除（本机 22 卷暂无 `.bak`/`.tmp` 残留 ⇒ 目前是风险不是已发生事故） | ⏳ 未拆（P1，用户已批「`.bak` 只读回退」）：先决 = 把该决策写回 `session-checkpoint-design.md` §6.6/§9.3（原文裁定「不做卷版本化/.bak 多副本」） |
+| S5 | `ui/chat-session.ts::saveActiveSession` / `saveSessionById`（旧 `if (!agent) return`） | 句柄缺席（未水合卷 / 工厂失败 / 切 preset 拆句柄）时**静默跳过**落盘：无日志无提示；`saveAllSessions` 又只遍历案头摊开的卷 | 「卷还在、内容旧」——退出即丢该卷内存里的全部内容，用户零信号 | ✅ 已拆（本批）：`SessionSaveOutcome` 五态 + 一次性 warn + `flushSessionsForExit` 逐卷汇总（退出路径可见报异常卷） |
+| S6 | `ui/chat-session.ts::workspaceSessionsDir` + `listSavedSessions` | `projectPath=''` 时拼出 `/.lantai/sessions`（相对进程 CWD 解析，`ui.log` 实证落到 `D:\.lantai\sessions` 被安全闸拒绝）；读面单卷失败/10s 总超时**静默少一卷**（只 console） | 启动早期读写全废；侧栏「卷不见了」（同族已在画布面修过 `51758e94`，卷列表面未修） | 路径守卫 ✅ 已拆（本批：空路径响亮报错，消费方降级为空集）；⏳ 读面可见化未拆（P1） |
+| S7 | 测试面（`src-ui/tests/`） | 六项保证零覆盖：退出 flush / 同卷并发写顺序 / 在途轮次 / 原子写崩溃窗口 / 无句柄卷语义 / 退出时防抖 | 改这块代码没有任何测试会变红（既有 108 用例只钉「落盘目标路径 + 快照字段 + 空卷跳过 + 墓碑形状 + seam 四动作 + 防抖 per-panel」） | 四项已补（本批 `tests/session-exit-flush.test.ts` 8 例，含撤掉修复即真变红的负向验证）；⏳ 真实崩溃注入（kill 在两次 rename 之间）与大卷写放大实测仍缺 |
+
+

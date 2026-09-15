@@ -2,16 +2,82 @@
 // SPDX-License-Identifier: MIT.
 
 // 壳行 9（hologram/shell-persistence）：轮次完成持久化 + agent-config
-// 热切换订阅 + beforeunload 收尾。
+// 热切换订阅 + 退出收尾（三口一链，见文件末尾）。
 // 自 main.ts 649-657 + 776-816 机械迁移（两段相邻语义：会话生命周期接线）。
 
+import { agentSessionState } from '../../agent/agent-session-state';
+import { log } from '../../agent/logger';
+import { watchWindowClose } from '../../bridge';
 import { loadSettings } from '../../settings';
 import { useAgentConfigStore } from '../../state/agent-config-store';
 import { useTurnDoneStore } from '../../state/turn-done-store';
+import { getWorkspaceEpoch, isCurrentEpoch } from '../../workspace-scope';
 import type { ShellRefs } from '../runtime';
 import { pushStatus } from '../runtime';
 
 export function bootPersistence(refs: ShellRefs): void {
+  // ═══════════════════════════════════════════════════════════════
+  // 触发点 A —— 模型请求前检查点（P0·2026-09-15 存盘审计 M1）
+  //
+  // 病灶：全部落盘触发点都在「轮次结束之后」——一轮从用户输入到流收尾之间
+  // 磁盘上零痕迹。实测代价：2026-09-15 一轮 1h47m（2333 次工具调用）全丢。
+  //
+  // 语义时刻来源：`docs/session-checkpoint-design.md` §3.1 触发点 A（该设计件
+  // 定稿但从未接线）。接线方式 = loop 监听面 `request/start`（D4 监听面，
+  // 载荷含 agentId）——**不改 agent-loop 契约文件**，不新增服务与 RPC。
+  //
+  // 失败语义 = fail-open + 可见（设计件 §3.3）：检查点失败不阻断请求，
+  // 但必须留痕；下一个请求自动重试。
+  // ═══════════════════════════════════════════════════════════════
+
+  /** 在途检查点（每卷至多一条）：在途即跳过——合并突发，下一请求/轮末再落盘。 */
+  const _checkpointInFlight = new Set<string>();
+  /** 已挂检查点的句柄（key = storeId:sessionId:agentId——句柄换新要重挂）。 */
+  const _checkpointHooked = new Set<string>();
+
+  function checkpointBeforeRequest(refs: ShellRefs, storeId: string, sessionId: number): void {
+    const panel = refs.chatPanel;
+    // 工作区代际守卫（同 hydrateSessionAgentVisible 家族）：迟到的请求事件不得
+    // 把旧工作区的卷写进新工作区目录（切区后 sess store 已清，双保险）。
+    const epoch = getWorkspaceEpoch();
+    if (!panel) return;
+    const key = `${storeId}:${sessionId}`;
+    if (_checkpointInFlight.has(key)) return;
+    _checkpointInFlight.add(key);
+    void panel
+      .saveSessionById(sessionId)
+      .then((outcome) => {
+        if (!isCurrentEpoch(epoch)) return;
+        if (outcome === 'failed') {
+          log.warn('persistence', `请求前检查点落盘失败：案卷 ${sessionId}`, { outcome });
+        }
+      })
+      .catch((e: unknown) => {
+        log.warn('persistence', `请求前检查点异常：案卷 ${sessionId}`, { error: String(e) });
+      })
+      .finally(() => {
+        _checkpointInFlight.delete(key);
+      });
+  }
+
+  /** 给每个在册 Agent 句柄挂 `request/start` 监听（句柄换新自动重挂）。 */
+  function hookSessionCheckpoints(refs: ShellRefs): void {
+    agentSessionState.forEachAgentEntry((storeId, sessionId, handle) => {
+      const key = `${storeId}:${sessionId}:${handle.id}`;
+      if (_checkpointHooked.has(key)) return;
+      const onLoopEvent = handle.onLoopEvent;
+      if (typeof onLoopEvent !== 'function') return; // 能力位缺席 = 无监听面（降级不炸）
+      _checkpointHooked.add(key);
+      onLoopEvent.call(handle, 'request/start', () => {
+        checkpointBeforeRequest(refs, storeId, sessionId);
+      });
+    });
+  }
+
+  hookSessionCheckpoints(refs);
+  // 句柄登记/注销都会 bump（setAgent/removeAgent/clearPanelState）——新句柄在此挂上
+  agentSessionState.subscribe(() => hookSessionCheckpoints(refs));
+
   // ── 轮次完成通知（P1 总线归零：chat:turn-done → state/turn-done-store 信号）──
   // L2（session-ledger）：谁跑完存谁——doneSid = 后台卷 → 该卷全量快照
   // （saveSessionById，F3 窗口期闭合）；doneSid = 活跃卷/缺席 → 防抖全量
@@ -71,42 +137,135 @@ export function bootPersistence(refs: ShellRefs): void {
     void import('../../state/dock-store').then(({ useDockStore }) => useDockStore.getState().openPanel('settings'));
   });
 
-  // 关闭时保存会话 — scheduleAutoSave 是同步的（设置超时）。
-  // saveActiveSession 内的 LocalStorage 写入是同步的，因此即使 RPC 磁盘写入未完成，
-  // 也能在窗口关闭前完成。
-  // 同时同步停止子 Agent（AbortController.abort 是同步的）。
-  // E6：刷新会话级 boards（DiscoveryBoard + TaskBoard）— 清除
-  // debounce 定时器（同步）并触发刷新（尽力异步）。
-  // L2（session-ledger）：不再只存活跃卷——全部有内容卷都落盘
-  // （F3 收尾：后台卷即使从未被切回也不丢）。
-  // workspace-session-ownership-rework：工作区会话根唯一存储位，随工作区走。
-  window.addEventListener('beforeunload', () => {
+  // ═══════════════════════════════════════════════════════════════
+  // 退出收尾（P0 重写·2026-09-15 存盘审计）
+  //
+  // 旧实现只有 `window.addEventListener('beforeunload', …)`，内含三处致命：
+  //   ① beforeunload 在 WebView2/Tauri 关窗时**不触发**（上游 WebView2Feedback
+  //      #3217 / tauri#2996）——钩子整个不执行；
+  //   ② 钩子内 `scheduleAutoSave` 只是「clear 再 setTimeout(500ms)」——把待落盘
+  //      **推迟到窗口消失之后**（M7）；
+  //   ③ `saveAllSessions().catch(() => {})` 是未 await 的 fire-and-forget 且静默
+  //      吞错；Rust 侧 `WindowEvent::Destroyed` → `process::exit(0)` 会腰斩在途写。
+  // 实测代价：2026-09-15 一轮 1h47m 的工作（2333 次工具调用）磁盘上零痕迹。
+  //
+  // 新实现 = 一条 flush 三个入口（不是三条轨道）：
+  //   ① 权威：Tauri 关窗请求 → preventDefault → await flush → destroy
+  //   ② 兜底：pagehide / visibilitychange(hidden)——系统关机、注销、休眠（此时
+  //      窗口未必收到 close-requested）
+  //   ③ 保留：beforeunload（浏览器 dev / 导航卸载面）
+  // 三者幂等去重（_flushInFlight）；关窗路径用 _closing 关闭其余入口（destroy 后
+  // 再发起 RPC 只会得到一串无意义失败）。
+  // ═══════════════════════════════════════════════════════════════
+
+  /** 退出 flush 预算（硬顶）：超过即放弃等待并可见报错——否则关窗永挂。
+   *  会话写是逐卷全量快照（本机实测 MB 级、单卷 10–30ms），2500ms 覆盖十余卷；
+   *  画布三件是纯元数据，给 1000ms 即可（两支串行 = 关窗最坏 ~3.5s 后必 destroy）。 */
+  const EXIT_FLUSH_BUDGET_MS = 2500;
+  const EXIT_CANVAS_BUDGET_MS = 1000;
+
+  let _closing = false;
+  let _flushInFlight: Promise<void> | null = null;
+
+  const withBudget = <T>(p: Promise<T>, ms: number, label: string): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`${label} 超时（${ms}ms）`)), ms);
+      p.then(
+        (v) => {
+          clearTimeout(timer);
+          resolve(v);
+        },
+        (e) => {
+          clearTimeout(timer);
+          reject(e);
+        },
+      );
+    });
+
+  async function doFlush(refs: ShellRefs, trigger: string): Promise<void> {
     const ws = refs.workspace;
-    if (ws) {
+    if (!ws) return;
+    const panel = refs.chatPanel;
+    if (panel) {
       try {
-        refs.chatPanel?.scheduleAutoSave(ws.path);
-        refs.chatPanel?.saveAllSessions().catch(() => {});
-      } catch {
-        /* 静默 */
-      }
-      try {
-        // Stage-5：画布状态（布局 + 公共物）显式落盘（fire-and-forget——窗口
-        // 关闭前 RPC 未必完成，防抖 + 切换点保存已覆盖绝大多数；与
-        // saveAllSessions 同规接受未完成写入）。
-        refs.chatPanel?.saveCanvasState(ws.path).catch(() => {});
-      } catch {
-        /* 静默 */
-      }
-      try {
-        ws.subAgentPool.stopAll();
-      } catch {
-        /* 静默 */
-      }
-      try {
-        void ws.runtime?.flushAllBoards();
-      } catch {
-        /* 静默 */
+        const report = await withBudget(panel.flushSessionsForExit(), EXIT_FLUSH_BUDGET_MS, '会话退出落盘');
+        // 错误不静默（CONVENTIONS §1.7）：非 saved 的卷逐条报出——空卷是常态
+        // （不吵），「有内容但没落盘」才是事故面。
+        const serious = report.anomalies.filter(
+          (a) => a.outcome === 'failed' || a.outcome === 'skipped-no-handle' || a.outcome === 'skipped-no-workspace',
+        );
+        if (serious.length > 0) {
+          log.warn('persistence', `退出落盘异常（${trigger}）`, {
+            saved: report.saved,
+            anomalies: serious.map((a) => `${a.sid}:${a.outcome}`),
+          });
+          pushStatus(`⚠️ 退出时 ${serious.length} 卷未落盘——重启可能丢失最近一轮`);
+        } else {
+          log.info('persistence', `退出落盘完成（${trigger}）`, {
+            saved: report.saved,
+            total: report.total,
+            cancelledDebounce: report.cancelledDebounce === true,
+          });
+        }
+      } catch (e) {
+        log.error('persistence', `退出落盘失败（${trigger}）`, { error: String(e) });
+        console.error('[persistence] 退出落盘失败:', e);
       }
     }
+    try {
+      const canvasSave: Promise<void> = panel ? panel.saveCanvasState(ws.path) : Promise.resolve();
+      await withBudget(canvasSave, EXIT_CANVAS_BUDGET_MS, '画布落盘');
+    } catch (e) {
+      log.error('persistence', `退出画布落盘失败（${trigger}）`, { error: String(e) });
+    }
+    try {
+      ws.subAgentPool.stopAll();
+    } catch {
+      /* 子 Agent 停止失败不阻断退出（best-effort） */
+    }
+    try {
+      void ws.runtime?.flushAllBoards();
+    } catch {
+      /* board flush 是 fire-and-forget（各自有防抖 + 独立可见面） */
+    }
+  }
+
+  /** 单飞去重入口（三入口共用）。 */
+  function flushForExit(refs: ShellRefs, trigger: string): Promise<void> {
+    if (_flushInFlight) return _flushInFlight;
+    const p = doFlush(refs, trigger).finally(() => {
+      _flushInFlight = null;
+    });
+    _flushInFlight = p;
+    return p;
+  }
+
+  // ① 权威入口：Tauri 关窗请求。preventDefault → flush → destroy（destroy 后
+  //    Rust 侧 Destroyed 照常 drain + exit；窗口不会因为异常而永久卡住）。
+  void watchWindowClose((ev) => {
+    ev.preventDefault();
+    _closing = true;
+    void flushForExit(refs, 'close-requested').finally(() => {
+      void ev.destroy().catch((e: unknown) => {
+        log.error('persistence', '关窗 destroy 失败', { error: String(e) });
+      });
+    });
+  });
+
+  // ② 兜底：页面隐藏（系统关机/注销/休眠时窗口未必收到 close-requested；
+  //    WebView2 也不保证 beforeunload）。关窗路径已在跑 → 跳过。
+  window.addEventListener('pagehide', () => {
+    if (_closing) return;
+    void flushForExit(refs, 'pagehide');
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (_closing || document.visibilityState !== 'hidden') return;
+    void flushForExit(refs, 'hidden');
+  });
+
+  // ③ 保留：beforeunload（浏览器 dev / 导航卸载面——此时无法 await，尽力而为）。
+  window.addEventListener('beforeunload', () => {
+    if (_closing) return;
+    void flushForExit(refs, 'beforeunload');
   });
 }

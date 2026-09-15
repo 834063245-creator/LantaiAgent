@@ -39,6 +39,7 @@ fn capability_command_modules_are_frozen() {
     //  程序「基线加入/移出该模块 + commit 标注」执行。）
     let expected = vec![
         "browser_cap",
+        "composition",
         "editor_cap",
         "external",
         "filesystem",
@@ -110,6 +111,11 @@ fn capability_command_modules_are_frozen() {
          app-shell-software-plugin-plan.md §5-S1）：webview 无盘权 → 插件数据\n\
          目录 I/O 必须 Rust（v3 决策「应用壳」保留面）；名字 + rel 双围栏 +\n\
          canonicalize 前缀锁死 <dataRoot>/<插件名>/ 属沙箱族安全件；非能力口\n\
-         ——不进 Agent 工具面（装载期 ensure + 宿主桥 fs 面 + 卸载 .trash 钩）。"
+         ——不进 Agent 工具面（装载期 ensure + 宿主桥 fs 面 + 卸载 .trash 钩）。\n\
+         composition = 应用壳基础设施（组合 preset 落盘，Compose P1 批次引入\n\
+         `commands/composition.rs`）：preset 目录 I/O + 名/rel 双围栏，与\n\
+         plugin_data 同族（壳侧写盘必须 Rust）——非能力口、不进 Agent 工具面。\n\
+         基线补录 2026-09-15：该模块引入时漏更本基线致 HEAD 红，按本测试自有\n\
+         程序补录（同 oauth 先例），非新授权。"
     );
 }

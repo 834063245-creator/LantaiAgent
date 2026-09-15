@@ -150,3 +150,31 @@ export async function watchFileDragDrop(handler: (e: FileDragEvent) => void): Pr
   });
   return unlisten;
 }
+
+// ── 关窗请求（真退出 flush 的权威入口，2026-09-15 存盘审计 P0）──
+//
+// 为什么需要它：`beforeunload` 在 WebView2/Tauri 关窗时**不触发**（上游
+// WebView2Feedback#3217 / tauri#2996），而 Tauri 关窗 = 销毁窗口 → main.rs
+// 的 `WindowEvent::Destroyed` 分支 drain 后 `std::process::exit(0)`——异步落盘
+// 必被腰斩。Tauri 官方形态 = 拦截 close-requested（preventDefault）→ 自己做
+// 收尾 → 主动 destroy()。与 drag/drop 同属「Tauri 路由面，住本桥」。
+
+export interface WindowCloseRequest {
+  /** 阻止本次关闭（调用方承诺最终自行 destroy——否则窗口永不关闭）。 */
+  preventDefault(): void;
+  /** 销毁窗口（此后 Rust 侧 Destroyed → 进程退出）。 */
+  destroy(): Promise<void>;
+}
+
+/** 监听关窗请求（非 Tauri 环境返回空 unlisten——dev/mock 走 beforeunload 兜底）。 */
+export async function watchWindowClose(handler: (ev: WindowCloseRequest) => void): Promise<() => void> {
+  if (isMockMode()) return () => {};
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  const win = getCurrentWindow();
+  return win.onCloseRequested((event) => {
+    handler({
+      preventDefault: () => event.preventDefault(),
+      destroy: () => win.destroy(),
+    });
+  });
+}

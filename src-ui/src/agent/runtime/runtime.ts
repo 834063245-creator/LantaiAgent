@@ -25,9 +25,11 @@ import { EventKind } from '../agent-types';
 import { AgentBlueprint, type BlueprintScope } from '../blueprint';
 import { AgentContext } from '../context';
 import { DiscoveryBoard, DiscoveryBoardProxy } from '../discovery-board';
+import type { ListenerOptions, LoopEventName, LoopEventPayload } from '../events';
 import { createExecState } from '../execution-state';
 import { HookRegistry, PreflightHookRegistry } from '../hooks';
 import { enqueueIsolationOp } from '../isolation-queue';
+import type { Disposer } from '../lifecycle';
 import { AgentLifecycleManager } from '../lifecycle-manager';
 import { log } from '../logger';
 import { MessageBus } from '../message-bus';
@@ -154,6 +156,17 @@ class AgentHandleImpl implements AgentHandle {
   }
   restoreTokenLedger(snapshot: TokenLedgerSnapshot | null | undefined) {
     return this._agent.restoreTokenLedger(snapshot);
+  }
+
+  // ── loop 事件监听转发（P0 会话存盘止血，2026-09-15）──
+  // 消费面 = 会话检查点（「模型请求前」语义时刻，见 shell/rows/persistence）：
+  // 一层薄转发到 Agent.onLoopEvent（D4 监听面，非契约文件——不改 agent-loop 契约）。
+  onLoopEvent<E extends LoopEventName>(
+    event: E,
+    fn: (payload: LoopEventPayload[E]) => void,
+    opts?: ListenerOptions,
+  ): Disposer {
+    return this._agent.onLoopEvent(event, fn, opts);
   }
 
   /** 绑定到指定会话的 board — 会话 id 在创建后才分配，由会话层在登记句柄时调用 */

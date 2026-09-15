@@ -8,6 +8,7 @@
 import { agentSessionState, type OwnedAgentHandle, type TurnPair } from '../agent/agent-session-state';
 import type { ChatAgentHandle } from '../agent/chat-agent-handle';
 import { createExecState, type ExecStateInstance } from '../agent/execution-state';
+import { log } from '../agent/logger';
 import type { TokenLedgerSnapshot } from '../agent/token-meter/types';
 import { sessionExecute } from '../composition/session-persistence-service';
 import type { Message } from '../provider/types';
@@ -578,9 +579,17 @@ export interface StoredSession {
 // 即整链换存储，产品代码零改动。root = 本工作区会话根（下方唯一权威拼接点）。
 
 /** 工作区会话目录（唯一权威存储位——消费方（chat-session/chat-core）一律
- *  经本导出拼 root，路径构造收敛单点）。 */
+ *  经本导出拼 root，路径构造收敛单点）。
+ *  P0（2026-09-15 存盘审计 M8）：空路径此前拼出 `/.lantai/sessions`——相对
+ *  进程 CWD 解析（`ui.log` 实证落到 `D:\.lantai\sessions` 并被安全闸拒绝）。
+ *  改为响亮报错：调用方各自的 catch 决定可见等级（读侧降级为「无卷」、写侧
+ *  走落盘失败可见面），不再静默拼出工作区外路径。 */
 export function workspaceSessionsDir(projectPath: string): string {
-  return `${projectPath.replace(/[\\/]+$/, '')}/.lantai/sessions`;
+  const base = projectPath.replace(/[\\/]+$/, '');
+  if (!base) {
+    throw new Error('workspaceSessionsDir: 工作区路径为空——无法定位会话根（拒绝拼出 CWD 相对路径）');
+  }
+  return `${base}/.lantai/sessions`;
 }
 
 /** 读卷：工作区目录单一路径。缺失/坏文件返回 null——卷不在本工作区
@@ -650,14 +659,95 @@ interface SessionSnapshotData {
  *  workspace-session-ownership-rework（2026-08-27）：落盘目标 = 工作区会话根
  *  （workspace 字段标签退役；localStorage 备份早已拆除——磁盘是唯一事实源）。
  *  失败：console.error 后上抛——调用方决定可见等级（autosave 容忍、合卷告警）。 */
+// ── 每卷写链（P0·2026-09-15 存盘审计 M4）────────────────────────────
+//
+// 同一卷的落盘串行化：后一写等前一写 settle 才发起。此前无串行——防抖写、
+// 后台卷写、改名即存、合卷快照、失活写、退出 flush 可同时压向同一文件，
+// 到达 Rust 的顺序无保证（`confined_fs::write_atomic` 非临界区），迟到的旧
+// 快照会覆盖新快照（静默回滚）。写链把「谁最后写」钉成「谁最后被要求写」。
+//
+// 键 = 目标文件路径（同一文件 = 同一链，跨面板同号卷不互串）；失败不阻断链
+// （下一条照常发起——写链不是门禁），错误照旧上抛给调用方。
+
+const _volumeWriteChains = new Map<string, Promise<unknown>>();
+/** drain 轮数上限（等写时若新写持续入链，避免无界等待）。 */
+const VOLUME_WRITE_DRAIN_ROUNDS = 8;
+
+function enqueueVolumeWrite<T>(key: string, task: () => Promise<T>): Promise<T> {
+  const prev = _volumeWriteChains.get(key) ?? Promise.resolve();
+  // 前一条无论成败都继续本条（写链不做门禁）
+  const next = prev.then(task, task);
+  _volumeWriteChains.set(key, next);
+  const settle = (): void => {
+    if (_volumeWriteChains.get(key) === next) _volumeWriteChains.delete(key);
+  };
+  next.then(settle, settle);
+  return next;
+}
+
+/** 等在途卷写全部 settle（退出 flush 的 drain 点——保证「退出快照」最后落盘）。 */
+export async function drainVolumeWrites(): Promise<void> {
+  for (let round = 0; round < VOLUME_WRITE_DRAIN_ROUNDS; round++) {
+    const pending = [..._volumeWriteChains.values()];
+    if (pending.length === 0) return;
+    await Promise.allSettled(pending);
+  }
+}
+
+/**
+ * 会话落盘结果（P0·2026-09-15 存盘审计 M6）：调用方据此可见化。此前无句柄/
+ * 空卷一律静默 `return`——退出收尾无法知道「哪些卷没落盘」，用户看到的是
+ * 「卷还在但内容旧」。区分「本来就没内容」（正常）与「有内容但写不了」
+ * （异常）是关键：前者静默、后者必须可见。
+ */
+export type SessionSaveOutcome = 'saved' | 'skipped-empty' | 'skipped-no-handle' | 'skipped-no-workspace' | 'failed';
+
+/** 逐卷落盘汇总（退出 flush 的可见面——`shell/rows/persistence` 据此报「哪些卷没落盘」）。 */
+export interface SessionSaveReport {
+  total: number;
+  saved: number;
+  /** 跳过（空卷/无句柄/无工作区——含「有内容但写不了」的异常跳过，见 anomalies）。 */
+  skipped: number;
+  failed: number;
+  /** 只记非 saved 的卷明细（正常空卷也在内——调用方按 outcome 判等级）。 */
+  anomalies: Array<{ sid: number; outcome: SessionSaveOutcome }>;
+  /** 退出 flush 专用：确有被取消的待防抖落盘（M7）。 */
+  cancelledDebounce?: boolean;
+}
+
+export function summarizeSaveReport(results: Array<{ sid: number; outcome: SessionSaveOutcome }>): SessionSaveReport {
+  const anomalies = results.filter((r) => r.outcome !== 'saved');
+  return {
+    total: results.length,
+    saved: results.length - anomalies.length,
+    skipped: anomalies.filter((r) => r.outcome !== 'failed').length,
+    failed: anomalies.filter((r) => r.outcome === 'failed').length,
+    anomalies,
+  };
+}
+
+/** 落盘跳过/失败的一次性可见化（同键只 warn 一次——autosave 高频触发不刷屏）。 */
+const _warnedSaveSkips = new Set<string>();
+function warnSaveAnomaly(key: string, msg: string): void {
+  if (_warnedSaveSkips.has(key)) return;
+  _warnedSaveSkips.add(key);
+  console.warn(msg);
+  log.warn('chat', msg);
+}
+
 async function writeSessionSnapshot(projectPath: string, data: SessionSnapshotData): Promise<void> {
+  // 序列化在入链前完成（快照语义 = 调用时刻的会话，不被前序写在途拖成旧值）
   const json = JSON.stringify(data);
+  const root = workspaceSessionsDir(projectPath);
+  const target = `${root}/${data.id}.json`;
   try {
-    await sessionExecute('save_volume', {
-      root: workspaceSessionsDir(projectPath),
-      id: String(data.id),
-      data: json,
-    });
+    await enqueueVolumeWrite(target, () =>
+      sessionExecute('save_volume', {
+        root,
+        id: String(data.id),
+        data: json,
+      }),
+    );
   } catch (e) {
     console.error('[chat] 会话落盘失败:', e);
     throw e;
@@ -667,17 +757,28 @@ async function writeSessionSnapshot(projectPath: string, data: SessionSnapshotDa
 /** 将活跃会话保存到其独立文件（工作区会话根——归属即存储位置）。
  *  U4/Q1-B：tracker（_active.json）与总目（_ledger.json）均已退役——
  *  摊开集重启由磁盘扫描推导，落盘只写卷文件本身。 */
-export async function saveActiveSession(ctx: SessionContext, projectPath: string): Promise<void> {
+export async function saveActiveSession(ctx: SessionContext, projectPath: string): Promise<SessionSaveOutcome> {
   const { sessions, activeIdx } = getChatStore(ctx.storeId).sess.getState();
-  if (activeIdx < 0) return;
+  if (activeIdx < 0) return 'skipped-empty';
   const sMeta = sessions[activeIdx];
-  if (!sMeta) return;
+  if (!sMeta) return 'skipped-empty';
+  if (!projectPath) {
+    warnSaveAnomaly(`no-workspace:${ctx.storeId}`, '会话未落盘：工作区路径为空（无工作区 = 无会话存储位）');
+    return 'skipped-no-workspace';
+  }
   const agent = agentSessionState.getAgent(ctx.storeId, sMeta.id);
-  if (!agent) return;
+  if (!agent) {
+    // P0（M6）：此前静默 return —— 该卷在案头显示、内容却只在内存，退出即丢
+    warnSaveAnomaly(
+      `no-handle:${ctx.storeId}:${sMeta.id}`,
+      `案卷 ${sMeta.id} 未落盘：Agent 句柄缺席（卷内容只在内存）——拟文或切回可补建句柄`,
+    );
+    return 'skipped-no-handle';
+  }
 
   const messages = agent.getSession();
   // 不持久化空会话（仅系统提示，无用户消息）
-  if (!messages.some((m) => m.role !== 'system')) return;
+  if (!messages.some((m) => m.role !== 'system')) return 'skipped-empty';
 
   // ponytail: 消息已在会话级 store 中 — 无需 saveCurrentMessages
   getChatStore(ctx.storeId).sess.getState().setSessionTokens(sMeta.id, ctx.getTotalTokensUsed());
@@ -702,8 +803,10 @@ export async function saveActiveSession(ctx: SessionContext, projectPath: string
 
   try {
     await writeSessionSnapshot(projectPath, data);
+    return 'saved';
   } catch {
-    /* 落盘失败已由 writeSessionSnapshot 记日志——autosave 链容忍（原行为） */
+    /* 落盘失败已由 writeSessionSnapshot 记日志 + 上抛——autosave 链容忍（原行为） */
+    return 'failed';
   }
 
   // U4/Q1-B：无 tracker 写入（见函数头注释）——落盘只写卷文件
@@ -711,14 +814,28 @@ export async function saveActiveSession(ctx: SessionContext, projectPath: string
 
 /** 按 id 落盘指定会话（C8 改名即存）：不要求是活跃卷。落盘 = 工作区会话根。
  *  空卷跳过（与 saveActiveSession 同规）。 */
-export async function saveSessionById(ctx: SessionContext, projectPath: string, sid: number): Promise<void> {
+export async function saveSessionById(
+  ctx: SessionContext,
+  projectPath: string,
+  sid: number,
+): Promise<SessionSaveOutcome> {
   const st = getChatStore(ctx.storeId).sess.getState();
   const sMeta = st.sessions.find((x) => x.id === sid);
-  if (!sMeta) return;
+  if (!sMeta) return 'skipped-empty';
+  if (!projectPath) {
+    warnSaveAnomaly(`no-workspace:${ctx.storeId}`, '会话未落盘：工作区路径为空（无工作区 = 无会话存储位）');
+    return 'skipped-no-workspace';
+  }
   const agent = agentSessionState.getAgent(ctx.storeId, sid);
-  if (!agent) return;
+  if (!agent) {
+    warnSaveAnomaly(
+      `no-handle:${ctx.storeId}:${sid}`,
+      `案卷 ${sid} 未落盘：Agent 句柄缺席（卷内容只在内存）——拟文或切回可补建句柄`,
+    );
+    return 'skipped-no-handle';
+  }
   const messages = agent.getSession();
-  if (!messages.some((m) => m.role !== 'system')) return;
+  if (!messages.some((m) => m.role !== 'system')) return 'skipped-empty';
 
   const isActive = st.sessions[st.activeIdx]?.id === sid;
   const tokensUsed = isActive ? ctx.getTotalTokensUsed() : (st.sessionTokens[sid] ?? 0);
@@ -737,9 +854,22 @@ export async function saveSessionById(ctx: SessionContext, projectPath: string, 
       // 组合身份随卷落盘（与活跃卷同构；能力位缺省 = 无记录）
       presetId: agent.presetId,
     });
+    return 'saved';
   } catch {
     /* 已记日志——改名即存是尽力而为（合卷路径另有告警） */
+    return 'failed';
   }
+}
+
+/** 全部在案卷显式落盘（退出 flush 的写面单点）：跨卷并发、单卷串行（每卷写链）
+ *  ——逐卷结果汇总返回，不抛（可见性由汇总的 anomalies 承担）。
+ *  只覆盖「案头摊开的卷」：已合卷/未摊开卷的落盘由各自收尾路径负责。 */
+export async function saveAllSessions(ctx: SessionContext, projectPath: string): Promise<SessionSaveReport> {
+  const { sessions } = getChatStore(ctx.storeId).sess.getState();
+  const results = await Promise.all(
+    sessions.map(async (s) => ({ sid: s.id, outcome: await saveSessionById(ctx, projectPath, s.id) })),
+  );
+  return summarizeSaveReport(results);
 }
 
 /** 改名未摊开的已存卷（Stage-3 侧边栏行操作）：磁盘直改 label，不要求
@@ -794,6 +924,18 @@ export function scheduleAutoSave(ctx: SessionContext, projectPath: string): void
     });
   }, AUTO_SAVE_DELAY_MS);
   _autoSaveTimers.set(ctx.storeId, timer);
+}
+
+/** 取消防抖落盘（不重挂、不立即触发）——P0·2026-09-15 存盘审计 M7：退出钩子
+ *  此前调 `scheduleAutoSave`（先 clear 再 setTimeout 500ms），等于把待落盘推迟
+ *  到窗口消失之后。退出路径必须「取消防抖 + 立即显式落盘」，本函数是前半句。
+ *  返回 true = 确有被取消的待落盘（调用方可据此记录）。 */
+export function cancelScheduledAutoSave(storeId: string): boolean {
+  const t = _autoSaveTimers.get(storeId);
+  if (!t) return false;
+  clearTimeout(t);
+  _autoSaveTimers.delete(storeId);
+  return true;
 }
 
 /** Q-B（2026-08-24 用户拍板）：重启/装配不自动摊开任何卷，落点为案卷首页

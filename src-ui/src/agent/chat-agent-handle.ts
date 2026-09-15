@@ -88,4 +88,17 @@ export interface ChatAgentHandle {
 
   /** 本卷生效的组合 id（纯读）。 */
   readonly presetId?: string;
+
+  // ── loop 事件监听（P0 会话存盘止血，2026-09-15）──
+  // 能力位（可选）：句柄不实现 = 无监听面（旧实现/测试桩），调用方降级为
+  // 「无检查点」而不是炸链路——检查点是保证，不是门禁。
+
+  /** 监听 loop 生命周期事件（`request/start` 等；返回 disposer）。
+   *  消费面 = 会话检查点：「模型请求前」落一次卷快照（design:
+   *  docs/session-checkpoint-design.md §3.1 触发点 A）。 */
+  onLoopEvent?<E extends import('./events').LoopEventName>(
+    event: E,
+    fn: (payload: import('./events').LoopEventPayload[E]) => void,
+    opts?: import('./events').ListenerOptions,
+  ): import('./lifecycle').Disposer;
 }

@@ -633,7 +633,11 @@ export class ChatCore {
           getChatStore(storeId).panel.getState().setLastUsageText(s);
         }
       },
-      saveActiveSession: (p) => this.saveActiveSession(p),
+      saveActiveSession: async (p) => {
+        // StreamContext 契约是 Promise<void>（冻结文件 chat-stream）——落盘结果
+        // 在退出 flush 面单独消费，此处吞掉返回值保持形状。
+        await this.saveActiveSession(p);
+      },
       scheduleAutoSave: (p) => Session.scheduleAutoSave(this._sessionCtx(), p),
       bumpPillBadge: () => {
         this._bumpPillBadge();
@@ -735,19 +739,37 @@ export class ChatCore {
     return st.sessions[st.activeIdx]?.id ?? null;
   }
 
-  /** 按 id 落盘指定卷（L2 两动词之 save：不要求活跃；空卷跳过）。 */
-  async saveSessionById(sid: number): Promise<void> {
+  /** 按 id 落盘指定卷（L2 两动词之 save：不要求活跃；空卷跳过）。
+   *  P0（2026-09-15 存盘审计）：返回落盘结果——调用方据此可见化「没落盘」的卷。 */
+  async saveSessionById(sid: number): Promise<Session.SessionSaveOutcome> {
     const pp = useShellStore.getState().projectPath;
     return Session.saveSessionById(this._sessionCtx(), pp, sid);
   }
 
-  /** 全部有内容卷落盘（L2 beforeunload 收尾：F3 后台卷不丢）。 */
-  async saveAllSessions(): Promise<void> {
-    const st = getChatStore(this.panelId).sess.getState();
-    await Promise.all(st.sessions.map((s) => this.saveSessionById(s.id)));
+  /** 全部有内容卷落盘（L2 退出收尾：F3 后台卷不丢）。返回逐卷汇总。 */
+  async saveAllSessions(): Promise<Session.SessionSaveReport> {
+    const pp = useShellStore.getState().projectPath;
+    return Session.saveAllSessions(this._sessionCtx(), pp);
   }
 
-  async saveActiveSession(projectPath: string): Promise<void> {
+  /** 退出 flush 唯一真源（P0）：取消防抖 → 等在途写 settle → 全卷显式落盘 → 再 drain。
+   *  关窗/关机/失焦三入口共用本函数（`shell/rows/persistence`）；返回逐卷汇总，
+   *  非空 anomalies = 有卷没落盘，调用方必须可见化（不静默）。 */
+  async flushSessionsForExit(): Promise<Session.SessionSaveReport> {
+    const cancelledDebounce = Session.cancelScheduledAutoSave(this.panelId);
+    await Session.drainVolumeWrites();
+    const report = await this.saveAllSessions();
+    // 退出快照必须最后落盘：等在途写全部 settle 再返回（否则延迟调用方 destroy）
+    await Session.drainVolumeWrites();
+    return { ...report, cancelledDebounce };
+  }
+
+  /** 取消防抖落盘（不重挂）——退出收尾前半句（M7）。 */
+  cancelPendingAutoSave(): boolean {
+    return Session.cancelScheduledAutoSave(this.panelId);
+  }
+
+  async saveActiveSession(projectPath: string): Promise<Session.SessionSaveOutcome> {
     return Session.saveActiveSession(this._sessionCtx(), projectPath);
   }
   scheduleAutoSave(projectPath: string): void {
