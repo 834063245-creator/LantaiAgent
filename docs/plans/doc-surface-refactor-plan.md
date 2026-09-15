@@ -39,7 +39,8 @@
 | **P1 注入层** ✅ | CLAUDE+AGENTS 去重合一（AGENTS 变薄指针）、长表格外移、预算门禁上牙 | L0 合计 ≤32KB；`budget` 豁免条目删净 |
 | **P2 现状层** ✅ | ARCHITECTURE / 根 README（乙定位）/ plans 索引 / docs 索引 按真源重写；数字改为指针 | `facts` 与 `links` 豁免条目删净 |
 | **P3 归档大扫除** ✅ | 竣工文档 git mv → archive/，索引瘦身（单元格 ≤500），HISTORY 补时间轴 | `archive` 豁免删净；plans/ 只剩在办项 |
-| **P4 索引重建** 在推 | docs/README 重写为唯一入口（角色 × 任务两轴），孤儿全部挂上 | `orphans` 豁免删净（P4a 三索引已落；孤儿已由 P3 清到 0） |
+| **P3b 补批** ✅ | 「代码全竣工但头注没写横幅」的计划（archive 查的漏网件）11 件归档 + 引用同步 | 同上；`pretext-typography-plan` 留在办（P2a 待实机拍板） |
+| **P4 索引重建** ✅ | docs/README 两轴唯一入口 + 三处目录索引（adr/cookbook/research） | `orphans` 豁免删净 → 孤儿 23 → **0**（P4a 落地） |
 
 ## 4. 首轮实测台账（P0 立尺当日，可 `npm run doc-check:report` 复现）
 
@@ -120,6 +121,45 @@
 **孤儿清偿**：P3 起始 23 项 → **0**。归档消化 16 项；索引挂链消化 6 项（canvas-space 阶段件 3 · 并发会话 · LSP 舰队 · 出厂产物归家 ·
 纸壳交互承接 · 内核能力口设计件 4 · 纸壳表面清单 · v11 分析引擎）；**豁免账 P3 类目清零**（facts-plans-14 / size-plans-active /
 size-plans-tree / orphans-plans / orphans-plans-tree / archive-plans 六条全删，账上只剩 1 条永久豁免 = `CODELY.md`）。
+
+### 4.4 P3b 落账（2026-09-16 · 竣工无横幅件补批）
+
+archive 查只看计划头部 15 行的「已竣工/已归档」**字面量**，于是这批「代码全竣工但头注没写横幅」的计划一直漏在
+`plans/` 里——**本批就是被这个漏网点漏掉的**。逐条取证（头注 + `plans/README.md` 欠账表）后归档 11 件：
+`engine-plugin-extraction` · `layering-rework-plan` · `first-party-hot-reload-plan` · `agent-asset-blocks` ·
+`multimodal-image-plan` · `browser-cdp-suite-review-round2` · `session-persistence-seam-wiring-plan` ·
+`tool-ergonomics-notes` · `paper-shell/paper-panel-split-plan` · `tool-ergonomics/design-1` + `design-2`（后三件镜像子目录）。
+
+- 每件第 3 行插归档横幅 + 现状指针；**两处头注过期由横幅显式订正**（会话持久化 seam「待施工」→ 2026-09-05 三 commit 竣工 ·
+  CDP 二轮「剩余 E2E 待跑」→ 2026-08-22 实跑 35/35 结清）。
+- 引用同步 19 处（含 `INVARIANTS.md` · 两份 ADR · `docs/agents/open-surface-contract.md` 散文单元格（`doc-sync` 复跑指纹未受影响）·
+  `HISTORY.md` · 三份在办计划）；冻结层 7 处只修死链不重写内容。
+- `plans/README.md`：130 行 / 最长行 462 / 最长单元格 373；**真机验证欠账表逐行零删项**（HEAD vs 现在独立比对：13 项 → 13 项，
+  丢失项空、新增项空）；`pretext-typography-plan.md` 从被删清单移入「待执行但已立项」（在办）。
+- 门禁抓到并修掉 4 个问题：3 处搬进 archive 后的**跨目录相对链接断链** + 1 处「（已归档）」措辞**误触发 archive 查**
+  —— links 与 archive 两查都证明了自身价值。
+
+### 4.5 完成判据终态（2026-09-16 实测）
+
+| # | 判据 | 实测 | 证据 |
+|---|---|---|---|
+| 1 | `doc-check` 无未豁免违规 | ✅ **exit 0** | 六查 facts / links / orphans / archive **四栏整栏消失**；size 仅剩 1 条**永久**豁免（CODELY.md）；账目卫生栏消失（无闲置豁免） |
+| 2 | L0 ≤32KB/文件 且进上下文 | ✅ **19291 B 合计**（CLAUDE.md 15753 + AGENTS.md 3538）/ 预算 65536 B = 29% | 改造前 74242 B（AGENTS.md 被 harness 整份丢弃） |
+| 3 | 断链 0 · 索引单元格 ≤500 · 单行 ≤1000 | ✅ | links 栏 0；`plans/README` 最长单元格 373 / 最长行 462；全仓仅 CODELY.md 一条永久豁免长行 |
+| 4 | `plans/` 只剩在办项 | ✅ | 32 件竣工件已归档（P3 21 + P3b 11）；余 45 份 = 在办线 + 6 件「代码竣工但真机欠账在办」（欠账逐行在 `plans/README.md` 欠账表） |
+| 5 | 事实有真源 | ✅ 8 条跨文档标量（fields/kernel/products/first-party/domains/两道契约版本/壳方法/默认工具）gate-enforced + 生成物 doc-sync 对拍 | `docs/facts.generated.md`；新增事实 = `doc-facts.cjs` 加解析器 + `doc-check.cjs` 加断言。**报道层**另有 114 行「未登记候选」（集中在 `provider-system-spec` / `landmine-map` / `session-persistence-audit` / 事故报告等散文，多为举例数字）——不上牙，下一批归并 |
+| 6 | 没读过历史的 Agent 能接手 | ✅ | 入口链 = L0（CLAUDE.md 规则+门禁+指针）→ L1（CONVENTIONS/INVARIANTS/ADR）→ L2（ARCHITECTURE）→ 索引（`docs/README.md` 两轴 + `plans/README.md` 现状） |
+
+### 4.6 已知边界（下一批，不在本轮判据内）
+
+1. **archive 查的观察窗 = 头部 15 行字面量**：本批 11 件就是被它漏掉的。可加强（扩窗 / 认「状态：…竣工」句式），
+   但那会改门禁语义并把上面那 6 件在办件误判 ⇒ **留给下一批连同归档判断一起做**。
+2. **21 处代码注释里的旧计划路径**（`src-ui/src/agent/**`、`src-ui/tests/**`、`src-tauri/src/app/mod.rs` 等）——
+   不是 markdown 链接、不破门禁，但现状已失效；属禁改区（本轮只动文档面），随下次触到该文件时顺手订正。
+3. **对外发布面两处待用户拍板**（已记 `docs/landmine-map.md` 第八批）：`release-bin/` 缺失致 release staging 断链（B3）·
+   `dsh-bundle/viewer` 构建链已断。
+4. **树内 README 顾问查**：13 份 `src/**/README.md` 走「报道不上牙」通道（改代码的 commit 不该被文档债拦住），
+   现为 0 问题；是否上牙待定。
 
 ## 5. 门禁用法与维护纪律
 
