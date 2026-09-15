@@ -22,9 +22,15 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 32;
+export const OPEN_SURFACE_CONTRACT_VERSION = 33;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v33（2026-09-15）会话持久化 seam 权威翻转（Phase 3b）：delete_volume 退役
+ *  （墓碑重写 deleted:true 是「快照即存储」时代的占位手段——权威翻转后
+ *  「文件不在 = 卷不存在」），新增 delete_log（真删日志 + 投影缓存）。
+ *  **对外可感知**：第三方会话后端 provider 应实现 delete_log 并退役 delete_volume；
+ *  同版消费面：.ndjson 成为卷本体（list/scan/剪枝/删除 全按日志认卷），
+ *  .json 降级为带 {seq, ver} 的 UI 投影缓存（陈旧即重建，不再当权威读）。
  *  v32（2026-09-15）会话持久化 seam 动作面扩展（DSH 参照换轨 Phase 1）：
  *  `SESSION_PERSIST_ACTIONS` 由四动作（read/list/save/delete_volume）扩为八动作
  *  ——新增事件日志四动作 `read_log` / `write_log` / `append_events`（durable：

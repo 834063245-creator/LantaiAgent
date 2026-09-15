@@ -13,6 +13,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from '../src/app/shell-store';
 import { useToastStore } from '../src/state/toast-store';
+import { logText } from './helpers/session-files';
 
 // fs 域收口（2026-09-04）：会话恢复 I/O 经 kernelListDirectory/kernelReadFileRaw
 // （rpc-contract 具名 helper，内部直呼 fs_cap）——mock 站到 helper 层（不再
@@ -76,19 +77,17 @@ await ensureProductionChannelsBooted();
 const WS = 'D:/ws';
 const WS_SESSIONS = 'D:/ws/.lantai/sessions';
 
-/** 磁盘卷 7（本工作区会话根）。 */
-function volumeJson(): string {
-  return JSON.stringify({
-    id: 7,
-    label: '历史卷',
-    savedAt: new Date().toISOString(),
-    messages: [
+/** 磁盘卷 7（本工作区会话根）——Phase 3b：卷本体 = 事件日志（.ndjson）。 */
+function volumeLog(): string {
+  return logText(
+    7,
+    [
       { role: 'system', content: 'sys' },
       { role: 'user', content: '之前的问题' },
       { role: 'assistant', content: '之前的回答' },
     ],
-    tokensUsed: 42,
-  });
+    '历史卷',
+  );
 }
 
 /** 工作区会话根磁盘预置：{WS}/.lantai/sessions 有 7.json（恢复 = 扫描推导，
@@ -101,7 +100,7 @@ function mockWorkspaceDisk(): void {
   k.fs.writes.length = 0;
   k.fs.lists.length = 0;
   k.fs.fail = {};
-  k.fs.setFile(`${WS_SESSIONS}/7.json`, volumeJson());
+  k.fs.setFile(`${WS_SESSIONS}/7.ndjson`, volumeLog());
 }
 
 async function drain(times = 10): Promise<void> {

@@ -174,34 +174,51 @@
 
 ### Phase 3 —— 收尾：快照降级为缓存 + 删除旧恢复面
 
-> **施工状态（2026-09-15）**：Phase 3a（采用原语）已落地并提交；Phase 3b（读路径
-> 翻转）待下一批，改动面见下（照此执行即可，不需重新推导）。
+> **竣工（2026-09-15）**：3a（采用原语）+ 3b（读路径翻转）均已落地并提交。
+> 终态一句话：**`.ndjson` 事件日志 = 卷本体与内容真源；`.json` = 带 `{seq, ver}` 的
+> UI 投影缓存（陈旧即不采信、重建，DSH「possibly stale but never wrong」）。**
 
-**3a 已完成（采用原语）**：
-- `session/reset` 新增 `reason: 'adopt'`，投影语义 = **只重设头部 system 提示、
-  尾部历史保留**（不产全文副本——整段替换要把全部消息再写一遍，每次开卷 +1 份
-  全文，与 append-only 增量背道而驰）；
+**3a（采用原语，已竣工）**：
+- `session/reset` 新增 `reason: 'adopt'`：只重设头部 system 提示、尾部历史保留
+  （不产全文副本——整段替换要把全部消息再写一遍，每次开卷 +1 份全文）；
 - `Agent.adoptSessionLog(systemPrompt)`：发一条 adopt 事件 + 内存投影 =
-  `deriveMessages()`（复用既有 `_replaceSession` 入口 ⇒ **不动 phase-5 T0 变异
-  入口白名单**）；
-- 测试 `tests/session-log-adopt.test.ts`（3 例）：投影只换头 / Agent 采用后
-  in-memory == deriveMessages / 零漂移（既有 reason 仍整段替换）。
+  `deriveMessages()`（复用既有 `_replaceSession` 入口 ⇒ 不动 phase-5 T0 变异白名单）；
+- 测试 `tests/session-log-adopt.test.ts`（3 例）。
 
-**3b 剩余（读路径翻转，下一批）**：
-1. `session-log-store`：新增只读 `readVolumeLogMessages(root,id)`（扫描 + 补悬空
-   调用 + `SessionLog.replay` → 消息序列），**不写盘**；
-2. `chat-session.readVolumeData`：**日志优先**——有日志 → `messages = 日志派生`，
-   `.json` 只当 UI 投影缓存（`uiMessages`/`tokens`/`compose`/`label`），且缓存带
-   `{ver, seq}`；`cache.seq < 日志 lastSeq` = 陈旧 → 不用快照（走既有
-   `rebuildMessagesFromMessages` 重建），即 DSH 那句「possibly stale but never
-   wrong」的落地；无日志 → 卷不存在（旧 `.json` 卷不做兼容读——用户拍板）；
-3. 开卷路径：`openSessionLog` 采用成功后调 `agent.adoptSessionLog(...)` 取代
-   `setSession([...freshSys, ...快照 messages])`；
-4. 卷枚举/删除换轨：`listSavedSessions`/`scanMaxSessionId`/画布剪枝按 `.ndjson`
-   认卷；`deleteSessionFile` 真删日志（seam 加 `delete_log` 动作），墓碑语义退役；
-5. `writeSessionSnapshot` 增 `ver`/`seq` 字段（缓存新鲜度判据）；
-6. 测试面：`chat-session.test.ts` 等 13 个文件 / 108 例里凡以 `.json` 快照为
-   权威的断言按「行为退役 → 同批删除 / 行为新增 → 从用户操作序列新写」处理。
+**3b（读路径翻转，已竣工）**：
+1. `session-log-store.readVolumeLogMessages`：只读（扫描 + 补悬空调用 + replay →
+   消息序列）——卷内容真源的读面；
+2. `chat-session.readVolumeData`：**日志优先**；缓存 `seq < 日志 lastSeq` = 陈旧 →
+   不采信 UI 快照（走既有 `rebuildMessagesFromMessages` 重建）；**无日志 = 卷不存在**
+   （旧 `.json` 卷不做兼容读——用户拍板）；
+3. 开卷路径：`openSessionLog` 采用成功 → `agent.adoptSessionLog(...)`（不再整段
+   `setSession`）；
+4. 卷枚举/删除换轨：`scanMaxSessionId` / `listSavedSessions` / 画布剪枝
+   （`chat-core.restoreCanvasSpread`）全按 `.ndjson` 认卷；`deleteSessionFile` 走新
+   seam 动作 `delete_log`（真删日志 + 缓存），**墓碑语义退役**（`delete_volume`
+   下架——「文件不在 = 卷不存在」）；缓存写增 `{seq, ver}`；
+5. 契约手续（四步同 commit）：`OPEN_SURFACE_CONTRACT_VERSION` 32 → 33 + 文档变更
+   记录 + 指纹重生成 + 宿主面基线重生成；
+6. 测试面：新增 `tests/helpers/session-files.ts`（`logText` / `cacheText` 单一真源），
+   13 个文件里「以 `.json` 快照为权威」的夹具与断言按「行为退役 → 同批改写 / 行为新增
+   → 按用户操作序列新写」处置（chat-session / sessions-seam / session-restore-snapshot /
+   send-stream-corruption / no-key-cold-start / session-unify-u3 / session-repro-ghost-volume /
+   workspace-flip-b2）。
+
+### 换轨后仍留的口子（不属本计划范围，另立）
+
+1. **触发点 B（工具副作用前检查点）未接线**——需要把 `tool/call` 审计事件移到
+   **分发时**落（现在在流收尾后落：兰台的执行器在流期间就跑了工具，所以日志里
+   `tool/call` 晚于副作用）。落点 = `agent/streaming-executor.ts` 的派发点 + 一个
+   异步 pre-dispatch flush 面（现有 `tool/guard|preflight` 都是同步钩子，需要新面）。
+   Phase 2 的恢复链已经把「最坏情况」兜住（已分发的悬空调用补 `TOOL_OUTCOME_UNKNOWN`
+   并提示模型别盲重试），所以这条是**降低窗口**而不是堵死洞。
+2. **日志体量与压实**：兰台事件把整条 Message（含工具输出全文）写进行，日志体积
+   与 DSH 相比更粗（DSH 有 chunk packing + 可选 zstd）；当前无压实策略，
+   长会话日志会线性增长。需要时按 DSH `compactNow`/重写段做（**注意**：重写段会
+   引入新的原子性面，不能随手做）。
+3. **跨进程并发**：日志面假定单写者（单实例）；多实例同工作区仍会互相覆盖
+   （DSH 靠 revision 双 stat + 每会话链缓解，兰台尚未做跨进程裁决）。
 
 ---
 

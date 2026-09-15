@@ -7,6 +7,7 @@
 
 export {
   kernelAppendFileDurable,
+  kernelDeleteFile,
   kernelListDirectory,
   kernelReadFileRaw,
   kernelTruncateFile,

@@ -108,4 +108,10 @@ export interface ChatAgentHandle {
 
   /** 本卷的事件溯源日志（模型可见事实的真源——落盘面见 app/chat/session-log-store）。 */
   readonly sessionLog?: import('./session-log').SessionLog;
+
+  /** 采用日志里的磁盘历史（Phase 3b 权威翻转）——开卷路径专用：
+   *  只发一条头部重设事件（`session/reset{reason:'adopt'}`），内存投影 =
+   *  `deriveMessages()`，**不把历史整段写回日志**（否则每次开卷 +1 份全文）。
+   *  能力位（可选）：句柄不实现 = 调用方退回 setSession（旧实现/测试桩）。 */
+  adoptSessionLog?(systemPrompt: string): void;
 }

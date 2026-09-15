@@ -71,9 +71,10 @@ function fakeSessionProvider(calls: string[]): SessionPersistenceProvider {
             .map((p) => p.slice(root.length + 1)),
         );
       }
-      if (action === 'delete_volume') {
-        const v = vols.get(`${root}/${id}.json`);
-        if (v) v.deleted = true;
+      if (action === 'delete_log') {
+        // 真删（Phase 3b）：日志 + 投影缓存一并移除——「文件不在 = 卷不存在」
+        vols.delete(`${root}/${id}.json`);
+        vols.delete(`${root}/${id}.ndjson`);
         return 'null';
       }
       return '(memory-sessions)';
@@ -90,15 +91,16 @@ describe('sessionPersistence seam（D11 · C 动作面重设计）', () => {
 
   it('② 动作面钉：会话语义八动作（快照四 + 事件日志四；SESSION_PERSIST_ACTIONS 单一真源）', () => {
     expect([...SESSION_PERSIST_ACTIONS]).toEqual([
+      // 投影缓存三动作（UI 面——权威翻转后不再是卷本体）
       'read_volume',
       'list_volumes',
       'save_volume',
-      'delete_volume',
-      // 事件日志四动作（Phase 1 换轨，2026-09-15 DSH 参照移植）：读/物化/追加(durable)/截断
+      // 事件日志五动作（Phase 1/3b 换轨）：读/物化/追加(durable)/截断/真删
       'read_log',
       'write_log',
       'append_events',
       'truncate_log',
+      'delete_log',
     ]);
     expect(Object.keys(builtinSessionsProvider)).toEqual(['id', 'execute']);
     expect(builtinSessionsProvider.id).toBe('builtin/rust-sessions');
@@ -120,11 +122,11 @@ describe('sessionPersistence seam（D11 · C 动作面重设计）', () => {
     expect(readOut).toBe('{"id":7,"label":"x"}');
     const listOut = await sessionExecute('list_volumes', { root });
     expect(JSON.parse(listOut)).toEqual(['7.json']);
-    const delOut = await sessionExecute('delete_volume', { root, id: '7' });
+    const delOut = await sessionExecute('delete_log', { root, id: '7' });
     expect(delOut).toBe('null');
-    // 墓碑后 read 回落 null（消费方判空语义）
+    // 真删后 read 回落 null（「文件不在 = 卷不存在」）
     expect(await sessionExecute('read_volume', { root, id: '7' })).toBe('null');
-    expect(calls).toEqual(['save_volume', 'read_volume', 'list_volumes', 'delete_volume', 'read_volume']);
+    expect(calls).toEqual(['save_volume', 'read_volume', 'list_volumes', 'delete_log', 'read_volume']);
 
     dispose();
     // 回落：无 provider → 响亮报错（fake 消失后不再路由）
@@ -155,10 +157,11 @@ describe('sessionPersistence seam（D11 · C 动作面重设计）', () => {
     const listOut = await builtinSessionsProvider.execute('list_volumes', { root });
     expect(JSON.parse(listOut)).toEqual(['_active.json', '3.json', 'not-a-session.txt']);
 
-    // delete → 墓碑重写（deleted:true——消费方过滤契约形态）
-    const delOut = await builtinSessionsProvider.execute('delete_volume', { root, id: '3' });
+    // delete → 真删（日志 + 投影缓存一并移除；墓碑语义随权威翻转退役）
+    H.kernelFs?.fs.setFile(`${root}/3.ndjson`, '{"type":"session"}');
+    const delOut = await builtinSessionsProvider.execute('delete_log', { root, id: '3' });
     expect(delOut).toBe('null');
-    const tomb = JSON.parse(H.kernelFs?.fs.files.get(`${root}/3.json`) ?? 'null');
-    expect(tomb).toMatchObject({ id: 3, deleted: true });
+    expect(H.kernelFs?.fs.files.has(`${root}/3.json`)).toBe(false);
+    expect(H.kernelFs?.fs.files.has(`${root}/3.ndjson`)).toBe(false);
   });
 });

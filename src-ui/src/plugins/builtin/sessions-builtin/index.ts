@@ -25,6 +25,7 @@ import type {
 import type { Context } from '../../../cordis';
 import {
   kernelAppendFileDurable,
+  kernelDeleteFile,
   kernelListDirectory,
   kernelReadFileRaw,
   kernelTruncateFile,
@@ -62,13 +63,11 @@ async function executeViaKernel(action: SessionPersistAction, args: Record<strin
       await kernelWriteFile(`${root}/${id}.json`, String(args.data ?? ''));
       return 'null';
     }
-    case 'delete_volume': {
-      // 墓碑重写 deleted:true（D-2）——listSavedSessions 过滤契约与恢复剪枝
-      // 消费方依赖此形态，行为字节不变；SQLite provider 可真删
-      await kernelWriteFile(
-        `${root}/${id}.json`,
-        JSON.stringify({ id: Number(id), deleted: true, label: '', messages: [], savedAt: '' }),
-      );
+    case 'delete_log': {
+      // 卷真删（Phase 3b 权威翻转）：事件日志 + UI 投影缓存一并删除。墓碑语义
+      // 退役——「文件不在 = 卷不存在」（缺日志即判空），不再写 deleted:true 占位。
+      await kernelDeleteFile(`${root}/${id}.ndjson`).catch(() => '');
+      await kernelDeleteFile(`${root}/${id}.json`).catch(() => '');
       return 'null';
     }
     case 'append_events': {

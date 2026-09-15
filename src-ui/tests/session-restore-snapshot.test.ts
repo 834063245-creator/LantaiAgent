@@ -8,6 +8,7 @@
 //        旧 turnPair 残留清除（重发叠尸 = 恢复重复渲染的数据根因）。
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cacheText, logText } from './helpers/session-files';
 
 // fs 域收口（2026-09-04）：会话卷读经 kernelReadFileRaw（rpc-contract 具名
 // helper，内部直呼 fs_cap）——mock 站到 helper 层（不再拦 bridge +
@@ -100,55 +101,57 @@ function storingFactory() {
   return { factory: async () => agent, agent };
 }
 
-/** 带 UI 快照的卷文件：provider 形状无 err（抽象会话），快照保真（err/error 态在）。 */
-function snapshotVolumeFile() {
-  return JSON.stringify({
-    id: 71,
-    label: '快照卷',
-    savedAt: new Date().toISOString(),
-    messages: [
-      { role: 'system', content: 'sys' },
-      { role: 'user', content: 'hi' },
-      { role: 'assistant', content: 'ok', tool_calls: [{ id: 't1', name: 'fs_read', arguments: '{}' }] },
-      { role: 'tool', tool_call_id: 't1', content: '' },
-    ],
-    uiMessages: [
-      { _id: 'u1', role: 'user', text: 'hi', sessionIndex: 1 },
+const SNAPSHOT_VOLUME_MESSAGES = [
+  { role: 'system', content: 'sys' },
+  { role: 'user', content: 'hi' },
+  { role: 'assistant', content: 'ok', tool_calls: [{ id: 't1', name: 'fs_read', arguments: '{}' }] },
+  { role: 'tool', tool_call_id: 't1', content: '' },
+];
+
+/** UI 面（含工具 err/error 态）——Phase 3b 起它住在**投影缓存**里，不在卷本体。 */
+const SNAPSHOT_VOLUME_UI = [
+  { _id: 'u1', role: 'user', text: 'hi', sessionIndex: 1 },
+  {
+    _id: 'a1',
+    role: 'assistant',
+    status: 'done',
+    respondingTo: 'u1',
+    parts: [
       {
-        _id: 'a1',
-        role: 'assistant',
-        status: 'done',
-        respondingTo: 'u1',
-        parts: [
-          {
-            type: 'tool',
-            toolId: 't1',
-            name: 'fs_read',
-            args: '{}',
-            label: '读取文件',
-            readOnly: true,
-            status: 'error',
-            err: 'boom',
-          },
-        ],
+        type: 'tool',
+        toolId: 't1',
+        name: 'fs_read',
+        args: '{}',
+        label: '读取文件',
+        readOnly: true,
+        status: 'error',
+        err: 'boom',
       },
     ],
-    tokensUsed: 100,
-  });
+  },
+];
+
+/** 卷内容真源：事件日志（provider 形状——无 UI 富字段）。 */
+function snapshotVolumeLog() {
+  return logText(71, SNAPSHOT_VOLUME_MESSAGES, '快照卷');
 }
 
-/** 旧档卷文件：只有 provider 消息（无 uiMessages 字段）。 */
-function legacyVolumeFile() {
-  return JSON.stringify({
-    id: 72,
-    label: '旧档卷',
-    savedAt: new Date().toISOString(),
-    messages: [
+/** UI 投影缓存（新鲜：seq 给足）。 */
+function snapshotVolumeCache() {
+  return cacheText(71, { label: '快照卷', uiMessages: SNAPSHOT_VOLUME_UI, tokensUsed: 100 });
+}
+
+/** 旧档卷：只有 provider 消息，无投影缓存（走重建兜底）。 */
+function legacyVolumeLog() {
+  return logText(
+    72,
+    [
       { role: 'system', content: 'sys' },
       { role: 'user', content: '旧问' },
       { role: 'assistant', content: '旧答' },
     ],
-  });
+    '旧档卷',
+  );
 }
 
 describe('会话恢复采信现场快照（2026-08-31 会话流专项）', () => {
@@ -165,8 +168,9 @@ describe('会话恢复采信现场快照（2026-08-31 会话流专项）', () =>
   });
 
   it('带 UI 快照的卷恢复直接采信快照：工具 err/error 态/label 不被降采样', async () => {
-    // 预置快照卷 71（恢复路径 = 工作区会话根单读——kernelReadFileRaw 命中）
-    H.kernelFs!.fs.setFile(`${PROJ}/.lantai/sessions/71.json`, snapshotVolumeFile());
+    // Phase 3b：卷本体 = 事件日志（内容真源）；UI 面 = 投影缓存（两件都预置）
+    H.kernelFs!.fs.setFile(`${PROJ}/.lantai/sessions/71.ndjson`, snapshotVolumeLog());
+    H.kernelFs!.fs.setFile(`${PROJ}/.lantai/sessions/71.json`, snapshotVolumeCache());
 
     panel = createChatPanel();
     panel.setProjectPath(PROJ);
@@ -186,8 +190,8 @@ describe('会话恢复采信现场快照（2026-08-31 会话流专项）', () =>
   });
 
   it('旧档（无 uiMessages）仍走 provider 重建兜底，不炸', async () => {
-    // 预置旧档卷 72
-    H.kernelFs!.fs.setFile(`${PROJ}/.lantai/sessions/72.json`, legacyVolumeFile());
+    // 预置旧档卷 72（只有日志，无投影缓存 → 走 provider 重建兜底）
+    H.kernelFs!.fs.setFile(`${PROJ}/.lantai/sessions/72.ndjson`, legacyVolumeLog());
 
     panel = createChatPanel();
     panel.setProjectPath(PROJ);

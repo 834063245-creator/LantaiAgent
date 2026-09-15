@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from '../src/app/shell-store';
+import { cacheText, logText } from './helpers/session-files';
 
 // ── Mock bridge — all Tauri backend calls route through here ──
 const mockInvoke = vi.fn();
@@ -139,19 +140,8 @@ function createChatPanel(): ChatCore {
   return new ChatCore();
 }
 
-/** Mock invoke to return session data on disk for read_file_content calls.
- *  workspace（U1）：卷归属工作区——默认 D:/test（listSavedSessions 测试的
- *  查询路径），零目录退役后（Stage-5）无归属卷不再进列表。 */
-function mockSessionFile(id: number, messages: any[], label = `会话 ${id}`, savedAt?: string, workspace?: string) {
-  return JSON.stringify({
-    id,
-    label,
-    savedAt: savedAt || new Date().toISOString(),
-    messages,
-    workspace: workspace ?? 'D:/test',
-  });
-}
-
+// Phase 3b（权威翻转）：卷 = 事件日志 `.ndjson`；`.json` 只是 UI 投影缓存。
+// 夹具助手（与生产写面同形）在 `tests/helpers/session-files.ts`（多文件共用单一真源）。
 // ── Tests ──
 
 describe('ChatPanel session persistence', () => {
@@ -203,8 +193,8 @@ describe('ChatPanel session persistence', () => {
       panel = createChatPanel();
       mockInvoke.mockResolvedValue(
         JSON.stringify([
-          { name: '1.json', path: '/sessions/1.json', is_dir: false, children: null },
-          { name: '71.json', path: '/sessions/71.json', is_dir: false, children: null },
+          { name: '1.ndjson', path: '/sessions/1.ndjson', is_dir: false, children: null },
+          { name: '71.ndjson', path: '/sessions/71.ndjson', is_dir: false, children: null },
           { name: '_active.json', path: '/sessions/_active.json', is_dir: false, children: null },
           { name: 'not-json.txt', path: '/sessions/not-json.txt', is_dir: false, children: null },
         ]),
@@ -219,7 +209,7 @@ describe('ChatPanel session persistence', () => {
       mockInvoke.mockResolvedValue(
         JSON.stringify([
           { name: 'sub', path: '/sessions/sub', is_dir: true, children: [] },
-          { name: '3.json', path: '/sessions/3.json', is_dir: false, children: null },
+          { name: '3.ndjson', path: '/sessions/3.ndjson', is_dir: false, children: null },
           { name: 'readme.md', path: '/sessions/readme.md', is_dir: false, children: null },
         ]),
       );
@@ -270,14 +260,14 @@ describe('ChatPanel session persistence', () => {
       mockInvoke
         .mockResolvedValueOnce(
           JSON.stringify([
-            { name: '1.json', path: '/s/1.json', is_dir: false, children: null },
+            { name: '1.ndjson', path: '/s/1.ndjson', is_dir: false, children: null },
             { name: '_active.json', path: '/s/_active.json', is_dir: false, children: null },
-            { name: '40.json', path: '/s/40.json', is_dir: false, children: null },
+            { name: '40.ndjson', path: '/s/40.ndjson', is_dir: false, children: null },
           ]),
         )
         // read_file_content for 1.json
         .mockResolvedValueOnce(
-          mockSessionFile(1, [
+          logText(1, [
             { role: 'system', content: 'prompt' },
             { role: 'user', content: 'hello' },
           ]),
@@ -293,15 +283,19 @@ describe('ChatPanel session persistence', () => {
 
     it('returns sessions sorted by savedAt descending', async () => {
       panel = createChatPanel();
+      // Phase 3b：卷集 = 日志（`.ndjson`，卷本体）；label/savedAt 取投影缓存。
+      // 读面顺序：listing → 各卷日志（并行发起）→ 各卷缓存（日志读完后）。
       mockInvoke
         .mockResolvedValueOnce(
           JSON.stringify([
-            { name: '1.json', path: '/s/1.json', is_dir: false, children: null },
-            { name: '2.json', path: '/s/2.json', is_dir: false, children: null },
+            { name: '1.ndjson', path: '/s/1.ndjson', is_dir: false, children: null },
+            { name: '2.ndjson', path: '/s/2.ndjson', is_dir: false, children: null },
           ]),
         )
-        .mockResolvedValueOnce(mockSessionFile(1, [{ role: 'user', content: 'old' }], 'Old', '2026-01-01T00:00:00Z'))
-        .mockResolvedValueOnce(mockSessionFile(2, [{ role: 'user', content: 'new' }], 'New', '2026-06-30T00:00:00Z'));
+        .mockResolvedValueOnce(logText(1, [{ role: 'user', content: 'old' }], 'Old', '2026-01-01T00:00:00Z'))
+        .mockResolvedValueOnce(logText(2, [{ role: 'user', content: 'new' }], 'New', '2026-06-30T00:00:00Z'))
+        .mockResolvedValueOnce(cacheText(1, { label: 'Old', savedAt: '2026-01-01T00:00:00Z' }))
+        .mockResolvedValueOnce(cacheText(2, { label: 'New', savedAt: '2026-06-30T00:00:00Z' }));
 
       const result = await panel.listSavedSessions('D:/test');
       expect(result).toHaveLength(2);
@@ -311,7 +305,7 @@ describe('ChatPanel session persistence', () => {
 
     it('reads raw session files (fs(read) raw-default contract)', async () => {
       panel = createChatPanel();
-      const rawJSON = mockSessionFile(
+      const rawJSON = logText(
         46,
         [
           { role: 'system', content: 'sys' },
@@ -322,7 +316,9 @@ describe('ChatPanel session persistence', () => {
       );
 
       mockInvoke
-        .mockResolvedValueOnce(JSON.stringify([{ name: '46.json', path: '/s/46.json', is_dir: false, children: null }]))
+        .mockResolvedValueOnce(
+          JSON.stringify([{ name: '46.ndjson', path: '/s/46.ndjson', is_dir: false, children: null }]),
+        )
         // 2026-09 fs(read) 行号默认翻转后：kernelReadFile 缺省原文（P1-3 的
         // raw 模式升格为默认契约），无剥行号路径——mock 直返原文。
         .mockResolvedValueOnce(rawJSON);
@@ -339,14 +335,14 @@ describe('ChatPanel session persistence', () => {
       mockInvoke
         .mockResolvedValueOnce(
           JSON.stringify([
-            { name: '1.json', path: '/s/1.json', is_dir: false, children: null },
-            { name: '2.json', path: '/s/2.json', is_dir: false, children: null },
+            { name: '1.ndjson', path: '/s/1.ndjson', is_dir: false, children: null },
+            { name: '2.ndjson', path: '/s/2.ndjson', is_dir: false, children: null },
           ]),
         )
         // First read fails
         .mockRejectedValueOnce(new Error('permission denied'))
         // Second succeeds
-        .mockResolvedValueOnce(mockSessionFile(2, [{ role: 'user', content: 'ok' }]));
+        .mockResolvedValueOnce(logText(2, [{ role: 'user', content: 'ok' }]));
 
       const result = await panel.listSavedSessions('D:/test');
       expect(result).toHaveLength(1);
@@ -413,14 +409,14 @@ describe('ChatPanel session persistence', () => {
       panel = createChatPanel();
       // 5 session files — if serial, this takes 5x as long
       const files = [1, 2, 3, 4, 5].map((id) => ({
-        name: `${id}.json`,
+        name: `${id}.ndjson`,
         path: `/s/${id}.json`,
         is_dir: false,
         children: null,
       }));
       mockInvoke.mockResolvedValueOnce(JSON.stringify(files));
       for (const id of [1, 2, 3, 4, 5]) {
-        mockInvoke.mockResolvedValueOnce(mockSessionFile(id, [{ role: 'user', content: `msg-${id}` }]));
+        mockInvoke.mockResolvedValueOnce(logText(id, [{ role: 'user', content: `msg-${id}` }]));
       }
 
       const start = Date.now();
@@ -437,13 +433,13 @@ describe('ChatPanel session persistence', () => {
       panel = createChatPanel();
       mockInvoke.mockResolvedValueOnce(
         JSON.stringify([
-          { name: '1.json', path: '/s/1.json', is_dir: false, children: null },
-          { name: '2.json', path: '/s/2.json', is_dir: false, children: null },
+          { name: '1.ndjson', path: '/s/1.ndjson', is_dir: false, children: null },
+          { name: '2.ndjson', path: '/s/2.ndjson', is_dir: false, children: null },
         ]),
       );
       // First file hangs forever, second resolves
       mockInvoke.mockReturnValueOnce(new Promise(() => {})); // never resolves
-      mockInvoke.mockResolvedValueOnce(mockSessionFile(2, [{ role: 'user', content: 'ok' }]));
+      mockInvoke.mockResolvedValueOnce(logText(2, [{ role: 'user', content: 'ok' }]));
 
       vi.useFakeTimers();
       const promise = panel.listSavedSessions('D:/test');
@@ -460,17 +456,17 @@ describe('ChatPanel session persistence', () => {
       panel = createChatPanel();
       mockInvoke.mockResolvedValueOnce(
         JSON.stringify([
-          { name: '1.json', path: '/s/1.json', is_dir: false, children: null },
-          { name: '2.json', path: '/s/2.json', is_dir: false, children: null },
-          { name: '3.json', path: '/s/3.json', is_dir: false, children: null },
+          { name: '1.ndjson', path: '/s/1.ndjson', is_dir: false, children: null },
+          { name: '2.ndjson', path: '/s/2.ndjson', is_dir: false, children: null },
+          { name: '3.ndjson', path: '/s/3.ndjson', is_dir: false, children: null },
         ]),
       );
       // File 1: success
-      mockInvoke.mockResolvedValueOnce(mockSessionFile(1, [{ role: 'user', content: 'hello' }]));
+      mockInvoke.mockResolvedValueOnce(logText(1, [{ role: 'user', content: 'hello' }]));
       // File 2: error
       mockInvoke.mockRejectedValueOnce(new Error('corrupt file'));
       // File 3: success
-      mockInvoke.mockResolvedValueOnce(mockSessionFile(3, [{ role: 'user', content: 'world' }]));
+      mockInvoke.mockResolvedValueOnce(logText(3, [{ role: 'user', content: 'world' }]));
 
       const result = await panel.listSavedSessions('D:/test');
 
@@ -562,13 +558,13 @@ describe('ChatPanel session persistence', () => {
       );
 
       // 归零重建：从首页打开历史卷 = 工作区会话根单读（归属即存储位置）
-      const vol1 = mockSessionFile(1, mockSessionMessages, '测试会话', undefined, 'D:/test');
+      const vol1 = logText(1, mockSessionMessages, '测试会话', undefined, 'D:/test');
       mockInvoke.mockImplementation(
         fsCapAware((_cmd: string, payload: { method: string; params: Record<string, unknown> }) => {
           const { method, params } = payload;
           if (method === 'read_file_content') {
             const fp = params.file_path as string;
-            if (fp === 'D:/test/.lantai/sessions/1.json') return Promise.resolve(vol1);
+            if (fp === 'D:/test/.lantai/sessions/1.ndjson') return Promise.resolve(vol1);
             return Promise.reject(new Error('文件不存在'));
           }
           return Promise.resolve(null);
@@ -916,22 +912,17 @@ describe('ChatPanel session persistence', () => {
         fsCapAware((_cmd: string, payload: any) => {
           const { method, params } = payload;
           if (method === 'read_file_content') {
-            // 模拟磁盘上的会话文件（带旧 paper 字段——归零世界卷恒带归属）
+            // Phase 3b：卷内容 = 事件日志（`.ndjson`）。旧 `paper` 字段是**快照时代**
+            // 的字段，事件日志里根本无从承载——「不回灌」由结构保证（属性退役）。
             return Promise.resolve(
-              JSON.stringify({
-                id: 5,
-                label: '带纸面的卷',
-                savedAt: new Date().toISOString(),
-                workspace: PROJ,
-                messages: [
+              logText(
+                5,
+                [
                   { role: 'system', content: 'sys' },
                   { role: 'user', content: '旧消息' },
                 ],
-                paper: {
-                  pinned: { 'pb:m9:0': { x: 42, y: -42 } },
-                  strips: [{ id: 'strip1', text: '旧纸条', x: 10, y: -10, w: 480 }],
-                },
-              }),
+                '带纸面的卷',
+              ),
             );
           }
           void params;
@@ -988,17 +979,17 @@ describe('ChatPanel session persistence', () => {
                 }),
               );
             }
-            if (fp.endsWith('/5.json')) {
+            if (fp.endsWith('/5.ndjson')) {
+              // Phase 3b：卷内容 = 事件日志（不再是快照 JSON）
               return Promise.resolve(
-                JSON.stringify({
-                  id: 5,
-                  label: '卷五',
-                  workspace: PROJ,
-                  messages: [
+                logText(
+                  5,
+                  [
                     { role: 'system', content: 'sys' },
                     { role: 'user', content: 'hi' },
                   ],
-                }),
+                  '卷五',
+                ),
               );
             }
           }
@@ -1042,7 +1033,7 @@ describe('ChatPanel session persistence', () => {
             // 磁盘只有卷 5 的会话文件——卷 6 是幽灵（画布引用了它但文件不存在）
             return Promise.resolve(
               JSON.stringify([
-                { name: '5.json', path: 'D:/restore-test/.lantai/sessions/5.json', is_dir: false, children: null },
+                { name: '5.ndjson', path: 'D:/restore-test/.lantai/sessions/5.json', is_dir: false, children: null },
               ]),
             );
           }
@@ -1061,8 +1052,8 @@ describe('ChatPanel session persistence', () => {
                 }),
               );
             }
-            if (fp.endsWith('/5.json')) {
-              return Promise.resolve(mockSessionFile(5, [{ role: 'user', content: 'hi' }], '卷五', undefined, PROJ));
+            if (fp.endsWith('/5.ndjson')) {
+              return Promise.resolve(logText(5, [{ role: 'user', content: 'hi' }], '卷五', undefined, PROJ));
             }
           }
           return Promise.resolve('ok');
@@ -1310,7 +1301,7 @@ describe('ChatPanel session persistence', () => {
     function mockDualDirDisk(files: Record<string, string>) {
       const listDir = (dir: string) =>
         Object.keys(files)
-          .filter((p) => p.startsWith(`${dir}/`) && /\.json$/.test(p))
+          .filter((p) => p.startsWith(`${dir}/`) && !p.slice(dir.length + 1).includes('/'))
           .map((p) => {
             const name = p.split('/').pop() as string;
             return { name, path: p, is_dir: false, children: null };
@@ -1326,6 +1317,11 @@ describe('ChatPanel session persistence', () => {
           }
           if (method === 'write_file_content') {
             files[params.file_path as string] = params.content as string;
+            return Promise.resolve('ok');
+          }
+          if (method === 'delete_file_or_dir') {
+            // Phase 3b：delete_log 真删（日志 + 缓存各一次）——内存盘同步移除
+            delete files[params.path as string];
             return Promise.resolve('ok');
           }
           if (method === 'list_directory') {
@@ -1407,16 +1403,18 @@ describe('ChatPanel session persistence', () => {
 
     it('P0：重开卷按卷内记录的组合身份登记（工厂据此重建；校验与提示在装配面）', async () => {
       mockDualDirDisk({
-        [`${PROJ}/.lantai/sessions/7.json`]: JSON.stringify({
-          id: 7,
-          label: '有记录的卷',
-          savedAt: '2026-09-14T00:00:00Z',
-          messages: [
+        // Phase 3b：卷 = 事件日志；组合身份记在头行（旧快照的 presetId 字段随
+        // 权威翻转退役——记录载体从「快照字段」变为「日志头行」）
+        [`${PROJ}/.lantai/sessions/7.ndjson`]: logText(
+          7,
+          [
             { role: 'system', content: 'sys' },
             { role: 'user', content: '历史内容' },
           ],
-          presetId: 'ghost',
-        }),
+          '有记录的卷',
+          '2026-09-14T00:00:00Z',
+          'ghost',
+        ),
       });
       panel = createChatPanel();
       panel.setProjectPath(PROJ);
@@ -1431,12 +1429,12 @@ describe('ChatPanel session persistence', () => {
 
     it('P0：旧存档无 presetId 字段 → 无记录（不猜、不迁移）', async () => {
       mockDualDirDisk({
-        [`${PROJ}/.lantai/sessions/8.json`]: JSON.stringify({
-          id: 8,
-          label: '旧卷',
-          savedAt: '2026-09-01T00:00:00Z',
-          messages: [{ role: 'user', content: '旧内容' }],
-        }),
+        [`${PROJ}/.lantai/sessions/8.ndjson`]: logText(
+          8,
+          [{ role: 'user', content: '旧内容' }],
+          '旧卷',
+          '2026-09-01T00:00:00Z',
+        ),
       });
       panel = createChatPanel();
       panel.setProjectPath(PROJ);
@@ -1488,7 +1486,7 @@ describe('ChatPanel session persistence', () => {
     it('卷不在本工作区会话根 = 不存在（无回退面——单一路径）', async () => {
       mockDualDirDisk({
         // 卷躺在别处（旧全局位/他目录残留）——本工作区会话根无此卷，代码不回读
-        '/.lantai/sessions/5.json': mockSessionFile(
+        '/.lantai/sessions/5.json': logText(
           5,
           [
             { role: 'system', content: 'sys' },
@@ -1558,14 +1556,10 @@ describe('ChatPanel session persistence', () => {
       expect(aWrite.messages.some((m: any) => m.content === 'A 区内容')).toBe(true);
     });
 
-    it('deleteSessionFile 墓碑写 {PROJ}/.lantai/sessions/{id}.json（无 workspace 字段）', async () => {
+    it('deleteSessionFile 真删卷：日志 + 投影缓存一并删除（墓碑语义退役）', async () => {
       const files = mockDualDirDisk({
-        [`${PROJ}/.lantai/sessions/3.json`]: JSON.stringify({
-          id: 3,
-          label: '本区卷',
-          savedAt: '2026-08-24T00:00:00Z',
-          messages: [{ role: 'user', content: 'x' }],
-        }),
+        [`${PROJ}/.lantai/sessions/3.ndjson`]: logText(3, [{ role: 'user', content: 'x' }], '本区卷'),
+        [`${PROJ}/.lantai/sessions/3.json`]: cacheText(3, { label: '本区卷' }),
       });
       panel = createChatPanel();
       panel.setProjectPath(PROJ);
@@ -1578,9 +1572,10 @@ describe('ChatPanel session persistence', () => {
 
       await panel.deleteSessionFile(PROJ, 3);
 
-      const tomb = JSON.parse(files[`${PROJ}/.lantai/sessions/3.json`]);
-      expect(tomb.deleted).toBe(true);
-      expect(tomb).not.toHaveProperty('workspace'); // 归属 = 存储位置，无字段标签
+      // 卷本体（日志）与投影缓存都从内存盘消失——「文件不在 = 卷不存在」，
+      // 不再写 deleted:true 墓碑（墓碑是「快照即存储」时代的占位手段）。
+      expect(files[`${PROJ}/.lantai/sessions/3.ndjson`]).toBeUndefined();
+      expect(files[`${PROJ}/.lantai/sessions/3.json`]).toBeUndefined();
     });
   });
 });

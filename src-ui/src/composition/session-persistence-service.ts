@@ -36,18 +36,23 @@ import { seamDisabled } from './seam-resolution';
  *  追加（durable）与截断（断尾修复）见 DSH 参照移植计划）。运行时单一真源
  *  （sessions-seam.test ② 钉形与类型共用；变更 = 加数组元素 + provider 实现）。 */
 export const SESSION_PERSIST_ACTIONS = [
+  /** UI 投影缓存读（`{id}.json`——权威翻转后它只是缓存，不是卷本体）。 */
   'read_volume',
+  /** 会话根目录枚举（文件名数组；消费方按 `.ndjson` / `.json` 各自认面）。 */
   'list_volumes',
+  /** UI 投影缓存整体写（原子替换写）。 */
   'save_volume',
-  'delete_volume',
-  /** 事件日志读取（缺失 = 空串，不抛）——最小加载器用。 */
+  /** 事件日志读取（缺失 = 空串，不抛）——内容真源读面。 */
   'read_log',
   /** 事件日志整体物化（原子替换写）——首批「头行 + 全部事件」。 */
   'write_log',
   /** 事件日志追加（durable：返回即已 fsync）——写面单点，检查点即排空队列。 */
   'append_events',
-  /** 事件日志截断到字节偏移（断尾修复，Phase 2）。 */
+  /** 事件日志截断到字节偏移（断尾修复）。 */
   'truncate_log',
+  /** 卷真删（日志 + 投影缓存一并删除）——墓碑语义随权威翻转退役：
+   *  「文件不在 = 卷不存在」，不再需要写墓碑占位。 */
+  'delete_log',
 ] as const;
 
 export type SessionPersistAction = (typeof SESSION_PERSIST_ACTIONS)[number];

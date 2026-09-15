@@ -9,6 +9,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useShellStore } from '../src/app/shell-store';
+import { logText } from './helpers/session-files';
 
 // fs 域收口（2026-09-04）：会话卷 I/O 经 kernelReadFileRaw/kernelWriteFile/
 // kernelListDirectory（rpc-contract 具名 helper，内部直呼 fs_cap）——mock 站
@@ -123,17 +124,18 @@ afterEach(() => {
 describe('同工作区多卷语义（workspace-session-ownership-rework 重写）', () => {
   it('① 同工作区多卷并存：既有卷 1 + 续开卷 7（同一工作区会话根）', async () => {
     const fs = memDisk();
+    // Phase 3b：卷本体 = 事件日志（.ndjson）
     fs.setFile(
-      'D:/ws-b/.lantai/sessions/7.json',
-      JSON.stringify({
-        id: 7,
-        label: '本区卷',
-        savedAt: '2026-08-24T00:00:00Z',
-        messages: [
+      'D:/ws-b/.lantai/sessions/7.ndjson',
+      logText(
+        7,
+        [
           { role: 'system', content: 'sys' },
           { role: 'user', content: '本区卷内容' },
         ],
-      }),
+        '本区卷',
+        '2026-08-24T00:00:00Z',
+      ),
     );
 
     const panel = new ChatCore();

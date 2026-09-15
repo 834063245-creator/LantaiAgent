@@ -214,6 +214,28 @@ function parseHeader(line: string): SessionLogHeader | null {
 }
 
 /**
+ * 只读一卷的事件日志（不经 Agent、不写盘）——**权威翻转后的卷内容真源**（Phase 3b）。
+ *
+ * 扫描 → 补悬空工具调用（同 Phase 2 判据，但**不落盘**：盘点/列表面只读）→
+ * `SessionLog.replay` → `deriveMessages()`。缺日志/无事件返回 null（= 卷不存在）。
+ */
+export async function readVolumeLogMessages(
+  root: string,
+  id: number,
+): Promise<{
+  messages: import('../../provider/types').Message[];
+  lastSeq: number;
+  header: SessionLogHeader;
+} | null> {
+  const loaded = await loadSessionLogFile(root, id);
+  if (!loaded || loaded.events.length === 0) return null;
+  const { SessionLog } = await import('../../agent/session-log');
+  const closers = interruptedToolCallClosers(loaded.events);
+  const log = SessionLog.replay(closers.length > 0 ? [...loaded.events, ...closers] : loaded.events);
+  return { messages: log.deriveMessages(), lastSeq: log.lastSeq, header: loaded.header };
+}
+
+/**
  * 把一条会话日志接到盘上：订阅 `onEvent` → 写后队列 → durable append。
  * 幂等：同一 SessionLog 重复 attach 返回既有写面（不重复订阅、不并发两个队列）。
  */

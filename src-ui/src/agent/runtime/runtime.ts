@@ -176,6 +176,11 @@ class AgentHandleImpl implements AgentHandle {
     return this._agent.sessionLog;
   }
 
+  /** 采用日志里的磁盘历史（Phase 3b）：转发到 Agent.adoptSessionLog。 */
+  adoptSessionLog(systemPrompt: string): void {
+    this._agent.adoptSessionLog(systemPrompt);
+  }
+
   /** 绑定到指定会话的 board — 会话 id 在创建后才分配，由会话层在登记句柄时调用 */
   bindSession(sessionId: string): void {
     this._runtime._bindAgentSession(this._agent.id, sessionId);

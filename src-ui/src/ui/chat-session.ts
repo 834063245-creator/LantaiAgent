@@ -10,7 +10,7 @@ import type { ChatAgentHandle } from '../agent/chat-agent-handle';
 import { createExecState, type ExecStateInstance } from '../agent/execution-state';
 import { log } from '../agent/logger';
 import type { TokenLedgerSnapshot } from '../agent/token-meter/types';
-import { detachSessionLogStore, openSessionLog } from '../app/chat/session-log-store';
+import { detachSessionLogStore, openSessionLog, readVolumeLogMessages } from '../app/chat/session-log-store';
 import { sessionExecute } from '../composition/session-persistence-service';
 import type { Message } from '../provider/types';
 import { kernelWriteFile } from '../rpc-contract';
@@ -298,16 +298,23 @@ function hydrateSessionAgentVisible(ctx: SessionContext): void {
     });
 }
 
-/** 会话卷的事件日志接线（换轨 Phase 1 唯一入口）。
- *  在句柄刚到手、本轮尚未产生事件的窗口里调用：读盘 → 置回真源 → 接到盘上。
+/** 会话卷的事件日志接线（换轨唯一入口）。
+ *  在句柄刚到手、本轮尚未产生事件的窗口里调用：读盘 → 置回真源（+断尾修复+
+ *  补悬空工具调用）→ 接到盘上。返回 `adopted` = 日志里有磁盘历史（调用方据此走
+ *  `adoptSessionLog` 而不是整段 setSession）。
  *  句柄无 `sessionLog` 能力位（旧实现/测试桩）或工作区路径为空 = no-op（降级不炸）。 */
-async function seedVolumeLog(ctx: SessionContext, sid: number, agent: OwnedAgentHandle, label?: string): Promise<void> {
+async function seedVolumeLog(
+  ctx: SessionContext,
+  sid: number,
+  agent: OwnedAgentHandle,
+  label?: string,
+): Promise<{ adopted: boolean }> {
   const logInstance = agent.sessionLog;
-  if (!logInstance) return;
+  if (!logInstance) return { adopted: false };
   const projectPath = ctx.getProjectPath();
-  if (!projectPath) return;
+  if (!projectPath) return { adopted: false };
   try {
-    await openSessionLog(logInstance, {
+    const opened = await openSessionLog(logInstance, {
       root: workspaceSessionsDir(projectPath),
       sessionId: sid,
       header: {
@@ -320,9 +327,13 @@ async function seedVolumeLog(ctx: SessionContext, sid: number, agent: OwnedAgent
         cwd: projectPath,
       },
     });
+    return { adopted: opened.adopted };
   } catch (e) {
-    // 接线失败不挡会话（日志降级为「本轮不落盘」可见化）——但绝不静默
+    // 接线失败不挡会话（日志降级为「本轮不落盘」可见化）——但绝不静默。
+    // 格式版本拒读（SessionLogFormatUnsupportedError）也走这里：会话照常打开
+    // （内容退回快照面），「日志由更新版本写入」的事实已进 warn。
     log.warn('chat', `案卷 ${sid} 事件日志接线失败（本轮事件不落盘）`, { error: String(e) });
+    return { adopted: false };
   }
 }
 
@@ -348,7 +359,7 @@ export async function ensureSessionAgent(ctx: SessionContext): Promise<boolean> 
   // （openSessionLog：有日志→restoreInPlace+append；无日志→materialize），
   // 否则本轮 append 会与上一次运行的 seq 撞号（重放面判损坏）。
   const stForLabel = getChatStore(ctx.storeId).sess.getState();
-  await seedVolumeLog(ctx, sid, agent, stForLabel.sessions.find((s) => s.id === sid)?.label);
+  const seed = await seedVolumeLog(ctx, sid, agent, stForLabel.sessions.find((s) => s.id === sid)?.label);
   if (!isCurrentEpoch(epoch)) return false;
 
   // 会话内容回填：msgStore 的 ChatMessage 不是 provider 消息——从磁盘卷文件
@@ -365,7 +376,13 @@ export async function ensureSessionAgent(ctx: SessionContext): Promise<boolean> 
   if (!isCurrentEpoch(epoch)) return false;
 
   const freshSys = agent.getSession().filter((m: Message) => m.role === 'system');
-  agent.setSession([...freshSys, ...conv]);
+  if (seed.adopted) {
+    // **权威翻转（Phase 3b）**：日志已含磁盘历史 → 采用（一条头部重设事件），
+    // 不再把历史整段写回事件日志（那会每次开卷 +1 份全文）。
+    agent.adoptSessionLog?.(freshSys.map((m) => m.content ?? '').join('\n'));
+  } else {
+    agent.setSession([...freshSys, ...conv]);
+  }
 
   // 二次校验句柄仍缺席（在途期间可能被并行的另一路径补建/移除）
   if (agentSessionState.getAgent(ctx.storeId, sid)) {
@@ -607,7 +624,11 @@ export interface StoredSession {
    *  「模型可见 ⟺ 已记录」：组合决定模型看到哪些工具/段落，卷必须能自证。
    *  旧存档无此字段 = 未知（不猜、不编造；恢复期不校验）。 */
   presetId?: string;
-  deleted?: boolean;
+  /** 投影缓存新鲜度（Phase 3b 权威翻转）：写这份快照时事件日志的 lastSeq。
+   *  读面 `cache.seq >= 日志 lastSeq` 才算新鲜；陈旧 = 当没有这份快照（重建 UI 面）。 */
+  seq?: number;
+  /** 缓存格式版本（与事件日志 `version` 分开——缓存可随时丢弃重建）。 */
+  ver?: number;
   /** _active.json 跟踪文件字段（与单个会话文件形状不同） */
   lastId?: number;
   nextId?: number;
@@ -657,8 +678,8 @@ async function readVolumeJSON(projectPath: string, id: number): Promise<StoredSe
 /** 扫描本工作区会话目录，查找最大的数字会话 ID。无会话时返回 0。
  *  每工作区独立发号（workspace-session-ownership-rework 2026-08-27）——
  *  跨工作区撞号在结构上不可能（不同目录，天然隔离）。
- *  list_volumes 返回文件名数组（provider 侧滤目录）；_active.json 等保留名
- *  在消费方过滤（scanMax/listSavedSessions 既有语义保真）。 */
+ *  Phase 3b：**按 `.ndjson`（卷本体）认卷**；`.json` 只是投影缓存，不参与发号
+ *  （否则缓存文件会让号段虚高或多算已删卷）。 */
 export async function scanMaxSessionId(projectPath: string): Promise<number> {
   let maxId = 0;
   try {
@@ -668,8 +689,8 @@ export async function scanMaxSessionId(projectPath: string): Promise<number> {
     if (!Array.isArray(names)) return maxId;
     for (const n of names) {
       const name = typeof n === 'string' ? n : '';
-      if (!name || name === '_active.json' || name.startsWith('_')) continue;
-      const sid = parseInt(String(name).replace(/\.json$/, ''), 10);
+      if (!name || name.startsWith('_') || !name.endsWith('.ndjson')) continue;
+      const sid = parseInt(name.replace(/\.ndjson$/, ''), 10);
       if (!Number.isNaN(sid) && sid > maxId) maxId = sid;
     }
   } catch {
@@ -696,7 +717,13 @@ interface SessionSnapshotData {
   compose?: ComposeSessionPrefs;
   /** 组合身份（P0 记录闭环）：见 StoredSession.presetId。 */
   presetId?: string;
+  /** 投影缓存新鲜度（Phase 3b）：见 StoredSession.seq。 */
+  seq?: number;
+  ver?: number;
 }
+
+/** 投影缓存的格式版本（与事件日志 version 分开——缓存可丢弃重建）。 */
+const SESSION_CACHE_VERSION = 1;
 
 /** 将已捕获的会话快照写入存储（save_volume——默认 provider 落工作区会话根
  *  {projectPath}/.lantai/sessions/{id}.json；替代 provider 自管存储）。
@@ -845,6 +872,9 @@ export async function saveActiveSession(ctx: SessionContext, projectPath: string
     // 能力位；句柄不实现（旧实现/测试桩）= **无记录**（字段省略）——不猜全局默认，
     // 「卷记录的是这一卷当时跑的组合」，不是别人的选择。
     presetId: agent.presetId,
+    // 投影缓存新鲜度（Phase 3b）：写盘时刻的事件日志头序号——读面据此判陈旧
+    seq: agent.sessionLog?.lastSeq ?? 0,
+    ver: SESSION_CACHE_VERSION,
   };
 
   try {
@@ -899,6 +929,9 @@ export async function saveSessionById(
       compose: getComposeStore(ctx.storeId).getState().getPrefs(String(sid)),
       // 组合身份随卷落盘（与活跃卷同构；能力位缺省 = 无记录）
       presetId: agent.presetId,
+      // 投影缓存新鲜度（与活跃卷同构）
+      seq: agent.sessionLog?.lastSeq ?? 0,
+      ver: SESSION_CACHE_VERSION,
     });
     return 'saved';
   } catch {
@@ -1007,23 +1040,45 @@ export async function autoRestoreLastSession(ctx: SessionContext, projectPath: s
 
 // ── 摊开集多卷恢复（扫描推导；session-ledger L0 语义承继面）─────────────
 
-/** 恢复路径的卷数据（workspace-session-ownership-rework：工作区会话根单读
- *  + 墓碑/空卷过滤；localStorage 覆盖已拆——磁盘是唯一事实源）。
+/** 恢复路径的卷数据（**Phase 3b 权威翻转**）：**事件日志 = 卷本体与内容真源**，
+ *  `.json` 降级为 UI 投影缓存（`uiMessages`/tokens/compose/label）。
+ *  · 无日志 = 卷不存在（旧 `.json` 卷不做兼容读——用户 2026-09-15 拍板）；
+ *  · 缓存陈旧（`cache.seq < 日志 lastSeq`）→ **不采信快照**，UI 面走既有
+ *    `rebuildMessagesFromMessages` 重建（DSH「possibly stale but never wrong」）。
  *  P0-3（2026-09-02）导出：restoreCanvasSpread 两阶段恢复的并行读面。 */
 export async function readVolumeData(projectPath: string, id: number): Promise<StoredSession | null> {
-  const data = await readVolumeJSON(projectPath, id);
-  if (!data || data.deleted) return null;
-  // 空卷（无任何非系统消息）不进摊开集——与「空卷不落盘」同规，
-  // 避免重启后摊开集里出现只有系统提示的尸体卷。
-  if (!data.messages?.some((m) => m.role !== 'system')) return null;
-  return data;
+  let logRead: Awaited<ReturnType<typeof readVolumeLogMessages>> = null;
+  try {
+    logRead = await readVolumeLogMessages(workspaceSessionsDir(projectPath), id);
+  } catch (e) {
+    console.error('[chat] readVolumeData: 事件日志读取失败', id, e);
+    return null;
+  }
+  if (!logRead) return null;
+  // 空卷（无任何非系统消息）不进摊开集——与「空卷不落盘」同规
+  if (!logRead.messages.some((m) => m.role !== 'system')) return null;
+  const cache = await readVolumeJSON(projectPath, id);
+  const fresh = cache !== null && typeof cache.seq === 'number' && cache.seq >= logRead.lastSeq;
+  return {
+    id,
+    label: cache?.label || logRead.header.label || `案卷 ${id}`,
+    savedAt: cache?.savedAt ?? '',
+    messages: logRead.messages,
+    uiMessages: fresh ? cache?.uiMessages : undefined,
+    tokensUsed: cache?.tokensUsed,
+    tokens: fresh ? cache?.tokens : undefined,
+    compose: cache?.compose,
+    presetId: cache?.presetId ?? logRead.header.presetId,
+    seq: logRead.lastSeq,
+    ver: 1,
+  };
 }
 
 /** 扫描本工作区会话根 — 无需 Agent。单目录（{workspace}/.lantai/sessions/），
- *  目录内文件天然属于本工作区（归属 = 存储位置，无 workspace 字段过滤）；
- *  墓碑与坏卷过滤。恢复推导与发号对账共用。
- *  seam：list_volumes 取文件名数组（provider 滤目录）→ 逐 id read_volume
- *  （同旧「list 后逐文件读」链——路径构造收敛在 provider 内部）。 */
+ *  目录内文件天然属于本工作区（归属 = 存储位置，无 workspace 字段过滤）。
+ *  Phase 3b：**卷集 = `.ndjson` 文件集**（卷本体）；label/savedAt 取投影缓存，
+ *  msgCount 由事件日志派生（内容真源）——缓存缺失/陈旧不影响「卷存不存在」。
+ *  读取失败的卷**可见化**（console.error + 明示原因），不再静默从列表消失。 */
 export async function listSavedSessions(
   _ctx: SessionContext,
   projectPath: string,
@@ -1044,11 +1099,11 @@ export async function listSavedSessions(
     return [];
   }
 
-  // 过滤有效的 JSON 会话文件（跳过下划线开头的保留名；provider 已滤目录）
+  // 卷集 = .ndjson（跳过下划线开头的保留名；provider 已滤目录）
   const targets = names
-    .filter((name) => name.endsWith('.json') && !name.startsWith('_'))
+    .filter((name) => name.endsWith('.ndjson') && !name.startsWith('_'))
     .map((name) => {
-      const sid = parseInt(name.replace('.json', ''), 10);
+      const sid = parseInt(name.replace('.ndjson', ''), 10);
       return { name, sid: Number.isNaN(sid) ? null : sid };
     })
     .filter((t): t is { name: string; sid: number } => t.sid !== null);
@@ -1056,16 +1111,17 @@ export async function listSavedSessions(
   const TIMEOUT_MS = 10_000;
   const readPromises: Promise<SessionEntry | null>[] = targets.map(async ({ name, sid }) => {
     try {
-      const d = await readVolumeJSON(projectPath, sid);
-      if (!d || d.deleted) return null;
+      const data = await readVolumeData(projectPath, sid);
+      if (!data) return null;
       return {
-        id: d.id || sid,
-        label: d.label || `案卷 ${sid}`,
-        msgCount: (d.messages ?? []).filter((m) => m.role !== 'system').length,
-        savedAt: d.savedAt || '',
+        id: data.id || sid,
+        label: data.label || `案卷 ${sid}`,
+        msgCount: (data.messages ?? []).filter((m) => m.role !== 'system').length,
+        savedAt: data.savedAt || '',
       };
     } catch (err) {
-      console.error(`[chat] listSavedSessions: failed to read ${name}`, err);
+      // 读取失败必须可见（M9：此前静默少一卷）——侧栏表现为条目标红由 UI 面决定
+      console.error(`[chat] listSavedSessions: 卷 ${name} 读取失败（已跳过）`, err);
       return null;
     }
   });
@@ -1139,11 +1195,17 @@ export async function loadSessionFromDisk(
   // 事件日志接线（换轨 Phase 1）：**必须先于 setSession** —— 把日志置回磁盘真源
   // （读 .ndjson → restoreInPlace + append 姿态），随后 setSession 的 session/reset
   // 才能以「新事实」接在旧事件之后（日志单调增长，崩溃尾巴不被覆写）。
-  if (newAgent) await seedVolumeLog(ctx, data.id || sessionId, newAgent, data.label);
+  const seed = newAgent ? await seedVolumeLog(ctx, data.id || sessionId, newAgent, data.label) : { adopted: false };
 
   const conv = (data.messages as Message[]).filter((m) => m.role !== 'system');
   const freshSys = newAgent?.getSession().filter((m: Message) => m.role === 'system') ?? [];
-  if (newAgent) newAgent.setSession([...freshSys, ...conv]);
+  if (newAgent && seed.adopted) {
+    // **权威翻转（Phase 3b）**：日志 = 内容真源 → 采用（头部重设一条事件），
+    // conv（日志派生）不再整段写回日志；旧路径（无日志 = 新卷/空日志）才 setSession。
+    newAgent.adoptSessionLog?.(freshSys.map((m) => m.content ?? '').join('\n'));
+  } else if (newAgent) {
+    newAgent.setSession([...freshSys, ...conv]);
+  }
 
   const firstUser = conv.find((m: Message) => m.role === 'user' && !isInternalMessage(m.content));
   const st1 = getChatStore(ctx.storeId).sess.getState();
@@ -1348,7 +1410,7 @@ export async function batchRestoreSessions(
  *  消费方过滤契约依赖此形态，行为字节不变；SQLite provider 可真删）。 */
 export async function deleteSessionFile(ctx: SessionContext, projectPath: string, sessionId: number): Promise<void> {
   try {
-    await sessionExecute('delete_volume', {
+    await sessionExecute('delete_log', {
       root: workspaceSessionsDir(projectPath),
       id: String(sessionId),
     });

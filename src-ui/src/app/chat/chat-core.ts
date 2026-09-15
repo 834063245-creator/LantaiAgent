@@ -850,15 +850,16 @@ export class ChatCore {
     for (const { sid, data } of readResults) readBySid.set(sid, data);
 
     if (volumeNames) {
-      // 文件名级存在性（剪枝面 1）：摊开/钉源卷的 .json 文件不在目录里 = 幽灵。
+      // 文件名级存在性（剪枝面 1）：摊开/钉源卷的**事件日志**（`.ndjson`——Phase 3b
+      // 起卷本体）不在目录里 = 幽灵。`.json` 只是投影缓存，不参与存在性判定。
       // #1 修复的保守语义保留：目录列表失败 = 不剪枝（避免误删真实卷）。
       const fileIds = new Set<number>();
       for (const name of volumeNames) {
-        if (!name.endsWith('.json') || name.startsWith('_')) continue;
-        const n = parseInt(name.replace('.json', ''), 10);
+        if (!name.endsWith('.ndjson') || name.startsWith('_')) continue;
+        const n = parseInt(name.replace('.ndjson', ''), 10);
         if (!Number.isNaN(n)) fileIds.add(n);
       }
-      // 读结果级有效性（剪枝面 2）：文件在但 readVolumeData null = 墓碑/空卷——
+      // 读结果级有效性（剪枝面 2）：文件在但 readVolumeData null = 空卷/坏日志——
       // 从摊开集剪掉（替代旧 listSavedSessions 的墓碑过滤，不再弹读取失败 toast）
       const phantom = Object.keys(canvasState0.spread).filter((sid) => {
         const n = Number(sid);

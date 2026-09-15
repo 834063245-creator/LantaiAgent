@@ -11,6 +11,7 @@
 // helper 层（不再拦 bridge + legacyDispatchShim 翻信封）。
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { logText } from './helpers/session-files';
 
 const H = vi.hoisted(() => ({
   kernelFs: null as null | ReturnType<typeof import('./helpers/kernel-fs').createKernelFsMock>,
@@ -53,17 +54,18 @@ describe('实机复现：冷启动装配后点开旧卷不得凭空多卷', () =
   it('setAgent（冷启动装配）→ loadSessionFromDisk（点旧卷）→ 摊开集恰一卷', async () => {
     // 磁盘：本工作区会话根一卷旧卷（id 7）——workspace-session-ownership-rework
     // 归属 = 存储位置（{ws}/.lantai/sessions/7.json）
+    // Phase 3b：卷本体 = 事件日志（.ndjson）
     H.kernelFs!.fs.setFile(
-      'D:/real-ws/.lantai/sessions/7.json',
-      JSON.stringify({
-        id: 7,
-        label: '旧卷',
-        savedAt: '2026-08-25T09:00:00.000Z',
-        messages: [
+      'D:/real-ws/.lantai/sessions/7.ndjson',
+      logText(
+        7,
+        [
           { role: 'system', content: 'sys' },
           { role: 'user', content: '旧卷内容' },
         ],
-      }),
+        '旧卷',
+        '2026-08-25T09:00:00.000Z',
+      ),
     );
 
     // 冷启动：工作区装配（switchWorkspace → setupAgent → setAgent）

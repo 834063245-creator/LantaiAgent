@@ -11,6 +11,8 @@
 //   ④ translate 产物块 id 唯一（React key 层无重复）
 // mock 面沿用 session-restore-snapshot.test.ts（kernel-fs 内存盘 + 生产 seam 装配）。
 
+import { cacheText, logText } from './helpers/session-files';
+
 const H = vi.hoisted(() => ({
   kernelFs: null as null | ReturnType<typeof import('./helpers/kernel-fs').createKernelFsMock>,
 }));
@@ -180,35 +182,41 @@ function streamingFactory(panel: ChatCore, opts?: { factoryDelayMs?: number; pen
   };
 }
 
-/** 旧档卷（无 uiMessages——实机真实形态：C8 合卷剥离）：两轮对话。 */
+/** 旧档卷（无 UI 投影缓存——实机真实形态：C8 合卷剥离）：两轮对话。
+ *  Phase 3b：卷本体 = 事件日志（`.ndjson`）。 */
 function volumeFile(id: number, label: string): string {
-  return JSON.stringify({
+  return logText(
     id,
-    label,
-    savedAt: new Date().toISOString(),
-    messages: [
+    [
       { role: 'system', content: 'sys' },
       { role: 'user', content: '旧问一' },
       { role: 'assistant', content: '旧答一' },
       { role: 'user', content: '旧问二' },
       { role: 'assistant', content: '旧答二', reasoning_content: '旧思考' },
     ],
-    tokensUsed: 10,
-  });
+    label,
+  );
 }
 
-/** 现代快照卷（带 uiMessages——运行中退出/崩溃后的摊开集恢复形态）：
- *  uiMessages 里的 _id 是上一运行铸的旧号（m1/m2）。 */
+/** 现代卷（带 UI 投影缓存——运行中退出/崩溃后的摊开集恢复形态）：
+ *  缓存里的 _id 是上一运行铸的旧号（m1/m2）；日志 = 内容真源。 */
 function snapshotVolumeFile(id: number, label: string): string {
-  return JSON.stringify({
+  return logText(
     id,
-    label,
-    savedAt: new Date().toISOString(),
-    messages: [
+    [
       { role: 'system', content: 'sys' },
       { role: 'user', content: '旧问一' },
       { role: 'assistant', content: '旧答一' },
     ],
+    label,
+  );
+}
+
+/** UI 投影缓存（与 snapshotVolumeFile 配套；新鲜 seq 给足）。 */
+function snapshotVolumeCache(id: number, label: string): string {
+  return cacheText(id, {
+    label,
+    tokensUsed: 10,
     uiMessages: [
       { _id: 'm1', role: 'user', text: '旧问一', sessionIndex: 1 },
       {
@@ -219,12 +227,11 @@ function snapshotVolumeFile(id: number, label: string): string {
         parts: [{ type: 'text', text: '旧答一', finalised: true }],
       },
     ],
-    tokensUsed: 10,
   });
 }
 
 function seedVolumeFile(id: number, label: string): void {
-  H.kernelFs!.fs.setFile(`${PROJ}/.lantai/sessions/${id}.json`, volumeFile(id, label));
+  H.kernelFs!.fs.setFile(`${PROJ}/.lantai/sessions/${id}.ndjson`, volumeFile(id, label));
 }
 
 function freshPanel(factoryDelayMs?: number, pendingRuns?: Array<() => void>): ChatCore {
@@ -353,7 +360,8 @@ describe('发送链路不变量（反馈环）', () => {
   );
 
   it('重启形态：快照卷回填旧 id + counter 归零 → 发消息不撞号、流不冲坏（主症状）', async () => {
-    H.kernelFs!.fs.setFile(`${PROJ}/.lantai/sessions/50.json`, snapshotVolumeFile(50, '快照卷'));
+    H.kernelFs!.fs.setFile(`${PROJ}/.lantai/sessions/50.ndjson`, snapshotVolumeFile(50, '快照卷'));
+    H.kernelFs!.fs.setFile(`${PROJ}/.lantai/sessions/50.json`, snapshotVolumeCache(50, '快照卷'));
     // 模拟重启：全局发号器归零（上一运行的 uiMessages 仍带旧 id m1/m2）
     getChatStore('__default__').sess.setState({ msgIdSeq: 0 });
     const panel = freshPanel();
@@ -383,7 +391,19 @@ describe('发送链路不变量（反馈环）', () => {
     // 生产触发面 = restoreCanvasSpread → batchRestoreSessions（启动自动摊开）
     getChatStore('__default__').sess.setState({ msgIdSeq: 0 });
     const panel = freshPanel();
-    const data = JSON.parse(snapshotVolumeFile(51, '摊开卷')) as Session.StoredSession;
+    // Phase 3b：`batchRestoreSessions` 的输入 = `readVolumeData` 的产物形状
+    // （messages 派生自事件日志 + uiMessages 取自投影缓存）——直接按该形状构造
+    const data = {
+      id: 51,
+      label: '摊开卷',
+      savedAt: '',
+      messages: [
+        { role: 'system', content: 'sys' },
+        { role: 'user', content: '旧问一' },
+        { role: 'assistant', content: '旧答一' },
+      ],
+      uiMessages: JSON.parse(snapshotVolumeCache(51, '摊开卷')).uiMessages,
+    } as Session.StoredSession;
     const failed = await Session.batchRestoreSessions({ storeId: panel.panelId } as unknown as Session.SessionContext, [
       { sid: 51, data },
     ]);

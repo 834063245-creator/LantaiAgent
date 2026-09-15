@@ -19,6 +19,7 @@ function requireHost(): PluginHostBridge {
 
 const impl = requireHost().mods.faceDeps as unknown as typeof import('./host');
 
+export const kernelDeleteFile = impl.kernelDeleteFile;
 export const kernelAppendFileDurable = impl.kernelAppendFileDurable;
 export const kernelReadFileRaw = impl.kernelReadFileRaw;
 export const kernelTruncateFile = impl.kernelTruncateFile;

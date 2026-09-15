@@ -39,8 +39,8 @@ describe('工作区会话根路由（workspace-session-ownership-rework）', () 
 
   it('scanMaxSessionId(projectPath) 扫 {projectPath}/.lantai/sessions（单一路径）', async () => {
     // 预置两卷在工作区会话根——若扫错目录（旧全局位 / 用户级目录）则读空 → 0
-    H.kernelFs!.fs.setFile('D:/proj/.lantai/sessions/1.json', '{}');
-    H.kernelFs!.fs.setFile('D:/proj/.lantai/sessions/2.json', '{}');
+    H.kernelFs!.fs.setFile('D:/proj/.lantai/sessions/1.ndjson', '{}');
+    H.kernelFs!.fs.setFile('D:/proj/.lantai/sessions/2.ndjson', '{}');
     const max = await scanMaxSessionId('D:/proj');
     expect(max).toBe(2);
   });
