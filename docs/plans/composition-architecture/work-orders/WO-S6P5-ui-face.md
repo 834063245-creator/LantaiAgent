@@ -34,7 +34,9 @@ P5 在设计件里写成「卷头 chip + 同屏并排两 Agent + UI e2e/golden�
 | **每个 region（= 每卷）各渲染一份**（字段来自 `r`） | 同上（`{!lodFar && (<div className="pp-folio-head">…)}`，`r.sessionNum` / `r.label` / `r.blocks`） |
 | 卷首样式 + **高度镜像纪律** | `PaperPanel.css:378-452`（`.pp-folio-head` / `.pp-folio-eyebrow` / `-title` / `-sub`）；CSS 头注原文：「**paper/measure.ts measureFolioHeadHeight（逐字对映，改一处必改两处）**」 |
 | 卷首当前**点击穿透** | `PaperPanel.tsx:787`（注释「pointer-events none——点击穿透流区背景，激活语义不变」）⇒ 塞可交互控件必须**只对该控件子树**放开事件 |
-| 卷首在**远档 LOD 不渲染** | `PaperPanel.tsx:791` `{!lodFar && …}`（注释：缩糊的 DOM 卷首不如无，卷名由 InkLayer 地志标签接管） |
+| 卷首在**远档 LOD 不渲染** | `PaperPanel.tsx:791` `{!lodFar && …}`（注释：缩糊的 DOM 卷首不如无，卷名由 InkLayer 地志标签接管）；既有断言 `tests/paper-lod-tiers.test.tsx:205/213/229/236/241` 钉住远档卷首数 = 0 |
+| 卷首高度**真源链**（不止两处） | `paper/type-tokens.ts:525-537`（`FOLIO_TOKENS`）→ `paper/measure.ts:437-465`（`measureFolioHeadHeight`）→ `use-paper-regions.ts:387-388/444`（卷级缓存消费） |
+| 每卷的卷号在 DOM 上直接可得 | `PaperPanel.tsx:778`（region 根带 `data-session-id`）；活跃性判据 = `r.sessionId === activeSessionKey`（`:758`）⇒ 卷首 chip 的**作用对象**天然是"本 region 的卷"，不需要问"谁是活跃卷" |
 
 ### 1.2 同屏并排两 Agent：**视图层与组合层今天都已成立**，缺的是 chip 与验收
 
@@ -46,6 +48,19 @@ P5 在设计件里写成「卷头 chip + 同屏并排两 Agent + UI e2e/golden�
 | 每卷一个 Agent 句柄（各自装配） | `agentSessionState` 按 `storeId:sessionId` 键控（`agent-session-state.ts:147`）；装配点 `agent/runtime/runtime.ts:617 _assembleAgent`（每 Agent 一份 `ctx.set('composition', …)` ≈ `:683`） |
 | **唯一 ChatCore**（"两个面板"若指两个 ChatCore = 另一件工程） | `shell/rows/chat.ts:15-16`（`new ChatCore()` + `useCoreStore.setChatCore`）；`app/chat/core-instance.ts:10-13`（**单例 store**，`core: ChatCore \| null`）；`chat-core.ts:184` `panelId = cp-<ts>-<rand>`（每实例唯一）⇒ 机制上**支持**多实例，但今天只造一个、且 shell 只挂一个 |
 
+**「两个 Agent 面板」（两个 ChatCore）为什么是另一件工程——四道构造级拦路石**（2026-09-16 侦察实测）：
+
+| 拦路石 | 证据 |
+|---|---|
+| 唯一 ChatCore + 单槽 store，消费面全取它 | `shell/rows/chat.ts:15-16`；`app/chat/core-instance.ts:10-13`；`app/App.tsx:28/34`；`composition/space-service.ts:49-50`（`panelIdOf()`）；`PaperPanel.tsx:362` |
+| **第二实例会拆掉第一实例** | `chat-core.ts:119` 模块级 `_globalStoreUnsubs` + `:183` 构造首行 `unsub()` 全部 ⇒ ask / goal / diag / workspace-switch 四个全局订阅是「上实例退订」语义 |
+| 一 Workspace 只绑一 core | `workspace.ts:517` `this._storeId = chatPanel.panelId`（覆盖式单值）、`:758` `this._chatPanel`、`:906` `eventSink`；`shell/rows/workspace.ts:84-96,121` 单一 `shellRefs.workspace`（开新区先 deactivate 旧区） |
+| 面板面**没有**多实例语义 | `app/panels/panel-def.ts:16-29`（`PanelDef` 无 storeId）；`app/panels/DockPanel.tsx:18-27`（`<C />` 不传 props）；`state/dock-store.ts:26`（`open: Record<string, boolean>`）；各面板 CSS 自持 `position: fixed` 覆盖层（`PaperPanel.css:9` 等）+ 固定 z 阶梯（`app/tokens.css:129-131`）⇒ 无分栏/分隔条；`canvas.json` 按**工作区路径**键控、不含 storeId（磁盘面也得先分账） |
+
+⇒ 真面板并排 = ① 面板多实例承载 ② 面板↔storeId 映射 ③ 多 core 的全局订阅所有权 ④ Workspace↔core 一对一解除 ⑤ 磁盘面分账 ⑥ 布局容器与矩形持久化 ⑦ 每面板卷头 chip——**七面**，量级等同独立批次。
+**它买到的是**：每面板独立视口/缩放（今天平移/缩放是**全局**的，`PaperPanel.tsx:553-556`）、独立活跃卷、面板级布局持久化；
+**它买不到的是**：组合隔离本身——「两卷各持一份组合」今天已成立（`tests/seam-composition.test.ts` ⑨-⑬ 已绿 + `composition-session-count-profile.test.ts`）。
+
 ### 1.3 P1e 芯片（P5 的直接先例：读面/写面/三态/测试形状全都有）
 
 | 事实 | 位置 / 证据 |
@@ -54,6 +69,9 @@ P5 在设计件里写成「卷头 chip + 同屏并排两 Agent + UI e2e/golden�
 | 样式 | `plugins/builtin/compose-dock/composition-chip.css`（3.4KB，纯 `--obs-*` token） |
 | 组件级测试形状 | `tests/composer-dock-composition-chip.test.tsx`（4 例：无主态不可拨 / 空白卷可拨走卷级写路径 / 跑过一轮只读 / …），mock `core` + `useCoreStore` |
 | 产物插件的取数姿势 | `const core = useCoreStore((s) => s.core)`（`ComposerDock.tsx:204`）+ 直接读 `getChatStore(core.panelId)` / `msgStoreFor(...)` / `usePresetStore` / `agentSessionState` ——**这些面必须在本插件的 host 面里**（`compose-dock/host.ts:18` 导出 `selectPreset` 等；产物域经 `host.aliased.ts` + `builtin/host-modules.ts` 的 `faceDeps` 取真实例） |
+| 芯片 DOM 与类名（**不能靠 class 复用**） | 根 `[data-comp-chip]`（`ComposerDock.tsx:1160`）；可拨态 = `<button class="pp-comp-pill">` + 自绘 `role="listbox"/role="option"` 菜单（`:1195-1221`）；锁态 = `<span class="pp-comp-pill" data-locked>`（`:1163-1173`）；`composition-chip.css` **全部规则以 `.pp-composer-settings` 为祖先限定**（`:12/18/42…`）⇒ 卷首须**新类名或新祖先规则** |
+| ⚠ 连带发现（陈旧注释） | `composition-chip.css:9-10` 自称"只写 `--obs-*` / 既有权杖 token"是漂移：**全仓无任何 `--obs-*` 自定义属性定义**（唯一 `var(--obs-fail)` 在 `ui/icons.ts:387`，是悬空引用）。本批**如实照抄既有 token 用法**，不顺手改这条注释（不在本批范围，登记备查） |
+| `paper-shell` 的 host 面**缺** preset 族 | `paper-shell/host.ts` 今天只导出 `agentSessionState`(:15) / `useCoreStore`(:16) / `getChatStore`+`msgStoreFor`(:131)；`usePresetStore` / `selectPreset` / `sessionCompositionInfo` / `isSessionBlank` **零命中**（compose-dock 那边有）⇒ §1.4 的四处联动是本批的**真实成本**（不是形式主义） |
 
 ### 1.4 把 chip 落进 paper-shell 的**真实成本**：host 面四处联动
 
@@ -71,7 +89,7 @@ P5 在设计件里写成「卷头 chip + 同屏并排两 Agent + UI e2e/golden�
 |---|---|
 | UI 组件测试 | jsdom 侧成熟：`tests/paper-*.test.tsx`（new-volume / c8-spine / viewport-ux / image-render / checklist / math / code-highlight 等十余个）+ `composer-dock-composition-chip.test.tsx`（P1e 先例：mock core 的组件级三态测试） |
 | 真机 e2e | `src-tauri/src/cdp/e2e.rs`（**环境型抖动源**，AGENTS §10 纪律：残留 profile/端口未就绪会连环污染；`src-tauri/tests/` 只有 `platform_boundary_test.rs`） |
-| "golden" | 本仓历史含义 = `tests/ui/layout-golden.test.ts` 的**坐标钉板**（星图时代；Three.js 渲染面 2026-08-22 已删）⇒ 今天**没有**现成的 UI/截图 golden 机制 |
+| "golden" | 本仓**没有**现成的 UI/截图 golden 机制：`tests/ui/layout-golden.test.ts` 已随 `35db9ef8`（C13 Three.js 渲染面退役）**删除**，只剩孤儿快照 `tests/ui/__snapshots__/layout-golden.test.ts.snap`；全仓无 `toMatchImageSnapshot`。**最接近"视觉 golden"的既有惯例** = `tests/paper-visual-decisions.test.ts`（774 行，node 环境，readFileSync 读 CSS/TS 源码做**字面量钉值**）——其 `:281` 断言 `.pp-folio-head` 含 `pointer-events: none`、`:323-330` 钉 `FOLIO_TOKENS` 值与 `measureFolioHeadHeight` 符号存在 ⇒ **卷首塞交互控件时这两条会先红**（属"故意规格变更"，必须显式声明并同批改写） |
 | 真机验收先例 | P1e 芯片的验收方式是**交用户真机看**（`cargo tauri build` 后可见；用户 2026-09-15 回「已真机验收」）——设计件 §8 记为本线最后一次挂起的真机门 |
 
 ### 1.6 设计件里 P5 要兑现的原文断言（验收依据）
@@ -156,6 +174,9 @@ P5 在设计件里写成「卷头 chip + 同屏并排两 Agent + UI e2e/golden�
 | 5 | **并排两卷各自组合**（序列 B 主判据） | 进程内：两卷各按不同组合装配 ⇒ 两个 Agent 的工具面/提示面不同；**B 的工厂调用次数在 A 拨组合前后不变**；A 拨动 ⇒ A 恰好重新装配一次 |
 | 6 | **hover 来源词汇** | 三种来源（全局默认 / 卷级 / 程序指定）+ 不可用原因，文案与 P1e 芯片**同一套词**（不造第二套说法） |
 | 7 | **零漂移哨兵** | 不传参 / 无卷级记录的路径行为与今天逐字相同；P1e 与 P1c 的既有测试**零改动** |
+| 8 | **既有「卷首不变量」断言的同批改写**（**故意规格变更，显式声明**） | `tests/paper-visual-decisions.test.ts:281`（断言 `.pp-folio-head` 含 `pointer-events: none`）与 `:323-330`（`FOLIO_TOKENS` / `measureFolioHeadHeight`）随本批卷首改动**显式改写并声明**（不是"改造后放回原位"）；`tests/paper-lod-tiers.test.tsx`（远档卷首数=0）应**零改动** |
+
+**测试台形状（照抄先例，别自创）**：卷首 chip 的组件测试以 `tests/composer-dock-composition-chip.test.tsx` 为模板（桩 core 六方法 + 真 React root + `PaperDockContext.Provider` + 直写 `getChatStore().sess` / `msgStoreFor().setMessages`），但**宿主换 paper harness**——`tests/paper-new-volume.test.tsx:22-101`（mock `@chenglou/pretext` / `rich-inline` / `../src/bridge` + Fake 2d ctx + Fake ResizeObserver + **确定性同源 rAF** + 真 `new ChatCore()`）；断言作用对象走 `data-session-id`（本 region 的卷）而非 `activeSessionKey`。
 
 **破测（每条注入缺陷确认能红，结果写进 commit message）**：
 ① 卷首 chip 用「活跃卷」而不是「本 region 的卷」→ 3 红；
@@ -180,7 +201,7 @@ P5 在设计件里写成「卷头 chip + 同屏并排两 Agent + UI e2e/golden�
 
 | # | 判断 | 我的建议 | 影响面 |
 |---|---|---|---|
-| **1** | **§7.6 并排语义**（本单最后一道未决项）：两个 Agent = **同纸多卷**（同一 ChatCore / 同一工作区 deps，两卷按组合身份决定是否自建会话作用域注册表 = P1d 已落机制），还是**两个 ChatCore/两套 deps**（需多实例化 core + 每面板注入 + 布局）？ | ✅ **同纸多卷**。证据：纸壳本就是「一纸多卷」横向画布（`use-paper-regions` 头注）、多卷在跑已处理（`use-running-sessions`）、每卷一份组合已落（P0/P1）；而 ChatCore 今天是**单例**（`shell/rows/chat.ts:15` + `core-instance.ts`），多实例化是另一件工程（且有 shell 行/授权面牵连）。设计件 §2 B 的断言在这条形态下**全部可兑现** | 决定 P5b 的成本量级（天 vs 周）与是否需要在本次一并动 core/shell |
+| **1** | **§7.6 并排语义**（本单最后一道未决项）：两个 Agent = **同纸多卷**（同一 ChatCore / 同一工作区 deps，两卷按组合身份决定是否自建会话作用域注册表 = P1d 已落机制），还是**两个 ChatCore/两套 deps**（需 ①-⑦ 七面：多实例承载 / storeId 映射 / 多 core 订阅所有权 / Workspace 一对一解除 / 磁盘面分账 / 布局容器 / 每面板 chip）？ | ✅ **同纸多卷**。证据：纸壳本就是「一纸多卷」横向画布（`use-paper-regions` 头注）、多卷在跑已处理（`use-running-sessions`）、每卷一份组合已落且**已被测试钉住**（`seam-composition.test.ts` ⑨-⑬、`composition-session-count-profile.test.ts`）；而真面板并排要动的是 ChatCore 单例链（§1.2 四道拦路石），**且它买不到组合隔离**（只买到独立视口/活跃卷/布局持久化）。设计件 §2 B 的四条断言在「同纸多卷」下**全部可兑现** | 决定 P5b 的成本量级：**天** vs **独立批次（七面）**；也决定是否要在本次动 shell 行 / core 实例化 / 磁盘面 |
 | **2** | **批次切分**：P5a 卷首 chip + P5b 并排验收（两笔）／一笔做完／把并排拆独立批次？ | ✅ **两笔**：P5a 单独交付用户可见价值（卷首 chip 可真机验），P5b 是验收+少量接线+文档 | 交付节奏与回滚粒度 |
 | **3** | **卷首 chip 落点与交互**：落 `.pp-folio-head`（卷首，建议）？是否只对该子树放开 `pointer-events`？远档（LOD）不渲染卷首 ⇒ chip 也随之不可见（接受？） | ✅ 落卷首 + **只放开 chip 子树** + 远档如实不可见（远档是缩略视图，控件本不该在） | 手感与 CSS/measure 镜像改动面 |
 | **4** | **chip 作用对象**：本 region 的卷（**任意空白卷**都能从自己卷首拨，P1c 写路径已支持）还是仅"当前活跃卷"（P1e 芯片的现状）？ | ✅ **本 region 的卷**（卷首天然 per-卷；非活跃空白卷先登记、下次装配生效） | 语义清晰度与 P1e 的差异说明 |
