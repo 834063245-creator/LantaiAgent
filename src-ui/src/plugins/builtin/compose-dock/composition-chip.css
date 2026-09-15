@@ -1,0 +1,119 @@
+/* 组合芯片（S6 P1e）——创作坞设置行左端「模型 | 组合」的第二格。
+ *
+ * 归属：创作坞产品的自有样式（与 model-selector.css 同域），**不复用**
+ * paper-shell 的 .pp-thinking-pill 类——那会让既有测试的选择器同时命中两枚
+ * pill（`.pp-thinking-sel` / `.pp-thinking-pill` 在全仓多处被按类取用），
+ * 是「旧实现形状续命」的老毛病。这里独立命名（.pp-comp-*），形状与思考 pill
+ * 逐条对齐（同一设置行的同款 pill 语言：纯文字 + 行内 caret）。
+ *
+ * 只写 --obs-* / 既有权杖 token（根令牌在 app/tokens.css，纸面族 --ink/--paper/
+ * --rule/--seal 在 PaperPanel.css 的 :root 段定义——同产品族共用）。 */
+
+.pp-composer-settings .pp-comp-sel {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+/* 收起态：纯文字 pill（与思考档位同高度、同字体、同色阶） */
+.pp-composer-settings .pp-comp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 2px;
+  font-family: var(--f-song);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--snap);
+  text-decoration: none;
+}
+.pp-composer-settings .pp-comp-pill:hover,
+.pp-composer-settings .pp-comp-pill.open {
+  color: var(--seal-deep);
+}
+
+/* 跑过一轮 = 只读标签（span 形态，不再是按钮；hover 不改色以示不可拨） */
+.pp-composer-settings .pp-comp-pill[data-locked] {
+  color: var(--ink-3);
+  cursor: default;
+}
+
+.pp-composer-settings .pp-comp-pill-label {
+  display: inline-block;
+  min-width: 5em;
+  text-align: left;
+}
+
+.pp-composer-settings .pp-comp-pill-caret {
+  flex: 0 0 auto;
+  color: var(--ink-3);
+  font-family: var(--f-mono);
+  font-size: 10px;
+}
+
+/* 菜单：开在 pill 上方（与思考档位同款——输入行在下的坞内不向下弹） */
+.pp-composer-settings .pp-comp-menu {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 4px);
+  z-index: 80;
+  min-width: 200px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--rule-strong);
+  box-shadow: var(--elev-menu);
+  animation: pop-up 0.14s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.pp-composer-settings .pp-comp-opt {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-bottom: 1px solid var(--rule-soft);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--f-song);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  transition:
+    background var(--snap),
+    color var(--snap);
+}
+.pp-composer-settings .pp-comp-opt:last-child {
+  border-bottom: none;
+}
+.pp-composer-settings .pp-comp-opt:hover {
+  background: var(--paper-deep);
+  color: var(--ink-1);
+}
+.pp-composer-settings .pp-comp-opt.selected {
+  background: var(--sel-wash);
+  color: var(--ink-1);
+  box-shadow: inset 2px 0 0 var(--seal);
+}
+.pp-composer-settings .pp-comp-opt:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+
+/* 说明行（来源/锁定原因/装载失败）——不可点，不参与选中语义 */
+.pp-composer-settings .pp-comp-note {
+  padding: 6px 10px;
+  border-top: 1px solid var(--rule-soft);
+  color: var(--ink-3);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}

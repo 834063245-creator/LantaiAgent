@@ -13,6 +13,9 @@ export { extractImageFiles, previewUrlFor } from '../../../app/chat/image-intake
 export { useShellStore } from '../../../app/shell-store';
 export type { FileDragEvent } from '../../../bridge';
 export { isMockMode, watchFileDragDrop } from '../../../bridge';
+// 组合芯片（S6 P1e）：preset 清单/选择态读取面 + 全局默认选择入口 + 卷消息面
+// （空白判据 = 本卷消息数，与写路径二道闸同一把尺子）
+export { selectPreset } from '../../../composition/preset-assembly';
 export type { SourcedBlock } from '../../../paper/block-model';
 export { composerSubmitOnKey } from '../../../paper/ime';
 export { createInkCache, INK_FAIL, inkBarColorOf, inkColorOf, inkForBlock } from '../../../paper/ink';
@@ -54,6 +57,8 @@ export type { ComposeSessionPrefs } from '../../../state/compose-store';
 export { getComposeStore, resolveNewSessionDefault } from '../../../state/compose-store';
 export type { PermissionMode } from '../../../state/mode-store';
 export { MODE_DESCRIPTIONS, MODE_LABELS, PERMISSION_MODES, useModeStore } from '../../../state/mode-store';
-export { getChatStore } from '../../../ui/chat-store';
+export type { PresetStoreState } from '../../../state/preset-store';
+export { usePresetStore } from '../../../state/preset-store';
+export { getChatStore, msgStoreFor } from '../../../ui/chat-store';
 export { CommandRegistry } from '../../../ui/command-registry';
 export { iconHtml } from '../../../ui/icons';

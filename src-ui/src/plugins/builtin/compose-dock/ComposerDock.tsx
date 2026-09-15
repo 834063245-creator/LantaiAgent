@@ -50,17 +50,21 @@ import {
   MODE_LABELS,
   modelContextWindow,
   modelInput,
+  msgStoreFor,
   onSettingsSaved,
   PERMISSION_MODES,
   previewUrlFor,
   resolveNewSessionDefault,
+  selectPreset,
   thinkingOptionsFor,
   useCoreStore,
   useModeStore,
   usePaperDock,
+  usePresetStore,
   useShellStore,
   watchFileDragDrop,
 } from './host';
+import './composition-chip.css';
 import { InkLedger } from './InkLedger';
 import { ModelSelector } from './ModelSelector';
 
@@ -438,6 +442,81 @@ export const ComposerDock = memo(function ComposerDock() {
   );
   // rework P0-1：卸载（含关窗）时清掉全放确认态，避免残留 DOM 参与销毁时序
   useEffect(() => () => setPendingYolo(false), [setPendingYolo]);
+
+  /* ── 组合（S6 P1e：卷级组合选择芯片）──────────────────────────────
+   * 两态与「开口即开卷」同构（模型/思考同款语义，见 onModelChange）：
+   *   无主态（无活跃卷）→ 拨的是**全局默认**（selectPreset = 设置面板「组合」节
+   *     同一入口，落 settings；即「新卷出生默认」）。
+   *   有卷且**空白**    → 拨的是**卷级选择**（core.selectSessionPreset：校验 → 登记
+   *     → 当场重建句柄；写路径自带二道闸，与这里的控件锁同一把尺子）。
+   *   有卷且跑过一轮    → **只读标签**（组合决定模型看到的工具与提示面 = 字节契约，
+   *     中途换面会让前缀缓存与已声明能力面不一致——DSH「控制在此不承诺」同款）。
+   * 读面：preset 清单/选择态来自 preset-store；本卷身份与来源来自
+   * core.sessionComposition（异步 = 解析面动态 import，见 app/chat/session-composition）。 */
+  const presetRoster = usePresetStore((s) => s.roster);
+  const presetSelected = usePresetStore((s) => s.selected);
+  const presetError = usePresetStore((s) => s.error);
+  const [compOpen, setCompOpen] = useState(false);
+  const [compInfo, setCompInfo] = useState<{ presetId: string; source: 'session' | 'global'; error: string | null }>({
+    presetId: presetSelected,
+    source: 'global',
+    error: null,
+  });
+  const [compBlank, setCompBlank] = useState(true);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: presetRoster 是刻意的重读触发器（「重新扫描」/新建 preset 后本卷身份与可用性要重解析），非 effect 体内直接引用值——与 settingsTick 同款手法
+  useEffect(() => {
+    let alive = true;
+    // 坞上下文的 activeSessionId 是 string；卷号 API（isSessionBlank / sessionComposition）
+    // 收 number——两处转换集中在这里
+    const sidNum = activeSessionId == null ? null : Number(activeSessionId);
+    const sid = sidNum != null && Number.isFinite(sidNum) ? sidNum : null;
+    const refresh = () => {
+      if (!alive) return;
+      if (sid == null) {
+        // 无主态：显示全局默认（新卷出生默认）
+        setCompInfo({ presetId: presetSelected, source: 'global', error: null });
+        setCompBlank(true);
+        return;
+      }
+      // 读面缺席（桩 core / 旧句柄）→ 保守当「空白可拨」+ 显示全局默认，
+      // 不炸坞（能力位语义：句柄不实现 = 无读数，同 token 三能力位）
+      setCompBlank(core?.isSessionBlank?.(sid) ?? true);
+      void core
+        ?.sessionComposition?.(sid)
+        .then((info) => {
+          if (alive) setCompInfo(info);
+        })
+        .catch(() => {});
+    };
+    refresh();
+    // 本卷内容变化 = 可能刚跑过一轮（锁定态随之翻转）——订阅消息面
+    const unsub = sid != null && core ? msgStoreFor(core.panelId, sid).subscribe(refresh) : undefined;
+    return () => {
+      alive = false;
+      unsub?.();
+    };
+  }, [core, activeSessionId, presetRoster, presetSelected]);
+  /** 芯片拨动：无主态写全局默认；有卷（空白）写卷级选择——拒绝原因就地可见。 */
+  const onCompositionChange = useCallback(
+    async (id: string) => {
+      setCompOpen(false);
+      if (activeSessionId == null) {
+        if (!selectPreset(id)) setLocalNotice(`组合「${id}」不可用——原因见设置 → Agent → 组合。`);
+        return;
+      }
+      if (!core) return;
+      const sidNum = Number(activeSessionId);
+      if (!Number.isFinite(sidNum)) return;
+      const r = (await core.selectSessionPreset?.(sidNum, id)) ?? {
+        ok: false,
+        reason: '本坞未接到组合写入口（旧句柄）',
+      };
+      if (!r.ok) setLocalNotice(`组合未切换：${r.reason}`);
+    },
+    [activeSessionId, core],
+  );
+  const compLocked = activeSessionId != null && !compBlank;
+  const compLabel = compInfo.presetId;
 
   /* ── 斜杠命令（沿用旧 composer 逻辑）＋ 翰 入口（v2 2026-08-31）：
    *    命令面板不再只靠盲打 / 发现——设置行「翰」按钮开同一层面板
@@ -1075,6 +1154,74 @@ export const ComposerDock = memo(function ComposerDock() {
           isStreaming={running}
           onBlocked={() => setLocalNotice('Agent 正在运行——本回合结束后才能切换模型。')}
         />
+        {/* 组合芯片（S6 P1e）：与模型同居左端——两者共同定义「本卷拿什么跑」
+            （模型 = 谁的脑子，组合 = 哪些工具与提示面）；右端仍归「运行策略」对
+            （权限/思考），行尾仍是墨量仪表。两态 + 只读锁见上方 comp* 注释。 */}
+        <div className="pp-comp-sel" data-comp-chip>
+          {compLocked ? (
+            // 跑过一轮：只读标签（控件不再可拨）——hover 说明来源与锁定原因
+            <span
+              className="pp-comp-pill"
+              data-locked
+              title={
+                compInfo.error
+                  ? `本卷组合：${compLabel}（${compInfo.error}——装配时已回退用户层组合）`
+                  : `本卷组合：${compLabel}（来源：${compInfo.source === 'session' ? '本卷选择' : '全局默认'}）；已跑过一轮——组合与已发送的对话绑定，不能中途换（另起一卷再选）`
+              }
+            >
+              <span className="pp-comp-pill-label">组合 · {compLabel}</span>
+            </span>
+          ) : (
+            <>
+              <button
+                type="button"
+                className={`pp-comp-pill${compOpen ? ' open' : ''}`}
+                title={
+                  compInfo.error
+                    ? `本卷组合：${compLabel}（${compInfo.error}）`
+                    : activeSessionId == null
+                      ? `新卷出生默认组合：${compLabel}（改这里 = 改全局默认）`
+                      : `本卷组合：${compLabel}（空白卷可拨；跑过一轮即锁定）`
+                }
+                aria-haspopup="listbox"
+                aria-expanded={compOpen}
+                onClick={() => setCompOpen((v) => !v)}
+              >
+                <span className="pp-comp-pill-label">组合 · {compLabel}</span>
+                <span className="pp-comp-pill-caret" aria-hidden="true">
+                  ▾
+                </span>
+              </button>
+              {compOpen && (
+                <div className="pp-comp-menu" role="listbox" aria-label="组合（preset）">
+                  {presetRoster.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      role="option"
+                      aria-selected={p.id === compLabel}
+                      className={`pp-comp-opt${p.id === compLabel ? ' selected' : ''}`}
+                      disabled={p.patch === null}
+                      title={
+                        p.patch === null ? `装载失败：${p.error ?? 'roster.patch.yml 不可用'}` : p.metadata?.description
+                      }
+                      onClick={() => void onCompositionChange(p.id)}
+                    >
+                      {p.metadata?.name ?? p.id}
+                      {p.patch === null ? '（损坏）' : ''}
+                    </button>
+                  ))}
+                  {presetError && <div className="pp-comp-note">⚠ {presetError}</div>}
+                  <div className="pp-comp-note">
+                    {activeSessionId == null
+                      ? '无活跃卷：此处拨的是新卷出生默认（全局）'
+                      : '空白卷可拨；跑过一轮的卷锁定为新卷再选'}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
         <div className="pp-composer-settings-spacer" />
         {/* rework P2-3：权限三档分段控件（不随 DSH 迁移——权限是工作区级单一真相） */}
         <fieldset className="pp-mode-seg" aria-label="权限模式">
