@@ -247,6 +247,13 @@ effectiveComposition(id)  // 生产唯一解析入口（捕获网，永不抛出
 方案：组合诊断结构扩为四栏 + 设置面板「组合」节分栏渲染 + **卷头 hover 显示本卷组合与来源**
 （全局默认 / 卷级 / 程序指定）。
 
+> **落地修正（2026-09-15，P1b 实测）**：P1 只落**三栏**——`unselected`（未选中：
+> `defaultOff` 且未被任何层 `disabled:false` 回开）/ `disabled`（被禁用：显式 `disabled:true`）/
+> `seamCapped`（seam 裁剪：从 `disabled` 搬出，此前混装）。第四栏 `skipped`（`requires` 缺 /
+> `exclusive` 冲突）**不在 P1 预造空栏**：`requires` 是 P3 才引入的字段，空栏即化石（本仓有
+> 明确纪律，`diagnostics.overridden/.inserted` 就是标本）。「卷头 hover 显示来源」随卷头 UI 落 P5；
+> P1e 的**创作坞芯片**已用同一读面（`sessionCompositionInfo`）显示来源与不可用原因。
+
 ---
 
 ## 4. 批次序列（每批独立 commit、独立全绿；批间无审批门，`record` 例外）
@@ -257,7 +264,7 @@ effectiveComposition(id)  // 生产唯一解析入口（捕获网，永不抛出
 | **P0.5** ✅ **已落地（2026-09-14，待 commit）** | minimal 快照重录（`office` 域漏录，2026-09-13 起漂移）+ `verify:convergence` 改**双轨**（CI 经同一 npm script 自动获得第二轨，不改 workflow 文件） | 两轨都 exit 0；「双 preset 零漂移」重新成立 | 走 `baseline-change-request`（已留痕：`src-ui/tests/convergence/baseline-change-request.md` 首条） | 门禁覆盖扩为 2 preset；convergence job 时长 ×2 |
 | **P0** ✅ **已落地（2026-09-14）** | 卷结构落 `presetId`（`StoredSession` / `SessionSnapshotData` 两处 shape + 两处 save 路径 + 恢复期登记）+ 会话工厂**按卷内记录的组合重建**（`agentSessionState` 卷级登记，工厂读它）+ 恢复期校验与可见提示（不在册 / 行 id 不可解析 → 提示 + 回退用户层组合）；连带修复 `renameSessionFile` 改名不再抹掉 `tokens`/`compose` | 关卷重开：组合身份登记一致；旧存档无字段 = 无记录（不猜、不迁移）；坏组合可见且卷照常打开 | vitest + build + biome + convergence 双轨 | 卷文件多一个字段（旧卷 = 缺省）；新增"本卷组合不可用"提示；**改名不再丢数据** |
 | 注（P0 范围调整） | **「卷头只读标签」移入 P5**（它属 UI 面，与 chip / 同屏并排同批做，且需要"哪个是当前卷"的展示位）；**「诊断四栏化数据面」移入 P1**（"未选中 vs 被禁用"要等选择集语义落地才有区分度）。P0 只做**落盘 + 登记 + 校验 + 提示**这条不可再省的闭环 | — | — | — |
-| **P1** | 卷级选择（两层：全局默认 + 卷级）+ 选择集语义（`defaultOff` 行 + `disabled:false` 回开）+ 引用身份比较（去掉恒重建） | §2 序列 A/B；两卷工具面互不影响；A 切组合不重建 B | + 出厂 preset 快照 + profile 断言 | 组合按卷生效；同工作区两卷可不同 |
+| **P1** ✅ **已落地（2026-09-15，五笔：P1a `6e3b3fb2` / P1b `6abbcc30` / P1c `9196f5da` / P1d `cca04a58` / P1e `fd30742c`；另基线修复 `8c7abf92`）** | 卷级选择全链路（用户 2026-09-15 拍板「我觉得OK，开工」，按施工单四批 + UI 一笔落地）：**P1a** 卷内组合记录不再被落盘改写（工厂把记录回述给 Agent 镜像——旧行为：重开旧卷后本卷再落一次盘就把 `presetId` 改写成全局默认，记录静默蒸发）；**P1b** 选择集语义（`ToolContribution.defaultOff` + `disabled:false` 回开，**开放面契约 v31**）+ 诊断三栏；**P1c** 卷级选择写路径（`selectSessionPreset`：校验 → 空白闸 → 拆句柄 → 登记 → 空白卷即时重建；`sessionSelectionError` 比 `selectionError` 严一档：未知 id 也拒）；**P1d** 会话工厂判据从对象引用换轨为**组合身份**（层内容 + 贡献代数，输入派生——消掉「每卷白建注册表」的 F4 浪费，且含代数 ⇒ 不复用陈旧注册表）；**P1e** 创作坞组合芯片（两态：无主态 = 新卷出生默认 / 空白卷 = 卷级 / 跑过一轮 = 只读标签） | §2 序列 A/B：空白卷可拨且立刻生效（有句柄则当场重建）、跑过一轮被拒（控件锁 + 写路径二道闸同一把尺子）、两卷工具面互不影响（身份不同 ⇒ 各建注册表；身份相同 ⇒ 复用）、卷级选择不写全局真源 | vitest + biome 0/0 + build（30 产物）+ doc-sync + **convergence 双轨零漂移**（P1 不动出厂 preset 面 = 构造性证据） | 组合按卷生效（同工作区两卷可不同）；设置行左端新增组合芯片、行内序由「模型→spacer→权限→思考→墨量」变为「模型→组合→spacer→…」（**故意规格变更**，row-order 契约随之显式改写）；诊断面由一栏拆三栏（「禁用行」不再混装 seam id）；卷文件 `presetId` 在重开后不再被改写；新建卷装配少一次注册表构建 |
 | **P2** | seam 选择从模块态 → 装配期值注入（6 消费单点 + `emitLoopEvent`） | §2 序列 D；旧无组合上下文路径零漂移 | + seam 域 per-composition 快照 | 同一工具可按卷走不同 provider |
 | **P3（成本悬崖）** | 插件激活/引用计数/独占声明/`requires`/fail loud + 诊断「被跳过」栏 | §2 序列 E；无引用即释放；冲突装配期拒绝 | + 激活生命周期测试 + 性能门 | 插件副作用改为按需激活；新增 manifest 字段 |
 | **P4** | 程序入口：会话创建 RPC 带 `preset` / MCP 工具参数 / 评测自举 | §2 序列 C；与 UI 同 id 解析逐字节一致 | + RPC 契约重生成 + e2e | 新增 RPC 参数（契约版本升版） |
@@ -318,5 +325,29 @@ effectiveComposition(id)  // 生产唯一解析入口（捕获网，永不抛出
 - **2026-09-14 用户纠正一项**（改本件 I1 与 §7.2，并新增 P-1 批）：**preset 不上线、不是出厂物——
   它是用户自己设置的环境，平台只需提供环境**；连带暴露的真问题：单二进制下用户**配不出** preset
   （目录不建 / 无打开动作 / 无模板 / 加完要重启——§2 序列 F 的四条实测缺项）。P-1 因此成为本线首批发。
-- 本件状态：**草案待批**。批准后：① 把 I1 写进 `CONVENTIONS.md`；② P0.5 的
-  `baseline-change-request` 单独起草待批；③ 按 **P-1** 开工（authoring 环境），每批独立 commit + 门禁四连。
+- 本件状态：**已批准并执行中**（P-1 / P0.5 / P0 / **P1 全部落地**；下一批 = P2）。原「批准后三步」已兑现：
+  ① I1 已进 `CONVENTIONS.md`；② P0.5 的 `baseline-change-request` 已留痕（`37418b74`）；
+  ③ P-1 起每批独立 commit + 门禁四连。
+- **2026-09-15 用户批准 P1 施工单**（原话「我觉得OK，开工」）：同意「P1a→P1d 四笔 + UI 一笔」的切分、
+  **诊断先落三栏**（`skipped` 留 P3，不预造空栏）、chip 落**创作坞设置行左端**（甲案：模型 | 组合，
+  与「开口即开卷」同构），身份比较取**输入派生**（含贡献代数）而非产物内容派生。
+
+### 8.1 P1 施工中实测的环境事实（下一批动手前必读）
+
+1. **导入成环（本批连踩两次，已钉守卫）**：`state/composition-store` 与 `state/preset-store`
+   都在**模块体**里求值（`factoryComposition()` / `builtinPresets()`），而链子经
+   `composition/roster → shell-rows → src/shell/rows/* → rows/chat → app/chat/chat-core` 回到宿主。
+   凡 `chat-core` 侧**静态**可达 store 或 `composition/preset-assembly` 即闭合环，症状
+   `Cannot access 'BUILTIN_PRESETS' / '__vite_ssr_import_N__' before initialization`（同族错误
+   2026-09-14 在卷持久化层炸过一次，连坐 46 个测试文件）。
+   处置：`app/chat/session-composition.ts` 静态面**只准**依赖 chat-core 已静态依赖的三个模块，
+   store / composition 解析面一律调用点 `await import(...)`；守卫
+   `tests/composition-import-cycle.test.ts` 钉静态白名单（运行时探针因求值顺序**时红时绿**，
+   不可作守卫——实测记录见该文件头注）。
+2. **`ui/` 是冻结残余目录**（终态 manifest 逐项点数，守卫 `tests/eventbus-zero-and-ui-split.test.ts`）：
+   新编排件落 `app/**`——P1c 的模块因此落 `app/chat/`。
+3. **`removeAgent` 会一并清掉卷级组合登记**（`agent-session-state.ts`）：写路径顺序必须
+   「先拆句柄、后登记」，反过来键控登记即被删（P1c 测试钉住该顺序，破测验证过）。
+4. **`selectionError` 对未知 id 是容忍的**（解析侧回退用户层，那是旧卷兜底的正确语义）；
+   「写下一条新记录」是另一回事——`sessionSelectionError` 严一档：不在册也拒
+   （记一条不存在的 id = 该卷永远解析不出组合）。
