@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// S4 装载调度层（plugin-bundle-retirement）——boot 审计四条覆盖：
+// S4 装载调度层（plugin-bundle-retirement）——boot 审计三条覆盖：
 //   a) 依赖缺失 → PENDING 不报 error（装载层不拒载）
 //   b) 依赖后到 → 自动 ACTIVE（cordis fiber 等待语义）
 //   c) 依赖永不出现 → settle 审计 fail-loud 报缺名
-//   d) 消费面（会话）在 bootGate 前不可用、之后可用
+// （2026-09-16：原第四条「消费面在 bootGate 前不可用 / 之后可用」随空转的
+//  bootGate 服务整删——该 inject 面从未被任何生产消费者使用，见
+//  src/plugins/boot-gate.ts 头注的历史段。）
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Context, Service } from '../src/cordis';
@@ -71,28 +73,7 @@ describe('boot-gate（S4 装载调度层审计）', () => {
     expect(audit.failures[0]).toContain('state=0');
   });
 
-  it('d) 消费面在 bootGate 前不可用、审计通过后可用', async () => {
-    // bootGate 未 provide → ctx.reflect.get('bootGate') falsy
-    expect(root.reflect.get('bootGate')).toBeFalsy();
-
-    // 空树审计 → 通过 → bootGate provide
-    const audit = await auditBoot(root);
-    expect(audit.ok).toBe(true);
-    expect(root.reflect.get('bootGate')).not.toBeNull();
-
-    // 消费面（inject bootGate 的插件）此时可装载
-    const fiber = root.plugin({
-      name: 'session-consumer-probe',
-      inject: ['bootGate'],
-      apply() {
-        // 到达这里说明 bootGate 已 provide
-      },
-    });
-    await fiber.await();
-    expect(fiber.state).toBe(2); // ACTIVE
-  });
-
-  it('审计失败时 bootGate 不 provide（会话不可开）', async () => {
+  it('apply 抛错 → 审计失败且原始错误进失败清单（fail-loud 的输入）', async () => {
     root.plugin({
       name: 'broken-probe',
       apply() {
@@ -103,11 +84,9 @@ describe('boot-gate（S4 装载调度层审计）', () => {
     expect(audit.ok).toBe(false);
     expect(audit.failures[0]).toContain('broken-probe');
     expect(audit.failures[0]).toContain('apply boom');
-    // bootGate 未 provide
-    expect(root.reflect.get('bootGate')).toBeFalsy();
   });
 
-  it('全 ACTIVE 树 → 审计通过 + bootGate provide', async () => {
+  it('全 ACTIVE 树 → 审计通过且失败清单为空', async () => {
     await root.plugin({
       name: 'healthy-a',
       apply(ctx: Context) {
@@ -123,6 +102,5 @@ describe('boot-gate（S4 装载调度层审计）', () => {
     const audit = await auditBoot(root);
     expect(audit.ok).toBe(true);
     expect(audit.failures).toEqual([]);
-    expect(root.reflect.get('bootGate')).not.toBeNull();
   });
 });

@@ -3,37 +3,27 @@
 
 // 装载调度层审计（S4，plugin-bundle-retirement）——
 // 装载全部条目 → 等所有 fiber settle（ACTIVE 或 FAILED；PENDING 且依赖永缺
-// = 超时判失败）→ 全 ACTIVE 才 provide bootGate 服务；任一 FAILED /
-// PENDING 超时 → fail-loud（明确报插件名 + 原始错误，启动不进会话）。
+// = 超时判失败）→ 任一 FAILED / PENDING 超时 → fail-loud（明确报插件名 +
+// 原始错误）。**「不进病态会话」的机制 = 调用方 `main.ts` 在 audit.ok=false
+// 时抛错**（`bootShell()` 在其后一行），本模块只负责给出可判定的审计结果。
 //
-// 消费面：创作坞 / Agent 会话入口 inject 'bootGate'——cordis 的 inject 语义
-// 自带等待（服务 provide 前消费方 PENDING），消费者零感知。
+// 历史（2026-09-16 清理）：本模块曾额外 `provide` 一个空转的 `bootGate` 服务
+// + `Context` 模块增广，设计意图是「创作坞 / 会话入口 `inject: ['bootGate']`
+// ⇒ 服务 provide 前消费方 PENDING」。**实测该 inject 面从未被任何生产消费者
+// 使用**（全仓零 `inject: ['bootGate']`，只有测试桩）⇒ 它与 main.ts 的抛错
+// 功能重叠、属预留机制，已整删；同批删掉的 `assertBootOk` 同为零消费者死导出
+// （main.ts 内联做同一件事）。
 //
 // FiberState 数值对照（vendored cordis const enum 编译期内联，运行时无对象）：
 // 0 = PENDING, 1 = LOADING, 2 = ACTIVE, 3 = FAILED, 4 = DISPOSED, 5 = UNLOADING
 
-import { type Context, type Fiber, Service } from '../cordis';
+import type { Context, Fiber } from '../cordis';
 
 /** boot settle 超时（PENDING fiber 的 await() 立即 resolve——真正卡住的是
  *  LOADING 中的异步 apply 或永不满足的依赖图环）。 */
 export const BOOT_SETTLE_TIMEOUT_MS = 30_000;
 
 const FIBER_ACTIVE = 2;
-
-/** bootGate 服务——全树 ACTIVE 审计通过后 provide（会话层 inject 此服务）。 */
-class BootGateService extends Service {
-  constructor(ctx: Context) {
-    super(ctx, 'bootGate');
-  }
-}
-
-declare module '../cordis/context' {
-  interface Context {
-    /** boot 审计门（S4）——全插件 settle + 全 ACTIVE 后 provide；
-     *  会话入口 inject 此服务确保不进病态会话。 */
-    bootGate: BootGateService;
-  }
-}
 
 /** 收集 root registry 内全部活跃 fiber（boot 审计面）。 */
 function collectFibers(root: Context): Fiber[] {
@@ -51,7 +41,8 @@ export interface BootAudit {
 }
 
 /**
- * 装载全部条目后审计——等所有 fiber settle → 全 ACTIVE 才 provide bootGate。
+ * 装载全部条目后审计——等所有 fiber settle → 逐 fiber 查验 ACTIVE；
+ * 失败清单交调用方 fail-loud（见文件头注）。
  *
  * settle 语义：`fiber.await()` 对 LOADING fiber 等待惯性完成、对 FAILED 抛错、
  * 对 PENDING fiber 立即 resolve（惯性 undefined）——故 settle 后仍需逐 fiber
@@ -105,16 +96,5 @@ export async function auditBoot(root: Context, timeoutMs: number = BOOT_SETTLE_T
     return { ok: false, failures };
   }
 
-  // 全 ACTIVE → provide bootGate（会话层 inject 语义放开）
-  new BootGateService(root);
   return { ok: true, failures: [] };
-}
-
-/** fail-loud 包装——审计失败时抛出结构化错误（启动不进会话）。 */
-export function assertBootOk(audit: BootAudit): void {
-  if (!audit.ok) {
-    throw new Error(
-      '[boot-gate] 插件装载失败（fail-loud，不带病运行）:\n' + audit.failures.map((f) => '  - ' + f).join('\n'),
-    );
-  }
 }
