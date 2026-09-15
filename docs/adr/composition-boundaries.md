@@ -20,7 +20,7 @@
 | 层 | 闸门 | 实证 | 可拆性 |
 |---|---|---|---|
 | 0 物理定律 | webview 非 Node：无 fs/child_process/native | DSH browser 平面同样受限（seed.ts） | 永久，只能绕 |
-| 1 进程/语言边界 | 机器面 = `rpc.rs` 133 方法 + 引擎 37 MCP 工具，编译期冻结；新增机器能力 = 宿主发版 | `rpc-contract.ts` 头注、`mcp_manager.rs` | 架构选择的既付代价；但 agent 工具 execute 跑在 webview（`agent/tool.ts`）——**新工具 ≠ 新机器能力**，此墙比直觉矮 |
+| 1 进程/语言边界 | 机器面 = RPC 方法面 + 引擎 MCP 工具面（**计数见生成物** `docs/agents/frontend-rpc-contract.md` 与 `docs/facts.generated.md`——ADR 不复述数字），编译期冻结；新增机器能力 = 宿主发版 | `rpc-contract.ts` 头注、`mcp_manager.rs` | 架构选择的既付代价；但 agent 工具 execute 跑在 webview（`agent/tool.ts`）——**新工具 ≠ 新机器能力**，此墙比直觉矮 |
 | 2 代码加载 | 生产 webview 全部 import 是编译期 vite chunk；asset protocol 未开（`capabilities/default.json`）、无自定义协议（`main.rs` 仅 `invoke_handler`） | dynamic import 扫描：14 处全是静态可分析 | 工程缺口——`llm_proxy.rs`（127.0.0.1:14570，已带 CORS）加静态路由即解锁；S0 立项 |
 | 3 组合层缺失 | 无行模型：工具面由 `buildToolRegistry` + `blueprint.standard()` 编译期决定；无 id 寻址/config 覆盖/preset realm | 但 per-session 组合数据流已就位（`workspace.ts` registry 按工作区构建、`runtime.createAgent` 每会话消费） | **主战场，全额可建**（组合层计划 S1-S4） |
 | 4 制度约束 | convergence 8 baseline 钉死全局装配序；冻结文件清单；biome 两受权出口；vendored cordis 禁就地改 | agent-core-convergence 全 7 phase 资产 | 最贵的墙：需要 re-derive（per-preset 分组）而非删除 |

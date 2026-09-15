@@ -106,7 +106,7 @@
 
 ### 3.3 验收
 - engine.exe serve 能被标准 MCP client（如 Claude Desktop / Cursor / 我们自己的 MCP client）连接
-- tools/list 返回全部 35 个工具；tools/call 能跑图查询
+- tools/list 返回引擎默认工具面（**工具清单与计数见生成物** `docs/agents/engine-plugin-contract.md`——本设计件不复述数字）；tools/call 能跑图查询
 - 长任务发 notifications/progress
 - notifications/cancelled 能中止分析
 - 未知工具返回规范错误，不再 _isDegraded 假冒成功

@@ -282,7 +282,7 @@ createSessionWithPreset(ctx, presetId)
 |---|---|---|
 | 工具贡献行（单工具行或整族行） | 该工具/族工具不注册；领域收敛优雅降级（该域动作缺席则域工具不生成） | 机制安全 |
 | 任一工具行 | system prompt 规则 #13/#14 仍静态枚举全量域工具名 → 模型可能调到不存在的工具，报 unknown tool 后自适 | 已知限制（动态生成延期） |
-| `converge-tools` | 旧细粒度名全可见（66 工具面替 14 域工具）；功能等价，前缀缓存按新面重算 | 文档声明 |
+| `converge-tools` | 旧细粒度名全可见（域收敛面被替换；域数与工具面计数见 `docs/facts.generated.md` + 生成物 `docs/agents/model-tool-contract.md`）；功能等价，前缀缓存按新面重算 | 文档声明 |
 | `task-tools` / `spawn-tool` | 回退行表版 task_* / agent_spawn | 文档声明 |
 | `state-hooks`（原名 `graph-hooks`，2026-09-09 图谱退役时收缩更名） | 无 LSP 诊断注入（state-read）/ 无构建结果注入（build-result）/ 无 state-preflight——模型少两类提示，另受 `hooksEnabled` 总开关约束 | 提示注入类，可禁；禁用后 LSP 诊断与构建缓存提示不再进上下文 |
 | `hologram/shell-platform` | 平台 CSS 差异化标记缺失（视觉问题，无功能损失） | 文档声明 |

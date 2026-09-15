@@ -93,8 +93,8 @@
 🔒 总线归零 + ui/ 拆分已收口（2026-08-19，docs/archive/eventbus-zero-and-ui-split-plan.md
    P0-P3 全竣工）：P1 事件归零；P2 物理拆分——11 个领域 store 迁 src/state/（连同
    P1 六信号 store 共 17 文件）、23 个星图文件迁 src/scene/（ui/graph.ts 留 3 行
-   re-export shim，冻结文件 chat-stream 的 type import 走此层）；ui/ 残余 25 文件 =
-   chat 编排域核心 + 旧层命令式基础设施（见 src/ui/README.md）。终态守护
+   re-export shim，冻结文件 chat-stream 的 type import 走此层）；ui/ 残余 = chat 编排域
+   核心 + 旧层命令式基础设施（**文件数与逐簇清单见 `src/ui/README.md`**，此处不复述）。终态守护
    tests/eventbus-zero-and-ui-split.test.ts（COMPLETE=true）——新建 store 一律落
    src/state/，新组件落 src/app/**，新 scene 文件落 src/scene/
 

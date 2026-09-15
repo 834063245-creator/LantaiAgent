@@ -67,9 +67,9 @@ dev.cmd
 
 ## 生产包热重载（增补四后的主路径）
 
-dev 模式不可用时的迭代环——`kind='feature'` 全部 31 个第一方插件（UI 五面
-canvas-nav / paper-shell / settings-domain / compose-dock / paper-minimap、16 工具域、
-prompt/capability 段贡献、六供应商 + agent-loop-service + 资产渲染器）都是
+dev 模式不可用时的迭代环——`kind='feature'` 的**全部出厂产物**（UI 面 canvas-nav / paper-shell /
+settings-domain / compose-dock 等、工具域、prompt/capability 段贡献、供应商 + agent-loop-service +
+资产渲染器；**计数与逐条清单见 `docs/facts.generated.md` + 名册 `plugins/builtin-roster.json`**）都是
 **内置插件产物**：
 
 ```
