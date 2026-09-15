@@ -194,6 +194,19 @@ effectiveComposition(id)  // 生产唯一解析入口（捕获网，永不抛出
 
 > 兼容纪律：没有任何组合上下文的旧路径（如无 agent 的工具直调）继续读**全局当前选择**——
 > 缺省语义 = 今天的行为，零漂移。
+>
+> **落地修正（2026-09-15，P2 施工单 `work-orders/WO-S6P2-seam-value-injection.md`）**：
+> ① 携带路径不是「经 rowCtx/闭包注入」，而是**owner 键控表 + 调用点按 `_owner_id` 查**
+> （`composition/seam-scope.ts`）——实测证据：fs/shell 两族的工具实例经
+> `plugins/builtin/contribution-helpers.ts` 的 `family ??= build(rowCtx.codingExec)` 锁存在
+> **首次装配的 rowCtx** 上，往 `ToolRowContext` 扩字段对这两族**结构性无效**（用户裁定 A）。
+> ② `emitLoopEvent` 不需要「由事件所属 agent 的组合决定」的显式传参：**每 Agent 一条总线**
+> （`agent.ts` 的 `_loopEvents`），Agent 构造期 `setSeamView` 灌一次，10 个 emit 调用点零改动。
+> ③ `llm` 单点经 `createProvider` 的 `options.seamView` 注入（三个「有组合上下文」的 provider
+> 构建点：会话工厂 + 两条热切换路径）。
+> ④ **`sessionPersistence` 本批不做**（用户裁定 D）：per-volume 后端选择的正确语义要求
+> **读也按该卷组合**，而读盘时点组合尚未解析（卷内 `presetId` 恰在待读的那卷里 = 鸡生蛋）；
+> 真做需另立「卷 → 组合」外部索引，属独立批次。该 seam 本轮仍读全局当前选择（如实声明）。
 
 ### 3.5 插件激活与独占（P3 的核心）
 
@@ -265,7 +278,7 @@ effectiveComposition(id)  // 生产唯一解析入口（捕获网，永不抛出
 | **P0** ✅ **已落地（2026-09-14）** | 卷结构落 `presetId`（`StoredSession` / `SessionSnapshotData` 两处 shape + 两处 save 路径 + 恢复期登记）+ 会话工厂**按卷内记录的组合重建**（`agentSessionState` 卷级登记，工厂读它）+ 恢复期校验与可见提示（不在册 / 行 id 不可解析 → 提示 + 回退用户层组合）；连带修复 `renameSessionFile` 改名不再抹掉 `tokens`/`compose` | 关卷重开：组合身份登记一致；旧存档无字段 = 无记录（不猜、不迁移）；坏组合可见且卷照常打开 | vitest + build + biome + convergence 双轨 | 卷文件多一个字段（旧卷 = 缺省）；新增"本卷组合不可用"提示；**改名不再丢数据** |
 | 注（P0 范围调整） | **「卷头只读标签」移入 P5**（它属 UI 面，与 chip / 同屏并排同批做，且需要"哪个是当前卷"的展示位）；**「诊断四栏化数据面」移入 P1**（"未选中 vs 被禁用"要等选择集语义落地才有区分度）。P0 只做**落盘 + 登记 + 校验 + 提示**这条不可再省的闭环 | — | — | — |
 | **P1** ✅ **已落地（2026-09-15，五笔：P1a `6e3b3fb2` / P1b `6abbcc30` / P1c `9196f5da` / P1d `cca04a58` / P1e `fd30742c`；另基线修复 `8c7abf92`）** | 卷级选择全链路（用户 2026-09-15 拍板「我觉得OK，开工」，按施工单四批 + UI 一笔落地）：**P1a** 卷内组合记录不再被落盘改写（工厂把记录回述给 Agent 镜像——旧行为：重开旧卷后本卷再落一次盘就把 `presetId` 改写成全局默认，记录静默蒸发）；**P1b** 选择集语义（`ToolContribution.defaultOff` + `disabled:false` 回开，**开放面契约 v31**）+ 诊断三栏；**P1c** 卷级选择写路径（`selectSessionPreset`：校验 → 空白闸 → 拆句柄 → 登记 → 空白卷即时重建；`sessionSelectionError` 比 `selectionError` 严一档：未知 id 也拒）；**P1d** 会话工厂判据从对象引用换轨为**组合身份**（层内容 + 贡献代数，输入派生——消掉「每卷白建注册表」的 F4 浪费，且含代数 ⇒ 不复用陈旧注册表）；**P1e** 创作坞组合芯片（两态：无主态 = 新卷出生默认 / 空白卷 = 卷级 / 跑过一轮 = 只读标签） | §2 序列 A/B：空白卷可拨且立刻生效（有句柄则当场重建）、跑过一轮被拒（控件锁 + 写路径二道闸同一把尺子）、两卷工具面互不影响（身份不同 ⇒ 各建注册表；身份相同 ⇒ 复用）、卷级选择不写全局真源 | vitest + biome 0/0 + build（30 产物）+ doc-sync + **convergence 双轨零漂移**（P1 不动出厂 preset 面 = 构造性证据） | 组合按卷生效（同工作区两卷可不同）；设置行左端新增组合芯片、行内序由「模型→spacer→权限→思考→墨量」变为「模型→组合→spacer→…」（**故意规格变更**，row-order 契约随之显式改写）；诊断面由一栏拆三栏（「禁用行」不再混装 seam id）；卷文件 `presetId` 在重开后不再被改写；新建卷装配少一次注册表构建 |
-| **P2** | seam 选择从模块态 → 装配期值注入（6 消费单点 + `emitLoopEvent`） | §2 序列 D；旧无组合上下文路径零漂移 | + seam 域 per-composition 快照 | 同一工具可按卷走不同 provider |
+| **P2** ✅ **已落地（2026-09-15，两笔：P2a `a1e83c8f` / P2b `53924344`；施工单 `work-orders/WO-S6P2-seam-value-injection.md`，用户逐项裁定 A/B/C/D/E/F 见 §7 与 §8）** | seam 选择从模块态 → 装配期值注入：**P2a** 新增键控叶模块 `composition/seam-scope.ts`（装配期登记裁剪面，键 = Agent bus id）+ `seamDisabled(domain, view?)` 可选 view + fs/shell/subagents 三消费点 + `AgentEventBus.setSeamView`（每 Agent 一条总线）；**P2b** llm 单点（`activeLlmAdapters(view?)` + `CreateProviderOptions.seamView` + 三个 provider 构建点）。**契约 v36（P2a）/ v37（P2b）**——四步流程各走一遍 | §2 序列 D（⑨ 同一工具实例两卷两 provider 且互不串味）；旧无组合上下文路径零漂移（⑫ 哨兵 + ①-⑧ 零改动） | **不新增 seam 域 per-composition 快照、不触发 baseline-change-request**（用户裁定 B：两轨的 `seamDisabled` 构造性为空 ⇒ 新快照零信息量，零漂移由既有 8 份快照逐字节覆盖；信息量落在行为测试） | 同一工具可按卷走不同 provider；`seam/sessionPersistence` 例外仍全局（如实声明） |
 | **P3（成本悬崖）** | 插件激活/引用计数/独占声明/`requires`/fail loud + 诊断「被跳过」栏 | §2 序列 E；无引用即释放；冲突装配期拒绝 | + 激活生命周期测试 + 性能门 | 插件副作用改为按需激活；新增 manifest 字段 |
 | **P4** | 程序入口：会话创建 RPC 带 `preset` / MCP 工具参数 / 评测自举 | §2 序列 C；与 UI 同 id 解析逐字节一致 | + RPC 契约重生成 + e2e | 新增 RPC 参数（契约版本升版） |
 | **P5** | UI 面：卷头 chip（含 blank-only 锁）+ 同屏并排两 Agent | §2 序列 B 的 UI 层；锁生效（跑过一轮的卷拒绝切换） | + UI e2e + golden | 用户可见的新控件与新锁 |
@@ -331,6 +344,35 @@ effectiveComposition(id)  // 生产唯一解析入口（捕获网，永不抛出
 - **2026-09-15 用户批准 P1 施工单**（原话「我觉得OK，开工」）：同意「P1a→P1d 四笔 + UI 一笔」的切分、
   **诊断先落三栏**（`skipped` 留 P3，不预造空栏）、chip 落**创作坞设置行左端**（甲案：模型 | 组合，
   与「开口即开卷」同构），身份比较取**输入派生**（含贡献代数）而非产物内容派生。
+- **2026-09-15 用户逐项裁定 P2 施工单六道判断题**（`work-orders/WO-S6P2-seam-value-injection.md` §7）：
+  **A = owner 键控表**（准偏离设计件字面「经 rowCtx/闭包注入」，理由见 §3.4 落地修正①）；
+  **B = 不新增 convergence 快照、不触发 baseline-change-request**（零漂移走构造性论证 + 行为哨兵）；
+  **C = 新增独立叶模块 `composition/seam-scope.ts`**（不塞进 `agent/session-context.ts` 的 `OwnerContext`）；
+  **D = `sessionPersistence` 单点本批不做**（半吊子「写卷级/读全局」比全局更糟，需另立外部索引）；
+  **E = `ResolvedComposition.seams`（零生产读者化石）本批不碰**（维持现状）；
+  **F = 切两笔 P2a/P2b**（每笔独立全绿独立 commit）。
+
+### 8.2 P2 施工中实测的环境事实（下一批动手前必读）
+
+1. **契约版本已漂到 v37**（接手文档里的「现 31 / P2 升 v32」全部过期）：并发工作线（会话存盘换轨
+   Phase 1/2/3a/3b + 触发点 B）占了 v32-v35，P2 的 P2a/P2b 又各占一版（v36/v37）。**纪律：升版号
+   一律在提交时点重读 `contract-version.ts`**——按文档里的号写会直接红在
+   `tests/seam-contract-version.test.ts`。另外该线正在改 `session-persistence-service.ts`（动作面
+   扩为八动作）、`contract-version.ts`、`AGENTS.md`/`CLAUDE.md`——本批据此**整片绕开**
+   `session-persistence-service.ts`（连裁定 D 也落在同一侧），`AGENTS.md`/`CLAUDE.md` 只在收官
+   写回提交里动。
+2. **两处「源码窗口守卫」会咬人**（`tests/provider-hotswap.test.ts` 与
+   `tests/composition-preset-assembly.test.ts`）：它们按 `src.slice(i, i + N)` 的**固定字符窗口**
+   断言 `workspace.ts` 的工厂正文，实测锚点到窗口边界只剩 **370 字符**余量、另有断言要求正文里
+   出现 `model: eff.model, thinking: eff.thinking` 的**逐字**子串。P2b 的 llm 注入因此做成
+   模块级单一派生点 `sessionSeamViewFor(storeId, sessionId)`（而不是在工厂内联展开）——既降重复，
+   又把新增字符控制在窗口余量内（终态 3348/3600）。**改 `workspace.ts` 工厂体前先量这两个窗口**。
+3. **`createLiveProvider` 的参数位**：第 2 参是 `CreateProviderOptions`（→ 透传给 `createProvider`），
+   第 3 参才是 `LiveProviderOverrides`（model/thinking）。放错位 **vitest 全绿、只有 `npm run build`
+   的 tsc 会拦**（单测不类型检查）——`npm run build` 在本批不是形式主义。
+4. **`familyContributions` 的实例缓存是「首装配锁存」**（`family ??= build(rowCtx.codingExec)`，
+   apply 作用域闭包）：任何想「换掉已装配族行为」的尝试都不能走 rowCtx 扩字段（见 §3.4 落地修正①）。
+   该缓存同时意味着 fs/shell 工具实例**跨卷共享**——本批的 ⑨ 用例正是拿这个现实做的验收。
 
 ### 8.1 P1 施工中实测的环境事实（下一批动手前必读）
 

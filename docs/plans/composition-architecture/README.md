@@ -32,7 +32,9 @@
 
 **S3 — 第一方行化**已收官（2026-08-22）：settings 面板域迁成第一方插件（`plugins/settings-plugin.ts` 面板 + 命令双贡献；paper 域同步补齐 `paper/toggle` 命令；`PANEL_DEFS` 常量面清空；快捷键链路经 `app/actions.ts` 别名翻译层桥接，useGlobalKeys 字面量不变）。施工史与裁决记录见 [`HISTORY.md`](HISTORY.md) S3 段。
 
-**S6 — per-agent 组合**（2026-09-14 草案待批）：把组合从「全局状态的一次函数求值」推到「每 Agent 一份值」——卷级选择 + 选择集（默认关行/回开）+ 装配期 provider 值注入 + 插件按需激活（引用计数）。路径选择 = **视图 + 引用计数**（不抄 DSH 的 scope realm；realm 仅作资源型插件的逃生门）。设计件：[`designs/S6-per-agent-composition.md`](designs/S6-per-agent-composition.md)；立项输入 = 2026-09-14 组合层审计（F1-F6 断链已修）+ 用户三项拍板（差异到插件集合层 / UI 与程序双入口 / 全粒度并存）。
+**S6 — per-agent 组合**（2026-09-14 立项，**执行中**）：把组合从「全局状态的一次函数求值」推到「每 Agent 一份值」——卷级选择 + 选择集（默认关行/回开）+ 装配期 provider 值注入 + 插件按需激活（引用计数）。路径选择 = **视图 + 引用计数**（不抄 DSH 的 scope realm；realm 仅作资源型插件的逃生门）。设计件：[`designs/S6-per-agent-composition.md`](designs/S6-per-agent-composition.md)；施工单归档在 [`work-orders/`](work-orders/)；立项输入 = 2026-09-14 组合层审计（F1-F6 断链已修）+ 用户三项拍板（差异到插件集合层 / UI 与程序双入口 / 全粒度并存）。
+
+**批次进度**（每批独立 commit + 门禁四连）：P-1 authoring 环境 ✅ `ded17323` · P0.5 minimal 轨重录 + 双轨门禁 ✅ `37418b74` · P0 记录闭环 ✅ `3e9dc8a2` · **P1 卷级选择全链路 ✅**（`6e3b3fb2`/`6abbcc30`/`9196f5da`/`cca04a58`/`fd30742c`；基线与文档 `8c7abf92`/`a87b620a`） · **P2 seam 装配期值注入 ✅**（`a1e83c8f` P2a + `53924344` P2b；契约 v36/v37，施工单 [`WO-S6P2-seam-value-injection.md`](work-orders/WO-S6P2-seam-value-injection.md)；`seam/sessionPersistence` 单点按裁定留待独立批次） · 下一批 = **P3 成本悬崖**（插件激活/引用计数/独占声明/`requires`/fail loud + 诊断「被跳过」栏）。
 
 协作纪律延续：**重构推到哪个域，行化跟到哪个域**——不抢跑未动的域。新增功能的审查试金石：是行还是特权代码堆积？
 
