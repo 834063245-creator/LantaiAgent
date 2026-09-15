@@ -63,6 +63,31 @@ const CELL_LIMIT = 500;
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'target', '.workbuddy', '.codely']);
 
+/** 树内 README（各源码目录下的目录契约文件）：**报道不上牙**的作用域。
+ *  理由：它们同样会漂（实测先例 = src-ui/src/ui/README.md 自称 16 文件、引用已删模块），
+ *  但把它们纳入硬门禁会让「改代码」的 commit 被文档债拦住 ⇒ 先做可见性，不动交付节奏。 */
+const ADVISORY_ROOTS = ['src-ui/src', 'src-ui/tests', 'src-tauri/src', 'engine/src', 'hologram-graph/src', 'hologram-storage/src', 'hologram-vector/src', 'dsh-bundle/viewer', 'examples'];
+
+function listAdvisoryReadmes() {
+  const out = [];
+  for (const root of ADVISORY_ROOTS) {
+    const abs = path.join(ROOT, root);
+    if (!fs.existsSync(abs)) continue;
+    const walk = (dir) => {
+      for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (ent.isDirectory()) {
+          if (SKIP_DIRS.has(ent.name)) continue;
+          walk(path.join(dir, ent.name));
+        } else if (ent.isFile() && ent.name === 'README.md') {
+          out.push(path.relative(ROOT, path.join(dir, ent.name)).split(path.sep).join('/'));
+        }
+      }
+    };
+    walk(abs);
+  }
+  return out.sort();
+}
+
 function listMarkdown() {
   const out = [];
   const walk = (dir) => {
@@ -177,8 +202,20 @@ const CANDIDATE_RE =
 
 // ── 检查实现 ──────────────────────────────────────────────────────────────
 
+/** 扫描期消失的文件（并发 git mv / 另一个窗口在写）——不静默：报告里点名。 */
+const vanished = new Set();
+
 function readText(rel) {
-  return fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
+  try {
+    return fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/\r\n/g, '\n');
+  } catch (e) {
+    if (e.code === 'ENOENT') {
+      // 文件列表在扫描开始时取好，扫描中途被并发移动/删除是正常竞态（本仓有多窗口并行纪律）。
+      vanished.add(rel);
+      return '';
+    }
+    throw e;
+  }
 }
 
 function checkFacts(files, facts) {
@@ -458,6 +495,13 @@ function main() {
 
   const files = listMarkdown();
   const facts = collectFacts();
+  // 树内 README：同一套查，但**只报道不上牙**（见 ADVISORY_ROOTS 注释）。
+  const advisoryFiles = listAdvisoryReadmes();
+  const advisory = [
+    ...checkFacts(advisoryFiles, facts).violations,
+    ...checkLinks(advisoryFiles).violations,
+    ...checkSize(advisoryFiles).violations,
+  ];
   const results = [
     checkBudget(),
     checkFacts(files, facts),
@@ -505,6 +549,9 @@ function main() {
   };
 
   console.log(`[doc-check] 扫描 ${files.length} 份文档 · 事实 ${facts.size} 条 · 豁免账 ${exemptions.entries.length} 条`);
+  if (vanished.size > 0) {
+    console.log(`[doc-check] ⚠ 扫描期消失 ${vanished.size} 份（并发移动/删除；本轮不计入结果）：${[...vanished].slice(0, 5).join(' · ')}${vanished.size > 5 ? ' …' : ''}`);
+  }
   if (report) {
     console.log('\n── 全部问题（含在册豁免；这是逐批清偿的工作单）──');
     for (const [check, list] of group([...all])) {
@@ -515,6 +562,12 @@ function main() {
         const loc = v.line ? `${v.file}:${v.line}` : v.file;
         console.log(`  ${tag} ${loc} — ${v.message}`);
       }
+    }
+    console.log(`\n── 树内 README 顾问查（${advisoryFiles.length} 份，只报道不上牙）──`);
+    if (advisory.length === 0) {
+      console.log('  无问题');
+    } else {
+      for (const v of advisory) console.log(`  ${v.line ? `${v.file}:${v.line}` : v.file} — ${v.message}`);
     }
     console.log('\n── 未登记候选（报道用，不上牙）──');
     console.log(`  命中 ${candidates.total} 行，样例前 ${candidates.sample.length} 条：`);
@@ -532,7 +585,8 @@ function main() {
     const summary = Object.entries(byPayoff)
       .map(([k, n]) => `${k} ${n} 项`)
       .join(' · ');
-    console.log(`[ok] doc-check：无未豁免违规${summary ? `（在册豁免：${summary}）` : ''}`);
+    const advise = advisory.length > 0 ? `；树内 README 顾问查 ${advisory.length} 项（--report 看，不拦）` : '';
+    console.log(`[ok] doc-check：无未豁免违规${summary ? `（在册豁免：${summary}）` : ''}${advise}`);
     return 0;
   }
 

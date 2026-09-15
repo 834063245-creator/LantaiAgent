@@ -152,6 +152,12 @@
 |---|------|----|------------|------|
 | B2 | `src-tauri/tauri.conf.json` 的 `bundle.resources` / `beforeBuildCommand` | **退役只删消费侧接线，没回头清分发侧打包**——资产继续随包（体积白烧），但已无任何代码知道它在哪、更不会启动它；用户拿到一个「神秘 196MB」 | 2026-09-09 同日两刀：凌晨 `30fd7bd8` 为修「首页点不进工作区」把引擎塞进包（**当时正确**，壳还在消费）；下午 `51047f99` 图谱全量退役删 `engine_transport.rs`（682 行，含 `engine_exe_path()` 定位 + 每工作区 spawn），**而 `git show 51047f99 -- tauri.conf.json` 为空** ⇒ 分发包留着、自动接线删了。此后一周无人察觉（`grep Command::new \| grep engine` 零命中，UI 从不提及引擎，文档那句「或安装目录下的同名文件」成化石）。危害是**隐性**的：不炸（无僵尸产物，与 B1 不同），但 (a) 安装包白涨 196MB、(b) 每次构建白编译引擎、(c) 用户/Agent 排查时被过期注释带偏（`app/mod.rs` 头部仍在描述已删的「每工作区持一个引擎传输」） | ✅ 已收口（engine-bundled-mcp-distribution，2026-09-16）：接线补回（前端 `plugins/bundled-engine.ts` 走既有 MCP 受治进程通道，按工作区注册）+ 定位面（`engine_assets.rs` 只读探测 + `engine_bundled_info` RPC）+ 设置面板可见可开关（**默认关**，尊重 09-09 退役决策）+ 过期注释/文档同批真相化。打包清单**有意保留**（引擎确实要随包——这正是该计划的前提） |
 
+### B3（2026-09-16 补记）— 退役删了资产、没删打包引用 =「发布通道断链」
+
+| # | 位置 | 雷 | 触发 → 后果 | 状态 |
+|---|------|----|------------|------|
+| B3 | `.github/workflows/release.yml` 的 5 处 `cp release-bin/...`（L54/55/63/64/65） | B2 的**反向形态**：这次是「资产删了、引用没删」。`release-bin/`（`hologram` wrapper + `install.sh` + `install.cmd`）已在 `5741e457`（engine-plugin-extraction §8 旧时代残留清理）物理删除，而 release 工作流仍在从它拷贝 | release 的 staging 步骤按现状会失败（`cp` 源不存在）⇒ 发布在打包前就断；同时 README 旧文还在教用户「双击 `install.cmd` / `./install.sh --user`」（已随本次文档面重构删除） | ⏸ **待用户拍板**（对外发布面 = §0.5 三类保留问题之一）：发布包还要不要 `hologram` CLI wrapper 与安装脚本？**要** ⇒ 重建 `release-bin/`（或改从构建产物取引擎 + 重写脚本）并同批校对 release.yml；**不要** ⇒ 删这 5 行 + 收口发布说明。README 已先按「不要」写（只留 MSI/NSIS 安装 + 引擎 CLI 起法），拍板后与之对齐 |
+
 **家族纪律（B1 + B2 合并）**：**退役一个随包资产 = 三面一起过**——
 ① 消费侧接线（删/改代码）；② 分发侧打包（`tauri.conf.json` resources + 构建链）；
 ③ 产物侧残留（`_up_` 清僵尸，见 B1）。

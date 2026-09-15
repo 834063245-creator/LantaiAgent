@@ -69,6 +69,25 @@
   （引擎 stdio MCP transport，旧图写的是已退役的 TCP 9777）③ 引擎能力与工具面 ④ 验证基线表（数字改为
   facts 指针或标注实测日期）。**未重建前这些清单的权威副本 = git 史**。
 
+### 4.2 P2 落账（2026-09-16）
+
+| 文件 | 前 | 后 | 关键动作 |
+|---|---|---|---|
+| `ARCHITECTURE.md`（L2） | 64.5 KB / 最长行 1232 | 49.7 KB / 最长行 170 | 按真源逐节校准（crate 布局 / 数据目录分居 / 能力口 10 / ResourceLedger 7 / Hooks 图谱类已删 / `ToolResponse` 四态 / 删三个互相矛盾的 RPC 方法数）；**§11 验证基线整表改指针**；重建 P1 删除的四处清单（目录树 → §9 五段 · 数据流 mermaid → §2.1 · 引擎与工具面 → 指针 · 基线 → 指针） |
+| 根 `README.md`（用户门面） | 29.5 KB / 411 行 | 14.8 KB / 259 行 | **乙定位落地**：桌面 Agent 工作台为主叙事，引擎降为「随包配套的独立进程」一节；删 12 类陈旧主张（12 个领域工具含 graph/ops/lsp · 31 字段 · TCP 9777 架构图 · install.cmd 安装步 · `hologram` CLI 旧名 · 35/36 schema legacy 机制 · 约束治理小节 · 「先问图」工作流 · 手抄标量 27 语法/9 节点/24 框架/77 模型/153 RPC 方法…） |
+| `CONTRIBUTING.md` | 手抄结构树 + 旧基线 | 顶层地图 + 指针 | 结构树改为指向 `ARCHITECTURE.md` §9；技术栈去 Three.js/worktree 旧述；测试基线行改指 `CONVENTIONS.md` §3；顺手校准「九条通道 / 1339 用例 / 134 RPC 方法 / 10 LifecycleService」四处手抄 |
+
+- **事实更正**（子代理实测推翻我 P0/P1 简报里的两条，已在 L0 同步）：
+  ① `engine_transport.rs` **已随图谱退役删除**（2026-09-09）——壳只做二进制只读探测，拉起由前端
+  `plugins/bundled-engine.ts` → `mcp-bridge.ts` 受治进程 → Rust `protocol_bridge` stdio，**默认关、一进程一根**；
+  ② `src-ui/src/scene/` 目录**已整个删除**（`graph-types.ts` 不存在），L0 不再引用它。
+- 复核纠正一处子代理结论：权限裁决是**四态**（`PermissionResult` = Allow / Deny / Ask / Passthrough，
+  真源 `src-tauri/src/permissions/mod.rs:111`），README 已按四态写。
+- `docs/landmine-map.md` 第八批审计：`src-ui/src/ui/README.md` 陈旧计数与死引用已修；`dsh-bundle/viewer`
+  构建链已断（待用户拍产品面去留）；根 `.lantai/` 残留目录待取证。
+- **豁免账：P2 类目清零**（facts-arch-31 / facts-readme-domains / size-current-layer / links-landmine /
+  facts-plugins-29 / orphans-top / size-design-spec / size-landmine / size-open-surface 全部清偿）。
+
 ## 5. 门禁用法与维护纪律
 
 ```

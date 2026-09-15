@@ -1,7 +1,29 @@
 # 兰台文档索引
 
-> 收敛日期：2026-08-17。原则：**根目录只放入口与规则；docs/ 按用途分层；完成即归档。**
+> 原则（2026-09-16 文档面重构）：**按「读者 × 权威 × 生命周期」四层**——
+> **L0 注入层**（[`CLAUDE.md`](../CLAUDE.md) 唯一权威 + [`AGENTS.md`](../AGENTS.md) 薄指针）/
+> **L1 规则层**（本页「规则」+ `adr/` + `landmine-map.md`）/ **L2 现状层**（`ARCHITECTURE.md`、`design/` 定稿、
+> `plugins/`、`composition/`）/ **L3 生成层**（六份生成物，含 [`facts.generated.md`](facts.generated.md)——
+> **跨文档数字只准来自它或写指针**）/ **L4 过程层**（`plans/` 活在办项 · `research/` 冻结证据 · `archive/` 历史）。
 > 找文档先看本页；本页没有的再去 `docs/archive/`，归档内容不是现状。
+> 门禁：`cd src-ui && npm run doc-check`（六查 + 树内 README 顾问查；施工单 [`plans/doc-surface-refactor-plan.md`](plans/doc-surface-refactor-plan.md)）。
+
+## 按任务找（想干什么 → 读什么）
+
+| 我想…… | 读什么 |
+|---|---|
+| 跑起来 / 装应用 | [`README.md`](../README.md)（根目录，用户门面） |
+| 提 PR / 过门禁 | [`CONTRIBUTING.md`](../CONTRIBUTING.md) + [`CLAUDE.md`](../CLAUDE.md) 门禁表 |
+| 写插件 | [`PLUGINS.md`](../PLUGINS.md) → [`plugins/README.md`](plugins/README.md) → [`cookbook/`](cookbook/README.md) |
+| 查某个能力怎么实现的 | [`ARCHITECTURE.md`](../ARCHITECTURE.md)（§1 能力总览给了每行的实现位置） |
+| 知道「现在做到哪了 / 还剩什么」 | [`plans/README.md`](plans/README.md) + [`plans/HISTORY.md`](plans/HISTORY.md) |
+| 改代码前看雷区 | [`INVARIANTS.md`](../INVARIANTS.md) + [`landmine-map.md`](landmine-map.md) |
+| 找某个数字的真源（工具数/插件数/契约版本） | [`facts.generated.md`](facts.generated.md) |
+| 查模型可见工具面 / RPC 面 | [`agents/model-tool-contract.md`](agents/model-tool-contract.md) · [`agents/frontend-rpc-contract.md`](agents/frontend-rpc-contract.md)（生成物） |
+| 查组合层 / preset / 插件激活 | [`composition/README.md`](composition/README.md) · [`plugins/README.md`](plugins/README.md) |
+| 换后端（llm / fs / shell / session / subagent） | [`cookbook/`](cookbook/README.md) |
+| 用引擎（独立进程 / MCP / 免编译扩展） | [`engine-as-external-mcp.md`](engine-as-external-mcp.md) · [`agents/engine-plugin-contract.md`](agents/engine-plugin-contract.md) |
+| 翻历史决策 | [`adr/README.md`](adr/README.md) + `docs/archive/` |
 
 ## 入口（按角色）
 
