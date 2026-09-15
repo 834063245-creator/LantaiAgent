@@ -284,3 +284,63 @@
 7. gen:tool-contract 重生成 model-tool-contract.md 随同 commit；
 8. 门禁四连（vitest / tsc / biome / convergence）重跑全绿收尾。
 
+
+---
+
+# Baseline 变更申请 — phase-5/session-projection.trace.json（`tool/call` 前移到分发时落）
+
+> 申请日期：2026-09-15 · 申请人：编码助手（会话存盘换轨 · 触发点 B 收官）
+> 状态：**已批准** —— 用户在对话中明确回应「需要审批的那个地方我看了，通过」；
+> 本文件按模板登记变更对象与证据。
+> 模型可见表面：**无变更**（`tool/call` 无消息投影，`deriveMessages`/`derivePayload` 逐字节不变）；
+> 变更的是**事件序列**（审计面）——这正是本申请的对象。
+
+## 1. 变更对象
+
+- `src-ui/tests/convergence/baseline/phase-5/session-projection.trace.json`（standard 轨）
+- `src-ui/tests/convergence/baseline/preset-minimal/phase-5/session-projection.trace.json`（minimal 轨）
+- 变更内容：事件序列里 `tool/call` 的位置**前移**——由「流收尾之后（assistant/text 之后）」
+  变为「执行器分发时（assistant/text 之前）」：
+
+  ```
+  旧：… user/message → turn/start → assistant/text → tool/call → tool/result → assistant/text
+  新：… user/message → turn/start → tool/call → assistant/text → tool/result → assistant/text
+  ```
+
+  其余事件逐字节不变、投影派生（`deriveMessages`）不变。
+
+## 2. 为什么必须变
+
+- 兰台的 `StreamingToolExecutor` 在**流期间**就跑工具（流式执行优化），而
+  `tool/call` 审计事件与 assistant 消息都在**流收尾**才落——于是「模型宣布了 X」
+  这件事在副作用发生时**还不在日志里**。崩溃/断电后恢复，链上看不到任何痕迹，
+  模型会以为那次写动作从未发生（可能重复执行有副作用的操作）。
+  这正是 `docs/session-checkpoint-design.md` §3.2 点名的**工具副作用窗口**。
+- DSH 参照实现把同一保证做在「工具派发前 flush 已记录的调用」上
+  （`packages/session/session-checkpoint-policy/src/index.ts:70-75`）。
+- 前移后，触发点 B 的语义才完整：**宣布落盘 → 排空屏障 → 才执行工具体**。
+
+## 3. 证据
+
+- `src-ui/tests/session-differential.test.ts`「工具循环」用例：钉住新的事件顺序
+  （含日期 + 依据的显式声明注释）；`deriveMessages` 投影等价断言同用例内仍绿。
+- `src-ui/tests/tool-dispatch-checkpoint.test.ts`（4 例）：钩子在工具体**之前** await
+  （顺序可证）；失败 fail-open + warn 可见（工具体照跑）；未注入 = 旧行为；
+  生产接线的 T0 源码断言（default-loop 的钩子 = append `tool/call` + `flushPersistence`）。
+- `src-ui/tests/session-log-repair.test.ts`：**孤儿 `tool/call`（有分发、无宣布）** →
+  恢复链先合成 assistant 宣布再补 `tool/result`，投影后转写对 provider 合法
+  （前移带来的新常态：崩溃点落在 assistant 消息落盘之前）。
+- `record` 后 `git diff` 只含两轨 phase-5 快照 + 上述代码/测试 + 文档。
+
+## 4. 拟议变更
+
+采纳 record 快照：两轨各一处事件顺序变更；`deriveMessages`/`derivePayload` 零漂移
+（无消息投影，前缀缓存不受影响——`tool/call` 不进模型载荷）。
+
+## 5. 落地步骤
+
+1. ✅ executor 钩子 = 宣布落盘 + 排空（default-loop 注入）；
+2. ✅ 移除 default-loop 两处流收尾的重复 `tool/call` 追加（单一写入点）；
+3. ✅ 差分用例钉新序 + 显式声明；恢复链补「宣布补落」；
+4. ✅ 本文件登记 + 授权依据（用户「通过」）；
+5. ✅ `record:convergence` 两轨重录 + 门禁四连（vitest / build / biome ci / verify:convergence）。

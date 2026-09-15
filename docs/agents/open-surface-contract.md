@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：34
+当前版本：35
 
-<!-- contract-fingerprint: 93be55813a97e1bd6f35bc04a31cb04cd58807166656cfc4fc2643e0a6ac29f3 -->
+<!-- contract-fingerprint: 2d67ca89fe0deaa7aa8cb4c2f69f92b2ca1c596f6df1d8161174ce356596cf88 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -76,6 +76,8 @@
 | 33 | 2026-09-15 | **会话持久化 seam 权威翻转（Phase 3b）**：delete_volume 退役（墓碑重写 deleted:true 属「快照即存储」时代的占位手段），新增 delete_log（真删事件日志 + 投影缓存）。**对外可感知**：第三方会话后端 provider 应实现 delete_log；.ndjson 事件日志成为卷本体（list_volumes 消费方按它认卷、删除、剪枝），.json 降级为带 {seq, ver} 的 UI 投影缓存（cache.seq < 日志 lastSeq = 陈旧 → 不用快照、重建 UI 面）。依据：docs/plans/session-persistence-dsh-port-plan.md Phase 3b（用户拍板三期全做） | DSH 参照移植 Phase 3b（session-projection-cache 的「cache 是 fold 快捷方式、永不是权威」） |
 
 | 34 | 2026-09-15 | **工具副作用前检查点（换轨触发点 B）**：默认 loop 构造执行器时注入 host.sessionLog.flushPersistence() 作为 await 钩子——args 解析完成、闸/预检之前把「此刻已知的会话事实」推到盘上（增量写，通常几 KB append），失败 fail-open + executor 内 warn 可见（设计件 §3.3 的裁决）。**契约形状零变更**（AgentLoopHost 成员未动；第三方 loop 自管工具执行不受影响）。同版 SessionLog 增 setPersistenceSink/lushPersistence（日志自己回答「我落盘了吗」，避免 agent→app 反向依赖）。**未做（需审批）**：	ool/call 审计事件提前到分发时落——兰台执行器在流期间就跑工具，改顺序会漂移 phase-5 事件序列基线，须走 baseline-change-request | DSH session-checkpoint-policy 的 	ools/execute 前置 flush（packages/session/session-checkpoint-policy/src/index.ts:70-75） |
+
+| 35 | 2026-09-15 | **	ool/call 前移到分发时落（触发点 B 收官）**：默认 loop 注入的检查点钩子先 append 	ool/call 再 lushPersistence()——「模型宣布了什么」在副作用发生前落盘（兰台执行器在流期间就跑工具，此前流收尾才记，崩溃后恢复链看不到痕迹）；default-loop 两处流收尾的重复追加删除（单一写入点）。**契约形状零变更**、**模型可见面零变化**（	ool/call 无消息投影，deriveMessages/前缀缓存不受影响）；事件**序列**变化 ⇒ phase-5 事件序列基线**两轨重录**（已批准：docs/archive/agent-core-convergence/baseline-change-request.md「tool/call 前移」条目） | DSH session-checkpoint-policy 的 	ools/execute 前置 flush（packages/session/session-checkpoint-policy/src/index.ts:70-75）+ 用户 2026-09-15 批准 |
 
 ## 变更流程（guard 红 → 修复四步）
 

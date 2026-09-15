@@ -205,10 +205,21 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
         host.loopEvents,
         // 通知路由身份（bus id）— bg job owner / bash_kill 所有权（executor 注入 _owner_id）
         host.id,
-        // 工具副作用前检查点（换轨 Phase 1 触发点 B）：把此刻已知的会话事实推到盘上
-        // 再让工具体落地副作用。动作 = 排空日志队列（增量写 ⇒ 通常只是几 KB append）。
-        // 未接落盘面（无 UI/测试桩）= no-op；失败 fail-open 且可见（执行器内 warn）。
-        () => host.sessionLog.flushPersistence(),
+        // 工具副作用前检查点（换轨触发点 B）：**先把「模型宣布了这个调用」落进日志、
+        // 再把队列推到盘上**，然后才让工具体落地副作用。
+        //
+        // 为什么宣布要先落（2026-09-15 用户批准 phase-5 基线变更后落地）：兰台的
+        // 流式执行器在**流期间**就跑工具，而 assistant 消息（含 tool_calls）是流收尾
+        // 才落的——不在这里补落，崩溃后恢复链看不到「已分发但无结果」的调用，
+        // 模型会以为那次副作用从未发生（正是 docs/session-checkpoint-design.md §3.2
+        // 点名的「工具副作用窗口」）。`tool/call` 无消息投影，故 deriveMessages 不变；
+        // 事件序列因此变化（tool/call 前移到 assistant/text 之前）——已走
+        // baseline-change-request 审批并重录两轨基线。
+        // 失败语义：执行器内 fail-open + warn（磁盘故障不锁死工具链）。
+        async (call) => {
+          host.sessionLog.append('tool/call', { call });
+          await host.sessionLog.flushPersistence();
+        },
       );
       host.loopEvents.emitLoopEvent('request/start', {
         agentId: host.id,
@@ -241,9 +252,8 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
             reasoning_signature: signature,
             tool_calls: calls,
           });
-          for (const call of calls) {
-            host.sessionLog.append('tool/call', { call });
-          }
+          // 注：`tool/call` 审计事件已由执行器在**分发时**落（触发点 B 的宣布补落），
+          // 此处不再重复追加——单一写入点，避免同一次调用两条记录。
           const pendingResults = await executor.awaitRemaining();
           const resultsByCallId = new Map(pendingResults.map((r) => [r.call.id, r]));
           for (const call of calls) {
@@ -323,10 +333,9 @@ export async function runDefaultLoop(host: AgentLoopHost, signal: AbortSignal): 
         reasoning_signature: signature,
         tool_calls: calls,
       });
-      // 工具调用审计事件（每调用一条；消息投影取自上方事件内嵌的 tool_calls — 单一事实源）
-      for (const call of calls) {
-        host.sessionLog.append('tool/call', { call });
-      }
+      // 工具调用审计事件（每调用一条）——**已由执行器在分发时落**（触发点 B 的
+      // 宣布补落，2026-09-15）：那里是「模型宣布 → 落盘 → 才执行」的正确时点，
+      // 此处不再重复追加（单一写入点 = 单一事实源）。
 
       if (calls.length === 0 && host.pendingInserts.length === 0) {
         host.loopEvents.emitLoopEvent('step/end', { agentId: host.id, step, toolCalls: 0 });

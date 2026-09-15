@@ -207,21 +207,20 @@
 
 ### 换轨后仍留的口子（不属本计划范围，另立）
 
-1. **触发点 B（工具副作用前检查点）——屏障已落地，宣布顺序待审批**：
-   - **已做**（2026-09-15 第二批）：默认 loop 构造执行器时注入
-     `host.sessionLog.flushPersistence()`；执行器在 args 解析完成、闸/预检之前 await
-     它（失败 fail-open + 可见）。语义 = 「副作用发生前，此刻**已知**的会话事实已落盘」。
-     测试：`tests/tool-dispatch-checkpoint.test.ts`（顺序可证 / fail-open 可见 / 未注入=旧行为 /
-     生产接线的 T0 源码断言）。
-   - **未做（须走审批）**：把 `tool/call` 审计事件**提前到分发时**落——兰台的
-     `StreamingToolExecutor` 在**流期间**就跑工具（流式执行优化），而流收尾才落
-     assistant 消息与 `tool/call`；于是「宣布先于副作用」在当前事件顺序下不成立。
-     改顺序 = 漂移 phase-5 事件序列基线（`baseline/phase-5/session-projection.trace.json`）
-     ⇒ 必须走 `docs/archive/agent-core-convergence/baseline-change-request.md` 审批 +
-     两轨 record，不能偷跑。
-   - 已就位的兜底：Phase 2 的恢复链对「已分发、无结果」的调用补
-     `TOOL_OUTCOME_UNKNOWN` 并提示模型别盲重试（本次为「派发而宣布未落」的形态补了
-     **宣布补落**：先合成 assistant 消息再补结果，保证 provider 转写合法）。
+1. **触发点 B（工具副作用前检查点）——已收官**（2026-09-15，用户批准基线变更）：
+   - 默认 loop 注入的钩子 = **先 append `tool/call`（宣布落盘）→ 再
+     `flushPersistence()`（排空屏障）**，然后才让工具体落地副作用；执行器在 args
+     解析完成、闸/预检之前 await 它（失败 fail-open + 可见，设计件 §3.3）。语义完整 =
+     「模型宣布了什么 → 已落盘 → 才执行」。
+   - default-loop 两处流收尾的重复 `tool/call` 追加删除（单一写入点）。
+   - 事件**顺序**变化（`tool/call` 前移到 `assistant/text` 之前）⇒ phase-5 事件序列
+     基线**两轨重录**，走 `docs/archive/agent-core-convergence/baseline-change-request.md`
+     的「`tool/call` 前移」条目（用户 2026-09-15 批准）。模型可见面零变化
+     （`tool/call` 无消息投影 ⇒ `deriveMessages`/前缀缓存不受影响）。
+   - 崩溃形态覆盖：崩溃点落在 assistant 消息落盘之前时，恢复链先**合成宣布**再补
+     `TOOL_OUTCOME_UNKNOWN` 结果（provider 转写合法性），提示模型别盲重试。
+   - 测试：`tests/tool-dispatch-checkpoint.test.ts`（4 例）/ `session-differential.test.ts`
+     新序钉住 / `session-log-repair.test.ts` 孤儿调用补宣布。
 2. **日志体量与压实**：兰台事件把整条 Message（含工具输出全文）写进行，日志体积
    与 DSH 相比更粗（DSH 有 chunk packing + 可选 zstd）；当前无压实策略，
    长会话日志会线性增长。需要时按 DSH `compactNow`/重写段做（**注意**：重写段会

@@ -233,13 +233,19 @@ describe('T2 差分 — 基础对话与工具循环', () => {
       .getSessionLog()
       .events()
       .map((e) => e.kind);
+    // ⚠ **故意规格变更（2026-09-15，用户已批准）**：`tool/call` 从「流收尾后补记」
+    // 前移到「执行器分发时落」——理由见 docs/archive/agent-core-convergence/
+    // baseline-change-request.md 的「tool/call 前移」条目：兰台的流式执行器在流期间
+    // 就跑工具，只有分发时落盘才能让崩溃恢复知道「宣布过的调用可能已产生副作用」。
+    // 变更面：事件顺序（tool/call 前移到 assistant/text 之前）；`deriveMessages`
+    // 投影零变化（tool/call 无消息投影）；phase-5 事件序列基线已随本次重录。
     expect(kinds).toEqual([
       'session/reset',
       'preset/selected',
       'user/message',
       'turn/start',
-      'assistant/text',
       'tool/call',
+      'assistant/text',
       'tool/result',
       'assistant/text',
     ]);

@@ -22,9 +22,15 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 34;
+export const OPEN_SURFACE_CONTRACT_VERSION = 35;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v35（2026-09-15）	ool/call 前移到分发时落（触发点 B 收官，用户已批准
+ *  phase-5 基线变更）：默认 loop 注入的检查点钩子现在**先 append 	ool/call、
+ *  再 lushPersistence()**，让「模型宣布了什么」在副作用发生前就落盘；default-loop
+ *  两处流收尾的重复追加删除（单一写入点）。**契约形状零变更**（AgentLoopHost 未动）；
+ *  模型可见面零变化（	ool/call 无消息投影）；事件**序列**变化 ⇒ phase-5 事件序列
+ *  基线两轨重录（CR 见 docs/archive/agent-core-convergence/baseline-change-request.md）。
  *  v34（2026-09-15）工具副作用前检查点（换轨触发点 B 的兰台形）：默认 loop
  *  构造 StreamingToolExecutor 时注入第 7 参钩子 = host.sessionLog.flushPersistence()
  *  ——args 解析完成、闸/预检之前 await 一次「会话事实落盘屏障」，失败 fail-open 且
