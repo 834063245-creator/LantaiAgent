@@ -22,9 +22,18 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 30;
+export const OPEN_SURFACE_CONTRACT_VERSION = 31;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v31（2026-09-15）S6 P1b 选择集语义：`ToolContribution` 新增可选
+ *  `defaultOff?: boolean`——插件可出货「**登记但默认不进任何组合**」的行
+ *  （重装备/实验性），组合解析把它初始置 disabled，用户在自己的 preset 里写
+ *  `disabled: false` 回开（roster 侧既有语义，零新语法）。**对外可感知**：
+ *  第三方插件从此能出货默认关的行面；不声明 = 行为逐字不变（出厂面零声明
+ *  ⇒ convergence 双轨快照零漂移，本版实测）。同版诊断面按**原因**分栏
+ *  （未选中 / 被禁用 / seam 裁剪——`CompositionDiagnostics` 新增
+ *  `unselected` / `seamCapped`，seam id 不再混进 `disabled`；该类型在
+ *  roster.ts，不属契约面载体，随本版一并记录）。
  *  v30（2026-09-14）动态插件守卫注册面校准（`dynamic-runner/sandbox.ts`）：
  *  `GUARDED_SERVICES` 此前漂移已久——仍列着 2026-09-09 全量退役的 `graph`
  *  （死条目：模型照它写 `ctx.graph.register` 必报「服务不可解析」），且缺

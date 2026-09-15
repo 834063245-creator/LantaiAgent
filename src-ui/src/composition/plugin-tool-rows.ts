@@ -48,6 +48,9 @@ onToolContributionsChanged(() => instanceCache.clear());
 export function pluginToolRows(): BuiltinToolRow[] {
   return activeToolContributions().map((c) => ({
     id: 'plugin/' + c.id,
+    // S6 P1（2026-09-15）：贡献面的「默认关」标记随行折算进解析域——组合解析
+    // 据此把该行初始置 disabled（patch/preset 显式 disabled:false 回开）。
+    defaultOff: c.defaultOff,
     factory: async (ctx): Promise<Tool[]> => {
       if (c.noCache) return normalize(await c.factory(ctx)); // 无缓存行：每装配重创
       let cached = instanceCache.get(c.id);

@@ -101,6 +101,13 @@ export interface ToolContribution {
    *  hologram 的 graphData 开关）经此标记跨装配取新真值。缓存行为等价于
    *  「永远 miss」：每装配新实例（无跨装配串扰面）。 */
   noCache?: boolean;
+  /** 默认关（S6 P1，2026-09-15）：**登记但默认不进任何组合**的行——装载面照常
+   *  注册（通道在册、可寻址、可诊断），组合解析时初始 disabled；只有 patch/preset
+   *  显式写 `disabled: false` 才回开（roster.ts 已立此语义，此前无生产者）。
+   *  用途：装了就占位的重装备/实验性行——出厂面（standard/minimal）的字节契约
+   *  不动，用户按自己的环境回开（用户四项定调④：平台只提供环境）。
+   *  诊断面据此区分「未选中」（本标记且未被任何层回开）与「被禁用」（显式 disabled）。 */
+  defaultOff?: boolean;
 }
 
 /** Provider 工厂收到的运行期实参形状（真源在 provider/types.ts；此处 type-only 别名防环）。 */

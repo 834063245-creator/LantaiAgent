@@ -193,8 +193,20 @@ export interface ResolvedComposition {
   diagnostics: CompositionDiagnostics;
 }
 
+/** 终态诊断（信息性，供 store/UI 呈现）：按**原因分栏**——「某行不见了」有
+ *  三种互不相同的原因，混装一栏的判断会误导（S6 P1，2026-09-15 拆栏）：
+ *   - unselected：**未选中**——插件出货「默认关」（ToolContribution.defaultOff）
+ *     且没有任何层用 `disabled: false` 回开；
+ *   - disabled：**被禁用**——某个层显式写了 `disabled: true`（含 prompt 段）；
+ *   - seamCapped：**seam 裁剪**——`seam/<域>` 域被禁的 provider/事件 id
+ *     （此前混在 disabled 里，同一个扁平数组装两种语义）；
+ *   - overridden / inserted：prompt 段的 text 覆盖 / 插入（历史栏，零消费者）。
+ *  第四种原因「被跳过」（`requires` 缺插件）在 P3 引入 requires 字段时再加栏——
+ *  现在不预先造空栏（零消费者字段是化石，本仓有明确纪律）。 */
 export interface CompositionDiagnostics {
+  unselected: string[];
   disabled: string[];
+  seamCapped: string[];
   overridden: string[];
   inserted: string[];
 }
@@ -236,7 +248,7 @@ export function factoryComposition(): ResolvedComposition {
       loopEvents: LOOP_EVENT_NAMES.map((id) => ({ id })),
     },
     seamDisabled: EMPTY_SEAM_DISABLED,
-    diagnostics: { disabled: [], overridden: [], inserted: [] },
+    diagnostics: { unselected: [], disabled: [], seamCapped: [], overridden: [], inserted: [] },
   };
 }
 
@@ -257,8 +269,11 @@ interface PromptWorkRow extends WorkRow<PromptSection> {
   overridden: boolean;
 }
 
-function toWorkRows<T extends { id: string }>(rows: T[]): WorkRow<T>[] {
-  return rows.map((row) => ({ id: row.id, row, disabled: false }));
+/** 工作行构造。`isInitiallyDisabled` 供「默认关」行域用（S6 P1：tools 域的
+ *  `defaultOff` 行初始 disabled——patch 的 `disabled: false` 经 applyDisable
+ *  回开，与「先层禁用、后层启用」同一语义位，故无需第二套语法）。 */
+function toWorkRows<T extends { id: string }>(rows: T[], isInitiallyDisabled?: (row: T) => boolean): WorkRow<T>[] {
+  return rows.map((row) => ({ id: row.id, row, disabled: isInitiallyDisabled?.(row) === true }));
 }
 
 function toPromptWorkRows(sections: PromptSection[]): PromptWorkRow[] {
@@ -330,7 +345,10 @@ function seamEntries(
  *  表 id+序 全等、seamDisabled 全空——这是 S2 各批「零漂移」的构造性保证，
  *  S2-0 测试钉住）。抛 CompositionPatchError = 整体拒绝（all-or-nothing）。 */
 export function resolveRoster(factory: FactoryComposition, layers: CompositionPatch[]): ResolvedComposition {
-  const tools = toWorkRows(factory.tools);
+  // tools 域是唯一带「默认关」语义的行域（ToolContribution.defaultOff → 折算行）：
+  // 该行初始 disabled，只有层里显式 `disabled: false` 才回开。
+  const tools = toWorkRows(factory.tools, (row) => row.defaultOff === true);
+  const defaultOffIds = new Set(factory.tools.filter((row) => row.defaultOff === true).map((row) => row.id));
   const capabilities = toWorkRows(factory.capabilities);
   const shell = toWorkRows(factory.shell);
   const prompt = toPromptWorkRows(factory.prompt);
@@ -391,13 +409,18 @@ export function resolveRoster(factory: FactoryComposition, layers: CompositionPa
     }
   }
 
-  // 终步：过滤禁用行（disabled 诊断按表序收集终态）+ seam 禁用集收集
+  // 终步：过滤禁用行（诊断按**原因**分栏收集终态）+ seam 禁用集收集
+  const unselectedIds: string[] = [];
   const disabledIds: string[] = [];
-  const finish = <T>(list: WorkRow<T>[]): T[] => {
+  const seamCappedIds: string[] = [];
+  const finish = <T>(list: WorkRow<T>[], isUnselected?: (id: string) => boolean): T[] => {
     const out: T[] = [];
     for (const e of list) {
       if (e.disabled) {
-        disabledIds.push(e.id);
+        // 「没选中」与「被禁掉」是两种不同的用户问题：默认关的行从未进过组合，
+        // 显式禁用的行是有人主动关掉了它——诊断面分开，别混成一栏。
+        if (isUnselected?.(e.id)) unselectedIds.push(e.id);
+        else disabledIds.push(e.id);
         continue;
       }
       out.push(e.row);
@@ -424,7 +447,9 @@ export function resolveRoster(factory: FactoryComposition, layers: CompositionPa
   for (const domain of SEAM_DOMAINS) {
     for (const e of seamWork[domain]) {
       if (e.disabled) {
-        disabledIds.push(e.id);
+        // seam 裁剪独立成栏（此前与行域禁用混在同一个扁平数组里——诊断面
+        // 「工具不见了」的第三种原因，与行禁用的处置动作完全不同）。
+        seamCappedIds.push(e.id);
         seamDisabledOut[domain].push(e.id);
         continue;
       }
@@ -433,12 +458,18 @@ export function resolveRoster(factory: FactoryComposition, layers: CompositionPa
   }
 
   return {
-    tools: finish(tools),
+    tools: finish(tools, (id) => defaultOffIds.has(id)),
     prompt: finish(prompt),
     capabilities: finish(capabilities),
     shell: finish(shell),
     seams: seamResolved,
     seamDisabled: seamDisabledOut,
-    diagnostics: { disabled: disabledIds, overridden: overriddenIds, inserted: insertedIds },
+    diagnostics: {
+      unselected: unselectedIds,
+      disabled: disabledIds,
+      seamCapped: seamCappedIds,
+      overridden: overriddenIds,
+      inserted: insertedIds,
+    },
   };
 }

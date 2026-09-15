@@ -192,7 +192,7 @@ describe('S2-3/S2-4 bootShell 编排器（shell/boot.ts）', () => {
       prompt: [],
       capabilities: [],
       shell: rows,
-      diagnostics: { disabled: [], overridden: [], inserted: [] },
+      diagnostics: { unselected: [], disabled: [], seamCapped: [], overridden: [], inserted: [] },
     });
     expect(executed).not.toContain('hologram/shell-keyguard');
     expect(executed).not.toContain('hologram/shell-sandbox-probe');

@@ -50,7 +50,7 @@ describe('composition/presets（S4-0 preset 数据模型）', () => {
     expect(ids(r.prompt)).toEqual(ids(f.prompt));
     expect(r.capabilities.map((c) => c.id)).toEqual(f.capabilities.map((c) => c.id));
     expect(ids(r.shell)).toEqual(ids(f.shell));
-    expect(r.diagnostics).toEqual({ disabled: [], overridden: [], inserted: [] });
+    expect(r.diagnostics).toEqual({ unselected: [], disabled: [], seamCapped: [], overridden: [], inserted: [] });
   });
 
   it('minimal：browser-desktop/web 工具行 + state-hooks capability 被禁', async () => {

@@ -106,7 +106,7 @@ describe('composition/roster（S2-0 组合引擎）', () => {
     expect(r.prompt).toEqual([]);
     expect(r.capabilities).toEqual([]);
     expect(ids(r.shell)).toEqual(ids(builtinShellRows()));
-    expect(r.diagnostics).toEqual({ disabled: [], overridden: [], inserted: [] });
+    expect(r.diagnostics).toEqual({ unselected: [], disabled: [], seamCapped: [], overridden: [], inserted: [] });
   });
 
   it('确定性：同输入两次解析 id 序全等（纯函数）', async () => {

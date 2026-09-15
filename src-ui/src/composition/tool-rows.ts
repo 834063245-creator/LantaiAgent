@@ -62,4 +62,8 @@ export interface ToolRowContext {
 export interface BuiltinToolRow {
   id: string;
   factory: (ctx: ToolRowContext) => Tool[] | Promise<Tool[]>;
+  /** 默认关（S6 P1，2026-09-15）：贡献面标记（ToolContribution.defaultOff）随
+   *  折算行进解析域——组合解析据此把该行初始置为 disabled（显式 `disabled: false`
+   *  可回开），诊断面据此区分「未选中」与「被禁用」。缺省（undefined）= 现行语义。 */
+  defaultOff?: boolean;
 }

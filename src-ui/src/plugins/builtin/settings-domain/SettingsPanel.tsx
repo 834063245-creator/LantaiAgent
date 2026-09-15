@@ -551,10 +551,28 @@ const SettingsPanelApp: React.FC<{
                   {compositionStatus === 'error' && `被拒——回退出厂组合（${compositionError ?? '未知原因'}）`}
                   ；热重载已启用（改 ~/.lantai/composition/roster.patch.yml 即时生效于新装配）。
                 </div>
+                {/* 诊断分栏（S6 P1，2026-09-15）：「某行不见了」有三种原因，处置
+                    动作各不相同——未选中（默认关，回开即得）/ 被禁用（显式关掉，
+                    要改 patch）/ seam 裁剪（provider 或事件域，不是工具行）。旧实现
+                    一个扁平「禁用行」栏把三者混在一起（seam id 也在里面）。 */}
                 {compositionDiagnostics.disabled.length > 0 && (
                   <div className="sp-hint-sub">
-                    禁用行（{compositionDiagnostics.disabled.length}）：
+                    被禁用行（{compositionDiagnostics.disabled.length}）：
                     <code>{compositionDiagnostics.disabled.join(', ')}</code>
+                  </div>
+                )}
+                {compositionDiagnostics.unselected.length > 0 && (
+                  <div className="sp-hint-sub">
+                    未选中行（默认关，{compositionDiagnostics.unselected.length}）：
+                    <code>{compositionDiagnostics.unselected.join(', ')}</code>
+                    ——在自己的 preset（presets/&lt;id&gt;/roster.patch.yml）里对它们写 <code>disabled: false</code>{' '}
+                    即回开。
+                  </div>
+                )}
+                {compositionDiagnostics.seamCapped.length > 0 && (
+                  <div className="sp-hint-sub">
+                    seam 裁剪（{compositionDiagnostics.seamCapped.length}）：
+                    <code>{compositionDiagnostics.seamCapped.join(', ')}</code>
                   </div>
                 )}
               </div>
