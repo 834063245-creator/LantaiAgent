@@ -1,7 +1,9 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 组合层四 service（S1-1）——panels / commands / tools / llm 挂根 Context。
+// 组合层 service（S1-1）——panels / commands / tools / llm 挂根 Context；
+// S6 P3a（2026-09-15）增第五个：ctx.activation（插件激活账，见
+// composition/activation-service.ts ——「登记 ≠ 激活」的装配期引用计数）。
 //
 // llm 通道（平台化 Phase 1 · D2 修订版，2026-08-27）：providers 键升格更名为
 // llm——方言贡献道即 LLM adapter seam 本体（agent-platformization-plan §3 D2/D5 注记）。
@@ -28,6 +30,7 @@ import type { Tool } from '../agent/tool';
 import { type Context, Service } from '../cordis';
 import type { Provider } from '../provider/types';
 import { bumpCommands, bumpPanelDefs } from '../state/panel-defs-store';
+import { ActivationService } from './activation-service';
 import { ContributionChannel } from './contribution-channel';
 import { type SeamDisabledMap, seamDisabled } from './seam-resolution';
 import type { ToolRowContext } from './tool-rows';
@@ -319,7 +322,10 @@ declare module '../cordis/context' {
 
 /** 内核线第 3 条的实体化：注册表常驻根上下文，先于任何外部插件装载。
  *  空间服务（ctx.space）独立成 spaceServicePlugin（依赖 chat-store 链，
- *  不并入本插件——见 composition/space-service.ts 头注）。 */
+ *  不并入本插件——见 composition/space-service.ts 头注）。
+ *  S6 P3a：第五个 service `ctx.activation`（插件激活账）同挂此处——它是组合层
+ *  service 本体的一员，**不新增插件条目**（first-party-manifest 的 13 内核计数
+ *  与手册文案因此不动）。 */
 export const compositionServicesPlugin = {
   name: 'hologram/composition-services',
   apply(ctx: Context) {
@@ -327,5 +333,6 @@ export const compositionServicesPlugin = {
     new CommandsService(ctx);
     new ToolsService(ctx);
     new LlmService(ctx);
+    new ActivationService(ctx);
   },
 };

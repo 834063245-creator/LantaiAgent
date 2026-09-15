@@ -22,9 +22,22 @@
 // 不静默漂移；这是刻意取舍不是缺陷。
 
 /** 开放面契约当前版本（变更即 +1，历史见 open-surface-contract.md 变更记录）。 */
-export const OPEN_SURFACE_CONTRACT_VERSION = 37;
+export const OPEN_SURFACE_CONTRACT_VERSION = 38;
 
 /** 契约面载体文件（相对 src-ui/；fingerprint 生成器与 guard 消费同一份）。
+ *  v38（2026-09-15）S6 P3a 插件**激活声明**（登记 ≠ 激活）：manifest 新增可选块
+ *  `activation: { lazy?, resources?, exclusive? }`（plugins/types.ts）——`lazy:true`
+ *  的插件把副作用启动从 apply 期挪到**组合装配期**（引用计数：首次 start /
+ *  归零 stop，见 composition/activation.ts）；`lazy:true` 与
+ *  `mcpServers[].lifecycle="eager"` 互斥（manifest 级 refine，装载期拒载）。
+ *  **对外可感知**：插件可声明资源型副作用并拿到按组合的生命周期；**缺省 =
+ *  无 `activation` 块 ⇒ P3 前语义（登记即激活）逐字节不变**（kill switch，
+ *  设计件 §5）。同版新增第五个组合层 service `ctx.activation`
+ *  （composition/activation-service.ts）——插件面（apply 期 declare）与装配面
+ *  （retain/release）的契约载体。**本版起契约面口径统一**：用户 preset 的写法
+ *  契约 `composition/roster.ts` 与新服务文件一并登记（用户 2026-09-15 裁定 F：
+ *  此前靠「文件不在清单里」逃过指纹）| S6-per-agent-composition.md P3a
+ *  （施工单 WO-S6P3-plugin-activation.md §2.1/§2.3/§7-A/§7-F）
  *  v37（2026-09-15）S6 P2b llm seam **装配期值注入**：`activeLlmAdapters(view?)`
  *  收可选 view；`createProvider(settings, options)` 的 `CreateProviderOptions` 新增
  *  可选 `seamView`——方言解析（`resolveProviderDialect`）按它裁剪 `seam/llm`。
@@ -145,6 +158,14 @@ export const OPEN_SURFACE_CONTRACT_FILES: readonly string[] = [
   'src/agent/agent-loop/types.ts',
   'src/agent/agent-loop/default-loop.ts',
   'src/agent/agent-loop/agent-loop-active.ts',
-  // 插件 manifest 契约（loader 装载面）
+  // 插件 manifest 契约（loader 装载面；v38 起含 activation 块）
   'src/plugins/types.ts',
+  // 用户 preset 写法契约（v38 补登记——用户裁定 F：patch schema 此前靠
+  // 「文件不在清单里」逃过指纹；内容 = CompositionPatchSchema 的四行域 + 七
+  // seam 裁剪域键，用户手写在 ~/.lantai/composition/presets/<id>/roster.patch.yml）
+  'src/composition/roster.ts',
+  // 激活账（v38 新增第五个组合层 service；插件面 = apply 期 declare(spec) 的
+  // ActivationSpec 形状，装配面 = retainForComposition/releaseAll）
+  'src/composition/activation.ts',
+  'src/composition/activation-service.ts',
 ];

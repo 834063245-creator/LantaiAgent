@@ -8,9 +8,9 @@
 > `doc-sync` 门禁里的 `check:contract-fingerprint`）：契约文件清单的 sha256
 > 指纹记录在下方标记行，**文件变更未升版/未更新指纹 = 红**。
 
-当前版本：37
+当前版本：38
 
-<!-- contract-fingerprint: b93af12712534045a60b6ea5a6d643b4380b8408d1b838acde3c8e6279f79d33 -->
+<!-- contract-fingerprint: 7ea458c7b035ea3ca8b3b7b2d5a2ebc9b81029869915efe7e6e1a253662409b5 -->
 
 ## 契约面载体（`src/composition/contract-version.ts` 单一真源）
 
@@ -27,7 +27,10 @@
 | src/agent/events.ts | D4 事件面（AGENT_EVENT_MAP mode 表 / LoopEventPayload 载荷形状 / 监听契约） |
 | src/agent/dynamic-runner/dynamic-runner-service.ts | ctx.dynamicRunner（D7——define/run/stop/undefine/inspect + 审批门 + 包不可变/回滚语义） |
 | src/agent/dynamic-runner/sandbox.ts | 动态插件沙箱承诺（阴影求值面 / 守卫注册面白名单 / 三预算常量） |
-| src/plugins/types.ts | 插件 manifest schema（name/version/inject/permissions/tools/mcpServers（含 `readOnly`）/displace/dataDir/**app（入口二态：`entry` 资产 HTML 或 `url` 环回远端页）**） |
+| src/plugins/types.ts | 插件 manifest schema（name/version/inject/permissions/tools/mcpServers（含 `readOnly`）/displace/dataDir/**app（入口二态：`entry` 资产 HTML 或 `url` 环回远端页）**/**activation（v38：`{ lazy?, resources?, exclusive? }`——登记 ≠ 激活的策略面，整块缺席 = kill switch）**） |
+| `src/composition/roster.ts` | **用户 preset 写法契约**（v38 补登记，用户裁定 F）：`CompositionPatchSchema`——四行域（tools/prompt/capabilities/shell）+ 七 seam 裁剪域（`seam/<域>`）键，用户手写在 `~/.lantai/composition/presets/<id>/roster.patch.yml`；`ResolvedComposition` / `CompositionDiagnostics` 为解析产物形状 |
+| `src/composition/activation.ts` | **激活账**（v38 新增）：`ActivationSpec`（插件在 apply 期登记的形状——`{ resources?, exclusive?, start, stop? }`）+ 引用计数账（retain/release/plan，键 = 插件名）；叶模块（零项目内运行时依赖） |
+| `src/composition/activation-service.ts` | `ctx.activation`（v38 新增第五个组合层 service）：`declare` / `planFor` / `retainForComposition` / `releaseAll` / `states`——插件面声明与装配面记账的契约载体 |
 | src/agent/agent-loop/types.ts | AgentLoop/AgentLoopHost（D13 loop seam 契约） |
 | src/agent/agent-loop/default-loop.ts | 默认 loop 实现（行为逐字节一致，D13） |
 | src/agent/agent-loop/agent-loop-service.ts → `src/plugins/builtin/agent-loop-service/index.ts` | ctx.agentLoop 注册表（构造期登记 builtin/default，后注册胜；S5b 起本体在产物域，活动面留 `agent-loop-active.ts`——**清单真源以 `contract-version.ts` 为准，本行同步实况**） |
@@ -82,6 +85,8 @@
 | 36 | 2026-09-15 | **S6 P2a seam 裁剪面装配期值注入（per-Agent 裁剪面）**：`seamDisabled(domain, view?)` 新增可选 `view`——**缺省 = 全局当前选择**（`composition-store` 三 setter 灌入的模块态降级为**无组合上下文的兜底面**）；`activeFsProviders` / `activeShellProviders` / `activeSubagentProviders` 同款收可选 `view`；`AgentEventBus` 新增 `setSeamView()`——每 Agent 一条总线，`emitLoopEvent` 读本总线视图（**emit 调用点零改动**：`default-loop` 7 处 + `Agent.spawnSubAgent` 3 处一字未动）。**对外可感知**：同一份 seam 注册表 + 一次工具实例，两卷可按各自组合走不同 provider（fs/shell 按 executor 注入的 `_owner_id` 查装配期登记的裁剪面——携带层 `composition/seam-scope.ts`）；**未传 view 的旧调用面（UI 直调 / 无 agent 的工具路径 / 第三方 provider 自测）行为逐字不变** ⇒ convergence 双轨快照零漂移（出厂 standard/minimal 的 `seamDisabled` 构造性为空，证明是构造性的而非事后观察）。`sessionPersistence` 单点**本版不动**（per-volume 后端要读也按该卷组合，而读盘时点组合尚未解析 ⇒ 需「卷→组合」外部索引，另立批次）。新增携带层是**键控叶模块**（零项目内运行时依赖；叶性由 `tests/composition-import-cycle.test.ts` 钉住），不入本清单 | S6-per-agent-composition.md P2a（施工单 `WO-S6P2-seam-value-injection.md` §7 用户逐项裁定：A 携带路径取 owner 键控表——fs/shell 族实例经 `familyContributions` 锁存首次装配 rowCtx，扩字段对这两族结构性无效；B 不新增 convergence 快照；D sessionPersistence 本批不做） |
 
 | 37 | 2026-09-15 | **S6 P2b llm seam 装配期值注入**：`activeLlmAdapters(view?)` 收可选 view；`CreateProviderOptions` 新增可选 `seamView`——`createProvider` 的方言解析按它裁剪 `seam/llm`。**对外可感知**：同一份 settings，两卷可落不同 adapter（会话工厂与两条热切换路径按**该卷自己组合**的裁剪面构建 provider；热切换路径尤其必要——否则切一次模型就把卷级 seam 面退回全局，与装配面不自洽）。**缺省 = 全局当前选择** ⇒ 无组合上下文的构建点（设置面板连通性测试 / 翻译压缩旁路 / 第三方自测）行为逐字不变；工作区默认 provider（`_buildProvider`）**有意不传**——它的组合上下文就是工作区装配组合，而后者已由 `composition-store` 灌成全局当前选择 | S6-per-agent-composition.md P2b（施工单 §2 消费点 4；用户裁定 F 的第二笔） |
+
+| 38 | 2026-09-15 | **S6 P3a 插件激活声明（登记 ≠ 激活）**：manifest 新增可选块 `activation: { lazy?, resources?, exclusive? }`——`lazy: true` 的插件把副作用启动从 apply 期挪到**组合装配期**（引用计数：首次 `start` / 归零 `stop`）；`lazy: true` 与 `mcpServers[].lifecycle="eager"` **互斥**（manifest 级 refine，装载期拒载——那正是「apply 期起进程」，本版要封的口）；`lazy: true` 但 apply 未登记激活回调 = 装载失败记录（「声明了开关却没接线」，不静默放过）。同版新增**第五个组合层 service** `ctx.activation`（`declare` / `planFor` / `retainForComposition` / `releaseAll` / `states`；账本体在叶模块 `composition/activation.ts`）与装配期记账点（`AgentRuntime._assembleAgent` 的 retain + `ctx.effect` 对称释放 ⇒ Agent dispose / 切组合即归零 → `stop`）。**对外可感知**：插件可声明资源型副作用并拿到**按组合**的生命周期（两个组合各有该插件 ⇒ 只启动一次、计数 2；全关 ⇒ 停一次）。**缺省 = 无 `activation` 块 ⇒ P3 前语义（登记即激活）逐字节不变**（kill switch，设计件 §5）——出厂 43 插件今天零声明 ⇒ convergence 双轨快照零漂移是**构造性**结论。**本版起契约面口径统一**：用户 preset 写法契约 `composition/roster.ts` 一并补登记（此前靠「文件不在清单里」逃过指纹） | S6-per-agent-composition.md P3a（施工单 `WO-S6P3-plugin-activation.md` §2/§7 用户裁定：A 新增 ctx.activation 挂既有组合层 service；F 补登记 roster.ts 与新服务文件） |
 
 ## 变更流程（guard 红 → 修复四步）
 

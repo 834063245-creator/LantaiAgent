@@ -7,6 +7,7 @@
 // plugin_assets cargo test 覆盖。
 
 import { beforeEach, describe, expect, it } from 'vitest';
+import { clearActivationsForTest } from '../src/composition/activation';
 import { rendererServicePlugin, resolveRenderer } from '../src/composition/renderer-service';
 import { compositionServicesPlugin } from '../src/composition/services';
 import { Context } from '../src/cordis';
@@ -136,6 +137,33 @@ describe('manifest 校验（zod 单一来源）', () => {
     ).toBe(false);
     // 旧形态（无治理字段）不受影响——兼容钉死
     expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [{ ...STDIO }] }).ok).toBe(true);
+  });
+  it('S6 P3a：activation 声明形状 + lazy 与 eager 互斥（资源型插件的副作用只能在激活时启动）', () => {
+    // 合法：lazy / resources（闭集）/ exclusive（资源实例名）
+    expect(
+      validateManifest({
+        ...HELLO_MANIFEST,
+        activation: { lazy: true, resources: ['stdio'], exclusive: ['port:9310'] },
+      }).ok,
+    ).toBe(true);
+    expect(validateManifest({ ...HELLO_MANIFEST, activation: { resources: ['pty'] } }).ok).toBe(true);
+    expect(validateManifest({ ...HELLO_MANIFEST, activation: {} }).ok).toBe(true);
+    // 坏形状：未知资源类型 / 未知键 / 坏 exclusive 条目
+    expect(validateManifest({ ...HELLO_MANIFEST, activation: { resources: ['gpu'] } }).ok).toBe(false);
+    expect(validateManifest({ ...HELLO_MANIFEST, activation: { bogus: 1 } }).ok).toBe(false);
+    expect(validateManifest({ ...HELLO_MANIFEST, activation: { exclusive: [''] } }).ok).toBe(false);
+    // lazy:true 与 mcpServers[].lifecycle="eager" 互斥（那正是 apply 期起进程）
+    const EAGER = { name: 's', transport: 'stdio', command: 'node', lifecycle: 'eager' } as const;
+    expect(validateManifest({ ...HELLO_MANIFEST, activation: { lazy: true }, mcpServers: [EAGER] }).ok).toBe(false);
+    // 非 eager / 无 activation 块 = 放行（缺省 = P3 前语义，kill switch）
+    expect(
+      validateManifest({
+        ...HELLO_MANIFEST,
+        activation: { lazy: true },
+        mcpServers: [{ name: 's', transport: 'stdio', command: 'node' }],
+      }).ok,
+    ).toBe(true);
+    expect(validateManifest({ ...HELLO_MANIFEST, mcpServers: [EAGER] }).ok).toBe(true);
   });
 });
 
@@ -1017,5 +1045,78 @@ describe('face 键集对拍门禁（保险丝 a）', () => {
     });
     const rec = usePluginStore.getState().plugins.find((p) => p.name === 'acme/face-probe');
     expect(rec?.status).toBe('active');
+  });
+});
+
+describe('S6 P3a：activation 声明-接线对齐（登记 ≠ 激活）', () => {
+  beforeEach(() => {
+    usePluginStore.setState({ plugins: [] });
+    clearActivationsForTest();
+  });
+
+  const LAZY_MANIFEST = {
+    name: 'acme/res',
+    version: '1.0.0',
+    entry: 'entry.js',
+    activation: { lazy: true, resources: ['stdio'], exclusive: ['port:9310'] },
+  };
+
+  const routes = {
+    [ORIGIN + '/']: ['acme/res'],
+    [ORIGIN + '/plugins.json']: { disabled: [] },
+    [ORIGIN + '/acme/res/manifest.json']: LAZY_MANIFEST,
+  };
+
+  it('声明 activation.lazy 但 apply 未登记激活回调 → 装载失败记录（不静默放过）', async () => {
+    const root = new Context();
+    await root.plugin(compositionServicesPlugin); // 生产同序：组合层 service 先于外部插件
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch(routes),
+      importModule: async () => ({ default: { name: 'acme/res', apply() {} } }),
+    });
+    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'acme/res');
+    expect(rec?.status).toBe('error');
+    expect(rec?.error).toContain('未登记激活回调');
+    expect(activeExternalPluginNames()).not.toContain('acme/res');
+  });
+
+  it('声明 + 登记齐备 → active；装载期零副作用，装配期才 start（登记 ≠ 激活）', async () => {
+    const log: string[] = [];
+    const root = new Context();
+    await root.plugin(compositionServicesPlugin);
+    await loadExternalPlugins(root, {
+      origin: ORIGIN,
+      fetchImpl: mockFetch(routes),
+      importModule: async () => ({
+        default: {
+          name: 'acme/res',
+          // 装载层为 activation 声明补 inject（与 tools 同款）——故此处不写 inject
+          apply(ctx: Context) {
+            ctx.activation.declare('acme/res', {
+              resources: ['stdio'],
+              exclusive: ['port:9310'],
+              start: () => {
+                log.push('start');
+              },
+              stop: () => {
+                log.push('stop');
+              },
+            });
+          },
+        },
+      }),
+    });
+    const rec = usePluginStore.getState().plugins.find((p) => p.name === 'acme/res');
+    expect(rec?.status).toBe('active');
+    expect(log).toEqual([]); // 登记 ≠ 激活：装载期不起副作用
+
+    const handles = await root.activation.retainForComposition(
+      { tools: [{ id: 'plugin/acme/res/probe' }] },
+      'holder-1',
+    );
+    expect(log).toEqual(['start']); // 组合装配期才启动
+    await root.activation.releaseAll(handles);
+    expect(log).toEqual(['start', 'stop']);
   });
 });

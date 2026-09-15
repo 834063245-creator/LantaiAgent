@@ -60,4 +60,16 @@ describe('composition 图导入成环守卫（P1c）', () => {
       .filter((line) => /^\s*import\b/.test(line) && !/^\s*import\s+type\b/.test(line));
     expect(runtimeSpecs).toEqual([]);
   });
+
+  // S6 P3a：激活账同款叶性——它被装载层（plugins/types.ts 的 manifest schema
+  // 取资源类型闭集）、装配面（runtime retain）与插件面（declare）三面引用，
+  // 且 plugins/types.ts 在 composition 之上（值导入，非 type-only）⇒ 一旦本
+  // 文件长出静态边即成环。声明表/账都是键控自清理注册表，不需要任何项目内依赖。
+  it('activation 叶性：零项目内运行时静态 import（type-only 允许）', () => {
+    const src = read('src/composition/activation.ts');
+    const runtimeSpecs = src
+      .split('\n')
+      .filter((line) => /^\s*import\b/.test(line) && !/^\s*import\s+type\b/.test(line));
+    expect(runtimeSpecs).toEqual([]);
+  });
 });

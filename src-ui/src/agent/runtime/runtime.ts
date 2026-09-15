@@ -12,6 +12,8 @@
 //
 // UI 层通过 setNotifier() 注入通知器，Runtime 通过它路由事件。
 
+import type { ActivationHandle } from '../../composition/activation';
+import type { ActivationService } from '../../composition/activation-service';
 import { activeHookContributions } from '../../composition/hook-service';
 import { factoryComposition, type ResolvedComposition } from '../../composition/roster';
 import type { Context } from '../../cordis';
@@ -706,6 +708,17 @@ export class AgentRuntime implements RuntimePort {
     //    S4-1a：组合产物写进 ctx 服务表（Agent.composition 读取 + child()
     //    继承白名单——spawnSubAgent 的子 Agent 与父同一组合面）。
     if (!ctx.get('composition')) ctx.set('composition', composition);
+    // S6 P3a：组合级插件激活账——装配期 retain（首次激活才 await start() 起副作用），
+    // 句柄交给 AgentContext 的 effect（Agent dispose / 切组合即归零 → stop）。
+    // 取值走 cordis ctx（AgentContext 是自有服务表，ctx.activation 不在其
+    // AgentServices 面内）；无 cordis 挂载（腰外单测）或无声明插件 ⇒ 零开销
+    // no-op（缺省零漂移：出厂 43 插件今天零 activation 声明）。
+    const activation: ActivationService | undefined = ctx.cordisCtx?.get('activation');
+    if (activation) {
+      const activationHandles: ActivationHandle[] = [];
+      ctx.effect(() => () => activation.releaseAll(activationHandles), 'activation-release');
+      activationHandles.push(...(await activation.retainForComposition(composition, agentId)));
+    }
     const scope: BlueprintScope = {
       ctx,
       inputs,

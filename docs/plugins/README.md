@@ -198,7 +198,12 @@ manifest，随包携带（`tauri.conf.json` resources 目录映射
       "url": "http://127.0.0.1:9000/mcp",
       "headers": { "Authorization": "Bearer xxx" }  // 可选。明文进 manifest——插件目录是全信任区
     }
-  ]
+  ],
+  "activation": {                     // 可选。S6 P3a：登记 ≠ 激活（见 §3「ctx.activation」）
+    "lazy": true,                     // 显式懒激活——apply 只登记，组合装配期才启动副作用
+    "resources": ["stdio"],           // 资源类型闭集：pty | stdio | port | listener | window
+    "exclusive": ["port:9310"]        // 不可共享的资源实例名——同一时刻只允许一个组合持有
+  }
 }
 ```
 
@@ -210,7 +215,8 @@ inject 依赖存在性 → webview 动态 import → `root.plugin(obj)`。任何
 卸载即链式停，见 §3「manifest.tools」与「MCP 机器桥」）。
 
 软件级字段（`dataDir` / `app` / mcpServers 条目的 `restart`·`lifecycle` 治理
-字段 / tools 条目的 `async`）见 **§10 软件级插件（app shell）**。
+字段 / tools 条目的 `async`）见 **§10 软件级插件（app shell）**；
+`activation`（S6 P3a 激活声明）见 **§3「ctx.activation」**。
 
 ## 3. 通道 API
 
@@ -566,6 +572,53 @@ ctx.effect(
 - `kind: '*'` 是兜底行——无专渲染器的 kind 落这里（专行优先，不劫持）。
 - 即时生效（渲染期消费，每帧重取）——与 panels 同族，无需信号 store。
 - 消费面：纸视图（PaperPanel）的 BlockView 经 `resolveRenderer(kind)` 解析。
+
+### ctx.activation —— 插件激活账（S6 P3a，装配期生效）
+
+**登记 ≠ 激活**：插件的**登记**（apply 期把行/段/capability 进注册表）与**副作用
+启动**（起常驻进程 / 连端口 / 开 PTY）从此可以分开。声明了 `activation` 的插件在
+`apply` 里**只登记**启动回调，真正的启动发生在**组合装配期**——有组合用到它（组合里
+有它的存活工具行，或组合显式 `requires` 它）才 `start()`，按引用计数；所有持有它的
+Agent 都关了（或切走组合）→ 计数归零 → `stop()`。
+
+```jsonc
+// manifest.json（策略面）
+"activation": {
+  "lazy": true,                 // 显式懒激活。缺省 false = 本块只作资源声明，行为不变
+  "resources": ["stdio"],       // 占用的资源类型闭集：pty | stdio | port | listener | window
+  "exclusive": ["port:9310"]    // 不可共享的资源实例名——同一时刻只允许一个组合持有
+}
+```
+
+```js
+// entry.js（机制面）—— apply 里只登记，不启动
+export default {
+  name: 'acme/res',
+  apply(ctx) {
+    ctx.activation.declare('acme/res', {
+      resources: ['stdio'],
+      exclusive: ['port:9310'],
+      start: async () => { /* 起常驻进程 / 连端口 */ },
+      stop: async () => { /* 停 */ },
+    });
+  },
+};
+```
+
+规则与失败面：
+
+- **kill switch**：manifest **不写** `activation` 块 ⇒ 本批全部新行为不发生
+  （退回「登记即激活」的 P3 前语义，逐字节不变）。
+- **`lazy: true` 与 `mcpServers[].lifecycle: "eager"` 互斥**：声明懒激活的插件
+  不得在 apply 期起进程（装载期拒绝，manifest 级校验）。
+- **声明-接线对齐**：`lazy: true` 但 apply 未调 `ctx.activation.declare` ⇒ 装载
+  失败记录（error，设置面板可见）——「装了开关却没接线」不静默放过。
+- 装载层为声明 `activation` 的插件自动补 `inject: ["activation"]`（与 `tools`
+  同款并集纪律，插件作者不必两处同步）。
+- 释放归 `ctx.effect` 所有权：账由装配面在 Agent 装配期 `retain`，句柄交给
+  `ctx.effect` 的清理链 ⇒ Agent dispose / 切组合即归零 → `stop`（无泄漏面）。
+- `start()` 抛错 = **激活失败可见**（不抛给装配面）——该插件的行不进本组合，
+  失败原因经诊断面可见（P3b 的「被跳过」栏）。
 
 ## 4. 宿主桥（无裸 import 的平台契约）
 

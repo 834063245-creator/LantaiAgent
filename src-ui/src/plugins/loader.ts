@@ -788,14 +788,27 @@ async function moduleStage(entry: ManifestStageOk, deps: LoadOneDeps): Promise<M
     const needsMcp = (manifest.mcpServers?.length ?? 0) > 0;
     const needsDataDir = manifest.dataDir === true;
     const needsApp = manifest.app != null;
+    // S6 P3a：activation 声明需要包装层做「声明-接线对齐」校验（见 apply 内）。
+    const needsActivation = manifest.activation != null;
     const candidateInject = (candidate as { inject?: string[] }).inject ?? [];
     const manifestInject = manifest.inject ?? [];
     const extraInject = manifestInject.filter((n) => !candidateInject.includes(n));
-    const needsWrapper = needsToolDecls || needsMcp || needsDataDir || needsApp || extraInject.length > 0;
+    const needsWrapper =
+      needsToolDecls || needsMcp || needsDataDir || needsApp || needsActivation || extraInject.length > 0;
     const target = needsWrapper
       ? {
           name: candidate.name,
-          inject: [...new Set([...candidateInject, ...extraInject, ...(needsToolDecls || needsMcp ? ['tools'] : [])])],
+          inject: [
+            ...new Set([
+              ...candidateInject,
+              ...extraInject,
+              ...(needsToolDecls || needsMcp ? ['tools'] : []),
+              // S6 P3a：声明 activation 的插件必然要调 ctx.activation.declare ——
+              // 装载层补 inject（与 tools 同款纪律：inject 并集，不要求插件作者
+              // 两处手工同步）。
+              ...(needsActivation ? ['activation'] : []),
+            ]),
+          ],
           async apply(ctx: Context) {
             // S1（app shell 件 B）：数据地盘先于插件代码到位（装载期基础设施
             // 动作；manifest.dataDir 声明 = 要地盘的显式契约）。分配失败 =
@@ -811,6 +824,17 @@ async function moduleStage(entry: ManifestStageOk, deps: LoadOneDeps): Promise<M
               }
             }
             await candidate.apply(ctx);
+            // S6 P3a：「声明了开关却没接线」= 手误，装载期 fail loud（不静默
+            // 放过）——manifest 声明懒激活的插件必须真的在 apply 里登记了激活
+            // 回调，否则它的副作用永不启动，而用户看到的是一个「装上了」的插件。
+            if (manifest.activation?.lazy === true) {
+              const activation = ctx.get('activation');
+              if (activation && !activation.has(manifest.name)) {
+                throw new Error(
+                  'manifest 声明 activation.lazy 但 apply 未登记激活回调（ctx.activation.declare）——副作用将永不启动',
+                );
+              }
+            }
             if (needsToolDecls) {
               mountToolDeclarations(ctx, manifest.name, manifest.tools ?? [], mod.toolHandlers);
             }

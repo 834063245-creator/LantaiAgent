@@ -10,6 +10,7 @@
 // 与 TS 类型（z.infer），禁止手写平行接口后再 as 强转。
 
 import { z } from 'zod';
+import { ACTIVATION_RESOURCE_KINDS } from '../composition/activation';
 import type { Context } from '../cordis';
 
 /** 插件唯一 id：npm scope 风格，最多两段（如 hologram/settings）。 */
@@ -186,57 +187,87 @@ const AppDeclSchema = z
     message: 'app.url（环回远端视图）不允许 fullscreen——远端文档可覆盖宿主视觉面，全屏形态把界面辨识度也拿走',
   });
 
-export const PluginManifestSchema = z.object({
-  name: z.string().regex(PLUGIN_NAME_RE, 'name 必须是 npm scope 风格 id（如 hologram/settings）'),
-  version: z.string().regex(SEMVER_RE, 'version 必须是 semver（如 1.0.0）'),
-  description: z.string().optional(),
-  entry: z
-    .string()
-    .regex(ENTRY_CHARS_RE, 'entry 含非法字符')
-    .refine(isSafeEntry, 'entry 必须是相对 ESM 路径（如 entry.js），禁止绝对路径/回溯段/非 js 后缀'),
-  /** 依赖的 ctx service 名——装载期校验存在性，缺 → error 状态（WO-S0B）。 */
-  inject: z.array(z.string().min(1)).optional(),
-  /** 权限声明（C11-2 permissions.json 接插件声明，2026-08-24）：插件声明
-   *  需要的权限类（read/edit/bash/git/web——Rust 权限咽喉的五个域）。
-   *  装载期一票否决：plugins.json 的 granted 段未覆盖全部声明类 → 插件
-   *  不装载（blocked 状态，设置面板可见缺哪些授权）。声明是安装期信任面
-   *  ——逐调用强制仍在 Rust 命令层（声明与否，权限规则与模式照常生效）。 */
-  permissions: z.array(PLUGIN_PERMISSION_CLASS).optional(),
-  /** 位移式装载（增补四施工，first-party-hot-reload-plan）：声明 true 的
-   *  内置产物与 bundle 同名行贡献 id 共享（面板/工具行 id 不分立），装载
-   *  前 dispose bundle fiber（贡献面单活互换）；产物失败/停用 → bundle
-   *  兜底行恢复。缺省 false（渲染器双行走查语义：行 id 分立、后注册胜，
-   *  bundle 行恒在）。第三方同名产物声明 true 可覆盖同名内置插件（用户
-   *  目录权威语义与 Rust 资产通道回退一致）。 */
-  displace: z.boolean().optional(),
-  /** 数据地盘（app shell 四件套 · 件 B，S1）：声明 true 的插件装载即分配
-   *  专属数据目录 `<dataRoot>/<名>/`（幂等 ensure——wrapper apply 先于插件
-   *  代码调用，失败 = 装载失败记录）；宿主桥 fs 面（ensure/list/read/
-   *  write/delete）读写列删，路径锁死在插件根（Rust plugin_data 双围栏 +
-   *  canonicalize 前缀）；卸载随 plugin_uninstall 整体挪 `.trash` 回收
-   *  （备份一个目录全家走——决策 2）。缺省/false 不分配不侵入。 */
-  dataDir: z.boolean().optional(),
-  /** 应用窗声明（app shell 四件套 · 件 A，S3）：声明 = 插件以软件形态住进
-   *  兰台——装载只登记窗口定义（数据），开窗才实例化视口。窗内容 = 插件
-   *  自包含 HTML 经 iframe 载体渲染（真隔离）；窗内向宿主要能力走
-   *  postMessage 白名单桥（默认最小集 fs 数据目录 + notify）。卸载随插件
-   *  收口：定义注销 + 开着窗口全关（受治进程 with-window 档随关窗杀）。 */
-  app: AppDeclSchema.optional(),
-  /** 声明式工具（C11-1 工具声明可序列化，2026-08-24）：声明是数据
-   *  （name/description/parameters JSON Schema/readOnly——与 DSH L1 契约
-   *  同构的三字段 + readOnly）；执行函数经 entry 模块的 `toolHandlers`
-   *  命名导出映射（name → execute）。装载器折算为工具贡献（行 id
-   *  `plugin/<插件名>/<工具名>`，patch/preset 可寻址禁用）；声明与实现
-   *  一一对应（缺/多均插件 error，失败隔离）。 */
-  tools: z.array(ToolManifestDeclSchema).optional(),
-  /** 声明式挂接外部 MCP server（S4-4 乙机器桥，设计件 S4 §2.7）：装载期逐个
-   *  折算为工具行贡献（行 id `plugin/<插件名>/mcp/<server名>`）——patch/preset
-   *  可寻址禁用某插件的某个 MCP server，组合均匀性不破。进程 kill 归插件
-   *  fiber disposer。条目声明治理字段（restart/lifecycle，app shell 件 C · S2）
-   *  = 受治进程：就绪 = initialize 握手完成（带时限）、崩溃退避重启、三档
-   *  生命周期、空闲回收（见 mcp-bridge.ts 治理器）。 */
-  mcpServers: z.array(McpServerDeclSchema).optional(),
+/** manifest.activation 声明（S6 P3a，2026-09-15）——「登记 ≠ 激活」的**策略面**。
+ *
+ *  语义：声明本块的插件 = 资源型插件——登记（boot 期）与副作用启动（装配期）
+ *  分离：apply 里只 `ctx.activation.declare(名字, spec)` 登记回调，组合装配期
+ *  按引用计数激活（首次 start / 归零 stop，见 composition/activation.ts）。
+ *  **整块缺席 = kill switch**：完全退回 P3 前语义（登记即激活），不需要 revert 代码
+ *  （设计件 §5）。
+ *
+ *  `lazy`：显式宣告懒激活。缺省 false = 本块只作元数据/资源声明，行为不变。
+ *  `resources`：占用的资源类型（闭集，真源 composition/activation.ts）。
+ *  `exclusive`：不可共享的资源实例名（`port:9310` / `stdio` / `listener:<名>`）——
+ *  同一时刻只允许一个组合持有；冲突在装配期 fail loud（消费面 = P3b 的
+ *  冲突检测；与「走 realm 隔离」正交，realm 逃生门见设计件 §7.4）。
+ *
+ *  与 mcpServers 的互斥由 manifest 级 refine 钉死：`lazy: true` 的插件不得声明
+ *  `lifecycle: "eager"` 的 server（那正是「apply 期起进程」，P3 要封的口）。 */
+const ActivationDeclSchema = z.strictObject({
+  lazy: z.boolean().optional(),
+  resources: z.array(z.enum(ACTIVATION_RESOURCE_KINDS)).optional(),
+  exclusive: z.array(z.string().min(1)).optional(),
 });
+
+export const PluginManifestSchema = z
+  .object({
+    name: z.string().regex(PLUGIN_NAME_RE, 'name 必须是 npm scope 风格 id（如 hologram/settings）'),
+    version: z.string().regex(SEMVER_RE, 'version 必须是 semver（如 1.0.0）'),
+    description: z.string().optional(),
+    entry: z
+      .string()
+      .regex(ENTRY_CHARS_RE, 'entry 含非法字符')
+      .refine(isSafeEntry, 'entry 必须是相对 ESM 路径（如 entry.js），禁止绝对路径/回溯段/非 js 后缀'),
+    /** 依赖的 ctx service 名——装载期校验存在性，缺 → error 状态（WO-S0B）。 */
+    inject: z.array(z.string().min(1)).optional(),
+    /** 权限声明（C11-2 permissions.json 接插件声明，2026-08-24）：插件声明
+     *  需要的权限类（read/edit/bash/git/web——Rust 权限咽喉的五个域）。
+     *  装载期一票否决：plugins.json 的 granted 段未覆盖全部声明类 → 插件
+     *  不装载（blocked 状态，设置面板可见缺哪些授权）。声明是安装期信任面
+     *  ——逐调用强制仍在 Rust 命令层（声明与否，权限规则与模式照常生效）。 */
+    permissions: z.array(PLUGIN_PERMISSION_CLASS).optional(),
+    /** 位移式装载（增补四施工，first-party-hot-reload-plan）：声明 true 的
+     *  内置产物与 bundle 同名行贡献 id 共享（面板/工具行 id 不分立），装载
+     *  前 dispose bundle fiber（贡献面单活互换）；产物失败/停用 → bundle
+     *  兜底行恢复。缺省 false（渲染器双行走查语义：行 id 分立、后注册胜，
+     *  bundle 行恒在）。第三方同名产物声明 true 可覆盖同名内置插件（用户
+     *  目录权威语义与 Rust 资产通道回退一致）。 */
+    displace: z.boolean().optional(),
+    /** 数据地盘（app shell 四件套 · 件 B，S1）：声明 true 的插件装载即分配
+     *  专属数据目录 `<dataRoot>/<名>/`（幂等 ensure——wrapper apply 先于插件
+     *  代码调用，失败 = 装载失败记录）；宿主桥 fs 面（ensure/list/read/
+     *  write/delete）读写列删，路径锁死在插件根（Rust plugin_data 双围栏 +
+     *  canonicalize 前缀）；卸载随 plugin_uninstall 整体挪 `.trash` 回收
+     *  （备份一个目录全家走——决策 2）。缺省/false 不分配不侵入。 */
+    dataDir: z.boolean().optional(),
+    /** 应用窗声明（app shell 四件套 · 件 A，S3）：声明 = 插件以软件形态住进
+     *  兰台——装载只登记窗口定义（数据），开窗才实例化视口。窗内容 = 插件
+     *  自包含 HTML 经 iframe 载体渲染（真隔离）；窗内向宿主要能力走
+     *  postMessage 白名单桥（默认最小集 fs 数据目录 + notify）。卸载随插件
+     *  收口：定义注销 + 开着窗口全关（受治进程 with-window 档随关窗杀）。 */
+    app: AppDeclSchema.optional(),
+    /** 声明式工具（C11-1 工具声明可序列化，2026-08-24）：声明是数据
+     *  （name/description/parameters JSON Schema/readOnly——与 DSH L1 契约
+     *  同构的三字段 + readOnly）；执行函数经 entry 模块的 `toolHandlers`
+     *  命名导出映射（name → execute）。装载器折算为工具贡献（行 id
+     *  `plugin/<插件名>/<工具名>`，patch/preset 可寻址禁用）；声明与实现
+     *  一一对应（缺/多均插件 error，失败隔离）。 */
+    tools: z.array(ToolManifestDeclSchema).optional(),
+    /** 声明式挂接外部 MCP server（S4-4 乙机器桥，设计件 S4 §2.7）：装载期逐个
+     *  折算为工具行贡献（行 id `plugin/<插件名>/mcp/<server名>`）——patch/preset
+     *  可寻址禁用某插件的某个 MCP server，组合均匀性不破。进程 kill 归插件
+     *  fiber disposer。条目声明治理字段（restart/lifecycle，app shell 件 C · S2）
+     *  = 受治进程：就绪 = initialize 握手完成（带时限）、崩溃退避重启、三档
+     *  生命周期、空闲回收（见 mcp-bridge.ts 治理器）。 */
+    mcpServers: z.array(McpServerDeclSchema).optional(),
+    /** 激活声明（S6 P3a）——见 ActivationDeclSchema 头注；整块缺席 = kill switch。 */
+    activation: ActivationDeclSchema.optional(),
+  })
+  .refine((v) => !(v.activation?.lazy === true && (v.mcpServers ?? []).some((s) => s.lifecycle === 'eager')), {
+    message:
+      'activation.lazy 与 mcpServers[].lifecycle="eager" 互斥：声明懒激活的插件不得在 apply 期起进程' +
+      '（S6 P3——资源型插件的副作用只能在装配期激活时启动）',
+  });
 
 export type PluginManifest = z.infer<typeof PluginManifestSchema>;
 

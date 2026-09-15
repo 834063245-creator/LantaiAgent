@@ -4,7 +4,7 @@
 > 从组合层源码机械推导生成 — 勿手改；服务面变更后重新生成并同 commit。
 > 不含时间戳：字节稳定是 `--check`（doc-sync 门禁）的前提。
 
-共 17 个 ctx 服务：seam 5 · 贡献通道 8 · 服务 4。
+共 18 个 ctx 服务：seam 5 · 贡献通道 8 · 服务 5。
 kind 三分规则（机械推导）：ctx 键 ∈ SEAM_DOMAINS（seam-resolution.ts 单一真源）= seam；
 类体含 `register(def: *Contribution)` = 贡献通道；其余 = 服务。
 
@@ -139,10 +139,19 @@ system-prompt 段落注册表（A-1 第六贡献通道）——段注册 → dis
 
 | ctx 键 | Service | owner | 默认实现 / 贡献者 | 消费面 |
 |---|---|---|---|---|
+| `ctx.activation` | `ActivationService` | `src/composition/activation-service.ts` | — | 1 文件 |
 | `ctx.codeRuntime` | `CodeRuntimeService` | `src/agent/code-run/runtime-service.ts` | — | 0 文件 |
 | `ctx.dynamicRunner` | `DynamicRunnerService` | `src/agent/dynamic-runner/dynamic-runner-service.ts` | — | 0 文件 |
 | `ctx.lsp` | `LspService` | `src/ui/lsp-client.ts` | — | 0 文件 |
 | `ctx.space` | `SpaceService` | `src/composition/space-service.ts` | — | 1 文件 |
+
+### `ctx.activation` — ActivationService（服务）
+
+插件激活账（S6 P3a）——登记 ≠ 激活：组合装配期按插件引用计数， 首次激活启动副作用、归零停止（设计件 §3.5）。
+
+- owner：`src/composition/activation-service.ts`
+- 默认实现 / 贡献者 id：—
+- 消费面（1）：`src/plugins/loader.ts`
 
 ### `ctx.codeRuntime` — CodeRuntimeService（服务）
 

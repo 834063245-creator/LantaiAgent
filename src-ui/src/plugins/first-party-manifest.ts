@@ -55,7 +55,7 @@ const SERVICE_META: Record<string, FirstPartyPluginMeta> = {
   'hologram/composition-services': meta(
     'hologram/composition-services',
     'service',
-    '组合层四 service 本体（panels/commands/tools/llm 注册表）',
+    '组合层五 service 本体（panels/commands/tools/llm/activation 注册表）',
   ),
   'hologram/subagents-service': meta('hologram/subagents-service', 'service', '子代理服务注册表（seam/subagents）'),
   'hologram/fs-service': meta('hologram/fs-service', 'service', '文件域服务注册表（seam/fs）'),
