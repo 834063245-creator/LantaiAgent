@@ -33,6 +33,7 @@
 // 行为考官 = tests/perf-paper-pan.test.tsx（挂真实组件穿全层）。
 
 import { type CSSProperties, Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FolioCompositionChip } from './FolioCompositionChip';
 import type { RegionView, SourcedBlock } from './host';
 import {
   ANCHOR,
@@ -798,6 +799,10 @@ export function PaperPanel() {
                         <p className="pp-folio-sub">
                           案卷 #{r.sessionNum} · {r.blocks.length} 块
                         </p>
+                        {/* 组合芯片（S6 P5a）：**本卷**的组合身份与（空白卷的）拨动入口——
+                            绝对定位覆盖在卷首右上角、不进高度流水（见 FolioCompositionChip 头注）。
+                            作用对象 = 本 region 的卷（r.sessionId），不是"当前活跃卷"。 */}
+                        <FolioCompositionChip core={core} sessionId={r.sessionId} />
                       </div>
                     )}
                     {/* 空卷题字：零块流区的版心竖排占位（pointer-events none——

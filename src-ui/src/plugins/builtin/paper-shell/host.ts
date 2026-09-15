@@ -127,6 +127,12 @@ export type { CanvasStore } from '../../../state/canvas-store';
 export { blockFromSnapshot, getCanvasStore, scheduleCanvasSave, snapshotFromBlock } from '../../../state/canvas-store';
 export { useCanvasViewStore } from '../../../state/canvas-view-store';
 export { useDockStore } from '../../../state/dock-store';
+/* 卷首组合芯片（S6 P5a）读面：preset 清单 / 全局选择态 / 装载失败原因。
+ * 写面与空白判据不经本出口——它们走 core 的能力位（sessionComposition /
+ * isSessionBlank / selectSessionPreset，与创作坞芯片同一套）。faceDeps 已含该
+ * key（host-modules.ts 的 usePresetStore，compose-dock 在用），故只补本文件与
+ * host.aliased.ts 两处 + gen:host-surface 重生成。 */
+export { usePresetStore } from '../../../state/preset-store';
 export { useUpdateStore } from '../../../state/update-store';
 export { getChatStore, msgStoreFor } from '../../../ui/chat-store';
 export type { AssistantMessage, ChatMessage, TextPart, UserMessage } from '../../../ui/message-model';

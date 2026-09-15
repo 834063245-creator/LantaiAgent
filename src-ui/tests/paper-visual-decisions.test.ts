@@ -318,6 +318,23 @@ describe('卷首 folio-head 钉值（2026-08-30 原型转录：prototype/lantai.
     expect(sub).toContain('font-variant-numeric: tabular-nums');
   });
 
+  it('卷首组合芯片（S6 P5a）：覆盖式落位（不进高度流水）+ 只放开本子树事件 + 卷首本体仍穿透', () => {
+    // 覆盖式落位：绝对定位在卷首右上角——**不进高度流水** ⇒ 卷首高度镜像
+    // （FOLIO_TOKENS → measureFolioHeadHeight → 卷级几何）与既有画布零改动
+    const comp = ruleBody(PANEL_CSS, '.pp-folio-comp {');
+    expect(comp).toContain('position: absolute');
+    expect(comp).toContain('top: 16px');
+    expect(comp).toContain('right: 18px');
+    // 卷首本体是 pointer-events:none（点击穿透流区背景）——芯片是**唯一例外**，
+    // 只放开本子树（改掉下面这条 none = 卷首整块变成点击热区，激活语义被破坏）
+    expect(comp).toContain('pointer-events: auto');
+    expect(ruleBody(PANEL_CSS, '.pp-folio-head {')).toContain('pointer-events: none');
+    // 菜单向下开（卷首在卷顶，下方是流区）
+    expect(ruleBody(PANEL_CSS, '.pp-folio-comp-menu {')).toContain('top: calc(100% + 4px)');
+    // 挂载点：芯片在卷首内，作用对象 = **本 region 的卷**（不是"当前活跃卷"）
+    expect(PANEL_TSX).toContain('<FolioCompositionChip core={core} sessionId={r.sessionId} />');
+  });
+
   it('测量镜像：type-tokens.ts 卷首真源与 CSS 逐字对映 + 亭徽图标在册', () => {
     // token 化后单一真源 = type-tokens.ts（measure 派生自它，CSS 走 --pp-* 注入）
     expect(TYPE_TOKENS_TS).toContain('titleSize: 32');

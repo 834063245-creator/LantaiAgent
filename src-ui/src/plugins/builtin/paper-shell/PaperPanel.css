@@ -450,6 +450,130 @@
   margin-top: 14px;
   font-variant-numeric: tabular-nums;
 }
+/* ── 卷首组合芯片（S6 P5a）────────────────────────────────────────────
+ * **绝对定位覆盖**在卷首右上角、刻意**不进高度流水**：卷首高度是几何契约
+ * （FOLIO_TOKENS → paper/measure.ts measureFolioHeadHeight → 卷级布局），
+ * 本控件参与进去会牵动所有既有画布的流区几何；覆盖式落位把「一次规格变更」
+ * 降为「一处新增」（WO-S6P5 §7 裁定 3）。
+ * 卷首本体是 pointer-events:none（点击穿透流区背景，激活语义不变），
+ * 本子树单独放开 auto。
+ * 与创作坞芯片（compose-dock 的 .pp-comp-*）**同语言不同宿主**——那族规则被
+ * .pp-composer-settings 祖先限定，卷首不能靠 class 复用（WO-S6P5 §1.3）。 */
+.pp-folio-comp {
+  position: absolute;
+  top: 16px;
+  right: 18px;
+  pointer-events: auto;
+}
+.pp-folio-comp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--ink-3);
+  background: transparent;
+  border: 1px solid var(--rule-soft);
+  border-radius: 0;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color var(--snap),
+    border-color var(--snap);
+}
+.pp-folio-comp-pill:hover,
+.pp-folio-comp-pill.open {
+  color: var(--seal-deep);
+  border-color: var(--rule-strong);
+}
+/* 跑过一轮 = 只读标签（span 形态，不再是按钮；hover 不改色以示不可拨） */
+.pp-folio-comp-pill[data-locked] {
+  color: var(--ink-3);
+  border-color: transparent;
+  cursor: default;
+}
+.pp-folio-comp-caret {
+  color: var(--ink-3);
+  font-size: 9px;
+}
+/* 菜单：向下开（卷首在卷顶，下方是流区，空间足够） */
+.pp-folio-comp-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 80;
+  min-width: 200px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--rule-strong);
+  box-shadow: var(--elev-menu);
+  animation: pop-down 0.14s cubic-bezier(0.23, 1, 0.32, 1);
+  transform-origin: top right;
+}
+.pp-folio-comp-opt {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-bottom: 1px solid var(--rule-soft);
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--f-song);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  transition:
+    background var(--snap),
+    color var(--snap);
+}
+.pp-folio-comp-opt:last-child {
+  border-bottom: none;
+}
+.pp-folio-comp-opt:hover {
+  background: var(--paper-deep);
+  color: var(--ink-1);
+}
+.pp-folio-comp-opt.selected {
+  background: var(--sel-wash);
+  color: var(--ink-1);
+  box-shadow: inset 2px 0 0 var(--seal);
+}
+.pp-folio-comp-opt:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+/* 说明行（来源/锁定原因/装载失败）——不可点，不参与选中语义 */
+.pp-folio-comp-note {
+  padding: 6px 10px;
+  border-top: 1px solid var(--rule-soft);
+  color: var(--ink-3);
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+/* 写入被拒（空白闸二道闸/不可解析）——就地可见，不静默 */
+.pp-folio-comp-toast {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  max-width: 260px;
+  padding: 6px 10px;
+  background: var(--paper);
+  border: 1px solid var(--rule-strong);
+  box-shadow: var(--elev-menu);
+  color: var(--ink-2);
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
 /* 边缘拖拽面（stage-2 定案：~6px 量级，光标 move；hover 显朱砂提示可抓） */
 .pp-region-edge {
   position: absolute;

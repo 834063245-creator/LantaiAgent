@@ -92,6 +92,7 @@ export const EMPTY_REGION_CONTENT_H = impl.EMPTY_REGION_CONTENT_H;
 export const nearestFreeRegion = impl.nearestFreeRegion;
 export const REGION_CONTENT_MARGIN = impl.REGION_CONTENT_MARGIN;
 export const STREAM_REGION = impl.STREAM_REGION;
+export const usePresetStore = impl.usePresetStore;
 export const collapseToolGroups = impl.collapseToolGroups;
 export const translateMessagesCached = impl.translateMessagesCached;
 export const injectPaperTokens = impl.injectPaperTokens;
