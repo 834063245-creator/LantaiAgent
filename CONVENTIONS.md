@@ -403,7 +403,24 @@ DOM 所有权按层划分，不要跨层抢 DOM：
    （历史遗留按 docs/landmine-map.md 拆除，新代码不得新增）
 ```
 
-## 3. 验证门禁与基线（2026-08-29 实测；数字会漂移，细则以 `AGENTS.md` §10 为准）
+### 2.4 内核工具面与能力口（现状，2026-09-14 M5 核准；2026-09-16 自 AGENTS.md §7 迁入）
+
+- **`tool_call` 信封已全线退役**：`src-tauri/src/adapter.rs` 的该类型**不是**待拆脚手架，而是强制层的闸构造形状；`src-tauri/src/tools/` 是内核能力层（`mod.rs` 的 ReadTool / EditTool / BashTool / GitTool / BrowserTool / DesktopTool / WebFetchTool …），各族另有 `*_cap.rs` **能力口直呼**入口（fs_cap / process_cap / search_cap / web_cap / git_cap / browser_cap / uia_cap / lsp_cap / pty_cap / editor_cap）——各文件头注一致声明「不经 tool_call 信封 / PluginRegistry / PluginToolAdapter」。
+- **`src-tauri/src/tool_plugins/` 目录不存在**（kernel-plugin-runtime 的「新工具 = 插件目录 + manifest + ToolPlugin」已被能力口直呼取代），勿按旧描述新建；`docs/plans/kernel-plugin-runtime-plan.md` 是历史阶段记录，**不是现状依据**。
+- **前端工具面真源** = ToolRegistry 装配产物（生成物 `docs/agents/model-tool-contract.md`）+ `src-ui/src/agent/tools/manifest-tools.ts`（search/web 两域 schema 的 zod 真源与编排，execute 经 `search_cap` 能力口直呼——**不是** manifest 生成的镜像表）。
+- 新增模型工具 = `defineTool` + zod 入 `agent/tools/**`，装配面经行表/贡献通道（§1.7）——**不需要**新建 Rust 侧插件目录。
+
+### 2.5 多 Agent 并发纪律（事故后立规，报告 `docs/agents/platform-bugs-2026-08-13.md`；2026-09-16 自 AGENTS.md §8/§9 迁入）
+
+- 子 Agent 注册表必须 `convergeRegistry(subTools)` 重建领域工具；克隆来的 fs/shell 闭包绑父注册表，不重建会绕过所有权包装、构建禁令、plan 只读。
+- 文件所有权（`file-ownership.ts`）覆盖 fresh 与隔离降级的 fork；claim 键斜杠归一。
+- merge 据实三原则：无产出不报 ✅；清理失败 ≠ 合并失败；冲突保留 worktree（diff 有 32 KB 截断，worktree 是全量现场）。`agent(merge)` 进程内串行。
+- `edit_file` 并发安全在 Rust 临界区（`editor.rs checked_write_atomic`：进程级锁 + fail-closed 重读校验）；TS 侧不得假设「返回成功 = 落盘」之外的时序。
+- TTL 清理不得销毁无记录的工作：discard 前抓 diff 回 board，抓不到保留现场并通知父 Agent。
+- 模型可见子 Agent ID `sub-{timestamp}-{random}`；worktree ID `agent-{timestamp}-{random}`；池内部 ID 不暴露给模型。
+- **Plan 模式**：工具 schema 跨模式恒定（保护 DeepSeek 前缀缓存）；写约束由 `planGate` 在执行层拦截——只读动作放行，fs write/edit 计划文件豁免，agent spawn 豁免；plan 中 spawn 的子 Agent 静态只读（`planRegistry()`）。
+
+## 3. 验证门禁与基线（2026-08-29 实测；数字会漂移，以重新实测为准）
 
 | 改了什么 | 必须过 | 实测基线 |
 |---|---|---|
@@ -418,8 +435,25 @@ DOM 所有权按层划分，不要跨层抢 DOM：
 
 - CI（`.github/workflows/ci.yml`）只做编译 + 测试。**不要修改 CI。**
 - 修 INVARIANTS/landmine-map 里的雷，必须配回归测试，一颗雷一个 commit。
+- **convergence 双轨纪律**：`npm run verify:convergence` 连跑 standard + minimal（单轨仍可用 `:standard` / `:minimal`）；只有 CI 的 `convergence.yml` 跑单轨 standard。**新增/改基线时两轨一起验**——教训：第二条轨不在默认门禁里就会静默腐烂（2026-09-14 审计发现的 minimal 漏录即此因）。
+- **本机 `NODE_ENV=production` 注入的两刀（2026-08-29 实测）**：Cowork/codely 进程链给子 shell 注入 `NODE_ENV=production`——① vitest jsdom UI 测试大面积假红（`act is not a function` + `No such built-in module: node:`）；② **`npm install` / `npm uninstall` 同样中招：剥掉 devDependencies**（`Cannot find package 'vitest'`，`node_modules/.bin` shim 一并丢失）。恢复 = 清变量 → `npm install` → 必要时 `npm rebuild`。**纪律：本机凡 npm/vitest 命令一律先清该变量。**
+- **测试运行纪律（2026-08-29 立规，实测踩坑 2 小时；2026-09-16 自 AGENTS.md §10 迁入）**：cargo 测试一律 `--no-run` 先链接 → 前台直跑测试二进制 → 输出直写文件；**禁止 `| tail` / `Select-String` 挂在长 cargo 命令尾部**（管道缓冲全程无输出 + 收尾假挂，会把「冷链接 2-10 分钟」误判成 hang）。最可靠姿势 = `Start-Process -RedirectStandardOutput log -NoNewWindow` + 独立命令轮询日志；小输出直接由工具捕获，大输出走 `cmd /c "exe > log 2>&1"`（PowerShell `>` 对原生命令另有「收尾假挂」变体）。**`hologram-engine.exe` 是用户 DSH 应用的子进程，绝不能 taskkill**（崩溃自动重启，杀了只会误导排障）。另三条续窗实测：① cdp e2e 报「端口 Ns 内未就绪」先清 `D:\tmp\hologram-browser-profile*` 僵尸 chrome + 残留 profile（失败 panic 不清浏览器树，自续污染后续每一轮）；② vitest 全量报 1 error（Worker exited unexpectedly / heap OOM）但计数全过 = 有测试文件在用例体内自旋，**别调大堆**，用文件列表二分（列表必须落盘后 `(Get-Content 列表)` 传参）；③ 构建报 os error 32（文件被占用）先查 IDE rust-analyzer 残留句柄（`handle.exe`）——它是语言服务器，杀进程会被 IDE 立刻重启并重新锁上，用 `handle.exe -c <句柄号> -p <pid> -y` 关句柄。
 
 ## 4. 文档维护
+
+- **四层形态（2026-09-16 文档面重构立规；施工单 `docs/plans/doc-surface-refactor-plan.md`）**：
+  **L0 注入层**（`CLAUDE.md` 唯一权威 + `AGENTS.md` 薄指针）= 只放规则 + 指针 + 门禁命令，字节数由
+  `npm run doc-check` 的 budget 查守护（长表格/叙事/清单外移）；**L1 规则层**（本文件 / `INVARIANTS.md` /
+  `docs/adr/`）= 每条事实只写一次；**L2 现状层**（`ARCHITECTURE.md` / `CONTEXT.md` / `docs/design/` 定稿 /
+  `docs/plugins/README.md` / `docs/composition/README.md`）= **禁止复述机器可读数字**；**L3 生成层**
+  （六份生成物，含 `docs/facts.generated.md`）= doc-sync 逐字节对拍；**L4 过程层**（`docs/plans/` 活在办项 →
+  `docs/archive/` 竣工即移 · `docs/research/` 证据冻结）。
+- **跨文档数字只准来自 `docs/facts.generated.md` 或写指针**：改真源 → `npm run gen:doc-facts` 重生成 → 同 commit。
+  新增事实 = `scripts/doc-facts.cjs` 的 `FACTS` 表加解析器 + `scripts/doc-check.cjs` 的 `CLAIMS` 加断言
+  （**宁窄勿宽**：误报会把门禁变噪声；先靠 `--report` 的「未登记候选」栏人工归并）。
+- **文档面门禁**：`cd src-ui && npm run doc-check`（六查 = 事实对拍 / 断链 / 体量 / 孤儿 / 归档纪律 / 注入预算）。
+  在册豁免记在 `scripts/doc-check-exemptions.json`，每条必须写 `reason` + `payoff` 批次——**豁免是账，不是免罪符**，
+  对应批次落地时同步删条目。
 
 - 工具/RPC/领域动作清单变化时：更新 `tools/domains.ts` → 本文件 → `AGENTS.md` → `docs/README.md` 索引 → 生成类文档（frontend-rpc-contract.md；模型可见工具面另跑 `npm run gen:tool-contract` 重生成 model-tool-contract.md，vitest 守护测试会拦漂移）。
 - 已竣工的 plan/handoff 应移入 `docs/archive/` 或加「历史」横幅，不要继续以现状口吻保留过期数字。

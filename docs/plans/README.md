@@ -36,7 +36,7 @@
 
 | **组合粒度（per-agent composition）** | [`composition-architecture/designs/S6-per-agent-composition.md`](composition-architecture/designs/S6-per-agent-composition.md) | **✅ S6 全段竣工（2026-09-14 → 2026-09-16）+ 真机验收已闭（卷首组合芯片 2026-09-16 用户验过）** | 把组合推到「每 Agent 一份值」。**权威叙事 = 设计件 §4/§8 + 四份施工单**——本行不复述批次流水（2026-09-16 依本页头注「竣工即归档 / 详情勿读」瘦身：原 4979 字符 → 本行，原文见 git 史）。**留待独立批次**：真面板并排（**S7 ⏸ 搁置**，见 `WO-S7-multi-core-panels.md` §0.6）/ 跨工作区并存 / 外部协议接线 / 评测自举 / `seam/sessionPersistence` 按卷取值 |
 
-| **文档面重构（打磨收尾）** | [`doc-surface-refactor-plan.md`](doc-surface-refactor-plan.md) | **P0 立尺已落地（2026-09-16）**：facts 单一真源（9 条）+ `npm run doc-check` 六查 + 豁免账先绿。首轮台账：budget 1 / facts 6 / links 1 / size 52 / orphans 23 / archive 7 | 病根 = 文档面缺代码面早就有的「单一权威源 + 门禁对拍」（AgentConfig 28 已更正两处、ARCHITECTURE×2 与根 README 仍写 31 = 补丁打不全）。批序：P1 注入层（AGENTS.md 已被 64KB 预算丢弃）→ P2 现状层（根 README 定位乙）→ P3 归档大扫除 → P4 索引重建 |
+| **文档面重构（打磨收尾）** | [`doc-surface-refactor-plan.md`](doc-surface-refactor-plan.md) | **P0 立尺 + P1 注入层已落地（2026-09-16）**：facts 单一真源（9 条）+ `npm run doc-check` 六查 + 豁免账先绿；**L0 由 74242 B 瘦到 18794 B**（AGENTS.md 原被 64 KB 预算整份丢弃 → 现为薄指针；CLAUDE.md 24.3 KB → 15.3 KB） | 病根 = 文档面缺代码面早就有的「单一权威源 + 门禁对拍」（AgentConfig 28 已更正两处、ARCHITECTURE×2 与根 README 仍写 31 = 补丁打不全）。批序：P2 现状层（根 README 定位乙 + 目录树/数据流/基线表重建）→ P3 归档大扫除 → P4 索引重建 |
 
 ## 活跃工程（就一个半）
 

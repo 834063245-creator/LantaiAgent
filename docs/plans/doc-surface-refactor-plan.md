@@ -1,7 +1,7 @@
 # 文档面大重构（打磨收尾）— 施工单
 
 > 立项 2026-09-16（用户拍板根 README 对外定位 = 乙：桌面 Agent 工作台为主、引擎降配套）。
-> 状态：**P0 已落地**，P1-P4 待推。
+> 状态：**P0 立尺 + P1 注入层已落地**，P2-P4 待推。
 > 门禁：`cd src-ui && npm run doc-check`（非零即拦）；`npm run doc-check:report` 看全量漂移清单。
 > 真源：`scripts/doc-facts.cjs`（事实导出）+ `scripts/doc-check.cjs`（六查）+ `scripts/doc-check-exemptions.json`（在册豁免账）。
 
@@ -36,7 +36,7 @@
 | 批 | 做什么 | 判据 |
 |---|---|---|
 | **P0 立尺** ✅ | facts 导出器（9 条事实）+ doc-check 六查 + 豁免账先绿 + doc-sync 登记 | `doc-sync` 与 `doc-check` 双绿；漂移清单可复现 |
-| **P1 注入层** | CLAUDE+AGENTS 去重合一（AGENTS 变薄指针）、长表格外移、预算门禁上牙 | L0 合计 ≤32KB；`budget` 豁免条目删净 |
+| **P1 注入层** ✅ | CLAUDE+AGENTS 去重合一（AGENTS 变薄指针）、长表格外移、预算门禁上牙 | L0 合计 ≤32KB；`budget` 豁免条目删净 |
 | **P2 现状层** | ARCHITECTURE / 根 README（乙定位）/ plans 索引 / docs 索引 按真源重写；数字改为指针 | `facts` 与 `links` 豁免条目删净 |
 | **P3 归档大扫除** | 竣工文档 git mv → archive/，索引瘦身（单元格 ≤500），HISTORY 补时间轴 | `archive` 豁免删净；plans/ 只剩在办项 |
 | **P4 索引重建** | docs/README 重写为唯一入口（角色 × 任务两轴），孤儿全部挂上 | `orphans` 豁免删净 |
@@ -51,6 +51,23 @@
 | size | 52 | 单行 >1000（AGENTS 6 / taste-ledger 15 / 索引两页 18 …） | P1 / P2 / P3 |
 | orphans | 23 | ADR 四篇 · cookbook 四篇 · 设计件两篇 · 计划正文七篇 …「有正文没入口」 | P2 / P3 / P4 |
 | archive | 7 | 已竣工文档仍留在 `plans/`（CONVENTIONS §4 未执行） | P3 |
+
+### 4.1 P1 落账（2026-09-16）
+
+| 项 | 前 | 后 |
+|---|---|---|
+| `CLAUDE.md`（唯一权威 L0） | 24259 B / 最长行 4286 字符 | 15256 B / 最长行 796 字符 |
+| `AGENTS.md` | 49489 B（**被 harness 整份丢弃**） | 3538 B（薄指针，强制加载 CLAUDE.md） |
+| L0 合计 vs 64 KB 预算 | 74242 B ✗ | 18794 B ✓（留 71% 余量） |
+
+- 独有内容去处（迁移完整性已抽检 14 个关键词全部有归宿）：规则类 → `CONVENTIONS.md` **§2.4 内核工具面与
+  能力口**、**§2.5 多 Agent 并发纪律 + Plan 模式**、**§3 尾注（convergence 双轨 / NODE_ENV 两刀 / 测试运行纪律）**；
+  现状类 → 指针（`ARCHITECTURE.md`）；`AGENTS.md` 原正文留在 git 史（`git log -- AGENTS.md`）。
+- 顺手清掉两处**已退役事实**：`graph(preflight)` 作为内置 Agent 的开工入口（图谱内置接线 2026-09-09 退役）·
+  定位段「把代码库变成可对话的 3D 依赖星图」。
+- **P2 承接（P1 删除的清单块，由 P2 在现状层按真源重建）**：① 目录结构树（含 `.lantai/` 运行时目录）② 数据流视图
+  （引擎 stdio MCP transport，旧图写的是已退役的 TCP 9777）③ 引擎能力与工具面 ④ 验证基线表（数字改为
+  facts 指针或标注实测日期）。**未重建前这些清单的权威副本 = git 史**。
 
 ## 5. 门禁用法与维护纪律
 

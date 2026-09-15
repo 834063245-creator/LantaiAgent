@@ -127,7 +127,8 @@ const CLAIMS = [
   },
   {
     fact: 'builtin_service_plugins',
-    re: /(\d+)\s*内核/g,
+    // 负向后顾排除节号误报（「2.4 内核工具面」不是「4 内核」）。
+    re: /(?<![\d.])(\d+)\s*内核/g,
     hint: '内核插件数真源 = src-ui/src/plugins/loader.ts 的 BUILTIN_PLUGINS 表',
   },
   {

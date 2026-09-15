@@ -2,12 +2,6 @@
   "note": "doc-check 在册豁免账（文档面大重构 P0 立尺，2026-09-16）。每条必须写 reason（为什么现在还欠着）+ payoff（哪批清偿）。豁免是账不是免罪符：payoff 批次落地时同步删除对应条目；条目归零 = 文档面收尾成立（永久豁免只给「不属于本项目文档面」的文件）。",
   "entries": [
     {
-      "id": "L0-budget",
-      "check": "budget",
-      "reason": "CLAUDE.md 24.3KB + AGENTS.md 49.5KB = 74.2KB > 64KB 指令预算；本轮实测 AGENTS.md 已被 harness 丢弃（手册根本没进上下文）",
-      "payoff": "P1"
-    },
-    {
       "id": "facts-arch-31",
       "check": "facts",
       "file": "ARCHITECTURE.md",
@@ -45,20 +39,6 @@
       "file": "docs/landmine-map.md",
       "reason": "链接写成 ../design/...（应为本目录 design/...）——断链",
       "payoff": "P2"
-    },
-    {
-      "id": "size-L0",
-      "check": "size",
-      "file": "AGENTS.md",
-      "reason": "6 行超 1000 字符（最长 5417）——L0 合并瘦身时整段外移",
-      "payoff": "P1"
-    },
-    {
-      "id": "size-L0-claude",
-      "check": "size",
-      "file": "CLAUDE.md",
-      "reason": "1 行 4286 字符（插件激活/程序入口长段）——L0 瘦身时压成结论 + 指针",
-      "payoff": "P1"
     },
     {
       "id": "size-current-layer",
