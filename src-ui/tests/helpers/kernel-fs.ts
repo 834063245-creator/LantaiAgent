@@ -213,13 +213,16 @@ export function createKernelFsMock(opts?: { wrapWithSpies?: boolean }): {
     return p;
   };
 
-  /** 断尾修复原语：截到字节偏移（mock 用 JS 字符长度——测试面全 ASCII）。 */
+  /** 断尾修复原语：截到**字节**偏移（与 Rust `truncate_file` 同语义——生产按字节，
+   *  故这里按 UTF-8 编解码切片，不能用 String.slice 的 UTF-16 单位；扫描器只在
+   *  行边界截断，因此不会切进多字节字符中间）。 */
   const kernelTruncateFile = async (filePath: string, offset: number): Promise<string> => {
     if (fs.fail.write) throw new Error(fs.fail.write);
     const p = String(filePath).replace(/\\/g, '/');
     const cur = fs.files.get(p) ?? '';
-    if (offset > cur.length) throw new Error(`truncate: offset ${offset} exceeds length ${cur.length}`);
-    fs.files.set(p, cur.slice(0, offset));
+    const bytes = new TextEncoder().encode(cur);
+    if (offset > bytes.length) throw new Error(`truncate: offset ${offset} exceeds length ${bytes.length}`);
+    fs.files.set(p, new TextDecoder().decode(bytes.slice(0, offset)));
     return p;
   };
 

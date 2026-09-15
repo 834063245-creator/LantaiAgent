@@ -22,10 +22,12 @@
 //     首批不写头行（头行已在那份文件里）。
 //
 // Phase 1 的加载器是**最小形态**：只认完整行、遇坏行/断号即停（warn 可见），
-// 断尾截断与合成 closers 归 Phase 2（见 docs/plans/session-persistence-dsh-port-plan.md）。
+// Phase 2（恢复链）已接：断尾截断 + 悬空工具调用补结果 + 格式版本定向拒读。
+// 权威翻转（内容从日志派生、快照降级为带 seq 的投影缓存）归 Phase 3。
 
 import { log } from '../../agent/logger';
 import type { SessionEvent, SessionLog } from '../../agent/session-log';
+import { interruptedToolCallClosers } from '../../agent/session-log-repair';
 import { DEFAULT_WRITE_BATCH_MAX_DELAY_MS, SessionLogWriteBehind } from '../../agent/session-log-write-behind';
 import { sessionExecute } from '../../composition/session-persistence-service';
 
@@ -44,10 +46,33 @@ export interface SessionLogHeader {
 export interface LoadedSessionLog {
   header: SessionLogHeader;
   events: SessionEvent[];
-  /** 认领到的完整行字节数（Phase 2 断尾修复的截断点；Phase 1 只用于诊断）。 */
-  committedLines: number;
+  /** 认领到的完整行字节数（断尾修复的截断点）。 */
+  committedBytes: number;
   /** 停止认领的原因（null = 整个文件干净读完）。 */
   stopReason: string | null;
+  /** 断尾（末行不完整）——true 时打开路径先截断再续写。 */
+  torn: boolean;
+}
+
+/** 日志格式版本本 build 读不了（**不是损坏**——定向拒读，绝不覆写）。 */
+export class SessionLogFormatUnsupportedError extends Error {
+  constructor(
+    message: string,
+    readonly location: { path: string; version: number },
+  ) {
+    super(message);
+    this.name = 'SessionLogFormatUnsupportedError';
+  }
+}
+
+/** 本 build 支持的日志格式版本。 */
+export const SESSION_LOG_FORMAT_VERSION = 1;
+
+/** 定向拒读文案（DSH `sessionFormatVersionRefusal` 的兰台形）。 */
+export function sessionLogVersionRefusal(id: number, version: number, path: string): string {
+  return version > SESSION_LOG_FORMAT_VERSION
+    ? `案卷 ${id} 的事件日志是 v${version} 格式，本版本只读 v${SESSION_LOG_FORMAT_VERSION}——日志由更新的兰台写入，请升级兰台后打开（原始日志：${path}）`
+    : `案卷 ${id} 的事件日志是 v${version} 格式，早于本版本支持的 v${SESSION_LOG_FORMAT_VERSION}，本版本不含升级路径（原始日志：${path}）`;
 }
 
 export interface AttachSessionLogStoreOptions {
@@ -93,30 +118,50 @@ export function sessionLogPath(root: string, id: number): string {
  * 记录不算事件。
  */
 export async function loadSessionLogFile(root: string, id: number): Promise<LoadedSessionLog | null> {
+  const path = sessionLogPath(root, id);
   let raw: string;
   try {
     raw = await sessionExecute('read_log', { root, id: String(id) });
   } catch (e) {
-    log.warn('session-log', `事件日志读取失败（按无日志处理）：${sessionLogPath(root, id)}`, { error: String(e) });
+    log.warn('session-log', `事件日志读取失败（按无日志处理）：${path}`, { error: String(e) });
     return null;
   }
   if (!raw) return null;
-  // 只认完整行：最后一行没有换行 = 断尾（不认领）
+  // 只认完整行：最后一行没有换行 = 断尾（不认领，等修复截断）
   const lines = raw.split('\n');
   const tail = lines.pop();
-  let committedLines = 0;
-  const header = lines.length > 0 ? parseHeader(lines[0]) : null;
+  const torn = tail !== undefined && tail.length > 0;
+  const rawHeader = lines.length > 0 ? parseHeaderRaw(lines[0]) : null;
+  if (!rawHeader) {
+    return {
+      header: { type: 'session', version: 1, id, createdAt: new Date().toISOString() },
+      events: [],
+      committedBytes: 0,
+      stopReason: '头行缺失或不可解析',
+      torn: false,
+    };
+  }
+  // 格式版本拒读必须在**任何结构校验之前**（未来格式不必满足本 build 的形状；
+  // 用户要看到「升级兰台」，而不是「日志损坏」——DSH 同款纪律）。
+  if (typeof rawHeader.version === 'number' && rawHeader.version !== SESSION_LOG_FORMAT_VERSION) {
+    throw new SessionLogFormatUnsupportedError(sessionLogVersionRefusal(id, rawHeader.version, path), {
+      path,
+      version: rawHeader.version,
+    });
+  }
+  const header = parseHeader(lines[0]);
   if (!header) {
     return {
       header: { type: 'session', version: 1, id, createdAt: new Date().toISOString() },
       events: [],
-      committedLines: 0,
-      stopReason: '头行缺失或不可解析',
+      committedBytes: 0,
+      stopReason: '头行形状非法',
+      torn: false,
     };
   }
-  committedLines = utf8Len(`${lines[0]}\n`);
+  let committedBytes = utf8Len(`${lines[0]}\n`);
   const events: SessionEvent[] = [];
-  let stopReason: string | null = tail ? `断尾：末行不完整（${tail.length} 字节未认领）` : null;
+  let stopReason: string | null = torn ? `断尾：末行不完整（${utf8Len(tail)}\n 字节）` : null;
   for (let i = 1; i < lines.length; i++) {
     let ev: SessionEvent;
     try {
@@ -130,20 +175,31 @@ export async function loadSessionLogFile(root: string, id: number): Promise<Load
       break;
     }
     events.push(ev);
-    committedLines += utf8Len(`${lines[i]}\n`);
+    committedBytes += utf8Len(`${lines[i]}\n`);
   }
   if (stopReason) {
-    log.warn('session-log', `事件日志未完整认领（Phase 2 将做断尾修复）：${sessionLogPath(root, id)}`, {
+    log.warn('session-log', `事件日志未完整认领（打开时截断修复）：${path}`, {
       reason: stopReason,
       claimed: events.length,
+      committedBytes,
     });
   }
-  return { header, events, committedLines, stopReason };
+  return { header, events, committedBytes, stopReason, torn };
 }
 
 /** UTF-8 字节长度（断尾修复的截断点按字节；浏览器无 Buffer，走 TextEncoder）。 */
 function utf8Len(s: string): number {
   return new TextEncoder().encode(s).length;
+}
+
+/** 头行的宽松解析（只取 version——版本判定要先于形状校验）。 */
+function parseHeaderRaw(line: string): { version?: unknown } | null {
+  try {
+    const parsed = JSON.parse(line) as { type?: string; version?: unknown };
+    return parsed?.type === 'session' ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 function parseHeader(line: string): SessionLogHeader | null {
@@ -269,35 +325,64 @@ export async function detachSessionLogStore(logInstance: SessionLog): Promise<vo
 }
 
 /**
- * 打开一卷：读盘 → 把日志置回磁盘真源 → 接到盘上（Phase 1 接线的唯一入口）。
+ * 打开一卷：读盘 → **截断修复断尾** → 置回真源 → **补悬空工具调用** → 接到盘上。
  *
- * 三种情形：
- *   · 文件有事件 → `restoreInPlace(events)` + `continue`（**不覆写**：崩溃时写下的
- *     尾巴必须活到下一次打开——Phase 2 的修复链据此续命）；
+ * 情形（与 DSH `prepare()` + `commitRepair()` 同链）：
+ *   · 文件有事件 → 若断尾/坏行：先 `truncate_log(committedBytes)`（丢弃半截记录，
+ *     否则后续 append 会接在垃圾后面、扫描器永远认不回尾巴）；然后
+ *     `restoreInPlace` + `continue` 姿态；再补悬空工具调用的 `tool/result`
+ *     （两种语义文案见 `agent/session-log-repair`）并立刻排空——**修复本身是
+ *     持久化的**，不是内存态调整；
  *   · 无文件/坏头行 → `materialize`（首批把当前日志整体物化，含构造期事件）；
+ *   · 版本本 build 读不了 → **抛**（定向拒读，绝不覆写——见
+ *     `SessionLogFormatUnsupportedError`）；
  *   · 句柄无日志能力位（旧实现/测试桩）→ no-op。
  *
- * 代际/失败语义：读盘失败按「无日志」处理（materialize），并已可见 warn——
- * 会话仍可打开（降级为「日志从本轮重开」），不因日志问题挡用户。
+ * 失败语义：除版本拒读外，任何读/修失败都降级为「日志从本轮重开」（可见 warn）——
+ * 不因日志问题挡用户打开会话。
  */
 export async function openSessionLog(
   logInstance: SessionLog | null | undefined,
   opts: AttachSessionLogStoreOptions,
-): Promise<{ adopted: boolean; events: number }> {
-  if (!logInstance) return { adopted: false, events: 0 };
+): Promise<{ adopted: boolean; events: number; repaired: boolean; closers: number }> {
+  if (!logInstance) return { adopted: false, events: 0, repaired: false, closers: 0 };
+  const path = sessionLogPath(opts.root, opts.sessionId);
   const loaded = await loadSessionLogFile(opts.root, opts.sessionId);
   if (loaded && loaded.events.length > 0) {
     try {
+      // ① 断尾/坏行 → 截断到已认领的完整前缀（DSH `commitRepair` 的第一半）
+      let repaired = false;
+      if (loaded.stopReason !== null && loaded.committedBytes > 0) {
+        await sessionExecute('truncate_log', {
+          root: opts.root,
+          id: String(opts.sessionId),
+          offset: loaded.committedBytes,
+        });
+        repaired = true;
+        log.warn('session-log', `事件日志断尾已截断修复：${path}`, {
+          reason: loaded.stopReason,
+          keptEvents: loaded.events.length,
+        });
+      }
+      // ② 置回磁盘真源 + 续写姿态
       logInstance.restoreInPlace(loaded.events);
-      attachSessionLogStore(logInstance, { ...opts, adopt: 'continue' });
-      return { adopted: true, events: loaded.events.length };
+      const store = attachSessionLogStore(logInstance, { ...opts, adopt: 'continue' });
+      // ③ 补悬空工具调用（崩溃时「宣布了但没结果」的调用）并立刻持久化
+      const closers = interruptedToolCallClosers(loaded.events);
+      if (closers.length > 0) {
+        for (const closer of closers) logInstance.appendEvent(closer);
+        await store.flush();
+        log.warn('session-log', `崩溃恢复：已为 ${closers.length} 条悬空工具调用补结果：${path}`, {
+          calls: closers.map((c) => (c.data as { message: { name?: string } }).message.name ?? '?'),
+        });
+      }
+      return { adopted: true, events: loaded.events.length, repaired, closers: closers.length };
     } catch (e) {
       // 基线不可用（seq 断裂等）→ 落到 materialize（重开一段），响亮记警告
-      log.warn('session-log', `事件日志基线不可用，改为重新物化：${sessionLogPath(opts.root, opts.sessionId)}`, {
-        error: String(e),
-      });
+      if (e instanceof SessionLogFormatUnsupportedError) throw e;
+      log.warn('session-log', `事件日志基线不可用，改为重新物化：${path}`, { error: String(e) });
     }
   }
   attachSessionLogStore(logInstance, { ...opts, adopt: 'materialize' });
-  return { adopted: false, events: 0 };
+  return { adopted: false, events: 0, repaired: false, closers: 0 };
 }

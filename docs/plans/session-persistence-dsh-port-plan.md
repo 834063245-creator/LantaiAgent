@@ -153,21 +153,24 @@
 
 ### Phase 2 —— 读面：扫描 + 修复 + replay（恢复链）
 
-1. **扫描器**：只认完整行 → 连续前缀 + `tornMarker{truncateTo}` + seq gap 即损坏
-   （对照 `format.ts:337-455`）。
-2. **兰台版 closers**：兰台事件词表**没有 `step/start|end`、`turn/end`**（只有 `turn/start`）——
-   需要补 kind：
-   - `turn/end {reason: 'completed'|'aborted'|'error'|'interrupted'}`；
-   - 断尾恢复时补：未配对工具调用的 `tool/result`（两种语义：`TOOL_NOT_STARTED` /
-     `TOOL_OUTCOME_UNKNOWN`，**文案直接借 DSH 的**——它把「副作用可能已发生，别盲重试」
-     写进了模型可见的恢复文本）+ `turn/end{interrupted}`。
-   - ⚠ 动 kind 封闭集 = 动 phase-5 契约快照与 convergence 基线 ⇒ 必须走
-     `docs/archive/agent-core-convergence/baseline-change-request.md` 审批 + 两轨 record。
-3. **加载路径换轨**：`read_volume` 有 `.ndjson` → 扫描+修复+`SessionLog.replay()` →
-   `deriveMessages()` 得 provider 消息；`.json` 快照降级为**投影缓存**（见 Phase 3）。
-4. **权威翻转的第一步**：`uiMessages` 快照加 `seq`（写它时的日志头 seq）与 `ver`；
-   恢复时 seq 落后 → 从日志重放尾部（不是「采信快照」）——这是 DSH 那句
-   「possibly stale but never wrong」的落地。
+1. **扫描器**：只认完整行 → 连续前缀 + `committedBytes`（截断点）+ seq gap 即损坏
+   （对照 `format.ts:337-455`）；**格式版本拒读先于一切形状校验**（未来格式 →
+   「升级兰台」，绝不覆写）。
+2. **合成 closers（实施期裁定：不补 `turn/end` / `step/*` 事件种类）**——
+   计划原写「需要补 kind」，落地时判定**不必要**：
+   - 兰台的投影（`deriveMessages`）只认消息事件，轮次开合不参与转写合法性；
+     provider 真正在意的是「每个 `tool_call` 必须有配对的 tool 消息」；
+   - 悬空调用可从既有事件面直接推出（`assistant/text.message.tool_calls` 宣布 +
+     `tool/call` 分发记录 + `tool/result` 配平），不依赖轮号/步号；
+   - 副产品：不动 phase-5 事件词表（`SESSION_EVENT_KINDS`）⇒ **不需要
+     convergence 基线变更审批**（原计划里那一项作废）。
+   两种语义照 DSH（已分发但无结果 = `TOOL_OUTCOME_UNKNOWN`「副作用可能已发生，
+   别盲重试」；只宣布未分发 = `TOOL_NOT_STARTED`「没跑，需要就重试」）。
+3. **打开路径 = 截断修复 + 补 closers + 落盘**：`openSessionLog` 先截断断尾
+   （`truncate_log`），再 `restoreInPlace` + continue，再补悬空调用的 `tool/result`
+   并立刻排空——**修复本身是持久化的**，不是内存态调整（DSH `commitRepair` 同义）。
+4. **加载路径换轨**（Phase 3 完成权威翻转）：`.ndjson` 有内容 → 扫描+修复+replay →
+   `deriveMessages()` 得 provider 消息；`.json` 快照降级为**投影缓存**（带 seq/ver）。
 
 ### Phase 3 —— 收尾：快照降级为缓存 + 删除旧恢复面
 
