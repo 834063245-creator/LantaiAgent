@@ -3,10 +3,11 @@
 给「正在改的那份 Office 文件」开一扇**实时渲染浮窗**：窗里跑的不是插件自己的页面，而是本机
 `officecli watch` 服务的环回页（契约 v28 的「环回远端视图」形态）。
 
-> **注意（2026-09-13 C 路改判）**：本插件**不再挂 MCP server**。OfficeCLI 的读写能力已由兰台
-> **内置 office 域工具**（`office(action,…)`，经 shell seam → `process_cap` 受沙箱 spawn）承担——
-> 沙箱 + Bash 权限类 + 审计 + plan 按 action 分档。本插件只负责"看"。
-> 完整计划与实测数据：[`docs/plans/office-cli-integration-plan.md`](../../../docs/plans/office-cli-integration-plan.md) §10。
+> **注意（2026-09-13 C 路改判；2026-09-15 R3 重构）**：本插件**不再挂 MCP server**。OfficeCLI 的读写能力已由兰台
+> **内置 office 域工具**（`office(action,…)`）承担——经 `process_cap` 的 `office_exec` 动作在
+> 沙箱里 spawn（命令由 Rust 拼装；权限只审声明的目标文件 `file`/`out`）+ 审计 + plan 按 action 分档。
+> 本插件只负责"看"。
+> 完整计划与实测数据：[`docs/plans/office-cli-integration-plan.md`](../../../docs/plans/office-cli-integration-plan.md) §10（C 路）与 §11（真机复盘 + R3 重构）。
 
 ## 1. 装
 
@@ -53,13 +54,17 @@ Copy-Item ..\..\office-cli\SKILL.md "$env:USERPROFILE\.lantai\skills\officecli\S
 - **模型看不到工具结果里的图**：工具结果契约是纯文本，`screenshot` 产出的是**盘上 PNG**——
   用 `show_asset(kind='file', payload={filePath, ext:'png'})` 交给用户看；模型的机械自检走
   `validate` + `view issues`，视觉终审交人判。
-- **watch 进程不随窗自动停**：起/停归 shell 域（Agent 或用户），本插件只开窗。
+- **watch 进程不随窗自动停**，且**只能由用户自己起**（Agent 的 shell 里没有 officecli，域工具也没有
+  watch 动作）；本插件只开窗。
+- **watch 占着的文件别同时让 Agent 改**（见 §2 的 ⚠️）：两边的 resident 会抢同一个文件。
 - 版本漂移快：二进制按 pin 版本（1.0.149）验证；升版本走安装器换哈希 + 重跑
-  `src-ui/tests/office-domain.test.ts`。
+  `src-ui/tests/office-domain.test.ts` 与 Rust 侧 `process_cap::tests::office_command_real_binary_e2e`。
 
 ## 4. 守护测试
 
 `src-ui/tests/office-plugin-example.test.ts`（形状：**不含 mcpServers**、app.url 环回、工具口成对、
 二进制不进目录）+ `src-ui/tests/office-plugin-loader.test.ts`（真实装载路径：窗口定义 kind=remote、
-工具行在册、**无 MCP 行**、卸载收口）。办公室域工具本身的守护在 `src-ui/tests/office-domain.test.ts`
-（13 例，含真 bash × 真 officecli 端到端）。
+工具行在册、**无 MCP 行**、卸载收口）。office 域工具本身的守护在 `src-ui/tests/office-domain.test.ts`
+（18 例：argv / 目标声明 / 退出码 / 分块 / plan 分档）+ 强制层 Rust
+（`tools::office_permission_tests` 权限矩阵、`process_cap::tests::office_exec_*` 与真二进制 e2e——
+2026-09-15 R3 起命令拼装与 spawn 都在 Rust，端到端随之搬过去）。

@@ -3,17 +3,18 @@
 > 上游：[iOfficeAI/OfficeCLI](https://github.com/iOfficeAI/OfficeCLI)（Apache-2.0，单二进制 Office 套件）。
 > 计划与实测数据：[`docs/plans/office-cli-integration-plan.md`](../../docs/plans/office-cli-integration-plan.md)。
 >
-> **形态（2026-09-13 C 路改判）**：读写能力由兰台**内置 office 域工具** `office(action,…)` 承担
-> （zod 真源 + 经 shell seam → `process_cap` 受沙箱 spawn：os_sandbox + Bash 权限类 + 审计 +
-> plan 按动作分读写）。**不再需要** MCP 挂接，也不需要插件自带二进制。
+> **形态（2026-09-13 C 路改判；2026-09-15 R3 重构）**：读写能力由兰台**内置 office 域工具**
+> `office(action,…)` 承担（zod 真源；经 `process_cap` 的 `office_exec` 动作受控 spawn——
+> 命令由 Rust 拼装，权限只审声明的目标文件 `file`/`out`，plan 按动作分读写）。**不再需要**
+> MCP 挂接，也不需要插件自带二进制。
 
 ## 1. 三件套（装一次）
 
 | 件 | 落位 | 说明 |
 |---|---|---|
-| 二进制 | `%USERPROFILE%\.lantai\tools\officecli\officecli.exe` | pin **v1.0.149**（win-x64 **31.87 MB**，SHA256 `abd82dae…31e2`）；office 域工具在 shell 里定位它（`$OFFICECLI_PATH` → 该标准位 → PATH） |
+| 二进制 | `%USERPROFILE%\.lantai\tools\officecli\officecli.exe` | pin **v1.0.149**（win-x64 **31.87 MB**，SHA256 `abd82dae…31e2`）；**强制层**定位它（`$OFFICECLI_PATH` → 该标准位 → PATH 兜底） |
 | 技能 | `%USERPROFILE%\.lantai\skills\officecli\SKILL.md` | 域工具的权威手册（动作面/铁律/交付门槛覆盖面/四条工作流/坑表）。域工具**不带**技能，技能仍落技能根 |
-| 活预览窗（可选） | `examples/plugins/office/` 经「设置 → 插件 → 安装目录」装载 | 想边改边看：`officecli watch <文件>` + `office_preview_open` 开浮窗（实时自动刷新） |
+| 活预览窗（可选） | `examples/plugins/office/` 经「设置 → 插件 → 安装目录」装载 | 想边改边看：**你自己**用绝对路径起 `officecli watch <文件>` + 让 Agent 调 `office_preview_open`（Agent 起不了 watch——它的 shell 里没有 officecli；且 watch 占着的文件别再让 Agent 改，见插件 README ⚠️） |
 
 **office 域工具随兰台出厂**（内置第一方域插件 `office-domain`，buildOrder 29）——不需要你安装任何插件；
 `~/.lantai/mcp.json` 里也**不应该**再有 `office` 条目（预检会点名）。

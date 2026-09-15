@@ -6,10 +6,12 @@ description: 用内置 office 域工具读写 Word/Excel/PPT（.docx/.xlsx/.pptx
 # office 域（OfficeCLI）——兰台一等工具的操作手册
 
 兰台内置 **`office` 域工具**（`office(action, …)`），底层是 OfficeCLI 单二进制 Office 套件
-（.docx/.xlsx/.pptx 读写 + 内置渲染/公式/透视引擎），**经 shell 能力口受沙箱 spawn**：
-与 `run_shell` 同一条路（os_sandbox + Bash 权限类 + 审计），plan 模式按动作分读写。
+（.docx/.xlsx/.pptx 读写 + 内置渲染/公式/透视引擎）。**执行面在强制层（Rust）**：命令由那边
+拼装（二进制定位 + 引号 + 环境钉扎），经 `process_cap` 的 `office_exec` 动作在 os_sandbox 里
+spawn；权限**只审你声明的目标文件**（`file` / `out`）——项目内直接放行，项目外或敏感路径才问
+用户。plan 模式按动作分读写。
 
-**你不需要写命令行**——动作与参数由工具层拼装（引号、路径、命令形态都不归你管）。
+**你不需要写命令行**——动作与参数由工具层交成 argv，引号、路径、二进制定位都不归你管。
 本手册讲的是"用哪个动作 + 参数怎么写才不出错"。
 
 ## 1. 动作面（12 个）
@@ -41,7 +43,7 @@ description: 用内置 office 域工具读写 Word/Excel/PPT（.docx/.xlsx/.pptx
    `show_asset(kind:'file', payload={filePath:'<该 png>', ext:'png', label:'第N页'})`。
    **改完重截同一路径 + `update_asset(assetId, …)` 即可原地刷新纸面**（不必新开块）。
    你自己的机械自检走 `validate` + `view issues`（文本面）；视觉效果交人判，别替他下结论。
-3. **不要在 shell 里手跑 `officecli`——本环境 shell 的 PATH 里没有它**（`command not found`）。域工具自己在 spawn 出的 shell 里按 `$OFFICECLI_PATH` → `~/.lantai/tools/officecli/officecli.exe` 解析，这是**有意**的：你自己下 shell 找二进制跑就开了**第二条通道**，两个常驻进程会互相覆盖写入（同上：报零失败、磁盘丢行）。`install` 子命令另会往别的 agent 目录写东西，更不要跑。**需要域工具没有的 CLI 能力时：如实告诉用户"这步本环境不可用"，不要绕路。**
+3. **不要在 shell 里手跑 `officecli`——本环境 shell 的 PATH 里没有它**（`command not found`）。二进制由**强制层**定位（`$OFFICECLI_PATH` → `~/.lantai/tools/officecli/officecli.exe` → PATH 兜底），这是**有意**的：你自己下 shell 找二进制跑就开了**第二条通道**，两个常驻进程会互相覆盖写入（同上：报零失败、磁盘丢行）。`install` 子命令另会往别的 agent 目录写东西，更不要跑。**需要域工具没有的 CLI 能力时：如实告诉用户"这步本环境不可用"，不要绕路。**
 4. **参数不合法时工具会直说**（如"set 需要至少一个 props"）——别硬试，按提示补参数。
 5. **≥3 处改动一律 `batch`**：一次开关 + 原子回滚（默认任一失败整批回滚）。**单次别超 100 项 / 12KB**——超了工具会自动分批（批间不原子），而且一次塞太多会被命令行长度上限**静默**截断。
 6. **失败就是失败**：工具结果以 `[exit N]` 起头、脚注只在 `exit 0` 时才说"已提交"。看到「未成功」就别当成功继续，按报错修参数。

@@ -161,3 +161,23 @@
 | L3 | `provider/idle-stream.ts` + `agent/agent.ts:stream()` | 无「请求硬截止」：全链路唯一的活性守卫只会 abort fetch | 卡在非 fetch 的 await（本机 IPC / 凭据解析 / 任何不理会 signal 的等待）时，30s 守卫是**空操作** → 回合永久挂起：无错误、无重试、无日志、无 UI 反馈，UI 永卡运行态直到重启 | ⏳ 未立项（②.2）。复现配方（L2 已把最容易命中的入口堵上，但通用缺口仍在）：假 provider 的 `stream()` 里 `await new Promise(()=>{})` 永不落定且不理会 signal，推进假时钟 120s，`agent.run()` 仍不 settle。落点需动重试循环核心（被遗弃的尝试仍可能往 executor 塞工具），要定参数并处理遗弃语义——单独立项，别顺手做 |
 | L4 | `workspace.ts:840` (`onSessionPersisted`) + `:778` (`subAgentSpawner`) | 注释声称「已改用本工厂闭包捕获的 agent，不再经共享 `agentRef.current`」，代码里仍是 `agentRef.current?.insertMessage(...)` | 多会话并发时 turn-start 块 / 子 Agent 派生落进「最后创建的卷」= 注入错卷（与 2026-08-13 多会话错位事故同族）。半径小（只影响提醒注入与 spawn 归属），但注释与代码不符，下次读代码的人会被误导 | ⏳ 未拆（低危，记录在案） |
 
+---
+
+## 第五批审计（2026-09-15）— 域工具 × shell 命令串家族
+
+> 来源：用户报「Agent 用 office cli 时行为很不可控，连问题都描述不出来」→ 翻会话 23 实测复盘
+> （`docs/plans/office-cli-integration-plan.md` §11）。
+> 家族指纹：**能力被包装成 shell 命令串过 Bash 家族闸**——闸的路径检查按「token 含 `/` 就当
+> 文件系统路径」的启发式，凡 argv 里有非路径的「/ 开头」内容（DOM 寻址 / JSON 载荷 / `BIN=${…}`
+> 赋值段）全部解析失败 ⇒ 判「项目外路径」⇒ Ask，而该判定**先于** allow 规则匹配 ⇒ 规则写进去
+> 也无效。后果不是"报错"而是**静默降级**：默认模式下工具每次调用都弹卡（只有 yolo 能跑），
+> 于是模型改走 shell / code_execution 绕路，人在界面上只看到"Agent 不听话"。
+> 已立规：`INVARIANTS.md` #15。
+
+| # | 位置 | 雷 | 触发 → 后果 | 状态 |
+|---|------|----|------------|------|
+| O1 | `permissions/bash.rs::check`（步骤 3 路径提取）× `agent/tools/office.ts`（旧 `BIN_RESOLVE`）+ `process_cap::exec_command` | 命令串里三处 token 各自独立触发「项目外路径 → Ask」：`BIN=${OFFICECLI_PATH:-$HOME/…}` 赋值段、DOM 路径 `/body/p[1]`、batch 的 JSON 载荷（内含 `/Sheet1/A1`）；且精确 allow 与裸 `Bash` allow 两条规则**都压不住**（路径判定提前返回） | 默认（ask）/ auto 模式下 office 域工具**每次调用都弹权限卡**（含只读 `view`），「始终允许」点了也白点 ⇒ 用户那次测试恰是 yolo，事故被完全遮住；模型实测 76 次调用只有 5 次用该工具，其余全在绕路（shell / code_execution），最后用 Node 脚本直驱 CLI 收场 | ✅ 已拆（Commit `f207e5f4`，强制层改动 + 宪法审查）：`process_cap::office_exec` 专用动作（命令由 Rust 拼装 + 动词白名单 + 口只收 argv 不收命令行串）+ `tools::OfficeTool`（只审声明的目标文件，走 fs 家族同一套策略）。**否定论证也记在案**：放宽 bash::check（跳过含 `$` 的 token / Windows 跳过 `/` 开头 token）会直接开洞，见 INVARIANTS #15 |
+| O2 | `agent/tools/office.ts::cleanShellOutput`（旧 `/command not found\|No such file or directory/i`） | 判定过宽：任何"文件找不到"（目标文件不存在、路径写错）都被当成"officecli 没装"，并追加安装指引 | 把模型推去装二进制 / 找二进制，制造与 O1 叠加的绕路；实测会话里模型为找二进制跑了全盘 `find /` 并被用户中断 | ✅ 已拆（`4412ce87`）：收窄为 `officecli(.exe)` 与错误文案相邻；负例入测试 |
+| O3 | `agent/tools/office.ts::execute`（旧无条件落盘脚注）+ batch 无 argv 上限 | ① 写动作结果**失败也**追加「改动已落盘（resident 立即 flush）」；② 一次塞 2174 项（>100KB argv，超 Windows 命令行 32767 字符上限被**静默截断**） | 实测：`[exit 1]` + `Batch complete: 0 succeeded` 后面紧跟"已落盘"，模型据此当成功继续；2174 项回执"零失败"而磁盘只落 19/180 行，全程零报错 | ✅ 已拆（`4412ce87`）：脚注改退出码感知（成功/失败/未知三态）；batch >100 项或 >12KB 自动切块、失败停在原地并报「前 N 批已落盘」 |
+| O4 | `examples/office-cli/SKILL.md` + officecli 自带 playbook（`office(action:'playbook')` 返回的正文） | 交付给模型的权威指引要求**在 shell 里跑 officecli**（playbook 488 行里 101 条命令 + 开头强制的 Help-First Rule），而产品环境 PATH 里没有该二进制、域工具也刻意不暴露 CLI | 模型照指引下 shell → `command not found` → 转去找二进制 → 另起 resident 与域工具抢同一文件 ⇒ 写入静默丢失（报零失败、磁盘丢行）。**这是那场测试的第一块多米诺** | ✅ 已拆（`4412ce87`）：playbook 返回时前置护栏头（翻译成域工具动作 + 禁止下 shell + 最小 batch 替代 help）；SKILL.md 删掉五处"走 shell 域调 officecli"的逃生舱指引。**未拆的根**：playbook 正文由上游二进制产出、不在本仓（要彻底解决需自写一份动作面手册或改上游） |
+

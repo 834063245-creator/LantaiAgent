@@ -7,8 +7,9 @@
   每项给 ✓/✗ + 一句怎么修。**不写任何文件、不起任何进程**——纯诊断。
   验收时把整段输出贴回来即可定位问题。
 
-  形态说明（2026-09-13 C 路改判后）：OfficeCLI 的读写能力由兰台**内置 office 域工具**
-  （office(action,…)）承担——二进制放标准安装位即被该工具定位；**不再需要**
+  形态说明（2026-09-13 C 路改判后；2026-09-15 R3 重构）：OfficeCLI 的读写能力由兰台**内置
+  office 域工具**（office(action,…)）承担——二进制放标准安装位即被**强制层**定位
+  （`process_cap::office_exec`：命令由 Rust 拼装，权限只审声明的目标文件）；**不再需要**
   `~/.lantai/mcp.json` 挂接，也不需要插件自带二进制。本脚本因此把「MCP 条目残留」
   当成需要清理的项来检查。
 
@@ -43,7 +44,7 @@ function Check([string]$name, [bool]$ok, [string]$detail, [string]$fix) {
 Write-Host ''
 Write-Host '══ OfficeCLI × 兰台 集成预检 ══' -ForegroundColor Cyan
 
-# ── 1. 二进制（必需：内置 office 域工具在 shell 里定位它）──
+# ── 1. 二进制（必需：强制层按 $OFFICECLI_PATH → 标准安装位 → PATH 定位它）──
 if (Test-Path -LiteralPath $BIN -PathType Leaf) {
   $hash = (Get-FileHash -LiteralPath $BIN -Algorithm SHA256).Hash.ToLower()
   $want = $PINNED[$Version]

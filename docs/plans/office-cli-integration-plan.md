@@ -155,19 +155,24 @@ registry 与 bridge 两处工具构造同源消费；`~/.lantai/mcp.json` 同构
 载体现 ✗（未放，可选）、watch ✗（未起，截图路不需要）⇒ exit 0。**把输出贴回来即可定位问题。**
 
 1. 装好二进制：`officecli --version` 回 `1.0.149`；
-2. 重启兰台 + **开新会话** → 工具面出现 `mcp__office__officecli`；`Skill` 能载入 `officecli`；
+2. 重启兰台 + **开新会话** → 工具面出现 **`office`**（域工具，2026-09-13 C 路起；**不再有** `mcp__office__officecli`）；`Skill` 能载入 `officecli`；
 3. **~~唯一真机判据~~ 已由 Agent 验毕（见 §2.4 表）**：起 `officecli watch <文件>` → 让 Agent 调
    `office_preview_open` → 窗内应实时刷新（机制与真机壳两层都已证，你只需看一眼效果对不对）；
-4. 真文档跑通：`view issues` 读到问题 → 改一处 → `save` → 截图入纸面（图能看到改动）；
-5. **反向判据（P0 生效证据）**：plan 模式下让模型调写动作 → 应被 `[已拦截]`，而不是放行落盘。
+   ⚠️ watch **只能由你自己用绝对路径起**（Agent 的 shell 里没有 officecli），且 watch 占着的文件
+   别再同时让 Agent 改（两个 resident 会抢文件，见 §11.1）；
+4. 真文档跑通：`view issues` 读到问题 → 改一处 → 截图入纸面（图能看到改动）；
+   （`save` 不用手动调——域工具带 `flush=each`；但要吃准"已落盘"就用 `view` 读回复核，见 §11.1）
+5. **plan 反向判据**：plan 模式下让模型调写动作 → 应被 `[已拦截]`，而不是放行落盘；
+6. **权限面判据（2026-09-15 R3 修后）**：默认 `ask` 模式下项目内文件**不应弹卡**；目标放项目外 →
+   **应弹一次**，点「始终允许」后同一路径**不再弹**（旧实现每次调用都弹且规则无效，见 §11.3）。
 
 > 第 0 步（`preflight.ps1`）**Agent 已跑**（本机结论 exit 0：二进制/哈希/版本 pin/`mcp.json`/技能全 ✓；
 > 载体现 ✗ 未放＝可选、watch ✗ 未起＝截图路不需要）。真机壳判据也已由 Agent 用 CDP 探针验毕（§2.4）。
 > **真正需要你亲自看的只剩**：重启后**界面里**工具与技能是否出现（第 2 条）、第 4 条纸面出图手感、
-> 第 5 条 plan 拦截在你自己的会话里是否如预期。
+> 第 5/6 条 plan 拦截与权限弹卡在你自己的会话里是否如预期。
 
-> 挂接形态**二选一**（同开必炸，见 §5）：A 路（已落位）或载体插件（`examples/plugins/office/`，
-> 先把二进制放进其 `bin/`，走「设置 → 插件 → 安装目录」）。
+> ~~挂接形态**二选一**（同开必炸，见 §5）~~ → **已随 2026-09-13 C 路作废**：MCP 挂接退役，
+> 读写只走内置域工具；`examples/plugins/office/` 只剩可选的活预览窗（不再挂 MCP）。
 
 ## 7. 施工史一览（十窗，逐窗叙述已删）
 
@@ -193,16 +198,23 @@ registry 与 bridge 两处工具构造同源消费；`~/.lantai/mcp.json` 同构
 
 ## 8. 剩余与未决
 
-1. **用户真机验收**（§6：重启后新会话里 `office(action,…)` 可用、plan 反向判据、纸面出图）；
+1. **用户真机验收**（§6 六条：重启后新会话里 `office(action,…)` 可用、plan 反向判据、
+   **权限面判据**（项目内不弹卡 / 项目外弹一次 + 始终允许生效）、纸面出图）；
 2. ~~分发载体签核~~ → **已随 C 路作废**：读写走内置域工具（二进制标准安装位），插件只剩可选的活预览窗；
 3. **产品方向件**（需用户定）：
    - ~~把注疏回写 / xlsx 做成一等工具域~~ → **C 路已一并兑现**（同一域工具的动作面里就有）；
    - 「工具结果携带图像」平台件（让模型看见自己的渲染，替代现在的人判）——**仍是唯一的大件**；
-   - `officecli watch` 进程的自动收尾（现为 shell 后台手工管理，v1 可接受）；
-4. **提交状态**：A 路 + 平台两修已提交（`f0e72bbd` 平台批 / `09b0924c` 集成件批）；
-   C 路这批（域工具 + 插件改造 + 基线 CR/record + 文档）待提交——提交时 baseline 快照与本文件同 commit。
+   - `officecli watch` 的收尾：现在**只能由用户自己起**（Agent 侧无 CLI、域工具无 watch 动作），
+     进程随用户关闭终端结束；若要做成产品能力，需给域工具补一个受管的 watch 动作（带生命周期）；
+4. **提交状态**：本计划的全部工程面已提交——A 路 + 平台两修（`f0e72bbd` / `09b0924c`）、
+   C 路（`2d54081f`）、faceDeps 修复（`38fdca64`）、真机复盘修复批（`4412ce87`）、
+   **R3 权限重构（`f207e5f4`，强制层改动 + 宪法审查）**。
 
 ## 10. C 路：MCP 挂接改判为一等 office 域工具（2026-09-13）
+
+> **本节是 2026-09-13 的形态决策记录**。其中**执行面与权限面**已于 2026-09-15 由 §11.3 重构
+> （`ctx.shell` seam → `process_cap::office_exec` + `OfficeTool`），下文相关段落按当时事实保留，
+> 括号内为现形态。
 
 ### 10.1 为什么改判
 
@@ -225,33 +237,42 @@ registry 与 bridge 两处工具构造同源消费；`~/.lantai/mcp.json` 同构
 - **执行走 `ctx.shell` seam → `process_cap`**：os_sandbox 沙箱 + **Bash 权限类** + 审计，与 `run_shell`
   同一条路。**不加新能力口**——口数 = 能力族数，office 是 process 族的消费者不是新能力族
   （架构裁定见 `docs/plans/kernel-plugin-architecture-decision.md` §3/§4）。
+  → **（2026-09-15 改：改走 `process_cap::office_exec` 动作，门禁换 `OfficeTool`；"伪装成 shell
+  命令"正是弹卡事故的根因，见 §11.3。能力口仍不新增——只是同一口里的专用动作。）**
 - **plan 按动作分档**：`readOnlyActions = [view, get, query, validate, playbook]` ⇒ 规划期可读文档、
   写动作被 `[已拦截]`（旧 MCP 路做不到）。
 - **两个产品决定写死在工具里**：① `OFFICECLI_RESIDENT_FLUSH=each`（每次改动**写完即落盘**——
-  否则截图/预览/交付会读到 resident 未 flush 的旧字节，这类静默错曾反复出现）；
-  ② `OFFICECLI_SKIP_UPDATE=1`（确定性优先，升级走安装器换哈希）。
+  否则截图/预览/交付会读到 resident 未 flush 的旧字节，这类静默错曾反复出现；
+  **注意该开关只对域工具自己持有的 resident 生效**，见 §11.1）；
+  ② `OFFICECLI_SKIP_UPDATE=1`（确定性优先，升级走安装器换哈希）。**二者现由 Rust 侧命令拼装落地。**
 - **模型不碰引号**：命令行由工具层拼装（`shQuote` 单引号 + POSIX 收尾），路径里的空格/方括号
   （`/slide[1]` 会被 bash 当 glob）在此一次解决；相对路径按**该会话工作区根**解析
   （`ownerContext` + `resolveAgainstRoot`），并沿用 owner 的粘性 cwd（不顶掉 shell 域的 cwd）。
+  → **（2026-09-15 改：引号与命令拼装搬进 Rust `build_office_command`；TS 侧只交 argv，
+  相对路径解析与粘性 cwd 仍如上。）**
 - **二进制定位**：`$OFFICECLI_PATH` → `~/.lantai/tools/officecli/officecli.exe` → PATH 兜底，
   **在 spawn 出来的 shell 里解析**（工具层碰不到盘；且 `~/.lantai/tools` 不在沙箱用户数据白名单里，
   fs 能力口读不到它）。找不到时工具按"错误不静默"补安装指引。
+  → **（2026-09-15 改：解析序不变，但改在**强制层**做（`process_cap::office_bin`）——
+  理由也随之变了：命令面归强制层所有，不再是"工具层碰不到盘"。）**
 
 ### 10.3 落地与证据
 
 | 面 | 落点 |
 |---|---|
-| 工具本体 | `src-ui/src/agent/tools/office.ts`（12 动作 + 纯函数 `shQuote`/`buildOfficeCommand`/`buildOfficeArgv`/`cleanShellOutput`） |
+| 工具本体 | `src-ui/src/agent/tools/office.ts`（12 动作 + 纯函数 `buildOfficeArgv`/`officeTargets`/`parseShellExit`/`splitOfficeBatchItems`/`cleanShellOutput`；`shQuote`/`buildOfficeCommand` 已于 2026-09-15 R3 搬进 Rust） |
 | 域插件 | `src-ui/src/plugins/builtin/office-domain/`（index/host/host.aliased）+ `builtin-roster.json` buildOrder 29 + `composition/first-party-tools.ts` 表尾 |
 | `defineTool` 扩展 | 新增可选透传 `domain`/`actions`/`readOnlyActions`（域工具契约与 plan 分档需要） |
-| 守护测试 | `tests/office-domain.test.ts` **13 例**：纯函数、工具形状、**plan 逐动作分档**、执行面经 seam 派发（相对路径/cwd/落盘提示）、**真 bash × 真 officecli 端到端**（create→add→view→screenshot→validate，且"写完立刻读盘"） |
+| 守护测试 | `tests/office-domain.test.ts`（C 路 13 例 → 2026-09-15 起 **18 例**：纯函数、工具形状、**plan 逐动作分档**、执行面经 `office_exec` 派发（argv + 目标声明 + cwd）、退出码三态、batch 分块）+ 强制层 Rust 侧（`tools::office_permission_tests` 权限矩阵 / `process_cap::tests::office_exec_*` / **真 bash × 真 officecli 端到端**——e2e 2026-09-15 从 TS 搬来） |
 | 契约生成物 | `npm run gen:tool-contract` 收录 `office`（域 office / 12 动作 / 参数表） |
-| 序列化基线 | **CR 审批后 record**：`phase-0/tool-schemas.full.json` 16→17、`…plan.json` 18→19（各 +1 条，其余逐字节不变）；CR 见 `docs/archive/agent-core-convergence/baseline-change-request.md` 首条 |
+| 序列化基线 | **CR 审批后 record**：`phase-0/tool-schemas.full.json` 16→17、`…plan.json` 18→19（各 +1 条，其余逐字节不变）；CR 见 `docs/archive/agent-core-convergence/baseline-change-request.md` 首条。**2026-09-15 R3 未动模型可见面（描述/参数零改）⇒ 基线零漂移、无需新 CR。** |
 | MCP 路退役 | `examples/plugins/office/` 去 `mcpServers`（保留活预览窗，版本 2.0.0）；`bin/` 目录删除；用户机 `~/.lantai/mcp.json` 清空 office 条目；`preflight.ps1` 加「MCP 挂接已退役」检查；插件两守护测试改写（形状/装载路径/无 MCP 行/卸载收口） |
-| 技能改写 | `examples/office-cli/SKILL.md` 调用面全部改为 `office(action,…)`（含"落盘已替你钉住"、`playbook` 取代表格、坑表按域工具口径重写） |
+| 技能改写 | `examples/office-cli/SKILL.md` 调用面全部改为 `office(action,…)`（含"落盘已替你钉住"、`playbook` 取代表格、坑表按域工具口径重写）；**2026-09-15 再改**：删掉五处"走 shell 域调 officecli"的逃生舱指引、落盘承诺按实测边界诚实化、加 batch 上限与"失败就是失败"两条铁律 |
 
-**门禁**：`office-domain` 13/13 绿；契约与基线对拍 `verify:convergence` exit 0；壳 `cargo test`
+**门禁**（C 路当时值）：`office-domain` 13/13 绿；契约与基线对拍 `verify:convergence` exit 0；壳 `cargo test`
 不涉（本批零 Rust 改动）；前端 vitest / build / biome 见提交记录。
+（2026-09-15 R3 批：`cargo test --bin lantai` **467 passed / 0 failed**、office 面 TS 18 例绿、
+convergence exit 0——见 `f207e5f4`。）
 
 ### 10.4 事故与立法：产物经 faceDeps 取实现，漏登记 = boot 挂住（2026-09-13）
 

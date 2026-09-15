@@ -325,6 +325,44 @@ data URI + #14 接线钉值）、
 
 ---
 
+## 15. 域工具不要借 shell 命令串过闸：argv 里含 `/` 的 token 会被权限引擎当文件系统路径
+
+**文件**: `src-tauri/src/permissions/bash.rs`（`check` 步骤 3 路径提取）、`src-tauri/src/commands/process_cap.rs`（`office_exec`）、`src-tauri/src/tools/mod.rs`（`OfficeTool`）、`src-ui/src/agent/tools/office.ts`
+
+```
+⚠️ INVARIANT：要给模型暴露的能力，别把它的 argv 拼成一条 **shell 命令串** 再走 Bash 家族闸
+   （require_command → bash::check）。那条闸的路径检查按「token 含 / 就当文件系统路径」的
+   启发式解析：凡 argv 里出现非路径的「/ 开头」内容（DOM 路径 /Sheet1/A1、JSON 载荷、
+   ${VAR:-默认} 赋值段），一律解析失败 ⇒ 判「项目外路径」⇒ Ask——而该判定在 allow 规则
+   匹配**之前提前返回**（bash.rs 步骤 3 → 4）⇒「始终允许」写进去也不生效。
+
+   Why（2026-09-15 真机复盘实测事故）：office 域工具的命令串三处全命中（BIN=${…} 赋值段 /
+   DOM 路径 / batch 的 JSON 载荷），于是默认（ask）与 auto 模式下**每次调用都弹权限卡**
+   （连只读的 view 都弹），只有 yolo 能跑——而用户那次测试恰好是 yolo，事故被完全遮住，
+   直到复盘才发现"模型根本没在用这个工具"（76 次调用只有 5 次用它，其余全在绕路）。
+
+✅ 正确：能力口内的**专用动作**（`process_cap::office_exec`）+ 命令由**强制层**拼装
+   （二进制定位/引号/环境钉扎）+ 门禁只审**声明的目标文件**（`OfficeTool` 走 fs 家族同一套
+   路径策略：沙箱边界 + safety + 内容级规则）+ 动词白名单挡 CLI 逃生舱；口**只收 argv、
+   不收自由命令行串** ⇒ 调用方借不到它执行任意 shell 命令。
+❌ 错误：让域工具拼 `BIN=…; "$BIN" 'action' '<path>'` 这类命令串走 exec_command；
+   或为了"能跑"去放宽 bash::check（跳过含 `$` 的 token / Windows 上跳过 `/` 开头 token =
+   直接开洞：`BIN=/etc/shadow; cat "$BIN"` 正是靠赋值 token 命中，`/c/Users/…` 在 MSYS bash
+   里也是真路径）；也不要"改一行 BIN_RESOLVE"——DOM 路径与 JSON 载荷各自独立触发同一判定。
+```
+
+**炸过**: 2026-09-15（真机复盘；事故与修复全过程见 `docs/plans/office-cli-integration-plan.md` §11，
+修复 commit `f207e5f4`「强制层改动 + 宪法审查」）。
+
+**守护**: Rust `tools::office_permission_tests::office_permission_matrix`（项目内目标 → passthrough，
+不再弹卡）、`office_bare_rules_take_effect`（裸 `Office` allow/deny 真生效）、
+`commands::process_cap::tests::office_command_quoting_and_env_pins`（命令里**不得**再出现 `${` 或 `BIN=`）、
+`office_exec_verb_whitelist_covers_ts_action_surface`（逃生舱不在允许面）、
+`office_command_real_binary_e2e`（真 bash × 真 officecli）；TS `tests/office-domain.test.ts`
+（`officeTargets` 目标声明矩阵 + 载荷形状）。
+
+---
+
 ## 使用方式
 
 每个 Agent prompt 模板里加一行：

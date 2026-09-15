@@ -69,7 +69,7 @@
 | 壳 | `cd src-tauri && cargo check`；权限/锁/IPC/命令改动跑 `cargo test` |
 | 桌面打包 | `cd src-tauri && cargo tauri build`（会自动先跑前端构建；根目录 `build.cmd` 是 Windows 包装） |
 
-禁止用 `cargo build --release` 代替桌面发布验证。当前实测基线：engine lib 592 · hologram-graph 53 + doc 1 · src-tauri bins+lib 411 + 集成 1（2026-08-29 引擎插件化 Phase 4 竣工实测，含进程级 e2e；**hologram-engine 依赖已摘——引擎 = 进程外消费**；**Phase 4 免编译扩展面 = plugins 模块 + HOLOGRAM_PLUGIN_DIR manifest（language/framework/tool）+ engine_status.extensions，契约 v4，示例 examples/engine-plugins/**）· 前端 300 文件 3025 passed / 4 skipped（2026-09-14 修复批实测；**convergence 默认门禁 = standard 单轨**——minimal 轨须显式 `CONVERGENCE_PRESET=minimal` 且其快照当前已漂移待重录）。基线细则以 `AGENTS.md` §10 为准（含 convergence 双轨现状尾注）。
+禁止用 `cargo build --release` 代替桌面发布验证。当前实测基线：engine lib 592 · hologram-graph 53 + doc 1 · src-tauri bins+lib 411 + 集成 1（2026-08-29 引擎插件化 Phase 4 竣工实测，含进程级 e2e；**hologram-engine 依赖已摘——引擎 = 进程外消费**；**Phase 4 免编译扩展面 = plugins 模块 + HOLOGRAM_PLUGIN_DIR manifest（language/framework/tool）+ engine_status.extensions，契约 v4，示例 examples/engine-plugins/**）· 前端 305+ 文件 3060+ passed / 4 skipped（数字会漂移，以重新实测为准；**convergence 门禁已改双轨**——`verify:convergence` 连跑 standard + minimal，2026-09-14 `37418b74` 起重录并改轨，2026-09-15 复跑两轨皆绿）。基线细则以 `AGENTS.md` §10 为准（含 convergence 双轨现状尾注）。
 
 > ⚠ **本机 NODE_ENV=production 注入的两刀（2026-08-29 实测扩写，细则见 AGENTS.md §10）**：Cowork/codely 进程链给子 shell 注入 `NODE_ENV=production`——① vitest jsdom UI 测试大面积假红（`act is not a function` + `No such built-in module: node:`）；② **`npm install` / `npm uninstall` 同样中招：剥掉 devDependencies**（`Cannot find package 'vitest'`，.bin shim 丢失）。**纪律：本机凡 npm/vitest 命令一律先 `$env:NODE_ENV='test'`**；中招恢复 = 清变量 → `npm install` → 必要时 `npm rebuild`。
 
