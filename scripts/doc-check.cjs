@@ -418,22 +418,38 @@ function checkOrphans(files) {
 }
 
 function checkArchive(files) {
-  const BANNER = /已归档|被取代|历史留存|本计划已|已竣工|已作废/;
+  // 规则：`plans/` 下的正文若自称 DONE（竣工/归档/作废/被取代）**且没有 ACTIVE 标记** ⇒ 红
+  // （该 `git mv` 到 `docs/archive/`）。
+  //
+  // 语义裁定（2026-09-16，本轮实测后定死——这套语义是本仓先例）：
+  //   **「竣工即归档」的判据是「过程文档是否还活着」，不是「验收跑没跑完」。**
+  //   施工单/交接稿/评审/计划 = 过程文档 ⇒ 代码竣工就归档；**真机验收欠账由 `plans/README.md`
+  //   的欠账表承载**（先例：`docs/archive/session-ledger-plan.md` 的欠账行早就指进 archive）。
+  //   所以「待实机 / 验收 / 欠账」**不算**在办标记；只有「真的还在干活或还没定」才算：
+  //   进行中 / 在办 / 在产（在产设计件）/ 待拍板（决策未定）/ 未执行 / Draft。
+  //
+  // 两处补强（2026-09-16 P3b 的 11 件就是被原规则漏掉的）：
+  //   ① 观察窗 15 → 30 行；② 除横幅字面量外认「状态：… 竣工」句式。
+  // **实测 recall 上限**：对那 11 件的归档前版本回放，新规则直接命中 3/11——其余 8 件头部同时
+  // 含「验收/欠账/待」等词（按上面语义这些词不构成在办）。**这是散文分类的固有极限**：
+  // 本查是「兜底网」，不是「完备判定」；完备判定要等给每个计划加机器可读状态行（见施工单 §4.6）。
+  const DONE = /已归档|被取代|历史留存|本计划已|已竣工|已作废|全段竣工|全计划竣工|状态[：:][^\n]{0,60}竣工/;
+  const ACTIVE = /进行中|在办|在产|拍板|待定|尚未开工|未执行|未开工|Draft|草稿|Proposed/;
   const violations = [];
   for (const rel of files) {
     if (!/^docs\/plans\//.test(rel)) continue;
     if (FACT_EXEMPT_UNLESS.test(rel)) continue;
-    const head = readText(rel).split('\n').slice(0, 15).join('\n');
-    const m = head.match(BANNER);
-    if (m) {
-      violations.push({
-        check: 'archive',
-        file: rel,
-        line: 0,
-        text: m[0],
-        message: `顶部挂「${m[0]}」横幅却留在 plans/——CONVENTIONS §4「竣工即归档」：git mv 到 docs/archive/`,
-      });
-    }
+    const head = readText(rel).split('\n').slice(0, 30).join('\n');
+    const m = head.match(DONE);
+    if (!m) continue;
+    if (ACTIVE.test(head)) continue; // 有活跃标记 ⇒ 状态自洽，留在 plans/
+    violations.push({
+      check: 'archive',
+      file: rel,
+      line: 0,
+      text: m[0],
+      message: `自称「${m[0]}」且无活跃标记（前 30 行无「在办/在产/进行中/待拍板/未执行/Draft」）——CONVENTIONS §4「竣工即归档」：git mv 到 docs/archive/，或补一行显式状态（在办 / 在产设计件）`,
+    });
   }
   return { violations, skipped: [] };
 }

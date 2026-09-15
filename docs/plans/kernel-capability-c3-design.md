@@ -1,6 +1,6 @@
 # 内核能力化 C-3/C-4 —— 工具编排回 TS 设计件
 
-> 状态：**R3 执行蓝本（2026-09-04 拍板定稿；2026-09-05 fs + git + shell 三域收口竣工后刷新）**。C 模型定稿（kernel-plugin-architecture-decision.md v3）。
+> 状态：**R3 执行蓝本（2026-09-04 拍板定稿；2026-09-05 fs + git + shell 三域收口竣工后刷新）**——**在产设计件**：十一能力口在产，R3/R4 真机四项欠账在 `docs/plans/README.md` 真机验证欠账表；按「竣工即归档」语义，施工稿归档、**在产子系统的设计权威留在 plans/**（不随施工稿一起进 archive）。C 模型定稿（kernel-plugin-architecture-decision.md v3）。
 > 决策史：本件初为「待用户审」设计稿；R2 试点（search 域）已落地独立能力口 search_cap + schema 回 zod
 > （commit 789aef86/fe91f016/d524f124）。2026-09-04 用户拍板「主线 R2+R3 推进，R2-d(2) 并入 R3 统一做」。
 > 本件即 R3 执行蓝本——D-A/D-B/D-C 按 R2 先例裁定，批序 = v3 执行序表 R3 行的分解，并把 R2-d(2)
