@@ -162,7 +162,6 @@ export class Workspace {
    *  （旧字段（装配时点的组合快照）是引用比较的另一半，随判据换轨删除——
    *  零读者即化石。） */
   private _assemblyKey: string | undefined;
-  private _chatPanel: ChatCore | null = null;
 
   /** 守卫（历史名 _initialRenderActive）：分页原子换入已随 Phase 1.5 退役，
    *  快照重拉幂等无需防踩踏 —— 字段保留给既有读写点，语义 = 初始装载期。 */
@@ -469,8 +468,6 @@ export class Workspace {
     // S6 P1d：身份与产物同步快照（建表时点）——判定「能否复用本注册表」用身份比，
     // 而身份必须是**建表时点**的（见 _assemblyKey 字段注）。
     this._assemblyKey = useCompositionStore.getState().resolvedKey;
-    // 工具 schema 连接到 UI 面板（重建时同步刷新）
-    this._chatPanel?.setToolSchemas(registry.schemas());
     return registry;
   }
 
@@ -755,7 +752,6 @@ export class Workspace {
     const builderDeps: BuilderDeps = createBuilderDeps(this._storeId);
     this._builderDeps = builderDeps;
     this._agentRef = { current: null as Agent | null };
-    this._chatPanel = chatPanel;
     const agentRef = this._agentRef;
 
     // 随包图谱引擎接线（engine-bundled-mcp-distribution，2026-09-16）：

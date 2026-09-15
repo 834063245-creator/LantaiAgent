@@ -73,7 +73,6 @@ function makePanel(): ChatCore {
     panelId: PANEL,
     setProjectPath: vi.fn(),
     setAgentFactory: (fn: Parameters<typeof setAgentFactory>[1]) => setAgentFactory(PANEL, fn),
-    setToolSchemas: vi.fn(),
     eventSink: { emit: vi.fn() },
     execState: { subscribe: vi.fn(() => () => {}) },
     eventSinkFor: () => ({ emit: vi.fn() }),

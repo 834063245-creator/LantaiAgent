@@ -6,7 +6,6 @@
 
 import { create } from 'zustand';
 import type { GoalRecord } from '../agent/goal-manager';
-import type { ToolSchema } from '../provider/types';
 import { createScopedStore } from './scoped-store';
 
 export type PanelMode = 'pill' | 'input' | 'panel' | 'hud';
@@ -25,7 +24,6 @@ interface ToolHistoryEntry {
 interface PanelStore {
   panelMode: PanelMode;
   activeTab: AgentTab;
-  toolSchemas: ToolSchema[];
   totalTokensUsed: number;
   toolUsage: Record<string, number>;
   toolHistory: ToolHistoryEntry[];
@@ -45,7 +43,6 @@ interface PanelStore {
   setPanelMode: (mode: PanelMode) => void;
   setCollaborationMode: (mode: CollaborationMode) => void;
   setActiveTab: (tab: AgentTab) => void;
-  setToolSchemas: (schemas: ToolSchema[]) => void;
   setTotalTokensUsed: (n: number) => void;
   addToolUsage: (name: string, args: string) => void;
   clearToolUsage: () => void;
@@ -68,7 +65,6 @@ function createPanelStoreImpl() {
   return create<PanelStore>((set) => ({
     panelMode: 'pill' as PanelMode,
     activeTab: 'chat' as AgentTab,
-    toolSchemas: [],
     totalTokensUsed: 0,
     toolUsage: {},
     toolHistory: [],
@@ -86,7 +82,6 @@ function createPanelStoreImpl() {
     setPanelMode: (panelMode) => set({ panelMode }),
     setCollaborationMode: (collaborationMode) => set({ collaborationMode }),
     setActiveTab: (activeTab) => set({ activeTab }),
-    setToolSchemas: (toolSchemas) => set({ toolSchemas }),
     setTotalTokensUsed: (totalTokensUsed) => set({ totalTokensUsed }),
     addToolUsage: (name, args) =>
       set((s) => {

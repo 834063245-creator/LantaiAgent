@@ -22,7 +22,7 @@ import type { RuntimePort } from '../../agent/runtime/types';
 import { totalTokens } from '../../agent/token-meter/usage';
 import { useShellStore } from '../../app/shell-store';
 import { sessionExecute } from '../../composition/session-persistence-service';
-import type { ChatImageRef, ToolSchema } from '../../provider/types';
+import type { ChatImageRef } from '../../provider/types';
 import { apiErrorSummary } from '../../provider/types';
 import { askSessionOf, useAskStore } from '../../state/ask-store';
 import { useBgAlertStore } from '../../state/bg-alert-store';
@@ -323,9 +323,6 @@ export class ChatCore {
   // 公共 API（main.ts / workspace.ts 契约面，与旧 ChatPanel 一致）
   // ═══════════════════════════════════════════════════════════
 
-  setToolSchemas(schemas: ToolSchema[]): void {
-    getChatStore(this.panelId).panel.getState().setToolSchemas(schemas);
-  }
   setOnOpenSettings(fn: () => void): void {
     this.onOpenSettings = fn;
   }

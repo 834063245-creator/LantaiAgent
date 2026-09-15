@@ -140,7 +140,6 @@ describe('S6 P1d 组合身份：会话工厂不再白建注册表（真装配腰
           panelId: PANEL,
           setProjectPath: vi.fn(),
           setAgentFactory: (fn: unknown) => setAgentFactory(PANEL, fn as never),
-          setToolSchemas: vi.fn(),
           eventSink: { emit: vi.fn() },
           execState: { subscribe: vi.fn(() => () => {}) },
           eventSinkFor: () => ({ emit: vi.fn() }),
