@@ -284,5 +284,6 @@ UI 投影缓存（陈旧即重建）**。计划与施工记录见 `docs/plans/se
 该服务确实存在（`plugins/builtin/agent-loop-service/index.ts:21` 的 `super(ctx, 'agentLoop')`
 + `agent/agent-loop/agent-loop-active.ts:44` 的 `declare module` 增广），但**两者不在同一文件**；
 而生成器头注自述规则是「同文件 `declare module` 增广」（`scripts/gen-service-catalog.ts:9/:92`），
-已收录的 18 键恰好全是同文件形态。**`doc-sync` 抓不到**（生成器自洽）⇒ 生成器物有缺口，值得单修。
+已收录的 18 键恰好全是同文件形态。**`doc-sync` 抓不到**（生成器自洽）⇒ ✅ **已修**（本批：**键改取类体 `super(ctx, '<键>')`**——机械可推导且每类唯一（19 类 ↔ 19 处一一对应），与增广的类型名解耦；增广此后只供**描述**，同文件找不到时按 ctx 键全仓找。修完 `ctx.agentLoop` 进目录，**其余 18 条逐字节未动**）。
+根因值得记牢：旧规则「同文件按**类名**找增广」本身就是错的——原来那 18 个命中是「增广的类型名恰好等于 Service 类名」的**巧合**；`ctx.agentLoop` 声明为结构面 `AgentLoopServiceFace`，故整个服务从目录里消失。
 

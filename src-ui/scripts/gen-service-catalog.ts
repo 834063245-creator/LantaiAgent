@@ -5,8 +5,13 @@
 // 用法：node scripts/gen-service-catalog.cjs [--check]（根目录薄壳转发，经 tsx 运行）。
 //
 // 目录事实全部机械推导自源码（无手工双源——D9 纪律）：
-//   - service 清单：grep `export class XxxService extends Service` + 同文件
-//     `declare module ... interface Context` 增广取 ctx 键与 JSDoc 描述；
+//   - service 清单：grep `export class XxxService extends Service`；**ctx 键以类体
+//     `super(ctx, '<键>')` 为准**（机械可推导且每类唯一，实测 19 类 ↔ 19 处一一对应）；
+//   - 描述的取法：同文件 `declare module ... interface Context` 增广优先；同文件找不到
+//     时**按 ctx 键全仓找**增广取 JSDoc。⚠ 2026-09-16 补口：增广的类型名**不必等于**
+//     Service 类名——先例 `ctx.agentLoop` 的增广声明为 `AgentLoopServiceFace`（结构面），
+//     旧规则「同文件按类名找增广」会让该服务在目录里**整个消失**；而 `doc-sync` 抓不到，
+//     因为生成器对自身缺口是自洽的（生成物与生成器一致 = 检查通过）。
 //   - kind 三分：ctx 键 ∈ SEAM_DOMAINS（seam-resolution.ts 单一真源，剔除
 //     loopEvents 事件域）→ swappable seam；类体有 `register(def: *Contribution)`
 //     → 贡献通道；其余 → 服务；
@@ -89,7 +94,9 @@ interface ServiceEntry {
   consumers: string[];
 }
 
-/** ctx 键 → Service 名 + JSDoc 描述（同文件 declare module 增广）。 */
+/** ctx 键 → Service 名 + JSDoc 描述（同文件 declare module 增广）。
+ *  ⚠ 只在增广的**类型名就是 Service 类名**时命中——`ctx.agentLoop` 声明为
+ *  `AgentLoopServiceFace`（结构面）故不命中，由 ctor 取键 + 按键找描述兜住。 */
 function extractCtxKey(text: string, service: string): { key: string; description: string } | null {
   // 形如「/** 注释 */\n  key: XxxService;」（注释可跨行）
   const re = new RegExp('/\\*\\*([^*]*(?:\\*(?!/)[^*]*)*)\\*/\\s*(\\w+):\\s*' + service + '\\s*;');
@@ -107,6 +114,32 @@ function extractCtxKey(text: string, service: string): { key: string; descriptio
     .join(' ');
   const key = m[2];
   return key ? { key, description } : null;
+}
+
+/** ctx 键的**权威来源**：类体 `super(ctx, '<键>')` 字面量。
+ *  机械可推导、每类唯一（实测 19 类 ↔ 19 处一一对应）；与增广的类型名**解耦**——
+ *  这正是「按类名找同文件增广」漏掉结构面声明（`ctx.agentLoop`）的补口。 */
+function extractCtxKeyFromCtor(classBody: string): string | null {
+  const m = /super\(\s*ctx\s*,\s*'([^']+)'\s*\)/.exec(classBody);
+  return m?.[1] ?? null;
+}
+
+/** 全仓按 **ctx 键**找 `declare module … interface Context` 增广并取 JSDoc 描述。
+ *  按文件路径排序遍历（确定性——字节稳定是 --check 的前提）。 */
+function extractKeyDescription(sources: Map<string, SourceFile>, key: string): string {
+  const re = new RegExp('/\\*\\*([^*]*(?:\\*(?!/)[^*]*)*)\\*/\\s*' + key + ':\\s*[\\w.$]+\\s*;');
+  for (const rel of [...sources.keys()].sort()) {
+    const text = sources.get(rel)?.text ?? '';
+    const m = re.exec(text);
+    if (m) {
+      return (m[1] ?? '')
+        .split('\n')
+        .map((l) => l.replace(/^\s*\*\s?/, '').trim())
+        .filter(Boolean)
+        .join(' ');
+    }
+  }
+  return '';
 }
 
 function classifyKind(key: string, classBody: string): ServiceEntry['kind'] {
@@ -183,18 +216,22 @@ function buildEntries(sources: Map<string, SourceFile>): ServiceEntry[] {
       const service = m[1];
       if (!service) continue;
       const classBody = text.slice(m.index, text.indexOf('\n}', m.index) + 2);
-      const ctx = extractCtxKey(text, service);
-      if (!ctx) continue;
-      const kind = classifyKind(ctx.key, classBody);
+      const sameFile = extractCtxKey(text, service);
+      // 键以类体 `super(ctx, '<键>')` 为准；无字面量 super 时退回同文件增广（兼容旧形态）
+      const key = extractCtxKeyFromCtor(classBody) ?? sameFile?.key ?? null;
+      if (!key) continue;
+      // 描述：同文件增广命中且键一致 → 用它；否则按**键**全仓找（结构面声明的服务走这条）
+      const description = sameFile && sameFile.key === key ? sameFile.description : extractKeyDescription(sources, key);
+      const kind = classifyKind(key, classBody);
       const ownerModule = rel.replace(/\.tsx$/, '');
       entries.push({
-        key: ctx.key,
+        key,
         service,
         owner: rel,
         kind,
-        description: ctx.description,
-        implementations: extractImplementations(sources, constIds, ctx.key),
-        consumers: extractConsumers(sources, ownerModule, ctx.key, rel),
+        description,
+        implementations: extractImplementations(sources, constIds, key),
+        consumers: extractConsumers(sources, ownerModule, key, rel),
       });
     }
   }

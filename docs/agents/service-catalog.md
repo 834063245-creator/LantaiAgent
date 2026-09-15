@@ -4,7 +4,7 @@
 > 从组合层源码机械推导生成 — 勿手改；服务面变更后重新生成并同 commit。
 > 不含时间戳：字节稳定是 `--check`（doc-sync 门禁）的前提。
 
-共 18 个 ctx 服务：seam 5 · 贡献通道 8 · 服务 5。
+共 19 个 ctx 服务：seam 5 · 贡献通道 8 · 服务 6。
 kind 三分规则（机械推导）：ctx 键 ∈ SEAM_DOMAINS（seam-resolution.ts 单一真源）= seam；
 类体含 `register(def: *Contribution)` = 贡献通道；其余 = 服务。
 
@@ -140,6 +140,7 @@ system-prompt 段落注册表（A-1 第六贡献通道）——段注册 → dis
 | ctx 键 | Service | owner | 默认实现 / 贡献者 | 消费面 |
 |---|---|---|---|---|
 | `ctx.activation` | `ActivationService` | `src/composition/activation-service.ts` | — | 1 文件 |
+| `ctx.agentLoop` | `AgentLoopService` | `src/plugins/builtin/agent-loop-service/index.ts` | — | 0 文件 |
 | `ctx.codeRuntime` | `CodeRuntimeService` | `src/agent/code-run/runtime-service.ts` | — | 0 文件 |
 | `ctx.dynamicRunner` | `DynamicRunnerService` | `src/agent/dynamic-runner/dynamic-runner-service.ts` | — | 0 文件 |
 | `ctx.lsp` | `LspService` | `src/ui/lsp-client.ts` | — | 0 文件 |
@@ -152,6 +153,14 @@ system-prompt 段落注册表（A-1 第六贡献通道）——段注册 → dis
 - owner：`src/composition/activation-service.ts`
 - 默认实现 / 贡献者 id：—
 - 消费面（1）：`src/plugins/loader.ts`
+
+### `ctx.agentLoop` — AgentLoopService（服务）
+
+agent loop 注册表（平台化 Phase 5 · D13；S5b 产物化后类本体在 plugins/builtin/agent-loop-service/——此声明用结构面，内核/产物 双域类型检查共享）。
+
+- owner：`src/plugins/builtin/agent-loop-service/index.ts`
+- 默认实现 / 贡献者 id：—
+- 消费面：—（无直接 import/ctx 引用——运行时通道注入）
 
 ### `ctx.codeRuntime` — CodeRuntimeService（服务）
 
