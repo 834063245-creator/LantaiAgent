@@ -4,7 +4,7 @@
 //   - AgentConfig 字段面冻结（28 字段，AST 取 PropertySignature；2026-09-06 模型
 //     价格表拆除删 pricing 后 30→29；2026-09-09 multimodal-image B3 加 imageReader
 //     IO 注入腰后 29→30；同日图谱退役删 graphData/graphContext 后 30→28——
-//     非工具/hook 面，登记见 agent-platformization-plan.md）——组合扩展走
+//     非工具/hook 面，登记见 docs/archive/agent-platformization-plan.md）——组合扩展走
 //     blueprint capability，新增 config 字段必须显式改此断言并登记 progress.md；
 //   - _assembleAgent 零组合面直调——工具/hook 工厂、plan 接线、自动调优只出现在
 //     blueprint.ts capability 表；runtime 保留构造与生命周期所有权（Phase 4）；
@@ -120,7 +120,7 @@ describe('phase-6 T0 结构门禁 — 组合面收敛到 blueprint capability �
       'onSessionPersisted',
       // B3（2026-09-09 multimodal-image-plan）：附图读取器 IO 注入腰——非
       // 工具/hook 面（工具扩展仍走 blueprint capability）；登记见
-      // docs/plans/agent-platformization-plan.md Phase 6 字段登记段。
+      // docs/archive/agent-platformization-plan.md Phase 6 字段登记段。
       'imageReader',
       'messageBus',
       'taskBoard',

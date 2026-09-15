@@ -9,7 +9,7 @@
 //      空数据占位；历史卡无交互钮（引用是既成事实，只读态与活卡同构）。
 //   3. measure：citation 体高静态镜像（行高 × 折行行数；BibTeX 默认折叠只计
 //      summary 行——展开后 RO 实测兜底）；空数据占位高。
-// 协议：docs/plans/scientific-rendering-plan.md §4B + docs/plans/agent-asset-blocks.md
+// 协议：docs/plans/scientific-rendering-plan.md §4B + docs/archive/agent-asset-blocks.md
 // §2.10（kind 注册一行 = 一种资产）。
 
 import { createElement } from 'react';

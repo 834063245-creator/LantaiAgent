@@ -29,7 +29,7 @@
 // 激活/键盘走卷/小地图包围盒）。装配根持有：共享 ref 载体（regionsRef）、
 // 拖拽渲染态（regions memo 与拖拽/纸条两域共读共写）、context 组装、
 // BlockView/DeskShelf 子组件与全部 JSX。纯行为保持——挂载序硬约束与
-// 逐字节保真清单见 docs/plans/paper-shell/paper-panel-split-plan.md §3；
+// 逐字节保真清单见 docs/archive/paper-shell/paper-panel-split-plan.md §3；
 // 行为考官 = tests/perf-paper-pan.test.tsx（挂真实组件穿全层）。
 
 import { type CSSProperties, Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';

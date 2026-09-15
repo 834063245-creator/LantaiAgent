@@ -3,7 +3,7 @@
 
 // asset-persistence — Agent 资产块 WO-7 判据：
 //   会话重建时保留 BlockPart（资产块）；资产表从 UI 消息重建后可继续广播更新。
-// 协议：docs/plans/agent-asset-blocks.md §2.5/§3（WO-7）。
+// 协议：docs/archive/agent-asset-blocks.md §2.5/§3（WO-7）。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

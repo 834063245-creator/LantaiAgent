@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// 附图准入（multimodal-image-plan B1——docs/plans/multimodal-image-plan.md）
+// 附图准入（multimodal-image-plan B1——docs/archive/multimodal-image-plan.md）
 //
 // 采集字节 → 验收（白名单 + magic-byte + 单图限制）→ 规整（EXIF 校正 + 保比
 // 降采样 + 重编码）→ sha256 内容寻址 → fs_cap write_base64 落

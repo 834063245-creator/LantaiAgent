@@ -5,7 +5,7 @@
 //   show_asset(kind=confirm) 阻塞等用户在卡上表决——executor 执行前预发卡
 //   （onResponse 活回调随事件进 BlockPart）、决议回传工具结果、无 UI 通道
 //   立即 no_ui 放行、决议幂等、update 不顶掉活回调、回调不持久化。
-// 协议：docs/plans/agent-asset-blocks.md §2.10 confirm kind（plan 审批模式泛化）。
+// 协议：docs/archive/agent-asset-blocks.md §2.10 confirm kind（plan 审批模式泛化）。
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, ConfirmCardResponse } from '../src/agent/agent-types';

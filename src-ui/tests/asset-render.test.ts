@@ -4,7 +4,7 @@
 // asset-render — Agent 资产块 WO-4 判据：
 //   未知 kind / 资产 kind 未接表现原语时，兜底 '*' 渲染漂亮 JSON 不崩；
 //   PaperPanel 文类签映射（KIND_ZH/KIND_EN）已补首发资产 kind。
-// 协议：docs/plans/agent-asset-blocks.md §2.7/§2.11/§3（WO-4）。
+// 协议：docs/archive/agent-asset-blocks.md §2.7/§2.11/§3（WO-4）。
 
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';

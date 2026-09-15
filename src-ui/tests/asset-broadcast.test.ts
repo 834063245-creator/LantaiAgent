@@ -5,7 +5,7 @@
 //   applyAssetUpdateToExistingParts 原位替换（含 subagent）、PinSnapshot 保留资产元数据、
 //   refreshPinnedAssetSnapshots 孤儿钉同刷、会话资产表可从消息重建、
 //   renderEvent Asset 广播更新流内块 + 资产表 + pinned 孤儿。
-// 协议：docs/plans/agent-asset-blocks.md §2.5/A7/§3（WO-5）。
+// 协议：docs/archive/agent-asset-blocks.md §2.5/A7/§3（WO-5）。
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

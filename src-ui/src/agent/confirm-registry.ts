@@ -4,7 +4,7 @@
 // confirm-registry — 确认卡待决议表（confirm kind 的阻塞等待面）。
 //
 // 语义：show_asset(kind=confirm) 阻塞等待用户在卡上表决（plan 审批模式的
-// 资产化泛化，协议 docs/plans/agent-asset-blocks.md §2.10 confirm kind）。
+// 资产化泛化，协议 docs/archive/agent-asset-blocks.md §2.10 confirm kind）。
 // 跨层协议：
 //   - executor（streaming-executor）在调用 execute **之前**预发 Asset 事件
 //     （卡必须先于决议存在——常规通道的终值事件从工具输出解析，等不到决议），

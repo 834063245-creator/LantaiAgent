@@ -19,7 +19,7 @@
 //! 会话物理归属工作区，会话只在所属工作区内打开——因此**不再需要**会话
 //! 绑定表与焦点投影。
 //!
-//! 设计参照 DSH 五条铁律（docs/plans/layering-rework-plan.md §4 L1）：
+//! 设计参照 DSH 五条铁律（docs/archive/layering-rework-plan.md §4 L1）：
 //! 1. 会话是第一公民（按区归属）；
 //! 2. 工作区 = 注册表容器（canonical 路径为键）+ 目录实体；
 //! 3. 归属 = 存储结构（`{ws}/.lantai/sessions/`），不是元数据标签；

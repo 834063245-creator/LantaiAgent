@@ -3,7 +3,7 @@
 
 // asset-store-lifecycle — 资产表/画布快照的边界与生命周期（WO-5 补充）：
 //   重建去重、dispose 语义、测试复位、无匹配刷新 no-op。
-// 协议：docs/plans/agent-asset-blocks.md §2.5/A7/§3（WO-5）。
+// 协议：docs/archive/agent-asset-blocks.md §2.5/A7/§3（WO-5）。
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import {

@@ -155,7 +155,7 @@ export function applyEventToParts(parts: AssistantPart[], ev: AgentEvent): boole
   }
 }
 
-/* ── 资产块路由（协议 docs/plans/agent-asset-blocks.md §2.2/§2.3）── */
+/* ── 资产块路由（协议 docs/archive/agent-asset-blocks.md §2.2/§2.3）── */
 
 function applyAssetFinal(parts: AssistantPart[], asset: AssetEventData): boolean {
   const part: BlockPart = {

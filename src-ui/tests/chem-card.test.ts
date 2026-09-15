@@ -13,7 +13,7 @@
 //   4. smiles-drawer 真解析（Node 域不碰 DOM）：parse 成功回调能收到解析树
 //      （渲染端 effect 挂载后 draw 到 svg——真实结构图交真机验收）。
 // 协议：docs/plans/scientific-rendering-plan.md §5.6 #10 + §0.1 对拍表 #10 +
-// docs/plans/agent-asset-blocks.md §2.10（kind 注册一行 = 一种资产）。
+// docs/archive/agent-asset-blocks.md §2.10（kind 注册一行 = 一种资产）。
 
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';

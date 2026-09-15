@@ -4,7 +4,7 @@
 // asset-primitives — Agent 资产块 WO-6 判据：
 //   首发表现原语（grid/chart/metric/media/graph/tree/html/form）各自渲染不崩；
 //   kind → presentation 白名单回落正确；未知 kind 仍走 JSON 兜底。
-// 协议：docs/plans/agent-asset-blocks.md §2.9/§2.11/§3（WO-6）。
+// 协议：docs/archive/agent-asset-blocks.md §2.9/§2.11/§3（WO-6）。
 
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';

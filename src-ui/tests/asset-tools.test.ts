@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // asset-tools — Agent 资产块工具三件套 + executor 资产通道（WO-2 判据）。
-// 协议：docs/plans/agent-asset-blocks.md §2.5/§2.6/§2.7（show_asset/update_asset/
+// 协议：docs/archive/agent-asset-blocks.md §2.5/§2.6/§2.7（show_asset/update_asset/
 // list_block_kinds + 报错带窗 + Asset/AssetDelta 路由）。
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

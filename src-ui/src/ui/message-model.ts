@@ -137,7 +137,7 @@ export interface PlanPart {
 }
 
 /** 资产块 — Agent 生成的语义资产（show_asset / update_asset 通道，协议
- *  「Agent 资产块」design：docs/plans/agent-asset-blocks.md）。
+ *  「Agent 资产块」design：docs/archive/agent-asset-blocks.md）。
  *  - assetId 是资产身份（会话内唯一），update 不换 assetId、不换 kind
  *  - presentation 是表现原语名（kind 白名单内；空串 = 渲染层回落 defaultPresentation）
  *  - payload 必须纯 JSON（回调不进 payload，加载时按 assetId 重绑）

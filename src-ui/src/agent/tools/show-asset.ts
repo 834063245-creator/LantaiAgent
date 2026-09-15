@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// show-asset — Agent 资产块工具三件套（协议 docs/plans/agent-asset-blocks.md §2.5/§2.6）。
+// show-asset — Agent 资产块工具三件套（协议 docs/archive/agent-asset-blocks.md §2.5/§2.6）。
 //
 // 通道约定（streaming-executor 特判 assetChannel）：
 //   - show_asset / update_asset 声明 assetChannel=true —— executor 预生成 assetId

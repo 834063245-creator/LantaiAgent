@@ -4,7 +4,7 @@
 // asset-translate — Agent 资产块 WO-3 判据：
 //   BlockPart → 1 块映射（活引用 source.part）、id 稳定 pb:{msg}:{i}、
 //   update 后重转译 id 不变、钉住续命、块无需拆围栏。
-// 协议：docs/plans/agent-asset-blocks.md §2.2/§2.5/§3（WO-3）。
+// 协议：docs/archive/agent-asset-blocks.md §2.2/§2.5/§3（WO-3）。
 
 import { describe, expect, it } from 'vitest';
 import { translateMessages, translateMessagesCached } from '../src/paper/translate';

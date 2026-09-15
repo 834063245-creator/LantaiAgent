@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// asset-kinds — Agent 资产块 kind 注册表（协议 docs/plans/agent-asset-blocks.md §2.10/§2.11）。
+// asset-kinds — Agent 资产块 kind 注册表（协议 docs/archive/agent-asset-blocks.md §2.10/§2.11）。
 //
 // 纯数据层（agent 层，零 UI 依赖）：
 //   - kind = 语义维度（数据意味着什么，无限）——每种 kind 一行注册：

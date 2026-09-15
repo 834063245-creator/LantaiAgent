@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Wenbing Jing. MIT License.
 // SPDX-License-Identifier: MIT
 
-// state/asset-store — 会话级资产表（协议 docs/plans/agent-asset-blocks.md §2.5/A7，WO-5）。
+// state/asset-store — 会话级资产表（协议 docs/archive/agent-asset-blocks.md §2.5/A7，WO-5）。
 //
 // 语义：assetId → {kind, presentation, payload, ts} 的轻量索引。真源是会话消息
 // （BlockPart）与工具结果；本表只是「按 assetId 定位记录」的查找面，可从日志重建，

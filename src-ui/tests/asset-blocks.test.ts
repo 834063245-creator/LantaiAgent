@@ -3,7 +3,7 @@
 
 // asset-blocks — Agent 资产块协议 WO-1 判据：
 //   asset 事件建 part / delta 追加 / 终值替换 / finalised 翻转 / 防御性忽略。
-// 协议：docs/plans/agent-asset-blocks.md §2.2/§2.3（BlockPart + Asset/AssetDelta）。
+// 协议：docs/archive/agent-asset-blocks.md §2.2/§2.3（BlockPart + Asset/AssetDelta）。
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
