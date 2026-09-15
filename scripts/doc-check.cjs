@@ -269,6 +269,8 @@ function scanCandidates(files) {
   const out = [];
   for (const rel of files) {
     if (!inFactScope(rel)) continue;
+    if (rel === 'CODELY.md') continue; // 第三方工具私有记忆（见豁免账 size-codely）——不参与候选归并
+    if (isGeneratedDoc(rel)) continue; // 生成物的数字由 doc-sync 逐字节对拍负责
     const lines = readText(rel).split('\n');
     lines.forEach((line, idx) => {
       if (line.length < 40) return;
@@ -279,8 +281,14 @@ function scanCandidates(files) {
       out.push({ file: rel, line: idx + 1, text: line.trim().slice(0, 140) });
     });
   }
-  // 只报道前 40 条（报道工具，不是清单本体）。
-  return { total: out.length, sample: out.slice(0, 40), covered: [...covered] };
+  const byFile = new Map();
+  for (const c of out) byFile.set(c.file, (byFile.get(c.file) ?? 0) + 1);
+  return {
+    total: out.length,
+    byFile: [...byFile.entries()].sort((a, b) => b[1] - a[1]),
+    sample: out.slice(0, 20),
+    covered: [...covered],
+  };
 }
 
 /** 生成物文档（头部自述「生成物」）：体量与行宽由生成器负责，doc-sync 对拍。 */
@@ -569,8 +577,10 @@ function main() {
     } else {
       for (const v of advisory) console.log(`  ${v.line ? `${v.file}:${v.line}` : v.file} — ${v.message}`);
     }
-    console.log('\n── 未登记候选（报道用，不上牙）──');
-    console.log(`  命中 ${candidates.total} 行，样例前 ${candidates.sample.length} 条：`);
+    console.log('\n── 未登记候选（报道用，不上牙；按文件降序 + 样例）──');
+    console.log(`  命中 ${candidates.total} 行；按文件：`);
+    for (const [f, n] of candidates.byFile.slice(0, 12)) console.log(`    ${String(n).padStart(3)}  ${f}`);
+    console.log('  样例：');
     for (const c of candidates.sample) console.log(`  ${c.file}:${c.line} — ${c.text}`);
     console.log(`\n── 历史语态放行 ${skipped.length} 条（时态豁免，不计违规）──`);
     for (const s of skipped.slice(0, 10)) console.log(`  ${s.file}:${s.line} — ${s.message}`);
