@@ -174,15 +174,34 @@
 
 ### Phase 3 —— 收尾：快照降级为缓存 + 删除旧恢复面
 
-1. 卷快照只在「会话创建 / 轮次结束 / 会话销毁」三个强制点写（照抄 projection-cache 的策略面）
-   + 节流（每 N 事件 / 每 T 毫秒），**不再作为权威**。
-2. **删**：`.bak` 只读回退需求（append-only 无 rename 窗口，M5 自然消失——用户已批的回退方案作废，
-   真源文档 `session-checkpoint-design.md` §6.6/§9.3 一并改写）；
-   快照即权威的恢复分支、`uiMessages` 采信路径（`chat-session.ts` 恢复段的 `hasUiSnapshot` 分支）。
-3. **老数据**：只有 `.json` 快照、没有 `.ndjson` 的卷 → 保留 legacy 读（首次改动时补写日志）；
-   按 AGENTS.md 也可直接归档——**建议保留 legacy 读**（用户手上 22 卷是真数据）。
-4. **体积**：兰台事件里嵌整条 Message（含 tool 输出全文），日志会比 DSH 粗——先不做压缩
-   （DSH 有 chunk packing + zstd），在计划里留位。
+> **施工状态（2026-09-15）**：Phase 3a（采用原语）已落地并提交；Phase 3b（读路径
+> 翻转）待下一批，改动面见下（照此执行即可，不需重新推导）。
+
+**3a 已完成（采用原语）**：
+- `session/reset` 新增 `reason: 'adopt'`，投影语义 = **只重设头部 system 提示、
+  尾部历史保留**（不产全文副本——整段替换要把全部消息再写一遍，每次开卷 +1 份
+  全文，与 append-only 增量背道而驰）；
+- `Agent.adoptSessionLog(systemPrompt)`：发一条 adopt 事件 + 内存投影 =
+  `deriveMessages()`（复用既有 `_replaceSession` 入口 ⇒ **不动 phase-5 T0 变异
+  入口白名单**）；
+- 测试 `tests/session-log-adopt.test.ts`（3 例）：投影只换头 / Agent 采用后
+  in-memory == deriveMessages / 零漂移（既有 reason 仍整段替换）。
+
+**3b 剩余（读路径翻转，下一批）**：
+1. `session-log-store`：新增只读 `readVolumeLogMessages(root,id)`（扫描 + 补悬空
+   调用 + `SessionLog.replay` → 消息序列），**不写盘**；
+2. `chat-session.readVolumeData`：**日志优先**——有日志 → `messages = 日志派生`，
+   `.json` 只当 UI 投影缓存（`uiMessages`/`tokens`/`compose`/`label`），且缓存带
+   `{ver, seq}`；`cache.seq < 日志 lastSeq` = 陈旧 → 不用快照（走既有
+   `rebuildMessagesFromMessages` 重建），即 DSH 那句「possibly stale but never
+   wrong」的落地；无日志 → 卷不存在（旧 `.json` 卷不做兼容读——用户拍板）；
+3. 开卷路径：`openSessionLog` 采用成功后调 `agent.adoptSessionLog(...)` 取代
+   `setSession([...freshSys, ...快照 messages])`；
+4. 卷枚举/删除换轨：`listSavedSessions`/`scanMaxSessionId`/画布剪枝按 `.ndjson`
+   认卷；`deleteSessionFile` 真删日志（seam 加 `delete_log` 动作），墓碑语义退役；
+5. `writeSessionSnapshot` 增 `ver`/`seq` 字段（缓存新鲜度判据）；
+6. 测试面：`chat-session.test.ts` 等 13 个文件 / 108 例里凡以 `.json` 快照为
+   权威的断言按「行为退役 → 同批删除 / 行为新增 → 从用户操作序列新写」处理。
 
 ---
 

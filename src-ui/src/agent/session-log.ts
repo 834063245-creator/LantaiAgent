@@ -68,8 +68,8 @@ export const SESSION_EVENT_KINDS: readonly SessionEventKind[] = Object.freeze([
   'tool/code-dispatch',
 ]);
 
-/** session/reset 的来源标注（审计用；不影响投影）。 */
-export type SessionResetReason = 'init' | 'restore' | 'new-session' | 'goal-resume' | 'goal-parked';
+/** session/reset 的来源标注（审计用；不影响投影——**除 'adopt'**，见下）。 */
+export type SessionResetReason = 'init' | 'restore' | 'new-session' | 'goal-resume' | 'goal-parked' | 'adopt';
 
 /** 各 kind 的 data 形状。 */
 export interface SessionEventDataMap {
@@ -295,8 +295,23 @@ export class SessionLog {
           break;
         }
         case 'session/reset': {
-          const data = ev.data as { messages: Message[] };
-          state.messages = [...data.messages];
+          const data = ev.data as { messages: Message[]; reason?: SessionResetReason };
+          if (data.reason === 'adopt') {
+            // **adopt（Phase 3 权威翻转，2026-09-15）**：本 log 已含磁盘历史（刚被
+            // restoreInPlace 置回真源），此事件只重设**头部 system 提示**（本轮的
+            // 系统提示可能因组合/设置变化而不同），尾部历史原样保留。
+            // 为何不整段替换：整段替换要把全部消息再写一遍（每次开卷 +1 份全文），
+            // 与「append-only 增量」背道而驰。
+            const head = data.messages;
+            const tail =
+              state.messages.length > 0 && state.messages[0].role === 'system'
+                ? state.messages.slice(1)
+                : state.messages;
+            state.messages = [...head, ...tail];
+            break;
+          }
+          const data2 = ev.data as { messages: Message[] };
+          state.messages = [...data2.messages];
           state.compaction = null; // 替换 → 折叠状态失效（setSession/newSession 语义）
           break;
         }

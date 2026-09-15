@@ -665,13 +665,17 @@ export class Agent {
 
   /** 会话整体替换（构造 init / setSession 恢复 / newSession / goal 恢复与清场）。
    *  事件内携带深拷贝快照（调用方后续改动不得回写历史）；折叠失效与游标重置
-   *  语义留在调用点，与替换来源一一对应。 */
+   *  语义留在调用点，与替换来源一一对应。
+   *  **reason='adopt'（Phase 3 权威翻转）例外**：本 log 已含磁盘历史（开卷时
+   *  restoreInPlace 置回真源），此事件只重设头部 system 提示——内存投影从 log
+   *  派生（deriveMessages），不是「只有 system」。整段替换的写法要把全部消息
+   *  再写一遍（每次开卷 +1 份全文），与 append-only 增量相悖。 */
   private _replaceSession(messages: Message[], reason: SessionResetReason): void {
     this._sessionLog.append('session/reset', {
       messages: messages.map((m) => JSON.parse(JSON.stringify(m)) as Message),
       reason,
     });
-    this.session = messages;
+    this.session = reason === 'adopt' ? this._sessionLog.deriveMessages() : messages;
     // 资产表随会话重建（索引镜像真源——四边界共用此点）：恢复后 update_asset
     // 对旧资产照常寻址（此前无重建路径，重启后 U 面断）；newSession/清场后表
     // 随会话归空。scope = 本 Agent 的 _owner_id（executor 注入语义同源）。
@@ -687,6 +691,24 @@ export class Agent {
   setSession(msgs: Message[]): void {
     this._replaceSession(msgs, 'restore');
     // 会话被替换（恢复/加载）→ 折叠状态失效，从完整历史重新开始
+    this._compactSummary = null;
+    this._compactTailStart = -1;
+    this._execState.bumpVersion();
+    this._ui.sessionReplaced?.(this.session);
+  }
+
+  /**
+   * 采用日志里的磁盘历史（Phase 3 权威翻转，2026-09-15 换轨）——开卷路径专用。
+   *
+   * 与 `setSession` 的区别：`setSession` 是**替换**（事件携带全文，用于恢复快照/
+   * goal 清场）；本方法是**采用**——本 Agent 的 `_sessionLog` 已被
+   * `restoreInPlace` 置回磁盘真源，这里只发一条**头部重设**事件（reason='adopt'，
+   * 小事件），内存投影 = `deriveMessages()`（磁盘历史 + 本轮 system）。
+   *
+   * 为什么不复用 setSession：那要把全部消息再写一遍（每次开卷 +1 份全文）。
+   */
+  adoptSessionLog(systemPrompt: string): void {
+    this._replaceSession([{ role: 'system', content: systemPrompt }], 'adopt');
     this._compactSummary = null;
     this._compactTailStart = -1;
     this._execState.bumpVersion();
