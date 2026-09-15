@@ -45,9 +45,10 @@ use tauri::State;
 const CWD_MARKER_START: &str = "\u{1b}]lantaicwd;";
 const CWD_MARKER_END: char = '\u{07}';
 
-/// process_cap 全量 action 表（= 退役前 builtin.shell 7 工具名）。
-const PROCESS_CAP_ACTIONS: [&str; 7] = [
+/// process_cap 全量 action 表（= 退役前 builtin.shell 7 工具名 + office_exec）。
+const PROCESS_CAP_ACTIONS: [&str; 8] = [
     "exec_command",
+    "office_exec",
     "bash_output",
     "bash_kill",
     "bash_wait",
@@ -55,6 +56,146 @@ const PROCESS_CAP_ACTIONS: [&str; 7] = [
     "background_activity",
     "drain_bg_notifications",
 ];
+
+/// office 域工具允许的 officecli **动词**白名单（2026-09-15 R3）。
+/// 真源 = TS 侧 `agent/tools/office.ts` 的动作面（12 动作 → 11 动词：`playbook` 走
+/// `load_skill`、`screenshot` 走 `view` 的 screenshot 模式）。口内再查一遍是**防伪**：
+/// office_exec 的命令由本口自己拼装、跳过 bash::check，不能让调用方借它跑任意 officecli
+/// 子命令（CLI 的 `raw`/`raw-set`/`add-part` 一类裸 XML 逃生舱不在允许面内）。
+/// 漂移守护：`office_exec_verb_whitelist_covers_ts_action_surface`（本文件测试模块）。
+const OFFICE_VERBS: [&str; 11] = [
+    "view",
+    "get",
+    "query",
+    "validate",
+    "create",
+    "set",
+    "add",
+    "remove",
+    "batch",
+    "merge",
+    "load_skill",
+];
+
+/// office_exec 载荷（TS 侧 `office.ts` 构造）。
+#[derive(serde::Deserialize)]
+struct OfficePayload {
+    /// officecli argv（argv[0] = 动词）。TS 只给参数，**命令串由本口拼装**。
+    argv: Vec<String>,
+    /// 声明的文件系统目标（file/out）：强制层只审这些；缺省 = 无文件目标（playbook）。
+    #[serde(default)]
+    targets: Vec<OfficeTarget>,
+}
+
+#[derive(serde::Deserialize)]
+struct OfficeTarget {
+    path: String,
+    #[serde(default)]
+    write: bool,
+}
+
+/// officecli 二进制定位（与 TS 侧旧 BIN 解析序一致，但**在 Rust 侧**做）：
+/// `$OFFICECLI_PATH` → `~/.lantai/tools/officecli/officecli[.exe]` → PATH 兜底（裸名）。
+fn office_bin() -> String {
+    if let Ok(p) = std::env::var("OFFICECLI_PATH") {
+        if !p.trim().is_empty() {
+            return p;
+        }
+    }
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_default();
+    if !home.is_empty() {
+        let name = if cfg!(windows) { "officecli.exe" } else { "officecli" };
+        let cand = std::path::PathBuf::from(&home)
+            .join(".lantai")
+            .join("tools")
+            .join("officecli")
+            .join(name);
+        if cand.is_file() {
+            return cand.to_string_lossy().to_string();
+        }
+    }
+    "officecli".to_string()
+}
+
+/// POSIX 单引号包裹（内嵌单引号按 `'\''` 收尾）——命令由本口拼装，模型与调用方都不碰引号。
+fn sh_quote(arg: &str) -> String {
+    format!("'{}'", arg.replace('\'', "'\\''"))
+}
+
+/// officecli 调用命令行：环境钉扎（跳更新检查 + 每次改动立即落盘）+ 逐项单引号。
+fn build_office_command(argv: &[String]) -> String {
+    let mut cmd = String::from("OFFICECLI_SKIP_UPDATE=1 OFFICECLI_RESIDENT_FLUSH=each ");
+    cmd.push_str(&sh_quote(&office_bin()));
+    for arg in argv {
+        cmd.push(' ');
+        cmd.push_str(&sh_quote(arg));
+    }
+    cmd
+}
+
+/// office_exec —— office 域工具的专用入口（2026-09-15 R3 重构）。
+///
+/// 为什么不是"照旧走 exec_command"：officecli 的 argv 不是文件系统路径的堆叠
+/// （`BIN=${…}` 赋值段 / DOM 路径 `/Sheet1/A1` / batch 的 JSON 载荷），而
+/// `bash::check` 的路径检查是"含 `/` 就当路径"的启发式 ⇒ 恒判"项目外路径" ⇒ 每次
+/// 调用弹卡且"始终允许"失效。本动作改为：**门禁只审声明的目标文件**（OfficeTool，
+/// 走 fs 家族同一套策略）+ **动词白名单** + **命令由口内拼装**（跳过 bash::check）。
+///
+/// 防伪：本动作不接受自由命令行串——只收 argv，命令由 `build_office_command` 造，
+/// 所以调用方无法借它执行任意 shell 命令；动词白名单再挡一层（CLI 逃生舱不在面内）。
+async fn office_exec(
+    payload: Option<serde_json::Value>,
+    cwd: Option<String>,
+    timeout_ms: Option<u64>,
+    stream_tool_id: Option<String>,
+    is_agent: bool,
+    agent_id: Option<String>,
+    owner_id: Option<String>,
+    state: &State<'_, crate::WorkspaceState>,
+    app: &tauri::AppHandle,
+) -> Result<String, String> {
+    let payload =
+        payload.ok_or_else(|| "process_cap office_exec: missing 'office' 载荷".to_string())?;
+    let parsed: OfficePayload = serde_json::from_value(payload)
+        .map_err(|e| format!("office_exec 载荷不合法（期望 {{argv:[…], targets:[{{path,write}}]}}）: {e}"))?;
+    if parsed.argv.is_empty() {
+        return Err("office_exec: argv 为空".into());
+    }
+    let verb = parsed.argv[0].as_str();
+    if !OFFICE_VERBS.contains(&verb) {
+        return Err(format!(
+            "office_exec: 动词 '{}' 不在允许面（{}）——CLI 逃生舱（raw/raw-set/add-part 等）不经本口。",
+            verb,
+            OFFICE_VERBS.join("/")
+        ));
+    }
+    let targets: Vec<(String, bool)> = parsed
+        .targets
+        .iter()
+        .map(|t| (t.path.clone(), t.write))
+        .collect();
+    crate::utils::require_office(&targets, agent_id.as_deref(), state, app).await?;
+    let command = build_office_command(&parsed.argv);
+    exec_command(
+        command,
+        cwd,
+        None,
+        Some(timeout_ms.unwrap_or(120_000)),
+        false,
+        stream_tool_id,
+        None,
+        false,
+        is_agent,
+        agent_id,
+        owner_id,
+        state,
+        app,
+        true, // pre_gated：门禁已在上面按 OfficeTool 过完，不再走 bash::check
+    )
+    .await
+}
 
 /// process_cap 能力口分派。action ∈ 退役前 builtin.shell 7 工具名。
 #[allow(clippy::too_many_arguments)]
@@ -69,6 +210,8 @@ pub(crate) async fn process_cap(
     stream_tool_id: Option<String>,
     interpreter: Option<String>,
     capture_cwd: bool,
+    // office_exec（office 域工具专用：argv + 声明的目标文件；命令由口内拼装）
+    office: Option<serde_json::Value>,
     // bash_output / bash_kill / bash_wait
     job_id: Option<u32>,
     wait_timeout_ms: Option<u64>,
@@ -92,6 +235,23 @@ pub(crate) async fn process_cap(
                 stream_tool_id,
                 interpreter,
                 capture_cwd,
+                is_agent,
+                agent_id,
+                owner_id,
+                state,
+                app,
+                false, // 未预闸：走 require_command（Bash 家族命令串）
+            )
+            .await
+        }
+        // office_exec：office 域工具专用（见本函数上方文档）——门禁 = OfficeTool
+        // （只审声明的目标文件），命令由口内拼装，动词白名单挡 CLI 逃生舱。
+        "office_exec" => {
+            office_exec(
+                office,
+                cwd,
+                timeout_ms,
+                stream_tool_id,
                 is_agent,
                 agent_id,
                 owner_id,
@@ -172,6 +332,10 @@ async fn exec_command(
     owner_id: Option<String>,
     state: &State<'_, crate::WorkspaceState>,
     app: &tauri::AppHandle,
+    // 命令是否**已在口内过完闸**（office_exec 专用）。true 时跳过 `require_command`
+    // 的 Bash 家族命令串检查——officecli 的 argv 不是文件系统路径的堆叠，
+    // 那条路径启发式会把整体判成"项目外路径"（见 OfficeTool 头注）。cwd 仍走 Read 闸。
+    pre_gated: bool,
 ) -> Result<String, String> {
     // P5：解释器选择（"pwsh" → PowerShell；其余/缺省 → 捆绑 bash 阶梯）
     let shell_kind = match interpreter.as_deref() {
@@ -191,6 +355,11 @@ async fn exec_command(
     let physical_dir = if is_bg {
         crate::utils::require_command_sync(&command, state)?;
         crate::utils::require_read_sync(&dir, agent_id.as_deref(), state)?
+    } else if pre_gated {
+        // office_exec：门禁已按 OfficeTool（声明的目标文件）在口内过完——命令串里是
+        // officecli 的 argv（DOM 路径 / JSON 载荷），不能再过 bash::check 的路径启发式
+        // （那正是"默认模式每次调用弹卡、始终允许也压不住"的根因）。cwd 仍走 Read 闸解析。
+        crate::utils::resolve_read_dispatch(&dir, is_agent, agent_id.as_deref(), state, app).await?
     } else {
         crate::utils::require_command(&command, state, app).await?;
         crate::utils::resolve_read_dispatch(&dir, is_agent, agent_id.as_deref(), state, app).await?
@@ -713,7 +882,12 @@ mod tests {
 
     /// 前台等待辅助：注册进 ledger（与 exec_command 非流式路径一致），完成后移除。
     fn run_wait(cmd: &str, timeout_ms: u64) -> Result<String, String> {
-        let mut child = crate::os_sandbox::spawn_shell(cmd, ".").expect("spawn_shell failed");
+        run_wait_in(cmd, ".", timeout_ms)
+    }
+
+    /// 同上，但显式给工作目录（office e2e 用）。
+    fn run_wait_in(cmd: &str, cwd: &str, timeout_ms: u64) -> Result<String, String> {
+        let mut child = crate::os_sandbox::spawn_shell(cmd, cwd).expect("spawn_shell failed");
         let stdout = pipe_drainer(child.take_stdout());
         let stderr = pipe_drainer(child.take_stderr());
         let job_id = crate::utils::next_job_id();
@@ -729,8 +903,8 @@ mod tests {
         r
     }
 
-    /// action 表锚（退役前 tool_plugins/shell/mod.rs manifest 测试同表）：
-    /// 7 工具全量、无遗漏；bash_kill 非 read_only、五内部/查询动作只读。
+    /// action 表锚（退役前 tool_plugins/shell/mod.rs manifest 测试同表 + office_exec）：
+    /// 全量无遗漏；bash_kill 非 read_only、五内部/查询动作只读。
     #[test]
     fn action_table_matches_retired_manifest() {
         let read_only: [&str; 5] = [
@@ -741,13 +915,80 @@ mod tests {
             "drain_bg_notifications",
         ];
         for a in PROCESS_CAP_ACTIONS {
-            let known = a == "exec_command" || a == "bash_kill" || read_only.contains(&a);
+            let known = matches!(a, "exec_command" | "office_exec" | "bash_kill") || read_only.contains(&a);
             assert!(known, "{a} 必须落在已知权限形状之一");
         }
-        assert_eq!(PROCESS_CAP_ACTIONS.len(), 7);
-        // exec_command 非 read_only（写动作）；bash_kill 非 read_only（终止动作）
+        // office_exec 于 2026-09-15（R3）加入：office 域工具专用入口（门禁 = OfficeTool）。
+        assert_eq!(PROCESS_CAP_ACTIONS.len(), 8);
+        // exec_command 非 read_only（写动作）；office_exec 非 read_only（可写）；bash_kill 非 read_only
         assert!(!read_only.contains(&"exec_command"));
+        assert!(!read_only.contains(&"office_exec"));
         assert!(!read_only.contains(&"bash_kill"));
+    }
+
+    /// 动词白名单：office_exec 的命令由口内拼装并跳过 bash::check，所以**必须**在口内
+    /// 把关——CLI 逃生舱（raw / raw-set / add-part / watch / dump / mark / refresh）不在面内。
+    /// 同时锚住 TS 动作面（12 动作 → 11 动词：playbook→load_skill、screenshot→view）。
+    #[test]
+    fn office_exec_verb_whitelist_covers_ts_action_surface() {
+        for v in [
+            "view", "get", "query", "validate", "create", "set", "add", "remove", "batch", "merge",
+            "load_skill",
+        ] {
+            assert!(OFFICE_VERBS.contains(&v), "{v} 应在允许面（TS 动作面需要它）");
+        }
+        for v in ["raw", "raw-set", "add-part", "watch", "dump", "mark", "refresh", "install", "open", "close", "save"] {
+            assert!(!OFFICE_VERBS.contains(&v), "{v} 是 CLI 逃生舱/生命周期动作，不得进本口");
+        }
+        assert_eq!(OFFICE_VERBS.len(), 11);
+    }
+
+    /// 命令拼装：环境钉扎 + POSIX 单引号（空格 / 方括号 / 单引号）；且**不得再出现
+    /// `${…}` 赋值段**——那是旧版"每次调用弹卡"的根因（bash::check 把赋值 token 当路径）。
+    #[test]
+    fn office_command_quoting_and_env_pins() {
+        assert_eq!(sh_quote("plain"), "'plain'");
+        assert_eq!(sh_quote("/body/p[1]"), "'/body/p[1]'");
+        assert_eq!(sh_quote("my doc.docx"), "'my doc.docx'");
+        assert_eq!(sh_quote("it's"), r#"'it'\''s'"#);
+
+        let cmd = build_office_command(&[
+            "view".to_string(),
+            "D:/ws/报告 一.docx".to_string(),
+            "outline".to_string(),
+        ]);
+        assert!(cmd.contains("OFFICECLI_SKIP_UPDATE=1"), "跳后台更新检查");
+        assert!(cmd.contains("OFFICECLI_RESIDENT_FLUSH=each"), "每次改动立即落盘");
+        assert!(cmd.contains("'view' 'D:/ws/报告 一.docx' 'outline'"), "逐项单引号：{cmd}");
+        assert!(!cmd.contains("${"), "命令里不得再有 ${{…}} 赋值段（R3 根因）: {cmd}");
+        assert!(!cmd.contains("BIN="), "命令里不得再有 BIN 赋值段: {cmd}");
+    }
+
+    /// 真二进制端到端（Rust 侧）：命令拼装 × 真 bash × 真 officecli（二进制缺席即跳过）。
+    /// 原来这条 e2e 在 TS（office-domain.test.ts）——命令搬进 Rust 后跟着搬过来。
+    #[test]
+    fn office_command_real_binary_e2e() {
+        let bin = office_bin();
+        if !std::path::Path::new(&bin).is_file() {
+            return; // 未装 officecli：跳过（与 TS 侧 existsSync 同款语义）
+        }
+        let dir = std::env::temp_dir().join(format!("lantai_office_e2e_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("e2e.xlsx").to_string_lossy().replace('\\', "/");
+
+        let create = build_office_command(&["create".to_string(), file.clone()]);
+        let out = run_wait_in(&create, &dir.to_string_lossy(), 120_000).expect("create 执行失败");
+        assert!(out.contains("Created"), "create 回执异常: {out}");
+        assert!(std::path::Path::new(&file).is_file(), "create 后盘上应有文件");
+
+        let view = build_office_command(&["view".to_string(), file.clone(), "outline".to_string()]);
+        let out2 = run_wait_in(&view, &dir.to_string_lossy(), 120_000).expect("view 执行失败");
+        assert!(out2.contains("Sheet1") || out2.contains("sheet"), "view 回执异常: {out2}");
+        // 收尾：关掉 resident（它持有文件句柄，删目录会失败；close 失败不影响判定）
+        let close = build_office_command(&["close".to_string(), file.clone()]);
+        let _ = run_wait_in(&close, &dir.to_string_lossy(), 30_000);
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     /// 粘性 cwd 解析序（状态归 TS 后口内只收候选值）：显式 → 候选（存在才用）

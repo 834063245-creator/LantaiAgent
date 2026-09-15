@@ -4,9 +4,10 @@
 >
 > **2026-09-15 更新（真机复盘，见 §11）**：「待验收」这个口径被实测推翻——用户那次真机测试里，
 > 模型 76 次工具调用只有 **5 次**用了本工具，其余全在绕路（shell / code_execution），最后用一个
-> Node 脚本直驱 officecli 收场。已修四处（假成功信号 / argv 无上限 / playbook 教命令行 /
-> 错误归因过宽）；**§11.3 的 P0 未修**：默认（ask）与 auto 模式下本工具**每次调用都弹权限卡，
-> 且任何 allow 规则都压不住**（只有 yolo 能跑），需权限族级改造。
+> Node 脚本直驱 officecli 收场。四处病灶（假成功信号 / argv 无上限 / playbook 教命令行 /
+> 错误归因过宽）**已修**；§11.3 的 P0 权限判定（默认模式下每次调用都弹卡且规则压不住）
+> **已修**——office 不再伪装成一条 shell 命令，改走 `process_cap::office_exec`
+> （命令由 Rust 拼装 + `OfficeTool` 只审声明的目标文件 + 动词白名单）。
 >
 > **本文件是现状合集**——十窗逐日流水已压成 §7 一张表；正文只留"现在是什么样"。
 > 上游目标物：[iOfficeAI/OfficeCLI](https://github.com/iOfficeAI/OfficeCLI)（Apache-2.0；
@@ -311,10 +312,9 @@ xlsx 是一个 Node 脚本（`execFileSync` 直接驱动 officecli）跑出来�
 | 指南教命令行 | playbook 正文 488 行 / 101 条 `officecli` 命令 + 强制 Help-First Rule，模型照它下 shell | 返回 playbook 时前置 `PLAYBOOK_GUARD_HEADER`（翻译 + 禁令 + 最小 batch 替代 help） |
 | 错误归因过宽 | `cleanShellOutput` 只匹配 `No such file or directory` ⇒ 目标文件不存在也被报成"officecli 没装" | 收窄为 `officecli(.exe): command not found \| no such file` 相邻匹配；技能同步删掉五处"走 shell 域调 officecli"的逃生舱指引（PATH 里没有它） |
 
-### 11.3 未修：P0 权限判定（需权限族级改造）
+### 11.3 权限判定重构（P0，已修 2026-09-15 同夜）
 
-**探针实证**（临时加在 `src-tauri/src/permissions/bash.rs` 测试模块，跑完已还原；
-复现：在该模块加一条 `check()` 调用即可，`cargo test --bin lantai … -- --nocapture`）：
+**探针实证**（临时加在 `src-tauri/src/permissions/bash.rs` 测试模块，跑完已还原）：
 
 ```
 A_FULL_BIN_PREFIX = Ask(命令访问了项目外的路径: BIN=${OFFICECLI_PATH:-$HOME/.lantai/tools/officecli/officecli.exe}; (parent directory not found))
@@ -331,15 +331,30 @@ E_ALLOW_BARE      = Ask   ← 连裸 `Bash` allow 规则也无效
 所以任何规则都压不住——**默认（ask）与 auto 模式下，这个工具的每一次调用都要人工点卡**，
 只有 yolo 能跑。用户那次测试恰好是 yolo，所以这条完全没暴露。
 
-**为什么不能像原计划那样"改一行 BIN_RESOLVE"**：DOM 路径与 JSON 载荷各自独立触发同一判定，
-换掉 BIN 前缀只消掉三分之一。**也不能**改成"跳过含未展开变量的 token"或"Windows 上跳过 `/` 开头
-token"——`BIN=/etc/shadow; cat "$BIN"` 这类正是靠赋值 token 命中，`/c/Users/…` 在 MSYS bash 里
-也是真路径，放行即开洞。
+**为什么"改一行 BIN_RESOLVE"不够**：DOM 路径与 JSON 载荷各自独立触发同一判定。
+**也不能**改成"跳过含未展开变量的 token"或"Windows 上跳过 `/` 开头 token"——`BIN=/etc/shadow; cat "$BIN"`
+这类正是靠赋值 token 命中，`/c/Users/…` 在 MSYS bash 里也是真路径，放行即开洞。
 
-**结论：正解是给 office 域工具一条自己的权限族**（对齐 git/browser/desktop 的既有形态：
-`OfficeTool` 只校验**目标文件路径**（`file`/`out`）+ 放行自家二进制，而不是让一串
-`bash::check` 去猜 officecli 的 DOM 语法）。改动面 = `tools/mod.rs` 新 `OfficeTool` +
-`process_cap` 分支 + 前端 seam 传「目标文件/读写档位」（**必须不可被模型伪造**：shell 工具的
-key 映射表要挡死，否则等于把任意命令挂到宽松族上）。属强制层改动，按宪法走审查 + 边界基线。
+**修法（强制层重构，2026-09-15 落地）——office 不再伪装成一条 shell 命令**：
+
+| 面 | 旧 | 新 |
+|---|---|---|
+| 执行入口 | `ctx.shell` seam → `exec_command`（Bash 家族命令串） | `process_cap` 新动作 **`office_exec`**（同一个能力口，不新增能力族） |
+| 命令拼装 | TS 侧拼 shell 串（`shQuote` + `BIN=${…}` + 环境钉扎） | **Rust 侧**（`process_cap.rs::build_office_command`：二进制定位 + POSIX 单引号 + 环境钉扎） |
+| 门禁 | `bash::check` 路径启发式（把 DOM 路径/JSON 当文件系统路径） | 新 `tools::OfficeTool`：**只审声明的目标文件**（`file`/`out`），走 fs 家族同一套策略（沙箱边界 + 安全检查 + 内容级 `Read`/`Edit` 规则）；规则族名 `Office` |
+| 防伪 | — | 口**只收 argv**（不收自由命令行串）+ 动词白名单（`view/get/query/validate/create/set/add/remove/batch/merge/load_skill`）；CLI 逃生舱（`raw`/`raw-set`/`add-part`/`watch`…）不在面内 |
+| 结果 | 项目内目标也弹卡；「始终允许」无效 | 项目内目标**不弹卡**；项目外/敏感路径照旧要问，且「始终允许」真的生效 |
+
+**代价与收益**：office 不再经 `ctx.shell` seam（换 shell provider 不影响它）——它本就不是"shell 语义"，
+而是应用自带的 Office 能力（对齐 fs/git/browser 域"能力口直呼"的既有形态）；换来的是命令面、
+引号面、二进制定位面整体下沉到强制层，TS 侧删掉 `shQuote`/`buildOfficeCommand`/`BIN_RESOLVE`。
+
+**证据**：Rust `office_permission_matrix`（项目内 → passthrough / 项目外 → ask / `.git/config` → deny）、
+`office_bare_rules_take_effect`（裸 `Office` allow/deny 真生效）、`office_command_quoting_and_env_pins`
+（命令里**不得**再出现 `${…}` 或 `BIN=`）、`office_exec_verb_whitelist_covers_ts_action_surface`、
+真二进制 e2e（真 bash × 真 officecli，经新命令拼装：create → view）；TS `officeTargets` 声明矩阵。
+
+**宪法面**：本批动 `commands/process_cap.rs` + `tools/mod.rs` + `utils/path_resolve.rs` = **强制层改动**，
+commit message 显式标注；`platform_boundary_test.rs` 的 process_cap 条目同步补记 office_exec（模块清单未变）。
 
 

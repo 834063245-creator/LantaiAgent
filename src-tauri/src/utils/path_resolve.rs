@@ -357,6 +357,23 @@ pub(crate) fn require_command_sync(command: &str, state: &tauri::State<'_, Works
     check_permission_sync(&tool, &ctx)
 }
 
+/// office 域工具过闸（2026-09-15 R3，见 docs/plans/office-cli-integration-plan.md §11.3）：
+/// 只审**声明的目标文件**（OfficeTool），不把 officecli 的 DOM 路径 / JSON 载荷
+/// 当成文件系统路径去猜——那条启发式正是"默认模式每次调用都弹卡"的根因。
+pub(crate) async fn require_office(
+    targets: &[(String, bool)],
+    agent_id: Option<&str>,
+    state: &tauri::State<'_, WorkspaceState>,
+    app: &tauri::AppHandle,
+) -> Result<(), String> {
+    let ctx = get_ctx(state)?;
+    let tool = tools::OfficeTool {
+        targets: targets.to_vec(),
+        agent_id: agent_id.map(|s| s.to_string()),
+    };
+    check_permission(&tool, &ctx, app).await
+}
+
 pub(crate) fn require_read_sync(file_path: &str, agent_id: Option<&str>, state: &tauri::State<'_, WorkspaceState>) -> Result<PathBuf, String> {
     let ctx = get_ctx(state)?;
     // Phase 3：当隔离模式为 Worktree 时，前向映射到 worktree 物理路径 (spec §5.6)

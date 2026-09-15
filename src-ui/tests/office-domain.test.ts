@@ -2,17 +2,14 @@
 // SPDX-License-Identifier: MIT
 //
 // office 域（C 路）守护——OfficeCLI 一等域工具：
-//   ① 纯函数：shell 引号 / 命令行拼装 / 动作 → argv（含缺参报错）；
+//   ① 纯函数：动作 → argv（含缺参报错）/ 退出码解析 / batch 切块 / 输出清洗；
 //   ② 工具形状：name/domain/actions/readOnlyActions + JSON Schema 动作枚举；
 //   ③ plan 分档：只读动作放行、写动作拦截（readOnlyActions 白名单生效）；
-//   ④ 执行面：经 ctx.shell seam 派发（fake provider 收参数）——相对路径按工作区根解析、
-//      粘性 cwd 沿用、写动作带落盘提示；
-//   ⑤ 真二进制端到端（二进制在场时）：真 bash 跑真 officecli，创建→读→改→截图→validate。
+//   ④ 执行面：经 process_cap/office_exec 派发（fake exec 收载荷）——argv 由本层造、
+//      目标文件声明按动作分读写、相对路径按工作区根解析、粘性 cwd 沿用；
+//   ⑤ 真二进制端到端随 R3 搬到 Rust（命令拼装与 spawn 都在强制层）：
+//      `src-tauri/src/commands/process_cap.rs::office_command_real_binary_e2e`。
 
-import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { planGateCheck } from '../src/agent/plan/plan-registry';
 import { PlanStateManager } from '../src/agent/plan/plan-state';
@@ -20,45 +17,19 @@ import { clearOwnerContextsForTest, registerOwnerContext } from '../src/agent/se
 import type { Tool, ToolExecutor } from '../src/agent/tool';
 import {
   buildOfficeArgv,
-  buildOfficeCommand,
   cleanShellOutput,
   createOfficeTools,
   OFFICE_ACTIONS,
   OFFICE_BATCH_MAX_ITEMS,
   OFFICE_READONLY_ACTIONS,
+  officeTargets,
   parseShellExit,
-  shQuote,
   splitOfficeBatchItems,
 } from '../src/agent/tools/office';
-import { activeShellProviders, shellServicePlugin } from '../src/composition/shell-service';
-import { Context } from '../src/cordis';
-import { builtinShellProvider } from '../src/plugins/builtin/shell-builtin';
 
 const identity = (p: string) => p.replace(/\\/g, '/');
 
-describe('office 域：纯函数（引号 / 命令行 / argv）', () => {
-  it('shQuote：单引号包裹 + 内嵌单引号按 POSIX 规则收尾拼接', () => {
-    expect(shQuote('plain')).toBe("'plain'");
-    // 空格 / 方括号（会被 bash 当 glob）/ 单引号 / 反斜杠 都要安全
-    expect(shQuote('/body/p[1]')).toBe("'/body/p[1]'");
-    expect(shQuote('my doc.docx')).toBe("'my doc.docx'");
-    expect(shQuote("it's")).toBe(`'it'\\''s'`);
-    expect(shQuote("a'b'c")).toBe(`'a'\\''b'\\''c'`);
-  });
-
-  it('buildOfficeCommand：二进制定位 + 环境钉扎（立即落盘 / 跳更新检查）+ 逐项引号', () => {
-    const cmd = buildOfficeCommand(['view', 'D:/ws/报告 一.docx', 'outline']);
-    // 二进制定位（$OFFICECLI_PATH → 标准安装位 → PATH 兜底）
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: 断言的是 shell 参数展开原文（${VAR:-默认}），不是 JS 模板串
-    expect(cmd).toContain('${OFFICECLI_PATH:-$HOME/.lantai/tools/officecli/officecli.exe}');
-    expect(cmd).toContain('|| BIN=officecli');
-    // 环境钉扎（写动作立即落盘 + 跳过自动更新——文件头两个产品决定）
-    expect(cmd).toContain('OFFICECLI_SKIP_UPDATE=1');
-    expect(cmd).toContain('OFFICECLI_RESIDENT_FLUSH=each');
-    // 逐项单引号（含空格路径安全）
-    expect(cmd).toContain("'view' 'D:/ws/报告 一.docx' 'outline'");
-  });
-
+describe('office 域：纯函数（argv / 目标声明 / 退出码 / 切块）', () => {
   it('buildOfficeArgv：11 个动作的 argv 形状', () => {
     const r = identity;
     expect(buildOfficeArgv({ action: 'view', file: 'a.docx' }, r)).toEqual(['view', 'a.docx', 'text']);
@@ -148,6 +119,24 @@ describe('office 域：纯函数（引号 / 命令行 / argv）', () => {
     expect(buildOfficeArgv({ action: 'view' }, r)).toContain('view 需要 file');
   });
 
+  it('officeTargets：强制层只审声明的目标文件（DOM 路径 / JSON 载荷不进判定）', () => {
+    const r = identity;
+    expect(officeTargets({ action: 'view', file: 'a.docx' }, r)).toEqual([{ path: 'a.docx', write: false }]);
+    expect(officeTargets({ action: 'batch', file: 'a.xlsx', items: [] }, r)).toEqual([{ path: 'a.xlsx', write: true }]);
+    // merge：模板按写（保守）+ 成品 out 写
+    expect(officeTargets({ action: 'merge', file: 't.docx', out: 'o.docx' }, r)).toEqual([
+      { path: 't.docx', write: true },
+      { path: 'o.docx', write: true },
+    ]);
+    // screenshot：源文件读 + PNG 写
+    expect(officeTargets({ action: 'screenshot', file: 'a.pptx', out: 'p.png' }, r)).toEqual([
+      { path: 'a.pptx', write: false },
+      { path: 'p.png', write: true },
+    ]);
+    // playbook：无文件目标（不审路径）
+    expect(officeTargets({ action: 'playbook', playbook: 'word' }, r)).toEqual([]);
+  });
+
   it('cleanShellOutput：剥 cwd 回显；找不到二进制时补安装指引（错误不静默）', () => {
     expect(cleanShellOutput('[exit 0] ok\n[cwd: /d/ws]\n')).toBe('[exit 0] ok');
     const missing = cleanShellOutput('[exit 127] bash: line 1: officecli: command not found');
@@ -228,44 +217,73 @@ describe('office 域：工具形状与 plan 分档', () => {
   });
 });
 
-describe('office 域：执行面（经 ctx.shell seam 派发）', () => {
-  const captured: Array<{ action: string; args: Record<string, unknown> }> = [];
+describe('office 域：执行面（经 process_cap office_exec 派发）', () => {
+  const captured: Array<{ name: string; args: Record<string, unknown> }> = [];
   let tool: Tool;
-  /** 下一次 shell 层回执（各用例按需改写——退出码语义要靠它驱动）。 */
-  let nextResult = '[exit 0] recorded\n[cwd: /d/ws]';
+  /** 下一次能力口回执（各用例按需改写——退出码语义靠它驱动）。 */
+  let nextResult = '[exit 0] recorded';
   /** 按调用序号出队的回执脚本（空则用 nextResult）——多批场景靠它逐步改判。 */
   let scripted: string[] = [];
 
-  beforeAll(async () => {
-    const root = new Context();
-    await root.plugin(shellServicePlugin);
-    root.shell.register({
-      id: 'test/recorder',
-      execute: async (action, args) => {
-        captured.push({ action, args });
-        return scripted.shift() ?? nextResult;
-      },
-    });
-    expect(activeShellProviders().length).toBeGreaterThan(0);
+  /** 假 exec：记录 (能力口名, 载荷) 并按脚本回执。 */
+  const fakeExec: ToolExecutor = async (name, args) => {
+    captured.push({ name, args });
+    return scripted.shift() ?? nextResult;
+  };
+
+  const officeOf = (i = 0) =>
+    captured[i]?.args.office as { argv: string[]; targets: Array<{ path: string; write: boolean }> };
+
+  beforeAll(() => {
     clearOwnerContextsForTest();
     registerOwnerContext('owner-1', 'D:\\ws');
-    tool = createOfficeTools(async () => 'unused')[0]!;
+    tool = createOfficeTools(fakeExec)[0]!;
   });
 
   afterAll(() => clearOwnerContextsForTest());
 
-  it('相对路径按工作区根解析 + 命令走 exec_command（模型不碰引号）', async () => {
+  it('走 process_cap/office_exec：交 argv + 声明的目标（命令由 Rust 拼，2026-09-15 R3）', async () => {
     captured.length = 0;
     const out = await tool.execute({ action: 'view', file: '报告.docx', mode: 'issues', _owner_id: 'owner-1' });
     expect(captured).toHaveLength(1);
-    expect(captured[0]?.action).toBe('run');
-    const command = String(captured[0]?.args.command);
-    expect(command).toContain("'view' 'D:/ws/报告.docx' 'issues'");
+    expect(captured[0]?.name).toBe('process_cap');
+    expect(captured[0]?.args.action).toBe('office_exec');
+    // argv 由本层造（动作→CLI 参数），路径按工作区根解析
+    expect(officeOf().argv).toEqual(['view', 'D:/ws/报告.docx', 'issues']);
+    // 声明的目标 = 强制层唯一审的文件系统面；view 是读
+    expect(officeOf().targets).toEqual([{ path: 'D:/ws/报告.docx', write: false }]);
+    // meta 身份原样透传（审计/通知路由）
+    expect(captured[0]?.args._owner_id).toBe('owner-1');
     expect(out).toContain('recorded');
-    expect(out).not.toContain('[cwd:');
   });
 
-  it('粘性 cwd 沿用当前值（不把 shell 域的 cwd 顶掉，也不给绝对工作区根污染）', async () => {
+  it('目标声明按动作分读写：set 写文件；screenshot 读源 + 写 PNG', async () => {
+    captured.length = 0;
+    await tool.execute({
+      action: 'set',
+      file: 'a.docx',
+      path: '/body/p[1]',
+      props: { bold: 'true' },
+      _owner_id: 'owner-1',
+    });
+    expect(officeOf().targets).toEqual([{ path: 'D:/ws/a.docx', write: true }]);
+
+    captured.length = 0;
+    await tool.execute({ action: 'screenshot', file: 'a.pptx', out: 'p1.png', page: 1, _owner_id: 'owner-1' });
+    expect(officeOf().targets).toEqual([
+      { path: 'D:/ws/a.pptx', write: false },
+      { path: 'D:/ws/p1.png', write: true },
+    ]);
+
+    // playbook 无文件目标（不审路径）
+    captured.length = 0;
+    nextResult = '[exit 0] Loaded skill';
+    await tool.execute({ action: 'playbook', playbook: 'excel', _owner_id: 'owner-1' });
+    expect(officeOf().targets).toEqual([]);
+    expect(officeOf().argv).toEqual(['load_skill', 'excel']);
+  });
+
+  it('cwd 沿用 owner 粘性值（不把 shell 域的 cwd 顶掉）', async () => {
     captured.length = 0;
     await tool.execute({ action: 'validate', file: 'D:/ws/a.xlsx', _owner_id: 'owner-1' });
     expect(captured[0]?.args.cwd).toBe('D:\\ws');
@@ -323,10 +341,10 @@ describe('office 域：执行面（经 ctx.shell seam 派发）', () => {
     // 250 项 / 上限 100 → 3 批 ⇒ 3 次 CLI 调用，且每批自身 ≤100 项
     expect(captured).toHaveLength(3);
     const perCall = captured.map((c) => {
-      const cmd = String(c.args.command);
-      const m = cmd.match(/'--commands' '(\[.*\])'/s);
-      expect(m).not.toBeNull();
-      return JSON.parse((m?.[1] ?? '[]').replace(/'\\''/g, "'")) as unknown[];
+      const argv = (c.args.office as { argv: string[] }).argv;
+      const idx = argv.indexOf('--commands');
+      expect(idx).toBeGreaterThan(0);
+      return JSON.parse(argv[idx + 1] ?? '[]') as unknown[];
     });
     expect(perCall.map((c) => c.length)).toEqual([100, 100, 50]);
     expect(out).toContain('分 3 批执行');
@@ -350,12 +368,13 @@ describe('office 域：执行面（经 ctx.shell seam 派发）', () => {
   it('playbook 结果前置环境护栏（正文是命令行指南，本环境跑不了）', async () => {
     captured.length = 0;
     nextResult = '[exit 0] # OfficeCLI XLSX Skill\n\n## Help-First Rule\n\n```bash\nofficecli help xlsx\n```';
-    const out = await tool.execute({ action: 'playbook', playbook: 'excel' });
+    const out = await tool.execute({ action: 'playbook', playbook: 'excel', _owner_id: 'owner-1' });
     expect(out).toContain('在本环境不可执行');
     expect(out).toContain('不在 shell 的 PATH 里');
     expect(out).toContain('Help-First Rule'); // 正文照旧保留（护栏是前缀，不是替换）
-    // 目标文件（.xlsx）确实经 shell 派发——guard 不放行"只在文档里写"
-    expect(captured[0]?.action).toBe('run');
+    // 护栏不放行"只在文档里写"：真派发（load_skill）照旧发生
+    expect(captured[0]?.args.action).toBe('office_exec');
+    expect(officeOf().argv).toEqual(['load_skill', 'excel']);
   });
 
   it('缺参不派发、直接回说明（省一次进程）', async () => {
@@ -364,90 +383,4 @@ describe('office 域：执行面（经 ctx.shell seam 派发）', () => {
     expect(out).toContain('set 需要至少一个 props');
     expect(captured).toHaveLength(0);
   });
-});
-
-// ── 真二进制端到端（经真 bash 跑真 officecli；二进制/捆绑 bash 缺席即跳过）──
-const BIN = process.env.OFFICECLI_PATH ?? join(homedir(), '.lantai', 'tools', 'officecli', 'officecli.exe');
-const BASH = join(process.cwd(), '..', 'src-tauri', 'vendor', 'usr', 'bin', 'bash.exe');
-const available = existsSync(BIN) && existsSync(BASH);
-const d = available ? describe : describe.skip;
-const WORK = available ? mkdtempSync(join(tmpdir(), 'lantai-office-domain-')) : '';
-
-/** 真 exec：把能力口该做的事（spawn 一个 shell 跑命令）用 node 侧等价实现顶上——
- *  被验证的是**工具生成的命令行本身**（引号/路径/BIN 定位/落盘开关），Rust 沙箱面
- *  归 process_cap 的测试与真机验收。 */
-function realExec(): ToolExecutor {
-  return async (_name, args) => {
-    const command = String((args as { command?: unknown }).command ?? '');
-    const cwd = String((args as { cwd?: unknown }).cwd ?? WORK);
-    return await new Promise<string>((resolve) => {
-      const child = spawn(BASH, ['-c', command], { cwd, windowsHide: true, env: { ...process.env, HOME: homedir() } });
-      let out = '';
-      child.stdout.on('data', (c) => {
-        out += String(c);
-      });
-      child.stderr.on('data', (c) => {
-        out += String(c);
-      });
-      child.on('close', (code) => resolve(`[exit ${code ?? '?'}] ${out}`));
-    });
-  };
-}
-
-d('office 域：真二进制端到端（真 bash × 真 officecli）', () => {
-  let root: Context;
-  let tool: Tool;
-
-  beforeAll(async () => {
-    root = new Context();
-    await root.plugin(shellServicePlugin);
-    root.shell.register(builtinShellProvider); // 真 provider（dispatch → 我们的 realExec）
-    clearOwnerContextsForTest();
-    registerOwnerContext('e2e-owner', WORK);
-    tool = createOfficeTools(realExec())[0]!;
-  }, 60_000);
-
-  afterAll(() => {
-    clearOwnerContextsForTest();
-    if (WORK) {
-      try {
-        rmSync(WORK, { recursive: true, force: true });
-      } catch {
-        /* 临时目录残留不影响判定 */
-      }
-    }
-  });
-
-  it('create → view → set → screenshot → validate（写动作真的落盘）', async () => {
-    const docx = `${WORK.replace(/\\/g, '/')}/域端到端.docx`;
-    const png = `${WORK.replace(/\\/g, '/')}/域端到端.png`;
-
-    const created = await tool.execute({ action: 'create', file: docx, _owner_id: 'e2e-owner' });
-    expect(created).toContain('Created');
-    expect(created).toContain('[exit 0]');
-    expect(created).toContain('改动已提交');
-    // 立即读盘（不经 officecli）：落盘开关生效的最硬判据
-    expect(statSync(docx).size).toBeGreaterThan(0);
-
-    const added = await tool.execute({
-      action: 'add',
-      file: docx,
-      parent: '/body',
-      type: 'paragraph',
-      props: { text: '兰台 office 域端到端' },
-      _owner_id: 'e2e-owner',
-    });
-    expect(added).toContain('Added paragraph');
-
-    const text = await tool.execute({ action: 'view', file: docx, _owner_id: 'e2e-owner' });
-    expect(text).toContain('兰台 office 域端到端');
-
-    const shot = await tool.execute({ action: 'screenshot', file: docx, out: png, _owner_id: 'e2e-owner' });
-    expect(shot).toContain('.png');
-    const bytes = readFileSync(png);
-    expect([...bytes.subarray(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
-
-    const valid = await tool.execute({ action: 'validate', file: docx, _owner_id: 'e2e-owner' });
-    expect(valid).toContain('no errors');
-  }, 180_000);
 });

@@ -10,11 +10,11 @@
 // 不经 fs_cap、不受 os_sandbox 约束）、参数无类型、整块被标成一个写动作（plan 模式
 // 连 view 都被拦）。本域把同一能力做成兰台原生形状：
 //   · zod 真源收窄动作面（不做 CLI 全语法复刻——11 个动作够交付物/注疏/xlsx 三批用）；
-//   · 经 ctx.shell seam → process_cap 能力口受控 spawn：os_sandbox 沙箱 + Bash 权限类
-//     + 审计，与 run_shell 同一条路（**不新增能力口**：口数 = 能力族数，office 是
-//     process 族的消费者，不是新的能力族）；
+//   · 经 process_cap 能力口的 **office_exec** 动作受控 spawn（2026-09-15 R3 重构，见下）：
+//     os_sandbox 沙箱 + Office 权限族（OfficeTool）+ 审计。**不新增能力口**——office 仍是
+//     process 族的消费者（口数 = 能力族数），只是不再伪装成一条 shell 命令串；
 //   · readOnlyActions 白名单 ⇒ plan 模式按 action 分读写（view/get/query/validate 放行）；
-//   · 命令行由本层拼装（模型不碰引号/转义），相对路径按工作区根解析。
+//   · 相对路径按工作区根解析（模型不碰引号/转义——命令由强制层拼装）。
 //
 // 两个刻意的产品决定：
 //   1) 写动作**自动落盘**：子进程带 OFFICECLI_RESIDENT_FLUSH=each——officecli 的
@@ -41,18 +41,26 @@
 //   · cleanShellOutput 的"找不到二进制"判定过宽（任何 No such file or directory 都命中）
 //     → 收窄为 officecli(.exe) 与错误文案相邻。
 //
-// ⚠️ 未修（P0，需权限族级改造，2026-09-15 探针实证）：本工具的命令串在**默认权限模式下
-//    每次调用都触发 Ask**，且任何 allow 规则都压不住——`bash::check` 把 argv 里含 `/` 的
-//    token 一律当路径解析：① `BIN=${...}` 赋值段；② DOM 路径 `/body/p[1]`；③ batch 的 JSON
-//    载荷（含 `/Sheet1/A1`）。三者都解析失败 ⇒ "项目外路径" ⇒ Ask，而该判定在
-//    **allow 规则匹配之前提前返回**（bash.rs 步骤 3 → 4），所以"始终允许"写进去也不生效。
-//    只在 yolo 模式下不可见（用户那次测试正是 yolo）。修法见
-//    docs/plans/office-cli-integration-plan.md §11。
+// ── R3 已修（2026-09-15 探针实证 → 重构）─────────────────────────────────
+// 病灶：本工具的命令串在**默认（ask）/ auto 模式下每次调用都触发权限卡**，且任何 allow
+// 规则都压不住——`bash::check` 把 argv 里含 `/` 的 token 一律当文件系统路径解析：
+//   ① `BIN=${…}` 赋值段；② DOM 路径 `/body/p[1]`；③ batch 的 JSON 载荷（含 `/Sheet1/A1`）。
+// 三者都解析失败 ⇒ 判"项目外路径" ⇒ Ask，而该判定在 **allow 规则匹配之前提前返回**
+// （bash.rs 步骤 3 → 4）⇒「始终允许」写进去也不生效。只在 yolo 下不可见（用户那次测试
+// 正是 yolo，所以完全没暴露）。**"改一行 BIN_RESOLVE"不够**——DOM 路径与 JSON 载荷各自
+// 独立触发同一判定。
+// 修法（强制层重构，见 docs/plans/office-cli-integration-plan.md §11.3）：
+//   · 本工具不再拼 shell 命令串 ⇒ 命令、二进制定位、引号、环境钉扎搬进 Rust
+//     （`commands/process_cap.rs::office_exec`）；
+//   · 门禁换成 `tools::OfficeTool`（同批新增）：**只审 officeTargets 声明的目标文件**
+//     （走 fs 家族同一套路径策略：沙箱边界 + 安全检查 + 内容级规则），DOM 路径 / JSON
+//     载荷不参与判定——它们在文档内寻址；
+//   · office_exec 的动词白名单挡 CLI 逃生舱（raw / raw-set / add-part / watch …）。
+//   结果：项目内目标不弹卡；项目外/敏感路径仍要问，且「始终允许」真的生效。
 
 import { z } from 'zod';
 import { isAbsolutePath, ownerContext, resolveAgainstRoot, stickyCwdOf } from '../session-context';
 import type { Tool, ToolExecutor } from '../tool';
-import { shellExecute } from './coding';
 import { defineTool } from './define-tool';
 
 /** 动作面（收窄）——**只收真会用的**：读（view/get/query/validate）、写（create/set/
@@ -98,30 +106,12 @@ const MUTATING_ACTIONS = new Set<OfficeAction>(['create', 'set', 'add', 'remove'
 /** view 的读数模式（透传 officecli；`screenshot` 走独立动作）。 */
 const VIEW_MODES = ['text', 'annotated', 'outline', 'stats', 'issues', 'html', 'svg', 'forms'] as const;
 
-/** 单引号包裹（POSIX shell 唯一通用安全写法）：内嵌单引号按 '\'' 收尾拼接。
- *  **模型不参与引号**——参数由本层拼装，路径里的空格/尖括号/方括号（`/slide[1]`
- *  这类会被 bash 当 glob）在这里一次解决。 */
-export function shQuote(arg: string): string {
-  return `'${arg.replace(/'/g, `'\\''`)}'`;
-}
-
-/** officecli 定位 + 环境钉扎（**在被 spawn 的 shell 里解析**）。
- *
- *  为什么不在 TS 侧探测：① 工具层碰不到盘；② `~/.lantai/tools` 不在沙箱用户数据
- *  白名单里（白名单只有 global_memory/skills/mcp.json），fs 能力口读不到它。
- *  解析顺序：$OFFICECLI_PATH（宿主若注入）→ 标准安装位 → PATH 兜底。两者皆无时
- *  bash 报 command not found，本层转成安装指引（见 cleanShellOutput）。 */
-const BIN_RESOLVE =
-  // biome-ignore lint/suspicious/noTemplateCurlyInString: 这是 **shell 参数展开**（${VAR:-默认}），不是 JS 模板串
-  'BIN="${OFFICECLI_PATH:-$HOME/.lantai/tools/officecli/officecli.exe}"; [ -x "$BIN" ] || BIN=officecli; ';
-
-/** 环境钉扎前缀：跳过后台更新检查 + 每次改动立即落盘（见文件头决定 1/2）。 */
-const ENV_PIN = 'OFFICECLI_SKIP_UPDATE=1 OFFICECLI_RESIDENT_FLUSH=each ';
-
-/** argv → 完整 shell 命令行（argv 逐项单引号包裹）。 */
-export function buildOfficeCommand(argv: readonly string[]): string {
-  return `${BIN_RESOLVE}${ENV_PIN}"$BIN" ${argv.map(shQuote).join(' ')}`;
-}
+/** officecli 的命令行**不再由本层拼装**（2026-09-15 R3）：二进制定位、单引号、
+ *  环境钉扎（`OFFICECLI_SKIP_UPDATE=1` / `OFFICECLI_RESIDENT_FLUSH=each`）全部搬进
+ *  Rust 侧 `commands/process_cap.rs`（`office_exec` 动作）。原因见文件头 R3 段：
+ *  TS 拼出的命令串里必然带 `BIN=${…}` 赋值段与 DOM 路径/JSON 载荷，而 shell 能力口的
+ *  路径检查按"含 `/` 就当文件系统路径"解析它们 ⇒ 每次调用弹权限卡且 allow 规则失效。
+ *  现在本层只交 **argv + 声明的目标文件**，命令与闸都在强制层。 */
 
 /** 域工具入参（zod infer 的对偶形状——纯函数构造器只依赖这些字段，便于单测）。 */
 export interface OfficeToolArgs {
@@ -221,6 +211,34 @@ export function buildOfficeArgv(a: OfficeToolArgs, resolve: (p: string) => strin
     default:
       return `unsupported action "${String(a.action)}". Available: ${OFFICE_ACTIONS.join(', ')}`;
   }
+}
+
+/** 声明的文件系统目标 —— 强制层（Rust `OfficeTool`）**只审这些**：
+ *  DOM 路径（`/Sheet1/A1`）与 batch 的 JSON 载荷在**文档内**寻址，不是文件系统路径，
+ *  不参与判定（2026-09-15 R3 的核心改动）。`file` 按动作判读/写（MUTATING_ACTIONS），
+ *  `out`（merge 成品 / screenshot 的 PNG）一律写。 */
+export function officeTargets(
+  a: OfficeToolArgs,
+  resolve: (p: string) => string,
+): Array<{ path: string; write: boolean }> {
+  const targets: Array<{ path: string; write: boolean }> = [];
+  if (a.action !== 'playbook' && a.file) {
+    targets.push({ path: resolve(a.file), write: MUTATING_ACTIONS.has(a.action) });
+  }
+  if ((a.action === 'merge' || a.action === 'screenshot') && a.out) {
+    targets.push({ path: resolve(a.out), write: true });
+  }
+  return targets;
+}
+
+/** 透传 executor 注入的 meta 键（`_owner_id`/`_agent_id`/`_callId`——身份与审计），
+ *  与 fs/shell provider 的 toCapArgs 同款。 */
+function metaForward(args: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(args)) {
+    if (k.startsWith('_')) out[k] = v;
+  }
+  return out;
 }
 
 /** shell 层返回包的清洗：剥掉粘性 cwd 回显行（officecli 调用一律绝对路径，cwd 回显
@@ -374,10 +392,17 @@ export function createOfficeTools(exec: ToolExecutor): Tool[] {
       const cwd = stickyCwdOf(owner) ?? root;
 
       const runOne = async (argv: readonly string[]): Promise<{ text: string; exit: number | null }> => {
-        const out = await shellExecute(
-          'run',
-          { command: buildOfficeCommand(argv), ...(cwd ? { cwd } : {}), timeoutMs: 120_000 },
-          exec,
+        // 经 process_cap 的 office_exec 动作（2026-09-15 R3）：命令由 Rust 侧拼装，
+        // 门禁 = OfficeTool（只审 officeTargets 声明的目标文件）。本层不碰引号/二进制定位。
+        const out = await exec(
+          'process_cap',
+          {
+            action: 'office_exec',
+            office: { argv: [...argv], targets: officeTargets(a, resolve) },
+            timeout_ms: 120_000,
+            ...(cwd ? { cwd } : {}),
+            ...metaForward(args),
+          },
           undefined,
           signal,
         );

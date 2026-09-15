@@ -58,6 +58,7 @@ export type GitCapAction =
  *  一一位（与历史精确规则寻址名 plugin:builtin.shell.<action> 同构）。 */
 export type ProcessCapAction =
   | 'exec_command'
+  | 'office_exec'
   | 'bash_output'
   | 'bash_kill'
   | 'bash_wait'
@@ -282,6 +283,13 @@ export interface RpcContract {
       stream_tool_id?: string;
       interpreter?: string;
       capture_cwd?: boolean;
+      /** office_exec 专用载荷（2026-09-15 R3）：officecli 的 argv + 声明的目标文件。
+       *  **不接受自由命令行串**——命令由 Rust 侧拼装（动词白名单 + OfficeTool 门禁），
+       *  officecli 的 DOM 路径 / JSON 载荷因此不再被 bash::check 误判成"项目外路径"。 */
+      office?: {
+        argv: string[];
+        targets?: { path: string; write?: boolean }[];
+      };
       job_id?: number;
       wait_timeout_ms?: number;
       is_agent?: boolean;

@@ -52,6 +52,79 @@ impl Tool for ReadTool {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// OfficeTool — office 域工具（officecli 调用）的强制层闸
+// ═══════════════════════════════════════════════════════════════
+// 为什么需要它（2026-09-15 R3，见 docs/plans/office-cli-integration-plan.md §11.3）：
+// office 域工具过去借 `Bash` 家族过闸，而 `bash::check` 的路径检查是按"argv 里含 `/`
+// 的 token 就是文件系统路径"的启发式做的——officecli 的 argv 恰恰不是：
+//   ① `BIN=${…}` 赋值段、② DOM 路径 `/Sheet1/A1`、③ batch 的 JSON 载荷（内含 `/`）
+// 三处都解析失败 ⇒ 判"项目外路径" ⇒ Ask，且该判定在 allow 规则匹配**之前**提前返回
+// （bash.rs 步骤 3 → 4）⇒ 默认（ask）与 auto 模式下**每次调用都弹卡、且"始终允许"无效**，
+// 只有 yolo 能跑（2026-09-15 探针实证）。
+//
+// 本闸改判**声明的目标文件**（file/out），走 fs 家族同一套路径策略（沙箱边界 + 安全检查 +
+// 内容级规则），DOM 路径与 JSON 载荷不参与判定——它们在**文档内**寻址，不是文件系统路径。
+// 规则族名 = "Office"：裸 `Office` 规则可整体放行（对齐 Browser/Desktop 口内闸形态），
+// 路径级建议仍是 `Read(<path>)` / `Edit(<path>)`（沿用 fs 家族语义 ⇒ 用户写过的规则直接命中）。
+
+pub struct OfficeTool {
+    /// 声明的文件系统目标：`(路径, 是否写)`。空 = 无文件目标（如 playbook 动作）。
+    pub targets: Vec<(String, bool)>,
+    pub agent_id: Option<String>,
+}
+
+impl Tool for OfficeTool {
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Office")
+    }
+
+    fn get_path(&self) -> Option<PathBuf> {
+        self.targets.first().map(|(p, _)| PathBuf::from(p))
+    }
+
+    fn is_read_only(&self) -> bool {
+        !self.targets.is_empty() && self.targets.iter().all(|(_, write)| !*write)
+    }
+
+    fn is_destructive(&self) -> bool {
+        !self.is_read_only()
+    }
+
+    fn agent_id(&self) -> Option<&str> {
+        self.agent_id.as_deref()
+    }
+
+    fn check_permissions(&self, ctx: &PermissionContext) -> PermissionResult {
+        let rules = ctx.read_rules();
+        // 1. 工具级 Deny — 最高优先级
+        if let Some(rule) = rules.find_deny("Office", None) {
+            return PermissionResult::Deny {
+                reason: rule.explain(),
+            };
+        }
+        // 2. 工具级 Allow（用户"始终允许 Office"）— 对齐 Browser/Desktop 口内闸形态
+        if rules.find_allow("Office", None).is_some() {
+            return PermissionResult::Allow;
+        }
+        // 3. 逐目标过 fs 家族路径闸：
+        //    项目内 → Allow（不弹卡）；项目外 → Ask（建议规则可"始终允许"）；
+        //    .ssh / .git/config 一类敏感面 → safety 检查升 Ask；内容级规则照旧命中。
+        for (path, write) in &self.targets {
+            let verdict = if *write {
+                filesystem::check_write_permission(path, &ctx.sandbox, &rules, None)
+            } else {
+                filesystem::check_read_permission(path, &ctx.sandbox, &rules, None)
+            };
+            match verdict {
+                PermissionResult::Deny { .. } | PermissionResult::Ask { .. } => return verdict,
+                PermissionResult::Allow | PermissionResult::Passthrough => {}
+            }
+        }
+        PermissionResult::Passthrough
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // EditTool — write_file_content, edit_file, delete_file_or_dir,
 //           create_directory, rename_file_or_dir, log_append, move_file
 // ═══════════════════════════════════════════════════════════════
@@ -413,6 +486,101 @@ pub(crate) fn uia_action_needs_physical(kind: &str, caps: &UiaTargetCaps) -> boo
         "type" => !caps.has_value,
         "scroll" => !caps.has_scroll,
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod office_permission_tests {
+    use super::*;
+
+    /// 建一个临时项目根 + 可选 `.lantai/permissions.json`，返回 (根, ctx)。
+    fn ctx_with_rules(tag: &str, rules_json: Option<&str>) -> (PathBuf, PermissionContext) {
+        let dir = std::env::temp_dir().join(format!("lantai_office_perm_{}_{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join(".lantai")).unwrap();
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+        std::fs::write(dir.join("报告.xlsx"), b"x").unwrap();
+        std::fs::write(dir.join(".git").join("config"), b"[core]\n").unwrap();
+        if let Some(json) = rules_json {
+            std::fs::write(dir.join(".lantai").join("permissions.json"), json).unwrap();
+        }
+        let ctx = PermissionContext::new(&dir);
+        (dir, ctx)
+    }
+
+    fn office(targets: Vec<(String, bool)>) -> OfficeTool {
+        OfficeTool { targets, agent_id: None }
+    }
+
+    fn kind(r: &PermissionResult) -> &'static str {
+        match r {
+            PermissionResult::Allow => "allow",
+            PermissionResult::Deny { .. } => "deny",
+            PermissionResult::Ask { .. } => "ask",
+            PermissionResult::Passthrough => "passthrough",
+        }
+    }
+
+    /// 2026-09-15 R3 主判据：**项目内目标不弹卡**（这正是旧 Bash 家族判定做不到的），
+    /// 项目外 / 敏感路径仍要问；无文件目标（playbook）直接放行。
+    #[test]
+    fn office_permission_matrix() {
+        let (root, ctx) = ctx_with_rules("matrix", None);
+        let inside = root.join("报告.xlsx").to_string_lossy().to_string();
+        let inside_slash = inside.replace('\\', "/");
+        // 项目内：读 / 写都放行（不弹卡）
+        assert_eq!(
+            kind(&office(vec![(inside_slash.clone(), false)]).check_permissions(&ctx)),
+            "passthrough"
+        );
+        assert_eq!(
+            kind(&office(vec![(inside_slash.clone(), true)]).check_permissions(&ctx)),
+            "passthrough"
+        );
+        // 无文件目标（playbook 动作）：放行
+        assert_eq!(kind(&office(vec![]).check_permissions(&ctx)), "passthrough");
+        // 项目外：Ask（用户可"始终允许"）
+        let outside = std::env::temp_dir()
+            .join("lantai_office_outside")
+            .join("x.xlsx")
+            .to_string_lossy()
+            .replace('\\', "/");
+        assert_eq!(kind(&office(vec![(outside, true)]).check_permissions(&ctx)), "ask");
+        // 项目内但受保护路径（.git/config）：系统 Edit deny 规则**硬拒**（比 safety Ask 更严）
+        let protected = root.join(".git").join("config").to_string_lossy().replace('\\', "/");
+        assert_eq!(
+            kind(&office(vec![(protected, true)]).check_permissions(&ctx)),
+            "deny",
+            ".git/config 写入必须被系统 Edit deny 规则挡住"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// 规则面：裸 `Office` 可整体放行/拒绝（"始终允许"必须真的生效——旧 Bash 家族
+    /// 判定里 allow 规则**在路径检查之后**，写进去也不生效）。
+    #[test]
+    fn office_bare_rules_take_effect() {
+        let (root, ctx) = ctx_with_rules("allow", Some(r#"{"allow":["Office"]}"#));
+        let outside = std::env::temp_dir()
+            .join("lantai_office_outside2")
+            .join("y.xlsx")
+            .to_string_lossy()
+            .replace('\\', "/");
+        assert_eq!(
+            kind(&office(vec![(outside.clone(), true)]).check_permissions(&ctx)),
+            "allow",
+            "裸 Office allow 规则必须能放行（否则等于没法允许）"
+        );
+        std::fs::remove_dir_all(&root).ok();
+
+        let (root2, ctx2) = ctx_with_rules("deny", Some(r#"{"deny":["Office"]}"#));
+        let inside = root2.join("报告.xlsx").to_string_lossy().replace('\\', "/");
+        assert_eq!(
+            kind(&office(vec![(inside, false)]).check_permissions(&ctx2)),
+            "deny",
+            "工具级 deny 最高优先"
+        );
+        std::fs::remove_dir_all(&root2).ok();
     }
 }
 

@@ -476,6 +476,9 @@ async fn dispatch_rpc(
         // 截流/提交/回显在 TS 编排层（capture_cwd=true 时口内按方言包装）。
         // 参数顶层 snake_case（bridge.rpc() 转换幂等）；is_agent/agent_id
         // 显式传；owner_id 兼容 _owner_id（bg:note 通知路由身份）。
+        // office_exec（2026-09-15 R3）＝ office 域工具专用动作：收 {argv,targets}
+        // 载荷、命令由口内拼装（动词白名单 + OfficeTool 门禁），**不复用** Bash
+        // 家族的命令串路径检查（officecli 的 DOM 路径/JSON 载荷不是文件系统路径）。
         // ═══════════════════════════════════════════════════════
         "process_cap" => {
             let action = req_str(&params, "action", "process_cap")?;
@@ -492,6 +495,9 @@ async fn dispatch_rpc(
                 opt_str(&params, "stream_tool_id"),
                 opt_str(&params, "interpreter"),
                 opt_bool(&params, "capture_cwd").unwrap_or(false),
+                // office_exec 载荷（office 域工具专用：{argv:[…], targets:[{path,write}]}）
+                // ——命令由口内拼装，门禁 = OfficeTool（只审声明的目标文件）。
+                params.get("office").cloned(),
                 params.get("job_id").and_then(|v| v.as_u64()).map(|n| n as u32),
                 params.get("wait_timeout_ms").and_then(|v| v.as_u64()),
                 is_agent,
